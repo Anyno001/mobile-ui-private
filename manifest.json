@@ -1,0 +1,9 @@
+{
+    "display_name": "手机模式",
+    "loading_order": 10,
+    "requires": [],
+    "optional": [],
+    "js": "index.js",
+    "css": "",
+    "description": "使用 /phone 召唤持久化手机聊天界面，支持消息拆分、转账卡片、图片卡片"
+}
