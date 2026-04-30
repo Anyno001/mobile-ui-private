@@ -3,18 +3,27 @@
 
     // ── 状态 ──────────────────────────────────────────
     let phoneActive = false;
-    let pmElement = null;
-    let lastProcessedMesCount = 0; // 记录手机模式开启时的消息数量
+    let phoneWindow = null;
+    let conversationHistory = []; // 存储对话历史 {role, content}
+    let isGenerating = false;
 
     // ── 工具函数 ──────────────────────────────────────
 
     function getCurrentCharName() {
         try {
             const ctx = SillyTavern.getContext();
-            // 优先读取角色名（非文件名）
             const char = ctx.characters?.[ctx.characterId];
             return char?.name ?? '未知';
         } catch { return '未知'; }
+    }
+
+    function getCharPersona() {
+        try {
+            const ctx = SillyTavern.getContext();
+            const char = ctx.characters?.[ctx.characterId];
+            // 读取角色描述作为系统提示
+            return char?.description ?? '';
+        } catch { return ''; }
     }
 
     function splitUserParts(text) {
@@ -22,7 +31,6 @@
     }
 
     function splitAISentences(text) {
-        // 清理 markdown 符号再拆分
         const clean = text.replace(/\*+/g, '').replace(/_+/g, '').trim();
         return clean.split(/(?<=[。！？!?\n])\s*/)
             .map(s => s.trim()).filter(Boolean).slice(0, 8);
@@ -51,37 +59,113 @@
         }).join('');
     }
 
-    // ── 全局操作函数（供按钮 onclick 调用）────────────
+    // ── 直接调用 API 获取 AI 回复 ─────────────────────
 
-    window.__pmSend = function () {
-        if (!pmElement || !phoneActive) return;
-        const input = pmElement.querySelector('.pm-input');
+    async function getAIReply(userMessage) {
+        const ctx = SillyTavern.getContext();
+        const charName = getCurrentCharName();
+        const persona = getCharPersona();
+
+        // 构建系统提示
+        const systemPrompt = persona
+            ? `你正在扮演"${charName}"，通过手机短信与用户聊天。以下是你的角色设定：\n${persona}\n\n请用符合角色性格的方式回复，语气自然，像真实发短信一样简短。`
+            : `你正在扮演"${charName}"，通过手机短信与用户聊天。请用自然简短的方式回复，像真实发短信一样。`;
+
+        // 加入对话历史
+        conversationHistory.push({ role: 'user', content: userMessage });
+
+        // 获取当前使用的 API 设置
+        const connectionManager = ctx.connectionManager;
+        const apiUrl = ctx.apiUrl;
+
+        // 使用酒馆自己的生成函数
+        try {
+            // 方法：通过酒馆内部的 generateQuietPrompt
+            const reply = await ctx.generateQuietPrompt(userMessage, false, false, systemPrompt, charName);
+            conversationHistory.push({ role: 'assistant', content: reply });
+            return reply;
+        } catch (e) {
+            console.error('[phone-mode] generateQuietPrompt 失败:', e);
+            // 降级：返回错误提示
+            return '（网络异常，请稍后重试）';
+        }
+    }
+
+    // ── 气泡操作 ──────────────────────────────────────
+
+    function getMessagesDiv() {
+        return phoneWindow?.querySelector('.pm-messages');
+    }
+
+    function appendBubble(text, side) {
+        const div = getMessagesDiv();
+        if (!div) return;
+        const b = document.createElement('div');
+        b.className = `pm-bubble pm-${side}`;
+        b.innerHTML = renderBubbleContent(text);
+        div.appendChild(b);
+        div.scrollTop = div.scrollHeight;
+    }
+
+    function appendNote(text) {
+        const div = getMessagesDiv();
+        if (!div) return;
+        const n = document.createElement('div');
+        n.className = 'pm-system-note';
+        n.textContent = text;
+        div.appendChild(n);
+        div.scrollTop = div.scrollHeight;
+    }
+
+    function showTypingIndicator() {
+        const div = getMessagesDiv();
+        if (!div) return;
+        const t = document.createElement('div');
+        t.className = 'pm-bubble pm-left pm-typing';
+        t.id = 'pm-typing-indicator';
+        t.innerHTML = '<span></span><span></span><span></span>';
+        div.appendChild(t);
+        div.scrollTop = div.scrollHeight;
+    }
+
+    function removeTypingIndicator() {
+        document.getElementById('pm-typing-indicator')?.remove();
+    }
+
+    // ── 发送消息流程 ──────────────────────────────────
+
+    window.__pmSend = async function () {
+        if (!phoneActive || isGenerating) return;
+        const input = phoneWindow?.querySelector('.pm-input');
         const raw = input?.value?.trim();
         if (!raw) return;
         input.value = '';
 
-        // 右侧气泡
-        const div = pmElement.querySelector('.pm-messages');
-        splitUserParts(raw).forEach(p => {
-            const b = document.createElement('div');
-            b.className = 'pm-bubble pm-right';
-            b.innerHTML = renderBubbleContent(p);
-            div.appendChild(b);
-        });
-        div.scrollTop = div.scrollHeight;
+        // 显示右侧气泡
+        splitUserParts(raw).forEach(p => appendBubble(p, 'right'));
 
-        // 记录发送前的消息数，用于识别下一条AI回复
-        const ctx = SillyTavern.getContext();
-        lastProcessedMesCount = ctx.chat?.length ?? 0;
+        // 锁定输入
+        isGenerating = true;
+        const sendBtn = phoneWindow?.querySelector('.pm-send-btn');
+        if (sendBtn) sendBtn.disabled = true;
+        if (input) input.disabled = true;
 
-        // 通过酒馆主输入框发送
-        const ta = document.getElementById('send_textarea');
-        const btn = document.getElementById('send_but');
-        if (ta && btn) {
-            ta.value = raw;
-            // 用原生事件触发，避免被拦截
-            ta.dispatchEvent(new Event('input', { bubbles: true }));
-            btn.click();
+        // 显示打字指示器
+        showTypingIndicator();
+
+        // 获取 AI 回复
+        const reply = await getAIReply(raw);
+        removeTypingIndicator();
+
+        // 显示左侧气泡（拆分）
+        splitAISentences(reply).forEach(s => appendBubble(s, 'left'));
+
+        // 解锁输入
+        isGenerating = false;
+        if (sendBtn) sendBtn.disabled = false;
+        if (input) {
+            input.disabled = false;
+            input.focus();
         }
     };
 
@@ -89,20 +173,49 @@
         endPhoneMode(true);
     };
 
-    // ── 手机 UI 构建 ──────────────────────────────────
+    // ── 拖拽逻辑 ──────────────────────────────────────
 
-    function buildPhoneElement(charName) {
-        const outer = document.createElement('div');
-        outer.className = 'pm-outer';
-        outer.innerHTML = `
-<div class="pm-wrapper">
-  <div class="pm-header">
-    <div class="pm-header-left">
-      <div class="pm-avatar">${escapeHtml(charName[0] ?? '?')}</div>
+    function makeDraggable(el, handle) {
+        let ox = 0, oy = 0, mx = 0, my = 0;
+        handle.addEventListener('mousedown', function (e) {
+            e.preventDefault();
+            ox = e.clientX - el.offsetLeft;
+            oy = e.clientY - el.offsetTop;
+            document.addEventListener('mousemove', onDrag);
+            document.addEventListener('mouseup', stopDrag);
+        });
+        function onDrag(e) {
+            el.style.left = (e.clientX - ox) + 'px';
+            el.style.top = (e.clientY - oy) + 'px';
+            el.style.right = 'auto';
+            el.style.bottom = 'auto';
+        }
+        function stopDrag() {
+            document.removeEventListener('mousemove', onDrag);
+            document.removeEventListener('mouseup', stopDrag);
+        }
+    }
+
+    // ── 手机窗口构建 ──────────────────────────────────
+
+    function buildPhoneWindow(charName) {
+        const win = document.createElement('div');
+        win.id = 'pm-phone-window';
+        win.innerHTML = `
+<div class="pm-titlebar">
+  <div class="pm-header-left">
+    <div class="pm-avatar">${escapeHtml(charName[0] ?? '?')}</div>
+    <div class="pm-header-info">
       <span class="pm-char-name">${escapeHtml(charName)}</span>
+      <span class="pm-status">短信对话中</span>
     </div>
-    <button class="pm-end-btn" onclick="__pmEnd()">结束通话</button>
   </div>
+  <div class="pm-header-btns">
+    <button class="pm-minimize-btn" onclick="__pmToggle()" title="最小化">─</button>
+    <button class="pm-end-btn" onclick="__pmEnd()" title="结束通话">✕</button>
+  </div>
+</div>
+<div class="pm-body">
   <div class="pm-messages"></div>
   <div class="pm-input-row">
     <textarea class="pm-input" rows="2" placeholder="输入消息…用 / 分隔多条&#10;Enter发送，Shift+Enter换行"></textarea>
@@ -111,7 +224,7 @@
 </div>`;
 
         // Enter 键绑定
-        outer.querySelector('.pm-input').addEventListener('keydown', e => {
+        win.querySelector('.pm-input').addEventListener('keydown', e => {
             if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
                 e.stopPropagation();
@@ -119,114 +232,57 @@
             }
         });
 
-        return outer;
+        // 拖拽
+        makeDraggable(win, win.querySelector('.pm-titlebar'));
+
+        document.body.appendChild(win);
+        return win;
     }
+
+    // 最小化/展开
+    let minimized = false;
+    window.__pmToggle = function () {
+        if (!phoneWindow) return;
+        const body = phoneWindow.querySelector('.pm-body');
+        minimized = !minimized;
+        body.style.display = minimized ? 'none' : 'flex';
+        phoneWindow.querySelector('.pm-minimize-btn').textContent = minimized ? '□' : '─';
+    };
 
     // ── 核心流程 ──────────────────────────────────────
 
     async function startPhoneMode() {
-        if (phoneActive) { toastr.warning('手机模式已在运行中'); return; }
+        if (phoneActive) {
+            // 如果窗口存在就显示它
+            if (phoneWindow) {
+                phoneWindow.style.display = 'flex';
+                toastr.info('手机模式已在运行，窗口已显示');
+            }
+            return;
+        }
 
         const charName = getCurrentCharName();
+        conversationHistory = [];
 
-        // 找到聊天列表容器
-        const chat = document.getElementById('chat');
-        if (!chat) { toastr.error('找不到聊天容器 #chat'); return; }
-
-        // 创建独立楼层容器（模拟酒馆消息行的结构）
-        const mesRow = document.createElement('div');
-        mesRow.style.cssText = `
-            display: block;
-            width: 100%;
-            padding: 8px 0;
-            box-sizing: border-box;
-        `;
-
-        pmElement = buildPhoneElement(charName);
-        mesRow.appendChild(pmElement);
-        chat.appendChild(mesRow);
-        chat.scrollTop = chat.scrollHeight;
-
-        // 记录当前消息数，之后只处理新消息
-        const ctx = SillyTavern.getContext();
-        lastProcessedMesCount = ctx.chat?.length ?? 0;
-
+        phoneWindow = buildPhoneWindow(charName);
         phoneActive = true;
-        toastr.success(`📱 手机模式已开启 | 对话：${charName}`);
+
+        appendNote(`与 ${charName} 的对话开始`);
+        toastr.success(`📱 手机模式已开启 | ${charName}`);
     }
 
     function endPhoneMode(showToast = true) {
         if (!phoneActive) return;
-
-        if (pmElement) {
-            const div = pmElement.querySelector('.pm-messages');
-            if (div) {
-                const n = document.createElement('div');
-                n.className = 'pm-system-note';
-                n.textContent = '── 通话已结束 ──';
-                div.appendChild(n);
-                div.scrollTop = div.scrollHeight;
-            }
-            pmElement.querySelectorAll('.pm-input,.pm-send-btn,.pm-end-btn')
-                .forEach(el => el.setAttribute('disabled', ''));
-        }
-
+        appendNote('── 通话已结束 ──');
+        setTimeout(() => {
+            phoneWindow?.remove();
+            phoneWindow = null;
+        }, 1500);
         phoneActive = false;
-        pmElement = null;
-        lastProcessedMesCount = 0;
+        conversationHistory = [];
+        isGenerating = false;
         if (showToast) toastr.info('📴 手机模式已结束');
     }
-
-    // ── 监听 AI 回复（用计数而非 MutationObserver）────
-
-    // 每隔500ms检查是否有新的AI消息
-    setInterval(() => {
-        if (!phoneActive || !pmElement) return;
-        const ctx = SillyTavern.getContext();
-        const chat = ctx.chat;
-        if (!chat || chat.length <= lastProcessedMesCount) return;
-
-        // 处理所有新消息
-        for (let i = lastProcessedMesCount; i < chat.length; i++) {
-            const msg = chat[i];
-            // 只处理AI回复（非用户、非系统）
-            if (!msg || msg.is_user || msg.is_system) continue;
-
-            const text = msg.mes?.replace(/\*+/g,'').replace(/_+/g,'').trim();
-            if (!text) continue;
-
-            const div = pmElement.querySelector('.pm-messages');
-            if (!div) continue;
-
-            splitAISentences(text).forEach(s => {
-                const b = document.createElement('div');
-                b.className = 'pm-bubble pm-left';
-                b.innerHTML = renderBubbleContent(s);
-                div.appendChild(b);
-            });
-            div.scrollTop = div.scrollHeight;
-        }
-
-        lastProcessedMesCount = chat.length;
-    }, 500);
-
-    // ── 监听聊天切换，自动重置状态 ────────────────────
-
-    let lastChatId = null;
-    setInterval(() => {
-        try {
-            const ctx = SillyTavern.getContext();
-            const currentId = ctx.chatId ?? ctx.characterId;
-            if (lastChatId !== null && lastChatId !== currentId) {
-                if (phoneActive) {
-                    phoneActive = false;
-                    pmElement = null;
-                    toastr.info('已切换聊天，手机模式已重置');
-                }
-            }
-            lastChatId = currentId;
-        } catch {}
-    }, 1000);
 
     // ── 拦截 /phone 命令 ──────────────────────────────
 
@@ -249,30 +305,32 @@
         const s = document.createElement('style');
         s.id = 'pm-styles';
         s.textContent = `
-.pm-outer {
-    display: flex !important;
-    justify-content: center !important;
-    width: 100% !important;
-    padding: 12px 0 !important;
-}
-.pm-wrapper {
+#pm-phone-window {
+    position: fixed !important;
+    bottom: 80px !important;
+    right: 24px !important;
+    width: 360px !important;
     display: flex !important;
     flex-direction: column !important;
-    width: 420px !important;
     background: #e5e9f0 !important;
     border-radius: 20px !important;
     overflow: hidden !important;
     font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei', sans-serif !important;
-    box-shadow: 0 8px 32px rgba(0,0,0,0.18) !important;
+    box-shadow: 0 12px 40px rgba(0,0,0,0.25) !important;
+    z-index: 99999 !important;
+    border: 1px solid rgba(255,255,255,0.3) !important;
 }
-.pm-header {
+.pm-titlebar {
     background: #f7f7f7 !important;
-    padding: 14px 16px !important;
+    padding: 12px 14px !important;
     display: flex !important;
     justify-content: space-between !important;
     align-items: center !important;
     border-bottom: 1px solid #ddd !important;
+    cursor: grab !important;
+    user-select: none !important;
 }
+.pm-titlebar:active { cursor: grabbing !important; }
 .pm-header-left {
     display: flex !important;
     align-items: center !important;
@@ -287,30 +345,59 @@
     display: flex !important;
     align-items: center !important;
     justify-content: center !important;
-    font-size: 16px !important;
-    font-weight: 600 !important;
+    font-size: 15px !important;
+    font-weight: 700 !important;
+    flex-shrink: 0 !important;
+}
+.pm-header-info {
+    display: flex !important;
+    flex-direction: column !important;
 }
 .pm-char-name {
-    font-size: 15px !important;
+    font-size: 14px !important;
     font-weight: 600 !important;
     color: #111 !important;
+    line-height: 1.2 !important;
 }
-.pm-end-btn {
-    background: #ff3b30 !important;
-    color: #fff !important;
+.pm-status {
+    font-size: 11px !important;
+    color: #4cd964 !important;
+}
+.pm-header-btns {
+    display: flex !important;
+    gap: 6px !important;
+}
+.pm-minimize-btn, .pm-end-btn {
     border: none !important;
-    border-radius: 14px !important;
-    padding: 5px 14px !important;
+    border-radius: 50% !important;
+    width: 26px !important;
+    height: 26px !important;
     font-size: 12px !important;
     cursor: pointer !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
     font-family: inherit !important;
 }
-.pm-end-btn:disabled { background: #ccc !important; cursor: default !important; }
+.pm-minimize-btn {
+    background: #ffbd2e !important;
+    color: #7a5800 !important;
+}
+.pm-end-btn {
+    background: #ff5f57 !important;
+    color: #7a0000 !important;
+}
+.pm-minimize-btn:hover { background: #e6a800 !important; }
+.pm-end-btn:hover { background: #e0322a !important; }
+.pm-body {
+    display: flex !important;
+    flex-direction: column !important;
+}
 .pm-messages {
-    min-height: 320px !important;
-    max-height: 420px !important;
+    min-height: 300px !important;
+    max-height: 400px !important;
     overflow-y: auto !important;
-    padding: 16px !important;
+    padding: 14px !important;
     display: flex !important;
     flex-direction: column !important;
     gap: 8px !important;
@@ -323,19 +410,39 @@
     font-size: 14px !important;
     line-height: 1.5 !important;
     word-break: break-word !important;
-    box-shadow: 0 1px 2px rgba(0,0,0,0.08) !important;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.1) !important;
 }
 .pm-right {
     align-self: flex-end !important;
     background: #007aff !important;
     color: #fff !important;
-    border-bottom-right-radius: 5px !important;
+    border-bottom-right-radius: 4px !important;
 }
 .pm-left {
     align-self: flex-start !important;
     background: #fff !important;
     color: #111 !important;
-    border-bottom-left-radius: 5px !important;
+    border-bottom-left-radius: 4px !important;
+}
+.pm-typing {
+    display: flex !important;
+    gap: 4px !important;
+    align-items: center !important;
+    padding: 12px 16px !important;
+}
+.pm-typing span {
+    width: 7px !important;
+    height: 7px !important;
+    border-radius: 50% !important;
+    background: #aaa !important;
+    display: inline-block !important;
+    animation: pm-bounce 1.2s infinite !important;
+}
+.pm-typing span:nth-child(2) { animation-delay: 0.2s !important; }
+.pm-typing span:nth-child(3) { animation-delay: 0.4s !important; }
+@keyframes pm-bounce {
+    0%,60%,100% { transform: translateY(0); }
+    30% { transform: translateY(-6px); }
 }
 .pm-text { white-space: pre-wrap !important; }
 .pm-card {
@@ -349,10 +456,9 @@
 .pm-image { background: #e3f2fd !important; color: #0277bd !important; }
 .pm-system-note {
     text-align: center !important;
-    font-size: 12px !important;
-    color: #888 !important;
-    padding: 6px !important;
-    font-style: italic !important;
+    font-size: 11px !important;
+    color: #999 !important;
+    padding: 4px !important;
 }
 .pm-input-row {
     background: #f7f7f7 !important;
@@ -381,7 +487,7 @@
     color: #fff !important;
     border: none !important;
     border-radius: 18px !important;
-    padding: 8px 18px !important;
+    padding: 8px 16px !important;
     font-size: 14px !important;
     cursor: pointer !important;
     font-weight: 600 !important;
