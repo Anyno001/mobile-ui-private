@@ -1,8 +1,10 @@
 {
-    "name": "手机短信模式",
+    "name": "phone-mode-v9",
     "display_name": "📱 Phone Mode",
-    "version": "1.1.0",
-    "description": "模拟手机短信聊天界面，支持多联系人切换和记录保存。",
-    "author": "Gemini AI Helper",
-    "js": "index.js"
+    "version": "9.0.0",
+    "description": "纯前端手机短信模式，完美兼容 TauriTavern。",
+    "author": "Gemini",
+    "js": "index.js",
+    "require_backend": false,
+    "optional_backend": false
 }
