@@ -1,5 +1,3 @@
-# sillytavern-phone-mode
-SillyTavern 手机聊天界面扩展
 # SillyTavern 手机模式扩展
 
 在 SillyTavern 中召唤一个持久化的手机聊天界面。
