@@ -1,7 +1,6 @@
 (async function () {
     await new Promise(r => setTimeout(r, 1000));
 
-    // ── 1. 全局状态 ──
     window.__pmHistories = window.__pmHistories || {};
     let phoneActive = false;
     let phoneWindow = null;
@@ -12,43 +11,60 @@
 
     const getCtx = () => typeof SillyTavern !== 'undefined' ? SillyTavern.getContext() : null;
 
-    // ── 2. 多重逻辑过滤器（拆分气泡 + 特殊渲染） ──
-    function processResponse(text) {
+    // ── 1. 物理粉碎器（暴力拦截所有思维链） ──
+    function nuclearFilter(text) {
         if (!text) return [];
+        let clean = text;
+
+        // A. 暴力抹除所有已知的思考标签和括号内容
+        clean = clean.replace(/<(thinking|thought|reasoning)>[\s\S]*?<\/\1>/gi, ''); // 标签类
+        clean = clean.replace(/\[(thinking|thought|reasoning)\][\s\S]*?\[\/\1\]/gi, ''); // 中括号类
+        clean = clean.replace(/^(thinking|thought|reasoning|思考|想法)[:：][\s\S]*?\n/gi, ''); // 文本头类
+        clean = clean.replace(/\*[^*]+\*/g, ''); // 删掉动作描写
+
+        // B. 特殊处理：保留转账和图片，暂存后恢复，防止被旁白过滤器误杀
+        const specials = [];
+        clean = clean.replace(/[\(（](转账|图片)[^\)）]+[\)\）]/g, (match) => {
+            specials.push(match);
+            return `__SPECIAL_TOKEN_${specials.length - 1}__`;
+        });
+
+        // C. 过滤普通旁白
+        clean = clean.replace(/[\(（][^\)）]+[\)\）]/g, ''); 
+
+        // D. 恢复特殊功能
+        specials.forEach((val, i) => {
+            clean = clean.replace(`__SPECIAL_TOKEN_${i}__`, val);
+        });
+
+        // E. 核心切割逻辑：优先按照 / 分隔，其次才是标点
+        // 我们先把全角的 ／ 替换成半角的 /
+        clean = clean.replace(/／/g, '/');
         
-        // 物理切除思考链和动作旁白
-        let clean = text.replace(/<thinking>[\s\S]*?<\/thinking>/gi, '')
-                        .replace(/\*[^*]+\*/g, '')
-                        .replace(/[\(（][^\)）]+[\)\）]/g, (match) => {
-                            // 保留转账和图片格式，不作为旁白删掉
-                            if (match.includes('转账') || match.includes('图片')) return match;
-                            return '';
-                        })
-                        .trim();
+        // 按照 / 或 自然句号分割，但要保护特殊功能内的加号不被误切
+        const rawSents = clean.split(/[/]|(?<=[。！？!?\n])\s*/);
         
-        // 分句逻辑：支持手动 "/" 分隔以及自然标点
-        const sentences = clean.split(/[/／]|(?<=[。！？!?\n])\s*/).filter(s => s.trim().length > 0);
-        return sentences.slice(0, 8); // 限制 3-8 句
+        return rawSents
+            .map(s => s.trim())
+            .filter(s => s.length > 0 && !s.includes('Assistant:'))
+            .slice(0, 8); // 限制 3-8 句
     }
 
-    // ── 3. 渲染特殊气泡（转账/图片） ──
+    // ── 2. 气泡渲染 ──
     function createBubbleElement(text, side) {
         const b = document.createElement('div');
         b.className = `pm-bubble pm-${side}`;
 
-        // 匹配转账：(转账+100)
-        const transferMatch = text.match(/[\(（]转账\+(\d+)[\)\）]/);
-        if (transferMatch) {
+        if (text.includes('转账+')) {
+            const num = text.match(/\d+/)?.[0] || '0';
             b.className += ' pm-transfer-bubble';
-            b.innerHTML = `<div class="transfer-icon">¥</div><div><div style="font-weight:bold">转账给您</div><div style="font-size:12px">¥${transferMatch[1]}.00</div></div>`;
+            b.innerHTML = `<div class="transfer-icon">¥</div><div><div style="font-weight:bold">转账给您</div><div style="font-size:12px">¥${num}.00</div></div>`;
             return b;
         }
-
-        // 匹配图片：(图片+描述)
-        const imgMatch = text.match(/[\(（]图片\+([^)]+)[\)\）]/);
-        if (imgMatch) {
+        if (text.includes('图片+')) {
+            const desc = text.split('+')[1]?.replace(/[\)\）]/g, '') || '描述内容';
             b.className += ' pm-image-bubble';
-            b.innerHTML = `<div class="img-placeholder">🖼️ [图片: ${imgMatch[1]}]</div>`;
+            b.innerHTML = `<div class="img-placeholder">🖼️ [图片: ${desc}]</div>`;
             return b;
         }
 
@@ -56,50 +72,34 @@
         return b;
     }
 
-    // ── 4. API 调用（身份硬锁定） ──
+    // ── 3. 深度注入与发送 ──
     async function fetchSMS(userMsg) {
         const c = getCtx();
-        const charData = c.characters[c.characterId];
         conversationHistory.push({ role: 'user', content: userMsg });
 
-        // 核心指令：强制身份隔离 + 读取设定
-        const systemPrompt = `[STRICT PROTOCOL: MOBILE_CHAT]
-- IDENTITY: You are "${currentPersona}". (Ref: {{persona}})
-- LORE: Use info from {{worldbook}}.
-- WARNING: NEVER roleplay as {{user}}. NEVER describe {{user}}'s actions.
-- FORMAT:
-  1. Reply ONLY in short sentences. 
-  2. Use "/" to separate different chat bubbles.
-  3. Total 3-8 sentences.
-  4. Special Actions: Use "(转账+amount)" or "(图片+description)" if needed.
-- CURRENT TASK: Reply to {{user}}'s message as ${currentPersona}.`;
+        const systemPrompt = `[STRICT DIRECTIVE: SMS_INTERACTION]
+- ROLE: You are "${currentPersona}". Read {{persona}} and {{worldbook}} carefully.
+- ACTION: Respond as if texting on iMessage.
+- RULES:
+  1. NO <thinking> tags. NO internal monologue.
+  2. ALWAYS use "/" to split your response into multiple bubbles.
+  3. Total output: 3-8 short sentences.
+  4. Use "(转账+amount)" or "(图片+desc)" if context allows.
+  5. NEVER roleplay for {{user}}.
+- FORMAT: Sentence 1 / Sentence 2 / (Action if needed)`;
 
-        const prompt = `${systemPrompt}\n\n[History]\n${conversationHistory.slice(-4).map(m => m.content).join('\n')}\n\n{{user}}: ${userMsg}\n${currentPersona}:`;
+        const prompt = `${systemPrompt}\n\n[Chat History]\n${conversationHistory.slice(-4).map(m => m.content).join('\n')}\n\n{{user}}: ${userMsg}\n${currentPersona}:`;
 
         try {
             let res = await c.generateQuietPrompt(prompt, false, false);
-            const sentences = processResponse(res);
-            if (sentences.length === 0) sentences.push("...");
+            const sentences = nuclearFilter(res);
+            
+            if (sentences.length === 0) sentences.push("怎么了？");
             
             conversationHistory.push({ role: 'assistant', content: sentences.join(' / ') });
             saveStore();
             return sentences;
-        } catch (e) { return ["发送失败"]; }
-    }
-
-    function saveStore() {
-        const id = `${getCtx().characterId}_${getCtx().chat_file || 'default'}`;
-        if (!window.__pmHistories[id]) window.__pmHistories[id] = {};
-        window.__pmHistories[id][currentPersona] = [...conversationHistory.slice(-20)];
-    }
-
-    // ── 5. UI 与 拖拽 ──
-    function addBubble(text, side) {
-        const list = phoneWindow?.querySelector('.pm-msg-list');
-        if (!list) return;
-        const b = createBubbleElement(text, side);
-        list.appendChild(b);
-        list.scrollTop = list.scrollHeight;
+        } catch (e) { return ["[信号中断]"]; }
     }
 
     window.__pmSend = async () => {
@@ -112,12 +112,20 @@
         isGenerating = true;
         const sentenceList = await fetchSMS(val);
         for (const s of sentenceList) {
-            await new Promise(r => setTimeout(r, 600 + Math.random()*400));
+            await new Promise(r => setTimeout(r, 500 + Math.random()*500));
             addBubble(s, 'left');
         }
         isGenerating = false;
     };
 
+    function addBubble(text, side) {
+        const list = phoneWindow?.querySelector('.pm-msg-list');
+        if (!list) return;
+        list.appendChild(createBubbleElement(text, side));
+        list.scrollTop = list.scrollHeight;
+    }
+
+    // ── 4. 拖拽逻辑（阈值分离，防止误点） ──
     function bindIsland(el, handle) {
         let isDragging = false, startX, startY, startL, startT, moved = false;
         handle.onmousedown = (e) => {
@@ -129,78 +137,37 @@
         document.onmousemove = (e) => {
             if (!isDragging) return;
             let dx = e.clientX - startX, dy = e.clientY - startY;
-            if (Math.abs(dx) > 5 || Math.abs(dy) > 5) moved = true;
+            if (Math.abs(dx) > 10 || Math.abs(dy) > 10) moved = true;
             el.style.left = (startL + dx) + 'px';
             el.style.top = (startT + dy) + 'px';
             el.style.bottom = 'auto'; el.style.right = 'auto';
         };
         document.onmouseup = () => {
             isDragging = false;
-            el.style.transition = '0.35s cubic-bezier(0.18, 0.89, 0.32, 1.2)';
+            el.style.transition = '0.3s cubic-bezier(0.18, 0.89, 0.32, 1.2)';
             if (!moved) __pmToggleMin();
         };
     }
 
-    window.__pmShowList = () => {
-        const id = `${getCtx().characterId}_${getCtx().chat_file || 'default'}`;
-        const list = Object.keys(window.__pmHistories[id] || {});
-        const ov = document.createElement('div');
-        ov.id = 'pm-overlay';
-        ov.innerHTML = `
-            <div class="pm-modal">
-                <div style="display:flex;justify-content:space-between;margin-bottom:15px"><b>联系人</b><span onclick="this.closest('#pm-overlay').remove()" style="cursor:pointer">×</span></div>
-                <div style="max-height:200px;overflow-y:auto">
-                    ${list.map(n => `<div class="pm-li"><span onclick="__pmSwitch('${n}')">${n}</span><i onclick="__pmDel('${n}')">×</i></div>`).join('')}
-                </div>
-                <input id="pm-add" placeholder="新建联系人..." style="width:100%;padding:8px;margin:10px 0;box-sizing:border-box;border-radius:8px;border:1px solid #ddd">
-                <div style="display:flex;gap:10px">
-                    <button onclick="document.getElementById('pm-overlay').remove()" style="flex:1;padding:8px;border:none;border-radius:8px">取消</button>
-                    <button onclick="__pmSwitch(document.getElementById('pm-add').value)" style="flex:1;padding:8px;background:#007aff;color:#fff;border:none;border-radius:8px">添加</button>
-                </div>
-            </div>`;
-        document.body.appendChild(ov);
-    };
-
-    window.__pmSwitch = (name) => {
-        if (!name) return;
-        const id = `${getCtx().characterId}_${getCtx().chat_file || 'default'}`;
-        currentPersona = name;
-        conversationHistory = window.__pmHistories[id]?.[currentPersona] || [];
-        if (phoneWindow) {
-            phoneWindow.querySelector('.pm-name').textContent = currentPersona;
-            const list = phoneWindow.querySelector('.pm-msg-list');
-            list.innerHTML = '';
-            conversationHistory.forEach(m => {
-                const sents = m.content.split(/[/／]|(?<=[。！？!?])\s*/);
-                sents.forEach(s => addBubble(s, m.role === 'user' ? 'right' : 'left'));
-            });
-        }
-        document.getElementById('pm-overlay')?.remove();
-    };
-
-    window.__pmDel = (n) => { delete window.__pmHistories[`${getCtx().characterId}_${getCtx().chat_file || 'default'}`][n]; __pmShowList(); };
-    window.__pmToggleMin = () => { isMinimized = !isMinimized; phoneWindow.classList.toggle('is-min', isMinimized); };
-    window.__pmEnd = () => { phoneWindow?.remove(); phoneActive = false; };
-
-    // ── 6. 构造窗口 ──
+    // ── 5. UI 布局 ──
     window.__pmOpen = () => {
         if (phoneActive) return;
         const c = getCtx();
         const defaultChar = c?.characters?.[c.characterId]?.name ?? '白厄';
         phoneWindow = document.createElement('div');
-        phoneWindow.id = 'pm-iphone-v8';
+        phoneWindow.id = 'pm-v9';
         phoneWindow.innerHTML = `
             <div class="pm-island"></div>
-            <div class="pm-main-ui">
-                <div class="pm-navbar">
-                    <button onclick="__pmShowList()" class="pm-btn">≡</button>
+            <div class="pm-container">
+                <div class="pm-header">
+                    <button onclick="__pmShowList()">≡</button>
                     <div class="pm-name">${defaultChar}</div>
-                    <button onclick="__pmEnd()" class="pm-btn" style="color:red">✕</button>
+                    <button onclick="__pmEnd()">✕</button>
                 </div>
                 <div class="pm-msg-list"></div>
-                <div class="pm-input-bar">
+                <div class="pm-footer">
                     <input class="pm-input" placeholder="iMessage">
-                    <button onclick="__pmSend()" class="pm-up-btn">↑</button>
+                    <button onclick="__pmSend()">↑</button>
                 </div>
             </div>`;
         document.body.appendChild(phoneWindow);
@@ -210,44 +177,60 @@
         phoneWindow.querySelector('.pm-input').onkeydown = e => { if(e.key === 'Enter') __pmSend(); };
     };
 
-    // ── 7. 样式（包含转账与图片渲染） ──
-    const css = `
-        #pm-iphone-v8 {
-            position: fixed; bottom: 40px; right: 40px; width: 340px; height: 600px;
-            background: #fff; border: 12px solid #111; border-radius: 50px;
-            z-index: 100000; display: flex; flex-direction: column; overflow: hidden;
-            box-shadow: 0 30px 60px rgba(0,0,0,0.4); transition: 0.35s cubic-bezier(0.18, 0.89, 0.32, 1.2);
+    window.__pmSwitch = (name) => {
+        if (!name) return;
+        currentPersona = name;
+        const id = `${getCtx().characterId}_${getCtx().chat_file || 'default'}`;
+        conversationHistory = window.__pmHistories[id]?.[currentPersona] || [];
+        if (phoneWindow) {
+            phoneWindow.querySelector('.pm-name').textContent = currentPersona;
+            const list = phoneWindow.querySelector('.pm-msg-list');
+            list.innerHTML = '';
+            conversationHistory.forEach(m => {
+                nuclearFilter(m.content).forEach(s => addBubble(s, m.role === 'user' ? 'right' : 'left'));
+            });
         }
-        #pm-iphone-v8.is-min { height: 48px; width: 130px; border-radius: 24px; border-width: 6px; }
-        #pm-iphone-v8.is-min .pm-main-ui { display: none; }
+        document.getElementById('pm-overlay')?.remove();
+    };
+
+    window.__pmDel = (n) => { delete window.__pmHistories[`${getCtx().characterId}_${getCtx().chat_file || 'default'}`][n]; __pmShowList(); };
+    window.__pmToggleMin = () => { isMinimized = !isMinimized; phoneWindow.classList.toggle('is-min', isMinimized); };
+    window.__pmEnd = () => { phoneWindow?.remove(); phoneActive = false; };
+    function saveStore() { const id = `${getCtx().characterId}_${getCtx().chat_file || 'default'}`; if (!window.__pmHistories[id]) window.__pmHistories[id] = {}; window.__pmHistories[id][currentPersona] = [...conversationHistory.slice(-20)]; }
+
+    window.__pmShowList = () => {
+        const id = `${getCtx().characterId}_${getCtx().chat_file || 'default'}`;
+        const list = Object.keys(window.__pmHistories[id] || {});
+        const ov = document.createElement('div'); ov.id = 'pm-overlay';
+        ov.innerHTML = `<div class="pm-modal"><b>联系人</b><div style="max-height:180px;overflow-y:auto;margin:10px 0">${list.map(n=>`<div class="pm-li"><span onclick="__pmSwitch('${n}')">${n}</span><i onclick="__pmDel('${n}')">×</i></div>`).join('')}</div><input id="pm-add" placeholder="新建..."><div style="display:flex;gap:10px;margin-top:10px"><button onclick="document.getElementById('pm-overlay').remove()" style="flex:1">取消</button><button onclick="__pmSwitch(document.getElementById('pm-add').value)" style="flex:1;background:#007aff;color:#fff">呼叫</button></div></div>`;
+        document.body.appendChild(ov);
+    };
+
+    // ── 6. 核心样式 ──
+    const css = `
+        #pm-v9 { position: fixed; bottom: 30px; right: 30px; width: 340px; height: 620px; background: #fff; border: 12px solid #000; border-radius: 50px; z-index: 100000; display: flex; flex-direction: column; box-shadow: 0 20px 50px rgba(0,0,0,0.3); transition: 0.3s cubic-bezier(0.18, 0.89, 0.32, 1.2); font-family: sans-serif; overflow: hidden; }
+        #pm-v9.is-min { height: 50px; width: 140px; border-radius: 25px; border-width: 6px; }
+        #pm-v9.is-min .pm-container { display: none; }
         .pm-island { width: 100px; height: 26px; background: #000; margin: 10px auto; border-radius: 15px; cursor: move; flex-shrink: 0; }
-        .pm-main-ui { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
-        .pm-navbar { display: flex; align-items: center; justify-content: space-between; padding: 5px 15px; border-bottom: 0.5px solid #eee; }
-        .pm-name { font-weight: 700; color: #000; }
-        .pm-btn { background: none; border: none; font-size: 20px; cursor: pointer; }
-        .pm-msg-list { flex: 1; overflow-y: auto; padding: 15px; display: flex; flex-direction: column; gap: 6px; background: #fff; }
-        .pm-bubble { max-width: 75%; padding: 10px 14px; border-radius: 18px; font-size: 14px; line-height: 1.4; animation: pm-pop 0.25s ease-out; }
-        @keyframes pm-pop { from { transform: scale(0.9); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+        .pm-container { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+        .pm-header { display: flex; align-items: center; justify-content: space-between; padding: 10px 20px; border-bottom: 0.5px solid #eee; }
+        .pm-header button { background: none; border: none; font-size: 18px; cursor: pointer; }
+        .pm-name { font-weight: bold; }
+        .pm-msg-list { flex: 1; overflow-y: auto; padding: 15px; display: flex; flex-direction: column; gap: 8px; }
+        .pm-bubble { max-width: 75%; padding: 10px 14px; border-radius: 18px; font-size: 14px; line-height: 1.4; }
         .pm-right { align-self: flex-end; background: #007aff; color: #fff; border-bottom-right-radius: 4px; }
         .pm-left { align-self: flex-start; background: #e9e9eb; color: #000; border-bottom-left-radius: 4px; }
-        /* 特殊气泡 */
-        .pm-transfer-bubble { background: #ff9500 !important; color: #fff; display: flex; align-items: center; gap: 10px; min-width: 150px; }
-        .transfer-icon { width: 35px; height: 35px; background: #fff; color: #ff9500; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 20px; }
-        .pm-image-bubble { background: #f2f2f7 !important; border: 1px solid #ddd; padding: 5px; }
-        .img-placeholder { width: 200px; height: 120px; background: #ddd; border-radius: 10px; display: flex; align-items: center; justify-content: center; color: #666; font-size: 12px; }
-        
-        .pm-input-bar { padding: 10px 15px 35px; display: flex; gap: 10px; border-top: 0.5px solid #eee; align-items: center; }
-        .pm-input { flex: 1; background: #f2f2f7 !important; color: #000 !important; border: none; border-radius: 20px; padding: 10px 15px; outline: none; }
-        .pm-up-btn { width: 30px; height: 30px; background: #007aff; color: #fff; border: none; border-radius: 50%; cursor: pointer; font-weight: bold; }
-        #pm-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 100001; display: flex; align-items: center; justify-content: center; }
-        .pm-modal { background: #fff; padding: 20px; border-radius: 25px; width: 260px; font-family: sans-serif; }
+        .pm-transfer-bubble { background: #ff9500 !important; color: #fff; display: flex; align-items: center; gap: 10px; min-width: 160px; }
+        .transfer-icon { width: 30px; height: 30px; background: #fff; color: #ff9500; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; }
+        .pm-footer { padding: 10px 15px 35px; display: flex; gap: 10px; border-top: 0.5px solid #eee; }
+        .pm-input { flex: 1; border-radius: 20px; border: 1px solid #ddd; padding: 8px 15px; outline: none; background: #f9f9f9 !important; color: #000 !important; }
+        .pm-modal { background: #fff; padding: 25px; border-radius: 30px; width: 260px; box-shadow: 0 10px 30px rgba(0,0,0,0.2); }
         .pm-li { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 0.5px solid #eee; }
         .pm-li span { color: #007aff; cursor: pointer; }
-        .pm-li i { color: red; cursor: pointer; font-style: normal; }
     `;
 
-    if (!document.getElementById('pm-v8-css')) {
-        const s = document.createElement('style'); s.id = 'pm-v8-css'; s.innerHTML = css; document.head.appendChild(s);
+    if (!document.getElementById('pm-v9-css')) {
+        const s = document.createElement('style'); s.id = 'pm-v9-css'; s.innerHTML = css; document.head.appendChild(s);
     }
 
     document.addEventListener('keydown', e => {
@@ -258,6 +241,4 @@
             }
         }
     }, true);
-
-    console.log("iPhone SMS V8 (Transfer & Identity Locked) Loaded.");
 })();
