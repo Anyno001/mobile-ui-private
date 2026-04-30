@@ -46,42 +46,42 @@
         handle.addEventListener('touchstart', onStart, { passive: false }); window.addEventListener('touchmove', onMove, { passive: false }); window.addEventListener('touchend', onEnd);
     }
 
-    // ── 3. 新思路：JSON 强制解析引擎 ──
-    function parseJSONResponse(text) {
+    // ── 3. 核心大换血：正向提取引擎 ──
+    function processResponse(text) {
         if (!text) return ["..."];
-        let clean = text.trim();
-        
-        // 清理 AI 可能自作主张加上的 markdown 代码块
-        clean = clean.replace(/^```json\s*/i, '').replace(/\s*```$/i, '').trim();
-        
-        // 暴力提取中括号里的数组内容（防止 AI 在开头说“好的，这是你的JSON”）
-        const firstBracket = clean.indexOf('[');
-        const lastBracket = clean.lastIndexOf(']');
-        if (firstBracket !== -1 && lastBracket !== -1) {
-            clean = clean.substring(firstBracket, lastBracket + 1);
+        let clean = text;
+
+        // 【最强阳谋】：只抓取 <SMS> 和 </SMS> 之间的内容，其他几千字正文直接抛弃！
+        const smsMatch = clean.match(/<SMS>([\s\S]*?)<\/SMS>/i);
+        if (smsMatch) {
+            clean = smsMatch[1]; 
+        } else {
+            // 保底机制：如果它忘了写 <SMS> 标签，启动 V18.1 的暴力清理法
+            clean = clean.replace(/<[^>]+>[\s\S]*?(<\/[^>]+>|$)/g, '');
+            clean = clean.replace(/\[[A-Za-z0-9_]+\]/g, '');
+            clean = clean.replace(/【[^】]+】[\s\S]*?(?=\/|$)/g, '');
         }
 
-        try {
-            // 尝试标准的 JSON 解析
-            let arr = JSON.parse(clean);
-            if (Array.isArray(arr) && arr.length > 0) {
-                // 解析成功后，只保留字符串，并做最后的简单净化
-                return arr.map(s => {
-                    let str = String(s);
-                    // 仅去除可能残余的 (叹气) 等动作旁白，保留图片和转账
-                    str = str.replace(/[\(（](?!\s*(转账|图片))[^\)）]+[\)\）]/g, '');
-                    return str.trim();
-                }).filter(s => s.length > 0).slice(0, 8);
-            }
-        } catch (e) {
-            console.warn("[Phone Mode] JSON 解析失败，触发降级提取模式", clean);
-            // 降级模式：如果 JSON 格式坏了，直接用正则强行提取双引号里的内容
-            const matches = clean.match(/"([^"\\]*(?:\\.[^"\\]*)*)"/g);
-            if (matches) {
-                return matches.map(s => s.replace(/(^"|"$)/g, '').replace(/\\"/g, '"').trim()).filter(Boolean).slice(0, 8);
-            }
+        // 基础净化，防止标签内还有动作描写
+        clean = clean.replace(/&lt;/g, '<').replace(/&gt;/g, '>');
+        clean = clean.replace(/\*[^*]+\*/g, '');
+        clean = clean.replace(/[\(（](?!\s*(转账|图片|系统))[^\)）]+[\)\）]/g, '');
+        clean = clean.replace(/^.{0,15}(:|：)\s*/, '');
+        clean = clean.trim();
+
+        // 强行丢弃乱入的标题行
+        let lines = clean.split('\n').map(l => l.trim()).filter(Boolean);
+        if (lines.length > 1 && !lines[0].includes('/') && lines[0].length < 15 && !lines[0].match(/(图片|转账)/)) {
+            lines.shift(); 
         }
-        return ["（AI 信号异常，请重试发一条消息）"];
+        clean = lines.join(' ').trim();
+
+        // 气泡切分
+        let chunks = clean.split(/[/／]/).map(s => s.trim()).filter(s => s.length > 0);
+        if (chunks.length === 1 && clean.length > 20) {
+            chunks = clean.split(/(?<=[。！？!?\n])\s*/).map(s => s.trim()).filter(s => s.length > 0);
+        }
+        return chunks.slice(0, 8);
     }
 
     // ── 4. 渲染气泡 ──
@@ -108,44 +108,41 @@
         return b;
     }
 
-    // ── 5. API 调用 (JSON 降维打击 Prompt) ──
+    // ── 5. API 调用 (诱导其使用 SMS 标签) ──
     async function fetchSMS(userMsg) {
         const c = getCtx();
         conversationHistory.push({ role: 'user', content: userMsg });
 
-        // 构建历史记录
-        const historyStr = conversationHistory.slice(-6).map(m => m.role === 'user' ? `用户: ${m.content}` : `${currentPersona}: ${m.content}`).join('\n');
+        const activeCharName = c.characters && c.characters[c.characterId] ? c.characters[c.characterId].name : '';
+        let personaContext = "";
+        if (currentPersona === activeCharName) {
+            personaContext = `(Load profile: {{persona}}).`;
+        } else {
+            personaContext = `(You are an NPC named ${currentPersona}).`;
+        }
 
-        // 全新思路：把角色扮演变成“数据提取任务”
-        const systemPrompt = `[SYSTEM OVERRIDE: DATA EXTRACTION MODE]
-你现在处于“代码与数据输出模式”，所有小说预设、ECoT、思维链和格式排版即刻失效！
+        const systemPrompt = `[SYSTEM: SMS EXTRACTION MODE]
+Role: "${currentPersona}". ${personaContext}
 
-任务：根据世界观和当前剧情，以角色 "${currentPersona}" 的身份，回复用户的最新短信。
+You are currently replying to {{user}}'s text messages.
+You MUST put the actual text messages INSIDE <SMS> and </SMS> tags!
+Inside the <SMS> tags, NO narration, NO headers, ONLY pure text.
+Separate multiple messages with a "/".
 
-【绝对规则：如果违反，系统将崩溃】
-1. 你必须、只能输出一个标准的 JSON 数组 (Array of strings)。
-2. 数组内包含 2 到 6 条简短的纯文本短信内容。
-3. 严禁输出任何 HTML/XML 标签、<thinking>、动作描写或文末状态栏。
-4. 严禁使用 \`\`\`json 代码块包裹，直接输出 [ 开头的结果。
-5. 可以包含 (图片: 描述) 或 (转账: 50) 格式的特殊字符串。
+Correct Output Example:
+<novel_header>Some text</novel_header>
+<thinking>I should reply fast.</thinking>
+<SMS>我刚下班 / 你在干嘛呢？ / (图片: 路边的小猫)</SMS>`;
 
-【完美输出示例】
-["我刚下班", "你在干嘛呢？", "(图片: 街边的小猫)", "晚上一起吃饭吗"]
-
-【历史聊天记录】
-${historyStr}
-
-【用户的新短信】
-${userMsg}
-
-现在，请直接输出 JSON 数组：`;
+        const historyStr = conversationHistory.slice(-6).map(m => m.role === 'user' ? `{{user}}: ${m.content}` : `${currentPersona}: ${m.content}`).join('\n');
+        const prompt = `${systemPrompt}\n\n[History]\n${historyStr}\n\n{{user}}: ${userMsg}\n${currentPersona} Output:`;
 
         try {
-            let raw = await c.generateQuietPrompt(systemPrompt, false, false);
+            let raw = await c.generateQuietPrompt(prompt, false, false);
+            let sentences = processResponse(raw);
             
-            // 走全新的 JSON 解析引擎
-            let sentences = parseJSONResponse(raw);
-            
+            if (sentences.length === 0) sentences = ['（对方没有回复）'];
+
             conversationHistory.push({ role: 'assistant', content: sentences.join(' / ') });
 
             const id = `${c.characterId}_${c.chat_file || 'default'}`;
@@ -295,7 +292,7 @@ ${userMsg}
         const defaultChar = c?.characters?.[c.characterId]?.name ?? 'AI';
 
         phoneWindow = document.createElement('div');
-        phoneWindow.id = 'pm-iphone-v26';
+        phoneWindow.id = 'pm-iphone-v27';
         phoneWindow.innerHTML = `
 <div class="pm-island"></div>
 <div class="pm-main-ui">
@@ -323,13 +320,13 @@ ${userMsg}
     };
 
     // ── 10. CSS 样式 ──
-    if (!document.getElementById('pm-v26-css')) {
+    if (!document.getElementById('pm-v27-css')) {
         const s = document.createElement('style');
-        s.id = 'pm-v26-css';
+        s.id = 'pm-v27-css';
         s.textContent = `
-#pm-iphone-v26 { position: fixed; bottom: 40px; right: 40px; width: 330px; height: 580px; background: #fff; border: 10px solid #1a1a1a; border-radius: 45px; z-index: 100000; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 20px 60px rgba(0,0,0,0.45); transition: 0.35s cubic-bezier(0.18, 0.89, 0.32, 1.2); font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', sans-serif; touch-action: none; min-width: 330px !important; max-width: 330px !important; min-height: 580px !important; max-height: 580px !important; box-sizing: border-box !important; }
-#pm-iphone-v26.is-min { height: 50px !important; min-height: 50px !important; max-height: 50px !important; width: 140px !important; min-width: 140px !important; max-width: 140px !important; border-radius: 25px; border-width: 6px; }
-#pm-iphone-v26.is-min .pm-main-ui { display: none !important; }
+#pm-iphone-v27 { position: fixed; bottom: 40px; right: 40px; width: 330px; height: 580px; background: #fff; border: 10px solid #1a1a1a; border-radius: 45px; z-index: 100000; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 20px 60px rgba(0,0,0,0.45); transition: 0.35s cubic-bezier(0.18, 0.89, 0.32, 1.2); font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', sans-serif; touch-action: none; min-width: 330px !important; max-width: 330px !important; min-height: 580px !important; max-height: 580px !important; box-sizing: border-box !important; }
+#pm-iphone-v27.is-min { height: 50px !important; min-height: 50px !important; max-height: 50px !important; width: 140px !important; min-width: 140px !important; max-width: 140px !important; border-radius: 25px; border-width: 6px; }
+#pm-iphone-v27.is-min .pm-main-ui { display: none !important; }
 .pm-island { width: 100px; height: 26px; background: #1a1a1a; margin: 8px auto 4px; border-radius: 14px; cursor: move; flex-shrink: 0; touch-action: none; z-index: 10;}
 .pm-main-ui { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-height: 0; }
 .pm-navbar { display: flex; align-items: center; justify-content: space-between; padding: 6px 14px; border-bottom: 1px solid #f0f0f0; flex-shrink: 0; }
@@ -399,5 +396,5 @@ ${userMsg}
         }
     }, true);
 
-    console.log("[Phone Mode] V26 (JSON Engine Edition) Loaded.");
+    console.log("[Phone Mode] V27.1 (Positive Extraction) Loaded.");
 })();
