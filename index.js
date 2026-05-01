@@ -505,7 +505,7 @@ ${currentPersona}：`;
 <div class="pm-island"></div>
 <div class="pm-main-ui">
   <div class="pm-navbar">
-    <button onclick="window.__pmShowList()" class="pm-nav-btn" title="联系人">☰</button>
+    <button onclick="window.__pmShowList()" class="pm-nav-btn" title="联系人" style="justify-self:start;">☰</button>
     <div class="pm-name">${defaultChar}</div>
     <div style="display:flex;gap:2px;justify-content:flex-end;">
       <button onclick="window.__pmToggleSelect()" class="pm-nav-btn pm-trash-btn" title="删除消息">🗑</button>
