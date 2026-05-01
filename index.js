@@ -130,8 +130,8 @@ ${currentPersona}：`;
 
             return sentences;
         } catch (e) {
-            console.error('[phone-mode] 调用失败:', e);
-            return ['（发送失败）'];
+            const msg = e?.message || String(e) || '未知错误';
+            return [`（错误：${msg}）`];
         }
     }
 
