@@ -14,6 +14,70 @@
 
     const getCtx = () => typeof SillyTavern !== 'undefined' ? SillyTavern.getContext() : null;
 
+    // ── URL 归一化（宽松判定） ──
+    function normalizeApiUrls(input) {
+        let url = (input || '').trim().replace(/\/+$/, '');
+        if (!url) return { chatUrl: '', modelsUrl: '' };
+        // 已经是完整聊天地址
+        if (/\/chat\/completions$/i.test(url)) {
+            return { chatUrl: url, modelsUrl: url.replace(/\/chat\/completions$/i, '/models') };
+        }
+        // 已经是 /models
+        if (/\/models$/i.test(url)) {
+            return { chatUrl: url.replace(/\/models$/i, '/chat/completions'), modelsUrl: url };
+        }
+        // 以 /v数字 结尾（如 /v1、/v2、/api/v1）
+        if (/\/v\d+$/i.test(url)) {
+            return { chatUrl: url + '/chat/completions', modelsUrl: url + '/models' };
+        }
+        // 裸域名 → 自动补 /v1
+        return { chatUrl: url + '/v1/chat/completions', modelsUrl: url + '/v1/models' };
+    }
+
+    // ── 统一抓取角色卡 + 世界书 + 主楼历史 ──
+    async function gatherContext() {
+        const c = getCtx();
+        const char = c?.characters?.[c.characterId] || {};
+        const cardDesc        = char.description ?? '';
+        const cardPersonality = char.personality ?? '';
+        const cardScenario    = char.scenario ?? '';
+        const cardFirstMes    = char.first_mes ?? '';
+        const cardMesExample  = char.mes_example ?? '';
+
+        // 主楼最近 8 条聊天（清洗）
+        const cleanMsg = (s) => (s || '')
+            .replace(/```[\s\S]*?```/g, '')
+            .replace(/<[^>]+>[\s\S]*?<\/[^>]+>/g, '')
+            .replace(/<[^>]+>/g, '')
+            .trim();
+
+        const mainChatArr = (c?.chat || []).slice(-8).map(m => ({
+            who: m.is_user ? '用户' : (m.name || '角色'),
+            role: m.is_user ? 'user' : 'assistant',
+            content: cleanMsg(m.mes || ''),
+        })).filter(m => m.content);
+
+        const mainChatText = mainChatArr.map(m => `${m.who}：${m.content}`).join('\n');
+
+        // 真·世界书
+        let worldBookText = '';
+        try {
+            if (typeof c?.getWorldInfoPrompt === 'function') {
+                const recentMsgs = (c.chat || []).map(m => m.mes || '').slice(-10);
+                const wi = await c.getWorldInfoPrompt(recentMsgs, 4096, false);
+                worldBookText = wi?.worldInfoString || wi?.worldInfoBefore || '';
+                if (!worldBookText && wi && typeof wi === 'object') {
+                    worldBookText = [wi.worldInfoBefore, wi.worldInfoAfter].filter(Boolean).join('\n');
+                }
+            }
+        } catch (e) { console.warn('[phone-mode] 世界书读取失败', e); }
+
+        return {
+            cardDesc, cardPersonality, cardScenario, cardFirstMes, cardMesExample,
+            mainChatArr, mainChatText, worldBookText,
+        };
+    }
+
     // ── 拖拽 ──
     function bindIsland(el, handle) {
         let isDragging = false, startX, startY, startL, startT, moved = false;
@@ -60,7 +124,7 @@
                 if (plain) {
                     const b = document.createElement('div');
                     b.className = `pm-bubble pm-${side}`;
-                    b.innerHTML = plain.replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>');
+                    b.innerHTML = plain.replace(/</g,'<').replace(/>/g,'>').replace(/\n/g,'<br>');
                     results.push(b);
                 }
             }
@@ -71,7 +135,7 @@
                 const amount = parseFloat(m[2]) || 0;
                 b.innerHTML = `<div class="pm-transfer-card"><div class="pm-t-icon">¥</div><div class="pm-t-info"><b>转账</b><span>¥${amount.toFixed(2)}</span></div></div>`;
             } else {
-                b.innerHTML = `<div class="pm-img-card">🖼️ ${m[2].trim().replace(/</g,'&lt;')}</div>`;
+                b.innerHTML = `<div class="pm-img-card">🖼️ ${m[2].trim().replace(/</g,'<')}</div>`;
             }
             results.push(b);
             last = m.index + m[0].length;
@@ -81,20 +145,20 @@
             if (plain) {
                 const b = document.createElement('div');
                 b.className = `pm-bubble pm-${side}`;
-                b.innerHTML = plain.replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>');
+                b.innerHTML = plain.replace(/</g,'<').replace(/>/g,'>').replace(/\n/g,'<br>');
                 results.push(b);
             }
         }
         if (results.length === 0) {
             const b = document.createElement('div');
             b.className = `pm-bubble pm-${side}`;
-            b.innerHTML = text.replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>');
+            b.innerHTML = text.replace(/</g,'<').replace(/>/g,'>').replace(/\n/g,'<br>');
             results.push(b);
         }
         return results;
     }
 
-    // ── API 调用（支持独立API） ──
+    // ── API 调用 ──
     async function fetchSMS(userMsg) {
         const c = getCtx();
         conversationHistory.push({ role: 'user', content: userMsg });
@@ -105,17 +169,34 @@
             .replace(/<[^>]+>/g, '')
             .trim();
 
-        const historyText = conversationHistory.slice(-8).map(m =>
+        // 统一抓取上下文
+        const ctxData = await gatherContext();
+        const {
+            cardDesc, cardPersonality, cardScenario, cardFirstMes, cardMesExample,
+            mainChatArr, mainChatText, worldBookText,
+        } = ctxData;
+
+        // 短信内部最近 8 条
+        const smsHistoryText = conversationHistory.slice(-8).map(m =>
             m.role === 'user' ? `用户：${cleanMsg(m.content)}` : `${currentPersona}：${cleanMsg(m.content)}`
         ).join('\n');
+
+        // 通用上下文文本块（主 API 用）
+        const contextBlock = [
+            cardScenario    ? `【场景】\n${cardScenario}` : '',
+            cardFirstMes    ? `【开场白】\n${cardFirstMes}` : '',
+            cardMesExample  ? `【对话示例】\n${cardMesExample}` : '',
+            worldBookText   ? `【世界书】\n${worldBookText}` : '',
+            mainChatText    ? `【主线最近对话】\n${mainChatText}` : '',
+        ].filter(Boolean).join('\n\n');
 
         const injectedInstruction = `
 
 [短信模式指令——最高优先级]
 当前角色：${currentPersona}
-以${currentPersona}的身份用手机短信方式回复，保持角色性格。
+以${currentPersona}的身份用手机短信方式回复，保持角色性格，并参考以下背景信息维持剧情连贯性。
 
-规则：
+${contextBlock ? contextBlock + '\n\n' : ''}规则：
 - 只输出短信文字，3到8句，每句用 / 分隔
 - 禁止旁白、心理描写、场景描述、角色名前缀
 - 禁止任何标签或格式符号
@@ -124,8 +205,8 @@
 - 特殊格式仅限：(转账+金额) 或 (图片+描述)
 - 示例：你来了啊 / 我刚吃完饭 / 等你好久了
 
-最近对话：
-${historyText}
+短信对话历史：
+${smsHistoryText}
 
 用户：${userMsg}
 ${currentPersona}：`;
@@ -134,32 +215,20 @@ ${currentPersona}：`;
             let raw = '';
             const cfg = window.__pmConfig;
 
-            // 如果配置了独立API，直接调用
             if (cfg.apiUrl && cfg.apiKey) {
-                const char = c?.characters?.[c.characterId];
-                const cardDesc = char?.description ?? '';
-                const cardPersonality = char?.personality ?? '';
-
-                let worldBookText = '';
-                try {
-                    const wi = c?.worldInfo;
-                    if (wi) {
-                        worldBookText = Object.values(wi)
-                            .filter(e => e?.content)
-                            .map(e => e.content)
-                            .slice(0, 10)
-                            .join('\n');
-                    }
-                } catch {}
-
+                // ── 独立 API ──
                 const systemPrompt = [
                     `你正在扮演"${currentPersona}"通过手机短信与用户聊天。`,
-                    cardDesc ? `角色设定：${cardDesc}` : '',
-                    cardPersonality ? `性格：${cardPersonality}` : '',
-                    worldBookText ? `世界观：${worldBookText}` : '',
+                    cardDesc        ? `【角色设定】\n${cardDesc}` : '',
+                    cardPersonality ? `【性格】\n${cardPersonality}` : '',
+                    cardScenario    ? `【场景】\n${cardScenario}` : '',
+                    cardFirstMes    ? `【开场白参考】\n${cardFirstMes}` : '',
+                    cardMesExample  ? `【对话示例】\n${cardMesExample}` : '',
+                    worldBookText   ? `【世界书】\n${worldBookText}` : '',
+                    mainChatText    ? `【主线最近对话（务必参考保持剧情连贯）】\n${mainChatText}` : '',
                     '',
-                    '只输出3到8句短信，每句用/分隔，禁止任何标签格式旁白选项。',
-                ].filter(Boolean).join('\n');
+                    '只输出3到8句短信，每句用 / 分隔，禁止任何标签格式旁白选项。',
+                ].filter(Boolean).join('\n\n');
 
                 const messages = [
                     { role: 'system', content: systemPrompt },
@@ -169,7 +238,8 @@ ${currentPersona}：`;
                     }))
                 ];
 
-                const resp = await fetch(cfg.apiUrl, {
+                const { chatUrl } = normalizeApiUrls(cfg.apiUrl);
+                const resp = await fetch(chatUrl, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -186,7 +256,7 @@ ${currentPersona}：`;
                 raw = json.choices?.[0]?.message?.content ?? '';
 
             } else {
-                // 使用主API（走酒馆预设）
+                // ── 主 API（走酒馆预设 + 注入额外上下文） ──
                 raw = await c.generateQuietPrompt(injectedInstruction, false, false);
             }
 
@@ -295,7 +365,6 @@ ${currentPersona}：`;
         if (isSelectMode) {
             trashBtn.style.color = '#ff3b30';
             confirmBar.style.display = 'flex';
-            // 给所有气泡加勾选框
             list.querySelectorAll('.pm-bubble').forEach(b => {
                 if (b.id === 'pm-typing') return;
                 const wrap = document.createElement('div');
@@ -312,7 +381,6 @@ ${currentPersona}：`;
         } else {
             trashBtn.style.color = '';
             confirmBar.style.display = 'none';
-            // 移除勾选框，还原气泡
             list.querySelectorAll('.pm-select-wrap').forEach(wrap => {
                 const b = wrap.querySelector('.pm-bubble');
                 if (b) wrap.parentNode.insertBefore(b, wrap);
@@ -325,7 +393,6 @@ ${currentPersona}：`;
         const list = phoneWindow?.querySelector('.pm-msg-list');
         if (!list) return;
 
-        // 收集要删除的文本
         const toDelete = new Set();
         list.querySelectorAll('.pm-select-wrap').forEach(wrap => {
             const cb = wrap.querySelector('.pm-checkbox');
@@ -333,20 +400,17 @@ ${currentPersona}：`;
                 toDelete.add(wrap.dataset.text);
                 wrap.remove();
             } else {
-                // 还原未选中的气泡
                 const b = wrap.querySelector('.pm-bubble');
                 if (b) wrap.parentNode.insertBefore(b, wrap);
                 wrap.remove();
             }
         });
 
-        // 从 conversationHistory 里删除对应条目
         if (toDelete.size > 0) {
             conversationHistory = conversationHistory.filter(m => {
                 const parts = m.content.split(/\s*\/\s*/);
                 return !parts.some(p => toDelete.has(p.trim()));
             });
-            // 更新存储
             const c = getCtx();
             const id = `${c.characterId}_${c.chat_file || 'default'}`;
             if (!window.__pmHistories[id]) window.__pmHistories[id] = {};
@@ -360,7 +424,7 @@ ${currentPersona}：`;
         if (trashBtn) trashBtn.style.color = '';
         if (confirmBar) confirmBar.style.display = 'none';
     };
-    
+
     // ── API 配置弹窗 ──
     window.__pmShowConfig = () => {
         document.getElementById('pm-overlay')?.remove();
@@ -374,12 +438,12 @@ ${currentPersona}：`;
     <span onclick="document.getElementById('pm-overlay').remove()" class="pm-modal-close">✕</span>
   </div>
   <div style="padding:14px 16px;display:flex;flex-direction:column;gap:10px;">
-    <div class="pm-cfg-label">API 地址（如 .../v1/chat/completions）</div>
-    <input id="pm-cfg-url" class="pm-cfg-input" placeholder="https://api.openai.com/v1/chat/completions" value="${cfg.apiUrl}">
+    <div class="pm-cfg-label">API 地址（支持裸域名 / /v1 / /v1/chat/completions）</div>
+    <input id="pm-cfg-url" class="pm-cfg-input" placeholder="https://api.xxx.com 或 .../v1 或 .../v1/chat/completions" value="${cfg.apiUrl}">
     <div class="pm-cfg-label">API Key</div>
     <input id="pm-cfg-key" class="pm-cfg-input" placeholder="sk-..." type="text" value="${cfg.apiKey}" maxlength="999">
     <div class="pm-cfg-label">模型名称</div>
-    <input id="pm-cfg-model" class="pm-cfg-input" placeholder="可手动输入，或点击测速拉取" value="${cfg.model}" list="pm-model-list">
+    <input id="pm-cfg-model" class="pm-cfg-input" placeholder="可手动输入，或点击下方按钮拉取" value="${cfg.model}" list="pm-model-list">
     <datalist id="pm-model-list"></datalist>
     <div id="pm-api-status" class="pm-cfg-tip" style="font-weight:bold;">配置独立API后，手机聊天与主聊天互不干扰</div>
   </div>
@@ -396,27 +460,26 @@ ${currentPersona}：`;
         const urlInput = document.getElementById('pm-cfg-url').value.trim();
         const keyInput = document.getElementById('pm-cfg-key').value.trim();
         const status = document.getElementById('pm-api-status');
-        
+
         if (!urlInput) { status.textContent = "❌ 请先填写 API 地址！"; status.style.color = "#ff3b30"; return; }
-        
-        status.textContent = "正在测试连接并拉取模型..."; 
+
+        status.textContent = "正在测试连接并拉取模型...";
         status.style.color = "#007aff";
-        
-        // 自动把 chat/completions 替换为 models 接口以拉取模型
-        const modelsUrl = urlInput.replace(/\/chat\/completions\/?$/, '/models');
-        
+
+        const { modelsUrl } = normalizeApiUrls(urlInput);
+
         try {
             const res = await fetch(modelsUrl, { method: 'GET', headers: { 'Authorization': `Bearer ${keyInput}` } });
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
             const data = await res.json();
-            
+
             if (data && data.data && Array.isArray(data.data)) {
                 const list = document.getElementById('pm-model-list');
                 list.innerHTML = data.data.map(m => `<option value="${m.id}">`).join('');
-                status.textContent = "✅ 连接成功！请在上方输入框下拉选择模型"; 
+                status.textContent = `✅ 连接成功！获取到 ${data.data.length} 个模型，请下拉选择`;
                 status.style.color = "#34c759";
             } else {
-                status.textContent = "✅ 连接成功！(但该接口不支持拉取模型表，请手动输入)";
+                status.textContent = "✅ 连接成功！(但该接口不返回模型列表，请手动输入)";
                 status.style.color = "#34c759";
             }
         } catch (err) {
@@ -433,7 +496,7 @@ ${currentPersona}：`;
         };
         try { localStorage.setItem('ST_SMS_CONFIG', JSON.stringify(window.__pmConfig)); } catch {}
         document.getElementById('pm-overlay')?.remove();
-        
+
         const list = phoneWindow?.querySelector('.pm-msg-list');
         if (list) {
             const n = document.createElement('div');
@@ -652,9 +715,7 @@ ${currentPersona}：`;
     opacity: 0.4;
     transition: opacity 0.15s;
 }
-.pm-checkbox:checked {
-    opacity: 1;
-}
+.pm-checkbox:checked { opacity: 1; }
 .pm-bubble {
     max-width: 74%; padding: 9px 13px; border-radius: 18px;
     font-size: 14px; line-height: 1.45; word-break: break-word;
