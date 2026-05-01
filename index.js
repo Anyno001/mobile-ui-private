@@ -377,7 +377,7 @@ ${currentPersona}：`;
     <div class="pm-cfg-label">API 地址（如 .../v1/chat/completions）</div>
     <input id="pm-cfg-url" class="pm-cfg-input" placeholder="https://api.openai.com/v1/chat/completions" value="${cfg.apiUrl}">
     <div class="pm-cfg-label">API Key</div>
-    <input id="pm-cfg-key" class="pm-cfg-input" placeholder="sk-..." type="password" value="${cfg.apiKey}">
+    <input id="pm-cfg-key" class="pm-cfg-input" placeholder="sk-..." type="text" value="${cfg.apiKey}" maxlength="999">
     <div class="pm-cfg-label">模型名称</div>
     <input id="pm-cfg-model" class="pm-cfg-input" placeholder="可手动输入，或点击测速拉取" value="${cfg.model}" list="pm-model-list">
     <datalist id="pm-model-list"></datalist>
