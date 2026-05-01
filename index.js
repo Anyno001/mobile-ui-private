@@ -186,7 +186,7 @@ ${currentPersona}：`;
         hideTyping();
 
         for (const s of sentences) {
-            await new Promise(r => setTimeout(r, 150));
+            await new Promise(r => setTimeout(r,350));
             addBubble(s, 'left');
         }
 
