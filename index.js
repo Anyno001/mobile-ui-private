@@ -72,6 +72,12 @@
         const c = getCtx();
         conversationHistory.push({ role: 'user', content: userMsg });
 
+        const cleanMsg = (s) => s
+           .replace(/```[\s\S]*?```/g, '')
+           .replace(/<[^>]+>[\s\S]*?<\/[^>]+>/g, '')
+           .replace(/<[^>]+>/g, '')
+           .trim();
+
         const historyText = conversationHistory.slice(-8).map(m =>
             m.role === 'user' ? `用户：${m.content}` : `${currentPersona}：${m.content}`
         ).join('\n');
