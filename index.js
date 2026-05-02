@@ -6,8 +6,8 @@
     const CONTEXT_LIMIT = 15;
     const MAX_BIDIRECTIONAL = 5;
     const BIDIRECTIONAL_KEY = 'PHONE_SMS_MEMORY';
-    const VOICE_MAX_SEC = 60;            // 语音条时长上限
-    const MODEL_VISIBLE_ROWS = 4;        // 下拉每次可见模型数
+    const VOICE_MAX_SEC = 60;
+    const MODEL_VISIBLE_ROWS = 4;
 
     window.__pmHistories = window.__pmHistories || {};
     window.__pmConfig = window.__pmConfig || { apiUrl: '', apiKey: '', model: '', useIndependent: false };
@@ -81,7 +81,6 @@
         } catch (e) { console.warn('[phone-mode] 迁移失败', e); }
     }
 
-    // ── URL 归一化 ──
     function normalizeApiUrls(input) {
         let url = (input || '').trim().replace(/\/+$/, '');
         if (!url) return { chatUrl: '', modelsUrl: '' };
@@ -91,7 +90,6 @@
         return { chatUrl: url + '/v1/chat/completions', modelsUrl: url + '/v1/models' };
     }
 
-    // ── 档案 ──
     function loadProfiles() {
         try { window.__pmProfiles = JSON.parse(localStorage.getItem('ST_SMS_API_PROFILES')) || []; }
         catch { window.__pmProfiles = []; }
@@ -116,7 +114,6 @@
         if (status) { status.textContent = '✅ 已载入档案'; status.style.color = '#34c759'; }
     };
 
-    // ── 模式切换 ──
     window.__pmSetMode = (useIndependent) => {
         window.__pmConfig.useIndependent = !!useIndependent;
         try { localStorage.setItem('ST_SMS_CONFIG', JSON.stringify(window.__pmConfig)); } catch {}
@@ -130,7 +127,6 @@
         if (tip) tip.textContent = useIndependent ? '🔌 当前：独立API' : '🏠 当前：主API';
     };
 
-    // ── 双向记忆 ──
     function loadBidirectional() {
         try { window.__pmBidirectional = JSON.parse(localStorage.getItem('ST_SMS_BIDIRECTIONAL')) || {}; }
         catch { window.__pmBidirectional = {}; }
@@ -199,11 +195,10 @@ ${blocks}
         window.__pmShowList();
     };
 
-    // ── 抓取上下文 ──
     async function gatherContext() {
         const c = getCtx();
         const char = c?.characters?.[c.characterId] || {};
-        const cleanMsg = (s) => (s || '').replace(/```[\s\S]*?```/g, '').replace(/<[^>]+>[\s\S]*?<\/[^>]+>/g, '').replace(/<[^>]+>/g, '').trim();
+        const cleanMsg = (s) => (s || '').replace(/```[\s\S]*?```/g, '').replace(/<think>[\s\S]*?<\/think>/gi, '').replace(/<[^>]+>/g, '').trim();
         const mainChatArr = (c?.chat || []).slice(-8).map(m => ({
             who: m.is_user ? '用户' : (m.name || '角色'),
             role: m.is_user ? 'user' : 'assistant',
@@ -231,7 +226,6 @@ ${blocks}
         };
     }
 
-    // ── 拖拽 ──
     function bindIsland(el, handle) {
         let isDragging = false, startX, startY, startL, startT, moved = false;
         const getCoord = (e) => e.touches ? { x: e.touches[0].clientX, y: e.touches[0].clientY } : { x: e.clientX, y: e.clientY };
@@ -264,7 +258,6 @@ ${blocks}
         window.addEventListener('touchend', onEnd);
     }
 
-    // ── 气泡渲染 ──
     function escapeHtml(s) { return (s || '').replace(/</g,'<').replace(/>/g,'>'); }
     function escapeAttr(s) { return (s || '').replace(/"/g,'"').replace(/</g,'<'); }
 
@@ -290,7 +283,7 @@ ${blocks}
                 b.innerHTML = `<div class="pm-transfer-card"><div class="pm-t-icon">¥</div><div class="pm-t-info"><b>转账</b><span>¥${amount.toFixed(2)}</span></div></div>`;
             } else if (kind === '图片') {
                 b.innerHTML = `<div class="pm-img-card">🖼️ ${escapeHtml(m[2].trim())}</div>`;
-            } else { // 语音
+            } else {
                 const txt = m[2].trim();
                 const len = [...txt].length;
                 const dur = Math.min(VOICE_MAX_SEC, Math.max(1, len * 2));
@@ -319,37 +312,51 @@ ${blocks}
         if (txt) txt.style.display = txt.style.display === 'none' ? 'block' : 'none';
     };
 
+    // ── 文本清洗（更安全：只剥 think 块 + 零散标签） ──
+    function cleanResponse(raw) {
+        return (raw ?? '')
+            .replace(/<think>[\s\S]*?<\/think>/gi, '')
+            .replace(/<thinking>[\s\S]*?<\/thinking>/gi, '')
+            .replace(/```[\s\S]*?```/g, '')
+            .replace(/<[^>]+>/g, '')
+            .replace(/^\s*\S{1,15}[:：]\s*/m, '')
+            .trim();
+    }
+
+    // ── 分句（公用） ──
+    function splitToSentences(str) {
+        return (str || '').split(/\s*\/\s*/).map(s => s.trim()).filter(s => s.length > 0).slice(0, 8);
+    }
+
     // ── API 调用 ──
     async function fetchSMS(userMsg) {
         const c = getCtx();
         conversationHistory.push({ role: 'user', content: userMsg });
-        const cleanMsg = (s) => s.replace(/```[\s\S]*?```/g, '').replace(/<[^>]+>[\s\S]*?<\/[^>]+>/g, '').replace(/<[^>]+>/g, '').trim();
 
         const ctxData = await gatherContext();
         const { cardDesc, cardPersonality, cardScenario, cardFirstMes, cardMesExample, mainChatText, worldBookText } = ctxData;
 
         const smsHistoryText = conversationHistory.slice(-CONTEXT_LIMIT).map(m =>
-            m.role === 'user' ? `用户：${cleanMsg(m.content)}` : `${currentPersona}：${cleanMsg(m.content)}`
+            m.role === 'user' ? `用户：${cleanResponse(m.content)}` : `${currentPersona}：${cleanResponse(m.content)}`
         ).join('\n');
 
-        const contextBlock = [
-            cardScenario   ? `【场景】\n${cardScenario}` : '',
-            cardFirstMes   ? `【开场白】\n${cardFirstMes}` : '',
+        // 主 API 模式下：酒馆自带主聊天历史 + 角色卡 + 世界书，
+        // 所以只保留 scenario 和 mes_example 补充短信场景定位，避免重复注入导致请求过长
+        const contextBlockMain = [
+            cardScenario   ? `【场景参考】\n${cardScenario}` : '',
             cardMesExample ? `【对话示例】\n${cardMesExample}` : '',
-            worldBookText  ? `【世界书】\n${worldBookText}` : '',
-            mainChatText   ? `【主线最近对话】\n${mainChatText}` : '',
         ].filter(Boolean).join('\n\n');
 
         const injectedInstruction = `
 
 [短信模式指令——最高优先级]
 当前角色：${currentPersona}
-以${currentPersona}的身份用手机短信方式回复，保持角色性格，并参考以下背景信息维持剧情连贯性。
+以${currentPersona}的身份用手机短信方式回复，保持角色性格。
 
-${contextBlock ? contextBlock + '\n\n' : ''}规则：
+${contextBlockMain ? contextBlockMain + '\n\n' : ''}规则：
 - 只输出短信文字，3到8句，每句用 / 分隔
 - 禁止旁白、心理描写、场景描述、角色名前缀
-- 禁止任何标签或格式符号
+- 禁止任何标签或格式符号（包括 <think>、markdown 代码块）
 - 禁止输出选项、分支、ABCD选择题、走向提示
 - 禁止输出任何超出短信内容本身的附加内容
 - 特殊格式（必须用中文关键字）：
@@ -357,8 +364,7 @@ ${contextBlock ? contextBlock + '\n\n' : ''}规则：
     图片：(图片+描述)，例 (图片+一张猫的照片)
     语音：(语音+内容)，例 (语音+我刚下班路上)
 - 严禁使用 (Voice+...)、(Image+...)、(Transfer+...) 等英文格式
-- 偶尔可使用 (语音+内容) 让对话更自然，例如情绪激动、说很多话、不方便打字时
-- 示例：你来了啊 / 我刚吃完饭 / (语音+今天那家拉面店真的太好吃了你下次一定要试试) / 等你
+- 偶尔可使用 (语音+内容) 让对话更自然
 
 短信对话历史：
 ${smsHistoryText}
@@ -372,6 +378,7 @@ ${currentPersona}：`;
             const useIndep = cfg.useIndependent && cfg.apiUrl && cfg.apiKey;
 
             if (useIndep) {
+                // 独立 API 保留完整上下文，因为它完全绕过酒馆
                 const systemPrompt = [
                     `你正在扮演"${currentPersona}"通过手机短信与用户聊天。`,
                     cardDesc        ? `【角色设定】\n${cardDesc}` : '',
@@ -383,14 +390,13 @@ ${currentPersona}：`;
                     mainChatText    ? `【主线最近对话】\n${mainChatText}` : '',
                     '',
                     '只输出3到8句短信，每句用 / 分隔。',
-                    '特殊格式（必须用中文关键字）：(转账+金额) (图片+描述) (语音+内容)。',
-                    '严禁使用 (Voice+..)、(Image+..)、(Transfer+..) 等英文格式。',
-                    '偶尔可发语音让对话自然，禁止任何标签格式旁白选项。',
+                    '特殊格式（必须中文）：(转账+金额) (图片+描述) (语音+内容)。严禁英文格式。',
+                    '禁止任何标签格式旁白选项。',
                 ].filter(Boolean).join('\n\n');
 
                 const messages = [
                     { role: 'system', content: systemPrompt },
-                    ...conversationHistory.slice(-CONTEXT_LIMIT).map(m => ({ role: m.role, content: cleanMsg(m.content) }))
+                    ...conversationHistory.slice(-CONTEXT_LIMIT).map(m => ({ role: m.role, content: cleanResponse(m.content) }))
                 ];
 
                 const { chatUrl } = normalizeApiUrls(cfg.apiUrl);
@@ -405,14 +411,28 @@ ${currentPersona}：`;
                 raw = await c.generateQuietPrompt(injectedInstruction, false, false);
             }
 
-            let clean = (raw ?? '')
-                .replace(/<[^>]+>[\s\S]*?<\/[^>]+>/g, '')
-                .replace(/<[^>]+>/g, '')
-                .replace(/^\s*\S{1,15}[:：]\s*/m, '')
-                .trim();
+            // debug：方便用户 F12 看到 API 原始返回
+            console.log('[phone-mode] raw response length:', (raw || '').length, '|', JSON.stringify((raw || '').slice(0, 200)));
 
-            let sentences = clean.split(/\s*\/\s*/).map(s => s.trim()).filter(s => s.length > 0).slice(0, 8);
-            if (sentences.length === 0) sentences = ['...'];
+            const clean = cleanResponse(raw);
+            let sentences = splitToSentences(clean);
+
+            // 兜底 1：清洗把内容洗光了，但 raw 其实有内容 → 用 raw 再 split 一次
+            if (sentences.length === 0 && raw && raw.trim()) {
+                console.warn('[phone-mode] 清洗后为空，尝试用原始 raw 兜底');
+                sentences = splitToSentences(raw.replace(/<think>[\s\S]*?<\/think>/gi, '').replace(/<[^>]+>/g, ''));
+            }
+
+            // 兜底 2：raw 本身就是空或只有空白
+            if (sentences.length === 0) {
+                const mode = useIndep ? '独立API' : '主API';
+                if (!raw || !raw.trim()) {
+                    sentences = [`（${mode} 空响应：可能超时/限流/预设过长，建议切换API或精简预设）`];
+                } else {
+                    sentences = [`（${mode} 返回格式无法解析，已记录到控制台 F12）`];
+                }
+                console.warn('[phone-mode] 最终空响应，raw=', JSON.stringify(raw));
+            }
 
             conversationHistory.push({ role: 'assistant', content: sentences.join(' / ') });
 
@@ -424,11 +444,11 @@ ${currentPersona}：`;
             applyBidirectionalInjection();
             return sentences;
         } catch (e) {
+            console.error('[phone-mode] 请求异常', e);
             return [`（错误：${e?.message || String(e) || '未知错误'}）`];
         }
     }
 
-    // ── 气泡操作 ──
     function addBubble(text, side) {
         const list = phoneWindow?.querySelector('.pm-msg-list');
         if (!list) return;
@@ -553,7 +573,6 @@ ${currentPersona}：`;
         if (confirmBar) confirmBar.style.display = 'none';
     };
 
-    // ── 模型选择浮层（限高 4 行） ──
     window.__pmShowModelPicker = () => {
         const existing = document.getElementById('pm-model-dropdown');
         if (existing) { existing.remove(); return; }
@@ -603,7 +622,6 @@ ${currentPersona}：`;
         }, 0);
     };
 
-    // ── API 配置弹窗 ──
     window.__pmShowConfig = () => {
         document.getElementById('pm-overlay')?.remove();
         loadProfiles();
@@ -757,7 +775,6 @@ ${currentPersona}：`;
         }
     };
 
-    // ── 联系人弹窗 ──
     window.__pmShowList = () => {
         document.getElementById('pm-overlay')?.remove();
         const id = getStorageId();
@@ -915,7 +932,6 @@ ${currentPersona}：`;
     if (!document.getElementById('pm-css')) {
         const s = document.createElement('style');
         s.id = 'pm-css';
-        // 模型下拉选项行高 ~34px，4 行 ≈ 136px
         s.textContent = `
 #pm-iphone {
     position: fixed !important; bottom: 40px; right: 40px;
@@ -1091,5 +1107,5 @@ ${currentPersona}：`;
     loadBidirectional();
     setTimeout(() => { migrateOldHistory(); applyBidirectionalInjection(); }, 1500);
 
-    console.log('[phone-mode] 已加载 v3.1 — /phone 召唤');
+    console.log('[phone-mode] 已加载 v3.2 — /phone 召唤');
 })();
