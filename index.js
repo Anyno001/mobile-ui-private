@@ -6,6 +6,8 @@
     const CONTEXT_LIMIT = 15;
     const MAX_BIDIRECTIONAL = 5;
     const BIDIRECTIONAL_KEY = 'PHONE_SMS_MEMORY';
+    const VOICE_MAX_SEC = 60;            // 语音条时长上限
+    const MODEL_VISIBLE_ROWS = 4;        // 下拉每次可见模型数
 
     window.__pmHistories = window.__pmHistories || {};
     window.__pmConfig = window.__pmConfig || { apiUrl: '', apiKey: '', model: '', useIndependent: false };
@@ -22,6 +24,18 @@
     let isSelectMode = false;
 
     const getCtx = () => typeof SillyTavern !== 'undefined' ? SillyTavern.getContext() : null;
+
+    // ── 关键词映射（中英文容错） ──
+    const SPECIAL_KEYWORDS = {
+        '转账':'转账','transfer':'转账','Transfer':'转账','TRANSFER':'转账',
+        '图片':'图片','image':'图片','Image':'图片','IMAGE':'图片','img':'图片','pic':'图片','photo':'图片',
+        '语音':'语音','voice':'语音','Voice':'语音','VOICE':'语音','audio':'语音',
+    };
+    const KW_PATTERN = Object.keys(SPECIAL_KEYWORDS).join('|');
+    const SPECIAL_RE = new RegExp(`[\\(（]\\s*(${KW_PATTERN})\\s*[+：:\\s]*([^)）]+)[\\)）]`, 'gi');
+    function normalizeKeyword(k) {
+        return SPECIAL_KEYWORDS[k] || SPECIAL_KEYWORDS[k.toLowerCase()] || k;
+    }
 
     // ── 稳定的存储 ID ──
     function getStorageId() {
@@ -250,13 +264,13 @@ ${blocks}
         window.addEventListener('touchend', onEnd);
     }
 
-    // ── 气泡渲染（含语音） ──
+    // ── 气泡渲染 ──
     function escapeHtml(s) { return (s || '').replace(/</g,'<').replace(/>/g,'>'); }
     function escapeAttr(s) { return (s || '').replace(/"/g,'"').replace(/</g,'<'); }
 
     function createBubbles(text, side) {
         const results = [];
-        const re = /[\(（]\s*(转账|图片|语音)\s*[+：:\s]*([^)）]+)[\)\）]/g;
+        const re = new RegExp(SPECIAL_RE.source, 'gi');
         let last = 0, m;
         const pushPlain = (str) => {
             const plain = str.trim();
@@ -268,17 +282,18 @@ ${blocks}
         };
         while ((m = re.exec(text)) !== null) {
             if (m.index > last) pushPlain(text.slice(last, m.index));
+            const kind = normalizeKeyword(m[1]);
             const b = document.createElement('div');
             b.className = `pm-bubble pm-${side} pm-special`;
-            if (m[1] === '转账') {
+            if (kind === '转账') {
                 const amount = parseFloat(m[2]) || 0;
                 b.innerHTML = `<div class="pm-transfer-card"><div class="pm-t-icon">¥</div><div class="pm-t-info"><b>转账</b><span>¥${amount.toFixed(2)}</span></div></div>`;
-            } else if (m[1] === '图片') {
+            } else if (kind === '图片') {
                 b.innerHTML = `<div class="pm-img-card">🖼️ ${escapeHtml(m[2].trim())}</div>`;
             } else { // 语音
                 const txt = m[2].trim();
                 const len = [...txt].length;
-                const dur = Math.min(99, Math.max(1, len * 2));
+                const dur = Math.min(VOICE_MAX_SEC, Math.max(1, len * 2));
                 const width = Math.min(220, Math.max(80, 50 + len * 4));
                 b.innerHTML = `
                     <div class="pm-voice-wrap">
@@ -337,7 +352,11 @@ ${contextBlock ? contextBlock + '\n\n' : ''}规则：
 - 禁止任何标签或格式符号
 - 禁止输出选项、分支、ABCD选择题、走向提示
 - 禁止输出任何超出短信内容本身的附加内容
-- 特殊格式：(转账+金额) 表示转账；(图片+描述) 表示发图片；(语音+内容) 表示发语音
+- 特殊格式（必须用中文关键字）：
+    转账：(转账+金额)，例 (转账+99.00)
+    图片：(图片+描述)，例 (图片+一张猫的照片)
+    语音：(语音+内容)，例 (语音+我刚下班路上)
+- 严禁使用 (Voice+...)、(Image+...)、(Transfer+...) 等英文格式
 - 偶尔可使用 (语音+内容) 让对话更自然，例如情绪激动、说很多话、不方便打字时
 - 示例：你来了啊 / 我刚吃完饭 / (语音+今天那家拉面店真的太好吃了你下次一定要试试) / 等你
 
@@ -364,7 +383,8 @@ ${currentPersona}：`;
                     mainChatText    ? `【主线最近对话】\n${mainChatText}` : '',
                     '',
                     '只输出3到8句短信，每句用 / 分隔。',
-                    '特殊格式：(转账+金额) (图片+描述) (语音+内容)。',
+                    '特殊格式（必须用中文关键字）：(转账+金额) (图片+描述) (语音+内容)。',
+                    '严禁使用 (Voice+..)、(Image+..)、(Transfer+..) 等英文格式。',
                     '偶尔可发语音让对话自然，禁止任何标签格式旁白选项。',
                 ].filter(Boolean).join('\n\n');
 
@@ -447,7 +467,6 @@ ${currentPersona}：`;
         if (!val) return;
         input.value = '';
 
-        // 智能拆分：保护 (xx+xx) 不被 / 切碎
         const protect = val.replace(/[\(（][^)）]+[\)\）]/g, m => m.replace(/\//g, '\u0001'));
         protect.split(/[/／]/).map(s => s.replace(/\u0001/g, '/').trim()).filter(Boolean)
             .forEach(chunk => addBubble(chunk, 'right'));
@@ -534,18 +553,16 @@ ${currentPersona}：`;
         if (confirmBar) confirmBar.style.display = 'none';
     };
 
-    // ── 模型选择浮层 ──
+    // ── 模型选择浮层（限高 4 行） ──
     window.__pmShowModelPicker = () => {
         const existing = document.getElementById('pm-model-dropdown');
         if (existing) { existing.remove(); return; }
         if (!__pmModelList.length) {
             const status = document.getElementById('pm-api-status');
-            if (status) { status.textContent = '⚠️ 请先点"连接并获取模型"拉取模型列表'; status.style.color = '#ff9500'; }
+            if (status) { status.textContent = '⚠️ 请先点"连接拉取模型"获取模型列表'; status.style.color = '#ff9500'; }
             return;
         }
         const input = document.getElementById('pm-cfg-model');
-        const arrow = document.getElementById('pm-model-arrow');
-        const rect = (arrow || input).getBoundingClientRect();
         const inputRect = input.getBoundingClientRect();
         const dd = document.createElement('div');
         dd.id = 'pm-model-dropdown';
@@ -562,7 +579,7 @@ ${currentPersona}：`;
             const f = filter.toLowerCase();
             const filtered = __pmModelList.filter(m => !f || m.toLowerCase().includes(f));
             optsDiv.innerHTML = filtered.length
-                ? filtered.map(m => `<div class="pm-model-opt" data-m="${escapeAttr(m)}">${escapeHtml(m)}</div>`).join('')
+                ? filtered.map(m => `<div class="pm-model-opt" data-m="${escapeAttr(m)}" title="${escapeAttr(m)}">${escapeHtml(m)}</div>`).join('')
                 : '<div class="pm-model-empty">无匹配</div>';
             optsDiv.querySelectorAll('.pm-model-opt').forEach(el => {
                 el.addEventListener('click', () => {
@@ -740,7 +757,7 @@ ${currentPersona}：`;
         }
     };
 
-    // ── 联系人弹窗（带勾选） ──
+    // ── 联系人弹窗 ──
     window.__pmShowList = () => {
         document.getElementById('pm-overlay')?.remove();
         const id = getStorageId();
@@ -827,7 +844,6 @@ ${currentPersona}：`;
     window.__pmToggleMin = () => { isMinimized = !isMinimized; phoneWindow.classList.toggle('is-min', isMinimized); };
     window.__pmEnd = () => { phoneWindow?.remove(); phoneWindow = null; phoneActive = false; isMinimized = false; isSelectMode = false; };
 
-    // ── 防美化自检 ──
     function ensureVisibility() {
         if (!phoneWindow) return;
         const cs = getComputedStyle(phoneWindow);
@@ -896,10 +912,10 @@ ${currentPersona}：`;
         ensureVisibility();
     };
 
-    // ── 样式 ──
     if (!document.getElementById('pm-css')) {
         const s = document.createElement('style');
         s.id = 'pm-css';
+        // 模型下拉选项行高 ~34px，4 行 ≈ 136px
         s.textContent = `
 #pm-iphone {
     position: fixed !important; bottom: 40px; right: 40px;
@@ -925,9 +941,7 @@ ${currentPersona}：`;
     border-radius: 25px !important; border-width: 6px !important;
 }
 #pm-iphone.is-min .pm-main-ui { display: none !important; }
-#pm-iphone *, #pm-iphone *::before, #pm-iphone *::after {
-    box-sizing: border-box;
-}
+#pm-iphone *, #pm-iphone *::before, #pm-iphone *::after { box-sizing: border-box; }
 .pm-island { width: 100px; height: 28px; background: #1a1a1a; margin: 8px auto 4px; border-radius: 14px; cursor: move; flex-shrink: 0; touch-action: none; }
 .pm-main-ui { flex: 1 !important; display: flex !important; flex-direction: column !important; overflow: hidden; min-height: 0; }
 .pm-navbar { display: grid !important; grid-template-columns: 1fr auto 1fr; align-items: center; padding: 6px 10px; border-bottom: 1px solid #f0f0f0; flex-shrink: 0; }
@@ -958,8 +972,6 @@ ${currentPersona}：`;
 .pm-t-info b { font-size: 12px; opacity: 0.85; }
 .pm-t-info span { font-size: 17px; font-weight: 700; }
 .pm-img-card { background: #f2f2f7; border: 1px solid #e0e0e0; padding: 12px 14px; border-radius: 14px; color: #555; font-size: 13px; text-align: center; }
-
-/* 语音消息 */
 .pm-voice-wrap { display: flex; flex-direction: column; gap: 4px; align-items: inherit; }
 .pm-special.pm-right .pm-voice-wrap { align-items: flex-end; }
 .pm-special.pm-left .pm-voice-wrap { align-items: flex-start; }
@@ -1019,22 +1031,20 @@ ${currentPersona}：`;
 .pm-prof-del:hover { background: #ff3b30 !important; color: #fff !important; border-color: #ff3b30; }
 .pm-prof-empty { text-align: center; color: #aaa; font-size: 12px; padding: 14px 0; }
 
-/* 模型选择行 */
 .pm-model-row { display: flex; gap: 6px; }
 .pm-model-row .pm-cfg-input { flex: 1; }
 #pm-model-arrow { background: #f0f0f3; border: 1px solid #ddd; border-radius: 10px; width: 38px; cursor: pointer; font-size: 12px; color: #555; flex-shrink: 0; transition: all 0.15s; }
 #pm-model-arrow:hover { background: #007aff; color: #fff; border-color: #007aff; }
-.pm-model-dropdown { position: fixed; z-index: 2147483647; background: #fff; border: 1px solid #ddd; border-radius: 12px; box-shadow: 0 8px 24px rgba(0,0,0,0.18); overflow: hidden; max-height: 280px; display: flex; flex-direction: column; min-width: 200px; }
+.pm-model-dropdown { position: fixed; z-index: 2147483647; background: #fff; border: 1px solid #ddd; border-radius: 12px; box-shadow: 0 8px 24px rgba(0,0,0,0.18); overflow: hidden; display: flex; flex-direction: column; min-width: 200px; }
 .pm-model-search { border: none !important; border-bottom: 1px solid #eee !important; padding: 9px 12px !important; outline: none; font-size: 13px !important; background: #fafafa !important; color: #000 !important; box-sizing: border-box; width: 100%; font-family: inherit; }
-.pm-model-options { overflow-y: auto; max-height: 230px; }
-.pm-model-opt { padding: 8px 12px; font-size: 13px; color: #333; cursor: pointer; border-bottom: 1px solid #f5f5f5; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pm-model-options { overflow-y: auto; max-height: ${MODEL_VISIBLE_ROWS * 34}px; }
+.pm-model-opt { padding: 8px 12px; font-size: 13px; color: #333; cursor: pointer; border-bottom: 1px solid #f5f5f5; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; height: 34px; box-sizing: border-box; line-height: 18px; }
 .pm-model-opt:hover { background: #f0f7ff; color: #007aff; }
 .pm-model-empty { padding: 14px; text-align: center; font-size: 12px; color: #999; }
         `;
         document.head.appendChild(s);
     }
 
-    // ── 注册 Slash Command ──
     function registerPhoneCommand() {
         const ctx = getCtx();
         if (!ctx) return false;
@@ -1062,7 +1072,6 @@ ${currentPersona}：`;
         const timer = setInterval(() => { tries++; if (registerPhoneCommand() || tries >= 30) clearInterval(timer); }, 500);
     }
 
-    // ── 兜底：keydown ──
     document.addEventListener('keydown', e => {
         if (e.key !== 'Enter' || e.shiftKey) return;
         const ta = document.getElementById('send_textarea');
@@ -1070,7 +1079,6 @@ ${currentPersona}：`;
         if (ta.value.trim() === '/phone') { e.preventDefault(); e.stopImmediatePropagation(); ta.value = ''; window.__pmOpen(); }
     }, true);
 
-    // ── 兜底：发送按钮 ──
     document.addEventListener('click', e => {
         const btn = e.target.closest && e.target.closest('#send_but');
         if (!btn) return;
@@ -1079,10 +1087,9 @@ ${currentPersona}：`;
         if (ta.value.trim() === '/phone') { e.preventDefault(); e.stopImmediatePropagation(); ta.value = ''; window.__pmOpen(); }
     }, true);
 
-    // ── 启动时尝试加载 + 应用注入 ──
     try { window.__pmHistories = JSON.parse(localStorage.getItem('ST_SMS_DATA_V2')) || {}; } catch {}
     loadBidirectional();
     setTimeout(() => { migrateOldHistory(); applyBidirectionalInjection(); }, 1500);
 
-    console.log('[phone-mode] 已加载 v3 — /phone 召唤');
+    console.log('[phone-mode] 已加载 v3.1 — /phone 召唤');
 })();
