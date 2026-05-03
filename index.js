@@ -1070,12 +1070,15 @@ ${currentPersona}：`;
 @media (max-width: 500px), (max-height: 700px) {
     #pm-iphone {
         position: fixed !important;
-        top: 0 !important;
-        left: 0 !important;
-        right: 0 !important;
-        bottom: 0 !important;
-        margin: auto !important;
-        transform: none !important;
+        /* 关键：用 vh/vw 直接定位，不依赖包含块 */
+        top: 50vh !important;
+        top: 50dvh !important;
+        left: 50vw !important;
+        right: auto !important;
+        bottom: auto !important;
+        margin: 0 !important;
+        /* translate 相对元素自身，永远准确 */
+        transform: translate(-50%, -50%) !important;
         width: min(330px, 92vw) !important;
         height: min(560px, 82vh) !important;
         height: min(560px, 82dvh) !important;
