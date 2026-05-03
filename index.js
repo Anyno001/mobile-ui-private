@@ -218,18 +218,23 @@ ${blocks}
 
     // 🔧 拖拽：用 setProperty(important) 才能覆盖 CSS !important
     function bindIsland(el, handle) {
-    let isDragging = false, startX, startY, startL, startT, moved = false;
+    let isDragging = false, startX, startY, startTX = 0, startTY = 0, moved = false;
     const getCoord = (e) => e.touches ? { x: e.touches[0].clientX, y: e.touches[0].clientY } : { x: e.clientX, y: e.clientY };
+
+    // 从当前 transform 中读出已累积的 translate，保证连续拖拽不跳
+    const getCurrentTranslate = () => {
+        const m = (el.style.transform || '').match(/translate\(\s*([-\d.]+)px\s*,\s*([-\d.]+)px\s*\)/);
+        return m ? { x: parseFloat(m[1]), y: parseFloat(m[2]) } : { x: 0, y: 0 };
+    };
 
     const onStart = (e) => {
         if (e.target.tagName === 'BUTTON') return;
         isDragging = true; moved = false;
         const coords = getCoord(e);
         startX = coords.x; startY = coords.y;
-        const rect = el.getBoundingClientRect();
-        startL = rect.left; startT = rect.top;
+        const t = getCurrentTranslate();
+        startTX = t.x; startTY = t.y;
         el.style.transition = 'none';
-        // 🔧 Fix 1：阻止浏览器把触摸识别成滚动
         if (e.cancelable) e.preventDefault();
     };
 
@@ -237,17 +242,11 @@ ${blocks}
         if (!isDragging) return;
         const coords = getCoord(e);
         const dx = coords.x - startX, dy = coords.y - startY;
-        // 🔧 Fix 2：未达拖拽阈值前，不写任何内联样式
         if (!moved && Math.abs(dx) < 5 && Math.abs(dy) < 5) return;
         moved = true;
         if (e.cancelable) e.preventDefault();
-        el.style.setProperty('left', (startL + dx) + 'px', 'important');
-        el.style.setProperty('top', (startT + dy) + 'px', 'important');
-        el.style.setProperty('right', 'auto', 'important');
-        el.style.setProperty('bottom', 'auto', 'important');
-        el.style.setProperty('inset', 'auto', 'important');
-        el.style.setProperty('margin', '0', 'important');
-        el.style.setProperty('transform', 'none', 'important');
+        // 关键：用 translate 拖拽，不碰 inset/margin/left/top
+        el.style.setProperty('transform', `translate(${startTX + dx}px, ${startTY + dy}px)`, 'important');
     };
 
     const onEnd = () => {
@@ -834,15 +833,13 @@ ${currentPersona}：`;
         applyBidirectionalInjection();
         window.__pmShowList();
     };
-
     window.__pmToggleMin = () => {
     isMinimized = !isMinimized;
     phoneWindow.classList.toggle('is-min', isMinimized);
-    // 🔧 Fix 3：切换最小化/还原时清掉拖拽残留的内联位置，让 CSS 重新接管
-    ['left', 'top', 'right', 'bottom', 'inset', 'margin', 'transform'].forEach(p => {
-        phoneWindow.style.removeProperty(p);
-    });
+    // 切换最小化/还原时清掉拖拽的 translate，让 CSS 的 inset/margin 重新接管
+    phoneWindow.style.removeProperty('transform');
 };
+
 
     window.__pmEnd = () => {
         if (phoneWindow) {
