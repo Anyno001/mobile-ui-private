@@ -218,45 +218,53 @@ ${blocks}
 
     // 🔧 拖拽：用 setProperty(important) 才能覆盖 CSS !important
     function bindIsland(el, handle) {
-        let isDragging = false, startX, startY, startL, startT, moved = false;
-        const getCoord = (e) => e.touches ? { x: e.touches[0].clientX, y: e.touches[0].clientY } : { x: e.clientX, y: e.clientY };
-        const onStart = (e) => {
-            if (e.target.tagName === 'BUTTON') return;
-            isDragging = true; moved = false;
-            const coords = getCoord(e);
-            startX = coords.x; startY = coords.y;
-            // 记录元素当前真实位置（getBoundingClientRect 不受 transform 影响时更准）
-            const rect = el.getBoundingClientRect();
-            startL = rect.left; startT = rect.top;
-            el.style.transition = 'none';
-        };
-        const onMove = (e) => {
-            if (!isDragging) return;
-            const coords = getCoord(e);
-            const dx = coords.x - startX, dy = coords.y - startY;
-            if (Math.abs(dx) > 5 || Math.abs(dy) > 5) { moved = true; if (e.cancelable) e.preventDefault(); }
-            // 关键：用 setProperty + important 覆盖 CSS !important
-            el.style.setProperty('left', (startL + dx) + 'px', 'important');
-            el.style.setProperty('top', (startT + dy) + 'px', 'important');
-            el.style.setProperty('right', 'auto', 'important');
-            el.style.setProperty('bottom', 'auto', 'important');
-            el.style.setProperty('inset', 'auto', 'important');
-            el.style.setProperty('margin', '0', 'important');
-            el.style.setProperty('transform', 'none', 'important');
-        };
-        const onEnd = () => {
-            if (!isDragging) return;
-            isDragging = false;
-            el.style.transition = '0.35s cubic-bezier(0.18, 0.89, 0.32, 1.2)';
-            if (!moved) window.__pmToggleMin();
-        };
-        handle.addEventListener('mousedown', onStart);
-        window.addEventListener('mousemove', onMove);
-        window.addEventListener('mouseup', onEnd);
-        handle.addEventListener('touchstart', onStart, { passive: false });
-        window.addEventListener('touchmove', onMove, { passive: false });
-        window.addEventListener('touchend', onEnd);
-    }
+    let isDragging = false, startX, startY, startL, startT, moved = false;
+    const getCoord = (e) => e.touches ? { x: e.touches[0].clientX, y: e.touches[0].clientY } : { x: e.clientX, y: e.clientY };
+
+    const onStart = (e) => {
+        if (e.target.tagName === 'BUTTON') return;
+        isDragging = true; moved = false;
+        const coords = getCoord(e);
+        startX = coords.x; startY = coords.y;
+        const rect = el.getBoundingClientRect();
+        startL = rect.left; startT = rect.top;
+        el.style.transition = 'none';
+        // 🔧 Fix 1：阻止浏览器把触摸识别成滚动
+        if (e.cancelable) e.preventDefault();
+    };
+
+    const onMove = (e) => {
+        if (!isDragging) return;
+        const coords = getCoord(e);
+        const dx = coords.x - startX, dy = coords.y - startY;
+        // 🔧 Fix 2：未达拖拽阈值前，不写任何内联样式
+        if (!moved && Math.abs(dx) < 5 && Math.abs(dy) < 5) return;
+        moved = true;
+        if (e.cancelable) e.preventDefault();
+        el.style.setProperty('left', (startL + dx) + 'px', 'important');
+        el.style.setProperty('top', (startT + dy) + 'px', 'important');
+        el.style.setProperty('right', 'auto', 'important');
+        el.style.setProperty('bottom', 'auto', 'important');
+        el.style.setProperty('inset', 'auto', 'important');
+        el.style.setProperty('margin', '0', 'important');
+        el.style.setProperty('transform', 'none', 'important');
+    };
+
+    const onEnd = () => {
+        if (!isDragging) return;
+        isDragging = false;
+        el.style.transition = '0.35s cubic-bezier(0.18, 0.89, 0.32, 1.2)';
+        if (!moved) window.__pmToggleMin();
+    };
+
+    handle.addEventListener('mousedown', onStart);
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onEnd);
+    handle.addEventListener('touchstart', onStart, { passive: false });
+    window.addEventListener('touchmove', onMove, { passive: false });
+    window.addEventListener('touchend', onEnd);
+}
+
 
     function escapeHtml(s) { return (s || '').replace(/</g,'<').replace(/>/g,'>'); }
     function escapeAttr(s) { return (s || '').replace(/"/g,'"').replace(/</g,'<'); }
