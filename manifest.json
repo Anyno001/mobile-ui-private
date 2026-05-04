@@ -1,7 +1,7 @@
 {
     "name": "phone_mode",
     "display_name": "📱 Phone Mode",
-    "version": "11.0.0",
+    "version": "1.0.0",
     "description": "纯前端手机短信模式，完美兼容 TauriTavern。",
     "author": "me",
     "js": "index.js",
