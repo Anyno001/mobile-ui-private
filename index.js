@@ -3,13 +3,91 @@
 
     const SAVE_LIMIT = 60, CONTEXT_LIMIT = 20, BIDIRECTIONAL_LIMIT = 20, MAX_BIDIRECTIONAL = 5;
     const BIDIRECTIONAL_KEY = 'PHONE_SMS_MEMORY', VOICE_MAX_SEC = 60, MODEL_VISIBLE_ROWS = 4, MAX_GROUP_MEMBERS = 6;
-    const BI_INJECT_DEPTH = 2; // 🔧 从 4 改为 2，每次生成都靠近末尾重读
+    const BI_INJECT_DEPTH = 2;
     const POPOVER_SUPPORTED = typeof HTMLElement !== 'undefined' && HTMLElement.prototype.hasOwnProperty('popover');
     const GROUP_COLORS = [
         { bg: '#e9e9eb', text: '#000' }, { bg: '#b8e6c8', text: '#1b4332' },
         { bg: '#f5d0d0', text: '#4a2030' }, { bg: '#d4d0f5', text: '#2d2252' },
         { bg: '#f5e6b8', text: '#4a3a10' },
     ];
+
+    // ========== IndexedDB 工具 ==========
+    const PM_IDB_NAME = 'PhoneModeDB', PM_IDB_STORE = 'kv';
+    let __pmIDB = null;
+    const IDB_MARKER = '__idb__';
+
+    function pmOpenIDB() {
+        return new Promise(resolve => {
+            if (__pmIDB) return resolve(__pmIDB);
+            try {
+                const req = indexedDB.open(PM_IDB_NAME, 1);
+                req.onupgradeneeded = () => {
+                    const db = req.result;
+                    if (!db.objectStoreNames.contains(PM_IDB_STORE)) db.createObjectStore(PM_IDB_STORE);
+                };
+                req.onsuccess = () => { __pmIDB = req.result; resolve(__pmIDB); };
+                req.onerror = () => resolve(null);
+            } catch { resolve(null); }
+        });
+    }
+
+    async function pmIDBSet(key, value) {
+        const db = await pmOpenIDB(); if (!db) return false;
+        return new Promise(r => {
+            try {
+                const tx = db.transaction(PM_IDB_STORE, 'readwrite');
+                tx.objectStore(PM_IDB_STORE).put(value, key);
+                tx.oncomplete = () => r(true);
+                tx.onerror = () => r(false);
+            } catch { r(false); }
+        });
+    }
+
+    async function pmIDBGet(key) {
+        const db = await pmOpenIDB(); if (!db) return null;
+        return new Promise(r => {
+            try {
+                const tx = db.transaction(PM_IDB_STORE, 'readonly');
+                const req = tx.objectStore(PM_IDB_STORE).get(key);
+                req.onsuccess = () => r(req.result ?? null);
+                req.onerror = () => r(null);
+            } catch { r(null); }
+        });
+    }
+
+    async function pmIDBDel(key) {
+        const db = await pmOpenIDB(); if (!db) return;
+        try {
+            const tx = db.transaction(PM_IDB_STORE, 'readwrite');
+            tx.objectStore(PM_IDB_STORE).delete(key);
+        } catch {}
+    }
+
+    function pmIsBigData(v) {
+        return typeof v === 'string' && v.length > 4096 && (v.startsWith('data:') || v.startsWith('blob:'));
+    }
+
+    // ========== 短信历史双写存储 ==========
+    function saveHistories() {
+        pmIDBSet('ST_SMS_DATA_V2', window.__pmHistories).catch(() => {});
+        try { localStorage.setItem('ST_SMS_DATA_V2', JSON.stringify(window.__pmHistories)); } catch {}
+    }
+
+    async function loadHistoriesFromIDB() {
+        try {
+            const v = await pmIDBGet('ST_SMS_DATA_V2');
+            if (!v) return;
+            const parsed = typeof v === 'string' ? JSON.parse(v) : v;
+            if (!parsed || typeof parsed !== 'object') return;
+            const lsCount = Object.keys(window.__pmHistories || {}).length;
+            const idbCount = Object.keys(parsed).length;
+            if (idbCount >= lsCount) {
+                window.__pmHistories = parsed;
+                try { localStorage.setItem('ST_SMS_DATA_V2', JSON.stringify(parsed)); } catch {}
+                if (idbCount > lsCount) console.log('[phone-mode] 从 IndexedDB 恢复了短信历史');
+            }
+        } catch (e) { console.warn('[phone-mode] IDB 恢复失败', e); }
+    }
 
     window.__pmHistories = window.__pmHistories || {};
     window.__pmConfig = window.__pmConfig || { apiUrl: '', apiKey: '', model: '', useIndependent: false };
@@ -46,12 +124,71 @@
 
     function loadTheme() { try { window.__pmTheme = { ...window.__pmTheme, ...JSON.parse(localStorage.getItem('ST_SMS_THEME')) }; } catch {} }
     function saveTheme() { try { localStorage.setItem('ST_SMS_THEME', JSON.stringify(window.__pmTheme)); } catch {} }
-    function loadBgSettings() {
-        try { window.__pmBgGlobal = localStorage.getItem('ST_SMS_BG_GLOBAL') || ''; } catch {}
-        try { window.__pmBgLocal = JSON.parse(localStorage.getItem('ST_SMS_BG_LOCAL')) || {}; } catch {}
+
+    async function loadBgSettings() {
+        try {
+            const ls = localStorage.getItem('ST_SMS_BG_GLOBAL') || '';
+            if (ls === IDB_MARKER) {
+                window.__pmBgGlobal = (await pmIDBGet('ST_SMS_BG_GLOBAL')) || '';
+            } else if (pmIsBigData(ls)) {
+                window.__pmBgGlobal = ls;
+                await pmIDBSet('ST_SMS_BG_GLOBAL', ls);
+                try { localStorage.setItem('ST_SMS_BG_GLOBAL', IDB_MARKER); } catch {}
+                console.log('[phone-mode] 全局背景已迁移到 IndexedDB');
+            } else {
+                window.__pmBgGlobal = ls;
+            }
+        } catch { window.__pmBgGlobal = ''; }
+
+        try {
+            const raw = JSON.parse(localStorage.getItem('ST_SMS_BG_LOCAL')) || {};
+            const result = {};
+            let migrated = 0;
+            for (const [k, v] of Object.entries(raw)) {
+                if (v === IDB_MARKER) {
+                    result[k] = (await pmIDBGet('ST_SMS_BG_LOCAL_' + k)) || '';
+                } else if (pmIsBigData(v)) {
+                    result[k] = v;
+                    await pmIDBSet('ST_SMS_BG_LOCAL_' + k, v);
+                    raw[k] = IDB_MARKER;
+                    migrated++;
+                } else {
+                    result[k] = v;
+                }
+            }
+            if (migrated > 0) {
+                try { localStorage.setItem('ST_SMS_BG_LOCAL', JSON.stringify(raw)); } catch {}
+                console.log(`[phone-mode] 已迁移 ${migrated} 张联系人背景到 IndexedDB`);
+            }
+            window.__pmBgLocal = result;
+        } catch { window.__pmBgLocal = {}; }
     }
-    function saveBgGlobal() { try { localStorage.setItem('ST_SMS_BG_GLOBAL', window.__pmBgGlobal); } catch {} }
-    function saveBgLocal() { try { localStorage.setItem('ST_SMS_BG_LOCAL', JSON.stringify(window.__pmBgLocal)); } catch {} }
+
+    async function saveBgGlobal() {
+        const v = window.__pmBgGlobal || '';
+        if (pmIsBigData(v)) {
+            await pmIDBSet('ST_SMS_BG_GLOBAL', v);
+            try { localStorage.setItem('ST_SMS_BG_GLOBAL', IDB_MARKER); } catch {}
+        } else {
+            await pmIDBDel('ST_SMS_BG_GLOBAL');
+            try { localStorage.setItem('ST_SMS_BG_GLOBAL', v); } catch {}
+        }
+    }
+
+    async function saveBgLocal() {
+        const ptr = {};
+        for (const [k, v] of Object.entries(window.__pmBgLocal || {})) {
+            if (pmIsBigData(v)) {
+                await pmIDBSet('ST_SMS_BG_LOCAL_' + k, v);
+                ptr[k] = IDB_MARKER;
+            } else if (v) {
+                await pmIDBDel('ST_SMS_BG_LOCAL_' + k);
+                ptr[k] = v;
+            }
+        }
+        try { localStorage.setItem('ST_SMS_BG_LOCAL', JSON.stringify(ptr)); } catch {}
+    }
+
     function loadGroupMeta() { try { window.__pmGroupMeta = JSON.parse(localStorage.getItem('ST_SMS_GROUP_META')) || {}; } catch { window.__pmGroupMeta = {}; } }
     function saveGroupMeta() { try { localStorage.setItem('ST_SMS_GROUP_META', JSON.stringify(window.__pmGroupMeta)); } catch {} }
 
@@ -68,7 +205,6 @@
         el.style.setProperty('--pm-frost', p.frost ? '1' : '0');
     }
 
-    // 🔧 修复 #2：url() 加引号 + 转义
     function cssUrlEscape(url) {
         return (url || '').replace(/\\/g, '\\\\').replace(/"/g, '\\"');
     }
@@ -216,7 +352,7 @@
                 else newData[oldKey] = oldData[oldKey];
             }
             window.__pmHistories = newData;
-            localStorage.setItem('ST_SMS_DATA_V2', JSON.stringify(newData));
+            saveHistories();
             localStorage.setItem('ST_SMS_MIGRATED_V3', '1');
         } catch {}
     }
@@ -280,30 +416,28 @@
         try { c.setExtensionPrompt(BIDIRECTIONAL_KEY, `[手机短信记忆 — 私密]\n${blocks}\n[结束]`, 0, 0, false, 0); } catch {}
     }
 
-    // 🔧 修复 #5：挂钩酒馆事件，每次生成前实时刷新
     function hookGenerationEvent() {
-    if (__pmEventHooked) return;
-    const c = getCtx();
-    if (!c?.eventSource || !c?.event_types) return;
-    const et = c.event_types;
-    const events = [
-        et.GENERATION_STARTED || 'generation_started',
-        et.CHAT_CHANGED || 'chat_id_changed',
-        et.SETTINGS_UPDATED || 'settings_updated',
-        et.CHATCOMPLETION_SOURCE_CHANGED || 'chatcompletion_source_changed',
-        et.OAI_PRESET_CHANGED_AFTER || 'oai_preset_changed_after',
-    ];
-    events.forEach(ev => {
-        try {
-            c.eventSource.on(ev, () => {
-                try { applyBidirectionalInjection(); } catch {}
-            });
-        } catch {}
-    });
-    __pmEventHooked = true;
-    console.log('[phone-mode] hooked', events.length, 'events');
-}
-
+        if (__pmEventHooked) return;
+        const c = getCtx();
+        if (!c?.eventSource || !c?.event_types) return;
+        const et = c.event_types;
+        const events = [
+            et.GENERATION_STARTED || 'generation_started',
+            et.CHAT_CHANGED || 'chat_id_changed',
+            et.SETTINGS_UPDATED || 'settings_updated',
+            et.CHATCOMPLETION_SOURCE_CHANGED || 'chatcompletion_source_changed',
+            et.OAI_PRESET_CHANGED_AFTER || 'oai_preset_changed_after',
+        ];
+        events.forEach(ev => {
+            try {
+                c.eventSource.on(ev, () => {
+                    try { applyBidirectionalInjection(); } catch {}
+                });
+            } catch {}
+        });
+        __pmEventHooked = true;
+        console.log('[phone-mode] hooked', events.length, 'events');
+    }
 
     window.__pmToggleBidirectional = (name) => {
         const id = getStorageId(), arr = window.__pmBidirectional[id] || [], idx = arr.indexOf(name);
@@ -312,29 +446,12 @@
         window.__pmBidirectional[id] = arr; saveBidirectional(); applyBidirectionalInjection(); window.__pmShowList();
     };
 
-    // 🔧 修复 #3：抓取 User 人设
     function getUserPersona() {
-    const c = getCtx();
-    if (!c) return { name: '用户', description: '' };
-    let name = c.name1 || 'User';
-    let description = '';
+        const c = getCtx();
+        if (!c) return { name: '用户', description: '' };
+        let name = c.name1 || 'User';
+        let description = '';
 
-    // 方法1（最可靠）：用酒馆自己的宏解析
-    try {
-        if (typeof c.substituteParams === 'function') {
-            const resolved = c.substituteParams('{{persona}}');
-            if (resolved && resolved !== '{{persona}}' && resolved.trim()) {
-                description = resolved.trim();
-            }
-            const resolvedName = c.substituteParams('{{user}}');
-            if (resolvedName && resolvedName !== '{{user}}' && resolvedName.trim()) {
-                name = resolvedName.trim();
-            }
-        }
-    } catch (e) { console.warn('[phone-mode] substituteParams failed', e); }
-
-    // 方法2：新版驼峰字段 powerUserSettings
-    if (!description) {
         try {
             const pu = c.powerUserSettings || c.power_user || window.power_user;
             if (pu) {
@@ -350,19 +467,25 @@
                 }
             }
         } catch {}
-    }
 
-    // 方法3：chatMetadata.persona
-    if (!description) {
+        if (!description) {
+            try {
+                const meta = c.chatMetadata || c.chat_metadata;
+                if (meta?.persona) description = String(meta.persona);
+            } catch {}
+        }
+
         try {
-            const meta = c.chatMetadata || c.chat_metadata;
-            if (meta?.persona) description = String(meta.persona);
+            if (typeof c.substituteParams === 'function') {
+                const resolvedName = c.substituteParams('{{user}}');
+                if (resolvedName && resolvedName !== '{{user}}' && resolvedName.trim()) {
+                    name = resolvedName.trim();
+                }
+            }
         } catch {}
+
+        return { name, description };
     }
-
-    return { name, description };
-}
-
 
     async function gatherContext() {
         const c = getCtx(), char = c?.characters?.[c.characterId] || {};
@@ -413,8 +536,17 @@
         handle.addEventListener('touchstart', onStart, { passive: false }); window.addEventListener('touchmove', onMove, { passive: false }); window.addEventListener('touchend', onEnd);
     }
 
-    function escapeHtml(s) { return (s || '').replace(/</g, '<').replace(/>/g, '>'); }
-    function escapeAttr(s) { return (s || '').replace(/"/g, '"').replace(/</g, '<'); }
+    // ✅ HTML 实体编码（防 XSS，含单引号转义）
+    function escapeHtml(s) {
+        return (s || '').replace(/&/g, '&').replace(/</g, '<').replace(/>/g, '>');
+    }
+    function escapeAttr(s) {
+        return (s || '')
+            .replace(/&/g, '&')
+            .replace(/"/g, '"')
+            .replace(/'/g, ''')
+            .replace(/</g, '<');
+    }
 
     function resolveGroupColor(name) {
         if (!name) return null;
@@ -474,12 +606,11 @@
                 b.innerHTML = `<div class="pm-img-card">🖼️ ${escapeHtml(m[2].trim())}</div>`;
             } else {
                 const txt = m[2].trim(), len = [...txt].length;
-                // 分段映射：短句 1-5s，中等 5-20s，长句 20-60s
                 let dur;
-                if (len <= 5) dur = Math.max(1, len);              // 1-5 字 = 1-5 秒
-                else if (len <= 15) dur = 5 + (len - 5);           // 6-15 字 = 6-15 秒
-                else if (len <= 40) dur = 15 + Math.ceil((len - 15) * 0.8);  // 16-40 字 = 16-35 秒
-                else dur = Math.min(VOICE_MAX_SEC, 35 + Math.ceil((len - 40) * 0.5));  // 40+ 字 = 35-60 秒
+                if (len <= 5) dur = Math.max(1, len);
+                else if (len <= 15) dur = 5 + (len - 5);
+                else if (len <= 40) dur = 15 + Math.ceil((len - 15) * 0.8);
+                else dur = Math.min(VOICE_MAX_SEC, 35 + Math.ceil((len - 40) * 0.5));
                 const width = Math.min(240, Math.max(110, 90 + Math.min(len, 30) * 4));
                 let voiceStyle = `width:${width}px`, voiceClass = `pm-voice-card pm-voice-${side}`;
                 if (isGroupLeft && gc) {
@@ -502,16 +633,6 @@
         if (txt) txt.style.display = txt.style.display === 'none' ? 'block' : 'none';
     };
 
-    // 🔧 特殊格式未闭合容错
-    function fixUnclosedSpecial(text) {
-        if (!text) return text;
-        return text.split('\n').map(line => {
-            const m = line.match(/[\(（]\s*(转账|收款|图片|语音|transfer|receive|image|voice|img|pic|photo|audio|收钱|收到)\s*[+：:]/i);
-            if (m && !/[\)）]/.test(line.slice(line.indexOf(m[0])))) return line + '）';
-            return line;
-        }).join('\n');
-    }
-
     function cleanResponse(raw) {
         return (raw ?? '')
             .replace(/<think>[\s\S]*?<\/think>/gi, '').replace(/<thinking>[\s\S]*?<\/thinking>/gi, '')
@@ -523,22 +644,18 @@
             .replace(/<[^>]+>/g, '').trim();
     }
 
+    // ✅ 建议 3 修复：分割前保护括号内的 /，避免特殊格式被切碎
     function splitToSentences(str, stripFn = null) {
-        return (str || '').split(/\s*\/\s*/).map(s => {
-            let t = s.trim();
+        const protect = (str || '').replace(/[\(（][^)）]*[\)\）]/g, m => m.replace(/\//g, '\u0001'));
+        return protect.split(/\s*\/\s*/).map(s => {
+            let t = s.replace(/\u0001/g, '/').trim();
             if (stripFn) t = stripFn(t);
-            
-            // 1. 无情剿灭 AI 生成的孤儿括号和空文本
             if (!t || t === ')' || t === '）' || t === '(' || t === '（') return '';
-            
-            // 2. 针对【每个被切分出来的气泡】独立计算并补全括号
             const opens = (t.match(/[（(]/g) || []).length;
             const closes = (t.match(/[）)]/g) || []).length;
             if (opens > closes) {
-                // 如果左括号多了，立刻在这个气泡末尾补足右括号
                 t += '）'.repeat(opens - closes);
             } else if (closes > opens && opens === 0) {
-                // 如果有孤立的右括号（比如被切断的尾巴），直接切掉它
                 t = t.replace(/^[)）]+\s*/, '').replace(/\s*[)）]+$/, '');
             }
             return t;
@@ -553,7 +670,7 @@
         const memberMap = new Map();
         groupMembers.forEach(n => memberMap.set(normName(n), n));
         const speakerRe = /^[\s\*【\[「『"'（\(]*(.{1,20}?)[\s\*】\]」』"'）\)]*\s*[：:]\s*([\s\S]+)$/;
-        
+
         const stripAllPrefix = (s) => {
             let t = (s || '').trim();
             const outer = t.match(/^[\(（]\s*(.{1,20}?)\s*[：:]\s*([\s\S]+?)\s*[\)）]\s*$/);
@@ -573,7 +690,6 @@
             const m = line.match(speakerRe);
             if (m && memberMap.has(normName(m[1]))) {
                 const name = memberMap.get(normName(m[1]));
-                // 巧妙使用新的智能切分器
                 const sentences = splitToSentences(m[2], stripAllPrefix);
                 if (sentences.length) result.push({ name, sentences });
             } else {
@@ -586,6 +702,7 @@
         }
         return result;
     }
+
     async function fetchSMS(userMsg) {
         const c = getCtx();
         conversationHistory.push({ role: 'user', content: userMsg });
@@ -744,7 +861,6 @@ Core rules:
                 raw = await c.generateQuietPrompt(injectedInstruction, false, false);
             }
 
-
             let resultData;
             if (isGroupChat) {
                 const parsed = parseGroupResponse(raw);
@@ -768,7 +884,7 @@ Core rules:
             const id = getStorageId();
             if (!window.__pmHistories[id]) window.__pmHistories[id] = {};
             window.__pmHistories[id][currentPersona] = conversationHistory.slice(-SAVE_LIMIT);
-            try { localStorage.setItem('ST_SMS_DATA_V2', JSON.stringify(window.__pmHistories)); } catch {}
+            saveHistories();
             applyBidirectionalInjection();
             return resultData;
         } catch (e) {
@@ -856,7 +972,6 @@ Core rules:
         }
     };
 
-    // 🔧 修复 #4：删除后立即刷新注入
     window.__pmDeleteSelected = () => {
         const list = phoneWindow?.querySelector('.pm-msg-list'); if (!list) return;
         const toDelete = new Set();
@@ -870,8 +985,8 @@ Core rules:
             const id = getStorageId();
             if (!window.__pmHistories[id]) window.__pmHistories[id] = {};
             window.__pmHistories[id][currentPersona] = conversationHistory.slice(-SAVE_LIMIT);
-            try { localStorage.setItem('ST_SMS_DATA_V2', JSON.stringify(window.__pmHistories)); } catch {}
-            applyBidirectionalInjection(); // 立即刷新
+            saveHistories();
+            applyBidirectionalInjection();
         }
         isSelectMode = false;
         phoneWindow?.querySelector('.pm-trash-btn')?.style.removeProperty('color');
@@ -985,8 +1100,10 @@ Core rules:
         showGroupForm('edit', groupDisplayName, groupMembers);
     };
 
-    window.__pmShowConfig = () => {
-        loadProfiles(); loadTheme(); loadBgSettings();
+    // ✅ 改为 async，等待 loadBgSettings 完成
+    window.__pmShowConfig = async () => {
+        loadProfiles(); loadTheme();
+        await loadBgSettings();
         const cfg = window.__pmConfig, t = window.__pmTheme;
         const shortUrl = (u) => (u || '').replace(/^https?:\/\//, '').replace(/\/+$/, '');
         const maskKey = (k) => !k ? '' : (k.length <= 8 ? '****' : k.slice(0, 4) + '****' + k.slice(-4));
@@ -1156,9 +1273,17 @@ Core rules:
         setTimeout(() => window.__pmSwitchTab('look'), 50);
     };
 
-    window.__pmClearBg = (scope) => {
-        if (scope === 'global') { window.__pmBgGlobal = ''; saveBgGlobal(); }
-        else { const id = getStorageId(); delete window.__pmBgLocal[`${id}_${currentPersona}`]; saveBgLocal(); }
+    window.__pmClearBg = async (scope) => {
+        if (scope === 'global') {
+            window.__pmBgGlobal = '';
+            await pmIDBDel('ST_SMS_BG_GLOBAL');
+            try { localStorage.removeItem('ST_SMS_BG_GLOBAL'); } catch {}
+        } else {
+            const id = getStorageId(), key = `${id}_${currentPersona}`;
+            delete window.__pmBgLocal[key];
+            await pmIDBDel('ST_SMS_BG_LOCAL_' + key);
+            await saveBgLocal();
+        }
         applyBackground();
         window.__pmShowConfig();
         setTimeout(() => window.__pmSwitchTab('look'), 50);
@@ -1199,6 +1324,8 @@ Core rules:
         document.getElementById('pm-overlay')?.remove();
         addNote(`已保存：${window.__pmConfig.useIndependent && apiUrl ? '独立API' : '主API'}`);
     };
+
+    // ✅ 联系人列表使用 escapeAttr 安全转义
     window.__pmShowList = () => {
         const id = getStorageId();
         loadGroupMeta();
@@ -1210,20 +1337,22 @@ Core rules:
 
         const renderSingle = singleList.map(n => {
             const isChk = checked.includes(n);
+            const safeName = escapeAttr(n);
             return `<div class="pm-li">
-                <div class="pm-custom-check pm-bi-style ${isChk ? 'is-checked' : ''}" onclick="event.stopPropagation();window.__pmToggleBidirectional('${n.replace(/'/g, "\\'")}')"></div>
-                <span onclick="window.__pmSwitchContact('${n.replace(/'/g, "\\'")}')">${escapeHtml(n)}</span>
-                <i onclick="window.__pmDel('${n.replace(/'/g, "\\'")}')">删除</i>
+                <div class="pm-custom-check pm-bi-style ${isChk ? 'is-checked' : ''}" onclick="event.stopPropagation();window.__pmToggleBidirectional('${safeName}')"></div>
+                <span onclick="window.__pmSwitchContact('${safeName}')">${escapeHtml(n)}</span>
+                <i onclick="window.__pmDel('${safeName}')">删除</i>
             </div>`;
         }).join('');
 
         const renderGroups = groupList.map(key => {
             const meta = groups[key];
             const isChk = checked.includes(key);
+            const safeKey = escapeAttr(key);
             return `<div class="pm-li">
-                <div class="pm-custom-check pm-bi-style ${isChk ? 'is-checked' : ''}" onclick="event.stopPropagation();window.__pmToggleBidirectional('${key}')"></div>
-                <span onclick="window.__pmSwitchContact('${key}')">${escapeHtml(meta.name)}<span class="pm-group-sub">${escapeHtml(meta.members.join('、'))}</span></span>
-                <i onclick="window.__pmDelGroup('${key}')">删除</i>
+                <div class="pm-custom-check pm-bi-style ${isChk ? 'is-checked' : ''}" onclick="event.stopPropagation();window.__pmToggleBidirectional('${safeKey}')"></div>
+                <span onclick="window.__pmSwitchContact('${safeKey}')">${escapeHtml(meta.name)}<span class="pm-group-sub">${escapeHtml(meta.members.join('、'))}</span></span>
+                <i onclick="window.__pmDelGroup('${safeKey}')">删除</i>
             </div>`;
         }).join('');
 
@@ -1265,14 +1394,23 @@ Core rules:
         }, 0);
     };
 
-    window.__pmDelGroup = (key) => {
+    window.__pmDelGroup = async (key) => {
         const id = getStorageId();
         if (window.__pmGroupMeta[id]) delete window.__pmGroupMeta[id][key];
         if (window.__pmHistories[id]) delete window.__pmHistories[id][key];
+
         const arr = window.__pmBidirectional[id] || [], idx = arr.indexOf(key);
         if (idx >= 0) { arr.splice(idx, 1); window.__pmBidirectional[id] = arr; saveBidirectional(); }
+
+        const bgKey = `${id}_${key}`;
+        if (window.__pmBgLocal[bgKey]) {
+            delete window.__pmBgLocal[bgKey];
+            await pmIDBDel('ST_SMS_BG_LOCAL_' + bgKey);
+            await saveBgLocal();
+        }
+
         saveGroupMeta();
-        try { localStorage.setItem('ST_SMS_DATA_V2', JSON.stringify(window.__pmHistories)); } catch {}
+        saveHistories();
         applyBidirectionalInjection();
         window.__pmShowList();
     };
@@ -1323,19 +1461,13 @@ Core rules:
                             const match = line.match(/^(.{1,20})[：:]\s*(.+)$/);
                             if (match && groupMembers.some(gm => gm.toLowerCase() === match[1].trim().toLowerCase())) {
                                 const sender = groupMembers.find(gm => gm.toLowerCase() === match[1].trim().toLowerCase());
-                                const protect = match[2].replace(/[\(（][^)）]+[\)\）]/g, mm => mm.replace(/\//g, '\u0001'));
-                                protect.split(/\s*\/\s*/).map(s => s.replace(/\u0001/g, '/').trim()).filter(Boolean)
-                                    .forEach(s => addBubble(s, 'left', sender));
+                                splitToSentences(match[2]).forEach(s => addBubble(s, 'left', sender));
                             } else {
-                                const protect = line.replace(/[\(（][^)）]+[\)\）]/g, mm => mm.replace(/\//g, '\u0001'));
-                                protect.split(/\s*\/\s*/).map(s => s.replace(/\u0001/g, '/').trim()).filter(Boolean)
-                                    .forEach(s => addBubble(s, 'left'));
+                                splitToSentences(line).forEach(s => addBubble(s, 'left'));
                             }
                         }
                     } else {
-                        const protect = m.content.replace(/[\(（][^)）]+[\)\）]/g, mm => mm.replace(/\//g, '\u0001'));
-                        protect.split(/\s*\/\s*/).map(s => s.replace(/\u0001/g, '/').trim()).filter(Boolean)
-                            .forEach(s => addBubble(s, m.role === 'user' ? 'right' : 'left'));
+                        splitToSentences(m.content).forEach(s => addBubble(s, m.role === 'user' ? 'right' : 'left'));
                     }
                 });
                 addNote('── 以上为历史 ──');
@@ -1345,13 +1477,23 @@ Core rules:
         applyBidirectionalInjection();
     };
 
-    window.__pmDel = (name) => {
+    window.__pmDel = async (name) => {
         const id = getStorageId();
         if (window.__pmHistories[id]) delete window.__pmHistories[id][name];
-        try { localStorage.setItem('ST_SMS_DATA_V2', JSON.stringify(window.__pmHistories)); } catch {}
+        saveHistories();
+
         const arr = window.__pmBidirectional[id] || [], idx = arr.indexOf(name);
         if (idx >= 0) { arr.splice(idx, 1); window.__pmBidirectional[id] = arr; saveBidirectional(); }
-        applyBidirectionalInjection(); window.__pmShowList();
+
+        const bgKey = `${id}_${name}`;
+        if (window.__pmBgLocal[bgKey]) {
+            delete window.__pmBgLocal[bgKey];
+            await pmIDBDel('ST_SMS_BG_LOCAL_' + bgKey);
+            await saveBgLocal();
+        }
+
+        applyBidirectionalInjection();
+        window.__pmShowList();
     };
 
     window.__pmToggleMin = () => { isMinimized = !isMinimized; phoneWindow.classList.toggle('is-min', isMinimized); phoneWindow.style.removeProperty('transform'); };
@@ -1380,8 +1522,18 @@ Core rules:
             window.__pmConfig = saved || { apiUrl: '', apiKey: '', model: '', useIndependent: false };
             if (typeof window.__pmConfig.useIndependent === 'undefined') window.__pmConfig.useIndependent = !!(window.__pmConfig.apiUrl && window.__pmConfig.apiKey);
         } catch { window.__pmConfig = { apiUrl: '', apiKey: '', model: '', useIndependent: false }; }
-        loadProfiles(); loadBidirectional(); loadTheme(); loadBgSettings(); loadGroupMeta(); migrateOldHistory();
-        hookGenerationEvent(); // 🔧 挂钩事件
+        loadProfiles(); loadBidirectional(); loadTheme(); loadGroupMeta(); migrateOldHistory();
+        loadBgSettings().then(() => { try { applyBackground(); } catch {} });
+        loadHistoriesFromIDB().then(() => {
+            if (phoneWindow && currentPersona) {
+                const id = getStorageId();
+                const fresh = window.__pmHistories[id]?.[currentPersona];
+                if (fresh && fresh.length > conversationHistory.length) {
+                    window.__pmSwitch(currentPersona);
+                }
+            }
+        });
+        hookGenerationEvent();
         const c = getCtx(), defaultChar = c?.characters?.[c.characterId]?.name ?? 'AI';
 
         phoneWindow = document.createElement('div'); phoneWindow.id = 'pm-iphone';
@@ -1475,7 +1627,6 @@ Core rules:
 .pm-right{align-self:flex-end !important;background:var(--pm-r-bg) !important;color:var(--pm-r-txt) !important;border-bottom-right-radius:4px !important;}
 .pm-left{align-self:flex-start !important;background:var(--pm-l-bg) !important;color:var(--pm-l-txt) !important;border-bottom-left-radius:4px !important;}
 #pm-iphone[style*="--pm-frost: 1"] .pm-right,#pm-iphone[style*="--pm-frost: 1"] .pm-left{backdrop-filter:blur(12px) saturate(1.4);-webkit-backdrop-filter:blur(12px) saturate(1.4);}
-/* 🔧 修复 #1：群聊气泡宽度 */
 .pm-group-bubble-wrap{align-self:flex-start !important;display:flex !important;flex-direction:column !important;gap:2px;max-width:78% !important;width:fit-content !important;align-items:flex-start !important;}
 .pm-group-bubble-wrap .pm-bubble{max-width:none !important;width:auto !important;align-self:flex-start !important;}
 .pm-group-name{font-size:11px;color:#999;padding-left:6px;font-weight:500;white-space:nowrap;}
@@ -1612,7 +1763,8 @@ Core rules:
 
     try { window.__pmHistories = JSON.parse(localStorage.getItem('ST_SMS_DATA_V2')) || {}; } catch {}
     loadBidirectional(); loadGroupMeta();
+    loadHistoriesFromIDB();
     setTimeout(() => { migrateOldHistory(); applyBidirectionalInjection(); hookGenerationEvent(); }, 1500);
 
-    console.log('[phone-mode] v8.0 五项修复');
+    console.log('[phone-mode] v8.2 安全修复');
 })();
