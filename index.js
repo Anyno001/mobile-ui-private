@@ -261,7 +261,7 @@
         const c = getCtx(); if (!c || typeof c.setExtensionPrompt !== 'function') return;
         const id = getStorageId(), checked = window.__pmBidirectional[id] || [], histories = window.__pmHistories[id] || {};
         const groups = window.__pmGroupMeta[id] || {};
-        if (!checked.length) { try { c.setExtensionPrompt(BIDIRECTIONAL_KEY, '', 1, BI_INJECT_DEPTH); } catch {} return; }
+        if (!checked.length) { try { c.setExtensionPrompt(BIDIRECTIONAL_KEY, '', 0, 0, false, 0); } catch {} return; }
         const blocks = checked.map(name => {
             const conv = (histories[name] || []).slice(-BIDIRECTIONAL_LIMIT);
             if (!conv.length) return '';
@@ -276,8 +276,8 @@
             const lines = conv.map(m => { const t = (m.content || '').replace(/\s*\/\s*/g, '。'); return m.role === 'user' ? `用户：${t}` : `${name}：${t}`; }).join('\n');
             return `【与 ${name} 的短信 — 仅 ${name} 与用户知晓】\n${lines}`;
         }).filter(Boolean).join('\n\n');
-        if (!blocks) { try { c.setExtensionPrompt(BIDIRECTIONAL_KEY, '', 1, BI_INJECT_DEPTH); } catch {} return; }
-        try { c.setExtensionPrompt(BIDIRECTIONAL_KEY, `[手机短信记忆 — 私密]\n${blocks}\n[结束]`, 1, BI_INJECT_DEPTH); } catch {}
+        if (!blocks) { try { c.setExtensionPrompt(BIDIRECTIONAL_KEY, '', 0, 0, false, 0); } catch {} return; }
+        try { c.setExtensionPrompt(BIDIRECTIONAL_KEY, `[手机短信记忆 — 私密]\n${blocks}\n[结束]`, 0, 0, false, 0); } catch {}
     }
 
     // 🔧 修复 #5：挂钩酒馆事件，每次生成前实时刷新
