@@ -915,8 +915,21 @@ ${currentPersona}：`;
                     conversationHistory.push({ role: 'assistant', content: contentParts.join('\n') });
                     resultData = { type: 'group', data: parsed };
                 } else {
-                    conversationHistory.push({ role: 'assistant', content: raw });
-                    resultData = { type: 'group', data: [{ name: groupMembers[0] || '???', sentences: ['（群聊格式解析失败）'] }] };
+                    // 1. 在控制台打印出 AI 到底发了什么神经，方便排查
+                    console.warn('[phone-mode] ⚠️ 群聊格式解析失败！AI 原始返回内容：', raw);
+                    
+                    // 2. 不要把乱码或拒答塞进真实的历史记录里，用占位符代替，防止污染后续对话
+                    conversationHistory.push({ role: 'assistant', content: '（格式无法解析或AI拒答）' }); 
+                    
+                    // 3. 在界面上给用户更明确的提示
+                    const snippet = raw ? raw.substring(0, 20).replace(/\n/g, '') + '...' : '空响应或纯思考过程';
+                    resultData = { 
+                        type: 'group', 
+                        data: [{ 
+                            name: '系统', 
+                            sentences: [`（格式解析失败。AI原话: ${snippet}，请按F12查看控制台或检查是否触发了安全审查）`] 
+                        }] 
+                    };
                 }
             } else {
                 const clean = cleanResponse(raw);
@@ -2407,4 +2420,3 @@ ${currentPersona}：`;
 
     console.log('[phone-mode] v9.2 夜间模式修复 + 独立API拍一拍修复 + 角色主动发消息自然化');
 })();
-
