@@ -27,7 +27,7 @@
                 };
                 req.onsuccess = () => { __pmIDB = req.result; resolve(__pmIDB); };
                 req.onerror = () => resolve(null);
-            } catch { resolve(null); }
+            } catch (e) { resolve(null); }
         });
     }
 
@@ -39,7 +39,7 @@
                 tx.objectStore(PM_IDB_STORE).put(value, key);
                 tx.oncomplete = () => r(true);
                 tx.onerror = () => r(false);
-            } catch { r(false); }
+            } catch (e) { r(false); }
         });
     }
 
@@ -51,7 +51,7 @@
                 const req = tx.objectStore(PM_IDB_STORE).get(key);
                 req.onsuccess = () => r(req.result ?? null);
                 req.onerror = () => r(null);
-            } catch { r(null); }
+            } catch (e) { r(null); }
         });
     }
 
@@ -60,7 +60,7 @@
         try {
             const tx = db.transaction(PM_IDB_STORE, 'readwrite');
             tx.objectStore(PM_IDB_STORE).delete(key);
-        } catch {}
+        } catch (e) {}
     }
 
     function pmIsBigData(v) {
@@ -70,7 +70,7 @@
     // ========== 短信历史双写存储 ==========
     function saveHistories() {
         pmIDBSet('ST_SMS_DATA_V2', window.__pmHistories).catch(() => {});
-        try { localStorage.setItem('ST_SMS_DATA_V2', JSON.stringify(window.__pmHistories)); } catch {}
+        try { localStorage.setItem('ST_SMS_DATA_V2', JSON.stringify(window.__pmHistories)); } catch (e) {}
     }
 
     async function loadHistoriesFromIDB() {
@@ -83,7 +83,7 @@
             const idbCount = Object.keys(parsed).length;
             if (idbCount >= lsCount) {
                 window.__pmHistories = parsed;
-                try { localStorage.setItem('ST_SMS_DATA_V2', JSON.stringify(parsed)); } catch {}
+                try { localStorage.setItem('ST_SMS_DATA_V2', JSON.stringify(parsed)); } catch (e) {}
                 if (idbCount > lsCount) console.log('[phone-mode] 从 IndexedDB 恢复了短信历史');
             }
         } catch (e) { console.warn('[phone-mode] IDB 恢复失败', e); }
@@ -123,10 +123,10 @@
         return (r*0.299 + g*0.587 + b*0.114) > 150 ? '#000' : '#fff';
     }
 
-    function loadTheme() { try { window.__pmTheme = { ...window.__pmTheme, ...JSON.parse(localStorage.getItem('ST_SMS_THEME')) }; } catch {} }
-    function saveTheme() { try { localStorage.setItem('ST_SMS_THEME', JSON.stringify(window.__pmTheme)); } catch {} }
-    function loadPokeConfig() { try { window.__pmPokeConfig = JSON.parse(localStorage.getItem('ST_SMS_POKE_CONFIG')) || {}; } catch { window.__pmPokeConfig = {}; } }
-    function savePokeConfig() { try { localStorage.setItem('ST_SMS_POKE_CONFIG', JSON.stringify(window.__pmPokeConfig)); } catch {} }
+    function loadTheme() { try { window.__pmTheme = { ...window.__pmTheme, ...JSON.parse(localStorage.getItem('ST_SMS_THEME')) }; } catch (e) {} }
+    function saveTheme() { try { localStorage.setItem('ST_SMS_THEME', JSON.stringify(window.__pmTheme)); } catch (e) {} }
+    function loadPokeConfig() { try { window.__pmPokeConfig = JSON.parse(localStorage.getItem('ST_SMS_POKE_CONFIG')) || {}; } catch (e) { window.__pmPokeConfig = {}; } }
+    function savePokeConfig() { try { localStorage.setItem('ST_SMS_POKE_CONFIG', JSON.stringify(window.__pmPokeConfig)); } catch (e) {} }
 
     async function loadBgSettings() {
         try {
@@ -136,12 +136,11 @@
             } else if (pmIsBigData(ls)) {
                 window.__pmBgGlobal = ls;
                 await pmIDBSet('ST_SMS_BG_GLOBAL', ls);
-                try { localStorage.setItem('ST_SMS_BG_GLOBAL', IDB_MARKER); } catch {}
-                console.log('[phone-mode] 全局背景已迁移到 IndexedDB');
+                try { localStorage.setItem('ST_SMS_BG_GLOBAL', IDB_MARKER); } catch (e) {}
             } else {
                 window.__pmBgGlobal = ls;
             }
-        } catch { window.__pmBgGlobal = ''; }
+        } catch (e) { window.__pmBgGlobal = ''; }
 
         try {
             const raw = JSON.parse(localStorage.getItem('ST_SMS_BG_LOCAL')) || {};
@@ -160,21 +159,20 @@
                 }
             }
             if (migrated > 0) {
-                try { localStorage.setItem('ST_SMS_BG_LOCAL', JSON.stringify(raw)); } catch {}
-                console.log(`[phone-mode] 已迁移 ${migrated} 张联系人背景到 IndexedDB`);
+                try { localStorage.setItem('ST_SMS_BG_LOCAL', JSON.stringify(raw)); } catch (e) {}
             }
             window.__pmBgLocal = result;
-        } catch { window.__pmBgLocal = {}; }
+        } catch (e) { window.__pmBgLocal = {}; }
     }
 
     async function saveBgGlobal() {
         const v = window.__pmBgGlobal || '';
         if (pmIsBigData(v)) {
             await pmIDBSet('ST_SMS_BG_GLOBAL', v);
-            try { localStorage.setItem('ST_SMS_BG_GLOBAL', IDB_MARKER); } catch {}
+            try { localStorage.setItem('ST_SMS_BG_GLOBAL', IDB_MARKER); } catch (e) {}
         } else {
             await pmIDBDel('ST_SMS_BG_GLOBAL');
-            try { localStorage.setItem('ST_SMS_BG_GLOBAL', v); } catch {}
+            try { localStorage.setItem('ST_SMS_BG_GLOBAL', v); } catch (e) {}
         }
     }
 
@@ -186,14 +184,14 @@
                 ptr[k] = IDB_MARKER;
             } else {
                 await pmIDBDel('ST_SMS_BG_LOCAL_' + k);
-                if (v !== undefined) ptr[k] = v; // 空字符串也写入，表示"已清除"
+                if (v !== undefined) ptr[k] = v; 
             }
         }
-        try { localStorage.setItem('ST_SMS_BG_LOCAL', JSON.stringify(ptr)); } catch {}
+        try { localStorage.setItem('ST_SMS_BG_LOCAL', JSON.stringify(ptr)); } catch (e) {}
     }
 
-    function loadGroupMeta() { try { window.__pmGroupMeta = JSON.parse(localStorage.getItem('ST_SMS_GROUP_META')) || {}; } catch { window.__pmGroupMeta = {}; } }
-    function saveGroupMeta() { try { localStorage.setItem('ST_SMS_GROUP_META', JSON.stringify(window.__pmGroupMeta)); } catch {} }
+    function loadGroupMeta() { try { window.__pmGroupMeta = JSON.parse(localStorage.getItem('ST_SMS_GROUP_META')) || {}; } catch (e) { window.__pmGroupMeta = {}; } }
+    function saveGroupMeta() { try { localStorage.setItem('ST_SMS_GROUP_META', JSON.stringify(window.__pmGroupMeta)); } catch (e) {} }
 
     function applyTheme() {
         const el = phoneWindow; if (!el) return;
@@ -241,6 +239,17 @@
         });
     }
 
+    function escapeHtml(s) {
+        return (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+    function escapeAttr(s) {
+        return (s || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#39;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+    function safeJS(s) {
+        const jsEscaped = (s || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '\\"').replace(/\n/g, '\\n');
+        return escapeAttr(jsEscaped);
+    }
+
     function openCropper(imgDataUrl, onConfirm) {
         const ratio = 330 / 450;
         document.getElementById('pm-overlay')?.remove();
@@ -252,7 +261,7 @@
   <div style="padding:12px 14px;">
     <div class="pm-crop-tip">拖动图片调整位置，滚轮/捏合缩放</div>
     <div class="pm-crop-frame" id="pm-crop-frame">
-      <img id="pm-crop-img" src="${imgDataUrl}" alt="">
+      <img id="pm-crop-img" src="${escapeAttr(imgDataUrl)}" alt="">
       <div class="pm-crop-mask"></div>
     </div>
     <div class="pm-crop-zoom">
@@ -267,7 +276,7 @@
 </div>`;
         ov.addEventListener('click', e => { if (e.target === ov) { ov.remove(); window.__pmShowConfig(); } });
         document.body.appendChild(ov);
-        if (ov.showPopover) try { ov.showPopover(); } catch {}
+        if (ov.showPopover) try { ov.showPopover(); } catch (e) {}
         const frame = ov.querySelector('#pm-crop-frame'), img = ov.querySelector('#pm-crop-img');
         const zoomSlider = ov.querySelector('#pm-crop-zoom');
         let tx = 0, ty = 0, scale = 1, frameW = 0, frameH = 0, baseW = 0, baseH = 0;
@@ -325,9 +334,11 @@
         };
     }
 
+    // 更新模糊匹配字典，增加"退还"
     const SPECIAL_KEYWORDS = {
         '转账':'转账','transfer':'转账','Transfer':'转账','TRANSFER':'转账',
         '收款':'收款','receive':'收款','Receive':'收款','RECEIVE':'收款','收钱':'收款','收到':'收款',
+        '退还':'退还','退钱':'退还','退款':'退还','refund':'退还','Refund':'退还','REFUND':'退还',
         '图片':'图片','image':'图片','Image':'图片','IMAGE':'图片','img':'图片','pic':'图片','photo':'图片',
         '语音':'语音','voice':'语音','Voice':'语音','VOICE':'语音','audio':'语音',
     };
@@ -359,7 +370,7 @@
             window.__pmHistories = newData;
             saveHistories();
             localStorage.setItem('ST_SMS_MIGRATED_V3', '1');
-        } catch {}
+        } catch (e) {}
     }
 
     function normalizeApiUrls(input) {
@@ -371,8 +382,8 @@
         return { chatUrl: url + '/v1/chat/completions', modelsUrl: url + '/v1/models' };
     }
 
-    function loadProfiles() { try { window.__pmProfiles = JSON.parse(localStorage.getItem('ST_SMS_API_PROFILES')) || []; } catch { window.__pmProfiles = []; } }
-    function saveProfiles() { try { localStorage.setItem('ST_SMS_API_PROFILES', JSON.stringify(window.__pmProfiles)); } catch {} }
+    function loadProfiles() { try { window.__pmProfiles = JSON.parse(localStorage.getItem('ST_SMS_API_PROFILES')) || []; } catch (e) { window.__pmProfiles = []; } }
+    function saveProfiles() { try { localStorage.setItem('ST_SMS_API_PROFILES', JSON.stringify(window.__pmProfiles)); } catch (e) {} }
     function addOrUpdateProfile(p) {
         if (!p.apiUrl || !p.apiKey) return;
         const idx = window.__pmProfiles.findIndex(x => x.apiUrl === p.apiUrl && x.apiKey === p.apiKey);
@@ -389,24 +400,22 @@
 
     window.__pmSetMode = (v) => {
         window.__pmConfig.useIndependent = !!v;
-        try { localStorage.setItem('ST_SMS_CONFIG', JSON.stringify(window.__pmConfig)); } catch {}
+        try { localStorage.setItem('ST_SMS_CONFIG', JSON.stringify(window.__pmConfig)); } catch (e) {}
         const a = document.getElementById('pm-mode-main'), b = document.getElementById('pm-mode-indep'), t = document.getElementById('pm-mode-tip');
         if (a && b) { a.classList.toggle('pm-mode-active', !v); b.classList.toggle('pm-mode-active', !!v); }
         if (t) t.textContent = v ? '🔌 独立API' : '🏠 主API';
     };
 
-    function loadBidirectional() { try { window.__pmBidirectional = JSON.parse(localStorage.getItem('ST_SMS_BIDIRECTIONAL')) || {}; } catch { window.__pmBidirectional = {}; } }
-    function saveBidirectional() { try { localStorage.setItem('ST_SMS_BIDIRECTIONAL', JSON.stringify(window.__pmBidirectional)); } catch {} }
+    function loadBidirectional() { try { window.__pmBidirectional = JSON.parse(localStorage.getItem('ST_SMS_BIDIRECTIONAL')) || {}; } catch (e) { window.__pmBidirectional = {}; } }
+    function saveBidirectional() { try { localStorage.setItem('ST_SMS_BIDIRECTIONAL', JSON.stringify(window.__pmBidirectional)); } catch (e) {} }
 
     function applyBidirectionalInjection() {
         const c = getCtx(); if (!c || typeof c.setExtensionPrompt !== 'function') return;
-        
-        // 👇 新增：获取当前 ST 里的真实用户名（如果没有则回退为"用户"）
         const userName = getUserPersona().name || '用户';
         
         const id = getStorageId(), checked = window.__pmBidirectional[id] || [], histories = window.__pmHistories[id] || {};
         const groups = window.__pmGroupMeta[id] || {};
-        if (!checked.length) { try { c.setExtensionPrompt(BIDIRECTIONAL_KEY, '', 0, 0, false, 0); } catch {} return; }
+        if (!checked.length) { try { c.setExtensionPrompt(BIDIRECTIONAL_KEY, '', 0, 0, false, 0); } catch (e) {} return; }
         const blocks = checked.map(name => {
             const conv = (histories[name] || []).slice(-BIDIRECTIONAL_LIMIT);
             if (!conv.length) return '';
@@ -414,25 +423,21 @@
                 const meta = groups[name]; if (!meta) return '';
                 const lines = conv.map(m => {
                     const t = (m.content || '').replace(/\s*\/\s*/g, '。').replace(/\n/g, '；');
-                    // 👇 修改：把写死的“用户：”换成真实名字
                     return m.role === 'user' ? `${userName}：${t}` : t;
                 }).join('\n');
-                // 👇 修改：提示词里的说明也换成真实名字
                 return `【群聊"${meta.name}"（成员：${meta.members.join('、')}）的最近聊天 — 仅参与者与 ${userName} 知晓，其他角色不应知情】\n${lines}`;
             }
             const lines = conv.map(m => { 
                 const t = (m.content || '').replace(/\s*\/\s*/g, '。'); 
-                // 👇 修改：把写死的“用户：”换成真实名字
                 return m.role === 'user' ? `${userName}：${t}` : `${name}：${t}`; 
             }).join('\n');
-            // 👇 修改：提示词里的说明也换成真实名字
             return `【与 ${name} 的短信 — 仅 ${name} 与 ${userName} 知晓】\n${lines}`;
         }).filter(Boolean).join('\n\n');
-        if (!blocks) { try { c.setExtensionPrompt(BIDIRECTIONAL_KEY, '', 0, 0, false, 0); } catch {} return; }
-        try { c.setExtensionPrompt(BIDIRECTIONAL_KEY, `[手机短信记忆 — 私密]\n${blocks}\n[结束]`, 0, 0, false, 0); } catch {}
+        if (!blocks) { try { c.setExtensionPrompt(BIDIRECTIONAL_KEY, '', 0, 0, false, 0); } catch (e) {} return; }
+        try { c.setExtensionPrompt(BIDIRECTIONAL_KEY, `[手机短信记忆 — 私密]\n${blocks}\n[结束]`, 0, 0, false, 0); } catch (e) {}
     }
 
-    let __pmLastChatLen = 0; // 记录主楼的聊天长度防抖
+    let __pmLastChatLen = 0;
 
     function hookGenerationEvent() {
         if (__pmEventHooked) return;
@@ -440,7 +445,7 @@
         if (!c?.eventSource || !c?.event_types) return;
         const et = c.event_types;
 
-        __pmLastChatLen = (c.chat || []).length; // 初始化当前长度
+        __pmLastChatLen = (c.chat || []).length;
 
         const events = [
             et.GENERATION_STARTED || 'generation_started',
@@ -453,33 +458,27 @@
         events.forEach(ev => {
             try {
                 c.eventSource.on(ev, () => {
-                    try { applyBidirectionalInjection(); } catch {}
+                    try { applyBidirectionalInjection(); } catch (e) {}
                 });
-            } catch {}
+            } catch (e) {}
         });
 
-        // 👇 修复：带“长度比对”的主楼监听器，严防 Swipe 重复计数
         try {
             c.eventSource.on(et.MESSAGE_RECEIVED || 'message_received', () => {
                 const currentLen = (c.chat || []).length;
-                
                 if (currentLen > __pmLastChatLen) {
-                    // 只有总消息数增加了，才推进计数器
                     __pmLastChatLen = currentLen;
                     if (typeof window.__pmIncrementCounters === 'function') {
                         window.__pmIncrementCounters();
                     }
                 } else if (currentLen < __pmLastChatLen) {
-                    // 如果用户删除了主楼消息，只同步长度，不推进计数器
                     __pmLastChatLen = currentLen;
                 }
             });
-
-            // 切换聊天时，重置长度基准
             c.eventSource.on(et.CHAT_CHANGED || 'chat_id_changed', () => {
                 __pmLastChatLen = (c.chat || []).length;
             });
-        } catch {}
+        } catch (e) {}
 
         __pmEventHooked = true;
         console.log('[phone-mode] hooked', events.length, 'events');
@@ -512,13 +511,13 @@
                     }
                 }
             }
-        } catch {}
+        } catch (e) {}
 
         if (!description) {
             try {
                 const meta = c.chatMetadata || c.chat_metadata;
                 if (meta?.persona) description = String(meta.persona);
-            } catch {}
+            } catch (e) {}
         }
 
         try {
@@ -528,7 +527,7 @@
                     name = resolvedName.trim();
                 }
             }
-        } catch {}
+        } catch (e) {}
 
         return { name, description };
     }
@@ -545,7 +544,7 @@
                 worldBookText = wi?.worldInfoString || wi?.worldInfoBefore || '';
                 if (!worldBookText && wi && typeof wi === 'object') worldBookText = [wi.worldInfoBefore, wi.worldInfoAfter].filter(Boolean).join('\n');
             }
-        } catch {}
+        } catch (e) {}
         const userPersona = getUserPersona();
         return {
             cardDesc: char.description ?? '',
@@ -580,18 +579,6 @@
         const onEnd = () => { if (!isDragging) return; isDragging = false; el.style.transition = '.35s cubic-bezier(.18,.89,.32,1.2)'; if (!moved) window.__pmToggleMin(); };
         handle.addEventListener('mousedown', onStart); window.addEventListener('mousemove', onMove); window.addEventListener('mouseup', onEnd);
         handle.addEventListener('touchstart', onStart, { passive: false }); window.addEventListener('touchmove', onMove, { passive: false }); window.addEventListener('touchend', onEnd);
-    }
-
-    // ✅ HTML 实体编码（防 XSS，含单引号转义）
-    function escapeHtml(s) {
-        return (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-    }
-    function escapeAttr(s) {
-        return (s || '')
-            .replace(/"/g, '&quot;')
-            .replace(/'/g, '&#39;')
-            .replace(/</g, '&lt;')
-            .replace(/&/g, '&amp;');
     }
 
     function resolveGroupColor(name) {
@@ -642,12 +629,16 @@
                 container.appendChild(nameTag);
             }
             const b = document.createElement('div'); b.className = `pm-bubble pm-${side} pm-special`;
+            
             if (kind === '转账') {
                 const amount = parseFloat(m[2]) || 0;
                 b.innerHTML = `<div class="pm-transfer-card"><div class="pm-t-icon">¥</div><div class="pm-t-info"><b>转账</b><span>¥${amount.toFixed(2)}</span></div></div>`;
             } else if (kind === '收款') {
                 const amount = parseFloat(m[2]) || 0;
                 b.innerHTML = `<div class="pm-receive-card"><div class="pm-t-icon">¥</div><div class="pm-t-info"><b>收款</b><span>¥${amount.toFixed(2)}</span></div></div>`;
+            } else if (kind === '退还') {
+                const amount = parseFloat(m[2]) || 0;
+                b.innerHTML = `<div class="pm-refund-card"><div class="pm-t-icon">¥</div><div class="pm-t-info"><b>已退还</b><span>¥${amount.toFixed(2)}</span></div></div>`;
             } else if (kind === '图片') {
                 b.innerHTML = `<div class="pm-img-card">🖼️ ${escapeHtml(m[2].trim())}</div>`;
             } else {
@@ -748,7 +739,6 @@
         return result;
     }
 
-    // ========== 统一 AI 调用（支持主API和独立API） ==========
     async function callAI(systemPrompt, userPrompt, options = {}) {
         const cfg = window.__pmConfig;
         const useIndep = cfg.useIndependent && cfg.apiUrl && cfg.apiKey;
@@ -781,7 +771,8 @@
         } else {
             const c = getCtx();
             if (!c) throw new Error('无上下文');
-            return await c.generateQuietPrompt(userPrompt, false, false);
+            const fullPrompt = systemPrompt ? `${systemPrompt}\n\n${userPrompt}` : userPrompt;
+            return await c.generateQuietPrompt(fullPrompt, false, false);
         }
     }
 
@@ -816,17 +807,18 @@
 1. 每一行都必须以 "角色名：" 开头（角色名必须来自：${memberList}）
 2. 严禁输出对界面、系统、对话本身的总结或描述性文字
 3. 严禁输出类似"现在应该..."、"我已经..."、"看起来..."这类叙述性句子
-4. 特殊格式必须在同一行内完整写出且闭合：(转账+金额) (收款+金额) (图片+描述) (语音+内容)
+4. 特殊格式必须在同一行内完整写出且闭合：(转账+金额) (收款+金额) (退还+金额) (图片+描述) (语音+内容)。注意：退还指拒绝聊天对象转账。
 5. 特殊格式括号内严禁换行、编号（1. 2. 3.）、列表
 6. 每条消息内的 / 只用于分隔同一角色的多条短信
 7. 每个角色根据自己的人设和当前剧情主动决定发言条数，0-8句，可穿插发言，不必所有人都说话
-8. 严禁英文格式 (Voice+/Image+/Transfer+)
+8. 严禁英文格式 (Voice+/Image+/Transfer+/Refund+)
 9. 完全沉浸于角色设定，褪去AI客观语气。根据用户引导自然推进剧情，在用户明确发起成人或极端互动前，保持符合日常社交尺度的全年龄对话风格。
 
 ✅ 正确示例：
 小明：我先到了 / 这家店真不错
 小红：等我五分钟 / (语音+马上到别急)
 小明：好 / (图片+刚拍的店门口)
+小李：(退还+50) / 昨天多给的钱退你啦
 
 ❌ 错误示例（绝对禁止）：
 小明：(语音+内容有换行
@@ -853,7 +845,7 @@ ${userName}：${userMsg}`;
                 `输出格式：角色名：消息 / 消息（每个角色0-8句，根据人设和剧情决定是否发言及发言数量）`,
                 `角色名后只跟该角色的话，严禁 "(角色名：xxx)" 这种嵌套。`,
                 `角色可穿插发言，不必所有人都说话。`,
-                '特殊格式（必须中文且单行闭合）：(转账+金额) (收款+金额) (图片+描述) (语音+内容)。',
+                '特殊格式（必须中文且单行闭合）：(转账+金额) (收款+金额) (退还+金额) (图片+描述) (语音+内容)。注意：退还指拒绝聊天对象转账。',
                 '禁止任何标签格式旁白选项状态栏。',
             ].filter(Boolean).join('\n\n');
         } else {
@@ -872,7 +864,7 @@ ${userBlock}
 ${contextBlockMain ? contextBlockMain + '\n\n' : ''}规则：
 - 只输出短信文字，3到8句，每句用 / 分隔
 - 禁止旁白心理描写场景描述角色名前缀标签格式
-- 特殊格式（中文单行闭合）：(转账+金额) (收款+金额) (图片+描述) (语音+内容)
+- 特殊格式（中文单行闭合）：(转账+金额) (收款+金额) (退还+金额) (图片+描述) (语音+内容)。注意：退还指拒绝聊天对象转账。
 - 严禁英文格式
 - 完全沉浸于角色设定，褪去AI助手的客观语气
 - 根据用户的引导自然推进剧情，在用户明确发起成人或极端互动前，保持符合日常社交尺度的全年龄对话风格
@@ -894,10 +886,14 @@ ${currentPersona}：`;
                 mainChatText ? `【主线最近对话】\n${mainChatText}` : '',
                 '',
                 '只输出3到8句短信，每句用 / 分隔，不得中途截断。',
-                '特殊格式（必须中文单行闭合）：(转账+金额) (收款+金额) (图片+描述) (语音+内容)。',
+                '特殊格式（必须中文单行闭合）：(转账+金额) (收款+金额) (退还+金额) (图片+描述) (语音+内容)。注意：退还指拒绝聊天对象转账。',
                 '禁止任何标签格式旁白选项状态栏。',
             ].filter(Boolean).join('\n\n');
         }
+
+        const antiFluff = '【务必直接按格式输出短信内容，严禁在开头输出“好的”、“下面是”等任何说明性废话，严禁输出非角色的语言。】';
+        systemPrompt += `\n\n${antiFluff}`;
+        injectedInstruction += `\n\n${antiFluff}`;
 
         try {
             const cfg = window.__pmConfig;
@@ -905,7 +901,10 @@ ${currentPersona}：`;
             let raw = '';
 
             if (useIndep) {
-                raw = await callAI(systemPrompt, injectedInstruction, { maxTokens: isGroupChat ? 600 : 300 });
+                const indepUserPrompt = isGroupChat
+                    ? `【群聊历史】\n${smsHistoryText}\n\n${userName}：${userMsg}`
+                    : `【短信对话历史】\n${smsHistoryText}\n\n${userName}：${userMsg}\n${currentPersona}：`;
+                raw = await callAI(systemPrompt, indepUserPrompt, { maxTokens: isGroupChat ? 600 : 300 });
             } else {
                 raw = await callAI('', injectedInstruction, { maxTokens: isGroupChat ? 600 : 300 });
             }
@@ -918,13 +917,8 @@ ${currentPersona}：`;
                     conversationHistory.push({ role: 'assistant', content: contentParts.join('\n') });
                     resultData = { type: 'group', data: parsed };
                 } else {
-                    // 1. 在控制台打印出 AI 到底发了什么神经，方便排查
                     console.warn('[phone-mode] ⚠️ 群聊格式解析失败！AI 原始返回内容：', raw);
-                    
-                    // 2. 不要把乱码或拒答塞进真实的历史记录里，用占位符代替，防止污染后续对话
                     conversationHistory.push({ role: 'assistant', content: '（格式无法解析或AI拒答）' }); 
-                    
-                    // 3. 在界面上给用户更明确的提示
                     const snippet = raw ? raw.substring(0, 20).replace(/\n/g, '') + '...' : '空响应或纯思考过程';
                     resultData = { 
                         type: 'group', 
@@ -1007,7 +1001,6 @@ ${currentPersona}：`;
         }
         isGenerating = false; input.disabled = false; if (btn) btn.disabled = false; input.focus();
 
-        // 自动发消息：递增计数器
         setTimeout(() => {
             if (!isGenerating && typeof window.__pmIncrementCounters === 'function') {
                 window.__pmIncrementCounters();
@@ -1015,8 +1008,6 @@ ${currentPersona}：`;
         }, 300);
     };
 
-    
-    // ========== 全局计数器推进（支持主楼触发） ==========
     window.__pmIncrementCounters = () => {
         const id = getStorageId();
         const configs = window.__pmPokeConfig[id];
@@ -1038,7 +1029,6 @@ ${currentPersona}：`;
 
         if (updated) {
             savePokeConfig();
-            // 实时更新当前正开着的设置面板上的数字
             const counterEl = document.getElementById('pm-poke-counter');
             if (counterEl && configs[currentPersona]) counterEl.textContent = configs[currentPersona].autoPoke.counter;
             const groupCounterEl = document.getElementById('pm-poke-counter-group');
@@ -1052,7 +1042,6 @@ ${currentPersona}：`;
         }
     };
 
-    // ========== 自动发消息（支持纯后台运行，不乱弹气泡） ==========
     window.__pmAutoPoke = async (contactName) => {
         if (isGenerating) return;
         isGenerating = true;
@@ -1061,7 +1050,6 @@ ${currentPersona}：`;
         const groupMeta = window.__pmGroupMeta[id]?.[contactName];
         const isGroup = !!groupMeta;
         
-        // 判断当前用户是否正盯着这个联系人的手机界面看
         const isActiveView = phoneActive && ((isGroup && currentGroupKey === contactName) || (!isGroup && currentPersona === contactName));
         
         if (isActiveView) {
@@ -1074,30 +1062,32 @@ ${currentPersona}：`;
 
         const ctxData = await gatherContext();
         const { cardDesc, cardPersonality, cardScenario, cardMesExample, mainChatText, worldBookText, userName, userDesc } = ctxData;
-
         const userBlock = [`用户名字：${userName}`, userDesc ? `用户人设：${userDesc}` : ''].filter(Boolean).join('\n');
 
-        const systemPrompt = isGroup ? `你同时扮演群聊中的所有成员。` : `你正在扮演"${contactName}"通过手机短信与用户 ${userName} 聊天。`;
+        let targetHistory = window.__pmHistories[id]?.[contactName] || [];
+        const smsHistoryText = targetHistory.slice(-CONTEXT_LIMIT).map(m => {
+            const clean = cleanResponse(m.content);
+            return m.role === 'user' ? `${userName}：${clean}` : (isGroup ? clean : `${contactName}：${clean}`);
+        }).join('\n');
+
+        const systemPrompt = isGroup ? `你同时扮演群聊中的所有成员。\n【务必直接按格式输出短信内容，严禁在开头输出“好的”等废话。】` : `你正在扮演"${contactName}"通过手机短信与用户 ${userName} 聊天。\n【务必直接按格式输出短信内容，严禁在开头输出“好的”等废话。】`;
         const userPrompt = isGroup
-            ? `群聊名称：${groupMeta.name}\n群聊成员：${groupMeta.members.join('、')}\n\n用户有一段时间没有说话。请以所有群成员的身份，根据各自的性格、人设和当前聊天上下文，自然地发起话题或继续聊天。每个成员根据人设决定发言 0-8 句。\n\n输出格式：角色名：消息 / 消息\n\n【用户信息】\n${userBlock}\n\n【角色设定】\n${cardDesc || ''}\n\n【性格】\n${cardPersonality || ''}\n\n【场景】\n${cardScenario || ''}\n\n【世界书】\n${worldBookText || ''}\n\n【主线最近对话】\n${mainChatText || ''}`
-            : `用户有一段时间没有回复。作为${contactName}，根据你的人设和当前聊天情境，自然地发送 3-8 句短信继续对话或发起新话题，不要提及用户没有回复这件事。\n\n【用户信息】\n${userBlock}\n\n【角色设定】\n${cardDesc || ''}\n\n【性格】\n${cardPersonality || ''}\n\n【场景】\n${cardScenario || ''}\n\n【对话示例】\n${cardMesExample || ''}\n\n【世界书】\n${worldBookText || ''}\n\n【主线最近对话】\n${mainChatText || ''}\n\n输出格式：短信内容 / 短信内容（每句用 / 分隔，特殊格式中文单行闭合）`;
+            ? `群聊名称：${groupMeta.name}\n群聊成员：${groupMeta.members.join('、')}\n\n用户有一段时间没有说话。请以所有群成员的身份，根据各自的性格、人设和当前聊天上下文，自然地发起话题或继续聊天。每个成员根据人设决定发言 0-8 句。\n\n输出格式：角色名：消息 / 消息\n\n【用户信息】\n${userBlock}\n\n【角色设定】\n${cardDesc || ''}\n\n【性格】\n${cardPersonality || ''}\n\n【场景】\n${cardScenario || ''}\n\n【世界书】\n${worldBookText || ''}\n\n【主线最近对话】\n${mainChatText || ''}\n\n【群聊历史】\n${smsHistoryText}`
+            : `用户有一段时间没有回复。作为${contactName}，根据你的人设和当前聊天情境，自然地发送 3-8 句短信继续对话或发起新话题，不要提及用户没有回复这件事。\n\n【用户信息】\n${userBlock}\n\n【角色设定】\n${cardDesc || ''}\n\n【性格】\n${cardPersonality || ''}\n\n【场景】\n${cardScenario || ''}\n\n【对话示例】\n${cardMesExample || ''}\n\n【世界书】\n${worldBookText || ''}\n\n【主线最近对话】\n${mainChatText || ''}\n\n【短信对话历史】\n${smsHistoryText}\n\n输出格式：短信内容 / 短信内容（每句用 / 分隔，特殊格式中文单行闭合）`;
 
         try {
             const raw = await callAI(systemPrompt, userPrompt);
             let historyUpdated = false;
-            let targetHistory = window.__pmHistories[id]?.[contactName] || [];
 
             if (isActiveView) hideTyping();
 
             if (isGroup) {
-                // 后台解析时临时覆盖成员列表，加入安全保护
                 const oldMembers = groupMembers;
                 let parsed = [];
                 try {
                     groupMembers = groupMeta.members;
                     parsed = parseGroupResponse(raw);
                 } finally {
-                    // 无论解析成功还是报错，必定将成员列表恢复，防止状态污染
                     groupMembers = oldMembers;
                 }
 
@@ -1131,7 +1121,6 @@ ${currentPersona}：`;
                 window.__pmHistories[id][contactName] = targetHistory.slice(-SAVE_LIMIT);
                 saveHistories(); applyBidirectionalInjection();
                 
-                // 如果用户没在看着这个界面，给一条提示
                 if (phoneActive && !isActiveView) {
                     addNote(`📩 ${isGroup ? groupMeta.name : contactName} 发来了新消息`);
                 }
@@ -1148,7 +1137,6 @@ ${currentPersona}：`;
         isGenerating = false;
     };
 
-    // ========== 拍一拍 & 联系人设置 ==========
     function showContactConfig(contactName) {
         const id = getStorageId();
         const config = window.__pmPokeConfig[id]?.[contactName] || {
@@ -1159,14 +1147,13 @@ ${currentPersona}：`;
     <div class="pm-modal pm-modal-wide">
     <div class="pm-modal-header">
         <b>${escapeHtml(contactName)} 设置</b>
-        <span onclick="window.__pmSaveAndCloseContactConfig('${escapeAttr(contactName)}')" class="pm-modal-close">✕</span>
+        <span onclick="window.__pmSaveAndCloseContactConfig('${safeJS(contactName)}')" class="pm-modal-close">✕</span>
     </div>
     <div style="padding:16px;display:flex;flex-direction:column;gap:16px;">
-
         <div>
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
             <span style="font-size:13px;font-weight:600;">⏰ 自动发消息</span>
-            <div onclick="window.__pmToggleAutoPoke('${escapeAttr(contactName)}')"
+            <div onclick="window.__pmToggleAutoPoke('${safeJS(contactName)}')"
                 class="pm-custom-check pm-bi-style ${config.autoPoke.enabled ? 'is-checked' : ''}"
                 id="pm-poke-check"
                 style="cursor:pointer;width:22px;height:22px;min-width:22px;min-height:22px;flex-shrink:0;border-radius:50%;">
@@ -1184,14 +1171,12 @@ ${currentPersona}：`;
             当前计数：<span id="pm-poke-counter">${config.autoPoke.counter}</span> / ${config.autoPoke.interval}
         </div>
         </div>
-
         <div style="margin-top:4px;">
-        <button onclick="window.__pmPoke('${escapeAttr(contactName)}')"
+        <button onclick="window.__pmPoke('${safeJS(contactName)}')"
                 style="width:100%;background:linear-gradient(135deg,#ff9500,#ff6b00);color:#fff;border:none;border-radius:12px;padding:14px;font-size:14px;cursor:pointer;font-weight:600;display:flex;align-items:center;justify-content:center;">
             拍一拍
         </button>
         </div>
-
     </div>
     </div>`);
     }
@@ -1215,7 +1200,6 @@ ${currentPersona}：`;
                     counter: enabled ? Math.min(oldCounter, interval - 1) : oldCounter
                 }
             };
-
             savePokeConfig();
         }
 
@@ -1226,9 +1210,7 @@ ${currentPersona}：`;
     window.__pmToggleAutoPoke = (contactName) => {
         const checkEl = document.getElementById('pm-poke-check');
         const intervalEl = document.getElementById('pm-poke-interval');
-
         if (!checkEl) return;
-
         const isChecked = checkEl.classList.toggle('is-checked');
         if (intervalEl) intervalEl.disabled = !isChecked;
     };
@@ -1249,13 +1231,11 @@ ${currentPersona}：`;
         if (isGenerating) return;
         isGenerating = true;
 
-        // 禁用输入框和发送按钮
         const input = phoneWindow?.querySelector('.pm-input');
         const btn = phoneWindow?.querySelector('.pm-up-btn');
         if (input) input.disabled = true;
         if (btn) btn.disabled = true;
 
-        // 显示等待气泡
         showTyping();
 
         const ctxData = await gatherContext();
@@ -1265,20 +1245,24 @@ ${currentPersona}：`;
             `用户名字：${userName}`,
             userDesc ? `用户人设：${userDesc}` : ''
         ].filter(Boolean).join('\n');
+        
+        const smsHistoryText = conversationHistory.slice(-CONTEXT_LIMIT).map(m => {
+            const clean = cleanResponse(m.content);
+            return m.role === 'user' ? `${userName}：${clean}` : (isGroupChat ? clean : `${contactName}：${clean}`);
+        }).join('\n');
 
         const systemPrompt = isGroupChat
-            ? `你同时扮演群聊中的所有成员。`
-            : `你正在扮演"${contactName}"通过手机短信与用户 ${userName} 聊天。`;
+            ? `你同时扮演群聊中的所有成员。\n【务必直接按格式输出短信内容，严禁在开头输出“好的”等废话。】`
+            : `你正在扮演"${contactName}"通过手机短信与用户 ${userName} 聊天。\n【务必直接按格式输出短信内容，严禁在开头输出“好的”等废话。】`;
 
         const userPrompt = isGroupChat
-            ? `群聊名称：${groupDisplayName || '群聊'}\n群聊成员：${groupMembers.join('、')}\n\n请以所有群成员的身份，根据各自的性格和当前聊天上下文，自然地发起话题或继续聊天。每个成员根据人设决定发言 0-8 句。\n\n输出格式：角色名：消息内容 / 消息内容\n\n【用户信息】\n${userBlock}\n\n【角色设定】\n${cardDesc || ''}\n\n【性格】\n${cardPersonality || ''}\n\n【场景】\n${cardScenario || ''}\n\n【世界书】\n${worldBookText || ''}\n\n【主线最近对话】\n${mainChatText || ''}`
-            : `作为${contactName}，根据你的人设、性格和当前聊天情境，自然地发送 3-8 句短信，不要提及任何外部触发，就像你自己突然想发消息一样。\n\n【用户信息】\n${userBlock}\n\n【角色设定】\n${cardDesc || ''}\n\n【性格】\n${cardPersonality || ''}\n\n【场景】\n${cardScenario || ''}\n\n【对话示例】\n${cardMesExample || ''}\n\n【世界书】\n${worldBookText || ''}\n\n【主线最近对话】\n${mainChatText || ''}\n\n输出格式：短信内容 / 短信内容（每句用 / 分隔，特殊格式中文单行闭合）`;
+            ? `群聊名称：${groupDisplayName || '群聊'}\n群聊成员：${groupMembers.join('、')}\n\n请以所有群成员的身份，根据各自的性格和当前聊天上下文，自然地发起话题或继续聊天。每个成员根据人设决定发言 0-8 句。\n\n输出格式：角色名：消息内容 / 消息内容\n\n【用户信息】\n${userBlock}\n\n【角色设定】\n${cardDesc || ''}\n\n【性格】\n${cardPersonality || ''}\n\n【场景】\n${cardScenario || ''}\n\n【世界书】\n${worldBookText || ''}\n\n【主线最近对话】\n${mainChatText || ''}\n\n【群聊历史】\n${smsHistoryText}`
+            : `作为${contactName}，根据你的人设、性格和当前聊天情境，自然地发送 3-8 句短信，不要提及任何外部触发，就像你自己突然想发消息一样。\n\n【用户信息】\n${userBlock}\n\n【角色设定】\n${cardDesc || ''}\n\n【性格】\n${cardPersonality || ''}\n\n【场景】\n${cardScenario || ''}\n\n【对话示例】\n${cardMesExample || ''}\n\n【世界书】\n${worldBookText || ''}\n\n【主线最近对话】\n${mainChatText || ''}\n\n【短信对话历史】\n${smsHistoryText}\n\n输出格式：短信内容 / 短信内容（每句用 / 分隔，特殊格式中文单行闭合）`;
 
         try {
             const raw = await callAI(systemPrompt, userPrompt);
-            let historyUpdated = false; // 👇 新增标记
+            let historyUpdated = false;
 
-            // 隐藏等待气泡
             hideTyping();
 
             if (isGroupChat) {
@@ -1310,7 +1294,6 @@ ${currentPersona}：`;
                 }
             }
 
-            // 👇 新增：更新本地缓存与双向注入
             if (historyUpdated) {
                 const id = getStorageId();
                 if (!window.__pmHistories[id]) window.__pmHistories[id] = {};
@@ -1323,7 +1306,6 @@ ${currentPersona}：`;
             addNote(`（发送失败：${e?.message || e}）`);
         }
 
-        // 恢复输入框
         if (input) input.disabled = false;
         if (btn) btn.disabled = false;
         isGenerating = false;
@@ -1337,7 +1319,6 @@ ${currentPersona}：`;
         }
     };
 
-    // ========== 群聊配置弹窗 ==========
     function showGroupForm(mode, existingName, existingMembers) {
         document.getElementById('pm-overlay')?.remove();
         const title = mode === 'create' ? '新建群聊' : '编辑群聊';
@@ -1394,11 +1375,9 @@ ${currentPersona}：`;
         </div>
         ` : ''}
     </div>
-    ${mode === 'create' ? `
     <div class="pm-modal-add">
-        <button onclick="window.__pmConfirmGroup('create','')" style="flex:1;background:#007aff;color:#fff;border:none;border-radius:10px;padding:10px;font-size:13px;cursor:pointer;font-weight:600;">创建</button>
+        <button onclick="window.__pmConfirmGroup('${safeJS(mode)}')" style="flex:1;background:#007aff;color:#fff;border:none;border-radius:10px;padding:10px;font-size:13px;cursor:pointer;font-weight:600;">${mode === 'create' ? '创建' : '保存'}</button>
     </div>
-    ` : ''}
     </div>`);
         setTimeout(() => window.__pmGroupInputChanged(), 0);
     }
@@ -1406,9 +1385,7 @@ ${currentPersona}：`;
     window.__pmToggleAutoPokeGroup = () => {
         const checkEl = document.getElementById('pm-poke-check-group');
         const intervalEl = document.getElementById('pm-poke-interval-group');
-
         if (!checkEl) return;
-
         const isChecked = checkEl.classList.toggle('is-checked');
         if (intervalEl) intervalEl.disabled = !isChecked;
     };
@@ -1427,13 +1404,11 @@ ${currentPersona}：`;
         if (isGenerating) return;
         isGenerating = true;
 
-        // 禁用输入框和发送按钮
         const input = phoneWindow?.querySelector('.pm-input');
         const btn = phoneWindow?.querySelector('.pm-up-btn');
         if (input) input.disabled = true;
         if (btn) btn.disabled = true;
 
-        // 显示等待气泡
         showTyping();
 
         const ctxData = await gatherContext();
@@ -1443,18 +1418,21 @@ ${currentPersona}：`;
             `用户名字：${userName}`,
             userDesc ? `用户人设：${userDesc}` : ''
         ].filter(Boolean).join('\n');
+        
+        const smsHistoryText = conversationHistory.slice(-CONTEXT_LIMIT).map(m => {
+            const clean = cleanResponse(m.content);
+            return m.role === 'user' ? `${userName}：${clean}` : clean;
+        }).join('\n');
 
-        const systemPrompt = `你同时扮演群聊中的所有成员。`;
-        const userPrompt = `群聊名称：${groupDisplayName || '群聊'}\n群聊成员：${groupMembers.join('、')}\n\n请以每个群成员的身份，根据各自的性格、人设和当前聊天上下文，自然地发起话题或继续聊天，不要提及任何外部触发。\n每个成员根据自己的判断选择发言 0-8 条。\n\n输出格式：角色名：消息内容 / 消息内容\n\n【用户信息】\n${userBlock}\n\n【角色设定】\n${cardDesc || ''}\n\n【性格】\n${cardPersonality || ''}\n\n【场景】\n${cardScenario || ''}\n\n【世界书】\n${worldBookText || ''}\n\n【主线最近对话】\n${mainChatText || ''}`;
+        const systemPrompt = `你同时扮演群聊中的所有成员。\n【务必直接按格式输出短信内容，严禁在开头输出“好的”等废话。】`;
+        const userPrompt = `群聊名称：${groupDisplayName || '群聊'}\n群聊成员：${groupMembers.join('、')}\n\n请以每个群成员的身份，根据各自的性格、人设和当前聊天上下文，自然地发起话题或继续聊天，不要提及任何外部触发。\n每个成员根据自己的判断选择发言 0-8 条。\n\n输出格式：角色名：消息内容 / 消息内容\n\n【用户信息】\n${userBlock}\n\n【角色设定】\n${cardDesc || ''}\n\n【性格】\n${cardPersonality || ''}\n\n【场景】\n${cardScenario || ''}\n\n【世界书】\n${worldBookText || ''}\n\n【主线最近对话】\n${mainChatText || ''}\n\n【群聊历史】\n${smsHistoryText}`;
 
         try {
             const raw = await callAI(systemPrompt, userPrompt);
-
-            // 隐藏等待气泡
             hideTyping();
 
             const parsed = parseGroupResponse(raw);
-            const contentParts = []; // 👇 新增：用于收集要保存的群聊内容
+            const contentParts = []; 
             
             for (const block of parsed) {
                 if (block.sentences.length > 0) {
@@ -1466,7 +1444,6 @@ ${currentPersona}：`;
                 }
             }
             
-            // 👇 新增：将聊天记录正式存入数据库
             if (contentParts.length > 0) {
                 conversationHistory.push({ role: 'assistant', content: contentParts.join('\n') });
                 const id = getStorageId();
@@ -1480,7 +1457,6 @@ ${currentPersona}：`;
             addNote(`（发送失败：${e?.message || e}）`);
         }
 
-        // 恢复输入框
         if (input) input.disabled = false;
         if (btn) btn.disabled = false;
         isGenerating = false;
@@ -1554,7 +1530,7 @@ ${currentPersona}：`;
         }).join('');
     };
 
-    window.__pmConfirmGroup = (mode, oldName) => {
+    window.__pmConfirmGroup = (mode) => {
         const nameInput = document.getElementById('pm-group-name-input');
         const memInput = document.getElementById('pm-group-input');
         if (!nameInput || !memInput) return;
@@ -1566,6 +1542,7 @@ ${currentPersona}：`;
         document.getElementById('pm-overlay')?.remove();
         const id = getStorageId();
         if (!window.__pmGroupMeta[id]) window.__pmGroupMeta[id] = {};
+        
         if (mode === 'create') {
             const groupKey = `__group_${Date.now()}`;
             window.__pmGroupMeta[id][groupKey] = { name: groupName, members: names };
@@ -1573,6 +1550,13 @@ ${currentPersona}：`;
             isGroupChat = true; groupMembers = names; groupDisplayName = groupName; currentGroupKey = groupKey;
             groupColorMap = {}; names.forEach((n, i) => { groupColorMap[n] = GROUP_COLORS[i % GROUP_COLORS.length]; });
             window.__pmSwitch(groupKey);
+        } else {
+            if (!currentGroupKey) return;
+            window.__pmGroupMeta[id][currentGroupKey] = { name: groupName, members: names };
+            saveGroupMeta();
+            groupMembers = names; groupDisplayName = groupName;
+            groupColorMap = {}; names.forEach((n, i) => { groupColorMap[n] = GROUP_COLORS[i % GROUP_COLORS.length]; });
+            window.__pmSwitch(currentGroupKey);
         }
     };
 
@@ -1592,6 +1576,60 @@ ${currentPersona}：`;
         });
     };
 
+    // ========== 导出 / 导入 数据功能 ==========
+    window.__pmExportData = () => {
+        const data = {
+            histories: window.__pmHistories || {},
+            config: window.__pmConfig || {},
+            theme: window.__pmTheme || {},
+            profiles: window.__pmProfiles || [],
+            groupMeta: window.__pmGroupMeta || {},
+            pokeConfig: window.__pmPokeConfig || {},
+            bidirectional: window.__pmBidirectional || {}
+        };
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `PhoneMode_Backup_${new Date().getTime()}.json`;
+        a.click();
+        URL.revokeObjectURL(url);
+        alert('✅ 短信备份已成功导出！');
+    };
+
+    window.__pmImportData = (input) => {
+        const file = input.files?.[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            try {
+                const data = JSON.parse(e.target.result);
+                if (data.histories) window.__pmHistories = data.histories;
+                if (data.config) window.__pmConfig = data.config;
+                if (data.theme) window.__pmTheme = data.theme;
+                if (data.profiles) window.__pmProfiles = data.profiles;
+                if (data.groupMeta) window.__pmGroupMeta = data.groupMeta;
+                if (data.pokeConfig) window.__pmPokeConfig = data.pokeConfig;
+                if (data.bidirectional) window.__pmBidirectional = data.bidirectional;
+                
+                saveHistories();
+                try { localStorage.setItem('ST_SMS_CONFIG', JSON.stringify(window.__pmConfig)); } catch(err) {}
+                saveTheme();
+                saveGroupMeta();
+                try { localStorage.setItem('ST_SMS_POKE_CONFIG', JSON.stringify(window.__pmPokeConfig)); } catch(err) {}
+                try { localStorage.setItem('ST_SMS_BIDIRECTIONAL', JSON.stringify(window.__pmBidirectional)); } catch(err) {}
+                
+                alert('✅ 数据导入成功！请重新打开短信界面生效。');
+                document.getElementById('pm-overlay')?.remove();
+                window.__pmEnd();
+            } catch (err) {
+                alert('❌ 导入失败，文件格式不正确！\\n' + err.message);
+            }
+        };
+        reader.readAsText(file);
+        input.value = '';
+    };
+
     // ========== 设置界面 ==========
     window.__pmShowConfig = async () => {
         loadProfiles(); loadTheme();
@@ -1604,10 +1642,10 @@ ${currentPersona}：`;
             : '<div class="pm-prof-empty">暂无档案</div>';
         const useIndep = !!cfg.useIndependent;
         const presetBtns = Object.entries(THEME_PRESETS).map(([k, v]) =>
-            `<div class="pm-theme-chip ${t.preset === k ? 'pm-theme-active' : ''}" data-preset="${k}" onclick="window.__pmSetPreset('${k}')"><span class="pm-theme-dot" style="background:${v.right}"></span>${v.label}</div>`
+            `<div class="pm-theme-chip ${t.preset === k ? 'pm-theme-active' : ''}" data-preset="${k}" onclick="window.__pmSetPreset('${safeJS(k)}')"><span class="pm-theme-dot" style="background:${v.right}"></span>${v.label}</div>`
         ).join('');
         const layoutBtns = ['standard', 'relaxed'].map(v =>
-            `<div class="pm-layout-chip ${t.layout === v ? 'pm-layout-active' : ''}" onclick="window.__pmSetLayout('${v}')">${v === 'standard' ? '标准' : '宽松'}</div>`
+            `<div class="pm-layout-chip ${t.layout === v ? 'pm-layout-active' : ''}" onclick="window.__pmSetLayout('${safeJS(v)}')">${v === 'standard' ? '标准' : '宽松'}</div>`
         ).join('');
         const id = getStorageId(), localKey = `${id}_${currentPersona}`;
         const hasGlobalBg = !!window.__pmBgGlobal, hasLocalBg = !!window.__pmBgLocal[localKey];
@@ -1621,8 +1659,7 @@ ${currentPersona}：`;
                <button class="pm-bg-btn" onclick="window.__pmBgUrl('local')">URL</button>`;
 
         makeOverlay(`
-<div class="pm-modal pm-modal-wide">
-  <div class="pm-modal-header"><b>设置</b><span onclick="document.getElementById('pm-overlay').remove()" class="pm-modal-close">✕</span></div>
+<div class="pm-modal pm-modal-wide" style="height: 560px;"> <div class="pm-modal-header"><b>设置</b><span onclick="document.getElementById('pm-overlay').remove()" class="pm-modal-close">✕</span></div>
   <div class="pm-cfg-tabs">
     <div class="pm-cfg-tab pm-cfg-tab-active" data-tab="api" onclick="window.__pmSwitchTab('api')">API</div>
     <div class="pm-cfg-tab" data-tab="look" onclick="window.__pmSwitchTab('look')">外观</div>
@@ -1652,8 +1689,15 @@ ${currentPersona}：`;
           <button id="pm-model-arrow" type="button" onclick="window.__pmShowModelPicker()">▼</button>
         </div>
         <div id="pm-api-status" class="pm-cfg-tip" style="font-weight:bold;">连接成功后自动保存</div>
+        
+        <div style="display:flex;gap:6px;margin-top:4px;">
+          <button onclick="window.__pmTestApi()" style="flex:1;background:#ff9500;color:#fff;border:none;border-radius:10px;padding:9px;font-size:12px;cursor:pointer;font-weight:600;">🔗 拉取模型</button>
+          <button onclick="window.__pmTestModel()" style="flex:1;background:#5856d6;color:#fff;border:none;border-radius:10px;padding:9px;font-size:12px;cursor:pointer;font-weight:600;">🧪 测试</button>
+        </div>
       </div>
+      <div style="height:12px;"></div>
     </div>
+    
     <div id="pm-tab-look" class="pm-tab-pane" style="display:none;">
       <div style="padding:12px 16px 0;"> <div class="pm-cfg-label" style="margin-bottom:8px;">🌓 日夜模式</div>
         <div class="pm-theme-row" style="margin-bottom:8px;"> <div class="pm-layout-chip ${t.darkMode === 'light' ? 'pm-layout-active' : ''}" onclick="window.__pmSetDarkMode('light')">☀️ 日间</div>
@@ -1680,8 +1724,8 @@ ${currentPersona}：`;
           <button onclick="document.getElementById('pm-border-color').value='#1a1a1a';window.__pmSetBorderColor()" class="pm-color-clear">重置</button>
         </div>
       </div>
-      <div style="padding:18px 16px 14px;border-top:1px solid #f0f0f0;">
-        <div class="pm-cfg-label" style="margin-bottom:14px;">🖼 背景图</div>
+      <div style="padding:12px 16px 12px;border-top:1px solid #f0f0f0;">
+        <div class="pm-cfg-label" style="margin-bottom:14px;">🖼️ 背景图</div>
         <div style="display:flex;flex-direction:column;gap:14px;padding:0 4px;">
           <div class="pm-bg-row">
             <span class="pm-bg-label">全局背景</span>
@@ -1693,27 +1737,32 @@ ${currentPersona}：`;
           </div>
         </div>
       </div>
+      <div style="padding:12px 16px 12px;border-top:1px solid #f0f0f0;">
+        <div class="pm-cfg-label" style="margin-bottom:10px;">📦 数据备份</div>
+        <div style="display:flex;gap:6px;">
+          <button onclick="window.__pmExportData()" style="flex:1;background:#34c759;color:#fff;border:none;border-radius:10px;padding:10px;font-size:13px;cursor:pointer;font-weight:600;">📥 导出备份</button>
+          <label style="flex:1;background:#5856d6;color:#fff;border:none;border-radius:10px;padding:10px;font-size:13px;cursor:pointer;font-weight:600;text-align:center;margin:0;">
+            📤 导入备份
+            <input type="file" accept=".json" onchange="window.__pmImportData(this)" hidden>
+          </label>
+        </div>
+        <div class="pm-cfg-tip" style="text-align:left;margin-top:6px;color:#ff9500;">注意：导入会覆盖当前所有联系人与记录</div>
+      </div>
       <div style="height:12px;"></div>
     </div>
   </div>
-  <div class="pm-modal-add" id="pm-config-bottom" style="display:flex;flex-direction:column;gap:6px;">
-    <div id="pm-api-buttons" style="display:flex;gap:6px;">
-      <button onclick="window.__pmTestApi()" style="flex:1;background:#ff9500;color:#fff;border:none;border-radius:10px;padding:9px;font-size:12px;cursor:pointer;font-weight:600;">🔗 拉取模型</button>
-      <button onclick="window.__pmTestModel()" style="flex:1;background:#5856d6;color:#fff;border:none;border-radius:10px;padding:9px;font-size:12px;cursor:pointer;font-weight:600;">🧪 测试</button>
-    </div>
-    <button onclick="window.__pmSaveConfig()" style="background:#007aff;color:#fff;border:none;border-radius:10px;padding:10px;font-size:13px;cursor:pointer;font-weight:600;">保存配置</button>
+  <div class="pm-modal-add" id="pm-config-bottom">
+    <button onclick="window.__pmSaveConfig()" style="width:100%;background:#007aff;color:#fff;border:none;border-radius:10px;padding:10px;font-size:13px;cursor:pointer;font-weight:600;">保存配置</button>
   </div>
 </div>`);
     };
 
-    // ========== 其余辅助函数 ==========
     window.__pmSwitchTab = (tab) => {
         document.querySelectorAll('.pm-cfg-tab').forEach(el => el.classList.toggle('pm-cfg-tab-active', el.dataset.tab === tab));
         document.querySelectorAll('.pm-tab-pane').forEach(el => el.style.display = 'none');
         const pane = document.getElementById(`pm-tab-${tab}`);
         if (pane) pane.style.display = 'block';
-        const apiButtons = document.getElementById('pm-api-buttons');
-        if (apiButtons) apiButtons.style.display = tab === 'api' ? 'flex' : 'none';
+        // 删除了此处动态隐藏按钮的代码，完美解决跳动问题！
     };
 
     window.__pmSetPreset = (p) => {
@@ -1775,7 +1824,7 @@ ${currentPersona}：`;
         if (scope === 'global') {
             window.__pmBgGlobal = '';
             await pmIDBDel('ST_SMS_BG_GLOBAL');
-            try { localStorage.removeItem('ST_SMS_BG_GLOBAL'); } catch {}
+            try { localStorage.removeItem('ST_SMS_BG_GLOBAL'); } catch (e) {}
         } else {
             const id = getStorageId(), key = `${id}_${currentPersona}`;
             delete window.__pmBgLocal[key];
@@ -1817,7 +1866,7 @@ ${currentPersona}：`;
     window.__pmSaveConfig = () => {
         const apiUrl = document.getElementById('pm-cfg-url')?.value.trim() ?? '', apiKey = document.getElementById('pm-cfg-key')?.value.trim() ?? '', model = document.getElementById('pm-cfg-model')?.value.trim() ?? '';
         window.__pmConfig = { apiUrl, apiKey, model, useIndependent: !!window.__pmConfig.useIndependent };
-        try { localStorage.setItem('ST_SMS_CONFIG', JSON.stringify(window.__pmConfig)); } catch {}
+        try { localStorage.setItem('ST_SMS_CONFIG', JSON.stringify(window.__pmConfig)); } catch (e) {}
         if (apiUrl && apiKey) addOrUpdateProfile({ apiUrl, apiKey, model });
         document.getElementById('pm-overlay')?.remove();
         addNote(`已保存：${window.__pmConfig.useIndependent && apiUrl ? '独立API' : '主API'}`);
@@ -1832,7 +1881,7 @@ ${currentPersona}：`;
         if (POPOVER_SUPPORTED) dd.setAttribute('popover', 'manual');
         dd.innerHTML = `<input class="pm-model-search" placeholder="🔍 搜索..." /><div class="pm-model-options"></div>`;
         dd.style.left = rect.left + 'px'; dd.style.top = (rect.bottom + 4) + 'px'; dd.style.width = rect.width + 'px';
-        document.body.appendChild(dd); if (dd.showPopover) try { dd.showPopover(); } catch {}
+        document.body.appendChild(dd); if (dd.showPopover) try { dd.showPopover(); } catch (e) {}
         const optsDiv = dd.querySelector('.pm-model-options');
         const render = (f = '') => {
             const fl = f.toLowerCase(), filtered = __pmModelList.filter(m => !fl || m.toLowerCase().includes(fl));
@@ -1850,7 +1899,7 @@ ${currentPersona}：`;
         ov.innerHTML = html;
         ov.addEventListener('click', e => { if (e.target === ov) ov.remove(); });
         document.body.appendChild(ov);
-        if (ov.showPopover) try { ov.showPopover(); } catch {}
+        if (ov.showPopover) try { ov.showPopover(); } catch (e) {}
         return ov;
     }
 
@@ -1865,22 +1914,20 @@ ${currentPersona}：`;
 
         const renderSingle = singleList.map(n => {
             const isChk = checked.includes(n);
-            const safeName = escapeAttr(n);
             return `<div class="pm-li">
-                <div class="pm-custom-check pm-bi-style ${isChk ? 'is-checked' : ''}" onclick="event.stopPropagation();window.__pmToggleBidirectional('${safeName}')" style="width:20px;height:20px;min-width:20px;min-height:20px;flex-shrink:0;border-radius:50%;"></div>
-                <span onclick="window.__pmSwitchContact('${safeName}')">${escapeHtml(n)}</span>
-                <i onclick="window.__pmDel('${safeName}')">删除</i>
+                <div class="pm-custom-check pm-bi-style ${isChk ? 'is-checked' : ''}" onclick="event.stopPropagation();window.__pmToggleBidirectional('${safeJS(n)}')" style="width:20px;height:20px;min-width:20px;min-height:20px;flex-shrink:0;border-radius:50%;"></div>
+                <span onclick="window.__pmSwitchContact('${safeJS(n)}')">${escapeHtml(n)}</span>
+                <i onclick="window.__pmDel('${safeJS(n)}')">删除</i>
             </div>`;
         }).join('');
 
         const renderGroups = groupList.map(key => {
             const meta = groups[key];
             const isChk = checked.includes(key);
-            const safeKey = escapeAttr(key);
             return `<div class="pm-li">
-                <div class="pm-custom-check pm-bi-style ${isChk ? 'is-checked' : ''}" onclick="event.stopPropagation();window.__pmToggleBidirectional('${safeKey}')" style="width:20px;height:20px;min-width:20px;min-height:20px;flex-shrink:0;border-radius:50%;"></div>
-                <span onclick="window.__pmSwitchContact('${safeKey}')">${escapeHtml(meta.name)}<span class="pm-group-sub">${escapeHtml(meta.members.join('、'))}</span></span>
-                <i onclick="window.__pmDelGroup('${safeKey}')">删除</i>
+                <div class="pm-custom-check pm-bi-style ${isChk ? 'is-checked' : ''}" onclick="event.stopPropagation();window.__pmToggleBidirectional('${safeJS(key)}')" style="width:20px;height:20px;min-width:20px;min-height:20px;flex-shrink:0;border-radius:50%;"></div>
+                <span onclick="window.__pmSwitchContact('${safeJS(key)}')">${escapeHtml(meta.name)}<span class="pm-group-sub">${escapeHtml(meta.members.join('、'))}</span></span>
+                <i onclick="window.__pmDelGroup('${safeJS(key)}')">删除</i>
             </div>`;
         }).join('');
 
@@ -1983,7 +2030,10 @@ ${currentPersona}：`;
                     nameEl.textContent = name;
                 }
             }
-            if (editBtn) editBtn.classList.remove('is-hidden');
+            if (editBtn) {
+                if (isGroupChat) editBtn.classList.remove('is-hidden');
+                else editBtn.classList.add('is-hidden');
+            }
             fitNameFont();
             const list = phoneWindow.querySelector('.pm-msg-list'); list.innerHTML = '';
             if (conversationHistory.length > 0) {
@@ -2047,16 +2097,13 @@ ${currentPersona}：`;
                 if (b.id === 'pm-typing' || b.closest('.pm-select-wrap')) return;
                 const wrap = document.createElement('div'); wrap.className = 'pm-select-wrap';
                 
-                // 👇 新增：给外层包裹器增加 Flex 布局，让勾选框和气泡横向对齐
                 wrap.style.display = 'flex';
                 wrap.style.alignItems = 'center';
                 wrap.style.gap = '8px';
-                // 根据气泡属于左边还是右边，决定整个包裹器靠左还是靠右
                 wrap.style.alignSelf = b.dataset.side === 'right' ? 'flex-end' : 'flex-start';
                 
                 const cb = document.createElement('div'); cb.className = 'pm-custom-check'; cb.dataset.checked = '0';
                 
-                // 👇 新增：给动态生成的勾选框直接赋上尺寸、圆角等必须样式
                 cb.style.width = '22px';
                 cb.style.height = '22px';
                 cb.style.minWidth = '22px';
@@ -2102,7 +2149,7 @@ ${currentPersona}：`;
 
     window.__pmToggleMin = () => { isMinimized = !isMinimized; phoneWindow.classList.toggle('is-min', isMinimized); phoneWindow.style.removeProperty('transform'); };
     window.__pmEnd = () => {
-        if (phoneWindow) { try { phoneWindow.hidePopover?.(); } catch {} phoneWindow.remove(); }
+        if (phoneWindow) { try { phoneWindow.hidePopover?.(); } catch (e) {} phoneWindow.remove(); }
         phoneWindow = null; phoneActive = false; isMinimized = false; isSelectMode = false;
         isGroupChat = false; groupMembers = []; groupColorMap = {}; groupDisplayName = ''; currentGroupKey = '';
     };
@@ -2119,15 +2166,15 @@ ${currentPersona}：`;
     setInterval(ensureVisibility, 2000);
 
     window.__pmOpen = () => {
-        if (phoneActive && phoneWindow) { try { phoneWindow.showPopover?.(); } catch {} phoneWindow.style.display = 'flex'; ensureVisibility(); return; }
-        try { window.__pmHistories = JSON.parse(localStorage.getItem('ST_SMS_DATA_V2')) || {}; } catch {}
+        if (phoneActive && phoneWindow) { try { phoneWindow.showPopover?.(); } catch (e) {} phoneWindow.style.display = 'flex'; ensureVisibility(); return; }
+        try { window.__pmHistories = JSON.parse(localStorage.getItem('ST_SMS_DATA_V2')) || {}; } catch (e) {}
         try {
             const saved = JSON.parse(localStorage.getItem('ST_SMS_CONFIG'));
             window.__pmConfig = saved || { apiUrl: '', apiKey: '', model: '', useIndependent: false };
             if (typeof window.__pmConfig.useIndependent === 'undefined') window.__pmConfig.useIndependent = !!(window.__pmConfig.apiUrl && window.__pmConfig.apiKey);
-        } catch { window.__pmConfig = { apiUrl: '', apiKey: '', model: '', useIndependent: false }; }
+        } catch (e) { window.__pmConfig = { apiUrl: '', apiKey: '', model: '', useIndependent: false }; }
         loadProfiles(); loadBidirectional(); loadTheme(); loadGroupMeta(); loadPokeConfig(); migrateOldHistory();
-        loadBgSettings().then(() => { try { applyBackground(); } catch {} });
+        loadBgSettings().then(() => { try { applyBackground(); } catch (e) {} });
         loadHistoriesFromIDB().then(() => {
             if (phoneWindow && currentPersona) {
                 const id = getStorageId();
@@ -2174,7 +2221,7 @@ ${currentPersona}：`;
   </div>
 </div>`;
         document.body.appendChild(phoneWindow);
-        if (phoneWindow.showPopover) try { phoneWindow.showPopover(); } catch {}
+        if (phoneWindow.showPopover) try { phoneWindow.showPopover(); } catch (e) {}
         phoneActive = true;
         phoneWindow.querySelector('.pm-input').addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); window.__pmSend(); } });
         bindIsland(phoneWindow, phoneWindow.querySelector('.pm-island'));
@@ -2272,7 +2319,8 @@ ${currentPersona}：`;
 .pm-confirm-btn{background:#ff3b30 !important;color:#fff !important;border:none;border-radius:8px;padding:5px 12px;font-size:12px;cursor:pointer;font-weight:600;}
 .pm-cancel-btn{background:#f0f0f0 !important;color:#333 !important;border:none;border-radius:8px;padding:5px 12px;font-size:12px;cursor:pointer;}
 .pm-msg-list{flex:1 !important;overflow-y:auto !important;padding:12px !important;display:flex !important;flex-direction:column !important;gap:7px;background:var(--pm-list-bg,#fff) !important;min-height:0;background-size:cover;background-position:center;}
-.pm-custom-check{position:relative;border:1.5px solid #ccc;background:transparent;box-sizing:border-box;transition:all 0.2s;}
+.pm-select-wrap{display:flex !important;align-items:flex-end;gap:6px;}
+.pm-custom-check{width:20px;height:20px;border-radius:50%;border:2px solid #ccc;cursor:pointer;flex-shrink:0;margin-bottom:4px;transition:all .15s;position:relative;background:#fff !important;}
 .pm-custom-check[data-checked="1"],.pm-custom-check.is-checked{border-color:#007aff;background:#007aff !important;}
 .pm-custom-check[data-checked="1"]::after,.pm-custom-check.is-checked::after{content:'✓';position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#fff;font-size:12px;font-weight:bold;}
 .pm-bi-style{border-color:#e0a030;}.pm-bi-style.is-checked{border-color:#ff9500;background:#ff9500 !important;}
@@ -2292,6 +2340,7 @@ ${currentPersona}：`;
 .pm-note{text-align:center;font-size:11px;color:#bbb;padding:3px 0;}
 .pm-transfer-card{background:linear-gradient(135deg,#ff9500,#ff6b00);color:#fff;border-radius:14px;padding:12px 14px;display:flex;align-items:center;gap:10px;min-width:150px;box-shadow:0 3px 10px rgba(255,149,0,.35);}
 .pm-receive-card{background:linear-gradient(135deg,#34c759,#28a745);color:#fff;border-radius:14px;padding:12px 14px;display:flex;align-items:center;gap:10px;min-width:150px;box-shadow:0 3px 10px rgba(52,199,89,.35);}
+.pm-refund-card{background:linear-gradient(135deg,#ff9500,#ff6b00);color:#fff;border-radius:14px;padding:12px 14px;display:flex;align-items:center;gap:10px;min-width:150px;box-shadow:0 3px 10px rgba(255,149,0,.35);}
 .pm-t-icon{width:34px;height:34px;background:rgba(255,255,255,.25);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:17px;font-weight:800;}
 .pm-t-info{display:flex;flex-direction:column;gap:1px;}.pm-t-info b{font-size:12px;opacity:.85;}.pm-t-info span{font-size:17px;font-weight:700;}
 .pm-img-card{background:#f2f2f7;border:1px solid #e0e0e0;padding:12px 14px;border-radius:14px;color:#555;font-size:13px;text-align:center;}
@@ -2398,8 +2447,8 @@ ${currentPersona}：`;
         try {
             const SCP = window.SlashCommandParser || ctx.SlashCommandParser, SC = window.SlashCommand || ctx.SlashCommand;
             if (SCP && SC && typeof SCP.addCommandObject === 'function' && typeof SC.fromProps === 'function') { SCP.addCommandObject(SC.fromProps({ name: 'phone', callback: cb, helpString: '打开短信' })); return true; }
-        } catch {}
-        try { if (typeof ctx.registerSlashCommand === 'function') { ctx.registerSlashCommand('phone', cb, [], '打开短信', true, true); return true; } } catch {}
+        } catch (e) {}
+        try { if (typeof ctx.registerSlashCommand === 'function') { ctx.registerSlashCommand('phone', cb, [], '打开短信', true, true); return true; } } catch (e) {}
         return false;
     }
     if (!registerPhoneCommand()) { let t = 0; const i = setInterval(() => { t++; if (registerPhoneCommand() || t >= 30) clearInterval(i); }, 500); }
@@ -2416,10 +2465,10 @@ ${currentPersona}：`;
         if (ta.value.trim() === '/phone') { e.preventDefault(); e.stopImmediatePropagation(); ta.value = ''; window.__pmOpen(); }
     }, true);
 
-    try { window.__pmHistories = JSON.parse(localStorage.getItem('ST_SMS_DATA_V2')) || {}; } catch {}
+    try { window.__pmHistories = JSON.parse(localStorage.getItem('ST_SMS_DATA_V2')) || {}; } catch (e) {}
     loadBidirectional(); loadGroupMeta(); loadPokeConfig();
     loadHistoriesFromIDB();
     setTimeout(() => { migrateOldHistory(); applyBidirectionalInjection(); hookGenerationEvent(); }, 1500);
 
-    console.log('[phone-mode] v9.2 夜间模式修复 + 独立API拍一拍修复 + 角色主动发消息自然化');
+    console.log('[phone-mode] v9.4 已加载：新增“退还”卡片 + 导入导出按钮迁移至外观页');
 })();
