@@ -1375,9 +1375,10 @@ ${currentPersona}：`;
         </div>
         ` : ''}
     </div>
+    ${mode === 'create' ? `
     <div class="pm-modal-add">
-        <button onclick="window.__pmConfirmGroup('${safeJS(mode)}')" style="flex:1;background:#007aff;color:#fff;border:none;border-radius:10px;padding:10px;font-size:13px;cursor:pointer;font-weight:600;">${mode === 'create' ? '创建' : '保存'}</button>
-    </div>
+        <button onclick="window.__pmConfirmGroup('${safeJS(mode)}')" style="flex:1;background:#007aff;color:#fff;border:none;border-radius:10px;padding:10px;font-size:13px;cursor:pointer;font-weight:600;">创建</button>
+    </div>` : ''}
     </div>`);
         setTimeout(() => window.__pmGroupInputChanged(), 0);
     }
@@ -1740,11 +1741,9 @@ ${currentPersona}：`;
       <div style="padding:12px 16px 12px;border-top:1px solid #f0f0f0;">
         <div class="pm-cfg-label" style="margin-bottom:10px;">📦 数据备份</div>
         <div style="display:flex;gap:6px;">
-          <button onclick="window.__pmExportData()" style="flex:1;background:#34c759;color:#fff;border:none;border-radius:10px;padding:10px;font-size:13px;cursor:pointer;font-weight:600;">📥 导出备份</button>
-          <label style="flex:1;background:#5856d6;color:#fff;border:none;border-radius:10px;padding:10px;font-size:13px;cursor:pointer;font-weight:600;text-align:center;margin:0;">
-            📤 导入备份
-            <input type="file" accept=".json" onchange="window.__pmImportData(this)" hidden>
-          </label>
+         <button onclick="window.__pmExportData()" style="flex:1;background:#34c759;color:#fff;border:none;border-radius:10px;padding:10px;font-size:13px;cursor:pointer;font-weight:600;">📥 导出备份</button>
+         <button onclick="document.getElementById('pm-import-file').click()" style="flex:1;background:#5856d6;color:#fff;border:none;border-radius:10px;padding:10px;font-size:13px;cursor:pointer;font-weight:600;">📤 导入备份</button>
+         <input id="pm-import-file" type="file" accept=".json" onchange="window.__pmImportData(this)" hidden>
         </div>
         <div class="pm-cfg-tip" style="text-align:left;margin-top:6px;color:#ff9500;">注意：导入会覆盖当前所有联系人与记录</div>
       </div>
@@ -2031,8 +2030,7 @@ ${currentPersona}：`;
                 }
             }
             if (editBtn) {
-                if (isGroupChat) editBtn.classList.remove('is-hidden');
-                else editBtn.classList.add('is-hidden');
+                editBtn.classList.remove('is-hidden');  // 个人和群聊都显示编辑按钮
             }
             fitNameFont();
             const list = phoneWindow.querySelector('.pm-msg-list'); list.innerHTML = '';
