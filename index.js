@@ -434,7 +434,7 @@
             return `【与 ${name} 的短信 — 仅 ${name} 与 ${userName} 知晓】\n${lines}`;
         }).filter(Boolean).join('\n\n');
         if (!blocks) { try { c.setExtensionPrompt(BIDIRECTIONAL_KEY, '', 0, 0, false, 0); } catch (e) {} return; }
-        try { c.setExtensionPrompt(BIDIRECTIONAL_KEY, `[手机短信记忆 — 私密]\n${blocks}\n[结束]`, 2, 2, false, 0); } catch (e) {}
+        try { c.setExtensionPrompt(BIDIRECTIONAL_KEY, `[手机短信记忆 — 私密]\n${blocks}\n[结束]`, 4, 2, false, 0); } catch (e) {}
     }
 
     let __pmLastChatLen = 0;
