@@ -1011,7 +1011,53 @@ ${currentPersona}：`;
             }
         }, 300);
     };
+    // 打开长文本输入界面
+    window.__pmShowExpandInput = () => {
+        const smallInput = phoneWindow?.querySelector('.pm-input');
+        const currentText = smallInput ? smallInput.value : '';
 
+        makeOverlay(`
+<div class="pm-modal pm-modal-wide">
+  <div class="pm-modal-header">
+    <b>长文本输入</b>
+    <span onclick="document.getElementById('pm-overlay').remove()" class="pm-modal-close">✕</span>
+  </div>
+  <div style="padding:14px 16px;">
+    <textarea id="pm-expanded-textarea" class="pm-cfg-input" rows="7" 
+        style="height:auto; resize:none; font-size:14px; padding:10px; line-height:1.5; font-family:inherit;" 
+        placeholder="在这里输入多行文本...">${escapeAttr(currentText)}</textarea>
+  </div>
+  <div class="pm-modal-add" style="display:flex;gap:8px;">
+    <button onclick="document.getElementById('pm-overlay').remove()" style="flex:1;background:#f0f0f0;color:#333;border:none;border-radius:10px;padding:10px;font-size:13px;cursor:pointer;">取消</button>
+    <button onclick="window.__pmConfirmExpandInput()" style="flex:1;background:#007aff;color:#fff;border:none;border-radius:10px;padding:10px;font-size:13px;cursor:pointer;font-weight:600;">发送</button>
+  </div>
+</div>`);
+
+        // 自动聚焦并将光标移到文本末尾
+        setTimeout(() => {
+            const ta = document.getElementById('pm-expanded-textarea');
+            if (ta) {
+                ta.focus();
+                ta.selectionStart = ta.selectionEnd = ta.value.length;
+            }
+        }, 10);
+    };
+
+    // 确认发送长文本
+    window.__pmConfirmExpandInput = () => {
+        const ta = document.getElementById('pm-expanded-textarea');
+        const smallInput = phoneWindow?.querySelector('.pm-input');
+        
+        if (ta && smallInput) {
+            smallInput.value = ta.value; // 将长文本同步回底部的原输入框
+            document.getElementById('pm-overlay')?.remove();
+            
+            // 如果文本不为空，直接触发发送
+            if (ta.value.trim()) {
+                window.__pmSend();
+            }
+        }
+    };
     window.__pmIncrementCounters = () => {
         const id = getStorageId();
         const configs = window.__pmPokeConfig[id];
@@ -2225,6 +2271,7 @@ ${currentPersona}：`;
   </div>
   <div class="pm-msg-list"></div>
   <div class="pm-input-bar">
+    <button onclick="window.__pmShowExpandInput()" class="pm-expand-btn" title="展开长文本输入">⤢</button>
     <input class="pm-input" placeholder="iMessage">
     <button onclick="window.__pmSend()" class="pm-up-btn">↑</button>
   </div>
@@ -2372,6 +2419,31 @@ ${currentPersona}：`;
 .pm-input:disabled{opacity:.5;}
 .pm-up-btn{width:32px !important;height:32px !important;background:#007aff !important;color:#fff !important;border:none !important;border-radius:50% !important;cursor:pointer;font-size:16px !important;font-weight:bold;display:flex !important;align-items:center !important;justify-content:center !important;flex-shrink:0;}
 .pm-up-btn:disabled{background:#ccc !important;}
+.pm-expand-btn {
+    width: 28px !important;
+    height: 28px !important;
+    background: none !important;
+    color: #888 !important;
+    border: none !important;
+    cursor: pointer;
+    font-size: 18px !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    flex-shrink: 0;
+    padding: 0 !important;
+    transition: color 0.15s;
+}
+.pm-expand-btn:hover {
+    color: #007aff !important;
+}
+/* 适配夜间模式的加号按钮颜色 */
+#pm-iphone[data-theme="dark"] .pm-expand-btn {
+    color: #aaa !important;
+}
+#pm-iphone[data-theme="dark"] .pm-expand-btn:hover {
+    color: #0a84ff !important;
+}
 #pm-overlay{position:fixed !important;inset:0 !important;margin:0 !important;width:100vw !important;height:100vh !important;height:100dvh !important;max-width:none !important;max-height:none !important;background:rgba(0,0,0,.45) !important;z-index:2147483647 !important;display:flex !important;align-items:center !important;justify-content:center !important;border:none !important;padding:0 !important;}
 .pm-modal{background:#fff !important;border-radius:20px !important;width:290px;max-height:85vh;max-height:85dvh;display:flex !important;flex-direction:column !important;overflow:hidden;box-shadow:0 16px 48px rgba(0,0,0,.28);font-family:-apple-system,BlinkMacSystemFont,'PingFang SC',sans-serif !important;}
 .pm-modal-wide{width:320px;}
