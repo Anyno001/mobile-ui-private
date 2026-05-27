@@ -2,13 +2,14 @@
     await new Promise(r => setTimeout(r, 1000));
 
     const SAVE_LIMIT = 60, CONTEXT_LIMIT = 20, BIDIRECTIONAL_LIMIT = 20, MAX_BIDIRECTIONAL = 5;
-    const BIDIRECTIONAL_KEY = 'PHONE_SMS_MEMORY', VOICE_MAX_SEC = 60, MODEL_VISIBLE_ROWS = 4, MAX_GROUP_MEMBERS = 6;
+    const BIDIRECTIONAL_KEY = 'PHONE_SMS_MEMORY', VOICE_MAX_SEC = 60, MODEL_VISIBLE_ROWS = 4, MAX_GROUP_MEMBERS = 7; 
     const BI_INJECT_DEPTH = 2;
     const POPOVER_SUPPORTED = typeof HTMLElement !== 'undefined' && HTMLElement.prototype.hasOwnProperty('popover');
     const GROUP_COLORS = [
         { bg: '#e9e9eb', text: '#000' }, { bg: '#b8e6c8', text: '#1b4332' },
         { bg: '#f5d0d0', text: '#4a2030' }, { bg: '#d4d0f5', text: '#2d2252' },
         { bg: '#f5e6b8', text: '#4a3a10' },
+        { bg: '#cceef5', text: '#144652' }, 
     ];
 
     // ========== IndexedDB 工具 ==========
@@ -1011,7 +1012,7 @@ ${currentPersona}：`;
             }
         }, 300);
     };
-    // 打开长文本输入界面
+  
 // 打开长文本输入界面
     window.__pmShowExpandInput = () => {
         const smallInput = phoneWindow?.querySelector('.pm-input');
