@@ -386,46 +386,29 @@
         const c = getCtx(); if (!c) return 'sms_unknown__default';
         const char = c.characters?.[c.characterId];
         const avatar = char?.avatar || `idx_${c.characterId}`;
-        // 修复：去掉 chatId，只用角色 avatar 作为 key
-        // chatId 在主楼生成新回复/swipe 时可能改变，导致历史记录丢失
-        // 短信历史本来就是独立于主楼对话的，不需要按对话文件隔离
-        return `sms_${avatar}`;
+        const chatFile = c.chatId || (typeof c.getCurrentChatId === 'function' ? c.getCurrentChatId() : null) || c.chat_metadata?.chat_id_hash || c.chat_file || 'default';
+        // 恢复使用 chatId 以区分不同角色卡（纯去掉 chatId 会导致同名头像的卡串记录）
+        // 之前报告的"记录消失"真正原因是 localStorage 被旧数据覆盖，已在 __pmOpen 里修复
+        return `sms_${avatar}__${chatFile}`;
     }
 
     function migrateOldHistory() {
-        if (localStorage.getItem('ST_SMS_MIGRATED_V4')) return;
+        if (localStorage.getItem('ST_SMS_MIGRATED_V3')) return;
         const c = getCtx(); if (!c) return;
         try {
             const oldData = window.__pmHistories || {}, newData = {}; let migrated = 0;
             for (const oldKey of Object.keys(oldData)) {
-                let newKey = oldKey;
-                if (oldKey.startsWith('sms_')) {
-                    // 修复：去掉旧格式中的 __chatId 后缀，对齐新版 getStorageId 格式
-                    newKey = oldKey.replace(/^(sms_[^_].+?)__.*$/, '$1');
-                } else {
-                    // 更旧的数字索引格式迁移
-                    const m = oldKey.match(/^(\d+)_(.+)$/);
-                    if (m) {
-                        const ch = c.characters?.[parseInt(m[1])];
-                        if (ch?.avatar) { newKey = `sms_${ch.avatar}`; migrated++; }
-                    }
-                }
-                if (!newData[newKey]) {
-                    newData[newKey] = oldData[oldKey];
-                } else {
-                    // 同一角色有多条旧记录（不同 chatId），合并保留条数更多的
-                    const merged = { ...newData[newKey] };
-                    for (const [persona, history] of Object.entries(oldData[oldKey] || {})) {
-                        if (!merged[persona] || (Array.isArray(history) && history.length > (merged[persona]?.length || 0))) {
-                            merged[persona] = history;
-                        }
-                    }
-                    newData[newKey] = merged;
-                }
+                if (oldKey.startsWith('sms_')) { newData[oldKey] = oldData[oldKey]; continue; }
+                // 旧格式：数字索引_chatId，迁移为 sms_avatar__chatId
+                const m = oldKey.match(/^(\d+)_(.+)$/);
+                if (!m) { newData[oldKey] = oldData[oldKey]; continue; }
+                const ch = c.characters?.[parseInt(m[1])];
+                if (ch?.avatar) { newData[`sms_${ch.avatar}__${m[2]}`] = oldData[oldKey]; migrated++; }
+                else newData[oldKey] = oldData[oldKey];
             }
             window.__pmHistories = newData;
             saveHistories();
-            localStorage.setItem('ST_SMS_MIGRATED_V4', '1');
+            localStorage.setItem('ST_SMS_MIGRATED_V3', '1');
         } catch (e) {}
     }
 
@@ -1722,44 +1705,13 @@ ${currentPersona}：`;
         reader.onload = (e) => {
             try {
                 const data = JSON.parse(e.target.result);
-
-                // 修复：迁移旧格式 key（sms_avatar__chatId）到新格式（sms_avatar）
-                // 旧格式因为包含 chatId，导入后和当前 getStorageId() 返回的 key 不匹配，显示空白
-                function migrateKeys(obj) {
-                    if (!obj || typeof obj !== 'object') return obj;
-                    const result = {};
-                    for (const [key, value] of Object.entries(obj)) {
-                        // 匹配旧格式：sms_xxx__yyy，把 __yyy 部分去掉
-                        const newKey = key.replace(/^(sms_[^_].+?)__.*$/, '$1');
-                        if (newKey !== key) {
-                            // key 发生了变化，合并到新 key 下（保留条数更多的一方）
-                            const existing = result[newKey];
-                            if (!existing) {
-                                result[newKey] = value;
-                            } else {
-                                // 两个旧 chatId 都映射到同一个新 key，合并联系人，保留更新的记录
-                                const merged = { ...existing };
-                                for (const [persona, history] of Object.entries(value)) {
-                                    if (!merged[persona] || (Array.isArray(history) && history.length > (merged[persona]?.length || 0))) {
-                                        merged[persona] = history;
-                                    }
-                                }
-                                result[newKey] = merged;
-                            }
-                        } else {
-                            result[newKey] = value;
-                        }
-                    }
-                    return result;
-                }
-
-                if (data.histories) window.__pmHistories = migrateKeys(data.histories);
+                if (data.histories) window.__pmHistories = data.histories;
                 if (data.config) window.__pmConfig = data.config;
                 if (data.theme) window.__pmTheme = data.theme;
                 if (data.profiles) window.__pmProfiles = data.profiles;
-                if (data.groupMeta) window.__pmGroupMeta = migrateKeys(data.groupMeta);
-                if (data.pokeConfig) window.__pmPokeConfig = migrateKeys(data.pokeConfig);
-                if (data.bidirectional) window.__pmBidirectional = migrateKeys(data.bidirectional);
+                if (data.groupMeta) window.__pmGroupMeta = data.groupMeta;
+                if (data.pokeConfig) window.__pmPokeConfig = data.pokeConfig;
+                if (data.bidirectional) window.__pmBidirectional = data.bidirectional;
 
                 saveHistories();
                 try { localStorage.setItem('ST_SMS_CONFIG', JSON.stringify(window.__pmConfig)); } catch(err) {}
