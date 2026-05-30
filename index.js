@@ -111,6 +111,11 @@
     // 避免重复加载插件时重复注册
     if (!window.__pmBeforeUnloadRegistered) {
         window.addEventListener('beforeunload', saveHistoriesBeforeUnload);
+        // TT酒馆(TauriTavern) WebView 在移动端被挂起/切到后台时不触发 beforeunload，
+        // 用 visibilitychange 做额外兜底，页面变为 hidden 时同步写入 localStorage
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'hidden') saveHistoriesBeforeUnload();
+        });
         window.__pmBeforeUnloadRegistered = true;
     }
 
@@ -1158,6 +1163,11 @@ ${currentPersona}：`;
             } else {
                 for (const s of result.data) { await new Promise(r => setTimeout(r, 150)); addBubble(s, 'left'); }
             }
+            // 逐泡保存：渲染完毕后立即落盘，不等 finally，防止挂起丢失
+            { const _id = getStorageId(); if (!window.__pmHistories[_id]) window.__pmHistories[_id] = {};
+              const _key = isGroupChat && currentGroupKey ? currentGroupKey : currentPersona;
+              window.__pmHistories[_id][_key] = conversationHistory.slice(-SAVE_LIMIT);
+              saveHistories(); }
         } catch(e) {
             hideTyping();
             addNote(`（发送失败：${e?.message || e}）`);
@@ -1538,7 +1548,14 @@ ${currentPersona}：`;
                     targetHistory.push({ role: 'assistant', content: sentences.join(' / ') });
                     historyUpdated = true;
                     if (isActiveView) {
-                        for (const s of sentences) { await new Promise(r => setTimeout(r, 150)); addBubble(s, 'left'); }
+                        for (const s of sentences) {
+                            await new Promise(r => setTimeout(r, 150));
+                            addBubble(s, 'left');
+                            // 逐句落盘：每渲染一句立即保存，防止挂起丢失
+                            { const _id = getStorageId(); if (!window.__pmHistories[_id]) window.__pmHistories[_id] = {};
+                              window.__pmHistories[_id][isGroupChat && currentGroupKey ? currentGroupKey : currentPersona] = targetHistory.slice(-SAVE_LIMIT);
+                              saveHistories(); }
+                        }
                     }
                 }
             }
@@ -1933,17 +1950,17 @@ ${currentPersona}：`;
                         await new Promise(r => setTimeout(r, 120));
                         addBubble(s, 'left', block.name);
                     }
+                    // 每个成员说完话立即落盘，防止后续 block 渲染途中挂起
+                    { const _id = getStorageId(); if (!window.__pmHistories[_id]) window.__pmHistories[_id] = {};
+                      const _key = isGroupChat && currentGroupKey ? currentGroupKey : currentPersona;
+                      conversationHistory.push({ role: 'assistant', content: contentParts[contentParts.length - 1] });
+                      window.__pmHistories[_id][_key] = conversationHistory.slice(-SAVE_LIMIT);
+                      saveHistories(); }
                 }
             }
             
             if (contentParts.length > 0) {
-                conversationHistory.push({ role: 'assistant', content: contentParts.join('\n') });
-                const id = getStorageId();
-                if (!window.__pmHistories[id]) window.__pmHistories[id] = {};
-                // 修复：群聊模式应用 currentGroupKey 作为存档 key，而非 currentPersona
-                const saveKey = isGroupChat && currentGroupKey ? currentGroupKey : currentPersona;
-                window.__pmHistories[id][saveKey] = conversationHistory.slice(-SAVE_LIMIT);
-                saveHistories();
+                // 已在循环内逐条 push，此处仅做双向注入
                 applyBidirectionalInjection();
             }
         } catch (e) {
@@ -2546,6 +2563,14 @@ ${currentPersona}：`;
         if (!name?.trim()) return; name = name.trim();
         document.getElementById('pm-overlay')?.remove();
         const id = getStorageId();
+        // 切换前先把当前联系人的最新 conversationHistory 落盘，
+        // 防止 WebView 挂起/重载或快速切换导致未保存的回复丢失
+        if (currentPersona && conversationHistory.length > 0) {
+            if (!window.__pmHistories[id]) window.__pmHistories[id] = {};
+            const saveKey = isGroupChat && currentGroupKey ? currentGroupKey : currentPersona;
+            window.__pmHistories[id][saveKey] = conversationHistory.slice(-SAVE_LIMIT);
+            saveHistories();
+        }
         currentPersona = name;
         conversationHistory = window.__pmHistories[id]?.[name] ?? [];
         if (phoneWindow) {
