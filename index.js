@@ -920,7 +920,13 @@
 
     async function fetchSMS(userMsg) {
         const c = getCtx();
-        conversationHistory.push({ role: 'user', content: userMsg });
+        // 存入历史前把表情包标记替换为可读描述，让 AI 理解表情含义但不学习格式
+        const userMsgClean = userMsg.replace(/\[emo:([^\]:]+):(\d+)\]/g, (_, setName, idxStr) => {
+            const set = (window.__pmEmojis || []).find(s => s.name === setName);
+            const img = set?.images?.[parseInt(idxStr, 10) - 1];
+            return img?.desc ? `[表情包：${img.desc}]` : '[表情包]';
+        }).replace(/\s{2,}/g, ' ').trim();
+        conversationHistory.push({ role: 'user', content: userMsgClean });
         const ctxData = await gatherContext();
         const { cardDesc, cardPersonality, cardScenario, cardFirstMes, cardMesExample, mainChatText, worldBookText, userName, userDesc } = ctxData;
 
@@ -974,7 +980,7 @@ ${userBlock}
 ${cardScenario ? '【场景】\n' + cardScenario + '\n\n' : ''}${worldBookText ? '【世界书】\n' + worldBookText + '\n\n' : ''}群聊历史：
 ${smsHistoryText}
 
-${userName}：${userMsg}`;
+${userName}：${userMsgClean}`;
             systemPrompt = [
                 `你同时扮演 ${memberList} 在群聊「${groupName}」中与用户 ${userName} 对话。`,
                 `【用户信息】\n${userBlock}`,
@@ -1014,7 +1020,7 @@ ${contextBlockMain ? contextBlockMain + '\n\n' : ''}规则：
 短信对话历史：
 ${smsHistoryText}
 
-${userName}：${userMsg}
+${userName}：${userMsgClean}
 ${currentPersona}：`;
             systemPrompt = [
                 `你正在扮演"${currentPersona}"通过手机短信与用户 ${userName} 聊天。`,
@@ -1051,8 +1057,8 @@ ${currentPersona}：`;
 
             if (useIndep) {
                 const indepUserPrompt = isGroupChat
-                    ? `【群聊历史】\n${smsHistoryText}\n\n${userName}：${userMsg}`
-                    : `【短信对话历史】\n${smsHistoryText}\n\n${userName}：${userMsg}\n${currentPersona}：`;
+                    ? `【群聊历史】\n${smsHistoryText}\n\n${userName}：${userMsgClean}`
+                    : `【短信对话历史】\n${smsHistoryText}\n\n${userName}：${userMsgClean}\n${currentPersona}：`;
                 raw = await callAI(systemPrompt, indepUserPrompt, { maxTokens: isGroupChat ? 600 : 300 });
             } else {
                 raw = await callAI('', injectedInstruction, { maxTokens: isGroupChat ? 600 : 300 });
@@ -2647,29 +2653,34 @@ ${currentPersona}：`;
         if (!list) return;
         if (isSelectMode) {
             trashBtn.style.color = '#ff3b30'; confirmBar.style.display = 'flex';
-            list.querySelectorAll('.pm-bubble, .pm-group-bubble-wrap').forEach(b => {
-                if (b.id === 'pm-typing' || b.closest('.pm-select-wrap')) return;
+            // 进入选择模式时，把每个气泡对应的 conversationHistory 下标打进 wrap，
+            // 后续删除按下标操作，彻底避免文本匹配失败导致历史删不干净的问题
+            const bubbles = Array.from(list.querySelectorAll('.pm-bubble, .pm-group-bubble-wrap'))
+                .filter(b => b.id !== 'pm-typing' && !b.closest('.pm-select-wrap'));
+            // 构建气泡→history下标的映射：遍历 conversationHistory，按顺序给气泡分配下标
+            let histIdx = 0;
+            let bubbleIdx = 0;
+            const bubbleHistMap = new Map(); // bubble element → history index
+            for (let hi = 0; hi < conversationHistory.length && bubbleIdx < bubbles.length; hi++) {
+                const m = conversationHistory[hi];
+                // 一条 history 对应若干气泡（splitToSentences 的结果数量）
+                const parts = m.content.split(/\s*\/\s*/).filter(Boolean);
+                const count = parts.length || 1;
+                for (let k = 0; k < count && bubbleIdx < bubbles.length; k++, bubbleIdx++) {
+                    bubbleHistMap.set(bubbles[bubbleIdx], hi);
+                }
+            }
+            bubbles.forEach(b => {
                 const wrap = document.createElement('div'); wrap.className = 'pm-select-wrap';
-                
-                wrap.style.display = 'flex';
-                wrap.style.alignItems = 'center';
-                wrap.style.gap = '8px';
-                wrap.style.alignSelf = b.dataset.side === 'right' ? 'flex-end' : 'flex-start';
-                
+                wrap.style.cssText = 'display:flex;align-items:center;gap:8px;align-self:' + (b.dataset.side === 'right' ? 'flex-end' : 'flex-start') + ';';
                 const cb = document.createElement('div'); cb.className = 'pm-custom-check'; cb.dataset.checked = '0';
-                
-                cb.style.width = '22px';
-                cb.style.height = '22px';
-                cb.style.minWidth = '22px';
-                cb.style.minHeight = '22px';
-                cb.style.borderRadius = '50%';
-                cb.style.flexShrink = '0';
-                cb.style.cursor = 'pointer';
-                
+                cb.style.cssText = 'width:22px;height:22px;min-width:22px;min-height:22px;border-radius:50%;flex-shrink:0;cursor:pointer;';
                 cb.onclick = () => { cb.dataset.checked = cb.dataset.checked === '0' ? '1' : '0'; };
                 b.parentNode.insertBefore(wrap, b);
                 wrap.appendChild(cb); wrap.appendChild(b);
                 wrap.dataset.side = b.dataset.side || ''; wrap.dataset.text = b.dataset.text || '';
+                const hi = bubbleHistMap.get(b);
+                if (hi !== undefined) wrap.dataset.historyIndex = hi;
             });
         } else {
             trashBtn.style.color = ''; confirmBar.style.display = 'none';
@@ -2682,35 +2693,26 @@ ${currentPersona}：`;
 
     window.__pmDeleteSelected = () => {
         const list = phoneWindow?.querySelector('.pm-msg-list'); if (!list) return;
-        // 修复：收集要删除的气泡文本集合，同时记录对应的 conversationHistory 索引
-        // 避免"内容相同的消息全部被误删"的问题
-        const toDeleteTexts = new Set();
+        // 按 data-history-index 收集要删除的下标（精确，不依赖文本匹配）
+        const toRemoveIndices = new Set();
         list.querySelectorAll('.pm-select-wrap').forEach(wrap => {
             const cb = wrap.querySelector('.pm-custom-check');
-            if (cb?.dataset.checked === '1') { toDeleteTexts.add(wrap.dataset.text); wrap.remove(); }
-            else { const b = wrap.querySelector('.pm-bubble, .pm-group-bubble-wrap'); if (b) wrap.parentNode.insertBefore(b, wrap); wrap.remove(); }
+            if (cb?.dataset.checked === '1') {
+                const hi = wrap.dataset.historyIndex;
+                if (hi !== undefined && hi !== '') toRemoveIndices.add(Number(hi));
+                wrap.remove();
+            } else {
+                const b = wrap.querySelector('.pm-bubble, .pm-group-bubble-wrap');
+                if (b) wrap.parentNode.insertBefore(b, wrap);
+                wrap.remove();
+            }
         });
-        if (toDeleteTexts.size > 0) {
-            // 逐条匹配，每个 history 条目只删一次，避免重复内容被全部误删
-            const toRemoveIndices = new Set();
-            const usedTexts = new Map(); // text -> 已删除的次数
-            conversationHistory.forEach((m, i) => {
-                const parts = m.content.split(/\s*\/\s*/);
-                const matchedPart = parts.find(p => toDeleteTexts.has(p.trim()));
-                if (matchedPart) {
-                    const key = matchedPart.trim();
-                    const used = usedTexts.get(key) || 0;
-                    // 每条相同文本只删一次对应的 history 条目
-                    if (used < 1) {
-                        toRemoveIndices.add(i);
-                        usedTexts.set(key, used + 1);
-                    }
-                }
-            });
+        if (toRemoveIndices.size > 0) {
             conversationHistory = conversationHistory.filter((_, i) => !toRemoveIndices.has(i));
             const id = getStorageId();
             if (!window.__pmHistories[id]) window.__pmHistories[id] = {};
-            window.__pmHistories[id][currentPersona] = conversationHistory.slice(-SAVE_LIMIT);
+            const saveKey = isGroupChat && currentGroupKey ? currentGroupKey : currentPersona;
+            window.__pmHistories[id][saveKey] = conversationHistory.slice(-SAVE_LIMIT);
             saveHistories();
             applyBidirectionalInjection();
         }
@@ -2726,7 +2728,9 @@ ${currentPersona}：`;
         if (currentPersona && conversationHistory.length) {
             const id = getStorageId();
             if (!window.__pmHistories[id]) window.__pmHistories[id] = {};
-            window.__pmHistories[id][currentPersona] = conversationHistory.slice(-SAVE_LIMIT);
+            // 修复：群聊时应使用 currentGroupKey 而非 currentPersona 作为存档 key
+            const saveKey = isGroupChat && currentGroupKey ? currentGroupKey : currentPersona;
+            window.__pmHistories[id][saveKey] = conversationHistory.slice(-SAVE_LIMIT);
             saveHistories();
         }
         if (phoneWindow) { try { phoneWindow.hidePopover?.(); } catch (e) {} phoneWindow.remove(); }
