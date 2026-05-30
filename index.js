@@ -134,6 +134,7 @@
     window.__pmBgLocal = window.__pmBgLocal || {};
     window.__pmGroupMeta = window.__pmGroupMeta || {};
     window.__pmPokeConfig = window.__pmPokeConfig || {};
+    window.__pmWordyLimit = window.__pmWordyLimit || false;
     window.__pmEmojis = window.__pmEmojis || []; // [{id, name, images:[{url,desc},...]}]
 
     async function loadEmojis() {
@@ -175,6 +176,8 @@
     function saveTheme() { try { localStorage.setItem('ST_SMS_THEME', JSON.stringify(window.__pmTheme)); } catch (e) {} }
     function loadPokeConfig() { try { window.__pmPokeConfig = JSON.parse(localStorage.getItem('ST_SMS_POKE_CONFIG')) || {}; } catch (e) { window.__pmPokeConfig = {}; } }
     function savePokeConfig() { try { localStorage.setItem('ST_SMS_POKE_CONFIG', JSON.stringify(window.__pmPokeConfig)); } catch (e) {} }
+    function loadWordyLimit() { try { window.__pmWordyLimit = !!JSON.parse(localStorage.getItem('ST_SMS_WORDY_LIMIT')); } catch (e) { window.__pmWordyLimit = false; } }
+    function saveWordyLimit() { try { localStorage.setItem('ST_SMS_WORDY_LIMIT', JSON.stringify(window.__pmWordyLimit)); } catch (e) {} }
 
     async function loadBgSettings() {
         try {
@@ -666,6 +669,12 @@
         return null;
     }
 
+    // 字数控制提示词
+    function getWordyPrompt() {
+        if (!window.__pmWordyLimit) return '';
+        return '\n\n[字数限制] 除非角色人设明确为话痨或碎嘴性格，否则每条独立消息（每个 / 分隔的片段）不得超过35个字符，超出请拆分为多条。';
+    }
+
     // 生成表情包提示词\uff0c格式 [emo:套组名:序号]
     function getEmojiPrompt(contactKey) {
         const id = getStorageId();
@@ -1000,6 +1009,9 @@ ${currentPersona}：`;
         const targetContactKey = isGroupChat ? currentGroupKey : currentPersona;
         const emojiPrompt = getEmojiPrompt(targetContactKey);
         if (emojiPrompt) { systemPrompt += emojiPrompt; injectedInstruction += emojiPrompt; }
+        // 注入字数限制提示词
+        const wordyPrompt = getWordyPrompt();
+        if (wordyPrompt) { systemPrompt += wordyPrompt; injectedInstruction += wordyPrompt; }
         systemPrompt += `\n\n${antiFluff}`;
         injectedInstruction += `\n\n${antiFluff}`;
 
@@ -1449,7 +1461,8 @@ ${currentPersona}：`;
         const userPrompt = (isGroup
             ? `群聊名称：${groupMeta.name}\n群聊成员：${groupMeta.members.join('、')}\n\n用户有一段时间没有说话。请以所有群成员的身份，根据各自的性格、人设和当前聊天上下文，自然地发起话题或继续聊天。每个成员根据人设决定发言 0-8 句。\n\n输出格式：角色名：消息 / 消息\n\n【用户信息】\n${userBlock}\n\n【角色设定】\n${cardDesc || ''}\n\n【性格】\n${cardPersonality || ''}\n\n【场景】\n${cardScenario || ''}\n\n【世界书】\n${worldBookText || ''}\n\n【主线最近对话】\n${mainChatText || ''}\n\n【群聊历史】\n${smsHistoryText}`
             : `用户有一段时间没有回复。作为${contactName}，根据你的人设和当前聊天情境，自然地发送 3-8 句短信继续对话或发起新话题，不要提及用户没有回复这件事。\n\n【用户信息】\n${userBlock}\n\n【角色设定】\n${cardDesc || ''}\n\n【性格】\n${cardPersonality || ''}\n\n【场景】\n${cardScenario || ''}\n\n【对话示例】\n${cardMesExample || ''}\n\n【世界书】\n${worldBookText || ''}\n\n【主线最近对话】\n${mainChatText || ''}\n\n【短信对话历史】\n${smsHistoryText}\n\n输出格式：短信内容 / 短信内容（每句用 / 分隔，特殊格式中文单行闭合）`)
-            + (emojiPrompt ? emojiPrompt : '');
+            + (emojiPrompt ? emojiPrompt : '')
+            + getWordyPrompt();
 
         try {
             const raw = await callAI(systemPrompt, userPrompt);
@@ -1613,6 +1626,13 @@ ${currentPersona}：`;
         addNote(`已保存 ${contactName} 的设置`);
     };
 
+    window.__pmToggleWordyLimit = () => {
+        window.__pmWordyLimit = !window.__pmWordyLimit;
+        saveWordyLimit();
+        const el = document.getElementById('pm-wordy-check');
+        if (el) el.classList.toggle('is-checked', window.__pmWordyLimit);
+    };
+
     window.__pmToggleAutoPoke = (contactName) => {
         const checkEl = document.getElementById('pm-poke-check');
         const intervalEl = document.getElementById('pm-poke-interval');
@@ -1665,7 +1685,8 @@ ${currentPersona}：`;
 
         const userPrompt = isGroupChat
             ? `群聊名称：${groupDisplayName || '群聊'}\n群聊成员：${groupMembers.join('、')}\n\n请以所有群成员的身份，根据各自的性格和当前聊天上下文，自然地发起话题或继续聊天。每个成员根据人设决定发言 0-8 句。\n\n输出格式：角色名：消息内容 / 消息内容\n\n【用户信息】\n${userBlock}\n\n【角色设定】\n${cardDesc || ''}\n\n【性格】\n${cardPersonality || ''}\n\n【场景】\n${cardScenario || ''}\n\n【世界书】\n${worldBookText || ''}\n\n【主线最近对话】\n${mainChatText || ''}\n\n【群聊历史】\n${smsHistoryText}`
-            : `作为${contactName}，根据你的人设、性格和当前聊天情境，自然地发送 3-8 句短信，不要提及任何外部触发，就像你自己突然想发消息一样。\n\n【用户信息】\n${userBlock}\n\n【角色设定】\n${cardDesc || ''}\n\n【性格】\n${cardPersonality || ''}\n\n【场景】\n${cardScenario || ''}\n\n【对话示例】\n${cardMesExample || ''}\n\n【世界书】\n${worldBookText || ''}\n\n【主线最近对话】\n${mainChatText || ''}\n\n【短信对话历史】\n${smsHistoryText}\n\n输出格式：短信内容 / 短信内容（每句用 / 分隔，特殊格式中文单行闭合）`;
+            : `作为${contactName}，根据你的人设、性格和当前聊天情境，自然地发送 3-8 句短信，不要提及任何外部触发，就像你自己突然想发消息一样。\n\n【用户信息】\n${userBlock}\n\n【角色设定】\n${cardDesc || ''}\n\n【性格】\n${cardPersonality || ''}\n\n【场景】\n${cardScenario || ''}\n\n【对话示例】\n${cardMesExample || ''}\n\n【世界书】\n${worldBookText || ''}\n\n【主线最近对话】\n${mainChatText || ''}\n\n【短信对话历史】\n${smsHistoryText}\n\n输出格式：短信内容 / 短信内容（每句用 / 分隔，特殊格式中文单行闭合）`
+            + getWordyPrompt();
 
         try {
             const raw = await callAI(systemPrompt, userPrompt);
@@ -1857,7 +1878,8 @@ ${currentPersona}：`;
         }).join('\n');
 
         const systemPrompt = `你同时扮演群聊中的所有成员。\n【务必直接按格式输出短信内容，严禁在开头输出“好的”等废话。】`;
-        const userPrompt = `群聊名称：${groupDisplayName || '群聊'}\n群聊成员：${groupMembers.join('、')}\n\n请以每个群成员的身份，根据各自的性格、人设和当前聊天上下文，自然地发起话题或继续聊天，不要提及任何外部触发。\n每个成员根据自己的判断选择发言 0-8 条。\n\n输出格式：角色名：消息内容 / 消息内容\n\n【用户信息】\n${userBlock}\n\n【角色设定】\n${cardDesc || ''}\n\n【性格】\n${cardPersonality || ''}\n\n【场景】\n${cardScenario || ''}\n\n【世界书】\n${worldBookText || ''}\n\n【主线最近对话】\n${mainChatText || ''}\n\n【群聊历史】\n${smsHistoryText}`;
+        const userPrompt = `群聊名称：${groupDisplayName || '群聊'}\n群聊成员：${groupMembers.join('、')}\n\n请以每个群成员的身份，根据各自的性格、人设和当前聊天上下文，自然地发起话题或继续聊天，不要提及任何外部触发。\n每个成员根据自己的判断选择发言 0-8 条。\n\n输出格式：角色名：消息内容 / 消息内容\n\n【用户信息】\n${userBlock}\n\n【角色设定】\n${cardDesc || ''}\n\n【性格】\n${cardPersonality || ''}\n\n【场景】\n${cardScenario || ''}\n\n【世界书】\n${worldBookText || ''}\n\n【主线最近对话】\n${mainChatText || ''}\n\n【群聊历史】\n${smsHistoryText}`
+            + getWordyPrompt();
 
         try {
             const raw = await callAI(systemPrompt, userPrompt);
@@ -2180,6 +2202,20 @@ ${currentPersona}：`;
       <div style="height:12px;"></div>
     </div>
     <div id="pm-tab-other" class="pm-tab-pane" style="display:none;">
+      <div style="padding:14px 16px 12px;border-bottom:1px solid #f0f0f0;">
+        <div class="pm-cfg-label" style="margin-bottom:10px;">✍️ 字数控制</div>
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:4px 0;">
+          <div style="display:flex;flex-direction:column;gap:3px;">
+            <span style="font-size:13px;font-weight:600;color:#333;">话少一点</span>
+            <span style="font-size:11px;color:#aaa;">每条消息不超过35字（话痨人设除外）</span>
+          </div>
+          <div id="pm-wordy-check"
+               onclick="window.__pmToggleWordyLimit()"
+               class="pm-custom-check pm-bi-style"
+               style="cursor:pointer;width:22px;height:22px;min-width:22px;min-height:22px;flex-shrink:0;border-radius:50%;">
+          </div>
+        </div>
+      </div>
       <div style="padding:14px 16px 12px;">
         <div class="pm-cfg-label" style="margin-bottom:10px;">🥰 表情包管理</div>
         <div id="pm-emoji-set-list"></div>
@@ -2209,7 +2245,11 @@ ${currentPersona}：`;
         document.querySelectorAll('.pm-tab-pane').forEach(el => el.style.display = 'none');
         const pane = document.getElementById(`pm-tab-${tab}`);
         if (pane) pane.style.display = 'block';
-        if (tab === 'other') window.__pmRenderEmojiSetList();
+        if (tab === 'other') {
+            window.__pmRenderEmojiSetList();
+            const wc = document.getElementById('pm-wordy-check');
+            if (wc) wc.classList.toggle('is-checked', !!window.__pmWordyLimit);
+        }
     };
 
     window.__pmSetPreset = (p) => {
@@ -2656,7 +2696,7 @@ ${currentPersona}：`;
             window.__pmConfig = saved || { apiUrl: '', apiKey: '', model: '', useIndependent: false };
             if (typeof window.__pmConfig.useIndependent === 'undefined') window.__pmConfig.useIndependent = !!(window.__pmConfig.apiUrl && window.__pmConfig.apiKey);
         } catch (e) { window.__pmConfig = { apiUrl: '', apiKey: '', model: '', useIndependent: false }; }
-        loadProfiles(); loadBidirectional(); loadTheme(); loadGroupMeta(); loadPokeConfig(); migrateOldHistory(); loadEmojis();
+        loadProfiles(); loadBidirectional(); loadTheme(); loadGroupMeta(); loadPokeConfig(); loadWordyLimit(); migrateOldHistory(); loadEmojis();
         loadBgSettings().then(() => { try { applyBackground(); } catch (e) {} });
         hookGenerationEvent();
         const c = getCtx(), defaultChar = c?.characters?.[c.characterId]?.name ?? 'AI';
@@ -2991,7 +3031,7 @@ ${currentPersona}：`;
     }, true);
 
     try { window.__pmHistories = JSON.parse(localStorage.getItem('ST_SMS_DATA_V2')) || {}; } catch (e) {}
-    loadBidirectional(); loadGroupMeta(); loadPokeConfig();
+    loadBidirectional(); loadGroupMeta(); loadPokeConfig(); loadWordyLimit();
     loadHistoriesFromIDB();
     setTimeout(() => { migrateOldHistory(); applyBidirectionalInjection(); hookGenerationEvent(); }, 1500);
 
