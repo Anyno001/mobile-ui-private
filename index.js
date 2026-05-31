@@ -1215,7 +1215,8 @@ ${currentPersona}：`;
 <div class="pm-modal pm-modal-wide">
   <div class="pm-modal-header" style="justify-content:space-between;padding-right:14px;">
     <b>长文本输入</b>
-    <span onclick="document.getElementById('pm-overlay').remove()" class="pm-modal-close">✕</span>
+    <!-- 修复问题1：点击叉号关闭时，先将长文本同步回小输入框，再销毁界面 -->
+    <span onclick="(()=>{ const ta=document.getElementById('pm-expanded-textarea'); const si=document.querySelector('.pm-input'); if(ta && si) si.value=ta.value; document.getElementById('pm-overlay').remove(); })()" class="pm-modal-close">✕</span>
   </div>
   <div style="padding:14px 16px;">
     <textarea id="pm-expanded-textarea" class="pm-cfg-input" rows="7" 
@@ -1223,7 +1224,8 @@ ${currentPersona}：`;
         placeholder="在这里输入多行文本...">${escapeAttr(currentText)}</textarea>
   </div>
   <div class="pm-modal-add" style="display:flex;gap:8px;">
-    <button onclick="window.__pmShowEmojiPicker()" style="flex:2;background:#f0f0f3;color:#333;border:1px solid #ddd;border-radius:10px;padding:10px;font-size:14px;cursor:pointer;font-weight:600;">(^ ^)</button>
+    <!-- 修复问题2：点开表情包前，先将当前输入的文本同步回小输入框，防止从表情包界面返回时重新读取到旧数据而清空文本 -->
+    <button onclick="(()=>{ const ta=document.getElementById('pm-expanded-textarea'); const si=document.querySelector('.pm-input'); if(ta && si) si.value=ta.value; window.__pmShowEmojiPicker(); })()" style="flex:2;background:#f0f0f3;color:#333;border:1px solid #ddd;border-radius:10px;padding:10px;font-size:14px;cursor:pointer;font-weight:600;">(^ ^)</button>
     <button onclick="window.__pmConfirmExpandInput()" style="flex:8;background:#007aff;color:#fff;border:none;border-radius:10px;padding:10px;font-size:13px;cursor:pointer;font-weight:600;">发送</button>
   </div>
 </div>`);
