@@ -1850,7 +1850,7 @@ ${currentPersona}：`;
                 const id = getStorageId();
                 if (!window.__pmHistories[id]) window.__pmHistories[id] = {};
                 // 修复：群聊模式应使用 currentGroupKey 作为存档 key，而非 currentPersona
-                const saveKey = isGroupChat && currentGroupKey ? currentGroupKey : currentPersona;
+            const saveKey = _prevSaveKey || (isGroupChat && currentGroupKey ? currentGroupKey : currentPersona);
                 window.__pmHistories[id][saveKey] = conversationHistory.slice(-SAVE_LIMIT);
                 saveHistories();
                 applyBidirectionalInjection();
@@ -2127,11 +2127,13 @@ ${currentPersona}：`;
         
         if (mode === 'create') {
             const groupKey = `__group_${Date.now()}`;
+            // 修复：在修改全局状态前先快照旧的 saveKey，防止旧聊天记录被写入新群聊
+            const _prevSaveKey = isGroupChat && currentGroupKey ? currentGroupKey : currentPersona;
             window.__pmGroupMeta[id][groupKey] = { name: groupName, members: names };
             saveGroupMeta();
             isGroupChat = true; groupMembers = names; groupDisplayName = groupName; currentGroupKey = groupKey;
             groupColorMap = {}; names.forEach((n, i) => { groupColorMap[n] = GROUP_COLORS[i % GROUP_COLORS.length]; });
-            window.__pmSwitch(groupKey);
+            window.__pmSwitch(groupKey, _prevSaveKey);
         } else {
             if (!currentGroupKey) return;
             window.__pmGroupMeta[id][currentGroupKey] = { name: groupName, members: names };
@@ -2629,15 +2631,16 @@ ${currentPersona}：`;
         window.__pmSwitch(key);
     };
 
-    window.__pmSwitch = (name) => {
+    window.__pmSwitch = (name, _prevSaveKey) => {
         if (!name?.trim()) return; name = name.trim();
         document.getElementById('pm-overlay')?.remove();
         const id = getStorageId();
         // 切换前先把当前联系人的最新 conversationHistory 落盘，
-        // 防止 WebView 挂起/重载或快速切换导致未保存的回复丢失
+        // 修复：调用方（__pmConfirmGroup）可能在调用本函数前已修改了 isGroupChat/currentGroupKey，
+        // 导致落盘时 saveKey 错误地指向新目标，把旧聊天记录写入新会话。优先使用调用方传入的 _prevSaveKey。
         if (currentPersona && conversationHistory.length > 0) {
             if (!window.__pmHistories[id]) window.__pmHistories[id] = {};
-            const saveKey = isGroupChat && currentGroupKey ? currentGroupKey : currentPersona;
+            const saveKey = _prevSaveKey || (isGroupChat && currentGroupKey ? currentGroupKey : currentPersona);
             window.__pmHistories[id][saveKey] = conversationHistory.slice(-SAVE_LIMIT);
             saveHistories();
         }
@@ -3157,5 +3160,5 @@ ${currentPersona}：`;
     loadHistoriesFromIDB();
     setTimeout(() => { migrateOldHistory(); applyBidirectionalInjection(); hookGenerationEvent(); }, 1500);
 
-    console.log('[phone-mode] v9.4-fix3 已加载：修复拍一拍（单联系人/群聊）不注入表情包提示词的问题');
+    console.log('[phone-mode] v9.4-fix4 已加载：修复新建群聊时继承上一个联系人聊天记录的问题');
 })();
