@@ -2621,9 +2621,9 @@ ${currentPersona}：`;
             return;
         }
         const groupMeta = window.__pmGroupMeta[id]?.[key];
-        if (groupMeta) {
         // 修复：在修改全局状态前快照旧 saveKey，防止落盘时把当前会话记录写入目标会话
         const _prevSaveKey = isGroupChat && currentGroupKey ? currentGroupKey : currentPersona;
+        if (groupMeta) {
             isGroupChat = true; currentGroupKey = key;
             groupMembers = groupMeta.members.slice();
             groupDisplayName = groupMeta.name;
@@ -3166,5 +3166,5 @@ ${currentPersona}：`;
     loadHistoriesFromIDB();
     setTimeout(() => { migrateOldHistory(); applyBidirectionalInjection(); hookGenerationEvent(); }, 1500);
 
-    console.log('[phone-mode] v9.4-fix5 已加载：修复群聊拍一拍不注入表情包、删除会话后切换目标被覆盖的问题');
+    console.log('[phone-mode] v9.4-fix6 已加载：修复联系人列表点击无效（_prevSaveKey 作用域错误导致 ReferenceError）');
 })();
