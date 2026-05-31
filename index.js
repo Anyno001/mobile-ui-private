@@ -1445,9 +1445,46 @@ ${currentPersona}：`;
     <b class="pm-emoji-set-label">${escapeHtml(set0?.name||'')} (${set0?.images.length||0})</b>
     <span onclick="document.getElementById('pm-overlay').remove();window.__pmShowExpandInput();" class="pm-modal-close">✕</span>
   </div>
-  <div class="pm-emoji-imgs" style="padding:12px 14px;overflow-y:auto;max-height:340px;display:flex;flex-wrap:wrap;gap:10px;justify-content:flex-start;">${initialImgs}</div>
+  <div class="pm-emoji-imgs" id="pm-emoji-imgs-area" style="padding:12px 14px;overflow-y:auto;max-height:340px;display:flex;flex-wrap:wrap;gap:10px;justify-content:flex-start;touch-action:pan-y pinch-zoom;">${initialImgs}</div>
   <div class="pm-emoji-dots">${initialDots}</div>
 </div>`);
+
+        // 为表情包图片区域绑定左右滑动切换套组
+        const pickerInner = document.getElementById('pm-emoji-picker-inner');
+        if (pickerInner && sets.length > 1) {
+            const imgsArea = pickerInner.querySelector('#pm-emoji-imgs-area');
+            if (imgsArea) {
+                let swipeStartX = 0, swipeStartY = 0, swipeMoved = false;
+                imgsArea.addEventListener('touchstart', (e) => {
+                    swipeStartX = e.touches[0].clientX;
+                    swipeStartY = e.touches[0].clientY;
+                    swipeMoved = false;
+                }, { passive: true });
+                imgsArea.addEventListener('touchmove', (e) => {
+                    const dx = e.touches[0].clientX - swipeStartX;
+                    const dy = e.touches[0].clientY - swipeStartY;
+                    // 横向滑动幅度大于纵向时标记为横滑，阻止页面滚动
+                    if (!swipeMoved && Math.abs(dx) > Math.abs(dy) + 5) {
+                        swipeMoved = true;
+                    }
+                    if (swipeMoved && e.cancelable) e.preventDefault();
+                }, { passive: false });
+                imgsArea.addEventListener('touchend', (e) => {
+                    const dx = e.changedTouches[0].clientX - swipeStartX;
+                    const dy = e.changedTouches[0].clientY - swipeStartY;
+                    if (Math.abs(dx) > 40 && Math.abs(dx) > Math.abs(dy) * 1.5) {
+                        if (dx < 0) {
+                            // 左滑 → 下一套组
+                            activeSetIdx = (activeSetIdx + 1) % sets.length;
+                        } else {
+                            // 右滑 → 上一套组
+                            activeSetIdx = (activeSetIdx - 1 + sets.length) % sets.length;
+                        }
+                        renderPicker();
+                    }
+                }, { passive: true });
+            }
+        }
     };
 
     window.__pmInsertEmoji = (code) => {
@@ -2556,8 +2593,10 @@ ${currentPersona}：`;
             savePokeConfig();
         }
 
+        // 修复：await 确保 IDB 写入完成，防止冷启动时 IDB 旧数据覆盖删除操作
+        await pmIDBSet('ST_SMS_DATA_V2', window.__pmHistories).catch(() => {});
+        try { localStorage.setItem('ST_SMS_DATA_V2', JSON.stringify(window.__pmHistories)); } catch (e) {};
         saveGroupMeta();
-        saveHistories();
         applyBidirectionalInjection();
         window.__pmShowList();
     };
@@ -2643,7 +2682,9 @@ ${currentPersona}：`;
     window.__pmDel = async (name) => {
         const id = getStorageId();
         if (window.__pmHistories[id]) delete window.__pmHistories[id][name];
-        saveHistories();
+        // 修复：await 确保 IDB 写入完成，防止冷启动时 IDB 旧数据覆盖删除操作
+        await pmIDBSet('ST_SMS_DATA_V2', window.__pmHistories).catch(() => {});
+        try { localStorage.setItem('ST_SMS_DATA_V2', JSON.stringify(window.__pmHistories)); } catch (e) {};
 
         const arr = window.__pmBidirectional[id] || [], idx = arr.indexOf(name);
         if (idx >= 0) { arr.splice(idx, 1); window.__pmBidirectional[id] = arr; saveBidirectional(); }
@@ -2742,6 +2783,8 @@ ${currentPersona}：`;
         if (phoneWindow) { try { phoneWindow.hidePopover?.(); } catch (e) {} phoneWindow.remove(); }
         phoneWindow = null; phoneActive = false; isMinimized = false; isSelectMode = false;
         isGroupChat = false; groupMembers = []; groupColorMap = {}; groupDisplayName = ''; currentGroupKey = '';
+        // 修复：关闭时重置冷启动标记，确保下次打开时（尤其是切换角色卡后）重新从 IDB 加载最新数据
+        __pmFirstOpen = true;
         // 修复：关闭时清除可见性定时器，重新开启时再创建新的
         if (__pmVisibilityTimer) { clearInterval(__pmVisibilityTimer); __pmVisibilityTimer = null; }
     };
@@ -3108,5 +3151,5 @@ ${currentPersona}：`;
     loadHistoriesFromIDB();
     setTimeout(() => { migrateOldHistory(); applyBidirectionalInjection(); hookGenerationEvent(); }, 1500);
 
-    console.log('[phone-mode] v9.4-fix 已加载：修复消息丢失/拍一拍竞态/误删/群聊存档/定时器泄漏/上下文未就绪等问题');
+    console.log('[phone-mode] v9.4-fix2 已加载：修复表情包移动端滑动切换/联系人串卡/删除后重现等问题');
 })();
