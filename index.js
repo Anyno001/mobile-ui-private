@@ -27,7 +27,16 @@
 
     function pmOpenIDB() {
         return new Promise(resolve => {
-            if (__pmIDB) return resolve(__pmIDB);
+            if (__pmIDB) {
+                // 探测连接是否还活着：尝试一次只读事务
+                try {
+                    __pmIDB.transaction(PM_IDB_STORE, 'readonly');
+                    return resolve(__pmIDB); // 连接正常，复用
+                } catch (e) {
+                    // 连接已失效（iOS WebView 后台恢复常见），清除缓存重新连接
+                    __pmIDB = null;
+                }
+            }
             try {
                 const req = indexedDB.open(PM_IDB_NAME, 1);
                 req.onupgradeneeded = () => {
@@ -88,24 +97,26 @@
     function saveHistoriesBeforeUnload() {
         const data = window.__pmHistories;
         if (!data || !Object.keys(data).length) return;
+        // 同步写 localStorage（兜底）
         try {
             localStorage.setItem('ST_SMS_DATA_V2', JSON.stringify(data));
-            return;
-        } catch (e) {}
-        // 完整写入失败则做最小化备份：每个联系人只保留最近10条
-        try {
-            const slim = {};
-            for (const [storyId, contacts] of Object.entries(data)) {
-                slim[storyId] = {};
-                for (const [persona, history] of Object.entries(contacts)) {
-                    slim[storyId][persona] = Array.isArray(history) ? history.slice(-10) : history;
-                }
-            }
-            localStorage.setItem('ST_SMS_DATA_V2', JSON.stringify(slim));
-            console.warn('[phone-mode] beforeunload: localStorage 容量不足，已保存最近10条紧急备份');
         } catch (e) {
-            console.warn('[phone-mode] beforeunload: localStorage 完全无法写入，数据依赖 IDB 恢复');
+            // localStorage 满时做最小化备份
+            try {
+                const slim = {};
+                for (const [storyId, contacts] of Object.entries(data)) {
+                    slim[storyId] = {};
+                    for (const [persona, history] of Object.entries(contacts)) {
+                        slim[storyId][persona] = Array.isArray(history) ? history.slice(-10) : history;
+                    }
+                }
+                localStorage.setItem('ST_SMS_DATA_V2', JSON.stringify(slim));
+            } catch (e2) {
+                console.warn('[phone-mode] beforeunload: localStorage 完全无法写入');
+            }
         }
+        // ✅ 新增：同时触发 IDB 异步写入，iOS 后台挂起前尽量完成
+        pmIDBSet('ST_SMS_DATA_V2', data).catch(() => {});
     }
 
     // 避免重复加载插件时重复注册
@@ -122,12 +133,20 @@
     async function loadHistoriesFromIDB() {
         try {
             const v = await pmIDBGet('ST_SMS_DATA_V2');
-            if (!v) return;
+            if (!v) {
+                // ✅ IDB 无数据（包括 IDB 失效返回 null 的情况），用 localStorage 兜底
+                try {
+                    const ls = JSON.parse(localStorage.getItem('ST_SMS_DATA_V2'));
+                    if (ls && typeof ls === 'object' && Object.keys(ls).length > 0) {
+                        window.__pmHistories = ls;
+                        console.log('[phone-mode] IDB 无数据，已从 localStorage 恢复');
+                    }
+                } catch (e) {}
+                return;
+            }
             const parsed = typeof v === 'string' ? JSON.parse(v) : v;
             if (!parsed || typeof parsed !== 'object') return;
             const idbCount = Object.keys(parsed).length;
-            // 修复：IDB 是权威存储，只要有数据就直接使用，不依赖条数比较
-            // localStorage 可能因容量限制静默写入失败，导致保存的是旧版本
             if (idbCount > 0) {
                 window.__pmHistories = parsed;
                 try { localStorage.setItem('ST_SMS_DATA_V2', JSON.stringify(parsed)); } catch (e) {
@@ -135,7 +154,16 @@
                 }
                 console.log('[phone-mode] 从 IndexedDB 加载了短信历史，共', idbCount, '个会话');
             }
-        } catch (e) { console.warn('[phone-mode] IDB 恢复失败', e); }
+        } catch (e) {
+            // ✅ IDB 读取异常（iOS WebView 后台恢复时的典型情况），用 localStorage 兜底
+            console.warn('[phone-mode] IDB 恢复失败，尝试 localStorage 兜底', e);
+            try {
+                const ls = JSON.parse(localStorage.getItem('ST_SMS_DATA_V2'));
+                if (ls && typeof ls === 'object' && Object.keys(ls).length > 0) {
+                    window.__pmHistories = ls;
+                }
+            } catch (e2) {}
+        }
     }
 
     window.__pmHistories = window.__pmHistories || {};
@@ -3163,9 +3191,9 @@ ${currentPersona}：`;
         if (ta.value.trim() === '/phone') { e.preventDefault(); e.stopImmediatePropagation(); ta.value = ''; window.__pmOpen(); }
     }, true);
 
-    try { window.__pmHistories = JSON.parse(localStorage.getItem('ST_SMS_DATA_V2')) || {}; } catch (e) {}
+    try { window.__pmHistories = window.__pmHistories || {}; } catch (e) {}
     loadBidirectional(); loadGroupMeta(); loadPokeConfig(); loadWordyLimit();
-    loadHistoriesFromIDB();
+    loadHistoriesFromIDB(); // IDB 加载完成后内部会用 localStorage 作 fallback
     setTimeout(() => { migrateOldHistory(); applyBidirectionalInjection(); hookGenerationEvent(); }, 1500);
 
     console.log('[phone-mode] v9.4-fix6 已加载：修复联系人列表点击无效（_prevSaveKey 作用域错误导致 ReferenceError）');
