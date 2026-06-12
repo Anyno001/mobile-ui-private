@@ -1178,15 +1178,19 @@ ${userMsg.trim() ? `${userName}：${userMsgClean}\n${currentPersona}：` : `[仅
         const input = phoneWindow.querySelector('.pm-input');
         const val = input.value.trim(); if (!val) return; input.value = '';
 
-        // 解析方括号引导：匹配 【...】 或 [...] (全角/半角)，提取为剧情引导，其余为正常发言
+        // 解析方括号引导：先把 [emo:...] 格式临时占位保护，再匹配 【...】/[...]/［...］ 为剧情引导
+        const EMO_PLACEHOLDER = '\u0002';
+        const emoSlots = [];
+        const valProtected = val.replace(/\[emo:[^\]]+\]/g, m => { emoSlots.push(m); return EMO_PLACEHOLDER + (emoSlots.length - 1) + EMO_PLACEHOLDER; });
         const DIRECTOR_RE = /[【\[［]([^】\]］]+)[】\]］]/g;
         const directorNotes = [];
         let m;
         DIRECTOR_RE.lastIndex = 0;
-        while ((m = DIRECTOR_RE.exec(val)) !== null) directorNotes.push(m[1].trim());
+        while ((m = DIRECTOR_RE.exec(valProtected)) !== null) directorNotes.push(m[1].trim());
         const directorNote = directorNotes.join('；');
-        // 去掉所有方括号引导内容，剩余为用户正常发言
-        const plainVal = val.replace(/[【\[［][^】\]］]*[】\]］]/g, '').trim();
+        // 去掉所有方括号引导内容后，还原 emo 占位
+        const plainValProtected = valProtected.replace(/[【\[［][^】\]］]*[】\]］]/g, '').trim();
+        const plainVal = plainValProtected.replace(new RegExp(EMO_PLACEHOLDER + '(\\d+)' + EMO_PLACEHOLDER, 'g'), (_, i) => emoSlots[+i] || '');
 
         // 渲染剧情引导条（居中，不是气泡）
         if (directorNote) addDirector(directorNote);
@@ -2786,17 +2790,19 @@ ${userMsg.trim() ? `${userName}：${userMsgClean}\n${currentPersona}：` : `[仅
         if (isSelectMode) {
             trashBtn.style.color = '#ff3b30'; confirmBar.style.display = 'flex';
             // 气泡上已在渲染时打好 data-history-index，直接读取，无需事后映射
-            list.querySelectorAll('.pm-bubble, .pm-group-bubble-wrap')
+            list.querySelectorAll('.pm-bubble, .pm-group-bubble-wrap, .pm-director')
                 .forEach(b => {
                 if (b.id === 'pm-typing' || b.closest('.pm-select-wrap')) return;
+                const isDirector = b.classList.contains('pm-director');
                 const wrap = document.createElement('div'); wrap.className = 'pm-select-wrap';
-                wrap.style.cssText = 'display:flex;align-items:center;gap:8px;align-self:' + (b.dataset.side === 'right' ? 'flex-end' : 'flex-start') + ';';
+                const side = isDirector ? 'center' : (b.dataset.side || 'left');
+                wrap.style.cssText = 'display:flex;align-items:center;gap:8px;align-self:' + (side === 'right' ? 'flex-end' : side === 'center' ? 'center' : 'flex-start') + ';';
                 const cb = document.createElement('div'); cb.className = 'pm-custom-check'; cb.dataset.checked = '0';
                 cb.style.cssText = 'width:22px;height:22px;min-width:22px;min-height:22px;border-radius:50%;flex-shrink:0;cursor:pointer;';
                 cb.onclick = () => { cb.dataset.checked = cb.dataset.checked === '0' ? '1' : '0'; };
                 b.parentNode.insertBefore(wrap, b);
                 wrap.appendChild(cb); wrap.appendChild(b);
-                wrap.dataset.side = b.dataset.side || ''; wrap.dataset.text = b.dataset.text || '';
+                wrap.dataset.side = side; wrap.dataset.text = b.dataset.text || '';
                 // 直接从气泡上读下标，渲染时已打好
                 const hi = b.dataset.historyIndex;
                 if (hi !== undefined && hi !== '') wrap.dataset.historyIndex = hi;
@@ -2804,7 +2810,7 @@ ${userMsg.trim() ? `${userName}：${userMsgClean}\n${currentPersona}：` : `[仅
         } else {
             trashBtn.style.color = ''; confirmBar.style.display = 'none';
             list.querySelectorAll('.pm-select-wrap').forEach(wrap => {
-                const b = wrap.querySelector('.pm-bubble, .pm-group-bubble-wrap');
+                const b = wrap.querySelector('.pm-bubble, .pm-group-bubble-wrap, .pm-director');
                 if (b) wrap.parentNode.insertBefore(b, wrap); wrap.remove();
             });
         }
@@ -2821,7 +2827,7 @@ ${userMsg.trim() ? `${userName}：${userMsgClean}\n${currentPersona}：` : `[仅
                 if (hi !== undefined && hi !== '') toRemoveIndices.add(Number(hi));
                 wrap.remove();
             } else {
-                const b = wrap.querySelector('.pm-bubble, .pm-group-bubble-wrap');
+                const b = wrap.querySelector('.pm-bubble, .pm-group-bubble-wrap, .pm-director');
                 if (b) wrap.parentNode.insertBefore(b, wrap);
                 wrap.remove();
             }
