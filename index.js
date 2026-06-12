@@ -946,7 +946,7 @@
         }
     }
 
-    async function fetchSMS(userMsg) {
+    async function fetchSMS(userMsg, directorNote) {
         const c = getCtx();
         // 存入历史前把表情包标记替换为可读描述，让 AI 理解表情含义但不学习格式
         const userMsgClean = userMsg.replace(/\[emo:([^\]:]+):(\d+)\]/g, (_, setName, idxStr) => {
@@ -954,7 +954,9 @@
             const img = set?.images?.[parseInt(idxStr, 10) - 1];
             return img?.desc ? `[表情包：${img.desc}]` : '[表情包]';
         }).replace(/\s{2,}/g, ' ').trim();
-        conversationHistory.push({ role: 'user', content: userMsg }); // 存原始内容，保留 [emo:] 用于渲染
+        if (userMsg.trim()) {
+            conversationHistory.push({ role: 'user', content: userMsg }); // 存原始内容，保留 [emo:] 用于渲染
+        }
         const ctxData = await gatherContext();
         const { cardDesc, cardPersonality, cardScenario, cardFirstMes, cardMesExample, mainChatText, worldBookText, userName, userDesc } = ctxData;
 
@@ -1007,8 +1009,8 @@ ${userBlock}
 
 ${cardScenario ? '【场景】\n' + cardScenario + '\n\n' : ''}${worldBookText ? '【世界书】\n' + worldBookText + '\n\n' : ''}群聊历史：
 ${smsHistoryText}
-
-${userName}：${userMsgClean}`;
+${directorNote ? `\n[剧情引导] ${directorNote}\n` : ''}
+${userMsg.trim() ? `${userName}：${userMsgClean}` : '[仅有剧情引导，无用户发言，请按引导推进剧情]'}`;
             systemPrompt = [
                 `你同时扮演 ${memberList} 在群聊「${groupName}」中与用户 ${userName} 对话。`,
                 `【用户信息】\n${userBlock}`,
@@ -1047,9 +1049,8 @@ ${contextBlockMain ? contextBlockMain + '\n\n' : ''}规则：
 
 短信对话历史：
 ${smsHistoryText}
-
-${userName}：${userMsgClean}
-${currentPersona}：`;
+${directorNote ? `\n[剧情引导] ${directorNote}\n` : ''}
+${userMsg.trim() ? `${userName}：${userMsgClean}\n${currentPersona}：` : `[仅有剧情引导，无用户发言，请按引导推进剧情]\n${currentPersona}：`}`;
             systemPrompt = [
                 `你正在扮演"${currentPersona}"通过手机短信与用户 ${userName} 聊天。`,
                 `【用户信息】\n${userBlock}`,
@@ -1085,8 +1086,8 @@ ${currentPersona}：`;
 
             if (useIndep) {
                 const indepUserPrompt = isGroupChat
-                    ? `【群聊历史】\n${smsHistoryText}\n\n${userName}：${userMsgClean}`
-                    : `【短信对话历史】\n${smsHistoryText}\n\n${userName}：${userMsgClean}\n${currentPersona}：`;
+                    ? `【群聊历史】\n${smsHistoryText}\n${directorNote ? `\n[剧情引导] ${directorNote}\n` : ''}${userMsg.trim() ? `\n${userName}：${userMsgClean}` : '\n[仅有剧情引导，无用户发言，请按引导推进剧情]'}`
+                    : `【短信对话历史】\n${smsHistoryText}\n${directorNote ? `\n[剧情引导] ${directorNote}\n` : ''}${userMsg.trim() ? `\n${userName}：${userMsgClean}\n${currentPersona}：` : `\n[仅有剧情引导，无用户发言，请按引导推进剧情]\n${currentPersona}：`}`;
                 raw = await callAI(systemPrompt, indepUserPrompt, { maxTokens: isGroupChat ? 600 : 300 });
             } else {
                 raw = await callAI('', injectedInstruction, { maxTokens: isGroupChat ? 600 : 300 });
@@ -1157,6 +1158,12 @@ ${currentPersona}：`;
         const n = document.createElement('div'); n.className = 'pm-note'; n.textContent = text;
         list.appendChild(n); list.scrollTop = list.scrollHeight;
     }
+    function addDirector(text) {
+        const list = phoneWindow?.querySelector('.pm-msg-list'); if (!list) return;
+        const d = document.createElement('div'); d.className = 'pm-director';
+        d.innerHTML = `<span class="pm-director-icon">🎬</span><span class="pm-director-text">${escapeHtml(text)}</span>`;
+        list.appendChild(d); list.scrollTop = list.scrollHeight;
+    }
     function showTyping() {
         const list = phoneWindow?.querySelector('.pm-msg-list');
         if (!list || document.getElementById('pm-typing')) return;
@@ -1170,7 +1177,24 @@ ${currentPersona}：`;
         if (isGenerating) return;
         const input = phoneWindow.querySelector('.pm-input');
         const val = input.value.trim(); if (!val) return; input.value = '';
-        const protect = val.replace(/[\(（][^)）]+[\)\）]/g, m => m.replace(/\//g, '\u0001'));
+
+        // 解析方括号引导：匹配 【...】 或 [...] (全角/半角)，提取为剧情引导，其余为正常发言
+        const DIRECTOR_RE = /[【\[［]([^】\]］]+)[】\]］]/g;
+        const directorNotes = [];
+        let m;
+        DIRECTOR_RE.lastIndex = 0;
+        while ((m = DIRECTOR_RE.exec(val)) !== null) directorNotes.push(m[1].trim());
+        const directorNote = directorNotes.join('；');
+        // 去掉所有方括号引导内容，剩余为用户正常发言
+        const plainVal = val.replace(/[【\[［][^】\]］]*[】\]］]/g, '').trim();
+
+        // 渲染剧情引导条（居中，不是气泡）
+        if (directorNote) addDirector(directorNote);
+
+        // 如果没有正常发言也没有引导，直接返回（不可能走到这，但防御一下）
+        if (!directorNote && !plainVal) return;
+
+        const protect = plainVal.replace(/[\(（][^)）]+[\)\）]/g, m => m.replace(/\//g, '\u0001'));
         const rawChunks = protect.split(/[/／]/).map(s => s.replace(/\u0001/g, '/').trim()).filter(Boolean);
         // 把含 [emo:...] 的 chunk 按标记边界再拆成独立气泡
         const userBubbles = rawChunks.flatMap(chunk => {
@@ -1198,10 +1222,13 @@ ${currentPersona}：`;
         const btn = phoneWindow.querySelector('.pm-up-btn'); if (btn) btn.disabled = true;
         showTyping();
         try {
-            const result = await fetchSMS(val);
+            const result = await fetchSMS(plainVal, directorNote);
             hideTyping();
-            // 回填用户气泡的 historyIndex（fetchSMS 内已 push，下标为 length-2 或 length-1）
-            const userHi = conversationHistory.length - (result ? 2 : 1);
+            // 回填用户气泡的 historyIndex
+            // 若有正常用户发言，fetchSMS 里 push 了 user+assistant，AI 在 length-1，user 在 length-2
+            // 若纯剧情引导无用户发言，fetchSMS 只 push 了 assistant，AI 在 length-1
+            const hasUserMsg = !!plainVal.trim();
+            const userHi = conversationHistory.length - (hasUserMsg ? 2 : 1);
             pendingUserBubbles.forEach(b => { b.dataset.historyIndex = userHi; const inner = b.querySelector('.pm-bubble'); if(inner) inner.dataset.historyIndex = userHi; });
             const aiHi = conversationHistory.length - 1;
             if (result.type === 'group') {
@@ -3037,6 +3064,11 @@ ${currentPersona}：`;
 .pm-typing-bubble span:nth-child(2){animation-delay:.2s;}.pm-typing-bubble span:nth-child(3){animation-delay:.4s;}
 @keyframes pm-bounce{0%,60%,100%{transform:translateY(0)}30%{transform:translateY(-5px)}}
 .pm-note{text-align:center;font-size:11px;color:#bbb;padding:3px 0;}
+.pm-director{display:flex;align-items:center;justify-content:center;gap:5px;padding:5px 10px;margin:2px 4px;background:rgba(88,86,214,0.08);border:1px solid rgba(88,86,214,0.18);border-radius:12px;animation:pm-pop .22s ease-out;}
+.pm-director-icon{font-size:12px;flex-shrink:0;}
+.pm-director-text{font-size:11px;color:#5856d6;font-style:italic;text-align:center;line-height:1.4;word-break:break-word;}
+#pm-iphone[data-theme="dark"] .pm-director{background:rgba(88,86,214,0.15);border-color:rgba(88,86,214,0.3);}
+#pm-iphone[data-theme="dark"] .pm-director-text{color:#a29bfe;}
 .pm-transfer-card{background:linear-gradient(135deg,#ff9500,#ff6b00);color:#fff;border-radius:14px;padding:12px 14px;display:flex;align-items:center;gap:10px;min-width:150px;box-shadow:0 3px 10px rgba(255,149,0,.35);}
 .pm-receive-card{background:linear-gradient(135deg,#34c759,#28a745);color:#fff;border-radius:14px;padding:12px 14px;display:flex;align-items:center;gap:10px;min-width:150px;box-shadow:0 3px 10px rgba(52,199,89,.35);}
 .pm-refund-card{background:linear-gradient(135deg,#ff9500,#ff6b00);color:#fff;border-radius:14px;padding:12px 14px;display:flex;align-items:center;gap:10px;min-width:150px;box-shadow:0 3px 10px rgba(255,149,0,.35);}
