@@ -660,7 +660,7 @@
         let worldBookText = '';
         try {
             if (typeof c?.getWorldInfoPrompt === 'function') {
-                const wi = await c.getWorldInfoPrompt((c.chat || []).map(m => m.mes || '').slice(-10), 4096, false);
+                const wi = await c.getWorldInfoPrompt((c.chat || []).map(m => m.mes || '').slice(-10), Number.MAX_SAFE_INTEGER, false);
                 worldBookText = wi?.worldInfoString || wi?.worldInfoBefore || '';
                 if (!worldBookText && wi && typeof wi === 'object') worldBookText = [wi.worldInfoBefore, wi.worldInfoAfter].filter(Boolean).join('\n');
             }
@@ -3385,5 +3385,5 @@ ${userMsg.trim() ? `${userName}：${userMsgClean}\n${currentPersona}：` : `[仅
     loadHistoriesFromIDB(); // IDB 加载完成后内部会用 localStorage 作 fallback
     setTimeout(() => { migrateOldHistory(); applyBidirectionalInjection(); hookGenerationEvent(); }, 1500);
 
-    console.log('[phone-mode] v9.5.4 已加载：修复 poke 路径 _prevSaveKey ReferenceError');
+    console.log('[phone-mode] v9.5.6 已加载：世界书预算改为 MAX_SAFE_INTEGER，无上限读取所有激活条目');
 })();
