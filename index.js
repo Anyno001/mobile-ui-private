@@ -2,7 +2,7 @@
     await new Promise(r => setTimeout(r, 1000));
 
     const SAVE_LIMIT = 60, CONTEXT_LIMIT = 20, BIDIRECTIONAL_LIMIT = 20, MAX_BIDIRECTIONAL = 5;
-    const BIDIRECTIONAL_KEY = 'PHONE_SMS_MEMORY', VOICE_MAX_SEC = 60, MODEL_VISIBLE_ROWS = 4, MAX_GROUP_MEMBERS = 13; 
+    const BIDIRECTIONAL_KEY = 'PHONE_SMS_MEMORY', VOICE_MAX_SEC = 60, MODEL_VISIBLE_ROWS = 4, MAX_GROUP_MEMBERS = 16; 
     const BI_INJECT_DEPTH = 2;
     const POPOVER_SUPPORTED = typeof HTMLElement !== 'undefined' && HTMLElement.prototype.hasOwnProperty('popover');
     const GROUP_COLORS = [
@@ -18,6 +18,9 @@
         { bg: '#fce4b8', text: '#4a2800' },  // 琥珀
         { bg: '#c8dff5', text: '#0d2952' },  // 钢蓝
         { bg: '#f5d4e4', text: '#4a0d2a' },  // 樱粉
+        { bg: '#d4efd4', text: '#1a3d1a' },  // 草绿
+        { bg: '#f5e0c8', text: '#4a2800' },  // 桃杏
+        { bg: '#c8c8f5', text: '#1a1a52' },  // 靛蓝
     ];
 
     // ========== IndexedDB 工具 ==========
@@ -865,7 +868,7 @@
               if (after) parts.push(after);
               return parts.length ? parts : [s];
           })
-          .filter(Boolean).slice(0, 12);
+          .filter(Boolean).slice(0, 15);
     }
 
     function parseGroupResponse(raw) {
@@ -1910,8 +1913,7 @@ ${userMsg.trim() ? `${userName}：${userMsgClean}\n${currentPersona}：` : `[仅
             if (historyUpdated) {
                 const id = getStorageId();
                 if (!window.__pmHistories[id]) window.__pmHistories[id] = {};
-                // 修复：群聊模式应使用 currentGroupKey 作为存档 key，而非 currentPersona
-            const saveKey = _prevSaveKey || (isGroupChat && currentGroupKey ? currentGroupKey : currentPersona);
+                const saveKey = isGroupChat && currentGroupKey ? currentGroupKey : currentPersona;
                 window.__pmHistories[id][saveKey] = conversationHistory.slice(-SAVE_LIMIT);
                 saveHistories();
                 applyBidirectionalInjection();
@@ -2608,7 +2610,19 @@ ${userMsg.trim() ? `${userName}：${userMsgClean}\n${currentPersona}：` : `[仅
 
         makeOverlay(`
     <div class="pm-modal">
-    <div class="pm-modal-header"><b>联系人</b><span onclick="document.getElementById('pm-overlay').remove()" class="pm-modal-close">✕</span></div>
+    <div class="pm-modal-header">
+      <b>联系人</b>
+      <span style="display:flex;align-items:center;gap:10px;">
+        <span id="pm-autogen-btn" onclick="window.__pmConfirmAutoGen()" title="AI 自动生成联系人" style="cursor:pointer;display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:50%;transition:background .15s;" onmouseenter="this.style.background='rgba(0,122,255,0.1)'" onmouseleave="this.style.background='transparent'">
+          <svg id="pm-autogen-icon" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#007aff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="display:block;transform-origin:center center;">
+            <path d="M23 4v6h-6"/>
+            <path d="M1 20v-6h6"/>
+            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+          </svg>
+        </span>
+        <span onclick="document.getElementById('pm-overlay').remove()" class="pm-modal-close">✕</span>
+      </span>
+    </div>
     <div class="pm-bi-bar"><span>🧠 勾选角色/群聊可被主楼读取短信</span><span class="pm-bi-tip">已选 ${checked.length}/${MAX_BIDIRECTIONAL}</span></div>
     <div class="pm-modal-list">
         ${empty ? '<div style="text-align:center;color:#999;padding:20px;font-size:13px;">暂无联系人</div>' : (renderGroups + renderSingle)}
@@ -2640,6 +2654,142 @@ ${userMsg.trim() ? `${userName}：${userMsgClean}\n${currentPersona}：` : `[仅
                 if (e.key === 'Enter') { const v = input.value.trim(); if (v) window.__pmSwitchContact(v); }
             });
         }, 0);
+    };
+
+    // AI 自动生成联系人 — 确认弹窗
+    window.__pmConfirmAutoGen = () => {
+        const id = getStorageId();
+        const histories = window.__pmHistories[id] || {};
+        const groups = window.__pmGroupMeta[id] || {};
+        const singleCount = Object.keys(histories).filter(k => !k.startsWith('__group_')).length;
+        const groupCount = Object.keys(groups).length;
+        const total = singleCount + groupCount;
+        const MAX_TOTAL = 10;
+
+        if (total >= MAX_TOTAL) {
+            alert(`已有 ${total} 个联系人/群聊，已达上限（${MAX_TOTAL}），无法继续生成。`);
+            return;
+        }
+
+        const canAdd = MAX_TOTAL - total;
+        const willAdd = Math.min(canAdd, 10); // 实际生成数由 AI 在 3~min(canAdd,10) 范围内决定
+        if (!confirm(`AI 将根据当前剧情信息自动生成联系人和群聊（最多 ${willAdd} 个），直接写入列表，是否继续？`)) return;
+        window.__pmAutoGenContacts();
+    };
+
+    // AI 自动生成联系人 — 核心逻辑
+    window.__pmAutoGenContacts = async () => {
+        const id = getStorageId();
+        const histories = window.__pmHistories[id] || {};
+        const groups = window.__pmGroupMeta[id] || {};
+        const existingSingle = Object.keys(histories).filter(k => !k.startsWith('__group_'));
+        const existingGroups = Object.keys(groups).map(k => groups[k].name);
+        const total = existingSingle.length + existingGroups.length;
+        const MAX_TOTAL = 10;
+        const canAdd = MAX_TOTAL - total;
+        if (canAdd <= 0) return;
+        const maxNew = Math.min(canAdd, 10);
+
+        // 旋转刷新图标：对 SVG 元素做旋转，transform-origin:center 在 SVG 上完全精准
+        const setSpinning = (on) => {
+            const icon = document.getElementById('pm-autogen-icon');
+            const btn  = document.getElementById('pm-autogen-btn');
+            if (icon) icon.style.animation = on ? 'pm-spin 0.8s linear infinite' : '';
+            if (btn)  btn.style.pointerEvents = on ? 'none' : '';
+        };
+        setSpinning(true);
+
+        try {
+            // 收集上下文（与 fetchSMS 读取的来源完全一致）
+            const ctxData = await gatherContext();
+            const { cardDesc, cardPersonality, cardScenario, mainChatText, worldBookText, userName, userDesc } = ctxData;
+
+            const existingList = [
+                ...existingSingle,
+                ...Object.keys(groups).map(k => groups[k].name)
+            ];
+            const existingStr = existingList.length ? `已有联系人/群聊（跳过同名）：${existingList.join('、')}` : '目前暂无联系人。';
+
+            const systemPrompt = `你是一个角色扮演辅助工具，负责根据当前剧情背景自动生成符合世界观的联系人列表。
+输出必须严格为 JSON，格式如下（不得有任何注释或 markdown）：
+{
+  "contacts": ["角色名A", "角色名B"],
+  "groups": [
+    {"name": "群聊名称", "members": ["成员1", "成员2", "成员3"]},
+    ...
+  ]
+}
+要求：
+1. contacts 是单个联系人，groups 是群聊（每个群 2~15 个成员）
+2. 生成总数（contacts.length + groups.length）在 3 到 ${maxNew} 之间
+3. 所有角色名必须与当前剧情世界观、人设背景高度相关
+4. 绝不生成与 ${existingStr} 同名的联系人或群聊
+5. 不生成用户自己（${userName}）作为联系人，群聊成员里也不得包含 ${userName}
+6. 只输出 JSON，不输出任何其他内容`;
+
+            const userPrompt = [
+                `【用户信息】\n用户名：${userName}${userDesc ? '\n' + userDesc : ''}`,
+                cardDesc ? `【角色/世界设定】\n${cardDesc}` : '',
+                cardPersonality ? `【性格】\n${cardPersonality}` : '',
+                cardScenario ? `【场景】\n${cardScenario}` : '',
+                worldBookText ? `【世界书】\n${worldBookText}` : '',
+                mainChatText ? `【主线最近对话】\n${mainChatText}` : '',
+                existingStr,
+                `请生成 3~${maxNew} 个符合以上背景的联系人和/或群聊，以 JSON 输出。`
+            ].filter(Boolean).join('\n\n');
+
+            const raw = await callAI(systemPrompt, userPrompt, { maxTokens: 600 });
+
+            // 解析 JSON（兼容 AI 带 markdown 代码块的情况）
+            const cleaned = raw.replace(/```json|```/gi, '').trim();
+            let parsed;
+            try { parsed = JSON.parse(cleaned); } catch (e) {
+                throw new Error(`AI 返回格式无法解析：${cleaned.slice(0, 100)}`);
+            }
+
+            const newContacts = Array.isArray(parsed.contacts) ? parsed.contacts : [];
+            const newGroups = Array.isArray(parsed.groups) ? parsed.groups : [];
+
+            // 写入联系人（去重、去同名）
+            if (!window.__pmHistories[id]) window.__pmHistories[id] = {};
+            let added = 0;
+            for (const name of newContacts) {
+                if (typeof name !== 'string' || !name.trim()) continue;
+                const n = name.trim();
+                // 同名跳过（不区分大小写）
+                const alreadyExists = existingList.some(e => e.toLowerCase() === n.toLowerCase())
+                    || Object.keys(window.__pmHistories[id]).some(k => !k.startsWith('__group_') && k.toLowerCase() === n.toLowerCase());
+                if (alreadyExists) continue;
+                if (!window.__pmHistories[id][n]) window.__pmHistories[id][n] = [];
+                added++;
+            }
+            saveHistories();
+
+            // 写入群聊
+            if (!window.__pmGroupMeta[id]) window.__pmGroupMeta[id] = {};
+            for (const g of newGroups) {
+                if (!g?.name || !Array.isArray(g.members) || g.members.length < 2) continue;
+                const gName = g.name.trim();
+                // 同名群跳过
+                const alreadyExists = Object.values(window.__pmGroupMeta[id]).some(m => m.name.toLowerCase() === gName.toLowerCase());
+                if (alreadyExists) continue;
+                const members = g.members.map(m => m.trim()).filter(m => m && m.toLowerCase() !== userName.toLowerCase()).slice(0, 15);
+                const groupKey = `__group_${Date.now()}_${Math.random().toString(36).slice(2,6)}`;
+                window.__pmGroupMeta[id][groupKey] = { name: gName, members };
+                added++;
+            }
+            saveGroupMeta();
+
+            // 刷新列表
+            window.__pmShowList();
+            // 简短提示
+            setTimeout(() => addNote(`✨ 已自动添加 ${added} 个联系人/群聊`), 200);
+        } catch (e) {
+            console.error('[phone-mode] __pmAutoGenContacts 异常', e);
+            alert(`自动生成失败：${e?.message || e}`);
+        } finally {
+            setSpinning(false);
+        }
     };
 
     window.__pmDelGroup = async (key) => {
@@ -3075,6 +3225,7 @@ ${userMsg.trim() ? `${userName}：${userMsgClean}\n${currentPersona}：` : `[仅
 .pm-director-text{font-size:11px;color:#5856d6;font-style:italic;text-align:center;line-height:1.4;word-break:break-word;}
 #pm-iphone[data-theme="dark"] .pm-director{background:rgba(88,86,214,0.15);border-color:rgba(88,86,214,0.3);}
 #pm-iphone[data-theme="dark"] .pm-director-text{color:#a29bfe;}
+@keyframes pm-spin{from{transform:rotate(0deg);}to{transform:rotate(360deg);}}
 .pm-transfer-card{background:linear-gradient(135deg,#ff9500,#ff6b00);color:#fff;border-radius:14px;padding:12px 14px;display:flex;align-items:center;gap:10px;min-width:150px;box-shadow:0 3px 10px rgba(255,149,0,.35);}
 .pm-receive-card{background:linear-gradient(135deg,#34c759,#28a745);color:#fff;border-radius:14px;padding:12px 14px;display:flex;align-items:center;gap:10px;min-width:150px;box-shadow:0 3px 10px rgba(52,199,89,.35);}
 .pm-refund-card{background:linear-gradient(135deg,#ff9500,#ff6b00);color:#fff;border-radius:14px;padding:12px 14px;display:flex;align-items:center;gap:10px;min-width:150px;box-shadow:0 3px 10px rgba(255,149,0,.35);}
@@ -3234,5 +3385,5 @@ ${userMsg.trim() ? `${userName}：${userMsgClean}\n${currentPersona}：` : `[仅
     loadHistoriesFromIDB(); // IDB 加载完成后内部会用 localStorage 作 fallback
     setTimeout(() => { migrateOldHistory(); applyBidirectionalInjection(); hookGenerationEvent(); }, 1500);
 
-    console.log('[phone-mode] v9.4-fix6 已加载：修复联系人列表点击无效（_prevSaveKey 作用域错误导致 ReferenceError）');
+    console.log('[phone-mode] v9.5.4 已加载：修复 poke 路径 _prevSaveKey ReferenceError');
 })();
