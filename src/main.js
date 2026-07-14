@@ -1,126 +1,32 @@
+import {
+    BIDIRECTIONAL_KEY, BIDIRECTIONAL_LIMIT, CONTEXT_LIMIT,
+    MAX_BIDIRECTIONAL, MAX_GROUP_MEMBERS, MODEL_VISIBLE_ROWS,
+    POPOVER_SUPPORTED, SAVE_LIMIT,
+} from './constants.js';
+import { GROUP_COLORS } from './groups.js';
+import { THEME_PRESETS, normalizeApiUrls } from './config.js';
+import { cleanResponse, splitToSentences } from './prompts.js';
+import { contrastText, cssUrlEscape, escapeAttr, escapeHtml, safeJS } from './ui.js';
+import { EDIT_ICON_SVG, REFRESH_ICON_SVG } from './icons.js';
+import {
+    createBubbles, getEmojiPrompt, getWordyPrompt,
+    parseGroupResponse, resolveEmojiText,
+} from './messaging.js';
+import {
+    addOrUpdateProfile, loadBgSettings, loadBidirectional, loadEmojis,
+    loadGroupMeta, loadHistoriesFromIDB, loadPokeConfig, loadProfiles,
+    loadTheme, loadWordyLimit, pmIDBDel, pmIDBSet, saveBgGlobal,
+    saveBgLocal, saveBidirectional, saveEmojis, saveGroupMeta,
+    saveHistories, saveHistoriesBeforeUnload, savePokeConfig,
+    saveProfiles, saveTheme, saveWordyLimit,
+} from './storage.js';
+import { createRuntimeState } from './runtime.js';
+import { gatherContext as collectHostContext, getStorageId as resolveStorageId, getUserPersona as resolveUserPersona } from './host-context.js';
+import { openCropper } from './cropper.js';
+import { installEmojiUi } from './emoji-ui.js';
+
 (async function () {
     await new Promise(r => setTimeout(r, 1000));
-
-    const SAVE_LIMIT = 60, CONTEXT_LIMIT = 20, BIDIRECTIONAL_LIMIT = 20, MAX_BIDIRECTIONAL = 5;
-    const BIDIRECTIONAL_KEY = 'PHONE_SMS_MEMORY', VOICE_MAX_SEC = 60, MODEL_VISIBLE_ROWS = 4, MAX_GROUP_MEMBERS = 16;
-    const BI_INJECT_DEPTH = 2;
-    const POPOVER_SUPPORTED = typeof HTMLElement !== 'undefined' && HTMLElement.prototype.hasOwnProperty('popover');
-    const GROUP_COLORS = [
-        { bg: '#e9e9eb', text: '#000' },     // 默认灰
-        { bg: '#b8e6c8', text: '#1b4332' },  // 薄荷绿
-        { bg: '#f5d0d0', text: '#4a2030' },  // 浅玫红
-        { bg: '#d4d0f5', text: '#2d2252' },  // 薰衣草紫
-        { bg: '#f5e6b8', text: '#4a3a10' },  // 暖杏黄
-        { bg: '#cceef5', text: '#144652' },  // 天蓝
-        { bg: '#ffd6a5', text: '#5c3200' },  // 蜜橙
-        { bg: '#d0f0e8', text: '#0d3b2e' },  // 碧绿
-        { bg: '#f0d4f5', text: '#3b0d52' },  // 丁香紫
-        { bg: '#fce4b8', text: '#4a2800' },  // 琥珀
-        { bg: '#c8dff5', text: '#0d2952' },  // 钢蓝
-        { bg: '#f5d4e4', text: '#4a0d2a' },  // 樱粉
-        { bg: '#d4efd4', text: '#1a3d1a' },  // 草绿
-        { bg: '#f5e0c8', text: '#4a2800' },  // 桃杏
-        { bg: '#c8c8f5', text: '#1a1a52' },  // 靛蓝
-    ];
-
-    // ========== IndexedDB 工具 ==========
-    const PM_IDB_NAME = 'PhoneModeDB', PM_IDB_STORE = 'kv';
-    let __pmIDB = null;
-    const IDB_MARKER = '__idb__';
-
-    function pmOpenIDB() {
-        return new Promise(resolve => {
-            if (__pmIDB) {
-                // 探测连接是否还活着：尝试一次只读事务
-                try {
-                    __pmIDB.transaction(PM_IDB_STORE, 'readonly');
-                    return resolve(__pmIDB); // 连接正常，复用
-                } catch (e) {
-                    // 连接已失效（iOS WebView 后台恢复常见），清除缓存重新连接
-                    __pmIDB = null;
-                }
-            }
-            try {
-                const req = indexedDB.open(PM_IDB_NAME, 1);
-                req.onupgradeneeded = () => {
-                    const db = req.result;
-                    if (!db.objectStoreNames.contains(PM_IDB_STORE)) db.createObjectStore(PM_IDB_STORE);
-                };
-                req.onsuccess = () => { __pmIDB = req.result; resolve(__pmIDB); };
-                req.onerror = () => resolve(null);
-            } catch (e) { resolve(null); }
-        });
-    }
-
-    async function pmIDBSet(key, value) {
-        const db = await pmOpenIDB(); if (!db) return false;
-        return new Promise(r => {
-            try {
-                const tx = db.transaction(PM_IDB_STORE, 'readwrite');
-                tx.objectStore(PM_IDB_STORE).put(value, key);
-                tx.oncomplete = () => r(true);
-                tx.onerror = () => r(false);
-            } catch (e) { r(false); }
-        });
-    }
-
-    async function pmIDBGet(key) {
-        const db = await pmOpenIDB(); if (!db) return null;
-        return new Promise(r => {
-            try {
-                const tx = db.transaction(PM_IDB_STORE, 'readonly');
-                const req = tx.objectStore(PM_IDB_STORE).get(key);
-                req.onsuccess = () => r(req.result ?? null);
-                req.onerror = () => r(null);
-            } catch (e) { r(null); }
-        });
-    }
-
-    async function pmIDBDel(key) {
-        const db = await pmOpenIDB(); if (!db) return;
-        try {
-            const tx = db.transaction(PM_IDB_STORE, 'readwrite');
-            tx.objectStore(PM_IDB_STORE).delete(key);
-        } catch (e) {}
-    }
-
-    function pmIsBigData(v) {
-        return typeof v === 'string' && v.length > 4096 && (v.startsWith('data:') || v.startsWith('blob:'));
-    }
-
-    // ========== 短信历史双写存储 ==========
-    function saveHistories() {
-        pmIDBSet('ST_SMS_DATA_V2', window.__pmHistories).catch(() => {});
-        try { localStorage.setItem('ST_SMS_DATA_V2', JSON.stringify(window.__pmHistories)); } catch (e) {
-            console.warn('[phone-mode] localStorage 已满，短信历史仅保存在 IDB');
-        }
-    }
-
-    // 修复：页面关闭/刷新时 IDB 异步写入可能来不及完成，用 beforeunload 做同步兜底
-    function saveHistoriesBeforeUnload() {
-        const data = window.__pmHistories;
-        if (!data || !Object.keys(data).length) return;
-        // 同步写 localStorage（兜底）
-        try {
-            localStorage.setItem('ST_SMS_DATA_V2', JSON.stringify(data));
-        } catch (e) {
-            // localStorage 满时做最小化备份
-            try {
-                const slim = {};
-                for (const [storyId, contacts] of Object.entries(data)) {
-                    slim[storyId] = {};
-                    for (const [persona, history] of Object.entries(contacts)) {
-                        slim[storyId][persona] = Array.isArray(history) ? history.slice(-10) : history;
-                    }
-                }
-                localStorage.setItem('ST_SMS_DATA_V2', JSON.stringify(slim));
-            } catch (e2) {
-                console.warn('[phone-mode] beforeunload: localStorage 完全无法写入');
-            }
-        }
-        // ✅ 新增：同时触发 IDB 异步写入，iOS 后台挂起前尽量完成
-        pmIDBSet('ST_SMS_DATA_V2', data).catch(() => {});
-    }
 
     // 避免重复加载插件时重复注册
     if (!window.__pmBeforeUnloadRegistered) {
@@ -131,42 +37,6 @@
             if (document.visibilityState === 'hidden') saveHistoriesBeforeUnload();
         });
         window.__pmBeforeUnloadRegistered = true;
-    }
-
-    async function loadHistoriesFromIDB() {
-        try {
-            const v = await pmIDBGet('ST_SMS_DATA_V2');
-            if (!v) {
-                // ✅ IDB 无数据（包括 IDB 失效返回 null 的情况），用 localStorage 兜底
-                try {
-                    const ls = JSON.parse(localStorage.getItem('ST_SMS_DATA_V2'));
-                    if (ls && typeof ls === 'object' && Object.keys(ls).length > 0) {
-                        window.__pmHistories = ls;
-                        console.log('[phone-mode] IDB 无数据，已从 localStorage 恢复');
-                    }
-                } catch (e) {}
-                return;
-            }
-            const parsed = typeof v === 'string' ? JSON.parse(v) : v;
-            if (!parsed || typeof parsed !== 'object') return;
-            const idbCount = Object.keys(parsed).length;
-            if (idbCount > 0) {
-                window.__pmHistories = parsed;
-                try { localStorage.setItem('ST_SMS_DATA_V2', JSON.stringify(parsed)); } catch (e) {
-                    console.warn('[phone-mode] localStorage 已满，仅使用 IDB 存储');
-                }
-                console.log('[phone-mode] 从 IndexedDB 加载了短信历史，共', idbCount, '个会话');
-            }
-        } catch (e) {
-            // ✅ IDB 读取异常（iOS WebView 后台恢复时的典型情况），用 localStorage 兜底
-            console.warn('[phone-mode] IDB 恢复失败，尝试 localStorage 兜底', e);
-            try {
-                const ls = JSON.parse(localStorage.getItem('ST_SMS_DATA_V2'));
-                if (ls && typeof ls === 'object' && Object.keys(ls).length > 0) {
-                    window.__pmHistories = ls;
-                }
-            } catch (e2) {}
-        }
     }
 
     window.__pmHistories = window.__pmHistories || {};
@@ -181,18 +51,7 @@
     window.__pmWordyLimit = window.__pmWordyLimit || false;
     window.__pmEmojis = window.__pmEmojis || []; // [{id, name, images:[{url,desc},...]}]
 
-    async function loadEmojis() {
-        try {
-            const v = await pmIDBGet('ST_SMS_EMOJIS');
-            window.__pmEmojis = Array.isArray(v) ? v : [];
-        } catch(e) { window.__pmEmojis = []; }
-    }
-    async function saveEmojis() {
-        await pmIDBSet('ST_SMS_EMOJIS', window.__pmEmojis).catch(()=>{});
-    }
-    let __pmModelList = [];
-    let __pmEventHooked = false;
-    let __pmFirstOpen = true;
+    const runtime = createRuntimeState();
 
     let phoneActive = false, phoneWindow = null, currentPersona = '', conversationHistory = [];
     let isGenerating = false, isMinimized = false, isSelectMode = false;
@@ -200,93 +59,9 @@
     let currentGroupKey = '';
 
     const getCtx = () => typeof SillyTavern !== 'undefined' ? SillyTavern.getContext() : null;
-
-    const THEME_PRESETS = {
-        default: { right: '#007aff', left: '#e9e9eb', rightText: '#fff', leftText: '#000', label: '默认蓝' },
-        pink:    { right: '#ff6b8a', left: '#fce4ec', rightText: '#fff', leftText: '#4a2030', label: '樱花粉' },
-        dark:    { right: '#5856d6', left: '#2c2c2e', rightText: '#fff', leftText: '#e0e0e0', label: '暗夜紫' },
-        frost:   { right: 'rgba(0,122,255,0.55)', left: 'rgba(255,255,255,0.35)', rightText: '#fff', leftText: '#222', label: '磨砂玻璃', frost: true },
-        mint:    { right: '#34c759', left: '#e8f5e9', rightText: '#fff', leftText: '#1b4332', label: '薄荷绿' },
-    };
-
-    function contrastText(bg) {
-        if (!bg || bg.startsWith('rgba')) return '#fff';
-        const c = bg.replace('#', ''); if (c.length !== 6) return '#000';
-        const r = parseInt(c.substr(0,2),16), g = parseInt(c.substr(2,2),16), b = parseInt(c.substr(4,2),16);
-        return (r*0.299 + g*0.587 + b*0.114) > 150 ? '#000' : '#fff';
-    }
-
-    function loadTheme() { try { window.__pmTheme = { ...window.__pmTheme, ...JSON.parse(localStorage.getItem('ST_SMS_THEME')) }; } catch (e) {} }
-    function saveTheme() { try { localStorage.setItem('ST_SMS_THEME', JSON.stringify(window.__pmTheme)); } catch (e) {} }
-    function loadPokeConfig() { try { window.__pmPokeConfig = JSON.parse(localStorage.getItem('ST_SMS_POKE_CONFIG')) || {}; } catch (e) { window.__pmPokeConfig = {}; } }
-    function savePokeConfig() { try { localStorage.setItem('ST_SMS_POKE_CONFIG', JSON.stringify(window.__pmPokeConfig)); } catch (e) {} }
-    function loadWordyLimit() { try { window.__pmWordyLimit = !!JSON.parse(localStorage.getItem('ST_SMS_WORDY_LIMIT')); } catch (e) { window.__pmWordyLimit = false; } }
-    function saveWordyLimit() { try { localStorage.setItem('ST_SMS_WORDY_LIMIT', JSON.stringify(window.__pmWordyLimit)); } catch (e) {} }
-
-    async function loadBgSettings() {
-        try {
-            const ls = localStorage.getItem('ST_SMS_BG_GLOBAL') || '';
-            if (ls === IDB_MARKER) {
-                window.__pmBgGlobal = (await pmIDBGet('ST_SMS_BG_GLOBAL')) || '';
-            } else if (pmIsBigData(ls)) {
-                window.__pmBgGlobal = ls;
-                await pmIDBSet('ST_SMS_BG_GLOBAL', ls);
-                try { localStorage.setItem('ST_SMS_BG_GLOBAL', IDB_MARKER); } catch (e) {}
-            } else {
-                window.__pmBgGlobal = ls;
-            }
-        } catch (e) { window.__pmBgGlobal = ''; }
-
-        try {
-            const raw = JSON.parse(localStorage.getItem('ST_SMS_BG_LOCAL')) || {};
-            const result = {};
-            let migrated = 0;
-            for (const [k, v] of Object.entries(raw)) {
-                if (v === IDB_MARKER) {
-                    result[k] = (await pmIDBGet('ST_SMS_BG_LOCAL_' + k)) || '';
-                } else if (pmIsBigData(v)) {
-                    result[k] = v;
-                    await pmIDBSet('ST_SMS_BG_LOCAL_' + k, v);
-                    raw[k] = IDB_MARKER;
-                    migrated++;
-                } else {
-                    result[k] = v;
-                }
-            }
-            if (migrated > 0) {
-                try { localStorage.setItem('ST_SMS_BG_LOCAL', JSON.stringify(raw)); } catch (e) {}
-            }
-            window.__pmBgLocal = result;
-        } catch (e) { window.__pmBgLocal = {}; }
-    }
-
-    async function saveBgGlobal() {
-        const v = window.__pmBgGlobal || '';
-        if (pmIsBigData(v)) {
-            await pmIDBSet('ST_SMS_BG_GLOBAL', v);
-            try { localStorage.setItem('ST_SMS_BG_GLOBAL', IDB_MARKER); } catch (e) {}
-        } else {
-            await pmIDBDel('ST_SMS_BG_GLOBAL');
-            try { localStorage.setItem('ST_SMS_BG_GLOBAL', v); } catch (e) {}
-        }
-    }
-
-    async function saveBgLocal() {
-        const ptr = {};
-        for (const [k, v] of Object.entries(window.__pmBgLocal || {})) {
-            if (pmIsBigData(v)) {
-                await pmIDBSet('ST_SMS_BG_LOCAL_' + k, v);
-                ptr[k] = IDB_MARKER;
-            } else {
-                await pmIDBDel('ST_SMS_BG_LOCAL_' + k);
-                if (v !== undefined) ptr[k] = v;
-            }
-        }
-        try { localStorage.setItem('ST_SMS_BG_LOCAL', JSON.stringify(ptr)); } catch (e) {}
-    }
-
-    function loadGroupMeta() { try { window.__pmGroupMeta = JSON.parse(localStorage.getItem('ST_SMS_GROUP_META')) || {}; } catch (e) { window.__pmGroupMeta = {}; } }
-    function saveGroupMeta() { try { localStorage.setItem('ST_SMS_GROUP_META', JSON.stringify(window.__pmGroupMeta)); } catch (e) {} }
+    const getStorageId = () => resolveStorageId(getCtx);
+    const getUserPersona = () => resolveUserPersona(getCtx);
+    const gatherContext = () => collectHostContext(getCtx);
 
     function applyTheme() {
         const el = phoneWindow; if (!el) return;
@@ -301,10 +76,6 @@
         el.style.setProperty('--pm-frost', p.frost ? '1' : '0');
         const darkMode = t.darkMode || 'light';
         el.setAttribute('data-theme', darkMode);
-    }
-
-    function cssUrlEscape(url) {
-        return (url || '').replace(/\\/g, '\\\\').replace(/"/g, '\\"');
     }
 
     function applyBackground() {
@@ -334,131 +105,6 @@
         });
     }
 
-    function escapeHtml(s) {
-        return (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-    }
-    function escapeAttr(s) {
-        return (s || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#39;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-    }
-    function safeJS(s) {
-        const jsEscaped = (s || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '\\"').replace(/\n/g, '\\n');
-        return escapeAttr(jsEscaped);
-    }
-
-    function openCropper(imgDataUrl, onConfirm) {
-        const ratio = 330 / 450;
-        document.getElementById('pm-overlay')?.remove();
-        const ov = document.createElement('div'); ov.id = 'pm-overlay';
-        if (POPOVER_SUPPORTED) ov.setAttribute('popover', 'manual');
-        ov.innerHTML = `
-<div class="pm-modal pm-modal-wide">
-  <div class="pm-modal-header"><b>裁剪图片</b><span onclick="document.getElementById('pm-overlay').remove();window.__pmShowConfig();" class="pm-modal-close">✕</span></div>
-  <div style="padding:12px 14px;">
-    <div class="pm-crop-tip">拖动图片调整位置，滚轮/捏合缩放</div>
-    <div class="pm-crop-frame" id="pm-crop-frame">
-      <img id="pm-crop-img" src="${escapeAttr(imgDataUrl)}" alt="">
-      <div class="pm-crop-mask"></div>
-    </div>
-    <div class="pm-crop-zoom">
-      <span style="font-size:11px;color:#888;">缩放</span>
-      <input type="range" id="pm-crop-zoom" min="100" max="400" value="100">
-    </div>
-  </div>
-  <div class="pm-modal-add" style="display:flex;gap:8px;">
-    <button onclick="document.getElementById('pm-overlay').remove();window.__pmShowConfig();" style="flex:1;background:#f0f0f0;color:#333;border:none;border-radius:10px;padding:10px;font-size:13px;cursor:pointer;">取消</button>
-    <button id="pm-crop-confirm" style="flex:1;background:#007aff;color:#fff;border:none;border-radius:10px;padding:10px;font-size:13px;cursor:pointer;font-weight:600;">确认裁剪</button>
-  </div>
-</div>`;
-        ov.addEventListener('click', e => { if (e.target === ov) { ov.remove(); window.__pmShowConfig(); } });
-        document.body.appendChild(ov);
-        if (ov.showPopover) try { ov.showPopover(); } catch (e) {}
-        const frame = ov.querySelector('#pm-crop-frame'), img = ov.querySelector('#pm-crop-img');
-        const zoomSlider = ov.querySelector('#pm-crop-zoom');
-        let tx = 0, ty = 0, scale = 1, frameW = 0, frameH = 0, baseW = 0, baseH = 0;
-        img.onload = () => {
-            const cw = frame.clientWidth;
-            frameW = cw; frameH = cw / ratio; frame.style.height = frameH + 'px';
-            const natW = img.naturalWidth, natH = img.naturalHeight, imgRatio = natW / natH;
-            if (imgRatio > ratio) { baseH = frameH; baseW = baseH * imgRatio; }
-            else { baseW = frameW; baseH = baseW / imgRatio; }
-            updateTransform();
-        };
-        function updateTransform() {
-            const w = baseW * scale, h = baseH * scale;
-            tx = Math.max(frameW - w, Math.min(0, tx)); ty = Math.max(frameH - h, Math.min(0, ty));
-            img.style.width = w + 'px'; img.style.height = h + 'px';
-            img.style.transform = `translate(${tx}px, ${ty}px)`;
-        }
-        zoomSlider.oninput = () => { scale = parseInt(zoomSlider.value) / 100; updateTransform(); };
-        let dragging = false, sx = 0, sy = 0, stx = 0, sty = 0;
-        const onDragStart = (e) => { dragging = true; const c = e.touches ? e.touches[0] : e; sx = c.clientX; sy = c.clientY; stx = tx; sty = ty; if (e.cancelable) e.preventDefault(); };
-        const onDragMove = (e) => { if (!dragging) return; const c = e.touches ? e.touches[0] : e; tx = stx + (c.clientX - sx); ty = sty + (c.clientY - sy); updateTransform(); if (e.cancelable) e.preventDefault(); };
-        const onDragEnd = () => { dragging = false; };
-        frame.addEventListener('mousedown', onDragStart);
-        window.addEventListener('mousemove', onDragMove);
-        window.addEventListener('mouseup', onDragEnd);
-        frame.addEventListener('touchstart', onDragStart, { passive: false });
-        window.addEventListener('touchmove', onDragMove, { passive: false });
-        window.addEventListener('touchend', onDragEnd);
-        let pinchDist = 0, pinchScale = 1;
-        frame.addEventListener('touchstart', (e) => {
-            if (e.touches.length === 2) { pinchDist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY); pinchScale = scale; }
-        }, { passive: false });
-        frame.addEventListener('touchmove', (e) => {
-            if (e.touches.length === 2) {
-                const d = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
-                scale = Math.max(1, Math.min(4, pinchScale * d / pinchDist));
-                zoomSlider.value = Math.round(scale * 100); updateTransform(); e.preventDefault();
-            }
-        }, { passive: false });
-        frame.addEventListener('wheel', (e) => {
-            e.preventDefault();
-            scale = Math.max(1, Math.min(4, scale + (e.deltaY > 0 ? -0.1 : 0.1)));
-            zoomSlider.value = Math.round(scale * 100); updateTransform();
-        });
-        ov.querySelector('#pm-crop-confirm').onclick = () => {
-            const canvas = document.createElement('canvas');
-            const outW = 600, outH = Math.round(outW / ratio);
-            canvas.width = outW; canvas.height = outH;
-            const ctx = canvas.getContext('2d');
-            const srcScale = img.naturalWidth / (baseW * scale);
-            ctx.drawImage(img, (-tx) * srcScale, (-ty) * srcScale, frameW * srcScale, frameH * srcScale, 0, 0, outW, outH);
-            let q = 0.7, out = canvas.toDataURL('image/jpeg', q);
-            while (out.length > 200 * 1370 && q > 0.2) { q -= 0.1; out = canvas.toDataURL('image/jpeg', q); }
-            ov.remove(); onConfirm(out);
-        };
-    }
-
-    // 更新模糊匹配字典，增加"退还"
-    const SPECIAL_KEYWORDS = {
-        '转账':'转账','transfer':'转账','Transfer':'转账','TRANSFER':'转账','轉賬':'转账','轉帳':'转账',
-        '收款':'收款','receive':'收款','Receive':'收款','RECEIVE':'收款','收钱':'收款','收到':'收款','收錢':'收款',
-        '退还':'退还','退钱':'退还','退款':'退还','refund':'退还','Refund':'退还','REFUND':'退还','退還':'退还','退錢':'退还',
-        '图片':'图片','image':'图片','Image':'图片','IMAGE':'图片','img':'图片','pic':'图片','photo':'图片','圖片':'图片',
-        '语音':'语音','voice':'语音','Voice':'语音','VOICE':'语音','audio':'语音','語音':'语音',
-    };
-    const KW_PATTERN = Object.keys(SPECIAL_KEYWORDS).join('|');
-    const SPECIAL_RE = new RegExp(`[\\(（]\\s*(${KW_PATTERN})\\s*[+：:\\s]*([^)）]+)[\\)）]`, 'gi');
-    function normalizeKeyword(k) { return SPECIAL_KEYWORDS[k] || SPECIAL_KEYWORDS[k.toLowerCase()] || k; }
-    // [emo:套组名:序号] 格式，AI 和用户都可以发送
-    const EMO_RE = /\[emo:([^\]:]+):(\d+)\]/gi;
-    // 查找表情包图片：先按套组名+序号精确匹配，返回 url 或 null
-    function findEmojiUrl(setName, idx) {
-        const set = window.__pmEmojis.find(s => s.name === setName);
-        if (!set) return null;
-        const img = set.images[idx - 1]; // 序号从1开始
-        return img ? img.url : null;
-    }
-
-    function getStorageId() {
-        const c = getCtx(); if (!c) return 'sms_unknown__default';
-        const char = c.characters?.[c.characterId];
-        const avatar = char?.avatar || `idx_${c.characterId}`;
-        const chatFile = c.chatId || (typeof c.getCurrentChatId === 'function' ? c.getCurrentChatId() : null) || c.chat_metadata?.chat_id_hash || c.chat_file || 'default';
-        // 恢复使用 chatId 以区分不同角色卡（纯去掉 chatId 会导致同名头像的卡串记录）
-        // 之前报告的"记录消失"真正原因是 localStorage 被旧数据覆盖，已在 __pmOpen 里修复
-        return `sms_${avatar}__${chatFile}`;
-    }
 
     function migrateOldHistory() {
         if (localStorage.getItem('ST_SMS_MIGRATED_V3')) return;
@@ -480,24 +126,6 @@
         } catch (e) {}
     }
 
-    function normalizeApiUrls(input) {
-        let url = (input || '').trim().replace(/\/+$/, '');
-        if (!url) return { chatUrl: '', modelsUrl: '' };
-        if (/\/chat\/completions$/i.test(url)) return { chatUrl: url, modelsUrl: url.replace(/\/chat\/completions$/i, '/models') };
-        if (/\/models$/i.test(url)) return { chatUrl: url.replace(/\/models$/i, '/chat/completions'), modelsUrl: url };
-        if (/\/v\d+$/i.test(url)) return { chatUrl: url + '/chat/completions', modelsUrl: url + '/models' };
-        return { chatUrl: url + '/v1/chat/completions', modelsUrl: url + '/v1/models' };
-    }
-
-    function loadProfiles() { try { window.__pmProfiles = JSON.parse(localStorage.getItem('ST_SMS_API_PROFILES')) || []; } catch (e) { window.__pmProfiles = []; } }
-    function saveProfiles() { try { localStorage.setItem('ST_SMS_API_PROFILES', JSON.stringify(window.__pmProfiles)); } catch (e) {} }
-    function addOrUpdateProfile(p) {
-        if (!p.apiUrl || !p.apiKey) return;
-        const idx = window.__pmProfiles.findIndex(x => x.apiUrl === p.apiUrl && x.apiKey === p.apiKey);
-        if (idx >= 0) window.__pmProfiles[idx] = { ...window.__pmProfiles[idx], ...p, savedAt: Date.now() };
-        else window.__pmProfiles.push({ ...p, savedAt: Date.now() });
-        saveProfiles();
-    }
     window.__pmDeleteProfile = (idx) => { window.__pmProfiles.splice(idx, 1); saveProfiles(); window.__pmShowConfig(); };
     window.__pmPickProfile = (idx) => {
         const p = window.__pmProfiles[idx]; if (!p) return;
@@ -513,18 +141,6 @@
         if (t) t.textContent = v ? '🔌 独立API' : '🏠 主API';
     };
 
-    function loadBidirectional() { try { window.__pmBidirectional = JSON.parse(localStorage.getItem('ST_SMS_BIDIRECTIONAL')) || {}; } catch (e) { window.__pmBidirectional = {}; } }
-    function saveBidirectional() { try { localStorage.setItem('ST_SMS_BIDIRECTIONAL', JSON.stringify(window.__pmBidirectional)); } catch (e) {} }
-
-    // 把 [emo:套组名:序号] 替换成描述文字，用于注入主楼上下文
-    function resolveEmojiText(text) {
-        return (text || '').replace(/\[emo:([^\]:]+):(\d+)\]/g, (match, setName, idx) => {
-            const set = window.__pmEmojis.find(s => s.name === setName);
-            const img = set?.images[parseInt(idx) - 1];
-            return img ? `(表情:${img.desc})` : '';
-        });
-    }
-
     function applyBidirectionalInjection() {
         const c = getCtx(); if (!c || typeof c.setExtensionPrompt !== 'function') return;
         const userName = getUserPersona().name || '用户';
@@ -538,13 +154,13 @@
             if (name.startsWith('__group_')) {
                 const meta = groups[name]; if (!meta) return '';
                 const lines = conv.map(m => {
-                    const t = resolveEmojiText((m.content || '').replace(/\s*\/\s*/g, '。').replace(/\n/g, '；'));
+                    const t = resolveEmojiText((m.content || '').replace(/\s*\/\s*/g, '。').replace(/\n/g, '；'), window.__pmEmojis);
                     return m.role === 'user' ? `${userName}：${t}` : t;
                 }).join('\n');
                 return `【群聊"${meta.name}"（成员：${meta.members.join('、')}）的最近聊天 — 仅参与者与 ${userName} 知晓，其他角色不应知情】\n${lines}`;
             }
             const lines = conv.map(m => {
-                const t = resolveEmojiText((m.content || '').replace(/\s*\/\s*/g, '。'));
+                const t = resolveEmojiText((m.content || '').replace(/\s*\/\s*/g, '。'), window.__pmEmojis);
                 return m.role === 'user' ? `${userName}：${t}` : `${name}：${t}`;
             }).join('\n');
             return `【与 ${name} 的短信 — 仅 ${name} 与 ${userName} 知晓】\n${lines}`;
@@ -553,15 +169,13 @@
         try { c.setExtensionPrompt(BIDIRECTIONAL_KEY, `[手机短信记忆 — 私密]\n${blocks}\n[结束]`, 0, 0, false, 0); } catch (e) {}
     }
 
-    let __pmLastChatLen = 0;
-
     function hookGenerationEvent() {
-        if (__pmEventHooked) return;
+        if (runtime.eventHooked) return;
         const c = getCtx();
         if (!c?.eventSource || !c?.event_types) return;
         const et = c.event_types;
 
-        __pmLastChatLen = (c.chat || []).length;
+        runtime.lastChatLength = (c.chat || []).length;
 
         const events = [
             et.GENERATION_STARTED || 'generation_started',
@@ -582,17 +196,17 @@
         try {
             c.eventSource.on(et.MESSAGE_RECEIVED || 'message_received', () => {
                 const currentLen = (c.chat || []).length;
-                if (currentLen > __pmLastChatLen) {
-                    __pmLastChatLen = currentLen;
+                if (currentLen > runtime.lastChatLength) {
+                    runtime.lastChatLength = currentLen;
                     if (typeof window.__pmIncrementCounters === 'function') {
                         window.__pmIncrementCounters();
                     }
-                } else if (currentLen < __pmLastChatLen) {
-                    __pmLastChatLen = currentLen;
+                } else if (currentLen < runtime.lastChatLength) {
+                    runtime.lastChatLength = currentLen;
                 }
             });
             c.eventSource.on(et.CHAT_CHANGED || 'chat_id_changed', () => {
-                __pmLastChatLen = (c.chat || []).length;
+                runtime.lastChatLength = (c.chat || []).length;
                 // 修复：当酒馆主线切换角色/聊天时，强制关闭手机，防止下一次发短信存错 ID
                 if (phoneActive && typeof window.__pmEnd === 'function') {
                     window.__pmEnd();
@@ -600,7 +214,7 @@
             });
         } catch (e) {}
 
-        __pmEventHooked = true;
+        runtime.eventHooked = true;
         console.log('[phone-mode] hooked', events.length, 'events');
     }
 
@@ -611,76 +225,6 @@
         window.__pmBidirectional[id] = arr; saveBidirectional(); applyBidirectionalInjection(); window.__pmShowList();
     };
 
-    function getUserPersona() {
-        const c = getCtx();
-        if (!c) return { name: '用户', description: '' };
-        let name = c.name1 || 'User';
-        let description = '';
-
-        try {
-            const pu = c.powerUserSettings || c.power_user || window.power_user;
-            if (pu) {
-                description = pu.persona_description || pu.personaDescription || '';
-                const avatar = c.userAvatar || pu.user_avatar || pu.default_persona;
-                if (!description && avatar) {
-                    const pdMap = pu.persona_descriptions || pu.personaDescriptions;
-                    if (pdMap?.[avatar]) {
-                        const pd = pdMap[avatar];
-                        if (typeof pd === 'string') description = pd;
-                        else if (pd?.description) description = pd.description;
-                    }
-                }
-            }
-        } catch (e) {}
-
-        if (!description) {
-            try {
-                const meta = c.chatMetadata || c.chat_metadata;
-                if (meta?.persona) description = String(meta.persona);
-            } catch (e) {}
-        }
-
-        try {
-            if (typeof c.substituteParams === 'function') {
-                const resolvedName = c.substituteParams('{{user}}');
-                if (resolvedName && resolvedName !== '{{user}}' && resolvedName.trim()) {
-                    name = resolvedName.trim();
-                }
-            }
-        } catch (e) {}
-
-        return { name, description };
-    }
-
-    async function gatherContext() {
-        const c = getCtx(), char = c?.characters?.[c.characterId] || {};
-        const cleanMsg = (s) => (s || '').replace(/```[\s\S]*?```/g, '').replace(/<think>[\s\S]*?<\/think>/gi, '').replace(/<[^>]+>/g, '').trim();
-        const mainChatArr = (c?.chat || []).slice(-8).map(m => ({ who: m.is_user ? '用户' : (m.name || '角色'), content: cleanMsg(m.mes || '') })).filter(m => m.content);
-        const mainChatText = mainChatArr.map(m => `${m.who}：${m.content}`).join('\n');
-        let worldBookText = '';
-        try {
-            if (typeof c?.getWorldInfoPrompt === 'function') {
-                const ctxSize = c?.powerUserSettings?.openai_max_context
-                    || c?.oai_settings?.openai_max_context
-                    || c?.maxContext
-                    || 131072;
-                const wi = await c.getWorldInfoPrompt((c.chat || []).map(m => m.mes || '').slice(-10), ctxSize, false);
-                worldBookText = wi?.worldInfoString || wi?.worldInfoBefore || '';
-                if (!worldBookText && wi && typeof wi === 'object') worldBookText = [wi.worldInfoBefore, wi.worldInfoAfter].filter(Boolean).join('\n');
-            }
-        } catch (e) {}
-        const userPersona = getUserPersona();
-        return {
-            cardDesc: char.description ?? '',
-            cardPersonality: char.personality ?? '',
-            cardScenario: char.scenario ?? '',
-            cardFirstMes: char.first_mes ?? '',
-            cardMesExample: char.mes_example ?? '',
-            mainChatText, worldBookText,
-            userName: userPersona.name,
-            userDesc: userPersona.description,
-        };
-    }
 
     function bindIsland(el, handle) {
         let isDragging = false, startX, startY, startTX = 0, startTY = 0, moved = false;
@@ -703,217 +247,6 @@
         const onEnd = () => { if (!isDragging) return; isDragging = false; el.style.transition = '.35s cubic-bezier(.18,.89,.32,1.2)'; if (!moved) window.__pmToggleMin(); };
         handle.addEventListener('mousedown', onStart); window.addEventListener('mousemove', onMove); window.addEventListener('mouseup', onEnd);
         handle.addEventListener('touchstart', onStart, { passive: false }); window.addEventListener('touchmove', onMove, { passive: false }); window.addEventListener('touchend', onEnd);
-    }
-
-    function resolveGroupColor(name) {
-        if (!name) return null;
-        if (groupColorMap[name]) return groupColorMap[name];
-        const lower = name.toLowerCase();
-        for (const [k, v] of Object.entries(groupColorMap)) {
-            if (k.toLowerCase() === lower) return v;
-        }
-        const idx = groupMembers.findIndex(n => n.toLowerCase() === lower);
-        if (idx >= 0) return GROUP_COLORS[idx % GROUP_COLORS.length];
-        return null;
-    }
-
-    // 字数控制提示词
-    function getWordyPrompt() {
-        if (!window.__pmWordyLimit) return '';
-        return '\n\n[字数限制] 除非角色人设明确为话痨或碎嘴性格，否则每条独立消息（每个 / 分隔的片段）不得超过35个字符，超出请拆分为多条。';
-    }
-
-    // 生成表情包提示词\uff0c格式 [emo:套组名:序号]
-    function getEmojiPrompt(contactKey) {
-        const id = getStorageId();
-        const assignedIds = window.__pmPokeConfig[id]?.[contactKey]?.emojis || [];
-        if (!assignedIds.length) return '';
-        const sets = window.__pmEmojis.filter(s => assignedIds.includes(s.id));
-        if (!sets.length) return '';
-        const lines = sets.map(s =>
-            s.images.map((img, i) => `[emo:${s.name}:${i+1}] - ${img.desc}`).join('\n')
-        ).join('\n');
-        return `\n\n[表情包权限]
-你可以在合适时机使用以下表情包，使用格式 [emo:套组名:序号] 独行发送：\n${lines}\n请在自然语境下适当使用，严禁自生新格式。`;
-    }
-
-    function createBubbles(text, side, senderName) {
-        const results = [];
-        const re = new RegExp(SPECIAL_RE.source, 'gi');
-        let last = 0, m;
-        const gc = senderName && side === 'left' ? resolveGroupColor(senderName) : null;
-        const pushPlain = (str) => {
-            const plain = str.trim(); if (!plain) return;
-            if (senderName && side === 'left') {
-                const wrapper = document.createElement('div'); wrapper.className = 'pm-group-bubble-wrap';
-                const nameTag = document.createElement('div'); nameTag.className = 'pm-group-name'; nameTag.textContent = senderName;
-                if (gc) nameTag.style.color = gc.bg;
-                wrapper.appendChild(nameTag);
-                const inner = document.createElement('div'); inner.className = `pm-bubble pm-${side}`;
-                if (gc) {
-                    inner.style.setProperty('background', gc.bg, 'important');
-                    inner.style.setProperty('color', gc.text, 'important');
-                }
-                inner.innerHTML = escapeHtml(plain).replace(/\n/g, '<br>');
-                wrapper.appendChild(inner); results.push(wrapper); return;
-            }
-            const b = document.createElement('div'); b.className = `pm-bubble pm-${side}`;
-            b.innerHTML = escapeHtml(plain).replace(/\n/g, '<br>');
-            results.push(b);
-        };
-        while ((m = re.exec(text)) !== null) {
-            if (m.index > last) pushPlain(text.slice(last, m.index));
-            const kind = normalizeKeyword(m[1]);
-            const isGroupLeft = senderName && side === 'left';
-            let container;
-            if (isGroupLeft) {
-                container = document.createElement('div'); container.className = 'pm-group-bubble-wrap';
-                const nameTag = document.createElement('div'); nameTag.className = 'pm-group-name'; nameTag.textContent = senderName;
-                if (gc) nameTag.style.color = gc.bg;
-                container.appendChild(nameTag);
-            }
-            const b = document.createElement('div'); b.className = `pm-bubble pm-${side} pm-special`;
-
-            if (kind === '转账') {
-                const amount = parseFloat(m[2]) || 0;
-                b.innerHTML = `<div class="pm-transfer-card"><div class="pm-t-icon">¥</div><div class="pm-t-info"><b>转账</b><span>¥${amount.toFixed(2)}</span></div></div>`;
-            } else if (kind === '收款') {
-                const amount = parseFloat(m[2]) || 0;
-                b.innerHTML = `<div class="pm-receive-card"><div class="pm-t-icon">¥</div><div class="pm-t-info"><b>收款</b><span>¥${amount.toFixed(2)}</span></div></div>`;
-            } else if (kind === '退还') {
-                const amount = parseFloat(m[2]) || 0;
-                b.innerHTML = `<div class="pm-refund-card"><div class="pm-t-icon">¥</div><div class="pm-t-info"><b>已退还</b><span>¥${amount.toFixed(2)}</span></div></div>`;
-            } else if (kind === '图片') {
-                b.innerHTML = `<div class="pm-img-card">🖼️ ${escapeHtml(m[2].trim())}</div>`;
-            } else {
-                const txt = m[2].trim(), len = [...txt].length;
-                let dur;
-                if (len <= 5) dur = Math.max(1, len);
-                else if (len <= 15) dur = 5 + (len - 5);
-                else if (len <= 40) dur = 15 + Math.ceil((len - 15) * 0.8);
-                else dur = Math.min(VOICE_MAX_SEC, 35 + Math.ceil((len - 40) * 0.5));
-                const width = Math.min(240, Math.max(110, 90 + Math.min(len, 30) * 4));
-                let voiceStyle = `width:${width}px`, voiceClass = `pm-voice-card pm-voice-${side}`;
-                if (isGroupLeft && gc) {
-                    voiceStyle = `width:${width}px;background:${gc.bg} !important;color:${gc.text} !important;`;
-                    voiceClass = 'pm-voice-card pm-voice-left pm-voice-group';
-                }
-                b.innerHTML = `<div class="pm-voice-wrap"><div class="${voiceClass}" style="${voiceStyle}" onclick="window.__pmToggleVoice(this)"><span class="pm-voice-icon">🎤</span><span class="pm-voice-wave"><i></i><i></i><i></i></span><span class="pm-voice-dur">${dur}"</span></div><div class="pm-voice-text" style="display:none;">${escapeHtml(txt)}</div></div>`;
-            }
-            if (container) { container.appendChild(b); results.push(container); }
-            else results.push(b);
-            last = m.index + m[0].length;
-        }
-        if (last < text.length) pushPlain(text.slice(last));
-        if (!results.length) pushPlain(text);
-        // 最后再对所有末尾文本气泡对 [emo:...] 进行单翻替换
-        results.forEach(bubble => {
-            const els = bubble.classList?.contains('pm-group-bubble-wrap')
-                ? bubble.querySelectorAll('.pm-bubble')
-                : (bubble.classList?.contains('pm-bubble') ? [bubble] : []);
-            els.forEach(el => {
-                if (!el.innerHTML.includes('[emo:')) return;
-                el.innerHTML = el.innerHTML.replace(/\[emo:([^\]:]+):(\d+)\]/g, (match, sName, sIdx) => {
-                    const url = findEmojiUrl(sName, parseInt(sIdx));
-                    if (url) return `<img src="${url.replace(/"/g,'&quot;')}" style="max-width:98px;border-radius:8px;display:block;box-shadow:0 2px 8px rgba(0,0,0,0.15);vertical-align:middle;">`;
-                    return `<span style="font-size:12px;color:#999;">🤔[${sName}:${sIdx}]</span>`;
-                });
-                el.style.background = el.querySelector('img') && el.childNodes.length===1 ? 'transparent' : '';
-                el.style.boxShadow = el.querySelector('img') && el.childNodes.length===1 ? 'none' : '';
-                el.style.padding = el.querySelector('img') && el.childNodes.length===1 ? '0' : '';
-            });
-        });
-        return results;
-    }
-
-    window.__pmToggleVoice = (el) => {
-        const txt = el.parentElement?.querySelector('.pm-voice-text');
-        if (txt) txt.style.display = txt.style.display === 'none' ? 'block' : 'none';
-    };
-
-    function cleanResponse(raw) {
-        return (raw ?? '')
-            .replace(/<think>[\s\S]*?<\/think>/gi, '').replace(/<thinking>[\s\S]*?<\/thinking>/gi, '')
-            .replace(/<reasoning>[\s\S]*?<\/reasoning>/gi, '').replace(/<reflection>[\s\S]*?<\/reflection>/gi, '')
-            .replace(/<inner_thought>[\s\S]*?<\/inner_thought>/gi, '')
-            .replace(/<scene>[\s\S]*?<\/scene>/gi, '').replace(/<narration>[\s\S]*?<\/narration>/gi, '')
-            .replace(/<action>[\s\S]*?<\/action>/gi, '').replace(/```[\s\S]*?```/g, '')
-            .replace(/^.*【[^】]{2,}】.*$/gm, '').replace(/---+[\s\S]*$/g, '')
-            .replace(/<[^>]+>/g, '').trim();
-    }
-
-    function splitToSentences(str, stripFn = null) {
-        const protect = (str || '').replace(/[\(（][^)）]*[\)\）]/g, m => m.replace(/\//g, '\u0001'));
-        return protect.split(/\s*\/\s*/).map(s => {
-            let t = s.replace(/\u0001/g, '/').trim();
-            if (stripFn) t = stripFn(t);
-            if (!t || t === ')' || t === '）' || t === '(' || t === '（') return '';
-            const opens = (t.match(/[（(]/g) || []).length;
-            const closes = (t.match(/[）)]/g) || []).length;
-            if (opens > closes) {
-                t += '）'.repeat(opens - closes);
-            } else if (closes > opens && opens === 0) {
-                t = t.replace(/^[)）]+\s*/, '').replace(/\s*[)）]+$/, '');
-            }
-            return t;
-        }).filter(Boolean)
-          .flatMap(s => {
-              // 把含 [emo:...] 的片段按标记边界拆成独立气泡
-              const parts = []; let lastIdx = 0, em;
-              const emoRe = /\[emo:[^\]]+\]/g;
-              emoRe.lastIndex = 0;
-              while ((em = emoRe.exec(s)) !== null) {
-                  const before = s.slice(lastIdx, em.index).trim();
-                  if (before) parts.push(before);
-                  parts.push(em[0]);
-                  lastIdx = em.index + em[0].length;
-              }
-              const after = s.slice(lastIdx).trim();
-              if (after) parts.push(after);
-              return parts.length ? parts : [s];
-          })
-          .filter(Boolean).slice(0, 15);
-    }
-
-    function parseGroupResponse(raw) {
-        let cleaned = cleanResponse(raw);
-        const lines = cleaned.split('\n').map(l => l.trim()).filter(Boolean);
-        const result = [];
-        const normName = (s) => (s || '').trim().replace(/^[【\[\(（*「『"'\s]+|[】\]\)）*「』」"'\s]+$/g, '').trim().toLowerCase();
-        const memberMap = new Map();
-        groupMembers.forEach(n => memberMap.set(normName(n), n));
-        const speakerRe = /^[\s\*【\[「『"'（\(]*(.{1,20}?)[\s\*】\]」』"'）\)]*\s*[：:]\s*([\s\S]+)$/;
-
-        const stripAllPrefix = (s) => {
-            let t = (s || '').trim();
-            const outer = t.match(/^[\(（]\s*(.{1,20}?)\s*[：:]\s*([\s\S]+?)\s*[\)）]\s*$/);
-            if (outer && memberMap.has(normName(outer[1]))) {
-                t = outer[2].trim();
-            } else {
-                for (let i = 0; i < 3; i++) {
-                    const m = t.match(speakerRe);
-                    if (m && memberMap.has(normName(m[1]))) t = m[2].trim();
-                    else break;
-                }
-            }
-            return t;
-        };
-
-        for (const line of lines) {
-            const m = line.match(speakerRe);
-            if (m && memberMap.has(normName(m[1]))) {
-                const name = memberMap.get(normName(m[1]));
-                const sentences = splitToSentences(m[2], stripAllPrefix);
-                if (sentences.length) result.push({ name, sentences });
-            } else {
-                const sentences = splitToSentences(line, stripAllPrefix);
-                if (sentences.length) {
-                    if (result.length > 0) result[result.length - 1].sentences.push(...sentences);
-                    else result.push({ name: groupMembers[0] || '???', sentences });
-                }
-            }
-        }
-        return result;
     }
 
     async function callAI(systemPrompt, userPrompt, options = {}) {
@@ -945,21 +278,20 @@
             }
             const json = await resp.json();
             return json.choices?.[0]?.message?.content ?? '';
-        } else {
-            const c = getCtx();
-            if (!c) throw new Error('无上下文');
-            const fullPrompt = systemPrompt ? `${systemPrompt}\n\n${userPrompt}` : userPrompt;
-            return await c.generateQuietPrompt(fullPrompt, false, false);
         }
+
+        const c = getCtx();
+        if (!c) throw new Error('无上下文');
+        const fullPrompt = systemPrompt ? `${systemPrompt}\n\n${userPrompt}` : userPrompt;
+        return await c.generateQuietPrompt(fullPrompt, false, false);
     }
 
     async function fetchSMS(userMsg, directorNote) {
-        const c = getCtx();
         // 存入历史前把表情包标记替换为可读描述，让 AI 理解表情含义但不学习格式
         const userMsgClean = userMsg.replace(/\[emo:([^\]:]+):(\d+)\]/g, (_, setName, idxStr) => {
-            const set = (window.__pmEmojis || []).find(s => s.name === setName);
-            const img = set?.images?.[parseInt(idxStr, 10) - 1];
-            return img?.desc ? `[表情包：${img.desc}]` : '[表情包]';
+            const set = (window.__pmEmojis || []).find(item => item.name === setName);
+            const image = set?.images?.[parseInt(idxStr, 10) - 1];
+            return image?.desc ? `[表情包：${image.desc}]` : '[表情包]';
         }).replace(/\s{2,}/g, ' ').trim();
         if (userMsg.trim()) {
             conversationHistory.push({ role: 'user', content: userMsg }); // 存原始内容，保留 [emo:] 用于渲染
@@ -967,19 +299,20 @@
         const ctxData = await gatherContext();
         const { cardDesc, cardPersonality, cardScenario, cardFirstMes, cardMesExample, mainChatText, worldBookText, userName, userDesc } = ctxData;
 
-        const smsHistoryText = conversationHistory.slice(-CONTEXT_LIMIT, -1).map(m => {
-            const clean = cleanResponse(m.content);
-            return m.role === 'user' ? `${userName}：${clean}` : (isGroupChat ? clean : `${currentPersona}：${clean}`);
+        const smsHistoryText = conversationHistory.slice(-CONTEXT_LIMIT, -1).map(message => {
+            const clean = cleanResponse(message.content);
+            return message.role === 'user' ? `${userName}：${clean}` : (isGroupChat ? clean : `${currentPersona}：${clean}`);
         }).join('\n');
 
         const userBlock = [
             `用户名字：${userName}`,
-            userDesc ? `用户人设：${userDesc}` : ''
+            userDesc ? `用户人设：${userDesc}` : '',
         ].filter(Boolean).join('\n');
 
         let injectedInstruction, systemPrompt;
 
         if (isGroupChat) {
+
             const memberList = groupMembers.join('、');
             const groupName = groupDisplayName || `群聊：${memberList}`;
             const groupRules = `
@@ -1078,10 +411,10 @@ ${userMsg.trim() ? `${userName}：${userMsgClean}\n${currentPersona}：` : `[仅
         const antiFluff = '【务必直接按格式输出短信内容，严禁在开头输出“好的”、“下面是”等任何说明性废话，严禁输出非角色的语言。】';
         // 注入表情包提示词
         const targetContactKey = isGroupChat ? currentGroupKey : currentPersona;
-        const emojiPrompt = getEmojiPrompt(targetContactKey);
+        const emojiPrompt = getEmojiPrompt(targetContactKey, getStorageId(), window.__pmPokeConfig, window.__pmEmojis);
         if (emojiPrompt) { systemPrompt += emojiPrompt; injectedInstruction += emojiPrompt; }
         // 注入字数限制提示词
-        const wordyPrompt = getWordyPrompt();
+        const wordyPrompt = getWordyPrompt(window.__pmWordyLimit);
         if (wordyPrompt) { systemPrompt += wordyPrompt; injectedInstruction += wordyPrompt; }
         systemPrompt += `\n\n${antiFluff}`;
         injectedInstruction += `\n\n${antiFluff}`;
@@ -1102,7 +435,7 @@ ${userMsg.trim() ? `${userName}：${userMsgClean}\n${currentPersona}：` : `[仅
 
             let resultData;
             if (isGroupChat) {
-                const parsed = parseGroupResponse(raw);
+                const parsed = parseGroupResponse(raw, groupMembers);
                 if (parsed.length) {
                     const contentParts = parsed.map(p => `${p.name}：${p.sentences.join(' / ')}`);
                     conversationHistory.push({ role: 'assistant', content: contentParts.join('\n') });
@@ -1144,7 +477,9 @@ ${userMsg.trim() ? `${userName}：${userMsgClean}\n${currentPersona}：` : `[仅
 
     function addBubble(text, side, senderName, historyIndex) {
         const list = phoneWindow?.querySelector('.pm-msg-list'); if (!list) return;
-        createBubbles(text, side, senderName).forEach(b => {
+        createBubbles(text, side, senderName, {
+            groupColorMap, groupMembers, emojis: window.__pmEmojis,
+        }).forEach(b => {
             if (b.classList?.contains('pm-bubble')) {
                 b.dataset.side = side; b.dataset.text = text;
                 if (historyIndex !== undefined) b.dataset.historyIndex = historyIndex;
@@ -1320,254 +655,6 @@ ${userMsg.trim() ? `${userName}：${userMsgClean}\n${currentPersona}：` : `[仅
             }
         }
     };
-    // ===== 表情包管理 =====
-
-    window.__pmRenderEmojiSetList = () => {
-        const container = document.getElementById('pm-emoji-set-list');
-        if (!container) return;
-        const sets = window.__pmEmojis;
-        if (!sets.length) {
-            container.innerHTML = '<div style="text-align:center;color:#aaa;font-size:13px;padding:16px 0;">暂无表情包套组</div>';
-            return;
-        }
-        container.innerHTML = sets.map((set, si) => `
-            <div style="background:#fafafa;border:1px solid #eee;border-radius:10px;padding:10px 12px;margin-bottom:8px;">
-                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
-                    <span style="font-weight:600;font-size:13px;color:#222;">${escapeHtml(set.name)}</span>
-                    <div style="display:flex;gap:6px;">
-                        <button onclick="window.__pmAddEmojiImage(${si})" style="font-size:11px;background:#007aff;color:#fff;border:none;border-radius:6px;padding:4px 8px;cursor:pointer;">➕图片</button>
-                        <button onclick="window.__pmDeleteEmojiSet(${si})" style="font-size:11px;background:#ff3b30;color:#fff;border:none;border-radius:6px;padding:4px 8px;cursor:pointer;">删除</button>
-                    </div>
-                </div>
-                <div style="display:flex;flex-wrap:wrap;gap:8px;">
-                    ${set.images.map((img, ii) => `
-                        <div style="position:relative;width:52px;">
-                            <img src="${escapeAttr(img.url)}" style="width:52px;height:52px;object-fit:cover;border-radius:8px;border:1px solid #eee;">
-                            <div style="font-size:9px;color:#888;text-align:center;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;width:52px;">${escapeHtml(img.desc)}</div>
-                            <span onclick="window.__pmDeleteEmojiImage(${si},${ii})" style="position:absolute;top:-4px;right:-4px;background:#ff3b30;color:#fff;border-radius:50%;width:16px;height:16px;font-size:10px;display:flex;align-items:center;justify-content:center;cursor:pointer;line-height:1;">×</span>
-                        </div>
-                    `).join('')}
-                    ${set.images.length===0?'<span style="font-size:12px;color:#aaa;">暂无图片</span>':''}
-                </div>
-                <div style="font-size:11px;color:#aaa;margin-top:4px;">${set.images.length}/20 张 · [emo:${escapeHtml(set.name)}:1~${set.images.length}]</div>
-            </div>
-        `).join('');
-    };
-
-    window.__pmAddEmojiSet = () => {
-        if (window.__pmEmojis.length >= 10) return alert('最多只能创建 10 个套组。');
-        const ov = document.createElement('div'); ov.id = 'pm-overlay-sub';
-        if (typeof HTMLElement !== 'undefined' && HTMLElement.prototype.hasOwnProperty('popover')) ov.setAttribute('popover', 'manual');
-        ov.style.cssText = 'position:fixed !important; inset:0 !important; margin:0 !important; padding:0 !important; border:none !important; width:100vw !important; height:100vh !important; max-width:none !important; max-height:none !important; background:rgba(0,0,0,.45) !important; z-index:2147483648 !important; display:flex !important; align-items:center !important; justify-content:center !important;';
-        ov.innerHTML = `
-<div class="pm-modal">
-  <div class="pm-modal-header">
-    <b>新建表情包套组</b>
-    <span onclick="document.getElementById('pm-overlay-sub').remove()" class="pm-modal-close">✕</span>
-  </div>
-  <div style="padding:14px 16px;display:flex;flex-direction:column;gap:10px;">
-    <input id="pm-new-set-name" class="pm-cfg-input" placeholder="套组名称（如：开心、日常、可爱）" style="padding:8px 10px;font-size:13px;border-radius:8px;border:1px solid #ddd;">
-  </div>
-  <div class="pm-modal-add">
-    <button onclick="window.__pmConfirmAddEmojiSet()" style="width:100%;background:#007aff;color:#fff;border:none;border-radius:10px;padding:10px;font-size:13px;cursor:pointer;font-weight:600;">确认</button>
-  </div>
-</div>`;
-        ov.addEventListener('click', e => { if (e.target === ov) ov.remove(); });
-        document.body.appendChild(ov);
-        if (ov.showPopover) try { ov.showPopover(); } catch (e) {}
-        setTimeout(() => document.getElementById('pm-new-set-name')?.focus(), 10);
-    };
-
-    window.__pmConfirmAddEmojiSet = () => {
-        const name = document.getElementById('pm-new-set-name')?.value.trim();
-        if (!name) return alert('套组名称不能为空。');
-        if (window.__pmEmojis.some(s => s.name === name)) return alert('该名称已存在。');
-        window.__pmEmojis.push({ id: 'emo_' + Date.now(), name, images: [] });
-        saveEmojis();
-        document.getElementById('pm-overlay-sub')?.remove(); // 关键修改：只关闭当前弹窗
-        window.__pmRenderEmojiSetList();
-    };
-
-    window.__pmDeleteEmojiSet = (si) => {
-        const set = window.__pmEmojis[si];
-        if (!set) return;
-        if (!confirm(`确认删除套组「${set.name}」？`)) return;
-        window.__pmEmojis.splice(si, 1);
-        saveEmojis();
-        window.__pmRenderEmojiSetList();
-    };
-
-    window.__pmAddEmojiImage = (si) => {
-        const set = window.__pmEmojis[si];
-        if (!set) return;
-        if (set.images.length >= 20) return alert('本套组已满 20 张。');
-
-        const ov = document.createElement('div'); ov.id = 'pm-overlay-sub';
-        if (typeof HTMLElement !== 'undefined' && HTMLElement.prototype.hasOwnProperty('popover')) ov.setAttribute('popover', 'manual');
-        ov.style.cssText = 'position:fixed !important; inset:0 !important; margin:0 !important; padding:0 !important; border:none !important; width:100vw !important; height:100vh !important; max-width:none !important; max-height:none !important; background:rgba(0,0,0,.45) !important; z-index:2147483648 !important; display:flex !important; align-items:center !important; justify-content:center !important;';
-        ov.innerHTML = `
-<div class="pm-modal">
-  <div class="pm-modal-header">
-    <b>添加图片 — ${escapeHtml(set.name)}</b>
-    <span onclick="document.getElementById('pm-overlay-sub').remove();" class="pm-modal-close">✕</span>
-  </div>
-  <div style="padding:14px 16px;display:flex;flex-direction:column;gap:10px;">
-    <div style="font-size:12px;color:#888;margin-bottom:2px;">图片 URL 或本地上传</div>
-    <input id="pm-emo-url" class="pm-cfg-input" placeholder="https://... 或点下方选择文件" style="padding:8px 10px;font-size:13px;border-radius:8px;border:1px solid #ddd;">
-    <button onclick="document.getElementById('pm-emo-file').click()" style="background:#f0f0f3;color:#333;border:1px solid #ddd;border-radius:8px;padding:8px 10px;font-size:12px;cursor:pointer;">📁 上传本地图片</button>
-    <input id="pm-emo-file" type="file" accept="image/*" hidden onchange="window.__pmEmoFileRead(${si},this)">
-    <div id="pm-emo-preview" style="display:none;text-align:center;"><img id="pm-emo-preview-img" style="max-width:120px;max-height:120px;border-radius:10px;border:1px solid #eee;"></div>
-    <input id="pm-emo-desc" class="pm-cfg-input" placeholder="图片描述（必填，如：猫猫开心）" style="padding:8px 10px;font-size:13px;border-radius:8px;border:1px solid #ddd;">
-    <div style="font-size:11px;color:#aaa;">描述将告诉 AI 这张图在什么情形下使用</div>
-  </div>
-  <div class="pm-modal-add">
-    <button onclick="window.__pmConfirmAddEmojiImage(${si})" style="width:100%;background:#007aff;color:#fff;border:none;border-radius:10px;padding:10px;font-size:13px;cursor:pointer;font-weight:600;">确认添加</button>
-  </div>
-</div>`;
-        ov.addEventListener('click', e => { if (e.target === ov) ov.remove(); });
-        document.body.appendChild(ov);
-        if (ov.showPopover) try { ov.showPopover(); } catch (e) {}
-        setTimeout(() => document.getElementById('pm-emo-url')?.focus(), 10);
-    };
-
-    window.__pmEmoFileRead = (si, input) => {
-        const file = input.files?.[0]; if (!file) return;
-        const reader = new FileReader();
-        reader.onload = e => {
-            const url = e.target.result;
-            const urlInput = document.getElementById('pm-emo-url');
-            if (urlInput) urlInput.value = url;
-            const prev = document.getElementById('pm-emo-preview');
-            const prevImg = document.getElementById('pm-emo-preview-img');
-            if (prev && prevImg) { prevImg.src = url; prev.style.display = 'block'; }
-        };
-        reader.readAsDataURL(file);
-    };
-
-    window.__pmConfirmAddEmojiImage = (si) => {
-        const url = document.getElementById('pm-emo-url')?.value.trim();
-        const desc = document.getElementById('pm-emo-desc')?.value.trim();
-        if (!url) return alert('请输入图片 URL 或上传图片。');
-        if (!desc) return alert('请输入图片描述（必填）。');
-        const set = window.__pmEmojis[si];
-        if (!set) return;
-        set.images.push({ url, desc });
-        saveEmojis();
-        document.getElementById('pm-overlay-sub')?.remove(); // 关键修改：只关闭当前弹窗
-        window.__pmRenderEmojiSetList();
-    };
-
-    window.__pmDeleteEmojiImage = (si, ii) => {
-        const set = window.__pmEmojis[si];
-        if (!set) return;
-        set.images.splice(ii, 1);
-        saveEmojis();
-        window.__pmRenderEmojiSetList();
-    };
-
-    window.__pmShowEmojiPicker = () => {
-        if (!window.__pmEmojis.length) return alert('\xe8\xbf\x98\xe6\xb2\xa1\xe6\x9c\x89\xe8\xa1\xa8\xe6\x83\x85\xe5\x8c\x85\xef\xbc\x81\xe8\xaf\xb7\xe5\x85\x88\xe5\x8e\xbb\xe3\x80\x90\xe8\xae\xbe\xe7\xbd\xae-\xe5\x85\xb6\xe4\xbb\x96\xe3\x80\x91\xe4\xb8\xad\xe6\xb7\xbb\xe5\x8a\xa0\xe3\x80\x82');
-        const ta = document.getElementById('pm-expanded-textarea');
-        window.__pmTempText = ta ? ta.value : '';
-        let activeSetIdx = 0;
-
-        function renderPicker() {
-            const sets = window.__pmEmojis;
-            const set = sets[activeSetIdx] || sets[0];
-            if (!set) return;
-            const dotsHtml = sets.length > 1 ? `<div style="display:flex;justify-content:center;gap:8px;padding:8px 0 4px;">${
-                sets.map((s, i) => `<div onclick="window.__pmEmojiSetDot(${i})" style="width:8px;height:8px;border-radius:50%;cursor:pointer;background:${i===activeSetIdx?'#007aff':'#ddd'};transition:background 0.2s;"></div>`).join('')
-            }</div>` : '';
-            const imgsHtml = set.images.length ? set.images.map((img, i) => `
-                <div onclick="window.__pmInsertEmoji('[emo:${escapeAttr(set.name)}:${i+1}]')"
-                     style="cursor:pointer;width:60px;display:flex;flex-direction:column;align-items:center;gap:4px;">
-                    <img src="${escapeAttr(img.url)}" style="width:50px;height:50px;object-fit:cover;border-radius:8px;box-shadow:0 2px 6px rgba(0,0,0,0.1);">
-                    <span style="font-size:10px;color:#666;width:100%;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(img.desc)}</span>
-                </div>`).join('') : `<div style="text-align:center;color:#999;font-size:12px;padding:20px 0;">\xe6\x9c\xac\xe5\xa5\x97\xe6\x9a\x82\xe6\x97\xa0\xe5\x9b\xbe\xe7\x89\x87</div>`;
-            const el = document.getElementById('pm-emoji-picker-inner');
-            if (el) {
-                el.querySelector('.pm-emoji-set-label').textContent = set.name + ' (' + set.images.length + ')';
-                el.querySelector('.pm-emoji-imgs').innerHTML = imgsHtml;
-                el.querySelector('.pm-emoji-dots').innerHTML = dotsHtml;
-                el.querySelectorAll('.pm-emoji-set-dot-btn').forEach((d,i)=>d.style.background=i===activeSetIdx?'#007aff':'#ddd');
-            }
-        }
-
-        window.__pmEmojiSetDot = (idx) => { activeSetIdx = idx; renderPicker(); };
-
-        const sets = window.__pmEmojis;
-        const set0 = sets[0];
-        const initialImgs = set0?.images.length ? set0.images.map((img,i)=>`
-            <div onclick="window.__pmInsertEmoji('[emo:${escapeAttr(set0.name)}:${i+1}]')"
-                 style="cursor:pointer;width:60px;display:flex;flex-direction:column;align-items:center;gap:4px;">
-                <img src="${escapeAttr(img.url)}" style="width:50px;height:50px;object-fit:cover;border-radius:8px;box-shadow:0 2px 6px rgba(0,0,0,0.1);">
-                <span style="font-size:10px;color:#666;width:100%;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(img.desc)}</span>
-            </div>`).join('') : `<div style="text-align:center;color:#999;font-size:12px;padding:20px 0;">\xe6\x9c\xac\xe5\xa5\x97\xe6\x9a\x82\xe6\x97\xa0\xe5\x9b\xbe\xe7\x89\x87</div>`;
-        const initialDots = sets.length > 1 ? `<div style="display:flex;justify-content:center;gap:8px;padding:8px 0 4px;">${
-            sets.map((s,i) => `<div onclick="window.__pmEmojiSetDot(${i})" style="width:8px;height:8px;border-radius:50%;cursor:pointer;background:${i===0?'#007aff':'#ddd'};"></div>`).join('')
-        }</div>` : '';
-
-        makeOverlay(`
-<div class="pm-modal pm-modal-wide" id="pm-emoji-picker-inner">
-  <div class="pm-modal-header" style="justify-content:space-between;padding-right:14px;">
-    <b class="pm-emoji-set-label">${escapeHtml(set0?.name||'')} (${set0?.images.length||0})</b>
-    <span onclick="document.getElementById('pm-overlay').remove();window.__pmShowExpandInput();" class="pm-modal-close">✕</span>
-  </div>
-  <div class="pm-emoji-imgs" id="pm-emoji-imgs-area" style="padding:12px 14px;overflow-y:auto;max-height:340px;display:flex;flex-wrap:wrap;gap:10px;justify-content:flex-start;touch-action:pan-y pinch-zoom;">${initialImgs}</div>
-  <div class="pm-emoji-dots">${initialDots}</div>
-</div>`);
-
-        // 为表情包图片区域绑定左右滑动切换套组
-        const pickerInner = document.getElementById('pm-emoji-picker-inner');
-        if (pickerInner && sets.length > 1) {
-            const imgsArea = pickerInner.querySelector('#pm-emoji-imgs-area');
-            if (imgsArea) {
-                let swipeStartX = 0, swipeStartY = 0, swipeMoved = false;
-                imgsArea.addEventListener('touchstart', (e) => {
-                    swipeStartX = e.touches[0].clientX;
-                    swipeStartY = e.touches[0].clientY;
-                    swipeMoved = false;
-                }, { passive: true });
-                imgsArea.addEventListener('touchmove', (e) => {
-                    const dx = e.touches[0].clientX - swipeStartX;
-                    const dy = e.touches[0].clientY - swipeStartY;
-                    // 横向滑动幅度大于纵向时标记为横滑，阻止页面滚动
-                    if (!swipeMoved && Math.abs(dx) > Math.abs(dy) + 5) {
-                        swipeMoved = true;
-                    }
-                    if (swipeMoved && e.cancelable) e.preventDefault();
-                }, { passive: false });
-                imgsArea.addEventListener('touchend', (e) => {
-                    const dx = e.changedTouches[0].clientX - swipeStartX;
-                    const dy = e.changedTouches[0].clientY - swipeStartY;
-                    if (Math.abs(dx) > 40 && Math.abs(dx) > Math.abs(dy) * 1.5) {
-                        if (dx < 0) {
-                            // 左滑 → 下一套组
-                            activeSetIdx = (activeSetIdx + 1) % sets.length;
-                        } else {
-                            // 右滑 → 上一套组
-                            activeSetIdx = (activeSetIdx - 1 + sets.length) % sets.length;
-                        }
-                        renderPicker();
-                    }
-                }, { passive: true });
-            }
-        }
-    };
-
-    window.__pmInsertEmoji = (code) => {
-        const text = window.__pmTempText || '';
-        document.getElementById('pm-overlay').remove();
-        window.__pmShowExpandInput();
-        const ta = document.getElementById('pm-expanded-textarea');
-        if (ta) {
-            const sep = (text && !text.endsWith(' ') && !text.endsWith('\n')) ? '' : '';
-            ta.value = text + sep + code + ' ';
-            window.__pmTempText = ta.value;
-            ta.focus();
-            ta.selectionStart = ta.selectionEnd = ta.value.length;
-        }
-    };
 
     window.__pmIncrementCounters = () => {
         const id = getStorageId();
@@ -1634,13 +721,13 @@ ${userMsg.trim() ? `${userName}：${userMsgClean}\n${currentPersona}：` : `[仅
         const systemPrompt = isGroup ? `你同时扮演群聊中的所有成员。\n【务必直接按格式输出短信内容，严禁在开头输出“好的”等废话。】` : `你正在扮演"${contactName}"通过手机短信与用户 ${userName} 聊天。\n【务必直接按格式输出短信内容，严禁在开头输出“好的”等废话。】`;
         // 修复：注入表情包提示词（与 fetchSMS 保持一致）
         // 修复：群聊拍一拍使用 contactName（即 currentGroupKey），单人使用 contactName，两者相同，已正确
-        const emojiPrompt = getEmojiPrompt(contactName);
+        const emojiPrompt = getEmojiPrompt(contactName, getStorageId(), window.__pmPokeConfig, window.__pmEmojis);
         const userPrompt = (isGroup
             ? `群聊名称：${groupMeta.name}\n群聊成员：${groupMeta.members.join('、')}\n\n用户有一段时间没有说话。请以所有群成员的身份，根据各自的性格、人设和当前聊天上下文，自然地发起话题或继续聊天。每个成员根据人设决定发言 0-8 句。\n\n输出格式：角色名：消息 / 消息\n\n【用户信息】\n${userBlock}\n\n【角色设定】\n${cardDesc || ''}\n\n【性格】\n${cardPersonality || ''}\n\n【场景】\n${cardScenario || ''}\n\n【世界书】\n${worldBookText || ''}\n\n【主线最近对话】\n${mainChatText || ''}\n\n【群聊历史】\n${smsHistoryText}`
               + (emojiPrompt ? emojiPrompt : '')
             : `用户有一段时间没有回复。作为${contactName}，根据你的人设和当前聊天情境，自然地发送 3-8 句短信继续对话或发起新话题，不要提及用户没有回复这件事。\n\n【用户信息】\n${userBlock}\n\n【角色设定】\n${cardDesc || ''}\n\n【性格】\n${cardPersonality || ''}\n\n【场景】\n${cardScenario || ''}\n\n【对话示例】\n${cardMesExample || ''}\n\n【世界书】\n${worldBookText || ''}\n\n【主线最近对话】\n${mainChatText || ''}\n\n【短信对话历史】\n${smsHistoryText}\n\n输出格式：短信内容 / 短信内容（每句用 / 分隔，特殊格式中文单行闭合）`
               + (emojiPrompt ? emojiPrompt : ''))
-            + getWordyPrompt();
+            + getWordyPrompt(window.__pmWordyLimit);
 
         try {
             const raw = await callAI(systemPrompt, userPrompt);
@@ -1649,14 +736,7 @@ ${userMsg.trim() ? `${userName}：${userMsgClean}\n${currentPersona}：` : `[仅
             if (isActiveView) hideTyping();
 
             if (isGroup) {
-                const oldMembers = groupMembers;
-                let parsed = [];
-                try {
-                    groupMembers = groupMeta.members;
-                    parsed = parseGroupResponse(raw);
-                } finally {
-                    groupMembers = oldMembers;
-                }
+                const parsed = parseGroupResponse(raw, groupMeta.members);
 
                 const contentParts = [];
                 for (const block of parsed) {
@@ -1872,12 +952,12 @@ ${userMsg.trim() ? `${userName}：${userMsgClean}\n${currentPersona}：` : `[仅
 
         // 修复：注入表情包提示词（与 fetchSMS 保持一致）
         const targetContactKey = isGroupChat ? currentGroupKey : contactName;
-        const emojiPrompt = getEmojiPrompt(targetContactKey);
+        const emojiPrompt = getEmojiPrompt(targetContactKey, getStorageId(), window.__pmPokeConfig, window.__pmEmojis);
         const userPrompt = isGroupChat
             ? `群聊名称：${groupDisplayName || '群聊'}\n群聊成员：${groupMembers.join('、')}\n\n请以所有群成员的身份，根据各自的性格和当前聊天上下文，自然地发起话题或继续聊天。每个成员根据人设决定发言 0-8 句。\n\n输出格式：角色名：消息内容 / 消息内容\n\n【用户信息】\n${userBlock}\n\n【角色设定】\n${cardDesc || ''}\n\n【性格】\n${cardPersonality || ''}\n\n【场景】\n${cardScenario || ''}\n\n【世界书】\n${worldBookText || ''}\n\n【主线最近对话】\n${mainChatText || ''}\n\n【群聊历史】\n${smsHistoryText}`
             : `作为${contactName}，根据你的人设、性格和当前聊天情境，自然地发送 3-8 句短信，不要提及任何外部触发，就像你自己突然想发消息一样。\n\n【用户信息】\n${userBlock}\n\n【角色设定】\n${cardDesc || ''}\n\n【性格】\n${cardPersonality || ''}\n\n【场景】\n${cardScenario || ''}\n\n【对话示例】\n${cardMesExample || ''}\n\n【世界书】\n${worldBookText || ''}\n\n【主线最近对话】\n${mainChatText || ''}\n\n【短信对话历史】\n${smsHistoryText}\n\n输出格式：短信内容 / 短信内容（每句用 / 分隔，特殊格式中文单行闭合）`
             + (emojiPrompt ? emojiPrompt : '')
-            + getWordyPrompt();
+            + getWordyPrompt(window.__pmWordyLimit);
 
         try {
             const raw = await callAI(systemPrompt, userPrompt);
@@ -1886,7 +966,7 @@ ${userMsg.trim() ? `${userName}：${userMsgClean}\n${currentPersona}：` : `[仅
             hideTyping();
 
             if (isGroupChat) {
-                const parsed = parseGroupResponse(raw);
+                const parsed = parseGroupResponse(raw, groupMembers);
                 const contentParts = [];
                 for (const block of parsed) {
                     if (block.sentences.length > 0) {
@@ -2069,13 +1149,14 @@ ${userMsg.trim() ? `${userName}：${userMsgClean}\n${currentPersona}：` : `[仅
 
         const systemPrompt = `你同时扮演群聊中的所有成员。\n【务必直接按格式输出短信内容，严禁在开头输出“好的”等废话。】`;
         const userPrompt = `群聊名称：${groupDisplayName || '群聊'}\n群聊成员：${groupMembers.join('、')}\n\n请以每个群成员的身份，根据各自的性格、人设和当前聊天上下文，自然地发起话题或继续聊天，不要提及任何外部触发。\n每个成员根据自己的判断选择发言 0-8 条。\n\n输出格式：角色名：消息内容 / 消息内容\n\n【用户信息】\n${userBlock}\n\n【角色设定】\n${cardDesc || ''}\n\n【性格】\n${cardPersonality || ''}\n\n【场景】\n${cardScenario || ''}\n\n【世界书】\n${worldBookText || ''}\n\n【主线最近对话】\n${mainChatText || ''}\n\n【群聊历史】\n${smsHistoryText}`
-            + (getEmojiPrompt(currentGroupKey) || '') + getWordyPrompt();
+            + (getEmojiPrompt(currentGroupKey, getStorageId(), window.__pmPokeConfig, window.__pmEmojis) || '')
+            + getWordyPrompt(window.__pmWordyLimit);
 
         try {
             const raw = await callAI(systemPrompt, userPrompt);
             hideTyping();
 
-            const parsed = parseGroupResponse(raw);
+            const parsed = parseGroupResponse(raw, groupMembers);
             const contentParts = [];
 
             for (const block of parsed) {
@@ -2477,12 +1558,15 @@ ${userMsg.trim() ? `${userName}：${userMsgClean}\n${currentPersona}：` : `[仅
         const file = input.files?.[0]; if (!file) return;
         const reader = new FileReader();
         reader.onload = (e) => {
-            openCropper(e.target.result, (croppedDataUrl) => {
-                if (scope === 'global') { window.__pmBgGlobal = croppedDataUrl; saveBgGlobal(); }
-                else { const id = getStorageId(); window.__pmBgLocal[`${id}_${currentPersona}`] = croppedDataUrl; saveBgLocal(); }
-                applyBackground();
-                window.__pmShowConfig();
-                setTimeout(() => window.__pmSwitchTab('look'), 50);
+            openCropper(e.target.result, {
+                onCancel: () => window.__pmShowConfig(),
+                onConfirm: (croppedDataUrl) => {
+                    if (scope === 'global') { window.__pmBgGlobal = croppedDataUrl; saveBgGlobal(); }
+                    else { const id = getStorageId(); window.__pmBgLocal[`${id}_${currentPersona}`] = croppedDataUrl; saveBgLocal(); }
+                    applyBackground();
+                    window.__pmShowConfig();
+                    setTimeout(() => window.__pmSwitchTab('look'), 50);
+                },
             });
         };
         reader.readAsDataURL(file);
@@ -2524,7 +1608,7 @@ ${userMsg.trim() ? `${userName}：${userMsgClean}\n${currentPersona}：` : `[仅
             const r = await fetch(normalizeApiUrls(u).modelsUrl, { method: 'GET', headers: { 'Authorization': `Bearer ${k}` } });
             if (!r.ok) throw new Error(`HTTP ${r.status}`);
             const d = await r.json();
-            if (d?.data && Array.isArray(d.data)) { __pmModelList = d.data.map(x => x.id).filter(Boolean); s.textContent = `✅ ${__pmModelList.length} 个模型`; s.style.color = "#34c759"; }
+            if (d?.data && Array.isArray(d.data)) { runtime.modelList = d.data.map(x => x.id).filter(Boolean); s.textContent = `✅ ${runtime.modelList.length} 个模型`; s.style.color = "#34c759"; }
             else { s.textContent = "✅ 连接成功"; s.style.color = "#34c759"; }
             addOrUpdateProfile({ apiUrl: u, apiKey: k, model: m });
         } catch (e) { s.textContent = "❌ " + e.message; s.style.color = "#ff3b30"; }
@@ -2554,7 +1638,7 @@ ${userMsg.trim() ? `${userName}：${userMsgClean}\n${currentPersona}：` : `[仅
     window.__pmShowModelPicker = () => {
         const existing = document.getElementById('pm-model-dropdown');
         if (existing) { existing.remove(); return; }
-        if (!__pmModelList.length) { const s = document.getElementById('pm-api-status'); if (s) { s.textContent = '⚠️ 先拉取模型'; s.style.color = '#ff9500'; } return; }
+        if (!runtime.modelList.length) { const s = document.getElementById('pm-api-status'); if (s) { s.textContent = '⚠️ 先拉取模型'; s.style.color = '#ff9500'; } return; }
         const input = document.getElementById('pm-cfg-model'), rect = input.getBoundingClientRect();
         const dd = document.createElement('div'); dd.id = 'pm-model-dropdown'; dd.className = 'pm-model-dropdown';
         dd.style.setProperty('--pm-model-visible-rows', String(MODEL_VISIBLE_ROWS));
@@ -2564,7 +1648,7 @@ ${userMsg.trim() ? `${userName}：${userMsgClean}\n${currentPersona}：` : `[仅
         document.body.appendChild(dd); if (dd.showPopover) try { dd.showPopover(); } catch (e) {}
         const optsDiv = dd.querySelector('.pm-model-options');
         const render = (f = '') => {
-            const fl = f.toLowerCase(), filtered = __pmModelList.filter(m => !fl || m.toLowerCase().includes(fl));
+            const fl = f.toLowerCase(), filtered = runtime.modelList.filter(m => !fl || m.toLowerCase().includes(fl));
             optsDiv.innerHTML = filtered.length ? filtered.map(m => `<div class="pm-model-opt" data-m="${escapeAttr(m)}">${escapeHtml(m)}</div>`).join('') : '<div class="pm-model-empty">无匹配</div>';
             optsDiv.querySelectorAll('.pm-model-opt').forEach(el => el.addEventListener('click', () => { document.getElementById('pm-cfg-model').value = el.dataset.m; dd.remove(); }));
         };
@@ -2582,6 +1666,9 @@ ${userMsg.trim() ? `${userName}：${userMsgClean}\n${currentPersona}：` : `[仅
         if (ov.showPopover) try { ov.showPopover(); } catch (e) {}
         return ov;
     }
+
+    installEmojiUi({ makeOverlay, saveEmojis });
+
 
     window.__pmShowList = () => {
         const id = getStorageId();
@@ -2619,11 +1706,7 @@ ${userMsg.trim() ? `${userName}：${userMsgClean}\n${currentPersona}：` : `[仅
       <b>联系人</b>
       <span style="display:flex;align-items:center;gap:10px;">
         <span id="pm-autogen-btn" onclick="window.__pmConfirmAutoGen()" title="AI 自动生成联系人" style="cursor:pointer;display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:50%;transition:background .15s;" onmouseenter="this.style.background='rgba(0,122,255,0.1)'" onmouseleave="this.style.background='transparent'">
-          <svg id="pm-autogen-icon" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#007aff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="display:block;transform-origin:center center;">
-            <path d="M23 4v6h-6"/>
-            <path d="M1 20v-6h6"/>
-            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
-          </svg>
+          ${REFRESH_ICON_SVG}
         </span>
         <span onclick="document.getElementById('pm-overlay').remove()" class="pm-modal-close">✕</span>
       </span>
@@ -3017,9 +2100,9 @@ ${userMsg.trim() ? `${userName}：${userMsgClean}\n${currentPersona}：` : `[仅
         phoneWindow = null; phoneActive = false; isMinimized = false; isSelectMode = false;
         isGroupChat = false; groupMembers = []; groupColorMap = {}; groupDisplayName = ''; currentGroupKey = '';
         // 修复：关闭时重置冷启动标记，确保下次打开时（尤其是切换角色卡后）重新从 IDB 加载最新数据
-        __pmFirstOpen = true;
+        runtime.firstOpen = true;
         // 修复：关闭时清除可见性定时器，重新开启时再创建新的
-        if (__pmVisibilityTimer) { clearInterval(__pmVisibilityTimer); __pmVisibilityTimer = null; }
+        if (runtime.visibilityTimer) { clearInterval(runtime.visibilityTimer); runtime.visibilityTimer = null; }
     };
 
     function ensureVisibility() {
@@ -3032,14 +2115,14 @@ ${userMsg.trim() ? `${userName}：${userMsgClean}\n${currentPersona}：` : `[仅
         }
     }
     // 修复：保存定时器 ID，在 __pmEnd 时清除，避免永久泄漏
-    let __pmVisibilityTimer = setInterval(ensureVisibility, 2000);
+    runtime.visibilityTimer = setInterval(ensureVisibility, 2000);
 
     window.__pmOpen = () => {
         if (phoneActive && phoneWindow) { try { phoneWindow.showPopover?.(); } catch (e) {} phoneWindow.style.display = 'flex'; ensureVisibility(); return; }
         // 修复：删除每次打开都用 localStorage 覆盖内存的逻辑
         // localStorage 因容量限制可能保存的是旧数据，而内存和 IDB 才是最新的
         // 冷启动时（内存为空）靠 loadHistoriesFromIDB() 从 IDB 加载后再渲染
-        if (!__pmVisibilityTimer) { __pmVisibilityTimer = setInterval(ensureVisibility, 2000); }
+        if (!runtime.visibilityTimer) runtime.visibilityTimer = setInterval(ensureVisibility, 2000);
         try {
             const saved = JSON.parse(localStorage.getItem('ST_SMS_CONFIG'));
             window.__pmConfig = saved || { apiUrl: '', apiKey: '', model: '', useIndependent: false };
@@ -3055,8 +2138,6 @@ ${userMsg.trim() ? `${userName}：${userMsgClean}\n${currentPersona}：` : `[仅
         phoneWindow.setAttribute('data-theme', window.__pmTheme.darkMode || 'light');
         if (POPOVER_SUPPORTED) phoneWindow.setAttribute('popover', 'manual');
 
-        const editSvg = `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>`;
-
         phoneWindow.innerHTML = `
 <div class="pm-island"></div>
 <div class="pm-main-ui">
@@ -3064,7 +2145,7 @@ ${userMsg.trim() ? `${userName}：${userMsgClean}\n${currentPersona}：` : `[仅
     <button onclick="window.__pmShowList()" class="pm-nav-btn pm-nav-left-btn">☰</button>
     <div class="pm-name-wrap">
       <div class="pm-name">${escapeHtml(defaultChar)}</div>
-      <button onclick="window.__pmEditGroup()" class="pm-name-edit is-hidden" title="编辑">${editSvg}</button>
+      <button onclick="window.__pmEditGroup()" class="pm-name-edit is-hidden" title="编辑">${EDIT_ICON_SVG}</button>
     </div>
     <div class="pm-nav-right">
       <button onclick="window.__pmToggleSelect()" class="pm-nav-btn pm-trash-btn">🗑</button>
@@ -3092,7 +2173,7 @@ ${userMsg.trim() ? `${userName}：${userMsgClean}\n${currentPersona}：` : `[仅
         applyTheme(); isGroupChat = false; groupMembers = []; groupColorMap = {}; groupDisplayName = ''; currentGroupKey = '';
 
 
-        if (!__pmFirstOpen) {
+        if (!runtime.firstOpen) {
             // 热启动：信任内存历史直接渲染，但表情包可能因为插件重载而清空，需确保已加载
             const doRender = () => { window.__pmSwitch(defaultChar); applyBidirectionalInjection(); ensureVisibility(); };
             if (window.__pmEmojis.length > 0) {
@@ -3102,7 +2183,7 @@ ${userMsg.trim() ? `${userName}：${userMsgClean}\n${currentPersona}：` : `[仅
             }
         } else {
             // ❄️ 冷启动：第一次打开，先占位，等外部的 IDB 把最新数据拉进内存再渲染
-            __pmFirstOpen = false; // 翻转标记，此后不刷新就不会再走这里
+            runtime.firstOpen = false; // 翻转标记，此后不刷新就不会再走这里
             const list = phoneWindow?.querySelector('.pm-msg-list');
             if (list) { list.innerHTML = '<div style="text-align:center;color:#aaa;padding:20px;font-size:13px;">正在加载历史记录…</div>'; }
 

@@ -1,186 +1,1094 @@
 (() => {
+  // src/constants.js
+  var SAVE_LIMIT = 60;
+  var CONTEXT_LIMIT = 20;
+  var BIDIRECTIONAL_LIMIT = 20;
+  var MAX_BIDIRECTIONAL = 5;
+  var BIDIRECTIONAL_KEY = "PHONE_SMS_MEMORY";
+  var VOICE_MAX_SEC = 60;
+  var MODEL_VISIBLE_ROWS = 4;
+  var MAX_GROUP_MEMBERS = 16;
+  var PM_IDB_NAME = "PhoneModeDB";
+  var PM_IDB_STORE = "kv";
+  var IDB_MARKER = "__idb__";
+  var POPOVER_SUPPORTED = typeof HTMLElement !== "undefined" && HTMLElement.prototype.hasOwnProperty("popover");
+
+  // src/groups.js
+  var GROUP_COLORS = [
+    { bg: "#e9e9eb", text: "#000" },
+    { bg: "#b8e6c8", text: "#1b4332" },
+    { bg: "#f5d0d0", text: "#4a2030" },
+    { bg: "#d4d0f5", text: "#2d2252" },
+    { bg: "#f5e6b8", text: "#4a3a10" },
+    { bg: "#cceef5", text: "#144652" },
+    { bg: "#ffd6a5", text: "#5c3200" },
+    { bg: "#d0f0e8", text: "#0d3b2e" },
+    { bg: "#f0d4f5", text: "#3b0d52" },
+    { bg: "#fce4b8", text: "#4a2800" },
+    { bg: "#c8dff5", text: "#0d2952" },
+    { bg: "#f5d4e4", text: "#4a0d2a" },
+    { bg: "#d4efd4", text: "#1a3d1a" },
+    { bg: "#f5e0c8", text: "#4a2800" },
+    { bg: "#c8c8f5", text: "#1a1a52" }
+  ];
+
+  // src/config.js
+  var THEME_PRESETS = {
+    default: { right: "#007aff", left: "#e9e9eb", rightText: "#fff", leftText: "#000", label: "\u9ED8\u8BA4\u84DD" },
+    pink: { right: "#ff6b8a", left: "#fce4ec", rightText: "#fff", leftText: "#4a2030", label: "\u6A31\u82B1\u7C89" },
+    dark: { right: "#5856d6", left: "#2c2c2e", rightText: "#fff", leftText: "#e0e0e0", label: "\u6697\u591C\u7D2B" },
+    frost: { right: "rgba(0,122,255,0.55)", left: "rgba(255,255,255,0.35)", rightText: "#fff", leftText: "#222", label: "\u78E8\u7802\u73BB\u7483", frost: true },
+    mint: { right: "#34c759", left: "#e8f5e9", rightText: "#fff", leftText: "#1b4332", label: "\u8584\u8377\u7EFF" }
+  };
+  function normalizeApiUrls(input) {
+    const url = (input || "").trim().replace(/\/+$/, "");
+    if (!url) return { chatUrl: "", modelsUrl: "" };
+    if (/\/chat\/completions$/i.test(url)) return { chatUrl: url, modelsUrl: url.replace(/\/chat\/completions$/i, "/models") };
+    if (/\/models$/i.test(url)) return { chatUrl: url.replace(/\/models$/i, "/chat/completions"), modelsUrl: url };
+    if (/\/v\d+$/i.test(url)) return { chatUrl: url + "/chat/completions", modelsUrl: url + "/models" };
+    return { chatUrl: url + "/v1/chat/completions", modelsUrl: url + "/v1/models" };
+  }
+
+  // src/prompts.js
+  function cleanResponse(raw) {
+    return (raw ?? "").replace(/<think>[\s\S]*?<\/think>/gi, "").replace(/<thinking>[\s\S]*?<\/thinking>/gi, "").replace(/<reasoning>[\s\S]*?<\/reasoning>/gi, "").replace(/<reflection>[\s\S]*?<\/reflection>/gi, "").replace(/<inner_thought>[\s\S]*?<\/inner_thought>/gi, "").replace(/<scene>[\s\S]*?<\/scene>/gi, "").replace(/<narration>[\s\S]*?<\/narration>/gi, "").replace(/<action>[\s\S]*?<\/action>/gi, "").replace(/\x60{3}[\s\S]*?\x60{3}/g, "").replace(/^.*【[^】]{2,}】.*$/gm, "").replace(/---+[\s\S]*$/g, "").replace(/<[^>]+>/g, "").trim();
+  }
+  function splitToSentences(str, stripFn = null) {
+    const protectedText = (str || "").replace(/[\(（][^)）]*[\)）]/g, (match) => match.replace(/\//g, ""));
+    return protectedText.split(/\s*\/\s*/).map((part) => {
+      let text = part.replace(/\u0001/g, "/").trim();
+      if (stripFn) text = stripFn(text);
+      if (!text || text === ")" || text === "\uFF09" || text === "(" || text === "\uFF08") return "";
+      const opens = (text.match(/[（(]/g) || []).length;
+      const closes = (text.match(/[）)]/g) || []).length;
+      if (opens > closes) text += "\uFF09".repeat(opens - closes);
+      else if (closes > opens && opens === 0) text = text.replace(/^[)）]+\s*/, "").replace(/\s*[)）]+$/, "");
+      return text;
+    }).filter(Boolean).flatMap((text) => {
+      const parts = [];
+      let lastIndex = 0;
+      let match;
+      const emojiPattern = /\[emo:[^\]]+\]/g;
+      while ((match = emojiPattern.exec(text)) !== null) {
+        const before = text.slice(lastIndex, match.index).trim();
+        if (before) parts.push(before);
+        parts.push(match[0]);
+        lastIndex = match.index + match[0].length;
+      }
+      const after = text.slice(lastIndex).trim();
+      if (after) parts.push(after);
+      return parts.length ? parts : [text];
+    }).filter(Boolean).slice(0, 15);
+  }
+
+  // src/ui.js
+  function contrastText(bg) {
+    if (!bg || bg.startsWith("rgba")) return "#fff";
+    const color = bg.replace("#", "");
+    if (color.length !== 6) return "#000";
+    const r = parseInt(color.slice(0, 2), 16);
+    const g = parseInt(color.slice(2, 4), 16);
+    const b = parseInt(color.slice(4, 6), 16);
+    return r * 0.299 + g * 0.587 + b * 0.114 > 150 ? "#000" : "#fff";
+  }
+  function cssUrlEscape(url) {
+    return (url || "").replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+  }
+  function escapeHtml(value) {
+    return (value || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  }
+  function escapeAttr(value) {
+    return (value || "").replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/'/g, "&#39;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  }
+  function safeJS(value) {
+    const escaped = (value || "").replace(/\\/g, "\\\\").replace(/'/g, "\\'").replace(/"/g, '\\"').replace(/\n/g, "\\n");
+    return escapeAttr(escaped);
+  }
+
+  // src/icons.js
+  var EDIT_ICON_SVG = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>';
+  var REFRESH_ICON_SVG = '<svg id="pm-autogen-icon" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#007aff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="display:block;transform-origin:center center;"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>';
+
+  // src/messaging.js
+  var SPECIAL_KEYWORDS = {
+    "\u8F6C\u8D26": "\u8F6C\u8D26",
+    "transfer": "\u8F6C\u8D26",
+    "Transfer": "\u8F6C\u8D26",
+    "TRANSFER": "\u8F6C\u8D26",
+    "\u8F49\u8CEC": "\u8F6C\u8D26",
+    "\u8F49\u5E33": "\u8F6C\u8D26",
+    "\u6536\u6B3E": "\u6536\u6B3E",
+    "receive": "\u6536\u6B3E",
+    "Receive": "\u6536\u6B3E",
+    "RECEIVE": "\u6536\u6B3E",
+    "\u6536\u94B1": "\u6536\u6B3E",
+    "\u6536\u5230": "\u6536\u6B3E",
+    "\u6536\u9322": "\u6536\u6B3E",
+    "\u9000\u8FD8": "\u9000\u8FD8",
+    "\u9000\u94B1": "\u9000\u8FD8",
+    "\u9000\u6B3E": "\u9000\u8FD8",
+    "refund": "\u9000\u8FD8",
+    "Refund": "\u9000\u8FD8",
+    "REFUND": "\u9000\u8FD8",
+    "\u9000\u9084": "\u9000\u8FD8",
+    "\u9000\u9322": "\u9000\u8FD8",
+    "\u56FE\u7247": "\u56FE\u7247",
+    "image": "\u56FE\u7247",
+    "Image": "\u56FE\u7247",
+    "IMAGE": "\u56FE\u7247",
+    "img": "\u56FE\u7247",
+    "pic": "\u56FE\u7247",
+    "photo": "\u56FE\u7247",
+    "\u5716\u7247": "\u56FE\u7247",
+    "\u8BED\u97F3": "\u8BED\u97F3",
+    "voice": "\u8BED\u97F3",
+    "Voice": "\u8BED\u97F3",
+    "VOICE": "\u8BED\u97F3",
+    "audio": "\u8BED\u97F3",
+    "\u8A9E\u97F3": "\u8BED\u97F3"
+  };
+  var KEYWORD_PATTERN = Object.keys(SPECIAL_KEYWORDS).join("|");
+  var SPECIAL_RE = new RegExp(`[\\(\uFF08]\\s*(${KEYWORD_PATTERN})\\s*[+\uFF1A:\\s]*([^)\uFF09]+)[\\)\uFF09]`, "gi");
+  function normalizeKeyword(keyword) {
+    return SPECIAL_KEYWORDS[keyword] || SPECIAL_KEYWORDS[keyword.toLowerCase()] || keyword;
+  }
+  function findEmojiUrl(setName, index, emojis) {
+    const set = emojis.find((item) => item.name === setName);
+    const image = set?.images[index - 1];
+    return image?.url || null;
+  }
+  function resolveEmojiText(text, emojis) {
+    return (text || "").replace(/\[emo:([^\]:]+):(\d+)\]/g, (match, setName, index) => {
+      const set = emojis.find((item) => item.name === setName);
+      const image = set?.images[parseInt(index, 10) - 1];
+      return image ? `(\u8868\u60C5:${image.desc})` : "";
+    });
+  }
+  function getWordyPrompt(enabled) {
+    if (!enabled) return "";
+    return "\n\n[\u5B57\u6570\u9650\u5236] \u9664\u975E\u89D2\u8272\u4EBA\u8BBE\u660E\u786E\u4E3A\u8BDD\u75E8\u6216\u788E\u5634\u6027\u683C\uFF0C\u5426\u5219\u6BCF\u6761\u72EC\u7ACB\u6D88\u606F\uFF08\u6BCF\u4E2A / \u5206\u9694\u7684\u7247\u6BB5\uFF09\u4E0D\u5F97\u8D85\u8FC735\u4E2A\u5B57\u7B26\uFF0C\u8D85\u51FA\u8BF7\u62C6\u5206\u4E3A\u591A\u6761\u3002";
+  }
+  function getEmojiPrompt(contactKey, storageId, pokeConfig, emojis) {
+    const assignedIds = pokeConfig[storageId]?.[contactKey]?.emojis || [];
+    if (!assignedIds.length) return "";
+    const sets = emojis.filter((set) => assignedIds.includes(set.id));
+    if (!sets.length) return "";
+    const lines = sets.map((set) => set.images.map((image, index) => `[emo:${set.name}:${index + 1}] - ${image.desc}`).join("\n")).join("\n");
+    return `
+
+[\u8868\u60C5\u5305\u6743\u9650]
+\u4F60\u53EF\u4EE5\u5728\u5408\u9002\u65F6\u673A\u4F7F\u7528\u4EE5\u4E0B\u8868\u60C5\u5305\uFF0C\u4F7F\u7528\u683C\u5F0F [emo:\u5957\u7EC4\u540D:\u5E8F\u53F7] \u72EC\u884C\u53D1\u9001\uFF1A
+${lines}
+\u8BF7\u5728\u81EA\u7136\u8BED\u5883\u4E0B\u9002\u5F53\u4F7F\u7528\uFF0C\u4E25\u7981\u81EA\u751F\u65B0\u683C\u5F0F\u3002`;
+  }
+  function parseGroupResponse(raw, groupMembers) {
+    const cleaned = cleanResponse(raw);
+    const lines = cleaned.split("\n").map((line) => line.trim()).filter(Boolean);
+    const result = [];
+    const normalizeName = (value) => (value || "").trim().replace(/^[【\[\(（*「『"'\s]+|[】\]\)）*「』」"'\s]+$/g, "").trim().toLowerCase();
+    const memberMap = /* @__PURE__ */ new Map();
+    groupMembers.forEach((name) => memberMap.set(normalizeName(name), name));
+    const speakerPattern = /^[\s\*【\[「『"'（\(]*(.{1,20}?)[\s\*】\]」』"'）\)]*\s*[：:]\s*([\s\S]+)$/;
+    const stripSpeakerPrefix = (value) => {
+      let text = (value || "").trim();
+      const outer = text.match(/^[\(（]\s*(.{1,20}?)\s*[：:]\s*([\s\S]+?)\s*[\)）]\s*$/);
+      if (outer && memberMap.has(normalizeName(outer[1]))) {
+        return outer[2].trim();
+      }
+      for (let index = 0; index < 3; index++) {
+        const match = text.match(speakerPattern);
+        if (!match || !memberMap.has(normalizeName(match[1]))) break;
+        text = match[2].trim();
+      }
+      return text;
+    };
+    for (const line of lines) {
+      const match = line.match(speakerPattern);
+      if (match && memberMap.has(normalizeName(match[1]))) {
+        const name = memberMap.get(normalizeName(match[1]));
+        const sentences2 = splitToSentences(match[2], stripSpeakerPrefix);
+        if (sentences2.length) result.push({ name, sentences: sentences2 });
+        continue;
+      }
+      const sentences = splitToSentences(line, stripSpeakerPrefix);
+      if (!sentences.length) continue;
+      if (result.length > 0) result[result.length - 1].sentences.push(...sentences);
+      else result.push({ name: groupMembers[0] || "???", sentences });
+    }
+    return result;
+  }
+  function resolveGroupColor(name, groupColorMap, groupMembers) {
+    if (!name) return null;
+    if (groupColorMap[name]) return groupColorMap[name];
+    const normalizedName = name.toLowerCase();
+    for (const [memberName, color] of Object.entries(groupColorMap)) {
+      if (memberName.toLowerCase() === normalizedName) return color;
+    }
+    const index = groupMembers.findIndex((memberName) => memberName.toLowerCase() === normalizedName);
+    return index >= 0 ? GROUP_COLORS[index % GROUP_COLORS.length] : null;
+  }
+  function createBubbles(text, side, senderName, { groupColorMap, groupMembers, emojis }) {
+    const results = [];
+    const specialPattern = new RegExp(SPECIAL_RE.source, "gi");
+    let lastIndex = 0;
+    let match;
+    const groupColor = senderName && side === "left" ? resolveGroupColor(senderName, groupColorMap, groupMembers) : null;
+    const pushPlain = (value) => {
+      const plain = value.trim();
+      if (!plain) return;
+      if (senderName && side === "left") {
+        const wrapper = document.createElement("div");
+        wrapper.className = "pm-group-bubble-wrap";
+        const nameTag = document.createElement("div");
+        nameTag.className = "pm-group-name";
+        nameTag.textContent = senderName;
+        if (groupColor) nameTag.style.color = groupColor.bg;
+        wrapper.appendChild(nameTag);
+        const inner = document.createElement("div");
+        inner.className = `pm-bubble pm-${side}`;
+        if (groupColor) {
+          inner.style.setProperty("background", groupColor.bg, "important");
+          inner.style.setProperty("color", groupColor.text, "important");
+        }
+        inner.innerHTML = escapeHtml(plain).replace(/\n/g, "<br>");
+        wrapper.appendChild(inner);
+        results.push(wrapper);
+        return;
+      }
+      const bubble = document.createElement("div");
+      bubble.className = `pm-bubble pm-${side}`;
+      bubble.innerHTML = escapeHtml(plain).replace(/\n/g, "<br>");
+      results.push(bubble);
+    };
+    while ((match = specialPattern.exec(text)) !== null) {
+      if (match.index > lastIndex) pushPlain(text.slice(lastIndex, match.index));
+      const kind = normalizeKeyword(match[1]);
+      const isGroupLeft = senderName && side === "left";
+      let container;
+      if (isGroupLeft) {
+        container = document.createElement("div");
+        container.className = "pm-group-bubble-wrap";
+        const nameTag = document.createElement("div");
+        nameTag.className = "pm-group-name";
+        nameTag.textContent = senderName;
+        if (groupColor) nameTag.style.color = groupColor.bg;
+        container.appendChild(nameTag);
+      }
+      const bubble = document.createElement("div");
+      bubble.className = `pm-bubble pm-${side} pm-special`;
+      if (kind === "\u8F6C\u8D26" || kind === "\u6536\u6B3E" || kind === "\u9000\u8FD8") {
+        const amount = parseFloat(match[2]) || 0;
+        const className = kind === "\u8F6C\u8D26" ? "pm-transfer-card" : kind === "\u6536\u6B3E" ? "pm-receive-card" : "pm-refund-card";
+        const title = kind === "\u9000\u8FD8" ? "\u5DF2\u9000\u8FD8" : kind;
+        bubble.innerHTML = `<div class="${className}"><div class="pm-t-icon">\xA5</div><div class="pm-t-info"><b>${title}</b><span>\xA5${amount.toFixed(2)}</span></div></div>`;
+      } else if (kind === "\u56FE\u7247") {
+        bubble.innerHTML = `<div class="pm-img-card">\u{1F5BC}\uFE0F ${escapeHtml(match[2].trim())}</div>`;
+      } else {
+        const voiceText = match[2].trim();
+        const length = [...voiceText].length;
+        const duration = length <= 5 ? Math.max(1, length) : length <= 15 ? 5 + (length - 5) : length <= 40 ? 15 + Math.ceil((length - 15) * 0.8) : Math.min(VOICE_MAX_SEC, 35 + Math.ceil((length - 40) * 0.5));
+        const width = Math.min(240, Math.max(110, 90 + Math.min(length, 30) * 4));
+        let voiceStyle = `width:${width}px`;
+        let voiceClass = `pm-voice-card pm-voice-${side}`;
+        if (isGroupLeft && groupColor) {
+          voiceStyle = `width:${width}px;background:${groupColor.bg} !important;color:${groupColor.text} !important;`;
+          voiceClass = "pm-voice-card pm-voice-left pm-voice-group";
+        }
+        bubble.innerHTML = `<div class="pm-voice-wrap"><div class="${voiceClass}" style="${voiceStyle}" onclick="window.__pmToggleVoice(this)"><span class="pm-voice-icon">\u{1F3A4}</span><span class="pm-voice-wave"><i></i><i></i><i></i></span><span class="pm-voice-dur">${duration}"</span></div><div class="pm-voice-text" style="display:none;">${escapeHtml(voiceText)}</div></div>`;
+      }
+      if (container) {
+        container.appendChild(bubble);
+        results.push(container);
+      } else results.push(bubble);
+      lastIndex = match.index + match[0].length;
+    }
+    if (lastIndex < text.length) pushPlain(text.slice(lastIndex));
+    if (!results.length) pushPlain(text);
+    for (const bubble of results) {
+      const elements = bubble.classList?.contains("pm-group-bubble-wrap") ? bubble.querySelectorAll(".pm-bubble") : bubble.classList?.contains("pm-bubble") ? [bubble] : [];
+      for (const element of elements) {
+        if (!element.innerHTML.includes("[emo:")) continue;
+        element.innerHTML = element.innerHTML.replace(/\[emo:([^\]:]+):(\d+)\]/g, (raw, setName, index) => {
+          const url = findEmojiUrl(setName, parseInt(index, 10), emojis);
+          return url ? `<img src="${url.replace(/"/g, "&quot;")}" style="max-width:98px;border-radius:8px;display:block;box-shadow:0 2px 8px rgba(0,0,0,0.15);vertical-align:middle;">` : `<span style="font-size:12px;color:#999;">\u{1F914}[${setName}:${index}]</span>`;
+        });
+        const imageOnly = element.querySelector("img") && element.childNodes.length === 1;
+        element.style.background = imageOnly ? "transparent" : "";
+        element.style.boxShadow = imageOnly ? "none" : "";
+        element.style.padding = imageOnly ? "0" : "";
+      }
+    }
+    return results;
+  }
+
+  // src/storage.js
+  var database = null;
+  function pmOpenIDB() {
+    return new Promise((resolve) => {
+      if (database) {
+        try {
+          database.transaction(PM_IDB_STORE, "readonly");
+          resolve(database);
+          return;
+        } catch (error) {
+          database = null;
+        }
+      }
+      try {
+        const request = indexedDB.open(PM_IDB_NAME, 1);
+        request.onupgradeneeded = () => {
+          const db = request.result;
+          if (!db.objectStoreNames.contains(PM_IDB_STORE)) db.createObjectStore(PM_IDB_STORE);
+        };
+        request.onsuccess = () => {
+          database = request.result;
+          resolve(database);
+        };
+        request.onerror = () => resolve(null);
+      } catch (error) {
+        resolve(null);
+      }
+    });
+  }
+  async function pmIDBSet(key, value) {
+    const db = await pmOpenIDB();
+    if (!db) return false;
+    return new Promise((resolve) => {
+      try {
+        const transaction = db.transaction(PM_IDB_STORE, "readwrite");
+        transaction.objectStore(PM_IDB_STORE).put(value, key);
+        transaction.oncomplete = () => resolve(true);
+        transaction.onerror = () => resolve(false);
+      } catch (error) {
+        resolve(false);
+      }
+    });
+  }
+  async function pmIDBGet(key) {
+    const db = await pmOpenIDB();
+    if (!db) return null;
+    return new Promise((resolve) => {
+      try {
+        const transaction = db.transaction(PM_IDB_STORE, "readonly");
+        const request = transaction.objectStore(PM_IDB_STORE).get(key);
+        request.onsuccess = () => resolve(request.result ?? null);
+        request.onerror = () => resolve(null);
+      } catch (error) {
+        resolve(null);
+      }
+    });
+  }
+  async function pmIDBDel(key) {
+    const db = await pmOpenIDB();
+    if (!db) return;
+    try {
+      const transaction = db.transaction(PM_IDB_STORE, "readwrite");
+      transaction.objectStore(PM_IDB_STORE).delete(key);
+    } catch (error) {
+    }
+  }
+  function isBigData(value) {
+    return typeof value === "string" && value.length > 4096 && (value.startsWith("data:") || value.startsWith("blob:"));
+  }
+  function saveHistories() {
+    pmIDBSet("ST_SMS_DATA_V2", window.__pmHistories).catch(() => {
+    });
+    try {
+      localStorage.setItem("ST_SMS_DATA_V2", JSON.stringify(window.__pmHistories));
+    } catch (error) {
+      console.warn("[phone-mode] localStorage \u5DF2\u6EE1\uFF0C\u77ED\u4FE1\u5386\u53F2\u4EC5\u4FDD\u5B58\u5728 IDB");
+    }
+  }
+  function saveHistoriesBeforeUnload() {
+    const data = window.__pmHistories;
+    if (!data || !Object.keys(data).length) return;
+    try {
+      localStorage.setItem("ST_SMS_DATA_V2", JSON.stringify(data));
+    } catch (error) {
+      try {
+        const slim = {};
+        for (const [storyId, contacts] of Object.entries(data)) {
+          slim[storyId] = {};
+          for (const [persona, history] of Object.entries(contacts)) {
+            slim[storyId][persona] = Array.isArray(history) ? history.slice(-10) : history;
+          }
+        }
+        localStorage.setItem("ST_SMS_DATA_V2", JSON.stringify(slim));
+      } catch (backupError) {
+        console.warn("[phone-mode] beforeunload: localStorage \u5B8C\u5168\u65E0\u6CD5\u5199\u5165");
+      }
+    }
+    pmIDBSet("ST_SMS_DATA_V2", data).catch(() => {
+    });
+  }
+  async function loadHistoriesFromIDB() {
+    try {
+      const value = await pmIDBGet("ST_SMS_DATA_V2");
+      if (!value) {
+        try {
+          const fallback = JSON.parse(localStorage.getItem("ST_SMS_DATA_V2"));
+          if (fallback && typeof fallback === "object" && Object.keys(fallback).length > 0) {
+            window.__pmHistories = fallback;
+            console.log("[phone-mode] IDB \u65E0\u6570\u636E\uFF0C\u5DF2\u4ECE localStorage \u6062\u590D");
+          }
+        } catch (error) {
+        }
+        return;
+      }
+      const parsed = typeof value === "string" ? JSON.parse(value) : value;
+      if (!parsed || typeof parsed !== "object") return;
+      const idbCount = Object.keys(parsed).length;
+      if (idbCount > 0) {
+        window.__pmHistories = parsed;
+        try {
+          localStorage.setItem("ST_SMS_DATA_V2", JSON.stringify(parsed));
+        } catch (error) {
+          console.warn("[phone-mode] localStorage \u5DF2\u6EE1\uFF0C\u4EC5\u4F7F\u7528 IDB \u5B58\u50A8");
+        }
+        console.log("[phone-mode] \u4ECE IndexedDB \u52A0\u8F7D\u4E86\u77ED\u4FE1\u5386\u53F2\uFF0C\u5171", idbCount, "\u4E2A\u4F1A\u8BDD");
+      }
+    } catch (error) {
+      console.warn("[phone-mode] IDB \u6062\u590D\u5931\u8D25\uFF0C\u5C1D\u8BD5 localStorage \u515C\u5E95", error);
+      try {
+        const fallback = JSON.parse(localStorage.getItem("ST_SMS_DATA_V2"));
+        if (fallback && typeof fallback === "object" && Object.keys(fallback).length > 0) {
+          window.__pmHistories = fallback;
+        }
+      } catch (fallbackError) {
+      }
+    }
+  }
+  async function loadEmojis() {
+    try {
+      const value = await pmIDBGet("ST_SMS_EMOJIS");
+      window.__pmEmojis = Array.isArray(value) ? value : [];
+    } catch (error) {
+      window.__pmEmojis = [];
+    }
+  }
+  async function saveEmojis() {
+    await pmIDBSet("ST_SMS_EMOJIS", window.__pmEmojis).catch(() => {
+    });
+  }
+  function loadTheme() {
+    try {
+      window.__pmTheme = { ...window.__pmTheme, ...JSON.parse(localStorage.getItem("ST_SMS_THEME")) };
+    } catch (error) {
+    }
+  }
+  function saveTheme() {
+    try {
+      localStorage.setItem("ST_SMS_THEME", JSON.stringify(window.__pmTheme));
+    } catch (error) {
+    }
+  }
+  function loadPokeConfig() {
+    try {
+      window.__pmPokeConfig = JSON.parse(localStorage.getItem("ST_SMS_POKE_CONFIG")) || {};
+    } catch (error) {
+      window.__pmPokeConfig = {};
+    }
+  }
+  function savePokeConfig() {
+    try {
+      localStorage.setItem("ST_SMS_POKE_CONFIG", JSON.stringify(window.__pmPokeConfig));
+    } catch (error) {
+    }
+  }
+  function loadWordyLimit() {
+    try {
+      window.__pmWordyLimit = !!JSON.parse(localStorage.getItem("ST_SMS_WORDY_LIMIT"));
+    } catch (error) {
+      window.__pmWordyLimit = false;
+    }
+  }
+  function saveWordyLimit() {
+    try {
+      localStorage.setItem("ST_SMS_WORDY_LIMIT", JSON.stringify(window.__pmWordyLimit));
+    } catch (error) {
+    }
+  }
+  async function loadBgSettings() {
+    try {
+      const storedGlobal = localStorage.getItem("ST_SMS_BG_GLOBAL") || "";
+      if (storedGlobal === IDB_MARKER) {
+        window.__pmBgGlobal = await pmIDBGet("ST_SMS_BG_GLOBAL") || "";
+      } else if (isBigData(storedGlobal)) {
+        window.__pmBgGlobal = storedGlobal;
+        await pmIDBSet("ST_SMS_BG_GLOBAL", storedGlobal);
+        try {
+          localStorage.setItem("ST_SMS_BG_GLOBAL", IDB_MARKER);
+        } catch (error) {
+        }
+      } else {
+        window.__pmBgGlobal = storedGlobal;
+      }
+    } catch (error) {
+      window.__pmBgGlobal = "";
+    }
+    try {
+      const storedLocal = JSON.parse(localStorage.getItem("ST_SMS_BG_LOCAL")) || {};
+      const result = {};
+      let migrated = 0;
+      for (const [key, value] of Object.entries(storedLocal)) {
+        if (value === IDB_MARKER) {
+          result[key] = await pmIDBGet("ST_SMS_BG_LOCAL_" + key) || "";
+        } else if (isBigData(value)) {
+          result[key] = value;
+          await pmIDBSet("ST_SMS_BG_LOCAL_" + key, value);
+          storedLocal[key] = IDB_MARKER;
+          migrated++;
+        } else {
+          result[key] = value;
+        }
+      }
+      if (migrated > 0) {
+        try {
+          localStorage.setItem("ST_SMS_BG_LOCAL", JSON.stringify(storedLocal));
+        } catch (error) {
+        }
+      }
+      window.__pmBgLocal = result;
+    } catch (error) {
+      window.__pmBgLocal = {};
+    }
+  }
+  async function saveBgGlobal() {
+    const value = window.__pmBgGlobal || "";
+    if (isBigData(value)) {
+      await pmIDBSet("ST_SMS_BG_GLOBAL", value);
+      try {
+        localStorage.setItem("ST_SMS_BG_GLOBAL", IDB_MARKER);
+      } catch (error) {
+      }
+    } else {
+      await pmIDBDel("ST_SMS_BG_GLOBAL");
+      try {
+        localStorage.setItem("ST_SMS_BG_GLOBAL", value);
+      } catch (error) {
+      }
+    }
+  }
+  async function saveBgLocal() {
+    const pointers = {};
+    for (const [key, value] of Object.entries(window.__pmBgLocal || {})) {
+      if (isBigData(value)) {
+        await pmIDBSet("ST_SMS_BG_LOCAL_" + key, value);
+        pointers[key] = IDB_MARKER;
+      } else {
+        await pmIDBDel("ST_SMS_BG_LOCAL_" + key);
+        if (value !== void 0) pointers[key] = value;
+      }
+    }
+    try {
+      localStorage.setItem("ST_SMS_BG_LOCAL", JSON.stringify(pointers));
+    } catch (error) {
+    }
+  }
+  function loadGroupMeta() {
+    try {
+      window.__pmGroupMeta = JSON.parse(localStorage.getItem("ST_SMS_GROUP_META")) || {};
+    } catch (error) {
+      window.__pmGroupMeta = {};
+    }
+  }
+  function saveGroupMeta() {
+    try {
+      localStorage.setItem("ST_SMS_GROUP_META", JSON.stringify(window.__pmGroupMeta));
+    } catch (error) {
+    }
+  }
+  function loadProfiles() {
+    try {
+      window.__pmProfiles = JSON.parse(localStorage.getItem("ST_SMS_API_PROFILES")) || [];
+    } catch (error) {
+      window.__pmProfiles = [];
+    }
+  }
+  function saveProfiles() {
+    try {
+      localStorage.setItem("ST_SMS_API_PROFILES", JSON.stringify(window.__pmProfiles));
+    } catch (error) {
+    }
+  }
+  function addOrUpdateProfile(profile) {
+    if (!profile.apiUrl || !profile.apiKey) return;
+    const index = window.__pmProfiles.findIndex((item) => item.apiUrl === profile.apiUrl && item.apiKey === profile.apiKey);
+    if (index >= 0) window.__pmProfiles[index] = { ...window.__pmProfiles[index], ...profile, savedAt: Date.now() };
+    else window.__pmProfiles.push({ ...profile, savedAt: Date.now() });
+    saveProfiles();
+  }
+  function loadBidirectional() {
+    try {
+      window.__pmBidirectional = JSON.parse(localStorage.getItem("ST_SMS_BIDIRECTIONAL")) || {};
+    } catch (error) {
+      window.__pmBidirectional = {};
+    }
+  }
+  function saveBidirectional() {
+    try {
+      localStorage.setItem("ST_SMS_BIDIRECTIONAL", JSON.stringify(window.__pmBidirectional));
+    } catch (error) {
+    }
+  }
+
+  // src/runtime.js
+  function createRuntimeState() {
+    return {
+      modelList: [],
+      eventHooked: false,
+      firstOpen: true,
+      lastChatLength: 0,
+      visibilityTimer: null
+    };
+  }
+
+  // src/host-context.js
+  function getStorageId(getCtx) {
+    const context = getCtx();
+    if (!context) return "sms_unknown__default";
+    const character = context.characters?.[context.characterId];
+    const avatar = character?.avatar || `idx_${context.characterId}`;
+    const chatFile = context.chatId || (typeof context.getCurrentChatId === "function" ? context.getCurrentChatId() : null) || context.chat_metadata?.chat_id_hash || context.chat_file || "default";
+    return `sms_${avatar}__${chatFile}`;
+  }
+  function getUserPersona(getCtx) {
+    const context = getCtx();
+    if (!context) return { name: "\u7528\u6237", description: "" };
+    let name = context.name1 || "User";
+    let description = "";
+    try {
+      const settings = context.powerUserSettings || context.power_user || window.power_user;
+      if (settings) {
+        description = settings.persona_description || settings.personaDescription || "";
+        const avatar = context.userAvatar || settings.user_avatar || settings.default_persona;
+        if (!description && avatar) {
+          const descriptions = settings.persona_descriptions || settings.personaDescriptions;
+          const persona = descriptions?.[avatar];
+          if (typeof persona === "string") description = persona;
+          else if (persona?.description) description = persona.description;
+        }
+      }
+    } catch (error) {
+    }
+    if (!description) {
+      try {
+        const metadata = context.chatMetadata || context.chat_metadata;
+        if (metadata?.persona) description = String(metadata.persona);
+      } catch (error) {
+      }
+    }
+    try {
+      if (typeof context.substituteParams === "function") {
+        const resolvedName = context.substituteParams("{{user}}");
+        if (resolvedName && resolvedName !== "{{user}}" && resolvedName.trim()) name = resolvedName.trim();
+      }
+    } catch (error) {
+    }
+    return { name, description };
+  }
+  async function gatherContext(getCtx) {
+    const context = getCtx();
+    const character = context?.characters?.[context.characterId] || {};
+    const cleanMessage = (value) => (value || "").replace(/```[\s\S]*?```/g, "").replace(/<think>[\s\S]*?<\/think>/gi, "").replace(/<[^>]+>/g, "").trim();
+    const mainChat = (context?.chat || []).slice(-8).map((message) => ({
+      who: message.is_user ? "\u7528\u6237" : message.name || "\u89D2\u8272",
+      content: cleanMessage(message.mes || "")
+    })).filter((message) => message.content);
+    let worldBookText = "";
+    try {
+      if (typeof context?.getWorldInfoPrompt === "function") {
+        const contextSize = context?.powerUserSettings?.openai_max_context || context?.oai_settings?.openai_max_context || context?.maxContext || 131072;
+        const worldInfo = await context.getWorldInfoPrompt(
+          (context.chat || []).map((message) => message.mes || "").slice(-10),
+          contextSize,
+          false
+        );
+        worldBookText = worldInfo?.worldInfoString || worldInfo?.worldInfoBefore || "";
+        if (!worldBookText && worldInfo && typeof worldInfo === "object") {
+          worldBookText = [worldInfo.worldInfoBefore, worldInfo.worldInfoAfter].filter(Boolean).join("\n");
+        }
+      }
+    } catch (error) {
+    }
+    const userPersona = getUserPersona(getCtx);
+    return { cardDesc: character.description ?? "", cardPersonality: character.personality ?? "", cardScenario: character.scenario ?? "", cardFirstMes: character.first_mes ?? "", cardMesExample: character.mes_example ?? "", mainChatText: mainChat.map((message) => `${message.who}\uFF1A${message.content}`).join("\n"), worldBookText, userName: userPersona.name, userDesc: userPersona.description };
+  }
+
+  // src/cropper.js
+  function openCropper(imgDataUrl, { onCancel, onConfirm }) {
+    const ratio = 330 / 450;
+    document.getElementById("pm-overlay")?.remove();
+    const overlay = document.createElement("div");
+    overlay.id = "pm-overlay";
+    if (POPOVER_SUPPORTED) overlay.setAttribute("popover", "manual");
+    overlay.innerHTML = `
+<div class="pm-modal pm-modal-wide">
+  <div class="pm-modal-header"><b>\u88C1\u526A\u56FE\u7247</b><span id="pm-crop-close" class="pm-modal-close">\u2715</span></div>
+  <div style="padding:12px 14px;">
+    <div class="pm-crop-tip">\u62D6\u52A8\u56FE\u7247\u8C03\u6574\u4F4D\u7F6E\uFF0C\u6EDA\u8F6E/\u634F\u5408\u7F29\u653E</div>
+    <div class="pm-crop-frame" id="pm-crop-frame">
+      <img id="pm-crop-img" src="${escapeAttr(imgDataUrl)}" alt="">
+      <div class="pm-crop-mask"></div>
+    </div>
+    <div class="pm-crop-zoom">
+      <span style="font-size:11px;color:#888;">\u7F29\u653E</span>
+      <input type="range" id="pm-crop-zoom" min="100" max="400" value="100">
+    </div>
+  </div>
+  <div class="pm-modal-add" style="display:flex;gap:8px;">
+    <button id="pm-crop-cancel" style="flex:1;background:#f0f0f0;color:#333;border:none;border-radius:10px;padding:10px;font-size:13px;cursor:pointer;">\u53D6\u6D88</button>
+    <button id="pm-crop-confirm" style="flex:1;background:#007aff;color:#fff;border:none;border-radius:10px;padding:10px;font-size:13px;cursor:pointer;font-weight:600;">\u786E\u8BA4\u88C1\u526A</button>
+  </div>
+</div>`;
+    const cancel = () => {
+      overlay.remove();
+      onCancel?.();
+    };
+    overlay.querySelector("#pm-crop-close").addEventListener("click", cancel);
+    overlay.querySelector("#pm-crop-cancel").addEventListener("click", cancel);
+    overlay.addEventListener("click", (event) => {
+      if (event.target === overlay) cancel();
+    });
+    document.body.appendChild(overlay);
+    if (overlay.showPopover) try {
+      overlay.showPopover();
+    } catch (error) {
+    }
+    const frame = overlay.querySelector("#pm-crop-frame");
+    const image = overlay.querySelector("#pm-crop-img");
+    const zoomSlider = overlay.querySelector("#pm-crop-zoom");
+    let tx = 0, ty = 0, scale = 1;
+    let frameWidth = 0, frameHeight = 0, baseWidth = 0, baseHeight = 0;
+    function updateTransform() {
+      const width = baseWidth * scale;
+      const height = baseHeight * scale;
+      tx = Math.max(frameWidth - width, Math.min(0, tx));
+      ty = Math.max(frameHeight - height, Math.min(0, ty));
+      image.style.width = width + "px";
+      image.style.height = height + "px";
+      image.style.transform = `translate(${tx}px, ${ty}px)`;
+    }
+    image.onload = () => {
+      frameWidth = frame.clientWidth;
+      frameHeight = frameWidth / ratio;
+      frame.style.height = frameHeight + "px";
+      const imageRatio = image.naturalWidth / image.naturalHeight;
+      if (imageRatio > ratio) {
+        baseHeight = frameHeight;
+        baseWidth = baseHeight * imageRatio;
+      } else {
+        baseWidth = frameWidth;
+        baseHeight = baseWidth / imageRatio;
+      }
+      updateTransform();
+    };
+    zoomSlider.oninput = () => {
+      scale = parseInt(zoomSlider.value, 10) / 100;
+      updateTransform();
+    };
+    let dragging = false, startX = 0, startY = 0, startTx = 0, startTy = 0;
+    const onDragStart = (event) => {
+      dragging = true;
+      const point = event.touches ? event.touches[0] : event;
+      startX = point.clientX;
+      startY = point.clientY;
+      startTx = tx;
+      startTy = ty;
+      if (event.cancelable) event.preventDefault();
+    };
+    const onDragMove = (event) => {
+      if (!dragging) return;
+      const point = event.touches ? event.touches[0] : event;
+      tx = startTx + point.clientX - startX;
+      ty = startTy + point.clientY - startY;
+      updateTransform();
+      if (event.cancelable) event.preventDefault();
+    };
+    const onDragEnd = () => {
+      dragging = false;
+    };
+    frame.addEventListener("mousedown", onDragStart);
+    window.addEventListener("mousemove", onDragMove);
+    window.addEventListener("mouseup", onDragEnd);
+    frame.addEventListener("touchstart", onDragStart, { passive: false });
+    window.addEventListener("touchmove", onDragMove, { passive: false });
+    window.addEventListener("touchend", onDragEnd);
+    let pinchDistance = 0, pinchScale = 1;
+    frame.addEventListener("touchstart", (event) => {
+      if (event.touches.length !== 2) return;
+      pinchDistance = Math.hypot(
+        event.touches[0].clientX - event.touches[1].clientX,
+        event.touches[0].clientY - event.touches[1].clientY
+      );
+      pinchScale = scale;
+    }, { passive: false });
+    frame.addEventListener("touchmove", (event) => {
+      if (event.touches.length !== 2 || !pinchDistance) return;
+      const distance = Math.hypot(
+        event.touches[0].clientX - event.touches[1].clientX,
+        event.touches[0].clientY - event.touches[1].clientY
+      );
+      scale = Math.max(1, Math.min(4, pinchScale * distance / pinchDistance));
+      zoomSlider.value = Math.round(scale * 100);
+      updateTransform();
+      event.preventDefault();
+    }, { passive: false });
+    frame.addEventListener("wheel", (event) => {
+      event.preventDefault();
+      scale = Math.max(1, Math.min(4, scale + (event.deltaY > 0 ? -0.1 : 0.1)));
+      zoomSlider.value = Math.round(scale * 100);
+      updateTransform();
+    });
+    overlay.querySelector("#pm-crop-confirm").addEventListener("click", () => {
+      const canvas = document.createElement("canvas");
+      const outputWidth = 600;
+      const outputHeight = Math.round(outputWidth / ratio);
+      canvas.width = outputWidth;
+      canvas.height = outputHeight;
+      const context = canvas.getContext("2d");
+      const sourceScale = image.naturalWidth / (baseWidth * scale);
+      context.drawImage(
+        image,
+        -tx * sourceScale,
+        -ty * sourceScale,
+        frameWidth * sourceScale,
+        frameHeight * sourceScale,
+        0,
+        0,
+        outputWidth,
+        outputHeight
+      );
+      let quality = 0.7;
+      let output = canvas.toDataURL("image/jpeg", quality);
+      while (output.length > 200 * 1370 && quality > 0.2) {
+        quality -= 0.1;
+        output = canvas.toDataURL("image/jpeg", quality);
+      }
+      overlay.remove();
+      onConfirm(output);
+    });
+  }
+
+  // src/emoji-ui.js
+  var SUB_OVERLAY_STYLE = "position:fixed !important; inset:0 !important; margin:0 !important; padding:0 !important; border:none !important; width:100vw !important; height:100vh !important; max-width:none !important; max-height:none !important; background:rgba(0,0,0,.45) !important; z-index:2147483648 !important; display:flex !important; align-items:center !important; justify-content:center !important;";
+  function createSubOverlay(html) {
+    document.getElementById("pm-overlay-sub")?.remove();
+    const overlay = document.createElement("div");
+    overlay.id = "pm-overlay-sub";
+    if (typeof HTMLElement !== "undefined" && HTMLElement.prototype.hasOwnProperty("popover")) {
+      overlay.setAttribute("popover", "manual");
+    }
+    overlay.style.cssText = SUB_OVERLAY_STYLE;
+    overlay.innerHTML = html;
+    overlay.addEventListener("click", (event) => {
+      if (event.target === overlay) overlay.remove();
+    });
+    document.body.appendChild(overlay);
+    if (overlay.showPopover) try {
+      overlay.showPopover();
+    } catch (error) {
+    }
+    return overlay;
+  }
+  function renderPickerImages(set) {
+    if (!set?.images?.length) return '<div style="text-align:center;color:#999;font-size:12px;padding:20px 0;">\u672C\u5957\u6682\u65E0\u56FE\u7247</div>';
+    return set.images.map((image, index) => `
+        <div onclick="window.__pmInsertEmoji('[emo:${escapeAttr(set.name)}:${index + 1}]')" style="cursor:pointer;width:60px;display:flex;flex-direction:column;align-items:center;gap:4px;">
+            <img src="${escapeAttr(image.url)}" style="width:50px;height:50px;object-fit:cover;border-radius:8px;box-shadow:0 2px 6px rgba(0,0,0,0.1);">
+            <span style="font-size:10px;color:#666;width:100%;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(image.desc)}</span>
+        </div>`).join("");
+  }
+  function renderPickerDots(sets, activeIndex) {
+    if (sets.length <= 1) return "";
+    return `<div style="display:flex;justify-content:center;gap:8px;padding:8px 0 4px;">${sets.map((set, index) => `<div class="pm-emoji-set-dot-btn" onclick="window.__pmEmojiSetDot(${index})" style="width:8px;height:8px;border-radius:50%;cursor:pointer;background:${index === activeIndex ? "#007aff" : "#ddd"};transition:background 0.2s;"></div>`).join("")}</div>`;
+  }
+  function installEmojiUi({ makeOverlay, saveEmojis: saveEmojis2 }) {
+    window.__pmRenderEmojiSetList = () => {
+      const container = document.getElementById("pm-emoji-set-list");
+      if (!container) return;
+      const sets = window.__pmEmojis;
+      if (!sets.length) {
+        container.innerHTML = '<div style="text-align:center;color:#aaa;font-size:13px;padding:16px 0;">\u6682\u65E0\u8868\u60C5\u5305\u5957\u7EC4</div>';
+        return;
+      }
+      container.innerHTML = sets.map((set, setIndex) => `
+            <div style="background:#fafafa;border:1px solid #eee;border-radius:10px;padding:10px 12px;margin-bottom:8px;">
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+                    <span style="font-weight:600;font-size:13px;color:#222;">${escapeHtml(set.name)}</span>
+                    <div style="display:flex;gap:6px;">
+                        <button onclick="window.__pmAddEmojiImage(${setIndex})" style="font-size:11px;background:#007aff;color:#fff;border:none;border-radius:6px;padding:4px 8px;cursor:pointer;">\u2795\u56FE\u7247</button>
+                        <button onclick="window.__pmDeleteEmojiSet(${setIndex})" style="font-size:11px;background:#ff3b30;color:#fff;border:none;border-radius:6px;padding:4px 8px;cursor:pointer;">\u5220\u9664</button>
+                    </div>
+                </div>
+                <div style="display:flex;flex-wrap:wrap;gap:8px;">
+                    ${set.images.map((image, imageIndex) => `
+                        <div style="position:relative;width:52px;">
+                            <img src="${escapeAttr(image.url)}" style="width:52px;height:52px;object-fit:cover;border-radius:8px;border:1px solid #eee;">
+                            <div style="font-size:9px;color:#888;text-align:center;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;width:52px;">${escapeHtml(image.desc)}</div>
+                            <span onclick="window.__pmDeleteEmojiImage(${setIndex},${imageIndex})" style="position:absolute;top:-4px;right:-4px;background:#ff3b30;color:#fff;border-radius:50%;width:16px;height:16px;font-size:10px;display:flex;align-items:center;justify-content:center;cursor:pointer;line-height:1;">\xD7</span>
+                        </div>`).join("")}
+                    ${set.images.length === 0 ? '<span style="font-size:12px;color:#aaa;">\u6682\u65E0\u56FE\u7247</span>' : ""}
+                </div>
+                <div style="font-size:11px;color:#aaa;margin-top:4px;">${set.images.length}/20 \u5F20 \xB7 [emo:${escapeHtml(set.name)}:1~${set.images.length}]</div>
+            </div>`).join("");
+    };
+    window.__pmAddEmojiSet = () => {
+      if (window.__pmEmojis.length >= 10) return alert("\u6700\u591A\u53EA\u80FD\u521B\u5EFA 10 \u4E2A\u5957\u7EC4\u3002");
+      createSubOverlay(`
+<div class="pm-modal">
+  <div class="pm-modal-header"><b>\u65B0\u5EFA\u8868\u60C5\u5305\u5957\u7EC4</b><span onclick="document.getElementById('pm-overlay-sub').remove()" class="pm-modal-close">\u2715</span></div>
+  <div style="padding:14px 16px;display:flex;flex-direction:column;gap:10px;">
+    <input id="pm-new-set-name" class="pm-cfg-input" placeholder="\u5957\u7EC4\u540D\u79F0\uFF08\u5982\uFF1A\u5F00\u5FC3\u3001\u65E5\u5E38\u3001\u53EF\u7231\uFF09" style="padding:8px 10px;font-size:13px;border-radius:8px;border:1px solid #ddd;">
+  </div>
+  <div class="pm-modal-add"><button onclick="window.__pmConfirmAddEmojiSet()" style="width:100%;background:#007aff;color:#fff;border:none;border-radius:10px;padding:10px;font-size:13px;cursor:pointer;font-weight:600;">\u786E\u8BA4</button></div>
+</div>`);
+      setTimeout(() => document.getElementById("pm-new-set-name")?.focus(), 10);
+    };
+    window.__pmConfirmAddEmojiSet = () => {
+      const name = document.getElementById("pm-new-set-name")?.value.trim();
+      if (!name) return alert("\u5957\u7EC4\u540D\u79F0\u4E0D\u80FD\u4E3A\u7A7A\u3002");
+      if (window.__pmEmojis.some((set) => set.name === name)) return alert("\u8BE5\u540D\u79F0\u5DF2\u5B58\u5728\u3002");
+      window.__pmEmojis.push({ id: "emo_" + Date.now(), name, images: [] });
+      saveEmojis2();
+      document.getElementById("pm-overlay-sub")?.remove();
+      window.__pmRenderEmojiSetList();
+    };
+    window.__pmDeleteEmojiSet = (setIndex) => {
+      const set = window.__pmEmojis[setIndex];
+      if (!set || !confirm(`\u786E\u8BA4\u5220\u9664\u5957\u7EC4\u300C${set.name}\u300D\uFF1F`)) return;
+      window.__pmEmojis.splice(setIndex, 1);
+      saveEmojis2();
+      window.__pmRenderEmojiSetList();
+    };
+    window.__pmAddEmojiImage = (setIndex) => {
+      const set = window.__pmEmojis[setIndex];
+      if (!set) return;
+      if (set.images.length >= 20) return alert("\u672C\u5957\u7EC4\u5DF2\u6EE1 20 \u5F20\u3002");
+      createSubOverlay(`
+<div class="pm-modal">
+  <div class="pm-modal-header"><b>\u6DFB\u52A0\u56FE\u7247 \u2014 ${escapeHtml(set.name)}</b><span onclick="document.getElementById('pm-overlay-sub').remove();" class="pm-modal-close">\u2715</span></div>
+  <div style="padding:14px 16px;display:flex;flex-direction:column;gap:10px;">
+    <div style="font-size:12px;color:#888;margin-bottom:2px;">\u56FE\u7247 URL \u6216\u672C\u5730\u4E0A\u4F20</div>
+    <input id="pm-emo-url" class="pm-cfg-input" placeholder="https://... \u6216\u70B9\u4E0B\u65B9\u9009\u62E9\u6587\u4EF6" style="padding:8px 10px;font-size:13px;border-radius:8px;border:1px solid #ddd;">
+    <button onclick="document.getElementById('pm-emo-file').click()" style="background:#f0f0f3;color:#333;border:1px solid #ddd;border-radius:8px;padding:8px 10px;font-size:12px;cursor:pointer;">\u{1F4C1} \u4E0A\u4F20\u672C\u5730\u56FE\u7247</button>
+    <input id="pm-emo-file" type="file" accept="image/*" hidden onchange="window.__pmEmoFileRead(${setIndex},this)">
+    <div id="pm-emo-preview" style="display:none;text-align:center;"><img id="pm-emo-preview-img" style="max-width:120px;max-height:120px;border-radius:10px;border:1px solid #eee;"></div>
+    <input id="pm-emo-desc" class="pm-cfg-input" placeholder="\u56FE\u7247\u63CF\u8FF0\uFF08\u5FC5\u586B\uFF0C\u5982\uFF1A\u732B\u732B\u5F00\u5FC3\uFF09" style="padding:8px 10px;font-size:13px;border-radius:8px;border:1px solid #ddd;">
+    <div style="font-size:11px;color:#aaa;">\u63CF\u8FF0\u5C06\u544A\u8BC9 AI \u8FD9\u5F20\u56FE\u5728\u4EC0\u4E48\u60C5\u5F62\u4E0B\u4F7F\u7528</div>
+  </div>
+  <div class="pm-modal-add"><button onclick="window.__pmConfirmAddEmojiImage(${setIndex})" style="width:100%;background:#007aff;color:#fff;border:none;border-radius:10px;padding:10px;font-size:13px;cursor:pointer;font-weight:600;">\u786E\u8BA4\u6DFB\u52A0</button></div>
+</div>`);
+      setTimeout(() => document.getElementById("pm-emo-url")?.focus(), 10);
+    };
+    window.__pmEmoFileRead = (setIndex, input) => {
+      const file = input.files?.[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const url = event.target.result;
+        const urlInput = document.getElementById("pm-emo-url");
+        const preview = document.getElementById("pm-emo-preview");
+        const previewImage = document.getElementById("pm-emo-preview-img");
+        if (urlInput) urlInput.value = url;
+        if (preview && previewImage) {
+          previewImage.src = url;
+          preview.style.display = "block";
+        }
+      };
+      reader.readAsDataURL(file);
+    };
+    window.__pmConfirmAddEmojiImage = (setIndex) => {
+      const url = document.getElementById("pm-emo-url")?.value.trim();
+      const description = document.getElementById("pm-emo-desc")?.value.trim();
+      if (!url) return alert("\u8BF7\u8F93\u5165\u56FE\u7247 URL \u6216\u4E0A\u4F20\u56FE\u7247\u3002");
+      if (!description) return alert("\u8BF7\u8F93\u5165\u56FE\u7247\u63CF\u8FF0\uFF08\u5FC5\u586B\uFF09\u3002");
+      const set = window.__pmEmojis[setIndex];
+      if (!set) return;
+      set.images.push({ url, desc: description });
+      saveEmojis2();
+      document.getElementById("pm-overlay-sub")?.remove();
+      window.__pmRenderEmojiSetList();
+    };
+    window.__pmDeleteEmojiImage = (setIndex, imageIndex) => {
+      const set = window.__pmEmojis[setIndex];
+      if (!set) return;
+      set.images.splice(imageIndex, 1);
+      saveEmojis2();
+      window.__pmRenderEmojiSetList();
+    };
+    window.__pmShowEmojiPicker = () => {
+      const sets = window.__pmEmojis;
+      if (!sets.length) return alert("\u8FD8\u6CA1\u6709\u8868\u60C5\u5305\uFF01\u8BF7\u5148\u53BB\u3010\u8BBE\u7F6E-\u5176\u4ED6\u3011\u4E2D\u6DFB\u52A0\u3002");
+      const textarea = document.getElementById("pm-expanded-textarea");
+      window.__pmTempText = textarea ? textarea.value : "";
+      let activeSetIndex = 0;
+      const renderPicker = () => {
+        const set = sets[activeSetIndex] || sets[0];
+        const picker = document.getElementById("pm-emoji-picker-inner");
+        if (!set || !picker) return;
+        picker.querySelector(".pm-emoji-set-label").textContent = `${set.name} (${set.images.length})`;
+        picker.querySelector(".pm-emoji-imgs").innerHTML = renderPickerImages(set);
+        picker.querySelector(".pm-emoji-dots").innerHTML = renderPickerDots(sets, activeSetIndex);
+      };
+      window.__pmEmojiSetDot = (index) => {
+        activeSetIndex = index;
+        renderPicker();
+      };
+      const firstSet = sets[0];
+      makeOverlay(`
+<div class="pm-modal pm-modal-wide" id="pm-emoji-picker-inner">
+  <div class="pm-modal-header" style="justify-content:space-between;padding-right:14px;">
+    <b class="pm-emoji-set-label">${escapeHtml(firstSet.name)} (${firstSet.images.length})</b>
+    <span onclick="document.getElementById('pm-overlay').remove();window.__pmShowExpandInput();" class="pm-modal-close">\u2715</span>
+  </div>
+  <div class="pm-emoji-imgs" id="pm-emoji-imgs-area" style="padding:12px 14px;overflow-y:auto;max-height:340px;display:flex;flex-wrap:wrap;gap:10px;justify-content:flex-start;touch-action:pan-y pinch-zoom;">${renderPickerImages(firstSet)}</div>
+  <div class="pm-emoji-dots">${renderPickerDots(sets, 0)}</div>
+</div>`);
+      const imageArea = document.getElementById("pm-emoji-imgs-area");
+      if (!imageArea || sets.length <= 1) return;
+      let startX = 0, startY = 0, movedHorizontally = false;
+      imageArea.addEventListener("touchstart", (event) => {
+        startX = event.touches[0].clientX;
+        startY = event.touches[0].clientY;
+        movedHorizontally = false;
+      }, { passive: true });
+      imageArea.addEventListener("touchmove", (event) => {
+        const dx = event.touches[0].clientX - startX;
+        const dy = event.touches[0].clientY - startY;
+        if (!movedHorizontally && Math.abs(dx) > Math.abs(dy) + 5) movedHorizontally = true;
+        if (movedHorizontally && event.cancelable) event.preventDefault();
+      }, { passive: false });
+      imageArea.addEventListener("touchend", (event) => {
+        const dx = event.changedTouches[0].clientX - startX;
+        const dy = event.changedTouches[0].clientY - startY;
+        if (Math.abs(dx) <= 40 || Math.abs(dx) <= Math.abs(dy) * 1.5) return;
+        activeSetIndex = dx < 0 ? (activeSetIndex + 1) % sets.length : (activeSetIndex - 1 + sets.length) % sets.length;
+        renderPicker();
+      }, { passive: true });
+    };
+    window.__pmInsertEmoji = (code) => {
+      const text = window.__pmTempText || "";
+      document.getElementById("pm-overlay")?.remove();
+      window.__pmShowExpandInput();
+      const textarea = document.getElementById("pm-expanded-textarea");
+      if (!textarea) return;
+      textarea.value = text + code + " ";
+      window.__pmTempText = textarea.value;
+      textarea.focus();
+      textarea.selectionStart = textarea.selectionEnd = textarea.value.length;
+    };
+  }
+
   // src/main.js
   (async function() {
     await new Promise((r) => setTimeout(r, 1e3));
-    const SAVE_LIMIT = 60, CONTEXT_LIMIT = 20, BIDIRECTIONAL_LIMIT = 20, MAX_BIDIRECTIONAL = 5;
-    const BIDIRECTIONAL_KEY = "PHONE_SMS_MEMORY", VOICE_MAX_SEC = 60, MODEL_VISIBLE_ROWS = 4, MAX_GROUP_MEMBERS = 16;
-    const BI_INJECT_DEPTH = 2;
-    const POPOVER_SUPPORTED = typeof HTMLElement !== "undefined" && HTMLElement.prototype.hasOwnProperty("popover");
-    const GROUP_COLORS = [
-      { bg: "#e9e9eb", text: "#000" },
-      // 默认灰
-      { bg: "#b8e6c8", text: "#1b4332" },
-      // 薄荷绿
-      { bg: "#f5d0d0", text: "#4a2030" },
-      // 浅玫红
-      { bg: "#d4d0f5", text: "#2d2252" },
-      // 薰衣草紫
-      { bg: "#f5e6b8", text: "#4a3a10" },
-      // 暖杏黄
-      { bg: "#cceef5", text: "#144652" },
-      // 天蓝
-      { bg: "#ffd6a5", text: "#5c3200" },
-      // 蜜橙
-      { bg: "#d0f0e8", text: "#0d3b2e" },
-      // 碧绿
-      { bg: "#f0d4f5", text: "#3b0d52" },
-      // 丁香紫
-      { bg: "#fce4b8", text: "#4a2800" },
-      // 琥珀
-      { bg: "#c8dff5", text: "#0d2952" },
-      // 钢蓝
-      { bg: "#f5d4e4", text: "#4a0d2a" },
-      // 樱粉
-      { bg: "#d4efd4", text: "#1a3d1a" },
-      // 草绿
-      { bg: "#f5e0c8", text: "#4a2800" },
-      // 桃杏
-      { bg: "#c8c8f5", text: "#1a1a52" }
-      // 靛蓝
-    ];
-    const PM_IDB_NAME = "PhoneModeDB", PM_IDB_STORE = "kv";
-    let __pmIDB = null;
-    const IDB_MARKER = "__idb__";
-    function pmOpenIDB() {
-      return new Promise((resolve) => {
-        if (__pmIDB) {
-          try {
-            __pmIDB.transaction(PM_IDB_STORE, "readonly");
-            return resolve(__pmIDB);
-          } catch (e) {
-            __pmIDB = null;
-          }
-        }
-        try {
-          const req = indexedDB.open(PM_IDB_NAME, 1);
-          req.onupgradeneeded = () => {
-            const db = req.result;
-            if (!db.objectStoreNames.contains(PM_IDB_STORE)) db.createObjectStore(PM_IDB_STORE);
-          };
-          req.onsuccess = () => {
-            __pmIDB = req.result;
-            resolve(__pmIDB);
-          };
-          req.onerror = () => resolve(null);
-        } catch (e) {
-          resolve(null);
-        }
-      });
-    }
-    async function pmIDBSet(key, value) {
-      const db = await pmOpenIDB();
-      if (!db) return false;
-      return new Promise((r) => {
-        try {
-          const tx = db.transaction(PM_IDB_STORE, "readwrite");
-          tx.objectStore(PM_IDB_STORE).put(value, key);
-          tx.oncomplete = () => r(true);
-          tx.onerror = () => r(false);
-        } catch (e) {
-          r(false);
-        }
-      });
-    }
-    async function pmIDBGet(key) {
-      const db = await pmOpenIDB();
-      if (!db) return null;
-      return new Promise((r) => {
-        try {
-          const tx = db.transaction(PM_IDB_STORE, "readonly");
-          const req = tx.objectStore(PM_IDB_STORE).get(key);
-          req.onsuccess = () => r(req.result ?? null);
-          req.onerror = () => r(null);
-        } catch (e) {
-          r(null);
-        }
-      });
-    }
-    async function pmIDBDel(key) {
-      const db = await pmOpenIDB();
-      if (!db) return;
-      try {
-        const tx = db.transaction(PM_IDB_STORE, "readwrite");
-        tx.objectStore(PM_IDB_STORE).delete(key);
-      } catch (e) {
-      }
-    }
-    function pmIsBigData(v) {
-      return typeof v === "string" && v.length > 4096 && (v.startsWith("data:") || v.startsWith("blob:"));
-    }
-    function saveHistories() {
-      pmIDBSet("ST_SMS_DATA_V2", window.__pmHistories).catch(() => {
-      });
-      try {
-        localStorage.setItem("ST_SMS_DATA_V2", JSON.stringify(window.__pmHistories));
-      } catch (e) {
-        console.warn("[phone-mode] localStorage \u5DF2\u6EE1\uFF0C\u77ED\u4FE1\u5386\u53F2\u4EC5\u4FDD\u5B58\u5728 IDB");
-      }
-    }
-    function saveHistoriesBeforeUnload() {
-      const data = window.__pmHistories;
-      if (!data || !Object.keys(data).length) return;
-      try {
-        localStorage.setItem("ST_SMS_DATA_V2", JSON.stringify(data));
-      } catch (e) {
-        try {
-          const slim = {};
-          for (const [storyId, contacts] of Object.entries(data)) {
-            slim[storyId] = {};
-            for (const [persona, history] of Object.entries(contacts)) {
-              slim[storyId][persona] = Array.isArray(history) ? history.slice(-10) : history;
-            }
-          }
-          localStorage.setItem("ST_SMS_DATA_V2", JSON.stringify(slim));
-        } catch (e2) {
-          console.warn("[phone-mode] beforeunload: localStorage \u5B8C\u5168\u65E0\u6CD5\u5199\u5165");
-        }
-      }
-      pmIDBSet("ST_SMS_DATA_V2", data).catch(() => {
-      });
-    }
     if (!window.__pmBeforeUnloadRegistered) {
       window.addEventListener("beforeunload", saveHistoriesBeforeUnload);
       document.addEventListener("visibilitychange", () => {
         if (document.visibilityState === "hidden") saveHistoriesBeforeUnload();
       });
       window.__pmBeforeUnloadRegistered = true;
-    }
-    async function loadHistoriesFromIDB() {
-      try {
-        const v = await pmIDBGet("ST_SMS_DATA_V2");
-        if (!v) {
-          try {
-            const ls = JSON.parse(localStorage.getItem("ST_SMS_DATA_V2"));
-            if (ls && typeof ls === "object" && Object.keys(ls).length > 0) {
-              window.__pmHistories = ls;
-              console.log("[phone-mode] IDB \u65E0\u6570\u636E\uFF0C\u5DF2\u4ECE localStorage \u6062\u590D");
-            }
-          } catch (e) {
-          }
-          return;
-        }
-        const parsed = typeof v === "string" ? JSON.parse(v) : v;
-        if (!parsed || typeof parsed !== "object") return;
-        const idbCount = Object.keys(parsed).length;
-        if (idbCount > 0) {
-          window.__pmHistories = parsed;
-          try {
-            localStorage.setItem("ST_SMS_DATA_V2", JSON.stringify(parsed));
-          } catch (e) {
-            console.warn("[phone-mode] localStorage \u5DF2\u6EE1\uFF0C\u4EC5\u4F7F\u7528 IDB \u5B58\u50A8");
-          }
-          console.log("[phone-mode] \u4ECE IndexedDB \u52A0\u8F7D\u4E86\u77ED\u4FE1\u5386\u53F2\uFF0C\u5171", idbCount, "\u4E2A\u4F1A\u8BDD");
-        }
-      } catch (e) {
-        console.warn("[phone-mode] IDB \u6062\u590D\u5931\u8D25\uFF0C\u5C1D\u8BD5 localStorage \u515C\u5E95", e);
-        try {
-          const ls = JSON.parse(localStorage.getItem("ST_SMS_DATA_V2"));
-          if (ls && typeof ls === "object" && Object.keys(ls).length > 0) {
-            window.__pmHistories = ls;
-          }
-        } catch (e2) {
-        }
-      }
     }
     window.__pmHistories = window.__pmHistories || {};
     window.__pmConfig = window.__pmConfig || { apiUrl: "", apiKey: "", model: "", useIndependent: false };
@@ -193,168 +1101,15 @@
     window.__pmPokeConfig = window.__pmPokeConfig || {};
     window.__pmWordyLimit = window.__pmWordyLimit || false;
     window.__pmEmojis = window.__pmEmojis || [];
-    async function loadEmojis() {
-      try {
-        const v = await pmIDBGet("ST_SMS_EMOJIS");
-        window.__pmEmojis = Array.isArray(v) ? v : [];
-      } catch (e) {
-        window.__pmEmojis = [];
-      }
-    }
-    async function saveEmojis() {
-      await pmIDBSet("ST_SMS_EMOJIS", window.__pmEmojis).catch(() => {
-      });
-    }
-    let __pmModelList = [];
-    let __pmEventHooked = false;
-    let __pmFirstOpen = true;
+    const runtime = createRuntimeState();
     let phoneActive = false, phoneWindow = null, currentPersona = "", conversationHistory = [];
     let isGenerating = false, isMinimized = false, isSelectMode = false;
     let isGroupChat = false, groupMembers = [], groupColorMap = {}, groupDisplayName = "";
     let currentGroupKey = "";
     const getCtx = () => typeof SillyTavern !== "undefined" ? SillyTavern.getContext() : null;
-    const THEME_PRESETS = {
-      default: { right: "#007aff", left: "#e9e9eb", rightText: "#fff", leftText: "#000", label: "\u9ED8\u8BA4\u84DD" },
-      pink: { right: "#ff6b8a", left: "#fce4ec", rightText: "#fff", leftText: "#4a2030", label: "\u6A31\u82B1\u7C89" },
-      dark: { right: "#5856d6", left: "#2c2c2e", rightText: "#fff", leftText: "#e0e0e0", label: "\u6697\u591C\u7D2B" },
-      frost: { right: "rgba(0,122,255,0.55)", left: "rgba(255,255,255,0.35)", rightText: "#fff", leftText: "#222", label: "\u78E8\u7802\u73BB\u7483", frost: true },
-      mint: { right: "#34c759", left: "#e8f5e9", rightText: "#fff", leftText: "#1b4332", label: "\u8584\u8377\u7EFF" }
-    };
-    function contrastText(bg) {
-      if (!bg || bg.startsWith("rgba")) return "#fff";
-      const c = bg.replace("#", "");
-      if (c.length !== 6) return "#000";
-      const r = parseInt(c.substr(0, 2), 16), g = parseInt(c.substr(2, 2), 16), b = parseInt(c.substr(4, 2), 16);
-      return r * 0.299 + g * 0.587 + b * 0.114 > 150 ? "#000" : "#fff";
-    }
-    function loadTheme() {
-      try {
-        window.__pmTheme = { ...window.__pmTheme, ...JSON.parse(localStorage.getItem("ST_SMS_THEME")) };
-      } catch (e) {
-      }
-    }
-    function saveTheme() {
-      try {
-        localStorage.setItem("ST_SMS_THEME", JSON.stringify(window.__pmTheme));
-      } catch (e) {
-      }
-    }
-    function loadPokeConfig() {
-      try {
-        window.__pmPokeConfig = JSON.parse(localStorage.getItem("ST_SMS_POKE_CONFIG")) || {};
-      } catch (e) {
-        window.__pmPokeConfig = {};
-      }
-    }
-    function savePokeConfig() {
-      try {
-        localStorage.setItem("ST_SMS_POKE_CONFIG", JSON.stringify(window.__pmPokeConfig));
-      } catch (e) {
-      }
-    }
-    function loadWordyLimit() {
-      try {
-        window.__pmWordyLimit = !!JSON.parse(localStorage.getItem("ST_SMS_WORDY_LIMIT"));
-      } catch (e) {
-        window.__pmWordyLimit = false;
-      }
-    }
-    function saveWordyLimit() {
-      try {
-        localStorage.setItem("ST_SMS_WORDY_LIMIT", JSON.stringify(window.__pmWordyLimit));
-      } catch (e) {
-      }
-    }
-    async function loadBgSettings() {
-      try {
-        const ls = localStorage.getItem("ST_SMS_BG_GLOBAL") || "";
-        if (ls === IDB_MARKER) {
-          window.__pmBgGlobal = await pmIDBGet("ST_SMS_BG_GLOBAL") || "";
-        } else if (pmIsBigData(ls)) {
-          window.__pmBgGlobal = ls;
-          await pmIDBSet("ST_SMS_BG_GLOBAL", ls);
-          try {
-            localStorage.setItem("ST_SMS_BG_GLOBAL", IDB_MARKER);
-          } catch (e) {
-          }
-        } else {
-          window.__pmBgGlobal = ls;
-        }
-      } catch (e) {
-        window.__pmBgGlobal = "";
-      }
-      try {
-        const raw = JSON.parse(localStorage.getItem("ST_SMS_BG_LOCAL")) || {};
-        const result = {};
-        let migrated = 0;
-        for (const [k, v] of Object.entries(raw)) {
-          if (v === IDB_MARKER) {
-            result[k] = await pmIDBGet("ST_SMS_BG_LOCAL_" + k) || "";
-          } else if (pmIsBigData(v)) {
-            result[k] = v;
-            await pmIDBSet("ST_SMS_BG_LOCAL_" + k, v);
-            raw[k] = IDB_MARKER;
-            migrated++;
-          } else {
-            result[k] = v;
-          }
-        }
-        if (migrated > 0) {
-          try {
-            localStorage.setItem("ST_SMS_BG_LOCAL", JSON.stringify(raw));
-          } catch (e) {
-          }
-        }
-        window.__pmBgLocal = result;
-      } catch (e) {
-        window.__pmBgLocal = {};
-      }
-    }
-    async function saveBgGlobal() {
-      const v = window.__pmBgGlobal || "";
-      if (pmIsBigData(v)) {
-        await pmIDBSet("ST_SMS_BG_GLOBAL", v);
-        try {
-          localStorage.setItem("ST_SMS_BG_GLOBAL", IDB_MARKER);
-        } catch (e) {
-        }
-      } else {
-        await pmIDBDel("ST_SMS_BG_GLOBAL");
-        try {
-          localStorage.setItem("ST_SMS_BG_GLOBAL", v);
-        } catch (e) {
-        }
-      }
-    }
-    async function saveBgLocal() {
-      const ptr = {};
-      for (const [k, v] of Object.entries(window.__pmBgLocal || {})) {
-        if (pmIsBigData(v)) {
-          await pmIDBSet("ST_SMS_BG_LOCAL_" + k, v);
-          ptr[k] = IDB_MARKER;
-        } else {
-          await pmIDBDel("ST_SMS_BG_LOCAL_" + k);
-          if (v !== void 0) ptr[k] = v;
-        }
-      }
-      try {
-        localStorage.setItem("ST_SMS_BG_LOCAL", JSON.stringify(ptr));
-      } catch (e) {
-      }
-    }
-    function loadGroupMeta() {
-      try {
-        window.__pmGroupMeta = JSON.parse(localStorage.getItem("ST_SMS_GROUP_META")) || {};
-      } catch (e) {
-        window.__pmGroupMeta = {};
-      }
-    }
-    function saveGroupMeta() {
-      try {
-        localStorage.setItem("ST_SMS_GROUP_META", JSON.stringify(window.__pmGroupMeta));
-      } catch (e) {
-      }
-    }
+    const getStorageId2 = () => getStorageId(getCtx);
+    const getUserPersona2 = () => getUserPersona(getCtx);
+    const gatherContext2 = () => gatherContext(getCtx);
     function applyTheme() {
       const el = phoneWindow;
       if (!el) return;
@@ -372,13 +1127,10 @@
       const darkMode = t.darkMode || "light";
       el.setAttribute("data-theme", darkMode);
     }
-    function cssUrlEscape(url) {
-      return (url || "").replace(/\\/g, "\\\\").replace(/"/g, '\\"');
-    }
     function applyBackground() {
       const msgList = phoneWindow?.querySelector(".pm-msg-list");
       if (!msgList) return;
-      const id = getStorageId(), localKey = `${id}_${currentPersona}`;
+      const id = getStorageId2(), localKey = `${id}_${currentPersona}`;
       const bg = window.__pmBgLocal[localKey] || window.__pmBgGlobal || "";
       if (bg) {
         msgList.style.setProperty("background-image", `url("${cssUrlEscape(bg)}")`, "important");
@@ -401,205 +1153,6 @@
           nameEl.style.fontSize = fs + "px";
         }
       });
-    }
-    function escapeHtml(s) {
-      return (s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-    }
-    function escapeAttr(s) {
-      return (s || "").replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/'/g, "&#39;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-    }
-    function safeJS(s) {
-      const jsEscaped = (s || "").replace(/\\/g, "\\\\").replace(/'/g, "\\'").replace(/"/g, '\\"').replace(/\n/g, "\\n");
-      return escapeAttr(jsEscaped);
-    }
-    function openCropper(imgDataUrl, onConfirm) {
-      const ratio = 330 / 450;
-      document.getElementById("pm-overlay")?.remove();
-      const ov = document.createElement("div");
-      ov.id = "pm-overlay";
-      if (POPOVER_SUPPORTED) ov.setAttribute("popover", "manual");
-      ov.innerHTML = `
-<div class="pm-modal pm-modal-wide">
-  <div class="pm-modal-header"><b>\u88C1\u526A\u56FE\u7247</b><span onclick="document.getElementById('pm-overlay').remove();window.__pmShowConfig();" class="pm-modal-close">\u2715</span></div>
-  <div style="padding:12px 14px;">
-    <div class="pm-crop-tip">\u62D6\u52A8\u56FE\u7247\u8C03\u6574\u4F4D\u7F6E\uFF0C\u6EDA\u8F6E/\u634F\u5408\u7F29\u653E</div>
-    <div class="pm-crop-frame" id="pm-crop-frame">
-      <img id="pm-crop-img" src="${escapeAttr(imgDataUrl)}" alt="">
-      <div class="pm-crop-mask"></div>
-    </div>
-    <div class="pm-crop-zoom">
-      <span style="font-size:11px;color:#888;">\u7F29\u653E</span>
-      <input type="range" id="pm-crop-zoom" min="100" max="400" value="100">
-    </div>
-  </div>
-  <div class="pm-modal-add" style="display:flex;gap:8px;">
-    <button onclick="document.getElementById('pm-overlay').remove();window.__pmShowConfig();" style="flex:1;background:#f0f0f0;color:#333;border:none;border-radius:10px;padding:10px;font-size:13px;cursor:pointer;">\u53D6\u6D88</button>
-    <button id="pm-crop-confirm" style="flex:1;background:#007aff;color:#fff;border:none;border-radius:10px;padding:10px;font-size:13px;cursor:pointer;font-weight:600;">\u786E\u8BA4\u88C1\u526A</button>
-  </div>
-</div>`;
-      ov.addEventListener("click", (e) => {
-        if (e.target === ov) {
-          ov.remove();
-          window.__pmShowConfig();
-        }
-      });
-      document.body.appendChild(ov);
-      if (ov.showPopover) try {
-        ov.showPopover();
-      } catch (e) {
-      }
-      const frame = ov.querySelector("#pm-crop-frame"), img = ov.querySelector("#pm-crop-img");
-      const zoomSlider = ov.querySelector("#pm-crop-zoom");
-      let tx = 0, ty = 0, scale = 1, frameW = 0, frameH = 0, baseW = 0, baseH = 0;
-      img.onload = () => {
-        const cw = frame.clientWidth;
-        frameW = cw;
-        frameH = cw / ratio;
-        frame.style.height = frameH + "px";
-        const natW = img.naturalWidth, natH = img.naturalHeight, imgRatio = natW / natH;
-        if (imgRatio > ratio) {
-          baseH = frameH;
-          baseW = baseH * imgRatio;
-        } else {
-          baseW = frameW;
-          baseH = baseW / imgRatio;
-        }
-        updateTransform();
-      };
-      function updateTransform() {
-        const w = baseW * scale, h = baseH * scale;
-        tx = Math.max(frameW - w, Math.min(0, tx));
-        ty = Math.max(frameH - h, Math.min(0, ty));
-        img.style.width = w + "px";
-        img.style.height = h + "px";
-        img.style.transform = `translate(${tx}px, ${ty}px)`;
-      }
-      zoomSlider.oninput = () => {
-        scale = parseInt(zoomSlider.value) / 100;
-        updateTransform();
-      };
-      let dragging = false, sx = 0, sy = 0, stx = 0, sty = 0;
-      const onDragStart = (e) => {
-        dragging = true;
-        const c = e.touches ? e.touches[0] : e;
-        sx = c.clientX;
-        sy = c.clientY;
-        stx = tx;
-        sty = ty;
-        if (e.cancelable) e.preventDefault();
-      };
-      const onDragMove = (e) => {
-        if (!dragging) return;
-        const c = e.touches ? e.touches[0] : e;
-        tx = stx + (c.clientX - sx);
-        ty = sty + (c.clientY - sy);
-        updateTransform();
-        if (e.cancelable) e.preventDefault();
-      };
-      const onDragEnd = () => {
-        dragging = false;
-      };
-      frame.addEventListener("mousedown", onDragStart);
-      window.addEventListener("mousemove", onDragMove);
-      window.addEventListener("mouseup", onDragEnd);
-      frame.addEventListener("touchstart", onDragStart, { passive: false });
-      window.addEventListener("touchmove", onDragMove, { passive: false });
-      window.addEventListener("touchend", onDragEnd);
-      let pinchDist = 0, pinchScale = 1;
-      frame.addEventListener("touchstart", (e) => {
-        if (e.touches.length === 2) {
-          pinchDist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
-          pinchScale = scale;
-        }
-      }, { passive: false });
-      frame.addEventListener("touchmove", (e) => {
-        if (e.touches.length === 2) {
-          const d = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
-          scale = Math.max(1, Math.min(4, pinchScale * d / pinchDist));
-          zoomSlider.value = Math.round(scale * 100);
-          updateTransform();
-          e.preventDefault();
-        }
-      }, { passive: false });
-      frame.addEventListener("wheel", (e) => {
-        e.preventDefault();
-        scale = Math.max(1, Math.min(4, scale + (e.deltaY > 0 ? -0.1 : 0.1)));
-        zoomSlider.value = Math.round(scale * 100);
-        updateTransform();
-      });
-      ov.querySelector("#pm-crop-confirm").onclick = () => {
-        const canvas = document.createElement("canvas");
-        const outW = 600, outH = Math.round(outW / ratio);
-        canvas.width = outW;
-        canvas.height = outH;
-        const ctx = canvas.getContext("2d");
-        const srcScale = img.naturalWidth / (baseW * scale);
-        ctx.drawImage(img, -tx * srcScale, -ty * srcScale, frameW * srcScale, frameH * srcScale, 0, 0, outW, outH);
-        let q = 0.7, out = canvas.toDataURL("image/jpeg", q);
-        while (out.length > 200 * 1370 && q > 0.2) {
-          q -= 0.1;
-          out = canvas.toDataURL("image/jpeg", q);
-        }
-        ov.remove();
-        onConfirm(out);
-      };
-    }
-    const SPECIAL_KEYWORDS = {
-      "\u8F6C\u8D26": "\u8F6C\u8D26",
-      "transfer": "\u8F6C\u8D26",
-      "Transfer": "\u8F6C\u8D26",
-      "TRANSFER": "\u8F6C\u8D26",
-      "\u8F49\u8CEC": "\u8F6C\u8D26",
-      "\u8F49\u5E33": "\u8F6C\u8D26",
-      "\u6536\u6B3E": "\u6536\u6B3E",
-      "receive": "\u6536\u6B3E",
-      "Receive": "\u6536\u6B3E",
-      "RECEIVE": "\u6536\u6B3E",
-      "\u6536\u94B1": "\u6536\u6B3E",
-      "\u6536\u5230": "\u6536\u6B3E",
-      "\u6536\u9322": "\u6536\u6B3E",
-      "\u9000\u8FD8": "\u9000\u8FD8",
-      "\u9000\u94B1": "\u9000\u8FD8",
-      "\u9000\u6B3E": "\u9000\u8FD8",
-      "refund": "\u9000\u8FD8",
-      "Refund": "\u9000\u8FD8",
-      "REFUND": "\u9000\u8FD8",
-      "\u9000\u9084": "\u9000\u8FD8",
-      "\u9000\u9322": "\u9000\u8FD8",
-      "\u56FE\u7247": "\u56FE\u7247",
-      "image": "\u56FE\u7247",
-      "Image": "\u56FE\u7247",
-      "IMAGE": "\u56FE\u7247",
-      "img": "\u56FE\u7247",
-      "pic": "\u56FE\u7247",
-      "photo": "\u56FE\u7247",
-      "\u5716\u7247": "\u56FE\u7247",
-      "\u8BED\u97F3": "\u8BED\u97F3",
-      "voice": "\u8BED\u97F3",
-      "Voice": "\u8BED\u97F3",
-      "VOICE": "\u8BED\u97F3",
-      "audio": "\u8BED\u97F3",
-      "\u8A9E\u97F3": "\u8BED\u97F3"
-    };
-    const KW_PATTERN = Object.keys(SPECIAL_KEYWORDS).join("|");
-    const SPECIAL_RE = new RegExp(`[\\(\uFF08]\\s*(${KW_PATTERN})\\s*[+\uFF1A:\\s]*([^)\uFF09]+)[\\)\uFF09]`, "gi");
-    function normalizeKeyword(k) {
-      return SPECIAL_KEYWORDS[k] || SPECIAL_KEYWORDS[k.toLowerCase()] || k;
-    }
-    const EMO_RE = /\[emo:([^\]:]+):(\d+)\]/gi;
-    function findEmojiUrl(setName, idx) {
-      const set = window.__pmEmojis.find((s) => s.name === setName);
-      if (!set) return null;
-      const img = set.images[idx - 1];
-      return img ? img.url : null;
-    }
-    function getStorageId() {
-      const c = getCtx();
-      if (!c) return "sms_unknown__default";
-      const char = c.characters?.[c.characterId];
-      const avatar = char?.avatar || `idx_${c.characterId}`;
-      const chatFile = c.chatId || (typeof c.getCurrentChatId === "function" ? c.getCurrentChatId() : null) || c.chat_metadata?.chat_id_hash || c.chat_file || "default";
-      return `sms_${avatar}__${chatFile}`;
     }
     function migrateOldHistory() {
       if (localStorage.getItem("ST_SMS_MIGRATED_V3")) return;
@@ -630,34 +1183,6 @@
       } catch (e) {
       }
     }
-    function normalizeApiUrls(input) {
-      let url = (input || "").trim().replace(/\/+$/, "");
-      if (!url) return { chatUrl: "", modelsUrl: "" };
-      if (/\/chat\/completions$/i.test(url)) return { chatUrl: url, modelsUrl: url.replace(/\/chat\/completions$/i, "/models") };
-      if (/\/models$/i.test(url)) return { chatUrl: url.replace(/\/models$/i, "/chat/completions"), modelsUrl: url };
-      if (/\/v\d+$/i.test(url)) return { chatUrl: url + "/chat/completions", modelsUrl: url + "/models" };
-      return { chatUrl: url + "/v1/chat/completions", modelsUrl: url + "/v1/models" };
-    }
-    function loadProfiles() {
-      try {
-        window.__pmProfiles = JSON.parse(localStorage.getItem("ST_SMS_API_PROFILES")) || [];
-      } catch (e) {
-        window.__pmProfiles = [];
-      }
-    }
-    function saveProfiles() {
-      try {
-        localStorage.setItem("ST_SMS_API_PROFILES", JSON.stringify(window.__pmProfiles));
-      } catch (e) {
-      }
-    }
-    function addOrUpdateProfile(p) {
-      if (!p.apiUrl || !p.apiKey) return;
-      const idx = window.__pmProfiles.findIndex((x) => x.apiUrl === p.apiUrl && x.apiKey === p.apiKey);
-      if (idx >= 0) window.__pmProfiles[idx] = { ...window.__pmProfiles[idx], ...p, savedAt: Date.now() };
-      else window.__pmProfiles.push({ ...p, savedAt: Date.now() });
-      saveProfiles();
-    }
     window.__pmDeleteProfile = (idx) => {
       window.__pmProfiles.splice(idx, 1);
       saveProfiles();
@@ -684,31 +1209,11 @@
       }
       if (t) t.textContent = v ? "\u{1F50C} \u72EC\u7ACBAPI" : "\u{1F3E0} \u4E3BAPI";
     };
-    function loadBidirectional() {
-      try {
-        window.__pmBidirectional = JSON.parse(localStorage.getItem("ST_SMS_BIDIRECTIONAL")) || {};
-      } catch (e) {
-        window.__pmBidirectional = {};
-      }
-    }
-    function saveBidirectional() {
-      try {
-        localStorage.setItem("ST_SMS_BIDIRECTIONAL", JSON.stringify(window.__pmBidirectional));
-      } catch (e) {
-      }
-    }
-    function resolveEmojiText(text) {
-      return (text || "").replace(/\[emo:([^\]:]+):(\d+)\]/g, (match, setName, idx) => {
-        const set = window.__pmEmojis.find((s) => s.name === setName);
-        const img = set?.images[parseInt(idx) - 1];
-        return img ? `(\u8868\u60C5:${img.desc})` : "";
-      });
-    }
     function applyBidirectionalInjection() {
       const c = getCtx();
       if (!c || typeof c.setExtensionPrompt !== "function") return;
-      const userName = getUserPersona().name || "\u7528\u6237";
-      const id = getStorageId(), checked = window.__pmBidirectional[id] || [], histories = window.__pmHistories[id] || {};
+      const userName = getUserPersona2().name || "\u7528\u6237";
+      const id = getStorageId2(), checked = window.__pmBidirectional[id] || [], histories = window.__pmHistories[id] || {};
       const groups = window.__pmGroupMeta[id] || {};
       if (!checked.length) {
         try {
@@ -724,14 +1229,14 @@
           const meta = groups[name];
           if (!meta) return "";
           const lines2 = conv.map((m) => {
-            const t = resolveEmojiText((m.content || "").replace(/\s*\/\s*/g, "\u3002").replace(/\n/g, "\uFF1B"));
+            const t = resolveEmojiText((m.content || "").replace(/\s*\/\s*/g, "\u3002").replace(/\n/g, "\uFF1B"), window.__pmEmojis);
             return m.role === "user" ? `${userName}\uFF1A${t}` : t;
           }).join("\n");
           return `\u3010\u7FA4\u804A"${meta.name}"\uFF08\u6210\u5458\uFF1A${meta.members.join("\u3001")}\uFF09\u7684\u6700\u8FD1\u804A\u5929 \u2014 \u4EC5\u53C2\u4E0E\u8005\u4E0E ${userName} \u77E5\u6653\uFF0C\u5176\u4ED6\u89D2\u8272\u4E0D\u5E94\u77E5\u60C5\u3011
 ${lines2}`;
         }
         const lines = conv.map((m) => {
-          const t = resolveEmojiText((m.content || "").replace(/\s*\/\s*/g, "\u3002"));
+          const t = resolveEmojiText((m.content || "").replace(/\s*\/\s*/g, "\u3002"), window.__pmEmojis);
           return m.role === "user" ? `${userName}\uFF1A${t}` : `${name}\uFF1A${t}`;
         }).join("\n");
         return `\u3010\u4E0E ${name} \u7684\u77ED\u4FE1 \u2014 \u4EC5 ${name} \u4E0E ${userName} \u77E5\u6653\u3011
@@ -751,13 +1256,12 @@ ${blocks}
       } catch (e) {
       }
     }
-    let __pmLastChatLen = 0;
     function hookGenerationEvent() {
-      if (__pmEventHooked) return;
+      if (runtime.eventHooked) return;
       const c = getCtx();
       if (!c?.eventSource || !c?.event_types) return;
       const et = c.event_types;
-      __pmLastChatLen = (c.chat || []).length;
+      runtime.lastChatLength = (c.chat || []).length;
       const events = [
         et.GENERATION_STARTED || "generation_started",
         et.CHAT_CHANGED || "chat_id_changed",
@@ -779,28 +1283,28 @@ ${blocks}
       try {
         c.eventSource.on(et.MESSAGE_RECEIVED || "message_received", () => {
           const currentLen = (c.chat || []).length;
-          if (currentLen > __pmLastChatLen) {
-            __pmLastChatLen = currentLen;
+          if (currentLen > runtime.lastChatLength) {
+            runtime.lastChatLength = currentLen;
             if (typeof window.__pmIncrementCounters === "function") {
               window.__pmIncrementCounters();
             }
-          } else if (currentLen < __pmLastChatLen) {
-            __pmLastChatLen = currentLen;
+          } else if (currentLen < runtime.lastChatLength) {
+            runtime.lastChatLength = currentLen;
           }
         });
         c.eventSource.on(et.CHAT_CHANGED || "chat_id_changed", () => {
-          __pmLastChatLen = (c.chat || []).length;
+          runtime.lastChatLength = (c.chat || []).length;
           if (phoneActive && typeof window.__pmEnd === "function") {
             window.__pmEnd();
           }
         });
       } catch (e) {
       }
-      __pmEventHooked = true;
+      runtime.eventHooked = true;
       console.log("[phone-mode] hooked", events.length, "events");
     }
     window.__pmToggleBidirectional = (name) => {
-      const id = getStorageId(), arr = window.__pmBidirectional[id] || [], idx = arr.indexOf(name);
+      const id = getStorageId2(), arr = window.__pmBidirectional[id] || [], idx = arr.indexOf(name);
       if (idx >= 0) arr.splice(idx, 1);
       else {
         if (arr.length >= MAX_BIDIRECTIONAL) return;
@@ -811,73 +1315,6 @@ ${blocks}
       applyBidirectionalInjection();
       window.__pmShowList();
     };
-    function getUserPersona() {
-      const c = getCtx();
-      if (!c) return { name: "\u7528\u6237", description: "" };
-      let name = c.name1 || "User";
-      let description = "";
-      try {
-        const pu = c.powerUserSettings || c.power_user || window.power_user;
-        if (pu) {
-          description = pu.persona_description || pu.personaDescription || "";
-          const avatar = c.userAvatar || pu.user_avatar || pu.default_persona;
-          if (!description && avatar) {
-            const pdMap = pu.persona_descriptions || pu.personaDescriptions;
-            if (pdMap?.[avatar]) {
-              const pd = pdMap[avatar];
-              if (typeof pd === "string") description = pd;
-              else if (pd?.description) description = pd.description;
-            }
-          }
-        }
-      } catch (e) {
-      }
-      if (!description) {
-        try {
-          const meta = c.chatMetadata || c.chat_metadata;
-          if (meta?.persona) description = String(meta.persona);
-        } catch (e) {
-        }
-      }
-      try {
-        if (typeof c.substituteParams === "function") {
-          const resolvedName = c.substituteParams("{{user}}");
-          if (resolvedName && resolvedName !== "{{user}}" && resolvedName.trim()) {
-            name = resolvedName.trim();
-          }
-        }
-      } catch (e) {
-      }
-      return { name, description };
-    }
-    async function gatherContext() {
-      const c = getCtx(), char = c?.characters?.[c.characterId] || {};
-      const cleanMsg = (s) => (s || "").replace(/```[\s\S]*?```/g, "").replace(/<think>[\s\S]*?<\/think>/gi, "").replace(/<[^>]+>/g, "").trim();
-      const mainChatArr = (c?.chat || []).slice(-8).map((m) => ({ who: m.is_user ? "\u7528\u6237" : m.name || "\u89D2\u8272", content: cleanMsg(m.mes || "") })).filter((m) => m.content);
-      const mainChatText = mainChatArr.map((m) => `${m.who}\uFF1A${m.content}`).join("\n");
-      let worldBookText = "";
-      try {
-        if (typeof c?.getWorldInfoPrompt === "function") {
-          const ctxSize = c?.powerUserSettings?.openai_max_context || c?.oai_settings?.openai_max_context || c?.maxContext || 131072;
-          const wi = await c.getWorldInfoPrompt((c.chat || []).map((m) => m.mes || "").slice(-10), ctxSize, false);
-          worldBookText = wi?.worldInfoString || wi?.worldInfoBefore || "";
-          if (!worldBookText && wi && typeof wi === "object") worldBookText = [wi.worldInfoBefore, wi.worldInfoAfter].filter(Boolean).join("\n");
-        }
-      } catch (e) {
-      }
-      const userPersona = getUserPersona();
-      return {
-        cardDesc: char.description ?? "",
-        cardPersonality: char.personality ?? "",
-        cardScenario: char.scenario ?? "",
-        cardFirstMes: char.first_mes ?? "",
-        cardMesExample: char.mes_example ?? "",
-        mainChatText,
-        worldBookText,
-        userName: userPersona.name,
-        userDesc: userPersona.description
-      };
-    }
     function bindIsland(el, handle) {
       let isDragging = false, startX, startY, startTX = 0, startTY = 0, moved = false;
       const getCoord = (e) => e.touches ? { x: e.touches[0].clientX, y: e.touches[0].clientY } : { x: e.clientX, y: e.clientY };
@@ -919,210 +1356,6 @@ ${blocks}
       window.addEventListener("touchmove", onMove, { passive: false });
       window.addEventListener("touchend", onEnd);
     }
-    function resolveGroupColor(name) {
-      if (!name) return null;
-      if (groupColorMap[name]) return groupColorMap[name];
-      const lower = name.toLowerCase();
-      for (const [k, v] of Object.entries(groupColorMap)) {
-        if (k.toLowerCase() === lower) return v;
-      }
-      const idx = groupMembers.findIndex((n) => n.toLowerCase() === lower);
-      if (idx >= 0) return GROUP_COLORS[idx % GROUP_COLORS.length];
-      return null;
-    }
-    function getWordyPrompt() {
-      if (!window.__pmWordyLimit) return "";
-      return "\n\n[\u5B57\u6570\u9650\u5236] \u9664\u975E\u89D2\u8272\u4EBA\u8BBE\u660E\u786E\u4E3A\u8BDD\u75E8\u6216\u788E\u5634\u6027\u683C\uFF0C\u5426\u5219\u6BCF\u6761\u72EC\u7ACB\u6D88\u606F\uFF08\u6BCF\u4E2A / \u5206\u9694\u7684\u7247\u6BB5\uFF09\u4E0D\u5F97\u8D85\u8FC735\u4E2A\u5B57\u7B26\uFF0C\u8D85\u51FA\u8BF7\u62C6\u5206\u4E3A\u591A\u6761\u3002";
-    }
-    function getEmojiPrompt(contactKey) {
-      const id = getStorageId();
-      const assignedIds = window.__pmPokeConfig[id]?.[contactKey]?.emojis || [];
-      if (!assignedIds.length) return "";
-      const sets = window.__pmEmojis.filter((s) => assignedIds.includes(s.id));
-      if (!sets.length) return "";
-      const lines = sets.map(
-        (s) => s.images.map((img, i) => `[emo:${s.name}:${i + 1}] - ${img.desc}`).join("\n")
-      ).join("\n");
-      return `
-
-[\u8868\u60C5\u5305\u6743\u9650]
-\u4F60\u53EF\u4EE5\u5728\u5408\u9002\u65F6\u673A\u4F7F\u7528\u4EE5\u4E0B\u8868\u60C5\u5305\uFF0C\u4F7F\u7528\u683C\u5F0F [emo:\u5957\u7EC4\u540D:\u5E8F\u53F7] \u72EC\u884C\u53D1\u9001\uFF1A
-${lines}
-\u8BF7\u5728\u81EA\u7136\u8BED\u5883\u4E0B\u9002\u5F53\u4F7F\u7528\uFF0C\u4E25\u7981\u81EA\u751F\u65B0\u683C\u5F0F\u3002`;
-    }
-    function createBubbles(text, side, senderName) {
-      const results = [];
-      const re = new RegExp(SPECIAL_RE.source, "gi");
-      let last = 0, m;
-      const gc = senderName && side === "left" ? resolveGroupColor(senderName) : null;
-      const pushPlain = (str) => {
-        const plain = str.trim();
-        if (!plain) return;
-        if (senderName && side === "left") {
-          const wrapper = document.createElement("div");
-          wrapper.className = "pm-group-bubble-wrap";
-          const nameTag = document.createElement("div");
-          nameTag.className = "pm-group-name";
-          nameTag.textContent = senderName;
-          if (gc) nameTag.style.color = gc.bg;
-          wrapper.appendChild(nameTag);
-          const inner = document.createElement("div");
-          inner.className = `pm-bubble pm-${side}`;
-          if (gc) {
-            inner.style.setProperty("background", gc.bg, "important");
-            inner.style.setProperty("color", gc.text, "important");
-          }
-          inner.innerHTML = escapeHtml(plain).replace(/\n/g, "<br>");
-          wrapper.appendChild(inner);
-          results.push(wrapper);
-          return;
-        }
-        const b = document.createElement("div");
-        b.className = `pm-bubble pm-${side}`;
-        b.innerHTML = escapeHtml(plain).replace(/\n/g, "<br>");
-        results.push(b);
-      };
-      while ((m = re.exec(text)) !== null) {
-        if (m.index > last) pushPlain(text.slice(last, m.index));
-        const kind = normalizeKeyword(m[1]);
-        const isGroupLeft = senderName && side === "left";
-        let container;
-        if (isGroupLeft) {
-          container = document.createElement("div");
-          container.className = "pm-group-bubble-wrap";
-          const nameTag = document.createElement("div");
-          nameTag.className = "pm-group-name";
-          nameTag.textContent = senderName;
-          if (gc) nameTag.style.color = gc.bg;
-          container.appendChild(nameTag);
-        }
-        const b = document.createElement("div");
-        b.className = `pm-bubble pm-${side} pm-special`;
-        if (kind === "\u8F6C\u8D26") {
-          const amount = parseFloat(m[2]) || 0;
-          b.innerHTML = `<div class="pm-transfer-card"><div class="pm-t-icon">\xA5</div><div class="pm-t-info"><b>\u8F6C\u8D26</b><span>\xA5${amount.toFixed(2)}</span></div></div>`;
-        } else if (kind === "\u6536\u6B3E") {
-          const amount = parseFloat(m[2]) || 0;
-          b.innerHTML = `<div class="pm-receive-card"><div class="pm-t-icon">\xA5</div><div class="pm-t-info"><b>\u6536\u6B3E</b><span>\xA5${amount.toFixed(2)}</span></div></div>`;
-        } else if (kind === "\u9000\u8FD8") {
-          const amount = parseFloat(m[2]) || 0;
-          b.innerHTML = `<div class="pm-refund-card"><div class="pm-t-icon">\xA5</div><div class="pm-t-info"><b>\u5DF2\u9000\u8FD8</b><span>\xA5${amount.toFixed(2)}</span></div></div>`;
-        } else if (kind === "\u56FE\u7247") {
-          b.innerHTML = `<div class="pm-img-card">\u{1F5BC}\uFE0F ${escapeHtml(m[2].trim())}</div>`;
-        } else {
-          const txt = m[2].trim(), len = [...txt].length;
-          let dur;
-          if (len <= 5) dur = Math.max(1, len);
-          else if (len <= 15) dur = 5 + (len - 5);
-          else if (len <= 40) dur = 15 + Math.ceil((len - 15) * 0.8);
-          else dur = Math.min(VOICE_MAX_SEC, 35 + Math.ceil((len - 40) * 0.5));
-          const width = Math.min(240, Math.max(110, 90 + Math.min(len, 30) * 4));
-          let voiceStyle = `width:${width}px`, voiceClass = `pm-voice-card pm-voice-${side}`;
-          if (isGroupLeft && gc) {
-            voiceStyle = `width:${width}px;background:${gc.bg} !important;color:${gc.text} !important;`;
-            voiceClass = "pm-voice-card pm-voice-left pm-voice-group";
-          }
-          b.innerHTML = `<div class="pm-voice-wrap"><div class="${voiceClass}" style="${voiceStyle}" onclick="window.__pmToggleVoice(this)"><span class="pm-voice-icon">\u{1F3A4}</span><span class="pm-voice-wave"><i></i><i></i><i></i></span><span class="pm-voice-dur">${dur}"</span></div><div class="pm-voice-text" style="display:none;">${escapeHtml(txt)}</div></div>`;
-        }
-        if (container) {
-          container.appendChild(b);
-          results.push(container);
-        } else results.push(b);
-        last = m.index + m[0].length;
-      }
-      if (last < text.length) pushPlain(text.slice(last));
-      if (!results.length) pushPlain(text);
-      results.forEach((bubble) => {
-        const els = bubble.classList?.contains("pm-group-bubble-wrap") ? bubble.querySelectorAll(".pm-bubble") : bubble.classList?.contains("pm-bubble") ? [bubble] : [];
-        els.forEach((el) => {
-          if (!el.innerHTML.includes("[emo:")) return;
-          el.innerHTML = el.innerHTML.replace(/\[emo:([^\]:]+):(\d+)\]/g, (match, sName, sIdx) => {
-            const url = findEmojiUrl(sName, parseInt(sIdx));
-            if (url) return `<img src="${url.replace(/"/g, "&quot;")}" style="max-width:98px;border-radius:8px;display:block;box-shadow:0 2px 8px rgba(0,0,0,0.15);vertical-align:middle;">`;
-            return `<span style="font-size:12px;color:#999;">\u{1F914}[${sName}:${sIdx}]</span>`;
-          });
-          el.style.background = el.querySelector("img") && el.childNodes.length === 1 ? "transparent" : "";
-          el.style.boxShadow = el.querySelector("img") && el.childNodes.length === 1 ? "none" : "";
-          el.style.padding = el.querySelector("img") && el.childNodes.length === 1 ? "0" : "";
-        });
-      });
-      return results;
-    }
-    window.__pmToggleVoice = (el) => {
-      const txt = el.parentElement?.querySelector(".pm-voice-text");
-      if (txt) txt.style.display = txt.style.display === "none" ? "block" : "none";
-    };
-    function cleanResponse(raw) {
-      return (raw ?? "").replace(/<think>[\s\S]*?<\/think>/gi, "").replace(/<thinking>[\s\S]*?<\/thinking>/gi, "").replace(/<reasoning>[\s\S]*?<\/reasoning>/gi, "").replace(/<reflection>[\s\S]*?<\/reflection>/gi, "").replace(/<inner_thought>[\s\S]*?<\/inner_thought>/gi, "").replace(/<scene>[\s\S]*?<\/scene>/gi, "").replace(/<narration>[\s\S]*?<\/narration>/gi, "").replace(/<action>[\s\S]*?<\/action>/gi, "").replace(/```[\s\S]*?```/g, "").replace(/^.*【[^】]{2,}】.*$/gm, "").replace(/---+[\s\S]*$/g, "").replace(/<[^>]+>/g, "").trim();
-    }
-    function splitToSentences(str, stripFn = null) {
-      const protect = (str || "").replace(/[\(（][^)）]*[\)\）]/g, (m) => m.replace(/\//g, ""));
-      return protect.split(/\s*\/\s*/).map((s) => {
-        let t = s.replace(/\u0001/g, "/").trim();
-        if (stripFn) t = stripFn(t);
-        if (!t || t === ")" || t === "\uFF09" || t === "(" || t === "\uFF08") return "";
-        const opens = (t.match(/[（(]/g) || []).length;
-        const closes = (t.match(/[）)]/g) || []).length;
-        if (opens > closes) {
-          t += "\uFF09".repeat(opens - closes);
-        } else if (closes > opens && opens === 0) {
-          t = t.replace(/^[)）]+\s*/, "").replace(/\s*[)）]+$/, "");
-        }
-        return t;
-      }).filter(Boolean).flatMap((s) => {
-        const parts = [];
-        let lastIdx = 0, em;
-        const emoRe = /\[emo:[^\]]+\]/g;
-        emoRe.lastIndex = 0;
-        while ((em = emoRe.exec(s)) !== null) {
-          const before = s.slice(lastIdx, em.index).trim();
-          if (before) parts.push(before);
-          parts.push(em[0]);
-          lastIdx = em.index + em[0].length;
-        }
-        const after = s.slice(lastIdx).trim();
-        if (after) parts.push(after);
-        return parts.length ? parts : [s];
-      }).filter(Boolean).slice(0, 15);
-    }
-    function parseGroupResponse(raw) {
-      let cleaned = cleanResponse(raw);
-      const lines = cleaned.split("\n").map((l) => l.trim()).filter(Boolean);
-      const result = [];
-      const normName = (s) => (s || "").trim().replace(/^[【\[\(（*「『"'\s]+|[】\]\)）*「』」"'\s]+$/g, "").trim().toLowerCase();
-      const memberMap = /* @__PURE__ */ new Map();
-      groupMembers.forEach((n) => memberMap.set(normName(n), n));
-      const speakerRe = /^[\s\*【\[「『"'（\(]*(.{1,20}?)[\s\*】\]」』"'）\)]*\s*[：:]\s*([\s\S]+)$/;
-      const stripAllPrefix = (s) => {
-        let t = (s || "").trim();
-        const outer = t.match(/^[\(（]\s*(.{1,20}?)\s*[：:]\s*([\s\S]+?)\s*[\)）]\s*$/);
-        if (outer && memberMap.has(normName(outer[1]))) {
-          t = outer[2].trim();
-        } else {
-          for (let i = 0; i < 3; i++) {
-            const m = t.match(speakerRe);
-            if (m && memberMap.has(normName(m[1]))) t = m[2].trim();
-            else break;
-          }
-        }
-        return t;
-      };
-      for (const line of lines) {
-        const m = line.match(speakerRe);
-        if (m && memberMap.has(normName(m[1]))) {
-          const name = memberMap.get(normName(m[1]));
-          const sentences = splitToSentences(m[2], stripAllPrefix);
-          if (sentences.length) result.push({ name, sentences });
-        } else {
-          const sentences = splitToSentences(line, stripAllPrefix);
-          if (sentences.length) {
-            if (result.length > 0) result[result.length - 1].sentences.push(...sentences);
-            else result.push({ name: groupMembers[0] || "???", sentences });
-          }
-        }
-      }
-      return result;
-    }
     async function callAI(systemPrompt, userPrompt, options = {}) {
       const cfg = window.__pmConfig;
       const useIndep = cfg.useIndependent && cfg.apiUrl && cfg.apiKey;
@@ -1151,30 +1384,28 @@ ${lines}
         }
         const json = await resp.json();
         return json.choices?.[0]?.message?.content ?? "";
-      } else {
-        const c = getCtx();
-        if (!c) throw new Error("\u65E0\u4E0A\u4E0B\u6587");
-        const fullPrompt = systemPrompt ? `${systemPrompt}
+      }
+      const c = getCtx();
+      if (!c) throw new Error("\u65E0\u4E0A\u4E0B\u6587");
+      const fullPrompt = systemPrompt ? `${systemPrompt}
 
 ${userPrompt}` : userPrompt;
-        return await c.generateQuietPrompt(fullPrompt, false, false);
-      }
+      return await c.generateQuietPrompt(fullPrompt, false, false);
     }
     async function fetchSMS(userMsg, directorNote) {
-      const c = getCtx();
       const userMsgClean = userMsg.replace(/\[emo:([^\]:]+):(\d+)\]/g, (_, setName, idxStr) => {
-        const set = (window.__pmEmojis || []).find((s) => s.name === setName);
-        const img = set?.images?.[parseInt(idxStr, 10) - 1];
-        return img?.desc ? `[\u8868\u60C5\u5305\uFF1A${img.desc}]` : "[\u8868\u60C5\u5305]";
+        const set = (window.__pmEmojis || []).find((item) => item.name === setName);
+        const image = set?.images?.[parseInt(idxStr, 10) - 1];
+        return image?.desc ? `[\u8868\u60C5\u5305\uFF1A${image.desc}]` : "[\u8868\u60C5\u5305]";
       }).replace(/\s{2,}/g, " ").trim();
       if (userMsg.trim()) {
         conversationHistory.push({ role: "user", content: userMsg });
       }
-      const ctxData = await gatherContext();
+      const ctxData = await gatherContext2();
       const { cardDesc, cardPersonality, cardScenario, cardFirstMes, cardMesExample, mainChatText, worldBookText, userName, userDesc } = ctxData;
-      const smsHistoryText = conversationHistory.slice(-CONTEXT_LIMIT, -1).map((m) => {
-        const clean = cleanResponse(m.content);
-        return m.role === "user" ? `${userName}\uFF1A${clean}` : isGroupChat ? clean : `${currentPersona}\uFF1A${clean}`;
+      const smsHistoryText = conversationHistory.slice(-CONTEXT_LIMIT, -1).map((message) => {
+        const clean = cleanResponse(message.content);
+        return message.role === "user" ? `${userName}\uFF1A${clean}` : isGroupChat ? clean : `${currentPersona}\uFF1A${clean}`;
       }).join("\n");
       const userBlock = [
         `\u7528\u6237\u540D\u5B57\uFF1A${userName}`,
@@ -1300,12 +1531,12 @@ ${mainChatText}` : "",
       }
       const antiFluff = "\u3010\u52A1\u5FC5\u76F4\u63A5\u6309\u683C\u5F0F\u8F93\u51FA\u77ED\u4FE1\u5185\u5BB9\uFF0C\u4E25\u7981\u5728\u5F00\u5934\u8F93\u51FA\u201C\u597D\u7684\u201D\u3001\u201C\u4E0B\u9762\u662F\u201D\u7B49\u4EFB\u4F55\u8BF4\u660E\u6027\u5E9F\u8BDD\uFF0C\u4E25\u7981\u8F93\u51FA\u975E\u89D2\u8272\u7684\u8BED\u8A00\u3002\u3011";
       const targetContactKey = isGroupChat ? currentGroupKey : currentPersona;
-      const emojiPrompt = getEmojiPrompt(targetContactKey);
+      const emojiPrompt = getEmojiPrompt(targetContactKey, getStorageId2(), window.__pmPokeConfig, window.__pmEmojis);
       if (emojiPrompt) {
         systemPrompt += emojiPrompt;
         injectedInstruction += emojiPrompt;
       }
-      const wordyPrompt = getWordyPrompt();
+      const wordyPrompt = getWordyPrompt(window.__pmWordyLimit);
       if (wordyPrompt) {
         systemPrompt += wordyPrompt;
         injectedInstruction += wordyPrompt;
@@ -1341,7 +1572,7 @@ ${currentPersona}\uFF1A`}`;
         }
         let resultData;
         if (isGroupChat) {
-          const parsed = parseGroupResponse(raw);
+          const parsed = parseGroupResponse(raw, groupMembers);
           if (parsed.length) {
             const contentParts = parsed.map((p) => `${p.name}\uFF1A${p.sentences.join(" / ")}`);
             conversationHistory.push({ role: "assistant", content: contentParts.join("\n") });
@@ -1366,7 +1597,7 @@ ${currentPersona}\uFF1A`}`;
           conversationHistory.push({ role: "assistant", content: sentences.join(" / ") });
           resultData = { type: "single", data: sentences };
         }
-        const id = getStorageId();
+        const id = getStorageId2();
         if (!window.__pmHistories[id]) window.__pmHistories[id] = {};
         window.__pmHistories[id][currentPersona] = conversationHistory.slice(-SAVE_LIMIT);
         saveHistories();
@@ -1380,7 +1611,11 @@ ${currentPersona}\uFF1A`}`;
     function addBubble(text, side, senderName, historyIndex) {
       const list = phoneWindow?.querySelector(".pm-msg-list");
       if (!list) return;
-      createBubbles(text, side, senderName).forEach((b) => {
+      createBubbles(text, side, senderName, {
+        groupColorMap,
+        groupMembers,
+        emojis: window.__pmEmojis
+      }).forEach((b) => {
         if (b.classList?.contains("pm-bubble")) {
           b.dataset.side = side;
           b.dataset.text = text;
@@ -1506,7 +1741,7 @@ ${currentPersona}\uFF1A`}`;
           }
         }
         {
-          const _id = getStorageId();
+          const _id = getStorageId2();
           if (!window.__pmHistories[_id]) window.__pmHistories[_id] = {};
           const _key = isGroupChat && currentGroupKey ? currentGroupKey : currentPersona;
           window.__pmHistories[_id][_key] = conversationHistory.slice(-SAVE_LIMIT);
@@ -1568,250 +1803,8 @@ ${currentPersona}\uFF1A`}`;
         }
       }
     };
-    window.__pmRenderEmojiSetList = () => {
-      const container = document.getElementById("pm-emoji-set-list");
-      if (!container) return;
-      const sets = window.__pmEmojis;
-      if (!sets.length) {
-        container.innerHTML = '<div style="text-align:center;color:#aaa;font-size:13px;padding:16px 0;">\u6682\u65E0\u8868\u60C5\u5305\u5957\u7EC4</div>';
-        return;
-      }
-      container.innerHTML = sets.map((set, si) => `
-            <div style="background:#fafafa;border:1px solid #eee;border-radius:10px;padding:10px 12px;margin-bottom:8px;">
-                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
-                    <span style="font-weight:600;font-size:13px;color:#222;">${escapeHtml(set.name)}</span>
-                    <div style="display:flex;gap:6px;">
-                        <button onclick="window.__pmAddEmojiImage(${si})" style="font-size:11px;background:#007aff;color:#fff;border:none;border-radius:6px;padding:4px 8px;cursor:pointer;">\u2795\u56FE\u7247</button>
-                        <button onclick="window.__pmDeleteEmojiSet(${si})" style="font-size:11px;background:#ff3b30;color:#fff;border:none;border-radius:6px;padding:4px 8px;cursor:pointer;">\u5220\u9664</button>
-                    </div>
-                </div>
-                <div style="display:flex;flex-wrap:wrap;gap:8px;">
-                    ${set.images.map((img, ii) => `
-                        <div style="position:relative;width:52px;">
-                            <img src="${escapeAttr(img.url)}" style="width:52px;height:52px;object-fit:cover;border-radius:8px;border:1px solid #eee;">
-                            <div style="font-size:9px;color:#888;text-align:center;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;width:52px;">${escapeHtml(img.desc)}</div>
-                            <span onclick="window.__pmDeleteEmojiImage(${si},${ii})" style="position:absolute;top:-4px;right:-4px;background:#ff3b30;color:#fff;border-radius:50%;width:16px;height:16px;font-size:10px;display:flex;align-items:center;justify-content:center;cursor:pointer;line-height:1;">\xD7</span>
-                        </div>
-                    `).join("")}
-                    ${set.images.length === 0 ? '<span style="font-size:12px;color:#aaa;">\u6682\u65E0\u56FE\u7247</span>' : ""}
-                </div>
-                <div style="font-size:11px;color:#aaa;margin-top:4px;">${set.images.length}/20 \u5F20 \xB7 [emo:${escapeHtml(set.name)}:1~${set.images.length}]</div>
-            </div>
-        `).join("");
-    };
-    window.__pmAddEmojiSet = () => {
-      if (window.__pmEmojis.length >= 10) return alert("\u6700\u591A\u53EA\u80FD\u521B\u5EFA 10 \u4E2A\u5957\u7EC4\u3002");
-      const ov = document.createElement("div");
-      ov.id = "pm-overlay-sub";
-      if (typeof HTMLElement !== "undefined" && HTMLElement.prototype.hasOwnProperty("popover")) ov.setAttribute("popover", "manual");
-      ov.style.cssText = "position:fixed !important; inset:0 !important; margin:0 !important; padding:0 !important; border:none !important; width:100vw !important; height:100vh !important; max-width:none !important; max-height:none !important; background:rgba(0,0,0,.45) !important; z-index:2147483648 !important; display:flex !important; align-items:center !important; justify-content:center !important;";
-      ov.innerHTML = `
-<div class="pm-modal">
-  <div class="pm-modal-header">
-    <b>\u65B0\u5EFA\u8868\u60C5\u5305\u5957\u7EC4</b>
-    <span onclick="document.getElementById('pm-overlay-sub').remove()" class="pm-modal-close">\u2715</span>
-  </div>
-  <div style="padding:14px 16px;display:flex;flex-direction:column;gap:10px;">
-    <input id="pm-new-set-name" class="pm-cfg-input" placeholder="\u5957\u7EC4\u540D\u79F0\uFF08\u5982\uFF1A\u5F00\u5FC3\u3001\u65E5\u5E38\u3001\u53EF\u7231\uFF09" style="padding:8px 10px;font-size:13px;border-radius:8px;border:1px solid #ddd;">
-  </div>
-  <div class="pm-modal-add">
-    <button onclick="window.__pmConfirmAddEmojiSet()" style="width:100%;background:#007aff;color:#fff;border:none;border-radius:10px;padding:10px;font-size:13px;cursor:pointer;font-weight:600;">\u786E\u8BA4</button>
-  </div>
-</div>`;
-      ov.addEventListener("click", (e) => {
-        if (e.target === ov) ov.remove();
-      });
-      document.body.appendChild(ov);
-      if (ov.showPopover) try {
-        ov.showPopover();
-      } catch (e) {
-      }
-      setTimeout(() => document.getElementById("pm-new-set-name")?.focus(), 10);
-    };
-    window.__pmConfirmAddEmojiSet = () => {
-      const name = document.getElementById("pm-new-set-name")?.value.trim();
-      if (!name) return alert("\u5957\u7EC4\u540D\u79F0\u4E0D\u80FD\u4E3A\u7A7A\u3002");
-      if (window.__pmEmojis.some((s) => s.name === name)) return alert("\u8BE5\u540D\u79F0\u5DF2\u5B58\u5728\u3002");
-      window.__pmEmojis.push({ id: "emo_" + Date.now(), name, images: [] });
-      saveEmojis();
-      document.getElementById("pm-overlay-sub")?.remove();
-      window.__pmRenderEmojiSetList();
-    };
-    window.__pmDeleteEmojiSet = (si) => {
-      const set = window.__pmEmojis[si];
-      if (!set) return;
-      if (!confirm(`\u786E\u8BA4\u5220\u9664\u5957\u7EC4\u300C${set.name}\u300D\uFF1F`)) return;
-      window.__pmEmojis.splice(si, 1);
-      saveEmojis();
-      window.__pmRenderEmojiSetList();
-    };
-    window.__pmAddEmojiImage = (si) => {
-      const set = window.__pmEmojis[si];
-      if (!set) return;
-      if (set.images.length >= 20) return alert("\u672C\u5957\u7EC4\u5DF2\u6EE1 20 \u5F20\u3002");
-      const ov = document.createElement("div");
-      ov.id = "pm-overlay-sub";
-      if (typeof HTMLElement !== "undefined" && HTMLElement.prototype.hasOwnProperty("popover")) ov.setAttribute("popover", "manual");
-      ov.style.cssText = "position:fixed !important; inset:0 !important; margin:0 !important; padding:0 !important; border:none !important; width:100vw !important; height:100vh !important; max-width:none !important; max-height:none !important; background:rgba(0,0,0,.45) !important; z-index:2147483648 !important; display:flex !important; align-items:center !important; justify-content:center !important;";
-      ov.innerHTML = `
-<div class="pm-modal">
-  <div class="pm-modal-header">
-    <b>\u6DFB\u52A0\u56FE\u7247 \u2014 ${escapeHtml(set.name)}</b>
-    <span onclick="document.getElementById('pm-overlay-sub').remove();" class="pm-modal-close">\u2715</span>
-  </div>
-  <div style="padding:14px 16px;display:flex;flex-direction:column;gap:10px;">
-    <div style="font-size:12px;color:#888;margin-bottom:2px;">\u56FE\u7247 URL \u6216\u672C\u5730\u4E0A\u4F20</div>
-    <input id="pm-emo-url" class="pm-cfg-input" placeholder="https://... \u6216\u70B9\u4E0B\u65B9\u9009\u62E9\u6587\u4EF6" style="padding:8px 10px;font-size:13px;border-radius:8px;border:1px solid #ddd;">
-    <button onclick="document.getElementById('pm-emo-file').click()" style="background:#f0f0f3;color:#333;border:1px solid #ddd;border-radius:8px;padding:8px 10px;font-size:12px;cursor:pointer;">\u{1F4C1} \u4E0A\u4F20\u672C\u5730\u56FE\u7247</button>
-    <input id="pm-emo-file" type="file" accept="image/*" hidden onchange="window.__pmEmoFileRead(${si},this)">
-    <div id="pm-emo-preview" style="display:none;text-align:center;"><img id="pm-emo-preview-img" style="max-width:120px;max-height:120px;border-radius:10px;border:1px solid #eee;"></div>
-    <input id="pm-emo-desc" class="pm-cfg-input" placeholder="\u56FE\u7247\u63CF\u8FF0\uFF08\u5FC5\u586B\uFF0C\u5982\uFF1A\u732B\u732B\u5F00\u5FC3\uFF09" style="padding:8px 10px;font-size:13px;border-radius:8px;border:1px solid #ddd;">
-    <div style="font-size:11px;color:#aaa;">\u63CF\u8FF0\u5C06\u544A\u8BC9 AI \u8FD9\u5F20\u56FE\u5728\u4EC0\u4E48\u60C5\u5F62\u4E0B\u4F7F\u7528</div>
-  </div>
-  <div class="pm-modal-add">
-    <button onclick="window.__pmConfirmAddEmojiImage(${si})" style="width:100%;background:#007aff;color:#fff;border:none;border-radius:10px;padding:10px;font-size:13px;cursor:pointer;font-weight:600;">\u786E\u8BA4\u6DFB\u52A0</button>
-  </div>
-</div>`;
-      ov.addEventListener("click", (e) => {
-        if (e.target === ov) ov.remove();
-      });
-      document.body.appendChild(ov);
-      if (ov.showPopover) try {
-        ov.showPopover();
-      } catch (e) {
-      }
-      setTimeout(() => document.getElementById("pm-emo-url")?.focus(), 10);
-    };
-    window.__pmEmoFileRead = (si, input) => {
-      const file = input.files?.[0];
-      if (!file) return;
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const url = e.target.result;
-        const urlInput = document.getElementById("pm-emo-url");
-        if (urlInput) urlInput.value = url;
-        const prev = document.getElementById("pm-emo-preview");
-        const prevImg = document.getElementById("pm-emo-preview-img");
-        if (prev && prevImg) {
-          prevImg.src = url;
-          prev.style.display = "block";
-        }
-      };
-      reader.readAsDataURL(file);
-    };
-    window.__pmConfirmAddEmojiImage = (si) => {
-      const url = document.getElementById("pm-emo-url")?.value.trim();
-      const desc = document.getElementById("pm-emo-desc")?.value.trim();
-      if (!url) return alert("\u8BF7\u8F93\u5165\u56FE\u7247 URL \u6216\u4E0A\u4F20\u56FE\u7247\u3002");
-      if (!desc) return alert("\u8BF7\u8F93\u5165\u56FE\u7247\u63CF\u8FF0\uFF08\u5FC5\u586B\uFF09\u3002");
-      const set = window.__pmEmojis[si];
-      if (!set) return;
-      set.images.push({ url, desc });
-      saveEmojis();
-      document.getElementById("pm-overlay-sub")?.remove();
-      window.__pmRenderEmojiSetList();
-    };
-    window.__pmDeleteEmojiImage = (si, ii) => {
-      const set = window.__pmEmojis[si];
-      if (!set) return;
-      set.images.splice(ii, 1);
-      saveEmojis();
-      window.__pmRenderEmojiSetList();
-    };
-    window.__pmShowEmojiPicker = () => {
-      if (!window.__pmEmojis.length) return alert("\xE8\xBF\x98\xE6\xB2\xA1\xE6\x9C\x89\xE8\xA1\xA8\xE6\x83\x85\xE5\x8C\x85\xEF\xBC\x81\xE8\xAF\xB7\xE5\x85\x88\xE5\x8E\xBB\xE3\x80\x90\xE8\xAE\xBE\xE7\xBD\xAE-\xE5\x85\xB6\xE4\xBB\x96\xE3\x80\x91\xE4\xB8\xAD\xE6\xB7\xBB\xE5\x8A\xA0\xE3\x80\x82");
-      const ta = document.getElementById("pm-expanded-textarea");
-      window.__pmTempText = ta ? ta.value : "";
-      let activeSetIdx = 0;
-      function renderPicker() {
-        const sets2 = window.__pmEmojis;
-        const set = sets2[activeSetIdx] || sets2[0];
-        if (!set) return;
-        const dotsHtml = sets2.length > 1 ? `<div style="display:flex;justify-content:center;gap:8px;padding:8px 0 4px;">${sets2.map((s, i) => `<div onclick="window.__pmEmojiSetDot(${i})" style="width:8px;height:8px;border-radius:50%;cursor:pointer;background:${i === activeSetIdx ? "#007aff" : "#ddd"};transition:background 0.2s;"></div>`).join("")}</div>` : "";
-        const imgsHtml = set.images.length ? set.images.map((img, i) => `
-                <div onclick="window.__pmInsertEmoji('[emo:${escapeAttr(set.name)}:${i + 1}]')"
-                     style="cursor:pointer;width:60px;display:flex;flex-direction:column;align-items:center;gap:4px;">
-                    <img src="${escapeAttr(img.url)}" style="width:50px;height:50px;object-fit:cover;border-radius:8px;box-shadow:0 2px 6px rgba(0,0,0,0.1);">
-                    <span style="font-size:10px;color:#666;width:100%;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(img.desc)}</span>
-                </div>`).join("") : `<div style="text-align:center;color:#999;font-size:12px;padding:20px 0;">\xE6\x9C\xAC\xE5\xA5\x97\xE6\x9A\x82\xE6\x97\xA0\xE5\x9B\xBE\xE7\x89\x87</div>`;
-        const el = document.getElementById("pm-emoji-picker-inner");
-        if (el) {
-          el.querySelector(".pm-emoji-set-label").textContent = set.name + " (" + set.images.length + ")";
-          el.querySelector(".pm-emoji-imgs").innerHTML = imgsHtml;
-          el.querySelector(".pm-emoji-dots").innerHTML = dotsHtml;
-          el.querySelectorAll(".pm-emoji-set-dot-btn").forEach((d, i) => d.style.background = i === activeSetIdx ? "#007aff" : "#ddd");
-        }
-      }
-      window.__pmEmojiSetDot = (idx) => {
-        activeSetIdx = idx;
-        renderPicker();
-      };
-      const sets = window.__pmEmojis;
-      const set0 = sets[0];
-      const initialImgs = set0?.images.length ? set0.images.map((img, i) => `
-            <div onclick="window.__pmInsertEmoji('[emo:${escapeAttr(set0.name)}:${i + 1}]')"
-                 style="cursor:pointer;width:60px;display:flex;flex-direction:column;align-items:center;gap:4px;">
-                <img src="${escapeAttr(img.url)}" style="width:50px;height:50px;object-fit:cover;border-radius:8px;box-shadow:0 2px 6px rgba(0,0,0,0.1);">
-                <span style="font-size:10px;color:#666;width:100%;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(img.desc)}</span>
-            </div>`).join("") : `<div style="text-align:center;color:#999;font-size:12px;padding:20px 0;">\xE6\x9C\xAC\xE5\xA5\x97\xE6\x9A\x82\xE6\x97\xA0\xE5\x9B\xBE\xE7\x89\x87</div>`;
-      const initialDots = sets.length > 1 ? `<div style="display:flex;justify-content:center;gap:8px;padding:8px 0 4px;">${sets.map((s, i) => `<div onclick="window.__pmEmojiSetDot(${i})" style="width:8px;height:8px;border-radius:50%;cursor:pointer;background:${i === 0 ? "#007aff" : "#ddd"};"></div>`).join("")}</div>` : "";
-      makeOverlay(`
-<div class="pm-modal pm-modal-wide" id="pm-emoji-picker-inner">
-  <div class="pm-modal-header" style="justify-content:space-between;padding-right:14px;">
-    <b class="pm-emoji-set-label">${escapeHtml(set0?.name || "")} (${set0?.images.length || 0})</b>
-    <span onclick="document.getElementById('pm-overlay').remove();window.__pmShowExpandInput();" class="pm-modal-close">\u2715</span>
-  </div>
-  <div class="pm-emoji-imgs" id="pm-emoji-imgs-area" style="padding:12px 14px;overflow-y:auto;max-height:340px;display:flex;flex-wrap:wrap;gap:10px;justify-content:flex-start;touch-action:pan-y pinch-zoom;">${initialImgs}</div>
-  <div class="pm-emoji-dots">${initialDots}</div>
-</div>`);
-      const pickerInner = document.getElementById("pm-emoji-picker-inner");
-      if (pickerInner && sets.length > 1) {
-        const imgsArea = pickerInner.querySelector("#pm-emoji-imgs-area");
-        if (imgsArea) {
-          let swipeStartX = 0, swipeStartY = 0, swipeMoved = false;
-          imgsArea.addEventListener("touchstart", (e) => {
-            swipeStartX = e.touches[0].clientX;
-            swipeStartY = e.touches[0].clientY;
-            swipeMoved = false;
-          }, { passive: true });
-          imgsArea.addEventListener("touchmove", (e) => {
-            const dx = e.touches[0].clientX - swipeStartX;
-            const dy = e.touches[0].clientY - swipeStartY;
-            if (!swipeMoved && Math.abs(dx) > Math.abs(dy) + 5) {
-              swipeMoved = true;
-            }
-            if (swipeMoved && e.cancelable) e.preventDefault();
-          }, { passive: false });
-          imgsArea.addEventListener("touchend", (e) => {
-            const dx = e.changedTouches[0].clientX - swipeStartX;
-            const dy = e.changedTouches[0].clientY - swipeStartY;
-            if (Math.abs(dx) > 40 && Math.abs(dx) > Math.abs(dy) * 1.5) {
-              if (dx < 0) {
-                activeSetIdx = (activeSetIdx + 1) % sets.length;
-              } else {
-                activeSetIdx = (activeSetIdx - 1 + sets.length) % sets.length;
-              }
-              renderPicker();
-            }
-          }, { passive: true });
-        }
-      }
-    };
-    window.__pmInsertEmoji = (code) => {
-      const text = window.__pmTempText || "";
-      document.getElementById("pm-overlay").remove();
-      window.__pmShowExpandInput();
-      const ta = document.getElementById("pm-expanded-textarea");
-      if (ta) {
-        const sep = text && !text.endsWith(" ") && !text.endsWith("\n") ? "" : "";
-        ta.value = text + sep + code + " ";
-        window.__pmTempText = ta.value;
-        ta.focus();
-        ta.selectionStart = ta.selectionEnd = ta.value.length;
-      }
-    };
     window.__pmIncrementCounters = () => {
-      const id = getStorageId();
+      const id = getStorageId2();
       const configs = window.__pmPokeConfig[id];
       if (!configs) return;
       let updated = false;
@@ -1844,7 +1837,7 @@ ${currentPersona}\uFF1A`}`;
     window.__pmAutoPoke = async (contactName) => {
       if (isGenerating) return;
       isGenerating = true;
-      const id = getStorageId();
+      const id = getStorageId2();
       const groupMeta = window.__pmGroupMeta[id]?.[contactName];
       const isGroup = !!groupMeta;
       const isActiveView = phoneActive && (isGroup && currentGroupKey === contactName || !isGroup && currentPersona === contactName);
@@ -1855,7 +1848,7 @@ ${currentPersona}\uFF1A`}`;
         if (btn) btn.disabled = true;
         showTyping();
       }
-      const ctxData = await gatherContext();
+      const ctxData = await gatherContext2();
       const { cardDesc, cardPersonality, cardScenario, cardMesExample, mainChatText, worldBookText, userName, userDesc } = ctxData;
       const userBlock = [`\u7528\u6237\u540D\u5B57\uFF1A${userName}`, userDesc ? `\u7528\u6237\u4EBA\u8BBE\uFF1A${userDesc}` : ""].filter(Boolean).join("\n");
       let targetHistory = window.__pmHistories[id]?.[contactName] || [];
@@ -1866,7 +1859,7 @@ ${currentPersona}\uFF1A`}`;
       const systemPrompt = isGroup ? `\u4F60\u540C\u65F6\u626E\u6F14\u7FA4\u804A\u4E2D\u7684\u6240\u6709\u6210\u5458\u3002
 \u3010\u52A1\u5FC5\u76F4\u63A5\u6309\u683C\u5F0F\u8F93\u51FA\u77ED\u4FE1\u5185\u5BB9\uFF0C\u4E25\u7981\u5728\u5F00\u5934\u8F93\u51FA\u201C\u597D\u7684\u201D\u7B49\u5E9F\u8BDD\u3002\u3011` : `\u4F60\u6B63\u5728\u626E\u6F14"${contactName}"\u901A\u8FC7\u624B\u673A\u77ED\u4FE1\u4E0E\u7528\u6237 ${userName} \u804A\u5929\u3002
 \u3010\u52A1\u5FC5\u76F4\u63A5\u6309\u683C\u5F0F\u8F93\u51FA\u77ED\u4FE1\u5185\u5BB9\uFF0C\u4E25\u7981\u5728\u5F00\u5934\u8F93\u51FA\u201C\u597D\u7684\u201D\u7B49\u5E9F\u8BDD\u3002\u3011`;
-      const emojiPrompt = getEmojiPrompt(contactName);
+      const emojiPrompt = getEmojiPrompt(contactName, getStorageId2(), window.__pmPokeConfig, window.__pmEmojis);
       const userPrompt = (isGroup ? `\u7FA4\u804A\u540D\u79F0\uFF1A${groupMeta.name}
 \u7FA4\u804A\u6210\u5458\uFF1A${groupMeta.members.join("\u3001")}
 
@@ -1919,20 +1912,13 @@ ${mainChatText || ""}
 \u3010\u77ED\u4FE1\u5BF9\u8BDD\u5386\u53F2\u3011
 ${smsHistoryText}
 
-\u8F93\u51FA\u683C\u5F0F\uFF1A\u77ED\u4FE1\u5185\u5BB9 / \u77ED\u4FE1\u5185\u5BB9\uFF08\u6BCF\u53E5\u7528 / \u5206\u9694\uFF0C\u7279\u6B8A\u683C\u5F0F\u4E2D\u6587\u5355\u884C\u95ED\u5408\uFF09` + (emojiPrompt ? emojiPrompt : "")) + getWordyPrompt();
+\u8F93\u51FA\u683C\u5F0F\uFF1A\u77ED\u4FE1\u5185\u5BB9 / \u77ED\u4FE1\u5185\u5BB9\uFF08\u6BCF\u53E5\u7528 / \u5206\u9694\uFF0C\u7279\u6B8A\u683C\u5F0F\u4E2D\u6587\u5355\u884C\u95ED\u5408\uFF09` + (emojiPrompt ? emojiPrompt : "")) + getWordyPrompt(window.__pmWordyLimit);
       try {
         const raw = await callAI(systemPrompt, userPrompt);
         let historyUpdated = false;
         if (isActiveView) hideTyping();
         if (isGroup) {
-          const oldMembers = groupMembers;
-          let parsed = [];
-          try {
-            groupMembers = groupMeta.members;
-            parsed = parseGroupResponse(raw);
-          } finally {
-            groupMembers = oldMembers;
-          }
+          const parsed = parseGroupResponse(raw, groupMeta.members);
           const contentParts = [];
           for (const block of parsed) {
             if (block.sentences.length > 0) {
@@ -1962,7 +1948,7 @@ ${smsHistoryText}
                 await new Promise((r) => setTimeout(r, 150));
                 addBubble(s, "left", void 0, _pokeHi);
                 {
-                  const _id = getStorageId();
+                  const _id = getStorageId2();
                   if (!window.__pmHistories[_id]) window.__pmHistories[_id] = {};
                   window.__pmHistories[_id][isGroupChat && currentGroupKey ? currentGroupKey : currentPersona] = targetHistory.slice(-SAVE_LIMIT);
                   saveHistories();
@@ -1997,7 +1983,7 @@ ${smsHistoryText}
       isGenerating = false;
     };
     function showContactConfig(contactName) {
-      const id = getStorageId();
+      const id = getStorageId2();
       const config = window.__pmPokeConfig[id]?.[contactName] || {
         autoPoke: { enabled: false, interval: 3, counter: 0 }
       };
@@ -2063,7 +2049,7 @@ ${smsHistoryText}
       const emojiChecks = document.querySelectorAll(".pm-emoji-assign-check.is-checked");
       const selectedEmojis = Array.from(emojiChecks).map((cb) => cb.dataset.id);
       if (checkEl && intervalEl) {
-        const id = getStorageId();
+        const id = getStorageId2();
         if (!window.__pmPokeConfig[id]) window.__pmPokeConfig[id] = {};
         const enabled = checkEl.classList.contains("is-checked");
         const interval = parseInt(intervalEl.value) || 3;
@@ -2096,7 +2082,7 @@ ${smsHistoryText}
     };
     window.__pmPoke = async (contactName) => {
       if (isGenerating) return;
-      const id = getStorageId();
+      const id = getStorageId2();
       if (window.__pmPokeConfig[id]?.[contactName]) {
         window.__pmPokeConfig[id][contactName].autoPoke.counter = 0;
         savePokeConfig();
@@ -2111,7 +2097,7 @@ ${smsHistoryText}
       if (input) input.disabled = true;
       if (btn) btn.disabled = true;
       showTyping();
-      const ctxData = await gatherContext();
+      const ctxData = await gatherContext2();
       const { cardDesc, cardPersonality, cardScenario, cardMesExample, mainChatText, worldBookText, userName, userDesc } = ctxData;
       const userBlock = [
         `\u7528\u6237\u540D\u5B57\uFF1A${userName}`,
@@ -2125,7 +2111,7 @@ ${smsHistoryText}
 \u3010\u52A1\u5FC5\u76F4\u63A5\u6309\u683C\u5F0F\u8F93\u51FA\u77ED\u4FE1\u5185\u5BB9\uFF0C\u4E25\u7981\u5728\u5F00\u5934\u8F93\u51FA\u201C\u597D\u7684\u201D\u7B49\u5E9F\u8BDD\u3002\u3011` : `\u4F60\u6B63\u5728\u626E\u6F14"${contactName}"\u901A\u8FC7\u624B\u673A\u77ED\u4FE1\u4E0E\u7528\u6237 ${userName} \u804A\u5929\u3002
 \u3010\u52A1\u5FC5\u76F4\u63A5\u6309\u683C\u5F0F\u8F93\u51FA\u77ED\u4FE1\u5185\u5BB9\uFF0C\u4E25\u7981\u5728\u5F00\u5934\u8F93\u51FA\u201C\u597D\u7684\u201D\u7B49\u5E9F\u8BDD\u3002\u3011`;
       const targetContactKey = isGroupChat ? currentGroupKey : contactName;
-      const emojiPrompt = getEmojiPrompt(targetContactKey);
+      const emojiPrompt = getEmojiPrompt(targetContactKey, getStorageId2(), window.__pmPokeConfig, window.__pmEmojis);
       const userPrompt = isGroupChat ? `\u7FA4\u804A\u540D\u79F0\uFF1A${groupDisplayName || "\u7FA4\u804A"}
 \u7FA4\u804A\u6210\u5458\uFF1A${groupMembers.join("\u3001")}
 
@@ -2178,13 +2164,13 @@ ${mainChatText || ""}
 \u3010\u77ED\u4FE1\u5BF9\u8BDD\u5386\u53F2\u3011
 ${smsHistoryText}
 
-\u8F93\u51FA\u683C\u5F0F\uFF1A\u77ED\u4FE1\u5185\u5BB9 / \u77ED\u4FE1\u5185\u5BB9\uFF08\u6BCF\u53E5\u7528 / \u5206\u9694\uFF0C\u7279\u6B8A\u683C\u5F0F\u4E2D\u6587\u5355\u884C\u95ED\u5408\uFF09` + (emojiPrompt ? emojiPrompt : "") + getWordyPrompt();
+\u8F93\u51FA\u683C\u5F0F\uFF1A\u77ED\u4FE1\u5185\u5BB9 / \u77ED\u4FE1\u5185\u5BB9\uFF08\u6BCF\u53E5\u7528 / \u5206\u9694\uFF0C\u7279\u6B8A\u683C\u5F0F\u4E2D\u6587\u5355\u884C\u95ED\u5408\uFF09` + (emojiPrompt ? emojiPrompt : "") + getWordyPrompt(window.__pmWordyLimit);
       try {
         const raw = await callAI(systemPrompt, userPrompt);
         let historyUpdated = false;
         hideTyping();
         if (isGroupChat) {
-          const parsed = parseGroupResponse(raw);
+          const parsed = parseGroupResponse(raw, groupMembers);
           const contentParts = [];
           for (const block of parsed) {
             if (block.sentences.length > 0) {
@@ -2212,7 +2198,7 @@ ${smsHistoryText}
           }
         }
         if (historyUpdated) {
-          const id2 = getStorageId();
+          const id2 = getStorageId2();
           if (!window.__pmHistories[id2]) window.__pmHistories[id2] = {};
           const saveKey = isGroupChat && currentGroupKey ? currentGroupKey : currentPersona;
           window.__pmHistories[id2][saveKey] = conversationHistory.slice(-SAVE_LIMIT);
@@ -2243,7 +2229,7 @@ ${smsHistoryText}
       let pokeConfig = { enabled: false, interval: 3, counter: 0 };
       let assignedEmojis = [];
       if (mode === "edit" && currentGroupKey) {
-        const id = getStorageId();
+        const id = getStorageId2();
         pokeConfig = window.__pmPokeConfig[id]?.[currentGroupKey]?.autoPoke || pokeConfig;
         assignedEmojis = window.__pmPokeConfig[id]?.[currentGroupKey]?.emojis || [];
       }
@@ -2322,7 +2308,7 @@ ${smsHistoryText}
     window.__pmPokeGroup = async () => {
       if (!isGroupChat || !currentGroupKey) return;
       if (isGenerating) return;
-      const id = getStorageId();
+      const id = getStorageId2();
       if (window.__pmPokeConfig[id]?.[currentGroupKey]) {
         window.__pmPokeConfig[id][currentGroupKey].autoPoke.counter = 0;
         savePokeConfig();
@@ -2334,7 +2320,7 @@ ${smsHistoryText}
       if (input) input.disabled = true;
       if (btn) btn.disabled = true;
       showTyping();
-      const ctxData = await gatherContext();
+      const ctxData = await gatherContext2();
       const { cardDesc, cardPersonality, cardScenario, mainChatText, worldBookText, userName, userDesc } = ctxData;
       const userBlock = [
         `\u7528\u6237\u540D\u5B57\uFF1A${userName}`,
@@ -2373,11 +2359,11 @@ ${worldBookText || ""}
 ${mainChatText || ""}
 
 \u3010\u7FA4\u804A\u5386\u53F2\u3011
-${smsHistoryText}` + (getEmojiPrompt(currentGroupKey) || "") + getWordyPrompt();
+${smsHistoryText}` + (getEmojiPrompt(currentGroupKey, getStorageId2(), window.__pmPokeConfig, window.__pmEmojis) || "") + getWordyPrompt(window.__pmWordyLimit);
       try {
         const raw = await callAI(systemPrompt, userPrompt);
         hideTyping();
-        const parsed = parseGroupResponse(raw);
+        const parsed = parseGroupResponse(raw, groupMembers);
         const contentParts = [];
         for (const block of parsed) {
           if (block.sentences.length > 0) {
@@ -2388,7 +2374,7 @@ ${smsHistoryText}` + (getEmojiPrompt(currentGroupKey) || "") + getWordyPrompt();
             }
             conversationHistory.push({ role: "assistant", content: contentParts[contentParts.length - 1] });
             {
-              const _id = getStorageId();
+              const _id = getStorageId2();
               if (!window.__pmHistories[_id]) window.__pmHistories[_id] = {};
               const _key = isGroupChat && currentGroupKey ? currentGroupKey : currentPersona;
               window.__pmHistories[_id][_key] = conversationHistory.slice(-SAVE_LIMIT);
@@ -2414,7 +2400,7 @@ ${smsHistoryText}` + (getEmojiPrompt(currentGroupKey) || "") + getWordyPrompt();
         const groupName = nameInput.value.trim();
         const names = memInput.value.split(/[/／]/).map((s) => s.trim()).filter(Boolean).slice(0, MAX_GROUP_MEMBERS - 1);
         if (groupName && names.length >= 2) {
-          const id = getStorageId();
+          const id = getStorageId2();
           if (!window.__pmGroupMeta[id]) window.__pmGroupMeta[id] = {};
           window.__pmGroupMeta[id][currentGroupKey] = { name: groupName, members: names };
           saveGroupMeta();
@@ -2430,7 +2416,7 @@ ${smsHistoryText}` + (getEmojiPrompt(currentGroupKey) || "") + getWordyPrompt();
         const emojiChecks = document.querySelectorAll(".pm-emoji-assign-check.is-checked");
         const selectedEmojis = Array.from(emojiChecks).map((cb) => cb.dataset.id);
         if (checkEl && intervalEl) {
-          const id = getStorageId();
+          const id = getStorageId2();
           if (!window.__pmPokeConfig[id]) window.__pmPokeConfig[id] = {};
           const enabled = checkEl.classList.contains("is-checked");
           const interval = parseInt(intervalEl.value) || 3;
@@ -2483,7 +2469,7 @@ ${smsHistoryText}` + (getEmojiPrompt(currentGroupKey) || "") + getWordyPrompt();
         return;
       }
       document.getElementById("pm-overlay")?.remove();
-      const id = getStorageId();
+      const id = getStorageId2();
       if (!window.__pmGroupMeta[id]) window.__pmGroupMeta[id] = {};
       if (mode === "create") {
         const groupKey = `__group_${Date.now()}`;
@@ -2605,7 +2591,7 @@ ${smsHistoryText}` + (getEmojiPrompt(currentGroupKey) || "") + getWordyPrompt();
       const layoutBtns = ["standard", "relaxed"].map(
         (v) => `<div class="pm-layout-chip ${t.layout === v ? "pm-layout-active" : ""}" onclick="window.__pmSetLayout('${safeJS(v)}')">${v === "standard" ? "\u6807\u51C6" : "\u5BBD\u677E"}</div>`
       ).join("");
-      const id = getStorageId(), localKey = `${id}_${currentPersona}`;
+      const id = getStorageId2(), localKey = `${id}_${currentPersona}`;
       const hasGlobalBg = !!window.__pmBgGlobal, hasLocalBg = !!window.__pmBgLocal[localKey];
       const globalBgBtn = hasGlobalBg ? `<button class="pm-bg-btn pm-bg-del" onclick="window.__pmClearBg('global')">\u6E05\u9664</button>` : `<label class="pm-bg-btn">\u9009\u62E9\u56FE\u7247<input type="file" accept="image/*" onchange="window.__pmUploadBg(this,'global')" hidden></label>
                <button class="pm-bg-btn" onclick="window.__pmBgUrl('global')">URL</button>`;
@@ -2786,18 +2772,21 @@ ${smsHistoryText}` + (getEmojiPrompt(currentGroupKey) || "") + getWordyPrompt();
       if (!file) return;
       const reader = new FileReader();
       reader.onload = (e) => {
-        openCropper(e.target.result, (croppedDataUrl) => {
-          if (scope === "global") {
-            window.__pmBgGlobal = croppedDataUrl;
-            saveBgGlobal();
-          } else {
-            const id = getStorageId();
-            window.__pmBgLocal[`${id}_${currentPersona}`] = croppedDataUrl;
-            saveBgLocal();
+        openCropper(e.target.result, {
+          onCancel: () => window.__pmShowConfig(),
+          onConfirm: (croppedDataUrl) => {
+            if (scope === "global") {
+              window.__pmBgGlobal = croppedDataUrl;
+              saveBgGlobal();
+            } else {
+              const id = getStorageId2();
+              window.__pmBgLocal[`${id}_${currentPersona}`] = croppedDataUrl;
+              saveBgLocal();
+            }
+            applyBackground();
+            window.__pmShowConfig();
+            setTimeout(() => window.__pmSwitchTab("look"), 50);
           }
-          applyBackground();
-          window.__pmShowConfig();
-          setTimeout(() => window.__pmSwitchTab("look"), 50);
         });
       };
       reader.readAsDataURL(file);
@@ -2810,7 +2799,7 @@ ${smsHistoryText}` + (getEmojiPrompt(currentGroupKey) || "") + getWordyPrompt();
         window.__pmBgGlobal = url.trim();
         saveBgGlobal();
       } else {
-        const id = getStorageId();
+        const id = getStorageId2();
         window.__pmBgLocal[`${id}_${currentPersona}`] = url.trim();
         saveBgLocal();
       }
@@ -2827,7 +2816,7 @@ ${smsHistoryText}` + (getEmojiPrompt(currentGroupKey) || "") + getWordyPrompt();
         } catch (e) {
         }
       } else {
-        const id = getStorageId(), key = `${id}_${currentPersona}`;
+        const id = getStorageId2(), key = `${id}_${currentPersona}`;
         delete window.__pmBgLocal[key];
         await pmIDBDel("ST_SMS_BG_LOCAL_" + key);
         await saveBgLocal();
@@ -2851,8 +2840,8 @@ ${smsHistoryText}` + (getEmojiPrompt(currentGroupKey) || "") + getWordyPrompt();
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         const d = await r.json();
         if (d?.data && Array.isArray(d.data)) {
-          __pmModelList = d.data.map((x) => x.id).filter(Boolean);
-          s.textContent = `\u2705 ${__pmModelList.length} \u4E2A\u6A21\u578B`;
+          runtime.modelList = d.data.map((x) => x.id).filter(Boolean);
+          s.textContent = `\u2705 ${runtime.modelList.length} \u4E2A\u6A21\u578B`;
           s.style.color = "#34c759";
         } else {
           s.textContent = "\u2705 \u8FDE\u63A5\u6210\u529F";
@@ -2906,7 +2895,7 @@ ${smsHistoryText}` + (getEmojiPrompt(currentGroupKey) || "") + getWordyPrompt();
         existing.remove();
         return;
       }
-      if (!__pmModelList.length) {
+      if (!runtime.modelList.length) {
         const s = document.getElementById("pm-api-status");
         if (s) {
           s.textContent = "\u26A0\uFE0F \u5148\u62C9\u53D6\u6A21\u578B";
@@ -2931,7 +2920,7 @@ ${smsHistoryText}` + (getEmojiPrompt(currentGroupKey) || "") + getWordyPrompt();
       }
       const optsDiv = dd.querySelector(".pm-model-options");
       const render = (f = "") => {
-        const fl = f.toLowerCase(), filtered = __pmModelList.filter((m) => !fl || m.toLowerCase().includes(fl));
+        const fl = f.toLowerCase(), filtered = runtime.modelList.filter((m) => !fl || m.toLowerCase().includes(fl));
         optsDiv.innerHTML = filtered.length ? filtered.map((m) => `<div class="pm-model-opt" data-m="${escapeAttr(m)}">${escapeHtml(m)}</div>`).join("") : '<div class="pm-model-empty">\u65E0\u5339\u914D</div>';
         optsDiv.querySelectorAll(".pm-model-opt").forEach((el) => el.addEventListener("click", () => {
           document.getElementById("pm-cfg-model").value = el.dataset.m;
@@ -2969,8 +2958,9 @@ ${smsHistoryText}` + (getEmojiPrompt(currentGroupKey) || "") + getWordyPrompt();
       }
       return ov;
     }
+    installEmojiUi({ makeOverlay, saveEmojis });
     window.__pmShowList = () => {
-      const id = getStorageId();
+      const id = getStorageId2();
       loadGroupMeta();
       const histories = window.__pmHistories[id] || {};
       const groups = window.__pmGroupMeta[id] || {};
@@ -3001,11 +2991,7 @@ ${smsHistoryText}` + (getEmojiPrompt(currentGroupKey) || "") + getWordyPrompt();
       <b>\u8054\u7CFB\u4EBA</b>
       <span style="display:flex;align-items:center;gap:10px;">
         <span id="pm-autogen-btn" onclick="window.__pmConfirmAutoGen()" title="AI \u81EA\u52A8\u751F\u6210\u8054\u7CFB\u4EBA" style="cursor:pointer;display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:50%;transition:background .15s;" onmouseenter="this.style.background='rgba(0,122,255,0.1)'" onmouseleave="this.style.background='transparent'">
-          <svg id="pm-autogen-icon" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#007aff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="display:block;transform-origin:center center;">
-            <path d="M23 4v6h-6"/>
-            <path d="M1 20v-6h6"/>
-            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
-          </svg>
+          ${REFRESH_ICON_SVG}
         </span>
         <span onclick="document.getElementById('pm-overlay').remove()" class="pm-modal-close">\u2715</span>
       </span>
@@ -3045,7 +3031,7 @@ ${smsHistoryText}` + (getEmojiPrompt(currentGroupKey) || "") + getWordyPrompt();
       }, 0);
     };
     window.__pmConfirmAutoGen = () => {
-      const id = getStorageId();
+      const id = getStorageId2();
       const histories = window.__pmHistories[id] || {};
       const groups = window.__pmGroupMeta[id] || {};
       const singleCount = Object.keys(histories).filter((k) => !k.startsWith("__group_")).length;
@@ -3062,7 +3048,7 @@ ${smsHistoryText}` + (getEmojiPrompt(currentGroupKey) || "") + getWordyPrompt();
       window.__pmAutoGenContacts();
     };
     window.__pmAutoGenContacts = async () => {
-      const id = getStorageId();
+      const id = getStorageId2();
       const histories = window.__pmHistories[id] || {};
       const groups = window.__pmGroupMeta[id] || {};
       const existingSingle = Object.keys(histories).filter((k) => !k.startsWith("__group_"));
@@ -3080,7 +3066,7 @@ ${smsHistoryText}` + (getEmojiPrompt(currentGroupKey) || "") + getWordyPrompt();
       };
       setSpinning(true);
       try {
-        const ctxData = await gatherContext();
+        const ctxData = await gatherContext2();
         const { cardDesc, cardPersonality, cardScenario, mainChatText, worldBookText, userName, userDesc } = ctxData;
         const existingList = [
           ...existingSingle,
@@ -3162,7 +3148,7 @@ ${mainChatText}` : "",
       }
     };
     window.__pmDelGroup = async (key) => {
-      const id = getStorageId();
+      const id = getStorageId2();
       if (window.__pmGroupMeta[id]) delete window.__pmGroupMeta[id][key];
       if (window.__pmHistories[id]) delete window.__pmHistories[id][key];
       const arr = window.__pmBidirectional[id] || [], idx = arr.indexOf(key);
@@ -3205,7 +3191,7 @@ ${mainChatText}` : "",
       if (!key?.trim()) return;
       key = key.trim();
       loadGroupMeta();
-      const id = getStorageId();
+      const id = getStorageId2();
       if (id === "sms_unknown__default") {
         console.warn("[phone-mode] __pmSwitchContact: SillyTavern \u4E0A\u4E0B\u6587\u5C1A\u672A\u5C31\u7EEA\uFF0CstorageId \u4E3A unknown\uFF0C\u8DF3\u8FC7\u5207\u6362");
         return;
@@ -3234,7 +3220,7 @@ ${mainChatText}` : "",
       if (!name?.trim()) return;
       name = name.trim();
       document.getElementById("pm-overlay")?.remove();
-      const id = getStorageId();
+      const id = getStorageId2();
       if (currentPersona && conversationHistory.length > 0) {
         if (!window.__pmHistories[id]) window.__pmHistories[id] = {};
         const saveKey = _prevSaveKey || (isGroupChat && currentGroupKey ? currentGroupKey : currentPersona);
@@ -3286,7 +3272,7 @@ ${mainChatText}` : "",
       applyBidirectionalInjection();
     };
     window.__pmDel = async (name) => {
-      const id = getStorageId();
+      const id = getStorageId2();
       if (window.__pmHistories[id]) delete window.__pmHistories[id][name];
       await pmIDBSet("ST_SMS_DATA_V2", window.__pmHistories).catch(() => {
       });
@@ -3377,7 +3363,7 @@ ${mainChatText}` : "",
       });
       if (toRemoveIndices.size > 0) {
         conversationHistory = conversationHistory.filter((_, i) => !toRemoveIndices.has(i));
-        const id = getStorageId();
+        const id = getStorageId2();
         if (!window.__pmHistories[id]) window.__pmHistories[id] = {};
         const saveKey = isGroupChat && currentGroupKey ? currentGroupKey : currentPersona;
         window.__pmHistories[id][saveKey] = conversationHistory.slice(-SAVE_LIMIT);
@@ -3396,7 +3382,7 @@ ${mainChatText}` : "",
     };
     window.__pmEnd = () => {
       if (currentPersona && conversationHistory.length) {
-        const id = getStorageId();
+        const id = getStorageId2();
         if (!window.__pmHistories[id]) window.__pmHistories[id] = {};
         const saveKey = isGroupChat && currentGroupKey ? currentGroupKey : currentPersona;
         window.__pmHistories[id][saveKey] = conversationHistory.slice(-SAVE_LIMIT);
@@ -3418,10 +3404,10 @@ ${mainChatText}` : "",
       groupColorMap = {};
       groupDisplayName = "";
       currentGroupKey = "";
-      __pmFirstOpen = true;
-      if (__pmVisibilityTimer) {
-        clearInterval(__pmVisibilityTimer);
-        __pmVisibilityTimer = null;
+      runtime.firstOpen = true;
+      if (runtime.visibilityTimer) {
+        clearInterval(runtime.visibilityTimer);
+        runtime.visibilityTimer = null;
       }
     };
     function ensureVisibility() {
@@ -3433,7 +3419,7 @@ ${mainChatText}` : "",
         phoneWindow.style.setProperty("opacity", "1", "important");
       }
     }
-    let __pmVisibilityTimer = setInterval(ensureVisibility, 2e3);
+    runtime.visibilityTimer = setInterval(ensureVisibility, 2e3);
     window.__pmOpen = () => {
       if (phoneActive && phoneWindow) {
         try {
@@ -3444,9 +3430,7 @@ ${mainChatText}` : "",
         ensureVisibility();
         return;
       }
-      if (!__pmVisibilityTimer) {
-        __pmVisibilityTimer = setInterval(ensureVisibility, 2e3);
-      }
+      if (!runtime.visibilityTimer) runtime.visibilityTimer = setInterval(ensureVisibility, 2e3);
       try {
         const saved = JSON.parse(localStorage.getItem("ST_SMS_CONFIG"));
         window.__pmConfig = saved || { apiUrl: "", apiKey: "", model: "", useIndependent: false };
@@ -3475,7 +3459,6 @@ ${mainChatText}` : "",
       phoneWindow.dataset.layout = window.__pmTheme.layout || "standard";
       phoneWindow.setAttribute("data-theme", window.__pmTheme.darkMode || "light");
       if (POPOVER_SUPPORTED) phoneWindow.setAttribute("popover", "manual");
-      const editSvg = `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>`;
       phoneWindow.innerHTML = `
 <div class="pm-island"></div>
 <div class="pm-main-ui">
@@ -3483,7 +3466,7 @@ ${mainChatText}` : "",
     <button onclick="window.__pmShowList()" class="pm-nav-btn pm-nav-left-btn">\u2630</button>
     <div class="pm-name-wrap">
       <div class="pm-name">${escapeHtml(defaultChar)}</div>
-      <button onclick="window.__pmEditGroup()" class="pm-name-edit is-hidden" title="\u7F16\u8F91">${editSvg}</button>
+      <button onclick="window.__pmEditGroup()" class="pm-name-edit is-hidden" title="\u7F16\u8F91">${EDIT_ICON_SVG}</button>
     </div>
     <div class="pm-nav-right">
       <button onclick="window.__pmToggleSelect()" class="pm-nav-btn pm-trash-btn">\u{1F5D1}</button>
@@ -3522,7 +3505,7 @@ ${mainChatText}` : "",
       groupColorMap = {};
       groupDisplayName = "";
       currentGroupKey = "";
-      if (!__pmFirstOpen) {
+      if (!runtime.firstOpen) {
         const doRender = () => {
           window.__pmSwitch(defaultChar);
           applyBidirectionalInjection();
@@ -3534,7 +3517,7 @@ ${mainChatText}` : "",
           loadEmojis().then(doRender);
         }
       } else {
-        __pmFirstOpen = false;
+        runtime.firstOpen = false;
         const list = phoneWindow?.querySelector(".pm-msg-list");
         if (list) {
           list.innerHTML = '<div style="text-align:center;color:#aaa;padding:20px;font-size:13px;">\u6B63\u5728\u52A0\u8F7D\u5386\u53F2\u8BB0\u5F55\u2026</div>';

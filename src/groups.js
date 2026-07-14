@@ -1,0 +1,17 @@
+export const GROUP_COLORS = [
+    { bg: '#e9e9eb', text: '#000' },
+    { bg: '#b8e6c8', text: '#1b4332' },
+    { bg: '#f5d0d0', text: '#4a2030' },
+    { bg: '#d4d0f5', text: '#2d2252' },
+    { bg: '#f5e6b8', text: '#4a3a10' },
+    { bg: '#cceef5', text: '#144652' },
+    { bg: '#ffd6a5', text: '#5c3200' },
+    { bg: '#d0f0e8', text: '#0d3b2e' },
+    { bg: '#f0d4f5', text: '#3b0d52' },
+    { bg: '#fce4b8', text: '#4a2800' },
+    { bg: '#c8dff5', text: '#0d2952' },
+    { bg: '#f5d4e4', text: '#4a0d2a' },
+    { bg: '#d4efd4', text: '#1a3d1a' },
+    { bg: '#f5e0c8', text: '#4a2800' },
+    { bg: '#c8c8f5', text: '#1a1a52' },
+];

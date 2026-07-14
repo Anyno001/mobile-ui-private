@@ -3,12 +3,22 @@ import path from 'node:path';
 import { parse } from 'acorn';
 
 const root = process.cwd();
-const [source, bundle, css, manifestText] = await Promise.all([
-  readFile(path.join(root, 'src/main.js'), 'utf8'),
+const srcRoot = path.join(root, 'src');
+const [srcEntries, bundle, css, manifestText] = await Promise.all([
+  readdir(srcRoot, { recursive: true }),
   readFile(path.join(root, 'index.js'), 'utf8'),
   readFile(path.join(root, 'style.css'), 'utf8'),
   readFile(path.join(root, 'manifest.json'), 'utf8'),
 ]);
+const sourceFiles = srcEntries
+  .filter(entry => entry.endsWith('.js'))
+  .sort()
+  .map(entry => path.join(srcRoot, entry));
+const sourceModules = await Promise.all(sourceFiles.map(async file => ({
+  file,
+  code: await readFile(file, 'utf8'),
+})));
+const source = sourceModules.map(({ code }) => code).join('\n');
 const manifest = JSON.parse(manifestText);
 const failures = [];
 
@@ -16,10 +26,10 @@ function requireText(label, text, expected) {
   if (!text.includes(expected)) failures.push(`${label}: missing ${expected}`);
 }
 
-function parseJavaScript(code) {
+function parseJavaScript(code, sourceType = 'script') {
   return parse(code, {
     ecmaVersion: 'latest',
-    sourceType: 'script',
+    sourceType,
     allowAwaitOutsideFunction: true,
   });
 }
@@ -54,9 +64,9 @@ function isString(node, expected) {
   return node?.type === 'Literal' && node.value === expected;
 }
 
-function analyze(code) {
+function analyze(code, sourceType = 'script') {
   const result = { commandObject: false, legacyCommand: false, styleElement: false };
-  walk(parseJavaScript(code), node => {
+  walk(parseJavaScript(code, sourceType), node => {
     if (node.type !== 'CallExpression') return;
     const calleeName = memberName(node.callee);
     if (calleeName === 'registerSlashCommand' && isString(node.arguments[0], 'phone')) result.legacyCommand = true;
@@ -110,7 +120,21 @@ verifyDetector('style element', 'styleElement', [
   `document.createElement('div')`,
 ]);
 
-const analyzedFiles = [['source', source, analyze(source)], ['bundle', bundle, analyze(bundle)]];
+const sourceResult = { commandObject: false, legacyCommand: false, styleElement: false };
+for (const { file, code } of sourceModules) {
+  let result;
+  try {
+    result = analyze(code, 'module');
+  } catch (error) {
+    failures.push(`${path.relative(root, file)}: ${error.message}`);
+    continue;
+  }
+  sourceResult.commandObject ||= result.commandObject;
+  sourceResult.legacyCommand ||= result.legacyCommand;
+  sourceResult.styleElement ||= result.styleElement;
+}
+
+const analyzedFiles = [['source', source, sourceResult], ['bundle', bundle, analyze(bundle)]];
 
 for (const expected of ['PhoneModeDB', 'ST_SMS_DATA_V2', 'window.__pmOpen', 'v9.5.7']) {
   for (const [label, text] of analyzedFiles) requireText(label, text, expected);
