@@ -1,0 +1,235 @@
+import { POPOVER_SUPPORTED } from './constants.js';
+import { escapeHtml } from './ui.js';
+import { EDIT_ICON_SVG } from './icons.js';
+import {
+    loadBgSettings, loadBidirectional, loadEmojis,
+    loadGroupMeta, loadHistoriesFromIDB, loadPokeConfig, loadProfiles,
+    loadTheme, loadWordyLimit,
+} from './storage.js';
+
+export function installPhoneLifecycle(state, deps) {
+    const {
+        runtime, getCtx, applyBidirectionalInjection, persistCurrentHistory,
+        applyBackground, applyTheme, bindIsland, migrateOldHistory, hookGenerationEvent,
+        invalidateGeneration, syncGenerationControls,
+    } = deps;
+
+    window.__pmToggleSelect = () => {
+        state.isSelectMode = !state.isSelectMode;
+        const list = state.phoneWindow?.querySelector('.pm-msg-list');
+        const trashBtn = state.phoneWindow?.querySelector('.pm-trash-btn');
+        const confirmBar = state.phoneWindow?.querySelector('.pm-confirm-bar');
+        if (!list) return;
+        if (state.isSelectMode) {
+            trashBtn.style.color = '#ff3b30'; confirmBar.style.display = 'flex';
+            // 气泡上已在渲染时打好 data-history-index，直接读取，无需事后映射
+            list.querySelectorAll('.pm-bubble, .pm-group-bubble-wrap, .pm-director')
+                .forEach(b => {
+                if (b.id === 'pm-typing' || b.closest('.pm-select-wrap')) return;
+                const isDirector = b.classList.contains('pm-director');
+                const wrap = document.createElement('div'); wrap.className = 'pm-select-wrap';
+                const side = isDirector ? 'center' : (b.dataset.side || 'left');
+                wrap.style.cssText = 'display:flex;align-items:center;gap:8px;align-self:' + (side === 'right' ? 'flex-end' : side === 'center' ? 'center' : 'flex-start') + ';';
+                const cb = document.createElement('div'); cb.className = 'pm-custom-check'; cb.dataset.checked = '0';
+                cb.style.cssText = 'width:22px;height:22px;min-width:22px;min-height:22px;border-radius:50%;flex-shrink:0;cursor:pointer;';
+                cb.onclick = () => { cb.dataset.checked = cb.dataset.checked === '0' ? '1' : '0'; };
+                b.parentNode.insertBefore(wrap, b);
+                wrap.appendChild(cb); wrap.appendChild(b);
+                wrap.dataset.side = side; wrap.dataset.text = b.dataset.text || '';
+                // 直接从气泡上读下标，渲染时已打好
+                const hi = b.dataset.historyIndex;
+                if (hi !== undefined && hi !== '') wrap.dataset.historyIndex = hi;
+            });
+        } else {
+            trashBtn.style.color = ''; confirmBar.style.display = 'none';
+            list.querySelectorAll('.pm-select-wrap').forEach(wrap => {
+                const b = wrap.querySelector('.pm-bubble, .pm-group-bubble-wrap, .pm-director');
+                if (b) wrap.parentNode.insertBefore(b, wrap); wrap.remove();
+            });
+        }
+    };
+
+    window.__pmDeleteSelected = () => {
+        const list = state.phoneWindow?.querySelector('.pm-msg-list'); if (!list) return;
+        // 按 data-history-index 收集要删除的下标（精确，不依赖文本匹配）
+        const toRemoveIndices = new Set();
+        list.querySelectorAll('.pm-select-wrap').forEach(wrap => {
+            const cb = wrap.querySelector('.pm-custom-check');
+            if (cb?.dataset.checked === '1') {
+                const hi = wrap.dataset.historyIndex;
+                if (hi !== undefined && hi !== '') toRemoveIndices.add(Number(hi));
+                wrap.remove();
+            } else {
+                const b = wrap.querySelector('.pm-bubble, .pm-group-bubble-wrap, .pm-director');
+                if (b) wrap.parentNode.insertBefore(b, wrap);
+                wrap.remove();
+            }
+        });
+        if (toRemoveIndices.size > 0) {
+            state.conversationHistory = state.conversationHistory.filter((_, i) => !toRemoveIndices.has(i));
+            persistCurrentHistory();
+            applyBidirectionalInjection();
+        }
+        state.isSelectMode = false;
+        state.phoneWindow?.querySelector('.pm-trash-btn')?.style.removeProperty('color');
+        const bar = state.phoneWindow?.querySelector('.pm-confirm-bar'); if (bar) bar.style.display = 'none';
+    };
+
+    window.__pmToggleMin = () => { state.isMinimized = !state.isMinimized; state.phoneWindow.classList.toggle('is-min', state.isMinimized); state.phoneWindow.style.removeProperty('transform'); };
+    window.__pmEnd = () => {
+        // 修复：关闭前先把当前 state.conversationHistory 存档
+        // 空历史也必须落盘，否则删除最后一条消息后直接关闭会让旧历史在下次打开时复活。
+        if (state.currentPersona) persistCurrentHistory();
+        invalidateGeneration();
+        if (state.phoneWindow) { try { state.phoneWindow.hidePopover?.(); } catch (e) {} state.phoneWindow.remove(); }
+        state.phoneWindow = null; state.phoneActive = false; state.isMinimized = false; state.isSelectMode = false;
+        state.activeStorageId = '';
+        state.currentPersona = '';
+        state.conversationHistory = [];
+        state.isGroupChat = false; state.groupMembers = []; state.groupColorMap = {}; state.groupDisplayName = ''; state.currentGroupKey = '';
+        // 修复：关闭时重置冷启动标记，确保下次打开时（尤其是切换角色卡后）重新从 IDB 加载最新数据
+        runtime.firstOpen = true;
+        // 修复：关闭时清除可见性定时器，重新开启时再创建新的
+        if (runtime.visibilityTimer) { clearInterval(runtime.visibilityTimer); runtime.visibilityTimer = null; }
+    };
+
+    function loadHistoriesOnce() {
+        if (!runtime.historyLoadPromise) {
+            runtime.historyLoadPromise = loadHistoriesFromIDB();
+        }
+        return runtime.historyLoadPromise;
+    }
+
+    function ensureVisibility() {
+        if (!state.phoneWindow) return;
+        const cs = getComputedStyle(state.phoneWindow);
+        if (cs.display === 'none' || cs.visibility === 'hidden' || parseFloat(cs.opacity || '1') < 0.1) {
+            state.phoneWindow.style.setProperty('display', 'flex', 'important');
+            state.phoneWindow.style.setProperty('visibility', 'visible', 'important');
+            state.phoneWindow.style.setProperty('opacity', '1', 'important');
+        }
+    }
+    // 修复：保存定时器 ID，在 __pmEnd 时清除，避免永久泄漏
+    runtime.visibilityTimer = setInterval(ensureVisibility, 2000);
+
+    window.__pmOpen = () => {
+        if (state.phoneActive && state.phoneWindow) { try { state.phoneWindow.showPopover?.(); } catch (e) {} state.phoneWindow.style.display = 'flex'; ensureVisibility(); return; }
+        // 修复：删除每次打开都用 localStorage 覆盖内存的逻辑
+        // localStorage 因容量限制可能保存的是旧数据，而内存和 IDB 才是最新的
+        // 冷启动时（内存为空）靠 loadHistoriesFromIDB() 从 IDB 加载后再渲染
+        if (!runtime.visibilityTimer) runtime.visibilityTimer = setInterval(ensureVisibility, 2000);
+        try {
+            const saved = JSON.parse(localStorage.getItem('ST_SMS_CONFIG'));
+            window.__pmConfig = saved || { apiUrl: '', apiKey: '', model: '', useIndependent: false };
+            if (typeof window.__pmConfig.useIndependent === 'undefined') window.__pmConfig.useIndependent = !!(window.__pmConfig.apiUrl && window.__pmConfig.apiKey);
+        } catch (e) { window.__pmConfig = { apiUrl: '', apiKey: '', model: '', useIndependent: false }; }
+        loadProfiles(); loadBidirectional(); loadTheme(); loadGroupMeta(); loadPokeConfig(); loadWordyLimit(); migrateOldHistory(); loadEmojis();
+        loadBgSettings().then(() => { try { applyBackground(); } catch (e) {} });
+        hookGenerationEvent();
+        const c = getCtx(), defaultChar = c?.characters?.[c.characterId]?.name ?? 'AI';
+
+        state.phoneWindow = document.createElement('div'); state.phoneWindow.id = 'pm-iphone';
+        state.phoneWindow.dataset.layout = window.__pmTheme.layout || 'standard';
+        state.phoneWindow.setAttribute('data-theme', window.__pmTheme.darkMode || 'light');
+        if (POPOVER_SUPPORTED) state.phoneWindow.setAttribute('popover', 'manual');
+
+        state.phoneWindow.innerHTML = `
+<div class="pm-island"></div>
+<div class="pm-main-ui">
+  <div class="pm-navbar">
+    <button onclick="window.__pmShowList()" class="pm-nav-btn pm-nav-left-btn">☰</button>
+    <div class="pm-name-wrap">
+      <div class="pm-name">${escapeHtml(defaultChar)}</div>
+      <button onclick="window.__pmEditGroup()" class="pm-name-edit is-hidden" title="编辑">${EDIT_ICON_SVG}</button>
+    </div>
+    <div class="pm-nav-right">
+      <button onclick="window.__pmToggleSelect()" class="pm-nav-btn pm-trash-btn">🗑</button>
+      <button onclick="window.__pmShowConfig()" class="pm-nav-btn">⚙</button>
+      <button onclick="window.__pmEnd()" class="pm-nav-btn" style="color:#ff3b30">✕</button>
+    </div>
+  </div>
+  <div class="pm-confirm-bar" style="display:none;">
+    <span class="pm-confirm-tip">选择要删除的消息</span>
+    <button onclick="window.__pmDeleteSelected()" class="pm-confirm-btn">删除所选</button>
+    <button onclick="window.__pmToggleSelect()" class="pm-cancel-btn">取消</button>
+  </div>
+  <div class="pm-msg-list"></div>
+  <div class="pm-input-bar">
+    <button onclick="window.__pmShowExpandInput()" class="pm-expand-btn" title="展开长文本输入">⤢</button>
+    <input class="pm-input" placeholder="iMessage">
+    <button onclick="window.__pmSend()" class="pm-up-btn">↑</button>
+  </div>
+</div>`;
+        document.body.appendChild(state.phoneWindow);
+        if (state.phoneWindow.showPopover) try { state.phoneWindow.showPopover(); } catch (e) {}
+        state.phoneActive = true;
+        syncGenerationControls();
+        state.phoneWindow.querySelector('.pm-input').addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); window.__pmSend(); } });
+        bindIsland(state.phoneWindow, state.phoneWindow.querySelector('.pm-island'));
+        applyTheme(); state.isGroupChat = false; state.groupMembers = []; state.groupColorMap = {}; state.groupDisplayName = ''; state.currentGroupKey = '';
+
+
+        if (!runtime.firstOpen) {
+            // 热启动：信任内存历史直接渲染，但表情包可能因为插件重载而清空，需确保已加载
+            const doRender = () => { window.__pmSwitch(defaultChar); applyBidirectionalInjection(); ensureVisibility(); };
+            if (window.__pmEmojis.length > 0) {
+                doRender();
+            } else {
+                loadEmojis().then(doRender);
+            }
+        } else {
+            // ❄️ 冷启动：第一次打开，先占位，等外部的 IDB 把最新数据拉进内存再渲染
+            runtime.firstOpen = false; // 翻转标记，此后不刷新就不会再走这里
+            const list = state.phoneWindow?.querySelector('.pm-msg-list');
+            if (list) { list.innerHTML = '<div style="text-align:center;color:#aaa;padding:20px;font-size:13px;">正在加载历史记录…</div>'; }
+
+            // 冷启动：表情包和历史记录都需要从 IDB 加载完才能正确渲染
+            // 否则 [emo:...] 会因为 __pmEmojis 为空而显示占位符
+            const historyLoad = loadHistoriesOnce();
+            const openingWindow = state.phoneWindow;
+            const openingStorageId = getStorageId();
+            Promise.all([historyLoad, loadEmojis()])
+                .then(() => {
+                    if (state.phoneWindow !== openingWindow || getStorageId() !== openingStorageId) return;
+                    window.__pmSwitch(defaultChar);
+                    applyBidirectionalInjection(); ensureVisibility();
+                })
+                .finally(() => {
+                    if (runtime.historyLoadPromise === historyLoad) runtime.historyLoadPromise = null;
+                });
+        }
+    };
+
+
+
+    function registerPhoneCommand() {
+        const ctx = getCtx(); if (!ctx) return false;
+        const cb = () => { try { window.__pmOpen(); } catch (e) { console.error('[phone-mode]', e); } return ''; };
+        try {
+            const SCP = window.SlashCommandParser || ctx.SlashCommandParser, SC = window.SlashCommand || ctx.SlashCommand;
+            if (SCP && SC && typeof SCP.addCommandObject === 'function' && typeof SC.fromProps === 'function') { SCP.addCommandObject(SC.fromProps({ name: 'phone', callback: cb, helpString: '打开短信' })); return true; }
+        } catch (e) {}
+        try { if (typeof ctx.registerSlashCommand === 'function') { ctx.registerSlashCommand('phone', cb, [], '打开短信', true, true); return true; } } catch (e) {}
+        return false;
+    }
+    if (!registerPhoneCommand()) { let t = 0; const i = setInterval(() => { t++; if (registerPhoneCommand() || t >= 30) clearInterval(i); }, 500); }
+
+    document.addEventListener('keydown', e => {
+        if (e.key !== 'Enter' || e.shiftKey) return;
+        const ta = document.getElementById('send_textarea');
+        if (!ta || document.activeElement !== ta) return;
+        if (ta.value.trim() === '/phone') { e.preventDefault(); e.stopImmediatePropagation(); ta.value = ''; window.__pmOpen(); }
+    }, true);
+    document.addEventListener('click', e => {
+        const btn = e.target.closest?.('#send_but'); if (!btn) return;
+        const ta = document.getElementById('send_textarea'); if (!ta) return;
+        if (ta.value.trim() === '/phone') { e.preventDefault(); e.stopImmediatePropagation(); ta.value = ''; window.__pmOpen(); }
+    }, true);
+
+    try { window.__pmHistories = window.__pmHistories || {}; } catch (e) {}
+    loadBidirectional(); loadGroupMeta(); loadPokeConfig(); loadWordyLimit();
+    loadHistoriesOnce(); // 首次打开复用同一个恢复任务，避免并发读取用旧快照覆盖内存
+    setTimeout(() => { migrateOldHistory(); applyBidirectionalInjection(); hookGenerationEvent(); }, 1500);
+
+    console.log('[phone-mode] v9.5.7 已加载：世界书预算改为读取ST实际上下文窗口大小');
+}

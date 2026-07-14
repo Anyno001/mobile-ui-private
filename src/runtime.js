@@ -4,6 +4,7 @@ export function createRuntimeState() {
         eventHooked: false,
         firstOpen: true,
         lastChatLength: 0,
+        historyLoadPromise: null,
         visibilityTimer: null,
     };
 }
