@@ -1,1342 +1,1588 @@
-(async function () {
-    await new Promise(r => setTimeout(r, 1000));
-
+(() => {
+  // src/main.js
+  (async function() {
+    await new Promise((r) => setTimeout(r, 1e3));
     const SAVE_LIMIT = 60, CONTEXT_LIMIT = 20, BIDIRECTIONAL_LIMIT = 20, MAX_BIDIRECTIONAL = 5;
-    const BIDIRECTIONAL_KEY = 'PHONE_SMS_MEMORY', VOICE_MAX_SEC = 60, MODEL_VISIBLE_ROWS = 4, MAX_GROUP_MEMBERS = 16; 
+    const BIDIRECTIONAL_KEY = "PHONE_SMS_MEMORY", VOICE_MAX_SEC = 60, MODEL_VISIBLE_ROWS = 4, MAX_GROUP_MEMBERS = 16;
     const BI_INJECT_DEPTH = 2;
-    const POPOVER_SUPPORTED = typeof HTMLElement !== 'undefined' && HTMLElement.prototype.hasOwnProperty('popover');
+    const POPOVER_SUPPORTED = typeof HTMLElement !== "undefined" && HTMLElement.prototype.hasOwnProperty("popover");
     const GROUP_COLORS = [
-        { bg: '#e9e9eb', text: '#000' },     // 默认灰
-        { bg: '#b8e6c8', text: '#1b4332' },  // 薄荷绿
-        { bg: '#f5d0d0', text: '#4a2030' },  // 浅玫红
-        { bg: '#d4d0f5', text: '#2d2252' },  // 薰衣草紫
-        { bg: '#f5e6b8', text: '#4a3a10' },  // 暖杏黄
-        { bg: '#cceef5', text: '#144652' },  // 天蓝
-        { bg: '#ffd6a5', text: '#5c3200' },  // 蜜橙
-        { bg: '#d0f0e8', text: '#0d3b2e' },  // 碧绿
-        { bg: '#f0d4f5', text: '#3b0d52' },  // 丁香紫
-        { bg: '#fce4b8', text: '#4a2800' },  // 琥珀
-        { bg: '#c8dff5', text: '#0d2952' },  // 钢蓝
-        { bg: '#f5d4e4', text: '#4a0d2a' },  // 樱粉
-        { bg: '#d4efd4', text: '#1a3d1a' },  // 草绿
-        { bg: '#f5e0c8', text: '#4a2800' },  // 桃杏
-        { bg: '#c8c8f5', text: '#1a1a52' },  // 靛蓝
+      { bg: "#e9e9eb", text: "#000" },
+      // 默认灰
+      { bg: "#b8e6c8", text: "#1b4332" },
+      // 薄荷绿
+      { bg: "#f5d0d0", text: "#4a2030" },
+      // 浅玫红
+      { bg: "#d4d0f5", text: "#2d2252" },
+      // 薰衣草紫
+      { bg: "#f5e6b8", text: "#4a3a10" },
+      // 暖杏黄
+      { bg: "#cceef5", text: "#144652" },
+      // 天蓝
+      { bg: "#ffd6a5", text: "#5c3200" },
+      // 蜜橙
+      { bg: "#d0f0e8", text: "#0d3b2e" },
+      // 碧绿
+      { bg: "#f0d4f5", text: "#3b0d52" },
+      // 丁香紫
+      { bg: "#fce4b8", text: "#4a2800" },
+      // 琥珀
+      { bg: "#c8dff5", text: "#0d2952" },
+      // 钢蓝
+      { bg: "#f5d4e4", text: "#4a0d2a" },
+      // 樱粉
+      { bg: "#d4efd4", text: "#1a3d1a" },
+      // 草绿
+      { bg: "#f5e0c8", text: "#4a2800" },
+      // 桃杏
+      { bg: "#c8c8f5", text: "#1a1a52" }
+      // 靛蓝
     ];
-
-    // ========== IndexedDB 工具 ==========
-    const PM_IDB_NAME = 'PhoneModeDB', PM_IDB_STORE = 'kv';
+    const PM_IDB_NAME = "PhoneModeDB", PM_IDB_STORE = "kv";
     let __pmIDB = null;
-    const IDB_MARKER = '__idb__';
-
+    const IDB_MARKER = "__idb__";
     function pmOpenIDB() {
-        return new Promise(resolve => {
-            if (__pmIDB) {
-                // 探测连接是否还活着：尝试一次只读事务
-                try {
-                    __pmIDB.transaction(PM_IDB_STORE, 'readonly');
-                    return resolve(__pmIDB); // 连接正常，复用
-                } catch (e) {
-                    // 连接已失效（iOS WebView 后台恢复常见），清除缓存重新连接
-                    __pmIDB = null;
-                }
-            }
-            try {
-                const req = indexedDB.open(PM_IDB_NAME, 1);
-                req.onupgradeneeded = () => {
-                    const db = req.result;
-                    if (!db.objectStoreNames.contains(PM_IDB_STORE)) db.createObjectStore(PM_IDB_STORE);
-                };
-                req.onsuccess = () => { __pmIDB = req.result; resolve(__pmIDB); };
-                req.onerror = () => resolve(null);
-            } catch (e) { resolve(null); }
-        });
+      return new Promise((resolve) => {
+        if (__pmIDB) {
+          try {
+            __pmIDB.transaction(PM_IDB_STORE, "readonly");
+            return resolve(__pmIDB);
+          } catch (e) {
+            __pmIDB = null;
+          }
+        }
+        try {
+          const req = indexedDB.open(PM_IDB_NAME, 1);
+          req.onupgradeneeded = () => {
+            const db = req.result;
+            if (!db.objectStoreNames.contains(PM_IDB_STORE)) db.createObjectStore(PM_IDB_STORE);
+          };
+          req.onsuccess = () => {
+            __pmIDB = req.result;
+            resolve(__pmIDB);
+          };
+          req.onerror = () => resolve(null);
+        } catch (e) {
+          resolve(null);
+        }
+      });
     }
-
     async function pmIDBSet(key, value) {
-        const db = await pmOpenIDB(); if (!db) return false;
-        return new Promise(r => {
-            try {
-                const tx = db.transaction(PM_IDB_STORE, 'readwrite');
-                tx.objectStore(PM_IDB_STORE).put(value, key);
-                tx.oncomplete = () => r(true);
-                tx.onerror = () => r(false);
-            } catch (e) { r(false); }
-        });
+      const db = await pmOpenIDB();
+      if (!db) return false;
+      return new Promise((r) => {
+        try {
+          const tx = db.transaction(PM_IDB_STORE, "readwrite");
+          tx.objectStore(PM_IDB_STORE).put(value, key);
+          tx.oncomplete = () => r(true);
+          tx.onerror = () => r(false);
+        } catch (e) {
+          r(false);
+        }
+      });
     }
-
     async function pmIDBGet(key) {
-        const db = await pmOpenIDB(); if (!db) return null;
-        return new Promise(r => {
-            try {
-                const tx = db.transaction(PM_IDB_STORE, 'readonly');
-                const req = tx.objectStore(PM_IDB_STORE).get(key);
-                req.onsuccess = () => r(req.result ?? null);
-                req.onerror = () => r(null);
-            } catch (e) { r(null); }
-        });
+      const db = await pmOpenIDB();
+      if (!db) return null;
+      return new Promise((r) => {
+        try {
+          const tx = db.transaction(PM_IDB_STORE, "readonly");
+          const req = tx.objectStore(PM_IDB_STORE).get(key);
+          req.onsuccess = () => r(req.result ?? null);
+          req.onerror = () => r(null);
+        } catch (e) {
+          r(null);
+        }
+      });
     }
-
     async function pmIDBDel(key) {
-        const db = await pmOpenIDB(); if (!db) return;
-        try {
-            const tx = db.transaction(PM_IDB_STORE, 'readwrite');
-            tx.objectStore(PM_IDB_STORE).delete(key);
-        } catch (e) {}
+      const db = await pmOpenIDB();
+      if (!db) return;
+      try {
+        const tx = db.transaction(PM_IDB_STORE, "readwrite");
+        tx.objectStore(PM_IDB_STORE).delete(key);
+      } catch (e) {
+      }
     }
-
     function pmIsBigData(v) {
-        return typeof v === 'string' && v.length > 4096 && (v.startsWith('data:') || v.startsWith('blob:'));
+      return typeof v === "string" && v.length > 4096 && (v.startsWith("data:") || v.startsWith("blob:"));
     }
-
-    // ========== 短信历史双写存储 ==========
     function saveHistories() {
-        pmIDBSet('ST_SMS_DATA_V2', window.__pmHistories).catch(() => {});
-        try { localStorage.setItem('ST_SMS_DATA_V2', JSON.stringify(window.__pmHistories)); } catch (e) {
-            console.warn('[phone-mode] localStorage 已满，短信历史仅保存在 IDB');
-        }
+      pmIDBSet("ST_SMS_DATA_V2", window.__pmHistories).catch(() => {
+      });
+      try {
+        localStorage.setItem("ST_SMS_DATA_V2", JSON.stringify(window.__pmHistories));
+      } catch (e) {
+        console.warn("[phone-mode] localStorage \u5DF2\u6EE1\uFF0C\u77ED\u4FE1\u5386\u53F2\u4EC5\u4FDD\u5B58\u5728 IDB");
+      }
     }
-
-    // 修复：页面关闭/刷新时 IDB 异步写入可能来不及完成，用 beforeunload 做同步兜底
     function saveHistoriesBeforeUnload() {
-        const data = window.__pmHistories;
-        if (!data || !Object.keys(data).length) return;
-        // 同步写 localStorage（兜底）
+      const data = window.__pmHistories;
+      if (!data || !Object.keys(data).length) return;
+      try {
+        localStorage.setItem("ST_SMS_DATA_V2", JSON.stringify(data));
+      } catch (e) {
         try {
-            localStorage.setItem('ST_SMS_DATA_V2', JSON.stringify(data));
-        } catch (e) {
-            // localStorage 满时做最小化备份
-            try {
-                const slim = {};
-                for (const [storyId, contacts] of Object.entries(data)) {
-                    slim[storyId] = {};
-                    for (const [persona, history] of Object.entries(contacts)) {
-                        slim[storyId][persona] = Array.isArray(history) ? history.slice(-10) : history;
-                    }
-                }
-                localStorage.setItem('ST_SMS_DATA_V2', JSON.stringify(slim));
-            } catch (e2) {
-                console.warn('[phone-mode] beforeunload: localStorage 完全无法写入');
+          const slim = {};
+          for (const [storyId, contacts] of Object.entries(data)) {
+            slim[storyId] = {};
+            for (const [persona, history] of Object.entries(contacts)) {
+              slim[storyId][persona] = Array.isArray(history) ? history.slice(-10) : history;
             }
+          }
+          localStorage.setItem("ST_SMS_DATA_V2", JSON.stringify(slim));
+        } catch (e2) {
+          console.warn("[phone-mode] beforeunload: localStorage \u5B8C\u5168\u65E0\u6CD5\u5199\u5165");
         }
-        // ✅ 新增：同时触发 IDB 异步写入，iOS 后台挂起前尽量完成
-        pmIDBSet('ST_SMS_DATA_V2', data).catch(() => {});
+      }
+      pmIDBSet("ST_SMS_DATA_V2", data).catch(() => {
+      });
     }
-
-    // 避免重复加载插件时重复注册
     if (!window.__pmBeforeUnloadRegistered) {
-        window.addEventListener('beforeunload', saveHistoriesBeforeUnload);
-        // TT酒馆(TauriTavern) WebView 在移动端被挂起/切到后台时不触发 beforeunload，
-        // 用 visibilitychange 做额外兜底，页面变为 hidden 时同步写入 localStorage
-        document.addEventListener('visibilitychange', () => {
-            if (document.visibilityState === 'hidden') saveHistoriesBeforeUnload();
-        });
-        window.__pmBeforeUnloadRegistered = true;
+      window.addEventListener("beforeunload", saveHistoriesBeforeUnload);
+      document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState === "hidden") saveHistoriesBeforeUnload();
+      });
+      window.__pmBeforeUnloadRegistered = true;
     }
-
     async function loadHistoriesFromIDB() {
-        try {
-            const v = await pmIDBGet('ST_SMS_DATA_V2');
-            if (!v) {
-                // ✅ IDB 无数据（包括 IDB 失效返回 null 的情况），用 localStorage 兜底
-                try {
-                    const ls = JSON.parse(localStorage.getItem('ST_SMS_DATA_V2'));
-                    if (ls && typeof ls === 'object' && Object.keys(ls).length > 0) {
-                        window.__pmHistories = ls;
-                        console.log('[phone-mode] IDB 无数据，已从 localStorage 恢复');
-                    }
-                } catch (e) {}
-                return;
+      try {
+        const v = await pmIDBGet("ST_SMS_DATA_V2");
+        if (!v) {
+          try {
+            const ls = JSON.parse(localStorage.getItem("ST_SMS_DATA_V2"));
+            if (ls && typeof ls === "object" && Object.keys(ls).length > 0) {
+              window.__pmHistories = ls;
+              console.log("[phone-mode] IDB \u65E0\u6570\u636E\uFF0C\u5DF2\u4ECE localStorage \u6062\u590D");
             }
-            const parsed = typeof v === 'string' ? JSON.parse(v) : v;
-            if (!parsed || typeof parsed !== 'object') return;
-            const idbCount = Object.keys(parsed).length;
-            if (idbCount > 0) {
-                window.__pmHistories = parsed;
-                try { localStorage.setItem('ST_SMS_DATA_V2', JSON.stringify(parsed)); } catch (e) {
-                    console.warn('[phone-mode] localStorage 已满，仅使用 IDB 存储');
-                }
-                console.log('[phone-mode] 从 IndexedDB 加载了短信历史，共', idbCount, '个会话');
-            }
-        } catch (e) {
-            // ✅ IDB 读取异常（iOS WebView 后台恢复时的典型情况），用 localStorage 兜底
-            console.warn('[phone-mode] IDB 恢复失败，尝试 localStorage 兜底', e);
-            try {
-                const ls = JSON.parse(localStorage.getItem('ST_SMS_DATA_V2'));
-                if (ls && typeof ls === 'object' && Object.keys(ls).length > 0) {
-                    window.__pmHistories = ls;
-                }
-            } catch (e2) {}
+          } catch (e) {
+          }
+          return;
         }
+        const parsed = typeof v === "string" ? JSON.parse(v) : v;
+        if (!parsed || typeof parsed !== "object") return;
+        const idbCount = Object.keys(parsed).length;
+        if (idbCount > 0) {
+          window.__pmHistories = parsed;
+          try {
+            localStorage.setItem("ST_SMS_DATA_V2", JSON.stringify(parsed));
+          } catch (e) {
+            console.warn("[phone-mode] localStorage \u5DF2\u6EE1\uFF0C\u4EC5\u4F7F\u7528 IDB \u5B58\u50A8");
+          }
+          console.log("[phone-mode] \u4ECE IndexedDB \u52A0\u8F7D\u4E86\u77ED\u4FE1\u5386\u53F2\uFF0C\u5171", idbCount, "\u4E2A\u4F1A\u8BDD");
+        }
+      } catch (e) {
+        console.warn("[phone-mode] IDB \u6062\u590D\u5931\u8D25\uFF0C\u5C1D\u8BD5 localStorage \u515C\u5E95", e);
+        try {
+          const ls = JSON.parse(localStorage.getItem("ST_SMS_DATA_V2"));
+          if (ls && typeof ls === "object" && Object.keys(ls).length > 0) {
+            window.__pmHistories = ls;
+          }
+        } catch (e2) {
+        }
+      }
     }
-
     window.__pmHistories = window.__pmHistories || {};
-    window.__pmConfig = window.__pmConfig || { apiUrl: '', apiKey: '', model: '', useIndependent: false };
+    window.__pmConfig = window.__pmConfig || { apiUrl: "", apiKey: "", model: "", useIndependent: false };
     window.__pmProfiles = window.__pmProfiles || [];
     window.__pmBidirectional = window.__pmBidirectional || {};
-    window.__pmTheme = window.__pmTheme || { preset: 'default', customRight: '', customLeft: '', borderColor: '', layout: 'standard', darkMode: 'light' };
-    window.__pmBgGlobal = window.__pmBgGlobal || '';
+    window.__pmTheme = window.__pmTheme || { preset: "default", customRight: "", customLeft: "", borderColor: "", layout: "standard", darkMode: "light" };
+    window.__pmBgGlobal = window.__pmBgGlobal || "";
     window.__pmBgLocal = window.__pmBgLocal || {};
     window.__pmGroupMeta = window.__pmGroupMeta || {};
     window.__pmPokeConfig = window.__pmPokeConfig || {};
     window.__pmWordyLimit = window.__pmWordyLimit || false;
-    window.__pmEmojis = window.__pmEmojis || []; // [{id, name, images:[{url,desc},...]}]
-
+    window.__pmEmojis = window.__pmEmojis || [];
     async function loadEmojis() {
-        try {
-            const v = await pmIDBGet('ST_SMS_EMOJIS');
-            window.__pmEmojis = Array.isArray(v) ? v : [];
-        } catch(e) { window.__pmEmojis = []; }
+      try {
+        const v = await pmIDBGet("ST_SMS_EMOJIS");
+        window.__pmEmojis = Array.isArray(v) ? v : [];
+      } catch (e) {
+        window.__pmEmojis = [];
+      }
     }
     async function saveEmojis() {
-        await pmIDBSet('ST_SMS_EMOJIS', window.__pmEmojis).catch(()=>{});
+      await pmIDBSet("ST_SMS_EMOJIS", window.__pmEmojis).catch(() => {
+      });
     }
     let __pmModelList = [];
     let __pmEventHooked = false;
     let __pmFirstOpen = true;
-
-    let phoneActive = false, phoneWindow = null, currentPersona = '', conversationHistory = [];
+    let phoneActive = false, phoneWindow = null, currentPersona = "", conversationHistory = [];
     let isGenerating = false, isMinimized = false, isSelectMode = false;
-    let isGroupChat = false, groupMembers = [], groupColorMap = {}, groupDisplayName = '';
-    let currentGroupKey = '';
-
-    const getCtx = () => typeof SillyTavern !== 'undefined' ? SillyTavern.getContext() : null;
-
+    let isGroupChat = false, groupMembers = [], groupColorMap = {}, groupDisplayName = "";
+    let currentGroupKey = "";
+    const getCtx = () => typeof SillyTavern !== "undefined" ? SillyTavern.getContext() : null;
     const THEME_PRESETS = {
-        default: { right: '#007aff', left: '#e9e9eb', rightText: '#fff', leftText: '#000', label: '默认蓝' },
-        pink:    { right: '#ff6b8a', left: '#fce4ec', rightText: '#fff', leftText: '#4a2030', label: '樱花粉' },
-        dark:    { right: '#5856d6', left: '#2c2c2e', rightText: '#fff', leftText: '#e0e0e0', label: '暗夜紫' },
-        frost:   { right: 'rgba(0,122,255,0.55)', left: 'rgba(255,255,255,0.35)', rightText: '#fff', leftText: '#222', label: '磨砂玻璃', frost: true },
-        mint:    { right: '#34c759', left: '#e8f5e9', rightText: '#fff', leftText: '#1b4332', label: '薄荷绿' },
+      default: { right: "#007aff", left: "#e9e9eb", rightText: "#fff", leftText: "#000", label: "\u9ED8\u8BA4\u84DD" },
+      pink: { right: "#ff6b8a", left: "#fce4ec", rightText: "#fff", leftText: "#4a2030", label: "\u6A31\u82B1\u7C89" },
+      dark: { right: "#5856d6", left: "#2c2c2e", rightText: "#fff", leftText: "#e0e0e0", label: "\u6697\u591C\u7D2B" },
+      frost: { right: "rgba(0,122,255,0.55)", left: "rgba(255,255,255,0.35)", rightText: "#fff", leftText: "#222", label: "\u78E8\u7802\u73BB\u7483", frost: true },
+      mint: { right: "#34c759", left: "#e8f5e9", rightText: "#fff", leftText: "#1b4332", label: "\u8584\u8377\u7EFF" }
     };
-
     function contrastText(bg) {
-        if (!bg || bg.startsWith('rgba')) return '#fff';
-        const c = bg.replace('#', ''); if (c.length !== 6) return '#000';
-        const r = parseInt(c.substr(0,2),16), g = parseInt(c.substr(2,2),16), b = parseInt(c.substr(4,2),16);
-        return (r*0.299 + g*0.587 + b*0.114) > 150 ? '#000' : '#fff';
+      if (!bg || bg.startsWith("rgba")) return "#fff";
+      const c = bg.replace("#", "");
+      if (c.length !== 6) return "#000";
+      const r = parseInt(c.substr(0, 2), 16), g = parseInt(c.substr(2, 2), 16), b = parseInt(c.substr(4, 2), 16);
+      return r * 0.299 + g * 0.587 + b * 0.114 > 150 ? "#000" : "#fff";
     }
-
-    function loadTheme() { try { window.__pmTheme = { ...window.__pmTheme, ...JSON.parse(localStorage.getItem('ST_SMS_THEME')) }; } catch (e) {} }
-    function saveTheme() { try { localStorage.setItem('ST_SMS_THEME', JSON.stringify(window.__pmTheme)); } catch (e) {} }
-    function loadPokeConfig() { try { window.__pmPokeConfig = JSON.parse(localStorage.getItem('ST_SMS_POKE_CONFIG')) || {}; } catch (e) { window.__pmPokeConfig = {}; } }
-    function savePokeConfig() { try { localStorage.setItem('ST_SMS_POKE_CONFIG', JSON.stringify(window.__pmPokeConfig)); } catch (e) {} }
-    function loadWordyLimit() { try { window.__pmWordyLimit = !!JSON.parse(localStorage.getItem('ST_SMS_WORDY_LIMIT')); } catch (e) { window.__pmWordyLimit = false; } }
-    function saveWordyLimit() { try { localStorage.setItem('ST_SMS_WORDY_LIMIT', JSON.stringify(window.__pmWordyLimit)); } catch (e) {} }
-
+    function loadTheme() {
+      try {
+        window.__pmTheme = { ...window.__pmTheme, ...JSON.parse(localStorage.getItem("ST_SMS_THEME")) };
+      } catch (e) {
+      }
+    }
+    function saveTheme() {
+      try {
+        localStorage.setItem("ST_SMS_THEME", JSON.stringify(window.__pmTheme));
+      } catch (e) {
+      }
+    }
+    function loadPokeConfig() {
+      try {
+        window.__pmPokeConfig = JSON.parse(localStorage.getItem("ST_SMS_POKE_CONFIG")) || {};
+      } catch (e) {
+        window.__pmPokeConfig = {};
+      }
+    }
+    function savePokeConfig() {
+      try {
+        localStorage.setItem("ST_SMS_POKE_CONFIG", JSON.stringify(window.__pmPokeConfig));
+      } catch (e) {
+      }
+    }
+    function loadWordyLimit() {
+      try {
+        window.__pmWordyLimit = !!JSON.parse(localStorage.getItem("ST_SMS_WORDY_LIMIT"));
+      } catch (e) {
+        window.__pmWordyLimit = false;
+      }
+    }
+    function saveWordyLimit() {
+      try {
+        localStorage.setItem("ST_SMS_WORDY_LIMIT", JSON.stringify(window.__pmWordyLimit));
+      } catch (e) {
+      }
+    }
     async function loadBgSettings() {
-        try {
-            const ls = localStorage.getItem('ST_SMS_BG_GLOBAL') || '';
-            if (ls === IDB_MARKER) {
-                window.__pmBgGlobal = (await pmIDBGet('ST_SMS_BG_GLOBAL')) || '';
-            } else if (pmIsBigData(ls)) {
-                window.__pmBgGlobal = ls;
-                await pmIDBSet('ST_SMS_BG_GLOBAL', ls);
-                try { localStorage.setItem('ST_SMS_BG_GLOBAL', IDB_MARKER); } catch (e) {}
-            } else {
-                window.__pmBgGlobal = ls;
-            }
-        } catch (e) { window.__pmBgGlobal = ''; }
-
-        try {
-            const raw = JSON.parse(localStorage.getItem('ST_SMS_BG_LOCAL')) || {};
-            const result = {};
-            let migrated = 0;
-            for (const [k, v] of Object.entries(raw)) {
-                if (v === IDB_MARKER) {
-                    result[k] = (await pmIDBGet('ST_SMS_BG_LOCAL_' + k)) || '';
-                } else if (pmIsBigData(v)) {
-                    result[k] = v;
-                    await pmIDBSet('ST_SMS_BG_LOCAL_' + k, v);
-                    raw[k] = IDB_MARKER;
-                    migrated++;
-                } else {
-                    result[k] = v;
-                }
-            }
-            if (migrated > 0) {
-                try { localStorage.setItem('ST_SMS_BG_LOCAL', JSON.stringify(raw)); } catch (e) {}
-            }
-            window.__pmBgLocal = result;
-        } catch (e) { window.__pmBgLocal = {}; }
+      try {
+        const ls = localStorage.getItem("ST_SMS_BG_GLOBAL") || "";
+        if (ls === IDB_MARKER) {
+          window.__pmBgGlobal = await pmIDBGet("ST_SMS_BG_GLOBAL") || "";
+        } else if (pmIsBigData(ls)) {
+          window.__pmBgGlobal = ls;
+          await pmIDBSet("ST_SMS_BG_GLOBAL", ls);
+          try {
+            localStorage.setItem("ST_SMS_BG_GLOBAL", IDB_MARKER);
+          } catch (e) {
+          }
+        } else {
+          window.__pmBgGlobal = ls;
+        }
+      } catch (e) {
+        window.__pmBgGlobal = "";
+      }
+      try {
+        const raw = JSON.parse(localStorage.getItem("ST_SMS_BG_LOCAL")) || {};
+        const result = {};
+        let migrated = 0;
+        for (const [k, v] of Object.entries(raw)) {
+          if (v === IDB_MARKER) {
+            result[k] = await pmIDBGet("ST_SMS_BG_LOCAL_" + k) || "";
+          } else if (pmIsBigData(v)) {
+            result[k] = v;
+            await pmIDBSet("ST_SMS_BG_LOCAL_" + k, v);
+            raw[k] = IDB_MARKER;
+            migrated++;
+          } else {
+            result[k] = v;
+          }
+        }
+        if (migrated > 0) {
+          try {
+            localStorage.setItem("ST_SMS_BG_LOCAL", JSON.stringify(raw));
+          } catch (e) {
+          }
+        }
+        window.__pmBgLocal = result;
+      } catch (e) {
+        window.__pmBgLocal = {};
+      }
     }
-
     async function saveBgGlobal() {
-        const v = window.__pmBgGlobal || '';
-        if (pmIsBigData(v)) {
-            await pmIDBSet('ST_SMS_BG_GLOBAL', v);
-            try { localStorage.setItem('ST_SMS_BG_GLOBAL', IDB_MARKER); } catch (e) {}
-        } else {
-            await pmIDBDel('ST_SMS_BG_GLOBAL');
-            try { localStorage.setItem('ST_SMS_BG_GLOBAL', v); } catch (e) {}
+      const v = window.__pmBgGlobal || "";
+      if (pmIsBigData(v)) {
+        await pmIDBSet("ST_SMS_BG_GLOBAL", v);
+        try {
+          localStorage.setItem("ST_SMS_BG_GLOBAL", IDB_MARKER);
+        } catch (e) {
         }
+      } else {
+        await pmIDBDel("ST_SMS_BG_GLOBAL");
+        try {
+          localStorage.setItem("ST_SMS_BG_GLOBAL", v);
+        } catch (e) {
+        }
+      }
     }
-
     async function saveBgLocal() {
-        const ptr = {};
-        for (const [k, v] of Object.entries(window.__pmBgLocal || {})) {
-            if (pmIsBigData(v)) {
-                await pmIDBSet('ST_SMS_BG_LOCAL_' + k, v);
-                ptr[k] = IDB_MARKER;
-            } else {
-                await pmIDBDel('ST_SMS_BG_LOCAL_' + k);
-                if (v !== undefined) ptr[k] = v; 
-            }
-        }
-        try { localStorage.setItem('ST_SMS_BG_LOCAL', JSON.stringify(ptr)); } catch (e) {}
-    }
-
-    function loadGroupMeta() { try { window.__pmGroupMeta = JSON.parse(localStorage.getItem('ST_SMS_GROUP_META')) || {}; } catch (e) { window.__pmGroupMeta = {}; } }
-    function saveGroupMeta() { try { localStorage.setItem('ST_SMS_GROUP_META', JSON.stringify(window.__pmGroupMeta)); } catch (e) {} }
-
-    function applyTheme() {
-        const el = phoneWindow; if (!el) return;
-        const t = window.__pmTheme, p = THEME_PRESETS[t.preset] || THEME_PRESETS.default;
-        const rBg = t.customRight || p.right, lBg = t.customLeft || p.left;
-        const rTxt = t.customRight ? contrastText(t.customRight) : p.rightText;
-        const lTxt = t.customLeft ? contrastText(t.customLeft) : p.leftText;
-        const border = t.borderColor || '#1a1a1a';
-        el.style.setProperty('--pm-r-bg', rBg); el.style.setProperty('--pm-l-bg', lBg);
-        el.style.setProperty('--pm-r-txt', rTxt); el.style.setProperty('--pm-l-txt', lTxt);
-        el.style.setProperty('--pm-border', border);
-        el.style.setProperty('--pm-frost', p.frost ? '1' : '0');
-        const darkMode = t.darkMode || 'light';
-        el.setAttribute('data-theme', darkMode);
-    }
-
-    function cssUrlEscape(url) {
-        return (url || '').replace(/\\/g, '\\\\').replace(/"/g, '\\"');
-    }
-
-    function applyBackground() {
-        const msgList = phoneWindow?.querySelector('.pm-msg-list'); if (!msgList) return;
-        const id = getStorageId(), localKey = `${id}_${currentPersona}`;
-        const bg = window.__pmBgLocal[localKey] || window.__pmBgGlobal || '';
-        if (bg) {
-            msgList.style.setProperty('background-image', `url("${cssUrlEscape(bg)}")`, 'important');
-            msgList.style.setProperty('background-size', 'cover', 'important');
-            msgList.style.setProperty('background-position', 'center', 'important');
+      const ptr = {};
+      for (const [k, v] of Object.entries(window.__pmBgLocal || {})) {
+        if (pmIsBigData(v)) {
+          await pmIDBSet("ST_SMS_BG_LOCAL_" + k, v);
+          ptr[k] = IDB_MARKER;
         } else {
-            msgList.style.removeProperty('background-image');
-            msgList.style.removeProperty('background-size');
-            msgList.style.removeProperty('background-position');
+          await pmIDBDel("ST_SMS_BG_LOCAL_" + k);
+          if (v !== void 0) ptr[k] = v;
         }
+      }
+      try {
+        localStorage.setItem("ST_SMS_BG_LOCAL", JSON.stringify(ptr));
+      } catch (e) {
+      }
     }
-
+    function loadGroupMeta() {
+      try {
+        window.__pmGroupMeta = JSON.parse(localStorage.getItem("ST_SMS_GROUP_META")) || {};
+      } catch (e) {
+        window.__pmGroupMeta = {};
+      }
+    }
+    function saveGroupMeta() {
+      try {
+        localStorage.setItem("ST_SMS_GROUP_META", JSON.stringify(window.__pmGroupMeta));
+      } catch (e) {
+      }
+    }
+    function applyTheme() {
+      const el = phoneWindow;
+      if (!el) return;
+      const t = window.__pmTheme, p = THEME_PRESETS[t.preset] || THEME_PRESETS.default;
+      const rBg = t.customRight || p.right, lBg = t.customLeft || p.left;
+      const rTxt = t.customRight ? contrastText(t.customRight) : p.rightText;
+      const lTxt = t.customLeft ? contrastText(t.customLeft) : p.leftText;
+      const border = t.borderColor || "#1a1a1a";
+      el.style.setProperty("--pm-r-bg", rBg);
+      el.style.setProperty("--pm-l-bg", lBg);
+      el.style.setProperty("--pm-r-txt", rTxt);
+      el.style.setProperty("--pm-l-txt", lTxt);
+      el.style.setProperty("--pm-border", border);
+      el.style.setProperty("--pm-frost", p.frost ? "1" : "0");
+      const darkMode = t.darkMode || "light";
+      el.setAttribute("data-theme", darkMode);
+    }
+    function cssUrlEscape(url) {
+      return (url || "").replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+    }
+    function applyBackground() {
+      const msgList = phoneWindow?.querySelector(".pm-msg-list");
+      if (!msgList) return;
+      const id = getStorageId(), localKey = `${id}_${currentPersona}`;
+      const bg = window.__pmBgLocal[localKey] || window.__pmBgGlobal || "";
+      if (bg) {
+        msgList.style.setProperty("background-image", `url("${cssUrlEscape(bg)}")`, "important");
+        msgList.style.setProperty("background-size", "cover", "important");
+        msgList.style.setProperty("background-position", "center", "important");
+      } else {
+        msgList.style.removeProperty("background-image");
+        msgList.style.removeProperty("background-size");
+        msgList.style.removeProperty("background-position");
+      }
+    }
     function fitNameFont() {
-        const nameEl = phoneWindow?.querySelector('.pm-name');
-        if (!nameEl) return;
-        nameEl.style.fontSize = '15px';
-        requestAnimationFrame(() => {
-            let fs = 15;
-            while (nameEl.scrollWidth > nameEl.clientWidth && fs > 9) {
-                fs -= 0.5; nameEl.style.fontSize = fs + 'px';
-            }
-        });
+      const nameEl = phoneWindow?.querySelector(".pm-name");
+      if (!nameEl) return;
+      nameEl.style.fontSize = "15px";
+      requestAnimationFrame(() => {
+        let fs = 15;
+        while (nameEl.scrollWidth > nameEl.clientWidth && fs > 9) {
+          fs -= 0.5;
+          nameEl.style.fontSize = fs + "px";
+        }
+      });
     }
-
     function escapeHtml(s) {
-        return (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      return (s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
     }
     function escapeAttr(s) {
-        return (s || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#39;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      return (s || "").replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/'/g, "&#39;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
     }
     function safeJS(s) {
-        const jsEscaped = (s || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '\\"').replace(/\n/g, '\\n');
-        return escapeAttr(jsEscaped);
+      const jsEscaped = (s || "").replace(/\\/g, "\\\\").replace(/'/g, "\\'").replace(/"/g, '\\"').replace(/\n/g, "\\n");
+      return escapeAttr(jsEscaped);
     }
-
     function openCropper(imgDataUrl, onConfirm) {
-        const ratio = 330 / 450;
-        document.getElementById('pm-overlay')?.remove();
-        const ov = document.createElement('div'); ov.id = 'pm-overlay';
-        if (POPOVER_SUPPORTED) ov.setAttribute('popover', 'manual');
-        ov.innerHTML = `
+      const ratio = 330 / 450;
+      document.getElementById("pm-overlay")?.remove();
+      const ov = document.createElement("div");
+      ov.id = "pm-overlay";
+      if (POPOVER_SUPPORTED) ov.setAttribute("popover", "manual");
+      ov.innerHTML = `
 <div class="pm-modal pm-modal-wide">
-  <div class="pm-modal-header"><b>裁剪图片</b><span onclick="document.getElementById('pm-overlay').remove();window.__pmShowConfig();" class="pm-modal-close">✕</span></div>
+  <div class="pm-modal-header"><b>\u88C1\u526A\u56FE\u7247</b><span onclick="document.getElementById('pm-overlay').remove();window.__pmShowConfig();" class="pm-modal-close">\u2715</span></div>
   <div style="padding:12px 14px;">
-    <div class="pm-crop-tip">拖动图片调整位置，滚轮/捏合缩放</div>
+    <div class="pm-crop-tip">\u62D6\u52A8\u56FE\u7247\u8C03\u6574\u4F4D\u7F6E\uFF0C\u6EDA\u8F6E/\u634F\u5408\u7F29\u653E</div>
     <div class="pm-crop-frame" id="pm-crop-frame">
       <img id="pm-crop-img" src="${escapeAttr(imgDataUrl)}" alt="">
       <div class="pm-crop-mask"></div>
     </div>
     <div class="pm-crop-zoom">
-      <span style="font-size:11px;color:#888;">缩放</span>
+      <span style="font-size:11px;color:#888;">\u7F29\u653E</span>
       <input type="range" id="pm-crop-zoom" min="100" max="400" value="100">
     </div>
   </div>
   <div class="pm-modal-add" style="display:flex;gap:8px;">
-    <button onclick="document.getElementById('pm-overlay').remove();window.__pmShowConfig();" style="flex:1;background:#f0f0f0;color:#333;border:none;border-radius:10px;padding:10px;font-size:13px;cursor:pointer;">取消</button>
-    <button id="pm-crop-confirm" style="flex:1;background:#007aff;color:#fff;border:none;border-radius:10px;padding:10px;font-size:13px;cursor:pointer;font-weight:600;">确认裁剪</button>
+    <button onclick="document.getElementById('pm-overlay').remove();window.__pmShowConfig();" style="flex:1;background:#f0f0f0;color:#333;border:none;border-radius:10px;padding:10px;font-size:13px;cursor:pointer;">\u53D6\u6D88</button>
+    <button id="pm-crop-confirm" style="flex:1;background:#007aff;color:#fff;border:none;border-radius:10px;padding:10px;font-size:13px;cursor:pointer;font-weight:600;">\u786E\u8BA4\u88C1\u526A</button>
   </div>
 </div>`;
-        ov.addEventListener('click', e => { if (e.target === ov) { ov.remove(); window.__pmShowConfig(); } });
-        document.body.appendChild(ov);
-        if (ov.showPopover) try { ov.showPopover(); } catch (e) {}
-        const frame = ov.querySelector('#pm-crop-frame'), img = ov.querySelector('#pm-crop-img');
-        const zoomSlider = ov.querySelector('#pm-crop-zoom');
-        let tx = 0, ty = 0, scale = 1, frameW = 0, frameH = 0, baseW = 0, baseH = 0;
-        img.onload = () => {
-            const cw = frame.clientWidth;
-            frameW = cw; frameH = cw / ratio; frame.style.height = frameH + 'px';
-            const natW = img.naturalWidth, natH = img.naturalHeight, imgRatio = natW / natH;
-            if (imgRatio > ratio) { baseH = frameH; baseW = baseH * imgRatio; }
-            else { baseW = frameW; baseH = baseW / imgRatio; }
-            updateTransform();
-        };
-        function updateTransform() {
-            const w = baseW * scale, h = baseH * scale;
-            tx = Math.max(frameW - w, Math.min(0, tx)); ty = Math.max(frameH - h, Math.min(0, ty));
-            img.style.width = w + 'px'; img.style.height = h + 'px';
-            img.style.transform = `translate(${tx}px, ${ty}px)`;
+      ov.addEventListener("click", (e) => {
+        if (e.target === ov) {
+          ov.remove();
+          window.__pmShowConfig();
         }
-        zoomSlider.oninput = () => { scale = parseInt(zoomSlider.value) / 100; updateTransform(); };
-        let dragging = false, sx = 0, sy = 0, stx = 0, sty = 0;
-        const onDragStart = (e) => { dragging = true; const c = e.touches ? e.touches[0] : e; sx = c.clientX; sy = c.clientY; stx = tx; sty = ty; if (e.cancelable) e.preventDefault(); };
-        const onDragMove = (e) => { if (!dragging) return; const c = e.touches ? e.touches[0] : e; tx = stx + (c.clientX - sx); ty = sty + (c.clientY - sy); updateTransform(); if (e.cancelable) e.preventDefault(); };
-        const onDragEnd = () => { dragging = false; };
-        frame.addEventListener('mousedown', onDragStart);
-        window.addEventListener('mousemove', onDragMove);
-        window.addEventListener('mouseup', onDragEnd);
-        frame.addEventListener('touchstart', onDragStart, { passive: false });
-        window.addEventListener('touchmove', onDragMove, { passive: false });
-        window.addEventListener('touchend', onDragEnd);
-        let pinchDist = 0, pinchScale = 1;
-        frame.addEventListener('touchstart', (e) => {
-            if (e.touches.length === 2) { pinchDist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY); pinchScale = scale; }
-        }, { passive: false });
-        frame.addEventListener('touchmove', (e) => {
-            if (e.touches.length === 2) {
-                const d = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
-                scale = Math.max(1, Math.min(4, pinchScale * d / pinchDist));
-                zoomSlider.value = Math.round(scale * 100); updateTransform(); e.preventDefault();
-            }
-        }, { passive: false });
-        frame.addEventListener('wheel', (e) => {
-            e.preventDefault();
-            scale = Math.max(1, Math.min(4, scale + (e.deltaY > 0 ? -0.1 : 0.1)));
-            zoomSlider.value = Math.round(scale * 100); updateTransform();
-        });
-        ov.querySelector('#pm-crop-confirm').onclick = () => {
-            const canvas = document.createElement('canvas');
-            const outW = 600, outH = Math.round(outW / ratio);
-            canvas.width = outW; canvas.height = outH;
-            const ctx = canvas.getContext('2d');
-            const srcScale = img.naturalWidth / (baseW * scale);
-            ctx.drawImage(img, (-tx) * srcScale, (-ty) * srcScale, frameW * srcScale, frameH * srcScale, 0, 0, outW, outH);
-            let q = 0.7, out = canvas.toDataURL('image/jpeg', q);
-            while (out.length > 200 * 1370 && q > 0.2) { q -= 0.1; out = canvas.toDataURL('image/jpeg', q); }
-            ov.remove(); onConfirm(out);
-        };
+      });
+      document.body.appendChild(ov);
+      if (ov.showPopover) try {
+        ov.showPopover();
+      } catch (e) {
+      }
+      const frame = ov.querySelector("#pm-crop-frame"), img = ov.querySelector("#pm-crop-img");
+      const zoomSlider = ov.querySelector("#pm-crop-zoom");
+      let tx = 0, ty = 0, scale = 1, frameW = 0, frameH = 0, baseW = 0, baseH = 0;
+      img.onload = () => {
+        const cw = frame.clientWidth;
+        frameW = cw;
+        frameH = cw / ratio;
+        frame.style.height = frameH + "px";
+        const natW = img.naturalWidth, natH = img.naturalHeight, imgRatio = natW / natH;
+        if (imgRatio > ratio) {
+          baseH = frameH;
+          baseW = baseH * imgRatio;
+        } else {
+          baseW = frameW;
+          baseH = baseW / imgRatio;
+        }
+        updateTransform();
+      };
+      function updateTransform() {
+        const w = baseW * scale, h = baseH * scale;
+        tx = Math.max(frameW - w, Math.min(0, tx));
+        ty = Math.max(frameH - h, Math.min(0, ty));
+        img.style.width = w + "px";
+        img.style.height = h + "px";
+        img.style.transform = `translate(${tx}px, ${ty}px)`;
+      }
+      zoomSlider.oninput = () => {
+        scale = parseInt(zoomSlider.value) / 100;
+        updateTransform();
+      };
+      let dragging = false, sx = 0, sy = 0, stx = 0, sty = 0;
+      const onDragStart = (e) => {
+        dragging = true;
+        const c = e.touches ? e.touches[0] : e;
+        sx = c.clientX;
+        sy = c.clientY;
+        stx = tx;
+        sty = ty;
+        if (e.cancelable) e.preventDefault();
+      };
+      const onDragMove = (e) => {
+        if (!dragging) return;
+        const c = e.touches ? e.touches[0] : e;
+        tx = stx + (c.clientX - sx);
+        ty = sty + (c.clientY - sy);
+        updateTransform();
+        if (e.cancelable) e.preventDefault();
+      };
+      const onDragEnd = () => {
+        dragging = false;
+      };
+      frame.addEventListener("mousedown", onDragStart);
+      window.addEventListener("mousemove", onDragMove);
+      window.addEventListener("mouseup", onDragEnd);
+      frame.addEventListener("touchstart", onDragStart, { passive: false });
+      window.addEventListener("touchmove", onDragMove, { passive: false });
+      window.addEventListener("touchend", onDragEnd);
+      let pinchDist = 0, pinchScale = 1;
+      frame.addEventListener("touchstart", (e) => {
+        if (e.touches.length === 2) {
+          pinchDist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+          pinchScale = scale;
+        }
+      }, { passive: false });
+      frame.addEventListener("touchmove", (e) => {
+        if (e.touches.length === 2) {
+          const d = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+          scale = Math.max(1, Math.min(4, pinchScale * d / pinchDist));
+          zoomSlider.value = Math.round(scale * 100);
+          updateTransform();
+          e.preventDefault();
+        }
+      }, { passive: false });
+      frame.addEventListener("wheel", (e) => {
+        e.preventDefault();
+        scale = Math.max(1, Math.min(4, scale + (e.deltaY > 0 ? -0.1 : 0.1)));
+        zoomSlider.value = Math.round(scale * 100);
+        updateTransform();
+      });
+      ov.querySelector("#pm-crop-confirm").onclick = () => {
+        const canvas = document.createElement("canvas");
+        const outW = 600, outH = Math.round(outW / ratio);
+        canvas.width = outW;
+        canvas.height = outH;
+        const ctx = canvas.getContext("2d");
+        const srcScale = img.naturalWidth / (baseW * scale);
+        ctx.drawImage(img, -tx * srcScale, -ty * srcScale, frameW * srcScale, frameH * srcScale, 0, 0, outW, outH);
+        let q = 0.7, out = canvas.toDataURL("image/jpeg", q);
+        while (out.length > 200 * 1370 && q > 0.2) {
+          q -= 0.1;
+          out = canvas.toDataURL("image/jpeg", q);
+        }
+        ov.remove();
+        onConfirm(out);
+      };
     }
-
-    // 更新模糊匹配字典，增加"退还"
     const SPECIAL_KEYWORDS = {
-        '转账':'转账','transfer':'转账','Transfer':'转账','TRANSFER':'转账','轉賬':'转账','轉帳':'转账',
-        '收款':'收款','receive':'收款','Receive':'收款','RECEIVE':'收款','收钱':'收款','收到':'收款','收款':'收款','收錢':'收款',
-        '退还':'退还','退钱':'退还','退款':'退还','refund':'退还','Refund':'退还','REFUND':'退还','退還':'退还','退錢':'退还',
-        '图片':'图片','image':'图片','Image':'图片','IMAGE':'图片','img':'图片','pic':'图片','photo':'图片','圖片':'图片',
-        '语音':'语音','voice':'语音','Voice':'语音','VOICE':'语音','audio':'语音','語音':'语音',
+      "\u8F6C\u8D26": "\u8F6C\u8D26",
+      "transfer": "\u8F6C\u8D26",
+      "Transfer": "\u8F6C\u8D26",
+      "TRANSFER": "\u8F6C\u8D26",
+      "\u8F49\u8CEC": "\u8F6C\u8D26",
+      "\u8F49\u5E33": "\u8F6C\u8D26",
+      "\u6536\u6B3E": "\u6536\u6B3E",
+      "receive": "\u6536\u6B3E",
+      "Receive": "\u6536\u6B3E",
+      "RECEIVE": "\u6536\u6B3E",
+      "\u6536\u94B1": "\u6536\u6B3E",
+      "\u6536\u5230": "\u6536\u6B3E",
+      "\u6536\u9322": "\u6536\u6B3E",
+      "\u9000\u8FD8": "\u9000\u8FD8",
+      "\u9000\u94B1": "\u9000\u8FD8",
+      "\u9000\u6B3E": "\u9000\u8FD8",
+      "refund": "\u9000\u8FD8",
+      "Refund": "\u9000\u8FD8",
+      "REFUND": "\u9000\u8FD8",
+      "\u9000\u9084": "\u9000\u8FD8",
+      "\u9000\u9322": "\u9000\u8FD8",
+      "\u56FE\u7247": "\u56FE\u7247",
+      "image": "\u56FE\u7247",
+      "Image": "\u56FE\u7247",
+      "IMAGE": "\u56FE\u7247",
+      "img": "\u56FE\u7247",
+      "pic": "\u56FE\u7247",
+      "photo": "\u56FE\u7247",
+      "\u5716\u7247": "\u56FE\u7247",
+      "\u8BED\u97F3": "\u8BED\u97F3",
+      "voice": "\u8BED\u97F3",
+      "Voice": "\u8BED\u97F3",
+      "VOICE": "\u8BED\u97F3",
+      "audio": "\u8BED\u97F3",
+      "\u8A9E\u97F3": "\u8BED\u97F3"
     };
-    const KW_PATTERN = Object.keys(SPECIAL_KEYWORDS).join('|');
-    const SPECIAL_RE = new RegExp(`[\\(（]\\s*(${KW_PATTERN})\\s*[+：:\\s]*([^)）]+)[\\)）]`, 'gi');
-    function normalizeKeyword(k) { return SPECIAL_KEYWORDS[k] || SPECIAL_KEYWORDS[k.toLowerCase()] || k; }
-    // [emo:套组名:序号] 格式，AI 和用户都可以发送
+    const KW_PATTERN = Object.keys(SPECIAL_KEYWORDS).join("|");
+    const SPECIAL_RE = new RegExp(`[\\(\uFF08]\\s*(${KW_PATTERN})\\s*[+\uFF1A:\\s]*([^)\uFF09]+)[\\)\uFF09]`, "gi");
+    function normalizeKeyword(k) {
+      return SPECIAL_KEYWORDS[k] || SPECIAL_KEYWORDS[k.toLowerCase()] || k;
+    }
     const EMO_RE = /\[emo:([^\]:]+):(\d+)\]/gi;
-    // 查找表情包图片：先按套组名+序号精确匹配，返回 url 或 null
     function findEmojiUrl(setName, idx) {
-        const set = window.__pmEmojis.find(s => s.name === setName);
-        if (!set) return null;
-        const img = set.images[idx - 1]; // 序号从1开始
-        return img ? img.url : null;
+      const set = window.__pmEmojis.find((s) => s.name === setName);
+      if (!set) return null;
+      const img = set.images[idx - 1];
+      return img ? img.url : null;
     }
-
     function getStorageId() {
-        const c = getCtx(); if (!c) return 'sms_unknown__default';
-        const char = c.characters?.[c.characterId];
-        const avatar = char?.avatar || `idx_${c.characterId}`;
-        const chatFile = c.chatId || (typeof c.getCurrentChatId === 'function' ? c.getCurrentChatId() : null) || c.chat_metadata?.chat_id_hash || c.chat_file || 'default';
-        // 恢复使用 chatId 以区分不同角色卡（纯去掉 chatId 会导致同名头像的卡串记录）
-        // 之前报告的"记录消失"真正原因是 localStorage 被旧数据覆盖，已在 __pmOpen 里修复
-        return `sms_${avatar}__${chatFile}`;
+      const c = getCtx();
+      if (!c) return "sms_unknown__default";
+      const char = c.characters?.[c.characterId];
+      const avatar = char?.avatar || `idx_${c.characterId}`;
+      const chatFile = c.chatId || (typeof c.getCurrentChatId === "function" ? c.getCurrentChatId() : null) || c.chat_metadata?.chat_id_hash || c.chat_file || "default";
+      return `sms_${avatar}__${chatFile}`;
     }
-
     function migrateOldHistory() {
-        if (localStorage.getItem('ST_SMS_MIGRATED_V3')) return;
-        const c = getCtx(); if (!c) return;
-        try {
-            const oldData = window.__pmHistories || {}, newData = {}; let migrated = 0;
-            for (const oldKey of Object.keys(oldData)) {
-                if (oldKey.startsWith('sms_')) { newData[oldKey] = oldData[oldKey]; continue; }
-                // 旧格式：数字索引_chatId，迁移为 sms_avatar__chatId
-                const m = oldKey.match(/^(\d+)_(.+)$/);
-                if (!m) { newData[oldKey] = oldData[oldKey]; continue; }
-                const ch = c.characters?.[parseInt(m[1])];
-                if (ch?.avatar) { newData[`sms_${ch.avatar}__${m[2]}`] = oldData[oldKey]; migrated++; }
-                else newData[oldKey] = oldData[oldKey];
-            }
-            window.__pmHistories = newData;
-            saveHistories();
-            localStorage.setItem('ST_SMS_MIGRATED_V3', '1');
-        } catch (e) {}
+      if (localStorage.getItem("ST_SMS_MIGRATED_V3")) return;
+      const c = getCtx();
+      if (!c) return;
+      try {
+        const oldData = window.__pmHistories || {}, newData = {};
+        let migrated = 0;
+        for (const oldKey of Object.keys(oldData)) {
+          if (oldKey.startsWith("sms_")) {
+            newData[oldKey] = oldData[oldKey];
+            continue;
+          }
+          const m = oldKey.match(/^(\d+)_(.+)$/);
+          if (!m) {
+            newData[oldKey] = oldData[oldKey];
+            continue;
+          }
+          const ch = c.characters?.[parseInt(m[1])];
+          if (ch?.avatar) {
+            newData[`sms_${ch.avatar}__${m[2]}`] = oldData[oldKey];
+            migrated++;
+          } else newData[oldKey] = oldData[oldKey];
+        }
+        window.__pmHistories = newData;
+        saveHistories();
+        localStorage.setItem("ST_SMS_MIGRATED_V3", "1");
+      } catch (e) {
+      }
     }
-
     function normalizeApiUrls(input) {
-        let url = (input || '').trim().replace(/\/+$/, '');
-        if (!url) return { chatUrl: '', modelsUrl: '' };
-        if (/\/chat\/completions$/i.test(url)) return { chatUrl: url, modelsUrl: url.replace(/\/chat\/completions$/i, '/models') };
-        if (/\/models$/i.test(url)) return { chatUrl: url.replace(/\/models$/i, '/chat/completions'), modelsUrl: url };
-        if (/\/v\d+$/i.test(url)) return { chatUrl: url + '/chat/completions', modelsUrl: url + '/models' };
-        return { chatUrl: url + '/v1/chat/completions', modelsUrl: url + '/v1/models' };
+      let url = (input || "").trim().replace(/\/+$/, "");
+      if (!url) return { chatUrl: "", modelsUrl: "" };
+      if (/\/chat\/completions$/i.test(url)) return { chatUrl: url, modelsUrl: url.replace(/\/chat\/completions$/i, "/models") };
+      if (/\/models$/i.test(url)) return { chatUrl: url.replace(/\/models$/i, "/chat/completions"), modelsUrl: url };
+      if (/\/v\d+$/i.test(url)) return { chatUrl: url + "/chat/completions", modelsUrl: url + "/models" };
+      return { chatUrl: url + "/v1/chat/completions", modelsUrl: url + "/v1/models" };
     }
-
-    function loadProfiles() { try { window.__pmProfiles = JSON.parse(localStorage.getItem('ST_SMS_API_PROFILES')) || []; } catch (e) { window.__pmProfiles = []; } }
-    function saveProfiles() { try { localStorage.setItem('ST_SMS_API_PROFILES', JSON.stringify(window.__pmProfiles)); } catch (e) {} }
+    function loadProfiles() {
+      try {
+        window.__pmProfiles = JSON.parse(localStorage.getItem("ST_SMS_API_PROFILES")) || [];
+      } catch (e) {
+        window.__pmProfiles = [];
+      }
+    }
+    function saveProfiles() {
+      try {
+        localStorage.setItem("ST_SMS_API_PROFILES", JSON.stringify(window.__pmProfiles));
+      } catch (e) {
+      }
+    }
     function addOrUpdateProfile(p) {
-        if (!p.apiUrl || !p.apiKey) return;
-        const idx = window.__pmProfiles.findIndex(x => x.apiUrl === p.apiUrl && x.apiKey === p.apiKey);
-        if (idx >= 0) window.__pmProfiles[idx] = { ...window.__pmProfiles[idx], ...p, savedAt: Date.now() };
-        else window.__pmProfiles.push({ ...p, savedAt: Date.now() });
-        saveProfiles();
+      if (!p.apiUrl || !p.apiKey) return;
+      const idx = window.__pmProfiles.findIndex((x) => x.apiUrl === p.apiUrl && x.apiKey === p.apiKey);
+      if (idx >= 0) window.__pmProfiles[idx] = { ...window.__pmProfiles[idx], ...p, savedAt: Date.now() };
+      else window.__pmProfiles.push({ ...p, savedAt: Date.now() });
+      saveProfiles();
     }
-    window.__pmDeleteProfile = (idx) => { window.__pmProfiles.splice(idx, 1); saveProfiles(); window.__pmShowConfig(); };
+    window.__pmDeleteProfile = (idx) => {
+      window.__pmProfiles.splice(idx, 1);
+      saveProfiles();
+      window.__pmShowConfig();
+    };
     window.__pmPickProfile = (idx) => {
-        const p = window.__pmProfiles[idx]; if (!p) return;
-        const u = document.getElementById('pm-cfg-url'), k = document.getElementById('pm-cfg-key'), m = document.getElementById('pm-cfg-model');
-        if (u) u.value = p.apiUrl || ''; if (k) k.value = p.apiKey || ''; if (m) m.value = p.model || '';
+      const p = window.__pmProfiles[idx];
+      if (!p) return;
+      const u = document.getElementById("pm-cfg-url"), k = document.getElementById("pm-cfg-key"), m = document.getElementById("pm-cfg-model");
+      if (u) u.value = p.apiUrl || "";
+      if (k) k.value = p.apiKey || "";
+      if (m) m.value = p.model || "";
     };
-
     window.__pmSetMode = (v) => {
-        window.__pmConfig.useIndependent = !!v;
-        try { localStorage.setItem('ST_SMS_CONFIG', JSON.stringify(window.__pmConfig)); } catch (e) {}
-        const a = document.getElementById('pm-mode-main'), b = document.getElementById('pm-mode-indep'), t = document.getElementById('pm-mode-tip');
-        if (a && b) { a.classList.toggle('pm-mode-active', !v); b.classList.toggle('pm-mode-active', !!v); }
-        if (t) t.textContent = v ? '🔌 独立API' : '🏠 主API';
+      window.__pmConfig.useIndependent = !!v;
+      try {
+        localStorage.setItem("ST_SMS_CONFIG", JSON.stringify(window.__pmConfig));
+      } catch (e) {
+      }
+      const a = document.getElementById("pm-mode-main"), b = document.getElementById("pm-mode-indep"), t = document.getElementById("pm-mode-tip");
+      if (a && b) {
+        a.classList.toggle("pm-mode-active", !v);
+        b.classList.toggle("pm-mode-active", !!v);
+      }
+      if (t) t.textContent = v ? "\u{1F50C} \u72EC\u7ACBAPI" : "\u{1F3E0} \u4E3BAPI";
     };
-
-    function loadBidirectional() { try { window.__pmBidirectional = JSON.parse(localStorage.getItem('ST_SMS_BIDIRECTIONAL')) || {}; } catch (e) { window.__pmBidirectional = {}; } }
-    function saveBidirectional() { try { localStorage.setItem('ST_SMS_BIDIRECTIONAL', JSON.stringify(window.__pmBidirectional)); } catch (e) {} }
-
-    // 把 [emo:套组名:序号] 替换成描述文字，用于注入主楼上下文
+    function loadBidirectional() {
+      try {
+        window.__pmBidirectional = JSON.parse(localStorage.getItem("ST_SMS_BIDIRECTIONAL")) || {};
+      } catch (e) {
+        window.__pmBidirectional = {};
+      }
+    }
+    function saveBidirectional() {
+      try {
+        localStorage.setItem("ST_SMS_BIDIRECTIONAL", JSON.stringify(window.__pmBidirectional));
+      } catch (e) {
+      }
+    }
     function resolveEmojiText(text) {
-        return (text || '').replace(/\[emo:([^\]:]+):(\d+)\]/g, (match, setName, idx) => {
-            const set = window.__pmEmojis.find(s => s.name === setName);
-            const img = set?.images[parseInt(idx) - 1];
-            return img ? `(表情:${img.desc})` : '';
-        });
+      return (text || "").replace(/\[emo:([^\]:]+):(\d+)\]/g, (match, setName, idx) => {
+        const set = window.__pmEmojis.find((s) => s.name === setName);
+        const img = set?.images[parseInt(idx) - 1];
+        return img ? `(\u8868\u60C5:${img.desc})` : "";
+      });
     }
-
     function applyBidirectionalInjection() {
-        const c = getCtx(); if (!c || typeof c.setExtensionPrompt !== 'function') return;
-        const userName = getUserPersona().name || '用户';
-        
-        const id = getStorageId(), checked = window.__pmBidirectional[id] || [], histories = window.__pmHistories[id] || {};
-        const groups = window.__pmGroupMeta[id] || {};
-        if (!checked.length) { try { c.setExtensionPrompt(BIDIRECTIONAL_KEY, '', 0, 0, false, 0); } catch (e) {} return; }
-        const blocks = checked.map(name => {
-            const conv = (histories[name] || []).slice(-BIDIRECTIONAL_LIMIT);
-            if (!conv.length) return '';
-            if (name.startsWith('__group_')) {
-                const meta = groups[name]; if (!meta) return '';
-                const lines = conv.map(m => {
-                    const t = resolveEmojiText((m.content || '').replace(/\s*\/\s*/g, '。').replace(/\n/g, '；'));
-                    return m.role === 'user' ? `${userName}：${t}` : t;
-                }).join('\n');
-                return `【群聊"${meta.name}"（成员：${meta.members.join('、')}）的最近聊天 — 仅参与者与 ${userName} 知晓，其他角色不应知情】\n${lines}`;
-            }
-            const lines = conv.map(m => { 
-                const t = resolveEmojiText((m.content || '').replace(/\s*\/\s*/g, '。')); 
-                return m.role === 'user' ? `${userName}：${t}` : `${name}：${t}`; 
-            }).join('\n');
-            return `【与 ${name} 的短信 — 仅 ${name} 与 ${userName} 知晓】\n${lines}`;
-        }).filter(Boolean).join('\n\n');
-        if (!blocks) { try { c.setExtensionPrompt(BIDIRECTIONAL_KEY, '', 0, 0, false, 0); } catch (e) {} return; }
-        try { c.setExtensionPrompt(BIDIRECTIONAL_KEY, `[手机短信记忆 — 私密]\n${blocks}\n[结束]`, 0, 0, false, 0); } catch (e) {}
+      const c = getCtx();
+      if (!c || typeof c.setExtensionPrompt !== "function") return;
+      const userName = getUserPersona().name || "\u7528\u6237";
+      const id = getStorageId(), checked = window.__pmBidirectional[id] || [], histories = window.__pmHistories[id] || {};
+      const groups = window.__pmGroupMeta[id] || {};
+      if (!checked.length) {
+        try {
+          c.setExtensionPrompt(BIDIRECTIONAL_KEY, "", 0, 0, false, 0);
+        } catch (e) {
+        }
+        return;
+      }
+      const blocks = checked.map((name) => {
+        const conv = (histories[name] || []).slice(-BIDIRECTIONAL_LIMIT);
+        if (!conv.length) return "";
+        if (name.startsWith("__group_")) {
+          const meta = groups[name];
+          if (!meta) return "";
+          const lines2 = conv.map((m) => {
+            const t = resolveEmojiText((m.content || "").replace(/\s*\/\s*/g, "\u3002").replace(/\n/g, "\uFF1B"));
+            return m.role === "user" ? `${userName}\uFF1A${t}` : t;
+          }).join("\n");
+          return `\u3010\u7FA4\u804A"${meta.name}"\uFF08\u6210\u5458\uFF1A${meta.members.join("\u3001")}\uFF09\u7684\u6700\u8FD1\u804A\u5929 \u2014 \u4EC5\u53C2\u4E0E\u8005\u4E0E ${userName} \u77E5\u6653\uFF0C\u5176\u4ED6\u89D2\u8272\u4E0D\u5E94\u77E5\u60C5\u3011
+${lines2}`;
+        }
+        const lines = conv.map((m) => {
+          const t = resolveEmojiText((m.content || "").replace(/\s*\/\s*/g, "\u3002"));
+          return m.role === "user" ? `${userName}\uFF1A${t}` : `${name}\uFF1A${t}`;
+        }).join("\n");
+        return `\u3010\u4E0E ${name} \u7684\u77ED\u4FE1 \u2014 \u4EC5 ${name} \u4E0E ${userName} \u77E5\u6653\u3011
+${lines}`;
+      }).filter(Boolean).join("\n\n");
+      if (!blocks) {
+        try {
+          c.setExtensionPrompt(BIDIRECTIONAL_KEY, "", 0, 0, false, 0);
+        } catch (e) {
+        }
+        return;
+      }
+      try {
+        c.setExtensionPrompt(BIDIRECTIONAL_KEY, `[\u624B\u673A\u77ED\u4FE1\u8BB0\u5FC6 \u2014 \u79C1\u5BC6]
+${blocks}
+[\u7ED3\u675F]`, 0, 0, false, 0);
+      } catch (e) {
+      }
     }
-
     let __pmLastChatLen = 0;
-
     function hookGenerationEvent() {
-        if (__pmEventHooked) return;
-        const c = getCtx();
-        if (!c?.eventSource || !c?.event_types) return;
-        const et = c.event_types;
-
-        __pmLastChatLen = (c.chat || []).length;
-
-        const events = [
-            et.GENERATION_STARTED || 'generation_started',
-            et.CHAT_CHANGED || 'chat_id_changed',
-            et.SETTINGS_UPDATED || 'settings_updated',
-            et.CHATCOMPLETION_SOURCE_CHANGED || 'chatcompletion_source_changed',
-            et.OAI_PRESET_CHANGED_AFTER || 'oai_preset_changed_after',
-        ];
-        
-        events.forEach(ev => {
-            try {
-                c.eventSource.on(ev, () => {
-                    try { applyBidirectionalInjection(); } catch (e) {}
-                });
-            } catch (e) {}
-        });
-
+      if (__pmEventHooked) return;
+      const c = getCtx();
+      if (!c?.eventSource || !c?.event_types) return;
+      const et = c.event_types;
+      __pmLastChatLen = (c.chat || []).length;
+      const events = [
+        et.GENERATION_STARTED || "generation_started",
+        et.CHAT_CHANGED || "chat_id_changed",
+        et.SETTINGS_UPDATED || "settings_updated",
+        et.CHATCOMPLETION_SOURCE_CHANGED || "chatcompletion_source_changed",
+        et.OAI_PRESET_CHANGED_AFTER || "oai_preset_changed_after"
+      ];
+      events.forEach((ev) => {
         try {
-            c.eventSource.on(et.MESSAGE_RECEIVED || 'message_received', () => {
-                const currentLen = (c.chat || []).length;
-                if (currentLen > __pmLastChatLen) {
-                    __pmLastChatLen = currentLen;
-                    if (typeof window.__pmIncrementCounters === 'function') {
-                        window.__pmIncrementCounters();
-                    }
-                } else if (currentLen < __pmLastChatLen) {
-                    __pmLastChatLen = currentLen;
-                }
-            });
-            c.eventSource.on(et.CHAT_CHANGED || 'chat_id_changed', () => {
-                __pmLastChatLen = (c.chat || []).length;
-                // 修复：当酒馆主线切换角色/聊天时，强制关闭手机，防止下一次发短信存错 ID
-                if (phoneActive && typeof window.__pmEnd === 'function') {
-                    window.__pmEnd();
-                }
-            });
-        } catch (e) {}
-
-        __pmEventHooked = true;
-        console.log('[phone-mode] hooked', events.length, 'events');
+          c.eventSource.on(ev, () => {
+            try {
+              applyBidirectionalInjection();
+            } catch (e) {
+            }
+          });
+        } catch (e) {
+        }
+      });
+      try {
+        c.eventSource.on(et.MESSAGE_RECEIVED || "message_received", () => {
+          const currentLen = (c.chat || []).length;
+          if (currentLen > __pmLastChatLen) {
+            __pmLastChatLen = currentLen;
+            if (typeof window.__pmIncrementCounters === "function") {
+              window.__pmIncrementCounters();
+            }
+          } else if (currentLen < __pmLastChatLen) {
+            __pmLastChatLen = currentLen;
+          }
+        });
+        c.eventSource.on(et.CHAT_CHANGED || "chat_id_changed", () => {
+          __pmLastChatLen = (c.chat || []).length;
+          if (phoneActive && typeof window.__pmEnd === "function") {
+            window.__pmEnd();
+          }
+        });
+      } catch (e) {
+      }
+      __pmEventHooked = true;
+      console.log("[phone-mode] hooked", events.length, "events");
     }
-
     window.__pmToggleBidirectional = (name) => {
-        const id = getStorageId(), arr = window.__pmBidirectional[id] || [], idx = arr.indexOf(name);
-        if (idx >= 0) arr.splice(idx, 1);
-        else { if (arr.length >= MAX_BIDIRECTIONAL) return; arr.push(name); }
-        window.__pmBidirectional[id] = arr; saveBidirectional(); applyBidirectionalInjection(); window.__pmShowList();
+      const id = getStorageId(), arr = window.__pmBidirectional[id] || [], idx = arr.indexOf(name);
+      if (idx >= 0) arr.splice(idx, 1);
+      else {
+        if (arr.length >= MAX_BIDIRECTIONAL) return;
+        arr.push(name);
+      }
+      window.__pmBidirectional[id] = arr;
+      saveBidirectional();
+      applyBidirectionalInjection();
+      window.__pmShowList();
     };
-
     function getUserPersona() {
-        const c = getCtx();
-        if (!c) return { name: '用户', description: '' };
-        let name = c.name1 || 'User';
-        let description = '';
-
-        try {
-            const pu = c.powerUserSettings || c.power_user || window.power_user;
-            if (pu) {
-                description = pu.persona_description || pu.personaDescription || '';
-                const avatar = c.userAvatar || pu.user_avatar || pu.default_persona;
-                if (!description && avatar) {
-                    const pdMap = pu.persona_descriptions || pu.personaDescriptions;
-                    if (pdMap?.[avatar]) {
-                        const pd = pdMap[avatar];
-                        if (typeof pd === 'string') description = pd;
-                        else if (pd?.description) description = pd.description;
-                    }
-                }
+      const c = getCtx();
+      if (!c) return { name: "\u7528\u6237", description: "" };
+      let name = c.name1 || "User";
+      let description = "";
+      try {
+        const pu = c.powerUserSettings || c.power_user || window.power_user;
+        if (pu) {
+          description = pu.persona_description || pu.personaDescription || "";
+          const avatar = c.userAvatar || pu.user_avatar || pu.default_persona;
+          if (!description && avatar) {
+            const pdMap = pu.persona_descriptions || pu.personaDescriptions;
+            if (pdMap?.[avatar]) {
+              const pd = pdMap[avatar];
+              if (typeof pd === "string") description = pd;
+              else if (pd?.description) description = pd.description;
             }
-        } catch (e) {}
-
-        if (!description) {
-            try {
-                const meta = c.chatMetadata || c.chat_metadata;
-                if (meta?.persona) description = String(meta.persona);
-            } catch (e) {}
+          }
         }
-
+      } catch (e) {
+      }
+      if (!description) {
         try {
-            if (typeof c.substituteParams === 'function') {
-                const resolvedName = c.substituteParams('{{user}}');
-                if (resolvedName && resolvedName !== '{{user}}' && resolvedName.trim()) {
-                    name = resolvedName.trim();
-                }
-            }
-        } catch (e) {}
-
-        return { name, description };
+          const meta = c.chatMetadata || c.chat_metadata;
+          if (meta?.persona) description = String(meta.persona);
+        } catch (e) {
+        }
+      }
+      try {
+        if (typeof c.substituteParams === "function") {
+          const resolvedName = c.substituteParams("{{user}}");
+          if (resolvedName && resolvedName !== "{{user}}" && resolvedName.trim()) {
+            name = resolvedName.trim();
+          }
+        }
+      } catch (e) {
+      }
+      return { name, description };
     }
-
     async function gatherContext() {
-        const c = getCtx(), char = c?.characters?.[c.characterId] || {};
-        const cleanMsg = (s) => (s || '').replace(/```[\s\S]*?```/g, '').replace(/<think>[\s\S]*?<\/think>/gi, '').replace(/<[^>]+>/g, '').trim();
-        const mainChatArr = (c?.chat || []).slice(-8).map(m => ({ who: m.is_user ? '用户' : (m.name || '角色'), content: cleanMsg(m.mes || '') })).filter(m => m.content);
-        const mainChatText = mainChatArr.map(m => `${m.who}：${m.content}`).join('\n');
-        let worldBookText = '';
-        try {
-            if (typeof c?.getWorldInfoPrompt === 'function') {
-                const ctxSize = c?.powerUserSettings?.openai_max_context
-                    || c?.oai_settings?.openai_max_context
-                    || c?.maxContext
-                    || 131072;
-                const wi = await c.getWorldInfoPrompt((c.chat || []).map(m => m.mes || '').slice(-10), ctxSize, false);
-                worldBookText = wi?.worldInfoString || wi?.worldInfoBefore || '';
-                if (!worldBookText && wi && typeof wi === 'object') worldBookText = [wi.worldInfoBefore, wi.worldInfoAfter].filter(Boolean).join('\n');
-            }
-        } catch (e) {}
-        const userPersona = getUserPersona();
-        return {
-            cardDesc: char.description ?? '',
-            cardPersonality: char.personality ?? '',
-            cardScenario: char.scenario ?? '',
-            cardFirstMes: char.first_mes ?? '',
-            cardMesExample: char.mes_example ?? '',
-            mainChatText, worldBookText,
-            userName: userPersona.name,
-            userDesc: userPersona.description,
-        };
+      const c = getCtx(), char = c?.characters?.[c.characterId] || {};
+      const cleanMsg = (s) => (s || "").replace(/```[\s\S]*?```/g, "").replace(/<think>[\s\S]*?<\/think>/gi, "").replace(/<[^>]+>/g, "").trim();
+      const mainChatArr = (c?.chat || []).slice(-8).map((m) => ({ who: m.is_user ? "\u7528\u6237" : m.name || "\u89D2\u8272", content: cleanMsg(m.mes || "") })).filter((m) => m.content);
+      const mainChatText = mainChatArr.map((m) => `${m.who}\uFF1A${m.content}`).join("\n");
+      let worldBookText = "";
+      try {
+        if (typeof c?.getWorldInfoPrompt === "function") {
+          const ctxSize = c?.powerUserSettings?.openai_max_context || c?.oai_settings?.openai_max_context || c?.maxContext || 131072;
+          const wi = await c.getWorldInfoPrompt((c.chat || []).map((m) => m.mes || "").slice(-10), ctxSize, false);
+          worldBookText = wi?.worldInfoString || wi?.worldInfoBefore || "";
+          if (!worldBookText && wi && typeof wi === "object") worldBookText = [wi.worldInfoBefore, wi.worldInfoAfter].filter(Boolean).join("\n");
+        }
+      } catch (e) {
+      }
+      const userPersona = getUserPersona();
+      return {
+        cardDesc: char.description ?? "",
+        cardPersonality: char.personality ?? "",
+        cardScenario: char.scenario ?? "",
+        cardFirstMes: char.first_mes ?? "",
+        cardMesExample: char.mes_example ?? "",
+        mainChatText,
+        worldBookText,
+        userName: userPersona.name,
+        userDesc: userPersona.description
+      };
     }
-
     function bindIsland(el, handle) {
-        let isDragging = false, startX, startY, startTX = 0, startTY = 0, moved = false;
-        const getCoord = (e) => e.touches ? { x: e.touches[0].clientX, y: e.touches[0].clientY } : { x: e.clientX, y: e.clientY };
-        const getT = () => { const m = (el.style.transform || '').match(/translate\(\s*([-\d.]+)px\s*,\s*([-\d.]+)px/); return m ? { x: parseFloat(m[1]), y: parseFloat(m[2]) } : { x: 0, y: 0 }; };
-        const onStart = (e) => {
-            if (e.target.tagName === 'BUTTON') return;
-            isDragging = true; moved = false;
-            const coords = getCoord(e); startX = coords.x; startY = coords.y;
-            const t = getT(); startTX = t.x; startTY = t.y;
-            el.style.transition = 'none'; if (e.cancelable) e.preventDefault();
-        };
-        const onMove = (e) => {
-            if (!isDragging) return;
-            const coords = getCoord(e), dx = coords.x - startX, dy = coords.y - startY;
-            if (!moved && Math.abs(dx) < 5 && Math.abs(dy) < 5) return;
-            moved = true; if (e.cancelable) e.preventDefault();
-            el.style.setProperty('transform', `translate(${startTX + dx}px, ${startTY + dy}px)`, 'important');
-        };
-        const onEnd = () => { if (!isDragging) return; isDragging = false; el.style.transition = '.35s cubic-bezier(.18,.89,.32,1.2)'; if (!moved) window.__pmToggleMin(); };
-        handle.addEventListener('mousedown', onStart); window.addEventListener('mousemove', onMove); window.addEventListener('mouseup', onEnd);
-        handle.addEventListener('touchstart', onStart, { passive: false }); window.addEventListener('touchmove', onMove, { passive: false }); window.addEventListener('touchend', onEnd);
+      let isDragging = false, startX, startY, startTX = 0, startTY = 0, moved = false;
+      const getCoord = (e) => e.touches ? { x: e.touches[0].clientX, y: e.touches[0].clientY } : { x: e.clientX, y: e.clientY };
+      const getT = () => {
+        const m = (el.style.transform || "").match(/translate\(\s*([-\d.]+)px\s*,\s*([-\d.]+)px/);
+        return m ? { x: parseFloat(m[1]), y: parseFloat(m[2]) } : { x: 0, y: 0 };
+      };
+      const onStart = (e) => {
+        if (e.target.tagName === "BUTTON") return;
+        isDragging = true;
+        moved = false;
+        const coords = getCoord(e);
+        startX = coords.x;
+        startY = coords.y;
+        const t = getT();
+        startTX = t.x;
+        startTY = t.y;
+        el.style.transition = "none";
+        if (e.cancelable) e.preventDefault();
+      };
+      const onMove = (e) => {
+        if (!isDragging) return;
+        const coords = getCoord(e), dx = coords.x - startX, dy = coords.y - startY;
+        if (!moved && Math.abs(dx) < 5 && Math.abs(dy) < 5) return;
+        moved = true;
+        if (e.cancelable) e.preventDefault();
+        el.style.setProperty("transform", `translate(${startTX + dx}px, ${startTY + dy}px)`, "important");
+      };
+      const onEnd = () => {
+        if (!isDragging) return;
+        isDragging = false;
+        el.style.transition = ".35s cubic-bezier(.18,.89,.32,1.2)";
+        if (!moved) window.__pmToggleMin();
+      };
+      handle.addEventListener("mousedown", onStart);
+      window.addEventListener("mousemove", onMove);
+      window.addEventListener("mouseup", onEnd);
+      handle.addEventListener("touchstart", onStart, { passive: false });
+      window.addEventListener("touchmove", onMove, { passive: false });
+      window.addEventListener("touchend", onEnd);
     }
-
     function resolveGroupColor(name) {
-        if (!name) return null;
-        if (groupColorMap[name]) return groupColorMap[name];
-        const lower = name.toLowerCase();
-        for (const [k, v] of Object.entries(groupColorMap)) {
-            if (k.toLowerCase() === lower) return v;
-        }
-        const idx = groupMembers.findIndex(n => n.toLowerCase() === lower);
-        if (idx >= 0) return GROUP_COLORS[idx % GROUP_COLORS.length];
-        return null;
+      if (!name) return null;
+      if (groupColorMap[name]) return groupColorMap[name];
+      const lower = name.toLowerCase();
+      for (const [k, v] of Object.entries(groupColorMap)) {
+        if (k.toLowerCase() === lower) return v;
+      }
+      const idx = groupMembers.findIndex((n) => n.toLowerCase() === lower);
+      if (idx >= 0) return GROUP_COLORS[idx % GROUP_COLORS.length];
+      return null;
     }
-
-    // 字数控制提示词
     function getWordyPrompt() {
-        if (!window.__pmWordyLimit) return '';
-        return '\n\n[字数限制] 除非角色人设明确为话痨或碎嘴性格，否则每条独立消息（每个 / 分隔的片段）不得超过35个字符，超出请拆分为多条。';
+      if (!window.__pmWordyLimit) return "";
+      return "\n\n[\u5B57\u6570\u9650\u5236] \u9664\u975E\u89D2\u8272\u4EBA\u8BBE\u660E\u786E\u4E3A\u8BDD\u75E8\u6216\u788E\u5634\u6027\u683C\uFF0C\u5426\u5219\u6BCF\u6761\u72EC\u7ACB\u6D88\u606F\uFF08\u6BCF\u4E2A / \u5206\u9694\u7684\u7247\u6BB5\uFF09\u4E0D\u5F97\u8D85\u8FC735\u4E2A\u5B57\u7B26\uFF0C\u8D85\u51FA\u8BF7\u62C6\u5206\u4E3A\u591A\u6761\u3002";
     }
-
-    // 生成表情包提示词\uff0c格式 [emo:套组名:序号]
     function getEmojiPrompt(contactKey) {
-        const id = getStorageId();
-        const assignedIds = window.__pmPokeConfig[id]?.[contactKey]?.emojis || [];
-        if (!assignedIds.length) return '';
-        const sets = window.__pmEmojis.filter(s => assignedIds.includes(s.id));
-        if (!sets.length) return '';
-        const lines = sets.map(s =>
-            s.images.map((img, i) => `[emo:${s.name}:${i+1}] - ${img.desc}`).join('\n')
-        ).join('\n');
-        return `\n\n[表情包权限]
-你可以在合适时机使用以下表情包，使用格式 [emo:套组名:序号] 独行发送：\n${lines}\n请在自然语境下适当使用，严禁自生新格式。`;
-    }
+      const id = getStorageId();
+      const assignedIds = window.__pmPokeConfig[id]?.[contactKey]?.emojis || [];
+      if (!assignedIds.length) return "";
+      const sets = window.__pmEmojis.filter((s) => assignedIds.includes(s.id));
+      if (!sets.length) return "";
+      const lines = sets.map(
+        (s) => s.images.map((img, i) => `[emo:${s.name}:${i + 1}] - ${img.desc}`).join("\n")
+      ).join("\n");
+      return `
 
+[\u8868\u60C5\u5305\u6743\u9650]
+\u4F60\u53EF\u4EE5\u5728\u5408\u9002\u65F6\u673A\u4F7F\u7528\u4EE5\u4E0B\u8868\u60C5\u5305\uFF0C\u4F7F\u7528\u683C\u5F0F [emo:\u5957\u7EC4\u540D:\u5E8F\u53F7] \u72EC\u884C\u53D1\u9001\uFF1A
+${lines}
+\u8BF7\u5728\u81EA\u7136\u8BED\u5883\u4E0B\u9002\u5F53\u4F7F\u7528\uFF0C\u4E25\u7981\u81EA\u751F\u65B0\u683C\u5F0F\u3002`;
+    }
     function createBubbles(text, side, senderName) {
-        const results = [];
-        const re = new RegExp(SPECIAL_RE.source, 'gi');
-        let last = 0, m;
-        const gc = senderName && side === 'left' ? resolveGroupColor(senderName) : null;
-        const pushPlain = (str) => {
-            const plain = str.trim(); if (!plain) return;
-            if (senderName && side === 'left') {
-                const wrapper = document.createElement('div'); wrapper.className = 'pm-group-bubble-wrap';
-                const nameTag = document.createElement('div'); nameTag.className = 'pm-group-name'; nameTag.textContent = senderName;
-                if (gc) nameTag.style.color = gc.bg;
-                wrapper.appendChild(nameTag);
-                const inner = document.createElement('div'); inner.className = `pm-bubble pm-${side}`;
-                if (gc) {
-                    inner.style.setProperty('background', gc.bg, 'important');
-                    inner.style.setProperty('color', gc.text, 'important');
-                }
-                inner.innerHTML = escapeHtml(plain).replace(/\n/g, '<br>');
-                wrapper.appendChild(inner); results.push(wrapper); return;
-            }
-            const b = document.createElement('div'); b.className = `pm-bubble pm-${side}`;
-            b.innerHTML = escapeHtml(plain).replace(/\n/g, '<br>');
-            results.push(b);
-        };
-        while ((m = re.exec(text)) !== null) {
-            if (m.index > last) pushPlain(text.slice(last, m.index));
-            const kind = normalizeKeyword(m[1]);
-            const isGroupLeft = senderName && side === 'left';
-            let container;
-            if (isGroupLeft) {
-                container = document.createElement('div'); container.className = 'pm-group-bubble-wrap';
-                const nameTag = document.createElement('div'); nameTag.className = 'pm-group-name'; nameTag.textContent = senderName;
-                if (gc) nameTag.style.color = gc.bg;
-                container.appendChild(nameTag);
-            }
-            const b = document.createElement('div'); b.className = `pm-bubble pm-${side} pm-special`;
-            
-            if (kind === '转账') {
-                const amount = parseFloat(m[2]) || 0;
-                b.innerHTML = `<div class="pm-transfer-card"><div class="pm-t-icon">¥</div><div class="pm-t-info"><b>转账</b><span>¥${amount.toFixed(2)}</span></div></div>`;
-            } else if (kind === '收款') {
-                const amount = parseFloat(m[2]) || 0;
-                b.innerHTML = `<div class="pm-receive-card"><div class="pm-t-icon">¥</div><div class="pm-t-info"><b>收款</b><span>¥${amount.toFixed(2)}</span></div></div>`;
-            } else if (kind === '退还') {
-                const amount = parseFloat(m[2]) || 0;
-                b.innerHTML = `<div class="pm-refund-card"><div class="pm-t-icon">¥</div><div class="pm-t-info"><b>已退还</b><span>¥${amount.toFixed(2)}</span></div></div>`;
-            } else if (kind === '图片') {
-                b.innerHTML = `<div class="pm-img-card">🖼️ ${escapeHtml(m[2].trim())}</div>`;
-            } else {
-                const txt = m[2].trim(), len = [...txt].length;
-                let dur;
-                if (len <= 5) dur = Math.max(1, len);
-                else if (len <= 15) dur = 5 + (len - 5);
-                else if (len <= 40) dur = 15 + Math.ceil((len - 15) * 0.8);
-                else dur = Math.min(VOICE_MAX_SEC, 35 + Math.ceil((len - 40) * 0.5));
-                const width = Math.min(240, Math.max(110, 90 + Math.min(len, 30) * 4));
-                let voiceStyle = `width:${width}px`, voiceClass = `pm-voice-card pm-voice-${side}`;
-                if (isGroupLeft && gc) {
-                    voiceStyle = `width:${width}px;background:${gc.bg} !important;color:${gc.text} !important;`;
-                    voiceClass = 'pm-voice-card pm-voice-left pm-voice-group';
-                }
-                b.innerHTML = `<div class="pm-voice-wrap"><div class="${voiceClass}" style="${voiceStyle}" onclick="window.__pmToggleVoice(this)"><span class="pm-voice-icon">🎤</span><span class="pm-voice-wave"><i></i><i></i><i></i></span><span class="pm-voice-dur">${dur}"</span></div><div class="pm-voice-text" style="display:none;">${escapeHtml(txt)}</div></div>`;
-            }
-            if (container) { container.appendChild(b); results.push(container); }
-            else results.push(b);
-            last = m.index + m[0].length;
+      const results = [];
+      const re = new RegExp(SPECIAL_RE.source, "gi");
+      let last = 0, m;
+      const gc = senderName && side === "left" ? resolveGroupColor(senderName) : null;
+      const pushPlain = (str) => {
+        const plain = str.trim();
+        if (!plain) return;
+        if (senderName && side === "left") {
+          const wrapper = document.createElement("div");
+          wrapper.className = "pm-group-bubble-wrap";
+          const nameTag = document.createElement("div");
+          nameTag.className = "pm-group-name";
+          nameTag.textContent = senderName;
+          if (gc) nameTag.style.color = gc.bg;
+          wrapper.appendChild(nameTag);
+          const inner = document.createElement("div");
+          inner.className = `pm-bubble pm-${side}`;
+          if (gc) {
+            inner.style.setProperty("background", gc.bg, "important");
+            inner.style.setProperty("color", gc.text, "important");
+          }
+          inner.innerHTML = escapeHtml(plain).replace(/\n/g, "<br>");
+          wrapper.appendChild(inner);
+          results.push(wrapper);
+          return;
         }
-        if (last < text.length) pushPlain(text.slice(last));
-        if (!results.length) pushPlain(text);
-        // 最后再对所有末尾文本气泡对 [emo:...] 进行单翻替换
-        results.forEach(bubble => {
-            const els = bubble.classList?.contains('pm-group-bubble-wrap')
-                ? bubble.querySelectorAll('.pm-bubble')
-                : (bubble.classList?.contains('pm-bubble') ? [bubble] : []);
-            els.forEach(el => {
-                if (!el.innerHTML.includes('[emo:')) return;
-                el.innerHTML = el.innerHTML.replace(/\[emo:([^\]:]+):(\d+)\]/g, (match, sName, sIdx) => {
-                    const url = findEmojiUrl(sName, parseInt(sIdx));
-                    if (url) return `<img src="${url.replace(/"/g,'&quot;')}" style="max-width:98px;border-radius:8px;display:block;box-shadow:0 2px 8px rgba(0,0,0,0.15);vertical-align:middle;">`;
-                    return `<span style="font-size:12px;color:#999;">🤔[${sName}:${sIdx}]</span>`;
-                });
-                el.style.background = el.querySelector('img') && el.childNodes.length===1 ? 'transparent' : '';
-                el.style.boxShadow = el.querySelector('img') && el.childNodes.length===1 ? 'none' : '';
-                el.style.padding = el.querySelector('img') && el.childNodes.length===1 ? '0' : '';
-            });
+        const b = document.createElement("div");
+        b.className = `pm-bubble pm-${side}`;
+        b.innerHTML = escapeHtml(plain).replace(/\n/g, "<br>");
+        results.push(b);
+      };
+      while ((m = re.exec(text)) !== null) {
+        if (m.index > last) pushPlain(text.slice(last, m.index));
+        const kind = normalizeKeyword(m[1]);
+        const isGroupLeft = senderName && side === "left";
+        let container;
+        if (isGroupLeft) {
+          container = document.createElement("div");
+          container.className = "pm-group-bubble-wrap";
+          const nameTag = document.createElement("div");
+          nameTag.className = "pm-group-name";
+          nameTag.textContent = senderName;
+          if (gc) nameTag.style.color = gc.bg;
+          container.appendChild(nameTag);
+        }
+        const b = document.createElement("div");
+        b.className = `pm-bubble pm-${side} pm-special`;
+        if (kind === "\u8F6C\u8D26") {
+          const amount = parseFloat(m[2]) || 0;
+          b.innerHTML = `<div class="pm-transfer-card"><div class="pm-t-icon">\xA5</div><div class="pm-t-info"><b>\u8F6C\u8D26</b><span>\xA5${amount.toFixed(2)}</span></div></div>`;
+        } else if (kind === "\u6536\u6B3E") {
+          const amount = parseFloat(m[2]) || 0;
+          b.innerHTML = `<div class="pm-receive-card"><div class="pm-t-icon">\xA5</div><div class="pm-t-info"><b>\u6536\u6B3E</b><span>\xA5${amount.toFixed(2)}</span></div></div>`;
+        } else if (kind === "\u9000\u8FD8") {
+          const amount = parseFloat(m[2]) || 0;
+          b.innerHTML = `<div class="pm-refund-card"><div class="pm-t-icon">\xA5</div><div class="pm-t-info"><b>\u5DF2\u9000\u8FD8</b><span>\xA5${amount.toFixed(2)}</span></div></div>`;
+        } else if (kind === "\u56FE\u7247") {
+          b.innerHTML = `<div class="pm-img-card">\u{1F5BC}\uFE0F ${escapeHtml(m[2].trim())}</div>`;
+        } else {
+          const txt = m[2].trim(), len = [...txt].length;
+          let dur;
+          if (len <= 5) dur = Math.max(1, len);
+          else if (len <= 15) dur = 5 + (len - 5);
+          else if (len <= 40) dur = 15 + Math.ceil((len - 15) * 0.8);
+          else dur = Math.min(VOICE_MAX_SEC, 35 + Math.ceil((len - 40) * 0.5));
+          const width = Math.min(240, Math.max(110, 90 + Math.min(len, 30) * 4));
+          let voiceStyle = `width:${width}px`, voiceClass = `pm-voice-card pm-voice-${side}`;
+          if (isGroupLeft && gc) {
+            voiceStyle = `width:${width}px;background:${gc.bg} !important;color:${gc.text} !important;`;
+            voiceClass = "pm-voice-card pm-voice-left pm-voice-group";
+          }
+          b.innerHTML = `<div class="pm-voice-wrap"><div class="${voiceClass}" style="${voiceStyle}" onclick="window.__pmToggleVoice(this)"><span class="pm-voice-icon">\u{1F3A4}</span><span class="pm-voice-wave"><i></i><i></i><i></i></span><span class="pm-voice-dur">${dur}"</span></div><div class="pm-voice-text" style="display:none;">${escapeHtml(txt)}</div></div>`;
+        }
+        if (container) {
+          container.appendChild(b);
+          results.push(container);
+        } else results.push(b);
+        last = m.index + m[0].length;
+      }
+      if (last < text.length) pushPlain(text.slice(last));
+      if (!results.length) pushPlain(text);
+      results.forEach((bubble) => {
+        const els = bubble.classList?.contains("pm-group-bubble-wrap") ? bubble.querySelectorAll(".pm-bubble") : bubble.classList?.contains("pm-bubble") ? [bubble] : [];
+        els.forEach((el) => {
+          if (!el.innerHTML.includes("[emo:")) return;
+          el.innerHTML = el.innerHTML.replace(/\[emo:([^\]:]+):(\d+)\]/g, (match, sName, sIdx) => {
+            const url = findEmojiUrl(sName, parseInt(sIdx));
+            if (url) return `<img src="${url.replace(/"/g, "&quot;")}" style="max-width:98px;border-radius:8px;display:block;box-shadow:0 2px 8px rgba(0,0,0,0.15);vertical-align:middle;">`;
+            return `<span style="font-size:12px;color:#999;">\u{1F914}[${sName}:${sIdx}]</span>`;
+          });
+          el.style.background = el.querySelector("img") && el.childNodes.length === 1 ? "transparent" : "";
+          el.style.boxShadow = el.querySelector("img") && el.childNodes.length === 1 ? "none" : "";
+          el.style.padding = el.querySelector("img") && el.childNodes.length === 1 ? "0" : "";
         });
-        return results;
+      });
+      return results;
     }
-
     window.__pmToggleVoice = (el) => {
-        const txt = el.parentElement?.querySelector('.pm-voice-text');
-        if (txt) txt.style.display = txt.style.display === 'none' ? 'block' : 'none';
+      const txt = el.parentElement?.querySelector(".pm-voice-text");
+      if (txt) txt.style.display = txt.style.display === "none" ? "block" : "none";
     };
-
     function cleanResponse(raw) {
-        return (raw ?? '')
-            .replace(/<think>[\s\S]*?<\/think>/gi, '').replace(/<thinking>[\s\S]*?<\/thinking>/gi, '')
-            .replace(/<reasoning>[\s\S]*?<\/reasoning>/gi, '').replace(/<reflection>[\s\S]*?<\/reflection>/gi, '')
-            .replace(/<inner_thought>[\s\S]*?<\/inner_thought>/gi, '')
-            .replace(/<scene>[\s\S]*?<\/scene>/gi, '').replace(/<narration>[\s\S]*?<\/narration>/gi, '')
-            .replace(/<action>[\s\S]*?<\/action>/gi, '').replace(/```[\s\S]*?```/g, '')
-            .replace(/^.*【[^】]{2,}】.*$/gm, '').replace(/---+[\s\S]*$/g, '')
-            .replace(/<[^>]+>/g, '').trim();
+      return (raw ?? "").replace(/<think>[\s\S]*?<\/think>/gi, "").replace(/<thinking>[\s\S]*?<\/thinking>/gi, "").replace(/<reasoning>[\s\S]*?<\/reasoning>/gi, "").replace(/<reflection>[\s\S]*?<\/reflection>/gi, "").replace(/<inner_thought>[\s\S]*?<\/inner_thought>/gi, "").replace(/<scene>[\s\S]*?<\/scene>/gi, "").replace(/<narration>[\s\S]*?<\/narration>/gi, "").replace(/<action>[\s\S]*?<\/action>/gi, "").replace(/```[\s\S]*?```/g, "").replace(/^.*【[^】]{2,}】.*$/gm, "").replace(/---+[\s\S]*$/g, "").replace(/<[^>]+>/g, "").trim();
     }
-
     function splitToSentences(str, stripFn = null) {
-        const protect = (str || '').replace(/[\(（][^)）]*[\)\）]/g, m => m.replace(/\//g, '\u0001'));
-        return protect.split(/\s*\/\s*/).map(s => {
-            let t = s.replace(/\u0001/g, '/').trim();
-            if (stripFn) t = stripFn(t);
-            if (!t || t === ')' || t === '）' || t === '(' || t === '（') return '';
-            const opens = (t.match(/[（(]/g) || []).length;
-            const closes = (t.match(/[）)]/g) || []).length;
-            if (opens > closes) {
-                t += '）'.repeat(opens - closes);
-            } else if (closes > opens && opens === 0) {
-                t = t.replace(/^[)）]+\s*/, '').replace(/\s*[)）]+$/, '');
-            }
-            return t;
-        }).filter(Boolean)
-          .flatMap(s => {
-              // 把含 [emo:...] 的片段按标记边界拆成独立气泡
-              const parts = []; let lastIdx = 0, em;
-              const emoRe = /\[emo:[^\]]+\]/g;
-              emoRe.lastIndex = 0;
-              while ((em = emoRe.exec(s)) !== null) {
-                  const before = s.slice(lastIdx, em.index).trim();
-                  if (before) parts.push(before);
-                  parts.push(em[0]);
-                  lastIdx = em.index + em[0].length;
-              }
-              const after = s.slice(lastIdx).trim();
-              if (after) parts.push(after);
-              return parts.length ? parts : [s];
-          })
-          .filter(Boolean).slice(0, 15);
-    }
-
-    function parseGroupResponse(raw) {
-        let cleaned = cleanResponse(raw);
-        const lines = cleaned.split('\n').map(l => l.trim()).filter(Boolean);
-        const result = [];
-        const normName = (s) => (s || '').trim().replace(/^[【\[\(（*「『"'\s]+|[】\]\)）*「』」"'\s]+$/g, '').trim().toLowerCase();
-        const memberMap = new Map();
-        groupMembers.forEach(n => memberMap.set(normName(n), n));
-        const speakerRe = /^[\s\*【\[「『"'（\(]*(.{1,20}?)[\s\*】\]」』"'）\)]*\s*[：:]\s*([\s\S]+)$/;
-
-        const stripAllPrefix = (s) => {
-            let t = (s || '').trim();
-            const outer = t.match(/^[\(（]\s*(.{1,20}?)\s*[：:]\s*([\s\S]+?)\s*[\)）]\s*$/);
-            if (outer && memberMap.has(normName(outer[1]))) {
-                t = outer[2].trim();
-            } else {
-                for (let i = 0; i < 3; i++) {
-                    const m = t.match(speakerRe);
-                    if (m && memberMap.has(normName(m[1]))) t = m[2].trim();
-                    else break;
-                }
-            }
-            return t;
-        };
-
-        for (const line of lines) {
-            const m = line.match(speakerRe);
-            if (m && memberMap.has(normName(m[1]))) {
-                const name = memberMap.get(normName(m[1]));
-                const sentences = splitToSentences(m[2], stripAllPrefix);
-                if (sentences.length) result.push({ name, sentences });
-            } else {
-                const sentences = splitToSentences(line, stripAllPrefix);
-                if (sentences.length) {
-                    if (result.length > 0) result[result.length - 1].sentences.push(...sentences);
-                    else result.push({ name: groupMembers[0] || '???', sentences });
-                }
-            }
+      const protect = (str || "").replace(/[\(（][^)）]*[\)\）]/g, (m) => m.replace(/\//g, ""));
+      return protect.split(/\s*\/\s*/).map((s) => {
+        let t = s.replace(/\u0001/g, "/").trim();
+        if (stripFn) t = stripFn(t);
+        if (!t || t === ")" || t === "\uFF09" || t === "(" || t === "\uFF08") return "";
+        const opens = (t.match(/[（(]/g) || []).length;
+        const closes = (t.match(/[）)]/g) || []).length;
+        if (opens > closes) {
+          t += "\uFF09".repeat(opens - closes);
+        } else if (closes > opens && opens === 0) {
+          t = t.replace(/^[)）]+\s*/, "").replace(/\s*[)）]+$/, "");
         }
-        return result;
+        return t;
+      }).filter(Boolean).flatMap((s) => {
+        const parts = [];
+        let lastIdx = 0, em;
+        const emoRe = /\[emo:[^\]]+\]/g;
+        emoRe.lastIndex = 0;
+        while ((em = emoRe.exec(s)) !== null) {
+          const before = s.slice(lastIdx, em.index).trim();
+          if (before) parts.push(before);
+          parts.push(em[0]);
+          lastIdx = em.index + em[0].length;
+        }
+        const after = s.slice(lastIdx).trim();
+        if (after) parts.push(after);
+        return parts.length ? parts : [s];
+      }).filter(Boolean).slice(0, 15);
     }
-
+    function parseGroupResponse(raw) {
+      let cleaned = cleanResponse(raw);
+      const lines = cleaned.split("\n").map((l) => l.trim()).filter(Boolean);
+      const result = [];
+      const normName = (s) => (s || "").trim().replace(/^[【\[\(（*「『"'\s]+|[】\]\)）*「』」"'\s]+$/g, "").trim().toLowerCase();
+      const memberMap = /* @__PURE__ */ new Map();
+      groupMembers.forEach((n) => memberMap.set(normName(n), n));
+      const speakerRe = /^[\s\*【\[「『"'（\(]*(.{1,20}?)[\s\*】\]」』"'）\)]*\s*[：:]\s*([\s\S]+)$/;
+      const stripAllPrefix = (s) => {
+        let t = (s || "").trim();
+        const outer = t.match(/^[\(（]\s*(.{1,20}?)\s*[：:]\s*([\s\S]+?)\s*[\)）]\s*$/);
+        if (outer && memberMap.has(normName(outer[1]))) {
+          t = outer[2].trim();
+        } else {
+          for (let i = 0; i < 3; i++) {
+            const m = t.match(speakerRe);
+            if (m && memberMap.has(normName(m[1]))) t = m[2].trim();
+            else break;
+          }
+        }
+        return t;
+      };
+      for (const line of lines) {
+        const m = line.match(speakerRe);
+        if (m && memberMap.has(normName(m[1]))) {
+          const name = memberMap.get(normName(m[1]));
+          const sentences = splitToSentences(m[2], stripAllPrefix);
+          if (sentences.length) result.push({ name, sentences });
+        } else {
+          const sentences = splitToSentences(line, stripAllPrefix);
+          if (sentences.length) {
+            if (result.length > 0) result[result.length - 1].sentences.push(...sentences);
+            else result.push({ name: groupMembers[0] || "???", sentences });
+          }
+        }
+      }
+      return result;
+    }
     async function callAI(systemPrompt, userPrompt, options = {}) {
+      const cfg = window.__pmConfig;
+      const useIndep = cfg.useIndependent && cfg.apiUrl && cfg.apiKey;
+      const maxTokens = options.maxTokens || (isGroupChat ? 600 : 300);
+      if (useIndep) {
+        const { chatUrl } = normalizeApiUrls(cfg.apiUrl);
+        const messages = [];
+        if (systemPrompt) messages.push({ role: "system", content: systemPrompt });
+        messages.push({ role: "user", content: userPrompt });
+        const resp = await fetch(chatUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${cfg.apiKey}` },
+          body: JSON.stringify({
+            model: cfg.model || "gpt-4o-mini",
+            messages,
+            max_tokens: maxTokens,
+            temperature: 1.2,
+            top_p: 0.95,
+            frequency_penalty: 0.3,
+            presence_penalty: 0.3
+          })
+        });
+        if (!resp.ok) {
+          const errText = await resp.text().catch(() => "");
+          throw new Error(`HTTP ${resp.status}: ${errText.slice(0, 120)}`);
+        }
+        const json = await resp.json();
+        return json.choices?.[0]?.message?.content ?? "";
+      } else {
+        const c = getCtx();
+        if (!c) throw new Error("\u65E0\u4E0A\u4E0B\u6587");
+        const fullPrompt = systemPrompt ? `${systemPrompt}
+
+${userPrompt}` : userPrompt;
+        return await c.generateQuietPrompt(fullPrompt, false, false);
+      }
+    }
+    async function fetchSMS(userMsg, directorNote) {
+      const c = getCtx();
+      const userMsgClean = userMsg.replace(/\[emo:([^\]:]+):(\d+)\]/g, (_, setName, idxStr) => {
+        const set = (window.__pmEmojis || []).find((s) => s.name === setName);
+        const img = set?.images?.[parseInt(idxStr, 10) - 1];
+        return img?.desc ? `[\u8868\u60C5\u5305\uFF1A${img.desc}]` : "[\u8868\u60C5\u5305]";
+      }).replace(/\s{2,}/g, " ").trim();
+      if (userMsg.trim()) {
+        conversationHistory.push({ role: "user", content: userMsg });
+      }
+      const ctxData = await gatherContext();
+      const { cardDesc, cardPersonality, cardScenario, cardFirstMes, cardMesExample, mainChatText, worldBookText, userName, userDesc } = ctxData;
+      const smsHistoryText = conversationHistory.slice(-CONTEXT_LIMIT, -1).map((m) => {
+        const clean = cleanResponse(m.content);
+        return m.role === "user" ? `${userName}\uFF1A${clean}` : isGroupChat ? clean : `${currentPersona}\uFF1A${clean}`;
+      }).join("\n");
+      const userBlock = [
+        `\u7528\u6237\u540D\u5B57\uFF1A${userName}`,
+        userDesc ? `\u7528\u6237\u4EBA\u8BBE\uFF1A${userDesc}` : ""
+      ].filter(Boolean).join("\n");
+      let injectedInstruction, systemPrompt;
+      if (isGroupChat) {
+        const memberList = groupMembers.join("\u3001");
+        const groupName = groupDisplayName || `\u7FA4\u804A\uFF1A${memberList}`;
+        const groupRules = `
+[\u7FA4\u804A\u77ED\u4FE1\u6A21\u5F0F\u2014\u2014\u6700\u9AD8\u4F18\u5148\u7EA7]
+\u7FA4\u804A\u540D\u79F0\uFF1A${groupName}
+\u7FA4\u804A\u6210\u5458\uFF1A${memberList}
+\u4F60\u540C\u65F6\u626E\u6F14\u4EE5\u4E0A\u6240\u6709\u89D2\u8272\u4E0E\u7528\u6237\uFF08${userName}\uFF09\u804A\u5929\u3002
+
+\u26A0\uFE0F \u8F93\u51FA\u5FC5\u987B\u6EE1\u8DB3\u4EE5\u4E0B\u5168\u90E8\u6761\u4EF6\uFF0C\u8FDD\u53CD\u5373\u89C6\u4E3A\u65E0\u6548\uFF1A
+1. \u6BCF\u4E00\u884C\u90FD\u5FC5\u987B\u4EE5 "\u89D2\u8272\u540D\uFF1A" \u5F00\u5934\uFF08\u89D2\u8272\u540D\u5FC5\u987B\u6765\u81EA\uFF1A${memberList}\uFF09
+2. \u4E25\u7981\u8F93\u51FA\u5BF9\u754C\u9762\u3001\u7CFB\u7EDF\u3001\u5BF9\u8BDD\u672C\u8EAB\u7684\u603B\u7ED3\u6216\u63CF\u8FF0\u6027\u6587\u5B57
+3. \u4E25\u7981\u8F93\u51FA\u7C7B\u4F3C"\u73B0\u5728\u5E94\u8BE5..."\u3001"\u6211\u5DF2\u7ECF..."\u3001"\u770B\u8D77\u6765..."\u8FD9\u7C7B\u53D9\u8FF0\u6027\u53E5\u5B50
+4. \u7279\u6B8A\u683C\u5F0F\u5FC5\u987B\u5728\u540C\u4E00\u884C\u5185\u5B8C\u6574\u5199\u51FA\u4E14\u95ED\u5408\uFF1A(\u8F6C\u8D26+\u91D1\u989D) (\u6536\u6B3E+\u91D1\u989D) (\u9000\u8FD8+\u91D1\u989D) (\u56FE\u7247+\u63CF\u8FF0) (\u8BED\u97F3+\u5185\u5BB9)\u3002\u6CE8\u610F\uFF1A\u9000\u8FD8\u6307\u62D2\u7EDD\u804A\u5929\u5BF9\u8C61\u8F6C\u8D26\u3002
+5. \u7279\u6B8A\u683C\u5F0F\u62EC\u53F7\u5185\u4E25\u7981\u6362\u884C\u3001\u7F16\u53F7\uFF081. 2. 3.\uFF09\u3001\u5217\u8868
+6. \u6BCF\u6761\u6D88\u606F\u5185\u7684 / \u53EA\u7528\u4E8E\u5206\u9694\u540C\u4E00\u89D2\u8272\u7684\u591A\u6761\u77ED\u4FE1
+7. \u6BCF\u4E2A\u89D2\u8272\u6839\u636E\u81EA\u5DF1\u7684\u4EBA\u8BBE\u548C\u5F53\u524D\u5267\u60C5\u4E3B\u52A8\u51B3\u5B9A\u53D1\u8A00\u6761\u6570\uFF0C0-8\u53E5\uFF0C\u53EF\u7A7F\u63D2\u53D1\u8A00\uFF0C\u4E0D\u5FC5\u6240\u6709\u4EBA\u90FD\u8BF4\u8BDD
+8. \u4E25\u7981\u82F1\u6587\u683C\u5F0F (Voice+/Image+/Transfer+/Refund+)
+9. \u5B8C\u5168\u6C89\u6D78\u4E8E\u89D2\u8272\u8BBE\u5B9A\uFF0C\u892A\u53BBAI\u5BA2\u89C2\u8BED\u6C14\u3002\u6839\u636E\u7528\u6237\u5F15\u5BFC\u81EA\u7136\u63A8\u8FDB\u5267\u60C5\uFF0C\u5728\u7528\u6237\u660E\u786E\u53D1\u8D77\u6210\u4EBA\u6216\u6781\u7AEF\u4E92\u52A8\u524D\uFF0C\u4FDD\u6301\u7B26\u5408\u65E5\u5E38\u793E\u4EA4\u5C3A\u5EA6\u7684\u5168\u5E74\u9F84\u5BF9\u8BDD\u98CE\u683C\u3002
+
+\u2705 \u6B63\u786E\u793A\u4F8B\uFF1A
+\u5C0F\u660E\uFF1A\u6211\u5148\u5230\u4E86 / \u8FD9\u5BB6\u5E97\u771F\u4E0D\u9519
+\u5C0F\u7EA2\uFF1A\u7B49\u6211\u4E94\u5206\u949F / (\u8BED\u97F3+\u9A6C\u4E0A\u5230\u522B\u6025)
+\u5C0F\u660E\uFF1A\u597D / (\u56FE\u7247+\u521A\u62CD\u7684\u5E97\u95E8\u53E3)
+\u5C0F\u674E\uFF1A(\u9000\u8FD8+50) / \u6628\u5929\u591A\u7ED9\u7684\u94B1\u9000\u4F60\u5566
+
+\u274C \u9519\u8BEF\u793A\u4F8B\uFF08\u7EDD\u5BF9\u7981\u6B62\uFF09\uFF1A
+\u5C0F\u660E\uFF1A(\u8BED\u97F3+\u5185\u5BB9\u6709\u6362\u884C
+1. \u7B2C\u4E00\u70B9)
+\u5C0F\u7EA2\uFF1A\u754C\u9762\u73B0\u5728\u5E94\u8BE5\u6B63\u5E38\u4E86...`;
+        injectedInstruction = `${groupRules}
+
+\u3010\u7528\u6237\u4FE1\u606F\u3011
+${userBlock}
+
+${cardScenario ? "\u3010\u573A\u666F\u3011\n" + cardScenario + "\n\n" : ""}${worldBookText ? "\u3010\u4E16\u754C\u4E66\u3011\n" + worldBookText + "\n\n" : ""}\u7FA4\u804A\u5386\u53F2\uFF1A
+${smsHistoryText}
+${directorNote ? `
+[\u5267\u60C5\u5F15\u5BFC] ${directorNote}
+` : ""}
+${userMsg.trim() ? `${userName}\uFF1A${userMsgClean}` : "[\u4EC5\u6709\u5267\u60C5\u5F15\u5BFC\uFF0C\u65E0\u7528\u6237\u53D1\u8A00\uFF0C\u8BF7\u6309\u5F15\u5BFC\u63A8\u8FDB\u5267\u60C5]"}`;
+        systemPrompt = [
+          `\u4F60\u540C\u65F6\u626E\u6F14 ${memberList} \u5728\u7FA4\u804A\u300C${groupName}\u300D\u4E2D\u4E0E\u7528\u6237 ${userName} \u5BF9\u8BDD\u3002`,
+          `\u3010\u7528\u6237\u4FE1\u606F\u3011
+${userBlock}`,
+          cardDesc ? `\u3010\u89D2\u8272\u8BBE\u5B9A\u3011
+${cardDesc}` : "",
+          cardPersonality ? `\u3010\u6027\u683C\u3011
+${cardPersonality}` : "",
+          cardScenario ? `\u3010\u573A\u666F\u3011
+${cardScenario}` : "",
+          worldBookText ? `\u3010\u4E16\u754C\u4E66\u3011
+${worldBookText}` : "",
+          mainChatText ? `\u3010\u4E3B\u7EBF\u6700\u8FD1\u5BF9\u8BDD\u3011
+${mainChatText}` : "",
+          "",
+          `\u8F93\u51FA\u683C\u5F0F\uFF1A\u89D2\u8272\u540D\uFF1A\u6D88\u606F / \u6D88\u606F\uFF08\u6BCF\u4E2A\u89D2\u82720-8\u53E5\uFF0C\u6839\u636E\u4EBA\u8BBE\u548C\u5267\u60C5\u51B3\u5B9A\u662F\u5426\u53D1\u8A00\u53CA\u53D1\u8A00\u6570\u91CF\uFF09`,
+          `\u89D2\u8272\u540D\u540E\u53EA\u8DDF\u8BE5\u89D2\u8272\u7684\u8BDD\uFF0C\u4E25\u7981 "(\u89D2\u8272\u540D\uFF1Axxx)" \u8FD9\u79CD\u5D4C\u5957\u3002`,
+          `\u89D2\u8272\u53EF\u7A7F\u63D2\u53D1\u8A00\uFF0C\u4E0D\u5FC5\u6240\u6709\u4EBA\u90FD\u8BF4\u8BDD\u3002`,
+          "\u7279\u6B8A\u683C\u5F0F\uFF08\u5FC5\u987B\u4E2D\u6587\u4E14\u5355\u884C\u95ED\u5408\uFF09\uFF1A(\u8F6C\u8D26+\u91D1\u989D) (\u6536\u6B3E+\u91D1\u989D) (\u9000\u8FD8+\u91D1\u989D) (\u56FE\u7247+\u63CF\u8FF0) (\u8BED\u97F3+\u5185\u5BB9)\u3002\u6CE8\u610F\uFF1A\u9000\u8FD8\u6307\u62D2\u7EDD\u804A\u5929\u5BF9\u8C61\u8F6C\u8D26\u3002",
+          "\u7981\u6B62\u4EFB\u4F55\u6807\u7B7E\u683C\u5F0F\u65C1\u767D\u9009\u9879\u72B6\u6001\u680F\u3002"
+        ].filter(Boolean).join("\n\n");
+      } else {
+        const contextBlockMain = [
+          cardScenario ? `\u3010\u573A\u666F\u53C2\u8003\u3011
+${cardScenario}` : "",
+          cardMesExample ? `\u3010\u5BF9\u8BDD\u793A\u4F8B\u3011
+${cardMesExample}` : ""
+        ].filter(Boolean).join("\n\n");
+        injectedInstruction = `
+[\u77ED\u4FE1\u6A21\u5F0F\u6307\u4EE4\u2014\u2014\u6700\u9AD8\u4F18\u5148\u7EA7]
+\u5F53\u524D\u89D2\u8272\uFF1A${currentPersona}
+\u4EE5${currentPersona}\u7684\u8EAB\u4EFD\u7528\u624B\u673A\u77ED\u4FE1\u65B9\u5F0F\u56DE\u590D\u6B63\u5728\u4E0E\u4F60\u804A\u5929\u7684\u7528\u6237 ${userName}\u3002
+
+\u3010\u7528\u6237\u4FE1\u606F\u3011
+${userBlock}
+
+${contextBlockMain ? contextBlockMain + "\n\n" : ""}\u89C4\u5219\uFF1A
+- \u53EA\u8F93\u51FA\u77ED\u4FE1\u6587\u5B57\uFF0C3\u52308\u53E5\uFF0C\u6BCF\u53E5\u7528 / \u5206\u9694
+- \u7981\u6B62\u65C1\u767D\u5FC3\u7406\u63CF\u5199\u573A\u666F\u63CF\u8FF0\u89D2\u8272\u540D\u524D\u7F00\u6807\u7B7E\u683C\u5F0F
+- \u7279\u6B8A\u683C\u5F0F\uFF08\u4E2D\u6587\u5355\u884C\u95ED\u5408\uFF09\uFF1A(\u8F6C\u8D26+\u91D1\u989D) (\u6536\u6B3E+\u91D1\u989D) (\u9000\u8FD8+\u91D1\u989D) (\u56FE\u7247+\u63CF\u8FF0) (\u8BED\u97F3+\u5185\u5BB9)\u3002\u6CE8\u610F\uFF1A\u9000\u8FD8\u6307\u62D2\u7EDD\u804A\u5929\u5BF9\u8C61\u8F6C\u8D26\u3002
+- \u4E25\u7981\u82F1\u6587\u683C\u5F0F
+- \u5B8C\u5168\u6C89\u6D78\u4E8E\u89D2\u8272\u8BBE\u5B9A\uFF0C\u892A\u53BBAI\u52A9\u624B\u7684\u5BA2\u89C2\u8BED\u6C14
+- \u6839\u636E\u7528\u6237\u7684\u5F15\u5BFC\u81EA\u7136\u63A8\u8FDB\u5267\u60C5\uFF0C\u5728\u7528\u6237\u660E\u786E\u53D1\u8D77\u6210\u4EBA\u6216\u6781\u7AEF\u4E92\u52A8\u524D\uFF0C\u4FDD\u6301\u7B26\u5408\u65E5\u5E38\u793E\u4EA4\u5C3A\u5EA6\u7684\u5168\u5E74\u9F84\u5BF9\u8BDD\u98CE\u683C
+
+\u77ED\u4FE1\u5BF9\u8BDD\u5386\u53F2\uFF1A
+${smsHistoryText}
+${directorNote ? `
+[\u5267\u60C5\u5F15\u5BFC] ${directorNote}
+` : ""}
+${userMsg.trim() ? `${userName}\uFF1A${userMsgClean}
+${currentPersona}\uFF1A` : `[\u4EC5\u6709\u5267\u60C5\u5F15\u5BFC\uFF0C\u65E0\u7528\u6237\u53D1\u8A00\uFF0C\u8BF7\u6309\u5F15\u5BFC\u63A8\u8FDB\u5267\u60C5]
+${currentPersona}\uFF1A`}`;
+        systemPrompt = [
+          `\u4F60\u6B63\u5728\u626E\u6F14"${currentPersona}"\u901A\u8FC7\u624B\u673A\u77ED\u4FE1\u4E0E\u7528\u6237 ${userName} \u804A\u5929\u3002`,
+          `\u3010\u7528\u6237\u4FE1\u606F\u3011
+${userBlock}`,
+          cardDesc ? `\u3010\u89D2\u8272\u8BBE\u5B9A\u3011
+${cardDesc}` : "",
+          cardPersonality ? `\u3010\u6027\u683C\u3011
+${cardPersonality}` : "",
+          cardScenario ? `\u3010\u573A\u666F\u3011
+${cardScenario}` : "",
+          cardFirstMes ? `\u3010\u5F00\u573A\u767D\u53C2\u8003\u3011
+${cardFirstMes}` : "",
+          cardMesExample ? `\u3010\u5BF9\u8BDD\u793A\u4F8B\u3011
+${cardMesExample}` : "",
+          worldBookText ? `\u3010\u4E16\u754C\u4E66\u3011
+${worldBookText}` : "",
+          mainChatText ? `\u3010\u4E3B\u7EBF\u6700\u8FD1\u5BF9\u8BDD\u3011
+${mainChatText}` : "",
+          "",
+          "\u53EA\u8F93\u51FA3\u52308\u53E5\u77ED\u4FE1\uFF0C\u6BCF\u53E5\u7528 / \u5206\u9694\uFF0C\u4E0D\u5F97\u4E2D\u9014\u622A\u65AD\u3002",
+          "\u7279\u6B8A\u683C\u5F0F\uFF08\u5FC5\u987B\u4E2D\u6587\u5355\u884C\u95ED\u5408\uFF09\uFF1A(\u8F6C\u8D26+\u91D1\u989D) (\u6536\u6B3E+\u91D1\u989D) (\u9000\u8FD8+\u91D1\u989D) (\u56FE\u7247+\u63CF\u8FF0) (\u8BED\u97F3+\u5185\u5BB9)\u3002\u6CE8\u610F\uFF1A\u9000\u8FD8\u6307\u62D2\u7EDD\u804A\u5929\u5BF9\u8C61\u8F6C\u8D26\u3002",
+          "\u7981\u6B62\u4EFB\u4F55\u6807\u7B7E\u683C\u5F0F\u65C1\u767D\u9009\u9879\u72B6\u6001\u680F\u3002"
+        ].filter(Boolean).join("\n\n");
+      }
+      const antiFluff = "\u3010\u52A1\u5FC5\u76F4\u63A5\u6309\u683C\u5F0F\u8F93\u51FA\u77ED\u4FE1\u5185\u5BB9\uFF0C\u4E25\u7981\u5728\u5F00\u5934\u8F93\u51FA\u201C\u597D\u7684\u201D\u3001\u201C\u4E0B\u9762\u662F\u201D\u7B49\u4EFB\u4F55\u8BF4\u660E\u6027\u5E9F\u8BDD\uFF0C\u4E25\u7981\u8F93\u51FA\u975E\u89D2\u8272\u7684\u8BED\u8A00\u3002\u3011";
+      const targetContactKey = isGroupChat ? currentGroupKey : currentPersona;
+      const emojiPrompt = getEmojiPrompt(targetContactKey);
+      if (emojiPrompt) {
+        systemPrompt += emojiPrompt;
+        injectedInstruction += emojiPrompt;
+      }
+      const wordyPrompt = getWordyPrompt();
+      if (wordyPrompt) {
+        systemPrompt += wordyPrompt;
+        injectedInstruction += wordyPrompt;
+      }
+      systemPrompt += `
+
+${antiFluff}`;
+      injectedInstruction += `
+
+${antiFluff}`;
+      try {
         const cfg = window.__pmConfig;
         const useIndep = cfg.useIndependent && cfg.apiUrl && cfg.apiKey;
-        const maxTokens = options.maxTokens || (isGroupChat ? 600 : 300);
-
+        let raw = "";
         if (useIndep) {
-            const { chatUrl } = normalizeApiUrls(cfg.apiUrl);
-            const messages = [];
-            if (systemPrompt) messages.push({ role: 'system', content: systemPrompt });
-            messages.push({ role: 'user', content: userPrompt });
-            const resp = await fetch(chatUrl, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${cfg.apiKey}` },
-                body: JSON.stringify({
-                    model: cfg.model || 'gpt-4o-mini',
-                    messages,
-                    max_tokens: maxTokens,
-                    temperature: 1.2,
-                    top_p: 0.95,
-                    frequency_penalty: 0.3,
-                    presence_penalty: 0.3,
-                })
-            });
-            if (!resp.ok) {
-                const errText = await resp.text().catch(() => '');
-                throw new Error(`HTTP ${resp.status}: ${errText.slice(0, 120)}`);
-            }
-            const json = await resp.json();
-            return json.choices?.[0]?.message?.content ?? '';
+          const indepUserPrompt = isGroupChat ? `\u3010\u7FA4\u804A\u5386\u53F2\u3011
+${smsHistoryText}
+${directorNote ? `
+[\u5267\u60C5\u5F15\u5BFC] ${directorNote}
+` : ""}${userMsg.trim() ? `
+${userName}\uFF1A${userMsgClean}` : "\n[\u4EC5\u6709\u5267\u60C5\u5F15\u5BFC\uFF0C\u65E0\u7528\u6237\u53D1\u8A00\uFF0C\u8BF7\u6309\u5F15\u5BFC\u63A8\u8FDB\u5267\u60C5]"}` : `\u3010\u77ED\u4FE1\u5BF9\u8BDD\u5386\u53F2\u3011
+${smsHistoryText}
+${directorNote ? `
+[\u5267\u60C5\u5F15\u5BFC] ${directorNote}
+` : ""}${userMsg.trim() ? `
+${userName}\uFF1A${userMsgClean}
+${currentPersona}\uFF1A` : `
+[\u4EC5\u6709\u5267\u60C5\u5F15\u5BFC\uFF0C\u65E0\u7528\u6237\u53D1\u8A00\uFF0C\u8BF7\u6309\u5F15\u5BFC\u63A8\u8FDB\u5267\u60C5]
+${currentPersona}\uFF1A`}`;
+          raw = await callAI(systemPrompt, indepUserPrompt, { maxTokens: isGroupChat ? 600 : 300 });
         } else {
-            const c = getCtx();
-            if (!c) throw new Error('无上下文');
-            const fullPrompt = systemPrompt ? `${systemPrompt}\n\n${userPrompt}` : userPrompt;
-            return await c.generateQuietPrompt(fullPrompt, false, false);
+          raw = await callAI("", injectedInstruction, { maxTokens: isGroupChat ? 600 : 300 });
         }
-    }
-
-    async function fetchSMS(userMsg, directorNote) {
-        const c = getCtx();
-        // 存入历史前把表情包标记替换为可读描述，让 AI 理解表情含义但不学习格式
-        const userMsgClean = userMsg.replace(/\[emo:([^\]:]+):(\d+)\]/g, (_, setName, idxStr) => {
-            const set = (window.__pmEmojis || []).find(s => s.name === setName);
-            const img = set?.images?.[parseInt(idxStr, 10) - 1];
-            return img?.desc ? `[表情包：${img.desc}]` : '[表情包]';
-        }).replace(/\s{2,}/g, ' ').trim();
-        if (userMsg.trim()) {
-            conversationHistory.push({ role: 'user', content: userMsg }); // 存原始内容，保留 [emo:] 用于渲染
-        }
-        const ctxData = await gatherContext();
-        const { cardDesc, cardPersonality, cardScenario, cardFirstMes, cardMesExample, mainChatText, worldBookText, userName, userDesc } = ctxData;
-
-        const smsHistoryText = conversationHistory.slice(-CONTEXT_LIMIT, -1).map(m => {
-            const clean = cleanResponse(m.content);
-            return m.role === 'user' ? `${userName}：${clean}` : (isGroupChat ? clean : `${currentPersona}：${clean}`);
-        }).join('\n');
-
-        const userBlock = [
-            `用户名字：${userName}`,
-            userDesc ? `用户人设：${userDesc}` : ''
-        ].filter(Boolean).join('\n');
-
-        let injectedInstruction, systemPrompt;
-
+        let resultData;
         if (isGroupChat) {
-            const memberList = groupMembers.join('、');
-            const groupName = groupDisplayName || `群聊：${memberList}`;
-            const groupRules = `
-[群聊短信模式——最高优先级]
-群聊名称：${groupName}
-群聊成员：${memberList}
-你同时扮演以上所有角色与用户（${userName}）聊天。
-
-⚠️ 输出必须满足以下全部条件，违反即视为无效：
-1. 每一行都必须以 "角色名：" 开头（角色名必须来自：${memberList}）
-2. 严禁输出对界面、系统、对话本身的总结或描述性文字
-3. 严禁输出类似"现在应该..."、"我已经..."、"看起来..."这类叙述性句子
-4. 特殊格式必须在同一行内完整写出且闭合：(转账+金额) (收款+金额) (退还+金额) (图片+描述) (语音+内容)。注意：退还指拒绝聊天对象转账。
-5. 特殊格式括号内严禁换行、编号（1. 2. 3.）、列表
-6. 每条消息内的 / 只用于分隔同一角色的多条短信
-7. 每个角色根据自己的人设和当前剧情主动决定发言条数，0-8句，可穿插发言，不必所有人都说话
-8. 严禁英文格式 (Voice+/Image+/Transfer+/Refund+)
-9. 完全沉浸于角色设定，褪去AI客观语气。根据用户引导自然推进剧情，在用户明确发起成人或极端互动前，保持符合日常社交尺度的全年龄对话风格。
-
-✅ 正确示例：
-小明：我先到了 / 这家店真不错
-小红：等我五分钟 / (语音+马上到别急)
-小明：好 / (图片+刚拍的店门口)
-小李：(退还+50) / 昨天多给的钱退你啦
-
-❌ 错误示例（绝对禁止）：
-小明：(语音+内容有换行
-1. 第一点)
-小红：界面现在应该正常了...`;
-            injectedInstruction = `${groupRules}
-
-【用户信息】
-${userBlock}
-
-${cardScenario ? '【场景】\n' + cardScenario + '\n\n' : ''}${worldBookText ? '【世界书】\n' + worldBookText + '\n\n' : ''}群聊历史：
-${smsHistoryText}
-${directorNote ? `\n[剧情引导] ${directorNote}\n` : ''}
-${userMsg.trim() ? `${userName}：${userMsgClean}` : '[仅有剧情引导，无用户发言，请按引导推进剧情]'}`;
-            systemPrompt = [
-                `你同时扮演 ${memberList} 在群聊「${groupName}」中与用户 ${userName} 对话。`,
-                `【用户信息】\n${userBlock}`,
-                cardDesc ? `【角色设定】\n${cardDesc}` : '',
-                cardPersonality ? `【性格】\n${cardPersonality}` : '',
-                cardScenario ? `【场景】\n${cardScenario}` : '',
-                worldBookText ? `【世界书】\n${worldBookText}` : '',
-                mainChatText ? `【主线最近对话】\n${mainChatText}` : '',
-                '',
-                `输出格式：角色名：消息 / 消息（每个角色0-8句，根据人设和剧情决定是否发言及发言数量）`,
-                `角色名后只跟该角色的话，严禁 "(角色名：xxx)" 这种嵌套。`,
-                `角色可穿插发言，不必所有人都说话。`,
-                '特殊格式（必须中文且单行闭合）：(转账+金额) (收款+金额) (退还+金额) (图片+描述) (语音+内容)。注意：退还指拒绝聊天对象转账。',
-                '禁止任何标签格式旁白选项状态栏。',
-            ].filter(Boolean).join('\n\n');
+          const parsed = parseGroupResponse(raw);
+          if (parsed.length) {
+            const contentParts = parsed.map((p) => `${p.name}\uFF1A${p.sentences.join(" / ")}`);
+            conversationHistory.push({ role: "assistant", content: contentParts.join("\n") });
+            resultData = { type: "group", data: parsed };
+          } else {
+            console.warn("[phone-mode] \u26A0\uFE0F \u7FA4\u804A\u683C\u5F0F\u89E3\u6790\u5931\u8D25\uFF01AI \u539F\u59CB\u8FD4\u56DE\u5185\u5BB9\uFF1A", raw);
+            conversationHistory.push({ role: "assistant", content: "\uFF08\u683C\u5F0F\u65E0\u6CD5\u89E3\u6790\u6216AI\u62D2\u7B54\uFF09" });
+            const snippet = raw ? raw.substring(0, 20).replace(/\n/g, "") + "..." : "\u7A7A\u54CD\u5E94\u6216\u7EAF\u601D\u8003\u8FC7\u7A0B";
+            resultData = {
+              type: "group",
+              data: [{
+                name: "\u7CFB\u7EDF",
+                sentences: [`\uFF08\u683C\u5F0F\u89E3\u6790\u5931\u8D25\u3002AI\u539F\u8BDD: ${snippet}\uFF0C\u8BF7\u6309F12\u67E5\u770B\u63A7\u5236\u53F0\u6216\u68C0\u67E5\u662F\u5426\u89E6\u53D1\u4E86\u5B89\u5168\u5BA1\u67E5\uFF09`]
+              }]
+            };
+          }
         } else {
-            const contextBlockMain = [
-                cardScenario ? `【场景参考】\n${cardScenario}` : '',
-                cardMesExample ? `【对话示例】\n${cardMesExample}` : '',
-            ].filter(Boolean).join('\n\n');
-            injectedInstruction = `
-[短信模式指令——最高优先级]
-当前角色：${currentPersona}
-以${currentPersona}的身份用手机短信方式回复正在与你聊天的用户 ${userName}。
-
-【用户信息】
-${userBlock}
-
-${contextBlockMain ? contextBlockMain + '\n\n' : ''}规则：
-- 只输出短信文字，3到8句，每句用 / 分隔
-- 禁止旁白心理描写场景描述角色名前缀标签格式
-- 特殊格式（中文单行闭合）：(转账+金额) (收款+金额) (退还+金额) (图片+描述) (语音+内容)。注意：退还指拒绝聊天对象转账。
-- 严禁英文格式
-- 完全沉浸于角色设定，褪去AI助手的客观语气
-- 根据用户的引导自然推进剧情，在用户明确发起成人或极端互动前，保持符合日常社交尺度的全年龄对话风格
-
-短信对话历史：
-${smsHistoryText}
-${directorNote ? `\n[剧情引导] ${directorNote}\n` : ''}
-${userMsg.trim() ? `${userName}：${userMsgClean}\n${currentPersona}：` : `[仅有剧情引导，无用户发言，请按引导推进剧情]\n${currentPersona}：`}`;
-            systemPrompt = [
-                `你正在扮演"${currentPersona}"通过手机短信与用户 ${userName} 聊天。`,
-                `【用户信息】\n${userBlock}`,
-                cardDesc ? `【角色设定】\n${cardDesc}` : '',
-                cardPersonality ? `【性格】\n${cardPersonality}` : '',
-                cardScenario ? `【场景】\n${cardScenario}` : '',
-                cardFirstMes ? `【开场白参考】\n${cardFirstMes}` : '',
-                cardMesExample ? `【对话示例】\n${cardMesExample}` : '',
-                worldBookText ? `【世界书】\n${worldBookText}` : '',
-                mainChatText ? `【主线最近对话】\n${mainChatText}` : '',
-                '',
-                '只输出3到8句短信，每句用 / 分隔，不得中途截断。',
-                '特殊格式（必须中文单行闭合）：(转账+金额) (收款+金额) (退还+金额) (图片+描述) (语音+内容)。注意：退还指拒绝聊天对象转账。',
-                '禁止任何标签格式旁白选项状态栏。',
-            ].filter(Boolean).join('\n\n');
+          const clean = cleanResponse(raw);
+          let sentences = splitToSentences(clean);
+          if (!sentences.length && raw?.trim()) sentences = splitToSentences(raw.replace(/<think>[\s\S]*?<\/think>/gi, "").replace(/<[^>]+>/g, ""));
+          if (!sentences.length) sentences = !raw?.trim() ? ["\uFF08\u7A7A\u54CD\u5E94\uFF09"] : ["\uFF08\u683C\u5F0F\u65E0\u6CD5\u89E3\u6790\uFF09"];
+          conversationHistory.push({ role: "assistant", content: sentences.join(" / ") });
+          resultData = { type: "single", data: sentences };
         }
-
-        const antiFluff = '【务必直接按格式输出短信内容，严禁在开头输出“好的”、“下面是”等任何说明性废话，严禁输出非角色的语言。】';
-        // 注入表情包提示词
-        const targetContactKey = isGroupChat ? currentGroupKey : currentPersona;
-        const emojiPrompt = getEmojiPrompt(targetContactKey);
-        if (emojiPrompt) { systemPrompt += emojiPrompt; injectedInstruction += emojiPrompt; }
-        // 注入字数限制提示词
-        const wordyPrompt = getWordyPrompt();
-        if (wordyPrompt) { systemPrompt += wordyPrompt; injectedInstruction += wordyPrompt; }
-        systemPrompt += `\n\n${antiFluff}`;
-        injectedInstruction += `\n\n${antiFluff}`;
-
-        try {
-            const cfg = window.__pmConfig;
-            const useIndep = cfg.useIndependent && cfg.apiUrl && cfg.apiKey;
-            let raw = '';
-
-            if (useIndep) {
-                const indepUserPrompt = isGroupChat
-                    ? `【群聊历史】\n${smsHistoryText}\n${directorNote ? `\n[剧情引导] ${directorNote}\n` : ''}${userMsg.trim() ? `\n${userName}：${userMsgClean}` : '\n[仅有剧情引导，无用户发言，请按引导推进剧情]'}`
-                    : `【短信对话历史】\n${smsHistoryText}\n${directorNote ? `\n[剧情引导] ${directorNote}\n` : ''}${userMsg.trim() ? `\n${userName}：${userMsgClean}\n${currentPersona}：` : `\n[仅有剧情引导，无用户发言，请按引导推进剧情]\n${currentPersona}：`}`;
-                raw = await callAI(systemPrompt, indepUserPrompt, { maxTokens: isGroupChat ? 600 : 300 });
-            } else {
-                raw = await callAI('', injectedInstruction, { maxTokens: isGroupChat ? 600 : 300 });
-            }
-
-            let resultData;
-            if (isGroupChat) {
-                const parsed = parseGroupResponse(raw);
-                if (parsed.length) {
-                    const contentParts = parsed.map(p => `${p.name}：${p.sentences.join(' / ')}`);
-                    conversationHistory.push({ role: 'assistant', content: contentParts.join('\n') });
-                    resultData = { type: 'group', data: parsed };
-                } else {
-                    console.warn('[phone-mode] ⚠️ 群聊格式解析失败！AI 原始返回内容：', raw);
-                    conversationHistory.push({ role: 'assistant', content: '（格式无法解析或AI拒答）' }); 
-                    const snippet = raw ? raw.substring(0, 20).replace(/\n/g, '') + '...' : '空响应或纯思考过程';
-                    resultData = { 
-                        type: 'group', 
-                        data: [{ 
-                            name: '系统', 
-                            sentences: [`（格式解析失败。AI原话: ${snippet}，请按F12查看控制台或检查是否触发了安全审查）`] 
-                        }] 
-                    };
-                }
-            } else {
-                const clean = cleanResponse(raw);
-                let sentences = splitToSentences(clean);
-                if (!sentences.length && raw?.trim()) sentences = splitToSentences(raw.replace(/<think>[\s\S]*?<\/think>/gi, '').replace(/<[^>]+>/g, ''));
-                if (!sentences.length) sentences = !raw?.trim() ? ['（空响应）'] : ['（格式无法解析）'];
-                conversationHistory.push({ role: 'assistant', content: sentences.join(' / ') });
-                resultData = { type: 'single', data: sentences };
-            }
-
-            const id = getStorageId();
-            if (!window.__pmHistories[id]) window.__pmHistories[id] = {};
-            window.__pmHistories[id][currentPersona] = conversationHistory.slice(-SAVE_LIMIT);
-            saveHistories();
-            applyBidirectionalInjection();
-            return resultData;
-        } catch (e) {
-            console.error('[phone-mode]', e);
-            return isGroupChat
-                ? { type: 'group', data: [{ name: '系统', sentences: [`（错误：${e?.message || e}）`] }] }
-                : { type: 'single', data: [`（错误：${e?.message || e}）`] };
-        }
+        const id = getStorageId();
+        if (!window.__pmHistories[id]) window.__pmHistories[id] = {};
+        window.__pmHistories[id][currentPersona] = conversationHistory.slice(-SAVE_LIMIT);
+        saveHistories();
+        applyBidirectionalInjection();
+        return resultData;
+      } catch (e) {
+        console.error("[phone-mode]", e);
+        return isGroupChat ? { type: "group", data: [{ name: "\u7CFB\u7EDF", sentences: [`\uFF08\u9519\u8BEF\uFF1A${e?.message || e}\uFF09`] }] } : { type: "single", data: [`\uFF08\u9519\u8BEF\uFF1A${e?.message || e}\uFF09`] };
+      }
     }
-
     function addBubble(text, side, senderName, historyIndex) {
-        const list = phoneWindow?.querySelector('.pm-msg-list'); if (!list) return;
-        createBubbles(text, side, senderName).forEach(b => {
-            if (b.classList?.contains('pm-bubble')) {
-                b.dataset.side = side; b.dataset.text = text;
-                if (historyIndex !== undefined) b.dataset.historyIndex = historyIndex;
-            } else if (b.classList?.contains('pm-group-bubble-wrap')) {
-                b.dataset.side = side; b.dataset.text = text;
-                if (historyIndex !== undefined) b.dataset.historyIndex = historyIndex;
-                const inner = b.querySelector('.pm-bubble'); if (inner) {
-                    inner.dataset.side = side; inner.dataset.text = text;
-                    if (historyIndex !== undefined) inner.dataset.historyIndex = historyIndex;
-                }
-            }
-            list.appendChild(b);
-        });
-        list.scrollTop = list.scrollHeight;
+      const list = phoneWindow?.querySelector(".pm-msg-list");
+      if (!list) return;
+      createBubbles(text, side, senderName).forEach((b) => {
+        if (b.classList?.contains("pm-bubble")) {
+          b.dataset.side = side;
+          b.dataset.text = text;
+          if (historyIndex !== void 0) b.dataset.historyIndex = historyIndex;
+        } else if (b.classList?.contains("pm-group-bubble-wrap")) {
+          b.dataset.side = side;
+          b.dataset.text = text;
+          if (historyIndex !== void 0) b.dataset.historyIndex = historyIndex;
+          const inner = b.querySelector(".pm-bubble");
+          if (inner) {
+            inner.dataset.side = side;
+            inner.dataset.text = text;
+            if (historyIndex !== void 0) inner.dataset.historyIndex = historyIndex;
+          }
+        }
+        list.appendChild(b);
+      });
+      list.scrollTop = list.scrollHeight;
     }
     function addNote(text) {
-        const list = phoneWindow?.querySelector('.pm-msg-list'); if (!list) return;
-        const n = document.createElement('div'); n.className = 'pm-note'; n.textContent = text;
-        list.appendChild(n); list.scrollTop = list.scrollHeight;
+      const list = phoneWindow?.querySelector(".pm-msg-list");
+      if (!list) return;
+      const n = document.createElement("div");
+      n.className = "pm-note";
+      n.textContent = text;
+      list.appendChild(n);
+      list.scrollTop = list.scrollHeight;
     }
     function addDirector(text) {
-        const list = phoneWindow?.querySelector('.pm-msg-list'); if (!list) return;
-        const d = document.createElement('div'); d.className = 'pm-director';
-        d.innerHTML = `<span class="pm-director-icon">🎬</span><span class="pm-director-text">${escapeHtml(text)}</span>`;
-        list.appendChild(d); list.scrollTop = list.scrollHeight;
+      const list = phoneWindow?.querySelector(".pm-msg-list");
+      if (!list) return;
+      const d = document.createElement("div");
+      d.className = "pm-director";
+      d.innerHTML = `<span class="pm-director-icon">\u{1F3AC}</span><span class="pm-director-text">${escapeHtml(text)}</span>`;
+      list.appendChild(d);
+      list.scrollTop = list.scrollHeight;
     }
     function showTyping() {
-        const list = phoneWindow?.querySelector('.pm-msg-list');
-        if (!list || document.getElementById('pm-typing')) return;
-        const t = document.createElement('div'); t.id = 'pm-typing'; t.className = 'pm-bubble pm-left pm-typing-bubble';
-        t.innerHTML = '<span></span><span></span><span></span>';
-        list.appendChild(t); list.scrollTop = list.scrollHeight;
+      const list = phoneWindow?.querySelector(".pm-msg-list");
+      if (!list || document.getElementById("pm-typing")) return;
+      const t = document.createElement("div");
+      t.id = "pm-typing";
+      t.className = "pm-bubble pm-left pm-typing-bubble";
+      t.innerHTML = "<span></span><span></span><span></span>";
+      list.appendChild(t);
+      list.scrollTop = list.scrollHeight;
     }
-    function hideTyping() { document.getElementById('pm-typing')?.remove(); }
-
+    function hideTyping() {
+      document.getElementById("pm-typing")?.remove();
+    }
     window.__pmSend = async () => {
-        if (isGenerating) return;
-        const input = phoneWindow.querySelector('.pm-input');
-        const val = input.value.trim(); if (!val) return; input.value = '';
-
-        // 解析方括号引导：先把 [emo:...] 格式临时占位保护，再匹配 【...】/[...]/［...］ 为剧情引导
-        const EMO_PLACEHOLDER = '\u0002';
-        const emoSlots = [];
-        const valProtected = val.replace(/\[emo:[^\]]+\]/g, m => { emoSlots.push(m); return EMO_PLACEHOLDER + (emoSlots.length - 1) + EMO_PLACEHOLDER; });
-        const DIRECTOR_RE = /[【\[［]([^】\]］]+)[】\]］]/g;
-        const directorNotes = [];
-        let m;
-        DIRECTOR_RE.lastIndex = 0;
-        while ((m = DIRECTOR_RE.exec(valProtected)) !== null) directorNotes.push(m[1].trim());
-        const directorNote = directorNotes.join('；');
-        // 去掉所有方括号引导内容后，还原 emo 占位
-        const plainValProtected = valProtected.replace(/[【\[［][^】\]］]*[】\]］]/g, '').trim();
-        const plainVal = plainValProtected.replace(new RegExp(EMO_PLACEHOLDER + '(\\d+)' + EMO_PLACEHOLDER, 'g'), (_, i) => emoSlots[+i] || '');
-
-        // 渲染剧情引导条（居中，不是气泡）
-        if (directorNote) addDirector(directorNote);
-
-        // 如果没有正常发言也没有引导，直接返回（不可能走到这，但防御一下）
-        if (!directorNote && !plainVal) return;
-
-        const protect = plainVal.replace(/[\(（][^)）]+[\)\）]/g, m => m.replace(/\//g, '\u0001'));
-        const rawChunks = protect.split(/[/／]/).map(s => s.replace(/\u0001/g, '/').trim()).filter(Boolean);
-        // 把含 [emo:...] 的 chunk 按标记边界再拆成独立气泡
-        const userBubbles = rawChunks.flatMap(chunk => {
-            const parts = []; let lastIdx = 0, m;
-            const emoRe = /\[emo:[^\]]+\]/g;
-            while ((m = emoRe.exec(chunk)) !== null) {
-                const before = chunk.slice(lastIdx, m.index).trim();
-                if (before) parts.push(before);
-                parts.push(m[0]);
-                lastIdx = m.index + m[0].length;
-            }
-            const after = chunk.slice(lastIdx).trim();
-            if (after) parts.push(after);
-            return parts.length ? parts : [chunk];
-        });
-        // 先渲染用户气泡，fetchSMS push 后回填 historyIndex
-        const pendingUserBubbles = [];
-        userBubbles.forEach(chunk => {
-            addBubble(chunk, 'right');
-            const list = phoneWindow?.querySelector('.pm-msg-list');
-            const allBubbles = list?.querySelectorAll('.pm-bubble[data-side="right"], .pm-group-bubble-wrap[data-side="right"]');
-            if (allBubbles?.length) pendingUserBubbles.push(allBubbles[allBubbles.length - 1]);
-        });
-        isGenerating = true; input.disabled = true;
-        const btn = phoneWindow.querySelector('.pm-up-btn'); if (btn) btn.disabled = true;
-        showTyping();
-        try {
-            const result = await fetchSMS(plainVal, directorNote);
-            hideTyping();
-            // 回填用户气泡的 historyIndex
-            // 若有正常用户发言，fetchSMS 里 push 了 user+assistant，AI 在 length-1，user 在 length-2
-            // 若纯剧情引导无用户发言，fetchSMS 只 push 了 assistant，AI 在 length-1
-            const hasUserMsg = !!plainVal.trim();
-            const userHi = conversationHistory.length - (hasUserMsg ? 2 : 1);
-            pendingUserBubbles.forEach(b => { b.dataset.historyIndex = userHi; const inner = b.querySelector('.pm-bubble'); if(inner) inner.dataset.historyIndex = userHi; });
-            const aiHi = conversationHistory.length - 1;
-            if (result.type === 'group') {
-                for (const block of result.data) {
-                    for (const s of block.sentences) {
-                        await new Promise(r => setTimeout(r, 120));
-                        addBubble(s, 'left', block.name, aiHi);
-                    }
-                }
-            } else {
-                for (const s of result.data) { await new Promise(r => setTimeout(r, 150)); addBubble(s, 'left', undefined, aiHi); }
-            }
-            // 逐泡保存：渲染完毕后立即落盘，不等 finally，防止挂起丢失
-            { const _id = getStorageId(); if (!window.__pmHistories[_id]) window.__pmHistories[_id] = {};
-              const _key = isGroupChat && currentGroupKey ? currentGroupKey : currentPersona;
-              window.__pmHistories[_id][_key] = conversationHistory.slice(-SAVE_LIMIT);
-              saveHistories(); }
-        } catch(e) {
-            hideTyping();
-            addNote(`（发送失败：${e?.message || e}）`);
-            console.error('[phone-mode] __pmSend 异常', e);
-        } finally {
-            isGenerating = false; input.disabled = false; if (btn) btn.disabled = false; input.focus();
+      if (isGenerating) return;
+      const input = phoneWindow.querySelector(".pm-input");
+      const val = input.value.trim();
+      if (!val) return;
+      input.value = "";
+      const EMO_PLACEHOLDER = "";
+      const emoSlots = [];
+      const valProtected = val.replace(/\[emo:[^\]]+\]/g, (m2) => {
+        emoSlots.push(m2);
+        return EMO_PLACEHOLDER + (emoSlots.length - 1) + EMO_PLACEHOLDER;
+      });
+      const DIRECTOR_RE = /[【\[［]([^】\]］]+)[】\]］]/g;
+      const directorNotes = [];
+      let m;
+      DIRECTOR_RE.lastIndex = 0;
+      while ((m = DIRECTOR_RE.exec(valProtected)) !== null) directorNotes.push(m[1].trim());
+      const directorNote = directorNotes.join("\uFF1B");
+      const plainValProtected = valProtected.replace(/[【\[［][^】\]］]*[】\]］]/g, "").trim();
+      const plainVal = plainValProtected.replace(new RegExp(EMO_PLACEHOLDER + "(\\d+)" + EMO_PLACEHOLDER, "g"), (_, i) => emoSlots[+i] || "");
+      if (directorNote) addDirector(directorNote);
+      if (!directorNote && !plainVal) return;
+      const protect = plainVal.replace(/[\(（][^)）]+[\)\）]/g, (m2) => m2.replace(/\//g, ""));
+      const rawChunks = protect.split(/[/／]/).map((s) => s.replace(/\u0001/g, "/").trim()).filter(Boolean);
+      const userBubbles = rawChunks.flatMap((chunk) => {
+        const parts = [];
+        let lastIdx = 0, m2;
+        const emoRe = /\[emo:[^\]]+\]/g;
+        while ((m2 = emoRe.exec(chunk)) !== null) {
+          const before = chunk.slice(lastIdx, m2.index).trim();
+          if (before) parts.push(before);
+          parts.push(m2[0]);
+          lastIdx = m2.index + m2[0].length;
         }
-
-        setTimeout(() => {
-            if (!isGenerating && typeof window.__pmIncrementCounters === 'function') {
-                window.__pmIncrementCounters();
+        const after = chunk.slice(lastIdx).trim();
+        if (after) parts.push(after);
+        return parts.length ? parts : [chunk];
+      });
+      const pendingUserBubbles = [];
+      userBubbles.forEach((chunk) => {
+        addBubble(chunk, "right");
+        const list = phoneWindow?.querySelector(".pm-msg-list");
+        const allBubbles = list?.querySelectorAll('.pm-bubble[data-side="right"], .pm-group-bubble-wrap[data-side="right"]');
+        if (allBubbles?.length) pendingUserBubbles.push(allBubbles[allBubbles.length - 1]);
+      });
+      isGenerating = true;
+      input.disabled = true;
+      const btn = phoneWindow.querySelector(".pm-up-btn");
+      if (btn) btn.disabled = true;
+      showTyping();
+      try {
+        const result = await fetchSMS(plainVal, directorNote);
+        hideTyping();
+        const hasUserMsg = !!plainVal.trim();
+        const userHi = conversationHistory.length - (hasUserMsg ? 2 : 1);
+        pendingUserBubbles.forEach((b) => {
+          b.dataset.historyIndex = userHi;
+          const inner = b.querySelector(".pm-bubble");
+          if (inner) inner.dataset.historyIndex = userHi;
+        });
+        const aiHi = conversationHistory.length - 1;
+        if (result.type === "group") {
+          for (const block of result.data) {
+            for (const s of block.sentences) {
+              await new Promise((r) => setTimeout(r, 120));
+              addBubble(s, "left", block.name, aiHi);
             }
-        }, 300);
+          }
+        } else {
+          for (const s of result.data) {
+            await new Promise((r) => setTimeout(r, 150));
+            addBubble(s, "left", void 0, aiHi);
+          }
+        }
+        {
+          const _id = getStorageId();
+          if (!window.__pmHistories[_id]) window.__pmHistories[_id] = {};
+          const _key = isGroupChat && currentGroupKey ? currentGroupKey : currentPersona;
+          window.__pmHistories[_id][_key] = conversationHistory.slice(-SAVE_LIMIT);
+          saveHistories();
+        }
+      } catch (e) {
+        hideTyping();
+        addNote(`\uFF08\u53D1\u9001\u5931\u8D25\uFF1A${e?.message || e}\uFF09`);
+        console.error("[phone-mode] __pmSend \u5F02\u5E38", e);
+      } finally {
+        isGenerating = false;
+        input.disabled = false;
+        if (btn) btn.disabled = false;
+        input.focus();
+      }
+      setTimeout(() => {
+        if (!isGenerating && typeof window.__pmIncrementCounters === "function") {
+          window.__pmIncrementCounters();
+        }
+      }, 300);
     };
-  
-// 打开长文本输入界面
     window.__pmShowExpandInput = () => {
-        const smallInput = phoneWindow?.querySelector('.pm-input');
-        const currentText = smallInput ? smallInput.value : '';
-
-        makeOverlay(`
+      const smallInput = phoneWindow?.querySelector(".pm-input");
+      const currentText = smallInput ? smallInput.value : "";
+      makeOverlay(`
 <div class="pm-modal pm-modal-wide">
   <div class="pm-modal-header" style="justify-content:space-between;padding-right:14px;">
-    <b>长文本输入</b>
-    <!-- 修复问题1：点击叉号关闭时，先将长文本同步回小输入框，再销毁界面 -->
-    <span onclick="(()=>{ const ta=document.getElementById('pm-expanded-textarea'); const si=document.querySelector('.pm-input'); if(ta && si) si.value=ta.value; document.getElementById('pm-overlay').remove(); })()" class="pm-modal-close">✕</span>
+    <b>\u957F\u6587\u672C\u8F93\u5165</b>
+    <!-- \u4FEE\u590D\u95EE\u98981\uFF1A\u70B9\u51FB\u53C9\u53F7\u5173\u95ED\u65F6\uFF0C\u5148\u5C06\u957F\u6587\u672C\u540C\u6B65\u56DE\u5C0F\u8F93\u5165\u6846\uFF0C\u518D\u9500\u6BC1\u754C\u9762 -->
+    <span onclick="(()=>{ const ta=document.getElementById('pm-expanded-textarea'); const si=document.querySelector('.pm-input'); if(ta && si) si.value=ta.value; document.getElementById('pm-overlay').remove(); })()" class="pm-modal-close">\u2715</span>
   </div>
   <div style="padding:14px 16px;">
-    <textarea id="pm-expanded-textarea" class="pm-cfg-input" rows="7" 
-        style="height:auto; resize:none; font-size:14px; padding:10px; line-height:1.5; font-family:inherit;" 
-        placeholder="在这里输入多行文本...">${escapeAttr(currentText)}</textarea>
+    <textarea id="pm-expanded-textarea" class="pm-cfg-input" rows="7"
+        style="height:auto; resize:none; font-size:14px; padding:10px; line-height:1.5; font-family:inherit;"
+        placeholder="\u5728\u8FD9\u91CC\u8F93\u5165\u591A\u884C\u6587\u672C...">${escapeAttr(currentText)}</textarea>
   </div>
   <div class="pm-modal-add" style="display:flex;gap:8px;">
-    <!-- 修复问题2：点开表情包前，先将当前输入的文本同步回小输入框，防止从表情包界面返回时重新读取到旧数据而清空文本 -->
+    <!-- \u4FEE\u590D\u95EE\u98982\uFF1A\u70B9\u5F00\u8868\u60C5\u5305\u524D\uFF0C\u5148\u5C06\u5F53\u524D\u8F93\u5165\u7684\u6587\u672C\u540C\u6B65\u56DE\u5C0F\u8F93\u5165\u6846\uFF0C\u9632\u6B62\u4ECE\u8868\u60C5\u5305\u754C\u9762\u8FD4\u56DE\u65F6\u91CD\u65B0\u8BFB\u53D6\u5230\u65E7\u6570\u636E\u800C\u6E05\u7A7A\u6587\u672C -->
     <button onclick="(()=>{ const ta=document.getElementById('pm-expanded-textarea'); const si=document.querySelector('.pm-input'); if(ta && si) si.value=ta.value; window.__pmShowEmojiPicker(); })()" style="flex:2;background:#f0f0f3;color:#333;border:1px solid #ddd;border-radius:10px;padding:10px;font-size:14px;cursor:pointer;font-weight:600;">(^ ^)</button>
-    <button onclick="window.__pmConfirmExpandInput()" style="flex:8;background:#007aff;color:#fff;border:none;border-radius:10px;padding:10px;font-size:13px;cursor:pointer;font-weight:600;">发送</button>
+    <button onclick="window.__pmConfirmExpandInput()" style="flex:8;background:#007aff;color:#fff;border:none;border-radius:10px;padding:10px;font-size:13px;cursor:pointer;font-weight:600;">\u53D1\u9001</button>
   </div>
 </div>`);
-
-        setTimeout(() => {
-            const ta = document.getElementById('pm-expanded-textarea');
-            if (ta) {
-                ta.focus();
-                ta.selectionStart = ta.selectionEnd = ta.value.length;
-            }
-        }, 10);
+      setTimeout(() => {
+        const ta = document.getElementById("pm-expanded-textarea");
+        if (ta) {
+          ta.focus();
+          ta.selectionStart = ta.selectionEnd = ta.value.length;
+        }
+      }, 10);
     };
-
-    // 确认发送长文本
     window.__pmConfirmExpandInput = () => {
-        const ta = document.getElementById('pm-expanded-textarea');
-        const smallInput = phoneWindow?.querySelector('.pm-input');
-        
-        if (ta && smallInput) {
-            smallInput.value = ta.value; // 将长文本同步回底部的原输入框
-            document.getElementById('pm-overlay')?.remove();
-            
-            // 如果文本不为空，直接触发发送
-            if (ta.value.trim()) {
-                window.__pmSend();
-            }
+      const ta = document.getElementById("pm-expanded-textarea");
+      const smallInput = phoneWindow?.querySelector(".pm-input");
+      if (ta && smallInput) {
+        smallInput.value = ta.value;
+        document.getElementById("pm-overlay")?.remove();
+        if (ta.value.trim()) {
+          window.__pmSend();
         }
+      }
     };
-    // ===== 表情包管理 =====
-
     window.__pmRenderEmojiSetList = () => {
-        const container = document.getElementById('pm-emoji-set-list');
-        if (!container) return;
-        const sets = window.__pmEmojis;
-        if (!sets.length) {
-            container.innerHTML = '<div style="text-align:center;color:#aaa;font-size:13px;padding:16px 0;">暂无表情包套组</div>';
-            return;
-        }
-        container.innerHTML = sets.map((set, si) => `
+      const container = document.getElementById("pm-emoji-set-list");
+      if (!container) return;
+      const sets = window.__pmEmojis;
+      if (!sets.length) {
+        container.innerHTML = '<div style="text-align:center;color:#aaa;font-size:13px;padding:16px 0;">\u6682\u65E0\u8868\u60C5\u5305\u5957\u7EC4</div>';
+        return;
+      }
+      container.innerHTML = sets.map((set, si) => `
             <div style="background:#fafafa;border:1px solid #eee;border-radius:10px;padding:10px 12px;margin-bottom:8px;">
                 <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
                     <span style="font-weight:600;font-size:13px;color:#222;">${escapeHtml(set.name)}</span>
                     <div style="display:flex;gap:6px;">
-                        <button onclick="window.__pmAddEmojiImage(${si})" style="font-size:11px;background:#007aff;color:#fff;border:none;border-radius:6px;padding:4px 8px;cursor:pointer;">➕图片</button>
-                        <button onclick="window.__pmDeleteEmojiSet(${si})" style="font-size:11px;background:#ff3b30;color:#fff;border:none;border-radius:6px;padding:4px 8px;cursor:pointer;">删除</button>
+                        <button onclick="window.__pmAddEmojiImage(${si})" style="font-size:11px;background:#007aff;color:#fff;border:none;border-radius:6px;padding:4px 8px;cursor:pointer;">\u2795\u56FE\u7247</button>
+                        <button onclick="window.__pmDeleteEmojiSet(${si})" style="font-size:11px;background:#ff3b30;color:#fff;border:none;border-radius:6px;padding:4px 8px;cursor:pointer;">\u5220\u9664</button>
                     </div>
                 </div>
                 <div style="display:flex;flex-wrap:wrap;gap:8px;">
@@ -1344,1049 +1590,1103 @@ ${userMsg.trim() ? `${userName}：${userMsgClean}\n${currentPersona}：` : `[仅
                         <div style="position:relative;width:52px;">
                             <img src="${escapeAttr(img.url)}" style="width:52px;height:52px;object-fit:cover;border-radius:8px;border:1px solid #eee;">
                             <div style="font-size:9px;color:#888;text-align:center;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;width:52px;">${escapeHtml(img.desc)}</div>
-                            <span onclick="window.__pmDeleteEmojiImage(${si},${ii})" style="position:absolute;top:-4px;right:-4px;background:#ff3b30;color:#fff;border-radius:50%;width:16px;height:16px;font-size:10px;display:flex;align-items:center;justify-content:center;cursor:pointer;line-height:1;">×</span>
+                            <span onclick="window.__pmDeleteEmojiImage(${si},${ii})" style="position:absolute;top:-4px;right:-4px;background:#ff3b30;color:#fff;border-radius:50%;width:16px;height:16px;font-size:10px;display:flex;align-items:center;justify-content:center;cursor:pointer;line-height:1;">\xD7</span>
                         </div>
-                    `).join('')}
-                    ${set.images.length===0?'<span style="font-size:12px;color:#aaa;">暂无图片</span>':''}
+                    `).join("")}
+                    ${set.images.length === 0 ? '<span style="font-size:12px;color:#aaa;">\u6682\u65E0\u56FE\u7247</span>' : ""}
                 </div>
-                <div style="font-size:11px;color:#aaa;margin-top:4px;">${set.images.length}/20 张 · [emo:${escapeHtml(set.name)}:1~${set.images.length}]</div>
+                <div style="font-size:11px;color:#aaa;margin-top:4px;">${set.images.length}/20 \u5F20 \xB7 [emo:${escapeHtml(set.name)}:1~${set.images.length}]</div>
             </div>
-        `).join('');
+        `).join("");
     };
-
     window.__pmAddEmojiSet = () => {
-        if (window.__pmEmojis.length >= 10) return alert('最多只能创建 10 个套组。');
-        const ov = document.createElement('div'); ov.id = 'pm-overlay-sub';
-        if (typeof HTMLElement !== 'undefined' && HTMLElement.prototype.hasOwnProperty('popover')) ov.setAttribute('popover', 'manual');
-        ov.style.cssText = 'position:fixed !important; inset:0 !important; margin:0 !important; padding:0 !important; border:none !important; width:100vw !important; height:100vh !important; max-width:none !important; max-height:none !important; background:rgba(0,0,0,.45) !important; z-index:2147483648 !important; display:flex !important; align-items:center !important; justify-content:center !important;';
-        ov.innerHTML = `
+      if (window.__pmEmojis.length >= 10) return alert("\u6700\u591A\u53EA\u80FD\u521B\u5EFA 10 \u4E2A\u5957\u7EC4\u3002");
+      const ov = document.createElement("div");
+      ov.id = "pm-overlay-sub";
+      if (typeof HTMLElement !== "undefined" && HTMLElement.prototype.hasOwnProperty("popover")) ov.setAttribute("popover", "manual");
+      ov.style.cssText = "position:fixed !important; inset:0 !important; margin:0 !important; padding:0 !important; border:none !important; width:100vw !important; height:100vh !important; max-width:none !important; max-height:none !important; background:rgba(0,0,0,.45) !important; z-index:2147483648 !important; display:flex !important; align-items:center !important; justify-content:center !important;";
+      ov.innerHTML = `
 <div class="pm-modal">
   <div class="pm-modal-header">
-    <b>新建表情包套组</b>
-    <span onclick="document.getElementById('pm-overlay-sub').remove()" class="pm-modal-close">✕</span>
+    <b>\u65B0\u5EFA\u8868\u60C5\u5305\u5957\u7EC4</b>
+    <span onclick="document.getElementById('pm-overlay-sub').remove()" class="pm-modal-close">\u2715</span>
   </div>
   <div style="padding:14px 16px;display:flex;flex-direction:column;gap:10px;">
-    <input id="pm-new-set-name" class="pm-cfg-input" placeholder="套组名称（如：开心、日常、可爱）" style="padding:8px 10px;font-size:13px;border-radius:8px;border:1px solid #ddd;">
+    <input id="pm-new-set-name" class="pm-cfg-input" placeholder="\u5957\u7EC4\u540D\u79F0\uFF08\u5982\uFF1A\u5F00\u5FC3\u3001\u65E5\u5E38\u3001\u53EF\u7231\uFF09" style="padding:8px 10px;font-size:13px;border-radius:8px;border:1px solid #ddd;">
   </div>
   <div class="pm-modal-add">
-    <button onclick="window.__pmConfirmAddEmojiSet()" style="width:100%;background:#007aff;color:#fff;border:none;border-radius:10px;padding:10px;font-size:13px;cursor:pointer;font-weight:600;">确认</button>
+    <button onclick="window.__pmConfirmAddEmojiSet()" style="width:100%;background:#007aff;color:#fff;border:none;border-radius:10px;padding:10px;font-size:13px;cursor:pointer;font-weight:600;">\u786E\u8BA4</button>
   </div>
 </div>`;
-        ov.addEventListener('click', e => { if (e.target === ov) ov.remove(); });
-        document.body.appendChild(ov);
-        if (ov.showPopover) try { ov.showPopover(); } catch (e) {}
-        setTimeout(() => document.getElementById('pm-new-set-name')?.focus(), 10);
+      ov.addEventListener("click", (e) => {
+        if (e.target === ov) ov.remove();
+      });
+      document.body.appendChild(ov);
+      if (ov.showPopover) try {
+        ov.showPopover();
+      } catch (e) {
+      }
+      setTimeout(() => document.getElementById("pm-new-set-name")?.focus(), 10);
     };
-
     window.__pmConfirmAddEmojiSet = () => {
-        const name = document.getElementById('pm-new-set-name')?.value.trim();
-        if (!name) return alert('套组名称不能为空。');
-        if (window.__pmEmojis.some(s => s.name === name)) return alert('该名称已存在。');
-        window.__pmEmojis.push({ id: 'emo_' + Date.now(), name, images: [] });
-        saveEmojis();
-        document.getElementById('pm-overlay-sub')?.remove(); // 关键修改：只关闭当前弹窗
-        window.__pmRenderEmojiSetList();
+      const name = document.getElementById("pm-new-set-name")?.value.trim();
+      if (!name) return alert("\u5957\u7EC4\u540D\u79F0\u4E0D\u80FD\u4E3A\u7A7A\u3002");
+      if (window.__pmEmojis.some((s) => s.name === name)) return alert("\u8BE5\u540D\u79F0\u5DF2\u5B58\u5728\u3002");
+      window.__pmEmojis.push({ id: "emo_" + Date.now(), name, images: [] });
+      saveEmojis();
+      document.getElementById("pm-overlay-sub")?.remove();
+      window.__pmRenderEmojiSetList();
     };
-
     window.__pmDeleteEmojiSet = (si) => {
-        const set = window.__pmEmojis[si];
-        if (!set) return;
-        if (!confirm(`确认删除套组「${set.name}」？`)) return;
-        window.__pmEmojis.splice(si, 1);
-        saveEmojis();
-        window.__pmRenderEmojiSetList();
+      const set = window.__pmEmojis[si];
+      if (!set) return;
+      if (!confirm(`\u786E\u8BA4\u5220\u9664\u5957\u7EC4\u300C${set.name}\u300D\uFF1F`)) return;
+      window.__pmEmojis.splice(si, 1);
+      saveEmojis();
+      window.__pmRenderEmojiSetList();
     };
-
     window.__pmAddEmojiImage = (si) => {
-        const set = window.__pmEmojis[si];
-        if (!set) return;
-        if (set.images.length >= 20) return alert('本套组已满 20 张。');
-        
-        const ov = document.createElement('div'); ov.id = 'pm-overlay-sub';
-        if (typeof HTMLElement !== 'undefined' && HTMLElement.prototype.hasOwnProperty('popover')) ov.setAttribute('popover', 'manual');
-        ov.style.cssText = 'position:fixed !important; inset:0 !important; margin:0 !important; padding:0 !important; border:none !important; width:100vw !important; height:100vh !important; max-width:none !important; max-height:none !important; background:rgba(0,0,0,.45) !important; z-index:2147483648 !important; display:flex !important; align-items:center !important; justify-content:center !important;';
-        ov.innerHTML = `
+      const set = window.__pmEmojis[si];
+      if (!set) return;
+      if (set.images.length >= 20) return alert("\u672C\u5957\u7EC4\u5DF2\u6EE1 20 \u5F20\u3002");
+      const ov = document.createElement("div");
+      ov.id = "pm-overlay-sub";
+      if (typeof HTMLElement !== "undefined" && HTMLElement.prototype.hasOwnProperty("popover")) ov.setAttribute("popover", "manual");
+      ov.style.cssText = "position:fixed !important; inset:0 !important; margin:0 !important; padding:0 !important; border:none !important; width:100vw !important; height:100vh !important; max-width:none !important; max-height:none !important; background:rgba(0,0,0,.45) !important; z-index:2147483648 !important; display:flex !important; align-items:center !important; justify-content:center !important;";
+      ov.innerHTML = `
 <div class="pm-modal">
   <div class="pm-modal-header">
-    <b>添加图片 — ${escapeHtml(set.name)}</b>
-    <span onclick="document.getElementById('pm-overlay-sub').remove();" class="pm-modal-close">✕</span>
+    <b>\u6DFB\u52A0\u56FE\u7247 \u2014 ${escapeHtml(set.name)}</b>
+    <span onclick="document.getElementById('pm-overlay-sub').remove();" class="pm-modal-close">\u2715</span>
   </div>
   <div style="padding:14px 16px;display:flex;flex-direction:column;gap:10px;">
-    <div style="font-size:12px;color:#888;margin-bottom:2px;">图片 URL 或本地上传</div>
-    <input id="pm-emo-url" class="pm-cfg-input" placeholder="https://... 或点下方选择文件" style="padding:8px 10px;font-size:13px;border-radius:8px;border:1px solid #ddd;">
-    <button onclick="document.getElementById('pm-emo-file').click()" style="background:#f0f0f3;color:#333;border:1px solid #ddd;border-radius:8px;padding:8px 10px;font-size:12px;cursor:pointer;">📁 上传本地图片</button>
+    <div style="font-size:12px;color:#888;margin-bottom:2px;">\u56FE\u7247 URL \u6216\u672C\u5730\u4E0A\u4F20</div>
+    <input id="pm-emo-url" class="pm-cfg-input" placeholder="https://... \u6216\u70B9\u4E0B\u65B9\u9009\u62E9\u6587\u4EF6" style="padding:8px 10px;font-size:13px;border-radius:8px;border:1px solid #ddd;">
+    <button onclick="document.getElementById('pm-emo-file').click()" style="background:#f0f0f3;color:#333;border:1px solid #ddd;border-radius:8px;padding:8px 10px;font-size:12px;cursor:pointer;">\u{1F4C1} \u4E0A\u4F20\u672C\u5730\u56FE\u7247</button>
     <input id="pm-emo-file" type="file" accept="image/*" hidden onchange="window.__pmEmoFileRead(${si},this)">
     <div id="pm-emo-preview" style="display:none;text-align:center;"><img id="pm-emo-preview-img" style="max-width:120px;max-height:120px;border-radius:10px;border:1px solid #eee;"></div>
-    <input id="pm-emo-desc" class="pm-cfg-input" placeholder="图片描述（必填，如：猫猫开心）" style="padding:8px 10px;font-size:13px;border-radius:8px;border:1px solid #ddd;">
-    <div style="font-size:11px;color:#aaa;">描述将告诉 AI 这张图在什么情形下使用</div>
+    <input id="pm-emo-desc" class="pm-cfg-input" placeholder="\u56FE\u7247\u63CF\u8FF0\uFF08\u5FC5\u586B\uFF0C\u5982\uFF1A\u732B\u732B\u5F00\u5FC3\uFF09" style="padding:8px 10px;font-size:13px;border-radius:8px;border:1px solid #ddd;">
+    <div style="font-size:11px;color:#aaa;">\u63CF\u8FF0\u5C06\u544A\u8BC9 AI \u8FD9\u5F20\u56FE\u5728\u4EC0\u4E48\u60C5\u5F62\u4E0B\u4F7F\u7528</div>
   </div>
   <div class="pm-modal-add">
-    <button onclick="window.__pmConfirmAddEmojiImage(${si})" style="width:100%;background:#007aff;color:#fff;border:none;border-radius:10px;padding:10px;font-size:13px;cursor:pointer;font-weight:600;">确认添加</button>
+    <button onclick="window.__pmConfirmAddEmojiImage(${si})" style="width:100%;background:#007aff;color:#fff;border:none;border-radius:10px;padding:10px;font-size:13px;cursor:pointer;font-weight:600;">\u786E\u8BA4\u6DFB\u52A0</button>
   </div>
 </div>`;
-        ov.addEventListener('click', e => { if (e.target === ov) ov.remove(); });
-        document.body.appendChild(ov);
-        if (ov.showPopover) try { ov.showPopover(); } catch (e) {}
-        setTimeout(() => document.getElementById('pm-emo-url')?.focus(), 10);
+      ov.addEventListener("click", (e) => {
+        if (e.target === ov) ov.remove();
+      });
+      document.body.appendChild(ov);
+      if (ov.showPopover) try {
+        ov.showPopover();
+      } catch (e) {
+      }
+      setTimeout(() => document.getElementById("pm-emo-url")?.focus(), 10);
     };
-
     window.__pmEmoFileRead = (si, input) => {
-        const file = input.files?.[0]; if (!file) return;
-        const reader = new FileReader();
-        reader.onload = e => {
-            const url = e.target.result;
-            const urlInput = document.getElementById('pm-emo-url');
-            if (urlInput) urlInput.value = url;
-            const prev = document.getElementById('pm-emo-preview');
-            const prevImg = document.getElementById('pm-emo-preview-img');
-            if (prev && prevImg) { prevImg.src = url; prev.style.display = 'block'; }
-        };
-        reader.readAsDataURL(file);
+      const file = input.files?.[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const url = e.target.result;
+        const urlInput = document.getElementById("pm-emo-url");
+        if (urlInput) urlInput.value = url;
+        const prev = document.getElementById("pm-emo-preview");
+        const prevImg = document.getElementById("pm-emo-preview-img");
+        if (prev && prevImg) {
+          prevImg.src = url;
+          prev.style.display = "block";
+        }
+      };
+      reader.readAsDataURL(file);
     };
-
     window.__pmConfirmAddEmojiImage = (si) => {
-        const url = document.getElementById('pm-emo-url')?.value.trim();
-        const desc = document.getElementById('pm-emo-desc')?.value.trim();
-        if (!url) return alert('请输入图片 URL 或上传图片。');
-        if (!desc) return alert('请输入图片描述（必填）。');
-        const set = window.__pmEmojis[si];
-        if (!set) return;
-        set.images.push({ url, desc });
-        saveEmojis();
-        document.getElementById('pm-overlay-sub')?.remove(); // 关键修改：只关闭当前弹窗
-        window.__pmRenderEmojiSetList();
+      const url = document.getElementById("pm-emo-url")?.value.trim();
+      const desc = document.getElementById("pm-emo-desc")?.value.trim();
+      if (!url) return alert("\u8BF7\u8F93\u5165\u56FE\u7247 URL \u6216\u4E0A\u4F20\u56FE\u7247\u3002");
+      if (!desc) return alert("\u8BF7\u8F93\u5165\u56FE\u7247\u63CF\u8FF0\uFF08\u5FC5\u586B\uFF09\u3002");
+      const set = window.__pmEmojis[si];
+      if (!set) return;
+      set.images.push({ url, desc });
+      saveEmojis();
+      document.getElementById("pm-overlay-sub")?.remove();
+      window.__pmRenderEmojiSetList();
     };
-
     window.__pmDeleteEmojiImage = (si, ii) => {
-        const set = window.__pmEmojis[si];
-        if (!set) return;
-        set.images.splice(ii, 1);
-        saveEmojis();
-        window.__pmRenderEmojiSetList();
+      const set = window.__pmEmojis[si];
+      if (!set) return;
+      set.images.splice(ii, 1);
+      saveEmojis();
+      window.__pmRenderEmojiSetList();
     };
-
     window.__pmShowEmojiPicker = () => {
-        if (!window.__pmEmojis.length) return alert('\xe8\xbf\x98\xe6\xb2\xa1\xe6\x9c\x89\xe8\xa1\xa8\xe6\x83\x85\xe5\x8c\x85\xef\xbc\x81\xe8\xaf\xb7\xe5\x85\x88\xe5\x8e\xbb\xe3\x80\x90\xe8\xae\xbe\xe7\xbd\xae-\xe5\x85\xb6\xe4\xbb\x96\xe3\x80\x91\xe4\xb8\xad\xe6\xb7\xbb\xe5\x8a\xa0\xe3\x80\x82');
-        const ta = document.getElementById('pm-expanded-textarea');
-        window.__pmTempText = ta ? ta.value : '';
-        let activeSetIdx = 0;
-
-        function renderPicker() {
-            const sets = window.__pmEmojis;
-            const set = sets[activeSetIdx] || sets[0];
-            if (!set) return;
-            const dotsHtml = sets.length > 1 ? `<div style="display:flex;justify-content:center;gap:8px;padding:8px 0 4px;">${
-                sets.map((s, i) => `<div onclick="window.__pmEmojiSetDot(${i})" style="width:8px;height:8px;border-radius:50%;cursor:pointer;background:${i===activeSetIdx?'#007aff':'#ddd'};transition:background 0.2s;"></div>`).join('')
-            }</div>` : '';
-            const imgsHtml = set.images.length ? set.images.map((img, i) => `
-                <div onclick="window.__pmInsertEmoji('[emo:${escapeAttr(set.name)}:${i+1}]')"
+      if (!window.__pmEmojis.length) return alert("\xE8\xBF\x98\xE6\xB2\xA1\xE6\x9C\x89\xE8\xA1\xA8\xE6\x83\x85\xE5\x8C\x85\xEF\xBC\x81\xE8\xAF\xB7\xE5\x85\x88\xE5\x8E\xBB\xE3\x80\x90\xE8\xAE\xBE\xE7\xBD\xAE-\xE5\x85\xB6\xE4\xBB\x96\xE3\x80\x91\xE4\xB8\xAD\xE6\xB7\xBB\xE5\x8A\xA0\xE3\x80\x82");
+      const ta = document.getElementById("pm-expanded-textarea");
+      window.__pmTempText = ta ? ta.value : "";
+      let activeSetIdx = 0;
+      function renderPicker() {
+        const sets2 = window.__pmEmojis;
+        const set = sets2[activeSetIdx] || sets2[0];
+        if (!set) return;
+        const dotsHtml = sets2.length > 1 ? `<div style="display:flex;justify-content:center;gap:8px;padding:8px 0 4px;">${sets2.map((s, i) => `<div onclick="window.__pmEmojiSetDot(${i})" style="width:8px;height:8px;border-radius:50%;cursor:pointer;background:${i === activeSetIdx ? "#007aff" : "#ddd"};transition:background 0.2s;"></div>`).join("")}</div>` : "";
+        const imgsHtml = set.images.length ? set.images.map((img, i) => `
+                <div onclick="window.__pmInsertEmoji('[emo:${escapeAttr(set.name)}:${i + 1}]')"
                      style="cursor:pointer;width:60px;display:flex;flex-direction:column;align-items:center;gap:4px;">
                     <img src="${escapeAttr(img.url)}" style="width:50px;height:50px;object-fit:cover;border-radius:8px;box-shadow:0 2px 6px rgba(0,0,0,0.1);">
                     <span style="font-size:10px;color:#666;width:100%;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(img.desc)}</span>
-                </div>`).join('') : `<div style="text-align:center;color:#999;font-size:12px;padding:20px 0;">\xe6\x9c\xac\xe5\xa5\x97\xe6\x9a\x82\xe6\x97\xa0\xe5\x9b\xbe\xe7\x89\x87</div>`;
-            const el = document.getElementById('pm-emoji-picker-inner');
-            if (el) {
-                el.querySelector('.pm-emoji-set-label').textContent = set.name + ' (' + set.images.length + ')';
-                el.querySelector('.pm-emoji-imgs').innerHTML = imgsHtml;
-                el.querySelector('.pm-emoji-dots').innerHTML = dotsHtml;
-                el.querySelectorAll('.pm-emoji-set-dot-btn').forEach((d,i)=>d.style.background=i===activeSetIdx?'#007aff':'#ddd');
-            }
+                </div>`).join("") : `<div style="text-align:center;color:#999;font-size:12px;padding:20px 0;">\xE6\x9C\xAC\xE5\xA5\x97\xE6\x9A\x82\xE6\x97\xA0\xE5\x9B\xBE\xE7\x89\x87</div>`;
+        const el = document.getElementById("pm-emoji-picker-inner");
+        if (el) {
+          el.querySelector(".pm-emoji-set-label").textContent = set.name + " (" + set.images.length + ")";
+          el.querySelector(".pm-emoji-imgs").innerHTML = imgsHtml;
+          el.querySelector(".pm-emoji-dots").innerHTML = dotsHtml;
+          el.querySelectorAll(".pm-emoji-set-dot-btn").forEach((d, i) => d.style.background = i === activeSetIdx ? "#007aff" : "#ddd");
         }
-
-        window.__pmEmojiSetDot = (idx) => { activeSetIdx = idx; renderPicker(); };
-
-        const sets = window.__pmEmojis;
-        const set0 = sets[0];
-        const initialImgs = set0?.images.length ? set0.images.map((img,i)=>`
-            <div onclick="window.__pmInsertEmoji('[emo:${escapeAttr(set0.name)}:${i+1}]')"
+      }
+      window.__pmEmojiSetDot = (idx) => {
+        activeSetIdx = idx;
+        renderPicker();
+      };
+      const sets = window.__pmEmojis;
+      const set0 = sets[0];
+      const initialImgs = set0?.images.length ? set0.images.map((img, i) => `
+            <div onclick="window.__pmInsertEmoji('[emo:${escapeAttr(set0.name)}:${i + 1}]')"
                  style="cursor:pointer;width:60px;display:flex;flex-direction:column;align-items:center;gap:4px;">
                 <img src="${escapeAttr(img.url)}" style="width:50px;height:50px;object-fit:cover;border-radius:8px;box-shadow:0 2px 6px rgba(0,0,0,0.1);">
                 <span style="font-size:10px;color:#666;width:100%;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(img.desc)}</span>
-            </div>`).join('') : `<div style="text-align:center;color:#999;font-size:12px;padding:20px 0;">\xe6\x9c\xac\xe5\xa5\x97\xe6\x9a\x82\xe6\x97\xa0\xe5\x9b\xbe\xe7\x89\x87</div>`;
-        const initialDots = sets.length > 1 ? `<div style="display:flex;justify-content:center;gap:8px;padding:8px 0 4px;">${
-            sets.map((s,i) => `<div onclick="window.__pmEmojiSetDot(${i})" style="width:8px;height:8px;border-radius:50%;cursor:pointer;background:${i===0?'#007aff':'#ddd'};"></div>`).join('')
-        }</div>` : '';
-
-        makeOverlay(`
+            </div>`).join("") : `<div style="text-align:center;color:#999;font-size:12px;padding:20px 0;">\xE6\x9C\xAC\xE5\xA5\x97\xE6\x9A\x82\xE6\x97\xA0\xE5\x9B\xBE\xE7\x89\x87</div>`;
+      const initialDots = sets.length > 1 ? `<div style="display:flex;justify-content:center;gap:8px;padding:8px 0 4px;">${sets.map((s, i) => `<div onclick="window.__pmEmojiSetDot(${i})" style="width:8px;height:8px;border-radius:50%;cursor:pointer;background:${i === 0 ? "#007aff" : "#ddd"};"></div>`).join("")}</div>` : "";
+      makeOverlay(`
 <div class="pm-modal pm-modal-wide" id="pm-emoji-picker-inner">
   <div class="pm-modal-header" style="justify-content:space-between;padding-right:14px;">
-    <b class="pm-emoji-set-label">${escapeHtml(set0?.name||'')} (${set0?.images.length||0})</b>
-    <span onclick="document.getElementById('pm-overlay').remove();window.__pmShowExpandInput();" class="pm-modal-close">✕</span>
+    <b class="pm-emoji-set-label">${escapeHtml(set0?.name || "")} (${set0?.images.length || 0})</b>
+    <span onclick="document.getElementById('pm-overlay').remove();window.__pmShowExpandInput();" class="pm-modal-close">\u2715</span>
   </div>
   <div class="pm-emoji-imgs" id="pm-emoji-imgs-area" style="padding:12px 14px;overflow-y:auto;max-height:340px;display:flex;flex-wrap:wrap;gap:10px;justify-content:flex-start;touch-action:pan-y pinch-zoom;">${initialImgs}</div>
   <div class="pm-emoji-dots">${initialDots}</div>
 </div>`);
-
-        // 为表情包图片区域绑定左右滑动切换套组
-        const pickerInner = document.getElementById('pm-emoji-picker-inner');
-        if (pickerInner && sets.length > 1) {
-            const imgsArea = pickerInner.querySelector('#pm-emoji-imgs-area');
-            if (imgsArea) {
-                let swipeStartX = 0, swipeStartY = 0, swipeMoved = false;
-                imgsArea.addEventListener('touchstart', (e) => {
-                    swipeStartX = e.touches[0].clientX;
-                    swipeStartY = e.touches[0].clientY;
-                    swipeMoved = false;
-                }, { passive: true });
-                imgsArea.addEventListener('touchmove', (e) => {
-                    const dx = e.touches[0].clientX - swipeStartX;
-                    const dy = e.touches[0].clientY - swipeStartY;
-                    // 横向滑动幅度大于纵向时标记为横滑，阻止页面滚动
-                    if (!swipeMoved && Math.abs(dx) > Math.abs(dy) + 5) {
-                        swipeMoved = true;
-                    }
-                    if (swipeMoved && e.cancelable) e.preventDefault();
-                }, { passive: false });
-                imgsArea.addEventListener('touchend', (e) => {
-                    const dx = e.changedTouches[0].clientX - swipeStartX;
-                    const dy = e.changedTouches[0].clientY - swipeStartY;
-                    if (Math.abs(dx) > 40 && Math.abs(dx) > Math.abs(dy) * 1.5) {
-                        if (dx < 0) {
-                            // 左滑 → 下一套组
-                            activeSetIdx = (activeSetIdx + 1) % sets.length;
-                        } else {
-                            // 右滑 → 上一套组
-                            activeSetIdx = (activeSetIdx - 1 + sets.length) % sets.length;
-                        }
-                        renderPicker();
-                    }
-                }, { passive: true });
+      const pickerInner = document.getElementById("pm-emoji-picker-inner");
+      if (pickerInner && sets.length > 1) {
+        const imgsArea = pickerInner.querySelector("#pm-emoji-imgs-area");
+        if (imgsArea) {
+          let swipeStartX = 0, swipeStartY = 0, swipeMoved = false;
+          imgsArea.addEventListener("touchstart", (e) => {
+            swipeStartX = e.touches[0].clientX;
+            swipeStartY = e.touches[0].clientY;
+            swipeMoved = false;
+          }, { passive: true });
+          imgsArea.addEventListener("touchmove", (e) => {
+            const dx = e.touches[0].clientX - swipeStartX;
+            const dy = e.touches[0].clientY - swipeStartY;
+            if (!swipeMoved && Math.abs(dx) > Math.abs(dy) + 5) {
+              swipeMoved = true;
             }
+            if (swipeMoved && e.cancelable) e.preventDefault();
+          }, { passive: false });
+          imgsArea.addEventListener("touchend", (e) => {
+            const dx = e.changedTouches[0].clientX - swipeStartX;
+            const dy = e.changedTouches[0].clientY - swipeStartY;
+            if (Math.abs(dx) > 40 && Math.abs(dx) > Math.abs(dy) * 1.5) {
+              if (dx < 0) {
+                activeSetIdx = (activeSetIdx + 1) % sets.length;
+              } else {
+                activeSetIdx = (activeSetIdx - 1 + sets.length) % sets.length;
+              }
+              renderPicker();
+            }
+          }, { passive: true });
         }
+      }
     };
-
     window.__pmInsertEmoji = (code) => {
-        const text = window.__pmTempText || '';
-        document.getElementById('pm-overlay').remove();
-        window.__pmShowExpandInput();
-        const ta = document.getElementById('pm-expanded-textarea');
-        if (ta) {
-            const sep = (text && !text.endsWith(' ') && !text.endsWith('\n')) ? '' : '';
-            ta.value = text + sep + code + ' ';
-            window.__pmTempText = ta.value;
-            ta.focus();
-            ta.selectionStart = ta.selectionEnd = ta.value.length;
-        }
+      const text = window.__pmTempText || "";
+      document.getElementById("pm-overlay").remove();
+      window.__pmShowExpandInput();
+      const ta = document.getElementById("pm-expanded-textarea");
+      if (ta) {
+        const sep = text && !text.endsWith(" ") && !text.endsWith("\n") ? "" : "";
+        ta.value = text + sep + code + " ";
+        window.__pmTempText = ta.value;
+        ta.focus();
+        ta.selectionStart = ta.selectionEnd = ta.value.length;
+      }
     };
-
     window.__pmIncrementCounters = () => {
-        const id = getStorageId();
-        const configs = window.__pmPokeConfig[id];
-        if (!configs) return;
-
-        let updated = false;
-        const toPoke = [];
-
-        for (const [contact, config] of Object.entries(configs)) {
-            if (config?.autoPoke?.enabled) {
-                config.autoPoke.counter = (config.autoPoke.counter || 0) + 1;
-                updated = true;
-                if (config.autoPoke.counter >= config.autoPoke.interval) {
-                    config.autoPoke.counter = 0;
-                    toPoke.push(contact);
-                }
-            }
+      const id = getStorageId();
+      const configs = window.__pmPokeConfig[id];
+      if (!configs) return;
+      let updated = false;
+      const toPoke = [];
+      for (const [contact, config] of Object.entries(configs)) {
+        if (config?.autoPoke?.enabled) {
+          config.autoPoke.counter = (config.autoPoke.counter || 0) + 1;
+          updated = true;
+          if (config.autoPoke.counter >= config.autoPoke.interval) {
+            config.autoPoke.counter = 0;
+            toPoke.push(contact);
+          }
         }
-
-        if (updated) {
-            savePokeConfig();
-            const counterEl = document.getElementById('pm-poke-counter');
-            if (counterEl && configs[currentPersona]) counterEl.textContent = configs[currentPersona].autoPoke.counter;
-            const groupCounterEl = document.getElementById('pm-poke-counter-group');
-            if (groupCounterEl && currentGroupKey && configs[currentGroupKey]) groupCounterEl.textContent = configs[currentGroupKey].autoPoke.counter;
-        }
-
-        if (toPoke.length > 0) {
-            (async () => {
-                for (const contact of toPoke) { await window.__pmAutoPoke(contact); }
-            })();
-        }
+      }
+      if (updated) {
+        savePokeConfig();
+        const counterEl = document.getElementById("pm-poke-counter");
+        if (counterEl && configs[currentPersona]) counterEl.textContent = configs[currentPersona].autoPoke.counter;
+        const groupCounterEl = document.getElementById("pm-poke-counter-group");
+        if (groupCounterEl && currentGroupKey && configs[currentGroupKey]) groupCounterEl.textContent = configs[currentGroupKey].autoPoke.counter;
+      }
+      if (toPoke.length > 0) {
+        (async () => {
+          for (const contact of toPoke) {
+            await window.__pmAutoPoke(contact);
+          }
+        })();
+      }
     };
-
     window.__pmAutoPoke = async (contactName) => {
-        if (isGenerating) return;
-        isGenerating = true;
+      if (isGenerating) return;
+      isGenerating = true;
+      const id = getStorageId();
+      const groupMeta = window.__pmGroupMeta[id]?.[contactName];
+      const isGroup = !!groupMeta;
+      const isActiveView = phoneActive && (isGroup && currentGroupKey === contactName || !isGroup && currentPersona === contactName);
+      if (isActiveView) {
+        const input = phoneWindow?.querySelector(".pm-input");
+        const btn = phoneWindow?.querySelector(".pm-up-btn");
+        if (input) input.disabled = true;
+        if (btn) btn.disabled = true;
+        showTyping();
+      }
+      const ctxData = await gatherContext();
+      const { cardDesc, cardPersonality, cardScenario, cardMesExample, mainChatText, worldBookText, userName, userDesc } = ctxData;
+      const userBlock = [`\u7528\u6237\u540D\u5B57\uFF1A${userName}`, userDesc ? `\u7528\u6237\u4EBA\u8BBE\uFF1A${userDesc}` : ""].filter(Boolean).join("\n");
+      let targetHistory = window.__pmHistories[id]?.[contactName] || [];
+      const smsHistoryText = targetHistory.slice(-CONTEXT_LIMIT).map((m) => {
+        const clean = cleanResponse(m.content);
+        return m.role === "user" ? `${userName}\uFF1A${clean}` : isGroup ? clean : `${contactName}\uFF1A${clean}`;
+      }).join("\n");
+      const systemPrompt = isGroup ? `\u4F60\u540C\u65F6\u626E\u6F14\u7FA4\u804A\u4E2D\u7684\u6240\u6709\u6210\u5458\u3002
+\u3010\u52A1\u5FC5\u76F4\u63A5\u6309\u683C\u5F0F\u8F93\u51FA\u77ED\u4FE1\u5185\u5BB9\uFF0C\u4E25\u7981\u5728\u5F00\u5934\u8F93\u51FA\u201C\u597D\u7684\u201D\u7B49\u5E9F\u8BDD\u3002\u3011` : `\u4F60\u6B63\u5728\u626E\u6F14"${contactName}"\u901A\u8FC7\u624B\u673A\u77ED\u4FE1\u4E0E\u7528\u6237 ${userName} \u804A\u5929\u3002
+\u3010\u52A1\u5FC5\u76F4\u63A5\u6309\u683C\u5F0F\u8F93\u51FA\u77ED\u4FE1\u5185\u5BB9\uFF0C\u4E25\u7981\u5728\u5F00\u5934\u8F93\u51FA\u201C\u597D\u7684\u201D\u7B49\u5E9F\u8BDD\u3002\u3011`;
+      const emojiPrompt = getEmojiPrompt(contactName);
+      const userPrompt = (isGroup ? `\u7FA4\u804A\u540D\u79F0\uFF1A${groupMeta.name}
+\u7FA4\u804A\u6210\u5458\uFF1A${groupMeta.members.join("\u3001")}
 
-        const id = getStorageId();
-        const groupMeta = window.__pmGroupMeta[id]?.[contactName];
-        const isGroup = !!groupMeta;
-        
-        const isActiveView = phoneActive && ((isGroup && currentGroupKey === contactName) || (!isGroup && currentPersona === contactName));
-        
-        if (isActiveView) {
-            const input = phoneWindow?.querySelector('.pm-input');
-            const btn = phoneWindow?.querySelector('.pm-up-btn');
-            if (input) input.disabled = true;
-            if (btn) btn.disabled = true;
-            showTyping();
-        }
+\u7528\u6237\u6709\u4E00\u6BB5\u65F6\u95F4\u6CA1\u6709\u8BF4\u8BDD\u3002\u8BF7\u4EE5\u6240\u6709\u7FA4\u6210\u5458\u7684\u8EAB\u4EFD\uFF0C\u6839\u636E\u5404\u81EA\u7684\u6027\u683C\u3001\u4EBA\u8BBE\u548C\u5F53\u524D\u804A\u5929\u4E0A\u4E0B\u6587\uFF0C\u81EA\u7136\u5730\u53D1\u8D77\u8BDD\u9898\u6216\u7EE7\u7EED\u804A\u5929\u3002\u6BCF\u4E2A\u6210\u5458\u6839\u636E\u4EBA\u8BBE\u51B3\u5B9A\u53D1\u8A00 0-8 \u53E5\u3002
 
-        const ctxData = await gatherContext();
-        const { cardDesc, cardPersonality, cardScenario, cardMesExample, mainChatText, worldBookText, userName, userDesc } = ctxData;
-        const userBlock = [`用户名字：${userName}`, userDesc ? `用户人设：${userDesc}` : ''].filter(Boolean).join('\n');
+\u8F93\u51FA\u683C\u5F0F\uFF1A\u89D2\u8272\u540D\uFF1A\u6D88\u606F / \u6D88\u606F
 
-        let targetHistory = window.__pmHistories[id]?.[contactName] || [];
-        const smsHistoryText = targetHistory.slice(-CONTEXT_LIMIT).map(m => {
-            const clean = cleanResponse(m.content);
-            return m.role === 'user' ? `${userName}：${clean}` : (isGroup ? clean : `${contactName}：${clean}`);
-        }).join('\n');
+\u3010\u7528\u6237\u4FE1\u606F\u3011
+${userBlock}
 
-        const systemPrompt = isGroup ? `你同时扮演群聊中的所有成员。\n【务必直接按格式输出短信内容，严禁在开头输出“好的”等废话。】` : `你正在扮演"${contactName}"通过手机短信与用户 ${userName} 聊天。\n【务必直接按格式输出短信内容，严禁在开头输出“好的”等废话。】`;
-        // 修复：注入表情包提示词（与 fetchSMS 保持一致）
-        // 修复：群聊拍一拍使用 contactName（即 currentGroupKey），单人使用 contactName，两者相同，已正确
-        const emojiPrompt = getEmojiPrompt(contactName);
-        const userPrompt = (isGroup
-            ? `群聊名称：${groupMeta.name}\n群聊成员：${groupMeta.members.join('、')}\n\n用户有一段时间没有说话。请以所有群成员的身份，根据各自的性格、人设和当前聊天上下文，自然地发起话题或继续聊天。每个成员根据人设决定发言 0-8 句。\n\n输出格式：角色名：消息 / 消息\n\n【用户信息】\n${userBlock}\n\n【角色设定】\n${cardDesc || ''}\n\n【性格】\n${cardPersonality || ''}\n\n【场景】\n${cardScenario || ''}\n\n【世界书】\n${worldBookText || ''}\n\n【主线最近对话】\n${mainChatText || ''}\n\n【群聊历史】\n${smsHistoryText}`
-              + (emojiPrompt ? emojiPrompt : '')
-            : `用户有一段时间没有回复。作为${contactName}，根据你的人设和当前聊天情境，自然地发送 3-8 句短信继续对话或发起新话题，不要提及用户没有回复这件事。\n\n【用户信息】\n${userBlock}\n\n【角色设定】\n${cardDesc || ''}\n\n【性格】\n${cardPersonality || ''}\n\n【场景】\n${cardScenario || ''}\n\n【对话示例】\n${cardMesExample || ''}\n\n【世界书】\n${worldBookText || ''}\n\n【主线最近对话】\n${mainChatText || ''}\n\n【短信对话历史】\n${smsHistoryText}\n\n输出格式：短信内容 / 短信内容（每句用 / 分隔，特殊格式中文单行闭合）`
-              + (emojiPrompt ? emojiPrompt : ''))
-            + getWordyPrompt();
+\u3010\u89D2\u8272\u8BBE\u5B9A\u3011
+${cardDesc || ""}
 
-        try {
-            const raw = await callAI(systemPrompt, userPrompt);
-            let historyUpdated = false;
+\u3010\u6027\u683C\u3011
+${cardPersonality || ""}
 
-            if (isActiveView) hideTyping();
+\u3010\u573A\u666F\u3011
+${cardScenario || ""}
 
-            if (isGroup) {
-                const oldMembers = groupMembers;
-                let parsed = [];
-                try {
-                    groupMembers = groupMeta.members;
-                    parsed = parseGroupResponse(raw);
-                } finally {
-                    groupMembers = oldMembers;
+\u3010\u4E16\u754C\u4E66\u3011
+${worldBookText || ""}
+
+\u3010\u4E3B\u7EBF\u6700\u8FD1\u5BF9\u8BDD\u3011
+${mainChatText || ""}
+
+\u3010\u7FA4\u804A\u5386\u53F2\u3011
+${smsHistoryText}` + (emojiPrompt ? emojiPrompt : "") : `\u7528\u6237\u6709\u4E00\u6BB5\u65F6\u95F4\u6CA1\u6709\u56DE\u590D\u3002\u4F5C\u4E3A${contactName}\uFF0C\u6839\u636E\u4F60\u7684\u4EBA\u8BBE\u548C\u5F53\u524D\u804A\u5929\u60C5\u5883\uFF0C\u81EA\u7136\u5730\u53D1\u9001 3-8 \u53E5\u77ED\u4FE1\u7EE7\u7EED\u5BF9\u8BDD\u6216\u53D1\u8D77\u65B0\u8BDD\u9898\uFF0C\u4E0D\u8981\u63D0\u53CA\u7528\u6237\u6CA1\u6709\u56DE\u590D\u8FD9\u4EF6\u4E8B\u3002
+
+\u3010\u7528\u6237\u4FE1\u606F\u3011
+${userBlock}
+
+\u3010\u89D2\u8272\u8BBE\u5B9A\u3011
+${cardDesc || ""}
+
+\u3010\u6027\u683C\u3011
+${cardPersonality || ""}
+
+\u3010\u573A\u666F\u3011
+${cardScenario || ""}
+
+\u3010\u5BF9\u8BDD\u793A\u4F8B\u3011
+${cardMesExample || ""}
+
+\u3010\u4E16\u754C\u4E66\u3011
+${worldBookText || ""}
+
+\u3010\u4E3B\u7EBF\u6700\u8FD1\u5BF9\u8BDD\u3011
+${mainChatText || ""}
+
+\u3010\u77ED\u4FE1\u5BF9\u8BDD\u5386\u53F2\u3011
+${smsHistoryText}
+
+\u8F93\u51FA\u683C\u5F0F\uFF1A\u77ED\u4FE1\u5185\u5BB9 / \u77ED\u4FE1\u5185\u5BB9\uFF08\u6BCF\u53E5\u7528 / \u5206\u9694\uFF0C\u7279\u6B8A\u683C\u5F0F\u4E2D\u6587\u5355\u884C\u95ED\u5408\uFF09` + (emojiPrompt ? emojiPrompt : "")) + getWordyPrompt();
+      try {
+        const raw = await callAI(systemPrompt, userPrompt);
+        let historyUpdated = false;
+        if (isActiveView) hideTyping();
+        if (isGroup) {
+          const oldMembers = groupMembers;
+          let parsed = [];
+          try {
+            groupMembers = groupMeta.members;
+            parsed = parseGroupResponse(raw);
+          } finally {
+            groupMembers = oldMembers;
+          }
+          const contentParts = [];
+          for (const block of parsed) {
+            if (block.sentences.length > 0) {
+              contentParts.push(`${block.name}\uFF1A${block.sentences.join(" / ")}`);
+              if (isActiveView) {
+                const _pgHi = targetHistory.length;
+                for (const s of block.sentences) {
+                  await new Promise((r) => setTimeout(r, 120));
+                  addBubble(s, "left", block.name, _pgHi);
                 }
-
-                const contentParts = [];
-                for (const block of parsed) {
-                    if (block.sentences.length > 0) {
-                        contentParts.push(`${block.name}：${block.sentences.join(' / ')}`);
-                        if (isActiveView) {
-                            const _pgHi = targetHistory.length; // push 之前的长度即为新条目下标
-                            for (const s of block.sentences) { await new Promise(r => setTimeout(r, 120)); addBubble(s, 'left', block.name, _pgHi); }
-                        }
-                    }
-                }
-                if (contentParts.length > 0) {
-                    targetHistory.push({ role: 'assistant', content: contentParts.join('\n') });
-                    historyUpdated = true;
-                }
-            } else {
-                const clean = cleanResponse(raw);
-                const sentences = splitToSentences(clean);
-                if (sentences.length > 0) {
-                    targetHistory.push({ role: 'assistant', content: sentences.join(' / ') });
-                    historyUpdated = true;
-                    if (isActiveView) {
-                        const _pokeHi = targetHistory.length - 1;
-                        for (const s of sentences) {
-                            await new Promise(r => setTimeout(r, 150));
-                            addBubble(s, 'left', undefined, _pokeHi);
-                            // 逐句落盘：每渲染一句立即保存，防止挂起丢失
-                            { const _id = getStorageId(); if (!window.__pmHistories[_id]) window.__pmHistories[_id] = {};
-                              window.__pmHistories[_id][isGroupChat && currentGroupKey ? currentGroupKey : currentPersona] = targetHistory.slice(-SAVE_LIMIT);
-                              saveHistories(); }
-                        }
-                    }
-                }
+              }
             }
-
-            if (historyUpdated) {
-                if (!window.__pmHistories[id]) window.__pmHistories[id] = {};
-                const newHistory = targetHistory.slice(-SAVE_LIMIT);
-                window.__pmHistories[id][contactName] = newHistory;
-                
-                // 修复：如果当前正好在这个角色的界面，必须把最新的数组同步给全局的 conversationHistory
-                if (isActiveView) {
-                    conversationHistory = newHistory;
+          }
+          if (contentParts.length > 0) {
+            targetHistory.push({ role: "assistant", content: contentParts.join("\n") });
+            historyUpdated = true;
+          }
+        } else {
+          const clean = cleanResponse(raw);
+          const sentences = splitToSentences(clean);
+          if (sentences.length > 0) {
+            targetHistory.push({ role: "assistant", content: sentences.join(" / ") });
+            historyUpdated = true;
+            if (isActiveView) {
+              const _pokeHi = targetHistory.length - 1;
+              for (const s of sentences) {
+                await new Promise((r) => setTimeout(r, 150));
+                addBubble(s, "left", void 0, _pokeHi);
+                {
+                  const _id = getStorageId();
+                  if (!window.__pmHistories[_id]) window.__pmHistories[_id] = {};
+                  window.__pmHistories[_id][isGroupChat && currentGroupKey ? currentGroupKey : currentPersona] = targetHistory.slice(-SAVE_LIMIT);
+                  saveHistories();
                 }
-                
-                saveHistories(); applyBidirectionalInjection();
-                
-                if (phoneActive && !isActiveView) {
-                    addNote(`📩 ${isGroup ? groupMeta.name : contactName} 发来了新消息`);
-                }
+              }
             }
-        } catch (e) {
-            if (isActiveView) hideTyping();
-            console.error('[phone-mode] 自动发消息失败', e);
+          }
         }
-
-        if (isActiveView) {
-            const input = phoneWindow?.querySelector('.pm-input'); const btn = phoneWindow?.querySelector('.pm-up-btn');
-            if (input) input.disabled = false; if (btn) btn.disabled = false;
+        if (historyUpdated) {
+          if (!window.__pmHistories[id]) window.__pmHistories[id] = {};
+          const newHistory = targetHistory.slice(-SAVE_LIMIT);
+          window.__pmHistories[id][contactName] = newHistory;
+          if (isActiveView) {
+            conversationHistory = newHistory;
+          }
+          saveHistories();
+          applyBidirectionalInjection();
+          if (phoneActive && !isActiveView) {
+            addNote(`\u{1F4E9} ${isGroup ? groupMeta.name : contactName} \u53D1\u6765\u4E86\u65B0\u6D88\u606F`);
+          }
         }
-        isGenerating = false;
+      } catch (e) {
+        if (isActiveView) hideTyping();
+        console.error("[phone-mode] \u81EA\u52A8\u53D1\u6D88\u606F\u5931\u8D25", e);
+      }
+      if (isActiveView) {
+        const input = phoneWindow?.querySelector(".pm-input");
+        const btn = phoneWindow?.querySelector(".pm-up-btn");
+        if (input) input.disabled = false;
+        if (btn) btn.disabled = false;
+      }
+      isGenerating = false;
     };
-
     function showContactConfig(contactName) {
-        const id = getStorageId();
-        const config = window.__pmPokeConfig[id]?.[contactName] || {
-            autoPoke: { enabled: false, interval: 3, counter: 0 }
-        };
-        const assignedEmojis = config.emojis || [];
-
-        const emojiCheckHtml = window.__pmEmojis.length ? `
+      const id = getStorageId();
+      const config = window.__pmPokeConfig[id]?.[contactName] || {
+        autoPoke: { enabled: false, interval: 3, counter: 0 }
+      };
+      const assignedEmojis = config.emojis || [];
+      const emojiCheckHtml = window.__pmEmojis.length ? `
         <div style="margin-bottom:8px;border-bottom:1px solid #f0f0f0;padding-bottom:14px;">
-            <div class="pm-cfg-label" style="margin-bottom:8px;">🥰 允许 AI 使用的表情包套组</div>
+            <div class="pm-cfg-label" style="margin-bottom:8px;">\u{1F970} \u5141\u8BB8 AI \u4F7F\u7528\u7684\u8868\u60C5\u5305\u5957\u7EC4</div>
             <div style="display:flex;flex-direction:column;gap:10px;max-height:130px;overflow-y:auto;background:#fafafa;border-radius:8px;padding:10px;border:1px solid #eee;">
-                ${window.__pmEmojis.map(set => `
+                ${window.__pmEmojis.map((set) => `
                     <div style="display:flex;align-items:center;gap:10px;cursor:pointer;"
                          onclick="this.querySelector('.pm-emoji-assign-check').classList.toggle('is-checked')">
-                        <div class="pm-custom-check pm-bi-style pm-emoji-assign-check ${assignedEmojis.includes(set.id)?'is-checked':''}"
+                        <div class="pm-custom-check pm-bi-style pm-emoji-assign-check ${assignedEmojis.includes(set.id) ? "is-checked" : ""}"
                              data-id="${escapeAttr(set.id)}"
                              style="width:20px;height:20px;min-width:20px;flex-shrink:0;margin-bottom:0;"></div>
                         <span style="font-size:13px;color:#333;">${escapeHtml(set.name)}</span>
-                        <span style="color:#aaa;font-size:11px;margin-left:auto;">(${set.images.length}张)</span>
+                        <span style="color:#aaa;font-size:11px;margin-left:auto;">(${set.images.length}\u5F20)</span>
                     </div>
-                `).join('')}
+                `).join("")}
             </div>
-            <div style="font-size:11px;color:#aaa;margin-top:4px;">勾选后 AI 会知道如何使用这些表情</div>
-        </div>` : '';
-
-        makeOverlay(`
+            <div style="font-size:11px;color:#aaa;margin-top:4px;">\u52FE\u9009\u540E AI \u4F1A\u77E5\u9053\u5982\u4F55\u4F7F\u7528\u8FD9\u4E9B\u8868\u60C5</div>
+        </div>` : "";
+      makeOverlay(`
     <div class="pm-modal pm-modal-wide">
     <div class="pm-modal-header">
-        <b>${escapeHtml(contactName)} 设置</b>
-        <span onclick="window.__pmSaveAndCloseContactConfig('${safeJS(contactName)}')" class="pm-modal-close">✕</span>
+        <b>${escapeHtml(contactName)} \u8BBE\u7F6E</b>
+        <span onclick="window.__pmSaveAndCloseContactConfig('${safeJS(contactName)}')" class="pm-modal-close">\u2715</span>
     </div>
     <div style="padding:16px;display:flex;flex-direction:column;gap:8px;">
         ${emojiCheckHtml}
         <div style="margin-top:-6px;">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
-            <span style="font-size:13px;font-weight:600;">⏰ 自动发消息</span>
+            <span style="font-size:13px;font-weight:600;">\u23F0 \u81EA\u52A8\u53D1\u6D88\u606F</span>
             <div onclick="window.__pmToggleAutoPoke('${safeJS(contactName)}')"
-                class="pm-custom-check pm-bi-style ${config.autoPoke.enabled ? 'is-checked' : ''}"
+                class="pm-custom-check pm-bi-style ${config.autoPoke.enabled ? "is-checked" : ""}"
                 id="pm-poke-check"
                 style="cursor:pointer;width:22px;height:22px;min-width:22px;min-height:22px;flex-shrink:0;border-radius:50%;">
             </div>
         </div>
         <div style="display:flex;align-items:center;gap:8px;">
-            <span style="font-size:12px;color:#888;">每隔</span>
+            <span style="font-size:12px;color:#888;">\u6BCF\u9694</span>
             <input id="pm-poke-interval" type="number" min="1" max="99"
                 value="${config.autoPoke.interval}"
                 style="width:50px;border:1px solid #ddd;border-radius:6px;padding:4px 8px;font-size:13px;text-align:center;"
-                ${!config.autoPoke.enabled ? 'disabled' : ''}>
-            <span style="font-size:12px;color:#888;">轮无输入主动发消息</span>
+                ${!config.autoPoke.enabled ? "disabled" : ""}>
+            <span style="font-size:12px;color:#888;">\u8F6E\u65E0\u8F93\u5165\u4E3B\u52A8\u53D1\u6D88\u606F</span>
         </div>
         <div style="font-size:11px;color:#999;margin-top:4px;">
-            当前计数：<span id="pm-poke-counter">${config.autoPoke.counter}</span> / ${config.autoPoke.interval}
+            \u5F53\u524D\u8BA1\u6570\uFF1A<span id="pm-poke-counter">${config.autoPoke.counter}</span> / ${config.autoPoke.interval}
         </div>
         </div>
         <div style="margin-top:4px;">
         <button onclick="window.__pmPoke('${safeJS(contactName)}')"
                 style="width:100%;background:linear-gradient(135deg,#ff9500,#ff6b00);color:#fff;border:none;border-radius:12px;padding:14px;font-size:14px;cursor:pointer;font-weight:600;display:flex;align-items:center;justify-content:center;">
-            拍一拍
+            \u62CD\u4E00\u62CD
         </button>
         </div>
     </div>
     </div>`);
     }
-
     window.__pmSaveAndCloseContactConfig = (contactName) => {
-        const checkEl = document.getElementById('pm-poke-check');
-        const intervalEl = document.getElementById('pm-poke-interval');
-        const emojiChecks = document.querySelectorAll('.pm-emoji-assign-check.is-checked');
-        const selectedEmojis = Array.from(emojiChecks).map(cb => cb.dataset.id);
-
-        if (checkEl && intervalEl) {
-            const id = getStorageId();
-            if (!window.__pmPokeConfig[id]) window.__pmPokeConfig[id] = {};
-
-            const enabled = checkEl.classList.contains('is-checked');
-            const interval = parseInt(intervalEl.value) || 3;
-            const oldCounter = window.__pmPokeConfig[id][contactName]?.autoPoke?.counter || 0;
-
-            window.__pmPokeConfig[id][contactName] = {
-                autoPoke: {
-                    enabled,
-                    interval: Math.max(1, Math.min(99, interval)),
-                    counter: enabled ? Math.min(oldCounter, interval - 1) : oldCounter
-                },
-                emojis: selectedEmojis
-            };
-            savePokeConfig();
-        }
-
-        document.getElementById('pm-overlay')?.remove();
-        addNote(`已保存 ${contactName} 的设置`);
-    };
-
-    window.__pmToggleWordyLimit = () => {
-        window.__pmWordyLimit = !window.__pmWordyLimit;
-        saveWordyLimit();
-        const el = document.getElementById('pm-wordy-check');
-        if (el) el.classList.toggle('is-checked', window.__pmWordyLimit);
-    };
-
-    window.__pmToggleAutoPoke = (contactName) => {
-        const checkEl = document.getElementById('pm-poke-check');
-        const intervalEl = document.getElementById('pm-poke-interval');
-        if (!checkEl) return;
-        const isChecked = checkEl.classList.toggle('is-checked');
-        if (intervalEl) intervalEl.disabled = !isChecked;
-    };
-
-    window.__pmPoke = async (contactName) => {
-        // 修复：先检查生成锁，再切换联系人，避免"界面已切换但函数直接 return"的幽灵切换问题
-        if (isGenerating) return;
-
+      const checkEl = document.getElementById("pm-poke-check");
+      const intervalEl = document.getElementById("pm-poke-interval");
+      const emojiChecks = document.querySelectorAll(".pm-emoji-assign-check.is-checked");
+      const selectedEmojis = Array.from(emojiChecks).map((cb) => cb.dataset.id);
+      if (checkEl && intervalEl) {
         const id = getStorageId();
-        if (window.__pmPokeConfig[id]?.[contactName]) {
-            window.__pmPokeConfig[id][contactName].autoPoke.counter = 0;
-            savePokeConfig();
-        }
-
-        document.getElementById('pm-overlay')?.remove();
-
-        if (currentPersona !== contactName) {
-            window.__pmSwitchContact(contactName);
-        }
-
-        isGenerating = true;
-
-        const input = phoneWindow?.querySelector('.pm-input');
-        const btn = phoneWindow?.querySelector('.pm-up-btn');
-        if (input) input.disabled = true;
-        if (btn) btn.disabled = true;
-
-        showTyping();
-
-        const ctxData = await gatherContext();
-        const { cardDesc, cardPersonality, cardScenario, cardMesExample, mainChatText, worldBookText, userName, userDesc } = ctxData;
-
-        const userBlock = [
-            `用户名字：${userName}`,
-            userDesc ? `用户人设：${userDesc}` : ''
-        ].filter(Boolean).join('\n');
-        
-        const smsHistoryText = conversationHistory.slice(-CONTEXT_LIMIT).map(m => {
-            const clean = cleanResponse(m.content);
-            return m.role === 'user' ? `${userName}：${clean}` : (isGroupChat ? clean : `${contactName}：${clean}`);
-        }).join('\n');
-
-        const systemPrompt = isGroupChat
-            ? `你同时扮演群聊中的所有成员。\n【务必直接按格式输出短信内容，严禁在开头输出“好的”等废话。】`
-            : `你正在扮演"${contactName}"通过手机短信与用户 ${userName} 聊天。\n【务必直接按格式输出短信内容，严禁在开头输出“好的”等废话。】`;
-
-        // 修复：注入表情包提示词（与 fetchSMS 保持一致）
-        const targetContactKey = isGroupChat ? currentGroupKey : contactName;
-        const emojiPrompt = getEmojiPrompt(targetContactKey);
-        const userPrompt = isGroupChat
-            ? `群聊名称：${groupDisplayName || '群聊'}\n群聊成员：${groupMembers.join('、')}\n\n请以所有群成员的身份，根据各自的性格和当前聊天上下文，自然地发起话题或继续聊天。每个成员根据人设决定发言 0-8 句。\n\n输出格式：角色名：消息内容 / 消息内容\n\n【用户信息】\n${userBlock}\n\n【角色设定】\n${cardDesc || ''}\n\n【性格】\n${cardPersonality || ''}\n\n【场景】\n${cardScenario || ''}\n\n【世界书】\n${worldBookText || ''}\n\n【主线最近对话】\n${mainChatText || ''}\n\n【群聊历史】\n${smsHistoryText}`
-            : `作为${contactName}，根据你的人设、性格和当前聊天情境，自然地发送 3-8 句短信，不要提及任何外部触发，就像你自己突然想发消息一样。\n\n【用户信息】\n${userBlock}\n\n【角色设定】\n${cardDesc || ''}\n\n【性格】\n${cardPersonality || ''}\n\n【场景】\n${cardScenario || ''}\n\n【对话示例】\n${cardMesExample || ''}\n\n【世界书】\n${worldBookText || ''}\n\n【主线最近对话】\n${mainChatText || ''}\n\n【短信对话历史】\n${smsHistoryText}\n\n输出格式：短信内容 / 短信内容（每句用 / 分隔，特殊格式中文单行闭合）`
-            + (emojiPrompt ? emojiPrompt : '')
-            + getWordyPrompt();
-
-        try {
-            const raw = await callAI(systemPrompt, userPrompt);
-            let historyUpdated = false;
-
-            hideTyping();
-
-            if (isGroupChat) {
-                const parsed = parseGroupResponse(raw);
-                const contentParts = [];
-                for (const block of parsed) {
-                    if (block.sentences.length > 0) {
-                        contentParts.push(`${block.name}：${block.sentences.join(' / ')}`);
-                        for (const s of block.sentences) {
-                            await new Promise(r => setTimeout(r, 120));
-                            addBubble(s, 'left', block.name);
-                        }
-                    }
-                }
-                if (contentParts.length > 0) {
-                    conversationHistory.push({ role: 'assistant', content: contentParts.join('\n') });
-                    historyUpdated = true;
-                }
-            } else {
-                const clean = cleanResponse(raw);
-                const sentences = splitToSentences(clean);
-                if (sentences.length > 0) {
-                    conversationHistory.push({ role: 'assistant', content: sentences.join(' / ') });
-                    historyUpdated = true;
-                    for (const s of sentences) {
-                        await new Promise(r => setTimeout(r, 150));
-                        addBubble(s, 'left');
-                    }
-                }
-            }
-
-            if (historyUpdated) {
-                const id = getStorageId();
-                if (!window.__pmHistories[id]) window.__pmHistories[id] = {};
-                const saveKey = isGroupChat && currentGroupKey ? currentGroupKey : currentPersona;
-                window.__pmHistories[id][saveKey] = conversationHistory.slice(-SAVE_LIMIT);
-                saveHistories();
-                applyBidirectionalInjection();
-            }
-        } catch (e) {
-            hideTyping();
-            addNote(`（发送失败：${e?.message || e}）`);
-        }
-
-        if (input) input.disabled = false;
-        if (btn) btn.disabled = false;
-        isGenerating = false;
+        if (!window.__pmPokeConfig[id]) window.__pmPokeConfig[id] = {};
+        const enabled = checkEl.classList.contains("is-checked");
+        const interval = parseInt(intervalEl.value) || 3;
+        const oldCounter = window.__pmPokeConfig[id][contactName]?.autoPoke?.counter || 0;
+        window.__pmPokeConfig[id][contactName] = {
+          autoPoke: {
+            enabled,
+            interval: Math.max(1, Math.min(99, interval)),
+            counter: enabled ? Math.min(oldCounter, interval - 1) : oldCounter
+          },
+          emojis: selectedEmojis
+        };
+        savePokeConfig();
+      }
+      document.getElementById("pm-overlay")?.remove();
+      addNote(`\u5DF2\u4FDD\u5B58 ${contactName} \u7684\u8BBE\u7F6E`);
     };
+    window.__pmToggleWordyLimit = () => {
+      window.__pmWordyLimit = !window.__pmWordyLimit;
+      saveWordyLimit();
+      const el = document.getElementById("pm-wordy-check");
+      if (el) el.classList.toggle("is-checked", window.__pmWordyLimit);
+    };
+    window.__pmToggleAutoPoke = (contactName) => {
+      const checkEl = document.getElementById("pm-poke-check");
+      const intervalEl = document.getElementById("pm-poke-interval");
+      if (!checkEl) return;
+      const isChecked = checkEl.classList.toggle("is-checked");
+      if (intervalEl) intervalEl.disabled = !isChecked;
+    };
+    window.__pmPoke = async (contactName) => {
+      if (isGenerating) return;
+      const id = getStorageId();
+      if (window.__pmPokeConfig[id]?.[contactName]) {
+        window.__pmPokeConfig[id][contactName].autoPoke.counter = 0;
+        savePokeConfig();
+      }
+      document.getElementById("pm-overlay")?.remove();
+      if (currentPersona !== contactName) {
+        window.__pmSwitchContact(contactName);
+      }
+      isGenerating = true;
+      const input = phoneWindow?.querySelector(".pm-input");
+      const btn = phoneWindow?.querySelector(".pm-up-btn");
+      if (input) input.disabled = true;
+      if (btn) btn.disabled = true;
+      showTyping();
+      const ctxData = await gatherContext();
+      const { cardDesc, cardPersonality, cardScenario, cardMesExample, mainChatText, worldBookText, userName, userDesc } = ctxData;
+      const userBlock = [
+        `\u7528\u6237\u540D\u5B57\uFF1A${userName}`,
+        userDesc ? `\u7528\u6237\u4EBA\u8BBE\uFF1A${userDesc}` : ""
+      ].filter(Boolean).join("\n");
+      const smsHistoryText = conversationHistory.slice(-CONTEXT_LIMIT).map((m) => {
+        const clean = cleanResponse(m.content);
+        return m.role === "user" ? `${userName}\uFF1A${clean}` : isGroupChat ? clean : `${contactName}\uFF1A${clean}`;
+      }).join("\n");
+      const systemPrompt = isGroupChat ? `\u4F60\u540C\u65F6\u626E\u6F14\u7FA4\u804A\u4E2D\u7684\u6240\u6709\u6210\u5458\u3002
+\u3010\u52A1\u5FC5\u76F4\u63A5\u6309\u683C\u5F0F\u8F93\u51FA\u77ED\u4FE1\u5185\u5BB9\uFF0C\u4E25\u7981\u5728\u5F00\u5934\u8F93\u51FA\u201C\u597D\u7684\u201D\u7B49\u5E9F\u8BDD\u3002\u3011` : `\u4F60\u6B63\u5728\u626E\u6F14"${contactName}"\u901A\u8FC7\u624B\u673A\u77ED\u4FE1\u4E0E\u7528\u6237 ${userName} \u804A\u5929\u3002
+\u3010\u52A1\u5FC5\u76F4\u63A5\u6309\u683C\u5F0F\u8F93\u51FA\u77ED\u4FE1\u5185\u5BB9\uFF0C\u4E25\u7981\u5728\u5F00\u5934\u8F93\u51FA\u201C\u597D\u7684\u201D\u7B49\u5E9F\u8BDD\u3002\u3011`;
+      const targetContactKey = isGroupChat ? currentGroupKey : contactName;
+      const emojiPrompt = getEmojiPrompt(targetContactKey);
+      const userPrompt = isGroupChat ? `\u7FA4\u804A\u540D\u79F0\uFF1A${groupDisplayName || "\u7FA4\u804A"}
+\u7FA4\u804A\u6210\u5458\uFF1A${groupMembers.join("\u3001")}
 
-    window.__pmEditGroup = () => {
-        if (!isGroupChat) {
-            showContactConfig(currentPersona);
+\u8BF7\u4EE5\u6240\u6709\u7FA4\u6210\u5458\u7684\u8EAB\u4EFD\uFF0C\u6839\u636E\u5404\u81EA\u7684\u6027\u683C\u548C\u5F53\u524D\u804A\u5929\u4E0A\u4E0B\u6587\uFF0C\u81EA\u7136\u5730\u53D1\u8D77\u8BDD\u9898\u6216\u7EE7\u7EED\u804A\u5929\u3002\u6BCF\u4E2A\u6210\u5458\u6839\u636E\u4EBA\u8BBE\u51B3\u5B9A\u53D1\u8A00 0-8 \u53E5\u3002
+
+\u8F93\u51FA\u683C\u5F0F\uFF1A\u89D2\u8272\u540D\uFF1A\u6D88\u606F\u5185\u5BB9 / \u6D88\u606F\u5185\u5BB9
+
+\u3010\u7528\u6237\u4FE1\u606F\u3011
+${userBlock}
+
+\u3010\u89D2\u8272\u8BBE\u5B9A\u3011
+${cardDesc || ""}
+
+\u3010\u6027\u683C\u3011
+${cardPersonality || ""}
+
+\u3010\u573A\u666F\u3011
+${cardScenario || ""}
+
+\u3010\u4E16\u754C\u4E66\u3011
+${worldBookText || ""}
+
+\u3010\u4E3B\u7EBF\u6700\u8FD1\u5BF9\u8BDD\u3011
+${mainChatText || ""}
+
+\u3010\u7FA4\u804A\u5386\u53F2\u3011
+${smsHistoryText}` : `\u4F5C\u4E3A${contactName}\uFF0C\u6839\u636E\u4F60\u7684\u4EBA\u8BBE\u3001\u6027\u683C\u548C\u5F53\u524D\u804A\u5929\u60C5\u5883\uFF0C\u81EA\u7136\u5730\u53D1\u9001 3-8 \u53E5\u77ED\u4FE1\uFF0C\u4E0D\u8981\u63D0\u53CA\u4EFB\u4F55\u5916\u90E8\u89E6\u53D1\uFF0C\u5C31\u50CF\u4F60\u81EA\u5DF1\u7A81\u7136\u60F3\u53D1\u6D88\u606F\u4E00\u6837\u3002
+
+\u3010\u7528\u6237\u4FE1\u606F\u3011
+${userBlock}
+
+\u3010\u89D2\u8272\u8BBE\u5B9A\u3011
+${cardDesc || ""}
+
+\u3010\u6027\u683C\u3011
+${cardPersonality || ""}
+
+\u3010\u573A\u666F\u3011
+${cardScenario || ""}
+
+\u3010\u5BF9\u8BDD\u793A\u4F8B\u3011
+${cardMesExample || ""}
+
+\u3010\u4E16\u754C\u4E66\u3011
+${worldBookText || ""}
+
+\u3010\u4E3B\u7EBF\u6700\u8FD1\u5BF9\u8BDD\u3011
+${mainChatText || ""}
+
+\u3010\u77ED\u4FE1\u5BF9\u8BDD\u5386\u53F2\u3011
+${smsHistoryText}
+
+\u8F93\u51FA\u683C\u5F0F\uFF1A\u77ED\u4FE1\u5185\u5BB9 / \u77ED\u4FE1\u5185\u5BB9\uFF08\u6BCF\u53E5\u7528 / \u5206\u9694\uFF0C\u7279\u6B8A\u683C\u5F0F\u4E2D\u6587\u5355\u884C\u95ED\u5408\uFF09` + (emojiPrompt ? emojiPrompt : "") + getWordyPrompt();
+      try {
+        const raw = await callAI(systemPrompt, userPrompt);
+        let historyUpdated = false;
+        hideTyping();
+        if (isGroupChat) {
+          const parsed = parseGroupResponse(raw);
+          const contentParts = [];
+          for (const block of parsed) {
+            if (block.sentences.length > 0) {
+              contentParts.push(`${block.name}\uFF1A${block.sentences.join(" / ")}`);
+              for (const s of block.sentences) {
+                await new Promise((r) => setTimeout(r, 120));
+                addBubble(s, "left", block.name);
+              }
+            }
+          }
+          if (contentParts.length > 0) {
+            conversationHistory.push({ role: "assistant", content: contentParts.join("\n") });
+            historyUpdated = true;
+          }
         } else {
-            showGroupForm('edit', groupDisplayName, groupMembers);
+          const clean = cleanResponse(raw);
+          const sentences = splitToSentences(clean);
+          if (sentences.length > 0) {
+            conversationHistory.push({ role: "assistant", content: sentences.join(" / ") });
+            historyUpdated = true;
+            for (const s of sentences) {
+              await new Promise((r) => setTimeout(r, 150));
+              addBubble(s, "left");
+            }
+          }
         }
+        if (historyUpdated) {
+          const id2 = getStorageId();
+          if (!window.__pmHistories[id2]) window.__pmHistories[id2] = {};
+          const saveKey = isGroupChat && currentGroupKey ? currentGroupKey : currentPersona;
+          window.__pmHistories[id2][saveKey] = conversationHistory.slice(-SAVE_LIMIT);
+          saveHistories();
+          applyBidirectionalInjection();
+        }
+      } catch (e) {
+        hideTyping();
+        addNote(`\uFF08\u53D1\u9001\u5931\u8D25\uFF1A${e?.message || e}\uFF09`);
+      }
+      if (input) input.disabled = false;
+      if (btn) btn.disabled = false;
+      isGenerating = false;
     };
-
+    window.__pmEditGroup = () => {
+      if (!isGroupChat) {
+        showContactConfig(currentPersona);
+      } else {
+        showGroupForm("edit", groupDisplayName, groupMembers);
+      }
+    };
     function showGroupForm(mode, existingName, existingMembers) {
-        document.getElementById('pm-overlay')?.remove();
-        const title = mode === 'create' ? '新建群聊' : '编辑群聊';
-        const initName = existingName || '';
-        const initMembers = (existingMembers || []).join(' / ');
-        const closeAction = mode === 'create'
-            ? "window.__pmShowList()"
-            : "window.__pmSaveAndCloseGroupEdit()";
-
-        let pokeConfig = { enabled: false, interval: 3, counter: 0 };
-        let assignedEmojis = [];
-        if (mode === 'edit' && currentGroupKey) {
-            const id = getStorageId();
-            pokeConfig = window.__pmPokeConfig[id]?.[currentGroupKey]?.autoPoke || pokeConfig;
-            assignedEmojis = window.__pmPokeConfig[id]?.[currentGroupKey]?.emojis || [];
-        }
-
-        const emojiCheckHtml = window.__pmEmojis.length ? `
+      document.getElementById("pm-overlay")?.remove();
+      const title = mode === "create" ? "\u65B0\u5EFA\u7FA4\u804A" : "\u7F16\u8F91\u7FA4\u804A";
+      const initName = existingName || "";
+      const initMembers = (existingMembers || []).join(" / ");
+      const closeAction = mode === "create" ? "window.__pmShowList()" : "window.__pmSaveAndCloseGroupEdit()";
+      let pokeConfig = { enabled: false, interval: 3, counter: 0 };
+      let assignedEmojis = [];
+      if (mode === "edit" && currentGroupKey) {
+        const id = getStorageId();
+        pokeConfig = window.__pmPokeConfig[id]?.[currentGroupKey]?.autoPoke || pokeConfig;
+        assignedEmojis = window.__pmPokeConfig[id]?.[currentGroupKey]?.emojis || [];
+      }
+      const emojiCheckHtml = window.__pmEmojis.length ? `
         <div style="padding-top:12px;border-top:1px solid #f0f0f0;">
-            <div class="pm-cfg-label" style="margin-bottom:8px;">🥰 允许 AI 使用的表情包套组</div>
+            <div class="pm-cfg-label" style="margin-bottom:8px;">\u{1F970} \u5141\u8BB8 AI \u4F7F\u7528\u7684\u8868\u60C5\u5305\u5957\u7EC4</div>
             <div style="display:flex;flex-direction:column;gap:10px;max-height:120px;overflow-y:auto;background:#fafafa;border-radius:8px;padding:10px;border:1px solid #eee;">
-                ${window.__pmEmojis.map(set => `
+                ${window.__pmEmojis.map((set) => `
                     <div style="display:flex;align-items:center;gap:10px;cursor:pointer;"
                          onclick="this.querySelector('.pm-emoji-assign-check').classList.toggle('is-checked')">
-                        <div class="pm-custom-check pm-bi-style pm-emoji-assign-check ${assignedEmojis.includes(set.id) ? 'is-checked' : ''}"
+                        <div class="pm-custom-check pm-bi-style pm-emoji-assign-check ${assignedEmojis.includes(set.id) ? "is-checked" : ""}"
                              data-id="${escapeAttr(set.id)}"
                              style="width:20px;height:20px;min-width:20px;flex-shrink:0;margin-bottom:0;"></div>
                         <span style="font-size:13px;color:#333;">${escapeHtml(set.name)}</span>
-                        <span style="color:#aaa;font-size:11px;margin-left:auto;">(${set.images.length}张)</span>
+                        <span style="color:#aaa;font-size:11px;margin-left:auto;">(${set.images.length}\u5F20)</span>
                     </div>
-                `).join('')}
+                `).join("")}
             </div>
-        </div>` : '';
-
-        makeOverlay(`
+        </div>` : "";
+      makeOverlay(`
     <div class="pm-modal pm-modal-wide">
-    <div class="pm-modal-header"><b>${title}</b><span onclick="${closeAction}" class="pm-modal-close">✕</span></div>
+    <div class="pm-modal-header"><b>${title}</b><span onclick="${closeAction}" class="pm-modal-close">\u2715</span></div>
     <div style="padding:14px 16px;display:flex;flex-direction:column;gap:10px;">
-        <div class="pm-cfg-label">群聊名称</div>
-        <input id="pm-group-name-input" class="pm-cfg-input" placeholder="给群聊起个名字" value="${escapeAttr(initName)}" maxlength="30">
-        <div class="pm-cfg-label" style="margin-top:4px;">成员（用 / 分隔）</div>
-        <input id="pm-group-input" class="pm-cfg-input" placeholder="角色A / 角色B / 角色C" oninput="window.__pmGroupInputChanged()" value="${escapeAttr(initMembers)}">
-        <div id="pm-group-counter" class="pm-cfg-tip" style="text-align:left;font-weight:600;">0/${MAX_GROUP_MEMBERS - 1} 个角色</div>
+        <div class="pm-cfg-label">\u7FA4\u804A\u540D\u79F0</div>
+        <input id="pm-group-name-input" class="pm-cfg-input" placeholder="\u7ED9\u7FA4\u804A\u8D77\u4E2A\u540D\u5B57" value="${escapeAttr(initName)}" maxlength="30">
+        <div class="pm-cfg-label" style="margin-top:4px;">\u6210\u5458\uFF08\u7528 / \u5206\u9694\uFF09</div>
+        <input id="pm-group-input" class="pm-cfg-input" placeholder="\u89D2\u8272A / \u89D2\u8272B / \u89D2\u8272C" oninput="window.__pmGroupInputChanged()" value="${escapeAttr(initMembers)}">
+        <div id="pm-group-counter" class="pm-cfg-tip" style="text-align:left;font-weight:600;">0/${MAX_GROUP_MEMBERS - 1} \u4E2A\u89D2\u8272</div>
         <div id="pm-group-preview" style="display:flex;flex-wrap:wrap;gap:4px;"></div>
 
-        ${mode === 'edit' ? `
+        ${mode === "edit" ? `
         ${emojiCheckHtml}
         <div style="margin-top:0px;padding-top:8px;border-top:1px solid #f0f0f0;">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
-            <span style="font-size:13px;font-weight:600;">⏰ 自动发消息</span>
+            <span style="font-size:13px;font-weight:600;">\u23F0 \u81EA\u52A8\u53D1\u6D88\u606F</span>
             <div onclick="window.__pmToggleAutoPokeGroup()"
-                class="pm-custom-check pm-bi-style ${pokeConfig.enabled ? 'is-checked' : ''}"
+                class="pm-custom-check pm-bi-style ${pokeConfig.enabled ? "is-checked" : ""}"
                 id="pm-poke-check-group"
                 style="cursor:pointer;width:22px;height:22px;min-width:22px;min-height:22px;flex-shrink:0;border-radius:50%;">
             </div>
         </div>
         <div style="display:flex;align-items:center;gap:8px;">
-            <span style="font-size:12px;color:#888;">每隔</span>
+            <span style="font-size:12px;color:#888;">\u6BCF\u9694</span>
             <input id="pm-poke-interval-group" type="number" min="1" max="99"
                 value="${pokeConfig.interval}"
                 style="width:50px;border:1px solid #ddd;border-radius:6px;padding:4px 8px;font-size:13px;text-align:center;"
-                ${!pokeConfig.enabled ? 'disabled' : ''}>
-            <span style="font-size:12px;color:#888;">轮无输入主动发消息</span>
+                ${!pokeConfig.enabled ? "disabled" : ""}>
+            <span style="font-size:12px;color:#888;">\u8F6E\u65E0\u8F93\u5165\u4E3B\u52A8\u53D1\u6D88\u606F</span>
         </div>
         <div style="font-size:11px;color:#999;margin-top:4px;">
-            当前计数：<span id="pm-poke-counter-group">${pokeConfig.counter}</span> / ${pokeConfig.interval}
+            \u5F53\u524D\u8BA1\u6570\uFF1A<span id="pm-poke-counter-group">${pokeConfig.counter}</span> / ${pokeConfig.interval}
         </div>
         <div style="margin-top:12px;">
             <button onclick="window.__pmPokeGroup()"
                     style="width:100%;background:linear-gradient(135deg,#ff9500,#ff6b00);color:#fff;border:none;border-radius:12px;padding:14px;font-size:14px;cursor:pointer;font-weight:600;display:flex;align-items:center;justify-content:center;">
-            拍一拍
+            \u62CD\u4E00\u62CD
             </button>
         </div>
         </div>
-        ` : ''}
+        ` : ""}
     </div>
-    ${mode === 'create' ? `
+    ${mode === "create" ? `
     <div class="pm-modal-add">
-        <button onclick="window.__pmConfirmGroup('${safeJS(mode)}')" style="flex:1;background:#007aff;color:#fff;border:none;border-radius:10px;padding:10px;font-size:13px;cursor:pointer;font-weight:600;">创建</button>
-    </div>` : ''}
+        <button onclick="window.__pmConfirmGroup('${safeJS(mode)}')" style="flex:1;background:#007aff;color:#fff;border:none;border-radius:10px;padding:10px;font-size:13px;cursor:pointer;font-weight:600;">\u521B\u5EFA</button>
+    </div>` : ""}
     </div>`);
-        setTimeout(() => window.__pmGroupInputChanged(), 0);
+      setTimeout(() => window.__pmGroupInputChanged(), 0);
     }
-
     window.__pmToggleAutoPokeGroup = () => {
-        const checkEl = document.getElementById('pm-poke-check-group');
-        const intervalEl = document.getElementById('pm-poke-interval-group');
-        if (!checkEl) return;
-        const isChecked = checkEl.classList.toggle('is-checked');
-        if (intervalEl) intervalEl.disabled = !isChecked;
+      const checkEl = document.getElementById("pm-poke-check-group");
+      const intervalEl = document.getElementById("pm-poke-interval-group");
+      if (!checkEl) return;
+      const isChecked = checkEl.classList.toggle("is-checked");
+      if (intervalEl) intervalEl.disabled = !isChecked;
     };
-
     window.__pmPokeGroup = async () => {
-        if (!isGroupChat || !currentGroupKey) return;
-        // 修复：先检查生成锁，再移除 overlay，避免弹窗关闭但函数直接 return 的状态不一致
-        if (isGenerating) return;
+      if (!isGroupChat || !currentGroupKey) return;
+      if (isGenerating) return;
+      const id = getStorageId();
+      if (window.__pmPokeConfig[id]?.[currentGroupKey]) {
+        window.__pmPokeConfig[id][currentGroupKey].autoPoke.counter = 0;
+        savePokeConfig();
+      }
+      document.getElementById("pm-overlay")?.remove();
+      isGenerating = true;
+      const input = phoneWindow?.querySelector(".pm-input");
+      const btn = phoneWindow?.querySelector(".pm-up-btn");
+      if (input) input.disabled = true;
+      if (btn) btn.disabled = true;
+      showTyping();
+      const ctxData = await gatherContext();
+      const { cardDesc, cardPersonality, cardScenario, mainChatText, worldBookText, userName, userDesc } = ctxData;
+      const userBlock = [
+        `\u7528\u6237\u540D\u5B57\uFF1A${userName}`,
+        userDesc ? `\u7528\u6237\u4EBA\u8BBE\uFF1A${userDesc}` : ""
+      ].filter(Boolean).join("\n");
+      const smsHistoryText = conversationHistory.slice(-CONTEXT_LIMIT).map((m) => {
+        const clean = cleanResponse(m.content);
+        return m.role === "user" ? `${userName}\uFF1A${clean}` : clean;
+      }).join("\n");
+      const systemPrompt = `\u4F60\u540C\u65F6\u626E\u6F14\u7FA4\u804A\u4E2D\u7684\u6240\u6709\u6210\u5458\u3002
+\u3010\u52A1\u5FC5\u76F4\u63A5\u6309\u683C\u5F0F\u8F93\u51FA\u77ED\u4FE1\u5185\u5BB9\uFF0C\u4E25\u7981\u5728\u5F00\u5934\u8F93\u51FA\u201C\u597D\u7684\u201D\u7B49\u5E9F\u8BDD\u3002\u3011`;
+      const userPrompt = `\u7FA4\u804A\u540D\u79F0\uFF1A${groupDisplayName || "\u7FA4\u804A"}
+\u7FA4\u804A\u6210\u5458\uFF1A${groupMembers.join("\u3001")}
 
-        const id = getStorageId();
-        if (window.__pmPokeConfig[id]?.[currentGroupKey]) {
-            window.__pmPokeConfig[id][currentGroupKey].autoPoke.counter = 0;
-            savePokeConfig();
-        }
+\u8BF7\u4EE5\u6BCF\u4E2A\u7FA4\u6210\u5458\u7684\u8EAB\u4EFD\uFF0C\u6839\u636E\u5404\u81EA\u7684\u6027\u683C\u3001\u4EBA\u8BBE\u548C\u5F53\u524D\u804A\u5929\u4E0A\u4E0B\u6587\uFF0C\u81EA\u7136\u5730\u53D1\u8D77\u8BDD\u9898\u6216\u7EE7\u7EED\u804A\u5929\uFF0C\u4E0D\u8981\u63D0\u53CA\u4EFB\u4F55\u5916\u90E8\u89E6\u53D1\u3002
+\u6BCF\u4E2A\u6210\u5458\u6839\u636E\u81EA\u5DF1\u7684\u5224\u65AD\u9009\u62E9\u53D1\u8A00 0-8 \u6761\u3002
 
-        document.getElementById('pm-overlay')?.remove();
+\u8F93\u51FA\u683C\u5F0F\uFF1A\u89D2\u8272\u540D\uFF1A\u6D88\u606F\u5185\u5BB9 / \u6D88\u606F\u5185\u5BB9
 
-        isGenerating = true;
+\u3010\u7528\u6237\u4FE1\u606F\u3011
+${userBlock}
 
-        const input = phoneWindow?.querySelector('.pm-input');
-        const btn = phoneWindow?.querySelector('.pm-up-btn');
-        if (input) input.disabled = true;
-        if (btn) btn.disabled = true;
+\u3010\u89D2\u8272\u8BBE\u5B9A\u3011
+${cardDesc || ""}
 
-        showTyping();
+\u3010\u6027\u683C\u3011
+${cardPersonality || ""}
 
-        const ctxData = await gatherContext();
-        const { cardDesc, cardPersonality, cardScenario, mainChatText, worldBookText, userName, userDesc } = ctxData;
+\u3010\u573A\u666F\u3011
+${cardScenario || ""}
 
-        const userBlock = [
-            `用户名字：${userName}`,
-            userDesc ? `用户人设：${userDesc}` : ''
-        ].filter(Boolean).join('\n');
-        
-        const smsHistoryText = conversationHistory.slice(-CONTEXT_LIMIT).map(m => {
-            const clean = cleanResponse(m.content);
-            return m.role === 'user' ? `${userName}：${clean}` : clean;
-        }).join('\n');
+\u3010\u4E16\u754C\u4E66\u3011
+${worldBookText || ""}
 
-        const systemPrompt = `你同时扮演群聊中的所有成员。\n【务必直接按格式输出短信内容，严禁在开头输出“好的”等废话。】`;
-        const userPrompt = `群聊名称：${groupDisplayName || '群聊'}\n群聊成员：${groupMembers.join('、')}\n\n请以每个群成员的身份，根据各自的性格、人设和当前聊天上下文，自然地发起话题或继续聊天，不要提及任何外部触发。\n每个成员根据自己的判断选择发言 0-8 条。\n\n输出格式：角色名：消息内容 / 消息内容\n\n【用户信息】\n${userBlock}\n\n【角色设定】\n${cardDesc || ''}\n\n【性格】\n${cardPersonality || ''}\n\n【场景】\n${cardScenario || ''}\n\n【世界书】\n${worldBookText || ''}\n\n【主线最近对话】\n${mainChatText || ''}\n\n【群聊历史】\n${smsHistoryText}`
-            + (getEmojiPrompt(currentGroupKey) || '') + getWordyPrompt();
+\u3010\u4E3B\u7EBF\u6700\u8FD1\u5BF9\u8BDD\u3011
+${mainChatText || ""}
 
-        try {
-            const raw = await callAI(systemPrompt, userPrompt);
-            hideTyping();
-
-            const parsed = parseGroupResponse(raw);
-            const contentParts = []; 
-            
-            for (const block of parsed) {
-                if (block.sentences.length > 0) {
-                    contentParts.push(`${block.name}：${block.sentences.join(' / ')}`);
-                    for (const s of block.sentences) {
-                        await new Promise(r => setTimeout(r, 120));
-                        addBubble(s, 'left', block.name, conversationHistory.length); // +1 after push below
-                    }
-                    // 每个成员说完话立即落盘，防止后续 block 渲染途中挂起
-                    conversationHistory.push({ role: 'assistant', content: contentParts[contentParts.length - 1] });
-                    { const _id = getStorageId(); if (!window.__pmHistories[_id]) window.__pmHistories[_id] = {};
-                      const _key = isGroupChat && currentGroupKey ? currentGroupKey : currentPersona;
-                      window.__pmHistories[_id][_key] = conversationHistory.slice(-SAVE_LIMIT);
-                      saveHistories(); }
-                }
+\u3010\u7FA4\u804A\u5386\u53F2\u3011
+${smsHistoryText}` + (getEmojiPrompt(currentGroupKey) || "") + getWordyPrompt();
+      try {
+        const raw = await callAI(systemPrompt, userPrompt);
+        hideTyping();
+        const parsed = parseGroupResponse(raw);
+        const contentParts = [];
+        for (const block of parsed) {
+          if (block.sentences.length > 0) {
+            contentParts.push(`${block.name}\uFF1A${block.sentences.join(" / ")}`);
+            for (const s of block.sentences) {
+              await new Promise((r) => setTimeout(r, 120));
+              addBubble(s, "left", block.name, conversationHistory.length);
             }
-            
-            if (contentParts.length > 0) {
-                // 已在循环内逐条 push，此处仅做双向注入
-                applyBidirectionalInjection();
+            conversationHistory.push({ role: "assistant", content: contentParts[contentParts.length - 1] });
+            {
+              const _id = getStorageId();
+              if (!window.__pmHistories[_id]) window.__pmHistories[_id] = {};
+              const _key = isGroupChat && currentGroupKey ? currentGroupKey : currentPersona;
+              window.__pmHistories[_id][_key] = conversationHistory.slice(-SAVE_LIMIT);
+              saveHistories();
             }
-        } catch (e) {
-            hideTyping();
-            addNote(`（发送失败：${e?.message || e}）`);
+          }
         }
-
-        if (input) input.disabled = false;
-        if (btn) btn.disabled = false;
-        isGenerating = false;
+        if (contentParts.length > 0) {
+          applyBidirectionalInjection();
+        }
+      } catch (e) {
+        hideTyping();
+        addNote(`\uFF08\u53D1\u9001\u5931\u8D25\uFF1A${e?.message || e}\uFF09`);
+      }
+      if (input) input.disabled = false;
+      if (btn) btn.disabled = false;
+      isGenerating = false;
     };
-
     window.__pmSaveAndCloseGroupEdit = () => {
-        const nameInput = document.getElementById('pm-group-name-input');
-        const memInput = document.getElementById('pm-group-input');
-
-        if (nameInput && memInput && currentGroupKey) {
-            const groupName = nameInput.value.trim();
-            const names = memInput.value.split(/[/／]/).map(s => s.trim()).filter(Boolean).slice(0, MAX_GROUP_MEMBERS - 1);
-
-            if (groupName && names.length >= 2) {
-                const id = getStorageId();
-                if (!window.__pmGroupMeta[id]) window.__pmGroupMeta[id] = {};
-                window.__pmGroupMeta[id][currentGroupKey] = { name: groupName, members: names };
-                saveGroupMeta();
-
-                groupMembers = names; groupDisplayName = groupName;
-                groupColorMap = {};
-                names.forEach((n, i) => { groupColorMap[n] = GROUP_COLORS[i % GROUP_COLORS.length]; });
-            }
-
-            const checkEl = document.getElementById('pm-poke-check-group');
-            const intervalEl = document.getElementById('pm-poke-interval-group');
-            const emojiChecks = document.querySelectorAll('.pm-emoji-assign-check.is-checked');
-            const selectedEmojis = Array.from(emojiChecks).map(cb => cb.dataset.id);
-
-            if (checkEl && intervalEl) {
-                const id = getStorageId();
-                if (!window.__pmPokeConfig[id]) window.__pmPokeConfig[id] = {};
-
-                const enabled = checkEl.classList.contains('is-checked');
-                const interval = parseInt(intervalEl.value) || 3;
-                const oldCounter = window.__pmPokeConfig[id][currentGroupKey]?.autoPoke?.counter || 0;
-
-                window.__pmPokeConfig[id][currentGroupKey] = {
-                    autoPoke: {
-                        enabled,
-                        interval: Math.max(1, Math.min(99, interval)),
-                        counter: enabled ? Math.min(oldCounter, interval - 1) : oldCounter
-                    },
-                    emojis: selectedEmojis
-                };
-
-                savePokeConfig();
-            }
-        }
-
-        document.getElementById('pm-overlay')?.remove();
-
-        if (phoneWindow && currentGroupKey) {
-            window.__pmSwitch(currentGroupKey);
-        }
-    };
-
-    window.__pmShowGroupCreate = () => showGroupForm('create');
-
-    window.__pmGroupInputChanged = () => {
-        const input = document.getElementById('pm-group-input');
-        const counter = document.getElementById('pm-group-counter');
-        const preview = document.getElementById('pm-group-preview');
-        if (!input) return;
-        const names = input.value.split(/[/／]/).map(s => s.trim()).filter(Boolean);
-        const max = MAX_GROUP_MEMBERS - 1;
-        const count = Math.min(names.length, max);
-        const over = names.length > max;
-        counter.textContent = `${count}/${max} 个角色${over ? ' ⚠️ 超出上限' : ''}`;
-        counter.style.color = over ? '#ff3b30' : '#b87a00';
-        preview.innerHTML = names.slice(0, max).map((n, i) => {
-            const gc = GROUP_COLORS[i % GROUP_COLORS.length];
-            return `<span style="background:${gc.bg};color:${gc.text};padding:3px 8px;border-radius:10px;font-size:11px;">${escapeHtml(n)}</span>`;
-        }).join('');
-    };
-
-    window.__pmConfirmGroup = (mode) => {
-        const nameInput = document.getElementById('pm-group-name-input');
-        const memInput = document.getElementById('pm-group-input');
-        if (!nameInput || !memInput) return;
+      const nameInput = document.getElementById("pm-group-name-input");
+      const memInput = document.getElementById("pm-group-input");
+      if (nameInput && memInput && currentGroupKey) {
         const groupName = nameInput.value.trim();
-        const names = memInput.value.split(/[/／]/).map(s => s.trim()).filter(Boolean).slice(0, MAX_GROUP_MEMBERS - 1);
-        if (!groupName) { alert('请输入群聊名称'); return; }
-        if (names.length < 2) { alert('至少需要 2 个角色'); return; }
-
-        document.getElementById('pm-overlay')?.remove();
-        const id = getStorageId();
-        if (!window.__pmGroupMeta[id]) window.__pmGroupMeta[id] = {};
-        
-        if (mode === 'create') {
-            const groupKey = `__group_${Date.now()}`;
-            // 修复：在修改全局状态前先快照旧的 saveKey，防止旧聊天记录被写入新群聊
-            const _prevSaveKey = isGroupChat && currentGroupKey ? currentGroupKey : currentPersona;
-            window.__pmGroupMeta[id][groupKey] = { name: groupName, members: names };
-            saveGroupMeta();
-            isGroupChat = true; groupMembers = names; groupDisplayName = groupName; currentGroupKey = groupKey;
-            groupColorMap = {}; names.forEach((n, i) => { groupColorMap[n] = GROUP_COLORS[i % GROUP_COLORS.length]; });
-            window.__pmSwitch(groupKey, _prevSaveKey);
-        } else {
-            if (!currentGroupKey) return;
-            window.__pmGroupMeta[id][currentGroupKey] = { name: groupName, members: names };
-            saveGroupMeta();
-            groupMembers = names; groupDisplayName = groupName;
-            groupColorMap = {}; names.forEach((n, i) => { groupColorMap[n] = GROUP_COLORS[i % GROUP_COLORS.length]; });
-            window.__pmSwitch(currentGroupKey);
+        const names = memInput.value.split(/[/／]/).map((s) => s.trim()).filter(Boolean).slice(0, MAX_GROUP_MEMBERS - 1);
+        if (groupName && names.length >= 2) {
+          const id = getStorageId();
+          if (!window.__pmGroupMeta[id]) window.__pmGroupMeta[id] = {};
+          window.__pmGroupMeta[id][currentGroupKey] = { name: groupName, members: names };
+          saveGroupMeta();
+          groupMembers = names;
+          groupDisplayName = groupName;
+          groupColorMap = {};
+          names.forEach((n, i) => {
+            groupColorMap[n] = GROUP_COLORS[i % GROUP_COLORS.length];
+          });
         }
+        const checkEl = document.getElementById("pm-poke-check-group");
+        const intervalEl = document.getElementById("pm-poke-interval-group");
+        const emojiChecks = document.querySelectorAll(".pm-emoji-assign-check.is-checked");
+        const selectedEmojis = Array.from(emojiChecks).map((cb) => cb.dataset.id);
+        if (checkEl && intervalEl) {
+          const id = getStorageId();
+          if (!window.__pmPokeConfig[id]) window.__pmPokeConfig[id] = {};
+          const enabled = checkEl.classList.contains("is-checked");
+          const interval = parseInt(intervalEl.value) || 3;
+          const oldCounter = window.__pmPokeConfig[id][currentGroupKey]?.autoPoke?.counter || 0;
+          window.__pmPokeConfig[id][currentGroupKey] = {
+            autoPoke: {
+              enabled,
+              interval: Math.max(1, Math.min(99, interval)),
+              counter: enabled ? Math.min(oldCounter, interval - 1) : oldCounter
+            },
+            emojis: selectedEmojis
+          };
+          savePokeConfig();
+        }
+      }
+      document.getElementById("pm-overlay")?.remove();
+      if (phoneWindow && currentGroupKey) {
+        window.__pmSwitch(currentGroupKey);
+      }
     };
-
-    window.__pmSetDarkMode = (mode) => {
-        window.__pmTheme.darkMode = mode;
-        saveTheme();
-        if (phoneWindow) {
-            phoneWindow.setAttribute('data-theme', mode);
-        }
-        document.querySelectorAll('.pm-layout-chip').forEach(el => {
-            if (el.textContent.includes('日间') || el.textContent.includes('夜间')) {
-                el.classList.toggle('pm-layout-active',
-                    (mode === 'light' && el.textContent.includes('日间')) ||
-                    (mode === 'dark' && el.textContent.includes('夜间'))
-                );
-            }
+    window.__pmShowGroupCreate = () => showGroupForm("create");
+    window.__pmGroupInputChanged = () => {
+      const input = document.getElementById("pm-group-input");
+      const counter = document.getElementById("pm-group-counter");
+      const preview = document.getElementById("pm-group-preview");
+      if (!input) return;
+      const names = input.value.split(/[/／]/).map((s) => s.trim()).filter(Boolean);
+      const max = MAX_GROUP_MEMBERS - 1;
+      const count = Math.min(names.length, max);
+      const over = names.length > max;
+      counter.textContent = `${count}/${max} \u4E2A\u89D2\u8272${over ? " \u26A0\uFE0F \u8D85\u51FA\u4E0A\u9650" : ""}`;
+      counter.style.color = over ? "#ff3b30" : "#b87a00";
+      preview.innerHTML = names.slice(0, max).map((n, i) => {
+        const gc = GROUP_COLORS[i % GROUP_COLORS.length];
+        return `<span style="background:${gc.bg};color:${gc.text};padding:3px 8px;border-radius:10px;font-size:11px;">${escapeHtml(n)}</span>`;
+      }).join("");
+    };
+    window.__pmConfirmGroup = (mode) => {
+      const nameInput = document.getElementById("pm-group-name-input");
+      const memInput = document.getElementById("pm-group-input");
+      if (!nameInput || !memInput) return;
+      const groupName = nameInput.value.trim();
+      const names = memInput.value.split(/[/／]/).map((s) => s.trim()).filter(Boolean).slice(0, MAX_GROUP_MEMBERS - 1);
+      if (!groupName) {
+        alert("\u8BF7\u8F93\u5165\u7FA4\u804A\u540D\u79F0");
+        return;
+      }
+      if (names.length < 2) {
+        alert("\u81F3\u5C11\u9700\u8981 2 \u4E2A\u89D2\u8272");
+        return;
+      }
+      document.getElementById("pm-overlay")?.remove();
+      const id = getStorageId();
+      if (!window.__pmGroupMeta[id]) window.__pmGroupMeta[id] = {};
+      if (mode === "create") {
+        const groupKey = `__group_${Date.now()}`;
+        const _prevSaveKey = isGroupChat && currentGroupKey ? currentGroupKey : currentPersona;
+        window.__pmGroupMeta[id][groupKey] = { name: groupName, members: names };
+        saveGroupMeta();
+        isGroupChat = true;
+        groupMembers = names;
+        groupDisplayName = groupName;
+        currentGroupKey = groupKey;
+        groupColorMap = {};
+        names.forEach((n, i) => {
+          groupColorMap[n] = GROUP_COLORS[i % GROUP_COLORS.length];
         });
+        window.__pmSwitch(groupKey, _prevSaveKey);
+      } else {
+        if (!currentGroupKey) return;
+        window.__pmGroupMeta[id][currentGroupKey] = { name: groupName, members: names };
+        saveGroupMeta();
+        groupMembers = names;
+        groupDisplayName = groupName;
+        groupColorMap = {};
+        names.forEach((n, i) => {
+          groupColorMap[n] = GROUP_COLORS[i % GROUP_COLORS.length];
+        });
+        window.__pmSwitch(currentGroupKey);
+      }
     };
-
-    // ========== 导出 / 导入 数据功能 ==========
+    window.__pmSetDarkMode = (mode) => {
+      window.__pmTheme.darkMode = mode;
+      saveTheme();
+      if (phoneWindow) {
+        phoneWindow.setAttribute("data-theme", mode);
+      }
+      document.querySelectorAll(".pm-layout-chip").forEach((el) => {
+        if (el.textContent.includes("\u65E5\u95F4") || el.textContent.includes("\u591C\u95F4")) {
+          el.classList.toggle(
+            "pm-layout-active",
+            mode === "light" && el.textContent.includes("\u65E5\u95F4") || mode === "dark" && el.textContent.includes("\u591C\u95F4")
+          );
+        }
+      });
+    };
     window.__pmExportData = () => {
-        const data = {
-            histories: window.__pmHistories || {},
-            config: window.__pmConfig || {},
-            theme: window.__pmTheme || {},
-            profiles: window.__pmProfiles || [],
-            groupMeta: window.__pmGroupMeta || {},
-            pokeConfig: window.__pmPokeConfig || {},
-            bidirectional: window.__pmBidirectional || {},
-            emojis: window.__pmEmojis || []
-        };
-        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `PhoneMode_Backup_${new Date().getTime()}.json`;
-        a.click();
-        URL.revokeObjectURL(url);
-        alert('✅ 短信备份已成功导出！');
+      const data = {
+        histories: window.__pmHistories || {},
+        config: window.__pmConfig || {},
+        theme: window.__pmTheme || {},
+        profiles: window.__pmProfiles || [],
+        groupMeta: window.__pmGroupMeta || {},
+        pokeConfig: window.__pmPokeConfig || {},
+        bidirectional: window.__pmBidirectional || {},
+        emojis: window.__pmEmojis || []
+      };
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `PhoneMode_Backup_${(/* @__PURE__ */ new Date()).getTime()}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      alert("\u2705 \u77ED\u4FE1\u5907\u4EFD\u5DF2\u6210\u529F\u5BFC\u51FA\uFF01");
     };
-
     window.__pmImportData = (input) => {
-        const file = input.files?.[0];
-        if (!file) return;
-        const reader = new FileReader();
-        reader.onload = (e) => {
-            try {
-                const data = JSON.parse(e.target.result);
-                if (data.histories) window.__pmHistories = data.histories;
-                if (data.config) window.__pmConfig = data.config;
-                if (data.theme) window.__pmTheme = data.theme;
-                if (data.profiles) window.__pmProfiles = data.profiles;
-                if (data.groupMeta) window.__pmGroupMeta = data.groupMeta;
-                if (data.pokeConfig) window.__pmPokeConfig = data.pokeConfig;
-                if (data.bidirectional) window.__pmBidirectional = data.bidirectional;
-                if (data.emojis) { window.__pmEmojis = data.emojis; saveEmojis(); }
-
-                saveHistories();
-                try { localStorage.setItem('ST_SMS_CONFIG', JSON.stringify(window.__pmConfig)); } catch(err) {}
-                saveTheme();
-                saveGroupMeta();
-                try { localStorage.setItem('ST_SMS_POKE_CONFIG', JSON.stringify(window.__pmPokeConfig)); } catch(err) {}
-                try { localStorage.setItem('ST_SMS_BIDIRECTIONAL', JSON.stringify(window.__pmBidirectional)); } catch(err) {}
-
-                alert('✅ 数据导入成功！请重新打开短信界面生效。');
-                document.getElementById('pm-overlay')?.remove();
-                window.__pmEnd();
-            } catch (err) {
-                alert('❌ 导入失败，文件格式不正确！\n' + err.message);
-            }
-        };
-        reader.readAsText(file);
-        input.value = '';
+      const file = input.files?.[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        try {
+          const data = JSON.parse(e.target.result);
+          if (data.histories) window.__pmHistories = data.histories;
+          if (data.config) window.__pmConfig = data.config;
+          if (data.theme) window.__pmTheme = data.theme;
+          if (data.profiles) window.__pmProfiles = data.profiles;
+          if (data.groupMeta) window.__pmGroupMeta = data.groupMeta;
+          if (data.pokeConfig) window.__pmPokeConfig = data.pokeConfig;
+          if (data.bidirectional) window.__pmBidirectional = data.bidirectional;
+          if (data.emojis) {
+            window.__pmEmojis = data.emojis;
+            saveEmojis();
+          }
+          saveHistories();
+          try {
+            localStorage.setItem("ST_SMS_CONFIG", JSON.stringify(window.__pmConfig));
+          } catch (err) {
+          }
+          saveTheme();
+          saveGroupMeta();
+          try {
+            localStorage.setItem("ST_SMS_POKE_CONFIG", JSON.stringify(window.__pmPokeConfig));
+          } catch (err) {
+          }
+          try {
+            localStorage.setItem("ST_SMS_BIDIRECTIONAL", JSON.stringify(window.__pmBidirectional));
+          } catch (err) {
+          }
+          alert("\u2705 \u6570\u636E\u5BFC\u5165\u6210\u529F\uFF01\u8BF7\u91CD\u65B0\u6253\u5F00\u77ED\u4FE1\u754C\u9762\u751F\u6548\u3002");
+          document.getElementById("pm-overlay")?.remove();
+          window.__pmEnd();
+        } catch (err) {
+          alert("\u274C \u5BFC\u5165\u5931\u8D25\uFF0C\u6587\u4EF6\u683C\u5F0F\u4E0D\u6B63\u786E\uFF01\n" + err.message);
+        }
+      };
+      reader.readAsText(file);
+      input.value = "";
     };
-
-    // ========== 设置界面 ==========
     window.__pmShowConfig = async () => {
-        loadProfiles(); loadTheme();
-        await loadBgSettings();
-        const cfg = window.__pmConfig, t = window.__pmTheme;
-        const shortUrl = (u) => (u || '').replace(/^https?:\/\//, '').replace(/\/+$/, '');
-        const maskKey = (k) => !k ? '' : (k.length <= 8 ? '****' : k.slice(0, 4) + '****' + k.slice(-4));
-        const profilesHtml = window.__pmProfiles.length > 0
-            ? window.__pmProfiles.map((p, i) => `<div class="pm-prof-li"><div class="pm-prof-info" onclick="window.__pmPickProfile(${i})"><div class="pm-prof-url">${escapeHtml(shortUrl(p.apiUrl))}</div><div class="pm-prof-meta">${escapeHtml(maskKey(p.apiKey))}${p.model ? ' · ' + escapeHtml(p.model) : ''}</div></div><i class="pm-prof-del" onclick="window.__pmDeleteProfile(${i})">✕</i></div>`).join('')
-            : '<div class="pm-prof-empty">暂无档案</div>';
-        const useIndep = !!cfg.useIndependent;
-        const presetBtns = Object.entries(THEME_PRESETS).map(([k, v]) =>
-            `<div class="pm-theme-chip ${t.preset === k ? 'pm-theme-active' : ''}" data-preset="${k}" onclick="window.__pmSetPreset('${safeJS(k)}')"><span class="pm-theme-dot" style="background:${v.right}"></span>${v.label}</div>`
-        ).join('');
-        const layoutBtns = ['standard', 'relaxed'].map(v =>
-            `<div class="pm-layout-chip ${t.layout === v ? 'pm-layout-active' : ''}" onclick="window.__pmSetLayout('${safeJS(v)}')">${v === 'standard' ? '标准' : '宽松'}</div>`
-        ).join('');
-        const id = getStorageId(), localKey = `${id}_${currentPersona}`;
-        const hasGlobalBg = !!window.__pmBgGlobal, hasLocalBg = !!window.__pmBgLocal[localKey];
-        const globalBgBtn = hasGlobalBg
-            ? `<button class="pm-bg-btn pm-bg-del" onclick="window.__pmClearBg('global')">清除</button>`
-            : `<label class="pm-bg-btn">选择图片<input type="file" accept="image/*" onchange="window.__pmUploadBg(this,'global')" hidden></label>
+      loadProfiles();
+      loadTheme();
+      await loadBgSettings();
+      const cfg = window.__pmConfig, t = window.__pmTheme;
+      const shortUrl = (u) => (u || "").replace(/^https?:\/\//, "").replace(/\/+$/, "");
+      const maskKey = (k) => !k ? "" : k.length <= 8 ? "****" : k.slice(0, 4) + "****" + k.slice(-4);
+      const profilesHtml = window.__pmProfiles.length > 0 ? window.__pmProfiles.map((p, i) => `<div class="pm-prof-li"><div class="pm-prof-info" onclick="window.__pmPickProfile(${i})"><div class="pm-prof-url">${escapeHtml(shortUrl(p.apiUrl))}</div><div class="pm-prof-meta">${escapeHtml(maskKey(p.apiKey))}${p.model ? " \xB7 " + escapeHtml(p.model) : ""}</div></div><i class="pm-prof-del" onclick="window.__pmDeleteProfile(${i})">\u2715</i></div>`).join("") : '<div class="pm-prof-empty">\u6682\u65E0\u6863\u6848</div>';
+      const useIndep = !!cfg.useIndependent;
+      const presetBtns = Object.entries(THEME_PRESETS).map(
+        ([k, v]) => `<div class="pm-theme-chip ${t.preset === k ? "pm-theme-active" : ""}" data-preset="${k}" onclick="window.__pmSetPreset('${safeJS(k)}')"><span class="pm-theme-dot" style="background:${v.right}"></span>${v.label}</div>`
+      ).join("");
+      const layoutBtns = ["standard", "relaxed"].map(
+        (v) => `<div class="pm-layout-chip ${t.layout === v ? "pm-layout-active" : ""}" onclick="window.__pmSetLayout('${safeJS(v)}')">${v === "standard" ? "\u6807\u51C6" : "\u5BBD\u677E"}</div>`
+      ).join("");
+      const id = getStorageId(), localKey = `${id}_${currentPersona}`;
+      const hasGlobalBg = !!window.__pmBgGlobal, hasLocalBg = !!window.__pmBgLocal[localKey];
+      const globalBgBtn = hasGlobalBg ? `<button class="pm-bg-btn pm-bg-del" onclick="window.__pmClearBg('global')">\u6E05\u9664</button>` : `<label class="pm-bg-btn">\u9009\u62E9\u56FE\u7247<input type="file" accept="image/*" onchange="window.__pmUploadBg(this,'global')" hidden></label>
                <button class="pm-bg-btn" onclick="window.__pmBgUrl('global')">URL</button>`;
-        const localBgBtn = hasLocalBg
-            ? `<button class="pm-bg-btn pm-bg-del" onclick="window.__pmClearBg('local')">清除</button>`
-            : `<label class="pm-bg-btn">选择图片<input type="file" accept="image/*" onchange="window.__pmUploadBg(this,'local')" hidden></label>
+      const localBgBtn = hasLocalBg ? `<button class="pm-bg-btn pm-bg-del" onclick="window.__pmClearBg('local')">\u6E05\u9664</button>` : `<label class="pm-bg-btn">\u9009\u62E9\u56FE\u7247<input type="file" accept="image/*" onchange="window.__pmUploadBg(this,'local')" hidden></label>
                <button class="pm-bg-btn" onclick="window.__pmBgUrl('local')">URL</button>`;
-
-        makeOverlay(`
-<div class="pm-modal pm-modal-wide" style="height: 560px;"> <div class="pm-modal-header"><b>设置</b><span onclick="document.getElementById('pm-overlay').remove()" class="pm-modal-close">✕</span></div>
+      makeOverlay(`
+<div class="pm-modal pm-modal-wide" style="height: 560px;"> <div class="pm-modal-header"><b>\u8BBE\u7F6E</b><span onclick="document.getElementById('pm-overlay').remove()" class="pm-modal-close">\u2715</span></div>
   <div class="pm-cfg-tabs">
     <div class="pm-cfg-tab pm-cfg-tab-active" data-tab="api" onclick="window.__pmSwitchTab('api')">API</div>
-    <div class="pm-cfg-tab" data-tab="look" onclick="window.__pmSwitchTab('look')">外观</div>
-    <div class="pm-cfg-tab" data-tab="other" onclick="window.__pmSwitchTab('other')">其他</div>
+    <div class="pm-cfg-tab" data-tab="look" onclick="window.__pmSwitchTab('look')">\u5916\u89C2</div>
+    <div class="pm-cfg-tab" data-tab="other" onclick="window.__pmSwitchTab('other')">\u5176\u4ED6</div>
   </div>
   <div class="pm-modal-scroll">
     <div id="pm-tab-api" class="pm-tab-pane">
       <div style="padding:12px 14px 6px;">
-        <div class="pm-cfg-label" style="margin-bottom:6px;">⚡ API 模式</div>
+        <div class="pm-cfg-label" style="margin-bottom:6px;">\u26A1 API \u6A21\u5F0F</div>
         <div class="pm-mode-switch">
-          <div id="pm-mode-main" class="pm-mode-opt ${!useIndep ? 'pm-mode-active' : ''}" onclick="window.__pmSetMode(false)">🏠 主API</div>
-          <div id="pm-mode-indep" class="pm-mode-opt ${useIndep ? 'pm-mode-active' : ''}" onclick="window.__pmSetMode(true)">🔌 独立API</div>
+          <div id="pm-mode-main" class="pm-mode-opt ${!useIndep ? "pm-mode-active" : ""}" onclick="window.__pmSetMode(false)">\u{1F3E0} \u4E3BAPI</div>
+          <div id="pm-mode-indep" class="pm-mode-opt ${useIndep ? "pm-mode-active" : ""}" onclick="window.__pmSetMode(true)">\u{1F50C} \u72EC\u7ACBAPI</div>
         </div>
-        <div id="pm-mode-tip" class="pm-cfg-tip" style="text-align:left;padding:6px 2px 0;">${useIndep ? '🔌 独立API' : '🏠 主API'}</div>
+        <div id="pm-mode-tip" class="pm-cfg-tip" style="text-align:left;padding:6px 2px 0;">${useIndep ? "\u{1F50C} \u72EC\u7ACBAPI" : "\u{1F3E0} \u4E3BAPI"}</div>
       </div>
       <div style="padding:6px 14px 4px;border-top:1px solid #f0f0f0;">
-        <div class="pm-cfg-label" style="margin:8px 0 6px;">📚 已保存档案</div>
+        <div class="pm-cfg-label" style="margin:8px 0 6px;">\u{1F4DA} \u5DF2\u4FDD\u5B58\u6863\u6848</div>
         <div class="pm-prof-list">${profilesHtml}</div>
       </div>
       <div style="padding:10px 16px;display:flex;flex-direction:column;gap:10px;border-top:1px solid #f0f0f0;">
-        <div class="pm-cfg-label">API 地址</div>
-        <input id="pm-cfg-url" class="pm-cfg-input" placeholder="https://api.xxx.com 或 .../v1" value="${escapeAttr(cfg.apiUrl || '')}">
+        <div class="pm-cfg-label">API \u5730\u5740</div>
+        <input id="pm-cfg-url" class="pm-cfg-input" placeholder="https://api.xxx.com \u6216 .../v1" value="${escapeAttr(cfg.apiUrl || "")}">
         <div class="pm-cfg-label">API Key</div>
-        <input id="pm-cfg-key" class="pm-cfg-input" placeholder="sk-..." value="${escapeAttr(cfg.apiKey || '')}" maxlength="999">
-        <div class="pm-cfg-label">模型名称</div>
+        <input id="pm-cfg-key" class="pm-cfg-input" placeholder="sk-..." value="${escapeAttr(cfg.apiKey || "")}" maxlength="999">
+        <div class="pm-cfg-label">\u6A21\u578B\u540D\u79F0</div>
         <div class="pm-model-row">
-          <input id="pm-cfg-model" class="pm-cfg-input" placeholder="手动输入或 ▼" value="${escapeAttr(cfg.model || '')}">
-          <button id="pm-model-arrow" type="button" onclick="window.__pmShowModelPicker()">▼</button>
+          <input id="pm-cfg-model" class="pm-cfg-input" placeholder="\u624B\u52A8\u8F93\u5165\u6216 \u25BC" value="${escapeAttr(cfg.model || "")}">
+          <button id="pm-model-arrow" type="button" onclick="window.__pmShowModelPicker()">\u25BC</button>
         </div>
-        <div id="pm-api-status" class="pm-cfg-tip" style="font-weight:bold;">连接成功后自动保存</div>
-        
+        <div id="pm-api-status" class="pm-cfg-tip" style="font-weight:bold;">\u8FDE\u63A5\u6210\u529F\u540E\u81EA\u52A8\u4FDD\u5B58</div>
+
         <div style="display:flex;gap:6px;margin-top:4px;">
-          <button onclick="window.__pmTestApi()" style="flex:1;background:#ff9500;color:#fff;border:none;border-radius:10px;padding:9px;font-size:12px;cursor:pointer;font-weight:600;">🔗 拉取模型</button>
-          <button onclick="window.__pmTestModel()" style="flex:1;background:#5856d6;color:#fff;border:none;border-radius:10px;padding:9px;font-size:12px;cursor:pointer;font-weight:600;">🧪 测试</button>
+          <button onclick="window.__pmTestApi()" style="flex:1;background:#ff9500;color:#fff;border:none;border-radius:10px;padding:9px;font-size:12px;cursor:pointer;font-weight:600;">\u{1F517} \u62C9\u53D6\u6A21\u578B</button>
+          <button onclick="window.__pmTestModel()" style="flex:1;background:#5856d6;color:#fff;border:none;border-radius:10px;padding:9px;font-size:12px;cursor:pointer;font-weight:600;">\u{1F9EA} \u6D4B\u8BD5</button>
         </div>
       </div>
       <div style="height:12px;"></div>
     </div>
-    
+
     <div id="pm-tab-look" class="pm-tab-pane" style="display:none;">
-      <div style="padding:12px 16px 0;"> <div class="pm-cfg-label" style="margin-bottom:8px;">🌓 日夜模式</div>
-        <div class="pm-theme-row" style="margin-bottom:8px;"> <div class="pm-layout-chip ${t.darkMode === 'light' ? 'pm-layout-active' : ''}" onclick="window.__pmSetDarkMode('light')">☀️ 日间</div>
-          <div class="pm-layout-chip ${t.darkMode === 'dark' ? 'pm-layout-active' : ''}" onclick="window.__pmSetDarkMode('dark')">🌙 夜间</div>
+      <div style="padding:12px 16px 0;"> <div class="pm-cfg-label" style="margin-bottom:8px;">\u{1F313} \u65E5\u591C\u6A21\u5F0F</div>
+        <div class="pm-theme-row" style="margin-bottom:8px;"> <div class="pm-layout-chip ${t.darkMode === "light" ? "pm-layout-active" : ""}" onclick="window.__pmSetDarkMode('light')">\u2600\uFE0F \u65E5\u95F4</div>
+          <div class="pm-layout-chip ${t.darkMode === "dark" ? "pm-layout-active" : ""}" onclick="window.__pmSetDarkMode('dark')">\u{1F319} \u591C\u95F4</div>
         </div>
       </div>
       <div style="padding:12px 16px;border-top:1px solid #f0f0f0;">
-        <div class="pm-cfg-label" style="margin-bottom:8px;">📐 界面布局</div>
+        <div class="pm-cfg-label" style="margin-bottom:8px;">\u{1F4D0} \u754C\u9762\u5E03\u5C40</div>
         <div class="pm-layout-row">${layoutBtns}</div>
       </div>
       <div style="padding:14px 16px 12px;border-top:1px solid #f0f0f0;">
-        <div class="pm-cfg-label" style="margin-bottom:10px;">🎨 气泡主题</div>
+        <div class="pm-cfg-label" style="margin-bottom:10px;">\u{1F3A8} \u6C14\u6CE1\u4E3B\u9898</div>
         <div class="pm-theme-row">${presetBtns}</div>
         <div style="display:flex;gap:8px;margin-top:14px;align-items:center;flex-wrap:wrap;">
-          <label class="pm-cfg-label" style="margin:0;">自定义右</label>
-          <input id="pm-custom-right" type="color" value="${t.customRight || '#007aff'}" onchange="window.__pmSetCustomColor()" class="pm-color-pick">
-          <label class="pm-cfg-label" style="margin:0;">自定义左</label>
-          <input id="pm-custom-left" type="color" value="${t.customLeft || '#e9e9eb'}" onchange="window.__pmSetCustomColor()" class="pm-color-pick">
-          <button onclick="window.__pmClearCustomColor()" class="pm-color-clear">重置</button>
+          <label class="pm-cfg-label" style="margin:0;">\u81EA\u5B9A\u4E49\u53F3</label>
+          <input id="pm-custom-right" type="color" value="${t.customRight || "#007aff"}" onchange="window.__pmSetCustomColor()" class="pm-color-pick">
+          <label class="pm-cfg-label" style="margin:0;">\u81EA\u5B9A\u4E49\u5DE6</label>
+          <input id="pm-custom-left" type="color" value="${t.customLeft || "#e9e9eb"}" onchange="window.__pmSetCustomColor()" class="pm-color-pick">
+          <button onclick="window.__pmClearCustomColor()" class="pm-color-clear">\u91CD\u7F6E</button>
         </div>
         <div style="display:flex;gap:8px;margin-top:12px;align-items:center;">
-          <label class="pm-cfg-label" style="margin:0;">边框颜色</label>
-          <input id="pm-border-color" type="color" value="${t.borderColor || '#1a1a1a'}" onchange="window.__pmSetBorderColor()" class="pm-color-pick">
-          <button onclick="document.getElementById('pm-border-color').value='#1a1a1a';window.__pmSetBorderColor()" class="pm-color-clear">重置</button>
+          <label class="pm-cfg-label" style="margin:0;">\u8FB9\u6846\u989C\u8272</label>
+          <input id="pm-border-color" type="color" value="${t.borderColor || "#1a1a1a"}" onchange="window.__pmSetBorderColor()" class="pm-color-pick">
+          <button onclick="document.getElementById('pm-border-color').value='#1a1a1a';window.__pmSetBorderColor()" class="pm-color-clear">\u91CD\u7F6E</button>
         </div>
       </div>
       <div style="padding:12px 16px 12px;border-top:1px solid #f0f0f0;">
-        <div class="pm-cfg-label" style="margin-bottom:14px;">🖼️ 背景图</div>
+        <div class="pm-cfg-label" style="margin-bottom:14px;">\u{1F5BC}\uFE0F \u80CC\u666F\u56FE</div>
         <div style="display:flex;flex-direction:column;gap:14px;padding:0 4px;">
           <div class="pm-bg-row">
-            <span class="pm-bg-label">全局背景</span>
+            <span class="pm-bg-label">\u5168\u5C40\u80CC\u666F</span>
             ${globalBgBtn}
           </div>
           <div class="pm-bg-row">
-            <span class="pm-bg-label">本联系人</span>
+            <span class="pm-bg-label">\u672C\u8054\u7CFB\u4EBA</span>
             ${localBgBtn}
           </div>
         </div>
@@ -2395,11 +2695,11 @@ ${userMsg.trim() ? `${userName}：${userMsgClean}\n${currentPersona}：` : `[仅
     </div>
     <div id="pm-tab-other" class="pm-tab-pane" style="display:none;">
       <div style="padding:14px 16px 12px;border-bottom:1px solid #f0f0f0;">
-        <div class="pm-cfg-label" style="margin-bottom:10px;">✍️ 字数控制</div>
+        <div class="pm-cfg-label" style="margin-bottom:10px;">\u270D\uFE0F \u5B57\u6570\u63A7\u5236</div>
         <div style="display:flex;align-items:center;justify-content:space-between;padding:4px 0;">
           <div style="display:flex;flex-direction:column;gap:3px;">
-            <span style="font-size:13px;font-weight:600;color:#333;">话少一点</span>
-            <span style="font-size:11px;color:#aaa;">每条消息不超过35字（话痨人设除外）</span>
+            <span style="font-size:13px;font-weight:600;color:#333;">\u8BDD\u5C11\u4E00\u70B9</span>
+            <span style="font-size:11px;color:#aaa;">\u6BCF\u6761\u6D88\u606F\u4E0D\u8D85\u8FC735\u5B57\uFF08\u8BDD\u75E8\u4EBA\u8BBE\u9664\u5916\uFF09</span>
           </div>
           <div id="pm-wordy-check"
                onclick="window.__pmToggleWordyLimit()"
@@ -2409,985 +2709,916 @@ ${userMsg.trim() ? `${userName}：${userMsgClean}\n${currentPersona}：` : `[仅
         </div>
       </div>
       <div style="padding:14px 16px 12px;">
-        <div class="pm-cfg-label" style="margin-bottom:10px;">🥰 表情包管理</div>
+        <div class="pm-cfg-label" style="margin-bottom:10px;">\u{1F970} \u8868\u60C5\u5305\u7BA1\u7406</div>
         <div id="pm-emoji-set-list"></div>
-        <button onclick="window.__pmAddEmojiSet()" style="width:100%;margin-top:8px;background:#007aff;color:#fff;border:none;border-radius:10px;padding:10px;font-size:13px;cursor:pointer;font-weight:600;">➕ 添加新套组</button>
-        <div class="pm-cfg-tip" style="text-align:left;margin-top:6px;">最多 10 套，每套最多 20 张图片</div>
+        <button onclick="window.__pmAddEmojiSet()" style="width:100%;margin-top:8px;background:#007aff;color:#fff;border:none;border-radius:10px;padding:10px;font-size:13px;cursor:pointer;font-weight:600;">\u2795 \u6DFB\u52A0\u65B0\u5957\u7EC4</button>
+        <div class="pm-cfg-tip" style="text-align:left;margin-top:6px;">\u6700\u591A 10 \u5957\uFF0C\u6BCF\u5957\u6700\u591A 20 \u5F20\u56FE\u7247</div>
       </div>
       <div style="padding:12px 16px 12px;border-top:1px solid #f0f0f0;">
-        <div class="pm-cfg-label" style="margin-bottom:10px;">📦 数据备份</div>
+        <div class="pm-cfg-label" style="margin-bottom:10px;">\u{1F4E6} \u6570\u636E\u5907\u4EFD</div>
         <div style="display:flex;gap:6px;">
-         <button onclick="window.__pmExportData()" style="flex:1;background:#34c759;color:#fff;border:none;border-radius:10px;padding:10px;font-size:13px;cursor:pointer;font-weight:600;">📥 导出备份</button>
-         <button onclick="document.getElementById('pm-import-file').click()" style="flex:1;background:#5856d6;color:#fff;border:none;border-radius:10px;padding:10px;font-size:13px;cursor:pointer;font-weight:600;">📤 导入备份</button>
+         <button onclick="window.__pmExportData()" style="flex:1;background:#34c759;color:#fff;border:none;border-radius:10px;padding:10px;font-size:13px;cursor:pointer;font-weight:600;">\u{1F4E5} \u5BFC\u51FA\u5907\u4EFD</button>
+         <button onclick="document.getElementById('pm-import-file').click()" style="flex:1;background:#5856d6;color:#fff;border:none;border-radius:10px;padding:10px;font-size:13px;cursor:pointer;font-weight:600;">\u{1F4E4} \u5BFC\u5165\u5907\u4EFD</button>
          <input id="pm-import-file" type="file" accept=".json" onchange="window.__pmImportData(this)" hidden>
         </div>
-        <div class="pm-cfg-tip" style="text-align:left;margin-top:6px;color:#ff9500;">注意：导入会覆盖当前所有联系人与记录</div>
+        <div class="pm-cfg-tip" style="text-align:left;margin-top:6px;color:#ff9500;">\u6CE8\u610F\uFF1A\u5BFC\u5165\u4F1A\u8986\u76D6\u5F53\u524D\u6240\u6709\u8054\u7CFB\u4EBA\u4E0E\u8BB0\u5F55</div>
       </div>
       <div style="height:12px;"></div>
     </div>
   </div>
   <div class="pm-modal-add" id="pm-config-bottom">
-    <button onclick="window.__pmSaveConfig()" style="width:100%;background:#007aff;color:#fff;border:none;border-radius:10px;padding:10px;font-size:13px;cursor:pointer;font-weight:600;">保存配置</button>
+    <button onclick="window.__pmSaveConfig()" style="width:100%;background:#007aff;color:#fff;border:none;border-radius:10px;padding:10px;font-size:13px;cursor:pointer;font-weight:600;">\u4FDD\u5B58\u914D\u7F6E</button>
   </div>
 </div>`);
     };
-
     window.__pmSwitchTab = (tab) => {
-        document.querySelectorAll('.pm-cfg-tab').forEach(el => el.classList.toggle('pm-cfg-tab-active', el.dataset.tab === tab));
-        document.querySelectorAll('.pm-tab-pane').forEach(el => el.style.display = 'none');
-        const pane = document.getElementById(`pm-tab-${tab}`);
-        if (pane) pane.style.display = 'block';
-        if (tab === 'other') {
-            window.__pmRenderEmojiSetList();
-            const wc = document.getElementById('pm-wordy-check');
-            if (wc) wc.classList.toggle('is-checked', !!window.__pmWordyLimit);
-        }
+      document.querySelectorAll(".pm-cfg-tab").forEach((el) => el.classList.toggle("pm-cfg-tab-active", el.dataset.tab === tab));
+      document.querySelectorAll(".pm-tab-pane").forEach((el) => el.style.display = "none");
+      const pane = document.getElementById(`pm-tab-${tab}`);
+      if (pane) pane.style.display = "block";
+      if (tab === "other") {
+        window.__pmRenderEmojiSetList();
+        const wc = document.getElementById("pm-wordy-check");
+        if (wc) wc.classList.toggle("is-checked", !!window.__pmWordyLimit);
+      }
     };
-
     window.__pmSetPreset = (p) => {
-        window.__pmTheme.preset = p; window.__pmTheme.customRight = ''; window.__pmTheme.customLeft = '';
-        saveTheme(); applyTheme();
-        document.querySelectorAll('.pm-theme-chip').forEach(el => el.classList.toggle('pm-theme-active', el.dataset.preset === p));
+      window.__pmTheme.preset = p;
+      window.__pmTheme.customRight = "";
+      window.__pmTheme.customLeft = "";
+      saveTheme();
+      applyTheme();
+      document.querySelectorAll(".pm-theme-chip").forEach((el) => el.classList.toggle("pm-theme-active", el.dataset.preset === p));
     };
     window.__pmSetCustomColor = () => {
-        window.__pmTheme.customRight = document.getElementById('pm-custom-right')?.value || '';
-        window.__pmTheme.customLeft = document.getElementById('pm-custom-left')?.value || '';
-        window.__pmTheme.preset = 'custom'; saveTheme(); applyTheme();
-        document.querySelectorAll('.pm-theme-chip').forEach(el => el.classList.remove('pm-theme-active'));
+      window.__pmTheme.customRight = document.getElementById("pm-custom-right")?.value || "";
+      window.__pmTheme.customLeft = document.getElementById("pm-custom-left")?.value || "";
+      window.__pmTheme.preset = "custom";
+      saveTheme();
+      applyTheme();
+      document.querySelectorAll(".pm-theme-chip").forEach((el) => el.classList.remove("pm-theme-active"));
     };
     window.__pmClearCustomColor = () => {
-        window.__pmTheme.customRight = ''; window.__pmTheme.customLeft = '';
-        window.__pmTheme.preset = 'default'; saveTheme(); applyTheme();
-        const r = document.getElementById('pm-custom-right'), l = document.getElementById('pm-custom-left');
-        if (r) r.value = '#007aff'; if (l) l.value = '#e9e9eb';
-        document.querySelectorAll('.pm-theme-chip').forEach(el => el.classList.toggle('pm-theme-active', el.dataset.preset === 'default'));
+      window.__pmTheme.customRight = "";
+      window.__pmTheme.customLeft = "";
+      window.__pmTheme.preset = "default";
+      saveTheme();
+      applyTheme();
+      const r = document.getElementById("pm-custom-right"), l = document.getElementById("pm-custom-left");
+      if (r) r.value = "#007aff";
+      if (l) l.value = "#e9e9eb";
+      document.querySelectorAll(".pm-theme-chip").forEach((el) => el.classList.toggle("pm-theme-active", el.dataset.preset === "default"));
     };
     window.__pmSetBorderColor = () => {
-        window.__pmTheme.borderColor = document.getElementById('pm-border-color')?.value || '#1a1a1a';
-        saveTheme(); applyTheme();
+      window.__pmTheme.borderColor = document.getElementById("pm-border-color")?.value || "#1a1a1a";
+      saveTheme();
+      applyTheme();
     };
     window.__pmSetLayout = (v) => {
-        window.__pmTheme.layout = v; saveTheme();
-        if (phoneWindow) phoneWindow.dataset.layout = v;
-        document.querySelectorAll('.pm-layout-chip').forEach(el => el.classList.toggle('pm-layout-active', el.textContent === (v === 'standard' ? '标准' : '宽松')));
-        fitNameFont();
+      window.__pmTheme.layout = v;
+      saveTheme();
+      if (phoneWindow) phoneWindow.dataset.layout = v;
+      document.querySelectorAll(".pm-layout-chip").forEach((el) => el.classList.toggle("pm-layout-active", el.textContent === (v === "standard" ? "\u6807\u51C6" : "\u5BBD\u677E")));
+      fitNameFont();
     };
-
     window.__pmUploadBg = (input, scope) => {
-        const file = input.files?.[0]; if (!file) return;
-        const reader = new FileReader();
-        reader.onload = (e) => {
-            openCropper(e.target.result, (croppedDataUrl) => {
-                if (scope === 'global') { window.__pmBgGlobal = croppedDataUrl; saveBgGlobal(); }
-                else { const id = getStorageId(); window.__pmBgLocal[`${id}_${currentPersona}`] = croppedDataUrl; saveBgLocal(); }
-                applyBackground();
-                window.__pmShowConfig();
-                setTimeout(() => window.__pmSwitchTab('look'), 50);
-            });
-        };
-        reader.readAsDataURL(file);
-        input.value = '';
+      const file = input.files?.[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        openCropper(e.target.result, (croppedDataUrl) => {
+          if (scope === "global") {
+            window.__pmBgGlobal = croppedDataUrl;
+            saveBgGlobal();
+          } else {
+            const id = getStorageId();
+            window.__pmBgLocal[`${id}_${currentPersona}`] = croppedDataUrl;
+            saveBgLocal();
+          }
+          applyBackground();
+          window.__pmShowConfig();
+          setTimeout(() => window.__pmSwitchTab("look"), 50);
+        });
+      };
+      reader.readAsDataURL(file);
+      input.value = "";
     };
-
     window.__pmBgUrl = (scope) => {
-        const url = prompt('输入图片 URL：');
-        if (!url?.trim()) return;
-        if (scope === 'global') { window.__pmBgGlobal = url.trim(); saveBgGlobal(); }
-        else { const id = getStorageId(); window.__pmBgLocal[`${id}_${currentPersona}`] = url.trim(); saveBgLocal(); }
-        applyBackground();
-        window.__pmShowConfig();
-        setTimeout(() => window.__pmSwitchTab('look'), 50);
+      const url = prompt("\u8F93\u5165\u56FE\u7247 URL\uFF1A");
+      if (!url?.trim()) return;
+      if (scope === "global") {
+        window.__pmBgGlobal = url.trim();
+        saveBgGlobal();
+      } else {
+        const id = getStorageId();
+        window.__pmBgLocal[`${id}_${currentPersona}`] = url.trim();
+        saveBgLocal();
+      }
+      applyBackground();
+      window.__pmShowConfig();
+      setTimeout(() => window.__pmSwitchTab("look"), 50);
     };
-
     window.__pmClearBg = async (scope) => {
-        if (scope === 'global') {
-            window.__pmBgGlobal = '';
-            await pmIDBDel('ST_SMS_BG_GLOBAL');
-            try { localStorage.removeItem('ST_SMS_BG_GLOBAL'); } catch (e) {}
-        } else {
-            const id = getStorageId(), key = `${id}_${currentPersona}`;
-            delete window.__pmBgLocal[key];
-            await pmIDBDel('ST_SMS_BG_LOCAL_' + key);
-            await saveBgLocal();
-        }
-        applyBackground();
-        window.__pmShowConfig();
-        setTimeout(() => window.__pmSwitchTab('look'), 50);
-    };
-
-    window.__pmTestApi = async () => {
-        const u = document.getElementById('pm-cfg-url').value.trim(), k = document.getElementById('pm-cfg-key').value.trim(), m = document.getElementById('pm-cfg-model').value.trim();
-        const s = document.getElementById('pm-api-status');
-        if (!u) { s.textContent = "❌ 填写API地址"; s.style.color = "#ff3b30"; return; }
-        s.textContent = "连接中..."; s.style.color = "#007aff";
+      if (scope === "global") {
+        window.__pmBgGlobal = "";
+        await pmIDBDel("ST_SMS_BG_GLOBAL");
         try {
-            const r = await fetch(normalizeApiUrls(u).modelsUrl, { method: 'GET', headers: { 'Authorization': `Bearer ${k}` } });
-            if (!r.ok) throw new Error(`HTTP ${r.status}`);
-            const d = await r.json();
-            if (d?.data && Array.isArray(d.data)) { __pmModelList = d.data.map(x => x.id).filter(Boolean); s.textContent = `✅ ${__pmModelList.length} 个模型`; s.style.color = "#34c759"; }
-            else { s.textContent = "✅ 连接成功"; s.style.color = "#34c759"; }
-            addOrUpdateProfile({ apiUrl: u, apiKey: k, model: m });
-        } catch (e) { s.textContent = "❌ " + e.message; s.style.color = "#ff3b30"; }
+          localStorage.removeItem("ST_SMS_BG_GLOBAL");
+        } catch (e) {
+        }
+      } else {
+        const id = getStorageId(), key = `${id}_${currentPersona}`;
+        delete window.__pmBgLocal[key];
+        await pmIDBDel("ST_SMS_BG_LOCAL_" + key);
+        await saveBgLocal();
+      }
+      applyBackground();
+      window.__pmShowConfig();
+      setTimeout(() => window.__pmSwitchTab("look"), 50);
+    };
+    window.__pmTestApi = async () => {
+      const u = document.getElementById("pm-cfg-url").value.trim(), k = document.getElementById("pm-cfg-key").value.trim(), m = document.getElementById("pm-cfg-model").value.trim();
+      const s = document.getElementById("pm-api-status");
+      if (!u) {
+        s.textContent = "\u274C \u586B\u5199API\u5730\u5740";
+        s.style.color = "#ff3b30";
+        return;
+      }
+      s.textContent = "\u8FDE\u63A5\u4E2D...";
+      s.style.color = "#007aff";
+      try {
+        const r = await fetch(normalizeApiUrls(u).modelsUrl, { method: "GET", headers: { "Authorization": `Bearer ${k}` } });
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        const d = await r.json();
+        if (d?.data && Array.isArray(d.data)) {
+          __pmModelList = d.data.map((x) => x.id).filter(Boolean);
+          s.textContent = `\u2705 ${__pmModelList.length} \u4E2A\u6A21\u578B`;
+          s.style.color = "#34c759";
+        } else {
+          s.textContent = "\u2705 \u8FDE\u63A5\u6210\u529F";
+          s.style.color = "#34c759";
+        }
+        addOrUpdateProfile({ apiUrl: u, apiKey: k, model: m });
+      } catch (e) {
+        s.textContent = "\u274C " + e.message;
+        s.style.color = "#ff3b30";
+      }
     };
     window.__pmTestModel = async () => {
-        const u = document.getElementById('pm-cfg-url').value.trim(), k = document.getElementById('pm-cfg-key').value.trim(), m = document.getElementById('pm-cfg-model').value.trim();
-        const s = document.getElementById('pm-api-status');
-        if (!u || !k || !m) { s.textContent = '❌ 请填完整'; s.style.color = '#ff3b30'; return; }
-        s.textContent = `测试「${m}」...`; s.style.color = '#007aff';
-        const ctrl = new AbortController(); const tm = setTimeout(() => ctrl.abort(), 15000);
-        try {
-            const r = await fetch(normalizeApiUrls(u).chatUrl, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${k}` }, body: JSON.stringify({ model: m, messages: [{ role: 'user', content: 'hi' }], max_tokens: 16 }), signal: ctrl.signal });
-            clearTimeout(tm); if (!r.ok) throw new Error(`HTTP ${r.status}`);
-            const j = await r.json(), reply = j.choices?.[0]?.message?.content;
-            s.textContent = reply != null ? `✅ "${String(reply).slice(0, 25)}"` : '⚠️ 格式异常'; s.style.color = reply != null ? '#34c759' : '#ff9500';
-        } catch (e) { clearTimeout(tm); s.textContent = '❌ ' + (e.name === 'AbortError' ? '超时' : e.message); s.style.color = '#ff3b30'; }
+      const u = document.getElementById("pm-cfg-url").value.trim(), k = document.getElementById("pm-cfg-key").value.trim(), m = document.getElementById("pm-cfg-model").value.trim();
+      const s = document.getElementById("pm-api-status");
+      if (!u || !k || !m) {
+        s.textContent = "\u274C \u8BF7\u586B\u5B8C\u6574";
+        s.style.color = "#ff3b30";
+        return;
+      }
+      s.textContent = `\u6D4B\u8BD5\u300C${m}\u300D...`;
+      s.style.color = "#007aff";
+      const ctrl = new AbortController();
+      const tm = setTimeout(() => ctrl.abort(), 15e3);
+      try {
+        const r = await fetch(normalizeApiUrls(u).chatUrl, { method: "POST", headers: { "Content-Type": "application/json", "Authorization": `Bearer ${k}` }, body: JSON.stringify({ model: m, messages: [{ role: "user", content: "hi" }], max_tokens: 16 }), signal: ctrl.signal });
+        clearTimeout(tm);
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        const j = await r.json(), reply = j.choices?.[0]?.message?.content;
+        s.textContent = reply != null ? `\u2705 "${String(reply).slice(0, 25)}"` : "\u26A0\uFE0F \u683C\u5F0F\u5F02\u5E38";
+        s.style.color = reply != null ? "#34c759" : "#ff9500";
+      } catch (e) {
+        clearTimeout(tm);
+        s.textContent = "\u274C " + (e.name === "AbortError" ? "\u8D85\u65F6" : e.message);
+        s.style.color = "#ff3b30";
+      }
     };
     window.__pmSaveConfig = () => {
-        const apiUrl = document.getElementById('pm-cfg-url')?.value.trim() ?? '', apiKey = document.getElementById('pm-cfg-key')?.value.trim() ?? '', model = document.getElementById('pm-cfg-model')?.value.trim() ?? '';
-        window.__pmConfig = { apiUrl, apiKey, model, useIndependent: !!window.__pmConfig.useIndependent };
-        try { localStorage.setItem('ST_SMS_CONFIG', JSON.stringify(window.__pmConfig)); } catch (e) {}
-        if (apiUrl && apiKey) addOrUpdateProfile({ apiUrl, apiKey, model });
-        document.getElementById('pm-overlay')?.remove();
-        addNote(`已保存：${window.__pmConfig.useIndependent && apiUrl ? '独立API' : '主API'}`);
+      const apiUrl = document.getElementById("pm-cfg-url")?.value.trim() ?? "", apiKey = document.getElementById("pm-cfg-key")?.value.trim() ?? "", model = document.getElementById("pm-cfg-model")?.value.trim() ?? "";
+      window.__pmConfig = { apiUrl, apiKey, model, useIndependent: !!window.__pmConfig.useIndependent };
+      try {
+        localStorage.setItem("ST_SMS_CONFIG", JSON.stringify(window.__pmConfig));
+      } catch (e) {
+      }
+      if (apiUrl && apiKey) addOrUpdateProfile({ apiUrl, apiKey, model });
+      document.getElementById("pm-overlay")?.remove();
+      addNote(`\u5DF2\u4FDD\u5B58\uFF1A${window.__pmConfig.useIndependent && apiUrl ? "\u72EC\u7ACBAPI" : "\u4E3BAPI"}`);
     };
-
     window.__pmShowModelPicker = () => {
-        const existing = document.getElementById('pm-model-dropdown');
-        if (existing) { existing.remove(); return; }
-        if (!__pmModelList.length) { const s = document.getElementById('pm-api-status'); if (s) { s.textContent = '⚠️ 先拉取模型'; s.style.color = '#ff9500'; } return; }
-        const input = document.getElementById('pm-cfg-model'), rect = input.getBoundingClientRect();
-        const dd = document.createElement('div'); dd.id = 'pm-model-dropdown'; dd.className = 'pm-model-dropdown';
-        if (POPOVER_SUPPORTED) dd.setAttribute('popover', 'manual');
-        dd.innerHTML = `<input class="pm-model-search" placeholder="🔍 搜索..." /><div class="pm-model-options"></div>`;
-        dd.style.left = rect.left + 'px'; dd.style.top = (rect.bottom + 4) + 'px'; dd.style.width = rect.width + 'px';
-        document.body.appendChild(dd); if (dd.showPopover) try { dd.showPopover(); } catch (e) {}
-        const optsDiv = dd.querySelector('.pm-model-options');
-        const render = (f = '') => {
-            const fl = f.toLowerCase(), filtered = __pmModelList.filter(m => !fl || m.toLowerCase().includes(fl));
-            optsDiv.innerHTML = filtered.length ? filtered.map(m => `<div class="pm-model-opt" data-m="${escapeAttr(m)}">${escapeHtml(m)}</div>`).join('') : '<div class="pm-model-empty">无匹配</div>';
-            optsDiv.querySelectorAll('.pm-model-opt').forEach(el => el.addEventListener('click', () => { document.getElementById('pm-cfg-model').value = el.dataset.m; dd.remove(); }));
+      const existing = document.getElementById("pm-model-dropdown");
+      if (existing) {
+        existing.remove();
+        return;
+      }
+      if (!__pmModelList.length) {
+        const s = document.getElementById("pm-api-status");
+        if (s) {
+          s.textContent = "\u26A0\uFE0F \u5148\u62C9\u53D6\u6A21\u578B";
+          s.style.color = "#ff9500";
+        }
+        return;
+      }
+      const input = document.getElementById("pm-cfg-model"), rect = input.getBoundingClientRect();
+      const dd = document.createElement("div");
+      dd.id = "pm-model-dropdown";
+      dd.className = "pm-model-dropdown";
+      dd.style.setProperty("--pm-model-visible-rows", String(MODEL_VISIBLE_ROWS));
+      if (POPOVER_SUPPORTED) dd.setAttribute("popover", "manual");
+      dd.innerHTML = `<input class="pm-model-search" placeholder="\u{1F50D} \u641C\u7D22..." /><div class="pm-model-options"></div>`;
+      dd.style.left = rect.left + "px";
+      dd.style.top = rect.bottom + 4 + "px";
+      dd.style.width = rect.width + "px";
+      document.body.appendChild(dd);
+      if (dd.showPopover) try {
+        dd.showPopover();
+      } catch (e) {
+      }
+      const optsDiv = dd.querySelector(".pm-model-options");
+      const render = (f = "") => {
+        const fl = f.toLowerCase(), filtered = __pmModelList.filter((m) => !fl || m.toLowerCase().includes(fl));
+        optsDiv.innerHTML = filtered.length ? filtered.map((m) => `<div class="pm-model-opt" data-m="${escapeAttr(m)}">${escapeHtml(m)}</div>`).join("") : '<div class="pm-model-empty">\u65E0\u5339\u914D</div>';
+        optsDiv.querySelectorAll(".pm-model-opt").forEach((el) => el.addEventListener("click", () => {
+          document.getElementById("pm-cfg-model").value = el.dataset.m;
+          dd.remove();
+        }));
+      };
+      render();
+      dd.querySelector(".pm-model-search").addEventListener("input", function() {
+        render(this.value);
+      });
+      dd.querySelector(".pm-model-search").focus();
+      setTimeout(() => {
+        const closer = (e) => {
+          if (!dd.contains(e.target) && e.target.id !== "pm-model-arrow") {
+            dd.remove();
+            document.removeEventListener("click", closer, true);
+          }
         };
-        render(); dd.querySelector('.pm-model-search').addEventListener('input', function () { render(this.value); }); dd.querySelector('.pm-model-search').focus();
-        setTimeout(() => { const closer = (e) => { if (!dd.contains(e.target) && e.target.id !== 'pm-model-arrow') { dd.remove(); document.removeEventListener('click', closer, true); } }; document.addEventListener('click', closer, true); }, 0);
+        document.addEventListener("click", closer, true);
+      }, 0);
     };
-
     function makeOverlay(html) {
-        document.getElementById('pm-overlay')?.remove();
-        const ov = document.createElement('div'); ov.id = 'pm-overlay';
-        if (POPOVER_SUPPORTED) ov.setAttribute('popover', 'manual');
-        ov.innerHTML = html;
-        ov.addEventListener('click', e => { if (e.target === ov) ov.remove(); });
-        document.body.appendChild(ov);
-        if (ov.showPopover) try { ov.showPopover(); } catch (e) {}
-        return ov;
+      document.getElementById("pm-overlay")?.remove();
+      const ov = document.createElement("div");
+      ov.id = "pm-overlay";
+      if (POPOVER_SUPPORTED) ov.setAttribute("popover", "manual");
+      ov.innerHTML = html;
+      ov.addEventListener("click", (e) => {
+        if (e.target === ov) ov.remove();
+      });
+      document.body.appendChild(ov);
+      if (ov.showPopover) try {
+        ov.showPopover();
+      } catch (e) {
+      }
+      return ov;
     }
-
     window.__pmShowList = () => {
-        const id = getStorageId();
-        loadGroupMeta();
-        const histories = window.__pmHistories[id] || {};
-        const groups = window.__pmGroupMeta[id] || {};
-        const checked = window.__pmBidirectional[id] || [];
-        const singleList = Object.keys(histories).filter(k => !k.startsWith('__group_'));
-        const groupList = Object.keys(groups);
-
-        const renderSingle = singleList.map(n => {
-            const isChk = checked.includes(n);
-            return `<div class="pm-li">
-                <div class="pm-custom-check pm-bi-style ${isChk ? 'is-checked' : ''}" onclick="event.stopPropagation();window.__pmToggleBidirectional('${safeJS(n)}')" style="width:20px;height:20px;min-width:20px;min-height:20px;flex-shrink:0;border-radius:50%;"></div>
+      const id = getStorageId();
+      loadGroupMeta();
+      const histories = window.__pmHistories[id] || {};
+      const groups = window.__pmGroupMeta[id] || {};
+      const checked = window.__pmBidirectional[id] || [];
+      const singleList = Object.keys(histories).filter((k) => !k.startsWith("__group_"));
+      const groupList = Object.keys(groups);
+      const renderSingle = singleList.map((n) => {
+        const isChk = checked.includes(n);
+        return `<div class="pm-li">
+                <div class="pm-custom-check pm-bi-style ${isChk ? "is-checked" : ""}" onclick="event.stopPropagation();window.__pmToggleBidirectional('${safeJS(n)}')" style="width:20px;height:20px;min-width:20px;min-height:20px;flex-shrink:0;border-radius:50%;"></div>
                 <span onclick="window.__pmSwitchContact('${safeJS(n)}')">${escapeHtml(n)}</span>
-                <i onclick="window.__pmDel('${safeJS(n)}')">删除</i>
+                <i onclick="window.__pmDel('${safeJS(n)}')">\u5220\u9664</i>
             </div>`;
-        }).join('');
-
-        const renderGroups = groupList.map(key => {
-            const meta = groups[key];
-            const isChk = checked.includes(key);
-            return `<div class="pm-li">
-                <div class="pm-custom-check pm-bi-style ${isChk ? 'is-checked' : ''}" onclick="event.stopPropagation();window.__pmToggleBidirectional('${safeJS(key)}')" style="width:20px;height:20px;min-width:20px;min-height:20px;flex-shrink:0;border-radius:50%;"></div>
-                <span onclick="window.__pmSwitchContact('${safeJS(key)}')">${escapeHtml(meta.name)}<span class="pm-group-sub">${escapeHtml(meta.members.join('、'))}</span></span>
-                <i onclick="window.__pmDelGroup('${safeJS(key)}')">删除</i>
+      }).join("");
+      const renderGroups = groupList.map((key) => {
+        const meta = groups[key];
+        const isChk = checked.includes(key);
+        return `<div class="pm-li">
+                <div class="pm-custom-check pm-bi-style ${isChk ? "is-checked" : ""}" onclick="event.stopPropagation();window.__pmToggleBidirectional('${safeJS(key)}')" style="width:20px;height:20px;min-width:20px;min-height:20px;flex-shrink:0;border-radius:50%;"></div>
+                <span onclick="window.__pmSwitchContact('${safeJS(key)}')">${escapeHtml(meta.name)}<span class="pm-group-sub">${escapeHtml(meta.members.join("\u3001"))}</span></span>
+                <i onclick="window.__pmDelGroup('${safeJS(key)}')">\u5220\u9664</i>
             </div>`;
-        }).join('');
-
-        const empty = !singleList.length && !groupList.length;
-
-        makeOverlay(`
+      }).join("");
+      const empty = !singleList.length && !groupList.length;
+      makeOverlay(`
     <div class="pm-modal">
     <div class="pm-modal-header">
-      <b>联系人</b>
+      <b>\u8054\u7CFB\u4EBA</b>
       <span style="display:flex;align-items:center;gap:10px;">
-        <span id="pm-autogen-btn" onclick="window.__pmConfirmAutoGen()" title="AI 自动生成联系人" style="cursor:pointer;display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:50%;transition:background .15s;" onmouseenter="this.style.background='rgba(0,122,255,0.1)'" onmouseleave="this.style.background='transparent'">
+        <span id="pm-autogen-btn" onclick="window.__pmConfirmAutoGen()" title="AI \u81EA\u52A8\u751F\u6210\u8054\u7CFB\u4EBA" style="cursor:pointer;display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:50%;transition:background .15s;" onmouseenter="this.style.background='rgba(0,122,255,0.1)'" onmouseleave="this.style.background='transparent'">
           <svg id="pm-autogen-icon" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#007aff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="display:block;transform-origin:center center;">
             <path d="M23 4v6h-6"/>
             <path d="M1 20v-6h6"/>
             <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
           </svg>
         </span>
-        <span onclick="document.getElementById('pm-overlay').remove()" class="pm-modal-close">✕</span>
+        <span onclick="document.getElementById('pm-overlay').remove()" class="pm-modal-close">\u2715</span>
       </span>
     </div>
-    <div class="pm-bi-bar"><span>🧠 勾选角色/群聊可被主楼读取短信</span><span class="pm-bi-tip">已选 ${checked.length}/${MAX_BIDIRECTIONAL}</span></div>
+    <div class="pm-bi-bar"><span>\u{1F9E0} \u52FE\u9009\u89D2\u8272/\u7FA4\u804A\u53EF\u88AB\u4E3B\u697C\u8BFB\u53D6\u77ED\u4FE1</span><span class="pm-bi-tip">\u5DF2\u9009 ${checked.length}/${MAX_BIDIRECTIONAL}</span></div>
     <div class="pm-modal-list">
-        ${empty ? '<div style="text-align:center;color:#999;padding:20px;font-size:13px;">暂无联系人</div>' : (renderGroups + renderSingle)}
+        ${empty ? '<div style="text-align:center;color:#999;padding:20px;font-size:13px;">\u6682\u65E0\u8054\u7CFB\u4EBA</div>' : renderGroups + renderSingle}
     </div>
     <div class="pm-modal-add" style="display:flex;gap:8px;">
-        <button onclick="window.__pmShowGroupCreate()" class="pm-btn-group">👥 新建群聊</button>
-        <button onclick="window.__pmShowAddContact()" class="pm-btn-add">＋ 添加联系人</button>
+        <button onclick="window.__pmShowGroupCreate()" class="pm-btn-group">\u{1F465} \u65B0\u5EFA\u7FA4\u804A</button>
+        <button onclick="window.__pmShowAddContact()" class="pm-btn-add">\uFF0B \u6DFB\u52A0\u8054\u7CFB\u4EBA</button>
     </div>
     </div>`);
     };
-
     window.__pmShowAddContact = () => {
-        document.getElementById('pm-overlay')?.remove();
-        makeOverlay(`
+      document.getElementById("pm-overlay")?.remove();
+      makeOverlay(`
 <div class="pm-modal">
-  <div class="pm-modal-header"><b>添加联系人</b><span onclick="window.__pmShowList()" class="pm-modal-close">✕</span></div>
+  <div class="pm-modal-header"><b>\u6DFB\u52A0\u8054\u7CFB\u4EBA</b><span onclick="window.__pmShowList()" class="pm-modal-close">\u2715</span></div>
   <div style="padding:14px 16px;">
-    <div class="pm-cfg-label" style="margin-bottom:8px;">输入角色名</div>
-    <input id="pm-add-contact-input" class="pm-cfg-input" placeholder="角色名">
+    <div class="pm-cfg-label" style="margin-bottom:8px;">\u8F93\u5165\u89D2\u8272\u540D</div>
+    <input id="pm-add-contact-input" class="pm-cfg-input" placeholder="\u89D2\u8272\u540D">
   </div>
   <div class="pm-modal-add">
-    <button onclick="(()=>{const v=document.getElementById('pm-add-contact-input').value.trim();if(v)window.__pmSwitchContact(v);})()" style="flex:1;background:#007aff;color:#fff;border:none;border-radius:10px;padding:10px;font-size:13px;cursor:pointer;font-weight:600;">开始聊天</button>
+    <button onclick="(()=>{const v=document.getElementById('pm-add-contact-input').value.trim();if(v)window.__pmSwitchContact(v);})()" style="flex:1;background:#007aff;color:#fff;border:none;border-radius:10px;padding:10px;font-size:13px;cursor:pointer;font-weight:600;">\u5F00\u59CB\u804A\u5929</button>
   </div>
 </div>`);
-        setTimeout(() => {
-            const input = document.getElementById('pm-add-contact-input');
-            input?.focus();
-            input?.addEventListener('keydown', e => {
-                if (e.key === 'Enter') { const v = input.value.trim(); if (v) window.__pmSwitchContact(v); }
-            });
-        }, 0);
+      setTimeout(() => {
+        const input = document.getElementById("pm-add-contact-input");
+        input?.focus();
+        input?.addEventListener("keydown", (e) => {
+          if (e.key === "Enter") {
+            const v = input.value.trim();
+            if (v) window.__pmSwitchContact(v);
+          }
+        });
+      }, 0);
     };
-
-    // AI 自动生成联系人 — 确认弹窗
     window.__pmConfirmAutoGen = () => {
-        const id = getStorageId();
-        const histories = window.__pmHistories[id] || {};
-        const groups = window.__pmGroupMeta[id] || {};
-        const singleCount = Object.keys(histories).filter(k => !k.startsWith('__group_')).length;
-        const groupCount = Object.keys(groups).length;
-        const total = singleCount + groupCount;
-        const MAX_TOTAL = 10;
-
-        if (total >= MAX_TOTAL) {
-            alert(`已有 ${total} 个联系人/群聊，已达上限（${MAX_TOTAL}），无法继续生成。`);
-            return;
-        }
-
-        const canAdd = MAX_TOTAL - total;
-        const willAdd = Math.min(canAdd, 10); // 实际生成数由 AI 在 3~min(canAdd,10) 范围内决定
-        if (!confirm(`AI 将根据当前剧情信息自动生成联系人和群聊（最多 ${willAdd} 个），直接写入列表，是否继续？`)) return;
-        window.__pmAutoGenContacts();
+      const id = getStorageId();
+      const histories = window.__pmHistories[id] || {};
+      const groups = window.__pmGroupMeta[id] || {};
+      const singleCount = Object.keys(histories).filter((k) => !k.startsWith("__group_")).length;
+      const groupCount = Object.keys(groups).length;
+      const total = singleCount + groupCount;
+      const MAX_TOTAL = 10;
+      if (total >= MAX_TOTAL) {
+        alert(`\u5DF2\u6709 ${total} \u4E2A\u8054\u7CFB\u4EBA/\u7FA4\u804A\uFF0C\u5DF2\u8FBE\u4E0A\u9650\uFF08${MAX_TOTAL}\uFF09\uFF0C\u65E0\u6CD5\u7EE7\u7EED\u751F\u6210\u3002`);
+        return;
+      }
+      const canAdd = MAX_TOTAL - total;
+      const willAdd = Math.min(canAdd, 10);
+      if (!confirm(`AI \u5C06\u6839\u636E\u5F53\u524D\u5267\u60C5\u4FE1\u606F\u81EA\u52A8\u751F\u6210\u8054\u7CFB\u4EBA\u548C\u7FA4\u804A\uFF08\u6700\u591A ${willAdd} \u4E2A\uFF09\uFF0C\u76F4\u63A5\u5199\u5165\u5217\u8868\uFF0C\u662F\u5426\u7EE7\u7EED\uFF1F`)) return;
+      window.__pmAutoGenContacts();
     };
-
-    // AI 自动生成联系人 — 核心逻辑
     window.__pmAutoGenContacts = async () => {
-        const id = getStorageId();
-        const histories = window.__pmHistories[id] || {};
-        const groups = window.__pmGroupMeta[id] || {};
-        const existingSingle = Object.keys(histories).filter(k => !k.startsWith('__group_'));
-        const existingGroups = Object.keys(groups).map(k => groups[k].name);
-        const total = existingSingle.length + existingGroups.length;
-        const MAX_TOTAL = 10;
-        const canAdd = MAX_TOTAL - total;
-        if (canAdd <= 0) return;
-        const maxNew = Math.min(canAdd, 10);
-
-        // 旋转刷新图标：对 SVG 元素做旋转，transform-origin:center 在 SVG 上完全精准
-        const setSpinning = (on) => {
-            const icon = document.getElementById('pm-autogen-icon');
-            const btn  = document.getElementById('pm-autogen-btn');
-            if (icon) icon.style.animation = on ? 'pm-spin 0.8s linear infinite' : '';
-            if (btn)  btn.style.pointerEvents = on ? 'none' : '';
-        };
-        setSpinning(true);
-
-        try {
-            // 收集上下文（与 fetchSMS 读取的来源完全一致）
-            const ctxData = await gatherContext();
-            const { cardDesc, cardPersonality, cardScenario, mainChatText, worldBookText, userName, userDesc } = ctxData;
-
-            const existingList = [
-                ...existingSingle,
-                ...Object.keys(groups).map(k => groups[k].name)
-            ];
-            const existingStr = existingList.length ? `已有联系人/群聊（跳过同名）：${existingList.join('、')}` : '目前暂无联系人。';
-
-            const systemPrompt = `你是一个角色扮演辅助工具，负责根据当前剧情背景自动生成符合世界观的联系人列表。
-输出必须严格为 JSON，格式如下（不得有任何注释或 markdown）：
+      const id = getStorageId();
+      const histories = window.__pmHistories[id] || {};
+      const groups = window.__pmGroupMeta[id] || {};
+      const existingSingle = Object.keys(histories).filter((k) => !k.startsWith("__group_"));
+      const existingGroups = Object.keys(groups).map((k) => groups[k].name);
+      const total = existingSingle.length + existingGroups.length;
+      const MAX_TOTAL = 10;
+      const canAdd = MAX_TOTAL - total;
+      if (canAdd <= 0) return;
+      const maxNew = Math.min(canAdd, 10);
+      const setSpinning = (on) => {
+        const icon = document.getElementById("pm-autogen-icon");
+        const btn = document.getElementById("pm-autogen-btn");
+        if (icon) icon.style.animation = on ? "pm-spin 0.8s linear infinite" : "";
+        if (btn) btn.style.pointerEvents = on ? "none" : "";
+      };
+      setSpinning(true);
+      try {
+        const ctxData = await gatherContext();
+        const { cardDesc, cardPersonality, cardScenario, mainChatText, worldBookText, userName, userDesc } = ctxData;
+        const existingList = [
+          ...existingSingle,
+          ...Object.keys(groups).map((k) => groups[k].name)
+        ];
+        const existingStr = existingList.length ? `\u5DF2\u6709\u8054\u7CFB\u4EBA/\u7FA4\u804A\uFF08\u8DF3\u8FC7\u540C\u540D\uFF09\uFF1A${existingList.join("\u3001")}` : "\u76EE\u524D\u6682\u65E0\u8054\u7CFB\u4EBA\u3002";
+        const systemPrompt = `\u4F60\u662F\u4E00\u4E2A\u89D2\u8272\u626E\u6F14\u8F85\u52A9\u5DE5\u5177\uFF0C\u8D1F\u8D23\u6839\u636E\u5F53\u524D\u5267\u60C5\u80CC\u666F\u81EA\u52A8\u751F\u6210\u7B26\u5408\u4E16\u754C\u89C2\u7684\u8054\u7CFB\u4EBA\u5217\u8868\u3002
+\u8F93\u51FA\u5FC5\u987B\u4E25\u683C\u4E3A JSON\uFF0C\u683C\u5F0F\u5982\u4E0B\uFF08\u4E0D\u5F97\u6709\u4EFB\u4F55\u6CE8\u91CA\u6216 markdown\uFF09\uFF1A
 {
-  "contacts": ["角色名A", "角色名B"],
+  "contacts": ["\u89D2\u8272\u540DA", "\u89D2\u8272\u540DB"],
   "groups": [
-    {"name": "群聊名称", "members": ["成员1", "成员2", "成员3"]},
+    {"name": "\u7FA4\u804A\u540D\u79F0", "members": ["\u6210\u54581", "\u6210\u54582", "\u6210\u54583"]},
     ...
   ]
 }
-要求：
-1. contacts 是单个联系人，groups 是群聊（每个群 2~15 个成员）
-2. 生成总数（contacts.length + groups.length）在 3 到 ${maxNew} 之间
-3. 所有角色名必须与当前剧情世界观、人设背景高度相关
-4. 绝不生成与 ${existingStr} 同名的联系人或群聊
-5. 不生成用户自己（${userName}）作为联系人，群聊成员里也不得包含 ${userName}
-6. 只输出 JSON，不输出任何其他内容`;
-
-            const userPrompt = [
-                `【用户信息】\n用户名：${userName}${userDesc ? '\n' + userDesc : ''}`,
-                cardDesc ? `【角色/世界设定】\n${cardDesc}` : '',
-                cardPersonality ? `【性格】\n${cardPersonality}` : '',
-                cardScenario ? `【场景】\n${cardScenario}` : '',
-                worldBookText ? `【世界书】\n${worldBookText}` : '',
-                mainChatText ? `【主线最近对话】\n${mainChatText}` : '',
-                existingStr,
-                `请生成 3~${maxNew} 个符合以上背景的联系人和/或群聊，以 JSON 输出。`
-            ].filter(Boolean).join('\n\n');
-
-            const raw = await callAI(systemPrompt, userPrompt, { maxTokens: 600 });
-
-            // 解析 JSON（兼容 AI 带 markdown 代码块的情况）
-            const cleaned = raw.replace(/```json|```/gi, '').trim();
-            let parsed;
-            try { parsed = JSON.parse(cleaned); } catch (e) {
-                throw new Error(`AI 返回格式无法解析：${cleaned.slice(0, 100)}`);
-            }
-
-            const newContacts = Array.isArray(parsed.contacts) ? parsed.contacts : [];
-            const newGroups = Array.isArray(parsed.groups) ? parsed.groups : [];
-
-            // 写入联系人（去重、去同名）
-            if (!window.__pmHistories[id]) window.__pmHistories[id] = {};
-            let added = 0;
-            for (const name of newContacts) {
-                if (typeof name !== 'string' || !name.trim()) continue;
-                const n = name.trim();
-                // 同名跳过（不区分大小写）
-                const alreadyExists = existingList.some(e => e.toLowerCase() === n.toLowerCase())
-                    || Object.keys(window.__pmHistories[id]).some(k => !k.startsWith('__group_') && k.toLowerCase() === n.toLowerCase());
-                if (alreadyExists) continue;
-                if (!window.__pmHistories[id][n]) window.__pmHistories[id][n] = [];
-                added++;
-            }
-            saveHistories();
-
-            // 写入群聊
-            if (!window.__pmGroupMeta[id]) window.__pmGroupMeta[id] = {};
-            for (const g of newGroups) {
-                if (!g?.name || !Array.isArray(g.members) || g.members.length < 2) continue;
-                const gName = g.name.trim();
-                // 同名群跳过
-                const alreadyExists = Object.values(window.__pmGroupMeta[id]).some(m => m.name.toLowerCase() === gName.toLowerCase());
-                if (alreadyExists) continue;
-                const members = g.members.map(m => m.trim()).filter(m => m && m.toLowerCase() !== userName.toLowerCase()).slice(0, 15);
-                const groupKey = `__group_${Date.now()}_${Math.random().toString(36).slice(2,6)}`;
-                window.__pmGroupMeta[id][groupKey] = { name: gName, members };
-                added++;
-            }
-            saveGroupMeta();
-
-            // 刷新列表
-            window.__pmShowList();
-            // 简短提示
-            setTimeout(() => addNote(`✨ 已自动添加 ${added} 个联系人/群聊`), 200);
-        } catch (e) {
-            console.error('[phone-mode] __pmAutoGenContacts 异常', e);
-            alert(`自动生成失败：${e?.message || e}`);
-        } finally {
-            setSpinning(false);
-        }
-    };
-
-    window.__pmDelGroup = async (key) => {
-        const id = getStorageId();
-        if (window.__pmGroupMeta[id]) delete window.__pmGroupMeta[id][key];
-        if (window.__pmHistories[id]) delete window.__pmHistories[id][key];
-
-        const arr = window.__pmBidirectional[id] || [], idx = arr.indexOf(key);
-        if (idx >= 0) { arr.splice(idx, 1); window.__pmBidirectional[id] = arr; saveBidirectional(); }
-
-        const bgKey = `${id}_${key}`;
-        if (window.__pmBgLocal[bgKey]) {
-            delete window.__pmBgLocal[bgKey];
-            await pmIDBDel('ST_SMS_BG_LOCAL_' + bgKey);
-            await saveBgLocal();
-        }
-
-        if (window.__pmPokeConfig[id]?.[key]) {
-            delete window.__pmPokeConfig[id][key];
-            savePokeConfig();
-        }
-
-        // 修复：await 确保 IDB 写入完成，防止冷启动时 IDB 旧数据覆盖删除操作
-        await pmIDBSet('ST_SMS_DATA_V2', window.__pmHistories).catch(() => {});
-        try { localStorage.setItem('ST_SMS_DATA_V2', JSON.stringify(window.__pmHistories)); } catch (e) {};
-        saveGroupMeta();
-        applyBidirectionalInjection();
-        // 修复：删除当前会话后清空全局状态，防止后续切换时落盘把已删记录写入新目标
-        if (currentGroupKey === key) { isGroupChat = false; currentGroupKey = ''; currentPersona = ''; conversationHistory = []; groupMembers = []; groupDisplayName = ''; groupColorMap = {}; }
-        window.__pmShowList();
-    };
-
-    window.__pmSwitchContact = (key) => {
-        if (!key?.trim()) return; key = key.trim();
-        loadGroupMeta();
-        const id = getStorageId();
-        // 修复：如果上下文尚未就绪导致 ID 为 unknown，给出警告，避免存入错误 key
-        if (id === 'sms_unknown__default') {
-            console.warn('[phone-mode] __pmSwitchContact: SillyTavern 上下文尚未就绪，storageId 为 unknown，跳过切换');
-            return;
-        }
-        const groupMeta = window.__pmGroupMeta[id]?.[key];
-        // 修复：在修改全局状态前快照旧 saveKey，防止落盘时把当前会话记录写入目标会话
-        const _prevSaveKey = isGroupChat && currentGroupKey ? currentGroupKey : currentPersona;
-        if (groupMeta) {
-            isGroupChat = true; currentGroupKey = key;
-            groupMembers = groupMeta.members.slice();
-            groupDisplayName = groupMeta.name;
-            groupColorMap = {};
-            groupMembers.forEach((n, i) => { groupColorMap[n] = GROUP_COLORS[i % GROUP_COLORS.length]; });
-        } else {
-            isGroupChat = false; groupMembers = []; groupColorMap = {}; groupDisplayName = ''; currentGroupKey = '';
-        }
-        window.__pmSwitch(key, _prevSaveKey);
-    };
-
-    window.__pmSwitch = (name, _prevSaveKey) => {
-        if (!name?.trim()) return; name = name.trim();
-        document.getElementById('pm-overlay')?.remove();
-        const id = getStorageId();
-        // 切换前先把当前联系人的最新 conversationHistory 落盘，
-        // 修复：调用方（__pmConfirmGroup）可能在调用本函数前已修改了 isGroupChat/currentGroupKey，
-        // 导致落盘时 saveKey 错误地指向新目标，把旧聊天记录写入新会话。优先使用调用方传入的 _prevSaveKey。
-        if (currentPersona && conversationHistory.length > 0) {
-            if (!window.__pmHistories[id]) window.__pmHistories[id] = {};
-            const saveKey = _prevSaveKey || (isGroupChat && currentGroupKey ? currentGroupKey : currentPersona);
-            window.__pmHistories[id][saveKey] = conversationHistory.slice(-SAVE_LIMIT);
-            saveHistories();
-        }
-        currentPersona = name;
-        conversationHistory = window.__pmHistories[id]?.[name] ?? [];
-        if (phoneWindow) {
-            const nameEl = phoneWindow.querySelector('.pm-name');
-            const editBtn = phoneWindow.querySelector('.pm-name-edit');
-            if (nameEl) {
-                if (isGroupChat) {
-                    const display = groupDisplayName || name;
-                    const arr = [...display];
-                    nameEl.textContent = arr.length > 5 ? arr.slice(0, 5).join('') + '...' : display;
-                } else {
-                    nameEl.textContent = name;
-                }
-            }
-            if (editBtn) {
-                editBtn.classList.remove('is-hidden');  // 个人和群聊都显示编辑按钮
-            }
-            fitNameFont();
-            const list = phoneWindow.querySelector('.pm-msg-list'); list.innerHTML = '';
-            if (conversationHistory.length > 0) {
-                addNote(`历史记录`);
-                conversationHistory.forEach((m, hi) => {
-                    if (isGroupChat && m.role === 'assistant') {
-                        const lines = m.content.split('\n');
-                        for (const line of lines) {
-                            const match = line.match(/^(.{1,20})[：:]\s*(.+)$/);
-                            if (match && groupMembers.some(gm => gm.toLowerCase() === match[1].trim().toLowerCase())) {
-                                const sender = groupMembers.find(gm => gm.toLowerCase() === match[1].trim().toLowerCase());
-                                splitToSentences(match[2]).forEach(s => addBubble(s, 'left', sender, hi));
-                            } else {
-                                splitToSentences(line).forEach(s => addBubble(s, 'left', undefined, hi));
-                            }
-                        }
-                    } else {
-                        splitToSentences(m.content).forEach(s => addBubble(s, m.role === 'user' ? 'right' : 'left', undefined, hi));
-                    }
-                });
-                addNote('── 以上为历史 ──');
-            } else addNote(`开始对话`);
-            applyBackground();
-        }
-        applyBidirectionalInjection();
-    };
-
-    window.__pmDel = async (name) => {
-        const id = getStorageId();
-        if (window.__pmHistories[id]) delete window.__pmHistories[id][name];
-        // 修复：await 确保 IDB 写入完成，防止冷启动时 IDB 旧数据覆盖删除操作
-        await pmIDBSet('ST_SMS_DATA_V2', window.__pmHistories).catch(() => {});
-        try { localStorage.setItem('ST_SMS_DATA_V2', JSON.stringify(window.__pmHistories)); } catch (e) {};
-
-        const arr = window.__pmBidirectional[id] || [], idx = arr.indexOf(name);
-        if (idx >= 0) { arr.splice(idx, 1); window.__pmBidirectional[id] = arr; saveBidirectional(); }
-
-        const bgKey = `${id}_${name}`;
-        if (window.__pmBgLocal[bgKey]) {
-            delete window.__pmBgLocal[bgKey];
-            await pmIDBDel('ST_SMS_BG_LOCAL_' + bgKey);
-            await saveBgLocal();
-        }
-
-        if (window.__pmPokeConfig[id]?.[name]) {
-            delete window.__pmPokeConfig[id][name];
-            savePokeConfig();
-        }
-
-        applyBidirectionalInjection();
-        // 修复：删除当前联系人后清空全局状态，防止后续切换时落盘把已删记录写入新目标
-        if (!isGroupChat && currentPersona === name) { currentPersona = ''; conversationHistory = []; }
-        window.__pmShowList();
-    };
-
-    window.__pmToggleSelect = () => {
-        isSelectMode = !isSelectMode;
-        const list = phoneWindow?.querySelector('.pm-msg-list');
-        const trashBtn = phoneWindow?.querySelector('.pm-trash-btn');
-        const confirmBar = phoneWindow?.querySelector('.pm-confirm-bar');
-        if (!list) return;
-        if (isSelectMode) {
-            trashBtn.style.color = '#ff3b30'; confirmBar.style.display = 'flex';
-            // 气泡上已在渲染时打好 data-history-index，直接读取，无需事后映射
-            list.querySelectorAll('.pm-bubble, .pm-group-bubble-wrap, .pm-director')
-                .forEach(b => {
-                if (b.id === 'pm-typing' || b.closest('.pm-select-wrap')) return;
-                const isDirector = b.classList.contains('pm-director');
-                const wrap = document.createElement('div'); wrap.className = 'pm-select-wrap';
-                const side = isDirector ? 'center' : (b.dataset.side || 'left');
-                wrap.style.cssText = 'display:flex;align-items:center;gap:8px;align-self:' + (side === 'right' ? 'flex-end' : side === 'center' ? 'center' : 'flex-start') + ';';
-                const cb = document.createElement('div'); cb.className = 'pm-custom-check'; cb.dataset.checked = '0';
-                cb.style.cssText = 'width:22px;height:22px;min-width:22px;min-height:22px;border-radius:50%;flex-shrink:0;cursor:pointer;';
-                cb.onclick = () => { cb.dataset.checked = cb.dataset.checked === '0' ? '1' : '0'; };
-                b.parentNode.insertBefore(wrap, b);
-                wrap.appendChild(cb); wrap.appendChild(b);
-                wrap.dataset.side = side; wrap.dataset.text = b.dataset.text || '';
-                // 直接从气泡上读下标，渲染时已打好
-                const hi = b.dataset.historyIndex;
-                if (hi !== undefined && hi !== '') wrap.dataset.historyIndex = hi;
-            });
-        } else {
-            trashBtn.style.color = ''; confirmBar.style.display = 'none';
-            list.querySelectorAll('.pm-select-wrap').forEach(wrap => {
-                const b = wrap.querySelector('.pm-bubble, .pm-group-bubble-wrap, .pm-director');
-                if (b) wrap.parentNode.insertBefore(b, wrap); wrap.remove();
-            });
-        }
-    };
-
-    window.__pmDeleteSelected = () => {
-        const list = phoneWindow?.querySelector('.pm-msg-list'); if (!list) return;
-        // 按 data-history-index 收集要删除的下标（精确，不依赖文本匹配）
-        const toRemoveIndices = new Set();
-        list.querySelectorAll('.pm-select-wrap').forEach(wrap => {
-            const cb = wrap.querySelector('.pm-custom-check');
-            if (cb?.dataset.checked === '1') {
-                const hi = wrap.dataset.historyIndex;
-                if (hi !== undefined && hi !== '') toRemoveIndices.add(Number(hi));
-                wrap.remove();
-            } else {
-                const b = wrap.querySelector('.pm-bubble, .pm-group-bubble-wrap, .pm-director');
-                if (b) wrap.parentNode.insertBefore(b, wrap);
-                wrap.remove();
-            }
-        });
-        if (toRemoveIndices.size > 0) {
-            conversationHistory = conversationHistory.filter((_, i) => !toRemoveIndices.has(i));
-            const id = getStorageId();
-            if (!window.__pmHistories[id]) window.__pmHistories[id] = {};
-            const saveKey = isGroupChat && currentGroupKey ? currentGroupKey : currentPersona;
-            window.__pmHistories[id][saveKey] = conversationHistory.slice(-SAVE_LIMIT);
-            saveHistories();
-            applyBidirectionalInjection();
-        }
-        isSelectMode = false;
-        phoneWindow?.querySelector('.pm-trash-btn')?.style.removeProperty('color');
-        const bar = phoneWindow?.querySelector('.pm-confirm-bar'); if (bar) bar.style.display = 'none';
-    };
-
-    window.__pmToggleMin = () => { isMinimized = !isMinimized; phoneWindow.classList.toggle('is-min', isMinimized); phoneWindow.style.removeProperty('transform'); };
-    window.__pmEnd = () => {
-        // 修复：关闭前先把当前 conversationHistory 存档
-        // 避免"AI 已回复但叉掉插件导致最新消息丢失"的问题
-        if (currentPersona && conversationHistory.length) {
-            const id = getStorageId();
-            if (!window.__pmHistories[id]) window.__pmHistories[id] = {};
-            // 修复：群聊时应使用 currentGroupKey 而非 currentPersona 作为存档 key
-            const saveKey = isGroupChat && currentGroupKey ? currentGroupKey : currentPersona;
-            window.__pmHistories[id][saveKey] = conversationHistory.slice(-SAVE_LIMIT);
-            saveHistories();
-        }
-        if (phoneWindow) { try { phoneWindow.hidePopover?.(); } catch (e) {} phoneWindow.remove(); }
-        phoneWindow = null; phoneActive = false; isMinimized = false; isSelectMode = false;
-        isGroupChat = false; groupMembers = []; groupColorMap = {}; groupDisplayName = ''; currentGroupKey = '';
-        // 修复：关闭时重置冷启动标记，确保下次打开时（尤其是切换角色卡后）重新从 IDB 加载最新数据
-        __pmFirstOpen = true;
-        // 修复：关闭时清除可见性定时器，重新开启时再创建新的
-        if (__pmVisibilityTimer) { clearInterval(__pmVisibilityTimer); __pmVisibilityTimer = null; }
-    };
-
-    function ensureVisibility() {
-        if (!phoneWindow) return;
-        const cs = getComputedStyle(phoneWindow);
-        if (cs.display === 'none' || cs.visibility === 'hidden' || parseFloat(cs.opacity || '1') < 0.1) {
-            phoneWindow.style.setProperty('display', 'flex', 'important');
-            phoneWindow.style.setProperty('visibility', 'visible', 'important');
-            phoneWindow.style.setProperty('opacity', '1', 'important');
-        }
-    }
-    // 修复：保存定时器 ID，在 __pmEnd 时清除，避免永久泄漏
-    let __pmVisibilityTimer = setInterval(ensureVisibility, 2000);
-
-    window.__pmOpen = () => {
-        if (phoneActive && phoneWindow) { try { phoneWindow.showPopover?.(); } catch (e) {} phoneWindow.style.display = 'flex'; ensureVisibility(); return; }
-        // 修复：删除每次打开都用 localStorage 覆盖内存的逻辑
-        // localStorage 因容量限制可能保存的是旧数据，而内存和 IDB 才是最新的
-        // 冷启动时（内存为空）靠 loadHistoriesFromIDB() 从 IDB 加载后再渲染
-        if (!__pmVisibilityTimer) { __pmVisibilityTimer = setInterval(ensureVisibility, 2000); }
+\u8981\u6C42\uFF1A
+1. contacts \u662F\u5355\u4E2A\u8054\u7CFB\u4EBA\uFF0Cgroups \u662F\u7FA4\u804A\uFF08\u6BCF\u4E2A\u7FA4 2~15 \u4E2A\u6210\u5458\uFF09
+2. \u751F\u6210\u603B\u6570\uFF08contacts.length + groups.length\uFF09\u5728 3 \u5230 ${maxNew} \u4E4B\u95F4
+3. \u6240\u6709\u89D2\u8272\u540D\u5FC5\u987B\u4E0E\u5F53\u524D\u5267\u60C5\u4E16\u754C\u89C2\u3001\u4EBA\u8BBE\u80CC\u666F\u9AD8\u5EA6\u76F8\u5173
+4. \u7EDD\u4E0D\u751F\u6210\u4E0E ${existingStr} \u540C\u540D\u7684\u8054\u7CFB\u4EBA\u6216\u7FA4\u804A
+5. \u4E0D\u751F\u6210\u7528\u6237\u81EA\u5DF1\uFF08${userName}\uFF09\u4F5C\u4E3A\u8054\u7CFB\u4EBA\uFF0C\u7FA4\u804A\u6210\u5458\u91CC\u4E5F\u4E0D\u5F97\u5305\u542B ${userName}
+6. \u53EA\u8F93\u51FA JSON\uFF0C\u4E0D\u8F93\u51FA\u4EFB\u4F55\u5176\u4ED6\u5185\u5BB9`;
+        const userPrompt = [
+          `\u3010\u7528\u6237\u4FE1\u606F\u3011
+\u7528\u6237\u540D\uFF1A${userName}${userDesc ? "\n" + userDesc : ""}`,
+          cardDesc ? `\u3010\u89D2\u8272/\u4E16\u754C\u8BBE\u5B9A\u3011
+${cardDesc}` : "",
+          cardPersonality ? `\u3010\u6027\u683C\u3011
+${cardPersonality}` : "",
+          cardScenario ? `\u3010\u573A\u666F\u3011
+${cardScenario}` : "",
+          worldBookText ? `\u3010\u4E16\u754C\u4E66\u3011
+${worldBookText}` : "",
+          mainChatText ? `\u3010\u4E3B\u7EBF\u6700\u8FD1\u5BF9\u8BDD\u3011
+${mainChatText}` : "",
+          existingStr,
+          `\u8BF7\u751F\u6210 3~${maxNew} \u4E2A\u7B26\u5408\u4EE5\u4E0A\u80CC\u666F\u7684\u8054\u7CFB\u4EBA\u548C/\u6216\u7FA4\u804A\uFF0C\u4EE5 JSON \u8F93\u51FA\u3002`
+        ].filter(Boolean).join("\n\n");
+        const raw = await callAI(systemPrompt, userPrompt, { maxTokens: 600 });
+        const cleaned = raw.replace(/```json|```/gi, "").trim();
+        let parsed;
         try {
-            const saved = JSON.parse(localStorage.getItem('ST_SMS_CONFIG'));
-            window.__pmConfig = saved || { apiUrl: '', apiKey: '', model: '', useIndependent: false };
-            if (typeof window.__pmConfig.useIndependent === 'undefined') window.__pmConfig.useIndependent = !!(window.__pmConfig.apiUrl && window.__pmConfig.apiKey);
-        } catch (e) { window.__pmConfig = { apiUrl: '', apiKey: '', model: '', useIndependent: false }; }
-        loadProfiles(); loadBidirectional(); loadTheme(); loadGroupMeta(); loadPokeConfig(); loadWordyLimit(); migrateOldHistory(); loadEmojis();
-        loadBgSettings().then(() => { try { applyBackground(); } catch (e) {} });
-        hookGenerationEvent();
-        const c = getCtx(), defaultChar = c?.characters?.[c.characterId]?.name ?? 'AI';
-
-        phoneWindow = document.createElement('div'); phoneWindow.id = 'pm-iphone';
-        phoneWindow.dataset.layout = window.__pmTheme.layout || 'standard';
-        phoneWindow.setAttribute('data-theme', window.__pmTheme.darkMode || 'light');
-        if (POPOVER_SUPPORTED) phoneWindow.setAttribute('popover', 'manual');
-
-        const editSvg = `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>`;
-
-        phoneWindow.innerHTML = `
+          parsed = JSON.parse(cleaned);
+        } catch (e) {
+          throw new Error(`AI \u8FD4\u56DE\u683C\u5F0F\u65E0\u6CD5\u89E3\u6790\uFF1A${cleaned.slice(0, 100)}`);
+        }
+        const newContacts = Array.isArray(parsed.contacts) ? parsed.contacts : [];
+        const newGroups = Array.isArray(parsed.groups) ? parsed.groups : [];
+        if (!window.__pmHistories[id]) window.__pmHistories[id] = {};
+        let added = 0;
+        for (const name of newContacts) {
+          if (typeof name !== "string" || !name.trim()) continue;
+          const n = name.trim();
+          const alreadyExists = existingList.some((e) => e.toLowerCase() === n.toLowerCase()) || Object.keys(window.__pmHistories[id]).some((k) => !k.startsWith("__group_") && k.toLowerCase() === n.toLowerCase());
+          if (alreadyExists) continue;
+          if (!window.__pmHistories[id][n]) window.__pmHistories[id][n] = [];
+          added++;
+        }
+        saveHistories();
+        if (!window.__pmGroupMeta[id]) window.__pmGroupMeta[id] = {};
+        for (const g of newGroups) {
+          if (!g?.name || !Array.isArray(g.members) || g.members.length < 2) continue;
+          const gName = g.name.trim();
+          const alreadyExists = Object.values(window.__pmGroupMeta[id]).some((m) => m.name.toLowerCase() === gName.toLowerCase());
+          if (alreadyExists) continue;
+          const members = g.members.map((m) => m.trim()).filter((m) => m && m.toLowerCase() !== userName.toLowerCase()).slice(0, 15);
+          const groupKey = `__group_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+          window.__pmGroupMeta[id][groupKey] = { name: gName, members };
+          added++;
+        }
+        saveGroupMeta();
+        window.__pmShowList();
+        setTimeout(() => addNote(`\u2728 \u5DF2\u81EA\u52A8\u6DFB\u52A0 ${added} \u4E2A\u8054\u7CFB\u4EBA/\u7FA4\u804A`), 200);
+      } catch (e) {
+        console.error("[phone-mode] __pmAutoGenContacts \u5F02\u5E38", e);
+        alert(`\u81EA\u52A8\u751F\u6210\u5931\u8D25\uFF1A${e?.message || e}`);
+      } finally {
+        setSpinning(false);
+      }
+    };
+    window.__pmDelGroup = async (key) => {
+      const id = getStorageId();
+      if (window.__pmGroupMeta[id]) delete window.__pmGroupMeta[id][key];
+      if (window.__pmHistories[id]) delete window.__pmHistories[id][key];
+      const arr = window.__pmBidirectional[id] || [], idx = arr.indexOf(key);
+      if (idx >= 0) {
+        arr.splice(idx, 1);
+        window.__pmBidirectional[id] = arr;
+        saveBidirectional();
+      }
+      const bgKey = `${id}_${key}`;
+      if (window.__pmBgLocal[bgKey]) {
+        delete window.__pmBgLocal[bgKey];
+        await pmIDBDel("ST_SMS_BG_LOCAL_" + bgKey);
+        await saveBgLocal();
+      }
+      if (window.__pmPokeConfig[id]?.[key]) {
+        delete window.__pmPokeConfig[id][key];
+        savePokeConfig();
+      }
+      await pmIDBSet("ST_SMS_DATA_V2", window.__pmHistories).catch(() => {
+      });
+      try {
+        localStorage.setItem("ST_SMS_DATA_V2", JSON.stringify(window.__pmHistories));
+      } catch (e) {
+      }
+      ;
+      saveGroupMeta();
+      applyBidirectionalInjection();
+      if (currentGroupKey === key) {
+        isGroupChat = false;
+        currentGroupKey = "";
+        currentPersona = "";
+        conversationHistory = [];
+        groupMembers = [];
+        groupDisplayName = "";
+        groupColorMap = {};
+      }
+      window.__pmShowList();
+    };
+    window.__pmSwitchContact = (key) => {
+      if (!key?.trim()) return;
+      key = key.trim();
+      loadGroupMeta();
+      const id = getStorageId();
+      if (id === "sms_unknown__default") {
+        console.warn("[phone-mode] __pmSwitchContact: SillyTavern \u4E0A\u4E0B\u6587\u5C1A\u672A\u5C31\u7EEA\uFF0CstorageId \u4E3A unknown\uFF0C\u8DF3\u8FC7\u5207\u6362");
+        return;
+      }
+      const groupMeta = window.__pmGroupMeta[id]?.[key];
+      const _prevSaveKey = isGroupChat && currentGroupKey ? currentGroupKey : currentPersona;
+      if (groupMeta) {
+        isGroupChat = true;
+        currentGroupKey = key;
+        groupMembers = groupMeta.members.slice();
+        groupDisplayName = groupMeta.name;
+        groupColorMap = {};
+        groupMembers.forEach((n, i) => {
+          groupColorMap[n] = GROUP_COLORS[i % GROUP_COLORS.length];
+        });
+      } else {
+        isGroupChat = false;
+        groupMembers = [];
+        groupColorMap = {};
+        groupDisplayName = "";
+        currentGroupKey = "";
+      }
+      window.__pmSwitch(key, _prevSaveKey);
+    };
+    window.__pmSwitch = (name, _prevSaveKey) => {
+      if (!name?.trim()) return;
+      name = name.trim();
+      document.getElementById("pm-overlay")?.remove();
+      const id = getStorageId();
+      if (currentPersona && conversationHistory.length > 0) {
+        if (!window.__pmHistories[id]) window.__pmHistories[id] = {};
+        const saveKey = _prevSaveKey || (isGroupChat && currentGroupKey ? currentGroupKey : currentPersona);
+        window.__pmHistories[id][saveKey] = conversationHistory.slice(-SAVE_LIMIT);
+        saveHistories();
+      }
+      currentPersona = name;
+      conversationHistory = window.__pmHistories[id]?.[name] ?? [];
+      if (phoneWindow) {
+        const nameEl = phoneWindow.querySelector(".pm-name");
+        const editBtn = phoneWindow.querySelector(".pm-name-edit");
+        if (nameEl) {
+          if (isGroupChat) {
+            const display = groupDisplayName || name;
+            const arr = [...display];
+            nameEl.textContent = arr.length > 5 ? arr.slice(0, 5).join("") + "..." : display;
+          } else {
+            nameEl.textContent = name;
+          }
+        }
+        if (editBtn) {
+          editBtn.classList.remove("is-hidden");
+        }
+        fitNameFont();
+        const list = phoneWindow.querySelector(".pm-msg-list");
+        list.innerHTML = "";
+        if (conversationHistory.length > 0) {
+          addNote(`\u5386\u53F2\u8BB0\u5F55`);
+          conversationHistory.forEach((m, hi) => {
+            if (isGroupChat && m.role === "assistant") {
+              const lines = m.content.split("\n");
+              for (const line of lines) {
+                const match = line.match(/^(.{1,20})[：:]\s*(.+)$/);
+                if (match && groupMembers.some((gm) => gm.toLowerCase() === match[1].trim().toLowerCase())) {
+                  const sender = groupMembers.find((gm) => gm.toLowerCase() === match[1].trim().toLowerCase());
+                  splitToSentences(match[2]).forEach((s) => addBubble(s, "left", sender, hi));
+                } else {
+                  splitToSentences(line).forEach((s) => addBubble(s, "left", void 0, hi));
+                }
+              }
+            } else {
+              splitToSentences(m.content).forEach((s) => addBubble(s, m.role === "user" ? "right" : "left", void 0, hi));
+            }
+          });
+          addNote("\u2500\u2500 \u4EE5\u4E0A\u4E3A\u5386\u53F2 \u2500\u2500");
+        } else addNote(`\u5F00\u59CB\u5BF9\u8BDD`);
+        applyBackground();
+      }
+      applyBidirectionalInjection();
+    };
+    window.__pmDel = async (name) => {
+      const id = getStorageId();
+      if (window.__pmHistories[id]) delete window.__pmHistories[id][name];
+      await pmIDBSet("ST_SMS_DATA_V2", window.__pmHistories).catch(() => {
+      });
+      try {
+        localStorage.setItem("ST_SMS_DATA_V2", JSON.stringify(window.__pmHistories));
+      } catch (e) {
+      }
+      ;
+      const arr = window.__pmBidirectional[id] || [], idx = arr.indexOf(name);
+      if (idx >= 0) {
+        arr.splice(idx, 1);
+        window.__pmBidirectional[id] = arr;
+        saveBidirectional();
+      }
+      const bgKey = `${id}_${name}`;
+      if (window.__pmBgLocal[bgKey]) {
+        delete window.__pmBgLocal[bgKey];
+        await pmIDBDel("ST_SMS_BG_LOCAL_" + bgKey);
+        await saveBgLocal();
+      }
+      if (window.__pmPokeConfig[id]?.[name]) {
+        delete window.__pmPokeConfig[id][name];
+        savePokeConfig();
+      }
+      applyBidirectionalInjection();
+      if (!isGroupChat && currentPersona === name) {
+        currentPersona = "";
+        conversationHistory = [];
+      }
+      window.__pmShowList();
+    };
+    window.__pmToggleSelect = () => {
+      isSelectMode = !isSelectMode;
+      const list = phoneWindow?.querySelector(".pm-msg-list");
+      const trashBtn = phoneWindow?.querySelector(".pm-trash-btn");
+      const confirmBar = phoneWindow?.querySelector(".pm-confirm-bar");
+      if (!list) return;
+      if (isSelectMode) {
+        trashBtn.style.color = "#ff3b30";
+        confirmBar.style.display = "flex";
+        list.querySelectorAll(".pm-bubble, .pm-group-bubble-wrap, .pm-director").forEach((b) => {
+          if (b.id === "pm-typing" || b.closest(".pm-select-wrap")) return;
+          const isDirector = b.classList.contains("pm-director");
+          const wrap = document.createElement("div");
+          wrap.className = "pm-select-wrap";
+          const side = isDirector ? "center" : b.dataset.side || "left";
+          wrap.style.cssText = "display:flex;align-items:center;gap:8px;align-self:" + (side === "right" ? "flex-end" : side === "center" ? "center" : "flex-start") + ";";
+          const cb = document.createElement("div");
+          cb.className = "pm-custom-check";
+          cb.dataset.checked = "0";
+          cb.style.cssText = "width:22px;height:22px;min-width:22px;min-height:22px;border-radius:50%;flex-shrink:0;cursor:pointer;";
+          cb.onclick = () => {
+            cb.dataset.checked = cb.dataset.checked === "0" ? "1" : "0";
+          };
+          b.parentNode.insertBefore(wrap, b);
+          wrap.appendChild(cb);
+          wrap.appendChild(b);
+          wrap.dataset.side = side;
+          wrap.dataset.text = b.dataset.text || "";
+          const hi = b.dataset.historyIndex;
+          if (hi !== void 0 && hi !== "") wrap.dataset.historyIndex = hi;
+        });
+      } else {
+        trashBtn.style.color = "";
+        confirmBar.style.display = "none";
+        list.querySelectorAll(".pm-select-wrap").forEach((wrap) => {
+          const b = wrap.querySelector(".pm-bubble, .pm-group-bubble-wrap, .pm-director");
+          if (b) wrap.parentNode.insertBefore(b, wrap);
+          wrap.remove();
+        });
+      }
+    };
+    window.__pmDeleteSelected = () => {
+      const list = phoneWindow?.querySelector(".pm-msg-list");
+      if (!list) return;
+      const toRemoveIndices = /* @__PURE__ */ new Set();
+      list.querySelectorAll(".pm-select-wrap").forEach((wrap) => {
+        const cb = wrap.querySelector(".pm-custom-check");
+        if (cb?.dataset.checked === "1") {
+          const hi = wrap.dataset.historyIndex;
+          if (hi !== void 0 && hi !== "") toRemoveIndices.add(Number(hi));
+          wrap.remove();
+        } else {
+          const b = wrap.querySelector(".pm-bubble, .pm-group-bubble-wrap, .pm-director");
+          if (b) wrap.parentNode.insertBefore(b, wrap);
+          wrap.remove();
+        }
+      });
+      if (toRemoveIndices.size > 0) {
+        conversationHistory = conversationHistory.filter((_, i) => !toRemoveIndices.has(i));
+        const id = getStorageId();
+        if (!window.__pmHistories[id]) window.__pmHistories[id] = {};
+        const saveKey = isGroupChat && currentGroupKey ? currentGroupKey : currentPersona;
+        window.__pmHistories[id][saveKey] = conversationHistory.slice(-SAVE_LIMIT);
+        saveHistories();
+        applyBidirectionalInjection();
+      }
+      isSelectMode = false;
+      phoneWindow?.querySelector(".pm-trash-btn")?.style.removeProperty("color");
+      const bar = phoneWindow?.querySelector(".pm-confirm-bar");
+      if (bar) bar.style.display = "none";
+    };
+    window.__pmToggleMin = () => {
+      isMinimized = !isMinimized;
+      phoneWindow.classList.toggle("is-min", isMinimized);
+      phoneWindow.style.removeProperty("transform");
+    };
+    window.__pmEnd = () => {
+      if (currentPersona && conversationHistory.length) {
+        const id = getStorageId();
+        if (!window.__pmHistories[id]) window.__pmHistories[id] = {};
+        const saveKey = isGroupChat && currentGroupKey ? currentGroupKey : currentPersona;
+        window.__pmHistories[id][saveKey] = conversationHistory.slice(-SAVE_LIMIT);
+        saveHistories();
+      }
+      if (phoneWindow) {
+        try {
+          phoneWindow.hidePopover?.();
+        } catch (e) {
+        }
+        phoneWindow.remove();
+      }
+      phoneWindow = null;
+      phoneActive = false;
+      isMinimized = false;
+      isSelectMode = false;
+      isGroupChat = false;
+      groupMembers = [];
+      groupColorMap = {};
+      groupDisplayName = "";
+      currentGroupKey = "";
+      __pmFirstOpen = true;
+      if (__pmVisibilityTimer) {
+        clearInterval(__pmVisibilityTimer);
+        __pmVisibilityTimer = null;
+      }
+    };
+    function ensureVisibility() {
+      if (!phoneWindow) return;
+      const cs = getComputedStyle(phoneWindow);
+      if (cs.display === "none" || cs.visibility === "hidden" || parseFloat(cs.opacity || "1") < 0.1) {
+        phoneWindow.style.setProperty("display", "flex", "important");
+        phoneWindow.style.setProperty("visibility", "visible", "important");
+        phoneWindow.style.setProperty("opacity", "1", "important");
+      }
+    }
+    let __pmVisibilityTimer = setInterval(ensureVisibility, 2e3);
+    window.__pmOpen = () => {
+      if (phoneActive && phoneWindow) {
+        try {
+          phoneWindow.showPopover?.();
+        } catch (e) {
+        }
+        phoneWindow.style.display = "flex";
+        ensureVisibility();
+        return;
+      }
+      if (!__pmVisibilityTimer) {
+        __pmVisibilityTimer = setInterval(ensureVisibility, 2e3);
+      }
+      try {
+        const saved = JSON.parse(localStorage.getItem("ST_SMS_CONFIG"));
+        window.__pmConfig = saved || { apiUrl: "", apiKey: "", model: "", useIndependent: false };
+        if (typeof window.__pmConfig.useIndependent === "undefined") window.__pmConfig.useIndependent = !!(window.__pmConfig.apiUrl && window.__pmConfig.apiKey);
+      } catch (e) {
+        window.__pmConfig = { apiUrl: "", apiKey: "", model: "", useIndependent: false };
+      }
+      loadProfiles();
+      loadBidirectional();
+      loadTheme();
+      loadGroupMeta();
+      loadPokeConfig();
+      loadWordyLimit();
+      migrateOldHistory();
+      loadEmojis();
+      loadBgSettings().then(() => {
+        try {
+          applyBackground();
+        } catch (e) {
+        }
+      });
+      hookGenerationEvent();
+      const c = getCtx(), defaultChar = c?.characters?.[c.characterId]?.name ?? "AI";
+      phoneWindow = document.createElement("div");
+      phoneWindow.id = "pm-iphone";
+      phoneWindow.dataset.layout = window.__pmTheme.layout || "standard";
+      phoneWindow.setAttribute("data-theme", window.__pmTheme.darkMode || "light");
+      if (POPOVER_SUPPORTED) phoneWindow.setAttribute("popover", "manual");
+      const editSvg = `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>`;
+      phoneWindow.innerHTML = `
 <div class="pm-island"></div>
 <div class="pm-main-ui">
   <div class="pm-navbar">
-    <button onclick="window.__pmShowList()" class="pm-nav-btn pm-nav-left-btn">☰</button>
+    <button onclick="window.__pmShowList()" class="pm-nav-btn pm-nav-left-btn">\u2630</button>
     <div class="pm-name-wrap">
       <div class="pm-name">${escapeHtml(defaultChar)}</div>
-      <button onclick="window.__pmEditGroup()" class="pm-name-edit is-hidden" title="编辑">${editSvg}</button>
+      <button onclick="window.__pmEditGroup()" class="pm-name-edit is-hidden" title="\u7F16\u8F91">${editSvg}</button>
     </div>
     <div class="pm-nav-right">
-      <button onclick="window.__pmToggleSelect()" class="pm-nav-btn pm-trash-btn">🗑</button>
-      <button onclick="window.__pmShowConfig()" class="pm-nav-btn">⚙</button>
-      <button onclick="window.__pmEnd()" class="pm-nav-btn" style="color:#ff3b30">✕</button>
+      <button onclick="window.__pmToggleSelect()" class="pm-nav-btn pm-trash-btn">\u{1F5D1}</button>
+      <button onclick="window.__pmShowConfig()" class="pm-nav-btn">\u2699</button>
+      <button onclick="window.__pmEnd()" class="pm-nav-btn" style="color:#ff3b30">\u2715</button>
     </div>
   </div>
   <div class="pm-confirm-bar" style="display:none;">
-    <span class="pm-confirm-tip">选择要删除的消息</span>
-    <button onclick="window.__pmDeleteSelected()" class="pm-confirm-btn">删除所选</button>
-    <button onclick="window.__pmToggleSelect()" class="pm-cancel-btn">取消</button>
+    <span class="pm-confirm-tip">\u9009\u62E9\u8981\u5220\u9664\u7684\u6D88\u606F</span>
+    <button onclick="window.__pmDeleteSelected()" class="pm-confirm-btn">\u5220\u9664\u6240\u9009</button>
+    <button onclick="window.__pmToggleSelect()" class="pm-cancel-btn">\u53D6\u6D88</button>
   </div>
   <div class="pm-msg-list"></div>
   <div class="pm-input-bar">
-    <button onclick="window.__pmShowExpandInput()" class="pm-expand-btn" title="展开长文本输入">⤢</button>
+    <button onclick="window.__pmShowExpandInput()" class="pm-expand-btn" title="\u5C55\u5F00\u957F\u6587\u672C\u8F93\u5165">\u2922</button>
     <input class="pm-input" placeholder="iMessage">
-    <button onclick="window.__pmSend()" class="pm-up-btn">↑</button>
+    <button onclick="window.__pmSend()" class="pm-up-btn">\u2191</button>
   </div>
 </div>`;
-        document.body.appendChild(phoneWindow);
-        if (phoneWindow.showPopover) try { phoneWindow.showPopover(); } catch (e) {}
-        phoneActive = true;
-        phoneWindow.querySelector('.pm-input').addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); window.__pmSend(); } });
-        bindIsland(phoneWindow, phoneWindow.querySelector('.pm-island'));
-        applyTheme(); isGroupChat = false; groupMembers = []; groupColorMap = {}; groupDisplayName = ''; currentGroupKey = '';
-
-
-        if (!__pmFirstOpen) {
-            // 热启动：信任内存历史直接渲染，但表情包可能因为插件重载而清空，需确保已加载
-            const doRender = () => { window.__pmSwitch(defaultChar); applyBidirectionalInjection(); ensureVisibility(); };
-            if (window.__pmEmojis.length > 0) {
-                doRender();
-            } else {
-                loadEmojis().then(doRender);
-            }
-        } else {
-            // ❄️ 冷启动：第一次打开，先占位，等外部的 IDB 把最新数据拉进内存再渲染
-            __pmFirstOpen = false; // 翻转标记，此后不刷新就不会再走这里
-            const list = phoneWindow?.querySelector('.pm-msg-list');
-            if (list) { list.innerHTML = '<div style="text-align:center;color:#aaa;padding:20px;font-size:13px;">正在加载历史记录…</div>'; }
-            
-            // 冷启动：表情包和历史记录都需要从 IDB 加载完才能正确渲染
-            // 否则 [emo:...] 会因为 __pmEmojis 为空而显示占位符
-            Promise.all([loadHistoriesFromIDB(), loadEmojis()]).then(() => {
-                if (!phoneWindow) return;
-                window.__pmSwitch(defaultChar);
-                applyBidirectionalInjection(); ensureVisibility();
-            });
+      document.body.appendChild(phoneWindow);
+      if (phoneWindow.showPopover) try {
+        phoneWindow.showPopover();
+      } catch (e) {
+      }
+      phoneActive = true;
+      phoneWindow.querySelector(".pm-input").addEventListener("keydown", (e) => {
+        if (e.key === "Enter" && !e.shiftKey) {
+          e.preventDefault();
+          window.__pmSend();
         }
+      });
+      bindIsland(phoneWindow, phoneWindow.querySelector(".pm-island"));
+      applyTheme();
+      isGroupChat = false;
+      groupMembers = [];
+      groupColorMap = {};
+      groupDisplayName = "";
+      currentGroupKey = "";
+      if (!__pmFirstOpen) {
+        const doRender = () => {
+          window.__pmSwitch(defaultChar);
+          applyBidirectionalInjection();
+          ensureVisibility();
+        };
+        if (window.__pmEmojis.length > 0) {
+          doRender();
+        } else {
+          loadEmojis().then(doRender);
+        }
+      } else {
+        __pmFirstOpen = false;
+        const list = phoneWindow?.querySelector(".pm-msg-list");
+        if (list) {
+          list.innerHTML = '<div style="text-align:center;color:#aaa;padding:20px;font-size:13px;">\u6B63\u5728\u52A0\u8F7D\u5386\u53F2\u8BB0\u5F55\u2026</div>';
+        }
+        Promise.all([loadHistoriesFromIDB(), loadEmojis()]).then(() => {
+          if (!phoneWindow) return;
+          window.__pmSwitch(defaultChar);
+          applyBidirectionalInjection();
+          ensureVisibility();
+        });
+      }
     };
-    
-
-    // ══════════════════════ CSS ══════════════════════
-    if (!document.getElementById('pm-css')) {
-        const s = document.createElement('style'); s.id = 'pm-css';
-        s.textContent = `
-[popover]{border:none;padding:0;background:transparent;color:inherit;margin:0;overflow:visible;}
-[popover]::backdrop{display:none;background:transparent;}
-#pm-iphone{
-    --pm-r-bg:#007aff;--pm-l-bg:#e9e9eb;--pm-r-txt:#fff;--pm-l-txt:#000;--pm-border:#1a1a1a;--pm-frost:0;
-    position:fixed !important;inset:auto 40px 40px auto !important;margin:0 !important;transform:none !important;
-    width:330px !important;height:580px !important;min-width:330px !important;max-width:330px !important;min-height:580px !important;max-height:580px !important;
-    background:#fff !important;border:10px solid var(--pm-border) !important;border-radius:45px !important;z-index:2147483647 !important;
-    display:flex !important;flex-direction:column !important;visibility:visible !important;opacity:1 !important;overflow:hidden !important;
-    box-shadow:0 20px 60px rgba(0,0,0,.45) !important;transition:.35s cubic-bezier(.18,.89,.32,1.2);
-    font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Microsoft YaHei',sans-serif !important;
-    touch-action:none;box-sizing:border-box !important;pointer-events:auto !important;filter:none !important;color:#000 !important;
-}
-
-#pm-iphone[data-theme="light"] {
-    --pm-bg: #fff;
-    --pm-navbar-bg: #fff;
-    --pm-navbar-border: #f0f0f0;
-    --pm-input-bg: #f2f2f7;
-    --pm-list-bg: #fff;
-    --pm-text: #000;
-    --pm-name-color: #000;
-}
-
-#pm-iphone[data-theme="dark"] {
-    --pm-bg: #1c1c1e;
-    --pm-navbar-bg: #1c1c1e;
-    --pm-navbar-border: #38383a;
-    --pm-input-bg: #2c2c2e;
-    --pm-list-bg: #1c1c1e;
-    --pm-text: #e5e5e5;
-    --pm-name-color: #ccc;
-}
-
-#pm-iphone{background:var(--pm-bg,#fff) !important;}
-.pm-main-ui{background:var(--pm-bg,#fff) !important;}
-.pm-navbar{background:var(--pm-navbar-bg,#fff) !important;border-bottom-color:var(--pm-navbar-border,#f0f0f0) !important;}
-.pm-name{color:var(--pm-name-color,#000) !important;}
-.pm-input{background:var(--pm-input-bg,#f2f2f7) !important;color:var(--pm-text,#000) !important;}
-
-
-#pm-iphone[data-theme="dark"] .pm-li:hover{background:#2c2c2e;}
-#pm-iphone[data-theme="dark"] .pm-modal{background:#1c1c1e !important;color:#e5e5e5 !important;}
-#pm-iphone[data-theme="dark"] .pm-modal-header{border-bottom-color:#38383a !important;}
-#pm-iphone[data-theme="dark"] .pm-modal-header b{color:#e5e5e5 !important;}
-#pm-iphone[data-theme="dark"] .pm-cfg-input{background:#2c2c2e !important;color:#e5e5e5 !important;border-color:#48484a !important;}
-#pm-iphone[data-theme="dark"] .pm-cfg-label{color:#aaa !important;}
-#pm-iphone[data-theme="dark"] .pm-cfg-tab{color:#aaa !important;}
-#pm-iphone[data-theme="dark"] .pm-cfg-tab-active{color:#0a84ff !important;}
-#pm-iphone[data-theme="dark"] .pm-cfg-tabs{border-bottom-color:#38383a !important;}
-#pm-iphone[data-theme="dark"] .pm-layout-chip,#pm-iphone[data-theme="dark"] .pm-theme-chip{background:#2c2c2e !important;color:#ccc !important;}
-#pm-iphone[data-theme="dark"] .pm-layout-active,#pm-iphone[data-theme="dark"] .pm-theme-active{border-color:#0a84ff !important;color:#0a84ff !important;background:#1c2a3a !important;}
-#pm-iphone[data-theme="dark"] .pm-bg-btn{background:#2c2c2e !important;border-color:#48484a !important;color:#ccc !important;}
-#pm-iphone[data-theme="dark"] .pm-prof-list{background:#2c2c2e !important;border-color:#48484a !important;}
-#pm-iphone[data-theme="dark"] .pm-prof-li:hover{background:#3a3a3c !important;}
-#pm-iphone[data-theme="dark"] .pm-mode-switch{background:#2c2c2e !important;}
-#pm-iphone[data-theme="dark"] .pm-mode-opt{color:#aaa !important;}
-#pm-iphone[data-theme="dark"] .pm-mode-active{background:#3a3a3c !important;color:#0a84ff !important;}
-#pm-iphone[data-theme="dark"] .pm-bi-bar{background:#2c2410 !important;border-bottom-color:#4a3a10 !important;color:#b8902a !important;}
-#pm-iphone[data-theme="dark"] .pm-confirm-bar{background:#2c2410 !important;border-bottom-color:#4a3a10 !important;}
-#pm-iphone[data-theme="dark"] .pm-note{color:#666 !important;}
-#pm-iphone[data-theme="dark"] .pm-group-name{color:#aaa !important;}
-#pm-iphone[data-theme="dark"] .pm-island{background:#48484a;}
-
-#pm-iphone.is-min{inset:auto 40px 40px auto !important;height:50px !important;min-height:50px !important;max-height:50px !important;width:140px !important;min-width:140px !important;max-width:140px !important;border-radius:25px !important;border-width:6px !important;}
-#pm-iphone.is-min .pm-main-ui{display:none !important;}
-#pm-iphone *,#pm-iphone *::before,#pm-iphone *::after{box-sizing:border-box;}
-.pm-island{width:100px;height:28px;background:#1a1a1a;margin:8px auto 4px;border-radius:14px;cursor:move;flex-shrink:0;touch-action:none;}
-.pm-main-ui{flex:1 !important;display:flex !important;flex-direction:column !important;overflow:hidden;min-height:0;}
-.pm-navbar{position:relative;display:flex !important;align-items:center;padding:6px 10px;border-bottom:1px solid #f0f0f0;flex-shrink:0;min-height:38px;}
-.pm-nav-left-btn{margin-right:auto;}
-.pm-nav-right{display:flex;gap:4px;justify-content:flex-end;margin-left:auto;}
-.pm-name-wrap{position:absolute !important;left:50%;top:50%;transform:translate(-50%,-50%);display:inline-flex;align-items:center;max-width:60%;pointer-events:auto;}
-.pm-name{font-weight:700 !important;font-size:15px !important;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;}
-.pm-name-edit{background:#f0f0f3 !important;border:none !important;color:#666 !important;cursor:pointer;padding:5px !important;line-height:1;flex-shrink:0;border-radius:50% !important;width:24px;height:24px;display:inline-flex;align-items:center;justify-content:center;transition:all .2s;position:absolute;left:100%;margin-left:8px;}
-.pm-name-edit.is-hidden{display:none !important;}
-.pm-name-edit:hover{background:#007aff !important;color:#fff !important;transform:scale(1.05);}
-.pm-name-edit svg{display:block;}
-#pm-iphone[data-layout="relaxed"] .pm-nav-right{gap:10px;}
-#pm-iphone[data-layout="relaxed"] .pm-navbar{padding:8px 14px;min-height:44px;}
-.pm-nav-btn{background:none !important;border:none !important;font-size:18px !important;cursor:pointer;color:#007aff !important;padding:3px !important;line-height:1;flex-shrink:0;}
-.pm-confirm-bar{background:#fff8f0;border-bottom:1px solid #ffe0b0;padding:7px 12px;align-items:center;gap:8px;flex-shrink:0;}
-.pm-confirm-tip{flex:1;font-size:12px;color:#888;}
-.pm-confirm-btn{background:#ff3b30 !important;color:#fff !important;border:none;border-radius:8px;padding:5px 12px;font-size:12px;cursor:pointer;font-weight:600;}
-.pm-cancel-btn{background:#f0f0f0 !important;color:#333 !important;border:none;border-radius:8px;padding:5px 12px;font-size:12px;cursor:pointer;}
-.pm-msg-list{flex:1 !important;overflow-y:auto !important;padding:12px !important;display:flex !important;flex-direction:column !important;gap:7px;background:var(--pm-list-bg,#fff) !important;min-height:0;background-size:cover;background-position:center;}
-.pm-select-wrap{display:flex !important;align-items:flex-end;gap:6px;}
-.pm-custom-check{width:20px;height:20px;border-radius:50%;border:2px solid #ccc;cursor:pointer;flex-shrink:0;margin-bottom:4px;transition:all .15s;position:relative;background:#fff !important;}
-.pm-custom-check[data-checked="1"],.pm-custom-check.is-checked{border-color:#007aff;background:#007aff !important;}
-.pm-custom-check[data-checked="1"]::after,.pm-custom-check.is-checked::after{content:'✓';position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#fff;font-size:12px;font-weight:bold;}
-.pm-bi-style{border-color:#e0a030;}.pm-bi-style.is-checked{border-color:#ff9500;background:#ff9500 !important;}
-.pm-bubble{max-width:74% !important;padding:9px 13px;border-radius:18px !important;font-size:14px !important;line-height:1.45;word-break:break-word;animation:pm-pop .22s ease-out;}
-.pm-bubble.pm-special{background:transparent !important;box-shadow:none !important;padding:0 !important;}
-@keyframes pm-pop{from{opacity:0;transform:scale(.92) translateY(4px)}to{opacity:1;transform:scale(1) translateY(0)}}
-.pm-right{align-self:flex-end !important;background:var(--pm-r-bg) !important;color:var(--pm-r-txt) !important;border-bottom-right-radius:4px !important;}
-.pm-left{align-self:flex-start !important;background:var(--pm-l-bg) !important;color:var(--pm-l-txt) !important;border-bottom-left-radius:4px !important;}
-#pm-iphone[style*="--pm-frost: 1"] .pm-right,#pm-iphone[style*="--pm-frost: 1"] .pm-left{backdrop-filter:blur(12px) saturate(1.4);-webkit-backdrop-filter:blur(12px) saturate(1.4);}
-.pm-group-bubble-wrap{align-self:flex-start !important;display:flex !important;flex-direction:column !important;gap:2px;max-width:78% !important;width:fit-content !important;align-items:flex-start !important;}
-.pm-group-bubble-wrap .pm-bubble{max-width:none !important;width:auto !important;align-self:flex-start !important;}
-.pm-group-name{font-size:11px;color:#999;padding-left:6px;font-weight:500;white-space:nowrap;}
-.pm-typing-bubble{display:flex !important;gap:5px;align-items:center;padding:11px 15px !important;width:fit-content;}
-.pm-typing-bubble span{width:7px;height:7px;border-radius:50%;background:#999;display:inline-block;animation:pm-bounce 1.2s infinite;}
-.pm-typing-bubble span:nth-child(2){animation-delay:.2s;}.pm-typing-bubble span:nth-child(3){animation-delay:.4s;}
-@keyframes pm-bounce{0%,60%,100%{transform:translateY(0)}30%{transform:translateY(-5px)}}
-.pm-note{text-align:center;font-size:11px;color:#bbb;padding:3px 0;}
-.pm-director{display:flex;align-items:center;justify-content:center;gap:5px;padding:5px 10px;margin:2px 4px;background:rgba(88,86,214,0.08);border:1px solid rgba(88,86,214,0.18);border-radius:12px;animation:pm-pop .22s ease-out;}
-.pm-director-icon{font-size:12px;flex-shrink:0;}
-.pm-director-text{font-size:11px;color:#5856d6;font-style:italic;text-align:center;line-height:1.4;word-break:break-word;}
-#pm-iphone[data-theme="dark"] .pm-director{background:rgba(88,86,214,0.15);border-color:rgba(88,86,214,0.3);}
-#pm-iphone[data-theme="dark"] .pm-director-text{color:#a29bfe;}
-@keyframes pm-spin{from{transform:rotate(0deg);}to{transform:rotate(360deg);}}
-.pm-transfer-card{background:linear-gradient(135deg,#ff9500,#ff6b00);color:#fff;border-radius:14px;padding:12px 14px;display:flex;align-items:center;gap:10px;min-width:150px;box-shadow:0 3px 10px rgba(255,149,0,.35);}
-.pm-receive-card{background:linear-gradient(135deg,#34c759,#28a745);color:#fff;border-radius:14px;padding:12px 14px;display:flex;align-items:center;gap:10px;min-width:150px;box-shadow:0 3px 10px rgba(52,199,89,.35);}
-.pm-refund-card{background:linear-gradient(135deg,#ff9500,#ff6b00);color:#fff;border-radius:14px;padding:12px 14px;display:flex;align-items:center;gap:10px;min-width:150px;box-shadow:0 3px 10px rgba(255,149,0,.35);}
-.pm-t-icon{width:34px;height:34px;background:rgba(255,255,255,.25);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:17px;font-weight:800;}
-.pm-t-info{display:flex;flex-direction:column;gap:1px;}.pm-t-info b{font-size:12px;opacity:.85;}.pm-t-info span{font-size:17px;font-weight:700;}
-.pm-img-card{background:#f2f2f7;border:1px solid #e0e0e0;padding:12px 14px;border-radius:14px;color:#555;font-size:13px;text-align:center;}
-.pm-voice-wrap{display:flex;flex-direction:column;gap:4px;align-items:inherit;}
-.pm-special.pm-right .pm-voice-wrap{align-items:flex-end;}.pm-special.pm-left .pm-voice-wrap{align-items:flex-start;}
-.pm-voice-card{display:flex !important;align-items:center !important;flex-direction:row !important;flex-wrap:nowrap !important;gap:10px;padding:10px 14px;border-radius:18px;cursor:pointer;user-select:none;transition:filter .15s;white-space:nowrap;}
-.pm-voice-card:hover{filter:brightness(.96);}
-.pm-voice-right{background:var(--pm-r-bg);color:var(--pm-r-txt);border-bottom-right-radius:4px;flex-direction:row-reverse !important;}
-.pm-voice-left{background:var(--pm-l-bg);color:var(--pm-l-txt);border-bottom-left-radius:4px;}
-.pm-voice-icon{font-size:14px;flex-shrink:0;line-height:1;}
-.pm-voice-wave{flex:1 1 auto;display:flex !important;flex-direction:row !important;gap:3px;align-items:center;height:16px;min-width:30px;}
-.pm-voice-wave i{display:inline-block;width:3px;background:currentColor;opacity:.7;border-radius:2px;animation:pm-wave 1s infinite ease-in-out;flex-shrink:0;}
-.pm-voice-wave i:nth-child(1){height:8px;}.pm-voice-wave i:nth-child(2){height:14px;animation-delay:.2s;}.pm-voice-wave i:nth-child(3){height:10px;animation-delay:.4s;}
-@keyframes pm-wave{0%,100%{transform:scaleY(.5)}50%{transform:scaleY(1)}}
-.pm-voice-dur{font-size:12px;opacity:.85;min-width:34px;text-align:right;flex-shrink:0;font-variant-numeric:tabular-nums;line-height:1;}
-.pm-voice-text{background:#f7f7f9;border:1px solid #e5e5e8;color:#333;padding:7px 10px;border-radius:10px;font-size:13px;line-height:1.4;max-width:220px;word-break:break-word;position:relative;}
-.pm-voice-text::before{content:'已转文字';position:absolute;top:-8px;left:8px;font-size:9px;color:#999;background:#fff;padding:0 4px;border-radius:4px;}
-.pm-input-bar{padding:8px 12px 30px !important;display:flex !important;gap:8px;border-top:1px solid var(--pm-navbar-border,#f0f0f0);align-items:center;background:var(--pm-navbar-bg,#fff) !important;flex-shrink:0;}
-.pm-input{flex:1 !important;min-width:0 !important;background:#f2f2f7 !important;color:#000 !important;border:none !important;border-radius:20px !important;padding:9px 14px !important;outline:none !important;font-size:14px !important;font-family:inherit !important;}
-.pm-input:disabled{opacity:.5;}
-.pm-up-btn{width:32px !important;height:32px !important;background:#007aff !important;color:#fff !important;border:none !important;border-radius:50% !important;cursor:pointer;font-size:16px !important;font-weight:bold;display:flex !important;align-items:center !important;justify-content:center !important;flex-shrink:0;}
-.pm-up-btn:disabled{background:#ccc !important;}
-.pm-expand-btn {
-    width: 28px !important;
-    height: 28px !important;
-    background: none !important;
-    color: #888 !important;
-    border: none !important;
-    cursor: pointer;
-    font-size: 18px !important;
-    display: flex !important;
-    align-items: center !important;
-    justify-content: center !important;
-    flex-shrink: 0;
-    padding: 0 !important;
-    transition: color 0.15s;
-}
-.pm-expand-btn:hover {
-    color: #007aff !important;
-}
-/* 适配夜间模式的加号按钮颜色 */
-#pm-iphone[data-theme="dark"] .pm-expand-btn {
-    color: #aaa !important;
-}
-#pm-iphone[data-theme="dark"] .pm-expand-btn:hover {
-    color: #0a84ff !important;
-}
-#pm-overlay{position:fixed !important;inset:0 !important;margin:0 !important;width:100vw !important;height:100vh !important;height:100dvh !important;max-width:none !important;max-height:none !important;background:rgba(0,0,0,.45) !important;z-index:2147483647 !important;display:flex !important;align-items:center !important;justify-content:center !important;border:none !important;padding:0 !important;}
-.pm-modal{background:#fff !important;border-radius:20px !important;width:290px;max-height:85vh;max-height:85dvh;display:flex !important;flex-direction:column !important;overflow:hidden;box-shadow:0 16px 48px rgba(0,0,0,.28);font-family:-apple-system,BlinkMacSystemFont,'PingFang SC',sans-serif !important;}
-.pm-modal-wide{width:320px;}
-.pm-modal-scroll{flex:1;overflow-y:auto;min-height:0;}
-.pm-modal-header{display:flex !important;justify-content:space-between !important;align-items:center !important;padding:16px 18px 12px !important;border-bottom:1px solid #f0f0f0;flex-shrink:0;}
-.pm-modal-header b{font-size:16px !important;color:#000 !important;}.pm-modal-close{font-size:20px;color:#999;cursor:pointer;line-height:1;}
-.pm-cfg-tabs{display:flex;border-bottom:1px solid #f0f0f0;flex-shrink:0;padding:0 14px;}
-.pm-cfg-tab{flex:1;text-align:center;padding:10px 0;font-size:13px;font-weight:600;color:#888;cursor:pointer;border-bottom:2px solid transparent;transition:all .2s;user-select:none;}
-.pm-cfg-tab:hover{color:#555;}
-.pm-cfg-tab-active{color:#007aff !important;border-bottom-color:#007aff !important;}
-.pm-tab-pane{animation:pm-fade-in .15s ease;}
-@keyframes pm-fade-in{from{opacity:0}to{opacity:1}}
-.pm-bi-bar{padding:8px 14px;background:#fff8e8;border-bottom:1px solid #ffe6a8;font-size:11px;color:#885d00;display:flex;flex-direction:column;gap:3px;}
-.pm-bi-tip{font-weight:600;color:#b87a00;}
-.pm-modal-list{overflow-y:auto;flex:1;padding:6px 8px;max-height:400px;}
-.pm-li{display:flex !important;align-items:center !important;gap:10px;padding:10px;border-radius:12px;}.pm-li:hover{background:#f5f5f5;}
-.pm-li > span{flex:1;font-size:14px !important;color:#007aff !important;font-weight:500;cursor:pointer;display:flex;flex-direction:column;gap:2px;min-width:0;}
-.pm-group-sub{font-size:11px !important;color:#999 !important;font-weight:400 !important;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-.pm-li i{font-style:normal;font-size:11px;color:#fff !important;background:#ff3b30 !important;padding:3px 9px;border-radius:8px;cursor:pointer;font-weight:600;flex-shrink:0;}
-.pm-modal-add{padding:12px 14px 16px;border-top:1px solid #f0f0f0;display:flex;gap:8px;flex-shrink:0;}
-.pm-modal-add input{flex:1;min-width:0;border:1px solid #ddd;border-radius:10px;padding:9px 12px;font-size:13px;outline:none;color:#000 !important;background:#fff !important;}
-.pm-modal-add button{background:#007aff !important;color:#fff !important;border:none;border-radius:10px;padding:9px 14px;font-size:13px;cursor:pointer;font-weight:600;white-space:nowrap;}
-.pm-btn-group{flex:1;background:linear-gradient(135deg,#ff9500,#ff6b00) !important;color:#fff !important;border:none !important;border-radius:10px !important;padding:11px !important;font-size:13px !important;cursor:pointer !important;font-weight:600 !important;}
-.pm-btn-add{flex:1;background:linear-gradient(135deg,#007aff,#0056b3) !important;color:#fff !important;border:none !important;border-radius:10px !important;padding:11px !important;font-size:13px !important;cursor:pointer !important;font-weight:600 !important;}
-.pm-btn-group:hover,.pm-btn-add:hover{filter:brightness(1.05);}
-.pm-cfg-label{font-size:12px;color:#888;margin-bottom:-4px;}
-.pm-cfg-input{width:100%;border:1px solid #ddd !important;border-radius:10px !important;padding:9px 12px;font-size:13px !important;outline:none;color:#000 !important;background:#fff !important;}
-.pm-cfg-tip{font-size:11px;color:#aaa;text-align:center;padding:4px 0;}
-.pm-mode-switch{display:flex !important;background:#f0f0f3;border-radius:12px;padding:3px;gap:3px;}
-.pm-mode-opt{flex:1;text-align:center;padding:9px 0;font-size:13px;font-weight:600;color:#888;cursor:pointer;border-radius:9px;transition:all .2s;user-select:none;}
-.pm-mode-opt:hover{color:#555;}.pm-mode-active{background:#fff !important;color:#007aff !important;box-shadow:0 2px 6px rgba(0,0,0,.08);}
-.pm-prof-list{max-height:100px;overflow-y:auto;border:1px solid #eee;border-radius:10px;background:#fafafa;padding:4px;}
-.pm-prof-li{display:flex !important;align-items:center !important;gap:8px;padding:7px 9px;border-radius:8px;}.pm-prof-li:hover{background:#fff;}
-.pm-prof-info{flex:1;min-width:0;cursor:pointer;display:flex;flex-direction:column;gap:2px;}
-.pm-prof-url{font-size:12px;color:#007aff !important;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-.pm-prof-meta{font-size:10px;color:#999;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-.pm-prof-del{font-style:normal;font-size:12px;color:#ff3b30;background:#fff !important;border:1px solid #ffd0cc;width:22px;height:22px;border-radius:50%;display:flex !important;align-items:center !important;justify-content:center !important;cursor:pointer;flex-shrink:0;font-weight:600;}
-.pm-prof-del:hover{background:#ff3b30 !important;color:#fff !important;}
-.pm-prof-empty{text-align:center;color:#aaa;font-size:12px;padding:10px 0;}
-.pm-theme-row{display:flex;gap:6px;flex-wrap:wrap;}
-.pm-theme-chip{display:flex;align-items:center;gap:4px;padding:5px 10px;border-radius:16px;font-size:12px;color:#555;background:#f5f5f5;cursor:pointer;border:2px solid transparent;transition:all .15s;user-select:none;}
-.pm-theme-chip:hover{background:#eee;}.pm-theme-active{border-color:#007aff;color:#007aff;background:#f0f7ff;}
-.pm-theme-dot{width:14px;height:14px;border-radius:50%;flex-shrink:0;}
-.pm-color-pick{width:32px;height:28px;padding:0;border:1px solid #ddd;border-radius:6px;cursor:pointer;background:none;}
-.pm-color-clear{background:none;border:1px solid #ddd;border-radius:6px;padding:3px 8px;font-size:11px;color:#888;cursor:pointer;white-space:nowrap;}.pm-color-clear:hover{background:#f0f0f0;}
-.pm-layout-row{display:flex;gap:6px;}
-.pm-layout-chip{padding:6px 16px;border-radius:16px;font-size:12px;color:#555;background:#f5f5f5;cursor:pointer;border:2px solid transparent;transition:all .15s;user-select:none;}
-.pm-layout-chip:hover{background:#eee;}.pm-layout-active{border-color:#007aff;color:#007aff;background:#f0f7ff;}
-.pm-bg-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
-.pm-bg-label{font-size:12px;color:#555;font-weight:500;min-width:64px;}
-.pm-bg-btn{background:#f0f0f3;border:1px solid #ddd;border-radius:8px;padding:6px 12px;font-size:12px;color:#555;cursor:pointer;white-space:nowrap;font-family:inherit;}
-.pm-bg-btn:hover{background:#e5e5e8;}.pm-bg-del{color:#ff3b30 !important;border-color:#ffc8c8 !important;}
-.pm-model-row{display:flex;gap:6px;}.pm-model-row .pm-cfg-input{flex:1;}
-#pm-model-arrow{background:#f0f0f3;border:1px solid #ddd;border-radius:10px;width:38px;cursor:pointer;font-size:12px;color:#555;flex-shrink:0;transition:all .15s;}
-#pm-model-arrow:hover{background:#007aff;color:#fff;border-color:#007aff;}
-.pm-model-dropdown{position:fixed;z-index:2147483647;background:#fff !important;border:1px solid #ddd !important;border-radius:12px !important;box-shadow:0 8px 24px rgba(0,0,0,.18);overflow:hidden;display:flex;flex-direction:column;min-width:200px;padding:0 !important;margin:0 !important;color:#000 !important;}
-.pm-model-search{border:none !important;border-bottom:1px solid #eee !important;padding:9px 12px !important;outline:none;font-size:13px !important;background:#fafafa !important;color:#000 !important;width:100%;}
-.pm-model-options{overflow-y:auto;max-height:${MODEL_VISIBLE_ROWS * 34}px;}
-.pm-model-opt{padding:8px 12px;font-size:13px;color:#333;cursor:pointer;border-bottom:1px solid #f5f5f5;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;height:34px;line-height:18px;}
-.pm-model-opt:hover{background:#f0f7ff;color:#007aff;}.pm-model-empty{padding:14px;text-align:center;font-size:12px;color:#999;}
-.pm-crop-tip{font-size:11px;color:#888;text-align:center;margin-bottom:8px;}
-.pm-crop-frame{position:relative;width:100%;background:#000;border-radius:12px;overflow:hidden;cursor:grab;user-select:none;touch-action:none;}
-.pm-crop-frame:active{cursor:grabbing;}
-.pm-crop-frame img{position:absolute;left:0;top:0;max-width:none;pointer-events:none;}
-.pm-crop-mask{position:absolute;inset:0;border:2px solid rgba(255,255,255,0.6);box-shadow:0 0 0 2000px rgba(0,0,0,0.3) inset;pointer-events:none;border-radius:8px;}
-.pm-crop-zoom{display:flex;align-items:center;gap:8px;margin-top:10px;}
-.pm-crop-zoom input[type=range]{accent-color:#007aff;cursor:pointer !important;flex:1;}
-.pm-crop-zoom input[type=range]::-webkit-slider-thumb{cursor:pointer !important;}
-.pm-crop-zoom input[type=range]::-moz-range-thumb{cursor:pointer !important;}
-@media(max-width:500px),(max-height:700px){
-    #pm-iphone{inset:0 !important;margin:auto !important;transform:none !important;width:min(330px,92vw) !important;height:min(560px,82vh) !important;height:min(560px,82dvh) !important;min-width:0 !important;min-height:0 !important;max-width:92vw !important;max-height:82vh !important;max-height:82dvh !important;border-width:8px !important;border-radius:36px !important;}
-    #pm-iphone.is-min{inset:auto 20px 20px auto !important;margin:0 !important;transform:none !important;width:120px !important;min-width:120px !important;max-width:120px !important;height:44px !important;min-height:44px !important;max-height:44px !important;border-width:5px !important;border-radius:22px !important;}
-    .pm-modal,.pm-modal-wide{width:min(320px,94vw) !important;max-height:90vh !important;max-height:90dvh !important;}
-}
-.pm-modal-close{cursor:pointer;font-size:16px;color:#999;padding:2px 6px;line-height:1;user-select:none;border-radius:50%;transition:background 0.15s;}
-.pm-modal-close:active{background:#f0f0f0;}
-        `;
-        document.head.appendChild(s);
-    }
-
     function registerPhoneCommand() {
-        const ctx = getCtx(); if (!ctx) return false;
-        const cb = () => { try { window.__pmOpen(); } catch (e) { console.error('[phone-mode]', e); } return ''; };
+      const ctx = getCtx();
+      if (!ctx) return false;
+      const cb = () => {
         try {
-            const SCP = window.SlashCommandParser || ctx.SlashCommandParser, SC = window.SlashCommand || ctx.SlashCommand;
-            if (SCP && SC && typeof SCP.addCommandObject === 'function' && typeof SC.fromProps === 'function') { SCP.addCommandObject(SC.fromProps({ name: 'phone', callback: cb, helpString: '打开短信' })); return true; }
-        } catch (e) {}
-        try { if (typeof ctx.registerSlashCommand === 'function') { ctx.registerSlashCommand('phone', cb, [], '打开短信', true, true); return true; } } catch (e) {}
-        return false;
+          window.__pmOpen();
+        } catch (e) {
+          console.error("[phone-mode]", e);
+        }
+        return "";
+      };
+      try {
+        const SCP = window.SlashCommandParser || ctx.SlashCommandParser, SC = window.SlashCommand || ctx.SlashCommand;
+        if (SCP && SC && typeof SCP.addCommandObject === "function" && typeof SC.fromProps === "function") {
+          SCP.addCommandObject(SC.fromProps({ name: "phone", callback: cb, helpString: "\u6253\u5F00\u77ED\u4FE1" }));
+          return true;
+        }
+      } catch (e) {
+      }
+      try {
+        if (typeof ctx.registerSlashCommand === "function") {
+          ctx.registerSlashCommand("phone", cb, [], "\u6253\u5F00\u77ED\u4FE1", true, true);
+          return true;
+        }
+      } catch (e) {
+      }
+      return false;
     }
-    if (!registerPhoneCommand()) { let t = 0; const i = setInterval(() => { t++; if (registerPhoneCommand() || t >= 30) clearInterval(i); }, 500); }
-
-    document.addEventListener('keydown', e => {
-        if (e.key !== 'Enter' || e.shiftKey) return;
-        const ta = document.getElementById('send_textarea');
-        if (!ta || document.activeElement !== ta) return;
-        if (ta.value.trim() === '/phone') { e.preventDefault(); e.stopImmediatePropagation(); ta.value = ''; window.__pmOpen(); }
+    if (!registerPhoneCommand()) {
+      let t = 0;
+      const i = setInterval(() => {
+        t++;
+        if (registerPhoneCommand() || t >= 30) clearInterval(i);
+      }, 500);
+    }
+    document.addEventListener("keydown", (e) => {
+      if (e.key !== "Enter" || e.shiftKey) return;
+      const ta = document.getElementById("send_textarea");
+      if (!ta || document.activeElement !== ta) return;
+      if (ta.value.trim() === "/phone") {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        ta.value = "";
+        window.__pmOpen();
+      }
     }, true);
-    document.addEventListener('click', e => {
-        const btn = e.target.closest?.('#send_but'); if (!btn) return;
-        const ta = document.getElementById('send_textarea'); if (!ta) return;
-        if (ta.value.trim() === '/phone') { e.preventDefault(); e.stopImmediatePropagation(); ta.value = ''; window.__pmOpen(); }
+    document.addEventListener("click", (e) => {
+      const btn = e.target.closest?.("#send_but");
+      if (!btn) return;
+      const ta = document.getElementById("send_textarea");
+      if (!ta) return;
+      if (ta.value.trim() === "/phone") {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        ta.value = "";
+        window.__pmOpen();
+      }
     }, true);
-
-    try { window.__pmHistories = window.__pmHistories || {}; } catch (e) {}
-    loadBidirectional(); loadGroupMeta(); loadPokeConfig(); loadWordyLimit();
-    loadHistoriesFromIDB(); // IDB 加载完成后内部会用 localStorage 作 fallback
-    setTimeout(() => { migrateOldHistory(); applyBidirectionalInjection(); hookGenerationEvent(); }, 1500);
-
-    console.log('[phone-mode] v9.5.7 已加载：世界书预算改为读取ST实际上下文窗口大小');
+    try {
+      window.__pmHistories = window.__pmHistories || {};
+    } catch (e) {
+    }
+    loadBidirectional();
+    loadGroupMeta();
+    loadPokeConfig();
+    loadWordyLimit();
+    loadHistoriesFromIDB();
+    setTimeout(() => {
+      migrateOldHistory();
+      applyBidirectionalInjection();
+      hookGenerationEvent();
+    }, 1500);
+    console.log("[phone-mode] v9.5.7 \u5DF2\u52A0\u8F7D\uFF1A\u4E16\u754C\u4E66\u9884\u7B97\u6539\u4E3A\u8BFB\u53D6ST\u5B9E\u9645\u4E0A\u4E0B\u6587\u7A97\u53E3\u5927\u5C0F");
+  })();
 })();
