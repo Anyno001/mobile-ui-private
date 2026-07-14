@@ -2,12 +2,14 @@
   "name": "phone-mode-custom",
   "version": "1.0.0",
   "private": true,
+  "type": "module",
   "description": "Build tooling for the personal Phone Mode derivative.",
   "scripts": {
     "build": "esbuild src/main.js --bundle --format=iife --platform=browser --target=es2020 --outfile=index.js --legal-comments=none",
     "check:syntax": "node --check index.js",
+    "check:ai": "node scripts/check-ai.mjs",
     "check:contracts": "node scripts/check-contracts.mjs",
-    "check": "npm run build && npm run check:syntax && npm run check:contracts"
+    "check": "npm run build && npm run check:syntax && npm run check:ai && npm run check:contracts"
   },
   "devDependencies": {
     "acorn": "8.15.0",

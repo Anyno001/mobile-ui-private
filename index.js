@@ -1080,6 +1080,55 @@ ${lines}
     };
   }
 
+  // src/ai.js
+  function createAiClient({
+    getConfig,
+    getContext,
+    getDefaultMaxTokens,
+    fetchImpl
+  }) {
+    const request = fetchImpl || ((...args) => globalThis.fetch(...args));
+    return async function callAI(systemPrompt, userPrompt, options = {}) {
+      const cfg = getConfig() || {};
+      const useIndependent = cfg.useIndependent && cfg.apiUrl && cfg.apiKey;
+      const maxTokens = options.maxTokens || getDefaultMaxTokens();
+      if (useIndependent) {
+        const { chatUrl } = normalizeApiUrls(cfg.apiUrl);
+        const messages = [];
+        if (systemPrompt) messages.push({ role: "system", content: systemPrompt });
+        messages.push({ role: "user", content: userPrompt });
+        const response = await request(chatUrl, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${cfg.apiKey}`
+          },
+          body: JSON.stringify({
+            model: cfg.model || "gpt-4o-mini",
+            messages,
+            max_tokens: maxTokens,
+            temperature: 1.2,
+            top_p: 0.95,
+            frequency_penalty: 0.3,
+            presence_penalty: 0.3
+          })
+        });
+        if (!response.ok) {
+          const errorText = await response.text().catch(() => "");
+          throw new Error(`HTTP ${response.status}: ${errorText.slice(0, 120)}`);
+        }
+        const json = await response.json();
+        return json.choices?.[0]?.message?.content ?? "";
+      }
+      const context = getContext();
+      if (!context) throw new Error("\u65E0\u4E0A\u4E0B\u6587");
+      const fullPrompt = systemPrompt ? `${systemPrompt}
+
+${userPrompt}` : userPrompt;
+      return await context.generateQuietPrompt(fullPrompt, false, false);
+    };
+  }
+
   // src/main.js
   (async function() {
     await new Promise((r) => setTimeout(r, 1e3));
@@ -1110,6 +1159,11 @@ ${lines}
     const getStorageId2 = () => getStorageId(getCtx);
     const getUserPersona2 = () => getUserPersona(getCtx);
     const gatherContext2 = () => gatherContext(getCtx);
+    const callAI = createAiClient({
+      getConfig: () => window.__pmConfig,
+      getContext: getCtx,
+      getDefaultMaxTokens: () => isGroupChat ? 600 : 300
+    });
     function applyTheme() {
       const el = phoneWindow;
       if (!el) return;
@@ -1355,42 +1409,6 @@ ${blocks}
       handle.addEventListener("touchstart", onStart, { passive: false });
       window.addEventListener("touchmove", onMove, { passive: false });
       window.addEventListener("touchend", onEnd);
-    }
-    async function callAI(systemPrompt, userPrompt, options = {}) {
-      const cfg = window.__pmConfig;
-      const useIndep = cfg.useIndependent && cfg.apiUrl && cfg.apiKey;
-      const maxTokens = options.maxTokens || (isGroupChat ? 600 : 300);
-      if (useIndep) {
-        const { chatUrl } = normalizeApiUrls(cfg.apiUrl);
-        const messages = [];
-        if (systemPrompt) messages.push({ role: "system", content: systemPrompt });
-        messages.push({ role: "user", content: userPrompt });
-        const resp = await fetch(chatUrl, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${cfg.apiKey}` },
-          body: JSON.stringify({
-            model: cfg.model || "gpt-4o-mini",
-            messages,
-            max_tokens: maxTokens,
-            temperature: 1.2,
-            top_p: 0.95,
-            frequency_penalty: 0.3,
-            presence_penalty: 0.3
-          })
-        });
-        if (!resp.ok) {
-          const errText = await resp.text().catch(() => "");
-          throw new Error(`HTTP ${resp.status}: ${errText.slice(0, 120)}`);
-        }
-        const json = await resp.json();
-        return json.choices?.[0]?.message?.content ?? "";
-      }
-      const c = getCtx();
-      if (!c) throw new Error("\u65E0\u4E0A\u4E0B\u6587");
-      const fullPrompt = systemPrompt ? `${systemPrompt}
-
-${userPrompt}` : userPrompt;
-      return await c.generateQuietPrompt(fullPrompt, false, false);
     }
     async function fetchSMS(userMsg, directorNote) {
       const userMsgClean = userMsg.replace(/\[emo:([^\]:]+):(\d+)\]/g, (_, setName, idxStr) => {
