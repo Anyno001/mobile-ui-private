@@ -9,6 +9,10 @@ export function installPhoneControlCenter(state, deps) {
         renderPendingConversation, syncGenerationControls,
     } = deps;
 
+    const CONTROL_MENU_ID = 'pm-control-menu';
+    let outsideClickHandler = null;
+    let escapeKeyHandler = null;
+
     const getTarget = () => {
         const storageId = state.activeStorageId || getStorageId();
         const saveKey = state.isGroupChat && state.currentGroupKey ? state.currentGroupKey : state.currentPersona;
@@ -40,15 +44,76 @@ export function installPhoneControlCenter(state, deps) {
         const list = document.getElementById('pm-pending-list');
         if (list) list.innerHTML = renderPendingList();
         const target = getTarget();
-        const count = target ? getPendingMessages(runtime, target.storageId, target.saveKey).length : 0;
-        const heading = document.querySelector('.pm-control-heading b');
+        const items = target ? getPendingMessages(runtime, target.storageId, target.saveKey) : [];
+        const count = items.length;
+        const hasSubmitting = items.some(item => item.status === 'submitting');
+        const heading = document.querySelector('.pm-pending-manager .pm-modal-header b');
         if (heading) heading.textContent = `暂存消息（${count}）`;
-        const submit = document.querySelector('.pm-submit-pending-btn');
-        if (submit) submit.dataset.empty = String(count === 0);
+        const clear = document.querySelector('.pm-pending-manager-actions button');
+        if (clear) {
+            clear.disabled = count === 0 || hasSubmitting;
+            clear.title = hasSubmitting ? '提交中的暂存不能清空' : '清空当前会话暂存';
+        }
         syncGenerationControls();
     };
 
     let editingTarget = null;
+
+    function closeControlCenter(restoreFocus = false) {
+        document.getElementById(CONTROL_MENU_ID)?.remove();
+        if (outsideClickHandler) {
+            document.removeEventListener('click', outsideClickHandler, true);
+            outsideClickHandler = null;
+        }
+        if (escapeKeyHandler) {
+            document.removeEventListener('keydown', escapeKeyHandler, true);
+            escapeKeyHandler = null;
+        }
+        const anchor = state.phoneWindow?.querySelector('.pm-expand-btn');
+        anchor?.setAttribute('aria-expanded', 'false');
+        if (restoreFocus) anchor?.focus({ preventScroll: true });
+    }
+
+    function showPendingManager() {
+        const target = getTarget();
+        if (!sameTarget(editingTarget, target)) editingTarget = null;
+        const items = target ? getPendingMessages(runtime, target.storageId, target.saveKey) : [];
+        const count = items.length;
+        const clearDisabled = !count || items.some(item => item.status === 'submitting');
+        makeOverlay(`
+<div class="pm-modal pm-pending-manager">
+  <div class="pm-modal-header"><b>暂存消息（${count}）</b><span onclick="window.__pmCloseOverlay()" class="pm-modal-close">×</span></div>
+  <div id="pm-pending-list" class="pm-pending-list">${renderPendingList()}</div>
+  <div class="pm-pending-manager-actions"><button onclick="window.__pmClearPending()" ${clearDisabled ? 'disabled' : ''} title="${clearDisabled && count ? '提交中的暂存不能清空' : '清空当前会话暂存'}">清空暂存</button></div>
+</div>`, { onClose: () => { editingTarget = null; } });
+    }
+
+    function runControlAction(action) {
+        closeControlCenter();
+        if (action === 'pending') showPendingManager();
+        else if (action === 'settings') window.__pmShowConversationSettings();
+        else if (action === 'api' || action === 'look' || action === 'other') window.__pmOpenSettingsTab(action);
+        else if (action === 'emoji') window.__pmShowEmojiPicker();
+        else if (action === 'delete') window.__pmStartDeleteMode();
+        else if (action === 'forum') window.__pmOpenForumMode();
+    }
+
+    function bindControlMenu(menu, anchor) {
+        menu.addEventListener('click', event => {
+            const button = event.target.closest('button[data-action]');
+            if (!button || !menu.contains(button)) return;
+            runControlAction(button.dataset.action);
+        });
+        outsideClickHandler = event => {
+            if (menu.contains(event.target) || anchor.contains(event.target)) return;
+            closeControlCenter();
+        };
+        escapeKeyHandler = event => {
+            if (event.key === 'Escape') closeControlCenter(true);
+        };
+        document.addEventListener('click', outsideClickHandler, true);
+        document.addEventListener('keydown', escapeKeyHandler, true);
+    }
 
     function sameTarget(left, right) {
         return !!left && !!right
@@ -57,29 +122,37 @@ export function installPhoneControlCenter(state, deps) {
     }
 
     window.__pmShowControlCenter = () => {
-        const target = getTarget();
-        if (!sameTarget(editingTarget, target)) editingTarget = null;
-        const pendingCount = target ? getPendingMessages(runtime, target.storageId, target.saveKey).length : 0;
-        makeOverlay(`
-<div class="pm-modal pm-modal-wide pm-control-center">
-  <div class="pm-modal-header"><b>快捷工具</b><span onclick="window.__pmCloseOverlay()" class="pm-modal-close">×</span></div>
-  <div class="pm-control-scroll">
-  <div class="pm-tool-grid">
-    <button onclick="window.__pmShowConversationSettings()"><b>设置</b><span>当前聊天行为</span></button>
-    <button onclick="window.__pmOpenSettingsTab('api')"><b>API</b><span>模型与接口</span></button>
-    <button onclick="window.__pmOpenSettingsTab('look')"><b>外观</b><span>主题与背景</span></button>
-    <button onclick="window.__pmOpenSettingsTab('other')"><b>其他</b><span>备份与偏好</span></button>
-    <button onclick="window.__pmShowEmojiPicker()"><b>表情包</b><span>选择聊天表情</span></button>
-    <button onclick="window.__pmStartDeleteMode()" class="pm-tool-danger"><b>删除信息</b><span>选择聊天记录</span></button>
-    <button onclick="window.__pmOpenForumMode()"><b>论坛模式</b><span>开发中，入口已预留</span></button>
-  </div>
-  <div class="pm-control-heading"><b>暂存消息（${pendingCount}）</b><button onclick="window.__pmClearPending()">清空</button></div>
-  <div id="pm-pending-list" class="pm-pending-list">${renderPendingList()}</div>
-  <div class="pm-control-generation-status"></div>
-  </div>
-  <button class="pm-submit-pending-btn" data-empty="${pendingCount === 0}" onclick="window.__pmSubmitPending()">最终提交给 AI</button>
-</div>`, { onClose: () => { editingTarget = null; } });
-        syncGenerationControls();
+        const existing = document.getElementById(CONTROL_MENU_ID);
+        if (existing) { closeControlCenter(); return; }
+        const phone = state.phoneWindow;
+        const anchor = phone?.querySelector('.pm-expand-btn');
+        if (!phone || !anchor || state.isMinimized) return;
+        const menu = document.createElement('div');
+        menu.id = CONTROL_MENU_ID;
+        menu.className = 'pm-control-menu';
+        menu.setAttribute('role', 'menu');
+        menu.setAttribute('aria-label', '快捷工具');
+        menu.innerHTML = `
+  <button type="button" role="menuitem" data-action="pending">暂存消息</button>
+  <button type="button" role="menuitem" data-action="settings">设置</button>
+  <button type="button" role="menuitem" data-action="api">API</button>
+  <button type="button" role="menuitem" data-action="look">外观</button>
+  <button type="button" role="menuitem" data-action="other">其他</button>
+  <button type="button" role="menuitem" data-action="emoji">表情包</button>
+  <button type="button" role="menuitem" data-action="delete" class="pm-control-menu-danger">删除信息</button>
+  <button type="button" role="menuitem" data-action="forum">论坛模式（开发中）</button>`;
+        phone.appendChild(menu);
+        const phoneRect = phone.getBoundingClientRect();
+        const anchorRect = anchor.getBoundingClientRect();
+        const desiredLeft = anchorRect.left - phoneRect.left;
+        const maxLeft = Math.max(8, phone.clientWidth - menu.offsetWidth - 8);
+        menu.style.left = `${Math.min(Math.max(8, desiredLeft), maxLeft)}px`;
+        menu.style.bottom = `${Math.max(8, phoneRect.bottom - anchorRect.top + 8)}px`;
+        const availableHeight = Math.max(72, anchorRect.top - phoneRect.top - 16);
+        menu.style.maxHeight = `${availableHeight}px`;
+        anchor.setAttribute('aria-expanded', 'true');
+        bindControlMenu(menu, anchor);
+        menu.querySelector('button')?.focus({ preventScroll: true });
     };
 
     window.__pmOpenSettingsTab = tab => window.__pmShowConfig(tab);
@@ -140,4 +213,6 @@ export function installPhoneControlCenter(state, deps) {
         window.__pmRefreshControlCenter();
     };
     window.__pmResetPendingEditor = () => { editingTarget = null; };
+
+    Object.assign(deps, { closeControlCenter });
 }

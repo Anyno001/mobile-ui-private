@@ -878,6 +878,7 @@ ${mainChatText}` : "",
     window.__pmSwitch = (name, _prevSaveKey, _prevStorageId) => {
       if (!name?.trim()) return;
       name = name.trim();
+      deps.closeControlCenter?.();
       deps.closeOverlay?.("conversation-switch");
       const id = getStorageId2();
       if (!id || id === "sms_unknown__default") {
@@ -2824,6 +2825,9 @@ ${antiFluff}`;
       renderPendingConversation,
       syncGenerationControls
     } = deps;
+    const CONTROL_MENU_ID = "pm-control-menu";
+    let outsideClickHandler = null;
+    let escapeKeyHandler = null;
     const getTarget = () => {
       const storageId = state.activeStorageId || getStorageId2();
       const saveKey = state.isGroupChat && state.currentGroupKey ? state.currentGroupKey : state.currentPersona;
@@ -2853,43 +2857,111 @@ ${antiFluff}`;
       const list = document.getElementById("pm-pending-list");
       if (list) list.innerHTML = renderPendingList();
       const target = getTarget();
-      const count = target ? getPendingMessages(runtime, target.storageId, target.saveKey).length : 0;
-      const heading = document.querySelector(".pm-control-heading b");
+      const items = target ? getPendingMessages(runtime, target.storageId, target.saveKey) : [];
+      const count = items.length;
+      const hasSubmitting = items.some((item) => item.status === "submitting");
+      const heading = document.querySelector(".pm-pending-manager .pm-modal-header b");
       if (heading) heading.textContent = `\u6682\u5B58\u6D88\u606F\uFF08${count}\uFF09`;
-      const submit = document.querySelector(".pm-submit-pending-btn");
-      if (submit) submit.dataset.empty = String(count === 0);
+      const clear = document.querySelector(".pm-pending-manager-actions button");
+      if (clear) {
+        clear.disabled = count === 0 || hasSubmitting;
+        clear.title = hasSubmitting ? "\u63D0\u4EA4\u4E2D\u7684\u6682\u5B58\u4E0D\u80FD\u6E05\u7A7A" : "\u6E05\u7A7A\u5F53\u524D\u4F1A\u8BDD\u6682\u5B58";
+      }
       syncGenerationControls();
     };
     let editingTarget = null;
+    function closeControlCenter(restoreFocus = false) {
+      document.getElementById(CONTROL_MENU_ID)?.remove();
+      if (outsideClickHandler) {
+        document.removeEventListener("click", outsideClickHandler, true);
+        outsideClickHandler = null;
+      }
+      if (escapeKeyHandler) {
+        document.removeEventListener("keydown", escapeKeyHandler, true);
+        escapeKeyHandler = null;
+      }
+      const anchor = state.phoneWindow?.querySelector(".pm-expand-btn");
+      anchor?.setAttribute("aria-expanded", "false");
+      if (restoreFocus) anchor?.focus({ preventScroll: true });
+    }
+    function showPendingManager() {
+      const target = getTarget();
+      if (!sameTarget(editingTarget, target)) editingTarget = null;
+      const items = target ? getPendingMessages(runtime, target.storageId, target.saveKey) : [];
+      const count = items.length;
+      const clearDisabled = !count || items.some((item) => item.status === "submitting");
+      makeOverlay(`
+<div class="pm-modal pm-pending-manager">
+  <div class="pm-modal-header"><b>\u6682\u5B58\u6D88\u606F\uFF08${count}\uFF09</b><span onclick="window.__pmCloseOverlay()" class="pm-modal-close">\xD7</span></div>
+  <div id="pm-pending-list" class="pm-pending-list">${renderPendingList()}</div>
+  <div class="pm-pending-manager-actions"><button onclick="window.__pmClearPending()" ${clearDisabled ? "disabled" : ""} title="${clearDisabled && count ? "\u63D0\u4EA4\u4E2D\u7684\u6682\u5B58\u4E0D\u80FD\u6E05\u7A7A" : "\u6E05\u7A7A\u5F53\u524D\u4F1A\u8BDD\u6682\u5B58"}">\u6E05\u7A7A\u6682\u5B58</button></div>
+</div>`, { onClose: () => {
+        editingTarget = null;
+      } });
+    }
+    function runControlAction(action) {
+      closeControlCenter();
+      if (action === "pending") showPendingManager();
+      else if (action === "settings") window.__pmShowConversationSettings();
+      else if (action === "api" || action === "look" || action === "other") window.__pmOpenSettingsTab(action);
+      else if (action === "emoji") window.__pmShowEmojiPicker();
+      else if (action === "delete") window.__pmStartDeleteMode();
+      else if (action === "forum") window.__pmOpenForumMode();
+    }
+    function bindControlMenu(menu, anchor) {
+      menu.addEventListener("click", (event) => {
+        const button = event.target.closest("button[data-action]");
+        if (!button || !menu.contains(button)) return;
+        runControlAction(button.dataset.action);
+      });
+      outsideClickHandler = (event) => {
+        if (menu.contains(event.target) || anchor.contains(event.target)) return;
+        closeControlCenter();
+      };
+      escapeKeyHandler = (event) => {
+        if (event.key === "Escape") closeControlCenter(true);
+      };
+      document.addEventListener("click", outsideClickHandler, true);
+      document.addEventListener("keydown", escapeKeyHandler, true);
+    }
     function sameTarget(left, right) {
       return !!left && !!right && left.storageId === right.storageId && left.saveKey === right.saveKey;
     }
     window.__pmShowControlCenter = () => {
-      const target = getTarget();
-      if (!sameTarget(editingTarget, target)) editingTarget = null;
-      const pendingCount = target ? getPendingMessages(runtime, target.storageId, target.saveKey).length : 0;
-      makeOverlay(`
-<div class="pm-modal pm-modal-wide pm-control-center">
-  <div class="pm-modal-header"><b>\u5FEB\u6377\u5DE5\u5177</b><span onclick="window.__pmCloseOverlay()" class="pm-modal-close">\xD7</span></div>
-  <div class="pm-control-scroll">
-  <div class="pm-tool-grid">
-    <button onclick="window.__pmShowConversationSettings()"><b>\u8BBE\u7F6E</b><span>\u5F53\u524D\u804A\u5929\u884C\u4E3A</span></button>
-    <button onclick="window.__pmOpenSettingsTab('api')"><b>API</b><span>\u6A21\u578B\u4E0E\u63A5\u53E3</span></button>
-    <button onclick="window.__pmOpenSettingsTab('look')"><b>\u5916\u89C2</b><span>\u4E3B\u9898\u4E0E\u80CC\u666F</span></button>
-    <button onclick="window.__pmOpenSettingsTab('other')"><b>\u5176\u4ED6</b><span>\u5907\u4EFD\u4E0E\u504F\u597D</span></button>
-    <button onclick="window.__pmShowEmojiPicker()"><b>\u8868\u60C5\u5305</b><span>\u9009\u62E9\u804A\u5929\u8868\u60C5</span></button>
-    <button onclick="window.__pmStartDeleteMode()" class="pm-tool-danger"><b>\u5220\u9664\u4FE1\u606F</b><span>\u9009\u62E9\u804A\u5929\u8BB0\u5F55</span></button>
-    <button onclick="window.__pmOpenForumMode()"><b>\u8BBA\u575B\u6A21\u5F0F</b><span>\u5F00\u53D1\u4E2D\uFF0C\u5165\u53E3\u5DF2\u9884\u7559</span></button>
-  </div>
-  <div class="pm-control-heading"><b>\u6682\u5B58\u6D88\u606F\uFF08${pendingCount}\uFF09</b><button onclick="window.__pmClearPending()">\u6E05\u7A7A</button></div>
-  <div id="pm-pending-list" class="pm-pending-list">${renderPendingList()}</div>
-  <div class="pm-control-generation-status"></div>
-  </div>
-  <button class="pm-submit-pending-btn" data-empty="${pendingCount === 0}" onclick="window.__pmSubmitPending()">\u6700\u7EC8\u63D0\u4EA4\u7ED9 AI</button>
-</div>`, { onClose: () => {
-        editingTarget = null;
-      } });
-      syncGenerationControls();
+      const existing = document.getElementById(CONTROL_MENU_ID);
+      if (existing) {
+        closeControlCenter();
+        return;
+      }
+      const phone = state.phoneWindow;
+      const anchor = phone?.querySelector(".pm-expand-btn");
+      if (!phone || !anchor || state.isMinimized) return;
+      const menu = document.createElement("div");
+      menu.id = CONTROL_MENU_ID;
+      menu.className = "pm-control-menu";
+      menu.setAttribute("role", "menu");
+      menu.setAttribute("aria-label", "\u5FEB\u6377\u5DE5\u5177");
+      menu.innerHTML = `
+  <button type="button" role="menuitem" data-action="pending">\u6682\u5B58\u6D88\u606F</button>
+  <button type="button" role="menuitem" data-action="settings">\u8BBE\u7F6E</button>
+  <button type="button" role="menuitem" data-action="api">API</button>
+  <button type="button" role="menuitem" data-action="look">\u5916\u89C2</button>
+  <button type="button" role="menuitem" data-action="other">\u5176\u4ED6</button>
+  <button type="button" role="menuitem" data-action="emoji">\u8868\u60C5\u5305</button>
+  <button type="button" role="menuitem" data-action="delete" class="pm-control-menu-danger">\u5220\u9664\u4FE1\u606F</button>
+  <button type="button" role="menuitem" data-action="forum">\u8BBA\u575B\u6A21\u5F0F\uFF08\u5F00\u53D1\u4E2D\uFF09</button>`;
+      phone.appendChild(menu);
+      const phoneRect = phone.getBoundingClientRect();
+      const anchorRect = anchor.getBoundingClientRect();
+      const desiredLeft = anchorRect.left - phoneRect.left;
+      const maxLeft = Math.max(8, phone.clientWidth - menu.offsetWidth - 8);
+      menu.style.left = `${Math.min(Math.max(8, desiredLeft), maxLeft)}px`;
+      menu.style.bottom = `${Math.max(8, phoneRect.bottom - anchorRect.top + 8)}px`;
+      const availableHeight = Math.max(72, anchorRect.top - phoneRect.top - 16);
+      menu.style.maxHeight = `${availableHeight}px`;
+      anchor.setAttribute("aria-expanded", "true");
+      bindControlMenu(menu, anchor);
+      menu.querySelector("button")?.focus({ preventScroll: true });
     };
     window.__pmOpenSettingsTab = (tab) => window.__pmShowConfig(tab);
     window.__pmStartDeleteMode = () => {
@@ -2947,6 +3019,7 @@ ${antiFluff}`;
     window.__pmResetPendingEditor = () => {
       editingTarget = null;
     };
+    Object.assign(deps, { closeControlCenter });
   }
 
   // src/icons.js
@@ -3730,11 +3803,100 @@ ${blocks}
     });
   }
 
+  // src/press-gesture.js
+  function bindPressGesture(element, options) {
+    const {
+      delay = 550,
+      moveThreshold = 10,
+      onPress,
+      onHold,
+      setTimer = setTimeout,
+      clearTimer = clearTimeout,
+      eventTarget = globalThis.window
+    } = options;
+    let timer = null;
+    let activePointerId = null;
+    let startX = 0;
+    let startY = 0;
+    const clearActiveTimer = () => {
+      if (timer !== null) clearTimer(timer);
+      timer = null;
+    };
+    const resetPointer = () => {
+      clearActiveTimer();
+      activePointerId = null;
+    };
+    const isActivePointer = (event) => activePointerId !== null && (event?.pointerId === void 0 || event.pointerId === activePointerId);
+    const cancelPointer = (event) => {
+      if (!isActivePointer(event)) return;
+      resetPointer();
+    };
+    const releasePointer = (event) => {
+      if (!isActivePointer(event)) return;
+      const isShortPress = timer !== null;
+      resetPointer();
+      if (isShortPress) onPress?.();
+    };
+    const onPointerDown = (event) => {
+      if (event.button !== 0 || element.disabled || activePointerId !== null) return;
+      activePointerId = event.pointerId;
+      startX = Number(event.clientX) || 0;
+      startY = Number(event.clientY) || 0;
+      try {
+        element.setPointerCapture?.(event.pointerId);
+      } catch (error) {
+      }
+      timer = setTimer(() => {
+        timer = null;
+        onHold?.();
+      }, delay);
+    };
+    const onPointerMove = (event) => {
+      if (!isActivePointer(event) || timer === null) return;
+      const deltaX = (Number(event.clientX) || 0) - startX;
+      const deltaY = (Number(event.clientY) || 0) - startY;
+      if (Math.hypot(deltaX, deltaY) > moveThreshold) cancelPointer(event);
+    };
+    const onClick = (event) => {
+      const isKeyboardOrProgrammatic = Number(event?.detail) === 0;
+      if (!isKeyboardOrProgrammatic) {
+        event.preventDefault?.();
+        event.stopPropagation?.();
+        return;
+      }
+      onPress?.();
+    };
+    const onContextMenu = (event) => event.preventDefault?.();
+    const onWindowBlur = () => {
+      resetPointer();
+    };
+    element.addEventListener("pointerdown", onPointerDown);
+    element.addEventListener("pointermove", onPointerMove);
+    element.addEventListener("pointerup", releasePointer);
+    element.addEventListener("pointercancel", cancelPointer);
+    element.addEventListener("lostpointercapture", cancelPointer);
+    element.addEventListener("click", onClick);
+    element.addEventListener("contextmenu", onContextMenu);
+    eventTarget?.addEventListener("blur", onWindowBlur);
+    return () => {
+      resetPointer();
+      element.removeEventListener("pointerdown", onPointerDown);
+      element.removeEventListener("pointermove", onPointerMove);
+      element.removeEventListener("pointerup", releasePointer);
+      element.removeEventListener("pointercancel", cancelPointer);
+      element.removeEventListener("lostpointercapture", cancelPointer);
+      element.removeEventListener("click", onClick);
+      element.removeEventListener("contextmenu", onContextMenu);
+      eventTarget?.removeEventListener("blur", onWindowBlur);
+    };
+  }
+
   // src/phone-lifecycle.js
   function installPhoneLifecycle(state, deps) {
     const {
       runtime,
       getCtx,
+      getStorageId: getStorageId2,
       applyBidirectionalInjection,
       persistCurrentHistory: persistCurrentHistory2,
       applyBackground,
@@ -3744,8 +3906,10 @@ ${blocks}
       hookGenerationEvent,
       invalidateGeneration,
       syncGenerationControls,
-      closeOverlay
+      closeOverlay,
+      closeControlCenter
     } = deps;
+    let unbindSendGesture = null;
     window.__pmToggleSelect = () => {
       state.isSelectMode = !state.isSelectMode;
       const list = state.phoneWindow?.querySelector(".pm-msg-list");
@@ -3823,6 +3987,7 @@ ${blocks}
       if (bar) bar.style.display = "none";
     };
     window.__pmToggleMin = () => {
+      closeControlCenter?.();
       state.isMinimized = !state.isMinimized;
       state.phoneWindow.classList.toggle("is-min", state.isMinimized);
       state.phoneWindow.style.removeProperty("transform");
@@ -3830,6 +3995,9 @@ ${blocks}
     window.__pmEnd = (force = false) => {
       if (state.currentPersona) persistCurrentHistory2();
       invalidateGeneration();
+      unbindSendGesture?.();
+      unbindSendGesture = null;
+      closeControlCenter?.();
       closeOverlay("phone-close");
       if (state.phoneWindow) {
         try {
@@ -3932,9 +4100,9 @@ ${blocks}
   </div>
   <div class="pm-msg-list"></div>
   <div class="pm-input-bar">
-    <button onclick="window.__pmShowControlCenter()" class="pm-expand-btn" title="\u6536\u7EB3\u63A7\u5236\u4E2D\u5FC3">${CONTROL_ICON_SVG}</button>
+    <button type="button" onclick="window.__pmShowControlCenter()" class="pm-expand-btn" title="\u5FEB\u6377\u5DE5\u5177" aria-haspopup="menu" aria-expanded="false">${CONTROL_ICON_SVG}</button>
     <input class="pm-input" placeholder="\u8F93\u5165\u540E\u52A0\u5165\u6682\u5B58">
-    <button onclick="window.__pmSend()" class="pm-up-btn" title="\u52A0\u5165\u6682\u5B58">${SEND_ICON_SVG}</button>
+    <button type="button" class="pm-up-btn" title="\u70B9\u51FB\u52A0\u5165\u6682\u5B58\uFF0C\u957F\u6309\u6700\u7EC8\u63D0\u4EA4\u7ED9 AI">${SEND_ICON_SVG}</button>
   </div>
 </div>`;
       document.body.appendChild(state.phoneWindow);
@@ -3948,6 +4116,27 @@ ${blocks}
         if (e.key === "Enter" && !e.shiftKey) {
           e.preventDefault();
           window.__pmSend();
+        }
+      });
+      const sendButton = state.phoneWindow.querySelector(".pm-up-btn");
+      unbindSendGesture = bindPressGesture(sendButton, {
+        delay: 550,
+        onPress: () => window.__pmSend(),
+        onHold: () => {
+          const storageId = state.activeStorageId || getStorageId2();
+          const saveKey = state.isGroupChat && state.currentGroupKey ? state.currentGroupKey : state.currentPersona;
+          const pending = storageId && saveKey ? getPendingMessages(runtime, storageId, saveKey) : [];
+          if (!pending.length) {
+            alert("\u5F53\u524D\u4F1A\u8BDD\u8FD8\u6CA1\u6709\u6682\u5B58\u6D88\u606F\u3002");
+            return;
+          }
+          if (state.isGenerating) {
+            alert("AI \u6B63\u5728\u56DE\u590D\uFF0C\u8BF7\u7B49\u5F85\u5F53\u524D\u56DE\u590D\u7ED3\u675F\u540E\u518D\u6700\u7EC8\u63D0\u4EA4\u3002");
+            return;
+          }
+          if (confirm("\u786E\u8BA4\u5C06\u5F53\u524D\u4F1A\u8BDD\u7684\u5168\u90E8\u6682\u5B58\u6D88\u606F\u6700\u7EC8\u63D0\u4EA4\u7ED9 AI\uFF1F")) {
+            window.__pmSubmitPending();
+          }
         }
       });
       bindIsland(state.phoneWindow, state.phoneWindow.querySelector(".pm-island"));

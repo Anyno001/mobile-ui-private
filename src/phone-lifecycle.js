@@ -4,6 +4,8 @@ import {
     CLOSE_ICON_SVG, CONTROL_ICON_SVG, EDIT_ICON_SVG,
     MENU_ICON_SVG, SEND_ICON_SVG,
 } from './icons.js';
+import { getPendingMessages } from './pending-messages.js';
+import { bindPressGesture } from './press-gesture.js';
 import {
     loadBgSettings, loadBidirectional, loadEmojis,
     loadCharacterBehavior, loadGroupMeta, loadHistoriesFromIDB,
@@ -12,10 +14,11 @@ import {
 
 export function installPhoneLifecycle(state, deps) {
     const {
-        runtime, getCtx, applyBidirectionalInjection, persistCurrentHistory,
+        runtime, getCtx, getStorageId, applyBidirectionalInjection, persistCurrentHistory,
         applyBackground, applyTheme, bindIsland, migrateOldHistory, hookGenerationEvent,
-        invalidateGeneration, syncGenerationControls, closeOverlay,
+        invalidateGeneration, syncGenerationControls, closeOverlay, closeControlCenter,
     } = deps;
+    let unbindSendGesture = null;
 
     window.__pmToggleSelect = () => {
         state.isSelectMode = !state.isSelectMode;
@@ -90,12 +93,20 @@ export function installPhoneLifecycle(state, deps) {
         const bar = state.phoneWindow?.querySelector('.pm-confirm-bar'); if (bar) bar.style.display = 'none';
     };
 
-    window.__pmToggleMin = () => { state.isMinimized = !state.isMinimized; state.phoneWindow.classList.toggle('is-min', state.isMinimized); state.phoneWindow.style.removeProperty('transform'); };
+    window.__pmToggleMin = () => {
+        closeControlCenter?.();
+        state.isMinimized = !state.isMinimized;
+        state.phoneWindow.classList.toggle('is-min', state.isMinimized);
+        state.phoneWindow.style.removeProperty('transform');
+    };
     window.__pmEnd = (force = false) => {
         // 修复：关闭前先把当前 state.conversationHistory 存档
         // 空历史也必须落盘，否则删除最后一条消息后直接关闭会让旧历史在下次打开时复活。
         if (state.currentPersona) persistCurrentHistory();
         invalidateGeneration();
+        unbindSendGesture?.();
+        unbindSendGesture = null;
+        closeControlCenter?.();
         closeOverlay('phone-close');
         if (state.phoneWindow) { try { state.phoneWindow.hidePopover?.(); } catch (e) {} state.phoneWindow.remove(); }
         state.phoneWindow = null; state.phoneActive = false; state.isMinimized = false; state.isSelectMode = false;
@@ -169,9 +180,9 @@ export function installPhoneLifecycle(state, deps) {
   </div>
   <div class="pm-msg-list"></div>
   <div class="pm-input-bar">
-    <button onclick="window.__pmShowControlCenter()" class="pm-expand-btn" title="收纳控制中心">${CONTROL_ICON_SVG}</button>
+    <button type="button" onclick="window.__pmShowControlCenter()" class="pm-expand-btn" title="快捷工具" aria-haspopup="menu" aria-expanded="false">${CONTROL_ICON_SVG}</button>
     <input class="pm-input" placeholder="输入后加入暂存">
-    <button onclick="window.__pmSend()" class="pm-up-btn" title="加入暂存">${SEND_ICON_SVG}</button>
+    <button type="button" class="pm-up-btn" title="点击加入暂存，长按最终提交给 AI">${SEND_ICON_SVG}</button>
   </div>
 </div>`;
         document.body.appendChild(state.phoneWindow);
@@ -179,6 +190,27 @@ export function installPhoneLifecycle(state, deps) {
         state.phoneActive = true;
         syncGenerationControls();
         state.phoneWindow.querySelector('.pm-input').addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); window.__pmSend(); } });
+        const sendButton = state.phoneWindow.querySelector('.pm-up-btn');
+        unbindSendGesture = bindPressGesture(sendButton, {
+            delay: 550,
+            onPress: () => window.__pmSend(),
+            onHold: () => {
+                const storageId = state.activeStorageId || getStorageId();
+                const saveKey = state.isGroupChat && state.currentGroupKey ? state.currentGroupKey : state.currentPersona;
+                const pending = storageId && saveKey ? getPendingMessages(runtime, storageId, saveKey) : [];
+                if (!pending.length) {
+                    alert('当前会话还没有暂存消息。');
+                    return;
+                }
+                if (state.isGenerating) {
+                    alert('AI 正在回复，请等待当前回复结束后再最终提交。');
+                    return;
+                }
+                if (confirm('确认将当前会话的全部暂存消息最终提交给 AI？')) {
+                    window.__pmSubmitPending();
+                }
+            },
+        });
         bindIsland(state.phoneWindow, state.phoneWindow.querySelector('.pm-island'));
         applyTheme(); state.isGroupChat = false; state.groupMembers = []; state.groupColorMap = {}; state.groupDisplayName = ''; state.currentGroupKey = '';
 

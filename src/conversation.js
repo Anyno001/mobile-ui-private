@@ -74,6 +74,7 @@ export function installConversation(state, deps) {
 
     window.__pmSwitch = (name, _prevSaveKey, _prevStorageId) => {
         if (!name?.trim()) return; name = name.trim();
+        deps.closeControlCenter?.();
         deps.closeOverlay?.('conversation-switch');
         const id = getStorageId();
         if (!id || id === 'sms_unknown__default') {

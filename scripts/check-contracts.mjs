@@ -484,15 +484,36 @@ const directoryAnalysis = analyze(directoryCode, 'module');
 const controlCenterTemplate = controlCenterAnalysis.windowAssignmentText.get('__pmShowControlCenter') || '';
 const directoryTemplate = directoryAnalysis.windowAssignmentText.get('__pmShowList') || '';
 const forumCallPattern = /window\.__pmOpenForumMode\s*\(\s*\)/g;
-if ((controlCenterTemplate.match(forumCallPattern) || []).length !== 1) {
-  failures.push('phone-control-center.js: control center must contain exactly one forum entry call');
+if (!controlCenterTemplate.includes('data-action="forum"')
+    || !controlCenterTemplate.includes('论坛模式（开发中）')) {
+  failures.push('phone-control-center.js: compact control menu must contain one explicit in-development forum action');
+}
+if ((controlCenterCode.match(forumCallPattern) || []).length !== 1) {
+  failures.push('phone-control-center.js: compact control menu must dispatch to exactly one forum handler call');
 }
 if ((directoryTemplate.match(forumCallPattern) || []).length !== 1) {
   failures.push('phone-directory.js: directory must contain exactly one forum entry call');
 }
-if (!controlCenterTemplate.includes('开发中') || !directoryTemplate.includes('开发中')) {
+if (!directoryTemplate.includes('开发中')) {
   failures.push('source: both forum entries must explicitly state that the feature is in development');
 }
+if (controlCenterTemplate.includes('makeOverlay') || controlCenterTemplate.includes('<span')) {
+  failures.push('phone-control-center.js: compact control menu must not use the full overlay or explanatory subtitles');
+}
+for (const title of ['暂存消息', '设置', 'API', '外观', '其他', '表情包', '删除信息', '论坛模式（开发中）']) {
+  if (!controlCenterTemplate.includes(title)) failures.push(`phone-control-center.js: compact control menu missing title ${title}`);
+}
+for (const expected of [
+  "makeOverlay(`\n<div class=\"pm-modal pm-pending-manager\">",
+  'const maxLeft = Math.max(8, phone.clientWidth - menu.offsetWidth - 8)',
+  "menu.style.left = `${Math.min(Math.max(8, desiredLeft), maxLeft)}px`",
+  "menu.style.bottom = `${Math.max(8, phoneRect.bottom - anchorRect.top + 8)}px`",
+  'menu.style.maxHeight = `${availableHeight}px`',
+  "items.some(item => item.status === 'submitting')",
+  "clear.disabled = count === 0 || hasSubmitting",
+  "clear.title = hasSubmitting ? '提交中的暂存不能清空' : '清空当前会话暂存'",
+  'Object.assign(deps, { closeControlCenter })',
+]) requireText('phone-control-center.js', controlCenterCode, expected);
 const directoryForumIndex = directoryTemplate.search(forumCallPattern);
 const directoryListIndex = directoryTemplate.indexOf('pm-modal-list');
 const directoryForumButtonStart = directoryTemplate.lastIndexOf('<button', directoryForumIndex);
@@ -531,6 +552,22 @@ if (!overlayThemeSyncPattern.test(setDarkModeSource)) {
 }
 requireText('style.css', css, '#pm-overlay[data-theme="dark"] .pm-forum-entry');
 if (css.includes('#pm-iphone[data-theme="dark"] .pm-forum-entry')) failures.push('style.css: forum overlay dark theme must not depend on #pm-iphone ancestry');
+requireText('style.css', css, '.pm-control-menu{position:absolute;');
+requireText('style.css', css, '#pm-iphone[data-theme="dark"] .pm-control-menu');
+requireText('style.css', css, '.pm-pending-manager{min-height:180px;}');
+const lifecycleCode = sourceModuleByName.get('phone-lifecycle.js')?.code || '';
+for (const expected of [
+  'bindPressGesture(sendButton', 'delay: 550', 'getPendingMessages(runtime',
+  'state.isGenerating', 'window.__pmSubmitPending()', 'unbindSendGesture?.()',
+]) requireText('phone-lifecycle.js', lifecycleCode, expected);
+const pressGestureCode = sourceModuleByName.get('press-gesture.js')?.code || '';
+for (const expected of [
+  'setPointerCapture', "addEventListener('pointermove'", "addEventListener('pointercancel'",
+  "addEventListener('lostpointercapture'", "eventTarget?.addEventListener('blur'", 'const isShortPress = timer !== null',
+  'if (isShortPress) onPress?.()', 'Number(event?.detail) === 0', 'removeEventListener',
+]) requireText('press-gesture.js', pressGestureCode, expected);
+const conversationCode = sourceModuleByName.get('conversation.js')?.code || '';
+requireText('conversation.js', conversationCode, 'deps.closeControlCenter?.()');
 requireText('bundle', bundle, 'pm-forum-entry');
 for (const iconName of ['MENU_ICON_SVG', 'CLOSE_ICON_SVG', 'CONTROL_ICON_SVG', 'SEND_ICON_SVG']) {
   requireText('icons.js', sourceModuleByName.get('icons.js')?.code || '', `export const ${iconName}`);
