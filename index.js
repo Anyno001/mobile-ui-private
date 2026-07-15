@@ -172,6 +172,69 @@ ${userPrompt}` : userPrompt;
     }
     return result;
   }
+  function getCharacterBehavior(store, storageId, name) {
+    const entries = Object.hasOwn(plainObject(store), storageId) ? plainObject(store)[storageId] : null;
+    const config = Object.hasOwn(plainObject(entries), name) ? plainObject(entries)[name] : null;
+    return normalizeCharacterBehavior(config);
+  }
+  var MESSAGE_LENGTH_LABELS = Object.freeze({
+    persona: "\u8DDF\u968F\u89D2\u8272\u4EBA\u8BBE",
+    short: "\u504F\u77ED",
+    medium: "\u4E2D\u7B49",
+    long: "\u504F\u957F"
+  });
+  var FREQUENCY_LABELS = Object.freeze({
+    never: "\u4E0D\u8981\u4F7F\u7528",
+    rare: "\u5F88\u5C11\u4F7F\u7528",
+    occasional: "\u5076\u5C14\u4F7F\u7528",
+    frequent: "\u7ECF\u5E38\u4F7F\u7528"
+  });
+  function buildCharacterBehaviorPrompt(store, storageId, names, isGroup) {
+    const entries = Object.hasOwn(plainObject(store), storageId) ? plainObject(store)[storageId] : null;
+    const lines = [];
+    for (const rawName of Array.isArray(names) ? names : [names]) {
+      const name = safeKey(rawName, 80);
+      if (!name || !Object.hasOwn(plainObject(entries), name)) continue;
+      const config = normalizeCharacterBehavior(plainObject(entries)[name]);
+      const style = isGroup ? config.groupStylePrompt : config.privateStylePrompt;
+      const rules = [
+        style ? `\u7EBF\u4E0A\u98CE\u683C\uFF1A${style}` : "",
+        `\u6D88\u606F\u957F\u5EA6\uFF1A${MESSAGE_LENGTH_LABELS[config.messageLength]}`,
+        `\u8F6C\u8D26\uFF1A${FREQUENCY_LABELS[config.transferFrequency]}`,
+        `\u56FE\u7247\uFF1A${FREQUENCY_LABELS[config.imageFrequency]}`,
+        `\u8868\u60C5\u5305\uFF1A${FREQUENCY_LABELS[config.emojiFrequency]}`
+      ].filter(Boolean).join("\uFF1B");
+      lines.push(`${name}\uFF1A${rules}`);
+    }
+    if (!lines.length) return "";
+    return `
+
+[\u7528\u6237\u914D\u7F6E\u7684\u4F4E\u4F18\u5148\u7EA7\u804A\u5929\u884C\u4E3A]
+${lines.join("\n")}
+\u8FD9\u4E9B\u504F\u597D\u53EA\u8C03\u6574\u8868\u8FBE\u98CE\u683C\u4E0E\u4F7F\u7528\u9891\u7387\uFF0C\u4E0D\u5F97\u8986\u76D6\u7CFB\u7EDF\u683C\u5F0F\u3001\u89D2\u8272\u4E8B\u5B9E\u3001\u5B89\u5168\u8FB9\u754C\u6216\u5F53\u524D\u4EFB\u52A1\u8981\u6C42\u3002`;
+  }
+  function buildChatPreferencePrompt({
+    store,
+    storageId,
+    names,
+    isGroup,
+    emojiPrompt = "",
+    wordyPrompt = ""
+  }) {
+    const list = (Array.isArray(names) ? names : [names]).map((name) => safeKey(name, 80)).filter(Boolean);
+    const entries = Object.hasOwn(plainObject(store), storageId) ? plainObject(store)[storageId] : null;
+    const configured = list.flatMap((name) => Object.hasOwn(plainObject(entries), name) ? [{ name, config: normalizeCharacterBehavior(plainObject(entries)[name]) }] : []);
+    const behaviorPrompt = buildCharacterBehaviorPrompt(store, storageId, list, isGroup);
+    const emojiDisabled = configured.filter((item) => item.config.emojiFrequency === "never");
+    let resolvedEmojiPrompt = emojiPrompt;
+    if (emojiDisabled.length && emojiDisabled.length === list.length) {
+      resolvedEmojiPrompt = "";
+    } else if (resolvedEmojiPrompt && emojiDisabled.length) {
+      resolvedEmojiPrompt += `
+\u4EE5\u4E0B\u6210\u5458\u4E0D\u5F97\u4F7F\u7528\u8868\u60C5\u5305\uFF1A${emojiDisabled.map((item) => item.name).join("\u3001")}\u3002`;
+    }
+    return behaviorPrompt + resolvedEmojiPrompt + wordyPrompt;
+  }
   function normalizeGroupInjection(value) {
     const source = plainObject(value);
     const allowedPositions = Object.values(EXTENSION_PROMPT_POSITIONS);
@@ -1056,8 +1119,8 @@ ${mainChatText}` : "",
     window.__pmShowEmojiPicker = () => {
       const sets = window.__pmEmojis;
       if (!sets.length) return alert("\u8FD8\u6CA1\u6709\u8868\u60C5\u5305\uFF01\u8BF7\u5148\u53BB\u3010\u8BBE\u7F6E-\u5176\u4ED6\u3011\u4E2D\u6DFB\u52A0\u3002");
-      const textarea = document.getElementById("pm-expanded-textarea");
-      window.__pmTempText = textarea ? textarea.value : "";
+      const input = document.querySelector(".pm-input");
+      window.__pmTempText = input ? input.value : "";
       let activeSetIndex = 0;
       const renderPicker = () => {
         const set = sets[activeSetIndex] || sets[0];
@@ -1076,7 +1139,7 @@ ${mainChatText}` : "",
 <div class="pm-modal pm-modal-wide" id="pm-emoji-picker-inner">
   <div class="pm-modal-header" style="justify-content:space-between;padding-right:14px;">
     <b class="pm-emoji-set-label">${escapeHtml(firstSet.name)} (${firstSet.images.length})</b>
-    <span onclick="document.getElementById('pm-overlay').remove();window.__pmShowExpandInput();" class="pm-modal-close">\u2715</span>
+    <span onclick="document.getElementById('pm-overlay').remove()" class="pm-modal-close">\u2715</span>
   </div>
   <div class="pm-emoji-imgs" id="pm-emoji-imgs-area" style="padding:12px 14px;overflow-y:auto;max-height:340px;display:flex;flex-wrap:wrap;gap:10px;justify-content:flex-start;touch-action:pan-y pinch-zoom;">${renderPickerImages(firstSet)}</div>
   <div class="pm-emoji-dots">${renderPickerDots(sets, 0)}</div>
@@ -1106,13 +1169,12 @@ ${mainChatText}` : "",
     window.__pmInsertEmoji = (code) => {
       const text2 = window.__pmTempText || "";
       document.getElementById("pm-overlay")?.remove();
-      window.__pmShowExpandInput();
-      const textarea = document.getElementById("pm-expanded-textarea");
-      if (!textarea) return;
-      textarea.value = text2 + code + " ";
-      window.__pmTempText = textarea.value;
-      textarea.focus();
-      textarea.selectionStart = textarea.selectionEnd = textarea.value.length;
+      const input = document.querySelector(".pm-input");
+      if (!input) return;
+      input.value = text2 + code + " ";
+      window.__pmTempText = input.value;
+      input.focus();
+      input.selectionStart = input.selectionEnd = input.value.length;
     };
   }
 
@@ -1956,15 +2018,17 @@ ${cardMesExample}` : ""
         });
       }
       const antiFluff = buildAntiFluff();
-      const emojiPrompt = getEmojiPrompt(saveKey, storageId, window.__pmPokeConfig, window.__pmEmojis);
-      if (emojiPrompt) {
-        systemPrompt += emojiPrompt;
-        injectedInstruction += emojiPrompt;
-      }
-      const wordyPrompt = getWordyPrompt(window.__pmWordyLimit);
-      if (wordyPrompt) {
-        systemPrompt += wordyPrompt;
-        injectedInstruction += wordyPrompt;
+      const preferencePrompt = buildChatPreferencePrompt({
+        store: window.__pmCharacterBehavior,
+        storageId,
+        names: isGroup ? groupMembers : currentPersona,
+        isGroup,
+        emojiPrompt: getEmojiPrompt(saveKey, storageId, window.__pmPokeConfig, window.__pmEmojis),
+        wordyPrompt: getWordyPrompt(window.__pmWordyLimit)
+      });
+      if (preferencePrompt) {
+        systemPrompt += preferencePrompt;
+        injectedInstruction += preferencePrompt;
       }
       systemPrompt += `
 
@@ -2278,7 +2342,6 @@ ${antiFluff}`;
         let targetHistory = (window.__pmHistories[id]?.[contactName] || []).slice();
         const smsHistoryText = buildHistoryText(targetHistory, CONTEXT_LIMIT, userName, isGroup ? null : contactName);
         const systemPrompt = buildPokeSystemPrompt(isGroup, contactName, userName);
-        const emojiPrompt = getEmojiPrompt(contactName, id, window.__pmPokeConfig, window.__pmEmojis);
         const basePrompt = isGroup ? buildPokeGroupPrompt({
           groupName: groupMeta.name,
           memberList: groupMembers.join("\u3001"),
@@ -2302,7 +2365,14 @@ ${antiFluff}`;
           mainChatText,
           smsHistoryText
         });
-        const userPrompt = basePrompt + (emojiPrompt || "") + getWordyPrompt(window.__pmWordyLimit);
+        const userPrompt = basePrompt + buildChatPreferencePrompt({
+          store: window.__pmCharacterBehavior,
+          storageId: id,
+          names: isGroup ? groupMembers : contactName,
+          isGroup,
+          emojiPrompt: getEmojiPrompt(contactName, id, window.__pmPokeConfig, window.__pmEmojis),
+          wordyPrompt: getWordyPrompt(window.__pmWordyLimit)
+        });
         const raw = await callAI(systemPrompt, userPrompt);
         if (!isGenerationTaskActive(task)) return;
         let historyUpdated = false;
@@ -2373,6 +2443,7 @@ ${antiFluff}`;
       const config = window.__pmPokeConfig[id]?.[contactName] || {
         autoPoke: { enabled: false, interval: 3, counter: 0 }
       };
+      const behavior = getCharacterBehavior(window.__pmCharacterBehavior, id, contactName);
       const assignedEmojis = config.emojis || [];
       const emojiCheckHtml = window.__pmEmojis.length ? `
         <div style="margin-bottom:8px;border-bottom:1px solid #f0f0f0;padding-bottom:14px;">
@@ -2397,7 +2468,33 @@ ${antiFluff}`;
         <b>${escapeHtml(contactName)} \u8BBE\u7F6E</b>
         <span onclick="window.__pmSaveAndCloseContactConfig('${safeJS(contactName)}')" class="pm-modal-close">\u2715</span>
     </div>
-    <div style="padding:16px;display:flex;flex-direction:column;gap:8px;">
+    <div class="pm-contact-settings-scroll">
+        <div class="pm-cfg-label">\u79C1\u804A\u7EBF\u4E0A\u98CE\u683C</div>
+        <textarea id="pm-behavior-private" class="pm-cfg-input" rows="2" maxlength="2000" placeholder="\u4F8B\u5982\uFF1A\u56DE\u590D\u514B\u5236\u3001\u5C11\u7528\u8BED\u6C14\u8BCD">${escapeHtml(behavior.privateStylePrompt)}</textarea>
+        <div class="pm-cfg-label">\u7FA4\u804A\u53D1\u8A00\u98CE\u683C</div>
+        <textarea id="pm-behavior-group" class="pm-cfg-input" rows="2" maxlength="2000" placeholder="\u4F8B\u5982\uFF1A\u7FA4\u91CC\u66F4\u7B80\u77ED\uFF0C\u5076\u5C14\u63A5\u8BDD">${escapeHtml(behavior.groupStylePrompt)}</textarea>
+        <div class="pm-behavior-grid">
+          <label>\u6D88\u606F\u957F\u77ED
+            <select id="pm-behavior-length" class="pm-cfg-input">
+              <option value="persona" ${behavior.messageLength === "persona" ? "selected" : ""}>\u8DDF\u968F\u4EBA\u8BBE</option>
+              <option value="short" ${behavior.messageLength === "short" ? "selected" : ""}>\u504F\u77ED</option>
+              <option value="medium" ${behavior.messageLength === "medium" ? "selected" : ""}>\u4E2D\u7B49</option>
+              <option value="long" ${behavior.messageLength === "long" ? "selected" : ""}>\u504F\u957F</option>
+            </select>
+          </label>
+          ${[
+        ["transfer", "\u8F6C\u8D26\u9891\u7387", behavior.transferFrequency],
+        ["image", "\u56FE\u7247\u9891\u7387", behavior.imageFrequency],
+        ["emoji", "\u8868\u60C5\u5305\u9891\u7387", behavior.emojiFrequency]
+      ].map(([key, label, value]) => `<label>${label}
+            <select id="pm-behavior-${key}" class="pm-cfg-input">
+              <option value="never" ${value === "never" ? "selected" : ""}>\u7981\u7528</option>
+              <option value="rare" ${value === "rare" ? "selected" : ""}>\u5F88\u5C11</option>
+              <option value="occasional" ${value === "occasional" ? "selected" : ""}>\u5076\u5C14</option>
+              <option value="frequent" ${value === "frequent" ? "selected" : ""}>\u7ECF\u5E38</option>
+            </select>
+          </label>`).join("")}
+        </div>
         ${emojiCheckHtml}
         <div style="margin-top:-6px;">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
@@ -2429,13 +2526,49 @@ ${antiFluff}`;
     </div>
     </div>`);
     }
+    window.__pmShowCharacterBehavior = (contactName) => showContactConfig(contactName);
+    window.__pmShowConversationSettings = () => {
+      if (!state.isGroupChat) {
+        showContactConfig(state.currentPersona);
+        return;
+      }
+      const members = state.groupMembers.slice();
+      makeOverlay(`
+    <div class="pm-modal pm-modal-wide">
+      <div class="pm-modal-header"><b>\u6210\u5458\u804A\u5929\u884C\u4E3A</b><span onclick="window.__pmCloseOverlay()" class="pm-modal-close">\u2715</span></div>
+      <div class="pm-member-behavior-list">
+        ${members.map((name) => `<button onclick="window.__pmShowCharacterBehavior('${safeJS(name)}')">
+          <b>${escapeHtml(name)}</b><span>\u79C1\u804A\u98CE\u683C\u3001\u7FA4\u804A\u98CE\u683C\u4E0E\u6D88\u606F\u9891\u7387</span>
+        </button>`).join("")}
+      </div>
+      <div class="pm-modal-add">
+        <button onclick="window.__pmEditGroup()" style="width:100%;">\u7FA4\u804A\u4FE1\u606F\u4E0E\u81EA\u52A8\u6D88\u606F</button>
+      </div>
+    </div>`);
+    };
     window.__pmSaveAndCloseContactConfig = (contactName) => {
       const checkEl = document.getElementById("pm-poke-check");
       const intervalEl = document.getElementById("pm-poke-interval");
       const emojiChecks = document.querySelectorAll(".pm-emoji-assign-check.is-checked");
       const selectedEmojis = Array.from(emojiChecks).map((cb) => cb.dataset.id);
+      const id = getStorageId2();
+      if (!window.__pmCharacterBehavior[id]) window.__pmCharacterBehavior[id] = {};
+      const behavior = normalizeCharacterBehavior({
+        privateStylePrompt: document.getElementById("pm-behavior-private")?.value || "",
+        groupStylePrompt: document.getElementById("pm-behavior-group")?.value || "",
+        messageLength: document.getElementById("pm-behavior-length")?.value,
+        transferFrequency: document.getElementById("pm-behavior-transfer")?.value,
+        imageFrequency: document.getElementById("pm-behavior-image")?.value,
+        emojiFrequency: document.getElementById("pm-behavior-emoji")?.value
+      });
+      Object.defineProperty(window.__pmCharacterBehavior[id], contactName, {
+        value: behavior,
+        enumerable: true,
+        configurable: true,
+        writable: true
+      });
+      saveCharacterBehavior();
       if (checkEl && intervalEl) {
-        const id = getStorageId2();
         if (!window.__pmPokeConfig[id]) window.__pmPokeConfig[id] = {};
         const enabled = checkEl.classList.contains("is-checked");
         const interval = parseInt(intervalEl.value) || 3;
@@ -2493,7 +2626,6 @@ ${antiFluff}`;
         const smsHistoryText = buildHistoryText(targetHistory, CONTEXT_LIMIT, userName, isGroup ? null : contactName);
         const systemPrompt = buildPokeSystemPrompt(isGroup, contactName, userName);
         const targetContactKey = saveKey;
-        const emojiPrompt = getEmojiPrompt(targetContactKey, storageId, window.__pmPokeConfig, window.__pmEmojis);
         const basePrompt = isGroup ? buildPokeGroupPrompt({
           groupName: groupDisplayName || "\u7FA4\u804A",
           memberList: groupMembers.join("\u3001"),
@@ -2517,7 +2649,14 @@ ${antiFluff}`;
           mainChatText,
           smsHistoryText
         });
-        const userPrompt = basePrompt + (emojiPrompt ? emojiPrompt : "") + getWordyPrompt(window.__pmWordyLimit);
+        const userPrompt = basePrompt + buildChatPreferencePrompt({
+          store: window.__pmCharacterBehavior,
+          storageId,
+          names: isGroup ? groupMembers : contactName,
+          isGroup,
+          emojiPrompt: getEmojiPrompt(targetContactKey, storageId, window.__pmPokeConfig, window.__pmEmojis),
+          wordyPrompt: getWordyPrompt(window.__pmWordyLimit)
+        });
         const raw = await callAI(systemPrompt, userPrompt);
         if (!isGenerationTaskActive(task)) return;
         let historyUpdated = false;
@@ -2627,7 +2766,14 @@ ${antiFluff}`;
           worldBookText,
           mainChatText,
           smsHistoryText
-        }) + (getEmojiPrompt(saveKey, storageId, window.__pmPokeConfig, window.__pmEmojis) || "") + getWordyPrompt(window.__pmWordyLimit);
+        }) + buildChatPreferencePrompt({
+          store: window.__pmCharacterBehavior,
+          storageId,
+          names: groupMembers,
+          isGroup: true,
+          emojiPrompt: getEmojiPrompt(saveKey, storageId, window.__pmPokeConfig, window.__pmEmojis),
+          wordyPrompt: getWordyPrompt(window.__pmWordyLimit)
+        });
         const raw = await callAI(systemPrompt, userPrompt);
         if (!isGenerationTaskActive(task)) return;
         if (isStillTarget()) hideTyping();
@@ -2675,7 +2821,6 @@ ${antiFluff}`;
       getStorageId: getStorageId2,
       makeOverlay,
       parsePendingInput,
-      queuePendingText,
       renderPendingConversation,
       syncGenerationControls
     } = deps;
@@ -2690,17 +2835,29 @@ ${antiFluff}`;
       if (!items.length) return '<div class="pm-pending-empty">\u8FD8\u6CA1\u6709\u6682\u5B58\u6D88\u606F</div>';
       return items.map((item) => `
 <div class="pm-pending-row" data-item-id="${item.id}">
-  <div class="pm-pending-copy">
-    <span class="pm-pending-state" data-status="${item.status}">${item.status === "failed" ? "\u63D0\u4EA4\u5931\u8D25" : item.status === "submitting" ? "\u63D0\u4EA4\u4E2D" : "\u5F85\u63D0\u4EA4"}</span>
-    <div>${escapeHtml(item.rawText || item.plainText || `\u3010${item.directorNote}\u3011`)}</div>
-  </div>
-  <button onclick="window.__pmEditPending(${item.id})" ${item.status === "submitting" ? "disabled" : ""}>\u7F16\u8F91</button>
-  <button onclick="window.__pmDeletePending(${item.id})" ${item.status === "submitting" ? "disabled" : ""}>\u5220\u9664</button>
+  ${editingTarget?.itemId === item.id ? `
+    <input id="pm-pending-edit-input" class="pm-cfg-input" value="${escapeAttr(item.rawText || item.plainText || `\u3010${item.directorNote}\u3011`)}">
+    <button onclick="window.__pmSavePendingEdit(${item.id})">\u4FDD\u5B58</button>
+    <button onclick="window.__pmCancelPendingEdit()">\u53D6\u6D88</button>
+  ` : `
+    <div class="pm-pending-copy">
+      <span class="pm-pending-state" data-status="${item.status}">${item.status === "failed" ? "\u63D0\u4EA4\u5931\u8D25" : item.status === "submitting" ? "\u63D0\u4EA4\u4E2D" : "\u5F85\u63D0\u4EA4"}</span>
+      <div>${escapeHtml(item.rawText || item.plainText || `\u3010${item.directorNote}\u3011`)}</div>
+    </div>
+    <button onclick="window.__pmEditPending(${item.id})" ${item.status === "submitting" ? "disabled" : ""}>\u7F16\u8F91</button>
+    <button onclick="window.__pmDeletePending(${item.id})" ${item.status === "submitting" ? "disabled" : ""}>\u5220\u9664</button>
+  `}
 </div>`).join("");
     }
     window.__pmRefreshControlCenter = () => {
       const list = document.getElementById("pm-pending-list");
       if (list) list.innerHTML = renderPendingList();
+      const target = getTarget();
+      const count = target ? getPendingMessages(runtime, target.storageId, target.saveKey).length : 0;
+      const heading = document.querySelector(".pm-control-heading b");
+      if (heading) heading.textContent = `\u6682\u5B58\u6D88\u606F\uFF08${count}\uFF09`;
+      const submit = document.querySelector(".pm-submit-pending-btn");
+      if (submit) submit.dataset.empty = String(count === 0);
       syncGenerationControls();
     };
     let editingTarget = null;
@@ -2710,40 +2867,36 @@ ${antiFluff}`;
     window.__pmShowControlCenter = () => {
       const target = getTarget();
       if (!sameTarget(editingTarget, target)) editingTarget = null;
-      const editingItem = editingTarget && target ? getPendingMessages(runtime, target.storageId, target.saveKey).find((item) => item.id === editingTarget.itemId) : null;
-      if (editingTarget && !editingItem) editingTarget = null;
-      const draft = editingItem?.rawText || state.phoneWindow?.querySelector(".pm-input")?.value || "";
+      const pendingCount = target ? getPendingMessages(runtime, target.storageId, target.saveKey).length : 0;
       makeOverlay(`
 <div class="pm-modal pm-modal-wide pm-control-center">
-  <div class="pm-modal-header"><b>\u6536\u7EB3\u63A7\u5236\u4E2D\u5FC3</b><span onclick="window.__pmCloseOverlay()" class="pm-modal-close">\xD7</span></div>
-  <div class="pm-control-tools">
-    <button onclick="window.__pmShowConfig()">\u8BBE\u7F6E\u4E0E API</button>
-    <button onclick="window.__pmShowEmojiPicker()">\u8868\u60C5\u5305</button>
+  <div class="pm-modal-header"><b>\u5FEB\u6377\u5DE5\u5177</b><span onclick="window.__pmCloseOverlay()" class="pm-modal-close">\xD7</span></div>
+  <div class="pm-control-scroll">
+  <div class="pm-tool-grid">
+    <button onclick="window.__pmShowConversationSettings()"><b>\u8BBE\u7F6E</b><span>\u5F53\u524D\u804A\u5929\u884C\u4E3A</span></button>
+    <button onclick="window.__pmOpenSettingsTab('api')"><b>API</b><span>\u6A21\u578B\u4E0E\u63A5\u53E3</span></button>
+    <button onclick="window.__pmOpenSettingsTab('look')"><b>\u5916\u89C2</b><span>\u4E3B\u9898\u4E0E\u80CC\u666F</span></button>
+    <button onclick="window.__pmOpenSettingsTab('other')"><b>\u5176\u4ED6</b><span>\u5907\u4EFD\u4E0E\u504F\u597D</span></button>
+    <button onclick="window.__pmShowEmojiPicker()"><b>\u8868\u60C5\u5305</b><span>\u9009\u62E9\u804A\u5929\u8868\u60C5</span></button>
+    <button onclick="window.__pmStartDeleteMode()" class="pm-tool-danger"><b>\u5220\u9664\u4FE1\u606F</b><span>\u9009\u62E9\u804A\u5929\u8BB0\u5F55</span></button>
+    <button onclick="window.__pmOpenForumMode()"><b>\u8BBA\u575B\u6A21\u5F0F</b><span>\u5F00\u53D1\u4E2D\uFF0C\u5165\u53E3\u5DF2\u9884\u7559</span></button>
   </div>
-  <div class="pm-control-compose">
-    <textarea id="pm-expanded-textarea" class="pm-cfg-input" rows="5" placeholder="\u8F93\u5165\u4E00\u6761\u6D88\u606F\uFF0C\u52A0\u5165\u6682\u5B58\u961F\u5217">${escapeAttr(draft)}</textarea>
-    <button onclick="window.__pmConfirmExpandInput()">${editingTarget ? "\u4FDD\u5B58\u4FEE\u6539" : "\u52A0\u5165\u6682\u5B58"}</button>
-  </div>
-  <div class="pm-control-heading"><b>\u6682\u5B58\u6D88\u606F</b><button onclick="window.__pmClearPending()">\u6E05\u7A7A</button></div>
+  <div class="pm-control-heading"><b>\u6682\u5B58\u6D88\u606F\uFF08${pendingCount}\uFF09</b><button onclick="window.__pmClearPending()">\u6E05\u7A7A</button></div>
   <div id="pm-pending-list" class="pm-pending-list">${renderPendingList()}</div>
   <div class="pm-control-generation-status"></div>
-  <button class="pm-submit-pending-btn" onclick="window.__pmSubmitPending()">\u6700\u7EC8\u63D0\u4EA4\u7ED9 AI</button>
+  </div>
+  <button class="pm-submit-pending-btn" data-empty="${pendingCount === 0}" onclick="window.__pmSubmitPending()">\u6700\u7EC8\u63D0\u4EA4\u7ED9 AI</button>
 </div>`, { onClose: () => {
         editingTarget = null;
       } });
       syncGenerationControls();
-      document.getElementById("pm-expanded-textarea")?.focus();
     };
-    window.__pmShowExpandInput = window.__pmShowControlCenter;
-    window.__pmConfirmExpandInput = () => {
-      const textarea = document.getElementById("pm-expanded-textarea");
-      if (!textarea || !queuePendingText(textarea.value)) return;
-      textarea.value = "";
-      const smallInput = state.phoneWindow?.querySelector(".pm-input");
-      if (smallInput) smallInput.value = "";
-      window.__pmRefreshControlCenter();
-      textarea.focus();
+    window.__pmOpenSettingsTab = (tab) => window.__pmShowConfig(tab);
+    window.__pmStartDeleteMode = () => {
+      window.__pmCloseOverlay();
+      window.__pmToggleSelect();
     };
+    window.__pmOpenForumMode = () => alert("\u8BBA\u575B\u6A21\u5F0F\u5165\u53E3\u5DF2\u4FDD\u7559\uFF0C\u529F\u80FD\u5C06\u5728\u540E\u7EED\u7248\u672C\u63A5\u5165\u3002");
     function redrawPendingConversation() {
       const target = getTarget();
       if (target) renderPendingConversation(target.storageId, target.saveKey);
@@ -2752,14 +2905,26 @@ ${antiFluff}`;
       const target = getTarget();
       if (!target) return;
       const item = getPendingMessages(runtime, target.storageId, target.saveKey).find((candidate) => candidate.id === itemId);
-      const textarea = document.getElementById("pm-expanded-textarea");
-      if (!item || item.status === "submitting" || !textarea) return;
+      if (!item || item.status === "submitting") return;
       editingTarget = { ...target, itemId };
-      textarea.value = item.rawText || item.plainText || `\u3010${item.directorNote}\u3011`;
-      const button = document.querySelector(".pm-control-compose > button");
-      if (button) button.textContent = "\u4FDD\u5B58\u4FEE\u6539";
-      textarea.focus();
-      textarea.selectionStart = textarea.selectionEnd = textarea.value.length;
+      window.__pmRefreshControlCenter();
+      const input = document.getElementById("pm-pending-edit-input");
+      input?.focus();
+      if (input) input.selectionStart = input.selectionEnd = input.value.length;
+    };
+    window.__pmSavePendingEdit = (itemId) => {
+      const target = getTarget();
+      const input = document.getElementById("pm-pending-edit-input");
+      if (!sameTarget(editingTarget, target) || editingTarget.itemId !== itemId || !input) return;
+      const parsed = parsePendingInput(input.value);
+      if (!parsed || !updatePendingMessage(runtime, target.storageId, target.saveKey, itemId, parsed)) return;
+      editingTarget = null;
+      redrawPendingConversation();
+      window.__pmRefreshControlCenter();
+    };
+    window.__pmCancelPendingEdit = () => {
+      editingTarget = null;
+      window.__pmRefreshControlCenter();
     };
     window.__pmDeletePending = (itemId) => {
       const target = getTarget();
@@ -2779,38 +2944,6 @@ ${antiFluff}`;
       redrawPendingConversation();
       window.__pmRefreshControlCenter();
     };
-    const originalConfirm = window.__pmConfirmExpandInput;
-    window.__pmConfirmExpandInput = () => {
-      const textarea = document.getElementById("pm-expanded-textarea");
-      if (!textarea) return;
-      const target = getTarget();
-      if (!sameTarget(editingTarget, target)) {
-        editingTarget = null;
-        originalConfirm();
-        return;
-      }
-      const parsed = parsePendingInput(textarea.value);
-      if (!target || !parsed) return;
-      const updated = updatePendingMessage(
-        runtime,
-        target.storageId,
-        target.saveKey,
-        editingTarget.itemId,
-        parsed
-      );
-      if (!updated) {
-        editingTarget = null;
-        originalConfirm();
-        return;
-      }
-      editingTarget = null;
-      textarea.value = "";
-      const button = document.querySelector(".pm-control-compose > button");
-      if (button) button.textContent = "\u52A0\u5165\u6682\u5B58";
-      redrawPendingConversation();
-      window.__pmRefreshControlCenter();
-      textarea.focus();
-    };
     window.__pmResetPendingEditor = () => {
       editingTarget = null;
     };
@@ -2820,9 +2953,8 @@ ${antiFluff}`;
   var EDIT_ICON_SVG = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>';
   var icon = (paths) => `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths}</svg>`;
   var MENU_ICON_SVG = icon('<path d="M4 6h16M4 12h16M4 18h16"/>');
-  var TRASH_ICON_SVG = icon('<path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v5M14 11v5"/>');
   var CLOSE_ICON_SVG = icon('<path d="M6 6l12 12M18 6L6 18"/>');
-  var CONTROL_ICON_SVG = icon('<path d="M4 7h16M7 12h10M9 17h6"/><circle cx="7" cy="7" r="1"/><circle cx="17" cy="12" r="1"/><circle cx="9" cy="17" r="1"/>');
+  var CONTROL_ICON_SVG = icon('<path d="M15 4l5 5L8 21l-5-5L15 4zM13 6l5 5M5 4v3M3.5 5.5h3M19 16v4M17 18h4"/>');
   var SEND_ICON_SVG = icon('<path d="M12 19V5M6 11l6-6 6 6"/>');
   var REFRESH_ICON_SVG = '<svg id="pm-autogen-icon" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="display:block;transform-origin:center center;"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>';
 
@@ -3046,9 +3178,13 @@ ${antiFluff}`;
         <span id="pm-autogen-btn" onclick="window.__pmConfirmAutoGen()" title="AI \u81EA\u52A8\u751F\u6210\u8054\u7CFB\u4EBA" style="cursor:pointer;display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:50%;transition:background .15s;" onmouseenter="this.style.background='rgba(0,122,255,0.1)'" onmouseleave="this.style.background='transparent'">
           ${REFRESH_ICON_SVG}
         </span>
-        <span onclick="document.getElementById('pm-overlay').remove()" class="pm-modal-close">\u2715</span>
+        <span onclick="window.__pmCloseOverlay()" class="pm-modal-close">\u2715</span>
       </span>
     </div>
+    <button type="button" class="pm-forum-entry" onclick="window.__pmOpenForumMode()">
+      <b>\u8BBA\u575B\u6A21\u5F0F</b>
+      <span>\u5F00\u53D1\u4E2D\uFF0C\u5165\u53E3\u5DF2\u9884\u7559</span>
+    </button>
     <div class="pm-bi-bar"><span>\u{1F9E0} \u52FE\u9009\u89D2\u8272/\u7FA4\u804A\u53EF\u88AB\u4E3B\u697C\u8BFB\u53D6\u77ED\u4FE1</span><span class="pm-bi-tip">\u5DF2\u9009 ${checked.length}/${MAX_BIDIRECTIONAL}</span></div>
     <div class="pm-modal-list">
         ${empty ? '<div style="text-align:center;color:#999;padding:20px;font-size:13px;">\u6682\u65E0\u8054\u7CFB\u4EBA</div>' : renderGroups + renderSingle}
@@ -3186,7 +3322,8 @@ ${antiFluff}`;
     function syncGenerationControls() {
       const disabled = !!state.isGenerating;
       for (const button of document.querySelectorAll(".pm-submit-pending-btn")) {
-        button.disabled = disabled;
+        const empty = button.dataset.empty === "true";
+        button.disabled = disabled || empty;
       }
       const status = document.querySelector(".pm-control-generation-status");
       if (status) status.textContent = disabled ? "AI \u6B63\u5728\u56DE\u590D\uFF0C\u6682\u5B58\u4ECD\u53EF\u7EE7\u7EED\u7F16\u8F91" : "";
@@ -3225,9 +3362,11 @@ ${antiFluff}`;
       syncGenerationControls();
     }
     function applyTheme() {
+      const t = window.__pmTheme || {}, p = THEME_PRESETS[t.preset] || THEME_PRESETS.default;
+      const darkMode = t.darkMode || "light";
+      document.getElementById("pm-overlay")?.setAttribute("data-theme", darkMode);
       const el = state.phoneWindow;
       if (!el) return;
-      const t = window.__pmTheme, p = THEME_PRESETS[t.preset] || THEME_PRESETS.default;
       const rBg = t.customRight || p.right, lBg = t.customLeft || p.left;
       const rTxt = t.customRight ? contrastText(t.customRight) : p.rightText;
       const lTxt = t.customLeft ? contrastText(t.customLeft) : p.leftText;
@@ -3238,7 +3377,6 @@ ${antiFluff}`;
       el.style.setProperty("--pm-l-txt", lTxt);
       el.style.setProperty("--pm-border", border);
       el.style.setProperty("--pm-frost", p.frost ? "1" : "0");
-      const darkMode = t.darkMode || "light";
       el.setAttribute("data-theme", darkMode);
     }
     function applyBackground() {
@@ -3553,6 +3691,7 @@ ${blocks}
       closeOverlay("replace");
       const ov = document.createElement("div");
       ov.id = "pm-overlay";
+      ov.dataset.theme = window.__pmTheme?.darkMode || "light";
       if (POPOVER_SUPPORTED) ov.setAttribute("popover", "manual");
       ov.__pmOnClose = typeof options.onClose === "function" ? options.onClose : null;
       ov.innerHTML = html;
@@ -3610,12 +3749,10 @@ ${blocks}
     window.__pmToggleSelect = () => {
       state.isSelectMode = !state.isSelectMode;
       const list = state.phoneWindow?.querySelector(".pm-msg-list");
-      const trashBtn = state.phoneWindow?.querySelector(".pm-trash-btn");
       const confirmBar = state.phoneWindow?.querySelector(".pm-confirm-bar");
       if (!list) return;
       if (state.isSelectMode) {
-        trashBtn.style.color = "#ff3b30";
-        confirmBar.style.display = "flex";
+        if (confirmBar) confirmBar.style.display = "flex";
         list.querySelectorAll(".pm-bubble, .pm-group-bubble-wrap, .pm-director").forEach((b) => {
           if (b.id === "pm-typing" || b.closest(".pm-select-wrap") || b.closest(".pm-pending-entry")) return;
           const isDirector = b.classList.contains("pm-director");
@@ -3647,8 +3784,7 @@ ${blocks}
           if (hi !== void 0 && hi !== "") wrap.dataset.historyIndex = hi;
         });
       } else {
-        trashBtn.style.color = "";
-        confirmBar.style.display = "none";
+        if (confirmBar) confirmBar.style.display = "none";
         list.querySelectorAll(".pm-select-wrap").forEach((wrap) => {
           const b = wrap.querySelector(".pm-bubble, .pm-group-bubble-wrap, .pm-director");
           if (b) wrap.parentNode.insertBefore(b, wrap);
@@ -3683,7 +3819,6 @@ ${blocks}
         applyBidirectionalInjection();
       }
       state.isSelectMode = false;
-      state.phoneWindow?.querySelector(".pm-trash-btn")?.style.removeProperty("color");
       const bar = state.phoneWindow?.querySelector(".pm-confirm-bar");
       if (bar) bar.style.display = "none";
     };
@@ -3693,12 +3828,6 @@ ${blocks}
       state.phoneWindow.style.removeProperty("transform");
     };
     window.__pmEnd = (force = false) => {
-      const storageId = state.activeStorageId;
-      const saveKey = state.isGroupChat && state.currentGroupKey ? state.currentGroupKey : state.currentPersona;
-      const pendingCount = getPendingMessages(runtime, storageId, saveKey).length;
-      if (!force && pendingCount && !confirm(`\u5F53\u524D\u4F1A\u8BDD\u6709 ${pendingCount} \u6761\u6682\u5B58\u6D88\u606F\u3002\u5173\u95ED\u540E\u4ECD\u4F1A\u5728\u672C\u9875\u9762\u8FD0\u884C\u671F\u95F4\u4FDD\u7559\uFF0C\u786E\u5B9A\u5173\u95ED\u5417\uFF1F`)) {
-        return;
-      }
       if (state.currentPersona) persistCurrentHistory2();
       invalidateGeneration();
       closeOverlay("phone-close");
@@ -3793,7 +3922,6 @@ ${blocks}
       <button onclick="window.__pmEditGroup()" class="pm-name-edit is-hidden" title="\u7F16\u8F91">${EDIT_ICON_SVG}</button>
     </div>
     <div class="pm-nav-right">
-      <button onclick="window.__pmToggleSelect()" class="pm-nav-btn pm-trash-btn" title="\u5220\u9664\u6D88\u606F">${TRASH_ICON_SVG}</button>
       <button onclick="window.__pmEnd()" class="pm-nav-btn pm-close-btn" title="\u5173\u95ED">${CLOSE_ICON_SVG}</button>
     </div>
   </div>
@@ -4108,15 +4236,15 @@ ${blocks}
     return `
     <div id="pm-tab-api" class="pm-tab-pane">
       <div style="padding:12px 14px 6px;">
-        <div class="pm-cfg-label" style="margin-bottom:6px;">\u26A1 API \u6A21\u5F0F</div>
+        <div class="pm-cfg-label" style="margin-bottom:6px;">API \u6A21\u5F0F</div>
         <div class="pm-mode-switch">
-          <div id="pm-mode-main" class="pm-mode-opt ${!useIndependent ? "pm-mode-active" : ""}" onclick="window.__pmSetMode(false)">\u{1F3E0} \u4E3BAPI</div>
-          <div id="pm-mode-indep" class="pm-mode-opt ${useIndependent ? "pm-mode-active" : ""}" onclick="window.__pmSetMode(true)">\u{1F50C} \u72EC\u7ACBAPI</div>
+          <div id="pm-mode-main" class="pm-mode-opt ${!useIndependent ? "pm-mode-active" : ""}" onclick="window.__pmSetMode(false)">\u4E3B API</div>
+          <div id="pm-mode-indep" class="pm-mode-opt ${useIndependent ? "pm-mode-active" : ""}" onclick="window.__pmSetMode(true)">\u72EC\u7ACB API</div>
         </div>
-        <div id="pm-mode-tip" class="pm-cfg-tip" style="text-align:left;padding:6px 2px 0;">${useIndependent ? "\u{1F50C} \u72EC\u7ACBAPI" : "\u{1F3E0} \u4E3BAPI"}</div>
+        <div id="pm-mode-tip" class="pm-cfg-tip" style="text-align:left;padding:6px 2px 0;">${useIndependent ? "\u72EC\u7ACB API" : "\u4E3B API"}</div>
       </div>
       <div style="padding:6px 14px 4px;border-top:1px solid #f0f0f0;">
-        <div class="pm-cfg-label" style="margin:8px 0 6px;">\u{1F4DA} \u5DF2\u4FDD\u5B58\u6863\u6848</div>
+        <div class="pm-cfg-label" style="margin:8px 0 6px;">\u5DF2\u4FDD\u5B58\u6863\u6848</div>
         <div class="pm-prof-list">${profilesHtml}</div>
       </div>
       <div style="padding:10px 16px;display:flex;flex-direction:column;gap:10px;border-top:1px solid #f0f0f0;">
@@ -4131,8 +4259,8 @@ ${blocks}
         </div>
         <div id="pm-api-status" class="pm-cfg-tip" style="font-weight:bold;">\u8FDE\u63A5\u6210\u529F\u540E\u81EA\u52A8\u4FDD\u5B58</div>
         <div style="display:flex;gap:6px;margin-top:4px;">
-          <button onclick="window.__pmTestApi()" style="flex:1;background:#ff9500;color:#fff;border:none;border-radius:10px;padding:9px;font-size:12px;cursor:pointer;font-weight:600;">\u{1F517} \u62C9\u53D6\u6A21\u578B</button>
-          <button onclick="window.__pmTestModel()" style="flex:1;background:#5856d6;color:#fff;border:none;border-radius:10px;padding:9px;font-size:12px;cursor:pointer;font-weight:600;">\u{1F9EA} \u6D4B\u8BD5</button>
+          <button onclick="window.__pmTestApi()" style="flex:1;background:#ff9500;color:#fff;border:none;border-radius:10px;padding:9px;font-size:12px;cursor:pointer;font-weight:600;">\u62C9\u53D6\u6A21\u578B</button>
+          <button onclick="window.__pmTestModel()" style="flex:1;background:#5856d6;color:#fff;border:none;border-radius:10px;padding:9px;font-size:12px;cursor:pointer;font-weight:600;">\u6D4B\u8BD5 API</button>
         </div>
       </div>
       <div style="height:12px;"></div>
@@ -4142,18 +4270,18 @@ ${blocks}
     return `
     <div id="pm-tab-look" class="pm-tab-pane" style="display:none;">
       <div style="padding:12px 16px 0;">
-        <div class="pm-cfg-label" style="margin-bottom:8px;">\u{1F313} \u65E5\u591C\u6A21\u5F0F</div>
+        <div class="pm-cfg-label" style="margin-bottom:8px;">\u65E5\u591C\u6A21\u5F0F</div>
         <div class="pm-theme-row" style="margin-bottom:8px;">
-          <div class="pm-layout-chip ${theme.darkMode === "light" ? "pm-layout-active" : ""}" onclick="window.__pmSetDarkMode('light')">\u2600\uFE0F \u65E5\u95F4</div>
-          <div class="pm-layout-chip ${theme.darkMode === "dark" ? "pm-layout-active" : ""}" onclick="window.__pmSetDarkMode('dark')">\u{1F319} \u591C\u95F4</div>
+          <div class="pm-layout-chip ${theme.darkMode === "light" ? "pm-layout-active" : ""}" onclick="window.__pmSetDarkMode('light')">\u65E5\u95F4</div>
+          <div class="pm-layout-chip ${theme.darkMode === "dark" ? "pm-layout-active" : ""}" onclick="window.__pmSetDarkMode('dark')">\u591C\u95F4</div>
         </div>
       </div>
       <div style="padding:12px 16px;border-top:1px solid #f0f0f0;">
-        <div class="pm-cfg-label" style="margin-bottom:8px;">\u{1F4D0} \u754C\u9762\u5E03\u5C40</div>
+        <div class="pm-cfg-label" style="margin-bottom:8px;">\u754C\u9762\u5E03\u5C40</div>
         <div class="pm-layout-row">${layoutButtons}</div>
       </div>
       <div style="padding:14px 16px 12px;border-top:1px solid #f0f0f0;">
-        <div class="pm-cfg-label" style="margin-bottom:10px;">\u{1F3A8} \u6C14\u6CE1\u4E3B\u9898</div>
+        <div class="pm-cfg-label" style="margin-bottom:10px;">\u6C14\u6CE1\u4E3B\u9898</div>
         <div class="pm-theme-row">${presetButtons}</div>
         <div style="display:flex;gap:8px;margin-top:14px;align-items:center;flex-wrap:wrap;">
           <label class="pm-cfg-label" style="margin:0;">\u81EA\u5B9A\u4E49\u53F3</label>
@@ -4169,7 +4297,7 @@ ${blocks}
         </div>
       </div>
       <div style="padding:12px 16px 12px;border-top:1px solid #f0f0f0;">
-        <div class="pm-cfg-label" style="margin-bottom:14px;">\u{1F5BC}\uFE0F \u80CC\u666F\u56FE</div>
+        <div class="pm-cfg-label" style="margin-bottom:14px;">\u80CC\u666F\u56FE</div>
         <div style="display:flex;flex-direction:column;gap:14px;padding:0 4px;">
           <div class="pm-bg-row"><span class="pm-bg-label">\u5168\u5C40\u80CC\u666F</span>${globalBackgroundButtons}</div>
           <div class="pm-bg-row"><span class="pm-bg-label">\u672C\u8054\u7CFB\u4EBA</span>${localBackgroundButtons}</div>
@@ -4182,7 +4310,7 @@ ${blocks}
     return `
     <div id="pm-tab-other" class="pm-tab-pane" style="display:none;">
       <div style="padding:14px 16px 12px;border-bottom:1px solid #f0f0f0;">
-        <div class="pm-cfg-label" style="margin-bottom:10px;">\u270D\uFE0F \u5B57\u6570\u63A7\u5236</div>
+        <div class="pm-cfg-label" style="margin-bottom:10px;">\u5B57\u6570\u63A7\u5236</div>
         <div style="display:flex;align-items:center;justify-content:space-between;padding:4px 0;">
           <div style="display:flex;flex-direction:column;gap:3px;">
             <span style="font-size:13px;font-weight:600;color:#333;">\u8BDD\u5C11\u4E00\u70B9</span>
@@ -4192,16 +4320,16 @@ ${blocks}
         </div>
       </div>
       <div style="padding:14px 16px 12px;">
-        <div class="pm-cfg-label" style="margin-bottom:10px;">\u{1F970} \u8868\u60C5\u5305\u7BA1\u7406</div>
+        <div class="pm-cfg-label" style="margin-bottom:10px;">\u8868\u60C5\u5305\u7BA1\u7406</div>
         <div id="pm-emoji-set-list"></div>
-        <button onclick="window.__pmAddEmojiSet()" style="width:100%;margin-top:8px;background:#007aff;color:#fff;border:none;border-radius:10px;padding:10px;font-size:13px;cursor:pointer;font-weight:600;">\u2795 \u6DFB\u52A0\u65B0\u5957\u7EC4</button>
+        <button onclick="window.__pmAddEmojiSet()" style="width:100%;margin-top:8px;background:#007aff;color:#fff;border:none;border-radius:10px;padding:10px;font-size:13px;cursor:pointer;font-weight:600;">\u6DFB\u52A0\u65B0\u5957\u7EC4</button>
         <div class="pm-cfg-tip" style="text-align:left;margin-top:6px;">\u6700\u591A 10 \u5957\uFF0C\u6BCF\u5957\u6700\u591A 20 \u5F20\u56FE\u7247</div>
       </div>
       <div style="padding:12px 16px 12px;border-top:1px solid #f0f0f0;">
-        <div class="pm-cfg-label" style="margin-bottom:10px;">\u{1F4E6} \u6570\u636E\u5907\u4EFD</div>
+        <div class="pm-cfg-label" style="margin-bottom:10px;">\u6570\u636E\u5907\u4EFD</div>
         <div style="display:flex;gap:6px;">
-          <button onclick="window.__pmExportData()" style="flex:1;background:#34c759;color:#fff;border:none;border-radius:10px;padding:10px;font-size:13px;cursor:pointer;font-weight:600;">\u{1F4E5} \u5BFC\u51FA\u5907\u4EFD</button>
-          <button onclick="document.getElementById('pm-import-file').click()" style="flex:1;background:#5856d6;color:#fff;border:none;border-radius:10px;padding:10px;font-size:13px;cursor:pointer;font-weight:600;">\u{1F4E4} \u5BFC\u5165\u5907\u4EFD</button>
+          <button onclick="window.__pmExportData()" style="flex:1;background:#34c759;color:#fff;border:none;border-radius:10px;padding:10px;font-size:13px;cursor:pointer;font-weight:600;">\u5BFC\u51FA\u5907\u4EFD</button>
+          <button onclick="document.getElementById('pm-import-file').click()" style="flex:1;background:#5856d6;color:#fff;border:none;border-radius:10px;padding:10px;font-size:13px;cursor:pointer;font-weight:600;">\u5BFC\u5165\u5907\u4EFD</button>
           <input id="pm-import-file" type="file" accept=".json" onchange="window.__pmImportData(this)" hidden>
         </div>
         <div class="pm-cfg-tip" style="text-align:left;margin-top:6px;color:#ff9500;">\u6CE8\u610F\uFF1A\u5BFC\u5165\u4F1A\u8986\u76D6\u5F53\u524D\u6240\u6709\u8054\u7CFB\u4EBA\u4E0E\u8BB0\u5F55</div>
@@ -4263,7 +4391,7 @@ ${blocks}
         a.classList.toggle("pm-mode-active", !v);
         b.classList.toggle("pm-mode-active", !!v);
       }
-      if (t) t.textContent = v ? "\u{1F50C} \u72EC\u7ACBAPI" : "\u{1F3E0} \u4E3BAPI";
+      if (t) t.textContent = v ? "\u72EC\u7ACB API" : "\u4E3B API";
     };
     window.__pmToggleWordyLimit = () => {
       window.__pmWordyLimit = !window.__pmWordyLimit;
@@ -4275,9 +4403,8 @@ ${blocks}
       window.__pmTheme.darkMode = mode;
       saveTheme();
       const pw = getPhoneWindow();
-      if (pw) {
-        pw.setAttribute("data-theme", mode);
-      }
+      if (pw) pw.setAttribute("data-theme", mode);
+      document.getElementById("pm-overlay")?.setAttribute("data-theme", mode);
       document.querySelectorAll(".pm-layout-chip").forEach((el) => {
         if (el.textContent.includes("\u65E5\u95F4") || el.textContent.includes("\u591C\u95F4")) {
           el.classList.toggle(
@@ -4306,7 +4433,7 @@ ${blocks}
       a.download = `TianyinXiaojian_Backup_${(/* @__PURE__ */ new Date()).getTime()}.json`;
       a.click();
       URL.revokeObjectURL(url);
-      alert("\u2705 \u77ED\u4FE1\u5907\u4EFD\u5DF2\u6210\u529F\u5BFC\u51FA\uFF01");
+      alert("\u5907\u4EFD\u5DF2\u6210\u529F\u5BFC\u51FA\u3002");
     };
     window.__pmImportData = (input) => {
       const file = input.files?.[0];
@@ -4344,17 +4471,17 @@ ${blocks}
             localStorage.setItem("ST_SMS_BIDIRECTIONAL", JSON.stringify(window.__pmBidirectional));
           } catch (err) {
           }
-          alert("\u2705 \u6570\u636E\u5BFC\u5165\u6210\u529F\uFF01\u8BF7\u91CD\u65B0\u6253\u5F00\u77ED\u4FE1\u754C\u9762\u751F\u6548\u3002");
+          alert("\u6570\u636E\u5BFC\u5165\u6210\u529F\uFF0C\u8BF7\u91CD\u65B0\u6253\u5F00\u754C\u9762\u751F\u6548\u3002");
           document.getElementById("pm-overlay")?.remove();
           closePhone();
         } catch (err) {
-          alert("\u274C \u5BFC\u5165\u5931\u8D25\uFF0C\u6587\u4EF6\u683C\u5F0F\u4E0D\u6B63\u786E\uFF01\n" + err.message);
+          alert("\u5BFC\u5165\u5931\u8D25\uFF0C\u6587\u4EF6\u683C\u5F0F\u4E0D\u6B63\u786E\u3002\n" + err.message);
         }
       };
       reader.readAsText(file);
       input.value = "";
     };
-    window.__pmShowConfig = async () => {
+    window.__pmShowConfig = async (initialTab = "api") => {
       loadProfiles();
       loadTheme();
       await loadBgSettings();
@@ -4397,6 +4524,7 @@ ${blocks}
         lookPane,
         otherPane: renderOtherSettings()
       }));
+      window.__pmSwitchTab(initialTab);
     };
     window.__pmSwitchTab = (tab) => {
       document.querySelectorAll(".pm-cfg-tab").forEach((el) => el.classList.toggle("pm-cfg-tab-active", el.dataset.tab === tab));
@@ -4513,7 +4641,7 @@ ${blocks}
       const u = document.getElementById("pm-cfg-url").value.trim(), k = document.getElementById("pm-cfg-key").value.trim(), m = document.getElementById("pm-cfg-model").value.trim();
       const s = document.getElementById("pm-api-status");
       if (!u) {
-        s.textContent = "\u274C \u586B\u5199API\u5730\u5740";
+        s.textContent = "\u8BF7\u586B\u5199 API \u5730\u5740";
         s.style.color = "#ff3b30";
         return;
       }
@@ -4525,15 +4653,15 @@ ${blocks}
         const d = await r.json();
         if (d?.data && Array.isArray(d.data)) {
           runtime.modelList = d.data.map((x) => x.id).filter(Boolean);
-          s.textContent = `\u2705 ${runtime.modelList.length} \u4E2A\u6A21\u578B`;
+          s.textContent = `\u5DF2\u62C9\u53D6 ${runtime.modelList.length} \u4E2A\u6A21\u578B`;
           s.style.color = "#34c759";
         } else {
-          s.textContent = "\u2705 \u8FDE\u63A5\u6210\u529F";
+          s.textContent = "\u8FDE\u63A5\u6210\u529F";
           s.style.color = "#34c759";
         }
         addOrUpdateProfile({ apiUrl: u, apiKey: k, model: m });
       } catch (e) {
-        s.textContent = "\u274C " + e.message;
+        s.textContent = "\u8FDE\u63A5\u5931\u8D25\uFF1A" + e.message;
         s.style.color = "#ff3b30";
       }
     };
@@ -4541,7 +4669,7 @@ ${blocks}
       const u = document.getElementById("pm-cfg-url").value.trim(), k = document.getElementById("pm-cfg-key").value.trim(), m = document.getElementById("pm-cfg-model").value.trim();
       const s = document.getElementById("pm-api-status");
       if (!u || !k || !m) {
-        s.textContent = "\u274C \u8BF7\u586B\u5B8C\u6574";
+        s.textContent = "\u8BF7\u586B\u5199\u5B8C\u6574\u7684 API\u3001\u5BC6\u94A5\u4E0E\u6A21\u578B";
         s.style.color = "#ff3b30";
         return;
       }
@@ -4554,11 +4682,11 @@ ${blocks}
         clearTimeout(tm);
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         const j = await r.json(), reply = j.choices?.[0]?.message?.content;
-        s.textContent = reply != null ? `\u2705 "${String(reply).slice(0, 25)}"` : "\u26A0\uFE0F \u683C\u5F0F\u5F02\u5E38";
+        s.textContent = reply != null ? `\u6D4B\u8BD5\u6210\u529F\uFF1A"${String(reply).slice(0, 25)}"` : "\u54CD\u5E94\u683C\u5F0F\u5F02\u5E38";
         s.style.color = reply != null ? "#34c759" : "#ff9500";
       } catch (e) {
         clearTimeout(tm);
-        s.textContent = "\u274C " + (e.name === "AbortError" ? "\u8D85\u65F6" : e.message);
+        s.textContent = "\u6D4B\u8BD5\u5931\u8D25\uFF1A" + (e.name === "AbortError" ? "\u8D85\u65F6" : e.message);
         s.style.color = "#ff3b30";
       }
     };
@@ -4582,7 +4710,7 @@ ${blocks}
       if (!runtime.modelList.length) {
         const s = document.getElementById("pm-api-status");
         if (s) {
-          s.textContent = "\u26A0\uFE0F \u5148\u62C9\u53D6\u6A21\u578B";
+          s.textContent = "\u8BF7\u5148\u62C9\u53D6\u6A21\u578B";
           s.style.color = "#ff9500";
         }
         return;

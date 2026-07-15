@@ -2,9 +2,8 @@ import { POPOVER_SUPPORTED } from './constants.js';
 import { escapeHtml } from './ui.js';
 import {
     CLOSE_ICON_SVG, CONTROL_ICON_SVG, EDIT_ICON_SVG,
-    MENU_ICON_SVG, SEND_ICON_SVG, TRASH_ICON_SVG,
+    MENU_ICON_SVG, SEND_ICON_SVG,
 } from './icons.js';
-import { getPendingMessages } from './pending-messages.js';
 import {
     loadBgSettings, loadBidirectional, loadEmojis,
     loadCharacterBehavior, loadGroupMeta, loadHistoriesFromIDB,
@@ -21,11 +20,10 @@ export function installPhoneLifecycle(state, deps) {
     window.__pmToggleSelect = () => {
         state.isSelectMode = !state.isSelectMode;
         const list = state.phoneWindow?.querySelector('.pm-msg-list');
-        const trashBtn = state.phoneWindow?.querySelector('.pm-trash-btn');
         const confirmBar = state.phoneWindow?.querySelector('.pm-confirm-bar');
         if (!list) return;
         if (state.isSelectMode) {
-            trashBtn.style.color = '#ff3b30'; confirmBar.style.display = 'flex';
+            if (confirmBar) confirmBar.style.display = 'flex';
             // 气泡上已在渲染时打好 data-history-index，直接读取，无需事后映射
             list.querySelectorAll('.pm-bubble, .pm-group-bubble-wrap, .pm-director')
                 .forEach(b => {
@@ -54,7 +52,7 @@ export function installPhoneLifecycle(state, deps) {
                 if (hi !== undefined && hi !== '') wrap.dataset.historyIndex = hi;
             });
         } else {
-            trashBtn.style.color = ''; confirmBar.style.display = 'none';
+            if (confirmBar) confirmBar.style.display = 'none';
             list.querySelectorAll('.pm-select-wrap').forEach(wrap => {
                 const b = wrap.querySelector('.pm-bubble, .pm-group-bubble-wrap, .pm-director');
                 if (b) wrap.parentNode.insertBefore(b, wrap); wrap.remove();
@@ -89,18 +87,11 @@ export function installPhoneLifecycle(state, deps) {
             applyBidirectionalInjection();
         }
         state.isSelectMode = false;
-        state.phoneWindow?.querySelector('.pm-trash-btn')?.style.removeProperty('color');
         const bar = state.phoneWindow?.querySelector('.pm-confirm-bar'); if (bar) bar.style.display = 'none';
     };
 
     window.__pmToggleMin = () => { state.isMinimized = !state.isMinimized; state.phoneWindow.classList.toggle('is-min', state.isMinimized); state.phoneWindow.style.removeProperty('transform'); };
     window.__pmEnd = (force = false) => {
-        const storageId = state.activeStorageId;
-        const saveKey = state.isGroupChat && state.currentGroupKey ? state.currentGroupKey : state.currentPersona;
-        const pendingCount = getPendingMessages(runtime, storageId, saveKey).length;
-        if (!force && pendingCount && !confirm(`当前会话有 ${pendingCount} 条暂存消息。关闭后仍会在本页面运行期间保留，确定关闭吗？`)) {
-            return;
-        }
         // 修复：关闭前先把当前 state.conversationHistory 存档
         // 空历史也必须落盘，否则删除最后一条消息后直接关闭会让旧历史在下次打开时复活。
         if (state.currentPersona) persistCurrentHistory();
@@ -168,7 +159,6 @@ export function installPhoneLifecycle(state, deps) {
       <button onclick="window.__pmEditGroup()" class="pm-name-edit is-hidden" title="编辑">${EDIT_ICON_SVG}</button>
     </div>
     <div class="pm-nav-right">
-      <button onclick="window.__pmToggleSelect()" class="pm-nav-btn pm-trash-btn" title="删除消息">${TRASH_ICON_SVG}</button>
       <button onclick="window.__pmEnd()" class="pm-nav-btn pm-close-btn" title="关闭">${CLOSE_ICON_SVG}</button>
     </div>
   </div>

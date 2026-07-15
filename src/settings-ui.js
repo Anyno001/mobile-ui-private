@@ -34,7 +34,7 @@ export function installSettingsUi(deps) {
         try { localStorage.setItem('ST_SMS_CONFIG', JSON.stringify(window.__pmConfig)); } catch (e) {}
         const a = document.getElementById('pm-mode-main'), b = document.getElementById('pm-mode-indep'), t = document.getElementById('pm-mode-tip');
         if (a && b) { a.classList.toggle('pm-mode-active', !v); b.classList.toggle('pm-mode-active', !!v); }
-        if (t) t.textContent = v ? '🔌 独立API' : '🏠 主API';
+        if (t) t.textContent = v ? '独立 API' : '主 API';
     };
 
     window.__pmToggleWordyLimit = () => {
@@ -48,9 +48,8 @@ export function installSettingsUi(deps) {
         window.__pmTheme.darkMode = mode;
         saveTheme();
         const pw = getPhoneWindow();
-        if (pw) {
-            pw.setAttribute('data-theme', mode);
-        }
+        if (pw) pw.setAttribute('data-theme', mode);
+        document.getElementById('pm-overlay')?.setAttribute('data-theme', mode);
         document.querySelectorAll('.pm-layout-chip').forEach(el => {
             if (el.textContent.includes('日间') || el.textContent.includes('夜间')) {
                 el.classList.toggle('pm-layout-active',
@@ -81,7 +80,7 @@ export function installSettingsUi(deps) {
         a.download = `TianyinXiaojian_Backup_${new Date().getTime()}.json`;
         a.click();
         URL.revokeObjectURL(url);
-        alert('✅ 短信备份已成功导出！');
+        alert('备份已成功导出。');
     };
 
     window.__pmImportData = (input) => {
@@ -110,11 +109,11 @@ export function installSettingsUi(deps) {
                 try { localStorage.setItem('ST_SMS_POKE_CONFIG', JSON.stringify(window.__pmPokeConfig)); } catch(err) {}
                 try { localStorage.setItem('ST_SMS_BIDIRECTIONAL', JSON.stringify(window.__pmBidirectional)); } catch(err) {}
 
-                alert('✅ 数据导入成功！请重新打开短信界面生效。');
+                alert('数据导入成功，请重新打开界面生效。');
                 document.getElementById('pm-overlay')?.remove();
                 closePhone();
             } catch (err) {
-                alert('❌ 导入失败，文件格式不正确！\n' + err.message);
+                alert('导入失败，文件格式不正确。\n' + err.message);
             }
         };
         reader.readAsText(file);
@@ -122,7 +121,7 @@ export function installSettingsUi(deps) {
     };
 
     // ========== 设置界面 ==========
-    window.__pmShowConfig = async () => {
+    window.__pmShowConfig = async (initialTab = 'api') => {
         loadProfiles(); loadTheme();
         await loadBgSettings();
         const cfg = window.__pmConfig, t = window.__pmTheme;
@@ -171,7 +170,7 @@ export function installSettingsUi(deps) {
             lookPane,
             otherPane: renderOtherSettings(),
         }));
-
+        window.__pmSwitchTab(initialTab);
     };
 
     window.__pmSwitchTab = (tab) => {
@@ -270,30 +269,30 @@ export function installSettingsUi(deps) {
     window.__pmTestApi = async () => {
         const u = document.getElementById('pm-cfg-url').value.trim(), k = document.getElementById('pm-cfg-key').value.trim(), m = document.getElementById('pm-cfg-model').value.trim();
         const s = document.getElementById('pm-api-status');
-        if (!u) { s.textContent = "❌ 填写API地址"; s.style.color = "#ff3b30"; return; }
+        if (!u) { s.textContent = "请填写 API 地址"; s.style.color = "#ff3b30"; return; }
         s.textContent = "连接中..."; s.style.color = "#007aff";
         try {
             const r = await fetch(normalizeApiUrls(u).modelsUrl, { method: 'GET', headers: { 'Authorization': `Bearer ${k}` } });
             if (!r.ok) throw new Error(`HTTP ${r.status}`);
             const d = await r.json();
-            if (d?.data && Array.isArray(d.data)) { runtime.modelList = d.data.map(x => x.id).filter(Boolean); s.textContent = `✅ ${runtime.modelList.length} 个模型`; s.style.color = "#34c759"; }
-            else { s.textContent = "✅ 连接成功"; s.style.color = "#34c759"; }
+            if (d?.data && Array.isArray(d.data)) { runtime.modelList = d.data.map(x => x.id).filter(Boolean); s.textContent = `已拉取 ${runtime.modelList.length} 个模型`; s.style.color = "#34c759"; }
+            else { s.textContent = "连接成功"; s.style.color = "#34c759"; }
             addOrUpdateProfile({ apiUrl: u, apiKey: k, model: m });
-        } catch (e) { s.textContent = "❌ " + e.message; s.style.color = "#ff3b30"; }
+        } catch (e) { s.textContent = "连接失败：" + e.message; s.style.color = "#ff3b30"; }
     };
 
     window.__pmTestModel = async () => {
         const u = document.getElementById('pm-cfg-url').value.trim(), k = document.getElementById('pm-cfg-key').value.trim(), m = document.getElementById('pm-cfg-model').value.trim();
         const s = document.getElementById('pm-api-status');
-        if (!u || !k || !m) { s.textContent = '❌ 请填完整'; s.style.color = '#ff3b30'; return; }
+        if (!u || !k || !m) { s.textContent = '请填写完整的 API、密钥与模型'; s.style.color = '#ff3b30'; return; }
         s.textContent = `测试「${m}」...`; s.style.color = '#007aff';
         const ctrl = new AbortController(); const tm = setTimeout(() => ctrl.abort(), 15000);
         try {
             const r = await fetch(normalizeApiUrls(u).chatUrl, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${k}` }, body: JSON.stringify({ model: m, messages: [{ role: 'user', content: 'hi' }], max_tokens: 16 }), signal: ctrl.signal });
             clearTimeout(tm); if (!r.ok) throw new Error(`HTTP ${r.status}`);
             const j = await r.json(), reply = j.choices?.[0]?.message?.content;
-            s.textContent = reply != null ? `✅ "${String(reply).slice(0, 25)}"` : '⚠️ 格式异常'; s.style.color = reply != null ? '#34c759' : '#ff9500';
-        } catch (e) { clearTimeout(tm); s.textContent = '❌ ' + (e.name === 'AbortError' ? '超时' : e.message); s.style.color = '#ff3b30'; }
+            s.textContent = reply != null ? `测试成功："${String(reply).slice(0, 25)}"` : '响应格式异常'; s.style.color = reply != null ? '#34c759' : '#ff9500';
+        } catch (e) { clearTimeout(tm); s.textContent = '测试失败：' + (e.name === 'AbortError' ? '超时' : e.message); s.style.color = '#ff3b30'; }
     };
 
     window.__pmSaveConfig = () => {
@@ -308,7 +307,7 @@ export function installSettingsUi(deps) {
     window.__pmShowModelPicker = () => {
         const existing = document.getElementById('pm-model-dropdown');
         if (existing) { existing.remove(); return; }
-        if (!runtime.modelList.length) { const s = document.getElementById('pm-api-status'); if (s) { s.textContent = '⚠️ 先拉取模型'; s.style.color = '#ff9500'; } return; }
+        if (!runtime.modelList.length) { const s = document.getElementById('pm-api-status'); if (s) { s.textContent = '请先拉取模型'; s.style.color = '#ff9500'; } return; }
         const input = document.getElementById('pm-cfg-model'), rect = input.getBoundingClientRect();
         const dd = document.createElement('div'); dd.id = 'pm-model-dropdown'; dd.className = 'pm-model-dropdown';
         dd.style.setProperty('--pm-model-visible-rows', String(MODEL_VISIBLE_ROWS));

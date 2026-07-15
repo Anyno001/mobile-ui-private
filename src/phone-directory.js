@@ -241,9 +241,13 @@ export function installPhoneDirectory(state, deps) {
         <span id="pm-autogen-btn" onclick="window.__pmConfirmAutoGen()" title="AI 自动生成联系人" style="cursor:pointer;display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:50%;transition:background .15s;" onmouseenter="this.style.background='rgba(0,122,255,0.1)'" onmouseleave="this.style.background='transparent'">
           ${REFRESH_ICON_SVG}
         </span>
-        <span onclick="document.getElementById('pm-overlay').remove()" class="pm-modal-close">✕</span>
+        <span onclick="window.__pmCloseOverlay()" class="pm-modal-close">✕</span>
       </span>
     </div>
+    <button type="button" class="pm-forum-entry" onclick="window.__pmOpenForumMode()">
+      <b>论坛模式</b>
+      <span>开发中，入口已预留</span>
+    </button>
     <div class="pm-bi-bar"><span>🧠 勾选角色/群聊可被主楼读取短信</span><span class="pm-bi-tip">已选 ${checked.length}/${MAX_BIDIRECTIONAL}</span></div>
     <div class="pm-modal-list">
         ${empty ? '<div style="text-align:center;color:#999;padding:20px;font-size:13px;">暂无联系人</div>' : (renderGroups + renderSingle)}

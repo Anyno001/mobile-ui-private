@@ -5,7 +5,7 @@ import {
 
 export function installPhoneControlCenter(state, deps) {
     const {
-        runtime, getStorageId, makeOverlay, parsePendingInput, queuePendingText,
+        runtime, getStorageId, makeOverlay, parsePendingInput,
         renderPendingConversation, syncGenerationControls,
     } = deps;
 
@@ -21,18 +21,30 @@ export function installPhoneControlCenter(state, deps) {
         if (!items.length) return '<div class="pm-pending-empty">还没有暂存消息</div>';
         return items.map(item => `
 <div class="pm-pending-row" data-item-id="${item.id}">
-  <div class="pm-pending-copy">
-    <span class="pm-pending-state" data-status="${item.status}">${item.status === 'failed' ? '提交失败' : item.status === 'submitting' ? '提交中' : '待提交'}</span>
-    <div>${escapeHtml(item.rawText || item.plainText || `【${item.directorNote}】`)}</div>
-  </div>
-  <button onclick="window.__pmEditPending(${item.id})" ${item.status === 'submitting' ? 'disabled' : ''}>编辑</button>
-  <button onclick="window.__pmDeletePending(${item.id})" ${item.status === 'submitting' ? 'disabled' : ''}>删除</button>
+  ${editingTarget?.itemId === item.id ? `
+    <input id="pm-pending-edit-input" class="pm-cfg-input" value="${escapeAttr(item.rawText || item.plainText || `【${item.directorNote}】`)}">
+    <button onclick="window.__pmSavePendingEdit(${item.id})">保存</button>
+    <button onclick="window.__pmCancelPendingEdit()">取消</button>
+  ` : `
+    <div class="pm-pending-copy">
+      <span class="pm-pending-state" data-status="${item.status}">${item.status === 'failed' ? '提交失败' : item.status === 'submitting' ? '提交中' : '待提交'}</span>
+      <div>${escapeHtml(item.rawText || item.plainText || `【${item.directorNote}】`)}</div>
+    </div>
+    <button onclick="window.__pmEditPending(${item.id})" ${item.status === 'submitting' ? 'disabled' : ''}>编辑</button>
+    <button onclick="window.__pmDeletePending(${item.id})" ${item.status === 'submitting' ? 'disabled' : ''}>删除</button>
+  `}
 </div>`).join('');
     }
 
     window.__pmRefreshControlCenter = () => {
         const list = document.getElementById('pm-pending-list');
         if (list) list.innerHTML = renderPendingList();
+        const target = getTarget();
+        const count = target ? getPendingMessages(runtime, target.storageId, target.saveKey).length : 0;
+        const heading = document.querySelector('.pm-control-heading b');
+        if (heading) heading.textContent = `暂存消息（${count}）`;
+        const submit = document.querySelector('.pm-submit-pending-btn');
+        if (submit) submit.dataset.empty = String(count === 0);
         syncGenerationControls();
     };
 
@@ -47,41 +59,32 @@ export function installPhoneControlCenter(state, deps) {
     window.__pmShowControlCenter = () => {
         const target = getTarget();
         if (!sameTarget(editingTarget, target)) editingTarget = null;
-        const editingItem = editingTarget && target
-            ? getPendingMessages(runtime, target.storageId, target.saveKey).find(item => item.id === editingTarget.itemId)
-            : null;
-        if (editingTarget && !editingItem) editingTarget = null;
-        const draft = editingItem?.rawText || state.phoneWindow?.querySelector('.pm-input')?.value || '';
+        const pendingCount = target ? getPendingMessages(runtime, target.storageId, target.saveKey).length : 0;
         makeOverlay(`
 <div class="pm-modal pm-modal-wide pm-control-center">
-  <div class="pm-modal-header"><b>收纳控制中心</b><span onclick="window.__pmCloseOverlay()" class="pm-modal-close">×</span></div>
-  <div class="pm-control-tools">
-    <button onclick="window.__pmShowConfig()">设置与 API</button>
-    <button onclick="window.__pmShowEmojiPicker()">表情包</button>
+  <div class="pm-modal-header"><b>快捷工具</b><span onclick="window.__pmCloseOverlay()" class="pm-modal-close">×</span></div>
+  <div class="pm-control-scroll">
+  <div class="pm-tool-grid">
+    <button onclick="window.__pmShowConversationSettings()"><b>设置</b><span>当前聊天行为</span></button>
+    <button onclick="window.__pmOpenSettingsTab('api')"><b>API</b><span>模型与接口</span></button>
+    <button onclick="window.__pmOpenSettingsTab('look')"><b>外观</b><span>主题与背景</span></button>
+    <button onclick="window.__pmOpenSettingsTab('other')"><b>其他</b><span>备份与偏好</span></button>
+    <button onclick="window.__pmShowEmojiPicker()"><b>表情包</b><span>选择聊天表情</span></button>
+    <button onclick="window.__pmStartDeleteMode()" class="pm-tool-danger"><b>删除信息</b><span>选择聊天记录</span></button>
+    <button onclick="window.__pmOpenForumMode()"><b>论坛模式</b><span>开发中，入口已预留</span></button>
   </div>
-  <div class="pm-control-compose">
-    <textarea id="pm-expanded-textarea" class="pm-cfg-input" rows="5" placeholder="输入一条消息，加入暂存队列">${escapeAttr(draft)}</textarea>
-    <button onclick="window.__pmConfirmExpandInput()">${editingTarget ? '保存修改' : '加入暂存'}</button>
-  </div>
-  <div class="pm-control-heading"><b>暂存消息</b><button onclick="window.__pmClearPending()">清空</button></div>
+  <div class="pm-control-heading"><b>暂存消息（${pendingCount}）</b><button onclick="window.__pmClearPending()">清空</button></div>
   <div id="pm-pending-list" class="pm-pending-list">${renderPendingList()}</div>
   <div class="pm-control-generation-status"></div>
-  <button class="pm-submit-pending-btn" onclick="window.__pmSubmitPending()">最终提交给 AI</button>
+  </div>
+  <button class="pm-submit-pending-btn" data-empty="${pendingCount === 0}" onclick="window.__pmSubmitPending()">最终提交给 AI</button>
 </div>`, { onClose: () => { editingTarget = null; } });
         syncGenerationControls();
-        document.getElementById('pm-expanded-textarea')?.focus();
     };
 
-    window.__pmShowExpandInput = window.__pmShowControlCenter;
-    window.__pmConfirmExpandInput = () => {
-        const textarea = document.getElementById('pm-expanded-textarea');
-        if (!textarea || !queuePendingText(textarea.value)) return;
-        textarea.value = '';
-        const smallInput = state.phoneWindow?.querySelector('.pm-input');
-        if (smallInput) smallInput.value = '';
-        window.__pmRefreshControlCenter();
-        textarea.focus();
-    };
+    window.__pmOpenSettingsTab = tab => window.__pmShowConfig(tab);
+    window.__pmStartDeleteMode = () => { window.__pmCloseOverlay(); window.__pmToggleSelect(); };
+    window.__pmOpenForumMode = () => alert('论坛模式入口已保留，功能将在后续版本接入。');
 
     function redrawPendingConversation() {
         const target = getTarget();
@@ -93,14 +96,28 @@ export function installPhoneControlCenter(state, deps) {
         if (!target) return;
         const item = getPendingMessages(runtime, target.storageId, target.saveKey)
             .find(candidate => candidate.id === itemId);
-        const textarea = document.getElementById('pm-expanded-textarea');
-        if (!item || item.status === 'submitting' || !textarea) return;
+        if (!item || item.status === 'submitting') return;
         editingTarget = { ...target, itemId };
-        textarea.value = item.rawText || item.plainText || `【${item.directorNote}】`;
-        const button = document.querySelector('.pm-control-compose > button');
-        if (button) button.textContent = '保存修改';
-        textarea.focus();
-        textarea.selectionStart = textarea.selectionEnd = textarea.value.length;
+        window.__pmRefreshControlCenter();
+        const input = document.getElementById('pm-pending-edit-input');
+        input?.focus();
+        if (input) input.selectionStart = input.selectionEnd = input.value.length;
+    };
+
+    window.__pmSavePendingEdit = itemId => {
+        const target = getTarget();
+        const input = document.getElementById('pm-pending-edit-input');
+        if (!sameTarget(editingTarget, target) || editingTarget.itemId !== itemId || !input) return;
+        const parsed = parsePendingInput(input.value);
+        if (!parsed || !updatePendingMessage(runtime, target.storageId, target.saveKey, itemId, parsed)) return;
+        editingTarget = null;
+        redrawPendingConversation();
+        window.__pmRefreshControlCenter();
+    };
+
+    window.__pmCancelPendingEdit = () => {
+        editingTarget = null;
+        window.__pmRefreshControlCenter();
     };
 
     window.__pmDeletePending = itemId => {
@@ -122,35 +139,5 @@ export function installPhoneControlCenter(state, deps) {
         redrawPendingConversation();
         window.__pmRefreshControlCenter();
     };
-
-    const originalConfirm = window.__pmConfirmExpandInput;
-    window.__pmConfirmExpandInput = () => {
-        const textarea = document.getElementById('pm-expanded-textarea');
-        if (!textarea) return;
-        const target = getTarget();
-        if (!sameTarget(editingTarget, target)) {
-            editingTarget = null;
-            originalConfirm();
-            return;
-        }
-        const parsed = parsePendingInput(textarea.value);
-        if (!target || !parsed) return;
-        const updated = updatePendingMessage(
-            runtime, target.storageId, target.saveKey, editingTarget.itemId, parsed,
-        );
-        if (!updated) {
-            editingTarget = null;
-            originalConfirm();
-            return;
-        }
-        editingTarget = null;
-        textarea.value = '';
-        const button = document.querySelector('.pm-control-compose > button');
-        if (button) button.textContent = '加入暂存';
-        redrawPendingConversation();
-        window.__pmRefreshControlCenter();
-        textarea.focus();
-    };
-
     window.__pmResetPendingEditor = () => { editingTarget = null; };
 }

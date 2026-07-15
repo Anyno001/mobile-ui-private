@@ -37,7 +37,8 @@ export function installPhoneFoundation(state, deps) {
     function syncGenerationControls() {
         const disabled = !!state.isGenerating;
         for (const button of document.querySelectorAll('.pm-submit-pending-btn')) {
-            button.disabled = disabled;
+            const empty = button.dataset.empty === 'true';
+            button.disabled = disabled || empty;
         }
         const status = document.querySelector('.pm-control-generation-status');
         if (status) status.textContent = disabled ? 'AI 正在回复，暂存仍可继续编辑' : '';
@@ -85,8 +86,10 @@ export function installPhoneFoundation(state, deps) {
 
 
     function applyTheme() {
+        const t = window.__pmTheme || {}, p = THEME_PRESETS[t.preset] || THEME_PRESETS.default;
+        const darkMode = t.darkMode || 'light';
+        document.getElementById('pm-overlay')?.setAttribute('data-theme', darkMode);
         const el = state.phoneWindow; if (!el) return;
-        const t = window.__pmTheme, p = THEME_PRESETS[t.preset] || THEME_PRESETS.default;
         const rBg = t.customRight || p.right, lBg = t.customLeft || p.left;
         const rTxt = t.customRight ? contrastText(t.customRight) : p.rightText;
         const lTxt = t.customLeft ? contrastText(t.customLeft) : p.leftText;
@@ -95,7 +98,6 @@ export function installPhoneFoundation(state, deps) {
         el.style.setProperty('--pm-r-txt', rTxt); el.style.setProperty('--pm-l-txt', lTxt);
         el.style.setProperty('--pm-border', border);
         el.style.setProperty('--pm-frost', p.frost ? '1' : '0');
-        const darkMode = t.darkMode || 'light';
         el.setAttribute('data-theme', darkMode);
     }
 
@@ -352,6 +354,7 @@ export function installPhoneFoundation(state, deps) {
     function makeOverlay(html, options = {}) {
         closeOverlay('replace');
         const ov = document.createElement('div'); ov.id = 'pm-overlay';
+        ov.dataset.theme = window.__pmTheme?.darkMode || 'light';
         if (POPOVER_SUPPORTED) ov.setAttribute('popover', 'manual');
         ov.__pmOnClose = typeof options.onClose === 'function' ? options.onClose : null;
         ov.innerHTML = html;

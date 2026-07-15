@@ -1,4 +1,5 @@
 import { CONTEXT_LIMIT, SAVE_LIMIT } from './constants.js';
+import { buildChatPreferencePrompt } from './behavior-config.js';
 import { createHistoryWindow } from './history-window.js';
 import { cleanResponse, splitToSentences } from './prompts.js';
 import {
@@ -71,12 +72,15 @@ export function installPhoneChat(state, deps) {
         }
 
         const antiFluff = buildAntiFluff();
-        // 注入表情包提示词
-        const emojiPrompt = getEmojiPrompt(saveKey, storageId, window.__pmPokeConfig, window.__pmEmojis);
-        if (emojiPrompt) { systemPrompt += emojiPrompt; injectedInstruction += emojiPrompt; }
-        // 注入字数限制提示词
-        const wordyPrompt = getWordyPrompt(window.__pmWordyLimit);
-        if (wordyPrompt) { systemPrompt += wordyPrompt; injectedInstruction += wordyPrompt; }
+        const preferencePrompt = buildChatPreferencePrompt({
+            store: window.__pmCharacterBehavior,
+            storageId,
+            names: isGroup ? groupMembers : currentPersona,
+            isGroup,
+            emojiPrompt: getEmojiPrompt(saveKey, storageId, window.__pmPokeConfig, window.__pmEmojis),
+            wordyPrompt: getWordyPrompt(window.__pmWordyLimit),
+        });
+        if (preferencePrompt) { systemPrompt += preferencePrompt; injectedInstruction += preferencePrompt; }
         systemPrompt += `\n\n${antiFluff}`;
         injectedInstruction += `\n\n${antiFluff}`;
 

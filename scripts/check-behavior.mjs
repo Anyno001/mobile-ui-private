@@ -3,6 +3,7 @@ import {
     EXTENSION_PROMPT_POSITIONS, MAX_INJECTION_DEPTH,
 } from '../src/constants.js';
 import {
+    buildCharacterBehaviorPrompt, buildChatPreferencePrompt,
     DEFAULT_CHARACTER_BEHAVIOR, getCharacterBehavior,
     normalizeCharacterBehavior, normalizeCharacterBehaviorStore,
     normalizeGroupInjection, normalizeGroupMeta, normalizeGroupMetaStore,
@@ -38,6 +39,50 @@ const behaviorStore = normalizeCharacterBehaviorStore({
 assert.equal(behaviorStore.story.Alice.messageLength, 'short');
 assert.equal(getCharacterBehavior(behaviorStore, 'story', 'Bob').emojiFrequency, 'frequent');
 assert.deepEqual(getCharacterBehavior(behaviorStore, 'missing', 'Nobody'), DEFAULT_CHARACTER_BEHAVIOR);
+assert.equal(buildCharacterBehaviorPrompt({}, 'story', 'Alice', false), '');
+const singleBehaviorPrompt = buildCharacterBehaviorPrompt({ story: {
+    Alice: { privateStylePrompt: '冷淡一点', messageLength: 'short', transferFrequency: 'never' },
+} }, 'story', 'Alice', false);
+assert.match(singleBehaviorPrompt, /Alice：线上风格：冷淡一点/);
+assert.match(singleBehaviorPrompt, /消息长度：偏短/);
+assert.match(singleBehaviorPrompt, /转账：不要使用/);
+assert.match(singleBehaviorPrompt, /不得覆盖系统格式/);
+const groupBehaviorPrompt = buildCharacterBehaviorPrompt({ story: {
+    Alice: { privateStylePrompt: '私聊风格', groupStylePrompt: '群聊风格' },
+    Bob: { emojiFrequency: 'frequent' },
+} }, 'story', ['Alice', 'Bob', 'Missing'], true);
+assert.match(groupBehaviorPrompt, /Alice：线上风格：群聊风格/);
+assert.doesNotMatch(groupBehaviorPrompt, /私聊风格/);
+assert.match(groupBehaviorPrompt, /Bob：消息长度：跟随角色人设/);
+assert.match(groupBehaviorPrompt, /表情包：经常使用/);
+
+const emojiPermission = '\n\n[表情包权限]\n你可以使用 [emo:默认:1]。';
+const disabledEmojiPrompt = buildChatPreferencePrompt({
+    store: { story: { Alice: { emojiFrequency: 'never' } } },
+    storageId: 'story', names: 'Alice', isGroup: false,
+    emojiPrompt: emojiPermission, wordyPrompt: '\n\n[字数限制]短句。',
+});
+assert.doesNotMatch(disabledEmojiPrompt, /表情包权限/);
+assert.match(disabledEmojiPrompt, /表情包：不要使用/);
+assert.match(disabledEmojiPrompt, /字数限制/);
+
+const mixedEmojiPrompt = buildChatPreferencePrompt({
+    store: { story: {
+        Alice: { emojiFrequency: 'never' },
+        Bob: { emojiFrequency: 'frequent' },
+    } },
+    storageId: 'story', names: ['Alice', 'Bob'], isGroup: true,
+    emojiPrompt: emojiPermission,
+});
+assert.match(mixedEmojiPrompt, /表情包权限/);
+assert.match(mixedEmojiPrompt, /以下成员不得使用表情包：Alice/);
+assert.match(mixedEmojiPrompt, /Bob：消息长度：跟随角色人设/);
+
+const unconfiguredPreference = buildChatPreferencePrompt({
+    store: {}, storageId: 'story', names: 'Alice', isGroup: false,
+    emojiPrompt: emojiPermission,
+});
+assert.equal(unconfiguredPreference, emojiPermission);
 
 assert.deepEqual(EXTENSION_PROMPT_POSITIONS, {
     NONE: -1, IN_PROMPT: 0, IN_CHAT: 1, BEFORE_PROMPT: 2,

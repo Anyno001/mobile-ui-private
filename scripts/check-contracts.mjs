@@ -88,21 +88,38 @@ function isString(node, expected) {
   return staticString(node) === expected;
 }
 
+function collectStaticText(node) {
+  const fragments = [];
+  walk(node, child => {
+    if (child.type === 'Literal' && typeof child.value === 'string') fragments.push(child.value);
+    if (child.type === 'TemplateElement') fragments.push(child.value.cooked ?? '');
+  });
+  return fragments.join('\n');
+}
+
 function analyze(code, sourceType = 'script') {
   const result = {
     commandObject: false, commandObjectHelp: false,
     legacyCommand: false, legacyCommandHelp: false,
     backupDownload: false, legacyBackupDownload: false, styleElement: false,
     stringLiterals: new Set(), windowAssignments: new Set(),
+    windowAssignmentCounts: new Map(), windowAssignmentText: new Map(), windowAssignmentSource: new Map(),
+    functionSource: new Map(),
   };
   walk(parseJavaScript(code, sourceType), node => {
+    if (node.type === 'FunctionDeclaration' && node.id?.name) result.functionSource.set(node.id.name, code.slice(node.start, node.end));
     const literal = staticString(node);
     if (literal !== null) result.stringLiterals.add(literal);
     if (node.type === 'AssignmentExpression' && node.operator === '=') {
       const target = node.left;
       if (target?.type === 'MemberExpression' && target.object?.type === 'Identifier' && target.object.name === 'window') {
         const name = memberName(target);
-        if (name) result.windowAssignments.add(name);
+        if (name) {
+          result.windowAssignments.add(name);
+          result.windowAssignmentCounts.set(name, (result.windowAssignmentCounts.get(name) || 0) + 1);
+          result.windowAssignmentText.set(name, collectStaticText(node.right));
+          result.windowAssignmentSource.set(name, code.slice(node.right.start, node.right.end));
+        }
       }
       if (memberName(target) === 'download') {
         const fragments = staticStringFragments(node.right);
@@ -333,15 +350,16 @@ const LEGACY_WINDOW_ENTRIES = [
   '__pmBeforeUnloadRegistered', '__pmBgGlobal',
   '__pmBgLocal', '__pmBgUrl', '__pmBidirectional', '__pmClearBg', '__pmClearCustomColor',
   '__pmConfig', '__pmConfirmAddEmojiImage', '__pmConfirmAddEmojiSet', '__pmConfirmAutoGen',
-  '__pmConfirmExpandInput', '__pmConfirmGroup', '__pmDel', '__pmDelGroup',
+  '__pmConfirmGroup', '__pmDel', '__pmDelGroup',
   '__pmDeleteEmojiImage', '__pmDeleteEmojiSet', '__pmDeleteProfile', '__pmDeleteSelected',
   '__pmEditGroup', '__pmEmojiSetDot', '__pmEmoFileRead',
   '__pmEmojis', '__pmEnd', '__pmExportData', '__pmGroupInputChanged', '__pmGroupMeta',
   '__pmHistories', '__pmImportData', '__pmIncrementCounters', '__pmOpen', '__pmPickProfile',
   '__pmPoke', '__pmPokeConfig', '__pmPokeGroup', '__pmProfiles',
   '__pmSaveAndCloseContactConfig', '__pmSaveAndCloseGroupEdit', '__pmSaveConfig', '__pmSend',
+  '__pmShowCharacterBehavior', '__pmShowConversationSettings',
   '__pmSetBorderColor', '__pmSetCustomColor', '__pmSetDarkMode', '__pmSetLayout', '__pmSetMode',
-  '__pmSetPreset', '__pmShowAddContact', '__pmShowConfig', '__pmShowExpandInput',
+  '__pmSetPreset', '__pmShowAddContact', '__pmShowConfig',
   '__pmShowEmojiPicker', '__pmShowGroupCreate', '__pmShowList', '__pmShowModelPicker',
   '__pmSwitch', '__pmSwitchContact', '__pmSwitchTab', '__pmTempText', '__pmTestApi',
   '__pmTestModel', '__pmTheme', '__pmRenderEmojiSetList', '__pmInsertEmoji',
@@ -353,8 +371,10 @@ const PHONE_ENTRY_OWNERS = {
   'phone-foundation.js': ['__pmToggleBidirectional', '__pmCloseOverlay'],
   'phone-chat.js': ['__pmSend', '__pmSubmitPending', '__pmIncrementCounters'],
   'phone-control-center.js': [
-    '__pmShowControlCenter', '__pmShowExpandInput', '__pmConfirmExpandInput',
-    '__pmRefreshControlCenter', '__pmEditPending', '__pmDeletePending', '__pmClearPending', '__pmResetPendingEditor',
+    '__pmShowControlCenter', '__pmOpenSettingsTab',
+    '__pmStartDeleteMode', '__pmOpenForumMode', '__pmRefreshControlCenter',
+    '__pmEditPending', '__pmSavePendingEdit', '__pmCancelPendingEdit',
+    '__pmDeletePending', '__pmClearPending', '__pmResetPendingEditor',
   ],
   'phone-directory.js': [
     '__pmSaveAndCloseGroupEdit', '__pmShowGroupCreate', '__pmGroupInputChanged',
@@ -365,6 +385,7 @@ const PHONE_ENTRY_OWNERS = {
   'phone-chat-poke.js': [
     '__pmAutoPoke', '__pmSaveAndCloseContactConfig', '__pmToggleAutoPoke',
     '__pmPoke', '__pmEditGroup', '__pmToggleAutoPokeGroup', '__pmPokeGroup',
+    '__pmShowCharacterBehavior', '__pmShowConversationSettings',
   ],
   'phone-lifecycle.js': [
     '__pmToggleSelect', '__pmDeleteSelected', '__pmToggleMin', '__pmEnd', '__pmOpen',
@@ -455,9 +476,76 @@ requireText('runtime.js', sourceModuleByName.get('runtime.js')?.code || '', 'pen
 requireText('phone-chat.js', sourceModuleByName.get('phone-chat.js')?.code || '', 'removePendingBatch(runtime');
 requireText('phone-chat.js', sourceModuleByName.get('phone-chat.js')?.code || '', 'rebaseRenderedHistory(historyWindow.trimmedCount)');
 requireText('phone-chat-poke.js', sourceModuleByName.get('phone-chat-poke.js')?.code || '', 'rebaseRenderedHistory(historyWindow.trimmedCount)');
-requireText('phone-control-center.js', sourceModuleByName.get('phone-control-center.js')?.code || '', 'updatePendingMessage(');
-for (const iconName of ['MENU_ICON_SVG', 'TRASH_ICON_SVG', 'CLOSE_ICON_SVG', 'CONTROL_ICON_SVG', 'SEND_ICON_SVG']) {
+const controlCenterCode = sourceModuleByName.get('phone-control-center.js')?.code || '';
+const directoryCode = sourceModuleByName.get('phone-directory.js')?.code || '';
+requireText('phone-control-center.js', controlCenterCode, 'updatePendingMessage(');
+const controlCenterAnalysis = analyze(controlCenterCode, 'module');
+const directoryAnalysis = analyze(directoryCode, 'module');
+const controlCenterTemplate = controlCenterAnalysis.windowAssignmentText.get('__pmShowControlCenter') || '';
+const directoryTemplate = directoryAnalysis.windowAssignmentText.get('__pmShowList') || '';
+const forumCallPattern = /window\.__pmOpenForumMode\s*\(\s*\)/g;
+if ((controlCenterTemplate.match(forumCallPattern) || []).length !== 1) {
+  failures.push('phone-control-center.js: control center must contain exactly one forum entry call');
+}
+if ((directoryTemplate.match(forumCallPattern) || []).length !== 1) {
+  failures.push('phone-directory.js: directory must contain exactly one forum entry call');
+}
+if (!controlCenterTemplate.includes('开发中') || !directoryTemplate.includes('开发中')) {
+  failures.push('source: both forum entries must explicitly state that the feature is in development');
+}
+const directoryForumIndex = directoryTemplate.search(forumCallPattern);
+const directoryListIndex = directoryTemplate.indexOf('pm-modal-list');
+const directoryForumButtonStart = directoryTemplate.lastIndexOf('<button', directoryForumIndex);
+const directoryForumButtonEnd = directoryTemplate.indexOf('</button>', directoryForumIndex);
+const directoryForumButton = directoryForumButtonStart >= 0 && directoryForumButtonEnd >= 0
+  ? directoryTemplate.slice(directoryForumButtonStart, directoryForumButtonEnd)
+  : '';
+if (directoryForumIndex < 0 || directoryListIndex < 0
+    || directoryForumButtonStart < 0 || directoryForumButtonEnd > directoryListIndex
+    || !directoryForumButton.includes('pm-forum-entry')) {
+  failures.push('phone-directory.js: forum entry must remain outside and before the scrollable directory list');
+}
+const forumHandlerAssignments = sourceModules.reduce((count, module) => {
+  const analysis = analyze(module.code, 'module');
+  return count + (analysis.windowAssignmentCounts.get('__pmOpenForumMode') || 0);
+}, 0);
+if (forumHandlerAssignments !== 1) failures.push(`source: expected exactly one __pmOpenForumMode assignment, got ${forumHandlerAssignments}`);
+const foundationCode = sourceModuleByName.get('phone-foundation.js')?.code || '';
+const settingsCode = sourceModuleByName.get('settings-ui.js')?.code || '';
+const foundationAnalysis = analyze(foundationCode, 'module');
+const settingsAnalysis = analyze(settingsCode, 'module');
+const makeOverlaySource = foundationAnalysis.functionSource.get('makeOverlay') || '';
+const applyThemeSource = foundationAnalysis.functionSource.get('applyTheme') || '';
+const setDarkModeSource = settingsAnalysis.windowAssignmentSource.get('__pmSetDarkMode') || '';
+const overlayThemeSyncPattern = /getElementById\(['"]pm-overlay['"]\)[\s\S]*?setAttribute\(['"]data-theme['"]/;
+if (!/createElement\(['"]div['"]\)/.test(makeOverlaySource)
+    || !/\.id\s*=\s*['"]pm-overlay['"]/.test(makeOverlaySource)
+    || !/\.dataset\.theme\s*=/.test(makeOverlaySource)) {
+  failures.push('phone-foundation.js: makeOverlay must initialize data-theme on the real pm-overlay root');
+}
+if (!overlayThemeSyncPattern.test(applyThemeSource)) {
+  failures.push('phone-foundation.js: applyTheme must synchronize data-theme to an existing pm-overlay');
+}
+if (!overlayThemeSyncPattern.test(setDarkModeSource)) {
+  failures.push('settings-ui.js: __pmSetDarkMode must synchronize data-theme to the active pm-overlay');
+}
+requireText('style.css', css, '#pm-overlay[data-theme="dark"] .pm-forum-entry');
+if (css.includes('#pm-iphone[data-theme="dark"] .pm-forum-entry')) failures.push('style.css: forum overlay dark theme must not depend on #pm-iphone ancestry');
+requireText('bundle', bundle, 'pm-forum-entry');
+for (const iconName of ['MENU_ICON_SVG', 'CLOSE_ICON_SVG', 'CONTROL_ICON_SVG', 'SEND_ICON_SVG']) {
   requireText('icons.js', sourceModuleByName.get('icons.js')?.code || '', `export const ${iconName}`);
+}
+
+const phoneChatCode = sourceModuleByName.get('phone-chat.js')?.code || '';
+const phoneChatPokeCode = sourceModuleByName.get('phone-chat-poke.js')?.code || '';
+const preferenceCallCount = (phoneChatCode.match(/buildChatPreferencePrompt\s*\(/g) || []).length
+  + (phoneChatPokeCode.match(/buildChatPreferencePrompt\s*\(/g) || []).length;
+if (preferenceCallCount !== 4) {
+  failures.push(`behavior prompt: expected 4 generation-path calls, found ${preferenceCallCount}`);
+}
+if (phoneChatCode.includes('buildCharacterBehaviorPrompt(')
+    || phoneChatPokeCode.includes('buildCharacterBehaviorPrompt(')) {
+  failures.push('behavior prompt: generation paths must use the unified preference assembler');
 }
 requireText('contact-generator.js', sourceModuleByName.get('contact-generator.js')?.code || '', 'installContactGenerator(state, deps)');
 requireText('contact-generator.js', sourceModuleByName.get('contact-generator.js')?.code || '', '!state.generationTask');
@@ -491,12 +579,18 @@ if (manifest.js !== 'index.js') failures.push('manifest: js entry must remain in
 if (manifest.css !== 'style.css') failures.push('manifest: css entry must be style.css');
 
 if (packageJson.name !== 'tianyin-xiaojian-st') failures.push('package: name must be tianyin-xiaojian-st');
+if (manifest.version !== packageJson.version) failures.push('version: manifest.json and package.json must match');
 if (packageJson.private !== true) failures.push('package: private must remain true');
 if (!/personal/i.test(packageJson.description || '')) failures.push('package: description must identify personal use');
 if (/SillyTavern|酒馆|TauriTavern/i.test(packageJson.description || '')) failures.push('package: description must not contain host platform keywords');
 if (packageLock.name !== packageJson.name || packageLock.packages?.['']?.name !== packageJson.name) {
   failures.push('package-lock: root package name must match package.json');
 }
+if (packageLock.version !== packageJson.version
+    || packageLock.packages?.['']?.version !== packageJson.version) {
+  failures.push('version: package-lock.json root versions must match package.json');
+}
+if (packageJson.version !== '1.1.0') failures.push('version: expected release version 1.1.0');
 
 const readmeLines = readme.split(/\r?\n/);
 if (readmeLines[0] !== '# 天音小笺') failures.push('README: title must be 天音小笺');

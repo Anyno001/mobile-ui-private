@@ -1,6 +1,9 @@
 import {
     CONTEXT_LIMIT, SAVE_LIMIT,
 } from './constants.js';
+import {
+    buildChatPreferencePrompt, getCharacterBehavior, normalizeCharacterBehavior,
+} from './behavior-config.js';
 import { createHistoryWindow } from './history-window.js';
 import { cleanResponse, splitToSentences } from './prompts.js';
 import { escapeAttr, escapeHtml, safeJS } from './ui.js';
@@ -8,7 +11,7 @@ import {
     getEmojiPrompt, getWordyPrompt, parseGroupResponse,
 } from './messaging.js';
 import {
-    saveHistories, savePokeConfig,
+    saveCharacterBehavior, saveHistories, savePokeConfig,
 } from './storage.js';
 import {
     buildUserBlock, buildHistoryText, buildPokeSystemPrompt,
@@ -53,9 +56,6 @@ export function installPhoneChatPoke(state, deps) {
         const smsHistoryText = buildHistoryText(targetHistory, CONTEXT_LIMIT, userName, isGroup ? null : contactName);
 
         const systemPrompt = buildPokeSystemPrompt(isGroup, contactName, userName);
-        // 修复：注入表情包提示词（与 fetchSMS 保持一致）
-        // 修复：群聊拍一拍使用 contactName（即 state.currentGroupKey），单人使用 contactName，两者相同，已正确
-        const emojiPrompt = getEmojiPrompt(contactName, id, window.__pmPokeConfig, window.__pmEmojis);
         const basePrompt = isGroup
             ? buildPokeGroupPrompt({
                 groupName: groupMeta.name,
@@ -67,7 +67,14 @@ export function installPhoneChatPoke(state, deps) {
                 contactName, userName, userBlock, cardDesc, cardPersonality,
                 cardScenario, cardMesExample, worldBookText, mainChatText, smsHistoryText,
               });
-        const userPrompt = basePrompt + (emojiPrompt || '') + getWordyPrompt(window.__pmWordyLimit);
+        const userPrompt = basePrompt + buildChatPreferencePrompt({
+            store: window.__pmCharacterBehavior,
+            storageId: id,
+            names: isGroup ? groupMembers : contactName,
+            isGroup,
+            emojiPrompt: getEmojiPrompt(contactName, id, window.__pmPokeConfig, window.__pmEmojis),
+            wordyPrompt: getWordyPrompt(window.__pmWordyLimit),
+        });
 
             const raw = await callAI(systemPrompt, userPrompt);
             if (!isGenerationTaskActive(task)) return;
@@ -146,6 +153,7 @@ export function installPhoneChatPoke(state, deps) {
         const config = window.__pmPokeConfig[id]?.[contactName] || {
             autoPoke: { enabled: false, interval: 3, counter: 0 }
         };
+        const behavior = getCharacterBehavior(window.__pmCharacterBehavior, id, contactName);
         const assignedEmojis = config.emojis || [];
 
         const emojiCheckHtml = window.__pmEmojis.length ? `
@@ -172,7 +180,33 @@ export function installPhoneChatPoke(state, deps) {
         <b>${escapeHtml(contactName)} 设置</b>
         <span onclick="window.__pmSaveAndCloseContactConfig('${safeJS(contactName)}')" class="pm-modal-close">✕</span>
     </div>
-    <div style="padding:16px;display:flex;flex-direction:column;gap:8px;">
+    <div class="pm-contact-settings-scroll">
+        <div class="pm-cfg-label">私聊线上风格</div>
+        <textarea id="pm-behavior-private" class="pm-cfg-input" rows="2" maxlength="2000" placeholder="例如：回复克制、少用语气词">${escapeHtml(behavior.privateStylePrompt)}</textarea>
+        <div class="pm-cfg-label">群聊发言风格</div>
+        <textarea id="pm-behavior-group" class="pm-cfg-input" rows="2" maxlength="2000" placeholder="例如：群里更简短，偶尔接话">${escapeHtml(behavior.groupStylePrompt)}</textarea>
+        <div class="pm-behavior-grid">
+          <label>消息长短
+            <select id="pm-behavior-length" class="pm-cfg-input">
+              <option value="persona" ${behavior.messageLength === 'persona' ? 'selected' : ''}>跟随人设</option>
+              <option value="short" ${behavior.messageLength === 'short' ? 'selected' : ''}>偏短</option>
+              <option value="medium" ${behavior.messageLength === 'medium' ? 'selected' : ''}>中等</option>
+              <option value="long" ${behavior.messageLength === 'long' ? 'selected' : ''}>偏长</option>
+            </select>
+          </label>
+          ${[
+              ['transfer', '转账频率', behavior.transferFrequency],
+              ['image', '图片频率', behavior.imageFrequency],
+              ['emoji', '表情包频率', behavior.emojiFrequency],
+          ].map(([key, label, value]) => `<label>${label}
+            <select id="pm-behavior-${key}" class="pm-cfg-input">
+              <option value="never" ${value === 'never' ? 'selected' : ''}>禁用</option>
+              <option value="rare" ${value === 'rare' ? 'selected' : ''}>很少</option>
+              <option value="occasional" ${value === 'occasional' ? 'selected' : ''}>偶尔</option>
+              <option value="frequent" ${value === 'frequent' ? 'selected' : ''}>经常</option>
+            </select>
+          </label>`).join('')}
+        </div>
         ${emojiCheckHtml}
         <div style="margin-top:-6px;">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
@@ -205,14 +239,48 @@ export function installPhoneChatPoke(state, deps) {
     </div>`);
     }
 
+    window.__pmShowCharacterBehavior = contactName => showContactConfig(contactName);
+    window.__pmShowConversationSettings = () => {
+        if (!state.isGroupChat) {
+            showContactConfig(state.currentPersona);
+            return;
+        }
+        const members = state.groupMembers.slice();
+        makeOverlay(`
+    <div class="pm-modal pm-modal-wide">
+      <div class="pm-modal-header"><b>成员聊天行为</b><span onclick="window.__pmCloseOverlay()" class="pm-modal-close">✕</span></div>
+      <div class="pm-member-behavior-list">
+        ${members.map(name => `<button onclick="window.__pmShowCharacterBehavior('${safeJS(name)}')">
+          <b>${escapeHtml(name)}</b><span>私聊风格、群聊风格与消息频率</span>
+        </button>`).join('')}
+      </div>
+      <div class="pm-modal-add">
+        <button onclick="window.__pmEditGroup()" style="width:100%;">群聊信息与自动消息</button>
+      </div>
+    </div>`);
+    };
+
     window.__pmSaveAndCloseContactConfig = (contactName) => {
         const checkEl = document.getElementById('pm-poke-check');
         const intervalEl = document.getElementById('pm-poke-interval');
         const emojiChecks = document.querySelectorAll('.pm-emoji-assign-check.is-checked');
         const selectedEmojis = Array.from(emojiChecks).map(cb => cb.dataset.id);
+        const id = getStorageId();
+        if (!window.__pmCharacterBehavior[id]) window.__pmCharacterBehavior[id] = {};
+        const behavior = normalizeCharacterBehavior({
+            privateStylePrompt: document.getElementById('pm-behavior-private')?.value || '',
+            groupStylePrompt: document.getElementById('pm-behavior-group')?.value || '',
+            messageLength: document.getElementById('pm-behavior-length')?.value,
+            transferFrequency: document.getElementById('pm-behavior-transfer')?.value,
+            imageFrequency: document.getElementById('pm-behavior-image')?.value,
+            emojiFrequency: document.getElementById('pm-behavior-emoji')?.value,
+        });
+        Object.defineProperty(window.__pmCharacterBehavior[id], contactName, {
+            value: behavior, enumerable: true, configurable: true, writable: true,
+        });
+        saveCharacterBehavior();
 
         if (checkEl && intervalEl) {
-            const id = getStorageId();
             if (!window.__pmPokeConfig[id]) window.__pmPokeConfig[id] = {};
 
             const enabled = checkEl.classList.contains('is-checked');
@@ -287,9 +355,7 @@ export function installPhoneChatPoke(state, deps) {
 
         const systemPrompt = buildPokeSystemPrompt(isGroup, contactName, userName);
 
-        // 修复：注入表情包提示词（与 fetchSMS 保持一致）
         const targetContactKey = saveKey;
-        const emojiPrompt = getEmojiPrompt(targetContactKey, storageId, window.__pmPokeConfig, window.__pmEmojis);
         const basePrompt = isGroup
             ? buildPokeGroupPrompt({
                 groupName: groupDisplayName || '群聊', memberList: groupMembers.join('、'),
@@ -300,9 +366,14 @@ export function installPhoneChatPoke(state, deps) {
                 contactName, userName, userBlock, cardDesc, cardPersonality,
                 cardScenario, cardMesExample, worldBookText, mainChatText, smsHistoryText,
               });
-        const userPrompt = basePrompt
-            + (emojiPrompt ? emojiPrompt : '')
-            + getWordyPrompt(window.__pmWordyLimit);
+        const userPrompt = basePrompt + buildChatPreferencePrompt({
+            store: window.__pmCharacterBehavior,
+            storageId,
+            names: isGroup ? groupMembers : contactName,
+            isGroup,
+            emojiPrompt: getEmojiPrompt(targetContactKey, storageId, window.__pmPokeConfig, window.__pmEmojis),
+            wordyPrompt: getWordyPrompt(window.__pmWordyLimit),
+        });
 
             const raw = await callAI(systemPrompt, userPrompt);
             if (!isGenerationTaskActive(task)) return;
@@ -418,8 +489,14 @@ export function installPhoneChatPoke(state, deps) {
             userName, userBlock, cardDesc, cardPersonality, cardScenario,
             worldBookText, mainChatText, smsHistoryText,
         })
-            + (getEmojiPrompt(saveKey, storageId, window.__pmPokeConfig, window.__pmEmojis) || '')
-            + getWordyPrompt(window.__pmWordyLimit);
+            + buildChatPreferencePrompt({
+                store: window.__pmCharacterBehavior,
+                storageId,
+                names: groupMembers,
+                isGroup: true,
+                emojiPrompt: getEmojiPrompt(saveKey, storageId, window.__pmPokeConfig, window.__pmEmojis),
+                wordyPrompt: getWordyPrompt(window.__pmWordyLimit),
+            });
 
             const raw = await callAI(systemPrompt, userPrompt);
             if (!isGenerationTaskActive(task)) return;

@@ -158,8 +158,8 @@ export function installEmojiUi({ makeOverlay, saveEmojis }) {
     window.__pmShowEmojiPicker = () => {
         const sets = window.__pmEmojis;
         if (!sets.length) return alert('还没有表情包！请先去【设置-其他】中添加。');
-        const textarea = document.getElementById('pm-expanded-textarea');
-        window.__pmTempText = textarea ? textarea.value : '';
+        const input = document.querySelector('.pm-input');
+        window.__pmTempText = input ? input.value : '';
         let activeSetIndex = 0;
 
         const renderPicker = () => {
@@ -180,7 +180,7 @@ export function installEmojiUi({ makeOverlay, saveEmojis }) {
 <div class="pm-modal pm-modal-wide" id="pm-emoji-picker-inner">
   <div class="pm-modal-header" style="justify-content:space-between;padding-right:14px;">
     <b class="pm-emoji-set-label">${escapeHtml(firstSet.name)} (${firstSet.images.length})</b>
-    <span onclick="document.getElementById('pm-overlay').remove();window.__pmShowExpandInput();" class="pm-modal-close">✕</span>
+    <span onclick="document.getElementById('pm-overlay').remove()" class="pm-modal-close">✕</span>
   </div>
   <div class="pm-emoji-imgs" id="pm-emoji-imgs-area" style="padding:12px 14px;overflow-y:auto;max-height:340px;display:flex;flex-wrap:wrap;gap:10px;justify-content:flex-start;touch-action:pan-y pinch-zoom;">${renderPickerImages(firstSet)}</div>
   <div class="pm-emoji-dots">${renderPickerDots(sets, 0)}</div>
@@ -214,12 +214,11 @@ export function installEmojiUi({ makeOverlay, saveEmojis }) {
     window.__pmInsertEmoji = code => {
         const text = window.__pmTempText || '';
         document.getElementById('pm-overlay')?.remove();
-        window.__pmShowExpandInput();
-        const textarea = document.getElementById('pm-expanded-textarea');
-        if (!textarea) return;
-        textarea.value = text + code + ' ';
-        window.__pmTempText = textarea.value;
-        textarea.focus();
-        textarea.selectionStart = textarea.selectionEnd = textarea.value.length;
+        const input = document.querySelector('.pm-input');
+        if (!input) return;
+        input.value = text + code + ' ';
+        window.__pmTempText = input.value;
+        input.focus();
+        input.selectionStart = input.selectionEnd = input.value.length;
     };
 }

@@ -38,24 +38,24 @@
 .pm-input{background:var(--pm-input-bg,#f2f2f7) !important;color:var(--pm-text,#000) !important;}
 
 
-#pm-iphone[data-theme="dark"] .pm-li:hover{background:#2c2c2e;}
-#pm-iphone[data-theme="dark"] .pm-modal{background:#1c1c1e !important;color:#e5e5e5 !important;}
-#pm-iphone[data-theme="dark"] .pm-modal-header{border-bottom-color:#38383a !important;}
-#pm-iphone[data-theme="dark"] .pm-modal-header b{color:#e5e5e5 !important;}
-#pm-iphone[data-theme="dark"] .pm-cfg-input{background:#2c2c2e !important;color:#e5e5e5 !important;border-color:#48484a !important;}
-#pm-iphone[data-theme="dark"] .pm-cfg-label{color:#aaa !important;}
-#pm-iphone[data-theme="dark"] .pm-cfg-tab{color:#aaa !important;}
-#pm-iphone[data-theme="dark"] .pm-cfg-tab-active{color:#0a84ff !important;}
-#pm-iphone[data-theme="dark"] .pm-cfg-tabs{border-bottom-color:#38383a !important;}
-#pm-iphone[data-theme="dark"] .pm-layout-chip,#pm-iphone[data-theme="dark"] .pm-theme-chip{background:#2c2c2e !important;color:#ccc !important;}
-#pm-iphone[data-theme="dark"] .pm-layout-active,#pm-iphone[data-theme="dark"] .pm-theme-active{border-color:#0a84ff !important;color:#0a84ff !important;background:#1c2a3a !important;}
-#pm-iphone[data-theme="dark"] .pm-bg-btn{background:#2c2c2e !important;border-color:#48484a !important;color:#ccc !important;}
-#pm-iphone[data-theme="dark"] .pm-prof-list{background:#2c2c2e !important;border-color:#48484a !important;}
-#pm-iphone[data-theme="dark"] .pm-prof-li:hover{background:#3a3a3c !important;}
-#pm-iphone[data-theme="dark"] .pm-mode-switch{background:#2c2c2e !important;}
-#pm-iphone[data-theme="dark"] .pm-mode-opt{color:#aaa !important;}
-#pm-iphone[data-theme="dark"] .pm-mode-active{background:#3a3a3c !important;color:#0a84ff !important;}
-#pm-iphone[data-theme="dark"] .pm-bi-bar{background:#2c2410 !important;border-bottom-color:#4a3a10 !important;color:#b8902a !important;}
+#pm-overlay[data-theme="dark"] .pm-li:hover{background:#2c2c2e;}
+#pm-overlay[data-theme="dark"] .pm-modal{background:#1c1c1e !important;color:#e5e5e5 !important;}
+#pm-overlay[data-theme="dark"] .pm-modal-header{border-bottom-color:#38383a !important;}
+#pm-overlay[data-theme="dark"] .pm-modal-header b{color:#e5e5e5 !important;}
+#pm-overlay[data-theme="dark"] .pm-cfg-input{background:#2c2c2e !important;color:#e5e5e5 !important;border-color:#48484a !important;}
+#pm-overlay[data-theme="dark"] .pm-cfg-label{color:#aaa !important;}
+#pm-overlay[data-theme="dark"] .pm-cfg-tab{color:#aaa !important;}
+#pm-overlay[data-theme="dark"] .pm-cfg-tab-active{color:#0a84ff !important;}
+#pm-overlay[data-theme="dark"] .pm-cfg-tabs{border-bottom-color:#38383a !important;}
+#pm-overlay[data-theme="dark"] .pm-layout-chip,#pm-overlay[data-theme="dark"] .pm-theme-chip{background:#2c2c2e !important;color:#ccc !important;}
+#pm-overlay[data-theme="dark"] .pm-layout-active,#pm-overlay[data-theme="dark"] .pm-theme-active{border-color:#0a84ff !important;color:#0a84ff !important;background:#1c2a3a !important;}
+#pm-overlay[data-theme="dark"] .pm-bg-btn{background:#2c2c2e !important;border-color:#48484a !important;color:#ccc !important;}
+#pm-overlay[data-theme="dark"] .pm-prof-list{background:#2c2c2e !important;border-color:#48484a !important;}
+#pm-overlay[data-theme="dark"] .pm-prof-li:hover{background:#3a3a3c !important;}
+#pm-overlay[data-theme="dark"] .pm-mode-switch{background:#2c2c2e !important;}
+#pm-overlay[data-theme="dark"] .pm-mode-opt{color:#aaa !important;}
+#pm-overlay[data-theme="dark"] .pm-mode-active{background:#3a3a3c !important;color:#0a84ff !important;}
+#pm-overlay[data-theme="dark"] .pm-bi-bar{background:#2c2410 !important;border-bottom-color:#4a3a10 !important;color:#b8902a !important;}
 #pm-iphone[data-theme="dark"] .pm-confirm-bar{background:#2c2410 !important;border-bottom-color:#4a3a10 !important;}
 #pm-iphone[data-theme="dark"] .pm-note{color:#666 !important;}
 #pm-iphone[data-theme="dark"] .pm-group-name{color:#aaa !important;}
@@ -156,30 +156,38 @@
 .pm-expand-btn:hover {
     color: #007aff !important;
 }
-/* 适配夜间模式的加号按钮颜色 */
+/* 适配夜间模式的快捷工具按钮颜色 */
 #pm-iphone[data-theme="dark"] .pm-expand-btn {
     color: #aaa !important;
 }
 #pm-iphone[data-theme="dark"] .pm-expand-btn:hover {
     color: #0a84ff !important;
 }
-.pm-control-center{gap:0;}
-.pm-control-tools,.pm-control-compose,.pm-control-heading{display:flex;gap:8px;padding:10px 14px;}
-.pm-control-tools button,.pm-control-compose button,.pm-control-heading button,.pm-pending-row button{border:0;border-radius:9px;padding:7px 10px;cursor:pointer;font:inherit;}
-.pm-control-tools button{flex:1;background:#f0f0f3;color:#333;}
-.pm-control-compose{align-items:stretch;}
-.pm-control-compose textarea{resize:vertical;min-height:90px;}
-.pm-control-compose button{background:#007aff;color:#fff;font-weight:600;white-space:nowrap;}
+.pm-control-center{gap:0;min-height:0;}
+.pm-control-scroll{flex:1;min-height:0;overflow-y:auto;}
+.pm-tool-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;padding:12px 14px;}
+.pm-tool-grid button{border:1px solid #e5e5e8;border-radius:12px;padding:10px 11px;background:#f7f7f9;color:#333;cursor:pointer;text-align:left;display:flex;flex-direction:column;gap:3px;font:inherit;}
+.pm-tool-grid button b{font-size:13px;}.pm-tool-grid button span{font-size:10px;color:#8e8e93;}
+.pm-tool-grid .pm-tool-danger{border-color:#ffd5d2;color:#d92d20;background:#fff5f4;}
 .pm-control-heading{align-items:center;border-top:1px solid #eee;border-bottom:1px solid #eee;}
+.pm-control-heading{display:flex;gap:8px;padding:10px 14px;}
 .pm-control-heading b{flex:1;font-size:13px;}.pm-control-heading button{background:none;color:#ff3b30;}
 .pm-pending-list{padding:8px 12px;overflow-y:auto;max-height:190px;display:flex;flex-direction:column;gap:7px;}
 .pm-pending-row{display:flex;align-items:center;gap:6px;padding:8px;border-radius:11px;background:#f7f7f9;}
+.pm-pending-row .pm-cfg-input{flex:1;min-width:0;}
 .pm-pending-copy{flex:1;min-width:0;font-size:12px;line-height:1.35;word-break:break-word;}
 .pm-pending-state{display:inline-block;margin-bottom:3px;font-size:10px;color:#8e8e93;}.pm-pending-state[data-status="failed"]{color:#ff3b30;}
 .pm-pending-row button{background:#e9e9ed;color:#555;font-size:11px;}.pm-pending-row button:disabled{opacity:.45;cursor:not-allowed;}
 .pm-pending-empty,.pm-control-generation-status{text-align:center;color:#999;font-size:11px;padding:10px;}
-.pm-submit-pending-btn{margin:0 14px 14px;border:0;border-radius:11px;padding:11px;background:#34c759;color:#fff;font-weight:700;cursor:pointer;}.pm-submit-pending-btn:disabled{background:#aaa;cursor:not-allowed;}
-#pm-iphone[data-theme="dark"] .pm-control-tools button,#pm-iphone[data-theme="dark"] .pm-pending-row{background:#2c2c2e;color:#ddd;}
+.pm-submit-pending-btn{flex-shrink:0;margin:10px 14px 14px;border:0;border-radius:11px;padding:11px;background:#34c759;color:#fff;font-weight:700;cursor:pointer;}.pm-submit-pending-btn:disabled{background:#aaa;cursor:not-allowed;}
+#pm-overlay[data-theme="dark"] .pm-tool-grid button,#pm-overlay[data-theme="dark"] .pm-pending-row{background:#2c2c2e;color:#ddd;border-color:#3a3a3c;}
+.pm-contact-settings-scroll{padding:16px;display:flex;flex-direction:column;gap:8px;overflow-y:auto;min-height:0;}
+.pm-behavior-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;}
+.pm-behavior-grid label{display:flex;flex-direction:column;gap:4px;font-size:11px;color:#777;}
+.pm-member-behavior-list{display:flex;flex-direction:column;gap:8px;padding:12px 14px;overflow-y:auto;min-height:0;}
+.pm-member-behavior-list button{border:1px solid #e5e5e8;border-radius:12px;padding:10px 12px;background:#f7f7f9;color:#333;text-align:left;display:flex;flex-direction:column;gap:3px;cursor:pointer;}
+.pm-member-behavior-list button b{font-size:13px;}.pm-member-behavior-list button span{font-size:10px;color:#8e8e93;}
+#pm-overlay[data-theme="dark"] .pm-member-behavior-list button{background:#2c2c2e;color:#ddd;border-color:#3a3a3c;}
 #pm-overlay{position:fixed !important;inset:0 !important;margin:0 !important;width:100vw !important;height:100vh !important;height:100dvh !important;max-width:none !important;max-height:none !important;background:rgba(0,0,0,.45) !important;z-index:2147483647 !important;display:flex !important;align-items:center !important;justify-content:center !important;border:none !important;padding:0 !important;}
 .pm-modal{background:#fff !important;border-radius:20px !important;width:290px;max-height:85vh;max-height:85dvh;display:flex !important;flex-direction:column !important;overflow:hidden;box-shadow:0 16px 48px rgba(0,0,0,.28);font-family:-apple-system,BlinkMacSystemFont,'PingFang SC',sans-serif !important;}
 .pm-modal-wide{width:320px;}
@@ -192,6 +200,12 @@
 .pm-cfg-tab-active{color:#007aff !important;border-bottom-color:#007aff !important;}
 .pm-tab-pane{animation:pm-fade-in .15s ease;}
 @keyframes pm-fade-in{from{opacity:0}to{opacity:1}}
+.pm-forum-entry{margin:10px 14px 8px;border:1px solid #d8e7ff;border-radius:12px;padding:10px 12px;background:#f4f8ff;color:#1769c2;cursor:pointer;text-align:left;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-shrink:0;font:inherit;}
+.pm-forum-entry b{font-size:13px;}
+.pm-forum-entry span{font-size:10px;color:#6f7f91;text-align:right;}
+.pm-forum-entry:hover{background:#eaf3ff;}
+#pm-overlay[data-theme="dark"] .pm-forum-entry{background:#252c36;border-color:#354963;color:#70b7ff;}
+#pm-overlay[data-theme="dark"] .pm-forum-entry span{color:#9ba8b7;}
 .pm-bi-bar{padding:8px 14px;background:#fff8e8;border-bottom:1px solid #ffe6a8;font-size:11px;color:#885d00;display:flex;flex-direction:column;gap:3px;}
 .pm-bi-tip{font-weight:600;color:#b87a00;}
 .pm-modal-list{overflow-y:auto;flex:1;padding:6px 8px;max-height:400px;}

@@ -94,6 +94,55 @@ export function getCharacterBehavior(store, storageId, name) {
     return normalizeCharacterBehavior(config);
 }
 
+const MESSAGE_LENGTH_LABELS = Object.freeze({
+    persona: '跟随角色人设', short: '偏短', medium: '中等', long: '偏长',
+});
+const FREQUENCY_LABELS = Object.freeze({
+    never: '不要使用', rare: '很少使用', occasional: '偶尔使用', frequent: '经常使用',
+});
+
+export function buildCharacterBehaviorPrompt(store, storageId, names, isGroup) {
+    const entries = Object.hasOwn(plainObject(store), storageId) ? plainObject(store)[storageId] : null;
+    const lines = [];
+    for (const rawName of Array.isArray(names) ? names : [names]) {
+        const name = safeKey(rawName, 80);
+        if (!name || !Object.hasOwn(plainObject(entries), name)) continue;
+        const config = normalizeCharacterBehavior(plainObject(entries)[name]);
+        const style = isGroup ? config.groupStylePrompt : config.privateStylePrompt;
+        const rules = [
+            style ? `线上风格：${style}` : '',
+            `消息长度：${MESSAGE_LENGTH_LABELS[config.messageLength]}`,
+            `转账：${FREQUENCY_LABELS[config.transferFrequency]}`,
+            `图片：${FREQUENCY_LABELS[config.imageFrequency]}`,
+            `表情包：${FREQUENCY_LABELS[config.emojiFrequency]}`,
+        ].filter(Boolean).join('；');
+        lines.push(`${name}：${rules}`);
+    }
+    if (!lines.length) return '';
+    return `\n\n[用户配置的低优先级聊天行为]\n${lines.join('\n')}\n这些偏好只调整表达风格与使用频率，不得覆盖系统格式、角色事实、安全边界或当前任务要求。`;
+}
+
+export function buildChatPreferencePrompt({
+    store, storageId, names, isGroup, emojiPrompt = '', wordyPrompt = '',
+}) {
+    const list = (Array.isArray(names) ? names : [names])
+        .map(name => safeKey(name, 80))
+        .filter(Boolean);
+    const entries = Object.hasOwn(plainObject(store), storageId) ? plainObject(store)[storageId] : null;
+    const configured = list.flatMap(name => Object.hasOwn(plainObject(entries), name)
+        ? [{ name, config: normalizeCharacterBehavior(plainObject(entries)[name]) }]
+        : []);
+    const behaviorPrompt = buildCharacterBehaviorPrompt(store, storageId, list, isGroup);
+    const emojiDisabled = configured.filter(item => item.config.emojiFrequency === 'never');
+    let resolvedEmojiPrompt = emojiPrompt;
+    if (emojiDisabled.length && emojiDisabled.length === list.length) {
+        resolvedEmojiPrompt = '';
+    } else if (resolvedEmojiPrompt && emojiDisabled.length) {
+        resolvedEmojiPrompt += `\n以下成员不得使用表情包：${emojiDisabled.map(item => item.name).join('、')}。`;
+    }
+    return behaviorPrompt + resolvedEmojiPrompt + wordyPrompt;
+}
+
 export function normalizeGroupInjection(value) {
     const source = plainObject(value);
     const allowedPositions = Object.values(EXTENSION_PROMPT_POSITIONS);
