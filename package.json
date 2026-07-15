@@ -9,10 +9,11 @@
     "check:syntax": "node --check index.js",
     "check:ai": "node scripts/check-ai.mjs",
     "check:behavior": "node scripts/check-behavior.mjs",
+    "check:interactive": "node scripts/check-interactive.mjs",
     "check:pending": "node scripts/check-pending.mjs",
     "check:press": "node scripts/check-press-gesture.mjs",
     "check:contracts": "node scripts/check-contracts.mjs",
-    "check": "npm run build && npm run check:syntax && npm run check:ai && npm run check:behavior && npm run check:pending && npm run check:press && npm run check:contracts"
+    "check": "npm run build && npm run check:syntax && npm run check:ai && npm run check:behavior && npm run check:interactive && npm run check:pending && npm run check:press && npm run check:contracts"
   },
   "devDependencies": {
     "acorn": "8.15.0",

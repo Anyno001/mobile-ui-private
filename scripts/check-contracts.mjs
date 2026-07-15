@@ -156,27 +156,32 @@ function analyze(code, sourceType = 'script') {
 function analyzeBackupContract(code, sourceType = 'module') {
   const result = { exportFields: new Set(), importFields: new Set(), importReadsFileName: false };
   walk(parseJavaScript(code, sourceType), node => {
-    if (node.type !== 'AssignmentExpression' || node.operator !== '=') return;
-    const entry = memberName(node.left);
-    if (node.left?.object?.name !== 'window' || !['__pmExportData', '__pmImportData'].includes(entry)) return;
-    walk(node.right, child => {
-      if (entry === '__pmExportData' && child.type === 'VariableDeclarator'
-          && child.id?.type === 'Identifier' && child.id.name === 'data' && child.init?.type === 'ObjectExpression') {
-        for (const property of child.init.properties) {
-          const name = propertyName(property);
-          if (name) result.exportFields.add(name);
-        }
+    if (node.type === 'AssignmentExpression' && node.operator === '=') {
+      const entry = memberName(node.left);
+      if (node.left?.object?.name === 'window' && entry === '__pmExportData') {
+        walk(node.right, child => {
+          if (child.type !== 'VariableDeclarator' || child.id?.name !== 'data' || child.init?.type !== 'ObjectExpression') return;
+          for (const property of child.init.properties) {
+            const name = propertyName(property);
+            if (name) result.exportFields.add(name);
+          }
+        });
       }
-      if (entry === '__pmImportData' && child.type === 'CallExpression'
-          && memberName(child.callee) === 'hasOwn' && child.arguments[0]?.name === 'data') {
+      if (node.left?.object?.name === 'window' && entry === '__pmImportData') {
+        walk(node.right, child => {
+          if (child.type === 'MemberExpression' && child.object?.name === 'file' && memberName(child) === 'name') {
+            result.importReadsFileName = true;
+          }
+        });
+      }
+    }
+    if (node.type === 'FunctionDeclaration' && node.id?.name === 'parseBackupData') {
+      walk(node.body, child => {
+        if (child.type !== 'CallExpression' || memberName(child.callee) !== 'hasOwn' || child.arguments[0]?.name !== 'data') return;
         const name = staticString(child.arguments[1]);
         if (name) result.importFields.add(name);
-      }
-      if (entry === '__pmImportData' && child.type === 'MemberExpression'
-          && child.object?.type === 'Identifier' && child.object.name === 'file' && memberName(child) === 'name') {
-        result.importReadsFileName = true;
-      }
-    });
+      });
+    }
   });
   return result;
 }
@@ -321,8 +326,8 @@ for (const [label, , result] of analyzedFiles) {
 const SETTING_ENTRIES = [
   '__pmDeleteProfile', '__pmPickProfile', '__pmSetMode', '__pmToggleWordyLimit',
   '__pmSetDarkMode', '__pmExportData', '__pmImportData', '__pmShowConfig',
-  '__pmSwitchTab', '__pmSetPreset', '__pmSetCustomColor', '__pmClearCustomColor',
-  '__pmSetBorderColor', '__pmSetLayout', '__pmUploadBg', '__pmBgUrl',
+  '__pmSetPreset', '__pmSetCustomColor', '__pmClearCustomColor',
+  '__pmSetBorderColor', '__pmUploadBg', '__pmBgUrl',
   '__pmClearBg', '__pmTestApi', '__pmTestModel', '__pmSaveConfig', '__pmShowModelPicker',
 ];
 
@@ -358,10 +363,10 @@ const LEGACY_WINDOW_ENTRIES = [
   '__pmPoke', '__pmPokeConfig', '__pmPokeGroup', '__pmProfiles',
   '__pmSaveAndCloseContactConfig', '__pmSaveAndCloseGroupEdit', '__pmSaveConfig', '__pmSend',
   '__pmShowCharacterBehavior', '__pmShowConversationSettings',
-  '__pmSetBorderColor', '__pmSetCustomColor', '__pmSetDarkMode', '__pmSetLayout', '__pmSetMode',
+  '__pmSetBorderColor', '__pmSetCustomColor', '__pmSetDarkMode', '__pmSetMode',
   '__pmSetPreset', '__pmShowAddContact', '__pmShowConfig',
   '__pmShowEmojiPicker', '__pmShowGroupCreate', '__pmShowList', '__pmShowModelPicker',
-  '__pmSwitch', '__pmSwitchContact', '__pmSwitchTab', '__pmTempText', '__pmTestApi',
+  '__pmSwitch', '__pmSwitchContact', '__pmTempText', '__pmTestApi',
   '__pmTestModel', '__pmTheme', '__pmRenderEmojiSetList', '__pmInsertEmoji',
   '__pmToggleAutoPoke', '__pmToggleAutoPokeGroup', '__pmToggleBidirectional', '__pmToggleMin',
   '__pmToggleSelect', '__pmToggleWordyLimit', '__pmUploadBg', '__pmWordyLimit',
@@ -372,10 +377,11 @@ const PHONE_ENTRY_OWNERS = {
   'phone-chat.js': ['__pmSend', '__pmSubmitPending', '__pmIncrementCounters'],
   'phone-control-center.js': [
     '__pmShowControlCenter', '__pmOpenSettingsTab',
-    '__pmStartDeleteMode', '__pmOpenForumMode', '__pmRefreshControlCenter',
+    '__pmStartDeleteMode', '__pmRefreshControlCenter',
     '__pmEditPending', '__pmSavePendingEdit', '__pmCancelPendingEdit',
     '__pmDeletePending', '__pmClearPending', '__pmResetPendingEditor',
   ],
+  'interactive-scenes.js': ['__pmOpenForumMode'],
   'phone-directory.js': [
     '__pmSaveAndCloseGroupEdit', '__pmShowGroupCreate', '__pmGroupInputChanged',
     '__pmConfirmGroup', '__pmShowList', '__pmShowAddContact', '__pmDelGroup', '__pmDel',
@@ -436,6 +442,7 @@ if (mainFile) {
   }
   const expectedInstallerCalls = [
     'installPhoneFoundation(state, deps)', 'installConversation(state, deps)',
+    'installInteractiveScenes(state, deps)', 'installSettingsUi(deps)',
     'installPhoneChat(state, deps)', 'installPhoneControlCenter(state, deps)', 'installPhoneDirectory(state, deps)',
     'installContactGenerator(state, deps)', 'installPhoneChatPoke(state, deps)',
     'installPhoneLifecycle(state, deps)',
@@ -450,8 +457,8 @@ if (mainFile) {
   installerOrder.sort((a, b) => a.start - b.start);
   const actualOrder = installerOrder.map(item => item.name);
   const expectedOrder = [
-    'installPhoneFoundation', 'installConversation', 'installEmojiUi', 'installSettingsUi',
-    'installPhoneChat', 'installPhoneControlCenter', 'installPhoneDirectory', 'installContactGenerator',
+    'installPhoneFoundation', 'installConversation', 'installEmojiUi', 'installInteractiveScenes',
+    'installSettingsUi', 'installPhoneChat', 'installPhoneControlCenter', 'installPhoneDirectory', 'installContactGenerator',
     'installPhoneChatPoke', 'installPhoneLifecycle',
   ];
   if (actualOrder.length !== expectedOrder.length
@@ -463,7 +470,7 @@ if (mainFile) {
 }
 
 requireText('source', source, "import { installSettingsUi } from './settings-ui.js'");
-requireText('source', source, "installSettingsUi({");
+requireText('main.js', mainFile?.code || '', 'installSettingsUi(deps)');
 requireText('behavior-config.js', sourceModuleByName.get('behavior-config.js')?.code || '', 'normalizeCharacterBehaviorStore');
 requireText('behavior-config.js', sourceModuleByName.get('behavior-config.js')?.code || '', 'normalizeGroupMetaStore');
 requireText('constants.js', sourceModuleByName.get('constants.js')?.code || '', 'NONE: -1');
@@ -478,6 +485,7 @@ requireText('phone-chat.js', sourceModuleByName.get('phone-chat.js')?.code || ''
 requireText('phone-chat-poke.js', sourceModuleByName.get('phone-chat-poke.js')?.code || '', 'rebaseRenderedHistory(historyWindow.trimmedCount)');
 const controlCenterCode = sourceModuleByName.get('phone-control-center.js')?.code || '';
 const directoryCode = sourceModuleByName.get('phone-directory.js')?.code || '';
+const interactiveCode = sourceModuleByName.get('interactive-scenes.js')?.code || '';
 requireText('phone-control-center.js', controlCenterCode, 'updatePendingMessage(');
 const controlCenterAnalysis = analyze(controlCenterCode, 'module');
 const directoryAnalysis = analyze(directoryCode, 'module');
@@ -485,8 +493,8 @@ const controlCenterTemplate = controlCenterAnalysis.windowAssignmentText.get('__
 const directoryTemplate = directoryAnalysis.windowAssignmentText.get('__pmShowList') || '';
 const forumCallPattern = /window\.__pmOpenForumMode\s*\(\s*\)/g;
 if (!controlCenterTemplate.includes('data-action="forum"')
-    || !controlCenterTemplate.includes('论坛模式（开发中）')) {
-  failures.push('phone-control-center.js: compact control menu must contain one explicit in-development forum action');
+    || !controlCenterTemplate.includes('互动场景')) {
+  failures.push('phone-control-center.js: compact control menu must contain the interactive-scene action');
 }
 if ((controlCenterCode.match(forumCallPattern) || []).length !== 1) {
   failures.push('phone-control-center.js: compact control menu must dispatch to exactly one forum handler call');
@@ -494,14 +502,17 @@ if ((controlCenterCode.match(forumCallPattern) || []).length !== 1) {
 if ((directoryTemplate.match(forumCallPattern) || []).length !== 1) {
   failures.push('phone-directory.js: directory must contain exactly one forum entry call');
 }
-if (!directoryTemplate.includes('开发中')) {
-  failures.push('source: both forum entries must explicitly state that the feature is in development');
+if (!directoryTemplate.includes('AI 互动场景') || !directoryTemplate.includes('论坛、社交与 AI 文字直播')) {
+  failures.push('phone-directory.js: directory must describe the completed forum and AI text-live capability');
 }
 if (controlCenterTemplate.includes('makeOverlay') || controlCenterTemplate.includes('<span')) {
   failures.push('phone-control-center.js: compact control menu must not use the full overlay or explanatory subtitles');
 }
-for (const title of ['暂存消息', '设置', 'API', '外观', '其他', '表情包', '删除信息', '论坛模式（开发中）']) {
+for (const title of ['编辑消息', '角色设置', 'API 设置', '主题颜色', '表情包管理', '数据备份', '删除信息', '互动场景']) {
   if (!controlCenterTemplate.includes(title)) failures.push(`phone-control-center.js: compact control menu missing title ${title}`);
+}
+for (const expected of ['post-comment', 'delete-scene', 'delete-post', 'delete-comment', 'AI 文字直播', '不包含摄像头、语音或真实推流']) {
+  requireText('interactive-scenes.js', interactiveCode, expected);
 }
 for (const expected of [
   "makeOverlay(`\n<div class=\"pm-modal pm-pending-manager\">",
@@ -647,9 +658,11 @@ const readmeWithoutUpstream = readme
 if (/SillyTavern|酒馆|TauriTavern/i.test(readmeWithoutUpstream)) failures.push('README: own prose must not contain host platform keywords');
 
 const settingsUiCode = sourceModuleByName.get('settings-ui.js')?.code || '';
+const backupMetadataFields = new Set(['schemaVersion']);
 const backupFields = [
   'histories', 'config', 'theme', 'profiles', 'groupMeta',
   'pokeConfig', 'bidirectional', 'emojis', 'characterBehavior',
+  'wordyLimit', 'bgGlobal', 'bgLocal', 'interactiveScenes',
 ];
 for (const [label, contract] of [
   ['settings-ui.js', analyzeBackupContract(settingsUiCode)],
@@ -659,8 +672,10 @@ for (const [label, contract] of [
     if (!contract.exportFields.has(field)) failures.push(`${label}: backup export field missing ${field}`);
     if (!contract.importFields.has(field)) failures.push(`${label}: backup import field missing ${field}`);
   }
-  const exportOnly = [...contract.exportFields].filter(field => !contract.importFields.has(field)).sort();
-  const importOnly = [...contract.importFields].filter(field => !contract.exportFields.has(field)).sort();
+  const exportOnly = [...contract.exportFields]
+    .filter(field => !backupMetadataFields.has(field) && !contract.importFields.has(field)).sort();
+  const importOnly = [...contract.importFields]
+    .filter(field => !contract.exportFields.has(field)).sort();
   if (exportOnly.length) failures.push(`${label}: backup fields exported but not imported: ${exportOnly.join(', ')}`);
   if (importOnly.length) failures.push(`${label}: backup fields imported but not exported: ${importOnly.join(', ')}`);
   if (contract.importReadsFileName) failures.push(`${label}: backup import must not depend on file.name`);
@@ -668,11 +683,16 @@ for (const [label, contract] of [
 
 const asymmetricBackupSample = analyzeBackupContract(`
   window.__pmExportData = () => { const data = { histories: {}, newField: {} }; return data; };
-  window.__pmImportData = () => { if (Object.hasOwn(data, 'histories')) return data.histories; };
+  function parseBackupData(data) { if (Object.hasOwn(data, 'histories')) return data.histories; }
 `);
 if (![...asymmetricBackupSample.exportFields].some(field => !asymmetricBackupSample.importFields.has(field))) {
   failures.push('self-test: backup symmetry detector missed export-only field');
 }
+const symmetricBackupSample = analyzeBackupContract(`
+  window.__pmExportData = () => { const data = { histories: {} }; return data; };
+  function parseBackupData(data) { if (Object.hasOwn(data, 'histories')) return data.histories; }
+`);
+if (!symmetricBackupSample.importFields.has('histories')) failures.push('self-test: parseBackupData import detector missed field');
 
 const compatibilityStrings = [
   'PhoneModeDB', 'kv', 'PHONE_SMS_MEMORY',

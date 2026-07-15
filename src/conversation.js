@@ -46,9 +46,9 @@ export function installConversation(state, deps) {
         applyBidirectionalInjection,
     } = deps;
 
-    window.__pmSwitchContact = (key) => {
+    window.__pmSwitchContact = async (key) => {
         if (!key?.trim()) return; key = key.trim();
-        loadGroupMeta();
+        await loadGroupMeta();
         const id = getStorageId();
         // 修复：如果上下文尚未就绪导致 ID 为 unknown，给出警告，避免存入错误 key
         if (!id || id === 'sms_unknown__default') {
@@ -63,11 +63,12 @@ export function installConversation(state, deps) {
         if (groupMeta) {
             state.isGroupChat = true; state.currentGroupKey = key;
             state.groupMembers = groupMeta.members.slice();
+            state.groupExtras = Array.isArray(groupMeta.extras) ? groupMeta.extras.slice() : [];
             state.groupDisplayName = groupMeta.name;
             state.groupColorMap = {};
-            state.groupMembers.forEach((n, i) => { state.groupColorMap[n] = GROUP_COLORS[i % GROUP_COLORS.length]; });
+            state.groupMembers.forEach((n, i) => { state.groupColorMap[n] = groupMeta.memberColors?.[n] || GROUP_COLORS[i % GROUP_COLORS.length].bg; });
         } else {
-            state.isGroupChat = false; state.groupMembers = []; state.groupColorMap = {}; state.groupDisplayName = ''; state.currentGroupKey = '';
+            state.isGroupChat = false; state.groupMembers = []; state.groupExtras = []; state.groupColorMap = {}; state.groupDisplayName = ''; state.currentGroupKey = '';
         }
         window.__pmSwitch(key, _prevSaveKey, _prevStorageId);
     };

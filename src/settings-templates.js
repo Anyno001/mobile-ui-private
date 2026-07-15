@@ -1,6 +1,6 @@
 export function renderApiSettings({ cfg, useIndependent, profilesHtml }) {
     return `
-    <div id="pm-tab-api" class="pm-tab-pane">
+    <div class="pm-settings-page">
       <div style="padding:12px 14px 6px;">
         <div class="pm-cfg-label" style="margin-bottom:6px;">API 模式</div>
         <div class="pm-mode-switch">
@@ -23,7 +23,7 @@ export function renderApiSettings({ cfg, useIndependent, profilesHtml }) {
           <input id="pm-cfg-model" class="pm-cfg-input" placeholder="手动输入或 ▼" value="${cfg.model}">
           <button id="pm-model-arrow" type="button" onclick="window.__pmShowModelPicker()">▼</button>
         </div>
-        <div id="pm-api-status" class="pm-cfg-tip" style="font-weight:bold;">连接成功后自动保存</div>
+        <div id="pm-api-status" class="pm-cfg-tip" style="font-weight:bold;">测试连接不会覆盖当前配置，点击保存后生效</div>
         <div style="display:flex;gap:6px;margin-top:4px;">
           <button onclick="window.__pmTestApi()" style="flex:1;background:#ff9500;color:#fff;border:none;border-radius:10px;padding:9px;font-size:12px;cursor:pointer;font-weight:600;">拉取模型</button>
           <button onclick="window.__pmTestModel()" style="flex:1;background:#5856d6;color:#fff;border:none;border-radius:10px;padding:9px;font-size:12px;cursor:pointer;font-weight:600;">测试 API</button>
@@ -34,19 +34,15 @@ export function renderApiSettings({ cfg, useIndependent, profilesHtml }) {
 }
 
 
-export function renderLookSettings({ theme, layoutButtons, presetButtons, globalBackgroundButtons, localBackgroundButtons }) {
+export function renderLookSettings({ theme, presetButtons, globalBackgroundButtons, localBackgroundButtons }) {
     return `
-    <div id="pm-tab-look" class="pm-tab-pane" style="display:none;">
+    <div class="pm-settings-page">
       <div style="padding:12px 16px 0;">
         <div class="pm-cfg-label" style="margin-bottom:8px;">日夜模式</div>
         <div class="pm-theme-row" style="margin-bottom:8px;">
           <div class="pm-layout-chip ${theme.darkMode === 'light' ? 'pm-layout-active' : ''}" onclick="window.__pmSetDarkMode('light')">日间</div>
           <div class="pm-layout-chip ${theme.darkMode === 'dark' ? 'pm-layout-active' : ''}" onclick="window.__pmSetDarkMode('dark')">夜间</div>
         </div>
-      </div>
-      <div style="padding:12px 16px;border-top:1px solid #f0f0f0;">
-        <div class="pm-cfg-label" style="margin-bottom:8px;">界面布局</div>
-        <div class="pm-layout-row">${layoutButtons}</div>
       </div>
       <div style="padding:14px 16px 12px;border-top:1px solid #f0f0f0;">
         <div class="pm-cfg-label" style="margin-bottom:10px;">气泡主题</div>
@@ -75,25 +71,9 @@ export function renderLookSettings({ theme, layoutButtons, presetButtons, global
     </div>`;
 }
 
-export function renderOtherSettings() {
+export function renderBackupSettings() {
     return `
-    <div id="pm-tab-other" class="pm-tab-pane" style="display:none;">
-      <div style="padding:14px 16px 12px;border-bottom:1px solid #f0f0f0;">
-        <div class="pm-cfg-label" style="margin-bottom:10px;">字数控制</div>
-        <div style="display:flex;align-items:center;justify-content:space-between;padding:4px 0;">
-          <div style="display:flex;flex-direction:column;gap:3px;">
-            <span style="font-size:13px;font-weight:600;color:#333;">话少一点</span>
-            <span style="font-size:11px;color:#aaa;">每条消息不超过35字（话痨人设除外）</span>
-          </div>
-          <div id="pm-wordy-check" onclick="window.__pmToggleWordyLimit()" class="pm-custom-check pm-bi-style" style="cursor:pointer;width:22px;height:22px;min-width:22px;min-height:22px;flex-shrink:0;border-radius:50%;"></div>
-        </div>
-      </div>
-      <div style="padding:14px 16px 12px;">
-        <div class="pm-cfg-label" style="margin-bottom:10px;">表情包管理</div>
-        <div id="pm-emoji-set-list"></div>
-        <button onclick="window.__pmAddEmojiSet()" style="width:100%;margin-top:8px;background:#007aff;color:#fff;border:none;border-radius:10px;padding:10px;font-size:13px;cursor:pointer;font-weight:600;">添加新套组</button>
-        <div class="pm-cfg-tip" style="text-align:left;margin-top:6px;">最多 10 套，每套最多 20 张图片</div>
-      </div>
+    <div class="pm-settings-page">
       <div style="padding:12px 16px 12px;border-top:1px solid #f0f0f0;">
         <div class="pm-cfg-label" style="margin-bottom:10px;">数据备份</div>
         <div style="display:flex;gap:6px;">
@@ -107,18 +87,11 @@ export function renderOtherSettings() {
     </div>`;
 }
 
-export function renderSettingsModal({ apiPane, lookPane, otherPane }) {
+export function renderSettingsModal({ title, content, footer = '' }) {
     return `
 <div class="pm-modal pm-modal-wide" style="height: 560px;">
-  <div class="pm-modal-header"><b>设置</b><span onclick="document.getElementById('pm-overlay').remove()" class="pm-modal-close">✕</span></div>
-  <div class="pm-cfg-tabs">
-    <div class="pm-cfg-tab pm-cfg-tab-active" data-tab="api" onclick="window.__pmSwitchTab('api')">API</div>
-    <div class="pm-cfg-tab" data-tab="look" onclick="window.__pmSwitchTab('look')">外观</div>
-    <div class="pm-cfg-tab" data-tab="other" onclick="window.__pmSwitchTab('other')">其他</div>
-  </div>
-  <div class="pm-modal-scroll">${apiPane}${lookPane}${otherPane}</div>
-  <div class="pm-modal-add" id="pm-config-bottom">
-    <button onclick="window.__pmSaveConfig()" style="width:100%;background:#007aff;color:#fff;border:none;border-radius:10px;padding:10px;font-size:13px;cursor:pointer;font-weight:600;">保存配置</button>
-  </div>
+  <div class="pm-modal-header"><b>${title}</b><span onclick="window.__pmCloseOverlay()" class="pm-modal-close">✕</span></div>
+  <div class="pm-modal-scroll">${content}</div>
+  ${footer}
 </div>`;
 }

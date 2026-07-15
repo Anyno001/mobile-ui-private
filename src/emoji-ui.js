@@ -32,6 +32,30 @@ function renderPickerDots(sets, activeIndex) {
 }
 
 export function installEmojiUi({ makeOverlay, saveEmojis }) {
+    async function mutateEmojis(mutator) {
+        const snapshot = JSON.parse(JSON.stringify(window.__pmEmojis));
+        try {
+            mutator();
+            await saveEmojis();
+        } catch (error) {
+            window.__pmEmojis = snapshot;
+            throw error;
+        }
+    }
+
+    window.__pmShowEmojiManager = () => {
+        makeOverlay(`
+<div class="pm-modal pm-modal-wide" style="height:560px;">
+  <div class="pm-modal-header"><b>表情包管理</b><span onclick="window.__pmCloseOverlay()" class="pm-modal-close">✕</span></div>
+  <div class="pm-modal-scroll" style="padding:14px 16px;">
+    <div id="pm-emoji-set-list"></div>
+    <button onclick="window.__pmAddEmojiSet()" style="width:100%;margin-top:8px;background:#007aff;color:#fff;border:none;border-radius:10px;padding:10px;font-size:13px;cursor:pointer;font-weight:600;">添加新套组</button>
+    <div class="pm-cfg-tip" style="text-align:left;margin-top:6px;">每套表情独立管理；图片描述会提供给 AI 判断使用场景。</div>
+  </div>
+</div>`);
+        window.__pmRenderEmojiSetList();
+    };
+
     window.__pmRenderEmojiSetList = () => {
         const container = document.getElementById('pm-emoji-set-list');
         if (!container) return;
@@ -76,22 +100,28 @@ export function installEmojiUi({ makeOverlay, saveEmojis }) {
         setTimeout(() => document.getElementById('pm-new-set-name')?.focus(), 10);
     };
 
-    window.__pmConfirmAddEmojiSet = () => {
+    window.__pmConfirmAddEmojiSet = async () => {
         const name = document.getElementById('pm-new-set-name')?.value.trim();
         if (!name) return alert('套组名称不能为空。');
         if (window.__pmEmojis.some(set => set.name === name)) return alert('该名称已存在。');
-        window.__pmEmojis.push({ id: 'emo_' + Date.now(), name, images: [] });
-        saveEmojis();
-        document.getElementById('pm-overlay-sub')?.remove();
-        window.__pmRenderEmojiSetList();
+        try {
+            await mutateEmojis(() => window.__pmEmojis.push({ id: 'emo_' + Date.now(), name, images: [] }));
+            document.getElementById('pm-overlay-sub')?.remove();
+            window.__pmRenderEmojiSetList();
+        } catch (error) {
+            alert(error.message || '表情包保存失败');
+        }
     };
 
-    window.__pmDeleteEmojiSet = setIndex => {
+    window.__pmDeleteEmojiSet = async setIndex => {
         const set = window.__pmEmojis[setIndex];
         if (!set || !confirm(`确认删除套组「${set.name}」？`)) return;
-        window.__pmEmojis.splice(setIndex, 1);
-        saveEmojis();
-        window.__pmRenderEmojiSetList();
+        try {
+            await mutateEmojis(() => window.__pmEmojis.splice(setIndex, 1));
+            window.__pmRenderEmojiSetList();
+        } catch (error) {
+            alert(error.message || '表情包保存失败');
+        }
     };
 
 
@@ -134,30 +164,39 @@ export function installEmojiUi({ makeOverlay, saveEmojis }) {
         reader.readAsDataURL(file);
     };
 
-    window.__pmConfirmAddEmojiImage = setIndex => {
+    window.__pmConfirmAddEmojiImage = async setIndex => {
         const url = document.getElementById('pm-emo-url')?.value.trim();
         const description = document.getElementById('pm-emo-desc')?.value.trim();
         if (!url) return alert('请输入图片 URL 或上传图片。');
         if (!description) return alert('请输入图片描述（必填）。');
         const set = window.__pmEmojis[setIndex];
         if (!set) return;
-        set.images.push({ url, desc: description });
-        saveEmojis();
-        document.getElementById('pm-overlay-sub')?.remove();
-        window.__pmRenderEmojiSetList();
+        try {
+            await mutateEmojis(() => window.__pmEmojis[setIndex].images.push({ url, desc: description }));
+            document.getElementById('pm-overlay-sub')?.remove();
+            window.__pmRenderEmojiSetList();
+        } catch (error) {
+            alert(error.message || '表情包保存失败');
+        }
     };
 
-    window.__pmDeleteEmojiImage = (setIndex, imageIndex) => {
+    window.__pmDeleteEmojiImage = async (setIndex, imageIndex) => {
         const set = window.__pmEmojis[setIndex];
         if (!set) return;
-        set.images.splice(imageIndex, 1);
-        saveEmojis();
-        window.__pmRenderEmojiSetList();
+        try {
+            await mutateEmojis(() => window.__pmEmojis[setIndex].images.splice(imageIndex, 1));
+            window.__pmRenderEmojiSetList();
+        } catch (error) {
+            alert(error.message || '表情包保存失败');
+        }
     };
 
     window.__pmShowEmojiPicker = () => {
         const sets = window.__pmEmojis;
-        if (!sets.length) return alert('还没有表情包！请先去【设置-其他】中添加。');
+        if (!sets.length) {
+            window.__pmShowEmojiManager();
+            return;
+        }
         const input = document.querySelector('.pm-input');
         window.__pmTempText = input ? input.value : '';
         let activeSetIndex = 0;

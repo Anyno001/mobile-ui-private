@@ -1,12 +1,11 @@
 export const SAVE_LIMIT = 60;
 export const CONTEXT_LIMIT = 20;
 export const BIDIRECTIONAL_LIMIT = 20;
-export const MAX_BIDIRECTIONAL = 5;
 export const BIDIRECTIONAL_KEY = 'PHONE_SMS_MEMORY';
+export const MAX_INJECTION_CHARS = 24000;
 export const CHARACTER_BEHAVIOR_KEY = 'ST_SMS_CHARACTER_BEHAVIOR';
 export const VOICE_MAX_SEC = 60;
 export const MODEL_VISIBLE_ROWS = 4;
-export const MAX_GROUP_MEMBERS = 16;
 export const MESSAGE_LENGTH_VALUES = Object.freeze(['persona', 'short', 'medium', 'long']);
 export const FREQUENCY_VALUES = Object.freeze(['never', 'rare', 'occasional', 'frequent']);
 export const MAX_INJECTION_DEPTH = 10000;

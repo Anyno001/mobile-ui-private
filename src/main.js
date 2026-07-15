@@ -2,6 +2,7 @@ import { createAiClient } from './ai.js';
 import { installContactGenerator } from './contact-generator.js';
 import { installConversation } from './conversation.js';
 import { installEmojiUi } from './emoji-ui.js';
+import { installInteractiveScenes } from './interactive-scenes.js';
 import {
     gatherContext as collectHostContext,
     getStorageId as resolveStorageId,
@@ -55,18 +56,13 @@ import { saveEmojis } from './storage.js';
     installPhoneFoundation(state, deps);
     installConversation(state, deps);
     installEmojiUi({ makeOverlay: deps.makeOverlay, saveEmojis });
-    installSettingsUi({
-        makeOverlay: deps.makeOverlay,
-        applyTheme: deps.applyTheme,
-        applyBackground: deps.applyBackground,
-        fitNameFont: deps.fitNameFont,
-        addNote: deps.addNote,
+    Object.assign(deps, {
         getPhoneWindow: () => state.phoneWindow,
         getCurrentPersona: () => state.currentPersona,
-        getStorageId,
-        runtime,
         closePhone: () => window.__pmEnd(),
     });
+    installInteractiveScenes(state, deps);
+    installSettingsUi(deps);
     installPhoneChat(state, deps);
     installPhoneControlCenter(state, deps);
     installPhoneDirectory(state, deps);

@@ -2,25 +2,239 @@ import { MODEL_VISIBLE_ROWS, POPOVER_SUPPORTED } from './constants.js';
 import { THEME_PRESETS, normalizeApiUrls } from './config.js';
 import { openCropper } from './cropper.js';
 import {
-    renderApiSettings, renderLookSettings, renderOtherSettings, renderSettingsModal,
+    renderApiSettings, renderBackupSettings, renderLookSettings, renderSettingsModal,
 } from './settings-templates.js';
 import { escapeAttr, escapeHtml, safeJS } from './ui.js';
 import {
-    addOrUpdateProfile, loadBgSettings, loadProfiles, loadTheme, pmIDBDel,
-    saveBgGlobal, saveBgLocal, saveCharacterBehavior, saveEmojis, saveGroupMeta,
-    saveHistories, saveProfiles, saveTheme, saveWordyLimit,
+    addOrUpdateProfile, loadBgSettings, loadInteractiveScenes, loadProfiles, loadTheme, saveBgGlobal,
+    saveBgLocal, saveBidirectional, saveCharacterBehavior, saveEmojis,
+    saveGroupMeta, saveHistoriesStrict, saveInteractiveScenes, savePokeConfig, saveProfiles,
+    saveTheme, saveWordyLimit,
 } from './storage.js';
+import { INTERACTIVE_LIMITS, normalizeInteractiveStore } from './interactive-scene-model.js';
+
+const clone = value => JSON.parse(JSON.stringify(value));
+const objectValue = (value, field) => {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error(`备份字段 ${field} 必须是对象`);
+    return clone(value);
+};
+const arrayValue = (value, field) => {
+    if (!Array.isArray(value)) throw new Error(`备份字段 ${field} 必须是数组`);
+    return clone(value);
+};
+
+const DANGEROUS_DICTIONARY_KEYS = new Set(['__proto__', 'prototype', 'constructor']);
+const assertSafeDictionaryKey = (value, field) => {
+    if (DANGEROUS_DICTIONARY_KEYS.has(value)) throw new Error(`备份字段 ${field} 包含危险键 ${value}`);
+};
+const assertAllowedKeys = (value, field, allowedKeys) => {
+    const allowed = new Set(allowedKeys);
+    const unsupported = Object.keys(value).find(key => !allowed.has(key));
+    if (unsupported) throw new Error(`备份字段 ${field}.${unsupported} 不受支持`);
+};
+const assertNormalizedText = (value, field, max, { allowEmpty = false } = {}) => {
+    if (typeof value !== 'string') throw new Error(`备份字段 ${field} 必须是字符串`);
+    if (value !== value.trim()) throw new Error(`备份字段 ${field} 不能包含首尾空白`);
+    if (!allowEmpty && !value) throw new Error(`备份字段 ${field} 必须是非空字符串`);
+    if (value.length > max) throw new Error(`备份字段 ${field} 长度不能超过 ${max}`);
+};
+const assertOptionalNormalizedText = (item, key, field, max, options) => {
+    if (Object.hasOwn(item, key)) assertNormalizedText(item[key], `${field}.${key}`, max, options);
+};
+const assertOptionalTimestamp = (item, key, field) => {
+    if (!Object.hasOwn(item, key)) return;
+    const value = item[key];
+    if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) throw new Error(`备份字段 ${field}.${key} 必须是有效时间戳`);
+};
+const assertInteractiveItem = (value, field, { kind = 'post' } = {}) => {
+    const item = objectValue(value, field);
+    const allowedKeys = kind === 'post'
+        ? ['id', 'author', 'content', 'tags', 'createdAt', 'comments', 'liked']
+        : ['id', 'author', 'content', 'createdAt'];
+    assertAllowedKeys(item, field, allowedKeys);
+    const contentMax = kind === 'post' ? 4000 : kind === 'comment' ? 1000 : 200;
+    assertNormalizedText(item.content, `${field}.content`, contentMax);
+    assertOptionalNormalizedText(item, 'id', field, 80);
+    assertOptionalNormalizedText(item, 'author', field, 80);
+    assertOptionalTimestamp(item, 'createdAt', field);
+    if (kind === 'post') {
+        if (Object.hasOwn(item, 'liked') && typeof item.liked !== 'boolean') throw new Error(`备份字段 ${field}.liked 必须是布尔值`);
+        if (Object.hasOwn(item, 'tags')) {
+            if (!Array.isArray(item.tags) || item.tags.some(tag => typeof tag !== 'string')) throw new Error(`备份字段 ${field}.tags 必须是字符串数组`);
+            if (item.tags.length > 5) throw new Error(`备份字段 ${field}.tags 不能超过 5 项`);
+            item.tags.forEach((tag, index) => assertNormalizedText(tag, `${field}.tags.${index}`, 30));
+        }
+        if (Object.hasOwn(item, 'comments')) {
+            if (!Array.isArray(item.comments)) throw new Error(`备份字段 ${field}.comments 必须是数组`);
+            if (item.comments.length > INTERACTIVE_LIMITS.comments) throw new Error(`备份字段 ${field}.comments 不能超过 ${INTERACTIVE_LIMITS.comments} 项`);
+            item.comments.forEach((comment, index) => assertInteractiveItem(comment, `${field}.comments.${index}`, { kind: 'comment' }));
+        }
+    }
+};
+
+const assertInteractiveBackupStore = value => {
+    const store = objectValue(value, 'interactiveScenes');
+    assertAllowedKeys(store, 'interactiveScenes', ['version', 'scopes']);
+    if (!Number.isInteger(store.version) || store.version !== 1) throw new Error('备份字段 interactiveScenes.version 必须是数字 1');
+    const scopes = objectValue(store.scopes, 'interactiveScenes.scopes');
+    for (const [scopeId, scopeValue] of Object.entries(scopes)) {
+        assertSafeDictionaryKey(scopeId, 'interactiveScenes.scopes');
+        const field = `interactiveScenes.scopes.${scopeId}`;
+        const scope = objectValue(scopeValue, field);
+        assertAllowedKeys(scope, field, ['activeSceneId', 'sceneOrder', 'scenes']);
+        if (!Array.isArray(scope.sceneOrder)) throw new Error(`备份字段 ${field}.sceneOrder 必须是数组`);
+        if (scope.sceneOrder.length > INTERACTIVE_LIMITS.scenes) throw new Error(`备份字段 ${field}.sceneOrder 不能超过 ${INTERACTIVE_LIMITS.scenes} 项`);
+        const scenes = objectValue(scope.scenes, `${field}.scenes`);
+        Object.keys(scenes).forEach(sceneId => assertSafeDictionaryKey(sceneId, `${field}.scenes`));
+        if (Object.hasOwn(scope, 'activeSceneId') && scope.activeSceneId !== null && typeof scope.activeSceneId !== 'string') throw new Error(`备份字段 ${field}.activeSceneId 必须是字符串或 null`);
+        const orderedIds = new Set();
+        for (const sceneId of scope.sceneOrder) {
+            assertNormalizedText(sceneId, `${field}.sceneOrder`, 80);
+            assertSafeDictionaryKey(sceneId, `${field}.sceneOrder`);
+            if (orderedIds.has(sceneId)) throw new Error(`备份字段 ${field}.sceneOrder 包含重复场景 ${sceneId}`);
+            orderedIds.add(sceneId);
+            const scene = objectValue(scenes[sceneId], `${field}.scenes.${sceneId}`);
+            assertAllowedKeys(scene, `${field}.scenes.${sceneId}`, ['id', 'title', 'preset', 'styleInput', 'generatedPrompt', 'contentRating', 'createdAt', 'updatedAt', 'posts', 'live']);
+            if (Object.hasOwn(scene, 'id') && scene.id !== sceneId) throw new Error(`备份字段 ${field}.scenes.${sceneId}.id 必须与场景键一致`);
+            assertOptionalNormalizedText(scene, 'id', `${field}.scenes.${sceneId}`, 80);
+            assertOptionalNormalizedText(scene, 'title', `${field}.scenes.${sceneId}`, 80);
+            assertOptionalNormalizedText(scene, 'preset', `${field}.scenes.${sceneId}`, 30);
+            assertOptionalNormalizedText(scene, 'styleInput', `${field}.scenes.${sceneId}`, 2000, { allowEmpty: true });
+            assertOptionalNormalizedText(scene, 'generatedPrompt', `${field}.scenes.${sceneId}`, 6000, { allowEmpty: true });
+            if (Object.hasOwn(scene, 'contentRating') && !['general', 'mature'].includes(scene.contentRating)) throw new Error(`备份字段 ${field}.scenes.${sceneId}.contentRating 必须是 general 或 mature`);
+            assertOptionalTimestamp(scene, 'createdAt', `${field}.scenes.${sceneId}`);
+            assertOptionalTimestamp(scene, 'updatedAt', `${field}.scenes.${sceneId}`);
+            if (Object.hasOwn(scene, 'posts')) {
+                if (!Array.isArray(scene.posts)) throw new Error(`备份字段 ${field}.scenes.${sceneId}.posts 必须是数组`);
+                if (scene.posts.length > INTERACTIVE_LIMITS.posts) throw new Error(`备份字段 ${field}.scenes.${sceneId}.posts 不能超过 ${INTERACTIVE_LIMITS.posts} 项`);
+                scene.posts.forEach((post, index) => assertInteractiveItem(post, `${field}.scenes.${sceneId}.posts.${index}`));
+            }
+            if (Object.hasOwn(scene, 'live')) {
+                const live = objectValue(scene.live, `${field}.scenes.${sceneId}.live`);
+                assertAllowedKeys(live, `${field}.scenes.${sceneId}.live`, ['title', 'status', 'danmaku']);
+                assertOptionalNormalizedText(live, 'title', `${field}.scenes.${sceneId}.live`, 100);
+                if (Object.hasOwn(live, 'status') && live.status !== 'idle') throw new Error(`备份字段 ${field}.scenes.${sceneId}.live.status 必须是 idle`);
+                if (Object.hasOwn(live, 'danmaku')) {
+                    if (!Array.isArray(live.danmaku)) throw new Error(`备份字段 ${field}.scenes.${sceneId}.live.danmaku 必须是数组`);
+                    if (live.danmaku.length > INTERACTIVE_LIMITS.danmaku) throw new Error(`备份字段 ${field}.scenes.${sceneId}.live.danmaku 不能超过 ${INTERACTIVE_LIMITS.danmaku} 项`);
+                    live.danmaku.forEach((item, index) => assertInteractiveItem(item, `${field}.scenes.${sceneId}.live.danmaku.${index}`, { kind: 'danmaku' }));
+                }
+            }
+        }
+        const extraSceneIds = Object.keys(scenes).filter(sceneId => !orderedIds.has(sceneId));
+        if (extraSceneIds.length) throw new Error(`备份字段 ${field}.scenes 包含未列入 sceneOrder 的场景 ${extraSceneIds[0]}`);
+        if (scope.activeSceneId === null && orderedIds.size) throw new Error(`备份字段 ${field}.activeSceneId 不能在存在场景时为 null`);
+        if (typeof scope.activeSceneId === 'string' && !orderedIds.has(scope.activeSceneId)) throw new Error(`备份字段 ${field}.activeSceneId 未指向有效场景`);
+    }
+    return store;
+};
+
+export function parseBackupData(data, current) {
+    if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error('备份根节点必须是对象');
+    const version = data.schemaVersion === undefined ? 1 : data.schemaVersion;
+    if (!Number.isInteger(version) || version < 1) throw new Error('备份版本无效');
+    if (version > 3) throw new Error(`备份版本 ${version} 高于当前支持版本 3`);
+    const result = clone(current);
+    if (Object.hasOwn(data, 'histories')) result.histories = objectValue(data.histories, 'histories');
+    if (Object.hasOwn(data, 'config')) result.config = objectValue(data.config, 'config');
+    if (Object.hasOwn(data, 'theme')) result.theme = objectValue(data.theme, 'theme');
+    if (Object.hasOwn(data, 'profiles')) result.profiles = arrayValue(data.profiles, 'profiles');
+    if (Object.hasOwn(data, 'groupMeta')) result.groupMeta = objectValue(data.groupMeta, 'groupMeta');
+    if (Object.hasOwn(data, 'pokeConfig')) result.pokeConfig = objectValue(data.pokeConfig, 'pokeConfig');
+    if (Object.hasOwn(data, 'bidirectional')) result.bidirectional = objectValue(data.bidirectional, 'bidirectional');
+    if (Object.hasOwn(data, 'emojis')) result.emojis = arrayValue(data.emojis, 'emojis');
+    if (Object.hasOwn(data, 'characterBehavior')) result.characterBehavior = objectValue(data.characterBehavior, 'characterBehavior');
+    if (Object.hasOwn(data, 'wordyLimit')) {
+        if (typeof data.wordyLimit !== 'boolean') throw new Error('备份字段 wordyLimit 必须是布尔值');
+        result.wordyLimit = data.wordyLimit;
+    }
+    if (Object.hasOwn(data, 'bgGlobal')) {
+        if (typeof data.bgGlobal !== 'string') throw new Error('备份字段 bgGlobal 必须是字符串');
+        result.bgGlobal = data.bgGlobal;
+    }
+    if (Object.hasOwn(data, 'bgLocal')) result.bgLocal = objectValue(data.bgLocal, 'bgLocal');
+    if (Object.hasOwn(data, 'interactiveScenes')) result.interactiveScenes = normalizeInteractiveStore(assertInteractiveBackupStore(data.interactiveScenes));
+    return result;
+}
+
+export async function runBackupTransaction({ capture, apply, persist }) {
+    const snapshot = await capture();
+    try {
+        const nextState = await apply();
+        await persist(nextState);
+    } catch (error) {
+        let rollbackState;
+        try {
+            rollbackState = await apply(snapshot);
+            await persist(snapshot);
+        } catch (rollbackError) {
+            const combined = new Error(`${error.message}；原数据回滚失败：${rollbackError.message}`);
+            combined.cause = error;
+            combined.rollbackError = rollbackError;
+            combined.rollbackState = rollbackState;
+            throw combined;
+        }
+        throw error;
+    }
+}
+
+export async function runBackgroundTransaction({ capture, mutate, restore, persist }) {
+    const snapshot = capture();
+    try {
+        mutate();
+        await persist();
+    } catch (error) {
+        restore(snapshot);
+        try {
+            await persist();
+        } catch (rollbackError) {
+            const combined = new Error(`${error.message}；原背景回滚失败：${rollbackError.message}`);
+            combined.cause = error;
+            combined.rollbackError = rollbackError;
+            throw combined;
+        }
+        throw error;
+    }
+}
 
 export function installSettingsUi(deps) {
     const {
         makeOverlay, applyTheme, applyBackground, fitNameFont, addNote,
         getPhoneWindow, getCurrentPersona, getStorageId, runtime, closePhone,
     } = deps;
+    let apiDraftUseIndependent = false;
+    let backgroundMutation = Promise.resolve();
+
+    const queueBackgroundMutation = (scope, mutate) => {
+        const isGlobal = scope === 'global';
+        const operation = backgroundMutation.catch(() => {}).then(async () => {
+            await runBackgroundTransaction({
+                capture: () => isGlobal ? (window.__pmBgGlobal || '') : clone(window.__pmBgLocal || {}),
+                mutate,
+                restore: snapshot => {
+                    if (isGlobal) window.__pmBgGlobal = snapshot;
+                    else window.__pmBgLocal = clone(snapshot);
+                },
+                persist: isGlobal ? saveBgGlobal : saveBgLocal,
+            });
+            applyBackground();
+            window.__pmShowConfig('look');
+        });
+        backgroundMutation = operation;
+        return operation.catch(error => {
+            applyBackground();
+            alert(error.rollbackError
+                ? `背景操作失败，原背景回滚也失败。请勿刷新，并立即导出备份。\n${error.message}`
+                : `背景操作失败，原背景已恢复。\n${error.message}`);
+            window.__pmShowConfig('look');
+            return false;
+        });
+    };
 
     window.__pmDeleteProfile = (idx) => {
         window.__pmProfiles.splice(idx, 1);
         saveProfiles();
-        window.__pmShowConfig();
+        window.__pmShowConfig('api');
     };
 
     window.__pmPickProfile = (idx) => {
@@ -30,8 +244,7 @@ export function installSettingsUi(deps) {
     };
 
     window.__pmSetMode = (v) => {
-        window.__pmConfig.useIndependent = !!v;
-        try { localStorage.setItem('ST_SMS_CONFIG', JSON.stringify(window.__pmConfig)); } catch (e) {}
+        apiDraftUseIndependent = !!v;
         const a = document.getElementById('pm-mode-main'), b = document.getElementById('pm-mode-indep'), t = document.getElementById('pm-mode-tip');
         if (a && b) { a.classList.toggle('pm-mode-active', !v); b.classList.toggle('pm-mode-active', !!v); }
         if (t) t.textContent = v ? '独立 API' : '主 API';
@@ -60,18 +273,75 @@ export function installSettingsUi(deps) {
         });
     };
 
+    const captureBackupState = async () => ({
+        histories: clone(window.__pmHistories || {}),
+        config: clone(window.__pmConfig || {}),
+        theme: clone(window.__pmTheme || {}),
+        profiles: clone(window.__pmProfiles || []),
+        groupMeta: clone(window.__pmGroupMeta || {}),
+        pokeConfig: clone(window.__pmPokeConfig || {}),
+        bidirectional: clone(window.__pmBidirectional || {}),
+        emojis: clone(window.__pmEmojis || []),
+        characterBehavior: clone(window.__pmCharacterBehavior || {}),
+        wordyLimit: !!window.__pmWordyLimit,
+        bgGlobal: window.__pmBgGlobal || '',
+        bgLocal: clone(window.__pmBgLocal || {}),
+        interactiveScenes: normalizeInteractiveStore(await loadInteractiveScenes()),
+    });
+
+    const applyBackupState = async state => {
+        window.__pmHistories = clone(state.histories || {});
+        window.__pmConfig = clone(state.config || {});
+        window.__pmTheme = clone(state.theme || {});
+        window.__pmProfiles = clone(state.profiles || []);
+        window.__pmGroupMeta = clone(state.groupMeta || {});
+        window.__pmPokeConfig = clone(state.pokeConfig || {});
+        window.__pmBidirectional = clone(state.bidirectional || {});
+        window.__pmEmojis = clone(state.emojis || []);
+        window.__pmCharacterBehavior = clone(state.characterBehavior || {});
+        window.__pmWordyLimit = !!state.wordyLimit;
+        window.__pmBgGlobal = typeof state.bgGlobal === 'string' ? state.bgGlobal : '';
+        window.__pmBgLocal = clone(state.bgLocal || {});
+        return { ...state, interactiveScenes: normalizeInteractiveStore(state.interactiveScenes) };
+    };
+
+    const persistBackupState = async state => {
+        await saveHistoriesStrict();
+        try { localStorage.setItem('ST_SMS_CONFIG', JSON.stringify(window.__pmConfig)); }
+        catch (error) { throw new Error('API 配置保存失败：浏览器存储不可用'); }
+        if (!saveTheme()) throw new Error('主题配置保存失败：浏览器存储不可用');
+        if (!saveProfiles()) throw new Error('API 档案保存失败：浏览器存储不可用');
+        await saveGroupMeta();
+        if (!saveCharacterBehavior()) throw new Error('角色行为配置保存失败：浏览器存储不可用');
+        if (!savePokeConfig()) throw new Error('自动消息配置保存失败：浏览器存储不可用');
+        if (!saveBidirectional()) throw new Error('注入配置保存失败：浏览器存储不可用');
+        if (!saveWordyLimit()) throw new Error('字数偏好保存失败：浏览器存储不可用');
+        await saveEmojis();
+        await saveBgGlobal();
+        await saveBgLocal();
+        await saveInteractiveScenes(normalizeInteractiveStore(state.interactiveScenes));
+        deps.invalidateInteractiveStore?.();
+    };
+
+
     // ========== 导出 / 导入 数据功能 ==========
-    window.__pmExportData = () => {
+    window.__pmExportData = async () => {
+        const snapshot = await captureBackupState();
         const data = {
-            histories: window.__pmHistories || {},
-            config: window.__pmConfig || {},
-            theme: window.__pmTheme || {},
-            profiles: window.__pmProfiles || [],
-            groupMeta: window.__pmGroupMeta || {},
-            pokeConfig: window.__pmPokeConfig || {},
-            bidirectional: window.__pmBidirectional || {},
-            emojis: window.__pmEmojis || [],
-            characterBehavior: window.__pmCharacterBehavior || {},
+            schemaVersion: 3,
+            histories: snapshot.histories,
+            config: snapshot.config,
+            theme: snapshot.theme,
+            profiles: snapshot.profiles,
+            groupMeta: snapshot.groupMeta,
+            pokeConfig: snapshot.pokeConfig,
+            bidirectional: snapshot.bidirectional,
+            emojis: snapshot.emojis,
+            characterBehavior: snapshot.characterBehavior,
+            wordyLimit: snapshot.wordyLimit,
+            bgGlobal: snapshot.bgGlobal,
+            bgLocal: snapshot.bgLocal,
+            interactiveScenes: snapshot.interactiveScenes,
         };
         const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
@@ -87,56 +357,66 @@ export function installSettingsUi(deps) {
         const file = input.files?.[0];
         if (!file) return;
         const reader = new FileReader();
-        reader.onload = (e) => {
+        reader.onload = async (e) => {
             try {
                 const data = JSON.parse(e.target.result);
                 if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error('备份根节点必须是对象');
-                if (Object.hasOwn(data, 'histories')) window.__pmHistories = data.histories ?? {};
-                if (Object.hasOwn(data, 'config')) window.__pmConfig = data.config ?? {};
-                if (Object.hasOwn(data, 'theme')) window.__pmTheme = data.theme ?? {};
-                if (Object.hasOwn(data, 'profiles')) window.__pmProfiles = data.profiles ?? [];
-                if (Object.hasOwn(data, 'groupMeta')) window.__pmGroupMeta = data.groupMeta ?? {};
-                if (Object.hasOwn(data, 'pokeConfig')) window.__pmPokeConfig = data.pokeConfig ?? {};
-                if (Object.hasOwn(data, 'bidirectional')) window.__pmBidirectional = data.bidirectional ?? {};
-                if (Object.hasOwn(data, 'characterBehavior')) window.__pmCharacterBehavior = data.characterBehavior ?? {};
-                if (Object.hasOwn(data, 'emojis')) { window.__pmEmojis = data.emojis ?? []; saveEmojis(); }
-
-                saveHistories();
-                try { localStorage.setItem('ST_SMS_CONFIG', JSON.stringify(window.__pmConfig)); } catch(err) {}
-                saveTheme();
-                saveGroupMeta();
-                saveCharacterBehavior();
-                try { localStorage.setItem('ST_SMS_POKE_CONFIG', JSON.stringify(window.__pmPokeConfig)); } catch(err) {}
-                try { localStorage.setItem('ST_SMS_BIDIRECTIONAL', JSON.stringify(window.__pmBidirectional)); } catch(err) {}
+                await runBackupTransaction({
+                    capture: captureBackupState,
+                    apply: async snapshot => {
+                        if (snapshot) return applyBackupState(snapshot);
+                        const current = await captureBackupState();
+                        const imported = parseBackupData(data, current);
+                        return applyBackupState(imported);
+                    },
+                    persist: persistBackupState,
+                });
 
                 alert('数据导入成功，请重新打开界面生效。');
                 document.getElementById('pm-overlay')?.remove();
                 closePhone();
             } catch (err) {
-                alert('导入失败，文件格式不正确。\n' + err.message);
+                alert(err.rollbackError
+                    ? `导入失败，原数据回滚也失败。请勿刷新，并立即导出当前内存备份。\n${err.message}`
+                    : `导入失败，原数据已恢复。\n${err.message}`);
             }
         };
         reader.readAsText(file);
         input.value = '';
     };
 
-    // ========== 设置界面 ==========
-    window.__pmShowConfig = async (initialTab = 'api') => {
+    // ========== 独立设置页面 ==========
+    window.__pmShowConfig = async (page = 'api') => {
         loadProfiles(); loadTheme();
-        await loadBgSettings();
         const cfg = window.__pmConfig, t = window.__pmTheme;
+        if (page === 'backup') {
+            makeOverlay(renderSettingsModal({ title: '数据备份', content: renderBackupSettings() }));
+            return;
+        }
         const shortUrl = (u) => (u || '').replace(/^https?:\/\//, '').replace(/\/+$/, '');
         const maskKey = (k) => !k ? '' : (k.length <= 8 ? '****' : k.slice(0, 4) + '****' + k.slice(-4));
-        const persona = getCurrentPersona();
         const profilesHtml = window.__pmProfiles.length > 0
             ? window.__pmProfiles.map((p, i) => `<div class="pm-prof-li"><div class="pm-prof-info" onclick="window.__pmPickProfile(${i})"><div class="pm-prof-url">${escapeHtml(shortUrl(p.apiUrl))}</div><div class="pm-prof-meta">${escapeHtml(maskKey(p.apiKey))}${p.model ? ' · ' + escapeHtml(p.model) : ''}</div></div><i class="pm-prof-del" onclick="window.__pmDeleteProfile(${i})">✕</i></div>`).join('')
             : '<div class="pm-prof-empty">暂无档案</div>';
-        const useIndep = !!cfg.useIndependent;
+        if (page === 'api') {
+            apiDraftUseIndependent = !!cfg.useIndependent;
+            const content = renderApiSettings({
+                cfg: {
+                    apiUrl: escapeAttr(cfg.apiUrl || ''),
+                    apiKey: escapeAttr(cfg.apiKey || ''),
+                    model: escapeAttr(cfg.model || ''),
+                },
+                useIndependent: apiDraftUseIndependent,
+                profilesHtml,
+            });
+            const footer = '<div class="pm-modal-add"><button onclick="window.__pmSaveConfig()" style="width:100%;background:#007aff;color:#fff;border:none;border-radius:10px;padding:10px;font-size:13px;cursor:pointer;font-weight:600;">保存 API 设置</button></div>';
+            makeOverlay(renderSettingsModal({ title: 'API 设置', content, footer }));
+            return;
+        }
+        await loadBgSettings();
+        const persona = getCurrentPersona();
         const presetBtns = Object.entries(THEME_PRESETS).map(([k, v]) =>
             `<div class="pm-theme-chip ${t.preset === k ? 'pm-theme-active' : ''}" data-preset="${k}" onclick="window.__pmSetPreset('${safeJS(k)}')"><span class="pm-theme-dot" style="background:${v.right}"></span>${v.label}</div>`
-        ).join('');
-        const layoutBtns = ['standard', 'relaxed'].map(v =>
-            `<div class="pm-layout-chip ${t.layout === v ? 'pm-layout-active' : ''}" onclick="window.__pmSetLayout('${safeJS(v)}')">${v === 'standard' ? '标准' : '宽松'}</div>`
         ).join('');
         const id = getStorageId(), localKey = `${id}_${persona}`;
         const hasGlobalBg = !!window.__pmBgGlobal, hasLocalBg = !!window.__pmBgLocal[localKey];
@@ -149,40 +429,13 @@ export function installSettingsUi(deps) {
             : `<label class="pm-bg-btn">选择图片<input type="file" accept="image/*" onchange="window.__pmUploadBg(this,'local')" hidden></label>
                <button class="pm-bg-btn" onclick="window.__pmBgUrl('local')">URL</button>`;
 
-        const apiPane = renderApiSettings({
-            cfg: {
-                apiUrl: escapeAttr(cfg.apiUrl || ''),
-                apiKey: escapeAttr(cfg.apiKey || ''),
-                model: escapeAttr(cfg.model || ''),
-            },
-            useIndependent: useIndep,
-            profilesHtml,
-        });
-        const lookPane = renderLookSettings({
+        const content = renderLookSettings({
             theme: t,
-            layoutButtons: layoutBtns,
             presetButtons: presetBtns,
             globalBackgroundButtons: globalBgBtn,
             localBackgroundButtons: localBgBtn,
         });
-        makeOverlay(renderSettingsModal({
-            apiPane,
-            lookPane,
-            otherPane: renderOtherSettings(),
-        }));
-        window.__pmSwitchTab(initialTab);
-    };
-
-    window.__pmSwitchTab = (tab) => {
-        document.querySelectorAll('.pm-cfg-tab').forEach(el => el.classList.toggle('pm-cfg-tab-active', el.dataset.tab === tab));
-        document.querySelectorAll('.pm-tab-pane').forEach(el => el.style.display = 'none');
-        const pane = document.getElementById(`pm-tab-${tab}`);
-        if (pane) pane.style.display = 'block';
-        if (tab === 'other') {
-            window.__pmRenderEmojiSetList();
-            const wc = document.getElementById('pm-wordy-check');
-            if (wc) wc.classList.toggle('is-checked', !!window.__pmWordyLimit);
-        }
+        makeOverlay(renderSettingsModal({ title: '主题颜色', content }));
     };
 
     window.__pmSetPreset = (p) => {
@@ -211,28 +464,18 @@ export function installSettingsUi(deps) {
         saveTheme(); applyTheme();
     };
 
-    window.__pmSetLayout = (v) => {
-        window.__pmTheme.layout = v; saveTheme();
-        const pw = getPhoneWindow();
-        if (pw) pw.dataset.layout = v;
-        document.querySelectorAll('.pm-layout-chip').forEach(el => el.classList.toggle('pm-layout-active', el.textContent === (v === 'standard' ? '标准' : '宽松')));
-        fitNameFont();
-    };
-
     window.__pmUploadBg = (input, scope) => {
         const file = input.files?.[0]; if (!file) return;
         const reader = new FileReader();
         reader.onload = (e) => {
+            const persona = getCurrentPersona();
+            const key = `${getStorageId()}_${persona}`;
             openCropper(e.target.result, {
-                onCancel: () => window.__pmShowConfig(),
-                onConfirm: (croppedDataUrl) => {
-                    const persona = getCurrentPersona();
-                    if (scope === 'global') { window.__pmBgGlobal = croppedDataUrl; saveBgGlobal(); }
-                    else { const id = getStorageId(); window.__pmBgLocal[`${id}_${persona}`] = croppedDataUrl; saveBgLocal(); }
-                    applyBackground();
-                    window.__pmShowConfig();
-                    setTimeout(() => window.__pmSwitchTab('look'), 50);
-                },
+                onCancel: () => window.__pmShowConfig('look'),
+                onConfirm: croppedDataUrl => queueBackgroundMutation(scope, () => {
+                    if (scope === 'global') window.__pmBgGlobal = croppedDataUrl;
+                    else window.__pmBgLocal[key] = croppedDataUrl;
+                }),
             });
         };
         reader.readAsDataURL(file);
@@ -243,27 +486,19 @@ export function installSettingsUi(deps) {
         const url = prompt('输入图片 URL：');
         if (!url?.trim()) return;
         const persona = getCurrentPersona();
-        if (scope === 'global') { window.__pmBgGlobal = url.trim(); saveBgGlobal(); }
-        else { const id = getStorageId(); window.__pmBgLocal[`${id}_${persona}`] = url.trim(); saveBgLocal(); }
-        applyBackground();
-        window.__pmShowConfig();
-        setTimeout(() => window.__pmSwitchTab('look'), 50);
+        const key = `${getStorageId()}_${persona}`;
+        return queueBackgroundMutation(scope, () => {
+            if (scope === 'global') window.__pmBgGlobal = url.trim();
+            else window.__pmBgLocal[key] = url.trim();
+        });
     };
 
-    window.__pmClearBg = async (scope) => {
-        if (scope === 'global') {
-            window.__pmBgGlobal = '';
-            await pmIDBDel('ST_SMS_BG_GLOBAL');
-            try { localStorage.removeItem('ST_SMS_BG_GLOBAL'); } catch (e) {}
-        } else {
-            const id = getStorageId(), persona = getCurrentPersona(), key = `${id}_${persona}`;
-            delete window.__pmBgLocal[key];
-            await pmIDBDel('ST_SMS_BG_LOCAL_' + key);
-            await saveBgLocal();
-        }
-        applyBackground();
-        window.__pmShowConfig();
-        setTimeout(() => window.__pmSwitchTab('look'), 50);
+    window.__pmClearBg = (scope) => {
+        const key = `${getStorageId()}_${getCurrentPersona()}`;
+        return queueBackgroundMutation(scope, () => {
+            if (scope === 'global') window.__pmBgGlobal = '';
+            else delete window.__pmBgLocal[key];
+        });
     };
 
     window.__pmTestApi = async () => {
@@ -277,7 +512,6 @@ export function installSettingsUi(deps) {
             const d = await r.json();
             if (d?.data && Array.isArray(d.data)) { runtime.modelList = d.data.map(x => x.id).filter(Boolean); s.textContent = `已拉取 ${runtime.modelList.length} 个模型`; s.style.color = "#34c759"; }
             else { s.textContent = "连接成功"; s.style.color = "#34c759"; }
-            addOrUpdateProfile({ apiUrl: u, apiKey: k, model: m });
         } catch (e) { s.textContent = "连接失败：" + e.message; s.style.color = "#ff3b30"; }
     };
 
@@ -297,7 +531,7 @@ export function installSettingsUi(deps) {
 
     window.__pmSaveConfig = () => {
         const apiUrl = document.getElementById('pm-cfg-url')?.value.trim() ?? '', apiKey = document.getElementById('pm-cfg-key')?.value.trim() ?? '', model = document.getElementById('pm-cfg-model')?.value.trim() ?? '';
-        window.__pmConfig = { apiUrl, apiKey, model, useIndependent: !!window.__pmConfig.useIndependent };
+        window.__pmConfig = { apiUrl, apiKey, model, useIndependent: apiDraftUseIndependent };
         try { localStorage.setItem('ST_SMS_CONFIG', JSON.stringify(window.__pmConfig)); } catch (e) {}
         if (apiUrl && apiKey) addOrUpdateProfile({ apiUrl, apiKey, model });
         document.getElementById('pm-overlay')?.remove();

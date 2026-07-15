@@ -1,7 +1,7 @@
 import { cleanResponse, splitToSentences } from './prompts.js';
 import { VOICE_MAX_SEC } from './constants.js';
 import { GROUP_COLORS } from './groups.js';
-import { escapeHtml } from './ui.js';
+import { contrastText, escapeHtml } from './ui.js';
 
 const SPECIAL_KEYWORDS = {
     '转账':'转账','transfer':'转账','Transfer':'转账','TRANSFER':'转账','轉賬':'转账','轉帳':'转账',
@@ -93,10 +93,13 @@ export function parseGroupResponse(raw, groupMembers) {
 
 export function resolveGroupColor(name, groupColorMap, groupMembers) {
     if (!name) return null;
-    if (groupColorMap[name]) return groupColorMap[name];
+    const normalizeColor = color => typeof color === 'string'
+        ? { bg: color, text: contrastText(color) }
+        : color;
+    if (groupColorMap[name]) return normalizeColor(groupColorMap[name]);
     const normalizedName = name.toLowerCase();
     for (const [memberName, color] of Object.entries(groupColorMap)) {
-        if (memberName.toLowerCase() === normalizedName) return color;
+        if (memberName.toLowerCase() === normalizedName) return normalizeColor(color);
     }
     const index = groupMembers.findIndex(memberName => memberName.toLowerCase() === normalizedName);
     return index >= 0 ? GROUP_COLORS[index % GROUP_COLORS.length] : null;

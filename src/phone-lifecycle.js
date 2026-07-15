@@ -139,7 +139,7 @@ export function installPhoneLifecycle(state, deps) {
     // 修复：保存定时器 ID，在 __pmEnd 时清除，避免永久泄漏
     runtime.visibilityTimer = setInterval(ensureVisibility, 2000);
 
-    window.__pmOpen = () => {
+    window.__pmOpen = async () => {
         if (state.phoneActive && state.phoneWindow) { try { state.phoneWindow.showPopover?.(); } catch (e) {} state.phoneWindow.style.display = 'flex'; ensureVisibility(); return; }
         // 修复：删除每次打开都用 localStorage 覆盖内存的逻辑
         // localStorage 因容量限制可能保存的是旧数据，而内存和 IDB 才是最新的
@@ -150,7 +150,8 @@ export function installPhoneLifecycle(state, deps) {
             window.__pmConfig = saved || { apiUrl: '', apiKey: '', model: '', useIndependent: false };
             if (typeof window.__pmConfig.useIndependent === 'undefined') window.__pmConfig.useIndependent = !!(window.__pmConfig.apiUrl && window.__pmConfig.apiKey);
         } catch (e) { window.__pmConfig = { apiUrl: '', apiKey: '', model: '', useIndependent: false }; }
-        loadProfiles(); loadBidirectional(); loadTheme(); loadGroupMeta(); loadPokeConfig(); loadCharacterBehavior(); loadWordyLimit(); migrateOldHistory(); loadEmojis();
+        loadProfiles(); loadBidirectional(); loadTheme(); loadPokeConfig(); loadCharacterBehavior(); loadWordyLimit(); migrateOldHistory();
+        await Promise.all([loadGroupMeta(), loadEmojis()]);
         loadBgSettings().then(() => { try { applyBackground(); } catch (e) {} });
         hookGenerationEvent();
         const c = getCtx(), defaultChar = c?.characters?.[c.characterId]?.name ?? 'AI';
@@ -167,7 +168,7 @@ export function installPhoneLifecycle(state, deps) {
     <button onclick="window.__pmShowList()" class="pm-nav-btn pm-nav-left-btn" title="联系人">${MENU_ICON_SVG}</button>
     <div class="pm-name-wrap">
       <div class="pm-name">${escapeHtml(defaultChar)}</div>
-      <button onclick="window.__pmEditGroup()" class="pm-name-edit is-hidden" title="编辑">${EDIT_ICON_SVG}</button>
+      <button onclick="window.__pmPokeCurrent()" class="pm-name-edit is-hidden" title="拍一拍" aria-label="拍一拍当前会话">${EDIT_ICON_SVG}</button>
     </div>
     <div class="pm-nav-right">
       <button onclick="window.__pmEnd()" class="pm-nav-btn pm-close-btn" title="关闭">${CLOSE_ICON_SVG}</button>
@@ -216,24 +217,18 @@ export function installPhoneLifecycle(state, deps) {
 
 
         if (!runtime.firstOpen) {
-            // 热启动：信任内存历史直接渲染，但表情包可能因为插件重载而清空，需确保已加载
             const doRender = () => { window.__pmSwitch(defaultChar); applyBidirectionalInjection(); ensureVisibility(); };
-            if (window.__pmEmojis.length > 0) {
-                doRender();
-            } else {
-                loadEmojis().then(doRender);
-            }
+            doRender();
         } else {
             // ❄️ 冷启动：第一次打开，先占位，等外部的 IDB 把最新数据拉进内存再渲染
             runtime.firstOpen = false; // 翻转标记，此后不刷新就不会再走这里
             const list = state.phoneWindow?.querySelector('.pm-msg-list');
             if (list) { list.innerHTML = '<div style="text-align:center;color:#aaa;padding:20px;font-size:13px;">正在加载历史记录…</div>'; }
 
-            // 冷启动：表情包和历史记录都需要从 IDB 加载完才能正确渲染
-            // 否则 [emo:...] 会因为 __pmEmojis 为空而显示占位符
+            // 冷启动：历史记录需要从 IDB 加载完才能正确渲染。
             const historyLoad = loadHistoriesOnce();
             const openingWindow = state.phoneWindow;
-            Promise.all([historyLoad, loadEmojis()])
+            Promise.all([historyLoad])
                 .then(() => {
                     if (!state.phoneActive || state.phoneWindow !== openingWindow) return;
                     window.__pmSwitch(defaultChar);
@@ -272,9 +267,10 @@ export function installPhoneLifecycle(state, deps) {
     }, true);
 
     try { window.__pmHistories = window.__pmHistories || {}; } catch (e) {}
-    loadBidirectional(); loadGroupMeta(); loadPokeConfig(); loadCharacterBehavior(); loadWordyLimit();
+    loadBidirectional(); loadPokeConfig(); loadCharacterBehavior(); loadWordyLimit();
+    const initialGroupMetaLoad = loadGroupMeta();
     loadHistoriesOnce(); // 首次打开复用同一个恢复任务，避免并发读取用旧快照覆盖内存
-    setTimeout(() => { migrateOldHistory(); applyBidirectionalInjection(); hookGenerationEvent(); }, 1500);
+    setTimeout(() => { initialGroupMetaLoad.then(() => { migrateOldHistory(); applyBidirectionalInjection(); hookGenerationEvent(); }); }, 1500);
 
     console.log('[phone-mode] v9.5.7 已加载：世界书预算改为读取ST实际上下文窗口大小');
 }

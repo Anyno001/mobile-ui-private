@@ -8,5 +8,6 @@ export function createRuntimeState() {
         visibilityTimer: null,
         pendingMessages: new Map(),
         pendingSequence: 0,
+        overlayOpener: null,
     };
 }

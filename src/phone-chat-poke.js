@@ -177,7 +177,7 @@ export function installPhoneChatPoke(state, deps) {
         makeOverlay(`
     <div class="pm-modal pm-modal-wide">
     <div class="pm-modal-header">
-        <b>${escapeHtml(contactName)} 设置</b>
+        <b>${escapeHtml(contactName)} · 角色设置</b>
         <span onclick="window.__pmSaveAndCloseContactConfig('${safeJS(contactName)}')" class="pm-modal-close">✕</span>
     </div>
     <div class="pm-contact-settings-scroll">
@@ -207,6 +207,15 @@ export function installPhoneChatPoke(state, deps) {
             </select>
           </label>`).join('')}
         </div>
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-top:1px solid #f0f0f0;border-bottom:1px solid #f0f0f0;">
+          <div style="display:flex;flex-direction:column;gap:3px;">
+            <span style="font-size:13px;font-weight:600;">全局短消息限制</span>
+            <span style="font-size:11px;color:#aaa;">除话痨人设外，每条独立消息不超过 35 字</span>
+          </div>
+          <div id="pm-wordy-check" onclick="window.__pmToggleWordyLimit()"
+               class="pm-custom-check pm-bi-style ${window.__pmWordyLimit ? 'is-checked' : ''}"
+               style="cursor:pointer;width:22px;height:22px;min-width:22px;min-height:22px;flex-shrink:0;border-radius:50%;"></div>
+        </div>
         ${emojiCheckHtml}
         <div style="margin-top:-6px;">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
@@ -228,12 +237,6 @@ export function installPhoneChatPoke(state, deps) {
         <div style="font-size:11px;color:#999;margin-top:4px;">
             当前计数：<span id="pm-poke-counter">${config.autoPoke.counter}</span> / ${config.autoPoke.interval}
         </div>
-        </div>
-        <div style="margin-top:4px;">
-        <button onclick="window.__pmPoke('${safeJS(contactName)}')"
-                style="width:100%;background:linear-gradient(135deg,#ff9500,#ff6b00);color:#fff;border:none;border-radius:12px;padding:14px;font-size:14px;cursor:pointer;font-weight:600;display:flex;align-items:center;justify-content:center;">
-            拍一拍
-        </button>
         </div>
     </div>
     </div>`);
@@ -440,6 +443,14 @@ export function installPhoneChatPoke(state, deps) {
         } else {
             showGroupForm('edit', state.groupDisplayName, state.groupMembers);
         }
+    };
+    window.__pmPokeCurrent = () => {
+        if (state.isGenerating) return;
+        if (state.isGroupChat) {
+            window.__pmPokeGroup();
+            return;
+        }
+        if (state.currentPersona) window.__pmPoke(state.currentPersona);
     };
     window.__pmToggleAutoPokeGroup = () => {
         const checkEl = document.getElementById('pm-poke-check-group');

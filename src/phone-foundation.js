@@ -1,9 +1,10 @@
 import {
-    BIDIRECTIONAL_KEY, BIDIRECTIONAL_LIMIT, MAX_BIDIRECTIONAL, POPOVER_SUPPORTED,
+    POPOVER_SUPPORTED,
 } from './constants.js';
 import { THEME_PRESETS } from './config.js';
 import { contrastText, cssUrlEscape, escapeHtml } from './ui.js';
-import { createBubbles, resolveEmojiText } from './messaging.js';
+import { createBubbles } from './messaging.js';
+import { applyConversationInjections } from './phone-injection.js';
 import {
     saveBidirectional, saveHistories, saveHistoriesBeforeUnload,
 } from './storage.js';
@@ -151,35 +152,16 @@ export function installPhoneFoundation(state, deps) {
 
 
     function applyBidirectionalInjection() {
-        const c = getCtx(); if (!c || typeof c.setExtensionPrompt !== 'function') return;
-        const userName = getUserPersona().name || '用户';
-
-        const id = getStorageId(), checked = window.__pmBidirectional[id] || [], histories = window.__pmHistories[id] || {};
-        const groups = window.__pmGroupMeta[id] || {};
-        if (!checked.length) { try { c.setExtensionPrompt(BIDIRECTIONAL_KEY, '', 0, 0, false, 0); } catch (e) {} return; }
-        const blocks = checked.map(name => {
-            const conv = (histories[name] || []).slice(-BIDIRECTIONAL_LIMIT);
-            if (!conv.length) return '';
-            if (name.startsWith('__group_')) {
-                const meta = groups[name]; if (!meta) return '';
-                const lines = conv.map(m => {
-                    const t = resolveEmojiText((m.content || '').replace(/\s*\/\s*/g, '。').replace(/\n/g, '；'), window.__pmEmojis);
-                    const director = m.directorNote ? `【剧情引导：${m.directorNote}】` : '';
-                    const userLine = t ? `${userName}：${t}` : '';
-                    return m.role === 'user' ? [userLine, director].filter(Boolean).join(' ') : t;
-                }).join('\n');
-                return `【群聊"${meta.name}"（成员：${meta.members.join('、')}）的最近聊天 — 仅参与者与 ${userName} 知晓，其他角色不应知情】\n${lines}`;
-            }
-            const lines = conv.map(m => {
-                const t = resolveEmojiText((m.content || '').replace(/\s*\/\s*/g, '。'), window.__pmEmojis);
-                const director = m.directorNote ? `【剧情引导：${m.directorNote}】` : '';
-                const userLine = t ? `${userName}：${t}` : '';
-                return m.role === 'user' ? [userLine, director].filter(Boolean).join(' ') : `${name}：${t}`;
-            }).join('\n');
-            return `【与 ${name} 的短信 — 仅 ${name} 与 ${userName} 知晓】\n${lines}`;
-        }).filter(Boolean).join('\n\n');
-        if (!blocks) { try { c.setExtensionPrompt(BIDIRECTIONAL_KEY, '', 0, 0, false, 0); } catch (e) {} return; }
-        try { c.setExtensionPrompt(BIDIRECTIONAL_KEY, `[手机短信记忆 — 私密]\n${blocks}\n[结束]`, 0, 0, false, 0); } catch (e) {}
+        const id = getStorageId();
+        applyConversationInjections({
+            context: getCtx(),
+            runtime,
+            checked: window.__pmBidirectional[id] || [],
+            histories: window.__pmHistories[id] || {},
+            groups: window.__pmGroupMeta[id] || {},
+            userName: getUserPersona().name || '用户',
+            emojis: window.__pmEmojis,
+        });
     }
 
     function hookGenerationEvent() {
@@ -236,7 +218,7 @@ export function installPhoneFoundation(state, deps) {
     window.__pmToggleBidirectional = (name) => {
         const id = getStorageId(), arr = window.__pmBidirectional[id] || [], idx = arr.indexOf(name);
         if (idx >= 0) arr.splice(idx, 1);
-        else { if (arr.length >= MAX_BIDIRECTIONAL) return; arr.push(name); }
+        else arr.push(name);
         window.__pmBidirectional[id] = arr; saveBidirectional(); applyBidirectionalInjection(); window.__pmShowList();
     };
 
@@ -346,17 +328,28 @@ export function installPhoneFoundation(state, deps) {
         const current = document.getElementById('pm-overlay');
         if (!current) return false;
         const onClose = current.__pmOnClose;
+        const opener = current.__pmOpener;
         current.remove();
         if (typeof onClose === 'function') onClose(reason);
+        if (!['replace', 'phone-close', 'conversation-switch'].includes(reason)
+            && opener?.isConnected && typeof opener.focus === 'function') {
+            opener.focus({ preventScroll: true });
+        }
         return true;
     }
 
     function makeOverlay(html, options = {}) {
+        const previous = document.getElementById('pm-overlay');
+        const active = document.activeElement;
+        const opener = options.opener || runtime.overlayOpener || previous?.__pmOpener
+            || (active && active !== document.body ? active : null);
+        runtime.overlayOpener = null;
         closeOverlay('replace');
         const ov = document.createElement('div'); ov.id = 'pm-overlay';
         ov.dataset.theme = window.__pmTheme?.darkMode || 'light';
         if (POPOVER_SUPPORTED) ov.setAttribute('popover', 'manual');
         ov.__pmOnClose = typeof options.onClose === 'function' ? options.onClose : null;
+        ov.__pmOpener = opener;
         ov.innerHTML = html;
         ov.addEventListener('click', e => { if (e.target === ov) closeOverlay('backdrop'); });
         document.body.appendChild(ov);

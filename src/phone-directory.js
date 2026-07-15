@@ -1,37 +1,47 @@
 import {
-    MAX_BIDIRECTIONAL, MAX_GROUP_MEMBERS,
-    POPOVER_SUPPORTED,
+    EXTENSION_PROMPT_POSITIONS, MAX_INJECTION_DEPTH, POPOVER_SUPPORTED,
 } from './constants.js';
+import { normalizeGroupMeta } from './behavior-config.js';
 import { GROUP_COLORS } from './groups.js';
 import { escapeAttr, escapeHtml, safeJS } from './ui.js';
 import { REFRESH_ICON_SVG } from './icons.js';
 import { clearPendingMessages } from './pending-messages.js';
 import {
-    loadGroupMeta, pmIDBDel, pmIDBSet, saveBgLocal, saveBidirectional,
-    saveGroupMeta, savePokeConfig,
+    loadGroupMeta, saveBgLocal, saveBidirectional, saveGroupMeta, saveHistoriesStrict, savePokeConfig,
 } from './storage.js';
 
 export function installPhoneDirectory(state, deps) {
     const { runtime, getStorageId, makeOverlay, applyBidirectionalInjection } = deps;
+
+    function parseGroupMembers(value) {
+        const seen = new Set();
+        return String(value || '').split(/[/／]/).flatMap(raw => {
+            const name = raw.trim().slice(0, 80);
+            const key = name.toLocaleLowerCase();
+            if (!name || seen.has(key)) return [];
+            seen.add(key);
+            return [name];
+        });
+    }
 
     function showGroupForm(mode, existingName, existingMembers) {
         document.getElementById('pm-overlay')?.remove();
         const title = mode === 'create' ? '新建群聊' : '编辑群聊';
         const initName = existingName || '';
         const initMembers = (existingMembers || []).join(' / ');
-        const closeAction = mode === 'create'
-            ? "window.__pmShowList()"
-            : "window.__pmSaveAndCloseGroupEdit()";
+        const closeAction = "window.__pmShowList()";
 
         let pokeConfig = { enabled: false, interval: 3, counter: 0 };
         let assignedEmojis = [];
+        let groupMeta = normalizeGroupMeta({ name: initName, members: existingMembers || [] });
         if (mode === 'edit' && state.currentGroupKey) {
             const id = getStorageId();
+            groupMeta = normalizeGroupMeta(window.__pmGroupMeta[id]?.[state.currentGroupKey]);
             pokeConfig = window.__pmPokeConfig[id]?.[state.currentGroupKey]?.autoPoke || pokeConfig;
             assignedEmojis = window.__pmPokeConfig[id]?.[state.currentGroupKey]?.emojis || [];
         }
 
-        const emojiCheckHtml = window.__pmEmojis.length ? `
+        const emojiCheckHtml = mode === 'edit' && window.__pmEmojis.length ? `
         <div style="padding-top:12px;border-top:1px solid #f0f0f0;">
             <div class="pm-cfg-label" style="margin-bottom:8px;">🥰 允许 AI 使用的表情包套组</div>
             <div style="display:flex;flex-direction:column;gap:10px;max-height:120px;overflow-y:auto;background:#fafafa;border-radius:8px;padding:10px;border:1px solid #eee;">
@@ -47,6 +57,29 @@ export function installPhoneDirectory(state, deps) {
                 `).join('')}
             </div>
         </div>` : '';
+        const memberColorHtml = mode === 'edit' ? `
+        <div style="padding-top:12px;border-top:1px solid #f0f0f0;">
+          <div class="pm-cfg-label" style="margin-bottom:8px;">成员气泡颜色</div>
+          <div style="display:grid;grid-template-columns:1fr auto;gap:8px 12px;align-items:center;">
+            ${groupMeta.members.map((name, index) => `<label style="display:contents;"><span style="font-size:12px;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(name)}</span><input class="pm-group-member-color" data-member="${escapeAttr(name)}" type="color" value="${escapeAttr(groupMeta.memberColors[name] || GROUP_COLORS[index % GROUP_COLORS.length].bg)}"></label>`).join('')}
+          </div>
+        </div>` : '';
+        const injection = groupMeta.injection;
+        const injectionHtml = mode === 'edit' ? `
+        <div style="padding-top:12px;border-top:1px solid #f0f0f0;display:flex;flex-direction:column;gap:8px;">
+          <div class="pm-cfg-label">群聊记录注入</div>
+          <label style="font-size:12px;">位置
+            <select id="pm-group-injection-position" class="pm-cfg-input">
+              <option value="${EXTENSION_PROMPT_POSITIONS.NONE}" ${injection.position === EXTENSION_PROMPT_POSITIONS.NONE ? 'selected' : ''}>关闭</option>
+              <option value="${EXTENSION_PROMPT_POSITIONS.IN_PROMPT}" ${injection.position === EXTENSION_PROMPT_POSITIONS.IN_PROMPT ? 'selected' : ''}>主提示词内</option>
+              <option value="${EXTENSION_PROMPT_POSITIONS.IN_CHAT}" ${injection.position === EXTENSION_PROMPT_POSITIONS.IN_CHAT ? 'selected' : ''}>聊天记录内</option>
+              <option value="${EXTENSION_PROMPT_POSITIONS.BEFORE_PROMPT}" ${injection.position === EXTENSION_PROMPT_POSITIONS.BEFORE_PROMPT ? 'selected' : ''}>主提示词前</option>
+            </select>
+          </label>
+          <label style="font-size:12px;">深度（0-${MAX_INJECTION_DEPTH}）<input id="pm-group-injection-depth" class="pm-cfg-input" type="number" min="0" max="${MAX_INJECTION_DEPTH}" value="${injection.depth}"></label>
+          <label style="font-size:12px;">注入最近消息条数（1-100）<input id="pm-group-injection-limit" class="pm-cfg-input" type="number" min="1" max="100" value="${injection.historyLimit}"></label>
+          <div class="pm-cfg-tip" style="text-align:left;">成员数量不设产品上限；注入条数与深度保留资源安全边界。</div>
+        </div>` : '';
 
         makeOverlay(`
     <div class="pm-modal pm-modal-wide">
@@ -56,10 +89,12 @@ export function installPhoneDirectory(state, deps) {
         <input id="pm-group-name-input" class="pm-cfg-input" placeholder="给群聊起个名字" value="${escapeAttr(initName)}" maxlength="30">
         <div class="pm-cfg-label" style="margin-top:4px;">成员（用 / 分隔）</div>
         <input id="pm-group-input" class="pm-cfg-input" placeholder="角色A / 角色B / 角色C" oninput="window.__pmGroupInputChanged()" value="${escapeAttr(initMembers)}">
-        <div id="pm-group-counter" class="pm-cfg-tip" style="text-align:left;font-weight:600;">0/${MAX_GROUP_MEMBERS - 1} 个角色</div>
+        <div id="pm-group-counter" class="pm-cfg-tip" style="text-align:left;font-weight:600;">0 个角色</div>
         <div id="pm-group-preview" style="display:flex;flex-wrap:wrap;gap:4px;"></div>
 
         ${mode === 'edit' ? `
+        ${memberColorHtml}
+        ${injectionHtml}
         ${emojiCheckHtml}
         <div style="margin-top:0px;padding-top:8px;border-top:1px solid #f0f0f0;">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
@@ -81,71 +116,76 @@ export function installPhoneDirectory(state, deps) {
         <div style="font-size:11px;color:#999;margin-top:4px;">
             当前计数：<span id="pm-poke-counter-group">${pokeConfig.counter}</span> / ${pokeConfig.interval}
         </div>
-        <div style="margin-top:12px;">
-            <button onclick="window.__pmPokeGroup()"
-                    style="width:100%;background:linear-gradient(135deg,#ff9500,#ff6b00);color:#fff;border:none;border-radius:12px;padding:14px;font-size:14px;cursor:pointer;font-weight:600;display:flex;align-items:center;justify-content:center;">
-            拍一拍
-            </button>
-        </div>
         </div>
         ` : ''}
     </div>
     ${mode === 'create' ? `
     <div class="pm-modal-add">
         <button onclick="window.__pmConfirmGroup('${safeJS(mode)}')" style="flex:1;background:#007aff;color:#fff;border:none;border-radius:10px;padding:10px;font-size:13px;cursor:pointer;font-weight:600;">创建</button>
-    </div>` : ''}
+    </div>` : `<div class="pm-modal-add"><button onclick="window.__pmSaveAndCloseGroupEdit()" style="flex:1;background:#007aff;color:#fff;border:none;border-radius:10px;padding:10px;font-size:13px;cursor:pointer;font-weight:600;">保存群聊设置</button></div>`}
     </div>`);
         setTimeout(() => window.__pmGroupInputChanged(), 0);
     }
-    window.__pmSaveAndCloseGroupEdit = () => {
+    window.__pmSaveAndCloseGroupEdit = async () => {
         const nameInput = document.getElementById('pm-group-name-input');
         const memInput = document.getElementById('pm-group-input');
-
-        if (nameInput && memInput && state.currentGroupKey) {
-            const groupName = nameInput.value.trim();
-            const names = memInput.value.split(/[/／]/).map(s => s.trim()).filter(Boolean).slice(0, MAX_GROUP_MEMBERS - 1);
-
-            if (groupName && names.length >= 2) {
-                const id = getStorageId();
-                if (!window.__pmGroupMeta[id]) window.__pmGroupMeta[id] = {};
-                window.__pmGroupMeta[id][state.currentGroupKey] = { name: groupName, members: names };
-                saveGroupMeta();
-
-                state.groupMembers = names; state.groupDisplayName = groupName;
-                state.groupColorMap = {};
-                names.forEach((n, i) => { state.groupColorMap[n] = GROUP_COLORS[i % GROUP_COLORS.length]; });
-            }
-
+        if (!nameInput || !memInput || !state.currentGroupKey) return;
+        const groupName = nameInput.value.trim();
+        const names = parseGroupMembers(memInput.value);
+        if (!groupName) return alert('请输入群聊名称');
+        if (names.length < 2) return alert('至少需要 2 个角色');
+        const id = getStorageId();
+        const groupSnapshot = JSON.parse(JSON.stringify(window.__pmGroupMeta));
+        const pokeSnapshot = JSON.parse(JSON.stringify(window.__pmPokeConfig));
+        try {
+            if (!window.__pmGroupMeta[id]) window.__pmGroupMeta[id] = {};
+            const previous = window.__pmGroupMeta[id][state.currentGroupKey] || {};
+            const memberColors = {};
+            document.querySelectorAll('.pm-group-member-color').forEach(input => {
+                if (names.includes(input.dataset.member) && /^#[0-9a-f]{6}$/i.test(input.value)) memberColors[input.dataset.member] = input.value;
+            });
+            const updated = normalizeGroupMeta({
+                ...previous, name: groupName, members: names, memberColors,
+                injection: {
+                    position: document.getElementById('pm-group-injection-position')?.value,
+                    depth: document.getElementById('pm-group-injection-depth')?.value,
+                    historyLimit: document.getElementById('pm-group-injection-limit')?.value,
+                },
+            });
+            window.__pmGroupMeta[id][state.currentGroupKey] = updated;
             const checkEl = document.getElementById('pm-poke-check-group');
             const intervalEl = document.getElementById('pm-poke-interval-group');
-            const emojiChecks = document.querySelectorAll('.pm-emoji-assign-check.is-checked');
-            const selectedEmojis = Array.from(emojiChecks).map(cb => cb.dataset.id);
-
             if (checkEl && intervalEl) {
-                const id = getStorageId();
                 if (!window.__pmPokeConfig[id]) window.__pmPokeConfig[id] = {};
-
                 const enabled = checkEl.classList.contains('is-checked');
-                const interval = parseInt(intervalEl.value) || 3;
+                const interval = Math.max(1, Math.min(99, parseInt(intervalEl.value) || 3));
                 const oldCounter = window.__pmPokeConfig[id][state.currentGroupKey]?.autoPoke?.counter || 0;
-
                 window.__pmPokeConfig[id][state.currentGroupKey] = {
-                    autoPoke: {
-                        enabled,
-                        interval: Math.max(1, Math.min(99, interval)),
-                        counter: enabled ? Math.min(oldCounter, interval - 1) : oldCounter
-                    },
-                    emojis: selectedEmojis
+                    autoPoke: { enabled, interval, counter: enabled ? Math.min(oldCounter, interval - 1) : oldCounter },
+                    emojis: Array.from(document.querySelectorAll('.pm-emoji-assign-check.is-checked')).map(cb => cb.dataset.id),
                 };
-
-                savePokeConfig();
             }
-        }
-
-        document.getElementById('pm-overlay')?.remove();
-
-        if (state.phoneWindow && state.currentGroupKey) {
-            window.__pmSwitch(state.currentGroupKey);
+            await saveGroupMeta();
+            if (!savePokeConfig()) throw new Error('自动消息配置保存失败：浏览器存储不可用或空间不足');
+            state.groupMembers = updated.members.slice(); state.groupExtras = updated.extras.slice(); state.groupDisplayName = updated.name;
+            state.groupColorMap = {};
+            updated.members.forEach((name, index) => { state.groupColorMap[name] = updated.memberColors[name] || GROUP_COLORS[index % GROUP_COLORS.length]; });
+            applyBidirectionalInjection();
+            document.getElementById('pm-overlay')?.remove();
+            if (state.phoneWindow) window.__pmSwitch(state.currentGroupKey);
+        } catch (error) {
+            window.__pmGroupMeta = groupSnapshot;
+            window.__pmPokeConfig = pokeSnapshot;
+            let rollbackError = null;
+            try {
+                await saveGroupMeta();
+                if (!savePokeConfig()) throw new Error('自动消息配置回滚失败');
+            } catch (rollbackFailure) {
+                rollbackError = rollbackFailure;
+            }
+            alert(rollbackError
+                ? `${error.message || '群聊设置保存失败'}；原配置回滚也失败，请勿刷新并立即导出备份：${rollbackError.message}`
+                : (error.message || '群聊设置保存失败'));
         }
     };
 
@@ -156,56 +196,48 @@ export function installPhoneDirectory(state, deps) {
         const counter = document.getElementById('pm-group-counter');
         const preview = document.getElementById('pm-group-preview');
         if (!input) return;
-        const names = input.value.split(/[/／]/).map(s => s.trim()).filter(Boolean);
-        const max = MAX_GROUP_MEMBERS - 1;
-        const count = Math.min(names.length, max);
-        const over = names.length > max;
-        counter.textContent = `${count}/${max} 个角色${over ? ' ⚠️ 超出上限' : ''}`;
-        counter.style.color = over ? '#ff3b30' : '#b87a00';
-        preview.innerHTML = names.slice(0, max).map((n, i) => {
+        const names = parseGroupMembers(input.value);
+        if (counter) { counter.textContent = `${names.length} 个角色`; counter.style.color = '#b87a00'; }
+        preview.innerHTML = names.map((n, i) => {
             const gc = GROUP_COLORS[i % GROUP_COLORS.length];
             return `<span style="background:${gc.bg};color:${gc.text};padding:3px 8px;border-radius:10px;font-size:11px;">${escapeHtml(n)}</span>`;
         }).join('');
     };
 
-    window.__pmConfirmGroup = (mode) => {
+    window.__pmConfirmGroup = async (mode) => {
         const nameInput = document.getElementById('pm-group-name-input');
         const memInput = document.getElementById('pm-group-input');
         if (!nameInput || !memInput) return;
         const groupName = nameInput.value.trim();
-        const names = memInput.value.split(/[/／]/).map(s => s.trim()).filter(Boolean).slice(0, MAX_GROUP_MEMBERS - 1);
+        const names = parseGroupMembers(memInput.value);
         if (!groupName) { alert('请输入群聊名称'); return; }
         if (names.length < 2) { alert('至少需要 2 个角色'); return; }
-
-        document.getElementById('pm-overlay')?.remove();
         const id = getStorageId();
         if (!window.__pmGroupMeta[id]) window.__pmGroupMeta[id] = {};
-
-        if (mode === 'create') {
-            const groupKey = `__group_${Date.now()}`;
-            // 修复：在修改全局状态前先快照旧的 saveKey，防止旧聊天记录被写入新群聊
-            const _prevSaveKey = state.isGroupChat && state.currentGroupKey ? state.currentGroupKey : state.currentPersona;
-            window.__pmGroupMeta[id][groupKey] = { name: groupName, members: names };
-            saveGroupMeta();
-            state.isGroupChat = true; state.groupMembers = names; state.groupDisplayName = groupName; state.currentGroupKey = groupKey;
-            state.groupColorMap = {}; names.forEach((n, i) => { state.groupColorMap[n] = GROUP_COLORS[i % GROUP_COLORS.length]; });
-            window.__pmSwitch(groupKey, _prevSaveKey);
-        } else {
-            if (!state.currentGroupKey) return;
-            window.__pmGroupMeta[id][state.currentGroupKey] = { name: groupName, members: names };
-            saveGroupMeta();
-            state.groupMembers = names; state.groupDisplayName = groupName;
-            state.groupColorMap = {}; names.forEach((n, i) => { state.groupColorMap[n] = GROUP_COLORS[i % GROUP_COLORS.length]; });
-            window.__pmSwitch(state.currentGroupKey);
+        const snapshot = JSON.parse(JSON.stringify(window.__pmGroupMeta));
+        try {
+            if (mode === 'create') {
+                const groupKey = `__group_${Date.now()}`;
+                const previousSaveKey = state.isGroupChat && state.currentGroupKey ? state.currentGroupKey : state.currentPersona;
+                window.__pmGroupMeta[id][groupKey] = normalizeGroupMeta({ name: groupName, members: names });
+                await saveGroupMeta();
+                document.getElementById('pm-overlay')?.remove();
+                state.isGroupChat = true; state.groupMembers = names; state.groupExtras = []; state.groupDisplayName = groupName; state.currentGroupKey = groupKey;
+                state.groupColorMap = {}; names.forEach((n, i) => { state.groupColorMap[n] = GROUP_COLORS[i % GROUP_COLORS.length]; });
+                window.__pmSwitch(groupKey, previousSaveKey);
+            }
+        } catch (error) {
+            window.__pmGroupMeta = snapshot;
+            alert(error.message || '群聊创建失败');
         }
     };
 
 
 
 
-    window.__pmShowList = () => {
+    window.__pmShowList = async () => {
         const id = getStorageId();
-        loadGroupMeta();
+        await loadGroupMeta();
         const histories = window.__pmHistories[id] || {};
         const groups = window.__pmGroupMeta[id] || {};
         const checked = window.__pmBidirectional[id] || [];
@@ -245,10 +277,10 @@ export function installPhoneDirectory(state, deps) {
       </span>
     </div>
     <button type="button" class="pm-forum-entry" onclick="window.__pmOpenForumMode()">
-      <b>论坛模式</b>
-      <span>开发中，入口已预留</span>
+      <b>AI 互动场景</b>
+      <span>论坛、社交与 AI 文字直播</span>
     </button>
-    <div class="pm-bi-bar"><span>🧠 勾选角色/群聊可被主楼读取短信</span><span class="pm-bi-tip">已选 ${checked.length}/${MAX_BIDIRECTIONAL}</span></div>
+    <div class="pm-bi-bar"><span>🧠 勾选会话可注入主楼；群聊资源参数在群聊设置中配置</span><span class="pm-bi-tip">已选 ${checked.length}</span></div>
     <div class="pm-modal-list">
         ${empty ? '<div style="text-align:center;color:#999;padding:20px;font-size:13px;">暂无联系人</div>' : (renderGroups + renderSingle)}
     </div>
@@ -284,63 +316,85 @@ export function installPhoneDirectory(state, deps) {
 
     window.__pmDelGroup = async (key) => {
         const id = getStorageId();
-        clearPendingMessages(runtime, id, key);
-        if (window.__pmGroupMeta[id]) delete window.__pmGroupMeta[id][key];
-        if (window.__pmHistories[id]) delete window.__pmHistories[id][key];
-
-        const arr = window.__pmBidirectional[id] || [], idx = arr.indexOf(key);
-        if (idx >= 0) { arr.splice(idx, 1); window.__pmBidirectional[id] = arr; saveBidirectional(); }
-
-        const bgKey = `${id}_${key}`;
-        if (window.__pmBgLocal[bgKey]) {
-            delete window.__pmBgLocal[bgKey];
-            await pmIDBDel('ST_SMS_BG_LOCAL_' + bgKey);
-            await saveBgLocal();
+        const snapshots = {
+            groupMeta: JSON.parse(JSON.stringify(window.__pmGroupMeta)), histories: JSON.parse(JSON.stringify(window.__pmHistories)),
+            bidirectional: JSON.parse(JSON.stringify(window.__pmBidirectional)), poke: JSON.parse(JSON.stringify(window.__pmPokeConfig)),
+            backgrounds: JSON.parse(JSON.stringify(window.__pmBgLocal)),
+        };
+        try {
+            if (window.__pmGroupMeta[id]) delete window.__pmGroupMeta[id][key];
+            if (window.__pmHistories[id]) delete window.__pmHistories[id][key];
+            const arr = window.__pmBidirectional[id] || [], idx = arr.indexOf(key);
+            if (idx >= 0) arr.splice(idx, 1);
+            const bgKey = `${id}_${key}`;
+            if (window.__pmBgLocal[bgKey]) delete window.__pmBgLocal[bgKey];
+            if (window.__pmPokeConfig[id]?.[key]) delete window.__pmPokeConfig[id][key];
+            await saveHistoriesStrict();
+            await saveGroupMeta();
+            if (!savePokeConfig()) throw new Error('自动消息配置保存失败');
+            if (!saveBidirectional()) throw new Error('注入配置保存失败');
+            if (snapshots.backgrounds[bgKey]) await saveBgLocal();
+            await window.__pmShowList();
+            applyBidirectionalInjection();
+            clearPendingMessages(runtime, id, key);
+            if (state.currentGroupKey === key) { state.isGroupChat = false; state.currentGroupKey = ''; state.currentPersona = ''; state.conversationHistory = []; state.groupMembers = []; state.groupDisplayName = ''; state.groupColorMap = {}; }
+        } catch (error) {
+            window.__pmGroupMeta = snapshots.groupMeta; window.__pmHistories = snapshots.histories;
+            window.__pmBidirectional = snapshots.bidirectional; window.__pmPokeConfig = snapshots.poke; window.__pmBgLocal = snapshots.backgrounds;
+            let rollbackError = null;
+            try {
+                await saveHistoriesStrict();
+                await saveGroupMeta();
+                if (!savePokeConfig() || !saveBidirectional()) throw new Error('本地配置回滚失败');
+                await saveBgLocal();
+            } catch (rollbackFailure) {
+                rollbackError = rollbackFailure;
+            }
+            alert(rollbackError
+                ? `${error.message || '群聊删除失败'}；原数据回滚也失败，请勿刷新并立即导出备份：${rollbackError.message}`
+                : (error.message || '群聊删除失败'));
         }
-
-        if (window.__pmPokeConfig[id]?.[key]) {
-            delete window.__pmPokeConfig[id][key];
-            savePokeConfig();
-        }
-
-        // 修复：await 确保 IDB 写入完成，防止冷启动时 IDB 旧数据覆盖删除操作
-        await pmIDBSet('ST_SMS_DATA_V2', window.__pmHistories).catch(() => {});
-        try { localStorage.setItem('ST_SMS_DATA_V2', JSON.stringify(window.__pmHistories)); } catch (e) {};
-        saveGroupMeta();
-        applyBidirectionalInjection();
-        // 修复：删除当前会话后清空全局状态，防止后续切换时落盘把已删记录写入新目标
-        if (state.currentGroupKey === key) { state.isGroupChat = false; state.currentGroupKey = ''; state.currentPersona = ''; state.conversationHistory = []; state.groupMembers = []; state.groupDisplayName = ''; state.groupColorMap = {}; }
-        window.__pmShowList();
     };
 
 
     window.__pmDel = async (name) => {
         const id = getStorageId();
-        clearPendingMessages(runtime, id, name);
-        if (window.__pmHistories[id]) delete window.__pmHistories[id][name];
-        // 修复：await 确保 IDB 写入完成，防止冷启动时 IDB 旧数据覆盖删除操作
-        await pmIDBSet('ST_SMS_DATA_V2', window.__pmHistories).catch(() => {});
-        try { localStorage.setItem('ST_SMS_DATA_V2', JSON.stringify(window.__pmHistories)); } catch (e) {};
-
-        const arr = window.__pmBidirectional[id] || [], idx = arr.indexOf(name);
-        if (idx >= 0) { arr.splice(idx, 1); window.__pmBidirectional[id] = arr; saveBidirectional(); }
-
-        const bgKey = `${id}_${name}`;
-        if (window.__pmBgLocal[bgKey]) {
-            delete window.__pmBgLocal[bgKey];
-            await pmIDBDel('ST_SMS_BG_LOCAL_' + bgKey);
-            await saveBgLocal();
+        const snapshots = {
+            histories: JSON.parse(JSON.stringify(window.__pmHistories)),
+            bidirectional: JSON.parse(JSON.stringify(window.__pmBidirectional)),
+            poke: JSON.parse(JSON.stringify(window.__pmPokeConfig)),
+            backgrounds: JSON.parse(JSON.stringify(window.__pmBgLocal)),
+        };
+        try {
+            if (window.__pmHistories[id]) delete window.__pmHistories[id][name];
+            const arr = window.__pmBidirectional[id] || [], idx = arr.indexOf(name);
+            if (idx >= 0) arr.splice(idx, 1);
+            const bgKey = `${id}_${name}`;
+            if (window.__pmBgLocal[bgKey]) delete window.__pmBgLocal[bgKey];
+            if (window.__pmPokeConfig[id]?.[name]) delete window.__pmPokeConfig[id][name];
+            await saveHistoriesStrict();
+            if (!savePokeConfig()) throw new Error('自动消息配置保存失败');
+            if (!saveBidirectional()) throw new Error('注入配置保存失败');
+            if (snapshots.backgrounds[bgKey]) await saveBgLocal();
+            await window.__pmShowList();
+            applyBidirectionalInjection();
+            clearPendingMessages(runtime, id, name);
+            if (!state.isGroupChat && state.currentPersona === name) { state.currentPersona = ''; state.conversationHistory = []; }
+        } catch (error) {
+            window.__pmHistories = snapshots.histories; window.__pmBidirectional = snapshots.bidirectional;
+            window.__pmPokeConfig = snapshots.poke; window.__pmBgLocal = snapshots.backgrounds;
+            let rollbackError = null;
+            try {
+                await saveHistoriesStrict();
+                if (!savePokeConfig() || !saveBidirectional()) throw new Error('本地配置回滚失败');
+                await saveBgLocal();
+            } catch (rollbackFailure) {
+                rollbackError = rollbackFailure;
+            }
+            alert(rollbackError
+                ? `${error.message || '联系人删除失败'}；原数据回滚也失败，请勿刷新并立即导出备份：${rollbackError.message}`
+                : (error.message || '联系人删除失败'));
         }
-
-        if (window.__pmPokeConfig[id]?.[name]) {
-            delete window.__pmPokeConfig[id][name];
-            savePokeConfig();
-        }
-
-        applyBidirectionalInjection();
-        // 修复：删除当前联系人后清空全局状态，防止后续切换时落盘把已删记录写入新目标
-        if (!state.isGroupChat && state.currentPersona === name) { state.currentPersona = ''; state.conversationHistory = []; }
-        window.__pmShowList();
     };
     Object.assign(deps, { showGroupForm });
 }

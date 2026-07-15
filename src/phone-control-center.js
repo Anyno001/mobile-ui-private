@@ -70,7 +70,10 @@ export function installPhoneControlCenter(state, deps) {
             escapeKeyHandler = null;
         }
         const anchor = state.phoneWindow?.querySelector('.pm-expand-btn');
-        anchor?.setAttribute('aria-expanded', 'false');
+        if (anchor) {
+            anchor.setAttribute('aria-expanded', 'false');
+            if (!restoreFocus) anchor.blur();
+        }
         if (restoreFocus) anchor?.focus({ preventScroll: true });
     }
 
@@ -89,11 +92,13 @@ export function installPhoneControlCenter(state, deps) {
     }
 
     function runControlAction(action) {
+        runtime.overlayOpener = state.phoneWindow?.querySelector('.pm-expand-btn') || null;
         closeControlCenter();
         if (action === 'pending') showPendingManager();
         else if (action === 'settings') window.__pmShowConversationSettings();
-        else if (action === 'api' || action === 'look' || action === 'other') window.__pmOpenSettingsTab(action);
-        else if (action === 'emoji') window.__pmShowEmojiPicker();
+        else if (action === 'api' || action === 'look' || action === 'backup') window.__pmOpenSettingsTab(action);
+        else if (action === 'emoji') window.__pmShowEmojiManager();
+        else if (action === 'group') window.__pmEditGroup();
         else if (action === 'delete') window.__pmStartDeleteMode();
         else if (action === 'forum') window.__pmOpenForumMode();
     }
@@ -133,14 +138,15 @@ export function installPhoneControlCenter(state, deps) {
         menu.setAttribute('role', 'menu');
         menu.setAttribute('aria-label', '快捷工具');
         menu.innerHTML = `
-  <button type="button" role="menuitem" data-action="pending">暂存消息</button>
-  <button type="button" role="menuitem" data-action="settings">设置</button>
-  <button type="button" role="menuitem" data-action="api">API</button>
-  <button type="button" role="menuitem" data-action="look">外观</button>
-  <button type="button" role="menuitem" data-action="other">其他</button>
-  <button type="button" role="menuitem" data-action="emoji">表情包</button>
+  <button type="button" role="menuitem" data-action="pending">编辑消息</button>
+  <button type="button" role="menuitem" data-action="settings">角色设置</button>
+  ${state.isGroupChat ? '<button type="button" role="menuitem" data-action="group">群聊设置</button>' : ''}
+  <button type="button" role="menuitem" data-action="api">API 设置</button>
+  <button type="button" role="menuitem" data-action="look">主题颜色</button>
+  <button type="button" role="menuitem" data-action="emoji">表情包管理</button>
+  <button type="button" role="menuitem" data-action="backup">数据备份</button>
   <button type="button" role="menuitem" data-action="delete" class="pm-control-menu-danger">删除信息</button>
-  <button type="button" role="menuitem" data-action="forum">论坛模式（开发中）</button>`;
+  <button type="button" role="menuitem" data-action="forum">互动场景</button>`;
         phone.appendChild(menu);
         const phoneRect = phone.getBoundingClientRect();
         const anchorRect = anchor.getBoundingClientRect();
@@ -157,7 +163,6 @@ export function installPhoneControlCenter(state, deps) {
 
     window.__pmOpenSettingsTab = tab => window.__pmShowConfig(tab);
     window.__pmStartDeleteMode = () => { window.__pmCloseOverlay(); window.__pmToggleSelect(); };
-    window.__pmOpenForumMode = () => alert('论坛模式入口已保留，功能将在后续版本接入。');
 
     function redrawPendingConversation() {
         const target = getTarget();
