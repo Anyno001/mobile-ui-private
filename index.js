@@ -3872,14 +3872,14 @@ ${blocks}
       try {
         const SCP = window.SlashCommandParser || ctx.SlashCommandParser, SC = window.SlashCommand || ctx.SlashCommand;
         if (SCP && SC && typeof SCP.addCommandObject === "function" && typeof SC.fromProps === "function") {
-          SCP.addCommandObject(SC.fromProps({ name: "phone", callback: cb, helpString: "\u6253\u5F00\u77ED\u4FE1" }));
+          SCP.addCommandObject(SC.fromProps({ name: "phone", callback: cb, helpString: "\u6253\u5F00\u5929\u97F3\u5C0F\u7B3A" }));
           return true;
         }
       } catch (e) {
       }
       try {
         if (typeof ctx.registerSlashCommand === "function") {
-          ctx.registerSlashCommand("phone", cb, [], "\u6253\u5F00\u77ED\u4FE1", true, true);
+          ctx.registerSlashCommand("phone", cb, [], "\u6253\u5F00\u5929\u97F3\u5C0F\u7B3A", true, true);
           return true;
         }
       } catch (e) {
@@ -4303,7 +4303,7 @@ ${blocks}
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `PhoneMode_Backup_${(/* @__PURE__ */ new Date()).getTime()}.json`;
+      a.download = `TianyinXiaojian_Backup_${(/* @__PURE__ */ new Date()).getTime()}.json`;
       a.click();
       URL.revokeObjectURL(url);
       alert("\u2705 \u77ED\u4FE1\u5907\u4EFD\u5DF2\u6210\u529F\u5BFC\u51FA\uFF01");

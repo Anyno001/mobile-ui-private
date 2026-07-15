@@ -1,9 +1,9 @@
 {
-  "name": "phone-mode-custom",
+  "name": "tianyin-xiaojian-st",
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "Build tooling for the personal Phone Mode derivative.",
+  "description": "Build tooling for the personal Tianyin Xiaojian project.",
   "scripts": {
     "build": "esbuild src/main.js --bundle --format=iife --platform=browser --target=es2020 --outfile=index.js --legal-comments=none",
     "check:syntax": "node --check index.js",

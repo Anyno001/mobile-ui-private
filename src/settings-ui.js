@@ -78,7 +78,7 @@ export function installSettingsUi(deps) {
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `PhoneMode_Backup_${new Date().getTime()}.json`;
+        a.download = `TianyinXiaojian_Backup_${new Date().getTime()}.json`;
         a.click();
         URL.revokeObjectURL(url);
         alert('✅ 短信备份已成功导出！');

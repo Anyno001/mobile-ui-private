@@ -1,8 +1,8 @@
 {
     "name": "phone_mode",
-    "display_name": "📱 Phone Mode",
+    "display_name": "天音小笺",
     "version": "1.0.0",
-    "description": "纯前端手机短信模式，兼容 TauriTavern。",
+    "description": "个人自用的手机聊天界面维护版。",
     "author": "K20070831 (upstream), Anyno001 (maintainer)",
     "js": "index.js",
     "css": "style.css",

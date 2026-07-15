@@ -4,11 +4,14 @@ import { parse } from 'acorn';
 
 const root = process.cwd();
 const srcRoot = path.join(root, 'src');
-const [srcEntries, bundle, css, manifestText] = await Promise.all([
+const [srcEntries, bundle, css, manifestText, packageText, lockText, readme] = await Promise.all([
   readdir(srcRoot, { recursive: true }),
   readFile(path.join(root, 'index.js'), 'utf8'),
   readFile(path.join(root, 'style.css'), 'utf8'),
   readFile(path.join(root, 'manifest.json'), 'utf8'),
+  readFile(path.join(root, 'package.json'), 'utf8'),
+  readFile(path.join(root, 'package-lock.json'), 'utf8'),
+  readFile(path.join(root, 'README.md'), 'utf8'),
 ]);
 const sourceFiles = srcEntries
   .filter(entry => entry.endsWith('.js'))
@@ -21,6 +24,8 @@ const sourceModules = await Promise.all(sourceFiles.map(async file => ({
 const sourceModuleByName = new Map(sourceModules.map(module => [path.basename(module.file), module]));
 const source = sourceModules.map(({ code }) => code).join('\n');
 const manifest = JSON.parse(manifestText);
+const packageJson = JSON.parse(packageText);
+const packageLock = JSON.parse(lockText);
 const failures = [];
 
 function requireText(label, text, expected) {
@@ -61,23 +66,60 @@ function propertyName(property) {
   return null;
 }
 
+function staticString(node) {
+  if (node?.type === 'Literal' && typeof node.value === 'string') return node.value;
+  if (node?.type === 'TemplateLiteral' && node.expressions.length === 0) return node.quasis[0]?.value.cooked ?? '';
+  return null;
+}
+
+function staticStringFragments(node) {
+  if (!node) return [];
+  if (node.type === 'Literal' && typeof node.value === 'string') return [node.value];
+  if (node.type === 'TemplateLiteral') {
+    return node.quasis.map(quasi => quasi.value.cooked ?? '');
+  }
+  if (node.type === 'BinaryExpression' && node.operator === '+') {
+    return [...staticStringFragments(node.left), ...staticStringFragments(node.right)];
+  }
+  return [];
+}
+
 function isString(node, expected) {
-  return node?.type === 'Literal' && node.value === expected;
+  return staticString(node) === expected;
 }
 
 function analyze(code, sourceType = 'script') {
-  const result = { commandObject: false, legacyCommand: false, styleElement: false, windowAssignments: new Set() };
+  const result = {
+    commandObject: false, commandObjectHelp: false,
+    legacyCommand: false, legacyCommandHelp: false,
+    backupDownload: false, legacyBackupDownload: false, styleElement: false,
+    stringLiterals: new Set(), windowAssignments: new Set(),
+  };
   walk(parseJavaScript(code, sourceType), node => {
+    const literal = staticString(node);
+    if (literal !== null) result.stringLiterals.add(literal);
     if (node.type === 'AssignmentExpression' && node.operator === '=') {
       const target = node.left;
       if (target?.type === 'MemberExpression' && target.object?.type === 'Identifier' && target.object.name === 'window') {
         const name = memberName(target);
         if (name) result.windowAssignments.add(name);
       }
+      if (memberName(target) === 'download') {
+        const fragments = staticStringFragments(node.right);
+        const staticText = fragments.join('');
+        if (node.right?.type === 'TemplateLiteral' && node.right.expressions.length === 1
+            && fragments[0] === 'TianyinXiaojian_Backup_' && fragments.at(-1) === '.json') {
+          result.backupDownload = true;
+        }
+        if (staticText.includes('PhoneMode_Backup_')) result.legacyBackupDownload = true;
+      }
     }
     if (node.type !== 'CallExpression') return;
     const calleeName = memberName(node.callee);
-    if (calleeName === 'registerSlashCommand' && isString(node.arguments[0], 'phone')) result.legacyCommand = true;
+    if (calleeName === 'registerSlashCommand' && isString(node.arguments[0], 'phone')) {
+      result.legacyCommand = true;
+      if (isString(node.arguments[3], '打开天音小笺')) result.legacyCommandHelp = true;
+    }
     if (calleeName === 'createElement' && isString(node.arguments[0], 'style')) result.styleElement = true;
     if (calleeName !== 'addCommandObject') return;
     const fromPropsCall = node.arguments[0];
@@ -85,7 +127,39 @@ function analyze(code, sourceType = 'script') {
     const properties = fromPropsCall.arguments[0]?.type === 'ObjectExpression' ? fromPropsCall.arguments[0].properties : [];
     const nameProperty = properties.find(property => propertyName(property) === 'name');
     const callbackProperty = properties.find(property => propertyName(property) === 'callback');
-    if (isString(nameProperty?.value, 'phone') && callbackProperty) result.commandObject = true;
+    const helpProperty = properties.find(property => propertyName(property) === 'helpString');
+    if (isString(nameProperty?.value, 'phone') && callbackProperty) {
+      result.commandObject = true;
+      if (isString(helpProperty?.value, '打开天音小笺')) result.commandObjectHelp = true;
+    }
+  });
+  return result;
+}
+
+function analyzeBackupContract(code, sourceType = 'module') {
+  const result = { exportFields: new Set(), importFields: new Set(), importReadsFileName: false };
+  walk(parseJavaScript(code, sourceType), node => {
+    if (node.type !== 'AssignmentExpression' || node.operator !== '=') return;
+    const entry = memberName(node.left);
+    if (node.left?.object?.name !== 'window' || !['__pmExportData', '__pmImportData'].includes(entry)) return;
+    walk(node.right, child => {
+      if (entry === '__pmExportData' && child.type === 'VariableDeclarator'
+          && child.id?.type === 'Identifier' && child.id.name === 'data' && child.init?.type === 'ObjectExpression') {
+        for (const property of child.init.properties) {
+          const name = propertyName(property);
+          if (name) result.exportFields.add(name);
+        }
+      }
+      if (entry === '__pmImportData' && child.type === 'CallExpression'
+          && memberName(child.callee) === 'hasOwn' && child.arguments[0]?.name === 'data') {
+        const name = staticString(child.arguments[1]);
+        if (name) result.importFields.add(name);
+      }
+      if (entry === '__pmImportData' && child.type === 'MemberExpression'
+          && child.object?.type === 'Identifier' && child.object.name === 'file' && memberName(child) === 'name') {
+        result.importReadsFileName = true;
+      }
+    });
   });
   return result;
 }
@@ -115,6 +189,41 @@ function verifyWindowAssignmentDetector() {
   }
 }
 
+function verifyLegacyBackupDetector() {
+  const positives = [
+    "a.download = `PhoneMode_Backup_${Date.now()}.json`",
+    "a.download = 'PhoneMode_Backup_' + Date.now() + '.json'",
+  ];
+  const negatives = [
+    "a.download = `TianyinXiaojian_Backup_${Date.now()}.json`",
+    `const fake = 'PhoneMode_Backup_'`,
+  ];
+  for (const sample of positives) {
+    if (!analyze(sample).legacyBackupDownload) failures.push('self-test: legacy backup detector rejected active old prefix');
+  }
+  for (const sample of negatives) {
+    if (analyze(sample).legacyBackupDownload) failures.push('self-test: legacy backup detector accepted non-download text');
+  }
+}
+
+verifyDetector('command object help', 'commandObjectHelp', [
+  `SCP.addCommandObject(SC.fromProps({ name: 'phone', callback: cb, helpString: '打开天音小笺' }))`,
+], [
+  `SCP.addCommandObject(SC.fromProps({ name: 'phone', callback: cb, helpString: '打开短信' }))`,
+  `const fake = "打开天音小笺"`,
+]);
+verifyDetector('legacy command help', 'legacyCommandHelp', [
+  `ctx.registerSlashCommand('phone', cb, [], '打开天音小笺')`,
+], [
+  `ctx.registerSlashCommand('phone', cb, [], '打开短信')`,
+  `const fake = "打开天音小笺"`,
+]);
+verifyDetector('backup download', 'backupDownload', [
+  "a.download = `TianyinXiaojian_Backup_${Date.now()}.json`",
+], [
+  `const fake = 'TianyinXiaojian_Backup_'`,
+]);
+verifyLegacyBackupDetector();
 verifyDetector('command object', 'commandObject', [
   `SCP.addCommandObject(SC.fromProps({ name: 'phone', callback: cb }))`,
   `parser.addCommandObject(command.fromProps({\n name: "phone", callback: cb\n }))`,
@@ -145,7 +254,12 @@ verifyDetector('style element', 'styleElement', [
 ]);
 verifyWindowAssignmentDetector();
 
-const sourceResult = { commandObject: false, legacyCommand: false, styleElement: false, windowAssignments: new Set() };
+const sourceResult = {
+  commandObject: false, commandObjectHelp: false,
+  legacyCommand: false, legacyCommandHelp: false,
+  backupDownload: false, legacyBackupDownload: false, styleElement: false,
+  stringLiterals: new Set(), windowAssignments: new Set(),
+};
 for (const { file, code } of sourceModules) {
   const relativeFile = path.relative(root, file).replaceAll('\\', '/');
   const lineCount = code.split(/\r?\n/).length;
@@ -161,8 +275,13 @@ for (const { file, code } of sourceModules) {
     continue;
   }
   sourceResult.commandObject ||= result.commandObject;
+  sourceResult.commandObjectHelp ||= result.commandObjectHelp;
   sourceResult.legacyCommand ||= result.legacyCommand;
+  sourceResult.legacyCommandHelp ||= result.legacyCommandHelp;
+  sourceResult.backupDownload ||= result.backupDownload;
+  sourceResult.legacyBackupDownload ||= result.legacyBackupDownload;
   sourceResult.styleElement ||= result.styleElement;
+  for (const literal of result.stringLiterals) sourceResult.stringLiterals.add(literal);
   for (const name of result.windowAssignments) sourceResult.windowAssignments.add(name);
 }
 
@@ -173,7 +292,11 @@ for (const expected of ['PhoneModeDB', 'ST_SMS_DATA_V2', 'window.__pmOpen', 'ins
 }
 for (const [label, , result] of analyzedFiles) {
   if (!result.commandObject) failures.push(`${label}: missing SlashCommand.fromProps phone registration`);
+  if (!result.commandObjectHelp) failures.push(`${label}: SlashCommand.fromProps help must be 打开天音小笺`);
   if (!result.legacyCommand) failures.push(`${label}: missing registerSlashCommand phone fallback`);
+  if (!result.legacyCommandHelp) failures.push(`${label}: registerSlashCommand help must be 打开天音小笺`);
+  if (!result.backupDownload) failures.push(`${label}: backup download template must use TianyinXiaojian_Backup_*.json`);
+  if (result.legacyBackupDownload) failures.push(`${label}: active backup download must not use PhoneMode_Backup_`);
   if (result.styleElement) failures.push(`${label}: forbidden style element injection`);
 }
 
@@ -354,17 +477,91 @@ if (!lifecycleFile) {
 for (const expected of ['#pm-iphone', '#pm-overlay', '.pm-model-options', '--pm-model-visible-rows', '@media(max-width:500px),(max-height:700px)']) {
   requireText('css', css, expected);
 }
+for (const expected of ['.pm-msg-list', '.pm-input', '.pm-confirm-bar', '.pm-modal', '.pm-cfg-tab']) {
+  requireText('css', css, expected);
+}
 if (source.includes('pm-css')) failures.push('source: inline CSS injector id still present');
 if (css.includes('${')) failures.push('css: JavaScript template expression remains');
+if (manifest.name !== 'phone_mode') failures.push('manifest: internal extension id must remain phone_mode');
+if (manifest.display_name !== '天音小笺') failures.push('manifest: display_name must be 天音小笺');
+if (/\p{Extended_Pictographic}/u.test(manifest.display_name || '')) failures.push('manifest: display_name must not contain emoji');
+if (!/个人.*自用|自用.*个人/.test(manifest.description || '')) failures.push('manifest: description must identify the project as personal use');
+if (/SillyTavern|酒馆/i.test(manifest.description || '')) failures.push('manifest: description must not contain host platform keywords');
 if (manifest.js !== 'index.js') failures.push('manifest: js entry must remain index.js');
 if (manifest.css !== 'style.css') failures.push('manifest: css entry must be style.css');
+
+if (packageJson.name !== 'tianyin-xiaojian-st') failures.push('package: name must be tianyin-xiaojian-st');
+if (packageJson.private !== true) failures.push('package: private must remain true');
+if (!/personal/i.test(packageJson.description || '')) failures.push('package: description must identify personal use');
+if (/SillyTavern|酒馆|TauriTavern/i.test(packageJson.description || '')) failures.push('package: description must not contain host platform keywords');
+if (packageLock.name !== packageJson.name || packageLock.packages?.['']?.name !== packageJson.name) {
+  failures.push('package-lock: root package name must match package.json');
+}
+
+const readmeLines = readme.split(/\r?\n/);
+if (readmeLines[0] !== '# 天音小笺') failures.push('README: title must be 天音小笺');
+const readmeIntro = readmeLines[2] || '';
+if (!readmeIntro.includes('个人自用') || !readmeIntro.includes('不作为上游原版发行')) {
+  failures.push('README: introduction must state personal use and independent maintenance boundary');
+}
+for (const expected of [
+  'K20070831/sillytavern-phone-mode-1',
+  'https://github.com/K20070831/sillytavern-phone-mode-1',
+  '本项目仅用于个人自用维护，不作为上游原版发行。',
+  '`/phone` 是为兼容旧用法保留的命令，不是项目名称。',
+]) requireText('README', readme, expected);
+const readmeWithoutUpstream = readme
+  .replaceAll('https://github.com/K20070831/sillytavern-phone-mode-1', '')
+  .replaceAll('K20070831/sillytavern-phone-mode-1', '');
+if (/SillyTavern|酒馆|TauriTavern/i.test(readmeWithoutUpstream)) failures.push('README: own prose must not contain host platform keywords');
+
+const settingsUiCode = sourceModuleByName.get('settings-ui.js')?.code || '';
+const backupFields = [
+  'histories', 'config', 'theme', 'profiles', 'groupMeta',
+  'pokeConfig', 'bidirectional', 'emojis', 'characterBehavior',
+];
+for (const [label, contract] of [
+  ['settings-ui.js', analyzeBackupContract(settingsUiCode)],
+  ['bundle', analyzeBackupContract(bundle, 'script')],
+]) {
+  for (const field of backupFields) {
+    if (!contract.exportFields.has(field)) failures.push(`${label}: backup export field missing ${field}`);
+    if (!contract.importFields.has(field)) failures.push(`${label}: backup import field missing ${field}`);
+  }
+  const exportOnly = [...contract.exportFields].filter(field => !contract.importFields.has(field)).sort();
+  const importOnly = [...contract.importFields].filter(field => !contract.exportFields.has(field)).sort();
+  if (exportOnly.length) failures.push(`${label}: backup fields exported but not imported: ${exportOnly.join(', ')}`);
+  if (importOnly.length) failures.push(`${label}: backup fields imported but not exported: ${importOnly.join(', ')}`);
+  if (contract.importReadsFileName) failures.push(`${label}: backup import must not depend on file.name`);
+}
+
+const asymmetricBackupSample = analyzeBackupContract(`
+  window.__pmExportData = () => { const data = { histories: {}, newField: {} }; return data; };
+  window.__pmImportData = () => { if (Object.hasOwn(data, 'histories')) return data.histories; };
+`);
+if (![...asymmetricBackupSample.exportFields].some(field => !asymmetricBackupSample.importFields.has(field))) {
+  failures.push('self-test: backup symmetry detector missed export-only field');
+}
+
+const compatibilityStrings = [
+  'PhoneModeDB', 'kv', 'PHONE_SMS_MEMORY',
+  'ST_SMS_DATA_V2', 'ST_SMS_CONFIG', 'ST_SMS_THEME', 'ST_SMS_POKE_CONFIG',
+  'ST_SMS_BIDIRECTIONAL', 'ST_SMS_CHARACTER_BEHAVIOR', 'ST_SMS_EMOJIS',
+  'ST_SMS_GROUP_META', 'ST_SMS_API_PROFILES', 'ST_SMS_BG_GLOBAL', 'ST_SMS_BG_LOCAL',
+];
+for (const [label, , result] of analyzedFiles) {
+  for (const expected of compatibilityStrings) {
+    if (!result.stringLiterals.has(expected)) failures.push(`${label}: compatibility string missing ${expected}`);
+  }
+  if (result.stringLiterals.has('📱 Phone Mode')) failures.push(`${label}: legacy visible title remains`);
+}
 
 const entries = await readdir(root, { recursive: true });
 for (const entry of entries) {
   const normalized = entry.replaceAll('\\', '/');
   const segments = normalized.split('/');
   if (segments.includes('.git') || segments.includes('node_modules')) continue;
-  if (/PhoneMode.*Backup.*\.json$/i.test(normalized)) failures.push(`sensitive backup file present: ${normalized}`);
+  if (/(?:PhoneMode|TianyinXiaojian).*Backup.*\.json$/i.test(normalized)) failures.push(`sensitive backup file present: ${normalized}`);
   if (/(^|\/)\.env(?:\.|$)/.test(normalized) && path.posix.basename(normalized) !== '.env.example') failures.push(`environment file present: ${normalized}`);
 }
 
