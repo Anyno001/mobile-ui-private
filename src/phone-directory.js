@@ -5,13 +5,14 @@ import {
 import { GROUP_COLORS } from './groups.js';
 import { escapeAttr, escapeHtml, safeJS } from './ui.js';
 import { REFRESH_ICON_SVG } from './icons.js';
+import { clearPendingMessages } from './pending-messages.js';
 import {
     loadGroupMeta, pmIDBDel, pmIDBSet, saveBgLocal, saveBidirectional,
     saveGroupMeta, savePokeConfig,
 } from './storage.js';
 
 export function installPhoneDirectory(state, deps) {
-    const { getStorageId, makeOverlay, applyBidirectionalInjection } = deps;
+    const { runtime, getStorageId, makeOverlay, applyBidirectionalInjection } = deps;
 
     function showGroupForm(mode, existingName, existingMembers) {
         document.getElementById('pm-overlay')?.remove();
@@ -279,6 +280,7 @@ export function installPhoneDirectory(state, deps) {
 
     window.__pmDelGroup = async (key) => {
         const id = getStorageId();
+        clearPendingMessages(runtime, id, key);
         if (window.__pmGroupMeta[id]) delete window.__pmGroupMeta[id][key];
         if (window.__pmHistories[id]) delete window.__pmHistories[id][key];
 
@@ -310,6 +312,7 @@ export function installPhoneDirectory(state, deps) {
 
     window.__pmDel = async (name) => {
         const id = getStorageId();
+        clearPendingMessages(runtime, id, name);
         if (window.__pmHistories[id]) delete window.__pmHistories[id][name];
         // 修复：await 确保 IDB 写入完成，防止冷启动时 IDB 旧数据覆盖删除操作
         await pmIDBSet('ST_SMS_DATA_V2', window.__pmHistories).catch(() => {});

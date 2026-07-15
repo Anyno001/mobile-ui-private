@@ -1,17 +1,21 @@
 import { POPOVER_SUPPORTED } from './constants.js';
 import { escapeHtml } from './ui.js';
-import { EDIT_ICON_SVG } from './icons.js';
+import {
+    CLOSE_ICON_SVG, CONTROL_ICON_SVG, EDIT_ICON_SVG,
+    MENU_ICON_SVG, SEND_ICON_SVG, TRASH_ICON_SVG,
+} from './icons.js';
+import { getPendingMessages } from './pending-messages.js';
 import {
     loadBgSettings, loadBidirectional, loadEmojis,
-    loadGroupMeta, loadHistoriesFromIDB, loadPokeConfig, loadProfiles,
-    loadTheme, loadWordyLimit,
+    loadCharacterBehavior, loadGroupMeta, loadHistoriesFromIDB,
+    loadPokeConfig, loadProfiles, loadTheme, loadWordyLimit,
 } from './storage.js';
 
 export function installPhoneLifecycle(state, deps) {
     const {
         runtime, getCtx, applyBidirectionalInjection, persistCurrentHistory,
         applyBackground, applyTheme, bindIsland, migrateOldHistory, hookGenerationEvent,
-        invalidateGeneration, syncGenerationControls,
+        invalidateGeneration, syncGenerationControls, closeOverlay,
     } = deps;
 
     window.__pmToggleSelect = () => {
@@ -25,14 +29,23 @@ export function installPhoneLifecycle(state, deps) {
             // 气泡上已在渲染时打好 data-history-index，直接读取，无需事后映射
             list.querySelectorAll('.pm-bubble, .pm-group-bubble-wrap, .pm-director')
                 .forEach(b => {
-                if (b.id === 'pm-typing' || b.closest('.pm-select-wrap')) return;
+                if (b.id === 'pm-typing' || b.closest('.pm-select-wrap') || b.closest('.pm-pending-entry')) return;
                 const isDirector = b.classList.contains('pm-director');
                 const wrap = document.createElement('div'); wrap.className = 'pm-select-wrap';
                 const side = isDirector ? 'center' : (b.dataset.side || 'left');
                 wrap.style.cssText = 'display:flex;align-items:center;gap:8px;align-self:' + (side === 'right' ? 'flex-end' : side === 'center' ? 'center' : 'flex-start') + ';';
                 const cb = document.createElement('div'); cb.className = 'pm-custom-check'; cb.dataset.checked = '0';
                 cb.style.cssText = 'width:22px;height:22px;min-width:22px;min-height:22px;border-radius:50%;flex-shrink:0;cursor:pointer;';
-                cb.onclick = () => { cb.dataset.checked = cb.dataset.checked === '0' ? '1' : '0'; };
+                cb.onclick = () => {
+                    const checked = cb.dataset.checked === '0' ? '1' : '0';
+                    const historyIndex = wrap.dataset.historyIndex;
+                    if (historyIndex === undefined || historyIndex === '') {
+                        cb.dataset.checked = checked;
+                        return;
+                    }
+                    list.querySelectorAll(`.pm-select-wrap[data-history-index="${historyIndex}"] .pm-custom-check`)
+                        .forEach(peer => { peer.dataset.checked = checked; });
+                };
                 b.parentNode.insertBefore(wrap, b);
                 wrap.appendChild(cb); wrap.appendChild(b);
                 wrap.dataset.side = side; wrap.dataset.text = b.dataset.text || '';
@@ -58,6 +71,11 @@ export function installPhoneLifecycle(state, deps) {
             if (cb?.dataset.checked === '1') {
                 const hi = wrap.dataset.historyIndex;
                 if (hi !== undefined && hi !== '') toRemoveIndices.add(Number(hi));
+            }
+        });
+        list.querySelectorAll('.pm-select-wrap').forEach(wrap => {
+            const hi = wrap.dataset.historyIndex;
+            if (hi !== undefined && hi !== '' && toRemoveIndices.has(Number(hi))) {
                 wrap.remove();
             } else {
                 const b = wrap.querySelector('.pm-bubble, .pm-group-bubble-wrap, .pm-director');
@@ -76,11 +94,18 @@ export function installPhoneLifecycle(state, deps) {
     };
 
     window.__pmToggleMin = () => { state.isMinimized = !state.isMinimized; state.phoneWindow.classList.toggle('is-min', state.isMinimized); state.phoneWindow.style.removeProperty('transform'); };
-    window.__pmEnd = () => {
+    window.__pmEnd = (force = false) => {
+        const storageId = state.activeStorageId;
+        const saveKey = state.isGroupChat && state.currentGroupKey ? state.currentGroupKey : state.currentPersona;
+        const pendingCount = getPendingMessages(runtime, storageId, saveKey).length;
+        if (!force && pendingCount && !confirm(`当前会话有 ${pendingCount} 条暂存消息。关闭后仍会在本页面运行期间保留，确定关闭吗？`)) {
+            return;
+        }
         // 修复：关闭前先把当前 state.conversationHistory 存档
         // 空历史也必须落盘，否则删除最后一条消息后直接关闭会让旧历史在下次打开时复活。
         if (state.currentPersona) persistCurrentHistory();
         invalidateGeneration();
+        closeOverlay('phone-close');
         if (state.phoneWindow) { try { state.phoneWindow.hidePopover?.(); } catch (e) {} state.phoneWindow.remove(); }
         state.phoneWindow = null; state.phoneActive = false; state.isMinimized = false; state.isSelectMode = false;
         state.activeStorageId = '';
@@ -123,7 +148,7 @@ export function installPhoneLifecycle(state, deps) {
             window.__pmConfig = saved || { apiUrl: '', apiKey: '', model: '', useIndependent: false };
             if (typeof window.__pmConfig.useIndependent === 'undefined') window.__pmConfig.useIndependent = !!(window.__pmConfig.apiUrl && window.__pmConfig.apiKey);
         } catch (e) { window.__pmConfig = { apiUrl: '', apiKey: '', model: '', useIndependent: false }; }
-        loadProfiles(); loadBidirectional(); loadTheme(); loadGroupMeta(); loadPokeConfig(); loadWordyLimit(); migrateOldHistory(); loadEmojis();
+        loadProfiles(); loadBidirectional(); loadTheme(); loadGroupMeta(); loadPokeConfig(); loadCharacterBehavior(); loadWordyLimit(); migrateOldHistory(); loadEmojis();
         loadBgSettings().then(() => { try { applyBackground(); } catch (e) {} });
         hookGenerationEvent();
         const c = getCtx(), defaultChar = c?.characters?.[c.characterId]?.name ?? 'AI';
@@ -137,15 +162,14 @@ export function installPhoneLifecycle(state, deps) {
 <div class="pm-island"></div>
 <div class="pm-main-ui">
   <div class="pm-navbar">
-    <button onclick="window.__pmShowList()" class="pm-nav-btn pm-nav-left-btn">☰</button>
+    <button onclick="window.__pmShowList()" class="pm-nav-btn pm-nav-left-btn" title="联系人">${MENU_ICON_SVG}</button>
     <div class="pm-name-wrap">
       <div class="pm-name">${escapeHtml(defaultChar)}</div>
       <button onclick="window.__pmEditGroup()" class="pm-name-edit is-hidden" title="编辑">${EDIT_ICON_SVG}</button>
     </div>
     <div class="pm-nav-right">
-      <button onclick="window.__pmToggleSelect()" class="pm-nav-btn pm-trash-btn">🗑</button>
-      <button onclick="window.__pmShowConfig()" class="pm-nav-btn">⚙</button>
-      <button onclick="window.__pmEnd()" class="pm-nav-btn" style="color:#ff3b30">✕</button>
+      <button onclick="window.__pmToggleSelect()" class="pm-nav-btn pm-trash-btn" title="删除消息">${TRASH_ICON_SVG}</button>
+      <button onclick="window.__pmEnd()" class="pm-nav-btn pm-close-btn" title="关闭">${CLOSE_ICON_SVG}</button>
     </div>
   </div>
   <div class="pm-confirm-bar" style="display:none;">
@@ -155,9 +179,9 @@ export function installPhoneLifecycle(state, deps) {
   </div>
   <div class="pm-msg-list"></div>
   <div class="pm-input-bar">
-    <button onclick="window.__pmShowExpandInput()" class="pm-expand-btn" title="展开长文本输入">⤢</button>
-    <input class="pm-input" placeholder="iMessage">
-    <button onclick="window.__pmSend()" class="pm-up-btn">↑</button>
+    <button onclick="window.__pmShowControlCenter()" class="pm-expand-btn" title="收纳控制中心">${CONTROL_ICON_SVG}</button>
+    <input class="pm-input" placeholder="输入后加入暂存">
+    <button onclick="window.__pmSend()" class="pm-up-btn" title="加入暂存">${SEND_ICON_SVG}</button>
   </div>
 </div>`;
         document.body.appendChild(state.phoneWindow);
@@ -187,10 +211,9 @@ export function installPhoneLifecycle(state, deps) {
             // 否则 [emo:...] 会因为 __pmEmojis 为空而显示占位符
             const historyLoad = loadHistoriesOnce();
             const openingWindow = state.phoneWindow;
-            const openingStorageId = getStorageId();
             Promise.all([historyLoad, loadEmojis()])
                 .then(() => {
-                    if (state.phoneWindow !== openingWindow || getStorageId() !== openingStorageId) return;
+                    if (!state.phoneActive || state.phoneWindow !== openingWindow) return;
                     window.__pmSwitch(defaultChar);
                     applyBidirectionalInjection(); ensureVisibility();
                 })
@@ -227,7 +250,7 @@ export function installPhoneLifecycle(state, deps) {
     }, true);
 
     try { window.__pmHistories = window.__pmHistories || {}; } catch (e) {}
-    loadBidirectional(); loadGroupMeta(); loadPokeConfig(); loadWordyLimit();
+    loadBidirectional(); loadGroupMeta(); loadPokeConfig(); loadCharacterBehavior(); loadWordyLimit();
     loadHistoriesOnce(); // 首次打开复用同一个恢复任务，避免并发读取用旧快照覆盖内存
     setTimeout(() => { migrateOldHistory(); applyBidirectionalInjection(); hookGenerationEvent(); }, 1500);
 

@@ -227,8 +227,12 @@ const LEGACY_WINDOW_ENTRIES = [
 ];
 
 const PHONE_ENTRY_OWNERS = {
-  'phone-foundation.js': ['__pmToggleBidirectional'],
-  'phone-chat.js': ['__pmSend', '__pmShowExpandInput', '__pmConfirmExpandInput', '__pmIncrementCounters'],
+  'phone-foundation.js': ['__pmToggleBidirectional', '__pmCloseOverlay'],
+  'phone-chat.js': ['__pmSend', '__pmSubmitPending', '__pmIncrementCounters'],
+  'phone-control-center.js': [
+    '__pmShowControlCenter', '__pmShowExpandInput', '__pmConfirmExpandInput',
+    '__pmRefreshControlCenter', '__pmEditPending', '__pmDeletePending', '__pmClearPending', '__pmResetPendingEditor',
+  ],
   'phone-directory.js': [
     '__pmSaveAndCloseGroupEdit', '__pmShowGroupCreate', '__pmGroupInputChanged',
     '__pmConfirmGroup', '__pmShowList', '__pmShowAddContact', '__pmDelGroup', '__pmDel',
@@ -288,7 +292,7 @@ if (mainFile) {
   }
   const expectedInstallerCalls = [
     'installPhoneFoundation(state, deps)', 'installConversation(state, deps)',
-    'installPhoneChat(state, deps)', 'installPhoneDirectory(state, deps)',
+    'installPhoneChat(state, deps)', 'installPhoneControlCenter(state, deps)', 'installPhoneDirectory(state, deps)',
     'installContactGenerator(state, deps)', 'installPhoneChatPoke(state, deps)',
     'installPhoneLifecycle(state, deps)',
   ];
@@ -303,7 +307,7 @@ if (mainFile) {
   const actualOrder = installerOrder.map(item => item.name);
   const expectedOrder = [
     'installPhoneFoundation', 'installConversation', 'installEmojiUi', 'installSettingsUi',
-    'installPhoneChat', 'installPhoneDirectory', 'installContactGenerator',
+    'installPhoneChat', 'installPhoneControlCenter', 'installPhoneDirectory', 'installContactGenerator',
     'installPhoneChatPoke', 'installPhoneLifecycle',
   ];
   if (actualOrder.length !== expectedOrder.length
@@ -316,8 +320,35 @@ if (mainFile) {
 
 requireText('source', source, "import { installSettingsUi } from './settings-ui.js'");
 requireText('source', source, "installSettingsUi({");
+requireText('behavior-config.js', sourceModuleByName.get('behavior-config.js')?.code || '', 'normalizeCharacterBehaviorStore');
+requireText('behavior-config.js', sourceModuleByName.get('behavior-config.js')?.code || '', 'normalizeGroupMetaStore');
+requireText('constants.js', sourceModuleByName.get('constants.js')?.code || '', 'NONE: -1');
+requireText('constants.js', sourceModuleByName.get('constants.js')?.code || '', 'IN_PROMPT: 0');
+requireText('constants.js', sourceModuleByName.get('constants.js')?.code || '', 'IN_CHAT: 1');
+requireText('constants.js', sourceModuleByName.get('constants.js')?.code || '', 'BEFORE_PROMPT: 2');
+requireText('constants.js', sourceModuleByName.get('constants.js')?.code || '', 'MAX_INJECTION_DEPTH = 10000');
+requireText('storage.js', sourceModuleByName.get('storage.js')?.code || '', 'saveCharacterBehavior');
+requireText('runtime.js', sourceModuleByName.get('runtime.js')?.code || '', 'pendingMessages: new Map()');
+requireText('phone-chat.js', sourceModuleByName.get('phone-chat.js')?.code || '', 'removePendingBatch(runtime');
+requireText('phone-chat.js', sourceModuleByName.get('phone-chat.js')?.code || '', 'rebaseRenderedHistory(historyWindow.trimmedCount)');
+requireText('phone-chat-poke.js', sourceModuleByName.get('phone-chat-poke.js')?.code || '', 'rebaseRenderedHistory(historyWindow.trimmedCount)');
+requireText('phone-control-center.js', sourceModuleByName.get('phone-control-center.js')?.code || '', 'updatePendingMessage(');
+for (const iconName of ['MENU_ICON_SVG', 'TRASH_ICON_SVG', 'CLOSE_ICON_SVG', 'CONTROL_ICON_SVG', 'SEND_ICON_SVG']) {
+  requireText('icons.js', sourceModuleByName.get('icons.js')?.code || '', `export const ${iconName}`);
+}
 requireText('contact-generator.js', sourceModuleByName.get('contact-generator.js')?.code || '', 'installContactGenerator(state, deps)');
 requireText('contact-generator.js', sourceModuleByName.get('contact-generator.js')?.code || '', '!state.generationTask');
+
+// Cold-start recovery must be tied to the phone window lifecycle. SillyTavern's
+// storage id can legitimately stabilize while IndexedDB is loading; treating that
+// change as a stale callback leaves the loading placeholder on screen forever.
+const lifecycleFile = sourceModuleByName.get('phone-lifecycle.js');
+if (!lifecycleFile) {
+  failures.push('source: missing src/phone-lifecycle.js');
+} else {
+  requireText('phone-lifecycle.js', lifecycleFile.code, 'if (!state.phoneActive || state.phoneWindow !== openingWindow) return;');
+  if (lifecycleFile.code.includes('openingStorageId')) failures.push('phone-lifecycle.js: cold-start callback must not be invalidated by a storage id transition');
+}
 
 
 for (const expected of ['#pm-iphone', '#pm-overlay', '.pm-model-options', '--pm-model-visible-rows', '@media(max-width:500px),(max-height:700px)']) {

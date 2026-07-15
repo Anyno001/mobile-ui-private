@@ -6,5 +6,7 @@ export function createRuntimeState() {
         lastChatLength: 0,
         historyLoadPromise: null,
         visibilityTimer: null,
+        pendingMessages: new Map(),
+        pendingSequence: 0,
     };
 }

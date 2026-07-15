@@ -1,4 +1,9 @@
-import { IDB_MARKER, PM_IDB_NAME, PM_IDB_STORE } from './constants.js';
+import {
+    CHARACTER_BEHAVIOR_KEY, IDB_MARKER, PM_IDB_NAME, PM_IDB_STORE,
+} from './constants.js';
+import {
+    normalizeCharacterBehaviorStore, normalizeGroupMetaStore,
+} from './behavior-config.js';
 
 let database = null;
 
@@ -250,12 +255,28 @@ export async function saveBgLocal() {
 }
 
 export function loadGroupMeta() {
-    try { window.__pmGroupMeta = JSON.parse(localStorage.getItem('ST_SMS_GROUP_META')) || {}; }
+    try { window.__pmGroupMeta = normalizeGroupMetaStore(JSON.parse(localStorage.getItem('ST_SMS_GROUP_META')) || {}); }
     catch (error) { window.__pmGroupMeta = {}; }
 }
 
 export function saveGroupMeta() {
+    window.__pmGroupMeta = normalizeGroupMetaStore(window.__pmGroupMeta);
     try { localStorage.setItem('ST_SMS_GROUP_META', JSON.stringify(window.__pmGroupMeta)); } catch (error) {}
+}
+
+export function loadCharacterBehavior() {
+    try {
+        window.__pmCharacterBehavior = normalizeCharacterBehaviorStore(
+            JSON.parse(localStorage.getItem(CHARACTER_BEHAVIOR_KEY)) || {},
+        );
+    } catch (error) {
+        window.__pmCharacterBehavior = {};
+    }
+}
+
+export function saveCharacterBehavior() {
+    window.__pmCharacterBehavior = normalizeCharacterBehaviorStore(window.__pmCharacterBehavior);
+    try { localStorage.setItem(CHARACTER_BEHAVIOR_KEY, JSON.stringify(window.__pmCharacterBehavior)); } catch (error) {}
 }
 
 export function loadProfiles() {

@@ -9,6 +9,7 @@ import {
 } from './host-context.js';
 import { installPhoneChat } from './phone-chat.js';
 import { installPhoneChatPoke } from './phone-chat-poke.js';
+import { installPhoneControlCenter } from './phone-control-center.js';
 import { installPhoneDirectory } from './phone-directory.js';
 import { installPhoneFoundation } from './phone-foundation.js';
 import { installPhoneLifecycle } from './phone-lifecycle.js';
@@ -37,6 +38,7 @@ import { saveEmojis } from './storage.js';
         groupColorMap: {},
         groupDisplayName: '',
         currentGroupKey: '',
+        groupExtras: [],
     };
 
     const getCtx = () => typeof SillyTavern !== 'undefined' ? SillyTavern.getContext() : null;
@@ -66,6 +68,7 @@ import { saveEmojis } from './storage.js';
         closePhone: () => window.__pmEnd(),
     });
     installPhoneChat(state, deps);
+    installPhoneControlCenter(state, deps);
     installPhoneDirectory(state, deps);
     installContactGenerator(state, deps);
     installPhoneChatPoke(state, deps);

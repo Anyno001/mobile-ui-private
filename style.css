@@ -77,7 +77,9 @@
 .pm-name-edit svg{display:block;}
 #pm-iphone[data-layout="relaxed"] .pm-nav-right{gap:10px;}
 #pm-iphone[data-layout="relaxed"] .pm-navbar{padding:8px 14px;min-height:44px;}
-.pm-nav-btn{background:none !important;border:none !important;font-size:18px !important;cursor:pointer;color:#007aff !important;padding:3px !important;line-height:1;flex-shrink:0;}
+.pm-nav-btn{background:none !important;border:none !important;cursor:pointer;color:#007aff !important;padding:3px !important;line-height:1;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;}
+.pm-nav-btn svg,.pm-expand-btn svg,.pm-up-btn svg{display:block;pointer-events:none;}
+.pm-close-btn{color:#ff3b30 !important;}
 .pm-confirm-bar{background:#fff8f0;border-bottom:1px solid #ffe0b0;padding:7px 12px;align-items:center;gap:8px;flex-shrink:0;}
 .pm-confirm-tip{flex:1;font-size:12px;color:#888;}
 .pm-confirm-btn{background:#ff3b30 !important;color:#fff !important;border:none;border-radius:8px;padding:5px 12px;font-size:12px;cursor:pointer;font-weight:600;}
@@ -90,6 +92,10 @@
 .pm-bi-style{border-color:#e0a030;}.pm-bi-style.is-checked{border-color:#ff9500;background:#ff9500 !important;}
 .pm-bubble{max-width:74% !important;padding:9px 13px;border-radius:18px !important;font-size:14px !important;line-height:1.45;word-break:break-word;animation:pm-pop .22s ease-out;}
 .pm-bubble.pm-special{background:transparent !important;box-shadow:none !important;padding:0 !important;}
+.pm-pending-entry{position:relative;opacity:.82;}
+.pm-pending-entry[data-pending-status="submitting"]{opacity:.58;}
+.pm-pending-entry[data-pending-status="failed"]{outline:1px solid rgba(255,59,48,.55);outline-offset:2px;}
+.pm-pending-entry.pm-right::after{content:'待提交';position:absolute;right:6px;bottom:-14px;color:#8e8e93;font-size:9px;white-space:nowrap;}
 @keyframes pm-pop{from{opacity:0;transform:scale(.92) translateY(4px)}to{opacity:1;transform:scale(1) translateY(0)}}
 .pm-right{align-self:flex-end !important;background:var(--pm-r-bg) !important;color:var(--pm-r-txt) !important;border-bottom-right-radius:4px !important;}
 .pm-left{align-self:flex-start !important;background:var(--pm-l-bg) !important;color:var(--pm-l-txt) !important;border-bottom-left-radius:4px !important;}
@@ -130,8 +136,7 @@
 .pm-voice-text::before{content:'已转文字';position:absolute;top:-8px;left:8px;font-size:9px;color:#999;background:#fff;padding:0 4px;border-radius:4px;}
 .pm-input-bar{padding:8px 12px 30px !important;display:flex !important;gap:8px;border-top:1px solid var(--pm-navbar-border,#f0f0f0);align-items:center;background:var(--pm-navbar-bg,#fff) !important;flex-shrink:0;}
 .pm-input{flex:1 !important;min-width:0 !important;background:#f2f2f7 !important;color:#000 !important;border:none !important;border-radius:20px !important;padding:9px 14px !important;outline:none !important;font-size:14px !important;font-family:inherit !important;}
-.pm-input:disabled{opacity:.5;}
-.pm-up-btn{width:32px !important;height:32px !important;background:#007aff !important;color:#fff !important;border:none !important;border-radius:50% !important;cursor:pointer;font-size:16px !important;font-weight:bold;display:flex !important;align-items:center !important;justify-content:center !important;flex-shrink:0;}
+.pm-up-btn{width:32px !important;height:32px !important;background:#007aff !important;color:#fff !important;border:none !important;border-radius:50% !important;cursor:pointer;display:flex !important;align-items:center !important;justify-content:center !important;flex-shrink:0;}
 .pm-up-btn:disabled{background:#ccc !important;}
 .pm-expand-btn {
     width: 28px !important;
@@ -158,6 +163,23 @@
 #pm-iphone[data-theme="dark"] .pm-expand-btn:hover {
     color: #0a84ff !important;
 }
+.pm-control-center{gap:0;}
+.pm-control-tools,.pm-control-compose,.pm-control-heading{display:flex;gap:8px;padding:10px 14px;}
+.pm-control-tools button,.pm-control-compose button,.pm-control-heading button,.pm-pending-row button{border:0;border-radius:9px;padding:7px 10px;cursor:pointer;font:inherit;}
+.pm-control-tools button{flex:1;background:#f0f0f3;color:#333;}
+.pm-control-compose{align-items:stretch;}
+.pm-control-compose textarea{resize:vertical;min-height:90px;}
+.pm-control-compose button{background:#007aff;color:#fff;font-weight:600;white-space:nowrap;}
+.pm-control-heading{align-items:center;border-top:1px solid #eee;border-bottom:1px solid #eee;}
+.pm-control-heading b{flex:1;font-size:13px;}.pm-control-heading button{background:none;color:#ff3b30;}
+.pm-pending-list{padding:8px 12px;overflow-y:auto;max-height:190px;display:flex;flex-direction:column;gap:7px;}
+.pm-pending-row{display:flex;align-items:center;gap:6px;padding:8px;border-radius:11px;background:#f7f7f9;}
+.pm-pending-copy{flex:1;min-width:0;font-size:12px;line-height:1.35;word-break:break-word;}
+.pm-pending-state{display:inline-block;margin-bottom:3px;font-size:10px;color:#8e8e93;}.pm-pending-state[data-status="failed"]{color:#ff3b30;}
+.pm-pending-row button{background:#e9e9ed;color:#555;font-size:11px;}.pm-pending-row button:disabled{opacity:.45;cursor:not-allowed;}
+.pm-pending-empty,.pm-control-generation-status{text-align:center;color:#999;font-size:11px;padding:10px;}
+.pm-submit-pending-btn{margin:0 14px 14px;border:0;border-radius:11px;padding:11px;background:#34c759;color:#fff;font-weight:700;cursor:pointer;}.pm-submit-pending-btn:disabled{background:#aaa;cursor:not-allowed;}
+#pm-iphone[data-theme="dark"] .pm-control-tools button,#pm-iphone[data-theme="dark"] .pm-pending-row{background:#2c2c2e;color:#ddd;}
 #pm-overlay{position:fixed !important;inset:0 !important;margin:0 !important;width:100vw !important;height:100vh !important;height:100dvh !important;max-width:none !important;max-height:none !important;background:rgba(0,0,0,.45) !important;z-index:2147483647 !important;display:flex !important;align-items:center !important;justify-content:center !important;border:none !important;padding:0 !important;}
 .pm-modal{background:#fff !important;border-radius:20px !important;width:290px;max-height:85vh;max-height:85dvh;display:flex !important;flex-direction:column !important;overflow:hidden;box-shadow:0 16px 48px rgba(0,0,0,.28);font-family:-apple-system,BlinkMacSystemFont,'PingFang SC',sans-serif !important;}
 .pm-modal-wide{width:320px;}

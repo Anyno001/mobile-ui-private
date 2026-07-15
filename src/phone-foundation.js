@@ -30,15 +30,17 @@ export function installPhoneFoundation(state, deps) {
     window.__pmBgLocal = window.__pmBgLocal || {};
     window.__pmGroupMeta = window.__pmGroupMeta || {};
     window.__pmPokeConfig = window.__pmPokeConfig || {};
+    window.__pmCharacterBehavior = window.__pmCharacterBehavior || {};
     window.__pmWordyLimit = window.__pmWordyLimit || false;
     window.__pmEmojis = window.__pmEmojis || []; // [{id, name, images:[{url,desc},...]}]
 
     function syncGenerationControls() {
         const disabled = !!state.isGenerating;
-        const input = state.phoneWindow?.querySelector('.pm-input');
-        const button = state.phoneWindow?.querySelector('.pm-up-btn');
-        if (input) input.disabled = disabled;
-        if (button) button.disabled = disabled;
+        for (const button of document.querySelectorAll('.pm-submit-pending-btn')) {
+            button.disabled = disabled;
+        }
+        const status = document.querySelector('.pm-control-generation-status');
+        if (status) status.textContent = disabled ? 'AI 正在回复，暂存仍可继续编辑' : '';
     }
 
     function beginGeneration(storageId) {
@@ -160,13 +162,17 @@ export function installPhoneFoundation(state, deps) {
                 const meta = groups[name]; if (!meta) return '';
                 const lines = conv.map(m => {
                     const t = resolveEmojiText((m.content || '').replace(/\s*\/\s*/g, '。').replace(/\n/g, '；'), window.__pmEmojis);
-                    return m.role === 'user' ? `${userName}：${t}` : t;
+                    const director = m.directorNote ? `【剧情引导：${m.directorNote}】` : '';
+                    const userLine = t ? `${userName}：${t}` : '';
+                    return m.role === 'user' ? [userLine, director].filter(Boolean).join(' ') : t;
                 }).join('\n');
                 return `【群聊"${meta.name}"（成员：${meta.members.join('、')}）的最近聊天 — 仅参与者与 ${userName} 知晓，其他角色不应知情】\n${lines}`;
             }
             const lines = conv.map(m => {
                 const t = resolveEmojiText((m.content || '').replace(/\s*\/\s*/g, '。'), window.__pmEmojis);
-                return m.role === 'user' ? `${userName}：${t}` : `${name}：${t}`;
+                const director = m.directorNote ? `【剧情引导：${m.directorNote}】` : '';
+                const userLine = t ? `${userName}：${t}` : '';
+                return m.role === 'user' ? [userLine, director].filter(Boolean).join(' ') : `${name}：${t}`;
             }).join('\n');
             return `【与 ${name} 的短信 — 仅 ${name} 与 ${userName} 知晓】\n${lines}`;
         }).filter(Boolean).join('\n\n');
@@ -214,7 +220,7 @@ export function installPhoneFoundation(state, deps) {
                 runtime.lastChatLength = (c.chat || []).length;
                 // 宿主切换会使所有在途生成失效；关闭手机并清空旧会话内存，避免跨聊天串档。
                 if (state.phoneActive && typeof window.__pmEnd === 'function') {
-                    window.__pmEnd();
+                    window.__pmEnd(true);
                 } else {
                     invalidateGeneration();
                 }
@@ -256,11 +262,21 @@ export function installPhoneFoundation(state, deps) {
         handle.addEventListener('touchstart', onStart, { passive: false }); window.addEventListener('touchmove', onMove, { passive: false }); window.addEventListener('touchend', onEnd);
     }
 
-    function addBubble(text, side, senderName, historyIndex) {
-        const list = state.phoneWindow?.querySelector('.pm-msg-list'); if (!list) return;
-        createBubbles(text, side, senderName, {
+    function applyBubbleMetadata(node, metadata) {
+        if (!metadata) return;
+        if (metadata.historyIndex !== undefined) node.dataset.historyIndex = String(metadata.historyIndex);
+        if (metadata.pendingId !== undefined) node.dataset.pendingId = String(metadata.pendingId);
+        if (metadata.pendingStatus) node.dataset.pendingStatus = metadata.pendingStatus;
+        if (metadata.pendingId !== undefined) node.classList.add('pm-pending-entry');
+    }
+
+    function addBubble(text, side, senderName, historyIndex, metadata) {
+        const list = state.phoneWindow?.querySelector('.pm-msg-list'); if (!list) return [];
+        const nodes = createBubbles(text, side, senderName, {
             groupColorMap: state.groupColorMap, groupMembers: state.groupMembers, emojis: window.__pmEmojis,
-        }).forEach(b => {
+        });
+        nodes.forEach(b => {
+            applyBubbleMetadata(b, metadata);
             if (b.classList?.contains('pm-bubble')) {
                 b.dataset.side = side; b.dataset.text = text;
                 if (historyIndex !== undefined) b.dataset.historyIndex = historyIndex;
@@ -268,6 +284,7 @@ export function installPhoneFoundation(state, deps) {
                 b.dataset.side = side; b.dataset.text = text;
                 if (historyIndex !== undefined) b.dataset.historyIndex = historyIndex;
                 const inner = b.querySelector('.pm-bubble'); if (inner) {
+                    applyBubbleMetadata(inner, metadata);
                     inner.dataset.side = side; inner.dataset.text = text;
                     if (historyIndex !== undefined) inner.dataset.historyIndex = historyIndex;
                 }
@@ -275,17 +292,44 @@ export function installPhoneFoundation(state, deps) {
             list.appendChild(b);
         });
         list.scrollTop = list.scrollHeight;
+        return nodes;
     }
+
+    function rebaseRenderedHistory(trimmedCount) {
+        if (!Number.isInteger(trimmedCount) || trimmedCount <= 0) return;
+        const list = state.phoneWindow?.querySelector('.pm-msg-list');
+        if (!list) return;
+        for (const child of [...list.children]) {
+            const indexed = child.dataset.historyIndex !== undefined
+                ? child
+                : child.querySelector?.('[data-history-index]');
+            if (!indexed) continue;
+            const previousIndex = Number(indexed.dataset.historyIndex);
+            if (!Number.isInteger(previousIndex)) continue;
+            if (previousIndex < trimmedCount) {
+                child.remove();
+                continue;
+            }
+            const nextIndex = String(previousIndex - trimmedCount);
+            if (child.dataset.historyIndex !== undefined) child.dataset.historyIndex = nextIndex;
+            child.querySelectorAll?.('[data-history-index]').forEach(node => {
+                node.dataset.historyIndex = nextIndex;
+            });
+        }
+    }
+
     function addNote(text) {
         const list = state.phoneWindow?.querySelector('.pm-msg-list'); if (!list) return;
         const n = document.createElement('div'); n.className = 'pm-note'; n.textContent = text;
         list.appendChild(n); list.scrollTop = list.scrollHeight;
     }
-    function addDirector(text) {
-        const list = state.phoneWindow?.querySelector('.pm-msg-list'); if (!list) return;
+    function addDirector(text, metadata) {
+        const list = state.phoneWindow?.querySelector('.pm-msg-list'); if (!list) return null;
         const d = document.createElement('div'); d.className = 'pm-director';
+        applyBubbleMetadata(d, metadata);
         d.innerHTML = `<span class="pm-director-icon">🎬</span><span class="pm-director-text">${escapeHtml(text)}</span>`;
         list.appendChild(d); list.scrollTop = list.scrollHeight;
+        return d;
     }
     function showTyping() {
         const list = state.phoneWindow?.querySelector('.pm-msg-list');
@@ -296,20 +340,31 @@ export function installPhoneFoundation(state, deps) {
     }
     function hideTyping() { document.getElementById('pm-typing')?.remove(); }
 
-    function makeOverlay(html) {
-        document.getElementById('pm-overlay')?.remove();
+    function closeOverlay(reason = 'close') {
+        const current = document.getElementById('pm-overlay');
+        if (!current) return false;
+        const onClose = current.__pmOnClose;
+        current.remove();
+        if (typeof onClose === 'function') onClose(reason);
+        return true;
+    }
+
+    function makeOverlay(html, options = {}) {
+        closeOverlay('replace');
         const ov = document.createElement('div'); ov.id = 'pm-overlay';
         if (POPOVER_SUPPORTED) ov.setAttribute('popover', 'manual');
+        ov.__pmOnClose = typeof options.onClose === 'function' ? options.onClose : null;
         ov.innerHTML = html;
-        ov.addEventListener('click', e => { if (e.target === ov) ov.remove(); });
+        ov.addEventListener('click', e => { if (e.target === ov) closeOverlay('backdrop'); });
         document.body.appendChild(ov);
         if (ov.showPopover) try { ov.showPopover(); } catch (e) {}
         return ov;
     }
+    window.__pmCloseOverlay = () => closeOverlay('close');
     Object.assign(deps, {
         applyTheme, applyBackground, fitNameFont, migrateOldHistory,
         applyBidirectionalInjection, hookGenerationEvent, bindIsland,
-        addBubble, addNote, addDirector, showTyping, hideTyping, makeOverlay,
+        addBubble, addNote, addDirector, rebaseRenderedHistory, showTyping, hideTyping, makeOverlay, closeOverlay,
         beginGeneration, isGenerationTaskActive, finishGeneration,
         invalidateGeneration, syncGenerationControls,
     });

@@ -19,10 +19,12 @@ export function buildHistoryText(history, limit, userName, personaName, excludeL
     const slice = excludeLast ? history.slice(-limit, -1) : history.slice(-limit);
     return slice.map(m => {
         const clean = cleanResponse(m.content);
-        if (m.role === 'user') return `${userName}：${clean}`;
+        const director = m.directorNote ? `[剧情引导] ${m.directorNote}` : '';
+        const userLine = clean ? `${userName}：${clean}` : '';
+        if (m.role === 'user') return [userLine, director].filter(Boolean).join('\n');
         if (personaName) return `${personaName}：${clean}`;
         return clean;
-    }).join('\n');
+    }).filter(Boolean).join('\n');
 }
 
 /**

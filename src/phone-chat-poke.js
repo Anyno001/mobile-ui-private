@@ -1,6 +1,7 @@
 import {
     CONTEXT_LIMIT, SAVE_LIMIT,
 } from './constants.js';
+import { createHistoryWindow } from './history-window.js';
 import { cleanResponse, splitToSentences } from './prompts.js';
 import { escapeAttr, escapeHtml, safeJS } from './ui.js';
 import {
@@ -18,7 +19,7 @@ import {
 export function installPhoneChatPoke(state, deps) {
     const {
         getStorageId, gatherContext, callAI, applyBidirectionalInjection,
-        addBubble, addNote, showTyping, hideTyping, makeOverlay,
+        addBubble, addNote, rebaseRenderedHistory, showTyping, hideTyping, makeOverlay,
         showGroupForm, beginGeneration, isGenerationTaskActive, finishGeneration,
     } = deps;
     window.__pmAutoPoke = async (contactName) => {
@@ -77,24 +78,23 @@ export function installPhoneChatPoke(state, deps) {
 
             if (isGroup) {
                 const parsed = parseGroupResponse(raw, groupMembers);
-
-                const contentParts = [];
-                for (const block of parsed) {
-                    if (block.sentences.length > 0) {
-                        contentParts.push(`${block.name}：${block.sentences.join(' / ')}`);
-                        if (renderActive) {
-                            const _pgHi = targetHistory.length; // push 之前的长度即为新条目下标
-                            for (const s of block.sentences) {
-                                await new Promise(r => setTimeout(r, 120));
-                                if (!isGenerationTaskActive(task)) return;
-                                if (isStillActiveView()) addBubble(s, 'left', block.name, _pgHi);
-                            }
-                        }
-                    }
-                }
+                const blocks = parsed.filter(block => block.sentences.length > 0);
+                const contentParts = blocks.map(block => `${block.name}：${block.sentences.join(' / ')}`);
                 if (contentParts.length > 0) {
                     targetHistory.push({ role: 'assistant', content: contentParts.join('\n') });
                     historyUpdated = true;
+                    const historyWindow = createHistoryWindow(targetHistory, SAVE_LIMIT);
+                    const historyIndex = historyWindow.toWindowIndex(targetHistory.length - 1);
+                    if (renderActive) rebaseRenderedHistory(historyWindow.trimmedCount);
+                    if (renderActive && historyIndex !== null) {
+                        for (const block of blocks) {
+                            for (const s of block.sentences) {
+                                await new Promise(r => setTimeout(r, 120));
+                                if (!isGenerationTaskActive(task)) return;
+                                if (isStillActiveView()) addBubble(s, 'left', block.name, historyIndex);
+                            }
+                        }
+                    }
                 }
             } else {
                 const clean = cleanResponse(raw);
@@ -103,15 +103,18 @@ export function installPhoneChatPoke(state, deps) {
                     targetHistory.push({ role: 'assistant', content: sentences.join(' / ') });
                     historyUpdated = true;
                     if (renderActive) {
-                        const _pokeHi = targetHistory.length - 1;
-                        for (const s of sentences) {
-                            await new Promise(r => setTimeout(r, 150));
-                            if (!isGenerationTaskActive(task)) return;
-                            if (isStillActiveView()) addBubble(s, 'left', undefined, _pokeHi);
-                            // 逐句落盘：每渲染一句立即保存，防止挂起丢失
-                            { if (!window.__pmHistories[id]) window.__pmHistories[id] = {};
-                              window.__pmHistories[id][contactName] = targetHistory.slice(-SAVE_LIMIT);
-                              saveHistories(); }
+                        const historyWindow = createHistoryWindow(targetHistory, SAVE_LIMIT);
+                        const historyIndex = historyWindow.toWindowIndex(targetHistory.length - 1);
+                        rebaseRenderedHistory(historyWindow.trimmedCount);
+                        if (historyIndex !== null) {
+                            for (const s of sentences) {
+                                await new Promise(r => setTimeout(r, 150));
+                                if (!isGenerationTaskActive(task)) return;
+                                if (isStillActiveView()) addBubble(s, 'left', undefined, historyIndex);
+                                if (!window.__pmHistories[id]) window.__pmHistories[id] = {};
+                                window.__pmHistories[id][contactName] = historyWindow.history;
+                                saveHistories();
+                            }
                         }
                     }
                 }
@@ -119,7 +122,7 @@ export function installPhoneChatPoke(state, deps) {
 
             if (historyUpdated) {
                 if (!window.__pmHistories[id]) window.__pmHistories[id] = {};
-                const newHistory = targetHistory.slice(-SAVE_LIMIT);
+                const newHistory = createHistoryWindow(targetHistory, SAVE_LIMIT).history;
                 window.__pmHistories[id][contactName] = newHistory;
 
                 // 修复：如果当前正好在这个角色的界面，必须把最新的数组同步给全局的 state.conversationHistory
@@ -309,40 +312,46 @@ export function installPhoneChatPoke(state, deps) {
 
             if (isGroup) {
                 const parsed = parseGroupResponse(raw, groupMembers);
-                const contentParts = [];
-                const historyIndex = targetHistory.length;
-                for (const block of parsed) {
-                    if (block.sentences.length > 0) {
-                        contentParts.push(`${block.name}：${block.sentences.join(' / ')}`);
-                        for (const s of block.sentences) {
-                            await new Promise(r => setTimeout(r, 120));
-                            if (!isGenerationTaskActive(task)) return;
-                            if (isStillTarget()) addBubble(s, 'left', block.name, historyIndex);
-                        }
-                    }
-                }
+                const blocks = parsed.filter(block => block.sentences.length > 0);
+                const contentParts = blocks.map(block => `${block.name}：${block.sentences.join(' / ')}`);
                 if (contentParts.length > 0) {
                     targetHistory.push({ role: 'assistant', content: contentParts.join('\n') });
                     historyUpdated = true;
+                    const historyWindow = createHistoryWindow(targetHistory, SAVE_LIMIT);
+                    const historyIndex = historyWindow.toWindowIndex(targetHistory.length - 1);
+                    if (isStillTarget()) rebaseRenderedHistory(historyWindow.trimmedCount);
+                    if (historyIndex !== null) {
+                        for (const block of blocks) {
+                            for (const s of block.sentences) {
+                                await new Promise(r => setTimeout(r, 120));
+                                if (!isGenerationTaskActive(task)) return;
+                                if (isStillTarget()) addBubble(s, 'left', block.name, historyIndex);
+                            }
+                        }
+                    }
                 }
             } else {
                 const clean = cleanResponse(raw);
                 const sentences = splitToSentences(clean);
                 if (sentences.length > 0) {
-                    const historyIndex = targetHistory.length;
                     targetHistory.push({ role: 'assistant', content: sentences.join(' / ') });
                     historyUpdated = true;
-                    for (const s of sentences) {
-                        await new Promise(r => setTimeout(r, 150));
-                        if (!isGenerationTaskActive(task)) return;
-                        if (isStillTarget()) addBubble(s, 'left', undefined, historyIndex);
+                    const historyWindow = createHistoryWindow(targetHistory, SAVE_LIMIT);
+                    const historyIndex = historyWindow.toWindowIndex(targetHistory.length - 1);
+                    if (isStillTarget()) rebaseRenderedHistory(historyWindow.trimmedCount);
+                    if (historyIndex !== null) {
+                        for (const s of sentences) {
+                            await new Promise(r => setTimeout(r, 150));
+                            if (!isGenerationTaskActive(task)) return;
+                            if (isStillTarget()) addBubble(s, 'left', undefined, historyIndex);
+                        }
                     }
                 }
             }
 
             if (historyUpdated) {
                 if (!window.__pmHistories[storageId]) window.__pmHistories[storageId] = {};
-                window.__pmHistories[storageId][saveKey] = targetHistory.slice(-SAVE_LIMIT);
+                window.__pmHistories[storageId][saveKey] = createHistoryWindow(targetHistory, SAVE_LIMIT).history;
                 if (isStillTarget()) state.conversationHistory = window.__pmHistories[storageId][saveKey];
                 saveHistories();
                 if (isGenerationTaskActive(task)) applyBidirectionalInjection();
@@ -417,26 +426,31 @@ export function installPhoneChatPoke(state, deps) {
             if (isStillTarget()) hideTyping();
 
             const parsed = parseGroupResponse(raw, groupMembers);
-            const contentParts = [];
-
+            let renderedTrimmedCount = 0;
             for (const block of parsed) {
                 if (block.sentences.length > 0) {
-                    contentParts.push(`${block.name}：${block.sentences.join(' / ')}`);
-                    for (const s of block.sentences) {
-                        await new Promise(r => setTimeout(r, 120));
-                        if (!isGenerationTaskActive(task)) return;
-                        if (isStillTarget()) addBubble(s, 'left', block.name, targetHistory.length);
-                    }
                     // 每个成员说完话立即落盘，防止后续 block 渲染途中挂起
-                    targetHistory.push({ role: 'assistant', content: contentParts[contentParts.length - 1] });
+                    targetHistory.push({ role: 'assistant', content: `${block.name}：${block.sentences.join(' / ')}` });
+                    const historyWindow = createHistoryWindow(targetHistory, SAVE_LIMIT);
+                    const historyIndex = historyWindow.toWindowIndex(targetHistory.length - 1);
+                    const newlyTrimmed = historyWindow.trimmedCount - renderedTrimmedCount;
+                    if (isStillTarget()) rebaseRenderedHistory(newlyTrimmed);
+                    renderedTrimmedCount = historyWindow.trimmedCount;
                     if (!window.__pmHistories[storageId]) window.__pmHistories[storageId] = {};
-                    window.__pmHistories[storageId][saveKey] = targetHistory.slice(-SAVE_LIMIT);
-                    if (isStillTarget()) state.conversationHistory = window.__pmHistories[storageId][saveKey];
+                    window.__pmHistories[storageId][saveKey] = historyWindow.history;
+                    if (isStillTarget()) state.conversationHistory = historyWindow.history;
                     saveHistories();
+                    if (historyIndex !== null) {
+                        for (const s of block.sentences) {
+                            await new Promise(r => setTimeout(r, 120));
+                            if (!isGenerationTaskActive(task)) return;
+                            if (isStillTarget()) addBubble(s, 'left', block.name, historyIndex);
+                        }
+                    }
                 }
             }
 
-            if (contentParts.length > 0) {
+            if (parsed.some(block => block.sentences.length > 0)) {
                 // 已在循环内逐条 push，此处仅做双向注入
                 if (isGenerationTaskActive(task)) applyBidirectionalInjection();
             }

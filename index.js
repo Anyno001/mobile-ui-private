@@ -71,13 +71,152 @@ ${userPrompt}` : userPrompt;
   var BIDIRECTIONAL_LIMIT = 20;
   var MAX_BIDIRECTIONAL = 5;
   var BIDIRECTIONAL_KEY = "PHONE_SMS_MEMORY";
+  var CHARACTER_BEHAVIOR_KEY = "ST_SMS_CHARACTER_BEHAVIOR";
   var VOICE_MAX_SEC = 60;
   var MODEL_VISIBLE_ROWS = 4;
   var MAX_GROUP_MEMBERS = 16;
+  var MESSAGE_LENGTH_VALUES = Object.freeze(["persona", "short", "medium", "long"]);
+  var FREQUENCY_VALUES = Object.freeze(["never", "rare", "occasional", "frequent"]);
+  var MAX_INJECTION_DEPTH = 1e4;
+  var EXTENSION_PROMPT_POSITIONS = Object.freeze({
+    NONE: -1,
+    IN_PROMPT: 0,
+    IN_CHAT: 1,
+    BEFORE_PROMPT: 2
+  });
+  var DEFAULT_GROUP_INJECTION = Object.freeze({
+    position: EXTENSION_PROMPT_POSITIONS.IN_PROMPT,
+    depth: 0,
+    historyLimit: BIDIRECTIONAL_LIMIT
+  });
   var PM_IDB_NAME = "PhoneModeDB";
   var PM_IDB_STORE = "kv";
   var IDB_MARKER = "__idb__";
   var POPOVER_SUPPORTED = typeof HTMLElement !== "undefined" && HTMLElement.prototype.hasOwnProperty("popover");
+
+  // src/behavior-config.js
+  var DEFAULT_CHARACTER_BEHAVIOR = Object.freeze({
+    privateStylePrompt: "",
+    groupStylePrompt: "",
+    messageLength: "persona",
+    transferFrequency: "occasional",
+    imageFrequency: "occasional",
+    emojiFrequency: "occasional"
+  });
+  function plainObject(value) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+    const prototype = Object.getPrototypeOf(value);
+    return prototype === Object.prototype || prototype === null ? value : {};
+  }
+  function safeKey(value, maxLength) {
+    return text(value, maxLength);
+  }
+  function storeKey(value) {
+    return typeof value === "string" && value.length > 0 ? value : "";
+  }
+  function setOwn(target, key, value) {
+    Object.defineProperty(target, key, {
+      value,
+      enumerable: true,
+      configurable: true,
+      writable: true
+    });
+  }
+  function text(value, maxLength = 2e3) {
+    return typeof value === "string" ? value.trim().slice(0, maxLength) : "";
+  }
+  function enumValue(value, allowed, fallback) {
+    return allowed.includes(value) ? value : fallback;
+  }
+  function boundedInteger(value, fallback, min, max) {
+    if (typeof value !== "number" && typeof value !== "string") return fallback;
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? Math.min(max, Math.max(min, Math.trunc(parsed))) : fallback;
+  }
+  function uniqueNames(value, excluded = /* @__PURE__ */ new Set()) {
+    if (!Array.isArray(value)) return [];
+    const seen = new Set(excluded);
+    return value.flatMap((item) => {
+      const name = text(item, 80);
+      const key = name.toLocaleLowerCase();
+      if (!name || seen.has(key)) return [];
+      seen.add(key);
+      return [name];
+    });
+  }
+  function normalizeCharacterBehavior(value) {
+    const source = plainObject(value);
+    return {
+      privateStylePrompt: text(source.privateStylePrompt),
+      groupStylePrompt: text(source.groupStylePrompt),
+      messageLength: enumValue(source.messageLength, MESSAGE_LENGTH_VALUES, DEFAULT_CHARACTER_BEHAVIOR.messageLength),
+      transferFrequency: enumValue(source.transferFrequency, FREQUENCY_VALUES, DEFAULT_CHARACTER_BEHAVIOR.transferFrequency),
+      imageFrequency: enumValue(source.imageFrequency, FREQUENCY_VALUES, DEFAULT_CHARACTER_BEHAVIOR.imageFrequency),
+      emojiFrequency: enumValue(source.emojiFrequency, FREQUENCY_VALUES, DEFAULT_CHARACTER_BEHAVIOR.emojiFrequency)
+    };
+  }
+  function normalizeCharacterBehaviorStore(value) {
+    const result = {};
+    for (const [storageId, entries] of Object.entries(plainObject(value))) {
+      const cleanStorageId = storeKey(storageId);
+      if (!cleanStorageId) continue;
+      const normalizedEntries = {};
+      const seenNames = /* @__PURE__ */ new Set();
+      for (const [name, config] of Object.entries(plainObject(entries))) {
+        const cleanName = safeKey(name, 80);
+        const nameKey = cleanName.toLocaleLowerCase();
+        if (cleanName && !seenNames.has(nameKey)) setOwn(normalizedEntries, cleanName, normalizeCharacterBehavior(config));
+        if (cleanName) seenNames.add(nameKey);
+      }
+      if (Object.keys(normalizedEntries).length) setOwn(result, cleanStorageId, normalizedEntries);
+    }
+    return result;
+  }
+  function normalizeGroupInjection(value) {
+    const source = plainObject(value);
+    const allowedPositions = Object.values(EXTENSION_PROMPT_POSITIONS);
+    return {
+      position: enumValue(Number(source.position), allowedPositions, DEFAULT_GROUP_INJECTION.position),
+      depth: boundedInteger(source.depth, DEFAULT_GROUP_INJECTION.depth, 0, MAX_INJECTION_DEPTH),
+      historyLimit: boundedInteger(source.historyLimit, DEFAULT_GROUP_INJECTION.historyLimit, 1, 100)
+    };
+  }
+  function normalizeGroupMeta(value) {
+    const source = plainObject(value);
+    const members = uniqueNames(source.members);
+    const memberKeys = new Set(members.map((name) => name.toLocaleLowerCase()));
+    const extras = uniqueNames(source.extras, memberKeys);
+    const allowedNames = new Map([...members, ...extras].map((name) => [name.toLocaleLowerCase(), name]));
+    const memberColors = {};
+    for (const [name, color] of Object.entries(plainObject(source.memberColors))) {
+      const canonicalName = allowedNames.get(name.trim().toLocaleLowerCase());
+      if (canonicalName && typeof color === "string" && /^#[0-9a-f]{6}$/i.test(color)) setOwn(memberColors, canonicalName, color);
+    }
+    return {
+      ...source,
+      name: text(source.name, 80),
+      members,
+      extras,
+      memberColors,
+      injection: normalizeGroupInjection(source.injection)
+    };
+  }
+  function normalizeGroupMetaStore(value) {
+    const result = {};
+    for (const [storageId, groups] of Object.entries(plainObject(value))) {
+      const cleanStorageId = storeKey(storageId);
+      if (!cleanStorageId) continue;
+      const normalizedGroups = {};
+      for (const [groupKey, meta] of Object.entries(plainObject(groups))) {
+        const cleanGroupKey = storeKey(groupKey);
+        if (!cleanGroupKey) continue;
+        const normalized = normalizeGroupMeta(meta);
+        if (normalized.name && normalized.members.length >= 2) setOwn(normalizedGroups, cleanGroupKey, normalized);
+      }
+      if (Object.keys(normalizedGroups).length) setOwn(result, cleanStorageId, normalizedGroups);
+    }
+    return result;
+  }
 
   // src/storage.js
   var database = null;
@@ -345,14 +484,31 @@ ${userPrompt}` : userPrompt;
   }
   function loadGroupMeta() {
     try {
-      window.__pmGroupMeta = JSON.parse(localStorage.getItem("ST_SMS_GROUP_META")) || {};
+      window.__pmGroupMeta = normalizeGroupMetaStore(JSON.parse(localStorage.getItem("ST_SMS_GROUP_META")) || {});
     } catch (error) {
       window.__pmGroupMeta = {};
     }
   }
   function saveGroupMeta() {
+    window.__pmGroupMeta = normalizeGroupMetaStore(window.__pmGroupMeta);
     try {
       localStorage.setItem("ST_SMS_GROUP_META", JSON.stringify(window.__pmGroupMeta));
+    } catch (error) {
+    }
+  }
+  function loadCharacterBehavior() {
+    try {
+      window.__pmCharacterBehavior = normalizeCharacterBehaviorStore(
+        JSON.parse(localStorage.getItem(CHARACTER_BEHAVIOR_KEY)) || {}
+      );
+    } catch (error) {
+      window.__pmCharacterBehavior = {};
+    }
+  }
+  function saveCharacterBehavior() {
+    window.__pmCharacterBehavior = normalizeCharacterBehaviorStore(window.__pmCharacterBehavior);
+    try {
+      localStorage.setItem(CHARACTER_BEHAVIOR_KEY, JSON.stringify(window.__pmCharacterBehavior));
     } catch (error) {
     }
   }
@@ -400,9 +556,9 @@ ${userPrompt}` : userPrompt;
     return { histories, groups, contacts, groupNames, total: contacts.length + groupNames.length };
   }
   function setSpinning(active) {
-    const icon = document.getElementById("pm-autogen-icon");
+    const icon2 = document.getElementById("pm-autogen-icon");
     const button = document.getElementById("pm-autogen-btn");
-    if (icon) icon.style.animation = active ? "pm-spin 0.8s linear infinite" : "";
+    if (icon2) icon2.style.animation = active ? "pm-spin 0.8s linear infinite" : "";
     if (button) button.style.pointerEvents = active ? "none" : "";
   }
   function buildPrompts(context, existingNames, maxNew) {
@@ -438,9 +594,9 @@ ${mainChatText}` : "",
     return { systemPrompt, userPrompt };
   }
   function parseGeneratedDirectory(raw) {
-    const text = String(raw ?? "").trim();
-    const fenced = text.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
-    const jsonText = fenced ? fenced[1].trim() : text;
+    const text2 = String(raw ?? "").trim();
+    const fenced = text2.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
+    const jsonText = fenced ? fenced[1].trim() : text2;
     if (!jsonText) throw new Error("AI \u8FD4\u56DE\u4E86\u7A7A\u5185\u5BB9");
     let parsed;
     try {
@@ -453,7 +609,7 @@ ${mainChatText}` : "",
   }
   function installContactGenerator(state, deps) {
     const {
-      getStorageId: getStorageId3,
+      getStorageId: getStorageId2,
       gatherContext: gatherContext2,
       callAI,
       beginGeneration,
@@ -461,7 +617,7 @@ ${mainChatText}` : "",
       finishGeneration
     } = deps;
     window.__pmConfirmAutoGen = () => {
-      const id = getStorageId3();
+      const id = getStorageId2();
       if (!id || id === "sms_unknown__default") return;
       const { total } = getDirectoryState(id);
       if (total >= MAX_TOTAL) {
@@ -473,7 +629,7 @@ ${mainChatText}` : "",
       window.__pmAutoGenContacts();
     };
     window.__pmAutoGenContacts = async () => {
-      const id = getStorageId3();
+      const id = getStorageId2();
       if (!id || id === "sms_unknown__default") return;
       const directory = getDirectoryState(id);
       const maxNew = Math.min(MAX_TOTAL - directory.total, MAX_TOTAL);
@@ -549,28 +705,28 @@ ${mainChatText}` : "",
   function splitToSentences(str, stripFn = null) {
     const protectedText = (str || "").replace(/[\(（][^)）]*[\)）]/g, (match) => match.replace(/\//g, ""));
     return protectedText.split(/\s*\/\s*/).map((part) => {
-      let text = part.replace(/\u0001/g, "/").trim();
-      if (stripFn) text = stripFn(text);
-      if (!text || text === ")" || text === "\uFF09" || text === "(" || text === "\uFF08") return "";
-      const opens = (text.match(/[（(]/g) || []).length;
-      const closes = (text.match(/[）)]/g) || []).length;
-      if (opens > closes) text += "\uFF09".repeat(opens - closes);
-      else if (closes > opens && opens === 0) text = text.replace(/^[)）]+\s*/, "").replace(/\s*[)）]+$/, "");
-      return text;
-    }).filter(Boolean).flatMap((text) => {
+      let text2 = part.replace(/\u0001/g, "/").trim();
+      if (stripFn) text2 = stripFn(text2);
+      if (!text2 || text2 === ")" || text2 === "\uFF09" || text2 === "(" || text2 === "\uFF08") return "";
+      const opens = (text2.match(/[（(]/g) || []).length;
+      const closes = (text2.match(/[）)]/g) || []).length;
+      if (opens > closes) text2 += "\uFF09".repeat(opens - closes);
+      else if (closes > opens && opens === 0) text2 = text2.replace(/^[)）]+\s*/, "").replace(/\s*[)）]+$/, "");
+      return text2;
+    }).filter(Boolean).flatMap((text2) => {
       const parts = [];
       let lastIndex = 0;
       let match;
       const emojiPattern = /\[emo:[^\]]+\]/g;
-      while ((match = emojiPattern.exec(text)) !== null) {
-        const before = text.slice(lastIndex, match.index).trim();
+      while ((match = emojiPattern.exec(text2)) !== null) {
+        const before = text2.slice(lastIndex, match.index).trim();
         if (before) parts.push(before);
         parts.push(match[0]);
         lastIndex = match.index + match[0].length;
       }
-      const after = text.slice(lastIndex).trim();
+      const after = text2.slice(lastIndex).trim();
       if (after) parts.push(after);
-      return parts.length ? parts : [text];
+      return parts.length ? parts : [text2];
     }).filter(Boolean).slice(0, 15);
   }
 
@@ -597,8 +753,8 @@ ${mainChatText}` : "",
   function getSaveKey(state) {
     return state.isGroupChat && state.currentGroupKey ? state.currentGroupKey : state.currentPersona;
   }
-  function persistCurrentHistory(state, getStorageId3, saveKeyOverride, storageIdOverride, historyOverride) {
-    const id = storageIdOverride || state.activeStorageId || getStorageId3();
+  function persistCurrentHistory(state, getStorageId2, saveKeyOverride, storageIdOverride, historyOverride) {
+    const id = storageIdOverride || state.activeStorageId || getStorageId2();
     if (!id || id === "sms_unknown__default") {
       console.warn("[phone-mode] persistCurrentHistory: storageId \u5C1A\u672A\u5C31\u7EEA\uFF0C\u8DF3\u8FC7\u4FDD\u5B58");
       return false;
@@ -617,9 +773,10 @@ ${mainChatText}` : "",
   }
   function installConversation(state, deps) {
     const {
-      getStorageId: getStorageId3,
+      getStorageId: getStorageId2,
       addNote,
       addBubble,
+      addDirector,
       fitNameFont,
       applyBackground,
       applyBidirectionalInjection
@@ -628,7 +785,7 @@ ${mainChatText}` : "",
       if (!key?.trim()) return;
       key = key.trim();
       loadGroupMeta();
-      const id = getStorageId3();
+      const id = getStorageId2();
       if (!id || id === "sms_unknown__default") {
         console.warn("[phone-mode] __pmSwitchContact: SillyTavern \u4E0A\u4E0B\u6587\u5C1A\u672A\u5C31\u7EEA\uFF0CstorageId \u65E0\u6548\uFF0C\u8DF3\u8FC7\u5207\u6362");
         return;
@@ -658,14 +815,14 @@ ${mainChatText}` : "",
     window.__pmSwitch = (name, _prevSaveKey, _prevStorageId) => {
       if (!name?.trim()) return;
       name = name.trim();
-      document.getElementById("pm-overlay")?.remove();
-      const id = getStorageId3();
+      deps.closeOverlay?.("conversation-switch");
+      const id = getStorageId2();
       if (!id || id === "sms_unknown__default") {
         console.warn("[phone-mode] __pmSwitch: storageId \u5C1A\u672A\u5C31\u7EEA\uFF0C\u8DF3\u8FC7\u5207\u6362");
         return;
       }
       if (_prevSaveKey || state.currentPersona) {
-        persistCurrentHistory(state, getStorageId3, _prevSaveKey ?? getSaveKey(state), _prevStorageId);
+        persistCurrentHistory(state, getStorageId2, _prevSaveKey ?? getSaveKey(state), _prevStorageId);
       }
       state.activeStorageId = id;
       state.currentPersona = name;
@@ -703,17 +860,24 @@ ${mainChatText}` : "",
                 }
               }
             } else {
-              splitToSentences(m.content).forEach((s) => addBubble(s, m.role === "user" ? "right" : "left", void 0, hi));
+              if (m.role === "user" && m.directorNote) addDirector(m.directorNote, { historyIndex: hi });
+              splitToSentences(m.content).forEach((s) => addBubble(
+                s,
+                m.role === "user" ? "right" : "left",
+                void 0,
+                hi
+              ));
             }
           });
           addNote("\u2500\u2500 \u4EE5\u4E0A\u4E3A\u5386\u53F2 \u2500\u2500");
         } else addNote("\u5F00\u59CB\u5BF9\u8BDD");
+        deps.renderPendingConversation?.(id, name);
         applyBackground();
       }
       applyBidirectionalInjection();
     };
     Object.assign(deps, {
-      persistCurrentHistory: (saveKey, storageId, history) => persistCurrentHistory(state, getStorageId3, saveKey, storageId, history),
+      persistCurrentHistory: (saveKey, storageId, history) => persistCurrentHistory(state, getStorageId2, saveKey, storageId, history),
       getSaveKey: () => getSaveKey(state)
     });
   }
@@ -940,12 +1104,12 @@ ${mainChatText}` : "",
       }, { passive: true });
     };
     window.__pmInsertEmoji = (code) => {
-      const text = window.__pmTempText || "";
+      const text2 = window.__pmTempText || "";
       document.getElementById("pm-overlay")?.remove();
       window.__pmShowExpandInput();
       const textarea = document.getElementById("pm-expanded-textarea");
       if (!textarea) return;
-      textarea.value = text + code + " ";
+      textarea.value = text2 + code + " ";
       window.__pmTempText = textarea.value;
       textarea.focus();
       textarea.selectionStart = textarea.selectionEnd = textarea.value.length;
@@ -953,7 +1117,7 @@ ${mainChatText}` : "",
   }
 
   // src/host-context.js
-  function getStorageId2(getCtx) {
+  function getStorageId(getCtx) {
     const context = getCtx();
     if (!context) return "sms_unknown__default";
     const character = context.characters?.[context.characterId];
@@ -1024,6 +1188,130 @@ ${mainChatText}` : "",
     return { cardDesc: character.description ?? "", cardPersonality: character.personality ?? "", cardScenario: character.scenario ?? "", cardFirstMes: character.first_mes ?? "", cardMesExample: character.mes_example ?? "", mainChatText: mainChat.map((message) => `${message.who}\uFF1A${message.content}`).join("\n"), worldBookText, userName: userPersona.name, userDesc: userPersona.description };
   }
 
+  // src/history-window.js
+  function createHistoryWindow(history, limit) {
+    const source = Array.isArray(history) ? history : [];
+    const size = Number.isInteger(limit) && limit > 0 ? limit : source.length;
+    const trimmedCount = Math.max(0, source.length - size);
+    return {
+      history: source.slice(trimmedCount),
+      trimmedCount,
+      toWindowIndex(sourceIndex) {
+        if (!Number.isInteger(sourceIndex)) return null;
+        const index = sourceIndex - trimmedCount;
+        return index >= 0 && index < Math.min(source.length, size) ? index : null;
+      }
+    };
+  }
+
+  // src/pending-messages.js
+  function getStorageBucket(runtime, storageId, create = false) {
+    if (!(runtime.pendingMessages instanceof Map) || !storageId) return null;
+    let bucket = runtime.pendingMessages.get(storageId);
+    if (!bucket && create) {
+      bucket = /* @__PURE__ */ new Map();
+      runtime.pendingMessages.set(storageId, bucket);
+    }
+    return bucket || null;
+  }
+  function getPendingMessages(runtime, storageId, saveKey) {
+    const items = getStorageBucket(runtime, storageId)?.get(saveKey);
+    return Array.isArray(items) ? items : [];
+  }
+  function getPendingMessage(runtime, storageId, saveKey, itemId) {
+    return getPendingMessages(runtime, storageId, saveKey).find((item) => item.id === itemId) || null;
+  }
+  function addPendingMessage(runtime, storageId, saveKey, value) {
+    if (!storageId || !saveKey) return null;
+    const rawText = String(value?.rawText || "").trim();
+    const plainText = String(value?.plainText || "").trim();
+    const directorNote = String(value?.directorNote || "").trim();
+    const bubbleParts = Array.isArray(value?.bubbleParts) ? value.bubbleParts.map(String).filter(Boolean) : [];
+    if (!plainText && !directorNote) return null;
+    const bucket = getStorageBucket(runtime, storageId, true);
+    let items = bucket.get(saveKey);
+    if (!Array.isArray(items)) {
+      items = [];
+      bucket.set(saveKey, items);
+    }
+    const item = {
+      id: ++runtime.pendingSequence,
+      rawText,
+      plainText,
+      directorNote,
+      bubbleParts,
+      status: "pending",
+      createdAt: Date.now()
+    };
+    items.push(item);
+    return item;
+  }
+  function updatePendingMessage(runtime, storageId, saveKey, itemId, value) {
+    const item = getPendingMessage(runtime, storageId, saveKey, itemId);
+    if (!item || item.status === "submitting") return null;
+    const plainText = String(value?.plainText || "").trim();
+    const directorNote = String(value?.directorNote || "").trim();
+    if (!plainText && !directorNote) return null;
+    item.rawText = String(value?.rawText || "").trim();
+    item.plainText = plainText;
+    item.directorNote = directorNote;
+    item.bubbleParts = Array.isArray(value?.bubbleParts) ? value.bubbleParts.map(String).filter(Boolean) : [];
+    item.status = "pending";
+    return item;
+  }
+  function removePendingMessage(runtime, storageId, saveKey, itemId) {
+    const bucket = getStorageBucket(runtime, storageId);
+    const items = bucket?.get(saveKey);
+    if (!Array.isArray(items)) return false;
+    const index = items.findIndex((item) => item.id === itemId);
+    if (index < 0) return false;
+    if (items[index].status === "submitting") return false;
+    items.splice(index, 1);
+    if (!items.length) bucket.delete(saveKey);
+    if (!bucket.size) runtime.pendingMessages.delete(storageId);
+    return true;
+  }
+  function clearPendingMessages(runtime, storageId, saveKey) {
+    const bucket = getStorageBucket(runtime, storageId);
+    if (!bucket?.delete(saveKey)) return false;
+    if (!bucket.size) runtime.pendingMessages.delete(storageId);
+    return true;
+  }
+  function setPendingBatchStatus(runtime, storageId, saveKey, itemIds, status) {
+    const ids = new Set(itemIds);
+    let changed = 0;
+    for (const item of getPendingMessages(runtime, storageId, saveKey)) {
+      if (!ids.has(item.id)) continue;
+      item.status = status;
+      changed += 1;
+    }
+    return changed;
+  }
+  function removePendingBatch(runtime, storageId, saveKey, itemIds) {
+    const ids = new Set(itemIds);
+    const bucket = getStorageBucket(runtime, storageId);
+    const items = bucket?.get(saveKey);
+    if (!Array.isArray(items)) return 0;
+    let removed = 0;
+    for (let index = items.length - 1; index >= 0; index -= 1) {
+      if (!ids.has(items[index].id)) continue;
+      items.splice(index, 1);
+      removed += 1;
+    }
+    if (!items.length) bucket.delete(saveKey);
+    if (!bucket.size) runtime.pendingMessages.delete(storageId);
+    return removed;
+  }
+  function combinePendingMessages(runtime, storageId, saveKey) {
+    const items = getPendingMessages(runtime, storageId, saveKey);
+    return {
+      items,
+      plainText: items.map((item) => item.plainText).filter(Boolean).join(" / "),
+      directorNote: items.map((item) => item.directorNote).filter(Boolean).join("\uFF1B"),
+      bubbleParts: items.flatMap((item) => item.bubbleParts)
+    };
+  }
+
   // src/messaging.js
   var SPECIAL_KEYWORDS = {
     "\u8F6C\u8D26": "\u8F6C\u8D26",
@@ -1072,8 +1360,8 @@ ${mainChatText}` : "",
     const image = set?.images[index - 1];
     return image?.url || null;
   }
-  function resolveEmojiText(text, emojis) {
-    return (text || "").replace(/\[emo:([^\]:]+):(\d+)\]/g, (match, setName, index) => {
+  function resolveEmojiText(text2, emojis) {
+    return (text2 || "").replace(/\[emo:([^\]:]+):(\d+)\]/g, (match, setName, index) => {
       const set = emojis.find((item) => item.name === setName);
       const image = set?.images[parseInt(index, 10) - 1];
       return image ? `(\u8868\u60C5:${image.desc})` : "";
@@ -1105,17 +1393,17 @@ ${lines}
     groupMembers.forEach((name) => memberMap.set(normalizeName(name), name));
     const speakerPattern = /^[\s\*【\[「『"'（\(]*(.{1,20}?)[\s\*】\]」』"'）\)]*\s*[：:]\s*([\s\S]+)$/;
     const stripSpeakerPrefix = (value) => {
-      let text = (value || "").trim();
-      const outer = text.match(/^[\(（]\s*(.{1,20}?)\s*[：:]\s*([\s\S]+?)\s*[\)）]\s*$/);
+      let text2 = (value || "").trim();
+      const outer = text2.match(/^[\(（]\s*(.{1,20}?)\s*[：:]\s*([\s\S]+?)\s*[\)）]\s*$/);
       if (outer && memberMap.has(normalizeName(outer[1]))) {
         return outer[2].trim();
       }
       for (let index = 0; index < 3; index++) {
-        const match = text.match(speakerPattern);
+        const match = text2.match(speakerPattern);
         if (!match || !memberMap.has(normalizeName(match[1]))) break;
-        text = match[2].trim();
+        text2 = match[2].trim();
       }
-      return text;
+      return text2;
     };
     for (const line of lines) {
       const match = line.match(speakerPattern);
@@ -1142,7 +1430,7 @@ ${lines}
     const index = groupMembers.findIndex((memberName) => memberName.toLowerCase() === normalizedName);
     return index >= 0 ? GROUP_COLORS[index % GROUP_COLORS.length] : null;
   }
-  function createBubbles(text, side, senderName, { groupColorMap, groupMembers, emojis }) {
+  function createBubbles(text2, side, senderName, { groupColorMap, groupMembers, emojis }) {
     const results = [];
     const specialPattern = new RegExp(SPECIAL_RE.source, "gi");
     let lastIndex = 0;
@@ -1175,8 +1463,8 @@ ${lines}
       bubble.innerHTML = escapeHtml(plain).replace(/\n/g, "<br>");
       results.push(bubble);
     };
-    while ((match = specialPattern.exec(text)) !== null) {
-      if (match.index > lastIndex) pushPlain(text.slice(lastIndex, match.index));
+    while ((match = specialPattern.exec(text2)) !== null) {
+      if (match.index > lastIndex) pushPlain(text2.slice(lastIndex, match.index));
       const kind = normalizeKeyword(match[1]);
       const isGroupLeft = senderName && side === "left";
       let container;
@@ -1217,8 +1505,8 @@ ${lines}
       } else results.push(bubble);
       lastIndex = match.index + match[0].length;
     }
-    if (lastIndex < text.length) pushPlain(text.slice(lastIndex));
-    if (!results.length) pushPlain(text);
+    if (lastIndex < text2.length) pushPlain(text2.slice(lastIndex));
+    if (!results.length) pushPlain(text2);
     for (const bubble of results) {
       const elements = bubble.classList?.contains("pm-group-bubble-wrap") ? bubble.querySelectorAll(".pm-bubble") : bubble.classList?.contains("pm-bubble") ? [bubble] : [];
       for (const element of elements) {
@@ -1244,10 +1532,12 @@ ${lines}
     const slice = excludeLast ? history.slice(-limit, -1) : history.slice(-limit);
     return slice.map((m) => {
       const clean = cleanResponse(m.content);
-      if (m.role === "user") return `${userName}\uFF1A${clean}`;
+      const director = m.directorNote ? `[\u5267\u60C5\u5F15\u5BFC] ${m.directorNote}` : "";
+      const userLine = clean ? `${userName}\uFF1A${clean}` : "";
+      if (m.role === "user") return [userLine, director].filter(Boolean).join("\n");
       if (personaName) return `${personaName}\uFF1A${clean}`;
       return clean;
-    }).join("\n");
+    }).filter(Boolean).join("\n");
   }
   function buildAntiFluff() {
     return "\u3010\u52A1\u5FC5\u76F4\u63A5\u6309\u683C\u5F0F\u8F93\u51FA\u77ED\u4FE1\u5185\u5BB9\uFF0C\u4E25\u7981\u5728\u5F00\u5934\u8F93\u51FA\u201C\u597D\u7684\u201D\u3001\u201C\u4E0B\u9762\u662F\u201D\u7B49\u4EFB\u4F55\u8BF4\u660E\u6027\u5E9F\u8BDD\uFF0C\u4E25\u7981\u8F93\u51FA\u975E\u89D2\u8272\u7684\u8BED\u8A00\u3002\u3011";
@@ -1572,14 +1862,15 @@ ${userName}\uFF1A${userMsgClean}` : "\n[\u4EC5\u6709\u5267\u60C5\u5F15\u5BFC\uFF
   // src/phone-chat.js
   function installPhoneChat(state, deps) {
     const {
-      getStorageId: getStorageId3,
+      runtime,
+      getStorageId: getStorageId2,
       gatherContext: gatherContext2,
       callAI,
       applyBidirectionalInjection,
-      makeOverlay,
       addBubble,
       addNote,
       addDirector,
+      rebaseRenderedHistory,
       showTyping,
       hideTyping,
       persistCurrentHistory: persistCurrentHistory2,
@@ -1606,8 +1897,7 @@ ${userName}\uFF1A${userMsgClean}` : "\n[\u4EC5\u6709\u5267\u60C5\u5F15\u5BFC\uFF
       if (!isGenerationTaskActive(task)) return null;
       const { cardDesc, cardPersonality, cardScenario, cardFirstMes, cardMesExample, mainChatText, worldBookText, userName, userDesc } = ctxData;
       const userBlock = buildUserBlock(userName, userDesc);
-      const hasUserMessage = !!userMsg.trim();
-      const smsHistoryText = buildHistoryText(targetHistory, CONTEXT_LIMIT, userName, isGroup ? null : currentPersona, hasUserMessage);
+      const smsHistoryText = buildHistoryText(targetHistory, CONTEXT_LIMIT, userName, isGroup ? null : currentPersona);
       let injectedInstruction, systemPrompt;
       if (isGroup) {
         const memberList = groupMembers.join("\u3001");
@@ -1706,6 +1996,9 @@ ${antiFluff}`;
           raw = await callAI("", injectedInstruction, { maxTokens: isGroup ? 600 : 300 });
         }
         if (!isGenerationTaskActive(task)) return null;
+        if (request.userHistoryEntry) {
+          targetHistory.push(request.userHistoryEntry);
+        }
         let resultData;
         if (isGroup) {
           const parsed = parseGroupResponse(raw, groupMembers);
@@ -1739,161 +2032,180 @@ ${antiFluff}`;
       } catch (e) {
         console.error("[phone-mode]", e);
         if (!isGenerationTaskActive(task)) return null;
-        return isGroup ? { type: "group", data: [{ name: "\u7CFB\u7EDF", sentences: [`\uFF08\u9519\u8BEF\uFF1A${e?.message || e}\uFF09`] }] } : { type: "single", data: [`\uFF08\u9519\u8BEF\uFF1A${e?.message || e}\uFF09`] };
+        throw e;
       }
     }
-    window.__pmSend = async () => {
-      if (state.isGenerating) return;
-      const input = state.phoneWindow?.querySelector(".pm-input");
-      if (!input) return;
-      const val = input.value.trim();
-      if (!val) return;
-      const EMO_PLACEHOLDER = "";
-      const emoSlots = [];
-      const valProtected = val.replace(/\[emo:[^\]]+\]/g, (m2) => {
-        emoSlots.push(m2);
-        return EMO_PLACEHOLDER + (emoSlots.length - 1) + EMO_PLACEHOLDER;
+    function parsePendingInput(value) {
+      const rawText = String(value || "").trim();
+      if (!rawText) return null;
+      const placeholder = "";
+      const emojiSlots = [];
+      const protectedText = rawText.replace(/\[emo:[^\]]+\]/g, (match2) => {
+        emojiSlots.push(match2);
+        return `${placeholder}${emojiSlots.length - 1}${placeholder}`;
       });
-      const DIRECTOR_RE = /[【\[［]([^】\]］]+)[】\]］]/g;
+      const directorPattern = /[【\[［]([^】\]］]+)[】\]］]/g;
       const directorNotes = [];
-      let m;
-      DIRECTOR_RE.lastIndex = 0;
-      while ((m = DIRECTOR_RE.exec(valProtected)) !== null) directorNotes.push(m[1].trim());
+      let match;
+      while ((match = directorPattern.exec(protectedText)) !== null) directorNotes.push(match[1].trim());
+      const plainProtected = protectedText.replace(/[【\[［][^】\]］]*[】\]］]/g, "").trim();
+      const plainText = plainProtected.replace(
+        new RegExp(`${placeholder}(\\d+)${placeholder}`, "g"),
+        (_, index) => emojiSlots[Number(index)] || ""
+      );
+      const protectedSlashes = plainText.replace(/[\(（][^)）]+[\)）]/g, (value2) => value2.replace(/\//g, ""));
+      const chunks = protectedSlashes.split(/[/／]/).map((value2) => value2.replace(/\u0001/g, "/").trim()).filter(Boolean);
+      const bubbleParts = chunks.flatMap((chunk) => {
+        const parts = [];
+        let lastIndex = 0;
+        const emojiPattern = /\[emo:[^\]]+\]/g;
+        while ((match = emojiPattern.exec(chunk)) !== null) {
+          const before = chunk.slice(lastIndex, match.index).trim();
+          if (before) parts.push(before);
+          parts.push(match[0]);
+          lastIndex = match.index + match[0].length;
+        }
+        const after = chunk.slice(lastIndex).trim();
+        if (after) parts.push(after);
+        return parts.length ? parts : [chunk];
+      });
       const directorNote = directorNotes.join("\uFF1B");
-      const plainValProtected = valProtected.replace(/[【\[［][^】\]］]*[】\]］]/g, "").trim();
-      const plainVal = plainValProtected.replace(new RegExp(EMO_PLACEHOLDER + "(\\d+)" + EMO_PLACEHOLDER, "g"), (_, i) => emoSlots[+i] || "");
-      if (!directorNote && !plainVal) return;
-      const storageId = state.activeStorageId || getStorageId3();
+      return plainText || directorNote ? { rawText, plainText, directorNote, bubbleParts } : null;
+    }
+    function getPendingTarget() {
+      const storageId = state.activeStorageId || getStorageId2();
       const saveKey = state.isGroupChat && state.currentGroupKey ? state.currentGroupKey : state.currentPersona;
-      if (!saveKey) return;
-      const task = beginGeneration(storageId);
+      if (!storageId || storageId === "sms_unknown__default" || !saveKey) return null;
+      return { storageId, saveKey };
+    }
+    function renderPendingItem(item) {
+      const metadata = { pendingId: item.id, pendingStatus: item.status };
+      if (item.directorNote) addDirector(item.directorNote, metadata);
+      for (const part of item.bubbleParts) addBubble(part, "right", void 0, void 0, metadata);
+    }
+    function renderPendingConversation(storageId, saveKey) {
+      const list = state.phoneWindow?.querySelector(".pm-msg-list");
+      if (!list) return;
+      for (const node of list.querySelectorAll(".pm-pending-entry")) {
+        if (!node.parentElement?.closest(".pm-pending-entry")) node.remove();
+      }
+      for (const item of getPendingMessages(runtime, storageId, saveKey)) renderPendingItem(item);
+    }
+    function updatePendingDomStatus(itemIds, status) {
+      const ids = new Set(itemIds.map(String));
+      for (const node of state.phoneWindow?.querySelectorAll("[data-pending-id]") || []) {
+        if (ids.has(node.dataset.pendingId)) node.dataset.pendingStatus = status;
+      }
+    }
+    function queuePendingText(value) {
+      const target = getPendingTarget();
+      const parsed = parsePendingInput(value);
+      if (!target || !parsed) return null;
+      const item = addPendingMessage(runtime, target.storageId, target.saveKey, parsed);
+      if (!item) return null;
+      renderPendingItem(item);
+      return item;
+    }
+    window.__pmSend = () => {
+      const input = state.phoneWindow?.querySelector(".pm-input");
+      if (!input || !queuePendingText(input.value)) return;
+      input.value = "";
+      window.__pmRefreshControlCenter?.();
+      input.focus();
+    };
+    window.__pmSubmitPending = async () => {
+      if (state.isGenerating) return;
+      const target = getPendingTarget();
+      if (!target) return;
+      const combined = combinePendingMessages(runtime, target.storageId, target.saveKey);
+      const batch = combined.items.filter((item) => item.status !== "submitting");
+      if (!batch.length) return;
+      const itemIds = batch.map((item) => item.id);
+      const task = beginGeneration(target.storageId);
       if (!task) return;
+      setPendingBatchStatus(runtime, target.storageId, target.saveKey, itemIds, "submitting");
+      updatePendingDomStatus(itemIds, "submitting");
+      window.__pmRefreshControlCenter?.();
       const request = {
-        storageId,
-        saveKey,
+        storageId: target.storageId,
+        saveKey: target.saveKey,
         isGroup: state.isGroupChat,
         currentPersona: state.currentPersona,
         groupMembers: state.groupMembers.slice(),
         groupDisplayName: state.groupDisplayName,
-        targetHistory: state.conversationHistory.slice()
-      };
-      if (plainVal.trim()) {
-        request.targetHistory.push({ role: "user", content: plainVal });
-        state.conversationHistory = request.targetHistory.slice(-SAVE_LIMIT);
-        persistCurrentHistory2(saveKey, storageId, request.targetHistory);
-      }
-      const isStillTarget = () => isGenerationTaskActive(task) && state.activeStorageId === storageId && (state.isGroupChat && state.currentGroupKey ? state.currentGroupKey : state.currentPersona) === saveKey;
-      input.value = "";
-      if (directorNote) addDirector(directorNote);
-      const protect = plainVal.replace(/[\(（][^)）]+[\)\）]/g, (m2) => m2.replace(/\//g, ""));
-      const rawChunks = protect.split(/[/／]/).map((s) => s.replace(/\u0001/g, "/").trim()).filter(Boolean);
-      const userBubbles = rawChunks.flatMap((chunk) => {
-        const parts = [];
-        let lastIdx = 0, m2;
-        const emoRe = /\[emo:[^\]]+\]/g;
-        while ((m2 = emoRe.exec(chunk)) !== null) {
-          const before = chunk.slice(lastIdx, m2.index).trim();
-          if (before) parts.push(before);
-          parts.push(m2[0]);
-          lastIdx = m2.index + m2[0].length;
+        targetHistory: state.conversationHistory.slice(),
+        userHistoryEntry: {
+          role: "user",
+          content: combined.plainText,
+          ...combined.directorNote ? { directorNote: combined.directorNote } : {}
         }
-        const after = chunk.slice(lastIdx).trim();
-        if (after) parts.push(after);
-        return parts.length ? parts : [chunk];
-      });
-      const pendingUserBubbles = [];
-      userBubbles.forEach((chunk) => {
-        addBubble(chunk, "right");
-        const list = state.phoneWindow?.querySelector(".pm-msg-list");
-        const allBubbles = list?.querySelectorAll('.pm-bubble[data-side="right"], .pm-group-bubble-wrap[data-side="right"]');
-        if (allBubbles?.length) pendingUserBubbles.push(allBubbles[allBubbles.length - 1]);
-      });
-      showTyping();
+      };
+      const isStillTarget = () => isGenerationTaskActive(task) && state.activeStorageId === target.storageId && (state.isGroupChat && state.currentGroupKey ? state.currentGroupKey : state.currentPersona) === target.saveKey;
+      if (isStillTarget()) showTyping();
       try {
-        const result = await fetchSMS(plainVal, directorNote, task, request);
+        const result = await fetchSMS(combined.plainText, combined.directorNote, task, request);
         if (!result || !isGenerationTaskActive(task)) return;
         if (isStillTarget()) hideTyping();
-        const hasUserMsg = !!plainVal.trim();
-        const userHi = request.targetHistory.length - (hasUserMsg ? 2 : 1);
+        const historyWindow = createHistoryWindow(request.targetHistory, SAVE_LIMIT);
+        const userHistoryIndex = historyWindow.toWindowIndex(request.targetHistory.length - 2);
+        const aiHistoryIndex = historyWindow.toWindowIndex(request.targetHistory.length - 1);
+        removePendingBatch(runtime, target.storageId, target.saveKey, itemIds);
         if (isStillTarget()) {
-          state.conversationHistory = request.targetHistory.slice(-SAVE_LIMIT);
-          pendingUserBubbles.forEach((b) => {
-            b.dataset.historyIndex = userHi;
-            const inner = b.querySelector(".pm-bubble");
-            if (inner) inner.dataset.historyIndex = userHi;
-          });
+          rebaseRenderedHistory(historyWindow.trimmedCount);
+          state.conversationHistory = historyWindow.history;
+          const ids = new Set(itemIds.map(String));
+          for (const node of state.phoneWindow?.querySelectorAll("[data-pending-id]") || []) {
+            if (!ids.has(node.dataset.pendingId)) continue;
+            node.classList.remove("pm-pending-entry");
+            delete node.dataset.pendingId;
+            delete node.dataset.pendingStatus;
+            if (userHistoryIndex !== null) node.dataset.historyIndex = String(userHistoryIndex);
+          }
         }
-        const aiHi = request.targetHistory.length - 1;
         if (result.type === "group") {
           for (const block of result.data) {
-            for (const s of block.sentences) {
-              await new Promise((r) => setTimeout(r, 120));
-              if (isStillTarget()) addBubble(s, "left", block.name, aiHi);
+            for (const sentence of block.sentences) {
+              await new Promise((resolve) => setTimeout(resolve, 120));
+              if (isStillTarget()) addBubble(sentence, "left", block.name, aiHistoryIndex);
             }
           }
         } else {
-          for (const s of result.data) {
-            await new Promise((r) => setTimeout(r, 150));
-            if (isStillTarget()) addBubble(s, "left", void 0, aiHi);
+          for (const sentence of result.data) {
+            await new Promise((resolve) => setTimeout(resolve, 150));
+            if (isStillTarget()) addBubble(sentence, "left", void 0, aiHistoryIndex);
           }
         }
-      } catch (e) {
+        setTimeout(() => {
+          if (!state.isGenerating && typeof window.__pmIncrementCounters === "function") window.__pmIncrementCounters();
+        }, 300);
+      } catch (error) {
+        setPendingBatchStatus(runtime, target.storageId, target.saveKey, itemIds, "failed");
+        updatePendingDomStatus(itemIds, "failed");
         if (isStillTarget()) {
           hideTyping();
-          addNote(`\uFF08\u53D1\u9001\u5931\u8D25\uFF1A${e?.message || e}\uFF09`);
+          addNote(`\uFF08\u53D1\u9001\u5931\u8D25\uFF1A${error?.message || error}\uFF0C\u6682\u5B58\u5185\u5BB9\u5DF2\u4FDD\u7559\uFF09`);
         }
-        console.error("[phone-mode] __pmSend \u5F02\u5E38", e);
+        console.error("[phone-mode] __pmSubmitPending \u5F02\u5E38", error);
       } finally {
-        const shouldFocus = input.isConnected && isStillTarget();
+        const remaining = getPendingMessages(runtime, target.storageId, target.saveKey);
+        const remainingIds = new Set(remaining.map((item) => item.id));
+        const interruptedIds = itemIds.filter((itemId) => remainingIds.has(itemId));
+        if (interruptedIds.length) {
+          setPendingBatchStatus(runtime, target.storageId, target.saveKey, interruptedIds, "failed");
+          updatePendingDomStatus(interruptedIds, "failed");
+        }
         finishGeneration(task);
-        if (shouldFocus) input.focus();
-      }
-      setTimeout(() => {
-        if (!state.isGenerating && typeof window.__pmIncrementCounters === "function") {
-          window.__pmIncrementCounters();
-        }
-      }, 300);
-    };
-    window.__pmShowExpandInput = () => {
-      const smallInput = state.phoneWindow?.querySelector(".pm-input");
-      const currentText = smallInput ? smallInput.value : "";
-      makeOverlay(`
-<div class="pm-modal pm-modal-wide">
-  <div class="pm-modal-header" style="justify-content:space-between;padding-right:14px;">
-    <b>\u957F\u6587\u672C\u8F93\u5165</b>
-    <span onclick="(()=>{ const ta=document.getElementById('pm-expanded-textarea'); const si=document.querySelector('.pm-input'); if(ta && si) si.value=ta.value; document.getElementById('pm-overlay').remove(); })()" class="pm-modal-close">\u2715</span>
-  </div>
-  <div style="padding:14px 16px;">
-    <textarea id="pm-expanded-textarea" class="pm-cfg-input" rows="7"
-        style="height:auto; resize:none; font-size:14px; padding:10px; line-height:1.5; font-family:inherit;"
-        placeholder="\u5728\u8FD9\u91CC\u8F93\u5165\u591A\u884C\u6587\u672C...">${escapeAttr(currentText)}</textarea>
-  </div>
-  <div class="pm-modal-add" style="display:flex;gap:8px;">
-    <button onclick="(()=>{ const ta=document.getElementById('pm-expanded-textarea'); const si=document.querySelector('.pm-input'); if(ta && si) si.value=ta.value; window.__pmShowEmojiPicker(); })()" style="flex:2;background:#f0f0f3;color:#333;border:1px solid #ddd;border-radius:10px;padding:10px;font-size:14px;cursor:pointer;font-weight:600;">(^ ^)</button>
-    <button onclick="window.__pmConfirmExpandInput()" style="flex:8;background:#007aff;color:#fff;border:none;border-radius:10px;padding:10px;font-size:13px;cursor:pointer;font-weight:600;">\u53D1\u9001</button>
-  </div>
-</div>`);
-      setTimeout(() => {
-        const ta = document.getElementById("pm-expanded-textarea");
-        if (ta) {
-          ta.focus();
-          ta.selectionStart = ta.selectionEnd = ta.value.length;
-        }
-      }, 10);
-    };
-    window.__pmConfirmExpandInput = () => {
-      const ta = document.getElementById("pm-expanded-textarea");
-      const smallInput = state.phoneWindow?.querySelector(".pm-input");
-      if (ta && smallInput) {
-        smallInput.value = ta.value;
-        document.getElementById("pm-overlay")?.remove();
-        if (ta.value.trim()) {
-          window.__pmSend();
-        }
+        window.__pmRefreshControlCenter?.();
       }
     };
+    Object.assign(deps, {
+      parsePendingInput,
+      queuePendingText,
+      renderPendingItem,
+      renderPendingConversation
+    });
     window.__pmIncrementCounters = () => {
-      const id = getStorageId3();
+      const id = getStorageId2();
       const configs = window.__pmPokeConfig[id];
       if (!configs) return;
       let updated = false;
@@ -1929,12 +2241,13 @@ ${antiFluff}`;
   // src/phone-chat-poke.js
   function installPhoneChatPoke(state, deps) {
     const {
-      getStorageId: getStorageId3,
+      getStorageId: getStorageId2,
       gatherContext: gatherContext2,
       callAI,
       applyBidirectionalInjection,
       addBubble,
       addNote,
+      rebaseRenderedHistory,
       showTyping,
       hideTyping,
       makeOverlay,
@@ -1945,7 +2258,7 @@ ${antiFluff}`;
     } = deps;
     window.__pmAutoPoke = async (contactName) => {
       if (state.isGenerating) return;
-      const id = getStorageId3();
+      const id = getStorageId2();
       if (!id || id === "sms_unknown__default") return;
       const task = beginGeneration(id);
       if (!task) return;
@@ -1997,23 +2310,23 @@ ${antiFluff}`;
         if (renderActive) hideTyping();
         if (isGroup) {
           const parsed = parseGroupResponse(raw, groupMembers);
-          const contentParts = [];
-          for (const block of parsed) {
-            if (block.sentences.length > 0) {
-              contentParts.push(`${block.name}\uFF1A${block.sentences.join(" / ")}`);
-              if (renderActive) {
-                const _pgHi = targetHistory.length;
-                for (const s of block.sentences) {
-                  await new Promise((r) => setTimeout(r, 120));
-                  if (!isGenerationTaskActive(task)) return;
-                  if (isStillActiveView()) addBubble(s, "left", block.name, _pgHi);
-                }
-              }
-            }
-          }
+          const blocks = parsed.filter((block) => block.sentences.length > 0);
+          const contentParts = blocks.map((block) => `${block.name}\uFF1A${block.sentences.join(" / ")}`);
           if (contentParts.length > 0) {
             targetHistory.push({ role: "assistant", content: contentParts.join("\n") });
             historyUpdated = true;
+            const historyWindow = createHistoryWindow(targetHistory, SAVE_LIMIT);
+            const historyIndex = historyWindow.toWindowIndex(targetHistory.length - 1);
+            if (renderActive) rebaseRenderedHistory(historyWindow.trimmedCount);
+            if (renderActive && historyIndex !== null) {
+              for (const block of blocks) {
+                for (const s of block.sentences) {
+                  await new Promise((r) => setTimeout(r, 120));
+                  if (!isGenerationTaskActive(task)) return;
+                  if (isStillActiveView()) addBubble(s, "left", block.name, historyIndex);
+                }
+              }
+            }
           }
         } else {
           const clean = cleanResponse(raw);
@@ -2022,14 +2335,16 @@ ${antiFluff}`;
             targetHistory.push({ role: "assistant", content: sentences.join(" / ") });
             historyUpdated = true;
             if (renderActive) {
-              const _pokeHi = targetHistory.length - 1;
-              for (const s of sentences) {
-                await new Promise((r) => setTimeout(r, 150));
-                if (!isGenerationTaskActive(task)) return;
-                if (isStillActiveView()) addBubble(s, "left", void 0, _pokeHi);
-                {
+              const historyWindow = createHistoryWindow(targetHistory, SAVE_LIMIT);
+              const historyIndex = historyWindow.toWindowIndex(targetHistory.length - 1);
+              rebaseRenderedHistory(historyWindow.trimmedCount);
+              if (historyIndex !== null) {
+                for (const s of sentences) {
+                  await new Promise((r) => setTimeout(r, 150));
+                  if (!isGenerationTaskActive(task)) return;
+                  if (isStillActiveView()) addBubble(s, "left", void 0, historyIndex);
                   if (!window.__pmHistories[id]) window.__pmHistories[id] = {};
-                  window.__pmHistories[id][contactName] = targetHistory.slice(-SAVE_LIMIT);
+                  window.__pmHistories[id][contactName] = historyWindow.history;
                   saveHistories();
                 }
               }
@@ -2038,7 +2353,7 @@ ${antiFluff}`;
         }
         if (historyUpdated) {
           if (!window.__pmHistories[id]) window.__pmHistories[id] = {};
-          const newHistory = targetHistory.slice(-SAVE_LIMIT);
+          const newHistory = createHistoryWindow(targetHistory, SAVE_LIMIT).history;
           window.__pmHistories[id][contactName] = newHistory;
           if (isStillActiveView()) {
             state.conversationHistory = newHistory;
@@ -2054,7 +2369,7 @@ ${antiFluff}`;
       }
     };
     function showContactConfig(contactName) {
-      const id = getStorageId3();
+      const id = getStorageId2();
       const config = window.__pmPokeConfig[id]?.[contactName] || {
         autoPoke: { enabled: false, interval: 3, counter: 0 }
       };
@@ -2120,7 +2435,7 @@ ${antiFluff}`;
       const emojiChecks = document.querySelectorAll(".pm-emoji-assign-check.is-checked");
       const selectedEmojis = Array.from(emojiChecks).map((cb) => cb.dataset.id);
       if (checkEl && intervalEl) {
-        const id = getStorageId3();
+        const id = getStorageId2();
         if (!window.__pmPokeConfig[id]) window.__pmPokeConfig[id] = {};
         const enabled = checkEl.classList.contains("is-checked");
         const interval = parseInt(intervalEl.value) || 3;
@@ -2147,7 +2462,7 @@ ${antiFluff}`;
     };
     window.__pmPoke = async (contactName) => {
       if (state.isGenerating) return;
-      const id = getStorageId3();
+      const id = getStorageId2();
       if (window.__pmPokeConfig[id]?.[contactName]) {
         window.__pmPokeConfig[id][contactName].autoPoke.counter = 0;
         savePokeConfig();
@@ -2209,39 +2524,45 @@ ${antiFluff}`;
         if (isStillTarget()) hideTyping();
         if (isGroup) {
           const parsed = parseGroupResponse(raw, groupMembers);
-          const contentParts = [];
-          const historyIndex = targetHistory.length;
-          for (const block of parsed) {
-            if (block.sentences.length > 0) {
-              contentParts.push(`${block.name}\uFF1A${block.sentences.join(" / ")}`);
-              for (const s of block.sentences) {
-                await new Promise((r) => setTimeout(r, 120));
-                if (!isGenerationTaskActive(task)) return;
-                if (isStillTarget()) addBubble(s, "left", block.name, historyIndex);
-              }
-            }
-          }
+          const blocks = parsed.filter((block) => block.sentences.length > 0);
+          const contentParts = blocks.map((block) => `${block.name}\uFF1A${block.sentences.join(" / ")}`);
           if (contentParts.length > 0) {
             targetHistory.push({ role: "assistant", content: contentParts.join("\n") });
             historyUpdated = true;
+            const historyWindow = createHistoryWindow(targetHistory, SAVE_LIMIT);
+            const historyIndex = historyWindow.toWindowIndex(targetHistory.length - 1);
+            if (isStillTarget()) rebaseRenderedHistory(historyWindow.trimmedCount);
+            if (historyIndex !== null) {
+              for (const block of blocks) {
+                for (const s of block.sentences) {
+                  await new Promise((r) => setTimeout(r, 120));
+                  if (!isGenerationTaskActive(task)) return;
+                  if (isStillTarget()) addBubble(s, "left", block.name, historyIndex);
+                }
+              }
+            }
           }
         } else {
           const clean = cleanResponse(raw);
           const sentences = splitToSentences(clean);
           if (sentences.length > 0) {
-            const historyIndex = targetHistory.length;
             targetHistory.push({ role: "assistant", content: sentences.join(" / ") });
             historyUpdated = true;
-            for (const s of sentences) {
-              await new Promise((r) => setTimeout(r, 150));
-              if (!isGenerationTaskActive(task)) return;
-              if (isStillTarget()) addBubble(s, "left", void 0, historyIndex);
+            const historyWindow = createHistoryWindow(targetHistory, SAVE_LIMIT);
+            const historyIndex = historyWindow.toWindowIndex(targetHistory.length - 1);
+            if (isStillTarget()) rebaseRenderedHistory(historyWindow.trimmedCount);
+            if (historyIndex !== null) {
+              for (const s of sentences) {
+                await new Promise((r) => setTimeout(r, 150));
+                if (!isGenerationTaskActive(task)) return;
+                if (isStillTarget()) addBubble(s, "left", void 0, historyIndex);
+              }
             }
           }
         }
         if (historyUpdated) {
           if (!window.__pmHistories[storageId]) window.__pmHistories[storageId] = {};
-          window.__pmHistories[storageId][saveKey] = targetHistory.slice(-SAVE_LIMIT);
+          window.__pmHistories[storageId][saveKey] = createHistoryWindow(targetHistory, SAVE_LIMIT).history;
           if (isStillTarget()) state.conversationHistory = window.__pmHistories[storageId][saveKey];
           saveHistories();
           if (isGenerationTaskActive(task)) applyBidirectionalInjection();
@@ -2272,7 +2593,7 @@ ${antiFluff}`;
     window.__pmPokeGroup = async () => {
       if (!state.isGroupChat || !state.currentGroupKey) return;
       if (state.isGenerating) return;
-      const id = getStorageId3();
+      const id = getStorageId2();
       const storageId = state.activeStorageId || id;
       const saveKey = state.currentGroupKey;
       if (!storageId || storageId === "sms_unknown__default") return;
@@ -2311,23 +2632,29 @@ ${antiFluff}`;
         if (!isGenerationTaskActive(task)) return;
         if (isStillTarget()) hideTyping();
         const parsed = parseGroupResponse(raw, groupMembers);
-        const contentParts = [];
+        let renderedTrimmedCount = 0;
         for (const block of parsed) {
           if (block.sentences.length > 0) {
-            contentParts.push(`${block.name}\uFF1A${block.sentences.join(" / ")}`);
-            for (const s of block.sentences) {
-              await new Promise((r) => setTimeout(r, 120));
-              if (!isGenerationTaskActive(task)) return;
-              if (isStillTarget()) addBubble(s, "left", block.name, targetHistory.length);
-            }
-            targetHistory.push({ role: "assistant", content: contentParts[contentParts.length - 1] });
+            targetHistory.push({ role: "assistant", content: `${block.name}\uFF1A${block.sentences.join(" / ")}` });
+            const historyWindow = createHistoryWindow(targetHistory, SAVE_LIMIT);
+            const historyIndex = historyWindow.toWindowIndex(targetHistory.length - 1);
+            const newlyTrimmed = historyWindow.trimmedCount - renderedTrimmedCount;
+            if (isStillTarget()) rebaseRenderedHistory(newlyTrimmed);
+            renderedTrimmedCount = historyWindow.trimmedCount;
             if (!window.__pmHistories[storageId]) window.__pmHistories[storageId] = {};
-            window.__pmHistories[storageId][saveKey] = targetHistory.slice(-SAVE_LIMIT);
-            if (isStillTarget()) state.conversationHistory = window.__pmHistories[storageId][saveKey];
+            window.__pmHistories[storageId][saveKey] = historyWindow.history;
+            if (isStillTarget()) state.conversationHistory = historyWindow.history;
             saveHistories();
+            if (historyIndex !== null) {
+              for (const s of block.sentences) {
+                await new Promise((r) => setTimeout(r, 120));
+                if (!isGenerationTaskActive(task)) return;
+                if (isStillTarget()) addBubble(s, "left", block.name, historyIndex);
+              }
+            }
           }
         }
-        if (contentParts.length > 0) {
+        if (parsed.some((block) => block.sentences.length > 0)) {
           if (isGenerationTaskActive(task)) applyBidirectionalInjection();
         }
       } catch (e) {
@@ -2341,13 +2668,167 @@ ${antiFluff}`;
     };
   }
 
+  // src/phone-control-center.js
+  function installPhoneControlCenter(state, deps) {
+    const {
+      runtime,
+      getStorageId: getStorageId2,
+      makeOverlay,
+      parsePendingInput,
+      queuePendingText,
+      renderPendingConversation,
+      syncGenerationControls
+    } = deps;
+    const getTarget = () => {
+      const storageId = state.activeStorageId || getStorageId2();
+      const saveKey = state.isGroupChat && state.currentGroupKey ? state.currentGroupKey : state.currentPersona;
+      return storageId && storageId !== "sms_unknown__default" && saveKey ? { storageId, saveKey } : null;
+    };
+    function renderPendingList() {
+      const target = getTarget();
+      const items = target ? getPendingMessages(runtime, target.storageId, target.saveKey) : [];
+      if (!items.length) return '<div class="pm-pending-empty">\u8FD8\u6CA1\u6709\u6682\u5B58\u6D88\u606F</div>';
+      return items.map((item) => `
+<div class="pm-pending-row" data-item-id="${item.id}">
+  <div class="pm-pending-copy">
+    <span class="pm-pending-state" data-status="${item.status}">${item.status === "failed" ? "\u63D0\u4EA4\u5931\u8D25" : item.status === "submitting" ? "\u63D0\u4EA4\u4E2D" : "\u5F85\u63D0\u4EA4"}</span>
+    <div>${escapeHtml(item.rawText || item.plainText || `\u3010${item.directorNote}\u3011`)}</div>
+  </div>
+  <button onclick="window.__pmEditPending(${item.id})" ${item.status === "submitting" ? "disabled" : ""}>\u7F16\u8F91</button>
+  <button onclick="window.__pmDeletePending(${item.id})" ${item.status === "submitting" ? "disabled" : ""}>\u5220\u9664</button>
+</div>`).join("");
+    }
+    window.__pmRefreshControlCenter = () => {
+      const list = document.getElementById("pm-pending-list");
+      if (list) list.innerHTML = renderPendingList();
+      syncGenerationControls();
+    };
+    let editingTarget = null;
+    function sameTarget(left, right) {
+      return !!left && !!right && left.storageId === right.storageId && left.saveKey === right.saveKey;
+    }
+    window.__pmShowControlCenter = () => {
+      const target = getTarget();
+      if (!sameTarget(editingTarget, target)) editingTarget = null;
+      const editingItem = editingTarget && target ? getPendingMessages(runtime, target.storageId, target.saveKey).find((item) => item.id === editingTarget.itemId) : null;
+      if (editingTarget && !editingItem) editingTarget = null;
+      const draft = editingItem?.rawText || state.phoneWindow?.querySelector(".pm-input")?.value || "";
+      makeOverlay(`
+<div class="pm-modal pm-modal-wide pm-control-center">
+  <div class="pm-modal-header"><b>\u6536\u7EB3\u63A7\u5236\u4E2D\u5FC3</b><span onclick="window.__pmCloseOverlay()" class="pm-modal-close">\xD7</span></div>
+  <div class="pm-control-tools">
+    <button onclick="window.__pmShowConfig()">\u8BBE\u7F6E\u4E0E API</button>
+    <button onclick="window.__pmShowEmojiPicker()">\u8868\u60C5\u5305</button>
+  </div>
+  <div class="pm-control-compose">
+    <textarea id="pm-expanded-textarea" class="pm-cfg-input" rows="5" placeholder="\u8F93\u5165\u4E00\u6761\u6D88\u606F\uFF0C\u52A0\u5165\u6682\u5B58\u961F\u5217">${escapeAttr(draft)}</textarea>
+    <button onclick="window.__pmConfirmExpandInput()">${editingTarget ? "\u4FDD\u5B58\u4FEE\u6539" : "\u52A0\u5165\u6682\u5B58"}</button>
+  </div>
+  <div class="pm-control-heading"><b>\u6682\u5B58\u6D88\u606F</b><button onclick="window.__pmClearPending()">\u6E05\u7A7A</button></div>
+  <div id="pm-pending-list" class="pm-pending-list">${renderPendingList()}</div>
+  <div class="pm-control-generation-status"></div>
+  <button class="pm-submit-pending-btn" onclick="window.__pmSubmitPending()">\u6700\u7EC8\u63D0\u4EA4\u7ED9 AI</button>
+</div>`, { onClose: () => {
+        editingTarget = null;
+      } });
+      syncGenerationControls();
+      document.getElementById("pm-expanded-textarea")?.focus();
+    };
+    window.__pmShowExpandInput = window.__pmShowControlCenter;
+    window.__pmConfirmExpandInput = () => {
+      const textarea = document.getElementById("pm-expanded-textarea");
+      if (!textarea || !queuePendingText(textarea.value)) return;
+      textarea.value = "";
+      const smallInput = state.phoneWindow?.querySelector(".pm-input");
+      if (smallInput) smallInput.value = "";
+      window.__pmRefreshControlCenter();
+      textarea.focus();
+    };
+    function redrawPendingConversation() {
+      const target = getTarget();
+      if (target) renderPendingConversation(target.storageId, target.saveKey);
+    }
+    window.__pmEditPending = (itemId) => {
+      const target = getTarget();
+      if (!target) return;
+      const item = getPendingMessages(runtime, target.storageId, target.saveKey).find((candidate) => candidate.id === itemId);
+      const textarea = document.getElementById("pm-expanded-textarea");
+      if (!item || item.status === "submitting" || !textarea) return;
+      editingTarget = { ...target, itemId };
+      textarea.value = item.rawText || item.plainText || `\u3010${item.directorNote}\u3011`;
+      const button = document.querySelector(".pm-control-compose > button");
+      if (button) button.textContent = "\u4FDD\u5B58\u4FEE\u6539";
+      textarea.focus();
+      textarea.selectionStart = textarea.selectionEnd = textarea.value.length;
+    };
+    window.__pmDeletePending = (itemId) => {
+      const target = getTarget();
+      if (!target) return;
+      if (!removePendingMessage(runtime, target.storageId, target.saveKey, itemId)) return;
+      if (sameTarget(editingTarget, target) && editingTarget.itemId === itemId) editingTarget = null;
+      redrawPendingConversation();
+      window.__pmRefreshControlCenter();
+    };
+    window.__pmClearPending = () => {
+      const target = getTarget();
+      if (!target) return;
+      const items = getPendingMessages(runtime, target.storageId, target.saveKey);
+      if (items.some((item) => item.status === "submitting")) return;
+      clearPendingMessages(runtime, target.storageId, target.saveKey);
+      if (sameTarget(editingTarget, target)) editingTarget = null;
+      redrawPendingConversation();
+      window.__pmRefreshControlCenter();
+    };
+    const originalConfirm = window.__pmConfirmExpandInput;
+    window.__pmConfirmExpandInput = () => {
+      const textarea = document.getElementById("pm-expanded-textarea");
+      if (!textarea) return;
+      const target = getTarget();
+      if (!sameTarget(editingTarget, target)) {
+        editingTarget = null;
+        originalConfirm();
+        return;
+      }
+      const parsed = parsePendingInput(textarea.value);
+      if (!target || !parsed) return;
+      const updated = updatePendingMessage(
+        runtime,
+        target.storageId,
+        target.saveKey,
+        editingTarget.itemId,
+        parsed
+      );
+      if (!updated) {
+        editingTarget = null;
+        originalConfirm();
+        return;
+      }
+      editingTarget = null;
+      textarea.value = "";
+      const button = document.querySelector(".pm-control-compose > button");
+      if (button) button.textContent = "\u52A0\u5165\u6682\u5B58";
+      redrawPendingConversation();
+      window.__pmRefreshControlCenter();
+      textarea.focus();
+    };
+    window.__pmResetPendingEditor = () => {
+      editingTarget = null;
+    };
+  }
+
   // src/icons.js
   var EDIT_ICON_SVG = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>';
-  var REFRESH_ICON_SVG = '<svg id="pm-autogen-icon" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#007aff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="display:block;transform-origin:center center;"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>';
+  var icon = (paths) => `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths}</svg>`;
+  var MENU_ICON_SVG = icon('<path d="M4 6h16M4 12h16M4 18h16"/>');
+  var TRASH_ICON_SVG = icon('<path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v5M14 11v5"/>');
+  var CLOSE_ICON_SVG = icon('<path d="M6 6l12 12M18 6L6 18"/>');
+  var CONTROL_ICON_SVG = icon('<path d="M4 7h16M7 12h10M9 17h6"/><circle cx="7" cy="7" r="1"/><circle cx="17" cy="12" r="1"/><circle cx="9" cy="17" r="1"/>');
+  var SEND_ICON_SVG = icon('<path d="M12 19V5M6 11l6-6 6 6"/>');
+  var REFRESH_ICON_SVG = '<svg id="pm-autogen-icon" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="display:block;transform-origin:center center;"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>';
 
   // src/phone-directory.js
   function installPhoneDirectory(state, deps) {
-    const { getStorageId: getStorageId3, makeOverlay, applyBidirectionalInjection } = deps;
+    const { runtime, getStorageId: getStorageId2, makeOverlay, applyBidirectionalInjection } = deps;
     function showGroupForm(mode, existingName, existingMembers) {
       document.getElementById("pm-overlay")?.remove();
       const title = mode === "create" ? "\u65B0\u5EFA\u7FA4\u804A" : "\u7F16\u8F91\u7FA4\u804A";
@@ -2357,7 +2838,7 @@ ${antiFluff}`;
       let pokeConfig = { enabled: false, interval: 3, counter: 0 };
       let assignedEmojis = [];
       if (mode === "edit" && state.currentGroupKey) {
-        const id = getStorageId3();
+        const id = getStorageId2();
         pokeConfig = window.__pmPokeConfig[id]?.[state.currentGroupKey]?.autoPoke || pokeConfig;
         assignedEmojis = window.__pmPokeConfig[id]?.[state.currentGroupKey]?.emojis || [];
       }
@@ -2433,7 +2914,7 @@ ${antiFluff}`;
         const groupName = nameInput.value.trim();
         const names = memInput.value.split(/[/／]/).map((s) => s.trim()).filter(Boolean).slice(0, MAX_GROUP_MEMBERS - 1);
         if (groupName && names.length >= 2) {
-          const id = getStorageId3();
+          const id = getStorageId2();
           if (!window.__pmGroupMeta[id]) window.__pmGroupMeta[id] = {};
           window.__pmGroupMeta[id][state.currentGroupKey] = { name: groupName, members: names };
           saveGroupMeta();
@@ -2449,7 +2930,7 @@ ${antiFluff}`;
         const emojiChecks = document.querySelectorAll(".pm-emoji-assign-check.is-checked");
         const selectedEmojis = Array.from(emojiChecks).map((cb) => cb.dataset.id);
         if (checkEl && intervalEl) {
-          const id = getStorageId3();
+          const id = getStorageId2();
           if (!window.__pmPokeConfig[id]) window.__pmPokeConfig[id] = {};
           const enabled = checkEl.classList.contains("is-checked");
           const interval = parseInt(intervalEl.value) || 3;
@@ -2502,7 +2983,7 @@ ${antiFluff}`;
         return;
       }
       document.getElementById("pm-overlay")?.remove();
-      const id = getStorageId3();
+      const id = getStorageId2();
       if (!window.__pmGroupMeta[id]) window.__pmGroupMeta[id] = {};
       if (mode === "create") {
         const groupKey = `__group_${Date.now()}`;
@@ -2532,7 +3013,7 @@ ${antiFluff}`;
       }
     };
     window.__pmShowList = () => {
-      const id = getStorageId3();
+      const id = getStorageId2();
       loadGroupMeta();
       const histories = window.__pmHistories[id] || {};
       const groups = window.__pmGroupMeta[id] || {};
@@ -2603,7 +3084,8 @@ ${antiFluff}`;
       }, 0);
     };
     window.__pmDelGroup = async (key) => {
-      const id = getStorageId3();
+      const id = getStorageId2();
+      clearPendingMessages(runtime, id, key);
       if (window.__pmGroupMeta[id]) delete window.__pmGroupMeta[id][key];
       if (window.__pmHistories[id]) delete window.__pmHistories[id][key];
       const arr = window.__pmBidirectional[id] || [], idx = arr.indexOf(key);
@@ -2643,7 +3125,8 @@ ${antiFluff}`;
       window.__pmShowList();
     };
     window.__pmDel = async (name) => {
-      const id = getStorageId3();
+      const id = getStorageId2();
+      clearPendingMessages(runtime, id, name);
       if (window.__pmHistories[id]) delete window.__pmHistories[id][name];
       await pmIDBSet("ST_SMS_DATA_V2", window.__pmHistories).catch(() => {
       });
@@ -2680,7 +3163,7 @@ ${antiFluff}`;
 
   // src/phone-foundation.js
   function installPhoneFoundation(state, deps) {
-    const { runtime, getCtx, getStorageId: getStorageId3, getUserPersona: getUserPersona2 } = deps;
+    const { runtime, getCtx, getStorageId: getStorageId2, getUserPersona: getUserPersona2 } = deps;
     if (!window.__pmBeforeUnloadRegistered) {
       window.addEventListener("beforeunload", saveHistoriesBeforeUnload);
       document.addEventListener("visibilitychange", () => {
@@ -2697,18 +3180,20 @@ ${antiFluff}`;
     window.__pmBgLocal = window.__pmBgLocal || {};
     window.__pmGroupMeta = window.__pmGroupMeta || {};
     window.__pmPokeConfig = window.__pmPokeConfig || {};
+    window.__pmCharacterBehavior = window.__pmCharacterBehavior || {};
     window.__pmWordyLimit = window.__pmWordyLimit || false;
     window.__pmEmojis = window.__pmEmojis || [];
     function syncGenerationControls() {
       const disabled = !!state.isGenerating;
-      const input = state.phoneWindow?.querySelector(".pm-input");
-      const button = state.phoneWindow?.querySelector(".pm-up-btn");
-      if (input) input.disabled = disabled;
-      if (button) button.disabled = disabled;
+      for (const button of document.querySelectorAll(".pm-submit-pending-btn")) {
+        button.disabled = disabled;
+      }
+      const status = document.querySelector(".pm-control-generation-status");
+      if (status) status.textContent = disabled ? "AI \u6B63\u5728\u56DE\u590D\uFF0C\u6682\u5B58\u4ECD\u53EF\u7EE7\u7EED\u7F16\u8F91" : "";
     }
     function beginGeneration(storageId) {
       if (state.generationTask) return null;
-      const id = storageId || getStorageId3();
+      const id = storageId || getStorageId2();
       const context = getCtx();
       if (!context || !id || id === "sms_unknown__default") return null;
       const task = Object.freeze({
@@ -2723,7 +3208,7 @@ ${antiFluff}`;
       return task;
     }
     function isGenerationTaskActive(task) {
-      return !!task && state.generationTask === task && state.hostEpoch === task.hostEpoch && getStorageId3() === task.storageId;
+      return !!task && state.generationTask === task && state.hostEpoch === task.hostEpoch && getStorageId2() === task.storageId;
     }
     function finishGeneration(task) {
       if (state.generationTask !== task) return false;
@@ -2759,7 +3244,7 @@ ${antiFluff}`;
     function applyBackground() {
       const msgList = state.phoneWindow?.querySelector(".pm-msg-list");
       if (!msgList) return;
-      const id = getStorageId3(), localKey = `${id}_${state.currentPersona}`;
+      const id = getStorageId2(), localKey = `${id}_${state.currentPersona}`;
       const bg = window.__pmBgLocal[localKey] || window.__pmBgGlobal || "";
       if (bg) {
         msgList.style.setProperty("background-image", `url("${cssUrlEscape(bg)}")`, "important");
@@ -2816,7 +3301,7 @@ ${antiFluff}`;
       const c = getCtx();
       if (!c || typeof c.setExtensionPrompt !== "function") return;
       const userName = getUserPersona2().name || "\u7528\u6237";
-      const id = getStorageId3(), checked = window.__pmBidirectional[id] || [], histories = window.__pmHistories[id] || {};
+      const id = getStorageId2(), checked = window.__pmBidirectional[id] || [], histories = window.__pmHistories[id] || {};
       const groups = window.__pmGroupMeta[id] || {};
       if (!checked.length) {
         try {
@@ -2833,14 +3318,18 @@ ${antiFluff}`;
           if (!meta) return "";
           const lines2 = conv.map((m) => {
             const t = resolveEmojiText((m.content || "").replace(/\s*\/\s*/g, "\u3002").replace(/\n/g, "\uFF1B"), window.__pmEmojis);
-            return m.role === "user" ? `${userName}\uFF1A${t}` : t;
+            const director = m.directorNote ? `\u3010\u5267\u60C5\u5F15\u5BFC\uFF1A${m.directorNote}\u3011` : "";
+            const userLine = t ? `${userName}\uFF1A${t}` : "";
+            return m.role === "user" ? [userLine, director].filter(Boolean).join(" ") : t;
           }).join("\n");
           return `\u3010\u7FA4\u804A"${meta.name}"\uFF08\u6210\u5458\uFF1A${meta.members.join("\u3001")}\uFF09\u7684\u6700\u8FD1\u804A\u5929 \u2014 \u4EC5\u53C2\u4E0E\u8005\u4E0E ${userName} \u77E5\u6653\uFF0C\u5176\u4ED6\u89D2\u8272\u4E0D\u5E94\u77E5\u60C5\u3011
 ${lines2}`;
         }
         const lines = conv.map((m) => {
           const t = resolveEmojiText((m.content || "").replace(/\s*\/\s*/g, "\u3002"), window.__pmEmojis);
-          return m.role === "user" ? `${userName}\uFF1A${t}` : `${name}\uFF1A${t}`;
+          const director = m.directorNote ? `\u3010\u5267\u60C5\u5F15\u5BFC\uFF1A${m.directorNote}\u3011` : "";
+          const userLine = t ? `${userName}\uFF1A${t}` : "";
+          return m.role === "user" ? [userLine, director].filter(Boolean).join(" ") : `${name}\uFF1A${t}`;
         }).join("\n");
         return `\u3010\u4E0E ${name} \u7684\u77ED\u4FE1 \u2014 \u4EC5 ${name} \u4E0E ${userName} \u77E5\u6653\u3011
 ${lines}`;
@@ -2898,7 +3387,7 @@ ${blocks}
         c.eventSource.on(et.CHAT_CHANGED || "chat_id_changed", () => {
           runtime.lastChatLength = (c.chat || []).length;
           if (state.phoneActive && typeof window.__pmEnd === "function") {
-            window.__pmEnd();
+            window.__pmEnd(true);
           } else {
             invalidateGeneration();
           }
@@ -2909,7 +3398,7 @@ ${blocks}
       console.log("[phone-mode] hooked", events.length, "events");
     }
     window.__pmToggleBidirectional = (name) => {
-      const id = getStorageId3(), arr = window.__pmBidirectional[id] || [], idx = arr.indexOf(name);
+      const id = getStorageId2(), arr = window.__pmBidirectional[id] || [], idx = arr.indexOf(name);
       if (idx >= 0) arr.splice(idx, 1);
       else {
         if (arr.length >= MAX_BIDIRECTIONAL) return;
@@ -2961,50 +3450,83 @@ ${blocks}
       window.addEventListener("touchmove", onMove, { passive: false });
       window.addEventListener("touchend", onEnd);
     }
-    function addBubble(text, side, senderName, historyIndex) {
+    function applyBubbleMetadata(node, metadata) {
+      if (!metadata) return;
+      if (metadata.historyIndex !== void 0) node.dataset.historyIndex = String(metadata.historyIndex);
+      if (metadata.pendingId !== void 0) node.dataset.pendingId = String(metadata.pendingId);
+      if (metadata.pendingStatus) node.dataset.pendingStatus = metadata.pendingStatus;
+      if (metadata.pendingId !== void 0) node.classList.add("pm-pending-entry");
+    }
+    function addBubble(text2, side, senderName, historyIndex, metadata) {
       const list = state.phoneWindow?.querySelector(".pm-msg-list");
-      if (!list) return;
-      createBubbles(text, side, senderName, {
+      if (!list) return [];
+      const nodes = createBubbles(text2, side, senderName, {
         groupColorMap: state.groupColorMap,
         groupMembers: state.groupMembers,
         emojis: window.__pmEmojis
-      }).forEach((b) => {
+      });
+      nodes.forEach((b) => {
+        applyBubbleMetadata(b, metadata);
         if (b.classList?.contains("pm-bubble")) {
           b.dataset.side = side;
-          b.dataset.text = text;
+          b.dataset.text = text2;
           if (historyIndex !== void 0) b.dataset.historyIndex = historyIndex;
         } else if (b.classList?.contains("pm-group-bubble-wrap")) {
           b.dataset.side = side;
-          b.dataset.text = text;
+          b.dataset.text = text2;
           if (historyIndex !== void 0) b.dataset.historyIndex = historyIndex;
           const inner = b.querySelector(".pm-bubble");
           if (inner) {
+            applyBubbleMetadata(inner, metadata);
             inner.dataset.side = side;
-            inner.dataset.text = text;
+            inner.dataset.text = text2;
             if (historyIndex !== void 0) inner.dataset.historyIndex = historyIndex;
           }
         }
         list.appendChild(b);
       });
       list.scrollTop = list.scrollHeight;
+      return nodes;
     }
-    function addNote(text) {
+    function rebaseRenderedHistory(trimmedCount) {
+      if (!Number.isInteger(trimmedCount) || trimmedCount <= 0) return;
+      const list = state.phoneWindow?.querySelector(".pm-msg-list");
+      if (!list) return;
+      for (const child of [...list.children]) {
+        const indexed = child.dataset.historyIndex !== void 0 ? child : child.querySelector?.("[data-history-index]");
+        if (!indexed) continue;
+        const previousIndex = Number(indexed.dataset.historyIndex);
+        if (!Number.isInteger(previousIndex)) continue;
+        if (previousIndex < trimmedCount) {
+          child.remove();
+          continue;
+        }
+        const nextIndex = String(previousIndex - trimmedCount);
+        if (child.dataset.historyIndex !== void 0) child.dataset.historyIndex = nextIndex;
+        child.querySelectorAll?.("[data-history-index]").forEach((node) => {
+          node.dataset.historyIndex = nextIndex;
+        });
+      }
+    }
+    function addNote(text2) {
       const list = state.phoneWindow?.querySelector(".pm-msg-list");
       if (!list) return;
       const n = document.createElement("div");
       n.className = "pm-note";
-      n.textContent = text;
+      n.textContent = text2;
       list.appendChild(n);
       list.scrollTop = list.scrollHeight;
     }
-    function addDirector(text) {
+    function addDirector(text2, metadata) {
       const list = state.phoneWindow?.querySelector(".pm-msg-list");
-      if (!list) return;
+      if (!list) return null;
       const d = document.createElement("div");
       d.className = "pm-director";
-      d.innerHTML = `<span class="pm-director-icon">\u{1F3AC}</span><span class="pm-director-text">${escapeHtml(text)}</span>`;
+      applyBubbleMetadata(d, metadata);
+      d.innerHTML = `<span class="pm-director-icon">\u{1F3AC}</span><span class="pm-director-text">${escapeHtml(text2)}</span>`;
       list.appendChild(d);
       list.scrollTop = list.scrollHeight;
+      return d;
     }
     function showTyping() {
       const list = state.phoneWindow?.querySelector(".pm-msg-list");
@@ -3019,14 +3541,23 @@ ${blocks}
     function hideTyping() {
       document.getElementById("pm-typing")?.remove();
     }
-    function makeOverlay(html) {
-      document.getElementById("pm-overlay")?.remove();
+    function closeOverlay(reason = "close") {
+      const current = document.getElementById("pm-overlay");
+      if (!current) return false;
+      const onClose = current.__pmOnClose;
+      current.remove();
+      if (typeof onClose === "function") onClose(reason);
+      return true;
+    }
+    function makeOverlay(html, options = {}) {
+      closeOverlay("replace");
       const ov = document.createElement("div");
       ov.id = "pm-overlay";
       if (POPOVER_SUPPORTED) ov.setAttribute("popover", "manual");
+      ov.__pmOnClose = typeof options.onClose === "function" ? options.onClose : null;
       ov.innerHTML = html;
       ov.addEventListener("click", (e) => {
-        if (e.target === ov) ov.remove();
+        if (e.target === ov) closeOverlay("backdrop");
       });
       document.body.appendChild(ov);
       if (ov.showPopover) try {
@@ -3035,6 +3566,7 @@ ${blocks}
       }
       return ov;
     }
+    window.__pmCloseOverlay = () => closeOverlay("close");
     Object.assign(deps, {
       applyTheme,
       applyBackground,
@@ -3046,9 +3578,11 @@ ${blocks}
       addBubble,
       addNote,
       addDirector,
+      rebaseRenderedHistory,
       showTyping,
       hideTyping,
       makeOverlay,
+      closeOverlay,
       beginGeneration,
       isGenerationTaskActive,
       finishGeneration,
@@ -3070,7 +3604,8 @@ ${blocks}
       migrateOldHistory,
       hookGenerationEvent,
       invalidateGeneration,
-      syncGenerationControls
+      syncGenerationControls,
+      closeOverlay
     } = deps;
     window.__pmToggleSelect = () => {
       state.isSelectMode = !state.isSelectMode;
@@ -3082,7 +3617,7 @@ ${blocks}
         trashBtn.style.color = "#ff3b30";
         confirmBar.style.display = "flex";
         list.querySelectorAll(".pm-bubble, .pm-group-bubble-wrap, .pm-director").forEach((b) => {
-          if (b.id === "pm-typing" || b.closest(".pm-select-wrap")) return;
+          if (b.id === "pm-typing" || b.closest(".pm-select-wrap") || b.closest(".pm-pending-entry")) return;
           const isDirector = b.classList.contains("pm-director");
           const wrap = document.createElement("div");
           wrap.className = "pm-select-wrap";
@@ -3093,7 +3628,15 @@ ${blocks}
           cb.dataset.checked = "0";
           cb.style.cssText = "width:22px;height:22px;min-width:22px;min-height:22px;border-radius:50%;flex-shrink:0;cursor:pointer;";
           cb.onclick = () => {
-            cb.dataset.checked = cb.dataset.checked === "0" ? "1" : "0";
+            const checked = cb.dataset.checked === "0" ? "1" : "0";
+            const historyIndex = wrap.dataset.historyIndex;
+            if (historyIndex === void 0 || historyIndex === "") {
+              cb.dataset.checked = checked;
+              return;
+            }
+            list.querySelectorAll(`.pm-select-wrap[data-history-index="${historyIndex}"] .pm-custom-check`).forEach((peer) => {
+              peer.dataset.checked = checked;
+            });
           };
           b.parentNode.insertBefore(wrap, b);
           wrap.appendChild(cb);
@@ -3122,6 +3665,11 @@ ${blocks}
         if (cb?.dataset.checked === "1") {
           const hi = wrap.dataset.historyIndex;
           if (hi !== void 0 && hi !== "") toRemoveIndices.add(Number(hi));
+        }
+      });
+      list.querySelectorAll(".pm-select-wrap").forEach((wrap) => {
+        const hi = wrap.dataset.historyIndex;
+        if (hi !== void 0 && hi !== "" && toRemoveIndices.has(Number(hi))) {
           wrap.remove();
         } else {
           const b = wrap.querySelector(".pm-bubble, .pm-group-bubble-wrap, .pm-director");
@@ -3144,9 +3692,16 @@ ${blocks}
       state.phoneWindow.classList.toggle("is-min", state.isMinimized);
       state.phoneWindow.style.removeProperty("transform");
     };
-    window.__pmEnd = () => {
+    window.__pmEnd = (force = false) => {
+      const storageId = state.activeStorageId;
+      const saveKey = state.isGroupChat && state.currentGroupKey ? state.currentGroupKey : state.currentPersona;
+      const pendingCount = getPendingMessages(runtime, storageId, saveKey).length;
+      if (!force && pendingCount && !confirm(`\u5F53\u524D\u4F1A\u8BDD\u6709 ${pendingCount} \u6761\u6682\u5B58\u6D88\u606F\u3002\u5173\u95ED\u540E\u4ECD\u4F1A\u5728\u672C\u9875\u9762\u8FD0\u884C\u671F\u95F4\u4FDD\u7559\uFF0C\u786E\u5B9A\u5173\u95ED\u5417\uFF1F`)) {
+        return;
+      }
       if (state.currentPersona) persistCurrentHistory2();
       invalidateGeneration();
+      closeOverlay("phone-close");
       if (state.phoneWindow) {
         try {
           state.phoneWindow.hidePopover?.();
@@ -3211,6 +3766,7 @@ ${blocks}
       loadTheme();
       loadGroupMeta();
       loadPokeConfig();
+      loadCharacterBehavior();
       loadWordyLimit();
       migrateOldHistory();
       loadEmojis();
@@ -3231,15 +3787,14 @@ ${blocks}
 <div class="pm-island"></div>
 <div class="pm-main-ui">
   <div class="pm-navbar">
-    <button onclick="window.__pmShowList()" class="pm-nav-btn pm-nav-left-btn">\u2630</button>
+    <button onclick="window.__pmShowList()" class="pm-nav-btn pm-nav-left-btn" title="\u8054\u7CFB\u4EBA">${MENU_ICON_SVG}</button>
     <div class="pm-name-wrap">
       <div class="pm-name">${escapeHtml(defaultChar)}</div>
       <button onclick="window.__pmEditGroup()" class="pm-name-edit is-hidden" title="\u7F16\u8F91">${EDIT_ICON_SVG}</button>
     </div>
     <div class="pm-nav-right">
-      <button onclick="window.__pmToggleSelect()" class="pm-nav-btn pm-trash-btn">\u{1F5D1}</button>
-      <button onclick="window.__pmShowConfig()" class="pm-nav-btn">\u2699</button>
-      <button onclick="window.__pmEnd()" class="pm-nav-btn" style="color:#ff3b30">\u2715</button>
+      <button onclick="window.__pmToggleSelect()" class="pm-nav-btn pm-trash-btn" title="\u5220\u9664\u6D88\u606F">${TRASH_ICON_SVG}</button>
+      <button onclick="window.__pmEnd()" class="pm-nav-btn pm-close-btn" title="\u5173\u95ED">${CLOSE_ICON_SVG}</button>
     </div>
   </div>
   <div class="pm-confirm-bar" style="display:none;">
@@ -3249,9 +3804,9 @@ ${blocks}
   </div>
   <div class="pm-msg-list"></div>
   <div class="pm-input-bar">
-    <button onclick="window.__pmShowExpandInput()" class="pm-expand-btn" title="\u5C55\u5F00\u957F\u6587\u672C\u8F93\u5165">\u2922</button>
-    <input class="pm-input" placeholder="iMessage">
-    <button onclick="window.__pmSend()" class="pm-up-btn">\u2191</button>
+    <button onclick="window.__pmShowControlCenter()" class="pm-expand-btn" title="\u6536\u7EB3\u63A7\u5236\u4E2D\u5FC3">${CONTROL_ICON_SVG}</button>
+    <input class="pm-input" placeholder="\u8F93\u5165\u540E\u52A0\u5165\u6682\u5B58">
+    <button onclick="window.__pmSend()" class="pm-up-btn" title="\u52A0\u5165\u6682\u5B58">${SEND_ICON_SVG}</button>
   </div>
 </div>`;
       document.body.appendChild(state.phoneWindow);
@@ -3293,9 +3848,8 @@ ${blocks}
         }
         const historyLoad = loadHistoriesOnce();
         const openingWindow = state.phoneWindow;
-        const openingStorageId = getStorageId();
         Promise.all([historyLoad, loadEmojis()]).then(() => {
-          if (state.phoneWindow !== openingWindow || getStorageId() !== openingStorageId) return;
+          if (!state.phoneActive || state.phoneWindow !== openingWindow) return;
           window.__pmSwitch(defaultChar);
           applyBidirectionalInjection();
           ensureVisibility();
@@ -3369,6 +3923,7 @@ ${blocks}
     loadBidirectional();
     loadGroupMeta();
     loadPokeConfig();
+    loadCharacterBehavior();
     loadWordyLimit();
     loadHistoriesOnce();
     setTimeout(() => {
@@ -3387,7 +3942,9 @@ ${blocks}
       firstOpen: true,
       lastChatLength: 0,
       historyLoadPromise: null,
-      visibilityTimer: null
+      visibilityTimer: null,
+      pendingMessages: /* @__PURE__ */ new Map(),
+      pendingSequence: 0
     };
   }
 
@@ -3678,7 +4235,7 @@ ${blocks}
       addNote,
       getPhoneWindow,
       getCurrentPersona,
-      getStorageId: getStorageId3,
+      getStorageId: getStorageId2,
       runtime,
       closePhone
     } = deps;
@@ -3739,7 +4296,8 @@ ${blocks}
         groupMeta: window.__pmGroupMeta || {},
         pokeConfig: window.__pmPokeConfig || {},
         bidirectional: window.__pmBidirectional || {},
-        emojis: window.__pmEmojis || []
+        emojis: window.__pmEmojis || [],
+        characterBehavior: window.__pmCharacterBehavior || {}
       };
       const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
       const url = URL.createObjectURL(blob);
@@ -3757,15 +4315,17 @@ ${blocks}
       reader.onload = (e) => {
         try {
           const data = JSON.parse(e.target.result);
-          if (data.histories) window.__pmHistories = data.histories;
-          if (data.config) window.__pmConfig = data.config;
-          if (data.theme) window.__pmTheme = data.theme;
-          if (data.profiles) window.__pmProfiles = data.profiles;
-          if (data.groupMeta) window.__pmGroupMeta = data.groupMeta;
-          if (data.pokeConfig) window.__pmPokeConfig = data.pokeConfig;
-          if (data.bidirectional) window.__pmBidirectional = data.bidirectional;
-          if (data.emojis) {
-            window.__pmEmojis = data.emojis;
+          if (!data || typeof data !== "object" || Array.isArray(data)) throw new Error("\u5907\u4EFD\u6839\u8282\u70B9\u5FC5\u987B\u662F\u5BF9\u8C61");
+          if (Object.hasOwn(data, "histories")) window.__pmHistories = data.histories ?? {};
+          if (Object.hasOwn(data, "config")) window.__pmConfig = data.config ?? {};
+          if (Object.hasOwn(data, "theme")) window.__pmTheme = data.theme ?? {};
+          if (Object.hasOwn(data, "profiles")) window.__pmProfiles = data.profiles ?? [];
+          if (Object.hasOwn(data, "groupMeta")) window.__pmGroupMeta = data.groupMeta ?? {};
+          if (Object.hasOwn(data, "pokeConfig")) window.__pmPokeConfig = data.pokeConfig ?? {};
+          if (Object.hasOwn(data, "bidirectional")) window.__pmBidirectional = data.bidirectional ?? {};
+          if (Object.hasOwn(data, "characterBehavior")) window.__pmCharacterBehavior = data.characterBehavior ?? {};
+          if (Object.hasOwn(data, "emojis")) {
+            window.__pmEmojis = data.emojis ?? [];
             saveEmojis();
           }
           saveHistories();
@@ -3775,6 +4335,7 @@ ${blocks}
           }
           saveTheme();
           saveGroupMeta();
+          saveCharacterBehavior();
           try {
             localStorage.setItem("ST_SMS_POKE_CONFIG", JSON.stringify(window.__pmPokeConfig));
           } catch (err) {
@@ -3809,7 +4370,7 @@ ${blocks}
       const layoutBtns = ["standard", "relaxed"].map(
         (v) => `<div class="pm-layout-chip ${t.layout === v ? "pm-layout-active" : ""}" onclick="window.__pmSetLayout('${safeJS(v)}')">${v === "standard" ? "\u6807\u51C6" : "\u5BBD\u677E"}</div>`
       ).join("");
-      const id = getStorageId3(), localKey = `${id}_${persona}`;
+      const id = getStorageId2(), localKey = `${id}_${persona}`;
       const hasGlobalBg = !!window.__pmBgGlobal, hasLocalBg = !!window.__pmBgLocal[localKey];
       const globalBgBtn = hasGlobalBg ? `<button class="pm-bg-btn pm-bg-del" onclick="window.__pmClearBg('global')">\u6E05\u9664</button>` : `<label class="pm-bg-btn">\u9009\u62E9\u56FE\u7247<input type="file" accept="image/*" onchange="window.__pmUploadBg(this,'global')" hidden></label>
                <button class="pm-bg-btn" onclick="window.__pmBgUrl('global')">URL</button>`;
@@ -3901,7 +4462,7 @@ ${blocks}
               window.__pmBgGlobal = croppedDataUrl;
               saveBgGlobal();
             } else {
-              const id = getStorageId3();
+              const id = getStorageId2();
               window.__pmBgLocal[`${id}_${persona}`] = croppedDataUrl;
               saveBgLocal();
             }
@@ -3922,7 +4483,7 @@ ${blocks}
         window.__pmBgGlobal = url.trim();
         saveBgGlobal();
       } else {
-        const id = getStorageId3();
+        const id = getStorageId2();
         window.__pmBgLocal[`${id}_${persona}`] = url.trim();
         saveBgLocal();
       }
@@ -3939,7 +4500,7 @@ ${blocks}
         } catch (e) {
         }
       } else {
-        const id = getStorageId3(), persona = getCurrentPersona(), key = `${id}_${persona}`;
+        const id = getStorageId2(), persona = getCurrentPersona(), key = `${id}_${persona}`;
         delete window.__pmBgLocal[key];
         await pmIDBDel("ST_SMS_BG_LOCAL_" + key);
         await saveBgLocal();
@@ -4087,13 +4648,14 @@ ${blocks}
       groupMembers: [],
       groupColorMap: {},
       groupDisplayName: "",
-      currentGroupKey: ""
+      currentGroupKey: "",
+      groupExtras: []
     };
     const getCtx = () => typeof SillyTavern !== "undefined" ? SillyTavern.getContext() : null;
-    const getStorageId3 = () => getStorageId2(getCtx);
+    const getStorageId2 = () => getStorageId(getCtx);
     const getUserPersona2 = () => getUserPersona(getCtx);
     const gatherContext2 = (context) => gatherContext(context ? () => context : getCtx);
-    const deps = { runtime, getCtx, getStorageId: getStorageId3, getUserPersona: getUserPersona2, gatherContext: gatherContext2 };
+    const deps = { runtime, getCtx, getStorageId: getStorageId2, getUserPersona: getUserPersona2, gatherContext: gatherContext2 };
     deps.callAI = createAiClient({
       getConfig: () => window.__pmConfig,
       getContext: getCtx,
@@ -4110,11 +4672,12 @@ ${blocks}
       addNote: deps.addNote,
       getPhoneWindow: () => state.phoneWindow,
       getCurrentPersona: () => state.currentPersona,
-      getStorageId: getStorageId3,
+      getStorageId: getStorageId2,
       runtime,
       closePhone: () => window.__pmEnd()
     });
     installPhoneChat(state, deps);
+    installPhoneControlCenter(state, deps);
     installPhoneDirectory(state, deps);
     installContactGenerator(state, deps);
     installPhoneChatPoke(state, deps);

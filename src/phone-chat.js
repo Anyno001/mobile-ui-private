@@ -1,6 +1,10 @@
 import { CONTEXT_LIMIT, SAVE_LIMIT } from './constants.js';
+import { createHistoryWindow } from './history-window.js';
 import { cleanResponse, splitToSentences } from './prompts.js';
-import { escapeAttr } from './ui.js';
+import {
+    addPendingMessage, combinePendingMessages, getPendingMessages,
+    removePendingBatch, setPendingBatchStatus,
+} from './pending-messages.js';
 import {
     getEmojiPrompt, getWordyPrompt, parseGroupResponse,
 } from './messaging.js';
@@ -14,8 +18,8 @@ import {
 
 export function installPhoneChat(state, deps) {
     const {
-        getStorageId, gatherContext, callAI, applyBidirectionalInjection, makeOverlay,
-        addBubble, addNote, addDirector, showTyping, hideTyping, persistCurrentHistory,
+        runtime, getStorageId, gatherContext, callAI, applyBidirectionalInjection,
+        addBubble, addNote, addDirector, rebaseRenderedHistory, showTyping, hideTyping, persistCurrentHistory,
         beginGeneration, isGenerationTaskActive, finishGeneration,
     } = deps;
     async function fetchSMS(userMsg, directorNote, task, request) {
@@ -34,8 +38,7 @@ export function installPhoneChat(state, deps) {
         const { cardDesc, cardPersonality, cardScenario, cardFirstMes, cardMesExample, mainChatText, worldBookText, userName, userDesc } = ctxData;
 
         const userBlock = buildUserBlock(userName, userDesc);
-        const hasUserMessage = !!userMsg.trim();
-        const smsHistoryText = buildHistoryText(targetHistory, CONTEXT_LIMIT, userName, isGroup ? null : currentPersona, hasUserMessage);
+        const smsHistoryText = buildHistoryText(targetHistory, CONTEXT_LIMIT, userName, isGroup ? null : currentPersona);
 
         let injectedInstruction, systemPrompt;
 
@@ -97,6 +100,9 @@ export function installPhoneChat(state, deps) {
             }
             if (!isGenerationTaskActive(task)) return null;
 
+            if (request.userHistoryEntry) {
+                targetHistory.push(request.userHistoryEntry);
+            }
             let resultData;
             if (isGroup) {
                 const parsed = parseGroupResponse(raw, groupMembers);
@@ -131,174 +137,188 @@ export function installPhoneChat(state, deps) {
         } catch (e) {
             console.error('[phone-mode]', e);
             if (!isGenerationTaskActive(task)) return null;
-            return isGroup
-                ? { type: 'group', data: [{ name: '系统', sentences: [`（错误：${e?.message || e}）`] }] }
-                : { type: 'single', data: [`（错误：${e?.message || e}）`] };
+            throw e;
         }
     }
 
-    window.__pmSend = async () => {
-        if (state.isGenerating) return;
-        const input = state.phoneWindow?.querySelector('.pm-input');
-        if (!input) return;
-        const val = input.value.trim(); if (!val) return;
-
-        // 解析方括号引导：先把 [emo:...] 格式临时占位保护，再匹配 【...】/[...]/［...］ 为剧情引导
-        const EMO_PLACEHOLDER = '\u0002';
-        const emoSlots = [];
-        const valProtected = val.replace(/\[emo:[^\]]+\]/g, m => { emoSlots.push(m); return EMO_PLACEHOLDER + (emoSlots.length - 1) + EMO_PLACEHOLDER; });
-        const DIRECTOR_RE = /[【\[［]([^】\]］]+)[】\]］]/g;
+    function parsePendingInput(value) {
+        const rawText = String(value || '').trim();
+        if (!rawText) return null;
+        const placeholder = '\u0002';
+        const emojiSlots = [];
+        const protectedText = rawText.replace(/\[emo:[^\]]+\]/g, match => {
+            emojiSlots.push(match);
+            return `${placeholder}${emojiSlots.length - 1}${placeholder}`;
+        });
+        const directorPattern = /[【\[［]([^】\]］]+)[】\]］]/g;
         const directorNotes = [];
-        let m;
-        DIRECTOR_RE.lastIndex = 0;
-        while ((m = DIRECTOR_RE.exec(valProtected)) !== null) directorNotes.push(m[1].trim());
+        let match;
+        while ((match = directorPattern.exec(protectedText)) !== null) directorNotes.push(match[1].trim());
+        const plainProtected = protectedText.replace(/[【\[［][^】\]］]*[】\]］]/g, '').trim();
+        const plainText = plainProtected.replace(
+            new RegExp(`${placeholder}(\\d+)${placeholder}`, 'g'),
+            (_, index) => emojiSlots[Number(index)] || '',
+        );
+        const protectedSlashes = plainText.replace(/[\(（][^)）]+[\)）]/g, value => value.replace(/\//g, '\u0001'));
+        const chunks = protectedSlashes.split(/[/／]/).map(value => value.replace(/\u0001/g, '/').trim()).filter(Boolean);
+        const bubbleParts = chunks.flatMap(chunk => {
+            const parts = [];
+            let lastIndex = 0;
+            const emojiPattern = /\[emo:[^\]]+\]/g;
+            while ((match = emojiPattern.exec(chunk)) !== null) {
+                const before = chunk.slice(lastIndex, match.index).trim();
+                if (before) parts.push(before);
+                parts.push(match[0]);
+                lastIndex = match.index + match[0].length;
+            }
+            const after = chunk.slice(lastIndex).trim();
+            if (after) parts.push(after);
+            return parts.length ? parts : [chunk];
+        });
         const directorNote = directorNotes.join('；');
-        // 去掉所有方括号引导内容后，还原 emo 占位
-        const plainValProtected = valProtected.replace(/[【\[［][^】\]］]*[】\]］]/g, '').trim();
-        const plainVal = plainValProtected.replace(new RegExp(EMO_PLACEHOLDER + '(\\d+)' + EMO_PLACEHOLDER, 'g'), (_, i) => emoSlots[+i] || '');
+        return plainText || directorNote ? { rawText, plainText, directorNote, bubbleParts } : null;
+    }
 
-        // 渲染剧情引导条（居中，不是气泡）
-        // 如果没有正常发言也没有引导，直接返回（不可能走到这，但防御一下）
-        if (!directorNote && !plainVal) return;
-
+    function getPendingTarget() {
         const storageId = state.activeStorageId || getStorageId();
         const saveKey = state.isGroupChat && state.currentGroupKey ? state.currentGroupKey : state.currentPersona;
-        if (!saveKey) return;
-        const task = beginGeneration(storageId);
+        if (!storageId || storageId === 'sms_unknown__default' || !saveKey) return null;
+        return { storageId, saveKey };
+    }
+
+    function renderPendingItem(item) {
+        const metadata = { pendingId: item.id, pendingStatus: item.status };
+        if (item.directorNote) addDirector(item.directorNote, metadata);
+        for (const part of item.bubbleParts) addBubble(part, 'right', undefined, undefined, metadata);
+    }
+
+    function renderPendingConversation(storageId, saveKey) {
+        const list = state.phoneWindow?.querySelector('.pm-msg-list');
+        if (!list) return;
+        for (const node of list.querySelectorAll('.pm-pending-entry')) {
+            if (!node.parentElement?.closest('.pm-pending-entry')) node.remove();
+        }
+        for (const item of getPendingMessages(runtime, storageId, saveKey)) renderPendingItem(item);
+    }
+
+    function updatePendingDomStatus(itemIds, status) {
+        const ids = new Set(itemIds.map(String));
+        for (const node of state.phoneWindow?.querySelectorAll('[data-pending-id]') || []) {
+            if (ids.has(node.dataset.pendingId)) node.dataset.pendingStatus = status;
+        }
+    }
+
+    function queuePendingText(value) {
+        const target = getPendingTarget();
+        const parsed = parsePendingInput(value);
+        if (!target || !parsed) return null;
+        const item = addPendingMessage(runtime, target.storageId, target.saveKey, parsed);
+        if (!item) return null;
+        renderPendingItem(item);
+        return item;
+    }
+
+    window.__pmSend = () => {
+        const input = state.phoneWindow?.querySelector('.pm-input');
+        if (!input || !queuePendingText(input.value)) return;
+        input.value = '';
+        window.__pmRefreshControlCenter?.();
+        input.focus();
+    };
+
+    window.__pmSubmitPending = async () => {
+        if (state.isGenerating) return;
+        const target = getPendingTarget();
+        if (!target) return;
+        const combined = combinePendingMessages(runtime, target.storageId, target.saveKey);
+        const batch = combined.items.filter(item => item.status !== 'submitting');
+        if (!batch.length) return;
+        const itemIds = batch.map(item => item.id);
+        const task = beginGeneration(target.storageId);
         if (!task) return;
+        setPendingBatchStatus(runtime, target.storageId, target.saveKey, itemIds, 'submitting');
+        updatePendingDomStatus(itemIds, 'submitting');
+        window.__pmRefreshControlCenter?.();
         const request = {
-            storageId, saveKey,
+            storageId: target.storageId,
+            saveKey: target.saveKey,
             isGroup: state.isGroupChat,
             currentPersona: state.currentPersona,
             groupMembers: state.groupMembers.slice(),
             groupDisplayName: state.groupDisplayName,
             targetHistory: state.conversationHistory.slice(),
+            userHistoryEntry: {
+                role: 'user',
+                content: combined.plainText,
+                ...(combined.directorNote ? { directorNote: combined.directorNote } : {}),
+            },
         };
-        if (plainVal.trim()) {
-            request.targetHistory.push({ role: 'user', content: plainVal });
-            state.conversationHistory = request.targetHistory.slice(-SAVE_LIMIT);
-            persistCurrentHistory(saveKey, storageId, request.targetHistory);
-        }
         const isStillTarget = () => isGenerationTaskActive(task)
-            && state.activeStorageId === storageId
-            && (state.isGroupChat && state.currentGroupKey ? state.currentGroupKey : state.currentPersona) === saveKey;
-        input.value = '';
-        if (directorNote) addDirector(directorNote);
-
-        const protect = plainVal.replace(/[\(（][^)）]+[\)\）]/g, m => m.replace(/\//g, '\u0001'));
-        const rawChunks = protect.split(/[/／]/).map(s => s.replace(/\u0001/g, '/').trim()).filter(Boolean);
-        // 把含 [emo:...] 的 chunk 按标记边界再拆成独立气泡
-        const userBubbles = rawChunks.flatMap(chunk => {
-            const parts = []; let lastIdx = 0, m;
-            const emoRe = /\[emo:[^\]]+\]/g;
-            while ((m = emoRe.exec(chunk)) !== null) {
-                const before = chunk.slice(lastIdx, m.index).trim();
-                if (before) parts.push(before);
-                parts.push(m[0]);
-                lastIdx = m.index + m[0].length;
-            }
-            const after = chunk.slice(lastIdx).trim();
-            if (after) parts.push(after);
-            return parts.length ? parts : [chunk];
-        });
-        // 先渲染用户气泡，fetchSMS push 后回填 historyIndex
-        const pendingUserBubbles = [];
-        userBubbles.forEach(chunk => {
-            addBubble(chunk, 'right');
-            const list = state.phoneWindow?.querySelector('.pm-msg-list');
-            const allBubbles = list?.querySelectorAll('.pm-bubble[data-side="right"], .pm-group-bubble-wrap[data-side="right"]');
-            if (allBubbles?.length) pendingUserBubbles.push(allBubbles[allBubbles.length - 1]);
-        });
-        showTyping();
+            && state.activeStorageId === target.storageId
+            && (state.isGroupChat && state.currentGroupKey ? state.currentGroupKey : state.currentPersona) === target.saveKey;
+        if (isStillTarget()) showTyping();
         try {
-            const result = await fetchSMS(plainVal, directorNote, task, request);
+            const result = await fetchSMS(combined.plainText, combined.directorNote, task, request);
             if (!result || !isGenerationTaskActive(task)) return;
             if (isStillTarget()) hideTyping();
-            // 回填用户气泡的 historyIndex
-            // 若有正常用户发言，fetchSMS 里 push 了 user+assistant，AI 在 length-1，user 在 length-2
-            // 若纯剧情引导无用户发言，fetchSMS 只 push 了 assistant，AI 在 length-1
-            const hasUserMsg = !!plainVal.trim();
-            const userHi = request.targetHistory.length - (hasUserMsg ? 2 : 1);
+            const historyWindow = createHistoryWindow(request.targetHistory, SAVE_LIMIT);
+            const userHistoryIndex = historyWindow.toWindowIndex(request.targetHistory.length - 2);
+            const aiHistoryIndex = historyWindow.toWindowIndex(request.targetHistory.length - 1);
+            removePendingBatch(runtime, target.storageId, target.saveKey, itemIds);
             if (isStillTarget()) {
-                state.conversationHistory = request.targetHistory.slice(-SAVE_LIMIT);
-                pendingUserBubbles.forEach(b => { b.dataset.historyIndex = userHi; const inner = b.querySelector('.pm-bubble'); if(inner) inner.dataset.historyIndex = userHi; });
+                rebaseRenderedHistory(historyWindow.trimmedCount);
+                state.conversationHistory = historyWindow.history;
+                const ids = new Set(itemIds.map(String));
+                for (const node of state.phoneWindow?.querySelectorAll('[data-pending-id]') || []) {
+                    if (!ids.has(node.dataset.pendingId)) continue;
+                    node.classList.remove('pm-pending-entry');
+                    delete node.dataset.pendingId;
+                    delete node.dataset.pendingStatus;
+                    if (userHistoryIndex !== null) node.dataset.historyIndex = String(userHistoryIndex);
+                }
             }
-            const aiHi = request.targetHistory.length - 1;
             if (result.type === 'group') {
                 for (const block of result.data) {
-                    for (const s of block.sentences) {
-                        await new Promise(r => setTimeout(r, 120));
-                        if (isStillTarget()) addBubble(s, 'left', block.name, aiHi);
+                    for (const sentence of block.sentences) {
+                        await new Promise(resolve => setTimeout(resolve, 120));
+                        if (isStillTarget()) addBubble(sentence, 'left', block.name, aiHistoryIndex);
                     }
                 }
             } else {
-                for (const s of result.data) {
-                    await new Promise(r => setTimeout(r, 150));
-                    if (isStillTarget()) addBubble(s, 'left', undefined, aiHi);
+                for (const sentence of result.data) {
+                    await new Promise(resolve => setTimeout(resolve, 150));
+                    if (isStillTarget()) addBubble(sentence, 'left', undefined, aiHistoryIndex);
                 }
             }
-        } catch(e) {
-            if (isStillTarget()) { hideTyping(); addNote(`（发送失败：${e?.message || e}）`); }
-            console.error('[phone-mode] __pmSend 异常', e);
+            setTimeout(() => {
+                if (!state.isGenerating && typeof window.__pmIncrementCounters === 'function') window.__pmIncrementCounters();
+            }, 300);
+        } catch (error) {
+            setPendingBatchStatus(runtime, target.storageId, target.saveKey, itemIds, 'failed');
+            updatePendingDomStatus(itemIds, 'failed');
+            if (isStillTarget()) {
+                hideTyping();
+                addNote(`（发送失败：${error?.message || error}，暂存内容已保留）`);
+            }
+            console.error('[phone-mode] __pmSubmitPending 异常', error);
         } finally {
-            const shouldFocus = input.isConnected && isStillTarget();
+            const remaining = getPendingMessages(runtime, target.storageId, target.saveKey);
+            const remainingIds = new Set(remaining.map(item => item.id));
+            const interruptedIds = itemIds.filter(itemId => remainingIds.has(itemId));
+            if (interruptedIds.length) {
+                setPendingBatchStatus(runtime, target.storageId, target.saveKey, interruptedIds, 'failed');
+                updatePendingDomStatus(interruptedIds, 'failed');
+            }
             finishGeneration(task);
-            if (shouldFocus) input.focus();
-        }
-
-        setTimeout(() => {
-            if (!state.isGenerating && typeof window.__pmIncrementCounters === 'function') {
-                window.__pmIncrementCounters();
-            }
-        }, 300);
-    };
-
-// 打开长文本输入界面
-    window.__pmShowExpandInput = () => {
-        const smallInput = state.phoneWindow?.querySelector('.pm-input');
-        const currentText = smallInput ? smallInput.value : '';
-
-        makeOverlay(`
-<div class="pm-modal pm-modal-wide">
-  <div class="pm-modal-header" style="justify-content:space-between;padding-right:14px;">
-    <b>长文本输入</b>
-    <span onclick="(()=>{ const ta=document.getElementById('pm-expanded-textarea'); const si=document.querySelector('.pm-input'); if(ta && si) si.value=ta.value; document.getElementById('pm-overlay').remove(); })()" class="pm-modal-close">✕</span>
-  </div>
-  <div style="padding:14px 16px;">
-    <textarea id="pm-expanded-textarea" class="pm-cfg-input" rows="7"
-        style="height:auto; resize:none; font-size:14px; padding:10px; line-height:1.5; font-family:inherit;"
-        placeholder="在这里输入多行文本...">${escapeAttr(currentText)}</textarea>
-  </div>
-  <div class="pm-modal-add" style="display:flex;gap:8px;">
-    <button onclick="(()=>{ const ta=document.getElementById('pm-expanded-textarea'); const si=document.querySelector('.pm-input'); if(ta && si) si.value=ta.value; window.__pmShowEmojiPicker(); })()" style="flex:2;background:#f0f0f3;color:#333;border:1px solid #ddd;border-radius:10px;padding:10px;font-size:14px;cursor:pointer;font-weight:600;">(^ ^)</button>
-    <button onclick="window.__pmConfirmExpandInput()" style="flex:8;background:#007aff;color:#fff;border:none;border-radius:10px;padding:10px;font-size:13px;cursor:pointer;font-weight:600;">发送</button>
-  </div>
-</div>`);
-
-        setTimeout(() => {
-            const ta = document.getElementById('pm-expanded-textarea');
-            if (ta) {
-                ta.focus();
-                ta.selectionStart = ta.selectionEnd = ta.value.length;
-            }
-        }, 10);
-    };
-
-    // 确认发送长文本
-    window.__pmConfirmExpandInput = () => {
-        const ta = document.getElementById('pm-expanded-textarea');
-        const smallInput = state.phoneWindow?.querySelector('.pm-input');
-
-        if (ta && smallInput) {
-            smallInput.value = ta.value; // 将长文本同步回底部的原输入框
-            document.getElementById('pm-overlay')?.remove();
-
-            // 如果文本不为空，直接触发发送
-            if (ta.value.trim()) {
-                window.__pmSend();
-            }
+            window.__pmRefreshControlCenter?.();
         }
     };
+
+    Object.assign(deps, {
+        parsePendingInput, queuePendingText, renderPendingItem, renderPendingConversation,
+    });
+
+
 
     window.__pmIncrementCounters = () => {
         const id = getStorageId();

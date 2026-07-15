@@ -7,8 +7,8 @@ import {
 import { escapeAttr, escapeHtml, safeJS } from './ui.js';
 import {
     addOrUpdateProfile, loadBgSettings, loadProfiles, loadTheme, pmIDBDel,
-    saveBgGlobal, saveBgLocal, saveEmojis, saveGroupMeta, saveHistories,
-    saveProfiles, saveTheme, saveWordyLimit,
+    saveBgGlobal, saveBgLocal, saveCharacterBehavior, saveEmojis, saveGroupMeta,
+    saveHistories, saveProfiles, saveTheme, saveWordyLimit,
 } from './storage.js';
 
 export function installSettingsUi(deps) {
@@ -71,7 +71,8 @@ export function installSettingsUi(deps) {
             groupMeta: window.__pmGroupMeta || {},
             pokeConfig: window.__pmPokeConfig || {},
             bidirectional: window.__pmBidirectional || {},
-            emojis: window.__pmEmojis || []
+            emojis: window.__pmEmojis || [],
+            characterBehavior: window.__pmCharacterBehavior || {},
         };
         const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
@@ -90,19 +91,22 @@ export function installSettingsUi(deps) {
         reader.onload = (e) => {
             try {
                 const data = JSON.parse(e.target.result);
-                if (data.histories) window.__pmHistories = data.histories;
-                if (data.config) window.__pmConfig = data.config;
-                if (data.theme) window.__pmTheme = data.theme;
-                if (data.profiles) window.__pmProfiles = data.profiles;
-                if (data.groupMeta) window.__pmGroupMeta = data.groupMeta;
-                if (data.pokeConfig) window.__pmPokeConfig = data.pokeConfig;
-                if (data.bidirectional) window.__pmBidirectional = data.bidirectional;
-                if (data.emojis) { window.__pmEmojis = data.emojis; saveEmojis(); }
+                if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error('备份根节点必须是对象');
+                if (Object.hasOwn(data, 'histories')) window.__pmHistories = data.histories ?? {};
+                if (Object.hasOwn(data, 'config')) window.__pmConfig = data.config ?? {};
+                if (Object.hasOwn(data, 'theme')) window.__pmTheme = data.theme ?? {};
+                if (Object.hasOwn(data, 'profiles')) window.__pmProfiles = data.profiles ?? [];
+                if (Object.hasOwn(data, 'groupMeta')) window.__pmGroupMeta = data.groupMeta ?? {};
+                if (Object.hasOwn(data, 'pokeConfig')) window.__pmPokeConfig = data.pokeConfig ?? {};
+                if (Object.hasOwn(data, 'bidirectional')) window.__pmBidirectional = data.bidirectional ?? {};
+                if (Object.hasOwn(data, 'characterBehavior')) window.__pmCharacterBehavior = data.characterBehavior ?? {};
+                if (Object.hasOwn(data, 'emojis')) { window.__pmEmojis = data.emojis ?? []; saveEmojis(); }
 
                 saveHistories();
                 try { localStorage.setItem('ST_SMS_CONFIG', JSON.stringify(window.__pmConfig)); } catch(err) {}
                 saveTheme();
                 saveGroupMeta();
+                saveCharacterBehavior();
                 try { localStorage.setItem('ST_SMS_POKE_CONFIG', JSON.stringify(window.__pmPokeConfig)); } catch(err) {}
                 try { localStorage.setItem('ST_SMS_BIDIRECTIONAL', JSON.stringify(window.__pmBidirectional)); } catch(err) {}
 

@@ -42,7 +42,7 @@ function getStoredHistory(id, saveKey) {
  */
 export function installConversation(state, deps) {
     const {
-        getStorageId, addNote, addBubble, fitNameFont, applyBackground,
+        getStorageId, addNote, addBubble, addDirector, fitNameFont, applyBackground,
         applyBidirectionalInjection,
     } = deps;
 
@@ -74,7 +74,7 @@ export function installConversation(state, deps) {
 
     window.__pmSwitch = (name, _prevSaveKey, _prevStorageId) => {
         if (!name?.trim()) return; name = name.trim();
-        document.getElementById('pm-overlay')?.remove();
+        deps.closeOverlay?.('conversation-switch');
         const id = getStorageId();
         if (!id || id === 'sms_unknown__default') {
             console.warn('[phone-mode] __pmSwitch: storageId 尚未就绪，跳过切换');
@@ -121,11 +121,15 @@ export function installConversation(state, deps) {
                             }
                         }
                     } else {
-                        splitToSentences(m.content).forEach(s => addBubble(s, m.role === 'user' ? 'right' : 'left', undefined, hi));
+                        if (m.role === 'user' && m.directorNote) addDirector(m.directorNote, { historyIndex: hi });
+                        splitToSentences(m.content).forEach(s => addBubble(
+                            s, m.role === 'user' ? 'right' : 'left', undefined, hi,
+                        ));
                     }
                 });
                 addNote('── 以上为历史 ──');
             } else addNote('开始对话');
+            deps.renderPendingConversation?.(id, name);
             applyBackground();
         }
         applyBidirectionalInjection();
