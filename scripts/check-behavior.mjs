@@ -9,14 +9,14 @@ import {
     normalizeGroupInjection, normalizeGroupMeta, normalizeGroupMetaStore,
 } from '../src/behavior-config.js';
 import {
-    clearPluginData, loadBgSettings, loadCharacterBehavior, loadGroupMeta, pmIDBDel, pmIDBGet, pmIDBSet,
+    addOrUpdateProfile, clearPluginData, loadBgSettings, loadCharacterBehavior, loadGroupMeta, pmIDBDel, pmIDBGet, pmIDBSet,
     PLUGIN_IDB_DYNAMIC_PREFIXES, PLUGIN_IDB_STATIC_KEYS, PLUGIN_LOCAL_STORAGE_KEYS,
     saveBgGlobal, saveBgLocal, saveCharacterBehavior, saveGroupMeta, saveHistoriesStrict,
 } from '../src/storage.js';
 import { applyConversationInjections } from '../src/phone-injection.js';
 import { deriveInteractiveActorId, normalizeInteractiveStore } from '../src/interactive-scene-model.js';
 import {
-    createBackupStateHandlers, parseBackupData, runBackgroundTransaction, runBackupTransaction,
+    createBackupStateHandlers, installSettingsUi, parseBackupData, runBackgroundTransaction, runBackupTransaction,
 } from '../src/settings-ui.js';
 import {
     buildGroupInjectedInstruction, buildGroupSystemPrompt,
@@ -410,6 +410,8 @@ const localStorageControl = {
     failGet: new Set(),
     failSet: new Set(),
     failSetCounts: new Map(),
+    failSetOnCalls: new Map(),
+    setCalls: new Map(),
 };
 globalThis.window = {};
 globalThis.localStorage = {
@@ -418,6 +420,10 @@ globalThis.localStorage = {
         return localValues.has(key) ? localValues.get(key) : null;
     },
     setItem(key, value) {
+        const callNumber = (localStorageControl.setCalls.get(key) || 0) + 1;
+        localStorageControl.setCalls.set(key, callNumber);
+        const scheduledFailures = localStorageControl.failSetOnCalls.get(key);
+        if (scheduledFailures?.delete(callNumber)) throw new Error('injected scheduled set failure');
         const remainingFailures = localStorageControl.failSetCounts.get(key) || 0;
         if (remainingFailures > 0) {
             if (remainingFailures === 1) localStorageControl.failSetCounts.delete(key);
@@ -454,6 +460,111 @@ await saveGroupMeta();
 const savedGroup = JSON.parse(localValues.get('ST_SMS_GROUP_META_LOCAL_FALLBACK')).story.valid;
 assert.equal(savedGroup.injection.position, -1);
 assert.equal(savedGroup.injection.depth, MAX_INJECTION_DEPTH);
+
+window.__pmProfiles = [{ apiUrl: 'https://old.example', apiKey: 'old-key', model: 'old-model' }];
+localValues.set('ST_SMS_API_PROFILES', JSON.stringify(window.__pmProfiles));
+localStorageControl.failSet.add('ST_SMS_API_PROFILES');
+assert.equal(addOrUpdateProfile({ apiUrl: 'https://new.example', apiKey: 'new-key', model: 'new-model' }), false);
+assert.deepEqual(window.__pmProfiles, [{ apiUrl: 'https://old.example', apiKey: 'old-key', model: 'old-model' }]);
+assert.equal(JSON.parse(localValues.get('ST_SMS_API_PROFILES'))[0].apiUrl, 'https://old.example');
+
+const uiAlerts = [];
+const uiElements = new Map([
+    ['pm-custom-right', { value: '#123456' }],
+    ['pm-custom-left', { value: '#654321' }],
+    ['pm-border-color', { value: '#abcdef' }],
+    ['pm-cfg-url', { value: 'https://new.example' }],
+    ['pm-cfg-key', { value: 'new-key' }],
+    ['pm-cfg-model', { value: 'new-model' }],
+    ['pm-overlay', { removed: false, remove() { this.removed = true; } }],
+]);
+globalThis.alert = message => uiAlerts.push(String(message));
+globalThis.document = {
+    getElementById: id => uiElements.get(id) || null,
+    querySelectorAll: () => [],
+};
+const appliedThemes = [];
+const uiNotes = [];
+installSettingsUi({
+    makeOverlay: () => {}, applyTheme: () => appliedThemes.push(structuredClone(window.__pmTheme)), applyBackground: () => {},
+    fitNameFont: () => {}, addNote: note => uiNotes.push(note), getCurrentPersona: () => 'default', getStorageId: () => 'story',
+    runtime: { modelList: [] }, closePhone: () => {}, applyBidirectionalInjection: async () => {}, clearBidirectionalInjection: () => {},
+    getInteractiveStore: async () => ({ scopes: {} }),
+});
+
+const baseTheme = { preset: 'default', customRight: '', customLeft: '', borderColor: '#1a1a1a', darkMode: 'light' };
+for (const [handler, setup, invoke] of [
+    ['__pmSetDarkMode', () => {}, () => window.__pmSetDarkMode('dark')],
+    ['__pmSetPreset', () => {}, () => window.__pmSetPreset('blue')],
+    ['__pmSetCustomColor', () => {}, () => window.__pmSetCustomColor()],
+    ['__pmClearCustomColor', () => { window.__pmTheme = { ...window.__pmTheme, preset: 'custom', customRight: '#111111', customLeft: '#222222' }; }, () => window.__pmClearCustomColor()],
+    ['__pmSetBorderColor', () => {}, () => window.__pmSetBorderColor()],
+]) {
+    window.__pmTheme = structuredClone(baseTheme);
+    setup();
+    const previous = structuredClone(window.__pmTheme);
+    localStorageControl.failSet.add('ST_SMS_THEME');
+    assert.equal(invoke(), false, `${handler} should report persistence failure`);
+    assert.deepEqual(window.__pmTheme, previous, `${handler} should restore the previous theme`);
+    assert.deepEqual(appliedThemes.at(-1), previous, `${handler} should reapply the previous theme`);
+    assert.match(uiAlerts.at(-1), /主题保存失败/);
+}
+window.__pmTheme = structuredClone(baseTheme);
+assert.equal(window.__pmSetDarkMode('dark'), true);
+assert.equal(window.__pmTheme.darkMode, 'dark');
+assert.equal(JSON.parse(localValues.get('ST_SMS_THEME')).darkMode, 'dark');
+assert.equal(appliedThemes.at(-1).darkMode, 'dark');
+
+window.__pmProfiles = [{ apiUrl: 'https://old.example', apiKey: 'old-key', model: 'old-model' }];
+localStorageControl.failSet.add('ST_SMS_API_PROFILES');
+assert.equal(window.__pmDeleteProfile(0), false);
+assert.equal(window.__pmProfiles.length, 1);
+assert.match(uiAlerts.at(-1), /档案删除失败/);
+let profilePageRefreshes = 0;
+window.__pmShowConfig = page => { assert.equal(page, 'api'); profilePageRefreshes += 1; };
+assert.equal(window.__pmDeleteProfile(0), true);
+assert.deepEqual(JSON.parse(localValues.get('ST_SMS_API_PROFILES')), []);
+assert.equal(profilePageRefreshes, 1);
+
+window.__pmConfig = { apiUrl: 'https://old.example', apiKey: 'old-key', model: 'old-model', useIndependent: false };
+window.__pmProfiles = [{ apiUrl: 'https://old.example', apiKey: 'old-key', model: 'old-model' }];
+localValues.set('ST_SMS_API_PROFILES', JSON.stringify(window.__pmProfiles));
+localValues.set('ST_SMS_CONFIG', JSON.stringify(window.__pmConfig));
+localStorageControl.failSet.add('ST_SMS_CONFIG');
+assert.equal(window.__pmSaveConfig(), false);
+assert.equal(window.__pmConfig.apiUrl, 'https://old.example');
+assert.equal(uiElements.get('pm-overlay').removed, false);
+assert.match(uiAlerts.at(-1), /API 配置保存失败/);
+
+localStorageControl.failSet.add('ST_SMS_API_PROFILES');
+assert.equal(window.__pmSaveConfig(), false);
+assert.equal(window.__pmConfig.apiUrl, 'https://old.example');
+assert.equal(JSON.parse(localValues.get('ST_SMS_CONFIG')).apiUrl, 'https://old.example');
+assert.equal(window.__pmProfiles.length, 1);
+assert.equal(uiElements.get('pm-overlay').removed, false);
+assert.match(uiAlerts.at(-1), /API 档案保存失败，API 配置已恢复/);
+
+const nextConfigWrite = (localStorageControl.setCalls.get('ST_SMS_CONFIG') || 0) + 1;
+localStorageControl.failSet.add('ST_SMS_API_PROFILES');
+localStorageControl.failSetOnCalls.set('ST_SMS_CONFIG', new Set([nextConfigWrite + 1]));
+assert.equal(window.__pmSaveConfig(), false);
+assert.equal(window.__pmConfig.apiUrl, 'https://new.example');
+assert.equal(JSON.parse(localValues.get('ST_SMS_CONFIG')).apiUrl, 'https://new.example');
+assert.equal(window.__pmProfiles[0].apiUrl, 'https://old.example');
+assert.equal(uiElements.get('pm-overlay').removed, false);
+assert.match(uiAlerts.at(-1), /API 配置回滚也失败/);
+
+uiElements.get('pm-overlay').removed = false;
+window.__pmConfig = { apiUrl: 'https://old.example', apiKey: 'old-key', model: 'old-model', useIndependent: false };
+window.__pmProfiles = [{ apiUrl: 'https://old.example', apiKey: 'old-key', model: 'old-model' }];
+assert.equal(window.__pmSaveConfig(), true);
+assert.equal(window.__pmConfig.apiUrl, 'https://new.example');
+assert.equal(JSON.parse(localValues.get('ST_SMS_CONFIG')).apiUrl, 'https://new.example');
+assert.equal(JSON.parse(localValues.get('ST_SMS_API_PROFILES')).some(profile => profile.apiUrl === 'https://new.example'), true);
+assert.equal(uiElements.get('pm-overlay').removed, true);
+assert.match(uiNotes.at(-1), /已保存/);
+delete globalThis.document;
+delete globalThis.alert;
 
 const promptCalls = [];
 const injectionRuntime = { trackedExtensionPromptKeys: new Set(['PHONE_SMS_MEMORY:stale']) };
@@ -856,7 +967,7 @@ const assertInvalidInteractiveScene = (scene, pattern, scope) => {
 };
 const validInteractiveScene = {
     id: 'scene', title: '社区', preset: 'weibo', styleInput: '', generatedPrompt: '自然交流',
-    contentRating: 'general', createdAt: 100, updatedAt: 200,
+    contentRating: 'legacy-value', createdAt: 100, updatedAt: 200,
     posts: [{
         id: 'post', author: '作者', content: '帖子', tags: ['日常'], createdAt: 110,
         comments: [{ id: 'comment', author: '评论者', content: '评论', createdAt: 120 }], liked: false,
@@ -869,6 +980,7 @@ const validInteractiveScene = {
 const parsedMigratedBackup = parseBackupData(interactiveBackupWithScene(validInteractiveScene), currentBackup);
 const migratedScene = parsedMigratedBackup.interactiveScenes.scopes.story.scenes.scene;
 assert.equal(parsedMigratedBackup.interactiveScenes.version, 2);
+assert.equal(Object.hasOwn(migratedScene, 'contentRating'), false);
 assert.equal(migratedScene.content, validInteractiveScene.content);
 assert.equal(migratedScene.posts[0].content, validInteractiveScene.posts[0].content);
 assert.equal(migratedScene.posts[0].authorNameSnapshot, '作者');
@@ -892,7 +1004,7 @@ assert.throws(() => parseBackupData(interactiveBackupWithScene({ id: 'scene' }, 
     sceneOrder: [' scene ', 'scene'],
     scenes: { ' scene ': { id: ' scene ' }, scene: { id: 'scene' } },
 }), currentBackup), /归一化后.*(?:重复|冲突)|包含重复场景/);
-assert.throws(() => parseBackupData(JSON.parse('{"schemaVersion":3,"interactiveScenes":{"version":2,"scopes":{"story":{"activeSceneId":"scene","sceneOrder":["scene"],"actors":{},"scenes":{"scene":{"id":"scene","title":"社区","preset":"weibo","styleInput":"","generatedPrompt":"","contentRating":"general","createdAt":1,"updatedAt":1,"posts":[{"id":"post","authorId":"toString","authorNameSnapshot":"伪造","content":"帖子","tags":[],"createdAt":1,"comments":[],"liked":false}],"live":{"title":"直播","status":"idle","danmaku":[]}}}}}}}'), currentBackup), /authorId 未指向有效 actor|包含危险键/);
+assert.throws(() => parseBackupData(JSON.parse('{"schemaVersion":3,"interactiveScenes":{"version":2,"scopes":{"story":{"activeSceneId":"scene","sceneOrder":["scene"],"actors":{},"scenes":{"scene":{"id":"scene","title":"社区","preset":"weibo","styleInput":"","generatedPrompt":"","createdAt":1,"updatedAt":1,"posts":[{"id":"post","authorId":"toString","authorNameSnapshot":"伪造","content":"帖子","tags":[],"createdAt":1,"comments":[],"liked":false}],"live":{"title":"直播","status":"idle","danmaku":[]}}}}}}}'), currentBackup), /authorId 未指向有效 actor|包含危险键/);
 const mismatchedLegacySceneStore = {
     version: 1,
     scopes: {
@@ -1091,7 +1203,6 @@ for (const [path, mutation] of [
 for (const [name, store] of rejectedLegacyFixtures) assertRejectedByBothInteractivePaths(name, store);
 
 const invalidInteractiveCases = [
-    [{ ...validInteractiveScene, contentRating: 'adult' }, /contentRating 必须是 general 或 mature/],
     [{ ...validInteractiveScene, createdAt: '100' }, /createdAt 必须是有效时间戳/],
     [{ ...validInteractiveScene, updatedAt: 0 }, /updatedAt 必须是有效时间戳/],
     [{ ...validInteractiveScene, unsupported: true }, /(?:额外字段：unsupported|unsupported 不受支持)/],
@@ -1146,7 +1257,7 @@ const validV2InteractiveStore = {
             scenes: {
                 scene: {
                     id: 'scene', title: 'v2 社区', preset: 'weibo', styleInput: '', generatedPrompt: '',
-                    contentRating: 'general', createdAt: 100, updatedAt: 200,
+                    createdAt: 100, updatedAt: 200,
                     posts: [{
                         id: 'post', authorId: v2ActorId, authorNameSnapshot: 'Alice', content: 'v2 帖子',
                         tags: [], createdAt: 110,
@@ -1171,6 +1282,18 @@ const validV2InteractiveStore = {
 const parsedV2Backup = parseBackupData({ schemaVersion: 3, interactiveScenes: validV2InteractiveStore }, currentBackup);
 assert.equal(parsedV2Backup.interactiveScenes.version, 2);
 assert.equal(parsedV2Backup.interactiveScenes.scopes[v2ScopeId].scenes.scene.posts[0].authorId, v2ActorId);
+assert.throws(() => parseBackupData({
+    schemaVersion: 3,
+    interactiveScenes: {
+        ...validV2InteractiveStore,
+        scopes: {
+            [v2ScopeId]: {
+                ...validV2InteractiveStore.scopes[v2ScopeId],
+                scenes: { scene: { ...validV2InteractiveStore.scopes[v2ScopeId].scenes.scene, contentRating: 'general' } },
+            },
+        },
+    },
+}, currentBackup), /额外字段.*contentRating/);
 assert.throws(() => parseBackupData({
     schemaVersion: 3,
     interactiveScenes: {

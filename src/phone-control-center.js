@@ -1,5 +1,9 @@
 import { escapeAttr, escapeHtml } from './ui.js';
 import {
+    CLOSE_ICON_SVG, CONTACTS_ICON_SVG, EDIT_ICON_SVG,
+    EMOJI_ICON_SVG, HOME_ICON_SVG, SETTINGS_ICON_SVG, TRASH_ICON_SVG,
+} from './icons.js';
+import {
     clearPendingMessages, getPendingMessages, removePendingMessage, updatePendingMessage,
 } from './pending-messages.js';
 
@@ -85,7 +89,7 @@ export function installPhoneControlCenter(state, deps) {
         const clearDisabled = !count || items.some(item => item.status === 'submitting');
         makeOverlay(`
 <div class="pm-modal pm-pending-manager">
-  <div class="pm-modal-header"><b>暂存消息（${count}）</b><button type="button" onclick="window.__pmCloseOverlay()" class="pm-modal-close">关闭</button></div>
+  <div class="pm-modal-header"><span></span><b>暂存消息（${count}）</b><button type="button" onclick="window.__pmCloseOverlay()" class="pm-modal-close" title="关闭" aria-label="关闭">${CLOSE_ICON_SVG}</button></div>
   <div id="pm-pending-list" class="pm-pending-list">${renderPendingList()}</div>
   <div class="pm-pending-manager-actions"><button onclick="window.__pmClearPending()" ${clearDisabled ? 'disabled' : ''} title="${clearDisabled && count ? '提交中的暂存不能清空' : '清空当前会话暂存'}">清空暂存</button></div>
 </div>`, { onClose: () => { editingTarget = null; } });
@@ -99,6 +103,7 @@ export function installPhoneControlCenter(state, deps) {
         else if (action === 'emoji') window.__pmShowEmojiManager();
         else if (action === 'group') window.__pmEditGroup();
         else if (action === 'delete') window.__pmStartDeleteMode();
+        else if (action === 'desktop') window.__pmShowPhonePage?.('desktop');
     }
 
     function bindControlMenu(menu, anchor) {
@@ -136,11 +141,12 @@ export function installPhoneControlCenter(state, deps) {
         menu.setAttribute('role', 'menu');
         menu.setAttribute('aria-label', '快捷工具');
         menu.innerHTML = `
-  <button type="button" role="menuitem" data-action="pending">编辑消息</button>
-  <button type="button" role="menuitem" data-action="settings">角色设置</button>
-  ${state.isGroupChat ? '<button type="button" role="menuitem" data-action="group">群聊设置</button>' : ''}
-  <button type="button" role="menuitem" data-action="emoji">表情包管理</button>
-  <button type="button" role="menuitem" data-action="delete" class="pm-control-menu-danger">删除信息</button>`;
+  <button type="button" role="menuitem" data-action="pending">${EDIT_ICON_SVG}编辑消息</button>
+  <button type="button" role="menuitem" data-action="settings">${SETTINGS_ICON_SVG}角色设置</button>
+  ${state.isGroupChat ? `<button type="button" role="menuitem" data-action="group">${CONTACTS_ICON_SVG}群聊设置</button>` : ''}
+  <button type="button" role="menuitem" data-action="emoji">${EMOJI_ICON_SVG}表情包管理</button>
+  <button type="button" role="menuitem" data-action="delete" class="pm-control-menu-danger">${TRASH_ICON_SVG}删除信息</button>
+  <button type="button" role="menuitem" data-action="desktop">${HOME_ICON_SVG}返回桌面</button>`;
         phone.appendChild(menu);
         const phoneRect = phone.getBoundingClientRect();
         const anchorRect = anchor.getBoundingClientRect();

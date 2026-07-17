@@ -436,7 +436,7 @@ export function installInteractiveScenes(_state, deps) {
             await loadStore();
             await commit(async () => {
                 const scope = getScope(runtime.store, scopeId);
-                const scene = normalizeScene({ id: uid('scene'), title: '正在生成社区…', preset, styleInput, contentRating: preset === 'mature' ? 'mature' : 'general' });
+                const scene = normalizeScene({ id: uid('scene'), title: '正在生成社区…', preset, styleInput });
                 scope.scenes[scene.id] = scene;
                 scope.sceneOrder.push(scene.id);
                 scope.activeSceneId = scene.id;

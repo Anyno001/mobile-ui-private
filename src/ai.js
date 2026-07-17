@@ -1,5 +1,17 @@
 import { normalizeApiUrls } from './config.js';
 
+export function extractAiResponseContent(json) {
+    const candidates = [
+        json?.choices?.[0]?.message?.content,
+        json?.choices?.[0]?.text,
+        json?.output_text,
+    ];
+    const geminiParts = json?.candidates?.[0]?.content?.parts;
+    if (Array.isArray(geminiParts)) candidates.push(geminiParts.map(part => part?.text).filter(text => typeof text === 'string').join(''));
+    const content = candidates.find(value => typeof value === 'string' && value.trim());
+    return content?.trim() || '';
+}
+
 export function createAiClient({
     getConfig,
     getContext,
@@ -62,8 +74,8 @@ export function createAiClient({
             } catch (error) {
                 throw new Error('独立 API 返回了无法解析的 JSON');
             }
-            const content = json?.choices?.[0]?.message?.content;
-            if (typeof content !== 'string' || !content.trim()) throw new Error('独立 API 响应缺少 choices[0].message.content');
+            const content = extractAiResponseContent(json);
+            if (!content) throw new Error('独立 API 响应缺少可用文本内容');
             return content;
         }
 

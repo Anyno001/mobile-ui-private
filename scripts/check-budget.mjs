@@ -5,6 +5,7 @@ import {
     normalizeBudgetConfig, trimToEstimatedTokens,
 } from '../src/budget.js';
 import { loadBudgetConfig, saveBudgetConfig } from '../src/storage.js';
+import { getBudgetPercentageView, resolveBudgetPercentageInput } from '../src/settings-templates.js';
 
 assert.deepEqual(normalizeBudgetConfig(), DEFAULT_BUDGET_CONFIG);
 const normalized = normalizeBudgetConfig({
@@ -27,6 +28,29 @@ assert.equal(normalized.communityEnabled, true);
 assert.equal(normalized.communityPosition, DEFAULT_BUDGET_CONFIG.communityPosition);
 assert.equal(normalized.communityDepth, DEFAULT_BUDGET_CONFIG.communityDepth);
 assert.deepEqual(normalized.communitySceneIdsByStorage.story, ['scene-a']);
+
+const percentageView = getBudgetPercentageView({ phone: 2, community: 1 });
+assert.deepEqual(percentageView, { phone: 66.6667, community: 33.3333 });
+assert.deepEqual(resolveBudgetPercentageInput({
+    sourceWeights: { phone: 2, community: 1 },
+    phone: String(percentageView.phone), community: String(percentageView.community),
+    initialPhone: String(percentageView.phone), initialCommunity: String(percentageView.community),
+}), { phone: 2, community: 1 }, '未编辑百分比时必须保留原始权重');
+assert.deepEqual(resolveBudgetPercentageInput({
+    sourceWeights: { phone: 2, community: 1 },
+    phone: '60', community: '40',
+    initialPhone: String(percentageView.phone), initialCommunity: String(percentageView.community),
+}), { phone: 60, community: 40 });
+assert.throws(() => resolveBudgetPercentageInput({
+    sourceWeights: { phone: 2, community: 1 },
+    phone: '60', community: '60',
+    initialPhone: String(percentageView.phone), initialCommunity: String(percentageView.community),
+}), /合计必须为 100%/);
+assert.throws(() => resolveBudgetPercentageInput({
+    sourceWeights: { phone: 2, community: 1 },
+    phone: '-1', community: '101',
+    initialPhone: String(percentageView.phone), initialCommunity: String(percentageView.community),
+}), /0 到 100/);
 
 assert.equal(estimateContextTokens('abcd').estimatedTokens, 1);
 assert.equal(estimateContextTokens('中文').estimatedTokens, 2);

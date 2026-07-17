@@ -1,10 +1,11 @@
 import { MODEL_VISIBLE_ROWS, POPOVER_SUPPORTED } from './constants.js';
+import { extractAiResponseContent } from './ai.js';
 import { normalizeBudgetConfig } from './budget.js';
 import { THEME_PRESETS, normalizeApiUrls } from './config.js';
 import { openCropper } from './cropper.js';
 import {
     renderApiSettings, renderBackupSettings, renderBudgetSettings, renderLookSettings, renderSettingsHome, renderSettingsModal,
-} from './settings-templates.js';
+    resolveBudgetPercentageInput } from './settings-templates.js';
 import { escapeAttr, escapeHtml, safeJS } from './ui.js';
 import {
     addOrUpdateProfile, clearPluginData, loadBgSettings, loadBudgetConfig, loadInteractiveScenes, loadPhoneUiState, loadProfiles, loadTheme, saveBgGlobal,
@@ -168,7 +169,9 @@ const assertInteractiveBackupStore = value => {
             if (orderedIds.has(sceneId)) throw new Error(`备份字段 ${field}.sceneOrder 包含重复场景 ${sceneId}`);
             orderedIds.add(sceneId);
             const scene = objectValue(normalizedScenes.get(sceneId), `${field}.scenes.${sceneId}`);
-            assertAllowedKeys(scene, `${field}.scenes.${sceneId}`, ['id', 'title', 'preset', 'styleInput', 'generatedPrompt', 'contentRating', 'createdAt', 'updatedAt', 'posts', 'live']);
+            const sceneKeys = ['id', 'title', 'preset', 'styleInput', 'generatedPrompt', 'createdAt', 'updatedAt', 'posts', 'live'];
+            if (sourceVersion !== INTERACTIVE_STORE_VERSION) sceneKeys.push('contentRating');
+            assertAllowedKeys(scene, `${field}.scenes.${sceneId}`, sceneKeys);
             if (Object.hasOwn(scene, 'id')) {
                 if (typeof scene.id !== 'string') throw new Error(`备份字段 ${field}.scenes.${sceneId}.id 必须是字符串`);
                 const normalizedSceneValueId = sourceVersion === INTERACTIVE_STORE_VERSION
@@ -186,7 +189,6 @@ const assertInteractiveBackupStore = value => {
                     assertOptionalLegacyText(scene, key, `${field}.scenes.${sceneId}`);
                 }
             }
-            if (Object.hasOwn(scene, 'contentRating') && !['general', 'mature'].includes(scene.contentRating)) throw new Error(`备份字段 ${field}.scenes.${sceneId}.contentRating 必须是 general 或 mature`);
             assertOptionalTimestamp(scene, 'createdAt', `${field}.scenes.${sceneId}`);
             assertOptionalTimestamp(scene, 'updatedAt', `${field}.scenes.${sceneId}`);
             if (Object.hasOwn(scene, 'posts')) {
@@ -377,7 +379,7 @@ export function createBackupStateHandlers(deps = {}) {
 export function installSettingsUi(deps) {
     const {
         makeOverlay, applyTheme, applyBackground, fitNameFont, addNote,
-        getPhoneWindow, getCurrentPersona, getStorageId, runtime, closePhone,
+        getCurrentPersona, getStorageId, runtime, closePhone,
         applyBidirectionalInjection, clearBidirectionalInjection, getInteractiveStore,
     } = deps;
     const {
@@ -387,7 +389,21 @@ export function installSettingsUi(deps) {
     } = createBackupStateHandlers(deps);
     let apiDraftUseIndependent = false;
     let backgroundMutation = Promise.resolve();
-
+    const syncLookControls = () => {
+        const theme = window.__pmTheme;
+        document.querySelectorAll('.pm-theme-chip').forEach(el => el.classList.toggle('pm-theme-active', el.dataset.preset === theme.preset));
+        document.querySelectorAll('.pm-layout-chip').forEach(el => {
+            const value = el.textContent.includes('夜间') ? 'dark' : el.textContent.includes('日间') ? 'light' : '';
+            if (value) el.classList.toggle('pm-layout-active', value === theme.darkMode);
+        });
+        const right = document.getElementById('pm-custom-right'), left = document.getElementById('pm-custom-left'), border = document.getElementById('pm-border-color');
+        if (right) right.value = theme.customRight || '#007aff'; if (left) left.value = theme.customLeft || '#e9e9eb'; if (border) border.value = theme.borderColor || '#1a1a1a';
+    };
+    const persistThemeMutation = mutate => {
+        const previous = clone(window.__pmTheme); mutate();
+        if (saveTheme()) { applyTheme(); syncLookControls(); return true; }
+        window.__pmTheme = previous; applyTheme(); syncLookControls(); alert('主题保存失败：浏览器存储不可用。'); return false;
+    };
     const queueBackgroundMutation = (scope, mutate) => {
         const isGlobal = scope === 'global';
         const operation = backgroundMutation.catch(() => {}).then(async () => {
@@ -413,49 +429,33 @@ export function installSettingsUi(deps) {
             return false;
         });
     };
-
     window.__pmDeleteProfile = (idx) => {
+        const previous = clone(window.__pmProfiles);
         window.__pmProfiles.splice(idx, 1);
-        saveProfiles();
+        if (!saveProfiles()) { window.__pmProfiles = previous; alert('API 档案删除失败：浏览器存储不可用。'); return false; }
         window.__pmShowConfig('api');
+        return true;
     };
-
     window.__pmPickProfile = (idx) => {
         const p = window.__pmProfiles[idx]; if (!p) return;
         const u = document.getElementById('pm-cfg-url'), k = document.getElementById('pm-cfg-key'), m = document.getElementById('pm-cfg-model');
         if (u) u.value = p.apiUrl || ''; if (k) k.value = p.apiKey || ''; if (m) m.value = p.model || '';
     };
-
     window.__pmSetMode = (v) => {
         apiDraftUseIndependent = !!v;
         const a = document.getElementById('pm-mode-main'), b = document.getElementById('pm-mode-indep'), t = document.getElementById('pm-mode-tip');
         if (a && b) { a.classList.toggle('pm-mode-active', !v); b.classList.toggle('pm-mode-active', !!v); }
         if (t) t.textContent = v ? '独立 API 必须填写地址、密钥和模型' : '主 API 使用宿主当前选择的预设与接口';
     };
-
     window.__pmToggleWordyLimit = () => {
-        window.__pmWordyLimit = !window.__pmWordyLimit;
-        saveWordyLimit();
+        const previous = window.__pmWordyLimit === true;
+        window.__pmWordyLimit = !previous;
+        if (!saveWordyLimit()) { window.__pmWordyLimit = previous; alert('短消息限制保存失败：浏览器存储不可用。'); }
         const el = document.getElementById('pm-wordy-check');
-        if (el) el.classList.toggle('is-checked', window.__pmWordyLimit);
+        if (el) { el.classList.toggle('is-checked', window.__pmWordyLimit); el.setAttribute('aria-checked', String(window.__pmWordyLimit)); }
+        return window.__pmWordyLimit !== previous;
     };
-
-    window.__pmSetDarkMode = (mode) => {
-        window.__pmTheme.darkMode = mode;
-        saveTheme();
-        const pw = getPhoneWindow();
-        if (pw) pw.setAttribute('data-theme', mode);
-        document.getElementById('pm-overlay')?.setAttribute('data-theme', mode);
-        document.querySelectorAll('.pm-layout-chip').forEach(el => {
-            if (el.textContent.includes('日间') || el.textContent.includes('夜间')) {
-                el.classList.toggle('pm-layout-active',
-                    (mode === 'light' && el.textContent.includes('日间')) ||
-                    (mode === 'dark' && el.textContent.includes('夜间'))
-                );
-            }
-        });
-    };
-
+    window.__pmSetDarkMode = mode => persistThemeMutation(() => { window.__pmTheme.darkMode = mode; });
     // ========== 导出 / 导入 数据功能 ==========
     window.__pmExportData = async () => {
         const snapshot = await captureBackupState();
@@ -578,7 +578,7 @@ export function installSettingsUi(deps) {
             const sceneOptions = Array.isArray(scope?.sceneOrder) ? scope.sceneOrder.flatMap(sceneId => {
                 const scene = scope.scenes?.[sceneId];
                 if (!scene) return [];
-                return [`<label class="pm-cfg-label"><input type="checkbox" class="pm-budget-scene" value="${escapeAttr(sceneId)}" ${selected.has(sceneId) ? 'checked' : ''}> ${escapeHtml(scene.title)}</label>`];
+                return [`<label class="pm-cfg-label pm-check-setting"><span>${escapeHtml(scene.title)}</span><div class="pm-custom-check pm-budget-scene ${selected.has(sceneId) ? 'is-checked' : ''}" role="checkbox" tabindex="0" aria-checked="${selected.has(sceneId)}" data-value="${escapeAttr(sceneId)}" onclick="this.classList.toggle('is-checked');this.setAttribute('aria-checked',String(this.classList.contains('is-checked')))" onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();this.click()}"></div></label>`];
             }).join('') : '';
             const content = renderBudgetSettings({ config, sceneOptions });
             const footer = '<div class="pm-modal-add" style="display:flex;gap:8px;"><button onclick="window.__pmResetBudgetConfig()" style="flex:1;padding:10px;border:none;border-radius:10px;cursor:pointer;">恢复默认</button><button onclick="window.__pmSaveBudgetConfig()" style="flex:2;background:#007aff;color:#fff;border:none;border-radius:10px;padding:10px;cursor:pointer;font-weight:600;">保存上下文预算</button></div>';
@@ -620,7 +620,6 @@ export function installSettingsUi(deps) {
             ? `<button class="pm-bg-btn pm-bg-del" onclick="window.__pmClearBg('local')">清除</button>`
             : `<label class="pm-bg-btn">选择图片<input type="file" accept="image/*" onchange="window.__pmUploadBg(this,'local')" hidden></label>
                <button class="pm-bg-btn" onclick="window.__pmBgUrl('local')">URL</button>`;
-
         const content = renderLookSettings({
             theme: t,
             presetButtons: presetBtns,
@@ -629,33 +628,21 @@ export function installSettingsUi(deps) {
         });
         makeOverlay(renderSettingsModal({ title: '主题颜色', content }));
     };
-
-    window.__pmSetPreset = (p) => {
+    window.__pmSetPreset = p => persistThemeMutation(() => {
         window.__pmTheme.preset = p; window.__pmTheme.customRight = ''; window.__pmTheme.customLeft = '';
-        saveTheme(); applyTheme();
-        document.querySelectorAll('.pm-theme-chip').forEach(el => el.classList.toggle('pm-theme-active', el.dataset.preset === p));
-    };
-
-    window.__pmSetCustomColor = () => {
+    });
+    window.__pmSetCustomColor = () => persistThemeMutation(() => {
         window.__pmTheme.customRight = document.getElementById('pm-custom-right')?.value || '';
         window.__pmTheme.customLeft = document.getElementById('pm-custom-left')?.value || '';
-        window.__pmTheme.preset = 'custom'; saveTheme(); applyTheme();
-        document.querySelectorAll('.pm-theme-chip').forEach(el => el.classList.remove('pm-theme-active'));
-    };
-
-    window.__pmClearCustomColor = () => {
+        window.__pmTheme.preset = 'custom';
+    });
+    window.__pmClearCustomColor = () => persistThemeMutation(() => {
         window.__pmTheme.customRight = ''; window.__pmTheme.customLeft = '';
-        window.__pmTheme.preset = 'default'; saveTheme(); applyTheme();
-        const r = document.getElementById('pm-custom-right'), l = document.getElementById('pm-custom-left');
-        if (r) r.value = '#007aff'; if (l) l.value = '#e9e9eb';
-        document.querySelectorAll('.pm-theme-chip').forEach(el => el.classList.toggle('pm-theme-active', el.dataset.preset === 'default'));
-    };
-
-    window.__pmSetBorderColor = () => {
+        window.__pmTheme.preset = 'default';
+    });
+    window.__pmSetBorderColor = () => persistThemeMutation(() => {
         window.__pmTheme.borderColor = document.getElementById('pm-border-color')?.value || '#1a1a1a';
-        saveTheme(); applyTheme();
-    };
-
+    });
     window.__pmUploadBg = (input, scope) => {
         const file = input.files?.[0]; if (!file) return;
         const reader = new FileReader();
@@ -673,7 +660,6 @@ export function installSettingsUi(deps) {
         reader.readAsDataURL(file);
         input.value = '';
     };
-
     window.__pmBgUrl = (scope) => {
         const url = prompt('输入图片 URL：');
         if (!url?.trim()) return;
@@ -684,7 +670,6 @@ export function installSettingsUi(deps) {
             else window.__pmBgLocal[key] = url.trim();
         });
     };
-
     window.__pmClearBg = (scope) => {
         const key = `${getStorageId()}_${getCurrentPersona()}`;
         return queueBackgroundMutation(scope, () => {
@@ -692,7 +677,6 @@ export function installSettingsUi(deps) {
             else delete window.__pmBgLocal[key];
         });
     };
-
     window.__pmTestApi = async () => {
         const u = document.getElementById('pm-cfg-url').value.trim(), k = document.getElementById('pm-cfg-key').value.trim(), m = document.getElementById('pm-cfg-model').value.trim();
         const s = document.getElementById('pm-api-status');
@@ -706,7 +690,6 @@ export function installSettingsUi(deps) {
             else { s.textContent = "连接成功"; s.style.color = "#34c759"; }
         } catch (e) { s.textContent = "连接失败：" + e.message; s.style.color = "#ff3b30"; }
     };
-
     window.__pmTestModel = async () => {
         const u = document.getElementById('pm-cfg-url').value.trim(), k = document.getElementById('pm-cfg-key').value.trim(), m = document.getElementById('pm-cfg-model').value.trim();
         const s = document.getElementById('pm-api-status');
@@ -716,17 +699,28 @@ export function installSettingsUi(deps) {
         try {
             const r = await fetch(normalizeApiUrls(u).chatUrl, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${k}` }, body: JSON.stringify({ model: m, messages: [{ role: 'user', content: 'hi' }], max_tokens: 16 }), signal: ctrl.signal });
             clearTimeout(tm); if (!r.ok) throw new Error(`HTTP ${r.status}`);
-            const j = await r.json(), reply = j.choices?.[0]?.message?.content;
-            s.textContent = reply != null ? `测试成功："${String(reply).slice(0, 25)}"` : '响应格式异常'; s.style.color = reply != null ? '#34c759' : '#ff9500';
+            const j = await r.json(), reply = extractAiResponseContent(j);
+            s.textContent = reply ? `测试成功："${reply.slice(0, 25)}"` : '响应格式异常'; s.style.color = reply ? '#34c759' : '#ff9500';
         } catch (e) { clearTimeout(tm); s.textContent = '测试失败：' + (e.name === 'AbortError' ? '超时' : e.message); s.style.color = '#ff3b30'; }
     };
-
     window.__pmSaveBudgetConfig = async () => {
         const storageId = getStorageId();
+        const phoneWeightInput = document.getElementById('pm-budget-phone-weight');
+        const communityWeightInput = document.getElementById('pm-budget-community-weight');
+        let sourceWeights;
+        try {
+            sourceWeights = resolveBudgetPercentageInput({
+                sourceWeights: normalizeBudgetConfig(window.__pmBudgetConfig).sourceWeights,
+                phone: phoneWeightInput?.value,
+                community: communityWeightInput?.value,
+                initialPhone: phoneWeightInput?.dataset.initialValue,
+                initialCommunity: communityWeightInput?.dataset.initialValue,
+            });
+        } catch (error) { alert(error.message); return; }
         const priority = document.getElementById('pm-budget-priority')?.value === 'community'
             ? ['community', 'phone'] : ['phone', 'community'];
-        const sceneIds = Array.from(document.querySelectorAll('.pm-budget-scene:checked'))
-            .map(input => input.value).filter(Boolean);
+        const sceneIds = Array.from(document.querySelectorAll('.pm-budget-scene.is-checked'))
+            .map(control => control.dataset.value).filter(Boolean);
         const current = normalizeBudgetConfig(window.__pmBudgetConfig);
         const sceneIdsByStorage = { ...current.communitySceneIdsByStorage };
         if (storageId && storageId !== 'sms_unknown__default' && sceneIds.length) sceneIdsByStorage[storageId] = sceneIds;
@@ -734,13 +728,10 @@ export function installSettingsUi(deps) {
         const candidate = normalizeBudgetConfig({
             ...current,
             targetTokens: Number(document.getElementById('pm-budget-target')?.value),
-            sourceWeights: {
-                phone: Number(document.getElementById('pm-budget-phone-weight')?.value),
-                community: Number(document.getElementById('pm-budget-community-weight')?.value),
-            },
+            sourceWeights,
             sourcePriority: priority,
-            redistributeUnused: !!document.getElementById('pm-budget-redistribute')?.checked,
-            communityEnabled: !!document.getElementById('pm-budget-community-enabled')?.checked,
+            redistributeUnused: document.getElementById('pm-budget-redistribute')?.classList.contains('is-checked') === true,
+            communityEnabled: document.getElementById('pm-budget-community-enabled')?.classList.contains('is-checked') === true,
             communityPosition: Number(document.getElementById('pm-budget-community-position')?.value),
             communityDepth: Number(document.getElementById('pm-budget-community-depth')?.value),
             communitySceneIdsByStorage: sceneIdsByStorage,
@@ -753,14 +744,12 @@ export function installSettingsUi(deps) {
         document.getElementById('pm-overlay')?.remove();
         addNote('上下文预算已保存（token 为估算值）');
     };
-
     window.__pmResetBudgetConfig = async () => {
         const candidate = normalizeBudgetConfig();
         if (!saveBudgetConfig(candidate)) { alert('上下文预算重置失败：浏览器存储不可用'); return; }
         await applyBidirectionalInjection();
         window.__pmShowConfig('budget');
     };
-
     window.__pmSaveConfig = () => {
         const apiUrl = document.getElementById('pm-cfg-url')?.value.trim() ?? '', apiKey = document.getElementById('pm-cfg-key')?.value.trim() ?? '', model = document.getElementById('pm-cfg-model')?.value.trim() ?? '';
         if (apiDraftUseIndependent && (!apiUrl || !apiKey || !model)) {
@@ -768,13 +757,24 @@ export function installSettingsUi(deps) {
             if (status) { status.textContent = '独立 API 必须填写地址、密钥和模型'; status.style.color = '#ff3b30'; }
             return;
         }
-        window.__pmConfig = { apiUrl, apiKey, model, useIndependent: apiDraftUseIndependent };
-        try { localStorage.setItem('ST_SMS_CONFIG', JSON.stringify(window.__pmConfig)); } catch (e) {}
-        if (apiUrl && apiKey) addOrUpdateProfile({ apiUrl, apiKey, model });
+        const previous = clone(window.__pmConfig), candidate = { apiUrl, apiKey, model, useIndependent: apiDraftUseIndependent };
+        window.__pmConfig = candidate;
+        try { localStorage.setItem('ST_SMS_CONFIG', JSON.stringify(candidate)); }
+        catch (error) { window.__pmConfig = previous; alert('API 配置保存失败：浏览器存储不可用。'); return false; }
+        if (apiUrl && apiKey && !addOrUpdateProfile({ apiUrl, apiKey, model })) {
+            window.__pmConfig = previous;
+            try { localStorage.setItem('ST_SMS_CONFIG', JSON.stringify(previous)); }
+            catch (rollbackError) {
+                window.__pmConfig = candidate;
+                alert('API 档案保存失败，API 配置回滚也失败。请勿刷新，并立即导出备份。');
+                return false;
+            }
+            alert('API 档案保存失败，API 配置已恢复。'); return false;
+        }
         document.getElementById('pm-overlay')?.remove();
         addNote(`已保存：${window.__pmConfig.useIndependent && apiUrl ? '独立API' : '主API'}`);
+        return true;
     };
-
     window.__pmShowModelPicker = () => {
         const existing = document.getElementById('pm-model-dropdown');
         if (existing) { existing.remove(); return; }

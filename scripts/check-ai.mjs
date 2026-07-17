@@ -78,7 +78,21 @@ const emptyResponseClient = createAiClient({
     getDefaultMaxTokens: () => 300,
     fetchImpl: async () => ({ ok: true, async json() { return {}; } }),
 });
-await assert.rejects(() => emptyResponseClient('', 'user'), /缺少 choices\[0\]\.message\.content/);
+await assert.rejects(() => emptyResponseClient('', 'user'), /缺少可用文本内容/);
+
+for (const [label, payload, expected] of [
+    ['completion text', { choices: [{ text: ' completion reply ' }] }, 'completion reply'],
+    ['output text', { output_text: ' output reply ' }, 'output reply'],
+    ['candidate parts', { candidates: [{ content: { parts: [{ text: 'candidate ' }, { text: 'reply' }] } }] }, 'candidate reply'],
+]) {
+    const compatibleClient = createAiClient({
+        getConfig: () => config,
+        getContext: () => context,
+        getDefaultMaxTokens: () => 300,
+        fetchImpl: async () => ({ ok: true, async json() { return payload; } }),
+    });
+    assert.equal(await compatibleClient('', label), expected, label);
+}
 
 const errorText = 'x'.repeat(300);
 const failingClient = createAiClient({

@@ -1,3 +1,5 @@
+import { CLOSE_ICON_SVG } from './icons.js';
+
 export function renderSettingsHome() {
     return `
     <div class="pm-settings-home" role="list">
@@ -56,8 +58,8 @@ export function renderLookSettings({ theme, presetButtons, globalBackgroundButto
       </div>
       <div style="padding:12px 16px;border-top:1px solid #f0f0f0;">
         <label class="pm-cfg-label pm-ambient-setting">
-          <input id="pm-ambient-status-enabled" type="checkbox" ${theme.ambientStatusEnabled === true ? 'checked' : ''} onchange="window.__pmSetAmbientStatus(this.checked)">
           <span><b>显示本地状态栏</b><small>仅显示设备本地时间，不联网、不定位，也不会写入提示词。</small></span>
+          <div id="pm-ambient-status-enabled" class="pm-custom-check ${theme.ambientStatusEnabled === true ? 'is-checked' : ''}" role="checkbox" tabindex="0" aria-checked="${theme.ambientStatusEnabled === true}" onclick="const enabled=!this.classList.contains('is-checked');this.classList.toggle('is-checked',enabled);this.setAttribute('aria-checked',String(enabled));window.__pmSetAmbientStatus(enabled)" onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();this.click()}"></div>
         </label>
       </div>
       <div style="padding:14px 16px 12px;border-top:1px solid #f0f0f0;">
@@ -87,8 +89,34 @@ export function renderLookSettings({ theme, presetButtons, globalBackgroundButto
     </div>`;
 }
 
+export function getBudgetPercentageView(sourceWeights) {
+    const phoneWeight = Number(sourceWeights?.phone) || 0;
+    const communityWeight = Number(sourceWeights?.community) || 0;
+    const weightTotal = phoneWeight + communityWeight;
+    const phone = weightTotal > 0 ? Number((phoneWeight * 100 / weightTotal).toFixed(4)) : 50;
+    return { phone, community: Number((100 - phone).toFixed(4)) };
+}
+
+export function resolveBudgetPercentageInput({ sourceWeights, phone, community, initialPhone, initialCommunity }) {
+    const nextPhone = Number(phone);
+    const nextCommunity = Number(community);
+    const originalPhone = Number(initialPhone);
+    const originalCommunity = Number(initialCommunity);
+    if (nextPhone === originalPhone && nextCommunity === originalCommunity) {
+        return { phone: sourceWeights.phone, community: sourceWeights.community };
+    }
+    if (![nextPhone, nextCommunity].every(value => Number.isFinite(value) && value >= 0 && value <= 100)) {
+        throw new Error('手机会话和互动社区占比必须是 0 到 100 之间的数字');
+    }
+    if (Math.abs(nextPhone + nextCommunity - 100) > 0.0001) {
+        throw new Error('手机会话和互动社区占比合计必须为 100%');
+    }
+    return { phone: nextPhone, community: nextCommunity };
+}
+
 export function renderBudgetSettings({ config, sceneOptions }) {
     const priorityCommunity = config.sourcePriority[0] === 'community';
+    const percentages = getBudgetPercentageView(config.sourceWeights);
     return `
     <div class="pm-settings-page">
       <div style="padding:12px 16px;display:flex;flex-direction:column;gap:10px;">
@@ -96,21 +124,27 @@ export function renderBudgetSettings({ config, sceneOptions }) {
         <div class="pm-cfg-tip" style="text-align:left;">限制本插件把多少手机会话和社区内容写进主提示词。它不会改变 AI 单次最多输出多少字。</div>
         <label class="pm-cfg-label" for="pm-budget-target">总目标（估算 token）</label>
         <input id="pm-budget-target" class="pm-cfg-input" type="number" min="1" max="12000" step="1" value="${config.targetTokens}">
-        <div class="pm-cfg-tip" style="text-align:left;">总目标越大，模型能看到的插件历史越多，但会占用更多上下文。</div>
+        <div class="pm-cfg-tip" style="text-align:left;">数值越大，AI 能看到的手机和社区历史越多，也会占用更多上下文。</div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
-          <label class="pm-cfg-label">手机会话份额<input id="pm-budget-phone-weight" class="pm-cfg-input" type="number" min="0" max="100" step="0.1" value="${config.sourceWeights.phone}"></label>
-          <label class="pm-cfg-label">互动社区份额<input id="pm-budget-community-weight" class="pm-cfg-input" type="number" min="0" max="100" step="0.1" value="${config.sourceWeights.community}"></label>
+          <label class="pm-cfg-label">手机会话占比 (%)<input id="pm-budget-phone-weight" class="pm-cfg-input" type="number" min="0" max="100" step="0.0001" value="${percentages.phone}" data-initial-value="${percentages.phone}"></label>
+          <label class="pm-cfg-label">互动社区占比 (%)<input id="pm-budget-community-weight" class="pm-cfg-input" type="number" min="0" max="100" step="0.0001" value="${percentages.community}" data-initial-value="${percentages.community}"></label>
         </div>
-        <div class="pm-cfg-tip" style="text-align:left;">两个份额只决定总额度的分配比例。例如 3:1 表示优先预留约四分之三给手机会话、四分之一给社区。</div>
+        <div class="pm-cfg-tip" style="text-align:left;">填写两类内容各自占用总额度的百分比；保存后仍按相对比例分配。</div>
         <label class="pm-cfg-label" for="pm-budget-priority">剩余额度优先补给</label>
         <select id="pm-budget-priority" class="pm-cfg-input">
           <option value="phone" ${priorityCommunity ? '' : 'selected'}>手机会话优先</option>
           <option value="community" ${priorityCommunity ? 'selected' : ''}>互动社区优先</option>
         </select>
-        <label class="pm-cfg-label"><input id="pm-budget-redistribute" type="checkbox" ${config.redistributeUnused ? 'checked' : ''}> 将一方没用完的额度补给仍有内容需要写入的一方</label>
+        <label class="pm-cfg-label pm-check-setting">
+          <span>把一方没用完的额度补给另一方</span>
+          <div id="pm-budget-redistribute" class="pm-custom-check ${config.redistributeUnused ? 'is-checked' : ''}" role="checkbox" tabindex="0" aria-checked="${config.redistributeUnused}" onclick="this.classList.toggle('is-checked');this.setAttribute('aria-checked',String(this.classList.contains('is-checked')))" onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();this.click()}"></div>
+        </label>
       </div>
       <div style="padding:12px 16px;border-top:1px solid #f0f0f0;display:flex;flex-direction:column;gap:10px;">
-        <label class="pm-cfg-label"><input id="pm-budget-community-enabled" type="checkbox" ${config.communityEnabled ? 'checked' : ''}> 启用互动社区注入（默认关闭）</label>
+        <label class="pm-cfg-label pm-check-setting">
+          <span>启用互动社区注入（默认关闭）</span>
+          <div id="pm-budget-community-enabled" class="pm-custom-check ${config.communityEnabled ? 'is-checked' : ''}" role="checkbox" tabindex="0" aria-checked="${config.communityEnabled}" onclick="this.classList.toggle('is-checked');this.setAttribute('aria-checked',String(this.classList.contains('is-checked')))" onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();this.click()}"></div>
+        </label>
         <label class="pm-cfg-label" for="pm-budget-community-position">社区注入位置</label>
         <select id="pm-budget-community-position" class="pm-cfg-input">
           <option value="0" ${config.communityPosition === 0 ? 'selected' : ''}>主提示词内</option>
@@ -152,7 +186,7 @@ export function renderBackupSettings() {
 export function renderSettingsModal({ title, content, footer = '', showBack = true }) {
     return `
 <div class="pm-modal pm-modal-wide" style="height: 560px;">
-  <div class="pm-modal-header"><span>${showBack ? '<button type="button" onclick="window.__pmShowConfig(\'home\')" class="pm-modal-close">设置</button>' : ''}</span><b>${title}</b><button type="button" onclick="window.__pmCloseOverlay()" class="pm-modal-close">关闭</button></div>
+  <div class="pm-modal-header"><span>${showBack ? '<button type="button" onclick="window.__pmShowConfig(\'home\')" class="pm-modal-close">设置</button>' : ''}</span><b>${title}</b><button type="button" onclick="window.__pmCloseOverlay()" class="pm-modal-close" title="关闭" aria-label="关闭">${CLOSE_ICON_SVG}</button></div>
   <div class="pm-modal-scroll">${content}</div>
   ${footer}
 </div>`;

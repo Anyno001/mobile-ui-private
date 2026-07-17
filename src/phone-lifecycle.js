@@ -1,8 +1,8 @@
 import { POPOVER_SUPPORTED } from './constants.js';
 import { escapeHtml } from './ui.js';
 import {
-    CLOSE_ICON_SVG, CONTROL_ICON_SVG, HOME_ICON_SVG,
-    MENU_ICON_SVG, POKE_ICON_SVG, SEND_ICON_SVG,
+    CLOSE_ICON_SVG, CONTROL_ICON_SVG, MENU_ICON_SVG,
+    POKE_ICON_SVG, SEND_ICON_SVG,
 } from './icons.js';
 import { getPendingMessages } from './pending-messages.js';
 import { bindPressGesture } from './press-gesture.js';
@@ -103,8 +103,9 @@ export function installPhoneLifecycle(state, deps) {
     window.__pmSetAmbientStatus = (enabled) => {
         const previous = window.__pmTheme?.ambientStatusEnabled === true;
         if (!ambientStatus.setEnabled(enabled)) {
-            const input = document.getElementById('pm-ambient-status-enabled');
-            if (input) input.checked = previous;
+            const control = document.getElementById('pm-ambient-status-enabled');
+            control?.classList.toggle('is-checked', previous);
+            control?.setAttribute('aria-checked', String(previous));
             alert('状态栏设置保存失败：浏览器存储不可用。');
             ambientStatus.sync();
             return false;
@@ -129,17 +130,23 @@ export function installPhoneLifecycle(state, deps) {
                 const side = isDirector ? 'center' : (b.dataset.side || 'left');
                 wrap.style.cssText = 'display:flex;align-items:center;gap:8px;align-self:' + (side === 'right' ? 'flex-end' : side === 'center' ? 'center' : 'flex-start') + ';';
                 const cb = document.createElement('div'); cb.className = 'pm-custom-check'; cb.dataset.checked = '0';
+                cb.setAttribute('role', 'checkbox');
+                cb.setAttribute('aria-checked', 'false');
+                cb.tabIndex = 0;
                 cb.style.cssText = 'width:22px;height:22px;min-width:22px;min-height:22px;border-radius:50%;flex-shrink:0;cursor:pointer;';
                 cb.onclick = () => {
                     const checked = cb.dataset.checked === '0' ? '1' : '0';
+                    const ariaChecked = checked === '1' ? 'true' : 'false';
                     const historyIndex = wrap.dataset.historyIndex;
                     if (historyIndex === undefined || historyIndex === '') {
                         cb.dataset.checked = checked;
+                        cb.setAttribute('aria-checked', ariaChecked);
                         return;
                     }
                     list.querySelectorAll(`.pm-select-wrap[data-history-index="${historyIndex}"] .pm-custom-check`)
-                        .forEach(peer => { peer.dataset.checked = checked; });
+                        .forEach(peer => { peer.dataset.checked = checked; peer.setAttribute('aria-checked', ariaChecked); });
                 };
+                cb.onkeydown = event => { if (event.key === ' ' || event.key === 'Enter') { event.preventDefault(); cb.click(); } };
                 b.parentNode.insertBefore(wrap, b);
                 wrap.appendChild(cb); wrap.appendChild(b);
                 wrap.dataset.side = side; wrap.dataset.text = b.dataset.text || '';
@@ -282,7 +289,6 @@ export function installPhoneLifecycle(state, deps) {
         <button onclick="window.__pmPokeCurrent()" class="pm-name-edit is-hidden" title="拍一拍" aria-label="拍一拍当前会话">${POKE_ICON_SVG}</button>
       </div>
       <div class="pm-nav-right">
-        <button onclick="window.__pmShowPhonePage('desktop')" class="pm-nav-btn" title="返回桌面" aria-label="返回桌面">${HOME_ICON_SVG}</button>
         <button onclick="window.__pmEnd()" class="pm-nav-btn pm-close-btn" title="退出手机" aria-label="退出手机">${CLOSE_ICON_SVG}</button>
       </div>
     </div>

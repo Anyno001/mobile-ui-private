@@ -24,7 +24,7 @@ import {
 
 const presets = getInteractivePresets();
 assert.deepEqual(Object.keys(presets), ['weibo', 'douban', 'book', 'romance', 'mature', 'custom']);
-assert.equal(presets.mature.rating, 'mature');
+assert.equal(Object.hasOwn(presets.mature, 'rating'), false);
 assert.match(buildStylePrompt('douban', '雨夜'), /豆瓣|雨夜|生活化/);
 
 const request = buildInteractiveRequest({
@@ -39,11 +39,16 @@ assert.doesNotMatch(request.userPrompt, /<script>/);
 assert.match(request.userPrompt, /\\u003c\/world_context_data\\u003e\\u003cscript\\u003ealert\(1\)/);
 assert.match(request.userPrompt, /known_actor_names_data/);
 assert.match(request.userPrompt, /角色甲、角色乙/);
+assert.doesNotMatch(`${request.systemPrompt}\n${request.userPrompt}`, /成年人|未成年人|安全规则|内容分级/);
 
 assert.deepEqual(parseInteractiveResponse(
     '```json\n{"version":1,"kind":"style_prompt","items":[{"title":"夜航","prompt":"克制、私密"}]}\n```',
     'style_prompt',
 ), [{ title: '夜航', prompt: '克制、私密' }]);
+assert.deepEqual(parseInteractiveResponse(
+    '说明中的 {无效对象} 应跳过。\n{"version":1,"kind":"style_prompt","items":[{"title":"花括号","prompt":"保留字符串里的 {内容} 和 \\"引号\\""}]}\n请查收。',
+    'style_prompt',
+), [{ title: '花括号', prompt: '保留字符串里的 {内容} 和 "引号"' }]);
 
 const feed = parseInteractiveResponse(JSON.stringify({
     version: 1, kind: 'feed_batch', items: [
@@ -108,10 +113,11 @@ assert.throws(() => parseInteractiveResponse(
 ), /有效内容/);
 
 const rawScene = normalizeScene({
-    id: 'scene', preset: 'mature', contentRating: 'mature', styleInput: 'x'.repeat(2100),
+    id: 'scene', preset: 'mature', contentRating: 'legacy-value', styleInput: 'x'.repeat(2100),
     live: { status: 'running', danmaku: Array.from({ length: 260 }, (_, i) => ({ content: `弹幕${i}` })) },
     posts: Array.from({ length: 100 }, (_, i) => ({ content: `帖子${i}`, comments: Array.from({ length: 60 }, (_, j) => ({ content: `评论${j}` })) })),
 });
+assert.equal(Object.hasOwn(rawScene, 'contentRating'), false);
 assert.equal(rawScene.styleInput.length, 2000);
 assert.equal(rawScene.live.status, 'idle');
 assert.equal(rawScene.live.danmaku.length, INTERACTIVE_LIMITS.danmaku);
@@ -264,9 +270,18 @@ assert.ok(normalized.scopes.scope.actors[normalizedPost.comments[0].authorId]);
 assert.throws(() => normalizeInteractiveStore({ version: 99, scopes: {} }), /版本 99 不受支持/);
 const strictSceneBase = {
     id: 'scene', title: '严格场景', preset: 'weibo', styleInput: '', generatedPrompt: '',
-    contentRating: 'general', createdAt: 1, updatedAt: 1, posts: [],
+    createdAt: 1, updatedAt: 1, posts: [],
     live: { title: '直播', status: 'idle', danmaku: [] },
 };
+assert.throws(() => normalizeInteractiveStore({
+    version: 2,
+    scopes: {
+        scope: {
+            activeSceneId: 'scene', sceneOrder: ['scene'], actors: {},
+            scenes: { scene: { ...strictSceneBase, contentRating: 'general' } },
+        },
+    },
+}), /额外字段.*contentRating/);
 assert.throws(() => normalizeInteractiveStore({
     version: 2,
     scopes: {

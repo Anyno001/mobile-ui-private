@@ -1,5 +1,6 @@
 import { POPOVER_SUPPORTED } from './constants.js';
 import { escapeAttr } from './ui.js';
+import { CLOSE_ICON_SVG } from './icons.js';
 
 export function openCropper(imgDataUrl, { onCancel, onConfirm }) {
     const ratio = 330 / 450;
@@ -9,7 +10,7 @@ export function openCropper(imgDataUrl, { onCancel, onConfirm }) {
     if (POPOVER_SUPPORTED) overlay.setAttribute('popover', 'manual');
     overlay.innerHTML = `
 <div class="pm-modal pm-modal-wide">
-  <div class="pm-modal-header"><b>裁剪图片</b><button type="button" id="pm-crop-close" class="pm-modal-close">关闭</button></div>
+  <div class="pm-modal-header"><span></span><b>裁剪图片</b><button type="button" id="pm-crop-close" class="pm-modal-close" title="关闭" aria-label="关闭">${CLOSE_ICON_SVG}</button></div>
   <div style="padding:12px 14px;">
     <div class="pm-crop-tip">拖动图片调整位置，滚轮/捏合缩放</div>
     <div class="pm-crop-frame" id="pm-crop-frame">

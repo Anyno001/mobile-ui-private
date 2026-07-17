@@ -234,7 +234,7 @@ assert.equal(resolvePhoneSources({
 
 const actorId = deriveInteractiveActorId('story-a', 'story', 'character:alice');
 const scene = {
-    id: 'scene-a', title: '社区', preset: 'weibo', styleInput: '', generatedPrompt: '', contentRating: 'general', createdAt: 1, updatedAt: 2,
+    id: 'scene-a', title: '社区', preset: 'weibo', styleInput: '', generatedPrompt: '', createdAt: 1, updatedAt: 2,
     posts: [{ id: 'post-a', authorId: actorId, authorNameSnapshot: 'Alice', content: '帖子正文', tags: [], createdAt: 2, comments: [{ id: 'comment-a', authorId: actorId, authorNameSnapshot: 'Alice', content: '评论正文', createdAt: 3 }], liked: false }],
     live: { title: '直播', status: 'idle', danmaku: [{ id: 'danmaku-a', authorId: actorId, authorNameSnapshot: 'Alice', content: '弹幕正文', createdAt: 4 }] },
 };

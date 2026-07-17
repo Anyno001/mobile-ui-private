@@ -517,6 +517,7 @@ const interactiveCode = sourceModuleByName.get('interactive-scenes.js')?.code ||
 const interactivePhoneCode = sourceModuleByName.get('interactive-scene-phone.js')?.code || '';
 const interactiveSchedulerCode = sourceModuleByName.get('interactive-scene-scheduler.js')?.code || '';
 const foundationCode = sourceModuleByName.get('phone-foundation.js')?.code || '';
+const phoneChatPokeCodeForChecks = sourceModuleByName.get('phone-chat-poke.js')?.code || '';
 const interactiveModelCode = sourceModuleByName.get('interactive-scene-model.js')?.code || '';
 const interactiveAiCode = sourceModuleByName.get('interactive-scene-ai.js')?.code || '';
 const settingsUiCodeForInteractive = sourceModuleByName.get('settings-ui.js')?.code || '';
@@ -584,9 +585,10 @@ if (directoryTemplate.includes('pm-forum-entry') || directoryTemplate.includes('
 if (controlCenterTemplate.includes('makeOverlay') || controlCenterTemplate.includes('<span')) {
   failures.push('phone-control-center.js: compact control menu must not use the full overlay or explanatory subtitles');
 }
-for (const title of ['编辑消息', '角色设置', '表情包管理', '删除信息']) {
+for (const title of ['编辑消息', '角色设置', '表情包管理', '删除信息', '返回桌面']) {
   if (!controlCenterTemplate.includes(title)) failures.push(`phone-control-center.js: compact control menu missing title ${title}`);
 }
+for (const expected of ["action === 'desktop'", "__pmShowPhonePage?.('desktop')", 'HOME_ICON_SVG', 'EDIT_ICON_SVG', 'EMOJI_ICON_SVG', 'TRASH_ICON_SVG']) requireText('phone-control-center.js', controlCenterCode, expected);
 for (const title of ['API 设置', '主题颜色', '数据备份', '互动场景']) {
   if (controlCenterTemplate.includes(title)) failures.push(`phone-control-center.js: compact control menu must not contain removed shortcut ${title}`);
 }
@@ -646,9 +648,12 @@ const phoneLifecycleCode = sourceModuleByName.get('phone-lifecycle.js')?.code ||
 for (const expected of [
   'pm-chat-page', 'pm-desktop-page', 'pm-community-page',
   'createPhonePageController', 'data-phone-page', '__pmShowPhonePage',
-  "__pmShowPhonePage('desktop')", 'POKE_ICON_SVG',
+  'POKE_ICON_SVG',
   "{ preservePage: true }", 'deps.restorePhoneUi?.()', 'deps.persistPhoneUiSnapshot?.()',
 ]) requireText('phone-lifecycle.js', phoneLifecycleCode, expected);
+if (phoneLifecycleCode.includes("__pmShowPhonePage('desktop')")) {
+  failures.push('phone-lifecycle.js: chat navbar must not retain the desktop shortcut');
+}
 const conversationCodeForNavigation = sourceModuleByName.get('conversation.js')?.code || '';
 for (const expected of ['options = {}', 'options.preservePage !== true', 'deps.showPhoneChatPage?.(id)']) {
   requireText('conversation.js', conversationCodeForNavigation, expected);
@@ -675,6 +680,7 @@ const settingsAnalysis = analyze(settingsCode, 'module');
 const makeOverlaySource = foundationAnalysis.functionSource.get('makeOverlay') || '';
 const applyThemeSource = foundationAnalysis.functionSource.get('applyTheme') || '';
 const setDarkModeSource = settingsAnalysis.windowAssignmentSource.get('__pmSetDarkMode') || '';
+const persistThemeMutationSource = settingsCode.match(/const persistThemeMutation\s*=\s*[\s\S]*?\n\s*};/)?.[0] || '';
 const overlayThemeSyncPattern = /getElementById\(['"]pm-overlay['"]\)[\s\S]*?setAttribute\(['"]data-theme['"]/;
 if (!/createElement\(['"]div['"]\)/.test(makeOverlaySource)
     || !/\.id\s*=\s*['"]pm-overlay['"]/.test(makeOverlaySource)
@@ -684,8 +690,8 @@ if (!/createElement\(['"]div['"]\)/.test(makeOverlaySource)
 if (!overlayThemeSyncPattern.test(applyThemeSource)) {
   failures.push('phone-foundation.js: applyTheme must synchronize data-theme to an existing pm-overlay');
 }
-if (!overlayThemeSyncPattern.test(setDarkModeSource)) {
-  failures.push('settings-ui.js: __pmSetDarkMode must synchronize data-theme to the active pm-overlay');
+if (!setDarkModeSource.includes('persistThemeMutation') || !persistThemeMutationSource.includes('applyTheme()')) {
+  failures.push('settings-ui.js: __pmSetDarkMode must persist the mutation and apply the synchronized theme');
 }
 for (const expected of [
   '#pm-overlay[data-theme="dark"] .pm-settings-home button{background:#2c2c2e;color:#eee;border-color:#3a3a3c}',
@@ -712,6 +718,25 @@ for (const expected of [
 ]) requireText('phone-lifecycle.js', lifecycleCode, expected);
 requireText('package.json', packageText, 'npm run check:ambient');
 requireText('settings-templates.js', sourceModuleByName.get('settings-templates.js')?.code || '', '仅显示设备本地时间，不联网、不定位，也不会写入提示词。');
+for (const expected of ['手机会话占比 (%)', '互动社区占比 (%)', 'pm-custom-check', 'role="checkbox"', "event.key==='Enter'"]) {
+  requireText('settings-templates.js', sourceModuleByName.get('settings-templates.js')?.code || '', expected);
+}
+for (const expected of [".pm-budget-scene.is-checked", "classList.contains('is-checked') === true", 'extractAiResponseContent(j)', 'resolveBudgetPercentageInput']) {
+  requireText('settings-ui.js', settingsCode, expected);
+}
+for (const [owner, code, expected] of [
+  ['phone-directory.js', directoryCode, ['role="checkbox"', 'tabindex="0"', 'aria-checked=', "event.key==='Enter'"]],
+  ['phone-chat-poke.js', phoneChatPokeCodeForChecks, ['role="checkbox"', 'tabindex="0"', 'aria-checked=', "event.key==='Enter'", 'saveCharacterBehavior()', 'savePokeConfig()', 'behaviorSnapshot', 'pokeSnapshot']],
+  ['phone-lifecycle.js', lifecycleCode, ["setAttribute('role', 'checkbox')", "setAttribute('aria-checked'", 'cb.tabIndex = 0', "event.key === 'Enter'"]],
+  ['phone-foundation.js', foundationCode, ['const previous = [...(window.__pmBidirectional[id] || [])]', 'if (!saveBidirectional())', 'window.__pmBidirectional[id] = previous']],
+  ['settings-ui.js', settingsCode, ['const previous = window.__pmWordyLimit === true', 'if (!saveWordyLimit())', "el.setAttribute('aria-checked'"]],
+]) {
+  for (const value of expected) requireText(owner, code, value);
+}
+if (/assertV2Keys\s*\(\s*raw\s*,\s*\[[^\]]*contentRating/.test(interactiveModelCode)) {
+  failures.push('interactive-scene-model.js: v2 scene keys must not accept contentRating');
+}
+requireText('interactive-scene-model.js', interactiveModelCode, "assertV1Keys(raw, ['id', 'title', 'preset', 'styleInput', 'generatedPrompt', 'contentRating'");
 for (const expected of ['legacyBackupTheme(snapshot.theme)', 'delete theme.ambientStatusEnabled', 'current.theme?.ambientStatusEnabled === true']) {
   requireText('settings-ui.js', settingsCode, expected);
 }
@@ -747,6 +772,7 @@ if (bundle.includes('pm-forum-entry')) failures.push('bundle: removed directory 
 for (const iconName of [
   'MENU_ICON_SVG', 'CLOSE_ICON_SVG', 'HOME_ICON_SVG', 'CONTROL_ICON_SVG', 'SEND_ICON_SVG',
   'POKE_ICON_SVG', 'CHAT_ICON_SVG', 'CONTACTS_ICON_SVG', 'SETTINGS_ICON_SVG', 'COMMUNITY_ICON_SVG',
+  'EDIT_ICON_SVG', 'EMOJI_ICON_SVG', 'TRASH_ICON_SVG',
 ]) {
   requireText('icons.js', sourceModuleByName.get('icons.js')?.code || '', `export const ${iconName}`);
 }

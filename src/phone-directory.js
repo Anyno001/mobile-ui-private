@@ -4,7 +4,7 @@ import {
 import { normalizeGroupMeta } from './behavior-config.js';
 import { GROUP_COLORS } from './groups.js';
 import { escapeAttr, escapeHtml, safeJS } from './ui.js';
-import { REFRESH_ICON_SVG } from './icons.js';
+import { CLOSE_ICON_SVG, REFRESH_ICON_SVG } from './icons.js';
 import { clearPendingMessages } from './pending-messages.js';
 import {
     loadGroupMeta, saveBgLocal, saveBidirectional, saveGroupMeta, saveHistoriesStrict, savePokeConfig,
@@ -47,9 +47,12 @@ export function installPhoneDirectory(state, deps) {
             <div style="display:flex;flex-direction:column;gap:10px;max-height:120px;overflow-y:auto;background:#fafafa;border-radius:8px;padding:10px;border:1px solid #eee;">
                 ${window.__pmEmojis.map(set => `
                     <div style="display:flex;align-items:center;gap:10px;cursor:pointer;"
-                         onclick="this.querySelector('.pm-emoji-assign-check').classList.toggle('is-checked')">
+                         onclick="this.querySelector('.pm-emoji-assign-check').click()">
                         <div class="pm-custom-check pm-bi-style pm-emoji-assign-check ${assignedEmojis.includes(set.id) ? 'is-checked' : ''}"
                              data-id="${escapeAttr(set.id)}"
+                             role="checkbox" tabindex="0" aria-checked="${assignedEmojis.includes(set.id)}"
+                             onclick="event.stopPropagation();this.classList.toggle('is-checked');this.setAttribute('aria-checked',String(this.classList.contains('is-checked')))"
+                             onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();this.click()}"
                              style="width:20px;height:20px;min-width:20px;flex-shrink:0;margin-bottom:0;"></div>
                         <span style="font-size:13px;color:#333;">${escapeHtml(set.name)}</span>
                         <span style="color:#aaa;font-size:11px;margin-left:auto;">(${set.images.length}张)</span>
@@ -83,7 +86,7 @@ export function installPhoneDirectory(state, deps) {
 
         makeOverlay(`
     <div class="pm-modal pm-modal-wide">
-    <div class="pm-modal-header"><b>${title}</b><button type="button" onclick="${closeAction}" class="pm-modal-close">关闭</button></div>
+    <div class="pm-modal-header"><span></span><b>${title}</b><button type="button" onclick="${closeAction}" class="pm-modal-close" title="关闭" aria-label="关闭">${CLOSE_ICON_SVG}</button></div>
     <div style="padding:14px 16px;display:flex;flex-direction:column;gap:10px;">
         <div class="pm-cfg-label">群聊名称</div>
         <input id="pm-group-name-input" class="pm-cfg-input" placeholder="给群聊起个名字" value="${escapeAttr(initName)}" maxlength="30">
@@ -102,6 +105,8 @@ export function installPhoneDirectory(state, deps) {
             <div onclick="window.__pmToggleAutoPokeGroup()"
                 class="pm-custom-check pm-bi-style ${pokeConfig.enabled ? 'is-checked' : ''}"
                 id="pm-poke-check-group"
+                role="checkbox" tabindex="0" aria-checked="${pokeConfig.enabled}"
+                onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();this.click()}"
                 style="cursor:pointer;width:22px;height:22px;min-width:22px;min-height:22px;flex-shrink:0;border-radius:50%;">
             </div>
         </div>
@@ -251,7 +256,7 @@ export function installPhoneDirectory(state, deps) {
         const renderSingle = singleList.map(n => {
             const isChk = checked.includes(n);
             return `<div class="pm-li">
-                <div class="pm-custom-check pm-bi-style ${isChk ? 'is-checked' : ''}" onclick="event.stopPropagation();window.__pmToggleBidirectional('${safeJS(n)}')" style="width:20px;height:20px;min-width:20px;min-height:20px;flex-shrink:0;border-radius:50%;"></div>
+                <div class="pm-custom-check pm-bi-style ${isChk ? 'is-checked' : ''}" role="checkbox" tabindex="0" aria-checked="${isChk}" onclick="event.stopPropagation();window.__pmToggleBidirectional('${safeJS(n)}')" onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();this.click()}" style="width:20px;height:20px;min-width:20px;min-height:20px;flex-shrink:0;border-radius:50%;"></div>
                 <span onclick="window.__pmSwitchContact('${safeJS(n)}')">${escapeHtml(n)}</span>
                 <i onclick="window.__pmDel('${safeJS(n)}')">删除</i>
             </div>`;
@@ -261,7 +266,7 @@ export function installPhoneDirectory(state, deps) {
             const meta = groups[key];
             const isChk = checked.includes(key);
             return `<div class="pm-li">
-                <div class="pm-custom-check pm-bi-style ${isChk ? 'is-checked' : ''}" onclick="event.stopPropagation();window.__pmToggleBidirectional('${safeJS(key)}')" style="width:20px;height:20px;min-width:20px;min-height:20px;flex-shrink:0;border-radius:50%;"></div>
+                <div class="pm-custom-check pm-bi-style ${isChk ? 'is-checked' : ''}" role="checkbox" tabindex="0" aria-checked="${isChk}" onclick="event.stopPropagation();window.__pmToggleBidirectional('${safeJS(key)}')" onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();this.click()}" style="width:20px;height:20px;min-width:20px;min-height:20px;flex-shrink:0;border-radius:50%;"></div>
                 <span onclick="window.__pmSwitchContact('${safeJS(key)}')">${escapeHtml(meta.name)}<span class="pm-group-sub">${escapeHtml(meta.members.join('、'))}</span></span>
                 <i onclick="window.__pmDelGroup('${safeJS(key)}')">删除</i>
             </div>`;
@@ -272,12 +277,13 @@ export function installPhoneDirectory(state, deps) {
         makeOverlay(`
     <div class="pm-modal">
     <div class="pm-modal-header">
+      <span></span>
       <b>联系人</b>
       <span style="display:flex;align-items:center;gap:10px;">
         <span id="pm-autogen-btn" onclick="window.__pmConfirmAutoGen()" title="AI 自动生成联系人" style="cursor:pointer;display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:50%;transition:background .15s;" onmouseenter="this.style.background='rgba(0,122,255,0.1)'" onmouseleave="this.style.background='transparent'">
           ${REFRESH_ICON_SVG}
         </span>
-        <button type="button" onclick="window.__pmCloseOverlay()" class="pm-modal-close">关闭</button>
+        <button type="button" onclick="window.__pmCloseOverlay()" class="pm-modal-close" title="关闭" aria-label="关闭">${CLOSE_ICON_SVG}</button>
       </span>
     </div>
     <div class="pm-bi-bar"><span>勾选会话可注入主楼；群聊资源参数在群聊设置中配置</span><span class="pm-bi-tip">已选 ${checked.length}</span></div>
@@ -295,7 +301,7 @@ export function installPhoneDirectory(state, deps) {
         document.getElementById('pm-overlay')?.remove();
         makeOverlay(`
 <div class="pm-modal">
-  <div class="pm-modal-header"><b>添加联系人</b><button type="button" onclick="window.__pmShowList()" class="pm-modal-close">关闭</button></div>
+  <div class="pm-modal-header"><span></span><b>添加联系人</b><button type="button" onclick="window.__pmShowList()" class="pm-modal-close" title="关闭" aria-label="关闭">${CLOSE_ICON_SVG}</button></div>
   <div style="padding:14px 16px;">
     <div class="pm-cfg-label" style="margin-bottom:8px;">输入角色名</div>
     <input id="pm-add-contact-input" class="pm-cfg-input" placeholder="角色名">

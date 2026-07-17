@@ -7,6 +7,7 @@ import {
 import { createHistoryWindow } from './history-window.js';
 import { cleanResponse, splitToSentences } from './prompts.js';
 import { escapeAttr, escapeHtml, safeJS } from './ui.js';
+import { CLOSE_ICON_SVG } from './icons.js';
 import {
     getEmojiPrompt, getWordyPrompt, parseGroupResponse,
 } from './messaging.js';
@@ -187,9 +188,12 @@ export function installPhoneChatPoke(state, deps) {
             <div style="display:flex;flex-direction:column;gap:10px;max-height:130px;overflow-y:auto;background:#fafafa;border-radius:8px;padding:10px;border:1px solid #eee;">
                 ${window.__pmEmojis.map(set => `
                     <div style="display:flex;align-items:center;gap:10px;cursor:pointer;"
-                         onclick="this.querySelector('.pm-emoji-assign-check').classList.toggle('is-checked')">
+                         onclick="this.querySelector('.pm-emoji-assign-check').click()">
                         <div class="pm-custom-check pm-bi-style pm-emoji-assign-check ${assignedEmojis.includes(set.id)?'is-checked':''}"
                              data-id="${escapeAttr(set.id)}"
+                             role="checkbox" tabindex="0" aria-checked="${assignedEmojis.includes(set.id)}"
+                             onclick="event.stopPropagation();this.classList.toggle('is-checked');this.setAttribute('aria-checked',String(this.classList.contains('is-checked')))"
+                             onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();this.click()}"
                              style="width:20px;height:20px;min-width:20px;flex-shrink:0;margin-bottom:0;"></div>
                         <span style="font-size:13px;color:#333;">${escapeHtml(set.name)}</span>
                         <span style="color:#aaa;font-size:11px;margin-left:auto;">(${set.images.length}张)</span>
@@ -202,6 +206,7 @@ export function installPhoneChatPoke(state, deps) {
         makeOverlay(`
     <div class="pm-modal pm-modal-wide">
     <div class="pm-modal-header">
+        <span></span>
         <b>${escapeHtml(contactName)} · 角色设置</b>
         <button type="button" onclick="window.__pmSaveAndCloseContactConfig('${safeJS(contactName)}')" class="pm-modal-close">保存并关闭</button>
     </div>
@@ -239,6 +244,8 @@ export function installPhoneChatPoke(state, deps) {
           </div>
           <div id="pm-wordy-check" onclick="window.__pmToggleWordyLimit()"
                class="pm-custom-check pm-bi-style ${window.__pmWordyLimit ? 'is-checked' : ''}"
+               role="checkbox" tabindex="0" aria-checked="${window.__pmWordyLimit === true}"
+               onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();this.click()}"
                style="cursor:pointer;width:22px;height:22px;min-width:22px;min-height:22px;flex-shrink:0;border-radius:50%;"></div>
         </div>
         ${emojiCheckHtml}
@@ -248,6 +255,8 @@ export function installPhoneChatPoke(state, deps) {
             <div onclick="window.__pmToggleAutoPoke('${safeJS(contactName)}')"
                 class="pm-custom-check pm-bi-style ${config.autoPoke.enabled ? 'is-checked' : ''}"
                 id="pm-poke-check"
+                role="checkbox" tabindex="0" aria-checked="${config.autoPoke.enabled}"
+                onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();this.click()}"
                 style="cursor:pointer;width:22px;height:22px;min-width:22px;min-height:22px;flex-shrink:0;border-radius:50%;">
             </div>
         </div>
@@ -280,7 +289,7 @@ export function installPhoneChatPoke(state, deps) {
         const members = state.groupMembers.slice();
         makeOverlay(`
     <div class="pm-modal pm-modal-wide">
-      <div class="pm-modal-header"><b>成员聊天行为</b><button type="button" onclick="window.__pmCloseOverlay()" class="pm-modal-close">关闭</button></div>
+      <div class="pm-modal-header"><span></span><b>成员聊天行为</b><button type="button" onclick="window.__pmCloseOverlay()" class="pm-modal-close" title="关闭" aria-label="关闭">${CLOSE_ICON_SVG}</button></div>
       <div class="pm-member-behavior-list">
         ${members.map(name => `<button onclick="window.__pmShowCharacterBehavior('${safeJS(name)}')">
           <b>${escapeHtml(name)}</b><span>私聊风格、群聊风格与消息频率</span>
@@ -295,6 +304,8 @@ export function installPhoneChatPoke(state, deps) {
     window.__pmSaveAndCloseContactConfig = (contactName) => {
         const checkEl = document.getElementById('pm-poke-check');
         const intervalEl = document.getElementById('pm-poke-interval');
+        const behaviorSnapshot = JSON.parse(JSON.stringify(window.__pmCharacterBehavior));
+        const pokeSnapshot = JSON.parse(JSON.stringify(window.__pmPokeConfig));
         const emojiChecks = document.querySelectorAll('.pm-emoji-assign-check.is-checked');
         const selectedEmojis = Array.from(emojiChecks).map(cb => cb.dataset.id);
         const id = getStorageId();
@@ -310,7 +321,11 @@ export function installPhoneChatPoke(state, deps) {
         Object.defineProperty(window.__pmCharacterBehavior[id], contactName, {
             value: behavior, enumerable: true, configurable: true, writable: true,
         });
-        saveCharacterBehavior();
+        if (!saveCharacterBehavior()) {
+            window.__pmCharacterBehavior = behaviorSnapshot;
+            alert('角色设置保存失败：浏览器存储不可用。');
+            return false;
+        }
 
         if (checkEl && intervalEl) {
             if (!window.__pmPokeConfig[id]) window.__pmPokeConfig[id] = {};
@@ -327,11 +342,20 @@ export function installPhoneChatPoke(state, deps) {
                 },
                 emojis: selectedEmojis
             };
-            savePokeConfig();
+            if (!savePokeConfig()) {
+                window.__pmCharacterBehavior = behaviorSnapshot;
+                window.__pmPokeConfig = pokeSnapshot;
+                const rollbackOk = saveCharacterBehavior();
+                alert(rollbackOk
+                    ? '自动消息设置保存失败：浏览器存储不可用。'
+                    : '自动消息设置保存失败，且角色设置回滚未能写入存储。请立即导出备份。');
+                return false;
+            }
         }
 
         document.getElementById('pm-overlay')?.remove();
         addNote(`已保存 ${contactName} 的设置`);
+        return true;
     };
 
 
@@ -340,6 +364,7 @@ export function installPhoneChatPoke(state, deps) {
         const intervalEl = document.getElementById('pm-poke-interval');
         if (!checkEl) return;
         const isChecked = checkEl.classList.toggle('is-checked');
+        checkEl.setAttribute('aria-checked', String(isChecked));
         if (intervalEl) intervalEl.disabled = !isChecked;
     };
 
@@ -486,6 +511,7 @@ export function installPhoneChatPoke(state, deps) {
         const intervalEl = document.getElementById('pm-poke-interval-group');
         if (!checkEl) return;
         const isChecked = checkEl.classList.toggle('is-checked');
+        checkEl.setAttribute('aria-checked', String(isChecked));
         if (intervalEl) intervalEl.disabled = !isChecked;
     };
 

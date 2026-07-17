@@ -286,10 +286,20 @@ export function installPhoneFoundation(state, deps) {
     }
 
     window.__pmToggleBidirectional = (name) => {
-        const id = getStorageId(), arr = window.__pmBidirectional[id] || [], idx = arr.indexOf(name);
-        if (idx >= 0) arr.splice(idx, 1);
-        else arr.push(name);
-        window.__pmBidirectional[id] = arr; saveBidirectional(); applyBidirectionalInjection(); window.__pmShowList();
+        const id = getStorageId();
+        const previous = [...(window.__pmBidirectional[id] || [])];
+        const next = previous.filter(item => item !== name);
+        if (next.length === previous.length) next.push(name);
+        window.__pmBidirectional[id] = next;
+        if (!saveBidirectional()) {
+            window.__pmBidirectional[id] = previous;
+            alert('注入设置保存失败：浏览器存储不可用。');
+            window.__pmShowList();
+            return false;
+        }
+        applyBidirectionalInjection();
+        window.__pmShowList();
+        return true;
     };
 
 

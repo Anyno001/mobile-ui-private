@@ -598,11 +598,14 @@ export function saveProfiles() {
 }
 
 export function addOrUpdateProfile(profile) {
-    if (!profile.apiUrl || !profile.apiKey) return;
+    if (!profile.apiUrl || !profile.apiKey) return false;
+    const previous = window.__pmProfiles.map(item => ({ ...item }));
     const index = window.__pmProfiles.findIndex(item => item.apiUrl === profile.apiUrl && item.apiKey === profile.apiKey);
     if (index >= 0) window.__pmProfiles[index] = { ...window.__pmProfiles[index], ...profile, savedAt: Date.now() };
     else window.__pmProfiles.push({ ...profile, savedAt: Date.now() });
-    saveProfiles();
+    if (saveProfiles()) return true;
+    window.__pmProfiles = previous;
+    return false;
 }
 
 export function loadBidirectional() {

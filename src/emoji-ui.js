@@ -1,4 +1,5 @@
 import { escapeAttr, escapeHtml } from './ui.js';
+import { CLOSE_ICON_SVG } from './icons.js';
 
 const SUB_OVERLAY_STYLE = 'position:fixed !important; inset:0 !important; margin:0 !important; padding:0 !important; border:none !important; width:100vw !important; height:100vh !important; max-width:none !important; max-height:none !important; background:rgba(0,0,0,.45) !important; z-index:2147483648 !important; display:flex !important; align-items:center !important; justify-content:center !important;';
 
@@ -46,7 +47,7 @@ export function installEmojiUi({ makeOverlay, saveEmojis }) {
     window.__pmShowEmojiManager = () => {
         makeOverlay(`
 <div class="pm-modal pm-modal-wide" style="height:560px;">
-  <div class="pm-modal-header"><b>表情包管理</b><button type="button" onclick="window.__pmCloseOverlay()" class="pm-modal-close">关闭</button></div>
+  <div class="pm-modal-header"><span></span><b>表情包管理</b><button type="button" onclick="window.__pmCloseOverlay()" class="pm-modal-close" title="关闭" aria-label="关闭">${CLOSE_ICON_SVG}</button></div>
   <div class="pm-modal-scroll" style="padding:14px 16px;">
     <div id="pm-emoji-set-list"></div>
     <button onclick="window.__pmAddEmojiSet()" style="width:100%;margin-top:8px;background:#007aff;color:#fff;border:none;border-radius:10px;padding:10px;font-size:13px;cursor:pointer;font-weight:600;">添加新套组</button>
@@ -91,7 +92,7 @@ export function installEmojiUi({ makeOverlay, saveEmojis }) {
         if (window.__pmEmojis.length >= 10) return alert('最多只能创建 10 个套组。');
         createSubOverlay(`
 <div class="pm-modal">
-  <div class="pm-modal-header"><b>新建表情包套组</b><button type="button" onclick="document.getElementById('pm-overlay-sub').remove()" class="pm-modal-close">关闭</button></div>
+  <div class="pm-modal-header"><span></span><b>新建表情包套组</b><button type="button" onclick="document.getElementById('pm-overlay-sub').remove()" class="pm-modal-close" title="关闭" aria-label="关闭">${CLOSE_ICON_SVG}</button></div>
   <div style="padding:14px 16px;display:flex;flex-direction:column;gap:10px;">
     <input id="pm-new-set-name" class="pm-cfg-input" placeholder="套组名称（如：开心、日常、可爱）" style="padding:8px 10px;font-size:13px;border-radius:8px;border:1px solid #ddd;">
   </div>
@@ -131,7 +132,7 @@ export function installEmojiUi({ makeOverlay, saveEmojis }) {
         if (set.images.length >= 20) return alert('本套组已满 20 张。');
         createSubOverlay(`
 <div class="pm-modal">
-  <div class="pm-modal-header"><b>添加图片 — ${escapeHtml(set.name)}</b><button type="button" onclick="document.getElementById('pm-overlay-sub').remove();" class="pm-modal-close">关闭</button></div>
+  <div class="pm-modal-header"><span></span><b>添加图片 — ${escapeHtml(set.name)}</b><button type="button" onclick="document.getElementById('pm-overlay-sub').remove();" class="pm-modal-close" title="关闭" aria-label="关闭">${CLOSE_ICON_SVG}</button></div>
   <div style="padding:14px 16px;display:flex;flex-direction:column;gap:10px;">
     <div style="font-size:12px;color:#888;margin-bottom:2px;">图片 URL 或本地上传</div>
     <input id="pm-emo-url" class="pm-cfg-input" placeholder="https://... 或点下方选择文件" style="padding:8px 10px;font-size:13px;border-radius:8px;border:1px solid #ddd;">
@@ -217,9 +218,10 @@ export function installEmojiUi({ makeOverlay, saveEmojis }) {
         const firstSet = sets[0];
         makeOverlay(`
 <div class="pm-modal pm-modal-wide" id="pm-emoji-picker-inner">
-  <div class="pm-modal-header" style="justify-content:space-between;padding-right:14px;">
+  <div class="pm-modal-header">
+    <span></span>
     <b class="pm-emoji-set-label">${escapeHtml(firstSet.name)} (${firstSet.images.length})</b>
-    <button type="button" onclick="document.getElementById('pm-overlay').remove()" class="pm-modal-close">关闭</button>
+    <button type="button" onclick="document.getElementById('pm-overlay').remove()" class="pm-modal-close" title="关闭" aria-label="关闭">${CLOSE_ICON_SVG}</button>
   </div>
   <div class="pm-emoji-imgs" id="pm-emoji-imgs-area" style="padding:12px 14px;overflow-y:auto;max-height:340px;display:flex;flex-wrap:wrap;gap:10px;justify-content:flex-start;touch-action:pan-y pinch-zoom;">${renderPickerImages(firstSet)}</div>
   <div class="pm-emoji-dots">${renderPickerDots(sets, 0)}</div>
