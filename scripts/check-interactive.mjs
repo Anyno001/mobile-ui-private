@@ -432,6 +432,83 @@ const migrated = await migrateInteractiveStore(legacyStore, async store => { mig
 assert.equal(migrated.version, 2);
 assert.equal(migrationWrites.length, 1);
 assert.deepEqual(await migrateInteractiveStore(migrated, async () => { throw new Error('不应再次保存'); }), migrated);
+
+const pollutedV2Store = {
+    version: 2,
+    scopes: {
+        scope: {
+            activeSceneId: 'scene', sceneOrder: ['scene'], actors: {},
+            scenes: { scene: { ...strictSceneBase, contentRating: 'legacy-value' } },
+        },
+    },
+};
+const pollutedV2Snapshot = structuredClone(pollutedV2Store);
+const compatibilityWrites = [];
+const cleanedV2Store = await migrateInteractiveStore(pollutedV2Store, async store => {
+    compatibilityWrites.push(structuredClone(store));
+});
+assert.equal(Object.hasOwn(cleanedV2Store.scopes.scope.scenes.scene, 'contentRating'), false);
+assert.deepEqual(compatibilityWrites, [cleanedV2Store]);
+assert.deepEqual(pollutedV2Store, pollutedV2Snapshot, 'V2 兼容迁移不得修改持久层原始快照');
+assert.deepEqual(await migrateInteractiveStore(cleanedV2Store, async () => { throw new Error('清洁 V2 不应再次保存'); }), cleanedV2Store);
+
+const corruptedV2Store = structuredClone(pollutedV2Store);
+corruptedV2Store.scopes.scope.scenes.scene.debug = true;
+await assert.rejects(migrateInteractiveStore(corruptedV2Store, async () => {
+    throw new Error('其他额外字段不得进入保存阶段');
+}), /额外字段.*debug/);
+
+const hiddenDebugV2Store = structuredClone(pollutedV2Store);
+Object.defineProperty(hiddenDebugV2Store.scopes.scope.scenes.scene, 'debug', {
+    value: true, enumerable: false, configurable: true, writable: true,
+});
+await assert.rejects(migrateInteractiveStore(hiddenDebugV2Store, async () => {
+    throw new Error('非枚举未知字段不得进入保存阶段');
+}), /debug 必须是可枚举属性/);
+assert.throws(() => normalizeInteractiveStore(hiddenDebugV2Store), /debug 必须是可枚举属性/);
+
+const hiddenRatingV2Store = structuredClone(pollutedV2Store);
+Object.defineProperty(hiddenRatingV2Store.scopes.scope.scenes.scene, 'contentRating', {
+    value: 'legacy-value', enumerable: false, configurable: true, writable: true,
+});
+let hiddenRatingSaveCount = 0;
+await assert.rejects(migrateInteractiveStore(hiddenRatingV2Store, async () => {
+    hiddenRatingSaveCount += 1;
+}), /contentRating 必须是可枚举属性/);
+assert.equal(hiddenRatingSaveCount, 0, '非枚举 contentRating 不得触发兼容保存');
+
+let contentRatingGetterReads = 0;
+const accessorV2Store = structuredClone(pollutedV2Store);
+Object.defineProperty(accessorV2Store.scopes.scope.scenes.scene, 'contentRating', {
+    enumerable: true,
+    get() { contentRatingGetterReads += 1; return 'legacy-value'; },
+});
+await assert.rejects(migrateInteractiveStore(accessorV2Store, async () => {
+    throw new Error('访问器对象不得进入保存阶段');
+}), /不能是访问器属性/);
+assert.equal(contentRatingGetterReads, 0, '兼容迁移不得执行 contentRating getter');
+
+const customPrototypeV2Store = structuredClone(pollutedV2Store);
+customPrototypeV2Store.scopes.scope.scenes.scene = Object.assign(
+    Object.create({ inherited: true }),
+    customPrototypeV2Store.scopes.scope.scenes.scene,
+);
+await assert.rejects(migrateInteractiveStore(customPrototypeV2Store, async () => {
+    throw new Error('自定义原型对象不得进入保存阶段');
+}), /必须是纯数据对象/);
+
+const symbolV2Store = structuredClone(pollutedV2Store);
+symbolV2Store.scopes.scope.scenes.scene[Symbol('unsafe')] = true;
+await assert.rejects(migrateInteractiveStore(symbolV2Store, async () => {
+    throw new Error('symbol 字段不得进入保存阶段');
+}), /不能包含 symbol 字段/);
+
+const invalidRatingV2Store = structuredClone(pollutedV2Store);
+invalidRatingV2Store.scopes.scope.scenes.scene.contentRating = 1;
+await assert.rejects(migrateInteractiveStore(invalidRatingV2Store, async () => {
+    throw new Error('非字符串历史字段不得进入保存阶段');
+}), /额外字段.*contentRating/);
+
 let migrationSaveCount = 0;
 const migrationRollbackWrites = [];
 await assert.rejects(migrateInteractiveStore(legacyStore, async store => {
@@ -440,11 +517,32 @@ await assert.rejects(migrateInteractiveStore(legacyStore, async store => {
     migrationRollbackWrites.push(structuredClone(store));
 }), /迁移写入失败/);
 assert.deepEqual(migrationRollbackWrites, [legacyStore]);
-let migrationDoubleFailureCount = 0;
-await assert.rejects(migrateInteractiveStore(legacyStore, async () => {
-    migrationDoubleFailureCount += 1;
-    throw new Error(migrationDoubleFailureCount === 1 ? '迁移失败' : '回滚失败');
-}), /v1 回滚也失败/);
+let compatibilitySaveCount = 0;
+const compatibilityRollbackWrites = [];
+await assert.rejects(migrateInteractiveStore(pollutedV2Store, async store => {
+    compatibilitySaveCount += 1;
+    if (compatibilitySaveCount === 1) throw new Error('兼容迁移写入失败');
+    compatibilityRollbackWrites.push(structuredClone(store));
+}), /兼容迁移写入失败/);
+assert.deepEqual(compatibilityRollbackWrites, [pollutedV2Snapshot]);
+const compatibilityPrimaryError = new Error('清洁 V2 写入失败');
+const compatibilityRollbackError = new Error('污染 V2 回滚失败');
+const compatibilityDoubleFailureWrites = [];
+let compatibilityDoubleFailure;
+await assert.rejects(migrateInteractiveStore(pollutedV2Store, async store => {
+    compatibilityDoubleFailureWrites.push(structuredClone(store));
+    if (compatibilityDoubleFailureWrites.length === 1) throw compatibilityPrimaryError;
+    throw compatibilityRollbackError;
+}), error => {
+    compatibilityDoubleFailure = error;
+    return true;
+});
+assert.deepEqual(compatibilityDoubleFailureWrites, [cleanedV2Store, pollutedV2Snapshot]);
+assert.match(compatibilityDoubleFailure.message, /清洁 V2 写入失败/);
+assert.match(compatibilityDoubleFailure.message, /污染 V2 回滚失败/);
+assert.equal(compatibilityDoubleFailure.cause, compatibilityPrimaryError);
+assert.equal(compatibilityDoubleFailure.rollbackError, compatibilityRollbackError);
+assert.deepEqual(pollutedV2Store, pollutedV2Snapshot, '双重失败后原始污染 V2 不得被修改');
 
 const editableScope = { activeSceneId: 'editable', sceneOrder: ['editable'], scenes: {}, actors: {} };
 const editable = normalizeScene({

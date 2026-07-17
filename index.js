@@ -494,8 +494,11 @@ ${lines.join("\n")}
     const prototype = Object.getPrototypeOf(value);
     if (prototype !== Object.prototype && prototype !== null) throw new Error(`${label} \u5FC5\u987B\u662F\u7EAF\u6570\u636E\u5BF9\u8C61`);
     if (Object.getOwnPropertySymbols(value).length) throw new Error(`${label} \u4E0D\u80FD\u5305\u542B symbol \u5B57\u6BB5`);
-    const accessor = Object.entries(Object.getOwnPropertyDescriptors(value)).find(([, descriptor]) => !Object.hasOwn(descriptor, "value"));
+    const descriptors = Object.getOwnPropertyDescriptors(value);
+    const accessor = Object.entries(descriptors).find(([, descriptor]) => !Object.hasOwn(descriptor, "value"));
     if (accessor) throw new Error(`${label}.${accessor[0]} \u4E0D\u80FD\u662F\u8BBF\u95EE\u5668\u5C5E\u6027`);
+    const hidden = Object.entries(descriptors).find(([, descriptor]) => descriptor.enumerable !== true);
+    if (hidden) throw new Error(`${label}.${hidden[0]} \u5FC5\u987B\u662F\u53EF\u679A\u4E3E\u5C5E\u6027`);
   };
   var assertDataArray = (value, label) => {
     if (!Array.isArray(value)) throw new Error(`${label} \u5FC5\u987B\u662F\u6570\u7EC4`);
@@ -620,6 +623,31 @@ ${lines.join("\n")}
   }
   function createEmptyInteractiveStore() {
     return { version: INTERACTIVE_STORE_VERSION, scopes: {} };
+  }
+  function stripPersistedV2ContentRating(rawStore) {
+    if (rawStore === null || rawStore === void 0 || typeof rawStore !== "object" || Array.isArray(rawStore)) return { store: rawStore, changed: false };
+    assertDataObject(rawStore, "\u4E92\u52A8\u573A\u666F\u6301\u4E45\u5316 store");
+    if (rawStore.version !== INTERACTIVE_STORE_VERSION) return { store: rawStore, changed: false };
+    assertDataObject(rawStore.scopes, "\u4E92\u52A8\u573A\u666F\u6301\u4E45\u5316 scopes");
+    let changed = false;
+    const scopes = { ...rawStore.scopes };
+    for (const [scopeId, rawScope] of Object.entries(rawStore.scopes)) {
+      assertDataObject(rawScope, `\u4E92\u52A8\u573A\u666F\u6301\u4E45\u5316 scope ${scopeId}`);
+      assertDataObject(rawScope.scenes, `\u4E92\u52A8\u573A\u666F\u6301\u4E45\u5316 scope ${scopeId}.scenes`);
+      let scenes = rawScope.scenes;
+      for (const [sceneId, rawScene] of Object.entries(rawScope.scenes)) {
+        assertDataObject(rawScene, `\u4E92\u52A8\u573A\u666F\u6301\u4E45\u5316 scope ${scopeId}.scene ${sceneId}`);
+        const ratingDescriptor = Object.getOwnPropertyDescriptor(rawScene, "contentRating");
+        if (!ratingDescriptor || ratingDescriptor.enumerable !== true || typeof ratingDescriptor.value !== "string") continue;
+        if (scenes === rawScope.scenes) scenes = { ...rawScope.scenes };
+        const scene = { ...rawScene };
+        delete scene.contentRating;
+        scenes[sceneId] = scene;
+        changed = true;
+      }
+      if (scenes !== rawScope.scenes) scopes[scopeId] = { ...rawScope, scenes };
+    }
+    return { store: changed ? { ...rawStore, scopes } : rawStore, changed };
   }
   function createDefaultPhoneUiScope() {
     return { pinnedSceneIds: [], lastPage: "desktop", lastSceneId: null, lastTab: "feed" };
@@ -3045,8 +3073,10 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
   var now = () => Date.now();
   var cloneStore = (store) => normalizeInteractiveStore(JSON.parse(JSON.stringify(store)));
   async function migrateInteractiveStore(rawStore, saveStore) {
-    const normalized = normalizeInteractiveStore(rawStore);
-    if (!rawStore || rawStore.version === normalized.version) return normalized;
+    const persistedCompatibility = stripPersistedV2ContentRating(rawStore);
+    const normalized = normalizeInteractiveStore(persistedCompatibility.store);
+    const needsSave = !!rawStore && (rawStore.version !== normalized.version || persistedCompatibility.changed);
+    if (!needsSave) return normalized;
     const snapshot = JSON.parse(JSON.stringify(rawStore));
     try {
       await saveStore(normalized);
@@ -3054,7 +3084,7 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
       try {
         await saveStore(snapshot);
       } catch (rollbackError) {
-        const combined = new Error(`${error.message}\uFF1B\u4E92\u52A8\u573A\u666F v1 \u56DE\u6EDA\u4E5F\u5931\u8D25\uFF1A${rollbackError.message}`);
+        const combined = new Error(`${error.message}\uFF1B\u4E92\u52A8\u573A\u666F\u8FC1\u79FB\u56DE\u6EDA\u4E5F\u5931\u8D25\uFF1A${rollbackError.message}`);
         combined.cause = error;
         combined.rollbackError = rollbackError;
         throw combined;

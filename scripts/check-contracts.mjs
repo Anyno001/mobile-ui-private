@@ -741,6 +741,11 @@ if (/assertV2Keys\s*\(\s*raw\s*,\s*\[[^\]]*contentRating/.test(interactiveModelC
   failures.push('interactive-scene-model.js: v2 scene keys must not accept contentRating');
 }
 requireText('interactive-scene-model.js', interactiveModelCode, "assertV1Keys(raw, ['id', 'title', 'preset', 'styleInput', 'generatedPrompt', 'contentRating'");
+requireText('interactive-scene-model.js', interactiveModelCode, 'export function stripPersistedV2ContentRating(rawStore)');
+requireText('interactive-scenes.js', interactiveCode, 'stripPersistedV2ContentRating(rawStore)');
+if (settingsCode.includes('stripPersistedV2ContentRating')) {
+  failures.push('settings-ui.js: untrusted backup import must not use persisted V2 contentRating compatibility cleanup');
+}
 for (const expected of ['legacyBackupTheme(snapshot.theme)', 'delete theme.ambientStatusEnabled', 'current.theme?.ambientStatusEnabled === true']) {
   requireText('settings-ui.js', settingsCode, expected);
 }

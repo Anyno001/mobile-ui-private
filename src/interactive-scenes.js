@@ -2,7 +2,7 @@ import { buildInteractiveRequest, getInteractivePresets, parseInteractiveRespons
 import {
     INTERACTIVE_LIMITS, addSceneComment, appendScenePosts, deleteSceneComment,
     deleteScenePost, enforceInteractiveSceneLimit, ensureInteractiveActor, normalizeInteractiveStore, normalizeScene,
-    normalizePhoneUiState, patchPhoneUiScope, resolveInteractiveAuthor, toggleScenePin, updateSceneComment, updateScenePost,
+    normalizePhoneUiState, patchPhoneUiScope, resolveInteractiveAuthor, stripPersistedV2ContentRating, toggleScenePin, updateSceneComment, updateScenePost,
 } from './interactive-scene-model.js';
 import {
     loadInteractiveScenes, loadPhoneUiState, saveInteractiveScenes, savePhoneUiState,
@@ -23,8 +23,10 @@ const now = () => Date.now();
 const cloneStore = store => normalizeInteractiveStore(JSON.parse(JSON.stringify(store)));
 
 export async function migrateInteractiveStore(rawStore, saveStore) {
-    const normalized = normalizeInteractiveStore(rawStore);
-    if (!rawStore || rawStore.version === normalized.version) return normalized;
+    const persistedCompatibility = stripPersistedV2ContentRating(rawStore);
+    const normalized = normalizeInteractiveStore(persistedCompatibility.store);
+    const needsSave = !!rawStore && (rawStore.version !== normalized.version || persistedCompatibility.changed);
+    if (!needsSave) return normalized;
     const snapshot = JSON.parse(JSON.stringify(rawStore));
     try {
         await saveStore(normalized);
@@ -32,7 +34,7 @@ export async function migrateInteractiveStore(rawStore, saveStore) {
         try {
             await saveStore(snapshot);
         } catch (rollbackError) {
-            const combined = new Error(`${error.message}；互动场景 v1 回滚也失败：${rollbackError.message}`);
+            const combined = new Error(`${error.message}；互动场景迁移回滚也失败：${rollbackError.message}`);
             combined.cause = error;
             combined.rollbackError = rollbackError;
             throw combined;
