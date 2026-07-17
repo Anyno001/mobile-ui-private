@@ -588,7 +588,10 @@ if (controlCenterTemplate.includes('makeOverlay') || controlCenterTemplate.inclu
 for (const title of ['编辑消息', '角色设置', '表情包管理', '删除信息', '返回桌面']) {
   if (!controlCenterTemplate.includes(title)) failures.push(`phone-control-center.js: compact control menu missing title ${title}`);
 }
-for (const expected of ["action === 'desktop'", "__pmShowPhonePage?.('desktop')", 'HOME_ICON_SVG', 'EDIT_ICON_SVG', 'EMOJI_ICON_SVG', 'TRASH_ICON_SVG']) requireText('phone-control-center.js', controlCenterCode, expected);
+for (const expected of ["action === 'desktop'", 'return showPhoneDesktopPage()', 'runControlMenuAction', 'HOME_ICON_SVG', 'EDIT_ICON_SVG', 'EMOJI_ICON_SVG', 'TRASH_ICON_SVG']) requireText('phone-control-center.js', controlCenterCode, expected);
+if (controlCenterCode.includes("__pmShowPhonePage?.('desktop')")) {
+  failures.push('phone-control-center.js: desktop action must render through showPhoneDesktopPage before switching pages');
+}
 for (const title of ['API 设置', '主题颜色', '数据备份', '互动场景']) {
   if (controlCenterTemplate.includes(title)) failures.push(`phone-control-center.js: compact control menu must not contain removed shortcut ${title}`);
 }
@@ -636,10 +639,11 @@ for (const expected of ["cancelCommunityGeneration?.('phone-minimized')", "cance
   requireText('phone-lifecycle.js', sourceModuleByName.get('phone-lifecycle.js')?.code || '', expected);
 }
 for (const expected of [
-  'renderDesktop', 'desktop-chat', 'desktop-directory', 'desktop-settings', 'desktop-community',
+  'renderPhoneDesktop', 'desktop-chat', 'desktop-directory', 'desktop-settings', 'desktop-community',
   'desktop-exit', 'data-action="desktop"', 'data-action="exit"', "__pmOpenSettingsTab?.('home')",
   'toggle-scene-pin', 'unpin-scene', 'loadPhoneUiState', 'savePhoneUiState',
-  "showPhonePage('community')", 'restorePhoneUi', 'persistPhoneUiSnapshot',
+  "showPhonePage('community')", 'runDesktopPageTransition', 'showPhoneDesktopPage',
+  'refreshDesktop(scopeId, store)', 'restorePhoneUi', 'persistPhoneUiSnapshot',
 ]) requireText('interactive-scenes.js', interactiveCode, expected);
 for (const forbidden of ['makeOverlay(', 'window.__pmCloseOverlay()']) {
   if (interactiveCode.includes(forbidden)) failures.push(`interactive-scenes.js: phone community must not use overlay path ${forbidden}`);

@@ -3140,6 +3140,49 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
     };
     return { loadStore, invalidateStore };
   }
+  function renderPhoneDesktop(scope = { scenes: {} }, uiScope = { pinnedSceneIds: [] }) {
+    const pins = (uiScope.pinnedSceneIds || []).flatMap((sceneId) => {
+      const scene = scope.scenes?.[sceneId];
+      if (!scene) return [];
+      return [`<div class="pm-desktop-pin"><button type="button" data-action="desktop-open-scene" data-scene-id="${escapeAttr(scene.id)}"><b>${escapeHtml(scene.title)}</b><span>\u7EE7\u7EED\u793E\u533A</span></button><button type="button" data-action="unpin-scene" data-scene-id="${escapeAttr(scene.id)}" aria-label="\u79FB\u9664 ${escapeAttr(scene.title)} \u5FEB\u6377\u65B9\u5F0F">\u79FB\u9664</button></div>`];
+    }).join("");
+    return `<div class="pm-desktop-toolbar"><span>\u5929\u97F3\u5C0F\u7B3A</span><button type="button" data-action="desktop-exit" aria-label="\u9000\u51FA\u624B\u673A" title="\u9000\u51FA\u624B\u673A">${CLOSE_ICON_SVG}</button></div>
+        <div class="pm-desktop-grid" aria-label="\u5E94\u7528">
+            <button type="button" class="pm-desktop-app" data-action="desktop-chat" aria-label="\u804A\u5929" title="\u804A\u5929">${CHAT_ICON_SVG}</button>
+            <button type="button" class="pm-desktop-app" data-action="desktop-directory" aria-label="\u8054\u7CFB\u4EBA" title="\u8054\u7CFB\u4EBA">${CONTACTS_ICON_SVG}</button>
+            <button type="button" class="pm-desktop-app" data-action="desktop-settings" aria-label="\u8BBE\u7F6E" title="\u8BBE\u7F6E">${SETTINGS_ICON_SVG}</button>
+            <button type="button" class="pm-desktop-app" data-action="desktop-community" aria-label="\u793E\u533A" title="\u793E\u533A">${COMMUNITY_ICON_SVG}</button>
+        </div>
+        <section class="pm-desktop-pins"><h3>\u56FA\u5B9A\u793E\u533A</h3>${pins || "<p>\u5728\u793E\u533A\u4E2D\u56FA\u5B9A\u573A\u666F\u540E\uFF0C\u4F1A\u663E\u793A\u5728\u8FD9\u91CC\u3002</p>"}</section>`;
+  }
+  async function runDesktopPageTransition({
+    scopeId,
+    loadStore,
+    updatePhoneUi,
+    refreshDesktop,
+    showPhonePage,
+    clearOpenScene,
+    isCurrent = () => true,
+    getCurrentPage = () => "chat"
+  }) {
+    const validScope = !!scopeId && scopeId !== "sms_unknown__default";
+    const store = validScope ? await loadStore() : null;
+    if (!isCurrent()) return false;
+    if (!refreshDesktop(scopeId, store)) throw new Error("\u684C\u9762\u5185\u5BB9\u6E32\u67D3\u5931\u8D25");
+    if (!isCurrent()) return false;
+    const previousPage = getCurrentPage();
+    if (!showPhonePage("desktop")) throw new Error("\u684C\u9762\u9875\u9762\u4E0D\u53EF\u7528");
+    try {
+      if (validScope) updatePhoneUi(scopeId, store);
+    } catch (error) {
+      const ownsDesktopPage = isCurrent() && getCurrentPage() === "desktop";
+      if (ownsDesktopPage && previousPage && previousPage !== "desktop") showPhonePage(previousPage);
+      throw error;
+    }
+    if (!isCurrent() || getCurrentPage() !== "desktop") return false;
+    clearOpenScene();
+    return true;
+  }
   function installInteractiveScenes(_state, deps) {
     const { getCtx, getStorageId: getStorageId2, getUserPersona: getUserPersona2, gatherContext: gatherContext2, callAI } = deps;
     const runtime = {
@@ -3254,30 +3297,33 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
       setStatus(message);
       if (!document.querySelector(".pm-scene-status")) alert(message);
     };
-    function renderDesktop(scope, uiScope) {
-      const pins = uiScope.pinnedSceneIds.flatMap((sceneId) => {
-        const scene = scope.scenes[sceneId];
-        if (!scene) return [];
-        return [`<div class="pm-desktop-pin"><button type="button" data-action="desktop-open-scene" data-scene-id="${escapeAttr(scene.id)}"><b>${escapeHtml(scene.title)}</b><span>\u7EE7\u7EED\u793E\u533A</span></button><button type="button" data-action="unpin-scene" data-scene-id="${escapeAttr(scene.id)}" aria-label="\u79FB\u9664 ${escapeAttr(scene.title)} \u5FEB\u6377\u65B9\u5F0F">\u79FB\u9664</button></div>`];
-      }).join("");
-      return `<div class="pm-desktop-toolbar"><span>\u5929\u97F3\u5C0F\u7B3A</span><button type="button" data-action="desktop-exit" aria-label="\u9000\u51FA\u624B\u673A" title="\u9000\u51FA\u624B\u673A">${CLOSE_ICON_SVG}</button></div>
-            <div class="pm-desktop-grid" aria-label="\u5E94\u7528">
-                <button type="button" class="pm-desktop-app" data-action="desktop-chat" aria-label="\u804A\u5929" title="\u804A\u5929">${CHAT_ICON_SVG}</button>
-                <button type="button" class="pm-desktop-app" data-action="desktop-directory" aria-label="\u8054\u7CFB\u4EBA" title="\u8054\u7CFB\u4EBA">${CONTACTS_ICON_SVG}</button>
-                <button type="button" class="pm-desktop-app" data-action="desktop-settings" aria-label="\u8BBE\u7F6E" title="\u8BBE\u7F6E">${SETTINGS_ICON_SVG}</button>
-                <button type="button" class="pm-desktop-app" data-action="desktop-community" aria-label="\u793E\u533A" title="\u793E\u533A">${COMMUNITY_ICON_SVG}</button>
-            </div>
-            <section class="pm-desktop-pins"><h3>\u56FA\u5B9A\u793E\u533A</h3>${pins || "<p>\u5728\u793E\u533A\u4E2D\u56FA\u5B9A\u573A\u666F\u540E\uFF0C\u4F1A\u663E\u793A\u5728\u8FD9\u91CC\u3002</p>"}</section>`;
-    }
     function renderPinButton(sceneId, uiScope, className = "") {
       const pinned = uiScope.pinnedSceneIds.includes(sceneId);
       return `<button type="button" class="${className}" data-action="toggle-scene-pin" data-scene-id="${escapeAttr(sceneId)}" aria-pressed="${pinned}">${pinned ? "\u53D6\u6D88\u56FA\u5B9A" : "\u56FA\u5B9A"}</button>`;
     }
     function refreshDesktop(scopeId = getStorageId2(), store = runtime.store) {
-      if (!store || !scopeId || scopeId === "sms_unknown__default") return false;
-      const scope = getScope(store, scopeId);
-      return renderInto(".pm-desktop-page", renderDesktop(scope, phoneScope(scopeId, store)));
+      const validScope = !!store && !!scopeId && scopeId !== "sms_unknown__default";
+      const scope = validScope ? getScope(store, scopeId) : { scenes: {} };
+      const uiScope = validScope ? phoneScope(scopeId, store) : { pinnedSceneIds: [], lastPage: "desktop", lastSceneId: null, lastTab: "feed" };
+      return renderInto(".pm-desktop-page", renderPhoneDesktop(scope, uiScope));
     }
+    const showPhoneDesktopPage = () => {
+      const scopeId = getStorageId2();
+      const phoneWindow = _state.phoneWindow;
+      return runDesktopPageTransition({
+        scopeId,
+        loadStore,
+        updatePhoneUi: (scopeId2, store) => updatePhoneUiScope(scopeId2, { lastPage: "desktop", lastSceneId: null }, store),
+        refreshDesktop,
+        showPhonePage,
+        clearOpenScene: () => {
+          invalidate();
+          runtime.openSceneId = null;
+        },
+        isCurrent: () => _state.phoneActive && _state.phoneWindow === phoneWindow && getStorageId2() === scopeId,
+        getCurrentPage: () => phoneWindow?.querySelector(".pm-main-ui")?.dataset.page || null
+      });
+    };
     function renderCommunityLauncher(scopeId, store = runtime.store) {
       const scope = getScope(store, scopeId);
       runtime.openSceneId = null;
@@ -3548,12 +3594,7 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
         return;
       }
       if (action === "desktop") {
-        invalidate();
-        runtime.openSceneId = null;
-        const scopeId = getStorageId2();
-        updatePhoneUiScope(scopeId, { lastPage: "desktop", lastSceneId: null });
-        refreshDesktop(scopeId);
-        showPhonePage("desktop");
+        await showPhoneDesktopPage();
         return;
       }
       if (action === "preset") {
@@ -3766,9 +3807,11 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
       observeCommunityTurn: (chat) => communityRunner.observe(chat),
       cancelCommunityGeneration: invalidate,
       bindPhonePageUi,
+      showPhoneDesktopPage,
       async restorePhoneUi() {
         const scopeId = getStorageId2();
         if (!scopeId || scopeId === "sms_unknown__default") {
+          refreshDesktop(scopeId, null);
           showPhonePage("desktop");
           return;
         }
@@ -5671,6 +5714,10 @@ ${antiFluff}`;
   }
 
   // src/phone-control-center.js
+  function runControlMenuAction(action, runAction, reportDesktopError) {
+    if (action !== "desktop") return runAction(action);
+    return Promise.resolve().then(() => runAction(action)).catch(reportDesktopError);
+  }
   function installPhoneControlCenter(state, deps) {
     const {
       runtime,
@@ -5678,6 +5725,7 @@ ${antiFluff}`;
       makeOverlay,
       parsePendingInput,
       renderPendingConversation,
+      showPhoneDesktopPage,
       syncGenerationControls
     } = deps;
     const CONTROL_MENU_ID = "pm-control-menu";
@@ -5765,13 +5813,15 @@ ${antiFluff}`;
       else if (action === "emoji") window.__pmShowEmojiManager();
       else if (action === "group") window.__pmEditGroup();
       else if (action === "delete") window.__pmStartDeleteMode();
-      else if (action === "desktop") window.__pmShowPhonePage?.("desktop");
+      else if (action === "desktop") return showPhoneDesktopPage();
     }
     function bindControlMenu(menu, anchor) {
       menu.addEventListener("click", (event) => {
         const button = event.target.closest("button[data-action]");
         if (!button || !menu.contains(button)) return;
-        runControlAction(button.dataset.action);
+        runControlMenuAction(button.dataset.action, runControlAction, (error) => {
+          alert(`\u8FD4\u56DE\u684C\u9762\u5931\u8D25\uFF1A${error?.message || "\u672A\u77E5\u9519\u8BEF"}`);
+        });
       });
       outsideClickHandler = (event) => {
         if (menu.contains(event.target) || anchor.contains(event.target)) return;

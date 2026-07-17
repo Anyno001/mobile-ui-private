@@ -120,6 +120,45 @@ export function createInteractiveStoreLoader({ runtime, load, migrate }) {
     return { loadStore, invalidateStore };
 }
 
+export function renderPhoneDesktop(scope = { scenes: {} }, uiScope = { pinnedSceneIds: [] }) {
+    const pins = (uiScope.pinnedSceneIds || []).flatMap(sceneId => {
+        const scene = scope.scenes?.[sceneId];
+        if (!scene) return [];
+        return [`<div class="pm-desktop-pin"><button type="button" data-action="desktop-open-scene" data-scene-id="${escapeAttr(scene.id)}"><b>${escapeHtml(scene.title)}</b><span>继续社区</span></button><button type="button" data-action="unpin-scene" data-scene-id="${escapeAttr(scene.id)}" aria-label="移除 ${escapeAttr(scene.title)} 快捷方式">移除</button></div>`];
+    }).join('');
+    return `<div class="pm-desktop-toolbar"><span>天音小笺</span><button type="button" data-action="desktop-exit" aria-label="退出手机" title="退出手机">${CLOSE_ICON_SVG}</button></div>
+        <div class="pm-desktop-grid" aria-label="应用">
+            <button type="button" class="pm-desktop-app" data-action="desktop-chat" aria-label="聊天" title="聊天">${CHAT_ICON_SVG}</button>
+            <button type="button" class="pm-desktop-app" data-action="desktop-directory" aria-label="联系人" title="联系人">${CONTACTS_ICON_SVG}</button>
+            <button type="button" class="pm-desktop-app" data-action="desktop-settings" aria-label="设置" title="设置">${SETTINGS_ICON_SVG}</button>
+            <button type="button" class="pm-desktop-app" data-action="desktop-community" aria-label="社区" title="社区">${COMMUNITY_ICON_SVG}</button>
+        </div>
+        <section class="pm-desktop-pins"><h3>固定社区</h3>${pins || '<p>在社区中固定场景后，会显示在这里。</p>'}</section>`;
+}
+
+export async function runDesktopPageTransition({
+    scopeId, loadStore, updatePhoneUi, refreshDesktop, showPhonePage, clearOpenScene,
+    isCurrent = () => true, getCurrentPage = () => 'chat',
+}) {
+    const validScope = !!scopeId && scopeId !== 'sms_unknown__default';
+    const store = validScope ? await loadStore() : null;
+    if (!isCurrent()) return false;
+    if (!refreshDesktop(scopeId, store)) throw new Error('桌面内容渲染失败');
+    if (!isCurrent()) return false;
+    const previousPage = getCurrentPage();
+    if (!showPhonePage('desktop')) throw new Error('桌面页面不可用');
+    try {
+        if (validScope) updatePhoneUi(scopeId, store);
+    } catch (error) {
+        const ownsDesktopPage = isCurrent() && getCurrentPage() === 'desktop';
+        if (ownsDesktopPage && previousPage && previousPage !== 'desktop') showPhonePage(previousPage);
+        throw error;
+    }
+    if (!isCurrent() || getCurrentPage() !== 'desktop') return false;
+    clearOpenScene();
+    return true;
+}
+
 export function installInteractiveScenes(_state, deps) {
     const { getCtx, getStorageId, getUserPersona, gatherContext, callAI } = deps;
     const runtime = {
@@ -223,32 +262,33 @@ export function installInteractiveScenes(_state, deps) {
         if (!document.querySelector('.pm-scene-status')) alert(message);
     };
 
-    function renderDesktop(scope, uiScope) {
-        const pins = uiScope.pinnedSceneIds.flatMap(sceneId => {
-            const scene = scope.scenes[sceneId];
-            if (!scene) return [];
-            return [`<div class="pm-desktop-pin"><button type="button" data-action="desktop-open-scene" data-scene-id="${escapeAttr(scene.id)}"><b>${escapeHtml(scene.title)}</b><span>继续社区</span></button><button type="button" data-action="unpin-scene" data-scene-id="${escapeAttr(scene.id)}" aria-label="移除 ${escapeAttr(scene.title)} 快捷方式">移除</button></div>`];
-        }).join('');
-        return `<div class="pm-desktop-toolbar"><span>天音小笺</span><button type="button" data-action="desktop-exit" aria-label="退出手机" title="退出手机">${CLOSE_ICON_SVG}</button></div>
-            <div class="pm-desktop-grid" aria-label="应用">
-                <button type="button" class="pm-desktop-app" data-action="desktop-chat" aria-label="聊天" title="聊天">${CHAT_ICON_SVG}</button>
-                <button type="button" class="pm-desktop-app" data-action="desktop-directory" aria-label="联系人" title="联系人">${CONTACTS_ICON_SVG}</button>
-                <button type="button" class="pm-desktop-app" data-action="desktop-settings" aria-label="设置" title="设置">${SETTINGS_ICON_SVG}</button>
-                <button type="button" class="pm-desktop-app" data-action="desktop-community" aria-label="社区" title="社区">${COMMUNITY_ICON_SVG}</button>
-            </div>
-            <section class="pm-desktop-pins"><h3>固定社区</h3>${pins || '<p>在社区中固定场景后，会显示在这里。</p>'}</section>`;
-    }
-
     function renderPinButton(sceneId, uiScope, className = '') {
         const pinned = uiScope.pinnedSceneIds.includes(sceneId);
         return `<button type="button" class="${className}" data-action="toggle-scene-pin" data-scene-id="${escapeAttr(sceneId)}" aria-pressed="${pinned}">${pinned ? '取消固定' : '固定'}</button>`;
     }
 
     function refreshDesktop(scopeId = getStorageId(), store = runtime.store) {
-        if (!store || !scopeId || scopeId === 'sms_unknown__default') return false;
-        const scope = getScope(store, scopeId);
-        return renderInto('.pm-desktop-page', renderDesktop(scope, phoneScope(scopeId, store)));
+        const validScope = !!store && !!scopeId && scopeId !== 'sms_unknown__default';
+        const scope = validScope ? getScope(store, scopeId) : { scenes: {} };
+        const uiScope = validScope ? phoneScope(scopeId, store)
+            : { pinnedSceneIds: [], lastPage: 'desktop', lastSceneId: null, lastTab: 'feed' };
+        return renderInto('.pm-desktop-page', renderPhoneDesktop(scope, uiScope));
     }
+
+    const showPhoneDesktopPage = () => {
+        const scopeId = getStorageId();
+        const phoneWindow = _state.phoneWindow;
+        return runDesktopPageTransition({
+        scopeId,
+        loadStore,
+        updatePhoneUi: (scopeId, store) => updatePhoneUiScope(scopeId, { lastPage: 'desktop', lastSceneId: null }, store),
+        refreshDesktop,
+        showPhonePage,
+        clearOpenScene: () => { invalidate(); runtime.openSceneId = null; },
+        isCurrent: () => _state.phoneActive && _state.phoneWindow === phoneWindow && getStorageId() === scopeId,
+        getCurrentPage: () => phoneWindow?.querySelector('.pm-main-ui')?.dataset.page || null,
+    });
+    };
 
     function renderCommunityLauncher(scopeId, store = runtime.store) {
         const scope = getScope(store, scopeId);
@@ -525,12 +565,7 @@ export function installInteractiveScenes(_state, deps) {
             return;
         }
         if (action === 'desktop') {
-            invalidate();
-            runtime.openSceneId = null;
-            const scopeId = getStorageId();
-            updatePhoneUiScope(scopeId, { lastPage: 'desktop', lastSceneId: null });
-            refreshDesktop(scopeId);
-            showPhonePage('desktop');
+            await showPhoneDesktopPage();
             return;
         }
         if (action === 'preset') {
@@ -710,9 +745,11 @@ export function installInteractiveScenes(_state, deps) {
         observeCommunityTurn: chat => communityRunner.observe(chat),
         cancelCommunityGeneration: invalidate,
         bindPhonePageUi,
+        showPhoneDesktopPage,
         async restorePhoneUi() {
             const scopeId = getStorageId();
             if (!scopeId || scopeId === 'sms_unknown__default') {
+                refreshDesktop(scopeId, null);
                 showPhonePage('desktop');
                 return;
             }

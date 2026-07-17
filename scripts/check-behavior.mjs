@@ -15,6 +15,8 @@ import {
 } from '../src/storage.js';
 import { applyConversationInjections } from '../src/phone-injection.js';
 import { deriveInteractiveActorId, normalizeInteractiveStore } from '../src/interactive-scene-model.js';
+import { renderPhoneDesktop, runDesktopPageTransition } from '../src/interactive-scenes.js';
+import { runControlMenuAction } from '../src/phone-control-center.js';
 import {
     createBackupStateHandlers, installSettingsUi, parseBackupData, runBackgroundTransaction, runBackupTransaction,
 } from '../src/settings-ui.js';
@@ -1616,6 +1618,119 @@ assert.equal(transientCloseCount, 4);
 phoneRoot = null;
 assert.equal(pageController.show('chat'), false);
 assert.equal(pageController.current(), null);
+
+const baseDesktopHtml = renderPhoneDesktop({ scenes: {} }, { pinnedSceneIds: [] });
+assert.ok(baseDesktopHtml.length > 0, '无有效会话时基础桌面不得为空');
+for (const action of ['desktop-chat', 'desktop-directory', 'desktop-settings', 'desktop-community', 'desktop-exit']) {
+    assert.ok(baseDesktopHtml.includes(`data-action="${action}"`), `基础桌面缺少 ${action} 入口`);
+}
+
+const desktopTransitionCalls = [];
+const desktopStore = { scopes: { story: { activeSceneId: null, sceneOrder: [], scenes: {}, actors: {} } } };
+let desktopCurrentPage = 'chat';
+assert.equal(await runDesktopPageTransition({
+    scopeId: 'story',
+    loadStore: async () => { desktopTransitionCalls.push('load'); return desktopStore; },
+    clearOpenScene: () => desktopTransitionCalls.push('clear'),
+    refreshDesktop: (scopeId, store) => { desktopTransitionCalls.push(['render', scopeId, store]); return true; },
+    updatePhoneUi: (scopeId, store) => desktopTransitionCalls.push(['persist', scopeId, store]),
+    showPhonePage: page => { desktopTransitionCalls.push(['show', page]); desktopCurrentPage = page; return true; },
+    getCurrentPage: () => desktopCurrentPage,
+}), true);
+assert.deepEqual(desktopTransitionCalls, [
+    'load',
+    ['render', 'story', desktopStore],
+    ['show', 'desktop'],
+    ['persist', 'story', desktopStore],
+    'clear',
+]);
+
+const invalidScopeDesktopCalls = [];
+let invalidScopeCurrentPage = 'chat';
+assert.equal(await runDesktopPageTransition({
+    scopeId: 'sms_unknown__default',
+    loadStore: async () => { throw new Error('invalid scope must not load store'); },
+    clearOpenScene: () => invalidScopeDesktopCalls.push('clear'),
+    refreshDesktop: (scopeId, store) => { invalidScopeDesktopCalls.push(['render', scopeId, store]); return true; },
+    updatePhoneUi: () => { throw new Error('invalid scope must not persist state'); },
+    showPhonePage: page => { invalidScopeDesktopCalls.push(['show', page]); invalidScopeCurrentPage = page; return true; },
+    getCurrentPage: () => invalidScopeCurrentPage,
+}), true);
+assert.deepEqual(invalidScopeDesktopCalls, [
+    ['render', 'sms_unknown__default', null],
+    ['show', 'desktop'],
+    'clear',
+]);
+
+const failedDesktopCalls = [];
+await assert.rejects(runDesktopPageTransition({
+    scopeId: 'story',
+    loadStore: async () => { failedDesktopCalls.push('load'); return desktopStore; },
+    clearOpenScene: () => failedDesktopCalls.push('clear'),
+    refreshDesktop: () => { failedDesktopCalls.push('render'); return false; },
+    updatePhoneUi: () => failedDesktopCalls.push('persist'),
+    showPhonePage: () => { failedDesktopCalls.push('show'); return true; },
+}), /桌面内容渲染失败/);
+assert.deepEqual(failedDesktopCalls, ['load', 'render']);
+
+const unavailableDesktopCalls = [];
+let unavailableCurrentPage = 'chat';
+await assert.rejects(runDesktopPageTransition({
+    scopeId: 'story',
+    loadStore: async () => desktopStore,
+    clearOpenScene: () => unavailableDesktopCalls.push('clear'),
+    refreshDesktop: () => { unavailableDesktopCalls.push('render'); return true; },
+    updatePhoneUi: () => unavailableDesktopCalls.push('persist'),
+    showPhonePage: () => { unavailableDesktopCalls.push('show'); return false; },
+    getCurrentPage: () => unavailableCurrentPage,
+}), /桌面页面不可用/);
+assert.deepEqual(unavailableDesktopCalls, ['render', 'show']);
+
+const rollbackDesktopCalls = [];
+let rollbackCurrentPage = 'chat';
+await assert.rejects(runDesktopPageTransition({
+    scopeId: 'story',
+    loadStore: async () => desktopStore,
+    clearOpenScene: () => rollbackDesktopCalls.push('clear'),
+    refreshDesktop: () => { rollbackDesktopCalls.push('render'); return true; },
+    updatePhoneUi: () => { rollbackDesktopCalls.push('persist'); throw new Error('quota'); },
+    showPhonePage: page => { rollbackDesktopCalls.push(['show', page]); rollbackCurrentPage = page; return true; },
+    getCurrentPage: () => rollbackCurrentPage,
+}), /quota/);
+assert.deepEqual(rollbackDesktopCalls, ['render', ['show', 'desktop'], 'persist', ['show', 'chat']]);
+
+const supersededRollbackCalls = [];
+let supersededCurrentPage = 'chat';
+await assert.rejects(runDesktopPageTransition({
+    scopeId: 'story',
+    loadStore: async () => desktopStore,
+    clearOpenScene: () => supersededRollbackCalls.push('clear'),
+    refreshDesktop: () => { supersededRollbackCalls.push('render'); return true; },
+    updatePhoneUi: () => {
+        supersededRollbackCalls.push('persist');
+        supersededCurrentPage = 'community';
+        throw new Error('quota after navigation');
+    },
+    showPhonePage: page => { supersededRollbackCalls.push(['show', page]); supersededCurrentPage = page; return true; },
+    getCurrentPage: () => supersededCurrentPage,
+}), /quota after navigation/);
+assert.deepEqual(supersededRollbackCalls, ['render', ['show', 'desktop'], 'persist']);
+assert.equal(supersededCurrentPage, 'community', '持久化失败不得覆盖事务期间发生的新导航');
+
+let desktopErrorMessage = '';
+await runControlMenuAction(
+    'desktop',
+    () => Promise.reject(new Error('desktop unavailable')),
+    error => { desktopErrorMessage = error.message; },
+);
+assert.equal(desktopErrorMessage, 'desktop unavailable');
+let nonDesktopErrorReported = false;
+assert.throws(() => runControlMenuAction(
+    'settings',
+    () => { throw new Error('settings unavailable'); },
+    () => { nonDesktopErrorReported = true; },
+), /settings unavailable/);
+assert.equal(nonDesktopErrorReported, false, '非桌面 action 不得误报为返回桌面失败');
 
 const finalizerCalls = [];
 assert.throws(() => finalizeDeletedScene({

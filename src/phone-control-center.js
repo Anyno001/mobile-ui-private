@@ -7,10 +7,17 @@ import {
     clearPendingMessages, getPendingMessages, removePendingMessage, updatePendingMessage,
 } from './pending-messages.js';
 
+export function runControlMenuAction(action, runAction, reportDesktopError) {
+    if (action !== 'desktop') return runAction(action);
+    return Promise.resolve()
+        .then(() => runAction(action))
+        .catch(reportDesktopError);
+}
+
 export function installPhoneControlCenter(state, deps) {
     const {
         runtime, getStorageId, makeOverlay, parsePendingInput,
-        renderPendingConversation, syncGenerationControls,
+        renderPendingConversation, showPhoneDesktopPage, syncGenerationControls,
     } = deps;
 
     const CONTROL_MENU_ID = 'pm-control-menu';
@@ -103,14 +110,16 @@ export function installPhoneControlCenter(state, deps) {
         else if (action === 'emoji') window.__pmShowEmojiManager();
         else if (action === 'group') window.__pmEditGroup();
         else if (action === 'delete') window.__pmStartDeleteMode();
-        else if (action === 'desktop') window.__pmShowPhonePage?.('desktop');
+        else if (action === 'desktop') return showPhoneDesktopPage();
     }
 
     function bindControlMenu(menu, anchor) {
         menu.addEventListener('click', event => {
             const button = event.target.closest('button[data-action]');
             if (!button || !menu.contains(button)) return;
-            runControlAction(button.dataset.action);
+            runControlMenuAction(button.dataset.action, runControlAction, error => {
+                alert(`返回桌面失败：${error?.message || '未知错误'}`);
+            });
         });
         outsideClickHandler = event => {
             if (menu.contains(event.target) || anchor.contains(event.target)) return;
