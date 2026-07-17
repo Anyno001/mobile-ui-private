@@ -16,6 +16,7 @@ import {
 import { applyConversationInjections } from '../src/phone-injection.js';
 import { deriveInteractiveActorId, normalizeInteractiveStore } from '../src/interactive-scene-model.js';
 import { renderPhoneDesktop, runDesktopPageTransition } from '../src/interactive-scenes.js';
+import { getDanmakuTone, renderCommunityLauncher } from '../src/interactive-scene-views.js';
 import { runControlMenuAction } from '../src/phone-control-center.js';
 import {
     createBackupStateHandlers, installSettingsUi, parseBackupData, runBackgroundTransaction, runBackupTransaction,
@@ -472,6 +473,7 @@ assert.equal(JSON.parse(localValues.get('ST_SMS_API_PROFILES'))[0].apiUrl, 'http
 
 const uiAlerts = [];
 const uiElements = new Map([
+    ['pm-custom-title', { value: '  雨夜电台  ' }],
     ['pm-custom-right', { value: '#123456' }],
     ['pm-custom-left', { value: '#654321' }],
     ['pm-border-color', { value: '#abcdef' }],
@@ -494,13 +496,14 @@ installSettingsUi({
     getInteractiveStore: async () => ({ scopes: {} }),
 });
 
-const baseTheme = { preset: 'default', customRight: '', customLeft: '', borderColor: '#1a1a1a', darkMode: 'light' };
+const baseTheme = { preset: 'default', customRight: '', customLeft: '', borderColor: '#1a1a1a', darkMode: 'light', customTitle: '' };
 for (const [handler, setup, invoke] of [
     ['__pmSetDarkMode', () => {}, () => window.__pmSetDarkMode('dark')],
     ['__pmSetPreset', () => {}, () => window.__pmSetPreset('blue')],
     ['__pmSetCustomColor', () => {}, () => window.__pmSetCustomColor()],
     ['__pmClearCustomColor', () => { window.__pmTheme = { ...window.__pmTheme, preset: 'custom', customRight: '#111111', customLeft: '#222222' }; }, () => window.__pmClearCustomColor()],
     ['__pmSetBorderColor', () => {}, () => window.__pmSetBorderColor()],
+    ['__pmSetCustomTitle', () => { uiElements.get('pm-custom-title').value = '  雨夜电台  '; }, () => window.__pmSetCustomTitle()],
 ]) {
     window.__pmTheme = structuredClone(baseTheme);
     setup();
@@ -516,6 +519,12 @@ assert.equal(window.__pmSetDarkMode('dark'), true);
 assert.equal(window.__pmTheme.darkMode, 'dark');
 assert.equal(JSON.parse(localValues.get('ST_SMS_THEME')).darkMode, 'dark');
 assert.equal(appliedThemes.at(-1).darkMode, 'dark');
+window.__pmTheme = structuredClone(baseTheme);
+uiElements.get('pm-custom-title').value = '  雨夜电台  ';
+assert.equal(window.__pmSetCustomTitle(), true);
+assert.equal(window.__pmTheme.customTitle, '雨夜电台');
+assert.equal(JSON.parse(localValues.get('ST_SMS_THEME')).customTitle, '雨夜电台');
+assert.equal(appliedThemes.at(-1).customTitle, '雨夜电台');
 
 window.__pmProfiles = [{ apiUrl: 'https://old.example', apiKey: 'old-key', model: 'old-model' }];
 localStorageControl.failSet.add('ST_SMS_API_PROFILES');
@@ -1621,9 +1630,36 @@ assert.equal(pageController.current(), null);
 
 const baseDesktopHtml = renderPhoneDesktop({ scenes: {} }, { pinnedSceneIds: [] });
 assert.ok(baseDesktopHtml.length > 0, '无有效会话时基础桌面不得为空');
+assert.match(baseDesktopHtml, /<span>天音小笺<\/span>/, '旧主题或无主题时桌面标题必须回退为品牌名');
 for (const action of ['desktop-chat', 'desktop-directory', 'desktop-settings', 'desktop-community', 'desktop-exit']) {
     assert.ok(baseDesktopHtml.includes(`data-action="${action}"`), `基础桌面缺少 ${action} 入口`);
 }
+globalThis.window = { __pmTheme: { customTitle: '雨夜 & 电台' } };
+assert.match(renderPhoneDesktop({ scenes: {} }, { pinnedSceneIds: [] }), /<span>雨夜 &amp; 电台<\/span>/, '桌面必须渲染并转义自定义标题');
+delete globalThis.window;
+
+assert.deepEqual(
+    ['a', 'b', 'c', 'd'].map(id => getDanmakuTone({ id })),
+    ['pink', 'cyan', 'gold', 'blue'],
+    '稳定 hash 应覆盖蓝、粉、青、金四种色阶',
+);
+const fallbackDanmaku = { authorNameSnapshot: '访客', content: '晚上好' };
+assert.equal(getDanmakuTone(fallbackDanmaku), getDanmakuTone({ ...fallbackDanmaku }), '缺失 id 时作者与内容组合必须稳定分色');
+assert.ok(['blue', 'pink', 'cyan', 'gold'].includes(getDanmakuTone(fallbackDanmaku)), '弹幕色阶必须属于合同允许集合');
+
+const launcherScope = {
+    sceneOrder: ['scene-card'],
+    scenes: {
+        'scene-card': { id: 'scene-card', title: '雨夜社区', preset: 'weibo', posts: [] },
+    },
+};
+const unpinnedLauncherHtml = renderCommunityLauncher(launcherScope, { pinnedSceneIds: [] });
+assert.match(unpinnedLauncherHtml, /class="pm-scene-card-actions"/);
+assert.match(unpinnedLauncherHtml, /data-action="toggle-scene-pin"[^>]*aria-pressed="false"[^>]*>固定<\/button>/);
+assert.match(unpinnedLauncherHtml, /data-action="delete-scene"[^>]*>删除<\/button>/);
+assert.match(unpinnedLauncherHtml, /class="pm-scene-card-open"[^>]*>[\s\S]*?<\/button><div class="pm-scene-card-actions">/, '场景卡片操作必须位于打开场景按钮之外');
+const pinnedLauncherHtml = renderCommunityLauncher(launcherScope, { pinnedSceneIds: ['scene-card'] });
+assert.match(pinnedLauncherHtml, /data-action="toggle-scene-pin"[^>]*aria-pressed="true"[^>]*>取消固定<\/button>/);
 
 const desktopTransitionCalls = [];
 const desktopStore = { scopes: { story: { activeSceneId: null, sceneOrder: [], scenes: {}, actors: {} } } };
@@ -1831,11 +1867,13 @@ await assert.rejects(() => runDeleteSceneAction('story', 'scene-cancel', {
 }), /commit-failed/);
 assert.deepEqual(failedCommitCalls, ['invalidate', 'commit']);
 
-let delegatedListener = null;
+const delegatedListeners = new Map();
 let delegatedActionCount = 0;
+let openSceneMenus = [];
 const delegatedErrors = [];
 const desktopApp = { kind: 'desktop' };
 const actionButton = {
+    dataset: { action: 'desktop-chat' },
     closest(selector) {
         if (selector === '#pm-scene-app') return null;
         if (selector === '.pm-desktop-page') return desktopApp;
@@ -1851,10 +1889,10 @@ const actionTarget = {
 const delegatedPhoneRoot = {
     dataset: {},
     addEventListener(type, listener) {
-        assert.equal(type, 'click');
-        assert.equal(delegatedListener, null);
-        delegatedListener = listener;
+        assert.equal(delegatedListeners.has(type), false);
+        delegatedListeners.set(type, listener);
     },
+    querySelectorAll(selector) { assert.equal(selector, '.pm-scene-menu:not([hidden])'); return openSceneMenus.filter(menu => !menu.hidden); },
     contains(node) { return node === actionButton; },
 };
 assert.equal(bindPhonePageActions(
@@ -1867,10 +1905,41 @@ assert.equal(bindPhonePageActions(
     error => delegatedErrors.push(error),
 ), true);
 assert.equal(bindPhonePageActions(delegatedPhoneRoot, () => {}, () => {}), false);
-delegatedListener({ target: actionTarget });
+assert.deepEqual([...delegatedListeners.keys()], ['click', 'keydown']);
+delegatedListeners.get('click')({ target: actionTarget });
 await Promise.resolve();
 assert.equal(delegatedActionCount, 1, '重复绑定后一次点击只能分发一次');
 assert.deepEqual(delegatedErrors, []);
+
+let menuFocused = false;
+let menuExpanded = 'true';
+const menuTrigger = {
+    setAttribute(name, value) { assert.equal(name, 'aria-expanded'); menuExpanded = value; },
+    focus(options) { assert.deepEqual(options, { preventScroll: true }); menuFocused = true; },
+};
+const menuWrap = {
+    querySelector(selector) { assert.equal(selector, '[data-action="more"]'); return menuTrigger; },
+};
+const sceneMenu = {
+    hidden: false,
+    closest(selector) { assert.equal(selector, '.pm-scene-menu-wrap'); return menuWrap; },
+};
+openSceneMenus = [sceneMenu];
+delegatedListeners.get('click')({ target: { closest: () => null } });
+assert.equal(sceneMenu.hidden, true, '点击更多菜单外部必须关闭菜单');
+assert.equal(menuExpanded, 'false');
+
+sceneMenu.hidden = false;
+menuExpanded = 'true';
+let escapePrevented = false;
+delegatedListeners.get('keydown')({
+    key: 'Escape',
+    preventDefault() { escapePrevented = true; },
+});
+assert.equal(sceneMenu.hidden, true, 'Escape 必须关闭更多菜单');
+assert.equal(menuExpanded, 'false');
+assert.equal(escapePrevented, true);
+assert.equal(menuFocused, true, 'Escape 关闭菜单后必须把焦点还给更多按钮');
 
 const groupStore = normalizeGroupMetaStore({
     story: {

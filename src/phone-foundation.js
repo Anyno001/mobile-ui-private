@@ -56,6 +56,7 @@ export function installPhoneFoundation(state, deps) {
         layout: 'standard',
         darkMode: 'light',
         ambientStatusEnabled: false,
+        customTitle: '',
     };
     window.__pmBgGlobal = window.__pmBgGlobal || '';
     window.__pmBgLocal = window.__pmBgLocal || {};
@@ -121,6 +122,8 @@ export function installPhoneFoundation(state, deps) {
         const t = window.__pmTheme || {}, p = THEME_PRESETS[t.preset] || THEME_PRESETS.default;
         const darkMode = t.darkMode || 'light';
         document.getElementById('pm-overlay')?.setAttribute('data-theme', darkMode);
+        const desktopTitle = state.phoneWindow?.querySelector('.pm-desktop-toolbar span');
+        if (desktopTitle) desktopTitle.textContent = String(t.customTitle || '').trim() || '天音小笺';
         const el = state.phoneWindow; if (!el) return;
         const rBg = t.customRight || p.right, lBg = t.customLeft || p.left;
         const rTxt = t.customRight ? contrastText(t.customRight) : p.rightText;

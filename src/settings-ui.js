@@ -396,7 +396,8 @@ export function installSettingsUi(deps) {
             const value = el.textContent.includes('夜间') ? 'dark' : el.textContent.includes('日间') ? 'light' : '';
             if (value) el.classList.toggle('pm-layout-active', value === theme.darkMode);
         });
-        const right = document.getElementById('pm-custom-right'), left = document.getElementById('pm-custom-left'), border = document.getElementById('pm-border-color');
+        const title = document.getElementById('pm-custom-title'), right = document.getElementById('pm-custom-right'), left = document.getElementById('pm-custom-left'), border = document.getElementById('pm-border-color');
+        if (title) title.value = theme.customTitle || '';
         if (right) right.value = theme.customRight || '#007aff'; if (left) left.value = theme.customLeft || '#e9e9eb'; if (border) border.value = theme.borderColor || '#1a1a1a';
     };
     const persistThemeMutation = mutate => {
@@ -532,7 +533,7 @@ export function installSettingsUi(deps) {
             await clearPluginData({ afterClear: async () => {
                 await applyBackupState({
                     histories: {}, config: { apiUrl: '', apiKey: '', model: '', useIndependent: false },
-                    theme: { preset: 'default', customRight: '', customLeft: '', borderColor: '', layout: 'standard', darkMode: 'light', ambientStatusEnabled: false },
+                    theme: { preset: 'default', customRight: '', customLeft: '', borderColor: '', layout: 'standard', darkMode: 'light', ambientStatusEnabled: false, customTitle: '' },
                     profiles: [], groupMeta: {}, pokeConfig: {}, bidirectional: {}, emojis: [], characterBehavior: {},
                     wordyLimit: false, bgGlobal: '', bgLocal: {}, interactiveScenes: normalizeInteractiveStore(null),
                     phoneUiState: normalizePhoneUiState(null), ambientStatus: normalizeAmbientStatus(),
@@ -640,9 +641,8 @@ export function installSettingsUi(deps) {
         window.__pmTheme.customRight = ''; window.__pmTheme.customLeft = '';
         window.__pmTheme.preset = 'default';
     });
-    window.__pmSetBorderColor = () => persistThemeMutation(() => {
-        window.__pmTheme.borderColor = document.getElementById('pm-border-color')?.value || '#1a1a1a';
-    });
+    window.__pmSetBorderColor = () => persistThemeMutation(() => { window.__pmTheme.borderColor = document.getElementById('pm-border-color')?.value || '#1a1a1a'; });
+    window.__pmSetCustomTitle = () => persistThemeMutation(() => { window.__pmTheme.customTitle = (document.getElementById('pm-custom-title')?.value || '').trim().slice(0, 20); });
     window.__pmUploadBg = (input, scope) => {
         const file = input.files?.[0]; if (!file) return;
         const reader = new FileReader();

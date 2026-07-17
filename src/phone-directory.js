@@ -278,13 +278,12 @@ export function installPhoneDirectory(state, deps) {
     <div class="pm-modal">
     <div class="pm-modal-header">
       <span></span>
-      <b>联系人</b>
-      <span style="display:flex;align-items:center;gap:10px;">
-        <span id="pm-autogen-btn" onclick="window.__pmConfirmAutoGen()" title="AI 自动生成联系人" style="cursor:pointer;display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:50%;transition:background .15s;" onmouseenter="this.style.background='rgba(0,122,255,0.1)'" onmouseleave="this.style.background='transparent'">
+      <b class="pm-header-title">联系人
+        <button type="button" id="pm-autogen-btn" class="pm-header-autogen" onclick="window.__pmConfirmAutoGen()" title="AI 自动生成联系人" aria-label="AI 自动生成联系人">
           ${REFRESH_ICON_SVG}
-        </span>
-        <button type="button" onclick="window.__pmCloseOverlay()" class="pm-modal-close" title="关闭" aria-label="关闭">${CLOSE_ICON_SVG}</button>
-      </span>
+        </button>
+      </b>
+      <button type="button" onclick="window.__pmCloseOverlay()" class="pm-modal-close" title="关闭" aria-label="关闭">${CLOSE_ICON_SVG}</button>
     </div>
     <div class="pm-bi-bar"><span>勾选会话可注入主楼；群聊资源参数在群聊设置中配置</span><span class="pm-bi-tip">已选 ${checked.length}</span></div>
     <div class="pm-modal-list">

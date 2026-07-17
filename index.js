@@ -2279,6 +2279,8 @@ ${mainChatText}` : "",
   var MENU_ICON_SVG = icon('<path d="M4 6h16M4 12h16M4 18h16"/>');
   var CLOSE_ICON_SVG = icon('<path d="M6 6l12 12M18 6L6 18"/>');
   var HOME_ICON_SVG = icon('<path d="M3 11.5L12 4l9 7.5"/><path d="M5.5 10.5V20h13v-9.5"/><path d="M9.5 20v-6h5v6"/>');
+  var BACK_ICON_SVG = icon('<path d="M15 18l-6-6 6-6"/>');
+  var MORE_ICON_SVG = icon('<circle cx="5" cy="12" r="1" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1" fill="currentColor" stroke="none"/><circle cx="19" cy="12" r="1" fill="currentColor" stroke="none"/>');
   var CONTROL_ICON_SVG = icon('<path d="M15 4l5 5L8 21l-5-5L15 4zM13 6l5 5M5 4v3M3.5 5.5h3M19 16v4M17 18h4"/>');
   var SEND_ICON_SVG = icon('<path d="M12 19V5M6 11l6-6 6 6"/>');
   var POKE_ICON_SVG = icon('<path d="M8 11V7a2 2 0 1 1 4 0v3"/><path d="M12 10V6a2 2 0 1 1 4 0v5"/><path d="M16 11V8a2 2 0 1 1 4 0v6c0 4-3 7-7 7h-1c-3 0-5-1-7-4l-2-3a2 2 0 0 1 3-2l2 2V9a2 2 0 1 1 4 0"/>');
@@ -2764,17 +2766,38 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
     }
     if (failures.length) throw new Error(`\u4E92\u52A8\u573A\u666F\u5DF2\u5220\u9664\uFF1B${failures.join("\uFF1B")}`);
   }
+  function closeSceneMenus(phoneWindow, keepWrap = null) {
+    let focusTarget = null;
+    phoneWindow.querySelectorAll?.(".pm-scene-menu:not([hidden])").forEach((menu) => {
+      const wrap = menu.closest(".pm-scene-menu-wrap");
+      if (wrap === keepWrap) return;
+      menu.hidden = true;
+      const trigger = wrap?.querySelector('[data-action="more"]');
+      trigger?.setAttribute("aria-expanded", "false");
+      focusTarget || (focusTarget = trigger);
+    });
+    return focusTarget;
+  }
   function bindPhonePageActions(phoneWindow, handleAction, reportError) {
     if (!phoneWindow || phoneWindow.dataset.sceneUiBound === "true") return false;
     phoneWindow.dataset.sceneUiBound = "true";
     phoneWindow.addEventListener("click", (event) => {
       const button = event.target.closest?.("[data-action]");
+      const keepWrap = button?.dataset?.action === "more" ? button.closest(".pm-scene-menu-wrap") : null;
+      closeSceneMenus(phoneWindow, keepWrap);
       if (!button || !phoneWindow.contains(button)) return;
       const app = button.closest("#pm-scene-app") || button.closest(".pm-desktop-page");
       if (!app) return;
       Promise.resolve(handleAction(button, app)).catch((error) => {
         if (error.message !== "\u751F\u6210\u5DF2\u53D6\u6D88") reportError(error);
       });
+    });
+    phoneWindow.addEventListener("keydown", (event) => {
+      if (event.key !== "Escape") return;
+      const focusTarget = closeSceneMenus(phoneWindow);
+      if (!focusTarget) return;
+      event.preventDefault();
+      focusTarget.focus({ preventScroll: true });
     });
     return true;
   }
@@ -3068,6 +3091,98 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
     };
   }
 
+  // src/interactive-scene-views.js
+  var DEFAULT_DESKTOP_TITLE = "\u5929\u97F3\u5C0F\u7B3A";
+  var DANMAKU_TONES = ["blue", "pink", "cyan", "gold"];
+  function stableDanmakuTone(item) {
+    const seed = String(item?.id || `${item?.authorNameSnapshot || ""}:${item?.content || ""}`);
+    let hash = 0;
+    for (const character of seed) hash = hash * 31 + character.codePointAt(0) >>> 0;
+    return DANMAKU_TONES[hash % DANMAKU_TONES.length];
+  }
+  function renderPhoneDesktop(scope = { scenes: {} }, uiScope = { pinnedSceneIds: [] }) {
+    const title = String(globalThis.window?.__pmTheme?.customTitle || "").trim() || DEFAULT_DESKTOP_TITLE;
+    const pins = (uiScope.pinnedSceneIds || []).flatMap((sceneId) => {
+      const scene = scope.scenes?.[sceneId];
+      if (!scene) return [];
+      return [`<article class="pm-desktop-pin"><button type="button" data-action="desktop-open-scene" data-scene-id="${escapeAttr(scene.id)}"><b>${escapeHtml(scene.title)}</b></button><button type="button" data-action="unpin-scene" data-scene-id="${escapeAttr(scene.id)}" aria-label="\u79FB\u9664 ${escapeAttr(scene.title)} \u5FEB\u6377\u65B9\u5F0F">\u79FB\u9664</button></article>`];
+    }).join("");
+    return `<div class="pm-desktop-toolbar"><span>${escapeHtml(title)}</span><button type="button" data-action="desktop-exit" aria-label="\u9000\u51FA\u624B\u673A" title="\u9000\u51FA\u624B\u673A">${CLOSE_ICON_SVG}</button></div>
+        <div class="pm-desktop-grid" aria-label="\u5E94\u7528">
+            <button type="button" class="pm-desktop-app" data-action="desktop-chat" aria-label="\u804A\u5929" title="\u804A\u5929">${CHAT_ICON_SVG}</button>
+            <button type="button" class="pm-desktop-app" data-action="desktop-directory" aria-label="\u8054\u7CFB\u4EBA" title="\u8054\u7CFB\u4EBA">${CONTACTS_ICON_SVG}</button>
+            <button type="button" class="pm-desktop-app" data-action="desktop-settings" aria-label="\u8BBE\u7F6E" title="\u8BBE\u7F6E">${SETTINGS_ICON_SVG}</button>
+            <button type="button" class="pm-desktop-app" data-action="desktop-community" aria-label="\u793E\u533A" title="\u793E\u533A">${COMMUNITY_ICON_SVG}</button>
+        </div>
+        <section class="pm-desktop-pins"><h3>\u56FA\u5B9A\u793E\u533A</h3>${pins || "<p>\u5728\u793E\u533A\u4E2D\u56FA\u5B9A\u573A\u666F\u540E\uFF0C\u4F1A\u663E\u793A\u5728\u8FD9\u91CC\u3002</p>"}</section>`;
+  }
+  function renderPresetOptions(selected) {
+    return Object.entries(getInteractivePresets()).map(([key, preset]) => `
+        <button type="button" class="pm-scene-preset ${key === selected ? "is-active" : ""}" data-action="preset" data-preset="${escapeAttr(key)}" style="--scene-accent:${preset.accent}">
+            <span></span><b>${escapeHtml(preset.label)}</b>
+        </button>`).join("");
+  }
+  function renderCommunityLauncher(scope, uiScope = { pinnedSceneIds: [] }) {
+    const sceneCards = scope.sceneOrder.slice().reverse().map((sceneId) => {
+      const scene = scope.scenes[sceneId];
+      const pinned = uiScope.pinnedSceneIds.includes(scene.id);
+      return `<article class="pm-scene-card"><button type="button" class="pm-scene-card-open" data-action="open-scene" data-scene-id="${escapeAttr(scene.id)}"><b>${escapeHtml(scene.title)}</b><span>${escapeHtml(getInteractivePresets()[scene.preset]?.label || "\u81EA\u5B9A\u4E49")} \xB7 ${scene.posts.length} \u7BC7\u5E16\u5B50</span></button><div class="pm-scene-card-actions"><button type="button" class="pm-scene-pin-action" data-action="toggle-scene-pin" data-scene-id="${escapeAttr(scene.id)}" aria-pressed="${pinned}">${pinned ? "\u53D6\u6D88\u56FA\u5B9A" : "\u56FA\u5B9A"}</button><button type="button" class="pm-scene-danger" data-action="delete-scene" data-scene-id="${escapeAttr(scene.id)}">\u5220\u9664</button></div></article>`;
+    }).join("");
+    return `<div id="pm-scene-app" class="pm-modal pm-scene-shell">
+        <div class="pm-scene-header"><button type="button" data-action="desktop" aria-label="\u8FD4\u56DE\u684C\u9762" title="\u8FD4\u56DE\u684C\u9762">${HOME_ICON_SVG}</button><b>\u793E\u533A</b><button type="button" data-action="exit" aria-label="\u9000\u51FA\u624B\u673A" title="\u9000\u51FA\u624B\u673A">${CLOSE_ICON_SVG}</button></div>
+        <div class="pm-scene-launcher">
+            <section class="pm-scene-hero"><h2>\u4ECA\u5929\u60F3\u901B\u4EC0\u4E48\u793E\u533A\uFF1F</h2><p>\u9009\u62E9\u9884\u8BBE\uFF0C\u6216\u5199\u4E0B\u81EA\u5DF1\u7684\u98CE\u683C\u3002</p></section>
+            <div class="pm-scene-presets">${renderPresetOptions("weibo")}</div>
+            <label class="pm-scene-label">\u81EA\u5B9A\u4E49\u98CE\u683C<textarea id="pm-scene-style" maxlength="2000" placeholder="\u4F8B\u5982\uFF1A\u96E8\u591C\u90FD\u5E02\u3001\u514B\u5236\u758F\u79BB\u3001\u50CF\u8001\u8BBA\u575B\u4E00\u6837\u6709\u697C\u5C42\u611F\u2026\u2026"></textarea></label>
+            <button type="button" class="pm-scene-primary" data-action="create-scene">\u751F\u6210\u793E\u533A</button>
+            ${sceneCards ? `<div class="pm-scene-history"><h3>\u6211\u7684\u793E\u533A</h3>${sceneCards}</div>` : ""}
+            <div class="pm-scene-status" aria-live="polite"></div>
+        </div>
+    </div>`;
+  }
+  function renderPosts(scene) {
+    if (!scene.posts.length) return '<div class="pm-scene-empty"><b>\u8FD9\u91CC\u8FD8\u5F88\u5B89\u9759</b><span>\u53D1\u7B2C\u4E00\u7BC7\u5E16\u5B50\uFF0C\u6216\u8005\u4ECE\u66F4\u591A\u83DC\u5355\u751F\u6210\u5185\u5BB9\u3002</span></div>';
+    return scene.posts.slice().reverse().map((post) => `<article class="pm-scene-post">
+        <header><div class="pm-scene-avatar">${escapeHtml(post.authorNameSnapshot.slice(0, 1))}</div><div><b>${escapeHtml(post.authorNameSnapshot)}</b><span>\u521A\u521A \xB7 ${escapeHtml(scene.title)}</span></div></header>
+        <p>${escapeHtml(post.content).replace(/\n/g, "<br>")}</p>
+        ${post.tags.length ? `<div class="pm-scene-tags">${post.tags.map((tag) => `<span>#${escapeHtml(tag)}</span>`).join("")}</div>` : ""}
+        <footer><button type="button" data-action="like" data-post-id="${escapeAttr(post.id)}">${post.liked ? "\u5DF2\u559C\u6B22" : "\u559C\u6B22"}</button><button type="button" data-action="comments" data-post-id="${escapeAttr(post.id)}">\u751F\u6210\u66F4\u591A\u8BC4\u8BBA ${post.comments.length}</button><button type="button" data-action="edit-post" data-post-id="${escapeAttr(post.id)}">\u7F16\u8F91</button><button type="button" class="pm-scene-danger" data-action="delete-post" data-post-id="${escapeAttr(post.id)}">\u5220\u9664</button></footer>
+        ${post.comments.length ? `<div class="pm-scene-comments">${post.comments.map((comment) => `<div class="pm-scene-comment"><span><b>${escapeHtml(comment.authorNameSnapshot)}</b> ${escapeHtml(comment.content)}</span><span class="pm-scene-comment-actions"><button type="button" data-action="edit-comment" data-post-id="${escapeAttr(post.id)}" data-comment-id="${escapeAttr(comment.id)}">\u7F16\u8F91</button><button type="button" class="pm-scene-danger" data-action="delete-comment" data-post-id="${escapeAttr(post.id)}" data-comment-id="${escapeAttr(comment.id)}">\u5220\u9664</button></span></div>`).join("")}</div>` : ""}
+        <div class="pm-scene-comment-composer"><input id="pm-comment-input-${escapeAttr(post.id)}" maxlength="1000" placeholder="\u5199\u4E0B\u4F60\u7684\u8BC4\u8BBA\u2026\u2026"><button type="button" data-action="post-comment" data-post-id="${escapeAttr(post.id)}">\u53D1\u8868</button></div>
+    </article>`).join("");
+  }
+  function renderDanmaku(scene) {
+    return scene.live.danmaku.slice(-80).map((item) => `<div class="pm-danmaku-row is-${stableDanmakuTone(item)}"><b>${escapeHtml(item.authorNameSnapshot)}</b><span>${escapeHtml(item.content)}</span></div>`).join("") || '<div class="pm-scene-empty"><span>\u5F00\u59CB\u76F4\u64AD\u540E\uFF0C\u5F39\u5E55\u4F1A\u4ECE\u8FD9\u91CC\u6EDA\u52A8\u663E\u793A\u3002</span></div>';
+  }
+  function renderSceneMenu(scene, uiScope, autoActive) {
+    const pinned = uiScope.pinnedSceneIds.includes(scene.id);
+    return `<div class="pm-scene-menu-wrap">
+        <button type="button" class="pm-scene-more" data-action="more" aria-label="\u66F4\u591A\u793E\u533A\u64CD\u4F5C" title="\u66F4\u591A" aria-haspopup="menu" aria-expanded="false">${MORE_ICON_SVG}</button>
+        <div class="pm-scene-menu" role="menu" hidden>
+            <button type="button" role="menuitem" data-action="toggle-scene-pin" data-scene-id="${escapeAttr(scene.id)}" aria-pressed="${pinned}">${pinned ? "\u53D6\u6D88\u56FA\u5B9A" : "\u56FA\u5B9A\u793E\u533A"}</button>
+            <button type="button" role="menuitem" data-action="toggle-community-mode">${autoActive ? "\u5173\u95ED\u81EA\u52A8\u70ED\u573A" : "\u5F00\u542F\u81EA\u52A8\u70ED\u573A"}</button>
+            <button type="button" role="menuitem" data-action="ai-feed">\u751F\u6210\u70ED\u573A\u5185\u5BB9</button>
+            <button type="button" role="menuitem" data-action="edit-scene">\u7F16\u8F91\u793E\u533A\u98CE\u683C</button>
+            <button type="button" role="menuitem" data-action="desktop">\u8FD4\u56DE\u684C\u9762</button>
+            <button type="button" role="menuitem" class="pm-scene-danger" data-action="delete-scene" data-scene-id="${escapeAttr(scene.id)}">\u5220\u9664\u793E\u533A</button>
+            <button type="button" role="menuitem" data-action="exit">\u9000\u51FA\u624B\u673A</button>
+        </div>
+    </div>`;
+  }
+  function renderCommunityWorkspace(scene, tab = "feed", uiScope = { pinnedSceneIds: [] }, state = {}) {
+    const preset = getInteractivePresets()[scene.preset] || getInteractivePresets().custom;
+    const liveActive = state.liveActive === true;
+    const autoActive = state.autoActive === true;
+    const floatingDanmaku = scene.live.danmaku.slice(-8).map((item, index) => `<span class="is-${stableDanmakuTone(item)}" style="--lane:${index % 4};--delay:${index % 5 * -0.7}s">${escapeHtml(item.content)}</span>`).join("");
+    const content = tab === "feed" ? `<div class="pm-scene-feed"><div class="pm-scene-posts">${renderPosts(scene)}</div></div>
+        <div class="pm-scene-composer"><textarea id="pm-scene-post-input" maxlength="4000" placeholder="\u53D1\u4E00\u6761\u5FAE\u535A\u3001\u5E16\u5B50\u6216\u4E66\u8BC4\u2026\u2026"></textarea><button type="button" class="pm-scene-primary" data-action="publish">\u53D1\u5E03</button></div>` : tab === "live" ? `<div class="pm-live-room"><div class="pm-live-stage"><div class="pm-live-badge">${liveActive ? "\u76F4\u64AD\u4E2D" : "\u9884\u89C8"}</div><h2>${escapeHtml(scene.live.title)}</h2><div class="pm-danmaku-float">${floatingDanmaku}</div></div><div class="pm-live-actions"><button type="button" data-action="toggle-live" class="${liveActive ? "is-live" : ""}">${liveActive ? "\u505C\u6B62\u76F4\u64AD" : "\u5F00\u59CB\u76F4\u64AD"}</button><button type="button" data-action="rhythm">\u5E26\u4E00\u6CE2\u8282\u594F</button></div><div class="pm-danmaku-list">${renderDanmaku(scene)}</div><div class="pm-danmaku-input"><input id="pm-danmaku-input" maxlength="200" placeholder="\u53D1\u6761\u5F39\u5E55\u2026\u2026"><button type="button" data-action="send-danmaku">\u53D1\u9001</button></div></div>` : `<div class="pm-scene-prompt"><label>\u793E\u533A\u540D\u79F0<input id="pm-scene-title" maxlength="80" value="${escapeAttr(scene.title)}"></label><label>\u793E\u533A\u98CE\u683C<textarea id="pm-scene-prompt" maxlength="6000">${escapeHtml(scene.generatedPrompt)}</textarea></label><p>\u53EF\u76F4\u63A5\u4FEE\u6539\uFF0C\u540E\u7EED\u793E\u533A\u5185\u5BB9\u9075\u5FAA\u6B64\u8BED\u611F\u3002</p><div><button type="button" data-action="regenerate-prompt">\u91CD\u65B0\u751F\u6210</button><button type="button" class="pm-scene-primary" data-action="save-prompt">\u4FDD\u5B58\u98CE\u683C</button></div></div>`;
+    return `<div id="pm-scene-app" class="pm-modal pm-scene-shell" style="--scene-accent:${preset.accent}">
+        <div class="pm-scene-topbar"><button type="button" class="pm-scene-back" data-action="back" aria-label="\u8FD4\u56DE\u793E\u533A\u9996\u9875" title="\u8FD4\u56DE\u793E\u533A\u9996\u9875">${BACK_ICON_SVG}</button><div class="pm-scene-title"><b>${escapeHtml(scene.title)}</b></div>${renderSceneMenu(scene, uiScope, autoActive)}</div>
+        <div class="pm-scene-tabs"><button type="button" data-action="tab" data-tab="feed" class="${tab === "feed" ? "is-active" : ""}">\u793E\u533A</button><button type="button" data-action="tab" data-tab="live" class="${tab === "live" ? "is-active" : ""}">\u76F4\u64AD</button><button type="button" data-action="tab" data-tab="prompt" class="${tab === "prompt" ? "is-active" : ""}">\u98CE\u683C</button></div>
+        ${content}<div class="pm-scene-status" aria-live="polite"></div>
+    </div>`;
+  }
+
   // src/interactive-scenes.js
   var uid = (prefix) => `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
   var now = () => Date.now();
@@ -3169,21 +3284,6 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
       runtime.loadPromise = null;
     };
     return { loadStore, invalidateStore };
-  }
-  function renderPhoneDesktop(scope = { scenes: {} }, uiScope = { pinnedSceneIds: [] }) {
-    const pins = (uiScope.pinnedSceneIds || []).flatMap((sceneId) => {
-      const scene = scope.scenes?.[sceneId];
-      if (!scene) return [];
-      return [`<div class="pm-desktop-pin"><button type="button" data-action="desktop-open-scene" data-scene-id="${escapeAttr(scene.id)}"><b>${escapeHtml(scene.title)}</b><span>\u7EE7\u7EED\u793E\u533A</span></button><button type="button" data-action="unpin-scene" data-scene-id="${escapeAttr(scene.id)}" aria-label="\u79FB\u9664 ${escapeAttr(scene.title)} \u5FEB\u6377\u65B9\u5F0F">\u79FB\u9664</button></div>`];
-    }).join("");
-    return `<div class="pm-desktop-toolbar"><span>\u5929\u97F3\u5C0F\u7B3A</span><button type="button" data-action="desktop-exit" aria-label="\u9000\u51FA\u624B\u673A" title="\u9000\u51FA\u624B\u673A">${CLOSE_ICON_SVG}</button></div>
-        <div class="pm-desktop-grid" aria-label="\u5E94\u7528">
-            <button type="button" class="pm-desktop-app" data-action="desktop-chat" aria-label="\u804A\u5929" title="\u804A\u5929">${CHAT_ICON_SVG}</button>
-            <button type="button" class="pm-desktop-app" data-action="desktop-directory" aria-label="\u8054\u7CFB\u4EBA" title="\u8054\u7CFB\u4EBA">${CONTACTS_ICON_SVG}</button>
-            <button type="button" class="pm-desktop-app" data-action="desktop-settings" aria-label="\u8BBE\u7F6E" title="\u8BBE\u7F6E">${SETTINGS_ICON_SVG}</button>
-            <button type="button" class="pm-desktop-app" data-action="desktop-community" aria-label="\u793E\u533A" title="\u793E\u533A">${COMMUNITY_ICON_SVG}</button>
-        </div>
-        <section class="pm-desktop-pins"><h3>\u56FA\u5B9A\u793E\u533A</h3>${pins || "<p>\u5728\u793E\u533A\u4E2D\u56FA\u5B9A\u573A\u666F\u540E\uFF0C\u4F1A\u663E\u793A\u5728\u8FD9\u91CC\u3002</p>"}</section>`;
   }
   async function runDesktopPageTransition({
     scopeId,
@@ -3327,10 +3427,6 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
       setStatus(message);
       if (!document.querySelector(".pm-scene-status")) alert(message);
     };
-    function renderPinButton(sceneId, uiScope, className = "") {
-      const pinned = uiScope.pinnedSceneIds.includes(sceneId);
-      return `<button type="button" class="${className}" data-action="toggle-scene-pin" data-scene-id="${escapeAttr(sceneId)}" aria-pressed="${pinned}">${pinned ? "\u53D6\u6D88\u56FA\u5B9A" : "\u56FA\u5B9A"}</button>`;
-    }
     function refreshDesktop(scopeId = getStorageId2(), store = runtime.store) {
       const validScope = !!store && !!scopeId && scopeId !== "sms_unknown__default";
       const scope = validScope ? getScope(store, scopeId) : { scenes: {} };
@@ -3354,17 +3450,20 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
         getCurrentPage: () => phoneWindow?.querySelector(".pm-main-ui")?.dataset.page || null
       });
     };
-    function renderCommunityLauncher(scopeId, store = runtime.store) {
+    function renderCommunityLauncher2(scopeId, store = runtime.store) {
       const scope = getScope(store, scopeId);
       runtime.openSceneId = null;
-      return renderInto(".pm-community-page", renderLauncher(scope, phoneScope(scopeId, store)));
+      return renderInto(".pm-community-page", renderCommunityLauncher(scope, phoneScope(scopeId, store)));
     }
-    function renderCommunityWorkspace(scopeId, sceneId, tab, store = runtime.store) {
+    function renderCommunityWorkspace2(scopeId, sceneId, tab, store = runtime.store) {
       const scope = getScope(store, scopeId);
       const scene = scope.scenes[sceneId];
       if (!scene) return false;
       runtime.openSceneId = sceneId;
-      return renderInto(".pm-community-page", renderWorkspace(scene, tab, phoneScope(scopeId, store)));
+      return renderInto(".pm-community-page", renderCommunityWorkspace(scene, tab, phoneScope(scopeId, store), {
+        liveActive: communityRunner?.isLive() === true,
+        autoActive: communityTasks.state().mode === "auto"
+      }));
     }
     async function contextText() {
       const ctx = await gatherContext2();
@@ -3396,79 +3495,6 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
         }
       }
     }
-    function renderPresetOptions(selected) {
-      return Object.entries(getInteractivePresets()).map(([key, preset]) => `
-            <button type="button" class="pm-scene-preset ${key === selected ? "is-active" : ""}" data-action="preset" data-preset="${escapeAttr(key)}" style="--scene-accent:${preset.accent}">
-                <span></span><b>${escapeHtml(preset.label)}</b>
-            </button>`).join("");
-    }
-    function renderLauncher(scope, uiScope) {
-      const sceneCards = scope.sceneOrder.slice().reverse().map((sceneId) => {
-        const scene = scope.scenes[sceneId];
-        return `<div class="pm-scene-card">
-                <button type="button" class="pm-scene-card-open" data-action="open-scene" data-scene-id="${escapeAttr(scene.id)}">
-                    <b>${escapeHtml(scene.title)}</b><span>${escapeHtml(getInteractivePresets()[scene.preset]?.label || "\u81EA\u5B9A\u4E49")} \xB7 ${scene.posts.length} \u7BC7\u5E16\u5B50</span>
-                </button>
-                ${renderPinButton(scene.id, uiScope)}
-                <button type="button" class="pm-scene-danger" data-action="delete-scene" data-scene-id="${escapeAttr(scene.id)}" aria-label="\u5220\u9664 ${escapeAttr(scene.title)}">\u5220\u9664</button>
-            </div>`;
-      }).join("");
-      return `<div id="pm-scene-app" class="pm-modal pm-scene-shell">
-            <div class="pm-scene-header"><button type="button" data-action="desktop" aria-label="\u8FD4\u56DE\u684C\u9762" title="\u8FD4\u56DE\u684C\u9762">${HOME_ICON_SVG}</button><b>\u4E92\u52A8\u573A\u666F</b><button type="button" data-action="exit" aria-label="\u9000\u51FA\u624B\u673A" title="\u9000\u51FA\u624B\u673A">${CLOSE_ICON_SVG}</button></div>
-            <div class="pm-scene-launcher">
-                <section class="pm-scene-hero"><small>\u793E\u533A\u7A7A\u95F4</small><h2>\u4ECA\u5929\u60F3\u901B\u4EC0\u4E48\u793E\u533A\uFF1F</h2><p>\u9009\u62E9\u9884\u8BBE\uFF0C\u6216\u5199\u4E0B\u4F60\u81EA\u5DF1\u7684\u98CE\u683C\uFF0C\u518D\u521B\u5EFA\u4E13\u5C5E\u793E\u533A\u3002</p></section>
-                <div class="pm-scene-presets">${renderPresetOptions("weibo")}</div>
-                <label class="pm-scene-label">\u81EA\u5B9A\u4E49\u98CE\u683C<textarea id="pm-scene-style" maxlength="2000" placeholder="\u4F8B\u5982\uFF1A\u96E8\u591C\u90FD\u5E02\u3001\u514B\u5236\u758F\u79BB\u3001\u50CF\u8001\u8BBA\u575B\u4E00\u6837\u6709\u697C\u5C42\u611F\u2026\u2026"></textarea></label>
-                <button type="button" class="pm-scene-primary" data-action="create-scene">\u751F\u6210\u6211\u7684\u793E\u533A</button>
-                ${sceneCards ? `<div class="pm-scene-history"><h3>\u7EE7\u7EED\u6E38\u73A9</h3>${sceneCards}</div>` : ""}
-                <div class="pm-scene-status" aria-live="polite"></div>
-            </div>
-        </div>`;
-    }
-    function renderPosts(scene) {
-      if (!scene.posts.length) return '<div class="pm-scene-empty"><b>\u8FD9\u91CC\u8FD8\u5F88\u5B89\u9759</b><span>\u53D1\u7B2C\u4E00\u7BC7\u5E16\u5B50\uFF0C\u6216\u8005\u5148\u751F\u6210\u4E00\u6279\u793E\u533A\u5185\u5BB9\u3002</span></div>';
-      return scene.posts.slice().reverse().map((post) => `<article class="pm-scene-post">
-            <header><div class="pm-scene-avatar">${escapeHtml(post.authorNameSnapshot.slice(0, 1))}</div><div><b>${escapeHtml(post.authorNameSnapshot)}</b><span>\u521A\u521A \xB7 ${escapeHtml(scene.title)}</span></div></header>
-            <p>${escapeHtml(post.content).replace(/\n/g, "<br>")}</p>
-            ${post.tags.length ? `<div class="pm-scene-tags">${post.tags.map((tag) => `<span>#${escapeHtml(tag)}</span>`).join("")}</div>` : ""}
-            <footer>
-                <button type="button" data-action="like" data-post-id="${escapeAttr(post.id)}">${post.liked ? "\u5DF2\u559C\u6B22" : "\u559C\u6B22"}</button>
-                <button type="button" data-action="comments" data-post-id="${escapeAttr(post.id)}">\u751F\u6210\u66F4\u591A\u8BC4\u8BBA ${post.comments.length}</button>
-                <button type="button" data-action="edit-post" data-post-id="${escapeAttr(post.id)}">\u7F16\u8F91</button>
-                <button type="button" class="pm-scene-danger" data-action="delete-post" data-post-id="${escapeAttr(post.id)}">\u5220\u9664</button>
-            </footer>
-            ${post.comments.length ? `<div class="pm-scene-comments">${post.comments.map((comment) => `<div class="pm-scene-comment">
-                <span><b>${escapeHtml(comment.authorNameSnapshot)}</b> ${escapeHtml(comment.content)}</span>
-                <span class="pm-scene-comment-actions"><button type="button" data-action="edit-comment" data-post-id="${escapeAttr(post.id)}" data-comment-id="${escapeAttr(comment.id)}">\u7F16\u8F91</button><button type="button" class="pm-scene-danger" data-action="delete-comment" data-post-id="${escapeAttr(post.id)}" data-comment-id="${escapeAttr(comment.id)}">\u5220\u9664</button></span>
-            </div>`).join("")}</div>` : ""}
-            <div class="pm-scene-comment-composer">
-                <input id="pm-comment-input-${escapeAttr(post.id)}" maxlength="1000" placeholder="\u5199\u4E0B\u4F60\u7684\u8BC4\u8BBA\u2026\u2026">
-                <button type="button" data-action="post-comment" data-post-id="${escapeAttr(post.id)}">\u53D1\u8868</button>
-            </div>
-        </article>`).join("");
-    }
-    function renderDanmaku(scene) {
-      return scene.live.danmaku.slice(-80).map((item) => `<div class="pm-danmaku-row"><b>${escapeHtml(item.authorNameSnapshot)}</b><span>${escapeHtml(item.content)}</span></div>`).join("") || '<div class="pm-scene-empty"><span>\u5F00\u59CB\u6587\u5B57\u76F4\u64AD\u540E\uFF0C\u5F39\u5E55\u4F1A\u4ECE\u8FD9\u91CC\u6EDA\u52A8\u663E\u793A\u3002</span></div>';
-    }
-    function renderWorkspace(scene, tab = "feed", uiScope) {
-      const preset = getInteractivePresets()[scene.preset] || getInteractivePresets().custom;
-      const liveActive = communityRunner?.isLive() === true;
-      const autoActive = communityTasks.state().mode === "auto";
-      return `<div id="pm-scene-app" class="pm-modal pm-scene-shell" style="--scene-accent:${preset.accent}">
-            <div class="pm-scene-topbar"><button type="button" data-action="back">\u793E\u533A</button><button type="button" data-action="desktop" aria-label="\u8FD4\u56DE\u684C\u9762" title="\u8FD4\u56DE\u684C\u9762">${HOME_ICON_SVG}</button><div><b>${escapeHtml(scene.title)}</b><span>${escapeHtml(preset.label)}</span></div>${renderPinButton(scene.id, uiScope, "pm-scene-pin-action")}<button type="button" class="pm-scene-danger" data-action="delete-scene" data-scene-id="${escapeAttr(scene.id)}">\u5220\u9664</button><button type="button" data-action="exit" aria-label="\u9000\u51FA\u624B\u673A" title="\u9000\u51FA\u624B\u673A">${CLOSE_ICON_SVG}</button></div>
-            <div class="pm-scene-tabs"><button type="button" data-action="tab" data-tab="feed" class="${tab === "feed" ? "is-active" : ""}">\u793E\u533A</button><button type="button" data-action="tab" data-tab="live" class="${tab === "live" ? "is-active" : ""}">\u6587\u5B57\u76F4\u64AD</button><button type="button" data-action="tab" data-tab="prompt" class="${tab === "prompt" ? "is-active" : ""}">\u793E\u533A\u98CE\u683C</button></div>
-            ${tab === "feed" ? `<div class="pm-scene-feed">
-                <div class="pm-scene-composer"><textarea id="pm-scene-post-input" maxlength="4000" placeholder="\u53D1\u4E00\u6761\u5FAE\u535A\u3001\u5E16\u5B50\u6216\u4E66\u8BC4\u2026\u2026"></textarea><div><button type="button" data-action="toggle-community-mode">${autoActive ? "\u5173\u95ED\u81EA\u52A8\u70ED\u573A" : "\u5F00\u542F\u81EA\u52A8\u70ED\u573A"}</button><button type="button" data-action="ai-feed">\u751F\u6210\u70ED\u573A\u5185\u5BB9</button><button type="button" class="pm-scene-primary" data-action="publish">\u53D1\u5E03</button></div></div>
-                <div class="pm-scene-posts">${renderPosts(scene)}</div>
-            </div>` : tab === "live" ? `<div class="pm-live-room">
-                <div class="pm-live-stage"><div class="pm-live-badge">${liveActive ? "\u76F4\u64AD\u4E2D" : "\u9884\u89C8"}</div><h2>${escapeHtml(scene.live.title)}</h2><p>\u6587\u5B57\u5F39\u5E55\u4EC5\u5728\u5F53\u524D\u793E\u533A\u4E2D\u5C55\u793A\u3002</p><div class="pm-danmaku-float">${scene.live.danmaku.slice(-8).map((item, index) => `<span style="--lane:${index % 4};--delay:${index % 5 * -0.7}s">${escapeHtml(item.content)}</span>`).join("")}</div></div>
-                <div class="pm-live-actions"><button type="button" data-action="toggle-live" class="${liveActive ? "is-live" : ""}">${liveActive ? "\u505C\u6B62\u6587\u5B57\u76F4\u64AD" : "\u5F00\u59CB\u6587\u5B57\u76F4\u64AD"}</button><button type="button" data-action="rhythm">\u5E26\u4E00\u6CE2\u8282\u594F</button></div>
-                <div class="pm-danmaku-list">${renderDanmaku(scene)}</div>
-                <div class="pm-danmaku-input"><input id="pm-danmaku-input" maxlength="200" placeholder="\u53D1\u6761\u5F39\u5E55\u2026\u2026"><button type="button" data-action="send-danmaku">\u53D1\u9001</button></div>
-            </div>` : `<div class="pm-scene-prompt"><label>\u793E\u533A\u540D\u79F0<input id="pm-scene-title" maxlength="80" value="${escapeAttr(scene.title)}"></label><label>\u793E\u533A\u98CE\u683C<textarea id="pm-scene-prompt" maxlength="6000">${escapeHtml(scene.generatedPrompt)}</textarea></label><p>\u4F60\u53EF\u4EE5\u76F4\u63A5\u4FEE\u6539\u3002\u540E\u7EED\u5E16\u5B50\u3001\u8BC4\u8BBA\u548C\u5F39\u5E55\u90FD\u4F1A\u9075\u5FAA\u8FD9\u91CC\u7684\u8BED\u611F\u3002</p><div><button type="button" data-action="regenerate-prompt">\u91CD\u65B0\u751F\u6210</button><button type="button" class="pm-scene-primary" data-action="save-prompt">\u4FDD\u5B58\u98CE\u683C</button></div></div>`}
-            <div class="pm-scene-status" aria-live="polite"></div>
-        </div>`;
-    }
     function replaceApp(html) {
       const app = document.getElementById("pm-scene-app");
       if (app) app.outerHTML = html;
@@ -3476,7 +3502,10 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
     }
     function rerender(tab = document.querySelector(".pm-scene-tabs .is-active")?.dataset.tab || "feed") {
       const { scopeId, scene } = current();
-      if (scene) replaceApp(renderWorkspace(scene, tab, phoneScope(scopeId)));
+      if (scene) replaceApp(renderCommunityWorkspace(scene, tab, phoneScope(scopeId), {
+        liveActive: communityRunner?.isLive() === true,
+        autoActive: communityTasks.state().mode === "auto"
+      }));
     }
     async function openScene(sceneId, tab = "feed") {
       invalidate();
@@ -3489,7 +3518,7 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
       });
       runtime.openSceneId = sceneId;
       updatePhoneUiScope(scopeId, { lastPage: "community", lastSceneId: sceneId, lastTab: tab });
-      renderCommunityWorkspace(scopeId, sceneId, tab);
+      renderCommunityWorkspace2(scopeId, sceneId, tab);
       showPhonePage("community");
     }
     function appendPosts(scopeId, scope, scene, items) {
@@ -3599,6 +3628,15 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
     }
     async function handleAction(button, app) {
       const action = button.dataset.action;
+      if (action === "more") {
+        const menu = button.parentElement?.querySelector(".pm-scene-menu");
+        if (!menu) return;
+        const opening = menu.hidden;
+        menu.hidden = !opening;
+        button.setAttribute("aria-expanded", String(opening));
+        if (opening) menu.querySelector("button")?.focus({ preventScroll: true });
+        return;
+      }
       if (action === "desktop-chat") {
         deps.showPhoneChatPage?.(getStorageId2());
         return;
@@ -3647,7 +3685,7 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
         if (button.closest(".pm-scene-topbar")) {
           rerender(phoneScope(scopeId).lastTab);
         } else if (button.closest(".pm-community-page")) {
-          renderCommunityLauncher(scopeId);
+          renderCommunityLauncher2(scopeId);
         }
         return;
       }
@@ -3666,7 +3704,7 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
           clearOpenScene: () => {
             runtime.openSceneId = null;
           },
-          renderLauncher: renderCommunityLauncher
+          renderLauncher: renderCommunityLauncher2
         });
         return;
       }
@@ -3674,8 +3712,14 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
         invalidate();
         const { scopeId } = current();
         runtime.openSceneId = null;
-        updatePhoneUiScope(scopeId, { lastPage: "desktop", lastSceneId: null });
-        renderCommunityLauncher(scopeId);
+        updatePhoneUiScope(scopeId, { lastPage: "community", lastSceneId: null });
+        renderCommunityLauncher2(scopeId);
+        return;
+      }
+      if (action === "edit-scene") {
+        const { scopeId, scene } = current();
+        updatePhoneUiScope(scopeId, { lastPage: "community", lastSceneId: scene?.id || null, lastTab: "prompt" });
+        rerender("prompt");
         return;
       }
       if (action === "tab") {
@@ -3826,7 +3870,7 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
       try {
         const store = await loadStore();
         runtime.openSceneId = null;
-        renderCommunityLauncher(scopeId, store);
+        renderCommunityLauncher2(scopeId, store);
         showPhonePage("community");
       } catch (error) {
         alert(`\u4E92\u52A8\u573A\u666F\u52A0\u8F7D\u5931\u8D25\uFF1A${error.message}`);
@@ -3848,11 +3892,14 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
         const store = await loadStore();
         const uiScope = phoneScope(scopeId, store);
         refreshDesktop(scopeId, store);
-        if (uiScope.lastPage === "community" && uiScope.lastSceneId) {
-          if (renderCommunityWorkspace(scopeId, uiScope.lastSceneId, uiScope.lastTab, store)) {
+        if (uiScope.lastPage === "community") {
+          if (uiScope.lastSceneId && renderCommunityWorkspace2(scopeId, uiScope.lastSceneId, uiScope.lastTab, store)) {
             showPhonePage("community");
             return;
           }
+          renderCommunityLauncher2(scopeId, store);
+          showPhonePage("community");
+          return;
         }
         runtime.openSceneId = null;
         showPhonePage(uiScope.lastPage === "chat" ? "chat" : "desktop");
@@ -3872,7 +3919,7 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
         if (!runtime.store || !scopeId || scopeId === "sms_unknown__default" || !["desktop", "chat", "community"].includes(page)) return false;
         const scope = phoneScope(scopeId, runtime.store);
         const lastSceneId = page === "community" ? runtime.openSceneId : null;
-        const lastPage = page === "community" && !lastSceneId ? "desktop" : page;
+        const lastPage = page;
         updatePhoneUiScope(scopeId, { lastPage, lastSceneId, lastTab: scope.lastTab }, runtime.store);
         return true;
       },
@@ -6232,13 +6279,12 @@ ${antiFluff}`;
     <div class="pm-modal">
     <div class="pm-modal-header">
       <span></span>
-      <b>\u8054\u7CFB\u4EBA</b>
-      <span style="display:flex;align-items:center;gap:10px;">
-        <span id="pm-autogen-btn" onclick="window.__pmConfirmAutoGen()" title="AI \u81EA\u52A8\u751F\u6210\u8054\u7CFB\u4EBA" style="cursor:pointer;display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:50%;transition:background .15s;" onmouseenter="this.style.background='rgba(0,122,255,0.1)'" onmouseleave="this.style.background='transparent'">
+      <b class="pm-header-title">\u8054\u7CFB\u4EBA
+        <button type="button" id="pm-autogen-btn" class="pm-header-autogen" onclick="window.__pmConfirmAutoGen()" title="AI \u81EA\u52A8\u751F\u6210\u8054\u7CFB\u4EBA" aria-label="AI \u81EA\u52A8\u751F\u6210\u8054\u7CFB\u4EBA">
           ${REFRESH_ICON_SVG}
-        </span>
-        <button type="button" onclick="window.__pmCloseOverlay()" class="pm-modal-close" title="\u5173\u95ED" aria-label="\u5173\u95ED">${CLOSE_ICON_SVG}</button>
-      </span>
+        </button>
+      </b>
+      <button type="button" onclick="window.__pmCloseOverlay()" class="pm-modal-close" title="\u5173\u95ED" aria-label="\u5173\u95ED">${CLOSE_ICON_SVG}</button>
     </div>
     <div class="pm-bi-bar"><span>\u52FE\u9009\u4F1A\u8BDD\u53EF\u6CE8\u5165\u4E3B\u697C\uFF1B\u7FA4\u804A\u8D44\u6E90\u53C2\u6570\u5728\u7FA4\u804A\u8BBE\u7F6E\u4E2D\u914D\u7F6E</span><span class="pm-bi-tip">\u5DF2\u9009 ${checked.length}</span></div>
     <div class="pm-modal-list">
@@ -6829,7 +6875,8 @@ ${lines}`;
       borderColor: "",
       layout: "standard",
       darkMode: "light",
-      ambientStatusEnabled: false
+      ambientStatusEnabled: false,
+      customTitle: ""
     };
     window.__pmBgGlobal = window.__pmBgGlobal || "";
     window.__pmBgLocal = window.__pmBgLocal || {};
@@ -6885,6 +6932,8 @@ ${lines}`;
       const t = window.__pmTheme || {}, p = THEME_PRESETS[t.preset] || THEME_PRESETS.default;
       const darkMode = t.darkMode || "light";
       document.getElementById("pm-overlay")?.setAttribute("data-theme", darkMode);
+      const desktopTitle = state.phoneWindow?.querySelector(".pm-desktop-toolbar span");
+      if (desktopTitle) desktopTitle.textContent = String(t.customTitle || "").trim() || "\u5929\u97F3\u5C0F\u7B3A";
       const el = state.phoneWindow;
       if (!el) return;
       const rBg = t.customRight || p.right, lBg = t.customLeft || p.left;
@@ -7691,7 +7740,7 @@ ${lines}`;
     <div class="pm-msg-list"></div>
     <div class="pm-input-bar">
       <button type="button" onclick="window.__pmShowControlCenter()" class="pm-expand-btn" title="\u5FEB\u6377\u5DE5\u5177" aria-haspopup="menu" aria-expanded="false">${CONTROL_ICON_SVG}</button>
-      <input class="pm-input" placeholder="\u8F93\u5165\u540E\u52A0\u5165\u6682\u5B58">
+      <input class="pm-input" placeholder="\u957F\u6309\u53D1\u9001\u4F1A\u4E00\u6B21\u6027\u63D0\u4EA4\u6D88\u606F">
       <button type="button" class="pm-up-btn" title="\u70B9\u51FB\u52A0\u5165\u6682\u5B58\uFF0C\u957F\u6309\u6700\u7EC8\u63D0\u4EA4\u7ED9 AI">${SEND_ICON_SVG}</button>
     </div>
   </section>
@@ -8062,6 +8111,11 @@ ${lines}`;
           <span><b>\u663E\u793A\u672C\u5730\u72B6\u6001\u680F</b><small>\u4EC5\u663E\u793A\u8BBE\u5907\u672C\u5730\u65F6\u95F4\uFF0C\u4E0D\u8054\u7F51\u3001\u4E0D\u5B9A\u4F4D\uFF0C\u4E5F\u4E0D\u4F1A\u5199\u5165\u63D0\u793A\u8BCD\u3002</small></span>
           <div id="pm-ambient-status-enabled" class="pm-custom-check ${theme.ambientStatusEnabled === true ? "is-checked" : ""}" role="checkbox" tabindex="0" aria-checked="${theme.ambientStatusEnabled === true}" onclick="const enabled=!this.classList.contains('is-checked');this.classList.toggle('is-checked',enabled);this.setAttribute('aria-checked',String(enabled));window.__pmSetAmbientStatus(enabled)" onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();this.click()}"></div>
         </label>
+      </div>
+      <div style="padding:12px 16px;border-top:1px solid #f0f0f0;">
+        <label class="pm-cfg-label" for="pm-custom-title">\u684C\u9762\u6807\u9898</label>
+        <input id="pm-custom-title" class="pm-cfg-input" maxlength="20" value="${String(theme.customTitle || "").replaceAll("&", "&amp;").replaceAll('"', "&quot;").replaceAll("<", "&lt;").replaceAll(">", "&gt;")}" placeholder="\u5929\u97F3\u5C0F\u7B3A" oninput="window.__pmSetCustomTitle()">
+        <small class="pm-cfg-help">\u7559\u7A7A\u65F6\u663E\u793A\u201C\u5929\u97F3\u5C0F\u7B3A\u201D\u3002</small>
       </div>
       <div style="padding:14px 16px 12px;border-top:1px solid #f0f0f0;">
         <div class="pm-cfg-label" style="margin-bottom:10px;">\u6C14\u6CE1\u4E3B\u9898</div>
@@ -8563,7 +8617,8 @@ ${lines}`;
         const value = el.textContent.includes("\u591C\u95F4") ? "dark" : el.textContent.includes("\u65E5\u95F4") ? "light" : "";
         if (value) el.classList.toggle("pm-layout-active", value === theme.darkMode);
       });
-      const right = document.getElementById("pm-custom-right"), left = document.getElementById("pm-custom-left"), border = document.getElementById("pm-border-color");
+      const title = document.getElementById("pm-custom-title"), right = document.getElementById("pm-custom-right"), left = document.getElementById("pm-custom-left"), border = document.getElementById("pm-border-color");
+      if (title) title.value = theme.customTitle || "";
       if (right) right.value = theme.customRight || "#007aff";
       if (left) left.value = theme.customLeft || "#e9e9eb";
       if (border) border.value = theme.borderColor || "#1a1a1a";
@@ -8729,7 +8784,7 @@ ${err.message}`);
           await applyBackupState({
             histories: {},
             config: { apiUrl: "", apiKey: "", model: "", useIndependent: false },
-            theme: { preset: "default", customRight: "", customLeft: "", borderColor: "", layout: "standard", darkMode: "light", ambientStatusEnabled: false },
+            theme: { preset: "default", customRight: "", customLeft: "", borderColor: "", layout: "standard", darkMode: "light", ambientStatusEnabled: false, customTitle: "" },
             profiles: [],
             groupMeta: {},
             pokeConfig: {},
@@ -8846,6 +8901,9 @@ ${error.message}`);
     });
     window.__pmSetBorderColor = () => persistThemeMutation(() => {
       window.__pmTheme.borderColor = document.getElementById("pm-border-color")?.value || "#1a1a1a";
+    });
+    window.__pmSetCustomTitle = () => persistThemeMutation(() => {
+      window.__pmTheme.customTitle = (document.getElementById("pm-custom-title")?.value || "").trim().slice(0, 20);
     });
     window.__pmUploadBg = (input, scope) => {
       const file = input.files?.[0];

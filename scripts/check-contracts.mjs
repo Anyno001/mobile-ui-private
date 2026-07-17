@@ -342,7 +342,7 @@ const SETTING_ENTRIES = [
   '__pmDeleteProfile', '__pmPickProfile', '__pmSetMode', '__pmToggleWordyLimit',
   '__pmSetDarkMode', '__pmExportData', '__pmImportData', '__pmShowConfig',
   '__pmSetPreset', '__pmSetCustomColor', '__pmClearCustomColor',
-  '__pmSetBorderColor', '__pmUploadBg', '__pmBgUrl',
+  '__pmSetBorderColor', '__pmSetCustomTitle', '__pmUploadBg', '__pmBgUrl',
   '__pmClearBg', '__pmTestApi', '__pmTestModel', '__pmSaveConfig', '__pmShowModelPicker',
   '__pmSaveBudgetConfig', '__pmResetBudgetConfig', '__pmClearAllData',
 ];
@@ -380,7 +380,7 @@ const LEGACY_WINDOW_ENTRIES = [
   '__pmSaveAndCloseContactConfig', '__pmSaveAndCloseGroupEdit', '__pmSaveConfig',
   '__pmSaveBudgetConfig', '__pmResetBudgetConfig', '__pmSend',
   '__pmShowCharacterBehavior', '__pmShowConversationSettings',
-  '__pmSetAmbientStatus', '__pmSetBorderColor', '__pmSetCustomColor', '__pmSetDarkMode', '__pmSetMode',
+  '__pmSetAmbientStatus', '__pmSetBorderColor', '__pmSetCustomColor', '__pmSetCustomTitle', '__pmSetDarkMode', '__pmSetMode',
   '__pmSetPreset', '__pmShowAddContact', '__pmShowConfig',
   '__pmShowEmojiPicker', '__pmShowGroupCreate', '__pmShowList', '__pmShowModelPicker',
   '__pmSwitch', '__pmSwitchContact', '__pmTempText', '__pmTestApi',
@@ -514,6 +514,7 @@ requireText('phone-chat-poke.js', sourceModuleByName.get('phone-chat-poke.js')?.
 const controlCenterCode = sourceModuleByName.get('phone-control-center.js')?.code || '';
 const directoryCode = sourceModuleByName.get('phone-directory.js')?.code || '';
 const interactiveCode = sourceModuleByName.get('interactive-scenes.js')?.code || '';
+const interactiveViewsCode = sourceModuleByName.get('interactive-scene-views.js')?.code || '';
 const interactivePhoneCode = sourceModuleByName.get('interactive-scene-phone.js')?.code || '';
 const interactiveSchedulerCode = sourceModuleByName.get('interactive-scene-scheduler.js')?.code || '';
 const foundationCode = sourceModuleByName.get('phone-foundation.js')?.code || '';
@@ -595,14 +596,14 @@ if (controlCenterCode.includes("__pmShowPhonePage?.('desktop')")) {
 for (const title of ['API 设置', '主题颜色', '数据备份', '互动场景']) {
   if (controlCenterTemplate.includes(title)) failures.push(`phone-control-center.js: compact control menu must not contain removed shortcut ${title}`);
 }
-for (const expected of ['post-comment', 'delete-scene', 'delete-post', 'delete-comment', '文字直播', '文字弹幕仅在当前社区中展示']) {
+for (const expected of ['post-comment', 'delete-scene', 'delete-post', 'delete-comment', '文字直播']) {
   requireText('interactive-scenes.js', interactiveCode, expected);
 }
 for (const expected of [
   'persistSceneBudgetRemoval', 'deleteSceneAndFinalize', 'finalizeDeletedScene', 'bindPhonePageActions', 'runDeleteSceneAction',
   'deleteScene: deleteInteractiveScene', 'persistSceneBudgetRemoval({',
   "['手机页面状态保存失败', persistPhoneUi]", "['运行时场景清理失败', clearOpenScene]",
-  "['社区页面刷新失败', renderLauncher]", "dataset.sceneUiBound === 'true'",
+  "['社区页面刷新失败', renderLauncher]", "dataset.sceneUiBound === 'true'", "event.key !== 'Escape'", ".pm-scene-menu:not([hidden])",
 ]) requireText('interactive-scene-phone.js', interactivePhoneCode, expected);
 for (const expected of [
   'runDeleteSceneAction(scopeId, sceneId, {', 'clearOpenScene:', 'renderLauncher:',
@@ -640,13 +641,16 @@ for (const expected of ["cancelCommunityGeneration?.('phone-minimized')", "cance
 }
 for (const expected of [
   'renderPhoneDesktop', 'desktop-chat', 'desktop-directory', 'desktop-settings', 'desktop-community',
-  'desktop-exit', 'data-action="desktop"', 'data-action="exit"', "__pmOpenSettingsTab?.('home')",
+  'desktop-exit', "__pmOpenSettingsTab?.('home')",
   'toggle-scene-pin', 'unpin-scene', 'loadPhoneUiState', 'savePhoneUiState',
   "showPhonePage('community')", 'runDesktopPageTransition', 'showPhoneDesktopPage',
   'refreshDesktop(scopeId, store)', 'restorePhoneUi', 'persistPhoneUiSnapshot',
 ]) requireText('interactive-scenes.js', interactiveCode, expected);
+for (const expected of ['data-action="desktop"', 'data-action="exit"', 'class="pm-scene-card-actions"', 'data-action="toggle-scene-pin"', 'data-action="delete-scene"']) {
+  requireText('interactive-scene-views.js', interactiveViewsCode, expected);
+}
 for (const forbidden of ['makeOverlay(', 'window.__pmCloseOverlay()']) {
-  if (interactiveCode.includes(forbidden)) failures.push(`interactive-scenes.js: phone community must not use overlay path ${forbidden}`);
+  if (interactiveCode.includes(forbidden) || interactiveViewsCode.includes(forbidden)) failures.push(`phone community modules: must not use overlay path ${forbidden}`);
 }
 const phoneLifecycleCode = sourceModuleByName.get('phone-lifecycle.js')?.code || '';
 for (const expected of [

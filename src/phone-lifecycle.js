@@ -300,7 +300,7 @@ export function installPhoneLifecycle(state, deps) {
     <div class="pm-msg-list"></div>
     <div class="pm-input-bar">
       <button type="button" onclick="window.__pmShowControlCenter()" class="pm-expand-btn" title="快捷工具" aria-haspopup="menu" aria-expanded="false">${CONTROL_ICON_SVG}</button>
-      <input class="pm-input" placeholder="输入后加入暂存">
+      <input class="pm-input" placeholder="长按发送会一次性提交消息">
       <button type="button" class="pm-up-btn" title="点击加入暂存，长按最终提交给 AI">${SEND_ICON_SVG}</button>
     </div>
   </section>

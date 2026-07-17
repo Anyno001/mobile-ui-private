@@ -62,6 +62,11 @@ export function renderLookSettings({ theme, presetButtons, globalBackgroundButto
           <div id="pm-ambient-status-enabled" class="pm-custom-check ${theme.ambientStatusEnabled === true ? 'is-checked' : ''}" role="checkbox" tabindex="0" aria-checked="${theme.ambientStatusEnabled === true}" onclick="const enabled=!this.classList.contains('is-checked');this.classList.toggle('is-checked',enabled);this.setAttribute('aria-checked',String(enabled));window.__pmSetAmbientStatus(enabled)" onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();this.click()}"></div>
         </label>
       </div>
+      <div style="padding:12px 16px;border-top:1px solid #f0f0f0;">
+        <label class="pm-cfg-label" for="pm-custom-title">桌面标题</label>
+        <input id="pm-custom-title" class="pm-cfg-input" maxlength="20" value="${String(theme.customTitle || '').replaceAll('&', '&amp;').replaceAll('"', '&quot;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')}" placeholder="天音小笺" oninput="window.__pmSetCustomTitle()">
+        <small class="pm-cfg-help">留空时显示“天音小笺”。</small>
+      </div>
       <div style="padding:14px 16px 12px;border-top:1px solid #f0f0f0;">
         <div class="pm-cfg-label" style="margin-bottom:10px;">气泡主题</div>
         <div class="pm-theme-row">${presetButtons}</div>

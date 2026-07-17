@@ -73,17 +73,39 @@ export function finalizeDeletedScene({ persistPhoneUi, refreshDesktop, persistBu
     if (failures.length) throw new Error(`互动场景已删除；${failures.join('；')}`);
 }
 
+function closeSceneMenus(phoneWindow, keepWrap = null) {
+    let focusTarget = null;
+    phoneWindow.querySelectorAll?.('.pm-scene-menu:not([hidden])').forEach(menu => {
+        const wrap = menu.closest('.pm-scene-menu-wrap');
+        if (wrap === keepWrap) return;
+        menu.hidden = true;
+        const trigger = wrap?.querySelector('[data-action="more"]');
+        trigger?.setAttribute('aria-expanded', 'false');
+        focusTarget ||= trigger;
+    });
+    return focusTarget;
+}
+
 export function bindPhonePageActions(phoneWindow, handleAction, reportError) {
     if (!phoneWindow || phoneWindow.dataset.sceneUiBound === 'true') return false;
     phoneWindow.dataset.sceneUiBound = 'true';
     phoneWindow.addEventListener('click', event => {
         const button = event.target.closest?.('[data-action]');
+        const keepWrap = button?.dataset?.action === 'more' ? button.closest('.pm-scene-menu-wrap') : null;
+        closeSceneMenus(phoneWindow, keepWrap);
         if (!button || !phoneWindow.contains(button)) return;
         const app = button.closest('#pm-scene-app') || button.closest('.pm-desktop-page');
         if (!app) return;
         Promise.resolve(handleAction(button, app)).catch(error => {
             if (error.message !== '生成已取消') reportError(error);
         });
+    });
+    phoneWindow.addEventListener('keydown', event => {
+        if (event.key !== 'Escape') return;
+        const focusTarget = closeSceneMenus(phoneWindow);
+        if (!focusTarget) return;
+        event.preventDefault();
+        focusTarget.focus({ preventScroll: true });
     });
     return true;
 }

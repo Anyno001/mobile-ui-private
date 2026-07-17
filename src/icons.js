@@ -3,6 +3,8 @@ const icon = paths => `<svg viewBox="0 0 24 24" width="18" height="18" fill="non
 export const MENU_ICON_SVG = icon('<path d="M4 6h16M4 12h16M4 18h16"/>');
 export const CLOSE_ICON_SVG = icon('<path d="M6 6l12 12M18 6L6 18"/>');
 export const HOME_ICON_SVG = icon('<path d="M3 11.5L12 4l9 7.5"/><path d="M5.5 10.5V20h13v-9.5"/><path d="M9.5 20v-6h5v6"/>');
+export const BACK_ICON_SVG = icon('<path d="M15 18l-6-6 6-6"/>');
+export const MORE_ICON_SVG = icon('<circle cx="5" cy="12" r="1" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1" fill="currentColor" stroke="none"/><circle cx="19" cy="12" r="1" fill="currentColor" stroke="none"/>');
 export const CONTROL_ICON_SVG = icon('<path d="M15 4l5 5L8 21l-5-5L15 4zM13 6l5 5M5 4v3M3.5 5.5h3M19 16v4M17 18h4"/>');
 export const SEND_ICON_SVG = icon('<path d="M12 19V5M6 11l6-6 6 6"/>');
 export const POKE_ICON_SVG = icon('<path d="M8 11V7a2 2 0 1 1 4 0v3"/><path d="M12 10V6a2 2 0 1 1 4 0v5"/><path d="M16 11V8a2 2 0 1 1 4 0v6c0 4-3 7-7 7h-1c-3 0-5-1-7-4l-2-3a2 2 0 0 1 3-2l2 2V9a2 2 0 1 1 4 0"/>');

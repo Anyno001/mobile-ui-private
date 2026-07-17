@@ -1,4 +1,4 @@
-import { buildInteractiveRequest, getInteractivePresets, parseInteractiveResponse } from './interactive-scene-ai.js';
+import { buildInteractiveRequest, parseInteractiveResponse } from './interactive-scene-ai.js';
 import {
     INTERACTIVE_LIMITS, addSceneComment, appendScenePosts, deleteSceneComment,
     deleteScenePost, enforceInteractiveSceneLimit, ensureInteractiveActor, normalizeInteractiveStore, normalizeScene,
@@ -14,9 +14,11 @@ import {
     createCommunityGenerationRunner, createCommunityTaskController,
 } from './interactive-scene-scheduler.js';
 import {
-    CHAT_ICON_SVG, CLOSE_ICON_SVG, COMMUNITY_ICON_SVG, CONTACTS_ICON_SVG, HOME_ICON_SVG, SETTINGS_ICON_SVG,
-} from './icons.js';
-import { escapeAttr, escapeHtml } from './ui.js';
+    renderCommunityLauncher as renderCommunityLauncherView,
+    renderCommunityWorkspace as renderCommunityWorkspaceView, renderPhoneDesktop,
+} from './interactive-scene-views.js';
+
+export { renderPhoneDesktop } from './interactive-scene-views.js';
 
 const uid = prefix => `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
 const now = () => Date.now();
@@ -120,22 +122,6 @@ export function createInteractiveStoreLoader({ runtime, load, migrate }) {
         runtime.loadPromise = null;
     };
     return { loadStore, invalidateStore };
-}
-
-export function renderPhoneDesktop(scope = { scenes: {} }, uiScope = { pinnedSceneIds: [] }) {
-    const pins = (uiScope.pinnedSceneIds || []).flatMap(sceneId => {
-        const scene = scope.scenes?.[sceneId];
-        if (!scene) return [];
-        return [`<div class="pm-desktop-pin"><button type="button" data-action="desktop-open-scene" data-scene-id="${escapeAttr(scene.id)}"><b>${escapeHtml(scene.title)}</b><span>继续社区</span></button><button type="button" data-action="unpin-scene" data-scene-id="${escapeAttr(scene.id)}" aria-label="移除 ${escapeAttr(scene.title)} 快捷方式">移除</button></div>`];
-    }).join('');
-    return `<div class="pm-desktop-toolbar"><span>天音小笺</span><button type="button" data-action="desktop-exit" aria-label="退出手机" title="退出手机">${CLOSE_ICON_SVG}</button></div>
-        <div class="pm-desktop-grid" aria-label="应用">
-            <button type="button" class="pm-desktop-app" data-action="desktop-chat" aria-label="聊天" title="聊天">${CHAT_ICON_SVG}</button>
-            <button type="button" class="pm-desktop-app" data-action="desktop-directory" aria-label="联系人" title="联系人">${CONTACTS_ICON_SVG}</button>
-            <button type="button" class="pm-desktop-app" data-action="desktop-settings" aria-label="设置" title="设置">${SETTINGS_ICON_SVG}</button>
-            <button type="button" class="pm-desktop-app" data-action="desktop-community" aria-label="社区" title="社区">${COMMUNITY_ICON_SVG}</button>
-        </div>
-        <section class="pm-desktop-pins"><h3>固定社区</h3>${pins || '<p>在社区中固定场景后，会显示在这里。</p>'}</section>`;
 }
 
 export async function runDesktopPageTransition({
@@ -264,11 +250,6 @@ export function installInteractiveScenes(_state, deps) {
         if (!document.querySelector('.pm-scene-status')) alert(message);
     };
 
-    function renderPinButton(sceneId, uiScope, className = '') {
-        const pinned = uiScope.pinnedSceneIds.includes(sceneId);
-        return `<button type="button" class="${className}" data-action="toggle-scene-pin" data-scene-id="${escapeAttr(sceneId)}" aria-pressed="${pinned}">${pinned ? '取消固定' : '固定'}</button>`;
-    }
-
     function refreshDesktop(scopeId = getStorageId(), store = runtime.store) {
         const validScope = !!store && !!scopeId && scopeId !== 'sms_unknown__default';
         const scope = validScope ? getScope(store, scopeId) : { scenes: {} };
@@ -295,7 +276,7 @@ export function installInteractiveScenes(_state, deps) {
     function renderCommunityLauncher(scopeId, store = runtime.store) {
         const scope = getScope(store, scopeId);
         runtime.openSceneId = null;
-        return renderInto('.pm-community-page', renderLauncher(scope, phoneScope(scopeId, store)));
+        return renderInto('.pm-community-page', renderCommunityLauncherView(scope, phoneScope(scopeId, store)));
     }
 
     function renderCommunityWorkspace(scopeId, sceneId, tab, store = runtime.store) {
@@ -303,7 +284,10 @@ export function installInteractiveScenes(_state, deps) {
         const scene = scope.scenes[sceneId];
         if (!scene) return false;
         runtime.openSceneId = sceneId;
-        return renderInto('.pm-community-page', renderWorkspace(scene, tab, phoneScope(scopeId, store)));
+        return renderInto('.pm-community-page', renderCommunityWorkspaceView(scene, tab, phoneScope(scopeId, store), {
+            liveActive: communityRunner?.isLive() === true,
+            autoActive: communityTasks.state().mode === 'auto',
+        }));
     }
 
     async function contextText() {
@@ -342,84 +326,6 @@ export function installInteractiveScenes(_state, deps) {
     }
 
 
-    function renderPresetOptions(selected) {
-        return Object.entries(getInteractivePresets()).map(([key, preset]) => `
-            <button type="button" class="pm-scene-preset ${key === selected ? 'is-active' : ''}" data-action="preset" data-preset="${escapeAttr(key)}" style="--scene-accent:${preset.accent}">
-                <span></span><b>${escapeHtml(preset.label)}</b>
-            </button>`).join('');
-    }
-
-    function renderLauncher(scope, uiScope) {
-        const sceneCards = scope.sceneOrder.slice().reverse().map(sceneId => {
-            const scene = scope.scenes[sceneId];
-            return `<div class="pm-scene-card">
-                <button type="button" class="pm-scene-card-open" data-action="open-scene" data-scene-id="${escapeAttr(scene.id)}">
-                    <b>${escapeHtml(scene.title)}</b><span>${escapeHtml(getInteractivePresets()[scene.preset]?.label || '自定义')} · ${scene.posts.length} 篇帖子</span>
-                </button>
-                ${renderPinButton(scene.id, uiScope)}
-                <button type="button" class="pm-scene-danger" data-action="delete-scene" data-scene-id="${escapeAttr(scene.id)}" aria-label="删除 ${escapeAttr(scene.title)}">删除</button>
-            </div>`;
-        }).join('');
-        return `<div id="pm-scene-app" class="pm-modal pm-scene-shell">
-            <div class="pm-scene-header"><button type="button" data-action="desktop" aria-label="返回桌面" title="返回桌面">${HOME_ICON_SVG}</button><b>互动场景</b><button type="button" data-action="exit" aria-label="退出手机" title="退出手机">${CLOSE_ICON_SVG}</button></div>
-            <div class="pm-scene-launcher">
-                <section class="pm-scene-hero"><small>社区空间</small><h2>今天想逛什么社区？</h2><p>选择预设，或写下你自己的风格，再创建专属社区。</p></section>
-                <div class="pm-scene-presets">${renderPresetOptions('weibo')}</div>
-                <label class="pm-scene-label">自定义风格<textarea id="pm-scene-style" maxlength="2000" placeholder="例如：雨夜都市、克制疏离、像老论坛一样有楼层感……"></textarea></label>
-                <button type="button" class="pm-scene-primary" data-action="create-scene">生成我的社区</button>
-                ${sceneCards ? `<div class="pm-scene-history"><h3>继续游玩</h3>${sceneCards}</div>` : ''}
-                <div class="pm-scene-status" aria-live="polite"></div>
-            </div>
-        </div>`;
-    }
-
-    function renderPosts(scene) {
-        if (!scene.posts.length) return '<div class="pm-scene-empty"><b>这里还很安静</b><span>发第一篇帖子，或者先生成一批社区内容。</span></div>';
-        return scene.posts.slice().reverse().map(post => `<article class="pm-scene-post">
-            <header><div class="pm-scene-avatar">${escapeHtml(post.authorNameSnapshot.slice(0, 1))}</div><div><b>${escapeHtml(post.authorNameSnapshot)}</b><span>刚刚 · ${escapeHtml(scene.title)}</span></div></header>
-            <p>${escapeHtml(post.content).replace(/\n/g, '<br>')}</p>
-            ${post.tags.length ? `<div class="pm-scene-tags">${post.tags.map(tag => `<span>#${escapeHtml(tag)}</span>`).join('')}</div>` : ''}
-            <footer>
-                <button type="button" data-action="like" data-post-id="${escapeAttr(post.id)}">${post.liked ? '已喜欢' : '喜欢'}</button>
-                <button type="button" data-action="comments" data-post-id="${escapeAttr(post.id)}">生成更多评论 ${post.comments.length}</button>
-                <button type="button" data-action="edit-post" data-post-id="${escapeAttr(post.id)}">编辑</button>
-                <button type="button" class="pm-scene-danger" data-action="delete-post" data-post-id="${escapeAttr(post.id)}">删除</button>
-            </footer>
-            ${post.comments.length ? `<div class="pm-scene-comments">${post.comments.map(comment => `<div class="pm-scene-comment">
-                <span><b>${escapeHtml(comment.authorNameSnapshot)}</b> ${escapeHtml(comment.content)}</span>
-                <span class="pm-scene-comment-actions"><button type="button" data-action="edit-comment" data-post-id="${escapeAttr(post.id)}" data-comment-id="${escapeAttr(comment.id)}">编辑</button><button type="button" class="pm-scene-danger" data-action="delete-comment" data-post-id="${escapeAttr(post.id)}" data-comment-id="${escapeAttr(comment.id)}">删除</button></span>
-            </div>`).join('')}</div>` : ''}
-            <div class="pm-scene-comment-composer">
-                <input id="pm-comment-input-${escapeAttr(post.id)}" maxlength="1000" placeholder="写下你的评论……">
-                <button type="button" data-action="post-comment" data-post-id="${escapeAttr(post.id)}">发表</button>
-            </div>
-        </article>`).join('');
-    }
-
-    function renderDanmaku(scene) {
-        return scene.live.danmaku.slice(-80).map(item => `<div class="pm-danmaku-row"><b>${escapeHtml(item.authorNameSnapshot)}</b><span>${escapeHtml(item.content)}</span></div>`).join('') || '<div class="pm-scene-empty"><span>开始文字直播后，弹幕会从这里滚动显示。</span></div>';
-    }
-
-
-    function renderWorkspace(scene, tab = 'feed', uiScope) {
-        const preset = getInteractivePresets()[scene.preset] || getInteractivePresets().custom;
-        const liveActive = communityRunner?.isLive() === true;
-        const autoActive = communityTasks.state().mode === 'auto';
-        return `<div id="pm-scene-app" class="pm-modal pm-scene-shell" style="--scene-accent:${preset.accent}">
-            <div class="pm-scene-topbar"><button type="button" data-action="back">社区</button><button type="button" data-action="desktop" aria-label="返回桌面" title="返回桌面">${HOME_ICON_SVG}</button><div><b>${escapeHtml(scene.title)}</b><span>${escapeHtml(preset.label)}</span></div>${renderPinButton(scene.id, uiScope, 'pm-scene-pin-action')}<button type="button" class="pm-scene-danger" data-action="delete-scene" data-scene-id="${escapeAttr(scene.id)}">删除</button><button type="button" data-action="exit" aria-label="退出手机" title="退出手机">${CLOSE_ICON_SVG}</button></div>
-            <div class="pm-scene-tabs"><button type="button" data-action="tab" data-tab="feed" class="${tab === 'feed' ? 'is-active' : ''}">社区</button><button type="button" data-action="tab" data-tab="live" class="${tab === 'live' ? 'is-active' : ''}">文字直播</button><button type="button" data-action="tab" data-tab="prompt" class="${tab === 'prompt' ? 'is-active' : ''}">社区风格</button></div>
-            ${tab === 'feed' ? `<div class="pm-scene-feed">
-                <div class="pm-scene-composer"><textarea id="pm-scene-post-input" maxlength="4000" placeholder="发一条微博、帖子或书评……"></textarea><div><button type="button" data-action="toggle-community-mode">${autoActive ? '关闭自动热场' : '开启自动热场'}</button><button type="button" data-action="ai-feed">生成热场内容</button><button type="button" class="pm-scene-primary" data-action="publish">发布</button></div></div>
-                <div class="pm-scene-posts">${renderPosts(scene)}</div>
-            </div>` : tab === 'live' ? `<div class="pm-live-room">
-                <div class="pm-live-stage"><div class="pm-live-badge">${liveActive ? '直播中' : '预览'}</div><h2>${escapeHtml(scene.live.title)}</h2><p>文字弹幕仅在当前社区中展示。</p><div class="pm-danmaku-float">${scene.live.danmaku.slice(-8).map((item, index) => `<span style="--lane:${index % 4};--delay:${(index % 5) * -.7}s">${escapeHtml(item.content)}</span>`).join('')}</div></div>
-                <div class="pm-live-actions"><button type="button" data-action="toggle-live" class="${liveActive ? 'is-live' : ''}">${liveActive ? '停止文字直播' : '开始文字直播'}</button><button type="button" data-action="rhythm">带一波节奏</button></div>
-                <div class="pm-danmaku-list">${renderDanmaku(scene)}</div>
-                <div class="pm-danmaku-input"><input id="pm-danmaku-input" maxlength="200" placeholder="发条弹幕……"><button type="button" data-action="send-danmaku">发送</button></div>
-            </div>` : `<div class="pm-scene-prompt"><label>社区名称<input id="pm-scene-title" maxlength="80" value="${escapeAttr(scene.title)}"></label><label>社区风格<textarea id="pm-scene-prompt" maxlength="6000">${escapeHtml(scene.generatedPrompt)}</textarea></label><p>你可以直接修改。后续帖子、评论和弹幕都会遵循这里的语感。</p><div><button type="button" data-action="regenerate-prompt">重新生成</button><button type="button" class="pm-scene-primary" data-action="save-prompt">保存风格</button></div></div>`}
-            <div class="pm-scene-status" aria-live="polite"></div>
-        </div>`;
-    }
 
     function replaceApp(html) {
         const app = document.getElementById('pm-scene-app');
@@ -429,7 +335,10 @@ export function installInteractiveScenes(_state, deps) {
 
     function rerender(tab = document.querySelector('.pm-scene-tabs .is-active')?.dataset.tab || 'feed') {
         const { scopeId, scene } = current();
-        if (scene) replaceApp(renderWorkspace(scene, tab, phoneScope(scopeId)));
+        if (scene) replaceApp(renderCommunityWorkspaceView(scene, tab, phoneScope(scopeId), {
+            liveActive: communityRunner?.isLive() === true,
+            autoActive: communityTasks.state().mode === 'auto',
+        }));
     }
 
     async function openScene(sceneId, tab = 'feed') {
@@ -557,6 +466,15 @@ export function installInteractiveScenes(_state, deps) {
 
     async function handleAction(button, app) {
         const action = button.dataset.action;
+        if (action === 'more') {
+            const menu = button.parentElement?.querySelector('.pm-scene-menu');
+            if (!menu) return;
+            const opening = menu.hidden;
+            menu.hidden = !opening;
+            button.setAttribute('aria-expanded', String(opening));
+            if (opening) menu.querySelector('button')?.focus({ preventScroll: true });
+            return;
+        }
         if (action === 'desktop-chat') { deps.showPhoneChatPage?.(getStorageId()); return; }
         if (action === 'desktop-directory') { window.__pmShowList?.(); return; }
         if (action === 'desktop-settings') { window.__pmOpenSettingsTab?.('home'); return; }
@@ -612,8 +530,14 @@ export function installInteractiveScenes(_state, deps) {
             invalidate();
             const { scopeId } = current();
             runtime.openSceneId = null;
-            updatePhoneUiScope(scopeId, { lastPage: 'desktop', lastSceneId: null });
+            updatePhoneUiScope(scopeId, { lastPage: 'community', lastSceneId: null });
             renderCommunityLauncher(scopeId);
+            return;
+        }
+        if (action === 'edit-scene') {
+            const { scopeId, scene } = current();
+            updatePhoneUiScope(scopeId, { lastPage: 'community', lastSceneId: scene?.id || null, lastTab: 'prompt' });
+            rerender('prompt');
             return;
         }
         if (action === 'tab') {
@@ -758,11 +682,14 @@ export function installInteractiveScenes(_state, deps) {
             const store = await loadStore();
             const uiScope = phoneScope(scopeId, store);
             refreshDesktop(scopeId, store);
-            if (uiScope.lastPage === 'community' && uiScope.lastSceneId) {
-                if (renderCommunityWorkspace(scopeId, uiScope.lastSceneId, uiScope.lastTab, store)) {
+            if (uiScope.lastPage === 'community') {
+                if (uiScope.lastSceneId && renderCommunityWorkspace(scopeId, uiScope.lastSceneId, uiScope.lastTab, store)) {
                     showPhonePage('community');
                     return;
                 }
+                renderCommunityLauncher(scopeId, store);
+                showPhonePage('community');
+                return;
             }
             runtime.openSceneId = null;
             showPhonePage(uiScope.lastPage === 'chat' ? 'chat' : 'desktop');
@@ -782,7 +709,7 @@ export function installInteractiveScenes(_state, deps) {
             if (!runtime.store || !scopeId || scopeId === 'sms_unknown__default' || !['desktop', 'chat', 'community'].includes(page)) return false;
             const scope = phoneScope(scopeId, runtime.store);
             const lastSceneId = page === 'community' ? runtime.openSceneId : null;
-            const lastPage = page === 'community' && !lastSceneId ? 'desktop' : page;
+            const lastPage = page;
             updatePhoneUiScope(scopeId, { lastPage, lastSceneId, lastTab: scope.lastTab }, runtime.store);
             return true;
         },
