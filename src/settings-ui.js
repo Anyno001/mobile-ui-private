@@ -1,19 +1,28 @@
 import { MODEL_VISIBLE_ROWS, POPOVER_SUPPORTED } from './constants.js';
+import { normalizeBudgetConfig } from './budget.js';
 import { THEME_PRESETS, normalizeApiUrls } from './config.js';
 import { openCropper } from './cropper.js';
 import {
-    renderApiSettings, renderBackupSettings, renderLookSettings, renderSettingsModal,
+    renderApiSettings, renderBackupSettings, renderBudgetSettings, renderLookSettings, renderSettingsModal,
 } from './settings-templates.js';
 import { escapeAttr, escapeHtml, safeJS } from './ui.js';
 import {
-    addOrUpdateProfile, loadBgSettings, loadInteractiveScenes, loadProfiles, loadTheme, saveBgGlobal,
+    addOrUpdateProfile, clearPluginData, loadBgSettings, loadBudgetConfig, loadInteractiveScenes, loadPhoneUiState, loadProfiles, loadTheme, saveBgGlobal,
     saveBgLocal, saveBidirectional, saveCharacterBehavior, saveEmojis,
     saveGroupMeta, saveHistoriesStrict, saveInteractiveScenes, savePokeConfig, saveProfiles,
-    saveTheme, saveWordyLimit,
+    saveBudgetConfig, savePhoneUiState, saveTheme, saveWordyLimit,
 } from './storage.js';
-import { INTERACTIVE_LIMITS, normalizeInteractiveStore } from './interactive-scene-model.js';
+import {
+    INTERACTIVE_ACTOR_TYPES, INTERACTIVE_LIMITS, INTERACTIVE_STORE_VERSION,
+    deriveInteractiveActorId, normalizeAmbientStatus, normalizeInteractiveStore, normalizePhoneUiState,
+} from './interactive-scene-model.js';
 
 const clone = value => JSON.parse(JSON.stringify(value));
+const legacyBackupTheme = value => {
+    const theme = objectValue(value || {}, 'theme');
+    delete theme.ambientStatusEnabled;
+    return theme;
+};
 const objectValue = (value, field) => {
     if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error(`备份字段 ${field} 必须是对象`);
     return clone(value);
@@ -23,10 +32,16 @@ const arrayValue = (value, field) => {
     return clone(value);
 };
 
-const DANGEROUS_DICTIONARY_KEYS = new Set(['__proto__', 'prototype', 'constructor']);
+const isUnsafeDictionaryKey = value => value === 'prototype' || Object.hasOwn(Object.prototype, value);
 const assertSafeDictionaryKey = (value, field) => {
-    if (DANGEROUS_DICTIONARY_KEYS.has(value)) throw new Error(`备份字段 ${field} 包含危险键 ${value}`);
+    if (isUnsafeDictionaryKey(value)) throw new Error(`备份字段 ${field} 包含危险键 ${value}`);
+    return value;
 };
+const assertNormalizedDictionaryKey = (value, field, max) => {
+    assertNormalizedText(value, field, max);
+    return assertSafeDictionaryKey(value, field);
+};
+const normalizeLegacyDictionaryKey = (value, field, max) => assertSafeDictionaryKey(String(value ?? '').trim().slice(0, max), field);
 const assertAllowedKeys = (value, field, allowedKeys) => {
     const allowed = new Set(allowedKeys);
     const unsupported = Object.keys(value).find(key => !allowed.has(key));
@@ -41,90 +56,175 @@ const assertNormalizedText = (value, field, max, { allowEmpty = false } = {}) =>
 const assertOptionalNormalizedText = (item, key, field, max, options) => {
     if (Object.hasOwn(item, key)) assertNormalizedText(item[key], `${field}.${key}`, max, options);
 };
+const assertOptionalLegacyText = (item, key, field) => {
+    if (Object.hasOwn(item, key) && typeof item[key] !== 'string') throw new Error(`备份字段 ${field}.${key} 必须是字符串`);
+};
 const assertOptionalTimestamp = (item, key, field) => {
     if (!Object.hasOwn(item, key)) return;
     const value = item[key];
     if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) throw new Error(`备份字段 ${field}.${key} 必须是有效时间戳`);
 };
-const assertInteractiveItem = (value, field, { kind = 'post' } = {}) => {
+const assertInteractiveActor = (value, actorId, field, scopeId) => {
+    const actor = objectValue(value, field);
+    assertAllowedKeys(actor, field, ['actorId', 'type', 'displayName', 'bindingKey', 'profile', 'createdAt']);
+    if (actor.actorId !== actorId) throw new Error(`备份字段 ${field}.actorId 必须与 actor 键一致`);
+    assertNormalizedText(actor.actorId, `${field}.actorId`, 80);
+    if (!INTERACTIVE_ACTOR_TYPES.includes(actor.type)) throw new Error(`备份字段 ${field}.type 无效`);
+    assertNormalizedText(actor.displayName, `${field}.displayName`, 80);
+    assertNormalizedText(actor.bindingKey, `${field}.bindingKey`, 240);
+    assertNormalizedText(actor.profile, `${field}.profile`, 1000, { allowEmpty: true });
+    assertOptionalTimestamp(actor, 'createdAt', field);
+    if (!Object.hasOwn(actor, 'createdAt')) throw new Error(`备份字段 ${field}.createdAt 缺失`);
+    if (deriveInteractiveActorId(scopeId, actor.type, actor.bindingKey) !== actorId) throw new Error(`备份字段 ${field}.actorId 与绑定信息不一致`);
+};
+const assertInteractiveItem = (value, field, { kind = 'post', version = 1, actorIds = null } = {}) => {
     const item = objectValue(value, field);
+    const authorKeys = version === INTERACTIVE_STORE_VERSION ? ['authorId', 'authorNameSnapshot'] : ['author'];
     const allowedKeys = kind === 'post'
-        ? ['id', 'author', 'content', 'tags', 'createdAt', 'comments', 'liked']
-        : ['id', 'author', 'content', 'createdAt'];
+        ? ['id', ...authorKeys, 'content', 'tags', 'createdAt', 'comments', 'liked']
+        : ['id', ...authorKeys, 'content', 'createdAt'];
     assertAllowedKeys(item, field, allowedKeys);
-    const contentMax = kind === 'post' ? 4000 : kind === 'comment' ? 1000 : 200;
-    assertNormalizedText(item.content, `${field}.content`, contentMax);
     assertOptionalNormalizedText(item, 'id', field, 80);
-    assertOptionalNormalizedText(item, 'author', field, 80);
+    if (version === INTERACTIVE_STORE_VERSION) {
+        const contentMax = kind === 'post' ? 4000 : kind === 'comment' ? 1000 : 200;
+        assertNormalizedText(item.content, `${field}.content`, contentMax);
+        assertNormalizedText(item.authorId, `${field}.authorId`, 80);
+        assertNormalizedText(item.authorNameSnapshot, `${field}.authorNameSnapshot`, 80);
+        if (!actorIds?.has(item.authorId)) throw new Error(`备份字段 ${field}.authorId 未指向有效 actor`);
+    } else {
+        assertOptionalLegacyText(item, 'content', field);
+        assertOptionalLegacyText(item, 'author', field);
+    }
     assertOptionalTimestamp(item, 'createdAt', field);
     if (kind === 'post') {
         if (Object.hasOwn(item, 'liked') && typeof item.liked !== 'boolean') throw new Error(`备份字段 ${field}.liked 必须是布尔值`);
         if (Object.hasOwn(item, 'tags')) {
             if (!Array.isArray(item.tags) || item.tags.some(tag => typeof tag !== 'string')) throw new Error(`备份字段 ${field}.tags 必须是字符串数组`);
             if (item.tags.length > 5) throw new Error(`备份字段 ${field}.tags 不能超过 5 项`);
-            item.tags.forEach((tag, index) => assertNormalizedText(tag, `${field}.tags.${index}`, 30));
+            if (version === INTERACTIVE_STORE_VERSION) {
+                item.tags.forEach((tag, index) => assertNormalizedText(tag, `${field}.tags.${index}`, 30));
+            }
         }
         if (Object.hasOwn(item, 'comments')) {
             if (!Array.isArray(item.comments)) throw new Error(`备份字段 ${field}.comments 必须是数组`);
             if (item.comments.length > INTERACTIVE_LIMITS.comments) throw new Error(`备份字段 ${field}.comments 不能超过 ${INTERACTIVE_LIMITS.comments} 项`);
-            item.comments.forEach((comment, index) => assertInteractiveItem(comment, `${field}.comments.${index}`, { kind: 'comment' }));
+            item.comments.forEach((comment, index) => assertInteractiveItem(
+                comment, `${field}.comments.${index}`, { kind: 'comment', version, actorIds },
+            ));
         }
     }
 };
 
 const assertInteractiveBackupStore = value => {
+    normalizeInteractiveStore(value);
     const store = objectValue(value, 'interactiveScenes');
     assertAllowedKeys(store, 'interactiveScenes', ['version', 'scopes']);
-    if (!Number.isInteger(store.version) || store.version !== 1) throw new Error('备份字段 interactiveScenes.version 必须是数字 1');
+    if (store.version !== undefined && (!Number.isInteger(store.version) || ![1, INTERACTIVE_STORE_VERSION].includes(store.version))) throw new Error('备份字段 interactiveScenes.version 必须是数字 1 或 2');
+    const sourceVersion = store.version === INTERACTIVE_STORE_VERSION ? INTERACTIVE_STORE_VERSION : 1;
     const scopes = objectValue(store.scopes, 'interactiveScenes.scopes');
+    const normalizedScopeIds = new Set();
     for (const [scopeId, scopeValue] of Object.entries(scopes)) {
-        assertSafeDictionaryKey(scopeId, 'interactiveScenes.scopes');
+        const normalizedScopeId = sourceVersion === INTERACTIVE_STORE_VERSION
+            ? scopeId
+            : normalizeLegacyDictionaryKey(scopeId, 'interactiveScenes.scopes', 160);
+        if (sourceVersion === INTERACTIVE_STORE_VERSION) {
+            assertNormalizedDictionaryKey(scopeId, 'interactiveScenes.scopes', 160);
+        }
+        if (normalizedScopeIds.has(normalizedScopeId)) throw new Error(`备份字段 interactiveScenes.scopes 归一化后包含重复 scope ${normalizedScopeId}`);
+        normalizedScopeIds.add(normalizedScopeId);
         const field = `interactiveScenes.scopes.${scopeId}`;
         const scope = objectValue(scopeValue, field);
-        assertAllowedKeys(scope, field, ['activeSceneId', 'sceneOrder', 'scenes']);
+        const scopeKeys = sourceVersion === INTERACTIVE_STORE_VERSION
+            ? ['activeSceneId', 'sceneOrder', 'scenes', 'actors']
+            : ['activeSceneId', 'sceneOrder', 'scenes'];
+        assertAllowedKeys(scope, field, scopeKeys);
+        const actorIds = new Set();
+        if (sourceVersion === INTERACTIVE_STORE_VERSION) {
+            const actors = objectValue(scope.actors, `${field}.actors`);
+            for (const [actorId, actorValue] of Object.entries(actors)) {
+                assertNormalizedDictionaryKey(actorId, `${field}.actors`, 80);
+                assertInteractiveActor(actorValue, actorId, `${field}.actors.${actorId}`, scopeId);
+                actorIds.add(actorId);
+            }
+        }
         if (!Array.isArray(scope.sceneOrder)) throw new Error(`备份字段 ${field}.sceneOrder 必须是数组`);
-        if (scope.sceneOrder.length > INTERACTIVE_LIMITS.scenes) throw new Error(`备份字段 ${field}.sceneOrder 不能超过 ${INTERACTIVE_LIMITS.scenes} 项`);
+        if (sourceVersion === INTERACTIVE_STORE_VERSION && scope.sceneOrder.length > INTERACTIVE_LIMITS.scenes) throw new Error(`备份字段 ${field}.sceneOrder 不能超过 ${INTERACTIVE_LIMITS.scenes} 项`);
         const scenes = objectValue(scope.scenes, `${field}.scenes`);
-        Object.keys(scenes).forEach(sceneId => assertSafeDictionaryKey(sceneId, `${field}.scenes`));
+        const normalizedScenes = new Map();
+        for (const sceneId of Object.keys(scenes)) {
+            const normalizedSceneId = sourceVersion === INTERACTIVE_STORE_VERSION
+                ? assertNormalizedDictionaryKey(sceneId, `${field}.scenes`, 80)
+                : normalizeLegacyDictionaryKey(sceneId, `${field}.scenes`, 80);
+            if (normalizedScenes.has(normalizedSceneId)) throw new Error(`备份字段 ${field}.scenes 归一化后包含重复场景 ${normalizedSceneId}`);
+            normalizedScenes.set(normalizedSceneId, scenes[sceneId]);
+        }
         if (Object.hasOwn(scope, 'activeSceneId') && scope.activeSceneId !== null && typeof scope.activeSceneId !== 'string') throw new Error(`备份字段 ${field}.activeSceneId 必须是字符串或 null`);
+        const normalizedOrder = scope.sceneOrder.map(rawSceneId => {
+            if (typeof rawSceneId !== 'string') throw new Error(`备份字段 ${field}.sceneOrder 必须是字符串数组`);
+            return sourceVersion === INTERACTIVE_STORE_VERSION
+                ? assertNormalizedDictionaryKey(rawSceneId, `${field}.sceneOrder`, 80)
+                : normalizeLegacyDictionaryKey(rawSceneId, `${field}.sceneOrder`, 80);
+        }).filter(Boolean);
+        const retainedOrder = sourceVersion === INTERACTIVE_STORE_VERSION ? normalizedOrder : normalizedOrder.slice(-INTERACTIVE_LIMITS.scenes);
         const orderedIds = new Set();
-        for (const sceneId of scope.sceneOrder) {
-            assertNormalizedText(sceneId, `${field}.sceneOrder`, 80);
-            assertSafeDictionaryKey(sceneId, `${field}.sceneOrder`);
+        for (const sceneId of retainedOrder) {
             if (orderedIds.has(sceneId)) throw new Error(`备份字段 ${field}.sceneOrder 包含重复场景 ${sceneId}`);
             orderedIds.add(sceneId);
-            const scene = objectValue(scenes[sceneId], `${field}.scenes.${sceneId}`);
+            const scene = objectValue(normalizedScenes.get(sceneId), `${field}.scenes.${sceneId}`);
             assertAllowedKeys(scene, `${field}.scenes.${sceneId}`, ['id', 'title', 'preset', 'styleInput', 'generatedPrompt', 'contentRating', 'createdAt', 'updatedAt', 'posts', 'live']);
-            if (Object.hasOwn(scene, 'id') && scene.id !== sceneId) throw new Error(`备份字段 ${field}.scenes.${sceneId}.id 必须与场景键一致`);
-            assertOptionalNormalizedText(scene, 'id', `${field}.scenes.${sceneId}`, 80);
-            assertOptionalNormalizedText(scene, 'title', `${field}.scenes.${sceneId}`, 80);
-            assertOptionalNormalizedText(scene, 'preset', `${field}.scenes.${sceneId}`, 30);
-            assertOptionalNormalizedText(scene, 'styleInput', `${field}.scenes.${sceneId}`, 2000, { allowEmpty: true });
-            assertOptionalNormalizedText(scene, 'generatedPrompt', `${field}.scenes.${sceneId}`, 6000, { allowEmpty: true });
+            if (Object.hasOwn(scene, 'id')) {
+                if (typeof scene.id !== 'string') throw new Error(`备份字段 ${field}.scenes.${sceneId}.id 必须是字符串`);
+                const normalizedSceneValueId = sourceVersion === INTERACTIVE_STORE_VERSION
+                    ? assertNormalizedDictionaryKey(scene.id, `${field}.scenes.${sceneId}.id`, 80)
+                    : normalizeLegacyDictionaryKey(scene.id, `${field}.scenes.${sceneId}.id`, 80);
+                if (normalizedSceneValueId !== sceneId) throw new Error(`备份字段 ${field}.scenes.${sceneId}.id 必须与场景键一致`);
+            }
+            if (sourceVersion === INTERACTIVE_STORE_VERSION) {
+                assertOptionalNormalizedText(scene, 'title', `${field}.scenes.${sceneId}`, 80);
+                assertOptionalNormalizedText(scene, 'preset', `${field}.scenes.${sceneId}`, 30);
+                assertOptionalNormalizedText(scene, 'styleInput', `${field}.scenes.${sceneId}`, 2000, { allowEmpty: true });
+                assertOptionalNormalizedText(scene, 'generatedPrompt', `${field}.scenes.${sceneId}`, 6000, { allowEmpty: true });
+            } else {
+                for (const key of ['title', 'preset', 'styleInput', 'generatedPrompt']) {
+                    assertOptionalLegacyText(scene, key, `${field}.scenes.${sceneId}`);
+                }
+            }
             if (Object.hasOwn(scene, 'contentRating') && !['general', 'mature'].includes(scene.contentRating)) throw new Error(`备份字段 ${field}.scenes.${sceneId}.contentRating 必须是 general 或 mature`);
             assertOptionalTimestamp(scene, 'createdAt', `${field}.scenes.${sceneId}`);
             assertOptionalTimestamp(scene, 'updatedAt', `${field}.scenes.${sceneId}`);
             if (Object.hasOwn(scene, 'posts')) {
                 if (!Array.isArray(scene.posts)) throw new Error(`备份字段 ${field}.scenes.${sceneId}.posts 必须是数组`);
                 if (scene.posts.length > INTERACTIVE_LIMITS.posts) throw new Error(`备份字段 ${field}.scenes.${sceneId}.posts 不能超过 ${INTERACTIVE_LIMITS.posts} 项`);
-                scene.posts.forEach((post, index) => assertInteractiveItem(post, `${field}.scenes.${sceneId}.posts.${index}`));
+                scene.posts.forEach((post, index) => assertInteractiveItem(
+                    post, `${field}.scenes.${sceneId}.posts.${index}`, { version: sourceVersion, actorIds },
+                ));
             }
             if (Object.hasOwn(scene, 'live')) {
                 const live = objectValue(scene.live, `${field}.scenes.${sceneId}.live`);
                 assertAllowedKeys(live, `${field}.scenes.${sceneId}.live`, ['title', 'status', 'danmaku']);
-                assertOptionalNormalizedText(live, 'title', `${field}.scenes.${sceneId}.live`, 100);
+                if (sourceVersion === INTERACTIVE_STORE_VERSION) {
+                    assertOptionalNormalizedText(live, 'title', `${field}.scenes.${sceneId}.live`, 100);
+                } else {
+                    assertOptionalLegacyText(live, 'title', `${field}.scenes.${sceneId}.live`);
+                }
                 if (Object.hasOwn(live, 'status') && live.status !== 'idle') throw new Error(`备份字段 ${field}.scenes.${sceneId}.live.status 必须是 idle`);
                 if (Object.hasOwn(live, 'danmaku')) {
                     if (!Array.isArray(live.danmaku)) throw new Error(`备份字段 ${field}.scenes.${sceneId}.live.danmaku 必须是数组`);
                     if (live.danmaku.length > INTERACTIVE_LIMITS.danmaku) throw new Error(`备份字段 ${field}.scenes.${sceneId}.live.danmaku 不能超过 ${INTERACTIVE_LIMITS.danmaku} 项`);
-                    live.danmaku.forEach((item, index) => assertInteractiveItem(item, `${field}.scenes.${sceneId}.live.danmaku.${index}`, { kind: 'danmaku' }));
+                    live.danmaku.forEach((item, index) => assertInteractiveItem(
+                        item, `${field}.scenes.${sceneId}.live.danmaku.${index}`, { kind: 'danmaku', version: sourceVersion, actorIds },
+                    ));
                 }
             }
         }
-        const extraSceneIds = Object.keys(scenes).filter(sceneId => !orderedIds.has(sceneId));
-        if (extraSceneIds.length) throw new Error(`备份字段 ${field}.scenes 包含未列入 sceneOrder 的场景 ${extraSceneIds[0]}`);
-        if (scope.activeSceneId === null && orderedIds.size) throw new Error(`备份字段 ${field}.activeSceneId 不能在存在场景时为 null`);
-        if (typeof scope.activeSceneId === 'string' && !orderedIds.has(scope.activeSceneId)) throw new Error(`备份字段 ${field}.activeSceneId 未指向有效场景`);
+        if (sourceVersion === INTERACTIVE_STORE_VERSION) {
+            const extraSceneIds = [...normalizedScenes.keys()].filter(sceneId => !orderedIds.has(sceneId));
+            if (extraSceneIds.length) throw new Error(`备份字段 ${field}.scenes 包含未列入 sceneOrder 的场景 ${extraSceneIds[0]}`);
+            if (scope.activeSceneId === null && orderedIds.size) throw new Error(`备份字段 ${field}.activeSceneId 不能在存在场景时为 null`);
+            if (typeof scope.activeSceneId === 'string' && !orderedIds.has(scope.activeSceneId)) throw new Error(`备份字段 ${field}.activeSceneId 未指向有效场景`);
+        } else if (typeof scope.activeSceneId === 'string') {
+            normalizeLegacyDictionaryKey(scope.activeSceneId, `${field}.activeSceneId`, 80);
+        }
     }
     return store;
 };
@@ -133,11 +233,15 @@ export function parseBackupData(data, current) {
     if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error('备份根节点必须是对象');
     const version = data.schemaVersion === undefined ? 1 : data.schemaVersion;
     if (!Number.isInteger(version) || version < 1) throw new Error('备份版本无效');
-    if (version > 3) throw new Error(`备份版本 ${version} 高于当前支持版本 3`);
+    if (version > 4) throw new Error(`备份版本 ${version} 高于当前支持版本 4`);
     const result = clone(current);
     if (Object.hasOwn(data, 'histories')) result.histories = objectValue(data.histories, 'histories');
     if (Object.hasOwn(data, 'config')) result.config = objectValue(data.config, 'config');
-    if (Object.hasOwn(data, 'theme')) result.theme = objectValue(data.theme, 'theme');
+    if (Object.hasOwn(data, 'theme')) {
+        const importedTheme = legacyBackupTheme(data.theme);
+        result.theme = { ...importedTheme, ambientStatusEnabled: version < 4
+            ? current.theme?.ambientStatusEnabled === true : false };
+    }
     if (Object.hasOwn(data, 'profiles')) result.profiles = arrayValue(data.profiles, 'profiles');
     if (Object.hasOwn(data, 'groupMeta')) result.groupMeta = objectValue(data.groupMeta, 'groupMeta');
     if (Object.hasOwn(data, 'pokeConfig')) result.pokeConfig = objectValue(data.pokeConfig, 'pokeConfig');
@@ -154,17 +258,27 @@ export function parseBackupData(data, current) {
     }
     if (Object.hasOwn(data, 'bgLocal')) result.bgLocal = objectValue(data.bgLocal, 'bgLocal');
     if (Object.hasOwn(data, 'interactiveScenes')) result.interactiveScenes = normalizeInteractiveStore(assertInteractiveBackupStore(data.interactiveScenes));
+    if (version === 4) {
+        result.phoneUiState = Object.hasOwn(data, 'phoneUiState')
+            ? normalizePhoneUiState(objectValue(data.phoneUiState, 'phoneUiState'), result.interactiveScenes)
+            : normalizePhoneUiState(null, result.interactiveScenes);
+        result.ambientStatus = Object.hasOwn(data, 'ambientStatus')
+            ? normalizeAmbientStatus(objectValue(data.ambientStatus, 'ambientStatus')) : normalizeAmbientStatus();
+        result.theme.ambientStatusEnabled = result.ambientStatus.enabled;
+    }
     return result;
 }
 
-export async function runBackupTransaction({ capture, apply, persist }) {
+export async function runBackupTransaction({ capture, apply, persist, beforeApply = async () => {} }) {
     const snapshot = await capture();
     try {
+        await beforeApply('apply');
         const nextState = await apply();
         await persist(nextState);
     } catch (error) {
         let rollbackState;
         try {
+            await beforeApply('rollback');
             rollbackState = await apply(snapshot);
             await persist(snapshot);
         } catch (rollbackError) {
@@ -197,11 +311,85 @@ export async function runBackgroundTransaction({ capture, mutate, restore, persi
     }
 }
 
+export function createBackupStateHandlers(deps = {}) {
+    const capture = async () => {
+        const interactiveScenes = normalizeInteractiveStore(await loadInteractiveScenes());
+        const phoneUiState = loadPhoneUiState(interactiveScenes);
+        return {
+            histories: clone(window.__pmHistories || {}),
+            config: clone(window.__pmConfig || {}),
+            theme: clone(window.__pmTheme || {}),
+            profiles: clone(window.__pmProfiles || []),
+            groupMeta: clone(window.__pmGroupMeta || {}),
+            pokeConfig: clone(window.__pmPokeConfig || {}),
+            bidirectional: clone(window.__pmBidirectional || {}),
+            emojis: clone(window.__pmEmojis || []),
+            characterBehavior: clone(window.__pmCharacterBehavior || {}),
+            wordyLimit: !!window.__pmWordyLimit,
+            bgGlobal: window.__pmBgGlobal || '',
+            bgLocal: clone(window.__pmBgLocal || {}),
+            interactiveScenes,
+            phoneUiState,
+            ambientStatus: normalizeAmbientStatus({ enabled: window.__pmTheme?.ambientStatusEnabled }),
+        };
+    };
+
+    const apply = async state => {
+        const interactiveScenes = normalizeInteractiveStore(state.interactiveScenes);
+        const phoneUiState = normalizePhoneUiState(state.phoneUiState, interactiveScenes);
+        const ambientStatus = normalizeAmbientStatus(state.ambientStatus ?? { enabled: state.theme?.ambientStatusEnabled });
+        window.__pmHistories = clone(state.histories || {});
+        window.__pmConfig = clone(state.config || {});
+        window.__pmTheme = clone(state.theme || {});
+        window.__pmTheme.ambientStatusEnabled = ambientStatus.enabled;
+        window.__pmProfiles = clone(state.profiles || []);
+        window.__pmGroupMeta = clone(state.groupMeta || {});
+        window.__pmPokeConfig = clone(state.pokeConfig || {});
+        window.__pmBidirectional = clone(state.bidirectional || {});
+        window.__pmEmojis = clone(state.emojis || []);
+        window.__pmCharacterBehavior = clone(state.characterBehavior || {});
+        window.__pmWordyLimit = !!state.wordyLimit;
+        window.__pmBgGlobal = typeof state.bgGlobal === 'string' ? state.bgGlobal : '';
+        window.__pmBgLocal = clone(state.bgLocal || {});
+        window.__pmPhoneUiState = phoneUiState;
+        return { ...state, interactiveScenes, phoneUiState, ambientStatus };
+    };
+
+    const persist = async state => {
+        const interactiveScenes = normalizeInteractiveStore(state.interactiveScenes);
+        const phoneUiState = normalizePhoneUiState(state.phoneUiState, interactiveScenes);
+        await saveHistoriesStrict();
+        try { localStorage.setItem('ST_SMS_CONFIG', JSON.stringify(window.__pmConfig)); }
+        catch (error) { throw new Error('API 配置保存失败：浏览器存储不可用'); }
+        if (!saveTheme()) throw new Error('主题配置保存失败：浏览器存储不可用');
+        if (!saveProfiles()) throw new Error('API 档案保存失败：浏览器存储不可用');
+        await saveGroupMeta();
+        if (!saveCharacterBehavior()) throw new Error('角色行为配置保存失败：浏览器存储不可用');
+        if (!savePokeConfig()) throw new Error('自动消息配置保存失败：浏览器存储不可用');
+        if (!saveBidirectional()) throw new Error('注入配置保存失败：浏览器存储不可用');
+        if (!saveWordyLimit()) throw new Error('字数偏好保存失败：浏览器存储不可用');
+        await saveEmojis();
+        await saveBgGlobal();
+        await saveBgLocal();
+        await saveInteractiveScenes(interactiveScenes);
+        if (!savePhoneUiState(phoneUiState, interactiveScenes)) throw new Error('手机界面状态保存失败：浏览器存储不可用');
+        deps.invalidateInteractiveStore?.();
+    };
+
+    return { capture, apply, persist };
+}
+
 export function installSettingsUi(deps) {
     const {
         makeOverlay, applyTheme, applyBackground, fitNameFont, addNote,
         getPhoneWindow, getCurrentPersona, getStorageId, runtime, closePhone,
+        applyBidirectionalInjection, clearBidirectionalInjection, getInteractiveStore,
     } = deps;
+    const {
+        capture: captureBackupState,
+        apply: applyBackupState,
+        persist: persistBackupState,
+    } = createBackupStateHandlers(deps);
     let apiDraftUseIndependent = false;
     let backgroundMutation = Promise.resolve();
 
@@ -273,65 +461,14 @@ export function installSettingsUi(deps) {
         });
     };
 
-    const captureBackupState = async () => ({
-        histories: clone(window.__pmHistories || {}),
-        config: clone(window.__pmConfig || {}),
-        theme: clone(window.__pmTheme || {}),
-        profiles: clone(window.__pmProfiles || []),
-        groupMeta: clone(window.__pmGroupMeta || {}),
-        pokeConfig: clone(window.__pmPokeConfig || {}),
-        bidirectional: clone(window.__pmBidirectional || {}),
-        emojis: clone(window.__pmEmojis || []),
-        characterBehavior: clone(window.__pmCharacterBehavior || {}),
-        wordyLimit: !!window.__pmWordyLimit,
-        bgGlobal: window.__pmBgGlobal || '',
-        bgLocal: clone(window.__pmBgLocal || {}),
-        interactiveScenes: normalizeInteractiveStore(await loadInteractiveScenes()),
-    });
-
-    const applyBackupState = async state => {
-        window.__pmHistories = clone(state.histories || {});
-        window.__pmConfig = clone(state.config || {});
-        window.__pmTheme = clone(state.theme || {});
-        window.__pmProfiles = clone(state.profiles || []);
-        window.__pmGroupMeta = clone(state.groupMeta || {});
-        window.__pmPokeConfig = clone(state.pokeConfig || {});
-        window.__pmBidirectional = clone(state.bidirectional || {});
-        window.__pmEmojis = clone(state.emojis || []);
-        window.__pmCharacterBehavior = clone(state.characterBehavior || {});
-        window.__pmWordyLimit = !!state.wordyLimit;
-        window.__pmBgGlobal = typeof state.bgGlobal === 'string' ? state.bgGlobal : '';
-        window.__pmBgLocal = clone(state.bgLocal || {});
-        return { ...state, interactiveScenes: normalizeInteractiveStore(state.interactiveScenes) };
-    };
-
-    const persistBackupState = async state => {
-        await saveHistoriesStrict();
-        try { localStorage.setItem('ST_SMS_CONFIG', JSON.stringify(window.__pmConfig)); }
-        catch (error) { throw new Error('API 配置保存失败：浏览器存储不可用'); }
-        if (!saveTheme()) throw new Error('主题配置保存失败：浏览器存储不可用');
-        if (!saveProfiles()) throw new Error('API 档案保存失败：浏览器存储不可用');
-        await saveGroupMeta();
-        if (!saveCharacterBehavior()) throw new Error('角色行为配置保存失败：浏览器存储不可用');
-        if (!savePokeConfig()) throw new Error('自动消息配置保存失败：浏览器存储不可用');
-        if (!saveBidirectional()) throw new Error('注入配置保存失败：浏览器存储不可用');
-        if (!saveWordyLimit()) throw new Error('字数偏好保存失败：浏览器存储不可用');
-        await saveEmojis();
-        await saveBgGlobal();
-        await saveBgLocal();
-        await saveInteractiveScenes(normalizeInteractiveStore(state.interactiveScenes));
-        deps.invalidateInteractiveStore?.();
-    };
-
-
     // ========== 导出 / 导入 数据功能 ==========
     window.__pmExportData = async () => {
         const snapshot = await captureBackupState();
         const data = {
-            schemaVersion: 3,
+            schemaVersion: 4,
             histories: snapshot.histories,
             config: snapshot.config,
-            theme: snapshot.theme,
+            theme: legacyBackupTheme(snapshot.theme),
             profiles: snapshot.profiles,
             groupMeta: snapshot.groupMeta,
             pokeConfig: snapshot.pokeConfig,
@@ -342,6 +479,8 @@ export function installSettingsUi(deps) {
             bgGlobal: snapshot.bgGlobal,
             bgLocal: snapshot.bgLocal,
             interactiveScenes: snapshot.interactiveScenes,
+            phoneUiState: snapshot.phoneUiState,
+            ambientStatus: snapshot.ambientStatus,
         };
         const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
@@ -363,6 +502,7 @@ export function installSettingsUi(deps) {
                 if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error('备份根节点必须是对象');
                 await runBackupTransaction({
                     capture: captureBackupState,
+                    beforeApply: async reason => { deps.cancelCommunityGeneration?.(`backup-${reason}`); clearBidirectionalInjection(); },
                     apply: async snapshot => {
                         if (snapshot) return applyBackupState(snapshot);
                         const current = await captureBackupState();
@@ -371,11 +511,13 @@ export function installSettingsUi(deps) {
                     },
                     persist: persistBackupState,
                 });
+                await applyBidirectionalInjection();
 
                 alert('数据导入成功，请重新打开界面生效。');
                 document.getElementById('pm-overlay')?.remove();
-                closePhone();
+                closePhone(true);
             } catch (err) {
+                await applyBidirectionalInjection();
                 alert(err.rollbackError
                     ? `导入失败，原数据回滚也失败。请勿刷新，并立即导出当前内存备份。\n${err.message}`
                     : `导入失败，原数据已恢复。\n${err.message}`);
@@ -385,18 +527,69 @@ export function installSettingsUi(deps) {
         input.value = '';
     };
 
+    window.__pmClearAllData = async () => {
+        if (!confirm('将删除天音小笺的聊天、社区、设置、背景与恢复状态。此操作不会删除宿主或其他扩展数据。是否继续？')) return false;
+        if (!confirm('最后确认：清理后只能通过之前导出的备份恢复。确定删除全部天音小笺数据？')) return false;
+        const previous = await captureBackupState();
+        deps.cancelCommunityGeneration?.('plugin-data-clear');
+        clearBidirectionalInjection();
+        try {
+            await clearPluginData({ afterClear: async () => {
+                await applyBackupState({
+                    histories: {}, config: { apiUrl: '', apiKey: '', model: '', useIndependent: false },
+                    theme: { preset: 'default', customRight: '', customLeft: '', borderColor: '', layout: 'standard', darkMode: 'light', ambientStatusEnabled: false },
+                    profiles: [], groupMeta: {}, pokeConfig: {}, bidirectional: {}, emojis: [], characterBehavior: {},
+                    wordyLimit: false, bgGlobal: '', bgLocal: {}, interactiveScenes: normalizeInteractiveStore(null),
+                    phoneUiState: normalizePhoneUiState(null), ambientStatus: normalizeAmbientStatus(),
+                });
+                window.__pmBudgetConfig = normalizeBudgetConfig();
+                deps.invalidateInteractiveStore?.();
+            } });
+            alert('天音小笺数据已清理。');
+            document.getElementById('pm-overlay')?.remove();
+            closePhone(true);
+            return true;
+        } catch (error) {
+            await applyBackupState(previous);
+            await applyBidirectionalInjection();
+            alert(error.rollbackError
+                ? `清理失败，原数据回滚也失败。请勿刷新，并立即导出当前内存备份。\n${error.message}`
+                : `清理失败，原数据已恢复。\n${error.message}`);
+            return false;
+        }
+    };
+
     // ========== 独立设置页面 ==========
     window.__pmShowConfig = async (page = 'api') => {
-        loadProfiles(); loadTheme();
+        loadProfiles(); loadTheme(); loadBudgetConfig();
         const cfg = window.__pmConfig, t = window.__pmTheme;
         if (page === 'backup') {
             makeOverlay(renderSettingsModal({ title: '数据备份', content: renderBackupSettings() }));
             return;
         }
+        if (page === 'budget') {
+            const config = normalizeBudgetConfig(window.__pmBudgetConfig);
+            const storageId = getStorageId();
+            let scope = null;
+            try {
+                const store = await getInteractiveStore?.();
+                scope = store?.scopes?.[storageId] || null;
+            } catch (error) {}
+            const selected = new Set(config.communitySceneIdsByStorage[storageId] || []);
+            const sceneOptions = Array.isArray(scope?.sceneOrder) ? scope.sceneOrder.flatMap(sceneId => {
+                const scene = scope.scenes?.[sceneId];
+                if (!scene) return [];
+                return [`<label class="pm-cfg-label"><input type="checkbox" class="pm-budget-scene" value="${escapeAttr(sceneId)}" ${selected.has(sceneId) ? 'checked' : ''}> ${escapeHtml(scene.title)}</label>`];
+            }).join('') : '';
+            const content = renderBudgetSettings({ config, sceneOptions });
+            const footer = '<div class="pm-modal-add" style="display:flex;gap:8px;"><button onclick="window.__pmResetBudgetConfig()" style="flex:1;padding:10px;border:none;border-radius:10px;cursor:pointer;">恢复默认</button><button onclick="window.__pmSaveBudgetConfig()" style="flex:2;background:#007aff;color:#fff;border:none;border-radius:10px;padding:10px;cursor:pointer;font-weight:600;">保存上下文预算</button></div>';
+            makeOverlay(renderSettingsModal({ title: '上下文预算', content, footer }));
+            return;
+        }
         const shortUrl = (u) => (u || '').replace(/^https?:\/\//, '').replace(/\/+$/, '');
         const maskKey = (k) => !k ? '' : (k.length <= 8 ? '****' : k.slice(0, 4) + '****' + k.slice(-4));
         const profilesHtml = window.__pmProfiles.length > 0
-            ? window.__pmProfiles.map((p, i) => `<div class="pm-prof-li"><div class="pm-prof-info" onclick="window.__pmPickProfile(${i})"><div class="pm-prof-url">${escapeHtml(shortUrl(p.apiUrl))}</div><div class="pm-prof-meta">${escapeHtml(maskKey(p.apiKey))}${p.model ? ' · ' + escapeHtml(p.model) : ''}</div></div><i class="pm-prof-del" onclick="window.__pmDeleteProfile(${i})">✕</i></div>`).join('')
+            ? window.__pmProfiles.map((p, i) => `<div class="pm-prof-li"><div class="pm-prof-info" onclick="window.__pmPickProfile(${i})"><div class="pm-prof-url">${escapeHtml(shortUrl(p.apiUrl))}</div><div class="pm-prof-meta">${escapeHtml(maskKey(p.apiKey))}${p.model ? ' · ' + escapeHtml(p.model) : ''}</div></div><button type="button" class="pm-prof-del" onclick="window.__pmDeleteProfile(${i})">删除</button></div>`).join('')
             : '<div class="pm-prof-empty">暂无档案</div>';
         if (page === 'api') {
             apiDraftUseIndependent = !!cfg.useIndependent;
@@ -527,6 +720,46 @@ export function installSettingsUi(deps) {
             const j = await r.json(), reply = j.choices?.[0]?.message?.content;
             s.textContent = reply != null ? `测试成功："${String(reply).slice(0, 25)}"` : '响应格式异常'; s.style.color = reply != null ? '#34c759' : '#ff9500';
         } catch (e) { clearTimeout(tm); s.textContent = '测试失败：' + (e.name === 'AbortError' ? '超时' : e.message); s.style.color = '#ff3b30'; }
+    };
+
+    window.__pmSaveBudgetConfig = async () => {
+        const storageId = getStorageId();
+        const priority = document.getElementById('pm-budget-priority')?.value === 'community'
+            ? ['community', 'phone'] : ['phone', 'community'];
+        const sceneIds = Array.from(document.querySelectorAll('.pm-budget-scene:checked'))
+            .map(input => input.value).filter(Boolean);
+        const current = normalizeBudgetConfig(window.__pmBudgetConfig);
+        const sceneIdsByStorage = { ...current.communitySceneIdsByStorage };
+        if (storageId && storageId !== 'sms_unknown__default' && sceneIds.length) sceneIdsByStorage[storageId] = sceneIds;
+        else if (storageId) delete sceneIdsByStorage[storageId];
+        const candidate = normalizeBudgetConfig({
+            ...current,
+            targetTokens: Number(document.getElementById('pm-budget-target')?.value),
+            sourceWeights: {
+                phone: Number(document.getElementById('pm-budget-phone-weight')?.value),
+                community: Number(document.getElementById('pm-budget-community-weight')?.value),
+            },
+            sourcePriority: priority,
+            redistributeUnused: !!document.getElementById('pm-budget-redistribute')?.checked,
+            communityEnabled: !!document.getElementById('pm-budget-community-enabled')?.checked,
+            communityPosition: Number(document.getElementById('pm-budget-community-position')?.value),
+            communityDepth: Number(document.getElementById('pm-budget-community-depth')?.value),
+            communitySceneIdsByStorage: sceneIdsByStorage,
+        });
+        if (!saveBudgetConfig(candidate)) {
+            alert('上下文预算保存失败：浏览器存储不可用');
+            return;
+        }
+        await applyBidirectionalInjection();
+        document.getElementById('pm-overlay')?.remove();
+        addNote('上下文预算已保存（token 为估算值）');
+    };
+
+    window.__pmResetBudgetConfig = async () => {
+        const candidate = normalizeBudgetConfig();
+        if (!saveBudgetConfig(candidate)) { alert('上下文预算重置失败：浏览器存储不可用'); return; }
+        await applyBidirectionalInjection();
+        window.__pmShowConfig('budget');
     };
 
     window.__pmSaveConfig = () => {

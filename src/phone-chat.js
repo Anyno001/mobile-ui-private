@@ -10,6 +10,7 @@ import {
     getEmojiPrompt, getWordyPrompt, parseGroupResponse,
 } from './messaging.js';
 import { savePokeConfig } from './storage.js';
+import { runAutoPokeCounterCycle } from './runtime.js';
 import {
     buildUserBlock, buildHistoryText, buildAntiFluff,
     buildSingleInjectedInstruction, buildSingleSystemPrompt,
@@ -21,7 +22,7 @@ export function installPhoneChat(state, deps) {
     const {
         runtime, getStorageId, gatherContext, callAI, applyBidirectionalInjection,
         addBubble, addNote, addDirector, rebaseRenderedHistory, showTyping, hideTyping, persistCurrentHistory,
-        beginGeneration, isGenerationTaskActive, finishGeneration,
+        beginGeneration, isGenerationTaskActive, finishGeneration, isAutoPokeAllowed,
     } = deps;
     async function fetchSMS(userMsg, directorNote, task, request) {
         const {
@@ -48,7 +49,7 @@ export function installPhoneChat(state, deps) {
             const groupName = groupDisplayName || `群聊：${memberList}`;
             injectedInstruction = buildGroupInjectedInstruction({
                 groupName, memberList, userName, userBlock,
-                cardScenario, worldBookText, smsHistoryText, directorNote,
+                cardScenario, worldBookText, mainChatText, smsHistoryText, directorNote,
                 userMsgClean, userMsg,
             });
             systemPrompt = buildGroupSystemPrompt({
@@ -62,7 +63,7 @@ export function installPhoneChat(state, deps) {
             ].filter(Boolean).join('\n\n');
             injectedInstruction = buildSingleInjectedInstruction({
                 currentPersona, userName, userBlock,
-                contextBlockMain, smsHistoryText, directorNote, userMsgClean, userMsg,
+                contextBlockMain, mainChatText, smsHistoryText, directorNote, userMsgClean, userMsg,
             });
             systemPrompt = buildSingleSystemPrompt({
                 currentPersona, userName, userBlock,
@@ -327,35 +328,19 @@ export function installPhoneChat(state, deps) {
     window.__pmIncrementCounters = () => {
         const id = getStorageId();
         const configs = window.__pmPokeConfig[id];
-        if (!configs) return;
-
-        let updated = false;
-        const toPoke = [];
-
-        for (const [contact, config] of Object.entries(configs)) {
-            if (config?.autoPoke?.enabled) {
-                config.autoPoke.counter = (config.autoPoke.counter || 0) + 1;
-                updated = true;
-                if (config.autoPoke.counter >= config.autoPoke.interval) {
-                    config.autoPoke.counter = 0;
-                    toPoke.push(contact);
-                }
-            }
-        }
-
-        if (updated) {
-            savePokeConfig();
-            const counterEl = document.getElementById('pm-poke-counter');
-            if (counterEl && configs[state.currentPersona]) counterEl.textContent = configs[state.currentPersona].autoPoke.counter;
-            const groupCounterEl = document.getElementById('pm-poke-counter-group');
-            if (groupCounterEl && state.currentGroupKey && configs[state.currentGroupKey]) groupCounterEl.textContent = configs[state.currentGroupKey].autoPoke.counter;
-        }
-
-        if (toPoke.length > 0) {
-            (async () => {
-                for (const contact of toPoke) { await window.__pmAutoPoke(contact); }
-            })();
-        }
+        if (!configs) return Promise.resolve(false);
+        return runAutoPokeCounterCycle({
+            configs,
+            persist: savePokeConfig,
+            isAllowed: isAutoPokeAllowed,
+            run: contactName => window.__pmAutoPoke(contactName),
+            onUpdated: () => {
+                const counterEl = document.getElementById('pm-poke-counter');
+                if (counterEl && configs[state.currentPersona]) counterEl.textContent = configs[state.currentPersona].autoPoke.counter;
+                const groupCounterEl = document.getElementById('pm-poke-counter-group');
+                if (groupCounterEl && state.currentGroupKey && configs[state.currentGroupKey]) groupCounterEl.textContent = configs[state.currentGroupKey].autoPoke.counter;
+            },
+        });
     };
     Object.assign(deps, { fetchSMS });
 }

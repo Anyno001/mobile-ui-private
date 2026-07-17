@@ -46,7 +46,7 @@ export function installEmojiUi({ makeOverlay, saveEmojis }) {
     window.__pmShowEmojiManager = () => {
         makeOverlay(`
 <div class="pm-modal pm-modal-wide" style="height:560px;">
-  <div class="pm-modal-header"><b>表情包管理</b><span onclick="window.__pmCloseOverlay()" class="pm-modal-close">✕</span></div>
+  <div class="pm-modal-header"><b>表情包管理</b><button type="button" onclick="window.__pmCloseOverlay()" class="pm-modal-close">关闭</button></div>
   <div class="pm-modal-scroll" style="padding:14px 16px;">
     <div id="pm-emoji-set-list"></div>
     <button onclick="window.__pmAddEmojiSet()" style="width:100%;margin-top:8px;background:#007aff;color:#fff;border:none;border-radius:10px;padding:10px;font-size:13px;cursor:pointer;font-weight:600;">添加新套组</button>
@@ -70,7 +70,7 @@ export function installEmojiUi({ makeOverlay, saveEmojis }) {
                 <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
                     <span style="font-weight:600;font-size:13px;color:#222;">${escapeHtml(set.name)}</span>
                     <div style="display:flex;gap:6px;">
-                        <button onclick="window.__pmAddEmojiImage(${setIndex})" style="font-size:11px;background:#007aff;color:#fff;border:none;border-radius:6px;padding:4px 8px;cursor:pointer;">➕图片</button>
+                        <button onclick="window.__pmAddEmojiImage(${setIndex})" style="font-size:11px;background:#007aff;color:#fff;border:none;border-radius:6px;padding:4px 8px;cursor:pointer;">添加图片</button>
                         <button onclick="window.__pmDeleteEmojiSet(${setIndex})" style="font-size:11px;background:#ff3b30;color:#fff;border:none;border-radius:6px;padding:4px 8px;cursor:pointer;">删除</button>
                     </div>
                 </div>
@@ -79,7 +79,7 @@ export function installEmojiUi({ makeOverlay, saveEmojis }) {
                         <div style="position:relative;width:52px;">
                             <img src="${escapeAttr(image.url)}" style="width:52px;height:52px;object-fit:cover;border-radius:8px;border:1px solid #eee;">
                             <div style="font-size:9px;color:#888;text-align:center;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;width:52px;">${escapeHtml(image.desc)}</div>
-                            <span onclick="window.__pmDeleteEmojiImage(${setIndex},${imageIndex})" style="position:absolute;top:-4px;right:-4px;background:#ff3b30;color:#fff;border-radius:50%;width:16px;height:16px;font-size:10px;display:flex;align-items:center;justify-content:center;cursor:pointer;line-height:1;">×</span>
+                            <button type="button" class="pm-emoji-image-delete" onclick="window.__pmDeleteEmojiImage(${setIndex},${imageIndex})" aria-label="删除图片 ${escapeAttr(image.desc)}">删除</button>
                         </div>`).join('')}
                     ${set.images.length === 0 ? '<span style="font-size:12px;color:#aaa;">暂无图片</span>' : ''}
                 </div>
@@ -91,7 +91,7 @@ export function installEmojiUi({ makeOverlay, saveEmojis }) {
         if (window.__pmEmojis.length >= 10) return alert('最多只能创建 10 个套组。');
         createSubOverlay(`
 <div class="pm-modal">
-  <div class="pm-modal-header"><b>新建表情包套组</b><span onclick="document.getElementById('pm-overlay-sub').remove()" class="pm-modal-close">✕</span></div>
+  <div class="pm-modal-header"><b>新建表情包套组</b><button type="button" onclick="document.getElementById('pm-overlay-sub').remove()" class="pm-modal-close">关闭</button></div>
   <div style="padding:14px 16px;display:flex;flex-direction:column;gap:10px;">
     <input id="pm-new-set-name" class="pm-cfg-input" placeholder="套组名称（如：开心、日常、可爱）" style="padding:8px 10px;font-size:13px;border-radius:8px;border:1px solid #ddd;">
   </div>
@@ -131,11 +131,11 @@ export function installEmojiUi({ makeOverlay, saveEmojis }) {
         if (set.images.length >= 20) return alert('本套组已满 20 张。');
         createSubOverlay(`
 <div class="pm-modal">
-  <div class="pm-modal-header"><b>添加图片 — ${escapeHtml(set.name)}</b><span onclick="document.getElementById('pm-overlay-sub').remove();" class="pm-modal-close">✕</span></div>
+  <div class="pm-modal-header"><b>添加图片 — ${escapeHtml(set.name)}</b><button type="button" onclick="document.getElementById('pm-overlay-sub').remove();" class="pm-modal-close">关闭</button></div>
   <div style="padding:14px 16px;display:flex;flex-direction:column;gap:10px;">
     <div style="font-size:12px;color:#888;margin-bottom:2px;">图片 URL 或本地上传</div>
     <input id="pm-emo-url" class="pm-cfg-input" placeholder="https://... 或点下方选择文件" style="padding:8px 10px;font-size:13px;border-radius:8px;border:1px solid #ddd;">
-    <button onclick="document.getElementById('pm-emo-file').click()" style="background:#f0f0f3;color:#333;border:1px solid #ddd;border-radius:8px;padding:8px 10px;font-size:12px;cursor:pointer;">📁 上传本地图片</button>
+    <button onclick="document.getElementById('pm-emo-file').click()" style="background:#f0f0f3;color:#333;border:1px solid #ddd;border-radius:8px;padding:8px 10px;font-size:12px;cursor:pointer;">上传本地图片</button>
     <input id="pm-emo-file" type="file" accept="image/*" hidden onchange="window.__pmEmoFileRead(${setIndex},this)">
     <div id="pm-emo-preview" style="display:none;text-align:center;"><img id="pm-emo-preview-img" style="max-width:120px;max-height:120px;border-radius:10px;border:1px solid #eee;"></div>
     <input id="pm-emo-desc" class="pm-cfg-input" placeholder="图片描述（必填，如：猫猫开心）" style="padding:8px 10px;font-size:13px;border-radius:8px;border:1px solid #ddd;">
@@ -219,7 +219,7 @@ export function installEmojiUi({ makeOverlay, saveEmojis }) {
 <div class="pm-modal pm-modal-wide" id="pm-emoji-picker-inner">
   <div class="pm-modal-header" style="justify-content:space-between;padding-right:14px;">
     <b class="pm-emoji-set-label">${escapeHtml(firstSet.name)} (${firstSet.images.length})</b>
-    <span onclick="document.getElementById('pm-overlay').remove()" class="pm-modal-close">✕</span>
+    <button type="button" onclick="document.getElementById('pm-overlay').remove()" class="pm-modal-close">关闭</button>
   </div>
   <div class="pm-emoji-imgs" id="pm-emoji-imgs-area" style="padding:12px 14px;overflow-y:auto;max-height:340px;display:flex;flex-wrap:wrap;gap:10px;justify-content:flex-start;touch-action:pan-y pinch-zoom;">${renderPickerImages(firstSet)}</div>
   <div class="pm-emoji-dots">${renderPickerDots(sets, 0)}</div>

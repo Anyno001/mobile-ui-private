@@ -85,7 +85,7 @@ export function installPhoneControlCenter(state, deps) {
         const clearDisabled = !count || items.some(item => item.status === 'submitting');
         makeOverlay(`
 <div class="pm-modal pm-pending-manager">
-  <div class="pm-modal-header"><b>暂存消息（${count}）</b><span onclick="window.__pmCloseOverlay()" class="pm-modal-close">×</span></div>
+  <div class="pm-modal-header"><b>暂存消息（${count}）</b><button type="button" onclick="window.__pmCloseOverlay()" class="pm-modal-close">关闭</button></div>
   <div id="pm-pending-list" class="pm-pending-list">${renderPendingList()}</div>
   <div class="pm-pending-manager-actions"><button onclick="window.__pmClearPending()" ${clearDisabled ? 'disabled' : ''} title="${clearDisabled && count ? '提交中的暂存不能清空' : '清空当前会话暂存'}">清空暂存</button></div>
 </div>`, { onClose: () => { editingTarget = null; } });
@@ -96,7 +96,7 @@ export function installPhoneControlCenter(state, deps) {
         closeControlCenter();
         if (action === 'pending') showPendingManager();
         else if (action === 'settings') window.__pmShowConversationSettings();
-        else if (action === 'api' || action === 'look' || action === 'backup') window.__pmOpenSettingsTab(action);
+        else if (action === 'api' || action === 'look' || action === 'budget' || action === 'backup') window.__pmOpenSettingsTab(action);
         else if (action === 'emoji') window.__pmShowEmojiManager();
         else if (action === 'group') window.__pmEditGroup();
         else if (action === 'delete') window.__pmStartDeleteMode();
@@ -143,6 +143,7 @@ export function installPhoneControlCenter(state, deps) {
   ${state.isGroupChat ? '<button type="button" role="menuitem" data-action="group">群聊设置</button>' : ''}
   <button type="button" role="menuitem" data-action="api">API 设置</button>
   <button type="button" role="menuitem" data-action="look">主题颜色</button>
+  <button type="button" role="menuitem" data-action="budget">上下文预算</button>
   <button type="button" role="menuitem" data-action="emoji">表情包管理</button>
   <button type="button" role="menuitem" data-action="backup">数据备份</button>
   <button type="button" role="menuitem" data-action="delete" class="pm-control-menu-danger">删除信息</button>

@@ -11,8 +11,9 @@ import {
     getEmojiPrompt, getWordyPrompt, parseGroupResponse,
 } from './messaging.js';
 import {
-    saveCharacterBehavior, saveHistories, savePokeConfig,
+    saveCharacterBehavior, saveHistories, saveHistoriesStrict, savePokeConfig,
 } from './storage.js';
+import { commitAutomaticResult } from './runtime.js';
 import {
     buildUserBlock, buildHistoryText, buildPokeSystemPrompt,
     buildPokeGroupPrompt, buildPokeSinglePrompt,
@@ -24,20 +25,29 @@ export function installPhoneChatPoke(state, deps) {
         getStorageId, gatherContext, callAI, applyBidirectionalInjection,
         addBubble, addNote, rebaseRenderedHistory, showTyping, hideTyping, makeOverlay,
         showGroupForm, beginGeneration, isGenerationTaskActive, finishGeneration,
+        isAutoPokeAllowed, armAutoPoke,
+        beginAutomaticTask, isAutomaticTaskActive, finishAutomaticTask,
     } = deps;
     window.__pmAutoPoke = async (contactName) => {
-        if (state.isGenerating) return;
+        if (state.isGenerating || !isAutoPokeAllowed()) return false;
         const id = getStorageId();
-        if (!id || id === 'sms_unknown__default') return;
+        if (!id || id === 'sms_unknown__default') return false;
+        const automaticTask = beginAutomaticTask(id, contactName);
+        if (!automaticTask) return false;
         const task = beginGeneration(id);
-        if (!task) return;
+        if (!task) {
+            finishAutomaticTask(automaticTask);
+            return false;
+        }
         const groupMeta = window.__pmGroupMeta[id]?.[contactName];
         const isGroup = !!groupMeta;
         const groupMembers = groupMeta?.members?.slice() || [];
 
         const isActiveView = state.phoneActive && state.activeStorageId === id
             && ((isGroup && state.currentGroupKey === contactName) || (!isGroup && state.currentPersona === contactName));
-        const isStillActiveView = () => isGenerationTaskActive(task) && state.phoneActive
+        const isAutomaticRequestActive = () => isGenerationTaskActive(task)
+            && isAutomaticTaskActive(automaticTask);
+        const isStillActiveView = () => isAutomaticRequestActive()
             && state.activeStorageId === id
             && ((isGroup && state.isGroupChat && state.currentGroupKey === contactName)
                 || (!isGroup && !state.isGroupChat && state.currentPersona === contactName));
@@ -48,7 +58,7 @@ export function installPhoneChatPoke(state, deps) {
 
         try {
         const ctxData = await gatherContext(task.context);
-        if (!isGenerationTaskActive(task)) return;
+        if (!isAutomaticRequestActive()) return false;
         const { cardDesc, cardPersonality, cardScenario, cardMesExample, mainChatText, worldBookText, userName, userDesc } = ctxData;
         const userBlock = buildUserBlock(userName, userDesc);
 
@@ -77,75 +87,90 @@ export function installPhoneChatPoke(state, deps) {
         });
 
             const raw = await callAI(systemPrompt, userPrompt);
-            if (!isGenerationTaskActive(task)) return;
-            let historyUpdated = false;
-            const renderActive = isStillActiveView();
-
-            if (renderActive) hideTyping();
-
+            if (!isAutomaticRequestActive()) return false;
+            let renderBlocks = [];
+            let renderSentences = [];
             if (isGroup) {
                 const parsed = parseGroupResponse(raw, groupMembers);
-                const blocks = parsed.filter(block => block.sentences.length > 0);
-                const contentParts = blocks.map(block => `${block.name}：${block.sentences.join(' / ')}`);
-                if (contentParts.length > 0) {
-                    targetHistory.push({ role: 'assistant', content: contentParts.join('\n') });
-                    historyUpdated = true;
-                    const historyWindow = createHistoryWindow(targetHistory, SAVE_LIMIT);
-                    const historyIndex = historyWindow.toWindowIndex(targetHistory.length - 1);
-                    if (renderActive) rebaseRenderedHistory(historyWindow.trimmedCount);
-                    if (renderActive && historyIndex !== null) {
-                        for (const block of blocks) {
-                            for (const s of block.sentences) {
-                                await new Promise(r => setTimeout(r, 120));
-                                if (!isGenerationTaskActive(task)) return;
-                                if (isStillActiveView()) addBubble(s, 'left', block.name, historyIndex);
-                            }
-                        }
-                    }
-                }
+                renderBlocks = parsed.filter(block => block.sentences.length > 0);
+                const contentParts = renderBlocks.map(block => `${block.name}：${block.sentences.join(' / ')}`);
+                if (!contentParts.length) return false;
+                targetHistory.push({ role: 'assistant', content: contentParts.join('\n') });
             } else {
                 const clean = cleanResponse(raw);
-                const sentences = splitToSentences(clean);
-                if (sentences.length > 0) {
-                    targetHistory.push({ role: 'assistant', content: sentences.join(' / ') });
-                    historyUpdated = true;
-                    if (renderActive) {
-                        const historyWindow = createHistoryWindow(targetHistory, SAVE_LIMIT);
-                        const historyIndex = historyWindow.toWindowIndex(targetHistory.length - 1);
-                        rebaseRenderedHistory(historyWindow.trimmedCount);
-                        if (historyIndex !== null) {
-                            for (const s of sentences) {
-                                await new Promise(r => setTimeout(r, 150));
-                                if (!isGenerationTaskActive(task)) return;
-                                if (isStillActiveView()) addBubble(s, 'left', undefined, historyIndex);
-                                if (!window.__pmHistories[id]) window.__pmHistories[id] = {};
-                                window.__pmHistories[id][contactName] = historyWindow.history;
-                                saveHistories();
-                            }
+                renderSentences = splitToSentences(clean);
+                if (!renderSentences.length) return false;
+                targetHistory.push({ role: 'assistant', content: renderSentences.join(' / ') });
+            }
+
+            if (!isAutomaticRequestActive()) return false;
+            const autoPoke = window.__pmPokeConfig[id]?.[contactName]?.autoPoke;
+            if (!autoPoke) return false;
+            const interval = Math.max(1, Number(autoPoke.interval) || 1);
+            const previousCounter = Math.max(0, Number(autoPoke.counter) || 0);
+            const previousHistory = window.__pmHistories[id]?.[contactName];
+            const historyWindow = createHistoryWindow(targetHistory, SAVE_LIMIT);
+            const historyIndex = historyWindow.toWindowIndex(targetHistory.length - 1);
+            const committed = await commitAutomaticResult({
+                isActive: isAutomaticRequestActive,
+                applyHistory: () => {
+                    if (!window.__pmHistories[id]) window.__pmHistories[id] = {};
+                    window.__pmHistories[id][contactName] = historyWindow.history;
+                },
+                restoreHistory: () => {
+                    if (previousHistory === undefined) delete window.__pmHistories[id][contactName];
+                    else window.__pmHistories[id][contactName] = previousHistory;
+                },
+                persistHistory: () => saveHistoriesStrict(),
+                applyCounter: () => { autoPoke.counter = Math.max(0, previousCounter - interval); },
+                restoreCounter: () => { autoPoke.counter = previousCounter; },
+                persistCounter: savePokeConfig,
+            });
+            if (!committed) return false;
+            applyBidirectionalInjection();
+            if (isStillActiveView()) {
+                hideTyping();
+                state.conversationHistory = historyWindow.history;
+                rebaseRenderedHistory(historyWindow.trimmedCount);
+                if (historyIndex !== null && isGroup) {
+                    for (const block of renderBlocks) {
+                        for (const sentence of block.sentences) {
+                            await new Promise(resolve => setTimeout(resolve, 120));
+                            if (!isStillActiveView()) return true;
+                            addBubble(sentence, 'left', block.name, historyIndex);
                         }
+                    }
+                } else if (historyIndex !== null) {
+                    for (const sentence of renderSentences) {
+                        await new Promise(resolve => setTimeout(resolve, 150));
+                        if (!isStillActiveView()) return true;
+                        addBubble(sentence, 'left', undefined, historyIndex);
                     }
                 }
             }
-
-            if (historyUpdated) {
-                if (!window.__pmHistories[id]) window.__pmHistories[id] = {};
-                const newHistory = createHistoryWindow(targetHistory, SAVE_LIMIT).history;
-                window.__pmHistories[id][contactName] = newHistory;
-
-                // 修复：如果当前正好在这个角色的界面，必须把最新的数组同步给全局的 state.conversationHistory
-                if (isStillActiveView()) {
-                    state.conversationHistory = newHistory;
-                }
-
-                saveHistories();
-                if (isGenerationTaskActive(task)) applyBidirectionalInjection();
-            }
+            return true;
         } catch (e) {
             if (isStillActiveView()) hideTyping();
             console.error('[phone-mode] 自动发消息失败', e);
+            return false;
         } finally {
+            hideTyping();
             finishGeneration(task);
+            finishAutomaticTask(automaticTask);
         }
+    };
+
+    function refreshAutoPokeRuntimeStatus() {
+        const active = isAutoPokeAllowed();
+        document.querySelectorAll('[data-pm-auto-poke-status]').forEach(element => {
+            element.textContent = active ? '本次手机会话已运行' : '本次手机会话已暂停';
+        });
+    }
+
+    window.__pmArmAutoPoke = () => {
+        if (!armAutoPoke()) return alert('请先打开手机并保持页面在前台。');
+        refreshAutoPokeRuntimeStatus();
+        addNote('已恢复本次手机会话的自动消息计数');
     };
 
     function showContactConfig(contactName) {
@@ -158,7 +183,7 @@ export function installPhoneChatPoke(state, deps) {
 
         const emojiCheckHtml = window.__pmEmojis.length ? `
         <div style="margin-bottom:8px;border-bottom:1px solid #f0f0f0;padding-bottom:14px;">
-            <div class="pm-cfg-label" style="margin-bottom:8px;">🥰 允许 AI 使用的表情包套组</div>
+            <div class="pm-cfg-label" style="margin-bottom:8px;">允许 AI 使用的表情包套组</div>
             <div style="display:flex;flex-direction:column;gap:10px;max-height:130px;overflow-y:auto;background:#fafafa;border-radius:8px;padding:10px;border:1px solid #eee;">
                 ${window.__pmEmojis.map(set => `
                     <div style="display:flex;align-items:center;gap:10px;cursor:pointer;"
@@ -178,7 +203,7 @@ export function installPhoneChatPoke(state, deps) {
     <div class="pm-modal pm-modal-wide">
     <div class="pm-modal-header">
         <b>${escapeHtml(contactName)} · 角色设置</b>
-        <span onclick="window.__pmSaveAndCloseContactConfig('${safeJS(contactName)}')" class="pm-modal-close">✕</span>
+        <button type="button" onclick="window.__pmSaveAndCloseContactConfig('${safeJS(contactName)}')" class="pm-modal-close">保存并关闭</button>
     </div>
     <div class="pm-contact-settings-scroll">
         <div class="pm-cfg-label">私聊线上风格</div>
@@ -237,6 +262,10 @@ export function installPhoneChatPoke(state, deps) {
         <div style="font-size:11px;color:#999;margin-top:4px;">
             当前计数：<span id="pm-poke-counter">${config.autoPoke.counter}</span> / ${config.autoPoke.interval}
         </div>
+        <button type="button" onclick="window.__pmArmAutoPoke()" style="margin-top:8px;width:100%;border:1px solid #ddd;border-radius:8px;padding:7px;background:#fff;cursor:pointer;">
+            恢复本次自动消息
+        </button>
+        <div data-pm-auto-poke-status style="font-size:11px;color:#999;margin-top:4px;">${isAutoPokeAllowed() ? '本次手机会话已运行' : '本次手机会话已暂停'}</div>
         </div>
     </div>
     </div>`);
@@ -251,7 +280,7 @@ export function installPhoneChatPoke(state, deps) {
         const members = state.groupMembers.slice();
         makeOverlay(`
     <div class="pm-modal pm-modal-wide">
-      <div class="pm-modal-header"><b>成员聊天行为</b><span onclick="window.__pmCloseOverlay()" class="pm-modal-close">✕</span></div>
+      <div class="pm-modal-header"><b>成员聊天行为</b><button type="button" onclick="window.__pmCloseOverlay()" class="pm-modal-close">关闭</button></div>
       <div class="pm-member-behavior-list">
         ${members.map(name => `<button onclick="window.__pmShowCharacterBehavior('${safeJS(name)}')">
           <b>${escapeHtml(name)}</b><span>私聊风格、群聊风格与消息频率</span>
@@ -294,7 +323,7 @@ export function installPhoneChatPoke(state, deps) {
                 autoPoke: {
                     enabled,
                     interval: Math.max(1, Math.min(99, interval)),
-                    counter: enabled ? Math.min(oldCounter, interval - 1) : oldCounter
+                    counter: enabled ? Math.min(oldCounter, interval) : oldCounter
                 },
                 emojis: selectedEmojis
             };

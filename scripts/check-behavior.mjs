@@ -9,11 +9,26 @@ import {
     normalizeGroupInjection, normalizeGroupMeta, normalizeGroupMetaStore,
 } from '../src/behavior-config.js';
 import {
-    loadBgSettings, loadCharacterBehavior, loadGroupMeta, pmIDBDel, pmIDBGet, pmIDBSet,
+    clearPluginData, loadBgSettings, loadCharacterBehavior, loadGroupMeta, pmIDBDel, pmIDBGet, pmIDBSet,
+    PLUGIN_IDB_DYNAMIC_PREFIXES, PLUGIN_IDB_STATIC_KEYS, PLUGIN_LOCAL_STORAGE_KEYS,
     saveBgGlobal, saveBgLocal, saveCharacterBehavior, saveGroupMeta, saveHistoriesStrict,
 } from '../src/storage.js';
 import { applyConversationInjections } from '../src/phone-injection.js';
-import { parseBackupData, runBackgroundTransaction, runBackupTransaction } from '../src/settings-ui.js';
+import { deriveInteractiveActorId, normalizeInteractiveStore } from '../src/interactive-scene-model.js';
+import {
+    createBackupStateHandlers, parseBackupData, runBackgroundTransaction, runBackupTransaction,
+} from '../src/settings-ui.js';
+import {
+    buildGroupInjectedInstruction, buildGroupSystemPrompt,
+    buildIndependentGroupUserPrompt, buildIndependentSingleUserPrompt,
+    buildSingleInjectedInstruction, buildSingleSystemPrompt,
+} from '../src/chat-prompts.js';
+import {
+    advanceAutoPokeCounters, commitAutomaticResult,
+    createAutomaticTaskController, createRuntimeState, runAutoPokeCounterCycle,
+} from '../src/runtime.js';
+import { createPhonePageController } from '../src/phone-lifecycle.js';
+import { bindPhonePageActions, finalizeDeletedScene, runDeleteSceneAction } from '../src/interactive-scene-phone.js';
 
 assert.deepEqual(normalizeCharacterBehavior(null), DEFAULT_CHARACTER_BEHAVIOR);
 assert.deepEqual(normalizeCharacterBehavior({
@@ -86,6 +101,226 @@ const unconfiguredPreference = buildChatPreferencePrompt({
     emojiPrompt: emojiPermission,
 });
 assert.equal(unconfiguredPreference, emojiPermission);
+
+const promptFixture = {
+    currentPersona: 'Alice', userName: 'User', userBlock: '用户名字：User',
+    contextBlockMain: '【场景参考】\n咖啡店', cardScenario: '咖啡店',
+    worldBookText: '世界设定', mainChatText: '角色：主线正文证据',
+    smsHistoryText: 'User：短信历史', directorNote: '',
+    userMsgClean: '你好', userMsg: '你好',
+    groupName: '测试群', memberList: 'Alice、Bob',
+};
+const singleInjectedPrompt = buildSingleInjectedInstruction(promptFixture);
+const groupInjectedPrompt = buildGroupInjectedInstruction(promptFixture);
+assert.match(singleInjectedPrompt, /【主线最近对话】\n角色：主线正文证据/);
+assert.match(groupInjectedPrompt, /【主线最近对话】\n角色：主线正文证据/);
+const singleSystemPrompt = buildSingleSystemPrompt({
+    ...promptFixture,
+    cardDesc: '角色设定', cardPersonality: '性格', cardFirstMes: '开场', cardMesExample: '示例',
+});
+const groupSystemPrompt = buildGroupSystemPrompt({
+    ...promptFixture,
+    cardDesc: '角色设定', cardPersonality: '性格',
+});
+assert.match(singleSystemPrompt, /【主线最近对话】\n角色：主线正文证据/);
+assert.match(groupSystemPrompt, /【主线最近对话】\n角色：主线正文证据/);
+const independentSingleUserPrompt = buildIndependentSingleUserPrompt(promptFixture);
+const independentGroupUserPrompt = buildIndependentGroupUserPrompt(promptFixture);
+assert.doesNotMatch(independentSingleUserPrompt, /主线正文证据/);
+assert.doesNotMatch(independentGroupUserPrompt, /主线正文证据/);
+
+const emptyMainChatFixture = { ...promptFixture, mainChatText: '' };
+assert.doesNotMatch(buildSingleInjectedInstruction(emptyMainChatFixture), /【主线最近对话】/);
+assert.doesNotMatch(buildGroupInjectedInstruction(emptyMainChatFixture), /【主线最近对话】/);
+
+const automaticRuntime = createRuntimeState();
+const automaticState = { phoneActive: false, isMinimized: false };
+let automaticStorageId = 'story-a';
+let documentVisible = true;
+const automaticController = createAutomaticTaskController({
+    runtime: automaticRuntime,
+    state: automaticState,
+    getStorageId: () => automaticStorageId,
+    isDocumentVisible: () => documentVisible,
+});
+assert.equal(automaticController.isAllowed(), false);
+assert.equal(automaticController.arm(), false);
+automaticState.phoneActive = true;
+assert.equal(automaticController.arm(), true);
+assert.equal(automaticController.isAllowed(), true);
+const aliceTask = automaticController.begin('story-a', 'Alice');
+assert.ok(aliceTask);
+assert.equal(automaticController.begin('story-a', 'Alice'), null);
+assert.equal(automaticController.begin('story-b', 'Alice'), null);
+assert.equal(automaticController.isActive(aliceTask), true);
+automaticStorageId = 'story-b';
+assert.equal(automaticController.isActive(aliceTask), false);
+const sameContactOtherStorageTask = automaticController.begin('story-b', 'Alice');
+assert.ok(sameContactOtherStorageTask);
+assert.equal(automaticController.isActive(sameContactOtherStorageTask), true);
+assert.equal(automaticController.finish(sameContactOtherStorageTask), true);
+automaticStorageId = 'story-a';
+documentVisible = false;
+assert.equal(automaticController.isAllowed(), false);
+assert.equal(automaticController.arm(), false);
+documentVisible = true;
+assert.equal(automaticController.arm(), true);
+const staleTask = automaticController.begin('story-a', 'Bob');
+assert.ok(staleTask);
+assert.equal(automaticController.disarm('test-hidden'), 'test-hidden');
+assert.equal(automaticController.isAllowed(), false);
+assert.equal(automaticController.isActive(staleTask), false);
+assert.equal(automaticController.finish(staleTask), false);
+assert.equal(automaticController.arm(), true);
+automaticState.isMinimized = true;
+assert.equal(automaticController.isAllowed(), false);
+assert.equal(automaticController.arm(), false);
+automaticState.isMinimized = false;
+
+const counterConfigs = {
+    Alice: { autoPoke: { enabled: true, interval: 2, counter: 1 } },
+    Bob: { autoPoke: { enabled: true, interval: 3, counter: 0 } },
+    Carol: { autoPoke: { enabled: false, interval: 1, counter: 0 } },
+};
+assert.deepEqual(advanceAutoPokeCounters(counterConfigs, () => true), {
+    updated: true,
+    toPoke: ['Alice'],
+});
+assert.equal(counterConfigs.Alice.autoPoke.counter, 2);
+assert.equal(counterConfigs.Bob.autoPoke.counter, 1);
+const failedCounterConfigs = {
+    Alice: { autoPoke: { enabled: true, interval: 2, counter: 1 } },
+};
+assert.deepEqual(advanceAutoPokeCounters(failedCounterConfigs, () => false), {
+    updated: false,
+    toPoke: [],
+});
+assert.equal(failedCounterConfigs.Alice.autoPoke.counter, 1);
+
+const failedCycleConfigs = {
+    Alice: { autoPoke: { enabled: true, interval: 2, counter: 1 } },
+};
+const failedCycleRuns = [];
+assert.equal(await runAutoPokeCounterCycle({
+    configs: failedCycleConfigs,
+    persist: () => false,
+    isAllowed: () => true,
+    run: async contactName => { failedCycleRuns.push(contactName); },
+}), false);
+assert.deepEqual(failedCycleRuns, []);
+assert.equal(failedCycleConfigs.Alice.autoPoke.counter, 1);
+
+const serialCycleRuns = [];
+assert.equal(await runAutoPokeCounterCycle({
+    configs: {
+        Alice: { autoPoke: { enabled: true, interval: 1, counter: 0 } },
+        Bob: { autoPoke: { enabled: true, interval: 1, counter: 0 } },
+    },
+    persist: () => true,
+    isAllowed: () => true,
+    run: async contactName => {
+        serialCycleRuns.push(`start:${contactName}`);
+        await Promise.resolve();
+        serialCycleRuns.push(`end:${contactName}`);
+    },
+}), true);
+assert.deepEqual(serialCycleRuns, ['start:Alice', 'end:Alice', 'start:Bob', 'end:Bob']);
+
+const createCommitHarness = () => {
+    const state = { active: true, history: 'old-history', counter: 3 };
+    const historyWrites = [];
+    const counterWrites = [];
+    return {
+        state, historyWrites, counterWrites,
+        options: {
+            isActive: () => state.active,
+            applyHistory: () => { state.history = 'new-history'; },
+            restoreHistory: () => { state.history = 'old-history'; },
+            persistHistory: async () => { historyWrites.push(state.history); },
+            applyCounter: () => { state.counter = 0; },
+            restoreCounter: () => { state.counter = 3; },
+            persistCounter: () => { counterWrites.push(state.counter); return true; },
+        },
+    };
+};
+
+const successfulCommit = createCommitHarness();
+assert.equal(await commitAutomaticResult(successfulCommit.options), true);
+assert.deepEqual(successfulCommit.historyWrites, ['new-history']);
+assert.deepEqual(successfulCommit.counterWrites, [0]);
+assert.deepEqual(successfulCommit.state, { active: true, history: 'new-history', counter: 0 });
+
+const invalidatedDuringHistory = createCommitHarness();
+invalidatedDuringHistory.options.persistHistory = async () => {
+    invalidatedDuringHistory.historyWrites.push(invalidatedDuringHistory.state.history);
+    if (invalidatedDuringHistory.historyWrites.length === 1) invalidatedDuringHistory.state.active = false;
+};
+assert.equal(await commitAutomaticResult(invalidatedDuringHistory.options), false);
+assert.deepEqual(invalidatedDuringHistory.historyWrites, ['new-history', 'old-history']);
+assert.deepEqual(invalidatedDuringHistory.counterWrites, []);
+assert.equal(invalidatedDuringHistory.state.history, 'old-history');
+assert.equal(invalidatedDuringHistory.state.counter, 3);
+
+const historyFailure = createCommitHarness();
+historyFailure.options.persistHistory = async () => { throw new Error('history failed'); };
+await assert.rejects(commitAutomaticResult(historyFailure.options), /history failed/);
+assert.equal(historyFailure.state.history, 'old-history');
+assert.equal(historyFailure.state.counter, 3);
+
+const counterFailure = createCommitHarness();
+counterFailure.options.persistCounter = () => false;
+await assert.rejects(commitAutomaticResult(counterFailure.options), /自动消息计数保存失败/);
+assert.deepEqual(counterFailure.historyWrites, ['new-history', 'old-history']);
+assert.equal(counterFailure.state.history, 'old-history');
+assert.equal(counterFailure.state.counter, 3);
+
+const invalidatedAfterCounter = createCommitHarness();
+invalidatedAfterCounter.options.persistCounter = () => {
+    invalidatedAfterCounter.counterWrites.push(invalidatedAfterCounter.state.counter);
+    if (invalidatedAfterCounter.counterWrites.length === 1) invalidatedAfterCounter.state.active = false;
+    return true;
+};
+assert.equal(await commitAutomaticResult(invalidatedAfterCounter.options), false);
+assert.deepEqual(invalidatedAfterCounter.historyWrites, ['new-history', 'old-history']);
+assert.deepEqual(invalidatedAfterCounter.counterWrites, [0, 3]);
+assert.equal(invalidatedAfterCounter.state.history, 'old-history');
+assert.equal(invalidatedAfterCounter.state.counter, 3);
+
+const failedCompensation = createCommitHarness();
+failedCompensation.options.persistHistory = async () => {
+    failedCompensation.historyWrites.push(failedCompensation.state.history);
+    if (failedCompensation.historyWrites.length === 1) failedCompensation.state.active = false;
+    else throw new Error('rollback failed');
+};
+await assert.rejects(commitAutomaticResult(failedCompensation.options), AggregateError);
+assert.equal(failedCompensation.state.history, 'old-history');
+assert.equal(failedCompensation.state.counter, 3);
+
+const doubleFailedCompensation = createCommitHarness();
+doubleFailedCompensation.options.persistHistory = async () => {
+    doubleFailedCompensation.historyWrites.push(doubleFailedCompensation.state.history);
+    if (doubleFailedCompensation.historyWrites.length > 1) throw new Error('history rollback failed');
+};
+doubleFailedCompensation.options.persistCounter = () => {
+    doubleFailedCompensation.counterWrites.push(doubleFailedCompensation.state.counter);
+    if (doubleFailedCompensation.counterWrites.length === 1) {
+        doubleFailedCompensation.state.active = false;
+        return true;
+    }
+    return false;
+};
+await assert.rejects(
+    commitAutomaticResult(doubleFailedCompensation.options),
+    error => {
+        assert.ok(error instanceof AggregateError);
+        assert.equal(error.errors.length, 2);
+        assert.match(error.errors[0].message, /计数补偿失败/);
+        assert.match(error.errors[1].message, /history rollback failed/);
+        return true;
+    },
+);
+assert.equal(doubleFailedCompensation.state.history, 'old-history');
+assert.equal(doubleFailedCompensation.state.counter, 3);
 
 assert.deepEqual(EXTENSION_PROMPT_POSITIONS, {
     NONE: -1, IN_PROMPT: 0, IN_CHAT: 1, BEFORE_PROMPT: 2,
@@ -170,9 +405,11 @@ inheritedInput.own = { Alice: { messageLength: 'short' } };
 assert.deepEqual(normalizeCharacterBehaviorStore(inheritedInput), {});
 
 const localValues = new Map();
+const localStorageWrites = [];
 const localStorageControl = {
     failGet: new Set(),
     failSet: new Set(),
+    failSetCounts: new Map(),
 };
 globalThis.window = {};
 globalThis.localStorage = {
@@ -181,7 +418,14 @@ globalThis.localStorage = {
         return localValues.has(key) ? localValues.get(key) : null;
     },
     setItem(key, value) {
+        const remainingFailures = localStorageControl.failSetCounts.get(key) || 0;
+        if (remainingFailures > 0) {
+            if (remainingFailures === 1) localStorageControl.failSetCounts.delete(key);
+            else localStorageControl.failSetCounts.set(key, remainingFailures - 1);
+            throw new Error('injected counted set failure');
+        }
         if (localStorageControl.failSet.delete(key)) throw new Error('injected set failure');
+        localStorageWrites.push({ key, value: String(value) });
         localValues.set(key, String(value));
     },
     removeItem(key) { localValues.delete(key); },
@@ -212,7 +456,7 @@ assert.equal(savedGroup.injection.position, -1);
 assert.equal(savedGroup.injection.depth, MAX_INJECTION_DEPTH);
 
 const promptCalls = [];
-const injectionRuntime = { injectionKeys: new Set(['PHONE_SMS_MEMORY:stale']) };
+const injectionRuntime = { trackedExtensionPromptKeys: new Set(['PHONE_SMS_MEMORY:stale']) };
 applyConversationInjections({
     context: { setExtensionPrompt: (...args) => promptCalls.push(args) },
     runtime: injectionRuntime,
@@ -478,34 +722,100 @@ await assert.rejects(saveHistoriesStrict(), /IndexedDB 不可用/);
 idbControl.abortAll = false;
 
 const currentBackup = {
-    histories: {}, config: {}, theme: {}, profiles: [], groupMeta: {}, pokeConfig: {},
+    histories: {}, config: {}, theme: { darkMode: 'dark', ambientStatusEnabled: true }, profiles: [], groupMeta: {}, pokeConfig: {},
     bidirectional: {}, emojis: [], characterBehavior: {}, wordyLimit: false,
     bgGlobal: '', bgLocal: {}, interactiveScenes: { version: 1, scopes: {} },
+    phoneUiState: {
+        version: 1,
+        scopes: { story: { pinnedSceneIds: [], lastPage: 'chat', lastSceneId: null, lastTab: 'feed' } },
+    },
+    ambientStatus: { enabled: true },
 };
 const parsedLegacyBackup = parseBackupData({ histories: { story: {} } }, currentBackup);
 assert.deepEqual(parsedLegacyBackup.histories, { story: {} });
 assert.deepEqual(parsedLegacyBackup.interactiveScenes, currentBackup.interactiveScenes);
+assert.deepEqual(parsedLegacyBackup.phoneUiState, currentBackup.phoneUiState);
+assert.deepEqual(parsedLegacyBackup.ambientStatus, currentBackup.ambientStatus);
+for (const schemaVersion of [undefined, 2, 3]) {
+    const backup = {
+        ...(schemaVersion === undefined ? {} : { schemaVersion }),
+        theme: { darkMode: 'light', ambientStatusEnabled: false },
+        phoneUiState: {
+            version: 1,
+            scopes: { story: { pinnedSceneIds: ['forged'], lastPage: 'community', lastSceneId: 'forged', lastTab: 'live' } },
+        },
+        ambientStatus: { enabled: false },
+    };
+    const parsed = parseBackupData(backup, currentBackup);
+    assert.equal(parsed.theme.darkMode, 'light');
+    assert.equal(parsed.theme.ambientStatusEnabled, true);
+    assert.deepEqual(parsed.phoneUiState, currentBackup.phoneUiState);
+    assert.deepEqual(parsed.ambientStatus, currentBackup.ambientStatus);
+    assert.equal(Object.hasOwn(backup.theme, 'ambientStatusEnabled'), true);
+}
 assert.throws(() => parseBackupData({ schemaVersion: '3' }, currentBackup), /备份版本无效/);
-assert.throws(() => parseBackupData({ schemaVersion: 4 }, currentBackup), /高于当前支持版本/);
+assert.throws(() => parseBackupData({ schemaVersion: 5 }, currentBackup), /高于当前支持版本 4/);
+const parsedV4Backup = parseBackupData({
+    schemaVersion: 4,
+    theme: { darkMode: 'light', ambientStatusEnabled: true },
+    interactiveScenes: {
+        version: 1,
+        scopes: {
+            story: {
+                activeSceneId: 'scene-v4', sceneOrder: ['scene-v4'],
+                scenes: { 'scene-v4': { id: 'scene-v4', title: 'v4 社区' } },
+            },
+        },
+    },
+    phoneUiState: {
+        version: 1,
+        scopes: {
+            story: {
+                pinnedSceneIds: ['scene-v4', 'missing'], lastPage: 'community', lastSceneId: 'scene-v4', lastTab: 'live',
+            },
+            other: {
+                pinnedSceneIds: ['scene-v4'], lastPage: 'community', lastSceneId: 'scene-v4', lastTab: 'prompt',
+            },
+        },
+    },
+    ambientStatus: { enabled: false },
+}, currentBackup);
+assert.equal(parsedV4Backup.theme.darkMode, 'light');
+assert.equal(parsedV4Backup.theme.ambientStatusEnabled, false);
+assert.deepEqual(parsedV4Backup.ambientStatus, { enabled: false });
+assert.deepEqual(parsedV4Backup.phoneUiState.scopes.story, {
+    pinnedSceneIds: ['scene-v4'], lastPage: 'community', lastSceneId: 'scene-v4', lastTab: 'live',
+});
+assert.deepEqual(parsedV4Backup.phoneUiState.scopes.other, {
+    pinnedSceneIds: [], lastPage: 'desktop', lastSceneId: null, lastTab: 'prompt',
+});
+const parsedV4Defaults = parseBackupData({ schemaVersion: 4 }, currentBackup);
+assert.deepEqual(parsedV4Defaults.phoneUiState, { version: 1, scopes: {} });
+assert.deepEqual(parsedV4Defaults.ambientStatus, { enabled: false });
+assert.throws(() => parseBackupData({ schemaVersion: 4, phoneUiState: [] }, currentBackup), /phoneUiState 必须是对象/);
+assert.throws(() => parseBackupData({ schemaVersion: 4, ambientStatus: [] }, currentBackup), /ambientStatus 必须是对象/);
 assert.throws(() => parseBackupData({ schemaVersion: 3, histories: 'broken' }, currentBackup), /histories 必须是对象/);
 assert.throws(() => parseBackupData({ schemaVersion: 3, profiles: {} }, currentBackup), /profiles 必须是数组/);
 assert.throws(() => parseBackupData({ schemaVersion: 3, wordyLimit: 'yes' }, currentBackup), /wordyLimit 必须是布尔值/);
 assert.throws(() => parseBackupData({
     schemaVersion: 3,
     interactiveScenes: { version: 1, scopes: [] },
-}, currentBackup), /interactiveScenes\.scopes 必须是对象/);
+}, currentBackup), /scopes 必须是对象/);
 assert.throws(() => parseBackupData({
     schemaVersion: 3,
     interactiveScenes: { version: 1, scopes: { story: { activeSceneId: null, sceneOrder: {}, scenes: {} } } },
 }, currentBackup), /sceneOrder 必须是数组/);
-assert.throws(() => parseBackupData({
+const recoveredEmptyLegacyScope = parseBackupData({
     schemaVersion: 3,
     interactiveScenes: { version: 1, scopes: { story: { activeSceneId: 'missing', sceneOrder: [], scenes: {} } } },
-}, currentBackup), /activeSceneId 未指向有效场景/);
-assert.throws(() => parseBackupData({
+}, currentBackup).interactiveScenes.scopes.story;
+assert.equal(recoveredEmptyLegacyScope.activeSceneId, null);
+const recoveredLegacyOrphan = parseBackupData({
     schemaVersion: 3,
     interactiveScenes: { version: 1, scopes: { story: { activeSceneId: null, sceneOrder: [], scenes: { orphan: { id: 'orphan' } } } } },
-}, currentBackup), /未列入 sceneOrder/);
+}, currentBackup).interactiveScenes.scopes.story;
+assert.deepEqual(recoveredLegacyOrphan.sceneOrder, []);
+assert.deepEqual(recoveredLegacyOrphan.scenes, {});
 assert.throws(() => parseBackupData({
     schemaVersion: 3,
     interactiveScenes: { version: 1, scopes: { story: { activeSceneId: 'scene', sceneOrder: ['scene'], scenes: { scene: { id: 'scene', posts: ['broken'] } } } } },
@@ -556,51 +866,256 @@ const validInteractiveScene = {
         danmaku: [{ id: 'danmaku', author: '观众', content: '弹幕', createdAt: 130 }],
     },
 };
-const parsedLosslessBackup = parseBackupData(interactiveBackupWithScene(validInteractiveScene), currentBackup);
-assert.deepEqual(parsedLosslessBackup.interactiveScenes.scopes.story.scenes.scene, validInteractiveScene);
-const parsedLegacyScene = parseBackupData(interactiveBackupWithScene({ id: 'scene' }, {
-    activeSceneId: undefined,
-}), currentBackup);
+const parsedMigratedBackup = parseBackupData(interactiveBackupWithScene(validInteractiveScene), currentBackup);
+const migratedScene = parsedMigratedBackup.interactiveScenes.scopes.story.scenes.scene;
+assert.equal(parsedMigratedBackup.interactiveScenes.version, 2);
+assert.equal(migratedScene.content, validInteractiveScene.content);
+assert.equal(migratedScene.posts[0].content, validInteractiveScene.posts[0].content);
+assert.equal(migratedScene.posts[0].authorNameSnapshot, '作者');
+assert.equal(migratedScene.posts[0].comments[0].authorNameSnapshot, '评论者');
+assert.equal(migratedScene.live.danmaku[0].authorNameSnapshot, '观众');
+assert.ok(parsedMigratedBackup.interactiveScenes.scopes.story.actors[migratedScene.posts[0].authorId]);
+assert.ok(parsedMigratedBackup.interactiveScenes.scopes.story.actors[migratedScene.posts[0].comments[0].authorId]);
+const parsedLegacyScene = parseBackupData(interactiveBackupWithScene({ id: 'scene' }, { activeSceneId: null }), currentBackup);
 assert.equal(parsedLegacyScene.interactiveScenes.scopes.story.activeSceneId, 'scene');
+const normalizedLegacyIds = parseBackupData(interactiveBackupWithScene({ id: ' scene ', title: '社区' }, {
+    activeSceneId: ' scene ',
+    sceneOrder: [' scene '],
+    scenes: { ' scene ': { id: ' scene ', title: '社区' } },
+}), currentBackup).interactiveScenes.scopes.story;
+assert.deepEqual(normalizedLegacyIds.sceneOrder, ['scene']);
+assert.equal(normalizedLegacyIds.activeSceneId, 'scene');
+assert.equal(normalizedLegacyIds.scenes.scene.id, 'scene');
+assert.equal(Object.getPrototypeOf(normalizedLegacyIds.scenes), Object.prototype);
+assert.throws(() => parseBackupData(interactiveBackupWithScene({ id: 'scene' }, {
+    activeSceneId: 'scene',
+    sceneOrder: [' scene ', 'scene'],
+    scenes: { ' scene ': { id: ' scene ' }, scene: { id: 'scene' } },
+}), currentBackup), /归一化后.*(?:重复|冲突)|包含重复场景/);
+assert.throws(() => parseBackupData(JSON.parse('{"schemaVersion":3,"interactiveScenes":{"version":2,"scopes":{"story":{"activeSceneId":"scene","sceneOrder":["scene"],"actors":{},"scenes":{"scene":{"id":"scene","title":"社区","preset":"weibo","styleInput":"","generatedPrompt":"","contentRating":"general","createdAt":1,"updatedAt":1,"posts":[{"id":"post","authorId":"toString","authorNameSnapshot":"伪造","content":"帖子","tags":[],"createdAt":1,"comments":[],"liked":false}],"live":{"title":"直播","status":"idle","danmaku":[]}}}}}}}'), currentBackup), /authorId 未指向有效 actor|包含危险键/);
+const mismatchedLegacySceneStore = {
+    version: 1,
+    scopes: {
+        story: {
+            activeSceneId: 'safe', sceneOrder: ['safe'],
+            scenes: { safe: { id: 'other', title: '旧场景' } },
+        },
+    },
+};
+assert.throws(() => normalizeInteractiveStore(mismatchedLegacySceneStore), /id 必须与场景键一致/);
+assert.throws(() => parseBackupData({ schemaVersion: 3, interactiveScenes: mismatchedLegacySceneStore }, currentBackup), /id 必须与场景键一致/);
+const overflowSceneOrder = Array.from({ length: 13 }, (_, index) => `scene${index}`);
+const overflowLegacyStore = {
+    version: 1,
+    scopes: {
+        story: {
+            activeSceneId: 'scene0',
+            sceneOrder: overflowSceneOrder,
+            scenes: Object.fromEntries(overflowSceneOrder.map(sceneId => [sceneId, { title: sceneId }])),
+        },
+    },
+};
+const normalizedOverflowModel = normalizeInteractiveStore(overflowLegacyStore);
+const normalizedOverflowBackup = parseBackupData({
+    schemaVersion: 3, interactiveScenes: overflowLegacyStore,
+}, currentBackup).interactiveScenes;
+assert.deepEqual(normalizedOverflowBackup, normalizedOverflowModel);
+assert.deepEqual(normalizedOverflowModel.scopes.story.sceneOrder, overflowSceneOrder.slice(-12));
+assert.equal(normalizedOverflowModel.scopes.story.activeSceneId, 'scene12');
+assert.equal(normalizedOverflowModel.scopes.story.scenes.scene1.id, 'scene1');
+assert.equal(normalizedOverflowModel.scopes.story.scenes.scene0, undefined);
+assert.deepEqual(normalizeInteractiveStore(normalizedOverflowModel), normalizedOverflowModel);
 
-const lossyInteractiveCases = [
-    [{ ...validInteractiveScene, title: ' 社区' }, /title 不能包含首尾空白/],
-    [{ ...validInteractiveScene, title: 'x'.repeat(81) }, /title 长度不能超过 80/],
-    [{ ...validInteractiveScene, preset: '' }, /preset 必须是非空字符串/],
-    [{ ...validInteractiveScene, styleInput: ` ${'x'.repeat(10)}` }, /styleInput 不能包含首尾空白/],
-    [{ ...validInteractiveScene, generatedPrompt: 'x'.repeat(6001) }, /generatedPrompt 长度不能超过 6000/],
+const normalizedLegacyBackup = parseBackupData(interactiveBackupWithScene({
+    ...validInteractiveScene,
+    title: ` ${'社'.repeat(81)} `,
+    preset: '',
+    styleInput: ` ${'风'.repeat(2001)} `,
+    generatedPrompt: ` ${'提'.repeat(6001)} `,
+    posts: [{
+        id: 'post', author: ` ${'作'.repeat(81)} `, content: ` ${'帖'.repeat(4001)} `,
+        tags: [` ${'标'.repeat(31)} `], createdAt: 110,
+        comments: [{ id: 'comment', author: ` ${'评'.repeat(81)} `, content: ` ${'论'.repeat(1001)} `, createdAt: 120 }],
+        liked: false,
+    }],
+    live: {
+        ...validInteractiveScene.live,
+        title: ` ${'直'.repeat(101)} `,
+        danmaku: [{ id: 'danmaku', author: ` ${'观'.repeat(81)} `, content: ` ${'弹'.repeat(201)} `, createdAt: 130 }],
+    },
+}), currentBackup).interactiveScenes.scopes.story.scenes.scene;
+assert.equal(normalizedLegacyBackup.title, '社'.repeat(80));
+assert.equal(normalizedLegacyBackup.preset, 'weibo');
+assert.equal(normalizedLegacyBackup.styleInput, '风'.repeat(2000));
+assert.equal(normalizedLegacyBackup.generatedPrompt, '提'.repeat(6000));
+assert.equal(normalizedLegacyBackup.posts[0].content, '帖'.repeat(4000));
+assert.equal(normalizedLegacyBackup.posts[0].authorNameSnapshot, '作'.repeat(80));
+assert.deepEqual(normalizedLegacyBackup.posts[0].tags, ['标'.repeat(30)]);
+assert.equal(normalizedLegacyBackup.posts[0].comments[0].content, '论'.repeat(1000));
+assert.equal(normalizedLegacyBackup.live.title, '直'.repeat(100));
+assert.equal(normalizedLegacyBackup.live.danmaku[0].content, '弹'.repeat(200));
+
+const legacyStoreWithScene = (scene = validInteractiveScene, scope = {}) => interactiveBackupWithScene(scene, scope).interactiveScenes;
+const mutateLegacyStore = mutation => {
+    const store = structuredClone(legacyStoreWithScene());
+    mutation(store, store.scopes.story, store.scopes.story.scenes.scene);
+    return store;
+};
+const assertAcceptedByBothInteractivePaths = (name, store) => {
+    const normalizedModel = normalizeInteractiveStore(store);
+    const normalizedBackup = parseBackupData({ schemaVersion: 3, interactiveScenes: store }, currentBackup).interactiveScenes;
+    assert.deepEqual(normalizedBackup, normalizedModel, `${name}: model 与 backup 归一化结果必须一致`);
+    assert.deepEqual(normalizeInteractiveStore(normalizedModel), normalizedModel, `${name}: v1→v2 迁移结果必须满足 v2 闭包`);
+};
+const assertRejectedByBothInteractivePaths = (name, store) => {
+    assert.throws(() => normalizeInteractiveStore(store), undefined, `${name}: model 必须拒绝`);
+    assert.throws(
+        () => parseBackupData({ schemaVersion: 3, interactiveScenes: store }, currentBackup),
+        undefined,
+        `${name}: backup 必须拒绝`,
+    );
+};
+const missingVersionStore = legacyStoreWithScene();
+delete missingVersionStore.version;
+for (const [name, store] of [
+    ['完整 v1 store', legacyStoreWithScene()],
+    ['缺失 version 的 legacy v1 store', missingVersionStore],
+    ['缺失可选字段的最小 v1 scene', legacyStoreWithScene({ id: 'scene', posts: [{}], live: { danmaku: [{}] } })],
+    ['可安全 trim/截断的 v1 文本', legacyStoreWithScene({
+        id: 'scene', title: ` ${'场'.repeat(90)} `, styleInput: ` ${'风'.repeat(2100)} `,
+        posts: [{ author: ` ${'作'.repeat(90)} `, content: ` ${'帖'.repeat(4100)} `, tags: [` ${'标'.repeat(40)} `] }],
+        live: { title: ` ${'直'.repeat(110)} `, danmaku: [{ content: ` ${'弹'.repeat(210)} ` }] },
+    })],
+    ['null-prototype 字典', (() => {
+        const store = legacyStoreWithScene();
+        store.scopes = Object.assign(Object.create(null), store.scopes);
+        store.scopes.story.scenes = Object.assign(Object.create(null), store.scopes.story.scenes);
+        return store;
+    })()],
+]) assertAcceptedByBothInteractivePaths(name, store);
+
+const rejectedLegacyFixtures = [
+    ['store 额外字段', mutateLegacyStore(store => { store.debug = true; })],
+    ['scopes 非对象', { version: 1, scopes: [] }],
+    ['scope 非对象', mutateLegacyStore((store) => { store.scopes.story = []; })],
+    ['scope 额外字段', mutateLegacyStore((store, scope) => { scope.actors = {}; })],
+    ['sceneOrder 非数组', mutateLegacyStore((store, scope) => { scope.sceneOrder = {}; })],
+    ['scene 非对象', mutateLegacyStore((store, scope) => { scope.scenes.scene = []; })],
+    ['scene 额外字段', mutateLegacyStore((store, scope, scene) => { scene.debug = true; })],
+    ['live 非对象', mutateLegacyStore((store, scope, scene) => { scene.live = null; })],
+    ['live 额外字段', mutateLegacyStore((store, scope, scene) => { scene.live.debug = true; })],
+    ['posts 非数组', mutateLegacyStore((store, scope, scene) => { scene.posts = {}; })],
+    ['post 非对象', mutateLegacyStore((store, scope, scene) => { scene.posts = [null]; })],
+    ['post 额外字段', mutateLegacyStore((store, scope, scene) => { scene.posts[0].debug = true; })],
+    ['content 数字', mutateLegacyStore((store, scope, scene) => { scene.posts[0].content = 123; })],
+    ['content 布尔值', mutateLegacyStore((store, scope, scene) => { scene.posts[0].content = true; })],
+    ['content null', mutateLegacyStore((store, scope, scene) => { scene.posts[0].content = null; })],
+    ['content 显式 undefined', mutateLegacyStore((store, scope, scene) => { scene.posts[0].content = undefined; })],
+    ['author 数字', mutateLegacyStore((store, scope, scene) => { scene.posts[0].author = 1; })],
+    ['author 对象', mutateLegacyStore((store, scope, scene) => { scene.posts[0].author = {}; })],
+    ['tags 非数组', mutateLegacyStore((store, scope, scene) => { scene.posts[0].tags = {}; })],
+    ['tag 非字符串', mutateLegacyStore((store, scope, scene) => { scene.posts[0].tags = [1]; })],
+    ['liked 非布尔值', mutateLegacyStore((store, scope, scene) => { scene.posts[0].liked = 'yes'; })],
+    ['comments 非数组', mutateLegacyStore((store, scope, scene) => { scene.posts[0].comments = {}; })],
+    ['comment 非对象', mutateLegacyStore((store, scope, scene) => { scene.posts[0].comments = [false]; })],
+    ['comment 额外字段', mutateLegacyStore((store, scope, scene) => { scene.posts[0].comments[0].liked = false; })],
+    ['danmaku 非数组', mutateLegacyStore((store, scope, scene) => { scene.live.danmaku = {}; })],
+    ['danmaku 非对象', mutateLegacyStore((store, scope, scene) => { scene.live.danmaku = [false]; })],
+    ['danmaku 额外字段', mutateLegacyStore((store, scope, scene) => { scene.live.danmaku[0].debug = true; })],
+    ['tags 数量超限', mutateLegacyStore((store, scope, scene) => { scene.posts[0].tags = Array(6).fill('标签'); })],
+    ['posts 数量超限', mutateLegacyStore((store, scope, scene) => { scene.posts = Array.from({ length: 81 }, () => ({ content: '帖子' })); })],
+    ['comments 数量超限', mutateLegacyStore((store, scope, scene) => { scene.posts[0].comments = Array.from({ length: 41 }, () => ({ content: '评论' })); })],
+    ['danmaku 数量超限', mutateLegacyStore((store, scope, scene) => { scene.live.danmaku = Array.from({ length: 241 }, () => ({ content: '弹幕' })); })],
+    ['非法 orphan scene', mutateLegacyStore((store, scope) => {
+        scope.scenes.orphan = { id: 'orphan', posts: [{ content: 123, debug: true }] };
+    })],
+    ['非法淘汰 scene', (() => {
+        const store = legacyStoreWithScene();
+        const sceneIds = Array.from({ length: 13 }, (_, index) => `scene${index}`);
+        store.scopes.story.activeSceneId = 'scene12';
+        store.scopes.story.sceneOrder = sceneIds;
+        store.scopes.story.scenes = Object.fromEntries(sceneIds.map((sceneId, index) => [
+            sceneId,
+            index === 0 ? { id: sceneId, posts: [{ content: 123, debug: true }] } : { id: sceneId },
+        ]));
+        return store;
+    })()],
+    ['继承 scopes', (() => {
+        const store = Object.create({ scopes: legacyStoreWithScene().scopes });
+        store.version = 1;
+        return store;
+    })()],
+    ['继承 sceneOrder', (() => {
+        const store = legacyStoreWithScene();
+        const scope = Object.create({ sceneOrder: ['scene'] });
+        scope.activeSceneId = 'scene';
+        scope.scenes = store.scopes.story.scenes;
+        store.scopes.story = scope;
+        return store;
+    })()],
+    ['继承 scenes', (() => {
+        const store = legacyStoreWithScene();
+        const scope = Object.create({ scenes: store.scopes.story.scenes });
+        scope.activeSceneId = 'scene';
+        scope.sceneOrder = ['scene'];
+        store.scopes.story = scope;
+        return store;
+    })()],
+    ['accessor scopes', (() => {
+        const store = { version: 1 };
+        Object.defineProperty(store, 'scopes', { enumerable: true, get: () => legacyStoreWithScene().scopes });
+        return store;
+    })()],
+    ['accessor scene content', (() => {
+        const store = structuredClone(legacyStoreWithScene());
+        const post = store.scopes.story.scenes.scene.posts[0];
+        const content = post.content;
+        Object.defineProperty(post, 'content', { enumerable: true, get: () => content });
+        return store;
+    })()],
+];
+for (const key of ['createdAt', 'updatedAt']) {
+    for (const value of [Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY, 0, -1, '100']) {
+        rejectedLegacyFixtures.push([`scene.${key} 非法时间戳 ${String(value)}`, mutateLegacyStore((store, scope, scene) => { scene[key] = value; })]);
+    }
+}
+for (const [path, mutation] of [
+    ['post.createdAt', (scene, value) => { scene.posts[0].createdAt = value; }],
+    ['comment.createdAt', (scene, value) => { scene.posts[0].comments[0].createdAt = value; }],
+    ['danmaku.createdAt', (scene, value) => { scene.live.danmaku[0].createdAt = value; }],
+]) {
+    for (const value of [Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY, 0, -1, '100']) {
+        rejectedLegacyFixtures.push([`${path} 非法时间戳 ${String(value)}`, mutateLegacyStore((store, scope, scene) => mutation(scene, value))]);
+    }
+}
+for (const [name, store] of rejectedLegacyFixtures) assertRejectedByBothInteractivePaths(name, store);
+
+const invalidInteractiveCases = [
     [{ ...validInteractiveScene, contentRating: 'adult' }, /contentRating 必须是 general 或 mature/],
     [{ ...validInteractiveScene, createdAt: '100' }, /createdAt 必须是有效时间戳/],
     [{ ...validInteractiveScene, updatedAt: 0 }, /updatedAt 必须是有效时间戳/],
-    [{ ...validInteractiveScene, unsupported: true }, /unsupported 不受支持/],
+    [{ ...validInteractiveScene, unsupported: true }, /(?:额外字段：unsupported|unsupported 不受支持)/],
     [{ ...validInteractiveScene, posts: Array.from({ length: 81 }, (_, index) => ({ content: `帖子${index}` })) }, /posts 不能超过 80 项/],
-    [{ ...validInteractiveScene, posts: [{ content: 'x'.repeat(4001) }] }, /content 长度不能超过 4000/],
-    [{ ...validInteractiveScene, posts: [{ content: ' 帖子' }] }, /content 不能包含首尾空白/],
-    [{ ...validInteractiveScene, posts: [{ id: '', content: '帖子' }] }, /id 必须是非空字符串/],
-    [{ ...validInteractiveScene, posts: [{ author: 'x'.repeat(81), content: '帖子' }] }, /author 长度不能超过 80/],
+    [{ ...validInteractiveScene, posts: [{ content: 123 }] }, /content 必须是字符串/],
+    [{ ...validInteractiveScene, posts: [{ id: '', content: '帖子' }] }, /id (?:必须是非空字符串|格式无效)/],
+    [{ ...validInteractiveScene, posts: [{ author: {}, content: '帖子' }] }, /author 必须是字符串/],
     [{ ...validInteractiveScene, posts: [{ content: '帖子', createdAt: Number.NaN }] }, /createdAt 必须是有效时间戳/],
     [{ ...validInteractiveScene, posts: [{ content: '帖子', liked: 'yes' }] }, /liked 必须是布尔值/],
-    [{ ...validInteractiveScene, posts: [{ content: '帖子', tags: ['', '日常'] }] }, /tags\.0 必须是非空字符串/],
-    [{ ...validInteractiveScene, posts: [{ content: '帖子', tags: ['x'.repeat(31)] }] }, /tags\.0 长度不能超过 30/],
+    [{ ...validInteractiveScene, posts: [{ content: '帖子', tags: ['日常', 1] }] }, /tags 必须是字符串数组/],
     [{ ...validInteractiveScene, posts: [{ content: '帖子', tags: Array(6).fill('标签') }] }, /tags 不能超过 5 项/],
     [{ ...validInteractiveScene, posts: [{ content: '帖子', comments: Array.from({ length: 41 }, (_, index) => ({ content: `评论${index}` })) }] }, /comments 不能超过 40 项/],
-    [{ ...validInteractiveScene, posts: [{ content: '帖子', comments: [{ content: 'x'.repeat(1001) }] }] }, /content 长度不能超过 1000/],
-    [{ ...validInteractiveScene, posts: [{ content: '帖子', comments: [{ content: '评论', liked: false }] }] }, /liked 不受支持/],
-    [{ ...validInteractiveScene, live: { ...validInteractiveScene.live, title: '' } }, /live\.title 必须是非空字符串/],
+    [{ ...validInteractiveScene, posts: [{ content: '帖子', comments: [{ content: '评论', liked: false }] }] }, /(?:额外字段：liked|liked 不受支持)/],
     [{ ...validInteractiveScene, live: { ...validInteractiveScene.live, status: 'streaming' } }, /live\.status 必须是 idle/],
     [{ ...validInteractiveScene, live: { ...validInteractiveScene.live, danmaku: Array.from({ length: 241 }, (_, index) => ({ content: `弹幕${index}` })) } }, /danmaku 不能超过 240 项/],
-    [{ ...validInteractiveScene, live: { ...validInteractiveScene.live, danmaku: [{ content: 'x'.repeat(201) }] } }, /content 长度不能超过 200/],
 ];
-for (const [scene, pattern] of lossyInteractiveCases) assertInvalidInteractiveScene(scene, pattern);
+for (const [scene, pattern] of invalidInteractiveCases) assertInvalidInteractiveScene(scene, pattern);
 
-assertInvalidInteractiveScene(validInteractiveScene, /sceneOrder 不能超过 12 项/, {
-    activeSceneId: 'scene0',
-    sceneOrder: Array.from({ length: 13 }, (_, index) => `scene${index}`),
-    scenes: Object.fromEntries(Array.from({ length: 13 }, (_, index) => [`scene${index}`, { id: `scene${index}` }])),
-});
-assertInvalidInteractiveScene(validInteractiveScene, /activeSceneId 不能在存在场景时为 null/, { activeSceneId: null });
-assert.throws(() => parseBackupData(JSON.parse('{"schemaVersion":3,"interactiveScenes":{"version":1,"scopes":{"__proto__":{"activeSceneId":null,"sceneOrder":[],"scenes":{}}}}}'), currentBackup), /包含危险键 __proto__/);
-assert.throws(() => parseBackupData(JSON.parse('{"schemaVersion":3,"interactiveScenes":{"version":1,"scopes":{"story":{"activeSceneId":"__proto__","sceneOrder":["__proto__"],"scenes":{"__proto__":{"id":"__proto__"}}}}}}'), currentBackup), /包含危险键 __proto__/);
+const recoveredNullActiveScene = parseBackupData(interactiveBackupWithScene(validInteractiveScene, {
+    activeSceneId: null,
+}), currentBackup).interactiveScenes.scopes.story;
+assert.equal(recoveredNullActiveScene.activeSceneId, 'scene');
+assert.throws(() => parseBackupData(JSON.parse('{"schemaVersion":3,"interactiveScenes":{"version":1,"scopes":{"__proto__":{"activeSceneId":null,"sceneOrder":[],"scenes":{}}}}}'), currentBackup), /包含危险键[： ]__proto__/);
+assert.throws(() => parseBackupData(JSON.parse('{"schemaVersion":3,"interactiveScenes":{"version":1,"scopes":{"story":{"activeSceneId":"__proto__","sceneOrder":["__proto__"],"scenes":{"__proto__":{"id":"__proto__"}}}}}}'), currentBackup), /包含危险键[： ]__proto__/);
 
 const parsedV3Backup = parseBackupData({
     schemaVersion: 3,
@@ -609,6 +1124,92 @@ const parsedV3Backup = parseBackupData({
 }, currentBackup);
 assert.equal(parsedV3Backup.profiles.length, 1);
 assert.ok(parsedV3Backup.interactiveScenes.scopes.story);
+
+const v2ScopeId = 'story';
+const v2ActorId = deriveInteractiveActorId(v2ScopeId, 'story', 'character:alice');
+const validV2InteractiveStore = {
+    version: 2,
+    scopes: {
+        [v2ScopeId]: {
+            activeSceneId: 'scene',
+            sceneOrder: ['scene'],
+            actors: {
+                [v2ActorId]: {
+                    actorId: v2ActorId,
+                    type: 'story',
+                    displayName: 'Alice',
+                    bindingKey: 'character:alice',
+                    profile: '',
+                    createdAt: 100,
+                },
+            },
+            scenes: {
+                scene: {
+                    id: 'scene', title: 'v2 社区', preset: 'weibo', styleInput: '', generatedPrompt: '',
+                    contentRating: 'general', createdAt: 100, updatedAt: 200,
+                    posts: [{
+                        id: 'post', authorId: v2ActorId, authorNameSnapshot: 'Alice', content: 'v2 帖子',
+                        tags: [], createdAt: 110,
+                        comments: [{
+                            id: 'comment', authorId: v2ActorId, authorNameSnapshot: 'Alice',
+                            content: 'v2 评论', createdAt: 120,
+                        }],
+                        liked: false,
+                    }],
+                    live: {
+                        title: 'v2 直播', status: 'idle',
+                        danmaku: [{
+                            id: 'danmaku', authorId: v2ActorId, authorNameSnapshot: 'Alice',
+                            content: 'v2 弹幕', createdAt: 130,
+                        }],
+                    },
+                },
+            },
+        },
+    },
+};
+const parsedV2Backup = parseBackupData({ schemaVersion: 3, interactiveScenes: validV2InteractiveStore }, currentBackup);
+assert.equal(parsedV2Backup.interactiveScenes.version, 2);
+assert.equal(parsedV2Backup.interactiveScenes.scopes[v2ScopeId].scenes.scene.posts[0].authorId, v2ActorId);
+assert.throws(() => parseBackupData({
+    schemaVersion: 3,
+    interactiveScenes: {
+        ...validV2InteractiveStore,
+        scopes: { [v2ScopeId]: { ...validV2InteractiveStore.scopes[v2ScopeId], actors: undefined } },
+    },
+}, currentBackup), /(?:actors 必须是对象|缺少 actors registry)/);
+assert.throws(() => parseBackupData({
+    schemaVersion: 3,
+    interactiveScenes: {
+        ...validV2InteractiveStore,
+        scopes: {
+            [v2ScopeId]: {
+                ...validV2InteractiveStore.scopes[v2ScopeId],
+                scenes: {
+                    scene: {
+                        ...validV2InteractiveStore.scopes[v2ScopeId].scenes.scene,
+                        posts: [{
+                            id: 'post', authorId: 'missing', authorNameSnapshot: '伪造', content: '悬空',
+                            tags: [], createdAt: 110, comments: [], liked: false,
+                        }],
+                    },
+                },
+            },
+        },
+    },
+}, currentBackup), /(?:authorId 未指向有效 actor|引用了不存在的 actor)/);
+assert.throws(() => parseBackupData({
+    schemaVersion: 3,
+    interactiveScenes: {
+        ...validV2InteractiveStore,
+        scopes: {
+            [v2ScopeId]: {
+                ...validV2InteractiveStore.scopes[v2ScopeId],
+                actors: { [v2ActorId]: { ...validV2InteractiveStore.scopes[v2ScopeId].actors[v2ActorId], bindingKey: 'character:tampered' } },
+            },
+        },
+    },
+}, currentBackup), /(?:actorId 与绑定信息不一致|与绑定信息不一致)/);
 
 let backgroundState = { current: 'old' };
 const persistedBackgroundStates = [];
@@ -674,9 +1275,364 @@ await assert.rejects(runBackupTransaction({
     },
 }), /导入失败；原数据回滚失败：回滚失败/);
 assert.deepEqual(backupState, { version: 'A' });
+
+backupState = { version: 'A' };
+const backupLifecyclePhases = [];
+let failLifecyclePersist = true;
+await assert.rejects(runBackupTransaction({
+    capture: async () => structuredClone(backupState),
+    beforeApply: async phase => { backupLifecyclePhases.push(phase); },
+    apply: async snapshot => {
+        backupState = structuredClone(snapshot || { version: 'B' });
+        return structuredClone(backupState);
+    },
+    persist: async state => {
+        if (state.version === 'B' && failLifecyclePersist) {
+            failLifecyclePersist = false;
+            throw new Error('生命周期导入失败');
+        }
+    },
+}), /生命周期导入失败/);
+assert.deepEqual(backupLifecyclePhases, ['apply', 'rollback']);
+assert.deepEqual(backupState, { version: 'A' });
+
+const createBackupTransactionFixture = (sceneId, ambientStatusEnabled) => ({
+    histories: { story: { Alice: [{ role: 'assistant', content: sceneId }] } },
+    config: { model: sceneId },
+    theme: { darkMode: ambientStatusEnabled ? 'dark' : 'light', ambientStatusEnabled },
+    profiles: [],
+    groupMeta: {},
+    pokeConfig: {},
+    bidirectional: {},
+    emojis: [],
+    characterBehavior: {},
+    wordyLimit: false,
+    bgGlobal: '',
+    bgLocal: {},
+    interactiveScenes: {
+        version: 1,
+        scopes: {
+            story: {
+                activeSceneId: sceneId,
+                sceneOrder: [sceneId],
+                scenes: { [sceneId]: { id: sceneId, title: sceneId } },
+            },
+        },
+    },
+    phoneUiState: {
+        version: 1,
+        scopes: {
+            story: {
+                pinnedSceneIds: [sceneId], lastPage: 'community', lastSceneId: sceneId, lastTab: 'feed',
+            },
+        },
+    },
+    ambientStatus: { enabled: ambientStatusEnabled },
+});
+const originalBackupFixture = createBackupTransactionFixture('scene-old', true);
+const importedBackupFixture = createBackupTransactionFixture('scene-new', false);
+localValues.set('ST_SMS_BG_GLOBAL', '');
+localValues.set('ST_SMS_BG_LOCAL', '{}');
+idbValues.delete('ST_SMS_BG_GLOBAL');
+idbValues.delete('ST_SMS_BG_LOCAL_story_Alice');
+let interactiveInvalidations = 0;
+const backupHandlers = createBackupStateHandlers({
+    invalidateInteractiveStore: () => { interactiveInvalidations += 1; },
+});
+await backupHandlers.persist(await backupHandlers.apply(originalBackupFixture));
+const initialInvalidations = interactiveInvalidations;
+localStorageWrites.length = 0;
+localStorageControl.failSet.add('ST_SMS_PHONE_UI_STATE');
+await assert.rejects(runBackupTransaction({
+    capture: backupHandlers.capture,
+    apply: snapshot => backupHandlers.apply(snapshot || importedBackupFixture),
+    persist: backupHandlers.persist,
+}), /手机界面状态保存失败/);
+assert.equal(window.__pmTheme.ambientStatusEnabled, true);
+assert.deepEqual(window.__pmPhoneUiState.scopes.story.pinnedSceneIds, ['scene-old']);
+assert.equal(JSON.parse(localValues.get('ST_SMS_THEME')).ambientStatusEnabled, true);
+assert.deepEqual(JSON.parse(localValues.get('ST_SMS_PHONE_UI_STATE')).scopes.story.pinnedSceneIds, ['scene-old']);
+assert.deepEqual(idbValues.get('ST_INTERACTIVE_SCENES_V1').scopes.story.sceneOrder, ['scene-old']);
+assert.deepEqual(
+    localStorageWrites.filter(entry => entry.key === 'ST_SMS_THEME').map(entry => JSON.parse(entry.value).ambientStatusEnabled),
+    [false, true],
+);
+assert.equal(interactiveInvalidations, initialInvalidations + 1);
+
+localStorageWrites.length = 0;
+localStorageControl.failSetCounts.set('ST_SMS_PHONE_UI_STATE', 2);
+let rollbackFailure;
+await assert.rejects(runBackupTransaction({
+    capture: backupHandlers.capture,
+    apply: snapshot => backupHandlers.apply(snapshot || importedBackupFixture),
+    persist: backupHandlers.persist,
+}), error => {
+    rollbackFailure = error;
+    assert.match(error.message, /手机界面状态保存失败：浏览器存储不可用；原数据回滚失败：手机界面状态保存失败：浏览器存储不可用/);
+    return true;
+});
+assert.ok(rollbackFailure);
+assert.match(rollbackFailure.rollbackError.message, /手机界面状态保存失败/);
+assert.equal(window.__pmTheme.ambientStatusEnabled, true);
+assert.deepEqual(window.__pmPhoneUiState.scopes.story.pinnedSceneIds, ['scene-old']);
+assert.equal(JSON.parse(localValues.get('ST_SMS_THEME')).ambientStatusEnabled, true);
+assert.deepEqual(JSON.parse(localValues.get('ST_SMS_PHONE_UI_STATE')).scopes.story.pinnedSceneIds, ['scene-old']);
+assert.deepEqual(idbValues.get('ST_INTERACTIVE_SCENES_V1').scopes.story.sceneOrder, ['scene-old']);
+assert.deepEqual(
+    localStorageWrites.filter(entry => entry.key === 'ST_SMS_THEME').map(entry => JSON.parse(entry.value).ambientStatusEnabled),
+    [false, true],
+);
+
+const cleanupLocal = new Map(PLUGIN_LOCAL_STORAGE_KEYS.map(key => [key, `value:${key}`]));
+cleanupLocal.set('HOST_EXTENSION_DATA', 'keep-local');
+const cleanupStorage = {
+    getItem: key => cleanupLocal.has(key) ? cleanupLocal.get(key) : null,
+    setItem: (key, value) => cleanupLocal.set(key, String(value)),
+    removeItem: key => cleanupLocal.delete(key),
+};
+const cleanupIdb = new Map([
+    ...PLUGIN_IDB_STATIC_KEYS.map(key => [key, { key }]),
+    [`${PLUGIN_IDB_DYNAMIC_PREFIXES[0]}orphan`, { key: 'dynamic' }],
+    ['HOST_EXTENSION_IDB', { key: 'keep-idb' }],
+]);
+const cleanupResult = await clearPluginData({
+    localStorageRef: cleanupStorage,
+    listIdbKeys: async () => [...cleanupIdb.keys()],
+    readIdbEntry: async key => ({ ok: cleanupIdb.has(key), value: structuredClone(cleanupIdb.get(key)) }),
+    writeIdb: async (key, value) => { cleanupIdb.set(key, structuredClone(value)); return true; },
+    deleteIdb: async key => cleanupIdb.delete(key),
+});
+assert.equal(cleanupResult.localKeys, PLUGIN_LOCAL_STORAGE_KEYS.length);
+assert.equal(cleanupResult.idbKeys, PLUGIN_IDB_STATIC_KEYS.length + 1);
+assert.equal(cleanupLocal.get('HOST_EXTENSION_DATA'), 'keep-local');
+assert.equal(cleanupIdb.get('HOST_EXTENSION_IDB').key, 'keep-idb');
+for (const key of PLUGIN_LOCAL_STORAGE_KEYS) assert.equal(cleanupLocal.has(key), false);
+for (const key of PLUGIN_IDB_STATIC_KEYS) assert.equal(cleanupIdb.has(key), false);
+assert.equal(cleanupIdb.has(`${PLUGIN_IDB_DYNAMIC_PREFIXES[0]}orphan`), false);
+
+const rollbackLocal = new Map([
+    [PLUGIN_LOCAL_STORAGE_KEYS[0], 'old-local'],
+    ['HOST_EXTENSION_DATA', 'keep-local'],
+]);
+const rollbackIdb = new Map([
+    [PLUGIN_IDB_STATIC_KEYS[0], { value: 'old-static' }],
+    [`${PLUGIN_IDB_DYNAMIC_PREFIXES[0]}old`, { value: 'old-dynamic' }],
+    ['HOST_EXTENSION_IDB', { value: 'keep-idb' }],
+]);
+await assert.rejects(clearPluginData({
+    localStorageRef: {
+        getItem: key => rollbackLocal.has(key) ? rollbackLocal.get(key) : null,
+        setItem: (key, value) => rollbackLocal.set(key, String(value)),
+        removeItem: key => rollbackLocal.delete(key),
+    },
+    listIdbKeys: async () => [...rollbackIdb.keys()],
+    readIdbEntry: async key => ({ ok: true, value: structuredClone(rollbackIdb.get(key)) }),
+    writeIdb: async (key, value) => { rollbackIdb.set(key, structuredClone(value)); return true; },
+    deleteIdb: async key => rollbackIdb.delete(key),
+    afterClear: async () => { throw new Error('内存重置失败'); },
+}), /内存重置失败/);
+assert.equal(rollbackLocal.get(PLUGIN_LOCAL_STORAGE_KEYS[0]), 'old-local');
+assert.equal(rollbackLocal.get('HOST_EXTENSION_DATA'), 'keep-local');
+assert.deepEqual(rollbackIdb.get(PLUGIN_IDB_STATIC_KEYS[0]), { value: 'old-static' });
+assert.deepEqual(rollbackIdb.get(`${PLUGIN_IDB_DYNAMIC_PREFIXES[0]}old`), { value: 'old-dynamic' });
+assert.deepEqual(rollbackIdb.get('HOST_EXTENSION_IDB'), { value: 'keep-idb' });
+
+let cleanupRollbackError;
+await assert.rejects(clearPluginData({
+    localStorageRef: {
+        getItem: key => key === PLUGIN_LOCAL_STORAGE_KEYS[0] ? 'old-local' : null,
+        setItem: () => { throw new Error('local rollback blocked'); },
+        removeItem: () => {},
+    },
+    listIdbKeys: async () => [],
+    afterClear: async () => { throw new Error('clear failed'); },
+}), error => {
+    cleanupRollbackError = error;
+    return /插件数据回滚失败/.test(error.message);
+});
+assert.ok(cleanupRollbackError.rollbackError instanceof AggregateError);
+
 delete globalThis.indexedDB;
 delete globalThis.localStorage;
 delete globalThis.window;
+
+const pageSections = ['chat', 'desktop', 'community'].map(page => ({ dataset: { phonePage: page }, hidden: false }));
+const pageMain = {
+    dataset: { page: 'chat' },
+    querySelectorAll(selector) {
+        assert.equal(selector, '[data-phone-page]');
+        return pageSections;
+    },
+};
+let transientCloseCount = 0;
+let phoneRoot = {
+    querySelector(selector) {
+        assert.equal(selector, '.pm-main-ui');
+        return pageMain;
+    },
+};
+const pageController = createPhonePageController({
+    getRoot: () => phoneRoot,
+    closeTransientUi: () => { transientCloseCount += 1; },
+});
+const chatSectionReference = pageSections[0];
+assert.equal(pageController.current(), 'chat');
+assert.equal(pageController.show('desktop'), true);
+assert.equal(pageController.current(), 'desktop');
+assert.deepEqual(pageSections.map(section => [section.dataset.phonePage, section.hidden]), [
+    ['chat', true], ['desktop', false], ['community', true],
+]);
+assert.equal(pageController.show('community'), true);
+assert.deepEqual(pageSections.map(section => section.hidden), [true, true, false]);
+assert.equal(pageController.show('chat'), true);
+assert.deepEqual(pageSections.map(section => section.hidden), [false, true, true]);
+assert.equal(pageSections[0], chatSectionReference, '页面切换不得替换聊天 DOM 节点');
+assert.equal(pageController.show('invalid-page'), true);
+assert.equal(pageController.current(), 'desktop');
+assert.equal(transientCloseCount, 4);
+phoneRoot = null;
+assert.equal(pageController.show('chat'), false);
+assert.equal(pageController.current(), null);
+
+const finalizerCalls = [];
+assert.throws(() => finalizeDeletedScene({
+    persistPhoneUi: () => { finalizerCalls.push('phone-ui'); throw new Error('quota'); },
+    refreshDesktop: () => { finalizerCalls.push('desktop'); },
+    persistBudget: () => { finalizerCalls.push('budget'); throw new Error('budget-write'); },
+    clearOpenScene: () => { finalizerCalls.push('clear'); },
+    renderLauncher: () => { finalizerCalls.push('launcher'); },
+}), /互动场景已删除；手机页面状态保存失败：quota；上下文预算清理保存失败：budget-write/);
+assert.deepEqual(finalizerCalls, ['phone-ui', 'desktop', 'budget', 'clear', 'launcher']);
+const successfulFinalizerCalls = [];
+assert.doesNotThrow(() => finalizeDeletedScene({
+    persistPhoneUi: () => successfulFinalizerCalls.push('phone-ui'),
+    refreshDesktop: () => successfulFinalizerCalls.push('desktop'),
+    persistBudget: () => successfulFinalizerCalls.push('budget'),
+    clearOpenScene: () => successfulFinalizerCalls.push('clear'),
+    renderLauncher: () => successfulFinalizerCalls.push('launcher'),
+}));
+assert.deepEqual(successfulFinalizerCalls, ['phone-ui', 'desktop', 'budget', 'clear', 'launcher']);
+
+const deletedSceneRuntime = { openSceneId: 'scene-delete' };
+const deletedSceneScope = {
+    activeSceneId: 'scene-delete',
+    scenes: {
+        'scene-keep': { id: 'scene-keep', title: '保留场景' },
+        'scene-delete': { id: 'scene-delete', title: '待删除场景' },
+    },
+    sceneOrder: ['scene-keep', 'scene-delete'],
+};
+const deleteBudgetConfig = { communitySceneIdsByStorage: { story: ['scene-keep', 'scene-delete'] } };
+const deleteFlowCalls = [];
+let deletedBudgetCandidate = null;
+await assert.rejects(() => runDeleteSceneAction('story', 'scene-delete', {
+    scope: deletedSceneScope,
+    confirm: message => { deleteFlowCalls.push('confirm'); return message.includes('待删除场景'); },
+    invalidate: () => deleteFlowCalls.push('invalidate'),
+    commit: async mutator => { deleteFlowCalls.push('commit'); await mutator(); },
+    persistPhoneUi: () => deleteFlowCalls.push('phone-ui'),
+    refreshDesktop: scopeId => deleteFlowCalls.push(`desktop:${scopeId}`),
+    getBudgetConfig: () => deleteBudgetConfig,
+    saveBudgetConfig: candidate => {
+        deleteFlowCalls.push('budget-save');
+        deletedBudgetCandidate = candidate;
+        return false;
+    },
+    clearOpenScene: () => { deleteFlowCalls.push('clear'); deletedSceneRuntime.openSceneId = null; },
+    renderLauncher: scopeId => deleteFlowCalls.push(`launcher:${scopeId}`),
+}), /互动场景已删除；上下文预算清理保存失败：浏览器存储不可用/);
+assert.deepEqual(deleteFlowCalls, [
+    'confirm', 'invalidate', 'commit', 'phone-ui', 'desktop:story',
+    'budget-save', 'clear', 'launcher:story',
+]);
+assert.equal(deletedSceneScope.scenes['scene-delete'], undefined);
+assert.deepEqual(deletedSceneScope.sceneOrder, ['scene-keep']);
+assert.equal(deletedSceneScope.activeSceneId, 'scene-keep');
+assert.deepEqual(deletedBudgetCandidate.communitySceneIdsByStorage.story, ['scene-keep']);
+assert.deepEqual(deleteBudgetConfig.communitySceneIdsByStorage.story, ['scene-keep', 'scene-delete']);
+assert.equal(deletedSceneRuntime.openSceneId, null, '预算保存失败后仍必须清理已删除场景的运行时引用');
+
+const cancelledDeleteScope = {
+    activeSceneId: 'scene-cancel',
+    scenes: { 'scene-cancel': { id: 'scene-cancel', title: '取消删除' } },
+    sceneOrder: ['scene-cancel'],
+};
+let cancelledCommitCount = 0;
+assert.equal(await runDeleteSceneAction('story', 'scene-cancel', {
+    scope: cancelledDeleteScope,
+    confirm: () => false,
+    invalidate: () => assert.fail('取消删除不得失效运行时任务'),
+    commit: async () => { cancelledCommitCount += 1; },
+    persistPhoneUi: () => assert.fail('取消删除不得保存页面状态'),
+    refreshDesktop: () => assert.fail('取消删除不得刷新桌面'),
+    getBudgetConfig: () => ({}),
+    saveBudgetConfig: () => true,
+    clearOpenScene: () => assert.fail('取消删除不得清理打开场景'),
+    renderLauncher: () => assert.fail('取消删除不得刷新社区页面'),
+}), false);
+assert.equal(cancelledCommitCount, 0);
+assert.ok(cancelledDeleteScope.scenes['scene-cancel']);
+
+await assert.rejects(() => runDeleteSceneAction('story', 'missing-scene', {
+    scope: cancelledDeleteScope,
+    confirm: () => assert.fail('不存在的场景不得进入确认'),
+}), /互动场景不存在/);
+
+const failedCommitCalls = [];
+await assert.rejects(() => runDeleteSceneAction('story', 'scene-cancel', {
+    scope: cancelledDeleteScope,
+    confirm: () => true,
+    invalidate: () => failedCommitCalls.push('invalidate'),
+    commit: async () => { failedCommitCalls.push('commit'); throw new Error('commit-failed'); },
+    persistPhoneUi: () => failedCommitCalls.push('phone-ui'),
+    refreshDesktop: () => failedCommitCalls.push('desktop'),
+    getBudgetConfig: () => ({}),
+    saveBudgetConfig: () => true,
+    clearOpenScene: () => failedCommitCalls.push('clear'),
+    renderLauncher: () => failedCommitCalls.push('launcher'),
+}), /commit-failed/);
+assert.deepEqual(failedCommitCalls, ['invalidate', 'commit']);
+
+let delegatedListener = null;
+let delegatedActionCount = 0;
+const delegatedErrors = [];
+const desktopApp = { kind: 'desktop' };
+const actionButton = {
+    closest(selector) {
+        if (selector === '#pm-scene-app') return null;
+        if (selector === '.pm-desktop-page') return desktopApp;
+        return null;
+    },
+};
+const actionTarget = {
+    closest(selector) {
+        assert.equal(selector, '[data-action]');
+        return actionButton;
+    },
+};
+const delegatedPhoneRoot = {
+    dataset: {},
+    addEventListener(type, listener) {
+        assert.equal(type, 'click');
+        assert.equal(delegatedListener, null);
+        delegatedListener = listener;
+    },
+    contains(node) { return node === actionButton; },
+};
+assert.equal(bindPhonePageActions(
+    delegatedPhoneRoot,
+    (button, app) => {
+        assert.equal(button, actionButton);
+        assert.equal(app, desktopApp);
+        delegatedActionCount += 1;
+    },
+    error => delegatedErrors.push(error),
+), true);
+assert.equal(bindPhonePageActions(delegatedPhoneRoot, () => {}, () => {}), false);
+delegatedListener({ target: actionTarget });
+await Promise.resolve();
+assert.equal(delegatedActionCount, 1, '重复绑定后一次点击只能分发一次');
+assert.deepEqual(delegatedErrors, []);
 
 const groupStore = normalizeGroupMetaStore({
     story: {

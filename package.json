@@ -12,8 +12,11 @@
     "check:interactive": "node scripts/check-interactive.mjs",
     "check:pending": "node scripts/check-pending.mjs",
     "check:press": "node scripts/check-press-gesture.mjs",
+    "check:ambient": "node scripts/check-ambient.mjs",
+    "check:budget": "node scripts/check-budget.mjs",
+    "check:permissions": "node scripts/check-permissions.mjs",
     "check:contracts": "node scripts/check-contracts.mjs",
-    "check": "npm run build && npm run check:syntax && npm run check:ai && npm run check:behavior && npm run check:interactive && npm run check:pending && npm run check:press && npm run check:contracts"
+    "check": "npm run build && npm run check:syntax && npm run check:ai && npm run check:behavior && npm run check:interactive && npm run check:pending && npm run check:press && npm run check:ambient && npm run check:budget && npm run check:permissions && npm run check:contracts"
   },
   "devDependencies": {
     "acorn": "8.15.0",

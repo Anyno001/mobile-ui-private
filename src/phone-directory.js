@@ -11,7 +11,7 @@ import {
 } from './storage.js';
 
 export function installPhoneDirectory(state, deps) {
-    const { runtime, getStorageId, makeOverlay, applyBidirectionalInjection } = deps;
+    const { runtime, getStorageId, makeOverlay, applyBidirectionalInjection, isAutoPokeAllowed } = deps;
 
     function parseGroupMembers(value) {
         const seen = new Set();
@@ -43,7 +43,7 @@ export function installPhoneDirectory(state, deps) {
 
         const emojiCheckHtml = mode === 'edit' && window.__pmEmojis.length ? `
         <div style="padding-top:12px;border-top:1px solid #f0f0f0;">
-            <div class="pm-cfg-label" style="margin-bottom:8px;">🥰 允许 AI 使用的表情包套组</div>
+            <div class="pm-cfg-label" style="margin-bottom:8px;">允许 AI 使用的表情包套组</div>
             <div style="display:flex;flex-direction:column;gap:10px;max-height:120px;overflow-y:auto;background:#fafafa;border-radius:8px;padding:10px;border:1px solid #eee;">
                 ${window.__pmEmojis.map(set => `
                     <div style="display:flex;align-items:center;gap:10px;cursor:pointer;"
@@ -83,7 +83,7 @@ export function installPhoneDirectory(state, deps) {
 
         makeOverlay(`
     <div class="pm-modal pm-modal-wide">
-    <div class="pm-modal-header"><b>${title}</b><span onclick="${closeAction}" class="pm-modal-close">✕</span></div>
+    <div class="pm-modal-header"><b>${title}</b><button type="button" onclick="${closeAction}" class="pm-modal-close">关闭</button></div>
     <div style="padding:14px 16px;display:flex;flex-direction:column;gap:10px;">
         <div class="pm-cfg-label">群聊名称</div>
         <input id="pm-group-name-input" class="pm-cfg-input" placeholder="给群聊起个名字" value="${escapeAttr(initName)}" maxlength="30">
@@ -116,6 +116,10 @@ export function installPhoneDirectory(state, deps) {
         <div style="font-size:11px;color:#999;margin-top:4px;">
             当前计数：<span id="pm-poke-counter-group">${pokeConfig.counter}</span> / ${pokeConfig.interval}
         </div>
+        <button type="button" onclick="window.__pmArmAutoPoke()" style="margin-top:8px;width:100%;border:1px solid #ddd;border-radius:8px;padding:7px;background:#fff;cursor:pointer;">
+            恢复本次自动消息
+        </button>
+        <div data-pm-auto-poke-status style="font-size:11px;color:#999;margin-top:4px;">${isAutoPokeAllowed() ? '本次手机会话已运行' : '本次手机会话已暂停'}</div>
         </div>
         ` : ''}
     </div>
@@ -161,7 +165,7 @@ export function installPhoneDirectory(state, deps) {
                 const interval = Math.max(1, Math.min(99, parseInt(intervalEl.value) || 3));
                 const oldCounter = window.__pmPokeConfig[id][state.currentGroupKey]?.autoPoke?.counter || 0;
                 window.__pmPokeConfig[id][state.currentGroupKey] = {
-                    autoPoke: { enabled, interval, counter: enabled ? Math.min(oldCounter, interval - 1) : oldCounter },
+                    autoPoke: { enabled, interval, counter: enabled ? Math.min(oldCounter, interval) : oldCounter },
                     emojis: Array.from(document.querySelectorAll('.pm-emoji-assign-check.is-checked')).map(cb => cb.dataset.id),
                 };
             }
@@ -273,20 +277,20 @@ export function installPhoneDirectory(state, deps) {
         <span id="pm-autogen-btn" onclick="window.__pmConfirmAutoGen()" title="AI 自动生成联系人" style="cursor:pointer;display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:50%;transition:background .15s;" onmouseenter="this.style.background='rgba(0,122,255,0.1)'" onmouseleave="this.style.background='transparent'">
           ${REFRESH_ICON_SVG}
         </span>
-        <span onclick="window.__pmCloseOverlay()" class="pm-modal-close">✕</span>
+        <button type="button" onclick="window.__pmCloseOverlay()" class="pm-modal-close">关闭</button>
       </span>
     </div>
     <button type="button" class="pm-forum-entry" onclick="window.__pmOpenForumMode()">
-      <b>AI 互动场景</b>
-      <span>论坛、社交与 AI 文字直播</span>
+      <b>互动社区</b>
+      <span>论坛、社交与文字直播</span>
     </button>
-    <div class="pm-bi-bar"><span>🧠 勾选会话可注入主楼；群聊资源参数在群聊设置中配置</span><span class="pm-bi-tip">已选 ${checked.length}</span></div>
+    <div class="pm-bi-bar"><span>勾选会话可注入主楼；群聊资源参数在群聊设置中配置</span><span class="pm-bi-tip">已选 ${checked.length}</span></div>
     <div class="pm-modal-list">
         ${empty ? '<div style="text-align:center;color:#999;padding:20px;font-size:13px;">暂无联系人</div>' : (renderGroups + renderSingle)}
     </div>
     <div class="pm-modal-add" style="display:flex;gap:8px;">
-        <button onclick="window.__pmShowGroupCreate()" class="pm-btn-group">👥 新建群聊</button>
-        <button onclick="window.__pmShowAddContact()" class="pm-btn-add">＋ 添加联系人</button>
+        <button onclick="window.__pmShowGroupCreate()" class="pm-btn-group">新建群聊</button>
+        <button onclick="window.__pmShowAddContact()" class="pm-btn-add">添加联系人</button>
     </div>
     </div>`);
     };
@@ -295,7 +299,7 @@ export function installPhoneDirectory(state, deps) {
         document.getElementById('pm-overlay')?.remove();
         makeOverlay(`
 <div class="pm-modal">
-  <div class="pm-modal-header"><b>添加联系人</b><span onclick="window.__pmShowList()" class="pm-modal-close">✕</span></div>
+  <div class="pm-modal-header"><b>添加联系人</b><button type="button" onclick="window.__pmShowList()" class="pm-modal-close">关闭</button></div>
   <div style="padding:14px 16px;">
     <div class="pm-cfg-label" style="margin-bottom:8px;">输入角色名</div>
     <input id="pm-add-contact-input" class="pm-cfg-input" placeholder="角色名">

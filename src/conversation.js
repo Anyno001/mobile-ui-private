@@ -73,7 +73,7 @@ export function installConversation(state, deps) {
         window.__pmSwitch(key, _prevSaveKey, _prevStorageId);
     };
 
-    window.__pmSwitch = (name, _prevSaveKey, _prevStorageId) => {
+    window.__pmSwitch = (name, _prevSaveKey, _prevStorageId, options = {}) => {
         if (!name?.trim()) return; name = name.trim();
         deps.closeControlCenter?.();
         deps.closeOverlay?.('conversation-switch');
@@ -133,6 +133,9 @@ export function installConversation(state, deps) {
             } else addNote('开始对话');
             deps.renderPendingConversation?.(id, name);
             applyBackground();
+        }
+        if (options.preservePage !== true) {
+            deps.showPhoneChatPage?.(id);
         }
         applyBidirectionalInjection();
     };

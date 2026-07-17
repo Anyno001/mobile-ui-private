@@ -1,23 +1,45 @@
 import {
     POPOVER_SUPPORTED,
 } from './constants.js';
+import { normalizeBudgetConfig } from './budget.js';
 import { THEME_PRESETS } from './config.js';
 import { contrastText, cssUrlEscape, escapeHtml } from './ui.js';
 import { createBubbles } from './messaging.js';
-import { applyConversationInjections } from './phone-injection.js';
+import { applyContextInjections, clearExtensionPrompts } from './phone-injection.js';
+import {
+    registerResolvedHostEvent, resolveCommunityMessageEvents, resolveHostEvent,
+} from './interactive-scene-scheduler.js';
+import { createAutomaticTaskController } from './runtime.js';
 import {
     saveBidirectional, saveHistories, saveHistoriesBeforeUnload,
 } from './storage.js';
 
 export function installPhoneFoundation(state, deps) {
     const { runtime, getCtx, getStorageId, getUserPersona } = deps;
+    const automaticTasks = createAutomaticTaskController({
+        runtime,
+        state,
+        getStorageId,
+        isDocumentVisible: () => typeof document.visibilityState !== 'string'
+            || document.visibilityState !== 'hidden',
+    });
+    const isAutoPokeAllowed = automaticTasks.isAllowed;
+    const armAutoPoke = automaticTasks.arm;
+    const disarmAutoPoke = automaticTasks.disarm;
+    const beginAutomaticTask = automaticTasks.begin;
+    const isAutomaticTaskActive = automaticTasks.isActive;
+    const finishAutomaticTask = automaticTasks.finish;
     // 避免重复加载插件时重复注册
     if (!window.__pmBeforeUnloadRegistered) {
         window.addEventListener('beforeunload', saveHistoriesBeforeUnload);
         // TT酒馆(TauriTavern) WebView 在移动端被挂起/切到后台时不触发 beforeunload，
-        // 用 visibilitychange 做额外兜底，页面变为 hidden 时同步写入 localStorage
+        // 页面隐藏时既要同步保存，也要撤销自动任务运行权；恢复可见不会自动重新授权。
         document.addEventListener('visibilitychange', () => {
-            if (document.visibilityState === 'hidden') saveHistoriesBeforeUnload();
+            if (document.visibilityState === 'hidden') {
+                saveHistoriesBeforeUnload();
+                deps.cancelCommunityGeneration?.('document-hidden');
+                disarmAutoPoke('document-hidden');
+            }
         });
         window.__pmBeforeUnloadRegistered = true;
     }
@@ -26,13 +48,22 @@ export function installPhoneFoundation(state, deps) {
     window.__pmConfig = window.__pmConfig || { apiUrl: '', apiKey: '', model: '', useIndependent: false };
     window.__pmProfiles = window.__pmProfiles || [];
     window.__pmBidirectional = window.__pmBidirectional || {};
-    window.__pmTheme = window.__pmTheme || { preset: 'default', customRight: '', customLeft: '', borderColor: '', layout: 'standard', darkMode: 'light' };
+    window.__pmTheme = window.__pmTheme || {
+        preset: 'default',
+        customRight: '',
+        customLeft: '',
+        borderColor: '',
+        layout: 'standard',
+        darkMode: 'light',
+        ambientStatusEnabled: false,
+    };
     window.__pmBgGlobal = window.__pmBgGlobal || '';
     window.__pmBgLocal = window.__pmBgLocal || {};
     window.__pmGroupMeta = window.__pmGroupMeta || {};
     window.__pmPokeConfig = window.__pmPokeConfig || {};
     window.__pmCharacterBehavior = window.__pmCharacterBehavior || {};
     window.__pmWordyLimit = window.__pmWordyLimit || false;
+    window.__pmBudgetConfig = normalizeBudgetConfig(window.__pmBudgetConfig);
     window.__pmEmojis = window.__pmEmojis || []; // [{id, name, images:[{url,desc},...]}]
 
     function syncGenerationControls() {
@@ -151,14 +182,37 @@ export function installPhoneFoundation(state, deps) {
     }
 
 
-    function applyBidirectionalInjection() {
+    function clearBidirectionalInjection() {
+        runtime.injectionEpoch += 1;
+        return clearExtensionPrompts({ context: getCtx(), runtime });
+    }
+
+    async function applyBidirectionalInjection() {
+        const epoch = ++runtime.injectionEpoch;
+        const context = getCtx();
+        clearExtensionPrompts({ context, runtime });
         const id = getStorageId();
-        applyConversationInjections({
-            context: getCtx(),
+        if (!context || !id || id === 'sms_unknown__default') return;
+        const character = context.characters?.[context.characterId];
+        const currentActorName = typeof character?.name === 'string' ? character.name.trim() : '';
+        if (!currentActorName) return;
+        let interactiveStore;
+        try {
+            interactiveStore = await deps.getInteractiveStore?.();
+        } catch (error) {
+            interactiveStore = null;
+        }
+        if (epoch !== runtime.injectionEpoch || getStorageId() !== id) return;
+        return applyContextInjections({
+            context,
             runtime,
-            checked: window.__pmBidirectional[id] || [],
-            histories: window.__pmHistories[id] || {},
-            groups: window.__pmGroupMeta[id] || {},
+            currentStorageId: id,
+            currentActorName,
+            selectedByStorage: window.__pmBidirectional,
+            historiesByStorage: window.__pmHistories,
+            groupsByStorage: window.__pmGroupMeta,
+            interactiveStore,
+            budgetConfig: window.__pmBudgetConfig,
             userName: getUserPersona().name || '用户',
             emojis: window.__pmEmojis,
         });
@@ -174,11 +228,11 @@ export function installPhoneFoundation(state, deps) {
 
         const events = [
             et.GENERATION_STARTED || 'generation_started',
-            et.CHAT_CHANGED || 'chat_id_changed',
+            resolveHostEvent(et, 'CHAT_CHANGED'),
             et.SETTINGS_UPDATED || 'settings_updated',
             et.CHATCOMPLETION_SOURCE_CHANGED || 'chatcompletion_source_changed',
             et.OAI_PRESET_CHANGED_AFTER || 'oai_preset_changed_after',
-        ];
+        ].filter(Boolean);
 
         events.forEach(ev => {
             try {
@@ -188,28 +242,44 @@ export function installPhoneFoundation(state, deps) {
             } catch (e) {}
         });
 
+        for (const eventName of resolveCommunityMessageEvents(et)) {
+            try {
+                c.eventSource.on(eventName, () => {
+                    try { deps.observeCommunityTurn?.(c.chat || []); } catch (error) {}
+                });
+            } catch (error) {}
+        }
+
         try {
-            c.eventSource.on(et.MESSAGE_RECEIVED || 'message_received', () => {
-                const currentLen = (c.chat || []).length;
+            registerResolvedHostEvent(c.eventSource, et, 'MESSAGE_RECEIVED', () => {
+                const chat = c.chat || [];
+                const previousLen = runtime.lastChatLength;
+                const currentLen = chat.length;
                 if (currentLen > runtime.lastChatLength) {
                     runtime.lastChatLength = currentLen;
-                    if (typeof window.__pmIncrementCounters === 'function') {
+                    const hasCompletedAssistantMessage = chat.slice(previousLen).some(message => !message?.is_user);
+                    if (hasCompletedAssistantMessage && isAutoPokeAllowed()
+                        && typeof window.__pmIncrementCounters === 'function') {
                         window.__pmIncrementCounters();
                     }
                 } else if (currentLen < runtime.lastChatLength) {
                     runtime.lastChatLength = currentLen;
                 }
             });
-            c.eventSource.on(et.CHAT_CHANGED || 'chat_id_changed', () => {
+        } catch (error) {}
+        try {
+            registerResolvedHostEvent(c.eventSource, et, 'CHAT_CHANGED', () => {
                 runtime.lastChatLength = (c.chat || []).length;
                 // 宿主切换会使所有在途生成失效；关闭手机并清空旧会话内存，避免跨聊天串档。
+                deps.cancelCommunityGeneration?.('host-chat-changed');
+                disarmAutoPoke('host-chat-changed');
                 if (state.phoneActive && typeof window.__pmEnd === 'function') {
                     window.__pmEnd(true);
                 } else {
                     invalidateGeneration();
                 }
             });
-        } catch (e) {}
+        } catch (error) {}
 
         runtime.eventHooked = true;
         console.log('[phone-mode] hooked', events.length, 'events');
@@ -359,9 +429,11 @@ export function installPhoneFoundation(state, deps) {
     window.__pmCloseOverlay = () => closeOverlay('close');
     Object.assign(deps, {
         applyTheme, applyBackground, fitNameFont, migrateOldHistory,
-        applyBidirectionalInjection, hookGenerationEvent, bindIsland,
+        applyBidirectionalInjection, clearBidirectionalInjection, hookGenerationEvent, bindIsland,
         addBubble, addNote, addDirector, rebaseRenderedHistory, showTyping, hideTyping, makeOverlay, closeOverlay,
         beginGeneration, isGenerationTaskActive, finishGeneration,
         invalidateGeneration, syncGenerationControls,
+        isAutoPokeAllowed, armAutoPoke, disarmAutoPoke,
+        beginAutomaticTask, isAutomaticTaskActive, finishAutomaticTask,
     });
 }

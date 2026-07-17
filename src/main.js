@@ -16,7 +16,7 @@ import { installPhoneFoundation } from './phone-foundation.js';
 import { installPhoneLifecycle } from './phone-lifecycle.js';
 import { createRuntimeState } from './runtime.js';
 import { installSettingsUi } from './settings-ui.js';
-import { saveEmojis } from './storage.js';
+import { saveBudgetConfig, saveEmojis } from './storage.js';
 
 (async function bootstrapPhoneMode() {
     await new Promise(resolve => setTimeout(resolve, 1000));
@@ -46,7 +46,7 @@ import { saveEmojis } from './storage.js';
     const getStorageId = () => resolveStorageId(getCtx);
     const getUserPersona = () => resolveUserPersona(getCtx);
     const gatherContext = context => collectHostContext(context ? () => context : getCtx);
-    const deps = { runtime, getCtx, getStorageId, getUserPersona, gatherContext };
+    const deps = { runtime, getCtx, getStorageId, getUserPersona, gatherContext, saveBudgetConfig };
     deps.callAI = createAiClient({
         getConfig: () => window.__pmConfig,
         getContext: getCtx,
@@ -59,7 +59,7 @@ import { saveEmojis } from './storage.js';
     Object.assign(deps, {
         getPhoneWindow: () => state.phoneWindow,
         getCurrentPersona: () => state.currentPersona,
-        closePhone: () => window.__pmEnd(),
+        closePhone: force => window.__pmEnd(force),
     });
     installInteractiveScenes(state, deps);
     installSettingsUi(deps);

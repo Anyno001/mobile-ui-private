@@ -6,8 +6,8 @@ export function getStorageId(getCtx) {
     const chatFile = context.chatId
         || (typeof context.getCurrentChatId === 'function' ? context.getCurrentChatId() : null)
         || context.chat_metadata?.chat_id_hash
-        || context.chat_file
-        || 'default';
+        || context.chat_file;
+    if (chatFile === null || chatFile === undefined || String(chatFile).trim() === '') return 'sms_unknown__default';
     return `sms_${avatar}__${chatFile}`;
 }
 

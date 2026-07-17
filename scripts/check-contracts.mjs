@@ -1,6 +1,7 @@
 import { readFile, readdir } from 'node:fs/promises';
 import path from 'node:path';
 import { parse } from 'acorn';
+import { build } from 'esbuild';
 
 const root = process.cwd();
 const srcRoot = path.join(root, 'src');
@@ -27,9 +28,23 @@ const manifest = JSON.parse(manifestText);
 const packageJson = JSON.parse(packageText);
 const packageLock = JSON.parse(lockText);
 const failures = [];
+const rebuiltBundle = await build({
+  absWorkingDir: root,
+  entryPoints: ['src/main.js'],
+  bundle: true,
+  format: 'iife',
+  platform: 'browser',
+  target: 'es2020',
+  outfile: 'index.js',
+  legalComments: 'none',
+  write: false,
+});
+const rebuiltBundleText = rebuiltBundle.outputFiles[0]?.text || '';
+if (bundle !== rebuiltBundleText) failures.push('index.js: bundle does not exactly match an in-memory esbuild rebuild');
 
+const normalizeLineEndings = value => String(value).replace(/\r\n?/g, '\n');
 function requireText(label, text, expected) {
-  if (!text.includes(expected)) failures.push(`${label}: missing ${expected}`);
+  if (!normalizeLineEndings(text).includes(normalizeLineEndings(expected))) failures.push(`${label}: missing ${expected}`);
 }
 
 function parseJavaScript(code, sourceType = 'script') {
@@ -329,6 +344,7 @@ const SETTING_ENTRIES = [
   '__pmSetPreset', '__pmSetCustomColor', '__pmClearCustomColor',
   '__pmSetBorderColor', '__pmUploadBg', '__pmBgUrl',
   '__pmClearBg', '__pmTestApi', '__pmTestModel', '__pmSaveConfig', '__pmShowModelPicker',
+  '__pmSaveBudgetConfig', '__pmResetBudgetConfig', '__pmClearAllData',
 ];
 
 for (const [label, , result] of analyzedFiles) {
@@ -358,12 +374,13 @@ const LEGACY_WINDOW_ENTRIES = [
   '__pmConfirmGroup', '__pmDel', '__pmDelGroup',
   '__pmDeleteEmojiImage', '__pmDeleteEmojiSet', '__pmDeleteProfile', '__pmDeleteSelected',
   '__pmEditGroup', '__pmEmojiSetDot', '__pmEmoFileRead',
-  '__pmEmojis', '__pmEnd', '__pmExportData', '__pmGroupInputChanged', '__pmGroupMeta',
+  '__pmEmojis', '__pmEnd', '__pmExportData', '__pmClearAllData', '__pmGroupInputChanged', '__pmGroupMeta',
   '__pmHistories', '__pmImportData', '__pmIncrementCounters', '__pmOpen', '__pmPickProfile',
   '__pmPoke', '__pmPokeConfig', '__pmPokeGroup', '__pmProfiles',
-  '__pmSaveAndCloseContactConfig', '__pmSaveAndCloseGroupEdit', '__pmSaveConfig', '__pmSend',
+  '__pmSaveAndCloseContactConfig', '__pmSaveAndCloseGroupEdit', '__pmSaveConfig',
+  '__pmSaveBudgetConfig', '__pmResetBudgetConfig', '__pmSend',
   '__pmShowCharacterBehavior', '__pmShowConversationSettings',
-  '__pmSetBorderColor', '__pmSetCustomColor', '__pmSetDarkMode', '__pmSetMode',
+  '__pmSetAmbientStatus', '__pmSetBorderColor', '__pmSetCustomColor', '__pmSetDarkMode', '__pmSetMode',
   '__pmSetPreset', '__pmShowAddContact', '__pmShowConfig',
   '__pmShowEmojiPicker', '__pmShowGroupCreate', '__pmShowList', '__pmShowModelPicker',
   '__pmSwitch', '__pmSwitchContact', '__pmTempText', '__pmTestApi',
@@ -394,7 +411,7 @@ const PHONE_ENTRY_OWNERS = {
     '__pmShowCharacterBehavior', '__pmShowConversationSettings',
   ],
   'phone-lifecycle.js': [
-    '__pmToggleSelect', '__pmDeleteSelected', '__pmToggleMin', '__pmEnd', '__pmOpen',
+    '__pmSetAmbientStatus', '__pmToggleSelect', '__pmDeleteSelected', '__pmToggleMin', '__pmEnd', '__pmOpen',
   ],
   'emoji-ui.js': [
     '__pmRenderEmojiSetList', '__pmAddEmojiSet', '__pmConfirmAddEmojiSet', '__pmDeleteEmojiSet',
@@ -479,6 +496,14 @@ requireText('constants.js', sourceModuleByName.get('constants.js')?.code || '', 
 requireText('constants.js', sourceModuleByName.get('constants.js')?.code || '', 'BEFORE_PROMPT: 2');
 requireText('constants.js', sourceModuleByName.get('constants.js')?.code || '', 'MAX_INJECTION_DEPTH = 10000');
 requireText('storage.js', sourceModuleByName.get('storage.js')?.code || '', 'saveCharacterBehavior');
+requireText('storage.js', sourceModuleByName.get('storage.js')?.code || '', 'saveBudgetConfig');
+requireText('budget.js', sourceModuleByName.get('budget.js')?.code || '', "BUDGET_CONFIG_KEY = 'ST_SMS_BUDGET_CONFIG'");
+requireText('budget.js', sourceModuleByName.get('budget.js')?.code || '', 'DEFAULT_SAFE_INPUT_TOKENS');
+requireText('permissions.js', sourceModuleByName.get('permissions.js')?.code || '', 'resolvePhoneSources');
+requireText('permissions.js', sourceModuleByName.get('permissions.js')?.code || '', 'resolveCommunitySources');
+requireText('phone-injection.js', sourceModuleByName.get('phone-injection.js')?.code || '', 'applyContextInjections');
+requireText('settings-templates.js', sourceModuleByName.get('settings-templates.js')?.code || '', '插件上下文预算（估算 token）');
+requireText('phone-control-center.js', sourceModuleByName.get('phone-control-center.js')?.code || '', 'data-action="budget"');
 requireText('runtime.js', sourceModuleByName.get('runtime.js')?.code || '', 'pendingMessages: new Map()');
 requireText('phone-chat.js', sourceModuleByName.get('phone-chat.js')?.code || '', 'removePendingBatch(runtime');
 requireText('phone-chat.js', sourceModuleByName.get('phone-chat.js')?.code || '', 'rebaseRenderedHistory(historyWindow.trimmedCount)');
@@ -486,6 +511,55 @@ requireText('phone-chat-poke.js', sourceModuleByName.get('phone-chat-poke.js')?.
 const controlCenterCode = sourceModuleByName.get('phone-control-center.js')?.code || '';
 const directoryCode = sourceModuleByName.get('phone-directory.js')?.code || '';
 const interactiveCode = sourceModuleByName.get('interactive-scenes.js')?.code || '';
+const interactivePhoneCode = sourceModuleByName.get('interactive-scene-phone.js')?.code || '';
+const interactiveSchedulerCode = sourceModuleByName.get('interactive-scene-scheduler.js')?.code || '';
+const foundationCode = sourceModuleByName.get('phone-foundation.js')?.code || '';
+const interactiveModelCode = sourceModuleByName.get('interactive-scene-model.js')?.code || '';
+const interactiveAiCode = sourceModuleByName.get('interactive-scene-ai.js')?.code || '';
+const settingsUiCodeForInteractive = sourceModuleByName.get('settings-ui.js')?.code || '';
+const interactiveAnalysis = analyze(interactiveCode, 'module');
+for (const functionName of ['createScene']) {
+  const functionCode = interactiveAnalysis.functionSource.get(functionName) || '';
+  if (!functionCode) failures.push(`interactive-scenes.js: missing ${functionName} for AI request path verification`);
+  if (functionCode.includes("request('comment_batch'")) failures.push(`interactive-scenes.js: ${functionName} must not request comment_batch`);
+}
+const createSceneCode = interactiveAnalysis.functionSource.get('createScene') || '';
+if (!createSceneCode.includes('communityRunner.generateFeed()')) {
+  failures.push('interactive-scenes.js: createScene initial feed must use the shared community runner');
+}
+if (createSceneCode.includes("request('feed_batch'")) failures.push('interactive-scenes.js: createScene must not bypass the shared runner for initial feed');
+if (/feed_batch[\s\S]*?current\(\)/.test(createSceneCode)) failures.push('interactive-scenes.js: createScene late feed must not reselect a target with current()');
+const generateCommentsCode = interactiveAnalysis.functionSource.get('generateComments') || '';
+if (!generateCommentsCode.includes("request('comment_batch'")) {
+  failures.push('interactive-scenes.js: explicit generateComments path must retain comment_batch');
+}
+for (const expected of [
+  'INTERACTIVE_STORE_VERSION = 2', 'authorId', 'authorNameSnapshot',
+  'assertV2Keys', 'appendScenePosts', 'deriveInteractiveActorId',
+  'PHONE_UI_STATE_VERSION = 1', 'normalizePhoneUiState', 'normalizeAmbientStatus',
+  'patchPhoneUiScope', 'toggleScenePin',
+  "assertV2Keys(value, ['activeSceneId', 'sceneOrder', 'scenes', 'actors']",
+]) requireText('interactive-scene-model.js', interactiveModelCode, expected);
+for (const expected of ['ST_SMS_PHONE_UI_STATE', 'loadPhoneUiState', 'savePhoneUiState']) requireText('storage.js', sourceModuleByName.get('storage.js')?.code || '', expected);
+if ((source.match(/ST_SMS_PHONE_UI_STATE/g) || []).length !== 1) failures.push('source: phone UI state must retain exactly one storage-key definition');
+for (const expected of [
+  "['author', 'content', 'tags', 'comments']", 'cleanFeedComments',
+  '不得返回 actorId、authorId 或任何内部标识', 'known_actor_names_data',
+]) requireText('interactive-scene-ai.js', interactiveAiCode, expected);
+for (const expected of [
+  'INTERACTIVE_STORE_VERSION', 'assertInteractiveActor', 'authorId 未指向有效 actor',
+  'deriveInteractiveActorId(scopeId, actor.type, actor.bindingKey)',
+]) requireText('settings-ui.js', settingsUiCodeForInteractive, expected);
+for (const expected of [
+  'const phoneUiState = loadPhoneUiState(interactiveScenes)',
+  'ambientStatus: normalizeAmbientStatus', 'normalizePhoneUiState(state.phoneUiState, interactiveScenes)',
+  'savePhoneUiState(phoneUiState, interactiveScenes)', 'schemaVersion: 4',
+]) requireText('settings-ui.js', settingsUiCodeForInteractive, expected);
+for (const expected of ['beforeApply', "beforeApply('apply')", "beforeApply('rollback')", 'closePhone(true)', '__pmClearAllData', 'clearPluginData']) requireText('settings-ui.js', settingsUiCodeForInteractive, expected);
+for (const expected of ['if (!force)', 'persistCurrentHistory()', 'persistPhoneUiSnapshot?.()']) {
+  requireText('phone-lifecycle.js', sourceModuleByName.get('phone-lifecycle.js')?.code || '', expected);
+}
+requireText('main.js', mainFile?.code || '', 'closePhone: force => window.__pmEnd(force)');
 requireText('phone-control-center.js', controlCenterCode, 'updatePendingMessage(');
 const controlCenterAnalysis = analyze(controlCenterCode, 'module');
 const directoryAnalysis = analyze(directoryCode, 'module');
@@ -502,8 +576,8 @@ if ((controlCenterCode.match(forumCallPattern) || []).length !== 1) {
 if ((directoryTemplate.match(forumCallPattern) || []).length !== 1) {
   failures.push('phone-directory.js: directory must contain exactly one forum entry call');
 }
-if (!directoryTemplate.includes('AI 互动场景') || !directoryTemplate.includes('论坛、社交与 AI 文字直播')) {
-  failures.push('phone-directory.js: directory must describe the completed forum and AI text-live capability');
+if (!directoryTemplate.includes('互动社区') || !directoryTemplate.includes('论坛、社交与文字直播')) {
+  failures.push('phone-directory.js: directory must describe the community and text-live capability without implementation labels');
 }
 if (controlCenterTemplate.includes('makeOverlay') || controlCenterTemplate.includes('<span')) {
   failures.push('phone-control-center.js: compact control menu must not use the full overlay or explanatory subtitles');
@@ -511,8 +585,66 @@ if (controlCenterTemplate.includes('makeOverlay') || controlCenterTemplate.inclu
 for (const title of ['编辑消息', '角色设置', 'API 设置', '主题颜色', '表情包管理', '数据备份', '删除信息', '互动场景']) {
   if (!controlCenterTemplate.includes(title)) failures.push(`phone-control-center.js: compact control menu missing title ${title}`);
 }
-for (const expected of ['post-comment', 'delete-scene', 'delete-post', 'delete-comment', 'AI 文字直播', '不包含摄像头、语音或真实推流']) {
+for (const expected of ['post-comment', 'delete-scene', 'delete-post', 'delete-comment', '文字直播', '文字弹幕仅在当前社区中展示']) {
   requireText('interactive-scenes.js', interactiveCode, expected);
+}
+for (const expected of [
+  'persistSceneBudgetRemoval', 'deleteSceneAndFinalize', 'finalizeDeletedScene', 'bindPhonePageActions', 'runDeleteSceneAction',
+  'deleteScene: deleteInteractiveScene', 'persistSceneBudgetRemoval({',
+  "['手机页面状态保存失败', persistPhoneUi]", "['运行时场景清理失败', clearOpenScene]",
+  "['社区页面刷新失败', renderLauncher]", "dataset.sceneUiBound === 'true'",
+]) requireText('interactive-scene-phone.js', interactivePhoneCode, expected);
+for (const expected of [
+  'runDeleteSceneAction(scopeId, sceneId, {', 'clearOpenScene:', 'renderLauncher:',
+]) {
+  requireText('interactive-scenes.js', interactiveCode, expected);
+}
+for (const expected of [
+  'createCommunityTaskController', 'createCommunityGenerationRunner', "request('feed_batch', {}, target)",
+  'createCommunityTurnSnapshot(chat)', 'registerResolvedHostEvent', 'resolveHostEvent', 'runtime.communityTask', 'resetObservation',
+]) requireText('interactive-scene-scheduler.js', interactiveSchedulerCode, expected);
+for (const expected of ['observeCommunityTurn', 'cancelCommunityGeneration', 'toggle-community-mode']) requireText('interactive-scenes.js', interactiveCode, expected);
+for (const stateField of [
+  'communityGeneration', 'communityTaskPhase', 'communityReminder', 'communityBaselineAssistantCount',
+]) {
+  for (const module of sourceModules) {
+    if (path.basename(module.file) !== 'interactive-scene-scheduler.js' && module.code.includes(stateField)) {
+      failures.push(`${path.basename(module.file)}: runtime scheduler field ${stateField} must stay owned by interactive-scene-scheduler.js`);
+    }
+  }
+}
+for (const expected of [
+  'resolveCommunityMessageEvents(et)', 'deps.observeCommunityTurn?.(c.chat || [])',
+  "registerResolvedHostEvent(c.eventSource, et, 'MESSAGE_RECEIVED'", "registerResolvedHostEvent(c.eventSource, et, 'CHAT_CHANGED'",
+  "deps.cancelCommunityGeneration?.('document-hidden')", "deps.cancelCommunityGeneration?.('host-chat-changed')",
+]) requireText('phone-foundation.js', sourceModuleByName.get('phone-foundation.js')?.code || '', expected);
+for (const forbidden of [
+  "et.MESSAGE_RECEIVED || 'message_received'", "et.CHAT_CHANGED || 'chat_id_changed'",
+  "et.MESSAGE_SENT || 'message_sent'", "et.MESSAGE_EDITED || 'message_edited'",
+  "et.MESSAGE_DELETED || 'message_deleted'", "et.MESSAGE_SWIPED || 'message_swiped'",
+]) {
+  if (foundationCode.includes(forbidden)) failures.push(`phone-foundation.js: community observer must not guess host event ${forbidden}`);
+}
+for (const expected of ["cancelCommunityGeneration?.('phone-minimized')", "cancelCommunityGeneration?.('phone-closed')"]) {
+  requireText('phone-lifecycle.js', sourceModuleByName.get('phone-lifecycle.js')?.code || '', expected);
+}
+for (const expected of [
+  'renderDesktop', 'desktop-chat', 'desktop-directory', 'desktop-settings', 'desktop-community',
+  'toggle-scene-pin', 'unpin-scene', 'loadPhoneUiState', 'savePhoneUiState',
+  "showPhonePage('community')", 'restorePhoneUi', 'persistPhoneUiSnapshot',
+]) requireText('interactive-scenes.js', interactiveCode, expected);
+for (const forbidden of ['makeOverlay(', 'window.__pmCloseOverlay()']) {
+  if (interactiveCode.includes(forbidden)) failures.push(`interactive-scenes.js: phone community must not use overlay path ${forbidden}`);
+}
+const phoneLifecycleCode = sourceModuleByName.get('phone-lifecycle.js')?.code || '';
+for (const expected of [
+  'pm-chat-page', 'pm-desktop-page', 'pm-community-page',
+  'createPhonePageController', 'data-phone-page', '__pmShowPhonePage',
+  "{ preservePage: true }", 'deps.restorePhoneUi?.()', 'deps.persistPhoneUiSnapshot?.()',
+]) requireText('phone-lifecycle.js', phoneLifecycleCode, expected);
+const conversationCodeForNavigation = sourceModuleByName.get('conversation.js')?.code || '';
+for (const expected of ['options = {}', 'options.preservePage !== true', 'deps.showPhoneChatPage?.(id)']) {
+  requireText('conversation.js', conversationCodeForNavigation, expected);
 }
 for (const expected of [
   "makeOverlay(`\n<div class=\"pm-modal pm-pending-manager\">",
@@ -542,7 +674,6 @@ const forumHandlerAssignments = sourceModules.reduce((count, module) => {
   return count + (analysis.windowAssignmentCounts.get('__pmOpenForumMode') || 0);
 }, 0);
 if (forumHandlerAssignments !== 1) failures.push(`source: expected exactly one __pmOpenForumMode assignment, got ${forumHandlerAssignments}`);
-const foundationCode = sourceModuleByName.get('phone-foundation.js')?.code || '';
 const settingsCode = sourceModuleByName.get('settings-ui.js')?.code || '';
 const foundationAnalysis = analyze(foundationCode, 'module');
 const settingsAnalysis = analyze(settingsCode, 'module');
@@ -570,7 +701,34 @@ const lifecycleCode = sourceModuleByName.get('phone-lifecycle.js')?.code || '';
 for (const expected of [
   'bindPressGesture(sendButton', 'delay: 550', 'getPendingMessages(runtime',
   'state.isGenerating', 'window.__pmSubmitPending()', 'unbindSendGesture?.()',
+  'createAmbientStatusController', 'ambientStatusEnabled === true', 'new Intl.DateTimeFormat',
+  'if (state.isMinimized) ambientStatus.stop(); else ambientStatus.sync();',
+  'ambientStatus.stop();',
 ]) requireText('phone-lifecycle.js', lifecycleCode, expected);
+requireText('package.json', packageText, 'npm run check:ambient');
+requireText('settings-templates.js', sourceModuleByName.get('settings-templates.js')?.code || '', '仅显示设备本地时间，不联网、不定位，也不会写入提示词。');
+for (const expected of ['legacyBackupTheme(snapshot.theme)', 'delete theme.ambientStatusEnabled', 'current.theme?.ambientStatusEnabled === true']) {
+  requireText('settings-ui.js', settingsCode, expected);
+}
+for (const forbidden of ['navigator.geolocation', 'getCurrentPosition(', 'watchPosition(']) {
+  if (lifecycleCode.includes(forbidden)) failures.push(`phone-lifecycle.js: ambient status must not use ${forbidden}`);
+}
+for (const forbidden of ['AI 互动场景', 'AI 文字直播', 'AI ON AIR', 'AI PREVIEW', '模拟弹幕', 'AI 社交宇宙']) {
+  if (directoryCode.includes(forbidden) || interactiveCode.includes(forbidden)) failures.push(`immersive UI: visible implementation label remains: ${forbidden}`);
+}
+const immersiveUiOwners = [
+  'interactive-scenes.js', 'settings-templates.js', 'settings-ui.js', 'phone-directory.js',
+  'phone-chat-poke.js', 'phone-control-center.js', 'emoji-ui.js', 'cropper.js',
+];
+for (const owner of immersiveUiOwners) {
+  const code = sourceModuleByName.get(owner)?.code || '';
+  for (const forbidden of ['🥰', '➕', '📁', '✕', '×']) {
+    if (code.includes(forbidden)) failures.push(`${owner}: visible emoji or Unicode operation icon remains: ${forbidden}`);
+  }
+}
+for (const forbidden of ['#7b3654', '#2c1a30', '#71334f']) {
+  if (css.toLowerCase().includes(forbidden)) failures.push(`style.css: purple immersive background color remains: ${forbidden}`);
+}
 const pressGestureCode = sourceModuleByName.get('press-gesture.js')?.code || '';
 for (const expected of [
   'setPointerCapture', "addEventListener('pointermove'", "addEventListener('pointercancel'",
@@ -598,6 +756,41 @@ if (phoneChatCode.includes('buildCharacterBehaviorPrompt(')
 requireText('contact-generator.js', sourceModuleByName.get('contact-generator.js')?.code || '', 'installContactGenerator(state, deps)');
 requireText('contact-generator.js', sourceModuleByName.get('contact-generator.js')?.code || '', '!state.generationTask');
 
+const runtimeCode = sourceModuleByName.get('runtime.js')?.code || '';
+for (const expected of [
+  'autoPokeArmed: false', 'automaticEpoch: 0', 'automaticTasks: new Map()',
+  'createAutomaticTaskController', 'const taskKey = `${storageId}\\u0000${contactName}`',
+  'getStorageId() !== storageId', 'advanceAutoPokeCounters',
+  'runAutoPokeCounterCycle', 'await run(contactName)', 'commitAutomaticResult', 'await persistHistory()', 'persistCounter()',
+]) requireText('runtime.js', runtimeCode, expected);
+for (const expected of [
+  "disarmAutoPoke('document-hidden')", "disarmAutoPoke('host-chat-changed')",
+  'hasCompletedAssistantMessage && isAutoPokeAllowed()',
+  'createAutomaticTaskController', 'automaticTasks.begin', 'automaticTasks.isActive', 'automaticTasks.finish',
+]) requireText('phone-foundation.js', foundationCode, expected);
+for (const expected of [
+  "disarmAutoPoke('phone-minimized')", "disarmAutoPoke('phone-closed')",
+]) requireText('phone-lifecycle.js', lifecycleCode, expected);
+for (const expected of [
+  'runAutoPokeCounterCycle({',
+  'run: contactName => window.__pmAutoPoke(contactName)',
+]) requireText('phone-chat.js', phoneChatCode, expected);
+if (phoneChatCode.includes('config.autoPoke.counter = 0')) {
+  failures.push('phone-chat.js: threshold detection must not clear auto-poke counters before a successful commit');
+}
+for (const expected of [
+  'if (state.isGenerating || !isAutoPokeAllowed()) return false;',
+  'const automaticTask = beginAutomaticTask(id, contactName);',
+  'if (!isAutomaticRequestActive()) return false;',
+  'await commitAutomaticResult({',
+  'persistHistory: () => saveHistoriesStrict()',
+  'applyBidirectionalInjection();',
+  'window.__pmArmAutoPoke',
+]) requireText('phone-chat-poke.js', phoneChatPokeCode, expected);
+for (const code of [phoneChatPokeCode, directoryCode]) {
+  if (code.includes('Math.min(oldCounter, interval - 1)')) failures.push('auto-poke settings: failed threshold must not be truncated while saving settings');
+}
+
 // Cold-start recovery must be tied to the phone window lifecycle. SillyTavern's
 // storage id can legitimately stabilize while IndexedDB is loading; treating that
 // change as a stale callback leaves the loading placeholder on screen forever.
@@ -610,12 +803,20 @@ if (!lifecycleFile) {
 }
 
 
-for (const expected of ['#pm-iphone', '#pm-overlay', '.pm-model-options', '--pm-model-visible-rows', '@media(max-width:500px),(max-height:700px)']) {
+for (const expected of [
+  '#pm-iphone', '#pm-overlay', '.pm-model-options', '--pm-model-visible-rows',
+  '@media(max-width:500px),(max-height:700px)', '@media(max-width:600px)', '@media(max-width:320px)',
+  '@media(pointer:coarse) and (max-height:500px)', '#pm-iphone .pm-scene-shell',
+]) {
   requireText('css', css, expected);
 }
-for (const expected of ['.pm-msg-list', '.pm-input', '.pm-confirm-bar', '.pm-modal', '.pm-cfg-tab']) {
+for (const expected of [
+  '.pm-msg-list', '.pm-input', '.pm-confirm-bar', '.pm-modal', '.pm-cfg-tab',
+  '.pm-phone-page', '.pm-desktop-grid', '.pm-desktop-app', '.pm-desktop-pin', '.pm-community-page',
+]) {
   requireText('css', css, expected);
 }
+if (css.includes('prefers-color-scheme')) failures.push('css: theme selection must remain explicit and must not use prefers-color-scheme');
 if (source.includes('pm-css')) failures.push('source: inline CSS injector id still present');
 if (css.includes('${')) failures.push('css: JavaScript template expression remains');
 if (manifest.name !== 'phone_mode') failures.push('manifest: internal extension id must remain phone_mode');
@@ -662,7 +863,7 @@ const backupMetadataFields = new Set(['schemaVersion']);
 const backupFields = [
   'histories', 'config', 'theme', 'profiles', 'groupMeta',
   'pokeConfig', 'bidirectional', 'emojis', 'characterBehavior',
-  'wordyLimit', 'bgGlobal', 'bgLocal', 'interactiveScenes',
+  'wordyLimit', 'bgGlobal', 'bgLocal', 'interactiveScenes', 'phoneUiState', 'ambientStatus',
 ];
 for (const [label, contract] of [
   ['settings-ui.js', analyzeBackupContract(settingsUiCode)],
@@ -678,7 +879,16 @@ for (const [label, contract] of [
     .filter(field => !contract.exportFields.has(field)).sort();
   if (exportOnly.length) failures.push(`${label}: backup fields exported but not imported: ${exportOnly.join(', ')}`);
   if (importOnly.length) failures.push(`${label}: backup fields imported but not exported: ${importOnly.join(', ')}`);
+  if (contract.exportFields.has('budgetConfig')) failures.push(`${label}: budgetConfig must remain outside schemaVersion 4 backup export`);
+  if (contract.importFields.has('budgetConfig')) failures.push(`${label}: budgetConfig must remain outside schemaVersion 4 backup import`);
   if (contract.importReadsFileName) failures.push(`${label}: backup import must not depend on file.name`);
+}
+for (const expected of [
+  'PLUGIN_LOCAL_STORAGE_KEYS', 'PLUGIN_IDB_STATIC_KEYS', 'PLUGIN_IDB_DYNAMIC_PREFIXES',
+  'clearPluginData', 'pmIDBKeys', "Object.freeze(['ST_SMS_BG_LOCAL_'])",
+]) requireText('storage.js', sourceModuleByName.get('storage.js')?.code || '', expected);
+if ((sourceModuleByName.get('storage.js')?.code || '').includes("PLUGIN_LOCAL_STORAGE_KEYS = Object.freeze(['ST_SMS_MIGRATED_V3'")) {
+  failures.push('storage.js: migration marker must not be cleared or legacy host histories can be reimported');
 }
 
 const asymmetricBackupSample = analyzeBackupContract(`
@@ -699,6 +909,7 @@ const compatibilityStrings = [
   'ST_SMS_DATA_V2', 'ST_SMS_CONFIG', 'ST_SMS_THEME', 'ST_SMS_POKE_CONFIG',
   'ST_SMS_BIDIRECTIONAL', 'ST_SMS_CHARACTER_BEHAVIOR', 'ST_SMS_EMOJIS',
   'ST_SMS_GROUP_META', 'ST_SMS_API_PROFILES', 'ST_SMS_BG_GLOBAL', 'ST_SMS_BG_LOCAL',
+  'ST_SMS_BUDGET_CONFIG',
 ];
 for (const [label, , result] of analyzedFiles) {
   for (const expected of compatibilityStrings) {

@@ -39,7 +39,7 @@ export function buildAntiFluff() {
  */
 export function buildSingleInjectedInstruction({
     currentPersona, userName, userBlock, contextBlockMain,
-    smsHistoryText, directorNote, userMsgClean, userMsg,
+    mainChatText, smsHistoryText, directorNote, userMsgClean, userMsg,
 }) {
     return `
 [短信模式指令——最高优先级]
@@ -48,6 +48,8 @@ export function buildSingleInjectedInstruction({
 
 【用户信息】
 ${userBlock}
+
+${mainChatText ? `【主线最近对话】\n${mainChatText}\n\n` : ''}
 
 ${contextBlockMain ? contextBlockMain + '\n\n' : ''}规则：
 - 只输出短信文字，3到8句，每句用 / 分隔
@@ -92,7 +94,7 @@ export function buildSingleSystemPrompt({
  */
 export function buildGroupInjectedInstruction({
     groupName, memberList, userName, userBlock, cardScenario,
-    worldBookText, smsHistoryText, directorNote, userMsgClean, userMsg,
+    worldBookText, mainChatText, smsHistoryText, directorNote, userMsgClean, userMsg,
 }) {
     const groupRules = `
 [群聊短信模式——最高优先级]
@@ -126,7 +128,7 @@ export function buildGroupInjectedInstruction({
 【用户信息】
 ${userBlock}
 
-${cardScenario ? '【场景】\n' + cardScenario + '\n\n' : ''}${worldBookText ? '【世界书】\n' + worldBookText + '\n\n' : ''}群聊历史：
+${cardScenario ? '【场景】\n' + cardScenario + '\n\n' : ''}${worldBookText ? '【世界书】\n' + worldBookText + '\n\n' : ''}${mainChatText ? '【主线最近对话】\n' + mainChatText + '\n\n' : ''}群聊历史：
 ${smsHistoryText}
 ${directorNote ? `\n[剧情引导] ${directorNote}\n` : ''}
 ${userMsg.trim() ? `${userName}：${userMsgClean}` : '[仅有剧情引导，无用户发言，请按引导推进剧情]'}`;

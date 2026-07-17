@@ -1,9 +1,11 @@
 import {
     CHARACTER_BEHAVIOR_KEY, IDB_MARKER, PM_IDB_NAME, PM_IDB_STORE,
 } from './constants.js';
+import { BUDGET_CONFIG_KEY, normalizeBudgetConfig } from './budget.js';
 import {
     normalizeCharacterBehaviorStore, normalizeGroupMetaStore,
 } from './behavior-config.js';
+import { createEmptyPhoneUiState, normalizePhoneUiState } from './interactive-scene-model.js';
 
 let database = null;
 
@@ -13,6 +15,17 @@ const GROUP_META_STORE_KEY = 'ST_SMS_GROUP_META';
 const GROUP_META_FALLBACK_KEY = `${GROUP_META_STORE_KEY}_LOCAL_FALLBACK`;
 const INTERACTIVE_STORE_KEY = 'ST_INTERACTIVE_SCENES_V1';
 const INTERACTIVE_FALLBACK_KEY = `${INTERACTIVE_STORE_KEY}_LOCAL_FALLBACK`;
+const PHONE_UI_STATE_KEY = 'ST_SMS_PHONE_UI_STATE';
+export const PLUGIN_LOCAL_STORAGE_KEYS = Object.freeze([
+    'ST_SMS_DATA_V2', 'ST_SMS_CONFIG', 'ST_SMS_THEME', 'ST_SMS_POKE_CONFIG', 'ST_SMS_WORDY_LIMIT',
+    BUDGET_CONFIG_KEY, 'ST_SMS_BG_GLOBAL', 'ST_SMS_BG_LOCAL', GROUP_META_STORE_KEY, GROUP_META_FALLBACK_KEY,
+    EMOJI_STORE_KEY, EMOJI_FALLBACK_KEY, CHARACTER_BEHAVIOR_KEY, 'ST_SMS_API_PROFILES', 'ST_SMS_BIDIRECTIONAL',
+    INTERACTIVE_STORE_KEY, INTERACTIVE_FALLBACK_KEY, PHONE_UI_STATE_KEY,
+]);
+export const PLUGIN_IDB_STATIC_KEYS = Object.freeze([
+    'ST_SMS_DATA_V2', EMOJI_STORE_KEY, GROUP_META_STORE_KEY, INTERACTIVE_STORE_KEY, 'ST_SMS_BG_GLOBAL',
+]);
+export const PLUGIN_IDB_DYNAMIC_PREFIXES = Object.freeze(['ST_SMS_BG_LOCAL_']);
 
 export function pmOpenIDB() {
     return new Promise(resolve => {
@@ -108,6 +121,54 @@ export async function pmIDBDel(key) {
             transaction.onabort = () => finish(false);
         } catch (error) {
             finish(false);
+        }
+    });
+}
+
+export async function pmIDBKeys() {
+    const db = await pmOpenIDB();
+    if (!db) return null;
+    return new Promise(resolve => {
+        let settled = false;
+        let keys = null;
+        const finish = result => {
+            if (settled) return;
+            settled = true;
+            resolve(result);
+        };
+        try {
+            const transaction = db.transaction(PM_IDB_STORE, 'readonly');
+            const request = transaction.objectStore(PM_IDB_STORE).getAllKeys();
+            request.onsuccess = () => { keys = Array.isArray(request.result) ? request.result : []; };
+            request.onerror = () => finish(null);
+            transaction.oncomplete = () => finish(keys);
+            transaction.onerror = () => finish(null);
+            transaction.onabort = () => finish(null);
+        } catch (error) {
+            finish(null);
+        }
+    });
+}
+
+async function pmIDBReadEntry(key) {
+    const db = await pmOpenIDB();
+    if (!db) return { ok: false, value: undefined };
+    return new Promise(resolve => {
+        let settled = false;
+        const finish = result => {
+            if (settled) return;
+            settled = true;
+            resolve(result);
+        };
+        try {
+            const transaction = db.transaction(PM_IDB_STORE, 'readonly');
+            const request = transaction.objectStore(PM_IDB_STORE).get(key);
+            request.onsuccess = () => finish({ ok: true, value: request.result });
+            request.onerror = () => finish({ ok: false, value: undefined });
+            transaction.onerror = () => finish({ ok: false, value: undefined });
+            transaction.onabort = () => finish({ ok: false, value: undefined });
+        } catch (error) {
+            finish({ ok: false, value: undefined });
         }
     });
 }
@@ -220,12 +281,16 @@ export async function saveEmojis() {
 
 export function loadTheme() {
     try {
-        window.__pmTheme = { ...window.__pmTheme, ...JSON.parse(localStorage.getItem('ST_SMS_THEME')) };
+        const saved = JSON.parse(localStorage.getItem('ST_SMS_THEME'));
+        if (saved && typeof saved === 'object' && !Array.isArray(saved)) {
+            window.__pmTheme = { ...window.__pmTheme, ...saved };
+        }
         if (window.__pmTheme.layout !== 'standard') {
             window.__pmTheme.layout = 'standard';
             saveTheme();
         }
     } catch (error) {}
+    window.__pmTheme.ambientStatusEnabled = window.__pmTheme.ambientStatusEnabled === true;
 }
 
 export function saveTheme() {
@@ -259,6 +324,26 @@ export function loadWordyLimit() {
 export function saveWordyLimit() {
     try {
         localStorage.setItem('ST_SMS_WORDY_LIMIT', JSON.stringify(window.__pmWordyLimit));
+        return true;
+    } catch (error) {
+        return false;
+    }
+}
+
+export function loadBudgetConfig() {
+    try {
+        window.__pmBudgetConfig = normalizeBudgetConfig(JSON.parse(localStorage.getItem(BUDGET_CONFIG_KEY)));
+    } catch (error) {
+        window.__pmBudgetConfig = normalizeBudgetConfig();
+    }
+    return window.__pmBudgetConfig;
+}
+
+export function saveBudgetConfig(candidate = window.__pmBudgetConfig) {
+    const normalized = normalizeBudgetConfig(candidate);
+    try {
+        localStorage.setItem(BUDGET_CONFIG_KEY, JSON.stringify(normalized));
+        window.__pmBudgetConfig = normalized;
         return true;
     } catch (error) {
         return false;
@@ -571,7 +656,93 @@ export async function saveInteractiveScenes(store) {
     }
 }
 
+export function loadPhoneUiState(interactiveStore) {
+    try {
+        const saved = localStorage.getItem(PHONE_UI_STATE_KEY);
+        if (!saved) return createEmptyPhoneUiState();
+        return normalizePhoneUiState(JSON.parse(saved), interactiveStore);
+    } catch (error) {
+        console.warn('[phone-mode] 手机界面状态读取失败', error);
+        return createEmptyPhoneUiState();
+    }
+}
+
+export function savePhoneUiState(state, interactiveStore) {
+    try {
+        const normalized = normalizePhoneUiState(state, interactiveStore);
+        localStorage.setItem(PHONE_UI_STATE_KEY, JSON.stringify(normalized));
+        return true;
+    } catch (error) {
+        console.error('[phone-mode] 手机界面状态保存失败', error);
+        return false;
+    }
+}
+
 export const INTERACTIVE_STORAGE_KEYS = Object.freeze({
     primary: INTERACTIVE_STORE_KEY,
     fallback: INTERACTIVE_FALLBACK_KEY,
 });
+
+export const PHONE_UI_STORAGE_KEY = PHONE_UI_STATE_KEY;
+
+const isPluginIdbKey = key => typeof key === 'string' && (
+    PLUGIN_IDB_STATIC_KEYS.includes(key)
+    || PLUGIN_IDB_DYNAMIC_PREFIXES.some(prefix => key.startsWith(prefix))
+);
+
+export async function clearPluginData({
+    localStorageRef = globalThis.localStorage,
+    listIdbKeys = pmIDBKeys,
+    readIdbEntry = pmIDBReadEntry,
+    writeIdb = pmIDBSet,
+    deleteIdb = pmIDBDel,
+    afterClear = async () => {},
+} = {}) {
+    if (!localStorageRef) throw new Error('插件数据清理失败：浏览器存储不可用');
+    const localSnapshot = new Map();
+    for (const key of PLUGIN_LOCAL_STORAGE_KEYS) {
+        try { localSnapshot.set(key, localStorageRef.getItem(key)); }
+        catch (error) { throw new Error(`插件数据清理失败：无法读取 ${key}`); }
+    }
+    const listedKeys = await listIdbKeys();
+    if (!Array.isArray(listedKeys)) throw new Error('插件数据清理失败：无法枚举 IndexedDB');
+    const idbKeys = listedKeys.filter(isPluginIdbKey);
+    const idbSnapshot = new Map();
+    for (const key of idbKeys) {
+        const entry = await readIdbEntry(key);
+        if (!entry?.ok) throw new Error(`插件数据清理失败：无法读取 IndexedDB ${key}`);
+        idbSnapshot.set(key, entry.value);
+    }
+    try {
+        for (const key of PLUGIN_LOCAL_STORAGE_KEYS) localStorageRef.removeItem(key);
+        for (const key of idbKeys) {
+            if (!await deleteIdb(key)) throw new Error(`插件数据清理失败：无法删除 IndexedDB ${key}`);
+        }
+        await afterClear();
+        return { localKeys: PLUGIN_LOCAL_STORAGE_KEYS.length, idbKeys: idbKeys.length };
+    } catch (error) {
+        const rollbackFailures = [];
+        for (const [key, value] of localSnapshot) {
+            try {
+                if (value === null) localStorageRef.removeItem(key);
+                else localStorageRef.setItem(key, value);
+            } catch (rollbackError) {
+                rollbackFailures.push(new Error(`localStorage ${key} 恢复失败：${rollbackError.message}`));
+            }
+        }
+        for (const [key, value] of idbSnapshot) {
+            try {
+                if (!await writeIdb(key, value)) throw new Error('IndexedDB 不可用');
+            } catch (rollbackError) {
+                rollbackFailures.push(new Error(`IndexedDB ${key} 恢复失败：${rollbackError.message}`));
+            }
+        }
+        if (rollbackFailures.length) {
+            const combined = new Error(`${error.message}；插件数据回滚失败：${rollbackFailures.map(item => item.message).join('；')}`);
+            combined.cause = error;
+            combined.rollbackError = new AggregateError(rollbackFailures, '插件数据回滚失败');
+            throw combined;
+        }
+        throw error;
+    }
+}
