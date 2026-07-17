@@ -503,7 +503,10 @@ requireText('permissions.js', sourceModuleByName.get('permissions.js')?.code || 
 requireText('permissions.js', sourceModuleByName.get('permissions.js')?.code || '', 'resolveCommunitySources');
 requireText('phone-injection.js', sourceModuleByName.get('phone-injection.js')?.code || '', 'applyContextInjections');
 requireText('settings-templates.js', sourceModuleByName.get('settings-templates.js')?.code || '', '插件上下文预算（估算 token）');
-requireText('phone-control-center.js', sourceModuleByName.get('phone-control-center.js')?.code || '', 'data-action="budget"');
+for (const expected of [
+  'pm-settings-home', "__pmShowConfig('api')", "__pmShowConfig('look')",
+  "__pmShowConfig('backup')", "__pmShowConfig('budget')",
+]) requireText('settings-templates.js', sourceModuleByName.get('settings-templates.js')?.code || '', expected);
 requireText('runtime.js', sourceModuleByName.get('runtime.js')?.code || '', 'pendingMessages: new Map()');
 requireText('phone-chat.js', sourceModuleByName.get('phone-chat.js')?.code || '', 'removePendingBatch(runtime');
 requireText('phone-chat.js', sourceModuleByName.get('phone-chat.js')?.code || '', 'rebaseRenderedHistory(historyWindow.trimmedCount)');
@@ -566,24 +569,26 @@ const directoryAnalysis = analyze(directoryCode, 'module');
 const controlCenterTemplate = controlCenterAnalysis.windowAssignmentText.get('__pmShowControlCenter') || '';
 const directoryTemplate = directoryAnalysis.windowAssignmentText.get('__pmShowList') || '';
 const forumCallPattern = /window\.__pmOpenForumMode\s*\(\s*\)/g;
-if (!controlCenterTemplate.includes('data-action="forum"')
-    || !controlCenterTemplate.includes('互动场景')) {
-  failures.push('phone-control-center.js: compact control menu must contain the interactive-scene action');
+if (controlCenterTemplate.includes('data-action="forum"') || controlCenterTemplate.includes('互动场景')) {
+  failures.push('phone-control-center.js: compact control menu must not duplicate the desktop community entry');
 }
-if ((controlCenterCode.match(forumCallPattern) || []).length !== 1) {
-  failures.push('phone-control-center.js: compact control menu must dispatch to exactly one forum handler call');
+if ((controlCenterCode.match(forumCallPattern) || []).length !== 0) {
+  failures.push('phone-control-center.js: compact control menu must not dispatch the forum handler');
 }
-if ((directoryTemplate.match(forumCallPattern) || []).length !== 1) {
-  failures.push('phone-directory.js: directory must contain exactly one forum entry call');
+if ((directoryTemplate.match(forumCallPattern) || []).length !== 0) {
+  failures.push('phone-directory.js: directory must not contain a forum entry call');
 }
-if (!directoryTemplate.includes('互动社区') || !directoryTemplate.includes('论坛、社交与文字直播')) {
-  failures.push('phone-directory.js: directory must describe the community and text-live capability without implementation labels');
+if (directoryTemplate.includes('pm-forum-entry') || directoryTemplate.includes('互动社区') || directoryTemplate.includes('论坛、社交与文字直播')) {
+  failures.push('phone-directory.js: directory must not duplicate the desktop community entry');
 }
 if (controlCenterTemplate.includes('makeOverlay') || controlCenterTemplate.includes('<span')) {
   failures.push('phone-control-center.js: compact control menu must not use the full overlay or explanatory subtitles');
 }
-for (const title of ['编辑消息', '角色设置', 'API 设置', '主题颜色', '表情包管理', '数据备份', '删除信息', '互动场景']) {
+for (const title of ['编辑消息', '角色设置', '表情包管理', '删除信息']) {
   if (!controlCenterTemplate.includes(title)) failures.push(`phone-control-center.js: compact control menu missing title ${title}`);
+}
+for (const title of ['API 设置', '主题颜色', '数据备份', '互动场景']) {
+  if (controlCenterTemplate.includes(title)) failures.push(`phone-control-center.js: compact control menu must not contain removed shortcut ${title}`);
 }
 for (const expected of ['post-comment', 'delete-scene', 'delete-post', 'delete-comment', '文字直播', '文字弹幕仅在当前社区中展示']) {
   requireText('interactive-scenes.js', interactiveCode, expected);
@@ -630,6 +635,7 @@ for (const expected of ["cancelCommunityGeneration?.('phone-minimized')", "cance
 }
 for (const expected of [
   'renderDesktop', 'desktop-chat', 'desktop-directory', 'desktop-settings', 'desktop-community',
+  'desktop-exit', 'data-action="desktop"', 'data-action="exit"', "__pmOpenSettingsTab?.('home')",
   'toggle-scene-pin', 'unpin-scene', 'loadPhoneUiState', 'savePhoneUiState',
   "showPhonePage('community')", 'restorePhoneUi', 'persistPhoneUiSnapshot',
 ]) requireText('interactive-scenes.js', interactiveCode, expected);
@@ -640,6 +646,7 @@ const phoneLifecycleCode = sourceModuleByName.get('phone-lifecycle.js')?.code ||
 for (const expected of [
   'pm-chat-page', 'pm-desktop-page', 'pm-community-page',
   'createPhonePageController', 'data-phone-page', '__pmShowPhonePage',
+  "__pmShowPhonePage('desktop')", 'POKE_ICON_SVG',
   "{ preservePage: true }", 'deps.restorePhoneUi?.()', 'deps.persistPhoneUiSnapshot?.()',
 ]) requireText('phone-lifecycle.js', phoneLifecycleCode, expected);
 const conversationCodeForNavigation = sourceModuleByName.get('conversation.js')?.code || '';
@@ -657,18 +664,6 @@ for (const expected of [
   "clear.title = hasSubmitting ? '提交中的暂存不能清空' : '清空当前会话暂存'",
   'Object.assign(deps, { closeControlCenter })',
 ]) requireText('phone-control-center.js', controlCenterCode, expected);
-const directoryForumIndex = directoryTemplate.search(forumCallPattern);
-const directoryListIndex = directoryTemplate.indexOf('pm-modal-list');
-const directoryForumButtonStart = directoryTemplate.lastIndexOf('<button', directoryForumIndex);
-const directoryForumButtonEnd = directoryTemplate.indexOf('</button>', directoryForumIndex);
-const directoryForumButton = directoryForumButtonStart >= 0 && directoryForumButtonEnd >= 0
-  ? directoryTemplate.slice(directoryForumButtonStart, directoryForumButtonEnd)
-  : '';
-if (directoryForumIndex < 0 || directoryListIndex < 0
-    || directoryForumButtonStart < 0 || directoryForumButtonEnd > directoryListIndex
-    || !directoryForumButton.includes('pm-forum-entry')) {
-  failures.push('phone-directory.js: forum entry must remain outside and before the scrollable directory list');
-}
 const forumHandlerAssignments = sourceModules.reduce((count, module) => {
   const analysis = analyze(module.code, 'module');
   return count + (analysis.windowAssignmentCounts.get('__pmOpenForumMode') || 0);
@@ -692,8 +687,18 @@ if (!overlayThemeSyncPattern.test(applyThemeSource)) {
 if (!overlayThemeSyncPattern.test(setDarkModeSource)) {
   failures.push('settings-ui.js: __pmSetDarkMode must synchronize data-theme to the active pm-overlay');
 }
-requireText('style.css', css, '#pm-overlay[data-theme="dark"] .pm-forum-entry');
-if (css.includes('#pm-iphone[data-theme="dark"] .pm-forum-entry')) failures.push('style.css: forum overlay dark theme must not depend on #pm-iphone ancestry');
+for (const expected of [
+  '#pm-overlay[data-theme="dark"] .pm-settings-home button{background:#2c2c2e;color:#eee;border-color:#3a3a3c}',
+  '#pm-overlay[data-theme="dark"] .pm-scene-comments,#pm-iphone[data-theme="dark"] .pm-scene-comments{background:#2c2c2e;color:#ddd}',
+  '#pm-overlay[data-theme="dark"] .pm-scene-comments b,#pm-iphone[data-theme="dark"] .pm-scene-comments b{color:color-mix(in srgb,var(--scene-accent) 30%,#fff)}',
+  '#pm-overlay[data-theme="dark"] .pm-scene-post footer,#pm-iphone[data-theme="dark"] .pm-scene-post footer{border-top-color:#3a3a3c}',
+  '#pm-overlay[data-theme="dark"] .pm-scene-comment-actions button,#pm-iphone[data-theme="dark"] .pm-scene-comment-actions button{color:#aaa}',
+  '#pm-overlay[data-theme="dark"] .pm-scene-comment-actions .pm-scene-danger,#pm-iphone[data-theme="dark"] .pm-scene-comment-actions .pm-scene-danger{color:#ff8a80 !important}',
+  '#pm-overlay[data-theme="dark"] .pm-scene-comment-composer input{background:#202025;color:#eee;border-color:#414149}',
+  '#pm-iphone[data-theme="dark"] .pm-scene-comment-composer input{background:#202025;color:#eee;border-color:#414149}',
+  '#pm-iphone[data-theme="dark"] .pm-scene-header{background:#242429;color:#eee;border-color:#393940}',
+]) requireText('style.css', css, expected);
+if (css.includes('pm-forum-entry')) failures.push('style.css: removed directory community entry styles must not remain');
 requireText('style.css', css, '.pm-control-menu{position:absolute;');
 requireText('style.css', css, '#pm-iphone[data-theme="dark"] .pm-control-menu');
 requireText('style.css', css, '.pm-pending-manager{min-height:180px;}');
@@ -737,8 +742,12 @@ for (const expected of [
 ]) requireText('press-gesture.js', pressGestureCode, expected);
 const conversationCode = sourceModuleByName.get('conversation.js')?.code || '';
 requireText('conversation.js', conversationCode, 'deps.closeControlCenter?.()');
-requireText('bundle', bundle, 'pm-forum-entry');
-for (const iconName of ['MENU_ICON_SVG', 'CLOSE_ICON_SVG', 'CONTROL_ICON_SVG', 'SEND_ICON_SVG']) {
+requireText('bundle', bundle, 'pm-settings-home');
+if (bundle.includes('pm-forum-entry')) failures.push('bundle: removed directory community entry must not remain');
+for (const iconName of [
+  'MENU_ICON_SVG', 'CLOSE_ICON_SVG', 'HOME_ICON_SVG', 'CONTROL_ICON_SVG', 'SEND_ICON_SVG',
+  'POKE_ICON_SVG', 'CHAT_ICON_SVG', 'CONTACTS_ICON_SVG', 'SETTINGS_ICON_SVG', 'COMMUNITY_ICON_SVG',
+]) {
   requireText('icons.js', sourceModuleByName.get('icons.js')?.code || '', `export const ${iconName}`);
 }
 

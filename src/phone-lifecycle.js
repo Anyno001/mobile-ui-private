@@ -1,8 +1,8 @@
 import { POPOVER_SUPPORTED } from './constants.js';
 import { escapeHtml } from './ui.js';
 import {
-    CLOSE_ICON_SVG, CONTROL_ICON_SVG, EDIT_ICON_SVG,
-    MENU_ICON_SVG, SEND_ICON_SVG,
+    CLOSE_ICON_SVG, CONTROL_ICON_SVG, HOME_ICON_SVG,
+    MENU_ICON_SVG, POKE_ICON_SVG, SEND_ICON_SVG,
 } from './icons.js';
 import { getPendingMessages } from './pending-messages.js';
 import { bindPressGesture } from './press-gesture.js';
@@ -279,10 +279,11 @@ export function installPhoneLifecycle(state, deps) {
       <button onclick="window.__pmShowList()" class="pm-nav-btn pm-nav-left-btn" title="联系人">${MENU_ICON_SVG}</button>
       <div class="pm-name-wrap">
         <div class="pm-name">${escapeHtml(defaultChar)}</div>
-        <button onclick="window.__pmPokeCurrent()" class="pm-name-edit is-hidden" title="拍一拍" aria-label="拍一拍当前会话">${EDIT_ICON_SVG}</button>
+        <button onclick="window.__pmPokeCurrent()" class="pm-name-edit is-hidden" title="拍一拍" aria-label="拍一拍当前会话">${POKE_ICON_SVG}</button>
       </div>
       <div class="pm-nav-right">
-        <button onclick="window.__pmEnd()" class="pm-nav-btn pm-close-btn" title="关闭">${CLOSE_ICON_SVG}</button>
+        <button onclick="window.__pmShowPhonePage('desktop')" class="pm-nav-btn" title="返回桌面" aria-label="返回桌面">${HOME_ICON_SVG}</button>
+        <button onclick="window.__pmEnd()" class="pm-nav-btn pm-close-btn" title="退出手机" aria-label="退出手机">${CLOSE_ICON_SVG}</button>
       </div>
     </div>
     <div class="pm-confirm-bar" style="display:none;">

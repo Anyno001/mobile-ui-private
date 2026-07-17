@@ -24,44 +24,79 @@
     fetchImpl
   }) {
     const request = fetchImpl || ((...args) => globalThis.fetch(...args));
+    async function readApiError(response) {
+      const raw = await response.text().catch(() => "");
+      if (!raw) return `HTTP ${response.status}`;
+      try {
+        const data = JSON.parse(raw);
+        const message = data?.error?.message || data?.message || data?.error;
+        if (typeof message === "string" && message.trim()) return `HTTP ${response.status}: ${message.trim().slice(0, 240)}`;
+      } catch (error) {
+      }
+      return `HTTP ${response.status}: ${raw.trim().slice(0, 240)}`;
+    }
     return async function callAI(systemPrompt, userPrompt, options = {}) {
       const cfg = getConfig() || {};
-      const useIndependent = cfg.useIndependent && cfg.apiUrl && cfg.apiKey;
+      const useIndependent = cfg.useIndependent === true;
       const maxTokens = options.maxTokens || getDefaultMaxTokens();
       if (useIndependent) {
+        if (!String(cfg.apiUrl || "").trim()) throw new Error("\u72EC\u7ACB API \u672A\u586B\u5199\u5730\u5740");
+        if (!String(cfg.apiKey || "").trim()) throw new Error("\u72EC\u7ACB API \u672A\u586B\u5199\u5BC6\u94A5");
+        if (!String(cfg.model || "").trim()) throw new Error("\u72EC\u7ACB API \u672A\u9009\u62E9\u6A21\u578B");
         const { chatUrl } = normalizeApiUrls(cfg.apiUrl);
         const messages = [];
         if (systemPrompt) messages.push({ role: "system", content: systemPrompt });
         messages.push({ role: "user", content: userPrompt });
-        const response = await request(chatUrl, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${cfg.apiKey}`
-          },
-          body: JSON.stringify({
-            model: cfg.model || "gpt-4o-mini",
-            messages,
-            max_tokens: maxTokens,
-            temperature: 1.2,
-            top_p: 0.95,
-            frequency_penalty: 0.3,
-            presence_penalty: 0.3
-          })
-        });
-        if (!response.ok) {
-          const errorText = await response.text().catch(() => "");
-          throw new Error(`HTTP ${response.status}: ${errorText.slice(0, 120)}`);
+        let response;
+        try {
+          response = await request(chatUrl, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${cfg.apiKey}`
+            },
+            body: JSON.stringify({
+              model: cfg.model,
+              messages,
+              max_tokens: maxTokens,
+              temperature: 1.2,
+              top_p: 0.95,
+              frequency_penalty: 0.3,
+              presence_penalty: 0.3
+            })
+          });
+        } catch (error) {
+          throw new Error(`\u72EC\u7ACB API \u8BF7\u6C42\u5931\u8D25\uFF1A${error?.message || "\u7F51\u7EDC\u9519\u8BEF"}`);
         }
-        const json = await response.json();
-        return json.choices?.[0]?.message?.content ?? "";
+        if (!response.ok) {
+          throw new Error(await readApiError(response));
+        }
+        let json;
+        try {
+          json = await response.json();
+        } catch (error) {
+          throw new Error("\u72EC\u7ACB API \u8FD4\u56DE\u4E86\u65E0\u6CD5\u89E3\u6790\u7684 JSON");
+        }
+        const content = json?.choices?.[0]?.message?.content;
+        if (typeof content !== "string" || !content.trim()) throw new Error("\u72EC\u7ACB API \u54CD\u5E94\u7F3A\u5C11 choices[0].message.content");
+        return content;
       }
       const context = getContext();
       if (!context) throw new Error("\u65E0\u4E0A\u4E0B\u6587");
+      if (options.isolated) {
+        if (typeof context.generateRaw !== "function") throw new Error("\u5F53\u524D SillyTavern \u7248\u672C\u4E0D\u652F\u6301\u9694\u79BB\u751F\u6210\uFF0C\u8BF7\u5347\u7EA7\u540E\u91CD\u8BD5");
+        return await context.generateRaw({
+          prompt: userPrompt,
+          systemPrompt,
+          responseLength: maxTokens,
+          trimNames: false
+        });
+      }
+      if (typeof context.generateQuietPrompt !== "function") throw new Error("\u5F53\u524D SillyTavern \u4E0A\u4E0B\u6587\u7F3A\u5C11 generateQuietPrompt");
       const fullPrompt = systemPrompt ? `${systemPrompt}
 
 ${userPrompt}` : userPrompt;
-      return await context.generateQuietPrompt(fullPrompt, false, false);
+      return await context.generateQuietPrompt({ quietPrompt: fullPrompt, responseLength: maxTokens });
     };
   }
 
@@ -2941,6 +2976,20 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
     };
   }
 
+  // src/icons.js
+  var icon = (paths) => `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths}</svg>`;
+  var MENU_ICON_SVG = icon('<path d="M4 6h16M4 12h16M4 18h16"/>');
+  var CLOSE_ICON_SVG = icon('<path d="M6 6l12 12M18 6L6 18"/>');
+  var HOME_ICON_SVG = icon('<path d="M3 11.5L12 4l9 7.5"/><path d="M5.5 10.5V20h13v-9.5"/><path d="M9.5 20v-6h5v6"/>');
+  var CONTROL_ICON_SVG = icon('<path d="M15 4l5 5L8 21l-5-5L15 4zM13 6l5 5M5 4v3M3.5 5.5h3M19 16v4M17 18h4"/>');
+  var SEND_ICON_SVG = icon('<path d="M12 19V5M6 11l6-6 6 6"/>');
+  var POKE_ICON_SVG = icon('<path d="M8 11V7a2 2 0 1 1 4 0v3"/><path d="M12 10V6a2 2 0 1 1 4 0v5"/><path d="M16 11V8a2 2 0 1 1 4 0v6c0 4-3 7-7 7h-1c-3 0-5-1-7-4l-2-3a2 2 0 0 1 3-2l2 2V9a2 2 0 1 1 4 0"/>');
+  var CHAT_ICON_SVG = icon('<path d="M4 5h16v11H8l-4 4z"/><path d="M8 9h8M8 12h5"/>');
+  var CONTACTS_ICON_SVG = icon('<circle cx="9" cy="8" r="3"/><path d="M3 20c0-4 2.5-6 6-6s6 2 6 6"/><path d="M16 5a3 3 0 0 1 0 6M17 14c2.5.5 4 2.5 4 6"/>');
+  var SETTINGS_ICON_SVG = icon('<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-4V21a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H2.8v-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1A1.7 1.7 0 0 0 9 4.6 1.7 1.7 0 0 0 10 3V2.8h4V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v4H21a1.7 1.7 0 0 0-1.6 1z"/>');
+  var COMMUNITY_ICON_SVG = icon('<path d="M4 19V8l8-4 8 4v11"/><path d="M8 19v-6h8v6M8 9h.01M12 9h.01M16 9h.01"/>');
+  var REFRESH_ICON_SVG = '<svg id="pm-autogen-icon" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="display:block;transform-origin:center center;"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>';
+
   // src/interactive-scenes.js
   var uid = (prefix) => `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
   var now = () => Date.now();
@@ -3161,12 +3210,12 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
         if (!scene) return [];
         return [`<div class="pm-desktop-pin"><button type="button" data-action="desktop-open-scene" data-scene-id="${escapeAttr(scene.id)}"><b>${escapeHtml(scene.title)}</b><span>\u7EE7\u7EED\u793E\u533A</span></button><button type="button" data-action="unpin-scene" data-scene-id="${escapeAttr(scene.id)}" aria-label="\u79FB\u9664 ${escapeAttr(scene.title)} \u5FEB\u6377\u65B9\u5F0F">\u79FB\u9664</button></div>`];
       }).join("");
-      return `<div class="pm-desktop-head"><small>\u5929\u97F3\u5C0F\u7B3A</small><h2>\u6211\u7684\u684C\u9762</h2></div>
-            <div class="pm-desktop-grid">
-                <button type="button" class="pm-desktop-app" data-action="desktop-chat"><span>\u804A</span><b>\u804A\u5929</b></button>
-                <button type="button" class="pm-desktop-app" data-action="desktop-directory"><span>\u8054</span><b>\u8054\u7CFB\u4EBA</b></button>
-                <button type="button" class="pm-desktop-app" data-action="desktop-settings"><span>\u8BBE</span><b>\u8BBE\u7F6E</b></button>
-                <button type="button" class="pm-desktop-app" data-action="desktop-community"><span>\u793E</span><b>\u793E\u533A</b></button>
+      return `<div class="pm-desktop-toolbar"><span>\u5929\u97F3\u5C0F\u7B3A</span><button type="button" data-action="desktop-exit" aria-label="\u9000\u51FA\u624B\u673A" title="\u9000\u51FA\u624B\u673A">${CLOSE_ICON_SVG}</button></div>
+            <div class="pm-desktop-grid" aria-label="\u5E94\u7528">
+                <button type="button" class="pm-desktop-app" data-action="desktop-chat" aria-label="\u804A\u5929" title="\u804A\u5929">${CHAT_ICON_SVG}</button>
+                <button type="button" class="pm-desktop-app" data-action="desktop-directory" aria-label="\u8054\u7CFB\u4EBA" title="\u8054\u7CFB\u4EBA">${CONTACTS_ICON_SVG}</button>
+                <button type="button" class="pm-desktop-app" data-action="desktop-settings" aria-label="\u8BBE\u7F6E" title="\u8BBE\u7F6E">${SETTINGS_ICON_SVG}</button>
+                <button type="button" class="pm-desktop-app" data-action="desktop-community" aria-label="\u793E\u533A" title="\u793E\u533A">${COMMUNITY_ICON_SVG}</button>
             </div>
             <section class="pm-desktop-pins"><h3>\u56FA\u5B9A\u793E\u533A</h3>${pins || "<p>\u5728\u793E\u533A\u4E2D\u56FA\u5B9A\u573A\u666F\u540E\uFF0C\u4F1A\u663E\u793A\u5728\u8FD9\u91CC\u3002</p>"}</section>`;
     }
@@ -3208,7 +3257,10 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
         const actorRoster = [...Object.values(scope.actors || {}).filter((actor) => actor.type === "story").map((actor) => actor.displayName), currentStorySeed.displayName].filter((name, index, values) => name && values.indexOf(name) === index);
         if (kind === "live_batch" && !extra.userContent) extra = { ...extra, userContent: scene.live.title };
         const prompts = buildInteractiveRequest({ kind, presetKey: scene.preset, styleInput: scene.styleInput, generatedPrompt: scene.generatedPrompt, context: await contextText(), actorRoster, ...extra });
-        const raw = await callAI(prompts.systemPrompt, prompts.userPrompt, { maxTokens: kind === "style_prompt" ? 700 : 1400 });
+        const raw = await callAI(prompts.systemPrompt, prompts.userPrompt, {
+          maxTokens: kind === "style_prompt" ? 700 : 1400,
+          isolated: true
+        });
         if (requestId !== runtime.requestId || !document.getElementById("pm-scene-app")) throw new Error("\u751F\u6210\u5DF2\u53D6\u6D88");
         return parseInteractiveResponse(raw, kind);
       } finally {
@@ -3236,7 +3288,7 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
             </div>`;
       }).join("");
       return `<div id="pm-scene-app" class="pm-modal pm-scene-shell">
-            <div class="pm-modal-header"><b>\u4E92\u52A8\u573A\u666F</b><button type="button" class="pm-modal-close" data-action="close">\u5173\u95ED</button></div>
+            <div class="pm-scene-header"><button type="button" data-action="desktop" aria-label="\u8FD4\u56DE\u684C\u9762" title="\u8FD4\u56DE\u684C\u9762">${HOME_ICON_SVG}</button><b>\u4E92\u52A8\u573A\u666F</b><button type="button" data-action="exit" aria-label="\u9000\u51FA\u624B\u673A" title="\u9000\u51FA\u624B\u673A">${CLOSE_ICON_SVG}</button></div>
             <div class="pm-scene-launcher">
                 <section class="pm-scene-hero"><small>\u793E\u533A\u7A7A\u95F4</small><h2>\u4ECA\u5929\u60F3\u901B\u4EC0\u4E48\u793E\u533A\uFF1F</h2><p>\u9009\u62E9\u9884\u8BBE\uFF0C\u6216\u5199\u4E0B\u4F60\u81EA\u5DF1\u7684\u98CE\u683C\uFF0C\u518D\u521B\u5EFA\u4E13\u5C5E\u793E\u533A\u3002</p></section>
                 <div class="pm-scene-presets">${renderPresetOptions("weibo")}</div>
@@ -3277,7 +3329,7 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
       const liveActive = communityRunner?.isLive() === true;
       const autoActive = communityTasks.state().mode === "auto";
       return `<div id="pm-scene-app" class="pm-modal pm-scene-shell" style="--scene-accent:${preset.accent}">
-            <div class="pm-scene-topbar"><button type="button" data-action="back">\u8FD4\u56DE</button><div><b>${escapeHtml(scene.title)}</b><span>${escapeHtml(preset.label)}</span></div>${renderPinButton(scene.id, uiScope, "pm-scene-pin-action")}<button type="button" class="pm-scene-danger" data-action="delete-scene" data-scene-id="${escapeAttr(scene.id)}">\u5220\u9664</button></div>
+            <div class="pm-scene-topbar"><button type="button" data-action="back">\u793E\u533A</button><button type="button" data-action="desktop" aria-label="\u8FD4\u56DE\u684C\u9762" title="\u8FD4\u56DE\u684C\u9762">${HOME_ICON_SVG}</button><div><b>${escapeHtml(scene.title)}</b><span>${escapeHtml(preset.label)}</span></div>${renderPinButton(scene.id, uiScope, "pm-scene-pin-action")}<button type="button" class="pm-scene-danger" data-action="delete-scene" data-scene-id="${escapeAttr(scene.id)}">\u5220\u9664</button><button type="button" data-action="exit" aria-label="\u9000\u51FA\u624B\u673A" title="\u9000\u51FA\u624B\u673A">${CLOSE_ICON_SVG}</button></div>
             <div class="pm-scene-tabs"><button type="button" data-action="tab" data-tab="feed" class="${tab === "feed" ? "is-active" : ""}">\u793E\u533A</button><button type="button" data-action="tab" data-tab="live" class="${tab === "live" ? "is-active" : ""}">\u6587\u5B57\u76F4\u64AD</button><button type="button" data-action="tab" data-tab="prompt" class="${tab === "prompt" ? "is-active" : ""}">\u793E\u533A\u98CE\u683C</button></div>
             ${tab === "feed" ? `<div class="pm-scene-feed">
                 <div class="pm-scene-composer"><textarea id="pm-scene-post-input" maxlength="4000" placeholder="\u53D1\u4E00\u6761\u5FAE\u535A\u3001\u5E16\u5B50\u6216\u4E66\u8BC4\u2026\u2026"></textarea><div><button type="button" data-action="toggle-community-mode">${autoActive ? "\u5173\u95ED\u81EA\u52A8\u70ED\u573A" : "\u5F00\u542F\u81EA\u52A8\u70ED\u573A"}</button><button type="button" data-action="ai-feed">\u751F\u6210\u70ED\u573A\u5185\u5BB9</button><button type="button" class="pm-scene-primary" data-action="publish">\u53D1\u5E03</button></div></div>
@@ -3430,18 +3482,22 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
         return;
       }
       if (action === "desktop-settings") {
-        window.__pmOpenSettingsTab?.("api");
+        window.__pmOpenSettingsTab?.("home");
         return;
       }
       if (action === "desktop-community") {
         await window.__pmOpenForumMode();
         return;
       }
+      if (action === "desktop-exit" || action === "exit") {
+        await window.__pmEnd?.();
+        return;
+      }
       if (action === "desktop-open-scene") {
         await openScene(button.dataset.sceneId, phoneScope(getStorageId2()).lastTab);
         return;
       }
-      if (action === "close") {
+      if (action === "desktop") {
         invalidate();
         runtime.openSceneId = null;
         const scopeId = getStorageId2();
@@ -5633,11 +5689,9 @@ ${antiFluff}`;
       closeControlCenter();
       if (action === "pending") showPendingManager();
       else if (action === "settings") window.__pmShowConversationSettings();
-      else if (action === "api" || action === "look" || action === "budget" || action === "backup") window.__pmOpenSettingsTab(action);
       else if (action === "emoji") window.__pmShowEmojiManager();
       else if (action === "group") window.__pmEditGroup();
       else if (action === "delete") window.__pmStartDeleteMode();
-      else if (action === "forum") window.__pmOpenForumMode();
     }
     function bindControlMenu(menu, anchor) {
       menu.addEventListener("click", (event) => {
@@ -5676,13 +5730,8 @@ ${antiFluff}`;
   <button type="button" role="menuitem" data-action="pending">\u7F16\u8F91\u6D88\u606F</button>
   <button type="button" role="menuitem" data-action="settings">\u89D2\u8272\u8BBE\u7F6E</button>
   ${state.isGroupChat ? '<button type="button" role="menuitem" data-action="group">\u7FA4\u804A\u8BBE\u7F6E</button>' : ""}
-  <button type="button" role="menuitem" data-action="api">API \u8BBE\u7F6E</button>
-  <button type="button" role="menuitem" data-action="look">\u4E3B\u9898\u989C\u8272</button>
-  <button type="button" role="menuitem" data-action="budget">\u4E0A\u4E0B\u6587\u9884\u7B97</button>
   <button type="button" role="menuitem" data-action="emoji">\u8868\u60C5\u5305\u7BA1\u7406</button>
-  <button type="button" role="menuitem" data-action="backup">\u6570\u636E\u5907\u4EFD</button>
-  <button type="button" role="menuitem" data-action="delete" class="pm-control-menu-danger">\u5220\u9664\u4FE1\u606F</button>
-  <button type="button" role="menuitem" data-action="forum">\u4E92\u52A8\u573A\u666F</button>`;
+  <button type="button" role="menuitem" data-action="delete" class="pm-control-menu-danger">\u5220\u9664\u4FE1\u606F</button>`;
       phone.appendChild(menu);
       const phoneRect = phone.getBoundingClientRect();
       const anchorRect = anchor.getBoundingClientRect();
@@ -5753,15 +5802,6 @@ ${antiFluff}`;
     };
     Object.assign(deps, { closeControlCenter });
   }
-
-  // src/icons.js
-  var EDIT_ICON_SVG = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>';
-  var icon = (paths) => `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths}</svg>`;
-  var MENU_ICON_SVG = icon('<path d="M4 6h16M4 12h16M4 18h16"/>');
-  var CLOSE_ICON_SVG = icon('<path d="M6 6l12 12M18 6L6 18"/>');
-  var CONTROL_ICON_SVG = icon('<path d="M15 4l5 5L8 21l-5-5L15 4zM13 6l5 5M5 4v3M3.5 5.5h3M19 16v4M17 18h4"/>');
-  var SEND_ICON_SVG = icon('<path d="M12 19V5M6 11l6-6 6 6"/>');
-  var REFRESH_ICON_SVG = '<svg id="pm-autogen-icon" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="display:block;transform-origin:center center;"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>';
 
   // src/phone-directory.js
   function installPhoneDirectory(state, deps) {
@@ -6039,10 +6079,6 @@ ${antiFluff}`;
         <button type="button" onclick="window.__pmCloseOverlay()" class="pm-modal-close">\u5173\u95ED</button>
       </span>
     </div>
-    <button type="button" class="pm-forum-entry" onclick="window.__pmOpenForumMode()">
-      <b>\u4E92\u52A8\u793E\u533A</b>
-      <span>\u8BBA\u575B\u3001\u793E\u4EA4\u4E0E\u6587\u5B57\u76F4\u64AD</span>
-    </button>
     <div class="pm-bi-bar"><span>\u52FE\u9009\u4F1A\u8BDD\u53EF\u6CE8\u5165\u4E3B\u697C\uFF1B\u7FA4\u804A\u8D44\u6E90\u53C2\u6570\u5728\u7FA4\u804A\u8BBE\u7F6E\u4E2D\u914D\u7F6E</span><span class="pm-bi-tip">\u5DF2\u9009 ${checked.length}</span></div>
     <div class="pm-modal-list">
         ${empty ? '<div style="text-align:center;color:#999;padding:20px;font-size:13px;">\u6682\u65E0\u8054\u7CFB\u4EBA</div>' : renderGroups + renderSingle}
@@ -7460,10 +7496,11 @@ ${lines}`;
       <button onclick="window.__pmShowList()" class="pm-nav-btn pm-nav-left-btn" title="\u8054\u7CFB\u4EBA">${MENU_ICON_SVG}</button>
       <div class="pm-name-wrap">
         <div class="pm-name">${escapeHtml(defaultChar)}</div>
-        <button onclick="window.__pmPokeCurrent()" class="pm-name-edit is-hidden" title="\u62CD\u4E00\u62CD" aria-label="\u62CD\u4E00\u62CD\u5F53\u524D\u4F1A\u8BDD">${EDIT_ICON_SVG}</button>
+        <button onclick="window.__pmPokeCurrent()" class="pm-name-edit is-hidden" title="\u62CD\u4E00\u62CD" aria-label="\u62CD\u4E00\u62CD\u5F53\u524D\u4F1A\u8BDD">${POKE_ICON_SVG}</button>
       </div>
       <div class="pm-nav-right">
-        <button onclick="window.__pmEnd()" class="pm-nav-btn pm-close-btn" title="\u5173\u95ED">${CLOSE_ICON_SVG}</button>
+        <button onclick="window.__pmShowPhonePage('desktop')" class="pm-nav-btn" title="\u8FD4\u56DE\u684C\u9762" aria-label="\u8FD4\u56DE\u684C\u9762">${HOME_ICON_SVG}</button>
+        <button onclick="window.__pmEnd()" class="pm-nav-btn pm-close-btn" title="\u9000\u51FA\u624B\u673A" aria-label="\u9000\u51FA\u624B\u673A">${CLOSE_ICON_SVG}</button>
       </div>
     </div>
     <div class="pm-confirm-bar" style="display:none;">
@@ -7787,6 +7824,15 @@ ${lines}`;
   }
 
   // src/settings-templates.js
+  function renderSettingsHome() {
+    return `
+    <div class="pm-settings-home" role="list">
+      <button type="button" role="listitem" onclick="window.__pmShowConfig('api')"><b>API</b><span>\u9009\u62E9\u4E3B API \u6216\u914D\u7F6E\u72EC\u7ACB\u63A5\u53E3\u3001\u5BC6\u94A5\u4E0E\u6A21\u578B</span></button>
+      <button type="button" role="listitem" onclick="window.__pmShowConfig('look')"><b>\u4E3B\u9898</b><span>\u65E5\u591C\u6A21\u5F0F\u3001\u6C14\u6CE1\u989C\u8272\u4E0E\u80CC\u666F\u56FE</span></button>
+      <button type="button" role="listitem" onclick="window.__pmShowConfig('backup')"><b>\u5907\u4EFD</b><span>\u5BFC\u51FA\u3001\u5BFC\u5165\u6216\u5B89\u5168\u6E05\u7406\u63D2\u4EF6\u6570\u636E</span></button>
+      <button type="button" role="listitem" onclick="window.__pmShowConfig('budget')"><b>\u4E0A\u4E0B\u6587\u9884\u7B97</b><span>\u63A7\u5236\u624B\u673A\u4F1A\u8BDD\u4E0E\u793E\u533A\u5199\u5165\u4E3B\u63D0\u793A\u8BCD\u7684\u989D\u5EA6</span></button>
+    </div>`;
+  }
   function renderApiSettings({ cfg, useIndependent, profilesHtml }) {
     return `
     <div class="pm-settings-page">
@@ -7796,7 +7842,7 @@ ${lines}`;
           <div id="pm-mode-main" class="pm-mode-opt ${!useIndependent ? "pm-mode-active" : ""}" onclick="window.__pmSetMode(false)">\u4E3B API</div>
           <div id="pm-mode-indep" class="pm-mode-opt ${useIndependent ? "pm-mode-active" : ""}" onclick="window.__pmSetMode(true)">\u72EC\u7ACB API</div>
         </div>
-        <div id="pm-mode-tip" class="pm-cfg-tip" style="text-align:left;padding:6px 2px 0;">${useIndependent ? "\u72EC\u7ACB API" : "\u4E3B API"}</div>
+        <div id="pm-mode-tip" class="pm-cfg-tip" style="text-align:left;padding:6px 2px 0;">${useIndependent ? "\u72EC\u7ACB API \u5FC5\u987B\u586B\u5199\u5730\u5740\u3001\u5BC6\u94A5\u548C\u6A21\u578B" : "\u4E3B API \u4F7F\u7528\u5BBF\u4E3B\u5F53\u524D\u9009\u62E9\u7684\u9884\u8BBE\u4E0E\u63A5\u53E3"}</div>
       </div>
       <div style="padding:6px 14px 4px;border-top:1px solid #f0f0f0;">
         <div class="pm-cfg-label" style="margin:8px 0 6px;">\u5DF2\u4FDD\u5B58\u6863\u6848</div>
@@ -7809,7 +7855,7 @@ ${lines}`;
         <input id="pm-cfg-key" class="pm-cfg-input" placeholder="sk-..." value="${cfg.apiKey}" maxlength="999">
         <div class="pm-cfg-label">\u6A21\u578B\u540D\u79F0</div>
         <div class="pm-model-row">
-          <input id="pm-cfg-model" class="pm-cfg-input" placeholder="\u624B\u52A8\u8F93\u5165\u6216 \u25BC" value="${cfg.model}">
+          <input id="pm-cfg-model" class="pm-cfg-input" placeholder="\u72EC\u7ACB API \u5FC5\u586B\uFF1A\u624B\u52A8\u8F93\u5165\u6216\u9009\u62E9" value="${cfg.model}">
           <button id="pm-model-arrow" type="button" onclick="window.__pmShowModelPicker()">\u25BC</button>
         </div>
         <div id="pm-api-status" class="pm-cfg-tip" style="font-weight:bold;">\u6D4B\u8BD5\u8FDE\u63A5\u4E0D\u4F1A\u8986\u76D6\u5F53\u524D\u914D\u7F6E\uFF0C\u70B9\u51FB\u4FDD\u5B58\u540E\u751F\u6548</div>
@@ -7869,19 +7915,21 @@ ${lines}`;
     <div class="pm-settings-page">
       <div style="padding:12px 16px;display:flex;flex-direction:column;gap:10px;">
         <div class="pm-cfg-label">\u63D2\u4EF6\u4E0A\u4E0B\u6587\u9884\u7B97\uFF08\u4F30\u7B97 token\uFF09</div>
-        <div class="pm-cfg-tip" style="text-align:left;">\u53EA\u7EA6\u675F\u672C\u63D2\u4EF6\u5199\u5165\u7684\u624B\u673A\u4F1A\u8BDD\u4E0E\u4E92\u52A8\u793E\u533A extension prompt\uFF0C\u4E0D\u4FEE\u6539 AI \u8F93\u51FA max_tokens\u3002</div>
+        <div class="pm-cfg-tip" style="text-align:left;">\u9650\u5236\u672C\u63D2\u4EF6\u628A\u591A\u5C11\u624B\u673A\u4F1A\u8BDD\u548C\u793E\u533A\u5185\u5BB9\u5199\u8FDB\u4E3B\u63D0\u793A\u8BCD\u3002\u5B83\u4E0D\u4F1A\u6539\u53D8 AI \u5355\u6B21\u6700\u591A\u8F93\u51FA\u591A\u5C11\u5B57\u3002</div>
         <label class="pm-cfg-label" for="pm-budget-target">\u603B\u76EE\u6807\uFF08\u4F30\u7B97 token\uFF09</label>
         <input id="pm-budget-target" class="pm-cfg-input" type="number" min="1" max="12000" step="1" value="${config.targetTokens}">
+        <div class="pm-cfg-tip" style="text-align:left;">\u603B\u76EE\u6807\u8D8A\u5927\uFF0C\u6A21\u578B\u80FD\u770B\u5230\u7684\u63D2\u4EF6\u5386\u53F2\u8D8A\u591A\uFF0C\u4F46\u4F1A\u5360\u7528\u66F4\u591A\u4E0A\u4E0B\u6587\u3002</div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
-          <label class="pm-cfg-label">\u624B\u673A\u4F1A\u8BDD\u6743\u91CD<input id="pm-budget-phone-weight" class="pm-cfg-input" type="number" min="0" max="100" step="0.1" value="${config.sourceWeights.phone}"></label>
-          <label class="pm-cfg-label">\u4E92\u52A8\u793E\u533A\u6743\u91CD<input id="pm-budget-community-weight" class="pm-cfg-input" type="number" min="0" max="100" step="0.1" value="${config.sourceWeights.community}"></label>
+          <label class="pm-cfg-label">\u624B\u673A\u4F1A\u8BDD\u4EFD\u989D<input id="pm-budget-phone-weight" class="pm-cfg-input" type="number" min="0" max="100" step="0.1" value="${config.sourceWeights.phone}"></label>
+          <label class="pm-cfg-label">\u4E92\u52A8\u793E\u533A\u4EFD\u989D<input id="pm-budget-community-weight" class="pm-cfg-input" type="number" min="0" max="100" step="0.1" value="${config.sourceWeights.community}"></label>
         </div>
-        <label class="pm-cfg-label" for="pm-budget-priority">\u672A\u7528\u989D\u5EA6\u4F18\u5148\u56DE\u6D41</label>
+        <div class="pm-cfg-tip" style="text-align:left;">\u4E24\u4E2A\u4EFD\u989D\u53EA\u51B3\u5B9A\u603B\u989D\u5EA6\u7684\u5206\u914D\u6BD4\u4F8B\u3002\u4F8B\u5982 3:1 \u8868\u793A\u4F18\u5148\u9884\u7559\u7EA6\u56DB\u5206\u4E4B\u4E09\u7ED9\u624B\u673A\u4F1A\u8BDD\u3001\u56DB\u5206\u4E4B\u4E00\u7ED9\u793E\u533A\u3002</div>
+        <label class="pm-cfg-label" for="pm-budget-priority">\u5269\u4F59\u989D\u5EA6\u4F18\u5148\u8865\u7ED9</label>
         <select id="pm-budget-priority" class="pm-cfg-input">
           <option value="phone" ${priorityCommunity ? "" : "selected"}>\u624B\u673A\u4F1A\u8BDD\u4F18\u5148</option>
           <option value="community" ${priorityCommunity ? "selected" : ""}>\u4E92\u52A8\u793E\u533A\u4F18\u5148</option>
         </select>
-        <label class="pm-cfg-label"><input id="pm-budget-redistribute" type="checkbox" ${config.redistributeUnused ? "checked" : ""}> \u5141\u8BB8\u672A\u7528\u989D\u5EA6\u6309\u4E0A\u8FF0\u4F18\u5148\u7EA7\u56DE\u6D41</label>
+        <label class="pm-cfg-label"><input id="pm-budget-redistribute" type="checkbox" ${config.redistributeUnused ? "checked" : ""}> \u5C06\u4E00\u65B9\u6CA1\u7528\u5B8C\u7684\u989D\u5EA6\u8865\u7ED9\u4ECD\u6709\u5185\u5BB9\u9700\u8981\u5199\u5165\u7684\u4E00\u65B9</label>
       </div>
       <div style="padding:12px 16px;border-top:1px solid #f0f0f0;display:flex;flex-direction:column;gap:10px;">
         <label class="pm-cfg-label"><input id="pm-budget-community-enabled" type="checkbox" ${config.communityEnabled ? "checked" : ""}> \u542F\u7528\u4E92\u52A8\u793E\u533A\u6CE8\u5165\uFF08\u9ED8\u8BA4\u5173\u95ED\uFF09</label>
@@ -7919,10 +7967,10 @@ ${lines}`;
       <div style="height:12px;"></div>
     </div>`;
   }
-  function renderSettingsModal({ title, content, footer = "" }) {
+  function renderSettingsModal({ title, content, footer = "", showBack = true }) {
     return `
 <div class="pm-modal pm-modal-wide" style="height: 560px;">
-  <div class="pm-modal-header"><b>${title}</b><button type="button" onclick="window.__pmCloseOverlay()" class="pm-modal-close">\u5173\u95ED</button></div>
+  <div class="pm-modal-header"><span>${showBack ? `<button type="button" onclick="window.__pmShowConfig('home')" class="pm-modal-close">\u8BBE\u7F6E</button>` : ""}</span><b>${title}</b><button type="button" onclick="window.__pmCloseOverlay()" class="pm-modal-close">\u5173\u95ED</button></div>
   <div class="pm-modal-scroll">${content}</div>
   ${footer}
 </div>`;
@@ -8344,7 +8392,7 @@ ${error.message}`);
         a.classList.toggle("pm-mode-active", !v);
         b.classList.toggle("pm-mode-active", !!v);
       }
-      if (t) t.textContent = v ? "\u72EC\u7ACB API" : "\u4E3B API";
+      if (t) t.textContent = v ? "\u72EC\u7ACB API \u5FC5\u987B\u586B\u5199\u5730\u5740\u3001\u5BC6\u94A5\u548C\u6A21\u578B" : "\u4E3B API \u4F7F\u7528\u5BBF\u4E3B\u5F53\u524D\u9009\u62E9\u7684\u9884\u8BBE\u4E0E\u63A5\u53E3";
     };
     window.__pmToggleWordyLimit = () => {
       window.__pmWordyLimit = !window.__pmWordyLimit;
@@ -8473,11 +8521,15 @@ ${error.message}`);
         return false;
       }
     };
-    window.__pmShowConfig = async (page = "api") => {
+    window.__pmShowConfig = async (page = "home") => {
       loadProfiles();
       loadTheme();
       loadBudgetConfig();
       const cfg = window.__pmConfig, t = window.__pmTheme;
+      if (page === "home") {
+        makeOverlay(renderSettingsModal({ title: "\u8BBE\u7F6E", content: renderSettingsHome(), showBack: false }));
+        return;
+      }
       if (page === "backup") {
         makeOverlay(renderSettingsModal({ title: "\u6570\u636E\u5907\u4EFD", content: renderBackupSettings() }));
         return;
@@ -8699,6 +8751,14 @@ ${error.message}`);
     };
     window.__pmSaveConfig = () => {
       const apiUrl = document.getElementById("pm-cfg-url")?.value.trim() ?? "", apiKey = document.getElementById("pm-cfg-key")?.value.trim() ?? "", model = document.getElementById("pm-cfg-model")?.value.trim() ?? "";
+      if (apiDraftUseIndependent && (!apiUrl || !apiKey || !model)) {
+        const status = document.getElementById("pm-api-status");
+        if (status) {
+          status.textContent = "\u72EC\u7ACB API \u5FC5\u987B\u586B\u5199\u5730\u5740\u3001\u5BC6\u94A5\u548C\u6A21\u578B";
+          status.style.color = "#ff3b30";
+        }
+        return;
+      }
       window.__pmConfig = { apiUrl, apiKey, model, useIndependent: apiDraftUseIndependent };
       try {
         localStorage.setItem("ST_SMS_CONFIG", JSON.stringify(window.__pmConfig));

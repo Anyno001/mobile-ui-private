@@ -96,11 +96,9 @@ export function installPhoneControlCenter(state, deps) {
         closeControlCenter();
         if (action === 'pending') showPendingManager();
         else if (action === 'settings') window.__pmShowConversationSettings();
-        else if (action === 'api' || action === 'look' || action === 'budget' || action === 'backup') window.__pmOpenSettingsTab(action);
         else if (action === 'emoji') window.__pmShowEmojiManager();
         else if (action === 'group') window.__pmEditGroup();
         else if (action === 'delete') window.__pmStartDeleteMode();
-        else if (action === 'forum') window.__pmOpenForumMode();
     }
 
     function bindControlMenu(menu, anchor) {
@@ -141,13 +139,8 @@ export function installPhoneControlCenter(state, deps) {
   <button type="button" role="menuitem" data-action="pending">编辑消息</button>
   <button type="button" role="menuitem" data-action="settings">角色设置</button>
   ${state.isGroupChat ? '<button type="button" role="menuitem" data-action="group">群聊设置</button>' : ''}
-  <button type="button" role="menuitem" data-action="api">API 设置</button>
-  <button type="button" role="menuitem" data-action="look">主题颜色</button>
-  <button type="button" role="menuitem" data-action="budget">上下文预算</button>
   <button type="button" role="menuitem" data-action="emoji">表情包管理</button>
-  <button type="button" role="menuitem" data-action="backup">数据备份</button>
-  <button type="button" role="menuitem" data-action="delete" class="pm-control-menu-danger">删除信息</button>
-  <button type="button" role="menuitem" data-action="forum">互动场景</button>`;
+  <button type="button" role="menuitem" data-action="delete" class="pm-control-menu-danger">删除信息</button>`;
         phone.appendChild(menu);
         const phoneRect = phone.getBoundingClientRect();
         const anchorRect = anchor.getBoundingClientRect();

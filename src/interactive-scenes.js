@@ -13,6 +13,9 @@ import {
 import {
     createCommunityGenerationRunner, createCommunityTaskController,
 } from './interactive-scene-scheduler.js';
+import {
+    CHAT_ICON_SVG, CLOSE_ICON_SVG, COMMUNITY_ICON_SVG, CONTACTS_ICON_SVG, HOME_ICON_SVG, SETTINGS_ICON_SVG,
+} from './icons.js';
 import { escapeAttr, escapeHtml } from './ui.js';
 
 const uid = prefix => `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
@@ -226,12 +229,12 @@ export function installInteractiveScenes(_state, deps) {
             if (!scene) return [];
             return [`<div class="pm-desktop-pin"><button type="button" data-action="desktop-open-scene" data-scene-id="${escapeAttr(scene.id)}"><b>${escapeHtml(scene.title)}</b><span>继续社区</span></button><button type="button" data-action="unpin-scene" data-scene-id="${escapeAttr(scene.id)}" aria-label="移除 ${escapeAttr(scene.title)} 快捷方式">移除</button></div>`];
         }).join('');
-        return `<div class="pm-desktop-head"><small>天音小笺</small><h2>我的桌面</h2></div>
-            <div class="pm-desktop-grid">
-                <button type="button" class="pm-desktop-app" data-action="desktop-chat"><span>聊</span><b>聊天</b></button>
-                <button type="button" class="pm-desktop-app" data-action="desktop-directory"><span>联</span><b>联系人</b></button>
-                <button type="button" class="pm-desktop-app" data-action="desktop-settings"><span>设</span><b>设置</b></button>
-                <button type="button" class="pm-desktop-app" data-action="desktop-community"><span>社</span><b>社区</b></button>
+        return `<div class="pm-desktop-toolbar"><span>天音小笺</span><button type="button" data-action="desktop-exit" aria-label="退出手机" title="退出手机">${CLOSE_ICON_SVG}</button></div>
+            <div class="pm-desktop-grid" aria-label="应用">
+                <button type="button" class="pm-desktop-app" data-action="desktop-chat" aria-label="聊天" title="聊天">${CHAT_ICON_SVG}</button>
+                <button type="button" class="pm-desktop-app" data-action="desktop-directory" aria-label="联系人" title="联系人">${CONTACTS_ICON_SVG}</button>
+                <button type="button" class="pm-desktop-app" data-action="desktop-settings" aria-label="设置" title="设置">${SETTINGS_ICON_SVG}</button>
+                <button type="button" class="pm-desktop-app" data-action="desktop-community" aria-label="社区" title="社区">${COMMUNITY_ICON_SVG}</button>
             </div>
             <section class="pm-desktop-pins"><h3>固定社区</h3>${pins || '<p>在社区中固定场景后，会显示在这里。</p>'}</section>`;
     }
@@ -282,7 +285,10 @@ export function installInteractiveScenes(_state, deps) {
                 .filter((name, index, values) => name && values.indexOf(name) === index);
             if (kind === 'live_batch' && !extra.userContent) extra = { ...extra, userContent: scene.live.title };
             const prompts = buildInteractiveRequest({ kind, presetKey: scene.preset, styleInput: scene.styleInput, generatedPrompt: scene.generatedPrompt, context: await contextText(), actorRoster, ...extra });
-            const raw = await callAI(prompts.systemPrompt, prompts.userPrompt, { maxTokens: kind === 'style_prompt' ? 700 : 1400 });
+            const raw = await callAI(prompts.systemPrompt, prompts.userPrompt, {
+                maxTokens: kind === 'style_prompt' ? 700 : 1400,
+                isolated: true,
+            });
             if (requestId !== runtime.requestId || !document.getElementById('pm-scene-app')) throw new Error('生成已取消');
             return parseInteractiveResponse(raw, kind);
         } finally {
@@ -313,7 +319,7 @@ export function installInteractiveScenes(_state, deps) {
             </div>`;
         }).join('');
         return `<div id="pm-scene-app" class="pm-modal pm-scene-shell">
-            <div class="pm-modal-header"><b>互动场景</b><button type="button" class="pm-modal-close" data-action="close">关闭</button></div>
+            <div class="pm-scene-header"><button type="button" data-action="desktop" aria-label="返回桌面" title="返回桌面">${HOME_ICON_SVG}</button><b>互动场景</b><button type="button" data-action="exit" aria-label="退出手机" title="退出手机">${CLOSE_ICON_SVG}</button></div>
             <div class="pm-scene-launcher">
                 <section class="pm-scene-hero"><small>社区空间</small><h2>今天想逛什么社区？</h2><p>选择预设，或写下你自己的风格，再创建专属社区。</p></section>
                 <div class="pm-scene-presets">${renderPresetOptions('weibo')}</div>
@@ -358,7 +364,7 @@ export function installInteractiveScenes(_state, deps) {
         const liveActive = communityRunner?.isLive() === true;
         const autoActive = communityTasks.state().mode === 'auto';
         return `<div id="pm-scene-app" class="pm-modal pm-scene-shell" style="--scene-accent:${preset.accent}">
-            <div class="pm-scene-topbar"><button type="button" data-action="back">返回</button><div><b>${escapeHtml(scene.title)}</b><span>${escapeHtml(preset.label)}</span></div>${renderPinButton(scene.id, uiScope, 'pm-scene-pin-action')}<button type="button" class="pm-scene-danger" data-action="delete-scene" data-scene-id="${escapeAttr(scene.id)}">删除</button></div>
+            <div class="pm-scene-topbar"><button type="button" data-action="back">社区</button><button type="button" data-action="desktop" aria-label="返回桌面" title="返回桌面">${HOME_ICON_SVG}</button><div><b>${escapeHtml(scene.title)}</b><span>${escapeHtml(preset.label)}</span></div>${renderPinButton(scene.id, uiScope, 'pm-scene-pin-action')}<button type="button" class="pm-scene-danger" data-action="delete-scene" data-scene-id="${escapeAttr(scene.id)}">删除</button><button type="button" data-action="exit" aria-label="退出手机" title="退出手机">${CLOSE_ICON_SVG}</button></div>
             <div class="pm-scene-tabs"><button type="button" data-action="tab" data-tab="feed" class="${tab === 'feed' ? 'is-active' : ''}">社区</button><button type="button" data-action="tab" data-tab="live" class="${tab === 'live' ? 'is-active' : ''}">文字直播</button><button type="button" data-action="tab" data-tab="prompt" class="${tab === 'prompt' ? 'is-active' : ''}">社区风格</button></div>
             ${tab === 'feed' ? `<div class="pm-scene-feed">
                 <div class="pm-scene-composer"><textarea id="pm-scene-post-input" maxlength="4000" placeholder="发一条微博、帖子或书评……"></textarea><div><button type="button" data-action="toggle-community-mode">${autoActive ? '关闭自动热场' : '开启自动热场'}</button><button type="button" data-action="ai-feed">生成热场内容</button><button type="button" class="pm-scene-primary" data-action="publish">发布</button></div></div>
@@ -511,13 +517,14 @@ export function installInteractiveScenes(_state, deps) {
         const action = button.dataset.action;
         if (action === 'desktop-chat') { deps.showPhoneChatPage?.(getStorageId()); return; }
         if (action === 'desktop-directory') { window.__pmShowList?.(); return; }
-        if (action === 'desktop-settings') { window.__pmOpenSettingsTab?.('api'); return; }
+        if (action === 'desktop-settings') { window.__pmOpenSettingsTab?.('home'); return; }
         if (action === 'desktop-community') { await window.__pmOpenForumMode(); return; }
+        if (action === 'desktop-exit' || action === 'exit') { await window.__pmEnd?.(); return; }
         if (action === 'desktop-open-scene') {
             await openScene(button.dataset.sceneId, phoneScope(getStorageId()).lastTab);
             return;
         }
-        if (action === 'close') {
+        if (action === 'desktop') {
             invalidate();
             runtime.openSceneId = null;
             const scopeId = getStorageId();

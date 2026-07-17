@@ -3,7 +3,7 @@ import { normalizeBudgetConfig } from './budget.js';
 import { THEME_PRESETS, normalizeApiUrls } from './config.js';
 import { openCropper } from './cropper.js';
 import {
-    renderApiSettings, renderBackupSettings, renderBudgetSettings, renderLookSettings, renderSettingsModal,
+    renderApiSettings, renderBackupSettings, renderBudgetSettings, renderLookSettings, renderSettingsHome, renderSettingsModal,
 } from './settings-templates.js';
 import { escapeAttr, escapeHtml, safeJS } from './ui.js';
 import {
@@ -16,7 +16,6 @@ import {
     INTERACTIVE_ACTOR_TYPES, INTERACTIVE_LIMITS, INTERACTIVE_STORE_VERSION,
     deriveInteractiveActorId, normalizeAmbientStatus, normalizeInteractiveStore, normalizePhoneUiState,
 } from './interactive-scene-model.js';
-
 const clone = value => JSON.parse(JSON.stringify(value));
 const legacyBackupTheme = value => {
     const theme = objectValue(value || {}, 'theme');
@@ -31,7 +30,6 @@ const arrayValue = (value, field) => {
     if (!Array.isArray(value)) throw new Error(`备份字段 ${field} 必须是数组`);
     return clone(value);
 };
-
 const isUnsafeDictionaryKey = value => value === 'prototype' || Object.hasOwn(Object.prototype, value);
 const assertSafeDictionaryKey = (value, field) => {
     if (isUnsafeDictionaryKey(value)) throw new Error(`备份字段 ${field} 包含危险键 ${value}`);
@@ -114,7 +112,6 @@ const assertInteractiveItem = (value, field, { kind = 'post', version = 1, actor
         }
     }
 };
-
 const assertInteractiveBackupStore = value => {
     normalizeInteractiveStore(value);
     const store = objectValue(value, 'interactiveScenes');
@@ -228,7 +225,6 @@ const assertInteractiveBackupStore = value => {
     }
     return store;
 };
-
 export function parseBackupData(data, current) {
     if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error('备份根节点必须是对象');
     const version = data.schemaVersion === undefined ? 1 : data.schemaVersion;
@@ -268,7 +264,6 @@ export function parseBackupData(data, current) {
     }
     return result;
 }
-
 export async function runBackupTransaction({ capture, apply, persist, beforeApply = async () => {} }) {
     const snapshot = await capture();
     try {
@@ -435,7 +430,7 @@ export function installSettingsUi(deps) {
         apiDraftUseIndependent = !!v;
         const a = document.getElementById('pm-mode-main'), b = document.getElementById('pm-mode-indep'), t = document.getElementById('pm-mode-tip');
         if (a && b) { a.classList.toggle('pm-mode-active', !v); b.classList.toggle('pm-mode-active', !!v); }
-        if (t) t.textContent = v ? '独立 API' : '主 API';
+        if (t) t.textContent = v ? '独立 API 必须填写地址、密钥和模型' : '主 API 使用宿主当前选择的预设与接口';
     };
 
     window.__pmToggleWordyLimit = () => {
@@ -560,9 +555,13 @@ export function installSettingsUi(deps) {
     };
 
     // ========== 独立设置页面 ==========
-    window.__pmShowConfig = async (page = 'api') => {
+    window.__pmShowConfig = async (page = 'home') => {
         loadProfiles(); loadTheme(); loadBudgetConfig();
         const cfg = window.__pmConfig, t = window.__pmTheme;
+        if (page === 'home') {
+            makeOverlay(renderSettingsModal({ title: '设置', content: renderSettingsHome(), showBack: false }));
+            return;
+        }
         if (page === 'backup') {
             makeOverlay(renderSettingsModal({ title: '数据备份', content: renderBackupSettings() }));
             return;
@@ -764,6 +763,11 @@ export function installSettingsUi(deps) {
 
     window.__pmSaveConfig = () => {
         const apiUrl = document.getElementById('pm-cfg-url')?.value.trim() ?? '', apiKey = document.getElementById('pm-cfg-key')?.value.trim() ?? '', model = document.getElementById('pm-cfg-model')?.value.trim() ?? '';
+        if (apiDraftUseIndependent && (!apiUrl || !apiKey || !model)) {
+            const status = document.getElementById('pm-api-status');
+            if (status) { status.textContent = '独立 API 必须填写地址、密钥和模型'; status.style.color = '#ff3b30'; }
+            return;
+        }
         window.__pmConfig = { apiUrl, apiKey, model, useIndependent: apiDraftUseIndependent };
         try { localStorage.setItem('ST_SMS_CONFIG', JSON.stringify(window.__pmConfig)); } catch (e) {}
         if (apiUrl && apiKey) addOrUpdateProfile({ apiUrl, apiKey, model });

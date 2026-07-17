@@ -280,10 +280,6 @@ export function installPhoneDirectory(state, deps) {
         <button type="button" onclick="window.__pmCloseOverlay()" class="pm-modal-close">关闭</button>
       </span>
     </div>
-    <button type="button" class="pm-forum-entry" onclick="window.__pmOpenForumMode()">
-      <b>互动社区</b>
-      <span>论坛、社交与文字直播</span>
-    </button>
     <div class="pm-bi-bar"><span>勾选会话可注入主楼；群聊资源参数在群聊设置中配置</span><span class="pm-bi-tip">已选 ${checked.length}</span></div>
     <div class="pm-modal-list">
         ${empty ? '<div style="text-align:center;color:#999;padding:20px;font-size:13px;">暂无联系人</div>' : (renderGroups + renderSingle)}

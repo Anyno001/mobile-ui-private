@@ -1,3 +1,13 @@
+export function renderSettingsHome() {
+    return `
+    <div class="pm-settings-home" role="list">
+      <button type="button" role="listitem" onclick="window.__pmShowConfig('api')"><b>API</b><span>选择主 API 或配置独立接口、密钥与模型</span></button>
+      <button type="button" role="listitem" onclick="window.__pmShowConfig('look')"><b>主题</b><span>日夜模式、气泡颜色与背景图</span></button>
+      <button type="button" role="listitem" onclick="window.__pmShowConfig('backup')"><b>备份</b><span>导出、导入或安全清理插件数据</span></button>
+      <button type="button" role="listitem" onclick="window.__pmShowConfig('budget')"><b>上下文预算</b><span>控制手机会话与社区写入主提示词的额度</span></button>
+    </div>`;
+}
+
 export function renderApiSettings({ cfg, useIndependent, profilesHtml }) {
     return `
     <div class="pm-settings-page">
@@ -7,7 +17,7 @@ export function renderApiSettings({ cfg, useIndependent, profilesHtml }) {
           <div id="pm-mode-main" class="pm-mode-opt ${!useIndependent ? 'pm-mode-active' : ''}" onclick="window.__pmSetMode(false)">主 API</div>
           <div id="pm-mode-indep" class="pm-mode-opt ${useIndependent ? 'pm-mode-active' : ''}" onclick="window.__pmSetMode(true)">独立 API</div>
         </div>
-        <div id="pm-mode-tip" class="pm-cfg-tip" style="text-align:left;padding:6px 2px 0;">${useIndependent ? '独立 API' : '主 API'}</div>
+        <div id="pm-mode-tip" class="pm-cfg-tip" style="text-align:left;padding:6px 2px 0;">${useIndependent ? '独立 API 必须填写地址、密钥和模型' : '主 API 使用宿主当前选择的预设与接口'}</div>
       </div>
       <div style="padding:6px 14px 4px;border-top:1px solid #f0f0f0;">
         <div class="pm-cfg-label" style="margin:8px 0 6px;">已保存档案</div>
@@ -20,7 +30,7 @@ export function renderApiSettings({ cfg, useIndependent, profilesHtml }) {
         <input id="pm-cfg-key" class="pm-cfg-input" placeholder="sk-..." value="${cfg.apiKey}" maxlength="999">
         <div class="pm-cfg-label">模型名称</div>
         <div class="pm-model-row">
-          <input id="pm-cfg-model" class="pm-cfg-input" placeholder="手动输入或 ▼" value="${cfg.model}">
+          <input id="pm-cfg-model" class="pm-cfg-input" placeholder="独立 API 必填：手动输入或选择" value="${cfg.model}">
           <button id="pm-model-arrow" type="button" onclick="window.__pmShowModelPicker()">▼</button>
         </div>
         <div id="pm-api-status" class="pm-cfg-tip" style="font-weight:bold;">测试连接不会覆盖当前配置，点击保存后生效</div>
@@ -83,19 +93,21 @@ export function renderBudgetSettings({ config, sceneOptions }) {
     <div class="pm-settings-page">
       <div style="padding:12px 16px;display:flex;flex-direction:column;gap:10px;">
         <div class="pm-cfg-label">插件上下文预算（估算 token）</div>
-        <div class="pm-cfg-tip" style="text-align:left;">只约束本插件写入的手机会话与互动社区 extension prompt，不修改 AI 输出 max_tokens。</div>
+        <div class="pm-cfg-tip" style="text-align:left;">限制本插件把多少手机会话和社区内容写进主提示词。它不会改变 AI 单次最多输出多少字。</div>
         <label class="pm-cfg-label" for="pm-budget-target">总目标（估算 token）</label>
         <input id="pm-budget-target" class="pm-cfg-input" type="number" min="1" max="12000" step="1" value="${config.targetTokens}">
+        <div class="pm-cfg-tip" style="text-align:left;">总目标越大，模型能看到的插件历史越多，但会占用更多上下文。</div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
-          <label class="pm-cfg-label">手机会话权重<input id="pm-budget-phone-weight" class="pm-cfg-input" type="number" min="0" max="100" step="0.1" value="${config.sourceWeights.phone}"></label>
-          <label class="pm-cfg-label">互动社区权重<input id="pm-budget-community-weight" class="pm-cfg-input" type="number" min="0" max="100" step="0.1" value="${config.sourceWeights.community}"></label>
+          <label class="pm-cfg-label">手机会话份额<input id="pm-budget-phone-weight" class="pm-cfg-input" type="number" min="0" max="100" step="0.1" value="${config.sourceWeights.phone}"></label>
+          <label class="pm-cfg-label">互动社区份额<input id="pm-budget-community-weight" class="pm-cfg-input" type="number" min="0" max="100" step="0.1" value="${config.sourceWeights.community}"></label>
         </div>
-        <label class="pm-cfg-label" for="pm-budget-priority">未用额度优先回流</label>
+        <div class="pm-cfg-tip" style="text-align:left;">两个份额只决定总额度的分配比例。例如 3:1 表示优先预留约四分之三给手机会话、四分之一给社区。</div>
+        <label class="pm-cfg-label" for="pm-budget-priority">剩余额度优先补给</label>
         <select id="pm-budget-priority" class="pm-cfg-input">
           <option value="phone" ${priorityCommunity ? '' : 'selected'}>手机会话优先</option>
           <option value="community" ${priorityCommunity ? 'selected' : ''}>互动社区优先</option>
         </select>
-        <label class="pm-cfg-label"><input id="pm-budget-redistribute" type="checkbox" ${config.redistributeUnused ? 'checked' : ''}> 允许未用额度按上述优先级回流</label>
+        <label class="pm-cfg-label"><input id="pm-budget-redistribute" type="checkbox" ${config.redistributeUnused ? 'checked' : ''}> 将一方没用完的额度补给仍有内容需要写入的一方</label>
       </div>
       <div style="padding:12px 16px;border-top:1px solid #f0f0f0;display:flex;flex-direction:column;gap:10px;">
         <label class="pm-cfg-label"><input id="pm-budget-community-enabled" type="checkbox" ${config.communityEnabled ? 'checked' : ''}> 启用互动社区注入（默认关闭）</label>
@@ -137,10 +149,10 @@ export function renderBackupSettings() {
     </div>`;
 }
 
-export function renderSettingsModal({ title, content, footer = '' }) {
+export function renderSettingsModal({ title, content, footer = '', showBack = true }) {
     return `
 <div class="pm-modal pm-modal-wide" style="height: 560px;">
-  <div class="pm-modal-header"><b>${title}</b><button type="button" onclick="window.__pmCloseOverlay()" class="pm-modal-close">关闭</button></div>
+  <div class="pm-modal-header"><span>${showBack ? '<button type="button" onclick="window.__pmShowConfig(\'home\')" class="pm-modal-close">设置</button>' : ''}</span><b>${title}</b><button type="button" onclick="window.__pmCloseOverlay()" class="pm-modal-close">关闭</button></div>
   <div class="pm-modal-scroll">${content}</div>
   ${footer}
 </div>`;
