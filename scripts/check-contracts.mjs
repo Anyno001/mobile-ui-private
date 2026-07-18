@@ -168,6 +168,441 @@ function analyze(code, sourceType = 'script') {
   return result;
 }
 
+function collectNodesWithAncestors(node, predicate, ancestors = [], matches = []) {
+  if (!node || typeof node !== 'object') return matches;
+  if (typeof node.type === 'string' && predicate(node, ancestors)) matches.push({ node, ancestors });
+  const nextAncestors = typeof node.type === 'string' ? [...ancestors, node] : ancestors;
+  for (const value of Object.values(node)) {
+    if (Array.isArray(value)) {
+      for (const child of value) collectNodesWithAncestors(child, predicate, nextAncestors, matches);
+    } else if (value && typeof value === 'object' && typeof value.type === 'string') {
+      collectNodesWithAncestors(value, predicate, nextAncestors, matches);
+    }
+  }
+  return matches;
+}
+
+function patternNames(pattern) {
+  if (!pattern) return [];
+  if (pattern.type === 'Identifier') return [pattern.name];
+  if (pattern.type === 'ArrayPattern') return pattern.elements.flatMap(patternNames);
+  if (pattern.type === 'ObjectPattern') return pattern.properties.flatMap(property => patternNames(property.value));
+  if (pattern.type === 'AssignmentPattern') return patternNames(pattern.left);
+  if (pattern.type === 'RestElement') return patternNames(pattern.argument);
+  return [];
+}
+
+function identifierIsReference(node, ancestors) {
+  const parent = ancestors.at(-1);
+  if (!parent) return true;
+  const writeAssignment = [...ancestors].reverse().find(ancestor => ancestor.type === 'AssignmentExpression'
+    && ancestor.operator === '='
+    && ancestor.left?.start <= node.start && node.end <= ancestor.left?.end);
+  if (writeAssignment) return false;
+  if (parent.type === 'VariableDeclarator' && parent.id?.start <= node.start && node.end <= parent.id?.end) return false;
+  if (['FunctionDeclaration', 'FunctionExpression', 'ArrowFunctionExpression'].includes(parent.type)) {
+    if (parent.id === node || parent.params.some(param => param.start <= node.start && node.end <= param.end)) return false;
+  }
+  if (['ClassDeclaration', 'ClassExpression'].includes(parent.type) && parent.id === node) return false;
+  if (parent.type === 'CatchClause' && parent.param?.start <= node.start && node.end <= parent.param?.end) return false;
+  if (parent.type === 'MemberExpression' && parent.property === node && !parent.computed) return false;
+  if (parent.type === 'Property' && parent.key === node && !parent.computed && !parent.shorthand) return false;
+  if (['LabeledStatement', 'BreakStatement', 'ContinueStatement'].includes(parent.type) && parent.label === node) return false;
+  return true;
+}
+
+function collectDirectExecutionNodes(node, visit, ancestors = [], isRoot = true, matches = []) {
+  if (!node || typeof node !== 'object') return matches;
+  if (typeof node.type === 'string') {
+    if (visit(node, ancestors)) matches.push({ node, ancestors });
+    if (!isRoot && [
+      'FunctionDeclaration', 'FunctionExpression', 'ArrowFunctionExpression',
+      'ClassDeclaration', 'ClassExpression',
+    ].includes(node.type)) return matches;
+  }
+  const nextAncestors = typeof node.type === 'string' ? [...ancestors, node] : ancestors;
+  for (const value of Object.values(node)) {
+    if (Array.isArray(value)) {
+      for (const child of value) collectDirectExecutionNodes(child, visit, nextAncestors, false, matches);
+    } else if (value && typeof value === 'object' && typeof value.type === 'string') {
+      collectDirectExecutionNodes(value, visit, nextAncestors, false, matches);
+    }
+  }
+  return matches;
+}
+
+function lexicalScopeRange(ancestors, callbackBody) {
+  const scope = [...ancestors].reverse().find(node => [
+    'BlockStatement', 'ForStatement', 'ForInStatement', 'ForOfStatement', 'SwitchStatement',
+  ].includes(node.type));
+  return scope || callbackBody;
+}
+
+function callbackConsumesRequestBindings(callback, declarator, resultNames) {
+  if (!callback || !['FunctionExpression', 'ArrowFunctionExpression'].includes(callback.type)) return false;
+  const shadowScopes = callback.params.flatMap(param => patternNames(param).map(name => ({
+    name, start: callback.body.start, end: callback.body.end,
+  })));
+  collectDirectExecutionNodes(callback.body, (node, ancestors) => {
+    if (node.type === 'VariableDeclarator' && node !== declarator) {
+      const declaration = ancestors.at(-1);
+      const scope = declaration?.type === 'VariableDeclaration' && declaration.kind === 'var'
+        ? callback.body : lexicalScopeRange(ancestors, callback.body);
+      for (const name of patternNames(node.id)) shadowScopes.push({ name, start: scope.start, end: scope.end });
+    }
+    if (['FunctionDeclaration', 'ClassDeclaration'].includes(node.type) && node.id) {
+      const scope = lexicalScopeRange(ancestors, callback.body);
+      shadowScopes.push({ name: node.id.name, start: scope.start, end: scope.end });
+    }
+    if (node.type === 'CatchClause') {
+      for (const name of patternNames(node.param)) {
+        shadowScopes.push({ name, start: node.body.start, end: node.body.end });
+      }
+    }
+    return false;
+  });
+  return resultNames.some(name => collectDirectExecutionNodes(callback.body, node => node.type === 'Identifier'
+    && node.name === name).some(match => identifierIsReference(match.node, match.ancestors)
+      && !shadowScopes.some(shadow => shadow.name === name
+        && shadow.start <= match.node.start && match.node.end <= shadow.end)));
+}
+
+function guardedRequestOrderIssues(functionCode, requestKind) {
+  if (!functionCode) return ['missing function'];
+  const program = parseJavaScript(functionCode);
+  const functionNode = program.body[0];
+  if (functionNode?.type !== 'FunctionDeclaration') return ['expected a function declaration'];
+  const isNestedCallback = ancestors => ancestors.some(node => [
+    'FunctionDeclaration', 'FunctionExpression', 'ArrowFunctionExpression',
+  ].includes(node.type));
+  const guards = collectNodesWithAncestors(functionNode.body, (node, ancestors) => node.type === 'VariableDeclarator'
+    && node.id?.name === 'isValid'
+    && node.init?.type === 'CallExpression' && node.init.callee?.name === 'operationGuard'
+    && !isNestedCallback(ancestors));
+  const requests = collectNodesWithAncestors(functionNode.body, node => node.type === 'CallExpression'
+    && node.callee?.name === 'request' && isString(node.arguments[0], requestKind));
+  const commits = collectNodesWithAncestors(functionNode.body, node => node.type === 'CallExpression'
+    && node.callee?.name === 'commit'
+    && node.arguments[1]?.type === 'Identifier' && node.arguments[1].name === 'isValid');
+  const issues = [];
+  if (guards.length !== 1) issues.push(`expected one top-level isValid operationGuard, found ${guards.length}`);
+  if (requests.length !== 1) issues.push(`expected one ${requestKind} request, found ${requests.length}`);
+  if (commits.length !== 1) issues.push(`expected one commit guarded by isValid, found ${commits.length}`);
+  if (issues.length) return issues;
+  const guard = guards[0];
+  const request = requests[0];
+  const commit = commits[0];
+  if (guard.node.start >= request.node.start) issues.push(`operation guard must be captured before ${requestKind} request`);
+  const commitCallback = commit.node.arguments[0];
+  const nearestRequestFunction = [...request.ancestors].reverse().find(node => [
+    'FunctionDeclaration', 'FunctionExpression', 'ArrowFunctionExpression',
+  ].includes(node.type));
+  const requestInsideCommit = nearestRequestFunction === commitCallback;
+  if (!requestInsideCommit && isNestedCallback(request.ancestors)) {
+    issues.push(`${requestKind} request outside guarded commit must not be deferred in another callback`);
+    return issues;
+  }
+  if (!requestInsideCommit && request.node.end > commit.node.start) {
+    issues.push(`${requestKind} request must complete before guarded commit`);
+  }
+  const declarator = [...request.ancestors].reverse().find(node => node.type === 'VariableDeclarator' && node.init?.start <= request.node.start && request.node.end <= node.init?.end);
+  const awaitedRequest = declarator?.init?.type === 'AwaitExpression' ? declarator.init.argument : null;
+  if (awaitedRequest !== request.node) {
+    issues.push(`${requestKind} request result must be assigned directly from await request`);
+    return issues;
+  }
+  const resultNames = patternNames(declarator?.id);
+  if (!resultNames.length) issues.push(`${requestKind} request result must be assigned before guarded commit`);
+  const consumed = callbackConsumesRequestBindings(commitCallback, declarator, resultNames);
+  if (resultNames.length && !consumed) issues.push(`${requestKind} request result must be consumed by guarded commit`);
+  return issues;
+}
+
+function verifyGuardedRequestOrder(label, functionCode, requestKind) {
+  for (const issue of guardedRequestOrderIssues(functionCode, requestKind)) failures.push(`${label}: ${issue}`);
+}
+
+function functionNodeFromSource(functionCode) {
+  const statement = parseJavaScript(functionCode).body[0];
+  if (statement?.type === 'FunctionDeclaration') return statement;
+  if (statement?.type === 'ExpressionStatement' && [
+    'FunctionExpression', 'ArrowFunctionExpression',
+  ].includes(statement.expression?.type)) return statement.expression;
+  return null;
+}
+
+function memberPath(node) {
+  if (node?.type === 'Identifier') return node.name;
+  if (node?.type !== 'MemberExpression' || node.computed || node.property?.type !== 'Identifier') return null;
+  const owner = memberPath(node.object);
+  return owner ? `${owner}.${node.property.name}` : null;
+}
+
+function literalValue(expected) {
+  return node => node?.type === 'Literal' && node.value === expected;
+}
+
+function identifierValue(expected) {
+  return node => node?.type === 'Identifier' && node.name === expected;
+}
+
+function memberValue(expected) {
+  return node => memberPath(node) === expected;
+}
+
+function stylePromptTokenBranch(node) {
+  return node?.type === 'ConditionalExpression'
+    && node.test?.type === 'BinaryExpression'
+    && node.test.operator === '==='
+    && node.test.left?.type === 'Identifier' && node.test.left.name === 'kind'
+    && isString(node.test.right, 'style_prompt')
+    && literalValue(700)(node.consequent)
+    && literalValue(1400)(node.alternate);
+}
+
+const unknownStaticValue = () => ({ known: false });
+
+function staticValue(node) {
+  if (node?.type === 'Literal') {
+    if (!['undefined', 'boolean', 'number', 'string', 'bigint'].includes(typeof node.value) && node.value !== null) {
+      return unknownStaticValue();
+    }
+    return { known: true, value: node.value };
+  }
+  if (node?.type === 'TemplateLiteral' && node.expressions.length === 0) {
+    return { known: true, value: node.quasis[0]?.value.cooked ?? '' };
+  }
+  if (node?.type === 'UnaryExpression') {
+    if (node.operator === 'void') return { known: true, value: undefined };
+    const argument = staticValue(node.argument);
+    if (!argument.known) return unknownStaticValue();
+    try {
+      if (node.operator === '!') return { known: true, value: !argument.value };
+      if (node.operator === '+') return { known: true, value: +argument.value };
+      if (node.operator === '-') return { known: true, value: -argument.value };
+      if (node.operator === '~') return { known: true, value: ~argument.value };
+      if (node.operator === 'typeof') return { known: true, value: typeof argument.value };
+    } catch (error) {
+      return unknownStaticValue();
+    }
+    return unknownStaticValue();
+  }
+  if (node?.type === 'LogicalExpression') {
+    const left = staticValue(node.left);
+    if (!left.known) return unknownStaticValue();
+    if (node.operator === '&&') return left.value ? staticValue(node.right) : left;
+    if (node.operator === '||') return left.value ? left : staticValue(node.right);
+    if (node.operator === '??') return left.value === null || left.value === undefined ? staticValue(node.right) : left;
+    return unknownStaticValue();
+  }
+  if (node?.type !== 'BinaryExpression') return unknownStaticValue();
+  const left = staticValue(node.left);
+  const right = staticValue(node.right);
+  if (!left.known || !right.known) return unknownStaticValue();
+  const hasBigInt = typeof left.value === 'bigint' || typeof right.value === 'bigint';
+  if (hasBigInt && !['===', '!==', '==', '!=', '<', '<=', '>', '>='].includes(node.operator)) {
+    return unknownStaticValue();
+  }
+  if (node.operator === '**' && typeof left.value === 'bigint'
+      && (typeof right.value !== 'bigint' || right.value < 0n || right.value > 1024n)) return unknownStaticValue();
+  try {
+    switch (node.operator) {
+    case '===': return { known: true, value: left.value === right.value };
+    case '!==': return { known: true, value: left.value !== right.value };
+    case '==': return { known: true, value: left.value == right.value }; // eslint-disable-line eqeqeq
+    case '!=': return { known: true, value: left.value != right.value }; // eslint-disable-line eqeqeq
+    case '<': return { known: true, value: left.value < right.value };
+    case '<=': return { known: true, value: left.value <= right.value };
+    case '>': return { known: true, value: left.value > right.value };
+    case '>=': return { known: true, value: left.value >= right.value };
+    case '+': return { known: true, value: left.value + right.value };
+    case '-': return { known: true, value: left.value - right.value };
+    case '*': return { known: true, value: left.value * right.value };
+    case '/': return { known: true, value: left.value / right.value };
+    case '%': return { known: true, value: left.value % right.value };
+    case '**': return { known: true, value: left.value ** right.value };
+    case '|': return { known: true, value: left.value | right.value };
+    case '&': return { known: true, value: left.value & right.value };
+    case '^': return { known: true, value: left.value ^ right.value };
+    case '<<': return { known: true, value: left.value << right.value };
+    case '>>': return { known: true, value: left.value >> right.value };
+    case '>>>': return { known: true, value: left.value >>> right.value };
+    default: return unknownStaticValue();
+    }
+  } catch (error) {
+    return unknownStaticValue();
+  }
+}
+
+function staticTruthiness(node) {
+  const result = staticValue(node);
+  return result.known ? Boolean(result.value) : null;
+}
+
+function callIsStaticallyUnreachable(call) {
+  return call.ancestors.some(ancestor => {
+    if (['IfStatement', 'ConditionalExpression'].includes(ancestor.type)) {
+      const truthiness = staticTruthiness(ancestor.test);
+      if (truthiness === null) return false;
+      const branch = ancestor.consequent?.start <= call.node.start && call.node.end <= ancestor.consequent?.end
+        ? 'consequent'
+        : ancestor.alternate?.start <= call.node.start && call.node.end <= ancestor.alternate?.end
+          ? 'alternate' : null;
+      if (!branch) return false;
+      return branch === 'consequent' ? !truthiness : truthiness;
+    }
+    if (['WhileStatement', 'ForStatement'].includes(ancestor.type)) {
+      return staticTruthiness(ancestor.test) === false
+        && ancestor.body?.start <= call.node.start && call.node.end <= ancestor.body?.end;
+    }
+    if (ancestor.type === 'LogicalExpression') {
+      const insideRight = ancestor.right?.start <= call.node.start && call.node.end <= ancestor.right?.end;
+      if (!insideRight) return false;
+      const left = staticValue(ancestor.left);
+      if (!left.known) return false;
+      return (ancestor.operator === '&&' && !left.value)
+        || (ancestor.operator === '||' && !!left.value)
+        || (ancestor.operator === '??' && left.value !== null && left.value !== undefined);
+    }
+    return false;
+  });
+}
+
+function callAiIsLocallyShadowed(functionNode, call) {
+  if (functionNode.params.some(param => patternNames(param).includes('callAI'))) return true;
+  return collectDirectExecutionNodes(functionNode.body, (node, ancestors) => {
+    if (node.type === 'CatchClause' && patternNames(node.param).includes('callAI')) {
+      return call.ancestors.includes(node);
+    }
+    if (node.type === 'FunctionDeclaration' && node.id?.name === 'callAI') {
+      const scope = [...ancestors].reverse().find(ancestor => ancestor.type === 'BlockStatement');
+      return !!scope && call.ancestors.includes(scope);
+    }
+    if (node.type !== 'VariableDeclarator' || !patternNames(node.id).includes('callAI')) return false;
+    const declaration = ancestors.at(-1);
+    if (declaration?.type !== 'VariableDeclaration') return false;
+    if (declaration.kind === 'var') return true;
+    const scope = [...ancestors].reverse().find(ancestor => [
+      'BlockStatement', 'ForStatement', 'ForInStatement', 'ForOfStatement', 'SwitchStatement', 'CatchClause',
+    ].includes(ancestor.type));
+    return !!scope && call.ancestors.includes(scope);
+  }).length > 0;
+}
+
+function callAiOptionsIssues(functionCode, expectedProperties) {
+  if (!functionCode) return ['missing function'];
+  const functionNode = functionNodeFromSource(functionCode);
+  if (!functionNode) return ['expected a function declaration or function expression'];
+  const calls = collectDirectExecutionNodes(functionNode.body, node => node.type === 'CallExpression'
+    && node.callee?.type === 'Identifier' && node.callee.name === 'callAI');
+  if (calls.length !== 1) return [`expected one direct callAI invocation, found ${calls.length}`];
+  if (callIsStaticallyUnreachable(calls[0])) return ['callAI invocation must be statically reachable'];
+  if (callAiIsLocallyShadowed(functionNode, calls[0])) return ['callAI reference must not be locally shadowed'];
+  const options = calls[0].node.arguments[2];
+  if (options?.type !== 'ObjectExpression') return ['callAI third argument must be an object literal'];
+  const issues = [];
+  for (const expectation of expectedProperties) {
+    const properties = options.properties.filter(property => propertyName(property) === expectation.name);
+    if (properties.length !== 1) {
+      issues.push(`expected one ${expectation.name} option, found ${properties.length}`);
+    } else if (!expectation.matches(properties[0].value)) {
+      issues.push(`${expectation.name} option must be ${expectation.description}`);
+    }
+  }
+  return issues;
+}
+
+function verifyCallAiOptions(label, functionCode, expectedProperties) {
+  for (const issue of callAiOptionsIssues(functionCode, expectedProperties)) failures.push(`${label}: ${issue}`);
+}
+
+function verifyCallAiOptionsDetector() {
+  const expected = [
+    { name: 'maxTokens', description: '600', matches: literalValue(600) },
+    { name: 'isolated', description: 'true', matches: literalValue(true) },
+    { name: 'signal', description: 'task.signal', matches: memberValue('task.signal') },
+  ];
+  const valid = [
+    `async function generate() { return callAI(system, user, { maxTokens: 600, isolated: true, signal: task.signal }); }`,
+    `async function generate() { do { return callAI(system, user, { maxTokens: 600, isolated: true, signal: task.signal }); } while (false); }`,
+  ];
+  for (const sample of valid) {
+    if (callAiOptionsIssues(sample, expected).length) failures.push('self-test: callAI options detector rejected valid sample');
+  }
+  const invalid = [
+    `async function generate() { return callAI(system, user, { maxTokens: 900, isolated: true, signal: task.signal }); }`,
+    `async function generate() { return callAI(system, user, { maxTokens: 600, isolated: false, signal: task.signal }); }`,
+    `async function generate() { return callAI(system, user, { maxTokens: 600, isolated: true, signal: other.signal }); }`,
+    `async function generate() { if (false) return callAI(system, user, { maxTokens: 600, isolated: true, signal: task.signal }); }`,
+    `async function generate() { return false && callAI(system, user, { maxTokens: 600, isolated: true, signal: task.signal }); }`,
+    `async function generate() { return true || callAI(system, user, { maxTokens: 600, isolated: true, signal: task.signal }); }`,
+    `async function generate() { return 'ready' ?? callAI(system, user, { maxTokens: 600, isolated: true, signal: task.signal }); }`,
+    `async function generate() { if (!true) return callAI(system, user, { maxTokens: 600, isolated: true, signal: task.signal }); }`,
+    `async function generate() { if (1 === 2) return callAI(system, user, { maxTokens: 600, isolated: true, signal: task.signal }); }`,
+    "async function generate() { return `` && callAI(system, user, { maxTokens: 600, isolated: true, signal: task.signal }); }",
+    "async function generate() { return `ready` || callAI(system, user, { maxTokens: 600, isolated: true, signal: task.signal }); }",
+    `async function generate() { if ((2 * 3) < 5) return callAI(system, user, { maxTokens: 600, isolated: true, signal: task.signal }); }`,
+    `async function generate() { if (!(1 + 1 === 2)) return callAI(system, user, { maxTokens: 600, isolated: true, signal: task.signal }); }`,
+    `async function generate() { while (false) callAI(system, user, { maxTokens: 600, isolated: true, signal: task.signal }); }`,
+    `async function generate() { for (; false;) callAI(system, user, { maxTokens: 600, isolated: true, signal: task.signal }); }`,
+    `async function generate(callAI) { return callAI(system, user, { maxTokens: 600, isolated: true, signal: task.signal }); }`,
+    `async function generate() { const callAI = () => null; return callAI(system, user, { maxTokens: 600, isolated: true, signal: task.signal }); }`,
+    `async function generate() { function callAI() {} return callAI(system, user, { maxTokens: 600, isolated: true, signal: task.signal }); }`,
+    `async function generate() { async function nested() { return callAI(system, user, { maxTokens: 600, isolated: true, signal: task.signal }); } return nested(); }`,
+  ];
+  const hostileConstants = [
+    `async function generate() { if (+1n) return callAI(system, user, { maxTokens: 600, isolated: true, signal: task.signal }); }`,
+    `async function generate() { if (1n + 1) return callAI(system, user, { maxTokens: 600, isolated: true, signal: task.signal }); }`,
+    `async function generate() { if (1n / 0n) return callAI(system, user, { maxTokens: 600, isolated: true, signal: task.signal }); }`,
+    `async function generate() { if (2n ** 100000n) return callAI(system, user, { maxTokens: 600, isolated: true, signal: task.signal }); }`,
+    `async function generate() { if (1n << 1000000000n) return callAI(system, user, { maxTokens: 600, isolated: true, signal: task.signal }); }`,
+    `async function generate() { if (999999999999999999999999999999999999n * 999999999999999999999999999999999999n) return callAI(system, user, { maxTokens: 600, isolated: true, signal: task.signal }); }`,
+    `async function generate() { if (999999999999999999999999999999999999n ** 1024n) return callAI(system, user, { maxTokens: 600, isolated: true, signal: task.signal }); }`,
+  ];
+  for (const sample of hostileConstants) {
+    try { callAiOptionsIssues(sample, expected); }
+    catch (error) { failures.push(`self-test: static evaluator threw ${error.name} for hostile constant`); }
+  }
+  for (const sample of invalid) {
+    if (!callAiOptionsIssues(sample, expected).length) failures.push('self-test: callAI options detector accepted invalid sample');
+  }
+}
+
+function verifyGuardedRequestOrderDetector() {
+  const valid = [
+    `async function sample() { const isValid = operationGuard(scopeId, scene.id); const items = await request('comment_batch'); await commit(() => use(items), isValid); }`,
+    `async function sample() { const isValid = operationGuard(scopeId, () => createdId); await commit(async () => { const [style] = await request('style_prompt'); use(style); }, isValid); }`,
+    `async function sample() { const isValid = operationGuard(scopeId, scene.id); const items = await request('comment_batch'); await commit(() => { use(items); function helper(items) { use(items); } }, isValid); }`,
+    `async function sample() { const isValid = operationGuard(scopeId, scene.id); const items = await request('comment_batch'); await commit(() => { use(items); if (condition) { const items = []; use(items); } }, isValid); }`,
+  ];
+  const invalid = [
+    `async function sample() { const items = await request('comment_batch'); const isValid = operationGuard(scopeId, scene.id); await commit(() => use(items), isValid); }`,
+    `async function sample() { const isValid = operationGuard(scopeId, scene.id); const first = await request('comment_batch'); const second = await request('comment_batch'); await commit(() => use(second), isValid); }`,
+    `async function sample() { const isValid = operationGuard(scopeId, scene.id); queueMicrotask(async () => { await request('comment_batch'); }); await commit(() => {}, isValid); }`,
+    `async function sample() { const isValid = operationGuard(scopeId, scene.id); const items = await request('comment_batch'); await commit(() => useOtherValue(), isValid); }`,
+    `async function sample() { const isValid = operationGuard(scopeId, scene.id); await commit(() => {}, isValid); await request('comment_batch'); }`,
+    `async function sample() { const isValid = operationGuard(scopeId, scene.id); const items = await request('comment_batch'); await commit(items => use(items), isValid); }`,
+    `async function sample() { const isValid = operationGuard(scopeId, scene.id); const items = await request('comment_batch'); await commit(() => { const items = []; use(items); }, isValid); }`,
+    `async function sample() { const isValid = operationGuard(scopeId, scene.id); const items = await request('comment_batch'); await commit(() => { function nested(items) { use(items); } nested([]); }, isValid); }`,
+    `async function sample() { const isValid = operationGuard(scopeId, scene.id); const items = (await request('comment_batch'), unrelatedValue); await commit(() => use(items), isValid); }`,
+    `async function sample() { const isValid = operationGuard(scopeId, scene.id); let items = await request('comment_batch'); await commit(() => { items = unrelatedValue; }, isValid); }`,
+    `async function sample() { const isValid = operationGuard(scopeId, scene.id); let items = await request('comment_batch'); await commit(() => { [items] = unrelatedValues; }, isValid); }`,
+    `async function sample() { const isValid = operationGuard(scopeId, scene.id); async function deferred() { const items = await request('comment_batch'); await commit(() => use(items), isValid); } deferred(); }`,
+    `async function sample() { const isValid = operationGuard(scopeId, scene.id); await commit(() => { async function deferred() { const items = await request('comment_batch'); use(items); } deferred(); }, isValid); }`,
+    `async function sample() { const isValid = operationGuard(scopeId, scene.id); const items = await request('comment_batch'); await commit(() => { function helper() { use(items); } helper(); }, isValid); }`,
+  ];
+  for (const sample of valid) {
+    if (guardedRequestOrderIssues(sample, sample.includes('style_prompt') ? 'style_prompt' : 'comment_batch').length) {
+      failures.push('self-test: guarded request order detector rejected valid sample');
+    }
+  }
+  for (const sample of invalid) {
+    if (!guardedRequestOrderIssues(sample, 'comment_batch').length) {
+      failures.push('self-test: guarded request order detector accepted invalid sample');
+    }
+  }
+}
+
 function analyzeBackupContract(code, sourceType = 'module') {
   const result = { exportFields: new Set(), importFields: new Set(), importReadsFileName: false };
   walk(parseJavaScript(code, sourceType), node => {
@@ -298,6 +733,8 @@ verifyDetector('style element', 'styleElement', [
   `document.createElement('div')`,
 ]);
 verifyWindowAssignmentDetector();
+verifyGuardedRequestOrderDetector();
+verifyCallAiOptionsDetector();
 
 const sourceResult = {
   commandObject: false, commandObjectHelp: false,
@@ -512,14 +949,23 @@ requireText('phone-injection.js', sourceModuleByName.get('phone-injection.js')?.
 requireText('settings-templates.js', sourceModuleByName.get('settings-templates.js')?.code || '', '插件上下文预算（估算 token）');
 for (const expected of [
   'pm-settings-home', "__pmShowConfig('api')", "__pmShowConfig('look')",
-  "__pmShowConfig('backup')", "__pmShowConfig('budget')",
+  "__pmShowConfig('backup')", "__pmShowConfig('budget')", "__pmShowConfig('quick-reply')",
+  'pm-indep-profile-fields', 'pm-indep-config-fields', 'pm-independent-api-fields',
+  'renderQuickReplySettings', 'Quick Reply', '/phone',
 ]) requireText('settings-templates.js', sourceModuleByName.get('settings-templates.js')?.code || '', expected);
+for (const expected of [
+  'PHONE_QR_SET_NAME', 'PHONE_QR_AUTOMATION_ID', "PHONE_QR_MESSAGE = '/phone'",
+  'createSet', 'deleteSet', 'createQuickReply', 'updateQuickReply', 'deleteQuickReply',
+  'addGlobalSet', 'removeGlobalSet', 'listGlobalSets', '无法证明属于天音小笺',
+]) requireText('quick-reply.js', sourceModuleByName.get('quick-reply.js')?.code || '', expected);
+for (const expected of ['__pmEnsurePhoneQuickReply', '__pmClearPhoneQuickReply', 'installQuickReplySettings']) requireText('settings-quick-reply.js', sourceModuleByName.get('settings-quick-reply.js')?.code || '', expected);
 requireText('runtime.js', sourceModuleByName.get('runtime.js')?.code || '', 'pendingMessages: new Map()');
 requireText('phone-chat.js', sourceModuleByName.get('phone-chat.js')?.code || '', 'removePendingBatch(runtime');
 requireText('phone-chat.js', sourceModuleByName.get('phone-chat.js')?.code || '', 'rebaseRenderedHistory(historyWindow.trimmedCount)');
 requireText('phone-chat-poke.js', sourceModuleByName.get('phone-chat-poke.js')?.code || '', 'rebaseRenderedHistory(historyWindow.trimmedCount)');
 const controlCenterCode = sourceModuleByName.get('phone-control-center.js')?.code || '';
 const directoryCode = sourceModuleByName.get('phone-directory.js')?.code || '';
+const contactCode = sourceModuleByName.get('contact-generator.js')?.code || '';
 const interactiveCode = sourceModuleByName.get('interactive-scenes.js')?.code || '';
 const interactiveViewsCode = sourceModuleByName.get('interactive-scene-views.js')?.code || '';
 const interactivePhoneCode = sourceModuleByName.get('interactive-scene-phone.js')?.code || '';
@@ -536,7 +982,28 @@ const interactiveModelCode = sourceModuleByName.get('interactive-scene-model.js'
 const interactiveAiCode = sourceModuleByName.get('interactive-scene-ai.js')?.code || '';
 const settingsUiCodeForInteractive = sourceModuleByName.get('settings-ui.js')?.code || '';
 const settingsBackupCode = sourceModuleByName.get('settings-backup.js')?.code || '';
+const contactAnalysis = analyze(contactCode, 'module');
+const calendarAnalysis = analyze(calendarCode, 'module');
 const interactiveAnalysis = analyze(interactiveCode, 'module');
+verifyCallAiOptions('contact-generator.js: __pmAutoGenContacts', contactAnalysis.windowAssignmentSource.get('__pmAutoGenContacts') || '', [
+  { name: 'maxTokens', description: '600', matches: literalValue(600) },
+  { name: 'isolated', description: 'true', matches: literalValue(true) },
+  { name: 'signal', description: 'task.signal', matches: memberValue('task.signal') },
+]);
+verifyCallAiOptions('calendar.js: generate', calendarAnalysis.functionSource.get('generate') || '', [
+  { name: 'maxTokens', description: '900', matches: literalValue(900) },
+  { name: 'isolated', description: 'true', matches: literalValue(true) },
+  { name: 'signal', description: 'task.signal', matches: memberValue('task.signal') },
+]);
+verifyCallAiOptions('interactive-scenes.js: request', interactiveAnalysis.functionSource.get('request') || '', [
+  {
+    name: 'maxTokens',
+    description: "kind === 'style_prompt' ? 700 : 1400",
+    matches: stylePromptTokenBranch,
+  },
+  { name: 'isolated', description: 'true', matches: literalValue(true) },
+  { name: 'signal', description: 'controller.signal', matches: memberValue('controller.signal') },
+]);
 for (const functionName of ['createScene']) {
   const functionCode = interactiveAnalysis.functionSource.get(functionName) || '';
   if (!functionCode) failures.push(`interactive-scenes.js: missing ${functionName} for AI request path verification`);
@@ -546,11 +1013,33 @@ const createSceneCode = interactiveAnalysis.functionSource.get('createScene') ||
 if (!createSceneCode.includes('communityRunner.generateFeed()')) {
   failures.push('interactive-scenes.js: createScene initial feed must use the shared community runner');
 }
+for (const expected of ["operationGuard(scopeId, () => createdSceneId)", "}, isValid, '创建社区')"]) {
+  if (!createSceneCode.includes(expected)) failures.push(`interactive-scenes.js: createScene must retain invalidation-safe commit guard ${expected}`);
+}
+if (!createSceneCode.includes('if (runtime.openSceneId === createdSceneId) runtime.openSceneId = null')) {
+  failures.push('interactive-scenes.js: stale createScene failures must not clear a newer open scene');
+}
 if (createSceneCode.includes("request('feed_batch'")) failures.push('interactive-scenes.js: createScene must not bypass the shared runner for initial feed');
 if (/feed_batch[\s\S]*?current\(\)/.test(createSceneCode)) failures.push('interactive-scenes.js: createScene late feed must not reselect a target with current()');
+verifyGuardedRequestOrder('interactive-scenes.js: createScene', createSceneCode, 'style_prompt');
 const generateCommentsCode = interactiveAnalysis.functionSource.get('generateComments') || '';
 if (!generateCommentsCode.includes("request('comment_batch'")) {
   failures.push('interactive-scenes.js: explicit generateComments path must retain comment_batch');
+}
+for (const expected of ["operationGuard(scopeId, scene.id)", "}, isValid, '生成评论')"]) {
+  if (!generateCommentsCode.includes(expected)) failures.push(`interactive-scenes.js: generateComments must retain invalidation-safe commit guard ${expected}`);
+}
+verifyGuardedRequestOrder('interactive-scenes.js: generateComments', generateCommentsCode, 'comment_batch');
+const regeneratePromptCode = interactiveAnalysis.functionSource.get('regeneratePrompt') || '';
+for (const expected of ["operationGuard(scopeId, scene.id)", "}, isValid, '重新生成社区提示词')"]) {
+  if (!regeneratePromptCode.includes(expected)) failures.push(`interactive-scenes.js: regeneratePrompt must retain invalidation-safe commit guard ${expected}`);
+}
+verifyGuardedRequestOrder('interactive-scenes.js: regeneratePrompt', regeneratePromptCode, 'style_prompt');
+for (const expected of ['contextEpoch: 0', 'runtime.contextEpoch += 1', 'createInteractiveOperationGuard']) {
+  requireText('interactive-scenes.js', interactiveCode, expected);
+}
+for (const expected of ['syncStore = null', 'await syncStore?.()', '补偿持久化或同步也失败', 'syncStore: () => deps.applyBidirectionalInjection?.()']) {
+  requireText('interactive-scenes.js', interactiveCode, expected);
 }
 for (const expected of [
   'INTERACTIVE_STORE_VERSION = 2', 'authorId', 'authorNameSnapshot',
@@ -575,7 +1064,8 @@ if (interactiveAiCode.includes('function parseFirstJsonObject')) {
 for (const expected of [
   'generationErrorMessage(error)', 'parseFirstJsonObject(', 'buildGeneratedDirectoryCandidates',
   'commitGeneratedDirectory', 'getDirectorySaveRevision', 'saveHistoriesStrict', 'saveGroupMeta',
-  'shouldReportGeneratedDirectoryError', 'rollbackError',
+  'shouldReportGeneratedDirectoryError', 'rollbackError', 'commitDirectory = commitGeneratedDirectory',
+  'if (!committed || !isGenerationTaskActive(task)) return;', '已添加 ${resultParts.join',
 ]) requireText('contact-generator.js', sourceModuleByName.get('contact-generator.js')?.code || '', expected);
 if ((sourceModuleByName.get('contact-generator.js')?.code || '').includes('saveHistories()')) {
   failures.push('contact-generator.js: generated directory transaction must not use the error-swallowing saveHistories wrapper');
@@ -628,8 +1118,9 @@ for (const expected of [
 for (const expected of [
   'aria-label="日程标题"', 'aria-label="日程备注"', 'aria-label="标签格式日程"',
   'aria-label="生日或纪念日名称"', 'aria-label="生日或纪念日备注"',
-  'name="lastPeriodStart" type="text"', 'data-action="calendar-holiday-country"',
-  '该国家在当前年代无外部数据源',
+  'name="periodStartDay"', 'data-action="calendar-cycle-subject"',
+  'data-action="calendar-editor-kind"', 'data-action="calendar-holiday-country"',
+  '该国家在当前年代无外部数据源', '不能作为避孕依据',
 ]) requireText('calendar-view.js', calendarViewCode, expected);
 for (const expected of ["addEventListener('change'", "select[data-action]"]) {
   requireText('interactive-scene-phone.js', interactivePhoneActionsCode, expected);
@@ -732,7 +1223,11 @@ for (const expected of [
   "showPhonePage('calendar')", 'showPhoneCalendarPage', 'handleCalendarAction',
   'refreshDesktop(scopeId, store)', 'restorePhoneUi', 'persistPhoneUiSnapshot',
 ]) requireText('interactive-scenes.js', interactiveCode, expected);
-for (const expected of ['data-action="desktop"', 'data-action="exit"', 'class="pm-scene-card-actions"', 'data-action="toggle-scene-pin"', 'data-action="delete-scene"']) {
+for (const expected of [
+  'data-action="desktop"', 'data-action="exit"', 'class="pm-scene-card-actions"',
+  'data-action="toggle-scene-pin"', 'data-action="delete-scene"', 'pm-desktop-app-icon',
+  'pm-desktop-app-label', 'data-app="chat"', 'data-app="directory"', 'data-app="settings"', 'data-app="calendar"',
+]) {
   requireText('interactive-scene-views.js', interactiveViewsCode, expected);
 }
 for (const forbidden of ['makeOverlay(', 'window.__pmCloseOverlay()']) {
@@ -804,6 +1299,12 @@ if (css.includes('translateY(var(--offset))')) failures.push('style.css: danmaku
 requireText('style.css', css, '.pm-control-menu{position:absolute;');
 requireText('style.css', css, '#pm-iphone[data-theme="dark"] .pm-control-menu');
 requireText('style.css', css, '.pm-pending-manager{min-height:180px;}');
+for (const expected of [
+  '.pm-calendar-header-action.is-loading svg{animation:pm-spin .8s linear infinite}',
+  '.pm-calendar-cycle-input:checked+.pm-custom-check{background:#34c759 !important}',
+  '.pm-calendar-cycle-input:focus-visible+.pm-custom-check{outline:2px solid #007aff;outline-offset:2px}',
+  '@media (prefers-reduced-motion:reduce){.pm-calendar-header-action.is-loading svg{animation:none}}',
+]) requireText('style.css', css, expected);
 const lifecycleCode = sourceModuleByName.get('phone-lifecycle.js')?.code || '';
 for (const expected of [
   'bindPressGesture(sendButton', 'delay: 550', 'getPendingMessages(runtime',
@@ -813,6 +1314,8 @@ for (const expected of [
   'ambientStatus.stop();',
 ]) requireText('phone-lifecycle.js', lifecycleCode, expected);
 requireText('package.json', packageText, 'npm run check:ambient');
+requireText('package.json', packageText, '"check:emoji": "node scripts/check-emoji.mjs"');
+requireText('package.json', packageText, 'npm run check:emoji');
 requireText('package.json', packageText, '"check:calendar": "node scripts/check-calendar.mjs"');
 requireText('package.json', packageText, 'npm run check:calendar');
 requireText('settings-templates.js', sourceModuleByName.get('settings-templates.js')?.code || '', '仅显示设备本地时间，不联网、不定位，也不会写入提示词。');
@@ -882,6 +1385,10 @@ for (const iconName of [
 
 const phoneChatCode = sourceModuleByName.get('phone-chat.js')?.code || '';
 const phoneChatPokeCode = sourceModuleByName.get('phone-chat-poke.js')?.code || '';
+const phoneChatPokeAnalysis = analyze(phoneChatPokeCode, 'module');
+const showContactConfigSource = phoneChatPokeAnalysis.functionSource.get('showContactConfig') || '';
+const saveContactConfigSource = phoneChatPokeAnalysis.windowAssignmentSource.get('__pmSaveContactConfig') || '';
+const foundationInjectionSource = foundationAnalysis.functionSource.get('applyBidirectionalInjection') || '';
 const preferenceCallCount = (phoneChatCode.match(/buildChatPreferencePrompt\s*\(/g) || []).length
   + (phoneChatPokeCode.match(/buildChatPreferencePrompt\s*\(/g) || []).length;
 if (preferenceCallCount !== 4) {
@@ -893,8 +1400,66 @@ if (phoneChatCode.includes('buildCharacterBehaviorPrompt(')
 }
 requireText('contact-generator.js', sourceModuleByName.get('contact-generator.js')?.code || '', 'installContactGenerator(state, deps)');
 requireText('contact-generator.js', sourceModuleByName.get('contact-generator.js')?.code || '', '!state.generationTask');
+for (const expected of [
+  "window.__pmShowAddContact = (resultMessage = '')", 'escapeHtml(resultMessage)',
+  '<b>手动添加</b>', '<b>AI 生成</b>', 'id="pm-autogen-btn"',
+]) requireText('phone-directory.js', directoryCode, expected);
+for (const expected of [
+  'onclick="window.__pmCloseOverlay()"', 'pm-modal-add pm-contact-settings-actions',
+  'onclick="window.__pmSaveContactConfig(',
+  'window.__pmSaveAndCloseContactConfig = contactName => window.__pmSaveContactConfig(contactName)',
+]) requireText('phone-chat-poke.js', phoneChatPokeCode, expected);
+if (!/pm-contact-settings-scroll[\s\S]*data-pm-auto-poke-status[\s\S]*pm-modal-add pm-contact-settings-actions[\s\S]*保存角色设置[\s\S]*<\/div>\s*<\/div>\s*<\/div>`/.test(showContactConfigSource)) {
+  failures.push('phone-chat-poke.js: character settings save action must remain inside the scroll content after the per-session auto-message settings');
+}
+if (!showContactConfigSource || !saveContactConfigSource) {
+  failures.push('phone-chat-poke.js: character settings render/save functions must remain statically analyzable');
+} else {
+  if (/__pmSave(?:AndClose)?ContactConfig/.test(showContactConfigSource.match(/pm-modal-header[\s\S]*?<\/div>/)?.[0] || '')) {
+    failures.push('phone-chat-poke.js: character settings header close action must not save');
+  }
+  if (/__pmCloseOverlay|closeOverlay|pm-overlay['"]\)\?\.remove/.test(saveContactConfigSource)) {
+    failures.push('phone-chat-poke.js: saving character settings must not close the overlay');
+  }
+}
+for (const forbidden of ['calendarWeather', 'calendarCycles', 'getCalendarWeatherStore', 'getCalendarCycleStore']) {
+  if (foundationInjectionSource.includes(forbidden)) failures.push(`phone-foundation.js: prompt injection path must not read or pass ${forbidden}`);
+}
+for (const expected of [
+  'class="pm-calendar-cycle-input" name="enabled" type="checkbox"',
+  'class="pm-custom-check" aria-hidden="true"', '易孕期和相对低风险期', '不能作为避孕依据',
+]) requireText('calendar-view.js', calendarViewCode, expected);
+const phoneInjectionCode = sourceModuleByName.get('phone-injection.js')?.code || '';
+const phoneInjectionAnalysis = analyze(phoneInjectionCode, 'module');
+for (const functionName of ['renderCalendarContextInjection', 'buildContextInjectionPrompts']) {
+  const source = phoneInjectionAnalysis.functionSource.get(functionName) || '';
+  if (!source) failures.push(`phone-injection.js: missing ${functionName}`);
+  for (const forbidden of ['weatherStore', 'cycleStore', 'calendarWeather', 'calendarCycles']) {
+    if (source.includes(forbidden)) failures.push(`phone-injection.js: ${functionName} must not accept or read ${forbidden}`);
+  }
+}
 requireText('interactive-scenes.js', interactiveCode, 'generationErrorMessage(error)');
 requireText('interactive-scene-scheduler.js', sourceModuleByName.get('interactive-scene-scheduler.js')?.code || '', 'generationErrorMessage(error)');
+
+const emojiMediaCode = sourceModuleByName.get('emoji-media.js')?.code || '';
+const emojiUiCode = sourceModuleByName.get('emoji-ui.js')?.code || '';
+const messagingCode = sourceModuleByName.get('messaging.js')?.code || '';
+for (const expected of [
+  'MAX_EMOJI_FILE_BYTES', 'MAX_EMOJI_INLINE_LIBRARY_BYTES', 'cloneEmojiLibrary',
+  'emojiFileError', 'emojiSourceError', 'createEmojiRenderBudget', 'isRenderableEmojiSource',
+]) requireText('emoji-media.js', emojiMediaCode, expected);
+for (const expected of ['loading="lazy"', 'decoding="async"', 'emojiFileError(file)', 'emojiSourceError(url, window.__pmEmojis)']) {
+  requireText('emoji-ui.js', emojiUiCode, expected);
+}
+for (const expected of ['isRenderableEmojiSource(url)', "typeof emojiBudget === 'function'", '!emojiBudget(url)', 'loading="lazy"', 'decoding="async"', 'object-fit:contain']) {
+  requireText('messaging.js', messagingCode, expected);
+}
+for (const expected of ['createEmojiRenderBudget()', 'emojiBudget: emojiRenderBudget', 'resetEmojiRenderBudget']) {
+  requireText('phone-foundation.js', foundationCode, expected);
+}
+for (const expected of ['resetEmojiRenderBudget()', "list.innerHTML = ''"]) {
+  requireText('conversation.js', conversationCode, expected);
+}
 
 const runtimeCode = sourceModuleByName.get('runtime.js')?.code || '';
 for (const expected of [
@@ -952,7 +1517,8 @@ for (const expected of [
 }
 for (const expected of [
   '.pm-msg-list', '.pm-input', '.pm-confirm-bar', '.pm-modal', '.pm-cfg-tab',
-  '.pm-phone-page', '.pm-desktop-grid', '.pm-desktop-app', '.pm-desktop-pin', '.pm-community-page',
+  '.pm-phone-page', '.pm-desktop-grid', '.pm-desktop-app', '.pm-desktop-app-icon', '.pm-desktop-app-label',
+  '.pm-desktop-pin', '.pm-community-page', '.pm-independent-api-fields[hidden]', '[data-calendar-management="weather"]',
 ]) {
   requireText('css', css, expected);
 }

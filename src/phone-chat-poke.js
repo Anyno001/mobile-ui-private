@@ -208,7 +208,7 @@ export function installPhoneChatPoke(state, deps) {
     <div class="pm-modal-header">
         <span></span>
         <b>${escapeHtml(contactName)} · 角色设置</b>
-        <button type="button" onclick="window.__pmSaveAndCloseContactConfig('${safeJS(contactName)}')" class="pm-modal-close">保存并关闭</button>
+        <button type="button" onclick="window.__pmCloseOverlay()" class="pm-modal-close" title="关闭" aria-label="关闭">${CLOSE_ICON_SVG}</button>
     </div>
     <div class="pm-contact-settings-scroll">
         <div class="pm-cfg-label">私聊线上风格</div>
@@ -276,6 +276,9 @@ export function installPhoneChatPoke(state, deps) {
         </button>
         <div data-pm-auto-poke-status style="font-size:11px;color:#999;margin-top:4px;">${isAutoPokeAllowed() ? '本次手机会话已运行' : '本次手机会话已暂停'}</div>
         </div>
+    <div class="pm-modal-add pm-contact-settings-actions">
+        <button type="button" class="pm-contact-settings-save" onclick="window.__pmSaveContactConfig('${safeJS(contactName)}')">保存角色设置</button>
+    </div>
     </div>
     </div>`);
     }
@@ -301,7 +304,7 @@ export function installPhoneChatPoke(state, deps) {
     </div>`);
     };
 
-    window.__pmSaveAndCloseContactConfig = (contactName) => {
+    window.__pmSaveContactConfig = (contactName) => {
         const checkEl = document.getElementById('pm-poke-check');
         const intervalEl = document.getElementById('pm-poke-interval');
         const behaviorSnapshot = JSON.parse(JSON.stringify(window.__pmCharacterBehavior));
@@ -353,10 +356,10 @@ export function installPhoneChatPoke(state, deps) {
             }
         }
 
-        document.getElementById('pm-overlay')?.remove();
         addNote(`已保存 ${contactName} 的设置`);
         return true;
     };
+    window.__pmSaveAndCloseContactConfig = contactName => window.__pmSaveContactConfig(contactName);
 
 
     window.__pmToggleAutoPoke = (contactName) => {

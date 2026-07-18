@@ -20,8 +20,13 @@ import { renderPhoneDesktop, runDesktopPageTransition } from '../src/interactive
 import { getDanmakuMotion, getDanmakuTone, renderCommunityLauncher, renderCommunityWorkspace } from '../src/interactive-scene-views.js';
 import { runControlMenuAction } from '../src/phone-control-center.js';
 import {
+    clearPhoneQuickReply, ensurePhoneQuickReply, getPhoneQuickReplyStatus,
+    PHONE_QR_AUTOMATION_ID, PHONE_QR_LABEL, PHONE_QR_MESSAGE, PHONE_QR_SET_NAME,
+} from '../src/quick-reply.js';
+import {
     createBackupStateHandlers, installSettingsUi, parseBackupData, runBackgroundTransaction, runBackupTransaction,
 } from '../src/settings-ui.js';
+import { renderApiSettings } from '../src/settings-templates.js';
 import {
     buildGroupInjectedInstruction, buildGroupSystemPrompt,
     buildIndependentGroupUserPrompt, buildIndependentSingleUserPrompt,
@@ -32,6 +37,126 @@ import {
     createAutomaticTaskController, createRuntimeState, runAutoPokeCounterCycle,
 } from '../src/runtime.js';
 import { createPhonePageController } from '../src/phone-lifecycle.js';
+function createQuickReplyApiFixture({ set = null, active = false, fail = {} } = {}) {
+    const sets = new Map();
+    if (set) sets.set(set.name, set);
+    const globals = new Set(active && set ? [set.name] : []);
+    const calls = [];
+    const findQr = (setName, identifier) => sets.get(setName)?.qrList.find(qr =>
+        Number.isInteger(identifier) ? qr.id === identifier : qr.label === identifier);
+    const api = {
+        calls,
+        getSetByName(name) { return sets.get(name); },
+        async createSet(name, props) {
+            calls.push(['createSet', name, props]);
+            if (fail.createSet) throw new Error(fail.createSet);
+            const created = { name, qrList: [], ...props };
+            sets.set(name, created);
+            return created;
+        },
+        async deleteSet(name) {
+            calls.push(['deleteSet', name]);
+            if (fail.deleteSet) throw new Error(fail.deleteSet);
+            sets.delete(name);
+            globals.delete(name);
+        },
+        createQuickReply(setName, label, props) {
+            calls.push(['createQuickReply', setName, label, props]);
+            if (fail.createQuickReply) throw new Error(fail.createQuickReply);
+            const target = sets.get(setName);
+            const qr = { id: Math.max(0, ...target.qrList.map(item => item.id || 0)) + 1, label, ...props };
+            target.qrList.push(qr);
+            return qr;
+        },
+        updateQuickReply(setName, identifier, props) {
+            calls.push(['updateQuickReply', setName, identifier, props]);
+            if (fail.updateQuickReply) throw new Error(fail.updateQuickReply);
+            const qr = findQr(setName, identifier);
+            if (!qr) throw new Error('missing qr');
+            Object.assign(qr, props);
+            if (props.newLabel !== undefined) qr.label = props.newLabel;
+            return qr;
+        },
+        deleteQuickReply(setName, identifier) {
+            calls.push(['deleteQuickReply', setName, identifier]);
+            if (fail.deleteQuickReply) throw new Error(fail.deleteQuickReply);
+            const target = sets.get(setName);
+            const index = target.qrList.findIndex(qr => qr.id === identifier);
+            if (index < 0) throw new Error('missing qr');
+            target.qrList.splice(index, 1);
+        },
+        addGlobalSet(name, visible) {
+            calls.push(['addGlobalSet', name, visible]);
+            if (fail.addGlobalSet) throw new Error(fail.addGlobalSet);
+            globals.add(name);
+        },
+        removeGlobalSet(name) {
+            calls.push(['removeGlobalSet', name]);
+            if (fail.removeGlobalSet) throw new Error(fail.removeGlobalSet);
+            globals.delete(name);
+        },
+        listGlobalSets() { return [...globals]; },
+    };
+    return api;
+}
+
+assert.equal(getPhoneQuickReplyStatus(null).state, 'unavailable');
+await assert.rejects(() => ensurePhoneQuickReply(null), /未提供 Quick Reply API/);
+const createdQrApi = createQuickReplyApiFixture();
+assert.equal((await ensurePhoneQuickReply(createdQrApi)).state, 'ready');
+const createdQrSet = createdQrApi.getSetByName(PHONE_QR_SET_NAME);
+assert.equal(createdQrSet.qrList.length, 1);
+assert.equal(createdQrSet.qrList[0].label, PHONE_QR_LABEL);
+assert.equal(createdQrSet.qrList[0].message, PHONE_QR_MESSAGE);
+assert.equal(createdQrSet.qrList[0].automationId, PHONE_QR_AUTOMATION_ID);
+await ensurePhoneQuickReply(createdQrApi);
+assert.equal(createdQrSet.qrList.length, 1, '重复创建不得产生重复 Quick Reply');
+assert.equal(createdQrApi.calls.filter(call => call[0] === 'createQuickReply').length, 1);
+createdQrSet.qrList[0].message = '/broken';
+assert.equal(getPhoneQuickReplyStatus(createdQrApi).state, 'repairable');
+await ensurePhoneQuickReply(createdQrApi);
+assert.equal(createdQrSet.qrList[0].message, PHONE_QR_MESSAGE);
+
+const userConflictApi = createQuickReplyApiFixture({ set: {
+    name: PHONE_QR_SET_NAME,
+    qrList: [{ id: 9, label: PHONE_QR_LABEL, message: PHONE_QR_MESSAGE, automationId: 'user-owned' }],
+} });
+assert.equal(getPhoneQuickReplyStatus(userConflictApi).state, 'conflict');
+await assert.rejects(() => ensurePhoneQuickReply(userConflictApi), /无法证明属于天音小笺/);
+assert.equal(userConflictApi.getSetByName(PHONE_QR_SET_NAME).qrList[0].automationId, 'user-owned');
+
+const createFailureApi = createQuickReplyApiFixture({ fail: { createQuickReply: 'create-failed' } });
+await assert.rejects(() => ensurePhoneQuickReply(createFailureApi), /create-failed/);
+assert.equal(createFailureApi.getSetByName(PHONE_QR_SET_NAME), undefined, '创建条目失败必须回滚新集合');
+const missingIdApi = createQuickReplyApiFixture({ set: {
+    name: PHONE_QR_SET_NAME,
+    qrList: [{ label: PHONE_QR_LABEL, message: PHONE_QR_MESSAGE, automationId: PHONE_QR_AUTOMATION_ID }],
+} });
+await assert.rejects(() => ensurePhoneQuickReply(missingIdApi), /缺少稳定数字 ID/);
+
+const mixedSet = {
+    name: PHONE_QR_SET_NAME,
+    qrList: [
+        { id: 1, label: PHONE_QR_LABEL, message: PHONE_QR_MESSAGE, automationId: PHONE_QR_AUTOMATION_ID },
+        { id: 2, label: '用户按钮', message: '/help', automationId: 'user-owned' },
+    ],
+};
+const mixedClearApi = createQuickReplyApiFixture({ set: mixedSet, active: true });
+await clearPhoneQuickReply(mixedClearApi);
+assert.equal(mixedClearApi.getSetByName(PHONE_QR_SET_NAME), mixedSet);
+assert.deepEqual(mixedSet.qrList.map(qr => qr.id), [2], '清除不得误删用户 Quick Reply');
+assert.ok(mixedClearApi.listGlobalSets().includes(PHONE_QR_SET_NAME), '保留用户条目时必须恢复集合启用状态');
+const fullClearApi = createQuickReplyApiFixture({ set: {
+    name: PHONE_QR_SET_NAME,
+    qrList: [{ id: 1, label: PHONE_QR_LABEL, message: PHONE_QR_MESSAGE, automationId: PHONE_QR_AUTOMATION_ID }],
+}, active: true });
+await clearPhoneQuickReply(fullClearApi);
+assert.equal(fullClearApi.getSetByName(PHONE_QR_SET_NAME), undefined);
+const failedClearApi = createQuickReplyApiFixture({ set: structuredClone(mixedSet), active: true, fail: { deleteQuickReply: 'delete-failed' } });
+failedClearApi.getSetByName(PHONE_QR_SET_NAME).qrList.unshift({ id: 3, label: PHONE_QR_LABEL, message: PHONE_QR_MESSAGE, automationId: PHONE_QR_AUTOMATION_ID });
+await assert.rejects(() => clearPhoneQuickReply(failedClearApi), /delete-failed/);
+assert.ok(failedClearApi.listGlobalSets().includes(PHONE_QR_SET_NAME), '清除失败必须恢复原全局启用状态');
+
 import {
     handlePhonePageSuspension, installPhonePageSuspensionListeners, updatePhonePageSuspensionHandler,
 } from '../src/phone-foundation.js';
@@ -543,6 +668,13 @@ assert.equal(addOrUpdateProfile({ apiUrl: 'https://new.example', apiKey: 'new-ke
 assert.deepEqual(window.__pmProfiles, [{ apiUrl: 'https://old.example', apiKey: 'old-key', model: 'old-model' }]);
 assert.equal(JSON.parse(localValues.get('ST_SMS_API_PROFILES'))[0].apiUrl, 'https://old.example');
 
+const makeClassList = initial => {
+    const values = new Set(initial);
+    return {
+        contains: value => values.has(value),
+        toggle: (value, force) => { if (force) values.add(value); else values.delete(value); return !!force; },
+    };
+};
 const uiAlerts = [];
 const uiElements = new Map([
     ['pm-custom-title', { value: '  雨夜电台  ' }],
@@ -552,6 +684,11 @@ const uiElements = new Map([
     ['pm-cfg-url', { value: 'https://new.example' }],
     ['pm-cfg-key', { value: 'new-key' }],
     ['pm-cfg-model', { value: 'new-model' }],
+    ['pm-mode-main', { classList: makeClassList(['pm-mode-active']) }],
+    ['pm-mode-indep', { classList: makeClassList([]) }],
+    ['pm-mode-tip', { textContent: '主 API 使用宿主当前选择的预设与接口' }],
+    ['pm-indep-profile-fields', { hidden: true }],
+    ['pm-indep-config-fields', { hidden: true }],
     ['pm-overlay', { removed: false, remove() { this.removed = true; } }],
 ]);
 globalThis.alert = message => uiAlerts.push(String(message));
@@ -586,6 +723,10 @@ installSettingsUi({
     cancelCommunityGeneration: () => { importCancelCommunityCalls += 1; },
     getInteractiveStore: async () => ({ scopes: {} }),
 });
+const modeBeforeInvalidProfile = uiElements.get('pm-mode-main').classList.contains('pm-mode-active');
+window.__pmPickProfile(99);
+assert.equal(uiElements.get('pm-mode-main').classList.contains('pm-mode-active'), modeBeforeInvalidProfile, '无效档案索引不得改变 API 模式');
+assert.equal(uiElements.get('pm-cfg-url').value, 'https://new.example', '无效档案索引不得改变表单');
 
 const importInput = {
     files: [{ text: JSON.stringify({
@@ -690,14 +831,37 @@ assert.equal(uiElements.get('pm-overlay').removed, false);
 assert.match(uiAlerts.at(-1), /API 配置回滚也失败/);
 
 uiElements.get('pm-overlay').removed = false;
-window.__pmConfig = { apiUrl: 'https://old.example', apiKey: 'old-key', model: 'old-model', useIndependent: false };
-window.__pmProfiles = [{ apiUrl: 'https://old.example', apiKey: 'old-key', model: 'old-model' }];
+window.__pmProfiles = [{ apiUrl: 'https://profile.example/v1', apiKey: 'profile-key', model: 'profile-model' }];
+window.__pmPickProfile(0);
+assert.equal(uiElements.get('pm-indep-profile-fields').hidden, false);
+assert.equal(uiElements.get('pm-indep-config-fields').hidden, false);
+assert.equal(uiElements.get('pm-cfg-url').value, 'https://profile.example/v1');
+assert.equal(uiElements.get('pm-cfg-key').value, 'profile-key');
+assert.equal(uiElements.get('pm-cfg-model').value, 'profile-model');
+assert.equal(uiElements.get('pm-mode-main').classList.contains('pm-mode-active'), false);
+assert.equal(uiElements.get('pm-mode-indep').classList.contains('pm-mode-active'), true);
+assert.equal(uiElements.get('pm-mode-tip').textContent, '独立 API 必须填写地址、密钥和模型');
 assert.equal(window.__pmSaveConfig(), true);
-assert.equal(window.__pmConfig.apiUrl, 'https://new.example');
-assert.equal(JSON.parse(localValues.get('ST_SMS_CONFIG')).apiUrl, 'https://new.example');
-assert.equal(JSON.parse(localValues.get('ST_SMS_API_PROFILES')).some(profile => profile.apiUrl === 'https://new.example'), true);
+assert.equal(window.__pmConfig.apiUrl, 'https://profile.example/v1');
+assert.equal(window.__pmConfig.useIndependent, true, '选择独立 API 档案后保存必须启用独立路由');
+assert.equal(JSON.parse(localValues.get('ST_SMS_CONFIG')).useIndependent, true);
+assert.equal(JSON.parse(localValues.get('ST_SMS_API_PROFILES')).some(profile => profile.apiUrl === 'https://profile.example/v1'), true);
 assert.equal(uiElements.get('pm-overlay').removed, true);
-assert.match(uiNotes.at(-1), /已保存/);
+assert.match(uiNotes.at(-1), /独立API/);
+
+uiElements.get('pm-overlay').removed = false;
+window.__pmSetMode(false);
+assert.equal(uiElements.get('pm-indep-profile-fields').hidden, true);
+assert.equal(uiElements.get('pm-indep-config-fields').hidden, true);
+assert.equal(uiElements.get('pm-mode-main').classList.contains('pm-mode-active'), true);
+assert.equal(uiElements.get('pm-mode-indep').classList.contains('pm-mode-active'), false);
+assert.equal(uiElements.get('pm-mode-tip').textContent, '主 API 使用宿主当前选择的预设与接口');
+assert.equal(window.__pmSaveConfig(), true);
+assert.equal(window.__pmConfig.useIndependent, false, '用户手动切回主 API 后必须保留明确选择');
+assert.equal(JSON.parse(localValues.get('ST_SMS_CONFIG')).useIndependent, false);
+assert.match(uiNotes.at(-1), /主API/);
+assert.match(renderApiSettings({ cfg: { apiUrl: '', apiKey: '', model: '' }, useIndependent: false, profilesHtml: '' }), /id="pm-indep-config-fields"[^>]* hidden/);
+assert.doesNotMatch(renderApiSettings({ cfg: { apiUrl: '', apiKey: '', model: '' }, useIndependent: true, profilesHtml: '' }), /id="pm-indep-config-fields"[^>]* hidden/);
 delete globalThis.document;
 delete globalThis.alert;
 
@@ -1986,6 +2150,10 @@ assert.ok(baseDesktopHtml.length > 0, '无有效会话时基础桌面不得为�
 assert.match(baseDesktopHtml, /<span>天音小笺<\/span>/, '旧主题或无主题时桌面标题必须回退为品牌名');
 assert.match(baseDesktopHtml, /class="pm-desktop-community-dock"/);
 assert.match(baseDesktopHtml, /data-action="desktop-community" aria-label="发布一条"/);
+for (const [app, label] of [['chat', '聊天'], ['directory', '联系人'], ['settings', '设置'], ['calendar', '日历']]) {
+    assert.match(baseDesktopHtml, new RegExp(`data-app="${app}"[^>]*data-action="desktop-${app}"`));
+    assert.match(baseDesktopHtml, new RegExp(`<span class="pm-desktop-app-label">${label}</span>`));
+}
 for (const action of ['desktop-chat', 'desktop-directory', 'desktop-settings', 'desktop-calendar', 'desktop-community', 'desktop-exit']) {
     assert.ok(baseDesktopHtml.includes(`data-action="${action}"`), `基础桌面缺少 ${action} 入口`);
 }

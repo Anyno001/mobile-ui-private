@@ -4,6 +4,7 @@ export const CYCLE_STORE_VERSION = 1;
 
 export const CYCLE_LIMITS = Object.freeze({
     scopes: 80,
+    subjects: 40,
     overrides: 120,
     cycleMin: 21,
     cycleMax: 45,
@@ -16,8 +17,9 @@ export const CYCLE_OVERRIDE_TYPES = Object.freeze(['period', 'non_period']);
 
 const plainRecord = value => value && typeof value === 'object' && !Array.isArray(value)
     && (Object.getPrototypeOf(value) === Object.prototype || Object.getPrototypeOf(value) === null);
-const cleanText = (value, max) => String(value ?? '').trim().slice(0, max);
 const unsafeKey = value => value === 'prototype' || Object.hasOwn(Object.prototype, value);
+const SELF_SUBJECT = '__self__';
+const validSubject = value => value === SELF_SUBJECT || (!!value && value === value.trim() && value.length <= 120 && !unsafeKey(value));
 const integerInRange = (value, min, max) => Number.isInteger(Number(value))
     && Number(value) >= min && Number(value) <= max;
 
@@ -28,7 +30,7 @@ export function createEmptyCycleStore() {
 
 /** 创建一个空的生理周期 Scope */
 export function createEmptyCycleScope() {
-    return { enabled: false, lastPeriodStart: null, cycleLength: 28, periodLength: 5, overrides: {} };
+    return { enabled: false, lastPeriodStart: null, cycleLength: 28, periodLength: 5, overrides: {}, subjects: {} };
 }
 
 /** 归一化生理周期 Scope */
@@ -54,13 +56,24 @@ export function normalizeCycleScope(value) {
             count += 1;
         }
     }
-    return {
+    const normalized = {
         enabled: source.enabled === true,
         lastPeriodStart,
         cycleLength,
         periodLength: periodLengthRaw,
         overrides,
+        subjects: {},
     };
+    if (plainRecord(source.subjects)) {
+        for (const [subject, rawProfile] of Object.entries(source.subjects)) {
+            if (Object.keys(normalized.subjects).length >= CYCLE_LIMITS.subjects) break;
+            if (!validSubject(subject) || subject === SELF_SUBJECT || !plainRecord(rawProfile)) continue;
+            const profile = normalizeCycleScope({ ...rawProfile, subjects: {} });
+            delete profile.subjects;
+            normalized.subjects[subject] = profile;
+        }
+    }
+    return normalized;
 }
 
 /** 归一化生理周期 Store */
@@ -76,12 +89,19 @@ export function normalizeCycleStore(value) {
 }
 
 /** 获取指定 storageId 的生理周期 Scope，不存在时返回空 scope */
-export function cycleScopeFor(store, storageId) {
-    return normalizeCycleStore(store).scopes[storageId] || createEmptyCycleScope();
+export function cycleScopeFor(store, storageId, subject = SELF_SUBJECT) {
+    const scope = normalizeCycleStore(store).scopes[storageId] || createEmptyCycleScope();
+    if (subject === SELF_SUBJECT) return scope;
+    return scope.subjects?.[subject] || createEmptyCycleScope();
+}
+
+export function cycleSubjectKeys(store, storageId) {
+    const scope = normalizeCycleStore(store).scopes[storageId] || createEmptyCycleScope();
+    return [SELF_SUBJECT, ...Object.keys(scope.subjects || {})];
 }
 
 /** 更新或创建指定 storageId 的生理周期 Scope，返回新的 Store */
-export function upsertCycleScope(store, storageId, rawScope) {
+export function upsertCycleScope(store, storageId, rawScope, subject = SELF_SUBJECT) {
     const next = normalizeCycleStore(store);
     const id = String(storageId ?? '');
     if (!id || id !== id.trim() || id.length > 160 || unsafeKey(id)) throw new Error('storageId 无效');
@@ -98,16 +118,34 @@ export function upsertCycleScope(store, storageId, rawScope) {
     }
     if (rawScope.lastPeriodStart && !parseCalendarDate(rawScope.lastPeriodStart)) throw new Error('末次经期开始日期无效');
     const normalized = normalizeCycleScope(rawScope);
-    next.scopes[id] = normalized;
+    if (!validSubject(subject)) throw new Error('周期主体无效');
+    if (subject === SELF_SUBJECT) {
+        normalized.subjects = next.scopes[id]?.subjects || normalized.subjects;
+        next.scopes[id] = normalized;
+    } else {
+        const container = next.scopes[id] || createEmptyCycleScope();
+        const profile = { ...normalized };
+        delete profile.subjects;
+        container.subjects[subject] = profile;
+        next.scopes[id] = container;
+    }
     return next;
 }
 
 /** 清除指定 storageId 的生理周期 Scope，返回新的 Store */
-export function clearCycleScope(store, storageId) {
+export function clearCycleScope(store, storageId, subject = SELF_SUBJECT) {
     const next = normalizeCycleStore(store);
-    delete next.scopes[storageId];
+    if (subject === SELF_SUBJECT) {
+        const subjects = next.scopes[storageId]?.subjects || {};
+        if (Object.keys(subjects).length) next.scopes[storageId] = { ...createEmptyCycleScope(), subjects };
+        else delete next.scopes[storageId];
+    } else if (next.scopes[storageId]?.subjects) {
+        delete next.scopes[storageId].subjects[subject];
+    }
     return next;
 }
+
+export const CYCLE_SELF_SUBJECT = SELF_SUBJECT;
 
 /**
  * 计算目标日期在周期中的第几天（1-indexed）。

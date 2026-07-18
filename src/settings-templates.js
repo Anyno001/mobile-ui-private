@@ -4,6 +4,7 @@ export function renderSettingsHome() {
     return `
     <div class="pm-settings-home" role="list">
       <button type="button" role="listitem" onclick="window.__pmShowConfig('api')"><b>API</b><span>选择主 API 或配置独立接口、密钥与模型</span></button>
+      <button type="button" role="listitem" onclick="window.__pmShowConfig('quick-reply')"><b>快捷回复</b><span>在宿主中创建或清除执行 /phone 的 Quick Reply</span></button>
       <button type="button" role="listitem" onclick="window.__pmShowConfig('look')"><b>主题</b><span>日夜模式、气泡颜色与背景图</span></button>
       <button type="button" role="listitem" onclick="window.__pmShowConfig('backup')"><b>备份</b><span>导出、导入或安全清理插件数据</span></button>
       <button type="button" role="listitem" onclick="window.__pmShowConfig('budget')"><b>上下文预算</b><span>控制手机会话与社区写入主提示词的额度</span></button>
@@ -21,11 +22,11 @@ export function renderApiSettings({ cfg, useIndependent, profilesHtml }) {
         </div>
         <div id="pm-mode-tip" class="pm-cfg-tip" style="text-align:left;padding:6px 2px 0;">${useIndependent ? '独立 API 必须填写地址、密钥和模型' : '主 API 使用宿主当前选择的预设与接口'}</div>
       </div>
-      <div style="padding:6px 14px 4px;border-top:1px solid #f0f0f0;">
+      <div id="pm-indep-profile-fields" class="pm-independent-api-fields" ${useIndependent ? '' : 'hidden'} style="padding:6px 14px 4px;border-top:1px solid #f0f0f0;">
         <div class="pm-cfg-label" style="margin:8px 0 6px;">已保存档案</div>
         <div class="pm-prof-list">${profilesHtml}</div>
       </div>
-      <div style="padding:10px 16px;display:flex;flex-direction:column;gap:10px;border-top:1px solid #f0f0f0;">
+      <div id="pm-indep-config-fields" class="pm-independent-api-fields" ${useIndependent ? '' : 'hidden'} style="padding:10px 16px;display:flex;flex-direction:column;gap:10px;border-top:1px solid #f0f0f0;">
         <div class="pm-cfg-label">API 地址</div>
         <input id="pm-cfg-url" class="pm-cfg-input" placeholder="https://api.xxx.com 或 .../v1" value="${cfg.apiUrl}">
         <div class="pm-cfg-label">API Key</div>
@@ -42,6 +43,24 @@ export function renderApiSettings({ cfg, useIndependent, profilesHtml }) {
         </div>
       </div>
       <div style="height:12px;"></div>
+    </div>`;
+}
+
+export function renderQuickReplySettings(status) {
+    const descriptions = {
+        ready: '已创建并启用。点击快捷回复会执行 /phone。',
+        repairable: '检测到天音小笺快捷回复，但配置或启用状态需要修复。',
+        conflict: '存在同名集合，但无法证明属于天音小笺。为保护用户数据，禁止覆盖。',
+        absent: '尚未创建天音小笺快捷回复。',
+        unavailable: status.error || '当前宿主未提供可用的 Quick Reply API。',
+    };
+    return `<div class="pm-settings-page pm-quick-reply-settings">
+      <section><b>打开天音小笺</b><p>创建一个由本扩展管理、执行 <code>/phone</code> 的 SillyTavern Quick Reply。不会读取或改写宿主私有存储。</p></section>
+      <div id="pm-quick-reply-status" class="pm-cfg-tip" data-state="${status.state}" role="status">${descriptions[status.state] || descriptions.unavailable}</div>
+      <div class="pm-quick-reply-actions">
+        <button type="button" onclick="window.__pmEnsurePhoneQuickReply()">${status.state === 'ready' ? '检查并修复' : '创建快捷回复'}</button>
+        <button type="button" class="is-danger" onclick="window.__pmClearPhoneQuickReply()" ${status.state === 'absent' || status.state === 'unavailable' ? 'disabled' : ''}>清除快捷回复</button>
+      </div>
     </div>`;
 }
 

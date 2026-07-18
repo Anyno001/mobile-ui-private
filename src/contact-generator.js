@@ -13,10 +13,10 @@ function getDirectoryState(id) {
 }
 
 function setSpinning(active) {
-    const icon = document.getElementById('pm-autogen-icon');
     const button = document.getElementById('pm-autogen-btn');
+    const icon = button?.querySelector('svg');
     if (icon) icon.style.animation = active ? 'pm-spin 0.8s linear infinite' : '';
-    if (button) button.style.pointerEvents = active ? 'none' : '';
+    if (button) { button.disabled = active; button.setAttribute('aria-busy', String(active)); }
 }
 
 function buildPrompts(context, existingNames) {
@@ -187,6 +187,7 @@ export function installContactGenerator(state, deps) {
     const {
         getStorageId, gatherContext, callAI,
         beginGeneration, isGenerationTaskActive, finishGeneration,
+        commitDirectory = commitGeneratedDirectory,
     } = deps;
 
     window.__pmConfirmAutoGen = () => {
@@ -208,7 +209,9 @@ export function installContactGenerator(state, deps) {
             if (!isGenerationTaskActive(task)) return;
             const existingNames = [...directory.contacts, ...directory.groupNames];
             const { systemPrompt, userPrompt } = buildPrompts(context, existingNames);
-            const raw = await callAI(systemPrompt, userPrompt, { maxTokens: 600 });
+            const raw = await callAI(systemPrompt, userPrompt, {
+                maxTokens: 600, isolated: true, signal: task.signal,
+            });
             if (!isGenerationTaskActive(task)) return;
             const parsed = parseGeneratedDirectory(raw);
 
@@ -220,13 +223,19 @@ export function installContactGenerator(state, deps) {
                 context.userName,
             );
             if (!isGenerationTaskActive(task)) return;
-            await commitGeneratedDirectory({
+            const committed = await commitDirectory({
                 id,
                 candidates,
                 isActive: () => isGenerationTaskActive(task),
             });
+            if (!committed || !isGenerationTaskActive(task)) return;
             // 仅刷新仍然打开的联系人弹窗，避免异步完成后重新打开或污染其他界面。
-            if (document.getElementById('pm-autogen-btn')) await window.__pmShowList();
+            if (document.getElementById('pm-autogen-btn')) {
+                const resultParts = [];
+                if (candidates.contacts.length) resultParts.push(`${candidates.contacts.length} 位联系人`);
+                if (candidates.groups.length) resultParts.push(`${candidates.groups.length} 个群聊`);
+                await window.__pmShowAddContact(`已添加 ${resultParts.join('、')}`);
+            }
         } catch (error) {
             console.error('[phone-mode] __pmAutoGenContacts 异常', error);
             if (shouldReportGeneratedDirectoryError(error, isGenerationTaskActive(task))) {

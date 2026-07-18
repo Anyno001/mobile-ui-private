@@ -43,7 +43,7 @@ function getStoredHistory(id, saveKey) {
 export function installConversation(state, deps) {
     const {
         getStorageId, addNote, addBubble, addDirector, fitNameFont, applyBackground,
-        applyBidirectionalInjection,
+        applyBidirectionalInjection, resetEmojiRenderBudget,
     } = deps;
 
     window.__pmSwitchContact = async (key) => {
@@ -107,7 +107,9 @@ export function installConversation(state, deps) {
                 editBtn.classList.remove('is-hidden');
             }
             fitNameFont();
-            const list = state.phoneWindow.querySelector('.pm-msg-list'); list.innerHTML = '';
+            const list = state.phoneWindow.querySelector('.pm-msg-list');
+            list.innerHTML = '';
+            resetEmojiRenderBudget();
             if (state.conversationHistory.length > 0) {
                 addNote('历史记录');
                 state.conversationHistory.forEach((m, hi) => {

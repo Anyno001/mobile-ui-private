@@ -18,10 +18,10 @@ import {
     fetchWeatherForecast, normalizeWeatherStore, searchWeatherLocations, weatherCodeLabel,
 } from './calendar-weather.js';
 import {
-    clearCycleScope, cycleScopeFor, normalizeCycleStore, predictCyclePhase, upsertCycleScope,
+    CYCLE_SELF_SUBJECT, clearCycleScope, cycleScopeFor, cycleSubjectKeys, normalizeCycleStore, predictCyclePhase, upsertCycleScope,
 } from './calendar-cycle-model.js';
 import {
-    BACK_ICON_SVG, CALENDAR_ICON_SVG, REFRESH_ICON_SVG, WEATHER_ICON_SVG,
+    BACK_ICON_SVG, CALENDAR_ICON_SVG, CYCLE_ICON_SVG, REFRESH_ICON_SVG, TIME_ORIGIN_ICON_SVG, WEATHER_ICON_SVG,
 } from './icons.js';
 import {
     loadCalendar, loadCalendarCycles, loadCalendarHolidays, loadCalendarOccasions, loadCalendarWeather,
@@ -30,6 +30,7 @@ import {
 import {
     occasionTypeLabel, renderCalendarManagement, renderSelectedDateDetail,
 } from './calendar-view.js';
+import { createTaskController } from './calendar-task-controller.js';
 import { escapeAttr, escapeHtml } from './ui.js';
 
 const clone = value => JSON.parse(JSON.stringify(value));
@@ -39,7 +40,7 @@ const monthTitle = new Intl.DateTimeFormat('zh-CN', { year: 'numeric', month: 'l
 
 export const calendarGenerationErrorMessage = generationErrorMessage;
 const CALENDAR_WEEKDAYS = ['一', '二', '三', '四', '五', '六', '日'];
-const CYCLE_LABELS = { period: '经期', follicular: '卵泡期', ovulatory: '排卵期', luteal: '黄体期' };
+const CYCLE_LABELS = { period: '经期', follicular: '安全期', ovulatory: '易孕期', luteal: '安全期' };
 
 let lunarFormatter = null;
 try {
@@ -66,47 +67,6 @@ function lunarLabel(date) {
     } catch { return ''; }
 }
 
-function createTaskController(getStorageId) {
-    let epoch = 0, sequence = 0;
-    const tasks = new Map();
-    const slotFor = (storageId, category) => category === 'generate' ? `${category}\0${storageId}` : category;
-    const begin = (storageId, category, { replace = true, mode = category, parentSignal } = {}) => {
-        if (!storageId || storageId === 'sms_unknown__default' || getStorageId() !== storageId) return null;
-        const slot = slotFor(storageId, category);
-        const previous = tasks.get(slot);
-        if (previous && !replace) return null;
-        previous?.controller.abort('superseded');
-        const controller = new AbortController();
-        const abortFromParent = () => controller.abort(parentSignal?.reason || 'parent-cancelled');
-        if (parentSignal?.aborted) abortFromParent();
-        else parentSignal?.addEventListener?.('abort', abortFromParent, { once: true });
-        const task = Object.freeze({
-            id: ++sequence, epoch, storageId, category, mode, slot, controller, signal: controller.signal,
-            detachParent: () => parentSignal?.removeEventListener?.('abort', abortFromParent),
-        });
-        tasks.set(slot, task);
-        return task;
-    };
-    const active = task => !!task && !task.signal.aborted && task.epoch === epoch
-        && tasks.get(task.slot) === task && getStorageId() === task.storageId;
-    const finish = task => {
-        if (tasks.get(task?.slot) !== task) return false;
-        tasks.delete(task.slot);
-        task.detachParent?.();
-        return true;
-    };
-    const cancel = reason => {
-        epoch += 1;
-        for (const task of tasks.values()) {
-            task.controller.abort(reason);
-            task.detachParent?.();
-        }
-        tasks.clear();
-        return reason;
-    };
-    return { active, begin, cancel, finish };
-}
-
 function calendarDateMeta(scope, occasionsByDate, holidayCache, weatherStore, cycleScope, date, viewMode) {
     const parsed = parseCalendarDate(date);
     const events = scope.events[date] || [];
@@ -115,10 +75,11 @@ function calendarDateMeta(scope, occasionsByDate, holidayCache, weatherStore, cy
     const holidays = (holidayYear?.entries || []).filter(item => item.date === date);
     const weather = weatherStore?.lastSuccess?.forecast?.days?.find(item => item.date === date) || null;
     const cycle = predictCyclePhase(cycleScope, date);
-    const summary = viewMode === 'life'
-        ? (weather ? `${weatherCodeLabel(weather.weatherCode)} ${Math.round(weather.tempMax)}°` : '')
-            || (cycle.phase ? CYCLE_LABELS[cycle.phase] || cycle.phase : '') || lunarLabel(parsed)
-        : holidays[0]?.name || occasions[0]?.title || events[0]?.title || lunarLabel(parsed);
+    const summary = viewMode === 'weather'
+        ? (weather ? `${weatherCodeLabel(weather.weatherCode)} ${Math.round(weather.tempMax)}°` : '') || lunarLabel(parsed)
+        : viewMode === 'cycle'
+            ? (cycle.phase ? CYCLE_LABELS[cycle.phase] || cycle.phase : '') || lunarLabel(parsed)
+            : holidays[0]?.name || occasions[0]?.title || events[0]?.title || lunarLabel(parsed);
     return {
         parsed, events, occasions, holidays, weather, cycle, summary,
         hasSchedule: events.length > 0 || occasions.length > 0,
@@ -130,7 +91,7 @@ export function renderCalendarPageHtml(
     view = {},
 ) {
     const today = calendarReferenceDate(scope);
-    const viewMode = view.viewMode === 'life' ? 'life' : 'schedule';
+    const viewMode = ['schedule', 'weather', 'cycle'].includes(view.viewMode) ? view.viewMode : 'schedule';
     const viewYear = Number.isInteger(view.viewYear) ? view.viewYear : today.getFullYear();
     const viewMonth = Number.isInteger(view.viewMonth) ? view.viewMonth : today.getMonth() + 1;
     const monthCells = calendarMonthCells(viewYear, viewMonth);
@@ -154,8 +115,9 @@ export function renderCalendarPageHtml(
         if (meta.parsed.getMonth() !== viewMonth - 1) classes.push('is-other-month');
         if (date === todayKey) classes.push('is-today');
         if (date === selectedDate) classes.push('is-selected');
-        if (viewMode === 'life') {
+        if (viewMode === 'weather') {
             if (meta.weather) classes.push('has-weather');
+        } else if (viewMode === 'cycle') {
             if (meta.cycle.phase) classes.push(`has-cycle is-cycle-${meta.cycle.phase}`);
         } else {
             if (meta.hasSchedule) classes.push('has-schedule');
@@ -168,19 +130,22 @@ export function renderCalendarPageHtml(
     const selectedDetail = renderSelectedDateDetail(
         scope, occasionsByDate, holidayCache, weatherStore, cycleScope, selectedDate, viewMode,
     );
-    const headerAction = viewMode === 'life' ? 'calendar-weather-refresh' : 'calendar-generate';
-    const headerActionLabel = viewMode === 'life' ? '刷新天气' : calendarGenerationCopy(today).actionLabel;
+    const headerAction = viewMode === 'weather' ? 'calendar-weather-refresh' : viewMode === 'schedule' ? 'calendar-generate' : '';
+    const headerActionLabel = viewMode === 'weather' ? '刷新天气' : calendarGenerationCopy(today).actionLabel;
     const holidayCountry = normalizeHolidayCache(holidayCache).selectedCountry;
     const holidayRange = holidayYearRange(holidayCountry);
     const holidayAvailable = monthKeys.some(date => isHolidayYearSupported(holidayCountry, Number(date.slice(0, 4))));
     const management = renderCalendarManagement({
         scope, occasionScope, holidayCache, weatherStore, cycleScope, weatherResults, viewMode,
-        holidayAvailable, holidayRange,
+        holidayAvailable, holidayRange, editorKind: view.editorKind, cycleSubjects: view.cycleSubjects,
+        selectedCycleSubject: view.cycleSubject,
     });
     const baseDate = scope.baseDate || '';
+    const headerBusy = viewMode === 'schedule' && view.generating === true;
+    const headerButton = headerAction ? `<button type="button" class="pm-calendar-header-action ${headerBusy ? 'is-loading' : ''}" data-action="${headerAction}" aria-label="${headerActionLabel}" title="${headerActionLabel}" aria-busy="${headerBusy}" ${headerBusy ? 'disabled' : ''}>${REFRESH_ICON_SVG}</button>` : '<span></span>';
     return `<div id="pm-calendar-app" class="pm-calendar-shell" data-calendar-view-mode="${viewMode}">
-        <header class="pm-calendar-header"><button type="button" data-action="calendar-home" aria-label="返回桌面">${BACK_ICON_SVG}</button><div class="pm-calendar-title"><b>${escapeHtml(monthTitle.format(createCalendarDate(viewYear, viewMonth, 1)))}</b><label>时间起点<input type="text" inputmode="numeric" pattern="\\d{4}-\\d{2}-\\d{2}" placeholder="YYYY-MM-DD" data-calendar-base-date value="${escapeAttr(baseDate)}" aria-label="自定义时间起点"></label><span><button type="button" data-action="calendar-base-save">应用</button>${baseDate ? '<button type="button" data-action="calendar-base-clear">设备时间</button>' : ''}</span></div><button type="button" data-action="${headerAction}" aria-label="${headerActionLabel}" title="${headerActionLabel}">${REFRESH_ICON_SVG}</button></header>
-        <div class="pm-calendar-month-nav"><button type="button" class="pm-calendar-month-step" data-action="calendar-prev-month" aria-label="上个月">‹</button><div class="pm-calendar-nav-center"><button type="button" class="pm-calendar-today" data-action="calendar-today" aria-label="回到${baseDate ? '时间起点' : '本月'}">${baseDate ? '起点' : '今天'}</button><div class="pm-calendar-view-switch" role="group" aria-label="日历信息分类"><button type="button" data-action="calendar-mode-schedule" aria-label="显示日程与节日" aria-pressed="${viewMode === 'schedule'}" title="安排：日程、纪念日与节假日">${CALENDAR_ICON_SVG}</button><button type="button" data-action="calendar-mode-life" aria-label="显示天气与生理周期" aria-pressed="${viewMode === 'life'}" title="生活：天气与生理周期">${WEATHER_ICON_SVG}</button></div></div><button type="button" class="pm-calendar-month-step" data-action="calendar-next-month" aria-label="下个月">›</button></div>
+        <header class="pm-calendar-header"><button type="button" data-action="calendar-home" aria-label="返回桌面">${BACK_ICON_SVG}</button><div class="pm-calendar-title-row"><b>${escapeHtml(monthTitle.format(createCalendarDate(viewYear, viewMonth, 1)))}</b><details class="pm-calendar-base-menu"><summary aria-label="设置时间起点" title="时间起点">${TIME_ORIGIN_ICON_SVG}</summary><div><label>时间起点<input type="date" data-calendar-base-date value="${escapeAttr(baseDate)}" aria-label="自定义时间起点"></label><span><button type="button" data-action="calendar-base-save">应用</button>${baseDate ? '<button type="button" data-action="calendar-base-clear">设备时间</button>' : ''}</span></div></details></div>${headerButton}</header>
+        <div class="pm-calendar-month-nav"><button type="button" class="pm-calendar-month-step" data-action="calendar-prev-month" aria-label="上个月">‹</button><div class="pm-calendar-view-switch" role="group" aria-label="日历信息分类"><button type="button" data-action="calendar-mode-schedule" aria-label="显示日程与假日" aria-pressed="${viewMode === 'schedule'}" title="日程与假日">${CALENDAR_ICON_SVG}</button><button type="button" data-action="calendar-mode-weather" aria-label="显示天气" aria-pressed="${viewMode === 'weather'}" title="天气">${WEATHER_ICON_SVG}</button><button type="button" data-action="calendar-mode-cycle" aria-label="显示生理期" aria-pressed="${viewMode === 'cycle'}" title="生理期">${CYCLE_ICON_SVG}</button></div><button type="button" class="pm-calendar-month-step" data-action="calendar-next-month" aria-label="下个月">›</button></div>
         <div class="pm-calendar-month" aria-label="${viewYear}年${viewMonth}月月历"><div class="pm-calendar-weekdays">${CALENDAR_WEEKDAYS.map(day => `<span>周${day}</span>`).join('')}</div><div class="pm-calendar-month-grid">${days}</div></div>
         ${selectedDetail}
         <div class="pm-calendar-status" aria-live="polite">${escapeHtml(status)}</div>
@@ -208,7 +173,18 @@ export function installCalendar(state, deps) {
     };
     const scope = storageId => calendarScopeFor(runtime.store, storageId);
     const occasions = storageId => occasionScopeFor(runtime.occasionStore, storageId);
-    const cycles = storageId => cycleScopeFor(runtime.cycleStore, storageId);
+    const cycleSubjectOptions = storageId => {
+        const names = state.isGroupChat ? state.groupMembers : [state.currentPersona];
+        const known = cycleSubjectKeys(runtime.cycleStore, storageId);
+        const ids = [CYCLE_SELF_SUBJECT, ...names.filter(Boolean).map(name => `role:${name}`), ...known];
+        const seen = new Set();
+        return ids.flatMap(value => {
+            if (!value || seen.has(value)) return [];
+            seen.add(value);
+            return [{ value, label: value === CYCLE_SELF_SUBJECT ? '我' : value.startsWith('role:') ? value.slice(5) : value }];
+        });
+    };
+    const cycles = (storageId, subject = CYCLE_SELF_SUBJECT) => cycleScopeFor(runtime.cycleStore, storageId, subject);
     const viewFor = storageId => {
         const existing = runtime.viewByStorage.get(storageId);
         if (existing) return existing;
@@ -216,7 +192,7 @@ export function installCalendar(state, deps) {
         const view = {
             viewYear: reference.getFullYear(), viewMonth: reference.getMonth() + 1,
             selectedDate: formatCalendarDate(reference),
-            viewMode: 'schedule',
+            viewMode: 'schedule', editorKind: 'event', cycleSubject: CYCLE_SELF_SUBJECT, generating: false,
         };
         runtime.viewByStorage.set(storageId, view);
         return view;
@@ -319,15 +295,19 @@ export function installCalendar(state, deps) {
         const normalized = normalizeCycleStore(nextStore);
         if (!saveCalendarCycles(normalized)) throw new Error('生理周期数据保存失败：浏览器存储不可用');
         runtime.cycleStore = normalized;
-        return cycles(storageId);
+        return cycles(storageId, viewFor(storageId).cycleSubject);
     };
     const render = (storageId = getStorageId()) => {
         const container = state.phoneWindow?.querySelector('.pm-calendar-page');
         if (!container) return false;
         container.innerHTML = renderCalendarPageHtml(
             scope(storageId), occasions(storageId), runtime.statusByStorage.get(storageId) || '',
-            runtime.holidayStore, runtime.weatherStore, cycles(storageId), runtime.weatherSearchResults,
-            viewFor(storageId),
+            runtime.holidayStore, runtime.weatherStore,
+            cycles(storageId, viewFor(storageId).cycleSubject), runtime.weatherSearchResults,
+            {
+                ...viewFor(storageId),
+                cycleSubjects: cycleSubjectOptions(storageId),
+            },
         );
         return true;
     };
@@ -459,9 +439,11 @@ export function installCalendar(state, deps) {
     async function generate(storageId = getStorageId(), mode = 'generate', { parentSignal } = {}) {
         const task = tasks.begin(storageId, 'generate', { replace: false, mode, parentSignal });
         if (!task) throw new Error('当前会话已有日历生成任务，或会话不可用');
-        const now = calendarReferenceDate(scope(storageId));
-        const generationCopy = calendarGenerationCopy(now, mode);
-        status(storageId, generationCopy.pending);
+        const currentView = viewFor(storageId);
+        const previousStatus = currentView.generationTask ? currentView.generationPreviousStatus : runtime.statusByStorage.get(storageId) || '';
+        runtime.viewByStorage.set(storageId, { ...currentView, generating: true, generationTask: task, generationPreviousStatus: previousStatus }); let statusSettled = false;
+        const now = calendarReferenceDate(scope(storageId)), generationCopy = calendarGenerationCopy(now, mode);
+        status(storageId, generationCopy.pending); rerender(storageId);
         try {
             const context = await gatherContext();
             if (!tasks.active(task)) return false;
@@ -481,15 +463,19 @@ export function installCalendar(state, deps) {
             }, task);
             if (!committed) return false;
             if (!tasks.active(task)) return false;
-            status(storageId, generationCopy.success);
+            status(storageId, generationCopy.success); statusSettled = true;
             rerender(storageId); return true;
         } catch (error) {
             if (error?.calendarRollbackError) throw error;
             if (!tasks.active(task)) return false;
-            status(storageId, `日历生成失败：${calendarGenerationErrorMessage(error)}`);
+            status(storageId, `日历生成失败：${calendarGenerationErrorMessage(error)}`); statusSettled = true;
             throw error;
         } finally {
-            tasks.finish(task);
+            tasks.finish(task); const latestView = viewFor(storageId);
+            if (latestView.generationTask === task) {
+                if (!statusSettled) status(storageId, previousStatus);
+                runtime.viewByStorage.set(storageId, { ...latestView, generating: false, generationTask: null, generationPreviousStatus: '' }); rerender(storageId);
+            }
         }
     }
 
@@ -501,9 +487,8 @@ export function installCalendar(state, deps) {
             if (!tasks.active(task)) return false;
             const reference = calendarReferenceDate(scope(storageId));
             const hasFutureEvents = calendarWeekKeys(reference, 7).some(date => (scope(storageId).events[date] || []).length);
-            if (!hasFutureEvents) return await generate(storageId, 'generate', { parentSignal: task.signal });
             rerender(storageId);
-            return true;
+            return hasFutureEvents;
         } finally {
             tasks.finish(task);
         }
@@ -538,6 +523,17 @@ export function installCalendar(state, deps) {
         form.elements.title.focus();
     };
     const occasionEditor = app => app?.querySelector('[data-calendar-occasion-editor]');
+    const activateEditorKind = (storageId, app, kind) => {
+        const editorKind = kind === 'occasion' ? 'occasion' : 'event';
+        const current = viewFor(storageId);
+        runtime.viewByStorage.set(storageId, { ...current, editorKind });
+        const eventForm = editor(app), occasionForm = occasionEditor(app);
+        if (eventForm) eventForm.hidden = editorKind === 'occasion';
+        if (occasionForm) occasionForm.hidden = editorKind !== 'occasion';
+        for (const control of app?.querySelectorAll?.('[data-action="calendar-editor-kind"]') || []) {
+            control.setAttribute('aria-pressed', String(control.dataset.editorKind === editorKind));
+        }
+    };
     const clearOccasionEditor = app => {
         const form = occasionEditor(app);
         if (!form) return;
@@ -574,17 +570,6 @@ export function installCalendar(state, deps) {
             rerender(storageId);
             return;
         }
-        if (action === 'calendar-today') {
-            const today = calendarReferenceDate(scope(storageId));
-            const current = viewFor(storageId);
-            runtime.viewByStorage.set(storageId, {
-                ...current,
-                viewYear: today.getFullYear(), viewMonth: today.getMonth() + 1,
-                selectedDate: formatCalendarDate(today),
-            });
-            rerender(storageId);
-            return;
-        }
         if (action === 'calendar-base-save') {
             const value = app?.querySelector('[data-calendar-base-date]')?.value || '';
             const parsed = parseCalendarDate(value);
@@ -604,11 +589,15 @@ export function installCalendar(state, deps) {
             status(storageId, '已恢复设备日期作为时间起点。');
             rerender(storageId); return;
         }
-        if (action === 'calendar-mode-schedule' || action === 'calendar-mode-life') {
+        if (['calendar-mode-schedule', 'calendar-mode-weather', 'calendar-mode-cycle'].includes(action)) {
             const current = viewFor(storageId);
-            const viewMode = action === 'calendar-mode-life' ? 'life' : 'schedule';
+            const viewMode = action.slice('calendar-mode-'.length);
             runtime.viewByStorage.set(storageId, { ...current, viewMode });
             rerender(storageId);
+            return;
+        }
+        if (action === 'calendar-editor-kind') {
+            activateEditorKind(storageId, app, button.dataset.editorKind);
             return;
         }
         if (action === 'calendar-select-date') {
@@ -650,36 +639,53 @@ export function installCalendar(state, deps) {
         if (action === 'calendar-cycle-save') {
             const form = app?.querySelector('[data-calendar-cycle-editor]');
             if (!form) return;
+            const currentView = viewFor(storageId);
+            const subject = form.elements.subject?.value || currentView.cycleSubject || CYCLE_SELF_SUBJECT;
+            const reference = calendarReferenceDate(scope(storageId));
+            const requestedDay = Number(form.elements.periodStartDay.value);
+            let anchor = createCalendarDate(reference.getFullYear(), reference.getMonth() + 1, requestedDay);
+            if (!anchor || anchor > reference) {
+                const previousMonth = shiftCalendarMonth(reference.getFullYear(), reference.getMonth() + 1, -1);
+                anchor = createCalendarDate(previousMonth.year, previousMonth.month, requestedDay);
+            }
+            if (!anchor) throw new Error('经期开始日不适用于当前月份，请选择 1 到 28 日');
             const nextStore = upsertCycleScope(runtime.cycleStore, storageId, {
                 enabled: form.elements.enabled.checked,
-                lastPeriodStart: form.elements.lastPeriodStart.value || null,
+                lastPeriodStart: form.elements.enabled.checked ? formatCalendarDate(anchor) : null,
                 cycleLength: Number(form.elements.cycleLength.value),
                 periodLength: Number(form.elements.periodLength.value),
-                overrides: cycles(storageId).overrides,
-            });
+                overrides: cycles(storageId, subject).overrides,
+            }, subject);
+            runtime.viewByStorage.set(storageId, { ...currentView, cycleSubject: subject });
             commitCycle(storageId, nextStore);
             await deps.applyBidirectionalInjection?.();
-            status(storageId, '生理周期设置已保存，并已刷新生活日历正文。');
+            status(storageId, '生理期提示已保存。预测仅供提醒，不能用于避孕判断。');
             rerender(storageId);
             return;
         }
         if (action === 'calendar-cycle-clear') {
-            if (!confirm('清除当前角色与聊天的生理周期资料？')) return;
-            commitCycle(storageId, clearCycleScope(runtime.cycleStore, storageId));
+            const subject = app?.querySelector('[data-calendar-cycle-editor]')?.elements.subject?.value || viewFor(storageId).cycleSubject || CYCLE_SELF_SUBJECT;
+            if (!confirm('清除当前所选角色的生理期资料？')) return;
+            commitCycle(storageId, clearCycleScope(runtime.cycleStore, storageId, subject));
             await deps.applyBidirectionalInjection?.();
-            status(storageId, '当前角色与聊天的生理周期资料已清除，并已刷新生活日历正文。');
+            status(storageId, '所选角色的生理期资料已清除。');
             rerender(storageId);
             return;
         }
+        if (action === 'calendar-cycle-subject') {
+            const current = viewFor(storageId);
+            runtime.viewByStorage.set(storageId, { ...current, cycleSubject: button.value || CYCLE_SELF_SUBJECT });
+            rerender(storageId); return;
+        }
         if (action === 'calendar-toggle-auto') {
             await commitScope(storageId, current => ({ ...current, autoAdjust: !current.autoAdjust }));
-            status(storageId, scope(storageId).autoAdjust ? '自动调整已开启。角色回复完成后会根据当前上下文修正日程。' : '自动调整已关闭。');
+            status(storageId, scope(storageId).autoAdjust ? '自动识别已开启。角色回复完成后会从当前上下文识别明确日期日程。' : '自动识别已关闭。');
             rerender(storageId); return;
         }
         if (action === 'calendar-edit') {
             const event = findCalendarEvent(scope(storageId), button.dataset.eventId);
             if (!event) throw new Error('日程不存在或已被删除');
-            fillEditor(app, event); return;
+            activateEditorKind(storageId, app, 'event'); fillEditor(app, event); return;
         }
         if (action === 'calendar-delete') {
             const event = findCalendarEvent(scope(storageId), button.dataset.eventId);
@@ -692,6 +698,7 @@ export function installCalendar(state, deps) {
         if (action === 'calendar-occasion-edit') {
             const occasion = findOccasion(occasions(storageId), button.dataset.occasionId);
             if (!occasion) throw new Error('生日或纪念日不存在或已被删除');
+            activateEditorKind(storageId, app, 'occasion');
             fillOccasionEditor(app, occasion); return;
         }
         if (action === 'calendar-occasion-delete') {
@@ -764,8 +771,8 @@ export function installCalendar(state, deps) {
     async function observeTurn() {
         const storageId = getStorageId();
         if (!scope(storageId).autoAdjust) return false;
-        try { return await generate(storageId, 'adjust'); }
-        catch (error) { console.warn('[phone-mode] 日历自动调整失败', error); return false; }
+        try { return await scanContext(storageId, { silent: true }); }
+        catch (error) { console.warn('[phone-mode] 日历自动识别失败', error); return false; }
     }
 
     Object.assign(deps, {

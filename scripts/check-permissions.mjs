@@ -502,14 +502,51 @@ const fullCalendarBody = renderCalendarContextInjection({
 assert.match(fullCalendarBody, /项目评审会/);
 assert.match(fullCalendarBody, /生日：角色生日/);
 assert.match(fullCalendarBody, /节假日：生活节/);
-assert.match(fullCalendarBody, /天气：少云，20°\/30°C/);
-assert.match(fullCalendarBody, /生理周期：经期/);
+assert.doesNotMatch(fullCalendarBody, /天气：|少云|20°\/30°C/, '日历上下文注入不得包含天气');
+assert.doesNotMatch(fullCalendarBody, /生理周期：|经期/, '日历上下文注入不得包含生理周期');
 const otherStorageBody = renderCalendarContextInjection({
     currentStorageId: 'story-b', calendarStore: calendarStoreWithEvents,
     occasionStore: { version: 1, scopes: { 'story-a': { occasions: [{ id: 'private', type: 'birthday', month: todayParts[1], day: todayParts[2], title: '私密生日' }] } } },
     start: now,
 });
 assert.doesNotMatch(otherStorageBody, /角色生日|私密生日|项目评审会/, '生活日历不得串用其他 storageId 的私有数据');
+
+const storyDate = '2032-03-15';
+const storyCalendarPlan = buildContextInjectionPrompts({
+    ...baseInjectionInput,
+    budgetConfig: {
+        targetTokens: 2000,
+        calendarEnabled: true,
+        calendarPosition: 1,
+        calendarDepth: 2,
+        sourceWeights: { phone: 0, community: 0, calendar: 1 },
+        sourcePriority: ['calendar', 'phone', 'community'],
+        redistributeUnused: true,
+    },
+    calendarStore: { version: 1, scopes: { 'story-a': {
+        baseDate: storyDate, autoAdjust: false,
+        events: {
+            [storyDate]: [{ id: 'story-event', date: storyDate, title: '架空纪元会议', note: '', source: 'manual', createdAt: 1, updatedAt: 1 }],
+            [today]: [{ id: 'device-event', date: today, title: '设备日期诱饵', note: '', source: 'manual', createdAt: 1, updatedAt: 1 }],
+        },
+        lastGeneratedAt: 0, lastAdjustedAt: 0,
+    } } },
+    calendarOccasions: { version: 1, scopes: { 'story-a': { occasions: [{
+        id: 'story-occasion', type: 'anniversary', month: 3, day: 15, title: '架空纪念日', note: '', leapDayRule: 'feb28', createdAt: 1, updatedAt: 1,
+    }] } } },
+    calendarHolidays: { version: 1, selectedCountry: 'CN', years: { 'CN:2032': {
+        country: 'CN', year: 2032, fetchedAt: 1, source: 'test', entries: [{ date: storyDate, name: '架空节', kind: 'holiday', source: 'test' }],
+    } } },
+    calendarWeather: { version: 1, lastSuccess: { forecast: { days: [{ date: storyDate, weatherCode: 1, tempMin: 10, tempMax: 20 }] } } },
+    calendarCycles: { version: 1, scopes: { 'story-a': { enabled: true, lastPeriodStart: storyDate, cycleLength: 28, periodLength: 5, overrides: {} } } },
+});
+const storyCalendarPrompt = storyCalendarPlan.prompts.find(prompt => prompt.key.includes(':calendar:'));
+assert.ok(storyCalendarPrompt, '配置时间起点时应生成日历 prompt');
+assert.match(storyCalendarPrompt.content, /2032-03-15｜架空纪元会议/);
+assert.match(storyCalendarPrompt.content, /2032-03-15｜纪念日：架空纪念日/);
+assert.match(storyCalendarPrompt.content, /2032-03-15｜节假日：架空节/);
+assert.doesNotMatch(storyCalendarPrompt.content, /设备日期诱饵|天气：|生理周期：/,
+    '最终日历 prompt 必须使用 scope.baseDate 窗口且排除天气和周期');
 
 // 4. Cross-storage: only currentStorageId's events
 const calendarStoreCrossStorage = {

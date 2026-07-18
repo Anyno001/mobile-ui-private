@@ -3,9 +3,12 @@ import { extractAiResponseContent } from './ai.js';
 import { normalizeBudgetConfig } from './budget.js';
 import { THEME_PRESETS, normalizeApiUrls } from './config.js';
 import { openCropper } from './cropper.js';
+import { createApiDraftMode } from './settings-api-mode.js';
+import { installQuickReplySettings } from './settings-quick-reply.js';
 import {
-    renderApiSettings, renderBackupSettings, renderBudgetSettings, renderLookSettings, renderSettingsHome, renderSettingsModal,
-    resolveBudgetPercentageInput } from './settings-templates.js';
+    renderApiSettings, renderBackupSettings, renderBudgetSettings, renderLookSettings, renderSettingsHome,
+    renderSettingsModal, resolveBudgetPercentageInput,
+} from './settings-templates.js';
 import {
     applyCalendarBackupFields, createBackupStateHandlers, createEmptyCalendarBackupFields, runBackupTransaction,
 } from './settings-backup.js';
@@ -314,7 +317,8 @@ export function installSettingsUi(deps) {
         apply: applyBackupState,
         persist: persistBackupState,
     } = createBackupStateHandlers(deps);
-    let apiDraftUseIndependent = false;
+    const quickReplySettings = installQuickReplySettings({ makeOverlay, addNote });
+    const apiDraftMode = createApiDraftMode();
     let backgroundMutation = Promise.resolve();
     const injectionFailure = (result, phase) => {
         const failedWrites = Number.isInteger(result?.failedWrites) && result.failedWrites > 0 ? result.failedWrites : 0;
@@ -381,13 +385,9 @@ export function installSettingsUi(deps) {
         const p = window.__pmProfiles[idx]; if (!p) return;
         const u = document.getElementById('pm-cfg-url'), k = document.getElementById('pm-cfg-key'), m = document.getElementById('pm-cfg-model');
         if (u) u.value = p.apiUrl || ''; if (k) k.value = p.apiKey || ''; if (m) m.value = p.model || '';
+        apiDraftMode.set(true);
     };
-    window.__pmSetMode = (v) => {
-        apiDraftUseIndependent = !!v;
-        const a = document.getElementById('pm-mode-main'), b = document.getElementById('pm-mode-indep'), t = document.getElementById('pm-mode-tip');
-        if (a && b) { a.classList.toggle('pm-mode-active', !v); b.classList.toggle('pm-mode-active', !!v); }
-        if (t) t.textContent = v ? '独立 API 必须填写地址、密钥和模型' : '主 API 使用宿主当前选择的预设与接口';
-    };
+    window.__pmSetMode = value => apiDraftMode.set(value);
     window.__pmToggleWordyLimit = () => {
         const previous = window.__pmWordyLimit === true;
         window.__pmWordyLimit = !previous;
@@ -546,6 +546,10 @@ export function installSettingsUi(deps) {
             makeOverlay(renderSettingsModal({ title: '数据备份', content: renderBackupSettings() }));
             return;
         }
+        if (page === 'quick-reply') {
+            quickReplySettings.showPage();
+            return;
+        }
         if (page === 'budget') {
             const config = normalizeBudgetConfig(window.__pmBudgetConfig);
             const storageId = getStorageId();
@@ -571,14 +575,14 @@ export function installSettingsUi(deps) {
             ? window.__pmProfiles.map((p, i) => `<div class="pm-prof-li"><div class="pm-prof-info" onclick="window.__pmPickProfile(${i})"><div class="pm-prof-url">${escapeHtml(shortUrl(p.apiUrl))}</div><div class="pm-prof-meta">${escapeHtml(maskKey(p.apiKey))}${p.model ? ' · ' + escapeHtml(p.model) : ''}</div></div><button type="button" class="pm-prof-del" onclick="window.__pmDeleteProfile(${i})">删除</button></div>`).join('')
             : '<div class="pm-prof-empty">暂无档案</div>';
         if (page === 'api') {
-            apiDraftUseIndependent = !!cfg.useIndependent;
+            apiDraftMode.set(cfg.useIndependent);
             const content = renderApiSettings({
                 cfg: {
                     apiUrl: escapeAttr(cfg.apiUrl || ''),
                     apiKey: escapeAttr(cfg.apiKey || ''),
                     model: escapeAttr(cfg.model || ''),
                 },
-                useIndependent: apiDraftUseIndependent,
+                useIndependent: apiDraftMode.current(),
                 profilesHtml,
             });
             const footer = '<div class="pm-modal-add"><button onclick="window.__pmSaveConfig()" style="width:100%;background:#007aff;color:#fff;border:none;border-radius:10px;padding:10px;font-size:13px;cursor:pointer;font-weight:600;">保存 API 设置</button></div>';
@@ -745,12 +749,12 @@ export function installSettingsUi(deps) {
     };
     window.__pmSaveConfig = () => {
         const apiUrl = document.getElementById('pm-cfg-url')?.value.trim() ?? '', apiKey = document.getElementById('pm-cfg-key')?.value.trim() ?? '', model = document.getElementById('pm-cfg-model')?.value.trim() ?? '';
-        if (apiDraftUseIndependent && (!apiUrl || !apiKey || !model)) {
+        if (apiDraftMode.current() && (!apiUrl || !apiKey || !model)) {
             const status = document.getElementById('pm-api-status');
             if (status) { status.textContent = '独立 API 必须填写地址、密钥和模型'; status.style.color = '#ff3b30'; }
             return;
         }
-        const previous = clone(window.__pmConfig), candidate = { apiUrl, apiKey, model, useIndependent: apiDraftUseIndependent };
+        const previous = clone(window.__pmConfig), candidate = { apiUrl, apiKey, model, useIndependent: apiDraftMode.current() };
         window.__pmConfig = candidate;
         try { localStorage.setItem('ST_SMS_CONFIG', JSON.stringify(candidate)); }
         catch (error) { window.__pmConfig = previous; alert('API 配置保存失败：浏览器存储不可用。'); return false; }

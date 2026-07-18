@@ -47,12 +47,27 @@ export async function migrateInteractiveStore(rawStore, saveStore) {
     return normalized;
 }
 
-export function createInteractiveCommitQueue({ getStore, setStore, saveStore }) {
+export function createInteractiveOperationGuard({ getEpoch, getStorageId, getOpenSceneId, isMounted }, { epoch, storageId, sceneId }) {
+    if (![getEpoch, getStorageId, getOpenSceneId, isMounted].every(value => typeof value === 'function')) {
+        throw new TypeError('社区操作有效性依赖无效');
+    }
+    return () => {
+        const expectedSceneId = typeof sceneId === 'function' ? sceneId() : sceneId;
+        return getEpoch() === epoch
+            && getStorageId() === storageId
+            && (!expectedSceneId || getOpenSceneId() === expectedSceneId)
+            && isMounted();
+    };
+}
+
+export function createInteractiveCommitQueue({ getStore, setStore, saveStore, syncStore = null }) {
+    if (syncStore !== null && typeof syncStore !== 'function') throw new TypeError('互动场景同步依赖无效');
     let queue = Promise.resolve();
     const commit = (mutator, isValid = null, context = '操作') => {
         const operation = queue.catch(() => {}).then(async () => {
             const snapshot = cloneStore(getStore());
-            if (isValid && !isValid()) throw new Error('文字直播已停止');
+            const cancelled = () => new Error(context === '操作' ? '文字直播已停止' : `${context}已取消`);
+            if (isValid && !isValid()) throw cancelled();
             let result;
             try {
                 result = await mutator();
@@ -60,26 +75,26 @@ export function createInteractiveCommitQueue({ getStore, setStore, saveStore }) 
                 setStore(snapshot);
                 throw error;
             }
-            let saveCompleted = false;
+            let failure = null;
             try {
                 await saveStore(normalizeInteractiveStore(getStore()));
-                saveCompleted = true;
-            } finally {
-                const needCompensation = !saveCompleted || (isValid && !isValid());
-                if (needCompensation) {
-                    setStore(snapshot);
-                    try {
-                        await saveStore(snapshot);
-                    } catch (compensationError) {
-                        const rootMsg = saveCompleted ? '文字直播已停止，但持久层部分数据可能已写入' : '保存失败；内存和部分持久化已恢复';
-                        const combined = new Error(`${rootMsg}；补偿持久化也失败：${compensationError.message}`);
-                        combined.cause = compensationError;
-                        throw combined;
-                    }
-                }
-                if (saveCompleted && isValid && !isValid()) throw new Error('文字直播已停止');
+                await syncStore?.();
+                if (isValid && !isValid()) throw cancelled();
+                return result;
+            } catch (error) {
+                failure = error;
             }
-            return result;
+            setStore(snapshot);
+            try {
+                await saveStore(snapshot);
+                await syncStore?.();
+            } catch (compensationError) {
+                const combined = new Error(`${failure.message}；补偿持久化或同步也失败：${compensationError.message}`);
+                combined.cause = failure;
+                combined.rollbackError = compensationError;
+                throw combined;
+            }
+            throw failure;
         });
         queue = operation;
         return operation;
@@ -151,8 +166,8 @@ export async function runDesktopPageTransition({
 export function installInteractiveScenes(_state, deps) {
     const { getCtx, getStorageId, getUserPersona, gatherContext, callAI } = deps;
     const runtime = {
-        store: null, loadPromise: null, mutationPromise: Promise.resolve(), requestId: 0,
-        loadGeneration: 0, openSceneId: null, busy: false, creating: false, phoneUiState: null,
+        store: null, loadPromise: null, mutationPromise: Promise.resolve(), requestId: 0, contextEpoch: 0,
+        loadGeneration: 0, openSceneId: null, busy: false, creating: false, phoneUiState: null, requestController: null,
     };
     const storeLoader = createInteractiveStoreLoader({
         runtime,
@@ -200,6 +215,12 @@ export function installInteractiveScenes(_state, deps) {
         && runtime.openSceneId === target?.sceneId
         && !!resolveTarget(target).scene
         && document.querySelector('#pm-iphone .pm-main-ui')?.dataset.page === 'community';
+    const operationGuard = (storageId, sceneId = () => runtime.openSceneId) => createInteractiveOperationGuard({
+        getEpoch: () => runtime.contextEpoch,
+        getStorageId,
+        getOpenSceneId: () => runtime.openSceneId,
+        isMounted: () => !!document.getElementById('pm-scene-app'),
+    }, { epoch: runtime.contextEpoch, storageId, sceneId });
     const communityTasks = createCommunityTaskController({
         runtime,
         isTargetActive,
@@ -211,13 +232,17 @@ export function installInteractiveScenes(_state, deps) {
         getStore: () => runtime.store,
         setStore: store => { runtime.store = store; },
         saveStore: saveInteractiveScenes,
+        syncStore: () => deps.applyBidirectionalInjection?.(),
     });
-    const commit = async (...args) => {
-        const result = await queuedCommit(...args);
-        await deps.applyBidirectionalInjection?.();
-        return result;
+    const commit = queuedCommit;
+    const invalidate = (reason = 'community-context-invalidated') => {
+        runtime.contextEpoch += 1;
+        communityRunner?.cancel(reason, true);
+        runtime.requestController?.abort(reason);
+        runtime.requestController = null;
+        runtime.requestId += 1;
+        runtime.busy = false;
     };
-    const invalidate = (reason = 'community-context-invalidated') => { communityRunner?.cancel(reason, true); runtime.requestId += 1; runtime.busy = false; };
     const setStatus = text => { const el = document.querySelector('.pm-scene-status'); if (el) el.textContent = text || ''; };
     const confirmDelete = message => window.confirm(message);
 
@@ -324,7 +349,9 @@ export function installInteractiveScenes(_state, deps) {
         const { scopeId, scene } = target ? resolveTarget(target) : current();
         if (!scene || scopeId === 'sms_unknown__default') throw new Error('当前宿主会话不可用');
         const scope = runtime.store.scopes[scopeId];
+        const controller = new AbortController();
         runtime.busy = true;
+        runtime.requestController = controller;
         const requestId = ++runtime.requestId;
         setStatus('AI 正在生成…');
         try {
@@ -338,11 +365,13 @@ export function installInteractiveScenes(_state, deps) {
             const raw = await callAI(prompts.systemPrompt, prompts.userPrompt, {
                 maxTokens: kind === 'style_prompt' ? 700 : 1400,
                 isolated: true,
+                signal: controller.signal,
             });
             if (requestId !== runtime.requestId || !document.getElementById('pm-scene-app')) throw new Error('生成已取消');
             return parseInteractiveResponse(raw, kind);
         } finally {
             if (requestId === runtime.requestId) {
+                runtime.requestController = null;
                 runtime.busy = false;
                 setStatus('');
             }
@@ -402,16 +431,19 @@ export function installInteractiveScenes(_state, deps) {
     async function createScene(app) {
         if (runtime.creating || runtime.busy) throw new Error('已有生成任务正在进行');
         runtime.creating = true;
+        let createdSceneId = null;
         try {
             const scopeId = getStorageId();
             if (!scopeId || scopeId === 'sms_unknown__default') throw new Error('请先打开有效的角色聊天');
             const preset = app.querySelector('.pm-scene-preset.is-active')?.dataset.preset || 'weibo';
             const styleInput = app.querySelector('#pm-scene-style')?.value.trim() || '';
             if (preset === 'custom' && !styleInput) throw new Error('自定义风格不能为空');
+            const isValid = operationGuard(scopeId, () => createdSceneId);
             await loadStore();
             await commit(async () => {
                 const scope = getScope(runtime.store, scopeId);
                 const scene = normalizeScene({ id: uid('scene'), title: '正在生成社区…', preset, styleInput });
+                createdSceneId = scene.id;
                 scope.scenes[scene.id] = scene;
                 scope.sceneOrder.push(scene.id);
                 scope.activeSceneId = scene.id;
@@ -420,7 +452,8 @@ export function installInteractiveScenes(_state, deps) {
                 scene.title = style.title;
                 scene.generatedPrompt = style.prompt;
                 enforceInteractiveSceneLimit(scope);
-            });
+            }, isValid, '创建社区');
+            if (!isValid()) throw new Error('生成已取消');
             updatePhoneUiScope(scopeId, { lastPage: 'community', lastSceneId: runtime.openSceneId, lastTab: 'feed' });
             refreshDesktop(scopeId);
             rerender('feed');
@@ -430,7 +463,7 @@ export function installInteractiveScenes(_state, deps) {
                 if (error.message !== '生成已取消') setStatus(`社区已创建；AI 热场失败：${generationErrorMessage(error)}`);
             }
         } catch (error) {
-            runtime.openSceneId = null;
+            if (runtime.openSceneId === createdSceneId) runtime.openSceneId = null;
             throw error;
         } finally {
             runtime.creating = false;
@@ -455,12 +488,14 @@ export function installInteractiveScenes(_state, deps) {
     });
 
     async function generateComments(postId) {
-        const { scene } = current();
+        const { scopeId, scene } = current();
         const post = scene?.posts.find(item => item.id === postId);
         if (!post) throw new Error('帖子不存在');
+        const isValid = operationGuard(scopeId, scene.id);
         const items = await request('comment_batch', { post: post.content });
         await commit(() => {
             const { scopeId, scope, scene: currentScene } = current();
+            if (!currentScene) throw new Error('生成已取消');
             const seeds = actorSeeds(scopeId);
             ensureInteractiveActor(scope, scopeId, seeds.story);
             ensureInteractiveActor(scope, scopeId, seeds.user);
@@ -473,18 +508,24 @@ export function installInteractiveScenes(_state, deps) {
             })));
             currentPost.comments = currentPost.comments.slice(-INTERACTIVE_LIMITS.comments);
             currentScene.updatedAt = now();
-        });
+        }, isValid, '生成评论');
+        if (!isValid()) throw new Error('生成已取消');
         rerender('feed');
     }
 
     async function regeneratePrompt() {
+        const { scopeId, scene } = current();
+        if (!scene) throw new Error('社区不存在或已被删除');
+        const isValid = operationGuard(scopeId, scene.id);
         const [style] = await request('style_prompt');
         await commit(() => {
-            const { scene } = current();
-            scene.title = style.title;
-            scene.generatedPrompt = style.prompt;
-            scene.updatedAt = now();
-        });
+            const { scene: currentScene } = current();
+            if (!currentScene) throw new Error('生成已取消');
+            currentScene.title = style.title;
+            currentScene.generatedPrompt = style.prompt;
+            currentScene.updatedAt = now();
+        }, isValid, '重新生成社区提示词');
+        if (!isValid()) throw new Error('生成已取消');
         rerender('prompt');
     }
 

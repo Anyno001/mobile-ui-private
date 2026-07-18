@@ -3,6 +3,7 @@ import {
 } from './constants.js';
 import { normalizeBudgetConfig } from './budget.js';
 import { THEME_PRESETS } from './config.js';
+import { createEmojiRenderBudget } from './emoji-media.js';
 import { contrastText, cssUrlEscape, escapeHtml } from './ui.js';
 import { createBubbles } from './messaging.js';
 import { applyContextInjections, clearExtensionPrompts } from './phone-injection.js';
@@ -58,6 +59,10 @@ export function installPhoneFoundation(state, deps) {
     const beginAutomaticTask = automaticTasks.begin;
     const isAutomaticTaskActive = automaticTasks.isActive;
     const finishAutomaticTask = automaticTasks.finish;
+    let emojiRenderBudget = createEmojiRenderBudget();
+    const resetEmojiRenderBudget = () => {
+        emojiRenderBudget = createEmojiRenderBudget();
+    };
     // 监听器只注册一次，但每次安装都更新当前依赖，避免热重载后继续调用旧任务控制器。
     updatePhonePageSuspensionHandler(window, deps, disarmAutoPoke);
     installPhonePageSuspensionListeners(window, document);
@@ -101,11 +106,14 @@ export function installPhoneFoundation(state, deps) {
         const id = storageId || getStorageId();
         const context = getCtx();
         if (!context || !id || id === 'sms_unknown__default') return null;
+        const controller = new AbortController();
         const task = Object.freeze({
             id: ++state.generationSequence,
             hostEpoch: state.hostEpoch,
             storageId: id,
             context,
+            controller,
+            signal: controller.signal,
         });
         state.generationTask = task;
         state.isGenerating = true;
@@ -129,6 +137,7 @@ export function installPhoneFoundation(state, deps) {
     }
 
     function invalidateGeneration() {
+        state.generationTask?.controller?.abort('generation-invalidated');
         state.hostEpoch += 1;
         state.generationTask = null;
         state.isGenerating = false;
@@ -253,8 +262,6 @@ export function installPhoneFoundation(state, deps) {
             calendarStore: getCalendarData('getCalendarStore'),
             calendarOccasions: getCalendarData('getCalendarOccasionStore'),
             calendarHolidays: getCalendarData('getCalendarHolidayStore'),
-            calendarWeather: getCalendarData('getCalendarWeatherStore'),
-            calendarCycles: getCalendarData('getCalendarCycleStore'),
         });
     }
 
@@ -380,6 +387,7 @@ export function installPhoneFoundation(state, deps) {
         const list = state.phoneWindow?.querySelector('.pm-msg-list'); if (!list) return [];
         const nodes = createBubbles(text, side, senderName, {
             groupColorMap: state.groupColorMap, groupMembers: state.groupMembers, emojis: window.__pmEmojis,
+            emojiBudget: emojiRenderBudget,
         });
         nodes.forEach(b => {
             applyBubbleMetadata(b, metadata);
@@ -482,7 +490,8 @@ export function installPhoneFoundation(state, deps) {
     Object.assign(deps, {
         applyTheme, applyBackground, fitNameFont, migrateOldHistory,
         applyBidirectionalInjection, clearBidirectionalInjection, hookGenerationEvent, bindIsland,
-        addBubble, addNote, addDirector, rebaseRenderedHistory, showTyping, hideTyping, makeOverlay, closeOverlay,
+        addBubble, addNote, addDirector, rebaseRenderedHistory, resetEmojiRenderBudget,
+        showTyping, hideTyping, makeOverlay, closeOverlay,
         beginGeneration, isGenerationTaskActive, finishGeneration,
         invalidateGeneration, syncGenerationControls,
         isAutoPokeAllowed, armAutoPoke, disarmAutoPoke,

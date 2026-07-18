@@ -1,7 +1,8 @@
 import { cleanResponse, splitToSentences } from './prompts.js';
 import { VOICE_MAX_SEC } from './constants.js';
 import { GROUP_COLORS } from './groups.js';
-import { contrastText, escapeHtml } from './ui.js';
+import { isRenderableEmojiSource } from './emoji-media.js';
+import { contrastText, escapeAttr, escapeHtml } from './ui.js';
 
 const SPECIAL_KEYWORDS = {
     '转账':'转账','transfer':'转账','Transfer':'转账','TRANSFER':'转账','轉賬':'转账','轉帳':'转账',
@@ -105,7 +106,7 @@ export function resolveGroupColor(name, groupColorMap, groupMembers) {
     return index >= 0 ? GROUP_COLORS[index % GROUP_COLORS.length] : null;
 }
 
-export function createBubbles(text, side, senderName, { groupColorMap, groupMembers, emojis }) {
+export function createBubbles(text, side, senderName, { groupColorMap, groupMembers, emojis, emojiBudget }) {
     const results = [];
     const specialPattern = new RegExp(SPECIAL_RE.source, 'gi');
     let lastIndex = 0;
@@ -196,9 +197,14 @@ export function createBubbles(text, side, senderName, { groupColorMap, groupMemb
             if (!element.innerHTML.includes('[emo:')) continue;
             element.innerHTML = element.innerHTML.replace(/\[emo:([^\]:]+):(\d+)\]/g, (raw, setName, index) => {
                 const url = findEmojiUrl(setName, parseInt(index, 10), emojis);
-                return url
-                    ? `<img src="${url.replace(/"/g, '&quot;')}" style="max-width:98px;border-radius:8px;display:block;box-shadow:0 2px 8px rgba(0,0,0,0.15);vertical-align:middle;">`
-                    : `<span style="font-size:12px;color:#999;">🤔[${setName}:${index}]</span>`;
+                if (!url) return `<span style="font-size:12px;color:#999;">🤔[${setName}:${index}]</span>`;
+                if (!isRenderableEmojiSource(url)) {
+                    return '<span style="font-size:12px;color:#999;">表情图片暂不加载</span>';
+                }
+                if (typeof emojiBudget === 'function' && !emojiBudget(url)) {
+                    return '<span style="font-size:12px;color:#999;">表情图片暂不加载</span>';
+                }
+                return `<img src="${escapeAttr(url)}" loading="lazy" decoding="async" width="98" height="98" style="width:98px;height:98px;object-fit:contain;border-radius:8px;display:block;box-shadow:0 2px 8px rgba(0,0,0,0.15);vertical-align:middle;">`;
             });
             const imageOnly = element.querySelector('img') && element.childNodes.length === 1;
             element.style.background = imageOnly ? 'transparent' : '';

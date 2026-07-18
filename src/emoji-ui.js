@@ -1,5 +1,8 @@
 import { escapeAttr, escapeHtml } from './ui.js';
 import { CLOSE_ICON_SVG } from './icons.js';
+import {
+    cloneEmojiLibrary, createEmojiRenderBudget, emojiFileError, emojiSourceError,
+} from './emoji-media.js';
 
 const SUB_OVERLAY_STYLE = 'position:fixed !important; inset:0 !important; margin:0 !important; padding:0 !important; border:none !important; width:100vw !important; height:100vh !important; max-width:none !important; max-height:none !important; background:rgba(0,0,0,.45) !important; z-index:2147483648 !important; display:flex !important; align-items:center !important; justify-content:center !important;';
 
@@ -18,11 +21,18 @@ function createSubOverlay(html) {
     return overlay;
 }
 
-function renderPickerImages(set) {
+function renderEmojiThumbnail(image, width, height, canRender) {
+    if (!canRender(image.url)) {
+        return `<div style="width:${width}px;height:${height}px;display:flex;align-items:center;justify-content:center;text-align:center;padding:4px;border-radius:8px;background:#f2f2f2;color:#999;font-size:9px;line-height:1.3;">图片暂不加载</div>`;
+    }
+    return `<img src="${escapeAttr(image.url)}" loading="lazy" decoding="async" width="${width}" height="${height}" style="width:${width}px;height:${height}px;object-fit:contain;border-radius:8px;box-shadow:0 2px 6px rgba(0,0,0,0.1);">`;
+}
+
+function renderPickerImages(set, canRender = createEmojiRenderBudget()) {
     if (!set?.images?.length) return '<div style="text-align:center;color:#999;font-size:12px;padding:20px 0;">本套暂无图片</div>';
     return set.images.map((image, index) => `
         <div onclick="window.__pmInsertEmoji('[emo:${escapeAttr(set.name)}:${index + 1}]')" style="cursor:pointer;width:60px;display:flex;flex-direction:column;align-items:center;gap:4px;">
-            <img src="${escapeAttr(image.url)}" style="width:50px;height:50px;object-fit:cover;border-radius:8px;box-shadow:0 2px 6px rgba(0,0,0,0.1);">
+            ${renderEmojiThumbnail(image, 50, 50, canRender)}
             <span style="font-size:10px;color:#666;width:100%;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(image.desc)}</span>
         </div>`).join('');
 }
@@ -34,7 +44,7 @@ function renderPickerDots(sets, activeIndex) {
 
 export function installEmojiUi({ makeOverlay, saveEmojis }) {
     async function mutateEmojis(mutator) {
-        const snapshot = JSON.parse(JSON.stringify(window.__pmEmojis));
+        const snapshot = cloneEmojiLibrary(window.__pmEmojis);
         try {
             mutator();
             await saveEmojis();
@@ -65,6 +75,7 @@ export function installEmojiUi({ makeOverlay, saveEmojis }) {
             container.innerHTML = '<div style="text-align:center;color:#aaa;font-size:13px;padding:16px 0;">暂无表情包套组</div>';
             return;
         }
+        const canRender = createEmojiRenderBudget();
 
         container.innerHTML = sets.map((set, setIndex) => `
             <div style="background:#fafafa;border:1px solid #eee;border-radius:10px;padding:10px 12px;margin-bottom:8px;">
@@ -78,7 +89,7 @@ export function installEmojiUi({ makeOverlay, saveEmojis }) {
                 <div style="display:flex;flex-wrap:wrap;gap:8px;">
                     ${set.images.map((image, imageIndex) => `
                         <div style="position:relative;width:52px;">
-                            <img src="${escapeAttr(image.url)}" style="width:52px;height:52px;object-fit:cover;border-radius:8px;border:1px solid #eee;">
+                            ${renderEmojiThumbnail(image, 52, 52, canRender)}
                             <div style="font-size:9px;color:#888;text-align:center;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;width:52px;">${escapeHtml(image.desc)}</div>
                             <button type="button" class="pm-emoji-image-delete" onclick="window.__pmDeleteEmojiImage(${setIndex},${imageIndex})" aria-label="删除图片 ${escapeAttr(image.desc)}">删除</button>
                         </div>`).join('')}
@@ -138,7 +149,7 @@ export function installEmojiUi({ makeOverlay, saveEmojis }) {
     <input id="pm-emo-url" class="pm-cfg-input" placeholder="https://... 或点下方选择文件" style="padding:8px 10px;font-size:13px;border-radius:8px;border:1px solid #ddd;">
     <button onclick="document.getElementById('pm-emo-file').click()" style="background:#f0f0f3;color:#333;border:1px solid #ddd;border-radius:8px;padding:8px 10px;font-size:12px;cursor:pointer;">上传本地图片</button>
     <input id="pm-emo-file" type="file" accept="image/*" hidden onchange="window.__pmEmoFileRead(${setIndex},this)">
-    <div id="pm-emo-preview" style="display:none;text-align:center;"><img id="pm-emo-preview-img" style="max-width:120px;max-height:120px;border-radius:10px;border:1px solid #eee;"></div>
+    <div id="pm-emo-preview" style="display:none;text-align:center;"><img id="pm-emo-preview-img" decoding="async" width="120" height="120" style="width:120px;height:120px;object-fit:contain;border-radius:10px;border:1px solid #eee;"></div>
     <input id="pm-emo-desc" class="pm-cfg-input" placeholder="图片描述（必填，如：猫猫开心）" style="padding:8px 10px;font-size:13px;border-radius:8px;border:1px solid #ddd;">
     <div style="font-size:11px;color:#aaa;">描述将告诉 AI 这张图在什么情形下使用</div>
   </div>
@@ -150,6 +161,12 @@ export function installEmojiUi({ makeOverlay, saveEmojis }) {
     window.__pmEmoFileRead = (setIndex, input) => {
         const file = input.files?.[0];
         if (!file) return;
+        const validationError = emojiFileError(file);
+        if (validationError) {
+            input.value = '';
+            alert(validationError);
+            return;
+        }
         const reader = new FileReader();
         reader.onload = event => {
             const url = event.target.result;
@@ -168,7 +185,8 @@ export function installEmojiUi({ makeOverlay, saveEmojis }) {
     window.__pmConfirmAddEmojiImage = async setIndex => {
         const url = document.getElementById('pm-emo-url')?.value.trim();
         const description = document.getElementById('pm-emo-desc')?.value.trim();
-        if (!url) return alert('请输入图片 URL 或上传图片。');
+        const validationError = emojiSourceError(url, window.__pmEmojis);
+        if (validationError) return alert(validationError);
         if (!description) return alert('请输入图片描述（必填）。');
         const set = window.__pmEmojis[setIndex];
         if (!set) return;
@@ -201,13 +219,15 @@ export function installEmojiUi({ makeOverlay, saveEmojis }) {
         const input = document.querySelector('.pm-input');
         window.__pmTempText = input ? input.value : '';
         let activeSetIndex = 0;
+        let canRender = createEmojiRenderBudget();
 
         const renderPicker = () => {
             const set = sets[activeSetIndex] || sets[0];
             const picker = document.getElementById('pm-emoji-picker-inner');
             if (!set || !picker) return;
+            canRender = createEmojiRenderBudget();
             picker.querySelector('.pm-emoji-set-label').textContent = `${set.name} (${set.images.length})`;
-            picker.querySelector('.pm-emoji-imgs').innerHTML = renderPickerImages(set);
+            picker.querySelector('.pm-emoji-imgs').innerHTML = renderPickerImages(set, canRender);
             picker.querySelector('.pm-emoji-dots').innerHTML = renderPickerDots(sets, activeSetIndex);
         };
         window.__pmEmojiSetDot = index => {
@@ -223,7 +243,7 @@ export function installEmojiUi({ makeOverlay, saveEmojis }) {
     <b class="pm-emoji-set-label">${escapeHtml(firstSet.name)} (${firstSet.images.length})</b>
     <button type="button" onclick="document.getElementById('pm-overlay').remove()" class="pm-modal-close" title="关闭" aria-label="关闭">${CLOSE_ICON_SVG}</button>
   </div>
-  <div class="pm-emoji-imgs" id="pm-emoji-imgs-area" style="padding:12px 14px;overflow-y:auto;max-height:340px;display:flex;flex-wrap:wrap;gap:10px;justify-content:flex-start;touch-action:pan-y pinch-zoom;">${renderPickerImages(firstSet)}</div>
+  <div class="pm-emoji-imgs" id="pm-emoji-imgs-area" style="padding:12px 14px;overflow-y:auto;max-height:340px;display:flex;flex-wrap:wrap;gap:10px;justify-content:flex-start;touch-action:pan-y pinch-zoom;">${renderPickerImages(firstSet, canRender)}</div>
   <div class="pm-emoji-dots">${renderPickerDots(sets, 0)}</div>
 </div>`);
 

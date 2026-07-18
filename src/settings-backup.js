@@ -9,6 +9,7 @@ import {
     saveCalendar, saveCalendarCycles, saveCalendarHolidays, saveCalendarOccasions, saveCalendarWeather,
 } from './calendar-storage.js';
 import { createEmptyWeatherStore, normalizeWeatherStore } from './calendar-weather.js';
+import { cloneEmojiLibrary } from './emoji-media.js';
 import { normalizeAmbientStatus, normalizeInteractiveStore, normalizePhoneUiState } from './interactive-scene-model.js';
 import {
     loadInteractiveScenes, loadPhoneUiState, saveBgGlobal, saveBgLocal, saveBidirectional,
@@ -114,7 +115,7 @@ export function createBackupStateHandlers(deps = {}) {
             histories: clone(window.__pmHistories || {}), config: clone(window.__pmConfig || {}),
             theme: clone(window.__pmTheme || {}), profiles: clone(window.__pmProfiles || []),
             groupMeta: clone(window.__pmGroupMeta || {}), pokeConfig: clone(window.__pmPokeConfig || {}),
-            bidirectional: clone(window.__pmBidirectional || {}), emojis: clone(window.__pmEmojis || []),
+            bidirectional: clone(window.__pmBidirectional || {}), emojis: cloneEmojiLibrary(window.__pmEmojis),
             characterBehavior: clone(window.__pmCharacterBehavior || {}), wordyLimit: !!window.__pmWordyLimit,
             desktopBg: window.__pmDesktopBg || '', bgGlobal: window.__pmBgGlobal || '', bgLocal: clone(window.__pmBgLocal || {}),
             interactiveScenes, phoneUiState: loadPhoneUiState(interactiveScenes),
@@ -132,7 +133,7 @@ export function createBackupStateHandlers(deps = {}) {
         window.__pmTheme = clone(state.theme || {}); window.__pmTheme.ambientStatusEnabled = ambientStatus.enabled;
         window.__pmProfiles = clone(state.profiles || []); window.__pmGroupMeta = clone(state.groupMeta || {});
         window.__pmPokeConfig = clone(state.pokeConfig || {}); window.__pmBidirectional = clone(state.bidirectional || {});
-        window.__pmEmojis = clone(state.emojis || []); window.__pmCharacterBehavior = clone(state.characterBehavior || {});
+        window.__pmEmojis = cloneEmojiLibrary(state.emojis); window.__pmCharacterBehavior = clone(state.characterBehavior || {});
         window.__pmWordyLimit = !!state.wordyLimit; window.__pmDesktopBg = typeof state.desktopBg === 'string' ? state.desktopBg : '';
         window.__pmBgGlobal = typeof state.bgGlobal === 'string' ? state.bgGlobal : '';
         window.__pmBgLocal = clone(state.bgLocal || {}); window.__pmPhoneUiState = phoneUiState;

@@ -14,7 +14,8 @@ import {
     saveInteractiveScenes, savePhoneUiState,
 } from '../src/storage.js';
 import {
-    createInteractiveCommitQueue, createInteractiveStoreLoader, migrateInteractiveStore,
+    createInteractiveCommitQueue, createInteractiveOperationGuard, createInteractiveStoreLoader,
+    installInteractiveScenes, migrateInteractiveStore,
 } from '../src/interactive-scenes.js';
 import { persistSceneBudgetRemoval } from '../src/interactive-scene-phone.js';
 import {
@@ -702,6 +703,115 @@ assert.equal(liveStore.scopes.scope.scenes.scene.live.danmaku.length, 0);
 assert.equal(liveSavedSnapshots.length, 2);
 assert.equal(liveSavedSnapshots[1].scopes.scope.scenes.scene.live.danmaku.length, 0);
 
+let operationEpoch = 4, operationStorageId = 'scope', operationSceneId = 'scene', operationMounted = true;
+const guardedOperation = createInteractiveOperationGuard({
+    getEpoch: () => operationEpoch,
+    getStorageId: () => operationStorageId,
+    getOpenSceneId: () => operationSceneId,
+    isMounted: () => operationMounted,
+}, { epoch: operationEpoch, storageId: operationStorageId, sceneId: operationSceneId });
+assert.equal(guardedOperation(), true);
+operationStorageId = 'other-scope';
+assert.equal(guardedOperation(), false, '切换会话后旧操作 guard 必须失效');
+operationStorageId = 'scope';
+operationMounted = false;
+assert.equal(guardedOperation(), false, '社区 DOM 卸载后旧操作 guard 必须失效');
+operationMounted = true;
+operationSceneId = 'other-scene';
+assert.equal(guardedOperation(), false, '切换社区后旧操作 guard 必须失效');
+operationSceneId = 'scene';
+operationEpoch += 1;
+assert.equal(guardedOperation(), false, 'invalidate epoch 变化后旧操作 guard 必须失效');
+
+let createdSceneId = null;
+operationEpoch = 5;
+operationSceneId = null;
+const lazySceneOperation = createInteractiveOperationGuard({
+    getEpoch: () => operationEpoch,
+    getStorageId: () => operationStorageId,
+    getOpenSceneId: () => operationSceneId,
+    isMounted: () => operationMounted,
+}, { epoch: operationEpoch, storageId: operationStorageId, sceneId: () => createdSceneId });
+assert.equal(lazySceneOperation(), true, '社区创建前 lazy sceneId 不得误拒绝当前操作');
+createdSceneId = 'created-scene';
+operationSceneId = 'created-scene';
+assert.equal(lazySceneOperation(), true, '社区创建后 lazy sceneId 必须绑定新场景');
+operationSceneId = 'newer-scene';
+assert.equal(lazySceneOperation(), false, '社区创建后切换场景必须使 lazy sceneId guard 失效');
+
+let guardedStore = normalizeInteractiveStore({
+    version: 1,
+    scopes: { scope: { activeSceneId: 'scene', sceneOrder: ['scene'], scenes: { scene: { id: 'scene', posts: [{ id: 'post', content: '原帖', comments: [] }] } } } },
+});
+const guardedActor = ensureInteractiveActor(guardedStore.scopes.scope, 'scope', {
+    type: 'story', displayName: 'AI', bindingKey: 'character:guarded', profile: '', createdAt: 1,
+});
+let guardedValid = true, markGuardedSaveStarted, releaseGuardedSave;
+const guardedSaveStarted = new Promise(resolve => { markGuardedSaveStarted = resolve; });
+const guardedSaveGate = new Promise(resolve => { releaseGuardedSave = resolve; });
+const guardedSnapshots = [];
+const guardedCommit = createInteractiveCommitQueue({
+    getStore: () => guardedStore,
+    setStore: store => { guardedStore = store; },
+    saveStore: async store => {
+        guardedSnapshots.push(structuredClone(store));
+        if (guardedSnapshots.length === 1) {
+            markGuardedSaveStarted();
+            await guardedSaveGate;
+        }
+    },
+});
+const invalidatedCommentCommit = guardedCommit(() => {
+    guardedStore.scopes.scope.scenes.scene.posts[0].comments.push({
+        id: 'late-comment', authorId: guardedActor.actorId, authorNameSnapshot: guardedActor.displayName,
+        content: '失效后不得保留', createdAt: 1,
+    });
+}, () => guardedValid, '生成评论');
+await guardedSaveStarted;
+guardedValid = false;
+releaseGuardedSave();
+await assert.rejects(invalidatedCommentCommit, /生成评论已取消/);
+assert.equal(guardedStore.scopes.scope.scenes.scene.posts[0].comments.length, 0,
+    '社区操作在保存期间失效后必须回滚内存');
+assert.equal(guardedSnapshots.length, 2);
+assert.equal(guardedSnapshots[1].scopes.scope.scenes.scene.posts[0].comments.length, 0,
+    '社区操作在保存期间失效后必须补偿持久层');
+
+let injectionStore = normalizeInteractiveStore({
+    version: 1,
+    scopes: { scope: { activeSceneId: 'scene', sceneOrder: ['scene'], scenes: { scene: { id: 'scene', posts: [{ id: 'post', content: '注入前', comments: [] }] } } } },
+});
+let injectionValid = true, markInjectionStarted, releaseInjection;
+const injectionStarted = new Promise(resolve => { markInjectionStarted = resolve; });
+const injectionGate = new Promise(resolve => { releaseInjection = resolve; });
+const injectionSnapshots = [];
+let injectionCalls = 0;
+const injectionCommit = createInteractiveCommitQueue({
+    getStore: () => injectionStore,
+    setStore: store => { injectionStore = store; },
+    saveStore: async store => { injectionSnapshots.push(structuredClone(store)); },
+    syncStore: async () => {
+        injectionCalls += 1;
+        if (injectionCalls === 1) {
+            markInjectionStarted();
+            await injectionGate;
+        }
+    },
+});
+const invalidatedDuringInjection = injectionCommit(() => {
+    injectionStore.scopes.scope.scenes.scene.posts[0].content = '注入期间失效';
+}, () => injectionValid, '重新生成社区提示词');
+await injectionStarted;
+injectionValid = false;
+releaseInjection();
+await assert.rejects(invalidatedDuringInjection, /重新生成社区提示词已取消/);
+assert.equal(injectionStore.scopes.scope.scenes.scene.posts[0].content, '注入前',
+    '主保存成功后在注入期间失效必须恢复内存快照');
+assert.equal(injectionSnapshots.length, 2, '注入期间失效必须执行主保存和补偿保存');
+assert.equal(injectionSnapshots[0].scopes.scope.scenes.scene.posts[0].content, '注入期间失效');
+assert.equal(injectionSnapshots[1].scopes.scope.scenes.scene.posts[0].content, '注入前');
+assert.equal(injectionCalls, 2, '注入期间失效后必须重新同步补偿快照');
+
 // 主存储写入失败后补偿回滚 — 内存和持久层都应恢复旧值
 let compensationStore = normalizeInteractiveStore({
     version: 1,
@@ -743,7 +853,7 @@ const failCompensateCommit = createInteractiveCommitQueue({
 });
 await assert.rejects(failCompensateCommit(() => {
     failCompensationStore.scopes.scope.scenes.scene.posts[0].content = '新值';
-}), /补偿持久化也失败/);
+}), /补偿持久化或同步也失败/);
 assert.equal(failCompensationStore.scopes.scope.scenes.scene.posts[0].content, '原始');
 assert.equal(failCompCount, 2);
 
@@ -1046,5 +1156,125 @@ assert.equal(liveRunner.isLive(), true, '旧直播迟到失败不得清除新直
 assert.equal(timers.size, 1, '旧直播迟到失败不得清除新 timer');
 liveRunner.cancel('test-complete');
 assert.equal(timers.size, 0);
+
+// 真实安装层必须把社区 style/feed 请求接到共享 callAI，并保留 token、隔离和 signal 契约。
+const previousWindow = globalThis.window;
+const previousDocument = globalThis.document;
+const previousLocalStorage = globalThis.localStorage;
+const previousIndexedDB = globalThis.indexedDB;
+const previousAlert = globalThis.alert;
+try {
+    const installationStorage = new Map();
+    globalThis.localStorage = {
+        getItem: key => installationStorage.get(key) ?? null,
+        setItem: (key, value) => { installationStorage.set(key, String(value)); },
+        removeItem: key => { installationStorage.delete(key); },
+    };
+    globalThis.indexedDB = { open() { throw new Error('IDB unavailable'); } };
+    const capturedAiCalls = [];
+    let completeInstallationAction;
+    let failInstallationAction;
+    let installationActionTimer;
+    const installationActionComplete = new Promise((resolve, reject) => {
+        completeInstallationAction = () => { clearTimeout(installationActionTimer); resolve(); };
+        failInstallationAction = error => { clearTimeout(installationActionTimer); reject(error); };
+        installationActionTimer = setTimeout(() => reject(new Error('社区真实安装层 action 未完成最终渲染')), 2000);
+    });
+    const status = { value: '' };
+    Object.defineProperty(status, 'textContent', {
+        set(value) {
+            this.value = value;
+            if (value && value !== 'AI 正在生成…') failInstallationAction(new Error(value));
+        },
+        get() { return this.value; },
+    });
+    const desktopPage = { innerHTML: '' };
+    const communityPage = { innerHTML: '' };
+    const mainUi = { dataset: { page: 'community' } };
+    const app = {
+        id: 'pm-scene-app', html: '',
+        querySelector(selector) {
+            if (selector === '.pm-scene-preset.is-active') return { dataset: { preset: 'weibo' } };
+            if (selector === '#pm-scene-style') return { value: '' };
+            return null;
+        },
+    };
+    Object.defineProperty(app, 'outerHTML', {
+        set(value) {
+            this.html = value;
+            if (capturedAiCalls.length === 2) completeInstallationAction();
+        },
+        get() { return this.html; },
+    });
+    const documentMock = {
+        visibilityState: 'visible',
+        getElementById: id => id === 'pm-scene-app' ? app : null,
+        querySelector(selector) {
+            if (selector === '.pm-scene-status') return status;
+            if (selector === '.pm-desktop-page') return desktopPage;
+            if (selector === '.pm-community-page') return communityPage;
+            if (selector === '#pm-iphone .pm-main-ui') return mainUi;
+            return null;
+        },
+    };
+    const alerts = [];
+    globalThis.alert = message => { alerts.push(String(message)); };
+    globalThis.document = documentMock;
+    globalThis.window = {
+        power_user: {}, confirm: () => true,
+        __pmShowPhonePage(page) { mainUi.dataset.page = page; return true; },
+    };
+    const listeners = new Map();
+    const phoneWindow = {
+        dataset: {},
+        addEventListener: (type, listener) => { listeners.set(type, listener); },
+        contains: () => true,
+        querySelectorAll: () => [],
+    };
+    const state = { phoneActive: true, isMinimized: false, phoneWindow };
+    const deps = {
+        getCtx: () => ({ characters: [{ name: '角色', avatar: 'role.png' }], characterId: 0 }),
+        getStorageId: () => 'interactive-installation-scope',
+        getUserPersona: () => ({ name: '我', description: '' }),
+        gatherContext: async () => ({
+            cardDesc: '', cardPersonality: '', cardScenario: '', worldBookText: '', mainChatText: '',
+        }),
+        callAI: async (_system, _user, options) => {
+            capturedAiCalls.push(options);
+            if (options.maxTokens === 700) {
+                return '{"version":1,"kind":"style_prompt","items":[{"title":"测试社区","prompt":"测试提示词"}]}';
+            }
+            return '{"version":1,"kind":"feed_batch","items":[{"author":"角色","content":"热场内容"}]}';
+        },
+        applyBidirectionalInjection: async () => {},
+        saveBudgetConfig: () => true,
+    };
+    installInteractiveScenes(state, deps);
+    assert.equal(deps.bindPhonePageUi(phoneWindow), true);
+    const createButton = {
+        tagName: 'BUTTON', dataset: { action: 'create-scene' },
+        closest(selector) {
+            if (selector === '[data-action]') return this;
+            if (selector === '#pm-scene-app') return app;
+            return null;
+        },
+    };
+    listeners.get('click')({ target: createButton });
+    await installationActionComplete;
+    assert.equal(capturedAiCalls.length, 2, `社区创建应依次触发 style/feed 两次 AI 请求；实际 ${capturedAiCalls.length}`);
+    assert.deepEqual(capturedAiCalls.map(options => options.maxTokens), [700, 1400]);
+    for (const options of capturedAiCalls) {
+        assert.equal(options.isolated, true, '社区真实安装层必须使用 isolated AI 请求');
+        assert.ok(options.signal instanceof AbortSignal, '社区真实安装层必须传递 request controller signal');
+    }
+    assert.deepEqual(alerts, []);
+    assert.equal(status.textContent, '');
+} finally {
+    if (previousWindow === undefined) delete globalThis.window; else globalThis.window = previousWindow;
+    if (previousDocument === undefined) delete globalThis.document; else globalThis.document = previousDocument;
+    if (previousLocalStorage === undefined) delete globalThis.localStorage; else globalThis.localStorage = previousLocalStorage;
+    if (previousIndexedDB === undefined) delete globalThis.indexedDB; else globalThis.indexedDB = previousIndexedDB;
+    if (previousAlert === undefined) delete globalThis.alert; else globalThis.alert = previousAlert;
+}
 
 console.log('interactive scene checks passed');

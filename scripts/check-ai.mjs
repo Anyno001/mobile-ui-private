@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { createAiClient, generationErrorMessage, parseFirstJsonObject } from '../src/ai.js';
 import {
     buildGeneratedDirectoryCandidates, commitGeneratedDirectory, parseGeneratedDirectory,
-    shouldReportGeneratedDirectoryError,
+    shouldReportGeneratedDirectoryError, installContactGenerator,
 } from '../src/contact-generator.js';
 import {
     enqueueDirectorySave, getDirectorySaveRevision,
@@ -169,6 +169,173 @@ try {
     else globalThis.window = previousWindow;
 }
 
+const previousDocument = globalThis.document;
+const previousAlert = globalThis.alert;
+try {
+    const createButton = () => ({
+        disabled: false, attributes: new Map(), icon: { style: { animation: '' } },
+        querySelector(selector) { return selector === 'svg' ? this.icon : null; },
+        setAttribute(name, value) { this.attributes.set(name, value); },
+    });
+    let button = createButton();
+    let addContactOpen = true;
+    globalThis.document = { getElementById: id => id === 'pm-autogen-btn' && addContactOpen ? button : null };
+    const alerts = [];
+    globalThis.alert = message => alerts.push(message);
+    globalThis.window = {
+        __pmHistories: { story: {} },
+        __pmGroupMeta: { story: {} },
+    };
+    const state = { generationTask: null };
+    const shownResults = [];
+    window.__pmShowAddContact = async message => {
+        shownResults.push(message);
+        button = createButton();
+        addContactOpen = true;
+    };
+    let committedCandidates;
+    let contactCallOptions;
+    let contactTaskSignal;
+    installContactGenerator(state, {
+        getStorageId: () => 'story',
+        gatherContext: async () => ({ userName: '用户' }),
+        callAI: async (_systemPrompt, _userPrompt, options) => {
+            contactCallOptions = options;
+            return '{"contacts":["新角色"],"groups":[{"name":"新群","members":["甲","乙"]}]}';
+        },
+        beginGeneration: id => {
+            const task = { id, context: {}, signal: new AbortController().signal };
+            contactTaskSignal = task.signal;
+            state.generationTask = task;
+            return task;
+        },
+        isGenerationTaskActive: task => state.generationTask === task,
+        finishGeneration: task => {
+            if (state.generationTask !== task) return false;
+            state.generationTask = null;
+            return true;
+        },
+        commitDirectory: async ({ candidates }) => { committedCandidates = candidates; return true; },
+    });
+    await window.__pmAutoGenContacts();
+    assert.deepEqual(committedCandidates, {
+        contacts: ['新角色'], groups: [{ name: '新群', members: ['甲', '乙'] }],
+    });
+    assert.equal(contactCallOptions.maxTokens, 600, '联系人生成必须保留 600 token 上限');
+    assert.equal(contactCallOptions.isolated, true, '联系人生成必须使用宿主隔离生成路径');
+    assert.equal(contactCallOptions.signal, contactTaskSignal,
+        '联系人生成必须把 generation task signal 传给 AI 客户端');
+    assert.deepEqual(shownResults, ['已添加 1 位联系人、1 个群聊']);
+    assert.deepEqual(alerts, []);
+    assert.equal(button.disabled, false);
+    assert.equal(button.attributes.get('aria-busy'), 'false');
+    assert.equal(button.icon.style.animation, '');
+
+    shownResults.length = 0;
+    installContactGenerator(state, {
+        getStorageId: () => 'story',
+        gatherContext: async () => ({ userName: '用户' }),
+        callAI: async () => '{"contacts":["取消角色"],"groups":[]}',
+        beginGeneration: id => {
+            const task = { id, context: {}, signal: new AbortController().signal };
+            state.generationTask = task;
+            return task;
+        },
+        isGenerationTaskActive: task => state.generationTask === task,
+        finishGeneration: task => {
+            if (state.generationTask !== task) return false;
+            state.generationTask = null;
+            return true;
+        },
+        commitDirectory: async () => false,
+    });
+    await window.__pmAutoGenContacts();
+    assert.deepEqual(shownResults, [], '提交未完成时不得显示成功结果');
+    assert.equal(button.disabled, false, '提交取消后必须恢复生成按钮');
+    assert.equal(button.attributes.get('aria-busy'), 'false');
+
+    alerts.length = 0;
+    installContactGenerator(state, {
+        getStorageId: () => 'story',
+        gatherContext: async () => { throw new Error('context-failed'); },
+        callAI: async () => assert.fail('上下文失败后不得调用 AI'),
+        beginGeneration: id => {
+            const task = { id, context: {}, signal: new AbortController().signal };
+            state.generationTask = task;
+            return task;
+        },
+        isGenerationTaskActive: task => state.generationTask === task,
+        finishGeneration: task => {
+            if (state.generationTask !== task) return false;
+            state.generationTask = null;
+            return true;
+        },
+        commitDirectory: async () => assert.fail('上下文失败后不得提交目录'),
+    });
+    await window.__pmAutoGenContacts();
+    assert.equal(alerts.length, 1);
+    assert.match(alerts[0], /自动生成失败：context-failed/);
+    assert.equal(button.disabled, false, '异常路径必须恢复生成按钮');
+    assert.equal(button.attributes.get('aria-busy'), 'false');
+
+    alerts.length = 0;
+    shownResults.length = 0;
+    let releaseFirstAi;
+    let releaseSecondCommit;
+    const firstAi = new Promise(resolve => { releaseFirstAi = resolve; });
+    const secondCommit = new Promise(resolve => { releaseSecondCommit = resolve; });
+    let aiCallCount = 0;
+    let commitCallCount = 0;
+    installContactGenerator(state, {
+        getStorageId: () => 'story',
+        gatherContext: async () => ({ userName: '用户' }),
+        callAI: async () => {
+            aiCallCount += 1;
+            if (aiCallCount === 1) return firstAi;
+            return '{"contacts":["第二任务"],"groups":[]}';
+        },
+        beginGeneration: id => {
+            const task = { id, context: {}, signal: new AbortController().signal };
+            state.generationTask = task;
+            return task;
+        },
+        isGenerationTaskActive: task => state.generationTask === task,
+        finishGeneration: task => {
+            if (state.generationTask !== task) return false;
+            state.generationTask = null;
+            return true;
+        },
+        commitDirectory: async () => {
+            commitCallCount += 1;
+            await secondCommit;
+            return true;
+        },
+    });
+    const firstTask = window.__pmAutoGenContacts();
+    await Promise.resolve();
+    await Promise.resolve();
+    const secondTask = window.__pmAutoGenContacts();
+    while (commitCallCount === 0) await Promise.resolve();
+    assert.equal(button.disabled, true);
+    releaseFirstAi('{"contacts":["第一任务"],"groups":[]}');
+    await firstTask;
+    assert.equal(button.disabled, true, '旧任务 finally 不得清除新任务的 busy 状态');
+    assert.equal(button.attributes.get('aria-busy'), 'true');
+    releaseSecondCommit();
+    await secondTask;
+    assert.deepEqual(shownResults, ['已添加 1 位联系人']);
+    assert.equal(button.disabled, false);
+    assert.equal(button.attributes.get('aria-busy'), 'false');
+    assert.deepEqual(alerts, []);
+} finally {
+    if (previousWindow === undefined) delete globalThis.window;
+    else globalThis.window = previousWindow;
+    if (previousDocument === undefined) delete globalThis.document;
+    else globalThis.document = previousDocument;
+    if (previousAlert === undefined) delete globalThis.alert;
+    else globalThis.alert = previousAlert;
+}
+
 let config = {};
 let groupMode = false;
 let fetchRequest;
@@ -211,6 +378,27 @@ assert.equal(
 assert.deepEqual(rawCalls.pop(), {
     prompt: 'community user', systemPrompt: 'community system', responseLength: 1400, trimNames: false,
 });
+
+let releaseLateHostResponse;
+const lateHostResponse = new Promise(resolve => { releaseLateHostResponse = resolve; });
+const lateHostClient = createAiClient({
+    getConfig: () => ({}),
+    getContext: () => ({ generateRaw: async () => lateHostResponse }),
+    getDefaultMaxTokens: () => 300,
+    fetchImpl: async () => { throw new Error('主 API 测试不应调用 fetch'); },
+});
+const lateHostController = new AbortController();
+const lateHostRequest = lateHostClient('system', 'late host response', {
+    isolated: true, signal: lateHostController.signal,
+});
+await Promise.resolve();
+lateHostController.abort('host-response-invalidated');
+releaseLateHostResponse('late host reply');
+await assert.rejects(
+    lateHostRequest,
+    error => error.name === 'AbortError' && /已取消/.test(error.message),
+    '主 API generateRaw 返回后必须拒绝已取消的迟到结果',
+);
 
 config = {
     useIndependent: true,
@@ -415,6 +603,7 @@ const boundContextClient = createAiClient({
 });
 assert.equal(await boundContextClient('', 'binding'), 'bound reply');
 
+const hadOriginalFetch = Object.hasOwn(globalThis, 'fetch');
 const originalFetch = globalThis.fetch;
 let globalFetchThis;
 try {
@@ -431,7 +620,8 @@ try {
     assert.equal(await globalFetchClient('', 'global fetch'), 'global reply');
     assert.equal(globalFetchThis, globalThis);
 } finally {
-    globalThis.fetch = originalFetch;
+    if (hadOriginalFetch) globalThis.fetch = originalFetch;
+    else delete globalThis.fetch;
 }
 
 console.log('AI client behavior verified.');

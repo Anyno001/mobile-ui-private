@@ -278,11 +278,7 @@ export function installPhoneDirectory(state, deps) {
     <div class="pm-modal">
     <div class="pm-modal-header">
       <span></span>
-      <b class="pm-header-title">联系人
-        <button type="button" id="pm-autogen-btn" class="pm-header-autogen" onclick="window.__pmConfirmAutoGen()" title="AI 自动生成联系人" aria-label="AI 自动生成联系人">
-          ${REFRESH_ICON_SVG}
-        </button>
-      </b>
+      <b>联系人</b>
       <button type="button" onclick="window.__pmCloseOverlay()" class="pm-modal-close" title="关闭" aria-label="关闭">${CLOSE_ICON_SVG}</button>
     </div>
     <div class="pm-bi-bar"><span>勾选会话可注入主楼；群聊资源参数在群聊设置中配置</span><span class="pm-bi-tip">已选 ${checked.length}</span></div>
@@ -296,17 +292,22 @@ export function installPhoneDirectory(state, deps) {
     </div>`);
     };
 
-    window.__pmShowAddContact = () => {
+    window.__pmShowAddContact = (resultMessage = '') => {
         document.getElementById('pm-overlay')?.remove();
         makeOverlay(`
 <div class="pm-modal">
   <div class="pm-modal-header"><span></span><b>添加联系人</b><button type="button" onclick="window.__pmShowList()" class="pm-modal-close" title="关闭" aria-label="关闭">${CLOSE_ICON_SVG}</button></div>
-  <div style="padding:14px 16px;">
-    <div class="pm-cfg-label" style="margin-bottom:8px;">输入角色名</div>
-    <input id="pm-add-contact-input" class="pm-cfg-input" placeholder="角色名">
-  </div>
-  <div class="pm-modal-add">
-    <button onclick="(()=>{const v=document.getElementById('pm-add-contact-input').value.trim();if(v)window.__pmSwitchContact(v);})()" style="flex:1;background:#007aff;color:#fff;border:none;border-radius:10px;padding:10px;font-size:13px;cursor:pointer;font-weight:600;">开始聊天</button>
+  ${resultMessage ? `<div class="pm-bi-bar pm-contact-add-result"><span>${escapeHtml(resultMessage)}</span></div>` : ''}
+  <div class="pm-contact-add-choices">
+    <section class="pm-contact-add-choice">
+      <b>手动添加</b><span>输入明确的角色名，立即开始聊天。</span>
+      <input id="pm-add-contact-input" class="pm-cfg-input" placeholder="角色名" aria-label="联系人角色名">
+      <button type="button" class="pm-contact-add-primary" onclick="(()=>{const v=document.getElementById('pm-add-contact-input').value.trim();if(v)window.__pmSwitchContact(v);})()">开始聊天</button>
+    </section>
+    <section class="pm-contact-add-choice is-ai">
+      <b>AI 生成</b><span>根据当前剧情、世界书和已有联系人生成一批候选。</span>
+      <button type="button" id="pm-autogen-btn" class="pm-contact-add-ai" onclick="window.__pmConfirmAutoGen()" aria-label="AI 自动生成联系人">${REFRESH_ICON_SVG}<span>生成联系人与群聊</span></button>
+    </section>
   </div>
 </div>`);
         setTimeout(() => {

@@ -1250,6 +1250,7 @@ ${userPrompt}` : userPrompt;
   var CYCLE_STORE_VERSION = 1;
   var CYCLE_LIMITS = Object.freeze({
     scopes: 80,
+    subjects: 40,
     overrides: 120,
     cycleMin: 21,
     cycleMax: 45,
@@ -1260,12 +1261,14 @@ ${userPrompt}` : userPrompt;
   var CYCLE_OVERRIDE_TYPES = Object.freeze(["period", "non_period"]);
   var plainRecord4 = (value) => value && typeof value === "object" && !Array.isArray(value) && (Object.getPrototypeOf(value) === Object.prototype || Object.getPrototypeOf(value) === null);
   var unsafeKey3 = (value) => value === "prototype" || Object.hasOwn(Object.prototype, value);
+  var SELF_SUBJECT = "__self__";
+  var validSubject = (value) => value === SELF_SUBJECT || !!value && value === value.trim() && value.length <= 120 && !unsafeKey3(value);
   var integerInRange = (value, min, max) => Number.isInteger(Number(value)) && Number(value) >= min && Number(value) <= max;
   function createEmptyCycleStore() {
     return { version: CYCLE_STORE_VERSION, scopes: {} };
   }
   function createEmptyCycleScope() {
-    return { enabled: false, lastPeriodStart: null, cycleLength: 28, periodLength: 5, overrides: {} };
+    return { enabled: false, lastPeriodStart: null, cycleLength: 28, periodLength: 5, overrides: {}, subjects: {} };
   }
   function normalizeCycleScope(value) {
     const source = plainRecord4(value) ? value : {};
@@ -1287,13 +1290,24 @@ ${userPrompt}` : userPrompt;
         count += 1;
       }
     }
-    return {
+    const normalized = {
       enabled: source.enabled === true,
       lastPeriodStart,
       cycleLength,
       periodLength: periodLengthRaw,
-      overrides
+      overrides,
+      subjects: {}
     };
+    if (plainRecord4(source.subjects)) {
+      for (const [subject, rawProfile] of Object.entries(source.subjects)) {
+        if (Object.keys(normalized.subjects).length >= CYCLE_LIMITS.subjects) break;
+        if (!validSubject(subject) || subject === SELF_SUBJECT || !plainRecord4(rawProfile)) continue;
+        const profile = normalizeCycleScope({ ...rawProfile, subjects: {} });
+        delete profile.subjects;
+        normalized.subjects[subject] = profile;
+      }
+    }
+    return normalized;
   }
   function normalizeCycleStore(value) {
     const source = plainRecord4(value) ? value : {};
@@ -1305,10 +1319,16 @@ ${userPrompt}` : userPrompt;
     }
     return { version: CYCLE_STORE_VERSION, scopes };
   }
-  function cycleScopeFor(store, storageId) {
-    return normalizeCycleStore(store).scopes[storageId] || createEmptyCycleScope();
+  function cycleScopeFor(store, storageId, subject = SELF_SUBJECT) {
+    const scope = normalizeCycleStore(store).scopes[storageId] || createEmptyCycleScope();
+    if (subject === SELF_SUBJECT) return scope;
+    return scope.subjects?.[subject] || createEmptyCycleScope();
   }
-  function upsertCycleScope(store, storageId, rawScope) {
+  function cycleSubjectKeys(store, storageId) {
+    const scope = normalizeCycleStore(store).scopes[storageId] || createEmptyCycleScope();
+    return [SELF_SUBJECT, ...Object.keys(scope.subjects || {})];
+  }
+  function upsertCycleScope(store, storageId, rawScope, subject = SELF_SUBJECT) {
     const next = normalizeCycleStore(store);
     const id2 = String(storageId ?? "");
     if (!id2 || id2 !== id2.trim() || id2.length > 160 || unsafeKey3(id2)) throw new Error("storageId \u65E0\u6548");
@@ -1324,14 +1344,31 @@ ${userPrompt}` : userPrompt;
     }
     if (rawScope.lastPeriodStart && !parseCalendarDate(rawScope.lastPeriodStart)) throw new Error("\u672B\u6B21\u7ECF\u671F\u5F00\u59CB\u65E5\u671F\u65E0\u6548");
     const normalized = normalizeCycleScope(rawScope);
-    next.scopes[id2] = normalized;
+    if (!validSubject(subject)) throw new Error("\u5468\u671F\u4E3B\u4F53\u65E0\u6548");
+    if (subject === SELF_SUBJECT) {
+      normalized.subjects = next.scopes[id2]?.subjects || normalized.subjects;
+      next.scopes[id2] = normalized;
+    } else {
+      const container = next.scopes[id2] || createEmptyCycleScope();
+      const profile = { ...normalized };
+      delete profile.subjects;
+      container.subjects[subject] = profile;
+      next.scopes[id2] = container;
+    }
     return next;
   }
-  function clearCycleScope(store, storageId) {
+  function clearCycleScope(store, storageId, subject = SELF_SUBJECT) {
     const next = normalizeCycleStore(store);
-    delete next.scopes[storageId];
+    if (subject === SELF_SUBJECT) {
+      const subjects = next.scopes[storageId]?.subjects || {};
+      if (Object.keys(subjects).length) next.scopes[storageId] = { ...createEmptyCycleScope(), subjects };
+      else delete next.scopes[storageId];
+    } else if (next.scopes[storageId]?.subjects) {
+      delete next.scopes[storageId].subjects[subject];
+    }
     return next;
   }
+  var CYCLE_SELF_SUBJECT = SELF_SUBJECT;
   function cycleDayIndex(scope, dateStr) {
     if (!scope.enabled || !scope.lastPeriodStart) return null;
     const start = parseCalendarDate(scope.lastPeriodStart);
@@ -1399,10 +1436,12 @@ ${userPrompt}` : userPrompt;
   var COMMUNITY_ICON_SVG = icon('<path d="M4 19V8l8-4 8 4v11"/><path d="M8 19v-6h8v6M8 9h.01M12 9h.01M16 9h.01"/>');
   var CALENDAR_ICON_SVG = icon('<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18M8 14h.01M12 14h.01M16 14h.01M8 18h.01M12 18h.01"/>');
   var WEATHER_ICON_SVG = icon('<path d="M7 17h10a4 4 0 0 0 .5-8A6 6 0 0 0 6.2 10.5 3.5 3.5 0 0 0 7 17z"/><path d="M8 21l1-2M12 21l1-2M16 21l1-2"/>');
+  var CYCLE_ICON_SVG = icon('<path d="M12 3v4M12 17v4M4.2 7.5l3.5 2M16.3 14.5l3.5 2M4.2 16.5l3.5-2M16.3 9.5l3.5-2"/><circle cx="12" cy="12" r="4"/>');
+  var TIME_ORIGIN_ICON_SVG = icon('<circle cx="12" cy="12" r="8"/><path d="M12 7v5l3 2"/>');
   var EDIT_ICON_SVG = icon('<path d="M4 20h4L19 9l-4-4L4 16v4z"/><path d="M13.5 6.5l4 4"/>');
   var EMOJI_ICON_SVG = icon('<circle cx="12" cy="12" r="9"/><path d="M8 10h.01M16 10h.01M8.5 15c1 1 2.2 1.5 3.5 1.5s2.5-.5 3.5-1.5"/>');
   var TRASH_ICON_SVG = icon('<path d="M4 7h16M9 7V4h6v3M7 7l1 13h8l1-13M10 11v5M14 11v5"/>');
-  var REFRESH_ICON_SVG = '<svg id="pm-autogen-icon" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="display:block;transform-origin:center center;"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>';
+  var REFRESH_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="display:block;transform-origin:center center;"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>';
 
   // src/constants.js
   var SAVE_LIMIT = 60;
@@ -1554,7 +1593,7 @@ ${userPrompt}` : userPrompt;
 
   // src/calendar-view.js
   var detailDate = new Intl.DateTimeFormat("zh-CN", { month: "long", day: "numeric", weekday: "short" });
-  var CYCLE_LABELS = { period: "\u7ECF\u671F", follicular: "\u5375\u6CE1\u671F", ovulatory: "\u6392\u5375\u671F", luteal: "\u9EC4\u4F53\u671F" };
+  var CYCLE_LABELS = { period: "\u7ECF\u671F", follicular: "\u76F8\u5BF9\u4F4E\u98CE\u9669\u671F", ovulatory: "\u6613\u5B55\u671F", luteal: "\u76F8\u5BF9\u4F4E\u98CE\u9669\u671F" };
   var occasionTypeLabel = (type) => type === "birthday" ? "\u751F\u65E5" : "\u7EAA\u5FF5\u65E5";
   function eventRows(scope, occasionsByDate, date) {
     const events = scope.events[date] || [];
@@ -1583,12 +1622,12 @@ ${userPrompt}` : userPrompt;
   function cycleRow(cycleScope, date) {
     const prediction = predictCyclePhase(cycleScope, date);
     if (!prediction.phase) return "";
-    return `<div class="pm-calendar-cycle"><span>\u5468\u671F\u63D0\u793A</span><b>${CYCLE_LABELS[prediction.phase] || prediction.phase}</b>${prediction.status === "override" ? "<em>\u624B\u52A8</em>" : ""}</div>`;
+    return `<div class="pm-calendar-cycle"><span>\u751F\u7406\u671F\u63D0\u793A</span><b>${CYCLE_LABELS[prediction.phase] || prediction.phase}</b>${prediction.status === "override" ? "<em>\u624B\u52A8</em>" : ""}</div>`;
   }
   function renderSelectedDateDetail(scope, occasionsByDate, holidayCache, weatherStore, cycleScope, selectedDate, viewMode) {
     const parsed = parseCalendarDate(selectedDate);
-    const content = viewMode === "life" ? `${weatherRow(weatherStore, selectedDate)}${cycleRow(cycleScope, selectedDate)}` : `${holidayRows(holidayCache, selectedDate)}${eventRows(scope, occasionsByDate, selectedDate)}`;
-    const emptyLabel = viewMode === "life" ? "\u8FD9\u4E00\u5929\u6CA1\u6709\u5929\u6C14\u6216\u5468\u671F\u63D0\u793A" : "\u8FD9\u4E00\u5929\u8FD8\u6CA1\u6709\u5B89\u6392";
+    const content = viewMode === "weather" ? weatherRow(weatherStore, selectedDate) : viewMode === "cycle" ? cycleRow(cycleScope, selectedDate) : `${holidayRows(holidayCache, selectedDate)}${eventRows(scope, occasionsByDate, selectedDate)}`;
+    const emptyLabel = viewMode === "weather" ? "\u8FD9\u4E00\u5929\u6CA1\u6709\u5929\u6C14\u6570\u636E" : viewMode === "cycle" ? "\u8FD9\u4E00\u5929\u6CA1\u6709\u751F\u7406\u671F\u63D0\u793A" : "\u8FD9\u4E00\u5929\u8FD8\u6CA1\u6709\u5B89\u6392";
     return `<section class="pm-calendar-selected-detail" data-calendar-selected-detail="${selectedDate}" data-calendar-detail-mode="${viewMode}">
         <header><div><span>\u5DF2\u9009\u65E5\u671F</span><b>${escapeHtml(detailDate.format(parsed))}</b></div><time datetime="${selectedDate}">${escapeHtml(selectedDate)}</time></header>
         <div class="pm-calendar-selected-content">${content || `<p class="pm-calendar-empty-day">${emptyLabel}</p>`}</div>
@@ -1616,15 +1655,31 @@ ${userPrompt}` : userPrompt;
     weatherResults,
     viewMode,
     holidayAvailable = true,
-    holidayRange = null
+    holidayRange = null,
+    editorKind = "event",
+    cycleSubjects = [],
+    selectedCycleSubject = "__self__"
   }) {
-    if (viewMode === "life") {
-      return `<details class="pm-calendar-management" data-calendar-management="life"><summary>\u751F\u6D3B\u7BA1\u7406</summary><div class="pm-calendar-management-content"><section class="pm-calendar-data-tools"><h3>\u5929\u6C14\u6570\u636E</h3><div class="pm-calendar-data-row"><input data-weather-query placeholder="\u641C\u7D22\u5929\u6C14\u4F4D\u7F6E" maxlength="100" aria-label="\u641C\u7D22\u5929\u6C14\u4F4D\u7F6E"><button type="button" data-action="calendar-weather-search">\u641C\u7D22</button><button type="button" data-action="calendar-weather-refresh">\u5237\u65B0\u5929\u6C14</button></div>${weatherSearchResults(weatherResults)}${weatherStore.location ? `<small class="pm-calendar-attribution">${escapeHtml(weatherStore.location.name)} \xB7 Weather data \xA9 Open-Meteo (CC BY 4.0)</small>` : '<small class="pm-calendar-attribution">\u5C1A\u672A\u8BBE\u7F6E\u5929\u6C14\u4F4D\u7F6E</small>'}</section><form class="pm-calendar-editor pm-calendar-cycle-editor" data-calendar-cycle-editor><h3>\u751F\u7406\u5468\u671F</h3><label><input name="enabled" type="checkbox" ${cycleScope.enabled ? "checked" : ""}> \u542F\u7528\u5468\u671F\u63D0\u793A</label><input name="lastPeriodStart" type="text" inputmode="numeric" pattern="\\d{4}-\\d{2}-\\d{2}" placeholder="YYYY-MM-DD" value="${escapeAttr(cycleScope.lastPeriodStart || "")}" aria-label="\u672B\u6B21\u7ECF\u671F\u5F00\u59CB\u65E5\u671F"><div class="pm-calendar-date-fields"><input name="cycleLength" type="number" min="21" max="45" value="${cycleScope.cycleLength || 28}" aria-label="\u5468\u671F\u957F\u5EA6"><input name="periodLength" type="number" min="2" max="10" value="${cycleScope.periodLength || 5}" aria-label="\u7ECF\u671F\u957F\u5EA6"></div><div class="pm-calendar-editor-actions"><button type="button" data-action="calendar-cycle-clear">\u6E05\u9664</button><button type="button" class="is-primary" data-action="calendar-cycle-save">\u4FDD\u5B58\u5468\u671F</button></div></form></div></details>`;
+    if (viewMode === "weather") {
+      return `<details class="pm-calendar-management" data-calendar-management="weather"><summary>\u5929\u6C14\u8BBE\u7F6E</summary><div class="pm-calendar-management-content"><section class="pm-calendar-data-tools"><h3>\u5929\u6C14\u4F4D\u7F6E</h3><div class="pm-calendar-data-row"><input data-weather-query placeholder="\u641C\u7D22\u57CE\u5E02\u6216\u5730\u533A" maxlength="100" aria-label="\u641C\u7D22\u5929\u6C14\u4F4D\u7F6E"><button type="button" data-action="calendar-weather-search">\u641C\u7D22</button><button type="button" data-action="calendar-weather-refresh">\u5237\u65B0</button></div>${weatherSearchResults(weatherResults)}${weatherStore.location ? `<small class="pm-calendar-attribution">${escapeHtml(weatherStore.location.name)} \xB7 Weather data \xA9 Open-Meteo (CC BY 4.0)</small>` : '<small class="pm-calendar-attribution">\u5C1A\u672A\u8BBE\u7F6E\u5929\u6C14\u4F4D\u7F6E</small>'}</section></div></details>`;
+    }
+    if (viewMode === "cycle") {
+      const startDay = cycleScope.lastPeriodStart ? Number(cycleScope.lastPeriodStart.slice(8, 10)) : 1;
+      const subjects = cycleSubjects.length ? cycleSubjects : [{ value: "__self__", label: "\u6211" }];
+      return `<details class="pm-calendar-management" data-calendar-management="cycle" open><summary>\u751F\u7406\u671F\u8BBE\u7F6E</summary><div class="pm-calendar-management-content"><form class="pm-calendar-editor pm-calendar-cycle-editor" data-calendar-cycle-editor>
+          <label>\u8BB0\u5F55\u5BF9\u8C61<select name="subject" data-action="calendar-cycle-subject" aria-label="\u751F\u7406\u671F\u8BB0\u5F55\u5BF9\u8C61">${subjects.map((item) => `<option value="${escapeAttr(item.value)}" ${item.value === selectedCycleSubject ? "selected" : ""}>${escapeHtml(item.label)}</option>`).join("")}</select></label>
+          <label class="pm-calendar-cycle-toggle"><span><b>\u542F\u7528\u751F\u7406\u671F\u63D0\u793A</b><small>\u4EC5\u5728\u672C\u5730\u6309\u5F53\u524D\u4F1A\u8BDD\u548C\u6240\u9009\u89D2\u8272\u4FDD\u5B58</small></span><span class="pm-calendar-cycle-switch"><input class="pm-calendar-cycle-input" name="enabled" type="checkbox" ${cycleScope.enabled ? "checked" : ""} aria-label="\u542F\u7528\u751F\u7406\u671F\u63D0\u793A"><span class="pm-custom-check" aria-hidden="true"></span></span></label>
+          <label>\u6BCF\u6708\u7ECF\u671F\u901A\u5E38\u4ECE\u51E0\u53F7\u5F00\u59CB<select name="periodStartDay" aria-label="\u6BCF\u6708\u7ECF\u671F\u5F00\u59CB\u65E5">${Array.from({ length: 28 }, (_, index) => index + 1).map((day) => `<option value="${day}" ${day === startDay ? "selected" : ""}>${day} \u53F7</option>`).join("")}</select></label>
+          <div class="pm-calendar-cycle-numbers"><label>\u5E73\u5747\u5468\u671F<input name="cycleLength" type="number" min="21" max="45" value="${cycleScope.cycleLength || 28}" aria-label="\u5E73\u5747\u5468\u671F\u5929\u6570"><small>\u4ECE\u4E00\u6B21\u7ECF\u671F\u5F00\u59CB\u5230\u4E0B\u4E00\u6B21\u5F00\u59CB\uFF0C\u5E38\u89C1\u7EA6 21\u201345 \u5929</small></label><label>\u7ECF\u671F\u6301\u7EED<input name="periodLength" type="number" min="2" max="10" value="${cycleScope.periodLength || 5}" aria-label="\u7ECF\u671F\u6301\u7EED\u5929\u6570"><small>\u6BCF\u6B21\u7ECF\u671F\u901A\u5E38\u6301\u7EED 2\u201310 \u5929</small></label></div>
+          <p class="pm-calendar-cycle-note">\u65E5\u5386\u4EC5\u7A81\u51FA\u7ECF\u671F\u3001\u6613\u5B55\u671F\u548C\u76F8\u5BF9\u4F4E\u98CE\u9669\u671F\u3002\u5468\u671F\u63A8\u7B97\u5B58\u5728\u8BEF\u5DEE\uFF0C\u4E0D\u80FD\u4F5C\u4E3A\u907F\u5B55\u4F9D\u636E\u3002</p>
+          <div class="pm-calendar-editor-actions"><button type="button" data-action="calendar-cycle-clear">\u6E05\u9664\u6240\u9009\u5BF9\u8C61</button><button type="button" class="is-primary" data-action="calendar-cycle-save">\u4FDD\u5B58\u751F\u7406\u671F</button></div>
+        </form></div></details>`;
     }
     return `<details class="pm-calendar-management" data-calendar-management="schedule"><summary>\u5B89\u6392\u7BA1\u7406</summary><div class="pm-calendar-management-content">
-        <div class="pm-calendar-tools"><button type="button" data-action="calendar-scan">\u8BC6\u522B\u5F53\u524D\u4E0A\u4E0B\u6587</button><button type="button" data-action="calendar-toggle-auto" aria-pressed="${scope.autoAdjust}">${scope.autoAdjust ? "\u81EA\u52A8\u8C03\u6574\uFF1A\u5F00" : "\u81EA\u52A8\u8C03\u6574\uFF1A\u5173"}</button></div>
+        <div class="pm-calendar-tools"><button type="button" data-action="calendar-scan">\u8BC6\u522B\u6B63\u6587\u65E5\u671F</button><button type="button" data-action="calendar-toggle-auto" aria-pressed="${scope.autoAdjust}">${scope.autoAdjust ? "\u81EA\u52A8\u8BC6\u522B\uFF1A\u5F00" : "\u81EA\u52A8\u8BC6\u522B\uFF1A\u5173"}</button></div>
         <section class="pm-calendar-data-tools"><h3>\u8282\u5047\u65E5\u6570\u636E</h3><div class="pm-calendar-data-row pm-calendar-holiday-row"><select data-action="calendar-holiday-country" data-calendar-country aria-label="\u8282\u5047\u65E5\u56FD\u5BB6"><option value="CN" ${holidayCache.selectedCountry === "CN" ? "selected" : ""}>\u4E2D\u56FD</option><option value="US" ${holidayCache.selectedCountry === "US" ? "selected" : ""}>\u7F8E\u56FD</option><option value="JP" ${holidayCache.selectedCountry === "JP" ? "selected" : ""}>\u65E5\u672C</option></select><button type="button" data-action="calendar-holiday-refresh" ${holidayAvailable ? "" : 'disabled aria-disabled="true"'}>\u5237\u65B0\u8282\u5047\u65E5</button></div>${holidayAvailable ? "" : `<small class="pm-calendar-attribution">\u8BE5\u56FD\u5BB6\u5728\u5F53\u524D\u5E74\u4EE3\u65E0\u5916\u90E8\u6570\u636E\u6E90\uFF08\u4EC5\u652F\u6301 ${holidayRange?.min ?? "\u672A\u77E5"}\u2013${holidayRange?.max ?? "\u672A\u77E5"} \u5E74\uFF09</small>`}</section>
-        <form class="pm-calendar-editor" data-calendar-editor>
+        <div class="pm-calendar-editor-switch" role="group" aria-label="\u6DFB\u52A0\u5185\u5BB9\u7C7B\u578B"><button type="button" data-action="calendar-editor-kind" data-editor-kind="event" aria-pressed="${editorKind !== "occasion"}">\u65E5\u7A0B</button><button type="button" data-action="calendar-editor-kind" data-editor-kind="occasion" aria-pressed="${editorKind === "occasion"}">\u751F\u65E5 / \u7EAA\u5FF5\u65E5</button></div>
+        <form class="pm-calendar-editor" data-calendar-editor ${editorKind === "occasion" ? "hidden" : ""}>
           <h3>\u6DFB\u52A0\u65E5\u7A0B</h3>
           <div class="pm-calendar-date-fields"><input name="year" inputmode="numeric" maxlength="4" placeholder="YYYY" aria-label="\u5E74"><input name="month" inputmode="numeric" maxlength="2" placeholder="MM" aria-label="\u6708"><input name="day" inputmode="numeric" maxlength="2" placeholder="DD" aria-label="\u65E5"></div>
           <input name="title" maxlength="120" placeholder="\u65E5\u7A0B\u6807\u9898" aria-label="\u65E5\u7A0B\u6807\u9898">
@@ -1633,7 +1688,7 @@ ${userPrompt}` : userPrompt;
           <input name="eventId" type="hidden">
           <div class="pm-calendar-editor-actions"><button type="button" data-action="calendar-parse">\u8BC6\u522B\u6807\u7B7E</button><button type="button" data-action="calendar-cancel-edit">\u6E05\u7A7A</button><button type="button" class="is-primary" data-action="calendar-save">\u4FDD\u5B58</button></div>
         </form>
-        <form class="pm-calendar-editor pm-calendar-occasion-editor" data-calendar-occasion-editor>
+        <form class="pm-calendar-editor pm-calendar-occasion-editor" data-calendar-occasion-editor ${editorKind === "occasion" ? "" : "hidden"}>
           <h3>\u6DFB\u52A0\u751F\u65E5\u6216\u7EAA\u5FF5\u65E5</h3>
           <select name="type" aria-label="\u7C7B\u578B"><option value="birthday">\u751F\u65E5</option><option value="anniversary">\u7EAA\u5FF5\u65E5</option></select>
           <div class="pm-calendar-date-fields"><input name="month" inputmode="numeric" maxlength="2" placeholder="MM" aria-label="\u6708"><input name="day" inputmode="numeric" maxlength="2" placeholder="DD" aria-label="\u65E5"></div>
@@ -1647,39 +1702,7 @@ ${userPrompt}` : userPrompt;
     </div></details>`;
   }
 
-  // src/calendar.js
-  var clone = (value) => JSON.parse(JSON.stringify(value));
-  var weekday = new Intl.DateTimeFormat("zh-CN", { weekday: "short" });
-  var shortDate = new Intl.DateTimeFormat("zh-CN", { month: "numeric", day: "numeric" });
-  var monthTitle = new Intl.DateTimeFormat("zh-CN", { year: "numeric", month: "long" });
-  var calendarGenerationErrorMessage = generationErrorMessage;
-  var CALENDAR_WEEKDAYS = ["\u4E00", "\u4E8C", "\u4E09", "\u56DB", "\u4E94", "\u516D", "\u65E5"];
-  var CYCLE_LABELS2 = { period: "\u7ECF\u671F", follicular: "\u5375\u6CE1\u671F", ovulatory: "\u6392\u5375\u671F", luteal: "\u9EC4\u4F53\u671F" };
-  var lunarFormatter = null;
-  try {
-    lunarFormatter = new Intl.DateTimeFormat("zh-CN-u-ca-chinese", { month: "short", day: "numeric" });
-  } catch {
-  }
-  function lunarDayLabel(value) {
-    const day = Number(value);
-    if (!Number.isInteger(day) || day < 1 || day > 30) return "";
-    if (day <= 10) return `\u521D${["\u4E00", "\u4E8C", "\u4E09", "\u56DB", "\u4E94", "\u516D", "\u4E03", "\u516B", "\u4E5D", "\u5341"][day - 1]}`;
-    if (day < 20) return `\u5341${["\u4E00", "\u4E8C", "\u4E09", "\u56DB", "\u4E94", "\u516D", "\u4E03", "\u516B", "\u4E5D"][day - 11]}`;
-    if (day === 20) return "\u4E8C\u5341";
-    if (day < 30) return `\u5EFF${["\u4E00", "\u4E8C", "\u4E09", "\u56DB", "\u4E94", "\u516D", "\u4E03", "\u516B", "\u4E5D"][day - 21]}`;
-    return "\u4E09\u5341";
-  }
-  function lunarLabel(date) {
-    if (!lunarFormatter) return "";
-    try {
-      const parts = lunarFormatter.formatToParts(date);
-      const month = parts.find((part) => part.type === "month")?.value || "";
-      const day = Number(parts.find((part) => part.type === "day")?.value);
-      return day === 1 ? month : lunarDayLabel(day);
-    } catch {
-      return "";
-    }
-  }
+  // src/calendar-task-controller.js
   function createTaskController(getStorageId2) {
     let epoch = 0, sequence = 0;
     const tasks = /* @__PURE__ */ new Map();
@@ -1726,6 +1749,40 @@ ${userPrompt}` : userPrompt;
     };
     return { active, begin, cancel, finish };
   }
+
+  // src/calendar.js
+  var clone = (value) => JSON.parse(JSON.stringify(value));
+  var weekday = new Intl.DateTimeFormat("zh-CN", { weekday: "short" });
+  var shortDate = new Intl.DateTimeFormat("zh-CN", { month: "numeric", day: "numeric" });
+  var monthTitle = new Intl.DateTimeFormat("zh-CN", { year: "numeric", month: "long" });
+  var calendarGenerationErrorMessage = generationErrorMessage;
+  var CALENDAR_WEEKDAYS = ["\u4E00", "\u4E8C", "\u4E09", "\u56DB", "\u4E94", "\u516D", "\u65E5"];
+  var CYCLE_LABELS2 = { period: "\u7ECF\u671F", follicular: "\u5B89\u5168\u671F", ovulatory: "\u6613\u5B55\u671F", luteal: "\u5B89\u5168\u671F" };
+  var lunarFormatter = null;
+  try {
+    lunarFormatter = new Intl.DateTimeFormat("zh-CN-u-ca-chinese", { month: "short", day: "numeric" });
+  } catch {
+  }
+  function lunarDayLabel(value) {
+    const day = Number(value);
+    if (!Number.isInteger(day) || day < 1 || day > 30) return "";
+    if (day <= 10) return `\u521D${["\u4E00", "\u4E8C", "\u4E09", "\u56DB", "\u4E94", "\u516D", "\u4E03", "\u516B", "\u4E5D", "\u5341"][day - 1]}`;
+    if (day < 20) return `\u5341${["\u4E00", "\u4E8C", "\u4E09", "\u56DB", "\u4E94", "\u516D", "\u4E03", "\u516B", "\u4E5D"][day - 11]}`;
+    if (day === 20) return "\u4E8C\u5341";
+    if (day < 30) return `\u5EFF${["\u4E00", "\u4E8C", "\u4E09", "\u56DB", "\u4E94", "\u516D", "\u4E03", "\u516B", "\u4E5D"][day - 21]}`;
+    return "\u4E09\u5341";
+  }
+  function lunarLabel(date) {
+    if (!lunarFormatter) return "";
+    try {
+      const parts = lunarFormatter.formatToParts(date);
+      const month = parts.find((part) => part.type === "month")?.value || "";
+      const day = Number(parts.find((part) => part.type === "day")?.value);
+      return day === 1 ? month : lunarDayLabel(day);
+    } catch {
+      return "";
+    }
+  }
   function calendarDateMeta(scope, occasionsByDate, holidayCache, weatherStore, cycleScope, date, viewMode) {
     const parsed = parseCalendarDate(date);
     const events = scope.events[date] || [];
@@ -1734,7 +1791,7 @@ ${userPrompt}` : userPrompt;
     const holidays = (holidayYear?.entries || []).filter((item) => item.date === date);
     const weather = weatherStore?.lastSuccess?.forecast?.days?.find((item) => item.date === date) || null;
     const cycle = predictCyclePhase(cycleScope, date);
-    const summary = viewMode === "life" ? (weather ? `${weatherCodeLabel(weather.weatherCode)} ${Math.round(weather.tempMax)}\xB0` : "") || (cycle.phase ? CYCLE_LABELS2[cycle.phase] || cycle.phase : "") || lunarLabel(parsed) : holidays[0]?.name || occasions[0]?.title || events[0]?.title || lunarLabel(parsed);
+    const summary = viewMode === "weather" ? (weather ? `${weatherCodeLabel(weather.weatherCode)} ${Math.round(weather.tempMax)}\xB0` : "") || lunarLabel(parsed) : viewMode === "cycle" ? (cycle.phase ? CYCLE_LABELS2[cycle.phase] || cycle.phase : "") || lunarLabel(parsed) : holidays[0]?.name || occasions[0]?.title || events[0]?.title || lunarLabel(parsed);
     return {
       parsed,
       events,
@@ -1748,7 +1805,7 @@ ${userPrompt}` : userPrompt;
   }
   function renderCalendarPageHtml(scope, occasionScope, status = "", holidayCache = {}, weatherStore = {}, cycleScope = {}, weatherResults = [], view = {}) {
     const today = calendarReferenceDate(scope);
-    const viewMode = view.viewMode === "life" ? "life" : "schedule";
+    const viewMode = ["schedule", "weather", "cycle"].includes(view.viewMode) ? view.viewMode : "schedule";
     const viewYear = Number.isInteger(view.viewYear) ? view.viewYear : today.getFullYear();
     const viewMonth = Number.isInteger(view.viewMonth) ? view.viewMonth : today.getMonth() + 1;
     const monthCells = calendarMonthCells(viewYear, viewMonth);
@@ -1770,8 +1827,9 @@ ${userPrompt}` : userPrompt;
       if (meta.parsed.getMonth() !== viewMonth - 1) classes.push("is-other-month");
       if (date === todayKey) classes.push("is-today");
       if (date === selectedDate) classes.push("is-selected");
-      if (viewMode === "life") {
+      if (viewMode === "weather") {
         if (meta.weather) classes.push("has-weather");
+      } else if (viewMode === "cycle") {
         if (meta.cycle.phase) classes.push(`has-cycle is-cycle-${meta.cycle.phase}`);
       } else {
         if (meta.hasSchedule) classes.push("has-schedule");
@@ -1790,8 +1848,8 @@ ${userPrompt}` : userPrompt;
       selectedDate,
       viewMode
     );
-    const headerAction = viewMode === "life" ? "calendar-weather-refresh" : "calendar-generate";
-    const headerActionLabel = viewMode === "life" ? "\u5237\u65B0\u5929\u6C14" : calendarGenerationCopy(today).actionLabel;
+    const headerAction = viewMode === "weather" ? "calendar-weather-refresh" : viewMode === "schedule" ? "calendar-generate" : "";
+    const headerActionLabel = viewMode === "weather" ? "\u5237\u65B0\u5929\u6C14" : calendarGenerationCopy(today).actionLabel;
     const holidayCountry = normalizeHolidayCache(holidayCache).selectedCountry;
     const holidayRange = holidayYearRange(holidayCountry);
     const holidayAvailable = monthKeys.some((date) => isHolidayYearSupported(holidayCountry, Number(date.slice(0, 4))));
@@ -1804,12 +1862,17 @@ ${userPrompt}` : userPrompt;
       weatherResults,
       viewMode,
       holidayAvailable,
-      holidayRange
+      holidayRange,
+      editorKind: view.editorKind,
+      cycleSubjects: view.cycleSubjects,
+      selectedCycleSubject: view.cycleSubject
     });
     const baseDate = scope.baseDate || "";
+    const headerBusy = viewMode === "schedule" && view.generating === true;
+    const headerButton = headerAction ? `<button type="button" class="pm-calendar-header-action ${headerBusy ? "is-loading" : ""}" data-action="${headerAction}" aria-label="${headerActionLabel}" title="${headerActionLabel}" aria-busy="${headerBusy}" ${headerBusy ? "disabled" : ""}>${REFRESH_ICON_SVG}</button>` : "<span></span>";
     return `<div id="pm-calendar-app" class="pm-calendar-shell" data-calendar-view-mode="${viewMode}">
-        <header class="pm-calendar-header"><button type="button" data-action="calendar-home" aria-label="\u8FD4\u56DE\u684C\u9762">${BACK_ICON_SVG}</button><div class="pm-calendar-title"><b>${escapeHtml(monthTitle.format(createCalendarDate(viewYear, viewMonth, 1)))}</b><label>\u65F6\u95F4\u8D77\u70B9<input type="text" inputmode="numeric" pattern="\\d{4}-\\d{2}-\\d{2}" placeholder="YYYY-MM-DD" data-calendar-base-date value="${escapeAttr(baseDate)}" aria-label="\u81EA\u5B9A\u4E49\u65F6\u95F4\u8D77\u70B9"></label><span><button type="button" data-action="calendar-base-save">\u5E94\u7528</button>${baseDate ? '<button type="button" data-action="calendar-base-clear">\u8BBE\u5907\u65F6\u95F4</button>' : ""}</span></div><button type="button" data-action="${headerAction}" aria-label="${headerActionLabel}" title="${headerActionLabel}">${REFRESH_ICON_SVG}</button></header>
-        <div class="pm-calendar-month-nav"><button type="button" class="pm-calendar-month-step" data-action="calendar-prev-month" aria-label="\u4E0A\u4E2A\u6708">\u2039</button><div class="pm-calendar-nav-center"><button type="button" class="pm-calendar-today" data-action="calendar-today" aria-label="\u56DE\u5230${baseDate ? "\u65F6\u95F4\u8D77\u70B9" : "\u672C\u6708"}">${baseDate ? "\u8D77\u70B9" : "\u4ECA\u5929"}</button><div class="pm-calendar-view-switch" role="group" aria-label="\u65E5\u5386\u4FE1\u606F\u5206\u7C7B"><button type="button" data-action="calendar-mode-schedule" aria-label="\u663E\u793A\u65E5\u7A0B\u4E0E\u8282\u65E5" aria-pressed="${viewMode === "schedule"}" title="\u5B89\u6392\uFF1A\u65E5\u7A0B\u3001\u7EAA\u5FF5\u65E5\u4E0E\u8282\u5047\u65E5">${CALENDAR_ICON_SVG}</button><button type="button" data-action="calendar-mode-life" aria-label="\u663E\u793A\u5929\u6C14\u4E0E\u751F\u7406\u5468\u671F" aria-pressed="${viewMode === "life"}" title="\u751F\u6D3B\uFF1A\u5929\u6C14\u4E0E\u751F\u7406\u5468\u671F">${WEATHER_ICON_SVG}</button></div></div><button type="button" class="pm-calendar-month-step" data-action="calendar-next-month" aria-label="\u4E0B\u4E2A\u6708">\u203A</button></div>
+        <header class="pm-calendar-header"><button type="button" data-action="calendar-home" aria-label="\u8FD4\u56DE\u684C\u9762">${BACK_ICON_SVG}</button><div class="pm-calendar-title-row"><b>${escapeHtml(monthTitle.format(createCalendarDate(viewYear, viewMonth, 1)))}</b><details class="pm-calendar-base-menu"><summary aria-label="\u8BBE\u7F6E\u65F6\u95F4\u8D77\u70B9" title="\u65F6\u95F4\u8D77\u70B9">${TIME_ORIGIN_ICON_SVG}</summary><div><label>\u65F6\u95F4\u8D77\u70B9<input type="date" data-calendar-base-date value="${escapeAttr(baseDate)}" aria-label="\u81EA\u5B9A\u4E49\u65F6\u95F4\u8D77\u70B9"></label><span><button type="button" data-action="calendar-base-save">\u5E94\u7528</button>${baseDate ? '<button type="button" data-action="calendar-base-clear">\u8BBE\u5907\u65F6\u95F4</button>' : ""}</span></div></details></div>${headerButton}</header>
+        <div class="pm-calendar-month-nav"><button type="button" class="pm-calendar-month-step" data-action="calendar-prev-month" aria-label="\u4E0A\u4E2A\u6708">\u2039</button><div class="pm-calendar-view-switch" role="group" aria-label="\u65E5\u5386\u4FE1\u606F\u5206\u7C7B"><button type="button" data-action="calendar-mode-schedule" aria-label="\u663E\u793A\u65E5\u7A0B\u4E0E\u5047\u65E5" aria-pressed="${viewMode === "schedule"}" title="\u65E5\u7A0B\u4E0E\u5047\u65E5">${CALENDAR_ICON_SVG}</button><button type="button" data-action="calendar-mode-weather" aria-label="\u663E\u793A\u5929\u6C14" aria-pressed="${viewMode === "weather"}" title="\u5929\u6C14">${WEATHER_ICON_SVG}</button><button type="button" data-action="calendar-mode-cycle" aria-label="\u663E\u793A\u751F\u7406\u671F" aria-pressed="${viewMode === "cycle"}" title="\u751F\u7406\u671F">${CYCLE_ICON_SVG}</button></div><button type="button" class="pm-calendar-month-step" data-action="calendar-next-month" aria-label="\u4E0B\u4E2A\u6708">\u203A</button></div>
         <div class="pm-calendar-month" aria-label="${viewYear}\u5E74${viewMonth}\u6708\u6708\u5386"><div class="pm-calendar-weekdays">${CALENDAR_WEEKDAYS.map((day) => `<span>\u5468${day}</span>`).join("")}</div><div class="pm-calendar-month-grid">${days}</div></div>
         ${selectedDetail}
         <div class="pm-calendar-status" aria-live="polite">${escapeHtml(status)}</div>
@@ -1836,7 +1899,18 @@ ${userPrompt}` : userPrompt;
     };
     const scope = (storageId) => calendarScopeFor(runtime.store, storageId);
     const occasions = (storageId) => occasionScopeFor(runtime.occasionStore, storageId);
-    const cycles = (storageId) => cycleScopeFor(runtime.cycleStore, storageId);
+    const cycleSubjectOptions = (storageId) => {
+      const names = state.isGroupChat ? state.groupMembers : [state.currentPersona];
+      const known = cycleSubjectKeys(runtime.cycleStore, storageId);
+      const ids = [CYCLE_SELF_SUBJECT, ...names.filter(Boolean).map((name) => `role:${name}`), ...known];
+      const seen = /* @__PURE__ */ new Set();
+      return ids.flatMap((value) => {
+        if (!value || seen.has(value)) return [];
+        seen.add(value);
+        return [{ value, label: value === CYCLE_SELF_SUBJECT ? "\u6211" : value.startsWith("role:") ? value.slice(5) : value }];
+      });
+    };
+    const cycles = (storageId, subject = CYCLE_SELF_SUBJECT) => cycleScopeFor(runtime.cycleStore, storageId, subject);
     const viewFor = (storageId) => {
       const existing = runtime.viewByStorage.get(storageId);
       if (existing) return existing;
@@ -1845,7 +1919,10 @@ ${userPrompt}` : userPrompt;
         viewYear: reference.getFullYear(),
         viewMonth: reference.getMonth() + 1,
         selectedDate: formatCalendarDate(reference),
-        viewMode: "schedule"
+        viewMode: "schedule",
+        editorKind: "event",
+        cycleSubject: CYCLE_SELF_SUBJECT,
+        generating: false
       };
       runtime.viewByStorage.set(storageId, view);
       return view;
@@ -1949,7 +2026,7 @@ ${userPrompt}` : userPrompt;
       const normalized = normalizeCycleStore(nextStore);
       if (!saveCalendarCycles(normalized)) throw new Error("\u751F\u7406\u5468\u671F\u6570\u636E\u4FDD\u5B58\u5931\u8D25\uFF1A\u6D4F\u89C8\u5668\u5B58\u50A8\u4E0D\u53EF\u7528");
       runtime.cycleStore = normalized;
-      return cycles(storageId);
+      return cycles(storageId, viewFor(storageId).cycleSubject);
     };
     const render = (storageId = getStorageId2()) => {
       const container = state.phoneWindow?.querySelector(".pm-calendar-page");
@@ -1960,9 +2037,12 @@ ${userPrompt}` : userPrompt;
         runtime.statusByStorage.get(storageId) || "",
         runtime.holidayStore,
         runtime.weatherStore,
-        cycles(storageId),
+        cycles(storageId, viewFor(storageId).cycleSubject),
         runtime.weatherSearchResults,
-        viewFor(storageId)
+        {
+          ...viewFor(storageId),
+          cycleSubjects: cycleSubjectOptions(storageId)
+        }
       );
       return true;
     };
@@ -2095,9 +2175,13 @@ ${userPrompt}` : userPrompt;
     async function generate(storageId = getStorageId2(), mode = "generate", { parentSignal } = {}) {
       const task = tasks.begin(storageId, "generate", { replace: false, mode, parentSignal });
       if (!task) throw new Error("\u5F53\u524D\u4F1A\u8BDD\u5DF2\u6709\u65E5\u5386\u751F\u6210\u4EFB\u52A1\uFF0C\u6216\u4F1A\u8BDD\u4E0D\u53EF\u7528");
-      const now2 = calendarReferenceDate(scope(storageId));
-      const generationCopy = calendarGenerationCopy(now2, mode);
+      const currentView = viewFor(storageId);
+      const previousStatus = currentView.generationTask ? currentView.generationPreviousStatus : runtime.statusByStorage.get(storageId) || "";
+      runtime.viewByStorage.set(storageId, { ...currentView, generating: true, generationTask: task, generationPreviousStatus: previousStatus });
+      let statusSettled = false;
+      const now2 = calendarReferenceDate(scope(storageId)), generationCopy = calendarGenerationCopy(now2, mode);
       status(storageId, generationCopy.pending);
+      rerender(storageId);
       try {
         const context = await gatherContext2();
         if (!tasks.active(task)) return false;
@@ -2120,15 +2204,23 @@ ${userPrompt}` : userPrompt;
         if (!committed) return false;
         if (!tasks.active(task)) return false;
         status(storageId, generationCopy.success);
+        statusSettled = true;
         rerender(storageId);
         return true;
       } catch (error) {
         if (error?.calendarRollbackError) throw error;
         if (!tasks.active(task)) return false;
         status(storageId, `\u65E5\u5386\u751F\u6210\u5931\u8D25\uFF1A${calendarGenerationErrorMessage(error)}`);
+        statusSettled = true;
         throw error;
       } finally {
         tasks.finish(task);
+        const latestView = viewFor(storageId);
+        if (latestView.generationTask === task) {
+          if (!statusSettled) status(storageId, previousStatus);
+          runtime.viewByStorage.set(storageId, { ...latestView, generating: false, generationTask: null, generationPreviousStatus: "" });
+          rerender(storageId);
+        }
       }
     }
     async function ensureWeek(storageId = getStorageId2()) {
@@ -2139,9 +2231,8 @@ ${userPrompt}` : userPrompt;
         if (!tasks.active(task)) return false;
         const reference = calendarReferenceDate(scope(storageId));
         const hasFutureEvents = calendarWeekKeys(reference, 7).some((date) => (scope(storageId).events[date] || []).length);
-        if (!hasFutureEvents) return await generate(storageId, "generate", { parentSignal: task.signal });
         rerender(storageId);
-        return true;
+        return hasFutureEvents;
       } finally {
         tasks.finish(task);
       }
@@ -2175,6 +2266,17 @@ ${userPrompt}` : userPrompt;
       form.elements.title.focus();
     };
     const occasionEditor = (app) => app?.querySelector("[data-calendar-occasion-editor]");
+    const activateEditorKind = (storageId, app, kind) => {
+      const editorKind = kind === "occasion" ? "occasion" : "event";
+      const current = viewFor(storageId);
+      runtime.viewByStorage.set(storageId, { ...current, editorKind });
+      const eventForm = editor(app), occasionForm = occasionEditor(app);
+      if (eventForm) eventForm.hidden = editorKind === "occasion";
+      if (occasionForm) occasionForm.hidden = editorKind !== "occasion";
+      for (const control of app?.querySelectorAll?.('[data-action="calendar-editor-kind"]') || []) {
+        control.setAttribute("aria-pressed", String(control.dataset.editorKind === editorKind));
+      }
+    };
     const clearOccasionEditor = (app) => {
       const form = occasionEditor(app);
       if (!form) return;
@@ -2213,18 +2315,6 @@ ${userPrompt}` : userPrompt;
         rerender(storageId);
         return;
       }
-      if (action === "calendar-today") {
-        const today = calendarReferenceDate(scope(storageId));
-        const current = viewFor(storageId);
-        runtime.viewByStorage.set(storageId, {
-          ...current,
-          viewYear: today.getFullYear(),
-          viewMonth: today.getMonth() + 1,
-          selectedDate: formatCalendarDate(today)
-        });
-        rerender(storageId);
-        return;
-      }
       if (action === "calendar-base-save") {
         const value = app?.querySelector("[data-calendar-base-date]")?.value || "";
         const parsed = parseCalendarDate(value);
@@ -2250,11 +2340,15 @@ ${userPrompt}` : userPrompt;
         rerender(storageId);
         return;
       }
-      if (action === "calendar-mode-schedule" || action === "calendar-mode-life") {
+      if (["calendar-mode-schedule", "calendar-mode-weather", "calendar-mode-cycle"].includes(action)) {
         const current = viewFor(storageId);
-        const viewMode = action === "calendar-mode-life" ? "life" : "schedule";
+        const viewMode = action.slice("calendar-mode-".length);
         runtime.viewByStorage.set(storageId, { ...current, viewMode });
         rerender(storageId);
+        return;
+      }
+      if (action === "calendar-editor-kind") {
+        activateEditorKind(storageId, app, button.dataset.editorKind);
         return;
       }
       if (action === "calendar-select-date") {
@@ -2299,36 +2393,55 @@ ${userPrompt}` : userPrompt;
       if (action === "calendar-cycle-save") {
         const form = app?.querySelector("[data-calendar-cycle-editor]");
         if (!form) return;
+        const currentView = viewFor(storageId);
+        const subject = form.elements.subject?.value || currentView.cycleSubject || CYCLE_SELF_SUBJECT;
+        const reference = calendarReferenceDate(scope(storageId));
+        const requestedDay = Number(form.elements.periodStartDay.value);
+        let anchor = createCalendarDate(reference.getFullYear(), reference.getMonth() + 1, requestedDay);
+        if (!anchor || anchor > reference) {
+          const previousMonth = shiftCalendarMonth(reference.getFullYear(), reference.getMonth() + 1, -1);
+          anchor = createCalendarDate(previousMonth.year, previousMonth.month, requestedDay);
+        }
+        if (!anchor) throw new Error("\u7ECF\u671F\u5F00\u59CB\u65E5\u4E0D\u9002\u7528\u4E8E\u5F53\u524D\u6708\u4EFD\uFF0C\u8BF7\u9009\u62E9 1 \u5230 28 \u65E5");
         const nextStore = upsertCycleScope(runtime.cycleStore, storageId, {
           enabled: form.elements.enabled.checked,
-          lastPeriodStart: form.elements.lastPeriodStart.value || null,
+          lastPeriodStart: form.elements.enabled.checked ? formatCalendarDate(anchor) : null,
           cycleLength: Number(form.elements.cycleLength.value),
           periodLength: Number(form.elements.periodLength.value),
-          overrides: cycles(storageId).overrides
-        });
+          overrides: cycles(storageId, subject).overrides
+        }, subject);
+        runtime.viewByStorage.set(storageId, { ...currentView, cycleSubject: subject });
         commitCycle(storageId, nextStore);
         await deps.applyBidirectionalInjection?.();
-        status(storageId, "\u751F\u7406\u5468\u671F\u8BBE\u7F6E\u5DF2\u4FDD\u5B58\uFF0C\u5E76\u5DF2\u5237\u65B0\u751F\u6D3B\u65E5\u5386\u6B63\u6587\u3002");
+        status(storageId, "\u751F\u7406\u671F\u63D0\u793A\u5DF2\u4FDD\u5B58\u3002\u9884\u6D4B\u4EC5\u4F9B\u63D0\u9192\uFF0C\u4E0D\u80FD\u7528\u4E8E\u907F\u5B55\u5224\u65AD\u3002");
         rerender(storageId);
         return;
       }
       if (action === "calendar-cycle-clear") {
-        if (!confirm("\u6E05\u9664\u5F53\u524D\u89D2\u8272\u4E0E\u804A\u5929\u7684\u751F\u7406\u5468\u671F\u8D44\u6599\uFF1F")) return;
-        commitCycle(storageId, clearCycleScope(runtime.cycleStore, storageId));
+        const subject = app?.querySelector("[data-calendar-cycle-editor]")?.elements.subject?.value || viewFor(storageId).cycleSubject || CYCLE_SELF_SUBJECT;
+        if (!confirm("\u6E05\u9664\u5F53\u524D\u6240\u9009\u89D2\u8272\u7684\u751F\u7406\u671F\u8D44\u6599\uFF1F")) return;
+        commitCycle(storageId, clearCycleScope(runtime.cycleStore, storageId, subject));
         await deps.applyBidirectionalInjection?.();
-        status(storageId, "\u5F53\u524D\u89D2\u8272\u4E0E\u804A\u5929\u7684\u751F\u7406\u5468\u671F\u8D44\u6599\u5DF2\u6E05\u9664\uFF0C\u5E76\u5DF2\u5237\u65B0\u751F\u6D3B\u65E5\u5386\u6B63\u6587\u3002");
+        status(storageId, "\u6240\u9009\u89D2\u8272\u7684\u751F\u7406\u671F\u8D44\u6599\u5DF2\u6E05\u9664\u3002");
+        rerender(storageId);
+        return;
+      }
+      if (action === "calendar-cycle-subject") {
+        const current = viewFor(storageId);
+        runtime.viewByStorage.set(storageId, { ...current, cycleSubject: button.value || CYCLE_SELF_SUBJECT });
         rerender(storageId);
         return;
       }
       if (action === "calendar-toggle-auto") {
         await commitScope(storageId, (current) => ({ ...current, autoAdjust: !current.autoAdjust }));
-        status(storageId, scope(storageId).autoAdjust ? "\u81EA\u52A8\u8C03\u6574\u5DF2\u5F00\u542F\u3002\u89D2\u8272\u56DE\u590D\u5B8C\u6210\u540E\u4F1A\u6839\u636E\u5F53\u524D\u4E0A\u4E0B\u6587\u4FEE\u6B63\u65E5\u7A0B\u3002" : "\u81EA\u52A8\u8C03\u6574\u5DF2\u5173\u95ED\u3002");
+        status(storageId, scope(storageId).autoAdjust ? "\u81EA\u52A8\u8BC6\u522B\u5DF2\u5F00\u542F\u3002\u89D2\u8272\u56DE\u590D\u5B8C\u6210\u540E\u4F1A\u4ECE\u5F53\u524D\u4E0A\u4E0B\u6587\u8BC6\u522B\u660E\u786E\u65E5\u671F\u65E5\u7A0B\u3002" : "\u81EA\u52A8\u8BC6\u522B\u5DF2\u5173\u95ED\u3002");
         rerender(storageId);
         return;
       }
       if (action === "calendar-edit") {
         const event = findCalendarEvent(scope(storageId), button.dataset.eventId);
         if (!event) throw new Error("\u65E5\u7A0B\u4E0D\u5B58\u5728\u6216\u5DF2\u88AB\u5220\u9664");
+        activateEditorKind(storageId, app, "event");
         fillEditor(app, event);
         return;
       }
@@ -2348,6 +2461,7 @@ ${userPrompt}` : userPrompt;
       if (action === "calendar-occasion-edit") {
         const occasion = findOccasion(occasions(storageId), button.dataset.occasionId);
         if (!occasion) throw new Error("\u751F\u65E5\u6216\u7EAA\u5FF5\u65E5\u4E0D\u5B58\u5728\u6216\u5DF2\u88AB\u5220\u9664");
+        activateEditorKind(storageId, app, "occasion");
         fillOccasionEditor(app, occasion);
         return;
       }
@@ -2434,9 +2548,9 @@ ${userPrompt}` : userPrompt;
       const storageId = getStorageId2();
       if (!scope(storageId).autoAdjust) return false;
       try {
-        return await generate(storageId, "adjust");
+        return await scanContext(storageId, { silent: true });
       } catch (error) {
-        console.warn("[phone-mode] \u65E5\u5386\u81EA\u52A8\u8C03\u6574\u5931\u8D25", error);
+        console.warn("[phone-mode] \u65E5\u5386\u81EA\u52A8\u8BC6\u522B\u5931\u8D25", error);
         return false;
       }
     }
@@ -4330,10 +4444,13 @@ ${lines.join("\n")}
     return { histories, groups, contacts, groupNames, total: contacts.length + groupNames.length };
   }
   function setSpinning(active) {
-    const icon2 = document.getElementById("pm-autogen-icon");
     const button = document.getElementById("pm-autogen-btn");
+    const icon2 = button?.querySelector("svg");
     if (icon2) icon2.style.animation = active ? "pm-spin 0.8s linear infinite" : "";
-    if (button) button.style.pointerEvents = active ? "none" : "";
+    if (button) {
+      button.disabled = active;
+      button.setAttribute("aria-busy", String(active));
+    }
   }
   function buildPrompts(context, existingNames) {
     const { cardDesc, cardPersonality, cardScenario, mainChatText, worldBookText, userName, userDesc } = context;
@@ -4513,7 +4630,8 @@ ${mainChatText}` : "",
       callAI,
       beginGeneration,
       isGenerationTaskActive,
-      finishGeneration
+      finishGeneration,
+      commitDirectory = commitGeneratedDirectory
     } = deps;
     window.__pmConfirmAutoGen = () => {
       const id2 = getStorageId2();
@@ -4533,7 +4651,11 @@ ${mainChatText}` : "",
         if (!isGenerationTaskActive(task)) return;
         const existingNames = [...directory.contacts, ...directory.groupNames];
         const { systemPrompt, userPrompt } = buildPrompts(context, existingNames);
-        const raw = await callAI(systemPrompt, userPrompt, { maxTokens: 600 });
+        const raw = await callAI(systemPrompt, userPrompt, {
+          maxTokens: 600,
+          isolated: true,
+          signal: task.signal
+        });
         if (!isGenerationTaskActive(task)) return;
         const parsed = parseGeneratedDirectory(raw);
         const latestDirectory = getDirectoryState(id2);
@@ -4543,12 +4665,18 @@ ${mainChatText}` : "",
           context.userName
         );
         if (!isGenerationTaskActive(task)) return;
-        await commitGeneratedDirectory({
+        const committed = await commitDirectory({
           id: id2,
           candidates,
           isActive: () => isGenerationTaskActive(task)
         });
-        if (document.getElementById("pm-autogen-btn")) await window.__pmShowList();
+        if (!committed || !isGenerationTaskActive(task)) return;
+        if (document.getElementById("pm-autogen-btn")) {
+          const resultParts = [];
+          if (candidates.contacts.length) resultParts.push(`${candidates.contacts.length} \u4F4D\u8054\u7CFB\u4EBA`);
+          if (candidates.groups.length) resultParts.push(`${candidates.groups.length} \u4E2A\u7FA4\u804A`);
+          await window.__pmShowAddContact(`\u5DF2\u6DFB\u52A0 ${resultParts.join("\u3001")}`);
+        }
       } catch (error) {
         console.error("[phone-mode] __pmAutoGenContacts \u5F02\u5E38", error);
         if (shouldReportGeneratedDirectoryError(error, isGenerationTaskActive(task))) {
@@ -4642,7 +4770,8 @@ ${mainChatText}` : "",
       addDirector,
       fitNameFont,
       applyBackground,
-      applyBidirectionalInjection
+      applyBidirectionalInjection,
+      resetEmojiRenderBudget
     } = deps;
     window.__pmSwitchContact = async (key) => {
       if (!key?.trim()) return;
@@ -4711,6 +4840,7 @@ ${mainChatText}` : "",
         fitNameFont();
         const list2 = state.phoneWindow.querySelector(".pm-msg-list");
         list2.innerHTML = "";
+        resetEmojiRenderBudget();
         if (state.conversationHistory.length > 0) {
           addNote("\u5386\u53F2\u8BB0\u5F55");
           state.conversationHistory.forEach((m, hi) => {
@@ -4751,6 +4881,68 @@ ${mainChatText}` : "",
     });
   }
 
+  // src/emoji-media.js
+  var MAX_EMOJI_FILE_BYTES = 1024 * 1024;
+  var MAX_EMOJI_INLINE_LIBRARY_BYTES = 8 * 1024 * 1024;
+  var MAX_EMOJI_RENDER_BYTES = 4 * 1024 * 1024;
+  var DATA_URL_PATTERN = /^data:([^;,]+)?((?:;[^,]*)*),(.*)$/is;
+  function emojiDataUrlBytes(value) {
+    const match = String(value || "").match(DATA_URL_PATTERN);
+    if (!match) return 0;
+    const metadata = match[2] || "";
+    const payload = match[3] || "";
+    if (/;base64(?:;|$)/i.test(metadata)) {
+      const compact = payload.replace(/\s/g, "");
+      const padding = compact.endsWith("==") ? 2 : compact.endsWith("=") ? 1 : 0;
+      return Math.max(0, Math.floor(compact.length * 3 / 4) - padding);
+    }
+    try {
+      return new TextEncoder().encode(decodeURIComponent(payload)).length;
+    } catch {
+      return new TextEncoder().encode(payload).length;
+    }
+  }
+  function emojiInlineBytes(sets) {
+    return (Array.isArray(sets) ? sets : []).reduce((total, set) => total + (Array.isArray(set?.images) ? set.images : []).reduce((sum, image) => sum + emojiDataUrlBytes(image?.url), 0), 0);
+  }
+  function cloneEmojiLibrary(sets) {
+    return (Array.isArray(sets) ? sets : []).map((set) => ({
+      ...set,
+      images: (Array.isArray(set?.images) ? set.images : []).map((image) => ({ ...image }))
+    }));
+  }
+  function emojiFileError(file) {
+    if (!file) return "\u8BF7\u9009\u62E9\u56FE\u7247\u6587\u4EF6\u3002";
+    if (!String(file.type || "").toLowerCase().startsWith("image/")) return "\u53EA\u80FD\u4E0A\u4F20\u56FE\u7247\u6587\u4EF6\u3002";
+    if (Number(file.size) > MAX_EMOJI_FILE_BYTES) return "\u56FE\u7247\u4E0D\u80FD\u8D85\u8FC7 1 MB\uFF0C\u8BF7\u538B\u7F29\u540E\u91CD\u8BD5\u3002";
+    return "";
+  }
+  function emojiSourceError(url, sets = []) {
+    const source = String(url || "").trim();
+    if (!source) return "\u8BF7\u8F93\u5165\u56FE\u7247 URL \u6216\u4E0A\u4F20\u56FE\u7247\u3002";
+    if (!source.toLowerCase().startsWith("data:")) return "\u4E3A\u9632\u6B62\u8FDC\u7A0B\u52A8\u56FE\u5BFC\u81F4\u754C\u9762\u5361\u6B7B\uFF0C\u8BF7\u4E0A\u4F20\u672C\u5730\u56FE\u7247\u3002";
+    if (!source.toLowerCase().startsWith("data:image/")) return "\u5185\u8054\u5185\u5BB9\u5FC5\u987B\u662F\u56FE\u7247\u3002";
+    const bytes = emojiDataUrlBytes(source);
+    if (bytes > MAX_EMOJI_FILE_BYTES) return "\u56FE\u7247\u4E0D\u80FD\u8D85\u8FC7 1 MB\uFF0C\u8BF7\u538B\u7F29\u540E\u91CD\u8BD5\u3002";
+    if (emojiInlineBytes(sets) + bytes > MAX_EMOJI_INLINE_LIBRARY_BYTES) return "\u672C\u5730\u8868\u60C5\u603B\u5BB9\u91CF\u4E0D\u80FD\u8D85\u8FC7 8 MB\uFF0C\u8BF7\u5148\u5220\u9664\u4E0D\u5E38\u7528\u56FE\u7247\u3002";
+    return "";
+  }
+  function isRenderableEmojiSource(url) {
+    const source = String(url || "").trim();
+    if (!source) return false;
+    return source.toLowerCase().startsWith("data:image/") && emojiDataUrlBytes(source) <= MAX_EMOJI_FILE_BYTES;
+  }
+  function createEmojiRenderBudget(maxBytes = MAX_EMOJI_RENDER_BYTES) {
+    let used = 0;
+    return (url) => {
+      if (!isRenderableEmojiSource(url)) return false;
+      const bytes = emojiDataUrlBytes(url);
+      if (used + bytes > maxBytes) return false;
+      used += bytes;
+      return true;
+    };
+  }
+
   // src/emoji-ui.js
   var SUB_OVERLAY_STYLE = "position:fixed !important; inset:0 !important; margin:0 !important; padding:0 !important; border:none !important; width:100vw !important; height:100vh !important; max-width:none !important; max-height:none !important; background:rgba(0,0,0,.45) !important; z-index:2147483648 !important; display:flex !important; align-items:center !important; justify-content:center !important;";
   function createSubOverlay(html) {
@@ -4772,11 +4964,17 @@ ${mainChatText}` : "",
     }
     return overlay;
   }
-  function renderPickerImages(set) {
+  function renderEmojiThumbnail(image, width, height, canRender) {
+    if (!canRender(image.url)) {
+      return `<div style="width:${width}px;height:${height}px;display:flex;align-items:center;justify-content:center;text-align:center;padding:4px;border-radius:8px;background:#f2f2f2;color:#999;font-size:9px;line-height:1.3;">\u56FE\u7247\u6682\u4E0D\u52A0\u8F7D</div>`;
+    }
+    return `<img src="${escapeAttr(image.url)}" loading="lazy" decoding="async" width="${width}" height="${height}" style="width:${width}px;height:${height}px;object-fit:contain;border-radius:8px;box-shadow:0 2px 6px rgba(0,0,0,0.1);">`;
+  }
+  function renderPickerImages(set, canRender = createEmojiRenderBudget()) {
     if (!set?.images?.length) return '<div style="text-align:center;color:#999;font-size:12px;padding:20px 0;">\u672C\u5957\u6682\u65E0\u56FE\u7247</div>';
     return set.images.map((image, index) => `
         <div onclick="window.__pmInsertEmoji('[emo:${escapeAttr(set.name)}:${index + 1}]')" style="cursor:pointer;width:60px;display:flex;flex-direction:column;align-items:center;gap:4px;">
-            <img src="${escapeAttr(image.url)}" style="width:50px;height:50px;object-fit:cover;border-radius:8px;box-shadow:0 2px 6px rgba(0,0,0,0.1);">
+            ${renderEmojiThumbnail(image, 50, 50, canRender)}
             <span style="font-size:10px;color:#666;width:100%;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(image.desc)}</span>
         </div>`).join("");
   }
@@ -4786,7 +4984,7 @@ ${mainChatText}` : "",
   }
   function installEmojiUi({ makeOverlay, saveEmojis: saveEmojis2 }) {
     async function mutateEmojis(mutator) {
-      const snapshot = JSON.parse(JSON.stringify(window.__pmEmojis));
+      const snapshot = cloneEmojiLibrary(window.__pmEmojis);
       try {
         mutator();
         await saveEmojis2();
@@ -4815,6 +5013,7 @@ ${mainChatText}` : "",
         container.innerHTML = '<div style="text-align:center;color:#aaa;font-size:13px;padding:16px 0;">\u6682\u65E0\u8868\u60C5\u5305\u5957\u7EC4</div>';
         return;
       }
+      const canRender = createEmojiRenderBudget();
       container.innerHTML = sets.map((set, setIndex) => `
             <div style="background:#fafafa;border:1px solid #eee;border-radius:10px;padding:10px 12px;margin-bottom:8px;">
                 <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
@@ -4827,7 +5026,7 @@ ${mainChatText}` : "",
                 <div style="display:flex;flex-wrap:wrap;gap:8px;">
                     ${set.images.map((image, imageIndex) => `
                         <div style="position:relative;width:52px;">
-                            <img src="${escapeAttr(image.url)}" style="width:52px;height:52px;object-fit:cover;border-radius:8px;border:1px solid #eee;">
+                            ${renderEmojiThumbnail(image, 52, 52, canRender)}
                             <div style="font-size:9px;color:#888;text-align:center;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;width:52px;">${escapeHtml(image.desc)}</div>
                             <button type="button" class="pm-emoji-image-delete" onclick="window.__pmDeleteEmojiImage(${setIndex},${imageIndex})" aria-label="\u5220\u9664\u56FE\u7247 ${escapeAttr(image.desc)}">\u5220\u9664</button>
                         </div>`).join("")}
@@ -4882,7 +5081,7 @@ ${mainChatText}` : "",
     <input id="pm-emo-url" class="pm-cfg-input" placeholder="https://... \u6216\u70B9\u4E0B\u65B9\u9009\u62E9\u6587\u4EF6" style="padding:8px 10px;font-size:13px;border-radius:8px;border:1px solid #ddd;">
     <button onclick="document.getElementById('pm-emo-file').click()" style="background:#f0f0f3;color:#333;border:1px solid #ddd;border-radius:8px;padding:8px 10px;font-size:12px;cursor:pointer;">\u4E0A\u4F20\u672C\u5730\u56FE\u7247</button>
     <input id="pm-emo-file" type="file" accept="image/*" hidden onchange="window.__pmEmoFileRead(${setIndex},this)">
-    <div id="pm-emo-preview" style="display:none;text-align:center;"><img id="pm-emo-preview-img" style="max-width:120px;max-height:120px;border-radius:10px;border:1px solid #eee;"></div>
+    <div id="pm-emo-preview" style="display:none;text-align:center;"><img id="pm-emo-preview-img" decoding="async" width="120" height="120" style="width:120px;height:120px;object-fit:contain;border-radius:10px;border:1px solid #eee;"></div>
     <input id="pm-emo-desc" class="pm-cfg-input" placeholder="\u56FE\u7247\u63CF\u8FF0\uFF08\u5FC5\u586B\uFF0C\u5982\uFF1A\u732B\u732B\u5F00\u5FC3\uFF09" style="padding:8px 10px;font-size:13px;border-radius:8px;border:1px solid #ddd;">
     <div style="font-size:11px;color:#aaa;">\u63CF\u8FF0\u5C06\u544A\u8BC9 AI \u8FD9\u5F20\u56FE\u5728\u4EC0\u4E48\u60C5\u5F62\u4E0B\u4F7F\u7528</div>
   </div>
@@ -4893,6 +5092,12 @@ ${mainChatText}` : "",
     window.__pmEmoFileRead = (setIndex, input) => {
       const file = input.files?.[0];
       if (!file) return;
+      const validationError = emojiFileError(file);
+      if (validationError) {
+        input.value = "";
+        alert(validationError);
+        return;
+      }
       const reader = new FileReader();
       reader.onload = (event) => {
         const url = event.target.result;
@@ -4910,7 +5115,8 @@ ${mainChatText}` : "",
     window.__pmConfirmAddEmojiImage = async (setIndex) => {
       const url = document.getElementById("pm-emo-url")?.value.trim();
       const description = document.getElementById("pm-emo-desc")?.value.trim();
-      if (!url) return alert("\u8BF7\u8F93\u5165\u56FE\u7247 URL \u6216\u4E0A\u4F20\u56FE\u7247\u3002");
+      const validationError = emojiSourceError(url, window.__pmEmojis);
+      if (validationError) return alert(validationError);
       if (!description) return alert("\u8BF7\u8F93\u5165\u56FE\u7247\u63CF\u8FF0\uFF08\u5FC5\u586B\uFF09\u3002");
       const set = window.__pmEmojis[setIndex];
       if (!set) return;
@@ -4941,12 +5147,14 @@ ${mainChatText}` : "",
       const input = document.querySelector(".pm-input");
       window.__pmTempText = input ? input.value : "";
       let activeSetIndex = 0;
+      let canRender = createEmojiRenderBudget();
       const renderPicker = () => {
         const set = sets[activeSetIndex] || sets[0];
         const picker = document.getElementById("pm-emoji-picker-inner");
         if (!set || !picker) return;
+        canRender = createEmojiRenderBudget();
         picker.querySelector(".pm-emoji-set-label").textContent = `${set.name} (${set.images.length})`;
-        picker.querySelector(".pm-emoji-imgs").innerHTML = renderPickerImages(set);
+        picker.querySelector(".pm-emoji-imgs").innerHTML = renderPickerImages(set, canRender);
         picker.querySelector(".pm-emoji-dots").innerHTML = renderPickerDots(sets, activeSetIndex);
       };
       window.__pmEmojiSetDot = (index) => {
@@ -4961,7 +5169,7 @@ ${mainChatText}` : "",
     <b class="pm-emoji-set-label">${escapeHtml(firstSet.name)} (${firstSet.images.length})</b>
     <button type="button" onclick="document.getElementById('pm-overlay').remove()" class="pm-modal-close" title="\u5173\u95ED" aria-label="\u5173\u95ED">${CLOSE_ICON_SVG}</button>
   </div>
-  <div class="pm-emoji-imgs" id="pm-emoji-imgs-area" style="padding:12px 14px;overflow-y:auto;max-height:340px;display:flex;flex-wrap:wrap;gap:10px;justify-content:flex-start;touch-action:pan-y pinch-zoom;">${renderPickerImages(firstSet)}</div>
+  <div class="pm-emoji-imgs" id="pm-emoji-imgs-area" style="padding:12px 14px;overflow-y:auto;max-height:340px;display:flex;flex-wrap:wrap;gap:10px;justify-content:flex-start;touch-action:pan-y pinch-zoom;">${renderPickerImages(firstSet, canRender)}</div>
   <div class="pm-emoji-dots">${renderPickerDots(sets, 0)}</div>
 </div>`);
       const imageArea = document.getElementById("pm-emoji-imgs-area");
@@ -5554,10 +5762,10 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
     }).join("");
     return `<div class="pm-desktop-toolbar"><span>${escapeHtml(title)}</span><button type="button" data-action="desktop-exit" aria-label="\u9000\u51FA\u624B\u673A" title="\u9000\u51FA\u624B\u673A">${CLOSE_ICON_SVG}</button></div>
         <div class="pm-desktop-grid" aria-label="\u5E94\u7528">
-            <button type="button" class="pm-desktop-app" data-action="desktop-chat" aria-label="\u804A\u5929" title="\u804A\u5929">${CHAT_ICON_SVG}</button>
-            <button type="button" class="pm-desktop-app" data-action="desktop-directory" aria-label="\u8054\u7CFB\u4EBA" title="\u8054\u7CFB\u4EBA">${CONTACTS_ICON_SVG}</button>
-            <button type="button" class="pm-desktop-app" data-action="desktop-settings" aria-label="\u8BBE\u7F6E" title="\u8BBE\u7F6E">${SETTINGS_ICON_SVG}</button>
-            <button type="button" class="pm-desktop-app" data-action="desktop-calendar" aria-label="\u65E5\u5386" title="\u65E5\u5386">${CALENDAR_ICON_SVG}</button>
+            <button type="button" class="pm-desktop-app" data-app="chat" data-action="desktop-chat" aria-label="\u804A\u5929" title="\u804A\u5929"><span class="pm-desktop-app-icon">${CHAT_ICON_SVG}</span><span class="pm-desktop-app-label">\u804A\u5929</span></button>
+            <button type="button" class="pm-desktop-app" data-app="directory" data-action="desktop-directory" aria-label="\u8054\u7CFB\u4EBA" title="\u8054\u7CFB\u4EBA"><span class="pm-desktop-app-icon">${CONTACTS_ICON_SVG}</span><span class="pm-desktop-app-label">\u8054\u7CFB\u4EBA</span></button>
+            <button type="button" class="pm-desktop-app" data-app="settings" data-action="desktop-settings" aria-label="\u8BBE\u7F6E" title="\u8BBE\u7F6E"><span class="pm-desktop-app-icon">${SETTINGS_ICON_SVG}</span><span class="pm-desktop-app-label">\u8BBE\u7F6E</span></button>
+            <button type="button" class="pm-desktop-app" data-app="calendar" data-action="desktop-calendar" aria-label="\u65E5\u5386" title="\u65E5\u5386"><span class="pm-desktop-app-icon">${CALENDAR_ICON_SVG}</span><span class="pm-desktop-app-label">\u65E5\u5386</span></button>
         </div>
         <section class="pm-desktop-pins"><h3>\u56FA\u5B9A\u793E\u533A</h3>${pins || "<p>\u5728\u793E\u533A\u4E2D\u56FA\u5B9A\u573A\u666F\u540E\uFF0C\u4F1A\u663E\u793A\u5728\u8FD9\u91CC\u3002</p>"}</section>
         <div class="pm-desktop-community-dock"><button type="button" data-action="desktop-community" aria-label="\u53D1\u5E03\u4E00\u6761">${COMMUNITY_ICON_SVG}<span>\u53D1\u5E03\u4E00\u6761</span></button></div>`;
@@ -5654,13 +5862,24 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
     }
     return normalized;
   }
-  function createInteractiveCommitQueue({ getStore, setStore, saveStore: saveStore2 }) {
+  function createInteractiveOperationGuard({ getEpoch, getStorageId: getStorageId2, getOpenSceneId, isMounted }, { epoch, storageId, sceneId }) {
+    if (![getEpoch, getStorageId2, getOpenSceneId, isMounted].every((value) => typeof value === "function")) {
+      throw new TypeError("\u793E\u533A\u64CD\u4F5C\u6709\u6548\u6027\u4F9D\u8D56\u65E0\u6548");
+    }
+    return () => {
+      const expectedSceneId = typeof sceneId === "function" ? sceneId() : sceneId;
+      return getEpoch() === epoch && getStorageId2() === storageId && (!expectedSceneId || getOpenSceneId() === expectedSceneId) && isMounted();
+    };
+  }
+  function createInteractiveCommitQueue({ getStore, setStore, saveStore: saveStore2, syncStore = null }) {
+    if (syncStore !== null && typeof syncStore !== "function") throw new TypeError("\u4E92\u52A8\u573A\u666F\u540C\u6B65\u4F9D\u8D56\u65E0\u6548");
     let queue = Promise.resolve();
     const commit = (mutator, isValid = null, context = "\u64CD\u4F5C") => {
       const operation = queue.catch(() => {
       }).then(async () => {
         const snapshot = cloneStore(getStore());
-        if (isValid && !isValid()) throw new Error("\u6587\u5B57\u76F4\u64AD\u5DF2\u505C\u6B62");
+        const cancelled = () => new Error(context === "\u64CD\u4F5C" ? "\u6587\u5B57\u76F4\u64AD\u5DF2\u505C\u6B62" : `${context}\u5DF2\u53D6\u6D88`);
+        if (isValid && !isValid()) throw cancelled();
         let result;
         try {
           result = await mutator();
@@ -5668,26 +5887,26 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
           setStore(snapshot);
           throw error;
         }
-        let saveCompleted = false;
+        let failure = null;
         try {
           await saveStore2(normalizeInteractiveStore(getStore()));
-          saveCompleted = true;
-        } finally {
-          const needCompensation = !saveCompleted || isValid && !isValid();
-          if (needCompensation) {
-            setStore(snapshot);
-            try {
-              await saveStore2(snapshot);
-            } catch (compensationError) {
-              const rootMsg = saveCompleted ? "\u6587\u5B57\u76F4\u64AD\u5DF2\u505C\u6B62\uFF0C\u4F46\u6301\u4E45\u5C42\u90E8\u5206\u6570\u636E\u53EF\u80FD\u5DF2\u5199\u5165" : "\u4FDD\u5B58\u5931\u8D25\uFF1B\u5185\u5B58\u548C\u90E8\u5206\u6301\u4E45\u5316\u5DF2\u6062\u590D";
-              const combined = new Error(`${rootMsg}\uFF1B\u8865\u507F\u6301\u4E45\u5316\u4E5F\u5931\u8D25\uFF1A${compensationError.message}`);
-              combined.cause = compensationError;
-              throw combined;
-            }
-          }
-          if (saveCompleted && isValid && !isValid()) throw new Error("\u6587\u5B57\u76F4\u64AD\u5DF2\u505C\u6B62");
+          await syncStore?.();
+          if (isValid && !isValid()) throw cancelled();
+          return result;
+        } catch (error) {
+          failure = error;
         }
-        return result;
+        setStore(snapshot);
+        try {
+          await saveStore2(snapshot);
+          await syncStore?.();
+        } catch (compensationError) {
+          const combined = new Error(`${failure.message}\uFF1B\u8865\u507F\u6301\u4E45\u5316\u6216\u540C\u6B65\u4E5F\u5931\u8D25\uFF1A${compensationError.message}`);
+          combined.cause = failure;
+          combined.rollbackError = compensationError;
+          throw combined;
+        }
+        throw failure;
       });
       queue = operation;
       return operation;
@@ -5766,11 +5985,13 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
       loadPromise: null,
       mutationPromise: Promise.resolve(),
       requestId: 0,
+      contextEpoch: 0,
       loadGeneration: 0,
       openSceneId: null,
       busy: false,
       creating: false,
-      phoneUiState: null
+      phoneUiState: null,
+      requestController: null
     };
     const storeLoader = createInteractiveStoreLoader({
       runtime,
@@ -5816,6 +6037,12 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
       return runtime.openSceneId && scene ? { storageId: scopeId, sceneId: scene.id } : null;
     };
     const isTargetActive = (target) => getStorageId2() === target?.storageId && runtime.openSceneId === target?.sceneId && !!resolveTarget(target).scene && document.querySelector("#pm-iphone .pm-main-ui")?.dataset.page === "community";
+    const operationGuard = (storageId, sceneId = () => runtime.openSceneId) => createInteractiveOperationGuard({
+      getEpoch: () => runtime.contextEpoch,
+      getStorageId: getStorageId2,
+      getOpenSceneId: () => runtime.openSceneId,
+      isMounted: () => !!document.getElementById("pm-scene-app")
+    }, { epoch: runtime.contextEpoch, storageId, sceneId });
     const communityTasks = createCommunityTaskController({
       runtime,
       isTargetActive,
@@ -5827,15 +6054,15 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
       setStore: (store) => {
         runtime.store = store;
       },
-      saveStore: saveInteractiveScenes
+      saveStore: saveInteractiveScenes,
+      syncStore: () => deps.applyBidirectionalInjection?.()
     });
-    const commit = async (...args) => {
-      const result = await queuedCommit(...args);
-      await deps.applyBidirectionalInjection?.();
-      return result;
-    };
+    const commit = queuedCommit;
     const invalidate = (reason = "community-context-invalidated") => {
+      runtime.contextEpoch += 1;
       communityRunner?.cancel(reason, true);
+      runtime.requestController?.abort(reason);
+      runtime.requestController = null;
       runtime.requestId += 1;
       runtime.busy = false;
     };
@@ -5942,7 +6169,9 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
       const { scopeId, scene } = target ? resolveTarget(target) : current();
       if (!scene || scopeId === "sms_unknown__default") throw new Error("\u5F53\u524D\u5BBF\u4E3B\u4F1A\u8BDD\u4E0D\u53EF\u7528");
       const scope = runtime.store.scopes[scopeId];
+      const controller = new AbortController();
       runtime.busy = true;
+      runtime.requestController = controller;
       const requestId = ++runtime.requestId;
       setStatus("AI \u6B63\u5728\u751F\u6210\u2026");
       try {
@@ -5952,12 +6181,14 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
         const prompts = buildInteractiveRequest({ kind, presetKey: scene.preset, styleInput: scene.styleInput, generatedPrompt: scene.generatedPrompt, context: await contextText(), actorRoster, ...extra });
         const raw = await callAI(prompts.systemPrompt, prompts.userPrompt, {
           maxTokens: kind === "style_prompt" ? 700 : 1400,
-          isolated: true
+          isolated: true,
+          signal: controller.signal
         });
         if (requestId !== runtime.requestId || !document.getElementById("pm-scene-app")) throw new Error("\u751F\u6210\u5DF2\u53D6\u6D88");
         return parseInteractiveResponse(raw, kind);
       } finally {
         if (requestId === runtime.requestId) {
+          runtime.requestController = null;
           runtime.busy = false;
           setStatus("");
         }
@@ -6009,16 +6240,19 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
     async function createScene(app) {
       if (runtime.creating || runtime.busy) throw new Error("\u5DF2\u6709\u751F\u6210\u4EFB\u52A1\u6B63\u5728\u8FDB\u884C");
       runtime.creating = true;
+      let createdSceneId = null;
       try {
         const scopeId = getStorageId2();
         if (!scopeId || scopeId === "sms_unknown__default") throw new Error("\u8BF7\u5148\u6253\u5F00\u6709\u6548\u7684\u89D2\u8272\u804A\u5929");
         const preset = app.querySelector(".pm-scene-preset.is-active")?.dataset.preset || "weibo";
         const styleInput = app.querySelector("#pm-scene-style")?.value.trim() || "";
         if (preset === "custom" && !styleInput) throw new Error("\u81EA\u5B9A\u4E49\u98CE\u683C\u4E0D\u80FD\u4E3A\u7A7A");
+        const isValid = operationGuard(scopeId, () => createdSceneId);
         await loadStore2();
         await commit(async () => {
           const scope = getScope(runtime.store, scopeId);
           const scene = normalizeScene({ id: uid3("scene"), title: "\u6B63\u5728\u751F\u6210\u793E\u533A\u2026", preset, styleInput });
+          createdSceneId = scene.id;
           scope.scenes[scene.id] = scene;
           scope.sceneOrder.push(scene.id);
           scope.activeSceneId = scene.id;
@@ -6027,7 +6261,8 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
           scene.title = style.title;
           scene.generatedPrompt = style.prompt;
           enforceInteractiveSceneLimit(scope);
-        });
+        }, isValid, "\u521B\u5EFA\u793E\u533A");
+        if (!isValid()) throw new Error("\u751F\u6210\u5DF2\u53D6\u6D88");
         updatePhoneUiScope(scopeId, { lastPage: "community", lastSceneId: runtime.openSceneId, lastTab: "feed" });
         refreshDesktop(scopeId);
         rerender("feed");
@@ -6037,7 +6272,7 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
           if (error.message !== "\u751F\u6210\u5DF2\u53D6\u6D88") setStatus(`\u793E\u533A\u5DF2\u521B\u5EFA\uFF1BAI \u70ED\u573A\u5931\u8D25\uFF1A${generationErrorMessage(error)}`);
         }
       } catch (error) {
-        runtime.openSceneId = null;
+        if (runtime.openSceneId === createdSceneId) runtime.openSceneId = null;
         throw error;
       } finally {
         runtime.creating = false;
@@ -6062,36 +6297,44 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
       onStatus: setStatus
     });
     async function generateComments(postId) {
-      const { scene } = current();
+      const { scopeId, scene } = current();
       const post = scene?.posts.find((item) => item.id === postId);
       if (!post) throw new Error("\u5E16\u5B50\u4E0D\u5B58\u5728");
+      const isValid = operationGuard(scopeId, scene.id);
       const items = await request("comment_batch", { post: post.content });
       await commit(() => {
-        const { scopeId, scope, scene: currentScene } = current();
-        const seeds = actorSeeds(scopeId);
-        ensureInteractiveActor(scope, scopeId, seeds.story);
-        ensureInteractiveActor(scope, scopeId, seeds.user);
+        const { scopeId: scopeId2, scope, scene: currentScene } = current();
+        if (!currentScene) throw new Error("\u751F\u6210\u5DF2\u53D6\u6D88");
+        const seeds = actorSeeds(scopeId2);
+        ensureInteractiveActor(scope, scopeId2, seeds.story);
+        ensureInteractiveActor(scope, scopeId2, seeds.user);
         const currentPost = currentScene?.posts.find((item) => item.id === postId);
         if (!currentPost) throw new Error("\u5E16\u5B50\u4E0D\u5B58\u5728");
         currentPost.comments.push(...items.map((item) => ({
           id: uid3("comment"),
-          ...resolveInteractiveAuthor(scope, scopeId, item.author),
+          ...resolveInteractiveAuthor(scope, scopeId2, item.author),
           content: item.content,
           createdAt: now()
         })));
         currentPost.comments = currentPost.comments.slice(-INTERACTIVE_LIMITS.comments);
         currentScene.updatedAt = now();
-      });
+      }, isValid, "\u751F\u6210\u8BC4\u8BBA");
+      if (!isValid()) throw new Error("\u751F\u6210\u5DF2\u53D6\u6D88");
       rerender("feed");
     }
     async function regeneratePrompt() {
+      const { scopeId, scene } = current();
+      if (!scene) throw new Error("\u793E\u533A\u4E0D\u5B58\u5728\u6216\u5DF2\u88AB\u5220\u9664");
+      const isValid = operationGuard(scopeId, scene.id);
       const [style] = await request("style_prompt");
       await commit(() => {
-        const { scene } = current();
-        scene.title = style.title;
-        scene.generatedPrompt = style.prompt;
-        scene.updatedAt = now();
-      });
+        const { scene: currentScene } = current();
+        if (!currentScene) throw new Error("\u751F\u6210\u5DF2\u53D6\u6D88");
+        currentScene.title = style.title;
+        currentScene.generatedPrompt = style.prompt;
+        currentScene.updatedAt = now();
+      }, isValid, "\u91CD\u65B0\u751F\u6210\u793E\u533A\u63D0\u793A\u8BCD");
+      if (!isValid()) throw new Error("\u751F\u6210\u5DF2\u53D6\u6D88");
       rerender("prompt");
     }
     async function handleAction(button, app) {
@@ -6726,7 +6969,7 @@ ${lines}
     const index = groupMembers.findIndex((memberName) => memberName.toLowerCase() === normalizedName);
     return index >= 0 ? GROUP_COLORS[index % GROUP_COLORS.length] : null;
   }
-  function createBubbles(text3, side, senderName, { groupColorMap, groupMembers, emojis }) {
+  function createBubbles(text3, side, senderName, { groupColorMap, groupMembers, emojis, emojiBudget }) {
     const results = [];
     const specialPattern = new RegExp(SPECIAL_RE.source, "gi");
     let lastIndex = 0;
@@ -6809,7 +7052,14 @@ ${lines}
         if (!element.innerHTML.includes("[emo:")) continue;
         element.innerHTML = element.innerHTML.replace(/\[emo:([^\]:]+):(\d+)\]/g, (raw, setName, index) => {
           const url = findEmojiUrl(setName, parseInt(index, 10), emojis);
-          return url ? `<img src="${url.replace(/"/g, "&quot;")}" style="max-width:98px;border-radius:8px;display:block;box-shadow:0 2px 8px rgba(0,0,0,0.15);vertical-align:middle;">` : `<span style="font-size:12px;color:#999;">\u{1F914}[${setName}:${index}]</span>`;
+          if (!url) return `<span style="font-size:12px;color:#999;">\u{1F914}[${setName}:${index}]</span>`;
+          if (!isRenderableEmojiSource(url)) {
+            return '<span style="font-size:12px;color:#999;">\u8868\u60C5\u56FE\u7247\u6682\u4E0D\u52A0\u8F7D</span>';
+          }
+          if (typeof emojiBudget === "function" && !emojiBudget(url)) {
+            return '<span style="font-size:12px;color:#999;">\u8868\u60C5\u56FE\u7247\u6682\u4E0D\u52A0\u8F7D</span>';
+          }
+          return `<img src="${escapeAttr(url)}" loading="lazy" decoding="async" width="98" height="98" style="width:98px;height:98px;object-fit:contain;border-radius:8px;display:block;box-shadow:0 2px 8px rgba(0,0,0,0.15);vertical-align:middle;">`;
         });
         const imageOnly = element.querySelector("img") && element.childNodes.length === 1;
         element.style.background = imageOnly ? "transparent" : "";
@@ -7886,7 +8136,7 @@ ${antiFluff}`;
     <div class="pm-modal-header">
         <span></span>
         <b>${escapeHtml(contactName)} \xB7 \u89D2\u8272\u8BBE\u7F6E</b>
-        <button type="button" onclick="window.__pmSaveAndCloseContactConfig('${safeJS(contactName)}')" class="pm-modal-close">\u4FDD\u5B58\u5E76\u5173\u95ED</button>
+        <button type="button" onclick="window.__pmCloseOverlay()" class="pm-modal-close" title="\u5173\u95ED" aria-label="\u5173\u95ED">${CLOSE_ICON_SVG}</button>
     </div>
     <div class="pm-contact-settings-scroll">
         <div class="pm-cfg-label">\u79C1\u804A\u7EBF\u4E0A\u98CE\u683C</div>
@@ -7954,6 +8204,9 @@ ${antiFluff}`;
         </button>
         <div data-pm-auto-poke-status style="font-size:11px;color:#999;margin-top:4px;">${isAutoPokeAllowed() ? "\u672C\u6B21\u624B\u673A\u4F1A\u8BDD\u5DF2\u8FD0\u884C" : "\u672C\u6B21\u624B\u673A\u4F1A\u8BDD\u5DF2\u6682\u505C"}</div>
         </div>
+    <div class="pm-modal-add pm-contact-settings-actions">
+        <button type="button" class="pm-contact-settings-save" onclick="window.__pmSaveContactConfig('${safeJS(contactName)}')">\u4FDD\u5B58\u89D2\u8272\u8BBE\u7F6E</button>
+    </div>
     </div>
     </div>`);
     }
@@ -7977,7 +8230,7 @@ ${antiFluff}`;
       </div>
     </div>`);
     };
-    window.__pmSaveAndCloseContactConfig = (contactName) => {
+    window.__pmSaveContactConfig = (contactName) => {
       const checkEl = document.getElementById("pm-poke-check");
       const intervalEl = document.getElementById("pm-poke-interval");
       const behaviorSnapshot = JSON.parse(JSON.stringify(window.__pmCharacterBehavior));
@@ -8026,10 +8279,10 @@ ${antiFluff}`;
           return false;
         }
       }
-      document.getElementById("pm-overlay")?.remove();
       addNote(`\u5DF2\u4FDD\u5B58 ${contactName} \u7684\u8BBE\u7F6E`);
       return true;
     };
+    window.__pmSaveAndCloseContactConfig = (contactName) => window.__pmSaveContactConfig(contactName);
     window.__pmToggleAutoPoke = (contactName) => {
       const checkEl = document.getElementById("pm-poke-check");
       const intervalEl = document.getElementById("pm-poke-interval");
@@ -8770,11 +9023,7 @@ ${antiFluff}`;
     <div class="pm-modal">
     <div class="pm-modal-header">
       <span></span>
-      <b class="pm-header-title">\u8054\u7CFB\u4EBA
-        <button type="button" id="pm-autogen-btn" class="pm-header-autogen" onclick="window.__pmConfirmAutoGen()" title="AI \u81EA\u52A8\u751F\u6210\u8054\u7CFB\u4EBA" aria-label="AI \u81EA\u52A8\u751F\u6210\u8054\u7CFB\u4EBA">
-          ${REFRESH_ICON_SVG}
-        </button>
-      </b>
+      <b>\u8054\u7CFB\u4EBA</b>
       <button type="button" onclick="window.__pmCloseOverlay()" class="pm-modal-close" title="\u5173\u95ED" aria-label="\u5173\u95ED">${CLOSE_ICON_SVG}</button>
     </div>
     <div class="pm-bi-bar"><span>\u52FE\u9009\u4F1A\u8BDD\u53EF\u6CE8\u5165\u4E3B\u697C\uFF1B\u7FA4\u804A\u8D44\u6E90\u53C2\u6570\u5728\u7FA4\u804A\u8BBE\u7F6E\u4E2D\u914D\u7F6E</span><span class="pm-bi-tip">\u5DF2\u9009 ${checked.length}</span></div>
@@ -8787,17 +9036,22 @@ ${antiFluff}`;
     </div>
     </div>`);
     };
-    window.__pmShowAddContact = () => {
+    window.__pmShowAddContact = (resultMessage = "") => {
       document.getElementById("pm-overlay")?.remove();
       makeOverlay(`
 <div class="pm-modal">
   <div class="pm-modal-header"><span></span><b>\u6DFB\u52A0\u8054\u7CFB\u4EBA</b><button type="button" onclick="window.__pmShowList()" class="pm-modal-close" title="\u5173\u95ED" aria-label="\u5173\u95ED">${CLOSE_ICON_SVG}</button></div>
-  <div style="padding:14px 16px;">
-    <div class="pm-cfg-label" style="margin-bottom:8px;">\u8F93\u5165\u89D2\u8272\u540D</div>
-    <input id="pm-add-contact-input" class="pm-cfg-input" placeholder="\u89D2\u8272\u540D">
-  </div>
-  <div class="pm-modal-add">
-    <button onclick="(()=>{const v=document.getElementById('pm-add-contact-input').value.trim();if(v)window.__pmSwitchContact(v);})()" style="flex:1;background:#007aff;color:#fff;border:none;border-radius:10px;padding:10px;font-size:13px;cursor:pointer;font-weight:600;">\u5F00\u59CB\u804A\u5929</button>
+  ${resultMessage ? `<div class="pm-bi-bar pm-contact-add-result"><span>${escapeHtml(resultMessage)}</span></div>` : ""}
+  <div class="pm-contact-add-choices">
+    <section class="pm-contact-add-choice">
+      <b>\u624B\u52A8\u6DFB\u52A0</b><span>\u8F93\u5165\u660E\u786E\u7684\u89D2\u8272\u540D\uFF0C\u7ACB\u5373\u5F00\u59CB\u804A\u5929\u3002</span>
+      <input id="pm-add-contact-input" class="pm-cfg-input" placeholder="\u89D2\u8272\u540D" aria-label="\u8054\u7CFB\u4EBA\u89D2\u8272\u540D">
+      <button type="button" class="pm-contact-add-primary" onclick="(()=>{const v=document.getElementById('pm-add-contact-input').value.trim();if(v)window.__pmSwitchContact(v);})()">\u5F00\u59CB\u804A\u5929</button>
+    </section>
+    <section class="pm-contact-add-choice is-ai">
+      <b>AI \u751F\u6210</b><span>\u6839\u636E\u5F53\u524D\u5267\u60C5\u3001\u4E16\u754C\u4E66\u548C\u5DF2\u6709\u8054\u7CFB\u4EBA\u751F\u6210\u4E00\u6279\u5019\u9009\u3002</span>
+      <button type="button" id="pm-autogen-btn" class="pm-contact-add-ai" onclick="window.__pmConfirmAutoGen()" aria-label="AI \u81EA\u52A8\u751F\u6210\u8054\u7CFB\u4EBA">${REFRESH_ICON_SVG}<span>\u751F\u6210\u8054\u7CFB\u4EBA\u4E0E\u7FA4\u804A</span></button>
+    </section>
   </div>
 </div>`);
       setTimeout(() => {
@@ -9248,20 +9502,20 @@ ${antiFluff}`;
     calendarStore,
     occasionStore,
     holidayStore,
-    weatherStore,
-    cycleStore,
-    start = /* @__PURE__ */ new Date(),
+    start,
     days = 7
   } = {}) {
     if (!currentStorageId) return "";
-    const dates = calendarWeekKeys(start, days);
+    const calendarScope = calendarScopeFor(calendarStore, currentStorageId);
+    const windowStart = calendarReferenceDate(calendarScope, start);
+    const dates = calendarWeekKeys(windowStart, days);
     const linesByDate = new Map(dates.map((date) => [date, []]));
-    const regular = renderCalendarInjection(calendarScopeFor(calendarStore, currentStorageId), { start, days });
+    const regular = renderCalendarInjection(calendarScope, { start: windowStart, days });
     for (const line of regular ? regular.split("\n") : []) {
       const date = line.slice(0, 10);
       if (linesByDate.has(date)) linesByDate.get(date).push(line.slice(11));
     }
-    const occasions = expandOccasions(occasionScopeFor(occasionStore, currentStorageId), { start, days });
+    const occasions = expandOccasions(occasionScopeFor(occasionStore, currentStorageId), { start: windowStart, days });
     for (const occasion of occasions) {
       const kind = occasion.type === "birthday" ? "\u751F\u65E5" : "\u7EAA\u5FF5\u65E5";
       linesByDate.get(occasion.date)?.push(`${kind}\uFF1A${occasion.title}${occasion.note ? `\uFF08${occasion.note.replace(/\s+/g, " ").slice(0, 180)}\uFF09` : ""}`);
@@ -9274,16 +9528,6 @@ ${antiFluff}`;
         const kind = item.kind === "workday" ? "\u8C03\u4F11\u5DE5\u4F5C\u65E5" : item.kind === "in_lieu" ? "\u8C03\u4F11" : item.kind === "observed" ? "\u66FF\u4EE3\u4F11\u606F\u65E5" : "\u8282\u5047\u65E5";
         linesByDate.get(date).push(`${kind}\uFF1A${item.name}`);
       }
-    }
-    const weather = normalizeWeatherStore(weatherStore);
-    for (const day of weather.lastSuccess?.forecast?.days || []) {
-      if (linesByDate.has(day.date)) linesByDate.get(day.date).push(`\u5929\u6C14\uFF1A${weatherCodeLabel(day.weatherCode)}\uFF0C${day.tempMin}\xB0/${day.tempMax}\xB0C`);
-    }
-    const cycle = cycleScopeFor(normalizeCycleStore(cycleStore), currentStorageId);
-    const cycleLabels = { period: "\u7ECF\u671F", follicular: "\u5375\u6CE1\u671F", ovulatory: "\u6392\u5375\u671F", luteal: "\u9EC4\u4F53\u671F" };
-    for (const date of dates) {
-      const prediction = predictCyclePhase(cycle, date);
-      if (prediction.phase) linesByDate.get(date).push(`\u751F\u7406\u5468\u671F\uFF1A${cycleLabels[prediction.phase] || prediction.phase}${prediction.status === "override" ? "\uFF08\u624B\u52A8\u6807\u8BB0\uFF09" : ""}`);
     }
     return dates.flatMap((date) => linesByDate.get(date).map((item) => `${date}\uFF5C${item}`)).join("\n").slice(0, 6e3);
   }
@@ -9300,9 +9544,7 @@ ${antiFluff}`;
     safeMaxTokens,
     calendarStore,
     calendarOccasions,
-    calendarHolidays,
-    calendarWeather,
-    calendarCycles
+    calendarHolidays
   } = {}) {
     const config = normalizeBudgetConfig(budgetConfig);
     const phonePermission = resolvePhoneSources({
@@ -9349,9 +9591,7 @@ ${body}
         currentStorageId,
         calendarStore,
         occasionStore: calendarOccasions,
-        holidayStore: calendarHolidays,
-        weatherStore: calendarWeather,
-        cycleStore: calendarCycles
+        holidayStore: calendarHolidays
       });
       if (body) {
         calendarItems.push({
@@ -9447,6 +9687,10 @@ ${lines}`;
     const beginAutomaticTask = automaticTasks.begin;
     const isAutomaticTaskActive = automaticTasks.isActive;
     const finishAutomaticTask = automaticTasks.finish;
+    let emojiRenderBudget = createEmojiRenderBudget();
+    const resetEmojiRenderBudget = () => {
+      emojiRenderBudget = createEmojiRenderBudget();
+    };
     updatePhonePageSuspensionHandler(window, deps, disarmAutoPoke);
     installPhonePageSuspensionListeners(window, document);
     window.__pmHistories = window.__pmHistories || {};
@@ -9486,11 +9730,14 @@ ${lines}`;
       const id2 = storageId || getStorageId2();
       const context = getCtx();
       if (!context || !id2 || id2 === "sms_unknown__default") return null;
+      const controller = new AbortController();
       const task = Object.freeze({
         id: ++state.generationSequence,
         hostEpoch: state.hostEpoch,
         storageId: id2,
-        context
+        context,
+        controller,
+        signal: controller.signal
       });
       state.generationTask = task;
       state.isGenerating = true;
@@ -9508,6 +9755,7 @@ ${lines}`;
       return true;
     }
     function invalidateGeneration() {
+      state.generationTask?.controller?.abort("generation-invalidated");
       state.hostEpoch += 1;
       state.generationTask = null;
       state.isGenerating = false;
@@ -9636,9 +9884,7 @@ ${lines}`;
         emojis: window.__pmEmojis,
         calendarStore: getCalendarData("getCalendarStore"),
         calendarOccasions: getCalendarData("getCalendarOccasionStore"),
-        calendarHolidays: getCalendarData("getCalendarHolidayStore"),
-        calendarWeather: getCalendarData("getCalendarWeatherStore"),
-        calendarCycles: getCalendarData("getCalendarCycleStore")
+        calendarHolidays: getCalendarData("getCalendarHolidayStore")
       });
     }
     function hookGenerationEvent() {
@@ -9782,7 +10028,8 @@ ${lines}`;
       const nodes = createBubbles(text3, side, senderName, {
         groupColorMap: state.groupColorMap,
         groupMembers: state.groupMembers,
-        emojis: window.__pmEmojis
+        emojis: window.__pmEmojis,
+        emojiBudget: emojiRenderBudget
       });
       nodes.forEach((b) => {
         applyBubbleMetadata(b, metadata);
@@ -9909,6 +10156,7 @@ ${lines}`;
       addNote,
       addDirector,
       rebaseRenderedHistory,
+      resetEmojiRenderBudget,
       showTyping,
       hideTyping,
       makeOverlay,
@@ -10663,11 +10911,151 @@ ${lines}`;
     });
   }
 
+  // src/settings-api-mode.js
+  var FIELD_IDS = ["pm-indep-profile-fields", "pm-indep-config-fields"];
+  function createApiDraftMode(initial = false) {
+    let useIndependent = !!initial;
+    return {
+      current: () => useIndependent,
+      set(value) {
+        useIndependent = !!value;
+        const main = document.getElementById("pm-mode-main");
+        const independent = document.getElementById("pm-mode-indep");
+        const tip = document.getElementById("pm-mode-tip");
+        main?.classList.toggle("pm-mode-active", !useIndependent);
+        independent?.classList.toggle("pm-mode-active", useIndependent);
+        if (tip) tip.textContent = useIndependent ? "\u72EC\u7ACB API \u5FC5\u987B\u586B\u5199\u5730\u5740\u3001\u5BC6\u94A5\u548C\u6A21\u578B" : "\u4E3B API \u4F7F\u7528\u5BBF\u4E3B\u5F53\u524D\u9009\u62E9\u7684\u9884\u8BBE\u4E0E\u63A5\u53E3";
+        for (const id2 of FIELD_IDS) {
+          const fields = document.getElementById(id2);
+          if (fields) fields.hidden = !useIndependent;
+        }
+        return useIndependent;
+      }
+    };
+  }
+
+  // src/quick-reply.js
+  var PHONE_QR_SET_NAME = "\u5929\u97F3\u5C0F\u7B3A \xB7 \u624B\u673A\u5165\u53E3";
+  var PHONE_QR_LABEL = "\u6253\u5F00\u5929\u97F3\u5C0F\u7B3A";
+  var PHONE_QR_AUTOMATION_ID = "tianyin-xiaojian.phone.open.v1";
+  var PHONE_QR_MESSAGE = "/phone";
+  var REQUIRED_METHODS = [
+    "getSetByName",
+    "createSet",
+    "deleteSet",
+    "createQuickReply",
+    "updateQuickReply",
+    "deleteQuickReply",
+    "addGlobalSet",
+    "removeGlobalSet",
+    "listGlobalSets"
+  ];
+  function requireApi(api = globalThis.quickReplyApi) {
+    if (!api || typeof api !== "object") throw new Error("\u5F53\u524D\u5BBF\u4E3B\u672A\u63D0\u4F9B Quick Reply API");
+    const missing = REQUIRED_METHODS.filter((name) => typeof api[name] !== "function");
+    if (missing.length) throw new Error(`\u5F53\u524D\u5BBF\u4E3B\u7684 Quick Reply API \u7F3A\u5C11\uFF1A${missing.join("\u3001")}`);
+    return api;
+  }
+  var qrList = (set) => Array.isArray(set?.qrList) ? set.qrList : [];
+  var ownedReplies = (set) => qrList(set).filter((qr) => qr?.automationId === PHONE_QR_AUTOMATION_ID);
+  function replyIdentifier(qr) {
+    if (!Number.isInteger(qr?.id)) {
+      throw new Error("\u5BBF\u4E3B Quick Reply \u7F3A\u5C11\u7A33\u5B9A\u6570\u5B57 ID\uFF0C\u65E0\u6CD5\u5B89\u5168\u4FEE\u6539\u6216\u5220\u9664");
+    }
+    return qr.id;
+  }
+  var desiredProps = {
+    message: PHONE_QR_MESSAGE,
+    title: "\u6253\u5F00\u5929\u97F3\u5C0F\u7B3A\u624B\u673A\u754C\u9762",
+    showLabel: true,
+    isHidden: false,
+    automationId: PHONE_QR_AUTOMATION_ID
+  };
+  function getPhoneQuickReplyStatus(api = globalThis.quickReplyApi) {
+    try {
+      const host = requireApi(api);
+      const set = host.getSetByName(PHONE_QR_SET_NAME);
+      if (!set) return { state: "absent", active: false };
+      const owned = ownedReplies(set);
+      if (!owned.length) return { state: "conflict", active: false };
+      const active = host.listGlobalSets().includes(PHONE_QR_SET_NAME);
+      const ready = owned.length === 1 && owned[0].label === PHONE_QR_LABEL && owned[0].message === PHONE_QR_MESSAGE && owned[0].title === desiredProps.title && owned[0].showLabel === desiredProps.showLabel && owned[0].isHidden === desiredProps.isHidden && active;
+      return { state: ready ? "ready" : "repairable", active, count: owned.length };
+    } catch (error) {
+      return { state: "unavailable", active: false, error: error.message };
+    }
+  }
+  async function ensurePhoneQuickReply(api = globalThis.quickReplyApi) {
+    const host = requireApi(api);
+    let set = host.getSetByName(PHONE_QR_SET_NAME);
+    let createdSet = false;
+    if (set && !ownedReplies(set).length) {
+      throw new Error("\u5B58\u5728\u540C\u540D Quick Reply \u96C6\u5408\uFF0C\u4F46\u65E0\u6CD5\u8BC1\u660E\u5C5E\u4E8E\u5929\u97F3\u5C0F\u7B3A\uFF1B\u5DF2\u505C\u6B62\uFF0C\u672A\u8986\u76D6\u7528\u6237\u6570\u636E");
+    }
+    if (!set) {
+      set = await host.createSet(PHONE_QR_SET_NAME, { disableSend: false, placeBeforeInput: false, injectInput: false });
+      createdSet = true;
+    }
+    try {
+      const owned = ownedReplies(set);
+      if (!owned.length) {
+        host.createQuickReply(PHONE_QR_SET_NAME, PHONE_QR_LABEL, desiredProps);
+      } else {
+        const primary = owned[0];
+        host.updateQuickReply(PHONE_QR_SET_NAME, replyIdentifier(primary), { ...desiredProps, newLabel: PHONE_QR_LABEL });
+        for (const duplicate of owned.slice(1)) host.deleteQuickReply(PHONE_QR_SET_NAME, replyIdentifier(duplicate));
+      }
+      if (!host.listGlobalSets().includes(PHONE_QR_SET_NAME)) host.addGlobalSet(PHONE_QR_SET_NAME, true);
+      return getPhoneQuickReplyStatus(host);
+    } catch (error) {
+      if (createdSet) {
+        try {
+          await host.deleteSet(PHONE_QR_SET_NAME);
+        } catch (rollbackError) {
+          throw new Error(`${error.message}\uFF1B\u65B0\u5EFA\u96C6\u5408\u56DE\u6EDA\u5931\u8D25\uFF1A${rollbackError.message}`);
+        }
+      }
+      throw error;
+    }
+  }
+  async function clearPhoneQuickReply(api = globalThis.quickReplyApi) {
+    const host = requireApi(api);
+    const set = host.getSetByName(PHONE_QR_SET_NAME);
+    if (!set) return { state: "absent", active: false };
+    const owned = ownedReplies(set);
+    if (!owned.length) throw new Error("\u540C\u540D Quick Reply \u96C6\u5408\u4E0D\u5C5E\u4E8E\u5929\u97F3\u5C0F\u7B3A\uFF0C\u672A\u6267\u884C\u6E05\u9664");
+    const wasActive = host.listGlobalSets().includes(PHONE_QR_SET_NAME);
+    const ownsWholeSet = qrList(set).length === owned.length;
+    if (wasActive) host.removeGlobalSet(PHONE_QR_SET_NAME);
+    try {
+      if (ownsWholeSet) {
+        await host.deleteSet(PHONE_QR_SET_NAME);
+        if (host.getSetByName(PHONE_QR_SET_NAME)) throw new Error("\u5BBF\u4E3B\u672A\u786E\u8BA4\u5220\u9664 Quick Reply \u96C6\u5408");
+      } else {
+        for (const qr of owned) host.deleteQuickReply(PHONE_QR_SET_NAME, replyIdentifier(qr));
+        if (wasActive && !host.listGlobalSets().includes(PHONE_QR_SET_NAME)) {
+          host.addGlobalSet(PHONE_QR_SET_NAME, true);
+        }
+      }
+      return { state: "absent", active: false };
+    } catch (error) {
+      if (wasActive && host.getSetByName(PHONE_QR_SET_NAME) && !host.listGlobalSets().includes(PHONE_QR_SET_NAME)) {
+        try {
+          host.addGlobalSet(PHONE_QR_SET_NAME, true);
+        } catch (rollbackError) {
+          throw new Error(`${error.message}\uFF1B\u6062\u590D\u5168\u5C40\u542F\u7528\u72B6\u6001\u5931\u8D25\uFF1A${rollbackError.message}`);
+        }
+      }
+      throw error;
+    }
+  }
+
   // src/settings-templates.js
   function renderSettingsHome() {
     return `
     <div class="pm-settings-home" role="list">
       <button type="button" role="listitem" onclick="window.__pmShowConfig('api')"><b>API</b><span>\u9009\u62E9\u4E3B API \u6216\u914D\u7F6E\u72EC\u7ACB\u63A5\u53E3\u3001\u5BC6\u94A5\u4E0E\u6A21\u578B</span></button>
+      <button type="button" role="listitem" onclick="window.__pmShowConfig('quick-reply')"><b>\u5FEB\u6377\u56DE\u590D</b><span>\u5728\u5BBF\u4E3B\u4E2D\u521B\u5EFA\u6216\u6E05\u9664\u6267\u884C /phone \u7684 Quick Reply</span></button>
       <button type="button" role="listitem" onclick="window.__pmShowConfig('look')"><b>\u4E3B\u9898</b><span>\u65E5\u591C\u6A21\u5F0F\u3001\u6C14\u6CE1\u989C\u8272\u4E0E\u80CC\u666F\u56FE</span></button>
       <button type="button" role="listitem" onclick="window.__pmShowConfig('backup')"><b>\u5907\u4EFD</b><span>\u5BFC\u51FA\u3001\u5BFC\u5165\u6216\u5B89\u5168\u6E05\u7406\u63D2\u4EF6\u6570\u636E</span></button>
       <button type="button" role="listitem" onclick="window.__pmShowConfig('budget')"><b>\u4E0A\u4E0B\u6587\u9884\u7B97</b><span>\u63A7\u5236\u624B\u673A\u4F1A\u8BDD\u4E0E\u793E\u533A\u5199\u5165\u4E3B\u63D0\u793A\u8BCD\u7684\u989D\u5EA6</span></button>
@@ -10684,11 +11072,11 @@ ${lines}`;
         </div>
         <div id="pm-mode-tip" class="pm-cfg-tip" style="text-align:left;padding:6px 2px 0;">${useIndependent ? "\u72EC\u7ACB API \u5FC5\u987B\u586B\u5199\u5730\u5740\u3001\u5BC6\u94A5\u548C\u6A21\u578B" : "\u4E3B API \u4F7F\u7528\u5BBF\u4E3B\u5F53\u524D\u9009\u62E9\u7684\u9884\u8BBE\u4E0E\u63A5\u53E3"}</div>
       </div>
-      <div style="padding:6px 14px 4px;border-top:1px solid #f0f0f0;">
+      <div id="pm-indep-profile-fields" class="pm-independent-api-fields" ${useIndependent ? "" : "hidden"} style="padding:6px 14px 4px;border-top:1px solid #f0f0f0;">
         <div class="pm-cfg-label" style="margin:8px 0 6px;">\u5DF2\u4FDD\u5B58\u6863\u6848</div>
         <div class="pm-prof-list">${profilesHtml}</div>
       </div>
-      <div style="padding:10px 16px;display:flex;flex-direction:column;gap:10px;border-top:1px solid #f0f0f0;">
+      <div id="pm-indep-config-fields" class="pm-independent-api-fields" ${useIndependent ? "" : "hidden"} style="padding:10px 16px;display:flex;flex-direction:column;gap:10px;border-top:1px solid #f0f0f0;">
         <div class="pm-cfg-label">API \u5730\u5740</div>
         <input id="pm-cfg-url" class="pm-cfg-input" placeholder="https://api.xxx.com \u6216 .../v1" value="${cfg.apiUrl}">
         <div class="pm-cfg-label">API Key</div>
@@ -10705,6 +11093,23 @@ ${lines}`;
         </div>
       </div>
       <div style="height:12px;"></div>
+    </div>`;
+  }
+  function renderQuickReplySettings(status) {
+    const descriptions = {
+      ready: "\u5DF2\u521B\u5EFA\u5E76\u542F\u7528\u3002\u70B9\u51FB\u5FEB\u6377\u56DE\u590D\u4F1A\u6267\u884C /phone\u3002",
+      repairable: "\u68C0\u6D4B\u5230\u5929\u97F3\u5C0F\u7B3A\u5FEB\u6377\u56DE\u590D\uFF0C\u4F46\u914D\u7F6E\u6216\u542F\u7528\u72B6\u6001\u9700\u8981\u4FEE\u590D\u3002",
+      conflict: "\u5B58\u5728\u540C\u540D\u96C6\u5408\uFF0C\u4F46\u65E0\u6CD5\u8BC1\u660E\u5C5E\u4E8E\u5929\u97F3\u5C0F\u7B3A\u3002\u4E3A\u4FDD\u62A4\u7528\u6237\u6570\u636E\uFF0C\u7981\u6B62\u8986\u76D6\u3002",
+      absent: "\u5C1A\u672A\u521B\u5EFA\u5929\u97F3\u5C0F\u7B3A\u5FEB\u6377\u56DE\u590D\u3002",
+      unavailable: status.error || "\u5F53\u524D\u5BBF\u4E3B\u672A\u63D0\u4F9B\u53EF\u7528\u7684 Quick Reply API\u3002"
+    };
+    return `<div class="pm-settings-page pm-quick-reply-settings">
+      <section><b>\u6253\u5F00\u5929\u97F3\u5C0F\u7B3A</b><p>\u521B\u5EFA\u4E00\u4E2A\u7531\u672C\u6269\u5C55\u7BA1\u7406\u3001\u6267\u884C <code>/phone</code> \u7684 SillyTavern Quick Reply\u3002\u4E0D\u4F1A\u8BFB\u53D6\u6216\u6539\u5199\u5BBF\u4E3B\u79C1\u6709\u5B58\u50A8\u3002</p></section>
+      <div id="pm-quick-reply-status" class="pm-cfg-tip" data-state="${status.state}" role="status">${descriptions[status.state] || descriptions.unavailable}</div>
+      <div class="pm-quick-reply-actions">
+        <button type="button" onclick="window.__pmEnsurePhoneQuickReply()">${status.state === "ready" ? "\u68C0\u67E5\u5E76\u4FEE\u590D" : "\u521B\u5EFA\u5FEB\u6377\u56DE\u590D"}</button>
+        <button type="button" class="is-danger" onclick="window.__pmClearPhoneQuickReply()" ${status.state === "absent" || status.state === "unavailable" ? "disabled" : ""}>\u6E05\u9664\u5FEB\u6377\u56DE\u590D</button>
+      </div>
     </div>`;
   }
   function renderLookSettings({ theme, presetButtons, desktopBackgroundButtons, globalBackgroundButtons, localBackgroundButtons }) {
@@ -10880,6 +11285,52 @@ ${lines}`;
 </div>`;
   }
 
+  // src/settings-quick-reply.js
+  function installQuickReplySettings({ makeOverlay, addNote }) {
+    const showPage = () => {
+      const status = getPhoneQuickReplyStatus(globalThis.quickReplyApi);
+      makeOverlay(renderSettingsModal({ title: "\u5FEB\u6377\u56DE\u590D", content: renderQuickReplySettings(status) }));
+    };
+    const runAction = async (operation, successMessage) => {
+      const status = document.getElementById("pm-quick-reply-status");
+      const buttons = [...document.querySelectorAll(".pm-quick-reply-actions button")];
+      buttons.forEach((button) => {
+        button.disabled = true;
+      });
+      if (status) {
+        status.textContent = "\u6B63\u5728\u63D0\u4EA4\u5230\u5BBF\u4E3B Quick Reply\u2026";
+        status.dataset.state = "pending";
+      }
+      try {
+        await operation(globalThis.quickReplyApi);
+        addNote(successMessage);
+        await window.__pmShowConfig("quick-reply");
+        return true;
+      } catch (error) {
+        const message = error?.message || "\u672A\u77E5\u9519\u8BEF";
+        if (status) {
+          status.textContent = `\u64CD\u4F5C\u5931\u8D25\uFF1A${message}`;
+          status.dataset.state = "error";
+        }
+        alert(`Quick Reply \u64CD\u4F5C\u5931\u8D25\uFF1A${message}`);
+        return false;
+      } finally {
+        buttons.forEach((button) => {
+          button.disabled = false;
+        });
+      }
+    };
+    window.__pmEnsurePhoneQuickReply = () => runAction(
+      ensurePhoneQuickReply,
+      "\u5DF2\u5411\u5BBF\u4E3B\u63D0\u4EA4\u5929\u97F3\u5C0F\u7B3A Quick Reply \u914D\u7F6E"
+    );
+    window.__pmClearPhoneQuickReply = () => runAction(
+      clearPhoneQuickReply,
+      "\u5DF2\u6E05\u9664\u5929\u97F3\u5C0F\u7B3A Quick Reply"
+    );
+    return { showPage };
+  }
+
   // src/settings-backup.js
   var clone3 = (value) => JSON.parse(JSON.stringify(value));
   function structurallyEqual(left, right) {
@@ -10976,7 +11427,7 @@ ${lines}`;
         groupMeta: clone3(window.__pmGroupMeta || {}),
         pokeConfig: clone3(window.__pmPokeConfig || {}),
         bidirectional: clone3(window.__pmBidirectional || {}),
-        emojis: clone3(window.__pmEmojis || []),
+        emojis: cloneEmojiLibrary(window.__pmEmojis),
         characterBehavior: clone3(window.__pmCharacterBehavior || {}),
         wordyLimit: !!window.__pmWordyLimit,
         desktopBg: window.__pmDesktopBg || "",
@@ -11004,7 +11455,7 @@ ${lines}`;
       window.__pmGroupMeta = clone3(state.groupMeta || {});
       window.__pmPokeConfig = clone3(state.pokeConfig || {});
       window.__pmBidirectional = clone3(state.bidirectional || {});
-      window.__pmEmojis = clone3(state.emojis || []);
+      window.__pmEmojis = cloneEmojiLibrary(state.emojis);
       window.__pmCharacterBehavior = clone3(state.characterBehavior || {});
       window.__pmWordyLimit = !!state.wordyLimit;
       window.__pmDesktopBg = typeof state.desktopBg === "string" ? state.desktopBg : "";
@@ -11340,7 +11791,8 @@ ${lines}`;
       apply: applyBackupState,
       persist: persistBackupState
     } = createBackupStateHandlers(deps);
-    let apiDraftUseIndependent = false;
+    const quickReplySettings = installQuickReplySettings({ makeOverlay, addNote });
+    const apiDraftMode = createApiDraftMode();
     let backgroundMutation = Promise.resolve();
     const injectionFailure = (result, phase) => {
       const failedWrites = Number.isInteger(result?.failedWrites) && result.failedWrites > 0 ? result.failedWrites : 0;
@@ -11424,16 +11876,9 @@ ${error.message}`);
       if (u) u.value = p.apiUrl || "";
       if (k) k.value = p.apiKey || "";
       if (m) m.value = p.model || "";
+      apiDraftMode.set(true);
     };
-    window.__pmSetMode = (v) => {
-      apiDraftUseIndependent = !!v;
-      const a = document.getElementById("pm-mode-main"), b = document.getElementById("pm-mode-indep"), t = document.getElementById("pm-mode-tip");
-      if (a && b) {
-        a.classList.toggle("pm-mode-active", !v);
-        b.classList.toggle("pm-mode-active", !!v);
-      }
-      if (t) t.textContent = v ? "\u72EC\u7ACB API \u5FC5\u987B\u586B\u5199\u5730\u5740\u3001\u5BC6\u94A5\u548C\u6A21\u578B" : "\u4E3B API \u4F7F\u7528\u5BBF\u4E3B\u5F53\u524D\u9009\u62E9\u7684\u9884\u8BBE\u4E0E\u63A5\u53E3";
-    };
+    window.__pmSetMode = (value) => apiDraftMode.set(value);
     window.__pmToggleWordyLimit = () => {
       const previous = window.__pmWordyLimit === true;
       window.__pmWordyLimit = !previous;
@@ -11617,6 +12062,10 @@ ${error.message}`);
         makeOverlay(renderSettingsModal({ title: "\u6570\u636E\u5907\u4EFD", content: renderBackupSettings() }));
         return;
       }
+      if (page === "quick-reply") {
+        quickReplySettings.showPage();
+        return;
+      }
       if (page === "budget") {
         const config = normalizeBudgetConfig(window.__pmBudgetConfig);
         const storageId = getStorageId2();
@@ -11641,14 +12090,14 @@ ${error.message}`);
       const maskKey = (k) => !k ? "" : k.length <= 8 ? "****" : k.slice(0, 4) + "****" + k.slice(-4);
       const profilesHtml = window.__pmProfiles.length > 0 ? window.__pmProfiles.map((p, i) => `<div class="pm-prof-li"><div class="pm-prof-info" onclick="window.__pmPickProfile(${i})"><div class="pm-prof-url">${escapeHtml(shortUrl(p.apiUrl))}</div><div class="pm-prof-meta">${escapeHtml(maskKey(p.apiKey))}${p.model ? " \xB7 " + escapeHtml(p.model) : ""}</div></div><button type="button" class="pm-prof-del" onclick="window.__pmDeleteProfile(${i})">\u5220\u9664</button></div>`).join("") : '<div class="pm-prof-empty">\u6682\u65E0\u6863\u6848</div>';
       if (page === "api") {
-        apiDraftUseIndependent = !!cfg.useIndependent;
+        apiDraftMode.set(cfg.useIndependent);
         const content2 = renderApiSettings({
           cfg: {
             apiUrl: escapeAttr(cfg.apiUrl || ""),
             apiKey: escapeAttr(cfg.apiKey || ""),
             model: escapeAttr(cfg.model || "")
           },
-          useIndependent: apiDraftUseIndependent,
+          useIndependent: apiDraftMode.current(),
           profilesHtml
         });
         const footer = '<div class="pm-modal-add"><button onclick="window.__pmSaveConfig()" style="width:100%;background:#007aff;color:#fff;border:none;border-radius:10px;padding:10px;font-size:13px;cursor:pointer;font-weight:600;">\u4FDD\u5B58 API \u8BBE\u7F6E</button></div>';
@@ -11848,7 +12297,7 @@ ${error.message}`);
     };
     window.__pmSaveConfig = () => {
       const apiUrl = document.getElementById("pm-cfg-url")?.value.trim() ?? "", apiKey = document.getElementById("pm-cfg-key")?.value.trim() ?? "", model = document.getElementById("pm-cfg-model")?.value.trim() ?? "";
-      if (apiDraftUseIndependent && (!apiUrl || !apiKey || !model)) {
+      if (apiDraftMode.current() && (!apiUrl || !apiKey || !model)) {
         const status = document.getElementById("pm-api-status");
         if (status) {
           status.textContent = "\u72EC\u7ACB API \u5FC5\u987B\u586B\u5199\u5730\u5740\u3001\u5BC6\u94A5\u548C\u6A21\u578B";
@@ -11856,7 +12305,7 @@ ${error.message}`);
         }
         return;
       }
-      const previous = clone4(window.__pmConfig), candidate = { apiUrl, apiKey, model, useIndependent: apiDraftUseIndependent };
+      const previous = clone4(window.__pmConfig), candidate = { apiUrl, apiKey, model, useIndependent: apiDraftMode.current() };
       window.__pmConfig = candidate;
       try {
         localStorage.setItem("ST_SMS_CONFIG", JSON.stringify(candidate));
