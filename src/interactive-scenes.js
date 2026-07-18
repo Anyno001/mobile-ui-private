@@ -534,7 +534,7 @@ export function installInteractiveScenes(_state, deps) {
             const nextState = toggleScenePin(getPhoneUiState(runtime.store), scopeId, button.dataset.sceneId, runtime.store);
             persistPhoneUiState(nextState);
             refreshDesktop(scopeId);
-            if (button.closest('.pm-scene-topbar')) {
+            if (button.closest('#pm-scene-app') && !button.closest('.pm-scene-card')) {
                 rerender(phoneScope(scopeId).lastTab);
             } else if (button.closest('.pm-community-page')) {
                 renderCommunityLauncher(scopeId);
@@ -566,12 +566,6 @@ export function installInteractiveScenes(_state, deps) {
             renderCommunityLauncher(scopeId);
             return;
         }
-        if (action === 'edit-scene') {
-            const { scopeId, scene } = current();
-            updatePhoneUiScope(scopeId, { lastPage: 'community', lastSceneId: scene?.id || null, lastTab: 'prompt' });
-            rerender('prompt');
-            return;
-        }
         if (action === 'tab') {
             invalidate();
             const { scopeId, scene } = current();
@@ -590,12 +584,7 @@ export function installInteractiveScenes(_state, deps) {
             });
             rerender('feed'); return;
         }
-        if (action === 'toggle-community-mode') {
-            communityTasks.setMode(communityTasks.state().mode === 'auto' ? 'remind' : 'auto');
-            rerender('feed');
-            return;
-        }
-        if (action === 'ai-feed') { await communityRunner.generateFeed(); return; }
+        if (action === 'poke-scene') { await communityRunner.generateFeed(); return; }
         if (action === 'comments') { await generateComments(button.dataset.postId); return; }
         if (action === 'post-comment') {
             const input = document.getElementById(`pm-comment-input-${button.dataset.postId}`);
@@ -651,10 +640,15 @@ export function installInteractiveScenes(_state, deps) {
         if (action === 'save-prompt') {
             const title = document.getElementById('pm-scene-title')?.value.trim() || '';
             const prompt = document.getElementById('pm-scene-prompt')?.value.trim() || '';
+            const themeAccent = document.getElementById('pm-scene-accent')?.value.trim().toLowerCase() || '';
             if (!title || !prompt) throw new Error('社区名称和提示词不能为空');
+            if (!/^#[0-9a-f]{6}$/.test(themeAccent)) throw new Error('社区主题色格式无效');
             await commit(() => {
                 const { scene } = current();
-                scene.title = title.slice(0, 80); scene.generatedPrompt = prompt.slice(0, 6000); scene.updatedAt = now();
+                scene.title = title.slice(0, 80);
+                scene.generatedPrompt = prompt.slice(0, 6000);
+                scene.themeAccent = themeAccent;
+                scene.updatedAt = now();
             });
             rerender('prompt'); return;
         }

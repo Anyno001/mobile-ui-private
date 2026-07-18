@@ -166,11 +166,23 @@ ${userPrompt}` : userPrompt;
   }
   function calendarWeekKeys(start = /* @__PURE__ */ new Date(), days = 7) {
     const base = new Date(start.getFullYear(), start.getMonth(), start.getDate(), 12, 0, 0, 0);
-    return Array.from({ length: Math.max(1, Math.min(31, days)) }, (_, index) => {
+    return Array.from({ length: Math.max(1, Math.min(42, days)) }, (_, index) => {
       const date = new Date(base);
       date.setDate(base.getDate() + index);
       return formatCalendarDate(date);
     });
+  }
+  function calendarMonthKeys(year, month) {
+    const numericYear = Number(year), numericMonth = Number(month);
+    if (!Number.isInteger(numericYear) || numericYear < 1900 || numericYear > 2100 || !Number.isInteger(numericMonth) || numericMonth < 1 || numericMonth > 12) {
+      throw new Error("\u6708\u5386\u5E74\u6708\u65E0\u6548");
+    }
+    const first = new Date(numericYear, numericMonth - 1, 1, 12, 0, 0, 0);
+    const start = new Date(first);
+    start.setDate(first.getDate() - (first.getDay() + 6) % 7);
+    const daysInMonth = new Date(numericYear, numericMonth, 0, 12, 0, 0, 0).getDate();
+    const cellCount = Math.ceil(((first.getDay() + 6) % 7 + daysInMonth) / 7) * 7;
+    return calendarWeekKeys(start, Math.max(35, Math.min(42, cellCount)));
   }
   function createEmptyCalendarStore() {
     return { version: CALENDAR_STORE_VERSION, scopes: {} };
@@ -524,7 +536,7 @@ ${userPrompt}` : userPrompt;
     return { date: `${numericYear}-${pad2(month)}-${pad2(day)}`, leapAdjusted };
   }
   function expandOccasions(scope, { start = /* @__PURE__ */ new Date(), days = 7 } = {}) {
-    const length = Math.max(1, Math.min(31, Number.isInteger(days) ? days : 7));
+    const length = Math.max(1, Math.min(42, Number.isInteger(days) ? days : 7));
     const base = new Date(start.getFullYear(), start.getMonth(), start.getDate(), 12, 0, 0, 0);
     const dates = new Set(Array.from({ length }, (_, index) => {
       const date = new Date(base);
@@ -1058,7 +1070,6 @@ ${userPrompt}` : userPrompt;
   var plainRecord4 = (value) => value && typeof value === "object" && !Array.isArray(value) && (Object.getPrototypeOf(value) === Object.prototype || Object.getPrototypeOf(value) === null);
   var unsafeKey3 = (value) => value === "prototype" || Object.hasOwn(Object.prototype, value);
   var integerInRange = (value, min, max) => Number.isInteger(Number(value)) && Number(value) >= min && Number(value) <= max;
-  var CYCLE_DISCLAIMER = "\u5468\u671F\u7ED3\u679C\u4EC5\u4F9B\u65E5\u5386\u63D0\u9192\uFF0C\u4E0D\u7528\u4E8E\u907F\u5B55\u3001\u8BCA\u65AD\u6216\u533B\u7597\u51B3\u7B56\u3002";
   function createEmptyCycleStore() {
     return { version: CYCLE_STORE_VERSION, scopes: {} };
   }
@@ -1150,7 +1161,7 @@ ${userPrompt}` : userPrompt;
   function predictCyclePhase(scope, dateStr) {
     const normalized = normalizeCycleScope(scope);
     if (!normalized.enabled) {
-      return { phase: null, status: "disabled", day: null, nextPeriodStart: null, disclaimer: true };
+      return { phase: null, status: "disabled", day: null, nextPeriodStart: null };
     }
     if (normalized.overrides[dateStr]) {
       const override = normalized.overrides[dateStr];
@@ -1158,13 +1169,12 @@ ${userPrompt}` : userPrompt;
         phase: override === "period" ? "period" : null,
         status: "override",
         day: null,
-        nextPeriodStart: null,
-        disclaimer: true
+        nextPeriodStart: null
       };
     }
     const day = cycleDayIndex(normalized, dateStr);
     if (day === null) {
-      return { phase: null, status: "insufficient_data", day: null, nextPeriodStart: null, disclaimer: true };
+      return { phase: null, status: "insufficient_data", day: null, nextPeriodStart: null };
     }
     const phase = phaseForDay(day, normalized.cycleLength, normalized.periodLength);
     const status = "predicted";
@@ -1178,8 +1188,7 @@ ${userPrompt}` : userPrompt;
       phase,
       status,
       day,
-      nextPeriodStart: formatCalendarDate(nextStart),
-      disclaimer: true
+      nextPeriodStart: formatCalendarDate(nextStart)
     };
   }
 
@@ -1198,6 +1207,7 @@ ${userPrompt}` : userPrompt;
   var SETTINGS_ICON_SVG = icon('<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-4V21a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H2.8v-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1A1.7 1.7 0 0 0 9 4.6 1.7 1.7 0 0 0 10 3V2.8h4V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v4H21a1.7 1.7 0 0 0-1.6 1z"/>');
   var COMMUNITY_ICON_SVG = icon('<path d="M4 19V8l8-4 8 4v11"/><path d="M8 19v-6h8v6M8 9h.01M12 9h.01M16 9h.01"/>');
   var CALENDAR_ICON_SVG = icon('<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18M8 14h.01M12 14h.01M16 14h.01M8 18h.01M12 18h.01"/>');
+  var WEATHER_ICON_SVG = icon('<path d="M7 17h10a4 4 0 0 0 .5-8A6 6 0 0 0 6.2 10.5 3.5 3.5 0 0 0 7 17z"/><path d="M8 21l1-2M12 21l1-2M16 21l1-2"/>');
   var EDIT_ICON_SVG = icon('<path d="M4 20h4L19 9l-4-4L4 16v4z"/><path d="M13.5 6.5l4 4"/>');
   var EMOJI_ICON_SVG = icon('<circle cx="12" cy="12" r="9"/><path d="M8 10h.01M16 10h.01M8.5 15c1 1 2.2 1.5 3.5 1.5s2.5-.5 3.5-1.5"/>');
   var TRASH_ICON_SVG = icon('<path d="M4 7h16M9 7V4h6v3M7 7l1 13h8l1-13M10 11v5M14 11v5"/>');
@@ -1351,10 +1361,94 @@ ${userPrompt}` : userPrompt;
     return escapeAttr(escaped);
   }
 
+  // src/calendar-view.js
+  var detailDate = new Intl.DateTimeFormat("zh-CN", { month: "long", day: "numeric", weekday: "short" });
+  var CYCLE_LABELS = { period: "\u7ECF\u671F", follicular: "\u5375\u6CE1\u671F", ovulatory: "\u6392\u5375\u671F", luteal: "\u9EC4\u4F53\u671F" };
+  var occasionTypeLabel = (type) => type === "birthday" ? "\u751F\u65E5" : "\u7EAA\u5FF5\u65E5";
+  function eventRows(scope, occasionsByDate, date) {
+    const events = scope.events[date] || [];
+    const occasionRows = (occasionsByDate.get(date) || []).map((occasion) => `<article class="pm-calendar-event is-occasion" data-occasion-id="${escapeAttr(occasion.id)}">
+        <div><b>${escapeHtml(occasion.title)}</b><span>${occasionTypeLabel(occasion.type)}${occasion.leapAdjusted ? "\uFF08\u95F0\u65E5\u987A\u5EF6\uFF09" : ""}${occasion.note ? ` \xB7 ${escapeHtml(occasion.note)}` : ""}</span></div>
+        <div class="pm-calendar-event-actions"><button type="button" data-action="calendar-occasion-edit" data-occasion-id="${escapeAttr(occasion.id)}">\u7F16\u8F91</button><button type="button" data-action="calendar-occasion-delete" data-occasion-id="${escapeAttr(occasion.id)}" aria-label="\u5220\u9664 ${escapeAttr(occasion.title)}">${TRASH_ICON_SVG}</button></div>
+    </article>`);
+    const eventItems = events.map((event) => `<article class="pm-calendar-event" data-event-id="${escapeAttr(event.id)}">
+        <div><b>${escapeHtml(event.title)}</b>${event.note ? `<span>${escapeHtml(event.note)}</span>` : ""}</div>
+        <div class="pm-calendar-event-actions"><button type="button" data-action="calendar-edit" data-event-id="${escapeAttr(event.id)}">\u7F16\u8F91</button><button type="button" data-action="calendar-delete" data-event-id="${escapeAttr(event.id)}" aria-label="\u5220\u9664 ${escapeAttr(event.title)}">${TRASH_ICON_SVG}</button></div>
+    </article>`);
+    return [...occasionRows, ...eventItems].join("");
+  }
+  function holidayRows(cache, date) {
+    const year = Number(date.slice(0, 4));
+    const row = holidayYearFromCache(cache, cache?.selectedCountry, year);
+    return (row?.entries || []).filter((item) => item.date === date).map(
+      (item) => `<article class="pm-calendar-event is-holiday"><div><b>${escapeHtml(item.name)}</b><span>${escapeHtml(item.kind === "workday" ? "\u8C03\u4F11\u5DE5\u4F5C\u65E5" : item.kind === "in_lieu" ? "\u8C03\u4F11" : item.kind === "observed" ? "\u66FF\u4EE3\u4F11\u606F\u65E5" : "\u8282\u5047\u65E5")}</span></div></article>`
+    ).join("");
+  }
+  function weatherRow(weatherStore, date) {
+    const day = weatherStore?.lastSuccess?.forecast?.days?.find((item) => item.date === date);
+    if (!day) return "";
+    return `<div class="pm-calendar-weather"><span>${escapeHtml(weatherCodeLabel(day.weatherCode))}</span><b>${day.tempMin}\xB0/${day.tempMax}\xB0C</b></div>`;
+  }
+  function cycleRow(cycleScope, date) {
+    const prediction = predictCyclePhase(cycleScope, date);
+    if (!prediction.phase) return "";
+    return `<div class="pm-calendar-cycle"><span>\u5468\u671F\u63D0\u793A</span><b>${CYCLE_LABELS[prediction.phase] || prediction.phase}</b>${prediction.status === "override" ? "<em>\u624B\u52A8</em>" : ""}</div>`;
+  }
+  function renderSelectedDateDetail(scope, occasionsByDate, holidayCache, weatherStore, cycleScope, selectedDate, viewMode) {
+    const parsed = /* @__PURE__ */ new Date(`${selectedDate}T12:00:00`);
+    const content = viewMode === "life" ? `${weatherRow(weatherStore, selectedDate)}${cycleRow(cycleScope, selectedDate)}` : `${holidayRows(holidayCache, selectedDate)}${eventRows(scope, occasionsByDate, selectedDate)}`;
+    const emptyLabel = viewMode === "life" ? "\u8FD9\u4E00\u5929\u6CA1\u6709\u5929\u6C14\u6216\u5468\u671F\u63D0\u793A" : "\u8FD9\u4E00\u5929\u8FD8\u6CA1\u6709\u5B89\u6392";
+    return `<section class="pm-calendar-selected-detail" data-calendar-selected-detail="${selectedDate}" data-calendar-detail-mode="${viewMode}">
+        <header><div><span>\u5DF2\u9009\u65E5\u671F</span><b>${escapeHtml(detailDate.format(parsed))}</b></div><time datetime="${selectedDate}">${escapeHtml(selectedDate)}</time></header>
+        <div class="pm-calendar-selected-content">${content || `<p class="pm-calendar-empty-day">${emptyLabel}</p>`}</div>
+    </section>`;
+  }
+  function occasionList(scope) {
+    if (!scope.occasions.length) return '<p class="pm-calendar-empty-day">\u5C1A\u672A\u6DFB\u52A0\u751F\u65E5\u6216\u7EAA\u5FF5\u65E5</p>';
+    return scope.occasions.map((occasion) => `<article class="pm-calendar-event is-occasion" data-occasion-id="${escapeAttr(occasion.id)}">
+        <div><b>${escapeHtml(occasion.title)}</b><span>${occasion.month}\u6708${occasion.day}\u65E5 \xB7 ${occasionTypeLabel(occasion.type)}${occasion.note ? ` \xB7 ${escapeHtml(occasion.note)}` : ""}</span></div>
+        <div class="pm-calendar-event-actions"><button type="button" data-action="calendar-occasion-edit" data-occasion-id="${escapeAttr(occasion.id)}">\u7F16\u8F91</button><button type="button" data-action="calendar-occasion-delete" data-occasion-id="${escapeAttr(occasion.id)}" aria-label="\u5220\u9664 ${escapeAttr(occasion.title)}">${TRASH_ICON_SVG}</button></div>
+    </article>`).join("");
+  }
+  function weatherSearchResults(results) {
+    if (!results.length) return "";
+    return `<div class="pm-calendar-location-results">${results.map(
+      (location, index) => `<button type="button" data-action="calendar-weather-select" data-location-index="${index}"><b>${escapeHtml(location.name)}</b><span>${escapeHtml([location.admin1, location.country].filter(Boolean).join(" \xB7 "))}</span></button>`
+    ).join("")}</div>`;
+  }
+
   // src/calendar.js
   var clone = (value) => JSON.parse(JSON.stringify(value));
   var weekday = new Intl.DateTimeFormat("zh-CN", { weekday: "short" });
   var shortDate = new Intl.DateTimeFormat("zh-CN", { month: "numeric", day: "numeric" });
+  var monthTitle = new Intl.DateTimeFormat("zh-CN", { year: "numeric", month: "long" });
+  var CALENDAR_WEEKDAYS = ["\u4E00", "\u4E8C", "\u4E09", "\u56DB", "\u4E94", "\u516D", "\u65E5"];
+  var CYCLE_LABELS2 = { period: "\u7ECF\u671F", follicular: "\u5375\u6CE1\u671F", ovulatory: "\u6392\u5375\u671F", luteal: "\u9EC4\u4F53\u671F" };
+  var lunarFormatter = null;
+  try {
+    lunarFormatter = new Intl.DateTimeFormat("zh-CN-u-ca-chinese", { month: "short", day: "numeric" });
+  } catch {
+  }
+  function lunarDayLabel(value) {
+    const day = Number(value);
+    if (!Number.isInteger(day) || day < 1 || day > 30) return "";
+    if (day <= 10) return `\u521D${["\u4E00", "\u4E8C", "\u4E09", "\u56DB", "\u4E94", "\u516D", "\u4E03", "\u516B", "\u4E5D", "\u5341"][day - 1]}`;
+    if (day < 20) return `\u5341${["\u4E00", "\u4E8C", "\u4E09", "\u56DB", "\u4E94", "\u516D", "\u4E03", "\u516B", "\u4E5D"][day - 11]}`;
+    if (day === 20) return "\u4E8C\u5341";
+    if (day < 30) return `\u5EFF${["\u4E00", "\u4E8C", "\u4E09", "\u56DB", "\u4E94", "\u516D", "\u4E03", "\u516B", "\u4E5D"][day - 21]}`;
+    return "\u4E09\u5341";
+  }
+  function lunarLabel(date) {
+    if (!lunarFormatter) return "";
+    try {
+      const parts = lunarFormatter.formatToParts(date);
+      const month = parts.find((part) => part.type === "month")?.value || "";
+      const day = Number(parts.find((part) => part.type === "day")?.value);
+      return day === 1 ? month : lunarDayLabel(day);
+    } catch {
+      return "";
+    }
+  }
   function createTaskController(getStorageId2) {
     let epoch = 0, sequence = 0;
     const tasks = /* @__PURE__ */ new Map();
@@ -1426,68 +1520,72 @@ ${userPrompt}` : userPrompt;
 \u7ED3\u6784\u5316\u4E0A\u4E0B\u6587\u6570\u636E\uFF1A${JSON.stringify(payload)}`;
     return { systemPrompt, userPrompt };
   }
-  var occasionTypeLabel = (type) => type === "birthday" ? "\u751F\u65E5" : "\u7EAA\u5FF5\u65E5";
-  function eventRows(scope, occasionsByDate, date) {
+  function calendarDateMeta(scope, occasionsByDate, holidayCache, weatherStore, cycleScope, date, viewMode) {
+    const parsed = /* @__PURE__ */ new Date(`${date}T12:00:00`);
     const events = scope.events[date] || [];
-    const occasionRows = (occasionsByDate.get(date) || []).map((occasion) => `<article class="pm-calendar-event is-occasion" data-occasion-id="${escapeAttr(occasion.id)}">
-        <div><b>${escapeHtml(occasion.title)}</b><span>${occasionTypeLabel(occasion.type)}${occasion.leapAdjusted ? "\uFF08\u95F0\u65E5\u987A\u5EF6\uFF09" : ""}${occasion.note ? ` \xB7 ${escapeHtml(occasion.note)}` : ""}</span></div>
-        <div class="pm-calendar-event-actions"><button type="button" data-action="calendar-occasion-edit" data-occasion-id="${escapeAttr(occasion.id)}">\u7F16\u8F91</button><button type="button" data-action="calendar-occasion-delete" data-occasion-id="${escapeAttr(occasion.id)}" aria-label="\u5220\u9664 ${escapeAttr(occasion.title)}">${TRASH_ICON_SVG}</button></div>
-    </article>`);
-    const eventItems = events.map((event) => `<article class="pm-calendar-event" data-event-id="${escapeAttr(event.id)}">
-        <div><b>${escapeHtml(event.title)}</b>${event.note ? `<span>${escapeHtml(event.note)}</span>` : ""}</div>
-        <div class="pm-calendar-event-actions"><button type="button" data-action="calendar-edit" data-event-id="${escapeAttr(event.id)}">\u7F16\u8F91</button><button type="button" data-action="calendar-delete" data-event-id="${escapeAttr(event.id)}" aria-label="\u5220\u9664 ${escapeAttr(event.title)}">${TRASH_ICON_SVG}</button></div>
-    </article>`);
-    return [...occasionRows, ...eventItems].join("");
+    const occasions = occasionsByDate.get(date) || [];
+    const holidayYear = holidayYearFromCache(holidayCache, holidayCache?.selectedCountry, parsed.getFullYear());
+    const holidays = (holidayYear?.entries || []).filter((item) => item.date === date);
+    const weather = weatherStore?.lastSuccess?.forecast?.days?.find((item) => item.date === date) || null;
+    const cycle = predictCyclePhase(cycleScope, date);
+    const summary = viewMode === "life" ? (weather ? `${weatherCodeLabel(weather.weatherCode)} ${Math.round(weather.tempMax)}\xB0` : "") || (cycle.phase ? CYCLE_LABELS2[cycle.phase] || cycle.phase : "") || lunarLabel(parsed) : holidays[0]?.name || occasions[0]?.title || events[0]?.title || lunarLabel(parsed);
+    return {
+      parsed,
+      events,
+      occasions,
+      holidays,
+      weather,
+      cycle,
+      summary,
+      hasSchedule: events.length > 0 || occasions.length > 0
+    };
   }
-  function holidayRows(cache, date) {
-    const year = Number(date.slice(0, 4));
-    const row = holidayYearFromCache(cache, cache?.selectedCountry, year);
-    return (row?.entries || []).filter((item) => item.date === date).map(
-      (item) => `<article class="pm-calendar-event is-holiday"><div><b>${escapeHtml(item.name)}</b><span>${escapeHtml(item.kind === "workday" ? "\u8C03\u4F11\u5DE5\u4F5C\u65E5" : item.kind === "in_lieu" ? "\u8C03\u4F11" : item.kind === "observed" ? "\u66FF\u4EE3\u4F11\u606F\u65E5" : "\u8282\u5047\u65E5")}</span></div></article>`
-    ).join("");
-  }
-  function weatherRow(weatherStore, date) {
-    const day = weatherStore?.lastSuccess?.forecast?.days?.find((item) => item.date === date);
-    if (!day) return "";
-    return `<div class="pm-calendar-weather"><span>${escapeHtml(weatherCodeLabel(day.weatherCode))}</span><b>${day.tempMin}\xB0/${day.tempMax}\xB0C</b></div>`;
-  }
-  function cycleRow(cycleScope, date) {
-    const prediction = predictCyclePhase(cycleScope, date);
-    if (!prediction.phase) return "";
-    const labels = { period: "\u7ECF\u671F", follicular: "\u5375\u6CE1\u671F", ovulatory: "\u6392\u5375\u671F", luteal: "\u9EC4\u4F53\u671F" };
-    return `<div class="pm-calendar-cycle"><span>\u5468\u671F\u63D0\u793A</span><b>${labels[prediction.phase] || prediction.phase}</b>${prediction.status === "override" ? "<em>\u624B\u52A8</em>" : ""}</div>`;
-  }
-  function occasionList(scope) {
-    if (!scope.occasions.length) return '<p class="pm-calendar-empty-day">\u5C1A\u672A\u6DFB\u52A0\u751F\u65E5\u6216\u7EAA\u5FF5\u65E5</p>';
-    return scope.occasions.map((occasion) => `<article class="pm-calendar-event is-occasion" data-occasion-id="${escapeAttr(occasion.id)}">
-        <div><b>${escapeHtml(occasion.title)}</b><span>${occasion.month}\u6708${occasion.day}\u65E5 \xB7 ${occasionTypeLabel(occasion.type)}${occasion.note ? ` \xB7 ${escapeHtml(occasion.note)}` : ""}</span></div>
-        <div class="pm-calendar-event-actions"><button type="button" data-action="calendar-occasion-edit" data-occasion-id="${escapeAttr(occasion.id)}">\u7F16\u8F91</button><button type="button" data-action="calendar-occasion-delete" data-occasion-id="${escapeAttr(occasion.id)}" aria-label="\u5220\u9664 ${escapeAttr(occasion.title)}">${TRASH_ICON_SVG}</button></div>
-    </article>`).join("");
-  }
-  function weatherSearchResults(results) {
-    if (!results.length) return "";
-    return `<div class="pm-calendar-location-results">${results.map(
-      (location, index) => `<button type="button" data-action="calendar-weather-select" data-location-index="${index}"><b>${escapeHtml(location.name)}</b><span>${escapeHtml([location.admin1, location.country].filter(Boolean).join(" \xB7 "))}</span></button>`
-    ).join("")}</div>`;
-  }
-  function renderCalendarPageHtml(scope, occasionScope, status = "", holidayCache = {}, weatherStore = {}, cycleScope = {}, weatherResults = []) {
+  function renderCalendarPageHtml(scope, occasionScope, status = "", holidayCache = {}, weatherStore = {}, cycleScope = {}, weatherResults = [], view = {}) {
     const today = /* @__PURE__ */ new Date();
+    const viewMode = view.viewMode === "life" ? "life" : "schedule";
+    const viewYear = Number.isInteger(view.viewYear) ? view.viewYear : today.getFullYear();
+    const viewMonth = Number.isInteger(view.viewMonth) ? view.viewMonth : today.getMonth() + 1;
+    const monthKeys = calendarMonthKeys(viewYear, viewMonth);
+    const monthStart = /* @__PURE__ */ new Date(`${monthKeys[0]}T12:00:00`);
+    const todayKey = formatCalendarDate(today);
+    const monthFirst = `${viewYear}-${String(viewMonth).padStart(2, "0")}-01`;
+    const selectedDate = monthKeys.includes(view.selectedDate) ? view.selectedDate : viewYear === today.getFullYear() && viewMonth === today.getMonth() + 1 ? todayKey : monthFirst;
     const occasionsByDate = /* @__PURE__ */ new Map();
-    for (const occasion of expandOccasions(occasionScope, { start: today, days: 7 })) {
+    for (const occasion of expandOccasions(occasionScope, { start: monthStart, days: monthKeys.length })) {
       if (!occasionsByDate.has(occasion.date)) occasionsByDate.set(occasion.date, []);
       occasionsByDate.get(occasion.date).push(occasion);
     }
-    const days = calendarWeekKeys(today, 7).map((date) => {
-      const parsed = /* @__PURE__ */ new Date(`${date}T12:00:00`);
-      const content = `${holidayRows(holidayCache, date)}${weatherRow(weatherStore, date)}${cycleRow(cycleScope, date)}${eventRows(scope, occasionsByDate, date)}`;
-      return `<section class="pm-calendar-day"><header><b>${escapeHtml(weekday.format(parsed))}</b><span>${escapeHtml(shortDate.format(parsed))}</span></header>${content || '<p class="pm-calendar-empty-day">\u6682\u65E0\u5B89\u6392</p>'}</section>`;
+    const days = monthKeys.map((date) => {
+      const meta = calendarDateMeta(scope, occasionsByDate, holidayCache, weatherStore, cycleScope, date, viewMode);
+      const classes = ["pm-calendar-day"];
+      if (meta.parsed.getMonth() !== viewMonth - 1) classes.push("is-other-month");
+      if (date === todayKey) classes.push("is-today");
+      if (date === selectedDate) classes.push("is-selected");
+      if (viewMode === "life") {
+        if (meta.weather) classes.push("has-weather");
+        if (meta.cycle.phase) classes.push(`has-cycle is-cycle-${meta.cycle.phase}`);
+      } else {
+        if (meta.hasSchedule) classes.push("has-schedule");
+        if (meta.holidays.length) classes.push("has-holiday");
+        if (meta.occasions.length) classes.push("has-occasion");
+      }
+      const labels = [shortDate.format(meta.parsed), meta.summary].filter(Boolean).join("\uFF0C");
+      return `<button type="button" class="${classes.join(" ")}" data-action="calendar-select-date" data-calendar-date="${date}" aria-pressed="${date === selectedDate}" aria-label="${escapeAttr(labels)}"><b>${meta.parsed.getDate()}</b><span>${escapeHtml(meta.summary)}</span><i aria-hidden="true"></i></button>`;
     }).join("");
-    return `<div id="pm-calendar-app" class="pm-calendar-shell">
-        <header class="pm-calendar-header"><button type="button" data-action="calendar-home" aria-label="\u8FD4\u56DE\u684C\u9762">${BACK_ICON_SVG}</button><b>${CALENDAR_ICON_SVG} \u65E5\u5386</b><button type="button" data-action="calendar-generate" aria-label="\u751F\u6210\u672A\u6765\u4E03\u65E5\u65E5\u7A0B" title="\u751F\u6210\u672A\u6765\u4E03\u65E5\u65E5\u7A0B">${REFRESH_ICON_SVG}</button></header>
+    const selectedDetail = renderSelectedDateDetail(
+      scope,
+      occasionsByDate,
+      holidayCache,
+      weatherStore,
+      cycleScope,
+      selectedDate,
+      viewMode
+    );
+    const headerAction = viewMode === "life" ? "calendar-weather-refresh" : "calendar-generate";
+    const headerActionLabel = viewMode === "life" ? "\u5237\u65B0\u5929\u6C14" : "\u751F\u6210\u672A\u6765\u4E03\u65E5\u65E5\u7A0B";
+    const scheduleManagement = `<details class="pm-calendar-management" data-calendar-management="schedule"><summary>\u5B89\u6392\u7BA1\u7406</summary><div class="pm-calendar-management-content">
         <div class="pm-calendar-tools"><button type="button" data-action="calendar-scan">\u8BC6\u522B\u5F53\u524D\u4E0A\u4E0B\u6587</button><button type="button" data-action="calendar-toggle-auto" aria-pressed="${scope.autoAdjust}">${scope.autoAdjust ? "\u81EA\u52A8\u8C03\u6574\uFF1A\u5F00" : "\u81EA\u52A8\u8C03\u6574\uFF1A\u5173"}</button></div>
-        <div class="pm-calendar-status" aria-live="polite">${escapeHtml(status)}</div>
-        <section class="pm-calendar-data-tools"><h3>\u5916\u90E8\u65E5\u5386\u6570\u636E</h3><div class="pm-calendar-data-row"><select data-calendar-country aria-label="\u8282\u5047\u65E5\u56FD\u5BB6"><option value="CN" ${holidayCache.selectedCountry === "CN" ? "selected" : ""}>\u4E2D\u56FD</option><option value="US" ${holidayCache.selectedCountry === "US" ? "selected" : ""}>\u7F8E\u56FD</option><option value="JP" ${holidayCache.selectedCountry === "JP" ? "selected" : ""}>\u65E5\u672C</option></select><button type="button" data-action="calendar-holiday-refresh">\u5237\u65B0\u8282\u5047\u65E5</button></div><div class="pm-calendar-data-row"><input data-weather-query placeholder="\u641C\u7D22\u5929\u6C14\u4F4D\u7F6E" maxlength="100" aria-label="\u641C\u7D22\u5929\u6C14\u4F4D\u7F6E"><button type="button" data-action="calendar-weather-search">\u641C\u7D22</button><button type="button" data-action="calendar-weather-refresh">\u5237\u65B0\u5929\u6C14</button></div>${weatherSearchResults(weatherResults)}${weatherStore.location ? `<small class="pm-calendar-attribution">${escapeHtml(weatherStore.location.name)} \xB7 Weather data \xA9 Open-Meteo (CC BY 4.0)</small>` : '<small class="pm-calendar-attribution">\u5C1A\u672A\u8BBE\u7F6E\u5929\u6C14\u4F4D\u7F6E</small>'}</section>
-        <div class="pm-calendar-week">${days}</div>
+        <section class="pm-calendar-data-tools"><h3>\u8282\u5047\u65E5\u6570\u636E</h3><div class="pm-calendar-data-row pm-calendar-holiday-row"><select data-calendar-country aria-label="\u8282\u5047\u65E5\u56FD\u5BB6"><option value="CN" ${holidayCache.selectedCountry === "CN" ? "selected" : ""}>\u4E2D\u56FD</option><option value="US" ${holidayCache.selectedCountry === "US" ? "selected" : ""}>\u7F8E\u56FD</option><option value="JP" ${holidayCache.selectedCountry === "JP" ? "selected" : ""}>\u65E5\u672C</option></select><button type="button" data-action="calendar-holiday-refresh">\u5237\u65B0\u8282\u5047\u65E5</button></div></section>
         <form class="pm-calendar-editor" data-calendar-editor>
           <h3>\u6DFB\u52A0\u65E5\u7A0B</h3>
           <div class="pm-calendar-date-fields"><input name="year" inputmode="numeric" maxlength="4" placeholder="YYYY" aria-label="\u5E74"><input name="month" inputmode="numeric" maxlength="2" placeholder="MM" aria-label="\u6708"><input name="day" inputmode="numeric" maxlength="2" placeholder="DD" aria-label="\u65E5"></div>
@@ -1508,7 +1606,15 @@ ${userPrompt}` : userPrompt;
           <div class="pm-calendar-editor-actions"><button type="button" data-action="calendar-occasion-cancel-edit">\u6E05\u7A7A</button><button type="button" class="is-primary" data-action="calendar-occasion-save">\u4FDD\u5B58</button></div>
         </form>
         <section class="pm-calendar-occasion-list"><h3>\u5DF2\u4FDD\u5B58\u7684\u751F\u65E5\u4E0E\u7EAA\u5FF5\u65E5</h3>${occasionList(occasionScope)}</section>
-        <form class="pm-calendar-editor pm-calendar-cycle-editor" data-calendar-cycle-editor><h3>\u751F\u7406\u5468\u671F\uFF08\u4EC5\u672C\u5730\u663E\u793A\uFF09</h3><label><input name="enabled" type="checkbox" ${cycleScope.enabled ? "checked" : ""}> \u542F\u7528\u5468\u671F\u63D0\u793A</label><input name="lastPeriodStart" type="date" value="${escapeAttr(cycleScope.lastPeriodStart || "")}" aria-label="\u672B\u6B21\u7ECF\u671F\u5F00\u59CB\u65E5\u671F"><div class="pm-calendar-date-fields"><input name="cycleLength" type="number" min="21" max="45" value="${cycleScope.cycleLength || 28}" aria-label="\u5468\u671F\u957F\u5EA6"><input name="periodLength" type="number" min="2" max="10" value="${cycleScope.periodLength || 5}" aria-label="\u7ECF\u671F\u957F\u5EA6"></div><div class="pm-calendar-editor-actions"><button type="button" data-action="calendar-cycle-clear">\u6E05\u9664</button><button type="button" class="is-primary" data-action="calendar-cycle-save">\u4FDD\u5B58\u5468\u671F</button></div><small>${CYCLE_DISCLAIMER}</small></form>
+    </div></details>`;
+    const lifeManagement = `<details class="pm-calendar-management" data-calendar-management="life"><summary>\u751F\u6D3B\u7BA1\u7406</summary><div class="pm-calendar-management-content"><section class="pm-calendar-data-tools"><h3>\u5929\u6C14\u6570\u636E</h3><div class="pm-calendar-data-row"><input data-weather-query placeholder="\u641C\u7D22\u5929\u6C14\u4F4D\u7F6E" maxlength="100" aria-label="\u641C\u7D22\u5929\u6C14\u4F4D\u7F6E"><button type="button" data-action="calendar-weather-search">\u641C\u7D22</button><button type="button" data-action="calendar-weather-refresh">\u5237\u65B0\u5929\u6C14</button></div>${weatherSearchResults(weatherResults)}${weatherStore.location ? `<small class="pm-calendar-attribution">${escapeHtml(weatherStore.location.name)} \xB7 Weather data \xA9 Open-Meteo (CC BY 4.0)</small>` : '<small class="pm-calendar-attribution">\u5C1A\u672A\u8BBE\u7F6E\u5929\u6C14\u4F4D\u7F6E</small>'}</section><form class="pm-calendar-editor pm-calendar-cycle-editor" data-calendar-cycle-editor><h3>\u751F\u7406\u5468\u671F</h3><label><input name="enabled" type="checkbox" ${cycleScope.enabled ? "checked" : ""}> \u542F\u7528\u5468\u671F\u63D0\u793A</label><input name="lastPeriodStart" type="date" value="${escapeAttr(cycleScope.lastPeriodStart || "")}" aria-label="\u672B\u6B21\u7ECF\u671F\u5F00\u59CB\u65E5\u671F"><div class="pm-calendar-date-fields"><input name="cycleLength" type="number" min="21" max="45" value="${cycleScope.cycleLength || 28}" aria-label="\u5468\u671F\u957F\u5EA6"><input name="periodLength" type="number" min="2" max="10" value="${cycleScope.periodLength || 5}" aria-label="\u7ECF\u671F\u957F\u5EA6"></div><div class="pm-calendar-editor-actions"><button type="button" data-action="calendar-cycle-clear">\u6E05\u9664</button><button type="button" class="is-primary" data-action="calendar-cycle-save">\u4FDD\u5B58\u5468\u671F</button></div></form></div></details>`;
+    return `<div id="pm-calendar-app" class="pm-calendar-shell" data-calendar-view-mode="${viewMode}">
+        <header class="pm-calendar-header"><button type="button" data-action="calendar-home" aria-label="\u8FD4\u56DE\u684C\u9762">${BACK_ICON_SVG}</button><b>${escapeHtml(monthTitle.format(new Date(viewYear, viewMonth - 1, 1, 12)))}</b><button type="button" data-action="${headerAction}" aria-label="${headerActionLabel}" title="${headerActionLabel}">${REFRESH_ICON_SVG}</button></header>
+        <div class="pm-calendar-month-nav"><button type="button" class="pm-calendar-month-step" data-action="calendar-prev-month" aria-label="\u4E0A\u4E2A\u6708">\u2039</button><div class="pm-calendar-nav-center"><button type="button" class="pm-calendar-today" data-action="calendar-today" aria-label="\u56DE\u5230\u672C\u6708">\u4ECA\u5929</button><div class="pm-calendar-view-switch" role="group" aria-label="\u65E5\u5386\u4FE1\u606F\u5206\u7C7B"><button type="button" data-action="calendar-mode-schedule" aria-label="\u663E\u793A\u65E5\u7A0B\u4E0E\u8282\u65E5" aria-pressed="${viewMode === "schedule"}" title="\u5B89\u6392\uFF1A\u65E5\u7A0B\u3001\u7EAA\u5FF5\u65E5\u4E0E\u8282\u5047\u65E5">${CALENDAR_ICON_SVG}</button><button type="button" data-action="calendar-mode-life" aria-label="\u663E\u793A\u5929\u6C14\u4E0E\u751F\u7406\u5468\u671F" aria-pressed="${viewMode === "life"}" title="\u751F\u6D3B\uFF1A\u5929\u6C14\u4E0E\u751F\u7406\u5468\u671F">${WEATHER_ICON_SVG}</button></div></div><button type="button" class="pm-calendar-month-step" data-action="calendar-next-month" aria-label="\u4E0B\u4E2A\u6708">\u203A</button></div>
+        <div class="pm-calendar-month" aria-label="${viewYear}\u5E74${viewMonth}\u6708\u6708\u5386"><div class="pm-calendar-weekdays">${CALENDAR_WEEKDAYS.map((day) => `<span>\u5468${day}</span>`).join("")}</div><div class="pm-calendar-month-grid">${days}</div></div>
+        ${selectedDetail}
+        <div class="pm-calendar-status" aria-live="polite">${escapeHtml(status)}</div>
+        ${viewMode === "life" ? lifeManagement : scheduleManagement}
     </div>`;
   }
   function installCalendar(state, deps) {
@@ -1520,6 +1626,7 @@ ${userPrompt}` : userPrompt;
       weatherStore: normalizeWeatherStore(loadCalendarWeather()),
       cycleStore: normalizeCycleStore(loadCalendarCycles()),
       weatherSearchResults: [],
+      viewByStorage: /* @__PURE__ */ new Map(),
       statusByStorage: /* @__PURE__ */ new Map()
     };
     const tasks = createTaskController(getStorageId2);
@@ -1531,6 +1638,29 @@ ${userPrompt}` : userPrompt;
     const scope = (storageId) => calendarScopeFor(runtime.store, storageId);
     const occasions = (storageId) => occasionScopeFor(runtime.occasionStore, storageId);
     const cycles = (storageId) => cycleScopeFor(runtime.cycleStore, storageId);
+    const viewFor = (storageId) => {
+      const existing = runtime.viewByStorage.get(storageId);
+      if (existing) return existing;
+      const today = /* @__PURE__ */ new Date();
+      const view = {
+        viewYear: today.getFullYear(),
+        viewMonth: today.getMonth() + 1,
+        selectedDate: formatCalendarDate(today),
+        viewMode: "schedule"
+      };
+      runtime.viewByStorage.set(storageId, view);
+      return view;
+    };
+    const shiftView = (storageId, delta) => {
+      const current = viewFor(storageId);
+      const next = new Date(current.viewYear, current.viewMonth - 1 + delta, 1, 12);
+      runtime.viewByStorage.set(storageId, {
+        ...current,
+        viewYear: next.getFullYear(),
+        viewMonth: next.getMonth() + 1,
+        selectedDate: formatCalendarDate(next)
+      });
+    };
     let scopeCommitQueue = Promise.resolve();
     const injectionFailure = (result, phase) => {
       const failedWrites = Number.isInteger(result?.failedWrites) && result.failedWrites > 0 ? result.failedWrites : 0;
@@ -1630,7 +1760,8 @@ ${userPrompt}` : userPrompt;
         runtime.holidayStore,
         runtime.weatherStore,
         cycles(storageId),
-        runtime.weatherSearchResults
+        runtime.weatherSearchResults,
+        viewFor(storageId)
       );
       return true;
     };
@@ -1643,7 +1774,8 @@ ${userPrompt}` : userPrompt;
       let nextCache = selectHolidayCountry(runtime.holidayStore, country);
       let usedStaleCache = false;
       try {
-        const years = [...new Set(calendarWeekKeys(/* @__PURE__ */ new Date(), 7).map((date) => Number(date.slice(0, 4))))];
+        const view = viewFor(storageId);
+        const years = [...new Set(calendarMonthKeys(view.viewYear, view.viewMonth).map((date) => Number(date.slice(0, 4))))];
         for (const year of years) {
           const result = await resolveHolidayYear({
             country,
@@ -1658,6 +1790,7 @@ ${userPrompt}` : userPrompt;
         }
         if (!tasks.active(task)) return false;
         commitHolidays(nextCache);
+        await deps.applyBidirectionalInjection?.();
         status(storageId, usedStaleCache ? "\u8282\u5047\u65E5\u670D\u52A1\u4E0D\u53EF\u7528\uFF0C\u5DF2\u663E\u793A\u7F13\u5B58\u6570\u636E\u3002" : "\u8282\u5047\u65E5\u6570\u636E\u5DF2\u66F4\u65B0\u3002");
         rerender(storageId);
         return true;
@@ -1697,6 +1830,7 @@ ${userPrompt}` : userPrompt;
         });
         if (!tasks.active(task)) return false;
         commitWeather(result.store);
+        await deps.applyBidirectionalInjection?.();
         runtime.weatherSearchResults = [];
         status(storageId, result.stale ? "\u5929\u6C14\u670D\u52A1\u4E0D\u53EF\u7528\uFF0C\u5DF2\u663E\u793A\u8BE5\u4F4D\u7F6E\u7684\u7F13\u5B58\u9884\u62A5\u3002" : "\u5929\u6C14\u4F4D\u7F6E\u4E0E\u9884\u62A5\u5DF2\u66F4\u65B0\u3002");
         rerender(storageId);
@@ -1719,6 +1853,7 @@ ${userPrompt}` : userPrompt;
         });
         if (!tasks.active(task)) return false;
         commitWeather(result.store);
+        await deps.applyBidirectionalInjection?.();
         status(storageId, result.stale ? "\u5929\u6C14\u670D\u52A1\u4E0D\u53EF\u7528\uFF0C\u5DF2\u663E\u793A\u7F13\u5B58\u9884\u62A5\u3002" : "\u5929\u6C14\u9884\u62A5\u5DF2\u66F4\u65B0\u3002");
         rerender(storageId);
         return true;
@@ -1804,6 +1939,11 @@ ${userPrompt}` : userPrompt;
       }
     }
     const editor = (app) => app?.querySelector("[data-calendar-editor]");
+    const revealEditor = (form) => {
+      const management = form?.closest?.('[data-calendar-management="schedule"]');
+      if (management) management.open = true;
+      form?.scrollIntoView?.({ block: "nearest" });
+    };
     const clearEditor = (app) => {
       const form = editor(app);
       if (!form) return;
@@ -1823,6 +1963,7 @@ ${userPrompt}` : userPrompt;
       form.elements.tagged.value = "";
       form.elements.eventId.value = event.id;
       form.querySelector("h3").textContent = "\u7F16\u8F91\u65E5\u7A0B";
+      revealEditor(form);
       form.elements.title.focus();
     };
     const occasionEditor = (app) => app?.querySelector("[data-calendar-occasion-editor]");
@@ -1844,6 +1985,7 @@ ${userPrompt}` : userPrompt;
       form.elements.leapDayRule.value = occasion.leapDayRule;
       form.elements.occasionId.value = occasion.id;
       form.querySelector("h3").textContent = `\u7F16\u8F91${occasionTypeLabel(occasion.type)}`;
+      revealEditor(form);
       form.elements.title.focus();
     };
     async function handleAction(button, app) {
@@ -1851,6 +1993,45 @@ ${userPrompt}` : userPrompt;
       const action = button.dataset.action;
       if (action === "calendar-generate") {
         await generate(storageId, "generate");
+        return;
+      }
+      if (action === "calendar-prev-month") {
+        shiftView(storageId, -1);
+        rerender(storageId);
+        return;
+      }
+      if (action === "calendar-next-month") {
+        shiftView(storageId, 1);
+        rerender(storageId);
+        return;
+      }
+      if (action === "calendar-today") {
+        const today = /* @__PURE__ */ new Date();
+        const current = viewFor(storageId);
+        runtime.viewByStorage.set(storageId, {
+          ...current,
+          viewYear: today.getFullYear(),
+          viewMonth: today.getMonth() + 1,
+          selectedDate: formatCalendarDate(today)
+        });
+        rerender(storageId);
+        return;
+      }
+      if (action === "calendar-mode-schedule" || action === "calendar-mode-life") {
+        const current = viewFor(storageId);
+        const viewMode = action === "calendar-mode-life" ? "life" : "schedule";
+        runtime.viewByStorage.set(storageId, { ...current, viewMode });
+        rerender(storageId);
+        return;
+      }
+      if (action === "calendar-select-date") {
+        const date = button.dataset.calendarDate;
+        const current = viewFor(storageId);
+        if (!calendarMonthKeys(current.viewYear, current.viewMonth).includes(date)) {
+          throw new Error("\u9009\u62E9\u7684\u65E5\u5386\u65E5\u671F\u65E0\u6548");
+        }
+        runtime.viewByStorage.set(storageId, { ...current, selectedDate: date });
+        rerender(storageId);
         return;
       }
       if (action === "calendar-scan") {
@@ -1886,14 +2067,16 @@ ${userPrompt}` : userPrompt;
           overrides: cycles(storageId).overrides
         });
         commitCycle(storageId, nextStore);
-        status(storageId, "\u751F\u7406\u5468\u671F\u8BBE\u7F6E\u5DF2\u4FDD\u5B58\uFF0C\u4EC5\u7528\u4E8E\u672C\u5730\u65E5\u5386\u63D0\u793A\u3002");
+        await deps.applyBidirectionalInjection?.();
+        status(storageId, "\u751F\u7406\u5468\u671F\u8BBE\u7F6E\u5DF2\u4FDD\u5B58\uFF0C\u5E76\u5DF2\u5237\u65B0\u751F\u6D3B\u65E5\u5386\u6B63\u6587\u3002");
         rerender(storageId);
         return;
       }
       if (action === "calendar-cycle-clear") {
         if (!confirm("\u6E05\u9664\u5F53\u524D\u89D2\u8272\u4E0E\u804A\u5929\u7684\u751F\u7406\u5468\u671F\u8D44\u6599\uFF1F")) return;
         commitCycle(storageId, clearCycleScope(runtime.cycleStore, storageId));
-        status(storageId, "\u5F53\u524D\u89D2\u8272\u4E0E\u804A\u5929\u7684\u751F\u7406\u5468\u671F\u8D44\u6599\u5DF2\u6E05\u9664\u3002");
+        await deps.applyBidirectionalInjection?.();
+        status(storageId, "\u5F53\u524D\u89D2\u8272\u4E0E\u804A\u5929\u7684\u751F\u7406\u5468\u671F\u8D44\u6599\u5DF2\u6E05\u9664\uFF0C\u5E76\u5DF2\u5237\u65B0\u751F\u6D3B\u65E5\u5386\u6B63\u6587\u3002");
         rerender(storageId);
         return;
       }
@@ -2489,9 +2672,9 @@ ${lines.join("\n")}
     comments.forEach((comment, index) => assertV1Item(comment, "comment", `${label}.comments.${index}`));
   };
   var assertV1Scene = (raw, label) => {
-    assertV1Keys(raw, ["id", "title", "preset", "styleInput", "generatedPrompt", "contentRating", "createdAt", "updatedAt", "posts", "live"], label);
+    assertV1Keys(raw, ["id", "title", "preset", "styleInput", "generatedPrompt", "themeAccent", "contentRating", "createdAt", "updatedAt", "posts", "live"], label);
     if (Object.hasOwn(raw, "id") && typeof raw.id !== "string") throw new Error(`\u4E92\u52A8\u573A\u666F v1 ${label}.id \u5FC5\u987B\u662F\u5B57\u7B26\u4E32`);
-    for (const key of ["title", "preset", "styleInput", "generatedPrompt"]) assertV1OptionalText(raw, key, label);
+    for (const key of ["title", "preset", "styleInput", "generatedPrompt", "themeAccent"]) assertV1OptionalText(raw, key, label);
     assertV1OptionalTimestamp(raw, "createdAt", label);
     assertV1OptionalTimestamp(raw, "updatedAt", label);
     const posts = assertV1OptionalArray(raw, "posts", label, INTERACTIVE_LIMITS.posts);
@@ -2789,19 +2972,29 @@ ${lines.join("\n")}
       createdAt
     };
   }
+  function normalizeThemeAccent(value) {
+    const accent = String(value ?? "").trim();
+    return /^#[0-9a-fA-F]{6}$/.test(accent) ? accent.toLowerCase() : "";
+  }
   function normalizeScene(raw, options = {}) {
     const scope = options.scope || { actors: {} };
     const scopeId = text2(options.scopeId, 160) || "__standalone__";
     const sourceVersion = options.sourceVersion === INTERACTIVE_STORE_VERSION ? INTERACTIVE_STORE_VERSION : 1;
     const strictLegacy = sourceVersion === 1 && options.strictLegacy === true;
     if (sourceVersion === INTERACTIVE_STORE_VERSION) {
-      assertV2Keys(raw, ["id", "title", "preset", "styleInput", "generatedPrompt", "createdAt", "updatedAt", "posts", "live"], "scene");
+      assertV2Keys(raw, ["id", "title", "preset", "styleInput", "generatedPrompt", "themeAccent", "createdAt", "updatedAt", "posts", "live"], "scene");
       if (raw?.live !== void 0) assertV2Keys(raw.live, ["title", "status", "danmaku"], "live");
       assertV2Text(raw.id, 80, "scene.id");
       assertV2Text(raw.title, 80, "scene.title");
       assertV2Text(raw.preset, 30, "scene.preset");
       assertV2Text(raw.styleInput, 2e3, "scene.styleInput", { allowEmpty: true });
       assertV2Text(raw.generatedPrompt, 6e3, "scene.generatedPrompt", { allowEmpty: true });
+      if (raw.themeAccent !== void 0) {
+        assertV2Text(raw.themeAccent, 7, "scene.themeAccent", { allowEmpty: true });
+        if (raw.themeAccent && normalizeThemeAccent(raw.themeAccent) !== raw.themeAccent) {
+          throw new Error("\u4E92\u52A8\u573A\u666F v2 scene.themeAccent \u5FC5\u987B\u662F\u5C0F\u5199\u516D\u4F4D\u5341\u516D\u8FDB\u5236\u989C\u8272");
+        }
+      }
       assertV2Timestamp(raw.createdAt, "scene.createdAt");
       assertV2Timestamp(raw.updatedAt, "scene.updatedAt");
       assertV2List(raw.posts, "scene.posts");
@@ -2821,6 +3014,7 @@ ${lines.join("\n")}
       preset: text2(raw?.preset, 30) || "weibo",
       styleInput: text2(raw?.styleInput, 2e3),
       generatedPrompt: text2(raw?.generatedPrompt, 6e3),
+      themeAccent: normalizeThemeAccent(raw?.themeAccent),
       createdAt,
       updatedAt: finitePositiveNumber(raw?.updatedAt) || createdAt,
       posts: list(raw?.posts).map((post, index) => normalizePost(post, {
@@ -4967,11 +5161,23 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
   // src/interactive-scene-views.js
   var DEFAULT_DESKTOP_TITLE = "\u5929\u97F3\u5C0F\u7B3A";
   var DANMAKU_TONES = ["blue", "pink", "cyan", "gold"];
-  function stableDanmakuTone(item) {
+  function stableDanmakuHash(item) {
     const seed = String(item?.id || `${item?.authorNameSnapshot || ""}:${item?.content || ""}`);
     let hash = 0;
     for (const character of seed) hash = hash * 31 + character.codePointAt(0) >>> 0;
-    return DANMAKU_TONES[hash % DANMAKU_TONES.length];
+    return hash;
+  }
+  function stableDanmakuTone(item) {
+    return DANMAKU_TONES[stableDanmakuHash(item) % DANMAKU_TONES.length];
+  }
+  function getDanmakuMotion(item) {
+    const hash = stableDanmakuHash(item);
+    return {
+      lane: hash % 6,
+      delay: -((hash >>> 4) % 45) / 10,
+      duration: 5 + (hash >>> 9) % 51 / 10,
+      offset: (hash >>> 15) % 17 - 8
+    };
   }
   function renderPhoneDesktop(scope = { scenes: {} }, uiScope = { pinnedSceneIds: [] }) {
     const title = String(globalThis.window?.__pmTheme?.customTitle || "").trim() || DEFAULT_DESKTOP_TITLE;
@@ -4986,9 +5192,9 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
             <button type="button" class="pm-desktop-app" data-action="desktop-directory" aria-label="\u8054\u7CFB\u4EBA" title="\u8054\u7CFB\u4EBA">${CONTACTS_ICON_SVG}</button>
             <button type="button" class="pm-desktop-app" data-action="desktop-settings" aria-label="\u8BBE\u7F6E" title="\u8BBE\u7F6E">${SETTINGS_ICON_SVG}</button>
             <button type="button" class="pm-desktop-app" data-action="desktop-calendar" aria-label="\u65E5\u5386" title="\u65E5\u5386">${CALENDAR_ICON_SVG}</button>
-            <button type="button" class="pm-desktop-app" data-action="desktop-community" aria-label="\u793E\u533A" title="\u793E\u533A">${COMMUNITY_ICON_SVG}</button>
         </div>
-        <section class="pm-desktop-pins"><h3>\u56FA\u5B9A\u793E\u533A</h3>${pins || "<p>\u5728\u793E\u533A\u4E2D\u56FA\u5B9A\u573A\u666F\u540E\uFF0C\u4F1A\u663E\u793A\u5728\u8FD9\u91CC\u3002</p>"}</section>`;
+        <section class="pm-desktop-pins"><h3>\u56FA\u5B9A\u793E\u533A</h3>${pins || "<p>\u5728\u793E\u533A\u4E2D\u56FA\u5B9A\u573A\u666F\u540E\uFF0C\u4F1A\u663E\u793A\u5728\u8FD9\u91CC\u3002</p>"}</section>
+        <div class="pm-desktop-community-dock"><button type="button" data-action="desktop-community" aria-label="\u53D1\u5E03\u4E00\u6761">${COMMUNITY_ICON_SVG}<span>\u53D1\u5E03\u4E00\u6761</span></button></div>`;
   }
   function renderPresetOptions(selected) {
     return Object.entries(getInteractivePresets()).map(([key, preset]) => `
@@ -5015,7 +5221,7 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
     </div>`;
   }
   function renderPosts(scene) {
-    if (!scene.posts.length) return '<div class="pm-scene-empty"><b>\u8FD9\u91CC\u8FD8\u5F88\u5B89\u9759</b><span>\u53D1\u7B2C\u4E00\u7BC7\u5E16\u5B50\uFF0C\u6216\u8005\u4ECE\u66F4\u591A\u83DC\u5355\u751F\u6210\u5185\u5BB9\u3002</span></div>';
+    if (!scene.posts.length) return '<div class="pm-scene-empty"><b>\u8FD9\u91CC\u8FD8\u5F88\u5B89\u9759</b><span>\u53D1\u7B2C\u4E00\u7BC7\u5E16\u5B50\uFF0C\u6216\u8005\u62CD\u4E00\u62CD\u8BA9\u793E\u533A\u52A8\u8D77\u6765\u3002</span></div>';
     return scene.posts.slice().reverse().map((post) => `<article class="pm-scene-post">
         <header><div class="pm-scene-avatar">${escapeHtml(post.authorNameSnapshot.slice(0, 1))}</div><div><b>${escapeHtml(post.authorNameSnapshot)}</b><span>\u521A\u521A \xB7 ${escapeHtml(scene.title)}</span></div></header>
         <p>${escapeHtml(post.content).replace(/\n/g, "<br>")}</p>
@@ -5030,16 +5236,12 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
   }
   function renderSceneMenu(scene, uiScope, autoActive) {
     const pinned = uiScope.pinnedSceneIds.includes(scene.id);
-    return `<div class="pm-scene-menu-wrap">
+    return `<div class="pm-scene-menu-wrap" data-auto-active="${autoActive}">
         <button type="button" class="pm-scene-more" data-action="more" aria-label="\u66F4\u591A\u793E\u533A\u64CD\u4F5C" title="\u66F4\u591A" aria-haspopup="menu" aria-expanded="false">${MORE_ICON_SVG}</button>
         <div class="pm-scene-menu" role="menu" hidden>
             <button type="button" role="menuitem" data-action="toggle-scene-pin" data-scene-id="${escapeAttr(scene.id)}" aria-pressed="${pinned}">${pinned ? "\u53D6\u6D88\u56FA\u5B9A" : "\u56FA\u5B9A\u793E\u533A"}</button>
-            <button type="button" role="menuitem" data-action="toggle-community-mode">${autoActive ? "\u5173\u95ED\u81EA\u52A8\u70ED\u573A" : "\u5F00\u542F\u81EA\u52A8\u70ED\u573A"}</button>
-            <button type="button" role="menuitem" data-action="ai-feed">\u751F\u6210\u70ED\u573A\u5185\u5BB9</button>
-            <button type="button" role="menuitem" data-action="edit-scene">\u7F16\u8F91\u793E\u533A\u98CE\u683C</button>
-            <button type="button" role="menuitem" data-action="desktop">\u8FD4\u56DE\u684C\u9762</button>
+            <button type="button" role="menuitem" data-action="poke-scene">\u62CD\u4E00\u62CD</button>
             <button type="button" role="menuitem" class="pm-scene-danger" data-action="delete-scene" data-scene-id="${escapeAttr(scene.id)}">\u5220\u9664\u793E\u533A</button>
-            <button type="button" role="menuitem" data-action="exit">\u9000\u51FA\u624B\u673A</button>
         </div>
     </div>`;
   }
@@ -5047,13 +5249,17 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
     const preset = getInteractivePresets()[scene.preset] || getInteractivePresets().custom;
     const liveActive = state.liveActive === true;
     const autoActive = state.autoActive === true;
-    const floatingDanmaku = scene.live.danmaku.slice(-8).map((item, index) => `<span class="is-${stableDanmakuTone(item)}" style="--lane:${index % 4};--delay:${index % 5 * -0.7}s">${escapeHtml(item.content)}</span>`).join("");
-    const content = tab === "feed" ? `<div class="pm-scene-feed"><div class="pm-scene-posts">${renderPosts(scene)}</div></div>
-        <div class="pm-scene-composer"><textarea id="pm-scene-post-input" maxlength="4000" placeholder="\u53D1\u4E00\u6761\u5FAE\u535A\u3001\u5E16\u5B50\u6216\u4E66\u8BC4\u2026\u2026"></textarea><button type="button" class="pm-scene-primary" data-action="publish">\u53D1\u5E03</button></div>` : tab === "live" ? `<div class="pm-live-room"><div class="pm-live-stage"><div class="pm-live-badge">${liveActive ? "\u76F4\u64AD\u4E2D" : "\u9884\u89C8"}</div><h2>${escapeHtml(scene.live.title)}</h2><div class="pm-danmaku-float">${floatingDanmaku}</div></div><div class="pm-live-actions"><button type="button" data-action="toggle-live" class="${liveActive ? "is-live" : ""}">${liveActive ? "\u505C\u6B62\u76F4\u64AD" : "\u5F00\u59CB\u76F4\u64AD"}</button><button type="button" data-action="rhythm">\u5E26\u4E00\u6CE2\u8282\u594F</button></div><div class="pm-danmaku-list">${renderDanmaku(scene)}</div><div class="pm-danmaku-input"><input id="pm-danmaku-input" maxlength="200" placeholder="\u53D1\u6761\u5F39\u5E55\u2026\u2026"><button type="button" data-action="send-danmaku">\u53D1\u9001</button></div></div>` : `<div class="pm-scene-prompt"><label>\u793E\u533A\u540D\u79F0<input id="pm-scene-title" maxlength="80" value="${escapeAttr(scene.title)}"></label><label>\u793E\u533A\u98CE\u683C<textarea id="pm-scene-prompt" maxlength="6000">${escapeHtml(scene.generatedPrompt)}</textarea></label><p>\u53EF\u76F4\u63A5\u4FEE\u6539\uFF0C\u540E\u7EED\u793E\u533A\u5185\u5BB9\u9075\u5FAA\u6B64\u8BED\u611F\u3002</p><div><button type="button" data-action="regenerate-prompt">\u91CD\u65B0\u751F\u6210</button><button type="button" class="pm-scene-primary" data-action="save-prompt">\u4FDD\u5B58\u98CE\u683C</button></div></div>`;
-    return `<div id="pm-scene-app" class="pm-modal pm-scene-shell" style="--scene-accent:${preset.accent}">
-        <div class="pm-scene-topbar"><button type="button" class="pm-scene-back" data-action="back" aria-label="\u8FD4\u56DE\u793E\u533A\u9996\u9875" title="\u8FD4\u56DE\u793E\u533A\u9996\u9875">${BACK_ICON_SVG}</button><div class="pm-scene-title"><b>${escapeHtml(scene.title)}</b></div>${renderSceneMenu(scene, uiScope, autoActive)}</div>
+    const accent = scene.themeAccent || preset.accent;
+    const floatingDanmaku = scene.live.danmaku.slice(-8).map((item) => {
+      const motion = getDanmakuMotion(item);
+      return `<span class="is-${stableDanmakuTone(item)}" style="--lane:${motion.lane};--delay:${motion.delay}s;--duration:${motion.duration}s;--offset:${motion.offset}px">${escapeHtml(item.content)}</span>`;
+    }).join("");
+    const composer = tab === "feed" ? `<div class="pm-scene-composer"><textarea id="pm-scene-post-input" maxlength="4000" placeholder="\u53D1\u4E00\u6761\u5FAE\u535A\u3001\u5E16\u5B50\u6216\u4E66\u8BC4\u2026\u2026"></textarea><button type="button" class="pm-scene-primary" data-action="publish">\u53D1\u5E03</button></div>` : "";
+    const content = tab === "feed" ? `<div class="pm-scene-feed"><div class="pm-scene-posts">${renderPosts(scene)}</div></div>` : tab === "live" ? `<div class="pm-live-room"><div class="pm-live-stage ${floatingDanmaku ? "has-danmaku" : ""}"><div class="pm-live-badge">${liveActive ? "\u76F4\u64AD\u4E2D" : "\u9884\u89C8"}</div><h2>${escapeHtml(scene.live.title)}</h2><div class="pm-danmaku-float">${floatingDanmaku}</div></div><div class="pm-live-actions"><button type="button" data-action="toggle-live" class="${liveActive ? "is-live" : ""}">${liveActive ? "\u505C\u6B62\u76F4\u64AD" : "\u5F00\u59CB\u76F4\u64AD"}</button><button type="button" data-action="rhythm">\u5E26\u4E00\u6CE2\u8282\u594F</button></div><div class="pm-danmaku-list">${renderDanmaku(scene)}</div><div class="pm-danmaku-input"><input id="pm-danmaku-input" maxlength="200" placeholder="\u53D1\u6761\u5F39\u5E55\u2026\u2026"><button type="button" data-action="send-danmaku">\u53D1\u9001</button></div></div>` : `<div class="pm-scene-prompt"><label>\u793E\u533A\u540D\u79F0<input id="pm-scene-title" maxlength="80" value="${escapeAttr(scene.title)}"></label><label>\u793E\u533A\u4E3B\u9898\u8272<input id="pm-scene-accent" type="color" value="${escapeAttr(accent)}"></label><label>\u793E\u533A\u98CE\u683C<textarea id="pm-scene-prompt" maxlength="6000">${escapeHtml(scene.generatedPrompt)}</textarea></label><p>\u53EF\u76F4\u63A5\u4FEE\u6539\uFF0C\u540E\u7EED\u793E\u533A\u5185\u5BB9\u9075\u5FAA\u6B64\u8BED\u611F\u3002</p><div class="pm-scene-prompt-actions"><button type="button" class="pm-scene-secondary" data-action="regenerate-prompt">\u91CD\u65B0\u751F\u6210</button><button type="button" class="pm-scene-primary" data-action="save-prompt">\u4FDD\u5B58\u98CE\u683C</button></div></div>`;
+    return `<div id="pm-scene-app" class="pm-modal pm-scene-shell" style="--scene-accent:${escapeAttr(accent)}">
+        <div class="pm-scene-topbar"><button type="button" class="pm-scene-back" data-action="back" aria-label="\u8FD4\u56DE\u793E\u533A\u9996\u9875" title="\u8FD4\u56DE\u793E\u533A\u9996\u9875">${BACK_ICON_SVG}</button><div class="pm-scene-title"><b>${escapeHtml(scene.title)}</b></div><button type="button" class="pm-scene-exit" data-action="exit" aria-label="\u9000\u51FA\u624B\u673A" title="\u9000\u51FA\u624B\u673A">${CLOSE_ICON_SVG}</button></div>
         <div class="pm-scene-tabs"><button type="button" data-action="tab" data-tab="feed" class="${tab === "feed" ? "is-active" : ""}">\u793E\u533A</button><button type="button" data-action="tab" data-tab="live" class="${tab === "live" ? "is-active" : ""}">\u76F4\u64AD</button><button type="button" data-action="tab" data-tab="prompt" class="${tab === "prompt" ? "is-active" : ""}">\u98CE\u683C</button></div>
-        ${content}<div class="pm-scene-status" aria-live="polite"></div>
+        ${content}<div class="pm-scene-bottom-bar">${renderSceneMenu(scene, uiScope, autoActive)}${composer}</div><div class="pm-scene-status" aria-live="polite"></div>
     </div>`;
   }
 
@@ -5590,7 +5796,7 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
         const nextState = toggleScenePin(getPhoneUiState(runtime.store), scopeId, button.dataset.sceneId, runtime.store);
         persistPhoneUiState(nextState);
         refreshDesktop(scopeId);
-        if (button.closest(".pm-scene-topbar")) {
+        if (button.closest("#pm-scene-app") && !button.closest(".pm-scene-card")) {
           rerender(phoneScope(scopeId).lastTab);
         } else if (button.closest(".pm-community-page")) {
           renderCommunityLauncher2(scopeId);
@@ -5624,12 +5830,6 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
         renderCommunityLauncher2(scopeId);
         return;
       }
-      if (action === "edit-scene") {
-        const { scopeId, scene } = current();
-        updatePhoneUiScope(scopeId, { lastPage: "community", lastSceneId: scene?.id || null, lastTab: "prompt" });
-        rerender("prompt");
-        return;
-      }
       if (action === "tab") {
         invalidate();
         const { scopeId, scene } = current();
@@ -5649,12 +5849,7 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
         rerender("feed");
         return;
       }
-      if (action === "toggle-community-mode") {
-        communityTasks.setMode(communityTasks.state().mode === "auto" ? "remind" : "auto");
-        rerender("feed");
-        return;
-      }
-      if (action === "ai-feed") {
+      if (action === "poke-scene") {
         await communityRunner.generateFeed();
         return;
       }
@@ -5725,11 +5920,14 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
       if (action === "save-prompt") {
         const title = document.getElementById("pm-scene-title")?.value.trim() || "";
         const prompt2 = document.getElementById("pm-scene-prompt")?.value.trim() || "";
+        const themeAccent = document.getElementById("pm-scene-accent")?.value.trim().toLowerCase() || "";
         if (!title || !prompt2) throw new Error("\u793E\u533A\u540D\u79F0\u548C\u63D0\u793A\u8BCD\u4E0D\u80FD\u4E3A\u7A7A");
+        if (!/^#[0-9a-f]{6}$/.test(themeAccent)) throw new Error("\u793E\u533A\u4E3B\u9898\u8272\u683C\u5F0F\u65E0\u6548");
         await commit(() => {
           const { scene } = current();
           scene.title = title.slice(0, 80);
           scene.generatedPrompt = prompt2.slice(0, 6e3);
+          scene.themeAccent = themeAccent;
           scene.updatedAt = now();
         });
         rerender("prompt");
@@ -8676,6 +8874,50 @@ ${antiFluff}`;
     }
     return { prompts, usedTokens: tokenLimit - remaining, truncatedCount };
   }
+  function renderCalendarContextInjection({
+    currentStorageId,
+    calendarStore,
+    occasionStore,
+    holidayStore,
+    weatherStore,
+    cycleStore,
+    start = /* @__PURE__ */ new Date(),
+    days = 7
+  } = {}) {
+    if (!currentStorageId) return "";
+    const dates = calendarWeekKeys(start, days);
+    const linesByDate = new Map(dates.map((date) => [date, []]));
+    const regular = renderCalendarInjection(calendarScopeFor(calendarStore, currentStorageId), { start, days });
+    for (const line of regular ? regular.split("\n") : []) {
+      const date = line.slice(0, 10);
+      if (linesByDate.has(date)) linesByDate.get(date).push(line.slice(11));
+    }
+    const occasions = expandOccasions(occasionScopeFor(occasionStore, currentStorageId), { start, days });
+    for (const occasion of occasions) {
+      const kind = occasion.type === "birthday" ? "\u751F\u65E5" : "\u7EAA\u5FF5\u65E5";
+      linesByDate.get(occasion.date)?.push(`${kind}\uFF1A${occasion.title}${occasion.note ? `\uFF08${occasion.note.replace(/\s+/g, " ").slice(0, 180)}\uFF09` : ""}`);
+    }
+    const holidays = normalizeHolidayCache(holidayStore);
+    for (const date of dates) {
+      const year = Number(date.slice(0, 4));
+      const entries = holidayYearFromCache(holidays, holidays.selectedCountry, year)?.entries || [];
+      for (const item of entries.filter((entry2) => entry2.date === date)) {
+        const kind = item.kind === "workday" ? "\u8C03\u4F11\u5DE5\u4F5C\u65E5" : item.kind === "in_lieu" ? "\u8C03\u4F11" : item.kind === "observed" ? "\u66FF\u4EE3\u4F11\u606F\u65E5" : "\u8282\u5047\u65E5";
+        linesByDate.get(date).push(`${kind}\uFF1A${item.name}`);
+      }
+    }
+    const weather = normalizeWeatherStore(weatherStore);
+    for (const day of weather.lastSuccess?.forecast?.days || []) {
+      if (linesByDate.has(day.date)) linesByDate.get(day.date).push(`\u5929\u6C14\uFF1A${weatherCodeLabel(day.weatherCode)}\uFF0C${day.tempMin}\xB0/${day.tempMax}\xB0C`);
+    }
+    const cycle = cycleScopeFor(normalizeCycleStore(cycleStore), currentStorageId);
+    const cycleLabels = { period: "\u7ECF\u671F", follicular: "\u5375\u6CE1\u671F", ovulatory: "\u6392\u5375\u671F", luteal: "\u9EC4\u4F53\u671F" };
+    for (const date of dates) {
+      const prediction = predictCyclePhase(cycle, date);
+      if (prediction.phase) linesByDate.get(date).push(`\u751F\u7406\u5468\u671F\uFF1A${cycleLabels[prediction.phase] || prediction.phase}${prediction.status === "override" ? "\uFF08\u624B\u52A8\u6807\u8BB0\uFF09" : ""}`);
+    }
+    return dates.flatMap((date) => linesByDate.get(date).map((item) => `${date}\uFF5C${item}`)).join("\n").slice(0, 6e3);
+  }
   function buildContextInjectionPrompts({
     currentStorageId,
     currentActorName,
@@ -8687,7 +8929,11 @@ ${antiFluff}`;
     userName,
     emojis,
     safeMaxTokens,
-    calendarStore
+    calendarStore,
+    calendarOccasions,
+    calendarHolidays,
+    calendarWeather,
+    calendarCycles
   } = {}) {
     const config = normalizeBudgetConfig(budgetConfig);
     const phonePermission = resolvePhoneSources({
@@ -8730,12 +8976,18 @@ ${body}
     }) : [];
     let calendarItems = [];
     if (config.calendarEnabled && calendarStore && currentStorageId) {
-      const scope = calendarScopeFor(calendarStore, currentStorageId);
-      const body = renderCalendarInjection(scope);
+      const body = renderCalendarContextInjection({
+        currentStorageId,
+        calendarStore,
+        occasionStore: calendarOccasions,
+        holidayStore: calendarHolidays,
+        weatherStore: calendarWeather,
+        cycleStore: calendarCycles
+      });
       if (body) {
         calendarItems.push({
           key: `${CALENDAR_KEY_PREFIX}${encodeURIComponent(currentStorageId)}`,
-          content: `[\u65E5\u7A0B\u5B89\u6392]
+          content: `[\u751F\u6D3B\u65E5\u5386]
 ${body}
 [\u7ED3\u675F]`,
           position: config.calendarPosition,
@@ -8972,9 +9224,9 @@ ${lines}`;
       runtime.injectionEpoch += 1;
       return clearExtensionPrompts({ context: getCtx(), runtime });
     }
-    function getCalendarStore() {
+    function getCalendarData(getter) {
       try {
-        const store = deps.getCalendarStore?.();
+        const store = deps[getter]?.();
         return store || null;
       } catch (error) {
         return null;
@@ -9008,7 +9260,11 @@ ${lines}`;
         budgetConfig: window.__pmBudgetConfig,
         userName: getUserPersona2().name || "\u7528\u6237",
         emojis: window.__pmEmojis,
-        calendarStore: getCalendarStore()
+        calendarStore: getCalendarData("getCalendarStore"),
+        calendarOccasions: getCalendarData("getCalendarOccasionStore"),
+        calendarHolidays: getCalendarData("getCalendarHolidayStore"),
+        calendarWeather: getCalendarData("getCalendarWeatherStore"),
+        calendarCycles: getCalendarData("getCalendarCycleStore")
       });
     }
     function hookGenerationEvent() {
@@ -10202,10 +10458,10 @@ ${lines}`;
       </div>
       <div style="padding:12px 16px;border-top:1px solid #f0f0f0;display:flex;flex-direction:column;gap:10px;">
         <label class="pm-cfg-label pm-check-setting">
-          <span>\u542F\u7528\u666E\u901A\u65E5\u7A0B\u6CE8\u5165\uFF08\u9ED8\u8BA4\u5173\u95ED\uFF09</span>
+          <span>\u542F\u7528\u751F\u6D3B\u65E5\u5386\u6CE8\u5165\uFF08\u9ED8\u8BA4\u5173\u95ED\uFF09</span>
           <div id="pm-budget-calendar-enabled" class="pm-custom-check ${config.calendarEnabled ? "is-checked" : ""}" role="checkbox" tabindex="0" aria-checked="${config.calendarEnabled}" onclick="this.classList.toggle('is-checked');this.setAttribute('aria-checked',String(this.classList.contains('is-checked')))" onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();this.click()}"></div>
         </label>
-        <div class="pm-cfg-tip" style="text-align:left;color:#ff9500;">\u53EA\u6CE8\u5165\u5F53\u524D\u89D2\u8272/\u804A\u5929\u7684\u666E\u901A\u65E5\u7A0B\u3002\u751F\u65E5\u3001\u7EAA\u5FF5\u65E5\u3001\u5929\u6C14\u3001\u8282\u5047\u65E5\u548C\u751F\u7406\u5468\u671F\u4E0D\u4F1A\u6CE8\u5165\u3002</div>
+        <div class="pm-cfg-tip" style="text-align:left;color:#ff9500;">\u6CE8\u5165\u5F53\u524D\u89D2\u8272/\u804A\u5929\u672A\u6765\u4E03\u5929\u7684\u65E5\u7A0B\u3001\u751F\u65E5\u4E0E\u7EAA\u5FF5\u65E5\u3001\u8282\u5047\u65E5\u3001\u5929\u6C14\u548C\u751F\u7406\u5468\u671F\uFF0C\u8BA9\u89D2\u8272\u4FDD\u6709\u8FDE\u7EED\u7684\u751F\u6D3B\u5B89\u6392\u3002</div>
         <label class="pm-cfg-label" for="pm-budget-calendar-position">\u65E5\u5386\u6CE8\u5165\u4F4D\u7F6E</label>
         <select id="pm-budget-calendar-position" class="pm-cfg-input">
           <option value="0" ${config.calendarPosition === 0 ? "selected" : ""}>\u4E3B\u63D0\u793A\u8BCD\u5185</option>
@@ -10558,7 +10814,7 @@ ${lines}`;
         if (orderedIds.has(sceneId)) throw new Error(`\u5907\u4EFD\u5B57\u6BB5 ${field}.sceneOrder \u5305\u542B\u91CD\u590D\u573A\u666F ${sceneId}`);
         orderedIds.add(sceneId);
         const scene = objectValue(normalizedScenes.get(sceneId), `${field}.scenes.${sceneId}`);
-        const sceneKeys = ["id", "title", "preset", "styleInput", "generatedPrompt", "createdAt", "updatedAt", "posts", "live"];
+        const sceneKeys = ["id", "title", "preset", "styleInput", "generatedPrompt", "themeAccent", "createdAt", "updatedAt", "posts", "live"];
         if (sourceVersion !== INTERACTIVE_STORE_VERSION) sceneKeys.push("contentRating");
         assertAllowedKeys(scene, `${field}.scenes.${sceneId}`, sceneKeys);
         if (Object.hasOwn(scene, "id")) {
@@ -10571,8 +10827,12 @@ ${lines}`;
           assertOptionalNormalizedText(scene, "preset", `${field}.scenes.${sceneId}`, 30);
           assertOptionalNormalizedText(scene, "styleInput", `${field}.scenes.${sceneId}`, 2e3, { allowEmpty: true });
           assertOptionalNormalizedText(scene, "generatedPrompt", `${field}.scenes.${sceneId}`, 6e3, { allowEmpty: true });
+          assertOptionalNormalizedText(scene, "themeAccent", `${field}.scenes.${sceneId}`, 7, { allowEmpty: true });
+          if (scene.themeAccent && !/^#[0-9a-f]{6}$/.test(scene.themeAccent)) {
+            throw new Error(`\u5907\u4EFD\u5B57\u6BB5 ${field}.scenes.${sceneId}.themeAccent \u5FC5\u987B\u662F\u5C0F\u5199\u516D\u4F4D\u5341\u516D\u8FDB\u5236\u989C\u8272`);
+          }
         } else {
-          for (const key of ["title", "preset", "styleInput", "generatedPrompt"]) {
+          for (const key of ["title", "preset", "styleInput", "generatedPrompt", "themeAccent"]) {
             assertOptionalLegacyText(scene, key, `${field}.scenes.${sceneId}`);
           }
         }

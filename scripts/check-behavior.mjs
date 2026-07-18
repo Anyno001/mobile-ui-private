@@ -17,7 +17,7 @@ import {
 import { applyConversationInjections } from '../src/phone-injection.js';
 import { deriveInteractiveActorId, normalizeInteractiveStore } from '../src/interactive-scene-model.js';
 import { renderPhoneDesktop, runDesktopPageTransition } from '../src/interactive-scenes.js';
-import { getDanmakuTone, renderCommunityLauncher } from '../src/interactive-scene-views.js';
+import { getDanmakuMotion, getDanmakuTone, renderCommunityLauncher, renderCommunityWorkspace } from '../src/interactive-scene-views.js';
 import { runControlMenuAction } from '../src/phone-control-center.js';
 import {
     createBackupStateHandlers, installSettingsUi, parseBackupData, runBackgroundTransaction, runBackupTransaction,
@@ -1881,6 +1881,8 @@ assert.equal(pageController.current(), null);
 const baseDesktopHtml = renderPhoneDesktop({ scenes: {} }, { pinnedSceneIds: [] });
 assert.ok(baseDesktopHtml.length > 0, '无有效会话时基础桌面不得为空');
 assert.match(baseDesktopHtml, /<span>天音小笺<\/span>/, '旧主题或无主题时桌面标题必须回退为品牌名');
+assert.match(baseDesktopHtml, /class="pm-desktop-community-dock"/);
+assert.match(baseDesktopHtml, /data-action="desktop-community" aria-label="发布一条"/);
 for (const action of ['desktop-chat', 'desktop-directory', 'desktop-settings', 'desktop-calendar', 'desktop-community', 'desktop-exit']) {
     assert.ok(baseDesktopHtml.includes(`data-action="${action}"`), `基础桌面缺少 ${action} 入口`);
 }
@@ -1896,6 +1898,27 @@ assert.deepEqual(
 const fallbackDanmaku = { authorNameSnapshot: '访客', content: '晚上好' };
 assert.equal(getDanmakuTone(fallbackDanmaku), getDanmakuTone({ ...fallbackDanmaku }), '缺失 id 时作者与内容组合必须稳定分色');
 assert.ok(['blue', 'pink', 'cyan', 'gold'].includes(getDanmakuTone(fallbackDanmaku)), '弹幕色阶必须属于合同允许集合');
+assert.deepEqual(getDanmakuMotion({ id: 'stable' }), getDanmakuMotion({ id: 'stable' }), '弹幕运动参数必须稳定');
+assert.ok(new Set(['a', 'b', 'c', 'd', 'e', 'f'].map(id => getDanmakuMotion({ id }).lane)).size > 1, '弹幕不得全部落在同一轨道');
+const workspaceScene = normalizeInteractiveStore({
+    version: 1,
+    scopes: { story: { activeSceneId: 'scene', sceneOrder: ['scene'], scenes: { scene: {
+        id: 'scene', title: '主题社区', preset: 'weibo', themeAccent: '#123abc',
+        generatedPrompt: '自然交流', posts: [], live: { title: '正在直播', status: 'idle', danmaku: [{ id: 'danmaku', author: '访客', content: '弹幕' }] },
+    } } } },
+}).scopes.story.scenes.scene;
+const workspaceHtml = renderCommunityWorkspace(workspaceScene, 'feed', { pinnedSceneIds: [] });
+assert.match(workspaceHtml, /style="--scene-accent:#123abc"/);
+assert.match(workspaceHtml, /data-action="poke-scene">拍一拍<\/button>/);
+assert.match(workspaceHtml, /class="pm-scene-bottom-bar"/);
+assert.match(workspaceHtml, /class="pm-scene-exit"[^>]*data-action="exit"/);
+assert.doesNotMatch(workspaceHtml, /生成热场内容|编辑社区风格|返回桌面/);
+const liveWorkspaceHtml = renderCommunityWorkspace(workspaceScene, 'live', { pinnedSceneIds: [] });
+assert.match(liveWorkspaceHtml, /pm-live-stage has-danmaku/);
+assert.match(liveWorkspaceHtml, /--duration:[\d.]+s;--offset:-?\d+px/);
+const promptWorkspaceHtml = renderCommunityWorkspace(workspaceScene, 'prompt', { pinnedSceneIds: [] });
+assert.match(promptWorkspaceHtml, /id="pm-scene-accent" type="color" value="#123abc"/);
+assert.match(promptWorkspaceHtml, /class="pm-scene-secondary" data-action="regenerate-prompt"/);
 
 const launcherScope = {
     sceneOrder: ['scene-card'],

@@ -649,7 +649,7 @@ for (const expected of [
   'createCommunityTaskController', 'createCommunityGenerationRunner', "request('feed_batch', {}, target)",
   'createCommunityTurnSnapshot(chat)', 'registerResolvedHostEvent', 'resolveHostEvent', 'runtime.communityTask', 'resetObservation',
 ]) requireText('interactive-scene-scheduler.js', interactiveSchedulerCode, expected);
-for (const expected of ['observeCommunityTurn', 'cancelCommunityGeneration', 'toggle-community-mode']) requireText('interactive-scenes.js', interactiveCode, expected);
+for (const expected of ['observeCommunityTurn', 'cancelCommunityGeneration', 'poke-scene']) requireText('interactive-scenes.js', interactiveCode, expected);
 for (const stateField of [
   'communityGeneration', 'communityTaskPhase', 'communityReminder', 'communityBaselineAssistantCount',
 ]) {
@@ -754,6 +754,8 @@ for (const expected of [
   '#pm-iphone[data-theme="dark"] .pm-scene-header{background:#242429;color:#eee;border-color:#393940}',
 ]) requireText('style.css', css, expected);
 if (css.includes('pm-forum-entry')) failures.push('style.css: removed directory community entry styles must not remain');
+requireText('style.css', css, 'top:calc(18px + var(--lane)*31px + var(--offset))');
+if (css.includes('translateY(var(--offset))')) failures.push('style.css: danmaku offset must not be applied twice');
 requireText('style.css', css, '.pm-control-menu{position:absolute;');
 requireText('style.css', css, '#pm-iphone[data-theme="dark"] .pm-control-menu');
 requireText('style.css', css, '.pm-pending-manager{min-height:180px;}');
@@ -787,7 +789,7 @@ for (const [owner, code, expected] of [
 if (/assertV2Keys\s*\(\s*raw\s*,\s*\[[^\]]*contentRating/.test(interactiveModelCode)) {
   failures.push('interactive-scene-model.js: v2 scene keys must not accept contentRating');
 }
-requireText('interactive-scene-model.js', interactiveModelCode, "assertV1Keys(raw, ['id', 'title', 'preset', 'styleInput', 'generatedPrompt', 'contentRating'");
+requireText('interactive-scene-model.js', interactiveModelCode, "assertV1Keys(raw, ['id', 'title', 'preset', 'styleInput', 'generatedPrompt', 'themeAccent', 'contentRating'");
 requireText('interactive-scene-model.js', interactiveModelCode, 'export function stripPersistedV2ContentRating(rawStore)');
 requireText('interactive-scenes.js', interactiveCode, 'stripPersistedV2ContentRating(rawStore)');
 if (settingsCode.includes('stripPersistedV2ContentRating')) {
@@ -930,7 +932,7 @@ if (packageLock.version !== packageJson.version
     || packageLock.packages?.['']?.version !== packageJson.version) {
   failures.push('version: package-lock.json root versions must match package.json');
 }
-if (packageJson.version !== '1.1.1') failures.push('version: expected release version 1.1.1');
+if (packageJson.version !== '1.2.0') failures.push('version: expected release version 1.2.0');
 
 const readmeLines = readme.split(/\r?\n/);
 if (readmeLines[0] !== '# 天音小笺') failures.push('README: title must be 天音小笺');

@@ -170,10 +170,10 @@ export function renderBudgetSettings({ config, sceneOptions }) {
       </div>
       <div style="padding:12px 16px;border-top:1px solid #f0f0f0;display:flex;flex-direction:column;gap:10px;">
         <label class="pm-cfg-label pm-check-setting">
-          <span>启用普通日程注入（默认关闭）</span>
+          <span>启用生活日历注入（默认关闭）</span>
           <div id="pm-budget-calendar-enabled" class="pm-custom-check ${config.calendarEnabled ? 'is-checked' : ''}" role="checkbox" tabindex="0" aria-checked="${config.calendarEnabled}" onclick="this.classList.toggle('is-checked');this.setAttribute('aria-checked',String(this.classList.contains('is-checked')))" onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();this.click()}"></div>
         </label>
-        <div class="pm-cfg-tip" style="text-align:left;color:#ff9500;">只注入当前角色/聊天的普通日程。生日、纪念日、天气、节假日和生理周期不会注入。</div>
+        <div class="pm-cfg-tip" style="text-align:left;color:#ff9500;">注入当前角色/聊天未来七天的日程、生日与纪念日、节假日、天气和生理周期，让角色保有连续的生活安排。</div>
         <label class="pm-cfg-label" for="pm-budget-calendar-position">日历注入位置</label>
         <select id="pm-budget-calendar-position" class="pm-cfg-input">
           <option value="0" ${config.calendarPosition === 0 ? 'selected' : ''}>主提示词内</option>

@@ -1,5 +1,5 @@
 import {
-    calendarDateFromParts, calendarScopeFor, calendarWeekKeys, deleteCalendarEvent,
+    calendarDateFromParts, calendarMonthKeys, calendarScopeFor, calendarWeekKeys, deleteCalendarEvent,
     extractContextCalendarEvents, findCalendarEvent, formatCalendarDate, mergeCalendarEvents,
     normalizeCalendarScope, normalizeCalendarStore, parseCalendarAiResponse, parseCalendarInput,
     upsertCalendarEvent,
@@ -15,18 +15,51 @@ import {
     fetchWeatherForecast, normalizeWeatherStore, searchWeatherLocations, weatherCodeLabel,
 } from './calendar-weather.js';
 import {
-    CYCLE_DISCLAIMER, clearCycleScope, cycleScopeFor, normalizeCycleStore, predictCyclePhase, upsertCycleScope,
+    clearCycleScope, cycleScopeFor, normalizeCycleStore, predictCyclePhase, upsertCycleScope,
 } from './calendar-cycle-model.js';
-import { BACK_ICON_SVG, CALENDAR_ICON_SVG, REFRESH_ICON_SVG, TRASH_ICON_SVG } from './icons.js';
+import {
+    BACK_ICON_SVG, CALENDAR_ICON_SVG, REFRESH_ICON_SVG, WEATHER_ICON_SVG,
+} from './icons.js';
 import {
     loadCalendar, loadCalendarCycles, loadCalendarHolidays, loadCalendarOccasions, loadCalendarWeather,
     saveCalendar, saveCalendarCycles, saveCalendarHolidays, saveCalendarOccasions, saveCalendarWeather,
 } from './calendar-storage.js';
+import {
+    occasionList, occasionTypeLabel, renderSelectedDateDetail, weatherSearchResults,
+} from './calendar-view.js';
 import { escapeAttr, escapeHtml } from './ui.js';
 
 const clone = value => JSON.parse(JSON.stringify(value));
 const weekday = new Intl.DateTimeFormat('zh-CN', { weekday: 'short' });
 const shortDate = new Intl.DateTimeFormat('zh-CN', { month: 'numeric', day: 'numeric' });
+const monthTitle = new Intl.DateTimeFormat('zh-CN', { year: 'numeric', month: 'long' });
+const CALENDAR_WEEKDAYS = ['一', '二', '三', '四', '五', '六', '日'];
+const CYCLE_LABELS = { period: '经期', follicular: '卵泡期', ovulatory: '排卵期', luteal: '黄体期' };
+
+let lunarFormatter = null;
+try {
+    lunarFormatter = new Intl.DateTimeFormat('zh-CN-u-ca-chinese', { month: 'short', day: 'numeric' });
+} catch { /* 旧运行环境不支持中国农历时保持空副标题 */ }
+
+function lunarDayLabel(value) {
+    const day = Number(value);
+    if (!Number.isInteger(day) || day < 1 || day > 30) return '';
+    if (day <= 10) return `初${['一', '二', '三', '四', '五', '六', '七', '八', '九', '十'][day - 1]}`;
+    if (day < 20) return `十${['一', '二', '三', '四', '五', '六', '七', '八', '九'][day - 11]}`;
+    if (day === 20) return '二十';
+    if (day < 30) return `廿${['一', '二', '三', '四', '五', '六', '七', '八', '九'][day - 21]}`;
+    return '三十';
+}
+
+function lunarLabel(date) {
+    if (!lunarFormatter) return '';
+    try {
+        const parts = lunarFormatter.formatToParts(date);
+        const month = parts.find(part => part.type === 'month')?.value || '';
+        const day = Number(parts.find(part => part.type === 'day')?.value);
+        return day === 1 ? month : lunarDayLabel(day);
+    } catch { return ''; }
+}
 
 function createTaskController(getStorageId) {
     let epoch = 0, sequence = 0;
@@ -91,77 +124,69 @@ function buildCalendarPrompts(payload, existing, mode) {
     return { systemPrompt, userPrompt };
 }
 
-const occasionTypeLabel = type => type === 'birthday' ? '生日' : '纪念日';
-
-function eventRows(scope, occasionsByDate, date) {
+function calendarDateMeta(scope, occasionsByDate, holidayCache, weatherStore, cycleScope, date, viewMode) {
+    const parsed = new Date(`${date}T12:00:00`);
     const events = scope.events[date] || [];
-    const occasionRows = (occasionsByDate.get(date) || []).map(occasion => `<article class="pm-calendar-event is-occasion" data-occasion-id="${escapeAttr(occasion.id)}">
-        <div><b>${escapeHtml(occasion.title)}</b><span>${occasionTypeLabel(occasion.type)}${occasion.leapAdjusted ? '（闰日顺延）' : ''}${occasion.note ? ` · ${escapeHtml(occasion.note)}` : ''}</span></div>
-        <div class="pm-calendar-event-actions"><button type="button" data-action="calendar-occasion-edit" data-occasion-id="${escapeAttr(occasion.id)}">编辑</button><button type="button" data-action="calendar-occasion-delete" data-occasion-id="${escapeAttr(occasion.id)}" aria-label="删除 ${escapeAttr(occasion.title)}">${TRASH_ICON_SVG}</button></div>
-    </article>`);
-    const eventItems = events.map(event => `<article class="pm-calendar-event" data-event-id="${escapeAttr(event.id)}">
-        <div><b>${escapeHtml(event.title)}</b>${event.note ? `<span>${escapeHtml(event.note)}</span>` : ''}</div>
-        <div class="pm-calendar-event-actions"><button type="button" data-action="calendar-edit" data-event-id="${escapeAttr(event.id)}">编辑</button><button type="button" data-action="calendar-delete" data-event-id="${escapeAttr(event.id)}" aria-label="删除 ${escapeAttr(event.title)}">${TRASH_ICON_SVG}</button></div>
-    </article>`);
-    return [...occasionRows, ...eventItems].join('');
-}
-
-function holidayRows(cache, date) {
-    const year = Number(date.slice(0, 4));
-    const row = holidayYearFromCache(cache, cache?.selectedCountry, year);
-    return (row?.entries || []).filter(item => item.date === date).map(item =>
-        `<article class="pm-calendar-event is-holiday"><div><b>${escapeHtml(item.name)}</b><span>${escapeHtml(item.kind === 'workday' ? '调休工作日' : item.kind === 'in_lieu' ? '调休' : item.kind === 'observed' ? '替代休息日' : '节假日')}</span></div></article>`
-    ).join('');
-}
-
-function weatherRow(weatherStore, date) {
-    const day = weatherStore?.lastSuccess?.forecast?.days?.find(item => item.date === date);
-    if (!day) return '';
-    return `<div class="pm-calendar-weather"><span>${escapeHtml(weatherCodeLabel(day.weatherCode))}</span><b>${day.tempMin}°/${day.tempMax}°C</b></div>`;
-}
-
-function cycleRow(cycleScope, date) {
-    const prediction = predictCyclePhase(cycleScope, date);
-    if (!prediction.phase) return '';
-    const labels = { period: '经期', follicular: '卵泡期', ovulatory: '排卵期', luteal: '黄体期' };
-    return `<div class="pm-calendar-cycle"><span>周期提示</span><b>${labels[prediction.phase] || prediction.phase}</b>${prediction.status === 'override' ? '<em>手动</em>' : ''}</div>`;
-}
-
-function occasionList(scope) {
-    if (!scope.occasions.length) return '<p class="pm-calendar-empty-day">尚未添加生日或纪念日</p>';
-    return scope.occasions.map(occasion => `<article class="pm-calendar-event is-occasion" data-occasion-id="${escapeAttr(occasion.id)}">
-        <div><b>${escapeHtml(occasion.title)}</b><span>${occasion.month}月${occasion.day}日 · ${occasionTypeLabel(occasion.type)}${occasion.note ? ` · ${escapeHtml(occasion.note)}` : ''}</span></div>
-        <div class="pm-calendar-event-actions"><button type="button" data-action="calendar-occasion-edit" data-occasion-id="${escapeAttr(occasion.id)}">编辑</button><button type="button" data-action="calendar-occasion-delete" data-occasion-id="${escapeAttr(occasion.id)}" aria-label="删除 ${escapeAttr(occasion.title)}">${TRASH_ICON_SVG}</button></div>
-    </article>`).join('');
-}
-
-function weatherSearchResults(results) {
-    if (!results.length) return '';
-    return `<div class="pm-calendar-location-results">${results.map((location, index) =>
-        `<button type="button" data-action="calendar-weather-select" data-location-index="${index}"><b>${escapeHtml(location.name)}</b><span>${escapeHtml([location.admin1, location.country].filter(Boolean).join(' · '))}</span></button>`
-    ).join('')}</div>`;
+    const occasions = occasionsByDate.get(date) || [];
+    const holidayYear = holidayYearFromCache(holidayCache, holidayCache?.selectedCountry, parsed.getFullYear());
+    const holidays = (holidayYear?.entries || []).filter(item => item.date === date);
+    const weather = weatherStore?.lastSuccess?.forecast?.days?.find(item => item.date === date) || null;
+    const cycle = predictCyclePhase(cycleScope, date);
+    const summary = viewMode === 'life'
+        ? (weather ? `${weatherCodeLabel(weather.weatherCode)} ${Math.round(weather.tempMax)}°` : '')
+            || (cycle.phase ? CYCLE_LABELS[cycle.phase] || cycle.phase : '') || lunarLabel(parsed)
+        : holidays[0]?.name || occasions[0]?.title || events[0]?.title || lunarLabel(parsed);
+    return {
+        parsed, events, occasions, holidays, weather, cycle, summary,
+        hasSchedule: events.length > 0 || occasions.length > 0,
+    };
 }
 
 export function renderCalendarPageHtml(
     scope, occasionScope, status = '', holidayCache = {}, weatherStore = {}, cycleScope = {}, weatherResults = [],
+    view = {},
 ) {
     const today = new Date();
+    const viewMode = view.viewMode === 'life' ? 'life' : 'schedule';
+    const viewYear = Number.isInteger(view.viewYear) ? view.viewYear : today.getFullYear();
+    const viewMonth = Number.isInteger(view.viewMonth) ? view.viewMonth : today.getMonth() + 1;
+    const monthKeys = calendarMonthKeys(viewYear, viewMonth);
+    const monthStart = new Date(`${monthKeys[0]}T12:00:00`);
+    const todayKey = formatCalendarDate(today);
+    const monthFirst = `${viewYear}-${String(viewMonth).padStart(2, '0')}-01`;
+    const selectedDate = monthKeys.includes(view.selectedDate)
+        ? view.selectedDate
+        : (viewYear === today.getFullYear() && viewMonth === today.getMonth() + 1 ? todayKey : monthFirst);
     const occasionsByDate = new Map();
-    for (const occasion of expandOccasions(occasionScope, { start: today, days: 7 })) {
+    for (const occasion of expandOccasions(occasionScope, { start: monthStart, days: monthKeys.length })) {
         if (!occasionsByDate.has(occasion.date)) occasionsByDate.set(occasion.date, []);
         occasionsByDate.get(occasion.date).push(occasion);
     }
-    const days = calendarWeekKeys(today, 7).map(date => {
-        const parsed = new Date(`${date}T12:00:00`);
-        const content = `${holidayRows(holidayCache, date)}${weatherRow(weatherStore, date)}${cycleRow(cycleScope, date)}${eventRows(scope, occasionsByDate, date)}`;
-        return `<section class="pm-calendar-day"><header><b>${escapeHtml(weekday.format(parsed))}</b><span>${escapeHtml(shortDate.format(parsed))}</span></header>${content || '<p class="pm-calendar-empty-day">暂无安排</p>'}</section>`;
+    const days = monthKeys.map(date => {
+        const meta = calendarDateMeta(scope, occasionsByDate, holidayCache, weatherStore, cycleScope, date, viewMode);
+        const classes = ['pm-calendar-day'];
+        if (meta.parsed.getMonth() !== viewMonth - 1) classes.push('is-other-month');
+        if (date === todayKey) classes.push('is-today');
+        if (date === selectedDate) classes.push('is-selected');
+        if (viewMode === 'life') {
+            if (meta.weather) classes.push('has-weather');
+            if (meta.cycle.phase) classes.push(`has-cycle is-cycle-${meta.cycle.phase}`);
+        } else {
+            if (meta.hasSchedule) classes.push('has-schedule');
+            if (meta.holidays.length) classes.push('has-holiday');
+            if (meta.occasions.length) classes.push('has-occasion');
+        }
+        const labels = [shortDate.format(meta.parsed), meta.summary].filter(Boolean).join('，');
+        return `<button type="button" class="${classes.join(' ')}" data-action="calendar-select-date" data-calendar-date="${date}" aria-pressed="${date === selectedDate}" aria-label="${escapeAttr(labels)}"><b>${meta.parsed.getDate()}</b><span>${escapeHtml(meta.summary)}</span><i aria-hidden="true"></i></button>`;
     }).join('');
-    return `<div id="pm-calendar-app" class="pm-calendar-shell">
-        <header class="pm-calendar-header"><button type="button" data-action="calendar-home" aria-label="返回桌面">${BACK_ICON_SVG}</button><b>${CALENDAR_ICON_SVG} 日历</b><button type="button" data-action="calendar-generate" aria-label="生成未来七日日程" title="生成未来七日日程">${REFRESH_ICON_SVG}</button></header>
+    const selectedDetail = renderSelectedDateDetail(
+        scope, occasionsByDate, holidayCache, weatherStore, cycleScope, selectedDate, viewMode,
+    );
+    const headerAction = viewMode === 'life' ? 'calendar-weather-refresh' : 'calendar-generate';
+    const headerActionLabel = viewMode === 'life' ? '刷新天气' : '生成未来七日日程';
+    const scheduleManagement = `<details class="pm-calendar-management" data-calendar-management="schedule"><summary>安排管理</summary><div class="pm-calendar-management-content">
         <div class="pm-calendar-tools"><button type="button" data-action="calendar-scan">识别当前上下文</button><button type="button" data-action="calendar-toggle-auto" aria-pressed="${scope.autoAdjust}">${scope.autoAdjust ? '自动调整：开' : '自动调整：关'}</button></div>
-        <div class="pm-calendar-status" aria-live="polite">${escapeHtml(status)}</div>
-        <section class="pm-calendar-data-tools"><h3>外部日历数据</h3><div class="pm-calendar-data-row"><select data-calendar-country aria-label="节假日国家"><option value="CN" ${holidayCache.selectedCountry === 'CN' ? 'selected' : ''}>中国</option><option value="US" ${holidayCache.selectedCountry === 'US' ? 'selected' : ''}>美国</option><option value="JP" ${holidayCache.selectedCountry === 'JP' ? 'selected' : ''}>日本</option></select><button type="button" data-action="calendar-holiday-refresh">刷新节假日</button></div><div class="pm-calendar-data-row"><input data-weather-query placeholder="搜索天气位置" maxlength="100" aria-label="搜索天气位置"><button type="button" data-action="calendar-weather-search">搜索</button><button type="button" data-action="calendar-weather-refresh">刷新天气</button></div>${weatherSearchResults(weatherResults)}${weatherStore.location ? `<small class="pm-calendar-attribution">${escapeHtml(weatherStore.location.name)} · Weather data © Open-Meteo (CC BY 4.0)</small>` : '<small class="pm-calendar-attribution">尚未设置天气位置</small>'}</section>
-        <div class="pm-calendar-week">${days}</div>
+        <section class="pm-calendar-data-tools"><h3>节假日数据</h3><div class="pm-calendar-data-row pm-calendar-holiday-row"><select data-calendar-country aria-label="节假日国家"><option value="CN" ${holidayCache.selectedCountry === 'CN' ? 'selected' : ''}>中国</option><option value="US" ${holidayCache.selectedCountry === 'US' ? 'selected' : ''}>美国</option><option value="JP" ${holidayCache.selectedCountry === 'JP' ? 'selected' : ''}>日本</option></select><button type="button" data-action="calendar-holiday-refresh">刷新节假日</button></div></section>
         <form class="pm-calendar-editor" data-calendar-editor>
           <h3>添加日程</h3>
           <div class="pm-calendar-date-fields"><input name="year" inputmode="numeric" maxlength="4" placeholder="YYYY" aria-label="年"><input name="month" inputmode="numeric" maxlength="2" placeholder="MM" aria-label="月"><input name="day" inputmode="numeric" maxlength="2" placeholder="DD" aria-label="日"></div>
@@ -182,7 +207,15 @@ export function renderCalendarPageHtml(
           <div class="pm-calendar-editor-actions"><button type="button" data-action="calendar-occasion-cancel-edit">清空</button><button type="button" class="is-primary" data-action="calendar-occasion-save">保存</button></div>
         </form>
         <section class="pm-calendar-occasion-list"><h3>已保存的生日与纪念日</h3>${occasionList(occasionScope)}</section>
-        <form class="pm-calendar-editor pm-calendar-cycle-editor" data-calendar-cycle-editor><h3>生理周期（仅本地显示）</h3><label><input name="enabled" type="checkbox" ${cycleScope.enabled ? 'checked' : ''}> 启用周期提示</label><input name="lastPeriodStart" type="date" value="${escapeAttr(cycleScope.lastPeriodStart || '')}" aria-label="末次经期开始日期"><div class="pm-calendar-date-fields"><input name="cycleLength" type="number" min="21" max="45" value="${cycleScope.cycleLength || 28}" aria-label="周期长度"><input name="periodLength" type="number" min="2" max="10" value="${cycleScope.periodLength || 5}" aria-label="经期长度"></div><div class="pm-calendar-editor-actions"><button type="button" data-action="calendar-cycle-clear">清除</button><button type="button" class="is-primary" data-action="calendar-cycle-save">保存周期</button></div><small>${CYCLE_DISCLAIMER}</small></form>
+    </div></details>`;
+    const lifeManagement = `<details class="pm-calendar-management" data-calendar-management="life"><summary>生活管理</summary><div class="pm-calendar-management-content"><section class="pm-calendar-data-tools"><h3>天气数据</h3><div class="pm-calendar-data-row"><input data-weather-query placeholder="搜索天气位置" maxlength="100" aria-label="搜索天气位置"><button type="button" data-action="calendar-weather-search">搜索</button><button type="button" data-action="calendar-weather-refresh">刷新天气</button></div>${weatherSearchResults(weatherResults)}${weatherStore.location ? `<small class="pm-calendar-attribution">${escapeHtml(weatherStore.location.name)} · Weather data © Open-Meteo (CC BY 4.0)</small>` : '<small class="pm-calendar-attribution">尚未设置天气位置</small>'}</section><form class="pm-calendar-editor pm-calendar-cycle-editor" data-calendar-cycle-editor><h3>生理周期</h3><label><input name="enabled" type="checkbox" ${cycleScope.enabled ? 'checked' : ''}> 启用周期提示</label><input name="lastPeriodStart" type="date" value="${escapeAttr(cycleScope.lastPeriodStart || '')}" aria-label="末次经期开始日期"><div class="pm-calendar-date-fields"><input name="cycleLength" type="number" min="21" max="45" value="${cycleScope.cycleLength || 28}" aria-label="周期长度"><input name="periodLength" type="number" min="2" max="10" value="${cycleScope.periodLength || 5}" aria-label="经期长度"></div><div class="pm-calendar-editor-actions"><button type="button" data-action="calendar-cycle-clear">清除</button><button type="button" class="is-primary" data-action="calendar-cycle-save">保存周期</button></div></form></div></details>`;
+    return `<div id="pm-calendar-app" class="pm-calendar-shell" data-calendar-view-mode="${viewMode}">
+        <header class="pm-calendar-header"><button type="button" data-action="calendar-home" aria-label="返回桌面">${BACK_ICON_SVG}</button><b>${escapeHtml(monthTitle.format(new Date(viewYear, viewMonth - 1, 1, 12)))}</b><button type="button" data-action="${headerAction}" aria-label="${headerActionLabel}" title="${headerActionLabel}">${REFRESH_ICON_SVG}</button></header>
+        <div class="pm-calendar-month-nav"><button type="button" class="pm-calendar-month-step" data-action="calendar-prev-month" aria-label="上个月">‹</button><div class="pm-calendar-nav-center"><button type="button" class="pm-calendar-today" data-action="calendar-today" aria-label="回到本月">今天</button><div class="pm-calendar-view-switch" role="group" aria-label="日历信息分类"><button type="button" data-action="calendar-mode-schedule" aria-label="显示日程与节日" aria-pressed="${viewMode === 'schedule'}" title="安排：日程、纪念日与节假日">${CALENDAR_ICON_SVG}</button><button type="button" data-action="calendar-mode-life" aria-label="显示天气与生理周期" aria-pressed="${viewMode === 'life'}" title="生活：天气与生理周期">${WEATHER_ICON_SVG}</button></div></div><button type="button" class="pm-calendar-month-step" data-action="calendar-next-month" aria-label="下个月">›</button></div>
+        <div class="pm-calendar-month" aria-label="${viewYear}年${viewMonth}月月历"><div class="pm-calendar-weekdays">${CALENDAR_WEEKDAYS.map(day => `<span>周${day}</span>`).join('')}</div><div class="pm-calendar-month-grid">${days}</div></div>
+        ${selectedDetail}
+        <div class="pm-calendar-status" aria-live="polite">${escapeHtml(status)}</div>
+        ${viewMode === 'life' ? lifeManagement : scheduleManagement}
     </div>`;
 }
 
@@ -195,6 +228,7 @@ export function installCalendar(state, deps) {
         weatherStore: normalizeWeatherStore(loadCalendarWeather()),
         cycleStore: normalizeCycleStore(loadCalendarCycles()),
         weatherSearchResults: [],
+        viewByStorage: new Map(),
         statusByStorage: new Map(),
     };
     const tasks = createTaskController(getStorageId);
@@ -206,6 +240,27 @@ export function installCalendar(state, deps) {
     const scope = storageId => calendarScopeFor(runtime.store, storageId);
     const occasions = storageId => occasionScopeFor(runtime.occasionStore, storageId);
     const cycles = storageId => cycleScopeFor(runtime.cycleStore, storageId);
+    const viewFor = storageId => {
+        const existing = runtime.viewByStorage.get(storageId);
+        if (existing) return existing;
+        const today = new Date();
+        const view = {
+            viewYear: today.getFullYear(), viewMonth: today.getMonth() + 1,
+            selectedDate: formatCalendarDate(today),
+            viewMode: 'schedule',
+        };
+        runtime.viewByStorage.set(storageId, view);
+        return view;
+    };
+    const shiftView = (storageId, delta) => {
+        const current = viewFor(storageId);
+        const next = new Date(current.viewYear, current.viewMonth - 1 + delta, 1, 12);
+        runtime.viewByStorage.set(storageId, {
+            ...current,
+            viewYear: next.getFullYear(), viewMonth: next.getMonth() + 1,
+            selectedDate: formatCalendarDate(next),
+        });
+    };
     let scopeCommitQueue = Promise.resolve();
     const injectionFailure = (result, phase) => {
         const failedWrites = Number.isInteger(result?.failedWrites) && result.failedWrites > 0 ? result.failedWrites : 0;
@@ -301,6 +356,7 @@ export function installCalendar(state, deps) {
         container.innerHTML = renderCalendarPageHtml(
             scope(storageId), occasions(storageId), runtime.statusByStorage.get(storageId) || '',
             runtime.holidayStore, runtime.weatherStore, cycles(storageId), runtime.weatherSearchResults,
+            viewFor(storageId),
         );
         return true;
     };
@@ -312,7 +368,8 @@ export function installCalendar(state, deps) {
         let nextCache = selectHolidayCountry(runtime.holidayStore, country);
         let usedStaleCache = false;
         try {
-            const years = [...new Set(calendarWeekKeys(new Date(), 7).map(date => Number(date.slice(0, 4))))];
+            const view = viewFor(storageId);
+            const years = [...new Set(calendarMonthKeys(view.viewYear, view.viewMonth).map(date => Number(date.slice(0, 4))))];
             for (const year of years) {
                 const result = await resolveHolidayYear({
                     country, year, cache: nextCache, fetchImpl: fetchImpl || globalThis.fetch, signal: task.signal,
@@ -323,6 +380,7 @@ export function installCalendar(state, deps) {
             }
             if (!tasks.active(task)) return false;
             commitHolidays(nextCache);
+            await deps.applyBidirectionalInjection?.();
             status(storageId, usedStaleCache ? '节假日服务不可用，已显示缓存数据。' : '节假日数据已更新。');
             rerender(storageId);
             return true;
@@ -363,6 +421,7 @@ export function installCalendar(state, deps) {
             });
             if (!tasks.active(task)) return false;
             commitWeather(result.store);
+            await deps.applyBidirectionalInjection?.();
             runtime.weatherSearchResults = [];
             status(storageId, result.stale ? '天气服务不可用，已显示该位置的缓存预报。' : '天气位置与预报已更新。');
             rerender(storageId);
@@ -385,6 +444,7 @@ export function installCalendar(state, deps) {
             });
             if (!tasks.active(task)) return false;
             commitWeather(result.store);
+            await deps.applyBidirectionalInjection?.();
             status(storageId, result.stale ? '天气服务不可用，已显示缓存预报。' : '天气预报已更新。');
             rerender(storageId);
             return true;
@@ -472,6 +532,11 @@ export function installCalendar(state, deps) {
 
 
     const editor = app => app?.querySelector('[data-calendar-editor]');
+    const revealEditor = form => {
+        const management = form?.closest?.('[data-calendar-management="schedule"]');
+        if (management) management.open = true;
+        form?.scrollIntoView?.({ block: 'nearest' });
+    };
     const clearEditor = app => {
         const form = editor(app);
         if (!form) return;
@@ -491,6 +556,7 @@ export function installCalendar(state, deps) {
         form.elements.tagged.value = '';
         form.elements.eventId.value = event.id;
         form.querySelector('h3').textContent = '编辑日程';
+        revealEditor(form);
         form.elements.title.focus();
     };
     const occasionEditor = app => app?.querySelector('[data-calendar-occasion-editor]');
@@ -512,6 +578,7 @@ export function installCalendar(state, deps) {
         form.elements.leapDayRule.value = occasion.leapDayRule;
         form.elements.occasionId.value = occasion.id;
         form.querySelector('h3').textContent = `编辑${occasionTypeLabel(occasion.type)}`;
+        revealEditor(form);
         form.elements.title.focus();
     };
 
@@ -519,6 +586,44 @@ export function installCalendar(state, deps) {
         const storageId = getStorageId();
         const action = button.dataset.action;
         if (action === 'calendar-generate') { await generate(storageId, 'generate'); return; }
+        if (action === 'calendar-prev-month') {
+            shiftView(storageId, -1);
+            rerender(storageId);
+            return;
+        }
+        if (action === 'calendar-next-month') {
+            shiftView(storageId, 1);
+            rerender(storageId);
+            return;
+        }
+        if (action === 'calendar-today') {
+            const today = new Date();
+            const current = viewFor(storageId);
+            runtime.viewByStorage.set(storageId, {
+                ...current,
+                viewYear: today.getFullYear(), viewMonth: today.getMonth() + 1,
+                selectedDate: formatCalendarDate(today),
+            });
+            rerender(storageId);
+            return;
+        }
+        if (action === 'calendar-mode-schedule' || action === 'calendar-mode-life') {
+            const current = viewFor(storageId);
+            const viewMode = action === 'calendar-mode-life' ? 'life' : 'schedule';
+            runtime.viewByStorage.set(storageId, { ...current, viewMode });
+            rerender(storageId);
+            return;
+        }
+        if (action === 'calendar-select-date') {
+            const date = button.dataset.calendarDate;
+            const current = viewFor(storageId);
+            if (!calendarMonthKeys(current.viewYear, current.viewMonth).includes(date)) {
+                throw new Error('选择的日历日期无效');
+            }
+            runtime.viewByStorage.set(storageId, { ...current, selectedDate: date });
+            rerender(storageId);
+            return;
+        }
         if (action === 'calendar-scan') { await scanContext(storageId); return; }
         if (action === 'calendar-holiday-refresh') {
             const country = app?.querySelector('[data-calendar-country]')?.value;
@@ -549,14 +654,16 @@ export function installCalendar(state, deps) {
                 overrides: cycles(storageId).overrides,
             });
             commitCycle(storageId, nextStore);
-            status(storageId, '生理周期设置已保存，仅用于本地日历提示。');
+            await deps.applyBidirectionalInjection?.();
+            status(storageId, '生理周期设置已保存，并已刷新生活日历正文。');
             rerender(storageId);
             return;
         }
         if (action === 'calendar-cycle-clear') {
             if (!confirm('清除当前角色与聊天的生理周期资料？')) return;
             commitCycle(storageId, clearCycleScope(runtime.cycleStore, storageId));
-            status(storageId, '当前角色与聊天的生理周期资料已清除。');
+            await deps.applyBidirectionalInjection?.();
+            status(storageId, '当前角色与聊天的生理周期资料已清除，并已刷新生活日历正文。');
             rerender(storageId);
             return;
         }

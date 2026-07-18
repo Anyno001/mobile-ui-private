@@ -3,7 +3,7 @@ import { getStorageId } from '../src/host-context.js';
 import { deriveInteractiveActorId } from '../src/interactive-scene-model.js';
 import { renderCommunitySource } from '../src/community-injection.js';
 import {
-    buildContextInjectionPrompts, clearExtensionPrompts, replaceExtensionPrompts,
+    buildContextInjectionPrompts, clearExtensionPrompts, renderCalendarContextInjection, replaceExtensionPrompts,
 } from '../src/phone-injection.js';
 import { resolveCommunitySources, resolvePhoneSources } from '../src/permissions.js';
 import { calendarScopeFor, createEmptyCalendarStore, renderCalendarInjection } from '../src/calendar-model.js';
@@ -482,6 +482,34 @@ assert.match(calendarPrompt.content, /项目评审会/);
 assert.match(calendarPrompt.content, /准备演示文档/);
 assert.equal(calendarPrompt.position, 1);
 assert.equal(calendarPrompt.depth, 2);
+
+const todayParts = today.split('-').map(Number);
+const fullCalendarBody = renderCalendarContextInjection({
+    currentStorageId: 'story-a',
+    calendarStore: calendarStoreWithEvents,
+    occasionStore: { version: 1, scopes: { 'story-a': { occasions: [{
+        id: 'occasion', type: 'birthday', month: todayParts[1], day: todayParts[2], title: '角色生日', note: '准备蛋糕', leapDayRule: 'feb28', createdAt: 1, updatedAt: 1,
+    }] } } },
+    holidayStore: { version: 1, selectedCountry: 'CN', years: { [`CN:${todayParts[0]}`]: {
+        country: 'CN', year: todayParts[0], fetchedAt: 1, source: 'test', entries: [{ date: today, name: '生活节', kind: 'holiday', source: 'test' }],
+    } } },
+    weatherStore: { version: 1, location: { name: '上海', latitude: 31.2, longitude: 121.4, country: 'CN', admin1: '上海', timezone: 'Asia/Shanghai' }, lastSuccess: {
+        locationKey: '31.2,121.4|上海', fetchedAt: 1, forecast: { days: [{ date: today, weatherCode: 1, tempMin: 20, tempMax: 30 }] },
+    } },
+    cycleStore: { version: 1, scopes: { 'story-a': { enabled: true, lastPeriodStart: today, cycleLength: 28, periodLength: 5, overrides: {} } } },
+    start: now,
+});
+assert.match(fullCalendarBody, /项目评审会/);
+assert.match(fullCalendarBody, /生日：角色生日/);
+assert.match(fullCalendarBody, /节假日：生活节/);
+assert.match(fullCalendarBody, /天气：少云，20°\/30°C/);
+assert.match(fullCalendarBody, /生理周期：经期/);
+const otherStorageBody = renderCalendarContextInjection({
+    currentStorageId: 'story-b', calendarStore: calendarStoreWithEvents,
+    occasionStore: { version: 1, scopes: { 'story-a': { occasions: [{ id: 'private', type: 'birthday', month: todayParts[1], day: todayParts[2], title: '私密生日' }] } } },
+    start: now,
+});
+assert.doesNotMatch(otherStorageBody, /角色生日|私密生日|项目评审会/, '生活日历不得串用其他 storageId 的私有数据');
 
 // 4. Cross-storage: only currentStorageId's events
 const calendarStoreCrossStorage = {

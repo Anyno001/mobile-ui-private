@@ -208,9 +208,9 @@ export function installPhoneFoundation(state, deps) {
         return clearExtensionPrompts({ context: getCtx(), runtime });
     }
 
-    function getCalendarStore() {
+    function getCalendarData(getter) {
         try {
-            const store = deps.getCalendarStore?.();
+            const store = deps[getter]?.();
             return store || null;
         } catch (error) {
             return null;
@@ -245,7 +245,11 @@ export function installPhoneFoundation(state, deps) {
             budgetConfig: window.__pmBudgetConfig,
             userName: getUserPersona().name || '用户',
             emojis: window.__pmEmojis,
-            calendarStore: getCalendarStore(),
+            calendarStore: getCalendarData('getCalendarStore'),
+            calendarOccasions: getCalendarData('getCalendarOccasionStore'),
+            calendarHolidays: getCalendarData('getCalendarHolidayStore'),
+            calendarWeather: getCalendarData('getCalendarWeatherStore'),
+            calendarCycles: getCalendarData('getCalendarCycleStore'),
         });
     }
 

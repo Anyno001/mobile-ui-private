@@ -30,9 +30,23 @@ export function calendarDateFromParts(year, month, day) {
 
 export function calendarWeekKeys(start = new Date(), days = 7) {
     const base = new Date(start.getFullYear(), start.getMonth(), start.getDate(), 12, 0, 0, 0);
-    return Array.from({ length: Math.max(1, Math.min(31, days)) }, (_, index) => {
+    return Array.from({ length: Math.max(1, Math.min(42, days)) }, (_, index) => {
         const date = new Date(base); date.setDate(base.getDate() + index); return formatCalendarDate(date);
     });
+}
+
+export function calendarMonthKeys(year, month) {
+    const numericYear = Number(year), numericMonth = Number(month);
+    if (!Number.isInteger(numericYear) || numericYear < 1900 || numericYear > 2100
+        || !Number.isInteger(numericMonth) || numericMonth < 1 || numericMonth > 12) {
+        throw new Error('月历年月无效');
+    }
+    const first = new Date(numericYear, numericMonth - 1, 1, 12, 0, 0, 0);
+    const start = new Date(first);
+    start.setDate(first.getDate() - ((first.getDay() + 6) % 7));
+    const daysInMonth = new Date(numericYear, numericMonth, 0, 12, 0, 0, 0).getDate();
+    const cellCount = Math.ceil((((first.getDay() + 6) % 7) + daysInMonth) / 7) * 7;
+    return calendarWeekKeys(start, Math.max(35, Math.min(42, cellCount)));
 }
 
 export function createEmptyCalendarStore() {

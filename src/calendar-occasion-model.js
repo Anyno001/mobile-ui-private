@@ -118,7 +118,7 @@ export function occasionDateForYear(occasionValue, year) {
 }
 
 export function expandOccasions(scope, { start = new Date(), days = 7 } = {}) {
-    const length = Math.max(1, Math.min(31, Number.isInteger(days) ? days : 7));
+    const length = Math.max(1, Math.min(42, Number.isInteger(days) ? days : 7));
     const base = new Date(start.getFullYear(), start.getMonth(), start.getDate(), 12, 0, 0, 0);
     const dates = new Set(Array.from({ length }, (_, index) => {
         const date = new Date(base); date.setDate(base.getDate() + index);

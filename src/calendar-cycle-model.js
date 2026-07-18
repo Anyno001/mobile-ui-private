@@ -20,7 +20,6 @@ const cleanText = (value, max) => String(value ?? '').trim().slice(0, max);
 const unsafeKey = value => value === 'prototype' || Object.hasOwn(Object.prototype, value);
 const integerInRange = (value, min, max) => Number.isInteger(Number(value))
     && Number(value) >= min && Number(value) <= max;
-export const CYCLE_DISCLAIMER = '周期结果仅供日历提醒，不用于避孕、诊断或医疗决策。';
 
 /** 创建一个空的生理周期 Store */
 export function createEmptyCycleStore() {
@@ -146,12 +145,11 @@ function phaseForDay(day, cycleLength, periodLength) {
 /**
  * 预测指定日期的生理周期阶段。
  * status 取值：'override'（用户手工标记）、'predicted'（基于参数推算）。
- * disclaimer 始终为 true，强调非医疗用途。
  */
 export function predictCyclePhase(scope, dateStr) {
     const normalized = normalizeCycleScope(scope);
     if (!normalized.enabled) {
-        return { phase: null, status: 'disabled', day: null, nextPeriodStart: null, disclaimer: true };
+        return { phase: null, status: 'disabled', day: null, nextPeriodStart: null };
     }
     // 优先检查手工 override
     if (normalized.overrides[dateStr]) {
@@ -161,12 +159,11 @@ export function predictCyclePhase(scope, dateStr) {
             status: 'override',
             day: null,
             nextPeriodStart: null,
-            disclaimer: true,
         };
     }
     const day = cycleDayIndex(normalized, dateStr);
     if (day === null) {
-        return { phase: null, status: 'insufficient_data', day: null, nextPeriodStart: null, disclaimer: true };
+        return { phase: null, status: 'insufficient_data', day: null, nextPeriodStart: null };
     }
     const phase = phaseForDay(day, normalized.cycleLength, normalized.periodLength);
     const status = 'predicted';
@@ -182,13 +179,12 @@ export function predictCyclePhase(scope, dateStr) {
         status,
         day,
         nextPeriodStart: formatCalendarDate(nextStart),
-        disclaimer: true,
     };
 }
 
 /**
  * 预测日期范围内每天的生理周期阶段。
- * 返回数组，每项包含 date、phase、status、day（周期第几天），末尾附加 disclaimer 说明。
+ * 返回数组，每项包含 date、phase、status、day（周期第几天）。
  */
 export function predictCycleRange(scope, startDate, days = 7) {
     const normalized = normalizeCycleScope(scope);
@@ -203,5 +199,5 @@ export function predictCycleRange(scope, startDate, days = 7) {
         const prediction = predictCyclePhase(normalized, dateStr);
         results.push({ date: dateStr, phase: prediction.phase, status: prediction.status, day: prediction.day });
     }
-    return { predictions: results, disclaimer: true };
+    return { predictions: results };
 }

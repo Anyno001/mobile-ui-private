@@ -113,11 +113,12 @@ assert.throws(() => parseInteractiveResponse(
 ), /有效内容/);
 
 const rawScene = normalizeScene({
-    id: 'scene', preset: 'mature', contentRating: 'legacy-value', styleInput: 'x'.repeat(2100),
+    id: 'scene', preset: 'mature', themeAccent: '#AABBCC', contentRating: 'legacy-value', styleInput: 'x'.repeat(2100),
     live: { status: 'running', danmaku: Array.from({ length: 260 }, (_, i) => ({ content: `弹幕${i}` })) },
     posts: Array.from({ length: 100 }, (_, i) => ({ content: `帖子${i}`, comments: Array.from({ length: 60 }, (_, j) => ({ content: `评论${j}` })) })),
 });
 assert.equal(Object.hasOwn(rawScene, 'contentRating'), false);
+assert.equal(rawScene.themeAccent, '#aabbcc');
 assert.equal(rawScene.styleInput.length, 2000);
 assert.equal(rawScene.live.status, 'idle');
 assert.equal(rawScene.live.danmaku.length, INTERACTIVE_LIMITS.danmaku);
@@ -269,7 +270,7 @@ assert.ok(normalized.scopes.scope.actors[normalizedPost.authorId]);
 assert.ok(normalized.scopes.scope.actors[normalizedPost.comments[0].authorId]);
 assert.throws(() => normalizeInteractiveStore({ version: 99, scopes: {} }), /版本 99 不受支持/);
 const strictSceneBase = {
-    id: 'scene', title: '严格场景', preset: 'weibo', styleInput: '', generatedPrompt: '',
+    id: 'scene', title: '严格场景', preset: 'weibo', styleInput: '', generatedPrompt: '', themeAccent: '#123abc',
     createdAt: 1, updatedAt: 1, posts: [],
     live: { title: '直播', status: 'idle', danmaku: [] },
 };
@@ -282,6 +283,15 @@ assert.throws(() => normalizeInteractiveStore({
         },
     },
 }), /额外字段.*contentRating/);
+assert.throws(() => normalizeInteractiveStore({
+    version: 2,
+    scopes: {
+        scope: {
+            activeSceneId: 'scene', sceneOrder: ['scene'], actors: {},
+            scenes: { scene: { ...strictSceneBase, themeAccent: '#ABCDEF' } },
+        },
+    },
+}), /themeAccent 必须是小写六位十六进制颜色/);
 assert.throws(() => normalizeInteractiveStore({
     version: 2,
     scopes: {

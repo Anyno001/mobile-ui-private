@@ -5,7 +5,11 @@ import { allocateContextBudget, estimateContextTokens, normalizeBudgetConfig, tr
 import { renderCommunitySource } from './community-injection.js';
 import { resolveEmojiText } from './messaging.js';
 import { resolveCommunitySources, resolvePhoneSources } from './permissions.js';
-import { calendarScopeFor, renderCalendarInjection } from './calendar-model.js';
+import { calendarScopeFor, calendarWeekKeys, renderCalendarInjection } from './calendar-model.js';
+import { occasionScopeFor, expandOccasions } from './calendar-occasion-model.js';
+import { holidayYearFromCache, normalizeHolidayCache } from './calendar-holiday.js';
+import { normalizeWeatherStore, weatherCodeLabel } from './calendar-weather.js';
+import { cycleScopeFor, normalizeCycleStore, predictCyclePhase } from './calendar-cycle-model.js';
 
 const COMMUNITY_KEY_PREFIX = `${BIDIRECTIONAL_KEY}:community:`;
 const CALENDAR_KEY_PREFIX = `${BIDIRECTIONAL_KEY}:calendar:`;
@@ -91,9 +95,49 @@ function allocateRenderedPrompts(items, tokenLimit) {
     return { prompts, usedTokens: tokenLimit - remaining, truncatedCount };
 }
 
+export function renderCalendarContextInjection({
+    currentStorageId, calendarStore, occasionStore, holidayStore, weatherStore, cycleStore,
+    start = new Date(), days = 7,
+} = {}) {
+    if (!currentStorageId) return '';
+    const dates = calendarWeekKeys(start, days);
+    const linesByDate = new Map(dates.map(date => [date, []]));
+    const regular = renderCalendarInjection(calendarScopeFor(calendarStore, currentStorageId), { start, days });
+    for (const line of regular ? regular.split('\n') : []) {
+        const date = line.slice(0, 10);
+        if (linesByDate.has(date)) linesByDate.get(date).push(line.slice(11));
+    }
+    const occasions = expandOccasions(occasionScopeFor(occasionStore, currentStorageId), { start, days });
+    for (const occasion of occasions) {
+        const kind = occasion.type === 'birthday' ? '生日' : '纪念日';
+        linesByDate.get(occasion.date)?.push(`${kind}：${occasion.title}${occasion.note ? `（${occasion.note.replace(/\s+/g, ' ').slice(0, 180)}）` : ''}`);
+    }
+    const holidays = normalizeHolidayCache(holidayStore);
+    for (const date of dates) {
+        const year = Number(date.slice(0, 4));
+        const entries = holidayYearFromCache(holidays, holidays.selectedCountry, year)?.entries || [];
+        for (const item of entries.filter(entry => entry.date === date)) {
+            const kind = item.kind === 'workday' ? '调休工作日' : item.kind === 'in_lieu' ? '调休' : item.kind === 'observed' ? '替代休息日' : '节假日';
+            linesByDate.get(date).push(`${kind}：${item.name}`);
+        }
+    }
+    const weather = normalizeWeatherStore(weatherStore);
+    for (const day of weather.lastSuccess?.forecast?.days || []) {
+        if (linesByDate.has(day.date)) linesByDate.get(day.date).push(`天气：${weatherCodeLabel(day.weatherCode)}，${day.tempMin}°/${day.tempMax}°C`);
+    }
+    const cycle = cycleScopeFor(normalizeCycleStore(cycleStore), currentStorageId);
+    const cycleLabels = { period: '经期', follicular: '卵泡期', ovulatory: '排卵期', luteal: '黄体期' };
+    for (const date of dates) {
+        const prediction = predictCyclePhase(cycle, date);
+        if (prediction.phase) linesByDate.get(date).push(`生理周期：${cycleLabels[prediction.phase] || prediction.phase}${prediction.status === 'override' ? '（手动标记）' : ''}`);
+    }
+    return dates.flatMap(date => linesByDate.get(date).map(item => `${date}｜${item}`)).join('\n').slice(0, 6000);
+}
+
 export function buildContextInjectionPrompts({
     currentStorageId, currentActorName, selectedByStorage, historiesByStorage, groupsByStorage,
     interactiveStore, budgetConfig, userName, emojis, safeMaxTokens, calendarStore,
+    calendarOccasions, calendarHolidays, calendarWeather, calendarCycles,
 } = {}) {
     const config = normalizeBudgetConfig(budgetConfig);
     const phonePermission = resolvePhoneSources({
@@ -126,15 +170,16 @@ export function buildContextInjectionPrompts({
             depth: config.communityDepth,
         }];
     }) : [];
-    // Calendar injection: only regular events (no occasion/cycle/holiday/weather)
     let calendarItems = [];
     if (config.calendarEnabled && calendarStore && currentStorageId) {
-        const scope = calendarScopeFor(calendarStore, currentStorageId);
-        const body = renderCalendarInjection(scope);
+        const body = renderCalendarContextInjection({
+            currentStorageId, calendarStore, occasionStore: calendarOccasions, holidayStore: calendarHolidays,
+            weatherStore: calendarWeather, cycleStore: calendarCycles,
+        });
         if (body) {
             calendarItems.push({
                 key: `${CALENDAR_KEY_PREFIX}${encodeURIComponent(currentStorageId)}`,
-                content: `[日程安排]\n${body}\n[结束]`,
+                content: `[生活日历]\n${body}\n[结束]`,
                 position: config.calendarPosition,
                 depth: config.calendarDepth,
             });

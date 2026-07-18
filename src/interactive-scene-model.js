@@ -103,9 +103,9 @@ const assertV1Item = (raw, kind, label) => {
     comments.forEach((comment, index) => assertV1Item(comment, 'comment', `${label}.comments.${index}`));
 };
 const assertV1Scene = (raw, label) => {
-    assertV1Keys(raw, ['id', 'title', 'preset', 'styleInput', 'generatedPrompt', 'contentRating', 'createdAt', 'updatedAt', 'posts', 'live'], label);
+    assertV1Keys(raw, ['id', 'title', 'preset', 'styleInput', 'generatedPrompt', 'themeAccent', 'contentRating', 'createdAt', 'updatedAt', 'posts', 'live'], label);
     if (Object.hasOwn(raw, 'id') && typeof raw.id !== 'string') throw new Error(`互动场景 v1 ${label}.id 必须是字符串`);
-    for (const key of ['title', 'preset', 'styleInput', 'generatedPrompt']) assertV1OptionalText(raw, key, label);
+    for (const key of ['title', 'preset', 'styleInput', 'generatedPrompt', 'themeAccent']) assertV1OptionalText(raw, key, label);
     assertV1OptionalTimestamp(raw, 'createdAt', label);
     assertV1OptionalTimestamp(raw, 'updatedAt', label);
     const posts = assertV1OptionalArray(raw, 'posts', label, INTERACTIVE_LIMITS.posts);
@@ -426,6 +426,11 @@ function normalizeDanmaku(raw, context) {
     };
 }
 
+function normalizeThemeAccent(value) {
+    const accent = String(value ?? '').trim();
+    return /^#[0-9a-fA-F]{6}$/.test(accent) ? accent.toLowerCase() : '';
+}
+
 
 export function normalizeScene(raw, options = {}) {
     const scope = options.scope || { actors: {} };
@@ -433,13 +438,19 @@ export function normalizeScene(raw, options = {}) {
     const sourceVersion = options.sourceVersion === INTERACTIVE_STORE_VERSION ? INTERACTIVE_STORE_VERSION : 1;
     const strictLegacy = sourceVersion === 1 && options.strictLegacy === true;
     if (sourceVersion === INTERACTIVE_STORE_VERSION) {
-        assertV2Keys(raw, ['id', 'title', 'preset', 'styleInput', 'generatedPrompt', 'createdAt', 'updatedAt', 'posts', 'live'], 'scene');
+        assertV2Keys(raw, ['id', 'title', 'preset', 'styleInput', 'generatedPrompt', 'themeAccent', 'createdAt', 'updatedAt', 'posts', 'live'], 'scene');
         if (raw?.live !== undefined) assertV2Keys(raw.live, ['title', 'status', 'danmaku'], 'live');
         assertV2Text(raw.id, 80, 'scene.id');
         assertV2Text(raw.title, 80, 'scene.title');
         assertV2Text(raw.preset, 30, 'scene.preset');
         assertV2Text(raw.styleInput, 2000, 'scene.styleInput', { allowEmpty: true });
         assertV2Text(raw.generatedPrompt, 6000, 'scene.generatedPrompt', { allowEmpty: true });
+        if (raw.themeAccent !== undefined) {
+            assertV2Text(raw.themeAccent, 7, 'scene.themeAccent', { allowEmpty: true });
+            if (raw.themeAccent && normalizeThemeAccent(raw.themeAccent) !== raw.themeAccent) {
+                throw new Error('互动场景 v2 scene.themeAccent 必须是小写六位十六进制颜色');
+            }
+        }
         assertV2Timestamp(raw.createdAt, 'scene.createdAt'); assertV2Timestamp(raw.updatedAt, 'scene.updatedAt');
         assertV2List(raw.posts, 'scene.posts');
         if (raw.posts.length > INTERACTIVE_LIMITS.posts) throw new Error(`互动场景 v2 scene.posts 不能超过 ${INTERACTIVE_LIMITS.posts} 项`);
@@ -458,6 +469,7 @@ export function normalizeScene(raw, options = {}) {
         preset: text(raw?.preset, 30) || 'weibo',
         styleInput: text(raw?.styleInput, 2000),
         generatedPrompt: text(raw?.generatedPrompt, 6000),
+        themeAccent: normalizeThemeAccent(raw?.themeAccent),
         createdAt,
         updatedAt: finitePositiveNumber(raw?.updatedAt) || createdAt,
         posts: list(raw?.posts).map((post, index) => normalizePost(post, {

@@ -172,7 +172,7 @@ const assertInteractiveBackupStore = value => {
             if (orderedIds.has(sceneId)) throw new Error(`备份字段 ${field}.sceneOrder 包含重复场景 ${sceneId}`);
             orderedIds.add(sceneId);
             const scene = objectValue(normalizedScenes.get(sceneId), `${field}.scenes.${sceneId}`);
-            const sceneKeys = ['id', 'title', 'preset', 'styleInput', 'generatedPrompt', 'createdAt', 'updatedAt', 'posts', 'live'];
+            const sceneKeys = ['id', 'title', 'preset', 'styleInput', 'generatedPrompt', 'themeAccent', 'createdAt', 'updatedAt', 'posts', 'live'];
             if (sourceVersion !== INTERACTIVE_STORE_VERSION) sceneKeys.push('contentRating');
             assertAllowedKeys(scene, `${field}.scenes.${sceneId}`, sceneKeys);
             if (Object.hasOwn(scene, 'id')) {
@@ -187,8 +187,12 @@ const assertInteractiveBackupStore = value => {
                 assertOptionalNormalizedText(scene, 'preset', `${field}.scenes.${sceneId}`, 30);
                 assertOptionalNormalizedText(scene, 'styleInput', `${field}.scenes.${sceneId}`, 2000, { allowEmpty: true });
                 assertOptionalNormalizedText(scene, 'generatedPrompt', `${field}.scenes.${sceneId}`, 6000, { allowEmpty: true });
+                assertOptionalNormalizedText(scene, 'themeAccent', `${field}.scenes.${sceneId}`, 7, { allowEmpty: true });
+                if (scene.themeAccent && !/^#[0-9a-f]{6}$/.test(scene.themeAccent)) {
+                    throw new Error(`备份字段 ${field}.scenes.${sceneId}.themeAccent 必须是小写六位十六进制颜色`);
+                }
             } else {
-                for (const key of ['title', 'preset', 'styleInput', 'generatedPrompt']) {
+                for (const key of ['title', 'preset', 'styleInput', 'generatedPrompt', 'themeAccent']) {
                     assertOptionalLegacyText(scene, key, `${field}.scenes.${sceneId}`);
                 }
             }
