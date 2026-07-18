@@ -67,7 +67,7 @@ export function createAmbientStatusController({
 }
 
 export function createPhonePageController({ getRoot, closeTransientUi = () => {} }) {
-    const pages = new Set(['desktop', 'chat', 'community']);
+    const pages = new Set(['desktop', 'chat', 'community', 'calendar']);
     const show = page => {
         const targetPage = pages.has(page) ? page : 'desktop';
         const root = getRoot();
@@ -198,6 +198,7 @@ export function installPhoneLifecycle(state, deps) {
         state.isMinimized = !state.isMinimized;
         if (state.isMinimized) {
             deps.cancelCommunityGeneration?.('phone-minimized');
+            deps.cancelCalendarTasks?.('phone-minimized');
             disarmAutoPoke('phone-minimized');
         }
         state.phoneWindow.classList.toggle('is-min', state.isMinimized);
@@ -217,6 +218,7 @@ export function installPhoneLifecycle(state, deps) {
         }
         clearBidirectionalInjection();
         deps.cancelCommunityGeneration?.('phone-closed');
+        deps.cancelCalendarTasks?.('phone-closed');
         disarmAutoPoke('phone-closed');
         invalidateGeneration();
         ambientStatus.stop();
@@ -306,6 +308,7 @@ export function installPhoneLifecycle(state, deps) {
   </section>
   <section class="pm-phone-page pm-desktop-page" data-phone-page="desktop" hidden></section>
   <section class="pm-phone-page pm-community-page" data-phone-page="community" hidden></section>
+  <section class="pm-phone-page pm-calendar-page" data-phone-page="calendar" hidden></section>
 </div>`;
         document.body.appendChild(state.phoneWindow);
         window.__pmShowPhonePage = pageController.show;

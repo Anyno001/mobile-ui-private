@@ -6,6 +6,8 @@ import {
     buildContextInjectionPrompts, clearExtensionPrompts, replaceExtensionPrompts,
 } from '../src/phone-injection.js';
 import { resolveCommunitySources, resolvePhoneSources } from '../src/permissions.js';
+import { calendarScopeFor, createEmptyCalendarStore, renderCalendarInjection } from '../src/calendar-model.js';
+import { allocateContextBudget, normalizeBudgetConfig, BUDGET_SOURCES, DEFAULT_BUDGET_CONFIG } from '../src/budget.js';
 
 function assertNoUnpairedSurrogates(value, label) {
     for (let index = 0; index < value.length; index += 1) {
@@ -408,4 +410,130 @@ assert.ok(calls.some(call => call[0] === 'old' && call[1] === ''));
 clearExtensionPrompts({ context, runtime });
 assert.deepEqual([...runtime.trackedExtensionPromptKeys], ['retry']);
 
-console.log('Permissions and extension prompt lifecycle verified.');
+// === Calendar injection tests ===
+
+const migratedTwoSourceBudget = normalizeBudgetConfig({
+    sourceWeights: { phone: 3, community: 1 },
+    sourcePriority: ['community', 'phone'],
+    communityEnabled: true,
+});
+assert.deepEqual(migratedTwoSourceBudget.sourceWeights, { phone: 3, community: 1, calendar: 0 });
+assert.deepEqual(migratedTwoSourceBudget.sourcePriority, ['community', 'phone', 'calendar']);
+assert.equal(migratedTwoSourceBudget.calendarEnabled, false);
+assert.equal(migratedTwoSourceBudget.calendarPosition, DEFAULT_BUDGET_CONFIG.calendarPosition);
+assert.equal(migratedTwoSourceBudget.calendarDepth, DEFAULT_BUDGET_CONFIG.calendarDepth);
+
+// 1. Default: calendarEnabled=false, so no calendar prompt
+const defaultPlanWithCalendar = buildContextInjectionPrompts({
+    ...baseInjectionInput,
+    budgetConfig: undefined,
+    calendarStore: createEmptyCalendarStore(),
+});
+assert.equal(defaultPlanWithCalendar.diagnostics.calendarEnabled, false, 'calendarEnabled default false');
+
+// 2. Enabled but empty store → no prompt
+const emptyCalendarPlan = buildContextInjectionPrompts({
+    ...baseInjectionInput,
+    budgetConfig: {
+        calendarEnabled: true,
+        calendarPosition: 0,
+        calendarDepth: 0,
+    },
+    calendarStore: createEmptyCalendarStore(),
+});
+assert.equal(emptyCalendarPlan.prompts.find(p => p.key.includes(':calendar:')), undefined, '空数据无 prompt');
+
+// 3. Enabled with events → has calendar prompt, correct key format
+const now = new Date();
+const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+const calendarStoreWithEvents = {
+    version: 1,
+    scopes: {
+        'story-a': {
+            autoAdjust: false,
+            events: {
+                [today]: [
+                    { id: 'evt1', date: today, title: '项目评审会', note: '准备演示文档', source: 'manual', createdAt: 100, updatedAt: 100 },
+                ],
+            },
+            lastGeneratedAt: 0,
+            lastAdjustedAt: 0,
+        },
+    },
+};
+const calendarPlan = buildContextInjectionPrompts({
+    ...baseInjectionInput,
+    budgetConfig: {
+        targetTokens: 2000,
+        calendarEnabled: true,
+        calendarPosition: 1,
+        calendarDepth: 2,
+        sourceWeights: { phone: 1, community: 0, calendar: 1 },
+        sourcePriority: ['phone', 'community', 'calendar'],
+        redistributeUnused: true,
+    },
+    calendarStore: calendarStoreWithEvents,
+});
+assert.equal(calendarPlan.prompts.length, 2);
+const calendarPrompt = calendarPlan.prompts.find(p => p.key.includes(':calendar:'));
+assert.ok(calendarPrompt, '应有 calendar prompt');
+assert.equal(calendarPrompt.key, 'PHONE_SMS_MEMORY:calendar:story-a');
+assert.match(calendarPrompt.content, /项目评审会/);
+assert.match(calendarPrompt.content, /准备演示文档/);
+assert.equal(calendarPrompt.position, 1);
+assert.equal(calendarPrompt.depth, 2);
+
+// 4. Cross-storage: only currentStorageId's events
+const calendarStoreCrossStorage = {
+    version: 1,
+    scopes: {
+        'story-a': {
+            autoAdjust: false,
+            events: {
+                [today]: [
+                    { id: 'evt-a', date: today, title: 'Story A 事件', note: '', source: 'manual', createdAt: 100, updatedAt: 100 },
+                ],
+            },
+            lastGeneratedAt: 0, lastAdjustedAt: 0,
+        },
+        'story-b': {
+            autoAdjust: false,
+            events: {
+                [today]: [
+                    { id: 'evt-b', date: today, title: 'Story B 事件', note: '', source: 'manual', createdAt: 100, updatedAt: 100 },
+                ],
+            },
+            lastGeneratedAt: 0, lastAdjustedAt: 0,
+        },
+    },
+};
+const crossStoragePlan = buildContextInjectionPrompts({
+    ...baseInjectionInput,
+    budgetConfig: {
+        calendarEnabled: true,
+        targetTokens: 2000,
+        sourceWeights: { phone: 1, community: 0, calendar: 1 },
+        calendarPosition: 0,
+        calendarDepth: 0,
+    },
+    calendarStore: calendarStoreCrossStorage,
+});
+const crossCalendarPrompt = crossStoragePlan.prompts.find(p => p.key.includes(':calendar:'));
+assert.ok(crossCalendarPrompt, '应有 calendar prompt');
+assert.match(crossCalendarPrompt.content, /Story A 事件/);
+assert.doesNotMatch(crossCalendarPrompt.content, /Story B 事件/, '不应包含其他 storage 的事件');
+
+// 5. Calendar enabled but weight=0 → calendar should get 0 allocation
+const zeroWeightPlan = buildContextInjectionPrompts({
+    ...baseInjectionInput,
+    budgetConfig: {
+        calendarEnabled: true,
+        sourceWeights: { phone: 1, community: 0, calendar: 0 },
+        redistributeUnused: false,
+        targetTokens: 100,
+        calendarPosition: 0,
+        calendarDepth: 0,
+    },
+    calendarStore: calendarStoreWithEvents,
+});
+assert.equal(zeroWeightPlan.prompts.find(p => p.key.includes(':calendar:')), undefined, 'weight=0 且 redistributeUnused=false 无 calendar prompt');

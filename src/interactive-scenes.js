@@ -273,6 +273,29 @@ export function installInteractiveScenes(_state, deps) {
     });
     };
 
+    async function showPhoneCalendarPage() {
+        invalidate();
+        runtime.openSceneId = null;
+        const scopeId = getStorageId();
+        const phoneWindow = _state.phoneWindow;
+        if (!scopeId || scopeId === 'sms_unknown__default') throw new Error('请先打开有效的角色聊天');
+        const store = await loadStore();
+        const isCurrent = () => _state.phoneActive && _state.phoneWindow === phoneWindow && getStorageId() === scopeId;
+        if (!isCurrent()) return false;
+        if (!deps.renderCalendar?.(scopeId)) throw new Error('日历页面渲染失败');
+        if (!isCurrent()) return false;
+        const previousPage = phoneWindow?.querySelector('.pm-main-ui')?.dataset.page || 'desktop';
+        if (!showPhonePage('calendar')) throw new Error('日历页面不可用');
+        try {
+            updatePhoneUiScope(scopeId, { lastPage: 'calendar', lastSceneId: null }, store);
+            refreshDesktop(scopeId, store);
+        } catch (error) {
+            if (isCurrent() && phoneWindow?.querySelector('.pm-main-ui')?.dataset.page === 'calendar') showPhonePage(previousPage);
+            throw error;
+        }
+        return isCurrent() && phoneWindow?.querySelector('.pm-main-ui')?.dataset.page === 'calendar';
+    }
+
     function renderCommunityLauncher(scopeId, store = runtime.store) {
         const scope = getScope(store, scopeId);
         runtime.openSceneId = null;
@@ -466,6 +489,14 @@ export function installInteractiveScenes(_state, deps) {
 
     async function handleAction(button, app) {
         const action = button.dataset.action;
+        if (app?.id === 'pm-calendar-app') {
+            if (action === 'calendar-home') await showPhoneDesktopPage();
+            else {
+                if (typeof deps.handleCalendarAction !== 'function') throw new Error('日历动作处理器尚未安装');
+                await deps.handleCalendarAction(button, app);
+            }
+            return;
+        }
         if (action === 'more') {
             const menu = button.parentElement?.querySelector('.pm-scene-menu');
             if (!menu) return;
@@ -478,6 +509,7 @@ export function installInteractiveScenes(_state, deps) {
         if (action === 'desktop-chat') { deps.showPhoneChatPage?.(getStorageId()); return; }
         if (action === 'desktop-directory') { window.__pmShowList?.(); return; }
         if (action === 'desktop-settings') { window.__pmOpenSettingsTab?.('home'); return; }
+        if (action === 'desktop-calendar') { await showPhoneCalendarPage(); return; }
         if (action === 'desktop-community') { await window.__pmOpenForumMode(); return; }
         if (action === 'desktop-exit' || action === 'exit') { await window.__pmEnd?.(); return; }
         if (action === 'desktop-open-scene') {
@@ -671,6 +703,7 @@ export function installInteractiveScenes(_state, deps) {
         observeCommunityTurn: chat => communityRunner.observe(chat),
         cancelCommunityGeneration: invalidate,
         bindPhonePageUi,
+        showPhoneCalendarPage,
         showPhoneDesktopPage,
         async restorePhoneUi() {
             const scopeId = getStorageId();
@@ -691,6 +724,11 @@ export function installInteractiveScenes(_state, deps) {
                 showPhonePage('community');
                 return;
             }
+            if (uiScope.lastPage === 'calendar' && deps.renderCalendar?.(scopeId)) {
+                runtime.openSceneId = null;
+                showPhonePage('calendar');
+                return;
+            }
             runtime.openSceneId = null;
             showPhonePage(uiScope.lastPage === 'chat' ? 'chat' : 'desktop');
         },
@@ -706,7 +744,7 @@ export function installInteractiveScenes(_state, deps) {
         persistPhoneUiSnapshot() {
             const scopeId = getStorageId();
             const page = document.querySelector('#pm-iphone .pm-main-ui')?.dataset.page;
-            if (!runtime.store || !scopeId || scopeId === 'sms_unknown__default' || !['desktop', 'chat', 'community'].includes(page)) return false;
+            if (!runtime.store || !scopeId || scopeId === 'sms_unknown__default' || !['desktop', 'chat', 'community', 'calendar'].includes(page)) return false;
             const scope = phoneScope(scopeId, runtime.store);
             const lastSceneId = page === 'community' ? runtime.openSceneId : null;
             const lastPage = page;

@@ -2,7 +2,7 @@ export const INTERACTIVE_LIMITS = Object.freeze({ scenes: 12, posts: 80, comment
 export const INTERACTIVE_STORE_VERSION = 2;
 export const INTERACTIVE_ACTOR_TYPES = Object.freeze(['user', 'story', 'passerby', 'legacy']);
 export const PHONE_UI_STATE_VERSION = 1;
-export const PHONE_UI_PAGES = Object.freeze(['desktop', 'chat', 'community']);
+export const PHONE_UI_PAGES = Object.freeze(['desktop', 'chat', 'community', 'calendar']);
 export const PHONE_UI_TABS = Object.freeze(['feed', 'live', 'prompt']);
 
 const text = (value, max) => String(value ?? '').trim().slice(0, max);

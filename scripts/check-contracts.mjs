@@ -192,9 +192,17 @@ function analyzeBackupContract(code, sourceType = 'module') {
     }
     if (node.type === 'FunctionDeclaration' && node.id?.name === 'parseBackupData') {
       walk(node.body, child => {
-        if (child.type !== 'CallExpression' || memberName(child.callee) !== 'hasOwn' || child.arguments[0]?.name !== 'data') return;
-        const name = staticString(child.arguments[1]);
-        if (name) result.importFields.add(name);
+        if (child.type !== 'CallExpression') return;
+        if (memberName(child.callee) === 'hasOwn' && child.arguments[0]?.name === 'data') {
+          const name = staticString(child.arguments[1]);
+          if (name) result.importFields.add(name);
+        }
+        if (child.callee?.type === 'Identifier' && child.callee.name === 'applyCalendarBackupFields'
+            && child.arguments[0]?.name === 'data') {
+          for (const field of [
+            'calendarStore', 'calendarOccasions', 'calendarHolidays', 'calendarWeather', 'calendarCycles',
+          ]) result.importFields.add(field);
+        }
       });
     }
   });
@@ -368,8 +376,7 @@ if (!settingsFile) {
 // === Composition-root and phone entry ownership checks ===
 const LEGACY_WINDOW_ENTRIES = [
   '__pmAddEmojiImage', '__pmAddEmojiSet', '__pmAutoGenContacts', '__pmAutoPoke',
-  '__pmBeforeUnloadRegistered', '__pmBgGlobal',
-  '__pmBgLocal', '__pmBgUrl', '__pmBidirectional', '__pmClearBg', '__pmClearCustomColor',
+  '__pmBgGlobal', '__pmBgLocal', '__pmBgUrl', '__pmBidirectional', '__pmClearBg', '__pmClearCustomColor',
   '__pmConfig', '__pmConfirmAddEmojiImage', '__pmConfirmAddEmojiSet', '__pmConfirmAutoGen',
   '__pmConfirmGroup', '__pmDel', '__pmDelGroup',
   '__pmDeleteEmojiImage', '__pmDeleteEmojiSet', '__pmDeleteProfile', '__pmDeleteSelected',
@@ -459,7 +466,7 @@ if (mainFile) {
   }
   const expectedInstallerCalls = [
     'installPhoneFoundation(state, deps)', 'installConversation(state, deps)',
-    'installInteractiveScenes(state, deps)', 'installSettingsUi(deps)',
+    'installInteractiveScenes(state, deps)', 'installCalendar(state, deps)', 'installSettingsUi(deps)',
     'installPhoneChat(state, deps)', 'installPhoneControlCenter(state, deps)', 'installPhoneDirectory(state, deps)',
     'installContactGenerator(state, deps)', 'installPhoneChatPoke(state, deps)',
     'installPhoneLifecycle(state, deps)',
@@ -474,7 +481,7 @@ if (mainFile) {
   installerOrder.sort((a, b) => a.start - b.start);
   const actualOrder = installerOrder.map(item => item.name);
   const expectedOrder = [
-    'installPhoneFoundation', 'installConversation', 'installEmojiUi', 'installInteractiveScenes',
+    'installPhoneFoundation', 'installConversation', 'installEmojiUi', 'installInteractiveScenes', 'installCalendar',
     'installSettingsUi', 'installPhoneChat', 'installPhoneControlCenter', 'installPhoneDirectory', 'installContactGenerator',
     'installPhoneChatPoke', 'installPhoneLifecycle',
   ];
@@ -518,10 +525,13 @@ const interactiveViewsCode = sourceModuleByName.get('interactive-scene-views.js'
 const interactivePhoneCode = sourceModuleByName.get('interactive-scene-phone.js')?.code || '';
 const interactiveSchedulerCode = sourceModuleByName.get('interactive-scene-scheduler.js')?.code || '';
 const foundationCode = sourceModuleByName.get('phone-foundation.js')?.code || '';
+const calendarCode = sourceModuleByName.get('calendar.js')?.code || '';
+const aiCode = sourceModuleByName.get('ai.js')?.code || '';
 const phoneChatPokeCodeForChecks = sourceModuleByName.get('phone-chat-poke.js')?.code || '';
 const interactiveModelCode = sourceModuleByName.get('interactive-scene-model.js')?.code || '';
 const interactiveAiCode = sourceModuleByName.get('interactive-scene-ai.js')?.code || '';
 const settingsUiCodeForInteractive = sourceModuleByName.get('settings-ui.js')?.code || '';
+const settingsBackupCode = sourceModuleByName.get('settings-backup.js')?.code || '';
 const interactiveAnalysis = analyze(interactiveCode, 'module');
 for (const functionName of ['createScene']) {
   const functionCode = interactiveAnalysis.functionSource.get(functionName) || '';
@@ -556,11 +566,33 @@ for (const expected of [
   'deriveInteractiveActorId(scopeId, actor.type, actor.bindingKey)',
 ]) requireText('settings-ui.js', settingsUiCodeForInteractive, expected);
 for (const expected of [
-  'const phoneUiState = loadPhoneUiState(interactiveScenes)',
-  'ambientStatus: normalizeAmbientStatus', 'normalizePhoneUiState(state.phoneUiState, interactiveScenes)',
-  'savePhoneUiState(phoneUiState, interactiveScenes)', 'schemaVersion: 4',
+  'schemaVersion: 5', 'applyCalendarBackupFields(data, result, objectValue)',
+  'calendarStore: snapshot.calendarStore', 'calendarCycles: snapshot.calendarCycles',
 ]) requireText('settings-ui.js', settingsUiCodeForInteractive, expected);
-for (const expected of ['beforeApply', "beforeApply('apply')", "beforeApply('rollback')", 'closePhone(true)', '__pmClearAllData', 'clearPluginData']) requireText('settings-ui.js', settingsUiCodeForInteractive, expected);
+for (const expected of [
+  'phoneUiState: loadPhoneUiState(interactiveScenes)', 'ambientStatus: normalizeAmbientStatus',
+  'normalizePhoneUiState(state.phoneUiState, interactiveScenes)', 'savePhoneUiState(phoneUiState, interactiveScenes)',
+  "beforeApply('apply')", "beforeApply('rollback')", 'prepared = await prepare(snapshot)',
+  "error.backupPhase = 'prepare'", "error.backupPhase = 'rolled-back'", "combined.backupPhase = 'rollback-failed'",
+  'assertCanonicalCalendarField', 'assertCycleBackupInvariants',
+  'loadCalendarHolidays()', 'saveCalendarCycles(state.calendarCycles)',
+]) requireText('settings-backup.js', settingsBackupCode, expected);
+for (const expected of [
+  'prepare: current => parseBackupData(data, current)', 'apply: async (snapshot, imported)',
+  "err.backupPhase === 'rolled-back'", "err.backupPhase === 'rollback-failed'", '导入失败，未修改现有数据',
+  'postImportError = injectionFailure', '数据已导入，但注入刷新失败',
+]) requireText('settings-ui.js', settingsUiCodeForInteractive, expected);
+for (const expected of [
+  "tasks.begin(storageId, 'scan-context'", 'parentSignal', 'signal: task.signal', 'scopeCommitQueue',
+  'saveCalendar(previousStore)', 'calendarRollbackError', 'injectionError = injectionFailure',
+  'rollbackInjectionError = injectionFailure', 'error.injectionResult = result',
+  'aria-label="日程标题"', 'aria-label="日程备注"', 'aria-label="标签格式日程"',
+  'aria-label="生日或纪念日名称"', 'aria-label="生日或纪念日备注"',
+]) requireText('calendar.js', calendarCode, expected);
+for (const expected of [
+  'const signal = options.signal', 'signal,', 'throwIfAborted(signal)', 'readApiError(response, signal)',
+]) requireText('ai.js', aiCode, expected);
+for (const expected of ['beforeApply', 'closePhone(true)', '__pmClearAllData', 'clearPluginData']) requireText('settings-ui.js', settingsUiCodeForInteractive, expected);
 for (const expected of ['if (!force)', 'persistCurrentHistory()', 'persistPhoneUiSnapshot?.()']) {
   requireText('phone-lifecycle.js', sourceModuleByName.get('phone-lifecycle.js')?.code || '', expected);
 }
@@ -586,10 +618,13 @@ if (directoryTemplate.includes('pm-forum-entry') || directoryTemplate.includes('
 if (controlCenterTemplate.includes('makeOverlay') || controlCenterTemplate.includes('<span')) {
   failures.push('phone-control-center.js: compact control menu must not use the full overlay or explanatory subtitles');
 }
-for (const title of ['编辑消息', '角色设置', '表情包管理', '删除信息', '返回桌面']) {
+for (const title of ['编辑消息', '角色设置', '表情包管理', '日历', '删除信息', '返回桌面']) {
   if (!controlCenterTemplate.includes(title)) failures.push(`phone-control-center.js: compact control menu missing title ${title}`);
 }
-for (const expected of ["action === 'desktop'", 'return showPhoneDesktopPage()', 'runControlMenuAction', 'HOME_ICON_SVG', 'EDIT_ICON_SVG', 'EMOJI_ICON_SVG', 'TRASH_ICON_SVG']) requireText('phone-control-center.js', controlCenterCode, expected);
+for (const expected of [
+  "action === 'desktop'", "action === 'calendar'", 'return showPhoneDesktopPage()', 'return showPhoneCalendarPage()',
+  'runControlMenuAction', 'controlActionLabel', 'HOME_ICON_SVG', 'CALENDAR_ICON_SVG', 'EDIT_ICON_SVG', 'EMOJI_ICON_SVG', 'TRASH_ICON_SVG',
+]) requireText('phone-control-center.js', controlCenterCode, expected);
 if (controlCenterCode.includes("__pmShowPhonePage?.('desktop')")) {
   failures.push('phone-control-center.js: desktop action must render through showPhoneDesktopPage before switching pages');
 }
@@ -627,7 +662,9 @@ for (const stateField of [
 for (const expected of [
   'resolveCommunityMessageEvents(et)', 'deps.observeCommunityTurn?.(c.chat || [])',
   "registerResolvedHostEvent(c.eventSource, et, 'MESSAGE_RECEIVED'", "registerResolvedHostEvent(c.eventSource, et, 'CHAT_CHANGED'",
-  "deps.cancelCommunityGeneration?.('document-hidden')", "deps.cancelCommunityGeneration?.('host-chat-changed')",
+  'installPhonePageSuspensionListeners', 'updatePhonePageSuspensionHandler', '__pmPageSuspensionHandler',
+  "__pmPageSuspensionHandler?.('beforeunload')", "__pmPageSuspensionHandler?.('document-hidden')",
+  "deps.cancelCommunityGeneration?.('host-chat-changed')", "deps.cancelCalendarTasks?.('host-chat-changed')",
 ]) requireText('phone-foundation.js', sourceModuleByName.get('phone-foundation.js')?.code || '', expected);
 for (const forbidden of [
   "et.MESSAGE_RECEIVED || 'message_received'", "et.CHAT_CHANGED || 'chat_id_changed'",
@@ -636,14 +673,18 @@ for (const forbidden of [
 ]) {
   if (foundationCode.includes(forbidden)) failures.push(`phone-foundation.js: community observer must not guess host event ${forbidden}`);
 }
-for (const expected of ["cancelCommunityGeneration?.('phone-minimized')", "cancelCommunityGeneration?.('phone-closed')"]) {
+for (const expected of [
+  "cancelCommunityGeneration?.('phone-minimized')", "cancelCommunityGeneration?.('phone-closed')",
+  "cancelCalendarTasks?.('phone-minimized')", "cancelCalendarTasks?.('phone-closed')",
+]) {
   requireText('phone-lifecycle.js', sourceModuleByName.get('phone-lifecycle.js')?.code || '', expected);
 }
 for (const expected of [
-  'renderPhoneDesktop', 'desktop-chat', 'desktop-directory', 'desktop-settings', 'desktop-community',
+  'renderPhoneDesktop', 'desktop-chat', 'desktop-directory', 'desktop-settings', 'desktop-calendar', 'desktop-community',
   'desktop-exit', "__pmOpenSettingsTab?.('home')",
   'toggle-scene-pin', 'unpin-scene', 'loadPhoneUiState', 'savePhoneUiState',
   "showPhonePage('community')", 'runDesktopPageTransition', 'showPhoneDesktopPage',
+  "showPhonePage('calendar')", 'showPhoneCalendarPage', 'handleCalendarAction',
   'refreshDesktop(scopeId, store)', 'restorePhoneUi', 'persistPhoneUiSnapshot',
 ]) requireText('interactive-scenes.js', interactiveCode, expected);
 for (const expected of ['data-action="desktop"', 'data-action="exit"', 'class="pm-scene-card-actions"', 'data-action="toggle-scene-pin"', 'data-action="delete-scene"']) {
@@ -654,7 +695,7 @@ for (const forbidden of ['makeOverlay(', 'window.__pmCloseOverlay()']) {
 }
 const phoneLifecycleCode = sourceModuleByName.get('phone-lifecycle.js')?.code || '';
 for (const expected of [
-  'pm-chat-page', 'pm-desktop-page', 'pm-community-page',
+  'pm-chat-page', 'pm-desktop-page', 'pm-community-page', 'pm-calendar-page',
   'createPhonePageController', 'data-phone-page', '__pmShowPhonePage',
   'POKE_ICON_SVG',
   "{ preservePage: true }", 'deps.restorePhoneUi?.()', 'deps.persistPhoneUiSnapshot?.()',
@@ -725,8 +766,10 @@ for (const expected of [
   'ambientStatus.stop();',
 ]) requireText('phone-lifecycle.js', lifecycleCode, expected);
 requireText('package.json', packageText, 'npm run check:ambient');
+requireText('package.json', packageText, '"check:calendar": "node scripts/check-calendar.mjs"');
+requireText('package.json', packageText, 'npm run check:calendar');
 requireText('settings-templates.js', sourceModuleByName.get('settings-templates.js')?.code || '', '仅显示设备本地时间，不联网、不定位，也不会写入提示词。');
-for (const expected of ['手机会话占比 (%)', '互动社区占比 (%)', 'pm-custom-check', 'role="checkbox"', "event.key==='Enter'"]) {
+for (const expected of ['手机会话占比 (%)', '互动社区占比 (%)', '日历占比 (%)', 'pm-budget-calendar-enabled', 'pm-custom-check', 'role="checkbox"', "event.key==='Enter'"]) {
   requireText('settings-templates.js', sourceModuleByName.get('settings-templates.js')?.code || '', expected);
 }
 for (const expected of [".pm-budget-scene.is-checked", "classList.contains('is-checked') === true", 'extractAiResponseContent(j)', 'resolveBudgetPercentageInput']) {
@@ -812,7 +855,7 @@ for (const expected of [
   'runAutoPokeCounterCycle', 'await run(contactName)', 'commitAutomaticResult', 'await persistHistory()', 'persistCounter()',
 ]) requireText('runtime.js', runtimeCode, expected);
 for (const expected of [
-  "disarmAutoPoke('document-hidden')", "disarmAutoPoke('host-chat-changed')",
+  'updatePhonePageSuspensionHandler(window, deps, disarmAutoPoke)', "disarmAutoPoke('host-chat-changed')",
   'hasCompletedAssistantMessage && isAutoPokeAllowed()',
   'createAutomaticTaskController', 'automaticTasks.begin', 'automaticTasks.isActive', 'automaticTasks.finish',
 ]) requireText('phone-foundation.js', foundationCode, expected);

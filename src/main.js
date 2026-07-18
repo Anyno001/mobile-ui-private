@@ -1,4 +1,5 @@
 import { createAiClient } from './ai.js';
+import { installCalendar } from './calendar.js';
 import { installContactGenerator } from './contact-generator.js';
 import { installConversation } from './conversation.js';
 import { installEmojiUi } from './emoji-ui.js';
@@ -62,6 +63,7 @@ import { saveBudgetConfig, saveEmojis } from './storage.js';
         closePhone: force => window.__pmEnd(force),
     });
     installInteractiveScenes(state, deps);
+    installCalendar(state, deps);
     installSettingsUi(deps);
     installPhoneChat(state, deps);
     installPhoneControlCenter(state, deps);

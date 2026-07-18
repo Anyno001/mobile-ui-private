@@ -1,6 +1,6 @@
 import { getInteractivePresets } from './interactive-scene-ai.js';
 import {
-    BACK_ICON_SVG, CHAT_ICON_SVG, CLOSE_ICON_SVG, COMMUNITY_ICON_SVG,
+    BACK_ICON_SVG, CALENDAR_ICON_SVG, CHAT_ICON_SVG, CLOSE_ICON_SVG, COMMUNITY_ICON_SVG,
     CONTACTS_ICON_SVG, HOME_ICON_SVG, MORE_ICON_SVG, SETTINGS_ICON_SVG,
 } from './icons.js';
 import { escapeAttr, escapeHtml } from './ui.js';
@@ -27,6 +27,7 @@ export function renderPhoneDesktop(scope = { scenes: {} }, uiScope = { pinnedSce
             <button type="button" class="pm-desktop-app" data-action="desktop-chat" aria-label="聊天" title="聊天">${CHAT_ICON_SVG}</button>
             <button type="button" class="pm-desktop-app" data-action="desktop-directory" aria-label="联系人" title="联系人">${CONTACTS_ICON_SVG}</button>
             <button type="button" class="pm-desktop-app" data-action="desktop-settings" aria-label="设置" title="设置">${SETTINGS_ICON_SVG}</button>
+            <button type="button" class="pm-desktop-app" data-action="desktop-calendar" aria-label="日历" title="日历">${CALENDAR_ICON_SVG}</button>
             <button type="button" class="pm-desktop-app" data-action="desktop-community" aria-label="社区" title="社区">${COMMUNITY_ICON_SVG}</button>
         </div>
         <section class="pm-desktop-pins"><h3>固定社区</h3>${pins || '<p>在社区中固定场景后，会显示在这里。</p>'}</section>`;

@@ -1,23 +1,29 @@
 import { escapeAttr, escapeHtml } from './ui.js';
 import {
-    CLOSE_ICON_SVG, CONTACTS_ICON_SVG, EDIT_ICON_SVG,
+    CALENDAR_ICON_SVG, CLOSE_ICON_SVG, CONTACTS_ICON_SVG, EDIT_ICON_SVG,
     EMOJI_ICON_SVG, HOME_ICON_SVG, SETTINGS_ICON_SVG, TRASH_ICON_SVG,
 } from './icons.js';
 import {
     clearPendingMessages, getPendingMessages, removePendingMessage, updatePendingMessage,
 } from './pending-messages.js';
 
-export function runControlMenuAction(action, runAction, reportDesktopError) {
-    if (action !== 'desktop') return runAction(action);
-    return Promise.resolve()
-        .then(() => runAction(action))
-        .catch(reportDesktopError);
+const controlActionLabel = action => ({
+    calendar: '打开日历',
+    desktop: '返回桌面',
+})[action] || '执行快捷操作';
+
+export function runControlMenuAction(action, runAction, reportActionError) {
+    const result = runAction(action);
+    if (result && typeof result.then === 'function') {
+        return result.catch(error => reportActionError(error, action));
+    }
+    return result;
 }
 
 export function installPhoneControlCenter(state, deps) {
     const {
         runtime, getStorageId, makeOverlay, parsePendingInput,
-        renderPendingConversation, showPhoneDesktopPage, syncGenerationControls,
+        renderPendingConversation, showPhoneCalendarPage, showPhoneDesktopPage, syncGenerationControls,
     } = deps;
 
     const CONTROL_MENU_ID = 'pm-control-menu';
@@ -110,6 +116,7 @@ export function installPhoneControlCenter(state, deps) {
         else if (action === 'emoji') window.__pmShowEmojiManager();
         else if (action === 'group') window.__pmEditGroup();
         else if (action === 'delete') window.__pmStartDeleteMode();
+        else if (action === 'calendar') return showPhoneCalendarPage();
         else if (action === 'desktop') return showPhoneDesktopPage();
     }
 
@@ -117,8 +124,8 @@ export function installPhoneControlCenter(state, deps) {
         menu.addEventListener('click', event => {
             const button = event.target.closest('button[data-action]');
             if (!button || !menu.contains(button)) return;
-            runControlMenuAction(button.dataset.action, runControlAction, error => {
-                alert(`返回桌面失败：${error?.message || '未知错误'}`);
+            runControlMenuAction(button.dataset.action, runControlAction, (error, action) => {
+                alert(`${controlActionLabel(action)}失败：${error?.message || '未知错误'}`);
             });
         });
         outsideClickHandler = event => {
@@ -154,6 +161,7 @@ export function installPhoneControlCenter(state, deps) {
   <button type="button" role="menuitem" data-action="settings">${SETTINGS_ICON_SVG}角色设置</button>
   ${state.isGroupChat ? `<button type="button" role="menuitem" data-action="group">${CONTACTS_ICON_SVG}群聊设置</button>` : ''}
   <button type="button" role="menuitem" data-action="emoji">${EMOJI_ICON_SVG}表情包管理</button>
+  <button type="button" role="menuitem" data-action="calendar">${CALENDAR_ICON_SVG}日历</button>
   <button type="button" role="menuitem" data-action="delete" class="pm-control-menu-danger">${TRASH_ICON_SVG}删除信息</button>
   <button type="button" role="menuitem" data-action="desktop">${HOME_ICON_SVG}返回桌面</button>`;
         phone.appendChild(menu);

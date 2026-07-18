@@ -94,7 +94,7 @@ export function bindPhonePageActions(phoneWindow, handleAction, reportError) {
         const keepWrap = button?.dataset?.action === 'more' ? button.closest('.pm-scene-menu-wrap') : null;
         closeSceneMenus(phoneWindow, keepWrap);
         if (!button || !phoneWindow.contains(button)) return;
-        const app = button.closest('#pm-scene-app') || button.closest('.pm-desktop-page');
+        const app = button.closest('#pm-scene-app') || button.closest('#pm-calendar-app') || button.closest('.pm-desktop-page');
         if (!app) return;
         Promise.resolve(handleAction(button, app)).catch(error => {
             if (error.message !== '生成已取消') reportError(error);

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import {
-    EXTENSION_PROMPT_POSITIONS, MAX_INJECTION_DEPTH,
+    CALENDAR_CYCLE_STORAGE_KEY, CALENDAR_HOLIDAY_STORAGE_KEY, CALENDAR_OCCASION_STORAGE_KEY,
+    CALENDAR_STORAGE_KEY, CALENDAR_WEATHER_STORAGE_KEY, EXTENSION_PROMPT_POSITIONS, MAX_INJECTION_DEPTH,
 } from '../src/constants.js';
 import {
     buildCharacterBehaviorPrompt, buildChatPreferencePrompt,
@@ -31,7 +32,63 @@ import {
     createAutomaticTaskController, createRuntimeState, runAutoPokeCounterCycle,
 } from '../src/runtime.js';
 import { createPhonePageController } from '../src/phone-lifecycle.js';
+import {
+    handlePhonePageSuspension, installPhonePageSuspensionListeners, updatePhonePageSuspensionHandler,
+} from '../src/phone-foundation.js';
 import { bindPhonePageActions, finalizeDeletedScene, runDeleteSceneAction } from '../src/interactive-scene-phone.js';
+
+const suspensionCalls = [];
+handlePhonePageSuspension({
+    cancelCommunityGeneration: reason => suspensionCalls.push(['community', reason]),
+    cancelCalendarTasks: reason => suspensionCalls.push(['calendar', reason]),
+}, 'beforeunload', {
+    save: () => suspensionCalls.push(['save', 'beforeunload']),
+    disarm: reason => suspensionCalls.push(['disarm', reason]),
+});
+assert.deepEqual(suspensionCalls, [
+    ['save', 'beforeunload'],
+    ['community', 'beforeunload'],
+    ['calendar', 'beforeunload'],
+    ['disarm', 'beforeunload'],
+]);
+
+const pageWindowListeners = new Map();
+const pageDocumentListeners = new Map();
+const pageWindow = {
+    addEventListener(type, listener) {
+        assert.equal(pageWindowListeners.has(type), false, `${type} 监听器只能注册一次`);
+        pageWindowListeners.set(type, listener);
+    },
+};
+const pageDocument = {
+    visibilityState: 'visible',
+    addEventListener(type, listener) {
+        assert.equal(pageDocumentListeners.has(type), false, `${type} 监听器只能注册一次`);
+        pageDocumentListeners.set(type, listener);
+    },
+};
+assert.equal(installPhonePageSuspensionListeners(pageWindow, pageDocument), true);
+assert.equal(installPhonePageSuspensionListeners(pageWindow, pageDocument), false);
+const pageHandlerCalls = [];
+updatePhonePageSuspensionHandler(pageWindow, {
+    cancelCommunityGeneration: reason => pageHandlerCalls.push(['old-community', reason]),
+    cancelCalendarTasks: reason => pageHandlerCalls.push(['old-calendar', reason]),
+}, reason => pageHandlerCalls.push(['old-disarm', reason]),
+() => pageHandlerCalls.push(['old-save']));
+updatePhonePageSuspensionHandler(pageWindow, {
+    cancelCommunityGeneration: reason => pageHandlerCalls.push(['current-community', reason]),
+    cancelCalendarTasks: reason => pageHandlerCalls.push(['current-calendar', reason]),
+}, reason => pageHandlerCalls.push(['current-disarm', reason]),
+() => pageHandlerCalls.push(['current-save']));
+pageWindowListeners.get('beforeunload')();
+pageDocument.visibilityState = 'hidden';
+pageDocumentListeners.get('visibilitychange')();
+assert.deepEqual(pageHandlerCalls, [
+    ['current-save'], ['current-community', 'beforeunload'], ['current-calendar', 'beforeunload'], ['current-disarm', 'beforeunload'],
+    ['current-save'], ['current-community', 'document-hidden'], ['current-calendar', 'document-hidden'], ['current-disarm', 'document-hidden'],
+]);
+assert.equal(pageWindowListeners.size, 1);
+assert.equal(pageDocumentListeners.size, 1);
 
 assert.deepEqual(normalizeCharacterBehavior(null), DEFAULT_CHARACTER_BEHAVIOR);
 assert.deepEqual(normalizeCharacterBehavior({
@@ -483,18 +540,70 @@ const uiElements = new Map([
     ['pm-overlay', { removed: false, remove() { this.removed = true; } }],
 ]);
 globalThis.alert = message => uiAlerts.push(String(message));
+const originalFileReader = globalThis.FileReader;
+let fileReadCompletion = Promise.resolve();
+globalThis.FileReader = class FakeFileReader {
+    readAsText(file) {
+        fileReadCompletion = Promise.resolve().then(() => this.onload({ target: { result: file.text } }));
+    }
+};
 globalThis.document = {
     getElementById: id => uiElements.get(id) || null,
     querySelectorAll: () => [],
 };
 const appliedThemes = [];
 const uiNotes = [];
+let importCloseCalls = 0;
+let importInjectionCalls = 0;
+let importInjectionImpl = async () => undefined;
+let importClearInjectionCalls = 0;
+let importCancelCommunityCalls = 0;
 installSettingsUi({
     makeOverlay: () => {}, applyTheme: () => appliedThemes.push(structuredClone(window.__pmTheme)), applyBackground: () => {},
     fitNameFont: () => {}, addNote: note => uiNotes.push(note), getCurrentPersona: () => 'default', getStorageId: () => 'story',
-    runtime: { modelList: [] }, closePhone: () => {}, applyBidirectionalInjection: async () => {}, clearBidirectionalInjection: () => {},
+    runtime: { modelList: [] },
+    closePhone: () => { importCloseCalls += 1; },
+    applyBidirectionalInjection: async () => {
+        importInjectionCalls += 1;
+        return importInjectionImpl();
+    },
+    clearBidirectionalInjection: () => { importClearInjectionCalls += 1; },
+    cancelCommunityGeneration: () => { importCancelCommunityCalls += 1; },
     getInteractiveStore: async () => ({ scopes: {} }),
 });
+
+const importInput = {
+    files: [{ text: JSON.stringify({
+        schemaVersion: 5,
+        calendarCycles: {
+            version: 1,
+            scopes: { story: { enabled: true, lastPeriodStart: null, cycleLength: 28, periodLength: 5, overrides: {} } },
+        },
+    }) }],
+    value: 'calendar-invalid.json',
+};
+const importWritesBefore = localStorageWrites.length;
+const importGlobalsBefore = {
+    histories: structuredClone(window.__pmHistories),
+    theme: structuredClone(window.__pmTheme),
+    config: structuredClone(window.__pmConfig),
+};
+const importAlertsBefore = uiAlerts.length;
+window.__pmImportData(importInput);
+await fileReadCompletion;
+assert.equal(importInput.value, '');
+assert.equal(importCancelCommunityCalls, 0, 'prepare 失败不得取消社区任务');
+assert.equal(importClearInjectionCalls, 0, 'prepare 失败不得清理现有注入');
+assert.equal(importInjectionCalls, 0, 'prepare 失败不得执行恢复性注入');
+assert.equal(importCloseCalls, 0, 'prepare 失败不得关闭手机界面');
+assert.equal(localStorageWrites.length, importWritesBefore, 'prepare 失败不得写入 localStorage');
+assert.deepEqual(window.__pmHistories, importGlobalsBefore.histories);
+assert.deepEqual(window.__pmTheme, importGlobalsBefore.theme);
+assert.deepEqual(window.__pmConfig, importGlobalsBefore.config);
+assert.equal(uiElements.get('pm-overlay').removed, false);
+assert.equal(uiAlerts.length, importAlertsBefore + 1);
+assert.match(uiAlerts.at(-1), /导入失败，未修改现有数据/);
+assert.doesNotMatch(uiAlerts.at(-1), /原数据已恢复/);
 
 const baseTheme = { preset: 'default', customRight: '', customLeft: '', borderColor: '#1a1a1a', darkMode: 'light', customTitle: '' };
 for (const [handler, setup, invoke] of [
@@ -847,6 +956,11 @@ const currentBackup = {
     histories: {}, config: {}, theme: { darkMode: 'dark', ambientStatusEnabled: true }, profiles: [], groupMeta: {}, pokeConfig: {},
     bidirectional: {}, emojis: [], characterBehavior: {}, wordyLimit: false,
     bgGlobal: '', bgLocal: {}, interactiveScenes: { version: 1, scopes: {} },
+    calendarStore: { version: 1, scopes: { current: { events: {} } } },
+    calendarOccasions: { version: 1, scopes: {} },
+    calendarHolidays: { version: 1, selectedCountry: 'JP', years: {} },
+    calendarWeather: { version: 1, location: null, lastSuccess: null },
+    calendarCycles: { version: 1, scopes: {} },
     phoneUiState: {
         version: 1,
         scopes: { story: { pinnedSceneIds: [], lastPage: 'chat', lastSceneId: null, lastTab: 'feed' } },
@@ -876,7 +990,7 @@ for (const schemaVersion of [undefined, 2, 3]) {
     assert.equal(Object.hasOwn(backup.theme, 'ambientStatusEnabled'), true);
 }
 assert.throws(() => parseBackupData({ schemaVersion: '3' }, currentBackup), /备份版本无效/);
-assert.throws(() => parseBackupData({ schemaVersion: 5 }, currentBackup), /高于当前支持版本 4/);
+assert.throws(() => parseBackupData({ schemaVersion: 6 }, currentBackup), /高于当前支持版本 5/);
 const parsedV4Backup = parseBackupData({
     schemaVersion: 4,
     theme: { darkMode: 'light', ambientStatusEnabled: true },
@@ -916,6 +1030,68 @@ assert.deepEqual(parsedV4Defaults.phoneUiState, { version: 1, scopes: {} });
 assert.deepEqual(parsedV4Defaults.ambientStatus, { enabled: false });
 assert.throws(() => parseBackupData({ schemaVersion: 4, phoneUiState: [] }, currentBackup), /phoneUiState 必须是对象/);
 assert.throws(() => parseBackupData({ schemaVersion: 4, ambientStatus: [] }, currentBackup), /ambientStatus 必须是对象/);
+assert.equal(parsedV4Defaults.calendarHolidays.selectedCountry, 'JP', 'v4 备份不得清空现有日历数据');
+const parsedV5Backup = parseBackupData({
+    schemaVersion: 5,
+    calendarStore: { version: 1, scopes: {} },
+    calendarOccasions: { version: 1, scopes: {} },
+    calendarHolidays: { version: 1, selectedCountry: 'US', years: {} },
+    calendarWeather: { version: 1, location: null, lastSuccess: null },
+    calendarCycles: { version: 1, scopes: {} },
+}, currentBackup);
+assert.deepEqual(parsedV5Backup.calendarStore.scopes, {});
+assert.equal(parsedV5Backup.calendarHolidays.selectedCountry, 'US');
+assert.throws(() => parseBackupData({ schemaVersion: 5, calendarStore: [] }, currentBackup), /calendarStore 必须是对象/);
+assert.throws(() => parseBackupData({ schemaVersion: 5, calendarWeather: [] }, currentBackup), /calendarWeather 必须是对象/);
+const assertInvalidV5CalendarField = (field, value, pattern = new RegExp(field)) => {
+    assert.throws(() => parseBackupData({ schemaVersion: 5, [field]: value }, currentBackup), pattern);
+};
+assertInvalidV5CalendarField('calendarStore', {
+    version: 1,
+    scopes: { story: { autoAdjust: false, events: { '2026-07-01': [{ id: 'bad', date: '2026-07-01', title: '', note: '', source: 'manual', createdAt: 1, updatedAt: 1 }] }, lastGeneratedAt: 0, lastAdjustedAt: 0 } },
+});
+assertInvalidV5CalendarField('calendarStore', {
+    version: 1, scopes: {}, unsupported: true,
+});
+assertInvalidV5CalendarField('calendarOccasions', {
+    version: 1,
+    scopes: { story: { occasions: [{ id: 'bad', type: 'birthday', month: 2, day: 30, title: '坏日期', note: '', leapDayRule: 'feb28', createdAt: 1, updatedAt: 1 }] } },
+});
+assertInvalidV5CalendarField('calendarHolidays', {
+    version: 1, selectedCountry: 'XX', years: {},
+});
+assertInvalidV5CalendarField('calendarWeather', {
+    version: 1,
+    location: { name: '上海', latitude: 31.2, longitude: 121.4, country: 'CN', admin1: '', timezone: 'Asia/Shanghai' },
+    lastSuccess: {
+        locationKey: '35,139|东京', fetchedAt: 1,
+        forecast: { days: [{ date: '2026-07-01', weatherCode: 1, tempMax: 30, tempMin: 20 }], attribution: 'Weather data by Open-Meteo (CC BY 4.0)' },
+    },
+});
+assertInvalidV5CalendarField('calendarCycles', {
+    version: 1,
+    scopes: { story: { enabled: true, lastPeriodStart: null, cycleLength: 28, periodLength: 5, overrides: {} } },
+}, /启用周期提示时必须设置/);
+
+let prepareBeforeApplyCalls = 0;
+let prepareApplyCalls = 0;
+let preparePersistCalls = 0;
+await assert.rejects(runBackupTransaction({
+    capture: async () => structuredClone(currentBackup),
+    prepare: current => parseBackupData({
+        schemaVersion: 5,
+        calendarCycles: {
+            version: 1,
+            scopes: { story: { enabled: true, lastPeriodStart: null, cycleLength: 28, periodLength: 5, overrides: {} } },
+        },
+    }, current),
+    beforeApply: async () => { prepareBeforeApplyCalls += 1; },
+    apply: async () => { prepareApplyCalls += 1; },
+    persist: async () => { preparePersistCalls += 1; },
+}), /启用周期提示时必须设置/);
+assert.equal(prepareBeforeApplyCalls, 0, '备份校验失败不得进入事务副作用阶段');
+assert.equal(prepareApplyCalls, 0, '备份校验失败不得修改内存状态');
+assert.equal(preparePersistCalls, 0, '备份校验失败不得写入存储');
 assert.throws(() => parseBackupData({ schemaVersion: 3, histories: 'broken' }, currentBackup), /histories 必须是对象/);
 assert.throws(() => parseBackupData({ schemaVersion: 3, profiles: {} }, currentBackup), /profiles 必须是数组/);
 assert.throws(() => parseBackupData({ schemaVersion: 3, wordyLimit: 'yes' }, currentBackup), /wordyLimit 必须是布尔值/);
@@ -1462,6 +1638,11 @@ const createBackupTransactionFixture = (sceneId, ambientStatusEnabled) => ({
         },
     },
     ambientStatus: { enabled: ambientStatusEnabled },
+    calendarStore: { version: 1, scopes: { story: { autoAdjust: false, events: {}, lastGeneratedAt: 0, lastAdjustedAt: 0 } } },
+    calendarOccasions: { version: 1, scopes: { story: { occasions: [] } } },
+    calendarHolidays: { version: 1, selectedCountry: sceneId === 'scene-old' ? 'JP' : 'US', years: {} },
+    calendarWeather: { version: 1, location: { name: sceneId, latitude: 35, longitude: 139, country: 'JP', timezone: 'Asia/Tokyo' }, lastSuccess: null },
+    calendarCycles: { version: 1, scopes: { story: { enabled: true, lastPeriodStart: '2026-07-01', cycleLength: sceneId === 'scene-old' ? 28 : 30, periodLength: 5, overrides: {} } } },
 });
 const originalBackupFixture = createBackupTransactionFixture('scene-old', true);
 const importedBackupFixture = createBackupTransactionFixture('scene-new', false);
@@ -1474,6 +1655,67 @@ const backupHandlers = createBackupStateHandlers({
     invalidateInteractiveStore: () => { interactiveInvalidations += 1; },
 });
 await backupHandlers.persist(await backupHandlers.apply(originalBackupFixture));
+
+globalThis.document = {
+    getElementById: id => uiElements.get(id) || null,
+    querySelectorAll: () => [],
+};
+globalThis.alert = message => uiAlerts.push(String(message));
+const runCommittedImportFailureCase = async ({ configModel, injection, expectedDetail }) => {
+    uiElements.get('pm-overlay').removed = false;
+    const alertsBefore = uiAlerts.length;
+    const closeCallsBefore = importCloseCalls;
+    const injectionCallsBefore = importInjectionCalls;
+    const clearCallsBefore = importClearInjectionCalls;
+    const cancelCallsBefore = importCancelCommunityCalls;
+    importInjectionImpl = injection;
+    const input = {
+        files: [{ text: JSON.stringify({
+            schemaVersion: 5,
+            config: { apiUrl: 'https://imported.example', apiKey: 'imported-key', model: configModel, useIndependent: false },
+        }) }],
+        value: `${configModel}.json`,
+    };
+
+    window.__pmImportData(input);
+    await fileReadCompletion;
+
+    assert.equal(input.value, '');
+    assert.equal(window.__pmConfig.model, configModel, '后处理注入失败前导入数据必须已经应用到运行时');
+    assert.equal(JSON.parse(localValues.get('ST_SMS_CONFIG')).model, configModel, '后处理注入失败前导入数据必须已经持久化');
+    assert.equal(importClearInjectionCalls, clearCallsBefore + 1, '成功事务必须在 apply 前清理旧注入');
+    assert.equal(importCancelCommunityCalls, cancelCallsBefore + 1, '成功事务必须取消旧社区任务');
+    assert.equal(importInjectionCalls, injectionCallsBefore + 1, '事务提交后必须尝试刷新注入');
+    assert.equal(importCloseCalls, closeCallsBefore + 1, '数据已提交时即使注入失败也必须关闭旧界面');
+    assert.equal(uiElements.get('pm-overlay').removed, true, '数据已提交时即使注入失败也必须移除旧遮罩');
+    assert.equal(uiAlerts.length, alertsBefore + 1);
+    assert.match(uiAlerts.at(-1), /数据已导入，但注入刷新失败/);
+    assert.match(uiAlerts.at(-1), expectedDetail);
+    assert.doesNotMatch(uiAlerts.at(-1), /未修改现有数据|原数据已恢复/);
+};
+
+await runCommittedImportFailureCase({
+    configModel: 'post-import-reject',
+    injection: async () => { throw new Error('宿主注入接口拒绝'); },
+    expectedDetail: /宿主注入接口拒绝/,
+});
+await runCommittedImportFailureCase({
+    configModel: 'post-import-diagnostic',
+    injection: async () => ({ written: 1, failedWrites: 2, cleared: 1, failedKeys: ['PHONE_SMS_MEMORY:stale'] }),
+    expectedDetail: /导入后的注入刷新失败：2 项写入失败，1 项清理失败/,
+});
+await backupHandlers.persist(await backupHandlers.apply(originalBackupFixture));
+importInjectionImpl = async () => undefined;
+delete globalThis.document;
+delete globalThis.alert;
+if (originalFileReader === undefined) delete globalThis.FileReader;
+else globalThis.FileReader = originalFileReader;
+
+assert.equal(JSON.parse(localValues.get(CALENDAR_HOLIDAY_STORAGE_KEY)).selectedCountry, 'JP');
+assert.equal(JSON.parse(localValues.get(CALENDAR_WEATHER_STORAGE_KEY)).location.name, 'scene-old');
+assert.equal(JSON.parse(localValues.get(CALENDAR_CYCLE_STORAGE_KEY)).scopes.story.cycleLength, 28);
+assert.ok(JSON.parse(localValues.get(CALENDAR_STORAGE_KEY)).scopes.story);
+assert.ok(JSON.parse(localValues.get(CALENDAR_OCCASION_STORAGE_KEY)).scopes.story);
 const initialInvalidations = interactiveInvalidations;
 localStorageWrites.length = 0;
 localStorageControl.failSet.add('ST_SMS_PHONE_UI_STATE');
@@ -1486,6 +1728,9 @@ assert.equal(window.__pmTheme.ambientStatusEnabled, true);
 assert.deepEqual(window.__pmPhoneUiState.scopes.story.pinnedSceneIds, ['scene-old']);
 assert.equal(JSON.parse(localValues.get('ST_SMS_THEME')).ambientStatusEnabled, true);
 assert.deepEqual(JSON.parse(localValues.get('ST_SMS_PHONE_UI_STATE')).scopes.story.pinnedSceneIds, ['scene-old']);
+assert.equal(JSON.parse(localValues.get(CALENDAR_HOLIDAY_STORAGE_KEY)).selectedCountry, 'JP');
+assert.equal(JSON.parse(localValues.get(CALENDAR_WEATHER_STORAGE_KEY)).location.name, 'scene-old');
+assert.equal(JSON.parse(localValues.get(CALENDAR_CYCLE_STORAGE_KEY)).scopes.story.cycleLength, 28);
 assert.deepEqual(idbValues.get('ST_INTERACTIVE_SCENES_V1').scopes.story.sceneOrder, ['scene-old']);
 assert.deepEqual(
     localStorageWrites.filter(entry => entry.key === 'ST_SMS_THEME').map(entry => JSON.parse(entry.value).ambientStatusEnabled),
@@ -1511,6 +1756,9 @@ assert.equal(window.__pmTheme.ambientStatusEnabled, true);
 assert.deepEqual(window.__pmPhoneUiState.scopes.story.pinnedSceneIds, ['scene-old']);
 assert.equal(JSON.parse(localValues.get('ST_SMS_THEME')).ambientStatusEnabled, true);
 assert.deepEqual(JSON.parse(localValues.get('ST_SMS_PHONE_UI_STATE')).scopes.story.pinnedSceneIds, ['scene-old']);
+assert.equal(JSON.parse(localValues.get(CALENDAR_HOLIDAY_STORAGE_KEY)).selectedCountry, 'JP');
+assert.equal(JSON.parse(localValues.get(CALENDAR_WEATHER_STORAGE_KEY)).location.name, 'scene-old');
+assert.equal(JSON.parse(localValues.get(CALENDAR_CYCLE_STORAGE_KEY)).scopes.story.cycleLength, 28);
 assert.deepEqual(idbValues.get('ST_INTERACTIVE_SCENES_V1').scopes.story.sceneOrder, ['scene-old']);
 assert.deepEqual(
     localStorageWrites.filter(entry => entry.key === 'ST_SMS_THEME').map(entry => JSON.parse(entry.value).ambientStatusEnabled),
@@ -1590,7 +1838,7 @@ delete globalThis.indexedDB;
 delete globalThis.localStorage;
 delete globalThis.window;
 
-const pageSections = ['chat', 'desktop', 'community'].map(page => ({ dataset: { phonePage: page }, hidden: false }));
+const pageSections = ['chat', 'desktop', 'community', 'calendar'].map(page => ({ dataset: { phonePage: page }, hidden: false }));
 const pageMain = {
     dataset: { page: 'chat' },
     querySelectorAll(selector) {
@@ -1614,16 +1862,18 @@ assert.equal(pageController.current(), 'chat');
 assert.equal(pageController.show('desktop'), true);
 assert.equal(pageController.current(), 'desktop');
 assert.deepEqual(pageSections.map(section => [section.dataset.phonePage, section.hidden]), [
-    ['chat', true], ['desktop', false], ['community', true],
+    ['chat', true], ['desktop', false], ['community', true], ['calendar', true],
 ]);
 assert.equal(pageController.show('community'), true);
-assert.deepEqual(pageSections.map(section => section.hidden), [true, true, false]);
+assert.deepEqual(pageSections.map(section => section.hidden), [true, true, false, true]);
+assert.equal(pageController.show('calendar'), true);
+assert.deepEqual(pageSections.map(section => section.hidden), [true, true, true, false]);
 assert.equal(pageController.show('chat'), true);
-assert.deepEqual(pageSections.map(section => section.hidden), [false, true, true]);
+assert.deepEqual(pageSections.map(section => section.hidden), [false, true, true, true]);
 assert.equal(pageSections[0], chatSectionReference, '页面切换不得替换聊天 DOM 节点');
 assert.equal(pageController.show('invalid-page'), true);
 assert.equal(pageController.current(), 'desktop');
-assert.equal(transientCloseCount, 4);
+assert.equal(transientCloseCount, 5);
 phoneRoot = null;
 assert.equal(pageController.show('chat'), false);
 assert.equal(pageController.current(), null);
@@ -1631,7 +1881,7 @@ assert.equal(pageController.current(), null);
 const baseDesktopHtml = renderPhoneDesktop({ scenes: {} }, { pinnedSceneIds: [] });
 assert.ok(baseDesktopHtml.length > 0, '无有效会话时基础桌面不得为空');
 assert.match(baseDesktopHtml, /<span>天音小笺<\/span>/, '旧主题或无主题时桌面标题必须回退为品牌名');
-for (const action of ['desktop-chat', 'desktop-directory', 'desktop-settings', 'desktop-community', 'desktop-exit']) {
+for (const action of ['desktop-chat', 'desktop-directory', 'desktop-settings', 'desktop-calendar', 'desktop-community', 'desktop-exit']) {
     assert.ok(baseDesktopHtml.includes(`data-action="${action}"`), `基础桌面缺少 ${action} 入口`);
 }
 globalThis.window = { __pmTheme: { customTitle: '雨夜 & 电台' } };
@@ -1754,12 +2004,14 @@ assert.deepEqual(supersededRollbackCalls, ['render', ['show', 'desktop'], 'persi
 assert.equal(supersededCurrentPage, 'community', '持久化失败不得覆盖事务期间发生的新导航');
 
 let desktopErrorMessage = '';
+let desktopErrorAction = '';
 await runControlMenuAction(
     'desktop',
     () => Promise.reject(new Error('desktop unavailable')),
-    error => { desktopErrorMessage = error.message; },
+    (error, action) => { desktopErrorMessage = error.message; desktopErrorAction = action; },
 );
 assert.equal(desktopErrorMessage, 'desktop unavailable');
+assert.equal(desktopErrorAction, 'desktop');
 let nonDesktopErrorReported = false;
 assert.throws(() => runControlMenuAction(
     'settings',
@@ -1767,6 +2019,22 @@ assert.throws(() => runControlMenuAction(
     () => { nonDesktopErrorReported = true; },
 ), /settings unavailable/);
 assert.equal(nonDesktopErrorReported, false, '非桌面 action 不得误报为返回桌面失败');
+let calendarErrorMessage = '';
+let calendarErrorAction = '';
+await runControlMenuAction(
+    'calendar',
+    () => Promise.reject(new Error('calendar unavailable')),
+    (error, action) => { calendarErrorMessage = error.message; calendarErrorAction = action; },
+);
+assert.equal(calendarErrorMessage, 'calendar unavailable', '日历异步错误应通过 report handler 传递');
+assert.equal(calendarErrorAction, 'calendar', '错误报告必须知道失败的是日历动作');
+let calendarSyncErrorReported = false;
+assert.throws(() => runControlMenuAction(
+    'calendar',
+    () => { throw new Error('calendar sync fail'); },
+    () => { calendarSyncErrorReported = true; },
+), /calendar sync fail/);
+assert.equal(calendarSyncErrorReported, false, '日历同步异常不应误报');
 
 const finalizerCalls = [];
 assert.throws(() => finalizeDeletedScene({
@@ -1868,10 +2136,11 @@ await assert.rejects(() => runDeleteSceneAction('story', 'scene-cancel', {
 assert.deepEqual(failedCommitCalls, ['invalidate', 'commit']);
 
 const delegatedListeners = new Map();
-let delegatedActionCount = 0;
+const delegatedActions = [];
 let openSceneMenus = [];
 const delegatedErrors = [];
 const desktopApp = { kind: 'desktop' };
+const calendarApp = { id: 'pm-calendar-app' };
 const actionButton = {
     dataset: { action: 'desktop-chat' },
     closest(selector) {
@@ -1893,14 +2162,12 @@ const delegatedPhoneRoot = {
         delegatedListeners.set(type, listener);
     },
     querySelectorAll(selector) { assert.equal(selector, '.pm-scene-menu:not([hidden])'); return openSceneMenus.filter(menu => !menu.hidden); },
-    contains(node) { return node === actionButton; },
+    contains(node) { return node === actionButton || node === calendarActionButton; },
 };
 assert.equal(bindPhonePageActions(
     delegatedPhoneRoot,
     (button, app) => {
-        assert.equal(button, actionButton);
-        assert.equal(app, desktopApp);
-        delegatedActionCount += 1;
+        delegatedActions.push({ button, app });
     },
     error => delegatedErrors.push(error),
 ), true);
@@ -1908,7 +2175,29 @@ assert.equal(bindPhonePageActions(delegatedPhoneRoot, () => {}, () => {}), false
 assert.deepEqual([...delegatedListeners.keys()], ['click', 'keydown']);
 delegatedListeners.get('click')({ target: actionTarget });
 await Promise.resolve();
-assert.equal(delegatedActionCount, 1, '重复绑定后一次点击只能分发一次');
+assert.deepEqual(delegatedActions, [{ button: actionButton, app: desktopApp }], '重复绑定后一次点击只能分发一次');
+assert.deepEqual(delegatedErrors, []);
+
+const calendarActionButton = {
+    dataset: { action: 'calendar-occasion-save' },
+    closest(selector) {
+        if (selector === '#pm-scene-app') return null;
+        if (selector === '#pm-calendar-app') return calendarApp;
+        return null;
+    },
+};
+const calendarActionTarget = {
+    closest(selector) {
+        assert.equal(selector, '[data-action]');
+        return calendarActionButton;
+    },
+};
+delegatedListeners.get('click')({ target: calendarActionTarget });
+await Promise.resolve();
+assert.deepEqual(delegatedActions, [
+    { button: actionButton, app: desktopApp },
+    { button: calendarActionButton, app: calendarApp },
+], '日历页面动作必须进入统一事件委托并保留目标 app');
 assert.deepEqual(delegatedErrors, []);
 
 let menuFocused = false;

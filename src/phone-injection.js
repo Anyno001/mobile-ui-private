@@ -5,8 +5,10 @@ import { allocateContextBudget, estimateContextTokens, normalizeBudgetConfig, tr
 import { renderCommunitySource } from './community-injection.js';
 import { resolveEmojiText } from './messaging.js';
 import { resolveCommunitySources, resolvePhoneSources } from './permissions.js';
+import { calendarScopeFor, renderCalendarInjection } from './calendar-model.js';
 
 const COMMUNITY_KEY_PREFIX = `${BIDIRECTIONAL_KEY}:community:`;
+const CALENDAR_KEY_PREFIX = `${BIDIRECTIONAL_KEY}:calendar:`;
 
 function injectionKey(name) {
     return `${BIDIRECTIONAL_KEY}:${encodeURIComponent(name)}`;
@@ -91,7 +93,7 @@ function allocateRenderedPrompts(items, tokenLimit) {
 
 export function buildContextInjectionPrompts({
     currentStorageId, currentActorName, selectedByStorage, historiesByStorage, groupsByStorage,
-    interactiveStore, budgetConfig, userName, emojis, safeMaxTokens,
+    interactiveStore, budgetConfig, userName, emojis, safeMaxTokens, calendarStore,
 } = {}) {
     const config = normalizeBudgetConfig(budgetConfig);
     const phonePermission = resolvePhoneSources({
@@ -124,22 +126,39 @@ export function buildContextInjectionPrompts({
             depth: config.communityDepth,
         }];
     }) : [];
+    // Calendar injection: only regular events (no occasion/cycle/holiday/weather)
+    let calendarItems = [];
+    if (config.calendarEnabled && calendarStore && currentStorageId) {
+        const scope = calendarScopeFor(calendarStore, currentStorageId);
+        const body = renderCalendarInjection(scope);
+        if (body) {
+            calendarItems.push({
+                key: `${CALENDAR_KEY_PREFIX}${encodeURIComponent(currentStorageId)}`,
+                content: `[日程安排]\n${body}\n[结束]`,
+                position: config.calendarPosition,
+                depth: config.calendarDepth,
+            });
+        }
+    }
     const demandBySource = {
         phone: phoneItems.reduce((sum, item) => sum + estimateContextTokens(item.content).estimatedTokens, 0),
         community: communityItems.reduce((sum, item) => sum + estimateContextTokens(item.content).estimatedTokens, 0),
+        calendar: calendarItems.reduce((sum, item) => sum + estimateContextTokens(item.content).estimatedTokens, 0),
     };
     const budget = allocateContextBudget({ config, safeMaxTokens, demandBySource });
     const phone = allocateRenderedPrompts(phoneItems, budget.allocations.phone);
     const community = allocateRenderedPrompts(communityItems, budget.allocations.community);
+    const calendar = allocateRenderedPrompts(calendarItems, budget.allocations.calendar);
     return {
-        prompts: [...phone.prompts, ...community.prompts],
+        prompts: [...phone.prompts, ...community.prompts, ...calendar.prompts],
         diagnostics: {
             estimated: true,
             budget,
             phonePermission: { allowed: phonePermission.allowed, reason: phonePermission.reason, sourceCount: phonePermission.sources.length },
             communityPermission: { allowed: communityPermission.allowed, reason: communityPermission.reason, sourceCount: communityPermission.sources.length },
-            usedTokens: phone.usedTokens + community.usedTokens,
-            truncatedCount: phone.truncatedCount + community.truncatedCount,
+            calendarEnabled: config.calendarEnabled,
+            usedTokens: phone.usedTokens + community.usedTokens + calendar.usedTokens,
+            truncatedCount: phone.truncatedCount + community.truncatedCount + calendar.truncatedCount,
         },
     };
 }

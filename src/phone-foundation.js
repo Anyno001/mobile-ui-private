@@ -14,6 +14,35 @@ import {
     saveBidirectional, saveHistories, saveHistoriesBeforeUnload,
 } from './storage.js';
 
+export function installPhonePageSuspensionListeners(windowRef = window, documentRef = document) {
+    if (windowRef.__pmBeforeUnloadRegistered) return false;
+    windowRef.addEventListener('beforeunload', () => windowRef.__pmPageSuspensionHandler?.('beforeunload'));
+    documentRef.addEventListener('visibilitychange', () => {
+        if (documentRef.visibilityState === 'hidden') {
+            windowRef.__pmPageSuspensionHandler?.('document-hidden');
+        }
+    });
+    windowRef.__pmBeforeUnloadRegistered = true;
+    return true;
+}
+
+export function updatePhonePageSuspensionHandler(windowRef, deps, disarm, save = saveHistoriesBeforeUnload) {
+    windowRef.__pmPageSuspensionHandler = reason => handlePhonePageSuspension(
+        deps, reason, { disarm, save },
+    );
+    return windowRef.__pmPageSuspensionHandler;
+}
+
+export function handlePhonePageSuspension(deps, reason, {
+    save = saveHistoriesBeforeUnload,
+    disarm = () => {},
+} = {}) {
+    save();
+    deps.cancelCommunityGeneration?.(reason);
+    deps.cancelCalendarTasks?.(reason);
+    disarm(reason);
+}
+
 export function installPhoneFoundation(state, deps) {
     const { runtime, getCtx, getStorageId, getUserPersona } = deps;
     const automaticTasks = createAutomaticTaskController({
@@ -29,20 +58,9 @@ export function installPhoneFoundation(state, deps) {
     const beginAutomaticTask = automaticTasks.begin;
     const isAutomaticTaskActive = automaticTasks.isActive;
     const finishAutomaticTask = automaticTasks.finish;
-    // 避免重复加载插件时重复注册
-    if (!window.__pmBeforeUnloadRegistered) {
-        window.addEventListener('beforeunload', saveHistoriesBeforeUnload);
-        // TT酒馆(TauriTavern) WebView 在移动端被挂起/切到后台时不触发 beforeunload，
-        // 页面隐藏时既要同步保存，也要撤销自动任务运行权；恢复可见不会自动重新授权。
-        document.addEventListener('visibilitychange', () => {
-            if (document.visibilityState === 'hidden') {
-                saveHistoriesBeforeUnload();
-                deps.cancelCommunityGeneration?.('document-hidden');
-                disarmAutoPoke('document-hidden');
-            }
-        });
-        window.__pmBeforeUnloadRegistered = true;
-    }
+    // 监听器只注册一次，但每次安装都更新当前依赖，避免热重载后继续调用旧任务控制器。
+    updatePhonePageSuspensionHandler(window, deps, disarmAutoPoke);
+    installPhonePageSuspensionListeners(window, document);
 
     window.__pmHistories = window.__pmHistories || {};
     window.__pmConfig = window.__pmConfig || { apiUrl: '', apiKey: '', model: '', useIndependent: false };
@@ -190,6 +208,15 @@ export function installPhoneFoundation(state, deps) {
         return clearExtensionPrompts({ context: getCtx(), runtime });
     }
 
+    function getCalendarStore() {
+        try {
+            const store = deps.getCalendarStore?.();
+            return store || null;
+        } catch (error) {
+            return null;
+        }
+    }
+
     async function applyBidirectionalInjection() {
         const epoch = ++runtime.injectionEpoch;
         const context = getCtx();
@@ -218,6 +245,7 @@ export function installPhoneFoundation(state, deps) {
             budgetConfig: window.__pmBudgetConfig,
             userName: getUserPersona().name || '用户',
             emojis: window.__pmEmojis,
+            calendarStore: getCalendarStore(),
         });
     }
 
@@ -249,6 +277,7 @@ export function installPhoneFoundation(state, deps) {
             try {
                 c.eventSource.on(eventName, () => {
                     try { deps.observeCommunityTurn?.(c.chat || []); } catch (error) {}
+                    Promise.resolve(deps.observeCalendarTurn?.()).catch(() => {});
                 });
             } catch (error) {}
         }
@@ -275,6 +304,7 @@ export function installPhoneFoundation(state, deps) {
                 runtime.lastChatLength = (c.chat || []).length;
                 // 宿主切换会使所有在途生成失效；关闭手机并清空旧会话内存，避免跨聊天串档。
                 deps.cancelCommunityGeneration?.('host-chat-changed');
+                deps.cancelCalendarTasks?.('host-chat-changed');
                 disarmAutoPoke('host-chat-changed');
                 if (state.phoneActive && typeof window.__pmEnd === 'function') {
                     window.__pmEnd(true);

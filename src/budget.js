@@ -2,20 +2,23 @@ import { EXTENSION_PROMPT_POSITIONS, MAX_INJECTION_CHARS, MAX_INJECTION_DEPTH } 
 
 export const BUDGET_CONFIG_KEY = 'ST_SMS_BUDGET_CONFIG';
 export const BUDGET_VERSION = 1;
-export const BUDGET_SOURCES = Object.freeze(['phone', 'community']);
+export const BUDGET_SOURCES = Object.freeze(['phone', 'community', 'calendar']);
 export const DEFAULT_SAFE_INPUT_TOKENS = Math.floor(MAX_INJECTION_CHARS / 4);
 const MAX_TARGET_TOKENS = 12000;
 
 export const DEFAULT_BUDGET_CONFIG = Object.freeze({
     budgetVersion: BUDGET_VERSION,
     targetTokens: DEFAULT_SAFE_INPUT_TOKENS,
-    sourceWeights: Object.freeze({ phone: 1, community: 0 }),
-    sourcePriority: Object.freeze(['phone', 'community']),
+    sourceWeights: Object.freeze({ phone: 1, community: 0, calendar: 0 }),
+    sourcePriority: Object.freeze(['phone', 'community', 'calendar']),
     redistributeUnused: true,
     communityEnabled: false,
     communityPosition: EXTENSION_PROMPT_POSITIONS.IN_PROMPT,
     communityDepth: 0,
     communitySceneIdsByStorage: Object.freeze({}),
+    calendarEnabled: false,
+    calendarPosition: EXTENSION_PROMPT_POSITIONS.IN_PROMPT,
+    calendarDepth: 0,
 });
 
 const finiteInteger = (value, min, max) => typeof value === 'number'
@@ -27,6 +30,10 @@ function normalizeWeights(value) {
     if (!plainRecord(value)) return { ...DEFAULT_BUDGET_CONFIG.sourceWeights };
     const result = {};
     for (const source of BUDGET_SOURCES) {
+        if (!Object.hasOwn(value, source)) {
+            result[source] = DEFAULT_BUDGET_CONFIG.sourceWeights[source];
+            continue;
+        }
         const weight = value[source];
         if (typeof weight !== 'number' || !Number.isFinite(weight) || weight < 0) {
             return { ...DEFAULT_BUDGET_CONFIG.sourceWeights };
@@ -83,6 +90,11 @@ export function normalizeBudgetConfig(value) {
         communityDepth: finiteInteger(source.communityDepth, 0, MAX_INJECTION_DEPTH)
             ? source.communityDepth : DEFAULT_BUDGET_CONFIG.communityDepth,
         communitySceneIdsByStorage: normalizeSceneIds(source.communitySceneIdsByStorage),
+        calendarEnabled: source.calendarEnabled === true,
+        calendarPosition: allowedPositions.includes(source.calendarPosition)
+            ? source.calendarPosition : DEFAULT_BUDGET_CONFIG.calendarPosition,
+        calendarDepth: finiteInteger(source.calendarDepth, 0, MAX_INJECTION_DEPTH)
+            ? source.calendarDepth : DEFAULT_BUDGET_CONFIG.calendarDepth,
     };
 }
 
@@ -141,22 +153,23 @@ export function allocateContextBudget({ config, safeMaxTokens = DEFAULT_SAFE_INP
     }));
     const weightTotal = BUDGET_SOURCES.reduce((sum, source) => sum + normalized.sourceWeights[source], 0);
     const allocations = Object.fromEntries(BUDGET_SOURCES.map(source => [source, 0]));
-    let assigned = 0;
-    for (let index = 0; index < BUDGET_SOURCES.length; index += 1) {
-        const source = BUDGET_SOURCES[index];
-        const share = index === BUDGET_SOURCES.length - 1
-            ? totalBudgetTokens - assigned
-            : Math.floor(totalBudgetTokens * normalized.sourceWeights[source] / weightTotal);
+    // All sources use floor allocation; no source "eats the remainder".
+    // Remainder is distributed via redistributeUnused by priority order.
+    for (const source of BUDGET_SOURCES) {
+        const weight = normalized.sourceWeights[source];
+        const share = weightTotal > 0 ? Math.floor(totalBudgetTokens * weight / weightTotal) : 0;
         allocations[source] = Math.min(share, demand[source]);
-        assigned += share;
     }
-    if (normalized.redistributeUnused) {
-        let remaining = totalBudgetTokens - Object.values(allocations).reduce((sum, value) => sum + value, 0);
+    let remaining = totalBudgetTokens - Object.values(allocations).reduce((sum, value) => sum + value, 0);
+    if (normalized.redistributeUnused && remaining > 0) {
         for (const source of normalized.sourcePriority) {
             if (remaining <= 0) break;
-            const granted = Math.min(remaining, demand[source] - allocations[source]);
-            allocations[source] += granted;
-            remaining -= granted;
+            const unusedCapacity = demand[source] - allocations[source];
+            if (unusedCapacity > 0) {
+                const granted = Math.min(remaining, unusedCapacity);
+                allocations[source] += granted;
+                remaining -= granted;
+            }
         }
     }
     return {

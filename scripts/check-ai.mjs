@@ -67,6 +67,33 @@ assert.deepEqual(body.messages, [
     { role: 'user', content: 'user' },
 ]);
 
+const requestController = new AbortController();
+await callAI('', 'signal propagation', { signal: requestController.signal });
+assert.equal(fetchRequest.options.signal, requestController.signal, '独立 API 请求必须接收调用方 AbortSignal');
+requestController.abort('test-complete');
+
+const alreadyAborted = new AbortController();
+alreadyAborted.abort('cancel-before-start');
+await assert.rejects(
+    () => callAI('', 'cancelled before request', { signal: alreadyAborted.signal }),
+    error => error.name === 'AbortError' && /已取消/.test(error.message),
+);
+
+const inFlightController = new AbortController();
+const abortingClient = createAiClient({
+    getConfig: () => config,
+    getContext: () => context,
+    getDefaultMaxTokens: () => 300,
+    fetchImpl: async (url, options) => new Promise((resolve, reject) => {
+        options.signal.addEventListener('abort', () => {
+            const error = new Error('provider aborted'); error.name = 'AbortError'; reject(error);
+        }, { once: true });
+    }),
+});
+const inFlightRequest = abortingClient('', 'cancel in flight', { signal: inFlightController.signal });
+inFlightController.abort('cancel-in-flight');
+await assert.rejects(inFlightRequest, error => error.name === 'AbortError' && /已取消/.test(error.message));
+
 await callAI('', 'user', { maxTokens: 125 });
 body = JSON.parse(fetchRequest.options.body);
 assert.equal(body.max_tokens, 125);
@@ -105,6 +132,48 @@ await assert.rejects(() => failingClient('', 'user'), error => {
     assert.equal(error.message, `HTTP 429: ${'x'.repeat(240)}`);
     return true;
 });
+
+const errorBodyDeferred = () => {
+    let resolve, reject;
+    const promise = new Promise((resolve_, reject_) => { resolve = resolve_; reject = reject_; });
+    return { promise, reject, resolve };
+};
+const errorBodyGate = errorBodyDeferred();
+const errorBodyController = new AbortController();
+const errorBodyClient = createAiClient({
+    getConfig: () => config,
+    getContext: () => context,
+    getDefaultMaxTokens: () => 300,
+    fetchImpl: async () => ({
+        ok: false, status: 503,
+        text: () => errorBodyGate.promise,
+    }),
+});
+const errorBodyRequest = errorBodyClient('', 'abort while reading error body', { signal: errorBodyController.signal });
+await Promise.resolve();
+errorBodyController.abort('cancel-error-body');
+errorBodyGate.resolve('busy');
+await assert.rejects(errorBodyRequest, error => error.name === 'AbortError' && /已取消/.test(error.message));
+
+const rejectedBodyController = new AbortController();
+const rejectedBodyClient = createAiClient({
+    getConfig: () => config,
+    getContext: () => context,
+    getDefaultMaxTokens: () => 300,
+    fetchImpl: async () => ({
+        ok: false, status: 503,
+        async text() {
+            rejectedBodyController.abort('body-aborted');
+            const error = new Error('body stream aborted');
+            error.name = 'AbortError';
+            throw error;
+        },
+    }),
+});
+await assert.rejects(
+    () => rejectedBodyClient('', 'error body rejects', { signal: rejectedBodyController.signal }),
+    error => error.name === 'AbortError' && /已取消/.test(error.message),
+);
 
 const textFailureClient = createAiClient({
     getConfig: () => config,

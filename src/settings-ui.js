@@ -6,6 +6,9 @@ import { openCropper } from './cropper.js';
 import {
     renderApiSettings, renderBackupSettings, renderBudgetSettings, renderLookSettings, renderSettingsHome, renderSettingsModal,
     resolveBudgetPercentageInput } from './settings-templates.js';
+import {
+    applyCalendarBackupFields, createBackupStateHandlers, createEmptyCalendarBackupFields, runBackupTransaction,
+} from './settings-backup.js';
 import { escapeAttr, escapeHtml, safeJS } from './ui.js';
 import {
     addOrUpdateProfile, clearPluginData, loadBgSettings, loadBudgetConfig, loadInteractiveScenes, loadPhoneUiState, loadProfiles, loadTheme, saveBgGlobal,
@@ -227,11 +230,12 @@ const assertInteractiveBackupStore = value => {
     }
     return store;
 };
+export { createBackupStateHandlers, runBackupTransaction };
 export function parseBackupData(data, current) {
     if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error('备份根节点必须是对象');
     const version = data.schemaVersion === undefined ? 1 : data.schemaVersion;
     if (!Number.isInteger(version) || version < 1) throw new Error('备份版本无效');
-    if (version > 4) throw new Error(`备份版本 ${version} 高于当前支持版本 4`);
+    if (version > 5) throw new Error(`备份版本 ${version} 高于当前支持版本 5`);
     const result = clone(current);
     if (Object.hasOwn(data, 'histories')) result.histories = objectValue(data.histories, 'histories');
     if (Object.hasOwn(data, 'config')) result.config = objectValue(data.config, 'config');
@@ -256,7 +260,7 @@ export function parseBackupData(data, current) {
     }
     if (Object.hasOwn(data, 'bgLocal')) result.bgLocal = objectValue(data.bgLocal, 'bgLocal');
     if (Object.hasOwn(data, 'interactiveScenes')) result.interactiveScenes = normalizeInteractiveStore(assertInteractiveBackupStore(data.interactiveScenes));
-    if (version === 4) {
+    if (version >= 4) {
         result.phoneUiState = Object.hasOwn(data, 'phoneUiState')
             ? normalizePhoneUiState(objectValue(data.phoneUiState, 'phoneUiState'), result.interactiveScenes)
             : normalizePhoneUiState(null, result.interactiveScenes);
@@ -264,29 +268,8 @@ export function parseBackupData(data, current) {
             ? normalizeAmbientStatus(objectValue(data.ambientStatus, 'ambientStatus')) : normalizeAmbientStatus();
         result.theme.ambientStatusEnabled = result.ambientStatus.enabled;
     }
+    if (version >= 5) applyCalendarBackupFields(data, result, objectValue);
     return result;
-}
-export async function runBackupTransaction({ capture, apply, persist, beforeApply = async () => {} }) {
-    const snapshot = await capture();
-    try {
-        await beforeApply('apply');
-        const nextState = await apply();
-        await persist(nextState);
-    } catch (error) {
-        let rollbackState;
-        try {
-            await beforeApply('rollback');
-            rollbackState = await apply(snapshot);
-            await persist(snapshot);
-        } catch (rollbackError) {
-            const combined = new Error(`${error.message}；原数据回滚失败：${rollbackError.message}`);
-            combined.cause = error;
-            combined.rollbackError = rollbackError;
-            combined.rollbackState = rollbackState;
-            throw combined;
-        }
-        throw error;
-    }
 }
 
 export async function runBackgroundTransaction({ capture, mutate, restore, persist }) {
@@ -308,74 +291,6 @@ export async function runBackgroundTransaction({ capture, mutate, restore, persi
     }
 }
 
-export function createBackupStateHandlers(deps = {}) {
-    const capture = async () => {
-        const interactiveScenes = normalizeInteractiveStore(await loadInteractiveScenes());
-        const phoneUiState = loadPhoneUiState(interactiveScenes);
-        return {
-            histories: clone(window.__pmHistories || {}),
-            config: clone(window.__pmConfig || {}),
-            theme: clone(window.__pmTheme || {}),
-            profiles: clone(window.__pmProfiles || []),
-            groupMeta: clone(window.__pmGroupMeta || {}),
-            pokeConfig: clone(window.__pmPokeConfig || {}),
-            bidirectional: clone(window.__pmBidirectional || {}),
-            emojis: clone(window.__pmEmojis || []),
-            characterBehavior: clone(window.__pmCharacterBehavior || {}),
-            wordyLimit: !!window.__pmWordyLimit,
-            bgGlobal: window.__pmBgGlobal || '',
-            bgLocal: clone(window.__pmBgLocal || {}),
-            interactiveScenes,
-            phoneUiState,
-            ambientStatus: normalizeAmbientStatus({ enabled: window.__pmTheme?.ambientStatusEnabled }),
-        };
-    };
-
-    const apply = async state => {
-        const interactiveScenes = normalizeInteractiveStore(state.interactiveScenes);
-        const phoneUiState = normalizePhoneUiState(state.phoneUiState, interactiveScenes);
-        const ambientStatus = normalizeAmbientStatus(state.ambientStatus ?? { enabled: state.theme?.ambientStatusEnabled });
-        window.__pmHistories = clone(state.histories || {});
-        window.__pmConfig = clone(state.config || {});
-        window.__pmTheme = clone(state.theme || {});
-        window.__pmTheme.ambientStatusEnabled = ambientStatus.enabled;
-        window.__pmProfiles = clone(state.profiles || []);
-        window.__pmGroupMeta = clone(state.groupMeta || {});
-        window.__pmPokeConfig = clone(state.pokeConfig || {});
-        window.__pmBidirectional = clone(state.bidirectional || {});
-        window.__pmEmojis = clone(state.emojis || []);
-        window.__pmCharacterBehavior = clone(state.characterBehavior || {});
-        window.__pmWordyLimit = !!state.wordyLimit;
-        window.__pmBgGlobal = typeof state.bgGlobal === 'string' ? state.bgGlobal : '';
-        window.__pmBgLocal = clone(state.bgLocal || {});
-        window.__pmPhoneUiState = phoneUiState;
-        return { ...state, interactiveScenes, phoneUiState, ambientStatus };
-    };
-
-    const persist = async state => {
-        const interactiveScenes = normalizeInteractiveStore(state.interactiveScenes);
-        const phoneUiState = normalizePhoneUiState(state.phoneUiState, interactiveScenes);
-        await saveHistoriesStrict();
-        try { localStorage.setItem('ST_SMS_CONFIG', JSON.stringify(window.__pmConfig)); }
-        catch (error) { throw new Error('API 配置保存失败：浏览器存储不可用'); }
-        if (!saveTheme()) throw new Error('主题配置保存失败：浏览器存储不可用');
-        if (!saveProfiles()) throw new Error('API 档案保存失败：浏览器存储不可用');
-        await saveGroupMeta();
-        if (!saveCharacterBehavior()) throw new Error('角色行为配置保存失败：浏览器存储不可用');
-        if (!savePokeConfig()) throw new Error('自动消息配置保存失败：浏览器存储不可用');
-        if (!saveBidirectional()) throw new Error('注入配置保存失败：浏览器存储不可用');
-        if (!saveWordyLimit()) throw new Error('字数偏好保存失败：浏览器存储不可用');
-        await saveEmojis();
-        await saveBgGlobal();
-        await saveBgLocal();
-        await saveInteractiveScenes(interactiveScenes);
-        if (!savePhoneUiState(phoneUiState, interactiveScenes)) throw new Error('手机界面状态保存失败：浏览器存储不可用');
-        deps.invalidateInteractiveStore?.();
-    };
-
-    return { capture, apply, persist };
-}
-
 export function installSettingsUi(deps) {
     const {
         makeOverlay, applyTheme, applyBackground, fitNameFont, addNote,
@@ -389,6 +304,16 @@ export function installSettingsUi(deps) {
     } = createBackupStateHandlers(deps);
     let apiDraftUseIndependent = false;
     let backgroundMutation = Promise.resolve();
+    const injectionFailure = (result, phase) => {
+        const failedWrites = Number.isInteger(result?.failedWrites) && result.failedWrites > 0 ? result.failedWrites : 0;
+        const failedKeys = Array.isArray(result?.failedKeys) ? result.failedKeys : [];
+        if (!failedWrites && !failedKeys.length) return null;
+        const details = [failedWrites ? `${failedWrites} 项写入失败` : '', failedKeys.length ? `${failedKeys.length} 项清理失败` : '']
+            .filter(Boolean).join('，');
+        const error = new Error(`${phase}：${details}`);
+        error.injectionResult = result;
+        return error;
+    };
     const syncLookControls = () => {
         const theme = window.__pmTheme;
         document.querySelectorAll('.pm-theme-chip').forEach(el => el.classList.toggle('pm-theme-active', el.dataset.preset === theme.preset));
@@ -461,7 +386,7 @@ export function installSettingsUi(deps) {
     window.__pmExportData = async () => {
         const snapshot = await captureBackupState();
         const data = {
-            schemaVersion: 4,
+            schemaVersion: 5,
             histories: snapshot.histories,
             config: snapshot.config,
             theme: legacyBackupTheme(snapshot.theme),
@@ -477,6 +402,11 @@ export function installSettingsUi(deps) {
             interactiveScenes: snapshot.interactiveScenes,
             phoneUiState: snapshot.phoneUiState,
             ambientStatus: snapshot.ambientStatus,
+            calendarStore: snapshot.calendarStore,
+            calendarOccasions: snapshot.calendarOccasions,
+            calendarHolidays: snapshot.calendarHolidays,
+            calendarWeather: snapshot.calendarWeather,
+            calendarCycles: snapshot.calendarCycles,
         };
         const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
@@ -493,31 +423,63 @@ export function installSettingsUi(deps) {
         if (!file) return;
         const reader = new FileReader();
         reader.onload = async (e) => {
+            let transactionError = null;
             try {
                 const data = JSON.parse(e.target.result);
                 if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error('备份根节点必须是对象');
                 await runBackupTransaction({
                     capture: captureBackupState,
+                    prepare: current => parseBackupData(data, current),
                     beforeApply: async reason => { deps.cancelCommunityGeneration?.(`backup-${reason}`); clearBidirectionalInjection(); },
-                    apply: async snapshot => {
+                    apply: async (snapshot, imported) => {
                         if (snapshot) return applyBackupState(snapshot);
-                        const current = await captureBackupState();
-                        const imported = parseBackupData(data, current);
                         return applyBackupState(imported);
                     },
                     persist: persistBackupState,
                 });
-                await applyBidirectionalInjection();
-
-                alert('数据导入成功，请重新打开界面生效。');
-                document.getElementById('pm-overlay')?.remove();
-                closePhone(true);
             } catch (err) {
-                await applyBidirectionalInjection();
-                alert(err.rollbackError
-                    ? `导入失败，原数据回滚也失败。请勿刷新，并立即导出当前内存备份。\n${err.message}`
-                    : `导入失败，原数据已恢复。\n${err.message}`);
+                transactionError = err;
             }
+            if (transactionError) {
+                const err = transactionError;
+                let recoveryInjectionError = null;
+                if (err.backupPhase === 'rolled-back' || err.backupPhase === 'rollback-failed') {
+                    try {
+                        const recoveryResult = await applyBidirectionalInjection();
+                        recoveryInjectionError = injectionFailure(recoveryResult, '恢复原数据后的注入刷新失败');
+                    } catch (error) {
+                        recoveryInjectionError = error;
+                    }
+                }
+                if (err.backupPhase === 'rollback-failed') {
+                    const recoveryDetail = recoveryInjectionError ? `\n注入刷新也失败：${recoveryInjectionError.message}` : '';
+                    alert(`导入失败，原数据回滚也失败。请勿刷新，并立即导出当前内存备份。\n${err.message}${recoveryDetail}`);
+                } else if (err.backupPhase === 'rolled-back') {
+                    if (recoveryInjectionError) {
+                        alert(`导入失败，原数据已恢复，但注入刷新失败。请刷新页面或重新打开手机界面。\n${err.message}\n${recoveryInjectionError.message}`);
+                    } else {
+                        alert(`导入失败，原数据已恢复。\n${err.message}`);
+                    }
+                } else {
+                    alert(`导入失败，未修改现有数据。\n${err.message}`);
+                }
+                return;
+            }
+
+            let postImportError = null;
+            try {
+                const injectionResult = await applyBidirectionalInjection();
+                postImportError = injectionFailure(injectionResult, '导入后的注入刷新失败');
+            } catch (error) {
+                postImportError = error;
+            }
+            if (postImportError) {
+                alert(`数据已导入，但注入刷新失败。请刷新页面或重新打开手机界面。\n${postImportError.message}`);
+            } else {
+                alert('数据导入成功，请重新打开界面生效。');
+            }
+            document.getElementById('pm-overlay')?.remove();
+            closePhone(true);
         };
         reader.readAsText(file);
         input.value = '';
@@ -537,6 +499,7 @@ export function installSettingsUi(deps) {
                     profiles: [], groupMeta: {}, pokeConfig: {}, bidirectional: {}, emojis: [], characterBehavior: {},
                     wordyLimit: false, bgGlobal: '', bgLocal: {}, interactiveScenes: normalizeInteractiveStore(null),
                     phoneUiState: normalizePhoneUiState(null), ambientStatus: normalizeAmbientStatus(),
+                    ...createEmptyCalendarBackupFields(),
                 });
                 window.__pmBudgetConfig = normalizeBudgetConfig();
                 deps.invalidateInteractiveStore?.();
@@ -707,18 +670,21 @@ export function installSettingsUi(deps) {
         const storageId = getStorageId();
         const phoneWeightInput = document.getElementById('pm-budget-phone-weight');
         const communityWeightInput = document.getElementById('pm-budget-community-weight');
+        const calendarWeightInput = document.getElementById('pm-budget-calendar-weight');
         let sourceWeights;
         try {
             sourceWeights = resolveBudgetPercentageInput({
                 sourceWeights: normalizeBudgetConfig(window.__pmBudgetConfig).sourceWeights,
                 phone: phoneWeightInput?.value,
                 community: communityWeightInput?.value,
+                calendar: calendarWeightInput?.value,
                 initialPhone: phoneWeightInput?.dataset.initialValue,
                 initialCommunity: communityWeightInput?.dataset.initialValue,
+                initialCalendar: calendarWeightInput?.dataset.initialValue,
             });
         } catch (error) { alert(error.message); return; }
-        const priority = document.getElementById('pm-budget-priority')?.value === 'community'
-            ? ['community', 'phone'] : ['phone', 'community'];
+        const prioritySource = document.getElementById('pm-budget-priority')?.value;
+        const priority = [prioritySource, 'phone', 'community', 'calendar'].filter((value, index, values) => value && values.indexOf(value) === index);
         const sceneIds = Array.from(document.querySelectorAll('.pm-budget-scene.is-checked'))
             .map(control => control.dataset.value).filter(Boolean);
         const current = normalizeBudgetConfig(window.__pmBudgetConfig);
@@ -735,6 +701,9 @@ export function installSettingsUi(deps) {
             communityPosition: Number(document.getElementById('pm-budget-community-position')?.value),
             communityDepth: Number(document.getElementById('pm-budget-community-depth')?.value),
             communitySceneIdsByStorage: sceneIdsByStorage,
+            calendarEnabled: document.getElementById('pm-budget-calendar-enabled')?.classList.contains('is-checked') === true,
+            calendarPosition: Number(document.getElementById('pm-budget-calendar-position')?.value),
+            calendarDepth: Number(document.getElementById('pm-budget-calendar-depth')?.value),
         });
         if (!saveBudgetConfig(candidate)) {
             alert('上下文预算保存失败：浏览器存储不可用');

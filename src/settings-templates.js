@@ -95,32 +95,37 @@ export function renderLookSettings({ theme, presetButtons, globalBackgroundButto
 }
 
 export function getBudgetPercentageView(sourceWeights) {
-    const phoneWeight = Number(sourceWeights?.phone) || 0;
-    const communityWeight = Number(sourceWeights?.community) || 0;
-    const weightTotal = phoneWeight + communityWeight;
-    const phone = weightTotal > 0 ? Number((phoneWeight * 100 / weightTotal).toFixed(4)) : 50;
-    return { phone, community: Number((100 - phone).toFixed(4)) };
+    const weights = {
+        phone: Number(sourceWeights?.phone) || 0,
+        community: Number(sourceWeights?.community) || 0,
+        calendar: Number(sourceWeights?.calendar) || 0,
+    };
+    const total = Object.values(weights).reduce((sum, value) => sum + value, 0);
+    if (total <= 0) return { phone: 100, community: 0, calendar: 0 };
+    const phone = Number((weights.phone * 100 / total).toFixed(4));
+    const community = Number((weights.community * 100 / total).toFixed(4));
+    return { phone, community, calendar: Number((100 - phone - community).toFixed(4)) };
 }
 
-export function resolveBudgetPercentageInput({ sourceWeights, phone, community, initialPhone, initialCommunity }) {
-    const nextPhone = Number(phone);
-    const nextCommunity = Number(community);
-    const originalPhone = Number(initialPhone);
-    const originalCommunity = Number(initialCommunity);
-    if (nextPhone === originalPhone && nextCommunity === originalCommunity) {
-        return { phone: sourceWeights.phone, community: sourceWeights.community };
+export function resolveBudgetPercentageInput({
+    sourceWeights, phone, community, calendar, initialPhone, initialCommunity, initialCalendar,
+}) {
+    const next = { phone: Number(phone), community: Number(community), calendar: Number(calendar) };
+    const initial = { phone: Number(initialPhone), community: Number(initialCommunity), calendar: Number(initialCalendar) };
+    if (Object.keys(next).every(source => next[source] === initial[source])) {
+        return { phone: sourceWeights.phone, community: sourceWeights.community, calendar: sourceWeights.calendar || 0 };
     }
-    if (![nextPhone, nextCommunity].every(value => Number.isFinite(value) && value >= 0 && value <= 100)) {
-        throw new Error('手机会话和互动社区占比必须是 0 到 100 之间的数字');
+    if (!Object.values(next).every(value => Number.isFinite(value) && value >= 0 && value <= 100)) {
+        throw new Error('手机会话、互动社区和日历占比必须是 0 到 100 之间的数字');
     }
-    if (Math.abs(nextPhone + nextCommunity - 100) > 0.0001) {
-        throw new Error('手机会话和互动社区占比合计必须为 100%');
+    if (Math.abs(next.phone + next.community + next.calendar - 100) > 0.0001) {
+        throw new Error('手机会话、互动社区和日历占比合计必须为 100%');
     }
-    return { phone: nextPhone, community: nextCommunity };
+    return next;
 }
 
 export function renderBudgetSettings({ config, sceneOptions }) {
-    const priorityCommunity = config.sourcePriority[0] === 'community';
+    const priority = config.sourcePriority[0];
     const percentages = getBudgetPercentageView(config.sourceWeights);
     return `
     <div class="pm-settings-page">
@@ -130,15 +135,17 @@ export function renderBudgetSettings({ config, sceneOptions }) {
         <label class="pm-cfg-label" for="pm-budget-target">总目标（估算 token）</label>
         <input id="pm-budget-target" class="pm-cfg-input" type="number" min="1" max="12000" step="1" value="${config.targetTokens}">
         <div class="pm-cfg-tip" style="text-align:left;">数值越大，AI 能看到的手机和社区历史越多，也会占用更多上下文。</div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+        <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;">
           <label class="pm-cfg-label">手机会话占比 (%)<input id="pm-budget-phone-weight" class="pm-cfg-input" type="number" min="0" max="100" step="0.0001" value="${percentages.phone}" data-initial-value="${percentages.phone}"></label>
           <label class="pm-cfg-label">互动社区占比 (%)<input id="pm-budget-community-weight" class="pm-cfg-input" type="number" min="0" max="100" step="0.0001" value="${percentages.community}" data-initial-value="${percentages.community}"></label>
+          <label class="pm-cfg-label">日历占比 (%)<input id="pm-budget-calendar-weight" class="pm-cfg-input" type="number" min="0" max="100" step="0.0001" value="${percentages.calendar}" data-initial-value="${percentages.calendar}"></label>
         </div>
-        <div class="pm-cfg-tip" style="text-align:left;">填写两类内容各自占用总额度的百分比；保存后仍按相对比例分配。</div>
+        <div class="pm-cfg-tip" style="text-align:left;">三类内容占比合计必须为 100%。日历注入默认关闭，且只包含普通日程。</div>
         <label class="pm-cfg-label" for="pm-budget-priority">剩余额度优先补给</label>
         <select id="pm-budget-priority" class="pm-cfg-input">
-          <option value="phone" ${priorityCommunity ? '' : 'selected'}>手机会话优先</option>
-          <option value="community" ${priorityCommunity ? 'selected' : ''}>互动社区优先</option>
+          <option value="phone" ${priority === 'phone' ? 'selected' : ''}>手机会话优先</option>
+          <option value="community" ${priority === 'community' ? 'selected' : ''}>互动社区优先</option>
+          <option value="calendar" ${priority === 'calendar' ? 'selected' : ''}>日历优先</option>
         </select>
         <label class="pm-cfg-label pm-check-setting">
           <span>把一方没用完的额度补给另一方</span>
@@ -160,6 +167,21 @@ export function renderBudgetSettings({ config, sceneOptions }) {
         <input id="pm-budget-community-depth" class="pm-cfg-input" type="number" min="0" max="10000" step="1" value="${config.communityDepth}">
         <div class="pm-cfg-label">当前角色卡允许注入的场景</div>
         <div id="pm-budget-scenes" style="display:flex;flex-direction:column;gap:6px;">${sceneOptions || '<div class="pm-cfg-tip" style="text-align:left;">当前没有可选择的互动场景</div>'}</div>
+      </div>
+      <div style="padding:12px 16px;border-top:1px solid #f0f0f0;display:flex;flex-direction:column;gap:10px;">
+        <label class="pm-cfg-label pm-check-setting">
+          <span>启用普通日程注入（默认关闭）</span>
+          <div id="pm-budget-calendar-enabled" class="pm-custom-check ${config.calendarEnabled ? 'is-checked' : ''}" role="checkbox" tabindex="0" aria-checked="${config.calendarEnabled}" onclick="this.classList.toggle('is-checked');this.setAttribute('aria-checked',String(this.classList.contains('is-checked')))" onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();this.click()}"></div>
+        </label>
+        <div class="pm-cfg-tip" style="text-align:left;color:#ff9500;">只注入当前角色/聊天的普通日程。生日、纪念日、天气、节假日和生理周期不会注入。</div>
+        <label class="pm-cfg-label" for="pm-budget-calendar-position">日历注入位置</label>
+        <select id="pm-budget-calendar-position" class="pm-cfg-input">
+          <option value="0" ${config.calendarPosition === 0 ? 'selected' : ''}>主提示词内</option>
+          <option value="1" ${config.calendarPosition === 1 ? 'selected' : ''}>聊天记录内</option>
+          <option value="2" ${config.calendarPosition === 2 ? 'selected' : ''}>主提示词前</option>
+        </select>
+        <label class="pm-cfg-label" for="pm-budget-calendar-depth">日历注入深度</label>
+        <input id="pm-budget-calendar-depth" class="pm-cfg-input" type="number" min="0" max="10000" step="1" value="${config.calendarDepth}">
       </div>
       <div style="height:12px;"></div>
     </div>`;

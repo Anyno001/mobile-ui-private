@@ -22,34 +22,34 @@ const normalized = normalizeBudgetConfig({
 assert.equal(normalized.budgetVersion, 1);
 assert.equal(normalized.targetTokens, DEFAULT_BUDGET_CONFIG.targetTokens);
 assert.deepEqual(normalized.sourceWeights, DEFAULT_BUDGET_CONFIG.sourceWeights);
-assert.deepEqual(normalized.sourcePriority, ['phone', 'community']);
+assert.deepEqual(normalized.sourcePriority, ['phone', 'community', 'calendar']);
 assert.equal(normalized.redistributeUnused, DEFAULT_BUDGET_CONFIG.redistributeUnused);
 assert.equal(normalized.communityEnabled, true);
 assert.equal(normalized.communityPosition, DEFAULT_BUDGET_CONFIG.communityPosition);
 assert.equal(normalized.communityDepth, DEFAULT_BUDGET_CONFIG.communityDepth);
 assert.deepEqual(normalized.communitySceneIdsByStorage.story, ['scene-a']);
 
-const percentageView = getBudgetPercentageView({ phone: 2, community: 1 });
-assert.deepEqual(percentageView, { phone: 66.6667, community: 33.3333 });
+const percentageView = getBudgetPercentageView({ phone: 2, community: 1, calendar: 1 });
+assert.deepEqual(percentageView, { phone: 50, community: 25, calendar: 25 });
 assert.deepEqual(resolveBudgetPercentageInput({
-    sourceWeights: { phone: 2, community: 1 },
-    phone: String(percentageView.phone), community: String(percentageView.community),
-    initialPhone: String(percentageView.phone), initialCommunity: String(percentageView.community),
-}), { phone: 2, community: 1 }, '未编辑百分比时必须保留原始权重');
+    sourceWeights: { phone: 2, community: 1, calendar: 1 },
+    phone: '50', community: '25', calendar: '25',
+    initialPhone: '50', initialCommunity: '25', initialCalendar: '25',
+}), { phone: 2, community: 1, calendar: 1 }, '未编辑百分比时必须保留原始权重');
 assert.deepEqual(resolveBudgetPercentageInput({
-    sourceWeights: { phone: 2, community: 1 },
-    phone: '60', community: '40',
-    initialPhone: String(percentageView.phone), initialCommunity: String(percentageView.community),
-}), { phone: 60, community: 40 });
+    sourceWeights: { phone: 2, community: 1, calendar: 1 },
+    phone: '50', community: '30', calendar: '20',
+    initialPhone: '50', initialCommunity: '25', initialCalendar: '25',
+}), { phone: 50, community: 30, calendar: 20 });
 assert.throws(() => resolveBudgetPercentageInput({
-    sourceWeights: { phone: 2, community: 1 },
-    phone: '60', community: '60',
-    initialPhone: String(percentageView.phone), initialCommunity: String(percentageView.community),
+    sourceWeights: { phone: 2, community: 1, calendar: 1 },
+    phone: '60', community: '30', calendar: '20',
+    initialPhone: '50', initialCommunity: '25', initialCalendar: '25',
 }), /合计必须为 100%/);
 assert.throws(() => resolveBudgetPercentageInput({
-    sourceWeights: { phone: 2, community: 1 },
-    phone: '-1', community: '101',
-    initialPhone: String(percentageView.phone), initialCommunity: String(percentageView.community),
+    sourceWeights: { phone: 2, community: 1, calendar: 1 },
+    phone: '-1', community: '81', calendar: '20',
+    initialPhone: '50', initialCommunity: '25', initialCalendar: '25',
 }), /0 到 100/);
 
 assert.equal(estimateContextTokens('abcd').estimatedTokens, 1);
@@ -62,7 +62,7 @@ const fixed = allocateContextBudget({
     demandBySource: { phone: 100, community: 100 },
 });
 assert.equal(fixed.totalBudgetTokens, 100);
-assert.deepEqual(fixed.allocations, { phone: 75, community: 25 });
+assert.deepEqual(fixed.allocations, { phone: 75, community: 25, calendar: 0 });
 
 const redistributed = allocateContextBudget({
     config: {
@@ -74,7 +74,7 @@ const redistributed = allocateContextBudget({
     safeMaxTokens: 100,
     demandBySource: { phone: 10, community: 100 },
 });
-assert.deepEqual(redistributed.allocations, { phone: 10, community: 90 });
+assert.deepEqual(redistributed.allocations, { phone: 10, community: 90, calendar: 0 });
 assert.equal(redistributed.allocatedTokens, 100);
 
 for (const requestedDemand of [11999, 12000, 12001, 24000]) {
@@ -113,6 +113,7 @@ storedValues.set('ST_SMS_BUDGET_CONFIG', JSON.stringify({
 }));
 assert.equal(loadBudgetConfig().targetTokens, 321);
 assert.equal(window.__pmBudgetConfig.budgetVersion, 1);
+assert.deepEqual(window.__pmBudgetConfig.sourceWeights, { phone: 2, community: 1, calendar: 0 });
 window.__pmBudgetConfig.targetTokens = 654;
 assert.equal(saveBudgetConfig(), true);
 assert.equal(JSON.parse(storedValues.get('ST_SMS_BUDGET_CONFIG')).targetTokens, 654);
