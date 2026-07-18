@@ -101,7 +101,7 @@ assert.deepEqual(
     [2030, 6, 2, 12],
     '非法时间起点必须回退到调用方提供的设备日期',
 );
-assert.match(calendarGenerationErrorMessage(new Error('GitError: getting extension version failed from GitHub')), /GitHub 与网络连接/);
+assert.match(calendarGenerationErrorMessage(new Error('GitError: getting extension version failed from GitHub')), /扩展仓库配置|GitHub 认证/);
 assert.match(calendarGenerationErrorMessage(new Error('connect ETIMEDOUT')), /AI 服务网络连接失败/);
 assert.equal(calendarGenerationErrorMessage(new Error('日程标题 GitHub 不符合协议')), '日程标题 GitHub 不符合协议', '业务错误不得仅因包含 GitHub 被误分类');
 assert.equal(calendarGenerationErrorMessage(new Error('AI 日历协议缺少 events')), 'AI 日历协议缺少 events');

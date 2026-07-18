@@ -57,6 +57,10 @@ assert.deepEqual(parseInteractiveResponse(
     '{"version":1,"kind":"style_prompt","items":[{"title":"字面标签","prompt":"保留 <think>字面量</think> 与 <!-- thinking -->文本<!-- /thinking -->"}]}',
     'style_prompt',
 ), [{ title: '字面标签', prompt: '保留 <think>字面量</think> 与 <!-- thinking -->文本<!-- /thinking -->' }]);
+assert.deepEqual(parseInteractiveResponse(
+    '{"trace":1}\n最终：{"version":1,"kind":"style_prompt","items":[{"title":"后置协议","prompt":"跳过前置元数据"}]}',
+    'style_prompt',
+), [{ title: '后置协议', prompt: '跳过前置元数据' }]);
 assert.throws(() => parseInteractiveResponse('抱歉，当前无法生成。', 'feed_batch'), /AI 未返回可解析的社区 JSON/);
 assert.throws(() => parseInteractiveResponse('<html><title>502 Bad Gateway</title></html>', 'feed_batch'), /AI 未返回可解析的社区 JSON/);
 
@@ -958,6 +962,27 @@ lateFeed.resolve([{ content: '不得跨场景提交' }]);
 await assert.rejects(lateFeedResult, /生成已取消/);
 assert.deepEqual(feedCommits, []);
 assert.equal(runnerController.state().phase, COMMUNITY_TASK_PHASES.FAILED);
+
+const failureStatuses = [];
+const failureRunner = createCommunityGenerationRunner({
+    controller: createCommunityTaskController({
+        runtime: {}, isAllowed: () => true, isTargetActive: () => true,
+    }),
+    getTarget: () => ({ storageId: 'story', sceneId: 'scene-a' }),
+    request: async () => {
+        const error = new Error("Getting extension version failed GitError: Username for 'https://github.com': fatal: couldn't find remote ref refs/heads/release");
+        error.name = 'GitError';
+        throw error;
+    },
+    commitFeed: async () => {},
+    commitDanmaku: async () => {},
+    onStatus: message => failureStatuses.push(message),
+});
+await assert.rejects(failureRunner.generateFeed(), /Getting extension version failed/);
+assert.equal(failureStatuses.length, 1);
+assert.match(failureStatuses[0], /扩展仓库配置|GitHub 认证/);
+assert.doesNotMatch(failureStatuses[0], /Username for|refs\/heads\/release/,
+    '社区状态不得暴露扩展更新器的原始认证与分支日志');
 
 runnerTarget = { storageId: 'story', sceneId: 'scene-a' };
 const commitGate = deferred();

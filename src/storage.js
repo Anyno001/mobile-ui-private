@@ -7,6 +7,7 @@ import { BUDGET_CONFIG_KEY, normalizeBudgetConfig } from './budget.js';
 import {
     normalizeCharacterBehaviorStore, normalizeGroupMetaStore,
 } from './behavior-config.js';
+import { enqueueDirectorySave } from './directory-save-coordinator.js';
 import { createEmptyPhoneUiState, normalizePhoneUiState } from './interactive-scene-model.js';
 
 let database = null;
@@ -182,20 +183,21 @@ export function isBigData(value) {
     return typeof value === 'string' && value.length > 4096 && (value.startsWith('data:') || value.startsWith('blob:'));
 }
 
-
 export function saveHistories() {
     saveHistoriesStrict().catch(error => console.warn('[phone-mode] 短信历史保存失败', error));
 }
 
 export async function saveHistoriesStrict(data = window.__pmHistories) {
-    const saved = await pmIDBSet('ST_SMS_DATA_V2', data);
-    if (!saved) throw new Error('聊天记录保存失败：IndexedDB 不可用');
-    try {
-        localStorage.setItem('ST_SMS_DATA_V2', JSON.stringify(data));
-    } catch (error) {
-        console.warn('[phone-mode] localStorage 已满，短信历史仅保存在 IDB');
-    }
-    return true;
+    return enqueueDirectorySave('histories', data, async snapshot => {
+        const saved = await pmIDBSet('ST_SMS_DATA_V2', snapshot);
+        if (!saved) throw new Error('聊天记录保存失败：IndexedDB 不可用');
+        try {
+            localStorage.setItem('ST_SMS_DATA_V2', JSON.stringify(snapshot));
+        } catch (error) {
+            console.warn('[phone-mode] localStorage 已满，短信历史仅保存在 IDB');
+        }
+        return true;
+    }, arguments.length === 0);
 }
 
 export function saveHistoriesBeforeUnload() {
@@ -591,19 +593,21 @@ export async function loadGroupMeta() {
     return window.__pmGroupMeta;
 }
 
-export async function saveGroupMeta() {
-    window.__pmGroupMeta = normalizeGroupMetaStore(window.__pmGroupMeta);
-    const saved = await pmIDBSet(GROUP_META_STORE_KEY, window.__pmGroupMeta);
-    if (saved) {
-        try { localStorage.setItem(GROUP_META_STORE_KEY, JSON.stringify(window.__pmGroupMeta)); } catch (error) {}
-        try { localStorage.removeItem(GROUP_META_FALLBACK_KEY); } catch (error) {}
-        return;
-    }
-    try {
-        localStorage.setItem(GROUP_META_FALLBACK_KEY, JSON.stringify(window.__pmGroupMeta));
-    } catch (error) {
-        throw new Error('群聊配置保存失败：浏览器存储不可用或空间不足');
-    }
+export async function saveGroupMeta(data) {
+    const updatesGlobalState = arguments.length === 0;
+    const snapshot = normalizeGroupMetaStore(updatesGlobalState ? window.__pmGroupMeta : data);
+    if (updatesGlobalState) window.__pmGroupMeta = snapshot;
+    return enqueueDirectorySave('groupMeta', snapshot, async frozen => {
+        const saved = await pmIDBSet(GROUP_META_STORE_KEY, frozen);
+        if (saved) {
+            try { localStorage.setItem(GROUP_META_STORE_KEY, JSON.stringify(frozen)); } catch (error) {}
+            try { localStorage.removeItem(GROUP_META_FALLBACK_KEY); } catch (error) {}
+        } else {
+            try { localStorage.setItem(GROUP_META_FALLBACK_KEY, JSON.stringify(frozen)); }
+            catch { throw new Error('群聊配置保存失败：浏览器存储不可用或空间不足'); }
+        }
+        return frozen;
+    }, updatesGlobalState);
 }
 
 export function loadCharacterBehavior() {

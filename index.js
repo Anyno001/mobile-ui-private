@@ -17,6 +17,99 @@
   }
 
   // src/ai.js
+  function jsonObjectEnd(source, start) {
+    let depth = 0;
+    let quoted = false;
+    let escaped = false;
+    for (let index = start; index < source.length; index += 1) {
+      const char = source[index];
+      if (quoted) {
+        if (escaped) escaped = false;
+        else if (char === "\\") escaped = true;
+        else if (char === '"') quoted = false;
+        continue;
+      }
+      if (char === '"') {
+        quoted = true;
+        continue;
+      }
+      if (char === "{") depth += 1;
+      else if (char === "}") {
+        depth -= 1;
+        if (depth === 0) return index + 1;
+      }
+    }
+    return -1;
+  }
+  function cleanStructuredResponse(raw) {
+    const source = String(raw ?? "");
+    let cleaned = "";
+    let depth = 0;
+    let quoted = false;
+    let escaped = false;
+    for (let index = 0; index < source.length; index += 1) {
+      const char = source[index];
+      if (depth > 0 && quoted) {
+        cleaned += char;
+        if (escaped) escaped = false;
+        else if (char === "\\") escaped = true;
+        else if (char === '"') quoted = false;
+        continue;
+      }
+      if (depth > 0 && char === '"') {
+        quoted = true;
+        cleaned += char;
+        continue;
+      }
+      if (depth === 0 && char === "<") {
+        const rest = source.slice(index);
+        const opening = rest.match(/^(?:<\s*(think|thinking)\b[^>]*>|<!--\s*(think|thinking)\s*-->)/i);
+        if (opening) {
+          const tag = opening[1] || opening[2];
+          const closing = new RegExp(`(?:<\\s*\\/\\s*${tag}\\s*>|<!--\\s*\\/\\s*${tag}\\s*-->)`, "i").exec(rest.slice(opening[0].length));
+          if (closing) {
+            index += opening[0].length + closing.index + closing[0].length - 1;
+            continue;
+          }
+        }
+      }
+      if (char === "{") depth += 1;
+      else if (char === "}" && depth > 0) depth -= 1;
+      cleaned += char;
+    }
+    return cleaned.replace(/^\s*```(?:json)?\s*|\s*```\s*$/gi, "").trim();
+  }
+  function parseFirstJsonObject(raw, errorMessage = "AI \u672A\u8FD4\u56DE\u53EF\u89E3\u6790\u7684 JSON", accepts = null) {
+    const source = cleanStructuredResponse(raw);
+    let firstParsed;
+    for (let start = source.indexOf("{"); start >= 0; start = source.indexOf("{", start + 1)) {
+      const end = jsonObjectEnd(source, start);
+      if (end < 0) continue;
+      try {
+        const parsed = JSON.parse(source.slice(start, end));
+        if (firstParsed === void 0) firstParsed = parsed;
+        if (!accepts || accepts(parsed)) return parsed;
+      } catch (error) {
+      }
+    }
+    if (firstParsed !== void 0) return firstParsed;
+    throw new Error(errorMessage);
+  }
+  function generationErrorMessage(error) {
+    const message = String(error?.message || error || "\u672A\u77E5\u9519\u8BEF");
+    const identity = `${error?.name || ""} ${error?.code || ""}`;
+    const errorText = `${identity} ${message}`;
+    const externalGithubFailure = /github.{0,80}\b(?:api|webhook)\b|\b(?:api|webhook)\b.{0,80}github/i.test(message);
+    const networkFailure = !externalGithubFailure && (/\b(etimedout|enotfound|econnreset|econnrefused|networkerror)\b/i.test(errorText) || /^(?:typeerror:\s*)?(?:failed to fetch|fetch failed|networkerror\b)/i.test(message) || /\b(?:request|connection|network)\b.{0,40}\btimed?\s*out\b/i.test(message));
+    const extensionGitFailure = /getting extension version failed/i.test(message) || /username for ['"]https:\/\/github\.com/i.test(message) || /fatal:\s+couldn't find remote ref refs\/heads\//i.test(message) || /\bgiterror\b/i.test(identity) && /github/i.test(message) && networkFailure;
+    if (extensionGitFailure) {
+      return "SillyTavern \u6269\u5C55\u7248\u672C\u68C0\u67E5\u6216 AI \u7F51\u7EDC\u8FDE\u63A5\u5931\u8D25\uFF0C\u8BF7\u68C0\u67E5\u6269\u5C55\u4ED3\u5E93\u914D\u7F6E\u3001GitHub \u8BA4\u8BC1\u4E0E\u7F51\u7EDC\u540E\u91CD\u8BD5\u3002";
+    }
+    if (networkFailure) {
+      return "AI \u670D\u52A1\u7F51\u7EDC\u8FDE\u63A5\u5931\u8D25\uFF0C\u8BF7\u68C0\u67E5\u63A5\u53E3\u4E0E\u7F51\u7EDC\u540E\u91CD\u8BD5\u3002";
+    }
+    return message;
+  }
   function extractAiResponseContent(json) {
     const candidates = [
       json?.choices?.[0]?.message?.content,
@@ -1559,15 +1652,7 @@ ${userPrompt}` : userPrompt;
   var weekday = new Intl.DateTimeFormat("zh-CN", { weekday: "short" });
   var shortDate = new Intl.DateTimeFormat("zh-CN", { month: "numeric", day: "numeric" });
   var monthTitle = new Intl.DateTimeFormat("zh-CN", { year: "numeric", month: "long" });
-  function calendarGenerationErrorMessage(error) {
-    const message = String(error?.message || error || "\u672A\u77E5\u9519\u8BEF");
-    const identity = `${error?.name || ""} ${error?.code || ""}`;
-    if (/\bgiterror\b/i.test(identity) || /getting extension version failed/i.test(message) || /github.{0,80}(timed?\s*out|etimedout|enotfound|fetch failed|failed to fetch|networkerror)/i.test(message)) {
-      return "\u5916\u90E8\u6269\u5C55\u7248\u672C\u68C0\u67E5\u6216 AI \u7F51\u7EDC\u8FDE\u63A5\u5931\u8D25\uFF0C\u8BF7\u68C0\u67E5 GitHub \u4E0E\u7F51\u7EDC\u8FDE\u63A5\u540E\u91CD\u8BD5\u3002";
-    }
-    if (/(timed?\s*out|etimedout|enotfound|fetch failed|failed to fetch|networkerror)/i.test(`${identity} ${message}`)) return "AI \u670D\u52A1\u7F51\u7EDC\u8FDE\u63A5\u5931\u8D25\uFF0C\u8BF7\u68C0\u67E5\u63A5\u53E3\u4E0E\u7F51\u7EDC\u540E\u91CD\u8BD5\u3002";
-    return message;
-  }
+  var calendarGenerationErrorMessage = generationErrorMessage;
   var CALENDAR_WEEKDAYS = ["\u4E00", "\u4E8C", "\u4E09", "\u56DB", "\u4E94", "\u516D", "\u65E5"];
   var CYCLE_LABELS2 = { period: "\u7ECF\u671F", follicular: "\u5375\u6CE1\u671F", ovulatory: "\u6392\u5375\u671F", luteal: "\u9EC4\u4F53\u671F" };
   var lunarFormatter = null;
@@ -2376,6 +2461,26 @@ ${userPrompt}` : userPrompt;
       },
       renderCalendar: render
     });
+  }
+
+  // src/directory-save-coordinator.js
+  var revisions = { histories: 0, groupMeta: 0 };
+  var queues = { histories: Promise.resolve(), groupMeta: Promise.resolve() };
+  function assertStore(store) {
+    if (!Object.hasOwn(queues, store)) throw new Error(`\u672A\u77E5\u76EE\u5F55\u5B58\u50A8\uFF1A${store}`);
+  }
+  function getDirectorySaveRevision() {
+    return { ...revisions };
+  }
+  function enqueueDirectorySave(store, data, operation, marksGlobalSave = false) {
+    assertStore(store);
+    if (typeof operation !== "function") throw new TypeError("\u76EE\u5F55\u4FDD\u5B58\u64CD\u4F5C\u5FC5\u987B\u662F\u51FD\u6570");
+    if (marksGlobalSave) revisions[store] += 1;
+    const snapshot = JSON.parse(JSON.stringify(data));
+    const pending = queues[store].catch(() => {
+    }).then(() => operation(snapshot));
+    queues[store] = pending;
+    return pending;
   }
 
   // src/budget.js
@@ -3598,14 +3703,16 @@ ${lines.join("\n")}
     saveHistoriesStrict().catch((error) => console.warn("[phone-mode] \u77ED\u4FE1\u5386\u53F2\u4FDD\u5B58\u5931\u8D25", error));
   }
   async function saveHistoriesStrict(data = window.__pmHistories) {
-    const saved = await pmIDBSet("ST_SMS_DATA_V2", data);
-    if (!saved) throw new Error("\u804A\u5929\u8BB0\u5F55\u4FDD\u5B58\u5931\u8D25\uFF1AIndexedDB \u4E0D\u53EF\u7528");
-    try {
-      localStorage.setItem("ST_SMS_DATA_V2", JSON.stringify(data));
-    } catch (error) {
-      console.warn("[phone-mode] localStorage \u5DF2\u6EE1\uFF0C\u77ED\u4FE1\u5386\u53F2\u4EC5\u4FDD\u5B58\u5728 IDB");
-    }
-    return true;
+    return enqueueDirectorySave("histories", data, async (snapshot) => {
+      const saved = await pmIDBSet("ST_SMS_DATA_V2", snapshot);
+      if (!saved) throw new Error("\u804A\u5929\u8BB0\u5F55\u4FDD\u5B58\u5931\u8D25\uFF1AIndexedDB \u4E0D\u53EF\u7528");
+      try {
+        localStorage.setItem("ST_SMS_DATA_V2", JSON.stringify(snapshot));
+      } catch (error) {
+        console.warn("[phone-mode] localStorage \u5DF2\u6EE1\uFF0C\u77ED\u4FE1\u5386\u53F2\u4EC5\u4FDD\u5B58\u5728 IDB");
+      }
+      return true;
+    }, arguments.length === 0);
   }
   function saveHistoriesBeforeUnload() {
     const data = window.__pmHistories;
@@ -4006,25 +4113,30 @@ ${lines.join("\n")}
     }
     return window.__pmGroupMeta;
   }
-  async function saveGroupMeta() {
-    window.__pmGroupMeta = normalizeGroupMetaStore(window.__pmGroupMeta);
-    const saved = await pmIDBSet(GROUP_META_STORE_KEY, window.__pmGroupMeta);
-    if (saved) {
-      try {
-        localStorage.setItem(GROUP_META_STORE_KEY, JSON.stringify(window.__pmGroupMeta));
-      } catch (error) {
+  async function saveGroupMeta(data) {
+    const updatesGlobalState = arguments.length === 0;
+    const snapshot = normalizeGroupMetaStore(updatesGlobalState ? window.__pmGroupMeta : data);
+    if (updatesGlobalState) window.__pmGroupMeta = snapshot;
+    return enqueueDirectorySave("groupMeta", snapshot, async (frozen) => {
+      const saved = await pmIDBSet(GROUP_META_STORE_KEY, frozen);
+      if (saved) {
+        try {
+          localStorage.setItem(GROUP_META_STORE_KEY, JSON.stringify(frozen));
+        } catch (error) {
+        }
+        try {
+          localStorage.removeItem(GROUP_META_FALLBACK_KEY);
+        } catch (error) {
+        }
+      } else {
+        try {
+          localStorage.setItem(GROUP_META_FALLBACK_KEY, JSON.stringify(frozen));
+        } catch {
+          throw new Error("\u7FA4\u804A\u914D\u7F6E\u4FDD\u5B58\u5931\u8D25\uFF1A\u6D4F\u89C8\u5668\u5B58\u50A8\u4E0D\u53EF\u7528\u6216\u7A7A\u95F4\u4E0D\u8DB3");
+        }
       }
-      try {
-        localStorage.removeItem(GROUP_META_FALLBACK_KEY);
-      } catch (error) {
-      }
-      return;
-    }
-    try {
-      localStorage.setItem(GROUP_META_FALLBACK_KEY, JSON.stringify(window.__pmGroupMeta));
-    } catch (error) {
-      throw new Error("\u7FA4\u804A\u914D\u7F6E\u4FDD\u5B58\u5931\u8D25\uFF1A\u6D4F\u89C8\u5668\u5B58\u50A8\u4E0D\u53EF\u7528\u6216\u7A7A\u95F4\u4E0D\u8DB3");
-    }
+      return frozen;
+    }, updatesGlobalState);
   }
   function loadCharacterBehavior() {
     try {
@@ -4256,17 +4368,143 @@ ${mainChatText}` : "",
   }
   function parseGeneratedDirectory(raw) {
     const text3 = String(raw ?? "").trim();
-    const fenced = text3.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
-    const jsonText = fenced ? fenced[1].trim() : text3;
-    if (!jsonText) throw new Error("AI \u8FD4\u56DE\u4E86\u7A7A\u5185\u5BB9");
-    let parsed;
-    try {
-      parsed = JSON.parse(jsonText);
-    } catch (error) {
-      throw new Error(`AI \u8FD4\u56DE\u683C\u5F0F\u65E0\u6CD5\u89E3\u6790\uFF1A${jsonText.slice(0, 100)}`);
+    if (!text3) throw new Error("AI \u8FD4\u56DE\u4E86\u7A7A\u5185\u5BB9");
+    const parsed = parseFirstJsonObject(
+      text3,
+      "AI \u8FD4\u56DE\u683C\u5F0F\u65E0\u6CD5\u89E3\u6790\uFF0C\u672A\u627E\u5230\u6709\u6548\u7684\u8054\u7CFB\u4EBA JSON",
+      (value) => !!value && typeof value === "object" && !Array.isArray(value) && Object.keys(value).some((key) => key === "contacts" || key === "groups")
+    );
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("AI \u8FD4\u56DE\u7684\u8054\u7CFB\u4EBA JSON \u9876\u5C42\u5FC5\u987B\u662F\u5BF9\u8C61");
+    const keys = Object.keys(parsed);
+    if (!keys.some((key) => key === "contacts" || key === "groups")) throw new Error("AI \u8FD4\u56DE\u7684\u8054\u7CFB\u4EBA JSON \u7F3A\u5C11 contacts \u6216 groups");
+    const extra = keys.find((key) => key !== "contacts" && key !== "groups");
+    if (extra) throw new Error(`AI \u8FD4\u56DE\u7684\u8054\u7CFB\u4EBA JSON \u5305\u542B\u989D\u5916\u5B57\u6BB5\uFF1A${extra}`);
+    if (parsed.contacts !== void 0 && !Array.isArray(parsed.contacts)) throw new Error("AI \u8FD4\u56DE\u7684 contacts \u5FC5\u987B\u662F\u6570\u7EC4");
+    if (parsed.groups !== void 0 && !Array.isArray(parsed.groups)) throw new Error("AI \u8FD4\u56DE\u7684 groups \u5FC5\u987B\u662F\u6570\u7EC4");
+    for (const contact of parsed.contacts || []) {
+      if (typeof contact !== "string") throw new Error("AI \u8FD4\u56DE\u7684 contacts \u6BCF\u9879\u5FC5\u987B\u662F\u5B57\u7B26\u4E32");
     }
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("AI \u8FD4\u56DE\u7684 JSON \u9876\u5C42\u5FC5\u987B\u662F\u5BF9\u8C61");
-    return parsed;
+    for (const group of parsed.groups || []) {
+      if (!group || typeof group !== "object" || Array.isArray(group)) throw new Error("AI \u8FD4\u56DE\u7684 groups \u6BCF\u9879\u5FC5\u987B\u662F\u5BF9\u8C61");
+      const groupKeys = Object.keys(group);
+      const groupExtra = groupKeys.find((key) => key !== "name" && key !== "members");
+      if (groupExtra) throw new Error(`AI \u8FD4\u56DE\u7684\u7FA4\u804A\u5305\u542B\u989D\u5916\u5B57\u6BB5\uFF1A${groupExtra}`);
+      if (typeof group.name !== "string") throw new Error("AI \u8FD4\u56DE\u7684\u7FA4\u804A name \u5FC5\u987B\u662F\u5B57\u7B26\u4E32");
+      if (!Array.isArray(group.members)) throw new Error("AI \u8FD4\u56DE\u7684\u7FA4\u804A members \u5FC5\u987B\u662F\u6570\u7EC4");
+      for (const member of group.members) {
+        if (typeof member !== "string") throw new Error("AI \u8FD4\u56DE\u7684\u7FA4\u804A members \u6BCF\u9879\u5FC5\u987B\u662F\u5B57\u7B26\u4E32");
+      }
+    }
+    return { contacts: parsed.contacts || [], groups: parsed.groups || [] };
+  }
+  function buildGeneratedDirectoryCandidates(parsed, existingNames, currentUserName) {
+    const knownNames = new Set((Array.isArray(existingNames) ? existingNames : []).map((name) => String(name || "").trim().toLowerCase()).filter(Boolean));
+    const userName = String(currentUserName || "").trim().toLowerCase();
+    const contacts = [];
+    const groups = [];
+    for (const value of parsed.contacts) {
+      if (contacts.length + groups.length >= AUTO_GENERATION_BATCH) break;
+      const name = value.trim();
+      const normalized = name.toLowerCase();
+      if (!name || normalized === userName || knownNames.has(normalized)) continue;
+      contacts.push(name);
+      knownNames.add(normalized);
+    }
+    for (const group of parsed.groups) {
+      if (contacts.length + groups.length >= AUTO_GENERATION_BATCH) break;
+      const name = group.name.trim();
+      const normalized = name.toLowerCase();
+      if (!name || normalized === userName || knownNames.has(normalized)) continue;
+      const memberNames = /* @__PURE__ */ new Set();
+      const members = group.members.flatMap((value) => {
+        const member = value.trim();
+        const memberKey = member.toLowerCase();
+        if (!member || memberKey === userName || memberNames.has(memberKey)) return [];
+        memberNames.add(memberKey);
+        return [member];
+      });
+      if (members.length < 2) continue;
+      groups.push({ name, members });
+      knownNames.add(normalized);
+    }
+    if (!contacts.length && !groups.length) throw new Error("AI \u672A\u8FD4\u56DE\u53EF\u6DFB\u52A0\u7684\u8054\u7CFB\u4EBA\u6216\u7FA4\u804A");
+    return { contacts, groups };
+  }
+  var clone2 = (value) => JSON.parse(JSON.stringify(value));
+  var sameState = (left, right) => JSON.stringify(left) === JSON.stringify(right);
+  function directoryUnchanged(revision, histories, groupMeta, getRevision) {
+    const current = getRevision();
+    return current.histories === revision.histories && current.groupMeta === revision.groupMeta && sameState(window.__pmHistories || {}, histories) && sameState(window.__pmGroupMeta || {}, groupMeta);
+  }
+  async function commitGeneratedDirectory({
+    id: id2,
+    candidates,
+    isActive,
+    persistHistories = saveHistoriesStrict,
+    persistGroupMeta = saveGroupMeta,
+    getRevision = getDirectorySaveRevision
+  }) {
+    if (typeof isActive !== "function" || !isActive()) return false;
+    const previousHistories = clone2(window.__pmHistories || {});
+    const previousGroupMeta = clone2(window.__pmGroupMeta || {});
+    const initialRevision = getRevision();
+    const nextHistories = clone2(previousHistories);
+    const nextGroupMeta = clone2(previousGroupMeta);
+    if (!nextHistories[id2]) nextHistories[id2] = {};
+    if (!nextGroupMeta[id2]) nextGroupMeta[id2] = {};
+    for (const name of candidates.contacts) nextHistories[id2][name] = [];
+    for (const { name, members } of candidates.groups) {
+      const groupKey = `__group_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+      nextGroupMeta[id2][groupKey] = { name, members };
+    }
+    let historiesAttempted = false;
+    let groupsAttempted = false;
+    try {
+      historiesAttempted = true;
+      await persistHistories(nextHistories);
+      if (!isActive()) throw new Error("\u751F\u6210\u5DF2\u53D6\u6D88");
+      if (!directoryUnchanged(initialRevision, previousHistories, previousGroupMeta, getRevision)) {
+        throw new Error("\u8054\u7CFB\u4EBA\u76EE\u5F55\u5728\u751F\u6210\u63D0\u4EA4\u671F\u95F4\u5DF2\u88AB\u5176\u4ED6\u64CD\u4F5C\u4FEE\u6539\uFF0C\u8BF7\u91CD\u8BD5");
+      }
+      groupsAttempted = true;
+      const normalizedGroups = await persistGroupMeta(nextGroupMeta);
+      if (!isActive()) throw new Error("\u751F\u6210\u5DF2\u53D6\u6D88");
+      if (!directoryUnchanged(initialRevision, previousHistories, previousGroupMeta, getRevision)) {
+        throw new Error("\u8054\u7CFB\u4EBA\u76EE\u5F55\u5728\u751F\u6210\u63D0\u4EA4\u671F\u95F4\u5DF2\u88AB\u5176\u4ED6\u64CD\u4F5C\u4FEE\u6539\uFF0C\u8BF7\u91CD\u8BD5");
+      }
+      window.__pmHistories = nextHistories;
+      window.__pmGroupMeta = normalizedGroups || nextGroupMeta;
+      return true;
+    } catch (error) {
+      const rollbackFailures = [];
+      if (groupsAttempted) {
+        try {
+          await persistGroupMeta(clone2(window.__pmGroupMeta || {}));
+        } catch (rollbackError) {
+          rollbackFailures.push(rollbackError);
+        }
+      }
+      if (historiesAttempted) {
+        try {
+          await persistHistories(clone2(window.__pmHistories || {}));
+        } catch (rollbackError) {
+          rollbackFailures.push(rollbackError);
+        }
+      }
+      if (rollbackFailures.length) {
+        const rollbackError = new AggregateError(rollbackFailures, "\u8054\u7CFB\u4EBA\u751F\u6210\u56DE\u6EDA\u5931\u8D25");
+        const combined = new Error(`${error.message}\uFF1B\u8054\u7CFB\u4EBA\u751F\u6210\u56DE\u6EDA\u5931\u8D25\uFF1A${rollbackFailures.map((item) => item.message).join("\uFF1B")}`);
+        combined.cause = error;
+        combined.rollbackError = rollbackError;
+        throw combined;
+      }
+      throw error;
+    }
+  }
+  function shouldReportGeneratedDirectoryError(error, isActive) {
+    if (error?.rollbackError) return true;
+    const cancelled = error?.name === "AbortError" || /(?:生成|请求|操作)?已取消/.test(String(error?.message || error || ""));
+    return !cancelled && isActive;
   }
   function installContactGenerator(state, deps) {
     const {
@@ -4298,59 +4536,24 @@ ${mainChatText}` : "",
         const raw = await callAI(systemPrompt, userPrompt, { maxTokens: 600 });
         if (!isGenerationTaskActive(task)) return;
         const parsed = parseGeneratedDirectory(raw);
-        const historiesSnapshot = JSON.parse(JSON.stringify(window.__pmHistories));
-        const groupMetaSnapshot = JSON.parse(JSON.stringify(window.__pmGroupMeta));
-        if (!window.__pmHistories[id2]) window.__pmHistories[id2] = {};
-        if (!window.__pmGroupMeta[id2]) window.__pmGroupMeta[id2] = {};
         const latestDirectory = getDirectoryState(id2);
-        const knownNames = new Set([...latestDirectory.contacts, ...latestDirectory.groupNames].map((name) => name.toLowerCase()));
-        const userName = String(context.userName || "").trim().toLowerCase();
-        let added = 0;
-        for (const value of Array.isArray(parsed.contacts) ? parsed.contacts : []) {
-          if (added >= AUTO_GENERATION_BATCH) break;
-          if (typeof value !== "string") continue;
-          const name = value.trim();
-          const normalized = name.toLowerCase();
-          if (!name || normalized === userName || knownNames.has(normalized)) continue;
-          window.__pmHistories[id2][name] = [];
-          knownNames.add(normalized);
-          added++;
-        }
-        for (const group of Array.isArray(parsed.groups) ? parsed.groups : []) {
-          if (added >= AUTO_GENERATION_BATCH) break;
-          const name = typeof group?.name === "string" ? group.name.trim() : "";
-          const normalized = name.toLowerCase();
-          if (!name || normalized === userName || knownNames.has(normalized) || !Array.isArray(group.members)) continue;
-          const memberNames = /* @__PURE__ */ new Set();
-          const members = [];
-          for (const value of group.members) {
-            if (typeof value !== "string") continue;
-            const member = value.trim();
-            const memberKey = member.toLowerCase();
-            if (!member || memberKey === userName || memberNames.has(memberKey)) continue;
-            memberNames.add(memberKey);
-            members.push(member);
-          }
-          if (members.length < 2) continue;
-          const groupKey = `__group_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
-          window.__pmGroupMeta[id2][groupKey] = { name, members };
-          knownNames.add(normalized);
-          added++;
-        }
+        const candidates = buildGeneratedDirectoryCandidates(
+          parsed,
+          [...latestDirectory.contacts, ...latestDirectory.groupNames],
+          context.userName
+        );
         if (!isGenerationTaskActive(task)) return;
-        saveHistories();
-        try {
-          await saveGroupMeta();
-        } catch (error) {
-          window.__pmHistories = historiesSnapshot;
-          window.__pmGroupMeta = groupMetaSnapshot;
-          saveHistories();
-          throw error;
-        }
+        await commitGeneratedDirectory({
+          id: id2,
+          candidates,
+          isActive: () => isGenerationTaskActive(task)
+        });
         if (document.getElementById("pm-autogen-btn")) await window.__pmShowList();
       } catch (error) {
         console.error("[phone-mode] __pmAutoGenContacts \u5F02\u5E38", error);
-        if (isGenerationTaskActive(task)) alert(`\u81EA\u52A8\u751F\u6210\u5931\u8D25\uFF1A${error?.message || error}`);
+        if (shouldReportGeneratedDirectoryError(error, isGenerationTaskActive(task))) {
+          alert(`\u81EA\u52A8\u751F\u6210\u5931\u8D25\uFF1A${generationErrorMessage(error)}`);
+        }
       } finally {
         const finishedOwnTask = finishGeneration(task);
         if (finishedOwnTask || !state.generationTask) setSpinning(false);
@@ -4841,82 +5044,12 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
 
 \u4EFB\u52A1\uFF1A${instructions[kind] || instructions.feed_batch}` };
   }
-  function jsonObjectEnd(source, start) {
-    if (start < 0) return source;
-    let depth = 0;
-    let quoted = false;
-    let escaped = false;
-    for (let index = start; index < source.length; index += 1) {
-      const char = source[index];
-      if (quoted) {
-        if (escaped) escaped = false;
-        else if (char === "\\") escaped = true;
-        else if (char === '"') quoted = false;
-        continue;
-      }
-      if (char === '"') {
-        quoted = true;
-        continue;
-      }
-      if (char === "{") depth += 1;
-      else if (char === "}") {
-        depth -= 1;
-        if (depth === 0) return index + 1;
-      }
-    }
-    return -1;
-  }
-  function cleanJsonResponseSource(raw) {
-    const source = String(raw ?? "");
-    let cleaned = "";
-    let depth = 0;
-    let quoted = false;
-    let escaped = false;
-    for (let index = 0; index < source.length; index += 1) {
-      const char = source[index];
-      if (depth > 0 && quoted) {
-        cleaned += char;
-        if (escaped) escaped = false;
-        else if (char === "\\") escaped = true;
-        else if (char === '"') quoted = false;
-        continue;
-      }
-      if (depth > 0 && char === '"') {
-        quoted = true;
-        cleaned += char;
-        continue;
-      }
-      if (depth === 0 && char === "<") {
-        const rest = source.slice(index);
-        const opening = rest.match(/^(?:<\s*(think|thinking)\b[^>]*>|<!--\s*(think|thinking)\s*-->)/i);
-        if (opening) {
-          const tag = opening[1] || opening[2];
-          const closing = new RegExp(`(?:<\\s*\\/\\s*${tag}\\s*>|<!--\\s*\\/\\s*${tag}\\s*-->)`, "i").exec(rest.slice(opening[0].length));
-          if (closing) {
-            index += opening[0].length + closing.index + closing[0].length - 1;
-            continue;
-          }
-        }
-      }
-      if (char === "{") depth += 1;
-      else if (char === "}" && depth > 0) depth -= 1;
-      cleaned += char;
-    }
-    return cleaned.replace(/^\s*```(?:json)?\s*|\s*```\s*$/gi, "").trim();
-  }
-  function parseFirstJsonObject(source) {
-    for (let start = source.indexOf("{"); start >= 0; start = source.indexOf("{", start + 1)) {
-      const end = jsonObjectEnd(source, start);
-      if (end < 0) continue;
-      try {
-        return JSON.parse(source.slice(start, end));
-      } catch (error) {
-      }
-    }
-    throw new Error("AI \u672A\u8FD4\u56DE\u53EF\u89E3\u6790\u7684\u793E\u533A JSON");
-  }
   function parseEnvelope(raw, expectedKind) {
-    const value = parseFirstJsonObject(cleanJsonResponseSource(raw));
+    const value = parseFirstJsonObject(
+      raw,
+      "AI \u672A\u8FD4\u56DE\u53EF\u89E3\u6790\u7684\u793E\u533A JSON",
+      (candidate) => !!candidate && typeof candidate === "object" && !Array.isArray(candidate) && candidate.version === 1 && candidate.kind === expectedKind && Array.isArray(candidate.items)
+    );
     if (!value || Array.isArray(value) || value.version !== 1 || value.kind !== expectedKind || !Array.isArray(value.items)) throw new Error("AI \u8FD4\u56DE\u534F\u8BAE\u4E0D\u5339\u914D");
     const keys = Object.keys(value).sort();
     if (keys.length !== 3 || keys[0] !== "items" || keys[1] !== "kind" || keys[2] !== "version") throw new Error("AI \u8FD4\u56DE\u534F\u8BAE\u5305\u542B\u989D\u5916\u5B57\u6BB5");
@@ -5287,7 +5420,7 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
     };
     const reportFailure = (task, error) => {
       if (controller.finish(task, error) && error?.message !== "\u751F\u6210\u5DF2\u53D6\u6D88") {
-        onStatus(error?.message || "\u793E\u533A\u751F\u6210\u5931\u8D25");
+        onStatus(error ? generationErrorMessage(error) : "\u793E\u533A\u751F\u6210\u5931\u8D25");
       }
     };
     const stopLiveTimer = (task = null) => {
@@ -5736,7 +5869,7 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
     };
     const showPhonePage = (page) => window.__pmShowPhonePage?.(page) === true;
     const reportPhoneUiError = (error) => {
-      const message = error?.message || "\u624B\u673A\u9875\u9762\u64CD\u4F5C\u5931\u8D25";
+      const message = error ? generationErrorMessage(error) : "\u624B\u673A\u9875\u9762\u64CD\u4F5C\u5931\u8D25";
       setStatus(message);
       if (!document.querySelector(".pm-scene-status")) alert(message);
     };
@@ -5901,7 +6034,7 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
         try {
           await communityRunner.generateFeed();
         } catch (error) {
-          if (error.message !== "\u751F\u6210\u5DF2\u53D6\u6D88") setStatus(`\u793E\u533A\u5DF2\u521B\u5EFA\uFF1BAI \u70ED\u573A\u5931\u8D25\uFF1A${error.message}`);
+          if (error.message !== "\u751F\u6210\u5DF2\u53D6\u6D88") setStatus(`\u793E\u533A\u5DF2\u521B\u5EFA\uFF1BAI \u70ED\u573A\u5931\u8D25\uFF1A${generationErrorMessage(error)}`);
         }
       } catch (error) {
         runtime.openSceneId = null;
@@ -10748,7 +10881,7 @@ ${lines}`;
   }
 
   // src/settings-backup.js
-  var clone2 = (value) => JSON.parse(JSON.stringify(value));
+  var clone3 = (value) => JSON.parse(JSON.stringify(value));
   function structurallyEqual(left, right) {
     if (Object.is(left, right)) return true;
     if (Array.isArray(left) || Array.isArray(right)) {
@@ -10836,19 +10969,19 @@ ${lines}`;
     const capture = async () => {
       const interactiveScenes = normalizeInteractiveStore(await loadInteractiveScenes());
       return {
-        histories: clone2(window.__pmHistories || {}),
-        config: clone2(window.__pmConfig || {}),
-        theme: clone2(window.__pmTheme || {}),
-        profiles: clone2(window.__pmProfiles || []),
-        groupMeta: clone2(window.__pmGroupMeta || {}),
-        pokeConfig: clone2(window.__pmPokeConfig || {}),
-        bidirectional: clone2(window.__pmBidirectional || {}),
-        emojis: clone2(window.__pmEmojis || []),
-        characterBehavior: clone2(window.__pmCharacterBehavior || {}),
+        histories: clone3(window.__pmHistories || {}),
+        config: clone3(window.__pmConfig || {}),
+        theme: clone3(window.__pmTheme || {}),
+        profiles: clone3(window.__pmProfiles || []),
+        groupMeta: clone3(window.__pmGroupMeta || {}),
+        pokeConfig: clone3(window.__pmPokeConfig || {}),
+        bidirectional: clone3(window.__pmBidirectional || {}),
+        emojis: clone3(window.__pmEmojis || []),
+        characterBehavior: clone3(window.__pmCharacterBehavior || {}),
         wordyLimit: !!window.__pmWordyLimit,
         desktopBg: window.__pmDesktopBg || "",
         bgGlobal: window.__pmBgGlobal || "",
-        bgLocal: clone2(window.__pmBgLocal || {}),
+        bgLocal: clone3(window.__pmBgLocal || {}),
         interactiveScenes,
         phoneUiState: loadPhoneUiState(interactiveScenes),
         ambientStatus: normalizeAmbientStatus({ enabled: window.__pmTheme?.ambientStatusEnabled }),
@@ -10863,20 +10996,20 @@ ${lines}`;
       const interactiveScenes = normalizeInteractiveStore(state.interactiveScenes);
       const phoneUiState = normalizePhoneUiState(state.phoneUiState, interactiveScenes);
       const ambientStatus = normalizeAmbientStatus(state.ambientStatus ?? { enabled: state.theme?.ambientStatusEnabled });
-      window.__pmHistories = clone2(state.histories || {});
-      window.__pmConfig = clone2(state.config || {});
-      window.__pmTheme = clone2(state.theme || {});
+      window.__pmHistories = clone3(state.histories || {});
+      window.__pmConfig = clone3(state.config || {});
+      window.__pmTheme = clone3(state.theme || {});
       window.__pmTheme.ambientStatusEnabled = ambientStatus.enabled;
-      window.__pmProfiles = clone2(state.profiles || []);
-      window.__pmGroupMeta = clone2(state.groupMeta || {});
-      window.__pmPokeConfig = clone2(state.pokeConfig || {});
-      window.__pmBidirectional = clone2(state.bidirectional || {});
-      window.__pmEmojis = clone2(state.emojis || []);
-      window.__pmCharacterBehavior = clone2(state.characterBehavior || {});
+      window.__pmProfiles = clone3(state.profiles || []);
+      window.__pmGroupMeta = clone3(state.groupMeta || {});
+      window.__pmPokeConfig = clone3(state.pokeConfig || {});
+      window.__pmBidirectional = clone3(state.bidirectional || {});
+      window.__pmEmojis = clone3(state.emojis || []);
+      window.__pmCharacterBehavior = clone3(state.characterBehavior || {});
       window.__pmWordyLimit = !!state.wordyLimit;
       window.__pmDesktopBg = typeof state.desktopBg === "string" ? state.desktopBg : "";
       window.__pmBgGlobal = typeof state.bgGlobal === "string" ? state.bgGlobal : "";
-      window.__pmBgLocal = clone2(state.bgLocal || {});
+      window.__pmBgLocal = clone3(state.bgLocal || {});
       window.__pmPhoneUiState = phoneUiState;
       return {
         ...state,
@@ -10917,7 +11050,7 @@ ${lines}`;
   }
 
   // src/settings-ui.js
-  var clone3 = (value) => JSON.parse(JSON.stringify(value));
+  var clone4 = (value) => JSON.parse(JSON.stringify(value));
   var legacyBackupTheme = (value) => {
     const theme = objectValue(value || {}, "theme");
     delete theme.ambientStatusEnabled;
@@ -10925,11 +11058,11 @@ ${lines}`;
   };
   var objectValue = (value, field) => {
     if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error(`\u5907\u4EFD\u5B57\u6BB5 ${field} \u5FC5\u987B\u662F\u5BF9\u8C61`);
-    return clone3(value);
+    return clone4(value);
   };
   var arrayValue = (value, field) => {
     if (!Array.isArray(value)) throw new Error(`\u5907\u4EFD\u5B57\u6BB5 ${field} \u5FC5\u987B\u662F\u6570\u7EC4`);
-    return clone3(value);
+    return clone4(value);
   };
   var isUnsafeDictionaryKey2 = (value) => value === "prototype" || Object.hasOwn(Object.prototype, value);
   var assertSafeDictionaryKey2 = (value, field) => {
@@ -11130,7 +11263,7 @@ ${lines}`;
     const version = data.schemaVersion === void 0 ? 1 : data.schemaVersion;
     if (!Number.isInteger(version) || version < 1) throw new Error("\u5907\u4EFD\u7248\u672C\u65E0\u6548");
     if (version > 6) throw new Error(`\u5907\u4EFD\u7248\u672C ${version} \u9AD8\u4E8E\u5F53\u524D\u652F\u6301\u7248\u672C 6`);
-    const result = clone3(current);
+    const result = clone4(current);
     if (Object.hasOwn(data, "histories")) result.histories = objectValue(data.histories, "histories");
     if (Object.hasOwn(data, "config")) result.config = objectValue(data.config, "config");
     if (Object.hasOwn(data, "theme")) {
@@ -11232,7 +11365,7 @@ ${lines}`;
       if (border) border.value = theme.borderColor || "#1a1a1a";
     };
     const persistThemeMutation = (mutate) => {
-      const previous = clone3(window.__pmTheme);
+      const previous = clone4(window.__pmTheme);
       mutate();
       if (saveTheme()) {
         applyTheme();
@@ -11251,12 +11384,12 @@ ${lines}`;
       const operation = backgroundMutation.catch(() => {
       }).then(async () => {
         await runBackgroundTransaction({
-          capture: () => isDesktop ? window.__pmDesktopBg || "" : isGlobal ? window.__pmBgGlobal || "" : clone3(window.__pmBgLocal || {}),
+          capture: () => isDesktop ? window.__pmDesktopBg || "" : isGlobal ? window.__pmBgGlobal || "" : clone4(window.__pmBgLocal || {}),
           mutate,
           restore: (snapshot) => {
             if (isDesktop) window.__pmDesktopBg = snapshot;
             else if (isGlobal) window.__pmBgGlobal = snapshot;
-            else window.__pmBgLocal = clone3(snapshot);
+            else window.__pmBgLocal = clone4(snapshot);
           },
           persist: isDesktop ? saveDesktopBg : isGlobal ? saveBgGlobal : saveBgLocal
         });
@@ -11274,7 +11407,7 @@ ${error.message}`);
       });
     };
     window.__pmDeleteProfile = (idx) => {
-      const previous = clone3(window.__pmProfiles);
+      const previous = clone4(window.__pmProfiles);
       window.__pmProfiles.splice(idx, 1);
       if (!saveProfiles()) {
         window.__pmProfiles = previous;
@@ -11723,7 +11856,7 @@ ${error.message}`);
         }
         return;
       }
-      const previous = clone3(window.__pmConfig), candidate = { apiUrl, apiKey, model, useIndependent: apiDraftUseIndependent };
+      const previous = clone4(window.__pmConfig), candidate = { apiUrl, apiKey, model, useIndependent: apiDraftUseIndependent };
       window.__pmConfig = candidate;
       try {
         localStorage.setItem("ST_SMS_CONFIG", JSON.stringify(candidate));

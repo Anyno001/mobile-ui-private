@@ -1,4 +1,6 @@
-import { saveGroupMeta, saveHistories } from './storage.js';
+import { generationErrorMessage, parseFirstJsonObject } from './ai.js';
+import { getDirectorySaveRevision } from './directory-save-coordinator.js';
+import { saveGroupMeta, saveHistoriesStrict } from './storage.js';
 
 const AUTO_GENERATION_BATCH = 10;
 
@@ -37,16 +39,148 @@ function buildPrompts(context, existingNames) {
     return { systemPrompt, userPrompt };
 }
 
-function parseGeneratedDirectory(raw) {
+export function parseGeneratedDirectory(raw) {
     const text = String(raw ?? '').trim();
-    const fenced = text.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
-    const jsonText = fenced ? fenced[1].trim() : text;
-    if (!jsonText) throw new Error('AI 返回了空内容');
-    let parsed;
-    try { parsed = JSON.parse(jsonText); }
-    catch (error) { throw new Error(`AI 返回格式无法解析：${jsonText.slice(0, 100)}`); }
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('AI 返回的 JSON 顶层必须是对象');
-    return parsed;
+    if (!text) throw new Error('AI 返回了空内容');
+    const parsed = parseFirstJsonObject(
+        text, 'AI 返回格式无法解析，未找到有效的联系人 JSON',
+        value => !!value && typeof value === 'object' && !Array.isArray(value)
+            && Object.keys(value).some(key => key === 'contacts' || key === 'groups'),
+    );
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('AI 返回的联系人 JSON 顶层必须是对象');
+    const keys = Object.keys(parsed);
+    if (!keys.some(key => key === 'contacts' || key === 'groups')) throw new Error('AI 返回的联系人 JSON 缺少 contacts 或 groups');
+    const extra = keys.find(key => key !== 'contacts' && key !== 'groups');
+    if (extra) throw new Error(`AI 返回的联系人 JSON 包含额外字段：${extra}`);
+    if (parsed.contacts !== undefined && !Array.isArray(parsed.contacts)) throw new Error('AI 返回的 contacts 必须是数组');
+    if (parsed.groups !== undefined && !Array.isArray(parsed.groups)) throw new Error('AI 返回的 groups 必须是数组');
+    for (const contact of parsed.contacts || []) {
+        if (typeof contact !== 'string') throw new Error('AI 返回的 contacts 每项必须是字符串');
+    }
+    for (const group of parsed.groups || []) {
+        if (!group || typeof group !== 'object' || Array.isArray(group)) throw new Error('AI 返回的 groups 每项必须是对象');
+        const groupKeys = Object.keys(group);
+        const groupExtra = groupKeys.find(key => key !== 'name' && key !== 'members');
+        if (groupExtra) throw new Error(`AI 返回的群聊包含额外字段：${groupExtra}`);
+        if (typeof group.name !== 'string') throw new Error('AI 返回的群聊 name 必须是字符串');
+        if (!Array.isArray(group.members)) throw new Error('AI 返回的群聊 members 必须是数组');
+        for (const member of group.members) {
+            if (typeof member !== 'string') throw new Error('AI 返回的群聊 members 每项必须是字符串');
+        }
+    }
+    return { contacts: parsed.contacts || [], groups: parsed.groups || [] };
+}
+
+export function buildGeneratedDirectoryCandidates(parsed, existingNames, currentUserName) {
+    const knownNames = new Set((Array.isArray(existingNames) ? existingNames : [])
+        .map(name => String(name || '').trim().toLowerCase()).filter(Boolean));
+    const userName = String(currentUserName || '').trim().toLowerCase();
+    const contacts = [];
+    const groups = [];
+    for (const value of parsed.contacts) {
+        if (contacts.length + groups.length >= AUTO_GENERATION_BATCH) break;
+        const name = value.trim();
+        const normalized = name.toLowerCase();
+        if (!name || normalized === userName || knownNames.has(normalized)) continue;
+        contacts.push(name);
+        knownNames.add(normalized);
+    }
+    for (const group of parsed.groups) {
+        if (contacts.length + groups.length >= AUTO_GENERATION_BATCH) break;
+        const name = group.name.trim();
+        const normalized = name.toLowerCase();
+        if (!name || normalized === userName || knownNames.has(normalized)) continue;
+        const memberNames = new Set();
+        const members = group.members.flatMap(value => {
+            const member = value.trim();
+            const memberKey = member.toLowerCase();
+            if (!member || memberKey === userName || memberNames.has(memberKey)) return [];
+            memberNames.add(memberKey);
+            return [member];
+        });
+        if (members.length < 2) continue;
+        groups.push({ name, members });
+        knownNames.add(normalized);
+    }
+    if (!contacts.length && !groups.length) throw new Error('AI 未返回可添加的联系人或群聊');
+    return { contacts, groups };
+}
+
+const clone = value => JSON.parse(JSON.stringify(value));
+const sameState = (left, right) => JSON.stringify(left) === JSON.stringify(right);
+
+function directoryUnchanged(revision, histories, groupMeta, getRevision) {
+    const current = getRevision();
+    return current.histories === revision.histories
+        && current.groupMeta === revision.groupMeta
+        && sameState(window.__pmHistories || {}, histories)
+        && sameState(window.__pmGroupMeta || {}, groupMeta);
+}
+
+export async function commitGeneratedDirectory({
+    id, candidates, isActive,
+    persistHistories = saveHistoriesStrict,
+    persistGroupMeta = saveGroupMeta,
+    getRevision = getDirectorySaveRevision,
+}) {
+    if (typeof isActive !== 'function' || !isActive()) return false;
+    const previousHistories = clone(window.__pmHistories || {});
+    const previousGroupMeta = clone(window.__pmGroupMeta || {});
+    const initialRevision = getRevision();
+    const nextHistories = clone(previousHistories);
+    const nextGroupMeta = clone(previousGroupMeta);
+    if (!nextHistories[id]) nextHistories[id] = {};
+    if (!nextGroupMeta[id]) nextGroupMeta[id] = {};
+    for (const name of candidates.contacts) nextHistories[id][name] = [];
+    for (const { name, members } of candidates.groups) {
+        const groupKey = `__group_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+        nextGroupMeta[id][groupKey] = { name, members };
+    }
+
+    let historiesAttempted = false;
+    let groupsAttempted = false;
+    try {
+        historiesAttempted = true;
+        await persistHistories(nextHistories);
+        if (!isActive()) throw new Error('生成已取消');
+        if (!directoryUnchanged(initialRevision, previousHistories, previousGroupMeta, getRevision)) {
+            throw new Error('联系人目录在生成提交期间已被其他操作修改，请重试');
+        }
+        groupsAttempted = true;
+        const normalizedGroups = await persistGroupMeta(nextGroupMeta);
+        if (!isActive()) throw new Error('生成已取消');
+        if (!directoryUnchanged(initialRevision, previousHistories, previousGroupMeta, getRevision)) {
+            throw new Error('联系人目录在生成提交期间已被其他操作修改，请重试');
+        }
+        window.__pmHistories = nextHistories;
+        window.__pmGroupMeta = normalizedGroups || nextGroupMeta;
+        return true;
+    } catch (error) {
+        const rollbackFailures = [];
+        if (groupsAttempted) {
+            try { await persistGroupMeta(clone(window.__pmGroupMeta || {})); }
+            catch (rollbackError) { rollbackFailures.push(rollbackError); }
+        }
+        if (historiesAttempted) {
+            try { await persistHistories(clone(window.__pmHistories || {})); }
+            catch (rollbackError) { rollbackFailures.push(rollbackError); }
+        }
+        if (rollbackFailures.length) {
+            const rollbackError = new AggregateError(rollbackFailures, '联系人生成回滚失败');
+            const combined = new Error(`${error.message}；联系人生成回滚失败：${rollbackFailures.map(item => item.message).join('；')}`);
+            combined.cause = error;
+            combined.rollbackError = rollbackError;
+            throw combined;
+        }
+        throw error;
+    }
+}
+
+export function shouldReportGeneratedDirectoryError(error, isActive) {
+    if (error?.rollbackError) return true;
+    const cancelled = error?.name === 'AbortError'
+        || /(?:生成|请求|操作)?已取消/.test(String(error?.message || error || ''));
+    return !cancelled && isActive;
 }
 
 export function installContactGenerator(state, deps) {
@@ -78,64 +212,26 @@ export function installContactGenerator(state, deps) {
             if (!isGenerationTaskActive(task)) return;
             const parsed = parseGeneratedDirectory(raw);
 
-            const historiesSnapshot = JSON.parse(JSON.stringify(window.__pmHistories));
-            const groupMetaSnapshot = JSON.parse(JSON.stringify(window.__pmGroupMeta));
-            if (!window.__pmHistories[id]) window.__pmHistories[id] = {};
-            if (!window.__pmGroupMeta[id]) window.__pmGroupMeta[id] = {};
-            // AI 请求期间目录可能被其他操作修改；以落盘前的实时状态重新计算去重集合。
+            // AI 请求期间目录可能被其他操作修改；候选必须基于落盘前的实时状态重新去重。
             const latestDirectory = getDirectoryState(id);
-            const knownNames = new Set([...latestDirectory.contacts, ...latestDirectory.groupNames].map(name => name.toLowerCase()));
-            const userName = String(context.userName || '').trim().toLowerCase();
-            let added = 0;
-
-            for (const value of Array.isArray(parsed.contacts) ? parsed.contacts : []) {
-                if (added >= AUTO_GENERATION_BATCH) break;
-                if (typeof value !== 'string') continue;
-                const name = value.trim();
-                const normalized = name.toLowerCase();
-                if (!name || normalized === userName || knownNames.has(normalized)) continue;
-                window.__pmHistories[id][name] = [];
-                knownNames.add(normalized);
-                added++;
-            }
-
-            for (const group of Array.isArray(parsed.groups) ? parsed.groups : []) {
-                if (added >= AUTO_GENERATION_BATCH) break;
-                const name = typeof group?.name === 'string' ? group.name.trim() : '';
-                const normalized = name.toLowerCase();
-                if (!name || normalized === userName || knownNames.has(normalized) || !Array.isArray(group.members)) continue;
-                const memberNames = new Set();
-                const members = [];
-                for (const value of group.members) {
-                    if (typeof value !== 'string') continue;
-                    const member = value.trim();
-                    const memberKey = member.toLowerCase();
-                    if (!member || memberKey === userName || memberNames.has(memberKey)) continue;
-                    memberNames.add(memberKey);
-                    members.push(member);
-                }
-                if (members.length < 2) continue;
-                const groupKey = `__group_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
-                window.__pmGroupMeta[id][groupKey] = { name, members };
-                knownNames.add(normalized);
-                added++;
-            }
-
+            const candidates = buildGeneratedDirectoryCandidates(
+                parsed,
+                [...latestDirectory.contacts, ...latestDirectory.groupNames],
+                context.userName,
+            );
             if (!isGenerationTaskActive(task)) return;
-            saveHistories();
-            try {
-                await saveGroupMeta();
-            } catch (error) {
-                window.__pmHistories = historiesSnapshot;
-                window.__pmGroupMeta = groupMetaSnapshot;
-                saveHistories();
-                throw error;
-            }
+            await commitGeneratedDirectory({
+                id,
+                candidates,
+                isActive: () => isGenerationTaskActive(task),
+            });
             // 仅刷新仍然打开的联系人弹窗，避免异步完成后重新打开或污染其他界面。
             if (document.getElementById('pm-autogen-btn')) await window.__pmShowList();
         } catch (error) {
             console.error('[phone-mode] __pmAutoGenContacts 异常', error);
-            if (isGenerationTaskActive(task)) alert(`自动生成失败：${error?.message || error}`);
+            if (shouldReportGeneratedDirectoryError(error, isGenerationTaskActive(task))) {
+                alert(`自动生成失败：${generationErrorMessage(error)}`);
+            }
         } finally {
             const finishedOwnTask = finishGeneration(task);
             // 旧任务失效后可能已有新任务启动；旧 finally 只能在当前没有新任务时清理 spinner。

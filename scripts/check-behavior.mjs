@@ -516,10 +516,25 @@ await loadGroupMeta();
 assert.deepEqual(window.__pmGroupMeta.story.valid.legacyField, { keep: true });
 assert.equal(window.__pmGroupMeta.story.invalid, undefined);
 window.__pmGroupMeta.story.valid.injection = { position: -1, depth: MAX_INJECTION_DEPTH + 1 };
-await saveGroupMeta();
+window.__pmGroupMeta.story.pendingInvalid = { name: '坏群', members: ['Alice'] };
+const globalGroupSave = saveGroupMeta();
+assert.equal(window.__pmGroupMeta.story.pendingInvalid, undefined, '无参保存必须在异步持久化前同步归一化全局状态');
+await globalGroupSave;
 const savedGroup = JSON.parse(localValues.get('ST_SMS_GROUP_META_LOCAL_FALLBACK')).story.valid;
 assert.equal(savedGroup.injection.position, -1);
 assert.equal(savedGroup.injection.depth, MAX_INJECTION_DEPTH);
+const groupMetaBeforeSnapshotSave = window.__pmGroupMeta;
+const snapshotResult = await saveGroupMeta({
+    snapshot: {
+        valid: { name: '快照群', members: ['Alice', 'Bob'], injection: { position: 1, depth: MAX_INJECTION_DEPTH + 2 } },
+        invalid: { name: '无效快照群', members: ['Alice'] },
+    },
+});
+assert.equal(window.__pmGroupMeta, groupMetaBeforeSnapshotSave);
+assert.equal(snapshotResult.snapshot.invalid, undefined);
+assert.equal(snapshotResult.snapshot.valid.injection.depth, MAX_INJECTION_DEPTH);
+assert.deepEqual(JSON.parse(localValues.get('ST_SMS_GROUP_META_LOCAL_FALLBACK')), snapshotResult);
+await saveGroupMeta();
 
 window.__pmProfiles = [{ apiUrl: 'https://old.example', apiKey: 'old-key', model: 'old-model' }];
 localValues.set('ST_SMS_API_PROFILES', JSON.stringify(window.__pmProfiles));

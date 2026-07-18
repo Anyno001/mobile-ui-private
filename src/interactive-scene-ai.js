@@ -1,3 +1,5 @@
+import { parseFirstJsonObject } from './ai.js';
+
 const PRESETS = Object.freeze({
     weibo: { label: '微博热场', accent: '#ff8200', mode: 'social', prompt: '短句、热搜感、转评赞语气、鲜明人设与轻快网络表达' },
     douban: { label: '豆瓣小组', accent: '#00a65a', mode: 'forum', prompt: '克制、生活化、观察细腻，标题像小组帖子，评论有真实分歧' },
@@ -39,84 +41,12 @@ export function buildInteractiveRequest({ kind, presetKey, styleInput, generated
     return { systemPrompt: system, userPrompt: `${common}\n\n任务：${instructions[kind] || instructions.feed_batch}` };
 }
 
-function jsonObjectEnd(source, start) {
-    if (start < 0) return source;
-    let depth = 0;
-    let quoted = false;
-    let escaped = false;
-    for (let index = start; index < source.length; index += 1) {
-        const char = source[index];
-        if (quoted) {
-            if (escaped) escaped = false;
-            else if (char === '\\') escaped = true;
-            else if (char === '"') quoted = false;
-            continue;
-        }
-        if (char === '"') {
-            quoted = true;
-            continue;
-        }
-        if (char === '{') depth += 1;
-        else if (char === '}') {
-            depth -= 1;
-            if (depth === 0) return index + 1;
-        }
-    }
-    return -1;
-}
-
-function cleanJsonResponseSource(raw) {
-    const source = String(raw ?? '');
-    let cleaned = '';
-    let depth = 0;
-    let quoted = false;
-    let escaped = false;
-    for (let index = 0; index < source.length; index += 1) {
-        const char = source[index];
-        if (depth > 0 && quoted) {
-            cleaned += char;
-            if (escaped) escaped = false;
-            else if (char === '\\') escaped = true;
-            else if (char === '"') quoted = false;
-            continue;
-        }
-        if (depth > 0 && char === '"') {
-            quoted = true;
-            cleaned += char;
-            continue;
-        }
-        if (depth === 0 && char === '<') {
-            const rest = source.slice(index);
-            const opening = rest.match(/^(?:<\s*(think|thinking)\b[^>]*>|<!--\s*(think|thinking)\s*-->)/i);
-            if (opening) {
-                const tag = opening[1] || opening[2];
-                const closing = new RegExp(`(?:<\\s*\\/\\s*${tag}\\s*>|<!--\\s*\\/\\s*${tag}\\s*-->)`, 'i').exec(rest.slice(opening[0].length));
-                if (closing) {
-                    index += opening[0].length + closing.index + closing[0].length - 1;
-                    continue;
-                }
-            }
-        }
-        if (char === '{') depth += 1;
-        else if (char === '}' && depth > 0) depth -= 1;
-        cleaned += char;
-    }
-    return cleaned.replace(/^\s*```(?:json)?\s*|\s*```\s*$/gi, '').trim();
-}
-
-function parseFirstJsonObject(source) {
-    for (let start = source.indexOf('{'); start >= 0; start = source.indexOf('{', start + 1)) {
-        const end = jsonObjectEnd(source, start);
-        if (end < 0) continue;
-        try {
-            return JSON.parse(source.slice(start, end));
-        } catch (error) {}
-    }
-    throw new Error('AI 未返回可解析的社区 JSON');
-}
-
 function parseEnvelope(raw, expectedKind) {
-    const value = parseFirstJsonObject(cleanJsonResponseSource(raw));
+    const value = parseFirstJsonObject(
+        raw, 'AI 未返回可解析的社区 JSON',
+        candidate => !!candidate && typeof candidate === 'object' && !Array.isArray(candidate)
+            && candidate.version === 1 && candidate.kind === expectedKind && Array.isArray(candidate.items),
+    );
     if (!value || Array.isArray(value) || value.version !== 1 || value.kind !== expectedKind || !Array.isArray(value.items)) throw new Error('AI 返回协议不匹配');
     const keys = Object.keys(value).sort();
     if (keys.length !== 3 || keys[0] !== 'items' || keys[1] !== 'kind' || keys[2] !== 'version') throw new Error('AI 返回协议包含额外字段');

@@ -1,3 +1,4 @@
+import { generationErrorMessage } from './ai.js';
 import {
     buildCalendarPrompts, calendarDateFromParts, calendarGenerationCopy, calendarMonthCells, calendarMonthKeys,
     calendarReferenceDate, calendarScopeFor, calendarWeekKeys, calendarWindowDescription, contextPayload, createCalendarDate, deleteCalendarEvent,
@@ -36,15 +37,7 @@ const weekday = new Intl.DateTimeFormat('zh-CN', { weekday: 'short' });
 const shortDate = new Intl.DateTimeFormat('zh-CN', { month: 'numeric', day: 'numeric' });
 const monthTitle = new Intl.DateTimeFormat('zh-CN', { year: 'numeric', month: 'long' });
 
-export function calendarGenerationErrorMessage(error) {
-    const message = String(error?.message || error || '未知错误');
-    const identity = `${error?.name || ''} ${error?.code || ''}`;
-    if (/\bgiterror\b/i.test(identity) || /getting extension version failed/i.test(message) || /github.{0,80}(timed?\s*out|etimedout|enotfound|fetch failed|failed to fetch|networkerror)/i.test(message)) {
-        return '外部扩展版本检查或 AI 网络连接失败，请检查 GitHub 与网络连接后重试。';
-    }
-    if (/(timed?\s*out|etimedout|enotfound|fetch failed|failed to fetch|networkerror)/i.test(`${identity} ${message}`)) return 'AI 服务网络连接失败，请检查接口与网络后重试。';
-    return message;
-}
+export const calendarGenerationErrorMessage = generationErrorMessage;
 const CALENDAR_WEEKDAYS = ['一', '二', '三', '四', '五', '六', '日'];
 const CYCLE_LABELS = { period: '经期', follicular: '卵泡期', ovulatory: '排卵期', luteal: '黄体期' };
 

@@ -566,6 +566,25 @@ for (const expected of [
   '不得返回 actorId、authorId 或任何内部标识', 'known_actor_names_data',
 ]) requireText('interactive-scene-ai.js', interactiveAiCode, expected);
 for (const expected of [
+  'parseFirstJsonObject', 'generationErrorMessage', 'getting extension version failed',
+  '扩展仓库配置、GitHub 认证与网络',
+]) requireText('ai.js', aiCode, expected);
+if (interactiveAiCode.includes('function parseFirstJsonObject')) {
+  failures.push('interactive-scene-ai.js: structured AI JSON extraction must stay owned by ai.js');
+}
+for (const expected of [
+  'generationErrorMessage(error)', 'parseFirstJsonObject(', 'buildGeneratedDirectoryCandidates',
+  'commitGeneratedDirectory', 'getDirectorySaveRevision', 'saveHistoriesStrict', 'saveGroupMeta',
+  'shouldReportGeneratedDirectoryError', 'rollbackError',
+]) requireText('contact-generator.js', sourceModuleByName.get('contact-generator.js')?.code || '', expected);
+if ((sourceModuleByName.get('contact-generator.js')?.code || '').includes('saveHistories()')) {
+  failures.push('contact-generator.js: generated directory transaction must not use the error-swallowing saveHistories wrapper');
+}
+requireText('storage.js', sourceModuleByName.get('storage.js')?.code || '', 'export async function saveGroupMeta(data)');
+for (const expected of ['enqueueDirectorySave', 'getDirectorySaveRevision', 'marksGlobalSave']) {
+  requireText('directory-save-coordinator.js', sourceModuleByName.get('directory-save-coordinator.js')?.code || '', expected);
+}
+for (const expected of [
   'INTERACTIVE_STORE_VERSION', 'assertInteractiveActor', 'authorId 未指向有效 actor',
   'deriveInteractiveActorId(scopeId, actor.type, actor.bindingKey)',
 ]) requireText('settings-ui.js', settingsUiCodeForInteractive, expected);
@@ -874,6 +893,8 @@ if (phoneChatCode.includes('buildCharacterBehaviorPrompt(')
 }
 requireText('contact-generator.js', sourceModuleByName.get('contact-generator.js')?.code || '', 'installContactGenerator(state, deps)');
 requireText('contact-generator.js', sourceModuleByName.get('contact-generator.js')?.code || '', '!state.generationTask');
+requireText('interactive-scenes.js', interactiveCode, 'generationErrorMessage(error)');
+requireText('interactive-scene-scheduler.js', sourceModuleByName.get('interactive-scene-scheduler.js')?.code || '', 'generationErrorMessage(error)');
 
 const runtimeCode = sourceModuleByName.get('runtime.js')?.code || '';
 for (const expected of [
@@ -958,7 +979,7 @@ if (packageLock.version !== packageJson.version
     || packageLock.packages?.['']?.version !== packageJson.version) {
   failures.push('version: package-lock.json root versions must match package.json');
 }
-if (packageJson.version !== '1.2.1') failures.push('version: expected release version 1.2.1');
+if (packageJson.version !== '1.2.2') failures.push('version: expected release version 1.2.2');
 
 const readmeLines = readme.split(/\r?\n/);
 if (readmeLines[0] !== '# 天音小笺') failures.push('README: title must be 天音小笺');

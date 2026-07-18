@@ -1,3 +1,5 @@
+import { generationErrorMessage } from './ai.js';
+
 export const COMMUNITY_TASK_PHASES = Object.freeze({
     IDLE: 'IDLE', SCHEDULED: 'SCHEDULED', GENERATING: 'GENERATING', FAILED: 'FAILED',
 });
@@ -180,7 +182,7 @@ export function createCommunityGenerationRunner({
     };
     const reportFailure = (task, error) => {
         if (controller.finish(task, error) && error?.message !== '生成已取消') {
-            onStatus(error?.message || '社区生成失败');
+            onStatus(error ? generationErrorMessage(error) : '社区生成失败');
         }
     };
     const stopLiveTimer = (task = null) => {

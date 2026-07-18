@@ -1,5 +1,109 @@
 import { normalizeApiUrls } from './config.js';
 
+function jsonObjectEnd(source, start) {
+    let depth = 0;
+    let quoted = false;
+    let escaped = false;
+    for (let index = start; index < source.length; index += 1) {
+        const char = source[index];
+        if (quoted) {
+            if (escaped) escaped = false;
+            else if (char === '\\') escaped = true;
+            else if (char === '"') quoted = false;
+            continue;
+        }
+        if (char === '"') {
+            quoted = true;
+            continue;
+        }
+        if (char === '{') depth += 1;
+        else if (char === '}') {
+            depth -= 1;
+            if (depth === 0) return index + 1;
+        }
+    }
+    return -1;
+}
+
+function cleanStructuredResponse(raw) {
+    const source = String(raw ?? '');
+    let cleaned = '';
+    let depth = 0;
+    let quoted = false;
+    let escaped = false;
+    for (let index = 0; index < source.length; index += 1) {
+        const char = source[index];
+        if (depth > 0 && quoted) {
+            cleaned += char;
+            if (escaped) escaped = false;
+            else if (char === '\\') escaped = true;
+            else if (char === '"') quoted = false;
+            continue;
+        }
+        if (depth > 0 && char === '"') {
+            quoted = true;
+            cleaned += char;
+            continue;
+        }
+        if (depth === 0 && char === '<') {
+            const rest = source.slice(index);
+            const opening = rest.match(/^(?:<\s*(think|thinking)\b[^>]*>|<!--\s*(think|thinking)\s*-->)/i);
+            if (opening) {
+                const tag = opening[1] || opening[2];
+                const closing = new RegExp(`(?:<\\s*\\/\\s*${tag}\\s*>|<!--\\s*\\/\\s*${tag}\\s*-->)`, 'i')
+                    .exec(rest.slice(opening[0].length));
+                if (closing) {
+                    index += opening[0].length + closing.index + closing[0].length - 1;
+                    continue;
+                }
+            }
+        }
+        if (char === '{') depth += 1;
+        else if (char === '}' && depth > 0) depth -= 1;
+        cleaned += char;
+    }
+    return cleaned.replace(/^\s*```(?:json)?\s*|\s*```\s*$/gi, '').trim();
+}
+
+export function parseFirstJsonObject(raw, errorMessage = 'AI 未返回可解析的 JSON', accepts = null) {
+    const source = cleanStructuredResponse(raw);
+    let firstParsed;
+    for (let start = source.indexOf('{'); start >= 0; start = source.indexOf('{', start + 1)) {
+        const end = jsonObjectEnd(source, start);
+        if (end < 0) continue;
+        try {
+            const parsed = JSON.parse(source.slice(start, end));
+            if (firstParsed === undefined) firstParsed = parsed;
+            if (!accepts || accepts(parsed)) return parsed;
+        }
+        catch (error) {}
+    }
+    if (firstParsed !== undefined) return firstParsed;
+    throw new Error(errorMessage);
+}
+
+export function generationErrorMessage(error) {
+    const message = String(error?.message || error || '未知错误');
+    const identity = `${error?.name || ''} ${error?.code || ''}`;
+    const errorText = `${identity} ${message}`;
+    const externalGithubFailure = /github.{0,80}\b(?:api|webhook)\b|\b(?:api|webhook)\b.{0,80}github/i.test(message);
+    const networkFailure = !externalGithubFailure && (
+        /\b(etimedout|enotfound|econnreset|econnrefused|networkerror)\b/i.test(errorText)
+        || /^(?:typeerror:\s*)?(?:failed to fetch|fetch failed|networkerror\b)/i.test(message)
+        || /\b(?:request|connection|network)\b.{0,40}\btimed?\s*out\b/i.test(message));
+    const extensionGitFailure = /getting extension version failed/i.test(message)
+        || /username for ['"]https:\/\/github\.com/i.test(message)
+        || /fatal:\s+couldn't find remote ref refs\/heads\//i.test(message)
+        || (/\bgiterror\b/i.test(identity) && /github/i.test(message) && networkFailure);
+    if (extensionGitFailure) {
+        return 'SillyTavern 扩展版本检查或 AI 网络连接失败，请检查扩展仓库配置、GitHub 认证与网络后重试。';
+    }
+    if (networkFailure) {
+        return 'AI 服务网络连接失败，请检查接口与网络后重试。';
+    }
+    return message;
+}
+
 export function extractAiResponseContent(json) {
     const candidates = [
         json?.choices?.[0]?.message?.content,

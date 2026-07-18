@@ -1,3 +1,4 @@
+import { generationErrorMessage } from './ai.js';
 import { buildInteractiveRequest, parseInteractiveResponse } from './interactive-scene-ai.js';
 import {
     INTERACTIVE_LIMITS, addSceneComment, appendScenePosts, deleteSceneComment,
@@ -245,7 +246,7 @@ export function installInteractiveScenes(_state, deps) {
     };
     const showPhonePage = page => window.__pmShowPhonePage?.(page) === true;
     const reportPhoneUiError = error => {
-        const message = error?.message || '手机页面操作失败';
+        const message = error ? generationErrorMessage(error) : '手机页面操作失败';
         setStatus(message);
         if (!document.querySelector('.pm-scene-status')) alert(message);
     };
@@ -426,7 +427,7 @@ export function installInteractiveScenes(_state, deps) {
             try {
                 await communityRunner.generateFeed();
             } catch (error) {
-                if (error.message !== '生成已取消') setStatus(`社区已创建；AI 热场失败：${error.message}`);
+                if (error.message !== '生成已取消') setStatus(`社区已创建；AI 热场失败：${generationErrorMessage(error)}`);
             }
         } catch (error) {
             runtime.openSceneId = null;
