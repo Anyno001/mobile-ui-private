@@ -1,3 +1,5 @@
+import { calendarDateFromParts, calendarWeekKeys } from './calendar-model.js';
+
 export const OCCASION_STORE_VERSION = 1;
 export const OCCASION_TYPES = Object.freeze(['birthday', 'anniversary']);
 export const OCCASION_LEAP_DAY_RULES = Object.freeze(['feb28', 'mar1', 'skip']);
@@ -114,16 +116,13 @@ export function occasionDateForYear(occasionValue, year) {
         if (occasion.leapDayRule === 'mar1') { month = 3; day = 1; }
         else day = 28;
     }
-    return { date: `${numericYear}-${pad(month)}-${pad(day)}`, leapAdjusted };
+    const date = calendarDateFromParts(numericYear, month, day);
+    return date ? { date, leapAdjusted } : null;
 }
 
 export function expandOccasions(scope, { start = new Date(), days = 7 } = {}) {
     const length = Math.max(1, Math.min(42, Number.isInteger(days) ? days : 7));
-    const base = new Date(start.getFullYear(), start.getMonth(), start.getDate(), 12, 0, 0, 0);
-    const dates = new Set(Array.from({ length }, (_, index) => {
-        const date = new Date(base); date.setDate(base.getDate() + index);
-        return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
-    }));
+    const dates = new Set(calendarWeekKeys(start, length));
     const years = new Set([...dates].map(date => Number(date.slice(0, 4))));
     const result = [];
     for (const occasion of normalizeOccasionScope(scope).occasions) {

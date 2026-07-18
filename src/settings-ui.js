@@ -12,7 +12,7 @@ import {
 import { escapeAttr, escapeHtml, safeJS } from './ui.js';
 import {
     addOrUpdateProfile, clearPluginData, loadBgSettings, loadBudgetConfig, loadInteractiveScenes, loadPhoneUiState, loadProfiles, loadTheme, saveBgGlobal,
-    saveBgLocal, saveBidirectional, saveCharacterBehavior, saveEmojis,
+    saveBgLocal, saveDesktopBg, saveBidirectional, saveCharacterBehavior, saveEmojis,
     saveGroupMeta, saveHistoriesStrict, saveInteractiveScenes, savePokeConfig, saveProfiles,
     saveBudgetConfig, savePhoneUiState, saveTheme, saveWordyLimit,
 } from './storage.js';
@@ -239,7 +239,7 @@ export function parseBackupData(data, current) {
     if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error('备份根节点必须是对象');
     const version = data.schemaVersion === undefined ? 1 : data.schemaVersion;
     if (!Number.isInteger(version) || version < 1) throw new Error('备份版本无效');
-    if (version > 5) throw new Error(`备份版本 ${version} 高于当前支持版本 5`);
+    if (version > 6) throw new Error(`备份版本 ${version} 高于当前支持版本 6`);
     const result = clone(current);
     if (Object.hasOwn(data, 'histories')) result.histories = objectValue(data.histories, 'histories');
     if (Object.hasOwn(data, 'config')) result.config = objectValue(data.config, 'config');
@@ -257,6 +257,14 @@ export function parseBackupData(data, current) {
     if (Object.hasOwn(data, 'wordyLimit')) {
         if (typeof data.wordyLimit !== 'boolean') throw new Error('备份字段 wordyLimit 必须是布尔值');
         result.wordyLimit = data.wordyLimit;
+    }
+    if (version >= 6) {
+        if (Object.hasOwn(data, 'desktopBg')) {
+            if (typeof data.desktopBg !== 'string') throw new Error('备份字段 desktopBg 必须是字符串');
+            result.desktopBg = data.desktopBg;
+        } else {
+            result.desktopBg = '';
+        }
     }
     if (Object.hasOwn(data, 'bgGlobal')) {
         if (typeof data.bgGlobal !== 'string') throw new Error('备份字段 bgGlobal 必须是字符串');
@@ -335,16 +343,19 @@ export function installSettingsUi(deps) {
         window.__pmTheme = previous; applyTheme(); syncLookControls(); alert('主题保存失败：浏览器存储不可用。'); return false;
     };
     const queueBackgroundMutation = (scope, mutate) => {
+        const isDesktop = scope === 'desktop';
         const isGlobal = scope === 'global';
         const operation = backgroundMutation.catch(() => {}).then(async () => {
             await runBackgroundTransaction({
-                capture: () => isGlobal ? (window.__pmBgGlobal || '') : clone(window.__pmBgLocal || {}),
+                capture: () => isDesktop ? (window.__pmDesktopBg || '')
+                    : isGlobal ? (window.__pmBgGlobal || '') : clone(window.__pmBgLocal || {}),
                 mutate,
                 restore: snapshot => {
-                    if (isGlobal) window.__pmBgGlobal = snapshot;
+                    if (isDesktop) window.__pmDesktopBg = snapshot;
+                    else if (isGlobal) window.__pmBgGlobal = snapshot;
                     else window.__pmBgLocal = clone(snapshot);
                 },
-                persist: isGlobal ? saveBgGlobal : saveBgLocal,
+                persist: isDesktop ? saveDesktopBg : isGlobal ? saveBgGlobal : saveBgLocal,
             });
             applyBackground();
             window.__pmShowConfig('look');
@@ -390,7 +401,7 @@ export function installSettingsUi(deps) {
     window.__pmExportData = async () => {
         const snapshot = await captureBackupState();
         const data = {
-            schemaVersion: 5,
+            schemaVersion: 6,
             histories: snapshot.histories,
             config: snapshot.config,
             theme: legacyBackupTheme(snapshot.theme),
@@ -401,6 +412,7 @@ export function installSettingsUi(deps) {
             emojis: snapshot.emojis,
             characterBehavior: snapshot.characterBehavior,
             wordyLimit: snapshot.wordyLimit,
+            desktopBg: snapshot.desktopBg,
             bgGlobal: snapshot.bgGlobal,
             bgLocal: snapshot.bgLocal,
             interactiveScenes: snapshot.interactiveScenes,
@@ -501,7 +513,7 @@ export function installSettingsUi(deps) {
                     histories: {}, config: { apiUrl: '', apiKey: '', model: '', useIndependent: false },
                     theme: { preset: 'default', customRight: '', customLeft: '', borderColor: '', layout: 'standard', darkMode: 'light', ambientStatusEnabled: false, customTitle: '' },
                     profiles: [], groupMeta: {}, pokeConfig: {}, bidirectional: {}, emojis: [], characterBehavior: {},
-                    wordyLimit: false, bgGlobal: '', bgLocal: {}, interactiveScenes: normalizeInteractiveStore(null),
+                    wordyLimit: false, desktopBg: '', bgGlobal: '', bgLocal: {}, interactiveScenes: normalizeInteractiveStore(null),
                     phoneUiState: normalizePhoneUiState(null), ambientStatus: normalizeAmbientStatus(),
                     ...createEmptyCalendarBackupFields(),
                 });
@@ -579,7 +591,11 @@ export function installSettingsUi(deps) {
             `<div class="pm-theme-chip ${t.preset === k ? 'pm-theme-active' : ''}" data-preset="${k}" onclick="window.__pmSetPreset('${safeJS(k)}')"><span class="pm-theme-dot" style="background:${v.right}"></span>${v.label}</div>`
         ).join('');
         const id = getStorageId(), localKey = `${id}_${persona}`;
-        const hasGlobalBg = !!window.__pmBgGlobal, hasLocalBg = !!window.__pmBgLocal[localKey];
+        const hasDesktopBg = !!window.__pmDesktopBg, hasGlobalBg = !!window.__pmBgGlobal, hasLocalBg = !!window.__pmBgLocal[localKey];
+        const desktopBgBtn = hasDesktopBg
+            ? `<button class="pm-bg-btn pm-bg-del" onclick="window.__pmClearBg('desktop')">清除</button>`
+            : `<label class="pm-bg-btn">选择图片<input type="file" accept="image/*" onchange="window.__pmUploadBg(this,'desktop')" hidden></label>
+               <button class="pm-bg-btn" onclick="window.__pmBgUrl('desktop')">URL</button>`;
         const globalBgBtn = hasGlobalBg
             ? `<button class="pm-bg-btn pm-bg-del" onclick="window.__pmClearBg('global')">清除</button>`
             : `<label class="pm-bg-btn">选择图片<input type="file" accept="image/*" onchange="window.__pmUploadBg(this,'global')" hidden></label>
@@ -591,6 +607,7 @@ export function installSettingsUi(deps) {
         const content = renderLookSettings({
             theme: t,
             presetButtons: presetBtns,
+            desktopBackgroundButtons: desktopBgBtn,
             globalBackgroundButtons: globalBgBtn,
             localBackgroundButtons: localBgBtn,
         });
@@ -619,7 +636,8 @@ export function installSettingsUi(deps) {
             openCropper(e.target.result, {
                 onCancel: () => window.__pmShowConfig('look'),
                 onConfirm: croppedDataUrl => queueBackgroundMutation(scope, () => {
-                    if (scope === 'global') window.__pmBgGlobal = croppedDataUrl;
+                    if (scope === 'desktop') window.__pmDesktopBg = croppedDataUrl;
+                    else if (scope === 'global') window.__pmBgGlobal = croppedDataUrl;
                     else window.__pmBgLocal[key] = croppedDataUrl;
                 }),
             });
@@ -633,14 +651,16 @@ export function installSettingsUi(deps) {
         const persona = getCurrentPersona();
         const key = `${getStorageId()}_${persona}`;
         return queueBackgroundMutation(scope, () => {
-            if (scope === 'global') window.__pmBgGlobal = url.trim();
+            if (scope === 'desktop') window.__pmDesktopBg = url.trim();
+            else if (scope === 'global') window.__pmBgGlobal = url.trim();
             else window.__pmBgLocal[key] = url.trim();
         });
     };
     window.__pmClearBg = (scope) => {
         const key = `${getStorageId()}_${getCurrentPersona()}`;
         return queueBackgroundMutation(scope, () => {
-            if (scope === 'global') window.__pmBgGlobal = '';
+            if (scope === 'desktop') window.__pmDesktopBg = '';
+            else if (scope === 'global') window.__pmBgGlobal = '';
             else delete window.__pmBgLocal[key];
         });
     };

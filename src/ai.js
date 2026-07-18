@@ -5,7 +5,13 @@ export function extractAiResponseContent(json) {
         json?.choices?.[0]?.message?.content,
         json?.choices?.[0]?.text,
         json?.output_text,
+        json?.content,
     ];
+    const responseOutput = json?.output;
+    if (Array.isArray(responseOutput)) candidates.push(responseOutput
+        .flatMap(item => Array.isArray(item?.content) ? item.content : [])
+        .map(part => part?.text)
+        .filter(text => typeof text === 'string').join(''));
     const geminiParts = json?.candidates?.[0]?.content?.parts;
     if (Array.isArray(geminiParts)) candidates.push(geminiParts.map(part => part?.text).filter(text => typeof text === 'string').join(''));
     const content = candidates.find(value => typeof value === 'string' && value.trim());
@@ -89,12 +95,23 @@ export function createAiClient({
             if (!response.ok) {
                 throw new Error(await readApiError(response, signal));
             }
-            let json;
-            try {
-                json = await response.json();
-            } catch (error) {
-                if (signal?.aborted || error?.name === 'AbortError') throw abortError();
-                throw new Error('独立 API 返回了无法解析的 JSON');
+            let json, raw = '';
+            if (typeof response.text === 'function') {
+                try {
+                    raw = await response.text();
+                    throwIfAborted(signal);
+                    json = JSON.parse(raw);
+                } catch (error) {
+                    if (signal?.aborted || error?.name === 'AbortError') throw abortError();
+                    const preview = raw.trim().replace(/\s+/g, ' ').slice(0, 120);
+                    throw new Error(`独立 API 返回了无法解析的 JSON${preview ? `：${preview}` : ''}`);
+                }
+            } else {
+                try { json = await response.json(); }
+                catch (error) {
+                    if (signal?.aborted || error?.name === 'AbortError') throw abortError();
+                    throw new Error('独立 API 返回了无法解析的 JSON');
+                }
             }
             const content = extractAiResponseContent(json);
             if (!content) throw new Error('独立 API 响应缺少可用文本内容');

@@ -65,6 +65,45 @@ function jsonObjectEnd(source, start) {
     return -1;
 }
 
+function cleanJsonResponseSource(raw) {
+    const source = String(raw ?? '');
+    let cleaned = '';
+    let depth = 0;
+    let quoted = false;
+    let escaped = false;
+    for (let index = 0; index < source.length; index += 1) {
+        const char = source[index];
+        if (depth > 0 && quoted) {
+            cleaned += char;
+            if (escaped) escaped = false;
+            else if (char === '\\') escaped = true;
+            else if (char === '"') quoted = false;
+            continue;
+        }
+        if (depth > 0 && char === '"') {
+            quoted = true;
+            cleaned += char;
+            continue;
+        }
+        if (depth === 0 && char === '<') {
+            const rest = source.slice(index);
+            const opening = rest.match(/^(?:<\s*(think|thinking)\b[^>]*>|<!--\s*(think|thinking)\s*-->)/i);
+            if (opening) {
+                const tag = opening[1] || opening[2];
+                const closing = new RegExp(`(?:<\\s*\\/\\s*${tag}\\s*>|<!--\\s*\\/\\s*${tag}\\s*-->)`, 'i').exec(rest.slice(opening[0].length));
+                if (closing) {
+                    index += opening[0].length + closing.index + closing[0].length - 1;
+                    continue;
+                }
+            }
+        }
+        if (char === '{') depth += 1;
+        else if (char === '}' && depth > 0) depth -= 1;
+        cleaned += char;
+    }
+    return cleaned.replace(/^\s*```(?:json)?\s*|\s*```\s*$/gi, '').trim();
+}
+
 function parseFirstJsonObject(source) {
     for (let start = source.indexOf('{'); start >= 0; start = source.indexOf('{', start + 1)) {
         const end = jsonObjectEnd(source, start);
@@ -73,14 +112,11 @@ function parseFirstJsonObject(source) {
             return JSON.parse(source.slice(start, end));
         } catch (error) {}
     }
-    return JSON.parse(source);
+    throw new Error('AI 未返回可解析的社区 JSON');
 }
 
 function parseEnvelope(raw, expectedKind) {
-    let source = String(raw ?? '').trim();
-    const fence = source.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
-    if (fence) source = fence[1].trim();
-    const value = parseFirstJsonObject(source);
+    const value = parseFirstJsonObject(cleanJsonResponseSource(raw));
     if (!value || Array.isArray(value) || value.version !== 1 || value.kind !== expectedKind || !Array.isArray(value.items)) throw new Error('AI 返回协议不匹配');
     const keys = Object.keys(value).sort();
     if (keys.length !== 3 || keys[0] !== 'items' || keys[1] !== 'kind' || keys[2] !== 'version') throw new Error('AI 返回协议包含额外字段');

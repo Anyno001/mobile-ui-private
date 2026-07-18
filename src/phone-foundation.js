@@ -76,6 +76,7 @@ export function installPhoneFoundation(state, deps) {
         ambientStatusEnabled: false,
         customTitle: '',
     };
+    window.__pmDesktopBg = window.__pmDesktopBg || '';
     window.__pmBgGlobal = window.__pmBgGlobal || '';
     window.__pmBgLocal = window.__pmBgLocal || {};
     window.__pmGroupMeta = window.__pmGroupMeta || {};
@@ -155,7 +156,11 @@ export function installPhoneFoundation(state, deps) {
     }
 
     function applyBackground() {
-        const msgList = state.phoneWindow?.querySelector('.pm-msg-list'); if (!msgList) return;
+        const phone = state.phoneWindow;
+        const msgList = phone?.querySelector('.pm-msg-list'); if (!msgList || !phone) return;
+        const desktopBg = window.__pmDesktopBg || '';
+        if (desktopBg) phone.style.setProperty('--pm-desktop-bg-image', `url("${cssUrlEscape(desktopBg)}")`);
+        else phone.style.removeProperty('--pm-desktop-bg-image');
         const id = getStorageId(), localKey = `${id}_${state.currentPersona}`;
         const bg = window.__pmBgLocal[localKey] || window.__pmBgGlobal || '';
         if (bg) {

@@ -12,7 +12,7 @@ import { createEmptyWeatherStore, normalizeWeatherStore } from './calendar-weath
 import { normalizeAmbientStatus, normalizeInteractiveStore, normalizePhoneUiState } from './interactive-scene-model.js';
 import {
     loadInteractiveScenes, loadPhoneUiState, saveBgGlobal, saveBgLocal, saveBidirectional,
-    saveCharacterBehavior, saveEmojis, saveGroupMeta, saveHistoriesStrict, saveInteractiveScenes,
+    saveCharacterBehavior, saveDesktopBg, saveEmojis, saveGroupMeta, saveHistoriesStrict, saveInteractiveScenes,
     savePhoneUiState, savePokeConfig, saveProfiles, saveTheme, saveWordyLimit,
 } from './storage.js';
 
@@ -116,7 +116,7 @@ export function createBackupStateHandlers(deps = {}) {
             groupMeta: clone(window.__pmGroupMeta || {}), pokeConfig: clone(window.__pmPokeConfig || {}),
             bidirectional: clone(window.__pmBidirectional || {}), emojis: clone(window.__pmEmojis || []),
             characterBehavior: clone(window.__pmCharacterBehavior || {}), wordyLimit: !!window.__pmWordyLimit,
-            bgGlobal: window.__pmBgGlobal || '', bgLocal: clone(window.__pmBgLocal || {}),
+            desktopBg: window.__pmDesktopBg || '', bgGlobal: window.__pmBgGlobal || '', bgLocal: clone(window.__pmBgLocal || {}),
             interactiveScenes, phoneUiState: loadPhoneUiState(interactiveScenes),
             ambientStatus: normalizeAmbientStatus({ enabled: window.__pmTheme?.ambientStatusEnabled }),
             calendarStore: loadCalendar(), calendarOccasions: loadCalendarOccasions(),
@@ -133,7 +133,8 @@ export function createBackupStateHandlers(deps = {}) {
         window.__pmProfiles = clone(state.profiles || []); window.__pmGroupMeta = clone(state.groupMeta || {});
         window.__pmPokeConfig = clone(state.pokeConfig || {}); window.__pmBidirectional = clone(state.bidirectional || {});
         window.__pmEmojis = clone(state.emojis || []); window.__pmCharacterBehavior = clone(state.characterBehavior || {});
-        window.__pmWordyLimit = !!state.wordyLimit; window.__pmBgGlobal = typeof state.bgGlobal === 'string' ? state.bgGlobal : '';
+        window.__pmWordyLimit = !!state.wordyLimit; window.__pmDesktopBg = typeof state.desktopBg === 'string' ? state.desktopBg : '';
+        window.__pmBgGlobal = typeof state.bgGlobal === 'string' ? state.bgGlobal : '';
         window.__pmBgLocal = clone(state.bgLocal || {}); window.__pmPhoneUiState = phoneUiState;
         return {
             ...state, interactiveScenes, phoneUiState, ambientStatus,
@@ -154,7 +155,7 @@ export function createBackupStateHandlers(deps = {}) {
         if (!saveProfiles()) throw new Error('API 档案保存失败：浏览器存储不可用');
         await saveGroupMeta();
         if (!saveCharacterBehavior() || !savePokeConfig() || !saveBidirectional() || !saveWordyLimit()) throw new Error('插件配置保存失败：浏览器存储不可用');
-        await saveEmojis(); await saveBgGlobal(); await saveBgLocal(); await saveInteractiveScenes(interactiveScenes);
+        await saveEmojis(); await saveDesktopBg(); await saveBgGlobal(); await saveBgLocal(); await saveInteractiveScenes(interactiveScenes);
         if (!savePhoneUiState(phoneUiState, interactiveScenes)) throw new Error('手机界面状态保存失败：浏览器存储不可用');
         if (!saveCalendar(state.calendarStore) || !saveCalendarOccasions(state.calendarOccasions)
             || !saveCalendarHolidays(state.calendarHolidays) || !saveCalendarWeather(state.calendarWeather)

@@ -49,6 +49,18 @@ assert.deepEqual(parseInteractiveResponse(
     '说明中的 {无效对象} 应跳过。\n{"version":1,"kind":"style_prompt","items":[{"title":"花括号","prompt":"保留字符串里的 {内容} 和 \\"引号\\""}]}\n请查收。',
     'style_prompt',
 ), [{ title: '花括号', prompt: '保留字符串里的 {内容} 和 "引号"' }]);
+assert.deepEqual(parseInteractiveResponse(
+    '<think>先分析格式，不应泄漏。</think>以下是结果：```json\n{"version":1,"kind":"style_prompt","items":[{"title":"净化","prompt":"结构化输出"}]}\n```',
+    'style_prompt',
+), [{ title: '净化', prompt: '结构化输出' }]);
+assert.deepEqual(parseInteractiveResponse(
+    '{"version":1,"kind":"style_prompt","items":[{"title":"字面标签","prompt":"保留 <think>字面量</think> 与 <!-- thinking -->文本<!-- /thinking -->"}]}',
+    'style_prompt',
+), [{ title: '字面标签', prompt: '保留 <think>字面量</think> 与 <!-- thinking -->文本<!-- /thinking -->' }]);
+assert.throws(() => parseInteractiveResponse('抱歉，当前无法生成。', 'feed_batch'), /AI 未返回可解析的社区 JSON/);
+assert.throws(() => parseInteractiveResponse('<html><title>502 Bad Gateway</title></html>', 'feed_batch'), /AI 未返回可解析的社区 JSON/);
+
+assert.deepEqual(parseInteractiveResponse('{"version":1,"kind":"comment_batch","items":[{"author":"甲","content":"评论"}]}', 'comment_batch'), [{ author: '甲', content: '评论', tags: [] }]);
 
 const feed = parseInteractiveResponse(JSON.stringify({
     version: 1, kind: 'feed_batch', items: [

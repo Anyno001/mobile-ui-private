@@ -46,7 +46,7 @@ export function renderApiSettings({ cfg, useIndependent, profilesHtml }) {
 }
 
 
-export function renderLookSettings({ theme, presetButtons, globalBackgroundButtons, localBackgroundButtons }) {
+export function renderLookSettings({ theme, presetButtons, desktopBackgroundButtons, globalBackgroundButtons, localBackgroundButtons }) {
     return `
     <div class="pm-settings-page">
       <div style="padding:12px 16px;">
@@ -86,6 +86,7 @@ export function renderLookSettings({ theme, presetButtons, globalBackgroundButto
       <div style="padding:12px 16px 12px;border-top:1px solid #f0f0f0;">
         <div class="pm-cfg-label" style="margin-bottom:14px;">背景图</div>
         <div style="display:flex;flex-direction:column;gap:14px;padding:0 4px;">
+          <div class="pm-bg-row"><span class="pm-bg-label">桌面背景</span>${desktopBackgroundButtons}</div>
           <div class="pm-bg-row"><span class="pm-bg-label">全局背景</span>${globalBackgroundButtons}</div>
           <div class="pm-bg-row"><span class="pm-bg-label">本联系人</span>${localBackgroundButtons}</div>
         </div>

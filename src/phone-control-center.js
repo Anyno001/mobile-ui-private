@@ -9,6 +9,7 @@ import {
 
 const controlActionLabel = action => ({
     calendar: '打开日历',
+    contacts: '打开联系人',
     desktop: '返回桌面',
 })[action] || '执行快捷操作';
 
@@ -113,6 +114,7 @@ export function installPhoneControlCenter(state, deps) {
         closeControlCenter();
         if (action === 'pending') showPendingManager();
         else if (action === 'settings') window.__pmShowConversationSettings();
+        else if (action === 'contacts') return window.__pmShowList();
         else if (action === 'emoji') window.__pmShowEmojiManager();
         else if (action === 'group') window.__pmEditGroup();
         else if (action === 'delete') window.__pmStartDeleteMode();
@@ -158,6 +160,7 @@ export function installPhoneControlCenter(state, deps) {
         menu.setAttribute('aria-label', '快捷工具');
         menu.innerHTML = `
   <button type="button" role="menuitem" data-action="pending">${EDIT_ICON_SVG}编辑消息</button>
+  <button type="button" role="menuitem" data-action="contacts">${CONTACTS_ICON_SVG}联系人</button>
   <button type="button" role="menuitem" data-action="settings">${SETTINGS_ICON_SVG}角色设置</button>
   ${state.isGroupChat ? `<button type="button" role="menuitem" data-action="group">${CONTACTS_ICON_SVG}群聊设置</button>` : ''}
   <button type="button" role="menuitem" data-action="emoji">${EMOJI_ICON_SVG}表情包管理</button>

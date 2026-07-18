@@ -4,12 +4,24 @@ export const HOLIDAY_CACHE_VERSION = 1;
 export const HOLIDAY_COUNTRIES = Object.freeze(['CN', 'US', 'JP']);
 export const HOLIDAY_KINDS = Object.freeze(['holiday', 'observed', 'workday', 'in_lieu']);
 export const HOLIDAY_LIMITS = Object.freeze({ years: 6, entries: 80, name: 100 });
+export const HOLIDAY_YEAR_RANGE = Object.freeze({ min: 1900, max: 2100 });
+export const HOLIDAY_COUNTRY_YEAR_RANGES = Object.freeze({
+    CN: HOLIDAY_YEAR_RANGE,
+    US: HOLIDAY_YEAR_RANGE,
+    JP: Object.freeze({ min: 2007, max: 2099 }),
+});
 export const CHINESE_DAYS_YEAR_URL = year => `https://cdn.jsdelivr.net/npm/chinese-days/dist/years/${year}.json`;
 
 const plainRecord = value => value && typeof value === 'object' && !Array.isArray(value);
 const pad = value => String(value).padStart(2, '0');
 const dateKey = date => `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
-const validYear = value => Number.isInteger(Number(value)) && Number(value) >= 1900 && Number(value) <= 2100;
+export function holidayYearRange(country) {
+    return HOLIDAY_COUNTRY_YEAR_RANGES[country] || null;
+}
+export function isHolidayYearSupported(country, value) {
+    const range = holidayYearRange(country), year = Number(value);
+    return !!range && Number.isInteger(year) && year >= range.min && year <= range.max;
+}
 
 function entry(date, name, kind = 'holiday', source = 'local-rule') {
     if (!parseCalendarDate(date)) throw new Error('节假日日期无效');
@@ -51,7 +63,7 @@ export function createEmptyHolidayCache() {
 }
 
 export function parseChineseDaysYear(value, year) {
-    if (!validYear(year) || !plainRecord(value)) throw new Error('中国节假日年度数据无效');
+    if (!isHolidayYearSupported('CN', year) || !plainRecord(value)) throw new Error('中国节假日年度数据无效');
     const result = [];
     const append = (records, kind) => {
         if (!plainRecord(records)) return;
@@ -87,7 +99,7 @@ function usBaseHolidays(year) {
 }
 
 export function buildUsFederalHolidays(year) {
-    if (!validYear(year)) throw new Error('美国节假日年份无效');
+    if (!isHolidayYearSupported('US', year)) throw new Error('美国节假日年份无效');
     const numericYear = Number(year), rows = [];
     for (const baseYear of [numericYear - 1, numericYear, numericYear + 1]) {
         for (const holiday of usBaseHolidays(baseYear)) {
@@ -166,7 +178,7 @@ export function buildJapanNationalHolidays(year) {
 
 
 function normalizeHolidayEntries(value, country, year) {
-    if (!Array.isArray(value) || !HOLIDAY_COUNTRIES.includes(country) || !validYear(year)) return [];
+    if (!Array.isArray(value) || !isHolidayYearSupported(country, year)) return [];
     const result = [];
     for (const raw of value.slice(0, HOLIDAY_LIMITS.entries)) {
         try {
@@ -183,7 +195,7 @@ export function normalizeHolidayCache(value) {
     const years = {};
     const candidates = [];
     for (const [key, raw] of Object.entries(plainRecord(source.years) ? source.years : {})) {
-        if (!plainRecord(raw) || !HOLIDAY_COUNTRIES.includes(raw.country) || !validYear(raw.year)) continue;
+        if (!plainRecord(raw) || !isHolidayYearSupported(raw.country, raw.year)) continue;
         const expectedKey = `${raw.country}:${Number(raw.year)}`;
         if (key !== expectedKey) continue;
         const entries = normalizeHolidayEntries(raw.entries, raw.country, Number(raw.year));
@@ -207,7 +219,7 @@ export function selectHolidayCountry(cache, country) {
 }
 
 export function putHolidayYear(cache, country, year, entries, { fetchedAt = Date.now(), source = 'local-rule' } = {}) {
-    if (!HOLIDAY_COUNTRIES.includes(country) || !validYear(year)) throw new Error('节假日国家或年份无效');
+    if (!isHolidayYearSupported(country, year)) throw new Error('节假日国家或年份无效');
     const normalizedEntries = normalizeHolidayEntries(entries, country, Number(year));
     if (!normalizedEntries.length) throw new Error('节假日年度数据为空');
     const normalized = normalizeHolidayCache(cache);
@@ -226,7 +238,7 @@ export function holidayYearFromCache(cache, country, year) {
 export async function resolveHolidayYear({
     country, year, cache, fetchImpl = globalThis.fetch, timeoutMs = 10000, signal,
 } = {}) {
-    if (!HOLIDAY_COUNTRIES.includes(country) || !validYear(year)) throw new Error('节假日国家或年份无效');
+    if (!isHolidayYearSupported(country, year)) throw new Error('节假日国家或年份无效');
     const numericYear = Number(year);
     if (country === 'US' || country === 'JP') {
         const entries = country === 'US' ? buildUsFederalHolidays(numericYear) : buildJapanNationalHolidays(numericYear);

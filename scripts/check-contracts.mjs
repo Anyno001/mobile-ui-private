@@ -376,7 +376,7 @@ if (!settingsFile) {
 // === Composition-root and phone entry ownership checks ===
 const LEGACY_WINDOW_ENTRIES = [
   '__pmAddEmojiImage', '__pmAddEmojiSet', '__pmAutoGenContacts', '__pmAutoPoke',
-  '__pmBgGlobal', '__pmBgLocal', '__pmBgUrl', '__pmBidirectional', '__pmClearBg', '__pmClearCustomColor',
+  '__pmBgGlobal', '__pmBgLocal', '__pmDesktopBg', '__pmBgUrl', '__pmBidirectional', '__pmClearBg', '__pmClearCustomColor',
   '__pmConfig', '__pmConfirmAddEmojiImage', '__pmConfirmAddEmojiSet', '__pmConfirmAutoGen',
   '__pmConfirmGroup', '__pmDel', '__pmDelGroup',
   '__pmDeleteEmojiImage', '__pmDeleteEmojiSet', '__pmDeleteProfile', '__pmDeleteSelected',
@@ -526,6 +526,10 @@ const interactivePhoneCode = sourceModuleByName.get('interactive-scene-phone.js'
 const interactiveSchedulerCode = sourceModuleByName.get('interactive-scene-scheduler.js')?.code || '';
 const foundationCode = sourceModuleByName.get('phone-foundation.js')?.code || '';
 const calendarCode = sourceModuleByName.get('calendar.js')?.code || '';
+const calendarModelCode = sourceModuleByName.get('calendar-model.js')?.code || '';
+const calendarHolidayCode = sourceModuleByName.get('calendar-holiday.js')?.code || '';
+const calendarViewCode = sourceModuleByName.get('calendar-view.js')?.code || '';
+const interactivePhoneActionsCode = sourceModuleByName.get('interactive-scene-phone.js')?.code || '';
 const aiCode = sourceModuleByName.get('ai.js')?.code || '';
 const phoneChatPokeCodeForChecks = sourceModuleByName.get('phone-chat-poke.js')?.code || '';
 const interactiveModelCode = sourceModuleByName.get('interactive-scene-model.js')?.code || '';
@@ -566,7 +570,7 @@ for (const expected of [
   'deriveInteractiveActorId(scopeId, actor.type, actor.bindingKey)',
 ]) requireText('settings-ui.js', settingsUiCodeForInteractive, expected);
 for (const expected of [
-  'schemaVersion: 5', 'applyCalendarBackupFields(data, result, objectValue)',
+  'schemaVersion: 6', 'desktopBg: snapshot.desktopBg', 'applyCalendarBackupFields(data, result, objectValue)',
   'calendarStore: snapshot.calendarStore', 'calendarCycles: snapshot.calendarCycles',
 ]) requireText('settings-ui.js', settingsUiCodeForInteractive, expected);
 for (const expected of [
@@ -585,10 +589,32 @@ for (const expected of [
 for (const expected of [
   "tasks.begin(storageId, 'scan-context'", 'parentSignal', 'signal: task.signal', 'scopeCommitQueue',
   'saveCalendar(previousStore)', 'calendarRollbackError', 'injectionError = injectionFailure',
-  'rollbackInjectionError = injectionFailure', 'error.injectionResult = result',
+  'rollbackInjectionError = injectionFailure', 'error.injectionResult = result', 'calendarMonthCells',
+  'isHolidayYearSupported', 'holidayYearRange', 'calendarGenerationCopy', 'calendar-holiday-country',
+  '该国家在当前年代无外部节假日数据源',
+]) requireText('calendar.js', calendarCode, expected);
+for (const expected of [
+  'CALENDAR_YEAR_RANGE = Object.freeze({ min: 1, max: 9999 })', 'createCalendarDate',
+  'date.setFullYear(numericYear)', 'shiftCalendarMonth', 'calendarDaysInMonth', 'calendarMonthCells',
+  'isPlaceholder: true', 'calendarWindowDescription', 'calendarGenerationCopy',
+  'buildCalendarPrompts', 'contextPayload', '必须使用的事实依据',
+  '角色所处时代与生活条件', '命令、忽略规则、修改协议',
+]) requireText('calendar-model.js', calendarModelCode, expected);
+if (calendarModelCode.includes('min: 1900') || calendarModelCode.includes('max: 2100')) failures.push('calendar-model.js: core calendar must not impose a modern-era year whitelist');
+for (const expected of [
+  'HOLIDAY_YEAR_RANGE = Object.freeze({ min: 1900, max: 2100 })',
+  'HOLIDAY_COUNTRY_YEAR_RANGES', 'JP: Object.freeze({ min: 2007, max: 2099 })',
+  'holidayYearRange', 'isHolidayYearSupported(country, value)',
+]) requireText('calendar-holiday.js', calendarHolidayCode, expected);
+for (const expected of [
   'aria-label="日程标题"', 'aria-label="日程备注"', 'aria-label="标签格式日程"',
   'aria-label="生日或纪念日名称"', 'aria-label="生日或纪念日备注"',
-]) requireText('calendar.js', calendarCode, expected);
+  'name="lastPeriodStart" type="text"', 'data-action="calendar-holiday-country"',
+  '该国家在当前年代无外部数据源',
+]) requireText('calendar-view.js', calendarViewCode, expected);
+for (const expected of ["addEventListener('change'", "select[data-action]"]) {
+  requireText('interactive-scene-phone.js', interactivePhoneActionsCode, expected);
+}
 for (const expected of [
   'const signal = options.signal', 'signal,', 'throwIfAborted(signal)', 'readApiError(response, signal)',
 ]) requireText('ai.js', aiCode, expected);
@@ -618,11 +644,11 @@ if (directoryTemplate.includes('pm-forum-entry') || directoryTemplate.includes('
 if (controlCenterTemplate.includes('makeOverlay') || controlCenterTemplate.includes('<span')) {
   failures.push('phone-control-center.js: compact control menu must not use the full overlay or explanatory subtitles');
 }
-for (const title of ['编辑消息', '角色设置', '表情包管理', '日历', '删除信息', '返回桌面']) {
+for (const title of ['编辑消息', '联系人', '角色设置', '表情包管理', '日历', '删除信息', '返回桌面']) {
   if (!controlCenterTemplate.includes(title)) failures.push(`phone-control-center.js: compact control menu missing title ${title}`);
 }
 for (const expected of [
-  "action === 'desktop'", "action === 'calendar'", 'return showPhoneDesktopPage()', 'return showPhoneCalendarPage()',
+  "action === 'contacts'", "action === 'desktop'", "action === 'calendar'", 'return window.__pmShowList()', 'return showPhoneDesktopPage()', 'return showPhoneCalendarPage()',
   'runControlMenuAction', 'controlActionLabel', 'HOME_ICON_SVG', 'CALENDAR_ICON_SVG', 'EDIT_ICON_SVG', 'EMOJI_ICON_SVG', 'TRASH_ICON_SVG',
 ]) requireText('phone-control-center.js', controlCenterCode, expected);
 if (controlCenterCode.includes("__pmShowPhonePage?.('desktop')")) {
@@ -697,11 +723,11 @@ const phoneLifecycleCode = sourceModuleByName.get('phone-lifecycle.js')?.code ||
 for (const expected of [
   'pm-chat-page', 'pm-desktop-page', 'pm-community-page', 'pm-calendar-page',
   'createPhonePageController', 'data-phone-page', '__pmShowPhonePage',
-  'POKE_ICON_SVG',
+  'POKE_ICON_SVG', 'HOME_ICON_SVG', '__pmReturnToDesktop', 'deps.showPhoneDesktopPage?.()', 'title="返回桌面"',
   "{ preservePage: true }", 'deps.restorePhoneUi?.()', 'deps.persistPhoneUiSnapshot?.()',
 ]) requireText('phone-lifecycle.js', phoneLifecycleCode, expected);
-if (phoneLifecycleCode.includes("__pmShowPhonePage('desktop')")) {
-  failures.push('phone-lifecycle.js: chat navbar must not retain the desktop shortcut');
+if (phoneLifecycleCode.includes('onclick="window.__pmShowList()"')) {
+  failures.push('phone-lifecycle.js: chat navbar must not retain the contacts shortcut');
 }
 const conversationCodeForNavigation = sourceModuleByName.get('conversation.js')?.code || '';
 for (const expected of ['options = {}', 'options.preservePage !== true', 'deps.showPhoneChatPage?.(id)']) {
@@ -932,7 +958,7 @@ if (packageLock.version !== packageJson.version
     || packageLock.packages?.['']?.version !== packageJson.version) {
   failures.push('version: package-lock.json root versions must match package.json');
 }
-if (packageJson.version !== '1.2.0') failures.push('version: expected release version 1.2.0');
+if (packageJson.version !== '1.2.1') failures.push('version: expected release version 1.2.1');
 
 const readmeLines = readme.split(/\r?\n/);
 if (readmeLines[0] !== '# 天音小笺') failures.push('README: title must be 天音小笺');
@@ -956,7 +982,7 @@ const backupMetadataFields = new Set(['schemaVersion']);
 const backupFields = [
   'histories', 'config', 'theme', 'profiles', 'groupMeta',
   'pokeConfig', 'bidirectional', 'emojis', 'characterBehavior',
-  'wordyLimit', 'bgGlobal', 'bgLocal', 'interactiveScenes', 'phoneUiState', 'ambientStatus',
+  'wordyLimit', 'desktopBg', 'bgGlobal', 'bgLocal', 'interactiveScenes', 'phoneUiState', 'ambientStatus',
 ];
 for (const [label, contract] of [
   ['settings-ui.js', analyzeBackupContract(settingsUiCode)],
@@ -978,7 +1004,8 @@ for (const [label, contract] of [
 }
 for (const expected of [
   'PLUGIN_LOCAL_STORAGE_KEYS', 'PLUGIN_IDB_STATIC_KEYS', 'PLUGIN_IDB_DYNAMIC_PREFIXES',
-  'clearPluginData', 'pmIDBKeys', "Object.freeze(['ST_SMS_BG_LOCAL_'])",
+  'clearPluginData', 'pmIDBKeys', "Object.freeze(['ST_SMS_BG_LOCAL_'])", "DESKTOP_BG_KEY = 'ST_SMS_BG_DESKTOP'",
+  'saveDesktopBg', "label: '桌面背景'",
 ]) requireText('storage.js', sourceModuleByName.get('storage.js')?.code || '', expected);
 if ((sourceModuleByName.get('storage.js')?.code || '').includes("PLUGIN_LOCAL_STORAGE_KEYS = Object.freeze(['ST_SMS_MIGRATED_V3'")) {
   failures.push('storage.js: migration marker must not be cleared or legacy host histories can be reimported');

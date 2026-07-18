@@ -94,9 +94,19 @@ export function bindPhonePageActions(phoneWindow, handleAction, reportError) {
         const keepWrap = button?.dataset?.action === 'more' ? button.closest('.pm-scene-menu-wrap') : null;
         closeSceneMenus(phoneWindow, keepWrap);
         if (!button || !phoneWindow.contains(button)) return;
+        if (button.tagName === 'SELECT') return;
         const app = button.closest('#pm-scene-app') || button.closest('#pm-calendar-app') || button.closest('.pm-desktop-page');
         if (!app) return;
         Promise.resolve(handleAction(button, app)).catch(error => {
+            if (error.message !== '生成已取消') reportError(error);
+        });
+    });
+    phoneWindow.addEventListener('change', event => {
+        const control = event.target.closest?.('select[data-action]');
+        if (!control || !phoneWindow.contains(control)) return;
+        const app = control.closest('#pm-scene-app') || control.closest('#pm-calendar-app');
+        if (!app) return;
+        Promise.resolve(handleAction(control, app)).catch(error => {
             if (error.message !== '生成已取消') reportError(error);
         });
     });

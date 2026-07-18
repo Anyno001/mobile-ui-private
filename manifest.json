@@ -1,7 +1,7 @@
 {
     "name": "phone_mode",
     "display_name": "天音小笺",
-    "version": "1.2.0",
+    "version": "1.2.1",
     "description": "个人自用的手机聊天界面维护版。",
     "author": "K20070831 (upstream), Anyno001 (maintainer)",
     "js": "index.js",

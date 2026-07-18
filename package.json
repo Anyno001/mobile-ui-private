@@ -1,6 +1,6 @@
 {
   "name": "tianyin-xiaojian-st",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "private": true,
   "type": "module",
   "description": "Build tooling for the personal Tianyin Xiaojian project.",

@@ -110,6 +110,8 @@ await assert.rejects(() => emptyResponseClient('', 'user'), /缺少可用文本�
 for (const [label, payload, expected] of [
     ['completion text', { choices: [{ text: ' completion reply ' }] }, 'completion reply'],
     ['output text', { output_text: ' output reply ' }, 'output reply'],
+    ['root content', { content: ' root reply ' }, 'root reply'],
+    ['responses output', { output: [{ content: [{ type: 'output_text', text: 'responses ' }, { type: 'output_text', text: 'reply' }] }] }, 'responses reply'],
     ['candidate parts', { candidates: [{ content: { parts: [{ text: 'candidate ' }, { text: 'reply' }] } }] }, 'candidate reply'],
 ]) {
     const compatibleClient = createAiClient({
@@ -120,6 +122,18 @@ for (const [label, payload, expected] of [
     });
     assert.equal(await compatibleClient('', label), expected, label);
 }
+
+const nonJsonClient = createAiClient({
+    getConfig: () => config,
+    getContext: () => context,
+    getDefaultMaxTokens: () => 300,
+    fetchImpl: async () => ({ ok: true, async text() { return '<html>502 Bad Gateway</html>'; } }),
+});
+await assert.rejects(() => nonJsonClient('', 'user'), error => {
+    assert.match(error.message, /独立 API 返回了无法解析的 JSON/);
+    assert.match(error.message, /502 Bad Gateway/);
+    return true;
+});
 
 const errorText = 'x'.repeat(300);
 const failingClient = createAiClient({

@@ -1,7 +1,7 @@
 import { POPOVER_SUPPORTED } from './constants.js';
 import { escapeHtml } from './ui.js';
 import {
-    CLOSE_ICON_SVG, CONTROL_ICON_SVG, MENU_ICON_SVG,
+    CLOSE_ICON_SVG, CONTROL_ICON_SVG, HOME_ICON_SVG,
     POKE_ICON_SVG, SEND_ICON_SVG,
 } from './icons.js';
 import { getPendingMessages } from './pending-messages.js';
@@ -93,6 +93,7 @@ export function installPhoneLifecycle(state, deps) {
     } = deps;
     let unbindSendGesture = null;
     const pageController = createPhonePageController({ getRoot: () => state.phoneWindow, closeTransientUi: () => closeControlCenter?.() });
+    window.__pmReturnToDesktop = () => deps.showPhoneDesktopPage?.();
     const ambientStatus = createAmbientStatusController({
         getTheme: () => window.__pmTheme,
         persistTheme: saveTheme,
@@ -285,7 +286,7 @@ export function installPhoneLifecycle(state, deps) {
 <div class="pm-main-ui" data-page="chat">
   <section class="pm-phone-page pm-chat-page" data-phone-page="chat">
     <div class="pm-navbar">
-      <button onclick="window.__pmShowList()" class="pm-nav-btn pm-nav-left-btn" title="联系人">${MENU_ICON_SVG}</button>
+      <button onclick="window.__pmReturnToDesktop()" class="pm-nav-btn pm-nav-left-btn" title="返回桌面" aria-label="返回桌面">${HOME_ICON_SVG}</button>
       <div class="pm-name-wrap">
         <div class="pm-name">${escapeHtml(defaultChar)}</div>
         <button onclick="window.__pmPokeCurrent()" class="pm-name-edit is-hidden" title="拍一拍" aria-label="拍一拍当前会话">${POKE_ICON_SVG}</button>
@@ -341,7 +342,7 @@ export function installPhoneLifecycle(state, deps) {
             },
         });
         bindIsland(state.phoneWindow, state.phoneWindow.querySelector('.pm-island'));
-        applyTheme(); state.isGroupChat = false; state.groupMembers = []; state.groupColorMap = {}; state.groupDisplayName = ''; state.currentGroupKey = '';
+        applyTheme(); applyBackground(); state.isGroupChat = false; state.groupMembers = []; state.groupColorMap = {}; state.groupDisplayName = ''; state.currentGroupKey = '';
 
 
         if (!runtime.firstOpen) {
