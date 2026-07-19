@@ -12,10 +12,11 @@ import {
 import {
     applyCalendarBackupFields, createBackupStateHandlers, createEmptyCalendarBackupFields, runBackupTransaction,
 } from './settings-backup.js';
+import { loadBgSettings, saveBgGlobal, saveBgLocal, saveDesktopBg } from './storage-background.js';
 import { escapeAttr, escapeHtml, safeJS } from './ui.js';
 import {
-    addOrUpdateProfile, clearPluginData, loadBgSettings, loadBudgetConfig, loadInteractiveScenes, loadPhoneUiState, loadProfiles, loadTheme, saveBgGlobal,
-    saveBgLocal, saveDesktopBg, saveBidirectional, saveCharacterBehavior, saveEmojis,
+    addOrUpdateProfile, clearPluginData, loadBudgetConfig, loadInteractiveScenes, loadPhoneUiState, loadProfiles, loadTheme,
+    saveBidirectional, saveCharacterBehavior, saveEmojis,
     saveGroupMeta, saveHistoriesStrict, saveInteractiveScenes, savePokeConfig, saveProfiles,
     saveBudgetConfig, savePhoneUiState, saveTheme, saveWordyLimit,
 } from './storage.js';
@@ -565,7 +566,7 @@ export function installSettingsUi(deps) {
                 return [`<label class="pm-cfg-label pm-check-setting"><span>${escapeHtml(scene.title)}</span><div class="pm-custom-check pm-budget-scene ${selected.has(sceneId) ? 'is-checked' : ''}" role="checkbox" tabindex="0" aria-checked="${selected.has(sceneId)}" data-value="${escapeAttr(sceneId)}" onclick="this.classList.toggle('is-checked');this.setAttribute('aria-checked',String(this.classList.contains('is-checked')))" onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();this.click()}"></div></label>`];
             }).join('') : '';
             const content = renderBudgetSettings({ config, sceneOptions });
-            const footer = '<div class="pm-modal-add" style="display:flex;gap:8px;"><button onclick="window.__pmResetBudgetConfig()" style="flex:1;padding:10px;border:none;border-radius:10px;cursor:pointer;">恢复默认</button><button onclick="window.__pmSaveBudgetConfig()" style="flex:2;background:#007aff;color:#fff;border:none;border-radius:10px;padding:10px;cursor:pointer;font-weight:600;">保存上下文预算</button></div>';
+            const footer = '<div class="pm-modal-add"><button class="pm-action-button is-secondary" onclick="window.__pmResetBudgetConfig()" style="flex:1">恢复默认</button><button class="pm-action-button" onclick="window.__pmSaveBudgetConfig()" style="flex:2">保存上下文预算</button></div>';
             makeOverlay(renderSettingsModal({ title: '上下文预算', content, footer }));
             return;
         }
@@ -585,7 +586,7 @@ export function installSettingsUi(deps) {
                 useIndependent: apiDraftMode.current(),
                 profilesHtml,
             });
-            const footer = '<div class="pm-modal-add"><button onclick="window.__pmSaveConfig()" style="width:100%;background:#007aff;color:#fff;border:none;border-radius:10px;padding:10px;font-size:13px;cursor:pointer;font-weight:600;">保存 API 设置</button></div>';
+            const footer = '<div class="pm-modal-add"><button class="pm-action-button" onclick="window.__pmSaveConfig()" style="width:100%">保存 API 设置</button></div>';
             makeOverlay(renderSettingsModal({ title: 'API 设置', content, footer }));
             return;
         }

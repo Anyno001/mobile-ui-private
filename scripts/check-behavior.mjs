@@ -10,9 +10,12 @@ import {
     normalizeGroupInjection, normalizeGroupMeta, normalizeGroupMetaStore,
 } from '../src/behavior-config.js';
 import {
-    addOrUpdateProfile, clearPluginData, loadBgSettings, loadCharacterBehavior, loadGroupMeta, pmIDBDel, pmIDBGet, pmIDBSet,
+    loadBgSettings, saveBgGlobal, saveBgLocal, saveDesktopBg,
+} from '../src/storage-background.js';
+import {
+    addOrUpdateProfile, clearPluginData, loadCharacterBehavior, loadGroupMeta, pmIDBDel, pmIDBGet, pmIDBSet,
     PLUGIN_IDB_DYNAMIC_PREFIXES, PLUGIN_IDB_STATIC_KEYS, PLUGIN_LOCAL_STORAGE_KEYS,
-    saveBgGlobal, saveBgLocal, saveDesktopBg, saveCharacterBehavior, saveGroupMeta, saveHistoriesStrict,
+    saveCharacterBehavior, saveGroupMeta, saveHistoriesStrict,
 } from '../src/storage.js';
 import { applyConversationInjections } from '../src/phone-injection.js';
 import { deriveInteractiveActorId, normalizeInteractiveStore } from '../src/interactive-scene-model.js';
@@ -20,8 +23,8 @@ import { renderPhoneDesktop, runDesktopPageTransition } from '../src/interactive
 import { getDanmakuMotion, getDanmakuTone, renderCommunityLauncher, renderCommunityWorkspace } from '../src/interactive-scene-views.js';
 import { runControlMenuAction } from '../src/phone-control-center.js';
 import {
-    clearPhoneQuickReply, ensurePhoneQuickReply, getPhoneQuickReplyStatus,
-    PHONE_QR_AUTOMATION_ID, PHONE_QR_LABEL, PHONE_QR_MESSAGE, PHONE_QR_SET_NAME,
+    clearPhoneQuickReply, ensureInitialPhoneQuickReply, ensurePhoneQuickReply, getPhoneQuickReplyStatus,
+    PHONE_QR_AUTOMATION_ID, PHONE_QR_AUTO_INIT_KEY, PHONE_QR_LABEL, PHONE_QR_MESSAGE, PHONE_QR_SET_NAME,
 } from '../src/quick-reply.js';
 import {
     createBackupStateHandlers, installSettingsUi, parseBackupData, runBackgroundTransaction, runBackupTransaction,
@@ -100,6 +103,15 @@ function createQuickReplyApiFixture({ set = null, active = false, fail = {} } = 
     return api;
 }
 
+function createStorageFixture(initial = {}) {
+    const values = new Map(Object.entries(initial));
+    return {
+        getItem(key) { return values.has(key) ? values.get(key) : null; },
+        setItem(key, value) { values.set(key, String(value)); },
+        removeItem(key) { values.delete(key); },
+    };
+}
+
 assert.equal(getPhoneQuickReplyStatus(null).state, 'unavailable');
 await assert.rejects(() => ensurePhoneQuickReply(null), /未提供 Quick Reply API/);
 const createdQrApi = createQuickReplyApiFixture();
@@ -133,6 +145,45 @@ const missingIdApi = createQuickReplyApiFixture({ set: {
     qrList: [{ label: PHONE_QR_LABEL, message: PHONE_QR_MESSAGE, automationId: PHONE_QR_AUTOMATION_ID }],
 } });
 await assert.rejects(() => ensurePhoneQuickReply(missingIdApi), /缺少稳定数字 ID/);
+
+const initialQrStorage = createStorageFixture();
+const initialQrApi = createQuickReplyApiFixture();
+assert.equal((await ensureInitialPhoneQuickReply({ api: initialQrApi, storage: initialQrStorage })).state, 'ready');
+assert.equal(initialQrStorage.getItem(PHONE_QR_AUTO_INIT_KEY), '1', '首次创建成功后必须写入初始化标记');
+assert.equal(initialQrApi.getSetByName(PHONE_QR_SET_NAME).qrList[0].label, '天音');
+await ensureInitialPhoneQuickReply({ api: initialQrApi, storage: initialQrStorage });
+assert.equal(initialQrApi.calls.filter(call => call[0] === 'createQuickReply').length, 1, '已有初始化标记时不得重复创建入口');
+await clearPhoneQuickReply(initialQrApi);
+assert.equal(initialQrStorage.getItem(PHONE_QR_AUTO_INIT_KEY), '1', '用户清除入口后必须保留初始化标记');
+assert.equal((await ensureInitialPhoneQuickReply({ api: initialQrApi, storage: initialQrStorage })).state, 'absent');
+assert.equal(initialQrApi.calls.filter(call => call[0] === 'createQuickReply').length, 1, '用户清除后再次初始化不得自动复活入口');
+
+const skippedQrStorage = createStorageFixture({ [PHONE_QR_AUTO_INIT_KEY]: '1' });
+const skippedQrApi = createQuickReplyApiFixture();
+assert.equal((await ensureInitialPhoneQuickReply({ api: skippedQrApi, storage: skippedQrStorage })).state, 'absent');
+assert.equal(skippedQrApi.calls.length, 0, '已有初始化标记时只能读取状态，不得修改 Quick Reply');
+
+const failedInitialQrStorage = createStorageFixture();
+const failedInitialQrApi = createQuickReplyApiFixture({ fail: { createQuickReply: 'initial-create-failed' } });
+await assert.rejects(
+    () => ensureInitialPhoneQuickReply({ api: failedInitialQrApi, storage: failedInitialQrStorage }),
+    /initial-create-failed/,
+);
+assert.equal(failedInitialQrStorage.getItem(PHONE_QR_AUTO_INIT_KEY), null, 'Quick Reply 创建失败时不得写入初始化标记');
+const failedMarkerQrApi = createQuickReplyApiFixture();
+const failedMarkerStorage = {
+    getItem: () => null,
+    setItem() { throw new Error('marker-write-failed'); },
+};
+await assert.rejects(
+    () => ensureInitialPhoneQuickReply({ api: failedMarkerQrApi, storage: failedMarkerStorage }),
+    /marker-write-failed/,
+);
+assert.equal(failedMarkerQrApi.getSetByName(PHONE_QR_SET_NAME).qrList.length, 1, '标记写入失败不得伪装成入口创建失败或回滚已创建入口');
+await assert.rejects(
+    () => ensureInitialPhoneQuickReply({ api: createQuickReplyApiFixture(), storage: null }),
+    /浏览器存储不可用/,
+);
 
 const mixedSet = {
     name: PHONE_QR_SET_NAME,

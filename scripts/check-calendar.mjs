@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { calendarGenerationErrorMessage, installCalendar, renderCalendarPageHtml } from '../src/calendar.js';
+import { createCalendarCommitters } from '../src/calendar-commit.js';
 import {
     clearCycleScope, createEmptyCycleStore, cycleScopeFor, cycleSubjectKeys, normalizeCycleScope,
     predictCyclePhase, predictCycleRange, upsertCycleScope,
@@ -15,8 +16,8 @@ import {
 } from '../src/calendar-weather.js';
 import {
     buildCalendarPrompts, calendarDateFromParts, calendarGenerationCopy, calendarMonthCells, calendarMonthKeys,
-    calendarReferenceDate, calendarWeekKeys, calendarWindowDescription, createCalendarDate, createEmptyCalendarScope,
-    extractCalendarDate, normalizeCalendarScope, parseCalendarDate, shiftCalendarMonth,
+    calendarReferenceDate, calendarWeekKeys, calendarWindowDescription, createCalendarDate, createEmptyCalendarScope, createEmptyCalendarStore,
+    extractCalendarDate, normalizeCalendarScope, normalizeCalendarStore, parseCalendarDate, shiftCalendarMonth,
 } from '../src/calendar-model.js';
 import {
     deleteOccasion, expandOccasions, findOccasion, normalizeOccasionStore,
@@ -374,7 +375,9 @@ const renderedBusyWeather = renderCalendarPageHtml(
     { ...renderedView, viewMode: 'weather', generating: true },
 );
 assert.match(renderedSchedule, /data-calendar-view-mode="schedule"/);
-assert.match(renderedSchedule, /type="date" data-calendar-base-date/);
+assert.match(renderedSchedule, /data-action="calendar-base-edit" aria-label="编辑时间起点"/);
+assert.match(renderedSchedule, /class="pm-calendar-title-row"><b>/);
+assert.doesNotMatch(renderedSchedule, /type="date" data-calendar-base-date|pm-calendar-base-menu/);
 assert.match(renderedSchedule, /data-action="calendar-generate" aria-label="生成未来七日日程"/);
 assert.match(renderedBusySchedule, /data-action="calendar-generate"[^>]*aria-busy="true"[^>]*disabled/,
     '生成中仅日程模式的生成按钮应保持 busy');
@@ -411,8 +414,8 @@ assert.match(renderedCycle, /class="pm-calendar-cycle-input" name="enabled" type
     '周期开关必须保留原生 checkbox 的表单与辅助技术语义');
 assert.match(renderedCycle, /class="pm-custom-check" aria-hidden="true"/,
     '周期开关必须复用统一视觉控件');
-assert.match(renderedCycle, /易孕期和相对低风险期/);
-assert.match(renderedCycle, /不能作为避孕依据/);
+assert.match(renderedCycle, /安全期/);
+assert.doesNotMatch(renderedCycle, /相对低风险期|不能作为避孕依据/);
 assert.doesNotMatch(renderedCycle, /少云|20°\/30°C|Open-Meteo|&lt;Holiday&gt;|&lt;日程&gt;/);
 assert.match(renderedSchedule, /class="pm-calendar-weekdays"/);
 assert.match(renderedSchedule, /class="pm-calendar-month-grid"/);
@@ -495,6 +498,35 @@ try {
             return null;
         },
     };
+    let calendarOverlayHtml = '';
+    let calendarOverlayNodes = null;
+    const calendarOverlayCloseReasons = [];
+    const createOverlayNode = initial => ({
+        ...initial,
+        listener: null,
+        addEventListener(type, listener) {
+            if (type === 'click') this.listener = listener;
+        },
+        async click() { return this.listener?.(); },
+    });
+    const makeCalendarOverlay = html => {
+        calendarOverlayHtml = html;
+        calendarOverlayNodes = {
+            close: createOverlayNode({}),
+            apply: createOverlayNode({}),
+            reset: createOverlayNode({ disabled: /data-calendar-base-reset disabled/.test(html) }),
+            input: { value: html.match(/data-calendar-base-date value="([^"]*)"/)?.[1] || '' },
+            error: { textContent: '' },
+        };
+        return { querySelector(selector) {
+            if (selector === '[data-calendar-base-close]') return calendarOverlayNodes.close;
+            if (selector === '[data-calendar-base-apply]') return calendarOverlayNodes.apply;
+            if (selector === '[data-calendar-base-reset]') return calendarOverlayNodes.reset;
+            if (selector === '[data-calendar-base-date]') return calendarOverlayNodes.input;
+            if (selector === '[data-calendar-base-error]') return calendarOverlayNodes.error;
+            return null;
+        } };
+    };
     const deps = {
         getStorageId: () => storageA,
         gatherContext: async () => ({}),
@@ -504,6 +536,8 @@ try {
             if (String(url).includes('api.open-meteo.com')) return { ok: true, json: async () => weatherPayload };
             throw new Error(`unexpected URL: ${url}`);
         },
+        makeOverlay: makeCalendarOverlay,
+        closeOverlay: reason => calendarOverlayCloseReasons.push(reason),
     };
     installCalendar({ phoneWindow }, deps);
     assert.equal(deps.renderCalendar(storageA), true);
@@ -655,8 +689,31 @@ try {
     await deps.handleCalendarAction({ dataset: { action: 'calendar-base-save' } }, app);
     assert.equal(deps.getCalendarStore().scopes[storageA].baseDate, '2032-02-29');
     assert.equal(JSON.parse(memory.get('ST_SMS_CALENDAR_V1')).scopes[storageA].baseDate, '2032-02-29', '时间起点必须持久化');
-    assert.match(container.innerHTML, /data-calendar-base-date value="2032-02-29"/);
-    assert.match(container.innerHTML, /data-action="calendar-base-clear">设备时间<\/button>/, '配置时间起点后必须提供恢复设备时间动作');
+    assert.match(container.innerHTML, /class="pm-calendar-header-side is-left"/);
+    assert.match(container.innerHTML, /class="pm-calendar-title-row"><b>/);
+    assert.match(container.innerHTML, /class="pm-calendar-header-side is-right"/);
+    assert.match(container.innerHTML, /data-action="calendar-base-edit"/);
+    assert.doesNotMatch(container.innerHTML, /pm-calendar-base-menu|data-calendar-base-date/, '时间起点控件不得继续挤在月份标题内');
+    await deps.handleCalendarAction({ dataset: { action: 'calendar-base-edit' } }, app);
+    assert.match(calendarOverlayHtml, /class="pm-modal pm-calendar-base-dialog"/);
+    assert.equal(calendarOverlayNodes.input.value, '2032-02-29');
+    calendarOverlayNodes.input.value = '2032-02-30';
+    await calendarOverlayNodes.apply.click();
+    assert.match(calendarOverlayNodes.error.textContent, /时间起点无效/);
+    assert.equal(calendarOverlayCloseReasons.length, 0, '非法日期不得关闭时间起点弹窗');
+    assert.equal(deps.getCalendarStore().scopes[storageA].baseDate, '2032-02-29');
+    calendarOverlayNodes.input.value = '2032-02-29';
+    await calendarOverlayNodes.apply.click();
+    assert.deepEqual(calendarOverlayCloseReasons, ['saved']);
+    await deps.handleCalendarAction({ dataset: { action: 'calendar-base-edit' } }, app);
+    await calendarOverlayNodes.close.click();
+    assert.deepEqual(calendarOverlayCloseReasons, ['saved', 'close']);
+    await deps.handleCalendarAction({ dataset: { action: 'calendar-base-edit' } }, app);
+    assert.equal(calendarOverlayNodes.reset.disabled, false);
+    await calendarOverlayNodes.reset.click();
+    assert.deepEqual(calendarOverlayCloseReasons, ['saved', 'close', 'cleared']);
+    assert.equal(Object.hasOwn(deps.getCalendarStore().scopes[storageA], 'baseDate'), false);
+    await deps.handleCalendarAction({ dataset: { action: 'calendar-base-save' } }, app);
     baseDateControl.value = '2032-02-30';
     await assert.rejects(
         deps.handleCalendarAction({ dataset: { action: 'calendar-base-save' } }, app),
@@ -667,7 +724,6 @@ try {
     await deps.handleCalendarAction({ dataset: { action: 'calendar-base-save' } }, app);
     assert.equal(deps.getCalendarStore().scopes[storageA].baseDate, '0580-03-15', '古代时间起点必须可持久化');
     assert.match(container.innerHTML, /aria-label="580年3月月历"/, '古代时间起点必须可渲染月历');
-    assert.match(container.innerHTML, /data-calendar-base-date value="0580-03-15"/);
     baseDateControl.value = '0000-01-01';
     await assert.rejects(
         deps.handleCalendarAction({ dataset: { action: 'calendar-base-save' } }, app),
@@ -685,13 +741,15 @@ try {
     await deps.handleCalendarAction({ dataset: { action: 'calendar-holiday-country' }, value: 'US' }, app);
     cycleForm.elements.periodStartDay.value = '1';
     await deps.handleCalendarAction({ dataset: { action: 'calendar-cycle-save' } }, app);
+    assert.equal(statusNode.textContent, '生理期提示已保存。');
+    assert.doesNotMatch(statusNode.textContent, /预测仅供提醒|不能用于避孕判断|不能作为避孕依据/);
     assert.equal(deps.getCalendarCycleStore().scopes[storageA].enabled, true);
     assert.equal(deps.getCalendarCycleStore().scopes[storageA].lastPeriodStart, '0580-03-01');
     assert.equal(deps.getCalendarCycleStore().scopes[storageB], undefined, '周期写入不得污染其他 storageId');
     await deps.handleCalendarAction({ dataset: { action: 'calendar-base-clear' } }, app);
     assert.equal(Object.hasOwn(deps.getCalendarStore().scopes[storageA], 'baseDate'), false);
     assert.equal(Object.hasOwn(JSON.parse(memory.get('ST_SMS_CALENDAR_V1')).scopes[storageA], 'baseDate'), false, '清除时间起点必须同步持久化');
-    assert.doesNotMatch(container.innerHTML, /data-action="calendar-base-clear"|>今天<\/button>/, '清除时间起点后不得恢复已删除的今天按钮');
+    assert.doesNotMatch(container.innerHTML, /data-action="calendar-base-clear"|data-calendar-base-date|>今天<\/button>/, '清除时间起点后不得恢复旧菜单或已删除的今天按钮');
     await deps.handleCalendarAction({ dataset: { action: 'calendar-mode-weather' } }, { querySelector: () => null });
     assert.match(container.innerHTML, /data-calendar-view-mode="weather"/);
     await deps.handleCalendarAction({ dataset: { action: 'calendar-holiday-refresh' } }, app);
@@ -720,6 +778,45 @@ const deferred = () => {
 
 globalThis.localStorage = storage;
 try {
+    memory.clear();
+    const queueRuntime = { store: createEmptyCalendarStore() };
+    const firstCommitEntered = deferred();
+    const firstCommitRelease = deferred();
+    let queueInjectionCalls = 0;
+    const { commitScope: commitQueuedScope } = createCalendarCommitters({
+        runtime: queueRuntime,
+        tasks: { active: () => true },
+        applyBidirectionalInjection: async () => {
+            queueInjectionCalls += 1;
+            if (queueInjectionCalls === 1) {
+                firstCommitEntered.resolve();
+                await firstCommitRelease.promise;
+            }
+        },
+        getCycles: () => null,
+        getCycleSubject: () => 'self',
+    });
+    const firstQueuedCommit = commitQueuedScope(storageA, current => ({ ...current, autoAdjust: true }));
+    await firstCommitEntered.promise;
+    let secondMutationEntered = false;
+    const secondQueuedCommit = commitQueuedScope(storageA, current => {
+        secondMutationEntered = true;
+        assert.equal(current.autoAdjust, true, '后续提交必须读取前一提交完成后的 scope');
+        return { ...current, baseDate: '2032-02-29' };
+    });
+    await Promise.resolve();
+    assert.equal(secondMutationEntered, false, '前一提交注入未完成时后续提交不得提前执行 mutate');
+    firstCommitRelease.resolve();
+    await Promise.all([firstQueuedCommit, secondQueuedCommit]);
+    assert.equal(queueInjectionCalls, 2, '两个串行提交必须各执行一次注入');
+    assert.equal(queueRuntime.store.scopes[storageA].autoAdjust, true, '串行提交不得丢失前一提交的字段');
+    assert.equal(queueRuntime.store.scopes[storageA].baseDate, '2032-02-29', '串行提交必须保留后一提交的字段');
+    assert.deepEqual(
+        normalizeCalendarStore(JSON.parse(memory.get(CALENDAR_STORAGE_KEY))),
+        normalizeCalendarStore(queueRuntime.store),
+        '串行提交完成后持久化状态必须与内存状态一致',
+    );
+
     memory.clear();
     const container = { innerHTML: '' };
     const statusNode = { textContent: '' };
@@ -863,7 +960,7 @@ try {
     const beforeCancelledGenerate = structuredClone(deps.getCalendarStore());
     const generatePromise = deps.handleCalendarAction({ dataset: { action: 'calendar-generate' } }, app);
     await aiStarted.promise;
-    assert.equal(generatedOptions.maxTokens, 900, '日历生成必须保留 900 token 上限');
+    assert.equal(generatedOptions.maxTokens, 65535, '日历结构化生成必须使用 65535 token 输出上限');
     assert.equal(generatedOptions.isolated, true, '日历生成必须使用宿主隔离生成路径');
     assert.ok(generatedOptions.signal instanceof AbortSignal, '日历生成必须把 task signal 传给 AI 客户端');
     assert.match(container.innerHTML, /data-calendar-view-mode="schedule"/);

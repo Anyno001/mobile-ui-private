@@ -1,6 +1,6 @@
 import {
     CALENDAR_CYCLE_STORAGE_KEY, CALENDAR_HOLIDAY_STORAGE_KEY, CALENDAR_OCCASION_STORAGE_KEY,
-    CALENDAR_STORAGE_KEY, CALENDAR_WEATHER_STORAGE_KEY, CHARACTER_BEHAVIOR_KEY, IDB_MARKER,
+    CALENDAR_STORAGE_KEY, CALENDAR_WEATHER_STORAGE_KEY, CHARACTER_BEHAVIOR_KEY,
     PM_IDB_NAME, PM_IDB_STORE,
 } from './constants.js';
 import { BUDGET_CONFIG_KEY, normalizeBudgetConfig } from './budget.js';
@@ -19,12 +19,12 @@ const GROUP_META_FALLBACK_KEY = `${GROUP_META_STORE_KEY}_LOCAL_FALLBACK`;
 const INTERACTIVE_STORE_KEY = 'ST_INTERACTIVE_SCENES_V1';
 const INTERACTIVE_FALLBACK_KEY = `${INTERACTIVE_STORE_KEY}_LOCAL_FALLBACK`;
 const PHONE_UI_STATE_KEY = 'ST_SMS_PHONE_UI_STATE';
-const DESKTOP_BG_KEY = 'ST_SMS_BG_DESKTOP';
+export const DESKTOP_BG_KEY = 'ST_SMS_BG_DESKTOP';
 export const PLUGIN_LOCAL_STORAGE_KEYS = Object.freeze([
     'ST_SMS_DATA_V2', 'ST_SMS_CONFIG', 'ST_SMS_THEME', 'ST_SMS_POKE_CONFIG', 'ST_SMS_WORDY_LIMIT',
     BUDGET_CONFIG_KEY, 'ST_SMS_BG_GLOBAL', 'ST_SMS_BG_LOCAL', DESKTOP_BG_KEY, GROUP_META_STORE_KEY, GROUP_META_FALLBACK_KEY,
     EMOJI_STORE_KEY, EMOJI_FALLBACK_KEY, CHARACTER_BEHAVIOR_KEY, 'ST_SMS_API_PROFILES', 'ST_SMS_BIDIRECTIONAL',
-    INTERACTIVE_STORE_KEY, INTERACTIVE_FALLBACK_KEY, PHONE_UI_STATE_KEY,
+    INTERACTIVE_STORE_KEY, INTERACTIVE_FALLBACK_KEY, PHONE_UI_STATE_KEY, 'ST_SMS_PHONE_QR_INITIALIZED',
     CALENDAR_STORAGE_KEY, CALENDAR_OCCASION_STORAGE_KEY, CALENDAR_HOLIDAY_STORAGE_KEY,
     CALENDAR_WEATHER_STORAGE_KEY, CALENDAR_CYCLE_STORAGE_KEY,
 ]);
@@ -357,218 +357,6 @@ export function saveBudgetConfig(candidate = window.__pmBudgetConfig) {
     }
 }
 
-async function migrateSingleBackground(storageKey, value) {
-    if (!await pmIDBSet(storageKey, value)) return false;
-    try {
-        localStorage.setItem(storageKey, IDB_MARKER);
-        return true;
-    } catch (error) {
-        await pmIDBDel(storageKey);
-        return false;
-    }
-}
-
-
-export async function loadBgSettings() {
-    try {
-        const storedDesktop = localStorage.getItem(DESKTOP_BG_KEY) || '';
-        if (storedDesktop === IDB_MARKER) {
-            window.__pmDesktopBg = (await pmIDBGet(DESKTOP_BG_KEY)) || '';
-        } else if (isBigData(storedDesktop)) {
-            window.__pmDesktopBg = storedDesktop;
-            await migrateSingleBackground(DESKTOP_BG_KEY, storedDesktop);
-        } else {
-            window.__pmDesktopBg = storedDesktop;
-        }
-    } catch (error) {
-        window.__pmDesktopBg = '';
-    }
-
-    try {
-        const storedGlobal = localStorage.getItem('ST_SMS_BG_GLOBAL') || '';
-        if (storedGlobal === IDB_MARKER) {
-            window.__pmBgGlobal = (await pmIDBGet('ST_SMS_BG_GLOBAL')) || '';
-        } else if (isBigData(storedGlobal)) {
-            window.__pmBgGlobal = storedGlobal;
-            await migrateSingleBackground('ST_SMS_BG_GLOBAL', storedGlobal);
-        } else {
-            window.__pmBgGlobal = storedGlobal;
-        }
-    } catch (error) {
-        window.__pmBgGlobal = '';
-    }
-
-    try {
-        const storedLocal = readLocalBackgroundPointers();
-        const result = Object.create(null);
-        let migrated = 0;
-        const stagedKeys = [];
-        for (const [key, value] of Object.entries(storedLocal)) {
-            if (value === IDB_MARKER) {
-                result[key] = (await pmIDBGet('ST_SMS_BG_LOCAL_' + key)) || '';
-            } else if (isBigData(value)) {
-                result[key] = value;
-                const storageKey = 'ST_SMS_BG_LOCAL_' + key;
-                if (await pmIDBSet(storageKey, value)) {
-                    storedLocal[key] = IDB_MARKER;
-                    stagedKeys.push(storageKey);
-                    migrated++;
-                }
-            } else {
-                result[key] = value;
-            }
-        }
-        if (migrated > 0) {
-            try { localStorage.setItem('ST_SMS_BG_LOCAL', JSON.stringify(storedLocal)); }
-            catch (error) {
-                for (const storageKey of stagedKeys) await pmIDBDel(storageKey);
-            }
-        }
-        window.__pmBgLocal = result;
-    } catch (error) {
-        window.__pmBgLocal = Object.create(null);
-    }
-}
-
-const UNSAFE_BACKGROUND_KEYS = new Set(['__proto__', 'prototype', 'constructor']);
-function assertBackgroundEntries(value, label) {
-    for (const [key, entry] of Object.entries(value)) {
-        if (UNSAFE_BACKGROUND_KEYS.has(key)) throw new Error(`${label}损坏：包含危险键 ${key}`);
-        if (typeof entry !== 'string') {
-            throw new Error(`${label}损坏：${key} 必须是字符串`);
-        }
-    }
-}
-
-function readLocalBackgroundPointers() {
-    let serialized;
-    try {
-        serialized = localStorage.getItem('ST_SMS_BG_LOCAL');
-    } catch (error) {
-        throw new Error('会话背景索引读取失败：浏览器存储不可用');
-    }
-    if (!serialized) return {};
-    let parsed;
-    try { parsed = JSON.parse(serialized); }
-    catch (error) { throw new Error('会话背景索引损坏：无法解析'); }
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('会话背景索引损坏：必须是对象');
-    assertBackgroundEntries(parsed, '会话背景索引');
-    return parsed;
-}
-
-async function restoreBackgroundMutations(mutations, label) {
-    const failures = [];
-    for (const mutation of mutations.slice().reverse()) {
-        const restored = mutation.hadPrimary
-            ? await pmIDBSet(mutation.key, mutation.previousValue)
-            : await pmIDBDel(mutation.key);
-        if (!restored) failures.push(mutation.key);
-    }
-    if (failures.length) throw new Error(`${label}主数据补偿失败`);
-}
-
-async function readPreviousBackground(key, hasPrimary, label) {
-    if (!hasPrimary) return null;
-    const value = await pmIDBGet(key);
-    if (value === null) throw new Error(`${label}原数据读取失败：IndexedDB 不可用或数据缺失`);
-    return value;
-}
-
-function combinedBackgroundError(error, compensationError) {
-    const combined = new Error(`${error.message}；${compensationError.message}`);
-    combined.cause = error;
-    return combined;
-}
-
-async function saveSingleBackground({ storageKey, value, label }) {
-    let previousPointer;
-    try { previousPointer = localStorage.getItem(storageKey) || ''; }
-    catch (error) { throw new Error(`${label}索引读取失败：浏览器存储不可用`); }
-    const hadPrimary = previousPointer === IDB_MARKER;
-    const previousValue = await readPreviousBackground(storageKey, hadPrimary, label);
-    let primaryMutated = false;
-    const rollbackPrimary = async error => {
-        if (!primaryMutated) throw error;
-        try {
-            await restoreBackgroundMutations([{ key: storageKey, hadPrimary, previousValue }], label);
-        } catch (compensationError) {
-            throw combinedBackgroundError(error, compensationError);
-        }
-        throw error;
-    };
-    if (isBigData(value)) {
-        if (!await pmIDBSet(storageKey, value)) throw new Error(`${label}保存失败：IndexedDB 不可用`);
-        primaryMutated = true;
-        try { localStorage.setItem(storageKey, IDB_MARKER); }
-        catch (error) { await rollbackPrimary(new Error(`${label}索引保存失败：浏览器存储不可用`)); }
-    } else {
-        if (hadPrimary && !await pmIDBDel(storageKey)) {
-            throw new Error(`${label}删除失败：IndexedDB 不可用`);
-        }
-        primaryMutated = hadPrimary;
-        try { localStorage.setItem(storageKey, value); }
-        catch (error) { await rollbackPrimary(new Error(`${label}保存失败：浏览器存储不可用`)); }
-    }
-}
-
-export async function saveBgGlobal() {
-    return saveSingleBackground({ storageKey: 'ST_SMS_BG_GLOBAL', value: window.__pmBgGlobal || '', label: '全局背景' });
-}
-
-export async function saveDesktopBg() {
-    return saveSingleBackground({ storageKey: DESKTOP_BG_KEY, value: window.__pmDesktopBg || '', label: '桌面背景' });
-}
-
-export async function saveBgLocal() {
-    const current = window.__pmBgLocal || {};
-    if (!current || typeof current !== 'object' || Array.isArray(current)) throw new Error('会话背景数据损坏：必须是对象');
-    assertBackgroundEntries(current, '会话背景数据');
-    const pointers = Object.create(null);
-    const previousPointers = readLocalBackgroundPointers();
-    const mutations = [];
-    const prepareMutation = async key => {
-        const storageKey = 'ST_SMS_BG_LOCAL_' + key;
-        const hadPrimary = previousPointers[key] === IDB_MARKER;
-        const previousValue = await readPreviousBackground(storageKey, hadPrimary, '会话背景');
-        return { key: storageKey, hadPrimary, previousValue };
-    };
-    try {
-        for (const [key, value] of Object.entries(current)) {
-            if (isBigData(value)) {
-                const mutation = await prepareMutation(key);
-                if (!await pmIDBSet(mutation.key, value)) throw new Error('会话背景保存失败：IndexedDB 不可用');
-                mutations.push(mutation);
-                pointers[key] = IDB_MARKER;
-            } else {
-                if (previousPointers[key] === IDB_MARKER) {
-                    const mutation = await prepareMutation(key);
-                    if (!await pmIDBDel(mutation.key)) throw new Error('会话背景删除失败：IndexedDB 不可用');
-                    mutations.push(mutation);
-                }
-                pointers[key] = value;
-            }
-        }
-        for (const [key, previousValue] of Object.entries(previousPointers)) {
-            if (previousValue !== IDB_MARKER || Object.hasOwn(current, key)) continue;
-            const mutation = await prepareMutation(key);
-            if (!await pmIDBDel(mutation.key)) {
-                throw new Error('会话背景删除失败：IndexedDB 不可用');
-            }
-            mutations.push(mutation);
-        }
-        try { localStorage.setItem('ST_SMS_BG_LOCAL', JSON.stringify(pointers)); }
-        catch (error) { throw new Error('会话背景索引保存失败：浏览器存储不可用'); }
-    } catch (error) {
-        if (mutations.length) {
-            try {
-                await restoreBackgroundMutations(mutations, '会话背景');
-            } catch (compensationError) {
-                throw combinedBackgroundError(error, compensationError);
-            }
-        }
-        throw error;
-    }
-}
 
 export async function loadGroupMeta() {
     try {

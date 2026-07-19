@@ -363,7 +363,7 @@ export function installInteractiveScenes(_state, deps) {
             if (kind === 'live_batch' && !extra.userContent) extra = { ...extra, userContent: scene.live.title };
             const prompts = buildInteractiveRequest({ kind, presetKey: scene.preset, styleInput: scene.styleInput, generatedPrompt: scene.generatedPrompt, context: await contextText(), actorRoster, ...extra });
             const raw = await callAI(prompts.systemPrompt, prompts.userPrompt, {
-                maxTokens: kind === 'style_prompt' ? 700 : 1400,
+                maxTokens: 65535,
                 isolated: true,
                 signal: controller.signal,
             });

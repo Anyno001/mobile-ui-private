@@ -6,8 +6,9 @@ import {
 } from './icons.js';
 import { getPendingMessages } from './pending-messages.js';
 import { bindPressGesture } from './press-gesture.js';
+import { loadBgSettings } from './storage-background.js';
 import {
-    loadBgSettings, loadBidirectional, loadBudgetConfig, loadEmojis,
+    loadBidirectional, loadBudgetConfig, loadEmojis,
     loadCharacterBehavior, loadGroupMeta, loadHistoriesFromIDB,
     loadPokeConfig, loadProfiles, loadTheme, loadWordyLimit, saveTheme,
 } from './storage.js';

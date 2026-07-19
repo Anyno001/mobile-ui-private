@@ -6,8 +6,9 @@ import { GROUP_COLORS } from './groups.js';
 import { escapeAttr, escapeHtml, safeJS } from './ui.js';
 import { CLOSE_ICON_SVG, REFRESH_ICON_SVG } from './icons.js';
 import { clearPendingMessages } from './pending-messages.js';
+import { saveBgLocal } from './storage-background.js';
 import {
-    loadGroupMeta, saveBgLocal, saveBidirectional, saveGroupMeta, saveHistoriesStrict, savePokeConfig,
+    loadGroupMeta, saveBidirectional, saveGroupMeta, saveHistoriesStrict, savePokeConfig,
 } from './storage.js';
 
 export function installPhoneDirectory(state, deps) {
@@ -121,7 +122,7 @@ export function installPhoneDirectory(state, deps) {
         <div style="font-size:11px;color:#999;margin-top:4px;">
             当前计数：<span id="pm-poke-counter-group">${pokeConfig.counter}</span> / ${pokeConfig.interval}
         </div>
-        <button type="button" onclick="window.__pmArmAutoPoke()" style="margin-top:8px;width:100%;border:1px solid #ddd;border-radius:8px;padding:7px;background:#fff;cursor:pointer;">
+        <button type="button" class="pm-action-button is-secondary" onclick="window.__pmArmAutoPoke()" style="margin-top:8px;width:100%">
             恢复本次自动消息
         </button>
         <div data-pm-auto-poke-status style="font-size:11px;color:#999;margin-top:4px;">${isAutoPokeAllowed() ? '本次手机会话已运行' : '本次手机会话已暂停'}</div>
@@ -130,8 +131,8 @@ export function installPhoneDirectory(state, deps) {
     </div>
     ${mode === 'create' ? `
     <div class="pm-modal-add">
-        <button onclick="window.__pmConfirmGroup('${safeJS(mode)}')" style="flex:1;background:#007aff;color:#fff;border:none;border-radius:10px;padding:10px;font-size:13px;cursor:pointer;font-weight:600;">创建</button>
-    </div>` : `<div class="pm-modal-add"><button onclick="window.__pmSaveAndCloseGroupEdit()" style="flex:1;background:#007aff;color:#fff;border:none;border-radius:10px;padding:10px;font-size:13px;cursor:pointer;font-weight:600;">保存群聊设置</button></div>`}
+        <button class="pm-action-button" onclick="window.__pmConfirmGroup('${safeJS(mode)}')" style="flex:1">创建</button>
+    </div>` : `<div class="pm-modal-add"><button class="pm-action-button" onclick="window.__pmSaveAndCloseGroupEdit()" style="flex:1">保存群聊设置</button></div>`}
     </div>`);
         setTimeout(() => window.__pmGroupInputChanged(), 0);
     }
@@ -285,7 +286,7 @@ export function installPhoneDirectory(state, deps) {
     <div class="pm-modal-list">
         ${empty ? '<div style="text-align:center;color:#999;padding:20px;font-size:13px;">暂无联系人</div>' : (renderGroups + renderSingle)}
     </div>
-    <div class="pm-modal-add" style="display:flex;gap:8px;">
+    <div class="pm-modal-add">
         <button onclick="window.__pmShowGroupCreate()" class="pm-btn-group">新建群聊</button>
         <button onclick="window.__pmShowAddContact()" class="pm-btn-add">添加联系人</button>
     </div>
@@ -301,12 +302,14 @@ export function installPhoneDirectory(state, deps) {
   <div class="pm-contact-add-choices">
     <section class="pm-contact-add-choice">
       <b>手动添加</b><span>输入明确的角色名，立即开始聊天。</span>
-      <input id="pm-add-contact-input" class="pm-cfg-input" placeholder="角色名" aria-label="联系人角色名">
-      <button type="button" class="pm-contact-add-primary" onclick="(()=>{const v=document.getElementById('pm-add-contact-input').value.trim();if(v)window.__pmSwitchContact(v);})()">开始聊天</button>
+      <div class="pm-contact-add-manual">
+        <input id="pm-add-contact-input" class="pm-cfg-input" placeholder="角色名" aria-label="联系人角色名">
+        <button type="button" class="pm-contact-add-primary" onclick="(()=>{const v=document.getElementById('pm-add-contact-input').value.trim();if(v)window.__pmSwitchContact(v);})()">开始聊天</button>
+      </div>
     </section>
     <section class="pm-contact-add-choice is-ai">
       <b>AI 生成</b><span>根据当前剧情、世界书和已有联系人生成一批候选。</span>
-      <button type="button" id="pm-autogen-btn" class="pm-contact-add-ai" onclick="window.__pmConfirmAutoGen()" aria-label="AI 自动生成联系人">${REFRESH_ICON_SVG}<span>生成联系人与群聊</span></button>
+      <button type="button" id="pm-autogen-btn" class="pm-contact-add-ai" onclick="window.__pmConfirmAutoGen()" aria-label="AI 自动生成联系人"><span class="pm-contact-add-icon">${REFRESH_ICON_SVG}</span><span>生成联系人与群聊</span></button>
     </section>
   </div>
 </div>`);

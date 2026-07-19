@@ -117,7 +117,10 @@ export function extractAiResponseContent(json) {
         .map(part => part?.text)
         .filter(text => typeof text === 'string').join(''));
     const geminiParts = json?.candidates?.[0]?.content?.parts;
-    if (Array.isArray(geminiParts)) candidates.push(geminiParts.map(part => part?.text).filter(text => typeof text === 'string').join(''));
+    if (Array.isArray(geminiParts)) candidates.push(geminiParts
+        .filter(part => part?.thought !== true)
+        .map(part => part?.text)
+        .filter(text => typeof text === 'string').join(''));
     const content = candidates.find(value => typeof value === 'string' && value.trim());
     return content?.trim() || '';
 }
@@ -216,6 +219,11 @@ export function createAiClient({
                     if (signal?.aborted || error?.name === 'AbortError') throw abortError();
                     throw new Error('独立 API 返回了无法解析的 JSON');
                 }
+            }
+            const geminiFinishReason = String(json?.candidates?.[0]?.finishReason || '').toUpperCase();
+            const openAiFinishReason = String(json?.choices?.[0]?.finish_reason || '').toLowerCase();
+            if (geminiFinishReason === 'MAX_TOKENS' || openAiFinishReason === 'length') {
+                throw new Error('AI 输出达到 token 上限并被截断（MAX_TOKENS），未使用不完整结果。请重试或检查服务商的最大输出限制。');
             }
             const content = extractAiResponseContent(json);
             if (!content) throw new Error('独立 API 响应缺少可用文本内容');

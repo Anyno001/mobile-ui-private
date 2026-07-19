@@ -33,3 +33,14 @@ Session Storage/
 Thumbs.db
 *.swp
 *.tmp
+
+# Local AI analysis and one-off investigation artifacts
+/.analysis-cache.md
+/.analysis-archive/
+/.analysis-parts/
+/cal_out.txt
+/cal_part3.txt
+/calendar_full.txt
+/stripPersistedV2ContentRating(a)
+/{const
+/{for(const

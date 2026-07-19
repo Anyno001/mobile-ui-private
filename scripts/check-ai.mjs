@@ -221,7 +221,7 @@ try {
     assert.deepEqual(committedCandidates, {
         contacts: ['新角色'], groups: [{ name: '新群', members: ['甲', '乙'] }],
     });
-    assert.equal(contactCallOptions.maxTokens, 600, '联系人生成必须保留 600 token 上限');
+    assert.equal(contactCallOptions.maxTokens, 65535, '联系人结构化生成必须使用 65535 token 输出上限');
     assert.equal(contactCallOptions.isolated, true, '联系人生成必须使用宿主隔离生成路径');
     assert.equal(contactCallOptions.signal, contactTaskSignal,
         '联系人生成必须把 generation task signal 传给 AI 客户端');
@@ -469,6 +469,7 @@ for (const [label, payload, expected] of [
     ['root content', { content: ' root reply ' }, 'root reply'],
     ['responses output', { output: [{ content: [{ type: 'output_text', text: 'responses ' }, { type: 'output_text', text: 'reply' }] }] }, 'responses reply'],
     ['candidate parts', { candidates: [{ content: { parts: [{ text: 'candidate ' }, { text: 'reply' }] } }] }, 'candidate reply'],
+    ['candidate thought filtering', { candidates: [{ finishReason: 'STOP', content: { parts: [{ thought: true, text: 'internal reasoning' }, { text: '{"visible":true}' }] } }] }, '{"visible":true}'],
 ]) {
     const compatibleClient = createAiClient({
         getConfig: () => config,
@@ -477,6 +478,35 @@ for (const [label, payload, expected] of [
         fetchImpl: async () => ({ ok: true, async json() { return payload; } }),
     });
     assert.equal(await compatibleClient('', label), expected, label);
+}
+
+for (const [label, payload] of [
+    ['Gemini MAX_TOKENS', {
+        candidates: [{
+            finishReason: 'MAX_TOKENS',
+            content: { parts: [{ thought: true, text: 'internal reasoning' }, { text: '{"items":' }] },
+        }],
+    }],
+    ['OpenAI length', {
+        choices: [{ finish_reason: 'length', message: { content: '{"items":' } }],
+    }],
+]) {
+    const truncatedClient = createAiClient({
+        getConfig: () => config,
+        getContext: () => context,
+        getDefaultMaxTokens: () => 300,
+        fetchImpl: async () => ({ ok: true, async json() { return payload; } }),
+    });
+    await assert.rejects(
+        () => truncatedClient('', label),
+        error => {
+            assert.match(error.message, /token 上限|MAX_TOKENS/);
+            assert.equal(generationErrorMessage(error), error.message);
+            assert.doesNotMatch(error.message, /\{"items":/);
+            return true;
+        },
+        `${label} 截断响应不得返回半截业务 JSON`,
+    );
 }
 
 const nonJsonClient = createAiClient({

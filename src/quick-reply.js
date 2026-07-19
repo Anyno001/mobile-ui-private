@@ -1,7 +1,8 @@
 export const PHONE_QR_SET_NAME = '天音小笺 · 手机入口';
-export const PHONE_QR_LABEL = '打开天音小笺';
+export const PHONE_QR_LABEL = '天音';
 export const PHONE_QR_AUTOMATION_ID = 'tianyin-xiaojian.phone.open.v1';
 export const PHONE_QR_MESSAGE = '/phone';
+export const PHONE_QR_AUTO_INIT_KEY = 'ST_SMS_PHONE_QR_INITIALIZED';
 
 const REQUIRED_METHODS = [
     'getSetByName', 'createSet', 'deleteSet', 'createQuickReply', 'updateQuickReply',
@@ -79,6 +80,20 @@ export async function ensurePhoneQuickReply(api = globalThis.quickReplyApi) {
         }
         throw error;
     }
+}
+
+export async function ensureInitialPhoneQuickReply({
+    api = globalThis.quickReplyApi,
+    storage = globalThis.localStorage,
+} = {}) {
+    if (!storage || typeof storage.getItem !== 'function' || typeof storage.setItem !== 'function') {
+        throw new Error('浏览器存储不可用，无法记录手机入口初始化状态');
+    }
+    if (storage.getItem(PHONE_QR_AUTO_INIT_KEY) === '1') return getPhoneQuickReplyStatus(api);
+    const status = await ensurePhoneQuickReply(api);
+    if (status.state !== 'ready') throw new Error('手机入口初始化后未达到可用状态');
+    storage.setItem(PHONE_QR_AUTO_INIT_KEY, '1');
+    return status;
 }
 
 export async function clearPhoneQuickReply(api = globalThis.quickReplyApi) {

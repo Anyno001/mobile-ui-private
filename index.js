@@ -120,7 +120,7 @@
     const responseOutput = json?.output;
     if (Array.isArray(responseOutput)) candidates.push(responseOutput.flatMap((item) => Array.isArray(item?.content) ? item.content : []).map((part) => part?.text).filter((text3) => typeof text3 === "string").join(""));
     const geminiParts = json?.candidates?.[0]?.content?.parts;
-    if (Array.isArray(geminiParts)) candidates.push(geminiParts.map((part) => part?.text).filter((text3) => typeof text3 === "string").join(""));
+    if (Array.isArray(geminiParts)) candidates.push(geminiParts.filter((part) => part?.thought !== true).map((part) => part?.text).filter((text3) => typeof text3 === "string").join(""));
     const content = candidates.find((value) => typeof value === "string" && value.trim());
     return content?.trim() || "";
   }
@@ -217,6 +217,11 @@
             if (signal?.aborted || error?.name === "AbortError") throw abortError();
             throw new Error("\u72EC\u7ACB API \u8FD4\u56DE\u4E86\u65E0\u6CD5\u89E3\u6790\u7684 JSON");
           }
+        }
+        const geminiFinishReason = String(json?.candidates?.[0]?.finishReason || "").toUpperCase();
+        const openAiFinishReason = String(json?.choices?.[0]?.finish_reason || "").toLowerCase();
+        if (geminiFinishReason === "MAX_TOKENS" || openAiFinishReason === "length") {
+          throw new Error("AI \u8F93\u51FA\u8FBE\u5230 token \u4E0A\u9650\u5E76\u88AB\u622A\u65AD\uFF08MAX_TOKENS\uFF09\uFF0C\u672A\u4F7F\u7528\u4E0D\u5B8C\u6574\u7ED3\u679C\u3002\u8BF7\u91CD\u8BD5\u6216\u68C0\u67E5\u670D\u52A1\u5546\u7684\u6700\u5927\u8F93\u51FA\u9650\u5236\u3002");
         }
         const content = extractAiResponseContent(json);
         if (!content) throw new Error("\u72EC\u7ACB API \u54CD\u5E94\u7F3A\u5C11\u53EF\u7528\u6587\u672C\u5185\u5BB9");
@@ -1567,6 +1572,168 @@ ${userPrompt}` : userPrompt;
     storage
   );
 
+  // src/calendar-commit.js
+  var clone = (value) => JSON.parse(JSON.stringify(value));
+  function injectionFailure(result, phase) {
+    const failedWrites = Number.isInteger(result?.failedWrites) && result.failedWrites > 0 ? result.failedWrites : 0;
+    const failedKeys = Array.isArray(result?.failedKeys) ? result.failedKeys : [];
+    if (!failedWrites && !failedKeys.length) return null;
+    const details = [
+      failedWrites ? `${failedWrites} \u9879\u5199\u5165\u5931\u8D25` : "",
+      failedKeys.length ? `${failedKeys.length} \u9879\u6E05\u7406\u5931\u8D25` : ""
+    ].filter(Boolean).join("\uFF0C");
+    const error = new Error(`\u65E5\u5386${phase}\u6CE8\u5165\u5931\u8D25\uFF1A${details}`);
+    error.injectionResult = result;
+    return error;
+  }
+  function createCalendarCommitters({
+    runtime,
+    tasks,
+    applyBidirectionalInjection,
+    getCycles,
+    getCycleSubject
+  }) {
+    let scopeCommitQueue = Promise.resolve();
+    const commitScope = (storageId, mutate, task = null) => {
+      const operation = scopeCommitQueue.catch(() => {
+      }).then(async () => {
+        if (task && !tasks.active(task)) return false;
+        const previousStore = clone(runtime.store);
+        const candidate = clone(previousStore);
+        const current = normalizeCalendarScope(candidate.scopes[storageId]);
+        const next = normalizeCalendarScope(await mutate(current));
+        if (task && !tasks.active(task)) return false;
+        candidate.scopes[storageId] = next;
+        const normalized = normalizeCalendarStore(candidate);
+        if (!saveCalendar(normalized)) throw new Error("\u65E5\u5386\u4FDD\u5B58\u5931\u8D25\uFF1A\u6D4F\u89C8\u5668\u5B58\u50A8\u4E0D\u53EF\u7528");
+        runtime.store = normalized;
+        let injectionError = null;
+        try {
+          const result = await applyBidirectionalInjection?.();
+          injectionError = injectionFailure(result, "\u63D0\u4EA4");
+        } catch (error) {
+          injectionError = error;
+        }
+        const cancelled = !!task && !tasks.active(task);
+        if (!injectionError && !cancelled) return next;
+        let rollbackError = null;
+        try {
+          if (!saveCalendar(previousStore)) throw new Error("\u65E5\u5386\u56DE\u6EDA\u4FDD\u5B58\u5931\u8D25\uFF1A\u6D4F\u89C8\u5668\u5B58\u50A8\u4E0D\u53EF\u7528");
+          runtime.store = normalizeCalendarStore(previousStore);
+          const rollbackResult = await applyBidirectionalInjection?.();
+          const rollbackInjectionError = injectionFailure(rollbackResult, "\u8865\u507F");
+          if (rollbackInjectionError) throw rollbackInjectionError;
+        } catch (error) {
+          rollbackError = error;
+        }
+        if (rollbackError) {
+          const original = injectionError || new Error("\u65E5\u5386\u4EFB\u52A1\u53D6\u6D88\u540E\u7684\u72B6\u6001\u8865\u507F\u5931\u8D25");
+          const combined = new Error(`${original.message}\uFF1B\u65E5\u5386\u72B6\u6001\u56DE\u6EDA\u5931\u8D25\uFF1A${rollbackError.message}`);
+          combined.cause = original;
+          combined.rollbackError = rollbackError;
+          combined.calendarRollbackError = true;
+          throw combined;
+        }
+        if (injectionError) throw injectionError;
+        return false;
+      });
+      scopeCommitQueue = operation.catch(() => {
+      });
+      return operation;
+    };
+    const commitOccasions = async (storageId, mutate) => {
+      const candidate = clone(runtime.occasionStore);
+      const current = normalizeOccasionScope(candidate.scopes[storageId]);
+      const next = normalizeOccasionScope(await mutate(current));
+      candidate.scopes[storageId] = next;
+      const normalized = normalizeOccasionStore(candidate);
+      if (!saveCalendarOccasions(normalized)) throw new Error("\u751F\u65E5\u4E0E\u7EAA\u5FF5\u65E5\u4FDD\u5B58\u5931\u8D25\uFF1A\u6D4F\u89C8\u5668\u5B58\u50A8\u4E0D\u53EF\u7528");
+      runtime.occasionStore = normalized;
+      await applyBidirectionalInjection?.();
+      return next;
+    };
+    const commitHolidays = (nextStore) => {
+      const normalized = normalizeHolidayCache(nextStore);
+      if (!saveCalendarHolidays(normalized)) throw new Error("\u8282\u5047\u65E5\u7F13\u5B58\u4FDD\u5B58\u5931\u8D25\uFF1A\u6D4F\u89C8\u5668\u5B58\u50A8\u4E0D\u53EF\u7528");
+      runtime.holidayStore = normalized;
+      return normalized;
+    };
+    const commitWeather = (nextStore) => {
+      const normalized = normalizeWeatherStore(nextStore);
+      if (!saveCalendarWeather(normalized)) throw new Error("\u5929\u6C14\u6570\u636E\u4FDD\u5B58\u5931\u8D25\uFF1A\u6D4F\u89C8\u5668\u5B58\u50A8\u4E0D\u53EF\u7528");
+      runtime.weatherStore = normalized;
+      return normalized;
+    };
+    const commitCycle = (storageId, nextStore) => {
+      const normalized = normalizeCycleStore(nextStore);
+      if (!saveCalendarCycles(normalized)) throw new Error("\u751F\u7406\u5468\u671F\u6570\u636E\u4FDD\u5B58\u5931\u8D25\uFF1A\u6D4F\u89C8\u5668\u5B58\u50A8\u4E0D\u53EF\u7528");
+      runtime.cycleStore = normalized;
+      return getCycles(storageId, getCycleSubject(storageId));
+    };
+    return { commitScope, commitOccasions, commitHolidays, commitWeather, commitCycle };
+  }
+
+  // src/calendar-dom.js
+  var calendarEditor = (app) => app?.querySelector("[data-calendar-editor]");
+  var calendarOccasionEditor = (app) => app?.querySelector("[data-calendar-occasion-editor]");
+  function revealCalendarEditor(form) {
+    const management = form?.closest?.('[data-calendar-management="schedule"]');
+    if (management) management.open = true;
+    form?.scrollIntoView?.({ block: "nearest" });
+  }
+  function clearCalendarEditor(app) {
+    const form = calendarEditor(app);
+    if (!form) return;
+    form.reset();
+    form.elements.eventId.value = "";
+    form.querySelector("h3").textContent = "\u6DFB\u52A0\u65E5\u7A0B";
+  }
+  function fillCalendarEditor(app, event) {
+    const form = calendarEditor(app);
+    if (!form || !event) return;
+    const [year, month, day] = event.date.split("-");
+    form.elements.year.value = year;
+    form.elements.month.value = month;
+    form.elements.day.value = day;
+    form.elements.title.value = event.title;
+    form.elements.note.value = event.note;
+    form.elements.tagged.value = "";
+    form.elements.eventId.value = event.id;
+    form.querySelector("h3").textContent = "\u7F16\u8F91\u65E5\u7A0B";
+    revealCalendarEditor(form);
+    form.elements.title.focus();
+  }
+  function activateCalendarEditorKind(app, editorKind) {
+    const eventForm = calendarEditor(app);
+    const occasionForm = calendarOccasionEditor(app);
+    if (eventForm) eventForm.hidden = editorKind === "occasion";
+    if (occasionForm) occasionForm.hidden = editorKind !== "occasion";
+    for (const control of app?.querySelectorAll?.('[data-action="calendar-editor-kind"]') || []) {
+      control.setAttribute("aria-pressed", String(control.dataset.editorKind === editorKind));
+    }
+  }
+  function clearCalendarOccasionEditor(app) {
+    const form = calendarOccasionEditor(app);
+    if (!form) return;
+    form.reset();
+    form.elements.occasionId.value = "";
+    form.querySelector("h3").textContent = "\u6DFB\u52A0\u751F\u65E5\u6216\u7EAA\u5FF5\u65E5";
+  }
+  function fillCalendarOccasionEditor(app, occasion, typeLabel) {
+    const form = calendarOccasionEditor(app);
+    if (!form || !occasion) return;
+    form.elements.type.value = occasion.type;
+    form.elements.month.value = String(occasion.month).padStart(2, "0");
+    form.elements.day.value = String(occasion.day).padStart(2, "0");
+    form.elements.title.value = occasion.title;
+    form.elements.note.value = occasion.note;
+    form.elements.leapDayRule.value = occasion.leapDayRule;
+    form.elements.occasionId.value = occasion.id;
+    form.querySelector("h3").textContent = `\u7F16\u8F91${typeLabel}`;
+    revealCalendarEditor(form);
+    form.elements.title.focus();
+  }
+
   // src/ui.js
   function contrastText(bg) {
     if (!bg || bg.startsWith("rgba")) return "#fff";
@@ -1593,7 +1760,7 @@ ${userPrompt}` : userPrompt;
 
   // src/calendar-view.js
   var detailDate = new Intl.DateTimeFormat("zh-CN", { month: "long", day: "numeric", weekday: "short" });
-  var CYCLE_LABELS = { period: "\u7ECF\u671F", follicular: "\u76F8\u5BF9\u4F4E\u98CE\u9669\u671F", ovulatory: "\u6613\u5B55\u671F", luteal: "\u76F8\u5BF9\u4F4E\u98CE\u9669\u671F" };
+  var CYCLE_LABELS = { period: "\u7ECF\u671F", follicular: "\u5B89\u5168\u671F", ovulatory: "\u6613\u5B55\u671F", luteal: "\u5B89\u5168\u671F" };
   var occasionTypeLabel = (type) => type === "birthday" ? "\u751F\u65E5" : "\u7EAA\u5FF5\u65E5";
   function eventRows(scope, occasionsByDate, date) {
     const events = scope.events[date] || [];
@@ -1671,7 +1838,6 @@ ${userPrompt}` : userPrompt;
           <label class="pm-calendar-cycle-toggle"><span><b>\u542F\u7528\u751F\u7406\u671F\u63D0\u793A</b><small>\u4EC5\u5728\u672C\u5730\u6309\u5F53\u524D\u4F1A\u8BDD\u548C\u6240\u9009\u89D2\u8272\u4FDD\u5B58</small></span><span class="pm-calendar-cycle-switch"><input class="pm-calendar-cycle-input" name="enabled" type="checkbox" ${cycleScope.enabled ? "checked" : ""} aria-label="\u542F\u7528\u751F\u7406\u671F\u63D0\u793A"><span class="pm-custom-check" aria-hidden="true"></span></span></label>
           <label>\u6BCF\u6708\u7ECF\u671F\u901A\u5E38\u4ECE\u51E0\u53F7\u5F00\u59CB<select name="periodStartDay" aria-label="\u6BCF\u6708\u7ECF\u671F\u5F00\u59CB\u65E5">${Array.from({ length: 28 }, (_, index) => index + 1).map((day) => `<option value="${day}" ${day === startDay ? "selected" : ""}>${day} \u53F7</option>`).join("")}</select></label>
           <div class="pm-calendar-cycle-numbers"><label>\u5E73\u5747\u5468\u671F<input name="cycleLength" type="number" min="21" max="45" value="${cycleScope.cycleLength || 28}" aria-label="\u5E73\u5747\u5468\u671F\u5929\u6570"><small>\u4ECE\u4E00\u6B21\u7ECF\u671F\u5F00\u59CB\u5230\u4E0B\u4E00\u6B21\u5F00\u59CB\uFF0C\u5E38\u89C1\u7EA6 21\u201345 \u5929</small></label><label>\u7ECF\u671F\u6301\u7EED<input name="periodLength" type="number" min="2" max="10" value="${cycleScope.periodLength || 5}" aria-label="\u7ECF\u671F\u6301\u7EED\u5929\u6570"><small>\u6BCF\u6B21\u7ECF\u671F\u901A\u5E38\u6301\u7EED 2\u201310 \u5929</small></label></div>
-          <p class="pm-calendar-cycle-note">\u65E5\u5386\u4EC5\u7A81\u51FA\u7ECF\u671F\u3001\u6613\u5B55\u671F\u548C\u76F8\u5BF9\u4F4E\u98CE\u9669\u671F\u3002\u5468\u671F\u63A8\u7B97\u5B58\u5728\u8BEF\u5DEE\uFF0C\u4E0D\u80FD\u4F5C\u4E3A\u907F\u5B55\u4F9D\u636E\u3002</p>
           <div class="pm-calendar-editor-actions"><button type="button" data-action="calendar-cycle-clear">\u6E05\u9664\u6240\u9009\u5BF9\u8C61</button><button type="button" class="is-primary" data-action="calendar-cycle-save">\u4FDD\u5B58\u751F\u7406\u671F</button></div>
         </form></div></details>`;
     }
@@ -1751,7 +1917,6 @@ ${userPrompt}` : userPrompt;
   }
 
   // src/calendar.js
-  var clone = (value) => JSON.parse(JSON.stringify(value));
   var weekday = new Intl.DateTimeFormat("zh-CN", { weekday: "short" });
   var shortDate = new Intl.DateTimeFormat("zh-CN", { month: "numeric", day: "numeric" });
   var monthTitle = new Intl.DateTimeFormat("zh-CN", { year: "numeric", month: "long" });
@@ -1869,9 +2034,9 @@ ${userPrompt}` : userPrompt;
     });
     const baseDate = scope.baseDate || "";
     const headerBusy = viewMode === "schedule" && view.generating === true;
-    const headerButton = headerAction ? `<button type="button" class="pm-calendar-header-action ${headerBusy ? "is-loading" : ""}" data-action="${headerAction}" aria-label="${headerActionLabel}" title="${headerActionLabel}" aria-busy="${headerBusy}" ${headerBusy ? "disabled" : ""}>${REFRESH_ICON_SVG}</button>` : "<span></span>";
+    const headerButton = headerAction ? `<button type="button" class="pm-calendar-header-action ${headerBusy ? "is-loading" : ""}" data-action="${headerAction}" aria-label="${headerActionLabel}" title="${headerActionLabel}" aria-busy="${headerBusy}" ${headerBusy ? "disabled" : ""}>${REFRESH_ICON_SVG}</button>` : "";
     return `<div id="pm-calendar-app" class="pm-calendar-shell" data-calendar-view-mode="${viewMode}">
-        <header class="pm-calendar-header"><button type="button" data-action="calendar-home" aria-label="\u8FD4\u56DE\u684C\u9762">${BACK_ICON_SVG}</button><div class="pm-calendar-title-row"><b>${escapeHtml(monthTitle.format(createCalendarDate(viewYear, viewMonth, 1)))}</b><details class="pm-calendar-base-menu"><summary aria-label="\u8BBE\u7F6E\u65F6\u95F4\u8D77\u70B9" title="\u65F6\u95F4\u8D77\u70B9">${TIME_ORIGIN_ICON_SVG}</summary><div><label>\u65F6\u95F4\u8D77\u70B9<input type="date" data-calendar-base-date value="${escapeAttr(baseDate)}" aria-label="\u81EA\u5B9A\u4E49\u65F6\u95F4\u8D77\u70B9"></label><span><button type="button" data-action="calendar-base-save">\u5E94\u7528</button>${baseDate ? '<button type="button" data-action="calendar-base-clear">\u8BBE\u5907\u65F6\u95F4</button>' : ""}</span></div></details></div>${headerButton}</header>
+        <header class="pm-calendar-header"><span class="pm-calendar-header-side is-left"><button type="button" data-action="calendar-home" aria-label="\u8FD4\u56DE\u684C\u9762">${BACK_ICON_SVG}</button></span><div class="pm-calendar-title-row"><b>${escapeHtml(monthTitle.format(createCalendarDate(viewYear, viewMonth, 1)))}</b></div><span class="pm-calendar-header-side is-right"><button type="button" data-action="calendar-base-edit" aria-label="\u7F16\u8F91\u65F6\u95F4\u8D77\u70B9" title="\u7F16\u8F91\u65F6\u95F4\u8D77\u70B9">${EDIT_ICON_SVG}</button>${headerButton}</span></header>
         <div class="pm-calendar-month-nav"><button type="button" class="pm-calendar-month-step" data-action="calendar-prev-month" aria-label="\u4E0A\u4E2A\u6708">\u2039</button><div class="pm-calendar-view-switch" role="group" aria-label="\u65E5\u5386\u4FE1\u606F\u5206\u7C7B"><button type="button" data-action="calendar-mode-schedule" aria-label="\u663E\u793A\u65E5\u7A0B\u4E0E\u5047\u65E5" aria-pressed="${viewMode === "schedule"}" title="\u65E5\u7A0B\u4E0E\u5047\u65E5">${CALENDAR_ICON_SVG}</button><button type="button" data-action="calendar-mode-weather" aria-label="\u663E\u793A\u5929\u6C14" aria-pressed="${viewMode === "weather"}" title="\u5929\u6C14">${WEATHER_ICON_SVG}</button><button type="button" data-action="calendar-mode-cycle" aria-label="\u663E\u793A\u751F\u7406\u671F" aria-pressed="${viewMode === "cycle"}" title="\u751F\u7406\u671F">${CYCLE_ICON_SVG}</button></div><button type="button" class="pm-calendar-month-step" data-action="calendar-next-month" aria-label="\u4E0B\u4E2A\u6708">\u203A</button></div>
         <div class="pm-calendar-month" aria-label="${viewYear}\u5E74${viewMonth}\u6708\u6708\u5386"><div class="pm-calendar-weekdays">${CALENDAR_WEEKDAYS.map((day) => `<span>\u5468${day}</span>`).join("")}</div><div class="pm-calendar-month-grid">${days}</div></div>
         ${selectedDetail}
@@ -1880,7 +2045,7 @@ ${userPrompt}` : userPrompt;
     </div>`;
   }
   function installCalendar(state, deps) {
-    const { getStorageId: getStorageId2, gatherContext: gatherContext2, callAI, fetchImpl } = deps;
+    const { getStorageId: getStorageId2, gatherContext: gatherContext2, callAI, fetchImpl, makeOverlay, closeOverlay } = deps;
     const runtime = {
       store: normalizeCalendarStore(loadCalendar()),
       occasionStore: normalizeOccasionStore(loadCalendarOccasions()),
@@ -1939,95 +2104,13 @@ ${userPrompt}` : userPrompt;
       });
       return true;
     };
-    let scopeCommitQueue = Promise.resolve();
-    const injectionFailure = (result, phase) => {
-      const failedWrites = Number.isInteger(result?.failedWrites) && result.failedWrites > 0 ? result.failedWrites : 0;
-      const failedKeys = Array.isArray(result?.failedKeys) ? result.failedKeys : [];
-      if (!failedWrites && !failedKeys.length) return null;
-      const details = [
-        failedWrites ? `${failedWrites} \u9879\u5199\u5165\u5931\u8D25` : "",
-        failedKeys.length ? `${failedKeys.length} \u9879\u6E05\u7406\u5931\u8D25` : ""
-      ].filter(Boolean).join("\uFF0C");
-      const error = new Error(`\u65E5\u5386${phase}\u6CE8\u5165\u5931\u8D25\uFF1A${details}`);
-      error.injectionResult = result;
-      return error;
-    };
-    const commitScope = (storageId, mutate, task = null) => {
-      const operation = scopeCommitQueue.catch(() => {
-      }).then(async () => {
-        if (task && !tasks.active(task)) return false;
-        const previousStore = clone(runtime.store);
-        const candidate = clone(previousStore);
-        const current = normalizeCalendarScope(candidate.scopes[storageId]);
-        const next = normalizeCalendarScope(await mutate(current));
-        if (task && !tasks.active(task)) return false;
-        candidate.scopes[storageId] = next;
-        const normalized = normalizeCalendarStore(candidate);
-        if (!saveCalendar(normalized)) throw new Error("\u65E5\u5386\u4FDD\u5B58\u5931\u8D25\uFF1A\u6D4F\u89C8\u5668\u5B58\u50A8\u4E0D\u53EF\u7528");
-        runtime.store = normalized;
-        let injectionError = null;
-        try {
-          const injectionResult = await deps.applyBidirectionalInjection?.();
-          injectionError = injectionFailure(injectionResult, "\u63D0\u4EA4");
-        } catch (error) {
-          injectionError = error;
-        }
-        const cancelled = !!task && !tasks.active(task);
-        if (!injectionError && !cancelled) return next;
-        let rollbackError = null;
-        try {
-          if (!saveCalendar(previousStore)) throw new Error("\u65E5\u5386\u56DE\u6EDA\u4FDD\u5B58\u5931\u8D25\uFF1A\u6D4F\u89C8\u5668\u5B58\u50A8\u4E0D\u53EF\u7528");
-          runtime.store = normalizeCalendarStore(previousStore);
-          const rollbackInjectionResult = await deps.applyBidirectionalInjection?.();
-          const rollbackInjectionError = injectionFailure(rollbackInjectionResult, "\u8865\u507F");
-          if (rollbackInjectionError) throw rollbackInjectionError;
-        } catch (error) {
-          rollbackError = error;
-        }
-        if (rollbackError) {
-          const original = injectionError || new Error("\u65E5\u5386\u4EFB\u52A1\u53D6\u6D88\u540E\u7684\u72B6\u6001\u8865\u507F\u5931\u8D25");
-          const combined = new Error(`${original.message}\uFF1B\u65E5\u5386\u72B6\u6001\u56DE\u6EDA\u5931\u8D25\uFF1A${rollbackError.message}`);
-          combined.cause = original;
-          combined.rollbackError = rollbackError;
-          combined.calendarRollbackError = true;
-          throw combined;
-        }
-        if (injectionError) throw injectionError;
-        return false;
-      });
-      scopeCommitQueue = operation.catch(() => {
-      });
-      return operation;
-    };
-    const commitOccasions = async (storageId, mutate) => {
-      const candidate = clone(runtime.occasionStore);
-      const current = normalizeOccasionScope(candidate.scopes[storageId]);
-      const next = normalizeOccasionScope(await mutate(current));
-      candidate.scopes[storageId] = next;
-      const normalized = normalizeOccasionStore(candidate);
-      if (!saveCalendarOccasions(normalized)) throw new Error("\u751F\u65E5\u4E0E\u7EAA\u5FF5\u65E5\u4FDD\u5B58\u5931\u8D25\uFF1A\u6D4F\u89C8\u5668\u5B58\u50A8\u4E0D\u53EF\u7528");
-      runtime.occasionStore = normalized;
-      await deps.applyBidirectionalInjection?.();
-      return next;
-    };
-    const commitHolidays = (nextStore) => {
-      const normalized = normalizeHolidayCache(nextStore);
-      if (!saveCalendarHolidays(normalized)) throw new Error("\u8282\u5047\u65E5\u7F13\u5B58\u4FDD\u5B58\u5931\u8D25\uFF1A\u6D4F\u89C8\u5668\u5B58\u50A8\u4E0D\u53EF\u7528");
-      runtime.holidayStore = normalized;
-      return normalized;
-    };
-    const commitWeather = (nextStore) => {
-      const normalized = normalizeWeatherStore(nextStore);
-      if (!saveCalendarWeather(normalized)) throw new Error("\u5929\u6C14\u6570\u636E\u4FDD\u5B58\u5931\u8D25\uFF1A\u6D4F\u89C8\u5668\u5B58\u50A8\u4E0D\u53EF\u7528");
-      runtime.weatherStore = normalized;
-      return normalized;
-    };
-    const commitCycle = (storageId, nextStore) => {
-      const normalized = normalizeCycleStore(nextStore);
-      if (!saveCalendarCycles(normalized)) throw new Error("\u751F\u7406\u5468\u671F\u6570\u636E\u4FDD\u5B58\u5931\u8D25\uFF1A\u6D4F\u89C8\u5668\u5B58\u50A8\u4E0D\u53EF\u7528");
-      runtime.cycleStore = normalized;
-      return cycles(storageId, viewFor(storageId).cycleSubject);
-    };
+    const { commitScope, commitOccasions, commitHolidays, commitWeather, commitCycle } = createCalendarCommitters({
+      runtime,
+      tasks,
+      applyBidirectionalInjection: deps.applyBidirectionalInjection,
+      getCycles: cycles,
+      getCycleSubject: (storageId) => viewFor(storageId).cycleSubject
+    });
     const render = (storageId = getStorageId2()) => {
       const container = state.phoneWindow?.querySelector(".pm-calendar-page");
       if (!container) return false;
@@ -2188,7 +2271,7 @@ ${userPrompt}` : userPrompt;
         const current = scope(storageId);
         const existing = calendarWeekKeys(now2, 7).flatMap((date) => current.events[date] || []).map(({ date, title, note, source }) => ({ date, title, note, source }));
         const prompts = buildCalendarPrompts(contextPayload(context, now2), existing, mode);
-        const raw = await callAI(prompts.systemPrompt, prompts.userPrompt, { maxTokens: 900, isolated: true, signal: task.signal });
+        const raw = await callAI(prompts.systemPrompt, prompts.userPrompt, { maxTokens: 65535, isolated: true, signal: task.signal });
         if (!tasks.active(task)) return false;
         const events = parseCalendarAiResponse(raw, { start: now2, days: 7 });
         const committed = await commitScope(storageId, (value) => {
@@ -2237,72 +2320,78 @@ ${userPrompt}` : userPrompt;
         tasks.finish(task);
       }
     }
-    const editor = (app) => app?.querySelector("[data-calendar-editor]");
-    const revealEditor = (form) => {
-      const management = form?.closest?.('[data-calendar-management="schedule"]');
-      if (management) management.open = true;
-      form?.scrollIntoView?.({ block: "nearest" });
-    };
-    const clearEditor = (app) => {
-      const form = editor(app);
-      if (!form) return;
-      form.reset();
-      form.elements.eventId.value = "";
-      form.querySelector("h3").textContent = "\u6DFB\u52A0\u65E5\u7A0B";
-    };
-    const fillEditor = (app, event) => {
-      const form = editor(app);
-      if (!form || !event) return;
-      const [year, month, day] = event.date.split("-");
-      form.elements.year.value = year;
-      form.elements.month.value = month;
-      form.elements.day.value = day;
-      form.elements.title.value = event.title;
-      form.elements.note.value = event.note;
-      form.elements.tagged.value = "";
-      form.elements.eventId.value = event.id;
-      form.querySelector("h3").textContent = "\u7F16\u8F91\u65E5\u7A0B";
-      revealEditor(form);
-      form.elements.title.focus();
-    };
-    const occasionEditor = (app) => app?.querySelector("[data-calendar-occasion-editor]");
-    const activateEditorKind = (storageId, app, kind) => {
-      const editorKind = kind === "occasion" ? "occasion" : "event";
+    async function saveBaseDate(storageId, value) {
+      const parsed = parseCalendarDate(value);
+      if (!parsed) throw new Error("\u65F6\u95F4\u8D77\u70B9\u65E0\u6548\uFF0C\u8BF7\u9009\u62E9\u6709\u6548\u65E5\u671F");
+      await commitScope(storageId, (current2) => ({ ...current2, baseDate: formatCalendarDate(parsed) }));
       const current = viewFor(storageId);
-      runtime.viewByStorage.set(storageId, { ...current, editorKind });
-      const eventForm = editor(app), occasionForm = occasionEditor(app);
-      if (eventForm) eventForm.hidden = editorKind === "occasion";
-      if (occasionForm) occasionForm.hidden = editorKind !== "occasion";
-      for (const control of app?.querySelectorAll?.('[data-action="calendar-editor-kind"]') || []) {
-        control.setAttribute("aria-pressed", String(control.dataset.editorKind === editorKind));
-      }
-    };
-    const clearOccasionEditor = (app) => {
-      const form = occasionEditor(app);
-      if (!form) return;
-      form.reset();
-      form.elements.occasionId.value = "";
-      form.querySelector("h3").textContent = "\u6DFB\u52A0\u751F\u65E5\u6216\u7EAA\u5FF5\u65E5";
-    };
-    const fillOccasionEditor = (app, occasion) => {
-      const form = occasionEditor(app);
-      if (!form || !occasion) return;
-      form.elements.type.value = occasion.type;
-      form.elements.month.value = String(occasion.month).padStart(2, "0");
-      form.elements.day.value = String(occasion.day).padStart(2, "0");
-      form.elements.title.value = occasion.title;
-      form.elements.note.value = occasion.note;
-      form.elements.leapDayRule.value = occasion.leapDayRule;
-      form.elements.occasionId.value = occasion.id;
-      form.querySelector("h3").textContent = `\u7F16\u8F91${occasionTypeLabel(occasion.type)}`;
-      revealEditor(form);
-      form.elements.title.focus();
-    };
+      runtime.viewByStorage.set(storageId, {
+        ...current,
+        viewYear: parsed.getFullYear(),
+        viewMonth: parsed.getMonth() + 1,
+        selectedDate: formatCalendarDate(parsed)
+      });
+      const generationWindow = calendarWindowDescription(parsed, 7);
+      status(storageId, `\u65F6\u95F4\u8D77\u70B9\u5DF2\u8BBE\u4E3A ${formatCalendarDate(parsed)}\uFF0C\u76F8\u5BF9\u65E5\u671F\u4E0E${generationWindow.label}\u751F\u6210\u5C06\u4EE5\u6B64\u4E3A\u51C6\u3002`);
+      rerender(storageId);
+    }
+    async function clearBaseDate(storageId) {
+      await commitScope(storageId, (current2) => {
+        const next = { ...current2 };
+        delete next.baseDate;
+        return next;
+      });
+      const today = calendarReferenceDate(scope(storageId));
+      const current = viewFor(storageId);
+      runtime.viewByStorage.set(storageId, {
+        ...current,
+        viewYear: today.getFullYear(),
+        viewMonth: today.getMonth() + 1,
+        selectedDate: formatCalendarDate(today)
+      });
+      status(storageId, "\u5DF2\u6062\u590D\u8BBE\u5907\u65E5\u671F\u4F5C\u4E3A\u65F6\u95F4\u8D77\u70B9\u3002");
+      rerender(storageId);
+    }
+    function showBaseDateEditor(storageId) {
+      if (typeof makeOverlay !== "function") throw new Error("\u65F6\u95F4\u8D77\u70B9\u7F16\u8F91\u5668\u4E0D\u53EF\u7528");
+      const baseDate = scope(storageId).baseDate || "";
+      const overlay = makeOverlay(`<div class="pm-modal pm-calendar-base-dialog">
+          <div class="pm-modal-header"><span></span><b>\u7F16\u8F91\u65F6\u95F4\u8D77\u70B9</b><button type="button" class="pm-modal-close" data-calendar-base-close aria-label="\u5173\u95ED">${CLOSE_ICON_SVG}</button></div>
+          <div class="pm-calendar-base-content"><label>\u65F6\u95F4\u8D77\u70B9<input type="date" data-calendar-base-date value="${escapeAttr(baseDate)}" aria-label="\u81EA\u5B9A\u4E49\u65F6\u95F4\u8D77\u70B9"></label><p>\u76F8\u5BF9\u65E5\u671F\u4E0E\u65E5\u5386\u751F\u6210\u4F1A\u4EE5\u8FD9\u91CC\u8BBE\u7F6E\u7684\u65E5\u671F\u4E3A\u51C6\u3002</p><p class="pm-calendar-base-error" data-calendar-base-error role="status" aria-live="polite"></p></div>
+          <div class="pm-modal-add"><button type="button" class="pm-action-button is-secondary" data-calendar-base-reset ${baseDate ? "" : "disabled"}>\u4F7F\u7528\u8BBE\u5907\u65F6\u95F4</button><button type="button" class="pm-action-button" data-calendar-base-apply>\u5E94\u7528</button></div>
+        </div>`);
+      const showEditorError = (error) => {
+        const errorNode = overlay.querySelector("[data-calendar-base-error]");
+        if (errorNode) errorNode.textContent = error?.message || "\u65F6\u95F4\u8D77\u70B9\u66F4\u65B0\u5931\u8D25";
+      };
+      overlay.querySelector("[data-calendar-base-close]")?.addEventListener("click", () => closeOverlay?.("close"));
+      overlay.querySelector("[data-calendar-base-apply]")?.addEventListener("click", async () => {
+        try {
+          const value = overlay.querySelector("[data-calendar-base-date]")?.value || "";
+          await saveBaseDate(storageId, value);
+          closeOverlay?.("saved");
+        } catch (error) {
+          showEditorError(error);
+        }
+      });
+      overlay.querySelector("[data-calendar-base-reset]")?.addEventListener("click", async () => {
+        try {
+          await clearBaseDate(storageId);
+          closeOverlay?.("cleared");
+        } catch (error) {
+          showEditorError(error);
+        }
+      });
+    }
     async function handleAction(button, app) {
       const storageId = getStorageId2();
       const action = button.dataset.action;
       if (action === "calendar-generate") {
         await generate(storageId, "generate");
+        return;
+      }
+      if (action === "calendar-base-edit") {
+        showBaseDateEditor(storageId);
         return;
       }
       if (action === "calendar-prev-month") {
@@ -2317,27 +2406,11 @@ ${userPrompt}` : userPrompt;
       }
       if (action === "calendar-base-save") {
         const value = app?.querySelector("[data-calendar-base-date]")?.value || "";
-        const parsed = parseCalendarDate(value);
-        if (!parsed) throw new Error("\u65F6\u95F4\u8D77\u70B9\u65E0\u6548\uFF0C\u8BF7\u9009\u62E9\u6709\u6548\u65E5\u671F");
-        await commitScope(storageId, (current2) => ({ ...current2, baseDate: formatCalendarDate(parsed) }));
-        const current = viewFor(storageId);
-        runtime.viewByStorage.set(storageId, { ...current, viewYear: parsed.getFullYear(), viewMonth: parsed.getMonth() + 1, selectedDate: formatCalendarDate(parsed) });
-        const generationWindow = calendarWindowDescription(parsed, 7);
-        status(storageId, `\u65F6\u95F4\u8D77\u70B9\u5DF2\u8BBE\u4E3A ${formatCalendarDate(parsed)}\uFF0C\u76F8\u5BF9\u65E5\u671F\u4E0E${generationWindow.label}\u751F\u6210\u5C06\u4EE5\u6B64\u4E3A\u51C6\u3002`);
-        rerender(storageId);
+        await saveBaseDate(storageId, value);
         return;
       }
       if (action === "calendar-base-clear") {
-        await commitScope(storageId, (current2) => {
-          const next = { ...current2 };
-          delete next.baseDate;
-          return next;
-        });
-        const today = calendarReferenceDate(scope(storageId));
-        const current = viewFor(storageId);
-        runtime.viewByStorage.set(storageId, { ...current, viewYear: today.getFullYear(), viewMonth: today.getMonth() + 1, selectedDate: formatCalendarDate(today) });
-        status(storageId, "\u5DF2\u6062\u590D\u8BBE\u5907\u65E5\u671F\u4F5C\u4E3A\u65F6\u95F4\u8D77\u70B9\u3002");
-        rerender(storageId);
+        await clearBaseDate(storageId);
         return;
       }
       if (["calendar-mode-schedule", "calendar-mode-weather", "calendar-mode-cycle"].includes(action)) {
@@ -2348,7 +2421,10 @@ ${userPrompt}` : userPrompt;
         return;
       }
       if (action === "calendar-editor-kind") {
-        activateEditorKind(storageId, app, button.dataset.editorKind);
+        const editorKind = button.dataset.editorKind === "occasion" ? "occasion" : "event";
+        const current = viewFor(storageId);
+        runtime.viewByStorage.set(storageId, { ...current, editorKind });
+        activateCalendarEditorKind(app, editorKind);
         return;
       }
       if (action === "calendar-select-date") {
@@ -2413,7 +2489,7 @@ ${userPrompt}` : userPrompt;
         runtime.viewByStorage.set(storageId, { ...currentView, cycleSubject: subject });
         commitCycle(storageId, nextStore);
         await deps.applyBidirectionalInjection?.();
-        status(storageId, "\u751F\u7406\u671F\u63D0\u793A\u5DF2\u4FDD\u5B58\u3002\u9884\u6D4B\u4EC5\u4F9B\u63D0\u9192\uFF0C\u4E0D\u80FD\u7528\u4E8E\u907F\u5B55\u5224\u65AD\u3002");
+        status(storageId, "\u751F\u7406\u671F\u63D0\u793A\u5DF2\u4FDD\u5B58\u3002");
         rerender(storageId);
         return;
       }
@@ -2441,8 +2517,10 @@ ${userPrompt}` : userPrompt;
       if (action === "calendar-edit") {
         const event = findCalendarEvent(scope(storageId), button.dataset.eventId);
         if (!event) throw new Error("\u65E5\u7A0B\u4E0D\u5B58\u5728\u6216\u5DF2\u88AB\u5220\u9664");
-        activateEditorKind(storageId, app, "event");
-        fillEditor(app, event);
+        const current = viewFor(storageId);
+        runtime.viewByStorage.set(storageId, { ...current, editorKind: "event" });
+        activateCalendarEditorKind(app, "event");
+        fillCalendarEditor(app, event);
         return;
       }
       if (action === "calendar-delete") {
@@ -2455,14 +2533,16 @@ ${userPrompt}` : userPrompt;
         return;
       }
       if (action === "calendar-cancel-edit") {
-        clearEditor(app);
+        clearCalendarEditor(app);
         return;
       }
       if (action === "calendar-occasion-edit") {
         const occasion = findOccasion(occasions(storageId), button.dataset.occasionId);
         if (!occasion) throw new Error("\u751F\u65E5\u6216\u7EAA\u5FF5\u65E5\u4E0D\u5B58\u5728\u6216\u5DF2\u88AB\u5220\u9664");
-        activateEditorKind(storageId, app, "occasion");
-        fillOccasionEditor(app, occasion);
+        const current = viewFor(storageId);
+        runtime.viewByStorage.set(storageId, { ...current, editorKind: "occasion" });
+        activateCalendarEditorKind(app, "occasion");
+        fillCalendarOccasionEditor(app, occasion, occasionTypeLabel(occasion.type));
         return;
       }
       if (action === "calendar-occasion-delete") {
@@ -2475,11 +2555,11 @@ ${userPrompt}` : userPrompt;
         return;
       }
       if (action === "calendar-occasion-cancel-edit") {
-        clearOccasionEditor(app);
+        clearCalendarOccasionEditor(app);
         return;
       }
       if (action === "calendar-occasion-save") {
-        const form = occasionEditor(app);
+        const form = calendarOccasionEditor(app);
         if (!form) return;
         const occasionId = form.elements.occasionId.value;
         const previous = occasionId ? findOccasion(occasions(storageId), occasionId) : null;
@@ -2500,7 +2580,7 @@ ${userPrompt}` : userPrompt;
         return;
       }
       if (action === "calendar-parse") {
-        const form = editor(app);
+        const form = calendarEditor(app);
         const parsed = parseCalendarInput(form?.elements.tagged.value, calendarReferenceDate(scope(storageId)));
         if (!parsed.ok) throw new Error(parsed.reason);
         const [year, month, day] = parsed.event.date.split("-");
@@ -2512,7 +2592,7 @@ ${userPrompt}` : userPrompt;
         return;
       }
       if (action === "calendar-save") {
-        const form = editor(app);
+        const form = calendarEditor(app);
         if (!form) return;
         let date = calendarDateFromParts(
           Number(form.elements.year.value),
@@ -3653,6 +3733,7 @@ ${lines.join("\n")}
     INTERACTIVE_STORE_KEY,
     INTERACTIVE_FALLBACK_KEY,
     PHONE_UI_STATE_KEY,
+    "ST_SMS_PHONE_QR_INITIALIZED",
     CALENDAR_STORAGE_KEY,
     CALENDAR_OCCASION_STORAGE_KEY,
     CALENDAR_HOLIDAY_STORAGE_KEY,
@@ -3987,219 +4068,6 @@ ${lines.join("\n")}
       return true;
     } catch (error) {
       return false;
-    }
-  }
-  async function migrateSingleBackground(storageKey, value) {
-    if (!await pmIDBSet(storageKey, value)) return false;
-    try {
-      localStorage.setItem(storageKey, IDB_MARKER);
-      return true;
-    } catch (error) {
-      await pmIDBDel(storageKey);
-      return false;
-    }
-  }
-  async function loadBgSettings() {
-    try {
-      const storedDesktop = localStorage.getItem(DESKTOP_BG_KEY) || "";
-      if (storedDesktop === IDB_MARKER) {
-        window.__pmDesktopBg = await pmIDBGet(DESKTOP_BG_KEY) || "";
-      } else if (isBigData(storedDesktop)) {
-        window.__pmDesktopBg = storedDesktop;
-        await migrateSingleBackground(DESKTOP_BG_KEY, storedDesktop);
-      } else {
-        window.__pmDesktopBg = storedDesktop;
-      }
-    } catch (error) {
-      window.__pmDesktopBg = "";
-    }
-    try {
-      const storedGlobal = localStorage.getItem("ST_SMS_BG_GLOBAL") || "";
-      if (storedGlobal === IDB_MARKER) {
-        window.__pmBgGlobal = await pmIDBGet("ST_SMS_BG_GLOBAL") || "";
-      } else if (isBigData(storedGlobal)) {
-        window.__pmBgGlobal = storedGlobal;
-        await migrateSingleBackground("ST_SMS_BG_GLOBAL", storedGlobal);
-      } else {
-        window.__pmBgGlobal = storedGlobal;
-      }
-    } catch (error) {
-      window.__pmBgGlobal = "";
-    }
-    try {
-      const storedLocal = readLocalBackgroundPointers();
-      const result = /* @__PURE__ */ Object.create(null);
-      let migrated = 0;
-      const stagedKeys = [];
-      for (const [key, value] of Object.entries(storedLocal)) {
-        if (value === IDB_MARKER) {
-          result[key] = await pmIDBGet("ST_SMS_BG_LOCAL_" + key) || "";
-        } else if (isBigData(value)) {
-          result[key] = value;
-          const storageKey = "ST_SMS_BG_LOCAL_" + key;
-          if (await pmIDBSet(storageKey, value)) {
-            storedLocal[key] = IDB_MARKER;
-            stagedKeys.push(storageKey);
-            migrated++;
-          }
-        } else {
-          result[key] = value;
-        }
-      }
-      if (migrated > 0) {
-        try {
-          localStorage.setItem("ST_SMS_BG_LOCAL", JSON.stringify(storedLocal));
-        } catch (error) {
-          for (const storageKey of stagedKeys) await pmIDBDel(storageKey);
-        }
-      }
-      window.__pmBgLocal = result;
-    } catch (error) {
-      window.__pmBgLocal = /* @__PURE__ */ Object.create(null);
-    }
-  }
-  var UNSAFE_BACKGROUND_KEYS = /* @__PURE__ */ new Set(["__proto__", "prototype", "constructor"]);
-  function assertBackgroundEntries(value, label) {
-    for (const [key, entry2] of Object.entries(value)) {
-      if (UNSAFE_BACKGROUND_KEYS.has(key)) throw new Error(`${label}\u635F\u574F\uFF1A\u5305\u542B\u5371\u9669\u952E ${key}`);
-      if (typeof entry2 !== "string") {
-        throw new Error(`${label}\u635F\u574F\uFF1A${key} \u5FC5\u987B\u662F\u5B57\u7B26\u4E32`);
-      }
-    }
-  }
-  function readLocalBackgroundPointers() {
-    let serialized;
-    try {
-      serialized = localStorage.getItem("ST_SMS_BG_LOCAL");
-    } catch (error) {
-      throw new Error("\u4F1A\u8BDD\u80CC\u666F\u7D22\u5F15\u8BFB\u53D6\u5931\u8D25\uFF1A\u6D4F\u89C8\u5668\u5B58\u50A8\u4E0D\u53EF\u7528");
-    }
-    if (!serialized) return {};
-    let parsed;
-    try {
-      parsed = JSON.parse(serialized);
-    } catch (error) {
-      throw new Error("\u4F1A\u8BDD\u80CC\u666F\u7D22\u5F15\u635F\u574F\uFF1A\u65E0\u6CD5\u89E3\u6790");
-    }
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("\u4F1A\u8BDD\u80CC\u666F\u7D22\u5F15\u635F\u574F\uFF1A\u5FC5\u987B\u662F\u5BF9\u8C61");
-    assertBackgroundEntries(parsed, "\u4F1A\u8BDD\u80CC\u666F\u7D22\u5F15");
-    return parsed;
-  }
-  async function restoreBackgroundMutations(mutations, label) {
-    const failures = [];
-    for (const mutation of mutations.slice().reverse()) {
-      const restored = mutation.hadPrimary ? await pmIDBSet(mutation.key, mutation.previousValue) : await pmIDBDel(mutation.key);
-      if (!restored) failures.push(mutation.key);
-    }
-    if (failures.length) throw new Error(`${label}\u4E3B\u6570\u636E\u8865\u507F\u5931\u8D25`);
-  }
-  async function readPreviousBackground(key, hasPrimary, label) {
-    if (!hasPrimary) return null;
-    const value = await pmIDBGet(key);
-    if (value === null) throw new Error(`${label}\u539F\u6570\u636E\u8BFB\u53D6\u5931\u8D25\uFF1AIndexedDB \u4E0D\u53EF\u7528\u6216\u6570\u636E\u7F3A\u5931`);
-    return value;
-  }
-  function combinedBackgroundError(error, compensationError) {
-    const combined = new Error(`${error.message}\uFF1B${compensationError.message}`);
-    combined.cause = error;
-    return combined;
-  }
-  async function saveSingleBackground({ storageKey, value, label }) {
-    let previousPointer;
-    try {
-      previousPointer = localStorage.getItem(storageKey) || "";
-    } catch (error) {
-      throw new Error(`${label}\u7D22\u5F15\u8BFB\u53D6\u5931\u8D25\uFF1A\u6D4F\u89C8\u5668\u5B58\u50A8\u4E0D\u53EF\u7528`);
-    }
-    const hadPrimary = previousPointer === IDB_MARKER;
-    const previousValue = await readPreviousBackground(storageKey, hadPrimary, label);
-    let primaryMutated = false;
-    const rollbackPrimary = async (error) => {
-      if (!primaryMutated) throw error;
-      try {
-        await restoreBackgroundMutations([{ key: storageKey, hadPrimary, previousValue }], label);
-      } catch (compensationError) {
-        throw combinedBackgroundError(error, compensationError);
-      }
-      throw error;
-    };
-    if (isBigData(value)) {
-      if (!await pmIDBSet(storageKey, value)) throw new Error(`${label}\u4FDD\u5B58\u5931\u8D25\uFF1AIndexedDB \u4E0D\u53EF\u7528`);
-      primaryMutated = true;
-      try {
-        localStorage.setItem(storageKey, IDB_MARKER);
-      } catch (error) {
-        await rollbackPrimary(new Error(`${label}\u7D22\u5F15\u4FDD\u5B58\u5931\u8D25\uFF1A\u6D4F\u89C8\u5668\u5B58\u50A8\u4E0D\u53EF\u7528`));
-      }
-    } else {
-      if (hadPrimary && !await pmIDBDel(storageKey)) {
-        throw new Error(`${label}\u5220\u9664\u5931\u8D25\uFF1AIndexedDB \u4E0D\u53EF\u7528`);
-      }
-      primaryMutated = hadPrimary;
-      try {
-        localStorage.setItem(storageKey, value);
-      } catch (error) {
-        await rollbackPrimary(new Error(`${label}\u4FDD\u5B58\u5931\u8D25\uFF1A\u6D4F\u89C8\u5668\u5B58\u50A8\u4E0D\u53EF\u7528`));
-      }
-    }
-  }
-  async function saveBgGlobal() {
-    return saveSingleBackground({ storageKey: "ST_SMS_BG_GLOBAL", value: window.__pmBgGlobal || "", label: "\u5168\u5C40\u80CC\u666F" });
-  }
-  async function saveDesktopBg() {
-    return saveSingleBackground({ storageKey: DESKTOP_BG_KEY, value: window.__pmDesktopBg || "", label: "\u684C\u9762\u80CC\u666F" });
-  }
-  async function saveBgLocal() {
-    const current = window.__pmBgLocal || {};
-    if (!current || typeof current !== "object" || Array.isArray(current)) throw new Error("\u4F1A\u8BDD\u80CC\u666F\u6570\u636E\u635F\u574F\uFF1A\u5FC5\u987B\u662F\u5BF9\u8C61");
-    assertBackgroundEntries(current, "\u4F1A\u8BDD\u80CC\u666F\u6570\u636E");
-    const pointers = /* @__PURE__ */ Object.create(null);
-    const previousPointers = readLocalBackgroundPointers();
-    const mutations = [];
-    const prepareMutation = async (key) => {
-      const storageKey = "ST_SMS_BG_LOCAL_" + key;
-      const hadPrimary = previousPointers[key] === IDB_MARKER;
-      const previousValue = await readPreviousBackground(storageKey, hadPrimary, "\u4F1A\u8BDD\u80CC\u666F");
-      return { key: storageKey, hadPrimary, previousValue };
-    };
-    try {
-      for (const [key, value] of Object.entries(current)) {
-        if (isBigData(value)) {
-          const mutation = await prepareMutation(key);
-          if (!await pmIDBSet(mutation.key, value)) throw new Error("\u4F1A\u8BDD\u80CC\u666F\u4FDD\u5B58\u5931\u8D25\uFF1AIndexedDB \u4E0D\u53EF\u7528");
-          mutations.push(mutation);
-          pointers[key] = IDB_MARKER;
-        } else {
-          if (previousPointers[key] === IDB_MARKER) {
-            const mutation = await prepareMutation(key);
-            if (!await pmIDBDel(mutation.key)) throw new Error("\u4F1A\u8BDD\u80CC\u666F\u5220\u9664\u5931\u8D25\uFF1AIndexedDB \u4E0D\u53EF\u7528");
-            mutations.push(mutation);
-          }
-          pointers[key] = value;
-        }
-      }
-      for (const [key, previousValue] of Object.entries(previousPointers)) {
-        if (previousValue !== IDB_MARKER || Object.hasOwn(current, key)) continue;
-        const mutation = await prepareMutation(key);
-        if (!await pmIDBDel(mutation.key)) {
-          throw new Error("\u4F1A\u8BDD\u80CC\u666F\u5220\u9664\u5931\u8D25\uFF1AIndexedDB \u4E0D\u53EF\u7528");
-        }
-        mutations.push(mutation);
-      }
-      try {
-        localStorage.setItem("ST_SMS_BG_LOCAL", JSON.stringify(pointers));
-      } catch (error) {
-        throw new Error("\u4F1A\u8BDD\u80CC\u666F\u7D22\u5F15\u4FDD\u5B58\u5931\u8D25\uFF1A\u6D4F\u89C8\u5668\u5B58\u50A8\u4E0D\u53EF\u7528");
-      }
-    } catch (error) {
-      if (mutations.length) {
-        try {
-          await restoreBackgroundMutations(mutations, "\u4F1A\u8BDD\u80CC\u666F");
-        } catch (compensationError) {
-          throw combinedBackgroundError(error, compensationError);
-        }
-      }
-      throw error;
     }
   }
   async function loadGroupMeta() {
@@ -4652,7 +4520,7 @@ ${mainChatText}` : "",
         const existingNames = [...directory.contacts, ...directory.groupNames];
         const { systemPrompt, userPrompt } = buildPrompts(context, existingNames);
         const raw = await callAI(systemPrompt, userPrompt, {
-          maxTokens: 600,
+          maxTokens: 65535,
           isolated: true,
           signal: task.signal
         });
@@ -6180,7 +6048,7 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
         if (kind === "live_batch" && !extra.userContent) extra = { ...extra, userContent: scene.live.title };
         const prompts = buildInteractiveRequest({ kind, presetKey: scene.preset, styleInput: scene.styleInput, generatedPrompt: scene.generatedPrompt, context: await contextText(), actorRoster, ...extra });
         const raw = await callAI(prompts.systemPrompt, prompts.userPrompt, {
-          maxTokens: kind === "style_prompt" ? 700 : 1400,
+          maxTokens: 65535,
           isolated: true,
           signal: controller.signal
         });
@@ -8749,6 +8617,218 @@ ${antiFluff}`;
     Object.assign(deps, { closeControlCenter });
   }
 
+  // src/storage-background.js
+  var GLOBAL_BG_KEY = "ST_SMS_BG_GLOBAL";
+  var LOCAL_BG_INDEX_KEY = "ST_SMS_BG_LOCAL";
+  var LOCAL_BG_PREFIX = "ST_SMS_BG_LOCAL_";
+  async function migrateSingleBackground(storageKey, value) {
+    if (!await pmIDBSet(storageKey, value)) return false;
+    try {
+      localStorage.setItem(storageKey, IDB_MARKER);
+      return true;
+    } catch (error) {
+      await pmIDBDel(storageKey);
+      return false;
+    }
+  }
+  async function loadBgSettings() {
+    try {
+      const storedDesktop = localStorage.getItem(DESKTOP_BG_KEY) || "";
+      if (storedDesktop === IDB_MARKER) {
+        window.__pmDesktopBg = await pmIDBGet(DESKTOP_BG_KEY) || "";
+      } else if (isBigData(storedDesktop)) {
+        window.__pmDesktopBg = storedDesktop;
+        await migrateSingleBackground(DESKTOP_BG_KEY, storedDesktop);
+      } else {
+        window.__pmDesktopBg = storedDesktop;
+      }
+    } catch (error) {
+      window.__pmDesktopBg = "";
+    }
+    try {
+      const storedGlobal = localStorage.getItem(GLOBAL_BG_KEY) || "";
+      if (storedGlobal === IDB_MARKER) {
+        window.__pmBgGlobal = await pmIDBGet(GLOBAL_BG_KEY) || "";
+      } else if (isBigData(storedGlobal)) {
+        window.__pmBgGlobal = storedGlobal;
+        await migrateSingleBackground(GLOBAL_BG_KEY, storedGlobal);
+      } else {
+        window.__pmBgGlobal = storedGlobal;
+      }
+    } catch (error) {
+      window.__pmBgGlobal = "";
+    }
+    try {
+      const storedLocal = readLocalBackgroundPointers();
+      const result = /* @__PURE__ */ Object.create(null);
+      let migrated = 0;
+      const stagedKeys = [];
+      for (const [key, value] of Object.entries(storedLocal)) {
+        if (value === IDB_MARKER) {
+          result[key] = await pmIDBGet(LOCAL_BG_PREFIX + key) || "";
+        } else if (isBigData(value)) {
+          result[key] = value;
+          const storageKey = LOCAL_BG_PREFIX + key;
+          if (await pmIDBSet(storageKey, value)) {
+            storedLocal[key] = IDB_MARKER;
+            stagedKeys.push(storageKey);
+            migrated++;
+          }
+        } else {
+          result[key] = value;
+        }
+      }
+      if (migrated > 0) {
+        try {
+          localStorage.setItem(LOCAL_BG_INDEX_KEY, JSON.stringify(storedLocal));
+        } catch (error) {
+          for (const storageKey of stagedKeys) await pmIDBDel(storageKey);
+        }
+      }
+      window.__pmBgLocal = result;
+    } catch (error) {
+      window.__pmBgLocal = /* @__PURE__ */ Object.create(null);
+    }
+  }
+  var UNSAFE_BACKGROUND_KEYS = /* @__PURE__ */ new Set(["__proto__", "prototype", "constructor"]);
+  function assertBackgroundEntries(value, label) {
+    for (const [key, entry2] of Object.entries(value)) {
+      if (UNSAFE_BACKGROUND_KEYS.has(key)) throw new Error(`${label}\u635F\u574F\uFF1A\u5305\u542B\u5371\u9669\u952E ${key}`);
+      if (typeof entry2 !== "string") throw new Error(`${label}\u635F\u574F\uFF1A${key} \u5FC5\u987B\u662F\u5B57\u7B26\u4E32`);
+    }
+  }
+  function readLocalBackgroundPointers() {
+    let serialized;
+    try {
+      serialized = localStorage.getItem(LOCAL_BG_INDEX_KEY);
+    } catch (error) {
+      throw new Error("\u4F1A\u8BDD\u80CC\u666F\u7D22\u5F15\u8BFB\u53D6\u5931\u8D25\uFF1A\u6D4F\u89C8\u5668\u5B58\u50A8\u4E0D\u53EF\u7528");
+    }
+    if (!serialized) return {};
+    let parsed;
+    try {
+      parsed = JSON.parse(serialized);
+    } catch (error) {
+      throw new Error("\u4F1A\u8BDD\u80CC\u666F\u7D22\u5F15\u635F\u574F\uFF1A\u65E0\u6CD5\u89E3\u6790");
+    }
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("\u4F1A\u8BDD\u80CC\u666F\u7D22\u5F15\u635F\u574F\uFF1A\u5FC5\u987B\u662F\u5BF9\u8C61");
+    assertBackgroundEntries(parsed, "\u4F1A\u8BDD\u80CC\u666F\u7D22\u5F15");
+    return parsed;
+  }
+  async function restoreBackgroundMutations(mutations, label) {
+    const failures = [];
+    for (const mutation of mutations.slice().reverse()) {
+      const restored = mutation.hadPrimary ? await pmIDBSet(mutation.key, mutation.previousValue) : await pmIDBDel(mutation.key);
+      if (!restored) failures.push(mutation.key);
+    }
+    if (failures.length) throw new Error(`${label}\u4E3B\u6570\u636E\u8865\u507F\u5931\u8D25`);
+  }
+  async function readPreviousBackground(key, hasPrimary, label) {
+    if (!hasPrimary) return null;
+    const value = await pmIDBGet(key);
+    if (value === null) throw new Error(`${label}\u539F\u6570\u636E\u8BFB\u53D6\u5931\u8D25\uFF1AIndexedDB \u4E0D\u53EF\u7528\u6216\u6570\u636E\u7F3A\u5931`);
+    return value;
+  }
+  function combinedBackgroundError(error, compensationError) {
+    const combined = new Error(`${error.message}\uFF1B${compensationError.message}`);
+    combined.cause = error;
+    return combined;
+  }
+  async function saveSingleBackground({ storageKey, value, label }) {
+    let previousPointer;
+    try {
+      previousPointer = localStorage.getItem(storageKey) || "";
+    } catch (error) {
+      throw new Error(`${label}\u7D22\u5F15\u8BFB\u53D6\u5931\u8D25\uFF1A\u6D4F\u89C8\u5668\u5B58\u50A8\u4E0D\u53EF\u7528`);
+    }
+    const hadPrimary = previousPointer === IDB_MARKER;
+    const previousValue = await readPreviousBackground(storageKey, hadPrimary, label);
+    let primaryMutated = false;
+    const rollbackPrimary = async (error) => {
+      if (!primaryMutated) throw error;
+      try {
+        await restoreBackgroundMutations([{ key: storageKey, hadPrimary, previousValue }], label);
+      } catch (compensationError) {
+        throw combinedBackgroundError(error, compensationError);
+      }
+      throw error;
+    };
+    if (isBigData(value)) {
+      if (!await pmIDBSet(storageKey, value)) throw new Error(`${label}\u4FDD\u5B58\u5931\u8D25\uFF1AIndexedDB \u4E0D\u53EF\u7528`);
+      primaryMutated = true;
+      try {
+        localStorage.setItem(storageKey, IDB_MARKER);
+      } catch (error) {
+        await rollbackPrimary(new Error(`${label}\u7D22\u5F15\u4FDD\u5B58\u5931\u8D25\uFF1A\u6D4F\u89C8\u5668\u5B58\u50A8\u4E0D\u53EF\u7528`));
+      }
+    } else {
+      if (hadPrimary && !await pmIDBDel(storageKey)) throw new Error(`${label}\u5220\u9664\u5931\u8D25\uFF1AIndexedDB \u4E0D\u53EF\u7528`);
+      primaryMutated = hadPrimary;
+      try {
+        localStorage.setItem(storageKey, value);
+      } catch (error) {
+        await rollbackPrimary(new Error(`${label}\u4FDD\u5B58\u5931\u8D25\uFF1A\u6D4F\u89C8\u5668\u5B58\u50A8\u4E0D\u53EF\u7528`));
+      }
+    }
+  }
+  async function saveBgGlobal() {
+    return saveSingleBackground({ storageKey: GLOBAL_BG_KEY, value: window.__pmBgGlobal || "", label: "\u5168\u5C40\u80CC\u666F" });
+  }
+  async function saveDesktopBg() {
+    return saveSingleBackground({ storageKey: DESKTOP_BG_KEY, value: window.__pmDesktopBg || "", label: "\u684C\u9762\u80CC\u666F" });
+  }
+  async function saveBgLocal() {
+    const current = window.__pmBgLocal || {};
+    if (!current || typeof current !== "object" || Array.isArray(current)) throw new Error("\u4F1A\u8BDD\u80CC\u666F\u6570\u636E\u635F\u574F\uFF1A\u5FC5\u987B\u662F\u5BF9\u8C61");
+    assertBackgroundEntries(current, "\u4F1A\u8BDD\u80CC\u666F\u6570\u636E");
+    const pointers = /* @__PURE__ */ Object.create(null);
+    const previousPointers = readLocalBackgroundPointers();
+    const mutations = [];
+    const prepareMutation = async (key) => {
+      const storageKey = LOCAL_BG_PREFIX + key;
+      const hadPrimary = previousPointers[key] === IDB_MARKER;
+      const previousValue = await readPreviousBackground(storageKey, hadPrimary, "\u4F1A\u8BDD\u80CC\u666F");
+      return { key: storageKey, hadPrimary, previousValue };
+    };
+    try {
+      for (const [key, value] of Object.entries(current)) {
+        if (isBigData(value)) {
+          const mutation = await prepareMutation(key);
+          if (!await pmIDBSet(mutation.key, value)) throw new Error("\u4F1A\u8BDD\u80CC\u666F\u4FDD\u5B58\u5931\u8D25\uFF1AIndexedDB \u4E0D\u53EF\u7528");
+          mutations.push(mutation);
+          pointers[key] = IDB_MARKER;
+        } else {
+          if (previousPointers[key] === IDB_MARKER) {
+            const mutation = await prepareMutation(key);
+            if (!await pmIDBDel(mutation.key)) throw new Error("\u4F1A\u8BDD\u80CC\u666F\u5220\u9664\u5931\u8D25\uFF1AIndexedDB \u4E0D\u53EF\u7528");
+            mutations.push(mutation);
+          }
+          pointers[key] = value;
+        }
+      }
+      for (const [key, previousValue] of Object.entries(previousPointers)) {
+        if (previousValue !== IDB_MARKER || Object.hasOwn(current, key)) continue;
+        const mutation = await prepareMutation(key);
+        if (!await pmIDBDel(mutation.key)) throw new Error("\u4F1A\u8BDD\u80CC\u666F\u5220\u9664\u5931\u8D25\uFF1AIndexedDB \u4E0D\u53EF\u7528");
+        mutations.push(mutation);
+      }
+      try {
+        localStorage.setItem(LOCAL_BG_INDEX_KEY, JSON.stringify(pointers));
+      } catch (error) {
+        throw new Error("\u4F1A\u8BDD\u80CC\u666F\u7D22\u5F15\u4FDD\u5B58\u5931\u8D25\uFF1A\u6D4F\u89C8\u5668\u5B58\u50A8\u4E0D\u53EF\u7528");
+      }
+    } catch (error) {
+      if (mutations.length) {
+        try {
+          await restoreBackgroundMutations(mutations, "\u4F1A\u8BDD\u80CC\u666F");
+        } catch (compensationError) {
+          throw combinedBackgroundError(error, compensationError);
+        }
+      }
+      throw error;
+    }
+  }
+
   // src/phone-directory.js
   function installPhoneDirectory(state, deps) {
     const { runtime, getStorageId: getStorageId2, makeOverlay, applyBidirectionalInjection, isAutoPokeAllowed } = deps;
@@ -8856,7 +8936,7 @@ ${antiFluff}`;
         <div style="font-size:11px;color:#999;margin-top:4px;">
             \u5F53\u524D\u8BA1\u6570\uFF1A<span id="pm-poke-counter-group">${pokeConfig.counter}</span> / ${pokeConfig.interval}
         </div>
-        <button type="button" onclick="window.__pmArmAutoPoke()" style="margin-top:8px;width:100%;border:1px solid #ddd;border-radius:8px;padding:7px;background:#fff;cursor:pointer;">
+        <button type="button" class="pm-action-button is-secondary" onclick="window.__pmArmAutoPoke()" style="margin-top:8px;width:100%">
             \u6062\u590D\u672C\u6B21\u81EA\u52A8\u6D88\u606F
         </button>
         <div data-pm-auto-poke-status style="font-size:11px;color:#999;margin-top:4px;">${isAutoPokeAllowed() ? "\u672C\u6B21\u624B\u673A\u4F1A\u8BDD\u5DF2\u8FD0\u884C" : "\u672C\u6B21\u624B\u673A\u4F1A\u8BDD\u5DF2\u6682\u505C"}</div>
@@ -8865,8 +8945,8 @@ ${antiFluff}`;
     </div>
     ${mode === "create" ? `
     <div class="pm-modal-add">
-        <button onclick="window.__pmConfirmGroup('${safeJS(mode)}')" style="flex:1;background:#007aff;color:#fff;border:none;border-radius:10px;padding:10px;font-size:13px;cursor:pointer;font-weight:600;">\u521B\u5EFA</button>
-    </div>` : `<div class="pm-modal-add"><button onclick="window.__pmSaveAndCloseGroupEdit()" style="flex:1;background:#007aff;color:#fff;border:none;border-radius:10px;padding:10px;font-size:13px;cursor:pointer;font-weight:600;">\u4FDD\u5B58\u7FA4\u804A\u8BBE\u7F6E</button></div>`}
+        <button class="pm-action-button" onclick="window.__pmConfirmGroup('${safeJS(mode)}')" style="flex:1">\u521B\u5EFA</button>
+    </div>` : `<div class="pm-modal-add"><button class="pm-action-button" onclick="window.__pmSaveAndCloseGroupEdit()" style="flex:1">\u4FDD\u5B58\u7FA4\u804A\u8BBE\u7F6E</button></div>`}
     </div>`);
       setTimeout(() => window.__pmGroupInputChanged(), 0);
     }
@@ -9030,7 +9110,7 @@ ${antiFluff}`;
     <div class="pm-modal-list">
         ${empty ? '<div style="text-align:center;color:#999;padding:20px;font-size:13px;">\u6682\u65E0\u8054\u7CFB\u4EBA</div>' : renderGroups + renderSingle}
     </div>
-    <div class="pm-modal-add" style="display:flex;gap:8px;">
+    <div class="pm-modal-add">
         <button onclick="window.__pmShowGroupCreate()" class="pm-btn-group">\u65B0\u5EFA\u7FA4\u804A</button>
         <button onclick="window.__pmShowAddContact()" class="pm-btn-add">\u6DFB\u52A0\u8054\u7CFB\u4EBA</button>
     </div>
@@ -9045,12 +9125,14 @@ ${antiFluff}`;
   <div class="pm-contact-add-choices">
     <section class="pm-contact-add-choice">
       <b>\u624B\u52A8\u6DFB\u52A0</b><span>\u8F93\u5165\u660E\u786E\u7684\u89D2\u8272\u540D\uFF0C\u7ACB\u5373\u5F00\u59CB\u804A\u5929\u3002</span>
-      <input id="pm-add-contact-input" class="pm-cfg-input" placeholder="\u89D2\u8272\u540D" aria-label="\u8054\u7CFB\u4EBA\u89D2\u8272\u540D">
-      <button type="button" class="pm-contact-add-primary" onclick="(()=>{const v=document.getElementById('pm-add-contact-input').value.trim();if(v)window.__pmSwitchContact(v);})()">\u5F00\u59CB\u804A\u5929</button>
+      <div class="pm-contact-add-manual">
+        <input id="pm-add-contact-input" class="pm-cfg-input" placeholder="\u89D2\u8272\u540D" aria-label="\u8054\u7CFB\u4EBA\u89D2\u8272\u540D">
+        <button type="button" class="pm-contact-add-primary" onclick="(()=>{const v=document.getElementById('pm-add-contact-input').value.trim();if(v)window.__pmSwitchContact(v);})()">\u5F00\u59CB\u804A\u5929</button>
+      </div>
     </section>
     <section class="pm-contact-add-choice is-ai">
       <b>AI \u751F\u6210</b><span>\u6839\u636E\u5F53\u524D\u5267\u60C5\u3001\u4E16\u754C\u4E66\u548C\u5DF2\u6709\u8054\u7CFB\u4EBA\u751F\u6210\u4E00\u6279\u5019\u9009\u3002</span>
-      <button type="button" id="pm-autogen-btn" class="pm-contact-add-ai" onclick="window.__pmConfirmAutoGen()" aria-label="AI \u81EA\u52A8\u751F\u6210\u8054\u7CFB\u4EBA">${REFRESH_ICON_SVG}<span>\u751F\u6210\u8054\u7CFB\u4EBA\u4E0E\u7FA4\u804A</span></button>
+      <button type="button" id="pm-autogen-btn" class="pm-contact-add-ai" onclick="window.__pmConfirmAutoGen()" aria-label="AI \u81EA\u52A8\u751F\u6210\u8054\u7CFB\u4EBA"><span class="pm-contact-add-icon">${REFRESH_ICON_SVG}</span><span>\u751F\u6210\u8054\u7CFB\u4EBA\u4E0E\u7FA4\u804A</span></button>
     </section>
   </div>
 </div>`);
@@ -9765,22 +9847,24 @@ ${lines}`;
     function applyTheme() {
       const t = window.__pmTheme || {}, p = THEME_PRESETS[t.preset] || THEME_PRESETS.default;
       const darkMode = t.darkMode || "light";
-      document.getElementById("pm-overlay")?.setAttribute("data-theme", darkMode);
-      const desktopTitle = state.phoneWindow?.querySelector(".pm-desktop-toolbar span");
-      if (desktopTitle) desktopTitle.textContent = String(t.customTitle || "").trim() || "\u5929\u97F3\u5C0F\u7B3A";
-      const el = state.phoneWindow;
-      if (!el) return;
       const rBg = t.customRight || p.right, lBg = t.customLeft || p.left;
       const rTxt = t.customRight ? contrastText(t.customRight) : p.rightText;
       const lTxt = t.customLeft ? contrastText(t.customLeft) : p.leftText;
       const border = t.borderColor || "#1a1a1a";
-      el.style.setProperty("--pm-r-bg", rBg);
-      el.style.setProperty("--pm-l-bg", lBg);
-      el.style.setProperty("--pm-r-txt", rTxt);
-      el.style.setProperty("--pm-l-txt", lTxt);
-      el.style.setProperty("--pm-border", border);
-      el.style.setProperty("--pm-frost", p.frost ? "1" : "0");
-      el.setAttribute("data-theme", darkMode);
+      const applyProperties = (element) => {
+        if (!element) return;
+        element.style.setProperty("--pm-r-bg", rBg);
+        element.style.setProperty("--pm-l-bg", lBg);
+        element.style.setProperty("--pm-r-txt", rTxt);
+        element.style.setProperty("--pm-l-txt", lTxt);
+        element.style.setProperty("--pm-border", border);
+        element.style.setProperty("--pm-frost", p.frost ? "1" : "0");
+        element.setAttribute("data-theme", darkMode);
+      };
+      applyProperties(document.getElementById("pm-overlay"));
+      applyProperties(state.phoneWindow);
+      const desktopTitle = state.phoneWindow?.querySelector(".pm-desktop-toolbar span");
+      if (desktopTitle) desktopTitle.textContent = String(t.customTitle || "").trim() || "\u5929\u97F3\u5C0F\u7B3A";
     }
     function applyBackground() {
       const phone = state.phoneWindow;
@@ -10136,6 +10220,7 @@ ${lines}`;
         if (e.target === ov) closeOverlay("backdrop");
       });
       document.body.appendChild(ov);
+      applyTheme();
       if (ov.showPopover) try {
         ov.showPopover();
       } catch (e) {
@@ -10756,6 +10841,136 @@ ${lines}`;
     console.log("[phone-mode] v9.5.7 \u5DF2\u52A0\u8F7D\uFF1A\u4E16\u754C\u4E66\u9884\u7B97\u6539\u4E3A\u8BFB\u53D6ST\u5B9E\u9645\u4E0A\u4E0B\u6587\u7A97\u53E3\u5927\u5C0F");
   }
 
+  // src/quick-reply.js
+  var PHONE_QR_SET_NAME = "\u5929\u97F3\u5C0F\u7B3A \xB7 \u624B\u673A\u5165\u53E3";
+  var PHONE_QR_LABEL = "\u5929\u97F3";
+  var PHONE_QR_AUTOMATION_ID = "tianyin-xiaojian.phone.open.v1";
+  var PHONE_QR_MESSAGE = "/phone";
+  var PHONE_QR_AUTO_INIT_KEY = "ST_SMS_PHONE_QR_INITIALIZED";
+  var REQUIRED_METHODS = [
+    "getSetByName",
+    "createSet",
+    "deleteSet",
+    "createQuickReply",
+    "updateQuickReply",
+    "deleteQuickReply",
+    "addGlobalSet",
+    "removeGlobalSet",
+    "listGlobalSets"
+  ];
+  function requireApi(api = globalThis.quickReplyApi) {
+    if (!api || typeof api !== "object") throw new Error("\u5F53\u524D\u5BBF\u4E3B\u672A\u63D0\u4F9B Quick Reply API");
+    const missing = REQUIRED_METHODS.filter((name) => typeof api[name] !== "function");
+    if (missing.length) throw new Error(`\u5F53\u524D\u5BBF\u4E3B\u7684 Quick Reply API \u7F3A\u5C11\uFF1A${missing.join("\u3001")}`);
+    return api;
+  }
+  var qrList = (set) => Array.isArray(set?.qrList) ? set.qrList : [];
+  var ownedReplies = (set) => qrList(set).filter((qr) => qr?.automationId === PHONE_QR_AUTOMATION_ID);
+  function replyIdentifier(qr) {
+    if (!Number.isInteger(qr?.id)) {
+      throw new Error("\u5BBF\u4E3B Quick Reply \u7F3A\u5C11\u7A33\u5B9A\u6570\u5B57 ID\uFF0C\u65E0\u6CD5\u5B89\u5168\u4FEE\u6539\u6216\u5220\u9664");
+    }
+    return qr.id;
+  }
+  var desiredProps = {
+    message: PHONE_QR_MESSAGE,
+    title: "\u6253\u5F00\u5929\u97F3\u5C0F\u7B3A\u624B\u673A\u754C\u9762",
+    showLabel: true,
+    isHidden: false,
+    automationId: PHONE_QR_AUTOMATION_ID
+  };
+  function getPhoneQuickReplyStatus(api = globalThis.quickReplyApi) {
+    try {
+      const host = requireApi(api);
+      const set = host.getSetByName(PHONE_QR_SET_NAME);
+      if (!set) return { state: "absent", active: false };
+      const owned = ownedReplies(set);
+      if (!owned.length) return { state: "conflict", active: false };
+      const active = host.listGlobalSets().includes(PHONE_QR_SET_NAME);
+      const ready = owned.length === 1 && owned[0].label === PHONE_QR_LABEL && owned[0].message === PHONE_QR_MESSAGE && owned[0].title === desiredProps.title && owned[0].showLabel === desiredProps.showLabel && owned[0].isHidden === desiredProps.isHidden && active;
+      return { state: ready ? "ready" : "repairable", active, count: owned.length };
+    } catch (error) {
+      return { state: "unavailable", active: false, error: error.message };
+    }
+  }
+  async function ensurePhoneQuickReply(api = globalThis.quickReplyApi) {
+    const host = requireApi(api);
+    let set = host.getSetByName(PHONE_QR_SET_NAME);
+    let createdSet = false;
+    if (set && !ownedReplies(set).length) {
+      throw new Error("\u5B58\u5728\u540C\u540D Quick Reply \u96C6\u5408\uFF0C\u4F46\u65E0\u6CD5\u8BC1\u660E\u5C5E\u4E8E\u5929\u97F3\u5C0F\u7B3A\uFF1B\u5DF2\u505C\u6B62\uFF0C\u672A\u8986\u76D6\u7528\u6237\u6570\u636E");
+    }
+    if (!set) {
+      set = await host.createSet(PHONE_QR_SET_NAME, { disableSend: false, placeBeforeInput: false, injectInput: false });
+      createdSet = true;
+    }
+    try {
+      const owned = ownedReplies(set);
+      if (!owned.length) {
+        host.createQuickReply(PHONE_QR_SET_NAME, PHONE_QR_LABEL, desiredProps);
+      } else {
+        const primary = owned[0];
+        host.updateQuickReply(PHONE_QR_SET_NAME, replyIdentifier(primary), { ...desiredProps, newLabel: PHONE_QR_LABEL });
+        for (const duplicate of owned.slice(1)) host.deleteQuickReply(PHONE_QR_SET_NAME, replyIdentifier(duplicate));
+      }
+      if (!host.listGlobalSets().includes(PHONE_QR_SET_NAME)) host.addGlobalSet(PHONE_QR_SET_NAME, true);
+      return getPhoneQuickReplyStatus(host);
+    } catch (error) {
+      if (createdSet) {
+        try {
+          await host.deleteSet(PHONE_QR_SET_NAME);
+        } catch (rollbackError) {
+          throw new Error(`${error.message}\uFF1B\u65B0\u5EFA\u96C6\u5408\u56DE\u6EDA\u5931\u8D25\uFF1A${rollbackError.message}`);
+        }
+      }
+      throw error;
+    }
+  }
+  async function ensureInitialPhoneQuickReply({
+    api = globalThis.quickReplyApi,
+    storage = globalThis.localStorage
+  } = {}) {
+    if (!storage || typeof storage.getItem !== "function" || typeof storage.setItem !== "function") {
+      throw new Error("\u6D4F\u89C8\u5668\u5B58\u50A8\u4E0D\u53EF\u7528\uFF0C\u65E0\u6CD5\u8BB0\u5F55\u624B\u673A\u5165\u53E3\u521D\u59CB\u5316\u72B6\u6001");
+    }
+    if (storage.getItem(PHONE_QR_AUTO_INIT_KEY) === "1") return getPhoneQuickReplyStatus(api);
+    const status = await ensurePhoneQuickReply(api);
+    if (status.state !== "ready") throw new Error("\u624B\u673A\u5165\u53E3\u521D\u59CB\u5316\u540E\u672A\u8FBE\u5230\u53EF\u7528\u72B6\u6001");
+    storage.setItem(PHONE_QR_AUTO_INIT_KEY, "1");
+    return status;
+  }
+  async function clearPhoneQuickReply(api = globalThis.quickReplyApi) {
+    const host = requireApi(api);
+    const set = host.getSetByName(PHONE_QR_SET_NAME);
+    if (!set) return { state: "absent", active: false };
+    const owned = ownedReplies(set);
+    if (!owned.length) throw new Error("\u540C\u540D Quick Reply \u96C6\u5408\u4E0D\u5C5E\u4E8E\u5929\u97F3\u5C0F\u7B3A\uFF0C\u672A\u6267\u884C\u6E05\u9664");
+    const wasActive = host.listGlobalSets().includes(PHONE_QR_SET_NAME);
+    const ownsWholeSet = qrList(set).length === owned.length;
+    if (wasActive) host.removeGlobalSet(PHONE_QR_SET_NAME);
+    try {
+      if (ownsWholeSet) {
+        await host.deleteSet(PHONE_QR_SET_NAME);
+        if (host.getSetByName(PHONE_QR_SET_NAME)) throw new Error("\u5BBF\u4E3B\u672A\u786E\u8BA4\u5220\u9664 Quick Reply \u96C6\u5408");
+      } else {
+        for (const qr of owned) host.deleteQuickReply(PHONE_QR_SET_NAME, replyIdentifier(qr));
+        if (wasActive && !host.listGlobalSets().includes(PHONE_QR_SET_NAME)) {
+          host.addGlobalSet(PHONE_QR_SET_NAME, true);
+        }
+      }
+      return { state: "absent", active: false };
+    } catch (error) {
+      if (wasActive && host.getSetByName(PHONE_QR_SET_NAME) && !host.listGlobalSets().includes(PHONE_QR_SET_NAME)) {
+        try {
+          host.addGlobalSet(PHONE_QR_SET_NAME, true);
+        } catch (rollbackError) {
+          throw new Error(`${error.message}\uFF1B\u6062\u590D\u5168\u5C40\u542F\u7528\u72B6\u6001\u5931\u8D25\uFF1A${rollbackError.message}`);
+        }
+      }
+      throw error;
+    }
+  }
+
   // src/cropper.js
   function openCropper(imgDataUrl, { onCancel, onConfirm }) {
     const ratio = 330 / 450;
@@ -10934,128 +11149,12 @@ ${lines}`;
     };
   }
 
-  // src/quick-reply.js
-  var PHONE_QR_SET_NAME = "\u5929\u97F3\u5C0F\u7B3A \xB7 \u624B\u673A\u5165\u53E3";
-  var PHONE_QR_LABEL = "\u6253\u5F00\u5929\u97F3\u5C0F\u7B3A";
-  var PHONE_QR_AUTOMATION_ID = "tianyin-xiaojian.phone.open.v1";
-  var PHONE_QR_MESSAGE = "/phone";
-  var REQUIRED_METHODS = [
-    "getSetByName",
-    "createSet",
-    "deleteSet",
-    "createQuickReply",
-    "updateQuickReply",
-    "deleteQuickReply",
-    "addGlobalSet",
-    "removeGlobalSet",
-    "listGlobalSets"
-  ];
-  function requireApi(api = globalThis.quickReplyApi) {
-    if (!api || typeof api !== "object") throw new Error("\u5F53\u524D\u5BBF\u4E3B\u672A\u63D0\u4F9B Quick Reply API");
-    const missing = REQUIRED_METHODS.filter((name) => typeof api[name] !== "function");
-    if (missing.length) throw new Error(`\u5F53\u524D\u5BBF\u4E3B\u7684 Quick Reply API \u7F3A\u5C11\uFF1A${missing.join("\u3001")}`);
-    return api;
-  }
-  var qrList = (set) => Array.isArray(set?.qrList) ? set.qrList : [];
-  var ownedReplies = (set) => qrList(set).filter((qr) => qr?.automationId === PHONE_QR_AUTOMATION_ID);
-  function replyIdentifier(qr) {
-    if (!Number.isInteger(qr?.id)) {
-      throw new Error("\u5BBF\u4E3B Quick Reply \u7F3A\u5C11\u7A33\u5B9A\u6570\u5B57 ID\uFF0C\u65E0\u6CD5\u5B89\u5168\u4FEE\u6539\u6216\u5220\u9664");
-    }
-    return qr.id;
-  }
-  var desiredProps = {
-    message: PHONE_QR_MESSAGE,
-    title: "\u6253\u5F00\u5929\u97F3\u5C0F\u7B3A\u624B\u673A\u754C\u9762",
-    showLabel: true,
-    isHidden: false,
-    automationId: PHONE_QR_AUTOMATION_ID
-  };
-  function getPhoneQuickReplyStatus(api = globalThis.quickReplyApi) {
-    try {
-      const host = requireApi(api);
-      const set = host.getSetByName(PHONE_QR_SET_NAME);
-      if (!set) return { state: "absent", active: false };
-      const owned = ownedReplies(set);
-      if (!owned.length) return { state: "conflict", active: false };
-      const active = host.listGlobalSets().includes(PHONE_QR_SET_NAME);
-      const ready = owned.length === 1 && owned[0].label === PHONE_QR_LABEL && owned[0].message === PHONE_QR_MESSAGE && owned[0].title === desiredProps.title && owned[0].showLabel === desiredProps.showLabel && owned[0].isHidden === desiredProps.isHidden && active;
-      return { state: ready ? "ready" : "repairable", active, count: owned.length };
-    } catch (error) {
-      return { state: "unavailable", active: false, error: error.message };
-    }
-  }
-  async function ensurePhoneQuickReply(api = globalThis.quickReplyApi) {
-    const host = requireApi(api);
-    let set = host.getSetByName(PHONE_QR_SET_NAME);
-    let createdSet = false;
-    if (set && !ownedReplies(set).length) {
-      throw new Error("\u5B58\u5728\u540C\u540D Quick Reply \u96C6\u5408\uFF0C\u4F46\u65E0\u6CD5\u8BC1\u660E\u5C5E\u4E8E\u5929\u97F3\u5C0F\u7B3A\uFF1B\u5DF2\u505C\u6B62\uFF0C\u672A\u8986\u76D6\u7528\u6237\u6570\u636E");
-    }
-    if (!set) {
-      set = await host.createSet(PHONE_QR_SET_NAME, { disableSend: false, placeBeforeInput: false, injectInput: false });
-      createdSet = true;
-    }
-    try {
-      const owned = ownedReplies(set);
-      if (!owned.length) {
-        host.createQuickReply(PHONE_QR_SET_NAME, PHONE_QR_LABEL, desiredProps);
-      } else {
-        const primary = owned[0];
-        host.updateQuickReply(PHONE_QR_SET_NAME, replyIdentifier(primary), { ...desiredProps, newLabel: PHONE_QR_LABEL });
-        for (const duplicate of owned.slice(1)) host.deleteQuickReply(PHONE_QR_SET_NAME, replyIdentifier(duplicate));
-      }
-      if (!host.listGlobalSets().includes(PHONE_QR_SET_NAME)) host.addGlobalSet(PHONE_QR_SET_NAME, true);
-      return getPhoneQuickReplyStatus(host);
-    } catch (error) {
-      if (createdSet) {
-        try {
-          await host.deleteSet(PHONE_QR_SET_NAME);
-        } catch (rollbackError) {
-          throw new Error(`${error.message}\uFF1B\u65B0\u5EFA\u96C6\u5408\u56DE\u6EDA\u5931\u8D25\uFF1A${rollbackError.message}`);
-        }
-      }
-      throw error;
-    }
-  }
-  async function clearPhoneQuickReply(api = globalThis.quickReplyApi) {
-    const host = requireApi(api);
-    const set = host.getSetByName(PHONE_QR_SET_NAME);
-    if (!set) return { state: "absent", active: false };
-    const owned = ownedReplies(set);
-    if (!owned.length) throw new Error("\u540C\u540D Quick Reply \u96C6\u5408\u4E0D\u5C5E\u4E8E\u5929\u97F3\u5C0F\u7B3A\uFF0C\u672A\u6267\u884C\u6E05\u9664");
-    const wasActive = host.listGlobalSets().includes(PHONE_QR_SET_NAME);
-    const ownsWholeSet = qrList(set).length === owned.length;
-    if (wasActive) host.removeGlobalSet(PHONE_QR_SET_NAME);
-    try {
-      if (ownsWholeSet) {
-        await host.deleteSet(PHONE_QR_SET_NAME);
-        if (host.getSetByName(PHONE_QR_SET_NAME)) throw new Error("\u5BBF\u4E3B\u672A\u786E\u8BA4\u5220\u9664 Quick Reply \u96C6\u5408");
-      } else {
-        for (const qr of owned) host.deleteQuickReply(PHONE_QR_SET_NAME, replyIdentifier(qr));
-        if (wasActive && !host.listGlobalSets().includes(PHONE_QR_SET_NAME)) {
-          host.addGlobalSet(PHONE_QR_SET_NAME, true);
-        }
-      }
-      return { state: "absent", active: false };
-    } catch (error) {
-      if (wasActive && host.getSetByName(PHONE_QR_SET_NAME) && !host.listGlobalSets().includes(PHONE_QR_SET_NAME)) {
-        try {
-          host.addGlobalSet(PHONE_QR_SET_NAME, true);
-        } catch (rollbackError) {
-          throw new Error(`${error.message}\uFF1B\u6062\u590D\u5168\u5C40\u542F\u7528\u72B6\u6001\u5931\u8D25\uFF1A${rollbackError.message}`);
-        }
-      }
-      throw error;
-    }
-  }
-
   // src/settings-templates.js
   function renderSettingsHome() {
     return `
     <div class="pm-settings-home" role="list">
-      <button type="button" role="listitem" onclick="window.__pmShowConfig('api')"><b>API</b><span>\u9009\u62E9\u4E3B API \u6216\u914D\u7F6E\u72EC\u7ACB\u63A5\u53E3\u3001\u5BC6\u94A5\u4E0E\u6A21\u578B</span></button>
-      <button type="button" role="listitem" onclick="window.__pmShowConfig('quick-reply')"><b>\u5FEB\u6377\u56DE\u590D</b><span>\u5728\u5BBF\u4E3B\u4E2D\u521B\u5EFA\u6216\u6E05\u9664\u6267\u884C /phone \u7684 Quick Reply</span></button>
+      <button type="button" role="listitem" onclick="window.__pmShowConfig('api')"><b>API</b><span>\u4F7F\u7528\u9152\u9986\u914D\u7F6E\u7684API\u9884\u8BBE</span></button>
+      <button type="button" role="listitem" onclick="window.__pmShowConfig('quick-reply')"><b>\u624B\u673A\u5F00\u5173</b><span>\u521B\u5EFA\u6216\u6E05\u9664\u5F00\u5173\u5165\u53E3</span></button>
       <button type="button" role="listitem" onclick="window.__pmShowConfig('look')"><b>\u4E3B\u9898</b><span>\u65E5\u591C\u6A21\u5F0F\u3001\u6C14\u6CE1\u989C\u8272\u4E0E\u80CC\u666F\u56FE</span></button>
       <button type="button" role="listitem" onclick="window.__pmShowConfig('backup')"><b>\u5907\u4EFD</b><span>\u5BFC\u51FA\u3001\u5BFC\u5165\u6216\u5B89\u5168\u6E05\u7406\u63D2\u4EF6\u6570\u636E</span></button>
       <button type="button" role="listitem" onclick="window.__pmShowConfig('budget')"><b>\u4E0A\u4E0B\u6587\u9884\u7B97</b><span>\u63A7\u5236\u624B\u673A\u4F1A\u8BDD\u4E0E\u793E\u533A\u5199\u5165\u4E3B\u63D0\u793A\u8BCD\u7684\u989D\u5EA6</span></button>
@@ -11070,7 +11169,7 @@ ${lines}`;
           <div id="pm-mode-main" class="pm-mode-opt ${!useIndependent ? "pm-mode-active" : ""}" onclick="window.__pmSetMode(false)">\u4E3B API</div>
           <div id="pm-mode-indep" class="pm-mode-opt ${useIndependent ? "pm-mode-active" : ""}" onclick="window.__pmSetMode(true)">\u72EC\u7ACB API</div>
         </div>
-        <div id="pm-mode-tip" class="pm-cfg-tip" style="text-align:left;padding:6px 2px 0;">${useIndependent ? "\u72EC\u7ACB API \u5FC5\u987B\u586B\u5199\u5730\u5740\u3001\u5BC6\u94A5\u548C\u6A21\u578B" : "\u4E3B API \u4F7F\u7528\u5BBF\u4E3B\u5F53\u524D\u9009\u62E9\u7684\u9884\u8BBE\u4E0E\u63A5\u53E3"}</div>
+        <div id="pm-mode-tip" class="pm-cfg-tip" style="text-align:left;padding:6px 2px 0;">${useIndependent ? "\u72EC\u7ACB API \u5FC5\u987B\u586B\u5199\u5730\u5740\u3001\u5BC6\u94A5\u548C\u6A21\u578B" : "\u4F7F\u7528\u9152\u9986\u914D\u7F6E\u7684API\u9884\u8BBE"}</div>
       </div>
       <div id="pm-indep-profile-fields" class="pm-independent-api-fields" ${useIndependent ? "" : "hidden"} style="padding:6px 14px 4px;border-top:1px solid #f0f0f0;">
         <div class="pm-cfg-label" style="margin:8px 0 6px;">\u5DF2\u4FDD\u5B58\u6863\u6848</div>
@@ -11087,9 +11186,9 @@ ${lines}`;
           <button id="pm-model-arrow" type="button" onclick="window.__pmShowModelPicker()">\u25BC</button>
         </div>
         <div id="pm-api-status" class="pm-cfg-tip" style="font-weight:bold;">\u6D4B\u8BD5\u8FDE\u63A5\u4E0D\u4F1A\u8986\u76D6\u5F53\u524D\u914D\u7F6E\uFF0C\u70B9\u51FB\u4FDD\u5B58\u540E\u751F\u6548</div>
-        <div style="display:flex;gap:6px;margin-top:4px;">
-          <button onclick="window.__pmTestApi()" style="flex:1;background:#ff9500;color:#fff;border:none;border-radius:10px;padding:9px;font-size:12px;cursor:pointer;font-weight:600;">\u62C9\u53D6\u6A21\u578B</button>
-          <button onclick="window.__pmTestModel()" style="flex:1;background:#5856d6;color:#fff;border:none;border-radius:10px;padding:9px;font-size:12px;cursor:pointer;font-weight:600;">\u6D4B\u8BD5 API</button>
+        <div class="pm-action-row">
+          <button class="pm-action-button" onclick="window.__pmTestApi()">\u62C9\u53D6\u6A21\u578B</button>
+          <button class="pm-action-button" onclick="window.__pmTestModel()">\u6D4B\u8BD5 API</button>
         </div>
       </div>
       <div style="height:12px;"></div>
@@ -11097,14 +11196,14 @@ ${lines}`;
   }
   function renderQuickReplySettings(status) {
     const descriptions = {
-      ready: "\u5DF2\u521B\u5EFA\u5E76\u542F\u7528\u3002\u70B9\u51FB\u5FEB\u6377\u56DE\u590D\u4F1A\u6267\u884C /phone\u3002",
-      repairable: "\u68C0\u6D4B\u5230\u5929\u97F3\u5C0F\u7B3A\u5FEB\u6377\u56DE\u590D\uFF0C\u4F46\u914D\u7F6E\u6216\u542F\u7528\u72B6\u6001\u9700\u8981\u4FEE\u590D\u3002",
+      ready: "\u624B\u673A\u5F00\u5173\u5165\u53E3\u5DF2\u521B\u5EFA\u5E76\u542F\u7528\uFF0C\u70B9\u51FB\u201C\u5929\u97F3\u201D\u5373\u53EF\u6253\u5F00\u624B\u673A\u3002",
+      repairable: "\u68C0\u6D4B\u5230\u624B\u673A\u5F00\u5173\u5165\u53E3\uFF0C\u4F46\u914D\u7F6E\u6216\u542F\u7528\u72B6\u6001\u9700\u8981\u4FEE\u590D\u3002",
       conflict: "\u5B58\u5728\u540C\u540D\u96C6\u5408\uFF0C\u4F46\u65E0\u6CD5\u8BC1\u660E\u5C5E\u4E8E\u5929\u97F3\u5C0F\u7B3A\u3002\u4E3A\u4FDD\u62A4\u7528\u6237\u6570\u636E\uFF0C\u7981\u6B62\u8986\u76D6\u3002",
-      absent: "\u5C1A\u672A\u521B\u5EFA\u5929\u97F3\u5C0F\u7B3A\u5FEB\u6377\u56DE\u590D\u3002",
+      absent: "\u5C1A\u672A\u521B\u5EFA\u624B\u673A\u5F00\u5173\u5165\u53E3\u3002",
       unavailable: status.error || "\u5F53\u524D\u5BBF\u4E3B\u672A\u63D0\u4F9B\u53EF\u7528\u7684 Quick Reply API\u3002"
     };
     return `<div class="pm-settings-page pm-quick-reply-settings">
-      <section><b>\u6253\u5F00\u5929\u97F3\u5C0F\u7B3A</b><p>\u521B\u5EFA\u4E00\u4E2A\u7531\u672C\u6269\u5C55\u7BA1\u7406\u3001\u6267\u884C <code>/phone</code> \u7684 SillyTavern Quick Reply\u3002\u4E0D\u4F1A\u8BFB\u53D6\u6216\u6539\u5199\u5BBF\u4E3B\u79C1\u6709\u5B58\u50A8\u3002</p></section>
+      <section><b>\u624B\u673A\u5F00\u5173</b><p>\u521B\u5EFA\u6216\u6E05\u9664\u540D\u4E3A\u201C\u5929\u97F3\u201D\u7684\u5F00\u5173\u5165\u53E3\uFF0C\u70B9\u51FB\u540E\u6267\u884C <code>/phone</code>\u3002</p></section>
       <div id="pm-quick-reply-status" class="pm-cfg-tip" data-state="${status.state}" role="status">${descriptions[status.state] || descriptions.unavailable}</div>
       <div class="pm-quick-reply-actions">
         <button type="button" onclick="window.__pmEnsurePhoneQuickReply()">${status.state === "ready" ? "\u68C0\u67E5\u5E76\u4FEE\u590D" : "\u521B\u5EFA\u5FEB\u6377\u56DE\u590D"}</button>
@@ -11261,9 +11360,9 @@ ${lines}`;
     <div class="pm-settings-page">
       <div style="padding:12px 16px 12px;border-top:1px solid #f0f0f0;">
         <div class="pm-cfg-label" style="margin-bottom:10px;">\u6570\u636E\u5907\u4EFD</div>
-        <div style="display:flex;gap:6px;">
-          <button onclick="window.__pmExportData()" style="flex:1;background:#34c759;color:#fff;border:none;border-radius:10px;padding:10px;font-size:13px;cursor:pointer;font-weight:600;">\u5BFC\u51FA\u5907\u4EFD</button>
-          <button onclick="document.getElementById('pm-import-file').click()" style="flex:1;background:#5856d6;color:#fff;border:none;border-radius:10px;padding:10px;font-size:13px;cursor:pointer;font-weight:600;">\u5BFC\u5165\u5907\u4EFD</button>
+        <div class="pm-action-row">
+          <button class="pm-action-button is-success" onclick="window.__pmExportData()">\u5BFC\u51FA\u5907\u4EFD</button>
+          <button class="pm-action-button is-accent" onclick="document.getElementById('pm-import-file').click()">\u5BFC\u5165\u5907\u4EFD</button>
           <input id="pm-import-file" type="file" accept=".json" onchange="window.__pmImportData(this)" hidden>
         </div>
         <div class="pm-cfg-tip" style="text-align:left;margin-top:6px;color:#ff9500;">\u6CE8\u610F\uFF1A\u5BFC\u5165\u4F1A\u8986\u76D6\u5F53\u524D\u6240\u6709\u8054\u7CFB\u4EBA\u3001\u8BB0\u5F55\u3001\u793E\u533A\u4E0E\u9875\u9762\u6062\u590D\u72B6\u6001</div>
@@ -11271,7 +11370,7 @@ ${lines}`;
       <div style="padding:12px 16px;border-top:1px solid #f0f0f0;">
         <div class="pm-cfg-label" style="margin-bottom:6px;color:#ff3b30;">\u5E94\u7528\u5185\u5B89\u5168\u6E05\u7406</div>
         <div class="pm-cfg-tip" style="text-align:left;margin-bottom:8px;">\u4EC5\u5220\u9664\u5929\u97F3\u5C0F\u7B3A\u62E5\u6709\u7684\u6570\u636E\uFF0C\u4E0D\u89E6\u78B0\u5BBF\u4E3B\u6216\u5176\u4ED6\u6269\u5C55\u3002\u5EFA\u8BAE\u5148\u5BFC\u51FA\u5907\u4EFD\u3002</div>
-        <button type="button" onclick="window.__pmClearAllData()" style="width:100%;background:#ff3b30;color:#fff;border:none;border-radius:10px;padding:10px;font-size:13px;cursor:pointer;font-weight:600;">\u6E05\u7406\u5168\u90E8\u5929\u97F3\u5C0F\u7B3A\u6570\u636E</button>
+        <button type="button" class="pm-action-button is-danger" onclick="window.__pmClearAllData()" style="width:100%">\u6E05\u7406\u5168\u90E8\u5929\u97F3\u5C0F\u7B3A\u6570\u636E</button>
       </div>
       <div style="height:12px;"></div>
     </div>`;
@@ -11279,7 +11378,7 @@ ${lines}`;
   function renderSettingsModal({ title, content, footer = "", showBack = true }) {
     return `
 <div class="pm-modal pm-modal-wide" style="height: 560px;">
-  <div class="pm-modal-header"><span>${showBack ? `<button type="button" onclick="window.__pmShowConfig('home')" class="pm-modal-close">\u8BBE\u7F6E</button>` : ""}</span><b>${title}</b><button type="button" onclick="window.__pmCloseOverlay()" class="pm-modal-close" title="\u5173\u95ED" aria-label="\u5173\u95ED">${CLOSE_ICON_SVG}</button></div>
+  <div class="pm-modal-header"><span>${showBack ? `<button type="button" onclick="window.__pmShowConfig('home')" class="pm-modal-close">\u8FD4\u56DE</button>` : ""}</span><b>${title}</b><button type="button" onclick="window.__pmCloseOverlay()" class="pm-modal-close" title="\u5173\u95ED" aria-label="\u5173\u95ED">${CLOSE_ICON_SVG}</button></div>
   <div class="pm-modal-scroll">${content}</div>
   ${footer}
 </div>`;
@@ -11289,7 +11388,7 @@ ${lines}`;
   function installQuickReplySettings({ makeOverlay, addNote }) {
     const showPage = () => {
       const status = getPhoneQuickReplyStatus(globalThis.quickReplyApi);
-      makeOverlay(renderSettingsModal({ title: "\u5FEB\u6377\u56DE\u590D", content: renderQuickReplySettings(status) }));
+      makeOverlay(renderSettingsModal({ title: "\u624B\u673A\u5F00\u5173", content: renderQuickReplySettings(status) }));
     };
     const runAction = async (operation, successMessage) => {
       const status = document.getElementById("pm-quick-reply-status");
@@ -11322,11 +11421,11 @@ ${lines}`;
     };
     window.__pmEnsurePhoneQuickReply = () => runAction(
       ensurePhoneQuickReply,
-      "\u5DF2\u5411\u5BBF\u4E3B\u63D0\u4EA4\u5929\u97F3\u5C0F\u7B3A Quick Reply \u914D\u7F6E"
+      "\u5DF2\u521B\u5EFA\u624B\u673A\u5F00\u5173\u5165\u53E3\u201C\u5929\u97F3\u201D"
     );
     window.__pmClearPhoneQuickReply = () => runAction(
       clearPhoneQuickReply,
-      "\u5DF2\u6E05\u9664\u5929\u97F3\u5C0F\u7B3A Quick Reply"
+      "\u5DF2\u6E05\u9664\u624B\u673A\u5F00\u5173\u5165\u53E3"
     );
     return { showPage };
   }
@@ -11794,7 +11893,7 @@ ${lines}`;
     const quickReplySettings = installQuickReplySettings({ makeOverlay, addNote });
     const apiDraftMode = createApiDraftMode();
     let backgroundMutation = Promise.resolve();
-    const injectionFailure = (result, phase) => {
+    const injectionFailure2 = (result, phase) => {
       const failedWrites = Number.isInteger(result?.failedWrites) && result.failedWrites > 0 ? result.failedWrites : 0;
       const failedKeys = Array.isArray(result?.failedKeys) ? result.failedKeys : [];
       if (!failedWrites && !failedKeys.length) return null;
@@ -11962,7 +12061,7 @@ ${error.message}`);
           if (err.backupPhase === "rolled-back" || err.backupPhase === "rollback-failed") {
             try {
               const recoveryResult = await applyBidirectionalInjection();
-              recoveryInjectionError = injectionFailure(recoveryResult, "\u6062\u590D\u539F\u6570\u636E\u540E\u7684\u6CE8\u5165\u5237\u65B0\u5931\u8D25");
+              recoveryInjectionError = injectionFailure2(recoveryResult, "\u6062\u590D\u539F\u6570\u636E\u540E\u7684\u6CE8\u5165\u5237\u65B0\u5931\u8D25");
             } catch (error) {
               recoveryInjectionError = error;
             }
@@ -11990,7 +12089,7 @@ ${err.message}`);
         let postImportError = null;
         try {
           const injectionResult = await applyBidirectionalInjection();
-          postImportError = injectionFailure(injectionResult, "\u5BFC\u5165\u540E\u7684\u6CE8\u5165\u5237\u65B0\u5931\u8D25");
+          postImportError = injectionFailure2(injectionResult, "\u5BFC\u5165\u540E\u7684\u6CE8\u5165\u5237\u65B0\u5931\u8D25");
         } catch (error) {
           postImportError = error;
         }
@@ -12082,7 +12181,7 @@ ${error.message}`);
           return [`<label class="pm-cfg-label pm-check-setting"><span>${escapeHtml(scene.title)}</span><div class="pm-custom-check pm-budget-scene ${selected.has(sceneId) ? "is-checked" : ""}" role="checkbox" tabindex="0" aria-checked="${selected.has(sceneId)}" data-value="${escapeAttr(sceneId)}" onclick="this.classList.toggle('is-checked');this.setAttribute('aria-checked',String(this.classList.contains('is-checked')))" onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();this.click()}"></div></label>`];
         }).join("") : "";
         const content2 = renderBudgetSettings({ config, sceneOptions });
-        const footer = '<div class="pm-modal-add" style="display:flex;gap:8px;"><button onclick="window.__pmResetBudgetConfig()" style="flex:1;padding:10px;border:none;border-radius:10px;cursor:pointer;">\u6062\u590D\u9ED8\u8BA4</button><button onclick="window.__pmSaveBudgetConfig()" style="flex:2;background:#007aff;color:#fff;border:none;border-radius:10px;padding:10px;cursor:pointer;font-weight:600;">\u4FDD\u5B58\u4E0A\u4E0B\u6587\u9884\u7B97</button></div>';
+        const footer = '<div class="pm-modal-add"><button class="pm-action-button is-secondary" onclick="window.__pmResetBudgetConfig()" style="flex:1">\u6062\u590D\u9ED8\u8BA4</button><button class="pm-action-button" onclick="window.__pmSaveBudgetConfig()" style="flex:2">\u4FDD\u5B58\u4E0A\u4E0B\u6587\u9884\u7B97</button></div>';
         makeOverlay(renderSettingsModal({ title: "\u4E0A\u4E0B\u6587\u9884\u7B97", content: content2, footer }));
         return;
       }
@@ -12100,7 +12199,7 @@ ${error.message}`);
           useIndependent: apiDraftMode.current(),
           profilesHtml
         });
-        const footer = '<div class="pm-modal-add"><button onclick="window.__pmSaveConfig()" style="width:100%;background:#007aff;color:#fff;border:none;border-radius:10px;padding:10px;font-size:13px;cursor:pointer;font-weight:600;">\u4FDD\u5B58 API \u8BBE\u7F6E</button></div>';
+        const footer = '<div class="pm-modal-add"><button class="pm-action-button" onclick="window.__pmSaveConfig()" style="width:100%">\u4FDD\u5B58 API \u8BBE\u7F6E</button></div>';
         makeOverlay(renderSettingsModal({ title: "API \u8BBE\u7F6E", content: content2, footer }));
         return;
       }
@@ -12435,5 +12534,8 @@ ${error.message}`);
     installContactGenerator(state, deps);
     installPhoneChatPoke(state, deps);
     installPhoneLifecycle(state, deps);
+    ensureInitialPhoneQuickReply().catch((error) => {
+      console.warn("[phone-mode] \u9996\u6B21\u521B\u5EFA\u624B\u673A\u5165\u53E3\u5931\u8D25\uFF0C\u5C06\u5728\u4E0B\u6B21\u52A0\u8F7D\u65F6\u91CD\u8BD5", error);
+    });
   })();
 })();

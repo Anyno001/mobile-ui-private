@@ -3,8 +3,8 @@ import { CLOSE_ICON_SVG } from './icons.js';
 export function renderSettingsHome() {
     return `
     <div class="pm-settings-home" role="list">
-      <button type="button" role="listitem" onclick="window.__pmShowConfig('api')"><b>API</b><span>选择主 API 或配置独立接口、密钥与模型</span></button>
-      <button type="button" role="listitem" onclick="window.__pmShowConfig('quick-reply')"><b>快捷回复</b><span>在宿主中创建或清除执行 /phone 的 Quick Reply</span></button>
+      <button type="button" role="listitem" onclick="window.__pmShowConfig('api')"><b>API</b><span>使用酒馆配置的API预设</span></button>
+      <button type="button" role="listitem" onclick="window.__pmShowConfig('quick-reply')"><b>手机开关</b><span>创建或清除开关入口</span></button>
       <button type="button" role="listitem" onclick="window.__pmShowConfig('look')"><b>主题</b><span>日夜模式、气泡颜色与背景图</span></button>
       <button type="button" role="listitem" onclick="window.__pmShowConfig('backup')"><b>备份</b><span>导出、导入或安全清理插件数据</span></button>
       <button type="button" role="listitem" onclick="window.__pmShowConfig('budget')"><b>上下文预算</b><span>控制手机会话与社区写入主提示词的额度</span></button>
@@ -20,7 +20,7 @@ export function renderApiSettings({ cfg, useIndependent, profilesHtml }) {
           <div id="pm-mode-main" class="pm-mode-opt ${!useIndependent ? 'pm-mode-active' : ''}" onclick="window.__pmSetMode(false)">主 API</div>
           <div id="pm-mode-indep" class="pm-mode-opt ${useIndependent ? 'pm-mode-active' : ''}" onclick="window.__pmSetMode(true)">独立 API</div>
         </div>
-        <div id="pm-mode-tip" class="pm-cfg-tip" style="text-align:left;padding:6px 2px 0;">${useIndependent ? '独立 API 必须填写地址、密钥和模型' : '主 API 使用宿主当前选择的预设与接口'}</div>
+        <div id="pm-mode-tip" class="pm-cfg-tip" style="text-align:left;padding:6px 2px 0;">${useIndependent ? '独立 API 必须填写地址、密钥和模型' : '使用酒馆配置的API预设'}</div>
       </div>
       <div id="pm-indep-profile-fields" class="pm-independent-api-fields" ${useIndependent ? '' : 'hidden'} style="padding:6px 14px 4px;border-top:1px solid #f0f0f0;">
         <div class="pm-cfg-label" style="margin:8px 0 6px;">已保存档案</div>
@@ -37,9 +37,9 @@ export function renderApiSettings({ cfg, useIndependent, profilesHtml }) {
           <button id="pm-model-arrow" type="button" onclick="window.__pmShowModelPicker()">▼</button>
         </div>
         <div id="pm-api-status" class="pm-cfg-tip" style="font-weight:bold;">测试连接不会覆盖当前配置，点击保存后生效</div>
-        <div style="display:flex;gap:6px;margin-top:4px;">
-          <button onclick="window.__pmTestApi()" style="flex:1;background:#ff9500;color:#fff;border:none;border-radius:10px;padding:9px;font-size:12px;cursor:pointer;font-weight:600;">拉取模型</button>
-          <button onclick="window.__pmTestModel()" style="flex:1;background:#5856d6;color:#fff;border:none;border-radius:10px;padding:9px;font-size:12px;cursor:pointer;font-weight:600;">测试 API</button>
+        <div class="pm-action-row">
+          <button class="pm-action-button" onclick="window.__pmTestApi()">拉取模型</button>
+          <button class="pm-action-button" onclick="window.__pmTestModel()">测试 API</button>
         </div>
       </div>
       <div style="height:12px;"></div>
@@ -48,14 +48,14 @@ export function renderApiSettings({ cfg, useIndependent, profilesHtml }) {
 
 export function renderQuickReplySettings(status) {
     const descriptions = {
-        ready: '已创建并启用。点击快捷回复会执行 /phone。',
-        repairable: '检测到天音小笺快捷回复，但配置或启用状态需要修复。',
+        ready: '手机开关入口已创建并启用，点击“天音”即可打开手机。',
+        repairable: '检测到手机开关入口，但配置或启用状态需要修复。',
         conflict: '存在同名集合，但无法证明属于天音小笺。为保护用户数据，禁止覆盖。',
-        absent: '尚未创建天音小笺快捷回复。',
+        absent: '尚未创建手机开关入口。',
         unavailable: status.error || '当前宿主未提供可用的 Quick Reply API。',
     };
     return `<div class="pm-settings-page pm-quick-reply-settings">
-      <section><b>打开天音小笺</b><p>创建一个由本扩展管理、执行 <code>/phone</code> 的 SillyTavern Quick Reply。不会读取或改写宿主私有存储。</p></section>
+      <section><b>手机开关</b><p>创建或清除名为“天音”的开关入口，点击后执行 <code>/phone</code>。</p></section>
       <div id="pm-quick-reply-status" class="pm-cfg-tip" data-state="${status.state}" role="status">${descriptions[status.state] || descriptions.unavailable}</div>
       <div class="pm-quick-reply-actions">
         <button type="button" onclick="window.__pmEnsurePhoneQuickReply()">${status.state === 'ready' ? '检查并修复' : '创建快捷回复'}</button>
@@ -214,9 +214,9 @@ export function renderBackupSettings() {
     <div class="pm-settings-page">
       <div style="padding:12px 16px 12px;border-top:1px solid #f0f0f0;">
         <div class="pm-cfg-label" style="margin-bottom:10px;">数据备份</div>
-        <div style="display:flex;gap:6px;">
-          <button onclick="window.__pmExportData()" style="flex:1;background:#34c759;color:#fff;border:none;border-radius:10px;padding:10px;font-size:13px;cursor:pointer;font-weight:600;">导出备份</button>
-          <button onclick="document.getElementById('pm-import-file').click()" style="flex:1;background:#5856d6;color:#fff;border:none;border-radius:10px;padding:10px;font-size:13px;cursor:pointer;font-weight:600;">导入备份</button>
+        <div class="pm-action-row">
+          <button class="pm-action-button is-success" onclick="window.__pmExportData()">导出备份</button>
+          <button class="pm-action-button is-accent" onclick="document.getElementById('pm-import-file').click()">导入备份</button>
           <input id="pm-import-file" type="file" accept=".json" onchange="window.__pmImportData(this)" hidden>
         </div>
         <div class="pm-cfg-tip" style="text-align:left;margin-top:6px;color:#ff9500;">注意：导入会覆盖当前所有联系人、记录、社区与页面恢复状态</div>
@@ -224,7 +224,7 @@ export function renderBackupSettings() {
       <div style="padding:12px 16px;border-top:1px solid #f0f0f0;">
         <div class="pm-cfg-label" style="margin-bottom:6px;color:#ff3b30;">应用内安全清理</div>
         <div class="pm-cfg-tip" style="text-align:left;margin-bottom:8px;">仅删除天音小笺拥有的数据，不触碰宿主或其他扩展。建议先导出备份。</div>
-        <button type="button" onclick="window.__pmClearAllData()" style="width:100%;background:#ff3b30;color:#fff;border:none;border-radius:10px;padding:10px;font-size:13px;cursor:pointer;font-weight:600;">清理全部天音小笺数据</button>
+        <button type="button" class="pm-action-button is-danger" onclick="window.__pmClearAllData()" style="width:100%">清理全部天音小笺数据</button>
       </div>
       <div style="height:12px;"></div>
     </div>`;
@@ -233,7 +233,7 @@ export function renderBackupSettings() {
 export function renderSettingsModal({ title, content, footer = '', showBack = true }) {
     return `
 <div class="pm-modal pm-modal-wide" style="height: 560px;">
-  <div class="pm-modal-header"><span>${showBack ? '<button type="button" onclick="window.__pmShowConfig(\'home\')" class="pm-modal-close">设置</button>' : ''}</span><b>${title}</b><button type="button" onclick="window.__pmCloseOverlay()" class="pm-modal-close" title="关闭" aria-label="关闭">${CLOSE_ICON_SVG}</button></div>
+  <div class="pm-modal-header"><span>${showBack ? '<button type="button" onclick="window.__pmShowConfig(\'home\')" class="pm-modal-close">返回</button>' : ''}</span><b>${title}</b><button type="button" onclick="window.__pmCloseOverlay()" class="pm-modal-close" title="关闭" aria-label="关闭">${CLOSE_ICON_SVG}</button></div>
   <div class="pm-modal-scroll">${content}</div>
   ${footer}
 </div>`;

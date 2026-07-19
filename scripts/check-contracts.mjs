@@ -67,6 +67,58 @@ function walk(node, visit) {
   }
 }
 
+function inspectModule(code) {
+  const ast = parseJavaScript(code, 'module');
+  const imports = new Map();
+  const exports = new Set();
+  const declarations = new Set();
+  const functionDefinitions = new Set();
+  const calls = new Set();
+  for (const statement of ast.body) {
+    if (statement.type === 'ImportDeclaration') {
+      const names = new Set(statement.specifiers.map(specifier => specifier.imported?.name || specifier.local?.name).filter(Boolean));
+      imports.set(statement.source.value, names);
+    }
+    if (statement.type === 'ExportNamedDeclaration') {
+      if (statement.declaration?.type === 'FunctionDeclaration' && statement.declaration.id?.name) exports.add(statement.declaration.id.name);
+      if (statement.declaration?.type === 'VariableDeclaration') {
+        for (const declarator of statement.declaration.declarations) {
+          for (const name of patternNames(declarator.id)) exports.add(name);
+        }
+      }
+      for (const specifier of statement.specifiers || []) exports.add(specifier.exported?.name);
+    }
+  }
+  walk(ast, node => {
+    if (node.type === 'FunctionDeclaration' && node.id?.name) {
+      declarations.add(node.id.name);
+      functionDefinitions.add(node.id.name);
+    }
+    if (node.type === 'VariableDeclarator') {
+      for (const name of patternNames(node.id)) declarations.add(name);
+      if (['FunctionExpression', 'ArrowFunctionExpression'].includes(node.init?.type)) {
+        for (const name of patternNames(node.id)) functionDefinitions.add(name);
+      }
+    }
+    if (node.type === 'CallExpression' && node.callee?.type === 'Identifier') calls.add(node.callee.name);
+  });
+  return { imports, exports, declarations, functionDefinitions, calls };
+}
+
+function requireNamedImports(label, inspection, sourcePath, expectedNames) {
+  const imported = inspection.imports.get(sourcePath) || new Set();
+  for (const name of expectedNames) {
+    if (!imported.has(name)) failures.push(`${label}: must import ${name} from ${sourcePath}`);
+  }
+}
+
+function forbidNamedImports(label, inspection, sourcePath, forbiddenNames) {
+  const imported = inspection.imports.get(sourcePath) || new Set();
+  for (const name of forbiddenNames) {
+    if (imported.has(name)) failures.push(`${label}: must not import ${name} from ${sourcePath}`);
+  }
+}
+
 function memberName(node) {
   if (node?.type !== 'MemberExpression') return null;
   if (!node.computed && node.property.type === 'Identifier') return node.property.name;
@@ -348,16 +400,6 @@ function identifierValue(expected) {
 
 function memberValue(expected) {
   return node => memberPath(node) === expected;
-}
-
-function stylePromptTokenBranch(node) {
-  return node?.type === 'ConditionalExpression'
-    && node.test?.type === 'BinaryExpression'
-    && node.test.operator === '==='
-    && node.test.left?.type === 'Identifier' && node.test.left.name === 'kind'
-    && isString(node.test.right, 'style_prompt')
-    && literalValue(700)(node.consequent)
-    && literalValue(1400)(node.alternate);
 }
 
 const unknownStaticValue = () => ({ known: false });
@@ -951,13 +993,19 @@ for (const expected of [
   'pm-settings-home', "__pmShowConfig('api')", "__pmShowConfig('look')",
   "__pmShowConfig('backup')", "__pmShowConfig('budget')", "__pmShowConfig('quick-reply')",
   'pm-indep-profile-fields', 'pm-indep-config-fields', 'pm-independent-api-fields',
-  'renderQuickReplySettings', 'Quick Reply', '/phone',
+  'renderQuickReplySettings', 'Quick Reply', '/phone', '手机开关', '创建或清除开关入口',
+  '使用酒馆配置的API预设', '>返回</button>', 'pm-action-button is-danger',
 ]) requireText('settings-templates.js', sourceModuleByName.get('settings-templates.js')?.code || '', expected);
 for (const expected of [
-  'PHONE_QR_SET_NAME', 'PHONE_QR_AUTOMATION_ID', "PHONE_QR_MESSAGE = '/phone'",
+  'PHONE_QR_SET_NAME', 'PHONE_QR_AUTOMATION_ID', "PHONE_QR_MESSAGE = '/phone'", "PHONE_QR_LABEL = '天音'",
+  "PHONE_QR_AUTO_INIT_KEY = 'ST_SMS_PHONE_QR_INITIALIZED'", 'ensureInitialPhoneQuickReply',
   'createSet', 'deleteSet', 'createQuickReply', 'updateQuickReply', 'deleteQuickReply',
   'addGlobalSet', 'removeGlobalSet', 'listGlobalSets', '无法证明属于天音小笺',
 ]) requireText('quick-reply.js', sourceModuleByName.get('quick-reply.js')?.code || '', expected);
+for (const expected of ['ensureInitialPhoneQuickReply', 'ensureInitialPhoneQuickReply().catch']) {
+  requireText('main.js', sourceModuleByName.get('main.js')?.code || '', expected);
+}
+requireText('storage.js', sourceModuleByName.get('storage.js')?.code || '', "'ST_SMS_PHONE_QR_INITIALIZED'");
 for (const expected of ['__pmEnsurePhoneQuickReply', '__pmClearPhoneQuickReply', 'installQuickReplySettings']) requireText('settings-quick-reply.js', sourceModuleByName.get('settings-quick-reply.js')?.code || '', expected);
 requireText('runtime.js', sourceModuleByName.get('runtime.js')?.code || '', 'pendingMessages: new Map()');
 requireText('phone-chat.js', sourceModuleByName.get('phone-chat.js')?.code || '', 'removePendingBatch(runtime');
@@ -972,6 +1020,9 @@ const interactivePhoneCode = sourceModuleByName.get('interactive-scene-phone.js'
 const interactiveSchedulerCode = sourceModuleByName.get('interactive-scene-scheduler.js')?.code || '';
 const foundationCode = sourceModuleByName.get('phone-foundation.js')?.code || '';
 const calendarCode = sourceModuleByName.get('calendar.js')?.code || '';
+const calendarCommitCode = sourceModuleByName.get('calendar-commit.js')?.code || '';
+const calendarDomCode = sourceModuleByName.get('calendar-dom.js')?.code || '';
+const storageBackgroundCode = sourceModuleByName.get('storage-background.js')?.code || '';
 const calendarModelCode = sourceModuleByName.get('calendar-model.js')?.code || '';
 const calendarHolidayCode = sourceModuleByName.get('calendar-holiday.js')?.code || '';
 const calendarViewCode = sourceModuleByName.get('calendar-view.js')?.code || '';
@@ -985,22 +1036,67 @@ const settingsBackupCode = sourceModuleByName.get('settings-backup.js')?.code ||
 const contactAnalysis = analyze(contactCode, 'module');
 const calendarAnalysis = analyze(calendarCode, 'module');
 const interactiveAnalysis = analyze(interactiveCode, 'module');
+const calendarInspection = inspectModule(calendarCode);
+const calendarCommitInspection = inspectModule(calendarCommitCode);
+const calendarDomInspection = inspectModule(calendarDomCode);
+const storageInspection = inspectModule(sourceModuleByName.get('storage.js')?.code || '');
+const storageBackgroundInspection = inspectModule(storageBackgroundCode);
+requireNamedImports('calendar.js', calendarInspection, './calendar-commit.js', ['createCalendarCommitters']);
+requireNamedImports('calendar.js', calendarInspection, './calendar-dom.js', [
+  'activateCalendarEditorKind', 'calendarEditor', 'calendarOccasionEditor', 'clearCalendarEditor',
+  'clearCalendarOccasionEditor', 'fillCalendarEditor', 'fillCalendarOccasionEditor',
+]);
+if (!calendarInspection.calls.has('createCalendarCommitters')) failures.push('calendar.js: must call createCalendarCommitters');
+for (const name of ['commitScope', 'injectionFailure']) {
+  if (calendarInspection.functionDefinitions.has(name)) failures.push(`calendar.js: ${name} implementation must remain owned by calendar-commit.js`);
+}
+if (calendarInspection.declarations.has('scopeCommitQueue')) failures.push('calendar.js: scopeCommitQueue must remain owned by calendar-commit.js');
+for (const name of ['createCalendarCommitters']) {
+  if (!calendarCommitInspection.exports.has(name)) failures.push(`calendar-commit.js: missing exported ${name}`);
+}
+for (const name of ['calendarEditor', 'calendarOccasionEditor', 'activateCalendarEditorKind', 'clearCalendarEditor',
+  'clearCalendarOccasionEditor', 'fillCalendarEditor', 'fillCalendarOccasionEditor']) {
+  if (!calendarDomInspection.exports.has(name)) failures.push(`calendar-dom.js: missing exported ${name}`);
+}
+for (const name of ['loadBgSettings', 'saveBgGlobal', 'saveBgLocal', 'saveDesktopBg']) {
+  if (!storageBackgroundInspection.exports.has(name)) failures.push(`storage-background.js: missing exported ${name}`);
+  if (storageInspection.exports.has(name) || storageInspection.declarations.has(name)) failures.push(`storage.js: ${name} must remain owned by storage-background.js`);
+}
+requireNamedImports('storage-background.js', storageBackgroundInspection, './storage.js', [
+  'DESKTOP_BG_KEY', 'isBigData', 'pmIDBDel', 'pmIDBGet', 'pmIDBSet',
+]);
+if (storageInspection.imports.has('./storage-background.js')) failures.push('storage.js: must not import storage-background.js');
+const backgroundConsumerImports = new Map([
+  ['settings-ui.js', ['loadBgSettings', 'saveBgGlobal', 'saveBgLocal', 'saveDesktopBg']],
+  ['settings-backup.js', ['saveBgGlobal', 'saveBgLocal', 'saveDesktopBg']],
+  ['phone-lifecycle.js', ['loadBgSettings']],
+  ['phone-directory.js', ['saveBgLocal']],
+]);
+for (const [fileName, names] of backgroundConsumerImports) {
+  const code = sourceModuleByName.get(fileName)?.code || '';
+  const inspection = inspectModule(code);
+  requireNamedImports(fileName, inspection, './storage-background.js', names);
+  forbidNamedImports(fileName, inspection, './storage.js', names);
+}
+const behaviorInspection = inspectModule(await readFile(path.join(root, 'scripts', 'check-behavior.mjs'), 'utf8'));
+requireNamedImports('check-behavior.mjs', behaviorInspection, '../src/storage-background.js', [
+  'loadBgSettings', 'saveBgGlobal', 'saveBgLocal', 'saveDesktopBg',
+]);
+forbidNamedImports('check-behavior.mjs', behaviorInspection, '../src/storage.js', [
+  'loadBgSettings', 'saveBgGlobal', 'saveBgLocal', 'saveDesktopBg',
+]);
 verifyCallAiOptions('contact-generator.js: __pmAutoGenContacts', contactAnalysis.windowAssignmentSource.get('__pmAutoGenContacts') || '', [
-  { name: 'maxTokens', description: '600', matches: literalValue(600) },
+  { name: 'maxTokens', description: '65535', matches: literalValue(65535) },
   { name: 'isolated', description: 'true', matches: literalValue(true) },
   { name: 'signal', description: 'task.signal', matches: memberValue('task.signal') },
 ]);
 verifyCallAiOptions('calendar.js: generate', calendarAnalysis.functionSource.get('generate') || '', [
-  { name: 'maxTokens', description: '900', matches: literalValue(900) },
+  { name: 'maxTokens', description: '65535', matches: literalValue(65535) },
   { name: 'isolated', description: 'true', matches: literalValue(true) },
   { name: 'signal', description: 'task.signal', matches: memberValue('task.signal') },
 ]);
 verifyCallAiOptions('interactive-scenes.js: request', interactiveAnalysis.functionSource.get('request') || '', [
-  {
-    name: 'maxTokens',
-    description: "kind === 'style_prompt' ? 700 : 1400",
-    matches: stylePromptTokenBranch,
-  },
+  { name: 'maxTokens', description: '65535', matches: literalValue(65535) },
   { name: 'isolated', description: 'true', matches: literalValue(true) },
   { name: 'signal', description: 'controller.signal', matches: memberValue('controller.signal') },
 ]);
@@ -1096,12 +1192,21 @@ for (const expected of [
   'postImportError = injectionFailure', '数据已导入，但注入刷新失败',
 ]) requireText('settings-ui.js', settingsUiCodeForInteractive, expected);
 for (const expected of [
-  "tasks.begin(storageId, 'scan-context'", 'parentSignal', 'signal: task.signal', 'scopeCommitQueue',
-  'saveCalendar(previousStore)', 'calendarRollbackError', 'injectionError = injectionFailure',
-  'rollbackInjectionError = injectionFailure', 'error.injectionResult = result', 'calendarMonthCells',
+  "tasks.begin(storageId, 'scan-context'", 'parentSignal', 'signal: task.signal', 'calendarMonthCells',
   'isHolidayYearSupported', 'holidayYearRange', 'calendarGenerationCopy', 'calendar-holiday-country',
-  '该国家在当前年代无外部节假日数据源',
+  '该国家在当前年代无外部节假日数据源', 'EDIT_ICON_SVG', 'calendar-base-edit',
+  'showBaseDateEditor', 'pm-calendar-base-dialog', 'data-calendar-base-error',
+  'pm-calendar-header-side is-left', 'pm-calendar-header-side is-right',
 ]) requireText('calendar.js', calendarCode, expected);
+for (const expected of [
+  'scopeCommitQueue', 'saveCalendar(previousStore)', 'calendarRollbackError',
+  'injectionError = injectionFailure', 'rollbackInjectionError = injectionFailure',
+  'error.injectionResult = result', 'createCalendarCommitters',
+]) requireText('calendar-commit.js', calendarCommitCode, expected);
+for (const expected of [
+  'calendarEditor', 'calendarOccasionEditor', 'activateCalendarEditorKind',
+  'clearCalendarEditor', 'fillCalendarEditor', 'fillCalendarOccasionEditor',
+]) requireText('calendar-dom.js', calendarDomCode, expected);
 for (const expected of [
   'CALENDAR_YEAR_RANGE = Object.freeze({ min: 1, max: 9999 })', 'createCalendarDate',
   'date.setFullYear(numericYear)', 'shiftCalendarMonth', 'calendarDaysInMonth', 'calendarMonthCells',
@@ -1120,8 +1225,13 @@ for (const expected of [
   'aria-label="生日或纪念日名称"', 'aria-label="生日或纪念日备注"',
   'name="periodStartDay"', 'data-action="calendar-cycle-subject"',
   'data-action="calendar-editor-kind"', 'data-action="calendar-holiday-country"',
-  '该国家在当前年代无外部数据源', '不能作为避孕依据',
+  '该国家在当前年代无外部数据源', "follicular: '安全期'", "luteal: '安全期'",
 ]) requireText('calendar-view.js', calendarViewCode, expected);
+for (const forbidden of ['相对低风险期', '不能作为避孕依据', '预测仅供提醒', '不能用于避孕判断']) {
+  if (calendarViewCode.includes(forbidden) || calendarCode.includes(forbidden)) {
+    failures.push(`calendar modules: removed cycle copy remains: ${forbidden}`);
+  }
+}
 for (const expected of ["addEventListener('change'", "select[data-action]"]) {
   requireText('interactive-scene-phone.js', interactivePhoneActionsCode, expected);
 }
@@ -1270,13 +1380,15 @@ const makeOverlaySource = foundationAnalysis.functionSource.get('makeOverlay') |
 const applyThemeSource = foundationAnalysis.functionSource.get('applyTheme') || '';
 const setDarkModeSource = settingsAnalysis.windowAssignmentSource.get('__pmSetDarkMode') || '';
 const persistThemeMutationSource = settingsCode.match(/const persistThemeMutation\s*=\s*[\s\S]*?\n\s*};/)?.[0] || '';
-const overlayThemeSyncPattern = /getElementById\(['"]pm-overlay['"]\)[\s\S]*?setAttribute\(['"]data-theme['"]/;
+const overlayThemeDirectSyncPattern = /getElementById\(['"]pm-overlay['"]\)[\s\S]*?setAttribute\(['"]data-theme['"]/;
+const overlayThemeHelperSyncPattern = /const\s+applyProperties\s*=\s*element\s*=>[\s\S]*?element\.setAttribute\(['"]data-theme['"][\s\S]*?applyProperties\(document\.getElementById\(['"]pm-overlay['"]\)\)/;
 if (!/createElement\(['"]div['"]\)/.test(makeOverlaySource)
     || !/\.id\s*=\s*['"]pm-overlay['"]/.test(makeOverlaySource)
     || !/\.dataset\.theme\s*=/.test(makeOverlaySource)) {
   failures.push('phone-foundation.js: makeOverlay must initialize data-theme on the real pm-overlay root');
 }
-if (!overlayThemeSyncPattern.test(applyThemeSource)) {
+if (!overlayThemeDirectSyncPattern.test(applyThemeSource)
+    && !overlayThemeHelperSyncPattern.test(applyThemeSource)) {
   failures.push('phone-foundation.js: applyTheme must synchronize data-theme to an existing pm-overlay');
 }
 if (!setDarkModeSource.includes('persistThemeMutation') || !persistThemeMutationSource.includes('applyTheme()')) {
@@ -1403,7 +1515,15 @@ requireText('contact-generator.js', sourceModuleByName.get('contact-generator.js
 for (const expected of [
   "window.__pmShowAddContact = (resultMessage = '')", 'escapeHtml(resultMessage)',
   '<b>手动添加</b>', '<b>AI 生成</b>', 'id="pm-autogen-btn"',
+  'pm-contact-add-manual', 'pm-contact-add-primary', 'pm-contact-add-ai', 'pm-contact-add-icon',
 ]) requireText('phone-directory.js', directoryCode, expected);
+for (const expected of [
+  '.pm-action-button{', 'font-size:13px', 'background:var(--pm-r-bg,#007aff)',
+  '.pm-action-button.is-danger{background:#ff3b30;color:#fff}',
+  '.pm-contact-add-choices{', '.pm-calendar-base-dialog{width:290px}',
+  '.pm-calendar-view-switch button{display:grid;place-items:center;flex:1',
+  '.pm-calendar-header{position:sticky', 'grid-template-columns:72px minmax(0,1fr) 72px',
+]) requireText('style.css', css, expected);
 for (const expected of [
   'onclick="window.__pmCloseOverlay()"', 'pm-modal-add pm-contact-settings-actions',
   'onclick="window.__pmSaveContactConfig(',
@@ -1427,8 +1547,11 @@ for (const forbidden of ['calendarWeather', 'calendarCycles', 'getCalendarWeathe
 }
 for (const expected of [
   'class="pm-calendar-cycle-input" name="enabled" type="checkbox"',
-  'class="pm-custom-check" aria-hidden="true"', '易孕期和相对低风险期', '不能作为避孕依据',
+  'class="pm-custom-check" aria-hidden="true"', '安全期',
 ]) requireText('calendar-view.js', calendarViewCode, expected);
+for (const forbidden of ['pm-calendar-base-menu', 'TIME_ORIGIN_ICON_SVG']) {
+  if (calendarCode.includes(forbidden)) failures.push(`calendar.js: obsolete title control remains: ${forbidden}`);
+}
 const phoneInjectionCode = sourceModuleByName.get('phone-injection.js')?.code || '';
 const phoneInjectionAnalysis = analyze(phoneInjectionCode, 'module');
 for (const functionName of ['renderCalendarContextInjection', 'buildContextInjectionPrompts']) {
@@ -1545,7 +1668,7 @@ if (packageLock.version !== packageJson.version
     || packageLock.packages?.['']?.version !== packageJson.version) {
   failures.push('version: package-lock.json root versions must match package.json');
 }
-if (packageJson.version !== '1.2.2') failures.push('version: expected release version 1.2.2');
+if (packageJson.version !== '1.3.0') failures.push('version: expected release version 1.3.0');
 
 const readmeLines = readme.split(/\r?\n/);
 if (readmeLines[0] !== '# 天音小笺') failures.push('README: title must be 天音小笺');
@@ -1592,8 +1715,11 @@ for (const [label, contract] of [
 for (const expected of [
   'PLUGIN_LOCAL_STORAGE_KEYS', 'PLUGIN_IDB_STATIC_KEYS', 'PLUGIN_IDB_DYNAMIC_PREFIXES',
   'clearPluginData', 'pmIDBKeys', "Object.freeze(['ST_SMS_BG_LOCAL_'])", "DESKTOP_BG_KEY = 'ST_SMS_BG_DESKTOP'",
-  'saveDesktopBg', "label: '桌面背景'",
 ]) requireText('storage.js', sourceModuleByName.get('storage.js')?.code || '', expected);
+for (const expected of [
+  'loadBgSettings', 'saveBgGlobal', 'saveBgLocal', 'saveDesktopBg', "label: '桌面背景'",
+  'restoreBackgroundMutations', 'combinedBackgroundError', "LOCAL_BG_PREFIX = 'ST_SMS_BG_LOCAL_'",
+]) requireText('storage-background.js', storageBackgroundCode, expected);
 if ((sourceModuleByName.get('storage.js')?.code || '').includes("PLUGIN_LOCAL_STORAGE_KEYS = Object.freeze(['ST_SMS_MIGRATED_V3'")) {
   failures.push('storage.js: migration marker must not be cleared or legacy host histories can be reimported');
 }

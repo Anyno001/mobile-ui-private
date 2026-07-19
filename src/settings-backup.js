@@ -11,9 +11,10 @@ import {
 import { createEmptyWeatherStore, normalizeWeatherStore } from './calendar-weather.js';
 import { cloneEmojiLibrary } from './emoji-media.js';
 import { normalizeAmbientStatus, normalizeInteractiveStore, normalizePhoneUiState } from './interactive-scene-model.js';
+import { saveBgGlobal, saveBgLocal, saveDesktopBg } from './storage-background.js';
 import {
-    loadInteractiveScenes, loadPhoneUiState, saveBgGlobal, saveBgLocal, saveBidirectional,
-    saveCharacterBehavior, saveDesktopBg, saveEmojis, saveGroupMeta, saveHistoriesStrict, saveInteractiveScenes,
+    loadInteractiveScenes, loadPhoneUiState, saveBidirectional,
+    saveCharacterBehavior, saveEmojis, saveGroupMeta, saveHistoriesStrict, saveInteractiveScenes,
     savePhoneUiState, savePokeConfig, saveProfiles, saveTheme, saveWordyLimit,
 } from './storage.js';
 

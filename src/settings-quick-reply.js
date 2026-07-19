@@ -6,7 +6,7 @@ import { renderQuickReplySettings, renderSettingsModal } from './settings-templa
 export function installQuickReplySettings({ makeOverlay, addNote }) {
     const showPage = () => {
         const status = getPhoneQuickReplyStatus(globalThis.quickReplyApi);
-        makeOverlay(renderSettingsModal({ title: '快捷回复', content: renderQuickReplySettings(status) }));
+        makeOverlay(renderSettingsModal({ title: '手机开关', content: renderQuickReplySettings(status) }));
     };
     const runAction = async (operation, successMessage) => {
         const status = document.getElementById('pm-quick-reply-status');
@@ -35,11 +35,11 @@ export function installQuickReplySettings({ makeOverlay, addNote }) {
     };
     window.__pmEnsurePhoneQuickReply = () => runAction(
         ensurePhoneQuickReply,
-        '已向宿主提交天音小笺 Quick Reply 配置',
+        '已创建手机开关入口“天音”',
     );
     window.__pmClearPhoneQuickReply = () => runAction(
         clearPhoneQuickReply,
-        '已清除天音小笺 Quick Reply',
+        '已清除手机开关入口',
     );
     return { showPage };
 }

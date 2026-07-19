@@ -15,6 +15,7 @@ import { installPhoneControlCenter } from './phone-control-center.js';
 import { installPhoneDirectory } from './phone-directory.js';
 import { installPhoneFoundation } from './phone-foundation.js';
 import { installPhoneLifecycle } from './phone-lifecycle.js';
+import { ensureInitialPhoneQuickReply } from './quick-reply.js';
 import { createRuntimeState } from './runtime.js';
 import { installSettingsUi } from './settings-ui.js';
 import { saveBudgetConfig, saveEmojis } from './storage.js';
@@ -71,4 +72,7 @@ import { saveBudgetConfig, saveEmojis } from './storage.js';
     installContactGenerator(state, deps);
     installPhoneChatPoke(state, deps);
     installPhoneLifecycle(state, deps);
+    ensureInitialPhoneQuickReply().catch(error => {
+        console.warn('[phone-mode] 首次创建手机入口失败，将在下次加载时重试', error);
+    });
 })();

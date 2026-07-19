@@ -149,19 +149,22 @@ export function installPhoneFoundation(state, deps) {
     function applyTheme() {
         const t = window.__pmTheme || {}, p = THEME_PRESETS[t.preset] || THEME_PRESETS.default;
         const darkMode = t.darkMode || 'light';
-        document.getElementById('pm-overlay')?.setAttribute('data-theme', darkMode);
-        const desktopTitle = state.phoneWindow?.querySelector('.pm-desktop-toolbar span');
-        if (desktopTitle) desktopTitle.textContent = String(t.customTitle || '').trim() || '天音小笺';
-        const el = state.phoneWindow; if (!el) return;
         const rBg = t.customRight || p.right, lBg = t.customLeft || p.left;
         const rTxt = t.customRight ? contrastText(t.customRight) : p.rightText;
         const lTxt = t.customLeft ? contrastText(t.customLeft) : p.leftText;
         const border = t.borderColor || '#1a1a1a';
-        el.style.setProperty('--pm-r-bg', rBg); el.style.setProperty('--pm-l-bg', lBg);
-        el.style.setProperty('--pm-r-txt', rTxt); el.style.setProperty('--pm-l-txt', lTxt);
-        el.style.setProperty('--pm-border', border);
-        el.style.setProperty('--pm-frost', p.frost ? '1' : '0');
-        el.setAttribute('data-theme', darkMode);
+        const applyProperties = element => {
+            if (!element) return;
+            element.style.setProperty('--pm-r-bg', rBg); element.style.setProperty('--pm-l-bg', lBg);
+            element.style.setProperty('--pm-r-txt', rTxt); element.style.setProperty('--pm-l-txt', lTxt);
+            element.style.setProperty('--pm-border', border);
+            element.style.setProperty('--pm-frost', p.frost ? '1' : '0');
+            element.setAttribute('data-theme', darkMode);
+        };
+        applyProperties(document.getElementById('pm-overlay'));
+        applyProperties(state.phoneWindow);
+        const desktopTitle = state.phoneWindow?.querySelector('.pm-desktop-toolbar span');
+        if (desktopTitle) desktopTitle.textContent = String(t.customTitle || '').trim() || '天音小笺';
     }
 
     function applyBackground() {
@@ -483,6 +486,7 @@ export function installPhoneFoundation(state, deps) {
         ov.innerHTML = html;
         ov.addEventListener('click', e => { if (e.target === ov) closeOverlay('backdrop'); });
         document.body.appendChild(ov);
+        applyTheme();
         if (ov.showPopover) try { ov.showPopover(); } catch (e) {}
         return ov;
     }

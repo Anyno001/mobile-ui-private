@@ -210,7 +210,7 @@ export function installContactGenerator(state, deps) {
             const existingNames = [...directory.contacts, ...directory.groupNames];
             const { systemPrompt, userPrompt } = buildPrompts(context, existingNames);
             const raw = await callAI(systemPrompt, userPrompt, {
-                maxTokens: 600, isolated: true, signal: task.signal,
+                maxTokens: 65535, isolated: true, signal: task.signal,
             });
             if (!isGenerationTaskActive(task)) return;
             const parsed = parseGeneratedDirectory(raw);

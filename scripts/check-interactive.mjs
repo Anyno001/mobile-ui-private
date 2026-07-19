@@ -1241,7 +1241,7 @@ try {
         }),
         callAI: async (_system, _user, options) => {
             capturedAiCalls.push(options);
-            if (options.maxTokens === 700) {
+            if (capturedAiCalls.length === 1) {
                 return '{"version":1,"kind":"style_prompt","items":[{"title":"测试社区","prompt":"测试提示词"}]}';
             }
             return '{"version":1,"kind":"feed_batch","items":[{"author":"角色","content":"热场内容"}]}';
@@ -1262,7 +1262,7 @@ try {
     listeners.get('click')({ target: createButton });
     await installationActionComplete;
     assert.equal(capturedAiCalls.length, 2, `社区创建应依次触发 style/feed 两次 AI 请求；实际 ${capturedAiCalls.length}`);
-    assert.deepEqual(capturedAiCalls.map(options => options.maxTokens), [700, 1400]);
+    assert.deepEqual(capturedAiCalls.map(options => options.maxTokens), [65535, 65535]);
     for (const options of capturedAiCalls) {
         assert.equal(options.isolated, true, '社区真实安装层必须使用 isolated AI 请求');
         assert.ok(options.signal instanceof AbortSignal, '社区真实安装层必须传递 request controller signal');
