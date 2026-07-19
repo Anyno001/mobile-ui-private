@@ -2,7 +2,7 @@ import { POPOVER_SUPPORTED } from './constants.js';
 import { escapeHtml } from './ui.js';
 import {
     CLOSE_ICON_SVG, CONTROL_ICON_SVG, HOME_ICON_SVG,
-    POKE_ICON_SVG, SEND_ICON_SVG,
+    POKE_ICON_SVG, SEND_ICON_SVG, SIGNAL_ICON_SVG, WIFI_ICON_SVG,
 } from './icons.js';
 import { getPendingMessages } from './pending-messages.js';
 import { bindPressGesture } from './press-gesture.js';
@@ -67,6 +67,31 @@ export function createAmbientStatusController({
     return { setEnabled, stop, sync };
 }
 
+export function resetPhoneScaleForMinimize({
+    theme,
+    phoneWindow,
+    applyScale,
+    persistTheme,
+    notify,
+}) {
+    const previousScale = theme.phoneScale;
+    theme.phoneScale = 1;
+    applyScale(phoneWindow, 1);
+    let persisted = false;
+    try {
+        persisted = persistTheme() === true;
+    } catch (error) {
+        persisted = false;
+    }
+    if (persisted) return true;
+
+    theme.phoneScale = previousScale;
+    applyScale(phoneWindow, previousScale);
+    notify('手机尺寸保存失败：浏览器存储不可用。');
+    return false;
+}
+
+
 export function createPhonePageController({ getRoot, closeTransientUi = () => {} }) {
     const pages = new Set(['desktop', 'chat', 'community', 'calendar']);
     const show = page => {
@@ -85,14 +110,83 @@ export function createPhonePageController({ getRoot, closeTransientUi = () => {}
     return { current, show };
 }
 
+export function toggleMessageSelection({ checkbox, wrap, list }) {
+    const checked = checkbox.dataset.checked === '0' ? '1' : '0';
+    const ariaChecked = checked === '1' ? 'true' : 'false';
+    const historyIndex = wrap.dataset.historyIndex;
+    if (historyIndex === undefined || historyIndex === '') {
+        checkbox.dataset.checked = checked;
+        checkbox.setAttribute('aria-checked', ariaChecked);
+        return checked;
+    }
+    list.querySelectorAll(`.pm-select-wrap[data-history-index="${historyIndex}"] .pm-message-select-check`)
+        .forEach(peer => {
+            peer.dataset.checked = checked;
+            peer.setAttribute('aria-checked', ariaChecked);
+        });
+    return checked;
+}
+
+export function handleMessageSelectionKey(event, checkbox) {
+    if (event.key !== ' ' && event.key !== 'Enter') return false;
+    event.preventDefault();
+    checkbox.click();
+    return true;
+}
+
+export function deleteSelectedMessages({
+    state, refreshReplyCardAvailability, persistCurrentHistory, applyBidirectionalInjection,
+}) {
+    const list = state.phoneWindow?.querySelector('.pm-msg-list');
+    if (!list) return 0;
+    const toRemoveIndices = new Set();
+    list.querySelectorAll('.pm-select-wrap').forEach(wrap => {
+        const cb = wrap.querySelector('.pm-message-select-check');
+        if (cb?.dataset.checked === '1') {
+            const historyIndex = wrap.dataset.historyIndex;
+            if (historyIndex !== undefined && historyIndex !== '') toRemoveIndices.add(Number(historyIndex));
+        }
+    });
+    list.querySelectorAll('.pm-select-wrap').forEach(wrap => {
+        const historyIndex = wrap.dataset.historyIndex;
+        if (historyIndex !== undefined && historyIndex !== '' && toRemoveIndices.has(Number(historyIndex))) {
+            wrap.remove();
+        } else {
+            const bubble = wrap.querySelector('.pm-bubble, .pm-group-bubble-wrap, .pm-director');
+            if (bubble) wrap.parentNode.insertBefore(bubble, wrap);
+            wrap.remove();
+        }
+    });
+    if (toRemoveIndices.size > 0) {
+        state.conversationHistory = state.conversationHistory.filter((_, index) => !toRemoveIndices.has(index));
+        const sorted = [...toRemoveIndices].filter(Number.isInteger).sort((a, b) => a - b);
+        for (const node of list.querySelectorAll('[data-history-index]')) {
+            const previous = Number(node.dataset.historyIndex);
+            if (!Number.isInteger(previous) || toRemoveIndices.has(previous)) continue;
+            const shift = sorted.filter(index => index < previous).length;
+            node.dataset.historyIndex = String(previous - shift);
+        }
+        refreshReplyCardAvailability?.();
+        persistCurrentHistory();
+        applyBidirectionalInjection();
+    }
+    state.isSelectMode = false;
+    const confirmBar = state.phoneWindow?.querySelector('.pm-confirm-bar');
+    if (confirmBar) confirmBar.style.display = 'none';
+    return toRemoveIndices.size;
+}
+
 export function installPhoneLifecycle(state, deps) {
     const {
         runtime, getCtx, getStorageId, applyBidirectionalInjection, persistCurrentHistory,
         clearBidirectionalInjection,
-        applyBackground, applyTheme, bindIsland, migrateOldHistory, hookGenerationEvent,
+        applyBackground, applyTheme, applyPhoneScale, bindIsland, bindPhoneResize,
+        migrateOldHistory, hookGenerationEvent,
         invalidateGeneration, disarmAutoPoke, syncGenerationControls, closeOverlay, closeControlCenter,
+        refreshReplyCardAvailability,
     } = deps;
     let unbindSendGesture = null;
+    let unbindIsland = null, unbindPhoneResize = null;
     const pageController = createPhonePageController({ getRoot: () => state.phoneWindow, closeTransientUi: () => closeControlCenter?.() });
     window.__pmReturnToDesktop = () => deps.showPhoneDesktopPage?.();
     const ambientStatus = createAmbientStatusController({
@@ -131,24 +225,13 @@ export function installPhoneLifecycle(state, deps) {
                 const wrap = document.createElement('div'); wrap.className = 'pm-select-wrap';
                 const side = isDirector ? 'center' : (b.dataset.side || 'left');
                 wrap.style.cssText = 'display:flex;align-items:center;gap:8px;align-self:' + (side === 'right' ? 'flex-end' : side === 'center' ? 'center' : 'flex-start') + ';';
-                const cb = document.createElement('div'); cb.className = 'pm-custom-check'; cb.dataset.checked = '0';
+                const cb = document.createElement('div'); cb.className = 'pm-message-select-check'; cb.dataset.checked = '0';
                 cb.setAttribute('role', 'checkbox');
                 cb.setAttribute('aria-checked', 'false');
                 cb.tabIndex = 0;
-                cb.style.cssText = 'width:22px;height:22px;min-width:22px;min-height:22px;border-radius:50%;flex-shrink:0;cursor:pointer;';
-                cb.onclick = () => {
-                    const checked = cb.dataset.checked === '0' ? '1' : '0';
-                    const ariaChecked = checked === '1' ? 'true' : 'false';
-                    const historyIndex = wrap.dataset.historyIndex;
-                    if (historyIndex === undefined || historyIndex === '') {
-                        cb.dataset.checked = checked;
-                        cb.setAttribute('aria-checked', ariaChecked);
-                        return;
-                    }
-                    list.querySelectorAll(`.pm-select-wrap[data-history-index="${historyIndex}"] .pm-custom-check`)
-                        .forEach(peer => { peer.dataset.checked = checked; peer.setAttribute('aria-checked', ariaChecked); });
-                };
-                cb.onkeydown = event => { if (event.key === ' ' || event.key === 'Enter') { event.preventDefault(); cb.click(); } };
+                cb.style.cssText = 'width:22px;height:22px;min-width:22px;min-height:22px;flex-shrink:0;cursor:pointer;';
+                cb.onclick = () => toggleMessageSelection({ checkbox: cb, wrap, list });
+                cb.onkeydown = event => handleMessageSelectionKey(event, cb);
                 b.parentNode.insertBefore(wrap, b);
                 wrap.appendChild(cb); wrap.appendChild(b);
                 wrap.dataset.side = side; wrap.dataset.text = b.dataset.text || '';
@@ -166,46 +249,33 @@ export function installPhoneLifecycle(state, deps) {
     };
 
     window.__pmDeleteSelected = () => {
-        const list = state.phoneWindow?.querySelector('.pm-msg-list'); if (!list) return;
-        // 按 data-history-index 收集要删除的下标（精确，不依赖文本匹配）
-        const toRemoveIndices = new Set();
-        list.querySelectorAll('.pm-select-wrap').forEach(wrap => {
-            const cb = wrap.querySelector('.pm-custom-check');
-            if (cb?.dataset.checked === '1') {
-                const hi = wrap.dataset.historyIndex;
-                if (hi !== undefined && hi !== '') toRemoveIndices.add(Number(hi));
-            }
+        deleteSelectedMessages({
+            state, refreshReplyCardAvailability, persistCurrentHistory, applyBidirectionalInjection,
         });
-        list.querySelectorAll('.pm-select-wrap').forEach(wrap => {
-            const hi = wrap.dataset.historyIndex;
-            if (hi !== undefined && hi !== '' && toRemoveIndices.has(Number(hi))) {
-                wrap.remove();
-            } else {
-                const b = wrap.querySelector('.pm-bubble, .pm-group-bubble-wrap, .pm-director');
-                if (b) wrap.parentNode.insertBefore(b, wrap);
-                wrap.remove();
-            }
-        });
-        if (toRemoveIndices.size > 0) {
-            state.conversationHistory = state.conversationHistory.filter((_, i) => !toRemoveIndices.has(i));
-            persistCurrentHistory();
-            applyBidirectionalInjection();
-        }
-        state.isSelectMode = false;
-        const bar = state.phoneWindow?.querySelector('.pm-confirm-bar'); if (bar) bar.style.display = 'none';
     };
 
     window.__pmToggleMin = () => {
         closeControlCenter?.();
         state.isMinimized = !state.isMinimized;
         if (state.isMinimized) {
+            resetPhoneScaleForMinimize({
+                theme: window.__pmTheme,
+                phoneWindow: state.phoneWindow,
+                applyScale: applyPhoneScale,
+                persistTheme: saveTheme,
+                notify: message => alert(message),
+            });
             deps.cancelCommunityGeneration?.('phone-minimized');
             deps.cancelCalendarTasks?.('phone-minimized');
             disarmAutoPoke('phone-minimized');
         }
         state.phoneWindow.classList.toggle('is-min', state.isMinimized);
         state.phoneWindow.style.removeProperty('transform');
-        if (state.isMinimized) ambientStatus.stop(); else ambientStatus.sync();
+        if (state.isMinimized) ambientStatus.stop();
+        else {
+            applyPhoneScale(state.phoneWindow);
+            ambientStatus.sync();
+        }
     };
     window.__pmEnd = (force = false) => {
         // 修复：关闭前先把当前 state.conversationHistory 存档
@@ -226,8 +296,13 @@ export function installPhoneLifecycle(state, deps) {
         ambientStatus.stop();
         unbindSendGesture?.();
         unbindSendGesture = null;
+        unbindIsland?.();
+        unbindIsland = null;
+        unbindPhoneResize?.();
+        unbindPhoneResize = null;
         closeControlCenter?.();
         closeOverlay('phone-close');
+        deps.clearActiveQuote?.();
         if (state.phoneWindow) { try { state.phoneWindow.hidePopover?.(); } catch (e) {} state.phoneWindow.remove(); }
         state.phoneWindow = null; state.phoneActive = false; state.isMinimized = false; state.isSelectMode = false;
         state.activeStorageId = '';
@@ -283,7 +358,7 @@ export function installPhoneLifecycle(state, deps) {
 
         state.phoneWindow.innerHTML = `
 <div class="pm-island"></div>
-<div class="pm-status-bar" aria-label="设备本地状态" ${window.__pmTheme.ambientStatusEnabled === true ? '' : 'hidden'}><span class="pm-status-time"></span><span>本地</span></div>
+<div class="pm-status-bar" aria-label="设备本地状态" ${window.__pmTheme.ambientStatusEnabled === true ? '' : 'hidden'}><span class="pm-status-time"></span><span class="pm-status-local">本地<span class="pm-status-icons" aria-hidden="true">${SIGNAL_ICON_SVG}${WIFI_ICON_SVG}</span></span></div>
 <div class="pm-main-ui" data-page="chat">
   <section class="pm-phone-page pm-chat-page" data-phone-page="chat">
     <div class="pm-navbar">
@@ -302,6 +377,13 @@ export function installPhoneLifecycle(state, deps) {
       <button onclick="window.__pmToggleSelect()" class="pm-cancel-btn">取消</button>
     </div>
     <div class="pm-msg-list"></div>
+    <div class="pm-quote-preview" hidden>
+      <div class="pm-quote-preview-copy">
+        <span class="pm-quote-preview-sender"></span>
+        <span class="pm-quote-preview-text"></span>
+      </div>
+      <button type="button" class="pm-quote-preview-cancel" aria-label="取消引用">×</button>
+    </div>
     <div class="pm-input-bar">
       <button type="button" onclick="window.__pmShowControlCenter()" class="pm-expand-btn" title="快捷工具" aria-haspopup="menu" aria-expanded="false">${CONTROL_ICON_SVG}</button>
       <input class="pm-input" placeholder="长按发送会一次性提交消息">
@@ -311,8 +393,10 @@ export function installPhoneLifecycle(state, deps) {
   <section class="pm-phone-page pm-desktop-page" data-phone-page="desktop" hidden></section>
   <section class="pm-phone-page pm-community-page" data-phone-page="community" hidden></section>
   <section class="pm-phone-page pm-calendar-page" data-phone-page="calendar" hidden></section>
-</div>`;
+</div>
+<div class="pm-phone-resize-handle" role="separator" aria-label="调整手机窗口大小" aria-orientation="horizontal" title="拖动调整手机大小"></div>`;
         document.body.appendChild(state.phoneWindow);
+        applyPhoneScale(state.phoneWindow);
         window.__pmShowPhonePage = pageController.show;
         deps.bindPhonePageUi?.(state.phoneWindow);
         ambientStatus.sync();
@@ -320,6 +404,7 @@ export function installPhoneLifecycle(state, deps) {
         state.phoneActive = true;
         state.isMinimized = false;
         syncGenerationControls();
+        state.phoneWindow.querySelector('.pm-quote-preview-cancel')?.addEventListener('click', () => deps.clearActiveQuote?.());
         state.phoneWindow.querySelector('.pm-input').addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); window.__pmSend(); } });
         const sendButton = state.phoneWindow.querySelector('.pm-up-btn');
         unbindSendGesture = bindPressGesture(sendButton, {
@@ -342,12 +427,13 @@ export function installPhoneLifecycle(state, deps) {
                 }
             },
         });
-        bindIsland(state.phoneWindow, state.phoneWindow.querySelector('.pm-island'));
+        unbindIsland = bindIsland(state.phoneWindow, state.phoneWindow.querySelector('.pm-island'));
+        unbindPhoneResize = bindPhoneResize(state.phoneWindow, state.phoneWindow.querySelector('.pm-phone-resize-handle'));
         applyTheme(); applyBackground(); state.isGroupChat = false; state.groupMembers = []; state.groupColorMap = {}; state.groupDisplayName = ''; state.currentGroupKey = '';
 
 
         if (!runtime.firstOpen) {
-            window.__pmSwitch(defaultChar, undefined, undefined, { preservePage: true });
+            await deps.restorePhoneChat?.(defaultChar) || window.__pmSwitch(defaultChar, undefined, undefined, { preservePage: true });
             await deps.restorePhoneUi?.();
             applyBidirectionalInjection(); ensureVisibility();
         } else {
@@ -362,7 +448,7 @@ export function installPhoneLifecycle(state, deps) {
             Promise.all([historyLoad])
                 .then(async () => {
                     if (!state.phoneActive || state.phoneWindow !== openingWindow) return;
-                    window.__pmSwitch(defaultChar, undefined, undefined, { preservePage: true });
+                    await deps.restorePhoneChat?.(defaultChar) || window.__pmSwitch(defaultChar, undefined, undefined, { preservePage: true });
                     await deps.restorePhoneUi?.();
                     applyBidirectionalInjection(); ensureVisibility();
                 })

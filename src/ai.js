@@ -128,7 +128,6 @@ export function extractAiResponseContent(json) {
 export function createAiClient({
     getConfig,
     getContext,
-    getDefaultMaxTokens,
     fetchImpl,
 }) {
     const request = fetchImpl || ((...args) => globalThis.fetch(...args));
@@ -163,7 +162,6 @@ export function createAiClient({
     return async function callAI(systemPrompt, userPrompt, options = {}) {
         const cfg = getConfig() || {};
         const useIndependent = cfg.useIndependent === true;
-        const maxTokens = options.maxTokens || getDefaultMaxTokens();
         const signal = options.signal;
         throwIfAborted(signal);
 
@@ -186,7 +184,6 @@ export function createAiClient({
                     body: JSON.stringify({
                         model: cfg.model,
                         messages,
-                        max_tokens: maxTokens,
                         temperature: 1.2,
                         top_p: 0.95,
                         frequency_penalty: 0.3,
@@ -239,7 +236,6 @@ export function createAiClient({
             const result = await context.generateRaw({
                 prompt: userPrompt,
                 systemPrompt,
-                responseLength: maxTokens,
                 trimNames: false,
             });
             throwIfAborted(signal);
@@ -248,7 +244,7 @@ export function createAiClient({
         if (typeof context.generateQuietPrompt !== 'function') throw new Error('当前 SillyTavern 上下文缺少 generateQuietPrompt');
         const fullPrompt = systemPrompt ? `${systemPrompt}\n\n${userPrompt}` : userPrompt;
         throwIfAborted(signal);
-        const result = await context.generateQuietPrompt({ quietPrompt: fullPrompt, responseLength: maxTokens });
+        const result = await context.generateQuietPrompt({ quietPrompt: fullPrompt });
         throwIfAborted(signal);
         return result;
     };

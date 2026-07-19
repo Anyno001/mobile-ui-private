@@ -1,5 +1,8 @@
 import { CONTEXT_LIMIT, SAVE_LIMIT } from './constants.js';
 import { buildChatPreferencePrompt } from './behavior-config.js';
+import {
+    createMessageEntry, describeMessageEntry,
+} from './chat-message-model.js';
 import { createHistoryWindow } from './history-window.js';
 import { cleanResponse, splitToSentences } from './prompts.js';
 import {
@@ -99,9 +102,9 @@ export function installPhoneChat(state, deps) {
                         smsHistoryText, directorNote, userMsgClean, userMsg, userName,
                         currentPersona,
                     });
-                raw = await callAI(systemPrompt, indepUserPrompt, { maxTokens: isGroup ? 600 : 300 });
+                raw = await callAI(systemPrompt, indepUserPrompt);
             } else {
-                raw = await callAI('', injectedInstruction, { maxTokens: isGroup ? 600 : 300 });
+                raw = await callAI('', injectedInstruction);
             }
             if (!isGenerationTaskActive(task)) return null;
 
@@ -113,17 +116,27 @@ export function installPhoneChat(state, deps) {
                 const parsed = parseGroupResponse(raw, groupMembers);
                 if (parsed.length) {
                     const contentParts = parsed.map(p => `${p.name}：${p.sentences.join(' / ')}`);
-                    targetHistory.push({ role: 'assistant', content: contentParts.join('\n') });
+                    const assistantEntry = createMessageEntry({
+                        role: 'assistant',
+                        content: contentParts.join('\n'),
+                        descriptors: parsed.flatMap(block => block.sentences.map(text => ({ text, sender: block.name }))),
+                    });
+                    targetHistory.push(assistantEntry);
                     resultData = { type: 'group', data: parsed };
                 } else {
                     console.warn('[phone-mode] ⚠️ 群聊格式解析失败！AI 原始返回内容：', raw);
-                    targetHistory.push({ role: 'assistant', content: '（格式无法解析或AI拒答）' });
                     const snippet = raw ? raw.substring(0, 20).replace(/\n/g, '') + '...' : '空响应或纯思考过程';
+                    const fallbackText = `（格式解析失败。AI原话: ${snippet}，请按F12查看控制台或检查是否触发了安全审查）`;
+                    targetHistory.push(createMessageEntry({
+                        role: 'assistant',
+                        content: '（格式无法解析或AI拒答）',
+                        descriptors: [{ text: fallbackText, sender: '系统' }],
+                    }));
                     resultData = {
                         type: 'group',
                         data: [{
                             name: '系统',
-                            sentences: [`（格式解析失败。AI原话: ${snippet}，请按F12查看控制台或检查是否触发了安全审查）`]
+                            sentences: [fallbackText]
                         }]
                     };
                 }
@@ -132,7 +145,11 @@ export function installPhoneChat(state, deps) {
                 let sentences = splitToSentences(clean);
                 if (!sentences.length && raw?.trim()) sentences = splitToSentences(raw.replace(/<think>[\s\S]*?<\/think>/gi, '').replace(/<[^>]+>/g, ''));
                 if (!sentences.length) sentences = !raw?.trim() ? ['（空响应）'] : ['（格式无法解析）'];
-                targetHistory.push({ role: 'assistant', content: sentences.join(' / ') });
+                targetHistory.push(createMessageEntry({
+                    role: 'assistant',
+                    content: sentences.join(' / '),
+                    descriptors: sentences,
+                }));
                 resultData = { type: 'single', data: sentences };
             }
 
@@ -194,7 +211,10 @@ export function installPhoneChat(state, deps) {
     function renderPendingItem(item) {
         const metadata = { pendingId: item.id, pendingStatus: item.status };
         if (item.directorNote) addDirector(item.directorNote, metadata);
-        for (const part of item.bubbleParts) addBubble(part, 'right', undefined, undefined, metadata);
+        item.bubbleParts.forEach((part, index) => addBubble(
+            part, 'right', undefined, undefined,
+            { ...metadata, ...(index === 0 && item.quote ? { quote: item.quote } : {}) },
+        ));
     }
 
     function renderPendingConversation(storageId, saveKey) {
@@ -217,9 +237,11 @@ export function installPhoneChat(state, deps) {
         const target = getPendingTarget();
         const parsed = parsePendingInput(value);
         if (!target || !parsed) return null;
+        if (state.isGroupChat && state.activeQuote) parsed.quote = state.activeQuote;
         const item = addPendingMessage(runtime, target.storageId, target.saveKey, parsed);
         if (!item) return null;
         renderPendingItem(item);
+        if (parsed.quote) deps.clearActiveQuote?.();
         return item;
     }
 
@@ -236,8 +258,12 @@ export function installPhoneChat(state, deps) {
         const target = getPendingTarget();
         if (!target) return;
         const combined = combinePendingMessages(runtime, target.storageId, target.saveKey);
-        const batch = combined.items.filter(item => item.status !== 'submitting');
+        const batch = combined.items;
         if (!batch.length) return;
+        if (state.isGroupChat && combined.quoteConflict) {
+            alert('当前暂存包含多个不同的引用目标，请分别提交；暂存内容不会丢失。');
+            return;
+        }
         const itemIds = batch.map(item => item.id);
         const task = beginGeneration(target.storageId);
         if (!task) return;
@@ -252,11 +278,13 @@ export function installPhoneChat(state, deps) {
             groupMembers: state.groupMembers.slice(),
             groupDisplayName: state.groupDisplayName,
             targetHistory: state.conversationHistory.slice(),
-            userHistoryEntry: {
+            userHistoryEntry: createMessageEntry({
                 role: 'user',
                 content: combined.plainText,
-                ...(combined.directorNote ? { directorNote: combined.directorNote } : {}),
-            },
+                directorNote: combined.directorNote,
+                quote: state.isGroupChat ? combined.quote : null,
+                descriptors: combined.bubbleParts,
+            }),
         };
         const isStillTarget = () => isGenerationTaskActive(task)
             && state.activeStorageId === target.storageId
@@ -274,25 +302,47 @@ export function installPhoneChat(state, deps) {
                 rebaseRenderedHistory(historyWindow.trimmedCount);
                 state.conversationHistory = historyWindow.history;
                 const ids = new Set(itemIds.map(String));
-                for (const node of state.phoneWindow?.querySelectorAll('[data-pending-id]') || []) {
-                    if (!ids.has(node.dataset.pendingId)) continue;
-                    node.classList.remove('pm-pending-entry');
-                    delete node.dataset.pendingId;
-                    delete node.dataset.pendingStatus;
-                    if (userHistoryIndex !== null) node.dataset.historyIndex = String(userHistoryIndex);
+                for (const node of [...state.phoneWindow?.querySelectorAll('[data-pending-id]') || []]) {
+                    if (ids.has(node.dataset.pendingId) && !node.parentElement?.closest('[data-pending-id]')) node.remove();
+                }
+                if (userHistoryIndex !== null) {
+                    const userEntry = request.userHistoryEntry;
+                    const userBubbles = describeMessageEntry(userEntry);
+                    const baseMetadata = { historyIndex: userHistoryIndex, messageId: userEntry.messageId };
+                    if (userEntry.directorNote) addDirector(userEntry.directorNote, baseMetadata);
+                    userBubbles.forEach((bubble, index) => addBubble(
+                        bubble.text, 'right', undefined, userHistoryIndex,
+                        {
+                            ...baseMetadata,
+                            bubbleId: bubble.bubbleId,
+                            sender: '我',
+                            ...(index === 0 && userEntry.quote ? { quote: userEntry.quote } : {}),
+                        },
+                    ));
                 }
             }
+            const assistantEntry = request.targetHistory.at(-1);
+            const assistantBubbles = describeMessageEntry(assistantEntry);
+            let assistantBubbleIndex = 0;
             if (result.type === 'group') {
                 for (const block of result.data) {
                     for (const sentence of block.sentences) {
                         await new Promise(resolve => setTimeout(resolve, 120));
-                        if (isStillTarget()) addBubble(sentence, 'left', block.name, aiHistoryIndex);
+                        const bubble = assistantBubbles[assistantBubbleIndex++];
+                        if (isStillTarget()) addBubble(sentence, 'left', block.name, aiHistoryIndex, {
+                            historyIndex: aiHistoryIndex, messageId: assistantEntry.messageId,
+                            bubbleId: bubble?.bubbleId, sender: block.name,
+                        });
                     }
                 }
             } else {
                 for (const sentence of result.data) {
                     await new Promise(resolve => setTimeout(resolve, 150));
-                    if (isStillTarget()) addBubble(sentence, 'left', undefined, aiHistoryIndex);
+                    const bubble = assistantBubbles[assistantBubbleIndex++];
+                    if (isStillTarget()) addBubble(sentence, 'left', undefined, aiHistoryIndex, {
+                        historyIndex: aiHistoryIndex, messageId: assistantEntry.messageId,
+                        bubbleId: bubble?.bubbleId, sender: state.currentPersona,
+                    });
                 }
             }
             setTimeout(() => {

@@ -15,7 +15,7 @@ import { installPhoneControlCenter } from './phone-control-center.js';
 import { installPhoneDirectory } from './phone-directory.js';
 import { installPhoneFoundation } from './phone-foundation.js';
 import { installPhoneLifecycle } from './phone-lifecycle.js';
-import { ensureInitialPhoneQuickReply } from './quick-reply.js';
+import { ensureInitialPhoneQuickReplyWithRetry } from './quick-reply.js';
 import { createRuntimeState } from './runtime.js';
 import { installSettingsUi } from './settings-ui.js';
 import { saveBudgetConfig, saveEmojis } from './storage.js';
@@ -30,6 +30,7 @@ import { saveBudgetConfig, saveEmojis } from './storage.js';
         activeStorageId: '',
         currentPersona: '',
         conversationHistory: [],
+        activeQuote: null,
         isGenerating: false,
         generationTask: null,
         generationSequence: 0,
@@ -52,7 +53,6 @@ import { saveBudgetConfig, saveEmojis } from './storage.js';
     deps.callAI = createAiClient({
         getConfig: () => window.__pmConfig,
         getContext: getCtx,
-        getDefaultMaxTokens: () => state.isGroupChat ? 600 : 300,
     });
 
     installPhoneFoundation(state, deps);
@@ -72,7 +72,7 @@ import { saveBudgetConfig, saveEmojis } from './storage.js';
     installContactGenerator(state, deps);
     installPhoneChatPoke(state, deps);
     installPhoneLifecycle(state, deps);
-    ensureInitialPhoneQuickReply().catch(error => {
-        console.warn('[phone-mode] 首次创建手机入口失败，将在下次加载时重试', error);
+    ensureInitialPhoneQuickReplyWithRetry().catch(error => {
+        console.warn('[phone-mode] 首次创建手机入口失败，有限重试已结束', error);
     });
 })();

@@ -6,7 +6,9 @@ import {
     buildContextInjectionPrompts, clearExtensionPrompts, renderCalendarContextInjection, replaceExtensionPrompts,
 } from '../src/phone-injection.js';
 import { resolveCommunitySources, resolvePhoneSources } from '../src/permissions.js';
-import { calendarScopeFor, createEmptyCalendarStore, renderCalendarInjection } from '../src/calendar-model.js';
+import {
+    calendarDateRangeKeys, calendarScopeFor, createEmptyCalendarStore, renderCalendarInjection,
+} from '../src/calendar-model.js';
 import { allocateContextBudget, normalizeBudgetConfig, BUDGET_SOURCES, DEFAULT_BUDGET_CONFIG } from '../src/budget.js';
 
 function assertNoUnpairedSurrogates(value, label) {
@@ -237,7 +239,10 @@ assert.equal(resolvePhoneSources({
 const actorId = deriveInteractiveActorId('story-a', 'story', 'character:alice');
 const scene = {
     id: 'scene-a', title: '社区', preset: 'weibo', styleInput: '', generatedPrompt: '', createdAt: 1, updatedAt: 2,
-    posts: [{ id: 'post-a', authorId: actorId, authorNameSnapshot: 'Alice', content: '帖子正文', tags: [], createdAt: 2, comments: [{ id: 'comment-a', authorId: actorId, authorNameSnapshot: 'Alice', content: '评论正文', createdAt: 3 }], liked: false }],
+    posts: [
+        { id: 'post-a', authorId: actorId, authorNameSnapshot: 'Alice', content: '帖子正文', tags: [], createdAt: 2, comments: [{ id: 'comment-a', authorId: actorId, authorNameSnapshot: 'Alice', content: '评论正文', createdAt: 3 }], liked: false },
+        { id: 'post-new', authorId: actorId, authorNameSnapshot: 'Alice', content: '新帖子正文', tags: [], createdAt: 3, comments: [], liked: false },
+    ],
     live: { title: '直播', status: 'idle', danmaku: [{ id: 'danmaku-a', authorId: actorId, authorNameSnapshot: 'Alice', content: '弹幕正文', createdAt: 4 }] },
 };
 const store = { version: 2, scopes: { 'story-a': { activeSceneId: 'scene-a', sceneOrder: ['scene-a'], actors: { [actorId]: { actorId, type: 'story', displayName: 'Alice', bindingKey: 'character:alice', profile: '', createdAt: 1 } }, scenes: { 'scene-a': scene } } } };
@@ -245,9 +250,35 @@ assert.deepEqual(resolveCommunitySources({ currentStorageId: 'story-a', enabled:
 const community = resolveCommunitySources({ currentStorageId: 'story-a', enabled: true, sceneIdsByStorage: { 'story-a': ['scene-a', 'deleted'] }, store });
 assert.equal(community.allowed, true);
 assert.deepEqual(community.sources.map(source => source.sourceId), ['scene-a']);
+assert.deepEqual(community.sources[0].selection, { mode: 'all', postIds: [] });
 assert.match(renderCommunitySource(community.sources[0]), /帖子正文/);
 assert.match(renderCommunitySource(community.sources[0]), /评论正文/);
+assert.match(renderCommunitySource(community.sources[0]), /新帖子正文/);
 assert.match(renderCommunitySource(community.sources[0]), /弹幕正文/);
+
+const selectedCommunity = resolveCommunitySources({
+    currentStorageId: 'story-a', enabled: true,
+    sceneIdsByStorage: { 'story-a': ['scene-a'] },
+    selectionsByStorage: {
+        'story-a': { 'scene-a': { mode: 'selected', postIds: ['post-a', 'deleted-post'] } },
+    },
+    store,
+});
+assert.equal(selectedCommunity.allowed, true);
+assert.deepEqual(selectedCommunity.sources[0].selection, {
+    mode: 'selected', postIds: ['post-a', 'deleted-post'],
+});
+const selectedCommunityText = renderCommunitySource(selectedCommunity.sources[0]);
+assert.match(selectedCommunityText, /帖子正文/);
+assert.match(selectedCommunityText, /评论正文/);
+assert.doesNotMatch(selectedCommunityText, /新帖子正文/);
+assert.match(selectedCommunityText, /弹幕正文/);
+assert.equal(resolveCommunitySources({
+    currentStorageId: 'story-a', enabled: true,
+    sceneIdsByStorage: { 'story-a': ['scene-a'] },
+    selectionsByStorage: { 'story-a': { 'scene-a': { mode: 'selected', postIds: 'post-a' } } },
+    store,
+}).reason, 'invalid-post-selection');
 
 let crossScopeReads = 0;
 let unselectedSceneReads = 0;
@@ -446,14 +477,23 @@ assert.equal(emptyCalendarPlan.prompts.find(p => p.key.includes(':calendar:')), 
 // 3. Enabled with events → has calendar prompt, correct key format
 const now = new Date();
 const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+const threeDaysAgo = calendarDateRangeKeys(now, -3, -3)[0];
+const sixDaysLater = calendarDateRangeKeys(now, 6, 6)[0];
+const fiftyNineDaysLater = calendarDateRangeKeys(now, 59, 59)[0];
 const calendarStoreWithEvents = {
     version: 1,
     scopes: {
         'story-a': {
             autoAdjust: false,
             events: {
+                [threeDaysAgo]: [
+                    { id: 'evt-past', date: threeDaysAgo, title: '三日前复盘', note: '', source: 'manual', createdAt: 99, updatedAt: 99 },
+                ],
                 [today]: [
                     { id: 'evt1', date: today, title: '项目评审会', note: '准备演示文档', source: 'manual', createdAt: 100, updatedAt: 100 },
+                ],
+                [sixDaysLater]: [
+                    { id: 'evt-future', date: sixDaysLater, title: '六日后交付', note: '', source: 'manual', createdAt: 101, updatedAt: 101 },
                 ],
             },
             lastGeneratedAt: 0,
@@ -486,9 +526,12 @@ assert.equal(calendarPrompt.depth, 2);
 const todayParts = today.split('-').map(Number);
 const fullCalendarBody = renderCalendarContextInjection({
     currentStorageId: 'story-a',
+    currentActorName: '角色甲',
     calendarStore: calendarStoreWithEvents,
     occasionStore: { version: 1, scopes: { 'story-a': { occasions: [{
         id: 'occasion', type: 'birthday', month: todayParts[1], day: todayParts[2], title: '角色生日', note: '准备蛋糕', leapDayRule: 'feb28', createdAt: 1, updatedAt: 1,
+    }, {
+        id: 'occasion-59', type: 'anniversary', month: Number(fiftyNineDaysLater.slice(5, 7)), day: Number(fiftyNineDaysLater.slice(8, 10)), title: '五十九日纪念', note: '', leapDayRule: 'feb28', createdAt: 2, updatedAt: 2,
     }] } } },
     holidayStore: { version: 1, selectedCountry: 'CN', years: { [`CN:${todayParts[0]}`]: {
         country: 'CN', year: todayParts[0], fetchedAt: 1, source: 'test', entries: [{ date: today, name: '生活节', kind: 'holiday', source: 'test' }],
@@ -496,14 +539,22 @@ const fullCalendarBody = renderCalendarContextInjection({
     weatherStore: { version: 1, location: { name: '上海', latitude: 31.2, longitude: 121.4, country: 'CN', admin1: '上海', timezone: 'Asia/Shanghai' }, lastSuccess: {
         locationKey: '31.2,121.4|上海', fetchedAt: 1, forecast: { days: [{ date: today, weatherCode: 1, tempMin: 20, tempMax: 30 }] },
     } },
-    cycleStore: { version: 1, scopes: { 'story-a': { enabled: true, lastPeriodStart: today, cycleLength: 28, periodLength: 5, overrides: {} } } },
+    cycleStore: { version: 1, scopes: { 'story-a': {
+        enabled: true, lastPeriodStart: today, cycleLength: 28, periodLength: 5, overrides: {},
+        subjects: { 'role:角色乙': { enabled: true, lastPeriodStart: today, cycleLength: 30, periodLength: 4, overrides: {} } },
+    } } },
     start: now,
 });
 assert.match(fullCalendarBody, /项目评审会/);
+assert.match(fullCalendarBody, new RegExp(`大前天 ${threeDaysAgo}｜日程：三日前复盘`));
+assert.match(fullCalendarBody, new RegExp(`六天后 ${sixDaysLater}｜日程：六日后交付`));
 assert.match(fullCalendarBody, /生日：角色生日/);
+assert.match(fullCalendarBody, new RegExp(`${fiftyNineDaysLater}｜纪念日：五十九日纪念`), '生日与纪念日必须覆盖未来 60 天');
 assert.match(fullCalendarBody, /节假日：生活节/);
+assert.match(fullCalendarBody, /生理周期（我）：经期/);
+assert.match(fullCalendarBody, /生理周期（角色乙）：经期/);
+assert.equal((fullCalendarBody.match(new RegExp(`${today}｜`, 'g')) || []).length, 1, '同一天必须只输出一个日期标题');
 assert.doesNotMatch(fullCalendarBody, /天气：|少云|20°\/30°C/, '日历上下文注入不得包含天气');
-assert.doesNotMatch(fullCalendarBody, /生理周期：|经期/, '日历上下文注入不得包含生理周期');
 const otherStorageBody = renderCalendarContextInjection({
     currentStorageId: 'story-b', calendarStore: calendarStoreWithEvents,
     occasionStore: { version: 1, scopes: { 'story-a': { occasions: [{ id: 'private', type: 'birthday', month: todayParts[1], day: todayParts[2], title: '私密生日' }] } } },
@@ -542,11 +593,10 @@ const storyCalendarPlan = buildContextInjectionPrompts({
 });
 const storyCalendarPrompt = storyCalendarPlan.prompts.find(prompt => prompt.key.includes(':calendar:'));
 assert.ok(storyCalendarPrompt, '配置时间起点时应生成日历 prompt');
-assert.match(storyCalendarPrompt.content, /2032-03-15｜架空纪元会议/);
-assert.match(storyCalendarPrompt.content, /2032-03-15｜纪念日：架空纪念日/);
-assert.match(storyCalendarPrompt.content, /2032-03-15｜节假日：架空节/);
-assert.doesNotMatch(storyCalendarPrompt.content, /设备日期诱饵|天气：|生理周期：/,
-    '最终日历 prompt 必须使用 scope.baseDate 窗口且排除天气和周期');
+assert.match(storyCalendarPrompt.content, /今天 2032-03-15｜日程：架空纪元会议；纪念日：架空纪念日；节假日：架空节；生理周期（我）：经期/);
+assert.equal((storyCalendarPrompt.content.match(/2032-03-15｜/g) || []).length, 1, '同日事实必须合并为单个日期标题');
+assert.doesNotMatch(storyCalendarPrompt.content, /设备日期诱饵|天气：/,
+    '最终日历 prompt 必须使用 scope.baseDate 窗口并排除天气');
 
 // 4. Cross-storage: only currentStorageId's events
 const calendarStoreCrossStorage = {

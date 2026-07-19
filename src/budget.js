@@ -16,6 +16,7 @@ export const DEFAULT_BUDGET_CONFIG = Object.freeze({
     communityPosition: EXTENSION_PROMPT_POSITIONS.IN_PROMPT,
     communityDepth: 0,
     communitySceneIdsByStorage: Object.freeze({}),
+    communitySelectionsByStorage: Object.freeze({}),
     calendarEnabled: false,
     calendarPosition: EXTENSION_PROMPT_POSITIONS.IN_PROMPT,
     calendarDepth: 0,
@@ -73,6 +74,33 @@ function normalizeSceneIds(value) {
     return result;
 }
 
+function normalizeCommunitySelections(value) {
+    if (!plainRecord(value)) return {};
+    const result = {};
+    for (const storageId of Object.keys(value)) {
+        if (!storageId || !plainRecord(value[storageId])) continue;
+        const selections = {};
+        for (const sceneId of Object.keys(value[storageId])) {
+            const source = value[storageId][sceneId];
+            if (!sceneId || sceneId.length > 80 || !plainRecord(source)) continue;
+            if (source.mode === 'all') {
+                selections[sceneId] = { mode: 'all', postIds: [] };
+                continue;
+            }
+            if (source.mode !== 'selected' || !Array.isArray(source.postIds)) continue;
+            const postIds = [];
+            for (const postId of source.postIds) {
+                if (typeof postId !== 'string') continue;
+                const normalized = postId.trim().slice(0, 80);
+                if (normalized && !postIds.includes(normalized)) postIds.push(normalized);
+            }
+            selections[sceneId] = { mode: 'selected', postIds };
+        }
+        if (Object.keys(selections).length) result[storageId] = selections;
+    }
+    return result;
+}
+
 export function normalizeBudgetConfig(value) {
     const source = plainRecord(value) ? value : {};
     const allowedPositions = Object.values(EXTENSION_PROMPT_POSITIONS).filter(position => position >= 0);
@@ -90,6 +118,7 @@ export function normalizeBudgetConfig(value) {
         communityDepth: finiteInteger(source.communityDepth, 0, MAX_INJECTION_DEPTH)
             ? source.communityDepth : DEFAULT_BUDGET_CONFIG.communityDepth,
         communitySceneIdsByStorage: normalizeSceneIds(source.communitySceneIdsByStorage),
+        communitySelectionsByStorage: normalizeCommunitySelections(source.communitySelectionsByStorage),
         calendarEnabled: source.calendarEnabled === true,
         calendarPosition: allowedPositions.includes(source.calendarPosition)
             ? source.calendarPosition : DEFAULT_BUDGET_CONFIG.calendarPosition,

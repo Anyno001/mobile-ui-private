@@ -1,10 +1,16 @@
-import { calendarDateFromParts, parseCalendarDate } from './calendar-model.js';
+import { calendarDateFromParts, createCalendarDate, parseCalendarDate } from './calendar-model.js';
 
 export const HOLIDAY_CACHE_VERSION = 1;
 export const HOLIDAY_COUNTRIES = Object.freeze(['CN', 'US', 'JP']);
-export const HOLIDAY_KINDS = Object.freeze(['holiday', 'observed', 'workday', 'in_lieu']);
+export const HOLIDAY_KINDS = Object.freeze(['holiday', 'observed', 'workday', 'in_lieu', 'cultural']);
 export const HOLIDAY_LIMITS = Object.freeze({ years: 6, entries: 80, name: 100 });
 export const HOLIDAY_YEAR_RANGE = Object.freeze({ min: 1900, max: 2100 });
+export const FIXED_CULTURAL_FESTIVALS = Object.freeze([
+    Object.freeze({ month: 2, day: 14, name: '情人节' }),
+    Object.freeze({ month: 3, day: 14, name: '白色情人节' }),
+    Object.freeze({ month: 10, day: 31, name: '万圣节' }),
+    Object.freeze({ month: 12, day: 25, name: '圣诞节' }),
+]);
 export const HOLIDAY_COUNTRY_YEAR_RANGES = Object.freeze({
     CN: HOLIDAY_YEAR_RANGE,
     US: HOLIDAY_YEAR_RANGE,
@@ -37,6 +43,64 @@ function sortEntries(entries) {
         if (seen.has(key)) return false;
         seen.add(key); return true;
     }).sort((left, right) => left.date.localeCompare(right.date) || left.kind.localeCompare(right.kind));
+}
+
+function culturalNameKey(value) {
+    const normalized = String(value ?? '').toLowerCase().replace(/[\s'’()._-]+/g, '');
+    if (['圣诞节', 'christmas', 'christmasday'].includes(normalized)) return 'christmas';
+    if (['情人节', 'valentinesday', 'valentineday'].includes(normalized)) return 'valentine';
+    if (['白色情人节', 'whiteday'].includes(normalized)) return 'white-day';
+    if (['万圣节', 'halloween'].includes(normalized)) return 'halloween';
+    if (['七夕', '七夕节', 'qixi', 'qixifestival'].includes(normalized)) return 'qixi';
+    return normalized;
+}
+
+function createChineseCalendarFormatter() {
+    try {
+        return new Intl.DateTimeFormat('zh-CN-u-ca-chinese', { month: 'long', day: 'numeric' });
+    } catch (error) { return null; }
+}
+
+function qixiDate(year, formatter) {
+    if (!formatter || typeof formatter.formatToParts !== 'function') return null;
+    const start = createCalendarDate(year, 6, 1), end = createCalendarDate(year, 10, 1);
+    if (!start || !end) return null;
+    for (const date = new Date(start); date < end; date.setDate(date.getDate() + 1)) {
+        try {
+            const parts = formatter.formatToParts(date);
+            const month = parts.find(part => part.type === 'month')?.value;
+            const day = Number(parts.find(part => part.type === 'day')?.value);
+            if (month === '七月' && day === 7) return dateKey(date);
+        } catch (error) { return null; }
+    }
+    return null;
+}
+
+export function buildCulturalFestivals(year, { lunarFormatter } = {}) {
+    const numericYear = Number(year);
+    if (!Number.isInteger(numericYear) || numericYear < HOLIDAY_YEAR_RANGE.min || numericYear > HOLIDAY_YEAR_RANGE.max) {
+        throw new Error('文化节日年份无效');
+    }
+    const rows = FIXED_CULTURAL_FESTIVALS.map(item =>
+        entry(calendarDateFromParts(numericYear, item.month, item.day), item.name, 'cultural', 'cultural-rule'));
+    const formatter = lunarFormatter === undefined ? createChineseCalendarFormatter() : lunarFormatter;
+    const qixi = qixiDate(numericYear, formatter);
+    if (qixi) rows.push(entry(qixi, '七夕', 'cultural', 'chinese-calendar'));
+    return sortEntries(rows);
+}
+
+export function mergeCalendarDateFacts(holidayEntries, culturalEntries) {
+    const rows = [], seen = new Set();
+    for (const raw of [...(Array.isArray(holidayEntries) ? holidayEntries : []), ...(Array.isArray(culturalEntries) ? culturalEntries : [])]) {
+        try {
+            if (!plainRecord(raw)) continue;
+            const normalized = entry(raw.date, raw.name, raw.kind, String(raw.source || '').trim().slice(0, 40) || 'unknown');
+            const key = `${normalized.date}|${culturalNameKey(normalized.name)}`;
+            if (seen.has(key)) continue;
+            seen.add(key); rows.push(normalized);
+        } catch (error) {}
+    }
+    return sortEntries(rows);
 }
 
 function nthWeekday(year, month, weekday, nth) {

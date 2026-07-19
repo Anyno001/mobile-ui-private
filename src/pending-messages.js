@@ -1,3 +1,5 @@
+import { normalizeQuoteSnapshot } from './chat-message-model.js';
+
 function getStorageBucket(runtime, storageId, create = false) {
     if (!(runtime.pendingMessages instanceof Map) || !storageId) return null;
     let bucket = runtime.pendingMessages.get(storageId);
@@ -23,6 +25,7 @@ export function addPendingMessage(runtime, storageId, saveKey, value) {
     const plainText = String(value?.plainText || '').trim();
     const directorNote = String(value?.directorNote || '').trim();
     const bubbleParts = Array.isArray(value?.bubbleParts) ? value.bubbleParts.map(String).filter(Boolean) : [];
+    const quote = normalizeQuoteSnapshot(value?.quote);
     if (!plainText && !directorNote) return null;
     const bucket = getStorageBucket(runtime, storageId, true);
     let items = bucket.get(saveKey);
@@ -36,6 +39,7 @@ export function addPendingMessage(runtime, storageId, saveKey, value) {
         plainText,
         directorNote,
         bubbleParts,
+        ...(quote ? { quote } : {}),
         status: 'pending',
         createdAt: Date.now(),
     };
@@ -112,14 +116,27 @@ export function removePendingBatch(runtime, storageId, saveKey, itemIds) {
     return removed;
 }
 
+function sameQuote(left, right) {
+    return left.messageId === right.messageId && left.bubbleId === right.bubbleId;
+}
+
 export function combinePendingMessages(runtime, storageId, saveKey) {
-    const items = getPendingMessages(runtime, storageId, saveKey);
-    return {
+    const items = getPendingMessages(runtime, storageId, saveKey)
+        .filter(item => item.status !== 'submitting');
+    const quotes = items.map(item => normalizeQuoteSnapshot(item.quote)).filter(Boolean);
+    const distinctQuotes = [];
+    for (const quote of quotes) {
+        if (!distinctQuotes.some(existing => sameQuote(existing, quote))) distinctQuotes.push(quote);
+    }
+    const result = {
         items,
         plainText: items.map(item => item.plainText).filter(Boolean).join(' / '),
         directorNote: items.map(item => item.directorNote).filter(Boolean).join('；'),
         bubbleParts: items.flatMap(item => item.bubbleParts),
+        quoteConflict: distinctQuotes.length > 1,
     };
+    if (distinctQuotes.length === 1) result.quote = distinctQuotes[0];
+    return result;
 }
 
 export function clearPendingStorage(runtime, storageId) {

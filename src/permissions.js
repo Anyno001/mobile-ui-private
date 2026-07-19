@@ -64,6 +64,43 @@ function snapshotGroup(group) {
     };
 }
 
+function snapshotCommunitySelection(value, storageId, sceneId) {
+    if (value === undefined || value === null) {
+        return { valid: true, value: Object.freeze({ mode: 'all', postIds: Object.freeze([]) }) };
+    }
+    const storageEntry = ownData(value, storageId);
+    if (storageEntry.invalid) return { valid: false, value: null };
+    if (!storageEntry.found) {
+        return { valid: true, value: Object.freeze({ mode: 'all', postIds: Object.freeze([]) }) };
+    }
+    const sceneEntry = ownData(storageEntry.value, sceneId);
+    if (sceneEntry.invalid) return { valid: false, value: null };
+    if (!sceneEntry.found) {
+        return { valid: true, value: Object.freeze({ mode: 'all', postIds: Object.freeze([]) }) };
+    }
+    if (!plainRecord(sceneEntry.value)) return { valid: false, value: null };
+    const modeEntry = ownData(sceneEntry.value, 'mode');
+    const postIdsEntry = ownData(sceneEntry.value, 'postIds');
+    if (modeEntry.invalid || !modeEntry.found || postIdsEntry.invalid) return { valid: false, value: null };
+    if (modeEntry.value === 'all') {
+        return { valid: true, value: Object.freeze({ mode: 'all', postIds: Object.freeze([]) }) };
+    }
+    if (modeEntry.value !== 'selected' || !postIdsEntry.found) return { valid: false, value: null };
+    const postIds = dataArraySnapshot(postIdsEntry.value);
+    if (!postIds.valid) return { valid: false, value: null };
+    const clean = [];
+    for (const postId of postIds.value) {
+        if (typeof postId !== 'string') return { valid: false, value: null };
+        const normalized = postId.trim();
+        if (!normalized || normalized.length > 80) return { valid: false, value: null };
+        if (!clean.includes(normalized)) clean.push(normalized);
+    }
+    return {
+        valid: true,
+        value: Object.freeze({ mode: 'selected', postIds: Object.freeze(clean) }),
+    };
+}
+
 function snapshotHistory(value) {
     const history = dataArraySnapshot(value);
     if (!history.valid) return { valid: false, value: [] };
@@ -153,7 +190,9 @@ export function resolvePhoneSources({
     }
 }
 
-export function resolveCommunitySources({ currentStorageId, enabled, sceneIdsByStorage, store } = {}) {
+export function resolveCommunitySources({
+    currentStorageId, enabled, sceneIdsByStorage, selectionsByStorage, store,
+} = {}) {
     try {
         if (!enabled) return { allowed: true, reason: 'disabled', sources: [] };
         if (!isValidContextStorageId(currentStorageId)) return { allowed: false, reason: 'invalid-storage', sources: [] };
@@ -190,6 +229,10 @@ export function resolveCommunitySources({ currentStorageId, enabled, sceneIdsByS
             const sceneEntry = ownData(scenesEntry.value, sceneId);
             if (sceneEntry.invalid) return { allowed: false, reason: 'invalid-scene', sources: [] };
             if (!sceneEntry.found) continue;
+            const selection = snapshotCommunitySelection(selectionsByStorage, currentStorageId, sceneId);
+            if (!selection.valid) {
+                return { allowed: false, reason: 'invalid-post-selection', sources: [] };
+            }
             const scene = normalizeScene(sceneEntry.value, {
                 scope: { actors: actorsEntry.value }, scopeId: currentStorageId, sourceVersion: INTERACTIVE_STORE_VERSION,
             });
@@ -213,6 +256,7 @@ export function resolveCommunitySources({ currentStorageId, enabled, sceneIdsByS
             sources.push(Object.freeze({
                 type: 'community', storageId: currentStorageId, sourceId: sceneId,
                 scene: Object.freeze(scene), actors: Object.freeze(actors),
+                selection: selection.value,
             }));
         }
         return { allowed: true, reason: null, sources };

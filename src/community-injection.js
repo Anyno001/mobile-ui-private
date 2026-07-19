@@ -10,9 +10,12 @@ function renderAuthor(item, actors) {
 
 export function renderCommunitySource(source) {
     if (!source || source.type !== 'community' || !source.scene) return '';
-    const { scene, actors } = source;
+    const { scene, actors, selection } = source;
+    const selectedPostIds = selection?.mode === 'selected'
+        ? new Set(Array.isArray(selection.postIds) ? selection.postIds : []) : null;
     const lines = [`【互动社区：${cleanText(scene.title, 80) || '未命名场景'}】`];
     for (const post of Array.isArray(scene.posts) ? scene.posts : []) {
+        if (selectedPostIds && !selectedPostIds.has(post?.id)) continue;
         const content = cleanText(post?.content, 4000);
         if (!content) continue;
         lines.push(`${renderAuthor(post, actors)}：${content}`);

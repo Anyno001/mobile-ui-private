@@ -6,10 +6,11 @@ import { renderCommunitySource } from './community-injection.js';
 import { resolveEmojiText } from './messaging.js';
 import { resolveCommunitySources, resolvePhoneSources } from './permissions.js';
 import {
-    calendarReferenceDate, calendarScopeFor, calendarWeekKeys, renderCalendarInjection,
+    calendarDateRangeKeys, calendarReferenceDate, calendarScopeFor, relativeCalendarLabel,
 } from './calendar-model.js';
 import { occasionScopeFor, expandOccasions } from './calendar-occasion-model.js';
-import { holidayYearFromCache, normalizeHolidayCache } from './calendar-holiday.js';
+import { buildCulturalFestivals, HOLIDAY_YEAR_RANGE, holidayYearFromCache, mergeCalendarDateFacts, normalizeHolidayCache } from './calendar-holiday.js';
+import { CYCLE_SELF_SUBJECT, cycleScopeFor, cycleSubjectKeys, predictCycleRange } from './calendar-cycle-model.js';
 
 const COMMUNITY_KEY_PREFIX = `${BIDIRECTIONAL_KEY}:community:`;
 const CALENDAR_KEY_PREFIX = `${BIDIRECTIONAL_KEY}:calendar:`;
@@ -95,41 +96,73 @@ function allocateRenderedPrompts(items, tokenLimit) {
     return { prompts, usedTokens: tokenLimit - remaining, truncatedCount };
 }
 
+const CYCLE_INJECTION_LABELS = Object.freeze({
+    period: '经期', follicular: '安全期', ovulatory: '易孕期', luteal: '安全期',
+});
+
 export function renderCalendarContextInjection({
-    currentStorageId, calendarStore, occasionStore, holidayStore,
-    start, days = 7,
+    currentStorageId, currentActorName, calendarStore, occasionStore, holidayStore, cycleStore,
+    start,
 } = {}) {
     if (!currentStorageId) return '';
     const calendarScope = calendarScopeFor(calendarStore, currentStorageId);
     const windowStart = calendarReferenceDate(calendarScope, start);
-    const dates = calendarWeekKeys(windowStart, days);
-    const linesByDate = new Map(dates.map(date => [date, []]));
-    const regular = renderCalendarInjection(calendarScope, { start: windowStart, days });
-    for (const line of regular ? regular.split('\n') : []) {
-        const date = line.slice(0, 10);
-        if (linesByDate.has(date)) linesByDate.get(date).push(line.slice(11));
-    }
-    const occasions = expandOccasions(occasionScopeFor(occasionStore, currentStorageId), { start: windowStart, days });
-    for (const occasion of occasions) {
-        const kind = occasion.type === 'birthday' ? '生日' : '纪念日';
-        linesByDate.get(occasion.date)?.push(`${kind}：${occasion.title}${occasion.note ? `（${occasion.note.replace(/\s+/g, ' ').slice(0, 180)}）` : ''}`);
-    }
-    const holidays = normalizeHolidayCache(holidayStore);
-    for (const date of dates) {
-        const year = Number(date.slice(0, 4));
-        const entries = holidayYearFromCache(holidays, holidays.selectedCountry, year)?.entries || [];
-        for (const item of entries.filter(entry => entry.date === date)) {
-            const kind = item.kind === 'workday' ? '调休工作日' : item.kind === 'in_lieu' ? '调休' : item.kind === 'observed' ? '替代休息日' : '节假日';
-            linesByDate.get(date).push(`${kind}：${item.name}`);
+    const regularDates = calendarDateRangeKeys(windowStart, -3, 6);
+    const occasionDates = calendarDateRangeKeys(windowStart, 0, 59);
+    const linesByDate = new Map();
+    const addFact = (date, fact) => {
+        if (!fact) return;
+        if (!linesByDate.has(date)) linesByDate.set(date, new Set());
+        linesByDate.get(date).add(fact);
+    };
+    for (const date of regularDates) {
+        for (const event of calendarScope.events[date] || []) {
+            const note = event.note ? `（${event.note.replace(/\s+/g, ' ').slice(0, 180)}）` : '';
+            addFact(date, `日程：${event.title}${note}`);
         }
     }
-    return dates.flatMap(date => linesByDate.get(date).map(item => `${date}｜${item}`)).join('\n').slice(0, 6000);
+    const occasions = expandOccasions(occasionScopeFor(occasionStore, currentStorageId), { start: windowStart, days: 60 });
+    for (const occasion of occasions) {
+        const kind = occasion.type === 'birthday' ? '生日' : '纪念日';
+        addFact(occasion.date, `${kind}：${occasion.title}${occasion.note ? `（${occasion.note.replace(/\s+/g, ' ').slice(0, 180)}）` : ''}`);
+    }
+    const holidays = normalizeHolidayCache(holidayStore);
+    const holidayYears = [...new Set(regularDates.map(date => Number(date.slice(0, 4))))];
+    for (const year of holidayYears) {
+        const legal = holidayYearFromCache(holidays, holidays.selectedCountry, year)?.entries || [];
+        const cultural = year >= HOLIDAY_YEAR_RANGE.min && year <= HOLIDAY_YEAR_RANGE.max
+            ? buildCulturalFestivals(year) : [];
+        for (const item of mergeCalendarDateFacts(legal, cultural)) {
+            if (!regularDates.includes(item.date)) continue;
+            const kind = item.kind === 'workday' ? '调休工作日' : item.kind === 'in_lieu' ? '调休'
+                : item.kind === 'observed' ? '替代休息日' : item.kind === 'cultural' ? '文化节日' : '节假日';
+            addFact(item.date, `${kind}：${item.name}`);
+        }
+    }
+    const cycleDates = new Set(calendarDateRangeKeys(windowStart, 0, 6));
+    for (const subject of cycleSubjectKeys(cycleStore, currentStorageId)) {
+        const profile = cycleScopeFor(cycleStore, currentStorageId, subject);
+        if (!profile.enabled) continue;
+        const subjectLabel = subject === CYCLE_SELF_SUBJECT ? '我'
+            : subject.startsWith('role:') ? subject.slice(5) : subject || currentActorName || '当前角色';
+        for (const prediction of predictCycleRange(profile, calendarDateRangeKeys(windowStart, 0, 0)[0], 7).predictions) {
+            if (!cycleDates.has(prediction.date) || !prediction.phase) continue;
+            addFact(prediction.date, `生理周期（${subjectLabel}）：${CYCLE_INJECTION_LABELS[prediction.phase] || prediction.phase}`);
+        }
+    }
+    const outputDates = [...new Set([...regularDates, ...occasionDates.filter(date => linesByDate.has(date))])].sort();
+    return outputDates.flatMap(date => {
+        const facts = [...(linesByDate.get(date) || [])];
+        if (!facts.length) return [];
+        const relative = relativeCalendarLabel(windowStart, date);
+        return `${relative ? `${relative} ` : ''}${date}｜${facts.join('；')}`;
+    }).join('\n').slice(0, 6000);
 }
 
 export function buildContextInjectionPrompts({
     currentStorageId, currentActorName, selectedByStorage, historiesByStorage, groupsByStorage,
     interactiveStore, budgetConfig, userName, emojis, safeMaxTokens, calendarStore,
-    calendarOccasions, calendarHolidays,
+    calendarOccasions, calendarHolidays, calendarCycles,
 } = {}) {
     const config = normalizeBudgetConfig(budgetConfig);
     const phonePermission = resolvePhoneSources({
@@ -139,6 +172,7 @@ export function buildContextInjectionPrompts({
         currentStorageId,
         enabled: config.communityEnabled,
         sceneIdsByStorage: config.communitySceneIdsByStorage,
+        selectionsByStorage: config.communitySelectionsByStorage,
         store: interactiveStore,
     });
     const phoneItems = phonePermission.allowed ? phonePermission.sources.flatMap(source => {
@@ -165,7 +199,8 @@ export function buildContextInjectionPrompts({
     let calendarItems = [];
     if (config.calendarEnabled && calendarStore && currentStorageId) {
         const body = renderCalendarContextInjection({
-            currentStorageId, calendarStore, occasionStore: calendarOccasions, holidayStore: calendarHolidays,
+            currentStorageId, currentActorName, calendarStore, occasionStore: calendarOccasions,
+            holidayStore: calendarHolidays, cycleStore: calendarCycles,
         });
         if (body) {
             calendarItems.push({

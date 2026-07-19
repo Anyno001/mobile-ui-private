@@ -1,12 +1,14 @@
 import {
-    clearPhoneQuickReply, ensurePhoneQuickReply, getPhoneQuickReplyStatus,
+    clearPhoneQuickReply, ensurePhoneQuickReply, getConfiguredPhoneQuickReplyLabel,
+    getPhoneQuickReplyStatus, normalizePhoneQuickReplyLabel,
 } from './quick-reply.js';
 import { renderQuickReplySettings, renderSettingsModal } from './settings-templates.js';
 
-export function installQuickReplySettings({ makeOverlay, addNote }) {
+export function installQuickReplySettings({ makeOverlay, addNote, saveTheme }) {
     const showPage = () => {
-        const status = getPhoneQuickReplyStatus(globalThis.quickReplyApi);
-        makeOverlay(renderSettingsModal({ title: '手机开关', content: renderQuickReplySettings(status) }));
+        const label = getConfiguredPhoneQuickReplyLabel();
+        const status = getPhoneQuickReplyStatus(globalThis.quickReplyApi, label);
+        makeOverlay(renderSettingsModal({ title: '手机开关', content: renderQuickReplySettings(status, label) }));
     };
     const runAction = async (operation, successMessage) => {
         const status = document.getElementById('pm-quick-reply-status');
@@ -33,10 +35,29 @@ export function installQuickReplySettings({ makeOverlay, addNote }) {
             buttons.forEach(button => { button.disabled = false; });
         }
     };
-    window.__pmEnsurePhoneQuickReply = () => runAction(
-        ensurePhoneQuickReply,
-        '已创建手机开关入口“天音”',
-    );
+    window.__pmEnsurePhoneQuickReply = () => {
+        const input = document.getElementById('pm-quick-reply-label');
+        const previousLabel = getConfiguredPhoneQuickReplyLabel();
+        const nextLabel = normalizePhoneQuickReplyLabel(input?.value);
+        return runAction(async api => {
+            window.__pmTheme.qrLabel = nextLabel;
+            if (!saveTheme()) {
+                window.__pmTheme.qrLabel = previousLabel;
+                throw new Error('手机开关名称保存失败：浏览器存储不可用');
+            }
+            try {
+                const result = await ensurePhoneQuickReply(api, nextLabel);
+                if (input) input.value = nextLabel;
+                return result;
+            } catch (error) {
+                window.__pmTheme.qrLabel = previousLabel;
+                if (!saveTheme()) {
+                    throw new Error(`${error.message}；名称配置回滚失败，请勿刷新并立即导出备份`);
+                }
+                throw error;
+            }
+        }, `已创建手机开关入口“${nextLabel}”`);
+    };
     window.__pmClearPhoneQuickReply = () => runAction(
         clearPhoneQuickReply,
         '已清除手机开关入口',

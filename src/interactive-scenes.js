@@ -1,15 +1,17 @@
 import { generationErrorMessage } from './ai.js';
-import { buildInteractiveRequest, parseInteractiveResponse } from './interactive-scene-ai.js';
+import { buildInteractiveRequest, buildStylePrompt, getInteractivePresets, parseInteractiveResponse } from './interactive-scene-ai.js';
 import {
     INTERACTIVE_LIMITS, addSceneComment, appendScenePosts, deleteSceneComment,
     deleteScenePost, enforceInteractiveSceneLimit, ensureInteractiveActor, normalizeInteractiveStore, normalizeScene,
-    normalizePhoneUiState, patchPhoneUiScope, resolveInteractiveAuthor, stripPersistedV2ContentRating, toggleScenePin, updateSceneComment, updateScenePost,
+    createDefaultPhoneUiScope, normalizePhoneUiState, patchPhoneUiScope, resolveInteractiveAuthor, stripPersistedV2ContentRating, toggleScenePin, updateSceneComment, updateScenePost,
 } from './interactive-scene-model.js';
 import {
     loadInteractiveScenes, loadPhoneUiState, saveInteractiveScenes, savePhoneUiState,
 } from './storage.js';
 import {
-    bindPhonePageActions, runDeleteSceneAction,
+    bindPhonePageActions, getCommunityInjectionState, handleCommunityInjectionUiAction, handleSceneAccentAction,
+    persistCurrentPhoneUiSnapshot, resolvePhoneChatTarget, runDeleteSceneAction, runDesktopPageTransition,
+    selectScenePreset, toggleSceneMenu, toggleScenePostActions,
 } from './interactive-scene-phone.js';
 import {
     createCommunityGenerationRunner, createCommunityTaskController,
@@ -20,6 +22,7 @@ import {
 } from './interactive-scene-views.js';
 
 export { renderPhoneDesktop } from './interactive-scene-views.js';
+export { resolvePhoneChatTarget, runDesktopPageTransition } from './interactive-scene-phone.js';
 
 const uid = prefix => `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
 const now = () => Date.now();
@@ -140,29 +143,6 @@ export function createInteractiveStoreLoader({ runtime, load, migrate }) {
     return { loadStore, invalidateStore };
 }
 
-export async function runDesktopPageTransition({
-    scopeId, loadStore, updatePhoneUi, refreshDesktop, showPhonePage, clearOpenScene,
-    isCurrent = () => true, getCurrentPage = () => 'chat',
-}) {
-    const validScope = !!scopeId && scopeId !== 'sms_unknown__default';
-    const store = validScope ? await loadStore() : null;
-    if (!isCurrent()) return false;
-    if (!refreshDesktop(scopeId, store)) throw new Error('桌面内容渲染失败');
-    if (!isCurrent()) return false;
-    const previousPage = getCurrentPage();
-    if (!showPhonePage('desktop')) throw new Error('桌面页面不可用');
-    try {
-        if (validScope) updatePhoneUi(scopeId, store);
-    } catch (error) {
-        const ownsDesktopPage = isCurrent() && getCurrentPage() === 'desktop';
-        if (ownsDesktopPage && previousPage && previousPage !== 'desktop') showPhonePage(previousPage);
-        throw error;
-    }
-    if (!isCurrent() || getCurrentPage() !== 'desktop') return false;
-    clearOpenScene();
-    return true;
-}
-
 export function installInteractiveScenes(_state, deps) {
     const { getCtx, getStorageId, getUserPersona, gatherContext, callAI } = deps;
     const runtime = {
@@ -261,8 +241,7 @@ export function installInteractiveScenes(_state, deps) {
     const updatePhoneUiScope = (storageId, patch, store = runtime.store) => persistPhoneUiState(
         patchPhoneUiScope(getPhoneUiState(store), storageId, patch, store), store,
     );
-    const phoneScope = (storageId, store = runtime.store) => getPhoneUiState(store).scopes[storageId]
-        || { pinnedSceneIds: [], lastPage: 'desktop', lastSceneId: null, lastTab: 'feed' };
+    const phoneScope = (storageId, store = runtime.store) => getPhoneUiState(store).scopes[storageId] || createDefaultPhoneUiScope();
     const renderInto = (selector, html) => {
         const container = document.querySelector(selector);
         if (!container) return false;
@@ -336,6 +315,7 @@ export function installInteractiveScenes(_state, deps) {
         return renderInto('.pm-community-page', renderCommunityWorkspaceView(scene, tab, phoneScope(scopeId, store), {
             liveActive: communityRunner?.isLive() === true,
             autoActive: communityTasks.state().mode === 'auto',
+            ...getCommunityInjectionState(window.__pmBudgetConfig, scopeId, sceneId),
         }));
     }
 
@@ -363,7 +343,6 @@ export function installInteractiveScenes(_state, deps) {
             if (kind === 'live_batch' && !extra.userContent) extra = { ...extra, userContent: scene.live.title };
             const prompts = buildInteractiveRequest({ kind, presetKey: scene.preset, styleInput: scene.styleInput, generatedPrompt: scene.generatedPrompt, context: await contextText(), actorRoster, ...extra });
             const raw = await callAI(prompts.systemPrompt, prompts.userPrompt, {
-                maxTokens: 65535,
                 isolated: true,
                 signal: controller.signal,
             });
@@ -377,20 +356,18 @@ export function installInteractiveScenes(_state, deps) {
             }
         }
     }
-
-
-
     function replaceApp(html) {
         const app = document.getElementById('pm-scene-app');
         if (app) app.outerHTML = html;
         else renderInto('.pm-community-page', html);
     }
 
-    function rerender(tab = document.querySelector('.pm-scene-tabs .is-active')?.dataset.tab || 'feed') {
+    function rerender(tab = phoneScope(getStorageId()).lastTab) {
         const { scopeId, scene } = current();
         if (scene) replaceApp(renderCommunityWorkspaceView(scene, tab, phoneScope(scopeId), {
             liveActive: communityRunner?.isLive() === true,
             autoActive: communityTasks.state().mode === 'auto',
+            ...getCommunityInjectionState(window.__pmBudgetConfig, scopeId, scene.id),
         }));
     }
 
@@ -426,8 +403,6 @@ export function installInteractiveScenes(_state, deps) {
         scene.live.danmaku = scene.live.danmaku.slice(-INTERACTIVE_LIMITS.danmaku);
         scene.updatedAt = now();
     }
-
-
     async function createScene(app) {
         if (runtime.creating || runtime.busy) throw new Error('已有生成任务正在进行');
         runtime.creating = true;
@@ -436,21 +411,31 @@ export function installInteractiveScenes(_state, deps) {
             const scopeId = getStorageId();
             if (!scopeId || scopeId === 'sms_unknown__default') throw new Error('请先打开有效的角色聊天');
             const preset = app.querySelector('.pm-scene-preset.is-active')?.dataset.preset || 'weibo';
+            const presetDefinition = getInteractivePresets()[preset] || getInteractivePresets().custom;
             const styleInput = app.querySelector('#pm-scene-style')?.value.trim() || '';
             if (preset === 'custom' && !styleInput) throw new Error('自定义风格不能为空');
             const isValid = operationGuard(scopeId, () => createdSceneId);
             await loadStore();
             await commit(async () => {
                 const scope = getScope(runtime.store, scopeId);
-                const scene = normalizeScene({ id: uid('scene'), title: '正在生成社区…', preset, styleInput });
+                const scene = normalizeScene({
+                    id: uid('scene'),
+                    title: preset === 'custom' ? '正在生成社区…' : presetDefinition.label,
+                    preset,
+                    styleInput,
+                    generatedPrompt: preset === 'custom' ? '' : buildStylePrompt(preset, styleInput),
+                    themeAccent: presetDefinition.accent,
+                });
                 createdSceneId = scene.id;
                 scope.scenes[scene.id] = scene;
                 scope.sceneOrder.push(scene.id);
                 scope.activeSceneId = scene.id;
                 runtime.openSceneId = scene.id;
-                const [style] = await request('style_prompt');
-                scene.title = style.title;
-                scene.generatedPrompt = style.prompt;
+                if (preset === 'custom') {
+                    const [style] = await request('style_prompt');
+                    scene.title = style.title;
+                    scene.generatedPrompt = style.prompt;
+                }
                 enforceInteractiveSceneLimit(scope);
             }, isValid, '创建社区');
             if (!isValid()) throw new Error('生成已取消');
@@ -539,21 +524,22 @@ export function installInteractiveScenes(_state, deps) {
             }
             return;
         }
-        if (action === 'more') {
-            const menu = button.parentElement?.querySelector('.pm-scene-menu');
-            if (!menu) return;
-            const opening = menu.hidden;
-            menu.hidden = !opening;
-            button.setAttribute('aria-expanded', String(opening));
-            if (opening) menu.querySelector('button')?.focus({ preventScroll: true });
-            return;
-        }
+        if (action === 'more') { toggleSceneMenu(button); return; }
+        if (action === 'post-actions') { toggleScenePostActions(button); return; }
         if (action === 'desktop-chat') { deps.showPhoneChatPage?.(getStorageId()); return; }
         if (action === 'desktop-directory') { window.__pmShowList?.(); return; }
         if (action === 'desktop-settings') { window.__pmOpenSettingsTab?.('home'); return; }
         if (action === 'desktop-calendar') { await showPhoneCalendarPage(); return; }
         if (action === 'desktop-community') { await window.__pmOpenForumMode(); return; }
         if (action === 'desktop-exit' || action === 'exit') { await window.__pmEnd?.(); return; }
+        if (await handleCommunityInjectionUiAction(action, {
+            app, getCurrent: current,
+            getLastTab: scopeId => phoneScope(scopeId).lastTab,
+                config: window.__pmBudgetConfig,
+                saveConfig: deps.saveBudgetConfig,
+                refreshInjection: deps.applyBidirectionalInjection,
+            rerender, setStatus,
+        })) return;
         if (action === 'desktop-open-scene') {
             await openScene(button.dataset.sceneId, phoneScope(getStorageId()).lastTab);
             return;
@@ -562,10 +548,8 @@ export function installInteractiveScenes(_state, deps) {
             await showPhoneDesktopPage();
             return;
         }
-        if (action === 'preset') {
-            app.querySelectorAll('.pm-scene-preset').forEach(item => item.classList.toggle('is-active', item === button));
-            return;
-        }
+        if (action === 'preset') { selectScenePreset(app, button); return; }
+        if (handleSceneAccentAction(action, app, button)) return;
         if (action === 'create-scene') { await createScene(app); return; }
         if (action === 'open-scene') {
             await openScene(button.dataset.sceneId, 'feed');
@@ -611,8 +595,11 @@ export function installInteractiveScenes(_state, deps) {
         if (action === 'tab') {
             invalidate();
             const { scopeId, scene } = current();
-            updatePhoneUiScope(scopeId, { lastPage: 'community', lastSceneId: scene?.id || null, lastTab: button.dataset.tab });
-            rerender(button.dataset.tab);
+            const nextTab = button.dataset.tab;
+            if (['feed', 'live'].includes(nextTab)) {
+                updatePhoneUiScope(scopeId, { lastPage: 'community', lastSceneId: scene?.id || null, lastTab: nextTab });
+            }
+            rerender(nextTab);
             return;
         }
         if (action === 'publish') {
@@ -741,6 +728,19 @@ export function installInteractiveScenes(_state, deps) {
         bindPhonePageUi,
         showPhoneCalendarPage,
         showPhoneDesktopPage,
+        async restorePhoneChat(defaultContact) {
+            const scopeId = getStorageId();
+            if (!scopeId || scopeId === 'sms_unknown__default') return false;
+            const store = await loadStore();
+            const uiScope = phoneScope(scopeId, store);
+            const histories = window.__pmHistories?.[scopeId] || {};
+            const groups = window.__pmGroupMeta?.[scopeId] || {};
+            const target = resolvePhoneChatTarget(uiScope, histories, groups, defaultContact);
+            if (target.type === 'group' || Object.hasOwn(histories, target.key)) {
+                await window.__pmSwitchContact(target.key, { preservePage: true });
+            } else window.__pmSwitch(target.key, undefined, undefined, { preservePage: true });
+            return true;
+        },
         async restorePhoneUi() {
             const scopeId = getStorageId();
             if (!scopeId || scopeId === 'sms_unknown__default') {
@@ -778,14 +778,14 @@ export function installInteractiveScenes(_state, deps) {
             }).catch(reportPhoneUiError);
         },
         persistPhoneUiSnapshot() {
-            const scopeId = getStorageId();
-            const page = document.querySelector('#pm-iphone .pm-main-ui')?.dataset.page;
-            if (!runtime.store || !scopeId || scopeId === 'sms_unknown__default' || !['desktop', 'chat', 'community', 'calendar'].includes(page)) return false;
-            const scope = phoneScope(scopeId, runtime.store);
-            const lastSceneId = page === 'community' ? runtime.openSceneId : null;
-            const lastPage = page;
-            updatePhoneUiScope(scopeId, { lastPage, lastSceneId, lastTab: scope.lastTab }, runtime.store);
-            return true;
+            return persistCurrentPhoneUiSnapshot({
+                runtime, storageId: getStorageId(),
+                page: document.querySelector('#pm-iphone .pm-main-ui')?.dataset.page,
+                phoneScope, updatePhoneUiScope,
+                chatType: _state.isGroupChat && _state.currentGroupKey ? 'group'
+                    : (_state.currentPersona ? 'contact' : null),
+                chatKey: _state.isGroupChat && _state.currentGroupKey ? _state.currentGroupKey : _state.currentPersona,
+            });
         },
         invalidateInteractiveStore() {
             invalidate();

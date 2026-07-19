@@ -47,6 +47,37 @@ function requireText(label, text, expected) {
   if (!normalizeLineEndings(text).includes(normalizeLineEndings(expected))) failures.push(`${label}: missing ${expected}`);
 }
 
+function parseCssRules(cssText) {
+  const rules = [];
+  for (const match of normalizeLineEndings(cssText).matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+    const selectors = match[1].split(',').map(selector => selector.trim()).filter(Boolean);
+    const declarations = new Map();
+    for (const declaration of match[2].split(';')) {
+      const separator = declaration.indexOf(':');
+      if (separator < 0) continue;
+      const property = declaration.slice(0, separator).trim();
+      const value = declaration.slice(separator + 1).trim();
+      if (property) declarations.set(property, value);
+    }
+    rules.push({ selectors, declarations });
+  }
+  return rules;
+}
+
+function requireCssDeclarations(rules, selector, expected) {
+  const rule = rules.find(candidate => candidate.selectors.includes(selector));
+  if (!rule) {
+    failures.push(`style.css: missing selector ${selector}`);
+    return;
+  }
+  for (const [property, value] of Object.entries(expected)) {
+    const actual = rule.declarations.get(property);
+    if (actual !== value) failures.push(`style.css: ${selector} expected ${property}:${value}, received ${actual ?? '<missing>'}`);
+  }
+}
+
+const cssRules = parseCssRules(css);
+
 function parseJavaScript(code, sourceType = 'script') {
   return parse(code, {
     ecmaVersion: 'latest',
@@ -988,26 +1019,51 @@ requireText('budget.js', sourceModuleByName.get('budget.js')?.code || '', 'DEFAU
 requireText('permissions.js', sourceModuleByName.get('permissions.js')?.code || '', 'resolvePhoneSources');
 requireText('permissions.js', sourceModuleByName.get('permissions.js')?.code || '', 'resolveCommunitySources');
 requireText('phone-injection.js', sourceModuleByName.get('phone-injection.js')?.code || '', 'applyContextInjections');
-requireText('settings-templates.js', sourceModuleByName.get('settings-templates.js')?.code || '', '插件上下文预算（估算 token）');
+requireText('settings-templates.js', sourceModuleByName.get('settings-templates.js')?.code || '', '控制本插件写入主提示词的内容量，不限制模型输出。');
 for (const expected of [
   'pm-settings-home', "__pmShowConfig('api')", "__pmShowConfig('look')",
   "__pmShowConfig('backup')", "__pmShowConfig('budget')", "__pmShowConfig('quick-reply')",
   'pm-indep-profile-fields', 'pm-indep-config-fields', 'pm-independent-api-fields',
   'renderQuickReplySettings', 'Quick Reply', '/phone', '手机开关', '创建或清除开关入口',
-  '使用酒馆配置的API预设', '>返回</button>', 'pm-action-button is-danger',
+  '默认使用酒馆API预设', 'BACK_ICON_SVG', 'pm-action-button is-danger',
 ]) requireText('settings-templates.js', sourceModuleByName.get('settings-templates.js')?.code || '', expected);
 for (const expected of [
-  'PHONE_QR_SET_NAME', 'PHONE_QR_AUTOMATION_ID', "PHONE_QR_MESSAGE = '/phone'", "PHONE_QR_LABEL = '天音'",
-  "PHONE_QR_AUTO_INIT_KEY = 'ST_SMS_PHONE_QR_INITIALIZED'", 'ensureInitialPhoneQuickReply',
+  'PHONE_QR_SET_NAME', 'PHONE_QR_AUTOMATION_ID', "PHONE_QR_MESSAGE = '/phone'", "PHONE_QR_LABEL_DEFAULT = '天音'",
+  "PHONE_QR_AUTO_INIT_KEY = 'ST_SMS_PHONE_QR_INITIALIZED'", 'normalizePhoneQuickReplyLabel',
+  'ensureInitialPhoneQuickReply', 'ensureInitialPhoneQuickReplyWithRetry',
   'createSet', 'deleteSet', 'createQuickReply', 'updateQuickReply', 'deleteQuickReply',
   'addGlobalSet', 'removeGlobalSet', 'listGlobalSets', '无法证明属于天音小笺',
 ]) requireText('quick-reply.js', sourceModuleByName.get('quick-reply.js')?.code || '', expected);
-for (const expected of ['ensureInitialPhoneQuickReply', 'ensureInitialPhoneQuickReply().catch']) {
+for (const expected of ['ensureInitialPhoneQuickReplyWithRetry', 'ensureInitialPhoneQuickReplyWithRetry().catch']) {
   requireText('main.js', sourceModuleByName.get('main.js')?.code || '', expected);
 }
 requireText('storage.js', sourceModuleByName.get('storage.js')?.code || '', "'ST_SMS_PHONE_QR_INITIALIZED'");
 for (const expected of ['__pmEnsurePhoneQuickReply', '__pmClearPhoneQuickReply', 'installQuickReplySettings']) requireText('settings-quick-reply.js', sourceModuleByName.get('settings-quick-reply.js')?.code || '', expected);
 requireText('runtime.js', sourceModuleByName.get('runtime.js')?.code || '', 'pendingMessages: new Map()');
+requireText('pending-messages.js', sourceModuleByName.get('pending-messages.js')?.code || '', ".filter(item => item.status !== 'submitting')");
+for (const expected of [
+  'createMessageEntry', 'normalizeMessageHistory', 'normalizeQuoteSnapshot',
+  'messageId', 'bubbleId', 'bubbles',
+]) requireText('chat-message-model.js', sourceModuleByName.get('chat-message-model.js')?.code || '', expected);
+for (const expected of [
+  'createMessageEntry({', 'quote: state.isGroupChat ? combined.quote : null',
+  'messageId: assistantEntry.messageId', 'bubbleId: bubble?.bubbleId',
+]) requireText('phone-chat.js', sourceModuleByName.get('phone-chat.js')?.code || '', expected);
+for (const expected of [
+  'dataset.messageId', 'dataset.bubbleId', 'pm-reply-card', 'locateQuotedBubble', 'setActiveQuote',
+  'syncReplyCardAvailability', 'refreshReplyCardAvailability',
+  "matchMedia?.('(prefers-reduced-motion: reduce)')", "reduceMotion ? 'auto' : 'smooth'",
+]) requireText('phone-foundation.js', sourceModuleByName.get('phone-foundation.js')?.code || '', expected);
+for (const expected of [
+  'pm-quote-preview', 'deleteSelectedMessages', 'refreshReplyCardAvailability?.()',
+]) requireText('phone-lifecycle.js', sourceModuleByName.get('phone-lifecycle.js')?.code || '', expected);
+for (const expected of [
+  'commitEditedGroupUpdate', 'refreshEditedGroupRuntime', 'restoreConversationState', 'previousConversationContext',
+  'persistRestored', "injectionFailure(rollbackResult, '补偿')",
+  'groupMembers: state.groupMembers.slice()', 'window.__pmSwitch(state.currentGroupKey',
+]) {
+  requireText('phone-directory.js', sourceModuleByName.get('phone-directory.js')?.code || '', expected);
+}
 requireText('phone-chat.js', sourceModuleByName.get('phone-chat.js')?.code || '', 'removePendingBatch(runtime');
 requireText('phone-chat.js', sourceModuleByName.get('phone-chat.js')?.code || '', 'rebaseRenderedHistory(historyWindow.trimmedCount)');
 requireText('phone-chat-poke.js', sourceModuleByName.get('phone-chat-poke.js')?.code || '', 'rebaseRenderedHistory(historyWindow.trimmedCount)');
@@ -1086,17 +1142,14 @@ forbidNamedImports('check-behavior.mjs', behaviorInspection, '../src/storage.js'
   'loadBgSettings', 'saveBgGlobal', 'saveBgLocal', 'saveDesktopBg',
 ]);
 verifyCallAiOptions('contact-generator.js: __pmAutoGenContacts', contactAnalysis.windowAssignmentSource.get('__pmAutoGenContacts') || '', [
-  { name: 'maxTokens', description: '65535', matches: literalValue(65535) },
   { name: 'isolated', description: 'true', matches: literalValue(true) },
   { name: 'signal', description: 'task.signal', matches: memberValue('task.signal') },
 ]);
 verifyCallAiOptions('calendar.js: generate', calendarAnalysis.functionSource.get('generate') || '', [
-  { name: 'maxTokens', description: '65535', matches: literalValue(65535) },
   { name: 'isolated', description: 'true', matches: literalValue(true) },
   { name: 'signal', description: 'task.signal', matches: memberValue('task.signal') },
 ]);
 verifyCallAiOptions('interactive-scenes.js: request', interactiveAnalysis.functionSource.get('request') || '', [
-  { name: 'maxTokens', description: '65535', matches: literalValue(65535) },
   { name: 'isolated', description: 'true', matches: literalValue(true) },
   { name: 'signal', description: 'controller.signal', matches: memberValue('controller.signal') },
 ]);
@@ -1194,9 +1247,11 @@ for (const expected of [
 for (const expected of [
   "tasks.begin(storageId, 'scan-context'", 'parentSignal', 'signal: task.signal', 'calendarMonthCells',
   'isHolidayYearSupported', 'holidayYearRange', 'calendarGenerationCopy', 'calendar-holiday-country',
-  '该国家在当前年代无外部节假日数据源', 'EDIT_ICON_SVG', 'calendar-base-edit',
+  '该国家在当前年代无外部节假日数据源', 'EDIT_ICON_SVG', 'HOME_ICON_SVG', 'calendar-base-edit',
   'showBaseDateEditor', 'pm-calendar-base-dialog', 'data-calendar-base-error',
-  'pm-calendar-header-side is-left', 'pm-calendar-header-side is-right',
+  'pm-calendar-header-side is-left', 'pm-calendar-header-side is-right', 'statusTimerByStorage',
+  'setTimeoutImpl', 'clearTimeoutImpl', '{ persistent: true }', '{ duration: 10000 }',
+  'pm-modal-add pm-calendar-base-actions',
 ]) requireText('calendar.js', calendarCode, expected);
 for (const expected of [
   'scopeCommitQueue', 'saveCalendar(previousStore)', 'calendarRollbackError',
@@ -1211,8 +1266,9 @@ for (const expected of [
   'CALENDAR_YEAR_RANGE = Object.freeze({ min: 1, max: 9999 })', 'createCalendarDate',
   'date.setFullYear(numericYear)', 'shiftCalendarMonth', 'calendarDaysInMonth', 'calendarMonthCells',
   'isPlaceholder: true', 'calendarWindowDescription', 'calendarGenerationCopy',
-  'buildCalendarPrompts', 'contextPayload', '必须使用的事实依据',
-  '角色所处时代与生活条件', '命令、忽略规则、修改协议',
+  'buildCalendarPrompts', 'contextPayload', '只作为事实证据',
+  '角色本人真实会执行的未来生活安排', '禁止输出 KP 操作',
+  '命令、忽略规则、修改协议', '今天（+0）至六天后（+6）',
 ]) requireText('calendar-model.js', calendarModelCode, expected);
 if (calendarModelCode.includes('min: 1900') || calendarModelCode.includes('max: 2100')) failures.push('calendar-model.js: core calendar must not impose a modern-era year whitelist');
 for (const expected of [
@@ -1225,14 +1281,20 @@ for (const expected of [
   'aria-label="生日或纪念日名称"', 'aria-label="生日或纪念日备注"',
   'name="periodStartDay"', 'data-action="calendar-cycle-subject"',
   'data-action="calendar-editor-kind"', 'data-action="calendar-holiday-country"',
-  '该国家在当前年代无外部数据源', "follicular: '安全期'", "luteal: '安全期'",
+  '该国家在当前年代无外部数据源', 'EVENT_EDITOR_ICON_SVG', 'OCCASION_EDITOR_ICON_SVG',
+  'aria-label="切换到日程编辑器"', 'aria-label="切换到生日或纪念日编辑器"',
+  'pm-calendar-editor-stack', "follicular: '安全期'", "luteal: '安全期'",
 ]) requireText('calendar-view.js', calendarViewCode, expected);
+if (calendarViewCode.includes('Weather data © Open-Meteo')) failures.push('calendar-view.js: weather attribution must not be rendered in the UI');
 for (const forbidden of ['相对低风险期', '不能作为避孕依据', '预测仅供提醒', '不能用于避孕判断']) {
   if (calendarViewCode.includes(forbidden) || calendarCode.includes(forbidden)) {
     failures.push(`calendar modules: removed cycle copy remains: ${forbidden}`);
   }
 }
-for (const expected of ["addEventListener('change'", "select[data-action]"]) {
+for (const expected of [
+  "addEventListener('change'", "input[data-action],select[data-action]", "button.tagName === 'SELECT' || button.tagName === 'INPUT'",
+  'export function syncSceneAccentControls', 'export function handleSceneAccentAction', "action === 'scene-accent'", "action === 'scene-accent-custom'", "option.setAttribute('aria-pressed'",
+]) {
   requireText('interactive-scene-phone.js', interactivePhoneActionsCode, expected);
 }
 for (const expected of [
@@ -1264,31 +1326,49 @@ if (directoryTemplate.includes('pm-forum-entry') || directoryTemplate.includes('
 if (controlCenterTemplate.includes('makeOverlay') || controlCenterTemplate.includes('<span')) {
   failures.push('phone-control-center.js: compact control menu must not use the full overlay or explanatory subtitles');
 }
-for (const title of ['编辑消息', '联系人', '角色设置', '表情包管理', '日历', '删除信息', '返回桌面']) {
+for (const title of ['编辑消息', '联系人', '角色设置', '表情包管理', '日历', '重新启用自动消息', '删除信息']) {
   if (!controlCenterTemplate.includes(title)) failures.push(`phone-control-center.js: compact control menu missing title ${title}`);
 }
 for (const expected of [
-  "action === 'contacts'", "action === 'desktop'", "action === 'calendar'", 'return window.__pmShowList()', 'return showPhoneDesktopPage()', 'return showPhoneCalendarPage()',
-  'runControlMenuAction', 'controlActionLabel', 'HOME_ICON_SVG', 'CALENDAR_ICON_SVG', 'EDIT_ICON_SVG', 'EMOJI_ICON_SVG', 'TRASH_ICON_SVG',
+  "action === 'contacts'", "action === 'rearm'", "action === 'calendar'", 'return window.__pmShowList()', 'return window.__pmArmAutoPoke()', 'return showPhoneCalendarPage()',
+  'runControlMenuAction', 'controlActionLabel', 'REFRESH_ICON_SVG', 'CALENDAR_ICON_SVG', 'EDIT_ICON_SVG', 'EMOJI_ICON_SVG', 'TRASH_ICON_SVG',
 ]) requireText('phone-control-center.js', controlCenterCode, expected);
-if (controlCenterCode.includes("__pmShowPhonePage?.('desktop')")) {
-  failures.push('phone-control-center.js: desktop action must render through showPhoneDesktopPage before switching pages');
+if (controlCenterTemplate.includes('data-action="desktop"') || controlCenterTemplate.includes('返回桌面')) {
+  failures.push('phone-control-center.js: compact control menu must not duplicate the chat navbar desktop action');
 }
 for (const title of ['API 设置', '主题颜色', '数据备份', '互动场景']) {
   if (controlCenterTemplate.includes(title)) failures.push(`phone-control-center.js: compact control menu must not contain removed shortcut ${title}`);
 }
-for (const expected of ['post-comment', 'delete-scene', 'delete-post', 'delete-comment', '文字直播']) {
+for (const expected of ['post-comment', 'delete-scene', 'delete-post', 'delete-comment', "action === 'post-actions'", '文字直播']) {
   requireText('interactive-scenes.js', interactiveCode, expected);
 }
 for (const expected of [
-  'persistSceneBudgetRemoval', 'deleteSceneAndFinalize', 'finalizeDeletedScene', 'bindPhonePageActions', 'runDeleteSceneAction',
+  'HEART_ICON_SVG', 'SHARE_ICON_SVG', 'CONTROL_ICON_SVG', 'FEED_ICON_SVG', 'LIVE_ICON_SVG',
+  'pm-scene-nav-actions', 'pm-scene-title-poke', 'pm-scene-view-actions', 'pm-scene-view-toggle',
+  'data-action="desktop"', 'data-action="back"', '切换到直播', '返回社区',
+  'data-action="tab" data-tab="prompt"', '风格提示词', 'data-action="context-inject"', '上下文注入', 'pm-scene-post-more', 'data-action="post-actions"',
+  'aria-label="拍一拍本帖，只生成本帖评论"', "renderPostMetric(SHARE_ICON_SVG, shares, '转发', 'is-share')",
+  'pm-scene-accent-options', 'data-action="scene-accent"', 'data-action="scene-accent-custom"', 'aria-pressed="${preset.accent === selectedAccent}"',
+  'placeholder="分享此刻……"', '<span>刚刚</span>',
+]) requireText('interactive-scene-views.js', interactiveViewsCode, expected);
+if (interactiveViewsCode.includes('刚刚 · ${escapeHtml(scene.title)}')) failures.push('interactive-scene-views.js: post metadata must not repeat the community title');
+if (interactiveViewsCode.includes('pm-scene-tabs')) failures.push('interactive-scene-views.js: obsolete wide community tab capsule remains');
+for (const forbidden of ['生成更多评论', '>喜欢</button>', '>已喜欢</button>']) {
+  if (interactiveViewsCode.includes(forbidden)) failures.push(`interactive-scene-views.js: obsolete community post action remains: ${forbidden}`);
+}
+for (const expected of [
+  'persistSceneBudgetRemoval', 'deleteSceneAndFinalize', 'finalizeDeletedScene', 'bindPhonePageActions', 'runDeleteSceneAction', 'toggleSceneMenu', 'selectScenePreset',
   'deleteScene: deleteInteractiveScene', 'persistSceneBudgetRemoval({',
   "['手机页面状态保存失败', persistPhoneUi]", "['运行时场景清理失败', clearOpenScene]",
   "['社区页面刷新失败', renderLauncher]", "dataset.sceneUiBound === 'true'", "event.key !== 'Escape'", ".pm-scene-menu:not([hidden])",
+  ".pm-scene-post-actions:not([hidden])", 'closePostActions', '[data-action="post-actions"]', 'postFocusTarget', 'menuFocusTarget',
 ]) requireText('interactive-scene-phone.js', interactivePhoneCode, expected);
 for (const expected of [
   'runDeleteSceneAction(scopeId, sceneId, {', 'clearOpenScene:', 'renderLauncher:',
 ]) {
+  requireText('interactive-scenes.js', interactiveCode, expected);
+}
+for (const expected of ['handleSceneAccentAction(action, app, button)']) {
   requireText('interactive-scenes.js', interactiveCode, expected);
 }
 for (const expected of [
@@ -1308,9 +1388,10 @@ for (const stateField of [
 for (const expected of [
   'resolveCommunityMessageEvents(et)', 'deps.observeCommunityTurn?.(c.chat || [])',
   "registerResolvedHostEvent(c.eventSource, et, 'MESSAGE_RECEIVED'", "registerResolvedHostEvent(c.eventSource, et, 'CHAT_CHANGED'",
+  'handleHostChatChanged({', "cancelCommunityGeneration?.('host-chat-changed')", "cancelCalendarTasks?.('host-chat-changed')",
+  "disarmAutoPoke?.('host-chat-changed')", 'endPhone(true)',
   'installPhonePageSuspensionListeners', 'updatePhonePageSuspensionHandler', '__pmPageSuspensionHandler',
   "__pmPageSuspensionHandler?.('beforeunload')", "__pmPageSuspensionHandler?.('document-hidden')",
-  "deps.cancelCommunityGeneration?.('host-chat-changed')", "deps.cancelCalendarTasks?.('host-chat-changed')",
 ]) requireText('phone-foundation.js', sourceModuleByName.get('phone-foundation.js')?.code || '', expected);
 for (const forbidden of [
   "et.MESSAGE_RECEIVED || 'message_received'", "et.CHAT_CHANGED || 'chat_id_changed'",
@@ -1374,11 +1455,15 @@ const forumHandlerAssignments = sourceModules.reduce((count, module) => {
 }, 0);
 if (forumHandlerAssignments !== 1) failures.push(`source: expected exactly one __pmOpenForumMode assignment, got ${forumHandlerAssignments}`);
 const settingsCode = sourceModuleByName.get('settings-ui.js')?.code || '';
+const modelPickerCode = sourceModuleByName.get('settings-model-picker.js')?.code || '';
 const foundationAnalysis = analyze(foundationCode, 'module');
 const settingsAnalysis = analyze(settingsCode, 'module');
+const modelPickerAnalysis = analyze(modelPickerCode, 'module');
 const makeOverlaySource = foundationAnalysis.functionSource.get('makeOverlay') || '';
 const applyThemeSource = foundationAnalysis.functionSource.get('applyTheme') || '';
 const setDarkModeSource = settingsAnalysis.windowAssignmentSource.get('__pmSetDarkMode') || '';
+const showModelPickerSource = settingsAnalysis.windowAssignmentSource.get('__pmShowModelPicker') || '';
+const modelPickerImplementation = modelPickerAnalysis.functionSource.get('showModelPicker') || '';
 const persistThemeMutationSource = settingsCode.match(/const persistThemeMutation\s*=\s*[\s\S]*?\n\s*};/)?.[0] || '';
 const overlayThemeDirectSyncPattern = /getElementById\(['"]pm-overlay['"]\)[\s\S]*?setAttribute\(['"]data-theme['"]/;
 const overlayThemeHelperSyncPattern = /const\s+applyProperties\s*=\s*element\s*=>[\s\S]*?element\.setAttribute\(['"]data-theme['"][\s\S]*?applyProperties\(document\.getElementById\(['"]pm-overlay['"]\)\)/;
@@ -1394,6 +1479,29 @@ if (!overlayThemeDirectSyncPattern.test(applyThemeSource)
 if (!setDarkModeSource.includes('persistThemeMutation') || !persistThemeMutationSource.includes('applyTheme()')) {
   failures.push('settings-ui.js: __pmSetDarkMode must persist the mutation and apply the synchronized theme');
 }
+if (!applyThemeSource.includes("applyProperties(document.getElementById('pm-model-dropdown'))")) {
+  failures.push('phone-foundation.js: applyTheme must synchronize data-theme to an existing body-level model dropdown');
+}
+if (!showModelPickerSource.includes('showModelPicker(runtime)')) {
+  failures.push('settings-ui.js: __pmShowModelPicker must delegate to the settings model picker with runtime state');
+}
+for (const expected of [
+  "dropdown.dataset.theme = window.__pmTheme?.darkMode || 'light'",
+  '<button type="button" class="pm-model-opt"',
+  'aria-pressed="${model === current}"',
+  'aria-label="搜索模型"',
+  'const closeDropdown = () =>',
+  'dropdown.__pmCloseDropdown = closeDropdown',
+  "document.removeEventListener('click', closer, true)",
+  'if (closed) return',
+  'closeDropdown();',
+]) requireText('settings-model-picker.js showModelPicker', modelPickerImplementation, expected);
+for (const expected of [
+  '<button type="button" class="pm-theme-chip',
+  'aria-label="使用${escapeAttr(v.label)}气泡主题"',
+  'aria-pressed="${t.preset === k}"',
+  "el.setAttribute('aria-pressed', String(active))",
+]) requireText('settings-ui.js', settingsCode, expected);
 for (const expected of [
   '#pm-overlay[data-theme="dark"] .pm-settings-home button{background:#2c2c2e;color:#eee;border-color:#3a3a3c}',
   '#pm-overlay[data-theme="dark"] .pm-scene-comments,#pm-iphone[data-theme="dark"] .pm-scene-comments{background:#2c2c2e;color:#ddd}',
@@ -1404,6 +1512,16 @@ for (const expected of [
   '#pm-overlay[data-theme="dark"] .pm-scene-comment-composer input{background:#202025;color:#eee;border-color:#414149}',
   '#pm-iphone[data-theme="dark"] .pm-scene-comment-composer input{background:#202025;color:#eee;border-color:#414149}',
   '#pm-iphone[data-theme="dark"] .pm-scene-header{background:#242429;color:#eee;border-color:#393940}',
+  '.pm-theme-chip:focus-visible{outline:2px solid #007aff;outline-offset:2px;}',
+  '#pm-model-arrow:focus-visible{outline:2px solid #007aff;outline-offset:2px;}',
+  '.pm-model-opt:focus-visible{position:relative;z-index:1;outline:2px solid #007aff;outline-offset:-2px;}',
+  '.pm-model-dropdown[data-theme="dark"] .pm-model-opt:focus-visible{outline-color:#64a8ff;}',
+  '.pm-model-dropdown[data-theme="dark"]{background:#252527 !important;border-color:#48484a !important;color:#eee !important;',
+  '.pm-model-dropdown[data-theme="dark"] .pm-model-search{background:#1c1c1e !important;color:#eee !important;',
+  '.pm-model-dropdown[data-theme="dark"] .pm-model-opt{background:#252527;color:#ddd;border-bottom-color:#38383a;}',
+  '.pm-model-dropdown[data-theme="dark"] .pm-model-empty{color:#aaa;}',
+  '#pm-overlay[data-theme="dark"] .pm-global-setting{background:#2c2c2e;color:#eee;border-color:#48484a;}',
+  '#pm-overlay[data-theme="dark"] .pm-global-setting small,#pm-overlay[data-theme="dark"] .pm-quick-reply-settings section p,#pm-overlay[data-theme="dark"] .pm-calendar-base-content p{color:#aaa;}',
 ]) requireText('style.css', css, expected);
 if (css.includes('pm-forum-entry')) failures.push('style.css: removed directory community entry styles must not remain');
 requireText('style.css', css, 'top:calc(18px + var(--lane)*31px + var(--offset))');
@@ -1415,33 +1533,106 @@ for (const expected of [
   '.pm-calendar-header-action.is-loading svg{animation:pm-spin .8s linear infinite}',
   '.pm-calendar-cycle-input:checked+.pm-custom-check{background:#34c759 !important}',
   '.pm-calendar-cycle-input:focus-visible+.pm-custom-check{outline:2px solid #007aff;outline-offset:2px}',
+  '.pm-scene-topbar{grid-template-columns:74px minmax(0,1fr) 74px',
+  '.pm-scene-view-actions{display:flex;align-items:center;justify-content:flex-end;gap:2px}',
+  '.pm-scene-composer textarea{min-height:38px;max-height:88px;box-shadow:none !important;appearance:none}',
+  '.pm-scene-title-poke:focus-visible{background:color-mix(in srgb,var(--scene-accent) 12%,transparent);outline:2px solid var(--scene-accent);outline-offset:2px}',
+  '.pm-scene-post-more:focus-visible{background:color-mix(in srgb,var(--scene-accent) 10%,transparent);outline:2px solid var(--scene-accent);outline-offset:2px}',
+  '.pm-scene-post-actions{display:flex;align-items:center;gap:2px}',
+  '.pm-scene-post-actions[hidden]{display:none}',
+  '.pm-scene-post-actions button:focus-visible{background:color-mix(in srgb,var(--scene-accent) 10%,transparent);outline:2px solid var(--scene-accent);outline-offset:2px}',
+  '.pm-scene-like.is-liked svg{fill:currentColor}',
+  '.pm-scene-view-toggle svg,.pm-scene-exit svg{width:18px;height:18px}',
+  '.pm-reply-card{box-sizing:border-box;width:100%',
+  '.pm-quote-preview{display:flex;align-items:center',
+  '.pm-quote-target{animation:pm-quote-highlight',
+  '@media(pointer:coarse){.pm-quote-action{min-width:42px;min-height:42px',
+  '@media(prefers-reduced-motion:reduce){.pm-quote-target{animation:none',
+  '.pm-calendar-view-switch{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;background:transparent}',
+  '.pm-calendar-editor-switch button{display:grid;place-items:center;width:30px;height:30px;padding:6px;border:0;border-radius:50%',
+  '#pm-iphone[data-theme="dark"] .pm-calendar-view-switch button[aria-pressed="true"],#pm-iphone[data-theme="dark"] .pm-calendar-editor-switch button[aria-pressed="true"]{background:color-mix(in srgb,var(--pm-calendar-accent) 20%,transparent);color:var(--pm-calendar-accent);box-shadow:none}',
   '@media (prefers-reduced-motion:reduce){.pm-calendar-header-action.is-loading svg{animation:none}}',
+  '.pm-scene-accent-option[aria-pressed="true"]{border-color:var(--scene-accent-option)',
+  '.pm-scene-accent-option:focus-visible{outline:2px solid var(--scene-accent-option)',
+  '.pm-scene-comment-composer input{font-size:14px}',
+  '.pm-scene-empty{font-size:12px;line-height:1.55}',
 ]) requireText('style.css', css, expected);
+requireCssDeclarations(cssRules, '.pm-message-select-check', {
+  width: '22px', height: '22px', 'min-width': '22px', 'min-height': '22px',
+  'border-radius': '50%', background: 'transparent', color: '#fff',
+});
+requireCssDeclarations(cssRules, '.pm-message-select-check[data-checked="1"]', {
+  'background-color': '#007aff',
+  'background-image': 'linear-gradient(var(--pm-r-bg,#007aff),var(--pm-r-bg,#007aff))',
+  'border-color': 'var(--pm-r-bg,#007aff)',
+});
+requireCssDeclarations(cssRules, '.pm-message-select-check[data-checked="1"]::after', {
+  content: "'✓'", 'font-size': '15px', 'font-weight': '800',
+});
+requireCssDeclarations(cssRules, '.pm-message-select-check:focus-visible', {
+  outline: '2px solid #007aff', 'outline-offset': '2px',
+});
+requireCssDeclarations(cssRules, '#pm-iphone[data-theme="dark"] .pm-message-select-check', {
+  background: 'transparent', 'border-color': '#8e8e93',
+});
+requireCssDeclarations(cssRules, '#pm-iphone[data-theme="dark"] .pm-message-select-check[data-checked="1"]', {
+  'background-color': '#0a84ff',
+  'background-image': 'linear-gradient(var(--pm-r-bg,#0a84ff),var(--pm-r-bg,#0a84ff))',
+  'border-color': 'var(--pm-r-bg,#0a84ff)',
+});
+requireCssDeclarations(cssRules, '#pm-iphone[data-theme="dark"] .pm-message-select-check:focus-visible', {
+  'outline-color': '#64a8ff',
+});
+requireCssDeclarations(cssRules, '.pm-custom-check', {
+  width: '38px !important', height: '22px !important',
+  'min-width': '38px !important', 'min-height': '22px !important',
+  'border-radius': '999px !important',
+});
+requireCssDeclarations(cssRules, '.pm-custom-check::after', {
+  width: '18px', height: '18px', left: '2px', top: '2px', 'border-radius': '50%',
+});
+requireCssDeclarations(cssRules, '.pm-custom-check[data-checked="1"]::after', {
+  transform: 'translateX(16px)',
+});
+requireCssDeclarations(cssRules, '.pm-custom-check.is-checked::after', {
+  transform: 'translateX(16px)',
+});
+if (css.includes('pm-scene-tabs')) failures.push('style.css: obsolete wide community tab capsule styles remain');
 const lifecycleCode = sourceModuleByName.get('phone-lifecycle.js')?.code || '';
 for (const expected of [
   'bindPressGesture(sendButton', 'delay: 550', 'getPendingMessages(runtime',
-  'state.isGenerating', 'window.__pmSubmitPending()', 'unbindSendGesture?.()',
+  'state.isGenerating', 'window.__pmSubmitPending()', 'unbindSendGesture?.()', 'unbindPhoneResize?.()',
   'createAmbientStatusController', 'ambientStatusEnabled === true', 'new Intl.DateTimeFormat',
-  'if (state.isMinimized) ambientStatus.stop(); else ambientStatus.sync();',
-  'ambientStatus.stop();',
+  'applyPhoneScale(state.phoneWindow)', 'pm-phone-resize-handle', 'SIGNAL_ICON_SVG', 'WIFI_ICON_SVG', 'ambientStatus.stop();',
 ]) requireText('phone-lifecycle.js', lifecycleCode, expected);
+if (/cb\.style\.cssText\s*=\s*['"][^'"]*border-radius\s*:\s*50%/.test(lifecycleCode)) failures.push('phone-lifecycle.js: message selection checkbox must not override the CSS-owned circle shape with an inline border radius');
+for (const match of css.matchAll(/([^{}]+)\{/g)) {
+  const selector = match[1];
+  if (selector.includes('.pm-message-select-check') && selector.includes('.pm-custom-check')) failures.push('style.css: message selection checkbox and binary toggle must not share a selector');
+}
 requireText('package.json', packageText, 'npm run check:ambient');
 requireText('package.json', packageText, '"check:emoji": "node scripts/check-emoji.mjs"');
 requireText('package.json', packageText, 'npm run check:emoji');
 requireText('package.json', packageText, '"check:calendar": "node scripts/check-calendar.mjs"');
 requireText('package.json', packageText, 'npm run check:calendar');
-requireText('settings-templates.js', sourceModuleByName.get('settings-templates.js')?.code || '', '仅显示设备本地时间，不联网、不定位，也不会写入提示词。');
+requireText('settings-templates.js', sourceModuleByName.get('settings-templates.js')?.code || '', '仅显示设备本地时间。');
 for (const expected of ['手机会话占比 (%)', '互动社区占比 (%)', '日历占比 (%)', 'pm-budget-calendar-enabled', 'pm-custom-check', 'role="checkbox"', "event.key==='Enter'"]) {
   requireText('settings-templates.js', sourceModuleByName.get('settings-templates.js')?.code || '', expected);
 }
-for (const expected of [".pm-budget-scene.is-checked", "classList.contains('is-checked') === true", 'extractAiResponseContent(j)', 'resolveBudgetPercentageInput']) {
+for (const expected of [".pm-budget-scene.is-checked", 'pm-budget-selection-mode', 'communitySelectionsByStorage']) {
+  requireText('settings-templates.js', sourceModuleByName.get('settings-templates.js')?.code || '', expected);
+}
+for (const expected of ["classList.contains('is-checked') === true", 'extractAiResponseContent(j)', 'resolveBudgetPercentageInput', 'collectBudgetCommunityFields']) {
   requireText('settings-ui.js', settingsCode, expected);
 }
 for (const [owner, code, expected] of [
   ['phone-directory.js', directoryCode, ['role="checkbox"', 'tabindex="0"', 'aria-checked=', "event.key==='Enter'"]],
   ['phone-chat-poke.js', phoneChatPokeCodeForChecks, ['role="checkbox"', 'tabindex="0"', 'aria-checked=', "event.key==='Enter'", 'saveCharacterBehavior()', 'savePokeConfig()', 'behaviorSnapshot', 'pokeSnapshot']],
-  ['phone-lifecycle.js', lifecycleCode, ["setAttribute('role', 'checkbox')", "setAttribute('aria-checked'", 'cb.tabIndex = 0', "event.key === 'Enter'"]],
-  ['phone-foundation.js', foundationCode, ['const previous = [...(window.__pmBidirectional[id] || [])]', 'if (!saveBidirectional())', 'window.__pmBidirectional[id] = previous']],
+  ['phone-lifecycle.js', lifecycleCode, [
+    "setAttribute('role', 'checkbox')", "setAttribute('aria-checked'", 'cb.tabIndex = 0',
+    'toggleMessageSelection({ checkbox: cb, wrap, list })', 'handleMessageSelectionKey(event, cb)',
+  ]],
+  ['phone-foundation.js', foundationCode, ['const previous = [...(window.__pmBidirectional[id] || [])]', 'if (!saveBidirectional())', 'window.__pmBidirectional[id] = previous', "handle.addEventListener('lostpointercapture', finish)", "window.addEventListener('blur', finish)", "handle.removeEventListener('lostpointercapture', finish)", "window.removeEventListener('blur', finish)", 'finish();']],
   ['settings-ui.js', settingsCode, ['const previous = window.__pmWordyLimit === true', 'if (!saveWordyLimit())', "el.setAttribute('aria-checked'"]],
 ]) {
   for (const value of expected) requireText(owner, code, value);
@@ -1521,16 +1712,16 @@ for (const expected of [
   '.pm-action-button{', 'font-size:13px', 'background:var(--pm-r-bg,#007aff)',
   '.pm-action-button.is-danger{background:#ff3b30;color:#fff}',
   '.pm-contact-add-choices{', '.pm-calendar-base-dialog{width:290px}',
-  '.pm-calendar-view-switch button{display:grid;place-items:center;flex:1',
+  '.pm-calendar-view-switch button{display:grid;place-items:center;flex:0 0 32px;width:32px;height:32px;padding:0;border-radius:50%',
   '.pm-calendar-header{position:sticky', 'grid-template-columns:72px minmax(0,1fr) 72px',
 ]) requireText('style.css', css, expected);
 for (const expected of [
-  'onclick="window.__pmCloseOverlay()"', 'pm-modal-add pm-contact-settings-actions',
+  'onclick="window.__pmCloseOverlay()"', 'pm-contact-settings-title', 'pm-modal-add pm-contact-settings-actions',
   'onclick="window.__pmSaveContactConfig(',
   'window.__pmSaveAndCloseContactConfig = contactName => window.__pmSaveContactConfig(contactName)',
 ]) requireText('phone-chat-poke.js', phoneChatPokeCode, expected);
-if (!/pm-contact-settings-scroll[\s\S]*data-pm-auto-poke-status[\s\S]*pm-modal-add pm-contact-settings-actions[\s\S]*保存角色设置[\s\S]*<\/div>\s*<\/div>\s*<\/div>`/.test(showContactConfigSource)) {
-  failures.push('phone-chat-poke.js: character settings save action must remain inside the scroll content after the per-session auto-message settings');
+if (!/pm-contact-settings-scroll[\s\S]*pm-modal-add pm-contact-settings-actions[\s\S]*保存角色设置[\s\S]*<\/div>\s*<\/div>\s*<\/div>`/.test(showContactConfigSource)) {
+  failures.push('phone-chat-poke.js: character settings save action must remain inside the scroll content');
 }
 if (!showContactConfigSource || !saveContactConfigSource) {
   failures.push('phone-chat-poke.js: character settings render/save functions must remain statically analyzable');
@@ -1542,9 +1733,10 @@ if (!showContactConfigSource || !saveContactConfigSource) {
     failures.push('phone-chat-poke.js: saving character settings must not close the overlay');
   }
 }
-for (const forbidden of ['calendarWeather', 'calendarCycles', 'getCalendarWeatherStore', 'getCalendarCycleStore']) {
+for (const forbidden of ['calendarWeather', 'getCalendarWeatherStore']) {
   if (foundationInjectionSource.includes(forbidden)) failures.push(`phone-foundation.js: prompt injection path must not read or pass ${forbidden}`);
 }
+for (const expected of ['calendarCycles', "getCalendarData('getCalendarCycleStore')"]) requireText('phone-foundation.js', foundationInjectionSource, expected);
 for (const expected of [
   'class="pm-calendar-cycle-input" name="enabled" type="checkbox"',
   'class="pm-custom-check" aria-hidden="true"', '安全期',
@@ -1557,10 +1749,14 @@ const phoneInjectionAnalysis = analyze(phoneInjectionCode, 'module');
 for (const functionName of ['renderCalendarContextInjection', 'buildContextInjectionPrompts']) {
   const source = phoneInjectionAnalysis.functionSource.get(functionName) || '';
   if (!source) failures.push(`phone-injection.js: missing ${functionName}`);
-  for (const forbidden of ['weatherStore', 'cycleStore', 'calendarWeather', 'calendarCycles']) {
+  for (const forbidden of ['weatherStore', 'calendarWeather']) {
     if (source.includes(forbidden)) failures.push(`phone-injection.js: ${functionName} must not accept or read ${forbidden}`);
   }
 }
+for (const expected of [
+  'calendarDateRangeKeys(windowStart, -3, 6)', 'days: 60', 'calendarCycles',
+  'cycleSubjectKeys', 'predictCycleRange', 'relativeCalendarLabel', "facts.join('；')",
+]) requireText('phone-injection.js', phoneInjectionCode, expected);
 requireText('interactive-scenes.js', interactiveCode, 'generationErrorMessage(error)');
 requireText('interactive-scene-scheduler.js', sourceModuleByName.get('interactive-scene-scheduler.js')?.code || '', 'generationErrorMessage(error)');
 
@@ -1592,7 +1788,7 @@ for (const expected of [
   'runAutoPokeCounterCycle', 'await run(contactName)', 'commitAutomaticResult', 'await persistHistory()', 'persistCounter()',
 ]) requireText('runtime.js', runtimeCode, expected);
 for (const expected of [
-  'updatePhonePageSuspensionHandler(window, deps, disarmAutoPoke)', "disarmAutoPoke('host-chat-changed')",
+  'updatePhonePageSuspensionHandler(window, deps, disarmAutoPoke)', "disarmAutoPoke?.('host-chat-changed')",
   'hasCompletedAssistantMessage && isAutoPokeAllowed()',
   'createAutomaticTaskController', 'automaticTasks.begin', 'automaticTasks.isActive', 'automaticTasks.finish',
 ]) requireText('phone-foundation.js', foundationCode, expected);
@@ -1668,7 +1864,7 @@ if (packageLock.version !== packageJson.version
     || packageLock.packages?.['']?.version !== packageJson.version) {
   failures.push('version: package-lock.json root versions must match package.json');
 }
-if (packageJson.version !== '1.3.0') failures.push('version: expected release version 1.3.0');
+if (packageJson.version !== '1.4.0') failures.push('version: expected release version 1.4.0');
 
 const readmeLines = readme.split(/\r?\n/);
 if (readmeLines[0] !== '# 天音小笺') failures.push('README: title must be 天音小笺');

@@ -2,7 +2,7 @@ import { parseCalendarDate } from './calendar-model.js';
 import { predictCyclePhase } from './calendar-cycle-model.js';
 import { holidayYearFromCache } from './calendar-holiday.js';
 import { weatherCodeLabel } from './calendar-weather.js';
-import { TRASH_ICON_SVG } from './icons.js';
+import { EVENT_EDITOR_ICON_SVG, OCCASION_EDITOR_ICON_SVG, TRASH_ICON_SVG } from './icons.js';
 import { escapeAttr, escapeHtml } from './ui.js';
 
 const detailDate = new Intl.DateTimeFormat('zh-CN', { month: 'long', day: 'numeric', weekday: 'short' });
@@ -80,7 +80,7 @@ export function renderCalendarManagement({
     holidayAvailable = true, holidayRange = null, editorKind = 'event', cycleSubjects = [], selectedCycleSubject = '__self__',
 }) {
     if (viewMode === 'weather') {
-        return `<details class="pm-calendar-management" data-calendar-management="weather"><summary>天气设置</summary><div class="pm-calendar-management-content"><section class="pm-calendar-data-tools"><h3>天气位置</h3><div class="pm-calendar-data-row"><input data-weather-query placeholder="搜索城市或地区" maxlength="100" aria-label="搜索天气位置"><button type="button" data-action="calendar-weather-search">搜索</button><button type="button" data-action="calendar-weather-refresh">刷新</button></div>${weatherSearchResults(weatherResults)}${weatherStore.location ? `<small class="pm-calendar-attribution">${escapeHtml(weatherStore.location.name)} · Weather data © Open-Meteo (CC BY 4.0)</small>` : '<small class="pm-calendar-attribution">尚未设置天气位置</small>'}</section></div></details>`;
+        return `<details class="pm-calendar-management" data-calendar-management="weather"><summary>天气设置</summary><div class="pm-calendar-management-content"><section class="pm-calendar-data-tools"><h3>天气位置</h3><div class="pm-calendar-data-row"><input data-weather-query placeholder="搜索城市或地区" maxlength="100" aria-label="搜索天气位置"><button type="button" data-action="calendar-weather-search">搜索</button><button type="button" data-action="calendar-weather-refresh">刷新</button></div>${weatherSearchResults(weatherResults)}<small class="pm-calendar-attribution">${weatherStore.location ? escapeHtml(weatherStore.location.name) : '尚未设置天气位置'}</small></section></div></details>`;
     }
     if (viewMode === 'cycle') {
         const startDay = cycleScope.lastPeriodStart ? Number(cycleScope.lastPeriodStart.slice(8, 10)) : 1;
@@ -95,8 +95,10 @@ export function renderCalendarManagement({
     }
     return `<details class="pm-calendar-management" data-calendar-management="schedule"><summary>安排管理</summary><div class="pm-calendar-management-content">
         <div class="pm-calendar-tools"><button type="button" data-action="calendar-scan">识别正文日期</button><button type="button" data-action="calendar-toggle-auto" aria-pressed="${scope.autoAdjust}">${scope.autoAdjust ? '自动识别：开' : '自动识别：关'}</button></div>
+        <div class="pm-calendar-data-row pm-calendar-date-tags-row"><input data-calendar-date-tags value="${escapeAttr((scope.dateTags || ['date']).join(', '))}" maxlength="160" placeholder="date, time_date" aria-label="正文日期标签"><button type="button" data-action="calendar-date-tags-save">保存标签</button></div>
         <section class="pm-calendar-data-tools"><h3>节假日数据</h3><div class="pm-calendar-data-row pm-calendar-holiday-row"><select data-action="calendar-holiday-country" data-calendar-country aria-label="节假日国家"><option value="CN" ${holidayCache.selectedCountry === 'CN' ? 'selected' : ''}>中国</option><option value="US" ${holidayCache.selectedCountry === 'US' ? 'selected' : ''}>美国</option><option value="JP" ${holidayCache.selectedCountry === 'JP' ? 'selected' : ''}>日本</option></select><button type="button" data-action="calendar-holiday-refresh" ${holidayAvailable ? '' : 'disabled aria-disabled="true"'}>刷新节假日</button></div>${holidayAvailable ? '' : `<small class="pm-calendar-attribution">该国家在当前年代无外部数据源（仅支持 ${holidayRange?.min ?? '未知'}–${holidayRange?.max ?? '未知'} 年）</small>`}</section>
-        <div class="pm-calendar-editor-switch" role="group" aria-label="添加内容类型"><button type="button" data-action="calendar-editor-kind" data-editor-kind="event" aria-pressed="${editorKind !== 'occasion'}">日程</button><button type="button" data-action="calendar-editor-kind" data-editor-kind="occasion" aria-pressed="${editorKind === 'occasion'}">生日 / 纪念日</button></div>
+        <div class="pm-calendar-editor-stack">
+        <div class="pm-calendar-editor-switch" role="group" aria-label="添加内容类型"><button type="button" data-action="calendar-editor-kind" data-editor-kind="event" aria-label="切换到日程编辑器" title="日程" aria-pressed="${editorKind !== 'occasion'}">${EVENT_EDITOR_ICON_SVG}</button><button type="button" data-action="calendar-editor-kind" data-editor-kind="occasion" aria-label="切换到生日或纪念日编辑器" title="生日或纪念日" aria-pressed="${editorKind === 'occasion'}">${OCCASION_EDITOR_ICON_SVG}</button></div>
         <form class="pm-calendar-editor" data-calendar-editor ${editorKind === 'occasion' ? 'hidden' : ''}>
           <h3>添加日程</h3>
           <div class="pm-calendar-date-fields"><input name="year" inputmode="numeric" maxlength="4" placeholder="YYYY" aria-label="年"><input name="month" inputmode="numeric" maxlength="2" placeholder="MM" aria-label="月"><input name="day" inputmode="numeric" maxlength="2" placeholder="DD" aria-label="日"></div>
@@ -115,7 +117,7 @@ export function renderCalendarManagement({
           <label>2 月 29 日在非闰年<select name="leapDayRule"><option value="feb28">按 2 月 28 日显示</option><option value="mar1">按 3 月 1 日显示</option><option value="skip">该年不显示</option></select></label>
           <input name="occasionId" type="hidden">
           <div class="pm-calendar-editor-actions"><button type="button" data-action="calendar-occasion-cancel-edit">清空</button><button type="button" class="is-primary" data-action="calendar-occasion-save">保存</button></div>
-        </form>
+        </form></div>
         <section class="pm-calendar-occasion-list"><h3>已保存的生日与纪念日</h3>${occasionList(occasionScope)}</section>
     </div></details>`;
 }

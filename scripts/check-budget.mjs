@@ -18,6 +18,14 @@ const normalized = normalizeBudgetConfig({
     communityPosition: 999,
     communityDepth: -4,
     communitySceneIdsByStorage: { story: [' scene-a ', 'scene-a', '', 3] },
+    communitySelectionsByStorage: {
+        story: {
+            'scene-a': { mode: 'selected', postIds: [' post-a ', 'post-a', '', 3] },
+            'scene-all': { mode: 'all', postIds: ['ignored'] },
+            'scene-invalid': { mode: 'partial', postIds: ['post-b'] },
+        },
+        invalid: [],
+    },
 });
 assert.equal(normalized.budgetVersion, 1);
 assert.equal(normalized.targetTokens, DEFAULT_BUDGET_CONFIG.targetTokens);
@@ -28,6 +36,12 @@ assert.equal(normalized.communityEnabled, true);
 assert.equal(normalized.communityPosition, DEFAULT_BUDGET_CONFIG.communityPosition);
 assert.equal(normalized.communityDepth, DEFAULT_BUDGET_CONFIG.communityDepth);
 assert.deepEqual(normalized.communitySceneIdsByStorage.story, ['scene-a']);
+assert.deepEqual(normalized.communitySelectionsByStorage, {
+    story: {
+        'scene-a': { mode: 'selected', postIds: ['post-a'] },
+        'scene-all': { mode: 'all', postIds: [] },
+    },
+});
 
 const percentageView = getBudgetPercentageView({ phone: 2, community: 1, calendar: 1 });
 assert.deepEqual(percentageView, { phone: 50, community: 25, calendar: 25 });
@@ -110,10 +124,16 @@ storedValues.set('ST_SMS_BUDGET_CONFIG', JSON.stringify({
     sourceWeights: { phone: 2, community: 1 },
     communityEnabled: true,
     communitySceneIdsByStorage: { story: ['scene-a'] },
+    communitySelectionsByStorage: {
+        story: { 'scene-a': { mode: 'selected', postIds: ['post-a'] } },
+    },
 }));
 assert.equal(loadBudgetConfig().targetTokens, 321);
 assert.equal(window.__pmBudgetConfig.budgetVersion, 1);
 assert.deepEqual(window.__pmBudgetConfig.sourceWeights, { phone: 2, community: 1, calendar: 0 });
+assert.deepEqual(window.__pmBudgetConfig.communitySelectionsByStorage.story['scene-a'], {
+    mode: 'selected', postIds: ['post-a'],
+});
 window.__pmBudgetConfig.targetTokens = 654;
 assert.equal(saveBudgetConfig(), true);
 assert.equal(JSON.parse(storedValues.get('ST_SMS_BUDGET_CONFIG')).targetTokens, 654);
@@ -132,12 +152,10 @@ assert.equal(window.__pmBudgetConfig.communityEnabled, false);
 delete globalThis.localStorage;
 delete globalThis.window;
 
-let groupMode = false;
 let requestBody;
 const callAI = createAiClient({
     getConfig: () => ({ useIndependent: true, apiUrl: 'https://example.test/v1', apiKey: 'secret', model: 'm' }),
     getContext: () => ({}),
-    getDefaultMaxTokens: () => groupMode ? 600 : 300,
     fetchImpl: async (_url, options) => {
         requestBody = JSON.parse(options.body);
         return { ok: true, async json() { return { choices: [{ message: { content: 'ok' } }] }; } };
@@ -145,13 +163,12 @@ const callAI = createAiClient({
 });
 let budgetConfig = normalizeBudgetConfig({ targetTokens: 800 });
 await callAI('', 'single');
-assert.equal(requestBody.max_tokens, 300);
+assert.equal(Object.hasOwn(requestBody, 'max_tokens'), false);
 budgetConfig = normalizeBudgetConfig({ ...budgetConfig, targetTokens: 9000, communityEnabled: true });
-groupMode = true;
 await callAI('', 'group');
-assert.equal(requestBody.max_tokens, 600);
-await callAI('', 'explicit', { maxTokens: 125 });
-assert.equal(requestBody.max_tokens, 125);
+assert.equal(Object.hasOwn(requestBody, 'max_tokens'), false);
+await callAI('', 'explicit');
+assert.equal(Object.hasOwn(requestBody, 'max_tokens'), false);
 assert.equal(budgetConfig.targetTokens, 9000);
 
 console.log('Context budget verified.');

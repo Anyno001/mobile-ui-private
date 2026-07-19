@@ -3,7 +3,7 @@ export const INTERACTIVE_STORE_VERSION = 2;
 export const INTERACTIVE_ACTOR_TYPES = Object.freeze(['user', 'story', 'passerby', 'legacy']);
 export const PHONE_UI_STATE_VERSION = 1;
 export const PHONE_UI_PAGES = Object.freeze(['desktop', 'chat', 'community', 'calendar']);
-export const PHONE_UI_TABS = Object.freeze(['feed', 'live', 'prompt']);
+export const PHONE_UI_TABS = Object.freeze(['feed', 'live']);
 
 const text = (value, max) => String(value ?? '').trim().slice(0, max);
 const list = value => Array.isArray(value) ? value : [];
@@ -179,7 +179,14 @@ export function stripPersistedV2ContentRating(rawStore) {
 }
 
 export function createDefaultPhoneUiScope() {
-    return { pinnedSceneIds: [], lastPage: 'desktop', lastSceneId: null, lastTab: 'feed' };
+    return {
+        pinnedSceneIds: [],
+        lastPage: 'desktop',
+        lastSceneId: null,
+        lastTab: 'feed',
+        lastChatType: null,
+        lastChatKey: null,
+    };
 }
 
 export function createEmptyPhoneUiState() {
@@ -218,11 +225,19 @@ export function normalizePhoneUiState(raw, interactiveStore = createEmptyInterac
         const lastSceneId = validLastSceneId ? value.lastSceneId : null;
         let lastPage = PHONE_UI_PAGES.includes(value.lastPage) ? value.lastPage : 'desktop';
         if (lastPage === 'community' && !lastSceneId) lastPage = 'desktop';
+        const lastChatType = value.lastChatType === 'contact' || value.lastChatType === 'group'
+            ? value.lastChatType
+            : null;
+        const lastChatKey = lastChatType && typeof value.lastChatKey === 'string'
+            && value.lastChatKey && value.lastChatKey === value.lastChatKey.trim() && value.lastChatKey.length <= 160
+            ? value.lastChatKey : null;
         result.scopes[storageId] = {
             pinnedSceneIds,
             lastPage,
             lastSceneId,
             lastTab: PHONE_UI_TABS.includes(value.lastTab) ? value.lastTab : 'feed',
+            lastChatType: lastChatKey ? lastChatType : null,
+            lastChatKey,
         };
     }
     return result;

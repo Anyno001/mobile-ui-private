@@ -1,4 +1,4 @@
-import { calendarDateFromParts, calendarWeekKeys } from './calendar-model.js';
+import { calendarDateFromParts, calendarDateRangeKeys } from './calendar-model.js';
 
 export const OCCASION_STORE_VERSION = 1;
 export const OCCASION_TYPES = Object.freeze(['birthday', 'anniversary']);
@@ -121,8 +121,8 @@ export function occasionDateForYear(occasionValue, year) {
 }
 
 export function expandOccasions(scope, { start = new Date(), days = 7 } = {}) {
-    const length = Math.max(1, Math.min(42, Number.isInteger(days) ? days : 7));
-    const dates = new Set(calendarWeekKeys(start, length));
+    const length = Math.max(1, Math.min(366, Number.isInteger(days) ? days : 7));
+    const dates = new Set(calendarDateRangeKeys(start, 0, length - 1));
     const years = new Set([...dates].map(date => Number(date.slice(0, 4))));
     const result = [];
     for (const occasion of normalizeOccasionScope(scope).occasions) {

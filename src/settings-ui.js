@@ -1,13 +1,13 @@
-import { MODEL_VISIBLE_ROWS, POPOVER_SUPPORTED } from './constants.js';
 import { extractAiResponseContent } from './ai.js';
 import { normalizeBudgetConfig } from './budget.js';
 import { THEME_PRESETS, normalizeApiUrls } from './config.js';
 import { openCropper } from './cropper.js';
 import { createApiDraftMode } from './settings-api-mode.js';
+import { showModelPicker } from './settings-model-picker.js';
 import { installQuickReplySettings } from './settings-quick-reply.js';
 import {
-    renderApiSettings, renderBackupSettings, renderBudgetSettings, renderLookSettings, renderSettingsHome,
-    renderSettingsModal, resolveBudgetPercentageInput,
+    collectBudgetCommunityFields, renderApiSettings, renderBackupSettings, renderBudgetSceneOptions,
+    renderBudgetSettings, renderLookSettings, renderSettingsHome, renderSettingsModal, resolveBudgetPercentageInput,
 } from './settings-templates.js';
 import {
     applyCalendarBackupFields, createBackupStateHandlers, createEmptyCalendarBackupFields, runBackupTransaction,
@@ -318,7 +318,7 @@ export function installSettingsUi(deps) {
         apply: applyBackupState,
         persist: persistBackupState,
     } = createBackupStateHandlers(deps);
-    const quickReplySettings = installQuickReplySettings({ makeOverlay, addNote });
+    const quickReplySettings = installQuickReplySettings({ makeOverlay, addNote, saveTheme });
     const apiDraftMode = createApiDraftMode();
     let backgroundMutation = Promise.resolve();
     const injectionFailure = (result, phase) => {
@@ -333,7 +333,11 @@ export function installSettingsUi(deps) {
     };
     const syncLookControls = () => {
         const theme = window.__pmTheme;
-        document.querySelectorAll('.pm-theme-chip').forEach(el => el.classList.toggle('pm-theme-active', el.dataset.preset === theme.preset));
+        document.querySelectorAll('.pm-theme-chip').forEach(el => {
+            const active = el.dataset.preset === theme.preset;
+            el.classList.toggle('pm-theme-active', active);
+            el.setAttribute('aria-pressed', String(active));
+        });
         document.querySelectorAll('.pm-layout-chip').forEach(el => {
             const value = el.textContent.includes('夜间') ? 'dark' : el.textContent.includes('日间') ? 'light' : '';
             if (value) el.classList.toggle('pm-layout-active', value === theme.darkMode);
@@ -559,12 +563,7 @@ export function installSettingsUi(deps) {
                 const store = await getInteractiveStore?.();
                 scope = store?.scopes?.[storageId] || null;
             } catch (error) {}
-            const selected = new Set(config.communitySceneIdsByStorage[storageId] || []);
-            const sceneOptions = Array.isArray(scope?.sceneOrder) ? scope.sceneOrder.flatMap(sceneId => {
-                const scene = scope.scenes?.[sceneId];
-                if (!scene) return [];
-                return [`<label class="pm-cfg-label pm-check-setting"><span>${escapeHtml(scene.title)}</span><div class="pm-custom-check pm-budget-scene ${selected.has(sceneId) ? 'is-checked' : ''}" role="checkbox" tabindex="0" aria-checked="${selected.has(sceneId)}" data-value="${escapeAttr(sceneId)}" onclick="this.classList.toggle('is-checked');this.setAttribute('aria-checked',String(this.classList.contains('is-checked')))" onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();this.click()}"></div></label>`];
-            }).join('') : '';
+            const sceneOptions = renderBudgetSceneOptions({ config, scope, storageId });
             const content = renderBudgetSettings({ config, sceneOptions });
             const footer = '<div class="pm-modal-add"><button class="pm-action-button is-secondary" onclick="window.__pmResetBudgetConfig()" style="flex:1">恢复默认</button><button class="pm-action-button" onclick="window.__pmSaveBudgetConfig()" style="flex:2">保存上下文预算</button></div>';
             makeOverlay(renderSettingsModal({ title: '上下文预算', content, footer }));
@@ -593,7 +592,7 @@ export function installSettingsUi(deps) {
         await loadBgSettings();
         const persona = getCurrentPersona();
         const presetBtns = Object.entries(THEME_PRESETS).map(([k, v]) =>
-            `<div class="pm-theme-chip ${t.preset === k ? 'pm-theme-active' : ''}" data-preset="${k}" onclick="window.__pmSetPreset('${safeJS(k)}')"><span class="pm-theme-dot" style="background:${v.right}"></span>${v.label}</div>`
+            `<button type="button" class="pm-theme-chip ${t.preset === k ? 'pm-theme-active' : ''}" data-preset="${k}" aria-label="使用${escapeAttr(v.label)}气泡主题" aria-pressed="${t.preset === k}" onclick="window.__pmSetPreset('${safeJS(k)}')"><span class="pm-theme-dot" style="background:${v.right}" aria-hidden="true"></span>${escapeHtml(v.label)}</button>`
         ).join('');
         const id = getStorageId(), localKey = `${id}_${persona}`;
         const hasDesktopBg = !!window.__pmDesktopBg, hasGlobalBg = !!window.__pmBgGlobal, hasLocalBg = !!window.__pmBgLocal[localKey];
@@ -689,7 +688,7 @@ export function installSettingsUi(deps) {
         s.textContent = `测试「${m}」...`; s.style.color = '#007aff';
         const ctrl = new AbortController(); const tm = setTimeout(() => ctrl.abort(), 15000);
         try {
-            const r = await fetch(normalizeApiUrls(u).chatUrl, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${k}` }, body: JSON.stringify({ model: m, messages: [{ role: 'user', content: 'hi' }], max_tokens: 16 }), signal: ctrl.signal });
+            const r = await fetch(normalizeApiUrls(u).chatUrl, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${k}` }, body: JSON.stringify({ model: m, messages: [{ role: 'user', content: '只回复：OK' }] }), signal: ctrl.signal });
             clearTimeout(tm); if (!r.ok) throw new Error(`HTTP ${r.status}`);
             const j = await r.json(), reply = extractAiResponseContent(j);
             s.textContent = reply ? `测试成功："${reply.slice(0, 25)}"` : '响应格式异常'; s.style.color = reply ? '#34c759' : '#ff9500';
@@ -714,12 +713,8 @@ export function installSettingsUi(deps) {
         } catch (error) { alert(error.message); return; }
         const prioritySource = document.getElementById('pm-budget-priority')?.value;
         const priority = [prioritySource, 'phone', 'community', 'calendar'].filter((value, index, values) => value && values.indexOf(value) === index);
-        const sceneIds = Array.from(document.querySelectorAll('.pm-budget-scene.is-checked'))
-            .map(control => control.dataset.value).filter(Boolean);
         const current = normalizeBudgetConfig(window.__pmBudgetConfig);
-        const sceneIdsByStorage = { ...current.communitySceneIdsByStorage };
-        if (storageId && storageId !== 'sms_unknown__default' && sceneIds.length) sceneIdsByStorage[storageId] = sceneIds;
-        else if (storageId) delete sceneIdsByStorage[storageId];
+        const communityFields = collectBudgetCommunityFields(document, current, storageId);
         const candidate = normalizeBudgetConfig({
             ...current,
             targetTokens: Number(document.getElementById('pm-budget-target')?.value),
@@ -729,7 +724,7 @@ export function installSettingsUi(deps) {
             communityEnabled: document.getElementById('pm-budget-community-enabled')?.classList.contains('is-checked') === true,
             communityPosition: Number(document.getElementById('pm-budget-community-position')?.value),
             communityDepth: Number(document.getElementById('pm-budget-community-depth')?.value),
-            communitySceneIdsByStorage: sceneIdsByStorage,
+            ...communityFields,
             calendarEnabled: document.getElementById('pm-budget-calendar-enabled')?.classList.contains('is-checked') === true,
             calendarPosition: Number(document.getElementById('pm-budget-calendar-position')?.value),
             calendarDepth: Number(document.getElementById('pm-budget-calendar-depth')?.value),
@@ -773,24 +768,5 @@ export function installSettingsUi(deps) {
         addNote(`已保存：${window.__pmConfig.useIndependent && apiUrl ? '独立API' : '主API'}`);
         return true;
     };
-    window.__pmShowModelPicker = () => {
-        const existing = document.getElementById('pm-model-dropdown');
-        if (existing) { existing.remove(); return; }
-        if (!runtime.modelList.length) { const s = document.getElementById('pm-api-status'); if (s) { s.textContent = '请先拉取模型'; s.style.color = '#ff9500'; } return; }
-        const input = document.getElementById('pm-cfg-model'), rect = input.getBoundingClientRect();
-        const dd = document.createElement('div'); dd.id = 'pm-model-dropdown'; dd.className = 'pm-model-dropdown';
-        dd.style.setProperty('--pm-model-visible-rows', String(MODEL_VISIBLE_ROWS));
-        if (POPOVER_SUPPORTED) dd.setAttribute('popover', 'manual');
-        dd.innerHTML = `<input class="pm-model-search" placeholder="🔍 搜索..." /><div class="pm-model-options"></div>`;
-        dd.style.left = rect.left + 'px'; dd.style.top = (rect.bottom + 4) + 'px'; dd.style.width = rect.width + 'px';
-        document.body.appendChild(dd); if (dd.showPopover) try { dd.showPopover(); } catch (e) {}
-        const optsDiv = dd.querySelector('.pm-model-options');
-        const render = (f = '') => {
-            const fl = f.toLowerCase(), filtered = runtime.modelList.filter(m => !fl || m.toLowerCase().includes(fl));
-            optsDiv.innerHTML = filtered.length ? filtered.map(m => `<div class="pm-model-opt" data-m="${escapeAttr(m)}">${escapeHtml(m)}</div>`).join('') : '<div class="pm-model-empty">无匹配</div>';
-            optsDiv.querySelectorAll('.pm-model-opt').forEach(el => el.addEventListener('click', () => { document.getElementById('pm-cfg-model').value = el.dataset.m; dd.remove(); }));
-        };
-        render(); dd.querySelector('.pm-model-search').addEventListener('input', function () { render(this.value); }); dd.querySelector('.pm-model-search').focus();
-        setTimeout(() => { const closer = (e) => { if (!dd.contains(e.target) && e.target.id !== 'pm-model-arrow') { dd.remove(); document.removeEventListener('click', closer, true); } }; document.addEventListener('click', closer, true); }, 0);
-    };
+    window.__pmShowModelPicker = () => showModelPicker(runtime);
 }

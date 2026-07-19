@@ -1,9 +1,9 @@
 import { generationErrorMessage } from './ai.js';
 import {
-    buildCalendarPrompts, calendarDateFromParts, calendarGenerationCopy, calendarMonthCells, calendarMonthKeys,
+    buildCalendarPrompts, calendarDateFromParts, calendarDateRangeKeys, calendarGenerationCopy, calendarMonthCells, calendarMonthKeys,
     calendarReferenceDate, calendarScopeFor, calendarWeekKeys, calendarWindowDescription, contextPayload, createCalendarDate, deleteCalendarEvent,
     extractContextCalendarEvents, findCalendarEvent, formatCalendarDate, mergeCalendarEvents,
-    normalizeCalendarStore, parseCalendarAiResponse, parseCalendarDate, parseCalendarInput, shiftCalendarMonth,
+    normalizeCalendarDateTags, normalizeCalendarStore, parseCalendarAiResponse, parseCalendarDate, parseCalendarInput, shiftCalendarMonth,
     upsertCalendarEvent,
 } from './calendar-model.js';
 import {
@@ -11,8 +11,8 @@ import {
     occasionScopeFor, upsertOccasion,
 } from './calendar-occasion-model.js';
 import {
-    holidayYearFromCache, holidayYearRange, isHolidayYearSupported, normalizeHolidayCache, resolveHolidayYear,
-    selectHolidayCountry,
+    buildCulturalFestivals, HOLIDAY_YEAR_RANGE, holidayYearFromCache, holidayYearRange, isHolidayYearSupported,
+    mergeCalendarDateFacts, normalizeHolidayCache, resolveHolidayYear, selectHolidayCountry,
 } from './calendar-holiday.js';
 import {
     fetchWeatherForecast, normalizeWeatherStore, searchWeatherLocations, weatherCodeLabel,
@@ -21,7 +21,7 @@ import {
     CYCLE_SELF_SUBJECT, clearCycleScope, cycleScopeFor, cycleSubjectKeys, normalizeCycleStore, predictCyclePhase, upsertCycleScope,
 } from './calendar-cycle-model.js';
 import {
-    BACK_ICON_SVG, CALENDAR_ICON_SVG, CLOSE_ICON_SVG, CYCLE_ICON_SVG, EDIT_ICON_SVG, REFRESH_ICON_SVG, WEATHER_ICON_SVG,
+    CALENDAR_ICON_SVG, CLOSE_ICON_SVG, CYCLE_ICON_SVG, EDIT_ICON_SVG, HOME_ICON_SVG, REFRESH_ICON_SVG, WEATHER_ICON_SVG,
 } from './icons.js';
 import { createCalendarCommitters } from './calendar-commit.js';
 import {
@@ -147,12 +147,12 @@ export function renderCalendarPageHtml(
     const headerBusy = viewMode === 'schedule' && view.generating === true;
     const headerButton = headerAction ? `<button type="button" class="pm-calendar-header-action ${headerBusy ? 'is-loading' : ''}" data-action="${headerAction}" aria-label="${headerActionLabel}" title="${headerActionLabel}" aria-busy="${headerBusy}" ${headerBusy ? 'disabled' : ''}>${REFRESH_ICON_SVG}</button>` : '';
     return `<div id="pm-calendar-app" class="pm-calendar-shell" data-calendar-view-mode="${viewMode}">
-        <header class="pm-calendar-header"><span class="pm-calendar-header-side is-left"><button type="button" data-action="calendar-home" aria-label="返回桌面">${BACK_ICON_SVG}</button></span><div class="pm-calendar-title-row"><b>${escapeHtml(monthTitle.format(createCalendarDate(viewYear, viewMonth, 1)))}</b></div><span class="pm-calendar-header-side is-right"><button type="button" data-action="calendar-base-edit" aria-label="编辑时间起点" title="编辑时间起点">${EDIT_ICON_SVG}</button>${headerButton}</span></header>
+        <header class="pm-calendar-header"><span class="pm-calendar-header-side is-left"><button type="button" data-action="calendar-home" aria-label="返回桌面" title="返回桌面">${HOME_ICON_SVG}</button></span><div class="pm-calendar-title-row"><b>${escapeHtml(monthTitle.format(createCalendarDate(viewYear, viewMonth, 1)))}</b><button type="button" class="pm-calendar-base-edit" data-action="calendar-base-edit" aria-label="编辑时间起点" title="编辑时间起点">${EDIT_ICON_SVG}</button></div><span class="pm-calendar-header-side is-right">${headerButton}</span></header>
         <div class="pm-calendar-month-nav"><button type="button" class="pm-calendar-month-step" data-action="calendar-prev-month" aria-label="上个月">‹</button><div class="pm-calendar-view-switch" role="group" aria-label="日历信息分类"><button type="button" data-action="calendar-mode-schedule" aria-label="显示日程与假日" aria-pressed="${viewMode === 'schedule'}" title="日程与假日">${CALENDAR_ICON_SVG}</button><button type="button" data-action="calendar-mode-weather" aria-label="显示天气" aria-pressed="${viewMode === 'weather'}" title="天气">${WEATHER_ICON_SVG}</button><button type="button" data-action="calendar-mode-cycle" aria-label="显示生理期" aria-pressed="${viewMode === 'cycle'}" title="生理期">${CYCLE_ICON_SVG}</button></div><button type="button" class="pm-calendar-month-step" data-action="calendar-next-month" aria-label="下个月">›</button></div>
         <div class="pm-calendar-month" aria-label="${viewYear}年${viewMonth}月月历"><div class="pm-calendar-weekdays">${CALENDAR_WEEKDAYS.map(day => `<span>周${day}</span>`).join('')}</div><div class="pm-calendar-month-grid">${days}</div></div>
         ${selectedDetail}
-        <div class="pm-calendar-status" aria-live="polite">${escapeHtml(status)}</div>
         ${management}
+        <div class="pm-calendar-status" aria-live="polite">${escapeHtml(status)}</div>
     </div>`;
 }
 
@@ -167,13 +167,34 @@ export function installCalendar(state, deps) {
         weatherSearchResults: [],
         viewByStorage: new Map(),
         statusByStorage: new Map(),
+        statusTimerByStorage: new Map(),
     };
     const tasks = createTaskController(getStorageId);
-    const status = (storageId, text) => {
-        runtime.statusByStorage.set(storageId, text || '');
+    const scheduleTimeout = deps.setTimeoutImpl || globalThis.setTimeout;
+    const cancelTimeout = deps.clearTimeoutImpl || globalThis.clearTimeout;
+    const status = (storageId, text, { duration = 4000, persistent = false } = {}) => {
+        const previousToken = runtime.statusTimerByStorage.get(storageId);
+        if (previousToken) cancelTimeout(previousToken.timer);
+        runtime.statusTimerByStorage.delete(storageId);
+        const nextText = text || '';
+        runtime.statusByStorage.set(storageId, nextText);
         const element = state.phoneWindow?.querySelector('.pm-calendar-status');
-        if (element && getStorageId() === storageId) element.textContent = text || '';
+        if (element && getStorageId() === storageId) element.textContent = nextText;
+        if (!nextText || persistent) return;
+        const token = { timer: undefined };
+        const timer = scheduleTimeout(() => {
+            if (runtime.statusTimerByStorage.get(storageId) !== token) return;
+            runtime.statusTimerByStorage.delete(storageId);
+            if (runtime.statusByStorage.get(storageId) !== nextText) return;
+            runtime.statusByStorage.set(storageId, '');
+            const currentElement = state.phoneWindow?.querySelector('.pm-calendar-status');
+            if (currentElement && getStorageId() === storageId) currentElement.textContent = '';
+        }, duration);
+        timer?.unref?.();
+        token.timer = timer;
+        runtime.statusTimerByStorage.set(storageId, token);
     };
+    const errorStatus = (storageId, error) => status(storageId, error?.message || '日历操作失败', { duration: 10000 });
     const scope = storageId => calendarScopeFor(runtime.store, storageId);
     const occasions = storageId => occasionScopeFor(runtime.occasionStore, storageId);
     const cycleSubjectOptions = storageId => {
@@ -259,11 +280,13 @@ export function installCalendar(state, deps) {
             if (!tasks.active(task)) return false;
             commitHolidays(nextCache);
             await deps.applyBidirectionalInjection?.();
-            status(storageId, usedStaleCache ? '节假日服务不可用，已显示缓存数据。' : '节假日数据已更新。');
+            status(storageId, usedStaleCache ? '节假日服务不可用，已显示缓存数据。' : '节假日数据已更新。',
+                usedStaleCache ? { duration: 10000 } : undefined);
             rerender(storageId);
             return true;
         } catch (error) {
             if (!tasks.active(task)) return false;
+            errorStatus(storageId, error);
             throw error;
         } finally {
             tasks.finish(task);
@@ -282,6 +305,7 @@ export function installCalendar(state, deps) {
             return true;
         } catch (error) {
             if (!tasks.active(task)) return false;
+            errorStatus(storageId, error);
             throw error;
         } finally {
             tasks.finish(task);
@@ -290,7 +314,11 @@ export function installCalendar(state, deps) {
 
     async function selectWeatherLocation(storageId, index) {
         const location = runtime.weatherSearchResults[index];
-        if (!location) throw new Error('天气位置不存在，请重新搜索');
+        if (!location) {
+            const error = new Error('天气位置不存在，请重新搜索');
+            errorStatus(storageId, error);
+            throw error;
+        }
         const task = tasks.begin(storageId, 'weather-forecast');
         if (!task) return false;
         try {
@@ -301,11 +329,13 @@ export function installCalendar(state, deps) {
             commitWeather(result.store);
             await deps.applyBidirectionalInjection?.();
             runtime.weatherSearchResults = [];
-            status(storageId, result.stale ? '天气服务不可用，已显示该位置的缓存预报。' : '天气位置与预报已更新。');
+            status(storageId, result.stale ? '天气服务不可用，已显示该位置的缓存预报。' : '天气位置与预报已更新。',
+                result.stale ? { duration: 10000 } : undefined);
             rerender(storageId);
             return true;
         } catch (error) {
             if (!tasks.active(task)) return false;
+            errorStatus(storageId, error);
             throw error;
         } finally {
             tasks.finish(task);
@@ -313,7 +343,11 @@ export function installCalendar(state, deps) {
     }
 
     async function refreshWeather(storageId) {
-        if (!runtime.weatherStore.location) throw new Error('请先搜索并选择天气位置');
+        if (!runtime.weatherStore.location) {
+            const error = new Error('请先搜索并选择天气位置');
+            errorStatus(storageId, error);
+            throw error;
+        }
         const task = tasks.begin(storageId, 'weather-forecast');
         if (!task) return false;
         try {
@@ -323,11 +357,13 @@ export function installCalendar(state, deps) {
             if (!tasks.active(task)) return false;
             commitWeather(result.store);
             await deps.applyBidirectionalInjection?.();
-            status(storageId, result.stale ? '天气服务不可用，已显示缓存预报。' : '天气预报已更新。');
+            status(storageId, result.stale ? '天气服务不可用，已显示缓存预报。' : '天气预报已更新。',
+                result.stale ? { duration: 10000 } : undefined);
             rerender(storageId);
             return true;
         } catch (error) {
             if (!tasks.active(task)) return false;
+            errorStatus(storageId, error);
             throw error;
         } finally {
             tasks.finish(task);
@@ -340,8 +376,9 @@ export function installCalendar(state, deps) {
         try {
             const context = await gatherContext();
             if (!tasks.active(task)) return false;
-            const reference = calendarReferenceDate(scope(storageId));
-            const events = extractContextCalendarEvents([context.mainChatText, context.worldBookText].filter(Boolean).join('\n'), reference);
+            const currentScope = scope(storageId);
+            const reference = calendarReferenceDate(currentScope);
+            const events = extractContextCalendarEvents([context.mainChatText, context.worldBookText].filter(Boolean).join('\n'), reference, currentScope.dateTags);
             if (!events.length) {
                 if (!silent) status(storageId, '当前上下文中没有识别到明确日期。可填写 YYYY MM DD，或使用 <日期><日程>。');
                 return 0;
@@ -365,15 +402,34 @@ export function installCalendar(state, deps) {
         const previousStatus = currentView.generationTask ? currentView.generationPreviousStatus : runtime.statusByStorage.get(storageId) || '';
         runtime.viewByStorage.set(storageId, { ...currentView, generating: true, generationTask: task, generationPreviousStatus: previousStatus }); let statusSettled = false;
         const now = calendarReferenceDate(scope(storageId)), generationCopy = calendarGenerationCopy(now, mode);
-        status(storageId, generationCopy.pending); rerender(storageId);
+        status(storageId, generationCopy.pending, { persistent: true }); rerender(storageId);
         try {
             const context = await gatherContext();
             if (!tasks.active(task)) return false;
             const current = scope(storageId);
-            const existing = calendarWeekKeys(now, 7).flatMap(date => current.events[date] || [])
+            const historicalDates = calendarDateRangeKeys(now, -3, -1);
+            const currentDates = calendarDateRangeKeys(now, 0, 6);
+            const historicalEvents = historicalDates.flatMap(date => current.events[date] || [])
                 .map(({ date, title, note, source }) => ({ date, title, note, source }));
-            const prompts = buildCalendarPrompts(contextPayload(context, now), existing, mode);
-            const raw = await callAI(prompts.systemPrompt, prompts.userPrompt, { maxTokens: 65535, isolated: true, signal: task.signal });
+            const existing = currentDates.flatMap(date => current.events[date] || [])
+                .map(({ date, title, note, source }) => ({ date, title, note, source }));
+            const holidayStore = normalizeHolidayCache(runtime.holidayStore);
+            const years = [...new Set(currentDates.map(date => Number(date.slice(0, 4))))];
+            const dateFacts = years.flatMap(year => {
+                const legal = holidayYearFromCache(holidayStore, holidayStore.selectedCountry, year)?.entries || [];
+                const cultural = year >= HOLIDAY_YEAR_RANGE.min && year <= HOLIDAY_YEAR_RANGE.max
+                    ? buildCulturalFestivals(year) : [];
+                return mergeCalendarDateFacts(legal, cultural);
+            }).filter(item => currentDates.includes(item.date))
+                .map(({ date, name, kind }) => ({ date, name, kind }));
+            const payload = contextPayload(context, now, {
+                dateTags: current.dateTags,
+                historicalEvents,
+                currentEvents: existing,
+                dateFacts,
+            });
+            const prompts = buildCalendarPrompts(payload, existing, mode);
+            const raw = await callAI(prompts.systemPrompt, prompts.userPrompt, { isolated: true, signal: task.signal });
             if (!tasks.active(task)) return false;
             const events = parseCalendarAiResponse(raw, { start: now, days: 7 });
             const committed = await commitScope(storageId, value => {
@@ -390,7 +446,7 @@ export function installCalendar(state, deps) {
         } catch (error) {
             if (error?.calendarRollbackError) throw error;
             if (!tasks.active(task)) return false;
-            status(storageId, `日历生成失败：${calendarGenerationErrorMessage(error)}`); statusSettled = true;
+            status(storageId, `日历生成失败：${calendarGenerationErrorMessage(error)}`, { duration: 10000 }); statusSettled = true;
             throw error;
         } finally {
             tasks.finish(task); const latestView = viewFor(storageId);
@@ -447,8 +503,8 @@ export function installCalendar(state, deps) {
         const baseDate = scope(storageId).baseDate || '';
         const overlay = makeOverlay(`<div class="pm-modal pm-calendar-base-dialog">
           <div class="pm-modal-header"><span></span><b>编辑时间起点</b><button type="button" class="pm-modal-close" data-calendar-base-close aria-label="关闭">${CLOSE_ICON_SVG}</button></div>
-          <div class="pm-calendar-base-content"><label>时间起点<input type="date" data-calendar-base-date value="${escapeAttr(baseDate)}" aria-label="自定义时间起点"></label><p>相对日期与日历生成会以这里设置的日期为准。</p><p class="pm-calendar-base-error" data-calendar-base-error role="status" aria-live="polite"></p></div>
-          <div class="pm-modal-add"><button type="button" class="pm-action-button is-secondary" data-calendar-base-reset ${baseDate ? '' : 'disabled'}>使用设备时间</button><button type="button" class="pm-action-button" data-calendar-base-apply>应用</button></div>
+          <div class="pm-calendar-base-content"><label>时间起点<input type="date" data-calendar-base-date value="${escapeAttr(baseDate)}" aria-label="自定义时间起点"></label><p class="pm-calendar-base-error" data-calendar-base-error role="status" aria-live="polite"></p></div>
+          <div class="pm-modal-add pm-calendar-base-actions"><button type="button" class="pm-action-button is-secondary" data-calendar-base-reset ${baseDate ? '' : 'disabled'}>使用设备时间</button><button type="button" class="pm-action-button" data-calendar-base-apply>应用</button></div>
         </div>`);
         const showEditorError = error => {
             const errorNode = overlay.querySelector('[data-calendar-base-error]');
@@ -521,6 +577,14 @@ export function installCalendar(state, deps) {
             return;
         }
         if (action === 'calendar-scan') { await scanContext(storageId); return; }
+        if (action === 'calendar-date-tags-save') {
+            const input = app?.querySelector('[data-calendar-date-tags]');
+            if (!input) return;
+            const dateTags = normalizeCalendarDateTags(input.value);
+            await commitScope(storageId, current => ({ ...current, dateTags }));
+            status(storageId, `正文日期标签已保存：${dateTags.join('、')}`);
+            rerender(storageId); return;
+        }
         if (action === 'calendar-holiday-country') {
             const country = button.value;
             commitHolidays(selectHolidayCountry(runtime.holidayStore, country));
@@ -648,7 +712,8 @@ export function installCalendar(state, deps) {
         }
         if (action === 'calendar-parse') {
             const form = calendarEditor(app);
-            const parsed = parseCalendarInput(form?.elements.tagged.value, calendarReferenceDate(scope(storageId)));
+            const currentScope = scope(storageId);
+            const parsed = parseCalendarInput(form?.elements.tagged.value, calendarReferenceDate(currentScope), currentScope.dateTags);
             if (!parsed.ok) throw new Error(parsed.reason);
             const [year, month, day] = parsed.event.date.split('-');
             form.elements.year.value = year; form.elements.month.value = month; form.elements.day.value = day;
@@ -663,7 +728,8 @@ export function installCalendar(state, deps) {
             );
             let title = form.elements.title.value.trim();
             if ((!date || !title) && form.elements.tagged.value.trim()) {
-                const parsed = parseCalendarInput(form.elements.tagged.value, calendarReferenceDate(scope(storageId)));
+                const currentScope = scope(storageId);
+                const parsed = parseCalendarInput(form.elements.tagged.value, calendarReferenceDate(currentScope), currentScope.dateTags);
                 if (!parsed.ok) throw new Error(parsed.reason);
                 date ||= parsed.event.date; title ||= parsed.event.title;
             }

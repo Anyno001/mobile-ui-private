@@ -1,8 +1,18 @@
 export const PHONE_QR_SET_NAME = '天音小笺 · 手机入口';
-export const PHONE_QR_LABEL = '天音';
+export const PHONE_QR_LABEL_DEFAULT = '天音';
+export const PHONE_QR_LABEL = PHONE_QR_LABEL_DEFAULT;
 export const PHONE_QR_AUTOMATION_ID = 'tianyin-xiaojian.phone.open.v1';
 export const PHONE_QR_MESSAGE = '/phone';
 export const PHONE_QR_AUTO_INIT_KEY = 'ST_SMS_PHONE_QR_INITIALIZED';
+
+export function normalizePhoneQuickReplyLabel(value) {
+    const normalized = String(value ?? '').trim();
+    return [...(normalized || PHONE_QR_LABEL_DEFAULT)].slice(0, 6).join('');
+}
+
+export function getConfiguredPhoneQuickReplyLabel(theme = globalThis.window?.__pmTheme) {
+    return normalizePhoneQuickReplyLabel(theme?.qrLabel);
+}
 
 const REQUIRED_METHODS = [
     'getSetByName', 'createSet', 'deleteSet', 'createQuickReply', 'updateQuickReply',
@@ -32,15 +42,16 @@ const desiredProps = {
     automationId: PHONE_QR_AUTOMATION_ID,
 };
 
-export function getPhoneQuickReplyStatus(api = globalThis.quickReplyApi) {
+export function getPhoneQuickReplyStatus(api = globalThis.quickReplyApi, label = getConfiguredPhoneQuickReplyLabel()) {
     try {
         const host = requireApi(api);
+        const desiredLabel = normalizePhoneQuickReplyLabel(label);
         const set = host.getSetByName(PHONE_QR_SET_NAME);
         if (!set) return { state: 'absent', active: false };
         const owned = ownedReplies(set);
         if (!owned.length) return { state: 'conflict', active: false };
         const active = host.listGlobalSets().includes(PHONE_QR_SET_NAME);
-        const ready = owned.length === 1 && owned[0].label === PHONE_QR_LABEL
+        const ready = owned.length === 1 && owned[0].label === desiredLabel
             && owned[0].message === PHONE_QR_MESSAGE
             && owned[0].title === desiredProps.title
             && owned[0].showLabel === desiredProps.showLabel
@@ -51,8 +62,9 @@ export function getPhoneQuickReplyStatus(api = globalThis.quickReplyApi) {
     }
 }
 
-export async function ensurePhoneQuickReply(api = globalThis.quickReplyApi) {
+export async function ensurePhoneQuickReply(api = globalThis.quickReplyApi, label = getConfiguredPhoneQuickReplyLabel()) {
     const host = requireApi(api);
+    const desiredLabel = normalizePhoneQuickReplyLabel(label);
     let set = host.getSetByName(PHONE_QR_SET_NAME);
     let createdSet = false;
     if (set && !ownedReplies(set).length) {
@@ -65,14 +77,14 @@ export async function ensurePhoneQuickReply(api = globalThis.quickReplyApi) {
     try {
         const owned = ownedReplies(set);
         if (!owned.length) {
-            host.createQuickReply(PHONE_QR_SET_NAME, PHONE_QR_LABEL, desiredProps);
+            await host.createQuickReply(PHONE_QR_SET_NAME, desiredLabel, desiredProps);
         } else {
             const primary = owned[0];
-            host.updateQuickReply(PHONE_QR_SET_NAME, replyIdentifier(primary), { ...desiredProps, newLabel: PHONE_QR_LABEL });
-            for (const duplicate of owned.slice(1)) host.deleteQuickReply(PHONE_QR_SET_NAME, replyIdentifier(duplicate));
+            await host.updateQuickReply(PHONE_QR_SET_NAME, replyIdentifier(primary), { ...desiredProps, newLabel: desiredLabel });
+            for (const duplicate of owned.slice(1)) await host.deleteQuickReply(PHONE_QR_SET_NAME, replyIdentifier(duplicate));
         }
         if (!host.listGlobalSets().includes(PHONE_QR_SET_NAME)) host.addGlobalSet(PHONE_QR_SET_NAME, true);
-        return getPhoneQuickReplyStatus(host);
+        return getPhoneQuickReplyStatus(host, desiredLabel);
     } catch (error) {
         if (createdSet) {
             try { await host.deleteSet(PHONE_QR_SET_NAME); }
@@ -85,12 +97,13 @@ export async function ensurePhoneQuickReply(api = globalThis.quickReplyApi) {
 export async function ensureInitialPhoneQuickReply({
     api = globalThis.quickReplyApi,
     storage = globalThis.localStorage,
+    label = getConfiguredPhoneQuickReplyLabel(),
 } = {}) {
     if (!storage || typeof storage.getItem !== 'function' || typeof storage.setItem !== 'function') {
         throw new Error('浏览器存储不可用，无法记录手机入口初始化状态');
     }
-    if (storage.getItem(PHONE_QR_AUTO_INIT_KEY) === '1') return getPhoneQuickReplyStatus(api);
-    const status = await ensurePhoneQuickReply(api);
+    if (storage.getItem(PHONE_QR_AUTO_INIT_KEY) === '1') return getPhoneQuickReplyStatus(api, label);
+    const status = await ensurePhoneQuickReply(api, label);
     if (status.state !== 'ready') throw new Error('手机入口初始化后未达到可用状态');
     storage.setItem(PHONE_QR_AUTO_INIT_KEY, '1');
     return status;
@@ -110,7 +123,7 @@ export async function clearPhoneQuickReply(api = globalThis.quickReplyApi) {
             await host.deleteSet(PHONE_QR_SET_NAME);
             if (host.getSetByName(PHONE_QR_SET_NAME)) throw new Error('宿主未确认删除 Quick Reply 集合');
         } else {
-            for (const qr of owned) host.deleteQuickReply(PHONE_QR_SET_NAME, replyIdentifier(qr));
+            for (const qr of owned) await host.deleteQuickReply(PHONE_QR_SET_NAME, replyIdentifier(qr));
             if (wasActive && !host.listGlobalSets().includes(PHONE_QR_SET_NAME)) {
                 host.addGlobalSet(PHONE_QR_SET_NAME, true);
             }
@@ -126,4 +139,26 @@ export async function clearPhoneQuickReply(api = globalThis.quickReplyApi) {
         }
         throw error;
     }
+}
+
+const isUnavailableApiError = error => /未提供 Quick Reply API|Quick Reply API 缺少/.test(error?.message || '');
+
+export async function ensureInitialPhoneQuickReplyWithRetry({
+    getApi = () => globalThis.quickReplyApi,
+    storage = globalThis.localStorage,
+    label = getConfiguredPhoneQuickReplyLabel(),
+    attempts = 6,
+    delay = 500,
+    setTimeoutImpl = globalThis.setTimeout,
+} = {}) {
+    const totalAttempts = Number.isInteger(attempts) && attempts > 0 ? attempts : 1;
+    for (let attempt = 1; attempt <= totalAttempts; attempt += 1) {
+        try {
+            return await ensureInitialPhoneQuickReply({ api: getApi(), storage, label });
+        } catch (error) {
+            if (!isUnavailableApiError(error) || attempt === totalAttempts) throw error;
+            await new Promise(resolve => setTimeoutImpl(resolve, delay));
+        }
+    }
+    throw new Error('Quick Reply 初始化重试耗尽');
 }

@@ -4,6 +4,9 @@ import {
 import {
     buildChatPreferencePrompt, getCharacterBehavior, normalizeCharacterBehavior,
 } from './behavior-config.js';
+import {
+    createMessageEntry, describeMessageEntry,
+} from './chat-message-model.js';
 import { createHistoryWindow } from './history-window.js';
 import { cleanResponse, splitToSentences } from './prompts.js';
 import { escapeAttr, escapeHtml, safeJS } from './ui.js';
@@ -96,12 +99,18 @@ export function installPhoneChatPoke(state, deps) {
                 renderBlocks = parsed.filter(block => block.sentences.length > 0);
                 const contentParts = renderBlocks.map(block => `${block.name}：${block.sentences.join(' / ')}`);
                 if (!contentParts.length) return false;
-                targetHistory.push({ role: 'assistant', content: contentParts.join('\n') });
+                targetHistory.push(createMessageEntry({
+                    role: 'assistant',
+                    content: contentParts.join('\n'),
+                    descriptors: renderBlocks.flatMap(block => block.sentences.map(text => ({ text, sender: block.name }))),
+                }));
             } else {
                 const clean = cleanResponse(raw);
                 renderSentences = splitToSentences(clean);
                 if (!renderSentences.length) return false;
-                targetHistory.push({ role: 'assistant', content: renderSentences.join(' / ') });
+                targetHistory.push(createMessageEntry({
+                    role: 'assistant', content: renderSentences.join(' / '), descriptors: renderSentences,
+                }));
             }
 
             if (!isAutomaticRequestActive()) return false;
@@ -133,19 +142,30 @@ export function installPhoneChatPoke(state, deps) {
                 hideTyping();
                 state.conversationHistory = historyWindow.history;
                 rebaseRenderedHistory(historyWindow.trimmedCount);
+                const assistantEntry = targetHistory.at(-1);
+                const bubbles = describeMessageEntry(assistantEntry);
+                let bubbleIndex = 0;
                 if (historyIndex !== null && isGroup) {
                     for (const block of renderBlocks) {
                         for (const sentence of block.sentences) {
                             await new Promise(resolve => setTimeout(resolve, 120));
                             if (!isStillActiveView()) return true;
-                            addBubble(sentence, 'left', block.name, historyIndex);
+                            const bubble = bubbles[bubbleIndex++];
+                            addBubble(sentence, 'left', block.name, historyIndex, {
+                                historyIndex, messageId: assistantEntry.messageId,
+                                bubbleId: bubble?.bubbleId, sender: block.name,
+                            });
                         }
                     }
                 } else if (historyIndex !== null) {
                     for (const sentence of renderSentences) {
                         await new Promise(resolve => setTimeout(resolve, 150));
                         if (!isStillActiveView()) return true;
-                        addBubble(sentence, 'left', undefined, historyIndex);
+                        const bubble = bubbles[bubbleIndex++];
+                        addBubble(sentence, 'left', undefined, historyIndex, {
+                            historyIndex, messageId: assistantEntry.messageId,
+                            bubbleId: bubble?.bubbleId, sender: contactName,
+                        });
                     }
                 }
             }
@@ -161,17 +181,10 @@ export function installPhoneChatPoke(state, deps) {
         }
     };
 
-    function refreshAutoPokeRuntimeStatus() {
-        const active = isAutoPokeAllowed();
-        document.querySelectorAll('[data-pm-auto-poke-status]').forEach(element => {
-            element.textContent = active ? '本次手机会话已运行' : '本次手机会话已暂停';
-        });
-    }
-
     window.__pmArmAutoPoke = () => {
         if (!armAutoPoke()) return alert('请先打开手机并保持页面在前台。');
-        refreshAutoPokeRuntimeStatus();
-        addNote('已恢复本次手机会话的自动消息计数');
+        addNote('已重新启用本次手机会话的自动消息');
+        return true;
     };
 
     function showContactConfig(contactName) {
@@ -207,7 +220,7 @@ export function installPhoneChatPoke(state, deps) {
     <div class="pm-modal pm-modal-wide">
     <div class="pm-modal-header">
         <span></span>
-        <b>${escapeHtml(contactName)} · 角色设置</b>
+        <b class="pm-contact-settings-title" title="${escapeAttr(contactName)}">${escapeHtml(contactName)}</b>
         <button type="button" onclick="window.__pmCloseOverlay()" class="pm-modal-close" title="关闭" aria-label="关闭">${CLOSE_ICON_SVG}</button>
     </div>
     <div class="pm-contact-settings-scroll">
@@ -237,17 +250,6 @@ export function installPhoneChatPoke(state, deps) {
             </select>
           </label>`).join('')}
         </div>
-        <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-top:1px solid #f0f0f0;border-bottom:1px solid #f0f0f0;">
-          <div style="display:flex;flex-direction:column;gap:3px;">
-            <span style="font-size:13px;font-weight:600;">全局短消息限制</span>
-            <span style="font-size:11px;color:#aaa;">除话痨人设外，每条独立消息不超过 35 字</span>
-          </div>
-          <div id="pm-wordy-check" onclick="window.__pmToggleWordyLimit()"
-               class="pm-custom-check pm-bi-style ${window.__pmWordyLimit ? 'is-checked' : ''}"
-               role="checkbox" tabindex="0" aria-checked="${window.__pmWordyLimit === true}"
-               onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();this.click()}"
-               style="cursor:pointer;width:22px;height:22px;min-width:22px;min-height:22px;flex-shrink:0;border-radius:50%;"></div>
-        </div>
         ${emojiCheckHtml}
         <div style="margin-top:-6px;">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
@@ -271,10 +273,6 @@ export function installPhoneChatPoke(state, deps) {
         <div style="font-size:11px;color:#999;margin-top:4px;">
             当前计数：<span id="pm-poke-counter">${config.autoPoke.counter}</span> / ${config.autoPoke.interval}
         </div>
-        <button type="button" onclick="window.__pmArmAutoPoke()" style="margin-top:8px;width:100%;border:1px solid #ddd;border-radius:8px;padding:7px;background:#fff;cursor:pointer;">
-            恢复本次自动消息
-        </button>
-        <div data-pm-auto-poke-status style="font-size:11px;color:#999;margin-top:4px;">${isAutoPokeAllowed() ? '本次手机会话已运行' : '本次手机会话已暂停'}</div>
         </div>
     <div class="pm-modal-add pm-contact-settings-actions">
         <button type="button" class="pm-contact-settings-save" onclick="window.__pmSaveContactConfig('${safeJS(contactName)}')">保存角色设置</button>
@@ -446,17 +444,27 @@ export function installPhoneChatPoke(state, deps) {
                 const blocks = parsed.filter(block => block.sentences.length > 0);
                 const contentParts = blocks.map(block => `${block.name}：${block.sentences.join(' / ')}`);
                 if (contentParts.length > 0) {
-                    targetHistory.push({ role: 'assistant', content: contentParts.join('\n') });
+                    const assistantEntry = createMessageEntry({
+                        role: 'assistant', content: contentParts.join('\n'),
+                        descriptors: blocks.flatMap(block => block.sentences.map(text => ({ text, sender: block.name }))),
+                    });
+                    targetHistory.push(assistantEntry);
                     historyUpdated = true;
                     const historyWindow = createHistoryWindow(targetHistory, SAVE_LIMIT);
                     const historyIndex = historyWindow.toWindowIndex(targetHistory.length - 1);
                     if (isStillTarget()) rebaseRenderedHistory(historyWindow.trimmedCount);
+                    const bubbles = describeMessageEntry(assistantEntry);
+                    let bubbleIndex = 0;
                     if (historyIndex !== null) {
                         for (const block of blocks) {
                             for (const s of block.sentences) {
                                 await new Promise(r => setTimeout(r, 120));
                                 if (!isGenerationTaskActive(task)) return;
-                                if (isStillTarget()) addBubble(s, 'left', block.name, historyIndex);
+                                const bubble = bubbles[bubbleIndex++];
+                                if (isStillTarget()) addBubble(s, 'left', block.name, historyIndex, {
+                                    historyIndex, messageId: assistantEntry.messageId,
+                                    bubbleId: bubble?.bubbleId, sender: block.name,
+                                });
                             }
                         }
                     }
@@ -465,16 +473,24 @@ export function installPhoneChatPoke(state, deps) {
                 const clean = cleanResponse(raw);
                 const sentences = splitToSentences(clean);
                 if (sentences.length > 0) {
-                    targetHistory.push({ role: 'assistant', content: sentences.join(' / ') });
+                    const assistantEntry = createMessageEntry({
+                        role: 'assistant', content: sentences.join(' / '), descriptors: sentences,
+                    });
+                    targetHistory.push(assistantEntry);
                     historyUpdated = true;
                     const historyWindow = createHistoryWindow(targetHistory, SAVE_LIMIT);
                     const historyIndex = historyWindow.toWindowIndex(targetHistory.length - 1);
                     if (isStillTarget()) rebaseRenderedHistory(historyWindow.trimmedCount);
+                    const bubbles = describeMessageEntry(assistantEntry);
                     if (historyIndex !== null) {
-                        for (const s of sentences) {
+                        for (let index = 0; index < sentences.length; index += 1) {
+                            const s = sentences[index];
                             await new Promise(r => setTimeout(r, 150));
                             if (!isGenerationTaskActive(task)) return;
-                            if (isStillTarget()) addBubble(s, 'left', undefined, historyIndex);
+                            if (isStillTarget()) addBubble(s, 'left', undefined, historyIndex, {
+                                historyIndex, messageId: assistantEntry.messageId,
+                                bubbleId: bubbles[index]?.bubbleId, sender: contactName,
+                            });
                         }
                     }
                 }
@@ -576,7 +592,12 @@ export function installPhoneChatPoke(state, deps) {
             for (const block of parsed) {
                 if (block.sentences.length > 0) {
                     // 每个成员说完话立即落盘，防止后续 block 渲染途中挂起
-                    targetHistory.push({ role: 'assistant', content: `${block.name}：${block.sentences.join(' / ')}` });
+                    const assistantEntry = createMessageEntry({
+                        role: 'assistant',
+                        content: `${block.name}：${block.sentences.join(' / ')}`,
+                        descriptors: block.sentences.map(text => ({ text, sender: block.name })),
+                    });
+                    targetHistory.push(assistantEntry);
                     const historyWindow = createHistoryWindow(targetHistory, SAVE_LIMIT);
                     const historyIndex = historyWindow.toWindowIndex(targetHistory.length - 1);
                     const newlyTrimmed = historyWindow.trimmedCount - renderedTrimmedCount;
@@ -586,11 +607,16 @@ export function installPhoneChatPoke(state, deps) {
                     window.__pmHistories[storageId][saveKey] = historyWindow.history;
                     if (isStillTarget()) state.conversationHistory = historyWindow.history;
                     saveHistories();
+                    const bubbles = describeMessageEntry(assistantEntry);
                     if (historyIndex !== null) {
-                        for (const s of block.sentences) {
+                        for (let index = 0; index < block.sentences.length; index += 1) {
+                            const s = block.sentences[index];
                             await new Promise(r => setTimeout(r, 120));
                             if (!isGenerationTaskActive(task)) return;
-                            if (isStillTarget()) addBubble(s, 'left', block.name, historyIndex);
+                            if (isStillTarget()) addBubble(s, 'left', block.name, historyIndex, {
+                                historyIndex, messageId: assistantEntry.messageId,
+                                bubbleId: bubbles[index]?.bubbleId, sender: block.name,
+                            });
                         }
                     }
                 }

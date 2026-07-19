@@ -10,6 +10,9 @@ import {
     normalizeGroupInjection, normalizeGroupMeta, normalizeGroupMetaStore,
 } from '../src/behavior-config.js';
 import {
+    createMessageEntry, createQuoteSnapshot, describeMessageEntry, normalizeMessageHistory,
+} from '../src/chat-message-model.js';
+import {
     loadBgSettings, saveBgGlobal, saveBgLocal, saveDesktopBg,
 } from '../src/storage-background.js';
 import {
@@ -17,13 +20,16 @@ import {
     PLUGIN_IDB_DYNAMIC_PREFIXES, PLUGIN_IDB_STATIC_KEYS, PLUGIN_LOCAL_STORAGE_KEYS,
     saveCharacterBehavior, saveGroupMeta, saveHistoriesStrict,
 } from '../src/storage.js';
+import { installConversation } from '../src/conversation.js';
 import { applyConversationInjections } from '../src/phone-injection.js';
 import { deriveInteractiveActorId, normalizeInteractiveStore } from '../src/interactive-scene-model.js';
 import { renderPhoneDesktop, runDesktopPageTransition } from '../src/interactive-scenes.js';
 import { getDanmakuMotion, getDanmakuTone, renderCommunityLauncher, renderCommunityWorkspace } from '../src/interactive-scene-views.js';
 import { runControlMenuAction } from '../src/phone-control-center.js';
 import {
-    clearPhoneQuickReply, ensureInitialPhoneQuickReply, ensurePhoneQuickReply, getPhoneQuickReplyStatus,
+    clearPhoneQuickReply, ensureInitialPhoneQuickReply, ensureInitialPhoneQuickReplyWithRetry,
+    ensurePhoneQuickReply, getConfiguredPhoneQuickReplyLabel, getPhoneQuickReplyStatus,
+    normalizePhoneQuickReplyLabel,
     PHONE_QR_AUTOMATION_ID, PHONE_QR_AUTO_INIT_KEY, PHONE_QR_LABEL, PHONE_QR_MESSAGE, PHONE_QR_SET_NAME,
 } from '../src/quick-reply.js';
 import {
@@ -39,8 +45,12 @@ import {
     advanceAutoPokeCounters, commitAutomaticResult,
     createAutomaticTaskController, createRuntimeState, runAutoPokeCounterCycle,
 } from '../src/runtime.js';
-import { createPhonePageController } from '../src/phone-lifecycle.js';
-function createQuickReplyApiFixture({ set = null, active = false, fail = {} } = {}) {
+import {
+    createPhonePageController, handleMessageSelectionKey, installPhoneLifecycle,
+    resetPhoneScaleForMinimize, toggleMessageSelection,
+} from '../src/phone-lifecycle.js';
+import { commitEditedGroupUpdate, refreshEditedGroupRuntime } from '../src/phone-directory.js';
+function createQuickReplyApiFixture({ set = null, active = false, fail = {}, beforeMutation = null } = {}) {
     const sets = new Map();
     if (set) sets.set(set.name, set);
     const globals = new Set(active && set ? [set.name] : []);
@@ -63,16 +73,18 @@ function createQuickReplyApiFixture({ set = null, active = false, fail = {} } = 
             sets.delete(name);
             globals.delete(name);
         },
-        createQuickReply(setName, label, props) {
+        async createQuickReply(setName, label, props) {
             calls.push(['createQuickReply', setName, label, props]);
+            await beforeMutation?.('createQuickReply');
             if (fail.createQuickReply) throw new Error(fail.createQuickReply);
             const target = sets.get(setName);
             const qr = { id: Math.max(0, ...target.qrList.map(item => item.id || 0)) + 1, label, ...props };
             target.qrList.push(qr);
             return qr;
         },
-        updateQuickReply(setName, identifier, props) {
+        async updateQuickReply(setName, identifier, props) {
             calls.push(['updateQuickReply', setName, identifier, props]);
+            await beforeMutation?.('updateQuickReply');
             if (fail.updateQuickReply) throw new Error(fail.updateQuickReply);
             const qr = findQr(setName, identifier);
             if (!qr) throw new Error('missing qr');
@@ -80,8 +92,9 @@ function createQuickReplyApiFixture({ set = null, active = false, fail = {} } = 
             if (props.newLabel !== undefined) qr.label = props.newLabel;
             return qr;
         },
-        deleteQuickReply(setName, identifier) {
+        async deleteQuickReply(setName, identifier) {
             calls.push(['deleteQuickReply', setName, identifier]);
+            await beforeMutation?.('deleteQuickReply');
             if (fail.deleteQuickReply) throw new Error(fail.deleteQuickReply);
             const target = sets.get(setName);
             const index = target.qrList.findIndex(qr => qr.id === identifier);
@@ -112,6 +125,13 @@ function createStorageFixture(initial = {}) {
     };
 }
 
+assert.equal(normalizePhoneQuickReplyLabel(' 1234567 '), '123456');
+assert.equal(normalizePhoneQuickReplyLabel('😀😁😂😃😄😅😆'), '😀😁😂😃😄😅', '入口名称必须按 Unicode code point 截断');
+assert.equal(normalizePhoneQuickReplyLabel('   '), PHONE_QR_LABEL);
+assert.equal(normalizePhoneQuickReplyLabel(null), PHONE_QR_LABEL);
+assert.equal(getConfiguredPhoneQuickReplyLabel({ qrLabel: '  快捷入口  ' }), '快捷入口');
+assert.equal(getConfiguredPhoneQuickReplyLabel({ qrLabel: '🎵天音入口测试' }), '🎵天音入口测');
+
 assert.equal(getPhoneQuickReplyStatus(null).state, 'unavailable');
 await assert.rejects(() => ensurePhoneQuickReply(null), /未提供 Quick Reply API/);
 const createdQrApi = createQuickReplyApiFixture();
@@ -128,6 +148,50 @@ createdQrSet.qrList[0].message = '/broken';
 assert.equal(getPhoneQuickReplyStatus(createdQrApi).state, 'repairable');
 await ensurePhoneQuickReply(createdQrApi);
 assert.equal(createdQrSet.qrList[0].message, PHONE_QR_MESSAGE);
+await ensurePhoneQuickReply(createdQrApi, '小助手');
+assert.equal(createdQrSet.qrList[0].label, '小助手');
+assert.equal(getPhoneQuickReplyStatus(createdQrApi, '小助手').state, 'ready');
+assert.equal(getPhoneQuickReplyStatus(createdQrApi, PHONE_QR_LABEL).state, 'repairable');
+
+let releaseCreateMutation;
+const delayedCreate = new Promise(resolve => { releaseCreateMutation = resolve; });
+const delayedCreateApi = createQuickReplyApiFixture({
+    beforeMutation: operation => operation === 'createQuickReply' ? delayedCreate : undefined,
+});
+let delayedCreateSettled = false;
+const delayedCreateResult = ensurePhoneQuickReply(delayedCreateApi, '异步入口')
+    .finally(() => { delayedCreateSettled = true; });
+await Promise.resolve();
+assert.equal(delayedCreateSettled, false, '创建流程必须等待宿主异步 createQuickReply');
+assert.equal(delayedCreateApi.listGlobalSets().includes(PHONE_QR_SET_NAME), false, '条目创建完成前不得提前启用集合');
+releaseCreateMutation();
+assert.equal((await delayedCreateResult).state, 'ready');
+
+let activeDeletes = 0;
+let maxActiveDeletes = 0;
+const duplicateSet = {
+    name: PHONE_QR_SET_NAME,
+    qrList: [
+        { id: 1, label: '旧入口', message: PHONE_QR_MESSAGE, automationId: PHONE_QR_AUTOMATION_ID },
+        { id: 2, label: '重复一', message: PHONE_QR_MESSAGE, automationId: PHONE_QR_AUTOMATION_ID },
+        { id: 3, label: '重复二', message: PHONE_QR_MESSAGE, automationId: PHONE_QR_AUTOMATION_ID },
+    ],
+};
+const sequentialDeleteApi = createQuickReplyApiFixture({
+    set: duplicateSet,
+    active: true,
+    beforeMutation: async operation => {
+        if (operation !== 'deleteQuickReply') return;
+        activeDeletes += 1;
+        maxActiveDeletes = Math.max(maxActiveDeletes, activeDeletes);
+        await Promise.resolve();
+        activeDeletes -= 1;
+    },
+});
+await ensurePhoneQuickReply(sequentialDeleteApi, '去重入口');
+assert.equal(maxActiveDeletes, 1, '重复 owned Quick Reply 必须顺序删除，避免宿主 mutation 竞态');
+assert.deepEqual(duplicateSet.qrList.map(item => item.id), [1]);
+assert.equal(duplicateSet.qrList[0].label, '去重入口');
 
 const userConflictApi = createQuickReplyApiFixture({ set: {
     name: PHONE_QR_SET_NAME,
@@ -185,6 +249,48 @@ await assert.rejects(
     /浏览器存储不可用/,
 );
 
+const retryStorage = createStorageFixture();
+const retryApi = createQuickReplyApiFixture();
+let retryApiReads = 0;
+const retryDelays = [];
+const retryStatus = await ensureInitialPhoneQuickReplyWithRetry({
+    getApi: () => (++retryApiReads < 3 ? null : retryApi),
+    storage: retryStorage,
+    label: '重试入口',
+    attempts: 4,
+    delay: 25,
+    setTimeoutImpl: (resolve, delay) => { retryDelays.push(delay); resolve(); },
+});
+assert.equal(retryStatus.state, 'ready');
+assert.equal(retryApiReads, 3);
+assert.deepEqual(retryDelays, [25, 25]);
+assert.equal(retryApi.getSetByName(PHONE_QR_SET_NAME).qrList[0].label, '重试入口');
+assert.equal(retryStorage.getItem(PHONE_QR_AUTO_INIT_KEY), '1');
+
+let exhaustedReads = 0;
+await assert.rejects(
+    () => ensureInitialPhoneQuickReplyWithRetry({
+        getApi: () => { exhaustedReads += 1; return null; },
+        storage: createStorageFixture(),
+        attempts: 3,
+        setTimeoutImpl: resolve => resolve(),
+    }),
+    /未提供 Quick Reply API/,
+);
+assert.equal(exhaustedReads, 3, '重试次数必须受 attempts 限制');
+
+let nonRetryReads = 0;
+await assert.rejects(
+    () => ensureInitialPhoneQuickReplyWithRetry({
+        getApi: () => { nonRetryReads += 1; return createQuickReplyApiFixture({ fail: { createQuickReply: 'mutation-failed' } }); },
+        storage: createStorageFixture(),
+        attempts: 4,
+        setTimeoutImpl: resolve => resolve(),
+    }),
+    /mutation-failed/,
+);
+assert.equal(nonRetryReads, 1, '宿主 mutation 失败不得被误判为 API 延迟注入');
+
 const mixedSet = {
     name: PHONE_QR_SET_NAME,
     qrList: [
@@ -209,9 +315,128 @@ await assert.rejects(() => clearPhoneQuickReply(failedClearApi), /delete-failed/
 assert.ok(failedClearApi.listGlobalSets().includes(PHONE_QR_SET_NAME), '清除失败必须恢复原全局启用状态');
 
 import {
-    handlePhonePageSuspension, installPhonePageSuspensionListeners, updatePhonePageSuspensionHandler,
+    applyPhoneScale, handleHostChatChanged, handlePhonePageSuspension,
+    installPhoneFoundation, installPhonePageSuspensionListeners, normalizePhoneScale, phoneSizeForScale,
+    updatePhonePageSuspensionHandler,
 } from '../src/phone-foundation.js';
-import { bindPhonePageActions, finalizeDeletedScene, runDeleteSceneAction } from '../src/interactive-scene-phone.js';
+import { bindPhonePageActions, finalizeDeletedScene, runDeleteSceneAction, toggleScenePostActions } from '../src/interactive-scene-phone.js';
+
+
+assert.equal(normalizePhoneScale(1, 1200, 1000), 1);
+assert.equal(normalizePhoneScale(2, 1200, 1000), 1.5);
+assert.equal(normalizePhoneScale(0.2, 1200, 1000), 0.6);
+const heightLimitedScale = normalizePhoneScale(1, 320, 600);
+assert.equal(heightLimitedScale, 0.848, '320×600 视口必须由高度预算精确钳制');
+const heightLimitedSize = phoneSizeForScale(heightLimitedScale);
+assert.ok(heightLimitedSize.width <= Math.round(320 * 0.92) && heightLimitedSize.height <= Math.round(600 * 0.82),
+    '高度主导的 compact viewport 尺寸不得超过宽高预算');
+const widthLimitedScale = normalizePhoneScale(1, 320, 900);
+assert.equal(widthLimitedScale, 0.892, '320×900 视口必须由宽度预算精确钳制');
+const widthLimitedSize = phoneSizeForScale(widthLimitedScale);
+assert.ok(widthLimitedSize.width <= Math.round(320 * 0.92) && widthLimitedSize.height <= Math.round(900 * 0.82),
+    '宽度主导的 compact viewport 尺寸不得超过宽高预算');
+const extremeCompactScale = normalizePhoneScale(1, 150, 260);
+assert.equal(extremeCompactScale, 0.368, '极窄视口必须允许比例低于全局最小值以避免溢出');
+const constrainedMaximum = normalizePhoneScale(1.5, 320, 600);
+assert.equal(constrainedMaximum, heightLimitedScale, '受限视口必须进一步压低最大比例');
+assert.deepEqual(phoneSizeForScale(1), { width: 330, height: 580 });
+assert.deepEqual(phoneSizeForScale(0.6), { width: 198, height: 348 });
+const phoneStyleValues = new Map();
+const phoneScaleResult = applyPhoneScale({ style: { setProperty: (name, value) => phoneStyleValues.set(name, value) } }, 1.2);
+assert.deepEqual(phoneScaleResult, { scale: 1.2, width: 396, height: 696 });
+assert.equal(phoneStyleValues.get('--pm-phone-width'), '396px');
+assert.equal(phoneStyleValues.get('--pm-phone-height'), '696px');
+
+for (const previousScale of [0.6, 1, 1.5]) {
+    const theme = { phoneScale: previousScale };
+    const applied = [];
+    const notices = [];
+    assert.equal(resetPhoneScaleForMinimize({
+        theme,
+        phoneWindow: { id: 'phone' },
+        applyScale: (element, scale) => applied.push([element.id, scale]),
+        persistTheme: () => true,
+        notify: message => notices.push(message),
+    }), true);
+    assert.equal(theme.phoneScale, 1, '点击收缩成功后必须持久化默认比例意图');
+    assert.deepEqual(applied, [['phone', 1]], '点击收缩必须立即应用 330×580 基准比例');
+    assert.deepEqual(notices, []);
+}
+
+const failedScaleTheme = { phoneScale: 1.35 };
+const failedScaleApplications = [];
+const failedScaleNotices = [];
+assert.equal(resetPhoneScaleForMinimize({
+    theme: failedScaleTheme,
+    phoneWindow: { id: 'phone' },
+    applyScale: (element, scale) => failedScaleApplications.push([element.id, scale]),
+    persistTheme: () => false,
+    notify: message => failedScaleNotices.push(message),
+}), false);
+assert.equal(failedScaleTheme.phoneScale, 1.35, '保存失败必须恢复原 phoneScale');
+assert.deepEqual(failedScaleApplications, [['phone', 1], ['phone', 1.35]], '保存失败必须恢复原视觉比例');
+assert.deepEqual(failedScaleNotices, ['手机尺寸保存失败：浏览器存储不可用。']);
+
+const thrownScaleTheme = { phoneScale: 0.75 };
+const thrownScaleApplications = [];
+const thrownScaleNotices = [];
+assert.equal(resetPhoneScaleForMinimize({
+    theme: thrownScaleTheme,
+    phoneWindow: { id: 'phone' },
+    applyScale: (element, scale) => thrownScaleApplications.push([element.id, scale]),
+    persistTheme: () => { throw new Error('injected persistence failure'); },
+    notify: message => thrownScaleNotices.push(message),
+}), false);
+assert.equal(thrownScaleTheme.phoneScale, 0.75, '持久化依赖抛错时也必须恢复原 phoneScale');
+assert.deepEqual(thrownScaleApplications, [['phone', 1], ['phone', 0.75]],
+    '持久化依赖抛错时也必须恢复原视觉比例');
+assert.equal(thrownScaleNotices.length, 1);
+
+const createSelectionCheckbox = (checked = '0') => {
+    const attributes = new Map([['aria-checked', checked === '1' ? 'true' : 'false']]);
+    return {
+        dataset: { checked },
+        clickCalls: 0,
+        setAttribute(name, value) { attributes.set(name, String(value)); },
+        getAttribute(name) { return attributes.get(name) ?? null; },
+        click() { this.clickCalls += 1; },
+    };
+};
+const selectionPeerA = createSelectionCheckbox();
+const selectionPeerB = createSelectionCheckbox();
+const selectionWrap = { dataset: { historyIndex: '7' } };
+const selectionList = {
+    querySelectorAll(selector) {
+        assert.equal(selector, '.pm-select-wrap[data-history-index="7"] .pm-message-select-check');
+        return [selectionPeerA, selectionPeerB];
+    },
+};
+assert.equal(toggleMessageSelection({ checkbox: selectionPeerA, wrap: selectionWrap, list: selectionList }), '1');
+for (const peer of [selectionPeerA, selectionPeerB]) {
+    assert.equal(peer.dataset.checked, '1', '同 historyIndex 的消息选择状态必须同步');
+    assert.equal(peer.getAttribute('aria-checked'), 'true', '同 historyIndex 的 aria-checked 必须同步');
+}
+assert.equal(toggleMessageSelection({ checkbox: selectionPeerB, wrap: selectionWrap, list: selectionList }), '0');
+assert.ok([selectionPeerA, selectionPeerB].every(peer => peer.dataset.checked === '0'));
+
+const isolatedSelection = createSelectionCheckbox();
+assert.equal(toggleMessageSelection({
+    checkbox: isolatedSelection,
+    wrap: { dataset: {} },
+    list: { querySelectorAll() { throw new Error('孤立选择控件不得查询 peer'); } },
+}), '1');
+assert.equal(isolatedSelection.getAttribute('aria-checked'), 'true');
+
+for (const key of [' ', 'Enter']) {
+    const checkbox = createSelectionCheckbox();
+    let prevented = false;
+    assert.equal(handleMessageSelectionKey({ key, preventDefault() { prevented = true; } }, checkbox), true);
+    assert.equal(prevented, true, `${JSON.stringify(key)} 必须阻止默认行为`);
+    assert.equal(checkbox.clickCalls, 1, `${JSON.stringify(key)} 必须触发一次 checkbox click`);
+}
+const ignoredSelectionKey = createSelectionCheckbox();
+assert.equal(handleMessageSelectionKey({ key: 'Escape', preventDefault() { throw new Error('Escape 不得阻止默认行为'); } }, ignoredSelectionKey), false);
+assert.equal(ignoredSelectionKey.clickCalls, 0);
 
 const suspensionCalls = [];
 handlePhonePageSuspension({
@@ -226,6 +451,43 @@ assert.deepEqual(suspensionCalls, [
     ['community', 'beforeunload'],
     ['calendar', 'beforeunload'],
     ['disarm', 'beforeunload'],
+]);
+
+const hostChangeCalls = [];
+const hostChangeRuntime = { lastChatLength: 99 };
+assert.equal(handleHostChatChanged({
+    state: { phoneActive: true },
+    runtime: hostChangeRuntime,
+    chatLength: 4,
+    cancelCommunityGeneration: reason => hostChangeCalls.push(['community', reason]),
+    cancelCalendarTasks: reason => hostChangeCalls.push(['calendar', reason]),
+    disarmAutoPoke: reason => hostChangeCalls.push(['disarm', reason]),
+    endPhone: force => hostChangeCalls.push(['end', force]),
+    invalidateGeneration: () => hostChangeCalls.push(['invalidate']),
+}), 'closed');
+assert.equal(hostChangeRuntime.lastChatLength, 4);
+assert.deepEqual(hostChangeCalls, [
+    ['community', 'host-chat-changed'],
+    ['calendar', 'host-chat-changed'],
+    ['disarm', 'host-chat-changed'],
+    ['end', true],
+], 'CHAT_CHANGED 必须强制关闭活动手机，且不得走普通关闭保存旧会话');
+
+hostChangeCalls.length = 0;
+assert.equal(handleHostChatChanged({
+    state: { phoneActive: false },
+    runtime: hostChangeRuntime,
+    chatLength: -1,
+    cancelCommunityGeneration: reason => hostChangeCalls.push(['community', reason]),
+    cancelCalendarTasks: reason => hostChangeCalls.push(['calendar', reason]),
+    disarmAutoPoke: reason => hostChangeCalls.push(['disarm', reason]),
+    endPhone: force => hostChangeCalls.push(['end', force]),
+    invalidateGeneration: () => hostChangeCalls.push(['invalidate']),
+}), 'invalidated');
+assert.equal(hostChangeRuntime.lastChatLength, 0, '非法宿主聊天长度必须归一为 0');
+assert.deepEqual(hostChangeCalls, [
+    ['community', 'host-chat-changed'], ['calendar', 'host-chat-changed'],
+    ['disarm', 'host-chat-changed'], ['invalidate'],
 ]);
 
 const pageWindowListeners = new Map();
@@ -726,21 +988,87 @@ const makeClassList = initial => {
         toggle: (value, force) => { if (force) values.add(value); else values.delete(value); return !!force; },
     };
 };
+const themeChips = ['default', 'pink', 'frost'].map(preset => {
+    const attributes = new Map();
+    return {
+        dataset: { preset },
+        classList: makeClassList(preset === 'default' ? ['pm-theme-active'] : []),
+        setAttribute(name, value) { attributes.set(name, String(value)); },
+        getAttribute(name) { return attributes.get(name) ?? null; },
+    };
+});
+const createModelDropdownFixture = () => {
+    const search = {
+        value: '', focused: false, listeners: new Map(),
+        addEventListener(type, handler) { this.listeners.set(type, handler); },
+        focus() { this.focused = true; },
+        dispatchInput(value) { this.value = value; this.listeners.get('input')?.call(this); },
+    };
+    const options = {
+        buttons: [], html: '',
+        set innerHTML(value) {
+            this.html = String(value);
+            this.buttons = [];
+            const pattern = /<button\b([^>]*)>([^<]*)<\/button>/g;
+            for (const match of this.html.matchAll(pattern)) {
+                const attributes = new Map();
+                for (const attribute of match[1].matchAll(/([\w-]+)="([^"]*)"/g)) attributes.set(attribute[1], attribute[2]);
+                if (!(attributes.get('class') || '').split(/\s+/).includes('pm-model-opt')) continue;
+                const listeners = new Map();
+                this.buttons.push({
+                    dataset: { m: attributes.get('data-m') || '' },
+                    textContent: match[2],
+                    getAttribute: name => attributes.get(name) ?? null,
+                    addEventListener(type, handler) { listeners.set(type, handler); },
+                    click() { listeners.get('click')?.(); },
+                });
+            }
+        },
+        get innerHTML() { return this.html; },
+        querySelectorAll(selector) { return selector === '.pm-model-opt' ? this.buttons : []; },
+    };
+    return {
+        id: '', className: '', dataset: {}, removed: false,
+        style: { values: new Map(), setProperty(name, value) { this.values.set(name, String(value)); } },
+        setAttribute(name, value) {
+            if (name === 'data-theme') this.dataset.theme = String(value);
+        },
+        set innerHTML(value) { this.html = String(value); },
+        get innerHTML() { return this.html || ''; },
+        querySelector(selector) {
+            if (selector === '.pm-model-search') return search;
+            if (selector === '.pm-model-options') return options;
+            return null;
+        },
+        contains(target) { return target === search || target === options || options.buttons.includes(target); },
+        remove() { this.removed = true; uiElements.delete(this.id); },
+        search,
+        options,
+    };
+};
 const uiAlerts = [];
 const uiElements = new Map([
     ['pm-custom-title', { value: '  雨夜电台  ' }],
+    ['pm-quick-reply-label', { value: '快捷入口' }],
+    ['pm-quick-reply-status', { textContent: '', dataset: {} }],
     ['pm-custom-right', { value: '#123456' }],
     ['pm-custom-left', { value: '#654321' }],
     ['pm-border-color', { value: '#abcdef' }],
     ['pm-cfg-url', { value: 'https://new.example' }],
     ['pm-cfg-key', { value: 'new-key' }],
-    ['pm-cfg-model', { value: 'new-model' }],
+    ['pm-cfg-model', { value: 'model-beta', getBoundingClientRect: () => ({ left: 20, bottom: 80, width: 240 }) }],
+    ['pm-api-status', { textContent: '', style: {} }],
     ['pm-mode-main', { classList: makeClassList(['pm-mode-active']) }],
     ['pm-mode-indep', { classList: makeClassList([]) }],
     ['pm-mode-tip', { textContent: '主 API 使用宿主当前选择的预设与接口' }],
     ['pm-indep-profile-fields', { hidden: true }],
     ['pm-indep-config-fields', { hidden: true }],
-    ['pm-overlay', { removed: false, remove() { this.removed = true; } }],
+    ['pm-overlay', {
+        removed: false,
+        style: { setProperty() {} },
+        setAttribute(name, value) { this[name] = String(value); },
+        remove() { this.removed = true; },
+    }],
 ]);
 globalThis.alert = message => uiAlerts.push(String(message));
 const originalFileReader = globalThis.FileReader;
@@ -750,21 +1078,42 @@ globalThis.FileReader = class FakeFileReader {
         fileReadCompletion = Promise.resolve().then(() => this.onload({ target: { result: file.text } }));
     }
 };
+const documentClickListeners = new Set();
+const dispatchDocumentClick = target => { for (const listener of [...documentClickListeners]) listener({ target }); };
 globalThis.document = {
     getElementById: id => uiElements.get(id) || null,
-    querySelectorAll: () => [],
+    querySelector: () => null,
+    querySelectorAll: selector => selector === '.pm-theme-chip' ? themeChips : [],
+    createElement: tag => {
+        assert.equal(tag, 'div');
+        return createModelDropdownFixture();
+    },
+    body: {
+        appendChild(element) {
+            uiElements.set(element.id, element);
+            return element;
+        },
+    },
+    addEventListener(type, listener, capture) {
+        if (type === 'click' && capture === true) documentClickListeners.add(listener);
+    },
+    removeEventListener(type, listener, capture) {
+        if (type === 'click' && capture === true) documentClickListeners.delete(listener);
+    },
 };
 const appliedThemes = [];
 const uiNotes = [];
+let settingsOverlayHtml = '';
 let importCloseCalls = 0;
 let importInjectionCalls = 0;
 let importInjectionImpl = async () => undefined;
 let importClearInjectionCalls = 0;
 let importCancelCommunityCalls = 0;
+const settingsRuntime = { modelList: ['model-alpha', 'model-beta'] };
 installSettingsUi({
-    makeOverlay: () => {}, applyTheme: () => appliedThemes.push(structuredClone(window.__pmTheme)), applyBackground: () => {},
+    makeOverlay: html => { settingsOverlayHtml = html; }, applyTheme: () => appliedThemes.push(structuredClone(window.__pmTheme)), applyBackground: () => {},
     fitNameFont: () => {}, addNote: note => uiNotes.push(note), getCurrentPersona: () => 'default', getStorageId: () => 'story',
-    runtime: { modelList: [] },
+    runtime: settingsRuntime,
     closePhone: () => { importCloseCalls += 1; },
     applyBidirectionalInjection: async () => {
         importInjectionCalls += 1;
@@ -774,6 +1123,12 @@ installSettingsUi({
     cancelCommunityGeneration: () => { importCancelCommunityCalls += 1; },
     getInteractiveStore: async () => ({ scopes: {} }),
 });
+window.__pmTheme = { preset: 'frost', customRight: '', customLeft: '', borderColor: '#1a1a1a', darkMode: 'dark', customTitle: '', qrLabel: '天音' };
+await window.__pmShowConfig('look');
+assert.match(settingsOverlayHtml, /<button type="button" class="pm-theme-chip pm-theme-active" data-preset="frost"/);
+assert.match(settingsOverlayHtml, /aria-label="使用磨砂玻璃气泡主题" aria-pressed="true"/);
+assert.match(settingsOverlayHtml, /style="background:rgba\(0,122,255,0\.55\)" aria-hidden="true"/);
+assert.doesNotMatch(settingsOverlayHtml, /<div class="pm-theme-chip/);
 const modeBeforeInvalidProfile = uiElements.get('pm-mode-main').classList.contains('pm-mode-active');
 window.__pmPickProfile(99);
 assert.equal(uiElements.get('pm-mode-main').classList.contains('pm-mode-active'), modeBeforeInvalidProfile, '无效档案索引不得改变 API 模式');
@@ -812,10 +1167,10 @@ assert.equal(uiAlerts.length, importAlertsBefore + 1);
 assert.match(uiAlerts.at(-1), /导入失败，未修改现有数据/);
 assert.doesNotMatch(uiAlerts.at(-1), /原数据已恢复/);
 
-const baseTheme = { preset: 'default', customRight: '', customLeft: '', borderColor: '#1a1a1a', darkMode: 'light', customTitle: '' };
+const baseTheme = { preset: 'default', customRight: '', customLeft: '', borderColor: '#1a1a1a', darkMode: 'light', customTitle: '', qrLabel: '天音' };
 for (const [handler, setup, invoke] of [
     ['__pmSetDarkMode', () => {}, () => window.__pmSetDarkMode('dark')],
-    ['__pmSetPreset', () => {}, () => window.__pmSetPreset('blue')],
+    ['__pmSetPreset', () => {}, () => window.__pmSetPreset('pink')],
     ['__pmSetCustomColor', () => {}, () => window.__pmSetCustomColor()],
     ['__pmClearCustomColor', () => { window.__pmTheme = { ...window.__pmTheme, preset: 'custom', customRight: '#111111', customLeft: '#222222' }; }, () => window.__pmClearCustomColor()],
     ['__pmSetBorderColor', () => {}, () => window.__pmSetBorderColor()],
@@ -835,12 +1190,307 @@ assert.equal(window.__pmSetDarkMode('dark'), true);
 assert.equal(window.__pmTheme.darkMode, 'dark');
 assert.equal(JSON.parse(localValues.get('ST_SMS_THEME')).darkMode, 'dark');
 assert.equal(appliedThemes.at(-1).darkMode, 'dark');
+window.__pmTheme = { ...structuredClone(baseTheme), customRight: '#111111', customLeft: '#222222' };
+assert.equal(window.__pmSetPreset('frost'), true);
+assert.equal(window.__pmTheme.preset, 'frost');
+assert.equal(window.__pmTheme.customRight, '');
+assert.equal(window.__pmTheme.customLeft, '');
+assert.equal(JSON.parse(localValues.get('ST_SMS_THEME')).preset, 'frost');
+assert.equal(themeChips.find(chip => chip.dataset.preset === 'frost').getAttribute('aria-pressed'), 'true');
+assert.equal(themeChips.find(chip => chip.dataset.preset === 'default').getAttribute('aria-pressed'), 'false');
+uiElements.get('pm-custom-right').value = '#123456';
+uiElements.get('pm-custom-left').value = '#654321';
+assert.equal(window.__pmSetCustomColor(), true);
+assert.equal(window.__pmTheme.preset, 'custom');
+assert.equal(window.__pmTheme.customRight, '#123456');
+assert.equal(window.__pmTheme.customLeft, '#654321');
+assert.ok(themeChips.every(chip => chip.getAttribute('aria-pressed') === 'false'));
+assert.equal(window.__pmClearCustomColor(), true);
+assert.equal(window.__pmTheme.preset, 'default');
+assert.equal(window.__pmTheme.customRight, '');
+assert.equal(window.__pmTheme.customLeft, '');
+assert.equal(themeChips.find(chip => chip.dataset.preset === 'default').getAttribute('aria-pressed'), 'true');
+
+window.__pmTheme = { ...structuredClone(baseTheme), darkMode: 'dark' };
+window.__pmShowModelPicker();
+await new Promise(resolve => setTimeout(resolve, 0));
+const modelDropdown = uiElements.get('pm-model-dropdown');
+assert.ok(modelDropdown, '模型列表存在时必须创建 body 级浮层');
+assert.equal(modelDropdown.dataset.theme, 'dark', '模型浮层创建时必须继承当前主题');
+assert.equal(modelDropdown.search.focused, true, '模型浮层创建后必须聚焦搜索框');
+assert.equal(documentClickListeners.size, 1, '模型浮层打开后必须只注册一个 capture 关闭监听器');
+dispatchDocumentClick(modelDropdown.search);
+assert.equal(uiElements.get('pm-model-dropdown'), modelDropdown, '浮层内部点击不得关闭模型列表');
+assert.equal(documentClickListeners.size, 1, '浮层内部点击不得注销当前关闭监听器');
+assert.deepEqual(modelDropdown.options.buttons.map(button => button.dataset.m), ['model-alpha', 'model-beta']);
+assert.equal(modelDropdown.options.buttons[1].getAttribute('aria-pressed'), 'true', '当前模型必须标记为选中');
+modelDropdown.search.dispatchInput('alpha');
+assert.deepEqual(modelDropdown.options.buttons.map(button => button.dataset.m), ['model-alpha']);
+modelDropdown.search.dispatchInput('missing');
+assert.match(modelDropdown.options.innerHTML, /class="pm-model-empty">无匹配<\/div>/);
+modelDropdown.search.dispatchInput('beta');
+modelDropdown.options.buttons[0].click();
+assert.equal(uiElements.get('pm-cfg-model').value, 'model-beta');
+assert.equal(uiElements.has('pm-model-dropdown'), false, '选择模型后必须移除浮层');
+assert.equal(documentClickListeners.size, 0, '选择模型后必须注销 document 关闭监听器');
+
+window.addEventListener = () => {};
+document.visibilityState = 'visible';
+window.__pmShowModelPicker();
+await new Promise(resolve => setTimeout(resolve, 0));
+const synchronizedDropdown = uiElements.get('pm-model-dropdown');
+const foundationPhoneStyleValues = new Map();
+const foundationPhone = {
+    style: {
+        transform: '',
+        transition: '',
+        setProperty(name, value) {
+            foundationPhoneStyleValues.set(name, value);
+            if (name === 'transform') this.transform = value;
+        },
+        removeProperty(name) {
+            foundationPhoneStyleValues.delete(name);
+            if (name === 'transform') this.transform = '';
+        },
+    },
+    classList: makeClassList([]),
+    setAttribute(name, value) { this[name] = value; },
+    hidePopover() {},
+    remove() { this.removed = true; },
+    querySelector() { return null; },
+};
+const foundationState = {
+    phoneWindow: foundationPhone,
+    phoneActive: true,
+    isMinimized: false,
+    isSelectMode: false,
+    conversationHistory: [],
+};
+const lifecycleCalls = [];
+const foundationDeps = {
+    runtime: createRuntimeState(),
+    getCtx: () => ({ registerSlashCommand() {} }),
+    getStorageId: () => 'story',
+    getUserPersona: () => ({ name: '用户' }),
+    persistCurrentHistory: () => lifecycleCalls.push(['persist-history']),
+    persistPhoneUiSnapshot: () => lifecycleCalls.push(['persist-phone-ui']),
+    closeControlCenter: () => lifecycleCalls.push(['close-control-center']),
+    cancelCommunityGeneration: reason => lifecycleCalls.push(['cancel-community', reason]),
+    cancelCalendarTasks: reason => lifecycleCalls.push(['cancel-calendar', reason]),
+    restorePhoneChat: async () => true,
+    restorePhoneUi: async () => {},
+};
+installPhoneFoundation(foundationState, foundationDeps);
+const lifecycleSetTimeout = globalThis.setTimeout;
+const lifecycleSetInterval = globalThis.setInterval;
+try {
+    globalThis.setTimeout = () => 0;
+    globalThis.setInterval = () => 0;
+    installPhoneLifecycle(foundationState, foundationDeps);
+} finally {
+    globalThis.setTimeout = lifecycleSetTimeout;
+    globalThis.setInterval = lifecycleSetInterval;
+}
+const lifecycleDocumentClickBaseline = documentClickListeners.size - 1;
+
+const islandWindowListeners = new Map();
+const previousWindowAddEventListener = window.addEventListener;
+const previousWindowRemoveEventListener = window.removeEventListener;
+window.addEventListener = (type, listener) => islandWindowListeners.set(type, listener);
+window.removeEventListener = (type, listener) => {
+    if (islandWindowListeners.get(type) === listener) islandWindowListeners.delete(type);
+};
+const islandHandleListeners = new Map();
+const islandHandle = {
+    addEventListener(type, listener) { islandHandleListeners.set(type, listener); },
+    removeEventListener(type, listener) {
+        if (islandHandleListeners.get(type) === listener) islandHandleListeners.delete(type);
+    },
+};
+const unbindIslandFixture = foundationDeps.bindIsland(foundationPhone, islandHandle);
+const makeIslandEvent = (x, y) => ({
+    target: { tagName: 'DIV' }, clientX: x, clientY: y, cancelable: true, preventDefault() {},
+});
+
+window.__pmTheme = { ...structuredClone(baseTheme), phoneScale: 1.35, ambientStatusEnabled: false };
+localValues.set('ST_SMS_THEME', JSON.stringify(window.__pmTheme));
+const successfulMinimizeWrites = localStorageControl.setCalls.get('ST_SMS_THEME') || 0;
+islandHandleListeners.get('mousedown')(makeIslandEvent(10, 10));
+islandWindowListeners.get('mousemove')(makeIslandEvent(14, 14));
+islandWindowListeners.get('mouseup')();
+assert.equal(foundationState.isMinimized, true, '不足 5px 的移动必须走真实点击收缩生命周期');
+assert.equal(foundationPhone.classList.contains('is-min'), true, '点击收缩必须同步 is-min class');
+assert.equal(window.__pmTheme.phoneScale, 1, '点击收缩必须通过真实生命周期复位 phoneScale');
+assert.equal(JSON.parse(localValues.get('ST_SMS_THEME')).phoneScale, 1, '点击收缩必须持久化默认比例');
+assert.equal(localStorageControl.setCalls.get('ST_SMS_THEME'), successfulMinimizeWrites + 1,
+    '进入最小化必须且只能保存一次主题');
+assert.equal(foundationPhoneStyleValues.get('--pm-phone-width'), '330px');
+assert.equal(foundationPhoneStyleValues.get('--pm-phone-height'), '580px');
+assert.ok(lifecycleCalls.some(call => call[0] === 'cancel-community' && call[1] === 'phone-minimized'));
+assert.ok(lifecycleCalls.some(call => call[0] === 'cancel-calendar' && call[1] === 'phone-minimized'));
+
+const writesBeforeDrag = localStorageControl.setCalls.get('ST_SMS_THEME');
+islandHandleListeners.get('mousedown')(makeIslandEvent(10, 10));
+islandWindowListeners.get('mousemove')(makeIslandEvent(15, 10));
+islandWindowListeners.get('mouseup')();
+assert.equal(foundationState.isMinimized, true, '达到 5px 的拖拽不得切换最小化状态');
+assert.equal(window.__pmTheme.phoneScale, 1, '拖拽灵动岛不得改变 phoneScale');
+assert.equal(localStorageControl.setCalls.get('ST_SMS_THEME'), writesBeforeDrag, '拖拽灵动岛不得保存主题');
+assert.equal(foundationPhoneStyleValues.get('transform'), 'translate(5px, 0px)', '拖拽必须只更新悬浮窗位置');
+
+islandHandleListeners.get('mousedown')(makeIslandEvent(15, 10));
+islandWindowListeners.get('mouseup')();
+assert.equal(foundationState.isMinimized, false, '第二次点击必须展开手机');
+assert.equal(foundationPhone.classList.contains('is-min'), false, '展开必须移除 is-min class');
+assert.equal(localStorageControl.setCalls.get('ST_SMS_THEME'), writesBeforeDrag, '展开不得重复保存或复位比例');
+
+window.__pmTheme.phoneScale = 1.35;
+foundationDeps.applyPhoneScale(foundationPhone, 1.35);
+localStorageControl.failSet.add('ST_SMS_THEME');
+const alertsBeforeFailedMinimize = uiAlerts.length;
+islandHandleListeners.get('mousedown')(makeIslandEvent(15, 10));
+islandWindowListeners.get('mouseup')();
+assert.equal(foundationState.isMinimized, true, '比例保存失败不得破坏最小化生命周期');
+assert.equal(foundationPhone.classList.contains('is-min'), true, '保存失败时 state 与 class 必须一致');
+assert.equal(window.__pmTheme.phoneScale, 1.35, '真实生命周期保存失败必须恢复原比例');
+assert.equal(foundationPhoneStyleValues.get('--pm-phone-width'), '446px', '保存失败必须恢复原视觉宽度');
+assert.equal(foundationPhoneStyleValues.get('--pm-phone-height'), '783px', '保存失败必须恢复原视觉高度');
+assert.equal(uiAlerts.length, alertsBeforeFailedMinimize + 1);
+assert.match(uiAlerts.at(-1), /手机尺寸保存失败/);
+
+unbindIslandFixture();
+assert.equal(islandWindowListeners.has('mousemove'), false, '解绑必须移除灵动岛拖拽监听器');
+window.addEventListener = previousWindowAddEventListener;
+window.removeEventListener = previousWindowRemoveEventListener;
+
+window.__pmTheme.darkMode = 'light';
+foundationDeps.applyTheme();
+assert.equal(synchronizedDropdown.dataset.theme, 'light', '主题切换必须同步已存在的 body 级模型浮层');
+assert.equal(foundationPhone['data-theme'], 'light');
+window.__pmShowModelPicker();
+assert.equal(uiElements.has('pm-model-dropdown'), false, '再次点击模型箭头必须关闭现有浮层');
+assert.equal(documentClickListeners.size, lifecycleDocumentClickBaseline, '模型箭头关闭后必须只保留宿主生命周期监听器');
+
+window.__pmShowModelPicker();
+await new Promise(resolve => setTimeout(resolve, 0));
+assert.equal(documentClickListeners.size, lifecycleDocumentClickBaseline + 1, '模型浮层必须在宿主监听器之外只增加一个关闭监听器');
+dispatchDocumentClick({ id: 'outside-model-picker' });
+assert.equal(uiElements.has('pm-model-dropdown'), false, '浮层外部点击必须关闭模型列表');
+assert.equal(documentClickListeners.size, lifecycleDocumentClickBaseline, '外部点击关闭后必须注销模型浮层自身监听器');
+
+window.__pmShowModelPicker();
+window.__pmShowModelPicker();
+await new Promise(resolve => setTimeout(resolve, 0));
+assert.equal(uiElements.has('pm-model-dropdown'), false, '定时注册前由箭头关闭的浮层不得复活');
+assert.equal(documentClickListeners.size, lifecycleDocumentClickBaseline, '定时注册前关闭不得留下延迟模型浮层监听器');
+
+settingsRuntime.modelList = [];
+uiElements.get('pm-api-status').textContent = '';
+uiElements.get('pm-api-status').style.color = '';
+window.__pmShowModelPicker();
+assert.equal(uiElements.has('pm-model-dropdown'), false, '空模型列表不得创建浮层');
+assert.equal(uiElements.get('pm-api-status').textContent, '请先拉取模型');
+assert.equal(uiElements.get('pm-api-status').style.color, '#ff9500');
+assert.equal(documentClickListeners.size, lifecycleDocumentClickBaseline);
+settingsRuntime.modelList = ['model-alpha', 'model-beta'];
+
+const lifecycleOverlay = uiElements.get('pm-overlay');
+lifecycleCalls.length = 0;
+foundationPhone.removed = false;
+foundationState.phoneWindow = foundationPhone;
+foundationState.phoneActive = true;
+foundationState.activeStorageId = 'story';
+foundationState.currentPersona = 'Alice';
+foundationState.conversationHistory = [{ role: 'user', content: '切换前不得误存' }];
+assert.equal(handleHostChatChanged({
+    state: foundationState,
+    runtime: foundationDeps.runtime,
+    chatLength: 3,
+    endPhone: window.__pmEnd,
+}), 'closed');
+assert.equal(lifecycleCalls.filter(call => call[0] === 'persist-history').length, 0,
+    'CHAT_CHANGED 强制关闭不得保存旧聊天历史');
+assert.equal(lifecycleCalls.filter(call => call[0] === 'persist-phone-ui').length, 0,
+    'CHAT_CHANGED 强制关闭不得保存旧聊天的 Phone UI snapshot');
+assert.equal(foundationState.phoneActive, false);
+assert.equal(foundationState.phoneWindow, null);
+assert.deepEqual(foundationState.conversationHistory, []);
+assert.equal(foundationState.activeStorageId, '');
+assert.equal(foundationState.currentPersona, '');
+
+lifecycleCalls.length = 0;
+foundationPhone.removed = false;
+foundationState.phoneWindow = foundationPhone;
+foundationState.phoneActive = true;
+foundationState.activeStorageId = 'story';
+foundationState.currentPersona = 'Alice';
+foundationState.conversationHistory = [{ role: 'user', content: '普通关闭应保存' }];
+window.__pmEnd(false);
+assert.equal(lifecycleCalls.filter(call => call[0] === 'persist-history').length, 1,
+    '普通关闭必须保存当前聊天历史');
+assert.equal(lifecycleCalls.filter(call => call[0] === 'persist-phone-ui').length, 1,
+    '普通关闭必须保存当前 Phone UI snapshot');
+if (lifecycleOverlay) {
+    lifecycleOverlay.removed = false;
+    uiElements.set('pm-overlay', lifecycleOverlay);
+}
+
 window.__pmTheme = structuredClone(baseTheme);
 uiElements.get('pm-custom-title').value = '  雨夜电台  ';
 assert.equal(window.__pmSetCustomTitle(), true);
 assert.equal(window.__pmTheme.customTitle, '雨夜电台');
 assert.equal(JSON.parse(localValues.get('ST_SMS_THEME')).customTitle, '雨夜电台');
 assert.equal(appliedThemes.at(-1).customTitle, '雨夜电台');
+
+let quickReplyPageRefreshes = 0;
+window.__pmShowConfig = async page => { assert.equal(page, 'quick-reply'); quickReplyPageRefreshes += 1; };
+window.__pmTheme = structuredClone(baseTheme);
+localValues.set('ST_SMS_THEME', JSON.stringify(window.__pmTheme));
+uiElements.get('pm-quick-reply-label').value = '保存失败入口';
+const blockedQuickReplyApi = createQuickReplyApiFixture();
+globalThis.quickReplyApi = blockedQuickReplyApi;
+localStorageControl.failSet.add('ST_SMS_THEME');
+assert.equal(await window.__pmEnsurePhoneQuickReply(), false);
+assert.equal(window.__pmTheme.qrLabel, '天音', '名称保存失败必须回滚内存主题');
+assert.equal(blockedQuickReplyApi.calls.length, 0, '名称保存失败时不得调用宿主 Quick Reply mutation');
+assert.match(uiAlerts.at(-1), /手机开关名称保存失败/);
+
+window.__pmTheme = structuredClone(baseTheme);
+localValues.set('ST_SMS_THEME', JSON.stringify(window.__pmTheme));
+uiElements.get('pm-quick-reply-label').value = '宿主失败入口';
+const failedQuickReplyApi = createQuickReplyApiFixture({ fail: { createQuickReply: 'host-qr-failed' } });
+globalThis.quickReplyApi = failedQuickReplyApi;
+assert.equal(await window.__pmEnsurePhoneQuickReply(), false);
+assert.equal(window.__pmTheme.qrLabel, '天音', '宿主更新失败必须回滚内存主题名称');
+assert.equal(JSON.parse(localValues.get('ST_SMS_THEME')).qrLabel, '天音', '宿主更新失败必须回滚持久化主题名称');
+assert.equal(failedQuickReplyApi.calls.filter(call => call[0] === 'createQuickReply').length, 1);
+assert.match(uiAlerts.at(-1), /host-qr-failed/);
+
+window.__pmTheme = structuredClone(baseTheme);
+localValues.set('ST_SMS_THEME', JSON.stringify(window.__pmTheme));
+uiElements.get('pm-quick-reply-label').value = '回滚失败入口';
+const failedRollbackQuickReplyApi = createQuickReplyApiFixture({ fail: { createQuickReply: 'host-rollback-trigger' } });
+globalThis.quickReplyApi = failedRollbackQuickReplyApi;
+const nextThemeWrite = localStorageControl.setCalls.get('ST_SMS_THEME') || 0;
+localStorageControl.failSetOnCalls.set('ST_SMS_THEME', new Set([nextThemeWrite + 2]));
+assert.equal(await window.__pmEnsurePhoneQuickReply(), false);
+assert.equal(window.__pmTheme.qrLabel, '天音', '回滚持久化失败时仍必须恢复内存主题');
+assert.equal(JSON.parse(localValues.get('ST_SMS_THEME')).qrLabel, '回滚失败入口', '回滚写入失败必须保留可诊断的实际持久化状态');
+assert.match(uiAlerts.at(-1), /名称配置回滚失败/);
+
+window.__pmTheme = structuredClone(baseTheme);
+localValues.set('ST_SMS_THEME', JSON.stringify(window.__pmTheme));
+uiElements.get('pm-quick-reply-label').value = '😀😁😂😃😄😅😆';
+const successfulQuickReplyApi = createQuickReplyApiFixture();
+globalThis.quickReplyApi = successfulQuickReplyApi;
+assert.equal(await window.__pmEnsurePhoneQuickReply(), true);
+assert.equal(window.__pmTheme.qrLabel, '😀😁😂😃😄😅');
+assert.equal(JSON.parse(localValues.get('ST_SMS_THEME')).qrLabel, '😀😁😂😃😄😅');
+assert.equal(successfulQuickReplyApi.getSetByName(PHONE_QR_SET_NAME).qrList[0].label, '😀😁😂😃😄😅');
+assert.equal(uiElements.get('pm-quick-reply-label').value, '😀😁😂😃😄😅');
+assert.equal(quickReplyPageRefreshes, 1, '成功后必须刷新 Quick Reply 设置状态');
+assert.match(uiNotes.at(-1), /😀😁😂😃😄😅/);
+delete globalThis.quickReplyApi;
 
 window.__pmProfiles = [{ apiUrl: 'https://old.example', apiKey: 'old-key', model: 'old-model' }];
 localStorageControl.failSet.add('ST_SMS_API_PROFILES');
@@ -906,7 +1556,7 @@ assert.equal(uiElements.get('pm-indep-profile-fields').hidden, true);
 assert.equal(uiElements.get('pm-indep-config-fields').hidden, true);
 assert.equal(uiElements.get('pm-mode-main').classList.contains('pm-mode-active'), true);
 assert.equal(uiElements.get('pm-mode-indep').classList.contains('pm-mode-active'), false);
-assert.equal(uiElements.get('pm-mode-tip').textContent, '主 API 使用宿主当前选择的预设与接口');
+assert.equal(uiElements.get('pm-mode-tip').textContent, '默认使用酒馆API预设');
 assert.equal(window.__pmSaveConfig(), true);
 assert.equal(window.__pmConfig.useIndependent, false, '用户手动切回主 API 后必须保留明确选择');
 assert.equal(JSON.parse(localValues.get('ST_SMS_CONFIG')).useIndependent, false);
@@ -935,6 +1585,9 @@ applyConversationInjections({
 assert.equal(promptCalls.some(call => String(call[1]).includes('绝密关闭内容')), false);
 const openCall = promptCalls.find(call => String(call[1]).includes('允许注入内容'));
 assert.ok(openCall);
+assert.match(String(openCall[1]), /开放群/);
+assert.match(String(openCall[1]), /C[、,，\s]+D|成员[^\n]*C[^\n]*D/);
+assert.doesNotMatch(String(openCall[1]), /关闭群|绝密关闭内容/);
 assert.equal(openCall[2], 2);
 assert.equal(openCall[3], 4);
 assert.ok(promptCalls.some(call => call[0] === 'PHONE_SMS_MEMORY:stale' && call[1] === ''));
@@ -1258,10 +1911,213 @@ assert.equal(idbValues.get('ST_SMS_BG_LOCAL_story_Alice'), newAliceBackground);
 assert.equal(localValues.get('ST_SMS_BG_LOCAL'), '{}');
 idbValues.delete('ST_SMS_BG_LOCAL_story_Alice');
 
+const groupEntry = createMessageEntry({
+    role: 'assistant',
+    content: 'Alice：第一句 / 第二句\nBob：第三句',
+    descriptors: [
+        { text: '第一句', sender: 'Alice' },
+        { text: '第二句', sender: 'Alice' },
+        { text: '第三句', sender: 'Bob' },
+    ],
+});
+const groupBubbles = describeMessageEntry(groupEntry, { isGroup: true, groupMembers: ['Alice', 'Bob'] });
+assert.equal(groupBubbles.length, 3, '群聊同一 assistant entry 必须持久化每个可见气泡');
+assert.equal(new Set(groupBubbles.map(item => item.bubbleId)).size, 3,
+    '群聊同一 assistant entry 的每个气泡必须拥有唯一 bubbleId');
+assert.equal(groupBubbles[2].sender, 'Bob');
+
+const longQuoteText = '😀'.repeat(81);
+const quoteSnapshot = createQuoteSnapshot({
+    messageId: groupEntry.messageId,
+    bubbleId: groupBubbles[1].bubbleId,
+    sender: 'Alice',
+    text: longQuoteText,
+});
+assert.equal([...quoteSnapshot.text].length, 80, '引用快照必须按 Unicode code point 截断，避免拆坏 emoji');
+assert.equal(createQuoteSnapshot({ messageId: groupEntry.messageId, text: '缺少气泡 ID' }), null,
+    '缺少稳定 bubbleId 的引用不得进入持久化结构');
+const quotedUserEntry = createMessageEntry({
+    role: 'user', content: '回复内容', descriptors: ['回复内容'], quote: quoteSnapshot,
+});
+assert.deepEqual(quotedUserEntry.quote, quoteSnapshot, '用户 entry 必须持久化规范化引用快照');
+assert.equal(describeMessageEntry(quotedUserEntry)[0].text, '回复内容',
+    '引用元数据不得改变消息正文与历史 prompt 文本');
+
+const legacyGroupHistory = [{ role: 'assistant', content: 'Alice：旧消息一 / 旧消息二' }];
+assert.equal(normalizeMessageHistory(legacyGroupHistory, {
+    isGroup: true, groupMembers: ['Alice'], legacySeed: 'story:group',
+}), true);
+const firstLegacyIds = structuredClone(legacyGroupHistory);
+assert.equal(normalizeMessageHistory(legacyGroupHistory, {
+    isGroup: true, groupMembers: ['Alice'], legacySeed: 'story:group',
+}), false, '已迁移历史重复归一化不得再次改写稳定 ID');
+assert.deepEqual(legacyGroupHistory, firstLegacyIds, '旧群聊重开后 messageId 与 bubbleId 必须保持稳定');
+
+const duplicateIdHistory = [
+    {
+        role: 'assistant', content: '第一条', messageId: 'msg_duplicate',
+        bubbles: [{ bubbleId: 'bubble_duplicate', text: '第一条', sender: 'Alice' }],
+    },
+    {
+        role: 'assistant', content: '第二条', messageId: 'msg_duplicate',
+        bubbles: [{ bubbleId: 'bubble_duplicate', text: '第二条', sender: 'Bob' }],
+    },
+    {
+        role: 'user', content: '引用脏数据', messageId: 'msg_quote',
+        bubbles: [{ bubbleId: 'bubble_quote', text: '引用脏数据', sender: '' }],
+        quote: { messageId: 'msg_duplicate', bubbleId: 'bubble_duplicate', sender: 'Bob', text: '第二条' },
+    },
+];
+assert.equal(normalizeMessageHistory(duplicateIdHistory, {
+    isGroup: true, groupMembers: ['Alice', 'Bob'], legacySeed: 'story:dirty-group',
+}), true, '导入的重复稳定 ID 必须被修复');
+assert.equal(new Set(duplicateIdHistory.map(entry => entry.messageId)).size, duplicateIdHistory.length,
+    '修复后会话内 messageId 必须唯一');
+assert.equal(new Set(duplicateIdHistory.flatMap(entry => entry.bubbles.map(bubble => bubble.bubbleId))).size, 3,
+    '修复后会话内 bubbleId 必须唯一');
+assert.notEqual(duplicateIdHistory[2].quote.messageId, duplicateIdHistory[0].messageId,
+    '无法判定原目标的重复 ID 引用必须降级为不可定位快照');
+assert.notEqual(duplicateIdHistory[2].quote.messageId, duplicateIdHistory[1].messageId);
+const repairedDuplicateHistory = structuredClone(duplicateIdHistory);
+assert.equal(normalizeMessageHistory(duplicateIdHistory, {
+    isGroup: true, groupMembers: ['Alice', 'Bob'], legacySeed: 'story:dirty-group',
+}), false, '重复 ID 修复完成后再次归一化不得继续漂移');
+assert.deepEqual(duplicateIdHistory, repairedDuplicateHistory);
+
 window.__pmHistories = { story: { Alice: [{ role: 'user', content: '保留' }] } };
 idbControl.abortAll = true;
 await assert.rejects(saveHistoriesStrict(), /IndexedDB 不可用/);
 idbControl.abortAll = false;
+
+const oldStorageId = 'sms_alice.png__chat-old';
+const newStorageId = 'sms_alice.png__chat-copy';
+const oldHistory = [{ role: 'user', content: '旧会话私有内容' }];
+window.__pmHistories = { [oldStorageId]: { Alice: structuredClone(oldHistory) } };
+window.__pmGroupMeta = {};
+let activeConversationStorageId = oldStorageId;
+const isolatedConversationState = {
+    activeStorageId: oldStorageId,
+    currentPersona: 'Alice',
+    conversationHistory: structuredClone(oldHistory),
+    isGroupChat: false,
+    currentGroupKey: '',
+    groupMembers: [], groupExtras: [], groupColorMap: {}, groupDisplayName: '',
+    phoneWindow: null,
+};
+const isolatedBubbleCalls = [];
+const isolatedConversationDeps = {
+    getStorageId: () => activeConversationStorageId,
+    addNote: () => {}, addBubble: (...args) => isolatedBubbleCalls.push(args),
+    addDirector: () => {}, fitNameFont: () => {},
+    applyBackground: () => {}, applyBidirectionalInjection: () => {}, resetEmojiRenderBudget: () => {},
+};
+installConversation(isolatedConversationState, isolatedConversationDeps);
+activeConversationStorageId = newStorageId;
+window.__pmSwitch('Alice', 'Alice', oldStorageId, { preservePage: true });
+assert.equal(isolatedConversationState.activeStorageId, newStorageId);
+assert.deepEqual(isolatedConversationState.conversationHistory, [], '新 storageId 首次打开不得读取旧会话历史');
+const migratedOldHistory = window.__pmHistories[oldStorageId].Alice;
+assert.equal(migratedOldHistory[0].content, oldHistory[0].content, '切换 storageId 时旧会话内容不得变化');
+assert.match(migratedOldHistory[0].messageId, /^msg_legacy_/, '旧历史首次保存必须补齐确定性 messageId');
+assert.equal(migratedOldHistory[0].bubbles[0].text, oldHistory[0].content);
+assert.match(migratedOldHistory[0].bubbles[0].bubbleId, /^bubble_legacy_/, '旧历史气泡必须补齐确定性 bubbleId');
+assert.equal(window.__pmHistories[newStorageId], undefined, '只读新会话不得伪造或复制旧历史');
+
+const copiedConversationHistory = [createMessageEntry({
+    role: 'user', content: '新会话独立内容 / 第二气泡',
+    descriptors: ['新会话独立内容', '第二气泡'], quote: quoteSnapshot,
+})];
+isolatedConversationState.conversationHistory = structuredClone(copiedConversationHistory);
+activeConversationStorageId = oldStorageId;
+window.__pmSwitch('Alice', 'Alice', newStorageId, { preservePage: true });
+assert.equal(window.__pmHistories[newStorageId].Alice[0].content, copiedConversationHistory[0].content,
+    '离开新 storageId 时必须通过真实 __pmSwitch 自动保存当前内容');
+assert.notEqual(window.__pmHistories[newStorageId].Alice[0].messageId, migratedOldHistory[0].messageId);
+assert.deepEqual(window.__pmHistories[oldStorageId].Alice, migratedOldHistory, '写入新 storageId 不得污染旧会话 key');
+assert.deepEqual(isolatedConversationState.conversationHistory, migratedOldHistory, '切回旧 storageId 必须只恢复旧会话数据');
+assert.equal(isolatedConversationState.conversationHistory[0].messageId, migratedOldHistory[0].messageId,
+    '旧历史重开后稳定 messageId 不得变化');
+assert.notStrictEqual(isolatedConversationState.conversationHistory, window.__pmHistories[oldStorageId].Alice,
+    '加载历史必须返回独立数组，避免 state 原地修改持久化快照');
+assert.notStrictEqual(isolatedConversationState.conversationHistory[0], window.__pmHistories[oldStorageId].Alice[0],
+    '加载历史的 entry 不得与持久化快照共享引用');
+assert.notStrictEqual(isolatedConversationState.conversationHistory[0].bubbles[0], window.__pmHistories[oldStorageId].Alice[0].bubbles[0],
+    '加载历史的 bubble 不得与持久化快照共享引用');
+
+const isolatedMessageList = { innerHTML: '' };
+isolatedConversationState.phoneWindow = {
+    querySelector(selector) { return selector === '.pm-msg-list' ? isolatedMessageList : null; },
+};
+isolatedBubbleCalls.length = 0;
+activeConversationStorageId = newStorageId;
+window.__pmSwitch('Alice', 'Alice', oldStorageId, { preservePage: true });
+assert.deepEqual(isolatedConversationState.conversationHistory, window.__pmHistories[newStorageId].Alice,
+    '再次进入新 storageId 必须恢复离开时自动保存的独立内容');
+assert.notStrictEqual(isolatedConversationState.conversationHistory, window.__pmHistories[newStorageId].Alice);
+assert.notStrictEqual(isolatedConversationState.conversationHistory[0], window.__pmHistories[newStorageId].Alice[0]);
+assert.notStrictEqual(isolatedConversationState.conversationHistory[0].bubbles[0], window.__pmHistories[newStorageId].Alice[0].bubbles[0]);
+assert.notStrictEqual(isolatedConversationState.conversationHistory[0].quote, window.__pmHistories[newStorageId].Alice[0].quote,
+    '加载历史的 quote 不得与持久化快照共享引用');
+assert.equal(isolatedBubbleCalls.length, 2, '双气泡引用消息重载后必须重绘两个气泡');
+assert.deepEqual(isolatedBubbleCalls[0][4].quote, quoteSnapshot,
+    '持久化重载后首个气泡必须收到完整 quote snapshot');
+assert.equal(Object.hasOwn(isolatedBubbleCalls[1][4], 'quote'), false,
+    '同一 entry 的非首气泡不得重复渲染引用卡');
+assert.equal(isolatedBubbleCalls[0][4].messageId, copiedConversationHistory[0].messageId);
+assert.equal(isolatedBubbleCalls[0][4].bubbleId, copiedConversationHistory[0].bubbles[0].bubbleId);
+const oldScopeBeforeMutation = structuredClone(window.__pmHistories[oldStorageId].Alice);
+const newScopeBeforeMutation = structuredClone(window.__pmHistories[newStorageId].Alice);
+isolatedConversationState.conversationHistory[0].bubbles[0].text = '仅修改运行态气泡';
+isolatedConversationState.conversationHistory[0].quote.text = '仅修改运行态引用';
+assert.deepEqual(window.__pmHistories[oldStorageId].Alice, oldScopeBeforeMutation,
+    '修改新 scope 的运行态历史不得污染旧 scope 持久化数据');
+assert.deepEqual(window.__pmHistories[newStorageId].Alice, newScopeBeforeMutation,
+    '修改新 scope 的运行态嵌套字段不得污染新 scope 持久化快照');
+isolatedConversationDeps.persistCurrentHistory('Alice', newStorageId);
+assert.equal(window.__pmHistories[newStorageId].Alice[0].bubbles[0].text, '仅修改运行态气泡');
+assert.equal(window.__pmHistories[newStorageId].Alice[0].quote.text, '仅修改运行态引用');
+assert.deepEqual(window.__pmHistories[oldStorageId].Alice, oldScopeBeforeMutation,
+    '显式保存新 scope 后仍不得改变旧 scope');
+isolatedConversationState.phoneWindow = null;
+
+const groupSwitchStorageId = 'sms_alice.png__group-switch';
+const legacyGroupKey = '__group_legacy';
+const legacyGroupMessage = { role: 'assistant', content: 'Alice：群消息一 / 群消息二' };
+window.__pmHistories = {
+    [groupSwitchStorageId]: {
+        [legacyGroupKey]: [structuredClone(legacyGroupMessage)],
+        Bob: [{ role: 'assistant', content: 'Bob：这是单聊正文' }],
+    },
+};
+activeConversationStorageId = groupSwitchStorageId;
+isolatedConversationState.activeStorageId = groupSwitchStorageId;
+isolatedConversationState.currentPersona = legacyGroupKey;
+isolatedConversationState.currentGroupKey = legacyGroupKey;
+isolatedConversationState.isGroupChat = true;
+isolatedConversationState.groupMembers = ['Alice'];
+isolatedConversationState.conversationHistory = [structuredClone(legacyGroupMessage)];
+window.__pmSwitch('Bob', legacyGroupKey, groupSwitchStorageId, {
+    preservePage: true,
+    previousConversationContext: { isGroupChat: true, groupMembers: ['Alice'] },
+});
+const migratedGroupOnSwitch = window.__pmHistories[groupSwitchStorageId][legacyGroupKey][0];
+assert.equal(migratedGroupOnSwitch.bubbles.length, 2,
+    '旧群聊切到单聊时必须按旧群聊上下文迁移多气泡');
+assert.deepEqual(migratedGroupOnSwitch.bubbles.map(item => item.sender), ['Alice', 'Alice']);
+
+isolatedConversationState.currentPersona = 'Bob';
+isolatedConversationState.currentGroupKey = '';
+isolatedConversationState.isGroupChat = false;
+isolatedConversationState.groupMembers = [];
+isolatedConversationState.conversationHistory = [{ role: 'assistant', content: 'Bob：这是单聊正文' }];
+window.__pmSwitch(legacyGroupKey, 'Bob', groupSwitchStorageId, {
+    preservePage: true,
+    previousConversationContext: { isGroupChat: false, groupMembers: [] },
+});
+const migratedSingleOnSwitch = window.__pmHistories[groupSwitchStorageId].Bob[0];
+assert.equal(migratedSingleOnSwitch.bubbles.length, 1,
+    '旧单聊切到群聊时不得按目标群成员拆解旧单聊正文');
+assert.equal(migratedSingleOnSwitch.bubbles[0].sender, '');
 
 const currentBackup = {
     histories: {}, config: {}, theme: { darkMode: 'dark', ambientStatusEnabled: true }, profiles: [], groupMeta: {}, pokeConfig: {},
@@ -1333,9 +2189,11 @@ assert.equal(parsedV4Backup.theme.ambientStatusEnabled, false);
 assert.deepEqual(parsedV4Backup.ambientStatus, { enabled: false });
 assert.deepEqual(parsedV4Backup.phoneUiState.scopes.story, {
     pinnedSceneIds: ['scene-v4'], lastPage: 'community', lastSceneId: 'scene-v4', lastTab: 'live',
+    lastChatType: null, lastChatKey: null,
 });
 assert.deepEqual(parsedV4Backup.phoneUiState.scopes.other, {
-    pinnedSceneIds: [], lastPage: 'desktop', lastSceneId: null, lastTab: 'prompt',
+    pinnedSceneIds: [], lastPage: 'desktop', lastSceneId: null, lastTab: 'feed',
+    lastChatType: null, lastChatKey: null,
 });
 const parsedV4Defaults = parseBackupData({ schemaVersion: 4 }, currentBackup);
 assert.deepEqual(parsedV4Defaults.phoneUiState, { version: 1, scopes: {} });
@@ -2226,21 +3084,55 @@ const workspaceScene = normalizeInteractiveStore({
     version: 1,
     scopes: { story: { activeSceneId: 'scene', sceneOrder: ['scene'], scenes: { scene: {
         id: 'scene', title: '主题社区', preset: 'weibo', themeAccent: '#123abc',
-        generatedPrompt: '自然交流', posts: [], live: { title: '正在直播', status: 'idle', danmaku: [{ id: 'danmaku', author: '访客', content: '弹幕' }] },
+        generatedPrompt: '自然交流', posts: [{ id: 'post', author: '访客', content: '测试帖子', comments: [] }],
+        live: { title: '正在直播', status: 'idle', danmaku: [{ id: 'danmaku', author: '访客', content: '弹幕' }] },
     } } } },
 }).scopes.story.scenes.scene;
 const workspaceHtml = renderCommunityWorkspace(workspaceScene, 'feed', { pinnedSceneIds: [] });
 assert.match(workspaceHtml, /style="--scene-accent:#123abc"/);
-assert.match(workspaceHtml, /data-action="poke-scene">拍一拍<\/button>/);
+assert.match(workspaceHtml, /placeholder="分享此刻……"/);
+assert.match(workspaceHtml, /<span>刚刚<\/span>/);
+assert.doesNotMatch(workspaceHtml, /刚刚 · 主题社区/);
+assert.match(workspaceHtml, /class="pm-scene-post-author"><b>访客<\/b><span>刚刚<\/span>/);
+assert.match(workspaceHtml, /class="pm-scene-nav-actions"[\s\S]*data-action="desktop"[\s\S]*data-action="back"/);
+assert.match(workspaceHtml, /class="pm-scene-title-poke"[^>]*data-action="poke-scene"/);
+assert.match(workspaceHtml, /class="pm-scene-view-toggle"[^>]*data-tab="live"[^>]*aria-label="切换到直播"/);
+assert.doesNotMatch(workspaceHtml, /pm-scene-tabs/);
+assert.match(workspaceHtml, /data-action="tab" data-tab="prompt">[\s\S]*风格提示词/);
+assert.match(workspaceHtml, /data-action="context-inject">[\s\S]*上下文注入/);
+assert.match(workspaceHtml, /class="pm-scene-post-more"[^>]*data-action="post-actions"/);
+assert.match(workspaceHtml, /data-action="comments"[^>]*aria-label="拍一拍本帖，只生成本帖评论"/);
+assert.match(workspaceHtml, /class="pm-scene-like [^"]*"[^>]*data-action="like"/);
+assert.match(workspaceHtml, /class="pm-scene-post-metric is-share"/);
+assert.doesNotMatch(workspaceHtml, /生成更多评论|>喜欢<|>已喜欢</);
 assert.match(workspaceHtml, /class="pm-scene-bottom-bar"/);
 assert.match(workspaceHtml, /class="pm-scene-exit"[^>]*data-action="exit"/);
-assert.doesNotMatch(workspaceHtml, /生成热场内容|编辑社区风格|返回桌面/);
+assert.doesNotMatch(workspaceHtml, /生成热场内容|编辑社区风格/);
 const liveWorkspaceHtml = renderCommunityWorkspace(workspaceScene, 'live', { pinnedSceneIds: [] });
+assert.match(liveWorkspaceHtml, /class="pm-scene-view-toggle"[^>]*data-tab="feed"[^>]*aria-label="返回社区"/);
 assert.match(liveWorkspaceHtml, /pm-live-stage has-danmaku/);
 assert.match(liveWorkspaceHtml, /--duration:[\d.]+s;--offset:-?\d+px/);
 const promptWorkspaceHtml = renderCommunityWorkspace(workspaceScene, 'prompt', { pinnedSceneIds: [] });
-assert.match(promptWorkspaceHtml, /id="pm-scene-accent" type="color" value="#123abc"/);
+assert.match(promptWorkspaceHtml, /class="pm-scene-accent-options"/);
+assert.match(promptWorkspaceHtml, /data-action="scene-accent" data-accent="#ff8200"/);
+assert.match(promptWorkspaceHtml, /aria-label="使用微博热场主题色" aria-pressed="false"/);
+assert.match(promptWorkspaceHtml, /id="pm-scene-accent" type="color" data-action="scene-accent-custom" value="#123abc"/);
 assert.match(promptWorkspaceHtml, /class="pm-scene-secondary" data-action="regenerate-prompt"/);
+const presetAccentScene = { ...workspaceScene, themeAccent: '#ff8200' };
+const presetAccentHtml = renderCommunityWorkspace(presetAccentScene, 'prompt', { pinnedSceneIds: [] });
+assert.match(presetAccentHtml, /data-accent="#ff8200"[^>]*aria-pressed="true"/);
+const emptyWorkspaceHtml = renderCommunityWorkspace({ ...workspaceScene, posts: [] }, 'feed', { pinnedSceneIds: [] });
+assert.match(emptyWorkspaceHtml, /class="pm-scene-empty"[\s\S]*这里还很安静[\s\S]*发第一篇帖子/);
+assert.doesNotMatch(emptyWorkspaceHtml, /class="pm-scene-post"/);
+const injectionWorkspaceHtml = renderCommunityWorkspace(workspaceScene, 'context-inject', { pinnedSceneIds: [] }, {
+    communitySceneAllowed: true,
+    communitySelection: { mode: 'selected', postIds: ['post'] },
+});
+assert.match(injectionWorkspaceHtml, /id="pm-scene-injection-enabled"[^>]*checked/);
+assert.match(injectionWorkspaceHtml, /id="pm-scene-injection-mode"[\s\S]*value="selected" selected/);
+assert.match(injectionWorkspaceHtml, /class="pm-scene-injection-post-input" value="post" checked/);
+assert.match(injectionWorkspaceHtml, /data-action="context-select-all"[\s\S]*data-action="context-clear"/);
+assert.match(injectionWorkspaceHtml, /data-action="context-save"/);
 
 const launcherScope = {
     sceneOrder: ['scene-card'],
@@ -2348,22 +3240,22 @@ await assert.rejects(runDesktopPageTransition({
 assert.deepEqual(supersededRollbackCalls, ['render', ['show', 'desktop'], 'persist']);
 assert.equal(supersededCurrentPage, 'community', '持久化失败不得覆盖事务期间发生的新导航');
 
-let desktopErrorMessage = '';
-let desktopErrorAction = '';
+let rearmErrorMessage = '';
+let rearmErrorAction = '';
 await runControlMenuAction(
-    'desktop',
-    () => Promise.reject(new Error('desktop unavailable')),
-    (error, action) => { desktopErrorMessage = error.message; desktopErrorAction = action; },
+    'rearm',
+    () => Promise.reject(new Error('rearm unavailable')),
+    (error, action) => { rearmErrorMessage = error.message; rearmErrorAction = action; },
 );
-assert.equal(desktopErrorMessage, 'desktop unavailable');
-assert.equal(desktopErrorAction, 'desktop');
+assert.equal(rearmErrorMessage, 'rearm unavailable');
+assert.equal(rearmErrorAction, 'rearm');
 let nonDesktopErrorReported = false;
 assert.throws(() => runControlMenuAction(
     'settings',
     () => { throw new Error('settings unavailable'); },
     () => { nonDesktopErrorReported = true; },
 ), /settings unavailable/);
-assert.equal(nonDesktopErrorReported, false, '非桌面 action 不得误报为返回桌面失败');
+assert.equal(nonDesktopErrorReported, false, '同步 action 不得误报为异步操作失败');
 let calendarErrorMessage = '';
 let calendarErrorAction = '';
 await runControlMenuAction(
@@ -2492,8 +3384,11 @@ assert.deepEqual(failedCommitCalls, ['invalidate', 'commit']);
 const delegatedListeners = new Map();
 const delegatedActions = [];
 let openSceneMenus = [];
+let openPostActions = [];
 const delegatedErrors = [];
+const delegatedExtraNodes = new Set();
 const desktopApp = { kind: 'desktop' };
+const sceneApp = { id: 'pm-scene-app' };
 const calendarApp = { id: 'pm-calendar-app' };
 const actionButton = {
     dataset: { action: 'desktop-chat' },
@@ -2515,12 +3410,17 @@ const delegatedPhoneRoot = {
         assert.equal(delegatedListeners.has(type), false);
         delegatedListeners.set(type, listener);
     },
-    querySelectorAll(selector) { assert.equal(selector, '.pm-scene-menu:not([hidden])'); return openSceneMenus.filter(menu => !menu.hidden); },
-    contains(node) { return node === actionButton || node === calendarActionButton || node === calendarCountryControl; },
+    querySelectorAll(selector) {
+        if (selector === '.pm-scene-menu:not([hidden])') return openSceneMenus.filter(menu => !menu.hidden);
+        if (selector === '.pm-scene-post-actions:not([hidden])') return openPostActions.filter(actions => !actions.hidden);
+        assert.fail(`不应查询未知选择器：${selector}`);
+    },
+    contains(node) { return node === actionButton || node === calendarActionButton || node === calendarCountryControl || delegatedExtraNodes.has(node); },
 };
 assert.equal(bindPhonePageActions(
     delegatedPhoneRoot,
     (button, app) => {
+        if (button.dataset.action === 'post-actions') toggleScenePostActions(button);
         delegatedActions.push({ button, app });
     },
     error => delegatedErrors.push(error),
@@ -2559,7 +3459,7 @@ const calendarCountryControl = {
     dataset: { action: 'calendar-holiday-country' }, value: 'JP',
     closest(selector) {
         if (selector === '[data-action]') return this;
-        if (selector === 'select[data-action]') return this;
+        if (selector === 'input[data-action],select[data-action]') return this;
         if (selector === '#pm-scene-app') return null;
         if (selector === '#pm-calendar-app') return calendarApp;
         return null;
@@ -2573,6 +3473,28 @@ assert.equal(delegatedActions.length, actionsBeforeCountrySelection + 1,
     'select 的 click 与 change 组合只能由 change 委托分发一次');
 assert.deepEqual(delegatedActions.at(-1), { button: calendarCountryControl, app: calendarApp },
     '日历国家选择变化必须进入统一异步错误边界');
+assert.deepEqual(delegatedErrors, []);
+
+const sceneAccentControl = {
+    tagName: 'INPUT',
+    dataset: { action: 'scene-accent-custom' }, value: '#123abc',
+    closest(selector) {
+        if (selector === '[data-action]') return this;
+        if (selector === 'input[data-action],select[data-action]') return this;
+        if (selector === '#pm-scene-app') return sceneApp;
+        if (selector === '#pm-calendar-app') return null;
+        return null;
+    },
+};
+delegatedExtraNodes.add(sceneAccentControl);
+const actionsBeforeAccentSelection = delegatedActions.length;
+delegatedListeners.get('click')({ target: sceneAccentControl });
+delegatedListeners.get('change')({ target: sceneAccentControl });
+await Promise.resolve();
+assert.equal(delegatedActions.length, actionsBeforeAccentSelection + 1,
+    'input 的 click 与 change 组合只能由 change 委托分发一次');
+assert.deepEqual(delegatedActions.at(-1), { button: sceneAccentControl, app: sceneApp },
+    '社区自定义主题色变化必须进入统一异步错误边界');
 assert.deepEqual(delegatedErrors, []);
 
 let menuFocused = false;
@@ -2605,6 +3527,89 @@ assert.equal(menuExpanded, 'false');
 assert.equal(escapePrevented, true);
 assert.equal(menuFocused, true, 'Escape 关闭菜单后必须把焦点还给更多按钮');
 
+let postActionsFocused = false;
+let postActionsExpanded = 'true';
+const postActionsTrigger = {
+    setAttribute(name, value) { assert.equal(name, 'aria-expanded'); postActionsExpanded = value; },
+    focus(options) { assert.deepEqual(options, { preventScroll: true }); postActionsFocused = true; },
+};
+const postActionsWrap = {
+    querySelector(selector) { assert.equal(selector, '[data-action="post-actions"]'); return postActionsTrigger; },
+};
+const postActions = {
+    hidden: false,
+    closest(selector) { assert.equal(selector, '.pm-scene-post-actions-wrap'); return postActionsWrap; },
+};
+openPostActions = [postActions];
+delegatedListeners.get('click')({ target: { closest: () => null } });
+assert.equal(postActions.hidden, true, '点击帖子操作外部必须收起横向操作');
+assert.equal(postActionsExpanded, 'false');
+
+let firstPostExpanded = 'true';
+const firstPostTrigger = {
+    setAttribute(name, value) { assert.equal(name, 'aria-expanded'); firstPostExpanded = value; },
+};
+const firstPostWrap = {
+    querySelector(selector) { assert.equal(selector, '[data-action="post-actions"]'); return firstPostTrigger; },
+};
+const firstPostActions = {
+    hidden: false,
+    closest(selector) { assert.equal(selector, '.pm-scene-post-actions-wrap'); return firstPostWrap; },
+};
+let secondPostExpanded = 'false';
+let secondPostActionFocused = false;
+const secondPostFirstAction = {
+    focus(options) { assert.deepEqual(options, { preventScroll: true }); secondPostActionFocused = true; },
+};
+const secondPostActions = {
+    hidden: true,
+    querySelector(selector) { assert.equal(selector, 'button'); return secondPostFirstAction; },
+    closest(selector) { assert.equal(selector, '.pm-scene-post-actions-wrap'); return secondPostWrap; },
+};
+const secondPostWrap = {
+    querySelector(selector) {
+        if (selector === '.pm-scene-post-actions') return secondPostActions;
+        if (selector === '[data-action="post-actions"]') return secondPostTrigger;
+        assert.fail(`第二个帖子不应查询未知选择器：${selector}`);
+    },
+};
+const secondPostTrigger = {
+    dataset: { action: 'post-actions' },
+    parentElement: secondPostWrap,
+    setAttribute(name, value) { assert.equal(name, 'aria-expanded'); secondPostExpanded = value; },
+    closest(selector) {
+        if (selector === '.pm-scene-post-actions-wrap') return secondPostWrap;
+        if (selector === '#pm-scene-app') return sceneApp;
+        if (selector === '#pm-calendar-app' || selector === '.pm-desktop-page') return null;
+        return null;
+    },
+};
+delegatedExtraNodes.add(secondPostTrigger);
+openPostActions = [firstPostActions, secondPostActions];
+const delegatedActionCountBeforePostSwitch = delegatedActions.length;
+delegatedListeners.get('click')({ target: { closest: selector => selector === '[data-action]' ? secondPostTrigger : null } });
+await Promise.resolve();
+assert.equal(firstPostActions.hidden, true, '切换到另一个帖子时必须关闭前一个横向操作');
+assert.equal(firstPostExpanded, 'false', '关闭前一个帖子操作时必须同步 aria-expanded');
+assert.equal(secondPostActions.hidden, false, '点击第二个帖子省略号必须展开其横向操作');
+assert.equal(secondPostExpanded, 'true', '展开第二个帖子操作时必须同步 aria-expanded');
+assert.equal(secondPostActionFocused, true, '展开第二个帖子操作后必须聚焦第一个操作按钮');
+assert.equal(delegatedActions.length, delegatedActionCountBeforePostSwitch + 1, '帖子切换只能分发一次生产动作');
+
+openPostActions = [postActions];
+sceneMenu.hidden = false;
+menuExpanded = 'true';
+postActions.hidden = false;
+postActionsExpanded = 'true';
+escapePrevented = false;
+delegatedListeners.get('keydown')({ key: 'Escape', preventDefault() { escapePrevented = true; } });
+assert.equal(postActions.hidden, true, 'Escape 必须关闭帖子横向操作');
+assert.equal(sceneMenu.hidden, true, 'Escape 必须同时关闭社区工具菜单');
+assert.equal(postActionsExpanded, 'false');
+assert.equal(menuExpanded, 'false');
+assert.equal(escapePrevented, true);
+assert.equal(postActionsFocused, true, 'Escape 关闭帖子操作后必须把焦点还给省略号按钮');
+
 const groupStore = normalizeGroupMetaStore({
     story: {
         valid: { name: '群', members: ['A', 'B'] },
@@ -2613,5 +3618,144 @@ const groupStore = normalizeGroupMetaStore({
 });
 assert.ok(groupStore.story.valid);
 assert.equal(groupStore.story.invalid, undefined);
+
+const createEditedGroupRuntimeFixture = () => ({
+    activeStorageId: 'story-before',
+    currentPersona: 'legacy-group',
+    conversationHistory: [{ role: 'assistant', content: '原历史' }],
+    isGroupChat: true,
+    currentGroupKey: 'legacy-group',
+    groupMembers: ['Alice', 'Bob'],
+    groupExtras: ['旁白'],
+    groupDisplayName: '旧群名',
+    groupColorMap: { Alice: '#112233', Bob: '#445566' },
+});
+const snapshotEditedGroupRuntime = state => ({
+    activeStorageId: state.activeStorageId,
+    currentPersona: state.currentPersona,
+    conversationHistory: structuredClone(state.conversationHistory),
+    isGroupChat: state.isGroupChat,
+    currentGroupKey: state.currentGroupKey,
+    groupMembers: state.groupMembers.slice(),
+    groupExtras: state.groupExtras.slice(),
+    groupDisplayName: state.groupDisplayName,
+    groupColorMap: { ...state.groupColorMap },
+});
+const editedGroupMeta = normalizeGroupMeta({
+    name: '新群名',
+    members: ['Alice', 'Carol'],
+    extras: ['记录员'],
+    memberColors: { Alice: '#abcdef' },
+});
+
+const successfulEditedGroupState = createEditedGroupRuntimeFixture();
+const successfulEditedGroupCalls = [];
+assert.equal(await refreshEditedGroupRuntime({
+    state: successfulEditedGroupState,
+    updated: editedGroupMeta,
+    applyInjection: async () => { successfulEditedGroupCalls.push('inject'); },
+    switchConversation: async () => { successfulEditedGroupCalls.push('switch'); },
+}), true);
+assert.deepEqual(successfulEditedGroupCalls, ['inject', 'switch'], '群编辑运行态必须先刷新注入再切换会话');
+assert.deepEqual(successfulEditedGroupState.groupMembers, ['Alice', 'Carol']);
+assert.deepEqual(successfulEditedGroupState.groupExtras, ['记录员']);
+assert.equal(successfulEditedGroupState.groupDisplayName, '新群名');
+assert.deepEqual(successfulEditedGroupState.groupColorMap, {
+    Alice: '#abcdef',
+    Carol: '#b8e6c8',
+}, '显式颜色应保留，默认颜色必须写入 CSS 色值字符串');
+
+const injectionFailureState = createEditedGroupRuntimeFixture();
+const injectionFailureSnapshot = snapshotEditedGroupRuntime(injectionFailureState);
+let switchAfterInjectionFailure = false;
+await assert.rejects(() => refreshEditedGroupRuntime({
+    state: injectionFailureState,
+    updated: editedGroupMeta,
+    applyInjection: async () => {
+        injectionFailureState.activeStorageId = 'story-mutated';
+        injectionFailureState.conversationHistory = [{ role: 'user', content: '注入阶段污染' }];
+        throw new Error('injection-failed');
+    },
+    switchConversation: async () => { switchAfterInjectionFailure = true; },
+}), /injection-failed/);
+assert.equal(switchAfterInjectionFailure, false, '注入失败后不得继续切换会话');
+assert.deepEqual(snapshotEditedGroupRuntime(injectionFailureState), injectionFailureSnapshot,
+    '注入失败必须恢复完整群聊运行态');
+
+const switchFailureState = createEditedGroupRuntimeFixture();
+const switchFailureSnapshot = snapshotEditedGroupRuntime(switchFailureState);
+const legacyHistoryBeforeSwitch = structuredClone(switchFailureState.conversationHistory);
+await assert.rejects(() => refreshEditedGroupRuntime({
+    state: switchFailureState,
+    updated: editedGroupMeta,
+    applyInjection: async () => {},
+    switchConversation: async () => {
+        switchFailureState.activeStorageId = 'story-switched';
+        switchFailureState.currentPersona = 'new-group';
+        normalizeMessageHistory(switchFailureState.conversationHistory, {
+            isGroup: true,
+            groupMembers: ['Alice', 'Carol'],
+            legacySeed: 'story-before:legacy-group',
+        });
+        switchFailureState.isGroupChat = false;
+        switchFailureState.currentGroupKey = '';
+        throw new Error('switch-failed');
+    },
+}), /switch-failed/);
+assert.deepEqual(snapshotEditedGroupRuntime(switchFailureState), switchFailureSnapshot,
+    '会话切换失败必须恢复完整群聊运行态');
+assert.deepEqual(switchFailureState.conversationHistory, legacyHistoryBeforeSwitch,
+    '真实历史归一化的原地修改不得污染事务快照');
+
+const transactionalState = createEditedGroupRuntimeFixture();
+const transactionalSnapshot = snapshotEditedGroupRuntime(transactionalState);
+let storedGroupConfig = { name: '旧群名', members: ['Alice', 'Bob'] };
+let memoryGroupConfig = { name: '新群名', members: ['Alice', 'Carol'] };
+const transactionEvents = [];
+await assert.rejects(() => commitEditedGroupUpdate({
+    state: transactionalState,
+    updated: editedGroupMeta,
+    persistUpdated: async () => {
+        transactionEvents.push('persist-new');
+        storedGroupConfig = structuredClone(memoryGroupConfig);
+    },
+    restoreConfig: () => {
+        transactionEvents.push('restore-old');
+        memoryGroupConfig = { name: '旧群名', members: ['Alice', 'Bob'] };
+    },
+    persistRestored: async () => {
+        transactionEvents.push('persist-old');
+        storedGroupConfig = structuredClone(memoryGroupConfig);
+    },
+    applyInjection: async () => {
+        transactionEvents.push(`inject:${memoryGroupConfig.members.join('/')}`);
+        return { written: 1, failedWrites: 0, failedKeys: [] };
+    },
+    switchConversation: async () => {
+        transactionEvents.push('switch');
+        normalizeMessageHistory(transactionalState.conversationHistory, {
+            isGroup: true,
+            groupMembers: editedGroupMeta.members,
+            legacySeed: 'story-before:legacy-group',
+        });
+        throw new Error('switch-transaction-failed');
+    },
+}), /switch-transaction-failed/);
+assert.deepEqual(transactionEvents, [
+    'persist-new', 'inject:Alice/Carol', 'switch', 'restore-old', 'persist-old', 'inject:Alice/Bob',
+], '切换失败后必须按顺序恢复配置、持久化旧值并重放旧注入');
+assert.deepEqual(memoryGroupConfig, { name: '旧群名', members: ['Alice', 'Bob'] });
+assert.deepEqual(storedGroupConfig, memoryGroupConfig, '失败后内存配置与持久化配置必须一致');
+assert.deepEqual(snapshotEditedGroupRuntime(transactionalState), transactionalSnapshot,
+    '完整事务失败后运行态必须恢复到编辑前快照');
+
+await assert.rejects(() => commitEditedGroupUpdate({
+    state: createEditedGroupRuntimeFixture(),
+    updated: editedGroupMeta,
+    persistUpdated: async () => {}, restoreConfig: () => {}, persistRestored: async () => {},
+    applyInjection: async () => ({ written: 0, failedWrites: 1, failedKeys: [] }),
+    switchConversation: async () => { throw new Error('不应执行切换'); },
+}), /群聊设置提交注入失败：1 项写入失败/,
+'注入返回部分失败时必须进入事务补偿，而不是误判为成功');
 
 console.log('Behavior configuration verified.');

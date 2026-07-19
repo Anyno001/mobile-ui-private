@@ -1,3 +1,95 @@
+const clone = value => JSON.parse(JSON.stringify(value));
+
+function injectionFailure(result, phase) {
+    const failedWrites = Number.isInteger(result?.failedWrites) && result.failedWrites > 0 ? result.failedWrites : 0;
+    const failedKeys = Array.isArray(result?.failedKeys) ? result.failedKeys : [];
+    if (!failedWrites && !failedKeys.length) return null;
+    const details = [
+        failedWrites ? `${failedWrites} 项写入失败` : '',
+        failedKeys.length ? `${failedKeys.length} 项清理失败` : '',
+    ].filter(Boolean).join('，');
+    return new Error(`群聊设置${phase}注入失败：${details}`);
+}
+
+function snapshotConversationState(state) {
+    return {
+        activeStorageId: state.activeStorageId,
+        currentPersona: state.currentPersona,
+        conversationHistory: clone(state.conversationHistory),
+        isGroupChat: state.isGroupChat,
+        currentGroupKey: state.currentGroupKey,
+        groupMembers: state.groupMembers.slice(),
+        groupExtras: state.groupExtras.slice(),
+        groupDisplayName: state.groupDisplayName,
+        groupColorMap: { ...state.groupColorMap },
+    };
+}
+
+function restoreConversationState(state, snapshot) {
+    state.activeStorageId = snapshot.activeStorageId;
+    state.currentPersona = snapshot.currentPersona;
+    state.conversationHistory = snapshot.conversationHistory;
+    state.isGroupChat = snapshot.isGroupChat;
+    state.currentGroupKey = snapshot.currentGroupKey;
+    state.groupMembers = snapshot.groupMembers;
+    state.groupExtras = snapshot.groupExtras;
+    state.groupDisplayName = snapshot.groupDisplayName;
+    state.groupColorMap = snapshot.groupColorMap;
+}
+
+export async function refreshEditedGroupRuntime({
+    state, updated, applyInjection, switchConversation,
+}) {
+    const snapshot = snapshotConversationState(state);
+    try {
+        state.groupMembers = updated.members.slice();
+        state.groupExtras = updated.extras.slice();
+        state.groupDisplayName = updated.name;
+        state.groupColorMap = {};
+        updated.members.forEach((name, index) => {
+            state.groupColorMap[name] = updated.memberColors[name] || GROUP_COLORS[index % GROUP_COLORS.length].bg;
+        });
+        const injectionResult = await applyInjection();
+        const injectionError = injectionFailure(injectionResult, '提交');
+        if (injectionError) throw injectionError;
+        await switchConversation();
+        return true;
+    } catch (error) {
+        restoreConversationState(state, snapshot);
+        throw error;
+    }
+}
+
+export async function commitEditedGroupUpdate({
+    state, updated, persistUpdated, restoreConfig, persistRestored, applyInjection, switchConversation,
+}) {
+    try {
+        await persistUpdated();
+        await refreshEditedGroupRuntime({ state, updated, applyInjection, switchConversation });
+        return true;
+    } catch (error) {
+        let rollbackError = null;
+        try {
+            restoreConfig();
+            await persistRestored();
+            const rollbackResult = await applyInjection();
+            const rollbackInjectionError = injectionFailure(rollbackResult, '补偿');
+            if (rollbackInjectionError) throw rollbackInjectionError;
+        } catch (rollbackFailure) {
+            rollbackError = rollbackFailure;
+        }
+        if (rollbackError) {
+            const combined = new Error(
+                `${error.message || '群聊设置保存失败'}；原配置回滚也失败，请勿刷新并立即导出备份：${rollbackError.message}`,
+            );
+            combined.cause = error;
+            combined.rollbackError = rollbackError;
+            throw combined;
+        }
+        throw error;
+    }
+}
+
 import {
     EXTENSION_PROMPT_POSITIONS, MAX_INJECTION_DEPTH, POPOVER_SUPPORTED,
 } from './constants.js';
@@ -12,7 +104,7 @@ import {
 } from './storage.js';
 
 export function installPhoneDirectory(state, deps) {
-    const { runtime, getStorageId, makeOverlay, applyBidirectionalInjection, isAutoPokeAllowed } = deps;
+    const { runtime, getStorageId, makeOverlay, applyBidirectionalInjection } = deps;
 
     function parseGroupMembers(value) {
         const seen = new Set();
@@ -122,10 +214,6 @@ export function installPhoneDirectory(state, deps) {
         <div style="font-size:11px;color:#999;margin-top:4px;">
             当前计数：<span id="pm-poke-counter-group">${pokeConfig.counter}</span> / ${pokeConfig.interval}
         </div>
-        <button type="button" class="pm-action-button is-secondary" onclick="window.__pmArmAutoPoke()" style="margin-top:8px;width:100%">
-            恢复本次自动消息
-        </button>
-        <div data-pm-auto-poke-status style="font-size:11px;color:#999;margin-top:4px;">${isAutoPokeAllowed() ? '本次手机会话已运行' : '本次手机会话已暂停'}</div>
         </div>
         ` : ''}
     </div>
@@ -147,6 +235,10 @@ export function installPhoneDirectory(state, deps) {
         const id = getStorageId();
         const groupSnapshot = JSON.parse(JSON.stringify(window.__pmGroupMeta));
         const pokeSnapshot = JSON.parse(JSON.stringify(window.__pmPokeConfig));
+        const previousConversationContext = {
+            isGroupChat: state.isGroupChat,
+            groupMembers: state.groupMembers.slice(),
+        };
         try {
             if (!window.__pmGroupMeta[id]) window.__pmGroupMeta[id] = {};
             const previous = window.__pmGroupMeta[id][state.currentGroupKey] || {};
@@ -175,27 +267,31 @@ export function installPhoneDirectory(state, deps) {
                     emojis: Array.from(document.querySelectorAll('.pm-emoji-assign-check.is-checked')).map(cb => cb.dataset.id),
                 };
             }
-            await saveGroupMeta();
-            if (!savePokeConfig()) throw new Error('自动消息配置保存失败：浏览器存储不可用或空间不足');
-            state.groupMembers = updated.members.slice(); state.groupExtras = updated.extras.slice(); state.groupDisplayName = updated.name;
-            state.groupColorMap = {};
-            updated.members.forEach((name, index) => { state.groupColorMap[name] = updated.memberColors[name] || GROUP_COLORS[index % GROUP_COLORS.length]; });
-            applyBidirectionalInjection();
+            await commitEditedGroupUpdate({
+                state,
+                updated,
+                persistUpdated: async () => {
+                    await saveGroupMeta();
+                    if (!savePokeConfig()) throw new Error('自动消息配置保存失败：浏览器存储不可用或空间不足');
+                },
+                restoreConfig: () => {
+                    window.__pmGroupMeta = groupSnapshot;
+                    window.__pmPokeConfig = pokeSnapshot;
+                },
+                persistRestored: async () => {
+                    await saveGroupMeta();
+                    if (!savePokeConfig()) throw new Error('自动消息配置回滚失败');
+                },
+                applyInjection: () => applyBidirectionalInjection(),
+                switchConversation: () => state.phoneWindow
+                    ? window.__pmSwitch(state.currentGroupKey, undefined, state.activeStorageId, {
+                        previousConversationContext,
+                    })
+                    : true,
+            });
             document.getElementById('pm-overlay')?.remove();
-            if (state.phoneWindow) window.__pmSwitch(state.currentGroupKey);
         } catch (error) {
-            window.__pmGroupMeta = groupSnapshot;
-            window.__pmPokeConfig = pokeSnapshot;
-            let rollbackError = null;
-            try {
-                await saveGroupMeta();
-                if (!savePokeConfig()) throw new Error('自动消息配置回滚失败');
-            } catch (rollbackFailure) {
-                rollbackError = rollbackFailure;
-            }
-            alert(rollbackError
-                ? `${error.message || '群聊设置保存失败'}；原配置回滚也失败，请勿刷新并立即导出备份：${rollbackError.message}`
-                : (error.message || '群聊设置保存失败'));
+            alert(error.message || '群聊设置保存失败');
         }
     };
 
@@ -229,12 +325,16 @@ export function installPhoneDirectory(state, deps) {
             if (mode === 'create') {
                 const groupKey = `__group_${Date.now()}`;
                 const previousSaveKey = state.isGroupChat && state.currentGroupKey ? state.currentGroupKey : state.currentPersona;
+                const previousConversationContext = {
+                    isGroupChat: state.isGroupChat,
+                    groupMembers: state.groupMembers.slice(),
+                };
                 window.__pmGroupMeta[id][groupKey] = normalizeGroupMeta({ name: groupName, members: names });
                 await saveGroupMeta();
                 document.getElementById('pm-overlay')?.remove();
                 state.isGroupChat = true; state.groupMembers = names; state.groupExtras = []; state.groupDisplayName = groupName; state.currentGroupKey = groupKey;
                 state.groupColorMap = {}; names.forEach((n, i) => { state.groupColorMap[n] = GROUP_COLORS[i % GROUP_COLORS.length]; });
-                window.__pmSwitch(groupKey, previousSaveKey);
+                window.__pmSwitch(groupKey, previousSaveKey, state.activeStorageId, { previousConversationContext });
             }
         } catch (error) {
             window.__pmGroupMeta = snapshot;

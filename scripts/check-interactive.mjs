@@ -4,7 +4,7 @@ import {
 } from '../src/interactive-scene-ai.js';
 import {
     INTERACTIVE_LIMITS, addSceneComment, appendScenePosts, createEmptyInteractiveStore,
-    createEmptyPhoneUiState, deleteInteractiveScene, deleteSceneComment, deleteScenePost,
+    createDefaultPhoneUiScope, createEmptyPhoneUiState, deleteInteractiveScene, deleteSceneComment, deleteScenePost,
     deriveInteractiveActorId, enforceInteractiveSceneLimit, ensureInteractiveActor,
     normalizeAmbientStatus, normalizeInteractiveStore, normalizePhoneUiState, normalizeScene, patchPhoneUiScope,
     resolveInteractiveAuthor, toggleScenePin, updateSceneComment, updateScenePost,
@@ -15,9 +15,11 @@ import {
 } from '../src/storage.js';
 import {
     createInteractiveCommitQueue, createInteractiveOperationGuard, createInteractiveStoreLoader,
-    installInteractiveScenes, migrateInteractiveStore,
+    installInteractiveScenes, migrateInteractiveStore, resolvePhoneChatTarget,
 } from '../src/interactive-scenes.js';
-import { persistSceneBudgetRemoval } from '../src/interactive-scene-phone.js';
+import {
+    persistCurrentPhoneUiSnapshot, persistSceneBudgetRemoval,
+} from '../src/interactive-scene-phone.js';
 import {
     COMMUNITY_TASK_PHASES, createCommunityGenerationRunner, createCommunityTaskController,
     createCommunityTurnSnapshot, registerResolvedHostEvent, resolveCommunityMessageEvents, resolveHostEvent,
@@ -163,18 +165,22 @@ const normalizedPhoneUiState = normalizePhoneUiState({
         story: {
             pinnedSceneIds: ['scene-a', 'scene-a', 'missing', ' scene-b ', 'scene-b'],
             lastPage: 'community', lastSceneId: 'missing', lastTab: 'unknown',
+            lastChatType: 'group', lastChatKey: '__group_saved',
         },
         chatOnly: {
             pinnedSceneIds: ['cross-scope'], lastPage: 'chat', lastSceneId: 'cross-scope', lastTab: 'live',
+            lastChatType: 'contact', lastChatKey: 'Alice',
         },
         ' invalid ': { pinnedSceneIds: [], lastPage: 'desktop', lastSceneId: null, lastTab: 'feed' },
     },
 }, phoneInteractiveStore);
 assert.deepEqual(normalizedPhoneUiState.scopes.story, {
     pinnedSceneIds: ['scene-a', 'scene-b'], lastPage: 'desktop', lastSceneId: null, lastTab: 'feed',
+    lastChatType: 'group', lastChatKey: '__group_saved',
 });
 assert.deepEqual(normalizedPhoneUiState.scopes.chatOnly, {
     pinnedSceneIds: [], lastPage: 'chat', lastSceneId: null, lastTab: 'live',
+    lastChatType: 'contact', lastChatKey: 'Alice',
 });
 assert.equal(normalizedPhoneUiState.scopes[' invalid '], undefined);
 const validCommunityState = normalizePhoneUiState({
@@ -184,13 +190,12 @@ const validCommunityState = normalizePhoneUiState({
     },
 }, phoneInteractiveStore);
 assert.deepEqual(validCommunityState.scopes.story, {
-    pinnedSceneIds: ['scene-b'], lastPage: 'community', lastSceneId: 'scene-b', lastTab: 'prompt',
+    pinnedSceneIds: ['scene-b'], lastPage: 'community', lastSceneId: 'scene-b', lastTab: 'feed',
+    lastChatType: null, lastChatKey: null,
 });
 const pollutedPhoneUiState = JSON.parse('{"version":1,"scopes":{"__proto__":{"pinnedSceneIds":[],"lastPage":"desktop","lastSceneId":null,"lastTab":"feed"}}}');
 assert.deepEqual(normalizePhoneUiState(pollutedPhoneUiState, phoneInteractiveStore), createEmptyPhoneUiState());
-const defaultPhoneUiScopeFixture = {
-    pinnedSceneIds: [], lastPage: 'desktop', lastSceneId: null, lastTab: 'feed',
-};
+const defaultPhoneUiScopeFixture = createDefaultPhoneUiScope();
 for (const storageId of ['__proto__', 'prototype', 'constructor', 'toString', 'valueOf', 'hasOwnProperty']) {
     const scopes = Object.create(null);
     Object.defineProperty(scopes, storageId, {
@@ -225,8 +230,8 @@ assert.deepEqual(maxLengthPhoneUiState.scopes[maxLengthStorageId], defaultPhoneU
 const phoneUiInput = {
     version: 1,
     scopes: {
-        story: { pinnedSceneIds: ['scene-a'], lastPage: 'community', lastSceneId: 'scene-a', lastTab: 'feed' },
-        other: { pinnedSceneIds: [], lastPage: 'chat', lastSceneId: null, lastTab: 'live' },
+        story: { pinnedSceneIds: ['scene-a'], lastPage: 'community', lastSceneId: 'scene-a', lastTab: 'feed', lastChatType: 'contact', lastChatKey: 'Alice' },
+        other: { pinnedSceneIds: [], lastPage: 'chat', lastSceneId: null, lastTab: 'live', lastChatType: null, lastChatKey: null },
     },
 };
 const phoneUiInputSnapshot = structuredClone(phoneUiInput);
@@ -234,13 +239,14 @@ const patchedPhoneUiState = patchPhoneUiScope(phoneUiInput, 'story', {
     lastPage: 'community', lastSceneId: 'scene-b', lastTab: 'prompt',
 }, phoneInteractiveStore);
 assert.deepEqual(patchedPhoneUiState.scopes.story, {
-    pinnedSceneIds: ['scene-a'], lastPage: 'community', lastSceneId: 'scene-b', lastTab: 'prompt',
+    pinnedSceneIds: ['scene-a'], lastPage: 'community', lastSceneId: 'scene-b', lastTab: 'feed',
+    lastChatType: 'contact', lastChatKey: 'Alice',
 });
 assert.deepEqual(patchedPhoneUiState.scopes.other, phoneUiInput.scopes.other);
 assert.deepEqual(phoneUiInput, phoneUiInputSnapshot, 'patchPhoneUiScope 不得修改输入状态');
 const newScopePhoneUiState = patchPhoneUiScope(phoneUiInput, 'new-scope', { lastPage: 'chat' }, phoneInteractiveStore);
 assert.deepEqual(newScopePhoneUiState.scopes['new-scope'], {
-    pinnedSceneIds: [], lastPage: 'chat', lastSceneId: null, lastTab: 'feed',
+    ...createDefaultPhoneUiScope(), lastPage: 'chat',
 });
 assert.throws(() => patchPhoneUiScope(phoneUiInput, ' story ', { lastPage: 'chat' }, phoneInteractiveStore), /storageId 格式无效/);
 assert.throws(() => patchPhoneUiScope(phoneUiInput, 'story', null, phoneInteractiveStore), /补丁必须是对象/);
@@ -251,6 +257,7 @@ assert.deepEqual(phoneUiInput, phoneUiInputSnapshot, 'toggleScenePin 不得修�
 const unpinnedPhoneUiState = toggleScenePin(pinnedPhoneUiState, 'story', 'scene-a', phoneInteractiveStore);
 assert.deepEqual(unpinnedPhoneUiState.scopes.story, {
     pinnedSceneIds: ['scene-b'], lastPage: 'community', lastSceneId: 'scene-a', lastTab: 'feed',
+    lastChatType: 'contact', lastChatKey: 'Alice',
 });
 assert.throws(() => toggleScenePin(phoneUiInput, 'story', 'missing', phoneInteractiveStore), /互动场景不存在/);
 assert.throws(() => toggleScenePin(phoneUiInput, 'story', ' scene-a ', phoneInteractiveStore), /场景标识格式无效/);
@@ -262,7 +269,69 @@ prunedStore.scopes.story.sceneOrder = ['scene-b'];
 prunedStore.scopes.story.activeSceneId = 'scene-b';
 assert.deepEqual(normalizePhoneUiState(phoneUiInput, prunedStore).scopes.story, {
     pinnedSceneIds: [], lastPage: 'desktop', lastSceneId: null, lastTab: 'feed',
+    lastChatType: 'contact', lastChatKey: 'Alice',
 });
+
+assert.deepEqual(resolvePhoneChatTarget(
+    { lastChatType: 'group', lastChatKey: '__group_saved' }, {}, { __group_saved: { name: '群聊' } }, 'Default',
+), { type: 'group', key: '__group_saved' });
+assert.deepEqual(resolvePhoneChatTarget(
+    { lastChatType: 'contact', lastChatKey: 'Alice' }, { Alice: [] }, {}, 'Default',
+), { type: 'contact', key: 'Alice' });
+assert.deepEqual(resolvePhoneChatTarget(
+    { lastChatType: 'group', lastChatKey: '__group_deleted' }, { Default: [] }, {}, 'Default',
+), { type: 'contact', key: 'Default' });
+assert.deepEqual(resolvePhoneChatTarget(null, {}, {}, ''), { type: 'contact', key: 'AI' });
+
+const snapshotRuntime = { store: structuredClone(phoneInteractiveStore), openSceneId: null };
+let snapshotPhoneUiState = createEmptyPhoneUiState();
+const snapshotPhoneScope = storageId => snapshotPhoneUiState.scopes[storageId] || createDefaultPhoneUiScope();
+const updateSnapshotPhoneUiScope = (storageId, patch, store) => {
+    snapshotPhoneUiState = patchPhoneUiScope(snapshotPhoneUiState, storageId, patch, store);
+    return snapshotPhoneUiState;
+};
+assert.equal(persistCurrentPhoneUiSnapshot({
+    runtime: snapshotRuntime,
+    storageId: 'story',
+    page: 'chat',
+    phoneScope: snapshotPhoneScope,
+    updatePhoneUiScope: updateSnapshotPhoneUiScope,
+    chatType: 'contact',
+    chatKey: 'Alice',
+}), true);
+assert.equal(persistCurrentPhoneUiSnapshot({
+    runtime: snapshotRuntime,
+    storageId: 'other',
+    page: 'chat',
+    phoneScope: snapshotPhoneScope,
+    updatePhoneUiScope: updateSnapshotPhoneUiScope,
+    chatType: 'group',
+    chatKey: '__group_saved',
+}), true);
+const storedContactSnapshot = snapshotPhoneUiState.scopes.story;
+const storedGroupSnapshot = snapshotPhoneUiState.scopes.other;
+assert.deepEqual(resolvePhoneChatTarget(
+    storedContactSnapshot, { Alice: [] }, {}, 'Default',
+), { type: 'contact', key: 'Alice' }, '真实 Phone UI snapshot 必须恢复同 scope 联系人');
+assert.deepEqual(resolvePhoneChatTarget(
+    storedGroupSnapshot, {}, { __group_saved: { name: '群聊' } }, 'Default',
+), { type: 'group', key: '__group_saved' }, '真实 Phone UI snapshot 必须恢复同 scope 群聊');
+assert.equal(storedContactSnapshot.lastChatKey, 'Alice');
+assert.equal(storedGroupSnapshot.lastChatKey, '__group_saved');
+assert.notEqual(storedContactSnapshot.lastChatKey, storedGroupSnapshot.lastChatKey,
+    '不同 storageId 的 Phone UI snapshot 不得串用聊天目标');
+assert.deepEqual(resolvePhoneChatTarget(
+    storedGroupSnapshot, { Default: [] }, {}, 'Default',
+), { type: 'contact', key: 'Default' }, 'snapshot 指向已删除群聊时必须回退默认联系人');
+assert.equal(persistCurrentPhoneUiSnapshot({
+    runtime: snapshotRuntime,
+    storageId: 'sms_unknown__default',
+    page: 'chat',
+    phoneScope: snapshotPhoneScope,
+    updatePhoneUiScope: updateSnapshotPhoneUiScope,
+    chatType: 'contact',
+    chatKey: 'Alice',
+}), false, '无效 storageId 不得写入 Phone UI snapshot');
 
 const legacyStore = {
     version: 1,
@@ -881,6 +950,7 @@ localData.set(PHONE_UI_STORAGE_KEY, JSON.stringify({
 }));
 assert.deepEqual(loadPhoneUiState(phoneInteractiveStore).scopes.story, {
     pinnedSceneIds: ['scene-b'], lastPage: 'desktop', lastSceneId: null, lastTab: 'feed',
+    lastChatType: null, lastChatKey: null,
 });
 localData.set(PHONE_UI_STORAGE_KEY, '{broken-json');
 assert.deepEqual(loadPhoneUiState(phoneInteractiveStore), createEmptyPhoneUiState());
@@ -945,15 +1015,36 @@ await Promise.resolve();
 recoveredLoad.resolve(newStore);
 assert.equal(await staleFailurePromise, newStore);
 
-const budgetConfig = { communitySceneIdsByStorage: { story: ['scene-a', 'scene-b'] } };
+const budgetConfig = {
+    communitySceneIdsByStorage: { story: ['scene-a', 'scene-b'] },
+    communitySelectionsByStorage: {
+        story: {
+            'scene-a': { mode: 'selected', postIds: ['post-a'] },
+            'scene-b': { mode: 'all', postIds: [] },
+        },
+    },
+};
 let persistedCandidate = null;
 const removalSuccess = persistSceneBudgetRemoval({ config: budgetConfig, storageId: 'story', sceneId: 'scene-a', saveConfig: candidate => { persistedCandidate = candidate; return true; } });
 assert.equal(removalSuccess.saved, true);
 assert.deepEqual(persistedCandidate.communitySceneIdsByStorage.story, ['scene-b']);
+assert.deepEqual(persistedCandidate.communitySelectionsByStorage.story, {
+    'scene-b': { mode: 'all', postIds: [] },
+});
 assert.deepEqual(budgetConfig.communitySceneIdsByStorage.story, ['scene-a', 'scene-b']);
+assert.deepEqual(budgetConfig.communitySelectionsByStorage.story['scene-a'].postIds, ['post-a']);
 const removalFailure = persistSceneBudgetRemoval({ config: budgetConfig, storageId: 'story', sceneId: 'scene-a', saveConfig: () => false });
 assert.equal(removalFailure.saved, false);
 assert.deepEqual(budgetConfig.communitySceneIdsByStorage.story, ['scene-a', 'scene-b']);
+const selectionOnlyConfig = {
+    communitySceneIdsByStorage: {},
+    communitySelectionsByStorage: { story: { 'scene-a': { mode: 'selected', postIds: [] } } },
+};
+const selectionOnlyRemoval = persistSceneBudgetRemoval({
+    config: selectionOnlyConfig, storageId: 'story', sceneId: 'scene-a', saveConfig: () => true,
+});
+assert.equal(selectionOnlyRemoval.changed, true);
+assert.deepEqual(selectionOnlyRemoval.candidate.communitySelectionsByStorage, {});
 
 let getterRead = false;
 const guardedMessage = {};
@@ -1163,6 +1254,8 @@ const previousDocument = globalThis.document;
 const previousLocalStorage = globalThis.localStorage;
 const previousIndexedDB = globalThis.indexedDB;
 const previousAlert = globalThis.alert;
+let installationActionTimer = null;
+let installationWaiterPending = false;
 try {
     const installationStorage = new Map();
     globalThis.localStorage = {
@@ -1172,14 +1265,42 @@ try {
     };
     globalThis.indexedDB = { open() { throw new Error('IDB unavailable'); } };
     const capturedAiCalls = [];
-    let completeInstallationAction;
-    let failInstallationAction;
-    let installationActionTimer;
-    const installationActionComplete = new Promise((resolve, reject) => {
-        completeInstallationAction = () => { clearTimeout(installationActionTimer); resolve(); };
-        failInstallationAction = error => { clearTimeout(installationActionTimer); reject(error); };
-        installationActionTimer = setTimeout(() => reject(new Error('社区真实安装层 action 未完成最终渲染')), 2000);
-    });
+    let completeInstallationAction = () => {};
+    let failInstallationAction = () => {};
+    let expectedAiCallCount = 0;
+    const waitForInstallationAction = expectedCount => {
+        assert.equal(installationWaiterPending, false, '不得在前一个社区 action waiter 未结束时创建新 waiter');
+        installationWaiterPending = true;
+        expectedAiCallCount = expectedCount;
+        return new Promise((resolve, reject) => {
+            completeInstallationAction = () => {
+                clearTimeout(installationActionTimer); installationActionTimer = null; installationWaiterPending = false; resolve();
+            };
+            failInstallationAction = error => {
+                clearTimeout(installationActionTimer); installationActionTimer = null; installationWaiterPending = false; reject(error);
+            };
+            installationActionTimer = setTimeout(() => {
+                installationActionTimer = null; installationWaiterPending = false;
+                reject(new Error('社区真实安装层 action 未完成最终渲染'));
+            }, 2000);
+        });
+    };
+    const waitForInstallationError = pattern => {
+        assert.equal(installationWaiterPending, false, '不得在前一个社区 error waiter 未结束时创建新 waiter');
+        installationWaiterPending = true;
+        return new Promise((resolve, reject) => {
+            completeInstallationAction = () => {};
+            failInstallationAction = error => {
+                clearTimeout(installationActionTimer); installationActionTimer = null; installationWaiterPending = false;
+                if (pattern.test(error.message)) resolve(error);
+                else reject(error);
+            };
+            installationActionTimer = setTimeout(() => {
+                installationActionTimer = null; installationWaiterPending = false;
+                reject(new Error('社区真实安装层未显示预期错误'));
+            }, 2000);
+        });
+    };
     const status = { value: '' };
     Object.defineProperty(status, 'textContent', {
         set(value) {
@@ -1191,24 +1312,48 @@ try {
     const desktopPage = { innerHTML: '' };
     const communityPage = { innerHTML: '' };
     const mainUi = { dataset: { page: 'community' } };
+    const sceneTitleInput = { value: '更新后的社区' };
+    const scenePromptInput = { value: '更新后的社区风格' };
+    const sceneAccentInput = { value: '#2563eb' };
+    const accentOptions = ['#ff8200', '#00a65a', '#2563eb'].map(accent => ({
+        dataset: { accent },
+        pressed: accent === '#2563eb' ? 'true' : 'false',
+        setAttribute(name, value) {
+            assert.equal(name, 'aria-pressed');
+            this.pressed = value;
+        },
+    }));
+    let selectedPreset = 'weibo';
+    let selectedStyle = '';
     const app = {
         id: 'pm-scene-app', html: '',
         querySelector(selector) {
-            if (selector === '.pm-scene-preset.is-active') return { dataset: { preset: 'weibo' } };
-            if (selector === '#pm-scene-style') return { value: '' };
+            if (selector === '.pm-scene-preset.is-active') return { dataset: { preset: selectedPreset } };
+            if (selector === '#pm-scene-style') return { value: selectedStyle };
+            if (selector === '#pm-scene-accent') return sceneAccentInput;
             return null;
+        },
+        querySelectorAll(selector) {
+            if (selector === '.pm-scene-accent-option') return accentOptions;
+            return [];
         },
     };
     Object.defineProperty(app, 'outerHTML', {
         set(value) {
             this.html = value;
-            if (capturedAiCalls.length === 2) completeInstallationAction();
+            if (expectedAiCallCount > 0 && capturedAiCalls.length === expectedAiCallCount) completeInstallationAction();
         },
         get() { return this.html; },
     });
     const documentMock = {
         visibilityState: 'visible',
-        getElementById: id => id === 'pm-scene-app' ? app : null,
+        getElementById(id) {
+            if (id === 'pm-scene-app') return app;
+            if (id === 'pm-scene-title') return sceneTitleInput;
+            if (id === 'pm-scene-prompt') return scenePromptInput;
+            if (id === 'pm-scene-accent') return sceneAccentInput;
+            return null;
+        },
         querySelector(selector) {
             if (selector === '.pm-scene-status') return status;
             if (selector === '.pm-desktop-page') return desktopPage;
@@ -1239,9 +1384,9 @@ try {
         gatherContext: async () => ({
             cardDesc: '', cardPersonality: '', cardScenario: '', worldBookText: '', mainChatText: '',
         }),
-        callAI: async (_system, _user, options) => {
-            capturedAiCalls.push(options);
-            if (capturedAiCalls.length === 1) {
+        callAI: async (_system, userPrompt, options) => {
+            capturedAiCalls.push({ userPrompt, options });
+            if (userPrompt.includes('items 返回 1 项，字段为 title、prompt')) {
                 return '{"version":1,"kind":"style_prompt","items":[{"title":"测试社区","prompt":"测试提示词"}]}';
             }
             return '{"version":1,"kind":"feed_batch","items":[{"author":"角色","content":"热场内容"}]}';
@@ -1259,17 +1404,133 @@ try {
             return null;
         },
     };
+    const presetInstallationComplete = waitForInstallationAction(1);
     listeners.get('click')({ target: createButton });
-    await installationActionComplete;
-    assert.equal(capturedAiCalls.length, 2, `社区创建应依次触发 style/feed 两次 AI 请求；实际 ${capturedAiCalls.length}`);
-    assert.deepEqual(capturedAiCalls.map(options => options.maxTokens), [65535, 65535]);
-    for (const options of capturedAiCalls) {
+    await presetInstallationComplete;
+    assert.equal(capturedAiCalls.length, 1, `预设社区创建只能触发一次 feed AI 请求；实际 ${capturedAiCalls.length}`);
+    assert.match(capturedAiCalls[0].userPrompt, /字段只能为 author、content、tags/);
+    assert.doesNotMatch(capturedAiCalls[0].userPrompt, /items 返回 1 项，字段为 title、prompt/);
+
+    selectedPreset = 'custom';
+    selectedStyle = '雨夜都市论坛';
+    const customInstallationComplete = waitForInstallationAction(3);
+    listeners.get('click')({ target: createButton });
+    await customInstallationComplete;
+    assert.equal(capturedAiCalls.length, 3, 'custom 社区创建必须依次追加 style_prompt 与 feed_batch 两次请求');
+    assert.match(capturedAiCalls[1].userPrompt, /items 返回 1 项，字段为 title、prompt/);
+    assert.match(capturedAiCalls[1].userPrompt, /雨夜都市论坛/);
+    assert.match(capturedAiCalls[2].userPrompt, /字段只能为 author、content、tags/);
+    assert.equal(capturedAiCalls.every(call => !Object.hasOwn(call.options, 'maxTokens')), true, '社区生成不得设置服务商输出 token 上限');
+    for (const { options } of capturedAiCalls) {
         assert.equal(options.isolated, true, '社区真实安装层必须使用 isolated AI 请求');
         assert.ok(options.signal instanceof AbortSignal, '社区真实安装层必须传递 request controller signal');
     }
+    const accentButton = {
+        tagName: 'BUTTON', dataset: { action: 'scene-accent', accent: '#00a65a' },
+        closest(selector) {
+            if (selector === '[data-action]') return this;
+            if (selector === '#pm-scene-app') return app;
+            return null;
+        },
+    };
+    listeners.get('click')({ target: accentButton });
+    await Promise.resolve();
+    assert.equal(sceneAccentInput.value, '#00a65a', '颜色圆点必须更新社区主题色值源');
+    assert.deepEqual(accentOptions.map(option => option.pressed), ['false', 'true', 'false'],
+        '颜色圆点点击后只能保留一个 aria-pressed 选中项');
+
+    const customAccentControl = {
+        tagName: 'INPUT', dataset: { action: 'scene-accent-custom' }, value: '#123abc',
+        closest(selector) {
+            if (selector === '[data-action]') return this;
+            if (selector === 'input[data-action],select[data-action]') return this;
+            if (selector === '#pm-scene-app') return app;
+            if (selector === '#pm-calendar-app') return null;
+            return null;
+        },
+    };
+    sceneAccentInput.value = customAccentControl.value;
+    listeners.get('click')({ target: customAccentControl });
+    listeners.get('change')({ target: customAccentControl });
+    await Promise.resolve();
+    assert.deepEqual(accentOptions.map(option => option.pressed), ['false', 'false', 'false'],
+        '非预设自定义颜色必须清除全部预设选中态');
+
+    const savePromptButton = {
+        tagName: 'BUTTON', dataset: { action: 'save-prompt' },
+        closest(selector) {
+            if (selector === '[data-action]') return this;
+            if (selector === '#pm-scene-app') return app;
+            return null;
+        },
+    };
+    const beforeFailedSaveStore = JSON.parse(JSON.stringify(await deps.getInteractiveStore()));
+    const beforeFailedSaveScope = beforeFailedSaveStore.scopes['interactive-installation-scope'];
+    const beforeFailedSaveScene = beforeFailedSaveScope.scenes[beforeFailedSaveScope.activeSceneId];
+    const installationSetItem = globalThis.localStorage.setItem;
+    let interactiveWriteAttempts = 0;
+    const successfulInteractiveWrites = [];
+    globalThis.localStorage.setItem = (key, value) => {
+        if (key === INTERACTIVE_STORAGE_KEYS.fallback) {
+            interactiveWriteAttempts += 1;
+            if (interactiveWriteAttempts === 1) throw new Error('injected save-prompt storage failure');
+            successfulInteractiveWrites.push(String(value));
+        }
+        installationSetItem(key, value);
+    };
+    const failedSavePrompt = waitForInstallationError(/^互动场景保存失败：浏览器存储不可用$/);
+    listeners.get('click')({ target: savePromptButton });
+    await failedSavePrompt;
+    globalThis.localStorage.setItem = installationSetItem;
+    assert.equal(installationWaiterPending, false, '保存失败状态 waiter 必须在错误上报后结束');
+    assert.equal(installationActionTimer, null, '保存失败状态 waiter 不得遗留 timer');
+    assert.equal(interactiveWriteAttempts, 2, '主保存失败后必须恰好执行一次补偿持久化');
+    assert.equal(successfulInteractiveWrites.length, 1, '只有补偿写入可以成功');
+    assert.deepEqual(JSON.parse(successfulInteractiveWrites[0]), beforeFailedSaveStore,
+        '补偿持久化 payload 必须是失败前完整 store 快照');
+    assert.deepEqual(await loadInteractiveScenes(), beforeFailedSaveStore,
+        '必须从 storage 层重新读取到补偿后的旧 store');
+    const rolledBackStore = await deps.getInteractiveStore();
+    const rolledBackScope = rolledBackStore.scopes['interactive-installation-scope'];
+    assert.deepEqual(rolledBackScope.scenes[rolledBackScope.activeSceneId], beforeFailedSaveScene,
+        'save-prompt 持久化失败后必须回滚标题、提示词与主题色');
+    assert.equal(status.textContent, '互动场景保存失败：浏览器存储不可用');
+    assert.doesNotMatch(status.textContent, /补偿持久化或同步也失败/);
+    assert.equal(sceneAccentInput.value, '#123abc', '保存失败不得篡改用户仍在编辑的主题色输入');
+    assert.deepEqual(accentOptions.map(option => option.pressed), ['false', 'false', 'false'],
+        '保存失败不得错误恢复或选中预设颜色');
+
+    const savePromptComplete = waitForInstallationAction(3);
+    listeners.get('click')({ target: savePromptButton });
+    await savePromptComplete;
+    assert.equal(installationWaiterPending, false, '重试成功 waiter 必须在最终渲染后结束');
+    assert.equal(installationActionTimer, null, '重试成功 waiter 不得遗留 timer');
+    const savedStore = await deps.getInteractiveStore();
+    const savedScope = savedStore.scopes['interactive-installation-scope'];
+    const savedScene = savedScope.scenes[savedScope.activeSceneId];
+    assert.equal(savedScene.title, '更新后的社区');
+    assert.equal(savedScene.generatedPrompt, '更新后的社区风格');
+    assert.equal(savedScene.themeAccent, '#123abc', '自定义社区色必须以小写六位十六进制持久化');
+
+    sceneAccentInput.value = '#xyzxyz';
+    status.textContent = '';
+    listeners.get('click')({ target: savePromptButton });
+    await Promise.resolve();
+    await Promise.resolve();
+    assert.match(status.textContent, /社区主题色格式无效/, '非法社区色必须写入用户可见状态');
+    const unchangedStore = await deps.getInteractiveStore();
+    const unchangedScope = unchangedStore.scopes['interactive-installation-scope'];
+    assert.equal(unchangedScope.scenes[unchangedScope.activeSceneId].themeAccent, '#123abc',
+        '非法社区色不得污染已持久化主题色');
     assert.deepEqual(alerts, []);
-    assert.equal(status.textContent, '');
+    assert.equal(installationWaiterPending, false, '安装层测试正常结束时不得遗留 pending waiter');
+    assert.equal(installationActionTimer, null, '安装层测试正常结束时不得遗留 timer');
 } finally {
+    if (installationActionTimer !== null) {
+        clearTimeout(installationActionTimer);
+        installationActionTimer = null;
+    }
+    installationWaiterPending = false;
     if (previousWindow === undefined) delete globalThis.window; else globalThis.window = previousWindow;
     if (previousDocument === undefined) delete globalThis.document; else globalThis.document = previousDocument;
     if (previousLocalStorage === undefined) delete globalThis.localStorage; else globalThis.localStorage = previousLocalStorage;

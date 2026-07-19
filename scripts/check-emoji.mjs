@@ -3,6 +3,7 @@ import { installConversation } from '../src/conversation.js';
 import { installEmojiUi } from '../src/emoji-ui.js';
 import { createBubbles } from '../src/messaging.js';
 import { installPhoneFoundation } from '../src/phone-foundation.js';
+import { deleteSelectedMessages } from '../src/phone-lifecycle.js';
 import { createRuntimeState } from '../src/runtime.js';
 import {
     MAX_EMOJI_FILE_BYTES, MAX_EMOJI_INLINE_LIBRARY_BYTES,
@@ -54,8 +55,12 @@ assert.equal(budget('https://example.test/remote.gif'), false);
 class BubbleElement {
     constructor() {
         this.children = [];
+        this.parentElement = null;
+        this.listeners = new Map();
+        this.scrollCalls = [];
         this.className = '';
         this.dataset = {};
+        this.attributes = {};
         this.textContent = '';
         this._innerHTML = '';
         this.style = { removeProperty() {}, setProperty() {} };
@@ -68,23 +73,64 @@ class BubbleElement {
             },
             contains: value => this.className.split(/\s+/).includes(value),
             remove: value => { this.className = this.className.split(/\s+/).filter(item => item && item !== value).join(' '); },
+            toggle: (value, force) => {
+                const present = this.className.split(/\s+/).includes(value);
+                const enabled = force === undefined ? !present : !!force;
+                if (enabled && !present) this.className = `${this.className} ${value}`.trim();
+                if (!enabled && present) this.className = this.className.split(/\s+/).filter(item => item && item !== value).join(' ');
+                return enabled;
+            },
         };
     }
     get innerHTML() { return this._innerHTML; }
     set innerHTML(value) { this._innerHTML = String(value); if (!value) this.children = []; }
     get childNodes() { return this.children.length ? this.children : (this._innerHTML ? [{}] : []); }
-    appendChild(child) { this.children.push(child); return child; }
+    appendChild(child) { child.parentElement = this; this.children.push(child); return child; }
+    append(...children) { children.forEach(child => this.appendChild(child)); }
+    prepend(child) { child.parentElement = this; this.children.unshift(child); return child; }
+    insertBefore(child, reference) {
+        const index = this.children.indexOf(reference);
+        if (index < 0) return this.appendChild(child);
+        child.parentElement = this;
+        this.children.splice(index, 0, child);
+        return child;
+    }
+    replaceChildren(...children) { this.children = []; this.textContent = ''; children.forEach(child => this.appendChild(child)); }
+    remove() {
+        if (!this.parentElement) return;
+        const index = this.parentElement.children.indexOf(this);
+        if (index >= 0) this.parentElement.children.splice(index, 1);
+        this.parentElement = null;
+    }
+    setAttribute(name, value) { this.attributes[name] = String(value); }
+    addEventListener(name, handler) { this.listeners.set(name, handler); }
+    click() { this.listeners.get('click')?.({ target: this, stopPropagation() {} }); }
+    focus() {}
+    scrollIntoView(options) { this.scrollCalls.push(options); }
+    descendants() { return this.children.flatMap(child => [child, ...child.descendants()]); }
     querySelector(selector) {
         if (selector === 'img') return this._innerHTML.includes('<img ') ? {} : null;
         if (selector === '.pm-bubble') return this.children.find(child => child.classList?.contains('pm-bubble')) || null;
         if (selector === '[data-history-index]') return this.children.find(child => child.dataset?.historyIndex !== undefined) || null;
+        if (selector.includes(',')) {
+            const classNames = selector.split(',').map(item => item.trim().replace(/^\./, ''));
+            return this.descendants().find(child => classNames.some(className => child.classList?.contains(className))) || null;
+        }
+        if (selector.startsWith('.')) {
+            const className = selector.slice(1);
+            return this.descendants().find(child => child.classList?.contains(className)) || null;
+        }
         return null;
     }
     querySelectorAll(selector) {
         if (selector === '.pm-bubble') return this.children.filter(child => child.classList?.contains('pm-bubble'));
-        if (selector === '[data-history-index]') return this.children.filter(child => child.dataset?.historyIndex !== undefined);
+        if (selector === '.pm-reply-card') return this.descendants().filter(child => child.classList?.contains('pm-reply-card'));
+        if (selector === '.pm-select-wrap') return this.descendants().filter(child => child.classList?.contains('pm-select-wrap'));
+        if (selector === '[data-history-index]') return this.descendants().filter(child => child.dataset?.historyIndex !== undefined);
+        if (selector === '[data-bubble-id]') return this.descendants().filter(child => child.dataset?.bubbleId !== undefined);
         return [];
     }
+    get parentNode() { return this.parentElement; }
 }
 
 const previousBubbleDocument = globalThis.document;
@@ -116,6 +162,7 @@ const previousIntegrationWindow = globalThis.window;
 const previousIntegrationDocument = globalThis.document;
 const previousIntegrationLocalStorage = globalThis.localStorage;
 const previousAnimationFrame = globalThis.requestAnimationFrame;
+const previousMatchMedia = globalThis.matchMedia;
 try {
     const messageList = new BubbleElement();
     messageList.scrollHeight = 0;
@@ -124,6 +171,17 @@ try {
     nameNode.scrollWidth = 10;
     nameNode.clientWidth = 100;
     const editNode = new BubbleElement();
+    const quotePreview = new BubbleElement();
+    quotePreview.className = 'pm-quote-preview';
+    quotePreview.hidden = true;
+    const quotePreviewSender = new BubbleElement();
+    quotePreviewSender.className = 'pm-quote-preview-sender';
+    const quotePreviewText = new BubbleElement();
+    quotePreviewText.className = 'pm-quote-preview-text';
+    quotePreview.append(quotePreviewSender, quotePreviewText);
+    const inputNode = new BubbleElement();
+    inputNode.focused = false;
+    inputNode.focus = () => { inputNode.focused = true; };
     const phoneStyle = { removeProperty() {}, setProperty() {} };
     const phoneWindow = {
         style: phoneStyle,
@@ -131,6 +189,8 @@ try {
             if (selector === '.pm-msg-list') return messageList;
             if (selector === '.pm-name') return nameNode;
             if (selector === '.pm-name-edit') return editNode;
+            if (selector === '.pm-quote-preview') return quotePreview;
+            if (selector === '.pm-input') return inputNode;
             return null;
         },
     };
@@ -141,6 +201,7 @@ try {
         visibilityState: 'visible',
         addEventListener: (name, handler) => documentListeners.set(name, handler),
         createElement: () => new BubbleElement(),
+        createTextNode: text => { const node = new BubbleElement(); node.textContent = String(text); return node; },
         getElementById: () => null,
         querySelector: () => null,
         querySelectorAll: () => [],
@@ -162,6 +223,7 @@ try {
         setItem() {},
     };
     globalThis.requestAnimationFrame = callback => callback();
+    globalThis.matchMedia = () => ({ matches: false });
 
     const state = {
         phoneWindow,
@@ -179,6 +241,7 @@ try {
         isGenerating: false,
         isGroupChat: false,
         isMinimized: false,
+        activeQuote: null,
     };
     const deps = {
         runtime: createRuntimeState(),
@@ -218,11 +281,119 @@ try {
     assert.equal(placeholderCount(), 1, '群聊超预算表情应降级为占位');
     assert.equal(window.__pmHistories.story.Alice.length, 5, '渲染预算不得修改聊天历史');
     assert.equal(window.__pmEmojis[0].images.length, 1, '渲染预算不得删除表情数据');
+
+    messageList.innerHTML = '';
+    const targetNodes = deps.addBubble('可定位目标', 'left', 'Alice', 0, {
+        historyIndex: 0, messageId: 'msg_target', bubbleId: 'bubble_target', sender: 'Alice',
+    });
+    const targetRoot = targetNodes[0];
+    const quoteAction = targetRoot.querySelector('.pm-quote-action');
+    assert.ok(quoteAction, '群聊稳定气泡必须提供引用操作');
+    quoteAction.click();
+    assert.deepEqual(state.activeQuote, {
+        messageId: 'msg_target', bubbleId: 'bubble_target', sender: 'Alice', text: '可定位目标',
+    }, '点击引用必须写入稳定 ID 与展示快照');
+    assert.equal(quotePreview.hidden, false, '点击引用后必须显示输入区引用预览');
+    assert.equal(quotePreviewSender.children[0].textContent, 'Alice');
+    assert.equal(quotePreviewText.children[0].textContent, '可定位目标');
+    assert.equal(inputNode.focused, true, '选择引用后必须把焦点返回输入框');
+
+    const quotedNodes = deps.addBubble('回复目标', 'right', undefined, 1, {
+        historyIndex: 1, messageId: 'msg_reply', bubbleId: 'bubble_reply', sender: '我',
+        quote: state.activeQuote,
+    });
+    const replyCard = quotedNodes[0].querySelector('.pm-reply-card');
+    assert.ok(replyCard, '带 quote 的历史气泡必须渲染引用卡片');
+    assert.equal(replyCard.disabled, false, '目标存在时引用卡片必须可定位');
+    replyCard.click();
+    const targetWithScroll = messageList.querySelectorAll('[data-bubble-id]')
+        .find(node => node.dataset.messageId === 'msg_target' && node.scrollCalls.length > 0);
+    assert.ok(targetWithScroll, '点击引用卡片必须定位到 messageId 与 bubbleId 同时匹配的目标');
+    assert.deepEqual(targetWithScroll.scrollCalls[0], { behavior: 'smooth', block: 'center' });
+    assert.equal(targetWithScroll.classList.contains('pm-quote-target'), true, '定位目标必须临时高亮');
+    globalThis.matchMedia = query => ({ matches: query === '(prefers-reduced-motion: reduce)' });
+    replyCard.click();
+    assert.deepEqual(targetWithScroll.scrollCalls.at(-1), { behavior: 'auto', block: 'center' },
+        '减少动态效果时引用定位不得强制平滑滚动');
+    globalThis.matchMedia = () => ({ matches: false });
+    deps.rebaseRenderedHistory(1);
+    assert.equal(replyCard.disabled, true, '被引用目标裁剪后，现存引用卡片必须立即禁用定位');
+    assert.equal(replyCard.classList.contains('is-missing'), true);
+    assert.equal(replyCard.attributes['aria-disabled'], 'true');
+    assert.equal(replyCard.attributes['aria-label'], '原消息已删除或已被裁剪，当前显示引用快照');
+    assert.equal(messageList.children.includes(targetRoot), false, '历史重排必须移除已裁剪目标节点');
+    assert.equal(quotedNodes[0].dataset.historyIndex, '0', '裁剪后保留消息的历史下标必须重排');
+
+    messageList.innerHTML = '';
+    state.conversationHistory = [
+        { role: 'assistant', content: '待删除目标' },
+        { role: 'assistant', content: '保留消息' },
+        { role: 'user', content: '引用回复' },
+    ];
+    const deleteTargetNodes = deps.addBubble('待删除目标', 'left', 'Alice', 0, {
+        historyIndex: 0, messageId: 'msg_delete_target', bubbleId: 'bubble_delete_target', sender: 'Alice',
+    });
+    const retainedNodes = deps.addBubble('保留消息', 'left', 'Bob', 1, {
+        historyIndex: 1, messageId: 'msg_retained', bubbleId: 'bubble_retained', sender: 'Bob',
+    });
+    const retainedReplyNodes = deps.addBubble('引用回复', 'right', undefined, 2, {
+        historyIndex: 2, messageId: 'msg_retained_reply', bubbleId: 'bubble_retained_reply', sender: '我',
+        quote: { messageId: 'msg_delete_target', bubbleId: 'bubble_delete_target', sender: 'Alice', text: '待删除目标' },
+    });
+    const deletedTargetRoot = deleteTargetNodes[0];
+    const retainedRoot = retainedNodes[0];
+    const retainedReplyRoot = retainedReplyNodes[0];
+    const retainedReplyCard = retainedReplyRoot.querySelector('.pm-reply-card');
+    const wrapForSelection = (root, checked) => {
+        const wrap = new BubbleElement();
+        wrap.className = 'pm-select-wrap';
+        wrap.dataset.historyIndex = root.dataset.historyIndex;
+        const checkbox = new BubbleElement();
+        checkbox.className = 'pm-message-select-check';
+        checkbox.dataset.checked = checked ? '1' : '0';
+        const index = messageList.children.indexOf(root);
+        messageList.children.splice(index, 1, wrap);
+        wrap.parentElement = messageList;
+        wrap.append(checkbox, root);
+        return wrap;
+    };
+    wrapForSelection(deletedTargetRoot, true);
+    wrapForSelection(retainedRoot, false);
+    wrapForSelection(retainedReplyRoot, false);
+    let deletePersistCalls = 0;
+    let deleteInjectionCalls = 0;
+    assert.equal(deleteSelectedMessages({
+        state,
+        refreshReplyCardAvailability: deps.refreshReplyCardAvailability,
+        persistCurrentHistory: () => { deletePersistCalls += 1; },
+        applyBidirectionalInjection: () => { deleteInjectionCalls += 1; },
+    }), 1, '多选删除必须按稳定 historyIndex 删除一个历史 entry');
+    assert.deepEqual(state.conversationHistory.map(item => item.content), ['保留消息', '引用回复']);
+    assert.equal(messageList.children.includes(deletedTargetRoot), false);
+    assert.equal(messageList.children.includes(retainedRoot), true, '未选消息必须从选择 wrapper 中还原');
+    assert.equal(retainedRoot.dataset.historyIndex, '0');
+    assert.equal(retainedReplyRoot.dataset.historyIndex, '1');
+    assert.equal(retainedReplyCard.disabled, true, '多选删除引用目标后，引用卡必须在持久化前立即失效');
+    assert.equal(retainedReplyCard.classList.contains('is-missing'), true);
+    assert.equal(retainedReplyCard.attributes['aria-disabled'], 'true');
+    assert.equal(deletePersistCalls, 1);
+    assert.equal(deleteInjectionCalls, 1);
+
+    const missingNodes = deps.addBubble('目标已裁剪', 'right', undefined, 2, {
+        historyIndex: 2, messageId: 'msg_missing_reply', bubbleId: 'bubble_missing_reply', sender: '我',
+        quote: { messageId: 'msg_gone', bubbleId: 'bubble_gone', sender: 'Bob', text: '保留的快照' },
+    });
+    const missingCard = missingNodes[0].querySelector('.pm-reply-card');
+    assert.equal(missingCard.disabled, true, '目标缺失时引用卡片首屏即应禁用定位');
+    assert.equal(missingCard.classList.contains('is-missing'), true);
+    assert.equal(missingCard.attributes['aria-label'], '原消息已删除或已被裁剪，当前显示引用快照');
+    assert.equal(missingCard.querySelector('.pm-reply-card-text').textContent, '保留的快照');
 } finally {
     if (previousIntegrationWindow === undefined) delete globalThis.window; else globalThis.window = previousIntegrationWindow;
     if (previousIntegrationDocument === undefined) delete globalThis.document; else globalThis.document = previousIntegrationDocument;
     if (previousIntegrationLocalStorage === undefined) delete globalThis.localStorage; else globalThis.localStorage = previousIntegrationLocalStorage;
     if (previousAnimationFrame === undefined) delete globalThis.requestAnimationFrame; else globalThis.requestAnimationFrame = previousAnimationFrame;
+    if (previousMatchMedia === undefined) delete globalThis.matchMedia; else globalThis.matchMedia = previousMatchMedia;
 }
 
 const previousWindow = globalThis.window;

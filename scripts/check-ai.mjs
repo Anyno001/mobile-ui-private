@@ -221,7 +221,7 @@ try {
     assert.deepEqual(committedCandidates, {
         contacts: ['新角色'], groups: [{ name: '新群', members: ['甲', '乙'] }],
     });
-    assert.equal(contactCallOptions.maxTokens, 65535, '联系人结构化生成必须使用 65535 token 输出上限');
+    assert.equal(Object.hasOwn(contactCallOptions, 'maxTokens'), false, '联系人生成不得设置服务商输出 token 上限');
     assert.equal(contactCallOptions.isolated, true, '联系人生成必须使用宿主隔离生成路径');
     assert.equal(contactCallOptions.signal, contactTaskSignal,
         '联系人生成必须把 generation task signal 传给 AI 客户端');
@@ -337,7 +337,6 @@ try {
 }
 
 let config = {};
-let groupMode = false;
 let fetchRequest;
 const hostCalls = [];
 const rawCalls = [];
@@ -355,7 +354,6 @@ const context = {
 const callAI = createAiClient({
     getConfig: () => config,
     getContext: () => context,
-    getDefaultMaxTokens: () => groupMode ? 600 : 300,
     fetchImpl: async (url, options) => {
         fetchRequest = { url, options };
         return {
@@ -366,17 +364,16 @@ const callAI = createAiClient({
 });
 
 assert.equal(await callAI('system', 'user'), 'host reply');
-assert.deepEqual(hostCalls.pop(), [{ quietPrompt: 'system\n\nuser', responseLength: 300 }]);
+assert.deepEqual(hostCalls.pop(), [{ quietPrompt: 'system\n\nuser' }]);
 assert.equal(await callAI('', 'plain'), 'host reply');
-assert.deepEqual(hostCalls.pop(), [{ quietPrompt: 'plain', responseLength: 300 }]);
+assert.deepEqual(hostCalls.pop(), [{ quietPrompt: 'plain' }]);
 
-groupMode = true;
 assert.equal(
-    await callAI('community system', 'community user', { isolated: true, maxTokens: 1400 }),
+    await callAI('community system', 'community user', { isolated: true }),
     '{"version":1,"kind":"feed_batch","items":[]}',
 );
 assert.deepEqual(rawCalls.pop(), {
-    prompt: 'community user', systemPrompt: 'community system', responseLength: 1400, trimNames: false,
+    prompt: 'community user', systemPrompt: 'community system', trimNames: false,
 });
 
 let releaseLateHostResponse;
@@ -384,7 +381,6 @@ const lateHostResponse = new Promise(resolve => { releaseLateHostResponse = reso
 const lateHostClient = createAiClient({
     getConfig: () => ({}),
     getContext: () => ({ generateRaw: async () => lateHostResponse }),
-    getDefaultMaxTokens: () => 300,
     fetchImpl: async () => { throw new Error('主 API 测试不应调用 fetch'); },
 });
 const lateHostController = new AbortController();
@@ -413,7 +409,7 @@ assert.equal(fetchRequest.options.headers.Authorization, 'Bearer secret');
 assert.equal(fetchRequest.options.headers['Content-Type'], 'application/json');
 let body = JSON.parse(fetchRequest.options.body);
 assert.equal(body.model, 'provider-model');
-assert.equal(body.max_tokens, 600);
+assert.equal(Object.hasOwn(body, 'max_tokens'), false);
 assert.equal(body.temperature, 1.2);
 assert.equal(body.top_p, 0.95);
 assert.equal(body.frequency_penalty, 0.3);
@@ -439,7 +435,6 @@ const inFlightController = new AbortController();
 const abortingClient = createAiClient({
     getConfig: () => config,
     getContext: () => context,
-    getDefaultMaxTokens: () => 300,
     fetchImpl: async (url, options) => new Promise((resolve, reject) => {
         options.signal.addEventListener('abort', () => {
             const error = new Error('provider aborted'); error.name = 'AbortError'; reject(error);
@@ -450,15 +445,14 @@ const inFlightRequest = abortingClient('', 'cancel in flight', { signal: inFligh
 inFlightController.abort('cancel-in-flight');
 await assert.rejects(inFlightRequest, error => error.name === 'AbortError' && /已取消/.test(error.message));
 
-await callAI('', 'user', { maxTokens: 125 });
+await callAI('', 'user');
 body = JSON.parse(fetchRequest.options.body);
-assert.equal(body.max_tokens, 125);
+assert.equal(Object.hasOwn(body, 'max_tokens'), false);
 assert.deepEqual(body.messages, [{ role: 'user', content: 'user' }]);
 
 const emptyResponseClient = createAiClient({
     getConfig: () => config,
     getContext: () => context,
-    getDefaultMaxTokens: () => 300,
     fetchImpl: async () => ({ ok: true, async json() { return {}; } }),
 });
 await assert.rejects(() => emptyResponseClient('', 'user'), /缺少可用文本内容/);
@@ -474,7 +468,6 @@ for (const [label, payload, expected] of [
     const compatibleClient = createAiClient({
         getConfig: () => config,
         getContext: () => context,
-        getDefaultMaxTokens: () => 300,
         fetchImpl: async () => ({ ok: true, async json() { return payload; } }),
     });
     assert.equal(await compatibleClient('', label), expected, label);
@@ -494,7 +487,6 @@ for (const [label, payload] of [
     const truncatedClient = createAiClient({
         getConfig: () => config,
         getContext: () => context,
-        getDefaultMaxTokens: () => 300,
         fetchImpl: async () => ({ ok: true, async json() { return payload; } }),
     });
     await assert.rejects(
@@ -512,7 +504,6 @@ for (const [label, payload] of [
 const nonJsonClient = createAiClient({
     getConfig: () => config,
     getContext: () => context,
-    getDefaultMaxTokens: () => 300,
     fetchImpl: async () => ({ ok: true, async text() { return '<html>502 Bad Gateway</html>'; } }),
 });
 await assert.rejects(() => nonJsonClient('', 'user'), error => {
@@ -525,7 +516,6 @@ const errorText = 'x'.repeat(300);
 const failingClient = createAiClient({
     getConfig: () => config,
     getContext: () => context,
-    getDefaultMaxTokens: () => 300,
     fetchImpl: async () => ({ ok: false, status: 429, async text() { return errorText; } }),
 });
 await assert.rejects(() => failingClient('', 'user'), error => {
@@ -543,7 +533,6 @@ const errorBodyController = new AbortController();
 const errorBodyClient = createAiClient({
     getConfig: () => config,
     getContext: () => context,
-    getDefaultMaxTokens: () => 300,
     fetchImpl: async () => ({
         ok: false, status: 503,
         text: () => errorBodyGate.promise,
@@ -559,7 +548,6 @@ const rejectedBodyController = new AbortController();
 const rejectedBodyClient = createAiClient({
     getConfig: () => config,
     getContext: () => context,
-    getDefaultMaxTokens: () => 300,
     fetchImpl: async () => ({
         ok: false, status: 503,
         async text() {
@@ -578,7 +566,6 @@ await assert.rejects(
 const textFailureClient = createAiClient({
     getConfig: () => config,
     getContext: () => context,
-    getDefaultMaxTokens: () => 300,
     fetchImpl: async () => ({ ok: false, status: 500, async text() { throw new Error('unreadable'); } }),
 });
 await assert.rejects(
@@ -589,7 +576,6 @@ await assert.rejects(
 const jsonErrorClient = createAiClient({
     getConfig: () => config,
     getContext: () => context,
-    getDefaultMaxTokens: () => 300,
     fetchImpl: async () => ({
         ok: false,
         status: 400,
@@ -604,7 +590,6 @@ await assert.rejects(
 const noContextClient = createAiClient({
     getConfig: () => ({}),
     getContext: () => null,
-    getDefaultMaxTokens: () => 300,
 });
 await assert.rejects(() => noContextClient('', 'user'), /无上下文/);
 
@@ -629,7 +614,6 @@ const boundContext = {
 const boundContextClient = createAiClient({
     getConfig: () => ({}),
     getContext: () => boundContext,
-    getDefaultMaxTokens: () => 300,
 });
 assert.equal(await boundContextClient('', 'binding'), 'bound reply');
 
@@ -645,7 +629,6 @@ try {
     const globalFetchClient = createAiClient({
         getConfig: () => ({ useIndependent: true, apiUrl: 'https://example.test/v1', apiKey: 'secret', model: 'global-model' }),
         getContext: () => context,
-        getDefaultMaxTokens: () => 300,
     });
     assert.equal(await globalFetchClient('', 'global fetch'), 'global reply');
     assert.equal(globalFetchThis, globalThis);
