@@ -1631,6 +1631,7 @@ ${userPrompt}` : userPrompt;
   var TRASH_ICON_SVG = icon('<path d="M4 7h16M9 7V4h6v3M7 7l1 13h8l1-13M10 11v5M14 11v5"/>');
   var HEART_ICON_SVG = icon('<path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1.1-1.1a5.5 5.5 0 0 0-7.8 7.8l1.1 1.1L12 21l7.8-7.5 1.1-1.1a5.5 5.5 0 0 0-.1-7.8z"/>');
   var SHARE_ICON_SVG = icon('<circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 10.5l6.8-4M8.6 13.5l6.8 4"/>');
+  var REPLY_ICON_SVG = icon('<path d="M9 17l-5-5 5-5"/><path d="M4 12h9a7 7 0 0 1 7 7"/>');
   var REFRESH_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="display:block;transform-origin:center center;"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>';
 
   // src/constants.js
@@ -5980,6 +5981,25 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
     if (opening) actions.querySelector?.("button")?.focus?.({ preventScroll: true });
     return opening;
   }
+  function toggleSceneReplyComposer(button, app) {
+    const postId = String(button?.dataset?.postId || "").trim();
+    if (!postId || !app) return false;
+    const targetId = button.getAttribute?.("aria-controls") || "";
+    const composers = [...app.querySelectorAll?.(".pm-scene-comment-composer") || []];
+    const target = composers.find((composer) => composer.id === targetId);
+    if (!target) return false;
+    const opening = target.hidden;
+    composers.filter((composer) => !composer.hidden).forEach((composer) => {
+      composer.hidden = true;
+    });
+    app.querySelectorAll?.('[data-action="toggle-reply"]').forEach((trigger) => {
+      trigger.setAttribute?.("aria-expanded", "false");
+    });
+    target.hidden = !opening;
+    button.setAttribute?.("aria-expanded", String(opening));
+    if (opening) target.querySelector?.("input")?.focus?.({ preventScroll: true });
+    return opening;
+  }
   function bindPhonePageActions(phoneWindow, handleAction, reportError) {
     if (!phoneWindow || phoneWindow.dataset.sceneUiBound === "true") return false;
     phoneWindow.dataset.sceneUiBound = "true";
@@ -6382,7 +6402,7 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
             <label class="pm-scene-label">\u81EA\u5B9A\u4E49\u98CE\u683C<textarea id="pm-scene-style" maxlength="2000" placeholder="\u4F8B\u5982\uFF1A\u96E8\u591C\u90FD\u5E02\u3001\u514B\u5236\u758F\u79BB\u3001\u50CF\u8001\u8BBA\u575B\u4E00\u6837\u6709\u697C\u5C42\u611F\u2026\u2026"></textarea></label>
             <button type="button" class="pm-scene-primary" data-action="create-scene">\u751F\u6210\u793E\u533A</button>
             ${sceneCards ? `<div class="pm-scene-history"><h3>\u6211\u7684\u793E\u533A</h3>${sceneCards}</div>` : ""}
-            <div class="pm-scene-status" aria-live="polite"></div>
+            <div class="pm-scene-status" aria-live="polite" hidden></div>
         </div>
     </div>`;
   }
@@ -6395,9 +6415,9 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
         <header><div class="pm-scene-avatar">${escapeHtml(post.authorNameSnapshot.slice(0, 1))}</div><div class="pm-scene-post-author"><b>${escapeHtml(post.authorNameSnapshot)}</b><span>\u521A\u521A</span></div><div class="pm-scene-post-actions-wrap"><button type="button" class="pm-scene-post-more" data-action="post-actions" aria-label="\u5E16\u5B50\u64CD\u4F5C" title="\u5E16\u5B50\u64CD\u4F5C" aria-expanded="false">${MORE_ICON_SVG}</button><span class="pm-scene-post-actions" hidden><button type="button" data-action="comments" data-post-id="${escapeAttr(post.id)}" aria-label="\u62CD\u4E00\u62CD\u672C\u5E16\uFF0C\u53EA\u751F\u6210\u672C\u5E16\u8BC4\u8BBA" title="\u62CD\u4E00\u62CD\u672C\u5E16">${POKE_ICON_SVG}</button><button type="button" data-action="edit-post" data-post-id="${escapeAttr(post.id)}" aria-label="\u7F16\u8F91\u5E16\u5B50" title="\u7F16\u8F91\u5E16\u5B50">${EDIT_ICON_SVG}</button><button type="button" class="pm-scene-danger" data-action="delete-post" data-post-id="${escapeAttr(post.id)}" aria-label="\u5220\u9664\u5E16\u5B50" title="\u5220\u9664\u5E16\u5B50">${TRASH_ICON_SVG}</button></span></div></header>
         <p>${escapeHtml(post.content).replace(/\n/g, "<br>")}</p>
         ${post.tags.length ? `<div class="pm-scene-tags">${post.tags.map((tag) => `<span>#${escapeHtml(tag)}</span>`).join("")}</div>` : ""}
-        <footer><button type="button" class="pm-scene-like ${post.liked ? "is-liked" : ""}" data-action="like" data-post-id="${escapeAttr(post.id)}" aria-pressed="${post.liked}" aria-label="${post.liked ? "\u53D6\u6D88\u559C\u6B22" : "\u559C\u6B22"}">${renderPostMetric(HEART_ICON_SVG, likes, "\u559C\u6B22", "is-like")}</button>${renderPostMetric(SHARE_ICON_SVG, shares, "\u8F6C\u53D1", "is-share")}</footer>
+        <footer><button type="button" class="pm-scene-like ${post.liked ? "is-liked" : ""}" data-action="like" data-post-id="${escapeAttr(post.id)}" aria-pressed="${post.liked}" aria-label="${post.liked ? "\u53D6\u6D88\u559C\u6B22" : "\u559C\u6B22"}">${renderPostMetric(HEART_ICON_SVG, likes, "\u559C\u6B22", "is-like")}</button>${renderPostMetric(SHARE_ICON_SVG, shares, "\u8F6C\u53D1", "is-share")}<button type="button" class="pm-scene-reply-toggle" data-action="toggle-reply" data-post-id="${escapeAttr(post.id)}" aria-label="\u56DE\u590D\u672C\u5E16" aria-controls="pm-comment-composer-${escapeAttr(post.id)}" aria-expanded="false">${renderPostMetric(REPLY_ICON_SVG, post.comments.length, "\u56DE\u590D", "is-reply")}</button></footer>
         ${post.comments.length ? `<div class="pm-scene-comments">${post.comments.map((comment) => `<div class="pm-scene-comment"><span><b>${escapeHtml(comment.authorNameSnapshot)}</b> ${escapeHtml(comment.content)}</span><span class="pm-scene-comment-actions"><button type="button" data-action="edit-comment" data-post-id="${escapeAttr(post.id)}" data-comment-id="${escapeAttr(comment.id)}">\u7F16\u8F91</button><button type="button" class="pm-scene-danger" data-action="delete-comment" data-post-id="${escapeAttr(post.id)}" data-comment-id="${escapeAttr(comment.id)}">\u5220\u9664</button></span></div>`).join("")}</div>` : ""}
-        <div class="pm-scene-comment-composer"><input id="pm-comment-input-${escapeAttr(post.id)}" maxlength="1000" placeholder="\u5199\u4E0B\u4F60\u7684\u8BC4\u8BBA\u2026\u2026"><button type="button" data-action="post-comment" data-post-id="${escapeAttr(post.id)}">\u53D1\u8868</button></div>
+        <div id="pm-comment-composer-${escapeAttr(post.id)}" class="pm-scene-comment-composer" hidden><input id="pm-comment-input-${escapeAttr(post.id)}" maxlength="1000" placeholder="USER \u56DE\u590D\u2026\u2026"><button type="button" data-action="post-comment" data-post-id="${escapeAttr(post.id)}" aria-label="\u53D1\u9001\u56DE\u590D" title="\u53D1\u9001\u56DE\u590D">${SEND_ICON_SVG}</button></div>
     </article>`;
     }).join("");
   }
@@ -6444,14 +6464,14 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
       const motion = getDanmakuMotion(item);
       return `<span class="is-${stableDanmakuTone(item)}" style="--lane:${motion.lane};--delay:${motion.delay}s;--duration:${motion.duration}s;--offset:${motion.offset}px">${escapeHtml(item.content)}</span>`;
     }).join("");
-    const composer = tab === "feed" ? `<div class="pm-scene-composer"><textarea id="pm-scene-post-input" maxlength="4000" placeholder="\u5206\u4EAB\u6B64\u523B\u2026\u2026"></textarea><button type="button" class="pm-scene-primary" data-action="publish">\u53D1\u5E03</button></div>` : "";
+    const composer = tab === "feed" ? `<div class="pm-scene-composer"><textarea id="pm-scene-post-input" maxlength="4000" placeholder="\u5206\u4EAB\u6B64\u523B\u2026\u2026"></textarea><button type="button" class="pm-scene-primary" data-action="publish" aria-label="\u53D1\u5E03" title="\u53D1\u5E03">${SEND_ICON_SVG}</button></div>` : "";
     const content = tab === "feed" ? `<div class="pm-scene-feed"><div class="pm-scene-posts">${renderPosts(scene)}</div></div>` : tab === "live" ? `<div class="pm-live-room"><div class="pm-live-stage ${floatingDanmaku ? "has-danmaku" : ""}"><div class="pm-live-badge">${liveActive ? "\u76F4\u64AD\u4E2D" : "\u9884\u89C8"}</div><h2>${escapeHtml(scene.live.title)}</h2><div class="pm-danmaku-float">${floatingDanmaku}</div></div><div class="pm-live-actions"><button type="button" data-action="toggle-live" class="${liveActive ? "is-live" : ""}">${liveActive ? "\u505C\u6B62\u76F4\u64AD" : "\u5F00\u59CB\u76F4\u64AD"}</button><button type="button" data-action="rhythm">\u5E26\u4E00\u6CE2\u8282\u594F</button></div><div class="pm-danmaku-list">${renderDanmaku(scene)}</div><div class="pm-danmaku-input"><input id="pm-danmaku-input" maxlength="200" placeholder="\u53D1\u6761\u5F39\u5E55\u2026\u2026"><button type="button" data-action="send-danmaku">\u53D1\u9001</button></div></div>` : tab === "context-inject" ? renderContextInjectionSettings(scene, state) : `<div class="pm-scene-prompt"><label>\u793E\u533A\u540D\u79F0<input id="pm-scene-title" maxlength="80" value="${escapeAttr(scene.title)}"></label><fieldset class="pm-scene-accent-field"><legend>\u793E\u533A\u4E3B\u9898\u8272</legend><div class="pm-scene-accent-options">${renderSceneAccentOptions(accent)}<label class="pm-scene-accent-custom" aria-label="\u81EA\u5B9A\u4E49\u793E\u533A\u4E3B\u9898\u8272"><input id="pm-scene-accent" type="color" data-action="scene-accent-custom" value="${escapeAttr(accent)}"><span>\u81EA\u5B9A\u4E49</span></label></div></fieldset><label>\u793E\u533A\u98CE\u683C<textarea id="pm-scene-prompt" maxlength="6000">${escapeHtml(scene.generatedPrompt)}</textarea></label><p>\u53EF\u76F4\u63A5\u4FEE\u6539\uFF0C\u540E\u7EED\u793E\u533A\u5185\u5BB9\u9075\u5FAA\u6B64\u8BED\u611F\u3002</p><div class="pm-scene-prompt-actions"><button type="button" class="pm-scene-secondary" data-action="regenerate-prompt">\u91CD\u65B0\u751F\u6210</button><button type="button" class="pm-scene-primary" data-action="save-prompt">\u4FDD\u5B58\u98CE\u683C</button></div></div>`;
     const switchToLive = tab !== "live";
     const switchLabel = switchToLive ? "\u5207\u6362\u5230\u76F4\u64AD" : "\u8FD4\u56DE\u793E\u533A";
     const switchIcon = switchToLive ? LIVE_ICON_SVG : FEED_ICON_SVG;
     return `<div id="pm-scene-app" class="pm-modal pm-scene-shell" style="--scene-accent:${escapeAttr(accent)}">
-        <div class="pm-scene-topbar"><div class="pm-scene-nav-actions"><button type="button" class="pm-scene-home" data-action="desktop" aria-label="\u8FD4\u56DE\u684C\u9762" title="\u8FD4\u56DE\u684C\u9762">${HOME_ICON_SVG}</button><button type="button" class="pm-scene-back" data-action="back" aria-label="\u8FD4\u56DE\u793E\u533A\u9996\u9875" title="\u8FD4\u56DE\u793E\u533A\u9996\u9875">${BACK_ICON_SVG}</button></div><div class="pm-scene-title"><b>${escapeHtml(scene.title)}</b><button type="button" class="pm-scene-title-poke" data-action="poke-scene" aria-label="\u62CD\u4E00\u62CD\u793E\u533A" title="\u62CD\u4E00\u62CD\u793E\u533A">${POKE_ICON_SVG}</button></div><div class="pm-scene-view-actions"><button type="button" class="pm-scene-view-toggle" data-action="tab" data-tab="${switchToLive ? "live" : "feed"}" aria-label="${switchLabel}" title="${switchLabel}">${switchIcon}</button><button type="button" class="pm-scene-exit" data-action="exit" aria-label="\u9000\u51FA\u624B\u673A" title="\u9000\u51FA\u624B\u673A">${CLOSE_ICON_SVG}</button></div></div>
-        ${content}<div class="pm-scene-bottom-bar">${renderSceneMenu(scene, uiScope, autoActive)}${composer}</div><div class="pm-scene-status" aria-live="polite"></div>
+        <div class="pm-scene-topbar"><div class="pm-scene-nav-actions"><button type="button" class="pm-scene-home" data-action="desktop" aria-label="\u8FD4\u56DE\u684C\u9762" title="\u8FD4\u56DE\u684C\u9762">${HOME_ICON_SVG}</button></div><div class="pm-scene-title"><b>${escapeHtml(scene.title)}</b><button type="button" class="pm-scene-title-poke" data-action="poke-scene" aria-label="\u62CD\u4E00\u62CD\u793E\u533A" title="\u62CD\u4E00\u62CD\u793E\u533A">${POKE_ICON_SVG}</button></div><div class="pm-scene-view-actions"><button type="button" class="pm-scene-view-toggle" data-action="tab" data-tab="${switchToLive ? "live" : "feed"}" aria-label="${switchLabel}" title="${switchLabel}">${switchIcon}</button><button type="button" class="pm-scene-exit" data-action="exit" aria-label="\u9000\u51FA\u624B\u673A" title="\u9000\u51FA\u624B\u673A">${CLOSE_ICON_SVG}</button></div></div><div class="pm-scene-status" aria-live="polite" hidden></div>
+        ${content}<div class="pm-scene-bottom-bar">${renderSceneMenu(scene, uiScope, autoActive)}${composer}</div>
     </div>`;
   }
 
@@ -6658,7 +6678,9 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
     };
     const setStatus = (text3) => {
       const el = document.querySelector(".pm-scene-status");
-      if (el) el.textContent = text3 || "";
+      if (!el) return;
+      el.textContent = text3 || "";
+      el.hidden = !text3;
     };
     const confirmDelete = (message) => window.confirm(message);
     const getPhoneUiState = (store) => {
@@ -6956,6 +6978,10 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
         toggleScenePostActions(button);
         return;
       }
+      if (action === "toggle-reply") {
+        toggleSceneReplyComposer(button, app);
+        return;
+      }
       if (action === "desktop-chat") {
         deps.showPhoneChatPage?.(getStorageId2());
         return;
@@ -7042,14 +7068,6 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
         });
         return;
       }
-      if (action === "back") {
-        invalidate();
-        const { scopeId } = current();
-        runtime.openSceneId = null;
-        updatePhoneUiScope(scopeId, { lastPage: "community", lastSceneId: null });
-        renderCommunityLauncher2(scopeId);
-        return;
-      }
       if (action === "tab") {
         invalidate();
         const { scopeId, scene } = current();
@@ -7081,7 +7099,8 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
         return;
       }
       if (action === "post-comment") {
-        const input = document.getElementById(`pm-comment-input-${button.dataset.postId}`);
+        const composer = button.closest?.(".pm-scene-comment-composer");
+        const input = composer?.querySelector?.("input");
         const content = input?.value.trim() || "";
         await commit(() => {
           const { scopeId, scope, scene } = current();
@@ -12058,7 +12077,8 @@ ${lines}`;
       state.phoneWindow.setAttribute("data-theme", window.__pmTheme.darkMode || "light");
       if (POPOVER_SUPPORTED) state.phoneWindow.setAttribute("popover", "manual");
       state.phoneWindow.innerHTML = `
-<div class="pm-island"></div>
+<div class="pm-phone-screen">
+  <div class="pm-island"></div>
 <div class="pm-status-bar" aria-label="\u8BBE\u5907\u672C\u5730\u72B6\u6001" ${window.__pmTheme.ambientStatusEnabled === true ? "" : "hidden"}><span class="pm-status-time"></span><span class="pm-status-local">\u672C\u5730<span class="pm-status-icons" aria-hidden="true">${SIGNAL_ICON_SVG}${WIFI_ICON_SVG}</span></span></div>
 <div class="pm-main-ui" data-page="chat">
   <section class="pm-phone-page pm-chat-page" data-phone-page="chat">
@@ -12094,6 +12114,7 @@ ${lines}`;
   <section class="pm-phone-page pm-desktop-page" data-phone-page="desktop" hidden></section>
   <section class="pm-phone-page pm-community-page" data-phone-page="community" hidden></section>
   <section class="pm-phone-page pm-calendar-page" data-phone-page="calendar" hidden></section>
+</div>
 </div>
 <div class="pm-phone-resize-handle" role="separator" aria-label="\u8C03\u6574\u624B\u673A\u7A97\u53E3\u5927\u5C0F" aria-orientation="horizontal" title="\u62D6\u52A8\u8C03\u6574\u624B\u673A\u5927\u5C0F"></div>`;
       document.body.appendChild(state.phoneWindow);

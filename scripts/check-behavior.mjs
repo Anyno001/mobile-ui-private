@@ -320,7 +320,7 @@ import {
     installPhoneFoundation, installPhonePageSuspensionListeners, normalizePhoneScale, phoneSizeForScale,
     phoneSizeForViewport, updatePhonePageSuspensionHandler,
 } from '../src/phone-foundation.js';
-import { bindPhonePageActions, finalizeDeletedScene, runDeleteSceneAction, toggleScenePostActions } from '../src/interactive-scene-phone.js';
+import { bindPhonePageActions, finalizeDeletedScene, runDeleteSceneAction, toggleScenePostActions, toggleSceneReplyComposer } from '../src/interactive-scene-phone.js';
 
 
 assert.equal(normalizePhoneScale(1, 1200, 1000), 1);
@@ -3211,7 +3211,8 @@ assert.match(workspaceHtml, /placeholder="分享此刻……"/);
 assert.match(workspaceHtml, /<span>刚刚<\/span>/);
 assert.doesNotMatch(workspaceHtml, /刚刚 · 主题社区/);
 assert.match(workspaceHtml, /class="pm-scene-post-author"><b>访客<\/b><span>刚刚<\/span>/);
-assert.match(workspaceHtml, /class="pm-scene-nav-actions"[\s\S]*data-action="desktop"[\s\S]*data-action="back"/);
+assert.match(workspaceHtml, /class="pm-scene-nav-actions"[\s\S]*data-action="desktop"/);
+assert.doesNotMatch(workspaceHtml, /data-action="back"|pm-scene-back/);
 assert.match(workspaceHtml, /class="pm-scene-title-poke"[^>]*data-action="poke-scene"/);
 assert.match(workspaceHtml, /class="pm-scene-view-toggle"[^>]*data-tab="live"[^>]*aria-label="切换到直播"/);
 assert.doesNotMatch(workspaceHtml, /pm-scene-tabs/);
@@ -3221,6 +3222,11 @@ assert.match(workspaceHtml, /class="pm-scene-post-more"[^>]*data-action="post-ac
 assert.match(workspaceHtml, /data-action="comments"[^>]*aria-label="拍一拍本帖，只生成本帖评论"/);
 assert.match(workspaceHtml, /class="pm-scene-like [^"]*"[^>]*data-action="like"/);
 assert.match(workspaceHtml, /class="pm-scene-post-metric is-share"/);
+assert.match(workspaceHtml, /class="pm-scene-reply-toggle"[^>]*data-action="toggle-reply"[^>]*aria-controls="pm-comment-composer-post"[^>]*aria-expanded="false"/);
+assert.match(workspaceHtml, /class="pm-scene-post-metric is-reply"[^>]*aria-label="回复 0"/);
+assert.match(workspaceHtml, /id="pm-comment-composer-post" class="pm-scene-comment-composer" hidden/);
+assert.match(workspaceHtml, /placeholder="USER 回复……"/);
+assert.match(workspaceHtml, /data-action="post-comment"[^>]*aria-label="发送回复"[^>]*>[\s\S]*?<svg/);
 assert.doesNotMatch(workspaceHtml, /生成更多评论|>喜欢<|>已喜欢</);
 assert.match(workspaceHtml, /class="pm-scene-bottom-bar"/);
 assert.match(workspaceHtml, /class="pm-scene-exit"[^>]*data-action="exit"/);
@@ -3498,6 +3504,66 @@ await assert.rejects(() => runDeleteSceneAction('story', 'scene-cancel', {
 }), /commit-failed/);
 assert.deepEqual(failedCommitCalls, ['invalidate', 'commit']);
 
+let firstReplyExpanded = 'false';
+let secondReplyExpanded = 'true';
+let firstReplyFocusOptions = null;
+let secondReplyFocusOptions = null;
+const firstReplyInput = {
+    focus(options) { firstReplyFocusOptions = options; },
+};
+const secondReplyInput = {
+    focus(options) { secondReplyFocusOptions = options; },
+};
+const firstReplyComposer = {
+    id: 'pm-comment-composer-post.a#1',
+    hidden: true,
+    querySelector(selector) { assert.equal(selector, 'input'); return firstReplyInput; },
+};
+const secondReplyComposer = {
+    id: 'pm-comment-composer-post-b',
+    hidden: false,
+    querySelector(selector) { assert.equal(selector, 'input'); return secondReplyInput; },
+};
+const firstReplyTrigger = {
+    dataset: { action: 'toggle-reply', postId: 'post.a#1' },
+    getAttribute(name) { assert.equal(name, 'aria-controls'); return firstReplyComposer.id; },
+    setAttribute(name, value) { assert.equal(name, 'aria-expanded'); firstReplyExpanded = value; },
+};
+const secondReplyTrigger = {
+    dataset: { action: 'toggle-reply', postId: 'post-b' },
+    getAttribute(name) { assert.equal(name, 'aria-controls'); return secondReplyComposer.id; },
+    setAttribute(name, value) { assert.equal(name, 'aria-expanded'); secondReplyExpanded = value; },
+};
+const replySceneApp = {
+    id: 'pm-scene-app',
+    querySelectorAll(selector) {
+        if (selector === '.pm-scene-comment-composer') return [firstReplyComposer, secondReplyComposer];
+        if (selector === '[data-action="toggle-reply"]') return [firstReplyTrigger, secondReplyTrigger];
+        assert.fail(`回复区不应查询未知选择器：${selector}`);
+    },
+};
+assert.equal(toggleSceneReplyComposer({ dataset: {} }, replySceneApp), false, '缺少帖子 ID 时不得改动回复区');
+assert.equal(toggleSceneReplyComposer({
+    dataset: { postId: 'missing' },
+    getAttribute: () => 'missing-composer',
+}, replySceneApp), false, 'aria-controls 未命中当前 app 时不得改动回复区');
+assert.equal(toggleSceneReplyComposer(firstReplyTrigger, replySceneApp), true, '首次点击必须展开目标回复区');
+assert.equal(firstReplyComposer.hidden, false);
+assert.equal(secondReplyComposer.hidden, true, '展开目标前必须关闭当前 app 内其他回复区');
+assert.equal(firstReplyExpanded, 'true');
+assert.equal(secondReplyExpanded, 'false');
+assert.deepEqual(firstReplyFocusOptions, { preventScroll: true }, '展开回复区必须无滚动聚焦目标输入框');
+assert.equal(toggleSceneReplyComposer(firstReplyTrigger, replySceneApp), false, '重复点击必须关闭同一回复区');
+assert.equal(firstReplyComposer.hidden, true);
+assert.equal(firstReplyExpanded, 'false');
+assert.equal(toggleSceneReplyComposer(firstReplyTrigger, replySceneApp), true);
+assert.equal(toggleSceneReplyComposer(secondReplyTrigger, replySceneApp), true, '切换帖子必须展开新的回复区');
+assert.equal(firstReplyComposer.hidden, true, '切换帖子必须关闭先前回复区');
+assert.equal(secondReplyComposer.hidden, false);
+assert.equal(firstReplyExpanded, 'false');
+assert.equal(secondReplyExpanded, 'true');
+assert.deepEqual(secondReplyFocusOptions, { preventScroll: true });
+
 const delegatedListeners = new Map();
 const delegatedActions = [];
 let openSceneMenus = [];
@@ -3538,6 +3604,7 @@ assert.equal(bindPhonePageActions(
     delegatedPhoneRoot,
     (button, app) => {
         if (button.dataset.action === 'post-actions') toggleScenePostActions(button);
+        if (button.dataset.action === 'toggle-reply') toggleSceneReplyComposer(button, app);
         delegatedActions.push({ button, app });
     },
     error => delegatedErrors.push(error),
@@ -3613,6 +3680,27 @@ assert.equal(delegatedActions.length, actionsBeforeAccentSelection + 1,
 assert.deepEqual(delegatedActions.at(-1), { button: sceneAccentControl, app: sceneApp },
     '社区自定义主题色变化必须进入统一异步错误边界');
 assert.deepEqual(delegatedErrors, []);
+
+firstReplyComposer.hidden = true;
+secondReplyComposer.hidden = true;
+firstReplyExpanded = 'false';
+secondReplyExpanded = 'false';
+secondReplyTrigger.closest = selector => {
+    if (selector === '.pm-scene-post-actions-wrap' || selector === '.pm-scene-menu-wrap') return null;
+    if (selector === '#pm-scene-app') return replySceneApp;
+    if (selector === '#pm-calendar-app' || selector === '.pm-desktop-page') return null;
+    return null;
+};
+delegatedExtraNodes.add(secondReplyTrigger);
+const actionsBeforeReplyToggle = delegatedActions.length;
+delegatedListeners.get('click')({
+    target: { closest: selector => selector === '[data-action]' ? secondReplyTrigger : null },
+});
+await Promise.resolve();
+assert.equal(delegatedActions.length, actionsBeforeReplyToggle + 1, '回复按钮点击只能分发一次生产动作');
+assert.deepEqual(delegatedActions.at(-1), { button: secondReplyTrigger, app: replySceneApp });
+assert.equal(secondReplyComposer.hidden, false, '事件委托必须展开当前帖子的回复区');
+assert.equal(secondReplyExpanded, 'true');
 
 let menuFocused = false;
 let menuExpanded = 'true';

@@ -11,7 +11,7 @@ import {
 import {
     bindPhonePageActions, getCommunityInjectionState, handleCommunityInjectionUiAction, handleSceneAccentAction,
     persistCurrentPhoneUiSnapshot, resolvePhoneChatTarget, runDeleteSceneAction, runDesktopPageTransition,
-    selectScenePreset, toggleSceneMenu, toggleScenePostActions,
+    selectScenePreset, toggleSceneMenu, toggleScenePostActions, toggleSceneReplyComposer,
 } from './interactive-scene-phone.js';
 import {
     createCommunityGenerationRunner, createCommunityTaskController,
@@ -223,7 +223,12 @@ export function installInteractiveScenes(_state, deps) {
         runtime.requestId += 1;
         runtime.busy = false;
     };
-    const setStatus = text => { const el = document.querySelector('.pm-scene-status'); if (el) el.textContent = text || ''; };
+    const setStatus = text => {
+        const el = document.querySelector('.pm-scene-status');
+        if (!el) return;
+        el.textContent = text || '';
+        el.hidden = !text;
+    };
     const confirmDelete = message => window.confirm(message);
 
     const getPhoneUiState = store => {
@@ -526,6 +531,7 @@ export function installInteractiveScenes(_state, deps) {
         }
         if (action === 'more') { toggleSceneMenu(button); return; }
         if (action === 'post-actions') { toggleScenePostActions(button); return; }
+        if (action === 'toggle-reply') { toggleSceneReplyComposer(button, app); return; }
         if (action === 'desktop-chat') { deps.showPhoneChatPage?.(getStorageId()); return; }
         if (action === 'desktop-directory') { window.__pmShowList?.(); return; }
         if (action === 'desktop-settings') { window.__pmOpenSettingsTab?.('home'); return; }
@@ -584,14 +590,6 @@ export function installInteractiveScenes(_state, deps) {
             });
             return;
         }
-        if (action === 'back') {
-            invalidate();
-            const { scopeId } = current();
-            runtime.openSceneId = null;
-            updatePhoneUiScope(scopeId, { lastPage: 'community', lastSceneId: null });
-            renderCommunityLauncher(scopeId);
-            return;
-        }
         if (action === 'tab') {
             invalidate();
             const { scopeId, scene } = current();
@@ -616,7 +614,8 @@ export function installInteractiveScenes(_state, deps) {
         if (action === 'poke-scene') { await communityRunner.generateFeed(); return; }
         if (action === 'comments') { await generateComments(button.dataset.postId); return; }
         if (action === 'post-comment') {
-            const input = document.getElementById(`pm-comment-input-${button.dataset.postId}`);
+            const composer = button.closest?.('.pm-scene-comment-composer');
+            const input = composer?.querySelector?.('input');
             const content = input?.value.trim() || '';
             await commit(() => {
                 const { scopeId, scope, scene } = current();

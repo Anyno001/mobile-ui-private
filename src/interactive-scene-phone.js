@@ -294,6 +294,26 @@ export function toggleScenePostActions(button) {
     return opening;
 }
 
+export function toggleSceneReplyComposer(button, app) {
+    const postId = String(button?.dataset?.postId || '').trim();
+    if (!postId || !app) return false;
+    const targetId = button.getAttribute?.('aria-controls') || '';
+    const composers = [...(app.querySelectorAll?.('.pm-scene-comment-composer') || [])];
+    const target = composers.find(composer => composer.id === targetId);
+    if (!target) return false;
+    const opening = target.hidden;
+    composers.filter(composer => !composer.hidden).forEach(composer => {
+        composer.hidden = true;
+    });
+    app.querySelectorAll?.('[data-action="toggle-reply"]').forEach(trigger => {
+        trigger.setAttribute?.('aria-expanded', 'false');
+    });
+    target.hidden = !opening;
+    button.setAttribute?.('aria-expanded', String(opening));
+    if (opening) target.querySelector?.('input')?.focus?.({ preventScroll: true });
+    return opening;
+}
+
 export function bindPhonePageActions(phoneWindow, handleAction, reportError) {
     if (!phoneWindow || phoneWindow.dataset.sceneUiBound === 'true') return false;
     phoneWindow.dataset.sceneUiBound = 'true';

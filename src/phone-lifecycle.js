@@ -357,7 +357,8 @@ export function installPhoneLifecycle(state, deps) {
         if (POPOVER_SUPPORTED) state.phoneWindow.setAttribute('popover', 'manual');
 
         state.phoneWindow.innerHTML = `
-<div class="pm-island"></div>
+<div class="pm-phone-screen">
+  <div class="pm-island"></div>
 <div class="pm-status-bar" aria-label="设备本地状态" ${window.__pmTheme.ambientStatusEnabled === true ? '' : 'hidden'}><span class="pm-status-time"></span><span class="pm-status-local">本地<span class="pm-status-icons" aria-hidden="true">${SIGNAL_ICON_SVG}${WIFI_ICON_SVG}</span></span></div>
 <div class="pm-main-ui" data-page="chat">
   <section class="pm-phone-page pm-chat-page" data-phone-page="chat">
@@ -393,6 +394,7 @@ export function installPhoneLifecycle(state, deps) {
   <section class="pm-phone-page pm-desktop-page" data-phone-page="desktop" hidden></section>
   <section class="pm-phone-page pm-community-page" data-phone-page="community" hidden></section>
   <section class="pm-phone-page pm-calendar-page" data-phone-page="calendar" hidden></section>
+</div>
 </div>
 <div class="pm-phone-resize-handle" role="separator" aria-label="调整手机窗口大小" aria-orientation="horizontal" title="拖动调整手机大小"></div>`;
         document.body.appendChild(state.phoneWindow);

@@ -1428,29 +1428,39 @@ if (controlCenterTemplate.includes('data-action="desktop"') || controlCenterTemp
 for (const title of ['API 设置', '主题颜色', '数据备份', '互动场景']) {
   if (controlCenterTemplate.includes(title)) failures.push(`phone-control-center.js: compact control menu must not contain removed shortcut ${title}`);
 }
-for (const expected of ['post-comment', 'delete-scene', 'delete-post', 'delete-comment', "action === 'post-actions'", '文字直播']) {
+for (const expected of [
+  'post-comment', 'delete-scene', 'delete-post', 'delete-comment', "action === 'post-actions'", "action === 'toggle-reply'", '文字直播',
+  "button.closest?.('.pm-scene-comment-composer')", "composer?.querySelector?.('input')",
+]) {
   requireText('interactive-scenes.js', interactiveCode, expected);
 }
+if (interactiveCode.includes('document.getElementById(`pm-comment-input-${button.dataset.postId}`)')) failures.push('interactive-scenes.js: reply submission must stay scoped to the clicked composer');
 for (const expected of [
-  'HEART_ICON_SVG', 'SHARE_ICON_SVG', 'CONTROL_ICON_SVG', 'FEED_ICON_SVG', 'LIVE_ICON_SVG',
+  'HEART_ICON_SVG', 'SHARE_ICON_SVG', 'REPLY_ICON_SVG', 'SEND_ICON_SVG', 'CONTROL_ICON_SVG', 'FEED_ICON_SVG', 'LIVE_ICON_SVG',
   'pm-scene-nav-actions', 'pm-scene-title-poke', 'pm-scene-view-actions', 'pm-scene-view-toggle',
-  'data-action="desktop"', 'data-action="back"', '切换到直播', '返回社区',
+  'data-action="desktop"', '切换到直播', '返回社区',
   'data-action="tab" data-tab="prompt"', '风格提示词', 'data-action="context-inject"', '上下文注入', 'pm-scene-post-more', 'data-action="post-actions"',
   'aria-label="拍一拍本帖，只生成本帖评论"', "renderPostMetric(SHARE_ICON_SVG, shares, '转发', 'is-share')",
+  'pm-scene-reply-toggle', 'data-action="toggle-reply"', 'aria-controls="pm-comment-composer-${escapeAttr(post.id)}"', 'aria-expanded="false"',
+  "renderPostMetric(REPLY_ICON_SVG, post.comments.length, '回复', 'is-reply')", 'class="pm-scene-comment-composer" hidden', 'placeholder="USER 回复……"',
   'pm-scene-accent-options', 'data-action="scene-accent"', 'data-action="scene-accent-custom"', 'aria-pressed="${preset.accent === selectedAccent}"',
   'placeholder="分享此刻……"', '<span>刚刚</span>',
 ]) requireText('interactive-scene-views.js', interactiveViewsCode, expected);
+for (const forbidden of ['data-action="back"', 'pm-scene-back']) {
+  if (interactiveViewsCode.includes(forbidden)) failures.push(`interactive-scene-views.js: removed community back control remains: ${forbidden}`);
+}
 if (interactiveViewsCode.includes('刚刚 · ${escapeHtml(scene.title)}')) failures.push('interactive-scene-views.js: post metadata must not repeat the community title');
 if (interactiveViewsCode.includes('pm-scene-tabs')) failures.push('interactive-scene-views.js: obsolete wide community tab capsule remains');
 for (const forbidden of ['生成更多评论', '>喜欢</button>', '>已喜欢</button>']) {
   if (interactiveViewsCode.includes(forbidden)) failures.push(`interactive-scene-views.js: obsolete community post action remains: ${forbidden}`);
 }
 for (const expected of [
-  'persistSceneBudgetRemoval', 'deleteSceneAndFinalize', 'finalizeDeletedScene', 'bindPhonePageActions', 'runDeleteSceneAction', 'toggleSceneMenu', 'selectScenePreset',
+  'persistSceneBudgetRemoval', 'deleteSceneAndFinalize', 'finalizeDeletedScene', 'bindPhonePageActions', 'runDeleteSceneAction', 'toggleSceneMenu', 'selectScenePreset', 'toggleSceneReplyComposer',
   'deleteScene: deleteInteractiveScene', 'persistSceneBudgetRemoval({',
   "['手机页面状态保存失败', persistPhoneUi]", "['运行时场景清理失败', clearOpenScene]",
   "['社区页面刷新失败', renderLauncher]", "dataset.sceneUiBound === 'true'", "event.key !== 'Escape'", ".pm-scene-menu:not([hidden])",
   ".pm-scene-post-actions:not([hidden])", 'closePostActions', '[data-action="post-actions"]', 'postFocusTarget', 'menuFocusTarget',
+  "app.querySelectorAll?.('.pm-scene-comment-composer')", "composers.find(composer => composer.id === targetId)", '[data-action="toggle-reply"]', "focus?.({ preventScroll: true })",
 ]) requireText('interactive-scene-phone.js', interactivePhoneCode, expected);
 for (const expected of [
   'runDeleteSceneAction(scopeId, sceneId, {', 'clearOpenScene:', 'renderLauncher:',
@@ -1622,9 +1632,9 @@ for (const expected of [
   '.pm-calendar-header-action.is-loading svg{animation:pm-spin .8s linear infinite}',
   '.pm-calendar-cycle-input:checked+.pm-custom-check{background:#34c759 !important}',
   '.pm-calendar-cycle-input:focus-visible+.pm-custom-check{outline:2px solid #007aff;outline-offset:2px}',
-  '.pm-scene-topbar{grid-template-columns:74px minmax(0,1fr) 74px',
+  '.pm-scene-topbar{grid-template-columns:42px minmax(0,1fr) 74px',
   '.pm-scene-view-actions{display:flex;align-items:center;justify-content:flex-end;gap:2px}',
-  '.pm-scene-composer textarea{min-height:38px;max-height:88px;box-shadow:none !important;appearance:none}',
+  '.pm-scene-composer textarea{height:36px;min-height:36px;max-height:88px;box-shadow:none !important;appearance:none}',
   '.pm-scene-title-poke:focus-visible{background:color-mix(in srgb,var(--scene-accent) 12%,transparent);outline:2px solid var(--scene-accent);outline-offset:2px}',
   '.pm-scene-post-more:focus-visible{background:color-mix(in srgb,var(--scene-accent) 10%,transparent);outline:2px solid var(--scene-accent);outline-offset:2px}',
   '.pm-scene-post-actions{display:flex;align-items:center;gap:2px}',
@@ -1643,6 +1653,7 @@ for (const expected of [
   '@media (prefers-reduced-motion:reduce){.pm-calendar-header-action.is-loading svg{animation:none}}',
   '.pm-scene-accent-option[aria-pressed="true"]{border-color:var(--scene-accent-option)',
   '.pm-scene-accent-option:focus-visible{outline:2px solid var(--scene-accent-option)',
+  '.pm-scene-comment-composer[hidden]{display:none}',
   '.pm-scene-comment-composer input{font-size:14px}',
   '.pm-scene-empty{font-size:12px;line-height:1.55}',
 ]) requireText('style.css', css, expected);
@@ -1686,6 +1697,27 @@ requireCssDeclarations(cssRules, '.pm-custom-check[data-checked="1"]::after', {
 requireCssDeclarations(cssRules, '.pm-custom-check.is-checked::after', {
   transform: 'translateX(16px)',
 });
+requireCssDeclarations(cssRules, '#pm-iphone', {
+  overflow: 'visible !important',
+});
+requireCssDeclarations(cssRules, '.pm-phone-screen', {
+  width: '100%', height: '100%', display: 'flex', 'flex-direction': 'column',
+  overflow: 'hidden', 'border-radius': 'var(--pm-phone-inner-radius)',
+});
+requireCssDeclarations(cssRules, '.pm-phone-resize-handle', {
+  position: 'absolute', right: 'calc(-4px - var(--pm-phone-border-width))',
+  bottom: 'calc(-4px - var(--pm-phone-border-width))', width: '40px', height: '40px', cursor: 'nwse-resize', 'touch-action': 'none', background: 'transparent',
+});
+requireCssDeclarations(cssRules, '.pm-phone-resize-handle::after', {
+  content: '""', right: '2px', bottom: '2px', width: '8px', height: '8px',
+  'border-right': '1.5px solid color-mix(in srgb,var(--pm-border) 34%,transparent)',
+  'border-bottom': '1.5px solid color-mix(in srgb,var(--pm-border) 34%,transparent)',
+  'pointer-events': 'none',
+});
+const resizeHandleRule = cssRules.find(rule => rule.selectors.includes('.pm-phone-resize-handle'));
+if (resizeHandleRule?.declarations.get('background')?.includes('linear-gradient')) {
+  failures.push('style.css: phone resize handle must not draw diagonal lines inside the phone frame');
+}
 if (css.includes('pm-scene-tabs')) failures.push('style.css: obsolete wide community tab capsule styles remain');
 const lifecycleCode = sourceModuleByName.get('phone-lifecycle.js')?.code || '';
 for (const expected of [
@@ -1693,6 +1725,8 @@ for (const expected of [
   'state.isGenerating', 'window.__pmSubmitPending()', 'unbindSendGesture?.()', 'unbindPhoneResize?.()',
   'createAmbientStatusController', 'ambientStatusEnabled === true', 'new Intl.DateTimeFormat',
   'applyPhoneScale(state.phoneWindow)', 'pm-phone-resize-handle', 'SIGNAL_ICON_SVG', 'WIFI_ICON_SVG', 'ambientStatus.stop();',
+  '<div class="pm-phone-screen">',
+  '</div>\n<div class="pm-phone-resize-handle" role="separator"',
 ]) requireText('phone-lifecycle.js', lifecycleCode, expected);
 if (/cb\.style\.cssText\s*=\s*['"][^'"]*border-radius\s*:\s*50%/.test(lifecycleCode)) failures.push('phone-lifecycle.js: message selection checkbox must not override the CSS-owned circle shape with an inline border radius');
 for (const match of css.matchAll(/([^{}]+)\{/g)) {
