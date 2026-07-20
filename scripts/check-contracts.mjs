@@ -1451,9 +1451,13 @@ for (const expected of [
   'class="pm-scene-comment-actions" hidden', 'data-action="edit-comment"', 'aria-label="编辑评论"', 'data-action="delete-comment"', 'aria-label="删除评论"',
   'pm-scene-accent-options', 'data-action="scene-accent"', 'data-action="scene-accent-custom"', 'aria-pressed="${preset.accent === selectedAccent}"',
   'placeholder="分享此刻……"', '<span class="pm-scene-post-time">刚刚</span>',
+  "isPrompt || tab === 'live' ? ''", 'pm-live-stage', 'pm-danmaku-float',
 ]) requireText('interactive-scene-views.js', interactiveViewsCode, expected);
 for (const forbidden of ['data-action="back"', 'pm-scene-back']) {
   if (interactiveViewsCode.includes(forbidden)) failures.push(`interactive-scene-views.js: removed community back control remains: ${forbidden}`);
+}
+for (const forbidden of ['.pm-scene-title-tab:first-child{flex:', '.pm-scene-title-tab.is-active::after{']) {
+  if (css.includes(forbidden)) failures.push(`style.css: stretched community title underline remains: ${forbidden}`);
 }
 if (interactiveViewsCode.includes('刚刚 · ${escapeHtml(scene.title)}')) failures.push('interactive-scene-views.js: post metadata must not repeat the community title');
 if (interactiveViewsCode.includes('pm-scene-tabs')) failures.push('interactive-scene-views.js: obsolete wide community tab capsule remains');
@@ -1640,8 +1644,9 @@ for (const expected of [
   '.pm-calendar-cycle-input:checked+.pm-custom-check{background:#34c759 !important}',
   '.pm-calendar-cycle-input:focus-visible+.pm-custom-check{outline:2px solid #007aff;outline-offset:2px}',
   '.pm-scene-topbar{position:relative;display:flex;align-items:center;gap:4px;padding:6px 9px}',
-  '.pm-scene-title{position:absolute;left:50%;transform:translateX(-50%);display:flex',
-  '.pm-scene-title-tab.is-active::after{content:',
+  '.pm-scene-title{position:absolute;left:50%;top:6px;bottom:6px;transform:translateX(-50%);display:flex',
+  '.pm-scene-title-tab.is-active span::after{content:',
+  '.pm-scene-title-poke{width:34px !important;height:34px !important;padding:7px !important',
   '@media(max-width:320px){.pm-scene-topbar{padding-inline:5px}',
   '.pm-scene-view-actions{display:flex;align-items:center;justify-content:flex-end;gap:2px;margin-left:auto',
   '.pm-scene-bottom-bar{position:relative;z-index:20',
@@ -1676,7 +1681,7 @@ for (const expected of [
   '#pm-iphone[data-theme="dark"] .pm-calendar-view-switch button[aria-pressed="true"],#pm-iphone[data-theme="dark"] .pm-calendar-editor-switch button[aria-pressed="true"]{background:color-mix(in srgb,var(--pm-calendar-accent) 20%,transparent);color:var(--pm-calendar-accent);box-shadow:none}',
   '@media (prefers-reduced-motion:reduce){.pm-calendar-header-action.is-loading svg{animation:none}}',
   '.pm-scene-preset>span{box-sizing:border-box;width:12px;height:12px;flex:0 0 12px;border-radius:50%',
-  '.pm-scene-accent-option{box-sizing:border-box;width:30px;height:30px;flex:0 0 30px',
+  '.pm-scene-prompt .pm-scene-accent-option{box-sizing:border-box;width:30px;height:30px;min-width:30px;min-height:30px;aspect-ratio:1;flex:0 0 30px;padding:4px !important',
   '.pm-scene-accent-custom input[type="color"]{box-sizing:border-box;width:32px;height:28px;flex:0 0 32px;padding:0;border:1px solid #ddd;border-radius:6px',
   '.pm-scene-accent-option[aria-pressed="true"]{border-color:var(--scene-accent-option)',
   '.pm-scene-accent-option:focus-visible{outline:2px solid var(--scene-accent-option)',

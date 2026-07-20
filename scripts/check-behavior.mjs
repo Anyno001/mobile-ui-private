@@ -3247,6 +3247,10 @@ assert.match(liveWorkspaceHtml, /class="pm-scene-title-tab "[^>]*data-tab="feed"
 assert.match(liveWorkspaceHtml, /class="pm-scene-title-tab is-active"[^>]*data-tab="live"[^>]*aria-current="page"[^>]*>[\s\S]*<span>直播间<\/span>/);
 assert.match(liveWorkspaceHtml, /pm-live-stage has-danmaku/);
 assert.match(liveWorkspaceHtml, /--duration:[\d.]+s;--offset:-?\d+px/);
+assert.match(liveWorkspaceHtml, /class="pm-live-actions"[\s\S]*data-action="toggle-live"[\s\S]*data-action="rhythm"/,
+    '直播页必须保留直播控制和带节奏能力');
+assert.doesNotMatch(liveWorkspaceHtml, /class="pm-scene-bottom-bar"|class="pm-control-menu pm-scene-menu"/,
+    '直播页不得渲染底部二级菜单区域');
 const promptWorkspaceHtml = renderCommunityWorkspace(workspaceScene, 'prompt', { pinnedSceneIds: [], lastTab: 'live' });
 assert.match(promptWorkspaceHtml, /class="pm-scene-accent-options"/);
 assert.match(promptWorkspaceHtml, /data-action="scene-accent" data-accent="#ff8200"/);
