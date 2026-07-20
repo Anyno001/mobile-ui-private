@@ -1721,7 +1721,13 @@ for (const [owner, code, expected] of [
     "setAttribute('role', 'checkbox')", "setAttribute('aria-checked'", 'cb.tabIndex = 0',
     'toggleMessageSelection({ checkbox: cb, wrap, list })', 'handleMessageSelectionKey(event, cb)',
   ]],
-  ['phone-foundation.js', foundationCode, ['const previous = [...(window.__pmBidirectional[id] || [])]', 'if (!saveBidirectional())', 'window.__pmBidirectional[id] = previous', "handle.addEventListener('lostpointercapture', finish)", "window.addEventListener('blur', finish)", "handle.removeEventListener('lostpointercapture', finish)", "window.removeEventListener('blur', finish)", 'finish();']],
+  ['phone-foundation.js', foundationCode, [
+    'const previous = [...(window.__pmBidirectional[id] || [])]', 'if (!saveBidirectional())', 'window.__pmBidirectional[id] = previous',
+    "handle.addEventListener('lostpointercapture', finish)", "window.addEventListener('blur', finish)",
+    "handle.removeEventListener('lostpointercapture', finish)", "window.removeEventListener('blur', finish)", 'finish();',
+    'export function phoneSizeForViewport(', 'const visualViewport = window.visualViewport;',
+    "visualViewport?.addEventListener('resize', onViewportResize)", "visualViewport?.removeEventListener('resize', onViewportResize)",
+  ]],
   ['settings-ui.js', settingsCode, ['const previous = window.__pmWordyLimit === true', 'if (!saveWordyLimit())', "el.setAttribute('aria-checked'"]],
 ]) {
   for (const value of expected) requireText(owner, code, value);

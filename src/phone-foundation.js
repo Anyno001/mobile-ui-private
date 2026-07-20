@@ -32,14 +32,11 @@ export const PHONE_MAX_SCALE = 1.5;
 export function normalizePhoneScale(
     value,
     viewportWidth = globalThis.window?.innerWidth ?? 1200,
-    viewportHeight = globalThis.window?.innerHeight ?? 1000,
 ) {
     const width = Number(viewportWidth);
-    const height = Number(viewportHeight);
-    const compact = width <= 500 || height <= 700;
+    const compact = width <= 500;
     const widthLimit = Math.max(0.1, (compact ? width * 0.92 : width - 24) / PHONE_BASE_WIDTH);
-    const heightLimit = Math.max(0.1, (compact ? height * 0.82 : height - 24) / PHONE_BASE_HEIGHT);
-    const maximum = Math.max(Math.min(PHONE_MAX_SCALE, widthLimit, heightLimit), Math.min(PHONE_MIN_SCALE, widthLimit, heightLimit));
+    const maximum = Math.max(Math.min(PHONE_MAX_SCALE, widthLimit), Math.min(PHONE_MIN_SCALE, widthLimit));
     const minimum = Math.min(PHONE_MIN_SCALE, maximum);
     const numeric = Number(value);
     const candidate = Number.isFinite(numeric) ? numeric : 1;
@@ -54,13 +51,28 @@ export function phoneSizeForScale(scale) {
     };
 }
 
+export function phoneSizeForViewport(
+    scale,
+    viewportWidth = globalThis.window?.innerWidth ?? 1200,
+    viewportHeight = globalThis.window?.visualViewport?.height ?? globalThis.window?.innerHeight ?? 1000,
+) {
+    const normalized = normalizePhoneScale(scale, viewportWidth);
+    const naturalSize = phoneSizeForScale(normalized);
+    const height = Number(viewportHeight);
+    const compact = Number(viewportWidth) <= 500 || height <= 700;
+    const heightBudget = Math.max(
+        Math.round(PHONE_BASE_HEIGHT * 0.1),
+        Math.round(compact ? height * 0.82 : height - 24),
+    );
+    return { scale: normalized, width: naturalSize.width, height: Math.min(naturalSize.height, heightBudget) };
+}
+
 export function applyPhoneScale(element, scale = globalThis.window?.__pmTheme?.phoneScale) {
     if (!element) return null;
-    const normalized = normalizePhoneScale(scale);
-    const size = phoneSizeForScale(normalized);
+    const size = phoneSizeForViewport(scale);
     element.style.setProperty('--pm-phone-width', `${size.width}px`);
     element.style.setProperty('--pm-phone-height', `${size.height}px`);
-    return { scale: normalized, ...size };
+    return size;
 }
 
 export function installPhonePageSuspensionListeners(windowRef = window, documentRef = document) {
@@ -540,7 +552,9 @@ export function installPhoneFoundation(state, deps) {
         let startScale = 1;
         let previousScale = 1;
 
+        const visualViewport = window.visualViewport;
         const onViewportResize = () => applyPhoneScale(el);
+
         const onPointerMove = event => {
             if (!resizing || event.pointerId !== pointerId) return;
             const dx = event.clientX - startX;
@@ -586,6 +600,7 @@ export function installPhoneFoundation(state, deps) {
         window.addEventListener('pointercancel', finish);
         window.addEventListener('blur', finish);
         window.addEventListener('resize', onViewportResize);
+        visualViewport?.addEventListener('resize', onViewportResize);
         applyPhoneScale(el);
         return () => {
             finish();
@@ -596,6 +611,7 @@ export function installPhoneFoundation(state, deps) {
             window.removeEventListener('pointercancel', finish);
             window.removeEventListener('blur', finish);
             window.removeEventListener('resize', onViewportResize);
+            visualViewport?.removeEventListener('resize', onViewportResize);
         };
     }
 
