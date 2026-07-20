@@ -1673,7 +1673,7 @@ assert.equal(uiElements.get('pm-indep-profile-fields').hidden, true);
 assert.equal(uiElements.get('pm-indep-config-fields').hidden, true);
 assert.equal(uiElements.get('pm-mode-main').classList.contains('pm-mode-active'), true);
 assert.equal(uiElements.get('pm-mode-indep').classList.contains('pm-mode-active'), false);
-assert.equal(uiElements.get('pm-mode-tip').textContent, '默认使用酒馆API预设');
+assert.equal(uiElements.get('pm-mode-tip').textContent, '默认使用酒馆 API 预设');
 assert.equal(window.__pmSaveConfig(), true);
 assert.equal(window.__pmConfig.useIndependent, false, '用户手动切回主 API 后必须保留明确选择');
 assert.equal(JSON.parse(localValues.get('ST_SMS_CONFIG')).useIndependent, false);
@@ -3240,12 +3240,17 @@ const liveWorkspaceHtml = renderCommunityWorkspace(workspaceScene, 'live', { pin
 assert.match(liveWorkspaceHtml, /class="pm-scene-view-toggle"[^>]*data-tab="feed"[^>]*aria-label="返回社区"/);
 assert.match(liveWorkspaceHtml, /pm-live-stage has-danmaku/);
 assert.match(liveWorkspaceHtml, /--duration:[\d.]+s;--offset:-?\d+px/);
-const promptWorkspaceHtml = renderCommunityWorkspace(workspaceScene, 'prompt', { pinnedSceneIds: [] });
+const promptWorkspaceHtml = renderCommunityWorkspace(workspaceScene, 'prompt', { pinnedSceneIds: [], lastTab: 'live' });
 assert.match(promptWorkspaceHtml, /class="pm-scene-accent-options"/);
 assert.match(promptWorkspaceHtml, /data-action="scene-accent" data-accent="#ff8200"/);
 assert.match(promptWorkspaceHtml, /aria-label="使用微博热场主题色" aria-pressed="false"/);
 assert.match(promptWorkspaceHtml, /id="pm-scene-accent" type="color" data-action="scene-accent-custom" value="#123abc"/);
 assert.match(promptWorkspaceHtml, /class="pm-scene-secondary" data-action="regenerate-prompt"/);
+assert.match(promptWorkspaceHtml, /class="pm-scene-home" data-action="tab" data-tab="live" aria-label="返回子社区"/);
+assert.doesNotMatch(promptWorkspaceHtml, /class="pm-scene-bottom-bar"|class="pm-control-menu pm-scene-menu"|placeholder="分享此刻……"/,
+    '提示词页不得保留社区二级菜单或发帖输入区');
+assert.doesNotMatch(promptWorkspaceHtml, /class="pm-scene-home" data-action="desktop"/,
+    '提示词页左侧按钮必须返回子社区而不是桌面');
 const presetAccentScene = { ...workspaceScene, themeAccent: '#ff8200' };
 const presetAccentHtml = renderCommunityWorkspace(presetAccentScene, 'prompt', { pinnedSceneIds: [] });
 assert.match(presetAccentHtml, /data-accent="#ff8200"[^>]*aria-pressed="true"/);

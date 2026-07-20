@@ -4,7 +4,7 @@ import { escapeAttr, escapeHtml } from './ui.js';
 export function renderSettingsHome() {
     return `
     <div class="pm-settings-home" role="list">
-      <button type="button" role="listitem" onclick="window.__pmShowConfig('api')"><b>API</b><span>默认使用酒馆API预设</span></button>
+      <button type="button" role="listitem" onclick="window.__pmShowConfig('api')"><b>API</b><span>默认使用酒馆 API 预设</span></button>
       <button type="button" role="listitem" onclick="window.__pmShowConfig('quick-reply')"><b>手机开关</b><span>创建或清除开关入口</span></button>
       <button type="button" role="listitem" onclick="window.__pmShowConfig('look')"><b>主题</b><span>日夜模式、气泡颜色与背景图</span></button>
       <button type="button" role="listitem" onclick="window.__pmShowConfig('backup')"><b>备份</b><span>导出、导入或安全清理插件数据</span></button>
@@ -28,7 +28,7 @@ export function renderApiSettings({ cfg, useIndependent, profilesHtml }) {
           <div id="pm-mode-main" class="pm-mode-opt ${!useIndependent ? 'pm-mode-active' : ''}" onclick="window.__pmSetMode(false)">主 API</div>
           <div id="pm-mode-indep" class="pm-mode-opt ${useIndependent ? 'pm-mode-active' : ''}" onclick="window.__pmSetMode(true)">独立 API</div>
         </div>
-        <div id="pm-mode-tip" class="pm-cfg-tip" style="text-align:left;padding:6px 2px 0;">${useIndependent ? '独立 API 必须填写地址、密钥和模型' : '默认使用酒馆API预设'}</div>
+        <div id="pm-mode-tip" class="pm-cfg-tip" style="text-align:left;padding:6px 2px 0;">${useIndependent ? '独立 API 必须填写地址、密钥和模型' : '默认使用酒馆 API 预设'}</div>
       </div>
       <div id="pm-indep-profile-fields" class="pm-independent-api-fields" ${useIndependent ? '' : 'hidden'} style="padding:6px 14px 4px;border-top:1px solid #f0f0f0;">
         <div class="pm-cfg-label" style="margin:8px 0 6px;">已保存档案</div>

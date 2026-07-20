@@ -1,7 +1,7 @@
 import { escapeAttr, escapeHtml } from './ui.js';
 import {
     CALENDAR_ICON_SVG, CLOSE_ICON_SVG, CONTACTS_ICON_SVG, EDIT_ICON_SVG,
-    EMOJI_ICON_SVG, REFRESH_ICON_SVG, SETTINGS_ICON_SVG, TRASH_ICON_SVG,
+    EMOJI_ICON_SVG, SETTINGS_ICON_SVG, TRASH_ICON_SVG,
 } from './icons.js';
 import {
     clearPendingMessages, getPendingMessages, removePendingMessage, updatePendingMessage,
@@ -10,7 +10,6 @@ import {
 const controlActionLabel = action => ({
     calendar: '打开日历',
     contacts: '打开联系人',
-    rearm: '重新启用自动消息',
 })[action] || '执行快捷操作';
 
 export function runControlMenuAction(action, runAction, reportActionError) {
@@ -119,7 +118,6 @@ export function installPhoneControlCenter(state, deps) {
         else if (action === 'group') window.__pmEditGroup();
         else if (action === 'delete') window.__pmStartDeleteMode();
         else if (action === 'calendar') return showPhoneCalendarPage();
-        else if (action === 'rearm') return window.__pmArmAutoPoke();
     }
 
     function bindControlMenu(menu, anchor) {
@@ -165,7 +163,6 @@ export function installPhoneControlCenter(state, deps) {
   ${state.isGroupChat ? `<button type="button" role="menuitem" data-action="group">${CONTACTS_ICON_SVG}群聊设置</button>` : ''}
   <button type="button" role="menuitem" data-action="emoji">${EMOJI_ICON_SVG}表情包管理</button>
   <button type="button" role="menuitem" data-action="calendar">${CALENDAR_ICON_SVG}日历</button>
-  <button type="button" role="menuitem" data-action="rearm">${REFRESH_ICON_SVG}重新启用自动消息</button>
   <button type="button" role="menuitem" data-action="delete" class="pm-control-menu-danger">${TRASH_ICON_SVG}删除信息</button>`;
         phone.appendChild(menu);
         const phoneRect = phone.getBoundingClientRect();

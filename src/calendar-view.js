@@ -2,7 +2,7 @@ import { parseCalendarDate } from './calendar-model.js';
 import { predictCyclePhase } from './calendar-cycle-model.js';
 import { holidayYearFromCache } from './calendar-holiday.js';
 import { weatherCodeLabel } from './calendar-weather.js';
-import { EVENT_EDITOR_ICON_SVG, OCCASION_EDITOR_ICON_SVG, TRASH_ICON_SVG } from './icons.js';
+import { EDIT_ICON_SVG, EVENT_EDITOR_ICON_SVG, OCCASION_EDITOR_ICON_SVG, TRASH_ICON_SVG } from './icons.js';
 import { escapeAttr, escapeHtml } from './ui.js';
 
 const detailDate = new Intl.DateTimeFormat('zh-CN', { month: 'long', day: 'numeric', weekday: 'short' });
@@ -14,11 +14,11 @@ function eventRows(scope, occasionsByDate, date) {
     const events = scope.events[date] || [];
     const occasionRows = (occasionsByDate.get(date) || []).map(occasion => `<article class="pm-calendar-event is-occasion" data-occasion-id="${escapeAttr(occasion.id)}">
         <div><b>${escapeHtml(occasion.title)}</b><span>${occasionTypeLabel(occasion.type)}${occasion.leapAdjusted ? '（闰日顺延）' : ''}${occasion.note ? ` · ${escapeHtml(occasion.note)}` : ''}</span></div>
-        <div class="pm-calendar-event-actions"><button type="button" data-action="calendar-occasion-edit" data-occasion-id="${escapeAttr(occasion.id)}">编辑</button><button type="button" data-action="calendar-occasion-delete" data-occasion-id="${escapeAttr(occasion.id)}" aria-label="删除 ${escapeAttr(occasion.title)}">${TRASH_ICON_SVG}</button></div>
+        <div class="pm-calendar-event-actions"><button type="button" data-action="calendar-occasion-edit" data-occasion-id="${escapeAttr(occasion.id)}" aria-label="编辑 ${escapeAttr(occasion.title)}" title="编辑">${EDIT_ICON_SVG}</button><button type="button" data-action="calendar-occasion-delete" data-occasion-id="${escapeAttr(occasion.id)}" aria-label="删除 ${escapeAttr(occasion.title)}">${TRASH_ICON_SVG}</button></div>
     </article>`);
     const eventItems = events.map(event => `<article class="pm-calendar-event" data-event-id="${escapeAttr(event.id)}">
         <div><b>${escapeHtml(event.title)}</b>${event.note ? `<span>${escapeHtml(event.note)}</span>` : ''}</div>
-        <div class="pm-calendar-event-actions"><button type="button" data-action="calendar-edit" data-event-id="${escapeAttr(event.id)}">编辑</button><button type="button" data-action="calendar-delete" data-event-id="${escapeAttr(event.id)}" aria-label="删除 ${escapeAttr(event.title)}">${TRASH_ICON_SVG}</button></div>
+        <div class="pm-calendar-event-actions"><button type="button" data-action="calendar-edit" data-event-id="${escapeAttr(event.id)}" aria-label="编辑 ${escapeAttr(event.title)}" title="编辑">${EDIT_ICON_SVG}</button><button type="button" data-action="calendar-delete" data-event-id="${escapeAttr(event.id)}" aria-label="删除 ${escapeAttr(event.title)}">${TRASH_ICON_SVG}</button></div>
     </article>`);
     return [...occasionRows, ...eventItems].join('');
 }
@@ -44,7 +44,7 @@ function cycleRow(cycleScope, date) {
 }
 
 export function renderSelectedDateDetail(
-    scope, occasionsByDate, holidayCache, weatherStore, cycleScope, selectedDate, viewMode,
+    scope, occasionsByDate, holidayCache, weatherStore, cycleScope, selectedDate, viewMode, relativeLabel = '',
 ) {
     const parsed = parseCalendarDate(selectedDate);
     const content = viewMode === 'weather'
@@ -54,7 +54,7 @@ export function renderSelectedDateDetail(
             : `${holidayRows(holidayCache, selectedDate)}${eventRows(scope, occasionsByDate, selectedDate)}`;
     const emptyLabel = viewMode === 'weather' ? '这一天没有天气数据' : viewMode === 'cycle' ? '这一天没有生理期提示' : '这一天还没有安排';
     return `<section class="pm-calendar-selected-detail" data-calendar-selected-detail="${selectedDate}" data-calendar-detail-mode="${viewMode}">
-        <header><div><span>已选日期</span><b>${escapeHtml(detailDate.format(parsed))}</b></div><time datetime="${selectedDate}">${escapeHtml(selectedDate)}</time></header>
+        <header><div>${relativeLabel ? `<span>${escapeHtml(relativeLabel)}</span>` : ''}<time datetime="${selectedDate}">${escapeHtml(detailDate.format(parsed))}</time></div></header>
         <div class="pm-calendar-selected-content">${content || `<p class="pm-calendar-empty-day">${emptyLabel}</p>`}</div>
     </section>`;
 }
@@ -63,7 +63,7 @@ export function occasionList(scope) {
     if (!scope.occasions.length) return '<p class="pm-calendar-empty-day">尚未添加生日或纪念日</p>';
     return scope.occasions.map(occasion => `<article class="pm-calendar-event is-occasion" data-occasion-id="${escapeAttr(occasion.id)}">
         <div><b>${escapeHtml(occasion.title)}</b><span>${occasion.month}月${occasion.day}日 · ${occasionTypeLabel(occasion.type)}${occasion.note ? ` · ${escapeHtml(occasion.note)}` : ''}</span></div>
-        <div class="pm-calendar-event-actions"><button type="button" data-action="calendar-occasion-edit" data-occasion-id="${escapeAttr(occasion.id)}">编辑</button><button type="button" data-action="calendar-occasion-delete" data-occasion-id="${escapeAttr(occasion.id)}" aria-label="删除 ${escapeAttr(occasion.title)}">${TRASH_ICON_SVG}</button></div>
+        <div class="pm-calendar-event-actions"><button type="button" data-action="calendar-occasion-edit" data-occasion-id="${escapeAttr(occasion.id)}" aria-label="编辑 ${escapeAttr(occasion.title)}" title="编辑">${EDIT_ICON_SVG}</button><button type="button" data-action="calendar-occasion-delete" data-occasion-id="${escapeAttr(occasion.id)}" aria-label="删除 ${escapeAttr(occasion.title)}">${TRASH_ICON_SVG}</button></div>
     </article>`).join('');
 }
 
@@ -84,7 +84,7 @@ export function renderCalendarManagement({
     }
     if (viewMode === 'cycle') {
         const startDay = cycleScope.lastPeriodStart ? Number(cycleScope.lastPeriodStart.slice(8, 10)) : 1;
-        const subjects = cycleSubjects.length ? cycleSubjects : [{ value: '__self__', label: '我' }];
+        const subjects = cycleSubjects.length ? cycleSubjects : [{ value: '__self__', label: '<user>' }];
         return `<details class="pm-calendar-management" data-calendar-management="cycle" open><summary>生理期设置</summary><div class="pm-calendar-management-content"><form class="pm-calendar-editor pm-calendar-cycle-editor" data-calendar-cycle-editor>
           <label>记录对象<select name="subject" data-action="calendar-cycle-subject" aria-label="生理期记录对象">${subjects.map(item => `<option value="${escapeAttr(item.value)}" ${item.value === selectedCycleSubject ? 'selected' : ''}>${escapeHtml(item.label)}</option>`).join('')}</select></label>
           <label class="pm-calendar-cycle-toggle"><span><b>启用生理期提示</b><small>仅在本地按当前会话和所选角色保存</small></span><span class="pm-calendar-cycle-switch"><input class="pm-calendar-cycle-input" name="enabled" type="checkbox" ${cycleScope.enabled ? 'checked' : ''} aria-label="启用生理期提示"><span class="pm-custom-check" aria-hidden="true"></span></span></label>
@@ -94,7 +94,7 @@ export function renderCalendarManagement({
         </form></div></details>`;
     }
     return `<details class="pm-calendar-management" data-calendar-management="schedule"><summary>安排管理</summary><div class="pm-calendar-management-content">
-        <div class="pm-calendar-tools"><button type="button" data-action="calendar-scan">识别正文日期</button><button type="button" data-action="calendar-toggle-auto" aria-pressed="${scope.autoAdjust}">${scope.autoAdjust ? '自动识别：开' : '自动识别：关'}</button></div>
+        <div class="pm-calendar-tools"><button type="button" data-action="calendar-scan">立即识别正文日期</button><button type="button" data-action="calendar-toggle-auto" aria-pressed="${scope.autoAdjust}">回复后自动识别：${scope.autoAdjust ? '开' : '关'}</button></div>
         <div class="pm-calendar-data-row pm-calendar-date-tags-row"><input data-calendar-date-tags value="${escapeAttr((scope.dateTags || ['date']).join(', '))}" maxlength="160" placeholder="date, time_date" aria-label="正文日期标签"><button type="button" data-action="calendar-date-tags-save">保存标签</button></div>
         <section class="pm-calendar-data-tools"><h3>节假日数据</h3><div class="pm-calendar-data-row pm-calendar-holiday-row"><select data-action="calendar-holiday-country" data-calendar-country aria-label="节假日国家"><option value="CN" ${holidayCache.selectedCountry === 'CN' ? 'selected' : ''}>中国</option><option value="US" ${holidayCache.selectedCountry === 'US' ? 'selected' : ''}>美国</option><option value="JP" ${holidayCache.selectedCountry === 'JP' ? 'selected' : ''}>日本</option></select><button type="button" data-action="calendar-holiday-refresh" ${holidayAvailable ? '' : 'disabled aria-disabled="true"'}>刷新节假日</button></div>${holidayAvailable ? '' : `<small class="pm-calendar-attribution">该国家在当前年代无外部数据源（仅支持 ${holidayRange?.min ?? '未知'}–${holidayRange?.max ?? '未知'} 年）</small>`}</section>
         <div class="pm-calendar-editor-stack">

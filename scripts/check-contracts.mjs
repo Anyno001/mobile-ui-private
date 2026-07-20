@@ -1112,7 +1112,7 @@ for (const expected of [
   "__pmShowConfig('backup')", "__pmShowConfig('budget')", "__pmShowConfig('quick-reply')",
   'pm-indep-profile-fields', 'pm-indep-config-fields', 'pm-independent-api-fields',
   'renderQuickReplySettings', 'Quick Reply', '/phone', '手机开关', '创建或清除开关入口',
-  '默认使用酒馆API预设', 'BACK_ICON_SVG', 'pm-action-button is-danger',
+  '默认使用酒馆 API 预设', 'BACK_ICON_SVG', 'pm-action-button is-danger',
 ]) requireText('settings-templates.js', sourceModuleByName.get('settings-templates.js')?.code || '', expected);
 for (const expected of [
   'PHONE_QR_SET_NAME', 'PHONE_QR_AUTOMATION_ID', "PHONE_QR_MESSAGE = '/phone'", "PHONE_QR_LABEL_DEFAULT = '天音'",
@@ -1370,10 +1370,13 @@ for (const expected of [
   'aria-label="生日或纪念日名称"', 'aria-label="生日或纪念日备注"',
   'name="periodStartDay"', 'data-action="calendar-cycle-subject"',
   'data-action="calendar-editor-kind"', 'data-action="calendar-holiday-country"',
-  '该国家在当前年代无外部数据源', 'EVENT_EDITOR_ICON_SVG', 'OCCASION_EDITOR_ICON_SVG',
+  '该国家在当前年代无外部数据源', 'EDIT_ICON_SVG', 'EVENT_EDITOR_ICON_SVG', 'OCCASION_EDITOR_ICON_SVG',
   'aria-label="切换到日程编辑器"', 'aria-label="切换到生日或纪念日编辑器"',
-  'pm-calendar-editor-stack', "follicular: '安全期'", "luteal: '安全期'",
+  'pm-calendar-editor-stack', '立即识别正文日期', '回复后自动识别：', "label: '<user>'",
+  '<time datetime="${selectedDate}">${escapeHtml(detailDate.format(parsed))}</time>',
+  "follicular: '安全期'", "luteal: '安全期'",
 ]) requireText('calendar-view.js', calendarViewCode, expected);
+for (const forbidden of ['<span>已选日期</span>', '>${escapeHtml(selectedDate)}</time>', '>编辑</button>']) if (calendarViewCode.includes(forbidden)) failures.push(`calendar-view.js: removed calendar UI remains: ${forbidden}`);
 if (calendarViewCode.includes('Weather data © Open-Meteo')) failures.push('calendar-view.js: weather attribution must not be rendered in the UI');
 for (const forbidden of ['相对低风险期', '不能作为避孕依据', '预测仅供提醒', '不能用于避孕判断']) {
   if (calendarViewCode.includes(forbidden) || calendarCode.includes(forbidden)) {
@@ -1415,13 +1418,14 @@ if (directoryTemplate.includes('pm-forum-entry') || directoryTemplate.includes('
 if (controlCenterTemplate.includes('makeOverlay') || controlCenterTemplate.includes('<span')) {
   failures.push('phone-control-center.js: compact control menu must not use the full overlay or explanatory subtitles');
 }
-for (const title of ['编辑消息', '联系人', '角色设置', '表情包管理', '日历', '重新启用自动消息', '删除信息']) {
+for (const title of ['编辑消息', '联系人', '角色设置', '表情包管理', '日历', '删除信息']) {
   if (!controlCenterTemplate.includes(title)) failures.push(`phone-control-center.js: compact control menu missing title ${title}`);
 }
 for (const expected of [
-  "action === 'contacts'", "action === 'rearm'", "action === 'calendar'", 'return window.__pmShowList()', 'return window.__pmArmAutoPoke()', 'return showPhoneCalendarPage()',
-  'runControlMenuAction', 'controlActionLabel', 'REFRESH_ICON_SVG', 'CALENDAR_ICON_SVG', 'EDIT_ICON_SVG', 'EMOJI_ICON_SVG', 'TRASH_ICON_SVG',
+  "action === 'contacts'", "action === 'calendar'", 'return window.__pmShowList()', 'return showPhoneCalendarPage()',
+  'runControlMenuAction', 'controlActionLabel', 'CALENDAR_ICON_SVG', 'EDIT_ICON_SVG', 'EMOJI_ICON_SVG', 'TRASH_ICON_SVG',
 ]) requireText('phone-control-center.js', controlCenterCode, expected);
+if (controlCenterCode.includes("action === 'rearm'") || controlCenterTemplate.includes('自动消息')) failures.push('phone-control-center.js: removed automatic-message rearm entry remains');
 if (controlCenterTemplate.includes('data-action="desktop"') || controlCenterTemplate.includes('返回桌面')) {
   failures.push('phone-control-center.js: compact control menu must not duplicate the chat navbar desktop action');
 }
@@ -1657,6 +1661,11 @@ for (const expected of [
   '@media(pointer:coarse){.pm-quote-action{min-width:42px;min-height:42px',
   '@media(prefers-reduced-motion:reduce){.pm-quote-target{animation:none',
   '.pm-calendar-view-switch{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;background:transparent}',
+  '.pm-calendar-tools{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;padding:10px 12px}',
+  '.pm-calendar-date-tags-row{margin-bottom:12px}',
+  '.pm-calendar-editor[hidden]{display:none}',
+  '.pm-calendar-event-actions button{display:grid;place-items:center;width:26px;height:26px',
+  '.pm-calendar-selected-detail>header time{font-size:14px;font-weight:700}',
   '.pm-calendar-editor-switch button{display:grid;place-items:center;width:30px;height:30px;padding:6px;border:0;border-radius:50%',
   '#pm-iphone[data-theme="dark"] .pm-calendar-view-switch button[aria-pressed="true"],#pm-iphone[data-theme="dark"] .pm-calendar-editor-switch button[aria-pressed="true"]{background:color-mix(in srgb,var(--pm-calendar-accent) 20%,transparent);color:var(--pm-calendar-accent);box-shadow:none}',
   '@media (prefers-reduced-motion:reduce){.pm-calendar-header-action.is-loading svg{animation:none}}',
@@ -1733,10 +1742,14 @@ for (const expected of [
   'bindPressGesture(sendButton', 'delay: 550', 'getPendingMessages(runtime',
   'state.isGenerating', 'window.__pmSubmitPending()', 'unbindSendGesture?.()', 'unbindPhoneResize?.()',
   'createAmbientStatusController', 'ambientStatusEnabled === true', 'new Intl.DateTimeFormat',
-  'applyPhoneScale(state.phoneWindow)', 'pm-phone-resize-handle', 'SIGNAL_ICON_SVG', 'WIFI_ICON_SVG', 'ambientStatus.stop();',
+  'applyPhoneScale(state.phoneWindow)', 'pm-phone-resize-handle', 'SIGNAL_ICON_SVG', 'ambientStatus.stop();',
+  'placeholder="长按提交全部消息"',
+  '${SIGNAL_ICON_SVG}</span><span>本地</span>',
   '<div class="pm-phone-screen">',
   '</div>\n<div class="pm-phone-resize-handle" role="separator"',
 ]) requireText('phone-lifecycle.js', lifecycleCode, expected);
+if (lifecycleCode.includes('WIFI_ICON_SVG')) failures.push('phone-lifecycle.js: removed WiFi status icon remains');
+
 if (/cb\.style\.cssText\s*=\s*['"][^'"]*border-radius\s*:\s*50%/.test(lifecycleCode)) failures.push('phone-lifecycle.js: message selection checkbox must not override the CSS-owned circle shape with an inline border radius');
 for (const match of css.matchAll(/([^{}]+)\{/g)) {
   const selector = match[1];

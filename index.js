@@ -1952,11 +1952,11 @@ ${userPrompt}` : userPrompt;
     const events = scope.events[date] || [];
     const occasionRows = (occasionsByDate.get(date) || []).map((occasion) => `<article class="pm-calendar-event is-occasion" data-occasion-id="${escapeAttr(occasion.id)}">
         <div><b>${escapeHtml(occasion.title)}</b><span>${occasionTypeLabel(occasion.type)}${occasion.leapAdjusted ? "\uFF08\u95F0\u65E5\u987A\u5EF6\uFF09" : ""}${occasion.note ? ` \xB7 ${escapeHtml(occasion.note)}` : ""}</span></div>
-        <div class="pm-calendar-event-actions"><button type="button" data-action="calendar-occasion-edit" data-occasion-id="${escapeAttr(occasion.id)}">\u7F16\u8F91</button><button type="button" data-action="calendar-occasion-delete" data-occasion-id="${escapeAttr(occasion.id)}" aria-label="\u5220\u9664 ${escapeAttr(occasion.title)}">${TRASH_ICON_SVG}</button></div>
+        <div class="pm-calendar-event-actions"><button type="button" data-action="calendar-occasion-edit" data-occasion-id="${escapeAttr(occasion.id)}" aria-label="\u7F16\u8F91 ${escapeAttr(occasion.title)}" title="\u7F16\u8F91">${EDIT_ICON_SVG}</button><button type="button" data-action="calendar-occasion-delete" data-occasion-id="${escapeAttr(occasion.id)}" aria-label="\u5220\u9664 ${escapeAttr(occasion.title)}">${TRASH_ICON_SVG}</button></div>
     </article>`);
     const eventItems = events.map((event) => `<article class="pm-calendar-event" data-event-id="${escapeAttr(event.id)}">
         <div><b>${escapeHtml(event.title)}</b>${event.note ? `<span>${escapeHtml(event.note)}</span>` : ""}</div>
-        <div class="pm-calendar-event-actions"><button type="button" data-action="calendar-edit" data-event-id="${escapeAttr(event.id)}">\u7F16\u8F91</button><button type="button" data-action="calendar-delete" data-event-id="${escapeAttr(event.id)}" aria-label="\u5220\u9664 ${escapeAttr(event.title)}">${TRASH_ICON_SVG}</button></div>
+        <div class="pm-calendar-event-actions"><button type="button" data-action="calendar-edit" data-event-id="${escapeAttr(event.id)}" aria-label="\u7F16\u8F91 ${escapeAttr(event.title)}" title="\u7F16\u8F91">${EDIT_ICON_SVG}</button><button type="button" data-action="calendar-delete" data-event-id="${escapeAttr(event.id)}" aria-label="\u5220\u9664 ${escapeAttr(event.title)}">${TRASH_ICON_SVG}</button></div>
     </article>`);
     return [...occasionRows, ...eventItems].join("");
   }
@@ -1977,12 +1977,12 @@ ${userPrompt}` : userPrompt;
     if (!prediction.phase) return "";
     return `<div class="pm-calendar-cycle"><span>\u751F\u7406\u671F\u63D0\u793A</span><b>${CYCLE_LABELS[prediction.phase] || prediction.phase}</b>${prediction.status === "override" ? "<em>\u624B\u52A8</em>" : ""}</div>`;
   }
-  function renderSelectedDateDetail(scope, occasionsByDate, holidayCache, weatherStore, cycleScope, selectedDate, viewMode) {
+  function renderSelectedDateDetail(scope, occasionsByDate, holidayCache, weatherStore, cycleScope, selectedDate, viewMode, relativeLabel = "") {
     const parsed = parseCalendarDate(selectedDate);
     const content = viewMode === "weather" ? weatherRow(weatherStore, selectedDate) : viewMode === "cycle" ? cycleRow(cycleScope, selectedDate) : `${holidayRows(holidayCache, selectedDate)}${eventRows(scope, occasionsByDate, selectedDate)}`;
     const emptyLabel = viewMode === "weather" ? "\u8FD9\u4E00\u5929\u6CA1\u6709\u5929\u6C14\u6570\u636E" : viewMode === "cycle" ? "\u8FD9\u4E00\u5929\u6CA1\u6709\u751F\u7406\u671F\u63D0\u793A" : "\u8FD9\u4E00\u5929\u8FD8\u6CA1\u6709\u5B89\u6392";
     return `<section class="pm-calendar-selected-detail" data-calendar-selected-detail="${selectedDate}" data-calendar-detail-mode="${viewMode}">
-        <header><div><span>\u5DF2\u9009\u65E5\u671F</span><b>${escapeHtml(detailDate.format(parsed))}</b></div><time datetime="${selectedDate}">${escapeHtml(selectedDate)}</time></header>
+        <header><div>${relativeLabel ? `<span>${escapeHtml(relativeLabel)}</span>` : ""}<time datetime="${selectedDate}">${escapeHtml(detailDate.format(parsed))}</time></div></header>
         <div class="pm-calendar-selected-content">${content || `<p class="pm-calendar-empty-day">${emptyLabel}</p>`}</div>
     </section>`;
   }
@@ -1990,7 +1990,7 @@ ${userPrompt}` : userPrompt;
     if (!scope.occasions.length) return '<p class="pm-calendar-empty-day">\u5C1A\u672A\u6DFB\u52A0\u751F\u65E5\u6216\u7EAA\u5FF5\u65E5</p>';
     return scope.occasions.map((occasion) => `<article class="pm-calendar-event is-occasion" data-occasion-id="${escapeAttr(occasion.id)}">
         <div><b>${escapeHtml(occasion.title)}</b><span>${occasion.month}\u6708${occasion.day}\u65E5 \xB7 ${occasionTypeLabel(occasion.type)}${occasion.note ? ` \xB7 ${escapeHtml(occasion.note)}` : ""}</span></div>
-        <div class="pm-calendar-event-actions"><button type="button" data-action="calendar-occasion-edit" data-occasion-id="${escapeAttr(occasion.id)}">\u7F16\u8F91</button><button type="button" data-action="calendar-occasion-delete" data-occasion-id="${escapeAttr(occasion.id)}" aria-label="\u5220\u9664 ${escapeAttr(occasion.title)}">${TRASH_ICON_SVG}</button></div>
+        <div class="pm-calendar-event-actions"><button type="button" data-action="calendar-occasion-edit" data-occasion-id="${escapeAttr(occasion.id)}" aria-label="\u7F16\u8F91 ${escapeAttr(occasion.title)}" title="\u7F16\u8F91">${EDIT_ICON_SVG}</button><button type="button" data-action="calendar-occasion-delete" data-occasion-id="${escapeAttr(occasion.id)}" aria-label="\u5220\u9664 ${escapeAttr(occasion.title)}">${TRASH_ICON_SVG}</button></div>
     </article>`).join("");
   }
   function weatherSearchResults(results) {
@@ -2018,7 +2018,7 @@ ${userPrompt}` : userPrompt;
     }
     if (viewMode === "cycle") {
       const startDay = cycleScope.lastPeriodStart ? Number(cycleScope.lastPeriodStart.slice(8, 10)) : 1;
-      const subjects = cycleSubjects.length ? cycleSubjects : [{ value: "__self__", label: "\u6211" }];
+      const subjects = cycleSubjects.length ? cycleSubjects : [{ value: "__self__", label: "<user>" }];
       return `<details class="pm-calendar-management" data-calendar-management="cycle" open><summary>\u751F\u7406\u671F\u8BBE\u7F6E</summary><div class="pm-calendar-management-content"><form class="pm-calendar-editor pm-calendar-cycle-editor" data-calendar-cycle-editor>
           <label>\u8BB0\u5F55\u5BF9\u8C61<select name="subject" data-action="calendar-cycle-subject" aria-label="\u751F\u7406\u671F\u8BB0\u5F55\u5BF9\u8C61">${subjects.map((item) => `<option value="${escapeAttr(item.value)}" ${item.value === selectedCycleSubject ? "selected" : ""}>${escapeHtml(item.label)}</option>`).join("")}</select></label>
           <label class="pm-calendar-cycle-toggle"><span><b>\u542F\u7528\u751F\u7406\u671F\u63D0\u793A</b><small>\u4EC5\u5728\u672C\u5730\u6309\u5F53\u524D\u4F1A\u8BDD\u548C\u6240\u9009\u89D2\u8272\u4FDD\u5B58</small></span><span class="pm-calendar-cycle-switch"><input class="pm-calendar-cycle-input" name="enabled" type="checkbox" ${cycleScope.enabled ? "checked" : ""} aria-label="\u542F\u7528\u751F\u7406\u671F\u63D0\u793A"><span class="pm-custom-check" aria-hidden="true"></span></span></label>
@@ -2028,7 +2028,7 @@ ${userPrompt}` : userPrompt;
         </form></div></details>`;
     }
     return `<details class="pm-calendar-management" data-calendar-management="schedule"><summary>\u5B89\u6392\u7BA1\u7406</summary><div class="pm-calendar-management-content">
-        <div class="pm-calendar-tools"><button type="button" data-action="calendar-scan">\u8BC6\u522B\u6B63\u6587\u65E5\u671F</button><button type="button" data-action="calendar-toggle-auto" aria-pressed="${scope.autoAdjust}">${scope.autoAdjust ? "\u81EA\u52A8\u8BC6\u522B\uFF1A\u5F00" : "\u81EA\u52A8\u8BC6\u522B\uFF1A\u5173"}</button></div>
+        <div class="pm-calendar-tools"><button type="button" data-action="calendar-scan">\u7ACB\u5373\u8BC6\u522B\u6B63\u6587\u65E5\u671F</button><button type="button" data-action="calendar-toggle-auto" aria-pressed="${scope.autoAdjust}">\u56DE\u590D\u540E\u81EA\u52A8\u8BC6\u522B\uFF1A${scope.autoAdjust ? "\u5F00" : "\u5173"}</button></div>
         <div class="pm-calendar-data-row pm-calendar-date-tags-row"><input data-calendar-date-tags value="${escapeAttr((scope.dateTags || ["date"]).join(", "))}" maxlength="160" placeholder="date, time_date" aria-label="\u6B63\u6587\u65E5\u671F\u6807\u7B7E"><button type="button" data-action="calendar-date-tags-save">\u4FDD\u5B58\u6807\u7B7E</button></div>
         <section class="pm-calendar-data-tools"><h3>\u8282\u5047\u65E5\u6570\u636E</h3><div class="pm-calendar-data-row pm-calendar-holiday-row"><select data-action="calendar-holiday-country" data-calendar-country aria-label="\u8282\u5047\u65E5\u56FD\u5BB6"><option value="CN" ${holidayCache.selectedCountry === "CN" ? "selected" : ""}>\u4E2D\u56FD</option><option value="US" ${holidayCache.selectedCountry === "US" ? "selected" : ""}>\u7F8E\u56FD</option><option value="JP" ${holidayCache.selectedCountry === "JP" ? "selected" : ""}>\u65E5\u672C</option></select><button type="button" data-action="calendar-holiday-refresh" ${holidayAvailable ? "" : 'disabled aria-disabled="true"'}>\u5237\u65B0\u8282\u5047\u65E5</button></div>${holidayAvailable ? "" : `<small class="pm-calendar-attribution">\u8BE5\u56FD\u5BB6\u5728\u5F53\u524D\u5E74\u4EE3\u65E0\u5916\u90E8\u6570\u636E\u6E90\uFF08\u4EC5\u652F\u6301 ${holidayRange?.min ?? "\u672A\u77E5"}\u2013${holidayRange?.max ?? "\u672A\u77E5"} \u5E74\uFF09</small>`}</section>
         <div class="pm-calendar-editor-stack">
@@ -2165,6 +2165,9 @@ ${userPrompt}` : userPrompt;
     const monthKeys = monthCells.flatMap((cell) => cell.date ? [cell.date] : []);
     const monthStart = parseCalendarDate(monthKeys[0]);
     const todayKey = formatCalendarDate(today);
+    const tomorrow = new Date(today);
+    tomorrow.setDate(today.getDate() + 1);
+    const tomorrowKey = formatCalendarDate(tomorrow);
     const monthFirst = calendarDateFromParts(viewYear, viewMonth, 1);
     const selectedDate = monthKeys.includes(view.selectedDate) ? view.selectedDate : viewYear === today.getFullYear() && viewMonth === today.getMonth() + 1 ? todayKey : monthFirst;
     const occasionsByDate = /* @__PURE__ */ new Map();
@@ -2192,6 +2195,7 @@ ${userPrompt}` : userPrompt;
       const labels = [shortDate.format(meta.parsed), meta.summary].filter(Boolean).join("\uFF0C");
       return `<button type="button" class="${classes.join(" ")}" data-action="calendar-select-date" data-calendar-date="${date}" aria-pressed="${date === selectedDate}" aria-label="${escapeAttr(labels)}"><b>${meta.parsed.getDate()}</b><span>${escapeHtml(meta.summary)}</span><i aria-hidden="true"></i></button>`;
     }).join("");
+    const relativeLabel = selectedDate === todayKey ? "\u4ECA\u5929" : selectedDate === tomorrowKey ? "\u660E\u5929" : "";
     const selectedDetail = renderSelectedDateDetail(
       scope,
       occasionsByDate,
@@ -2199,7 +2203,8 @@ ${userPrompt}` : userPrompt;
       weatherStore,
       cycleScope,
       selectedDate,
-      viewMode
+      viewMode,
+      relativeLabel
     );
     const headerAction = viewMode === "weather" ? "calendar-weather-refresh" : viewMode === "schedule" ? "calendar-generate" : "";
     const headerActionLabel = viewMode === "weather" ? "\u5237\u65B0\u5929\u6C14" : calendarGenerationCopy(today).actionLabel;
@@ -2281,7 +2286,7 @@ ${userPrompt}` : userPrompt;
       return ids.flatMap((value) => {
         if (!value || seen.has(value)) return [];
         seen.add(value);
-        return [{ value, label: value === CYCLE_SELF_SUBJECT ? "\u6211" : value.startsWith("role:") ? value.slice(5) : value }];
+        return [{ value, label: value === CYCLE_SELF_SUBJECT ? "<user>" : value.startsWith("role:") ? value.slice(5) : value }];
       });
     };
     const cycles = (storageId, subject = CYCLE_SELF_SUBJECT) => cycleScopeFor(runtime.cycleStore, storageId, subject);
@@ -6469,9 +6474,12 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
     const switchToLive = tab !== "live";
     const switchLabel = switchToLive ? "\u5207\u6362\u5230\u76F4\u64AD" : "\u8FD4\u56DE\u793E\u533A";
     const switchIcon = switchToLive ? LIVE_ICON_SVG : FEED_ICON_SVG;
+    const isPrompt = tab === "prompt";
+    const returnTab = ["feed", "live"].includes(uiScope.lastTab) ? uiScope.lastTab : "feed";
+    const leadingAction = isPrompt ? `data-action="tab" data-tab="${returnTab}" aria-label="\u8FD4\u56DE\u5B50\u793E\u533A" title="\u8FD4\u56DE\u5B50\u793E\u533A"` : 'data-action="desktop" aria-label="\u8FD4\u56DE\u684C\u9762" title="\u8FD4\u56DE\u684C\u9762"';
     return `<div id="pm-scene-app" class="pm-modal pm-scene-shell" style="--scene-accent:${escapeAttr(accent)}">
-        <div class="pm-scene-topbar"><div class="pm-scene-nav-actions"><button type="button" class="pm-scene-home" data-action="desktop" aria-label="\u8FD4\u56DE\u684C\u9762" title="\u8FD4\u56DE\u684C\u9762">${HOME_ICON_SVG}</button></div><div class="pm-scene-title"><b>${escapeHtml(scene.title)}</b><button type="button" class="pm-scene-title-poke" data-action="poke-scene" aria-label="\u62CD\u4E00\u62CD\u793E\u533A" title="\u62CD\u4E00\u62CD\u793E\u533A">${POKE_ICON_SVG}</button><button type="button" class="pm-scene-view-toggle" data-action="tab" data-tab="${switchToLive ? "live" : "feed"}" aria-label="${switchLabel}" title="${switchLabel}">${switchIcon}</button></div><div class="pm-scene-view-actions"><button type="button" class="pm-scene-exit" data-action="exit" aria-label="\u9000\u51FA\u624B\u673A" title="\u9000\u51FA\u624B\u673A">${CLOSE_ICON_SVG}</button></div></div><div class="pm-scene-status" aria-live="polite" hidden></div>
-        ${content}<div class="pm-scene-bottom-bar">${renderSceneMenu(scene, uiScope, autoActive)}${composer}</div>
+        <div class="pm-scene-topbar"><div class="pm-scene-nav-actions"><button type="button" class="pm-scene-home" ${leadingAction}>${isPrompt ? BACK_ICON_SVG : HOME_ICON_SVG}</button></div><div class="pm-scene-title"><b>${escapeHtml(scene.title)}</b><button type="button" class="pm-scene-title-poke" data-action="poke-scene" aria-label="\u62CD\u4E00\u62CD\u793E\u533A" title="\u62CD\u4E00\u62CD\u793E\u533A">${POKE_ICON_SVG}</button><button type="button" class="pm-scene-view-toggle" data-action="tab" data-tab="${switchToLive ? "live" : "feed"}" aria-label="${switchLabel}" title="${switchLabel}">${switchIcon}</button></div><div class="pm-scene-view-actions"><button type="button" class="pm-scene-exit" data-action="exit" aria-label="\u9000\u51FA\u624B\u673A" title="\u9000\u51FA\u624B\u673A">${CLOSE_ICON_SVG}</button></div></div><div class="pm-scene-status" aria-live="polite" hidden></div>
+        ${content}${isPrompt ? "" : `<div class="pm-scene-bottom-bar">${renderSceneMenu(scene, uiScope, autoActive)}${composer}</div>`}
     </div>`;
   }
 
@@ -9291,8 +9299,7 @@ ${antiFluff}`;
   // src/phone-control-center.js
   var controlActionLabel = (action) => ({
     calendar: "\u6253\u5F00\u65E5\u5386",
-    contacts: "\u6253\u5F00\u8054\u7CFB\u4EBA",
-    rearm: "\u91CD\u65B0\u542F\u7528\u81EA\u52A8\u6D88\u606F"
+    contacts: "\u6253\u5F00\u8054\u7CFB\u4EBA"
   })[action] || "\u6267\u884C\u5FEB\u6377\u64CD\u4F5C";
   function runControlMenuAction(action, runAction, reportActionError) {
     const result = runAction(action);
@@ -9398,7 +9405,6 @@ ${antiFluff}`;
       else if (action === "group") window.__pmEditGroup();
       else if (action === "delete") window.__pmStartDeleteMode();
       else if (action === "calendar") return showPhoneCalendarPage();
-      else if (action === "rearm") return window.__pmArmAutoPoke();
     }
     function bindControlMenu(menu, anchor) {
       menu.addEventListener("click", (event) => {
@@ -9442,7 +9448,6 @@ ${antiFluff}`;
   ${state.isGroupChat ? `<button type="button" role="menuitem" data-action="group">${CONTACTS_ICON_SVG}\u7FA4\u804A\u8BBE\u7F6E</button>` : ""}
   <button type="button" role="menuitem" data-action="emoji">${EMOJI_ICON_SVG}\u8868\u60C5\u5305\u7BA1\u7406</button>
   <button type="button" role="menuitem" data-action="calendar">${CALENDAR_ICON_SVG}\u65E5\u5386</button>
-  <button type="button" role="menuitem" data-action="rearm">${REFRESH_ICON_SVG}\u91CD\u65B0\u542F\u7528\u81EA\u52A8\u6D88\u606F</button>
   <button type="button" role="menuitem" data-action="delete" class="pm-control-menu-danger">${TRASH_ICON_SVG}\u5220\u9664\u4FE1\u606F</button>`;
       phone.appendChild(menu);
       const phoneRect = phone.getBoundingClientRect();
@@ -12079,7 +12084,7 @@ ${lines}`;
       state.phoneWindow.innerHTML = `
 <div class="pm-phone-screen">
   <div class="pm-island"></div>
-<div class="pm-status-bar" aria-label="\u8BBE\u5907\u672C\u5730\u72B6\u6001" ${window.__pmTheme.ambientStatusEnabled === true ? "" : "hidden"}><span class="pm-status-time"></span><span class="pm-status-local">\u672C\u5730<span class="pm-status-icons" aria-hidden="true">${SIGNAL_ICON_SVG}${WIFI_ICON_SVG}</span></span></div>
+<div class="pm-status-bar" aria-label="\u8BBE\u5907\u672C\u5730\u72B6\u6001" ${window.__pmTheme.ambientStatusEnabled === true ? "" : "hidden"}><span class="pm-status-time"></span><span class="pm-status-local"><span class="pm-status-icons" aria-hidden="true">${SIGNAL_ICON_SVG}</span><span>\u672C\u5730</span></span></div>
 <div class="pm-main-ui" data-page="chat">
   <section class="pm-phone-page pm-chat-page" data-phone-page="chat">
     <div class="pm-navbar">
@@ -12107,7 +12112,7 @@ ${lines}`;
     </div>
     <div class="pm-input-bar">
       <button type="button" onclick="window.__pmShowControlCenter()" class="pm-expand-btn" title="\u5FEB\u6377\u5DE5\u5177" aria-haspopup="menu" aria-expanded="false">${CONTROL_ICON_SVG}</button>
-      <input class="pm-input" placeholder="\u957F\u6309\u53D1\u9001\u4F1A\u4E00\u6B21\u6027\u63D0\u4EA4\u6D88\u606F">
+      <input class="pm-input" placeholder="\u957F\u6309\u63D0\u4EA4\u5168\u90E8\u6D88\u606F">
       <button type="button" class="pm-up-btn" title="\u70B9\u51FB\u52A0\u5165\u6682\u5B58\uFF0C\u957F\u6309\u6700\u7EC8\u63D0\u4EA4\u7ED9 AI">${SEND_ICON_SVG}</button>
     </div>
   </section>
@@ -12599,7 +12604,7 @@ ${lines}`;
         const tip = document.getElementById("pm-mode-tip");
         main?.classList.toggle("pm-mode-active", !useIndependent);
         independent?.classList.toggle("pm-mode-active", useIndependent);
-        if (tip) tip.textContent = useIndependent ? "\u72EC\u7ACB API \u5FC5\u987B\u586B\u5199\u5730\u5740\u3001\u5BC6\u94A5\u548C\u6A21\u578B" : "\u9ED8\u8BA4\u4F7F\u7528\u9152\u9986API\u9884\u8BBE";
+        if (tip) tip.textContent = useIndependent ? "\u72EC\u7ACB API \u5FC5\u987B\u586B\u5199\u5730\u5740\u3001\u5BC6\u94A5\u548C\u6A21\u578B" : "\u9ED8\u8BA4\u4F7F\u7528\u9152\u9986 API \u9884\u8BBE";
         for (const id2 of FIELD_IDS) {
           const fields = document.getElementById(id2);
           if (fields) fields.hidden = !useIndependent;
@@ -12682,7 +12687,7 @@ ${lines}`;
   function renderSettingsHome() {
     return `
     <div class="pm-settings-home" role="list">
-      <button type="button" role="listitem" onclick="window.__pmShowConfig('api')"><b>API</b><span>\u9ED8\u8BA4\u4F7F\u7528\u9152\u9986API\u9884\u8BBE</span></button>
+      <button type="button" role="listitem" onclick="window.__pmShowConfig('api')"><b>API</b><span>\u9ED8\u8BA4\u4F7F\u7528\u9152\u9986 API \u9884\u8BBE</span></button>
       <button type="button" role="listitem" onclick="window.__pmShowConfig('quick-reply')"><b>\u624B\u673A\u5F00\u5173</b><span>\u521B\u5EFA\u6216\u6E05\u9664\u5F00\u5173\u5165\u53E3</span></button>
       <button type="button" role="listitem" onclick="window.__pmShowConfig('look')"><b>\u4E3B\u9898</b><span>\u65E5\u591C\u6A21\u5F0F\u3001\u6C14\u6CE1\u989C\u8272\u4E0E\u80CC\u666F\u56FE</span></button>
       <button type="button" role="listitem" onclick="window.__pmShowConfig('backup')"><b>\u5907\u4EFD</b><span>\u5BFC\u51FA\u3001\u5BFC\u5165\u6216\u5B89\u5168\u6E05\u7406\u63D2\u4EF6\u6570\u636E</span></button>
@@ -12705,7 +12710,7 @@ ${lines}`;
           <div id="pm-mode-main" class="pm-mode-opt ${!useIndependent ? "pm-mode-active" : ""}" onclick="window.__pmSetMode(false)">\u4E3B API</div>
           <div id="pm-mode-indep" class="pm-mode-opt ${useIndependent ? "pm-mode-active" : ""}" onclick="window.__pmSetMode(true)">\u72EC\u7ACB API</div>
         </div>
-        <div id="pm-mode-tip" class="pm-cfg-tip" style="text-align:left;padding:6px 2px 0;">${useIndependent ? "\u72EC\u7ACB API \u5FC5\u987B\u586B\u5199\u5730\u5740\u3001\u5BC6\u94A5\u548C\u6A21\u578B" : "\u9ED8\u8BA4\u4F7F\u7528\u9152\u9986API\u9884\u8BBE"}</div>
+        <div id="pm-mode-tip" class="pm-cfg-tip" style="text-align:left;padding:6px 2px 0;">${useIndependent ? "\u72EC\u7ACB API \u5FC5\u987B\u586B\u5199\u5730\u5740\u3001\u5BC6\u94A5\u548C\u6A21\u578B" : "\u9ED8\u8BA4\u4F7F\u7528\u9152\u9986 API \u9884\u8BBE"}</div>
       </div>
       <div id="pm-indep-profile-fields" class="pm-independent-api-fields" ${useIndependent ? "" : "hidden"} style="padding:6px 14px 4px;border-top:1px solid #f0f0f0;">
         <div class="pm-cfg-label" style="margin:8px 0 6px;">\u5DF2\u4FDD\u5B58\u6863\u6848</div>

@@ -422,7 +422,7 @@ const renderedWeather = renderCalendarPageHtml(
 const renderedCycle = renderCalendarPageHtml(
     renderedScope, { occasions: [] }, '<status>', holidayForToday, currentWeather, currentCycle,
     [{ name: '<Location>', latitude: 1, longitude: 2, country: '<Country>', admin1: '', timezone: 'UTC' }],
-    { ...renderedView, viewMode: 'cycle', cycleSubject: '__self__', cycleSubjects: [{ value: '__self__', label: '我' }] },
+    { ...renderedView, viewMode: 'cycle', cycleSubject: '__self__', cycleSubjects: [{ value: '__self__', label: '<user>' }] },
 );
 const renderedBusySchedule = renderCalendarPageHtml(
     renderedScope, { occasions: [] }, '', holidayForToday, currentWeather, currentCycle, [],
@@ -455,7 +455,13 @@ assert.match(renderedSchedule, /data-action="calendar-mode-cycle"[^>]*aria-press
 assert.match(renderedSchedule, /class="pm-calendar-editor-switch"[\s\S]*data-editor-kind="event"[^>]*aria-label="切换到日程编辑器"[^>]*>[\s\S]*<svg/);
 assert.match(renderedSchedule, /data-editor-kind="occasion"[^>]*aria-label="切换到生日或纪念日编辑器"[^>]*>[\s\S]*<svg/);
 assert.doesNotMatch(renderedSchedule, />日程<\/button>|>生日 \/ 纪念日<\/button>/, '编辑器切换不得恢复文字双按钮');
-assert.match(renderedSchedule, /自动识别：关/);
+assert.match(renderedSchedule, /立即识别正文日期/);
+assert.match(renderedSchedule, /回复后自动识别：关/);
+assert.match(renderedSchedule, /data-action="calendar-edit"[^>]*aria-label="编辑 &lt;日程&gt;"[^>]*>[\s\S]*?<svg/);
+assert.doesNotMatch(renderedSchedule, /data-action="calendar-edit"[^>]*>编辑<\/button>/);
+assert.doesNotMatch(renderedSchedule, /已选日期|>\d{4}-\d{2}-\d{2}<\/time>/);
+assert.match(renderedSchedule, /<time datetime="[^"]+">[^<]+<\/time>/);
+assert.match(renderedSchedule, /data-calendar-selected-detail="[^"]+"[\s\S]*?<span>今天<\/span>/);
 assert.match(renderedSchedule, /data-calendar-date-tags[^>]*value="date"/);
 assert.match(renderedSchedule, /data-action="calendar-date-tags-save"/);
 assert.match(renderedSchedule, /aria-label="正文日期标签"/);
@@ -478,6 +484,7 @@ assert.match(renderedCycle, /data-calendar-management="cycle" open/);
 assert.match(renderedCycle, /data-action="calendar-mode-cycle"[^>]*aria-pressed="true"/);
 assert.match(renderedCycle, /生理期提示/);
 assert.match(renderedCycle, /name="subject"[^>]*data-action="calendar-cycle-subject"/);
+assert.match(renderedCycle, /&lt;user&gt;/);
 assert.match(renderedCycle, /name="periodStartDay"/);
 assert.match(renderedCycle, /class="pm-calendar-cycle-input" name="enabled" type="checkbox" checked/,
     '周期开关必须保留原生 checkbox 的表单与辅助技术语义');
@@ -501,6 +508,20 @@ for (const label of [
     assert.match(renderedSchedule, new RegExp(`aria-label="${label}"`), `${label} 控件必须有可访问名称`);
 }
 assert.doesNotMatch(`${renderedSchedule}${renderedWeather}${renderedCycle}`, /<Holiday>|<Location>|<status>/);
+
+const crossMonthTomorrow = renderCalendarPageHtml(
+    { ...createEmptyCalendarScope(), baseDate: '2032-01-31' }, { occasions: [] }, '', {}, {}, {}, [],
+    { viewYear: 2032, viewMonth: 2, selectedDate: '2032-02-01', viewMode: 'schedule' },
+);
+assert.match(
+    crossMonthTomorrow,
+    /data-calendar-selected-detail="2032-02-01"[\s\S]*?<span>明天<\/span>/,
+    '明天标签必须支持跨月日期',
+);
+assert.match(crossMonthTomorrow, /<time datetime="2032-02-01">[^<]+<\/time>/,
+    '详情卡应保留机器可读日期并显示本地化标题');
+assert.doesNotMatch(crossMonthTomorrow, />2032-02-01<\/time>/,
+    '详情卡不得恢复右侧 YYYY-MM-DD 小字');
 
 const terminalSchedule = renderCalendarPageHtml(
     { ...createEmptyCalendarScope(), baseDate: '9999-12-31' }, { occasions: [] }, '', {}, {}, {}, [],

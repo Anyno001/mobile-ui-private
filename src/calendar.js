@@ -101,6 +101,9 @@ export function renderCalendarPageHtml(
     const monthKeys = monthCells.flatMap(cell => cell.date ? [cell.date] : []);
     const monthStart = parseCalendarDate(monthKeys[0]);
     const todayKey = formatCalendarDate(today);
+    const tomorrow = new Date(today);
+    tomorrow.setDate(today.getDate() + 1);
+    const tomorrowKey = formatCalendarDate(tomorrow);
     const monthFirst = calendarDateFromParts(viewYear, viewMonth, 1);
     const selectedDate = monthKeys.includes(view.selectedDate)
         ? view.selectedDate
@@ -130,8 +133,9 @@ export function renderCalendarPageHtml(
         const labels = [shortDate.format(meta.parsed), meta.summary].filter(Boolean).join('，');
         return `<button type="button" class="${classes.join(' ')}" data-action="calendar-select-date" data-calendar-date="${date}" aria-pressed="${date === selectedDate}" aria-label="${escapeAttr(labels)}"><b>${meta.parsed.getDate()}</b><span>${escapeHtml(meta.summary)}</span><i aria-hidden="true"></i></button>`;
     }).join('');
+    const relativeLabel = selectedDate === todayKey ? '今天' : selectedDate === tomorrowKey ? '明天' : '';
     const selectedDetail = renderSelectedDateDetail(
-        scope, occasionsByDate, holidayCache, weatherStore, cycleScope, selectedDate, viewMode,
+        scope, occasionsByDate, holidayCache, weatherStore, cycleScope, selectedDate, viewMode, relativeLabel,
     );
     const headerAction = viewMode === 'weather' ? 'calendar-weather-refresh' : viewMode === 'schedule' ? 'calendar-generate' : '';
     const headerActionLabel = viewMode === 'weather' ? '刷新天气' : calendarGenerationCopy(today).actionLabel;
@@ -205,7 +209,7 @@ export function installCalendar(state, deps) {
         return ids.flatMap(value => {
             if (!value || seen.has(value)) return [];
             seen.add(value);
-            return [{ value, label: value === CYCLE_SELF_SUBJECT ? '我' : value.startsWith('role:') ? value.slice(5) : value }];
+            return [{ value, label: value === CYCLE_SELF_SUBJECT ? '<user>' : value.startsWith('role:') ? value.slice(5) : value }];
         });
     };
     const cycles = (storageId, subject = CYCLE_SELF_SUBJECT) => cycleScopeFor(runtime.cycleStore, storageId, subject);

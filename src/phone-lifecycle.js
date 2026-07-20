@@ -2,7 +2,7 @@ import { POPOVER_SUPPORTED } from './constants.js';
 import { escapeHtml } from './ui.js';
 import {
     CLOSE_ICON_SVG, CONTROL_ICON_SVG, HOME_ICON_SVG,
-    POKE_ICON_SVG, SEND_ICON_SVG, SIGNAL_ICON_SVG, WIFI_ICON_SVG,
+    POKE_ICON_SVG, SEND_ICON_SVG, SIGNAL_ICON_SVG,
 } from './icons.js';
 import { getPendingMessages } from './pending-messages.js';
 import { bindPressGesture } from './press-gesture.js';
@@ -359,7 +359,7 @@ export function installPhoneLifecycle(state, deps) {
         state.phoneWindow.innerHTML = `
 <div class="pm-phone-screen">
   <div class="pm-island"></div>
-<div class="pm-status-bar" aria-label="设备本地状态" ${window.__pmTheme.ambientStatusEnabled === true ? '' : 'hidden'}><span class="pm-status-time"></span><span class="pm-status-local">本地<span class="pm-status-icons" aria-hidden="true">${SIGNAL_ICON_SVG}${WIFI_ICON_SVG}</span></span></div>
+<div class="pm-status-bar" aria-label="设备本地状态" ${window.__pmTheme.ambientStatusEnabled === true ? '' : 'hidden'}><span class="pm-status-time"></span><span class="pm-status-local"><span class="pm-status-icons" aria-hidden="true">${SIGNAL_ICON_SVG}</span><span>本地</span></span></div>
 <div class="pm-main-ui" data-page="chat">
   <section class="pm-phone-page pm-chat-page" data-phone-page="chat">
     <div class="pm-navbar">
@@ -387,7 +387,7 @@ export function installPhoneLifecycle(state, deps) {
     </div>
     <div class="pm-input-bar">
       <button type="button" onclick="window.__pmShowControlCenter()" class="pm-expand-btn" title="快捷工具" aria-haspopup="menu" aria-expanded="false">${CONTROL_ICON_SVG}</button>
-      <input class="pm-input" placeholder="长按发送会一次性提交消息">
+      <input class="pm-input" placeholder="长按提交全部消息">
       <button type="button" class="pm-up-btn" title="点击加入暂存，长按最终提交给 AI">${SEND_ICON_SVG}</button>
     </div>
   </section>

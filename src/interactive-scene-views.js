@@ -1,6 +1,6 @@
 import { getInteractivePresets } from './interactive-scene-ai.js';
 import {
-    CALENDAR_ICON_SVG, CHAT_ICON_SVG, CLOSE_ICON_SVG, COMMUNITY_ICON_SVG,
+    BACK_ICON_SVG, CALENDAR_ICON_SVG, CHAT_ICON_SVG, CLOSE_ICON_SVG, COMMUNITY_ICON_SVG,
     CONTACTS_ICON_SVG, CONTROL_ICON_SVG, EDIT_ICON_SVG, FEED_ICON_SVG, HEART_ICON_SVG, HOME_ICON_SVG,
     LIVE_ICON_SVG, MORE_ICON_SVG, POKE_ICON_SVG, REPLY_ICON_SVG, SEND_ICON_SVG, SETTINGS_ICON_SVG, SHARE_ICON_SVG, TRASH_ICON_SVG,
 } from './icons.js';
@@ -169,8 +169,13 @@ export function renderCommunityWorkspace(scene, tab = 'feed', uiScope = { pinned
     const switchToLive = tab !== 'live';
     const switchLabel = switchToLive ? '切换到直播' : '返回社区';
     const switchIcon = switchToLive ? LIVE_ICON_SVG : FEED_ICON_SVG;
+    const isPrompt = tab === 'prompt';
+    const returnTab = ['feed', 'live'].includes(uiScope.lastTab) ? uiScope.lastTab : 'feed';
+    const leadingAction = isPrompt
+        ? `data-action="tab" data-tab="${returnTab}" aria-label="返回子社区" title="返回子社区"`
+        : 'data-action="desktop" aria-label="返回桌面" title="返回桌面"';
     return `<div id="pm-scene-app" class="pm-modal pm-scene-shell" style="--scene-accent:${escapeAttr(accent)}">
-        <div class="pm-scene-topbar"><div class="pm-scene-nav-actions"><button type="button" class="pm-scene-home" data-action="desktop" aria-label="返回桌面" title="返回桌面">${HOME_ICON_SVG}</button></div><div class="pm-scene-title"><b>${escapeHtml(scene.title)}</b><button type="button" class="pm-scene-title-poke" data-action="poke-scene" aria-label="拍一拍社区" title="拍一拍社区">${POKE_ICON_SVG}</button><button type="button" class="pm-scene-view-toggle" data-action="tab" data-tab="${switchToLive ? 'live' : 'feed'}" aria-label="${switchLabel}" title="${switchLabel}">${switchIcon}</button></div><div class="pm-scene-view-actions"><button type="button" class="pm-scene-exit" data-action="exit" aria-label="退出手机" title="退出手机">${CLOSE_ICON_SVG}</button></div></div><div class="pm-scene-status" aria-live="polite" hidden></div>
-        ${content}<div class="pm-scene-bottom-bar">${renderSceneMenu(scene, uiScope, autoActive)}${composer}</div>
+        <div class="pm-scene-topbar"><div class="pm-scene-nav-actions"><button type="button" class="pm-scene-home" ${leadingAction}>${isPrompt ? BACK_ICON_SVG : HOME_ICON_SVG}</button></div><div class="pm-scene-title"><b>${escapeHtml(scene.title)}</b><button type="button" class="pm-scene-title-poke" data-action="poke-scene" aria-label="拍一拍社区" title="拍一拍社区">${POKE_ICON_SVG}</button><button type="button" class="pm-scene-view-toggle" data-action="tab" data-tab="${switchToLive ? 'live' : 'feed'}" aria-label="${switchLabel}" title="${switchLabel}">${switchIcon}</button></div><div class="pm-scene-view-actions"><button type="button" class="pm-scene-exit" data-action="exit" aria-label="退出手机" title="退出手机">${CLOSE_ICON_SVG}</button></div></div><div class="pm-scene-status" aria-live="polite" hidden></div>
+        ${content}${isPrompt ? '' : `<div class="pm-scene-bottom-bar">${renderSceneMenu(scene, uiScope, autoActive)}${composer}</div>`}
     </div>`;
 }
