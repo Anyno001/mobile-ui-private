@@ -38,6 +38,9 @@ Thumbs.db
 /.analysis-cache.md
 /.analysis-archive/
 /.analysis-parts/
+/cal-diff.txt
+/complete-diff.txt
+/gcm-diagnose.log
 /cal_out.txt
 /cal_part3.txt
 /calendar_full.txt

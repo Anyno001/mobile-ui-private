@@ -7282,6 +7282,13 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
   }
 
   // src/host-context.js
+  var warnedHostContextFailures = /* @__PURE__ */ new Set();
+  function warnHostContextFailureOnce(stage, message, error) {
+    if (warnedHostContextFailures.has(stage)) return;
+    warnedHostContextFailures.add(stage);
+    const errorType = typeof error?.name === "string" && error.name ? error.name : "Error";
+    console.warn(`[phone-mode] ${message}\uFF0C\u5DF2\u4F7F\u7528\u964D\u7EA7\u503C\u3002`, errorType);
+  }
   function getStorageId(getCtx) {
     const context = getCtx();
     if (!context) return "sms_unknown__default";
@@ -7309,12 +7316,14 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
         }
       }
     } catch (error) {
+      warnHostContextFailureOnce("persona-settings", "\u8BFB\u53D6\u7528\u6237\u4EBA\u8BBE\u8BBE\u7F6E\u5931\u8D25", error);
     }
     if (!description) {
       try {
         const metadata = context.chatMetadata || context.chat_metadata;
         if (metadata?.persona) description = String(metadata.persona);
       } catch (error) {
+        warnHostContextFailureOnce("persona-metadata", "\u8BFB\u53D6\u804A\u5929\u4EBA\u8BBE\u5143\u6570\u636E\u5931\u8D25", error);
       }
     }
     try {
@@ -7323,6 +7332,7 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
         if (resolvedName && resolvedName !== "{{user}}" && resolvedName.trim()) name = resolvedName.trim();
       }
     } catch (error) {
+      warnHostContextFailureOnce("persona-name", "\u89E3\u6790\u7528\u6237\u540D\u79F0\u5931\u8D25", error);
     }
     return { name, description };
   }
@@ -7349,6 +7359,7 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
         }
       }
     } catch (error) {
+      warnHostContextFailureOnce("world-book", "\u8BFB\u53D6\u4E16\u754C\u4E66\u4E0A\u4E0B\u6587\u5931\u8D25", error);
     }
     const userPersona = getUserPersona(getCtx);
     return { cardDesc: character.description ?? "", cardPersonality: character.personality ?? "", cardScenario: character.scenario ?? "", cardFirstMes: character.first_mes ?? "", cardMesExample: character.mes_example ?? "", mainChatText: mainChat.map((message) => `${message.who}\uFF1A${message.content}`).join("\n"), worldBookText, userName: userPersona.name, userDesc: userPersona.description };
@@ -10778,6 +10789,13 @@ ${lines}`;
   }
 
   // src/phone-foundation.js
+  var warnedHostEventRegistrationFailures = /* @__PURE__ */ new Set();
+  function warnHostEventRegistrationFailureOnce(key, eventName, error) {
+    if (warnedHostEventRegistrationFailures.has(key)) return;
+    warnedHostEventRegistrationFailures.add(key);
+    const errorType = typeof error?.name === "string" && error.name ? error.name : "Error";
+    console.warn(`[phone-mode] \u5BBF\u4E3B\u4E8B\u4EF6 ${eventName} \u6CE8\u518C\u5931\u8D25\uFF0C\u8BE5\u96C6\u6210\u529F\u80FD\u53EF\u80FD\u4E0D\u53EF\u7528\u3002`, errorType);
+  }
   var PHONE_BASE_WIDTH = 330;
   var PHONE_BASE_HEIGHT = 580;
   var PHONE_MIN_SCALE = 0.6;
@@ -11160,7 +11178,8 @@ ${lines}`;
             } catch (e) {
             }
           });
-        } catch (e) {
+        } catch (error) {
+          warnHostEventRegistrationFailureOnce(`injection:${ev}`, ev, error);
         }
       });
       for (const eventName of resolveCommunityMessageEvents(et)) {
@@ -11174,6 +11193,7 @@ ${lines}`;
             });
           });
         } catch (error) {
+          warnHostEventRegistrationFailureOnce(`community:${eventName}`, eventName, error);
         }
       }
       try {
@@ -11192,6 +11212,7 @@ ${lines}`;
           }
         });
       } catch (error) {
+        warnHostEventRegistrationFailureOnce("resolved:MESSAGE_RECEIVED", "MESSAGE_RECEIVED", error);
       }
       try {
         registerResolvedHostEvent(c.eventSource, et, "CHAT_CHANGED", () => {
@@ -11207,6 +11228,7 @@ ${lines}`;
           });
         });
       } catch (error) {
+        warnHostEventRegistrationFailureOnce("resolved:CHAT_CHANGED", "CHAT_CHANGED", error);
       }
       runtime.eventHooked = true;
       console.log("[phone-mode] hooked", events.length, "events");
@@ -13151,13 +13173,8 @@ ${lines}`;
     return { capture, apply, persist };
   }
 
-  // src/settings-ui.js
+  // src/settings-backup-validate.js
   var clone5 = (value) => JSON.parse(JSON.stringify(value));
-  var legacyBackupTheme = (value) => {
-    const theme = objectValue(value || {}, "theme");
-    delete theme.ambientStatusEnabled;
-    return theme;
-  };
   var objectValue = (value, field) => {
     if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error(`\u5907\u4EFD\u5B57\u6BB5 ${field} \u5FC5\u987B\u662F\u5BF9\u8C61`);
     return clone5(value);
@@ -13165,6 +13182,11 @@ ${lines}`;
   var arrayValue = (value, field) => {
     if (!Array.isArray(value)) throw new Error(`\u5907\u4EFD\u5B57\u6BB5 ${field} \u5FC5\u987B\u662F\u6570\u7EC4`);
     return clone5(value);
+  };
+  var legacyBackupTheme = (value) => {
+    const theme = objectValue(value || {}, "theme");
+    delete theme.ambientStatusEnabled;
+    return theme;
   };
   var isUnsafeDictionaryKey2 = (value) => value === "prototype" || Object.hasOwn(Object.prototype, value);
   var assertSafeDictionaryKey2 = (value, field) => {
@@ -13404,6 +13426,9 @@ ${lines}`;
     if (version >= 5) applyCalendarBackupFields(data, result, objectValue);
     return result;
   }
+
+  // src/settings-ui.js
+  var clone6 = (value) => JSON.parse(JSON.stringify(value));
   async function runBackgroundTransaction({ capture, mutate, restore, persist }) {
     const snapshot = capture();
     try {
@@ -13472,7 +13497,7 @@ ${lines}`;
       if (border) border.value = theme.borderColor || "#1a1a1a";
     };
     const persistThemeMutation = (mutate) => {
-      const previous = clone5(window.__pmTheme);
+      const previous = clone6(window.__pmTheme);
       mutate();
       if (saveTheme()) {
         applyTheme();
@@ -13491,12 +13516,12 @@ ${lines}`;
       const operation = backgroundMutation.catch(() => {
       }).then(async () => {
         await runBackgroundTransaction({
-          capture: () => isDesktop ? window.__pmDesktopBg || "" : isGlobal ? window.__pmBgGlobal || "" : clone5(window.__pmBgLocal || {}),
+          capture: () => isDesktop ? window.__pmDesktopBg || "" : isGlobal ? window.__pmBgGlobal || "" : clone6(window.__pmBgLocal || {}),
           mutate,
           restore: (snapshot) => {
             if (isDesktop) window.__pmDesktopBg = snapshot;
             else if (isGlobal) window.__pmBgGlobal = snapshot;
-            else window.__pmBgLocal = clone5(snapshot);
+            else window.__pmBgLocal = clone6(snapshot);
           },
           persist: isDesktop ? saveDesktopBg : isGlobal ? saveBgGlobal : saveBgLocal
         });
@@ -13514,7 +13539,7 @@ ${error.message}`);
       });
     };
     window.__pmDeleteProfile = (idx) => {
-      const previous = clone5(window.__pmProfiles);
+      const previous = clone6(window.__pmProfiles);
       window.__pmProfiles.splice(idx, 1);
       if (!saveProfiles()) {
         window.__pmProfiles = previous;
@@ -13952,7 +13977,7 @@ ${error.message}`);
         }
         return;
       }
-      const previous = clone5(window.__pmConfig), candidate = { apiUrl, apiKey, model, useIndependent: apiDraftMode.current() };
+      const previous = clone6(window.__pmConfig), candidate = { apiUrl, apiKey, model, useIndependent: apiDraftMode.current() };
       window.__pmConfig = candidate;
       try {
         localStorage.setItem("ST_SMS_CONFIG", JSON.stringify(candidate));

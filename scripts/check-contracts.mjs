@@ -717,6 +717,92 @@ function analyzeBackupContract(code, sourceType = 'module') {
   return result;
 }
 
+function analyzeBackupModuleBinding(settingsUiCode, validatorCode) {
+  const result = {
+    importsValidatorParser: false,
+    reexportsValidatorParser: false,
+    prepareCallsValidatorParser: false,
+    validatorExportsParserFunction: false,
+  };
+  const settingsAst = parseJavaScript(settingsUiCode, 'module');
+  let parserLocalName = null;
+  for (const statement of settingsAst.body) {
+    if (statement.type !== 'ImportDeclaration' || statement.source.value !== './settings-backup-validate.js') continue;
+    const parserImport = statement.specifiers.find(specifier =>
+      specifier.type === 'ImportSpecifier' && specifier.imported?.name === 'parseBackupData');
+    if (parserImport?.local?.name) {
+      parserLocalName = parserImport.local.name;
+      result.importsValidatorParser = true;
+    }
+  }
+  if (parserLocalName) {
+    for (const statement of settingsAst.body) {
+      if (statement.type !== 'ExportNamedDeclaration') continue;
+      if ((statement.specifiers || []).some(specifier =>
+        specifier.local?.name === parserLocalName && specifier.exported?.name === 'parseBackupData')) {
+        result.reexportsValidatorParser = true;
+      }
+    }
+    walk(settingsAst, node => {
+      if (result.prepareCallsValidatorParser || node.type !== 'CallExpression'
+          || node.callee?.type !== 'Identifier' || node.callee.name !== 'runBackupTransaction') return;
+      const options = node.arguments[0];
+      if (options?.type !== 'ObjectExpression') return;
+      const prepare = options.properties.find(property => propertyName(property) === 'prepare');
+      const callback = prepare?.value;
+      if (!['ArrowFunctionExpression', 'FunctionExpression'].includes(callback?.type)) return;
+      const callbackParamNames = callback.params.flatMap(patternNames);
+      let shadowsParser = callbackParamNames.includes(parserLocalName);
+      let callsParser = false;
+      walk(callback.body, child => {
+        if (child.type === 'VariableDeclarator' && patternNames(child.id).includes(parserLocalName)) shadowsParser = true;
+        if (child.type === 'FunctionDeclaration' && child.id?.name === parserLocalName) shadowsParser = true;
+        if (child.type === 'CallExpression' && child.callee?.type === 'Identifier'
+            && child.callee.name === parserLocalName) callsParser = true;
+      });
+      if (callsParser && !shadowsParser) result.prepareCallsValidatorParser = true;
+    });
+  }
+
+  const validatorAst = parseJavaScript(validatorCode, 'module');
+  result.validatorExportsParserFunction = validatorAst.body.some(statement =>
+    statement.type === 'ExportNamedDeclaration'
+      && statement.declaration?.type === 'FunctionDeclaration'
+      && statement.declaration.id?.name === 'parseBackupData');
+  return result;
+}
+
+function backupModuleBindingIsComplete(result) {
+  return Object.values(result).every(Boolean);
+}
+
+function verifyBackupModuleBindingDetector() {
+  const validator = `export function parseBackupData(data, current) { return current; }`;
+  const valid = `
+    import { parseBackupData } from './settings-backup-validate.js';
+    export { parseBackupData };
+    runBackupTransaction({ prepare: current => parseBackupData(data, current) });
+  `;
+  if (!backupModuleBindingIsComplete(analyzeBackupModuleBinding(valid, validator))) {
+    failures.push('self-test: backup module binding detector rejected valid wiring');
+  }
+  const invalidSettingsSamples = [
+    `import { parseBackupData } from './wrong.js'; export { parseBackupData }; runBackupTransaction({ prepare: current => parseBackupData(data, current) });`,
+    `import { parseBackupData } from './settings-backup-validate.js'; runBackupTransaction({ prepare: current => parseBackupData(data, current) });`,
+    `import { parseBackupData } from './settings-backup-validate.js'; export { parseBackupData }; runBackupTransaction({ prepare: current => otherParser(data, current) });`,
+    `import { parseBackupData } from './settings-backup-validate.js'; export { parseBackupData }; runBackupTransaction({ prepare: parseBackupData => parseBackupData(data) });`,
+  ];
+  for (const sample of invalidSettingsSamples) {
+    if (backupModuleBindingIsComplete(analyzeBackupModuleBinding(sample, validator))) {
+      failures.push('self-test: backup module binding detector accepted invalid settings wiring');
+    }
+  }
+  const invalidValidator = `export const parseBackupData = (data, current) => current;`;
+  if (backupModuleBindingIsComplete(analyzeBackupModuleBinding(valid, invalidValidator))) {
+    failures.push('self-test: backup module binding detector accepted non-function-declaration validator export');
+  }
+}
+
 function verifyDetector(label, field, positives, negatives) {
   for (const sample of positives) {
     if (!analyze(sample)[field]) failures.push(`self-test: ${label} rejected valid sample`);
@@ -806,6 +892,7 @@ verifyDetector('style element', 'styleElement', [
   `document.createElement('div')`,
 ]);
 verifyWindowAssignmentDetector();
+verifyBackupModuleBindingDetector();
 verifyGuardedRequestOrderDetector();
 verifyCallAiOptionsDetector();
 
@@ -1088,6 +1175,7 @@ const phoneChatPokeCodeForChecks = sourceModuleByName.get('phone-chat-poke.js')?
 const interactiveModelCode = sourceModuleByName.get('interactive-scene-model.js')?.code || '';
 const interactiveAiCode = sourceModuleByName.get('interactive-scene-ai.js')?.code || '';
 const settingsUiCodeForInteractive = sourceModuleByName.get('settings-ui.js')?.code || '';
+const settingsBackupValidateCode = sourceModuleByName.get('settings-backup-validate.js')?.code || '';
 const settingsBackupCode = sourceModuleByName.get('settings-backup.js')?.code || '';
 const contactAnalysis = analyze(contactCode, 'module');
 const calendarAnalysis = analyze(calendarCode, 'module');
@@ -1226,11 +1314,12 @@ for (const expected of ['enqueueDirectorySave', 'getDirectorySaveRevision', 'mar
 for (const expected of [
   'INTERACTIVE_STORE_VERSION', 'assertInteractiveActor', 'authorId 未指向有效 actor',
   'deriveInteractiveActorId(scopeId, actor.type, actor.bindingKey)',
-]) requireText('settings-ui.js', settingsUiCodeForInteractive, expected);
+]) requireText('settings-backup-validate.js', settingsBackupValidateCode, expected);
 for (const expected of [
-  'schemaVersion: 6', 'desktopBg: snapshot.desktopBg', 'applyCalendarBackupFields(data, result, objectValue)',
+  'schemaVersion: 6', 'desktopBg: snapshot.desktopBg',
   'calendarStore: snapshot.calendarStore', 'calendarCycles: snapshot.calendarCycles',
 ]) requireText('settings-ui.js', settingsUiCodeForInteractive, expected);
+requireText('settings-backup-validate.js', settingsBackupValidateCode, 'applyCalendarBackupFields(data, result, objectValue)');
 for (const expected of [
   'phoneUiState: loadPhoneUiState(interactiveScenes)', 'ambientStatus: normalizeAmbientStatus',
   'normalizePhoneUiState(state.phoneUiState, interactiveScenes)', 'savePhoneUiState(phoneUiState, interactiveScenes)',
@@ -1646,8 +1735,12 @@ requireText('interactive-scenes.js', interactiveCode, 'stripPersistedV2ContentRa
 if (settingsCode.includes('stripPersistedV2ContentRating')) {
   failures.push('settings-ui.js: untrusted backup import must not use persisted V2 contentRating compatibility cleanup');
 }
-for (const expected of ['legacyBackupTheme(snapshot.theme)', 'delete theme.ambientStatusEnabled', 'current.theme?.ambientStatusEnabled === true']) {
-  requireText('settings-ui.js', settingsCode, expected);
+if (settingsBackupValidateCode.includes('stripPersistedV2ContentRating')) {
+  failures.push('settings-backup-validate.js: untrusted backup import must not use persisted V2 contentRating compatibility cleanup');
+}
+requireText('settings-ui.js', settingsCode, 'legacyBackupTheme(snapshot.theme)');
+for (const expected of ['delete theme.ambientStatusEnabled', 'current.theme?.ambientStatusEnabled === true']) {
+  requireText('settings-backup-validate.js', settingsBackupValidateCode, expected);
 }
 for (const forbidden of ['navigator.geolocation', 'getCurrentPosition(', 'watchPosition(']) {
   if (lifecycleCode.includes(forbidden)) failures.push(`phone-lifecycle.js: ambient status must not use ${forbidden}`);
@@ -1884,6 +1977,22 @@ const readmeWithoutUpstream = readme
 if (/SillyTavern|酒馆|TauriTavern/i.test(readmeWithoutUpstream)) failures.push('README: own prose must not contain host platform keywords');
 
 const settingsUiCode = sourceModuleByName.get('settings-ui.js')?.code || '';
+const backupModuleBinding = analyzeBackupModuleBinding(settingsUiCode, settingsBackupValidateCode);
+for (const [field, message] of Object.entries({
+  importsValidatorParser: 'settings-ui.js: must import parseBackupData from ./settings-backup-validate.js',
+  reexportsValidatorParser: 'settings-ui.js: must re-export the imported parseBackupData binding',
+  prepareCallsValidatorParser: 'settings-ui.js: backup prepare callback must call the imported parseBackupData binding',
+  validatorExportsParserFunction: 'settings-backup-validate.js: must export parseBackupData as a function declaration',
+})) {
+  if (!backupModuleBinding[field]) failures.push(message);
+}
+const settingsUiBackupContract = analyzeBackupContract(settingsUiCode);
+const settingsBackupValidateContract = analyzeBackupContract(settingsBackupValidateCode);
+const sourceBackupContract = {
+  exportFields: new Set([...settingsUiBackupContract.exportFields, ...settingsBackupValidateContract.exportFields]),
+  importFields: new Set([...settingsUiBackupContract.importFields, ...settingsBackupValidateContract.importFields]),
+  importReadsFileName: settingsUiBackupContract.importReadsFileName || settingsBackupValidateContract.importReadsFileName,
+};
 const backupMetadataFields = new Set(['schemaVersion']);
 const backupFields = [
   'histories', 'config', 'theme', 'profiles', 'groupMeta',
@@ -1891,7 +2000,7 @@ const backupFields = [
   'wordyLimit', 'desktopBg', 'bgGlobal', 'bgLocal', 'interactiveScenes', 'phoneUiState', 'ambientStatus',
 ];
 for (const [label, contract] of [
-  ['settings-ui.js', analyzeBackupContract(settingsUiCode)],
+  ['source backup modules', sourceBackupContract],
   ['bundle', analyzeBackupContract(bundle, 'script')],
 ]) {
   for (const field of backupFields) {

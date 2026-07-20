@@ -15,6 +15,15 @@ import {
     saveBidirectional, saveHistories, saveHistoriesBeforeUnload, saveTheme,
 } from './storage.js';
 
+const warnedHostEventRegistrationFailures = new Set();
+
+function warnHostEventRegistrationFailureOnce(key, eventName, error) {
+    if (warnedHostEventRegistrationFailures.has(key)) return;
+    warnedHostEventRegistrationFailures.add(key);
+    const errorType = typeof error?.name === 'string' && error.name ? error.name : 'Error';
+    console.warn(`[phone-mode] 宿主事件 ${eventName} 注册失败，该集成功能可能不可用。`, errorType);
+}
+
 export const PHONE_BASE_WIDTH = 330;
 export const PHONE_BASE_HEIGHT = 580;
 export const PHONE_MIN_SCALE = 0.6;
@@ -418,7 +427,9 @@ export function installPhoneFoundation(state, deps) {
                 c.eventSource.on(ev, () => {
                     try { applyBidirectionalInjection(); } catch (e) {}
                 });
-            } catch (e) {}
+            } catch (error) {
+                warnHostEventRegistrationFailureOnce(`injection:${ev}`, ev, error);
+            }
         });
 
         for (const eventName of resolveCommunityMessageEvents(et)) {
@@ -427,7 +438,9 @@ export function installPhoneFoundation(state, deps) {
                     try { deps.observeCommunityTurn?.(c.chat || []); } catch (error) {}
                     Promise.resolve(deps.observeCalendarTurn?.()).catch(() => {});
                 });
-            } catch (error) {}
+            } catch (error) {
+                warnHostEventRegistrationFailureOnce(`community:${eventName}`, eventName, error);
+            }
         }
 
         try {
@@ -446,7 +459,9 @@ export function installPhoneFoundation(state, deps) {
                     runtime.lastChatLength = currentLen;
                 }
             });
-        } catch (error) {}
+        } catch (error) {
+            warnHostEventRegistrationFailureOnce('resolved:MESSAGE_RECEIVED', 'MESSAGE_RECEIVED', error);
+        }
         try {
             registerResolvedHostEvent(c.eventSource, et, 'CHAT_CHANGED', () => {
                 // 宿主切换会使所有在途生成失效；关闭手机并清空旧会话内存，避免跨聊天串档。
@@ -459,7 +474,9 @@ export function installPhoneFoundation(state, deps) {
                     invalidateGeneration,
                 });
             });
-        } catch (error) {}
+        } catch (error) {
+            warnHostEventRegistrationFailureOnce('resolved:CHAT_CHANGED', 'CHAT_CHANGED', error);
+        }
 
         runtime.eventHooked = true;
         console.log('[phone-mode] hooked', events.length, 'events');

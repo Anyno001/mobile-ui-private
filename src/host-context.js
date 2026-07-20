@@ -1,3 +1,12 @@
+const warnedHostContextFailures = new Set();
+
+function warnHostContextFailureOnce(stage, message, error) {
+    if (warnedHostContextFailures.has(stage)) return;
+    warnedHostContextFailures.add(stage);
+    const errorType = typeof error?.name === 'string' && error.name ? error.name : 'Error';
+    console.warn(`[phone-mode] ${message}，已使用降级值。`, errorType);
+}
+
 export function getStorageId(getCtx) {
     const context = getCtx();
     if (!context) return 'sms_unknown__default';
@@ -29,13 +38,17 @@ export function getUserPersona(getCtx) {
                 else if (persona?.description) description = persona.description;
             }
         }
-    } catch (error) {}
+    } catch (error) {
+        warnHostContextFailureOnce('persona-settings', '读取用户人设设置失败', error);
+    }
 
     if (!description) {
         try {
             const metadata = context.chatMetadata || context.chat_metadata;
             if (metadata?.persona) description = String(metadata.persona);
-        } catch (error) {}
+        } catch (error) {
+            warnHostContextFailureOnce('persona-metadata', '读取聊天人设元数据失败', error);
+        }
     }
 
     try {
@@ -43,7 +56,9 @@ export function getUserPersona(getCtx) {
             const resolvedName = context.substituteParams('{{user}}');
             if (resolvedName && resolvedName !== '{{user}}' && resolvedName.trim()) name = resolvedName.trim();
         }
-    } catch (error) {}
+    } catch (error) {
+        warnHostContextFailureOnce('persona-name', '解析用户名称失败', error);
+    }
 
     return { name, description };
 }
@@ -77,7 +92,9 @@ export async function gatherContext(getCtx) {
                 worldBookText = [worldInfo.worldInfoBefore, worldInfo.worldInfoAfter].filter(Boolean).join('\n');
             }
         }
-    } catch (error) {}
+    } catch (error) {
+        warnHostContextFailureOnce('world-book', '读取世界书上下文失败', error);
+    }
     const userPersona = getUserPersona(getCtx);
     return { cardDesc: character.description ?? '', cardPersonality: character.personality ?? '', cardScenario: character.scenario ?? '', cardFirstMes: character.first_mes ?? '', cardMesExample: character.mes_example ?? '', mainChatText: mainChat.map(message => `${message.who}：${message.content}`).join('\n'), worldBookText, userName: userPersona.name, userDesc: userPersona.description };
 }
