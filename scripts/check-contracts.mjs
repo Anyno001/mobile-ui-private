@@ -1962,19 +1962,31 @@ if (packageJson.version !== '1.4.0') failures.push('version: expected release ve
 const readmeLines = readme.split(/\r?\n/);
 if (readmeLines[0] !== '# 天音小笺') failures.push('README: title must be 天音小笺');
 const readmeIntro = readmeLines[2] || '';
-if (!readmeIntro.includes('个人自用') || !readmeIntro.includes('不作为上游原版发行')) {
-  failures.push('README: introduction must state personal use and independent maintenance boundary');
+if (readmeIntro !== '个人自用项目，基于 [K20070831/sillytavern-phone-mode-1](https://github.com/K20070831/sillytavern-phone-mode-1) 的二次创作。') {
+  failures.push('README: introduction must use the approved personal derivative-project wording');
 }
 for (const expected of [
   'K20070831/sillytavern-phone-mode-1',
   'https://github.com/K20070831/sillytavern-phone-mode-1',
-  '本项目仅用于个人自用维护，不作为上游原版发行。',
-  '`/phone` 是为兼容旧用法保留的命令，不是项目名称。',
+  '打开 SillyTavern 的扩展管理页面。',
+  '安装后输入 `/phone` 启动。',
+  '可以在设置页面固定 `/phone`，方便后续启动。',
+  '仅用于个人自用维护。',
+  '当前维护者已取得上游作者许可。',
+  '备份可能包含 API Key 和聊天数据，请勿公开。',
 ]) requireText('README', readme, expected);
-const readmeWithoutUpstream = readme
-  .replaceAll('https://github.com/K20070831/sillytavern-phone-mode-1', '')
-  .replaceAll('K20070831/sillytavern-phone-mode-1', '');
-if (/SillyTavern|酒馆|TauriTavern/i.test(readmeWithoutUpstream)) failures.push('README: own prose must not contain host platform keywords');
+for (const forbidden of [
+  '这是个人自用的手机聊天界面维护项目',
+  '不作为上游原版发行',
+  '本仓库保留上游提交历史',
+  '上游当前未提供公开 LICENSE',
+  '不将上游代码冒充为原创',
+  '`/phone` 是为兼容旧用法保留的命令',
+  '## 开发',
+  'npm run build',
+]) {
+  if (readme.includes(forbidden)) failures.push(`README: removed internal wording remains: ${forbidden}`);
+}
 
 const settingsUiCode = sourceModuleByName.get('settings-ui.js')?.code || '';
 const backupModuleBinding = analyzeBackupModuleBinding(settingsUiCode, settingsBackupValidateCode);
