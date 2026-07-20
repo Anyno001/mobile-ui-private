@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
-import { createAiClient, generationErrorMessage, parseFirstJsonObject } from '../src/ai.js';
+import { createAiClient, emptyResponseReason, generationErrorMessage, parseFirstJsonObject } from '../src/ai.js';
+import { normalizeApiUrls, parseModelList } from '../src/config.js';
 import {
     buildGeneratedDirectoryCandidates, commitGeneratedDirectory, parseGeneratedDirectory,
     shouldReportGeneratedDirectoryError, installContactGenerator,
@@ -31,6 +32,22 @@ assert.deepEqual(coordinatorOrder, ['failed', 'recovered-2']);
 const revisionBeforeMark = getDirectorySaveRevision();
 await enqueueDirectorySave('groupMeta', {}, async () => {}, true);
 assert.equal(getDirectorySaveRevision().groupMeta, revisionBeforeMark.groupMeta + 1);
+// 失败的 marksGlobalSave 保存不得自增 revision，否则并发生成会误报"已被其他操作修改，请重试"。
+const revisionBeforeFailedMark = getDirectorySaveRevision();
+await assert.rejects(
+    enqueueDirectorySave('groupMeta', {}, async () => { throw new Error('mark-save-failed'); }, true),
+    /mark-save-failed/,
+);
+assert.equal(getDirectorySaveRevision().groupMeta, revisionBeforeFailedMark.groupMeta,
+    '保存失败时 revision 不得自增');
+// 不可克隆的快照必须以 rejection 上报，且不得毒化后续保存队列。
+const cyclic = {};
+cyclic.self = cyclic;
+await assert.rejects(enqueueDirectorySave('histories', () => {}, async () => {}), /./,
+    '不可克隆快照（函数）必须 reject 而非同步抛出');
+const afterBadSnapshot = [];
+await enqueueDirectorySave('histories', { value: 3 }, async snapshot => { afterBadSnapshot.push(snapshot.value); });
+assert.deepEqual(afterBadSnapshot, [3], '坏快照 reject 后队列必须仍可继续保存');
 
 assert.deepEqual(parseGeneratedDirectory('<think>先分析</think>以下是结果：```json\n[{"contacts":["甲"],"groups":[{"name":"同行会","members":["乙","丙"]}]}]\n```'), {
     contacts: ['甲'], groups: [{ name: '同行会', members: ['乙', '丙'] }],
@@ -341,6 +358,9 @@ let fetchRequest;
 const hostCalls = [];
 const rawCalls = [];
 const context = {
+    getRequestHeaders() {
+        return { 'Content-Type': 'application/json', 'X-CSRF-Token': 'test-token' };
+    },
     async generateQuietPrompt(...args) {
         hostCalls.push(args);
         return 'host reply';
@@ -403,14 +423,19 @@ config = {
     model: 'provider-model',
 };
 assert.equal(await callAI('system', 'user'), 'api reply');
-assert.equal(fetchRequest.url, 'https://example.test/v1/chat/completions');
+// Independent API now routes through the host backend proxy to avoid third-party CORS.
+assert.equal(fetchRequest.url, '/api/backends/chat-completions/generate');
 assert.equal(fetchRequest.options.method, 'POST');
-assert.equal(fetchRequest.options.headers.Authorization, 'Bearer secret');
-assert.equal(fetchRequest.options.headers['Content-Type'], 'application/json');
+assert.equal(fetchRequest.options.headers['X-CSRF-Token'], 'test-token', '代理请求必须携带宿主 CSRF 头');
 let body = JSON.parse(fetchRequest.options.body);
+assert.equal(body.chat_completion_source, 'custom');
+assert.equal(body.custom_url, 'https://example.test/v1', '代理必须收到规范化后的 base URL');
+assert.deepEqual(JSON.parse(body.custom_include_headers), { Authorization: 'Bearer secret' },
+    '密钥必须通过 custom_include_headers 注入以覆盖宿主空 Authorization');
+assert.equal(body.stream, false, '独立 API 代理不得使用流式响应');
 assert.equal(body.model, 'provider-model');
 assert.equal(Object.hasOwn(body, 'max_tokens'), false);
-assert.equal(body.temperature, 1.2);
+assert.equal(body.temperature, 1);
 assert.equal(body.top_p, 0.95);
 assert.equal(body.frequency_penalty, 0.3);
 assert.equal(body.presence_penalty, 0.3);
@@ -593,6 +618,22 @@ const noContextClient = createAiClient({
 });
 await assert.rejects(() => noContextClient('', 'user'), /无上下文/);
 
+// The proxy relays provider errors as { error: { message } } with a 200 status.
+const proxyErrorClient = createAiClient({
+    getConfig: () => config,
+    getContext: () => context,
+    fetchImpl: async () => ({ ok: true, async json() { return { error: { message: 'provider quota exceeded' } }; } }),
+});
+await assert.rejects(() => proxyErrorClient('', 'user'), /独立 API 请求失败：provider quota exceeded/);
+
+// Independent API requires a host that exposes getRequestHeaders for the backend proxy.
+const legacyHostClient = createAiClient({
+    getConfig: () => config,
+    getContext: () => ({ generateQuietPrompt: async () => 'x' }),
+    fetchImpl: async () => assert.fail('缺少 getRequestHeaders 时不得发起代理请求'),
+});
+await assert.rejects(() => legacyHostClient('', 'user'), /不支持独立 API 后端代理/);
+
 config = { useIndependent: true, apiUrl: '', apiKey: 'secret' };
 await assert.rejects(() => callAI('', 'missing url'), /未填写地址/);
 
@@ -623,7 +664,7 @@ let globalFetchThis;
 try {
     globalThis.fetch = async function (url) {
         globalFetchThis = this;
-        assert.equal(url, 'https://example.test/v1/chat/completions');
+        assert.equal(url, '/api/backends/chat-completions/generate');
         return { ok: true, async json() { return { choices: [{ message: { content: 'global reply' } }] }; } };
     };
     const globalFetchClient = createAiClient({
@@ -636,5 +677,55 @@ try {
     if (hadOriginalFetch) globalThis.fetch = originalFetch;
     else delete globalThis.fetch;
 }
+
+// normalizeApiUrls: provider-specific bases must not be double-versioned; baseUrl feeds the proxy custom_url.
+assert.deepEqual(normalizeApiUrls('https://api.openai.com/v1'), {
+    chatUrl: 'https://api.openai.com/v1/chat/completions',
+    modelsUrl: 'https://api.openai.com/v1/models',
+    baseUrl: 'https://api.openai.com/v1',
+});
+assert.deepEqual(normalizeApiUrls('https://generativelanguage.googleapis.com/v1beta'), {
+    chatUrl: 'https://generativelanguage.googleapis.com/v1beta/chat/completions',
+    modelsUrl: 'https://generativelanguage.googleapis.com/v1beta/models',
+    baseUrl: 'https://generativelanguage.googleapis.com/v1beta',
+});
+assert.deepEqual(normalizeApiUrls('https://api.x.com/openai/'), {
+    chatUrl: 'https://api.x.com/openai/chat/completions',
+    modelsUrl: 'https://api.x.com/openai/models',
+    baseUrl: 'https://api.x.com/openai',
+});
+assert.deepEqual(normalizeApiUrls('https://api.x.com'), {
+    chatUrl: 'https://api.x.com/v1/chat/completions',
+    modelsUrl: 'https://api.x.com/v1/models',
+    baseUrl: 'https://api.x.com/v1',
+});
+assert.deepEqual(normalizeApiUrls('https://api.x.com/v1/chat/completions'), {
+    chatUrl: 'https://api.x.com/v1/chat/completions',
+    modelsUrl: 'https://api.x.com/v1/models',
+    baseUrl: 'https://api.x.com/v1',
+});
+assert.deepEqual(normalizeApiUrls(''), { chatUrl: '', modelsUrl: '', baseUrl: '' });
+
+// parseModelList: normalize OpenAI, Gemini and bare-array shapes into id strings.
+assert.deepEqual(parseModelList({ data: [{ id: 'gpt-4o' }, { id: 'gpt-4o-mini' }] }), ['gpt-4o', 'gpt-4o-mini']);
+assert.deepEqual(parseModelList({ models: [{ name: 'models/gemini-2.0-flash' }] }), ['gemini-2.0-flash']);
+assert.deepEqual(parseModelList(['a', 'b', 'a']), ['a', 'b']);
+assert.deepEqual(parseModelList({ data: [{ id: '' }, { foo: 1 }] }), []);
+assert.deepEqual(parseModelList({ connected: true }), []);
+
+// emptyResponseReason: surface refusals / safety blocks instead of a blank error.
+assert.equal(emptyResponseReason({}), '');
+assert.match(emptyResponseReason({ promptFeedback: { blockReason: 'SAFETY' } }), /安全策略拦截.*SAFETY/);
+assert.match(emptyResponseReason({ candidates: [{ finishReason: 'SAFETY' }] }), /安全策略.*SAFETY/);
+assert.match(emptyResponseReason({ choices: [{ finish_reason: 'content_filter' }] }), /内容过滤/);
+assert.match(emptyResponseReason({ choices: [{ message: { refusal: '不能协助该请求' } }] }), /拒绝回复：不能协助该请求/);
+assert.match(emptyResponseReason({ candidates: [{ content: { parts: [{ thought: true, text: 'x' }] } }] }), /仅返回了推理内容/);
+
+const refusalClient = createAiClient({
+    getConfig: () => ({ useIndependent: true, apiUrl: 'https://example.test/v1', apiKey: 'secret', model: 'm' }),
+    getContext: () => context,
+    fetchImpl: async () => ({ ok: true, async json() { return { choices: [{ finish_reason: 'content_filter', message: {} }] }; } }),
+});
+await assert.rejects(() => refusalClient('', 'blocked'), /内容过滤/);
 
 console.log('AI client behavior verified.');

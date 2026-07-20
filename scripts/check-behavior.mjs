@@ -16,7 +16,7 @@ import {
     loadBgSettings, saveBgGlobal, saveBgLocal, saveDesktopBg,
 } from '../src/storage-background.js';
 import {
-    addOrUpdateProfile, clearPluginData, loadCharacterBehavior, loadGroupMeta, pmIDBDel, pmIDBGet, pmIDBSet,
+    addOrUpdateProfile, clearPluginData, loadCharacterBehavior, loadGroupMeta, pmIDBDel, pmIDBGet, pmIDBSet, pmOpenIDB,
     PLUGIN_IDB_DYNAMIC_PREFIXES, PLUGIN_IDB_STATIC_KEYS, PLUGIN_LOCAL_STORAGE_KEYS,
     saveCharacterBehavior, saveGroupMeta, saveHistoriesStrict,
 } from '../src/storage.js';
@@ -1722,8 +1722,10 @@ function consumeIDBAbort(type, key) {
     idbControl.abortOperations.splice(index, 1);
     return true;
 }
+let idbOpenCount = 0;
 globalThis.indexedDB = {
     open() {
+        idbOpenCount += 1;
         const request = {};
         queueMicrotask(() => {
             request.result = {
@@ -2195,6 +2197,14 @@ assert.equal(window.__pmHistories[newStorageId].Alice[0].bubbles[0].text, '仅�
 assert.equal(window.__pmHistories[newStorageId].Alice[0].quote.text, '仅修改运行态引用');
 assert.deepEqual(window.__pmHistories[oldStorageId].Alice, oldScopeBeforeMutation,
     '显式保存新 scope 后仍不得改变旧 scope');
+
+// persistCurrentHistory 必须真实感知落盘成败：成功返回 true，存储不可用时返回 false（且不 reject）。
+assert.equal(await isolatedConversationDeps.persistCurrentHistory('Alice', newStorageId), true,
+    '存储可用时 persistCurrentHistory 必须返回 true');
+idbControl.abortAll = true;
+assert.equal(await isolatedConversationDeps.persistCurrentHistory('Alice', newStorageId), false,
+    '存储失败时 persistCurrentHistory 必须返回 false 而非静默 true');
+idbControl.abortAll = false;
 isolatedConversationState.phoneWindow = null;
 
 const groupSwitchStorageId = 'sms_alice.png__group-switch';

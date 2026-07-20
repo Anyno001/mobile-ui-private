@@ -4,7 +4,7 @@ import {
 } from './chat-message-model.js';
 import { GROUP_COLORS } from './groups.js';
 import {
-    saveHistories, loadGroupMeta,
+    saveHistoriesStrict, loadGroupMeta,
 } from './storage.js';
 
 const cloneHistory = history => JSON.parse(JSON.stringify(history));
@@ -18,8 +18,11 @@ function getSaveKey(state) {
 
 /**
  * 保存当前对话历史到 window.__pmHistories
+ * 返回 Promise<boolean>：true 表示已落盘，false 表示保存失败或被跳过。永不 reject，
+ * 便于 fire-and-forget 调用方安全忽略，也便于销毁/关闭路径 await 后提示用户。
+ * 内存写入是同步的（await 之前完成），因此调用方可在 await 前安全清理 state。
  */
-function persistCurrentHistory(
+async function persistCurrentHistory(
     state, getStorageId, saveKeyOverride, storageIdOverride, historyOverride, normalizationContext,
 ) {
     const id = storageIdOverride || state.activeStorageId || getStorageId();
@@ -38,8 +41,13 @@ function persistCurrentHistory(
         legacySeed: `${id}:${saveKey.trim()}`,
     });
     window.__pmHistories[id][saveKey.trim()] = cloneHistory(history.slice(-SAVE_LIMIT));
-    saveHistories();
-    return true;
+    try {
+        await saveHistoriesStrict();
+        return true;
+    } catch (error) {
+        console.warn('[phone-mode] 短信历史保存失败', error);
+        return false;
+    }
 }
 
 function getStoredHistory(id, saveKey) {

@@ -7,10 +7,11 @@ import { BUDGET_CONFIG_KEY, normalizeBudgetConfig } from './budget.js';
 import {
     normalizeCharacterBehaviorStore, normalizeGroupMetaStore,
 } from './behavior-config.js';
-import { enqueueDirectorySave } from './directory-save-coordinator.js';
+import { enqueueDirectorySave, waitForDirectorySave } from './directory-save-coordinator.js';
 import { createEmptyPhoneUiState, normalizePhoneUiState } from './interactive-scene-model.js';
 
 let database = null;
+let openInFlight = null;
 
 const EMOJI_STORE_KEY = 'ST_SMS_EMOJIS';
 const EMOJI_FALLBACK_KEY = `${EMOJI_STORE_KEY}_LOCAL_FALLBACK`;
@@ -34,16 +35,18 @@ export const PLUGIN_IDB_STATIC_KEYS = Object.freeze([
 export const PLUGIN_IDB_DYNAMIC_PREFIXES = Object.freeze(['ST_SMS_BG_LOCAL_']);
 
 export function pmOpenIDB() {
-    return new Promise(resolve => {
-        if (database) {
-            try {
-                database.transaction(PM_IDB_STORE, 'readonly');
-                resolve(database);
-                return;
-            } catch (error) {
-                database = null;
-            }
+    if (database) {
+        try {
+            database.transaction(PM_IDB_STORE, 'readonly');
+            return Promise.resolve(database);
+        } catch (error) {
+            database = null;
         }
+    }
+    // Reuse an in-flight open so concurrent first-frame callers don't each open a
+    // connection (leaking all but the last). Cleared once the open settles.
+    if (openInFlight) return openInFlight;
+    openInFlight = new Promise(resolve => {
         try {
             const request = indexedDB.open(PM_IDB_NAME, 1);
             request.onupgradeneeded = () => {
@@ -59,10 +62,14 @@ export function pmOpenIDB() {
                 resolve(database);
             };
             request.onerror = () => resolve(null);
+            // Another tab holding an older-version connection can block the open;
+            // without this the promise would hang forever and freeze all storage.
+            request.onblocked = () => resolve(null);
         } catch (error) {
             resolve(null);
         }
-    });
+    }).finally(() => { openInFlight = null; });
+    return openInFlight;
 }
 
 export async function pmIDBSet(key, value) {
@@ -224,6 +231,8 @@ export function saveHistoriesBeforeUnload() {
 
 export async function loadHistoriesFromIDB() {
     try {
+        // 冷启动重载前先等待在途的历史保存落盘，避免用旧 IDB 覆盖尚未写完的内存新数据。
+        await waitForDirectorySave('histories');
         const value = await pmIDBGet('ST_SMS_DATA_V2');
         if (!value) {
             try {

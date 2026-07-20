@@ -155,7 +155,7 @@ delete globalThis.window;
 let requestBody;
 const callAI = createAiClient({
     getConfig: () => ({ useIndependent: true, apiUrl: 'https://example.test/v1', apiKey: 'secret', model: 'm' }),
-    getContext: () => ({}),
+    getContext: () => ({ getRequestHeaders: () => ({ 'X-CSRF-Token': 'test-token' }) }),
     fetchImpl: async (_url, options) => {
         requestBody = JSON.parse(options.body);
         return { ok: true, async json() { return { choices: [{ message: { content: 'ok' } }] }; } };

@@ -1,6 +1,6 @@
 import { extractAiResponseContent } from './ai.js';
 import { normalizeBudgetConfig } from './budget.js';
-import { THEME_PRESETS, normalizeApiUrls } from './config.js';
+import { THEME_PRESETS, normalizeApiUrls, parseModelList } from './config.js';
 import { openCropper } from './cropper.js';
 import { createApiDraftMode } from './settings-api-mode.js';
 import { showModelPicker } from './settings-model-picker.js';
@@ -48,7 +48,7 @@ export async function runBackgroundTransaction({ capture, mutate, restore, persi
 export function installSettingsUi(deps) {
     const {
         makeOverlay, applyTheme, applyBackground, fitNameFont, addNote,
-        getCurrentPersona, getStorageId, runtime, closePhone,
+        getCurrentPersona, getStorageId, runtime, closePhone, getCtx,
         applyBidirectionalInjection, clearBidirectionalInjection, getInteractiveStore,
     } = deps;
     const {
@@ -406,31 +406,77 @@ export function installSettingsUi(deps) {
             else delete window.__pmBgLocal[key];
         });
     };
+    const parseJsonResponse = async (r) => {
+        const raw = await r.text();
+        try { return JSON.parse(raw); }
+        catch (error) {
+            const preview = raw.trim().replace(/\s+/g, ' ').slice(0, 80);
+            throw new Error(`响应不是 JSON${preview ? `：${preview}` : ''}`);
+        }
+    };
+    const withTimeout = (ms) => {
+        const ctrl = new AbortController();
+        const timer = setTimeout(() => ctrl.abort(), ms);
+        return { signal: ctrl.signal, clear: () => clearTimeout(timer) };
+    };
+    // Route API tests through the host backend (same-origin) to avoid third-party CORS.
+    // The custom source reads its key from the host secret store, so inject Authorization
+    // via custom_include_headers (parsed as YAML; JSON is valid YAML) to override it.
+    const proxyFetch = (path, body, signal) => {
+        const ctx = getCtx?.();
+        if (!ctx || typeof ctx.getRequestHeaders !== 'function') {
+            throw new Error('当前 SillyTavern 版本不支持后端代理，请升级后重试');
+        }
+        return fetch(path, {
+            method: 'POST',
+            headers: ctx.getRequestHeaders(),
+            cache: 'no-cache',
+            body: JSON.stringify(body),
+            signal,
+        });
+    };
     window.__pmTestApi = async () => {
-        const u = document.getElementById('pm-cfg-url').value.trim(), k = document.getElementById('pm-cfg-key').value.trim(), m = document.getElementById('pm-cfg-model').value.trim();
+        const u = document.getElementById('pm-cfg-url').value.trim(), k = document.getElementById('pm-cfg-key').value.trim();
         const s = document.getElementById('pm-api-status');
         if (!u) { s.textContent = "请填写 API 地址"; s.style.color = "#ff3b30"; return; }
         s.textContent = "连接中..."; s.style.color = "#007aff";
+        const { signal, clear } = withTimeout(60000);
         try {
-            const r = await fetch(normalizeApiUrls(u).modelsUrl, { method: 'GET', headers: { 'Authorization': `Bearer ${k}` } });
+            const r = await proxyFetch('/api/backends/chat-completions/status', {
+                chat_completion_source: 'custom',
+                custom_url: normalizeApiUrls(u).baseUrl,
+                custom_include_headers: k ? JSON.stringify({ Authorization: `Bearer ${k}` }) : '',
+            }, signal);
+            clear();
             if (!r.ok) throw new Error(`HTTP ${r.status}`);
-            const d = await r.json();
-            if (d?.data && Array.isArray(d.data)) { runtime.modelList = d.data.map(x => x.id).filter(Boolean); s.textContent = `已拉取 ${runtime.modelList.length} 个模型`; s.style.color = "#34c759"; }
-            else { s.textContent = "连接成功"; s.style.color = "#34c759"; }
-        } catch (e) { s.textContent = "连接失败：" + e.message; s.style.color = "#ff3b30"; }
+            const d = await parseJsonResponse(r);
+            if (d?.error) throw new Error(d.error?.message || '拉取模型失败');
+            const models = parseModelList(d);
+            if (models.length) { runtime.modelList = models; s.textContent = `已拉取 ${models.length} 个模型`; s.style.color = "#34c759"; }
+            else { s.textContent = "连接成功，但未返回模型列表"; s.style.color = "#ff9500"; }
+        } catch (e) { clear(); s.textContent = "连接失败：" + (e.name === 'AbortError' ? '超时（服务商响应过慢，实际生成不受此限制）' : e.message); s.style.color = "#ff3b30"; }
     };
     window.__pmTestModel = async () => {
         const u = document.getElementById('pm-cfg-url').value.trim(), k = document.getElementById('pm-cfg-key').value.trim(), m = document.getElementById('pm-cfg-model').value.trim();
         const s = document.getElementById('pm-api-status');
         if (!u || !k || !m) { s.textContent = '请填写完整的 API、密钥与模型'; s.style.color = '#ff3b30'; return; }
         s.textContent = `测试「${m}」...`; s.style.color = '#007aff';
-        const ctrl = new AbortController(); const tm = setTimeout(() => ctrl.abort(), 15000);
+        const { signal, clear } = withTimeout(15000);
         try {
-            const r = await fetch(normalizeApiUrls(u).chatUrl, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${k}` }, body: JSON.stringify({ model: m, messages: [{ role: 'user', content: '只回复：OK' }] }), signal: ctrl.signal });
-            clearTimeout(tm); if (!r.ok) throw new Error(`HTTP ${r.status}`);
-            const j = await r.json(), reply = extractAiResponseContent(j);
+            const r = await proxyFetch('/api/backends/chat-completions/generate', {
+                chat_completion_source: 'custom',
+                custom_url: normalizeApiUrls(u).baseUrl,
+                custom_include_headers: JSON.stringify({ Authorization: `Bearer ${k}` }),
+                model: m,
+                messages: [{ role: 'user', content: '只回复：OK' }],
+                stream: false,
+            }, signal);
+            clear(); if (!r.ok) throw new Error(`HTTP ${r.status}`);
+            const j = await parseJsonResponse(r);
+            if (j?.error) throw new Error(j.error?.message || '测试失败');
+            const reply = extractAiResponseContent(j);
             s.textContent = reply ? `测试成功："${reply.slice(0, 25)}"` : '响应格式异常'; s.style.color = reply ? '#34c759' : '#ff9500';
-        } catch (e) { clearTimeout(tm); s.textContent = '测试失败：' + (e.name === 'AbortError' ? '超时' : e.message); s.style.color = '#ff3b30'; }
+        } catch (e) { clear(); s.textContent = '测试失败：' + (e.name === 'AbortError' ? '超时' : e.message); s.style.color = '#ff3b30'; }
     };
     window.__pmSaveBudgetConfig = async () => {
         const storageId = getStorageId();

@@ -167,7 +167,9 @@ export function deleteSelectedMessages({
             node.dataset.historyIndex = String(previous - shift);
         }
         refreshReplyCardAvailability?.();
-        persistCurrentHistory();
+        Promise.resolve(persistCurrentHistory()).then(saved => {
+            if (saved === false) alert('消息已删除，但保存到存储失败：浏览器存储不可用。请勿刷新页面，并尽快导出备份。');
+        });
         applyBidirectionalInjection();
     }
     state.isSelectMode = false;
@@ -281,7 +283,9 @@ export function installPhoneLifecycle(state, deps) {
         // 修复：关闭前先把当前 state.conversationHistory 存档
         // 空历史也必须落盘，否则删除最后一条消息后直接关闭会让旧历史在下次打开时复活。
         if (!force) {
-            if (state.currentPersona) persistCurrentHistory();
+            if (state.currentPersona) Promise.resolve(persistCurrentHistory()).then(saved => {
+                if (saved === false) alert('聊天记录保存失败：浏览器存储不可用。请勿刷新页面，并尽快导出备份。');
+            });
             try {
                 deps.persistPhoneUiSnapshot?.();
             } catch (error) {

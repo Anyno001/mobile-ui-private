@@ -125,6 +125,25 @@ export function extractAiResponseContent(json) {
     return content?.trim() || '';
 }
 
+// Explain why a 200 response yielded no usable text, so an empty result isn't a blank error.
+export function emptyResponseReason(json) {
+    const geminiFinish = String(json?.candidates?.[0]?.finishReason || '').toUpperCase();
+    const openAiFinish = String(json?.choices?.[0]?.finish_reason || '').toLowerCase();
+    const promptBlock = String(json?.promptFeedback?.blockReason || '').toUpperCase();
+    if (promptBlock) return `请求被服务商安全策略拦截（${promptBlock}）`;
+    if (geminiFinish === 'SAFETY' || geminiFinish === 'RECITATION' || geminiFinish === 'PROHIBITED_CONTENT') {
+        return `AI 因安全策略未返回内容（${geminiFinish}）`;
+    }
+    if (openAiFinish === 'content_filter') return 'AI 因内容过滤未返回文本（content_filter）';
+    const refusal = json?.choices?.[0]?.message?.refusal;
+    if (typeof refusal === 'string' && refusal.trim()) return `AI 拒绝回复：${refusal.trim().slice(0, 160)}`;
+    const parts = json?.candidates?.[0]?.content?.parts;
+    if (Array.isArray(parts) && parts.length && parts.every(part => part?.thought === true)) {
+        return 'AI 仅返回了推理内容，没有正文（可尝试关闭思考模式或重试）';
+    }
+    return '';
+}
+
 export function createAiClient({
     getConfig,
     getContext,
@@ -169,22 +188,31 @@ export function createAiClient({
             if (!String(cfg.apiUrl || '').trim()) throw new Error('独立 API 未填写地址');
             if (!String(cfg.apiKey || '').trim()) throw new Error('独立 API 未填写密钥');
             if (!String(cfg.model || '').trim()) throw new Error('独立 API 未选择模型');
-            const { chatUrl } = normalizeApiUrls(cfg.apiUrl);
+            const proxyContext = getContext();
+            if (!proxyContext || typeof proxyContext.getRequestHeaders !== 'function') {
+                throw new Error('当前 SillyTavern 版本不支持独立 API 后端代理，请升级后重试');
+            }
+            const { baseUrl } = normalizeApiUrls(cfg.apiUrl);
             const messages = [];
             if (systemPrompt) messages.push({ role: 'system', content: systemPrompt });
             messages.push({ role: 'user', content: userPrompt });
             let response;
             try {
-                response = await request(chatUrl, {
+                response = await request('/api/backends/chat-completions/generate', {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${cfg.apiKey}`,
-                    },
+                    headers: proxyContext.getRequestHeaders(),
+                    cache: 'no-cache',
+                    // Route through the host backend to avoid third-party CORS. The custom source
+                    // reads its key from the host secret store, so inject Authorization via
+                    // custom_include_headers (parsed as YAML; JSON is valid YAML) to override it.
                     body: JSON.stringify({
+                        chat_completion_source: 'custom',
+                        custom_url: baseUrl,
+                        custom_include_headers: JSON.stringify({ Authorization: `Bearer ${cfg.apiKey}` }),
                         model: cfg.model,
                         messages,
-                        temperature: 1.2,
+                        stream: false,
+                        temperature: 1,
                         top_p: 0.95,
                         frequency_penalty: 0.3,
                         presence_penalty: 0.3,
@@ -217,13 +245,23 @@ export function createAiClient({
                     throw new Error('独立 API 返回了无法解析的 JSON');
                 }
             }
+            // The proxy relays provider errors as { error: { message } } with a 200 status.
+            if (json?.error) {
+                const message = json.error?.message || json.error;
+                throw new Error(typeof message === 'string' && message.trim()
+                    ? `独立 API 请求失败：${message.trim().slice(0, 240)}`
+                    : '独立 API 请求失败');
+            }
             const geminiFinishReason = String(json?.candidates?.[0]?.finishReason || '').toUpperCase();
             const openAiFinishReason = String(json?.choices?.[0]?.finish_reason || '').toLowerCase();
             if (geminiFinishReason === 'MAX_TOKENS' || openAiFinishReason === 'length') {
                 throw new Error('AI 输出达到 token 上限并被截断（MAX_TOKENS），未使用不完整结果。请重试或检查服务商的最大输出限制。');
             }
             const content = extractAiResponseContent(json);
-            if (!content) throw new Error('独立 API 响应缺少可用文本内容');
+            if (!content) {
+                const reason = emptyResponseReason(json);
+                throw new Error(reason || '独立 API 响应缺少可用文本内容');
+            }
             throwIfAborted(signal);
             return content;
         }

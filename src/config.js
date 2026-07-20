@@ -8,9 +8,34 @@ export const THEME_PRESETS = {
 
 export function normalizeApiUrls(input) {
     const url = (input || '').trim().replace(/\/+$/, '');
-    if (!url) return { chatUrl: '', modelsUrl: '' };
-    if (/\/chat\/completions$/i.test(url)) return { chatUrl: url, modelsUrl: url.replace(/\/chat\/completions$/i, '/models') };
-    if (/\/models$/i.test(url)) return { chatUrl: url.replace(/\/models$/i, '/chat/completions'), modelsUrl: url };
-    if (/\/v\d+$/i.test(url)) return { chatUrl: url + '/chat/completions', modelsUrl: url + '/models' };
-    return { chatUrl: url + '/v1/chat/completions', modelsUrl: url + '/v1/models' };
+    if (!url) return { chatUrl: '', modelsUrl: '', baseUrl: '' };
+    if (/\/chat\/completions$/i.test(url)) {
+        const baseUrl = url.replace(/\/chat\/completions$/i, '');
+        return { chatUrl: url, modelsUrl: baseUrl + '/models', baseUrl };
+    }
+    if (/\/models$/i.test(url)) {
+        const baseUrl = url.replace(/\/models$/i, '');
+        return { chatUrl: baseUrl + '/chat/completions', modelsUrl: url, baseUrl };
+    }
+    // Already a versioned or provider-specific base (…/v1, /v1beta, /openai) — append endpoints directly.
+    if (/\/(?:v\d+\w*|openai)$/i.test(url)) return { chatUrl: url + '/chat/completions', modelsUrl: url + '/models', baseUrl: url };
+    const baseUrl = url + '/v1';
+    return { chatUrl: baseUrl + '/chat/completions', modelsUrl: baseUrl + '/models', baseUrl };
+}
+
+// Normalize a /models response across providers into a list of model id strings.
+// Handles OpenAI/Anthropic ({data:[{id}]}), Gemini ({models:[{name}]}) and bare arrays.
+export function parseModelList(data) {
+    const rows = Array.isArray(data) ? data
+        : Array.isArray(data?.data) ? data.data
+        : Array.isArray(data?.models) ? data.models
+        : [];
+    const ids = rows.map(row => {
+        if (typeof row === 'string') return row;
+        const id = row?.id ?? row?.name ?? row?.model;
+        if (typeof id !== 'string') return '';
+        // Gemini prefixes ids with "models/"; strip it for display/selection.
+        return id.replace(/^models\//, '');
+    }).filter(Boolean);
+    return [...new Set(ids)];
 }

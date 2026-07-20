@@ -34,6 +34,9 @@ Thumbs.db
 *.swp
 *.tmp
 
+# Spec-workflow tooling scaffold (local only)
+/.spec-workflow/
+
 # Local AI analysis and one-off investigation artifacts
 /.analysis-cache.md
 /.analysis-archive/

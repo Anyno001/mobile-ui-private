@@ -9,11 +9,28 @@
   };
   function normalizeApiUrls(input) {
     const url = (input || "").trim().replace(/\/+$/, "");
-    if (!url) return { chatUrl: "", modelsUrl: "" };
-    if (/\/chat\/completions$/i.test(url)) return { chatUrl: url, modelsUrl: url.replace(/\/chat\/completions$/i, "/models") };
-    if (/\/models$/i.test(url)) return { chatUrl: url.replace(/\/models$/i, "/chat/completions"), modelsUrl: url };
-    if (/\/v\d+$/i.test(url)) return { chatUrl: url + "/chat/completions", modelsUrl: url + "/models" };
-    return { chatUrl: url + "/v1/chat/completions", modelsUrl: url + "/v1/models" };
+    if (!url) return { chatUrl: "", modelsUrl: "", baseUrl: "" };
+    if (/\/chat\/completions$/i.test(url)) {
+      const baseUrl2 = url.replace(/\/chat\/completions$/i, "");
+      return { chatUrl: url, modelsUrl: baseUrl2 + "/models", baseUrl: baseUrl2 };
+    }
+    if (/\/models$/i.test(url)) {
+      const baseUrl2 = url.replace(/\/models$/i, "");
+      return { chatUrl: baseUrl2 + "/chat/completions", modelsUrl: url, baseUrl: baseUrl2 };
+    }
+    if (/\/(?:v\d+\w*|openai)$/i.test(url)) return { chatUrl: url + "/chat/completions", modelsUrl: url + "/models", baseUrl: url };
+    const baseUrl = url + "/v1";
+    return { chatUrl: baseUrl + "/chat/completions", modelsUrl: baseUrl + "/models", baseUrl };
+  }
+  function parseModelList(data) {
+    const rows = Array.isArray(data) ? data : Array.isArray(data?.data) ? data.data : Array.isArray(data?.models) ? data.models : [];
+    const ids = rows.map((row) => {
+      if (typeof row === "string") return row;
+      const id2 = row?.id ?? row?.name ?? row?.model;
+      if (typeof id2 !== "string") return "";
+      return id2.replace(/^models\//, "");
+    }).filter(Boolean);
+    return [...new Set(ids)];
   }
 
   // src/ai.js
@@ -124,6 +141,23 @@
     const content = candidates.find((value) => typeof value === "string" && value.trim());
     return content?.trim() || "";
   }
+  function emptyResponseReason(json) {
+    const geminiFinish = String(json?.candidates?.[0]?.finishReason || "").toUpperCase();
+    const openAiFinish = String(json?.choices?.[0]?.finish_reason || "").toLowerCase();
+    const promptBlock = String(json?.promptFeedback?.blockReason || "").toUpperCase();
+    if (promptBlock) return `\u8BF7\u6C42\u88AB\u670D\u52A1\u5546\u5B89\u5168\u7B56\u7565\u62E6\u622A\uFF08${promptBlock}\uFF09`;
+    if (geminiFinish === "SAFETY" || geminiFinish === "RECITATION" || geminiFinish === "PROHIBITED_CONTENT") {
+      return `AI \u56E0\u5B89\u5168\u7B56\u7565\u672A\u8FD4\u56DE\u5185\u5BB9\uFF08${geminiFinish}\uFF09`;
+    }
+    if (openAiFinish === "content_filter") return "AI \u56E0\u5185\u5BB9\u8FC7\u6EE4\u672A\u8FD4\u56DE\u6587\u672C\uFF08content_filter\uFF09";
+    const refusal = json?.choices?.[0]?.message?.refusal;
+    if (typeof refusal === "string" && refusal.trim()) return `AI \u62D2\u7EDD\u56DE\u590D\uFF1A${refusal.trim().slice(0, 160)}`;
+    const parts = json?.candidates?.[0]?.content?.parts;
+    if (Array.isArray(parts) && parts.length && parts.every((part) => part?.thought === true)) {
+      return "AI \u4EC5\u8FD4\u56DE\u4E86\u63A8\u7406\u5185\u5BB9\uFF0C\u6CA1\u6709\u6B63\u6587\uFF08\u53EF\u5C1D\u8BD5\u5173\u95ED\u601D\u8003\u6A21\u5F0F\u6216\u91CD\u8BD5\uFF09";
+    }
+    return "";
+  }
   function createAiClient({
     getConfig,
     getContext,
@@ -166,22 +200,31 @@
         if (!String(cfg.apiUrl || "").trim()) throw new Error("\u72EC\u7ACB API \u672A\u586B\u5199\u5730\u5740");
         if (!String(cfg.apiKey || "").trim()) throw new Error("\u72EC\u7ACB API \u672A\u586B\u5199\u5BC6\u94A5");
         if (!String(cfg.model || "").trim()) throw new Error("\u72EC\u7ACB API \u672A\u9009\u62E9\u6A21\u578B");
-        const { chatUrl } = normalizeApiUrls(cfg.apiUrl);
+        const proxyContext = getContext();
+        if (!proxyContext || typeof proxyContext.getRequestHeaders !== "function") {
+          throw new Error("\u5F53\u524D SillyTavern \u7248\u672C\u4E0D\u652F\u6301\u72EC\u7ACB API \u540E\u7AEF\u4EE3\u7406\uFF0C\u8BF7\u5347\u7EA7\u540E\u91CD\u8BD5");
+        }
+        const { baseUrl } = normalizeApiUrls(cfg.apiUrl);
         const messages = [];
         if (systemPrompt) messages.push({ role: "system", content: systemPrompt });
         messages.push({ role: "user", content: userPrompt });
         let response;
         try {
-          response = await request(chatUrl, {
+          response = await request("/api/backends/chat-completions/generate", {
             method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "Authorization": `Bearer ${cfg.apiKey}`
-            },
+            headers: proxyContext.getRequestHeaders(),
+            cache: "no-cache",
+            // Route through the host backend to avoid third-party CORS. The custom source
+            // reads its key from the host secret store, so inject Authorization via
+            // custom_include_headers (parsed as YAML; JSON is valid YAML) to override it.
             body: JSON.stringify({
+              chat_completion_source: "custom",
+              custom_url: baseUrl,
+              custom_include_headers: JSON.stringify({ Authorization: `Bearer ${cfg.apiKey}` }),
               model: cfg.model,
               messages,
-              temperature: 1.2,
+              stream: false,
+              temperature: 1,
               top_p: 0.95,
               frequency_penalty: 0.3,
               presence_penalty: 0.3
@@ -215,13 +258,20 @@
             throw new Error("\u72EC\u7ACB API \u8FD4\u56DE\u4E86\u65E0\u6CD5\u89E3\u6790\u7684 JSON");
           }
         }
+        if (json?.error) {
+          const message = json.error?.message || json.error;
+          throw new Error(typeof message === "string" && message.trim() ? `\u72EC\u7ACB API \u8BF7\u6C42\u5931\u8D25\uFF1A${message.trim().slice(0, 240)}` : "\u72EC\u7ACB API \u8BF7\u6C42\u5931\u8D25");
+        }
         const geminiFinishReason = String(json?.candidates?.[0]?.finishReason || "").toUpperCase();
         const openAiFinishReason = String(json?.choices?.[0]?.finish_reason || "").toLowerCase();
         if (geminiFinishReason === "MAX_TOKENS" || openAiFinishReason === "length") {
           throw new Error("AI \u8F93\u51FA\u8FBE\u5230 token \u4E0A\u9650\u5E76\u88AB\u622A\u65AD\uFF08MAX_TOKENS\uFF09\uFF0C\u672A\u4F7F\u7528\u4E0D\u5B8C\u6574\u7ED3\u679C\u3002\u8BF7\u91CD\u8BD5\u6216\u68C0\u67E5\u670D\u52A1\u5546\u7684\u6700\u5927\u8F93\u51FA\u9650\u5236\u3002");
         }
         const content = extractAiResponseContent(json);
-        if (!content) throw new Error("\u72EC\u7ACB API \u54CD\u5E94\u7F3A\u5C11\u53EF\u7528\u6587\u672C\u5185\u5BB9");
+        if (!content) {
+          const reason = emptyResponseReason(json);
+          throw new Error(reason || "\u72EC\u7ACB API \u54CD\u5E94\u7F3A\u5C11\u53EF\u7528\u6587\u672C\u5185\u5BB9");
+        }
         throwIfAborted(signal);
         return content;
       }
@@ -2927,13 +2977,21 @@ ${userPrompt}` : userPrompt;
   function getDirectorySaveRevision() {
     return { ...revisions };
   }
+  function waitForDirectorySave(store) {
+    assertStore(store);
+    return queues[store].catch(() => {
+    });
+  }
   function enqueueDirectorySave(store, data, operation, marksGlobalSave = false) {
     assertStore(store);
     if (typeof operation !== "function") throw new TypeError("\u76EE\u5F55\u4FDD\u5B58\u64CD\u4F5C\u5FC5\u987B\u662F\u51FD\u6570");
-    if (marksGlobalSave) revisions[store] += 1;
-    const snapshot = JSON.parse(JSON.stringify(data));
     const pending = queues[store].catch(() => {
-    }).then(() => operation(snapshot));
+    }).then(async () => {
+      const snapshot = JSON.parse(JSON.stringify(data));
+      const result = await operation(snapshot);
+      if (marksGlobalSave) revisions[store] += 1;
+      return result;
+    });
     queues[store] = pending;
     return pending;
   }
@@ -4005,6 +4063,7 @@ ${lines.join("\n")}
 
   // src/storage.js
   var database = null;
+  var openInFlight = null;
   var EMOJI_STORE_KEY = "ST_SMS_EMOJIS";
   var EMOJI_FALLBACK_KEY = `${EMOJI_STORE_KEY}_LOCAL_FALLBACK`;
   var GROUP_META_STORE_KEY = "ST_SMS_GROUP_META";
@@ -4050,16 +4109,16 @@ ${lines.join("\n")}
   ]);
   var PLUGIN_IDB_DYNAMIC_PREFIXES = Object.freeze(["ST_SMS_BG_LOCAL_"]);
   function pmOpenIDB() {
-    return new Promise((resolve) => {
-      if (database) {
-        try {
-          database.transaction(PM_IDB_STORE, "readonly");
-          resolve(database);
-          return;
-        } catch (error) {
-          database = null;
-        }
+    if (database) {
+      try {
+        database.transaction(PM_IDB_STORE, "readonly");
+        return Promise.resolve(database);
+      } catch (error) {
+        database = null;
       }
+    }
+    if (openInFlight) return openInFlight;
+    openInFlight = new Promise((resolve) => {
       try {
         const request = indexedDB.open(PM_IDB_NAME, 1);
         request.onupgradeneeded = () => {
@@ -4075,10 +4134,14 @@ ${lines.join("\n")}
           resolve(database);
         };
         request.onerror = () => resolve(null);
+        request.onblocked = () => resolve(null);
       } catch (error) {
         resolve(null);
       }
+    }).finally(() => {
+      openInFlight = null;
     });
+    return openInFlight;
   }
   async function pmIDBSet(key, value) {
     const db = await pmOpenIDB();
@@ -4233,6 +4296,7 @@ ${lines.join("\n")}
   }
   async function loadHistoriesFromIDB() {
     try {
+      await waitForDirectorySave("histories");
       const value = await pmIDBGet("ST_SMS_DATA_V2");
       if (!value) {
         try {
@@ -5065,7 +5129,7 @@ ${mainChatText}` : "",
   function getSaveKey(state) {
     return state.isGroupChat && state.currentGroupKey ? state.currentGroupKey : state.currentPersona;
   }
-  function persistCurrentHistory(state, getStorageId2, saveKeyOverride, storageIdOverride, historyOverride, normalizationContext) {
+  async function persistCurrentHistory(state, getStorageId2, saveKeyOverride, storageIdOverride, historyOverride, normalizationContext) {
     const id2 = storageIdOverride || state.activeStorageId || getStorageId2();
     if (!id2 || id2 === "sms_unknown__default") {
       console.warn("[phone-mode] persistCurrentHistory: storageId \u5C1A\u672A\u5C31\u7EEA\uFF0C\u8DF3\u8FC7\u4FDD\u5B58");
@@ -5082,8 +5146,13 @@ ${mainChatText}` : "",
       legacySeed: `${id2}:${saveKey.trim()}`
     });
     window.__pmHistories[id2][saveKey.trim()] = cloneHistory(history.slice(-SAVE_LIMIT));
-    saveHistories();
-    return true;
+    try {
+      await saveHistoriesStrict();
+      return true;
+    } catch (error) {
+      console.warn("[phone-mode] \u77ED\u4FE1\u5386\u53F2\u4FDD\u5B58\u5931\u8D25", error);
+      return false;
+    }
   }
   function getStoredHistory(id2, saveKey) {
     const history = window.__pmHistories[id2]?.[saveKey];
@@ -11847,7 +11916,9 @@ ${lines}`;
         node.dataset.historyIndex = String(previous - shift);
       }
       refreshReplyCardAvailability?.();
-      persistCurrentHistory2();
+      Promise.resolve(persistCurrentHistory2()).then((saved) => {
+        if (saved === false) alert("\u6D88\u606F\u5DF2\u5220\u9664\uFF0C\u4F46\u4FDD\u5B58\u5230\u5B58\u50A8\u5931\u8D25\uFF1A\u6D4F\u89C8\u5668\u5B58\u50A8\u4E0D\u53EF\u7528\u3002\u8BF7\u52FF\u5237\u65B0\u9875\u9762\uFF0C\u5E76\u5C3D\u5FEB\u5BFC\u51FA\u5907\u4EFD\u3002");
+      });
       applyBidirectionalInjection();
     }
     state.isSelectMode = false;
@@ -11973,7 +12044,9 @@ ${lines}`;
     };
     window.__pmEnd = (force = false) => {
       if (!force) {
-        if (state.currentPersona) persistCurrentHistory2();
+        if (state.currentPersona) Promise.resolve(persistCurrentHistory2()).then((saved) => {
+          if (saved === false) alert("\u804A\u5929\u8BB0\u5F55\u4FDD\u5B58\u5931\u8D25\uFF1A\u6D4F\u89C8\u5668\u5B58\u50A8\u4E0D\u53EF\u7528\u3002\u8BF7\u52FF\u5237\u65B0\u9875\u9762\uFF0C\u5E76\u5C3D\u5FEB\u5BFC\u51FA\u5907\u4EFD\u3002");
+        });
         try {
           deps.persistPhoneUiSnapshot?.();
         } catch (error) {
@@ -13490,6 +13563,7 @@ ${lines}`;
       getStorageId: getStorageId2,
       runtime,
       closePhone,
+      getCtx,
       applyBidirectionalInjection,
       clearBidirectionalInjection,
       getInteractiveStore
@@ -13892,8 +13966,35 @@ ${error.message}`);
         else delete window.__pmBgLocal[key];
       });
     };
+    const parseJsonResponse = async (r) => {
+      const raw = await r.text();
+      try {
+        return JSON.parse(raw);
+      } catch (error) {
+        const preview = raw.trim().replace(/\s+/g, " ").slice(0, 80);
+        throw new Error(`\u54CD\u5E94\u4E0D\u662F JSON${preview ? `\uFF1A${preview}` : ""}`);
+      }
+    };
+    const withTimeout = (ms) => {
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), ms);
+      return { signal: ctrl.signal, clear: () => clearTimeout(timer) };
+    };
+    const proxyFetch = (path, body, signal) => {
+      const ctx = getCtx?.();
+      if (!ctx || typeof ctx.getRequestHeaders !== "function") {
+        throw new Error("\u5F53\u524D SillyTavern \u7248\u672C\u4E0D\u652F\u6301\u540E\u7AEF\u4EE3\u7406\uFF0C\u8BF7\u5347\u7EA7\u540E\u91CD\u8BD5");
+      }
+      return fetch(path, {
+        method: "POST",
+        headers: ctx.getRequestHeaders(),
+        cache: "no-cache",
+        body: JSON.stringify(body),
+        signal
+      });
+    };
     window.__pmTestApi = async () => {
-      const u = document.getElementById("pm-cfg-url").value.trim(), k = document.getElementById("pm-cfg-key").value.trim(), m = document.getElementById("pm-cfg-model").value.trim();
+      const u = document.getElementById("pm-cfg-url").value.trim(), k = document.getElementById("pm-cfg-key").value.trim();
       const s = document.getElementById("pm-api-status");
       if (!u) {
         s.textContent = "\u8BF7\u586B\u5199 API \u5730\u5740";
@@ -13902,20 +14003,29 @@ ${error.message}`);
       }
       s.textContent = "\u8FDE\u63A5\u4E2D...";
       s.style.color = "#007aff";
+      const { signal, clear } = withTimeout(6e4);
       try {
-        const r = await fetch(normalizeApiUrls(u).modelsUrl, { method: "GET", headers: { "Authorization": `Bearer ${k}` } });
+        const r = await proxyFetch("/api/backends/chat-completions/status", {
+          chat_completion_source: "custom",
+          custom_url: normalizeApiUrls(u).baseUrl,
+          custom_include_headers: k ? JSON.stringify({ Authorization: `Bearer ${k}` }) : ""
+        }, signal);
+        clear();
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        const d = await r.json();
-        if (d?.data && Array.isArray(d.data)) {
-          runtime.modelList = d.data.map((x) => x.id).filter(Boolean);
-          s.textContent = `\u5DF2\u62C9\u53D6 ${runtime.modelList.length} \u4E2A\u6A21\u578B`;
+        const d = await parseJsonResponse(r);
+        if (d?.error) throw new Error(d.error?.message || "\u62C9\u53D6\u6A21\u578B\u5931\u8D25");
+        const models = parseModelList(d);
+        if (models.length) {
+          runtime.modelList = models;
+          s.textContent = `\u5DF2\u62C9\u53D6 ${models.length} \u4E2A\u6A21\u578B`;
           s.style.color = "#34c759";
         } else {
-          s.textContent = "\u8FDE\u63A5\u6210\u529F";
-          s.style.color = "#34c759";
+          s.textContent = "\u8FDE\u63A5\u6210\u529F\uFF0C\u4F46\u672A\u8FD4\u56DE\u6A21\u578B\u5217\u8868";
+          s.style.color = "#ff9500";
         }
       } catch (e) {
-        s.textContent = "\u8FDE\u63A5\u5931\u8D25\uFF1A" + e.message;
+        clear();
+        s.textContent = "\u8FDE\u63A5\u5931\u8D25\uFF1A" + (e.name === "AbortError" ? "\u8D85\u65F6\uFF08\u670D\u52A1\u5546\u54CD\u5E94\u8FC7\u6162\uFF0C\u5B9E\u9645\u751F\u6210\u4E0D\u53D7\u6B64\u9650\u5236\uFF09" : e.message);
         s.style.color = "#ff3b30";
       }
     };
@@ -13929,17 +14039,25 @@ ${error.message}`);
       }
       s.textContent = `\u6D4B\u8BD5\u300C${m}\u300D...`;
       s.style.color = "#007aff";
-      const ctrl = new AbortController();
-      const tm = setTimeout(() => ctrl.abort(), 15e3);
+      const { signal, clear } = withTimeout(15e3);
       try {
-        const r = await fetch(normalizeApiUrls(u).chatUrl, { method: "POST", headers: { "Content-Type": "application/json", "Authorization": `Bearer ${k}` }, body: JSON.stringify({ model: m, messages: [{ role: "user", content: "\u53EA\u56DE\u590D\uFF1AOK" }] }), signal: ctrl.signal });
-        clearTimeout(tm);
+        const r = await proxyFetch("/api/backends/chat-completions/generate", {
+          chat_completion_source: "custom",
+          custom_url: normalizeApiUrls(u).baseUrl,
+          custom_include_headers: JSON.stringify({ Authorization: `Bearer ${k}` }),
+          model: m,
+          messages: [{ role: "user", content: "\u53EA\u56DE\u590D\uFF1AOK" }],
+          stream: false
+        }, signal);
+        clear();
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        const j = await r.json(), reply = extractAiResponseContent(j);
+        const j = await parseJsonResponse(r);
+        if (j?.error) throw new Error(j.error?.message || "\u6D4B\u8BD5\u5931\u8D25");
+        const reply = extractAiResponseContent(j);
         s.textContent = reply ? `\u6D4B\u8BD5\u6210\u529F\uFF1A"${reply.slice(0, 25)}"` : "\u54CD\u5E94\u683C\u5F0F\u5F02\u5E38";
         s.style.color = reply ? "#34c759" : "#ff9500";
       } catch (e) {
-        clearTimeout(tm);
+        clear();
         s.textContent = "\u6D4B\u8BD5\u5931\u8D25\uFF1A" + (e.name === "AbortError" ? "\u8D85\u65F6" : e.message);
         s.style.color = "#ff3b30";
       }
