@@ -395,7 +395,7 @@ function normalizeComment(raw, context) {
 
 function normalizePost(raw, context) {
     if (context.sourceVersion === INTERACTIVE_STORE_VERSION) {
-        assertV2Keys(raw, ['id', 'authorId', 'authorNameSnapshot', 'content', 'tags', 'createdAt', 'comments', 'liked'], 'post');
+        assertV2Keys(raw, ['id', 'authorId', 'authorNameSnapshot', 'content', 'tags', 'createdAt', 'comments', 'liked', 'shareCount'], 'post');
         assertV2Text(raw.id, 80, 'post.id'); assertV2AuthorFields(raw, 'post'); assertV2Text(raw.content, 4000, 'post.content'); assertV2Timestamp(raw.createdAt, 'post.createdAt');
         assertV2List(raw.tags, 'post.tags');
         if (raw.tags.length > 5) throw new Error('互动场景 v2 post.tags 不能超过 5 项');
@@ -403,6 +403,9 @@ function normalizePost(raw, context) {
         assertV2List(raw.comments, 'post.comments');
         if (raw.comments.length > INTERACTIVE_LIMITS.comments) throw new Error(`互动场景 v2 post.comments 不能超过 ${INTERACTIVE_LIMITS.comments} 项`);
         if (typeof raw.liked !== 'boolean') throw new Error('互动场景 v2 post.liked 必须是布尔值');
+        if (Object.hasOwn(raw, 'shareCount') && (!Number.isSafeInteger(raw.shareCount) || raw.shareCount < 0)) {
+            throw new Error('互动场景 v2 post.shareCount 必须是非负安全整数');
+        }
     } else if (context.strictLegacy) {
         assertV1Item(raw, 'post', context.path);
     }
@@ -420,6 +423,7 @@ function normalizePost(raw, context) {
             ...context, path: `${context.path}.comments.${index}`,
         })).filter(Boolean).slice(-INTERACTIVE_LIMITS.comments),
         liked: !!raw?.liked,
+        shareCount: Number.isSafeInteger(raw?.shareCount) && raw.shareCount >= 0 ? raw.shareCount : 0,
     };
 }
 
@@ -542,7 +546,7 @@ export function appendScenePosts(scope, scopeId, scene, items, actorSeeds = []) 
                 id: id('comment'), ...resolveInteractiveAuthor(scope, scopeId, comment.author),
                 content: comment.content, createdAt,
             })),
-            liked: false, createdAt,
+            liked: false, shareCount: 0, createdAt,
         }));
     } catch (error) {
         scope.actors = actorsSnapshot;
@@ -583,6 +587,21 @@ export function deleteSceneComment(scene, postId, commentId) {
     const post = scene?.posts?.find(item => item.id === postId);
     if (!post?.comments?.some(item => item.id === commentId)) throw new Error('评论不存在');
     post.comments = post.comments.filter(item => item.id !== commentId);
+    scene.updatedAt = Date.now();
+}
+
+export function toggleScenePostLike(scene, postId) {
+    const post = scene?.posts?.find(item => item.id === postId);
+    if (!post) throw new Error('帖子不存在');
+    post.liked = !post.liked;
+    scene.updatedAt = Date.now();
+}
+
+export function incrementScenePostShare(scene, postId) {
+    const post = scene?.posts?.find(item => item.id === postId);
+    if (!post) throw new Error('帖子不存在');
+    if (!Number.isSafeInteger(post.shareCount) || post.shareCount < 0) throw new Error('帖子分享数无效');
+    post.shareCount += 1;
     scene.updatedAt = Date.now();
 }
 

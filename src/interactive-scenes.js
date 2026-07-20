@@ -3,7 +3,7 @@ import { buildInteractiveRequest, buildStylePrompt, getInteractivePresets, parse
 import {
     INTERACTIVE_LIMITS, addSceneComment, appendScenePosts, deleteSceneComment,
     deleteScenePost, enforceInteractiveSceneLimit, ensureInteractiveActor, normalizeInteractiveStore, normalizeScene,
-    createDefaultPhoneUiScope, normalizePhoneUiState, patchPhoneUiScope, resolveInteractiveAuthor, stripPersistedV2ContentRating, toggleScenePin, updateSceneComment, updateScenePost,
+    createDefaultPhoneUiScope, incrementScenePostShare, normalizePhoneUiState, patchPhoneUiScope, resolveInteractiveAuthor, stripPersistedV2ContentRating, toggleScenePin, toggleScenePostLike, updateSceneComment, updateScenePost,
 } from './interactive-scene-model.js';
 import {
     loadInteractiveScenes, loadPhoneUiState, saveInteractiveScenes, savePhoneUiState,
@@ -624,14 +624,12 @@ export function installInteractiveScenes(_state, deps) {
             rerender('feed'); return;
         }
         if (action === 'like') {
-            await commit(() => {
-                const post = current().scene?.posts.find(item => item.id === button.dataset.postId);
-                if (!post) throw new Error('帖子不存在');
-                post.liked = !post.liked;
-                current().scene.updatedAt = now();
-            });
-            rerender('feed');
-            return;
+            await commit(() => toggleScenePostLike(current().scene, button.dataset.postId));
+            rerender('feed'); return;
+        }
+        if (action === 'share') {
+            await commit(() => incrementScenePostShare(current().scene, button.dataset.postId));
+            rerender('feed'); return;
         }
         if (action === 'edit-post') {
             const post = current().scene?.posts.find(item => item.id === button.dataset.postId);

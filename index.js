@@ -3681,7 +3681,7 @@ ${lines.join("\n")}
   }
   function normalizePost(raw, context) {
     if (context.sourceVersion === INTERACTIVE_STORE_VERSION) {
-      assertV2Keys(raw, ["id", "authorId", "authorNameSnapshot", "content", "tags", "createdAt", "comments", "liked"], "post");
+      assertV2Keys(raw, ["id", "authorId", "authorNameSnapshot", "content", "tags", "createdAt", "comments", "liked", "shareCount"], "post");
       assertV2Text(raw.id, 80, "post.id");
       assertV2AuthorFields(raw, "post");
       assertV2Text(raw.content, 4e3, "post.content");
@@ -3692,6 +3692,9 @@ ${lines.join("\n")}
       assertV2List(raw.comments, "post.comments");
       if (raw.comments.length > INTERACTIVE_LIMITS.comments) throw new Error(`\u4E92\u52A8\u573A\u666F v2 post.comments \u4E0D\u80FD\u8D85\u8FC7 ${INTERACTIVE_LIMITS.comments} \u9879`);
       if (typeof raw.liked !== "boolean") throw new Error("\u4E92\u52A8\u573A\u666F v2 post.liked \u5FC5\u987B\u662F\u5E03\u5C14\u503C");
+      if (Object.hasOwn(raw, "shareCount") && (!Number.isSafeInteger(raw.shareCount) || raw.shareCount < 0)) {
+        throw new Error("\u4E92\u52A8\u573A\u666F v2 post.shareCount \u5FC5\u987B\u662F\u975E\u8D1F\u5B89\u5168\u6574\u6570");
+      }
     } else if (context.strictLegacy) {
       assertV1Item(raw, "post", context.path);
     }
@@ -3709,7 +3712,8 @@ ${lines.join("\n")}
         ...context,
         path: `${context.path}.comments.${index}`
       })).filter(Boolean).slice(-INTERACTIVE_LIMITS.comments),
-      liked: !!raw?.liked
+      liked: !!raw?.liked,
+      shareCount: Number.isSafeInteger(raw?.shareCount) && raw.shareCount >= 0 ? raw.shareCount : 0
     };
   }
   function normalizeDanmaku(raw, context) {
@@ -3848,6 +3852,7 @@ ${lines.join("\n")}
           createdAt
         })),
         liked: false,
+        shareCount: 0,
         createdAt
       }));
     } catch (error) {
@@ -3885,6 +3890,19 @@ ${lines.join("\n")}
     const post = scene?.posts?.find((item) => item.id === postId);
     if (!post?.comments?.some((item) => item.id === commentId)) throw new Error("\u8BC4\u8BBA\u4E0D\u5B58\u5728");
     post.comments = post.comments.filter((item) => item.id !== commentId);
+    scene.updatedAt = Date.now();
+  }
+  function toggleScenePostLike(scene, postId) {
+    const post = scene?.posts?.find((item) => item.id === postId);
+    if (!post) throw new Error("\u5E16\u5B50\u4E0D\u5B58\u5728");
+    post.liked = !post.liked;
+    scene.updatedAt = Date.now();
+  }
+  function incrementScenePostShare(scene, postId) {
+    const post = scene?.posts?.find((item) => item.id === postId);
+    if (!post) throw new Error("\u5E16\u5B50\u4E0D\u5B58\u5728");
+    if (!Number.isSafeInteger(post.shareCount) || post.shareCount < 0) throw new Error("\u5E16\u5B50\u5206\u4EAB\u6570\u65E0\u6548");
+    post.shareCount += 1;
     scene.updatedAt = Date.now();
   }
   function deleteInteractiveScene(scope, sceneId) {
@@ -6422,14 +6440,14 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
     if (!scene.posts.length) return '<div class="pm-scene-empty"><b>\u8FD9\u91CC\u8FD8\u5F88\u5B89\u9759</b><span>\u53D1\u7B2C\u4E00\u7BC7\u5E16\u5B50\uFF0C\u6216\u8005\u62CD\u4E00\u62CD\u8BA9\u793E\u533A\u52A8\u8D77\u6765\u3002</span></div>';
     return scene.posts.slice().reverse().map((post) => {
       const likes = stablePostMetric(post, "likes", 8, 240) + (post.liked ? 1 : 0);
-      const shares = stablePostMetric(post, "shares", 1, 48);
+      const shares = stablePostMetric(post, "shares", 1, 48) + post.shareCount;
       return `<article class="pm-scene-post">
         <header><div class="pm-scene-avatar">${escapeHtml(post.authorNameSnapshot.slice(0, 1))}</div><div class="pm-scene-post-author"><b>${escapeHtml(post.authorNameSnapshot)}</b><span class="pm-scene-post-time">\u521A\u521A</span></div><div class="pm-scene-post-actions-wrap"><button type="button" class="pm-scene-post-more" data-action="post-actions" aria-label="\u5E16\u5B50\u64CD\u4F5C" title="\u5E16\u5B50\u64CD\u4F5C" aria-expanded="false">${MORE_ICON_SVG}</button><span class="pm-scene-post-actions" hidden><button type="button" data-action="comments" data-post-id="${escapeAttr(post.id)}" aria-label="\u62CD\u4E00\u62CD\u672C\u5E16\uFF0C\u53EA\u751F\u6210\u672C\u5E16\u8BC4\u8BBA" title="\u62CD\u4E00\u62CD\u672C\u5E16">${POKE_ICON_SVG}</button><button type="button" data-action="edit-post" data-post-id="${escapeAttr(post.id)}" aria-label="\u7F16\u8F91\u5E16\u5B50" title="\u7F16\u8F91\u5E16\u5B50">${EDIT_ICON_SVG}</button><button type="button" class="pm-scene-danger" data-action="delete-post" data-post-id="${escapeAttr(post.id)}" aria-label="\u5220\u9664\u5E16\u5B50" title="\u5220\u9664\u5E16\u5B50">${TRASH_ICON_SVG}</button></span></div></header>
         <p>${escapeHtml(post.content).replace(/\n/g, "<br>")}</p>
         ${post.tags.length ? `<div class="pm-scene-tags">${post.tags.map((tag) => `<span>#${escapeHtml(tag)}</span>`).join("")}</div>` : ""}
-        <footer><button type="button" class="pm-scene-like ${post.liked ? "is-liked" : ""}" data-action="like" data-post-id="${escapeAttr(post.id)}" aria-pressed="${post.liked}" aria-label="${post.liked ? "\u53D6\u6D88\u559C\u6B22" : "\u559C\u6B22"}">${renderPostMetric(HEART_ICON_SVG, likes, "\u559C\u6B22", "is-like")}</button>${renderPostMetric(SHARE_ICON_SVG, shares, "\u8F6C\u53D1", "is-share")}<button type="button" class="pm-scene-reply-toggle" data-action="toggle-reply" data-post-id="${escapeAttr(post.id)}" aria-label="\u56DE\u590D\u672C\u5E16" aria-controls="pm-comment-composer-${escapeAttr(post.id)}" aria-expanded="false">${renderPostMetric(REPLY_ICON_SVG, post.comments.length, "\u56DE\u590D", "is-reply")}</button></footer>
+        <footer><button type="button" class="pm-scene-like ${post.liked ? "is-liked" : ""}" data-action="like" data-post-id="${escapeAttr(post.id)}" aria-pressed="${post.liked}" aria-label="${post.liked ? "\u53D6\u6D88\u559C\u6B22" : "\u559C\u6B22"}">${renderPostMetric(HEART_ICON_SVG, likes, "\u559C\u6B22", "is-like")}</button><button type="button" class="pm-scene-share" data-action="share" data-post-id="${escapeAttr(post.id)}" aria-label="\u5206\u4EAB\u672C\u5E16">${renderPostMetric(SHARE_ICON_SVG, shares, "\u8F6C\u53D1", "is-share")}</button><button type="button" class="pm-scene-reply-toggle" data-action="toggle-reply" data-post-id="${escapeAttr(post.id)}" aria-label="\u56DE\u590D\u672C\u5E16" aria-controls="pm-comment-composer-${escapeAttr(post.id)}" aria-expanded="false">${renderPostMetric(REPLY_ICON_SVG, post.comments.length, "\u56DE\u590D", "is-reply")}</button></footer>
         ${post.comments.length ? `<div class="pm-scene-comments">${post.comments.map((comment) => `<div class="pm-scene-comment"><span><b>${escapeHtml(comment.authorNameSnapshot)}</b> ${escapeHtml(comment.content)}</span><span class="pm-scene-comment-actions" hidden><button type="button" data-action="edit-comment" data-post-id="${escapeAttr(post.id)}" data-comment-id="${escapeAttr(comment.id)}" aria-label="\u7F16\u8F91\u8BC4\u8BBA" title="\u7F16\u8F91\u8BC4\u8BBA">${EDIT_ICON_SVG}</button><button type="button" class="pm-scene-danger" data-action="delete-comment" data-post-id="${escapeAttr(post.id)}" data-comment-id="${escapeAttr(comment.id)}" aria-label="\u5220\u9664\u8BC4\u8BBA" title="\u5220\u9664\u8BC4\u8BBA">${TRASH_ICON_SVG}</button></span></div>`).join("")}</div>` : ""}
-        <div id="pm-comment-composer-${escapeAttr(post.id)}" class="pm-scene-comment-composer" hidden><input id="pm-comment-input-${escapeAttr(post.id)}" maxlength="1000" placeholder="\u8F93\u5165\u4F60\u7684\u9AD8\u89C1\u5427"><button type="button" data-action="post-comment" data-post-id="${escapeAttr(post.id)}" aria-label="\u53D1\u9001\u56DE\u590D" title="\u53D1\u9001\u56DE\u590D">${SEND_ICON_SVG}</button></div>
+        <div id="pm-comment-composer-${escapeAttr(post.id)}" class="pm-scene-comment-composer" hidden><input id="pm-comment-input-${escapeAttr(post.id)}" maxlength="1000" placeholder="\u53D1\u8868\u4F60\u7684\u60F3\u6CD5\u5427"><button type="button" data-action="post-comment" data-post-id="${escapeAttr(post.id)}" aria-label="\u53D1\u9001\u56DE\u590D" title="\u53D1\u9001\u56DE\u590D">${SEND_ICON_SVG}</button></div>
     </article>`;
     }).join("");
   }
@@ -6472,18 +6490,19 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
     const liveActive = state.liveActive === true;
     const autoActive = state.autoActive === true;
     const accent = scene.themeAccent || preset.accent;
+    const hasDanmaku = scene.live.danmaku.length > 0;
     const floatingDanmaku = scene.live.danmaku.slice(-8).map((item) => {
       const motion = getDanmakuMotion(item);
       return `<span class="is-${stableDanmakuTone(item)}" style="--lane:${motion.lane};--delay:${motion.delay}s;--duration:${motion.duration}s;--offset:${motion.offset}px">${escapeHtml(item.content)}</span>`;
     }).join("");
     const composer = tab === "feed" ? `<div class="pm-scene-composer"><textarea id="pm-scene-post-input" maxlength="4000" placeholder="\u5206\u4EAB\u6B64\u523B\u2026\u2026"></textarea><button type="button" class="pm-scene-primary" data-action="publish" aria-label="\u53D1\u5E03" title="\u53D1\u5E03">${SEND_ICON_SVG}</button></div>` : "";
-    const content = tab === "feed" ? `<div class="pm-scene-feed"><div class="pm-scene-posts">${renderPosts(scene)}</div></div>` : tab === "live" ? `<div class="pm-live-room"><div class="pm-live-stage ${floatingDanmaku ? "has-danmaku" : ""}"><div class="pm-live-badge">${liveActive ? "\u76F4\u64AD\u4E2D" : "\u9884\u89C8"}</div><h2>${escapeHtml(scene.live.title)}</h2><div class="pm-danmaku-float">${floatingDanmaku}</div></div><div class="pm-live-actions"><button type="button" data-action="toggle-live" class="${liveActive ? "is-live" : ""}">${liveActive ? "\u505C\u6B62\u76F4\u64AD" : "\u5F00\u59CB\u76F4\u64AD"}</button><button type="button" data-action="rhythm">\u5E26\u4E00\u6CE2\u8282\u594F</button></div><div class="pm-danmaku-list">${renderDanmaku(scene)}</div><div class="pm-danmaku-input"><input id="pm-danmaku-input" maxlength="200" placeholder="\u53D1\u6761\u5F39\u5E55\u2026\u2026"><button type="button" data-action="send-danmaku">\u53D1\u9001</button></div></div>` : tab === "context-inject" ? renderContextInjectionSettings(scene, state) : `<div class="pm-scene-prompt"><label>\u793E\u533A\u540D\u79F0<input id="pm-scene-title" maxlength="80" value="${escapeAttr(scene.title)}"></label><fieldset class="pm-scene-accent-field"><legend>\u793E\u533A\u4E3B\u9898\u8272</legend><div class="pm-scene-accent-options">${renderSceneAccentOptions(accent)}<label class="pm-scene-accent-custom" aria-label="\u81EA\u5B9A\u4E49\u793E\u533A\u4E3B\u9898\u8272"><input id="pm-scene-accent" type="color" data-action="scene-accent-custom" value="${escapeAttr(accent)}"><span>\u81EA\u5B9A\u4E49</span></label></div></fieldset><label>\u793E\u533A\u98CE\u683C<textarea id="pm-scene-prompt" maxlength="6000">${escapeHtml(scene.generatedPrompt)}</textarea></label><p>\u53EF\u76F4\u63A5\u4FEE\u6539\uFF0C\u540E\u7EED\u793E\u533A\u5185\u5BB9\u9075\u5FAA\u6B64\u8BED\u611F\u3002</p><div class="pm-scene-prompt-actions"><button type="button" class="pm-scene-secondary" data-action="regenerate-prompt">\u91CD\u65B0\u751F\u6210</button><button type="button" class="pm-scene-primary" data-action="save-prompt">\u4FDD\u5B58\u98CE\u683C</button></div></div>`;
+    const content = tab === "feed" ? `<div class="pm-scene-feed"><div class="pm-scene-posts">${renderPosts(scene)}</div></div>` : tab === "live" ? `<div class="pm-live-room"><div class="pm-live-stage ${hasDanmaku ? "has-danmaku" : ""}"><div class="pm-live-badge">${hasDanmaku ? "\u76F4\u64AD\u4E2D" : "\u672A\u5F00\u64AD"}</div><h2>${escapeHtml(scene.live.title)}</h2><div class="pm-danmaku-float">${floatingDanmaku}</div></div><div class="pm-live-actions"><button type="button" data-action="toggle-live" class="${liveActive ? "is-live" : ""}">${liveActive ? "\u505C\u6B62\u76F4\u64AD" : "\u5F00\u59CB\u76F4\u64AD"}</button><button type="button" data-action="rhythm">\u5E26\u4E00\u6CE2\u8282\u594F</button></div><div class="pm-danmaku-list">${renderDanmaku(scene)}</div><div class="pm-danmaku-input"><input id="pm-danmaku-input" maxlength="200" placeholder="\u53D1\u6761\u5F39\u5E55\u2026\u2026"><button type="button" data-action="send-danmaku" aria-label="\u53D1\u9001\u5F39\u5E55" title="\u53D1\u9001\u5F39\u5E55">${SEND_ICON_SVG}</button></div></div>` : tab === "context-inject" ? renderContextInjectionSettings(scene, state) : `<div class="pm-scene-prompt"><label>\u793E\u533A\u540D\u79F0<input id="pm-scene-title" maxlength="80" value="${escapeAttr(scene.title)}"></label><fieldset class="pm-scene-accent-field"><legend>\u793E\u533A\u4E3B\u9898\u8272</legend><div class="pm-scene-accent-options">${renderSceneAccentOptions(accent)}<label class="pm-scene-accent-custom" aria-label="\u81EA\u5B9A\u4E49\u793E\u533A\u4E3B\u9898\u8272"><input id="pm-scene-accent" type="color" data-action="scene-accent-custom" value="${escapeAttr(accent)}"><span>\u81EA\u5B9A\u4E49</span></label></div></fieldset><label>\u793E\u533A\u98CE\u683C<textarea id="pm-scene-prompt" maxlength="6000">${escapeHtml(scene.generatedPrompt)}</textarea></label><p>\u8BBE\u7F6E\u793E\u533A\u5185\u5BB9\u7684\u8868\u8FBE\u98CE\u683C\u4E0E\u6C1B\u56F4\u3002</p><div class="pm-scene-prompt-actions"><button type="button" class="pm-scene-secondary" data-action="regenerate-prompt">\u91CD\u65B0\u751F\u6210</button><button type="button" class="pm-scene-primary" data-action="save-prompt">\u4FDD\u5B58\u98CE\u683C</button></div></div>`;
     const isPrompt = tab === "prompt";
     const returnTab = ["feed", "live"].includes(uiScope.lastTab) ? uiScope.lastTab : "feed";
     const leadingAction = isPrompt ? `data-action="tab" data-tab="${returnTab}" aria-label="\u8FD4\u56DE\u5B50\u793E\u533A" title="\u8FD4\u56DE\u5B50\u793E\u533A"` : 'data-action="desktop" aria-label="\u8FD4\u56DE\u684C\u9762" title="\u8FD4\u56DE\u684C\u9762"';
     return `<div id="pm-scene-app" class="pm-modal pm-scene-shell" style="--scene-accent:${escapeAttr(accent)}">
-        <div class="pm-scene-topbar"><div class="pm-scene-nav-actions"><button type="button" class="pm-scene-home" ${leadingAction}>${isPrompt ? BACK_ICON_SVG : HOME_ICON_SVG}</button></div><nav class="pm-scene-title" aria-label="\u5B50\u793E\u533A\u89C6\u56FE"><button type="button" class="pm-scene-title-tab ${tab === "feed" ? "is-active" : ""}" data-action="tab" data-tab="feed" aria-current="${tab === "feed" ? "page" : "false"}"><span>${escapeHtml(scene.title)}</span></button><button type="button" class="pm-scene-title-tab ${tab === "live" ? "is-active" : ""}" data-action="tab" data-tab="live" aria-current="${tab === "live" ? "page" : "false"}"><span>\u76F4\u64AD\u95F4</span></button></nav><div class="pm-scene-view-actions"><button type="button" class="pm-scene-title-poke" data-action="poke-scene" aria-label="\u62CD\u4E00\u62CD\u793E\u533A" title="\u62CD\u4E00\u62CD\u793E\u533A">${POKE_ICON_SVG}</button><button type="button" class="pm-scene-exit" data-action="exit" aria-label="\u9000\u51FA\u624B\u673A" title="\u9000\u51FA\u624B\u673A">${CLOSE_ICON_SVG}</button></div></div><div class="pm-scene-status" aria-live="polite" hidden></div>
-        ${content}${isPrompt || tab === "live" ? "" : `<div class="pm-scene-bottom-bar">${renderSceneMenu(scene, uiScope, autoActive)}${composer}</div>`}
+        <div class="pm-scene-topbar"><div class="pm-scene-nav-actions"><button type="button" class="pm-scene-home" ${leadingAction}>${isPrompt ? BACK_ICON_SVG : HOME_ICON_SVG}</button></div><nav class="pm-scene-title" aria-label="\u5B50\u793E\u533A\u89C6\u56FE"><button type="button" class="pm-scene-title-tab ${tab === "feed" ? "is-active" : ""}" data-action="tab" data-tab="feed" aria-current="${tab === "feed" ? "page" : "false"}"><span>${escapeHtml(scene.title)}</span></button><button type="button" class="pm-scene-title-tab ${tab === "live" ? "is-active" : ""}" data-action="tab" data-tab="live" aria-current="${tab === "live" ? "page" : "false"}"><span>\u76F4\u64AD</span></button></nav><div class="pm-scene-view-actions"><button type="button" class="pm-scene-title-poke" data-action="poke-scene" aria-label="\u62CD\u4E00\u62CD\u793E\u533A" title="\u62CD\u4E00\u62CD\u793E\u533A">${POKE_ICON_SVG}</button><button type="button" class="pm-scene-exit" data-action="exit" aria-label="\u9000\u51FA\u624B\u673A" title="\u9000\u51FA\u624B\u673A">${CLOSE_ICON_SVG}</button></div></div><div class="pm-scene-status" aria-live="polite" hidden></div>
+        ${content}${isPrompt || tab === "live" || tab === "context-inject" ? "" : `<div class="pm-scene-bottom-bar">${renderSceneMenu(scene, uiScope, autoActive)}${composer}</div>`}
     </div>`;
   }
 
@@ -7122,12 +7141,12 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
         return;
       }
       if (action === "like") {
-        await commit(() => {
-          const post = current().scene?.posts.find((item) => item.id === button.dataset.postId);
-          if (!post) throw new Error("\u5E16\u5B50\u4E0D\u5B58\u5728");
-          post.liked = !post.liked;
-          current().scene.updatedAt = now();
-        });
+        await commit(() => toggleScenePostLike(current().scene, button.dataset.postId));
+        rerender("feed");
+        return;
+      }
+      if (action === "share") {
+        await commit(() => incrementScenePostShare(current().scene, button.dataset.postId));
         rerender("feed");
         return;
       }
@@ -13277,7 +13296,7 @@ ${lines}`;
   var assertInteractiveItem = (value, field, { kind = "post", version = 1, actorIds = null } = {}) => {
     const item = objectValue(value, field);
     const authorKeys = version === INTERACTIVE_STORE_VERSION ? ["authorId", "authorNameSnapshot"] : ["author"];
-    const allowedKeys = kind === "post" ? ["id", ...authorKeys, "content", "tags", "createdAt", "comments", "liked"] : ["id", ...authorKeys, "content", "createdAt"];
+    const allowedKeys = kind === "post" ? ["id", ...authorKeys, "content", "tags", "createdAt", "comments", "liked", ...version === INTERACTIVE_STORE_VERSION ? ["shareCount"] : []] : ["id", ...authorKeys, "content", "createdAt"];
     assertAllowedKeys(item, field, allowedKeys);
     assertOptionalNormalizedText(item, "id", field, 80);
     if (version === INTERACTIVE_STORE_VERSION) {
@@ -13293,6 +13312,9 @@ ${lines}`;
     assertOptionalTimestamp(item, "createdAt", field);
     if (kind === "post") {
       if (Object.hasOwn(item, "liked") && typeof item.liked !== "boolean") throw new Error(`\u5907\u4EFD\u5B57\u6BB5 ${field}.liked \u5FC5\u987B\u662F\u5E03\u5C14\u503C`);
+      if (Object.hasOwn(item, "shareCount") && (!Number.isSafeInteger(item.shareCount) || item.shareCount < 0)) {
+        throw new Error(`\u5907\u4EFD\u5B57\u6BB5 ${field}.shareCount \u5FC5\u987B\u662F\u975E\u8D1F\u5B89\u5168\u6574\u6570`);
+      }
       if (Object.hasOwn(item, "tags")) {
         if (!Array.isArray(item.tags) || item.tags.some((tag) => typeof tag !== "string")) throw new Error(`\u5907\u4EFD\u5B57\u6BB5 ${field}.tags \u5FC5\u987B\u662F\u5B57\u7B26\u4E32\u6570\u7EC4`);
         if (item.tags.length > 5) throw new Error(`\u5907\u4EFD\u5B57\u6BB5 ${field}.tags \u4E0D\u80FD\u8D85\u8FC7 5 \u9879`);

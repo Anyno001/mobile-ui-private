@@ -1279,7 +1279,8 @@ for (const expected of ['syncStore = null', 'await syncStore?.()', '补偿持久
   requireText('interactive-scenes.js', interactiveCode, expected);
 }
 for (const expected of [
-  'INTERACTIVE_STORE_VERSION = 2', 'authorId', 'authorNameSnapshot',
+  'INTERACTIVE_STORE_VERSION = 2', 'authorId', 'authorNameSnapshot', 'shareCount',
+  'toggleScenePostLike', 'incrementScenePostShare',
   'assertV2Keys', 'appendScenePosts', 'deriveInteractiveActorId',
   'PHONE_UI_STATE_VERSION = 1', 'normalizePhoneUiState', 'normalizeAmbientStatus',
   'patchPhoneUiScope', 'toggleScenePin',
@@ -1312,7 +1313,7 @@ for (const expected of ['enqueueDirectorySave', 'getDirectorySaveRevision', 'mar
   requireText('directory-save-coordinator.js', sourceModuleByName.get('directory-save-coordinator.js')?.code || '', expected);
 }
 for (const expected of [
-  'INTERACTIVE_STORE_VERSION', 'assertInteractiveActor', 'authorId 未指向有效 actor',
+  'INTERACTIVE_STORE_VERSION', 'assertInteractiveActor', 'authorId 未指向有效 actor', 'shareCount 必须是非负安全整数',
   'deriveInteractiveActorId(scopeId, actor.type, actor.bindingKey)',
 ]) requireText('settings-backup-validate.js', settingsBackupValidateCode, expected);
 for (const expected of [
@@ -1433,7 +1434,7 @@ for (const title of ['API 设置', '主题颜色', '数据备份', '互动场景
   if (controlCenterTemplate.includes(title)) failures.push(`phone-control-center.js: compact control menu must not contain removed shortcut ${title}`);
 }
 for (const expected of [
-  'post-comment', 'delete-scene', 'delete-post', 'delete-comment', "action === 'post-actions'", "action === 'toggle-reply'", '文字直播',
+  'post-comment', 'delete-scene', 'delete-post', 'delete-comment', "action === 'post-actions'", "action === 'toggle-reply'", "action === 'share'", 'incrementScenePostShare(current().scene, button.dataset.postId)', '文字直播',
   "button.closest?.('.pm-scene-comment-composer')", "composer?.querySelector?.('input')",
 ]) {
   requireText('interactive-scenes.js', interactiveCode, expected);
@@ -1442,16 +1443,17 @@ if (interactiveCode.includes('document.getElementById(`pm-comment-input-${button
 for (const expected of [
   'HEART_ICON_SVG', 'SHARE_ICON_SVG', 'REPLY_ICON_SVG', 'SEND_ICON_SVG', 'CONTROL_ICON_SVG', 'EDIT_ICON_SVG', 'TRASH_ICON_SVG',
   'pm-scene-nav-actions', 'pm-scene-title-poke', 'pm-scene-view-actions', 'pm-scene-title-tab', 'aria-label="子社区视图"',
-  'data-action="desktop"', '<span>直播间</span>',
+  'data-action="desktop"', '<span>直播</span>',
   'data-action="tab" data-tab="prompt"', '风格提示词', 'data-action="context-inject"', '上下文注入', 'pm-scene-post-more', 'data-action="post-actions"',
-  'aria-label="拍一拍本帖，只生成本帖评论"', "renderPostMetric(SHARE_ICON_SVG, shares, '转发', 'is-share')",
+  'aria-label="拍一拍本帖，只生成本帖评论"', 'class="pm-scene-share" data-action="share"', "renderPostMetric(SHARE_ICON_SVG, shares, '转发', 'is-share')",
   'pm-scene-reply-toggle', 'data-action="toggle-reply"', 'aria-controls="pm-comment-composer-${escapeAttr(post.id)}"', 'aria-expanded="false"',
-  "renderPostMetric(REPLY_ICON_SVG, post.comments.length, '回复', 'is-reply')", 'class="pm-scene-comment-composer" hidden', 'placeholder="输入你的高见吧"',
+  "renderPostMetric(REPLY_ICON_SVG, post.comments.length, '回复', 'is-reply')", 'class="pm-scene-comment-composer" hidden', 'placeholder="发表你的想法吧"',
   'class="pm-control-menu pm-scene-menu" role="menu" aria-label="社区工具" hidden',
   'class="pm-scene-comment-actions" hidden', 'data-action="edit-comment"', 'aria-label="编辑评论"', 'data-action="delete-comment"', 'aria-label="删除评论"',
   'pm-scene-accent-options', 'data-action="scene-accent"', 'data-action="scene-accent-custom"', 'aria-pressed="${preset.accent === selectedAccent}"',
   'placeholder="分享此刻……"', '<span class="pm-scene-post-time">刚刚</span>',
-  "isPrompt || tab === 'live' ? ''", 'pm-live-stage', 'pm-danmaku-float',
+  "hasDanmaku ? '直播中' : '未开播'", 'aria-label="发送弹幕"', '设置社区内容的表达风格与氛围。',
+  "isPrompt || tab === 'live' || tab === 'context-inject' ? ''", 'pm-live-stage', 'pm-danmaku-float',
 ]) requireText('interactive-scene-views.js', interactiveViewsCode, expected);
 for (const forbidden of ['data-action="back"', 'pm-scene-back']) {
   if (interactiveViewsCode.includes(forbidden)) failures.push(`interactive-scene-views.js: removed community back control remains: ${forbidden}`);
@@ -1644,6 +1646,7 @@ for (const expected of [
   '.pm-calendar-cycle-input:checked+.pm-custom-check{background:#34c759 !important}',
   '.pm-calendar-cycle-input:focus-visible+.pm-custom-check{outline:2px solid #007aff;outline-offset:2px}',
   '.pm-scene-topbar{position:relative;display:flex;align-items:center;gap:4px;padding:6px 9px}',
+  '.pm-scene-home{color:#888 !important}',
   '.pm-scene-title{position:absolute;left:50%;top:6px;bottom:6px;transform:translateX(-50%);display:flex',
   '.pm-scene-title-tab.is-active span::after{content:',
   '.pm-scene-title-poke{width:34px !important;height:34px !important;padding:7px !important',
@@ -1653,18 +1656,23 @@ for (const expected of [
   '.pm-control-menu.pm-scene-menu{left:0;right:auto;top:auto;bottom:46px;z-index:20;width:148px;max-height:none;overflow-y:visible',
   '.pm-control-menu.pm-scene-menu[hidden]{display:none}',
   '.pm-scene-composer textarea{height:36px;min-height:36px;max-height:88px;box-shadow:none !important;appearance:none}',
-  '.pm-scene-title-poke:focus-visible{background:color-mix(in srgb,var(--scene-accent) 12%,transparent);outline:2px solid var(--scene-accent);outline-offset:2px}',
+  '.pm-scene-title-poke:active{background:var(--scene-accent) !important;color:#fff !important}',
+  '#pm-iphone[data-theme="dark"] .pm-scene-bottom-bar .pm-scene-more{background:transparent;border-color:transparent;color:#aaa}',
+  '.pm-scene-share:active{background:color-mix(in srgb,var(--scene-accent) 10%,transparent)}',
   '.pm-scene-post-more:focus-visible{background:color-mix(in srgb,var(--scene-accent) 10%,transparent);outline:2px solid var(--scene-accent);outline-offset:2px}',
   '.pm-scene-post-actions-wrap{position:relative;display:flex;flex-direction:row-reverse',
   '.pm-scene-post-actions{display:flex;align-items:center;gap:2px;margin-right:4px}',
   '.pm-scene-post-actions[hidden]{display:none}',
-  '.pm-scene-post footer{align-items:center;justify-content:flex-end;gap:18px;flex-wrap:nowrap}',
+  '.pm-scene-post-author{min-width:0;flex:1;gap:2px;padding-top:1px}',
+  '.pm-scene-post footer{align-items:center;justify-content:center;gap:0;flex-wrap:nowrap}',
+  '.pm-scene-post footer>*{flex:1 1 0;min-width:0;justify-content:center}',
   '.pm-scene-comment>span:first-child{flex:1;min-width:0;word-break:break-word}',
   '.pm-scene-comment-actions[hidden]{display:none}',
   '.pm-scene-comment-actions button{width:22px;height:22px;padding:4px;display:grid;place-items:center;border-radius:50%}',
   '.pm-scene-comment-actions button svg{width:14px;height:14px}',
   '.pm-scene-post-actions button:focus-visible{background:color-mix(in srgb,var(--scene-accent) 10%,transparent);outline:2px solid var(--scene-accent);outline-offset:2px}',
   '.pm-scene-like.is-liked svg{fill:currentColor}',
+  '.pm-danmaku-input button svg{width:18px;height:18px}',
   '.pm-scene-title-poke svg,.pm-scene-exit svg{width:18px;height:18px}',
   '.pm-reply-card{box-sizing:border-box;width:100%',
   '.pm-quote-preview{display:flex;align-items:center',

@@ -2760,6 +2760,24 @@ const validV2InteractiveStore = {
 const parsedV2Backup = parseBackupData({ schemaVersion: 3, interactiveScenes: validV2InteractiveStore }, currentBackup);
 assert.equal(parsedV2Backup.interactiveScenes.version, 2);
 assert.equal(parsedV2Backup.interactiveScenes.scopes[v2ScopeId].scenes.scene.posts[0].authorId, v2ActorId);
+assert.equal(parsedV2Backup.interactiveScenes.scopes[v2ScopeId].scenes.scene.posts[0].shareCount, 0, '旧 v2 备份缺失 shareCount 时必须补为 0');
+for (const shareCount of [-1, 1.5, '1']) assert.throws(() => parseBackupData({
+    schemaVersion: 3,
+    interactiveScenes: {
+        ...validV2InteractiveStore,
+        scopes: {
+            [v2ScopeId]: {
+                ...validV2InteractiveStore.scopes[v2ScopeId],
+                scenes: {
+                    scene: {
+                        ...validV2InteractiveStore.scopes[v2ScopeId].scenes.scene,
+                        posts: [{ ...validV2InteractiveStore.scopes[v2ScopeId].scenes.scene.posts[0], shareCount }],
+                    },
+                },
+            },
+        },
+    },
+}, currentBackup), /shareCount 必须是非负安全整数/);
 assert.throws(() => parseBackupData({
     schemaVersion: 3,
     interactiveScenes: {
@@ -3214,11 +3232,11 @@ assert.match(workspaceHtml, /class="pm-scene-post-author"><b>访客<\/b><span cl
 assert.match(workspaceHtml, /class="pm-scene-nav-actions"[\s\S]*data-action="desktop"/);
 assert.doesNotMatch(workspaceHtml, /data-action="back"|pm-scene-back/);
 assert.match(workspaceHtml, /<nav class="pm-scene-title" aria-label="子社区视图">/,
-    '社区标题和直播间必须位于独立的双标签导航');
+    '社区标题和直播必须位于独立的双标签导航');
 assert.match(workspaceHtml, /class="pm-scene-title-tab is-active"[^>]*data-tab="feed"[^>]*aria-current="page"[^>]*><span>主题社区<\/span>/,
     '帖子页必须激活社区标题标签');
-assert.match(workspaceHtml, /class="pm-scene-title-tab "[^>]*data-tab="live"[^>]*aria-current="false"[^>]*><span>直播间<\/span>/,
-    '直播间必须作为第二个文本标签');
+assert.match(workspaceHtml, /class="pm-scene-title-tab "[^>]*data-tab="live"[^>]*aria-current="false"[^>]*><span>直播<\/span>/,
+    '直播必须作为第二个文本标签');
 assert.match(workspaceHtml, /class="pm-scene-view-actions">[\s\S]*class="pm-scene-title-poke"[^>]*data-action="poke-scene"[\s\S]*class="pm-scene-exit"/,
     '拍一拍必须移出标题居中组并与退出按钮放在右侧操作区');
 assert.doesNotMatch(workspaceHtml, /<nav class="pm-scene-title"[\s\S]*pm-scene-title-poke[\s\S]*<\/nav>/,
@@ -3229,13 +3247,13 @@ assert.match(workspaceHtml, /data-action="context-inject">[\s\S]*上下文注入
 assert.match(workspaceHtml, /class="pm-scene-post-more"[^>]*data-action="post-actions"/);
 assert.match(workspaceHtml, /data-action="comments"[^>]*aria-label="拍一拍本帖，只生成本帖评论"/);
 assert.match(workspaceHtml, /class="pm-scene-like [^"]*"[^>]*data-action="like"/);
-assert.match(workspaceHtml, /class="pm-scene-post-metric is-share"/);
+assert.match(workspaceHtml, /class="pm-scene-share"[^>]*data-action="share"[^>]*data-post-id="post"[^>]*aria-label="分享本帖"[\s\S]*class="pm-scene-post-metric is-share"/);
 assert.match(workspaceHtml, /class="pm-scene-reply-toggle"[^>]*data-action="toggle-reply"[^>]*aria-controls="pm-comment-composer-post"[^>]*aria-expanded="false"/);
 assert.match(workspaceHtml, /class="pm-scene-post-metric is-reply"[^>]*aria-label="回复 1"/);
 assert.match(workspaceHtml, /class="pm-scene-comment-actions" hidden>[\s\S]*data-action="edit-comment"[^>]*aria-label="编辑评论"[^>]*>[\s\S]*?<svg/);
 assert.match(workspaceHtml, /data-action="delete-comment"[^>]*aria-label="删除评论"[^>]*>[\s\S]*?<svg/);
 assert.match(workspaceHtml, /id="pm-comment-composer-post" class="pm-scene-comment-composer" hidden/);
-assert.match(workspaceHtml, /placeholder="输入你的高见吧"/);
+assert.match(workspaceHtml, /placeholder="发表你的想法吧"/);
 assert.match(workspaceHtml, /data-action="post-comment"[^>]*aria-label="发送回复"[^>]*>[\s\S]*?<svg/);
 assert.doesNotMatch(workspaceHtml, /生成更多评论|>喜欢<|>已喜欢</);
 assert.match(workspaceHtml, /class="pm-scene-bottom-bar"/);
@@ -3244,9 +3262,15 @@ assert.match(workspaceHtml, /class="pm-scene-exit"[^>]*data-action="exit"/);
 assert.doesNotMatch(workspaceHtml, /生成热场内容|编辑社区风格/);
 const liveWorkspaceHtml = renderCommunityWorkspace(workspaceScene, 'live', { pinnedSceneIds: [] });
 assert.match(liveWorkspaceHtml, /class="pm-scene-title-tab "[^>]*data-tab="feed"[^>]*aria-current="false"/);
-assert.match(liveWorkspaceHtml, /class="pm-scene-title-tab is-active"[^>]*data-tab="live"[^>]*aria-current="page"[^>]*>[\s\S]*<span>直播间<\/span>/);
+assert.match(liveWorkspaceHtml, /class="pm-scene-title-tab is-active"[^>]*data-tab="live"[^>]*aria-current="page"[^>]*>[\s\S]*<span>直播<\/span>/);
 assert.match(liveWorkspaceHtml, /pm-live-stage has-danmaku/);
+assert.match(liveWorkspaceHtml, /class="pm-live-badge">直播中<\/div>/);
 assert.match(liveWorkspaceHtml, /--duration:[\d.]+s;--offset:-?\d+px/);
+assert.match(liveWorkspaceHtml, /data-action="send-danmaku"[^>]*aria-label="发送弹幕"[^>]*>[\s\S]*?<svg/,
+    '弹幕发送必须使用图标按钮并保留无障碍名称');
+const idleLiveWorkspaceHtml = renderCommunityWorkspace({ ...workspaceScene, live: { ...workspaceScene.live, danmaku: [] } }, 'live', { pinnedSceneIds: [] });
+assert.match(idleLiveWorkspaceHtml, /class="pm-live-stage "><div class="pm-live-badge">未开播<\/div>/);
+assert.doesNotMatch(idleLiveWorkspaceHtml, /class="pm-live-stage has-danmaku"/);
 assert.match(liveWorkspaceHtml, /class="pm-live-actions"[\s\S]*data-action="toggle-live"[\s\S]*data-action="rhythm"/,
     '直播页必须保留直播控制和带节奏能力');
 assert.doesNotMatch(liveWorkspaceHtml, /class="pm-scene-bottom-bar"|class="pm-control-menu pm-scene-menu"/,
@@ -3257,11 +3281,15 @@ assert.match(promptWorkspaceHtml, /data-action="scene-accent" data-accent="#ff82
 assert.match(promptWorkspaceHtml, /aria-label="使用微博热场主题色" aria-pressed="false"/);
 assert.match(promptWorkspaceHtml, /id="pm-scene-accent" type="color" data-action="scene-accent-custom" value="#123abc"/);
 assert.match(promptWorkspaceHtml, /class="pm-scene-secondary" data-action="regenerate-prompt"/);
+assert.match(promptWorkspaceHtml, /设置社区内容的表达风格与氛围。/);
 assert.match(promptWorkspaceHtml, /class="pm-scene-home" data-action="tab" data-tab="live" aria-label="返回子社区"/);
 assert.doesNotMatch(promptWorkspaceHtml, /class="pm-scene-bottom-bar"|class="pm-control-menu pm-scene-menu"|placeholder="分享此刻……"/,
     '提示词页不得保留社区二级菜单或发帖输入区');
 assert.doesNotMatch(promptWorkspaceHtml, /class="pm-scene-home" data-action="desktop"/,
     '提示词页左侧按钮必须返回子社区而不是桌面');
+const contextInjectWorkspaceHtml = renderCommunityWorkspace(workspaceScene, 'context-inject', { pinnedSceneIds: [], lastTab: 'feed' });
+assert.doesNotMatch(contextInjectWorkspaceHtml, /class="pm-scene-bottom-bar"|class="pm-control-menu pm-scene-menu"|placeholder="分享此刻……"/,
+    '上下文注入页不得保留社区二级菜单或发帖输入区');
 const presetAccentScene = { ...workspaceScene, themeAccent: '#ff8200' };
 const presetAccentHtml = renderCommunityWorkspace(presetAccentScene, 'prompt', { pinnedSceneIds: [] });
 assert.match(presetAccentHtml, /data-accent="#ff8200"[^>]*aria-pressed="true"/);

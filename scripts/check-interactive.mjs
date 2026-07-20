@@ -5,9 +5,9 @@ import {
 import {
     INTERACTIVE_LIMITS, addSceneComment, appendScenePosts, createEmptyInteractiveStore,
     createDefaultPhoneUiScope, createEmptyPhoneUiState, deleteInteractiveScene, deleteSceneComment, deleteScenePost,
-    deriveInteractiveActorId, enforceInteractiveSceneLimit, ensureInteractiveActor,
+    deriveInteractiveActorId, enforceInteractiveSceneLimit, ensureInteractiveActor, incrementScenePostShare,
     normalizeAmbientStatus, normalizeInteractiveStore, normalizePhoneUiState, normalizeScene, patchPhoneUiScope,
-    resolveInteractiveAuthor, toggleScenePin, updateSceneComment, updateScenePost,
+    resolveInteractiveAuthor, toggleScenePin, toggleScenePostLike, updateSceneComment, updateScenePost,
 } from '../src/interactive-scene-model.js';
 import {
     INTERACTIVE_STORAGE_KEYS, PHONE_UI_STORAGE_KEY, loadInteractiveScenes, loadPhoneUiState,
@@ -352,6 +352,7 @@ assert.equal(normalized.scopes.scope.activeSceneId, 'scene');
 assert.equal(normalized.scopes.scope.scenes.scene.live.status, 'idle');
 assert.deepEqual(normalizeInteractiveStore(normalized), normalized);
 const normalizedPost = normalized.scopes.scope.scenes.scene.posts[0];
+assert.equal(normalizedPost.shareCount, 0, '旧帖子缺失 shareCount 时必须兼容归一化为 0');
 assert.ok(normalized.scopes.scope.actors[normalizedPost.authorId]);
 assert.ok(normalized.scopes.scope.actors[normalizedPost.comments[0].authorId]);
 assert.throws(() => normalizeInteractiveStore({ version: 99, scopes: {} }), /版本 99 不受支持/);
@@ -480,6 +481,8 @@ for (const invalidPost of [
     { id: 'post', authorId: strictActorId, authorNameSnapshot: '严格角色', content: 123, tags: [], createdAt: 1, comments: [], liked: false },
     { id: 'post', authorId: strictActorId, authorNameSnapshot: '严格角色', content: '帖子', tags: [], createdAt: '1', comments: [], liked: false },
     { id: 'post', authorId: strictActorId, authorNameSnapshot: '严格角色', content: '帖子', tags: [], createdAt: 1, comments: [], liked: 'false' },
+    { id: 'post', authorId: strictActorId, authorNameSnapshot: '严格角色', content: '帖子', tags: [], createdAt: 1, comments: [], liked: false, shareCount: -1 },
+    { id: 'post', authorId: strictActorId, authorNameSnapshot: '严格角色', content: '帖子', tags: [], createdAt: 1, comments: [], liked: false, shareCount: 1.5 },
 ]) {
     assert.throws(() => normalizeInteractiveStore({
         version: 2,
@@ -491,7 +494,7 @@ for (const invalidPost of [
                 },
             },
         },
-    }), /必须是字符串|必须是有效时间戳|必须是布尔值/);
+    }), /必须是字符串|必须是有效时间戳|必须是布尔值|shareCount 必须是非负安全整数/);
 }
 
 const identityScope = { activeSceneId: null, sceneOrder: [], scenes: {}, actors: {} };
@@ -514,6 +517,7 @@ const appended = appendScenePosts(generatedScope, 'scope-generated', generatedSc
 }], [storySeed, userSeed]);
 assert.equal(appended.length, 1);
 assert.equal(appended[0].comments.length, 2);
+assert.equal(appended[0].shareCount, 0, '新生成帖子必须初始化分享计数');
 assert.equal(appended[0].authorId, deriveInteractiveActorId('scope-generated', 'story', 'character:alice'));
 assert.equal(generatedScope.actors[appended[0].comments[0].authorId].type, 'passerby');
 assert.equal(appended[0].comments[1].authorId, appended[0].authorId);
@@ -652,6 +656,14 @@ const addedComment = addSceneComment(editableScope, 'editable-scope', editable, 
 }, ' 新评论 ');
 assert.equal(addedComment.content, '新评论');
 assert.equal(editable.posts[0].comments.length, 2);
+const interactiveUpdatedAtBeforeReaction = editable.updatedAt;
+toggleScenePostLike(editable, 'post-1');
+assert.equal(editable.posts[0].liked, true);
+assert.ok(editable.updatedAt >= interactiveUpdatedAtBeforeReaction);
+incrementScenePostShare(editable, 'post-1');
+assert.equal(editable.posts[0].shareCount, 1);
+assert.throws(() => incrementScenePostShare(editable, 'missing'), /帖子不存在/);
+assert.throws(() => incrementScenePostShare({ posts: [{ id: 'broken', shareCount: -1 }] }, 'broken'), /帖子分享数无效/);
 updateScenePost(editable, 'post-1', '修改后的帖子');
 updateSceneComment(editable, 'post-1', 'comment-1', '修改后的评论');
 assert.equal(editable.posts[0].content, '修改后的帖子');
@@ -1511,6 +1523,24 @@ try {
     assert.equal(savedScene.title, '更新后的社区');
     assert.equal(savedScene.generatedPrompt, '更新后的社区风格');
     assert.equal(savedScene.themeAccent, '#123abc', '自定义社区色必须以小写六位十六进制持久化');
+
+    const sharedPost = savedScene.posts[0];
+    const shareCountBefore = sharedPost.shareCount;
+    const shareButton = {
+        tagName: 'BUTTON', dataset: { action: 'share', postId: sharedPost.id },
+        closest(selector) {
+            if (selector === '[data-action]') return this;
+            if (selector === '#pm-scene-app') return app;
+            return null;
+        },
+    };
+    const shareComplete = waitForInstallationAction(3);
+    listeners.get('click')({ target: shareButton });
+    await shareComplete;
+    const sharedStore = await deps.getInteractiveStore();
+    const sharedScope = sharedStore.scopes['interactive-installation-scope'];
+    assert.equal(sharedScope.scenes[sharedScope.activeSceneId].posts[0].shareCount, shareCountBefore + 1,
+        '点击分享必须通过提交队列持久增加分享计数');
 
     sceneAccentInput.value = '#xyzxyz';
     status.textContent = '';
