@@ -2027,14 +2027,13 @@ ${userPrompt}` : userPrompt;
           <div class="pm-calendar-editor-actions"><button type="button" data-action="calendar-cycle-clear">\u6E05\u9664\u6240\u9009\u5BF9\u8C61</button><button type="button" class="is-primary" data-action="calendar-cycle-save">\u4FDD\u5B58\u751F\u7406\u671F</button></div>
         </form></div></details>`;
     }
+    const editorSwitch = `<div class="pm-calendar-editor-switch" role="group" aria-label="\u6DFB\u52A0\u5185\u5BB9\u7C7B\u578B"><button type="button" data-action="calendar-editor-kind" data-editor-kind="event" aria-label="\u5207\u6362\u5230\u65E5\u7A0B\u7F16\u8F91\u5668" title="\u65E5\u7A0B" aria-pressed="${editorKind !== "occasion"}">${EVENT_EDITOR_ICON_SVG}</button><button type="button" data-action="calendar-editor-kind" data-editor-kind="occasion" aria-label="\u5207\u6362\u5230\u751F\u65E5\u6216\u7EAA\u5FF5\u65E5\u7F16\u8F91\u5668" title="\u751F\u65E5\u6216\u7EAA\u5FF5\u65E5" aria-pressed="${editorKind === "occasion"}">${OCCASION_EDITOR_ICON_SVG}</button></div>`;
     return `<details class="pm-calendar-management" data-calendar-management="schedule"><summary>\u5B89\u6392\u7BA1\u7406</summary><div class="pm-calendar-management-content">
-        <div class="pm-calendar-tools"><button type="button" data-action="calendar-scan">\u7ACB\u5373\u8BC6\u522B\u6B63\u6587\u65E5\u671F</button><button type="button" data-action="calendar-toggle-auto" aria-pressed="${scope.autoAdjust}">\u56DE\u590D\u540E\u81EA\u52A8\u8BC6\u522B\uFF1A${scope.autoAdjust ? "\u5F00" : "\u5173"}</button></div>
-        <div class="pm-calendar-data-row pm-calendar-date-tags-row"><input data-calendar-date-tags value="${escapeAttr((scope.dateTags || ["date"]).join(", "))}" maxlength="160" placeholder="date, time_date" aria-label="\u6B63\u6587\u65E5\u671F\u6807\u7B7E"><button type="button" data-action="calendar-date-tags-save">\u4FDD\u5B58\u6807\u7B7E</button></div>
+        <section class="pm-calendar-data-tools pm-calendar-scan-card"><h3>\u8BC6\u522B\u6B63\u6587</h3><div class="pm-calendar-tools"><button type="button" data-action="calendar-scan">\u7ACB\u5373\u8BC6\u522B\u6B63\u6587\u65E5\u671F</button><button type="button" data-action="calendar-toggle-auto" aria-pressed="${scope.autoAdjust}">\u56DE\u590D\u540E\u81EA\u52A8\u8BC6\u522B\uFF1A${scope.autoAdjust ? "\u5F00" : "\u5173"}</button></div><div class="pm-calendar-data-row pm-calendar-date-tags-row"><input data-calendar-date-tags value="${escapeAttr((scope.dateTags || ["date"]).join(", "))}" maxlength="160" placeholder="date, time_date" aria-label="\u6B63\u6587\u65E5\u671F\u6807\u7B7E"><button type="button" data-action="calendar-date-tags-save">\u4FDD\u5B58\u6807\u7B7E</button></div></section>
         <section class="pm-calendar-data-tools"><h3>\u8282\u5047\u65E5\u6570\u636E</h3><div class="pm-calendar-data-row pm-calendar-holiday-row"><select data-action="calendar-holiday-country" data-calendar-country aria-label="\u8282\u5047\u65E5\u56FD\u5BB6"><option value="CN" ${holidayCache.selectedCountry === "CN" ? "selected" : ""}>\u4E2D\u56FD</option><option value="US" ${holidayCache.selectedCountry === "US" ? "selected" : ""}>\u7F8E\u56FD</option><option value="JP" ${holidayCache.selectedCountry === "JP" ? "selected" : ""}>\u65E5\u672C</option></select><button type="button" data-action="calendar-holiday-refresh" ${holidayAvailable ? "" : 'disabled aria-disabled="true"'}>\u5237\u65B0\u8282\u5047\u65E5</button></div>${holidayAvailable ? "" : `<small class="pm-calendar-attribution">\u8BE5\u56FD\u5BB6\u5728\u5F53\u524D\u5E74\u4EE3\u65E0\u5916\u90E8\u6570\u636E\u6E90\uFF08\u4EC5\u652F\u6301 ${holidayRange?.min ?? "\u672A\u77E5"}\u2013${holidayRange?.max ?? "\u672A\u77E5"} \u5E74\uFF09</small>`}</section>
         <div class="pm-calendar-editor-stack">
-        <div class="pm-calendar-editor-switch" role="group" aria-label="\u6DFB\u52A0\u5185\u5BB9\u7C7B\u578B"><button type="button" data-action="calendar-editor-kind" data-editor-kind="event" aria-label="\u5207\u6362\u5230\u65E5\u7A0B\u7F16\u8F91\u5668" title="\u65E5\u7A0B" aria-pressed="${editorKind !== "occasion"}">${EVENT_EDITOR_ICON_SVG}</button><button type="button" data-action="calendar-editor-kind" data-editor-kind="occasion" aria-label="\u5207\u6362\u5230\u751F\u65E5\u6216\u7EAA\u5FF5\u65E5\u7F16\u8F91\u5668" title="\u751F\u65E5\u6216\u7EAA\u5FF5\u65E5" aria-pressed="${editorKind === "occasion"}">${OCCASION_EDITOR_ICON_SVG}</button></div>
         <form class="pm-calendar-editor" data-calendar-editor ${editorKind === "occasion" ? "hidden" : ""}>
-          <h3>\u6DFB\u52A0\u65E5\u7A0B</h3>
+          <div class="pm-calendar-editor-header"><h3>\u6DFB\u52A0\u65E5\u7A0B</h3>${editorSwitch}</div>
           <div class="pm-calendar-date-fields"><input name="year" inputmode="numeric" maxlength="4" placeholder="YYYY" aria-label="\u5E74"><input name="month" inputmode="numeric" maxlength="2" placeholder="MM" aria-label="\u6708"><input name="day" inputmode="numeric" maxlength="2" placeholder="DD" aria-label="\u65E5"></div>
           <input name="title" maxlength="120" placeholder="\u65E5\u7A0B\u6807\u9898" aria-label="\u65E5\u7A0B\u6807\u9898">
           <textarea name="note" maxlength="1000" placeholder="\u5907\u6CE8\uFF08\u53EF\u9009\uFF09" aria-label="\u65E5\u7A0B\u5907\u6CE8"></textarea>
@@ -2043,7 +2042,7 @@ ${userPrompt}` : userPrompt;
           <div class="pm-calendar-editor-actions"><button type="button" data-action="calendar-parse">\u8BC6\u522B\u6807\u7B7E</button><button type="button" data-action="calendar-cancel-edit">\u6E05\u7A7A</button><button type="button" class="is-primary" data-action="calendar-save">\u4FDD\u5B58</button></div>
         </form>
         <form class="pm-calendar-editor pm-calendar-occasion-editor" data-calendar-occasion-editor ${editorKind === "occasion" ? "" : "hidden"}>
-          <h3>\u6DFB\u52A0\u751F\u65E5\u6216\u7EAA\u5FF5\u65E5</h3>
+          <div class="pm-calendar-editor-header"><h3>\u6DFB\u52A0\u751F\u65E5\u6216\u7EAA\u5FF5\u65E5</h3>${editorSwitch}</div>
           <select name="type" aria-label="\u7C7B\u578B"><option value="birthday">\u751F\u65E5</option><option value="anniversary">\u7EAA\u5FF5\u65E5</option></select>
           <div class="pm-calendar-date-fields"><input name="month" inputmode="numeric" maxlength="2" placeholder="MM" aria-label="\u6708"><input name="day" inputmode="numeric" maxlength="2" placeholder="DD" aria-label="\u65E5"></div>
           <input name="title" maxlength="120" placeholder="\u540D\u79F0\uFF0C\u4F8B\u5982\uFF1A\u5C0F\u6797\u751F\u65E5" aria-label="\u751F\u65E5\u6216\u7EAA\u5FF5\u65E5\u540D\u79F0">
@@ -2165,9 +2164,6 @@ ${userPrompt}` : userPrompt;
     const monthKeys = monthCells.flatMap((cell) => cell.date ? [cell.date] : []);
     const monthStart = parseCalendarDate(monthKeys[0]);
     const todayKey = formatCalendarDate(today);
-    const tomorrow = new Date(today);
-    tomorrow.setDate(today.getDate() + 1);
-    const tomorrowKey = formatCalendarDate(tomorrow);
     const monthFirst = calendarDateFromParts(viewYear, viewMonth, 1);
     const selectedDate = monthKeys.includes(view.selectedDate) ? view.selectedDate : viewYear === today.getFullYear() && viewMonth === today.getMonth() + 1 ? todayKey : monthFirst;
     const occasionsByDate = /* @__PURE__ */ new Map();
@@ -2195,7 +2191,7 @@ ${userPrompt}` : userPrompt;
       const labels = [shortDate.format(meta.parsed), meta.summary].filter(Boolean).join("\uFF0C");
       return `<button type="button" class="${classes.join(" ")}" data-action="calendar-select-date" data-calendar-date="${date}" aria-pressed="${date === selectedDate}" aria-label="${escapeAttr(labels)}"><b>${meta.parsed.getDate()}</b><span>${escapeHtml(meta.summary)}</span><i aria-hidden="true"></i></button>`;
     }).join("");
-    const relativeLabel = selectedDate === todayKey ? "\u4ECA\u5929" : selectedDate === tomorrowKey ? "\u660E\u5929" : "";
+    const relativeLabel = relativeCalendarLabel(today, selectedDate) || "";
     const selectedDetail = renderSelectedDateDetail(
       scope,
       occasionsByDate,
@@ -2228,13 +2224,14 @@ ${userPrompt}` : userPrompt;
     const baseDate = scope.baseDate || "";
     const headerBusy = viewMode === "schedule" && view.generating === true;
     const headerButton = headerAction ? `<button type="button" class="pm-calendar-header-action ${headerBusy ? "is-loading" : ""}" data-action="${headerAction}" aria-label="${headerActionLabel}" title="${headerActionLabel}" aria-busy="${headerBusy}" ${headerBusy ? "disabled" : ""}>${REFRESH_ICON_SVG}</button>` : "";
+    const statusClass = headerBusy ? "pm-calendar-status is-generating" : "pm-calendar-status";
     return `<div id="pm-calendar-app" class="pm-calendar-shell" data-calendar-view-mode="${viewMode}">
         <header class="pm-calendar-header"><span class="pm-calendar-header-side is-left"><button type="button" data-action="calendar-home" aria-label="\u8FD4\u56DE\u684C\u9762" title="\u8FD4\u56DE\u684C\u9762">${HOME_ICON_SVG}</button></span><div class="pm-calendar-title-row"><b>${escapeHtml(monthTitle.format(createCalendarDate(viewYear, viewMonth, 1)))}</b><button type="button" class="pm-calendar-base-edit" data-action="calendar-base-edit" aria-label="\u7F16\u8F91\u65F6\u95F4\u8D77\u70B9" title="\u7F16\u8F91\u65F6\u95F4\u8D77\u70B9">${EDIT_ICON_SVG}</button></div><span class="pm-calendar-header-side is-right">${headerButton}</span></header>
         <div class="pm-calendar-month-nav"><button type="button" class="pm-calendar-month-step" data-action="calendar-prev-month" aria-label="\u4E0A\u4E2A\u6708">\u2039</button><div class="pm-calendar-view-switch" role="group" aria-label="\u65E5\u5386\u4FE1\u606F\u5206\u7C7B"><button type="button" data-action="calendar-mode-schedule" aria-label="\u663E\u793A\u65E5\u7A0B\u4E0E\u5047\u65E5" aria-pressed="${viewMode === "schedule"}" title="\u65E5\u7A0B\u4E0E\u5047\u65E5">${CALENDAR_ICON_SVG}</button><button type="button" data-action="calendar-mode-weather" aria-label="\u663E\u793A\u5929\u6C14" aria-pressed="${viewMode === "weather"}" title="\u5929\u6C14">${WEATHER_ICON_SVG}</button><button type="button" data-action="calendar-mode-cycle" aria-label="\u663E\u793A\u751F\u7406\u671F" aria-pressed="${viewMode === "cycle"}" title="\u751F\u7406\u671F">${CYCLE_ICON_SVG}</button></div><button type="button" class="pm-calendar-month-step" data-action="calendar-next-month" aria-label="\u4E0B\u4E2A\u6708">\u203A</button></div>
         <div class="pm-calendar-month" aria-label="${viewYear}\u5E74${viewMonth}\u6708\u6708\u5386"><div class="pm-calendar-weekdays">${CALENDAR_WEEKDAYS.map((day) => `<span>\u5468${day}</span>`).join("")}</div><div class="pm-calendar-month-grid">${days}</div></div>
         ${selectedDetail}
         ${management}
-        <div class="pm-calendar-status" aria-live="polite">${escapeHtml(status)}</div>
+        <div class="${statusClass}" aria-live="polite">${escapeHtml(status)}</div>
     </div>`;
   }
   function installCalendar(state, deps) {
@@ -6422,7 +6419,8 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
     const sceneCards = scope.sceneOrder.slice().reverse().map((sceneId) => {
       const scene = scope.scenes[sceneId];
       const pinned = uiScope.pinnedSceneIds.includes(scene.id);
-      return `<article class="pm-scene-card"><button type="button" class="pm-scene-card-open" data-action="open-scene" data-scene-id="${escapeAttr(scene.id)}"><b>${escapeHtml(scene.title)}</b><span>${escapeHtml(getInteractivePresets()[scene.preset]?.label || "\u81EA\u5B9A\u4E49")} \xB7 ${scene.posts.length} \u7BC7\u5E16\u5B50</span></button><div class="pm-scene-card-actions"><button type="button" class="pm-scene-pin-action" data-action="toggle-scene-pin" data-scene-id="${escapeAttr(scene.id)}" aria-pressed="${pinned}">${pinned ? "\u53D6\u6D88\u56FA\u5B9A" : "\u56FA\u5B9A"}</button><button type="button" class="pm-scene-danger" data-action="delete-scene" data-scene-id="${escapeAttr(scene.id)}">\u5220\u9664</button></div></article>`;
+      const pinLabel = pinned ? "\u53D6\u6D88\u56FA\u5B9A\u793E\u533A" : "\u56FA\u5B9A\u793E\u533A";
+      return `<article class="pm-scene-card"><button type="button" class="pm-scene-card-open" data-action="open-scene" data-scene-id="${escapeAttr(scene.id)}"><b>${escapeHtml(scene.title)}</b><span>${escapeHtml(getInteractivePresets()[scene.preset]?.label || "\u81EA\u5B9A\u4E49")} \xB7 ${scene.posts.length} \u7BC7\u5E16\u5B50</span></button><div class="pm-scene-card-actions"><button type="button" class="pm-scene-pin-action" data-action="toggle-scene-pin" data-scene-id="${escapeAttr(scene.id)}" aria-pressed="${pinned}" aria-label="${pinLabel}" title="${pinLabel}">${EDIT_ICON_SVG}</button><button type="button" class="pm-scene-danger" data-action="delete-scene" data-scene-id="${escapeAttr(scene.id)}" aria-label="\u5220\u9664\u793E\u533A" title="\u5220\u9664\u793E\u533A">${TRASH_ICON_SVG}</button></div></article>`;
     }).join("");
     return `<div id="pm-scene-app" class="pm-modal pm-scene-shell">
         <div class="pm-scene-header"><button type="button" data-action="desktop" aria-label="\u8FD4\u56DE\u684C\u9762" title="\u8FD4\u56DE\u684C\u9762">${HOME_ICON_SVG}</button><b>\u793E\u533A</b><button type="button" data-action="exit" aria-label="\u9000\u51FA\u624B\u673A" title="\u9000\u51FA\u624B\u673A">${CLOSE_ICON_SVG}</button></div>

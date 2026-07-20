@@ -93,14 +93,13 @@ export function renderCalendarManagement({
           <div class="pm-calendar-editor-actions"><button type="button" data-action="calendar-cycle-clear">清除所选对象</button><button type="button" class="is-primary" data-action="calendar-cycle-save">保存生理期</button></div>
         </form></div></details>`;
     }
+    const editorSwitch = `<div class="pm-calendar-editor-switch" role="group" aria-label="添加内容类型"><button type="button" data-action="calendar-editor-kind" data-editor-kind="event" aria-label="切换到日程编辑器" title="日程" aria-pressed="${editorKind !== 'occasion'}">${EVENT_EDITOR_ICON_SVG}</button><button type="button" data-action="calendar-editor-kind" data-editor-kind="occasion" aria-label="切换到生日或纪念日编辑器" title="生日或纪念日" aria-pressed="${editorKind === 'occasion'}">${OCCASION_EDITOR_ICON_SVG}</button></div>`;
     return `<details class="pm-calendar-management" data-calendar-management="schedule"><summary>安排管理</summary><div class="pm-calendar-management-content">
-        <div class="pm-calendar-tools"><button type="button" data-action="calendar-scan">立即识别正文日期</button><button type="button" data-action="calendar-toggle-auto" aria-pressed="${scope.autoAdjust}">回复后自动识别：${scope.autoAdjust ? '开' : '关'}</button></div>
-        <div class="pm-calendar-data-row pm-calendar-date-tags-row"><input data-calendar-date-tags value="${escapeAttr((scope.dateTags || ['date']).join(', '))}" maxlength="160" placeholder="date, time_date" aria-label="正文日期标签"><button type="button" data-action="calendar-date-tags-save">保存标签</button></div>
+        <section class="pm-calendar-data-tools pm-calendar-scan-card"><h3>识别正文</h3><div class="pm-calendar-tools"><button type="button" data-action="calendar-scan">立即识别正文日期</button><button type="button" data-action="calendar-toggle-auto" aria-pressed="${scope.autoAdjust}">回复后自动识别：${scope.autoAdjust ? '开' : '关'}</button></div><div class="pm-calendar-data-row pm-calendar-date-tags-row"><input data-calendar-date-tags value="${escapeAttr((scope.dateTags || ['date']).join(', '))}" maxlength="160" placeholder="date, time_date" aria-label="正文日期标签"><button type="button" data-action="calendar-date-tags-save">保存标签</button></div></section>
         <section class="pm-calendar-data-tools"><h3>节假日数据</h3><div class="pm-calendar-data-row pm-calendar-holiday-row"><select data-action="calendar-holiday-country" data-calendar-country aria-label="节假日国家"><option value="CN" ${holidayCache.selectedCountry === 'CN' ? 'selected' : ''}>中国</option><option value="US" ${holidayCache.selectedCountry === 'US' ? 'selected' : ''}>美国</option><option value="JP" ${holidayCache.selectedCountry === 'JP' ? 'selected' : ''}>日本</option></select><button type="button" data-action="calendar-holiday-refresh" ${holidayAvailable ? '' : 'disabled aria-disabled="true"'}>刷新节假日</button></div>${holidayAvailable ? '' : `<small class="pm-calendar-attribution">该国家在当前年代无外部数据源（仅支持 ${holidayRange?.min ?? '未知'}–${holidayRange?.max ?? '未知'} 年）</small>`}</section>
         <div class="pm-calendar-editor-stack">
-        <div class="pm-calendar-editor-switch" role="group" aria-label="添加内容类型"><button type="button" data-action="calendar-editor-kind" data-editor-kind="event" aria-label="切换到日程编辑器" title="日程" aria-pressed="${editorKind !== 'occasion'}">${EVENT_EDITOR_ICON_SVG}</button><button type="button" data-action="calendar-editor-kind" data-editor-kind="occasion" aria-label="切换到生日或纪念日编辑器" title="生日或纪念日" aria-pressed="${editorKind === 'occasion'}">${OCCASION_EDITOR_ICON_SVG}</button></div>
         <form class="pm-calendar-editor" data-calendar-editor ${editorKind === 'occasion' ? 'hidden' : ''}>
-          <h3>添加日程</h3>
+          <div class="pm-calendar-editor-header"><h3>添加日程</h3>${editorSwitch}</div>
           <div class="pm-calendar-date-fields"><input name="year" inputmode="numeric" maxlength="4" placeholder="YYYY" aria-label="年"><input name="month" inputmode="numeric" maxlength="2" placeholder="MM" aria-label="月"><input name="day" inputmode="numeric" maxlength="2" placeholder="DD" aria-label="日"></div>
           <input name="title" maxlength="120" placeholder="日程标题" aria-label="日程标题">
           <textarea name="note" maxlength="1000" placeholder="备注（可选）" aria-label="日程备注"></textarea>
@@ -109,7 +108,7 @@ export function renderCalendarManagement({
           <div class="pm-calendar-editor-actions"><button type="button" data-action="calendar-parse">识别标签</button><button type="button" data-action="calendar-cancel-edit">清空</button><button type="button" class="is-primary" data-action="calendar-save">保存</button></div>
         </form>
         <form class="pm-calendar-editor pm-calendar-occasion-editor" data-calendar-occasion-editor ${editorKind === 'occasion' ? '' : 'hidden'}>
-          <h3>添加生日或纪念日</h3>
+          <div class="pm-calendar-editor-header"><h3>添加生日或纪念日</h3>${editorSwitch}</div>
           <select name="type" aria-label="类型"><option value="birthday">生日</option><option value="anniversary">纪念日</option></select>
           <div class="pm-calendar-date-fields"><input name="month" inputmode="numeric" maxlength="2" placeholder="MM" aria-label="月"><input name="day" inputmode="numeric" maxlength="2" placeholder="DD" aria-label="日"></div>
           <input name="title" maxlength="120" placeholder="名称，例如：小林生日" aria-label="生日或纪念日名称">

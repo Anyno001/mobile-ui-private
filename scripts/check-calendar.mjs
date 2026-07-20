@@ -438,8 +438,11 @@ assert.match(renderedSchedule, /class="pm-calendar-title-row"><b>[^<]+<\/b><butt
 assert.match(renderedSchedule, /class="pm-calendar-title-row"><b>/);
 assert.doesNotMatch(renderedSchedule, /type="date" data-calendar-base-date|pm-calendar-base-menu/);
 assert.match(renderedSchedule, /data-action="calendar-generate" aria-label="生成未来七日日程"/);
+assert.match(renderedSchedule, /class="pm-calendar-status" aria-live="polite">&lt;status&gt;<\/div>/);
 assert.match(renderedBusySchedule, /data-action="calendar-generate"[^>]*aria-busy="true"[^>]*disabled/,
     '生成中仅日程模式的生成按钮应保持 busy');
+assert.match(renderedBusySchedule, /class="pm-calendar-status is-generating" aria-live="polite">/,
+    '生成中状态必须使用独立样式类');
 assert.match(renderedBusyWeather, /data-action="calendar-weather-refresh"[^>]*aria-busy="false"/,
     '切到天气模式后不得把日程生成 busy 状态串到天气刷新按钮');
 assert.doesNotMatch(renderedBusyWeather, /pm-calendar-header-action is-loading|calendar-weather-refresh[^>]*disabled/);
@@ -454,8 +457,10 @@ assert.match(renderedSchedule, /data-action="calendar-mode-weather"[^>]*aria-pre
 assert.match(renderedSchedule, /data-action="calendar-mode-cycle"[^>]*aria-pressed="false"/);
 assert.match(renderedSchedule, /class="pm-calendar-editor-switch"[\s\S]*data-editor-kind="event"[^>]*aria-label="切换到日程编辑器"[^>]*>[\s\S]*<svg/);
 assert.match(renderedSchedule, /data-editor-kind="occasion"[^>]*aria-label="切换到生日或纪念日编辑器"[^>]*>[\s\S]*<svg/);
+assert.match(renderedSchedule, /class="pm-calendar-editor-header"><h3>添加日程<\/h3><div class="pm-calendar-editor-switch"/);
+assert.match(renderedSchedule, /class="pm-calendar-editor-header"><h3>添加生日或纪念日<\/h3><div class="pm-calendar-editor-switch"/);
 assert.doesNotMatch(renderedSchedule, />日程<\/button>|>生日 \/ 纪念日<\/button>/, '编辑器切换不得恢复文字双按钮');
-assert.match(renderedSchedule, /立即识别正文日期/);
+assert.match(renderedSchedule, /class="pm-calendar-data-tools pm-calendar-scan-card"><h3>识别正文<\/h3>[\s\S]*?立即识别正文日期/);
 assert.match(renderedSchedule, /回复后自动识别：关/);
 assert.match(renderedSchedule, /data-action="calendar-edit"[^>]*aria-label="编辑 &lt;日程&gt;"[^>]*>[\s\S]*?<svg/);
 assert.doesNotMatch(renderedSchedule, /data-action="calendar-edit"[^>]*>编辑<\/button>/);
@@ -508,6 +513,20 @@ for (const label of [
     assert.match(renderedSchedule, new RegExp(`aria-label="${label}"`), `${label} 控件必须有可访问名称`);
 }
 assert.doesNotMatch(`${renderedSchedule}${renderedWeather}${renderedCycle}`, /<Holiday>|<Location>|<status>/);
+
+const relativeDateLabels = ['大前天', '前天', '昨天', '今天', '明天', '后天', '大后天', '四天后', '五天后', '六天后'];
+for (const [index, selectedDate] of calendarDateRangeKeys(renderedDate, -3, 6).entries()) {
+    const parsed = parseCalendarDate(selectedDate);
+    const relativeSchedule = renderCalendarPageHtml(
+        { ...createEmptyCalendarScope(), baseDate: currentDates[0] }, { occasions: [] }, '', {}, {}, {}, [],
+        {
+            viewYear: parsed.getFullYear(), viewMonth: parsed.getMonth() + 1,
+            selectedDate, viewMode: 'schedule',
+        },
+    );
+    assert.match(relativeSchedule, new RegExp(`<span>${relativeDateLabels[index]}<\\/span>`),
+        `${relativeDateLabels[index]}标签必须在已选日期详情中显示`);
+}
 
 const crossMonthTomorrow = renderCalendarPageHtml(
     { ...createEmptyCalendarScope(), baseDate: '2032-01-31' }, { occasions: [] }, '', {}, {}, {}, [],

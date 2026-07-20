@@ -3318,11 +3318,12 @@ const launcherScope = {
 };
 const unpinnedLauncherHtml = renderCommunityLauncher(launcherScope, { pinnedSceneIds: [] });
 assert.match(unpinnedLauncherHtml, /class="pm-scene-card-actions"/);
-assert.match(unpinnedLauncherHtml, /data-action="toggle-scene-pin"[^>]*aria-pressed="false"[^>]*>固定<\/button>/);
-assert.match(unpinnedLauncherHtml, /data-action="delete-scene"[^>]*>删除<\/button>/);
+assert.match(unpinnedLauncherHtml, /data-action="toggle-scene-pin"[^>]*aria-pressed="false"[^>]*aria-label="固定社区"[^>]*>[\s\S]*?<svg/);
+assert.match(unpinnedLauncherHtml, /data-action="delete-scene"[^>]*aria-label="删除社区"[^>]*>[\s\S]*?<svg/);
+assert.doesNotMatch(unpinnedLauncherHtml, />固定<\/button>|>删除<\/button>/, '场景卡片操作必须使用 SVG 且保留可访问名称');
 assert.match(unpinnedLauncherHtml, /class="pm-scene-card-open"[^>]*>[\s\S]*?<\/button><div class="pm-scene-card-actions">/, '场景卡片操作必须位于打开场景按钮之外');
 const pinnedLauncherHtml = renderCommunityLauncher(launcherScope, { pinnedSceneIds: ['scene-card'] });
-assert.match(pinnedLauncherHtml, /data-action="toggle-scene-pin"[^>]*aria-pressed="true"[^>]*>取消固定<\/button>/);
+assert.match(pinnedLauncherHtml, /data-action="toggle-scene-pin"[^>]*aria-pressed="true"[^>]*aria-label="取消固定社区"[^>]*>[\s\S]*?<svg/);
 
 const desktopTransitionCalls = [];
 const desktopStore = { scopes: { story: { activeSceneId: null, sceneOrder: [], scenes: {}, actors: {} } } };

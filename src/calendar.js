@@ -3,7 +3,7 @@ import {
     buildCalendarPrompts, calendarDateFromParts, calendarDateRangeKeys, calendarGenerationCopy, calendarMonthCells, calendarMonthKeys,
     calendarReferenceDate, calendarScopeFor, calendarWeekKeys, calendarWindowDescription, contextPayload, createCalendarDate, deleteCalendarEvent,
     extractContextCalendarEvents, findCalendarEvent, formatCalendarDate, mergeCalendarEvents,
-    normalizeCalendarDateTags, normalizeCalendarStore, parseCalendarAiResponse, parseCalendarDate, parseCalendarInput, shiftCalendarMonth,
+    normalizeCalendarDateTags, normalizeCalendarStore, parseCalendarAiResponse, parseCalendarDate, parseCalendarInput, relativeCalendarLabel, shiftCalendarMonth,
     upsertCalendarEvent,
 } from './calendar-model.js';
 import {
@@ -101,9 +101,6 @@ export function renderCalendarPageHtml(
     const monthKeys = monthCells.flatMap(cell => cell.date ? [cell.date] : []);
     const monthStart = parseCalendarDate(monthKeys[0]);
     const todayKey = formatCalendarDate(today);
-    const tomorrow = new Date(today);
-    tomorrow.setDate(today.getDate() + 1);
-    const tomorrowKey = formatCalendarDate(tomorrow);
     const monthFirst = calendarDateFromParts(viewYear, viewMonth, 1);
     const selectedDate = monthKeys.includes(view.selectedDate)
         ? view.selectedDate
@@ -133,7 +130,7 @@ export function renderCalendarPageHtml(
         const labels = [shortDate.format(meta.parsed), meta.summary].filter(Boolean).join('，');
         return `<button type="button" class="${classes.join(' ')}" data-action="calendar-select-date" data-calendar-date="${date}" aria-pressed="${date === selectedDate}" aria-label="${escapeAttr(labels)}"><b>${meta.parsed.getDate()}</b><span>${escapeHtml(meta.summary)}</span><i aria-hidden="true"></i></button>`;
     }).join('');
-    const relativeLabel = selectedDate === todayKey ? '今天' : selectedDate === tomorrowKey ? '明天' : '';
+    const relativeLabel = relativeCalendarLabel(today, selectedDate) || '';
     const selectedDetail = renderSelectedDateDetail(
         scope, occasionsByDate, holidayCache, weatherStore, cycleScope, selectedDate, viewMode, relativeLabel,
     );
@@ -150,13 +147,14 @@ export function renderCalendarPageHtml(
     const baseDate = scope.baseDate || '';
     const headerBusy = viewMode === 'schedule' && view.generating === true;
     const headerButton = headerAction ? `<button type="button" class="pm-calendar-header-action ${headerBusy ? 'is-loading' : ''}" data-action="${headerAction}" aria-label="${headerActionLabel}" title="${headerActionLabel}" aria-busy="${headerBusy}" ${headerBusy ? 'disabled' : ''}>${REFRESH_ICON_SVG}</button>` : '';
+    const statusClass = headerBusy ? 'pm-calendar-status is-generating' : 'pm-calendar-status';
     return `<div id="pm-calendar-app" class="pm-calendar-shell" data-calendar-view-mode="${viewMode}">
         <header class="pm-calendar-header"><span class="pm-calendar-header-side is-left"><button type="button" data-action="calendar-home" aria-label="返回桌面" title="返回桌面">${HOME_ICON_SVG}</button></span><div class="pm-calendar-title-row"><b>${escapeHtml(monthTitle.format(createCalendarDate(viewYear, viewMonth, 1)))}</b><button type="button" class="pm-calendar-base-edit" data-action="calendar-base-edit" aria-label="编辑时间起点" title="编辑时间起点">${EDIT_ICON_SVG}</button></div><span class="pm-calendar-header-side is-right">${headerButton}</span></header>
         <div class="pm-calendar-month-nav"><button type="button" class="pm-calendar-month-step" data-action="calendar-prev-month" aria-label="上个月">‹</button><div class="pm-calendar-view-switch" role="group" aria-label="日历信息分类"><button type="button" data-action="calendar-mode-schedule" aria-label="显示日程与假日" aria-pressed="${viewMode === 'schedule'}" title="日程与假日">${CALENDAR_ICON_SVG}</button><button type="button" data-action="calendar-mode-weather" aria-label="显示天气" aria-pressed="${viewMode === 'weather'}" title="天气">${WEATHER_ICON_SVG}</button><button type="button" data-action="calendar-mode-cycle" aria-label="显示生理期" aria-pressed="${viewMode === 'cycle'}" title="生理期">${CYCLE_ICON_SVG}</button></div><button type="button" class="pm-calendar-month-step" data-action="calendar-next-month" aria-label="下个月">›</button></div>
         <div class="pm-calendar-month" aria-label="${viewYear}年${viewMonth}月月历"><div class="pm-calendar-weekdays">${CALENDAR_WEEKDAYS.map(day => `<span>周${day}</span>`).join('')}</div><div class="pm-calendar-month-grid">${days}</div></div>
         ${selectedDetail}
         ${management}
-        <div class="pm-calendar-status" aria-live="polite">${escapeHtml(status)}</div>
+        <div class="${statusClass}" aria-live="polite">${escapeHtml(status)}</div>
     </div>`;
 }
 

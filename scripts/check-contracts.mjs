@@ -1341,7 +1341,8 @@ for (const expected of [
   'showBaseDateEditor', 'pm-calendar-base-dialog', 'data-calendar-base-error',
   'pm-calendar-header-side is-left', 'pm-calendar-header-side is-right', 'statusTimerByStorage',
   'setTimeoutImpl', 'clearTimeoutImpl', '{ persistent: true }', '{ duration: 10000 }',
-  'pm-modal-add pm-calendar-base-actions',
+  'pm-modal-add pm-calendar-base-actions', 'relativeCalendarLabel(today, selectedDate)',
+  "const statusClass = headerBusy ? 'pm-calendar-status is-generating' : 'pm-calendar-status'",
 ]) requireText('calendar.js', calendarCode, expected);
 for (const expected of [
   'scopeCommitQueue', 'saveCalendar(previousStore)', 'calendarRollbackError',
@@ -1373,7 +1374,8 @@ for (const expected of [
   'data-action="calendar-editor-kind"', 'data-action="calendar-holiday-country"',
   '该国家在当前年代无外部数据源', 'EDIT_ICON_SVG', 'EVENT_EDITOR_ICON_SVG', 'OCCASION_EDITOR_ICON_SVG',
   'aria-label="切换到日程编辑器"', 'aria-label="切换到生日或纪念日编辑器"',
-  'pm-calendar-editor-stack', '立即识别正文日期', '回复后自动识别：', "label: '<user>'",
+  'pm-calendar-editor-stack', 'pm-calendar-editor-header', 'pm-calendar-scan-card',
+  '<h3>识别正文</h3>', '立即识别正文日期', '回复后自动识别：', "label: '<user>'",
   '<time datetime="${selectedDate}">${escapeHtml(detailDate.format(parsed))}</time>',
   "follicular: '安全期'", "luteal: '安全期'",
 ]) requireText('calendar-view.js', calendarViewCode, expected);
@@ -1529,6 +1531,7 @@ for (const expected of [
 for (const expected of [
   'data-action="desktop"', 'data-action="exit"', 'class="pm-scene-card-actions"',
   'data-action="toggle-scene-pin"', 'data-action="delete-scene"', 'pm-desktop-app-icon',
+  'aria-label="${pinLabel}"', 'aria-label="删除社区"', '${EDIT_ICON_SVG}', '${TRASH_ICON_SVG}',
   'pm-desktop-app-label', 'data-app="chat"', 'data-app="directory"', 'data-app="settings"', 'data-app="calendar"',
 ]) {
   requireText('interactive-scene-views.js', interactiveViewsCode, expected);
@@ -1686,8 +1689,15 @@ for (const expected of [
   '@media(prefers-reduced-motion:reduce){.pm-quote-target{animation:none',
   '.pm-calendar-view-switch{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;background:transparent}',
   '.pm-calendar-tools{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;padding:10px 12px}',
-  '.pm-calendar-date-tags-row{margin-bottom:12px}',
+  '.pm-calendar-header .pm-calendar-header-action{width:28px;height:28px;padding:5px}',
+  '.pm-calendar-header-action svg{width:15px;height:15px}',
+  '.pm-calendar-title-row{display:flex;align-items:center;justify-content:center;gap:3px',
+  '.pm-calendar-header .pm-calendar-base-edit{position:static;transform:none;width:26px;height:26px',
+  '.pm-calendar-status.is-generating{color:#ff3b30}',
+  '.pm-calendar-date-tags-row{grid-template-columns:minmax(0,1fr) auto}',
   '.pm-calendar-editor[hidden]{display:none}',
+  '.pm-calendar-editor-header{display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:30px}',
+  '.pm-calendar-editor-switch{display:flex;flex:0 0 auto;gap:4px}',
   '.pm-calendar-event-actions button{display:grid;place-items:center;width:26px;height:26px',
   '.pm-calendar-selected-detail>header time{font-size:14px;font-weight:700}',
   '.pm-calendar-editor-switch button{display:grid;place-items:center;width:30px;height:30px;padding:6px;border:0;border-radius:50%',
@@ -1702,6 +1712,32 @@ for (const expected of [
   '.pm-scene-comment-composer input{font-size:14px}',
   '.pm-scene-empty{font-size:12px;line-height:1.55}',
 ]) requireText('style.css', css, expected);
+requireCssDeclarations(cssRules, '.pm-name-edit', {
+  background: 'transparent !important', color: '#888 !important',
+  width: '24px', height: '24px', 'border-radius': '50% !important',
+});
+requireCssDeclarations(cssRules, '.pm-name-edit:hover', {
+  background: 'transparent !important', color: 'var(--pm-r-bg,#007aff) !important',
+});
+requireCssDeclarations(cssRules, '.pm-name-edit:active', {
+  background: 'var(--pm-r-bg,#007aff) !important', color: 'var(--pm-r-txt,#fff) !important',
+});
+requireCssDeclarations(cssRules, '.pm-nav-btn', {
+  background: 'none !important', color: 'var(--pm-r-bg,#007aff) !important',
+});
+requireCssDeclarations(cssRules, '.pm-up-btn', {
+  width: '32px !important', height: '32px !important',
+  background: 'var(--pm-r-bg,#007aff) !important', color: 'var(--pm-r-txt,#fff) !important',
+});
+requireCssDeclarations(cssRules, '.pm-expand-btn:hover', {
+  color: 'var(--pm-r-bg,#007aff) !important',
+});
+requireCssDeclarations(cssRules, '.pm-expand-btn[aria-expanded="true"]', {
+  color: 'var(--pm-r-bg,#007aff) !important',
+});
+requireCssDeclarations(cssRules, '#pm-iphone[data-theme="dark"] .pm-expand-btn[aria-expanded="true"]', {
+  color: 'var(--pm-r-bg,#0a84ff) !important',
+});
 requireCssDeclarations(cssRules, '.pm-message-select-check', {
   width: '22px', height: '22px', 'min-width': '22px', 'min-height': '22px',
   'border-radius': '50%', background: 'transparent', color: '#fff',
