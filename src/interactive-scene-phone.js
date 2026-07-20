@@ -241,6 +241,9 @@ function closePostActions(phoneWindow, keepWrap = null) {
         const wrap = actions.closest('.pm-scene-post-actions-wrap');
         if (wrap === keepWrap) return;
         actions.hidden = true;
+        wrap?.closest?.('.pm-scene-post')?.querySelectorAll?.('.pm-scene-comment-actions').forEach(commentActions => {
+            commentActions.hidden = true;
+        });
         const trigger = wrap?.querySelector('[data-action="post-actions"]');
         trigger?.setAttribute('aria-expanded', 'false');
         focusTarget ||= trigger;
@@ -285,10 +288,14 @@ export function handleSceneAccentAction(action, app, control) {
 }
 
 export function toggleScenePostActions(button) {
-    const actions = button?.parentElement?.querySelector?.('.pm-scene-post-actions');
+    const wrap = button?.parentElement;
+    const actions = wrap?.querySelector?.('.pm-scene-post-actions');
     if (!actions) return false;
     const opening = actions.hidden;
     actions.hidden = !opening;
+    wrap?.closest?.('.pm-scene-post')?.querySelectorAll?.('.pm-scene-comment-actions').forEach(commentActions => {
+        commentActions.hidden = !opening;
+    });
     button.setAttribute?.('aria-expanded', String(opening));
     if (opening) actions.querySelector?.('button')?.focus?.({ preventScroll: true });
     return opening;

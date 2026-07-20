@@ -3208,15 +3208,21 @@ const workspaceScene = normalizeInteractiveStore({
 const workspaceHtml = renderCommunityWorkspace(workspaceScene, 'feed', { pinnedSceneIds: [] });
 assert.match(workspaceHtml, /style="--scene-accent:#123abc"/);
 assert.match(workspaceHtml, /placeholder="分享此刻……"/);
-assert.match(workspaceHtml, /<span>刚刚<\/span>/);
+assert.match(workspaceHtml, /<span class="pm-scene-post-time">刚刚<\/span>/);
 assert.doesNotMatch(workspaceHtml, /刚刚 · 主题社区/);
-assert.match(workspaceHtml, /class="pm-scene-post-author"><b>访客<\/b><span>刚刚<\/span>/);
+assert.match(workspaceHtml, /class="pm-scene-post-author"><b>访客<\/b><span class="pm-scene-post-time">刚刚<\/span>/);
 assert.match(workspaceHtml, /class="pm-scene-nav-actions"[\s\S]*data-action="desktop"/);
 assert.doesNotMatch(workspaceHtml, /data-action="back"|pm-scene-back/);
-assert.match(workspaceHtml, /class="pm-scene-title">[\s\S]*class="pm-scene-title-poke"[^>]*data-action="poke-scene"[\s\S]*class="pm-scene-view-toggle"[^>]*data-tab="live"[^>]*aria-label="切换到直播"[\s\S]*<\/div><div class="pm-scene-view-actions">/,
-    '社区标题、拍一拍和视图切换必须位于同一个视觉居中组');
-assert.match(workspaceHtml, /class="pm-scene-view-actions"><button[^>]*class="pm-scene-exit"/,
-    '右侧操作区只保留退出按钮');
+assert.match(workspaceHtml, /<nav class="pm-scene-title" aria-label="子社区视图">/,
+    '社区标题和直播间必须位于独立的双标签导航');
+assert.match(workspaceHtml, /class="pm-scene-title-tab is-active"[^>]*data-tab="feed"[^>]*aria-current="page"[^>]*><span>主题社区<\/span>/,
+    '帖子页必须激活社区标题标签');
+assert.match(workspaceHtml, /class="pm-scene-title-tab "[^>]*data-tab="live"[^>]*aria-current="false"[^>]*><span>直播间<\/span>/,
+    '直播间必须作为第二个文本标签');
+assert.match(workspaceHtml, /class="pm-scene-view-actions">[\s\S]*class="pm-scene-title-poke"[^>]*data-action="poke-scene"[\s\S]*class="pm-scene-exit"/,
+    '拍一拍必须移出标题居中组并与退出按钮放在右侧操作区');
+assert.doesNotMatch(workspaceHtml, /<nav class="pm-scene-title"[\s\S]*pm-scene-title-poke[\s\S]*<\/nav>/,
+    '拍一拍不得参与双标签的居中宽度计算');
 assert.doesNotMatch(workspaceHtml, /pm-scene-tabs/);
 assert.match(workspaceHtml, /data-action="tab" data-tab="prompt">[\s\S]*风格提示词/);
 assert.match(workspaceHtml, /data-action="context-inject">[\s\S]*上下文注入/);
@@ -3226,7 +3232,7 @@ assert.match(workspaceHtml, /class="pm-scene-like [^"]*"[^>]*data-action="like"/
 assert.match(workspaceHtml, /class="pm-scene-post-metric is-share"/);
 assert.match(workspaceHtml, /class="pm-scene-reply-toggle"[^>]*data-action="toggle-reply"[^>]*aria-controls="pm-comment-composer-post"[^>]*aria-expanded="false"/);
 assert.match(workspaceHtml, /class="pm-scene-post-metric is-reply"[^>]*aria-label="回复 1"/);
-assert.match(workspaceHtml, /class="pm-scene-comment-actions">[\s\S]*data-action="edit-comment"[^>]*aria-label="编辑评论"[^>]*>[\s\S]*?<svg/);
+assert.match(workspaceHtml, /class="pm-scene-comment-actions" hidden>[\s\S]*data-action="edit-comment"[^>]*aria-label="编辑评论"[^>]*>[\s\S]*?<svg/);
 assert.match(workspaceHtml, /data-action="delete-comment"[^>]*aria-label="删除评论"[^>]*>[\s\S]*?<svg/);
 assert.match(workspaceHtml, /id="pm-comment-composer-post" class="pm-scene-comment-composer" hidden/);
 assert.match(workspaceHtml, /placeholder="输入你的高见吧"/);
@@ -3237,7 +3243,8 @@ assert.match(workspaceHtml, /class="pm-control-menu pm-scene-menu" role="menu" a
 assert.match(workspaceHtml, /class="pm-scene-exit"[^>]*data-action="exit"/);
 assert.doesNotMatch(workspaceHtml, /生成热场内容|编辑社区风格/);
 const liveWorkspaceHtml = renderCommunityWorkspace(workspaceScene, 'live', { pinnedSceneIds: [] });
-assert.match(liveWorkspaceHtml, /class="pm-scene-view-toggle"[^>]*data-tab="feed"[^>]*aria-label="返回社区"/);
+assert.match(liveWorkspaceHtml, /class="pm-scene-title-tab "[^>]*data-tab="feed"[^>]*aria-current="false"/);
+assert.match(liveWorkspaceHtml, /class="pm-scene-title-tab is-active"[^>]*data-tab="live"[^>]*aria-current="page"[^>]*>[\s\S]*<span>直播间<\/span>/);
 assert.match(liveWorkspaceHtml, /pm-live-stage has-danmaku/);
 assert.match(liveWorkspaceHtml, /--duration:[\d.]+s;--offset:-?\d+px/);
 const promptWorkspaceHtml = renderCommunityWorkspace(workspaceScene, 'prompt', { pinnedSceneIds: [], lastTab: 'live' });
@@ -3748,8 +3755,13 @@ const postActionsTrigger = {
     setAttribute(name, value) { assert.equal(name, 'aria-expanded'); postActionsExpanded = value; },
     focus(options) { assert.deepEqual(options, { preventScroll: true }); postActionsFocused = true; },
 };
+const postCommentActions = { hidden: false };
+const postArticle = {
+    querySelectorAll(selector) { assert.equal(selector, '.pm-scene-comment-actions'); return [postCommentActions]; },
+};
 const postActionsWrap = {
     querySelector(selector) { assert.equal(selector, '[data-action="post-actions"]'); return postActionsTrigger; },
+    closest(selector) { assert.equal(selector, '.pm-scene-post'); return postArticle; },
 };
 const postActions = {
     hidden: false,
@@ -3758,14 +3770,20 @@ const postActions = {
 openPostActions = [postActions];
 delegatedListeners.get('click')({ target: { closest: () => null } });
 assert.equal(postActions.hidden, true, '点击帖子操作外部必须收起横向操作');
+assert.equal(postCommentActions.hidden, true, '点击帖子操作外部必须同时隐藏评论编辑删除按钮');
 assert.equal(postActionsExpanded, 'false');
 
 let firstPostExpanded = 'true';
 const firstPostTrigger = {
     setAttribute(name, value) { assert.equal(name, 'aria-expanded'); firstPostExpanded = value; },
 };
+const firstCommentActions = { hidden: false };
+const firstPostArticle = {
+    querySelectorAll(selector) { assert.equal(selector, '.pm-scene-comment-actions'); return [firstCommentActions]; },
+};
 const firstPostWrap = {
     querySelector(selector) { assert.equal(selector, '[data-action="post-actions"]'); return firstPostTrigger; },
+    closest(selector) { assert.equal(selector, '.pm-scene-post'); return firstPostArticle; },
 };
 const firstPostActions = {
     hidden: false,
@@ -3775,6 +3793,10 @@ let secondPostExpanded = 'false';
 let secondPostActionFocused = false;
 const secondPostFirstAction = {
     focus(options) { assert.deepEqual(options, { preventScroll: true }); secondPostActionFocused = true; },
+};
+const secondCommentActions = { hidden: true };
+const secondPostArticle = {
+    querySelectorAll(selector) { assert.equal(selector, '.pm-scene-comment-actions'); return [secondCommentActions]; },
 };
 const secondPostActions = {
     hidden: true,
@@ -3787,6 +3809,7 @@ const secondPostWrap = {
         if (selector === '[data-action="post-actions"]') return secondPostTrigger;
         assert.fail(`第二个帖子不应查询未知选择器：${selector}`);
     },
+    closest(selector) { assert.equal(selector, '.pm-scene-post'); return secondPostArticle; },
 };
 const secondPostTrigger = {
     dataset: { action: 'post-actions' },
@@ -3805,8 +3828,10 @@ const delegatedActionCountBeforePostSwitch = delegatedActions.length;
 delegatedListeners.get('click')({ target: { closest: selector => selector === '[data-action]' ? secondPostTrigger : null } });
 await Promise.resolve();
 assert.equal(firstPostActions.hidden, true, '切换到另一个帖子时必须关闭前一个横向操作');
+assert.equal(firstCommentActions.hidden, true, '切换帖子时必须隐藏前一个帖子的评论操作');
 assert.equal(firstPostExpanded, 'false', '关闭前一个帖子操作时必须同步 aria-expanded');
 assert.equal(secondPostActions.hidden, false, '点击第二个帖子省略号必须展开其横向操作');
+assert.equal(secondCommentActions.hidden, false, '点击帖子省略号必须显示所属帖子的评论编辑删除按钮');
 assert.equal(secondPostExpanded, 'true', '展开第二个帖子操作时必须同步 aria-expanded');
 assert.equal(secondPostActionFocused, true, '展开第二个帖子操作后必须聚焦第一个操作按钮');
 assert.equal(delegatedActions.length, delegatedActionCountBeforePostSwitch + 1, '帖子切换只能分发一次生产动作');
@@ -3815,10 +3840,12 @@ openPostActions = [postActions];
 sceneMenu.hidden = false;
 menuExpanded = 'true';
 postActions.hidden = false;
+postCommentActions.hidden = false;
 postActionsExpanded = 'true';
 escapePrevented = false;
 delegatedListeners.get('keydown')({ key: 'Escape', preventDefault() { escapePrevented = true; } });
 assert.equal(postActions.hidden, true, 'Escape 必须关闭帖子横向操作');
+assert.equal(postCommentActions.hidden, true, 'Escape 必须同时隐藏评论编辑删除按钮');
 assert.equal(sceneMenu.hidden, true, 'Escape 必须同时关闭社区工具菜单');
 assert.equal(postActionsExpanded, 'false');
 assert.equal(menuExpanded, 'false');
