@@ -3247,9 +3247,13 @@ assert.match(workspaceHtml, /data-action="context-inject">[\s\S]*上下文注入
 assert.match(workspaceHtml, /class="pm-scene-post-more"[^>]*data-action="post-actions"/);
 assert.match(workspaceHtml, /data-action="comments"[^>]*aria-label="拍一拍本帖，只生成本帖评论"/);
 assert.match(workspaceHtml, /class="pm-scene-like [^"]*"[^>]*data-action="like"/);
-assert.match(workspaceHtml, /class="pm-scene-share"[^>]*data-action="share"[^>]*data-post-id="post"[^>]*aria-label="分享本帖"[\s\S]*class="pm-scene-post-metric is-share"/);
+assert.match(workspaceHtml, /class="pm-scene-share "[^>]*data-action="share"[^>]*data-post-id="post"[^>]*aria-label="分享本帖"[\s\S]*class="pm-scene-post-metric is-share"/);
 assert.match(workspaceHtml, /class="pm-scene-reply-toggle"[^>]*data-action="toggle-reply"[^>]*aria-controls="pm-comment-composer-post"[^>]*aria-expanded="false"/);
 assert.match(workspaceHtml, /class="pm-scene-post-metric is-reply"[^>]*aria-label="回复 1"/);
+const sharedWorkspaceHtml = renderCommunityWorkspace({ ...workspaceScene, posts: [{ ...workspaceScene.posts[0], shareCount: 1 }] }, 'feed', { pinnedSceneIds: [] });
+assert.match(sharedWorkspaceHtml, /class="pm-scene-share is-shared"[^>]*aria-label="再次分享本帖"/,
+    '已有分享计数的帖子必须恢复固定分享着色状态');
+assert.match(sharedWorkspaceHtml, /class="pm-scene-post-metric is-share"[^>]*aria-label="转发 \d+"/);
 assert.match(workspaceHtml, /class="pm-scene-comment-actions" hidden>[\s\S]*data-action="edit-comment"[^>]*aria-label="编辑评论"[^>]*>[\s\S]*?<svg/);
 assert.match(workspaceHtml, /data-action="delete-comment"[^>]*aria-label="删除评论"[^>]*>[\s\S]*?<svg/);
 assert.match(workspaceHtml, /id="pm-comment-composer-post" class="pm-scene-comment-composer" hidden/);
