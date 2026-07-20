@@ -3201,7 +3201,7 @@ const workspaceScene = normalizeInteractiveStore({
     version: 1,
     scopes: { story: { activeSceneId: 'scene', sceneOrder: ['scene'], scenes: { scene: {
         id: 'scene', title: '主题社区', preset: 'weibo', themeAccent: '#123abc',
-        generatedPrompt: '自然交流', posts: [{ id: 'post', author: '访客', content: '测试帖子', comments: [] }],
+        generatedPrompt: '自然交流', posts: [{ id: 'post', author: '访客', content: '测试帖子', comments: [{ id: 'comment', author: '路人', content: '测试评论' }] }],
         live: { title: '正在直播', status: 'idle', danmaku: [{ id: 'danmaku', author: '访客', content: '弹幕' }] },
     } } } },
 }).scopes.story.scenes.scene;
@@ -3213,8 +3213,10 @@ assert.doesNotMatch(workspaceHtml, /刚刚 · 主题社区/);
 assert.match(workspaceHtml, /class="pm-scene-post-author"><b>访客<\/b><span>刚刚<\/span>/);
 assert.match(workspaceHtml, /class="pm-scene-nav-actions"[\s\S]*data-action="desktop"/);
 assert.doesNotMatch(workspaceHtml, /data-action="back"|pm-scene-back/);
-assert.match(workspaceHtml, /class="pm-scene-title-poke"[^>]*data-action="poke-scene"/);
-assert.match(workspaceHtml, /class="pm-scene-view-toggle"[^>]*data-tab="live"[^>]*aria-label="切换到直播"/);
+assert.match(workspaceHtml, /class="pm-scene-title">[\s\S]*class="pm-scene-title-poke"[^>]*data-action="poke-scene"[\s\S]*class="pm-scene-view-toggle"[^>]*data-tab="live"[^>]*aria-label="切换到直播"[\s\S]*<\/div><div class="pm-scene-view-actions">/,
+    '社区标题、拍一拍和视图切换必须位于同一个视觉居中组');
+assert.match(workspaceHtml, /class="pm-scene-view-actions"><button[^>]*class="pm-scene-exit"/,
+    '右侧操作区只保留退出按钮');
 assert.doesNotMatch(workspaceHtml, /pm-scene-tabs/);
 assert.match(workspaceHtml, /data-action="tab" data-tab="prompt">[\s\S]*风格提示词/);
 assert.match(workspaceHtml, /data-action="context-inject">[\s\S]*上下文注入/);
@@ -3223,12 +3225,15 @@ assert.match(workspaceHtml, /data-action="comments"[^>]*aria-label="拍一拍本
 assert.match(workspaceHtml, /class="pm-scene-like [^"]*"[^>]*data-action="like"/);
 assert.match(workspaceHtml, /class="pm-scene-post-metric is-share"/);
 assert.match(workspaceHtml, /class="pm-scene-reply-toggle"[^>]*data-action="toggle-reply"[^>]*aria-controls="pm-comment-composer-post"[^>]*aria-expanded="false"/);
-assert.match(workspaceHtml, /class="pm-scene-post-metric is-reply"[^>]*aria-label="回复 0"/);
+assert.match(workspaceHtml, /class="pm-scene-post-metric is-reply"[^>]*aria-label="回复 1"/);
+assert.match(workspaceHtml, /class="pm-scene-comment-actions">[\s\S]*data-action="edit-comment"[^>]*aria-label="编辑评论"[^>]*>[\s\S]*?<svg/);
+assert.match(workspaceHtml, /data-action="delete-comment"[^>]*aria-label="删除评论"[^>]*>[\s\S]*?<svg/);
 assert.match(workspaceHtml, /id="pm-comment-composer-post" class="pm-scene-comment-composer" hidden/);
-assert.match(workspaceHtml, /placeholder="USER 回复……"/);
+assert.match(workspaceHtml, /placeholder="输入你的高见吧"/);
 assert.match(workspaceHtml, /data-action="post-comment"[^>]*aria-label="发送回复"[^>]*>[\s\S]*?<svg/);
 assert.doesNotMatch(workspaceHtml, /生成更多评论|>喜欢<|>已喜欢</);
 assert.match(workspaceHtml, /class="pm-scene-bottom-bar"/);
+assert.match(workspaceHtml, /class="pm-control-menu pm-scene-menu" role="menu" aria-label="社区工具" hidden/);
 assert.match(workspaceHtml, /class="pm-scene-exit"[^>]*data-action="exit"/);
 assert.doesNotMatch(workspaceHtml, /生成热场内容|编辑社区风格/);
 const liveWorkspaceHtml = renderCommunityWorkspace(workspaceScene, 'live', { pinnedSceneIds: [] });
