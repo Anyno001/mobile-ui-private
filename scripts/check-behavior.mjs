@@ -2761,6 +2761,8 @@ const parsedV2Backup = parseBackupData({ schemaVersion: 3, interactiveScenes: va
 assert.equal(parsedV2Backup.interactiveScenes.version, 2);
 assert.equal(parsedV2Backup.interactiveScenes.scopes[v2ScopeId].scenes.scene.posts[0].authorId, v2ActorId);
 assert.equal(parsedV2Backup.interactiveScenes.scopes[v2ScopeId].scenes.scene.posts[0].shareCount, 0, '旧 v2 备份缺失 shareCount 时必须补为 0');
+assert.equal(parsedV2Backup.interactiveScenes.scopes[v2ScopeId].scenes.scene.posts[0].shared, false,
+    '旧 v2 备份缺失 shared 时必须补为 false');
 for (const shareCount of [-1, 1.5, '1']) assert.throws(() => parseBackupData({
     schemaVersion: 3,
     interactiveScenes: {
@@ -2778,6 +2780,23 @@ for (const shareCount of [-1, 1.5, '1']) assert.throws(() => parseBackupData({
         },
     },
 }, currentBackup), /shareCount 必须是非负安全整数/);
+for (const shared of [1, 'true', null]) assert.throws(() => parseBackupData({
+    schemaVersion: 3,
+    interactiveScenes: {
+        ...validV2InteractiveStore,
+        scopes: {
+            [v2ScopeId]: {
+                ...validV2InteractiveStore.scopes[v2ScopeId],
+                scenes: {
+                    scene: {
+                        ...validV2InteractiveStore.scopes[v2ScopeId].scenes.scene,
+                        posts: [{ ...validV2InteractiveStore.scopes[v2ScopeId].scenes.scene.posts[0], shared }],
+                    },
+                },
+            },
+        },
+    },
+}, currentBackup), /shared 必须是布尔值/);
 assert.throws(() => parseBackupData({
     schemaVersion: 3,
     interactiveScenes: {
@@ -3250,9 +3269,9 @@ assert.match(workspaceHtml, /class="pm-scene-like [^"]*"[^>]*data-action="like"/
 assert.match(workspaceHtml, /class="pm-scene-share "[^>]*data-action="share"[^>]*data-post-id="post"[^>]*aria-label="分享本帖"[\s\S]*class="pm-scene-post-metric is-share"/);
 assert.match(workspaceHtml, /class="pm-scene-reply-toggle"[^>]*data-action="toggle-reply"[^>]*aria-controls="pm-comment-composer-post"[^>]*aria-expanded="false"/);
 assert.match(workspaceHtml, /class="pm-scene-post-metric is-reply"[^>]*aria-label="回复 1"/);
-const sharedWorkspaceHtml = renderCommunityWorkspace({ ...workspaceScene, posts: [{ ...workspaceScene.posts[0], shareCount: 1 }] }, 'feed', { pinnedSceneIds: [] });
-assert.match(sharedWorkspaceHtml, /class="pm-scene-share is-shared"[^>]*aria-label="再次分享本帖"/,
-    '已有分享计数的帖子必须恢复固定分享着色状态');
+const sharedWorkspaceHtml = renderCommunityWorkspace({ ...workspaceScene, posts: [{ ...workspaceScene.posts[0], shareCount: 1, shared: true }] }, 'feed', { pinnedSceneIds: [] });
+assert.match(sharedWorkspaceHtml, /class="pm-scene-share is-shared"[^>]*aria-pressed="true"[^>]*aria-label="已分享本帖"/,
+    '当前用户已分享的帖子必须恢复固定分享着色和可访问状态');
 assert.match(sharedWorkspaceHtml, /class="pm-scene-post-metric is-share"[^>]*aria-label="转发 \d+"/);
 assert.match(workspaceHtml, /class="pm-scene-comment-actions" hidden>[\s\S]*data-action="edit-comment"[^>]*aria-label="编辑评论"[^>]*>[\s\S]*?<svg/);
 assert.match(workspaceHtml, /data-action="delete-comment"[^>]*aria-label="删除评论"[^>]*>[\s\S]*?<svg/);
@@ -3317,13 +3336,20 @@ const launcherScope = {
     },
 };
 const unpinnedLauncherHtml = renderCommunityLauncher(launcherScope, { pinnedSceneIds: [] });
+assert.match(unpinnedLauncherHtml, /id="pm-scene-app"[^>]*style="--scene-accent:#ff8200"/,
+    '社区启动页必须以默认微博预设色驱动生成按钮');
+assert.match(unpinnedLauncherHtml, /class="pm-scene-home"[^>]*data-action="desktop"[^>]*aria-label="返回桌面"/,
+    '社区启动页返回桌面必须复用灰色 home 控件');
+assert.match(unpinnedLauncherHtml, /data-action="preset"[^>]*data-preset="douban"[^>]*data-accent="#00a65a"/,
+    '豆瓣预设必须向交互层暴露绿色主题色');
 assert.match(unpinnedLauncherHtml, /class="pm-scene-card-actions"/);
-assert.match(unpinnedLauncherHtml, /data-action="toggle-scene-pin"[^>]*aria-pressed="false"[^>]*aria-label="固定社区"[^>]*>[\s\S]*?<svg/);
+assert.match(unpinnedLauncherHtml, /class="pm-scene-pin-action"[^>]*aria-pressed="false"[^>]*aria-label="固定社区"[^>]*>[\s\S]*?<path d="M4 19V8l8-4 8 4v11"/,
+    '未固定按钮必须使用与桌面发布入口一致的社区图标');
 assert.match(unpinnedLauncherHtml, /data-action="delete-scene"[^>]*aria-label="删除社区"[^>]*>[\s\S]*?<svg/);
 assert.doesNotMatch(unpinnedLauncherHtml, />固定<\/button>|>删除<\/button>/, '场景卡片操作必须使用 SVG 且保留可访问名称');
 assert.match(unpinnedLauncherHtml, /class="pm-scene-card-open"[^>]*>[\s\S]*?<\/button><div class="pm-scene-card-actions">/, '场景卡片操作必须位于打开场景按钮之外');
 const pinnedLauncherHtml = renderCommunityLauncher(launcherScope, { pinnedSceneIds: ['scene-card'] });
-assert.match(pinnedLauncherHtml, /data-action="toggle-scene-pin"[^>]*aria-pressed="true"[^>]*aria-label="取消固定社区"[^>]*>[\s\S]*?<svg/);
+assert.match(pinnedLauncherHtml, /class="pm-scene-pin-action"[^>]*aria-pressed="true"[^>]*aria-label="取消固定社区"[^>]*>[\s\S]*?<path d="M4 19V8l8-4 8 4v11"/);
 
 const desktopTransitionCalls = [];
 const desktopStore = { scopes: { story: { activeSceneId: null, sceneOrder: [], scenes: {}, actors: {} } } };

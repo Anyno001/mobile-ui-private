@@ -18,7 +18,7 @@ import {
     installInteractiveScenes, migrateInteractiveStore, resolvePhoneChatTarget,
 } from '../src/interactive-scenes.js';
 import {
-    persistCurrentPhoneUiSnapshot, persistSceneBudgetRemoval,
+    persistCurrentPhoneUiSnapshot, persistSceneBudgetRemoval, selectScenePreset,
 } from '../src/interactive-scene-phone.js';
 import {
     COMMUNITY_TASK_PHASES, createCommunityGenerationRunner, createCommunityTaskController,
@@ -333,6 +333,31 @@ assert.equal(persistCurrentPhoneUiSnapshot({
     chatKey: 'Alice',
 }), false, '无效 storageId 不得写入 Phone UI snapshot');
 
+const presetItems = [{ active: true }, { active: false }];
+for (const item of presetItems) {
+    item.classList = { toggle(_name, active) { item.active = active; } };
+}
+const launcherStyle = {
+    values: {},
+    setProperty(name, value) { this.values[name] = value; },
+};
+const launcherApp = {
+    style: launcherStyle,
+    querySelectorAll(selector) {
+        assert.equal(selector, '.pm-scene-preset');
+        return presetItems;
+    },
+};
+const doubanPresetButton = { dataset: { accent: '#00A65A' } };
+assert.equal(selectScenePreset(launcherApp, doubanPresetButton), true);
+assert.deepEqual(presetItems.map(item => item.active), [false, false], '预设切换只能激活实际点击的按钮对象');
+presetItems.push(doubanPresetButton);
+doubanPresetButton.classList = { toggle(_name, active) { doubanPresetButton.active = active; } };
+assert.equal(selectScenePreset(launcherApp, doubanPresetButton), true);
+assert.equal(doubanPresetButton.active, true);
+assert.equal(launcherStyle.values['--scene-accent'], '#00a65a', '选择豆瓣预设必须实时更新生成按钮继承的主题色');
+assert.throws(() => selectScenePreset(launcherApp, { dataset: { accent: 'green' } }), /预设主题色格式无效/);
+
 const legacyStore = {
     version: 1,
     scopes: {
@@ -353,6 +378,7 @@ assert.equal(normalized.scopes.scope.scenes.scene.live.status, 'idle');
 assert.deepEqual(normalizeInteractiveStore(normalized), normalized);
 const normalizedPost = normalized.scopes.scope.scenes.scene.posts[0];
 assert.equal(normalizedPost.shareCount, 0, '旧帖子缺失 shareCount 时必须兼容归一化为 0');
+assert.equal(normalizedPost.shared, false, '旧帖子缺失 shared 时必须兼容归一化为未分享');
 assert.ok(normalized.scopes.scope.actors[normalizedPost.authorId]);
 assert.ok(normalized.scopes.scope.actors[normalizedPost.comments[0].authorId]);
 assert.throws(() => normalizeInteractiveStore({ version: 99, scopes: {} }), /版本 99 不受支持/);
@@ -483,6 +509,7 @@ for (const invalidPost of [
     { id: 'post', authorId: strictActorId, authorNameSnapshot: '严格角色', content: '帖子', tags: [], createdAt: 1, comments: [], liked: 'false' },
     { id: 'post', authorId: strictActorId, authorNameSnapshot: '严格角色', content: '帖子', tags: [], createdAt: 1, comments: [], liked: false, shareCount: -1 },
     { id: 'post', authorId: strictActorId, authorNameSnapshot: '严格角色', content: '帖子', tags: [], createdAt: 1, comments: [], liked: false, shareCount: 1.5 },
+    { id: 'post', authorId: strictActorId, authorNameSnapshot: '严格角色', content: '帖子', tags: [], createdAt: 1, comments: [], liked: false, shared: 'true' },
 ]) {
     assert.throws(() => normalizeInteractiveStore({
         version: 2,
@@ -496,6 +523,23 @@ for (const invalidPost of [
         },
     }), /必须是字符串|必须是有效时间戳|必须是布尔值|shareCount 必须是非负安全整数/);
 }
+const strictSharedPost = {
+    id: 'post', authorId: strictActorId, authorNameSnapshot: '严格角色', content: '帖子', tags: [], createdAt: 1,
+    comments: [], liked: false, shareCount: 4,
+};
+const normalizeStrictSharedPost = post => normalizeInteractiveStore({
+    version: 2,
+    scopes: {
+        strict: {
+            activeSceneId: 'scene', sceneOrder: ['scene'], actors: { [strictActorId]: strictActor },
+            scenes: { scene: { ...strictSceneBase, posts: [post] } },
+        },
+    },
+}).scopes.strict.scenes.scene.posts[0];
+assert.equal(normalizeStrictSharedPost(strictSharedPost).shared, true,
+    '旧 v2 帖子缺失 shared 且已有分享计数时必须迁移为已分享，避免再次累加');
+assert.equal(normalizeStrictSharedPost({ ...strictSharedPost, shared: false }).shared, false,
+    '显式 shared=false 必须独立于聚合分享数保留');
 
 const identityScope = { activeSceneId: null, sceneOrder: [], scenes: {}, actors: {} };
 const firstStory = ensureInteractiveActor(identityScope, 'scope', { type: 'story', displayName: '同名', bindingKey: 'character:a', profile: '', createdAt: 10 });
@@ -518,6 +562,7 @@ const appended = appendScenePosts(generatedScope, 'scope-generated', generatedSc
 assert.equal(appended.length, 1);
 assert.equal(appended[0].comments.length, 2);
 assert.equal(appended[0].shareCount, 0, '新生成帖子必须初始化分享计数');
+assert.equal(appended[0].shared, false, '新生成帖子必须初始化为未分享');
 assert.equal(appended[0].authorId, deriveInteractiveActorId('scope-generated', 'story', 'character:alice'));
 assert.equal(generatedScope.actors[appended[0].comments[0].authorId].type, 'passerby');
 assert.equal(appended[0].comments[1].authorId, appended[0].authorId);
@@ -660,8 +705,13 @@ const interactiveUpdatedAtBeforeReaction = editable.updatedAt;
 toggleScenePostLike(editable, 'post-1');
 assert.equal(editable.posts[0].liked, true);
 assert.ok(editable.updatedAt >= interactiveUpdatedAtBeforeReaction);
-incrementScenePostShare(editable, 'post-1');
+assert.equal(incrementScenePostShare(editable, 'post-1'), true);
 assert.equal(editable.posts[0].shareCount, 1);
+assert.equal(editable.posts[0].shared, true);
+const sharedUpdatedAt = editable.updatedAt;
+assert.equal(incrementScenePostShare(editable, 'post-1'), false, '重复分享必须返回未变更');
+assert.equal(editable.posts[0].shareCount, 1, '同一帖子重复分享不得继续叠加计数');
+assert.equal(editable.updatedAt, sharedUpdatedAt, '幂等分享不得伪造场景更新时间');
 assert.throws(() => incrementScenePostShare(editable, 'missing'), /帖子不存在/);
 assert.throws(() => incrementScenePostShare({ posts: [{ id: 'broken', shareCount: -1 }] }, 'broken'), /帖子分享数无效/);
 updateScenePost(editable, 'post-1', '修改后的帖子');
@@ -1337,6 +1387,7 @@ try {
     }));
     let selectedPreset = 'weibo';
     let selectedStyle = '';
+    const feed = { scrollTop: 0 };
     const app = {
         id: 'pm-scene-app', html: '',
         querySelector(selector) {
@@ -1352,6 +1403,7 @@ try {
     };
     Object.defineProperty(app, 'outerHTML', {
         set(value) {
+            feed.scrollTop = 0;
             this.html = value;
             if (expectedAiCallCount > 0 && capturedAiCalls.length === expectedAiCallCount) completeInstallationAction();
         },
@@ -1371,6 +1423,7 @@ try {
             if (selector === '.pm-desktop-page') return desktopPage;
             if (selector === '.pm-community-page') return communityPage;
             if (selector === '#pm-iphone .pm-main-ui') return mainUi;
+            if (selector === '#pm-scene-app .pm-scene-feed') return feed;
             return null;
         },
     };
@@ -1524,6 +1577,21 @@ try {
     assert.equal(savedScene.generatedPrompt, '更新后的社区风格');
     assert.equal(savedScene.themeAccent, '#123abc', '自定义社区色必须以小写六位十六进制持久化');
 
+    const likedPost = savedScene.posts[0];
+    const likeButton = {
+        tagName: 'BUTTON', dataset: { action: 'like', postId: likedPost.id },
+        closest(selector) {
+            if (selector === '[data-action]') return this;
+            if (selector === '#pm-scene-app') return app;
+            return null;
+        },
+    };
+    feed.scrollTop = 287;
+    const likeComplete = waitForInstallationAction(3);
+    listeners.get('click')({ target: likeButton });
+    await likeComplete;
+    assert.equal(feed.scrollTop, 287, '点赞重渲染后必须恢复信息流滚动位置');
+
     const sharedPost = savedScene.posts[0];
     const shareCountBefore = sharedPost.shareCount;
     const shareButton = {
@@ -1534,13 +1602,26 @@ try {
             return null;
         },
     };
+    feed.scrollTop = 411;
     const shareComplete = waitForInstallationAction(3);
     listeners.get('click')({ target: shareButton });
     await shareComplete;
+    assert.equal(feed.scrollTop, 411, '分享重渲染后必须恢复信息流滚动位置');
     const sharedStore = await deps.getInteractiveStore();
     const sharedScope = sharedStore.scopes['interactive-installation-scope'];
-    assert.equal(sharedScope.scenes[sharedScope.activeSceneId].posts[0].shareCount, shareCountBefore + 1,
+    const persistedSharedPost = sharedScope.scenes[sharedScope.activeSceneId].posts[0];
+    assert.equal(persistedSharedPost.shareCount, shareCountBefore + 1,
         '点击分享必须通过提交队列持久增加分享计数');
+    assert.equal(persistedSharedPost.shared, true, '首次分享必须持久化当前用户已分享状态');
+    feed.scrollTop = 533;
+    const repeatedShareComplete = waitForInstallationAction(3);
+    listeners.get('click')({ target: shareButton });
+    await repeatedShareComplete;
+    const repeatedShareStore = await deps.getInteractiveStore();
+    const repeatedShareScope = repeatedShareStore.scopes['interactive-installation-scope'];
+    assert.equal(repeatedShareScope.scenes[repeatedShareScope.activeSceneId].posts[0].shareCount, shareCountBefore + 1,
+        '同一帖子重复点击分享不得继续叠加计数');
+    assert.equal(feed.scrollTop, 533, '幂等分享重渲染后仍必须恢复信息流滚动位置');
 
     sceneAccentInput.value = '#xyzxyz';
     status.textContent = '';

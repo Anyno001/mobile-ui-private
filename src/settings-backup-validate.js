@@ -67,7 +67,7 @@ const assertInteractiveItem = (value, field, { kind = 'post', version = 1, actor
     const item = objectValue(value, field);
     const authorKeys = version === INTERACTIVE_STORE_VERSION ? ['authorId', 'authorNameSnapshot'] : ['author'];
     const allowedKeys = kind === 'post'
-        ? ['id', ...authorKeys, 'content', 'tags', 'createdAt', 'comments', 'liked', ...(version === INTERACTIVE_STORE_VERSION ? ['shareCount'] : [])]
+        ? ['id', ...authorKeys, 'content', 'tags', 'createdAt', 'comments', 'liked', ...(version === INTERACTIVE_STORE_VERSION ? ['shareCount', 'shared'] : [])]
         : ['id', ...authorKeys, 'content', 'createdAt'];
     assertAllowedKeys(item, field, allowedKeys);
     assertOptionalNormalizedText(item, 'id', field, 80);
@@ -84,6 +84,7 @@ const assertInteractiveItem = (value, field, { kind = 'post', version = 1, actor
     assertOptionalTimestamp(item, 'createdAt', field);
     if (kind === 'post') {
         if (Object.hasOwn(item, 'liked') && typeof item.liked !== 'boolean') throw new Error(`备份字段 ${field}.liked 必须是布尔值`);
+        if (Object.hasOwn(item, 'shared') && typeof item.shared !== 'boolean') throw new Error(`备份字段 ${field}.shared 必须是布尔值`);
         if (Object.hasOwn(item, 'shareCount') && (!Number.isSafeInteger(item.shareCount) || item.shareCount < 0)) {
             throw new Error(`备份字段 ${field}.shareCount 必须是非负安全整数`);
         }

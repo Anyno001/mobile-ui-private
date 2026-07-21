@@ -3678,7 +3678,7 @@ ${lines.join("\n")}
   }
   function normalizePost(raw, context) {
     if (context.sourceVersion === INTERACTIVE_STORE_VERSION) {
-      assertV2Keys(raw, ["id", "authorId", "authorNameSnapshot", "content", "tags", "createdAt", "comments", "liked", "shareCount"], "post");
+      assertV2Keys(raw, ["id", "authorId", "authorNameSnapshot", "content", "tags", "createdAt", "comments", "liked", "shareCount", "shared"], "post");
       assertV2Text(raw.id, 80, "post.id");
       assertV2AuthorFields(raw, "post");
       assertV2Text(raw.content, 4e3, "post.content");
@@ -3689,6 +3689,7 @@ ${lines.join("\n")}
       assertV2List(raw.comments, "post.comments");
       if (raw.comments.length > INTERACTIVE_LIMITS.comments) throw new Error(`\u4E92\u52A8\u573A\u666F v2 post.comments \u4E0D\u80FD\u8D85\u8FC7 ${INTERACTIVE_LIMITS.comments} \u9879`);
       if (typeof raw.liked !== "boolean") throw new Error("\u4E92\u52A8\u573A\u666F v2 post.liked \u5FC5\u987B\u662F\u5E03\u5C14\u503C");
+      if (Object.hasOwn(raw, "shared") && typeof raw.shared !== "boolean") throw new Error("\u4E92\u52A8\u573A\u666F v2 post.shared \u5FC5\u987B\u662F\u5E03\u5C14\u503C");
       if (Object.hasOwn(raw, "shareCount") && (!Number.isSafeInteger(raw.shareCount) || raw.shareCount < 0)) {
         throw new Error("\u4E92\u52A8\u573A\u666F v2 post.shareCount \u5FC5\u987B\u662F\u975E\u8D1F\u5B89\u5168\u6574\u6570");
       }
@@ -3710,7 +3711,8 @@ ${lines.join("\n")}
         path: `${context.path}.comments.${index}`
       })).filter(Boolean).slice(-INTERACTIVE_LIMITS.comments),
       liked: !!raw?.liked,
-      shareCount: Number.isSafeInteger(raw?.shareCount) && raw.shareCount >= 0 ? raw.shareCount : 0
+      shareCount: Number.isSafeInteger(raw?.shareCount) && raw.shareCount >= 0 ? raw.shareCount : 0,
+      shared: typeof raw?.shared === "boolean" ? raw.shared : Number.isSafeInteger(raw?.shareCount) && raw.shareCount > 0
     };
   }
   function normalizeDanmaku(raw, context) {
@@ -3850,6 +3852,7 @@ ${lines.join("\n")}
         })),
         liked: false,
         shareCount: 0,
+        shared: false,
         createdAt
       }));
     } catch (error) {
@@ -3899,8 +3902,11 @@ ${lines.join("\n")}
     const post = scene?.posts?.find((item) => item.id === postId);
     if (!post) throw new Error("\u5E16\u5B50\u4E0D\u5B58\u5728");
     if (!Number.isSafeInteger(post.shareCount) || post.shareCount < 0) throw new Error("\u5E16\u5B50\u5206\u4EAB\u6570\u65E0\u6548");
+    if (post.shared === true) return false;
     post.shareCount += 1;
+    post.shared = true;
     scene.updatedAt = Date.now();
+    return true;
   }
   function deleteInteractiveScene(scope, sceneId) {
     if (!scope?.scenes?.[sceneId]) throw new Error("\u4E92\u52A8\u573A\u666F\u4E0D\u5B58\u5728");
@@ -5974,9 +5980,12 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
   }
   function selectScenePreset(app, button) {
     if (!app || !button) return false;
+    const accent = String(button.dataset?.accent || "").trim().toLowerCase();
+    if (!/^#[0-9a-f]{6}$/.test(accent)) throw new Error("\u793E\u533A\u9884\u8BBE\u4E3B\u9898\u8272\u683C\u5F0F\u65E0\u6548");
     app.querySelectorAll?.(".pm-scene-preset").forEach((item) => {
       item.classList.toggle("is-active", item === button);
     });
+    app.style?.setProperty?.("--scene-accent", accent);
     return true;
   }
   function syncSceneAccentControls(app, accent) {
@@ -6403,7 +6412,7 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
   }
   function renderPresetOptions(selected) {
     return Object.entries(getInteractivePresets()).map(([key, preset]) => `
-        <button type="button" class="pm-scene-preset ${key === selected ? "is-active" : ""}" data-action="preset" data-preset="${escapeAttr(key)}" style="--scene-accent:${preset.accent}">
+        <button type="button" class="pm-scene-preset ${key === selected ? "is-active" : ""}" data-action="preset" data-preset="${escapeAttr(key)}" data-accent="${escapeAttr(preset.accent)}" style="--scene-accent:${preset.accent}">
             <span></span><b>${escapeHtml(preset.label)}</b>
         </button>`).join("");
   }
@@ -6420,10 +6429,11 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
       const scene = scope.scenes[sceneId];
       const pinned = uiScope.pinnedSceneIds.includes(scene.id);
       const pinLabel = pinned ? "\u53D6\u6D88\u56FA\u5B9A\u793E\u533A" : "\u56FA\u5B9A\u793E\u533A";
-      return `<article class="pm-scene-card"><button type="button" class="pm-scene-card-open" data-action="open-scene" data-scene-id="${escapeAttr(scene.id)}"><b>${escapeHtml(scene.title)}</b><span>${escapeHtml(getInteractivePresets()[scene.preset]?.label || "\u81EA\u5B9A\u4E49")} \xB7 ${scene.posts.length} \u7BC7\u5E16\u5B50</span></button><div class="pm-scene-card-actions"><button type="button" class="pm-scene-pin-action" data-action="toggle-scene-pin" data-scene-id="${escapeAttr(scene.id)}" aria-pressed="${pinned}" aria-label="${pinLabel}" title="${pinLabel}">${EDIT_ICON_SVG}</button><button type="button" class="pm-scene-danger" data-action="delete-scene" data-scene-id="${escapeAttr(scene.id)}" aria-label="\u5220\u9664\u793E\u533A" title="\u5220\u9664\u793E\u533A">${TRASH_ICON_SVG}</button></div></article>`;
+      return `<article class="pm-scene-card"><button type="button" class="pm-scene-card-open" data-action="open-scene" data-scene-id="${escapeAttr(scene.id)}"><b>${escapeHtml(scene.title)}</b><span>${escapeHtml(getInteractivePresets()[scene.preset]?.label || "\u81EA\u5B9A\u4E49")} \xB7 ${scene.posts.length} \u7BC7\u5E16\u5B50</span></button><div class="pm-scene-card-actions"><button type="button" class="pm-scene-pin-action" data-action="toggle-scene-pin" data-scene-id="${escapeAttr(scene.id)}" aria-pressed="${pinned}" aria-label="${pinLabel}" title="${pinLabel}">${COMMUNITY_ICON_SVG}</button><button type="button" class="pm-scene-danger" data-action="delete-scene" data-scene-id="${escapeAttr(scene.id)}" aria-label="\u5220\u9664\u793E\u533A" title="\u5220\u9664\u793E\u533A">${TRASH_ICON_SVG}</button></div></article>`;
     }).join("");
-    return `<div id="pm-scene-app" class="pm-modal pm-scene-shell">
-        <div class="pm-scene-header"><button type="button" data-action="desktop" aria-label="\u8FD4\u56DE\u684C\u9762" title="\u8FD4\u56DE\u684C\u9762">${HOME_ICON_SVG}</button><b>\u793E\u533A</b><button type="button" data-action="exit" aria-label="\u9000\u51FA\u624B\u673A" title="\u9000\u51FA\u624B\u673A">${CLOSE_ICON_SVG}</button></div>
+    const defaultAccent = getInteractivePresets().weibo.accent;
+    return `<div id="pm-scene-app" class="pm-modal pm-scene-shell" style="--scene-accent:${escapeAttr(defaultAccent)}">
+        <div class="pm-scene-header"><button type="button" class="pm-scene-home" data-action="desktop" aria-label="\u8FD4\u56DE\u684C\u9762" title="\u8FD4\u56DE\u684C\u9762">${HOME_ICON_SVG}</button><b>\u793E\u533A</b><button type="button" data-action="exit" aria-label="\u9000\u51FA\u624B\u673A" title="\u9000\u51FA\u624B\u673A">${CLOSE_ICON_SVG}</button></div>
         <div class="pm-scene-launcher">
             <section class="pm-scene-hero"><h2>\u4ECA\u5929\u60F3\u901B\u4EC0\u4E48\u793E\u533A\uFF1F</h2><p>\u9009\u62E9\u9884\u8BBE\uFF0C\u6216\u5199\u4E0B\u81EA\u5DF1\u7684\u98CE\u683C\u3002</p></section>
             <div class="pm-scene-presets">${renderPresetOptions("weibo")}</div>
@@ -6443,7 +6453,7 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
         <header><div class="pm-scene-avatar">${escapeHtml(post.authorNameSnapshot.slice(0, 1))}</div><div class="pm-scene-post-author"><b>${escapeHtml(post.authorNameSnapshot)}</b><span class="pm-scene-post-time">\u521A\u521A</span></div><div class="pm-scene-post-actions-wrap"><button type="button" class="pm-scene-post-more" data-action="post-actions" aria-label="\u5E16\u5B50\u64CD\u4F5C" title="\u5E16\u5B50\u64CD\u4F5C" aria-expanded="false">${MORE_ICON_SVG}</button><span class="pm-scene-post-actions" hidden><button type="button" data-action="comments" data-post-id="${escapeAttr(post.id)}" aria-label="\u62CD\u4E00\u62CD\u672C\u5E16\uFF0C\u53EA\u751F\u6210\u672C\u5E16\u8BC4\u8BBA" title="\u62CD\u4E00\u62CD\u672C\u5E16">${POKE_ICON_SVG}</button><button type="button" data-action="edit-post" data-post-id="${escapeAttr(post.id)}" aria-label="\u7F16\u8F91\u5E16\u5B50" title="\u7F16\u8F91\u5E16\u5B50">${EDIT_ICON_SVG}</button><button type="button" class="pm-scene-danger" data-action="delete-post" data-post-id="${escapeAttr(post.id)}" aria-label="\u5220\u9664\u5E16\u5B50" title="\u5220\u9664\u5E16\u5B50">${TRASH_ICON_SVG}</button></span></div></header>
         <p>${escapeHtml(post.content).replace(/\n/g, "<br>")}</p>
         ${post.tags.length ? `<div class="pm-scene-tags">${post.tags.map((tag) => `<span>#${escapeHtml(tag)}</span>`).join("")}</div>` : ""}
-        <footer><button type="button" class="pm-scene-like ${post.liked ? "is-liked" : ""}" data-action="like" data-post-id="${escapeAttr(post.id)}" aria-pressed="${post.liked}" aria-label="${post.liked ? "\u53D6\u6D88\u559C\u6B22" : "\u559C\u6B22"}">${renderPostMetric(HEART_ICON_SVG, likes, "\u559C\u6B22", "is-like")}</button><button type="button" class="pm-scene-share ${post.shareCount > 0 ? "is-shared" : ""}" data-action="share" data-post-id="${escapeAttr(post.id)}" aria-label="${post.shareCount > 0 ? "\u518D\u6B21\u5206\u4EAB\u672C\u5E16" : "\u5206\u4EAB\u672C\u5E16"}">${renderPostMetric(SHARE_ICON_SVG, shares, "\u8F6C\u53D1", "is-share")}</button><button type="button" class="pm-scene-reply-toggle" data-action="toggle-reply" data-post-id="${escapeAttr(post.id)}" aria-label="\u56DE\u590D\u672C\u5E16" aria-controls="pm-comment-composer-${escapeAttr(post.id)}" aria-expanded="false">${renderPostMetric(REPLY_ICON_SVG, post.comments.length, "\u56DE\u590D", "is-reply")}</button></footer>
+        <footer><button type="button" class="pm-scene-like ${post.liked ? "is-liked" : ""}" data-action="like" data-post-id="${escapeAttr(post.id)}" aria-pressed="${post.liked}" aria-label="${post.liked ? "\u53D6\u6D88\u559C\u6B22" : "\u559C\u6B22"}">${renderPostMetric(HEART_ICON_SVG, likes, "\u559C\u6B22", "is-like")}</button><button type="button" class="pm-scene-share ${post.shared ? "is-shared" : ""}" data-action="share" data-post-id="${escapeAttr(post.id)}" aria-pressed="${post.shared}" aria-label="${post.shared ? "\u5DF2\u5206\u4EAB\u672C\u5E16" : "\u5206\u4EAB\u672C\u5E16"}">${renderPostMetric(SHARE_ICON_SVG, shares, "\u8F6C\u53D1", "is-share")}</button><button type="button" class="pm-scene-reply-toggle" data-action="toggle-reply" data-post-id="${escapeAttr(post.id)}" aria-label="\u56DE\u590D\u672C\u5E16" aria-controls="pm-comment-composer-${escapeAttr(post.id)}" aria-expanded="false">${renderPostMetric(REPLY_ICON_SVG, post.comments.length, "\u56DE\u590D", "is-reply")}</button></footer>
         ${post.comments.length ? `<div class="pm-scene-comments">${post.comments.map((comment) => `<div class="pm-scene-comment"><span><b>${escapeHtml(comment.authorNameSnapshot)}</b> ${escapeHtml(comment.content)}</span><span class="pm-scene-comment-actions" hidden><button type="button" data-action="edit-comment" data-post-id="${escapeAttr(post.id)}" data-comment-id="${escapeAttr(comment.id)}" aria-label="\u7F16\u8F91\u8BC4\u8BBA" title="\u7F16\u8F91\u8BC4\u8BBA">${EDIT_ICON_SVG}</button><button type="button" class="pm-scene-danger" data-action="delete-comment" data-post-id="${escapeAttr(post.id)}" data-comment-id="${escapeAttr(comment.id)}" aria-label="\u5220\u9664\u8BC4\u8BBA" title="\u5220\u9664\u8BC4\u8BBA">${TRASH_ICON_SVG}</button></span></div>`).join("")}</div>` : ""}
         <div id="pm-comment-composer-${escapeAttr(post.id)}" class="pm-scene-comment-composer" hidden><input id="pm-comment-input-${escapeAttr(post.id)}" maxlength="1000" placeholder="\u53D1\u8868\u4F60\u7684\u60F3\u6CD5\u5427"><button type="button" data-action="post-comment" data-post-id="${escapeAttr(post.id)}" aria-label="\u53D1\u9001\u56DE\u590D" title="\u53D1\u9001\u56DE\u590D">${SEND_ICON_SVG}</button></div>
     </article>`;
@@ -6835,18 +6845,24 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
         }
       }
     }
-    function replaceApp(html) {
+    function replaceApp(html, { feedScrollTop = null } = {}) {
       const app = document.getElementById("pm-scene-app");
       if (app) app.outerHTML = html;
       else renderInto(".pm-community-page", html);
+      if (Number.isFinite(feedScrollTop)) {
+        const feed = document.querySelector("#pm-scene-app .pm-scene-feed");
+        if (feed) feed.scrollTop = feedScrollTop;
+      }
     }
-    function rerender(tab = phoneScope(getStorageId2()).lastTab) {
+    function rerender(tab = phoneScope(getStorageId2()).lastTab, { preserveFeedScroll = false } = {}) {
       const { scopeId, scene } = current();
-      if (scene) replaceApp(renderCommunityWorkspace(scene, tab, phoneScope(scopeId), {
+      if (!scene) return;
+      const feedScrollTop = preserveFeedScroll ? document.querySelector("#pm-scene-app .pm-scene-feed")?.scrollTop : null;
+      replaceApp(renderCommunityWorkspace(scene, tab, phoneScope(scopeId), {
         liveActive: communityRunner?.isLive() === true,
         autoActive: communityTasks.state().mode === "auto",
         ...getCommunityInjectionState(window.__pmBudgetConfig, scopeId, scene.id)
-      }));
+      }), { feedScrollTop });
     }
     async function openScene(sceneId, tab = "feed") {
       invalidate();
@@ -7140,12 +7156,12 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
       }
       if (action === "like") {
         await commit(() => toggleScenePostLike(current().scene, button.dataset.postId));
-        rerender("feed");
+        rerender("feed", { preserveFeedScroll: true });
         return;
       }
       if (action === "share") {
         await commit(() => incrementScenePostShare(current().scene, button.dataset.postId));
-        rerender("feed");
+        rerender("feed", { preserveFeedScroll: true });
         return;
       }
       if (action === "edit-post") {
@@ -13294,7 +13310,7 @@ ${lines}`;
   var assertInteractiveItem = (value, field, { kind = "post", version = 1, actorIds = null } = {}) => {
     const item = objectValue(value, field);
     const authorKeys = version === INTERACTIVE_STORE_VERSION ? ["authorId", "authorNameSnapshot"] : ["author"];
-    const allowedKeys = kind === "post" ? ["id", ...authorKeys, "content", "tags", "createdAt", "comments", "liked", ...version === INTERACTIVE_STORE_VERSION ? ["shareCount"] : []] : ["id", ...authorKeys, "content", "createdAt"];
+    const allowedKeys = kind === "post" ? ["id", ...authorKeys, "content", "tags", "createdAt", "comments", "liked", ...version === INTERACTIVE_STORE_VERSION ? ["shareCount", "shared"] : []] : ["id", ...authorKeys, "content", "createdAt"];
     assertAllowedKeys(item, field, allowedKeys);
     assertOptionalNormalizedText(item, "id", field, 80);
     if (version === INTERACTIVE_STORE_VERSION) {
@@ -13310,6 +13326,7 @@ ${lines}`;
     assertOptionalTimestamp(item, "createdAt", field);
     if (kind === "post") {
       if (Object.hasOwn(item, "liked") && typeof item.liked !== "boolean") throw new Error(`\u5907\u4EFD\u5B57\u6BB5 ${field}.liked \u5FC5\u987B\u662F\u5E03\u5C14\u503C`);
+      if (Object.hasOwn(item, "shared") && typeof item.shared !== "boolean") throw new Error(`\u5907\u4EFD\u5B57\u6BB5 ${field}.shared \u5FC5\u987B\u662F\u5E03\u5C14\u503C`);
       if (Object.hasOwn(item, "shareCount") && (!Number.isSafeInteger(item.shareCount) || item.shareCount < 0)) {
         throw new Error(`\u5907\u4EFD\u5B57\u6BB5 ${field}.shareCount \u5FC5\u987B\u662F\u975E\u8D1F\u5B89\u5168\u6574\u6570`);
       }

@@ -361,19 +361,23 @@ export function installInteractiveScenes(_state, deps) {
             }
         }
     }
-    function replaceApp(html) {
+    function replaceApp(html, { feedScrollTop = null } = {}) {
         const app = document.getElementById('pm-scene-app');
         if (app) app.outerHTML = html;
         else renderInto('.pm-community-page', html);
+        if (Number.isFinite(feedScrollTop)) {
+            const feed = document.querySelector('#pm-scene-app .pm-scene-feed'); if (feed) feed.scrollTop = feedScrollTop;
+        }
     }
-
-    function rerender(tab = phoneScope(getStorageId()).lastTab) {
+    function rerender(tab = phoneScope(getStorageId()).lastTab, { preserveFeedScroll = false } = {}) {
         const { scopeId, scene } = current();
-        if (scene) replaceApp(renderCommunityWorkspaceView(scene, tab, phoneScope(scopeId), {
+        if (!scene) return;
+        const feedScrollTop = preserveFeedScroll ? document.querySelector('#pm-scene-app .pm-scene-feed')?.scrollTop : null;
+        replaceApp(renderCommunityWorkspaceView(scene, tab, phoneScope(scopeId), {
             liveActive: communityRunner?.isLive() === true,
             autoActive: communityTasks.state().mode === 'auto',
             ...getCommunityInjectionState(window.__pmBudgetConfig, scopeId, scene.id),
-        }));
+        }), { feedScrollTop });
     }
 
     async function openScene(sceneId, tab = 'feed') {
@@ -625,11 +629,11 @@ export function installInteractiveScenes(_state, deps) {
         }
         if (action === 'like') {
             await commit(() => toggleScenePostLike(current().scene, button.dataset.postId));
-            rerender('feed'); return;
+            rerender('feed', { preserveFeedScroll: true }); return;
         }
         if (action === 'share') {
             await commit(() => incrementScenePostShare(current().scene, button.dataset.postId));
-            rerender('feed'); return;
+            rerender('feed', { preserveFeedScroll: true }); return;
         }
         if (action === 'edit-post') {
             const post = current().scene?.posts.find(item => item.id === button.dataset.postId);
