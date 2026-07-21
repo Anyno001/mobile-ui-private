@@ -30,11 +30,11 @@ export function renderApiSettings({ cfg, useIndependent, profilesHtml }) {
         </div>
         <div id="pm-mode-tip" class="pm-cfg-tip" style="text-align:left;padding:6px 2px 0;">${useIndependent ? '独立 API 必须填写地址、密钥和模型' : '默认使用酒馆 API 预设'}</div>
       </div>
-      <div id="pm-indep-profile-fields" class="pm-independent-api-fields" ${useIndependent ? '' : 'hidden'} style="padding:6px 14px 4px;border-top:1px solid #f0f0f0;">
+      <div id="pm-indep-profile-fields" class="pm-independent-api-fields" ${useIndependent ? '' : 'hidden'} style="padding:6px 14px 4px;border-top:1px solid var(--pm-color-border-subtle);">
         <div class="pm-cfg-label" style="margin:8px 0 6px;">已保存档案</div>
         <div class="pm-prof-list">${profilesHtml}</div>
       </div>
-      <div id="pm-indep-config-fields" class="pm-independent-api-fields" ${useIndependent ? '' : 'hidden'} style="padding:10px 16px;display:flex;flex-direction:column;gap:10px;border-top:1px solid #f0f0f0;">
+      <div id="pm-indep-config-fields" class="pm-independent-api-fields" ${useIndependent ? '' : 'hidden'} style="padding:10px 16px;display:flex;flex-direction:column;gap:10px;border-top:1px solid var(--pm-color-border-subtle);">
         <div class="pm-cfg-label">API 地址</div>
         <input id="pm-cfg-url" class="pm-cfg-input" placeholder="https://api.xxx.com 或 .../v1" value="${cfg.apiUrl}">
         <div class="pm-cfg-label">API Key</div>
@@ -87,18 +87,18 @@ export function renderLookSettings({ theme, presetButtons, desktopBackgroundButt
           <div class="pm-layout-chip ${theme.darkMode === 'dark' ? 'pm-layout-active' : ''}" onclick="window.__pmSetDarkMode('dark')">夜间</div>
         </div>
       </div>
-      <div style="padding:12px 16px;border-top:1px solid #f0f0f0;">
+      <div style="padding:12px 16px;border-top:1px solid var(--pm-color-border-subtle);">
         <label class="pm-cfg-label pm-ambient-setting">
           <span><b>显示本地状态栏</b><small>仅显示设备本地时间。</small></span>
           <div id="pm-ambient-status-enabled" class="pm-custom-check ${theme.ambientStatusEnabled === true ? 'is-checked' : ''}" role="checkbox" tabindex="0" aria-checked="${theme.ambientStatusEnabled === true}" onclick="const enabled=!this.classList.contains('is-checked');this.classList.toggle('is-checked',enabled);this.setAttribute('aria-checked',String(enabled));window.__pmSetAmbientStatus(enabled)" onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();this.click()}"></div>
         </label>
       </div>
-      <div style="padding:12px 16px;border-top:1px solid #f0f0f0;">
+      <div style="padding:12px 16px;border-top:1px solid var(--pm-color-border-subtle);">
         <label class="pm-cfg-label" for="pm-custom-title">桌面标题</label>
         <input id="pm-custom-title" class="pm-cfg-input" maxlength="20" value="${String(theme.customTitle || '').replaceAll('&', '&amp;').replaceAll('"', '&quot;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')}" placeholder="天音小笺" oninput="window.__pmSetCustomTitle()">
         <small class="pm-cfg-help">留空时显示“天音小笺”。</small>
       </div>
-      <div style="padding:14px 16px 12px;border-top:1px solid #f0f0f0;">
+      <div style="padding:14px 16px 12px;border-top:1px solid var(--pm-color-border-subtle);">
         <div class="pm-cfg-label" style="margin-bottom:10px;">气泡主题</div>
         <div class="pm-theme-row">${presetButtons}</div>
         <div style="display:flex;gap:8px;margin-top:14px;align-items:center;flex-wrap:wrap;">
@@ -114,7 +114,7 @@ export function renderLookSettings({ theme, presetButtons, desktopBackgroundButt
           <button type="button" onclick="document.getElementById('pm-border-color').value='#1a1a1a';window.__pmSetBorderColor()" class="pm-color-clear">重置</button>
         </div>
       </div>
-      <div style="padding:12px 16px 12px;border-top:1px solid #f0f0f0;">
+      <div style="padding:12px 16px 12px;border-top:1px solid var(--pm-color-border-subtle);">
         <div class="pm-cfg-label" style="margin-bottom:14px;">背景图</div>
         <div style="display:flex;flex-direction:column;gap:14px;padding:0 4px;">
           <div class="pm-bg-row"><span class="pm-bg-label">桌面背景</span>${desktopBackgroundButtons}</div>
@@ -236,7 +236,7 @@ export function renderBudgetSettings({ config, sceneOptions }) {
           <div id="pm-budget-redistribute" class="pm-custom-check ${config.redistributeUnused ? 'is-checked' : ''}" role="checkbox" tabindex="0" aria-checked="${config.redistributeUnused}" onclick="this.classList.toggle('is-checked');this.setAttribute('aria-checked',String(this.classList.contains('is-checked')))" onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();this.click()}"></div>
         </label>
       </div>
-      <div style="padding:12px 16px;border-top:1px solid #f0f0f0;display:flex;flex-direction:column;gap:10px;">
+      <div style="padding:12px 16px;border-top:1px solid var(--pm-color-border-subtle);display:flex;flex-direction:column;gap:10px;">
         <label class="pm-cfg-label pm-check-setting">
           <span>启用互动社区注入（默认关闭）</span>
           <div id="pm-budget-community-enabled" class="pm-custom-check ${config.communityEnabled ? 'is-checked' : ''}" role="checkbox" tabindex="0" aria-checked="${config.communityEnabled}" onclick="this.classList.toggle('is-checked');this.setAttribute('aria-checked',String(this.classList.contains('is-checked')))" onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();this.click()}"></div>
@@ -252,7 +252,7 @@ export function renderBudgetSettings({ config, sceneOptions }) {
         <div class="pm-cfg-label">当前角色卡允许注入的场景</div>
         <div id="pm-budget-scenes" style="display:flex;flex-direction:column;gap:6px;">${sceneOptions || '<div class="pm-cfg-tip" style="text-align:left;">当前没有可选择的互动场景</div>'}</div>
       </div>
-      <div style="padding:12px 16px;border-top:1px solid #f0f0f0;display:flex;flex-direction:column;gap:10px;">
+      <div style="padding:12px 16px;border-top:1px solid var(--pm-color-border-subtle);display:flex;flex-direction:column;gap:10px;">
         <label class="pm-cfg-label pm-check-setting">
           <span>启用生活日历注入（默认关闭）</span>
           <div id="pm-budget-calendar-enabled" class="pm-custom-check ${config.calendarEnabled ? 'is-checked' : ''}" role="checkbox" tabindex="0" aria-checked="${config.calendarEnabled}" onclick="this.classList.toggle('is-checked');this.setAttribute('aria-checked',String(this.classList.contains('is-checked')))" onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();this.click()}"></div>
@@ -276,7 +276,7 @@ export function renderBudgetSettings({ config, sceneOptions }) {
 export function renderBackupSettings() {
     return `
     <div class="pm-settings-page">
-      <div style="padding:12px 16px 12px;border-top:1px solid #f0f0f0;">
+      <div style="padding:12px 16px 12px;border-top:1px solid var(--pm-color-border-subtle);">
         <div class="pm-cfg-label" style="margin-bottom:10px;">数据备份</div>
         <div class="pm-action-row">
           <button class="pm-action-button is-success" onclick="window.__pmExportData()">导出备份</button>
@@ -285,7 +285,7 @@ export function renderBackupSettings() {
         </div>
         <div class="pm-cfg-tip" style="text-align:left;margin-top:6px;color:#ff9500;">注意：导入会覆盖当前所有联系人、记录、社区与页面恢复状态</div>
       </div>
-      <div style="padding:12px 16px;border-top:1px solid #f0f0f0;">
+      <div style="padding:12px 16px;border-top:1px solid var(--pm-color-border-subtle);">
         <div class="pm-cfg-label" style="margin-bottom:6px;color:#ff3b30;">应用内安全清理</div>
         <div class="pm-cfg-tip" style="text-align:left;margin-bottom:8px;">仅删除天音小笺拥有的数据，不触碰宿主或其他扩展。建议先导出备份。</div>
         <button type="button" class="pm-action-button is-danger" onclick="window.__pmClearAllData()" style="width:100%">清理全部天音小笺数据</button>

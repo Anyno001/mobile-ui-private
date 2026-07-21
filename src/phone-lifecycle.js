@@ -265,8 +265,6 @@ export function installPhoneLifecycle(state, deps) {
                 persistTheme: saveTheme,
                 notify: message => alert(message),
             });
-            deps.cancelCommunityGeneration?.('phone-minimized');
-            deps.cancelCalendarTasks?.('phone-minimized');
             disarmAutoPoke('phone-minimized');
         }
         state.phoneWindow.classList.toggle('is-min', state.isMinimized);
@@ -442,7 +440,7 @@ export function installPhoneLifecycle(state, deps) {
             // ❄️ 冷启动：第一次打开，先占位，等外部的 IDB 把最新数据拉进内存再渲染
             runtime.firstOpen = false; // 翻转标记，此后不刷新就不会再走这里
             const list = state.phoneWindow?.querySelector('.pm-msg-list');
-            if (list) { list.innerHTML = '<div style="text-align:center;color:#aaa;padding:20px;font-size:13px;">正在加载历史记录…</div>'; }
+            if (list) { list.innerHTML = '<div style="text-align:center;color:var(--pm-color-text-tertiary);padding:20px;font-size:13px;">正在加载历史记录…</div>'; }
 
             // 冷启动：历史记录需要从 IDB 加载完才能正确渲染。
             const historyLoad = loadHistoriesOnce();

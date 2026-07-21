@@ -2,10 +2,11 @@ import { parseCalendarDate } from './calendar-model.js';
 import { predictCyclePhase } from './calendar-cycle-model.js';
 import { holidayYearFromCache } from './calendar-holiday.js';
 import { weatherCodeLabel } from './calendar-weather.js';
-import { EDIT_ICON_SVG, EVENT_EDITOR_ICON_SVG, OCCASION_EDITOR_ICON_SVG, TRASH_ICON_SVG } from './icons.js';
+import { CLOSE_ICON_SVG, EDIT_ICON_SVG, EVENT_EDITOR_ICON_SVG, MORE_ICON_SVG, OCCASION_EDITOR_ICON_SVG, TRASH_ICON_SVG } from './icons.js';
 import { escapeAttr, escapeHtml } from './ui.js';
 
-const detailDate = new Intl.DateTimeFormat('zh-CN', { month: 'long', day: 'numeric', weekday: 'short' });
+const detailDate = new Intl.DateTimeFormat('zh-CN', { month: 'long', day: 'numeric' });
+const detailWeekday = new Intl.DateTimeFormat('zh-CN', { weekday: 'long' });
 const CYCLE_LABELS = { period: '经期', follicular: '安全期', ovulatory: '易孕期', luteal: '安全期' };
 
 export const occasionTypeLabel = type => type === 'birthday' ? '生日' : '纪念日';
@@ -14,11 +15,9 @@ function eventRows(scope, occasionsByDate, date) {
     const events = scope.events[date] || [];
     const occasionRows = (occasionsByDate.get(date) || []).map(occasion => `<article class="pm-calendar-event is-occasion" data-occasion-id="${escapeAttr(occasion.id)}">
         <div><b>${escapeHtml(occasion.title)}</b><span>${occasionTypeLabel(occasion.type)}${occasion.leapAdjusted ? '（闰日顺延）' : ''}${occasion.note ? ` · ${escapeHtml(occasion.note)}` : ''}</span></div>
-        <div class="pm-calendar-event-actions"><button type="button" data-action="calendar-occasion-edit" data-occasion-id="${escapeAttr(occasion.id)}" aria-label="编辑 ${escapeAttr(occasion.title)}" title="编辑">${EDIT_ICON_SVG}</button><button type="button" data-action="calendar-occasion-delete" data-occasion-id="${escapeAttr(occasion.id)}" aria-label="删除 ${escapeAttr(occasion.title)}">${TRASH_ICON_SVG}</button></div>
     </article>`);
     const eventItems = events.map(event => `<article class="pm-calendar-event" data-event-id="${escapeAttr(event.id)}">
         <div><b>${escapeHtml(event.title)}</b>${event.note ? `<span>${escapeHtml(event.note)}</span>` : ''}</div>
-        <div class="pm-calendar-event-actions"><button type="button" data-action="calendar-edit" data-event-id="${escapeAttr(event.id)}" aria-label="编辑 ${escapeAttr(event.title)}" title="编辑">${EDIT_ICON_SVG}</button><button type="button" data-action="calendar-delete" data-event-id="${escapeAttr(event.id)}" aria-label="删除 ${escapeAttr(event.title)}">${TRASH_ICON_SVG}</button></div>
     </article>`);
     return [...occasionRows, ...eventItems].join('');
 }
@@ -47,24 +46,21 @@ export function renderSelectedDateDetail(
     scope, occasionsByDate, holidayCache, weatherStore, cycleScope, selectedDate, viewMode, relativeLabel = '',
 ) {
     const parsed = parseCalendarDate(selectedDate);
+    const entries = [...(scope.events[selectedDate] || []), ...(occasionsByDate.get(selectedDate) || [])];
     const content = viewMode === 'weather'
         ? weatherRow(weatherStore, selectedDate)
         : viewMode === 'cycle'
             ? cycleRow(cycleScope, selectedDate)
             : `${holidayRows(holidayCache, selectedDate)}${eventRows(scope, occasionsByDate, selectedDate)}`;
     const emptyLabel = viewMode === 'weather' ? '这一天没有天气数据' : viewMode === 'cycle' ? '这一天没有生理期提示' : '这一天还没有安排';
+    const actions = viewMode === 'schedule' ? `<div class="pm-calendar-detail-actions">
+        <button type="button" class="pm-calendar-detail-more" data-action="calendar-detail-menu" aria-label="管理这一天" title="管理这一天" aria-expanded="false" aria-controls="pm-calendar-detail-menu">${MORE_ICON_SVG}</button>
+        <span id="pm-calendar-detail-menu" class="pm-calendar-detail-menu" hidden><button type="button" data-action="calendar-manage-date" aria-label="添加或编辑安排" title="添加或编辑安排">${EDIT_ICON_SVG}</button><button type="button" class="is-danger" data-action="calendar-delete-date" aria-label="删除安排" title="删除安排" ${entries.length ? '' : 'disabled aria-disabled="true"'}>${TRASH_ICON_SVG}</button></span>
+    </div>` : '';
     return `<section class="pm-calendar-selected-detail" data-calendar-selected-detail="${selectedDate}" data-calendar-detail-mode="${viewMode}">
-        <header><div>${relativeLabel ? `<span>${escapeHtml(relativeLabel)}</span>` : ''}<time datetime="${selectedDate}">${escapeHtml(detailDate.format(parsed))}</time></div></header>
+        <header><div class="pm-calendar-detail-date">${relativeLabel ? `<strong>${escapeHtml(relativeLabel)}</strong>` : ''}<span><time datetime="${selectedDate}">${escapeHtml(detailDate.format(parsed))}</time><em>${escapeHtml(detailWeekday.format(parsed))}</em></span></div>${actions}</header>
         <div class="pm-calendar-selected-content">${content || `<p class="pm-calendar-empty-day">${emptyLabel}</p>`}</div>
     </section>`;
-}
-
-export function occasionList(scope) {
-    if (!scope.occasions.length) return '<p class="pm-calendar-empty-day">尚未添加生日或纪念日</p>';
-    return scope.occasions.map(occasion => `<article class="pm-calendar-event is-occasion" data-occasion-id="${escapeAttr(occasion.id)}">
-        <div><b>${escapeHtml(occasion.title)}</b><span>${occasion.month}月${occasion.day}日 · ${occasionTypeLabel(occasion.type)}${occasion.note ? ` · ${escapeHtml(occasion.note)}` : ''}</span></div>
-        <div class="pm-calendar-event-actions"><button type="button" data-action="calendar-occasion-edit" data-occasion-id="${escapeAttr(occasion.id)}" aria-label="编辑 ${escapeAttr(occasion.title)}" title="编辑">${EDIT_ICON_SVG}</button><button type="button" data-action="calendar-occasion-delete" data-occasion-id="${escapeAttr(occasion.id)}" aria-label="删除 ${escapeAttr(occasion.title)}">${TRASH_ICON_SVG}</button></div>
-    </article>`).join('');
 }
 
 export function weatherSearchResults(results) {
@@ -76,8 +72,8 @@ export function weatherSearchResults(results) {
 
 
 export function renderCalendarManagement({
-    scope, occasionScope, holidayCache, weatherStore, cycleScope, weatherResults, viewMode,
-    holidayAvailable = true, holidayRange = null, editorKind = 'event', cycleSubjects = [], selectedCycleSubject = '__self__',
+    scope, holidayCache, weatherStore, cycleScope, weatherResults, viewMode,
+    holidayAvailable = true, holidayRange = null, cycleSubjects = [], selectedCycleSubject = '__self__',
 }) {
     if (viewMode === 'weather') {
         return `<details class="pm-calendar-management" data-calendar-management="weather"><summary>天气设置</summary><div class="pm-calendar-management-content"><section class="pm-calendar-data-tools"><h3>天气位置</h3><div class="pm-calendar-data-row"><input data-weather-query placeholder="搜索城市或地区" maxlength="100" aria-label="搜索天气位置"><button type="button" data-action="calendar-weather-search">搜索</button><button type="button" data-action="calendar-weather-refresh">刷新</button></div>${weatherSearchResults(weatherResults)}<small class="pm-calendar-attribution">${weatherStore.location ? escapeHtml(weatherStore.location.name) : '尚未设置天气位置'}</small></section></div></details>`;
@@ -93,30 +89,13 @@ export function renderCalendarManagement({
           <div class="pm-calendar-editor-actions"><button type="button" data-action="calendar-cycle-clear">清除所选对象</button><button type="button" class="is-primary" data-action="calendar-cycle-save">保存生理期</button></div>
         </form></div></details>`;
     }
-    const editorSwitch = `<div class="pm-calendar-editor-switch" role="group" aria-label="添加内容类型"><button type="button" data-action="calendar-editor-kind" data-editor-kind="event" aria-label="切换到日程编辑器" title="日程" aria-pressed="${editorKind !== 'occasion'}">${EVENT_EDITOR_ICON_SVG}</button><button type="button" data-action="calendar-editor-kind" data-editor-kind="occasion" aria-label="切换到生日或纪念日编辑器" title="生日或纪念日" aria-pressed="${editorKind === 'occasion'}">${OCCASION_EDITOR_ICON_SVG}</button></div>`;
-    return `<details class="pm-calendar-management" data-calendar-management="schedule"><summary>安排管理</summary><div class="pm-calendar-management-content">
-        <section class="pm-calendar-data-tools pm-calendar-scan-card"><h3>识别正文</h3><div class="pm-calendar-tools"><button type="button" data-action="calendar-scan">立即识别正文日期</button><button type="button" data-action="calendar-toggle-auto" aria-pressed="${scope.autoAdjust}">回复后自动识别：${scope.autoAdjust ? '开' : '关'}</button></div><div class="pm-calendar-data-row pm-calendar-date-tags-row"><input data-calendar-date-tags value="${escapeAttr((scope.dateTags || ['date']).join(', '))}" maxlength="160" placeholder="date, time_date" aria-label="正文日期标签"><button type="button" data-action="calendar-date-tags-save">保存标签</button></div></section>
+    return `<details class="pm-calendar-management" data-calendar-management="schedule"><summary>日历设置</summary><div class="pm-calendar-management-content">
+        <section class="pm-calendar-data-tools pm-calendar-scan-card"><h3>正文日期</h3><p>从最后一条正文读取明确日期，并将它设为日历中的“今天”。</p><div class="pm-calendar-data-row pm-calendar-date-tags-row"><input data-calendar-date-tags value="${escapeAttr((scope.dateTags || ['date']).join(', '))}" maxlength="160" placeholder="date, time_date" aria-label="正文日期标签"><button type="button" data-action="calendar-date-sync">保存并识别</button></div><button type="button" class="pm-calendar-auto-switch" data-action="calendar-toggle-auto" role="switch" aria-checked="${scope.autoAdjust}"><span><b>自动识别最后一条正文</b><small>角色回复后自动校准今天日期</small></span><i aria-hidden="true"></i></button></section>
         <section class="pm-calendar-data-tools"><h3>节假日数据</h3><div class="pm-calendar-data-row pm-calendar-holiday-row"><select data-action="calendar-holiday-country" data-calendar-country aria-label="节假日国家"><option value="CN" ${holidayCache.selectedCountry === 'CN' ? 'selected' : ''}>中国</option><option value="US" ${holidayCache.selectedCountry === 'US' ? 'selected' : ''}>美国</option><option value="JP" ${holidayCache.selectedCountry === 'JP' ? 'selected' : ''}>日本</option></select><button type="button" data-action="calendar-holiday-refresh" ${holidayAvailable ? '' : 'disabled aria-disabled="true"'}>刷新节假日</button></div>${holidayAvailable ? '' : `<small class="pm-calendar-attribution">该国家在当前年代无外部数据源（仅支持 ${holidayRange?.min ?? '未知'}–${holidayRange?.max ?? '未知'} 年）</small>`}</section>
-        <div class="pm-calendar-editor-stack">
-        <form class="pm-calendar-editor" data-calendar-editor ${editorKind === 'occasion' ? 'hidden' : ''}>
-          <div class="pm-calendar-editor-header"><h3>添加日程</h3>${editorSwitch}</div>
-          <div class="pm-calendar-date-fields"><input name="year" inputmode="numeric" maxlength="4" placeholder="YYYY" aria-label="年"><input name="month" inputmode="numeric" maxlength="2" placeholder="MM" aria-label="月"><input name="day" inputmode="numeric" maxlength="2" placeholder="DD" aria-label="日"></div>
-          <input name="title" maxlength="120" placeholder="日程标题" aria-label="日程标题">
-          <textarea name="note" maxlength="1000" placeholder="备注（可选）" aria-label="日程备注"></textarea>
-          <input name="tagged" maxlength="500" placeholder="也可输入：<2027 12 03><赴宴>" aria-label="标签格式日程">
-          <input name="eventId" type="hidden">
-          <div class="pm-calendar-editor-actions"><button type="button" data-action="calendar-parse">识别标签</button><button type="button" data-action="calendar-cancel-edit">清空</button><button type="button" class="is-primary" data-action="calendar-save">保存</button></div>
-        </form>
-        <form class="pm-calendar-editor pm-calendar-occasion-editor" data-calendar-occasion-editor ${editorKind === 'occasion' ? '' : 'hidden'}>
-          <div class="pm-calendar-editor-header"><h3>添加生日或纪念日</h3>${editorSwitch}</div>
-          <select name="type" aria-label="类型"><option value="birthday">生日</option><option value="anniversary">纪念日</option></select>
-          <div class="pm-calendar-date-fields"><input name="month" inputmode="numeric" maxlength="2" placeholder="MM" aria-label="月"><input name="day" inputmode="numeric" maxlength="2" placeholder="DD" aria-label="日"></div>
-          <input name="title" maxlength="120" placeholder="名称，例如：小林生日" aria-label="生日或纪念日名称">
-          <textarea name="note" maxlength="1000" placeholder="备注（可选）" aria-label="生日或纪念日备注"></textarea>
-          <label>2 月 29 日在非闰年<select name="leapDayRule"><option value="feb28">按 2 月 28 日显示</option><option value="mar1">按 3 月 1 日显示</option><option value="skip">该年不显示</option></select></label>
-          <input name="occasionId" type="hidden">
-          <div class="pm-calendar-editor-actions"><button type="button" data-action="calendar-occasion-cancel-edit">清空</button><button type="button" class="is-primary" data-action="calendar-occasion-save">保存</button></div>
-        </form></div>
-        <section class="pm-calendar-occasion-list"><h3>已保存的生日与纪念日</h3>${occasionList(occasionScope)}</section>
     </div></details>`;
+}
+
+export function renderCalendarEntryDialog(selectedDate, events = [], occasions = []) {
+    const options = [...events.map(item => `<option value="event:${escapeAttr(item.id)}">日程 · ${escapeHtml(item.title)}</option>`), ...occasions.map(item => `<option value="occasion:${escapeAttr(item.id)}">${occasionTypeLabel(item.type)} · ${escapeHtml(item.title)}</option>`)].join('');
+    return `<div class="pm-modal pm-calendar-entry-dialog"><div class="pm-modal-header"><span></span><b>管理 ${escapeHtml(selectedDate)}</b><button type="button" class="pm-modal-close" data-calendar-entry-close aria-label="关闭">${CLOSE_ICON_SVG}</button></div><form data-calendar-entry-form><div class="pm-calendar-entry-kind" role="group" aria-label="安排类型"><button type="button" data-calendar-entry-kind="event" aria-pressed="true">${EVENT_EDITOR_ICON_SVG}<span>一次性日程</span></button><button type="button" data-calendar-entry-kind="occasion" aria-pressed="false">${OCCASION_EDITOR_ICON_SVG}<span>每年重复</span></button></div><label>编辑已有安排<select data-calendar-entry-existing><option value="">新建安排</option>${options}</select></label><input name="title" maxlength="120" placeholder="名称" aria-label="安排名称"><textarea name="note" maxlength="1000" placeholder="备注（可选）" aria-label="安排备注"></textarea><div data-calendar-occasion-fields hidden><label>长期类型<select name="occasionType"><option value="anniversary">纪念日</option><option value="birthday">生日</option></select></label><label>2 月 29 日在非闰年<select name="leapDayRule"><option value="feb28">按 2 月 28 日显示</option><option value="mar1">按 3 月 1 日显示</option><option value="skip">该年不显示</option></select></label></div><p class="pm-calendar-entry-error" data-calendar-entry-error role="status" aria-live="polite"></p><div class="pm-calendar-entry-actions"><button type="button" class="is-danger" data-calendar-entry-delete disabled>删除</button><button type="submit" class="is-primary">保存</button></div></form></div>`;
 }

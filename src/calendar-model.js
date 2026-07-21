@@ -316,6 +316,23 @@ function shiftCalendarDate(now, offset) {
         ? null : formatCalendarDate(date);
 }
 
+const hasExplicitCalendarYear = value => /(?:\d{4}|[零〇一二三四五六七八九]{4})\s*年/.test(value)
+    || /(?:^|\D)\d{4}[\s./-]+\d{1,2}[\s./-]+\d{1,2}(?:\D|$)/.test(value);
+
+export function extractCalendarBaseDate(text, dateTags = DEFAULT_CALENDAR_DATE_TAGS) {
+    const source = String(text ?? '').trim();
+    if (!source) return null;
+    const reference = new Date();
+    for (const content of extractCalendarDateTagContents(source, dateTags)) {
+        if (!hasExplicitCalendarYear(content)) continue;
+        const date = dateFromNaturalText(content, reference);
+        if (date) return date;
+    }
+    const legacyTag = source.match(/<\s*(\d{4})[\s年./-]+(\d{1,2})[\s月./-]+(\d{1,2})\s*日?\s*>/);
+    if (legacyTag) return calendarDateFromParts(Number(legacyTag[1]), Number(legacyTag[2]), Number(legacyTag[3]));
+    return hasExplicitCalendarYear(source) ? dateFromNaturalText(source, reference) : null;
+}
+
 export function extractCalendarDate(text, now = new Date(), dateTags = DEFAULT_CALENDAR_DATE_TAGS) {
     const source = String(text ?? '').trim();
     const reference = now instanceof Date && Number.isFinite(now.getTime()) ? now : new Date();

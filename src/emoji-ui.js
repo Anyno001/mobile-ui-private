@@ -4,12 +4,13 @@ import {
     cloneEmojiLibrary, createEmojiRenderBudget, emojiFileError, emojiSourceError,
 } from './emoji-media.js';
 
-const SUB_OVERLAY_STYLE = 'position:fixed !important; inset:0 !important; margin:0 !important; padding:0 !important; border:none !important; width:100vw !important; height:100vh !important; max-width:none !important; max-height:none !important; background:rgba(0,0,0,.45) !important; z-index:2147483648 !important; display:flex !important; align-items:center !important; justify-content:center !important;';
+const SUB_OVERLAY_STYLE = 'position:fixed !important; inset:0 !important; margin:0 !important; padding:0 !important; border:none !important; width:100vw !important; height:100vh !important; max-width:none !important; max-height:none !important; background:var(--pm-color-overlay) !important; z-index:2147483648 !important; display:flex !important; align-items:center !important; justify-content:center !important;';
 
 function createSubOverlay(html) {
     document.getElementById('pm-overlay-sub')?.remove();
     const overlay = document.createElement('div');
     overlay.id = 'pm-overlay-sub';
+    overlay.dataset.theme = window.__pmTheme?.darkMode || 'light';
     if (typeof HTMLElement !== 'undefined' && HTMLElement.prototype.hasOwnProperty('popover')) {
         overlay.setAttribute('popover', 'manual');
     }
@@ -23,23 +24,23 @@ function createSubOverlay(html) {
 
 function renderEmojiThumbnail(image, width, height, canRender) {
     if (!canRender(image.url)) {
-        return `<div style="width:${width}px;height:${height}px;display:flex;align-items:center;justify-content:center;text-align:center;padding:4px;border-radius:8px;background:#f2f2f2;color:#999;font-size:9px;line-height:1.3;">图片暂不加载</div>`;
+        return `<div style="width:${width}px;height:${height}px;display:flex;align-items:center;justify-content:center;text-align:center;padding:4px;border-radius:8px;background:var(--pm-color-surface-elevated);color:var(--pm-color-text-tertiary);font-size:9px;line-height:1.3;">图片暂不加载</div>`;
     }
     return `<img src="${escapeAttr(image.url)}" loading="lazy" decoding="async" width="${width}" height="${height}" style="width:${width}px;height:${height}px;object-fit:contain;border-radius:8px;box-shadow:0 2px 6px rgba(0,0,0,0.1);">`;
 }
 
 function renderPickerImages(set, canRender = createEmojiRenderBudget()) {
-    if (!set?.images?.length) return '<div style="text-align:center;color:#999;font-size:12px;padding:20px 0;">本套暂无图片</div>';
+    if (!set?.images?.length) return '<div style="text-align:center;color:var(--pm-color-text-tertiary);font-size:12px;padding:20px 0;">本套暂无图片</div>';
     return set.images.map((image, index) => `
         <div onclick="window.__pmInsertEmoji('[emo:${escapeAttr(set.name)}:${index + 1}]')" style="cursor:pointer;width:60px;display:flex;flex-direction:column;align-items:center;gap:4px;">
             ${renderEmojiThumbnail(image, 50, 50, canRender)}
-            <span style="font-size:10px;color:#666;width:100%;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(image.desc)}</span>
+            <span style="font-size:10px;color:var(--pm-color-text-secondary);width:100%;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(image.desc)}</span>
         </div>`).join('');
 }
 
 function renderPickerDots(sets, activeIndex) {
     if (sets.length <= 1) return '';
-    return `<div style="display:flex;justify-content:center;gap:8px;padding:8px 0 4px;">${sets.map((set, index) => `<div class="pm-emoji-set-dot-btn" onclick="window.__pmEmojiSetDot(${index})" style="width:8px;height:8px;border-radius:50%;cursor:pointer;background:${index === activeIndex ? '#007aff' : '#ddd'};transition:background 0.2s;"></div>`).join('')}</div>`;
+    return `<div style="display:flex;justify-content:center;gap:8px;padding:8px 0 4px;">${sets.map((set, index) => `<div class="pm-emoji-set-dot-btn" onclick="window.__pmEmojiSetDot(${index})" style="width:8px;height:8px;border-radius:50%;cursor:pointer;background:${index === activeIndex ? 'var(--pm-color-accent)' : 'var(--pm-color-control-off)'};transition:background 0.2s;"></div>`).join('')}</div>`;
 }
 
 export function installEmojiUi({ makeOverlay, saveEmojis }) {
@@ -60,7 +61,7 @@ export function installEmojiUi({ makeOverlay, saveEmojis }) {
   <div class="pm-modal-header"><span></span><b>表情包管理</b><button type="button" onclick="window.__pmCloseOverlay()" class="pm-modal-close" title="关闭" aria-label="关闭">${CLOSE_ICON_SVG}</button></div>
   <div class="pm-modal-scroll" style="padding:14px 16px;">
     <div id="pm-emoji-set-list"></div>
-    <button onclick="window.__pmAddEmojiSet()" style="width:100%;margin-top:8px;background:#007aff;color:#fff;border:none;border-radius:10px;padding:10px;font-size:13px;cursor:pointer;font-weight:600;">添加新套组</button>
+    <button onclick="window.__pmAddEmojiSet()" style="width:100%;margin-top:8px;background:var(--pm-color-accent);color:var(--pm-color-on-dark);border:none;border-radius:10px;padding:10px;font-size:13px;cursor:pointer;font-weight:600;">添加新套组</button>
     <div class="pm-cfg-tip" style="text-align:left;margin-top:6px;">每套表情独立管理；图片描述会提供给 AI 判断使用场景。</div>
   </div>
 </div>`);
@@ -72,30 +73,30 @@ export function installEmojiUi({ makeOverlay, saveEmojis }) {
         if (!container) return;
         const sets = window.__pmEmojis;
         if (!sets.length) {
-            container.innerHTML = '<div style="text-align:center;color:#aaa;font-size:13px;padding:16px 0;">暂无表情包套组</div>';
+            container.innerHTML = '<div style="text-align:center;color:var(--pm-color-text-tertiary);font-size:13px;padding:16px 0;">暂无表情包套组</div>';
             return;
         }
         const canRender = createEmojiRenderBudget();
 
         container.innerHTML = sets.map((set, setIndex) => `
-            <div style="background:#fafafa;border:1px solid #eee;border-radius:10px;padding:10px 12px;margin-bottom:8px;">
+            <div style="background:var(--pm-color-surface-elevated);border:1px solid var(--pm-color-border-subtle);border-radius:10px;padding:10px 12px;margin-bottom:8px;">
                 <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
-                    <span style="font-weight:600;font-size:13px;color:#222;">${escapeHtml(set.name)}</span>
+                    <span style="font-weight:600;font-size:13px;color:var(--pm-color-text-primary);">${escapeHtml(set.name)}</span>
                     <div style="display:flex;gap:6px;">
-                        <button onclick="window.__pmAddEmojiImage(${setIndex})" style="font-size:11px;background:#007aff;color:#fff;border:none;border-radius:6px;padding:4px 8px;cursor:pointer;">添加图片</button>
-                        <button onclick="window.__pmDeleteEmojiSet(${setIndex})" style="font-size:11px;background:#ff3b30;color:#fff;border:none;border-radius:6px;padding:4px 8px;cursor:pointer;">删除</button>
+                        <button onclick="window.__pmAddEmojiImage(${setIndex})" style="font-size:11px;background:var(--pm-color-accent);color:var(--pm-color-on-dark);border:none;border-radius:6px;padding:4px 8px;cursor:pointer;">添加图片</button>
+                        <button onclick="window.__pmDeleteEmojiSet(${setIndex})" style="font-size:11px;background:var(--pm-color-danger);color:var(--pm-color-on-dark);border:none;border-radius:6px;padding:4px 8px;cursor:pointer;">删除</button>
                     </div>
                 </div>
                 <div style="display:flex;flex-wrap:wrap;gap:8px;">
                     ${set.images.map((image, imageIndex) => `
                         <div style="position:relative;width:52px;">
                             ${renderEmojiThumbnail(image, 52, 52, canRender)}
-                            <div style="font-size:9px;color:#888;text-align:center;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;width:52px;">${escapeHtml(image.desc)}</div>
+                            <div style="font-size:9px;color:var(--pm-color-text-tertiary);text-align:center;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;width:52px;">${escapeHtml(image.desc)}</div>
                             <button type="button" class="pm-emoji-image-delete" onclick="window.__pmDeleteEmojiImage(${setIndex},${imageIndex})" aria-label="删除图片 ${escapeAttr(image.desc)}">删除</button>
                         </div>`).join('')}
-                    ${set.images.length === 0 ? '<span style="font-size:12px;color:#aaa;">暂无图片</span>' : ''}
+                    ${set.images.length === 0 ? '<span style="font-size:12px;color:var(--pm-color-text-tertiary);">暂无图片</span>' : ''}
                 </div>
-                <div style="font-size:11px;color:#aaa;margin-top:4px;">${set.images.length}/20 张 · [emo:${escapeHtml(set.name)}:1~${set.images.length}]</div>
+                <div style="font-size:11px;color:var(--pm-color-text-tertiary);margin-top:4px;">${set.images.length}/20 张 · [emo:${escapeHtml(set.name)}:1~${set.images.length}]</div>
             </div>`).join('');
     };
 
@@ -105,9 +106,9 @@ export function installEmojiUi({ makeOverlay, saveEmojis }) {
 <div class="pm-modal">
   <div class="pm-modal-header"><span></span><b>新建表情包套组</b><button type="button" onclick="document.getElementById('pm-overlay-sub').remove()" class="pm-modal-close" title="关闭" aria-label="关闭">${CLOSE_ICON_SVG}</button></div>
   <div style="padding:14px 16px;display:flex;flex-direction:column;gap:10px;">
-    <input id="pm-new-set-name" class="pm-cfg-input" placeholder="套组名称（如：开心、日常、可爱）" style="padding:8px 10px;font-size:13px;border-radius:8px;border:1px solid #ddd;">
+    <input id="pm-new-set-name" class="pm-cfg-input" placeholder="套组名称（如：开心、日常、可爱）" style="padding:8px 10px;font-size:13px;border-radius:8px;border:1px solid var(--pm-color-border-default);">
   </div>
-  <div class="pm-modal-add"><button onclick="window.__pmConfirmAddEmojiSet()" style="width:100%;background:#007aff;color:#fff;border:none;border-radius:10px;padding:10px;font-size:13px;cursor:pointer;font-weight:600;">确认</button></div>
+  <div class="pm-modal-add"><button onclick="window.__pmConfirmAddEmojiSet()" style="width:100%;background:var(--pm-color-accent);color:var(--pm-color-on-dark);border:none;border-radius:10px;padding:10px;font-size:13px;cursor:pointer;font-weight:600;">确认</button></div>
 </div>`);
         setTimeout(() => document.getElementById('pm-new-set-name')?.focus(), 10);
     };
@@ -145,15 +146,15 @@ export function installEmojiUi({ makeOverlay, saveEmojis }) {
 <div class="pm-modal">
   <div class="pm-modal-header"><span></span><b>添加图片 — ${escapeHtml(set.name)}</b><button type="button" onclick="document.getElementById('pm-overlay-sub').remove();" class="pm-modal-close" title="关闭" aria-label="关闭">${CLOSE_ICON_SVG}</button></div>
   <div style="padding:14px 16px;display:flex;flex-direction:column;gap:10px;">
-    <div style="font-size:12px;color:#888;margin-bottom:2px;">图片 URL 或本地上传</div>
-    <input id="pm-emo-url" class="pm-cfg-input" placeholder="https://... 或点下方选择文件" style="padding:8px 10px;font-size:13px;border-radius:8px;border:1px solid #ddd;">
-    <button onclick="document.getElementById('pm-emo-file').click()" style="background:#f0f0f3;color:#333;border:1px solid #ddd;border-radius:8px;padding:8px 10px;font-size:12px;cursor:pointer;">上传本地图片</button>
+    <div style="font-size:12px;color:var(--pm-color-text-secondary);margin-bottom:2px;">图片 URL 或本地上传</div>
+    <input id="pm-emo-url" class="pm-cfg-input" placeholder="https://... 或点下方选择文件" style="padding:8px 10px;font-size:13px;border-radius:8px;border:1px solid var(--pm-color-border-default);">
+    <button onclick="document.getElementById('pm-emo-file').click()" style="background:var(--pm-color-surface-elevated);color:var(--pm-color-text-primary);border:1px solid var(--pm-color-border-default);border-radius:8px;padding:8px 10px;font-size:12px;cursor:pointer;">上传本地图片</button>
     <input id="pm-emo-file" type="file" accept="image/*" hidden onchange="window.__pmEmoFileRead(${setIndex},this)">
-    <div id="pm-emo-preview" style="display:none;text-align:center;"><img id="pm-emo-preview-img" decoding="async" width="120" height="120" style="width:120px;height:120px;object-fit:contain;border-radius:10px;border:1px solid #eee;"></div>
-    <input id="pm-emo-desc" class="pm-cfg-input" placeholder="图片描述（必填，如：猫猫开心）" style="padding:8px 10px;font-size:13px;border-radius:8px;border:1px solid #ddd;">
-    <div style="font-size:11px;color:#aaa;">描述将告诉 AI 这张图在什么情形下使用</div>
+    <div id="pm-emo-preview" style="display:none;text-align:center;"><img id="pm-emo-preview-img" decoding="async" width="120" height="120" style="width:120px;height:120px;object-fit:contain;border-radius:10px;border:1px solid var(--pm-color-border-subtle);"></div>
+    <input id="pm-emo-desc" class="pm-cfg-input" placeholder="图片描述（必填，如：猫猫开心）" style="padding:8px 10px;font-size:13px;border-radius:8px;border:1px solid var(--pm-color-border-default);">
+    <div style="font-size:11px;color:var(--pm-color-text-tertiary);">描述将告诉 AI 这张图在什么情形下使用</div>
   </div>
-  <div class="pm-modal-add"><button onclick="window.__pmConfirmAddEmojiImage(${setIndex})" style="width:100%;background:#007aff;color:#fff;border:none;border-radius:10px;padding:10px;font-size:13px;cursor:pointer;font-weight:600;">确认添加</button></div>
+  <div class="pm-modal-add"><button onclick="window.__pmConfirmAddEmojiImage(${setIndex})" style="width:100%;background:var(--pm-color-accent);color:var(--pm-color-on-dark);border:none;border-radius:10px;padding:10px;font-size:13px;cursor:pointer;font-weight:600;">确认添加</button></div>
 </div>`);
         setTimeout(() => document.getElementById('pm-emo-url')?.focus(), 10);
     };

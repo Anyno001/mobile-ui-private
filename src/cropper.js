@@ -18,13 +18,13 @@ export function openCropper(imgDataUrl, { onCancel, onConfirm }) {
       <div class="pm-crop-mask"></div>
     </div>
     <div class="pm-crop-zoom">
-      <span style="font-size:11px;color:#888;">缩放</span>
+      <span style="font-size:11px;color:var(--pm-color-text-tertiary);">缩放</span>
       <input type="range" id="pm-crop-zoom" min="100" max="400" value="100">
     </div>
   </div>
   <div class="pm-modal-add" style="display:flex;gap:8px;">
-    <button id="pm-crop-cancel" style="flex:1;background:#f0f0f0;color:#333;border:none;border-radius:10px;padding:10px;font-size:13px;cursor:pointer;">取消</button>
-    <button id="pm-crop-confirm" style="flex:1;background:#007aff;color:#fff;border:none;border-radius:10px;padding:10px;font-size:13px;cursor:pointer;font-weight:600;">确认裁剪</button>
+    <button id="pm-crop-cancel" style="flex:1;background:var(--pm-color-surface-elevated);color:var(--pm-color-text-primary);border:none;border-radius:10px;padding:10px;font-size:13px;cursor:pointer;">取消</button>
+    <button id="pm-crop-confirm" style="flex:1;background:var(--pm-color-accent);color:var(--pm-color-on-dark);border:none;border-radius:10px;padding:10px;font-size:13px;cursor:pointer;font-weight:600;">确认裁剪</button>
   </div>
 </div>`;
 

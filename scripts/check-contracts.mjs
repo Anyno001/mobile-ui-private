@@ -1187,8 +1187,7 @@ const storageInspection = inspectModule(sourceModuleByName.get('storage.js')?.co
 const storageBackgroundInspection = inspectModule(storageBackgroundCode);
 requireNamedImports('calendar.js', calendarInspection, './calendar-commit.js', ['createCalendarCommitters']);
 requireNamedImports('calendar.js', calendarInspection, './calendar-dom.js', [
-  'activateCalendarEditorKind', 'calendarEditor', 'calendarOccasionEditor', 'clearCalendarEditor',
-  'clearCalendarOccasionEditor', 'fillCalendarEditor', 'fillCalendarOccasionEditor',
+  'fillCalendarEntryForm', 'readCalendarEntryForm', 'setCalendarEntryKind',
 ]);
 if (!calendarInspection.calls.has('createCalendarCommitters')) failures.push('calendar.js: must call createCalendarCommitters');
 for (const name of ['commitScope', 'injectionFailure']) {
@@ -1198,8 +1197,7 @@ if (calendarInspection.declarations.has('scopeCommitQueue')) failures.push('cale
 for (const name of ['createCalendarCommitters']) {
   if (!calendarCommitInspection.exports.has(name)) failures.push(`calendar-commit.js: missing exported ${name}`);
 }
-for (const name of ['calendarEditor', 'calendarOccasionEditor', 'activateCalendarEditorKind', 'clearCalendarEditor',
-  'clearCalendarOccasionEditor', 'fillCalendarEditor', 'fillCalendarOccasionEditor']) {
+for (const name of ['fillCalendarEntryForm', 'readCalendarEntryForm', 'setCalendarEntryKind']) {
   if (!calendarDomInspection.exports.has(name)) failures.push(`calendar-dom.js: missing exported ${name}`);
 }
 for (const name of ['loadBgSettings', 'saveBgGlobal', 'saveBgLocal', 'saveDesktopBg']) {
@@ -1351,8 +1349,7 @@ for (const expected of [
   'error.injectionResult = result', 'createCalendarCommitters',
 ]) requireText('calendar-commit.js', calendarCommitCode, expected);
 for (const expected of [
-  'calendarEditor', 'calendarOccasionEditor', 'activateCalendarEditorKind',
-  'clearCalendarEditor', 'fillCalendarEditor', 'fillCalendarOccasionEditor',
+  'setCalendarEntryKind', 'fillCalendarEntryForm', 'readCalendarEntryForm',
 ]) requireText('calendar-dom.js', calendarDomCode, expected);
 for (const expected of [
   'CALENDAR_YEAR_RANGE = Object.freeze({ min: 1, max: 9999 })', 'createCalendarDate',
@@ -1369,18 +1366,19 @@ for (const expected of [
   'holidayYearRange', 'isHolidayYearSupported(country, value)',
 ]) requireText('calendar-holiday.js', calendarHolidayCode, expected);
 for (const expected of [
-  'aria-label="日程标题"', 'aria-label="日程备注"', 'aria-label="标签格式日程"',
-  'aria-label="生日或纪念日名称"', 'aria-label="生日或纪念日备注"',
+  'aria-label="安排名称"', 'aria-label="安排备注"', 'aria-label="安排类型"',
   'name="periodStartDay"', 'data-action="calendar-cycle-subject"',
-  'data-action="calendar-editor-kind"', 'data-action="calendar-holiday-country"',
-  '该国家在当前年代无外部数据源', 'EDIT_ICON_SVG', 'EVENT_EDITOR_ICON_SVG', 'OCCASION_EDITOR_ICON_SVG',
-  'aria-label="切换到日程编辑器"', 'aria-label="切换到生日或纪念日编辑器"',
-  'pm-calendar-editor-stack', 'pm-calendar-editor-header', 'pm-calendar-scan-card',
-  '<h3>识别正文</h3>', '立即识别正文日期', '回复后自动识别：', "label: '<user>'",
-  '<time datetime="${selectedDate}">${escapeHtml(detailDate.format(parsed))}</time>',
+  'data-calendar-entry-kind="event"', 'data-calendar-entry-kind="occasion"',
+  'data-action="calendar-holiday-country"', 'data-action="calendar-detail-menu"',
+  'data-action="calendar-manage-date"', 'data-action="calendar-delete-date"',
+  '该国家在当前年代无外部数据源', 'EDIT_ICON_SVG', 'MORE_ICON_SVG',
+  'EVENT_EDITOR_ICON_SVG', 'OCCASION_EDITOR_ICON_SVG', 'pm-calendar-entry-dialog',
+  'pm-calendar-scan-card', '<h3>正文日期</h3>', '保存并识别',
+  'role="switch"', 'aria-checked="${scope.autoAdjust}"', '自动识别最后一条正文', "label: '<user>'",
+  '<time datetime="${selectedDate}">${escapeHtml(detailDate.format(parsed))}</time>', 'detailWeekday.format(parsed)',
   "follicular: '安全期'", "luteal: '安全期'",
 ]) requireText('calendar-view.js', calendarViewCode, expected);
-for (const forbidden of ['<span>已选日期</span>', '>${escapeHtml(selectedDate)}</time>', '>编辑</button>']) if (calendarViewCode.includes(forbidden)) failures.push(`calendar-view.js: removed calendar UI remains: ${forbidden}`);
+for (const forbidden of ['<span>已选日期</span>', '>${escapeHtml(selectedDate)}</time>', '>编辑</button>', 'calendar-editor-kind', 'pm-calendar-editor-switch']) if (calendarViewCode.includes(forbidden)) failures.push(`calendar-view.js: calendar UI remains: ${forbidden}`);
 if (calendarViewCode.includes('Weather data © Open-Meteo')) failures.push('calendar-view.js: weather attribution must not be rendered in the UI');
 for (const forbidden of ['相对低风险期', '不能作为避孕依据', '预测仅供提醒', '不能用于避孕判断']) {
   if (calendarViewCode.includes(forbidden) || calendarCode.includes(forbidden)) {
@@ -1458,7 +1456,8 @@ for (const expected of [
   'class="pm-scene-comment-actions" hidden', 'data-action="edit-comment"', 'aria-label="编辑评论"', 'data-action="delete-comment"', 'aria-label="删除评论"',
   'pm-scene-accent-options', 'data-action="scene-accent"', 'data-action="scene-accent-custom"', 'aria-pressed="${preset.accent === selectedAccent}"',
   'placeholder="分享此刻……"', '<span class="pm-scene-post-time">刚刚</span>',
-  "hasDanmaku ? '直播中' : '未开播'", 'aria-label="发送弹幕"', '设置社区内容的表达风格与氛围。',
+  'const warmupStarted = scene.live.warmupStarted === true', 'const liveActive = state.liveActive === true',
+  'data-action="start-warmup"', '${PLAY_ICON_SVG}', 'aria-label="发送弹幕"', '设置社区内容的表达风格与氛围。',
   "isPrompt || tab === 'live' || tab === 'context-inject' ? ''", 'pm-live-stage', 'pm-danmaku-float',
 ]) requireText('interactive-scene-views.js', interactiveViewsCode, expected);
 for (const forbidden of ['data-action="back"', 'pm-scene-back']) {
@@ -1519,10 +1518,16 @@ for (const forbidden of [
   if (foundationCode.includes(forbidden)) failures.push(`phone-foundation.js: community observer must not guess host event ${forbidden}`);
 }
 for (const expected of [
-  "cancelCommunityGeneration?.('phone-minimized')", "cancelCommunityGeneration?.('phone-closed')",
-  "cancelCalendarTasks?.('phone-minimized')", "cancelCalendarTasks?.('phone-closed')",
+  "cancelCommunityGeneration?.('phone-closed')",
+  "cancelCalendarTasks?.('phone-closed')",
 ]) {
   requireText('phone-lifecycle.js', sourceModuleByName.get('phone-lifecycle.js')?.code || '', expected);
+}
+for (const forbidden of [
+  "cancelCommunityGeneration?.('phone-minimized')",
+  "cancelCalendarTasks?.('phone-minimized')",
+]) if ((sourceModuleByName.get('phone-lifecycle.js')?.code || '').includes(forbidden)) {
+  failures.push(`phone-lifecycle.js: minimizing must not cancel active generation: ${forbidden}`);
 }
 for (const expected of [
   'renderPhoneDesktop', 'desktop-chat', 'desktop-directory', 'desktop-settings', 'desktop-calendar', 'desktop-community',
@@ -1622,39 +1627,42 @@ for (const expected of [
   "el.setAttribute('aria-pressed', String(active))",
 ]) requireText('settings-ui.js', settingsCode, expected);
 for (const expected of [
-  '#pm-overlay[data-theme="dark"] .pm-settings-home button{background:#2c2c2e;color:#eee;border-color:#3a3a3c}',
-  '#pm-overlay[data-theme="dark"] .pm-scene-comments,#pm-iphone[data-theme="dark"] .pm-scene-comments{background:#2c2c2e;color:#ddd}',
-  '#pm-overlay[data-theme="dark"] .pm-scene-comments b,#pm-iphone[data-theme="dark"] .pm-scene-comments b{color:color-mix(in srgb,var(--scene-accent) 30%,#fff)}',
-  '#pm-overlay[data-theme="dark"] .pm-scene-post footer,#pm-iphone[data-theme="dark"] .pm-scene-post footer{border-top-color:#3a3a3c}',
-  '#pm-overlay[data-theme="dark"] .pm-scene-comment-actions button,#pm-iphone[data-theme="dark"] .pm-scene-comment-actions button{color:#aaa}',
-  '#pm-overlay[data-theme="dark"] .pm-scene-comment-actions .pm-scene-danger,#pm-iphone[data-theme="dark"] .pm-scene-comment-actions .pm-scene-danger{color:#ff8a80 !important}',
-  '#pm-overlay[data-theme="dark"] .pm-scene-comment-composer input{background:#202025;color:#eee;border-color:#414149}',
-  '#pm-iphone[data-theme="dark"] .pm-scene-comment-composer input{background:#202025;color:#eee;border-color:#414149}',
-  '#pm-iphone[data-theme="dark"] .pm-scene-header{background:#242429;color:#eee;border-color:#393940}',
-  '.pm-theme-chip:focus-visible{outline:2px solid #007aff;outline-offset:2px;}',
-  '#pm-model-arrow:focus-visible{outline:2px solid #007aff;outline-offset:2px;}',
-  '.pm-model-opt:focus-visible{position:relative;z-index:1;outline:2px solid #007aff;outline-offset:-2px;}',
-  '.pm-model-dropdown[data-theme="dark"] .pm-model-opt:focus-visible{outline-color:#64a8ff;}',
-  '.pm-model-dropdown[data-theme="dark"]{background:#252527 !important;border-color:#48484a !important;color:#eee !important;',
-  '.pm-model-dropdown[data-theme="dark"] .pm-model-search{background:#1c1c1e !important;color:#eee !important;',
-  '.pm-model-dropdown[data-theme="dark"] .pm-model-opt{background:#252527;color:#ddd;border-bottom-color:#38383a;}',
-  '.pm-model-dropdown[data-theme="dark"] .pm-model-empty{color:#aaa;}',
-  '#pm-overlay[data-theme="dark"] .pm-global-setting{background:#2c2c2e;color:#eee;border-color:#48484a;}',
-  '#pm-overlay[data-theme="dark"] .pm-global-setting small,#pm-overlay[data-theme="dark"] .pm-quick-reply-settings section p,#pm-overlay[data-theme="dark"] .pm-calendar-base-content p{color:#aaa;}',
+  '#pm-iphone[data-theme="light"],', '#pm-overlay[data-theme="light"],', '#pm-overlay-sub[data-theme="light"],', '.pm-model-dropdown[data-theme="light"] {',
+  '#pm-iphone[data-theme="dark"],', '#pm-overlay[data-theme="dark"],', '#pm-overlay-sub[data-theme="dark"],', '.pm-model-dropdown[data-theme="dark"] {',
+  '--pm-color-text-primary:', '--pm-color-text-secondary:', '--pm-color-text-tertiary:', '--pm-color-text-placeholder:', '--pm-color-text-disabled:',
+  '--pm-color-surface-page:', '--pm-color-surface-card:', '--pm-color-surface-elevated:', '--pm-color-surface-input:', '--pm-color-surface-inverse:',
+  '--pm-color-border-subtle:', '--pm-color-border-default:', '--pm-color-border-strong:', '--pm-color-control-off:',
+  '--pm-color-accent:', '--pm-color-focus-ring:', '--pm-color-success:', '--pm-color-warning:', '--pm-color-danger:', '--pm-color-overlay:', '--pm-color-on-dark:', '--pm-color-on-light:',
+  '.pm-settings-home button{border:1px solid var(--pm-color-border-default);border-radius:14px;background:var(--pm-color-surface-card);color:var(--pm-color-text-primary)',
+  '.pm-global-setting{border:1px solid var(--pm-color-border-default);border-radius:14px;background:var(--pm-color-surface-card);color:var(--pm-color-text-primary)',
+  '.pm-scene-header{display:grid;grid-template-columns:44px 1fr 44px;align-items:center;padding:11px 10px;background:var(--pm-color-surface-card);border-bottom:1px solid var(--pm-color-border-subtle)}',
+  '.pm-scene-comments{margin-top:9px;background:var(--pm-color-surface-elevated)',
+  '.pm-scene-comment-composer input{flex:1;min-width:0;border:1px solid var(--pm-color-border-default);border-radius:10px;padding:8px;background:var(--pm-color-surface-input);color:var(--pm-color-text-primary)}',
+  '.pm-theme-chip:focus-visible{outline:2px solid var(--pm-color-focus-ring);outline-offset:2px;}',
+  '#pm-model-arrow:focus-visible{outline:2px solid var(--pm-color-focus-ring);outline-offset:2px;}',
+  '.pm-model-opt:focus-visible{position:relative;z-index:1;outline:2px solid var(--pm-color-focus-ring);outline-offset:-2px;}',
+  '.pm-model-dropdown{position:fixed;z-index:2147483647;background:var(--pm-color-surface-elevated) !important;border:1px solid var(--pm-color-border-default) !important;',
+  '.pm-model-search{border:none !important;border-bottom:1px solid var(--pm-color-border-subtle) !important;',
+  '.pm-model-opt{display:block;width:100%;padding:8px 12px;font:inherit;font-size:13px;text-align:left;background:var(--pm-color-surface-elevated);color:var(--pm-color-text-primary);',
+  '.pm-model-empty{padding:14px;text-align:center;font-size:12px;color:var(--pm-color-text-tertiary);}',
 ]) requireText('style.css', css, expected);
+for (const forbidden of [
+  '#pm-overlay[data-theme="dark"] .pm-settings-home button',
+  '.pm-model-dropdown[data-theme="dark"] .pm-model-search',
+  '#pm-iphone[data-theme="dark"] .pm-scene-comment-composer input',
+]) if (css.includes(forbidden)) failures.push(`style.css: obsolete dark-mode component override remains: ${forbidden}`);
 if (css.includes('pm-forum-entry')) failures.push('style.css: removed directory community entry styles must not remain');
 requireText('style.css', css, 'top:calc(18px + var(--lane)*31px + var(--offset))');
 if (css.includes('translateY(var(--offset))')) failures.push('style.css: danmaku offset must not be applied twice');
 requireText('style.css', css, '.pm-control-menu{position:absolute;');
-requireText('style.css', css, '#pm-iphone[data-theme="dark"] .pm-control-menu');
 requireText('style.css', css, '.pm-pending-manager{min-height:180px;}');
 for (const expected of [
   '.pm-calendar-header-action.is-loading svg{animation:pm-spin .8s linear infinite}',
-  '.pm-calendar-cycle-input:checked+.pm-custom-check{background:#34c759 !important}',
-  '.pm-calendar-cycle-input:focus-visible+.pm-custom-check{outline:2px solid #007aff;outline-offset:2px}',
+  '.pm-calendar-cycle-input:checked+.pm-custom-check{background:var(--pm-color-success) !important}',
+  '.pm-calendar-cycle-input:focus-visible+.pm-custom-check{outline:2px solid var(--pm-color-focus-ring);outline-offset:2px}',
   '.pm-scene-topbar{position:relative;display:flex;align-items:center;gap:4px;padding:6px 9px}',
-  '.pm-scene-home{color:#888 !important}',
-  '.pm-scene-pin-action{color:#8a8a8f}',
+  '.pm-scene-home{color:var(--pm-color-text-tertiary) !important}',
+  '.pm-scene-pin-action{color:var(--pm-color-text-tertiary)}',
   '.pm-scene-pin-action[aria-pressed="true"],.pm-scene-pin-action[aria-pressed="true"]:hover,.pm-scene-pin-action[aria-pressed="true"]:focus-visible{background:transparent;color:var(--scene-accent)}',
   '.pm-scene-title{position:absolute;left:50%;top:6px;bottom:6px;transform:translateX(-50%);display:flex',
   '.pm-scene-title-tab.is-active span::after{content:',
@@ -1667,12 +1675,10 @@ for (const expected of [
   '.pm-control-menu.pm-scene-menu{left:0;right:auto;top:auto;bottom:46px;z-index:20;width:148px;max-height:none;overflow-y:visible',
   '.pm-control-menu.pm-scene-menu[hidden]{display:none}',
   '.pm-scene-composer textarea{height:36px;min-height:36px;max-height:88px;box-shadow:none !important;appearance:none}',
-  '.pm-scene-title-poke:active{background:transparent !important;color:#fff !important}',
+  '.pm-scene-title-poke:active{background:transparent !important;color:var(--pm-color-on-dark) !important}',
   '.pm-scene-title-poke:active::before{background:var(--scene-accent)}',
-  '#pm-iphone[data-theme="dark"] .pm-scene-bottom-bar .pm-scene-more{background:transparent;border-color:transparent;color:#aaa}',
   '.pm-scene-bottom-bar .pm-scene-more[aria-expanded="true"]{background:transparent;outline:none;color:var(--scene-accent)}',
-  '.pm-scene-share.is-shared .pm-scene-post-metric,.pm-scene-share:active .pm-scene-post-metric{color:#22a06b}',
-  '#pm-iphone[data-theme="dark"] .pm-scene-share.is-shared .pm-scene-post-metric{color:#57d99a}',
+  '.pm-scene-share.is-shared .pm-scene-post-metric,.pm-scene-share:active .pm-scene-post-metric{color:var(--pm-color-success)}',
   '.pm-scene-share.is-shared svg circle{fill:currentColor}',
   '.pm-scene-reply-toggle[aria-expanded="true"] .pm-scene-post-metric{color:var(--scene-accent)}',
   '.pm-scene-post-more:focus-visible{background:color-mix(in srgb,var(--scene-accent) 10%,transparent);outline:2px solid var(--scene-accent);outline-offset:2px}',
@@ -1698,22 +1704,28 @@ for (const expected of [
   '.pm-calendar-view-switch{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;background:transparent}',
   '.pm-calendar-tools{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;padding:10px 12px}',
   '.pm-calendar-header .pm-calendar-header-action{width:28px;height:28px;padding:5px}',
+  '.pm-calendar-header button[data-action="calendar-home"]{color:var(--pm-color-text-tertiary)!important}',
   '.pm-calendar-header-action svg{width:15px;height:15px}',
-  '.pm-calendar-title-row{display:flex;align-items:center;justify-content:center;gap:3px',
+  '.pm-calendar-title-row{display:flex;align-items:center;justify-content:center;min-width:0',
   '.pm-calendar-header .pm-calendar-base-edit{position:static;transform:none;width:26px;height:26px',
-  '.pm-calendar-status.is-generating{color:#ff3b30}',
+  '.pm-navbar{position:relative;display:grid !important;grid-template-columns:34px minmax(0,1fr) 34px',
+  '.pm-name-wrap{position:relative !important;display:flex;align-items:center;justify-content:center',
+  '.pm-calendar-status.is-generating{color:var(--pm-color-danger)}',
   '.pm-calendar-date-tags-row{grid-template-columns:minmax(0,1fr) auto}',
-  '.pm-calendar-editor[hidden]{display:none}',
-  '.pm-calendar-editor-header{display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:30px}',
-  '.pm-calendar-editor-switch{display:flex;flex:0 0 auto;gap:4px}',
-  '.pm-calendar-event-actions button{display:grid;place-items:center;width:26px;height:26px',
-  '.pm-calendar-selected-detail>header time{font-size:14px;font-weight:700}',
-  '.pm-calendar-editor-switch button{display:grid;place-items:center;width:30px;height:30px;padding:6px;border:0;border-radius:50%',
-  '#pm-iphone[data-theme="dark"] .pm-calendar-view-switch button[aria-pressed="true"],#pm-iphone[data-theme="dark"] .pm-calendar-editor-switch button[aria-pressed="true"]{background:color-mix(in srgb,var(--pm-calendar-accent) 20%,transparent);color:var(--pm-calendar-accent);box-shadow:none}',
+  '.pm-calendar-detail-date{display:flex!important;flex-direction:row!important;align-items:baseline',
+  '.pm-calendar-detail-date>strong{color:var(--pm-calendar-accent);font-size:18px',
+  '.pm-calendar-detail-date time{font-size:14px;font-weight:700',
+  '.pm-calendar-detail-date em{color:var(--pm-color-text-tertiary);font-size:11px',
+  '.pm-calendar-detail-actions{position:absolute;top:8px;right:10px',
+  '.pm-calendar-detail-more,.pm-calendar-detail-menu button{display:grid;place-items:center;width:28px;height:28px;padding:5px;border:0',
+  '.pm-calendar-auto-switch{display:flex;align-items:center;justify-content:space-between',
+  '.pm-calendar-entry-dialog{width:min(330px,calc(100vw - 28px))}',
+  '.pm-calendar-entry-actions button{min-height:38px;border:0',
+  '.pm-calendar-view-switch button[aria-pressed="true"]{background:color-mix(in srgb,var(--pm-calendar-accent) 12%,transparent);color:var(--pm-calendar-accent);box-shadow:none}',
   '@media (prefers-reduced-motion:reduce){.pm-calendar-header-action.is-loading svg{animation:none}}',
   '.pm-scene-preset>span{box-sizing:border-box;width:12px;height:12px;flex:0 0 12px;border-radius:50%',
   '.pm-scene-prompt .pm-scene-accent-option{box-sizing:border-box;width:30px;height:30px;min-width:30px;min-height:30px;aspect-ratio:1;flex:0 0 30px;padding:4px !important',
-  '.pm-scene-accent-custom input[type="color"]{box-sizing:border-box;width:32px;height:28px;flex:0 0 32px;padding:0;border:1px solid #ddd;border-radius:6px',
+  '.pm-scene-accent-custom input[type="color"]{box-sizing:border-box;width:32px;height:28px;flex:0 0 32px;padding:0;border:1px solid var(--pm-color-border-default);border-radius:6px',
   '.pm-scene-accent-option[aria-pressed="true"]{border-color:var(--scene-accent-option)',
   '.pm-scene-accent-option:focus-visible{outline:2px solid var(--scene-accent-option)',
   '.pm-scene-comment-composer[hidden]{display:none}',
@@ -1721,7 +1733,7 @@ for (const expected of [
   '.pm-scene-empty{font-size:12px;line-height:1.55}',
 ]) requireText('style.css', css, expected);
 requireCssDeclarations(cssRules, '.pm-name-edit', {
-  background: 'transparent !important', color: '#888 !important',
+  background: 'transparent !important', color: 'var(--pm-color-text-tertiary) !important',
   width: '24px', height: '24px', 'border-radius': '50% !important',
 });
 requireCssDeclarations(cssRules, '.pm-name-edit:hover', {
@@ -1730,8 +1742,19 @@ requireCssDeclarations(cssRules, '.pm-name-edit:hover', {
 requireCssDeclarations(cssRules, '.pm-name-edit:active', {
   background: 'var(--pm-r-bg,#007aff) !important', color: 'var(--pm-r-txt,#fff) !important',
 });
+requireCssDeclarations(cssRules, '.pm-name', {
+  'max-width': '100%',
+  'white-space': 'normal',
+  overflow: 'visible',
+  'text-overflow': 'clip',
+  'overflow-wrap': 'anywhere',
+  'text-align': 'center',
+});
 requireCssDeclarations(cssRules, '.pm-nav-btn', {
   background: 'none !important', color: 'var(--pm-r-bg,#007aff) !important',
+});
+requireCssDeclarations(cssRules, '.pm-nav-btn.pm-nav-left-btn', {
+  color: 'var(--pm-color-text-tertiary) !important',
 });
 requireCssDeclarations(cssRules, '.pm-up-btn', {
   width: '32px !important', height: '32px !important',
@@ -1743,15 +1766,13 @@ requireCssDeclarations(cssRules, '.pm-expand-btn:hover', {
 requireCssDeclarations(cssRules, '.pm-expand-btn[aria-expanded="true"]', {
   color: 'var(--pm-r-bg,#007aff) !important',
 });
-requireCssDeclarations(cssRules, '#pm-iphone[data-theme="dark"] .pm-expand-btn[aria-expanded="true"]', {
-  color: 'var(--pm-r-bg,#0a84ff) !important',
-});
 requireCssDeclarations(cssRules, '.pm-message-select-check', {
   width: '22px', height: '22px', 'min-width': '22px', 'min-height': '22px',
-  'border-radius': '50%', background: 'transparent', color: '#fff',
+  'border-radius': '50%', background: 'transparent', color: 'var(--pm-color-on-dark)',
+  border: '1.5px solid var(--pm-color-border-strong)',
 });
 requireCssDeclarations(cssRules, '.pm-message-select-check[data-checked="1"]', {
-  'background-color': '#007aff',
+  'background-color': 'var(--pm-color-accent)',
   'background-image': 'linear-gradient(var(--pm-r-bg,#007aff),var(--pm-r-bg,#007aff))',
   'border-color': 'var(--pm-r-bg,#007aff)',
 });
@@ -1759,18 +1780,7 @@ requireCssDeclarations(cssRules, '.pm-message-select-check[data-checked="1"]::af
   content: "'✓'", 'font-size': '15px', 'font-weight': '800',
 });
 requireCssDeclarations(cssRules, '.pm-message-select-check:focus-visible', {
-  outline: '2px solid #007aff', 'outline-offset': '2px',
-});
-requireCssDeclarations(cssRules, '#pm-iphone[data-theme="dark"] .pm-message-select-check', {
-  background: 'transparent', 'border-color': '#8e8e93',
-});
-requireCssDeclarations(cssRules, '#pm-iphone[data-theme="dark"] .pm-message-select-check[data-checked="1"]', {
-  'background-color': '#0a84ff',
-  'background-image': 'linear-gradient(var(--pm-r-bg,#0a84ff),var(--pm-r-bg,#0a84ff))',
-  'border-color': 'var(--pm-r-bg,#0a84ff)',
-});
-requireCssDeclarations(cssRules, '#pm-iphone[data-theme="dark"] .pm-message-select-check:focus-visible', {
-  'outline-color': '#64a8ff',
+  outline: '2px solid var(--pm-color-focus-ring)', 'outline-offset': '2px',
 });
 requireCssDeclarations(cssRules, '.pm-custom-check', {
   width: '38px !important', height: '22px !important',
@@ -1936,7 +1946,7 @@ for (const expected of [
 ]) requireText('phone-directory.js', directoryCode, expected);
 for (const expected of [
   '.pm-action-button{', 'font-size:13px', 'background:var(--pm-r-bg,#007aff)',
-  '.pm-action-button.is-danger{background:#ff3b30;color:#fff}',
+  '.pm-action-button.is-danger{background:var(--pm-color-danger);color:var(--pm-color-on-dark)}',
   '.pm-contact-add-choices{', '.pm-calendar-base-dialog{width:290px}',
   '.pm-calendar-view-switch button{display:grid;place-items:center;flex:0 0 32px;width:32px;height:32px;padding:0;border-radius:50%',
   '.pm-calendar-header{position:sticky', 'grid-template-columns:72px minmax(0,1fr) 72px',
@@ -2004,6 +2014,10 @@ for (const expected of ['createEmojiRenderBudget()', 'emojiBudget: emojiRenderBu
 }
 for (const expected of ['resetEmojiRenderBudget()', "list.innerHTML = ''"]) {
   requireText('conversation.js', conversationCode, expected);
+}
+requireText('conversation.js', conversationCode, 'nameEl.textContent = state.isGroupChat ? state.groupDisplayName || name : name');
+for (const forbidden of ['arr.length > 5', "arr.slice(0, 5).join('') + '...'"]) {
+  if (conversationCode.includes(forbidden)) failures.push(`conversation.js: chat title must preserve full text: ${forbidden}`);
 }
 
 const runtimeCode = sourceModuleByName.get('runtime.js')?.code || '';

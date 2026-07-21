@@ -197,12 +197,12 @@ export function createBubbles(text, side, senderName, { groupColorMap, groupMemb
             if (!element.innerHTML.includes('[emo:')) continue;
             element.innerHTML = element.innerHTML.replace(/\[emo:([^\]:]+):(\d+)\]/g, (raw, setName, index) => {
                 const url = findEmojiUrl(setName, parseInt(index, 10), emojis);
-                if (!url) return `<span style="font-size:12px;color:#999;">🤔[${setName}:${index}]</span>`;
+                if (!url) return `<span style="font-size:12px;color:var(--pm-color-text-tertiary);">🤔[${setName}:${index}]</span>`;
                 if (!isRenderableEmojiSource(url)) {
-                    return '<span style="font-size:12px;color:#999;">表情图片暂不加载</span>';
+                    return '<span style="font-size:12px;color:var(--pm-color-text-tertiary);">表情图片暂不加载</span>';
                 }
                 if (typeof emojiBudget === 'function' && !emojiBudget(url)) {
-                    return '<span style="font-size:12px;color:#999;">表情图片暂不加载</span>';
+                    return '<span style="font-size:12px;color:var(--pm-color-text-tertiary);">表情图片暂不加载</span>';
                 }
                 return `<img src="${escapeAttr(url)}" loading="lazy" decoding="async" width="98" height="98" style="width:98px;height:98px;object-fit:contain;border-radius:8px;display:block;box-shadow:0 2px 8px rgba(0,0,0,0.15);vertical-align:middle;">`;
             });

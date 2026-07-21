@@ -272,11 +272,12 @@ try {
 
     state.isGroupChat = true;
     state.currentGroupKey = 'group';
-    state.groupDisplayName = '测试群';
+    state.groupDisplayName = '测试群聊标题不会被截断';
     state.groupMembers = ['Alice'];
     state.groupColorMap = { Alice: '#f26d85' };
     state.currentPersona = '';
     window.__pmSwitch('group');
+    assert.equal(nameNode.textContent, '测试群聊标题不会被截断', '群聊标题必须保留完整文本，由响应式布局负责换行');
     assert.equal(imageCount(), 4, '群聊 wrapper 必须参与共享预算累计');
     assert.equal(placeholderCount(), 1, '群聊超预算表情应降级为占位');
     assert.equal(window.__pmHistories.story.Alice.length, 5, '渲染预算不得修改聊天历史');

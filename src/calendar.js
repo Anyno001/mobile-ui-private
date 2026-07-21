@@ -2,8 +2,8 @@ import { generationErrorMessage } from './ai.js';
 import {
     buildCalendarPrompts, calendarDateFromParts, calendarDateRangeKeys, calendarGenerationCopy, calendarMonthCells, calendarMonthKeys,
     calendarReferenceDate, calendarScopeFor, calendarWeekKeys, calendarWindowDescription, contextPayload, createCalendarDate, deleteCalendarEvent,
-    extractContextCalendarEvents, findCalendarEvent, formatCalendarDate, mergeCalendarEvents,
-    normalizeCalendarDateTags, normalizeCalendarStore, parseCalendarAiResponse, parseCalendarDate, parseCalendarInput, relativeCalendarLabel, shiftCalendarMonth,
+    extractCalendarBaseDate, findCalendarEvent, formatCalendarDate, mergeCalendarEvents,
+    normalizeCalendarDateTags, normalizeCalendarStore, parseCalendarAiResponse, parseCalendarDate, relativeCalendarLabel, shiftCalendarMonth,
     upsertCalendarEvent,
 } from './calendar-model.js';
 import {
@@ -25,14 +25,13 @@ import {
 } from './icons.js';
 import { createCalendarCommitters } from './calendar-commit.js';
 import {
-    activateCalendarEditorKind, calendarEditor, calendarOccasionEditor, clearCalendarEditor,
-    clearCalendarOccasionEditor, fillCalendarEditor, fillCalendarOccasionEditor,
+    fillCalendarEntryForm, readCalendarEntryForm, setCalendarEntryKind,
 } from './calendar-dom.js';
 import {
     loadCalendar, loadCalendarCycles, loadCalendarHolidays, loadCalendarOccasions, loadCalendarWeather,
 } from './calendar-storage.js';
 import {
-    occasionTypeLabel, renderCalendarManagement, renderSelectedDateDetail,
+    occasionTypeLabel, renderCalendarEntryDialog, renderCalendarManagement, renderSelectedDateDetail,
 } from './calendar-view.js';
 import { createTaskController } from './calendar-task-controller.js';
 import { escapeAttr, escapeHtml } from './ui.js';
@@ -149,7 +148,7 @@ export function renderCalendarPageHtml(
     const headerButton = headerAction ? `<button type="button" class="pm-calendar-header-action ${headerBusy ? 'is-loading' : ''}" data-action="${headerAction}" aria-label="${headerActionLabel}" title="${headerActionLabel}" aria-busy="${headerBusy}" ${headerBusy ? 'disabled' : ''}>${REFRESH_ICON_SVG}</button>` : '';
     const statusClass = headerBusy ? 'pm-calendar-status is-generating' : 'pm-calendar-status';
     return `<div id="pm-calendar-app" class="pm-calendar-shell" data-calendar-view-mode="${viewMode}">
-        <header class="pm-calendar-header"><span class="pm-calendar-header-side is-left"><button type="button" data-action="calendar-home" aria-label="返回桌面" title="返回桌面">${HOME_ICON_SVG}</button></span><div class="pm-calendar-title-row"><b>${escapeHtml(monthTitle.format(createCalendarDate(viewYear, viewMonth, 1)))}</b><button type="button" class="pm-calendar-base-edit" data-action="calendar-base-edit" aria-label="编辑时间起点" title="编辑时间起点">${EDIT_ICON_SVG}</button></div><span class="pm-calendar-header-side is-right">${headerButton}</span></header>
+        <header class="pm-calendar-header"><span class="pm-calendar-header-side is-left"><button type="button" data-action="calendar-home" aria-label="返回桌面" title="返回桌面">${HOME_ICON_SVG}</button></span><div class="pm-calendar-title-row"><b>${escapeHtml(monthTitle.format(createCalendarDate(viewYear, viewMonth, 1)))}</b></div><span class="pm-calendar-header-side is-right"><button type="button" class="pm-calendar-base-edit" data-action="calendar-base-edit" aria-label="编辑时间起点" title="编辑时间起点">${EDIT_ICON_SVG}</button>${headerButton}</span></header>
         <div class="pm-calendar-month-nav"><button type="button" class="pm-calendar-month-step" data-action="calendar-prev-month" aria-label="上个月">‹</button><div class="pm-calendar-view-switch" role="group" aria-label="日历信息分类"><button type="button" data-action="calendar-mode-schedule" aria-label="显示日程与假日" aria-pressed="${viewMode === 'schedule'}" title="日程与假日">${CALENDAR_ICON_SVG}</button><button type="button" data-action="calendar-mode-weather" aria-label="显示天气" aria-pressed="${viewMode === 'weather'}" title="天气">${WEATHER_ICON_SVG}</button><button type="button" data-action="calendar-mode-cycle" aria-label="显示生理期" aria-pressed="${viewMode === 'cycle'}" title="生理期">${CYCLE_ICON_SVG}</button></div><button type="button" class="pm-calendar-month-step" data-action="calendar-next-month" aria-label="下个月">›</button></div>
         <div class="pm-calendar-month" aria-label="${viewYear}年${viewMonth}月月历"><div class="pm-calendar-weekdays">${CALENDAR_WEEKDAYS.map(day => `<span>周${day}</span>`).join('')}</div><div class="pm-calendar-month-grid">${days}</div></div>
         ${selectedDetail}
@@ -372,26 +371,34 @@ export function installCalendar(state, deps) {
         }
     }
 
-    async function scanContext(storageId = getStorageId(), { silent = false, task: parentTask = null } = {}) {
+    async function scanContext(storageId = getStorageId(), { silent = false, assistantOnly = false, task: parentTask = null } = {}) {
         const task = parentTask || tasks.begin(storageId, 'scan-context');
         if (!task || !tasks.active(task)) return false;
         try {
             const context = await gatherContext();
             if (!tasks.active(task)) return false;
+            if (assistantOnly && context.latestChatIsUser) return false;
             const currentScope = scope(storageId);
-            const reference = calendarReferenceDate(currentScope);
-            const events = extractContextCalendarEvents([context.mainChatText, context.worldBookText].filter(Boolean).join('\n'), reference, currentScope.dateTags);
-            if (!events.length) {
-                if (!silent) status(storageId, '当前上下文中没有识别到明确日期。可填写 YYYY MM DD，或使用 <日期><日程>。');
-                return 0;
+            const baseDate = extractCalendarBaseDate(context.latestChatText, currentScope.dateTags);
+            if (!baseDate) {
+                if (!silent) status(storageId, '最后一条正文中没有带年份的明确日期，今天日期未调整。');
+                return false;
+            }
+            if (currentScope.baseDate === baseDate) {
+                if (!silent) status(storageId, `今天日期已经是 ${baseDate}。`);
+                return true;
             }
             if (!tasks.active(task)) return false;
-            const committed = await commitScope(storageId, current => mergeCalendarEvents(current, events), task);
+            const committed = await commitScope(storageId, current => ({ ...current, baseDate, lastAdjustedAt: Date.now() }), task);
             if (!committed) return false;
             if (!tasks.active(task)) return false;
-            if (!silent) status(storageId, `已从当前上下文识别 ${events.length} 条日程。`);
+            const parsed = parseCalendarDate(baseDate), currentView = viewFor(storageId);
+            runtime.viewByStorage.set(storageId, {
+                ...currentView, viewYear: parsed.getFullYear(), viewMonth: parsed.getMonth() + 1, selectedDate: baseDate,
+            });
+            if (!silent) status(storageId, `已从最后一条正文将今天调整为 ${baseDate}。`);
             rerender(storageId);
-            return events.length;
+            return true;
         } finally {
             if (!parentTask) tasks.finish(task);
         }
@@ -532,6 +539,100 @@ export function installCalendar(state, deps) {
         });
     }
 
+    function selectedDateEntries(storageId) {
+        const date = viewFor(storageId).selectedDate;
+        const parsed = parseCalendarDate(date);
+        return {
+            date,
+            events: scope(storageId).events[date] || [],
+            occasions: parsed ? expandOccasions(occasions(storageId), { start: parsed, days: 1 }) : [],
+        };
+    }
+
+    function showEntryDialog(storageId, initialKey = '') {
+        if (typeof makeOverlay !== 'function') throw new Error('安排编辑器不可用');
+        const entries = selectedDateEntries(storageId);
+        const overlay = makeOverlay(renderCalendarEntryDialog(entries.date, entries.events, entries.occasions));
+        const form = overlay.querySelector('[data-calendar-entry-form]');
+        const existing = overlay.querySelector('[data-calendar-entry-existing]');
+        const errorNode = overlay.querySelector('[data-calendar-entry-error]');
+        const selectedEntry = () => {
+            const [kind, id] = String(existing?.value || '').split(':');
+            if (kind === 'event') return { kind, entry: findCalendarEvent(scope(storageId), id) };
+            if (kind === 'occasion') return { kind, entry: findOccasion(occasions(storageId), id) };
+            return { kind: overlay.dataset.calendarEntryKind || 'event', entry: null };
+        };
+        const showError = error => { if (errorNode) errorNode.textContent = error?.message || '安排更新失败'; };
+        const selectExisting = value => {
+            if (existing) existing.value = value || '';
+            const selected = selectedEntry();
+            fillCalendarEntryForm(overlay, selected.entry, selected.kind);
+        };
+        overlay.querySelector('[data-calendar-entry-close]')?.addEventListener('click', () => closeOverlay?.('close'));
+        for (const button of overlay.querySelectorAll('[data-calendar-entry-kind]')) {
+            button.addEventListener('click', () => {
+                if (existing) existing.value = '';
+                fillCalendarEntryForm(overlay, null, setCalendarEntryKind(overlay, button.dataset.calendarEntryKind));
+            });
+        }
+        existing?.addEventListener('change', () => selectExisting(existing.value));
+        overlay.querySelector('[data-calendar-entry-delete]')?.addEventListener('click', async () => {
+            try {
+                const selected = selectedEntry();
+                if (!selected.entry) return;
+                if (!confirm(`删除“${selected.entry.title}”？`)) return;
+                if (selected.kind === 'event') {
+                    await commitScope(storageId, current => deleteCalendarEvent(current, selected.entry.id).scope);
+                    status(storageId, '日程已删除。');
+                } else {
+                    await commitOccasions(storageId, current => deleteOccasion(current, selected.entry.id).scope);
+                    status(storageId, `${occasionTypeLabel(selected.entry.type)}已删除。`);
+                }
+                closeOverlay?.('deleted'); rerender(storageId);
+            } catch (error) { showError(error); }
+        });
+        form?.addEventListener('submit', async event => {
+            event.preventDefault();
+            try {
+                const selected = selectedEntry();
+                const value = readCalendarEntryForm(overlay);
+                if (!value.title) throw new Error('安排名称不能为空');
+                if (value.kind === 'event') {
+                    const previous = selected.kind === 'event' ? selected.entry : null;
+                    await commitScope(storageId, current => upsertCalendarEvent(current, {
+                        id: previous?.id, date: entries.date, title: value.title, note: value.note,
+                        source: previous?.source || 'manual', createdAt: previous?.createdAt, updatedAt: Date.now(),
+                    }));
+                    status(storageId, previous ? '日程已更新。' : '日程已添加。');
+                } else {
+                    const previous = selected.kind === 'occasion' ? selected.entry : null;
+                    const parsed = parseCalendarDate(entries.date);
+                    await commitOccasions(storageId, current => upsertOccasion(current, {
+                        id: previous?.id, type: value.type,
+                        month: previous?.month || parsed.getMonth() + 1, day: previous?.day || parsed.getDate(),
+                        title: value.title, note: value.note, leapDayRule: value.leapDayRule,
+                        createdAt: previous?.createdAt, updatedAt: Date.now(),
+                    }));
+                    status(storageId, previous ? `${occasionTypeLabel(previous.type)}已更新。` : `${occasionTypeLabel(value.type)}已添加。`);
+                }
+                closeOverlay?.('saved'); rerender(storageId);
+            } catch (error) { showError(error); }
+        });
+        selectExisting(initialKey);
+    }
+
+    async function deleteSelectedDateEntry(storageId) {
+        const entries = selectedDateEntries(storageId);
+        const options = [...entries.events.map(entry => ({ kind: 'event', entry })), ...entries.occasions.map(entry => ({ kind: 'occasion', entry }))];
+        if (!options.length) return;
+        if (options.length > 1) { showEntryDialog(storageId, `${options[0].kind}:${options[0].entry.id}`); return; }
+        const [{ kind, entry }] = options;
+        if (!confirm(`删除“${entry.title}”？`)) return;
+        if (kind === 'event') await commitScope(storageId, current => deleteCalendarEvent(current, entry.id).scope);
+        else await commitOccasions(storageId, current => deleteOccasion(current, entry.id).scope);
+        status(storageId, `${kind === 'event' ? '日程' : occasionTypeLabel(entry.type)}已删除。`); rerender(storageId);
+    }
+
     async function handleAction(button, app) {
         const storageId = getStorageId();
         const action = button.dataset.action;
@@ -561,13 +662,6 @@ export function installCalendar(state, deps) {
             rerender(storageId);
             return;
         }
-        if (action === 'calendar-editor-kind') {
-            const editorKind = button.dataset.editorKind === 'occasion' ? 'occasion' : 'event';
-            const current = viewFor(storageId);
-            runtime.viewByStorage.set(storageId, { ...current, editorKind });
-            activateCalendarEditorKind(app, editorKind);
-            return;
-        }
         if (action === 'calendar-select-date') {
             const date = button.dataset.calendarDate;
             const current = viewFor(storageId);
@@ -578,14 +672,22 @@ export function installCalendar(state, deps) {
             rerender(storageId);
             return;
         }
-        if (action === 'calendar-scan') { await scanContext(storageId); return; }
-        if (action === 'calendar-date-tags-save') {
+        if (action === 'calendar-detail-menu') {
+            const menu = app?.querySelector('#pm-calendar-detail-menu');
+            if (!menu) return;
+            menu.hidden = !menu.hidden;
+            button.setAttribute('aria-expanded', String(!menu.hidden));
+            return;
+        }
+        if (action === 'calendar-manage-date') { showEntryDialog(storageId); return; }
+        if (action === 'calendar-delete-date') { await deleteSelectedDateEntry(storageId); return; }
+        if (action === 'calendar-date-sync') {
             const input = app?.querySelector('[data-calendar-date-tags]');
             if (!input) return;
             const dateTags = normalizeCalendarDateTags(input.value);
             await commitScope(storageId, current => ({ ...current, dateTags }));
-            status(storageId, `正文日期标签已保存：${dateTags.join('、')}`);
-            rerender(storageId); return;
+            await scanContext(storageId);
+            return;
         }
         if (action === 'calendar-holiday-country') {
             const country = button.value;
@@ -655,100 +757,7 @@ export function installCalendar(state, deps) {
         }
         if (action === 'calendar-toggle-auto') {
             await commitScope(storageId, current => ({ ...current, autoAdjust: !current.autoAdjust }));
-            status(storageId, scope(storageId).autoAdjust ? '自动识别已开启。角色回复完成后会从当前上下文识别明确日期日程。' : '自动识别已关闭。');
-            rerender(storageId); return;
-        }
-        if (action === 'calendar-edit') {
-            const event = findCalendarEvent(scope(storageId), button.dataset.eventId);
-            if (!event) throw new Error('日程不存在或已被删除');
-            const current = viewFor(storageId);
-            runtime.viewByStorage.set(storageId, { ...current, editorKind: 'event' });
-            activateCalendarEditorKind(app, 'event');
-            fillCalendarEditor(app, event);
-            return;
-        }
-        if (action === 'calendar-delete') {
-            const event = findCalendarEvent(scope(storageId), button.dataset.eventId);
-            if (!event) throw new Error('日程不存在或已被删除');
-            if (!confirm(`删除“${event.title}”？`)) return;
-            await commitScope(storageId, current => deleteCalendarEvent(current, event.id).scope);
-            status(storageId, '日程已删除。'); rerender(storageId); return;
-        }
-        if (action === 'calendar-cancel-edit') { clearCalendarEditor(app); return; }
-        if (action === 'calendar-occasion-edit') {
-            const occasion = findOccasion(occasions(storageId), button.dataset.occasionId);
-            if (!occasion) throw new Error('生日或纪念日不存在或已被删除');
-            const current = viewFor(storageId);
-            runtime.viewByStorage.set(storageId, { ...current, editorKind: 'occasion' });
-            activateCalendarEditorKind(app, 'occasion');
-            fillCalendarOccasionEditor(app, occasion, occasionTypeLabel(occasion.type));
-            return;
-        }
-        if (action === 'calendar-occasion-delete') {
-            const occasion = findOccasion(occasions(storageId), button.dataset.occasionId);
-            if (!occasion) throw new Error('生日或纪念日不存在或已被删除');
-            if (!confirm(`删除“${occasion.title}”？`)) return;
-            await commitOccasions(storageId, current => deleteOccasion(current, occasion.id).scope);
-            status(storageId, `${occasionTypeLabel(occasion.type)}已删除。`); rerender(storageId); return;
-        }
-        if (action === 'calendar-occasion-cancel-edit') { clearCalendarOccasionEditor(app); return; }
-        if (action === 'calendar-occasion-save') {
-            const form = calendarOccasionEditor(app);
-            if (!form) return;
-            const occasionId = form.elements.occasionId.value;
-            const previous = occasionId ? findOccasion(occasions(storageId), occasionId) : null;
-            if (occasionId && !previous) throw new Error('生日或纪念日不存在或已被删除');
-            await commitOccasions(storageId, current => upsertOccasion(current, {
-                id: previous?.id,
-                type: form.elements.type.value,
-                month: Number(form.elements.month.value),
-                day: Number(form.elements.day.value),
-                title: form.elements.title.value,
-                note: form.elements.note.value,
-                leapDayRule: form.elements.leapDayRule.value,
-                createdAt: previous?.createdAt,
-                updatedAt: Date.now(),
-            }));
-            status(storageId, previous ? `${occasionTypeLabel(previous.type)}已更新。` : '生日或纪念日已添加。');
-            rerender(storageId); return;
-        }
-        if (action === 'calendar-parse') {
-            const form = calendarEditor(app);
-            const currentScope = scope(storageId);
-            const parsed = parseCalendarInput(form?.elements.tagged.value, calendarReferenceDate(currentScope), currentScope.dateTags);
-            if (!parsed.ok) throw new Error(parsed.reason);
-            const [year, month, day] = parsed.event.date.split('-');
-            form.elements.year.value = year; form.elements.month.value = month; form.elements.day.value = day;
-            form.elements.title.value = parsed.event.title;
-            status(storageId, '标签时间已识别，请确认后保存。'); return;
-        }
-        if (action === 'calendar-save') {
-            const form = calendarEditor(app);
-            if (!form) return;
-            let date = calendarDateFromParts(
-                Number(form.elements.year.value), Number(form.elements.month.value), Number(form.elements.day.value),
-            );
-            let title = form.elements.title.value.trim();
-            if ((!date || !title) && form.elements.tagged.value.trim()) {
-                const currentScope = scope(storageId);
-                const parsed = parseCalendarInput(form.elements.tagged.value, calendarReferenceDate(currentScope), currentScope.dateTags);
-                if (!parsed.ok) throw new Error(parsed.reason);
-                date ||= parsed.event.date; title ||= parsed.event.title;
-            }
-            if (!date) throw new Error('日期无效，请填写 YYYY MM DD');
-            if (!title) throw new Error('日程标题不能为空');
-            const eventId = form.elements.eventId.value;
-            const previous = eventId ? findCalendarEvent(scope(storageId), eventId) : null;
-            await commitScope(storageId, current => upsertCalendarEvent(current, {
-                id: previous?.id,
-                date,
-                title,
-                note: form.elements.note.value,
-                source: previous?.source || 'manual',
-                createdAt: previous?.createdAt,
-                updatedAt: Date.now(),
-            }));
-            status(storageId, previous ? '日程已更新。' : '日程已添加。');
+            status(storageId, scope(storageId).autoAdjust ? '自动识别已开启。角色回复后会从最后一条正文校准今天日期。' : '自动识别已关闭。');
             rerender(storageId); return;
         }
     }
@@ -756,7 +765,7 @@ export function installCalendar(state, deps) {
     async function observeTurn() {
         const storageId = getStorageId();
         if (!scope(storageId).autoAdjust) return false;
-        try { return await scanContext(storageId, { silent: true }); }
+        try { return await scanContext(storageId, { silent: true, assistantOnly: true }); }
         catch (error) { console.warn('[phone-mode] 日历自动识别失败', error); return false; }
     }
 

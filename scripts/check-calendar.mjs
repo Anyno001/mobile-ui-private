@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { calendarGenerationErrorMessage, installCalendar, renderCalendarPageHtml } from '../src/calendar.js';
+import { renderCalendarEntryDialog } from '../src/calendar-view.js';
 import { createCalendarCommitters } from '../src/calendar-commit.js';
 import {
     clearCycleScope, createEmptyCycleStore, cycleScopeFor, cycleSubjectKeys, normalizeCycleScope,
@@ -17,8 +18,8 @@ import {
 import {
     buildCalendarPrompts, calendarDateFromParts, calendarDateRangeKeys, calendarGenerationCopy, calendarMonthCells, calendarMonthKeys,
     calendarReferenceDate, calendarWeekKeys, calendarWindowDescription, createCalendarDate, createEmptyCalendarScope, createEmptyCalendarStore,
-    extractCalendarDate, extractCalendarDateTagContents, extractContextCalendarEvents, normalizeCalendarDateTags,
-    normalizeCalendarScope, normalizeCalendarStore, parseCalendarDate, parseCalendarInput, relativeCalendarLabel,
+    extractCalendarBaseDate, extractCalendarDate, extractCalendarDateTagContents, extractContextCalendarEvents,
+    normalizeCalendarDateTags, normalizeCalendarScope, normalizeCalendarStore, parseCalendarDate, parseCalendarInput, relativeCalendarLabel,
     shiftCalendarMonth,
 } from '../src/calendar-model.js';
 import {
@@ -61,6 +62,12 @@ assert.equal(extractCalendarDate('10月28日见面', semanticReference), '2026-1
 assert.equal(extractCalendarDate('2027年十月二十八日见面', semanticReference), '2027-10-28');
 assert.equal(extractCalendarDate('2027年见面', semanticReference), null, '缺月和日期必须拒绝');
 assert.equal(extractCalendarDate('十月见面', semanticReference), null, '缺日期必须拒绝');
+assert.equal(extractCalendarBaseDate('<date>2027年十月二十八日</date>'), '2027-10-28');
+assert.equal(extractCalendarBaseDate('<when>2027-10-28</when>', ['when']), '2027-10-28');
+assert.equal(extractCalendarBaseDate('<2027 10 28>'), '2027-10-28', '旧日期标签仍须支持明确年份');
+assert.equal(extractCalendarBaseDate('十月二十八日'), null, '今天基准不得接受无年份日期');
+assert.equal(extractCalendarBaseDate('明天见面'), null, '今天基准不得接受相对日期');
+assert.equal(extractCalendarBaseDate('```2027-10-28```'), '2027-10-28', '模型函数只负责日期语义，不承担宿主正文清洗');
 assert.equal(extractCalendarDate('二十八日见面', semanticReference), null, '缺月份必须拒绝');
 assert.equal(extractCalendarDate('大前天整理资料', semanticReference), '2026-12-19');
 assert.equal(extractCalendarDate('大后天庆祝', semanticReference), '2026-12-25');
@@ -434,8 +441,7 @@ const renderedBusyWeather = renderCalendarPageHtml(
 );
 assert.match(renderedSchedule, /data-calendar-view-mode="schedule"/);
 assert.match(renderedSchedule, /data-action="calendar-home"[^>]*title="返回桌面"/);
-assert.match(renderedSchedule, /class="pm-calendar-title-row"><b>[^<]+<\/b><button[^>]*class="pm-calendar-base-edit"[^>]*data-action="calendar-base-edit"/);
-assert.match(renderedSchedule, /class="pm-calendar-title-row"><b>/);
+assert.match(renderedSchedule, /class="pm-calendar-title-row"><b>[^<]+<\/b><\/div><span class="pm-calendar-header-side is-right"><button[^>]*class="pm-calendar-base-edit"[^>]*data-action="calendar-base-edit"/);
 assert.doesNotMatch(renderedSchedule, /type="date" data-calendar-base-date|pm-calendar-base-menu/);
 assert.match(renderedSchedule, /data-action="calendar-generate" aria-label="生成未来七日日程"/);
 assert.match(renderedSchedule, /class="pm-calendar-status" aria-live="polite">&lt;status&gt;<\/div>/);
@@ -455,24 +461,34 @@ assert.doesNotMatch(renderedSchedule, /data-calendar-management="schedule" open/
 assert.match(renderedSchedule, /data-action="calendar-mode-schedule"[^>]*aria-pressed="true"/);
 assert.match(renderedSchedule, /data-action="calendar-mode-weather"[^>]*aria-pressed="false"/);
 assert.match(renderedSchedule, /data-action="calendar-mode-cycle"[^>]*aria-pressed="false"/);
-assert.match(renderedSchedule, /class="pm-calendar-editor-switch"[\s\S]*data-editor-kind="event"[^>]*aria-label="切换到日程编辑器"[^>]*>[\s\S]*<svg/);
-assert.match(renderedSchedule, /data-editor-kind="occasion"[^>]*aria-label="切换到生日或纪念日编辑器"[^>]*>[\s\S]*<svg/);
-assert.match(renderedSchedule, /class="pm-calendar-editor-header"><h3>添加日程<\/h3><div class="pm-calendar-editor-switch"/);
-assert.match(renderedSchedule, /class="pm-calendar-editor-header"><h3>添加生日或纪念日<\/h3><div class="pm-calendar-editor-switch"/);
-assert.doesNotMatch(renderedSchedule, />日程<\/button>|>生日 \/ 纪念日<\/button>/, '编辑器切换不得恢复文字双按钮');
-assert.match(renderedSchedule, /class="pm-calendar-data-tools pm-calendar-scan-card"><h3>识别正文<\/h3>[\s\S]*?立即识别正文日期/);
-assert.match(renderedSchedule, /回复后自动识别：关/);
-assert.match(renderedSchedule, /data-action="calendar-edit"[^>]*aria-label="编辑 &lt;日程&gt;"[^>]*>[\s\S]*?<svg/);
-assert.doesNotMatch(renderedSchedule, /data-action="calendar-edit"[^>]*>编辑<\/button>/);
+assert.match(renderedSchedule, /data-action="calendar-detail-menu"[^>]*aria-expanded="false"/);
+assert.match(renderedSchedule, /id="pm-calendar-detail-menu"[^>]*hidden[\s\S]*data-action="calendar-manage-date"/);
+assert.match(renderedSchedule, /data-action="calendar-delete-date"[^>]*aria-label="删除安排"/);
+assert.doesNotMatch(renderedSchedule, /data-action="calendar-edit"|data-action="calendar-occasion-edit"/,
+    '详情条目不得恢复逐行编辑按钮');
+assert.match(renderedSchedule, /class="pm-calendar-data-tools pm-calendar-scan-card"><h3>正文日期<\/h3>[\s\S]*?data-calendar-date-tags[\s\S]*?data-action="calendar-date-sync"[^>]*>保存并识别/);
+assert.match(renderedSchedule, /data-action="calendar-toggle-auto" role="switch" aria-checked="false"/);
+assert.match(renderedSchedule, /自动识别最后一条正文/);
+assert.doesNotMatch(renderedSchedule, /data-calendar-editor|data-calendar-occasion-editor|pm-calendar-editor-switch/,
+    '安排管理区不得恢复独立新增表单');
 assert.doesNotMatch(renderedSchedule, /已选日期|>\d{4}-\d{2}-\d{2}<\/time>/);
 assert.match(renderedSchedule, /<time datetime="[^"]+">[^<]+<\/time>/);
-assert.match(renderedSchedule, /data-calendar-selected-detail="[^"]+"[\s\S]*?<span>今天<\/span>/);
+assert.match(renderedSchedule, /data-calendar-selected-detail="[^"]+"[\s\S]*?<strong>今天<\/strong>/);
 assert.match(renderedSchedule, /data-calendar-date-tags[^>]*value="date"/);
-assert.match(renderedSchedule, /data-action="calendar-date-tags-save"/);
+assert.match(renderedSchedule, /data-action="calendar-date-sync"/);
 assert.match(renderedSchedule, /aria-label="正文日期标签"/);
 assert.match(renderedSchedule, /&lt;Holiday&gt;/);
 assert.match(renderedSchedule, /&lt;日程&gt;/);
 assert.match(renderedSchedule, /&lt;备注&gt;/);
+const renderedEntryDialog = renderCalendarEntryDialog(currentDates[0], renderedScope.events[currentDates[0]], [{
+    id: 'occasion-current', type: 'anniversary', title: '<纪念日>', note: '', leapDayRule: 'feb28',
+}]);
+assert.match(renderedEntryDialog, /class="pm-modal pm-calendar-entry-dialog"/);
+assert.match(renderedEntryDialog, /data-calendar-entry-kind="event"[^>]*aria-pressed="true"[\s\S]*一次性日程/);
+assert.match(renderedEntryDialog, /data-calendar-entry-kind="occasion"[^>]*aria-pressed="false"[\s\S]*每年重复/);
+assert.match(renderedEntryDialog, /<option value="event:event-current">日程 · &lt;日程&gt;<\/option>/);
+assert.match(renderedEntryDialog, /<option value="occasion:occasion-current">纪念日 · &lt;纪念日&gt;<\/option>/);
+assert.match(renderedEntryDialog, /data-calendar-entry-delete disabled/);
 assert.doesNotMatch(renderedSchedule, /20°\/30°C|生理期提示|data-calendar-management="weather"|data-calendar-management="cycle"/);
 assert.match(renderedWeather, /data-calendar-view-mode="weather"/);
 assert.match(renderedWeather, /data-action="calendar-weather-refresh" aria-label="刷新天气"/);
@@ -507,10 +523,11 @@ assert.match(renderedSchedule, /class="[^"]*pm-calendar-day[^"]*has-schedule[^"]
 assert.match(renderedSchedule, /aria-pressed="true"/);
 assert.match(renderedSchedule, /data-calendar-selected-detail=/);
 assert.ok((renderedSchedule.match(/data-calendar-date=/g) || []).length >= 35, '月历必须完整铺开至少五周');
-for (const label of [
-    '日程标题', '日程备注', '标签格式日程', '生日或纪念日名称', '生日或纪念日备注',
+for (const [html, label] of [
+    [renderedSchedule, '正文日期标签'], [renderedSchedule, '管理这一天'],
+    [renderedEntryDialog, '安排类型'], [renderedEntryDialog, '安排名称'], [renderedEntryDialog, '安排备注'],
 ]) {
-    assert.match(renderedSchedule, new RegExp(`aria-label="${label}"`), `${label} 控件必须有可访问名称`);
+    assert.match(html, new RegExp(`aria-label="${label}"`), `${label} 控件必须有可访问名称`);
 }
 assert.doesNotMatch(`${renderedSchedule}${renderedWeather}${renderedCycle}`, /<Holiday>|<Location>|<status>/);
 
@@ -524,7 +541,7 @@ for (const [index, selectedDate] of calendarDateRangeKeys(renderedDate, -3, 6).e
             selectedDate, viewMode: 'schedule',
         },
     );
-    assert.match(relativeSchedule, new RegExp(`<span>${relativeDateLabels[index]}<\\/span>`),
+    assert.match(relativeSchedule, new RegExp(`<strong>${relativeDateLabels[index]}<\\/strong>`),
         `${relativeDateLabels[index]}标签必须在已选日期详情中显示`);
 }
 
@@ -534,7 +551,7 @@ const crossMonthTomorrow = renderCalendarPageHtml(
 );
 assert.match(
     crossMonthTomorrow,
-    /data-calendar-selected-detail="2032-02-01"[\s\S]*?<span>明天<\/span>/,
+    /data-calendar-selected-detail="2032-02-01"[\s\S]*?<strong>明天<\/strong>/,
     '明天标签必须支持跨月日期',
 );
 assert.match(crossMonthTomorrow, /<time datetime="2032-02-01">[^<]+<\/time>/,
@@ -665,104 +682,6 @@ try {
     const dayTag = date => container.innerHTML.match(new RegExp(`<button[^>]*data-calendar-date="${date}"[^>]*>`))?.[0] || '';
     assert.match(container.innerHTML, /data-calendar-view-mode="schedule"/);
     assert.doesNotMatch(container.innerHTML, /<h3>生理周期<\/h3>/);
-    const editorManagement = { open: false };
-    const eventHeading = { textContent: '添加日程' };
-    const occasionHeading = { textContent: '添加生日或纪念日' };
-    let eventScrolled = false, eventFocused = false;
-    let occasionScrolled = false, occasionFocused = false;
-    const eventDraft = {
-        hidden: false,
-        elements: {
-            year: { value: '2099' }, month: { value: '12' }, day: { value: '31' },
-            title: { value: '未保存日程草稿', focus() { eventFocused = true; } },
-            note: { value: '未保存日程备注' }, tagged: { value: '未保存标签' },
-            eventId: { value: 'event-draft' },
-        },
-        closest: selector => selector === '[data-calendar-management="schedule"]' ? editorManagement : null,
-        querySelector: selector => selector === 'h3' ? eventHeading : null,
-        scrollIntoView: options => { eventScrolled = options?.block === 'nearest'; },
-    };
-    const occasionDraft = {
-        hidden: true,
-        elements: {
-            type: { value: 'anniversary' }, month: { value: '12' }, day: { value: '30' },
-            title: { value: '未保存纪念日草稿', focus() { occasionFocused = true; } },
-            note: { value: '未保存纪念日备注' }, leapDayRule: { value: 'skip' },
-            occasionId: { value: 'occasion-draft' },
-        },
-        closest: selector => selector === '[data-calendar-management="schedule"]' ? editorManagement : null,
-        querySelector: selector => selector === 'h3' ? occasionHeading : null,
-        scrollIntoView: options => { occasionScrolled = options?.block === 'nearest'; },
-    };
-    const editorControls = [
-        { dataset: { editorKind: 'event' }, attributes: new Map(), setAttribute(name, value) { this.attributes.set(name, value); } },
-        { dataset: { editorKind: 'occasion' }, attributes: new Map(), setAttribute(name, value) { this.attributes.set(name, value); } },
-    ];
-    const editorSwitchApp = {
-        querySelector(selector) {
-            if (selector === '[data-calendar-editor]') return eventDraft;
-            if (selector === '[data-calendar-occasion-editor]') return occasionDraft;
-            return null;
-        },
-        querySelectorAll(selector) {
-            return selector === '[data-action="calendar-editor-kind"]' ? editorControls : [];
-        },
-    };
-    const htmlBeforeEditorSwitch = container.innerHTML;
-    await deps.handleCalendarAction({ dataset: { action: 'calendar-editor-kind', editorKind: 'occasion' } }, editorSwitchApp);
-    assert.equal(container.innerHTML, htmlBeforeEditorSwitch, '编辑器类型切换不得整页重渲染并丢失草稿');
-    assert.equal(eventDraft.hidden, true);
-    assert.equal(occasionDraft.hidden, false);
-    assert.equal(eventDraft.elements.title.value, '未保存日程草稿');
-    assert.equal(eventDraft.elements.eventId.value, 'event-draft');
-    assert.equal(occasionDraft.elements.title.value, '未保存纪念日草稿');
-    assert.equal(occasionDraft.elements.occasionId.value, 'occasion-draft');
-    assert.equal(editorControls[0].attributes.get('aria-pressed'), 'false');
-    assert.equal(editorControls[1].attributes.get('aria-pressed'), 'true');
-    await deps.handleCalendarAction({ dataset: { action: 'calendar-editor-kind', editorKind: 'event' } }, editorSwitchApp);
-    assert.equal(eventDraft.hidden, false);
-    assert.equal(occasionDraft.hidden, true);
-    assert.equal(eventDraft.elements.title.value, '未保存日程草稿', '往返切换不得清空日程草稿');
-    assert.equal(occasionDraft.elements.title.value, '未保存纪念日草稿', '往返切换不得清空纪念日草稿');
-    assert.equal(eventDraft.elements.eventId.value, 'event-draft', '往返切换不得清空日程编辑 ID');
-    assert.equal(occasionDraft.elements.occasionId.value, 'occasion-draft', '往返切换不得清空纪念日编辑 ID');
-    assert.equal(editorControls[0].attributes.get('aria-pressed'), 'true');
-    assert.equal(editorControls[1].attributes.get('aria-pressed'), 'false');
-    await deps.handleCalendarAction({ dataset: { action: 'calendar-editor-kind', editorKind: 'occasion' } }, editorSwitchApp);
-    const htmlBeforeEventEdit = container.innerHTML;
-    await deps.handleCalendarAction({ dataset: { action: 'calendar-edit', eventId: editorEvent.id } }, editorSwitchApp);
-    assert.equal(container.innerHTML, htmlBeforeEventEdit, '跨类型编辑日程不得整页重渲染');
-    assert.equal(eventDraft.hidden, false);
-    assert.equal(occasionDraft.hidden, true);
-    assert.equal(eventDraft.elements.eventId.value, editorEvent.id);
-    assert.equal(eventDraft.elements.title.value, editorEvent.title);
-    assert.equal(eventDraft.elements.note.value, editorEvent.note);
-    assert.equal(eventHeading.textContent, '编辑日程');
-    assert.equal(eventScrolled, true);
-    assert.equal(eventFocused, true);
-    assert.equal(occasionDraft.elements.title.value, '未保存纪念日草稿', '编辑日程不得清空纪念日草稿');
-    assert.equal(occasionDraft.elements.occasionId.value, 'occasion-draft', '编辑日程不得清空纪念日编辑 ID');
-    assert.equal(editorControls[0].attributes.get('aria-pressed'), 'true');
-    assert.equal(editorControls[1].attributes.get('aria-pressed'), 'false');
-    const htmlBeforeOccasionEdit = container.innerHTML;
-    await deps.handleCalendarAction({ dataset: { action: 'calendar-occasion-edit', occasionId: editorOccasion.id } }, editorSwitchApp);
-    assert.equal(container.innerHTML, htmlBeforeOccasionEdit, '跨类型编辑纪念日不得整页重渲染');
-    assert.equal(eventDraft.hidden, true);
-    assert.equal(occasionDraft.hidden, false);
-    assert.equal(occasionDraft.elements.occasionId.value, editorOccasion.id);
-    assert.equal(occasionDraft.elements.type.value, editorOccasion.type);
-    assert.equal(occasionDraft.elements.month.value, '02');
-    assert.equal(occasionDraft.elements.day.value, '29');
-    assert.equal(occasionDraft.elements.title.value, editorOccasion.title);
-    assert.equal(occasionDraft.elements.note.value, editorOccasion.note);
-    assert.equal(occasionDraft.elements.leapDayRule.value, editorOccasion.leapDayRule);
-    assert.equal(occasionHeading.textContent, '编辑生日');
-    assert.equal(occasionScrolled, true);
-    assert.equal(occasionFocused, true);
-    assert.equal(eventDraft.elements.title.value, editorEvent.title, '编辑纪念日不得清空日程草稿');
-    assert.equal(eventDraft.elements.eventId.value, editorEvent.id, '编辑纪念日不得清空日程编辑 ID');
-    assert.equal(editorControls[0].attributes.get('aria-pressed'), 'false');
-    assert.equal(editorControls[1].attributes.get('aria-pressed'), 'true');
     const initialSelectedDate = detailDate();
     const currentMonthPrefix = initialSelectedDate.slice(0, 7);
     const alternateDate = calendarMonthKeys(Number(currentMonthPrefix.slice(0, 4)), Number(currentMonthPrefix.slice(5, 7)))
@@ -810,8 +729,7 @@ try {
     assert.equal(JSON.parse(memory.get('ST_SMS_CALENDAR_V1')).scopes[storageA].baseDate, '2032-02-29', '时间起点必须持久化');
     assert.match(container.innerHTML, /class="pm-calendar-header-side is-left"/);
     assert.match(container.innerHTML, /class="pm-calendar-title-row"><b>/);
-    assert.match(container.innerHTML, /class="pm-calendar-header-side is-right"/);
-    assert.match(container.innerHTML, /pm-calendar-title-row[\s\S]*data-action="calendar-base-edit"/);
+    assert.match(container.innerHTML, /class="pm-calendar-title-row"><b>[^<]+<\/b><\/div><span class="pm-calendar-header-side is-right"><button[^>]*data-action="calendar-base-edit"/);
     assert.doesNotMatch(container.innerHTML, /pm-calendar-base-menu|data-calendar-base-date/, '标题只保留时间起点编辑入口，不得内嵌日期输入');
     await deps.handleCalendarAction({ dataset: { action: 'calendar-base-edit' } }, app);
     assert.match(calendarOverlayHtml, /class="pm-modal pm-calendar-base-dialog"/);
@@ -1005,23 +923,28 @@ try {
     installCalendar({ phoneWindow }, deps);
     deps.renderCalendar(storageA);
     const app = { querySelector: () => null };
-    const scanButton = { dataset: { action: 'calendar-scan' } };
-    const dateTag = currentDates[0].replaceAll('-', ' ');
+    const dateSyncButton = { dataset: { action: 'calendar-date-sync' } };
+    const dateTag = currentDates[0];
 
     const tagsInput = { value: 'date，when WHEN bad/tag' };
     const tagsApp = { querySelector: selector => selector === '[data-calendar-date-tags]' ? tagsInput : null };
-    await deps.handleCalendarAction({ dataset: { action: 'calendar-date-tags-save' } }, tagsApp);
+    const eventsBeforeDateSync = structuredClone(deps.getCalendarStore().scopes[storageA].events);
+    const customTagDate = currentDates[2];
+    gatherImpl = async () => ({
+        latestChatText: `<time_bar><when>${customTagDate}</when> 只校准今天</time_bar>`,
+        latestChatIsUser: false, mainChatText: '', worldBookText: '',
+    });
+    await deps.handleCalendarAction(dateSyncButton, tagsApp);
     assert.deepEqual(deps.getCalendarStore().scopes[storageA].dateTags, ['date', 'when'],
         '日期标签保存必须归一化、去重并拒绝非法标签');
     assert.match(container.innerHTML, /data-calendar-date-tags[^>]*value="date, when"/,
         '保存后重渲染必须呈现持久化标签');
-    const customTagDate = currentDates[2];
-    gatherImpl = async () => ({
-        mainChatText: `<time_bar><when>${customTagDate}</when> 自定义标签日程</time_bar>`, worldBookText: '',
-    });
-    assert.equal(await deps.handleCalendarAction(scanButton, app), undefined);
-    assert.ok((deps.getCalendarStore().scopes[storageA].events[customTagDate] || [])
-        .some(event => event.title === '自定义标签日程'), '正文扫描必须使用当前 scope 的自定义标签');
+    assert.equal(deps.getCalendarStore().scopes[storageA].baseDate, customTagDate,
+        '保存并识别必须使用当前 scope 的自定义标签校准今天日期');
+    assert.ok(deps.getCalendarStore().scopes[storageA].lastAdjustedAt > 0,
+        '成功校准必须记录 lastAdjustedAt');
+    assert.deepEqual(deps.getCalendarStore().scopes[storageA].events, eventsBeforeDateSync,
+        '正文日期识别绝不能创建、替换或删除日程');
 
     const countryInjection = deferred();
     injectionImpl = async () => {
@@ -1052,48 +975,26 @@ try {
     const firstScan = deferred(), secondScan = deferred();
     let gatherCalls = 0;
     gatherImpl = () => (++gatherCalls === 1 ? firstScan.promise : secondScan.promise);
-    const oldScanPromise = deps.handleCalendarAction(scanButton, app);
-    const newScanPromise = deps.handleCalendarAction(scanButton, app);
-    secondScan.resolve({ mainChatText: `<${dateTag}> 新意图`, worldBookText: '' });
+    const oldScanPromise = deps.handleCalendarAction(dateSyncButton, tagsApp);
+    const newScanPromise = deps.handleCalendarAction(dateSyncButton, tagsApp);
+    const oldIntentDate = currentDates[3], newIntentDate = currentDates[4];
+    secondScan.resolve({ latestChatText: `<when>${newIntentDate}</when>`, latestChatIsUser: false, mainChatText: '', worldBookText: '' });
     await newScanPromise;
-    firstScan.resolve({ mainChatText: `<${dateTag}> 旧意图`, worldBookText: '' });
+    firstScan.resolve({ latestChatText: `<when>${oldIntentDate}</when>`, latestChatIsUser: false, mainChatText: '', worldBookText: '' });
     await oldScanPromise;
-    const racedEvents = deps.getCalendarStore().scopes[storageA].events[currentDates[0]] || [];
-    assert.deepEqual(racedEvents.map(event => event.title), ['新意图'], '旧 scan 不得覆盖最后一次识别意图');
-
-    const editManagement = { open: false };
-    const editHeading = { textContent: '' };
-    let editScrolled = false;
-    let editFocused = false;
-    const editForm = {
-        elements: {
-            year: { value: '' }, month: { value: '' }, day: { value: '' },
-            title: { value: '', focus: () => { editFocused = true; } },
-            note: { value: '' }, tagged: { value: '' }, eventId: { value: '' },
-        },
-        closest: selector => selector === '[data-calendar-management="schedule"]' ? editManagement : null,
-        querySelector: selector => selector === 'h3' ? editHeading : null,
-        scrollIntoView: options => { editScrolled = options?.block === 'nearest'; },
-    };
-    const editApp = {
-        querySelector: selector => selector === '[data-calendar-editor]' ? editForm : null,
-    };
-    await deps.handleCalendarAction({
-        dataset: { action: 'calendar-edit', eventId: racedEvents[0].id },
-    }, editApp);
-    assert.equal(editManagement.open, true, '从详情编辑日程时必须展开安排管理区');
-    assert.equal(editScrolled, true, '展开管理区后必须把编辑器带入可视区域');
-    assert.equal(editFocused, true, '展开管理区后必须聚焦日程标题');
-    assert.equal(editHeading.textContent, '编辑日程');
-    assert.equal(editForm.elements.eventId.value, racedEvents[0].id);
-    assert.equal(editForm.elements.title.value, '新意图');
+    assert.equal(deps.getCalendarStore().scopes[storageA].baseDate, newIntentDate,
+        '迟到的旧识别不得覆盖最后一次日期校准意图');
+    assert.deepEqual(deps.getCalendarStore().scopes[storageA].events, eventsBeforeDateSync,
+        '并发日期校准不得改写日程');
 
     const cancelledScan = deferred();
-    gatherImpl = () => cancelledScan.promise;
+    const cancelledScanStarted = deferred();
+    gatherImpl = () => { cancelledScanStarted.resolve(); return cancelledScan.promise; };
     const beforeCancelledScan = structuredClone(deps.getCalendarStore());
-    const cancelledScanPromise = deps.handleCalendarAction(scanButton, app);
+    const cancelledScanPromise = deps.handleCalendarAction(dateSyncButton, tagsApp);
+    await cancelledScanStarted.promise;
     deps.cancelCalendarTasks('test-scan-cancel');
-    cancelledScan.resolve({ mainChatText: `<${dateTag}> 取消后不得写入`, worldBookText: '' });
+    cancelledScan.resolve({ latestChatText: `<when>${currentDates[5]}</when>`, latestChatIsUser: false, mainChatText: '', worldBookText: '' });
     await cancelledScanPromise;
     assert.deepEqual(deps.getCalendarStore(), beforeCancelledScan, '取消后的 scan 不得持久化');
 
@@ -1104,25 +1005,37 @@ try {
     activeStorageId = storageB;
     const ensurePromise = deps.ensureCalendarWeek(storageB);
     deps.cancelCalendarTasks('test-ensure-cancel');
-    ensureGather.resolve({ mainChatText: '', worldBookText: '' });
+    ensureGather.resolve({ latestChatText: '', latestChatIsUser: false, mainChatText: '', worldBookText: '' });
     assert.equal(await ensurePromise, false);
     assert.equal(ensureAiCalls, 0, '取消 ensureWeek 后不得继续请求 AI');
 
-    gatherImpl = async () => ({ mainChatText: '', worldBookText: '' });
+    gatherImpl = async () => ({ latestChatText: '', latestChatIsUser: false, mainChatText: '', worldBookText: '' });
     assert.equal(await deps.ensureCalendarWeek(storageB), false, '空日历窗口不得隐式生成日程');
     assert.equal(ensureAiCalls, 0, '空日历窗口不得请求 AI');
-    gatherImpl = async () => ({ mainChatText: `<${dateTag}> 本地确保日程`, worldBookText: '' });
-    assert.equal(await deps.ensureCalendarWeek(storageB), true, 'ensureWeek 应接受本地正文日期识别结果');
-    assert.equal(ensureAiCalls, 0, 'ensureWeek 的本地识别不得请求 AI');
+    const storageBEventsBefore = structuredClone(deps.getCalendarStore().scopes[storageB]?.events || {});
+    gatherImpl = async () => ({ latestChatText: `正文日期 ${dateTag}`, latestChatIsUser: false, mainChatText: '', worldBookText: '' });
+    assert.equal(await deps.ensureCalendarWeek(storageB), false,
+        'ensureWeek 校准日期后仍应按已有未来日程决定返回值');
+    assert.equal(deps.getCalendarStore().scopes[storageB].baseDate, dateTag,
+        'ensureWeek 可复用日期校准，但不得把正文变成日程');
+    assert.deepEqual(deps.getCalendarStore().scopes[storageB].events, storageBEventsBefore);
+    assert.equal(ensureAiCalls, 0, 'ensureWeek 的本地日期校准不得请求 AI');
 
     await deps.handleCalendarAction({ dataset: { action: 'calendar-toggle-auto' } }, app);
     const storageBStatusTimer = asyncStatusTimers.at(-1);
     assert.equal(deps.getCalendarStore().scopes[storageB].autoAdjust, true);
-    assert.match(container.innerHTML, /自动识别：开/);
-    gatherImpl = async () => ({ mainChatText: `<${currentDates[1].replaceAll('-', ' ')}> 自动识别正文日程`, worldBookText: '' });
-    assert.equal(await deps.observeCalendarTurn(), 1, '开启自动识别后应从正文提取明确日期日程');
+    assert.match(container.innerHTML, /data-action="calendar-toggle-auto" role="switch" aria-checked="true"/);
+    const automaticDate = currentDates[1];
+    gatherImpl = async () => ({ latestChatText: `角色正文日期 ${automaticDate}`, latestChatIsUser: false, mainChatText: '', worldBookText: '' });
+    assert.equal(await deps.observeCalendarTurn(), true, '开启自动识别后应从角色最后正文校准今天日期');
+    assert.equal(deps.getCalendarStore().scopes[storageB].baseDate, automaticDate);
+    assert.deepEqual(deps.getCalendarStore().scopes[storageB].events, storageBEventsBefore,
+        '自动日期识别不得生成正文日程');
     assert.equal(ensureAiCalls, 0, '正文日期自动识别不得请求 AI');
-    assert.match(container.innerHTML, /自动识别正文日程/);
+    gatherImpl = async () => ({ latestChatText: `用户正文日期 ${currentDates[2]}`, latestChatIsUser: true, mainChatText: '', worldBookText: '' });
+    assert.equal(await deps.observeCalendarTurn(), false, '自动模式必须忽略用户最后正文');
+    assert.equal(deps.getCalendarStore().scopes[storageB].baseDate, automaticDate,
+        '用户正文不得改变自动校准基准');
 
     activeStorageId = storageA;
     await deps.handleCalendarAction({ dataset: { action: 'calendar-toggle-auto' } }, app);
@@ -1132,7 +1045,11 @@ try {
     assert.equal(statusNode.textContent, storageAStatus, '旧 storageId 的定时器不得清除当前会话状态 DOM');
     const storageAStatusTimer = asyncStatusTimers.at(-1);
 
-    gatherImpl = async () => ({ mainChatText: '', worldBookText: '' });
+    const generationBaseApp = { querySelector: selector => selector === '[data-calendar-base-date]'
+        ? { value: currentDates[0] } : null };
+    await deps.handleCalendarAction({ dataset: { action: 'calendar-base-save' } }, generationBaseApp);
+    assert.equal(deps.getCalendarStore().scopes[storageA].baseDate, currentDates[0]);
+    gatherImpl = async () => ({ latestChatText: '', latestChatIsUser: false, mainChatText: '', worldBookText: '' });
     const aiResponse = deferred(), aiStarted = deferred();
     let generatedOptions, generatedSystemPrompt, generatedUserPrompt;
     aiImpl = async (systemPrompt, userPrompt, options) => {
@@ -1255,17 +1172,19 @@ try {
     injectionImpl = async () => {
         injectionCount += 1;
         scanInjectionCalls += 1;
-        if (scanInjectionCalls === 1) {
+        if (scanInjectionCalls === 2) {
             scanCommitEntered.resolve();
             await scanCommitRelease.promise;
         }
     };
-    gatherImpl = async () => ({ mainChatText: `<${dateTag}> 提交窗口扫描`, worldBookText: '' });
+    gatherImpl = async () => ({
+        latestChatText: `提交窗口日期 ${currentDates[5]}`, latestChatIsUser: false, mainChatText: '', worldBookText: '',
+    });
     const beforeScanCommitCancel = structuredClone(deps.getCalendarStore());
     const beforeScanPersisted = memory.get('ST_SMS_CALENDAR_V1') || null;
     const beforeScanStatus = statusNode.textContent;
     const beforeScanHtml = container.innerHTML;
-    const scanCommitPromise = deps.handleCalendarAction(scanButton, app);
+    const scanCommitPromise = deps.handleCalendarAction(dateSyncButton, tagsApp);
     await scanCommitEntered.promise;
     assert.notDeepEqual(deps.getCalendarStore(), beforeScanCommitCancel, '测试必须进入保存后的注入窗口');
     deps.cancelCalendarTasks('test-scan-commit-cancel');
@@ -1273,7 +1192,7 @@ try {
     await scanCommitPromise;
     assert.deepEqual(deps.getCalendarStore(), beforeScanCommitCancel, 'scan 提交窗口取消后必须恢复内存状态');
     assert.equal(memory.get('ST_SMS_CALENDAR_V1') || null, beforeScanPersisted, 'scan 提交窗口取消后必须恢复持久化状态');
-    assert.equal(scanInjectionCalls, 2, 'scan 取消补偿必须重新注入恢复后的状态');
+    assert.equal(scanInjectionCalls, 3, '标签提交、scan 提交和取消补偿必须按顺序完成');
     assert.equal(statusNode.textContent, beforeScanStatus);
     assert.equal(container.innerHTML, beforeScanHtml);
 
@@ -1317,13 +1236,15 @@ try {
         }
         return { written: 1, failedWrites: 0, cleared: 1, failedKeys: [] };
     };
-    gatherImpl = async () => ({ mainChatText: `<${dateTag}> 注入诊断失败`, worldBookText: '' });
+    gatherImpl = async () => ({
+        latestChatText: `注入诊断日期 ${currentDates[5]}`, latestChatIsUser: false, mainChatText: '', worldBookText: '',
+    });
     const beforeDiagnosticFailure = structuredClone(deps.getCalendarStore());
     const beforeDiagnosticPersisted = memory.get('ST_SMS_CALENDAR_V1') || null;
     const beforeDiagnosticStatus = statusNode.textContent;
     const beforeDiagnosticHtml = container.innerHTML;
     await assert.rejects(
-        deps.handleCalendarAction(scanButton, app),
+        deps.handleCalendarAction(dateSyncButton, tagsApp),
         error => error?.message === '日历提交注入失败：1 项写入失败，1 项清理失败'
             && error.injectionResult?.failedWrites === 1,
         '注入返回失败诊断时必须把提交视为失败',
@@ -1341,10 +1262,12 @@ try {
         if (compensationFailureCalls === 1) return { written: 0, failedWrites: 2, cleared: 1, failedKeys: [] };
         return { written: 1, failedWrites: 0, cleared: 0, failedKeys: ['PHONE_SMS_MEMORY:calendar:story-a'] };
     };
-    gatherImpl = async () => ({ mainChatText: `<${dateTag}> 补偿诊断失败`, worldBookText: '' });
+    gatherImpl = async () => ({
+        latestChatText: `补偿诊断日期 ${currentDates[5]}`, latestChatIsUser: false, mainChatText: '', worldBookText: '',
+    });
     const beforeCompensationFailure = structuredClone(deps.getCalendarStore());
     const beforeCompensationPersisted = memory.get('ST_SMS_CALENDAR_V1') || null;
-    await assert.rejects(deps.handleCalendarAction(scanButton, app), error => {
+    await assert.rejects(deps.handleCalendarAction(dateSyncButton, tagsApp), error => {
         assert.equal(error?.calendarRollbackError, true);
         assert.equal(error?.cause?.injectionResult?.failedWrites, 2);
         assert.deepEqual(error?.rollbackError?.injectionResult?.failedKeys, ['PHONE_SMS_MEMORY:calendar:story-a']);

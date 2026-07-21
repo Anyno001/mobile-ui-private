@@ -164,17 +164,37 @@ export function createCommunityTaskController({ runtime, isAllowed, isTargetActi
     };
     return { state, cancel, isActive, setMode, baseline, begin, markGenerating, finish, observe, consumeReminder };
 }
+
+export async function runLiveWarmup({
+    target, isStarted, isActive, setStarted, generateFeed, render, isCurrent,
+}) {
+    if (!target || typeof isStarted !== 'function' || typeof isActive !== 'function'
+        || typeof setStarted !== 'function' || typeof generateFeed !== 'function'
+        || typeof render !== 'function' || typeof isCurrent !== 'function') {
+        throw new TypeError('直播热场依赖无效');
+    }
+    if (isStarted() || isActive()) return false;
+    await setStarted(true);
+    const generation = generateFeed(null, { renderTab: 'live', taskKind: 'live-warmup' });
+    render();
+    try {
+        await generation;
+        return true;
+    } catch (error) {
+        await setStarted(false);
+        if (isCurrent()) render();
+        throw error;
+    }
+}
+
 export function createCommunityGenerationRunner({
-    controller, getTarget, request, commitFeed, commitDanmaku,
+    controller, getTarget, request, commitFeed,
     onRender = () => {}, onStatus = () => {},
-    setTimer = callback => setInterval(callback, 2200), clearTimer = timer => clearInterval(timer),
 }) {
     if (!controller || typeof getTarget !== 'function' || typeof request !== 'function'
-        || typeof commitFeed !== 'function' || typeof commitDanmaku !== 'function') {
+        || typeof commitFeed !== 'function') {
         throw new TypeError('社区生成调度器依赖无效');
     }
-    let liveTimer = null;
-    let liveTask = null;
     const targetOf = task => ({ storageId: task.storageId, sceneId: task.sceneId });
     const begin = kind => {
         const target = getTarget();
@@ -185,19 +205,11 @@ export function createCommunityGenerationRunner({
             onStatus(error ? generationErrorMessage(error) : '社区生成失败');
         }
     };
-    const stopLiveTimer = (task = null) => {
-        if (task && liveTask !== task) return false;
-        if (liveTimer !== null) clearTimer(liveTimer);
-        liveTimer = null;
-        liveTask = null;
-        return true;
-    };
     const cancel = (reason = 'community-generation-cancelled', resetObservation = false) => {
-        stopLiveTimer();
         return controller.cancel(reason, resetObservation);
     };
-    const generateFeed = async (scheduledTask = null) => {
-        const task = scheduledTask || begin('manual-feed');
+    const generateFeed = async (scheduledTask = null, { renderTab = 'feed', taskKind = 'manual-feed' } = {}) => {
+        const task = scheduledTask || begin(taskKind);
         if (!task) throw new Error('已有社区生成任务正在进行');
         if (!controller.markGenerating(task)) return false;
         const target = targetOf(task);
@@ -208,7 +220,7 @@ export function createCommunityGenerationRunner({
             await commitFeed(target, items, () => controller.isActive(task));
             if (!controller.isActive(task)) throw new Error('生成已取消');
             controller.finish(task);
-            onRender('feed');
+            onRender(renderTab);
             return true;
         } catch (error) {
             reportFailure(task, error);
@@ -222,61 +234,5 @@ export function createCommunityGenerationRunner({
         else if (controller.state().reminder && target) onStatus('正文有新进展，可以生成一批热场内容');
         return task;
     };
-    const startLive = async () => {
-        const task = begin('live');
-        if (!task) throw new Error('已有社区生成任务正在进行');
-        const target = targetOf(task);
-        try {
-            const queue = await request('live_batch', {}, target);
-            if (!controller.isActive(task)) throw new Error('生成已取消');
-            let cursor = 0;
-            let ticking = false;
-            const pushNext = async () => {
-                if (ticking || liveTask !== task || !controller.isActive(task)) return;
-                if (cursor >= queue.length) {
-                    stopLiveTimer(task);
-                    controller.finish(task);
-                    onRender('live');
-                    return;
-                }
-                ticking = true;
-                try {
-                    await commitDanmaku(target, [queue[cursor++]], () => controller.isActive(task));
-                    if (controller.isActive(task)) onRender('live');
-                } catch (error) {
-                    stopLiveTimer(task);
-                    reportFailure(task, error);
-                } finally {
-                    ticking = false;
-                }
-            };
-            liveTask = task;
-            liveTimer = setTimer(pushNext);
-            await pushNext();
-            return true;
-        } catch (error) {
-            reportFailure(task, error);
-            throw error;
-        }
-    };
-    const leadRhythm = async slogan => {
-        const task = begin('rhythm');
-        if (!task) throw new Error('已有社区生成任务正在进行');
-        const target = targetOf(task);
-        try {
-            const items = await request('rhythm_batch', { userContent: slogan }, target);
-            if (!controller.isActive(task)) throw new Error('生成已取消');
-            await commitDanmaku(target, items, () => controller.isActive(task), slogan);
-            controller.finish(task);
-            onRender('live');
-            return true;
-        } catch (error) {
-            reportFailure(task, error);
-            throw error;
-        }
-    };
-    return {
-        cancel, generateFeed, observe, startLive, leadRhythm,
-        isLive: () => controller.state().task?.kind === 'live',
-    };
+    return { cancel, generateFeed, observe };
 }

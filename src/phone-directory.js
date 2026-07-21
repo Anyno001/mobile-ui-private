@@ -135,9 +135,9 @@ export function installPhoneDirectory(state, deps) {
         }
 
         const emojiCheckHtml = mode === 'edit' && window.__pmEmojis.length ? `
-        <div style="padding-top:12px;border-top:1px solid #f0f0f0;">
+        <div style="padding-top:12px;border-top:1px solid var(--pm-color-border-subtle);">
             <div class="pm-cfg-label" style="margin-bottom:8px;">允许 AI 使用的表情包套组</div>
-            <div style="display:flex;flex-direction:column;gap:10px;max-height:120px;overflow-y:auto;background:#fafafa;border-radius:8px;padding:10px;border:1px solid #eee;">
+            <div style="display:flex;flex-direction:column;gap:10px;max-height:120px;overflow-y:auto;background:var(--pm-color-surface-elevated);border-radius:8px;padding:10px;border:1px solid var(--pm-color-border-subtle);">
                 ${window.__pmEmojis.map(set => `
                     <div style="display:flex;align-items:center;gap:10px;cursor:pointer;"
                          onclick="this.querySelector('.pm-emoji-assign-check').click()">
@@ -147,14 +147,14 @@ export function installPhoneDirectory(state, deps) {
                              onclick="event.stopPropagation();this.classList.toggle('is-checked');this.setAttribute('aria-checked',String(this.classList.contains('is-checked')))"
                              onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();this.click()}"
                              style="width:20px;height:20px;min-width:20px;flex-shrink:0;margin-bottom:0;"></div>
-                        <span style="font-size:13px;color:#333;">${escapeHtml(set.name)}</span>
-                        <span style="color:#aaa;font-size:11px;margin-left:auto;">(${set.images.length}张)</span>
+                        <span style="font-size:13px;color:var(--pm-color-text-primary);">${escapeHtml(set.name)}</span>
+                        <span style="color:var(--pm-color-text-tertiary);font-size:11px;margin-left:auto;">(${set.images.length}张)</span>
                     </div>
                 `).join('')}
             </div>
         </div>` : '';
         const memberColorHtml = mode === 'edit' ? `
-        <div style="padding-top:12px;border-top:1px solid #f0f0f0;">
+        <div style="padding-top:12px;border-top:1px solid var(--pm-color-border-subtle);">
           <div class="pm-cfg-label" style="margin-bottom:8px;">成员气泡颜色</div>
           <div style="display:grid;grid-template-columns:1fr auto;gap:8px 12px;align-items:center;">
             ${groupMeta.members.map((name, index) => `<label style="display:contents;"><span style="font-size:12px;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(name)}</span><input class="pm-group-member-color" data-member="${escapeAttr(name)}" type="color" value="${escapeAttr(groupMeta.memberColors[name] || GROUP_COLORS[index % GROUP_COLORS.length].bg)}"></label>`).join('')}
@@ -162,7 +162,7 @@ export function installPhoneDirectory(state, deps) {
         </div>` : '';
         const injection = groupMeta.injection;
         const injectionHtml = mode === 'edit' ? `
-        <div style="padding-top:12px;border-top:1px solid #f0f0f0;display:flex;flex-direction:column;gap:8px;">
+        <div style="padding-top:12px;border-top:1px solid var(--pm-color-border-subtle);display:flex;flex-direction:column;gap:8px;">
           <div class="pm-cfg-label">群聊记录注入</div>
           <label style="font-size:12px;">位置
             <select id="pm-group-injection-position" class="pm-cfg-input">
@@ -192,7 +192,7 @@ export function installPhoneDirectory(state, deps) {
         ${memberColorHtml}
         ${injectionHtml}
         ${emojiCheckHtml}
-        <div style="margin-top:0px;padding-top:8px;border-top:1px solid #f0f0f0;">
+        <div style="margin-top:0px;padding-top:8px;border-top:1px solid var(--pm-color-border-subtle);">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
             <span style="font-size:13px;font-weight:600;">⏰ 自动发消息</span>
             <div onclick="window.__pmToggleAutoPokeGroup()"
@@ -204,14 +204,14 @@ export function installPhoneDirectory(state, deps) {
             </div>
         </div>
         <div style="display:flex;align-items:center;gap:8px;">
-            <span style="font-size:12px;color:#888;">每隔</span>
+            <span style="font-size:12px;color:var(--pm-color-text-tertiary);">每隔</span>
             <input id="pm-poke-interval-group" type="number" min="1" max="99"
                 value="${pokeConfig.interval}"
-                style="width:50px;border:1px solid #ddd;border-radius:6px;padding:4px 8px;font-size:13px;text-align:center;"
+                style="width:50px;border:1px solid var(--pm-color-border-default);border-radius:6px;padding:4px 8px;font-size:13px;text-align:center;"
                 ${!pokeConfig.enabled ? 'disabled' : ''}>
-            <span style="font-size:12px;color:#888;">轮无输入主动发消息</span>
+            <span style="font-size:12px;color:var(--pm-color-text-tertiary);">轮无输入主动发消息</span>
         </div>
-        <div style="font-size:11px;color:#999;margin-top:4px;">
+        <div style="font-size:11px;color:var(--pm-color-text-tertiary);margin-top:4px;">
             当前计数：<span id="pm-poke-counter-group">${pokeConfig.counter}</span> / ${pokeConfig.interval}
         </div>
         </div>
@@ -384,7 +384,7 @@ export function installPhoneDirectory(state, deps) {
     </div>
     <div class="pm-bi-bar"><span>勾选会话可注入主楼；群聊资源参数在群聊设置中配置</span><span class="pm-bi-tip">已选 ${checked.length}</span></div>
     <div class="pm-modal-list">
-        ${empty ? '<div style="text-align:center;color:#999;padding:20px;font-size:13px;">暂无联系人</div>' : (renderGroups + renderSingle)}
+        ${empty ? '<div style="text-align:center;color:var(--pm-color-text-tertiary);padding:20px;font-size:13px;">暂无联系人</div>' : (renderGroups + renderSingle)}
     </div>
     <div class="pm-modal-add">
         <button onclick="window.__pmShowGroupCreate()" class="pm-btn-group">新建群聊</button>

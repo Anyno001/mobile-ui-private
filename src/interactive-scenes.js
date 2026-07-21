@@ -13,21 +13,16 @@ import {
     persistCurrentPhoneUiSnapshot, resolvePhoneChatTarget, runDeleteSceneAction, runDesktopPageTransition,
     selectScenePreset, toggleSceneMenu, toggleScenePostActions, toggleSceneReplyComposer,
 } from './interactive-scene-phone.js';
-import {
-    createCommunityGenerationRunner, createCommunityTaskController,
-} from './interactive-scene-scheduler.js';
+import { createCommunityGenerationRunner, createCommunityTaskController, runLiveWarmup } from './interactive-scene-scheduler.js';
 import {
     renderCommunityLauncher as renderCommunityLauncherView,
     renderCommunityWorkspace as renderCommunityWorkspaceView, renderPhoneDesktop,
 } from './interactive-scene-views.js';
-
 export { renderPhoneDesktop } from './interactive-scene-views.js';
 export { resolvePhoneChatTarget, runDesktopPageTransition } from './interactive-scene-phone.js';
-
 const uid = prefix => `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
 const now = () => Date.now();
 const cloneStore = store => normalizeInteractiveStore(JSON.parse(JSON.stringify(store)));
-
 export async function migrateInteractiveStore(rawStore, saveStore) {
     const persistedCompatibility = stripPersistedV2ContentRating(rawStore);
     const normalized = normalizeInteractiveStore(persistedCompatibility.store);
@@ -312,14 +307,17 @@ export function installInteractiveScenes(_state, deps) {
         return renderInto('.pm-community-page', renderCommunityLauncherView(scope, phoneScope(scopeId, store)));
     }
 
+    const isLiveWarmupActive = (scopeId, sceneId) => communityTasks.state().task?.kind === 'live-warmup'
+        && communityTasks.state().task.storageId === scopeId && communityTasks.state().task.sceneId === sceneId;
+
     function renderCommunityWorkspace(scopeId, sceneId, tab, store = runtime.store) {
         const scope = getScope(store, scopeId);
         const scene = scope.scenes[sceneId];
         if (!scene) return false;
         runtime.openSceneId = sceneId;
         return renderInto('.pm-community-page', renderCommunityWorkspaceView(scene, tab, phoneScope(scopeId, store), {
-            liveActive: communityRunner?.isLive() === true,
             autoActive: communityTasks.state().mode === 'auto',
+            liveActive: isLiveWarmupActive(scopeId, sceneId),
             ...getCommunityInjectionState(window.__pmBudgetConfig, scopeId, sceneId),
         }));
     }
@@ -345,7 +343,6 @@ export function installInteractiveScenes(_state, deps) {
                 .filter(actor => actor.type === 'story')
                 .map(actor => actor.displayName), currentStorySeed.displayName]
                 .filter((name, index, values) => name && values.indexOf(name) === index);
-            if (kind === 'live_batch' && !extra.userContent) extra = { ...extra, userContent: scene.live.title };
             const prompts = buildInteractiveRequest({ kind, presetKey: scene.preset, styleInput: scene.styleInput, generatedPrompt: scene.generatedPrompt, context: await contextText(), actorRoster, ...extra });
             const raw = await callAI(prompts.systemPrompt, prompts.userPrompt, {
                 isolated: true,
@@ -374,8 +371,8 @@ export function installInteractiveScenes(_state, deps) {
         if (!scene) return;
         const feedScrollTop = preserveFeedScroll ? document.querySelector('#pm-scene-app .pm-scene-feed')?.scrollTop : null;
         replaceApp(renderCommunityWorkspaceView(scene, tab, phoneScope(scopeId), {
-            liveActive: communityRunner?.isLive() === true,
             autoActive: communityTasks.state().mode === 'auto',
+            liveActive: isLiveWarmupActive(scopeId, scene.id),
             ...getCommunityInjectionState(window.__pmBudgetConfig, scopeId, scene.id),
         }), { feedScrollTop });
     }
@@ -470,13 +467,6 @@ export function installInteractiveScenes(_state, deps) {
             const { scopeId, scope, scene } = resolveTarget(target);
             if (!scene) throw new Error('生成已取消');
             appendPosts(scopeId, scope, scene, items);
-        }, isValid),
-        commitDanmaku: (target, items, isValid, slogan = '') => commit(() => {
-            const { scopeId, scope, scene } = resolveTarget(target);
-            if (!scene) throw new Error('生成已取消');
-            const userSeed = actorSeeds(scopeId).user;
-            appendDanmaku(scopeId, scope, scene, slogan
-                ? [{ author: userSeed.displayName, authorSeed: userSeed, content: slogan }, ...items] : items);
         }, isValid),
         onRender: rerender, onStatus: setStatus,
     });
@@ -616,6 +606,26 @@ export function installInteractiveScenes(_state, deps) {
             rerender('feed'); return;
         }
         if (action === 'poke-scene') { await communityRunner.generateFeed(); return; }
+        if (action === 'start-warmup') {
+            const { scopeId, scene } = current();
+            if (!scene) return;
+            const target = { storageId: scopeId, sceneId: scene.id };
+            await runLiveWarmup({
+                target,
+                isStarted: () => resolveTarget(target).scene?.live.warmupStarted === true,
+                isActive: () => isLiveWarmupActive(scopeId, scene.id),
+                setStarted: started => commit(() => {
+                    const targetScene = resolveTarget(target).scene;
+                    if (!targetScene) throw new Error('社区不存在或已被删除');
+                    targetScene.live.warmupStarted = started;
+                    targetScene.updatedAt = now();
+                }),
+                generateFeed: communityRunner.generateFeed,
+                render: () => rerender('live'),
+                isCurrent: () => current().scene?.id === target.sceneId,
+            });
+            return;
+        }
         if (action === 'comments') { await generateComments(button.dataset.postId); return; }
         if (action === 'post-comment') {
             const composer = button.closest?.('.pm-scene-comment-composer');
@@ -683,11 +693,6 @@ export function installInteractiveScenes(_state, deps) {
             rerender('prompt'); return;
         }
         if (action === 'regenerate-prompt') { await regeneratePrompt(); return; }
-        if (action === 'toggle-live') {
-            if (communityRunner.isLive()) { communityRunner.cancel('live-stopped'); rerender('live'); }
-            else await communityRunner.startLive();
-            return;
-        }
         if (action === 'send-danmaku') {
             const input = document.getElementById('pm-danmaku-input');
             const content = input?.value.trim() || '';
@@ -698,10 +703,6 @@ export function installInteractiveScenes(_state, deps) {
                 appendDanmaku(scopeId, scope, scene, [{ author: userSeed.displayName, authorSeed: userSeed, content }]);
             });
             rerender('live'); return;
-        }
-        if (action === 'rhythm') {
-            const slogan = document.getElementById('pm-danmaku-input')?.value.trim() || '跟上这个话题';
-            await communityRunner.leadRhythm(slogan);
         }
     }
 

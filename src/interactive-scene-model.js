@@ -113,9 +113,10 @@ const assertV1Scene = (raw, label) => {
     if (!Object.hasOwn(raw, 'live')) return;
     const liveLabel = `${label}.live`;
     const live = raw.live;
-    assertV1Keys(live, ['title', 'status', 'danmaku'], liveLabel);
+    assertV1Keys(live, ['title', 'status', 'warmupStarted', 'danmaku'], liveLabel);
     assertV1OptionalText(live, 'title', liveLabel);
     if (Object.hasOwn(live, 'status') && live.status !== 'idle') throw new Error(`互动场景 v1 ${liveLabel}.status 必须是 idle`);
+    if (Object.hasOwn(live, 'warmupStarted') && typeof live.warmupStarted !== 'boolean') throw new Error(`互动场景 v1 ${liveLabel}.warmupStarted 必须是布尔值`);
     const danmaku = assertV1OptionalArray(live, 'danmaku', liveLabel, INTERACTIVE_LIMITS.danmaku);
     danmaku.forEach((item, index) => assertV1Item(item, 'danmaku', `${liveLabel}.danmaku.${index}`));
 };
@@ -461,7 +462,7 @@ export function normalizeScene(raw, options = {}) {
     const strictLegacy = sourceVersion === 1 && options.strictLegacy === true;
     if (sourceVersion === INTERACTIVE_STORE_VERSION) {
         assertV2Keys(raw, ['id', 'title', 'preset', 'styleInput', 'generatedPrompt', 'themeAccent', 'createdAt', 'updatedAt', 'posts', 'live'], 'scene');
-        if (raw?.live !== undefined) assertV2Keys(raw.live, ['title', 'status', 'danmaku'], 'live');
+        if (raw?.live !== undefined) assertV2Keys(raw.live, ['title', 'status', 'warmupStarted', 'danmaku'], 'live');
         assertV2Text(raw.id, 80, 'scene.id');
         assertV2Text(raw.title, 80, 'scene.title');
         assertV2Text(raw.preset, 30, 'scene.preset');
@@ -476,8 +477,9 @@ export function normalizeScene(raw, options = {}) {
         assertV2Timestamp(raw.createdAt, 'scene.createdAt'); assertV2Timestamp(raw.updatedAt, 'scene.updatedAt');
         assertV2List(raw.posts, 'scene.posts');
         if (raw.posts.length > INTERACTIVE_LIMITS.posts) throw new Error(`互动场景 v2 scene.posts 不能超过 ${INTERACTIVE_LIMITS.posts} 项`);
-        assertV2Text(raw.live.title, 100, 'live.title');
+        assertV2Text(raw.live.title, 100, 'live.title', { allowEmpty: true });
         if (raw.live.status !== 'idle') throw new Error('互动场景 v2 live.status 必须是 idle');
+        if (Object.hasOwn(raw.live, 'warmupStarted') && typeof raw.live.warmupStarted !== 'boolean') throw new Error('互动场景 v2 live.warmupStarted 必须是布尔值');
         assertV2List(raw.live.danmaku, 'live.danmaku');
         if (raw.live.danmaku.length > INTERACTIVE_LIMITS.danmaku) throw new Error(`互动场景 v2 live.danmaku 不能超过 ${INTERACTIVE_LIMITS.danmaku} 项`);
     } else if (strictLegacy) {
@@ -498,8 +500,9 @@ export function normalizeScene(raw, options = {}) {
             scope, scopeId, sourceVersion, strictLegacy, path: `scenes.${sceneId}.posts.${index}`,
         })).filter(Boolean).slice(-INTERACTIVE_LIMITS.posts),
         live: {
-            title: text(raw?.live?.title, 100) || '正在直播',
+            title: text(raw?.live?.title, 100),
             status: 'idle',
+            warmupStarted: raw?.live?.warmupStarted === true,
             danmaku: list(raw?.live?.danmaku).map((item, index) => normalizeDanmaku(item, {
                 scope, scopeId, sourceVersion, strictLegacy, path: `scenes.${sceneId}.live.danmaku.${index}`,
             })).filter(Boolean).slice(-INTERACTIVE_LIMITS.danmaku),

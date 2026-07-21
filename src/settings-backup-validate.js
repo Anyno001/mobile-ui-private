@@ -195,13 +195,14 @@ const assertInteractiveBackupStore = value => {
             }
             if (Object.hasOwn(scene, 'live')) {
                 const live = objectValue(scene.live, `${field}.scenes.${sceneId}.live`);
-                assertAllowedKeys(live, `${field}.scenes.${sceneId}.live`, ['title', 'status', 'danmaku']);
+                assertAllowedKeys(live, `${field}.scenes.${sceneId}.live`, ['title', 'status', 'warmupStarted', 'danmaku']);
                 if (sourceVersion === INTERACTIVE_STORE_VERSION) {
                     assertOptionalNormalizedText(live, 'title', `${field}.scenes.${sceneId}.live`, 100);
                 } else {
                     assertOptionalLegacyText(live, 'title', `${field}.scenes.${sceneId}.live`);
                 }
                 if (Object.hasOwn(live, 'status') && live.status !== 'idle') throw new Error(`备份字段 ${field}.scenes.${sceneId}.live.status 必须是 idle`);
+                if (Object.hasOwn(live, 'warmupStarted') && typeof live.warmupStarted !== 'boolean') throw new Error(`备份字段 ${field}.scenes.${sceneId}.live.warmupStarted 必须是布尔值`);
                 if (Object.hasOwn(live, 'danmaku')) {
                     if (!Array.isArray(live.danmaku)) throw new Error(`备份字段 ${field}.scenes.${sceneId}.live.danmaku 必须是数组`);
                     if (live.danmaku.length > INTERACTIVE_LIMITS.danmaku) throw new Error(`备份字段 ${field}.scenes.${sceneId}.live.danmaku 不能超过 ${INTERACTIVE_LIMITS.danmaku} 项`);

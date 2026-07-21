@@ -539,6 +539,20 @@ ${userPrompt}` : userPrompt;
     date.setDate(date.getDate() + offset);
     return date.getFullYear() < CALENDAR_YEAR_RANGE.min || date.getFullYear() > CALENDAR_YEAR_RANGE.max ? null : formatCalendarDate(date);
   }
+  var hasExplicitCalendarYear = (value) => /(?:\d{4}|[零〇一二三四五六七八九]{4})\s*年/.test(value) || /(?:^|\D)\d{4}[\s./-]+\d{1,2}[\s./-]+\d{1,2}(?:\D|$)/.test(value);
+  function extractCalendarBaseDate(text3, dateTags = DEFAULT_CALENDAR_DATE_TAGS) {
+    const source = String(text3 ?? "").trim();
+    if (!source) return null;
+    const reference = /* @__PURE__ */ new Date();
+    for (const content of extractCalendarDateTagContents(source, dateTags)) {
+      if (!hasExplicitCalendarYear(content)) continue;
+      const date = dateFromNaturalText(content, reference);
+      if (date) return date;
+    }
+    const legacyTag = source.match(/<\s*(\d{4})[\s年./-]+(\d{1,2})[\s月./-]+(\d{1,2})\s*日?\s*>/);
+    if (legacyTag) return calendarDateFromParts(Number(legacyTag[1]), Number(legacyTag[2]), Number(legacyTag[3]));
+    return hasExplicitCalendarYear(source) ? dateFromNaturalText(source, reference) : null;
+  }
   function extractCalendarDate(text3, now2 = /* @__PURE__ */ new Date(), dateTags = DEFAULT_CALENDAR_DATE_TAGS) {
     const source = String(text3 ?? "").trim();
     const reference = now2 instanceof Date && Number.isFinite(now2.getTime()) ? now2 : /* @__PURE__ */ new Date();
@@ -567,18 +581,6 @@ ${userPrompt}` : userPrompt;
     if (!start || !target) return null;
     const offset = Math.round((target.getTime() - start.getTime()) / 864e5);
     return relativeLabels[offset] || null;
-  }
-  function parseCalendarInput(input, now2 = /* @__PURE__ */ new Date(), dateTags = DEFAULT_CALENDAR_DATE_TAGS) {
-    const source = String(input ?? "").trim();
-    const date = extractCalendarDate(source, now2, dateTags);
-    if (!date) return { ok: false, reason: "\u672A\u8BC6\u522B\u5230\u65E5\u671F\uFF0C\u8BF7\u4F7F\u7528 YYYY MM DD \u6216 <YYYY MM DD><\u65E5\u7A0B>\u3002" };
-    const configuredDates = new Set(extractCalendarDateTagContents(source, dateTags));
-    const tagParts = [...source.matchAll(/<\s*([^<>]+?)\s*>/g)].map((match) => match[1].trim());
-    const dateTagIndex = tagParts.findIndex((part) => extractCalendarDate(`<${part}>`, now2, dateTags) === date);
-    const taggedTitle = dateTagIndex >= 0 ? tagParts[dateTagIndex + 1] : "";
-    const stripped = source.replace(taggedDatePattern, (match) => configuredDates.size ? " " : match).replace(/<\s*[^<>]+?\s*>/g, " ").replace(/\d{4}[\s年./-]+\d{1,2}[\s月./-]+\d{1,2}\s*日?/g, " ").replace(new RegExp(`(?:${dateNumberToken}\\s*\u5E74\\s*)?${dateNumberToken}\\s*\u6708\\s*${dateNumberToken}\\s*[\u65E5\u53F7]`, "g"), " ").replace(/大前天|前天|昨天|今天|今日|明天|明日|大后天|后天|[一二三四五六1-6]\s*天后/g, " ").replace(/\s+/g, " ").trim();
-    const title = cleanText(taggedTitle || stripped, CALENDAR_LIMITS.title);
-    return title ? { ok: true, event: { date, title, note: "", source: "manual" } } : { ok: false, reason: "\u5DF2\u8BC6\u522B\u65E5\u671F\uFF0C\u4F46\u65E5\u7A0B\u6807\u9898\u4E3A\u7A7A\u3002" };
   }
   function extractContextCalendarEvents(text3, now2 = /* @__PURE__ */ new Date(), dateTags = DEFAULT_CALENDAR_DATE_TAGS) {
     const lines = String(text3 ?? "").split(/\r?\n|[。！？]/).map((line) => line.trim()).filter(Boolean);
@@ -1620,6 +1622,7 @@ ${userPrompt}` : userPrompt;
   var COMMUNITY_ICON_SVG = icon('<path d="M4 19V8l8-4 8 4v11"/><path d="M8 19v-6h8v6M8 9h.01M12 9h.01M16 9h.01"/>');
   var FEED_ICON_SVG = icon('<path d="M5 5h14v14H5z"/><path d="M8 9h8M8 12h8M8 15h5"/>');
   var LIVE_ICON_SVG = icon('<rect x="3" y="6" width="14" height="12" rx="2"/><path d="M17 10l4-2v8l-4-2z"/><circle cx="8" cy="12" r="1" fill="currentColor" stroke="none"/>');
+  var PLAY_ICON_SVG = icon('<path d="M8 5l11 7-11 7z"/>');
   var CALENDAR_ICON_SVG = icon('<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18M8 14h.01M12 14h.01M16 14h.01M8 18h.01M12 18h.01"/>');
   var WEATHER_ICON_SVG = icon('<path d="M7 17h10a4 4 0 0 0 .5-8A6 6 0 0 0 6.2 10.5 3.5 3.5 0 0 0 7 17z"/><path d="M8 21l1-2M12 21l1-2M16 21l1-2"/>');
   var CYCLE_ICON_SVG = icon('<path d="M12 20c-4.6-2.8-7-6-7-9.2A4.8 4.8 0 0 1 12 6a4.8 4.8 0 0 1 7 4.8c0 3.2-2.4 6.4-7 9.2z"/><path d="M12 6c-1-1.8-2.5-2.8-4.2-3M12 6c1-1.8 2.5-2.8 4.2-3"/>');
@@ -1860,64 +1863,39 @@ ${userPrompt}` : userPrompt;
   }
 
   // src/calendar-dom.js
-  var calendarEditor = (app) => app?.querySelector("[data-calendar-editor]");
-  var calendarOccasionEditor = (app) => app?.querySelector("[data-calendar-occasion-editor]");
-  function revealCalendarEditor(form) {
-    const management = form?.closest?.('[data-calendar-management="schedule"]');
-    if (management) management.open = true;
-    form?.scrollIntoView?.({ block: "nearest" });
-  }
-  function clearCalendarEditor(app) {
-    const form = calendarEditor(app);
-    if (!form) return;
-    form.reset();
-    form.elements.eventId.value = "";
-    form.querySelector("h3").textContent = "\u6DFB\u52A0\u65E5\u7A0B";
-  }
-  function fillCalendarEditor(app, event) {
-    const form = calendarEditor(app);
-    if (!form || !event) return;
-    const [year, month, day] = event.date.split("-");
-    form.elements.year.value = year;
-    form.elements.month.value = month;
-    form.elements.day.value = day;
-    form.elements.title.value = event.title;
-    form.elements.note.value = event.note;
-    form.elements.tagged.value = "";
-    form.elements.eventId.value = event.id;
-    form.querySelector("h3").textContent = "\u7F16\u8F91\u65E5\u7A0B";
-    revealCalendarEditor(form);
-    form.elements.title.focus();
-  }
-  function activateCalendarEditorKind(app, editorKind) {
-    const eventForm = calendarEditor(app);
-    const occasionForm = calendarOccasionEditor(app);
-    if (eventForm) eventForm.hidden = editorKind === "occasion";
-    if (occasionForm) occasionForm.hidden = editorKind !== "occasion";
-    for (const control of app?.querySelectorAll?.('[data-action="calendar-editor-kind"]') || []) {
-      control.setAttribute("aria-pressed", String(control.dataset.editorKind === editorKind));
+  function setCalendarEntryKind(root, kind) {
+    const normalized = kind === "occasion" ? "occasion" : "event";
+    for (const button of root?.querySelectorAll?.("[data-calendar-entry-kind]") || []) {
+      button.setAttribute("aria-pressed", String(button.dataset.calendarEntryKind === normalized));
     }
+    const occasionFields = root?.querySelector?.("[data-calendar-occasion-fields]");
+    if (occasionFields) occasionFields.hidden = normalized !== "occasion";
+    if (root?.dataset) root.dataset.calendarEntryKind = normalized;
+    return normalized;
   }
-  function clearCalendarOccasionEditor(app) {
-    const form = calendarOccasionEditor(app);
-    if (!form) return;
-    form.reset();
-    form.elements.occasionId.value = "";
-    form.querySelector("h3").textContent = "\u6DFB\u52A0\u751F\u65E5\u6216\u7EAA\u5FF5\u65E5";
+  function fillCalendarEntryForm(root, entry2 = null, kind = "event") {
+    const form = root?.querySelector?.("[data-calendar-entry-form]");
+    if (!form) return false;
+    const normalized = setCalendarEntryKind(root, kind);
+    form.elements.title.value = entry2?.title || "";
+    form.elements.note.value = entry2?.note || "";
+    form.elements.occasionType.value = entry2?.type || "anniversary";
+    form.elements.leapDayRule.value = entry2?.leapDayRule || "feb28";
+    const remove = root.querySelector?.("[data-calendar-entry-delete]");
+    if (remove) remove.disabled = !entry2;
+    form.elements.title.focus?.();
+    return normalized;
   }
-  function fillCalendarOccasionEditor(app, occasion, typeLabel) {
-    const form = calendarOccasionEditor(app);
-    if (!form || !occasion) return;
-    form.elements.type.value = occasion.type;
-    form.elements.month.value = String(occasion.month).padStart(2, "0");
-    form.elements.day.value = String(occasion.day).padStart(2, "0");
-    form.elements.title.value = occasion.title;
-    form.elements.note.value = occasion.note;
-    form.elements.leapDayRule.value = occasion.leapDayRule;
-    form.elements.occasionId.value = occasion.id;
-    form.querySelector("h3").textContent = `\u7F16\u8F91${typeLabel}`;
-    revealCalendarEditor(form);
-    form.elements.title.focus();
+  function readCalendarEntryForm(root) {
+    const form = root?.querySelector?.("[data-calendar-entry-form]");
+    if (!form) throw new Error("\u5B89\u6392\u7F16\u8F91\u5668\u4E0D\u53EF\u7528");
+    return {
+      kind: root.dataset?.calendarEntryKind === "occasion" ? "occasion" : "event",
+      title: form.elements.title.value.trim(),
+      note: form.elements.note.value,
+      type: form.elements.occasionType.value,
+      leapDayRule: form.elements.leapDayRule.value
+    };
   }
 
   // src/ui.js
@@ -1945,18 +1923,17 @@ ${userPrompt}` : userPrompt;
   }
 
   // src/calendar-view.js
-  var detailDate = new Intl.DateTimeFormat("zh-CN", { month: "long", day: "numeric", weekday: "short" });
+  var detailDate = new Intl.DateTimeFormat("zh-CN", { month: "long", day: "numeric" });
+  var detailWeekday = new Intl.DateTimeFormat("zh-CN", { weekday: "long" });
   var CYCLE_LABELS = { period: "\u7ECF\u671F", follicular: "\u5B89\u5168\u671F", ovulatory: "\u6613\u5B55\u671F", luteal: "\u5B89\u5168\u671F" };
   var occasionTypeLabel = (type) => type === "birthday" ? "\u751F\u65E5" : "\u7EAA\u5FF5\u65E5";
   function eventRows(scope, occasionsByDate, date) {
     const events = scope.events[date] || [];
     const occasionRows = (occasionsByDate.get(date) || []).map((occasion) => `<article class="pm-calendar-event is-occasion" data-occasion-id="${escapeAttr(occasion.id)}">
         <div><b>${escapeHtml(occasion.title)}</b><span>${occasionTypeLabel(occasion.type)}${occasion.leapAdjusted ? "\uFF08\u95F0\u65E5\u987A\u5EF6\uFF09" : ""}${occasion.note ? ` \xB7 ${escapeHtml(occasion.note)}` : ""}</span></div>
-        <div class="pm-calendar-event-actions"><button type="button" data-action="calendar-occasion-edit" data-occasion-id="${escapeAttr(occasion.id)}" aria-label="\u7F16\u8F91 ${escapeAttr(occasion.title)}" title="\u7F16\u8F91">${EDIT_ICON_SVG}</button><button type="button" data-action="calendar-occasion-delete" data-occasion-id="${escapeAttr(occasion.id)}" aria-label="\u5220\u9664 ${escapeAttr(occasion.title)}">${TRASH_ICON_SVG}</button></div>
     </article>`);
     const eventItems = events.map((event) => `<article class="pm-calendar-event" data-event-id="${escapeAttr(event.id)}">
         <div><b>${escapeHtml(event.title)}</b>${event.note ? `<span>${escapeHtml(event.note)}</span>` : ""}</div>
-        <div class="pm-calendar-event-actions"><button type="button" data-action="calendar-edit" data-event-id="${escapeAttr(event.id)}" aria-label="\u7F16\u8F91 ${escapeAttr(event.title)}" title="\u7F16\u8F91">${EDIT_ICON_SVG}</button><button type="button" data-action="calendar-delete" data-event-id="${escapeAttr(event.id)}" aria-label="\u5220\u9664 ${escapeAttr(event.title)}">${TRASH_ICON_SVG}</button></div>
     </article>`);
     return [...occasionRows, ...eventItems].join("");
   }
@@ -1979,19 +1956,17 @@ ${userPrompt}` : userPrompt;
   }
   function renderSelectedDateDetail(scope, occasionsByDate, holidayCache, weatherStore, cycleScope, selectedDate, viewMode, relativeLabel = "") {
     const parsed = parseCalendarDate(selectedDate);
+    const entries = [...scope.events[selectedDate] || [], ...occasionsByDate.get(selectedDate) || []];
     const content = viewMode === "weather" ? weatherRow(weatherStore, selectedDate) : viewMode === "cycle" ? cycleRow(cycleScope, selectedDate) : `${holidayRows(holidayCache, selectedDate)}${eventRows(scope, occasionsByDate, selectedDate)}`;
     const emptyLabel = viewMode === "weather" ? "\u8FD9\u4E00\u5929\u6CA1\u6709\u5929\u6C14\u6570\u636E" : viewMode === "cycle" ? "\u8FD9\u4E00\u5929\u6CA1\u6709\u751F\u7406\u671F\u63D0\u793A" : "\u8FD9\u4E00\u5929\u8FD8\u6CA1\u6709\u5B89\u6392";
+    const actions = viewMode === "schedule" ? `<div class="pm-calendar-detail-actions">
+        <button type="button" class="pm-calendar-detail-more" data-action="calendar-detail-menu" aria-label="\u7BA1\u7406\u8FD9\u4E00\u5929" title="\u7BA1\u7406\u8FD9\u4E00\u5929" aria-expanded="false" aria-controls="pm-calendar-detail-menu">${MORE_ICON_SVG}</button>
+        <span id="pm-calendar-detail-menu" class="pm-calendar-detail-menu" hidden><button type="button" data-action="calendar-manage-date" aria-label="\u6DFB\u52A0\u6216\u7F16\u8F91\u5B89\u6392" title="\u6DFB\u52A0\u6216\u7F16\u8F91\u5B89\u6392">${EDIT_ICON_SVG}</button><button type="button" class="is-danger" data-action="calendar-delete-date" aria-label="\u5220\u9664\u5B89\u6392" title="\u5220\u9664\u5B89\u6392" ${entries.length ? "" : 'disabled aria-disabled="true"'}>${TRASH_ICON_SVG}</button></span>
+    </div>` : "";
     return `<section class="pm-calendar-selected-detail" data-calendar-selected-detail="${selectedDate}" data-calendar-detail-mode="${viewMode}">
-        <header><div>${relativeLabel ? `<span>${escapeHtml(relativeLabel)}</span>` : ""}<time datetime="${selectedDate}">${escapeHtml(detailDate.format(parsed))}</time></div></header>
+        <header><div class="pm-calendar-detail-date">${relativeLabel ? `<strong>${escapeHtml(relativeLabel)}</strong>` : ""}<span><time datetime="${selectedDate}">${escapeHtml(detailDate.format(parsed))}</time><em>${escapeHtml(detailWeekday.format(parsed))}</em></span></div>${actions}</header>
         <div class="pm-calendar-selected-content">${content || `<p class="pm-calendar-empty-day">${emptyLabel}</p>`}</div>
     </section>`;
-  }
-  function occasionList(scope) {
-    if (!scope.occasions.length) return '<p class="pm-calendar-empty-day">\u5C1A\u672A\u6DFB\u52A0\u751F\u65E5\u6216\u7EAA\u5FF5\u65E5</p>';
-    return scope.occasions.map((occasion) => `<article class="pm-calendar-event is-occasion" data-occasion-id="${escapeAttr(occasion.id)}">
-        <div><b>${escapeHtml(occasion.title)}</b><span>${occasion.month}\u6708${occasion.day}\u65E5 \xB7 ${occasionTypeLabel(occasion.type)}${occasion.note ? ` \xB7 ${escapeHtml(occasion.note)}` : ""}</span></div>
-        <div class="pm-calendar-event-actions"><button type="button" data-action="calendar-occasion-edit" data-occasion-id="${escapeAttr(occasion.id)}" aria-label="\u7F16\u8F91 ${escapeAttr(occasion.title)}" title="\u7F16\u8F91">${EDIT_ICON_SVG}</button><button type="button" data-action="calendar-occasion-delete" data-occasion-id="${escapeAttr(occasion.id)}" aria-label="\u5220\u9664 ${escapeAttr(occasion.title)}">${TRASH_ICON_SVG}</button></div>
-    </article>`).join("");
   }
   function weatherSearchResults(results) {
     if (!results.length) return "";
@@ -2001,7 +1976,6 @@ ${userPrompt}` : userPrompt;
   }
   function renderCalendarManagement({
     scope,
-    occasionScope,
     holidayCache,
     weatherStore,
     cycleScope,
@@ -2009,7 +1983,6 @@ ${userPrompt}` : userPrompt;
     viewMode,
     holidayAvailable = true,
     holidayRange = null,
-    editorKind = "event",
     cycleSubjects = [],
     selectedCycleSubject = "__self__"
   }) {
@@ -2027,32 +2000,14 @@ ${userPrompt}` : userPrompt;
           <div class="pm-calendar-editor-actions"><button type="button" data-action="calendar-cycle-clear">\u6E05\u9664\u6240\u9009\u5BF9\u8C61</button><button type="button" class="is-primary" data-action="calendar-cycle-save">\u4FDD\u5B58\u751F\u7406\u671F</button></div>
         </form></div></details>`;
     }
-    const editorSwitch = `<div class="pm-calendar-editor-switch" role="group" aria-label="\u6DFB\u52A0\u5185\u5BB9\u7C7B\u578B"><button type="button" data-action="calendar-editor-kind" data-editor-kind="event" aria-label="\u5207\u6362\u5230\u65E5\u7A0B\u7F16\u8F91\u5668" title="\u65E5\u7A0B" aria-pressed="${editorKind !== "occasion"}">${EVENT_EDITOR_ICON_SVG}</button><button type="button" data-action="calendar-editor-kind" data-editor-kind="occasion" aria-label="\u5207\u6362\u5230\u751F\u65E5\u6216\u7EAA\u5FF5\u65E5\u7F16\u8F91\u5668" title="\u751F\u65E5\u6216\u7EAA\u5FF5\u65E5" aria-pressed="${editorKind === "occasion"}">${OCCASION_EDITOR_ICON_SVG}</button></div>`;
-    return `<details class="pm-calendar-management" data-calendar-management="schedule"><summary>\u5B89\u6392\u7BA1\u7406</summary><div class="pm-calendar-management-content">
-        <section class="pm-calendar-data-tools pm-calendar-scan-card"><h3>\u8BC6\u522B\u6B63\u6587</h3><div class="pm-calendar-tools"><button type="button" data-action="calendar-scan">\u7ACB\u5373\u8BC6\u522B\u6B63\u6587\u65E5\u671F</button><button type="button" data-action="calendar-toggle-auto" aria-pressed="${scope.autoAdjust}">\u56DE\u590D\u540E\u81EA\u52A8\u8BC6\u522B\uFF1A${scope.autoAdjust ? "\u5F00" : "\u5173"}</button></div><div class="pm-calendar-data-row pm-calendar-date-tags-row"><input data-calendar-date-tags value="${escapeAttr((scope.dateTags || ["date"]).join(", "))}" maxlength="160" placeholder="date, time_date" aria-label="\u6B63\u6587\u65E5\u671F\u6807\u7B7E"><button type="button" data-action="calendar-date-tags-save">\u4FDD\u5B58\u6807\u7B7E</button></div></section>
+    return `<details class="pm-calendar-management" data-calendar-management="schedule"><summary>\u65E5\u5386\u8BBE\u7F6E</summary><div class="pm-calendar-management-content">
+        <section class="pm-calendar-data-tools pm-calendar-scan-card"><h3>\u6B63\u6587\u65E5\u671F</h3><p>\u4ECE\u6700\u540E\u4E00\u6761\u6B63\u6587\u8BFB\u53D6\u660E\u786E\u65E5\u671F\uFF0C\u5E76\u5C06\u5B83\u8BBE\u4E3A\u65E5\u5386\u4E2D\u7684\u201C\u4ECA\u5929\u201D\u3002</p><div class="pm-calendar-data-row pm-calendar-date-tags-row"><input data-calendar-date-tags value="${escapeAttr((scope.dateTags || ["date"]).join(", "))}" maxlength="160" placeholder="date, time_date" aria-label="\u6B63\u6587\u65E5\u671F\u6807\u7B7E"><button type="button" data-action="calendar-date-sync">\u4FDD\u5B58\u5E76\u8BC6\u522B</button></div><button type="button" class="pm-calendar-auto-switch" data-action="calendar-toggle-auto" role="switch" aria-checked="${scope.autoAdjust}"><span><b>\u81EA\u52A8\u8BC6\u522B\u6700\u540E\u4E00\u6761\u6B63\u6587</b><small>\u89D2\u8272\u56DE\u590D\u540E\u81EA\u52A8\u6821\u51C6\u4ECA\u5929\u65E5\u671F</small></span><i aria-hidden="true"></i></button></section>
         <section class="pm-calendar-data-tools"><h3>\u8282\u5047\u65E5\u6570\u636E</h3><div class="pm-calendar-data-row pm-calendar-holiday-row"><select data-action="calendar-holiday-country" data-calendar-country aria-label="\u8282\u5047\u65E5\u56FD\u5BB6"><option value="CN" ${holidayCache.selectedCountry === "CN" ? "selected" : ""}>\u4E2D\u56FD</option><option value="US" ${holidayCache.selectedCountry === "US" ? "selected" : ""}>\u7F8E\u56FD</option><option value="JP" ${holidayCache.selectedCountry === "JP" ? "selected" : ""}>\u65E5\u672C</option></select><button type="button" data-action="calendar-holiday-refresh" ${holidayAvailable ? "" : 'disabled aria-disabled="true"'}>\u5237\u65B0\u8282\u5047\u65E5</button></div>${holidayAvailable ? "" : `<small class="pm-calendar-attribution">\u8BE5\u56FD\u5BB6\u5728\u5F53\u524D\u5E74\u4EE3\u65E0\u5916\u90E8\u6570\u636E\u6E90\uFF08\u4EC5\u652F\u6301 ${holidayRange?.min ?? "\u672A\u77E5"}\u2013${holidayRange?.max ?? "\u672A\u77E5"} \u5E74\uFF09</small>`}</section>
-        <div class="pm-calendar-editor-stack">
-        <form class="pm-calendar-editor" data-calendar-editor ${editorKind === "occasion" ? "hidden" : ""}>
-          <div class="pm-calendar-editor-header"><h3>\u6DFB\u52A0\u65E5\u7A0B</h3>${editorSwitch}</div>
-          <div class="pm-calendar-date-fields"><input name="year" inputmode="numeric" maxlength="4" placeholder="YYYY" aria-label="\u5E74"><input name="month" inputmode="numeric" maxlength="2" placeholder="MM" aria-label="\u6708"><input name="day" inputmode="numeric" maxlength="2" placeholder="DD" aria-label="\u65E5"></div>
-          <input name="title" maxlength="120" placeholder="\u65E5\u7A0B\u6807\u9898" aria-label="\u65E5\u7A0B\u6807\u9898">
-          <textarea name="note" maxlength="1000" placeholder="\u5907\u6CE8\uFF08\u53EF\u9009\uFF09" aria-label="\u65E5\u7A0B\u5907\u6CE8"></textarea>
-          <input name="tagged" maxlength="500" placeholder="\u4E5F\u53EF\u8F93\u5165\uFF1A<2027 12 03><\u8D74\u5BB4>" aria-label="\u6807\u7B7E\u683C\u5F0F\u65E5\u7A0B">
-          <input name="eventId" type="hidden">
-          <div class="pm-calendar-editor-actions"><button type="button" data-action="calendar-parse">\u8BC6\u522B\u6807\u7B7E</button><button type="button" data-action="calendar-cancel-edit">\u6E05\u7A7A</button><button type="button" class="is-primary" data-action="calendar-save">\u4FDD\u5B58</button></div>
-        </form>
-        <form class="pm-calendar-editor pm-calendar-occasion-editor" data-calendar-occasion-editor ${editorKind === "occasion" ? "" : "hidden"}>
-          <div class="pm-calendar-editor-header"><h3>\u6DFB\u52A0\u751F\u65E5\u6216\u7EAA\u5FF5\u65E5</h3>${editorSwitch}</div>
-          <select name="type" aria-label="\u7C7B\u578B"><option value="birthday">\u751F\u65E5</option><option value="anniversary">\u7EAA\u5FF5\u65E5</option></select>
-          <div class="pm-calendar-date-fields"><input name="month" inputmode="numeric" maxlength="2" placeholder="MM" aria-label="\u6708"><input name="day" inputmode="numeric" maxlength="2" placeholder="DD" aria-label="\u65E5"></div>
-          <input name="title" maxlength="120" placeholder="\u540D\u79F0\uFF0C\u4F8B\u5982\uFF1A\u5C0F\u6797\u751F\u65E5" aria-label="\u751F\u65E5\u6216\u7EAA\u5FF5\u65E5\u540D\u79F0">
-          <textarea name="note" maxlength="1000" placeholder="\u5907\u6CE8\uFF08\u53EF\u9009\uFF09" aria-label="\u751F\u65E5\u6216\u7EAA\u5FF5\u65E5\u5907\u6CE8"></textarea>
-          <label>2 \u6708 29 \u65E5\u5728\u975E\u95F0\u5E74<select name="leapDayRule"><option value="feb28">\u6309 2 \u6708 28 \u65E5\u663E\u793A</option><option value="mar1">\u6309 3 \u6708 1 \u65E5\u663E\u793A</option><option value="skip">\u8BE5\u5E74\u4E0D\u663E\u793A</option></select></label>
-          <input name="occasionId" type="hidden">
-          <div class="pm-calendar-editor-actions"><button type="button" data-action="calendar-occasion-cancel-edit">\u6E05\u7A7A</button><button type="button" class="is-primary" data-action="calendar-occasion-save">\u4FDD\u5B58</button></div>
-        </form></div>
-        <section class="pm-calendar-occasion-list"><h3>\u5DF2\u4FDD\u5B58\u7684\u751F\u65E5\u4E0E\u7EAA\u5FF5\u65E5</h3>${occasionList(occasionScope)}</section>
     </div></details>`;
+  }
+  function renderCalendarEntryDialog(selectedDate, events = [], occasions = []) {
+    const options = [...events.map((item) => `<option value="event:${escapeAttr(item.id)}">\u65E5\u7A0B \xB7 ${escapeHtml(item.title)}</option>`), ...occasions.map((item) => `<option value="occasion:${escapeAttr(item.id)}">${occasionTypeLabel(item.type)} \xB7 ${escapeHtml(item.title)}</option>`)].join("");
+    return `<div class="pm-modal pm-calendar-entry-dialog"><div class="pm-modal-header"><span></span><b>\u7BA1\u7406 ${escapeHtml(selectedDate)}</b><button type="button" class="pm-modal-close" data-calendar-entry-close aria-label="\u5173\u95ED">${CLOSE_ICON_SVG}</button></div><form data-calendar-entry-form><div class="pm-calendar-entry-kind" role="group" aria-label="\u5B89\u6392\u7C7B\u578B"><button type="button" data-calendar-entry-kind="event" aria-pressed="true">${EVENT_EDITOR_ICON_SVG}<span>\u4E00\u6B21\u6027\u65E5\u7A0B</span></button><button type="button" data-calendar-entry-kind="occasion" aria-pressed="false">${OCCASION_EDITOR_ICON_SVG}<span>\u6BCF\u5E74\u91CD\u590D</span></button></div><label>\u7F16\u8F91\u5DF2\u6709\u5B89\u6392<select data-calendar-entry-existing><option value="">\u65B0\u5EFA\u5B89\u6392</option>${options}</select></label><input name="title" maxlength="120" placeholder="\u540D\u79F0" aria-label="\u5B89\u6392\u540D\u79F0"><textarea name="note" maxlength="1000" placeholder="\u5907\u6CE8\uFF08\u53EF\u9009\uFF09" aria-label="\u5B89\u6392\u5907\u6CE8"></textarea><div data-calendar-occasion-fields hidden><label>\u957F\u671F\u7C7B\u578B<select name="occasionType"><option value="anniversary">\u7EAA\u5FF5\u65E5</option><option value="birthday">\u751F\u65E5</option></select></label><label>2 \u6708 29 \u65E5\u5728\u975E\u95F0\u5E74<select name="leapDayRule"><option value="feb28">\u6309 2 \u6708 28 \u65E5\u663E\u793A</option><option value="mar1">\u6309 3 \u6708 1 \u65E5\u663E\u793A</option><option value="skip">\u8BE5\u5E74\u4E0D\u663E\u793A</option></select></label></div><p class="pm-calendar-entry-error" data-calendar-entry-error role="status" aria-live="polite"></p><div class="pm-calendar-entry-actions"><button type="button" class="is-danger" data-calendar-entry-delete disabled>\u5220\u9664</button><button type="submit" class="is-primary">\u4FDD\u5B58</button></div></form></div>`;
   }
 
   // src/calendar-task-controller.js
@@ -2226,7 +2181,7 @@ ${userPrompt}` : userPrompt;
     const headerButton = headerAction ? `<button type="button" class="pm-calendar-header-action ${headerBusy ? "is-loading" : ""}" data-action="${headerAction}" aria-label="${headerActionLabel}" title="${headerActionLabel}" aria-busy="${headerBusy}" ${headerBusy ? "disabled" : ""}>${REFRESH_ICON_SVG}</button>` : "";
     const statusClass = headerBusy ? "pm-calendar-status is-generating" : "pm-calendar-status";
     return `<div id="pm-calendar-app" class="pm-calendar-shell" data-calendar-view-mode="${viewMode}">
-        <header class="pm-calendar-header"><span class="pm-calendar-header-side is-left"><button type="button" data-action="calendar-home" aria-label="\u8FD4\u56DE\u684C\u9762" title="\u8FD4\u56DE\u684C\u9762">${HOME_ICON_SVG}</button></span><div class="pm-calendar-title-row"><b>${escapeHtml(monthTitle.format(createCalendarDate(viewYear, viewMonth, 1)))}</b><button type="button" class="pm-calendar-base-edit" data-action="calendar-base-edit" aria-label="\u7F16\u8F91\u65F6\u95F4\u8D77\u70B9" title="\u7F16\u8F91\u65F6\u95F4\u8D77\u70B9">${EDIT_ICON_SVG}</button></div><span class="pm-calendar-header-side is-right">${headerButton}</span></header>
+        <header class="pm-calendar-header"><span class="pm-calendar-header-side is-left"><button type="button" data-action="calendar-home" aria-label="\u8FD4\u56DE\u684C\u9762" title="\u8FD4\u56DE\u684C\u9762">${HOME_ICON_SVG}</button></span><div class="pm-calendar-title-row"><b>${escapeHtml(monthTitle.format(createCalendarDate(viewYear, viewMonth, 1)))}</b></div><span class="pm-calendar-header-side is-right"><button type="button" class="pm-calendar-base-edit" data-action="calendar-base-edit" aria-label="\u7F16\u8F91\u65F6\u95F4\u8D77\u70B9" title="\u7F16\u8F91\u65F6\u95F4\u8D77\u70B9">${EDIT_ICON_SVG}</button>${headerButton}</span></header>
         <div class="pm-calendar-month-nav"><button type="button" class="pm-calendar-month-step" data-action="calendar-prev-month" aria-label="\u4E0A\u4E2A\u6708">\u2039</button><div class="pm-calendar-view-switch" role="group" aria-label="\u65E5\u5386\u4FE1\u606F\u5206\u7C7B"><button type="button" data-action="calendar-mode-schedule" aria-label="\u663E\u793A\u65E5\u7A0B\u4E0E\u5047\u65E5" aria-pressed="${viewMode === "schedule"}" title="\u65E5\u7A0B\u4E0E\u5047\u65E5">${CALENDAR_ICON_SVG}</button><button type="button" data-action="calendar-mode-weather" aria-label="\u663E\u793A\u5929\u6C14" aria-pressed="${viewMode === "weather"}" title="\u5929\u6C14">${WEATHER_ICON_SVG}</button><button type="button" data-action="calendar-mode-cycle" aria-label="\u663E\u793A\u751F\u7406\u671F" aria-pressed="${viewMode === "cycle"}" title="\u751F\u7406\u671F">${CYCLE_ICON_SVG}</button></div><button type="button" class="pm-calendar-month-step" data-action="calendar-next-month" aria-label="\u4E0B\u4E2A\u6708">\u203A</button></div>
         <div class="pm-calendar-month" aria-label="${viewYear}\u5E74${viewMonth}\u6708\u6708\u5386"><div class="pm-calendar-weekdays">${CALENDAR_WEEKDAYS.map((day) => `<span>\u5468${day}</span>`).join("")}</div><div class="pm-calendar-month-grid">${days}</div></div>
         ${selectedDetail}
@@ -2467,26 +2422,37 @@ ${userPrompt}` : userPrompt;
         tasks.finish(task);
       }
     }
-    async function scanContext(storageId = getStorageId2(), { silent = false, task: parentTask = null } = {}) {
+    async function scanContext(storageId = getStorageId2(), { silent = false, assistantOnly = false, task: parentTask = null } = {}) {
       const task = parentTask || tasks.begin(storageId, "scan-context");
       if (!task || !tasks.active(task)) return false;
       try {
         const context = await gatherContext2();
         if (!tasks.active(task)) return false;
+        if (assistantOnly && context.latestChatIsUser) return false;
         const currentScope = scope(storageId);
-        const reference = calendarReferenceDate(currentScope);
-        const events = extractContextCalendarEvents([context.mainChatText, context.worldBookText].filter(Boolean).join("\n"), reference, currentScope.dateTags);
-        if (!events.length) {
-          if (!silent) status(storageId, "\u5F53\u524D\u4E0A\u4E0B\u6587\u4E2D\u6CA1\u6709\u8BC6\u522B\u5230\u660E\u786E\u65E5\u671F\u3002\u53EF\u586B\u5199 YYYY MM DD\uFF0C\u6216\u4F7F\u7528 <\u65E5\u671F><\u65E5\u7A0B>\u3002");
-          return 0;
+        const baseDate = extractCalendarBaseDate(context.latestChatText, currentScope.dateTags);
+        if (!baseDate) {
+          if (!silent) status(storageId, "\u6700\u540E\u4E00\u6761\u6B63\u6587\u4E2D\u6CA1\u6709\u5E26\u5E74\u4EFD\u7684\u660E\u786E\u65E5\u671F\uFF0C\u4ECA\u5929\u65E5\u671F\u672A\u8C03\u6574\u3002");
+          return false;
+        }
+        if (currentScope.baseDate === baseDate) {
+          if (!silent) status(storageId, `\u4ECA\u5929\u65E5\u671F\u5DF2\u7ECF\u662F ${baseDate}\u3002`);
+          return true;
         }
         if (!tasks.active(task)) return false;
-        const committed = await commitScope(storageId, (current) => mergeCalendarEvents(current, events), task);
+        const committed = await commitScope(storageId, (current) => ({ ...current, baseDate, lastAdjustedAt: Date.now() }), task);
         if (!committed) return false;
         if (!tasks.active(task)) return false;
-        if (!silent) status(storageId, `\u5DF2\u4ECE\u5F53\u524D\u4E0A\u4E0B\u6587\u8BC6\u522B ${events.length} \u6761\u65E5\u7A0B\u3002`);
+        const parsed = parseCalendarDate(baseDate), currentView = viewFor(storageId);
+        runtime.viewByStorage.set(storageId, {
+          ...currentView,
+          viewYear: parsed.getFullYear(),
+          viewMonth: parsed.getMonth() + 1,
+          selectedDate: baseDate
+        });
+        if (!silent) status(storageId, `\u5DF2\u4ECE\u6700\u540E\u4E00\u6761\u6B63\u6587\u5C06\u4ECA\u5929\u8C03\u6574\u4E3A ${baseDate}\u3002`);
         rerender(storageId);
-        return events.length;
+        return true;
       } finally {
         if (!parentTask) tasks.finish(task);
       }
@@ -2635,6 +2601,119 @@ ${userPrompt}` : userPrompt;
         }
       });
     }
+    function selectedDateEntries(storageId) {
+      const date = viewFor(storageId).selectedDate;
+      const parsed = parseCalendarDate(date);
+      return {
+        date,
+        events: scope(storageId).events[date] || [],
+        occasions: parsed ? expandOccasions(occasions(storageId), { start: parsed, days: 1 }) : []
+      };
+    }
+    function showEntryDialog(storageId, initialKey = "") {
+      if (typeof makeOverlay !== "function") throw new Error("\u5B89\u6392\u7F16\u8F91\u5668\u4E0D\u53EF\u7528");
+      const entries = selectedDateEntries(storageId);
+      const overlay = makeOverlay(renderCalendarEntryDialog(entries.date, entries.events, entries.occasions));
+      const form = overlay.querySelector("[data-calendar-entry-form]");
+      const existing = overlay.querySelector("[data-calendar-entry-existing]");
+      const errorNode = overlay.querySelector("[data-calendar-entry-error]");
+      const selectedEntry = () => {
+        const [kind, id2] = String(existing?.value || "").split(":");
+        if (kind === "event") return { kind, entry: findCalendarEvent(scope(storageId), id2) };
+        if (kind === "occasion") return { kind, entry: findOccasion(occasions(storageId), id2) };
+        return { kind: overlay.dataset.calendarEntryKind || "event", entry: null };
+      };
+      const showError = (error) => {
+        if (errorNode) errorNode.textContent = error?.message || "\u5B89\u6392\u66F4\u65B0\u5931\u8D25";
+      };
+      const selectExisting = (value) => {
+        if (existing) existing.value = value || "";
+        const selected = selectedEntry();
+        fillCalendarEntryForm(overlay, selected.entry, selected.kind);
+      };
+      overlay.querySelector("[data-calendar-entry-close]")?.addEventListener("click", () => closeOverlay?.("close"));
+      for (const button of overlay.querySelectorAll("[data-calendar-entry-kind]")) {
+        button.addEventListener("click", () => {
+          if (existing) existing.value = "";
+          fillCalendarEntryForm(overlay, null, setCalendarEntryKind(overlay, button.dataset.calendarEntryKind));
+        });
+      }
+      existing?.addEventListener("change", () => selectExisting(existing.value));
+      overlay.querySelector("[data-calendar-entry-delete]")?.addEventListener("click", async () => {
+        try {
+          const selected = selectedEntry();
+          if (!selected.entry) return;
+          if (!confirm(`\u5220\u9664\u201C${selected.entry.title}\u201D\uFF1F`)) return;
+          if (selected.kind === "event") {
+            await commitScope(storageId, (current) => deleteCalendarEvent(current, selected.entry.id).scope);
+            status(storageId, "\u65E5\u7A0B\u5DF2\u5220\u9664\u3002");
+          } else {
+            await commitOccasions(storageId, (current) => deleteOccasion(current, selected.entry.id).scope);
+            status(storageId, `${occasionTypeLabel(selected.entry.type)}\u5DF2\u5220\u9664\u3002`);
+          }
+          closeOverlay?.("deleted");
+          rerender(storageId);
+        } catch (error) {
+          showError(error);
+        }
+      });
+      form?.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        try {
+          const selected = selectedEntry();
+          const value = readCalendarEntryForm(overlay);
+          if (!value.title) throw new Error("\u5B89\u6392\u540D\u79F0\u4E0D\u80FD\u4E3A\u7A7A");
+          if (value.kind === "event") {
+            const previous = selected.kind === "event" ? selected.entry : null;
+            await commitScope(storageId, (current) => upsertCalendarEvent(current, {
+              id: previous?.id,
+              date: entries.date,
+              title: value.title,
+              note: value.note,
+              source: previous?.source || "manual",
+              createdAt: previous?.createdAt,
+              updatedAt: Date.now()
+            }));
+            status(storageId, previous ? "\u65E5\u7A0B\u5DF2\u66F4\u65B0\u3002" : "\u65E5\u7A0B\u5DF2\u6DFB\u52A0\u3002");
+          } else {
+            const previous = selected.kind === "occasion" ? selected.entry : null;
+            const parsed = parseCalendarDate(entries.date);
+            await commitOccasions(storageId, (current) => upsertOccasion(current, {
+              id: previous?.id,
+              type: value.type,
+              month: previous?.month || parsed.getMonth() + 1,
+              day: previous?.day || parsed.getDate(),
+              title: value.title,
+              note: value.note,
+              leapDayRule: value.leapDayRule,
+              createdAt: previous?.createdAt,
+              updatedAt: Date.now()
+            }));
+            status(storageId, previous ? `${occasionTypeLabel(previous.type)}\u5DF2\u66F4\u65B0\u3002` : `${occasionTypeLabel(value.type)}\u5DF2\u6DFB\u52A0\u3002`);
+          }
+          closeOverlay?.("saved");
+          rerender(storageId);
+        } catch (error) {
+          showError(error);
+        }
+      });
+      selectExisting(initialKey);
+    }
+    async function deleteSelectedDateEntry(storageId) {
+      const entries = selectedDateEntries(storageId);
+      const options = [...entries.events.map((entry3) => ({ kind: "event", entry: entry3 })), ...entries.occasions.map((entry3) => ({ kind: "occasion", entry: entry3 }))];
+      if (!options.length) return;
+      if (options.length > 1) {
+        showEntryDialog(storageId, `${options[0].kind}:${options[0].entry.id}`);
+        return;
+      }
+      const [{ kind, entry: entry2 }] = options;
+      if (!confirm(`\u5220\u9664\u201C${entry2.title}\u201D\uFF1F`)) return;
+      if (kind === "event") await commitScope(storageId, (current) => deleteCalendarEvent(current, entry2.id).scope);
+      else await commitOccasions(storageId, (current) => deleteOccasion(current, entry2.id).scope);
+      status(storageId, `${kind === "event" ? "\u65E5\u7A0B" : occasionTypeLabel(entry2.type)}\u5DF2\u5220\u9664\u3002`);
+      rerender(storageId);
+    }
     async function handleAction(button, app) {
       const storageId = getStorageId2();
       const action = button.dataset.action;
@@ -2672,13 +2751,6 @@ ${userPrompt}` : userPrompt;
         rerender(storageId);
         return;
       }
-      if (action === "calendar-editor-kind") {
-        const editorKind = button.dataset.editorKind === "occasion" ? "occasion" : "event";
-        const current = viewFor(storageId);
-        runtime.viewByStorage.set(storageId, { ...current, editorKind });
-        activateCalendarEditorKind(app, editorKind);
-        return;
-      }
       if (action === "calendar-select-date") {
         const date = button.dataset.calendarDate;
         const current = viewFor(storageId);
@@ -2689,17 +2761,27 @@ ${userPrompt}` : userPrompt;
         rerender(storageId);
         return;
       }
-      if (action === "calendar-scan") {
-        await scanContext(storageId);
+      if (action === "calendar-detail-menu") {
+        const menu = app?.querySelector("#pm-calendar-detail-menu");
+        if (!menu) return;
+        menu.hidden = !menu.hidden;
+        button.setAttribute("aria-expanded", String(!menu.hidden));
         return;
       }
-      if (action === "calendar-date-tags-save") {
+      if (action === "calendar-manage-date") {
+        showEntryDialog(storageId);
+        return;
+      }
+      if (action === "calendar-delete-date") {
+        await deleteSelectedDateEntry(storageId);
+        return;
+      }
+      if (action === "calendar-date-sync") {
         const input = app?.querySelector("[data-calendar-date-tags]");
         if (!input) return;
         const dateTags = normalizeCalendarDateTags(input.value);
         await commitScope(storageId, (current) => ({ ...current, dateTags }));
-        status(storageId, `\u6B63\u6587\u65E5\u671F\u6807\u7B7E\u5DF2\u4FDD\u5B58\uFF1A${dateTags.join("\u3001")}`);
-        rerender(storageId);
+        await scanContext(storageId);
         return;
       }
       if (action === "calendar-holiday-country") {
@@ -2771,118 +2853,7 @@ ${userPrompt}` : userPrompt;
       }
       if (action === "calendar-toggle-auto") {
         await commitScope(storageId, (current) => ({ ...current, autoAdjust: !current.autoAdjust }));
-        status(storageId, scope(storageId).autoAdjust ? "\u81EA\u52A8\u8BC6\u522B\u5DF2\u5F00\u542F\u3002\u89D2\u8272\u56DE\u590D\u5B8C\u6210\u540E\u4F1A\u4ECE\u5F53\u524D\u4E0A\u4E0B\u6587\u8BC6\u522B\u660E\u786E\u65E5\u671F\u65E5\u7A0B\u3002" : "\u81EA\u52A8\u8BC6\u522B\u5DF2\u5173\u95ED\u3002");
-        rerender(storageId);
-        return;
-      }
-      if (action === "calendar-edit") {
-        const event = findCalendarEvent(scope(storageId), button.dataset.eventId);
-        if (!event) throw new Error("\u65E5\u7A0B\u4E0D\u5B58\u5728\u6216\u5DF2\u88AB\u5220\u9664");
-        const current = viewFor(storageId);
-        runtime.viewByStorage.set(storageId, { ...current, editorKind: "event" });
-        activateCalendarEditorKind(app, "event");
-        fillCalendarEditor(app, event);
-        return;
-      }
-      if (action === "calendar-delete") {
-        const event = findCalendarEvent(scope(storageId), button.dataset.eventId);
-        if (!event) throw new Error("\u65E5\u7A0B\u4E0D\u5B58\u5728\u6216\u5DF2\u88AB\u5220\u9664");
-        if (!confirm(`\u5220\u9664\u201C${event.title}\u201D\uFF1F`)) return;
-        await commitScope(storageId, (current) => deleteCalendarEvent(current, event.id).scope);
-        status(storageId, "\u65E5\u7A0B\u5DF2\u5220\u9664\u3002");
-        rerender(storageId);
-        return;
-      }
-      if (action === "calendar-cancel-edit") {
-        clearCalendarEditor(app);
-        return;
-      }
-      if (action === "calendar-occasion-edit") {
-        const occasion = findOccasion(occasions(storageId), button.dataset.occasionId);
-        if (!occasion) throw new Error("\u751F\u65E5\u6216\u7EAA\u5FF5\u65E5\u4E0D\u5B58\u5728\u6216\u5DF2\u88AB\u5220\u9664");
-        const current = viewFor(storageId);
-        runtime.viewByStorage.set(storageId, { ...current, editorKind: "occasion" });
-        activateCalendarEditorKind(app, "occasion");
-        fillCalendarOccasionEditor(app, occasion, occasionTypeLabel(occasion.type));
-        return;
-      }
-      if (action === "calendar-occasion-delete") {
-        const occasion = findOccasion(occasions(storageId), button.dataset.occasionId);
-        if (!occasion) throw new Error("\u751F\u65E5\u6216\u7EAA\u5FF5\u65E5\u4E0D\u5B58\u5728\u6216\u5DF2\u88AB\u5220\u9664");
-        if (!confirm(`\u5220\u9664\u201C${occasion.title}\u201D\uFF1F`)) return;
-        await commitOccasions(storageId, (current) => deleteOccasion(current, occasion.id).scope);
-        status(storageId, `${occasionTypeLabel(occasion.type)}\u5DF2\u5220\u9664\u3002`);
-        rerender(storageId);
-        return;
-      }
-      if (action === "calendar-occasion-cancel-edit") {
-        clearCalendarOccasionEditor(app);
-        return;
-      }
-      if (action === "calendar-occasion-save") {
-        const form = calendarOccasionEditor(app);
-        if (!form) return;
-        const occasionId = form.elements.occasionId.value;
-        const previous = occasionId ? findOccasion(occasions(storageId), occasionId) : null;
-        if (occasionId && !previous) throw new Error("\u751F\u65E5\u6216\u7EAA\u5FF5\u65E5\u4E0D\u5B58\u5728\u6216\u5DF2\u88AB\u5220\u9664");
-        await commitOccasions(storageId, (current) => upsertOccasion(current, {
-          id: previous?.id,
-          type: form.elements.type.value,
-          month: Number(form.elements.month.value),
-          day: Number(form.elements.day.value),
-          title: form.elements.title.value,
-          note: form.elements.note.value,
-          leapDayRule: form.elements.leapDayRule.value,
-          createdAt: previous?.createdAt,
-          updatedAt: Date.now()
-        }));
-        status(storageId, previous ? `${occasionTypeLabel(previous.type)}\u5DF2\u66F4\u65B0\u3002` : "\u751F\u65E5\u6216\u7EAA\u5FF5\u65E5\u5DF2\u6DFB\u52A0\u3002");
-        rerender(storageId);
-        return;
-      }
-      if (action === "calendar-parse") {
-        const form = calendarEditor(app);
-        const currentScope = scope(storageId);
-        const parsed = parseCalendarInput(form?.elements.tagged.value, calendarReferenceDate(currentScope), currentScope.dateTags);
-        if (!parsed.ok) throw new Error(parsed.reason);
-        const [year, month, day] = parsed.event.date.split("-");
-        form.elements.year.value = year;
-        form.elements.month.value = month;
-        form.elements.day.value = day;
-        form.elements.title.value = parsed.event.title;
-        status(storageId, "\u6807\u7B7E\u65F6\u95F4\u5DF2\u8BC6\u522B\uFF0C\u8BF7\u786E\u8BA4\u540E\u4FDD\u5B58\u3002");
-        return;
-      }
-      if (action === "calendar-save") {
-        const form = calendarEditor(app);
-        if (!form) return;
-        let date = calendarDateFromParts(
-          Number(form.elements.year.value),
-          Number(form.elements.month.value),
-          Number(form.elements.day.value)
-        );
-        let title = form.elements.title.value.trim();
-        if ((!date || !title) && form.elements.tagged.value.trim()) {
-          const currentScope = scope(storageId);
-          const parsed = parseCalendarInput(form.elements.tagged.value, calendarReferenceDate(currentScope), currentScope.dateTags);
-          if (!parsed.ok) throw new Error(parsed.reason);
-          date || (date = parsed.event.date);
-          title || (title = parsed.event.title);
-        }
-        if (!date) throw new Error("\u65E5\u671F\u65E0\u6548\uFF0C\u8BF7\u586B\u5199 YYYY MM DD");
-        if (!title) throw new Error("\u65E5\u7A0B\u6807\u9898\u4E0D\u80FD\u4E3A\u7A7A");
-        const eventId = form.elements.eventId.value;
-        const previous = eventId ? findCalendarEvent(scope(storageId), eventId) : null;
-        await commitScope(storageId, (current) => upsertCalendarEvent(current, {
-          id: previous?.id,
-          date,
-          title,
-          note: form.elements.note.value,
-          source: previous?.source || "manual",
-          createdAt: previous?.createdAt,
-          updatedAt: Date.now()
-        }));
-        status(storageId, previous ? "\u65E5\u7A0B\u5DF2\u66F4\u65B0\u3002" : "\u65E5\u7A0B\u5DF2\u6DFB\u52A0\u3002");
+        status(storageId, scope(storageId).autoAdjust ? "\u81EA\u52A8\u8BC6\u522B\u5DF2\u5F00\u542F\u3002\u89D2\u8272\u56DE\u590D\u540E\u4F1A\u4ECE\u6700\u540E\u4E00\u6761\u6B63\u6587\u6821\u51C6\u4ECA\u5929\u65E5\u671F\u3002" : "\u81EA\u52A8\u8BC6\u522B\u5DF2\u5173\u95ED\u3002");
         rerender(storageId);
         return;
       }
@@ -2891,7 +2862,7 @@ ${userPrompt}` : userPrompt;
       const storageId = getStorageId2();
       if (!scope(storageId).autoAdjust) return false;
       try {
-        return await scanContext(storageId, { silent: true });
+        return await scanContext(storageId, { silent: true, assistantOnly: true });
       } catch (error) {
         console.warn("[phone-mode] \u65E5\u5386\u81EA\u52A8\u8BC6\u522B\u5931\u8D25", error);
         return false;
@@ -3428,9 +3399,10 @@ ${lines.join("\n")}
     if (!Object.hasOwn(raw, "live")) return;
     const liveLabel = `${label}.live`;
     const live = raw.live;
-    assertV1Keys(live, ["title", "status", "danmaku"], liveLabel);
+    assertV1Keys(live, ["title", "status", "warmupStarted", "danmaku"], liveLabel);
     assertV1OptionalText(live, "title", liveLabel);
     if (Object.hasOwn(live, "status") && live.status !== "idle") throw new Error(`\u4E92\u52A8\u573A\u666F v1 ${liveLabel}.status \u5FC5\u987B\u662F idle`);
+    if (Object.hasOwn(live, "warmupStarted") && typeof live.warmupStarted !== "boolean") throw new Error(`\u4E92\u52A8\u573A\u666F v1 ${liveLabel}.warmupStarted \u5FC5\u987B\u662F\u5E03\u5C14\u503C`);
     const danmaku = assertV1OptionalArray(live, "danmaku", liveLabel, INTERACTIVE_LIMITS.danmaku);
     danmaku.forEach((item, index) => assertV1Item(item, "danmaku", `${liveLabel}.danmaku.${index}`));
   };
@@ -3746,7 +3718,7 @@ ${lines.join("\n")}
     const strictLegacy = sourceVersion === 1 && options.strictLegacy === true;
     if (sourceVersion === INTERACTIVE_STORE_VERSION) {
       assertV2Keys(raw, ["id", "title", "preset", "styleInput", "generatedPrompt", "themeAccent", "createdAt", "updatedAt", "posts", "live"], "scene");
-      if (raw?.live !== void 0) assertV2Keys(raw.live, ["title", "status", "danmaku"], "live");
+      if (raw?.live !== void 0) assertV2Keys(raw.live, ["title", "status", "warmupStarted", "danmaku"], "live");
       assertV2Text(raw.id, 80, "scene.id");
       assertV2Text(raw.title, 80, "scene.title");
       assertV2Text(raw.preset, 30, "scene.preset");
@@ -3762,8 +3734,9 @@ ${lines.join("\n")}
       assertV2Timestamp(raw.updatedAt, "scene.updatedAt");
       assertV2List(raw.posts, "scene.posts");
       if (raw.posts.length > INTERACTIVE_LIMITS.posts) throw new Error(`\u4E92\u52A8\u573A\u666F v2 scene.posts \u4E0D\u80FD\u8D85\u8FC7 ${INTERACTIVE_LIMITS.posts} \u9879`);
-      assertV2Text(raw.live.title, 100, "live.title");
+      assertV2Text(raw.live.title, 100, "live.title", { allowEmpty: true });
       if (raw.live.status !== "idle") throw new Error("\u4E92\u52A8\u573A\u666F v2 live.status \u5FC5\u987B\u662F idle");
+      if (Object.hasOwn(raw.live, "warmupStarted") && typeof raw.live.warmupStarted !== "boolean") throw new Error("\u4E92\u52A8\u573A\u666F v2 live.warmupStarted \u5FC5\u987B\u662F\u5E03\u5C14\u503C");
       assertV2List(raw.live.danmaku, "live.danmaku");
       if (raw.live.danmaku.length > INTERACTIVE_LIMITS.danmaku) throw new Error(`\u4E92\u52A8\u573A\u666F v2 live.danmaku \u4E0D\u80FD\u8D85\u8FC7 ${INTERACTIVE_LIMITS.danmaku} \u9879`);
     } else if (strictLegacy) {
@@ -3788,8 +3761,9 @@ ${lines.join("\n")}
         path: `scenes.${sceneId}.posts.${index}`
       })).filter(Boolean).slice(-INTERACTIVE_LIMITS.posts),
       live: {
-        title: text2(raw?.live?.title, 100) || "\u6B63\u5728\u76F4\u64AD",
+        title: text2(raw?.live?.title, 100),
         status: "idle",
+        warmupStarted: raw?.live?.warmupStarted === true,
         danmaku: list(raw?.live?.danmaku).map((item, index) => normalizeDanmaku(item, {
           scope,
           scopeId,
@@ -5197,13 +5171,7 @@ ${mainChatText}` : "",
         const nameEl = state.phoneWindow.querySelector(".pm-name");
         const editBtn = state.phoneWindow.querySelector(".pm-name-edit");
         if (nameEl) {
-          if (state.isGroupChat) {
-            const display = state.groupDisplayName || name;
-            const arr = [...display];
-            nameEl.textContent = arr.length > 5 ? arr.slice(0, 5).join("") + "..." : display;
-          } else {
-            nameEl.textContent = name;
-          }
+          nameEl.textContent = state.isGroupChat ? state.groupDisplayName || name : name;
         }
         if (editBtn) {
           editBtn.classList.remove("is-hidden");
@@ -5320,11 +5288,12 @@ ${mainChatText}` : "",
   }
 
   // src/emoji-ui.js
-  var SUB_OVERLAY_STYLE = "position:fixed !important; inset:0 !important; margin:0 !important; padding:0 !important; border:none !important; width:100vw !important; height:100vh !important; max-width:none !important; max-height:none !important; background:rgba(0,0,0,.45) !important; z-index:2147483648 !important; display:flex !important; align-items:center !important; justify-content:center !important;";
+  var SUB_OVERLAY_STYLE = "position:fixed !important; inset:0 !important; margin:0 !important; padding:0 !important; border:none !important; width:100vw !important; height:100vh !important; max-width:none !important; max-height:none !important; background:var(--pm-color-overlay) !important; z-index:2147483648 !important; display:flex !important; align-items:center !important; justify-content:center !important;";
   function createSubOverlay(html) {
     document.getElementById("pm-overlay-sub")?.remove();
     const overlay = document.createElement("div");
     overlay.id = "pm-overlay-sub";
+    overlay.dataset.theme = window.__pmTheme?.darkMode || "light";
     if (typeof HTMLElement !== "undefined" && HTMLElement.prototype.hasOwnProperty("popover")) {
       overlay.setAttribute("popover", "manual");
     }
@@ -5342,21 +5311,21 @@ ${mainChatText}` : "",
   }
   function renderEmojiThumbnail(image, width, height, canRender) {
     if (!canRender(image.url)) {
-      return `<div style="width:${width}px;height:${height}px;display:flex;align-items:center;justify-content:center;text-align:center;padding:4px;border-radius:8px;background:#f2f2f2;color:#999;font-size:9px;line-height:1.3;">\u56FE\u7247\u6682\u4E0D\u52A0\u8F7D</div>`;
+      return `<div style="width:${width}px;height:${height}px;display:flex;align-items:center;justify-content:center;text-align:center;padding:4px;border-radius:8px;background:var(--pm-color-surface-elevated);color:var(--pm-color-text-tertiary);font-size:9px;line-height:1.3;">\u56FE\u7247\u6682\u4E0D\u52A0\u8F7D</div>`;
     }
     return `<img src="${escapeAttr(image.url)}" loading="lazy" decoding="async" width="${width}" height="${height}" style="width:${width}px;height:${height}px;object-fit:contain;border-radius:8px;box-shadow:0 2px 6px rgba(0,0,0,0.1);">`;
   }
   function renderPickerImages(set, canRender = createEmojiRenderBudget()) {
-    if (!set?.images?.length) return '<div style="text-align:center;color:#999;font-size:12px;padding:20px 0;">\u672C\u5957\u6682\u65E0\u56FE\u7247</div>';
+    if (!set?.images?.length) return '<div style="text-align:center;color:var(--pm-color-text-tertiary);font-size:12px;padding:20px 0;">\u672C\u5957\u6682\u65E0\u56FE\u7247</div>';
     return set.images.map((image, index) => `
         <div onclick="window.__pmInsertEmoji('[emo:${escapeAttr(set.name)}:${index + 1}]')" style="cursor:pointer;width:60px;display:flex;flex-direction:column;align-items:center;gap:4px;">
             ${renderEmojiThumbnail(image, 50, 50, canRender)}
-            <span style="font-size:10px;color:#666;width:100%;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(image.desc)}</span>
+            <span style="font-size:10px;color:var(--pm-color-text-secondary);width:100%;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(image.desc)}</span>
         </div>`).join("");
   }
   function renderPickerDots(sets, activeIndex) {
     if (sets.length <= 1) return "";
-    return `<div style="display:flex;justify-content:center;gap:8px;padding:8px 0 4px;">${sets.map((set, index) => `<div class="pm-emoji-set-dot-btn" onclick="window.__pmEmojiSetDot(${index})" style="width:8px;height:8px;border-radius:50%;cursor:pointer;background:${index === activeIndex ? "#007aff" : "#ddd"};transition:background 0.2s;"></div>`).join("")}</div>`;
+    return `<div style="display:flex;justify-content:center;gap:8px;padding:8px 0 4px;">${sets.map((set, index) => `<div class="pm-emoji-set-dot-btn" onclick="window.__pmEmojiSetDot(${index})" style="width:8px;height:8px;border-radius:50%;cursor:pointer;background:${index === activeIndex ? "var(--pm-color-accent)" : "var(--pm-color-control-off)"};transition:background 0.2s;"></div>`).join("")}</div>`;
   }
   function installEmojiUi({ makeOverlay, saveEmojis: saveEmojis2 }) {
     async function mutateEmojis(mutator) {
@@ -5375,7 +5344,7 @@ ${mainChatText}` : "",
   <div class="pm-modal-header"><span></span><b>\u8868\u60C5\u5305\u7BA1\u7406</b><button type="button" onclick="window.__pmCloseOverlay()" class="pm-modal-close" title="\u5173\u95ED" aria-label="\u5173\u95ED">${CLOSE_ICON_SVG}</button></div>
   <div class="pm-modal-scroll" style="padding:14px 16px;">
     <div id="pm-emoji-set-list"></div>
-    <button onclick="window.__pmAddEmojiSet()" style="width:100%;margin-top:8px;background:#007aff;color:#fff;border:none;border-radius:10px;padding:10px;font-size:13px;cursor:pointer;font-weight:600;">\u6DFB\u52A0\u65B0\u5957\u7EC4</button>
+    <button onclick="window.__pmAddEmojiSet()" style="width:100%;margin-top:8px;background:var(--pm-color-accent);color:var(--pm-color-on-dark);border:none;border-radius:10px;padding:10px;font-size:13px;cursor:pointer;font-weight:600;">\u6DFB\u52A0\u65B0\u5957\u7EC4</button>
     <div class="pm-cfg-tip" style="text-align:left;margin-top:6px;">\u6BCF\u5957\u8868\u60C5\u72EC\u7ACB\u7BA1\u7406\uFF1B\u56FE\u7247\u63CF\u8FF0\u4F1A\u63D0\u4F9B\u7ED9 AI \u5224\u65AD\u4F7F\u7528\u573A\u666F\u3002</div>
   </div>
 </div>`);
@@ -5386,29 +5355,29 @@ ${mainChatText}` : "",
       if (!container) return;
       const sets = window.__pmEmojis;
       if (!sets.length) {
-        container.innerHTML = '<div style="text-align:center;color:#aaa;font-size:13px;padding:16px 0;">\u6682\u65E0\u8868\u60C5\u5305\u5957\u7EC4</div>';
+        container.innerHTML = '<div style="text-align:center;color:var(--pm-color-text-tertiary);font-size:13px;padding:16px 0;">\u6682\u65E0\u8868\u60C5\u5305\u5957\u7EC4</div>';
         return;
       }
       const canRender = createEmojiRenderBudget();
       container.innerHTML = sets.map((set, setIndex) => `
-            <div style="background:#fafafa;border:1px solid #eee;border-radius:10px;padding:10px 12px;margin-bottom:8px;">
+            <div style="background:var(--pm-color-surface-elevated);border:1px solid var(--pm-color-border-subtle);border-radius:10px;padding:10px 12px;margin-bottom:8px;">
                 <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
-                    <span style="font-weight:600;font-size:13px;color:#222;">${escapeHtml(set.name)}</span>
+                    <span style="font-weight:600;font-size:13px;color:var(--pm-color-text-primary);">${escapeHtml(set.name)}</span>
                     <div style="display:flex;gap:6px;">
-                        <button onclick="window.__pmAddEmojiImage(${setIndex})" style="font-size:11px;background:#007aff;color:#fff;border:none;border-radius:6px;padding:4px 8px;cursor:pointer;">\u6DFB\u52A0\u56FE\u7247</button>
-                        <button onclick="window.__pmDeleteEmojiSet(${setIndex})" style="font-size:11px;background:#ff3b30;color:#fff;border:none;border-radius:6px;padding:4px 8px;cursor:pointer;">\u5220\u9664</button>
+                        <button onclick="window.__pmAddEmojiImage(${setIndex})" style="font-size:11px;background:var(--pm-color-accent);color:var(--pm-color-on-dark);border:none;border-radius:6px;padding:4px 8px;cursor:pointer;">\u6DFB\u52A0\u56FE\u7247</button>
+                        <button onclick="window.__pmDeleteEmojiSet(${setIndex})" style="font-size:11px;background:var(--pm-color-danger);color:var(--pm-color-on-dark);border:none;border-radius:6px;padding:4px 8px;cursor:pointer;">\u5220\u9664</button>
                     </div>
                 </div>
                 <div style="display:flex;flex-wrap:wrap;gap:8px;">
                     ${set.images.map((image, imageIndex) => `
                         <div style="position:relative;width:52px;">
                             ${renderEmojiThumbnail(image, 52, 52, canRender)}
-                            <div style="font-size:9px;color:#888;text-align:center;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;width:52px;">${escapeHtml(image.desc)}</div>
+                            <div style="font-size:9px;color:var(--pm-color-text-tertiary);text-align:center;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;width:52px;">${escapeHtml(image.desc)}</div>
                             <button type="button" class="pm-emoji-image-delete" onclick="window.__pmDeleteEmojiImage(${setIndex},${imageIndex})" aria-label="\u5220\u9664\u56FE\u7247 ${escapeAttr(image.desc)}">\u5220\u9664</button>
                         </div>`).join("")}
-                    ${set.images.length === 0 ? '<span style="font-size:12px;color:#aaa;">\u6682\u65E0\u56FE\u7247</span>' : ""}
+                    ${set.images.length === 0 ? '<span style="font-size:12px;color:var(--pm-color-text-tertiary);">\u6682\u65E0\u56FE\u7247</span>' : ""}
                 </div>
-                <div style="font-size:11px;color:#aaa;margin-top:4px;">${set.images.length}/20 \u5F20 \xB7 [emo:${escapeHtml(set.name)}:1~${set.images.length}]</div>
+                <div style="font-size:11px;color:var(--pm-color-text-tertiary);margin-top:4px;">${set.images.length}/20 \u5F20 \xB7 [emo:${escapeHtml(set.name)}:1~${set.images.length}]</div>
             </div>`).join("");
     };
     window.__pmAddEmojiSet = () => {
@@ -5417,9 +5386,9 @@ ${mainChatText}` : "",
 <div class="pm-modal">
   <div class="pm-modal-header"><span></span><b>\u65B0\u5EFA\u8868\u60C5\u5305\u5957\u7EC4</b><button type="button" onclick="document.getElementById('pm-overlay-sub').remove()" class="pm-modal-close" title="\u5173\u95ED" aria-label="\u5173\u95ED">${CLOSE_ICON_SVG}</button></div>
   <div style="padding:14px 16px;display:flex;flex-direction:column;gap:10px;">
-    <input id="pm-new-set-name" class="pm-cfg-input" placeholder="\u5957\u7EC4\u540D\u79F0\uFF08\u5982\uFF1A\u5F00\u5FC3\u3001\u65E5\u5E38\u3001\u53EF\u7231\uFF09" style="padding:8px 10px;font-size:13px;border-radius:8px;border:1px solid #ddd;">
+    <input id="pm-new-set-name" class="pm-cfg-input" placeholder="\u5957\u7EC4\u540D\u79F0\uFF08\u5982\uFF1A\u5F00\u5FC3\u3001\u65E5\u5E38\u3001\u53EF\u7231\uFF09" style="padding:8px 10px;font-size:13px;border-radius:8px;border:1px solid var(--pm-color-border-default);">
   </div>
-  <div class="pm-modal-add"><button onclick="window.__pmConfirmAddEmojiSet()" style="width:100%;background:#007aff;color:#fff;border:none;border-radius:10px;padding:10px;font-size:13px;cursor:pointer;font-weight:600;">\u786E\u8BA4</button></div>
+  <div class="pm-modal-add"><button onclick="window.__pmConfirmAddEmojiSet()" style="width:100%;background:var(--pm-color-accent);color:var(--pm-color-on-dark);border:none;border-radius:10px;padding:10px;font-size:13px;cursor:pointer;font-weight:600;">\u786E\u8BA4</button></div>
 </div>`);
       setTimeout(() => document.getElementById("pm-new-set-name")?.focus(), 10);
     };
@@ -5453,15 +5422,15 @@ ${mainChatText}` : "",
 <div class="pm-modal">
   <div class="pm-modal-header"><span></span><b>\u6DFB\u52A0\u56FE\u7247 \u2014 ${escapeHtml(set.name)}</b><button type="button" onclick="document.getElementById('pm-overlay-sub').remove();" class="pm-modal-close" title="\u5173\u95ED" aria-label="\u5173\u95ED">${CLOSE_ICON_SVG}</button></div>
   <div style="padding:14px 16px;display:flex;flex-direction:column;gap:10px;">
-    <div style="font-size:12px;color:#888;margin-bottom:2px;">\u56FE\u7247 URL \u6216\u672C\u5730\u4E0A\u4F20</div>
-    <input id="pm-emo-url" class="pm-cfg-input" placeholder="https://... \u6216\u70B9\u4E0B\u65B9\u9009\u62E9\u6587\u4EF6" style="padding:8px 10px;font-size:13px;border-radius:8px;border:1px solid #ddd;">
-    <button onclick="document.getElementById('pm-emo-file').click()" style="background:#f0f0f3;color:#333;border:1px solid #ddd;border-radius:8px;padding:8px 10px;font-size:12px;cursor:pointer;">\u4E0A\u4F20\u672C\u5730\u56FE\u7247</button>
+    <div style="font-size:12px;color:var(--pm-color-text-secondary);margin-bottom:2px;">\u56FE\u7247 URL \u6216\u672C\u5730\u4E0A\u4F20</div>
+    <input id="pm-emo-url" class="pm-cfg-input" placeholder="https://... \u6216\u70B9\u4E0B\u65B9\u9009\u62E9\u6587\u4EF6" style="padding:8px 10px;font-size:13px;border-radius:8px;border:1px solid var(--pm-color-border-default);">
+    <button onclick="document.getElementById('pm-emo-file').click()" style="background:var(--pm-color-surface-elevated);color:var(--pm-color-text-primary);border:1px solid var(--pm-color-border-default);border-radius:8px;padding:8px 10px;font-size:12px;cursor:pointer;">\u4E0A\u4F20\u672C\u5730\u56FE\u7247</button>
     <input id="pm-emo-file" type="file" accept="image/*" hidden onchange="window.__pmEmoFileRead(${setIndex},this)">
-    <div id="pm-emo-preview" style="display:none;text-align:center;"><img id="pm-emo-preview-img" decoding="async" width="120" height="120" style="width:120px;height:120px;object-fit:contain;border-radius:10px;border:1px solid #eee;"></div>
-    <input id="pm-emo-desc" class="pm-cfg-input" placeholder="\u56FE\u7247\u63CF\u8FF0\uFF08\u5FC5\u586B\uFF0C\u5982\uFF1A\u732B\u732B\u5F00\u5FC3\uFF09" style="padding:8px 10px;font-size:13px;border-radius:8px;border:1px solid #ddd;">
-    <div style="font-size:11px;color:#aaa;">\u63CF\u8FF0\u5C06\u544A\u8BC9 AI \u8FD9\u5F20\u56FE\u5728\u4EC0\u4E48\u60C5\u5F62\u4E0B\u4F7F\u7528</div>
+    <div id="pm-emo-preview" style="display:none;text-align:center;"><img id="pm-emo-preview-img" decoding="async" width="120" height="120" style="width:120px;height:120px;object-fit:contain;border-radius:10px;border:1px solid var(--pm-color-border-subtle);"></div>
+    <input id="pm-emo-desc" class="pm-cfg-input" placeholder="\u56FE\u7247\u63CF\u8FF0\uFF08\u5FC5\u586B\uFF0C\u5982\uFF1A\u732B\u732B\u5F00\u5FC3\uFF09" style="padding:8px 10px;font-size:13px;border-radius:8px;border:1px solid var(--pm-color-border-default);">
+    <div style="font-size:11px;color:var(--pm-color-text-tertiary);">\u63CF\u8FF0\u5C06\u544A\u8BC9 AI \u8FD9\u5F20\u56FE\u5728\u4EC0\u4E48\u60C5\u5F62\u4E0B\u4F7F\u7528</div>
   </div>
-  <div class="pm-modal-add"><button onclick="window.__pmConfirmAddEmojiImage(${setIndex})" style="width:100%;background:#007aff;color:#fff;border:none;border-radius:10px;padding:10px;font-size:13px;cursor:pointer;font-weight:600;">\u786E\u8BA4\u6DFB\u52A0</button></div>
+  <div class="pm-modal-add"><button onclick="window.__pmConfirmAddEmojiImage(${setIndex})" style="width:100%;background:var(--pm-color-accent);color:var(--pm-color-on-dark);border:none;border-radius:10px;padding:10px;font-size:13px;cursor:pointer;font-weight:600;">\u786E\u8BA4\u6DFB\u52A0</button></div>
 </div>`);
       setTimeout(() => document.getElementById("pm-emo-url")?.focus(), 10);
     };
@@ -5620,9 +5589,7 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
     const instructions = {
       style_prompt: "items \u8FD4\u56DE 1 \u9879\uFF0C\u5B57\u6BB5\u4E3A title\u3001prompt\u3002prompt \u8981\u53EF\u76F4\u63A5\u4F9B\u540E\u7EED\u793E\u533A\u5185\u5BB9\u751F\u6210\u4F7F\u7528\u3002",
       feed_batch: "items \u8FD4\u56DE 4-6 \u9879\uFF0C\u5B57\u6BB5\u53EA\u80FD\u4E3A author\u3001content\u3001tags\uFF08\u5B57\u7B26\u4E32\u6570\u7EC4\uFF09\u3001comments\uFF08\u6570\u7EC4\uFF09\u3002\u6BCF\u4E2A comments \u8FD4\u56DE 2-5 \u9879\uFF0C\u6BCF\u9879\u5B57\u6BB5\u53EA\u80FD\u4E3A author\u3001content\uFF1B\u8BC4\u8BBA\u8981\u6709\u547C\u5E94\u3001\u5206\u6B67\u548C\u81EA\u7136\u53E3\u543B\u3002\u5185\u5BB9\u5F7C\u6B64\u6709\u8054\u7CFB\u4F46\u4E0D\u8981\u91CD\u590D\u3002\u4E0D\u5F97\u8FD4\u56DE actorId\u3001authorId \u6216\u4EFB\u4F55\u5185\u90E8\u6807\u8BC6\u3002",
-      comment_batch: `\u56F4\u7ED5\u5E16\u5B50\u751F\u6210 4-8 \u6761\u81EA\u7136\u8BC4\u8BBA\u3002items \u5B57\u6BB5\u4E3A author\u3001content\u3002${dataBlock("post_data", post, 3e3)}`,
-      live_batch: `\u751F\u6210 8-14 \u6761\u76F4\u64AD\u5F39\u5E55\u3002items \u5B57\u6BB5\u4E3A author\u3001content\u3002${dataBlock("live_topic_data", userContent, 1e3)}`,
-      rhythm_batch: `\u7528\u6237\u6B63\u5728\u5E26\u52A8\u5F39\u5E55\u8282\u594F\u3002\u751F\u6210 10-16 \u6761\u6709\u547C\u5E94\u3001\u6709\u5206\u6B67\u4F46\u4E0D\u9738\u51CC\u7684\u5F39\u5E55\u3002items \u5B57\u6BB5\u4E3A author\u3001content\u3002${dataBlock("rhythm_slogan_data", userContent, 500)}`
+      comment_batch: `\u56F4\u7ED5\u5E16\u5B50\u751F\u6210 4-8 \u6761\u81EA\u7136\u8BC4\u8BBA\u3002items \u5B57\u6BB5\u4E3A author\u3001content\u3002${dataBlock("post_data", post, 3e3)}`
     };
     return { systemPrompt: system, userPrompt: `${common}
 
@@ -5667,7 +5634,7 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
       const content = clean(item.content, kind === "feed_batch" ? 4e3 : kind === "comment_batch" ? 1e3 : 200);
       if (!content) return [];
       return [{
-        author: clean(item.author, 80) || (kind.includes("live") || kind === "rhythm_batch" ? "\u89C2\u4F17" : "\u533F\u540D\u7528\u6237"),
+        author: clean(item.author, 80) || "\u533F\u540D\u7528\u6237",
         content,
         tags: Array.isArray(item.tags) ? item.tags.map((tag) => clean(tag, 30)).filter(Boolean).slice(0, 5) : [],
         ...kind === "feed_batch" ? { comments: cleanFeedComments(item.comments) } : {}
@@ -6234,24 +6201,44 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
     };
     return { state, cancel, isActive, setMode, baseline, begin, markGenerating, finish, observe, consumeReminder };
   }
+  async function runLiveWarmup({
+    target,
+    isStarted,
+    isActive,
+    setStarted,
+    generateFeed,
+    render,
+    isCurrent
+  }) {
+    if (!target || typeof isStarted !== "function" || typeof isActive !== "function" || typeof setStarted !== "function" || typeof generateFeed !== "function" || typeof render !== "function" || typeof isCurrent !== "function") {
+      throw new TypeError("\u76F4\u64AD\u70ED\u573A\u4F9D\u8D56\u65E0\u6548");
+    }
+    if (isStarted() || isActive()) return false;
+    await setStarted(true);
+    const generation = generateFeed(null, { renderTab: "live", taskKind: "live-warmup" });
+    render();
+    try {
+      await generation;
+      return true;
+    } catch (error) {
+      await setStarted(false);
+      if (isCurrent()) render();
+      throw error;
+    }
+  }
   function createCommunityGenerationRunner({
     controller,
     getTarget,
     request,
     commitFeed,
-    commitDanmaku,
     onRender = () => {
     },
     onStatus = () => {
-    },
-    setTimer = (callback) => setInterval(callback, 2200),
-    clearTimer = (timer) => clearInterval(timer)
+    }
   }) {
-    if (!controller || typeof getTarget !== "function" || typeof request !== "function" || typeof commitFeed !== "function" || typeof commitDanmaku !== "function") {
+    if (!controller || typeof getTarget !== "function" || typeof request !== "function" || typeof commitFeed !== "function") {
       throw new TypeError("\u793E\u533A\u751F\u6210\u8C03\u5EA6\u5668\u4F9D\u8D56\u65E0\u6548");
     }
-    let liveTimer = null;
-    let liveTask = null;
     const targetOf = (task) => ({ storageId: task.storageId, sceneId: task.sceneId });
     const begin = (kind) => {
       const target = getTarget();
@@ -6262,19 +6249,11 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
         onStatus(error ? generationErrorMessage(error) : "\u793E\u533A\u751F\u6210\u5931\u8D25");
       }
     };
-    const stopLiveTimer = (task = null) => {
-      if (task && liveTask !== task) return false;
-      if (liveTimer !== null) clearTimer(liveTimer);
-      liveTimer = null;
-      liveTask = null;
-      return true;
-    };
     const cancel = (reason = "community-generation-cancelled", resetObservation = false) => {
-      stopLiveTimer();
       return controller.cancel(reason, resetObservation);
     };
-    const generateFeed = async (scheduledTask = null) => {
-      const task = scheduledTask || begin("manual-feed");
+    const generateFeed = async (scheduledTask = null, { renderTab = "feed", taskKind = "manual-feed" } = {}) => {
+      const task = scheduledTask || begin(taskKind);
       if (!task) throw new Error("\u5DF2\u6709\u793E\u533A\u751F\u6210\u4EFB\u52A1\u6B63\u5728\u8FDB\u884C");
       if (!controller.markGenerating(task)) return false;
       const target = targetOf(task);
@@ -6285,7 +6264,7 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
         await commitFeed(target, items, () => controller.isActive(task));
         if (!controller.isActive(task)) throw new Error("\u751F\u6210\u5DF2\u53D6\u6D88");
         controller.finish(task);
-        onRender("feed");
+        onRender(renderTab);
         return true;
       } catch (error) {
         reportFailure(task, error);
@@ -6300,67 +6279,7 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
       else if (controller.state().reminder && target) onStatus("\u6B63\u6587\u6709\u65B0\u8FDB\u5C55\uFF0C\u53EF\u4EE5\u751F\u6210\u4E00\u6279\u70ED\u573A\u5185\u5BB9");
       return task;
     };
-    const startLive = async () => {
-      const task = begin("live");
-      if (!task) throw new Error("\u5DF2\u6709\u793E\u533A\u751F\u6210\u4EFB\u52A1\u6B63\u5728\u8FDB\u884C");
-      const target = targetOf(task);
-      try {
-        const queue = await request("live_batch", {}, target);
-        if (!controller.isActive(task)) throw new Error("\u751F\u6210\u5DF2\u53D6\u6D88");
-        let cursor = 0;
-        let ticking = false;
-        const pushNext = async () => {
-          if (ticking || liveTask !== task || !controller.isActive(task)) return;
-          if (cursor >= queue.length) {
-            stopLiveTimer(task);
-            controller.finish(task);
-            onRender("live");
-            return;
-          }
-          ticking = true;
-          try {
-            await commitDanmaku(target, [queue[cursor++]], () => controller.isActive(task));
-            if (controller.isActive(task)) onRender("live");
-          } catch (error) {
-            stopLiveTimer(task);
-            reportFailure(task, error);
-          } finally {
-            ticking = false;
-          }
-        };
-        liveTask = task;
-        liveTimer = setTimer(pushNext);
-        await pushNext();
-        return true;
-      } catch (error) {
-        reportFailure(task, error);
-        throw error;
-      }
-    };
-    const leadRhythm = async (slogan) => {
-      const task = begin("rhythm");
-      if (!task) throw new Error("\u5DF2\u6709\u793E\u533A\u751F\u6210\u4EFB\u52A1\u6B63\u5728\u8FDB\u884C");
-      const target = targetOf(task);
-      try {
-        const items = await request("rhythm_batch", { userContent: slogan }, target);
-        if (!controller.isActive(task)) throw new Error("\u751F\u6210\u5DF2\u53D6\u6D88");
-        await commitDanmaku(target, items, () => controller.isActive(task), slogan);
-        controller.finish(task);
-        onRender("live");
-        return true;
-      } catch (error) {
-        reportFailure(task, error);
-        throw error;
-      }
-    };
-    return {
-      cancel,
-      generateFeed,
-      observe,
-      startLive,
-      leadRhythm,
-      isLive: () => controller.state().task?.kind === "live"
-    };
+    return { cancel, generateFeed, observe };
   }
 
   // src/interactive-scene-views.js
@@ -6461,7 +6380,7 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
     }).join("");
   }
   function renderDanmaku(scene) {
-    return scene.live.danmaku.slice(-80).map((item) => `<div class="pm-danmaku-row is-${stableDanmakuTone(item)}"><b>${escapeHtml(item.authorNameSnapshot)}</b><span>${escapeHtml(item.content)}</span></div>`).join("") || '<div class="pm-scene-empty"><span>\u5F00\u59CB\u76F4\u64AD\u540E\uFF0C\u5F39\u5E55\u4F1A\u4ECE\u8FD9\u91CC\u6EDA\u52A8\u663E\u793A\u3002</span></div>';
+    return scene.live.danmaku.slice(-80).map((item) => `<div class="pm-danmaku-row is-${stableDanmakuTone(item)}"><b>${escapeHtml(item.authorNameSnapshot)}</b><span>${escapeHtml(item.content)}</span></div>`).join("") || '<div class="pm-scene-empty"><span>\u8FD8\u6CA1\u6709\u5F39\u5E55\uFF0C\u53D1\u4E00\u6761\u548C\u5927\u5BB6\u6253\u4E2A\u62DB\u547C\u5427\u3002</span></div>';
   }
   function renderContextInjectionSettings(scene, state) {
     const selection = state.communitySelection?.mode === "selected" ? state.communitySelection : { mode: "all", postIds: [] };
@@ -6496,16 +6415,18 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
   }
   function renderCommunityWorkspace(scene, tab = "feed", uiScope = { pinnedSceneIds: [] }, state = {}) {
     const preset = getInteractivePresets()[scene.preset] || getInteractivePresets().custom;
-    const liveActive = state.liveActive === true;
     const autoActive = state.autoActive === true;
     const accent = scene.themeAccent || preset.accent;
+    const warmupStarted = scene.live.warmupStarted === true;
+    const liveActive = state.liveActive === true;
     const hasDanmaku = scene.live.danmaku.length > 0;
     const floatingDanmaku = scene.live.danmaku.slice(-8).map((item) => {
       const motion = getDanmakuMotion(item);
       return `<span class="is-${stableDanmakuTone(item)}" style="--lane:${motion.lane};--delay:${motion.delay}s;--duration:${motion.duration}s;--offset:${motion.offset}px">${escapeHtml(item.content)}</span>`;
     }).join("");
+    const liveContent = warmupStarted && !liveActive ? `<div class="pm-live-stage ${hasDanmaku ? "has-danmaku" : ""}"><div class="pm-danmaku-float">${floatingDanmaku}</div></div><div class="pm-danmaku-list">${renderDanmaku(scene)}</div><div class="pm-danmaku-input"><input id="pm-danmaku-input" maxlength="200" placeholder="\u53D1\u6761\u5F39\u5E55\u2026\u2026"><button type="button" data-action="send-danmaku" aria-label="\u53D1\u9001\u5F39\u5E55" title="\u53D1\u9001\u5F39\u5E55">${SEND_ICON_SVG}</button></div>` : `<div class="pm-live-stage"><button type="button" class="pm-live-play-btn" data-action="start-warmup" aria-label="${liveActive ? "\u6B63\u5728\u70ED\u573A" : "\u5F00\u59CB\u70ED\u573A"}" title="${liveActive ? "\u6B63\u5728\u70ED\u573A" : "\u5F00\u59CB\u70ED\u573A"}"${liveActive ? ' disabled aria-busy="true"' : ""}>${PLAY_ICON_SVG}</button></div>`;
     const composer = tab === "feed" ? `<div class="pm-scene-composer"><textarea id="pm-scene-post-input" maxlength="4000" placeholder="\u5206\u4EAB\u6B64\u523B\u2026\u2026"></textarea><button type="button" class="pm-scene-primary" data-action="publish" aria-label="\u53D1\u5E03" title="\u53D1\u5E03">${SEND_ICON_SVG}</button></div>` : "";
-    const content = tab === "feed" ? `<div class="pm-scene-feed"><div class="pm-scene-posts">${renderPosts(scene)}</div></div>` : tab === "live" ? `<div class="pm-live-room"><div class="pm-live-stage ${hasDanmaku ? "has-danmaku" : ""}"><div class="pm-live-badge">${hasDanmaku ? "\u76F4\u64AD\u4E2D" : "\u672A\u5F00\u64AD"}</div><h2>${escapeHtml(scene.live.title)}</h2><div class="pm-danmaku-float">${floatingDanmaku}</div></div><div class="pm-live-actions"><button type="button" data-action="toggle-live" class="${liveActive ? "is-live" : ""}">${liveActive ? "\u505C\u6B62\u76F4\u64AD" : "\u5F00\u59CB\u76F4\u64AD"}</button><button type="button" data-action="rhythm">\u5E26\u4E00\u6CE2\u8282\u594F</button></div><div class="pm-danmaku-list">${renderDanmaku(scene)}</div><div class="pm-danmaku-input"><input id="pm-danmaku-input" maxlength="200" placeholder="\u53D1\u6761\u5F39\u5E55\u2026\u2026"><button type="button" data-action="send-danmaku" aria-label="\u53D1\u9001\u5F39\u5E55" title="\u53D1\u9001\u5F39\u5E55">${SEND_ICON_SVG}</button></div></div>` : tab === "context-inject" ? renderContextInjectionSettings(scene, state) : `<div class="pm-scene-prompt"><label>\u793E\u533A\u540D\u79F0<input id="pm-scene-title" maxlength="80" value="${escapeAttr(scene.title)}"></label><fieldset class="pm-scene-accent-field"><legend>\u793E\u533A\u4E3B\u9898\u8272</legend><div class="pm-scene-accent-options">${renderSceneAccentOptions(accent)}<label class="pm-scene-accent-custom" aria-label="\u81EA\u5B9A\u4E49\u793E\u533A\u4E3B\u9898\u8272"><input id="pm-scene-accent" type="color" data-action="scene-accent-custom" value="${escapeAttr(accent)}"><span>\u81EA\u5B9A\u4E49</span></label></div></fieldset><label>\u793E\u533A\u98CE\u683C<textarea id="pm-scene-prompt" maxlength="6000">${escapeHtml(scene.generatedPrompt)}</textarea></label><p>\u8BBE\u7F6E\u793E\u533A\u5185\u5BB9\u7684\u8868\u8FBE\u98CE\u683C\u4E0E\u6C1B\u56F4\u3002</p><div class="pm-scene-prompt-actions"><button type="button" class="pm-scene-secondary" data-action="regenerate-prompt">\u91CD\u65B0\u751F\u6210</button><button type="button" class="pm-scene-primary" data-action="save-prompt">\u4FDD\u5B58\u98CE\u683C</button></div></div>`;
+    const content = tab === "feed" ? `<div class="pm-scene-feed"><div class="pm-scene-posts">${renderPosts(scene)}</div></div>` : tab === "live" ? `<div class="pm-live-room">${liveContent}</div>` : tab === "context-inject" ? renderContextInjectionSettings(scene, state) : `<div class="pm-scene-prompt"><label>\u793E\u533A\u540D\u79F0<input id="pm-scene-title" maxlength="80" value="${escapeAttr(scene.title)}"></label><fieldset class="pm-scene-accent-field"><legend>\u793E\u533A\u4E3B\u9898\u8272</legend><div class="pm-scene-accent-options">${renderSceneAccentOptions(accent)}<label class="pm-scene-accent-custom" aria-label="\u81EA\u5B9A\u4E49\u793E\u533A\u4E3B\u9898\u8272"><input id="pm-scene-accent" type="color" data-action="scene-accent-custom" value="${escapeAttr(accent)}"><span>\u81EA\u5B9A\u4E49</span></label></div></fieldset><label>\u793E\u533A\u98CE\u683C<textarea id="pm-scene-prompt" maxlength="6000">${escapeHtml(scene.generatedPrompt)}</textarea></label><p>\u8BBE\u7F6E\u793E\u533A\u5185\u5BB9\u7684\u8868\u8FBE\u98CE\u683C\u4E0E\u6C1B\u56F4\u3002</p><div class="pm-scene-prompt-actions"><button type="button" class="pm-scene-secondary" data-action="regenerate-prompt">\u91CD\u65B0\u751F\u6210</button><button type="button" class="pm-scene-primary" data-action="save-prompt">\u4FDD\u5B58\u98CE\u683C</button></div></div>`;
     const isPrompt = tab === "prompt";
     const returnTab = ["feed", "live"].includes(uiScope.lastTab) ? uiScope.lastTab : "feed";
     const leadingAction = isPrompt ? `data-action="tab" data-tab="${returnTab}" aria-label="\u8FD4\u56DE\u5B50\u793E\u533A" title="\u8FD4\u56DE\u5B50\u793E\u533A"` : 'data-action="desktop" aria-label="\u8FD4\u56DE\u684C\u9762" title="\u8FD4\u56DE\u684C\u9762"';
@@ -6802,14 +6723,15 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
       runtime.openSceneId = null;
       return renderInto(".pm-community-page", renderCommunityLauncher(scope, phoneScope(scopeId, store)));
     }
+    const isLiveWarmupActive = (scopeId, sceneId) => communityTasks.state().task?.kind === "live-warmup" && communityTasks.state().task.storageId === scopeId && communityTasks.state().task.sceneId === sceneId;
     function renderCommunityWorkspace2(scopeId, sceneId, tab, store = runtime.store) {
       const scope = getScope(store, scopeId);
       const scene = scope.scenes[sceneId];
       if (!scene) return false;
       runtime.openSceneId = sceneId;
       return renderInto(".pm-community-page", renderCommunityWorkspace(scene, tab, phoneScope(scopeId, store), {
-        liveActive: communityRunner?.isLive() === true,
         autoActive: communityTasks.state().mode === "auto",
+        liveActive: isLiveWarmupActive(scopeId, sceneId),
         ...getCommunityInjectionState(window.__pmBudgetConfig, scopeId, sceneId)
       }));
     }
@@ -6830,7 +6752,6 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
       try {
         const currentStorySeed = actorSeeds(scopeId).story;
         const actorRoster = [...Object.values(scope.actors || {}).filter((actor) => actor.type === "story").map((actor) => actor.displayName), currentStorySeed.displayName].filter((name, index, values) => name && values.indexOf(name) === index);
-        if (kind === "live_batch" && !extra.userContent) extra = { ...extra, userContent: scene.live.title };
         const prompts = buildInteractiveRequest({ kind, presetKey: scene.preset, styleInput: scene.styleInput, generatedPrompt: scene.generatedPrompt, context: await contextText(), actorRoster, ...extra });
         const raw = await callAI(prompts.systemPrompt, prompts.userPrompt, {
           isolated: true,
@@ -6860,8 +6781,8 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
       if (!scene) return;
       const feedScrollTop = preserveFeedScroll ? document.querySelector("#pm-scene-app .pm-scene-feed")?.scrollTop : null;
       replaceApp(renderCommunityWorkspace(scene, tab, phoneScope(scopeId), {
-        liveActive: communityRunner?.isLive() === true,
         autoActive: communityTasks.state().mode === "auto",
+        liveActive: isLiveWarmupActive(scopeId, scene.id),
         ...getCommunityInjectionState(window.__pmBudgetConfig, scopeId, scene.id)
       }), { feedScrollTop });
     }
@@ -6955,12 +6876,6 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
         const { scopeId, scope, scene } = resolveTarget(target);
         if (!scene) throw new Error("\u751F\u6210\u5DF2\u53D6\u6D88");
         appendPosts(scopeId, scope, scene, items);
-      }, isValid),
-      commitDanmaku: (target, items, isValid, slogan = "") => commit(() => {
-        const { scopeId, scope, scene } = resolveTarget(target);
-        if (!scene) throw new Error("\u751F\u6210\u5DF2\u53D6\u6D88");
-        const userSeed = actorSeeds(scopeId).user;
-        appendDanmaku(scopeId, scope, scene, slogan ? [{ author: userSeed.displayName, authorSeed: userSeed, content: slogan }, ...items] : items);
       }, isValid),
       onRender: rerender,
       onStatus: setStatus
@@ -7143,6 +7058,26 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
         await communityRunner.generateFeed();
         return;
       }
+      if (action === "start-warmup") {
+        const { scopeId, scene } = current();
+        if (!scene) return;
+        const target = { storageId: scopeId, sceneId: scene.id };
+        await runLiveWarmup({
+          target,
+          isStarted: () => resolveTarget(target).scene?.live.warmupStarted === true,
+          isActive: () => isLiveWarmupActive(scopeId, scene.id),
+          setStarted: (started) => commit(() => {
+            const targetScene = resolveTarget(target).scene;
+            if (!targetScene) throw new Error("\u793E\u533A\u4E0D\u5B58\u5728\u6216\u5DF2\u88AB\u5220\u9664");
+            targetScene.live.warmupStarted = started;
+            targetScene.updatedAt = now();
+          }),
+          generateFeed: communityRunner.generateFeed,
+          render: () => rerender("live"),
+          isCurrent: () => current().scene?.id === target.sceneId
+        });
+        return;
+      }
       if (action === "comments") {
         await generateComments(button.dataset.postId);
         return;
@@ -7228,13 +7163,6 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
         await regeneratePrompt();
         return;
       }
-      if (action === "toggle-live") {
-        if (communityRunner.isLive()) {
-          communityRunner.cancel("live-stopped");
-          rerender("live");
-        } else await communityRunner.startLive();
-        return;
-      }
       if (action === "send-danmaku") {
         const input = document.getElementById("pm-danmaku-input");
         const content = input?.value.trim() || "";
@@ -7246,10 +7174,6 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
         });
         rerender("live");
         return;
-      }
-      if (action === "rhythm") {
-        const slogan = document.getElementById("pm-danmaku-input")?.value.trim() || "\u8DDF\u4E0A\u8FD9\u4E2A\u8BDD\u9898";
-        await communityRunner.leadRhythm(slogan);
       }
     }
     const bindPhonePageUi = (phoneWindow) => bindPhonePageActions(
@@ -7408,10 +7332,16 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
     const context = getCtx();
     const character = context?.characters?.[context.characterId] || {};
     const cleanMessage = (value) => (value || "").replace(/```[\s\S]*?```/g, "").replace(/<think>[\s\S]*?<\/think>/gi, "").replace(/<[^>]+>/g, "").trim();
-    const mainChat = (context?.chat || []).slice(-8).map((message) => ({
+    const recentChat = (context?.chat || []).slice(-8);
+    const normalizedChat = recentChat.map((message) => ({
       who: message.is_user ? "\u7528\u6237" : message.name || "\u89D2\u8272",
-      content: cleanMessage(message.mes || "")
-    })).filter((message) => message.content);
+      content: cleanMessage(message.mes || ""),
+      isUser: message.is_user === true
+    }));
+    const latestMessage = [...normalizedChat].reverse().find((message) => message.content);
+    const latestChatText = latestMessage?.content || "";
+    const latestChatIsUser = latestMessage?.isUser === true;
+    const mainChat = normalizedChat.filter((message) => message.content);
     let worldBookText = "";
     try {
       if (typeof context?.getWorldInfoPrompt === "function") {
@@ -7430,7 +7360,7 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
       warnHostContextFailureOnce("world-book", "\u8BFB\u53D6\u4E16\u754C\u4E66\u4E0A\u4E0B\u6587\u5931\u8D25", error);
     }
     const userPersona = getUserPersona(getCtx);
-    return { cardDesc: character.description ?? "", cardPersonality: character.personality ?? "", cardScenario: character.scenario ?? "", cardFirstMes: character.first_mes ?? "", cardMesExample: character.mes_example ?? "", mainChatText: mainChat.map((message) => `${message.who}\uFF1A${message.content}`).join("\n"), worldBookText, userName: userPersona.name, userDesc: userPersona.description };
+    return { cardDesc: character.description ?? "", cardPersonality: character.personality ?? "", cardScenario: character.scenario ?? "", cardFirstMes: character.first_mes ?? "", cardMesExample: character.mes_example ?? "", mainChatText: mainChat.map((message) => `${message.who}\uFF1A${message.content}`).join("\n"), latestChatText, latestChatIsUser, worldBookText, userName: userPersona.name, userDesc: userPersona.description };
   }
 
   // src/history-window.js
@@ -7772,12 +7702,12 @@ ${lines}
         if (!element.innerHTML.includes("[emo:")) continue;
         element.innerHTML = element.innerHTML.replace(/\[emo:([^\]:]+):(\d+)\]/g, (raw, setName, index) => {
           const url = findEmojiUrl(setName, parseInt(index, 10), emojis);
-          if (!url) return `<span style="font-size:12px;color:#999;">\u{1F914}[${setName}:${index}]</span>`;
+          if (!url) return `<span style="font-size:12px;color:var(--pm-color-text-tertiary);">\u{1F914}[${setName}:${index}]</span>`;
           if (!isRenderableEmojiSource(url)) {
-            return '<span style="font-size:12px;color:#999;">\u8868\u60C5\u56FE\u7247\u6682\u4E0D\u52A0\u8F7D</span>';
+            return '<span style="font-size:12px;color:var(--pm-color-text-tertiary);">\u8868\u60C5\u56FE\u7247\u6682\u4E0D\u52A0\u8F7D</span>';
           }
           if (typeof emojiBudget === "function" && !emojiBudget(url)) {
-            return '<span style="font-size:12px;color:#999;">\u8868\u60C5\u56FE\u7247\u6682\u4E0D\u52A0\u8F7D</span>';
+            return '<span style="font-size:12px;color:var(--pm-color-text-tertiary);">\u8868\u60C5\u56FE\u7247\u6682\u4E0D\u52A0\u8F7D</span>';
           }
           return `<img src="${escapeAttr(url)}" loading="lazy" decoding="async" width="98" height="98" style="width:98px;height:98px;object-fit:contain;border-radius:8px;display:block;box-shadow:0 2px 8px rgba(0,0,0,0.15);vertical-align:middle;">`;
         });
@@ -8906,9 +8836,9 @@ ${antiFluff}`;
       const behavior = getCharacterBehavior(window.__pmCharacterBehavior, id2, contactName);
       const assignedEmojis = config.emojis || [];
       const emojiCheckHtml = window.__pmEmojis.length ? `
-        <div style="margin-bottom:8px;border-bottom:1px solid #f0f0f0;padding-bottom:14px;">
+        <div style="margin-bottom:8px;border-bottom:1px solid var(--pm-color-border-subtle);padding-bottom:14px;">
             <div class="pm-cfg-label" style="margin-bottom:8px;">\u5141\u8BB8 AI \u4F7F\u7528\u7684\u8868\u60C5\u5305\u5957\u7EC4</div>
-            <div style="display:flex;flex-direction:column;gap:10px;max-height:130px;overflow-y:auto;background:#fafafa;border-radius:8px;padding:10px;border:1px solid #eee;">
+            <div style="display:flex;flex-direction:column;gap:10px;max-height:130px;overflow-y:auto;background:var(--pm-color-surface-elevated);border-radius:8px;padding:10px;border:1px solid var(--pm-color-border-subtle);">
                 ${window.__pmEmojis.map((set) => `
                     <div style="display:flex;align-items:center;gap:10px;cursor:pointer;"
                          onclick="this.querySelector('.pm-emoji-assign-check').click()">
@@ -8918,12 +8848,12 @@ ${antiFluff}`;
                              onclick="event.stopPropagation();this.classList.toggle('is-checked');this.setAttribute('aria-checked',String(this.classList.contains('is-checked')))"
                              onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();this.click()}"
                              style="width:20px;height:20px;min-width:20px;flex-shrink:0;margin-bottom:0;"></div>
-                        <span style="font-size:13px;color:#333;">${escapeHtml(set.name)}</span>
-                        <span style="color:#aaa;font-size:11px;margin-left:auto;">(${set.images.length}\u5F20)</span>
+                        <span style="font-size:13px;color:var(--pm-color-text-primary);">${escapeHtml(set.name)}</span>
+                        <span style="color:var(--pm-color-text-tertiary);font-size:11px;margin-left:auto;">(${set.images.length}\u5F20)</span>
                     </div>
                 `).join("")}
             </div>
-            <div style="font-size:11px;color:#aaa;margin-top:4px;">\u52FE\u9009\u540E AI \u4F1A\u77E5\u9053\u5982\u4F55\u4F7F\u7528\u8FD9\u4E9B\u8868\u60C5</div>
+            <div style="font-size:11px;color:var(--pm-color-text-tertiary);margin-top:4px;">\u52FE\u9009\u540E AI \u4F1A\u77E5\u9053\u5982\u4F55\u4F7F\u7528\u8FD9\u4E9B\u8868\u60C5</div>
         </div>` : "";
       makeOverlay(`
     <div class="pm-modal pm-modal-wide">
@@ -8972,14 +8902,14 @@ ${antiFluff}`;
             </div>
         </div>
         <div style="display:flex;align-items:center;gap:8px;">
-            <span style="font-size:12px;color:#888;">\u6BCF\u9694</span>
+            <span style="font-size:12px;color:var(--pm-color-text-tertiary);">\u6BCF\u9694</span>
             <input id="pm-poke-interval" type="number" min="1" max="99"
                 value="${config.autoPoke.interval}"
-                style="width:50px;border:1px solid #ddd;border-radius:6px;padding:4px 8px;font-size:13px;text-align:center;"
+                style="width:50px;border:1px solid var(--pm-color-border-default);border-radius:6px;padding:4px 8px;font-size:13px;text-align:center;"
                 ${!config.autoPoke.enabled ? "disabled" : ""}>
-            <span style="font-size:12px;color:#888;">\u8F6E\u65E0\u8F93\u5165\u4E3B\u52A8\u53D1\u6D88\u606F</span>
+            <span style="font-size:12px;color:var(--pm-color-text-tertiary);">\u8F6E\u65E0\u8F93\u5165\u4E3B\u52A8\u53D1\u6D88\u606F</span>
         </div>
-        <div style="font-size:11px;color:#999;margin-top:4px;">
+        <div style="font-size:11px;color:var(--pm-color-text-tertiary);margin-top:4px;">
             \u5F53\u524D\u8BA1\u6570\uFF1A<span id="pm-poke-counter">${config.autoPoke.counter}</span> / ${config.autoPoke.interval}
         </div>
         </div>
@@ -9897,9 +9827,9 @@ ${antiFluff}`;
         assignedEmojis = window.__pmPokeConfig[id2]?.[state.currentGroupKey]?.emojis || [];
       }
       const emojiCheckHtml = mode === "edit" && window.__pmEmojis.length ? `
-        <div style="padding-top:12px;border-top:1px solid #f0f0f0;">
+        <div style="padding-top:12px;border-top:1px solid var(--pm-color-border-subtle);">
             <div class="pm-cfg-label" style="margin-bottom:8px;">\u5141\u8BB8 AI \u4F7F\u7528\u7684\u8868\u60C5\u5305\u5957\u7EC4</div>
-            <div style="display:flex;flex-direction:column;gap:10px;max-height:120px;overflow-y:auto;background:#fafafa;border-radius:8px;padding:10px;border:1px solid #eee;">
+            <div style="display:flex;flex-direction:column;gap:10px;max-height:120px;overflow-y:auto;background:var(--pm-color-surface-elevated);border-radius:8px;padding:10px;border:1px solid var(--pm-color-border-subtle);">
                 ${window.__pmEmojis.map((set) => `
                     <div style="display:flex;align-items:center;gap:10px;cursor:pointer;"
                          onclick="this.querySelector('.pm-emoji-assign-check').click()">
@@ -9909,14 +9839,14 @@ ${antiFluff}`;
                              onclick="event.stopPropagation();this.classList.toggle('is-checked');this.setAttribute('aria-checked',String(this.classList.contains('is-checked')))"
                              onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();this.click()}"
                              style="width:20px;height:20px;min-width:20px;flex-shrink:0;margin-bottom:0;"></div>
-                        <span style="font-size:13px;color:#333;">${escapeHtml(set.name)}</span>
-                        <span style="color:#aaa;font-size:11px;margin-left:auto;">(${set.images.length}\u5F20)</span>
+                        <span style="font-size:13px;color:var(--pm-color-text-primary);">${escapeHtml(set.name)}</span>
+                        <span style="color:var(--pm-color-text-tertiary);font-size:11px;margin-left:auto;">(${set.images.length}\u5F20)</span>
                     </div>
                 `).join("")}
             </div>
         </div>` : "";
       const memberColorHtml = mode === "edit" ? `
-        <div style="padding-top:12px;border-top:1px solid #f0f0f0;">
+        <div style="padding-top:12px;border-top:1px solid var(--pm-color-border-subtle);">
           <div class="pm-cfg-label" style="margin-bottom:8px;">\u6210\u5458\u6C14\u6CE1\u989C\u8272</div>
           <div style="display:grid;grid-template-columns:1fr auto;gap:8px 12px;align-items:center;">
             ${groupMeta.members.map((name, index) => `<label style="display:contents;"><span style="font-size:12px;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(name)}</span><input class="pm-group-member-color" data-member="${escapeAttr(name)}" type="color" value="${escapeAttr(groupMeta.memberColors[name] || GROUP_COLORS[index % GROUP_COLORS.length].bg)}"></label>`).join("")}
@@ -9924,7 +9854,7 @@ ${antiFluff}`;
         </div>` : "";
       const injection = groupMeta.injection;
       const injectionHtml = mode === "edit" ? `
-        <div style="padding-top:12px;border-top:1px solid #f0f0f0;display:flex;flex-direction:column;gap:8px;">
+        <div style="padding-top:12px;border-top:1px solid var(--pm-color-border-subtle);display:flex;flex-direction:column;gap:8px;">
           <div class="pm-cfg-label">\u7FA4\u804A\u8BB0\u5F55\u6CE8\u5165</div>
           <label style="font-size:12px;">\u4F4D\u7F6E
             <select id="pm-group-injection-position" class="pm-cfg-input">
@@ -9953,7 +9883,7 @@ ${antiFluff}`;
         ${memberColorHtml}
         ${injectionHtml}
         ${emojiCheckHtml}
-        <div style="margin-top:0px;padding-top:8px;border-top:1px solid #f0f0f0;">
+        <div style="margin-top:0px;padding-top:8px;border-top:1px solid var(--pm-color-border-subtle);">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
             <span style="font-size:13px;font-weight:600;">\u23F0 \u81EA\u52A8\u53D1\u6D88\u606F</span>
             <div onclick="window.__pmToggleAutoPokeGroup()"
@@ -9965,14 +9895,14 @@ ${antiFluff}`;
             </div>
         </div>
         <div style="display:flex;align-items:center;gap:8px;">
-            <span style="font-size:12px;color:#888;">\u6BCF\u9694</span>
+            <span style="font-size:12px;color:var(--pm-color-text-tertiary);">\u6BCF\u9694</span>
             <input id="pm-poke-interval-group" type="number" min="1" max="99"
                 value="${pokeConfig.interval}"
-                style="width:50px;border:1px solid #ddd;border-radius:6px;padding:4px 8px;font-size:13px;text-align:center;"
+                style="width:50px;border:1px solid var(--pm-color-border-default);border-radius:6px;padding:4px 8px;font-size:13px;text-align:center;"
                 ${!pokeConfig.enabled ? "disabled" : ""}>
-            <span style="font-size:12px;color:#888;">\u8F6E\u65E0\u8F93\u5165\u4E3B\u52A8\u53D1\u6D88\u606F</span>
+            <span style="font-size:12px;color:var(--pm-color-text-tertiary);">\u8F6E\u65E0\u8F93\u5165\u4E3B\u52A8\u53D1\u6D88\u606F</span>
         </div>
-        <div style="font-size:11px;color:#999;margin-top:4px;">
+        <div style="font-size:11px;color:var(--pm-color-text-tertiary);margin-top:4px;">
             \u5F53\u524D\u8BA1\u6570\uFF1A<span id="pm-poke-counter-group">${pokeConfig.counter}</span> / ${pokeConfig.interval}
         </div>
         </div>
@@ -10151,7 +10081,7 @@ ${antiFluff}`;
     </div>
     <div class="pm-bi-bar"><span>\u52FE\u9009\u4F1A\u8BDD\u53EF\u6CE8\u5165\u4E3B\u697C\uFF1B\u7FA4\u804A\u8D44\u6E90\u53C2\u6570\u5728\u7FA4\u804A\u8BBE\u7F6E\u4E2D\u914D\u7F6E</span><span class="pm-bi-tip">\u5DF2\u9009 ${checked.length}</span></div>
     <div class="pm-modal-list">
-        ${empty ? '<div style="text-align:center;color:#999;padding:20px;font-size:13px;">\u6682\u65E0\u8054\u7CFB\u4EBA</div>' : renderGroups + renderSingle}
+        ${empty ? '<div style="text-align:center;color:var(--pm-color-text-tertiary);padding:20px;font-size:13px;">\u6682\u65E0\u8054\u7CFB\u4EBA</div>' : renderGroups + renderSingle}
     </div>
     <div class="pm-modal-add">
         <button onclick="window.__pmShowGroupCreate()" class="pm-btn-group">\u65B0\u5EFA\u7FA4\u804A</button>
@@ -12005,8 +11935,6 @@ ${lines}`;
           persistTheme: saveTheme,
           notify: (message) => alert(message)
         });
-        deps.cancelCommunityGeneration?.("phone-minimized");
-        deps.cancelCalendarTasks?.("phone-minimized");
         disarmAutoPoke("phone-minimized");
       }
       state.phoneWindow.classList.toggle("is-min", state.isMinimized);
@@ -12221,7 +12149,7 @@ ${lines}`;
         runtime.firstOpen = false;
         const list2 = state.phoneWindow?.querySelector(".pm-msg-list");
         if (list2) {
-          list2.innerHTML = '<div style="text-align:center;color:#aaa;padding:20px;font-size:13px;">\u6B63\u5728\u52A0\u8F7D\u5386\u53F2\u8BB0\u5F55\u2026</div>';
+          list2.innerHTML = '<div style="text-align:center;color:var(--pm-color-text-tertiary);padding:20px;font-size:13px;">\u6B63\u5728\u52A0\u8F7D\u5386\u53F2\u8BB0\u5F55\u2026</div>';
         }
         const historyLoad = loadHistoriesOnce();
         const openingWindow = state.phoneWindow;
@@ -12494,13 +12422,13 @@ ${lines}`;
       <div class="pm-crop-mask"></div>
     </div>
     <div class="pm-crop-zoom">
-      <span style="font-size:11px;color:#888;">\u7F29\u653E</span>
+      <span style="font-size:11px;color:var(--pm-color-text-tertiary);">\u7F29\u653E</span>
       <input type="range" id="pm-crop-zoom" min="100" max="400" value="100">
     </div>
   </div>
   <div class="pm-modal-add" style="display:flex;gap:8px;">
-    <button id="pm-crop-cancel" style="flex:1;background:#f0f0f0;color:#333;border:none;border-radius:10px;padding:10px;font-size:13px;cursor:pointer;">\u53D6\u6D88</button>
-    <button id="pm-crop-confirm" style="flex:1;background:#007aff;color:#fff;border:none;border-radius:10px;padding:10px;font-size:13px;cursor:pointer;font-weight:600;">\u786E\u8BA4\u88C1\u526A</button>
+    <button id="pm-crop-cancel" style="flex:1;background:var(--pm-color-surface-elevated);color:var(--pm-color-text-primary);border:none;border-radius:10px;padding:10px;font-size:13px;cursor:pointer;">\u53D6\u6D88</button>
+    <button id="pm-crop-confirm" style="flex:1;background:var(--pm-color-accent);color:var(--pm-color-on-dark);border:none;border-radius:10px;padding:10px;font-size:13px;cursor:pointer;font-weight:600;">\u786E\u8BA4\u88C1\u526A</button>
   </div>
 </div>`;
     const cancel = () => {
@@ -12753,11 +12681,11 @@ ${lines}`;
         </div>
         <div id="pm-mode-tip" class="pm-cfg-tip" style="text-align:left;padding:6px 2px 0;">${useIndependent ? "\u72EC\u7ACB API \u5FC5\u987B\u586B\u5199\u5730\u5740\u3001\u5BC6\u94A5\u548C\u6A21\u578B" : "\u9ED8\u8BA4\u4F7F\u7528\u9152\u9986 API \u9884\u8BBE"}</div>
       </div>
-      <div id="pm-indep-profile-fields" class="pm-independent-api-fields" ${useIndependent ? "" : "hidden"} style="padding:6px 14px 4px;border-top:1px solid #f0f0f0;">
+      <div id="pm-indep-profile-fields" class="pm-independent-api-fields" ${useIndependent ? "" : "hidden"} style="padding:6px 14px 4px;border-top:1px solid var(--pm-color-border-subtle);">
         <div class="pm-cfg-label" style="margin:8px 0 6px;">\u5DF2\u4FDD\u5B58\u6863\u6848</div>
         <div class="pm-prof-list">${profilesHtml}</div>
       </div>
-      <div id="pm-indep-config-fields" class="pm-independent-api-fields" ${useIndependent ? "" : "hidden"} style="padding:10px 16px;display:flex;flex-direction:column;gap:10px;border-top:1px solid #f0f0f0;">
+      <div id="pm-indep-config-fields" class="pm-independent-api-fields" ${useIndependent ? "" : "hidden"} style="padding:10px 16px;display:flex;flex-direction:column;gap:10px;border-top:1px solid var(--pm-color-border-subtle);">
         <div class="pm-cfg-label">API \u5730\u5740</div>
         <input id="pm-cfg-url" class="pm-cfg-input" placeholder="https://api.xxx.com \u6216 .../v1" value="${cfg.apiUrl}">
         <div class="pm-cfg-label">API Key</div>
@@ -12807,18 +12735,18 @@ ${lines}`;
           <div class="pm-layout-chip ${theme.darkMode === "dark" ? "pm-layout-active" : ""}" onclick="window.__pmSetDarkMode('dark')">\u591C\u95F4</div>
         </div>
       </div>
-      <div style="padding:12px 16px;border-top:1px solid #f0f0f0;">
+      <div style="padding:12px 16px;border-top:1px solid var(--pm-color-border-subtle);">
         <label class="pm-cfg-label pm-ambient-setting">
           <span><b>\u663E\u793A\u672C\u5730\u72B6\u6001\u680F</b><small>\u4EC5\u663E\u793A\u8BBE\u5907\u672C\u5730\u65F6\u95F4\u3002</small></span>
           <div id="pm-ambient-status-enabled" class="pm-custom-check ${theme.ambientStatusEnabled === true ? "is-checked" : ""}" role="checkbox" tabindex="0" aria-checked="${theme.ambientStatusEnabled === true}" onclick="const enabled=!this.classList.contains('is-checked');this.classList.toggle('is-checked',enabled);this.setAttribute('aria-checked',String(enabled));window.__pmSetAmbientStatus(enabled)" onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();this.click()}"></div>
         </label>
       </div>
-      <div style="padding:12px 16px;border-top:1px solid #f0f0f0;">
+      <div style="padding:12px 16px;border-top:1px solid var(--pm-color-border-subtle);">
         <label class="pm-cfg-label" for="pm-custom-title">\u684C\u9762\u6807\u9898</label>
         <input id="pm-custom-title" class="pm-cfg-input" maxlength="20" value="${String(theme.customTitle || "").replaceAll("&", "&amp;").replaceAll('"', "&quot;").replaceAll("<", "&lt;").replaceAll(">", "&gt;")}" placeholder="\u5929\u97F3\u5C0F\u7B3A" oninput="window.__pmSetCustomTitle()">
         <small class="pm-cfg-help">\u7559\u7A7A\u65F6\u663E\u793A\u201C\u5929\u97F3\u5C0F\u7B3A\u201D\u3002</small>
       </div>
-      <div style="padding:14px 16px 12px;border-top:1px solid #f0f0f0;">
+      <div style="padding:14px 16px 12px;border-top:1px solid var(--pm-color-border-subtle);">
         <div class="pm-cfg-label" style="margin-bottom:10px;">\u6C14\u6CE1\u4E3B\u9898</div>
         <div class="pm-theme-row">${presetButtons}</div>
         <div style="display:flex;gap:8px;margin-top:14px;align-items:center;flex-wrap:wrap;">
@@ -12834,7 +12762,7 @@ ${lines}`;
           <button type="button" onclick="document.getElementById('pm-border-color').value='#1a1a1a';window.__pmSetBorderColor()" class="pm-color-clear">\u91CD\u7F6E</button>
         </div>
       </div>
-      <div style="padding:12px 16px 12px;border-top:1px solid #f0f0f0;">
+      <div style="padding:12px 16px 12px;border-top:1px solid var(--pm-color-border-subtle);">
         <div class="pm-cfg-label" style="margin-bottom:14px;">\u80CC\u666F\u56FE</div>
         <div style="display:flex;flex-direction:column;gap:14px;padding:0 4px;">
           <div class="pm-bg-row"><span class="pm-bg-label">\u684C\u9762\u80CC\u666F</span>${desktopBackgroundButtons}</div>
@@ -12953,7 +12881,7 @@ ${lines}`;
           <div id="pm-budget-redistribute" class="pm-custom-check ${config.redistributeUnused ? "is-checked" : ""}" role="checkbox" tabindex="0" aria-checked="${config.redistributeUnused}" onclick="this.classList.toggle('is-checked');this.setAttribute('aria-checked',String(this.classList.contains('is-checked')))" onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();this.click()}"></div>
         </label>
       </div>
-      <div style="padding:12px 16px;border-top:1px solid #f0f0f0;display:flex;flex-direction:column;gap:10px;">
+      <div style="padding:12px 16px;border-top:1px solid var(--pm-color-border-subtle);display:flex;flex-direction:column;gap:10px;">
         <label class="pm-cfg-label pm-check-setting">
           <span>\u542F\u7528\u4E92\u52A8\u793E\u533A\u6CE8\u5165\uFF08\u9ED8\u8BA4\u5173\u95ED\uFF09</span>
           <div id="pm-budget-community-enabled" class="pm-custom-check ${config.communityEnabled ? "is-checked" : ""}" role="checkbox" tabindex="0" aria-checked="${config.communityEnabled}" onclick="this.classList.toggle('is-checked');this.setAttribute('aria-checked',String(this.classList.contains('is-checked')))" onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();this.click()}"></div>
@@ -12969,7 +12897,7 @@ ${lines}`;
         <div class="pm-cfg-label">\u5F53\u524D\u89D2\u8272\u5361\u5141\u8BB8\u6CE8\u5165\u7684\u573A\u666F</div>
         <div id="pm-budget-scenes" style="display:flex;flex-direction:column;gap:6px;">${sceneOptions || '<div class="pm-cfg-tip" style="text-align:left;">\u5F53\u524D\u6CA1\u6709\u53EF\u9009\u62E9\u7684\u4E92\u52A8\u573A\u666F</div>'}</div>
       </div>
-      <div style="padding:12px 16px;border-top:1px solid #f0f0f0;display:flex;flex-direction:column;gap:10px;">
+      <div style="padding:12px 16px;border-top:1px solid var(--pm-color-border-subtle);display:flex;flex-direction:column;gap:10px;">
         <label class="pm-cfg-label pm-check-setting">
           <span>\u542F\u7528\u751F\u6D3B\u65E5\u5386\u6CE8\u5165\uFF08\u9ED8\u8BA4\u5173\u95ED\uFF09</span>
           <div id="pm-budget-calendar-enabled" class="pm-custom-check ${config.calendarEnabled ? "is-checked" : ""}" role="checkbox" tabindex="0" aria-checked="${config.calendarEnabled}" onclick="this.classList.toggle('is-checked');this.setAttribute('aria-checked',String(this.classList.contains('is-checked')))" onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();this.click()}"></div>
@@ -12990,7 +12918,7 @@ ${lines}`;
   function renderBackupSettings() {
     return `
     <div class="pm-settings-page">
-      <div style="padding:12px 16px 12px;border-top:1px solid #f0f0f0;">
+      <div style="padding:12px 16px 12px;border-top:1px solid var(--pm-color-border-subtle);">
         <div class="pm-cfg-label" style="margin-bottom:10px;">\u6570\u636E\u5907\u4EFD</div>
         <div class="pm-action-row">
           <button class="pm-action-button is-success" onclick="window.__pmExportData()">\u5BFC\u51FA\u5907\u4EFD</button>
@@ -12999,7 +12927,7 @@ ${lines}`;
         </div>
         <div class="pm-cfg-tip" style="text-align:left;margin-top:6px;color:#ff9500;">\u6CE8\u610F\uFF1A\u5BFC\u5165\u4F1A\u8986\u76D6\u5F53\u524D\u6240\u6709\u8054\u7CFB\u4EBA\u3001\u8BB0\u5F55\u3001\u793E\u533A\u4E0E\u9875\u9762\u6062\u590D\u72B6\u6001</div>
       </div>
-      <div style="padding:12px 16px;border-top:1px solid #f0f0f0;">
+      <div style="padding:12px 16px;border-top:1px solid var(--pm-color-border-subtle);">
         <div class="pm-cfg-label" style="margin-bottom:6px;color:#ff3b30;">\u5E94\u7528\u5185\u5B89\u5168\u6E05\u7406</div>
         <div class="pm-cfg-tip" style="text-align:left;margin-bottom:8px;">\u4EC5\u5220\u9664\u5929\u97F3\u5C0F\u7B3A\u62E5\u6709\u7684\u6570\u636E\uFF0C\u4E0D\u89E6\u78B0\u5BBF\u4E3B\u6216\u5176\u4ED6\u6269\u5C55\u3002\u5EFA\u8BAE\u5148\u5BFC\u51FA\u5907\u4EFD\u3002</div>
         <button type="button" class="pm-action-button is-danger" onclick="window.__pmClearAllData()" style="width:100%">\u6E05\u7406\u5168\u90E8\u5929\u97F3\u5C0F\u7B3A\u6570\u636E</button>
@@ -13435,13 +13363,14 @@ ${lines}`;
         }
         if (Object.hasOwn(scene, "live")) {
           const live = objectValue(scene.live, `${field}.scenes.${sceneId}.live`);
-          assertAllowedKeys(live, `${field}.scenes.${sceneId}.live`, ["title", "status", "danmaku"]);
+          assertAllowedKeys(live, `${field}.scenes.${sceneId}.live`, ["title", "status", "warmupStarted", "danmaku"]);
           if (sourceVersion === INTERACTIVE_STORE_VERSION) {
             assertOptionalNormalizedText(live, "title", `${field}.scenes.${sceneId}.live`, 100);
           } else {
             assertOptionalLegacyText(live, "title", `${field}.scenes.${sceneId}.live`);
           }
           if (Object.hasOwn(live, "status") && live.status !== "idle") throw new Error(`\u5907\u4EFD\u5B57\u6BB5 ${field}.scenes.${sceneId}.live.status \u5FC5\u987B\u662F idle`);
+          if (Object.hasOwn(live, "warmupStarted") && typeof live.warmupStarted !== "boolean") throw new Error(`\u5907\u4EFD\u5B57\u6BB5 ${field}.scenes.${sceneId}.live.warmupStarted \u5FC5\u987B\u662F\u5E03\u5C14\u503C`);
           if (Object.hasOwn(live, "danmaku")) {
             if (!Array.isArray(live.danmaku)) throw new Error(`\u5907\u4EFD\u5B57\u6BB5 ${field}.scenes.${sceneId}.live.danmaku \u5FC5\u987B\u662F\u6570\u7EC4`);
             if (live.danmaku.length > INTERACTIVE_LIMITS.danmaku) throw new Error(`\u5907\u4EFD\u5B57\u6BB5 ${field}.scenes.${sceneId}.live.danmaku \u4E0D\u80FD\u8D85\u8FC7 ${INTERACTIVE_LIMITS.danmaku} \u9879`);

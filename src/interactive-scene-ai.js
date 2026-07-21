@@ -35,8 +35,6 @@ export function buildInteractiveRequest({ kind, presetKey, styleInput, generated
         style_prompt: 'items 返回 1 项，字段为 title、prompt。prompt 要可直接供后续社区内容生成使用。',
         feed_batch: 'items 返回 4-6 项，字段只能为 author、content、tags（字符串数组）、comments（数组）。每个 comments 返回 2-5 项，每项字段只能为 author、content；评论要有呼应、分歧和自然口吻。内容彼此有联系但不要重复。不得返回 actorId、authorId 或任何内部标识。',
         comment_batch: `围绕帖子生成 4-8 条自然评论。items 字段为 author、content。${dataBlock('post_data', post, 3000)}`,
-        live_batch: `生成 8-14 条直播弹幕。items 字段为 author、content。${dataBlock('live_topic_data', userContent, 1000)}`,
-        rhythm_batch: `用户正在带动弹幕节奏。生成 10-16 条有呼应、有分歧但不霸凌的弹幕。items 字段为 author、content。${dataBlock('rhythm_slogan_data', userContent, 500)}`,
     };
     return { systemPrompt: system, userPrompt: `${common}\n\n任务：${instructions[kind] || instructions.feed_batch}` };
 }
@@ -83,7 +81,7 @@ export function parseInteractiveResponse(raw, kind) {
         const content = clean(item.content, kind === 'feed_batch' ? 4000 : kind === 'comment_batch' ? 1000 : 200);
         if (!content) return [];
         return [{
-            author: clean(item.author, 80) || (kind.includes('live') || kind === 'rhythm_batch' ? '观众' : '匿名用户'),
+            author: clean(item.author, 80) || '匿名用户',
             content,
             tags: Array.isArray(item.tags) ? item.tags.map(tag => clean(tag, 30)).filter(Boolean).slice(0, 5) : [],
             ...(kind === 'feed_batch' ? { comments: cleanFeedComments(item.comments) } : {}),

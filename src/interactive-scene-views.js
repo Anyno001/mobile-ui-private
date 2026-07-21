@@ -2,7 +2,7 @@ import { getInteractivePresets } from './interactive-scene-ai.js';
 import {
     BACK_ICON_SVG, CALENDAR_ICON_SVG, CHAT_ICON_SVG, CLOSE_ICON_SVG, COMMUNITY_ICON_SVG,
     CONTACTS_ICON_SVG, CONTROL_ICON_SVG, EDIT_ICON_SVG, HEART_ICON_SVG, HOME_ICON_SVG,
-    MORE_ICON_SVG, POKE_ICON_SVG, REPLY_ICON_SVG, SEND_ICON_SVG, SETTINGS_ICON_SVG, SHARE_ICON_SVG, TRASH_ICON_SVG,
+    MORE_ICON_SVG, PLAY_ICON_SVG, POKE_ICON_SVG, REPLY_ICON_SVG, SEND_ICON_SVG, SETTINGS_ICON_SVG, SHARE_ICON_SVG, TRASH_ICON_SVG,
 } from './icons.js';
 import { escapeAttr, escapeHtml } from './ui.js';
 
@@ -118,7 +118,7 @@ export function getDanmakuTone(item) {
 }
 
 function renderDanmaku(scene) {
-    return scene.live.danmaku.slice(-80).map(item => `<div class="pm-danmaku-row is-${stableDanmakuTone(item)}"><b>${escapeHtml(item.authorNameSnapshot)}</b><span>${escapeHtml(item.content)}</span></div>`).join('') || '<div class="pm-scene-empty"><span>开始直播后，弹幕会从这里滚动显示。</span></div>';
+    return scene.live.danmaku.slice(-80).map(item => `<div class="pm-danmaku-row is-${stableDanmakuTone(item)}"><b>${escapeHtml(item.authorNameSnapshot)}</b><span>${escapeHtml(item.content)}</span></div>`).join('') || '<div class="pm-scene-empty"><span>还没有弹幕，发一条和大家打个招呼吧。</span></div>';
 }
 
 function renderContextInjectionSettings(scene, state) {
@@ -157,17 +157,21 @@ function renderSceneMenu(scene, uiScope, autoActive) {
 
 export function renderCommunityWorkspace(scene, tab = 'feed', uiScope = { pinnedSceneIds: [] }, state = {}) {
     const preset = getInteractivePresets()[scene.preset] || getInteractivePresets().custom;
-    const liveActive = state.liveActive === true;
     const autoActive = state.autoActive === true;
     const accent = scene.themeAccent || preset.accent;
+    const warmupStarted = scene.live.warmupStarted === true;
+    const liveActive = state.liveActive === true;
     const hasDanmaku = scene.live.danmaku.length > 0;
     const floatingDanmaku = scene.live.danmaku.slice(-8).map(item => {
         const motion = getDanmakuMotion(item);
         return `<span class="is-${stableDanmakuTone(item)}" style="--lane:${motion.lane};--delay:${motion.delay}s;--duration:${motion.duration}s;--offset:${motion.offset}px">${escapeHtml(item.content)}</span>`;
     }).join('');
+    const liveContent = warmupStarted && !liveActive
+        ? `<div class="pm-live-stage ${hasDanmaku ? 'has-danmaku' : ''}"><div class="pm-danmaku-float">${floatingDanmaku}</div></div><div class="pm-danmaku-list">${renderDanmaku(scene)}</div><div class="pm-danmaku-input"><input id="pm-danmaku-input" maxlength="200" placeholder="发条弹幕……"><button type="button" data-action="send-danmaku" aria-label="发送弹幕" title="发送弹幕">${SEND_ICON_SVG}</button></div>`
+        : `<div class="pm-live-stage"><button type="button" class="pm-live-play-btn" data-action="start-warmup" aria-label="${liveActive ? '正在热场' : '开始热场'}" title="${liveActive ? '正在热场' : '开始热场'}"${liveActive ? ' disabled aria-busy="true"' : ''}>${PLAY_ICON_SVG}</button></div>`;
     const composer = tab === 'feed' ? `<div class="pm-scene-composer"><textarea id="pm-scene-post-input" maxlength="4000" placeholder="分享此刻……"></textarea><button type="button" class="pm-scene-primary" data-action="publish" aria-label="发布" title="发布">${SEND_ICON_SVG}</button></div>` : '';
     const content = tab === 'feed' ? `<div class="pm-scene-feed"><div class="pm-scene-posts">${renderPosts(scene)}</div></div>`
-        : tab === 'live' ? `<div class="pm-live-room"><div class="pm-live-stage ${hasDanmaku ? 'has-danmaku' : ''}"><div class="pm-live-badge">${hasDanmaku ? '直播中' : '未开播'}</div><h2>${escapeHtml(scene.live.title)}</h2><div class="pm-danmaku-float">${floatingDanmaku}</div></div><div class="pm-live-actions"><button type="button" data-action="toggle-live" class="${liveActive ? 'is-live' : ''}">${liveActive ? '停止直播' : '开始直播'}</button><button type="button" data-action="rhythm">带一波节奏</button></div><div class="pm-danmaku-list">${renderDanmaku(scene)}</div><div class="pm-danmaku-input"><input id="pm-danmaku-input" maxlength="200" placeholder="发条弹幕……"><button type="button" data-action="send-danmaku" aria-label="发送弹幕" title="发送弹幕">${SEND_ICON_SVG}</button></div></div>`
+        : tab === 'live' ? `<div class="pm-live-room">${liveContent}</div>`
         : tab === 'context-inject' ? renderContextInjectionSettings(scene, state)
             : `<div class="pm-scene-prompt"><label>社区名称<input id="pm-scene-title" maxlength="80" value="${escapeAttr(scene.title)}"></label><fieldset class="pm-scene-accent-field"><legend>社区主题色</legend><div class="pm-scene-accent-options">${renderSceneAccentOptions(accent)}<label class="pm-scene-accent-custom" aria-label="自定义社区主题色"><input id="pm-scene-accent" type="color" data-action="scene-accent-custom" value="${escapeAttr(accent)}"><span>自定义</span></label></div></fieldset><label>社区风格<textarea id="pm-scene-prompt" maxlength="6000">${escapeHtml(scene.generatedPrompt)}</textarea></label><p>设置社区内容的表达风格与氛围。</p><div class="pm-scene-prompt-actions"><button type="button" class="pm-scene-secondary" data-action="regenerate-prompt">重新生成</button><button type="button" class="pm-scene-primary" data-action="save-prompt">保存风格</button></div></div>`;
     const isPrompt = tab === 'prompt';

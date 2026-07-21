@@ -1262,13 +1262,20 @@ try {
         '宿主上下文告警不得输出异常正文或潜在敏感内容');
 
     const worldBookContext = {
-        chat: [{ is_user: true, mes: '保密聊天正文' }],
+        chat: [
+            { is_user: false, name: '角色', mes: '最后一条有效正文' },
+            { is_user: true, mes: '<think>只有隐藏思考，不是正文</think>' },
+        ],
         async getWorldInfoPrompt() { throw new RangeError('sensitive world book payload'); },
     };
     const firstGatheredContext = await gatherContext(() => worldBookContext);
     const secondGatheredContext = await gatherContext(() => worldBookContext);
     assert.equal(firstGatheredContext.worldBookText, '', '世界书读取失败必须回退为空文本');
     assert.equal(secondGatheredContext.worldBookText, '');
+    assert.equal(firstGatheredContext.latestChatText, '最后一条有效正文',
+        '最后正文必须跳过清洗后为空的末楼层');
+    assert.equal(firstGatheredContext.latestChatIsUser, false,
+        '最后正文的作者标记必须与被选中的有效楼层一致');
     assert.equal(hostBoundaryWarnings.filter(args => String(args[0]).includes('读取世界书上下文失败')).length, 1,
         '同一世界书读取失败必须只告警一次');
     assert.equal(hostBoundaryWarnings.some(args => args.some(value => String(value).includes('sensitive world book payload'))), false,
@@ -1407,8 +1414,10 @@ assert.equal(localStorageControl.setCalls.get('ST_SMS_THEME'), successfulMinimiz
     '进入最小化必须且只能保存一次主题');
 assert.equal(foundationPhoneStyleValues.get('--pm-phone-width'), '330px');
 assert.equal(foundationPhoneStyleValues.get('--pm-phone-height'), '580px');
-assert.ok(lifecycleCalls.some(call => call[0] === 'cancel-community' && call[1] === 'phone-minimized'));
-assert.ok(lifecycleCalls.some(call => call[0] === 'cancel-calendar' && call[1] === 'phone-minimized'));
+assert.ok(!lifecycleCalls.some(call => call[0] === 'cancel-community' && call[1] === 'phone-minimized'),
+    '最小化必须允许正在进行的社区生成继续');
+assert.ok(!lifecycleCalls.some(call => call[0] === 'cancel-calendar' && call[1] === 'phone-minimized'),
+    '最小化必须允许正在进行的日历任务继续');
 
 const writesBeforeDrag = localStorageControl.setCalls.get('ST_SMS_THEME');
 islandHandleListeners.get('mousedown')(makeIslandEvent(10, 10));
@@ -3239,7 +3248,7 @@ const workspaceScene = normalizeInteractiveStore({
     scopes: { story: { activeSceneId: 'scene', sceneOrder: ['scene'], scenes: { scene: {
         id: 'scene', title: '主题社区', preset: 'weibo', themeAccent: '#123abc',
         generatedPrompt: '自然交流', posts: [{ id: 'post', author: '访客', content: '测试帖子', comments: [{ id: 'comment', author: '路人', content: '测试评论' }] }],
-        live: { title: '正在直播', status: 'idle', danmaku: [{ id: 'danmaku', author: '访客', content: '弹幕' }] },
+        live: { title: '正在直播', status: 'idle', warmupStarted: true, danmaku: [{ id: 'danmaku', author: '访客', content: '弹幕' }] },
     } } } },
 }).scopes.story.scenes.scene;
 const workspaceHtml = renderCommunityWorkspace(workspaceScene, 'feed', { pinnedSceneIds: [] });
@@ -3287,15 +3296,19 @@ const liveWorkspaceHtml = renderCommunityWorkspace(workspaceScene, 'live', { pin
 assert.match(liveWorkspaceHtml, /class="pm-scene-title-tab "[^>]*data-tab="feed"[^>]*aria-current="false"/);
 assert.match(liveWorkspaceHtml, /class="pm-scene-title-tab is-active"[^>]*data-tab="live"[^>]*aria-current="page"[^>]*>[\s\S]*<span>直播<\/span>/);
 assert.match(liveWorkspaceHtml, /pm-live-stage has-danmaku/);
-assert.match(liveWorkspaceHtml, /class="pm-live-badge">直播中<\/div>/);
 assert.match(liveWorkspaceHtml, /--duration:[\d.]+s;--offset:-?\d+px/);
 assert.match(liveWorkspaceHtml, /data-action="send-danmaku"[^>]*aria-label="发送弹幕"[^>]*>[\s\S]*?<svg/,
     '弹幕发送必须使用图标按钮并保留无障碍名称');
-const idleLiveWorkspaceHtml = renderCommunityWorkspace({ ...workspaceScene, live: { ...workspaceScene.live, danmaku: [] } }, 'live', { pinnedSceneIds: [] });
-assert.match(idleLiveWorkspaceHtml, /class="pm-live-stage "><div class="pm-live-badge">未开播<\/div>/);
-assert.doesNotMatch(idleLiveWorkspaceHtml, /class="pm-live-stage has-danmaku"/);
-assert.match(liveWorkspaceHtml, /class="pm-live-actions"[\s\S]*data-action="toggle-live"[\s\S]*data-action="rhythm"/,
-    '直播页必须保留直播控制和带节奏能力');
+const idleLiveWorkspaceHtml = renderCommunityWorkspace({ ...workspaceScene, live: { ...workspaceScene.live, warmupStarted: false, danmaku: [] } }, 'live', { pinnedSceneIds: [] });
+assert.match(idleLiveWorkspaceHtml, /class="pm-live-play-btn"[^>]*data-action="start-warmup"[^>]*aria-label="开始热场"[^>]*>[\s\S]*?<svg/);
+assert.doesNotMatch(idleLiveWorkspaceHtml, /pm-danmaku-list|pm-danmaku-input|data-action="send-danmaku"/,
+    '未热场时只能显示黑屏中央播放键');
+const loadingLiveWorkspaceHtml = renderCommunityWorkspace(workspaceScene, 'live', { pinnedSceneIds: [] }, { liveActive: true });
+assert.match(loadingLiveWorkspaceHtml, /class="pm-live-play-btn"[^>]*aria-label="正在热场"[^>]*disabled aria-busy="true"/);
+assert.doesNotMatch(loadingLiveWorkspaceHtml, /pm-danmaku-list|pm-danmaku-input/,
+    '首次 feed_batch 完成前不得提前显示手动弹幕输入区');
+assert.doesNotMatch(liveWorkspaceHtml, /toggle-live|data-action="rhythm"|pm-live-actions/,
+    '直播页不得保留旧直播控制与带节奏入口');
 assert.doesNotMatch(liveWorkspaceHtml, /class="pm-scene-bottom-bar"|class="pm-control-menu pm-scene-menu"/,
     '直播页不得渲染底部二级菜单区域');
 const promptWorkspaceHtml = renderCommunityWorkspace(workspaceScene, 'prompt', { pinnedSceneIds: [], lastTab: 'live' });

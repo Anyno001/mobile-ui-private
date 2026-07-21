@@ -196,9 +196,9 @@ export function installPhoneChatPoke(state, deps) {
         const assignedEmojis = config.emojis || [];
 
         const emojiCheckHtml = window.__pmEmojis.length ? `
-        <div style="margin-bottom:8px;border-bottom:1px solid #f0f0f0;padding-bottom:14px;">
+        <div style="margin-bottom:8px;border-bottom:1px solid var(--pm-color-border-subtle);padding-bottom:14px;">
             <div class="pm-cfg-label" style="margin-bottom:8px;">允许 AI 使用的表情包套组</div>
-            <div style="display:flex;flex-direction:column;gap:10px;max-height:130px;overflow-y:auto;background:#fafafa;border-radius:8px;padding:10px;border:1px solid #eee;">
+            <div style="display:flex;flex-direction:column;gap:10px;max-height:130px;overflow-y:auto;background:var(--pm-color-surface-elevated);border-radius:8px;padding:10px;border:1px solid var(--pm-color-border-subtle);">
                 ${window.__pmEmojis.map(set => `
                     <div style="display:flex;align-items:center;gap:10px;cursor:pointer;"
                          onclick="this.querySelector('.pm-emoji-assign-check').click()">
@@ -208,12 +208,12 @@ export function installPhoneChatPoke(state, deps) {
                              onclick="event.stopPropagation();this.classList.toggle('is-checked');this.setAttribute('aria-checked',String(this.classList.contains('is-checked')))"
                              onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();this.click()}"
                              style="width:20px;height:20px;min-width:20px;flex-shrink:0;margin-bottom:0;"></div>
-                        <span style="font-size:13px;color:#333;">${escapeHtml(set.name)}</span>
-                        <span style="color:#aaa;font-size:11px;margin-left:auto;">(${set.images.length}张)</span>
+                        <span style="font-size:13px;color:var(--pm-color-text-primary);">${escapeHtml(set.name)}</span>
+                        <span style="color:var(--pm-color-text-tertiary);font-size:11px;margin-left:auto;">(${set.images.length}张)</span>
                     </div>
                 `).join('')}
             </div>
-            <div style="font-size:11px;color:#aaa;margin-top:4px;">勾选后 AI 会知道如何使用这些表情</div>
+            <div style="font-size:11px;color:var(--pm-color-text-tertiary);margin-top:4px;">勾选后 AI 会知道如何使用这些表情</div>
         </div>` : '';
 
         makeOverlay(`
@@ -263,14 +263,14 @@ export function installPhoneChatPoke(state, deps) {
             </div>
         </div>
         <div style="display:flex;align-items:center;gap:8px;">
-            <span style="font-size:12px;color:#888;">每隔</span>
+            <span style="font-size:12px;color:var(--pm-color-text-tertiary);">每隔</span>
             <input id="pm-poke-interval" type="number" min="1" max="99"
                 value="${config.autoPoke.interval}"
-                style="width:50px;border:1px solid #ddd;border-radius:6px;padding:4px 8px;font-size:13px;text-align:center;"
+                style="width:50px;border:1px solid var(--pm-color-border-default);border-radius:6px;padding:4px 8px;font-size:13px;text-align:center;"
                 ${!config.autoPoke.enabled ? 'disabled' : ''}>
-            <span style="font-size:12px;color:#888;">轮无输入主动发消息</span>
+            <span style="font-size:12px;color:var(--pm-color-text-tertiary);">轮无输入主动发消息</span>
         </div>
-        <div style="font-size:11px;color:#999;margin-top:4px;">
+        <div style="font-size:11px;color:var(--pm-color-text-tertiary);margin-top:4px;">
             当前计数：<span id="pm-poke-counter">${config.autoPoke.counter}</span> / ${config.autoPoke.interval}
         </div>
         </div>

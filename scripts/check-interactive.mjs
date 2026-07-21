@@ -22,7 +22,7 @@ import {
 } from '../src/interactive-scene-phone.js';
 import {
     COMMUNITY_TASK_PHASES, createCommunityGenerationRunner, createCommunityTaskController,
-    createCommunityTurnSnapshot, registerResolvedHostEvent, resolveCommunityMessageEvents, resolveHostEvent,
+    createCommunityTurnSnapshot, registerResolvedHostEvent, resolveCommunityMessageEvents, resolveHostEvent, runLiveWarmup,
 } from '../src/interactive-scene-scheduler.js';
 
 const presets = getInteractivePresets();
@@ -1272,44 +1272,58 @@ commitRunner.cancel('scene-deleted', true);
 commitGate.resolve();
 await assert.rejects(inFlightCommit, /生成已取消/);
 
-const timers = new Map();
-let timerSequence = 0;
-const oldLiveCommit = deferred();
-let liveCommitCount = 0;
-const liveRuntime = {};
-const liveController = createCommunityTaskController({
-    runtime: liveRuntime, isAllowed: () => true,
-    isTargetActive: task => task.storageId === runnerTarget.storageId && task.sceneId === runnerTarget.sceneId,
-});
-const liveRunner = createCommunityGenerationRunner({
-    controller: liveController,
-    getTarget: () => runnerTarget,
-    request: async () => [{ content: '弹幕' }],
-    commitFeed: async () => {},
-    commitDanmaku: async (_target, _items, isValid) => {
-        liveCommitCount += 1;
-        if (liveCommitCount === 1) await oldLiveCommit.promise;
-        if (!isValid()) throw new Error('文字直播已停止');
+const warmupTarget = { storageId: 'story', sceneId: 'scene-a' };
+const warmupGate = deferred();
+const warmupTransitions = [];
+let warmupStarted = false;
+let warmupActive = false;
+let warmupOptions = null;
+let warmupRenderCount = 0;
+const warmup = runLiveWarmup({
+    target: warmupTarget,
+    isStarted: () => warmupStarted,
+    isActive: () => warmupActive,
+    setStarted: async value => { warmupStarted = value; warmupTransitions.push(value); },
+    generateFeed: (scheduledTask, options) => {
+        assert.equal(scheduledTask, null);
+        warmupActive = true;
+        warmupOptions = options;
+        return warmupGate.promise.finally(() => { warmupActive = false; });
     },
-    setTimer: callback => { const id = ++timerSequence; timers.set(id, callback); return id; },
-    clearTimer: id => timers.delete(id),
+    render: () => { warmupRenderCount += 1; },
+    isCurrent: () => true,
 });
-const oldLive = liveRunner.startLive();
 await Promise.resolve();
-assert.equal(liveCommitCount, 1);
-for (const callback of timers.values()) callback();
-assert.equal(liveCommitCount, 1, '同一直播 tick 未完成时不得重入提交');
-liveRunner.cancel('old-live-stopped');
-const newLive = liveRunner.startLive();
-await newLive;
-assert.equal(liveRunner.isLive(), true);
-assert.equal(timers.size, 1);
-oldLiveCommit.reject(new Error('旧直播迟到失败'));
-await oldLive;
-assert.equal(liveRunner.isLive(), true, '旧直播迟到失败不得清除新直播 owner');
-assert.equal(timers.size, 1, '旧直播迟到失败不得清除新 timer');
-liveRunner.cancel('test-complete');
-assert.equal(timers.size, 0);
+assert.equal(warmupStarted, true, '首次热场必须先持久化幂等闩锁');
+assert.deepEqual(warmupOptions, { renderTab: 'live', taskKind: 'live-warmup' });
+assert.equal(await runLiveWarmup({
+    target: warmupTarget,
+    isStarted: () => warmupStarted,
+    isActive: () => warmupActive,
+    setStarted: async () => { throw new Error('重复热场不得再次持久化'); },
+    generateFeed: async () => { throw new Error('重复热场不得再次生成'); },
+    render: () => {}, isCurrent: () => true,
+}), false);
+warmupGate.resolve(true);
+assert.equal(await warmup, true);
+assert.deepEqual(warmupTransitions, [true]);
+assert.equal(warmupRenderCount, 1);
+
+const failedTransitions = [];
+let failedStarted = false;
+let failedRenderCount = 0;
+await assert.rejects(runLiveWarmup({
+    target: warmupTarget,
+    isStarted: () => failedStarted,
+    isActive: () => false,
+    setStarted: async value => { failedStarted = value; failedTransitions.push(value); },
+    generateFeed: async () => { throw new Error('首次热场失败'); },
+    render: () => { failedRenderCount += 1; },
+    isCurrent: () => true,
+}), /首次热场失败/);
+assert.equal(failedStarted, false, '首次热场失败必须回滚闩锁以允许重试');
+assert.deepEqual(failedTransitions, [true, false]);
+assert.equal(failedRenderCount, 2, '失败前后都必须刷新直播视图');
 
 // 真实安装层必须把社区 style/feed 请求接到共享 callAI，并保留 token、隔离和 signal 契约。
 const previousWindow = globalThis.window;

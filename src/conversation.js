@@ -121,13 +121,7 @@ export function installConversation(state, deps) {
             const nameEl = state.phoneWindow.querySelector('.pm-name');
             const editBtn = state.phoneWindow.querySelector('.pm-name-edit');
             if (nameEl) {
-                if (state.isGroupChat) {
-                    const display = state.groupDisplayName || name;
-                    const arr = [...display];
-                    nameEl.textContent = arr.length > 5 ? arr.slice(0, 5).join('') + '...' : display;
-                } else {
-                    nameEl.textContent = name;
-                }
+                nameEl.textContent = state.isGroupChat ? state.groupDisplayName || name : name;
             }
             if (editBtn) {
                 editBtn.classList.remove('is-hidden');

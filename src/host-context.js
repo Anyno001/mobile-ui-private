@@ -71,12 +71,17 @@ export async function gatherContext(getCtx) {
         .replace(/<think>[\s\S]*?<\/think>/gi, '')
         .replace(/<[^>]+>/g, '')
         .trim();
-    const mainChat = (context?.chat || []).slice(-8)
+    const recentChat = (context?.chat || []).slice(-8);
+    const normalizedChat = recentChat
         .map(message => ({
             who: message.is_user ? '用户' : (message.name || '角色'),
             content: cleanMessage(message.mes || ''),
-        }))
-        .filter(message => message.content);
+            isUser: message.is_user === true,
+        }));
+    const latestMessage = [...normalizedChat].reverse().find(message => message.content);
+    const latestChatText = latestMessage?.content || '';
+    const latestChatIsUser = latestMessage?.isUser === true;
+    const mainChat = normalizedChat.filter(message => message.content);
     let worldBookText = '';
     try {
         if (typeof context?.getWorldInfoPrompt === 'function') {
@@ -96,5 +101,5 @@ export async function gatherContext(getCtx) {
         warnHostContextFailureOnce('world-book', '读取世界书上下文失败', error);
     }
     const userPersona = getUserPersona(getCtx);
-    return { cardDesc: character.description ?? '', cardPersonality: character.personality ?? '', cardScenario: character.scenario ?? '', cardFirstMes: character.first_mes ?? '', cardMesExample: character.mes_example ?? '', mainChatText: mainChat.map(message => `${message.who}：${message.content}`).join('\n'), worldBookText, userName: userPersona.name, userDesc: userPersona.description };
+    return { cardDesc: character.description ?? '', cardPersonality: character.personality ?? '', cardScenario: character.scenario ?? '', cardFirstMes: character.first_mes ?? '', cardMesExample: character.mes_example ?? '', mainChatText: mainChat.map(message => `${message.who}：${message.content}`).join('\n'), latestChatText, latestChatIsUser, worldBookText, userName: userPersona.name, userDesc: userPersona.description };
 }
