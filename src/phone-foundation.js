@@ -214,7 +214,7 @@ export function installPhoneFoundation(state, deps) {
     installPhonePageSuspensionListeners(window, document);
 
     window.__pmHistories = window.__pmHistories || {};
-    window.__pmConfig = window.__pmConfig || { apiUrl: '', apiKey: '', model: '', useIndependent: false };
+    window.__pmConfig = window.__pmConfig || { apiUrl: '', apiKey: '', model: '', temperature: 1.2, useIndependent: false };
     window.__pmProfiles = window.__pmProfiles || [];
     window.__pmBidirectional = window.__pmBidirectional || {};
     window.__pmTheme = window.__pmTheme || {

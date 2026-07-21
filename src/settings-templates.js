@@ -44,6 +44,9 @@ export function renderApiSettings({ cfg, useIndependent, profilesHtml }) {
           <input id="pm-cfg-model" class="pm-cfg-input" placeholder="独立 API 必填：手动输入或选择" value="${cfg.model}">
           <button id="pm-model-arrow" type="button" aria-label="选择模型" onclick="window.__pmShowModelPicker()">▼</button>
         </div>
+        <label class="pm-cfg-label" for="pm-cfg-temperature">温度</label>
+        <input id="pm-cfg-temperature" class="pm-cfg-input" type="number" min="0" max="2" step="0.1" inputmode="decimal" value="${cfg.temperature}">
+        <div class="pm-cfg-help">范围 0–2；数值越高，回复越随机。默认 1.2。</div>
         <div id="pm-api-status" class="pm-cfg-tip" style="font-weight:bold;">测试连接不会覆盖当前配置，点击保存后生效</div>
         <div class="pm-action-row">
           <button class="pm-action-button is-model-fetch" onclick="window.__pmTestApi()">拉取模型</button>

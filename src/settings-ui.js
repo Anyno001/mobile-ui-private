@@ -1,4 +1,6 @@
-import { extractAiResponseContent } from './ai.js';
+import {
+    DEFAULT_INDEPENDENT_API_TEMPERATURE, extractAiResponseContent, normalizeIndependentApiTemperature,
+} from './ai.js';
 import { normalizeBudgetConfig } from './budget.js';
 import { THEME_PRESETS, normalizeApiUrls } from './config.js';
 import { openCropper } from './cropper.js';
@@ -126,8 +128,10 @@ export function installSettingsUi(deps) {
     };
     window.__pmPickProfile = (idx) => {
         const p = window.__pmProfiles[idx]; if (!p) return;
-        const u = document.getElementById('pm-cfg-url'), k = document.getElementById('pm-cfg-key'), m = document.getElementById('pm-cfg-model');
+        const u = document.getElementById('pm-cfg-url'), k = document.getElementById('pm-cfg-key'), m = document.getElementById('pm-cfg-model'),
+            temperature = document.getElementById('pm-cfg-temperature');
         if (u) u.value = p.apiUrl || ''; if (k) k.value = p.apiKey || ''; if (m) m.value = p.model || '';
+        if (temperature) temperature.value = String(normalizeIndependentApiTemperature(p.temperature));
         apiDraftMode.set(true);
     };
     window.__pmSetMode = value => apiDraftMode.set(value);
@@ -253,7 +257,7 @@ export function installSettingsUi(deps) {
         try {
             await clearPluginData({ afterClear: async () => {
                 await applyBackupState({
-                    histories: {}, config: { apiUrl: '', apiKey: '', model: '', useIndependent: false },
+                    histories: {}, config: { apiUrl: '', apiKey: '', model: '', temperature: DEFAULT_INDEPENDENT_API_TEMPERATURE, useIndependent: false },
                     theme: { preset: 'default', customRight: '', customLeft: '', borderColor: '', layout: 'standard', darkMode: 'light', ambientStatusEnabled: false, customTitle: '' },
                     profiles: [], groupMeta: {}, pokeConfig: {}, bidirectional: {}, emojis: [], characterBehavior: {},
                     wordyLimit: false, desktopBg: '', bgGlobal: '', bgLocal: {}, interactiveScenes: normalizeInteractiveStore(null),
@@ -319,6 +323,7 @@ export function installSettingsUi(deps) {
                     apiUrl: escapeAttr(cfg.apiUrl || ''),
                     apiKey: escapeAttr(cfg.apiKey || ''),
                     model: escapeAttr(cfg.model || ''),
+                    temperature: escapeAttr(String(normalizeIndependentApiTemperature(cfg.temperature))),
                 },
                 useIndependent: apiDraftMode.current(),
                 profilesHtml,
@@ -483,16 +488,24 @@ export function installSettingsUi(deps) {
     };
     window.__pmSaveConfig = () => {
         const apiUrl = document.getElementById('pm-cfg-url')?.value.trim() ?? '', apiKey = document.getElementById('pm-cfg-key')?.value.trim() ?? '', model = document.getElementById('pm-cfg-model')?.value.trim() ?? '';
-        if (apiDraftMode.current() && (!apiUrl || !apiKey || !model)) {
-            const status = document.getElementById('pm-api-status');
+        const temperatureText = document.getElementById('pm-cfg-temperature')?.value.trim() ?? String(DEFAULT_INDEPENDENT_API_TEMPERATURE);
+        const parsedTemperature = Number(temperatureText);
+        const useIndependent = apiDraftMode.current();
+        const status = document.getElementById('pm-api-status');
+        if (useIndependent && (!apiUrl || !apiKey || !model)) {
             if (status) { status.textContent = '独立 API 必须填写地址、密钥和模型'; status.style.color = '#ff3b30'; }
-            return;
+            return false;
         }
-        const previous = clone(window.__pmConfig), candidate = { apiUrl, apiKey, model, useIndependent: apiDraftMode.current() };
+        if (useIndependent && (!temperatureText || !Number.isFinite(parsedTemperature) || parsedTemperature < 0 || parsedTemperature > 2)) {
+            if (status) { status.textContent = '温度必须是 0 到 2 之间的数字'; status.style.color = '#ff3b30'; }
+            return false;
+        }
+        const temperature = useIndependent ? parsedTemperature : normalizeIndependentApiTemperature(temperatureText);
+        const previous = clone(window.__pmConfig), candidate = { apiUrl, apiKey, model, temperature, useIndependent };
         window.__pmConfig = candidate;
         try { localStorage.setItem('ST_SMS_CONFIG', JSON.stringify(candidate)); }
         catch (error) { window.__pmConfig = previous; alert('API 配置保存失败：浏览器存储不可用。'); return false; }
-        if (apiUrl && apiKey && !addOrUpdateProfile({ apiUrl, apiKey, model })) {
+        if (apiUrl && apiKey && !addOrUpdateProfile({ apiUrl, apiKey, model, temperature })) {
             window.__pmConfig = previous;
             try { localStorage.setItem('ST_SMS_CONFIG', JSON.stringify(previous)); }
             catch (rollbackError) {

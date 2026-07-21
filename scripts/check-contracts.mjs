@@ -1110,9 +1110,9 @@ requireText('settings-templates.js', sourceModuleByName.get('settings-templates.
 for (const expected of [
   'pm-settings-home', "__pmShowConfig('api')", "__pmShowConfig('look')",
   "__pmShowConfig('backup')", "__pmShowConfig('budget')", "__pmShowConfig('quick-reply')",
-  'pm-indep-profile-fields', 'pm-indep-config-fields', 'pm-independent-api-fields',
+  'pm-indep-profile-fields', 'pm-indep-config-fields', 'pm-independent-api-fields', 'pm-cfg-temperature',
   'renderQuickReplySettings', 'Quick Reply', '/phone', '手机开关', '创建或清除开关入口',
-  '默认使用酒馆 API 预设', 'BACK_ICON_SVG', 'pm-action-button is-danger',
+  '默认使用酒馆 API 预设', '范围 0–2；数值越高，回复越随机。默认 1.2。', 'BACK_ICON_SVG', 'pm-action-button is-danger',
 ]) requireText('settings-templates.js', sourceModuleByName.get('settings-templates.js')?.code || '', expected);
 for (const expected of [
   'PHONE_QR_SET_NAME', 'PHONE_QR_AUTOMATION_ID', "PHONE_QR_MESSAGE = '/phone'", "PHONE_QR_LABEL_DEFAULT = '天音'",
@@ -1393,8 +1393,11 @@ for (const expected of [
   requireText('interactive-scene-phone.js', interactivePhoneActionsCode, expected);
 }
 for (const expected of [
+  'DEFAULT_INDEPENDENT_API_TEMPERATURE = 1.2', 'normalizeIndependentApiTemperature',
+  'temperature: normalizeIndependentApiTemperature(cfg.temperature)',
   'const signal = options.signal', 'signal,', 'throwIfAborted(signal)', 'readApiError(response, signal)',
 ]) requireText('ai.js', aiCode, expected);
+for (const expected of ['pm-cfg-temperature', 'normalizeIndependentApiTemperature(p.temperature)', 'addOrUpdateProfile({ apiUrl, apiKey, model, temperature })']) requireText('settings-ui.js', settingsUiCodeForInteractive, expected);
 for (const expected of ['beforeApply', 'closePhone(true)', '__pmClearAllData', 'clearPluginData']) requireText('settings-ui.js', settingsUiCodeForInteractive, expected);
 for (const expected of ['if (!force)', 'persistCurrentHistory()', 'persistPhoneUiSnapshot?.()']) {
   requireText('phone-lifecycle.js', sourceModuleByName.get('phone-lifecycle.js')?.code || '', expected);

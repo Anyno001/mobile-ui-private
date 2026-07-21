@@ -1,5 +1,15 @@
 import { normalizeApiUrls } from './config.js';
 
+export const DEFAULT_INDEPENDENT_API_TEMPERATURE = 1.2;
+
+export function normalizeIndependentApiTemperature(value) {
+    if (value === null || value === undefined) return DEFAULT_INDEPENDENT_API_TEMPERATURE;
+    if (typeof value === 'string' && !value.trim()) return DEFAULT_INDEPENDENT_API_TEMPERATURE;
+    const temperature = Number(value);
+    return Number.isFinite(temperature) && temperature >= 0 && temperature <= 2
+        ? temperature : DEFAULT_INDEPENDENT_API_TEMPERATURE;
+}
+
 function jsonObjectEnd(source, start) {
     let depth = 0;
     let quoted = false;
@@ -184,7 +194,7 @@ export function createAiClient({
                     body: JSON.stringify({
                         model: cfg.model,
                         messages,
-                        temperature: 1.2,
+                        temperature: normalizeIndependentApiTemperature(cfg.temperature),
                         top_p: 0.95,
                         frequency_penalty: 0.3,
                         presence_penalty: 0.3,

@@ -1063,6 +1063,7 @@ const uiElements = new Map([
     ['pm-cfg-url', { value: 'https://new.example' }],
     ['pm-cfg-key', { value: 'new-key' }],
     ['pm-cfg-model', { value: 'model-beta', getBoundingClientRect: () => ({ left: 20, bottom: 80, width: 240 }) }],
+    ['pm-cfg-temperature', { value: '0.7' }],
     ['pm-api-status', { textContent: '', style: {} }],
     ['pm-mode-main', { classList: makeClassList(['pm-mode-active']) }],
     ['pm-mode-indep', { classList: makeClassList([]) }],
@@ -1629,8 +1630,8 @@ assert.equal(window.__pmDeleteProfile(0), true);
 assert.deepEqual(JSON.parse(localValues.get('ST_SMS_API_PROFILES')), []);
 assert.equal(profilePageRefreshes, 1);
 
-window.__pmConfig = { apiUrl: 'https://old.example', apiKey: 'old-key', model: 'old-model', useIndependent: false };
-window.__pmProfiles = [{ apiUrl: 'https://old.example', apiKey: 'old-key', model: 'old-model' }];
+window.__pmConfig = { apiUrl: 'https://old.example', apiKey: 'old-key', model: 'old-model', temperature: 1.2, useIndependent: false };
+window.__pmProfiles = [{ apiUrl: 'https://old.example', apiKey: 'old-key', model: 'old-model', temperature: 1.2 }];
 localValues.set('ST_SMS_API_PROFILES', JSON.stringify(window.__pmProfiles));
 localValues.set('ST_SMS_CONFIG', JSON.stringify(window.__pmConfig));
 localStorageControl.failSet.add('ST_SMS_CONFIG');
@@ -1658,23 +1659,35 @@ assert.equal(uiElements.get('pm-overlay').removed, false);
 assert.match(uiAlerts.at(-1), /API 配置回滚也失败/);
 
 uiElements.get('pm-overlay').removed = false;
-window.__pmProfiles = [{ apiUrl: 'https://profile.example/v1', apiKey: 'profile-key', model: 'profile-model' }];
+window.__pmProfiles = [{ apiUrl: 'https://profile.example/v1', apiKey: 'profile-key', model: 'profile-model', temperature: 0.4 }];
 window.__pmPickProfile(0);
 assert.equal(uiElements.get('pm-indep-profile-fields').hidden, false);
 assert.equal(uiElements.get('pm-indep-config-fields').hidden, false);
 assert.equal(uiElements.get('pm-cfg-url').value, 'https://profile.example/v1');
 assert.equal(uiElements.get('pm-cfg-key').value, 'profile-key');
 assert.equal(uiElements.get('pm-cfg-model').value, 'profile-model');
+assert.equal(uiElements.get('pm-cfg-temperature').value, '0.4');
 assert.equal(uiElements.get('pm-mode-main').classList.contains('pm-mode-active'), false);
 assert.equal(uiElements.get('pm-mode-indep').classList.contains('pm-mode-active'), true);
 assert.equal(uiElements.get('pm-mode-tip').textContent, '独立 API 必须填写地址、密钥和模型');
 assert.equal(window.__pmSaveConfig(), true);
 assert.equal(window.__pmConfig.apiUrl, 'https://profile.example/v1');
+assert.equal(window.__pmConfig.temperature, 0.4);
 assert.equal(window.__pmConfig.useIndependent, true, '选择独立 API 档案后保存必须启用独立路由');
+assert.equal(JSON.parse(localValues.get('ST_SMS_CONFIG')).temperature, 0.4);
 assert.equal(JSON.parse(localValues.get('ST_SMS_CONFIG')).useIndependent, true);
-assert.equal(JSON.parse(localValues.get('ST_SMS_API_PROFILES')).some(profile => profile.apiUrl === 'https://profile.example/v1'), true);
+assert.equal(JSON.parse(localValues.get('ST_SMS_API_PROFILES')).some(profile => profile.apiUrl === 'https://profile.example/v1' && profile.temperature === 0.4), true);
 assert.equal(uiElements.get('pm-overlay').removed, true);
 assert.match(uiNotes.at(-1), /独立API/);
+
+uiElements.get('pm-overlay').removed = false;
+uiElements.get('pm-cfg-temperature').value = '2.1';
+const configBeforeInvalidTemperature = structuredClone(window.__pmConfig);
+assert.equal(window.__pmSaveConfig(), false);
+assert.deepEqual(window.__pmConfig, configBeforeInvalidTemperature, '非法温度不得修改内存配置');
+assert.equal(uiElements.get('pm-overlay').removed, false, '非法温度不得关闭设置弹窗');
+assert.match(uiElements.get('pm-api-status').textContent, /温度必须是 0 到 2/);
+uiElements.get('pm-cfg-temperature').value = '0';
 
 uiElements.get('pm-overlay').removed = false;
 window.__pmSetMode(false);
@@ -1684,11 +1697,19 @@ assert.equal(uiElements.get('pm-mode-main').classList.contains('pm-mode-active')
 assert.equal(uiElements.get('pm-mode-indep').classList.contains('pm-mode-active'), false);
 assert.equal(uiElements.get('pm-mode-tip').textContent, '默认使用酒馆 API 预设');
 assert.equal(window.__pmSaveConfig(), true);
+assert.equal(window.__pmConfig.temperature, 0, '主 API 保存不得把合法温度 0 回退为默认值');
 assert.equal(window.__pmConfig.useIndependent, false, '用户手动切回主 API 后必须保留明确选择');
 assert.equal(JSON.parse(localValues.get('ST_SMS_CONFIG')).useIndependent, false);
 assert.match(uiNotes.at(-1), /主API/);
-assert.match(renderApiSettings({ cfg: { apiUrl: '', apiKey: '', model: '' }, useIndependent: false, profilesHtml: '' }), /id="pm-indep-config-fields"[^>]* hidden/);
-assert.doesNotMatch(renderApiSettings({ cfg: { apiUrl: '', apiKey: '', model: '' }, useIndependent: true, profilesHtml: '' }), /id="pm-indep-config-fields"[^>]* hidden/);
+const mainApiSettingsHtml = renderApiSettings({ cfg: { apiUrl: '', apiKey: '', model: '', temperature: '1.2' }, useIndependent: false, profilesHtml: '' });
+const independentApiSettingsHtml = renderApiSettings({ cfg: { apiUrl: '', apiKey: '', model: '', temperature: '1.2' }, useIndependent: true, profilesHtml: '' });
+assert.match(mainApiSettingsHtml, /id="pm-indep-config-fields"[^>]* hidden/);
+assert.doesNotMatch(independentApiSettingsHtml, /id="pm-indep-config-fields"[^>]* hidden/);
+assert.match(independentApiSettingsHtml, /id="pm-cfg-temperature"[^>]*min="0" max="2" step="0\.1"[^>]*value="1\.2"/);
+
+window.__pmProfiles = [{ apiUrl: 'https://legacy.example/v1', apiKey: 'legacy-key', model: 'legacy-model' }];
+window.__pmPickProfile(0);
+assert.equal(uiElements.get('pm-cfg-temperature').value, '1.2', '旧档案缺少温度时必须回填默认值');
 delete globalThis.document;
 delete globalThis.alert;
 

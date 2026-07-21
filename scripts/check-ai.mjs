@@ -1,5 +1,8 @@
 import assert from 'node:assert/strict';
-import { createAiClient, generationErrorMessage, parseFirstJsonObject } from '../src/ai.js';
+import {
+    createAiClient, DEFAULT_INDEPENDENT_API_TEMPERATURE, generationErrorMessage,
+    normalizeIndependentApiTemperature, parseFirstJsonObject,
+} from '../src/ai.js';
 import {
     buildGeneratedDirectoryCandidates, commitGeneratedDirectory, parseGeneratedDirectory,
     shouldReportGeneratedDirectoryError, installContactGenerator,
@@ -21,6 +24,14 @@ assert.equal(generationErrorMessage(new Error('GitHub webhook failed to fetch pr
 assert.equal(generationErrorMessage(new TypeError('Failed to fetch GitHub API webhook metadata')), 'Failed to fetch GitHub API webhook metadata');
 assert.equal(generationErrorMessage(Object.assign(new Error('联系人协议校验失败'), { name: 'GitError' })), '联系人协议校验失败');
 assert.match(generationErrorMessage(new TypeError('Failed to fetch')), /AI 服务网络连接失败/);
+
+assert.equal(DEFAULT_INDEPENDENT_API_TEMPERATURE, 1.2);
+assert.equal(normalizeIndependentApiTemperature(undefined), 1.2);
+assert.equal(normalizeIndependentApiTemperature(''), 1.2);
+assert.equal(normalizeIndependentApiTemperature(0), 0);
+assert.equal(normalizeIndependentApiTemperature('2'), 2);
+assert.equal(normalizeIndependentApiTemperature(-0.1), 1.2);
+assert.equal(normalizeIndependentApiTemperature(2.1), 1.2);
 
 const coordinatorOrder = [];
 await assert.rejects(enqueueDirectorySave('histories', { value: 1 }, async () => {
@@ -410,7 +421,7 @@ assert.equal(fetchRequest.options.headers['Content-Type'], 'application/json');
 let body = JSON.parse(fetchRequest.options.body);
 assert.equal(body.model, 'provider-model');
 assert.equal(Object.hasOwn(body, 'max_tokens'), false);
-assert.equal(body.temperature, 1.2);
+assert.equal(body.temperature, DEFAULT_INDEPENDENT_API_TEMPERATURE);
 assert.equal(body.top_p, 0.95);
 assert.equal(body.frequency_penalty, 0.3);
 assert.equal(body.presence_penalty, 0.3);
@@ -418,6 +429,16 @@ assert.deepEqual(body.messages, [
     { role: 'system', content: 'system' },
     { role: 'user', content: 'user' },
 ]);
+
+config.temperature = 0;
+assert.equal(await callAI('', 'deterministic'), 'api reply');
+body = JSON.parse(fetchRequest.options.body);
+assert.equal(body.temperature, 0, '独立 API 温度 0 必须原样发送');
+config.temperature = 8;
+assert.equal(await callAI('', 'invalid temperature fallback'), 'api reply');
+body = JSON.parse(fetchRequest.options.body);
+assert.equal(body.temperature, DEFAULT_INDEPENDENT_API_TEMPERATURE, '越界存储值必须回退默认温度');
+config.temperature = DEFAULT_INDEPENDENT_API_TEMPERATURE;
 
 const requestController = new AbortController();
 await callAI('', 'signal propagation', { signal: requestController.signal });

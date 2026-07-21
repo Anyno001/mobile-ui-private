@@ -340,9 +340,9 @@ export function installPhoneLifecycle(state, deps) {
         if (!runtime.visibilityTimer) runtime.visibilityTimer = setInterval(ensureVisibility, 2000);
         try {
             const saved = JSON.parse(localStorage.getItem('ST_SMS_CONFIG'));
-            window.__pmConfig = saved || { apiUrl: '', apiKey: '', model: '', useIndependent: false };
+            window.__pmConfig = saved || { apiUrl: '', apiKey: '', model: '', temperature: 1.2, useIndependent: false };
             if (typeof window.__pmConfig.useIndependent === 'undefined') window.__pmConfig.useIndependent = !!(window.__pmConfig.apiUrl && window.__pmConfig.apiKey);
-        } catch (e) { window.__pmConfig = { apiUrl: '', apiKey: '', model: '', useIndependent: false }; }
+        } catch (e) { window.__pmConfig = { apiUrl: '', apiKey: '', model: '', temperature: 1.2, useIndependent: false }; }
         loadProfiles(); loadBidirectional(); loadTheme(); loadPokeConfig(); loadCharacterBehavior(); loadWordyLimit(); loadBudgetConfig(); migrateOldHistory();
         await Promise.all([loadGroupMeta(), loadEmojis()]);
         loadBgSettings().then(() => { try { applyBackground(); } catch (e) {} });

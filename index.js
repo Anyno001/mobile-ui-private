@@ -17,6 +17,13 @@
   }
 
   // src/ai.js
+  var DEFAULT_INDEPENDENT_API_TEMPERATURE = 1.2;
+  function normalizeIndependentApiTemperature(value) {
+    if (value === null || value === void 0) return DEFAULT_INDEPENDENT_API_TEMPERATURE;
+    if (typeof value === "string" && !value.trim()) return DEFAULT_INDEPENDENT_API_TEMPERATURE;
+    const temperature = Number(value);
+    return Number.isFinite(temperature) && temperature >= 0 && temperature <= 2 ? temperature : DEFAULT_INDEPENDENT_API_TEMPERATURE;
+  }
   function jsonObjectEnd(source, start) {
     let depth = 0;
     let quoted = false;
@@ -181,7 +188,7 @@
             body: JSON.stringify({
               model: cfg.model,
               messages,
-              temperature: 1.2,
+              temperature: normalizeIndependentApiTemperature(cfg.temperature),
               top_p: 0.95,
               frequency_penalty: 0.3,
               presence_penalty: 0.3
@@ -10961,7 +10968,7 @@ ${lines}`;
     updatePhonePageSuspensionHandler(window, deps, disarmAutoPoke);
     installPhonePageSuspensionListeners(window, document);
     window.__pmHistories = window.__pmHistories || {};
-    window.__pmConfig = window.__pmConfig || { apiUrl: "", apiKey: "", model: "", useIndependent: false };
+    window.__pmConfig = window.__pmConfig || { apiUrl: "", apiKey: "", model: "", temperature: 1.2, useIndependent: false };
     window.__pmProfiles = window.__pmProfiles || [];
     window.__pmBidirectional = window.__pmBidirectional || {};
     window.__pmTheme = window.__pmTheme || {
@@ -12023,10 +12030,10 @@ ${lines}`;
       if (!runtime.visibilityTimer) runtime.visibilityTimer = setInterval(ensureVisibility, 2e3);
       try {
         const saved = JSON.parse(localStorage.getItem("ST_SMS_CONFIG"));
-        window.__pmConfig = saved || { apiUrl: "", apiKey: "", model: "", useIndependent: false };
+        window.__pmConfig = saved || { apiUrl: "", apiKey: "", model: "", temperature: 1.2, useIndependent: false };
         if (typeof window.__pmConfig.useIndependent === "undefined") window.__pmConfig.useIndependent = !!(window.__pmConfig.apiUrl && window.__pmConfig.apiKey);
       } catch (e) {
-        window.__pmConfig = { apiUrl: "", apiKey: "", model: "", useIndependent: false };
+        window.__pmConfig = { apiUrl: "", apiKey: "", model: "", temperature: 1.2, useIndependent: false };
       }
       loadProfiles();
       loadBidirectional();
@@ -12695,6 +12702,9 @@ ${lines}`;
           <input id="pm-cfg-model" class="pm-cfg-input" placeholder="\u72EC\u7ACB API \u5FC5\u586B\uFF1A\u624B\u52A8\u8F93\u5165\u6216\u9009\u62E9" value="${cfg.model}">
           <button id="pm-model-arrow" type="button" aria-label="\u9009\u62E9\u6A21\u578B" onclick="window.__pmShowModelPicker()">\u25BC</button>
         </div>
+        <label class="pm-cfg-label" for="pm-cfg-temperature">\u6E29\u5EA6</label>
+        <input id="pm-cfg-temperature" class="pm-cfg-input" type="number" min="0" max="2" step="0.1" inputmode="decimal" value="${cfg.temperature}">
+        <div class="pm-cfg-help">\u8303\u56F4 0\u20132\uFF1B\u6570\u503C\u8D8A\u9AD8\uFF0C\u56DE\u590D\u8D8A\u968F\u673A\u3002\u9ED8\u8BA4 1.2\u3002</div>
         <div id="pm-api-status" class="pm-cfg-tip" style="font-weight:bold;">\u6D4B\u8BD5\u8FDE\u63A5\u4E0D\u4F1A\u8986\u76D6\u5F53\u524D\u914D\u7F6E\uFF0C\u70B9\u51FB\u4FDD\u5B58\u540E\u751F\u6548</div>
         <div class="pm-action-row">
           <button class="pm-action-button is-model-fetch" onclick="window.__pmTestApi()">\u62C9\u53D6\u6A21\u578B</button>
@@ -13563,10 +13573,11 @@ ${error.message}`);
     window.__pmPickProfile = (idx) => {
       const p = window.__pmProfiles[idx];
       if (!p) return;
-      const u = document.getElementById("pm-cfg-url"), k = document.getElementById("pm-cfg-key"), m = document.getElementById("pm-cfg-model");
+      const u = document.getElementById("pm-cfg-url"), k = document.getElementById("pm-cfg-key"), m = document.getElementById("pm-cfg-model"), temperature = document.getElementById("pm-cfg-temperature");
       if (u) u.value = p.apiUrl || "";
       if (k) k.value = p.apiKey || "";
       if (m) m.value = p.model || "";
+      if (temperature) temperature.value = String(normalizeIndependentApiTemperature(p.temperature));
       apiDraftMode.set(true);
     };
     window.__pmSetMode = (value) => apiDraftMode.set(value);
@@ -13707,7 +13718,7 @@ ${postImportError.message}`);
         await clearPluginData({ afterClear: async () => {
           await applyBackupState({
             histories: {},
-            config: { apiUrl: "", apiKey: "", model: "", useIndependent: false },
+            config: { apiUrl: "", apiKey: "", model: "", temperature: DEFAULT_INDEPENDENT_API_TEMPERATURE, useIndependent: false },
             theme: { preset: "default", customRight: "", customLeft: "", borderColor: "", layout: "standard", darkMode: "light", ambientStatusEnabled: false, customTitle: "" },
             profiles: [],
             groupMeta: {},
@@ -13781,7 +13792,8 @@ ${error.message}`);
           cfg: {
             apiUrl: escapeAttr(cfg.apiUrl || ""),
             apiKey: escapeAttr(cfg.apiKey || ""),
-            model: escapeAttr(cfg.model || "")
+            model: escapeAttr(cfg.model || ""),
+            temperature: escapeAttr(String(normalizeIndependentApiTemperature(cfg.temperature)))
           },
           useIndependent: apiDraftMode.current(),
           profilesHtml
@@ -13980,15 +13992,26 @@ ${error.message}`);
     };
     window.__pmSaveConfig = () => {
       const apiUrl = document.getElementById("pm-cfg-url")?.value.trim() ?? "", apiKey = document.getElementById("pm-cfg-key")?.value.trim() ?? "", model = document.getElementById("pm-cfg-model")?.value.trim() ?? "";
-      if (apiDraftMode.current() && (!apiUrl || !apiKey || !model)) {
-        const status = document.getElementById("pm-api-status");
+      const temperatureText = document.getElementById("pm-cfg-temperature")?.value.trim() ?? String(DEFAULT_INDEPENDENT_API_TEMPERATURE);
+      const parsedTemperature = Number(temperatureText);
+      const useIndependent = apiDraftMode.current();
+      const status = document.getElementById("pm-api-status");
+      if (useIndependent && (!apiUrl || !apiKey || !model)) {
         if (status) {
           status.textContent = "\u72EC\u7ACB API \u5FC5\u987B\u586B\u5199\u5730\u5740\u3001\u5BC6\u94A5\u548C\u6A21\u578B";
           status.style.color = "#ff3b30";
         }
-        return;
+        return false;
       }
-      const previous = clone6(window.__pmConfig), candidate = { apiUrl, apiKey, model, useIndependent: apiDraftMode.current() };
+      if (useIndependent && (!temperatureText || !Number.isFinite(parsedTemperature) || parsedTemperature < 0 || parsedTemperature > 2)) {
+        if (status) {
+          status.textContent = "\u6E29\u5EA6\u5FC5\u987B\u662F 0 \u5230 2 \u4E4B\u95F4\u7684\u6570\u5B57";
+          status.style.color = "#ff3b30";
+        }
+        return false;
+      }
+      const temperature = useIndependent ? parsedTemperature : normalizeIndependentApiTemperature(temperatureText);
+      const previous = clone6(window.__pmConfig), candidate = { apiUrl, apiKey, model, temperature, useIndependent };
       window.__pmConfig = candidate;
       try {
         localStorage.setItem("ST_SMS_CONFIG", JSON.stringify(candidate));
@@ -13997,7 +14020,7 @@ ${error.message}`);
         alert("API \u914D\u7F6E\u4FDD\u5B58\u5931\u8D25\uFF1A\u6D4F\u89C8\u5668\u5B58\u50A8\u4E0D\u53EF\u7528\u3002");
         return false;
       }
-      if (apiUrl && apiKey && !addOrUpdateProfile({ apiUrl, apiKey, model })) {
+      if (apiUrl && apiKey && !addOrUpdateProfile({ apiUrl, apiKey, model, temperature })) {
         window.__pmConfig = previous;
         try {
           localStorage.setItem("ST_SMS_CONFIG", JSON.stringify(previous));
