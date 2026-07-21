@@ -1372,7 +1372,12 @@ try {
         get() { return this.value; },
     });
     const desktopPage = { innerHTML: '' };
-    const communityPage = { innerHTML: '' };
+    const launcher = { scrollTop: 0 };
+    const communityPage = { html: '' };
+    Object.defineProperty(communityPage, 'innerHTML', {
+        set(value) { this.html = value; launcher.scrollTop = 0; },
+        get() { return this.html; },
+    });
     const mainUi = { dataset: { page: 'community' } };
     const sceneTitleInput = { value: '更新后的社区' };
     const scenePromptInput = { value: '更新后的社区风格' };
@@ -1622,6 +1627,39 @@ try {
     assert.equal(repeatedShareScope.scenes[repeatedShareScope.activeSceneId].posts[0].shareCount, shareCountBefore + 1,
         '同一帖子重复点击分享不得继续叠加计数');
     assert.equal(feed.scrollTop, 533, '幂等分享重渲染后仍必须恢复信息流滚动位置');
+
+    const pinAttributes = {};
+    const pinButton = {
+        tagName: 'BUTTON', dataset: { action: 'toggle-scene-pin', sceneId: savedScene.id }, title: '固定社区',
+        setAttribute(name, value) { pinAttributes[name] = value; },
+        closest(selector) {
+            if (selector === '[data-action]') return this;
+            if (selector === '#pm-scene-app') return app;
+            if (selector === '.pm-scene-card') return {};
+            if (selector === '.pm-community-page') return communityPage;
+            return null;
+        },
+    };
+    const launcherHtmlBeforePin = communityPage.innerHTML = 'launcher-sentinel';
+    launcher.scrollTop = 684;
+    listeners.get('click')({ target: pinButton });
+    await Promise.resolve();
+    const pinnedUiState = loadPhoneUiState(await deps.getInteractiveStore());
+    assert.deepEqual(pinnedUiState.scopes['interactive-installation-scope'].pinnedSceneIds, [savedScene.id],
+        '启动页点击固定必须持久化场景标识');
+    assert.deepEqual(pinAttributes, { 'aria-pressed': 'true', 'aria-label': '取消固定社区' });
+    assert.equal(pinButton.title, '取消固定社区');
+    assert.equal(communityPage.innerHTML, launcherHtmlBeforePin, '启动页固定不得重绘整个社区页面');
+    assert.equal(launcher.scrollTop, 684, '启动页固定不得改变滚动位置');
+    listeners.get('click')({ target: pinButton });
+    await Promise.resolve();
+    const unpinnedUiState = loadPhoneUiState(await deps.getInteractiveStore());
+    assert.deepEqual(unpinnedUiState.scopes['interactive-installation-scope'].pinnedSceneIds, [],
+        '启动页再次点击必须取消固定');
+    assert.deepEqual(pinAttributes, { 'aria-pressed': 'false', 'aria-label': '固定社区' });
+    assert.equal(pinButton.title, '固定社区');
+    assert.equal(communityPage.innerHTML, launcherHtmlBeforePin, '启动页取消固定不得重绘整个社区页面');
+    assert.equal(launcher.scrollTop, 684, '启动页取消固定不得改变滚动位置');
 
     sceneAccentInput.value = '#xyzxyz';
     status.textContent = '';

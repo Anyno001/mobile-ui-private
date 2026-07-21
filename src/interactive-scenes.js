@@ -573,7 +573,7 @@ export function installInteractiveScenes(_state, deps) {
             if (button.closest('#pm-scene-app') && !button.closest('.pm-scene-card')) {
                 rerender(phoneScope(scopeId).lastTab);
             } else if (button.closest('.pm-community-page')) {
-                renderCommunityLauncher(scopeId);
+                const pinned = nextState.scopes[scopeId]?.pinnedSceneIds.includes(button.dataset.sceneId) === true, pinLabel = pinned ? '取消固定社区' : '固定社区'; button.setAttribute('aria-pressed', String(pinned)); button.setAttribute('aria-label', pinLabel); button.title = pinLabel;
             }
             return;
         }

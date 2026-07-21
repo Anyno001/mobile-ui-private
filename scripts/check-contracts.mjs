@@ -1535,7 +1535,8 @@ for (const expected of [
 for (const expected of [
   'data-action="desktop"', 'data-action="exit"', 'class="pm-scene-card-actions"',
   'data-action="toggle-scene-pin"', 'data-action="delete-scene"', 'pm-desktop-app-icon',
-  'class="pm-scene-pin-action"', 'aria-pressed="${pinned}"', 'aria-label="${pinLabel}"', 'aria-label="删除社区"', '${COMMUNITY_ICON_SVG}', '${TRASH_ICON_SVG}',
+  'const pinAccent = scene.themeAccent || presets[scene.preset]?.accent || defaultAccent',
+  'class="pm-scene-pin-action"', 'style="--scene-pin-accent:${escapeAttr(pinAccent)}"', 'aria-pressed="${pinned}"', 'aria-label="${pinLabel}"', 'aria-label="删除社区"', '${COMMUNITY_ICON_SVG}', '${TRASH_ICON_SVG}',
   'pm-desktop-app-label', 'data-app="chat"', 'data-app="directory"', 'data-app="settings"', 'data-app="calendar"',
 ]) {
   requireText('interactive-scene-views.js', interactiveViewsCode, expected);
@@ -1655,7 +1656,7 @@ for (const expected of [
   '.pm-scene-topbar{position:relative;display:flex;align-items:center;gap:4px;padding:6px 9px}',
   '.pm-scene-home{color:#888 !important}',
   '.pm-scene-pin-action{color:#8a8a8f}',
-  '.pm-scene-pin-action[aria-pressed="true"]{background:rgba(109,74,255,.12);color:#6d4aff}',
+  '.pm-scene-pin-action[aria-pressed="true"]{background:color-mix(in srgb,var(--scene-pin-accent) 12%,transparent);color:var(--scene-pin-accent)}',
   '.pm-scene-title{position:absolute;left:50%;top:6px;bottom:6px;transform:translateX(-50%);display:flex',
   '.pm-scene-title-tab.is-active span::after{content:',
   '.pm-scene-title-poke{position:relative;width:34px !important;height:34px !important;padding:7px !important',
@@ -1671,8 +1672,8 @@ for (const expected of [
   '.pm-scene-title-poke:active::before{background:var(--scene-accent)}',
   '#pm-iphone[data-theme="dark"] .pm-scene-bottom-bar .pm-scene-more{background:transparent;border-color:transparent;color:#aaa}',
   '.pm-scene-bottom-bar .pm-scene-more[aria-expanded="true"]{background:transparent;outline:none;color:var(--scene-accent)}',
-  '.pm-scene-share.is-shared .pm-scene-post-metric,.pm-scene-share:active .pm-scene-post-metric{color:#2f80ed}',
-  '#pm-iphone[data-theme="dark"] .pm-scene-share.is-shared .pm-scene-post-metric{color:#6ba5ff}',
+  '.pm-scene-share.is-shared .pm-scene-post-metric,.pm-scene-share:active .pm-scene-post-metric{color:#22a06b}',
+  '#pm-iphone[data-theme="dark"] .pm-scene-share.is-shared .pm-scene-post-metric{color:#57d99a}',
   '.pm-scene-share.is-shared svg circle{fill:currentColor}',
   '.pm-scene-reply-toggle[aria-expanded="true"] .pm-scene-post-metric{color:var(--scene-accent)}',
   '.pm-scene-post-more:focus-visible{background:color-mix(in srgb,var(--scene-accent) 10%,transparent);outline:2px solid var(--scene-accent);outline-offset:2px}',

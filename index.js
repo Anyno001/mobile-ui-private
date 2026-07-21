@@ -6425,13 +6425,15 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
     }).map((preset) => `<button type="button" class="pm-scene-accent-option" data-action="scene-accent" data-accent="${escapeAttr(preset.accent)}" style="--scene-accent-option:${escapeAttr(preset.accent)}" aria-label="\u4F7F\u7528${escapeAttr(preset.label)}\u4E3B\u9898\u8272" aria-pressed="${preset.accent === selectedAccent}"><span></span></button>`).join("");
   }
   function renderCommunityLauncher(scope, uiScope = { pinnedSceneIds: [] }) {
+    const presets = getInteractivePresets();
+    const defaultAccent = presets.weibo.accent;
     const sceneCards = scope.sceneOrder.slice().reverse().map((sceneId) => {
       const scene = scope.scenes[sceneId];
       const pinned = uiScope.pinnedSceneIds.includes(scene.id);
       const pinLabel = pinned ? "\u53D6\u6D88\u56FA\u5B9A\u793E\u533A" : "\u56FA\u5B9A\u793E\u533A";
-      return `<article class="pm-scene-card"><button type="button" class="pm-scene-card-open" data-action="open-scene" data-scene-id="${escapeAttr(scene.id)}"><b>${escapeHtml(scene.title)}</b><span>${escapeHtml(getInteractivePresets()[scene.preset]?.label || "\u81EA\u5B9A\u4E49")} \xB7 ${scene.posts.length} \u7BC7\u5E16\u5B50</span></button><div class="pm-scene-card-actions"><button type="button" class="pm-scene-pin-action" data-action="toggle-scene-pin" data-scene-id="${escapeAttr(scene.id)}" aria-pressed="${pinned}" aria-label="${pinLabel}" title="${pinLabel}">${COMMUNITY_ICON_SVG}</button><button type="button" class="pm-scene-danger" data-action="delete-scene" data-scene-id="${escapeAttr(scene.id)}" aria-label="\u5220\u9664\u793E\u533A" title="\u5220\u9664\u793E\u533A">${TRASH_ICON_SVG}</button></div></article>`;
+      const pinAccent = scene.themeAccent || presets[scene.preset]?.accent || defaultAccent;
+      return `<article class="pm-scene-card"><button type="button" class="pm-scene-card-open" data-action="open-scene" data-scene-id="${escapeAttr(scene.id)}"><b>${escapeHtml(scene.title)}</b><span>${escapeHtml(presets[scene.preset]?.label || "\u81EA\u5B9A\u4E49")} \xB7 ${scene.posts.length} \u7BC7\u5E16\u5B50</span></button><div class="pm-scene-card-actions"><button type="button" class="pm-scene-pin-action" data-action="toggle-scene-pin" data-scene-id="${escapeAttr(scene.id)}" style="--scene-pin-accent:${escapeAttr(pinAccent)}" aria-pressed="${pinned}" aria-label="${pinLabel}" title="${pinLabel}">${COMMUNITY_ICON_SVG}</button><button type="button" class="pm-scene-danger" data-action="delete-scene" data-scene-id="${escapeAttr(scene.id)}" aria-label="\u5220\u9664\u793E\u533A" title="\u5220\u9664\u793E\u533A">${TRASH_ICON_SVG}</button></div></article>`;
     }).join("");
-    const defaultAccent = getInteractivePresets().weibo.accent;
     return `<div id="pm-scene-app" class="pm-modal pm-scene-shell" style="--scene-accent:${escapeAttr(defaultAccent)}">
         <div class="pm-scene-header"><button type="button" class="pm-scene-home" data-action="desktop" aria-label="\u8FD4\u56DE\u684C\u9762" title="\u8FD4\u56DE\u684C\u9762">${HOME_ICON_SVG}</button><b>\u793E\u533A</b><button type="button" data-action="exit" aria-label="\u9000\u51FA\u624B\u673A" title="\u9000\u51FA\u624B\u673A">${CLOSE_ICON_SVG}</button></div>
         <div class="pm-scene-launcher">
@@ -7090,7 +7092,10 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
         if (button.closest("#pm-scene-app") && !button.closest(".pm-scene-card")) {
           rerender(phoneScope(scopeId).lastTab);
         } else if (button.closest(".pm-community-page")) {
-          renderCommunityLauncher2(scopeId);
+          const pinned = nextState.scopes[scopeId]?.pinnedSceneIds.includes(button.dataset.sceneId) === true, pinLabel = pinned ? "\u53D6\u6D88\u56FA\u5B9A\u793E\u533A" : "\u56FA\u5B9A\u793E\u533A";
+          button.setAttribute("aria-pressed", String(pinned));
+          button.setAttribute("aria-label", pinLabel);
+          button.title = pinLabel;
         }
         return;
       }

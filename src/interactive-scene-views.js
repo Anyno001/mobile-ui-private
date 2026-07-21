@@ -76,13 +76,15 @@ function renderSceneAccentOptions(selectedAccent) {
 }
 
 export function renderCommunityLauncher(scope, uiScope = { pinnedSceneIds: [] }) {
+    const presets = getInteractivePresets();
+    const defaultAccent = presets.weibo.accent;
     const sceneCards = scope.sceneOrder.slice().reverse().map(sceneId => {
         const scene = scope.scenes[sceneId];
         const pinned = uiScope.pinnedSceneIds.includes(scene.id);
         const pinLabel = pinned ? '取消固定社区' : '固定社区';
-        return `<article class="pm-scene-card"><button type="button" class="pm-scene-card-open" data-action="open-scene" data-scene-id="${escapeAttr(scene.id)}"><b>${escapeHtml(scene.title)}</b><span>${escapeHtml(getInteractivePresets()[scene.preset]?.label || '自定义')} · ${scene.posts.length} 篇帖子</span></button><div class="pm-scene-card-actions"><button type="button" class="pm-scene-pin-action" data-action="toggle-scene-pin" data-scene-id="${escapeAttr(scene.id)}" aria-pressed="${pinned}" aria-label="${pinLabel}" title="${pinLabel}">${COMMUNITY_ICON_SVG}</button><button type="button" class="pm-scene-danger" data-action="delete-scene" data-scene-id="${escapeAttr(scene.id)}" aria-label="删除社区" title="删除社区">${TRASH_ICON_SVG}</button></div></article>`;
+        const pinAccent = scene.themeAccent || presets[scene.preset]?.accent || defaultAccent;
+        return `<article class="pm-scene-card"><button type="button" class="pm-scene-card-open" data-action="open-scene" data-scene-id="${escapeAttr(scene.id)}"><b>${escapeHtml(scene.title)}</b><span>${escapeHtml(presets[scene.preset]?.label || '自定义')} · ${scene.posts.length} 篇帖子</span></button><div class="pm-scene-card-actions"><button type="button" class="pm-scene-pin-action" data-action="toggle-scene-pin" data-scene-id="${escapeAttr(scene.id)}" style="--scene-pin-accent:${escapeAttr(pinAccent)}" aria-pressed="${pinned}" aria-label="${pinLabel}" title="${pinLabel}">${COMMUNITY_ICON_SVG}</button><button type="button" class="pm-scene-danger" data-action="delete-scene" data-scene-id="${escapeAttr(scene.id)}" aria-label="删除社区" title="删除社区">${TRASH_ICON_SVG}</button></div></article>`;
     }).join('');
-    const defaultAccent = getInteractivePresets().weibo.accent;
     return `<div id="pm-scene-app" class="pm-modal pm-scene-shell" style="--scene-accent:${escapeAttr(defaultAccent)}">
         <div class="pm-scene-header"><button type="button" class="pm-scene-home" data-action="desktop" aria-label="返回桌面" title="返回桌面">${HOME_ICON_SVG}</button><b>社区</b><button type="button" data-action="exit" aria-label="退出手机" title="退出手机">${CLOSE_ICON_SVG}</button></div>
         <div class="pm-scene-launcher">
