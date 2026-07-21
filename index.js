@@ -6431,7 +6431,8 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
       const scene = scope.scenes[sceneId];
       const pinned = uiScope.pinnedSceneIds.includes(scene.id);
       const pinLabel = pinned ? "\u53D6\u6D88\u56FA\u5B9A\u793E\u533A" : "\u56FA\u5B9A\u793E\u533A";
-      const pinAccent = scene.themeAccent || presets[scene.preset]?.accent || defaultAccent;
+      const presetAccent = presets[scene.preset]?.accent;
+      const pinAccent = scene.preset === "custom" ? scene.themeAccent || presetAccent : presetAccent || scene.themeAccent || defaultAccent;
       return `<article class="pm-scene-card"><button type="button" class="pm-scene-card-open" data-action="open-scene" data-scene-id="${escapeAttr(scene.id)}"><b>${escapeHtml(scene.title)}</b><span>${escapeHtml(presets[scene.preset]?.label || "\u81EA\u5B9A\u4E49")} \xB7 ${scene.posts.length} \u7BC7\u5E16\u5B50</span></button><div class="pm-scene-card-actions"><button type="button" class="pm-scene-pin-action" data-action="toggle-scene-pin" data-scene-id="${escapeAttr(scene.id)}" style="--scene-pin-accent:${escapeAttr(pinAccent)}" aria-pressed="${pinned}" aria-label="${pinLabel}" title="${pinLabel}">${COMMUNITY_ICON_SVG}</button><button type="button" class="pm-scene-danger" data-action="delete-scene" data-scene-id="${escapeAttr(scene.id)}" aria-label="\u5220\u9664\u793E\u533A" title="\u5220\u9664\u793E\u533A">${TRASH_ICON_SVG}</button></div></article>`;
     }).join("");
     return `<div id="pm-scene-app" class="pm-modal pm-scene-shell" style="--scene-accent:${escapeAttr(defaultAccent)}">

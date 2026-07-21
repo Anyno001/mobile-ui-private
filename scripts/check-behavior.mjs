@@ -3332,7 +3332,7 @@ assert.match(injectionWorkspaceHtml, /data-action="context-save"/);
 const launcherScope = {
     sceneOrder: ['scene-card'],
     scenes: {
-        'scene-card': { id: 'scene-card', title: '雨夜社区', preset: 'weibo', themeAccent: '#123abc', posts: [] },
+        'scene-card': { id: 'scene-card', title: '雨夜社区', preset: 'custom', themeAccent: '#123abc', posts: [] },
     },
 };
 const unpinnedLauncherHtml = renderCommunityLauncher(launcherScope, { pinnedSceneIds: [] });
@@ -3353,11 +3353,11 @@ assert.match(pinnedLauncherHtml, /class="pm-scene-pin-action"[^>]*style="--scene
 const presetFallbackLauncherHtml = renderCommunityLauncher({
     sceneOrder: ['legacy-douban'],
     scenes: {
-        'legacy-douban': { id: 'legacy-douban', title: '旧豆瓣社区', preset: 'douban', themeAccent: '', posts: [] },
+        'legacy-douban': { id: 'legacy-douban', title: '旧豆瓣社区', preset: 'douban', themeAccent: '#123abc', posts: [] },
     },
 }, { pinnedSceneIds: ['legacy-douban'] });
 assert.match(presetFallbackLauncherHtml, /style="--scene-pin-accent:#00a65a"[^>]*aria-pressed="true"/,
-    '旧社区缺失自定义主题色时，固定态必须回退到自身预设色');
+    '内置豆瓣社区即使保留历史异色，固定态也必须使用豆瓣模块绿色');
 
 const desktopTransitionCalls = [];
 const desktopStore = { scopes: { story: { activeSceneId: null, sceneOrder: [], scenes: {}, actors: {} } } };

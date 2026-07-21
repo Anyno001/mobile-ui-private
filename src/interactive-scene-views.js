@@ -82,7 +82,8 @@ export function renderCommunityLauncher(scope, uiScope = { pinnedSceneIds: [] })
         const scene = scope.scenes[sceneId];
         const pinned = uiScope.pinnedSceneIds.includes(scene.id);
         const pinLabel = pinned ? '取消固定社区' : '固定社区';
-        const pinAccent = scene.themeAccent || presets[scene.preset]?.accent || defaultAccent;
+        const presetAccent = presets[scene.preset]?.accent;
+        const pinAccent = scene.preset === 'custom' ? scene.themeAccent || presetAccent : presetAccent || scene.themeAccent || defaultAccent;
         return `<article class="pm-scene-card"><button type="button" class="pm-scene-card-open" data-action="open-scene" data-scene-id="${escapeAttr(scene.id)}"><b>${escapeHtml(scene.title)}</b><span>${escapeHtml(presets[scene.preset]?.label || '自定义')} · ${scene.posts.length} 篇帖子</span></button><div class="pm-scene-card-actions"><button type="button" class="pm-scene-pin-action" data-action="toggle-scene-pin" data-scene-id="${escapeAttr(scene.id)}" style="--scene-pin-accent:${escapeAttr(pinAccent)}" aria-pressed="${pinned}" aria-label="${pinLabel}" title="${pinLabel}">${COMMUNITY_ICON_SVG}</button><button type="button" class="pm-scene-danger" data-action="delete-scene" data-scene-id="${escapeAttr(scene.id)}" aria-label="删除社区" title="删除社区">${TRASH_ICON_SVG}</button></div></article>`;
     }).join('');
     return `<div id="pm-scene-app" class="pm-modal pm-scene-shell" style="--scene-accent:${escapeAttr(defaultAccent)}">
