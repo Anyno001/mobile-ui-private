@@ -3332,7 +3332,7 @@ assert.match(injectionWorkspaceHtml, /data-action="context-save"/);
 const launcherScope = {
     sceneOrder: ['scene-card'],
     scenes: {
-        'scene-card': { id: 'scene-card', title: '雨夜社区', preset: 'custom', themeAccent: '#123abc', posts: [] },
+        'scene-card': { id: 'scene-card', title: '雨夜社区', preset: 'romance', themeAccent: '#123abc', posts: [] },
     },
 };
 const unpinnedLauncherHtml = renderCommunityLauncher(launcherScope, { pinnedSceneIds: [] });
@@ -3343,21 +3343,14 @@ assert.match(unpinnedLauncherHtml, /class="pm-scene-home"[^>]*data-action="deskt
 assert.match(unpinnedLauncherHtml, /data-action="preset"[^>]*data-preset="douban"[^>]*data-accent="#00a65a"/,
     '豆瓣预设必须向交互层暴露绿色主题色');
 assert.match(unpinnedLauncherHtml, /class="pm-scene-card-actions"/);
-assert.match(unpinnedLauncherHtml, /class="pm-scene-pin-action"[^>]*style="--scene-pin-accent:#123abc"[^>]*aria-pressed="false"[^>]*aria-label="固定社区"[^>]*>[\s\S]*?<path d="M4 19V8l8-4 8 4v11"/,
-    '未固定按钮必须携带场景主题色并使用与桌面发布入口一致的社区图标');
+assert.match(unpinnedLauncherHtml, /class="pm-scene-pin-action"[^>]*aria-pressed="false"[^>]*aria-label="固定社区"[^>]*>[\s\S]*?<path d="M4 19V8l8-4 8 4v11"/,
+    '未固定按钮必须使用与桌面发布入口一致的社区图标');
+assert.doesNotMatch(unpinnedLauncherHtml, /--scene-pin-accent/, '固定按钮不得保留与当前预设脱节的卡片级颜色变量');
 assert.match(unpinnedLauncherHtml, /data-action="delete-scene"[^>]*aria-label="删除社区"[^>]*>[\s\S]*?<svg/);
 assert.doesNotMatch(unpinnedLauncherHtml, />固定<\/button>|>删除<\/button>/, '场景卡片操作必须使用 SVG 且保留可访问名称');
 assert.match(unpinnedLauncherHtml, /class="pm-scene-card-open"[^>]*>[\s\S]*?<\/button><div class="pm-scene-card-actions">/, '场景卡片操作必须位于打开场景按钮之外');
 const pinnedLauncherHtml = renderCommunityLauncher(launcherScope, { pinnedSceneIds: ['scene-card'] });
-assert.match(pinnedLauncherHtml, /class="pm-scene-pin-action"[^>]*style="--scene-pin-accent:#123abc"[^>]*aria-pressed="true"[^>]*aria-label="取消固定社区"[^>]*>[\s\S]*?<path d="M4 19V8l8-4 8 4v11"/);
-const presetFallbackLauncherHtml = renderCommunityLauncher({
-    sceneOrder: ['legacy-douban'],
-    scenes: {
-        'legacy-douban': { id: 'legacy-douban', title: '旧豆瓣社区', preset: 'douban', themeAccent: '#123abc', posts: [] },
-    },
-}, { pinnedSceneIds: ['legacy-douban'] });
-assert.match(presetFallbackLauncherHtml, /style="--scene-pin-accent:#00a65a"[^>]*aria-pressed="true"/,
-    '内置豆瓣社区即使保留历史异色，固定态也必须使用豆瓣模块绿色');
+assert.match(pinnedLauncherHtml, /class="pm-scene-pin-action"[^>]*aria-pressed="true"[^>]*aria-label="取消固定社区"[^>]*>[\s\S]*?<path d="M4 19V8l8-4 8 4v11"/);
 
 const desktopTransitionCalls = [];
 const desktopStore = { scopes: { story: { activeSceneId: null, sceneOrder: [], scenes: {}, actors: {} } } };

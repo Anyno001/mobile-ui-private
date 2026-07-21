@@ -1535,9 +1535,7 @@ for (const expected of [
 for (const expected of [
   'data-action="desktop"', 'data-action="exit"', 'class="pm-scene-card-actions"',
   'data-action="toggle-scene-pin"', 'data-action="delete-scene"', 'pm-desktop-app-icon',
-  'const presetAccent = presets[scene.preset]?.accent',
-  "const pinAccent = scene.preset === 'custom' ? scene.themeAccent || presetAccent : presetAccent || scene.themeAccent || defaultAccent",
-  'class="pm-scene-pin-action"', 'style="--scene-pin-accent:${escapeAttr(pinAccent)}"', 'aria-pressed="${pinned}"', 'aria-label="${pinLabel}"', 'aria-label="删除社区"', '${COMMUNITY_ICON_SVG}', '${TRASH_ICON_SVG}',
+  'class="pm-scene-pin-action"', 'aria-pressed="${pinned}"', 'aria-label="${pinLabel}"', 'aria-label="删除社区"', '${COMMUNITY_ICON_SVG}', '${TRASH_ICON_SVG}',
   'pm-desktop-app-label', 'data-app="chat"', 'data-app="directory"', 'data-app="settings"', 'data-app="calendar"',
 ]) {
   requireText('interactive-scene-views.js', interactiveViewsCode, expected);
@@ -1657,7 +1655,7 @@ for (const expected of [
   '.pm-scene-topbar{position:relative;display:flex;align-items:center;gap:4px;padding:6px 9px}',
   '.pm-scene-home{color:#888 !important}',
   '.pm-scene-pin-action{color:#8a8a8f}',
-  '.pm-scene-pin-action[aria-pressed="true"],.pm-scene-pin-action[aria-pressed="true"]:hover,.pm-scene-pin-action[aria-pressed="true"]:focus-visible{background:transparent;color:var(--scene-pin-accent)}',
+  '.pm-scene-pin-action[aria-pressed="true"],.pm-scene-pin-action[aria-pressed="true"]:hover,.pm-scene-pin-action[aria-pressed="true"]:focus-visible{background:transparent;color:var(--scene-accent)}',
   '.pm-scene-title{position:absolute;left:50%;top:6px;bottom:6px;transform:translateX(-50%);display:flex',
   '.pm-scene-title-tab.is-active span::after{content:',
   '.pm-scene-title-poke{position:relative;width:34px !important;height:34px !important;padding:7px !important',

@@ -348,14 +348,15 @@ const launcherApp = {
         return presetItems;
     },
 };
-const doubanPresetButton = { dataset: { accent: '#00A65A' } };
-assert.equal(selectScenePreset(launcherApp, doubanPresetButton), true);
+const romancePresetButton = { dataset: { accent: '#FF5B8D' } };
+assert.equal(selectScenePreset(launcherApp, romancePresetButton), true);
 assert.deepEqual(presetItems.map(item => item.active), [false, false], '预设切换只能激活实际点击的按钮对象');
-presetItems.push(doubanPresetButton);
-doubanPresetButton.classList = { toggle(_name, active) { doubanPresetButton.active = active; } };
-assert.equal(selectScenePreset(launcherApp, doubanPresetButton), true);
-assert.equal(doubanPresetButton.active, true);
-assert.equal(launcherStyle.values['--scene-accent'], '#00a65a', '选择豆瓣预设必须实时更新生成按钮继承的主题色');
+presetItems.push(romancePresetButton);
+romancePresetButton.classList = { toggle(_name, active) { romancePresetButton.active = active; } };
+assert.equal(selectScenePreset(launcherApp, romancePresetButton), true);
+assert.equal(romancePresetButton.active, true);
+assert.equal(launcherStyle.values['--scene-accent'], '#ff5b8d',
+    '选择恋爱社区必须实时更新生成按钮和已固定按钮共同继承的根主题色');
 assert.throws(() => selectScenePreset(launcherApp, { dataset: { accent: 'green' } }), /预设主题色格式无效/);
 
 const legacyStore = {
