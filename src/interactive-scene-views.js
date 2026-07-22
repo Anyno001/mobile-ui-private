@@ -159,16 +159,18 @@ export function renderCommunityWorkspace(scene, tab = 'feed', uiScope = { pinned
     const preset = getInteractivePresets()[scene.preset] || getInteractivePresets().custom;
     const autoActive = state.autoActive === true;
     const accent = scene.themeAccent || preset.accent;
-    const warmupStarted = scene.live.warmupStarted === true;
-    const liveActive = state.liveActive === true;
+    const liveState = ['idle', 'starting', 'active', 'error'].includes(state.liveState) ? state.liveState : 'idle';
+    const warmupStarted = liveState === 'active' && scene.live.warmupStarted === true;
+    const liveStarting = liveState === 'starting';
+    const liveFailed = liveState === 'error';
     const hasDanmaku = scene.live.danmaku.length > 0;
     const floatingDanmaku = scene.live.danmaku.slice(-8).map(item => {
         const motion = getDanmakuMotion(item);
         return `<span class="is-${stableDanmakuTone(item)}" style="--lane:${motion.lane};--delay:${motion.delay}s;--duration:${motion.duration}s;--offset:${motion.offset}px">${escapeHtml(item.content)}</span>`;
     }).join('');
-    const liveContent = warmupStarted && !liveActive
-        ? `<div class="pm-live-stage ${hasDanmaku ? 'has-danmaku' : ''}"><div class="pm-danmaku-float">${floatingDanmaku}</div></div><div class="pm-danmaku-list">${renderDanmaku(scene)}</div><div class="pm-danmaku-input"><input id="pm-danmaku-input" maxlength="200" placeholder="发条弹幕……"><button type="button" data-action="send-danmaku" aria-label="发送弹幕" title="发送弹幕">${SEND_ICON_SVG}</button></div>`
-        : `<div class="pm-live-stage"><button type="button" class="pm-live-play-btn" data-action="start-warmup" aria-label="${liveActive ? '正在热场' : '开始热场'}" title="${liveActive ? '正在热场' : '开始热场'}"${liveActive ? ' disabled aria-busy="true"' : ''}>${PLAY_ICON_SVG}</button></div>`;
+    const liveContent = warmupStarted
+        ? `<div class="pm-live-stage ${hasDanmaku ? 'has-danmaku' : ''}" data-live-state="active"><div class="pm-danmaku-float">${floatingDanmaku}</div></div><section class="pm-live-details" aria-label="热场内容"><div class="pm-danmaku-list">${renderDanmaku(scene)}</div><div class="pm-danmaku-input"><input id="pm-danmaku-input" maxlength="200" placeholder="发条弹幕……"><button type="button" data-action="send-danmaku" aria-label="发送弹幕" title="发送弹幕">${SEND_ICON_SVG}</button></div></section>`
+        : `<div class="pm-live-stage" data-live-state="${liveFailed ? 'error' : liveStarting ? 'starting' : 'idle'}"><button type="button" class="pm-live-play-btn" data-action="start-warmup" aria-label="${liveStarting ? '正在热场' : liveFailed ? '重新开始热场' : '开始热场'}" title="${liveStarting ? '正在热场' : liveFailed ? '重新开始热场' : '开始热场'}"${liveStarting ? ' disabled aria-busy="true"' : ''}>${PLAY_ICON_SVG}</button>${liveStarting ? '<p class="pm-live-state-note">正在准备热场…</p>' : liveFailed ? '<p class="pm-live-state-note is-error">热场未能启动，请重试。</p>' : ''}</div>`;
     const composer = tab === 'feed' ? `<div class="pm-scene-composer"><textarea id="pm-scene-post-input" maxlength="4000" placeholder="分享此刻……"></textarea><button type="button" class="pm-scene-primary" data-action="publish" aria-label="发布" title="发布">${SEND_ICON_SVG}</button></div>` : '';
     const content = tab === 'feed' ? `<div class="pm-scene-feed"><div class="pm-scene-posts">${renderPosts(scene)}</div></div>`
         : tab === 'live' ? `<div class="pm-live-room">${liveContent}</div>`
@@ -180,7 +182,7 @@ export function renderCommunityWorkspace(scene, tab = 'feed', uiScope = { pinned
         ? `data-action="tab" data-tab="${returnTab}" aria-label="返回子社区" title="返回子社区"`
         : 'data-action="desktop" aria-label="返回桌面" title="返回桌面"';
     return `<div id="pm-scene-app" class="pm-modal pm-scene-shell" style="--scene-accent:${escapeAttr(accent)}">
-        <div class="pm-scene-topbar"><div class="pm-scene-nav-actions"><button type="button" class="pm-scene-home" ${leadingAction}>${isPrompt ? BACK_ICON_SVG : HOME_ICON_SVG}</button></div><nav class="pm-scene-title" aria-label="子社区视图"><button type="button" class="pm-scene-title-tab ${tab === 'feed' ? 'is-active' : ''}" data-action="tab" data-tab="feed" aria-current="${tab === 'feed' ? 'page' : 'false'}"><span>${escapeHtml(scene.title)}</span></button><button type="button" class="pm-scene-title-tab ${tab === 'live' ? 'is-active' : ''}" data-action="tab" data-tab="live" aria-current="${tab === 'live' ? 'page' : 'false'}"><span>直播</span></button></nav><div class="pm-scene-view-actions"><button type="button" class="pm-scene-title-poke" data-action="poke-scene" aria-label="拍一拍社区" title="拍一拍社区">${POKE_ICON_SVG}</button><button type="button" class="pm-scene-exit" data-action="exit" aria-label="退出手机" title="退出手机">${CLOSE_ICON_SVG}</button></div></div><div class="pm-scene-status" aria-live="polite" hidden></div>
+        <div class="pm-scene-topbar"><div class="pm-scene-nav-actions"><button type="button" class="pm-scene-home" ${leadingAction}>${isPrompt ? BACK_ICON_SVG : HOME_ICON_SVG}</button></div><nav class="pm-scene-title" aria-label="子社区视图"><button type="button" class="pm-scene-title-tab ${tab === 'feed' ? 'is-active' : ''}" data-action="tab" data-tab="feed" aria-current="${tab === 'feed' ? 'page' : 'false'}"><span>${escapeHtml(scene.title)}</span></button><button type="button" class="pm-scene-title-tab ${tab === 'live' ? 'is-active' : ''}" data-action="tab" data-tab="live" aria-current="${tab === 'live' ? 'page' : 'false'}"><span>直播</span></button></nav><div class="pm-scene-view-actions"><button type="button" class="pm-header-icon-button pm-scene-title-poke" data-action="poke-scene" aria-label="拍一拍社区" title="拍一拍社区">${POKE_ICON_SVG}</button><button type="button" class="pm-header-icon-button pm-scene-exit" data-action="exit" aria-label="退出手机" title="退出手机">${CLOSE_ICON_SVG}</button></div></div><div class="pm-scene-status" aria-live="polite" hidden></div>
         ${content}${isPrompt || tab === 'live' || tab === 'context-inject' ? '' : `<div class="pm-scene-bottom-bar">${renderSceneMenu(scene, uiScope, autoActive)}${composer}</div>`}
     </div>`;
 }

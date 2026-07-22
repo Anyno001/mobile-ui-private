@@ -1288,14 +1288,19 @@ const warmup = runLiveWarmup({
         assert.equal(scheduledTask, null);
         warmupActive = true;
         warmupOptions = options;
-        return warmupGate.promise.finally(() => { warmupActive = false; });
+        return warmupGate.promise.then(async value => {
+            await options.onComplete();
+            return value;
+        }).finally(() => { warmupActive = false; });
     },
     render: () => { warmupRenderCount += 1; },
     isCurrent: () => true,
 });
 await Promise.resolve();
-assert.equal(warmupStarted, true, '首次热场必须先持久化幂等闩锁');
-assert.deepEqual(warmupOptions, { renderTab: 'live', taskKind: 'live-warmup' });
+assert.equal(warmupStarted, false, '首次热场完成前不得将持久化闩锁误标为已完成');
+assert.equal(warmupOptions.renderTab, 'live');
+assert.equal(warmupOptions.taskKind, 'live-warmup');
+assert.equal(typeof warmupOptions.onComplete, 'function');
 assert.equal(await runLiveWarmup({
     target: warmupTarget,
     isStarted: () => warmupStarted,
@@ -1309,6 +1314,89 @@ assert.equal(await warmup, true);
 assert.deepEqual(warmupTransitions, [true]);
 assert.equal(warmupRenderCount, 1);
 
+const completionController = createCommunityTaskController({
+    runtime: {}, isAllowed: () => true,
+    isTargetActive: task => task.storageId === warmupTarget.storageId && task.sceneId === warmupTarget.sceneId,
+});
+const completionGate = deferred();
+const completionRunner = createCommunityGenerationRunner({
+    controller: completionController,
+    getTarget: () => warmupTarget,
+    request: async () => [{ content: '完成前取消' }],
+    commitFeed: async (_target, _items, _isValid, onComplete) => {
+        await onComplete?.();
+    },
+});
+const cancelledCompletion = completionRunner.generateFeed(null, {
+    renderTab: 'live', taskKind: 'live-warmup', onComplete: () => completionGate.promise,
+});
+await Promise.resolve();
+completionRunner.cancel('leave-live-room');
+completionGate.resolve();
+await assert.rejects(cancelledCompletion, /生成已取消/);
+assert.equal(completionController.state().phase, COMMUNITY_TASK_PHASES.IDLE,
+    '离页取消发生在热场完成闩锁落盘前时，不得保留运行中或失败状态');
+
+const abortedWarmupController = createCommunityTaskController({
+    runtime: {}, isAllowed: () => true, isTargetActive: () => true,
+});
+const abortedWarmupRunner = createCommunityGenerationRunner({
+    controller: abortedWarmupController,
+    getTarget: () => warmupTarget,
+    request: async () => {
+        const error = new Error('底层请求中止'); error.name = 'AbortError'; throw error;
+    },
+    commitFeed: async () => { throw new Error('取消请求不得提交热场内容'); },
+});
+await assert.rejects(abortedWarmupRunner.generateFeed(null, { taskKind: 'live-warmup' }), /生成已取消/);
+assert.equal(abortedWarmupController.state().phase, COMMUNITY_TASK_PHASES.IDLE,
+    '当前直播视图中的中止热场不得被标记为失败任务');
+
+let composedCancelledRenderCount = 0;
+await assert.rejects(runLiveWarmup({
+    target: warmupTarget,
+    isStarted: () => false,
+    isActive: () => false,
+    setStarted: async () => { throw new Error('已取消热场不得写入完成闩锁'); },
+    generateFeed: abortedWarmupRunner.generateFeed,
+    render: () => { composedCancelledRenderCount += 1; },
+    isCurrent: () => true,
+}), /生成已取消/);
+assert.equal(composedCancelledRenderCount, 1,
+    'runner 已归一的取消错误不得被直播热场误判为失败并额外刷新');
+assert.equal(abortedWarmupController.state().phase, COMMUNITY_TASK_PHASES.IDLE,
+    '真实 runner 到直播热场的取消链不得留下失败任务');
+
+let cancelledViewRenderCount = 0;
+await assert.rejects(runLiveWarmup({
+    target: warmupTarget,
+    isStarted: () => false,
+    isActive: () => false,
+    setStarted: async () => { throw new Error('已取消热场不得写入完成闩锁'); },
+    generateFeed: async () => {
+        const error = new Error('底层请求中止'); error.name = 'AbortError'; throw error;
+    },
+    render: () => { cancelledViewRenderCount += 1; },
+    isCurrent: () => false,
+}), /生成已取消/);
+assert.equal(cancelledViewRenderCount, 1,
+    '失效直播视图只允许启动时渲染一次，取消回调不得将用户抢回直播页');
+
+let activeViewCancelledRenderCount = 0;
+await assert.rejects(runLiveWarmup({
+    target: warmupTarget,
+    isStarted: () => false,
+    isActive: () => false,
+    setStarted: async () => { throw new Error('已取消热场不得写入完成闩锁'); },
+    generateFeed: async () => {
+        const error = new Error('底层请求中止'); error.name = 'AbortError'; throw error;
+    },
+    render: () => { activeViewCancelledRenderCount += 1; },
+    isCurrent: () => true,
+}), /生成已取消/);
+assert.equal(activeViewCancelledRenderCount, 1,
+    '任务取消但直播视图仍有效时，不得误报失败或额外刷新直播页');
+
 const failedTransitions = [];
 let failedStarted = false;
 let failedRenderCount = 0;
@@ -1321,8 +1409,8 @@ await assert.rejects(runLiveWarmup({
     render: () => { failedRenderCount += 1; },
     isCurrent: () => true,
 }), /首次热场失败/);
-assert.equal(failedStarted, false, '首次热场失败必须回滚闩锁以允许重试');
-assert.deepEqual(failedTransitions, [true, false]);
+assert.equal(failedStarted, false, '首次热场失败不得写入完成闩锁，必须允许重试');
+assert.deepEqual(failedTransitions, []);
 assert.equal(failedRenderCount, 2, '失败前后都必须刷新直播视图');
 
 // 真实安装层必须把社区 style/feed 请求接到共享 callAI，并保留 token、隔离和 signal 契约。
@@ -1503,6 +1591,7 @@ try {
     await customInstallationComplete;
     assert.equal(capturedAiCalls.length, 3, 'custom 社区创建必须依次追加 style_prompt 与 feed_batch 两次请求');
     assert.match(capturedAiCalls[1].userPrompt, /items 返回 1 项，字段为 title、prompt/);
+
     assert.match(capturedAiCalls[1].userPrompt, /雨夜都市论坛/);
     assert.match(capturedAiCalls[2].userPrompt, /字段只能为 author、content、tags/);
     assert.equal(capturedAiCalls.every(call => !Object.hasOwn(call.options, 'maxTokens')), true, '社区生成不得设置服务商输出 token 上限');

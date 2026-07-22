@@ -41,6 +41,14 @@ export function normalizeQuoteSnapshot(value) {
     };
 }
 
+export function formatQuoteContext(value) {
+    const quote = normalizeQuoteSnapshot(value);
+    if (!quote) return '';
+    const sender = quote.sender || '未知发送者';
+    const text = quote.text.replace(/\s+/g, ' ').trim();
+    return `引用 ${sender} 的消息：“${text}”`;
+}
+
 export function createQuoteSnapshot(value) {
     return normalizeQuoteSnapshot(value);
 }

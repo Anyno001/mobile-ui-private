@@ -1,7 +1,7 @@
 import { CONTEXT_LIMIT, SAVE_LIMIT } from './constants.js';
 import { buildChatPreferencePrompt } from './behavior-config.js';
 import {
-    createMessageEntry, describeMessageEntry,
+    createMessageEntry, describeMessageEntry, formatQuoteContext,
 } from './chat-message-model.js';
 import { createHistoryWindow } from './history-window.js';
 import { cleanResponse, splitToSentences } from './prompts.js';
@@ -44,6 +44,7 @@ export function installPhoneChat(state, deps) {
 
         const userBlock = buildUserBlock(userName, userDesc);
         const smsHistoryText = buildHistoryText(targetHistory, CONTEXT_LIMIT, userName, isGroup ? null : currentPersona);
+        const currentQuoteText = formatQuoteContext(request.userHistoryEntry?.quote);
 
         let injectedInstruction, systemPrompt;
 
@@ -52,7 +53,7 @@ export function installPhoneChat(state, deps) {
             const groupName = groupDisplayName || `群聊：${memberList}`;
             injectedInstruction = buildGroupInjectedInstruction({
                 groupName, memberList, userName, userBlock,
-                cardScenario, worldBookText, mainChatText, smsHistoryText, directorNote,
+                cardScenario, worldBookText, mainChatText, smsHistoryText, currentQuoteText, directorNote,
                 userMsgClean, userMsg,
             });
             systemPrompt = buildGroupSystemPrompt({
@@ -66,7 +67,7 @@ export function installPhoneChat(state, deps) {
             ].filter(Boolean).join('\n\n');
             injectedInstruction = buildSingleInjectedInstruction({
                 currentPersona, userName, userBlock,
-                contextBlockMain, mainChatText, smsHistoryText, directorNote, userMsgClean, userMsg,
+                contextBlockMain, mainChatText, smsHistoryText, currentQuoteText, directorNote, userMsgClean, userMsg,
             });
             systemPrompt = buildSingleSystemPrompt({
                 currentPersona, userName, userBlock,
@@ -96,10 +97,10 @@ export function installPhoneChat(state, deps) {
             if (useIndep) {
                 const indepUserPrompt = isGroup
                     ? buildIndependentGroupUserPrompt({
-                        smsHistoryText, directorNote, userMsgClean, userMsg, userName,
+                        smsHistoryText, currentQuoteText, directorNote, userMsgClean, userMsg, userName,
                     })
                     : buildIndependentSingleUserPrompt({
-                        smsHistoryText, directorNote, userMsgClean, userMsg, userName,
+                        smsHistoryText, currentQuoteText, directorNote, userMsgClean, userMsg, userName,
                         currentPersona,
                     });
                 raw = await callAI(systemPrompt, indepUserPrompt);
@@ -237,7 +238,7 @@ export function installPhoneChat(state, deps) {
         const target = getPendingTarget();
         const parsed = parsePendingInput(value);
         if (!target || !parsed) return null;
-        if (state.isGroupChat && state.activeQuote) parsed.quote = state.activeQuote;
+        if (state.activeQuote) parsed.quote = state.activeQuote;
         const item = addPendingMessage(runtime, target.storageId, target.saveKey, parsed);
         if (!item) return null;
         renderPendingItem(item);
@@ -260,7 +261,7 @@ export function installPhoneChat(state, deps) {
         const combined = combinePendingMessages(runtime, target.storageId, target.saveKey);
         const batch = combined.items;
         if (!batch.length) return;
-        if (state.isGroupChat && combined.quoteConflict) {
+        if (combined.quoteConflict) {
             alert('当前暂存包含多个不同的引用目标，请分别提交；暂存内容不会丢失。');
             return;
         }
@@ -282,7 +283,7 @@ export function installPhoneChat(state, deps) {
                 role: 'user',
                 content: combined.plainText,
                 directorNote: combined.directorNote,
-                quote: state.isGroupChat ? combined.quote : null,
+                quote: combined.quote,
                 descriptors: combined.bubbleParts,
             }),
         };

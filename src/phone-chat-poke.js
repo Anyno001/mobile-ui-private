@@ -224,6 +224,9 @@ export function installPhoneChatPoke(state, deps) {
         <button type="button" onclick="window.__pmCloseOverlay()" class="pm-modal-close" title="关闭" aria-label="关闭">${CLOSE_ICON_SVG}</button>
     </div>
     <div class="pm-contact-settings-scroll">
+        <button type="button" class="pm-injection-entry" onclick="window.__pmShowConversationInjection('${safeJS(contactName)}','contact-settings')">
+          <span><b>上下文注入</b><small>${escapeHtml(window.__pmConversationInjectionSummary?.(contactName) || '已关闭')}</small></span><span aria-hidden="true">›</span>
+        </button>
         <div class="pm-cfg-label">私聊线上风格</div>
         <textarea id="pm-behavior-private" class="pm-cfg-input" rows="2" maxlength="2000" placeholder="例如：回复克制、少用语气词">${escapeHtml(behavior.privateStylePrompt)}</textarea>
         <div class="pm-cfg-label">群聊发言风格</div>
@@ -291,13 +294,15 @@ export function installPhoneChatPoke(state, deps) {
         makeOverlay(`
     <div class="pm-modal pm-modal-wide">
       <div class="pm-modal-header"><span></span><b>成员聊天行为</b><button type="button" onclick="window.__pmCloseOverlay()" class="pm-modal-close" title="关闭" aria-label="关闭">${CLOSE_ICON_SVG}</button></div>
+      <div class="pm-conversation-settings-injection">
+        <button type="button" class="pm-injection-entry" onclick="window.__pmShowConversationInjection('${safeJS(state.currentGroupKey)}','conversation-settings')">
+          <span><b>上下文注入</b><small>${escapeHtml(window.__pmConversationInjectionSummary?.(state.currentGroupKey) || '已关闭')}</small></span><span aria-hidden="true">›</span>
+        </button>
+      </div>
       <div class="pm-member-behavior-list">
         ${members.map(name => `<button onclick="window.__pmShowCharacterBehavior('${safeJS(name)}')">
           <b>${escapeHtml(name)}</b><span>私聊风格、群聊风格与消息频率</span>
         </button>`).join('')}
-      </div>
-      <div class="pm-modal-add">
-        <button onclick="window.__pmEditGroup()" style="width:100%;">群聊信息与自动消息</button>
       </div>
     </div>`);
     };

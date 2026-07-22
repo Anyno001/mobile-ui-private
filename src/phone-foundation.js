@@ -144,7 +144,7 @@ export function installPhoneFoundation(state, deps) {
     }
 
     function setActiveQuote(quote) {
-        if (!state.isGroupChat || !quote) return false;
+        if (!quote) return false;
         state.activeQuote = quote;
         renderActiveQuote();
         state.phoneWindow?.querySelector('.pm-input')?.focus();
@@ -414,7 +414,9 @@ export function installPhoneFoundation(state, deps) {
             calendarStore: getCalendarData('getCalendarStore'),
             calendarOccasions: getCalendarData('getCalendarOccasionStore'),
             calendarHolidays: getCalendarData('getCalendarHolidayStore'),
+            calendarWeather: getCalendarData('getCalendarWeatherStore'),
             calendarCycles: getCalendarData('getCalendarCycleStore'),
+            calendarRecipes: getCalendarData('getCalendarRecipeStore'),
         });
     }
 
@@ -649,7 +651,7 @@ export function installPhoneFoundation(state, deps) {
             syncReplyCardAvailability(card);
             bubble.prepend(card);
         }
-        if (!state.isGroupChat || metadata?.pendingId !== undefined
+        if (metadata?.pendingId !== undefined
             || !metadata?.messageId || !metadata?.bubbleId || root.querySelector('.pm-quote-action')) return;
         const action = document.createElement('button');
         action.type = 'button';

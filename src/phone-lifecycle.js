@@ -364,10 +364,10 @@ export function installPhoneLifecycle(state, deps) {
       <button onclick="window.__pmReturnToDesktop()" class="pm-nav-btn pm-nav-left-btn" title="返回桌面" aria-label="返回桌面">${HOME_ICON_SVG}</button>
       <div class="pm-name-wrap">
         <div class="pm-name">${escapeHtml(defaultChar)}</div>
-        <button onclick="window.__pmPokeCurrent()" class="pm-name-edit is-hidden" title="拍一拍" aria-label="拍一拍当前会话">${POKE_ICON_SVG}</button>
+        <button onclick="window.__pmPokeCurrent()" class="pm-header-icon-button pm-name-edit is-hidden" title="拍一拍" aria-label="拍一拍当前会话">${POKE_ICON_SVG}</button>
       </div>
       <div class="pm-nav-right">
-        <button onclick="window.__pmEnd()" class="pm-nav-btn pm-close-btn" title="退出手机" aria-label="退出手机">${CLOSE_ICON_SVG}</button>
+        <button onclick="window.__pmEnd()" class="pm-header-icon-button pm-nav-btn pm-close-btn" title="退出手机" aria-label="退出手机">${CLOSE_ICON_SVG}</button>
       </div>
     </div>
     <div class="pm-confirm-bar" style="display:none;">

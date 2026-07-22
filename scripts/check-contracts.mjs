@@ -1,4 +1,5 @@
 import { readFile, readdir } from 'node:fs/promises';
+import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 import { parse } from 'acorn';
 import { build } from 'esbuild';
@@ -41,10 +42,37 @@ const rebuiltBundle = await build({
 });
 const rebuiltBundleText = rebuiltBundle.outputFiles[0]?.text || '';
 if (bundle !== rebuiltBundleText) failures.push('index.js: bundle does not exactly match an in-memory esbuild rebuild');
+for (const modulePath of [
+  'src/calendar-weather-source.js', 'src/calendar-page-view.js',
+  'src/calendar-recipe-controller.js', 'src/calendar-recipe-model.js',
+]) {
+  try {
+    execFileSync('git', ['ls-files', '--error-unmatch', modulePath], {
+      cwd: root, stdio: 'ignore', windowsHide: true,
+    });
+  } catch {
+    failures.push(`${modulePath}: production source module must be tracked by git`);
+  }
+}
 
 const normalizeLineEndings = value => String(value).replace(/\r\n?/g, '\n');
 function requireText(label, text, expected) {
   if (!normalizeLineEndings(text).includes(normalizeLineEndings(expected))) failures.push(`${label}: missing ${expected}`);
+}
+
+function buttonContaining(label, text, marker) {
+  const matches = [...normalizeLineEndings(text).matchAll(/<button\b[\s\S]*?<\/button>/g)]
+    .map(match => match[0])
+    .filter(button => button.includes(marker));
+  if (!matches.length) {
+    failures.push(`${label}: missing button marker ${marker}`);
+    return '';
+  }
+  if (matches.length !== 1) {
+    failures.push(`${label}: expected exactly one complete button containing ${marker}, found ${matches.length}`);
+    return '';
+  }
+  return matches[0];
 }
 
 function parseCssRules(cssText) {
@@ -708,7 +736,7 @@ function analyzeBackupContract(code, sourceType = 'module') {
         if (child.callee?.type === 'Identifier' && child.callee.name === 'applyCalendarBackupFields'
             && child.arguments[0]?.name === 'data') {
           for (const field of [
-            'calendarStore', 'calendarOccasions', 'calendarHolidays', 'calendarWeather', 'calendarCycles',
+            'calendarStore', 'calendarOccasions', 'calendarHolidays', 'calendarWeather', 'calendarCycles', 'calendarRecipes',
           ]) result.importFields.add(field);
         }
       });
@@ -1006,6 +1034,8 @@ const PHONE_ENTRY_OWNERS = {
   'phone-directory.js': [
     '__pmSaveAndCloseGroupEdit', '__pmShowGroupCreate', '__pmGroupInputChanged',
     '__pmConfirmGroup', '__pmShowList', '__pmShowAddContact', '__pmDelGroup', '__pmDel',
+    '__pmConversationInjectionSummary', '__pmSyncConversationInjectionForm',
+    '__pmShowConversationInjection', '__pmSaveConversationInjection',
   ],
   'contact-generator.js': ['__pmConfirmAutoGen', '__pmAutoGenContacts'],
   'conversation.js': ['__pmSwitchContact', '__pmSwitch'],
@@ -1133,9 +1163,11 @@ for (const expected of [
   'messageId', 'bubbleId', 'bubbles',
 ]) requireText('chat-message-model.js', sourceModuleByName.get('chat-message-model.js')?.code || '', expected);
 for (const expected of [
-  'createMessageEntry({', 'quote: state.isGroupChat ? combined.quote : null',
-  'messageId: assistantEntry.messageId', 'bubbleId: bubble?.bubbleId',
+  'createMessageEntry({', 'quote: combined.quote', 'formatQuoteContext(request.userHistoryEntry?.quote)',
+  'messageId: assistantEntry.messageId', 'bubbleId: bubble?.bubbleId', 'if (combined.quoteConflict)',
 ]) requireText('phone-chat.js', sourceModuleByName.get('phone-chat.js')?.code || '', expected);
+for (const expected of ['formatQuoteContext', '【本轮回复关系】']) requireText('chat-prompts.js', sourceModuleByName.get('chat-prompts.js')?.code || '', expected);
+requireText('phone-injection.js', sourceModuleByName.get('phone-injection.js')?.code || '', 'formatQuoteContext(message.quote)');
 for (const expected of [
   'dataset.messageId', 'dataset.bubbleId', 'pm-reply-card', 'locateQuotedBubble', 'setActiveQuote',
   'syncReplyCardAvailability', 'refreshReplyCardAvailability',
@@ -1148,14 +1180,22 @@ for (const expected of [
   'commitEditedGroupUpdate', 'refreshEditedGroupRuntime', 'restoreConversationState', 'previousConversationContext',
   'persistRestored', "injectionFailure(rollbackResult, '补偿')",
   'groupMembers: state.groupMembers.slice()', 'window.__pmSwitch(state.currentGroupKey',
+  'commitConversationInjectionUpdate', '__pmShowConversationInjection', '__pmSaveConversationInjection',
+  '__pmConversationInjectionSummary', 'normalizeGroupInjection', 'pm-conversation-injection-enabled',
+  '私聊沿用系统安全参数', "position: enabled ? document.getElementById('pm-conversation-injection-position')?.value",
+  'pm-modal-scroll pm-group-settings-scroll',
 ]) {
   requireText('phone-directory.js', sourceModuleByName.get('phone-directory.js')?.code || '', expected);
 }
+for (const expected of ['pm-injection-entry', '__pmShowConversationInjection', '__pmConversationInjectionSummary']) requireText('phone-chat-poke.js', sourceModuleByName.get('phone-chat-poke.js')?.code || '', expected);
 requireText('phone-chat.js', sourceModuleByName.get('phone-chat.js')?.code || '', 'removePendingBatch(runtime');
 requireText('phone-chat.js', sourceModuleByName.get('phone-chat.js')?.code || '', 'rebaseRenderedHistory(historyWindow.trimmedCount)');
 requireText('phone-chat-poke.js', sourceModuleByName.get('phone-chat-poke.js')?.code || '', 'rebaseRenderedHistory(historyWindow.trimmedCount)');
 const controlCenterCode = sourceModuleByName.get('phone-control-center.js')?.code || '';
 const directoryCode = sourceModuleByName.get('phone-directory.js')?.code || '';
+for (const forbidden of ['pm-group-injection-position', 'pm-group-injection-depth', 'pm-group-injection-limit', '勾选会话可注入主楼']) {
+  if (directoryCode.includes(forbidden)) failures.push(`phone-directory.js: legacy inline injection control remains: ${forbidden}`);
+}
 const contactCode = sourceModuleByName.get('contact-generator.js')?.code || '';
 const interactiveCode = sourceModuleByName.get('interactive-scenes.js')?.code || '';
 const interactiveViewsCode = sourceModuleByName.get('interactive-scene-views.js')?.code || '';
@@ -1163,8 +1203,11 @@ const interactivePhoneCode = sourceModuleByName.get('interactive-scene-phone.js'
 const interactiveSchedulerCode = sourceModuleByName.get('interactive-scene-scheduler.js')?.code || '';
 const foundationCode = sourceModuleByName.get('phone-foundation.js')?.code || '';
 const calendarCode = sourceModuleByName.get('calendar.js')?.code || '';
+const calendarPageViewCode = sourceModuleByName.get('calendar-page-view.js')?.code || '';
 const calendarCommitCode = sourceModuleByName.get('calendar-commit.js')?.code || '';
 const calendarDomCode = sourceModuleByName.get('calendar-dom.js')?.code || '';
+const calendarRecipeControllerCode = sourceModuleByName.get('calendar-recipe-controller.js')?.code || '';
+const calendarRecipeModelCode = sourceModuleByName.get('calendar-recipe-model.js')?.code || '';
 const storageBackgroundCode = sourceModuleByName.get('storage-background.js')?.code || '';
 const calendarModelCode = sourceModuleByName.get('calendar-model.js')?.code || '';
 const calendarHolidayCode = sourceModuleByName.get('calendar-holiday.js')?.code || '';
@@ -1316,33 +1359,60 @@ for (const expected of [
   'deriveInteractiveActorId(scopeId, actor.type, actor.bindingKey)',
 ]) requireText('settings-backup-validate.js', settingsBackupValidateCode, expected);
 for (const expected of [
-  'schemaVersion: 6', 'desktopBg: snapshot.desktopBg',
+  'schemaVersion: 7', 'desktopBg: snapshot.desktopBg',
   'calendarStore: snapshot.calendarStore', 'calendarCycles: snapshot.calendarCycles',
+  'calendarRecipes: snapshot.calendarRecipes',
 ]) requireText('settings-ui.js', settingsUiCodeForInteractive, expected);
-requireText('settings-backup-validate.js', settingsBackupValidateCode, 'applyCalendarBackupFields(data, result, objectValue)');
+requireText('settings-backup-validate.js', settingsBackupValidateCode, 'applyCalendarBackupFields(data, result, objectValue, { includeRecipes: version >= 7 })');
 for (const expected of [
   'phoneUiState: loadPhoneUiState(interactiveScenes)', 'ambientStatus: normalizeAmbientStatus',
   'normalizePhoneUiState(state.phoneUiState, interactiveScenes)', 'savePhoneUiState(phoneUiState, interactiveScenes)',
   "beforeApply('apply')", "beforeApply('rollback')", 'prepared = await prepare(snapshot)',
   "error.backupPhase = 'prepare'", "error.backupPhase = 'rolled-back'", "combined.backupPhase = 'rollback-failed'",
   'assertCanonicalCalendarField', 'assertCycleBackupInvariants',
-  'loadCalendarHolidays()', 'saveCalendarCycles(state.calendarCycles)',
+  'loadCalendarHolidays()', 'loadCalendarRecipes()', 'saveCalendarCycles(state.calendarCycles)', 'saveCalendarRecipes(state.calendarRecipes)',
 ]) requireText('settings-backup.js', settingsBackupCode, expected);
 for (const expected of [
   'prepare: current => parseBackupData(data, current)', 'apply: async (snapshot, imported)',
+  'deps.reloadCalendarStore?.()',
   "err.backupPhase === 'rolled-back'", "err.backupPhase === 'rollback-failed'", '导入失败，未修改现有数据',
   'postImportError = injectionFailure', '数据已导入，但注入刷新失败',
+  "deps.cancelCalendarTasks?.(`backup-${reason}`)",
+  "deps.cancelCalendarTasks?.('plugin-data-clear')",
 ]) requireText('settings-ui.js', settingsUiCodeForInteractive, expected);
 for (const expected of [
-  "tasks.begin(storageId, 'scan-context'", 'parentSignal', 'signal: task.signal', 'calendarMonthCells',
+  "tasks.begin(storageId, 'scan-context'", 'parentSignal', 'signal: task.signal',
   'isHolidayYearSupported', 'holidayYearRange', 'calendarGenerationCopy', 'calendar-holiday-country',
-  '该国家在当前年代无外部节假日数据源', 'EDIT_ICON_SVG', 'HOME_ICON_SVG', 'calendar-base-edit',
-  'showBaseDateEditor', 'pm-calendar-base-dialog', 'data-calendar-base-error',
-  'pm-calendar-header-side is-left', 'pm-calendar-header-side is-right', 'statusTimerByStorage',
+  '该国家在当前年代无外部节假日数据源',
+  'calendar-month-jump', 'calendar-date-rescan', 'calendar-today',
+  'goToReferenceDate', 'jumpToMonth', 'showEntryManager', 'showEntryEditor',
+  'statusTimerByStorage', 'createCalendarRecipeController', 'getCalendarRecipeStore',
   'setTimeoutImpl', 'clearTimeoutImpl', '{ persistent: true }', '{ duration: 10000 }',
-  'pm-modal-add pm-calendar-base-actions', 'relativeCalendarLabel(today, selectedDate)',
-  "const statusClass = headerBusy ? 'pm-calendar-status is-generating' : 'pm-calendar-status'",
 ]) requireText('calendar.js', calendarCode, expected);
+for (const expected of [
+  'calendarMonthCells', 'HOME_ICON_SVG', 'CHEVRON_DOWN_ICON_SVG', 'RECIPE_ICON_SVG',
+  'calendar-month-panel', 'pm-calendar-header-side is-left', 'pm-calendar-header-side is-right',
+  'relativeCalendarLabel(today, selectedDate)', 'calendar-recipe-generate', 'recipeScope',
+  "const headerIcon = viewMode === 'schedule' || viewMode === 'recipe' ? SPARKLES_ICON_SVG : REFRESH_ICON_SVG",
+  "const statusClass = headerBusy ? 'pm-calendar-status is-generating' : 'pm-calendar-status'",
+]) requireText('calendar-page-view.js', calendarPageViewCode, expected);
+for (const expected of [
+  "tasks.begin(storageId, 'recipe-generate'", 'isolated: true, signal: task.signal',
+  'expectedRegion: requestedRegion', 'mergeGeneratedRecipe', 'commitRecipe',
+  'calendar-recipe-region-save', 'calendar-recipe-add', 'calendar-recipe-manage',
+  'renderRecipeMealDialog', 'renderRecipeMealManager', 'recipeGenerationTask === task',
+]) requireText('calendar-recipe-controller.js', calendarRecipeControllerCode, expected);
+for (const expected of ['commitGeneration', 'invalidateCommits', 'generation !== commitGeneration']) {
+  requireText('calendar-commit.js', sourceModuleByName.get('calendar-commit.js')?.code || '', expected);
+}
+for (const expected of ["reason === 'plugin-data-clear'", "reason === 'backup-apply'", "reason === 'backup-rollback'", 'invalidateCommits();']) {
+  requireText('calendar.js', calendarCode, expected);
+}
+for (const expected of [
+  "RECIPE_MEAL_TYPES = Object.freeze(['breakfast', 'lunch', 'dinner', 'snack'])",
+  'calendarDateRangeKeys(start, 0, 6)', 'calendarDateRangeKeys(start, -1, 1)',
+  'appliedRegion', 'regionPreference', 'lastGeneratedRegion',
+]) requireText('calendar-recipe-model.js', calendarRecipeModelCode, expected);
 for (const expected of [
   'scopeCommitQueue', 'saveCalendar(previousStore)', 'calendarRollbackError',
   'injectionError = injectionFailure', 'rollbackInjectionError = injectionFailure',
@@ -1370,13 +1440,16 @@ for (const expected of [
   'name="periodStartDay"', 'data-action="calendar-cycle-subject"',
   'data-calendar-entry-kind="event"', 'data-calendar-entry-kind="occasion"',
   'data-action="calendar-holiday-country"', 'data-action="calendar-detail-menu"',
-  'data-action="calendar-manage-date"', 'data-action="calendar-delete-date"',
+  'data-action="calendar-add-date"', 'data-action="calendar-manage-date"',
+  'data-calendar-entry-edit', 'data-calendar-entry-remove', 'REMOVE_ICON_SVG',
+  'renderCalendarMonthPanel', 'data-calendar-month-panel', 'data-action="calendar-today"',
   '该国家在当前年代无外部数据源', 'EDIT_ICON_SVG', 'MORE_ICON_SVG',
   'EVENT_EDITOR_ICON_SVG', 'OCCASION_EDITOR_ICON_SVG', 'pm-calendar-entry-dialog',
   'pm-calendar-scan-card', '<h3>正文日期</h3>', '保存并识别',
   'role="switch"', 'aria-checked="${scope.autoAdjust}"', '自动识别最后一条正文', "label: '<user>'",
   '<time datetime="${selectedDate}">${escapeHtml(detailDate.format(parsed))}</time>', 'detailWeekday.format(parsed)',
-  "follicular: '安全期'", "luteal: '安全期'",
+  "follicular: '安全期'", "luteal: '安全期'", 'resolveWeatherForDate(weatherStore, date)',
+  '预报外日期使用气候推演', '无法推演',
 ]) requireText('calendar-view.js', calendarViewCode, expected);
 for (const forbidden of ['<span>已选日期</span>', '>${escapeHtml(selectedDate)}</time>', '>编辑</button>', 'calendar-editor-kind', 'pm-calendar-editor-switch']) if (calendarViewCode.includes(forbidden)) failures.push(`calendar-view.js: calendar UI remains: ${forbidden}`);
 if (calendarViewCode.includes('Weather data © Open-Meteo')) failures.push('calendar-view.js: weather attribution must not be rendered in the UI');
@@ -1408,6 +1481,7 @@ const controlCenterAnalysis = analyze(controlCenterCode, 'module');
 const directoryAnalysis = analyze(directoryCode, 'module');
 const controlCenterTemplate = controlCenterAnalysis.windowAssignmentText.get('__pmShowControlCenter') || '';
 const directoryTemplate = directoryAnalysis.windowAssignmentText.get('__pmShowList') || '';
+const directoryListSource = directoryAnalysis.windowAssignmentSource.get('__pmShowList') || '';
 const forumCallPattern = /window\.__pmOpenForumMode\s*\(\s*\)/g;
 if (controlCenterTemplate.includes('data-action="forum"') || controlCenterTemplate.includes('互动场景')) {
   failures.push('phone-control-center.js: compact control menu must not duplicate the desktop community entry');
@@ -1448,7 +1522,7 @@ for (const expected of [
 if (interactiveCode.includes('document.getElementById(`pm-comment-input-${button.dataset.postId}`)')) failures.push('interactive-scenes.js: reply submission must stay scoped to the clicked composer');
 for (const expected of [
   'HEART_ICON_SVG', 'SHARE_ICON_SVG', 'REPLY_ICON_SVG', 'SEND_ICON_SVG', 'CONTROL_ICON_SVG', 'COMMUNITY_ICON_SVG', 'EDIT_ICON_SVG', 'TRASH_ICON_SVG',
-  'pm-scene-nav-actions', 'pm-scene-title-poke', 'pm-scene-view-actions', 'pm-scene-title-tab', 'aria-label="子社区视图"',
+  'pm-scene-nav-actions', 'pm-header-icon-button pm-scene-title-poke', 'pm-header-icon-button pm-scene-exit', 'pm-scene-view-actions', 'pm-scene-title-tab', 'aria-label="子社区视图"',
   'class="pm-scene-home" data-action="desktop"', '<span>直播</span>',
   'style="--scene-accent:${escapeAttr(defaultAccent)}"', 'data-preset="${escapeAttr(key)}" data-accent="${escapeAttr(preset.accent)}"',
   'data-action="tab" data-tab="prompt"', '风格提示词', 'data-action="context-inject"', '上下文注入', 'pm-scene-post-more', 'data-action="post-actions"',
@@ -1459,10 +1533,13 @@ for (const expected of [
   'class="pm-scene-comment-actions" hidden', 'data-action="edit-comment"', 'aria-label="编辑评论"', 'data-action="delete-comment"', 'aria-label="删除评论"',
   'pm-scene-accent-options', 'data-action="scene-accent"', 'data-action="scene-accent-custom"', 'aria-pressed="${preset.accent === selectedAccent}"',
   'placeholder="分享此刻……"', '<span class="pm-scene-post-time">刚刚</span>',
-  'const warmupStarted = scene.live.warmupStarted === true', 'const liveActive = state.liveActive === true',
+  "const liveState = ['idle', 'starting', 'active', 'error'].includes(state.liveState) ? state.liveState : 'idle'", 'const warmupStarted = liveState === \'active\' && scene.live.warmupStarted === true',
   'data-action="start-warmup"', '${PLAY_ICON_SVG}', 'aria-label="发送弹幕"', '设置社区内容的表达风格与氛围。',
-  "isPrompt || tab === 'live' || tab === 'context-inject' ? ''", 'pm-live-stage', 'pm-danmaku-float',
+  "isPrompt || tab === 'live' || tab === 'context-inject' ? ''", 'pm-live-stage', 'pm-live-details', 'data-live-state=', 'pm-danmaku-float',
 ]) requireText('interactive-scene-views.js', interactiveViewsCode, expected);
+for (const expected of ['.pm-live-room{display:flex;flex-direction:column;gap:20px}', '.pm-live-play-btn{width:48px', '.pm-live-details{display:flex;flex-direction:column;gap:12px}', '.pm-danmaku-list{height:210px;overflow-y:auto;background:transparent;border:0']) {
+  requireText('style.css', css, expected);
+}
 for (const forbidden of ['data-action="back"', 'pm-scene-back']) {
   if (interactiveViewsCode.includes(forbidden)) failures.push(`interactive-scene-views.js: removed community back control remains: ${forbidden}`);
 }
@@ -1492,9 +1569,14 @@ for (const expected of ['handleSceneAccentAction(action, app, button)']) {
   requireText('interactive-scenes.js', interactiveCode, expected);
 }
 for (const expected of [
+  "isCurrent: () => isTargetActive(target) && phoneScope(target.storageId).lastTab === 'live'",
+  "isTargetActive(target) && phoneScope(target.storageId).lastTab === 'live'",
+]) requireText('interactive-scenes.js', interactiveCode, expected);
+for (const expected of [
   'createCommunityTaskController', 'createCommunityGenerationRunner', "request('feed_batch', {}, target)",
   'createCommunityTurnSnapshot(chat)', 'registerResolvedHostEvent', 'resolveHostEvent', 'runtime.communityTask', 'resetObservation',
 ]) requireText('interactive-scene-scheduler.js', interactiveSchedulerCode, expected);
+requireText('interactive-scene-scheduler.js', interactiveSchedulerCode, "if (!isCurrent()) throw new Error('生成已取消')");
 for (const expected of ['observeCommunityTurn', 'cancelCommunityGeneration', 'poke-scene']) requireText('interactive-scenes.js', interactiveCode, expected);
 for (const stateField of [
   'communityGeneration', 'communityTaskPhase', 'communityReminder', 'communityBaselineAssistantCount',
@@ -1710,7 +1792,11 @@ for (const expected of [
   '.pm-calendar-header button[data-action="calendar-home"]{color:var(--pm-color-text-tertiary)!important}',
   '.pm-calendar-header-action svg{width:15px;height:15px}',
   '.pm-calendar-title-row{display:flex;align-items:center;justify-content:center;min-width:0',
-  '.pm-calendar-header .pm-calendar-base-edit{position:static;transform:none;width:26px;height:26px',
+  '.pm-calendar-title-row>button{display:flex!important;align-items:center;justify-content:center;gap:4px',
+  '.pm-calendar-month-panel{margin:0 12px 10px;padding:12px;border-radius:14px',
+  '.pm-calendar-shell[data-calendar-view-mode="recipe"]{--pm-calendar-accent:#c77a32}',
+  '.pm-calendar-day.has-recipe>span{color:var(--pm-calendar-accent)}',
+  '.pm-calendar-event.is-recipe b{color:var(--pm-calendar-accent)}',
   '.pm-navbar{position:relative;display:grid !important;grid-template-columns:34px minmax(0,1fr) 34px',
   '.pm-name-wrap{position:relative !important;display:flex;align-items:center;justify-content:center',
   '.pm-calendar-status.is-generating{color:var(--pm-color-danger)}',
@@ -1737,7 +1823,7 @@ for (const expected of [
 ]) requireText('style.css', css, expected);
 requireCssDeclarations(cssRules, '.pm-name-edit', {
   background: 'transparent !important', color: 'var(--pm-color-text-tertiary) !important',
-  width: '24px', height: '24px', 'border-radius': '50% !important',
+  width: '34px', height: '34px', 'border-radius': '50% !important',
 });
 requireCssDeclarations(cssRules, '.pm-name-edit:hover', {
   background: 'transparent !important', color: 'var(--pm-r-bg,#007aff) !important',
@@ -1920,7 +2006,7 @@ if (bundle.includes('pm-forum-entry')) failures.push('bundle: removed directory 
 for (const iconName of [
   'MENU_ICON_SVG', 'CLOSE_ICON_SVG', 'HOME_ICON_SVG', 'CONTROL_ICON_SVG', 'SEND_ICON_SVG',
   'POKE_ICON_SVG', 'CHAT_ICON_SVG', 'CONTACTS_ICON_SVG', 'SETTINGS_ICON_SVG', 'COMMUNITY_ICON_SVG',
-  'EDIT_ICON_SVG', 'EMOJI_ICON_SVG', 'TRASH_ICON_SVG',
+  'EDIT_ICON_SVG', 'EMOJI_ICON_SVG', 'TRASH_ICON_SVG', 'REMOVE_ICON_SVG', 'RECIPE_ICON_SVG',
 ]) {
   requireText('icons.js', sourceModuleByName.get('icons.js')?.code || '', `export const ${iconName}`);
 }
@@ -1946,11 +2032,38 @@ for (const expected of [
   "window.__pmShowAddContact = (resultMessage = '')", 'escapeHtml(resultMessage)',
   '<b>手动添加</b>', '<b>AI 生成</b>', 'id="pm-autogen-btn"',
   'pm-contact-add-manual', 'pm-contact-add-primary', 'pm-contact-add-ai', 'pm-contact-add-icon',
+  'SPARKLES_ICON_SVG', 'UNLINK_ICON_SVG', 'pm-entity-delete',
+  '永久删除联系人', '永久删除群聊', '且无法恢复',
 ]) requireText('phone-directory.js', directoryCode, expected);
+const contactDeleteButton = buttonContaining('phone-directory.js: contact delete button', directoryListSource, 'onclick="window.__pmDel(');
+for (const expected of ['class="pm-entity-delete"', 'aria-label="永久删除联系人', 'title="永久删除联系人"', '${UNLINK_ICON_SVG}', '<span>解除关系</span>']) {
+  requireText('phone-directory.js: contact delete button', contactDeleteButton, expected);
+}
+if (contactDeleteButton.includes('TRASH_ICON_SVG') || contactDeleteButton.includes('REMOVE_ICON_SVG') || contactDeleteButton.includes('<span>删除</span>')) {
+  failures.push('phone-directory.js: contact delete button must use unlink/permanent-removal semantics');
+}
+const groupDeleteButton = buttonContaining('phone-directory.js: group delete button', directoryListSource, 'onclick="window.__pmDelGroup(');
+for (const expected of ['class="pm-entity-delete"', 'aria-label="永久删除群聊', 'title="永久删除群聊"', '${UNLINK_ICON_SVG}', '<span>永久删除</span>']) {
+  requireText('phone-directory.js: group delete button', groupDeleteButton, expected);
+}
+if (groupDeleteButton.includes('TRASH_ICON_SVG') || groupDeleteButton.includes('REMOVE_ICON_SVG') || groupDeleteButton.includes('<span>删除</span>')) {
+  failures.push('phone-directory.js: group delete button must use unlink/permanent-removal semantics');
+}
+for (const [label, marker, accessibleName] of [
+  ['community poke button', 'data-action="poke-scene"', 'aria-label="拍一拍社区"'],
+  ['post comments poke button', 'data-action="comments"', 'aria-label="拍一拍本帖，只生成本帖评论"'],
+]) {
+  const button = buttonContaining(`interactive-scene-views.js: ${label}`, interactiveViewsCode, marker);
+  requireText(`interactive-scene-views.js: ${label}`, button, accessibleName);
+  requireText(`interactive-scene-views.js: ${label}`, button, '${POKE_ICON_SVG}');
+  if (button.includes('SPARKLES_ICON_SVG')) failures.push(`interactive-scene-views.js: ${label} must preserve poke semantics instead of generic AI sparkles`);
+}
+for (const expected of ['REMOVE_ICON_SVG', 'UNLINK_ICON_SVG', 'SPARKLES_ICON_SVG', 'CHEVRON_DOWN_ICON_SVG']) requireText('icons.js', sourceModuleByName.get('icons.js')?.code || '', expected);
 for (const expected of [
   '.pm-action-button{', 'font-size:13px', 'background:var(--pm-r-bg,#007aff)',
+  '.pm-header-icon-button{box-sizing:border-box;width:34px;height:34px;min-width:34px;min-height:34px',
   '.pm-action-button.is-danger{background:var(--pm-color-danger);color:var(--pm-color-on-dark)}',
-  '.pm-contact-add-choices{', '.pm-calendar-base-dialog{width:290px}',
+  '.pm-contact-add-choices{', '.pm-calendar-entry-manager{width:min(350px,calc(100vw - 28px))}',
   '.pm-calendar-view-switch button{display:grid;place-items:center;flex:0 0 32px;width:32px;height:32px;padding:0;border-radius:50%',
   '.pm-calendar-header{position:sticky', 'grid-template-columns:72px minmax(0,1fr) 72px',
 ]) requireText('style.css', css, expected);
@@ -1972,29 +2085,31 @@ if (!showContactConfigSource || !saveContactConfigSource) {
     failures.push('phone-chat-poke.js: saving character settings must not close the overlay');
   }
 }
-for (const forbidden of ['calendarWeather', 'getCalendarWeatherStore']) {
-  if (foundationInjectionSource.includes(forbidden)) failures.push(`phone-foundation.js: prompt injection path must not read or pass ${forbidden}`);
-}
-for (const expected of ['calendarCycles', "getCalendarData('getCalendarCycleStore')"]) requireText('phone-foundation.js', foundationInjectionSource, expected);
+for (const expected of [
+  'calendarWeather', "getCalendarData('getCalendarWeatherStore')",
+  'calendarCycles', "getCalendarData('getCalendarCycleStore')",
+]) requireText('phone-foundation.js', foundationInjectionSource, expected);
 for (const expected of [
   'class="pm-calendar-cycle-input" name="enabled" type="checkbox"',
   'class="pm-custom-check" aria-hidden="true"', '安全期',
 ]) requireText('calendar-view.js', calendarViewCode, expected);
-for (const forbidden of ['pm-calendar-base-menu', 'TIME_ORIGIN_ICON_SVG']) {
+for (const forbidden of ['pm-calendar-base-menu', 'TIME_ORIGIN_ICON_SVG', 'calendar-base-edit', 'pm-calendar-base-dialog']) {
   if (calendarCode.includes(forbidden)) failures.push(`calendar.js: obsolete title control remains: ${forbidden}`);
+}
+for (const forbidden of ['calendar-base-edit', 'pm-calendar-base-dialog', 'pm-calendar-base-actions']) {
+  if (css.includes(forbidden)) failures.push(`style.css: obsolete calendar title control remains: ${forbidden}`);
 }
 const phoneInjectionCode = sourceModuleByName.get('phone-injection.js')?.code || '';
 const phoneInjectionAnalysis = analyze(phoneInjectionCode, 'module');
-for (const functionName of ['renderCalendarContextInjection', 'buildContextInjectionPrompts']) {
-  const source = phoneInjectionAnalysis.functionSource.get(functionName) || '';
-  if (!source) failures.push(`phone-injection.js: missing ${functionName}`);
-  for (const forbidden of ['weatherStore', 'calendarWeather']) {
-    if (source.includes(forbidden)) failures.push(`phone-injection.js: ${functionName} must not accept or read ${forbidden}`);
-  }
-}
+const renderCalendarInjectionSource = phoneInjectionAnalysis.functionSource.get('renderCalendarContextInjection') || '';
+const buildContextInjectionSource = phoneInjectionAnalysis.functionSource.get('buildContextInjectionPrompts') || '';
+if (!renderCalendarInjectionSource) failures.push('phone-injection.js: missing renderCalendarContextInjection');
+if (!buildContextInjectionSource) failures.push('phone-injection.js: missing buildContextInjectionPrompts');
+for (const expected of ['weatherStore', 'resolveWeatherForDate(weatherStore, date)', '天气（${weather.sourceLabel}）']) requireText('phone-injection.js', renderCalendarInjectionSource, expected);
+for (const expected of ['calendarWeather', 'weatherStore: calendarWeather']) requireText('phone-injection.js', buildContextInjectionSource, expected);
 for (const expected of [
   'calendarDateRangeKeys(windowStart, -3, 6)', 'days: 60', 'calendarCycles',
-  'cycleSubjectKeys', 'predictCycleRange', 'relativeCalendarLabel', "facts.join('；')",
+  'cycleSubjectKeys', 'predictCycleRange', 'relativeCalendarLabel', "facts.join('；')", 'resolveWeatherForDate',
 ]) requireText('phone-injection.js', phoneInjectionCode, expected);
 requireText('interactive-scenes.js', interactiveCode, 'generationErrorMessage(error)');
 requireText('interactive-scene-scheduler.js', sourceModuleByName.get('interactive-scene-scheduler.js')?.code || '', 'generationErrorMessage(error)');

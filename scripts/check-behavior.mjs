@@ -10,7 +10,7 @@ import {
     normalizeGroupInjection, normalizeGroupMeta, normalizeGroupMetaStore,
 } from '../src/behavior-config.js';
 import {
-    createMessageEntry, createQuoteSnapshot, describeMessageEntry, normalizeMessageHistory,
+    createMessageEntry, createQuoteSnapshot, describeMessageEntry, formatQuoteContext, normalizeMessageHistory,
 } from '../src/chat-message-model.js';
 import {
     loadBgSettings, saveBgGlobal, saveBgLocal, saveDesktopBg,
@@ -38,7 +38,7 @@ import {
 } from '../src/settings-ui.js';
 import { renderApiSettings } from '../src/settings-templates.js';
 import {
-    buildGroupInjectedInstruction, buildGroupSystemPrompt,
+    buildGroupInjectedInstruction, buildGroupSystemPrompt, buildHistoryText,
     buildIndependentGroupUserPrompt, buildIndependentSingleUserPrompt,
     buildSingleInjectedInstruction, buildSingleSystemPrompt,
 } from '../src/chat-prompts.js';
@@ -50,7 +50,9 @@ import {
     createPhonePageController, handleMessageSelectionKey, installPhoneLifecycle,
     resetPhoneScaleForMinimize, toggleMessageSelection,
 } from '../src/phone-lifecycle.js';
-import { commitEditedGroupUpdate, refreshEditedGroupRuntime } from '../src/phone-directory.js';
+import {
+    commitConversationInjectionUpdate, commitEditedGroupUpdate, installPhoneDirectory, refreshEditedGroupRuntime,
+} from '../src/phone-directory.js';
 function createQuickReplyApiFixture({ set = null, active = false, fail = {}, beforeMutation = null } = {}) {
     const sets = new Map();
     if (set) sets.set(set.name, set);
@@ -1116,6 +1118,8 @@ let importInjectionCalls = 0;
 let importInjectionImpl = async () => undefined;
 let importClearInjectionCalls = 0;
 let importCancelCommunityCalls = 0;
+const importCancelCalendarReasons = [];
+let importReloadCalendarCalls = 0;
 const settingsRuntime = { modelList: ['model-alpha', 'model-beta'] };
 installSettingsUi({
     makeOverlay: html => { settingsOverlayHtml = html; }, applyTheme: () => appliedThemes.push(structuredClone(window.__pmTheme)), applyBackground: () => {},
@@ -1128,6 +1132,8 @@ installSettingsUi({
     },
     clearBidirectionalInjection: () => { importClearInjectionCalls += 1; },
     cancelCommunityGeneration: () => { importCancelCommunityCalls += 1; },
+    cancelCalendarTasks: reason => { importCancelCalendarReasons.push(reason); },
+    reloadCalendarStore: () => { importReloadCalendarCalls += 1; },
     getInteractiveStore: async () => ({ scopes: {} }),
 });
 window.__pmTheme = { preset: 'frost', customRight: '', customLeft: '', borderColor: '#1a1a1a', darkMode: 'dark', customTitle: '', qrLabel: '天音' };
@@ -1162,6 +1168,7 @@ window.__pmImportData(importInput);
 await fileReadCompletion;
 assert.equal(importInput.value, '');
 assert.equal(importCancelCommunityCalls, 0, 'prepare 失败不得取消社区任务');
+assert.deepEqual(importCancelCalendarReasons, [], 'prepare 失败不得取消日历或菜谱任务');
 assert.equal(importClearInjectionCalls, 0, 'prepare 失败不得清理现有注入');
 assert.equal(importInjectionCalls, 0, 'prepare 失败不得执行恢复性注入');
 assert.equal(importCloseCalls, 0, 'prepare 失败不得关闭手机界面');
@@ -1721,7 +1728,12 @@ applyConversationInjections({
     checked: ['__group_closed', '__group_open'],
     histories: {
         __group_closed: [{ role: 'assistant', content: '绝密关闭内容' }],
-        __group_open: [{ role: 'assistant', content: '允许注入内容' }],
+        __group_open: [{
+            role: 'user', content: '允许注入内容',
+            quote: {
+                messageId: 'msg_open', bubbleId: 'bubble_open', sender: 'C', text: '被引用的群聊内容',
+            },
+        }],
     },
     groups: {
         __group_closed: normalizeGroupMeta({ name: '关闭群', members: ['A', 'B'], injection: { position: -1 } }),
@@ -1734,6 +1746,7 @@ const openCall = promptCalls.find(call => String(call[1]).includes('允许注入
 assert.ok(openCall);
 assert.match(String(openCall[1]), /开放群/);
 assert.match(String(openCall[1]), /C[、,，\s]+D|成员[^\n]*C[^\n]*D/);
+assert.match(String(openCall[1]), /引用 C 的消息：“被引用的群聊内容”/, '记忆注入必须保留引用发送者和快照');
 assert.doesNotMatch(String(openCall[1]), /关闭群|绝密关闭内容/);
 assert.equal(openCall[2], 2);
 assert.equal(openCall[3], 4);
@@ -1787,6 +1800,15 @@ globalThis.indexedDB = {
                             });
                             return getRequest;
                         },
+                        getAllKeys() {
+                            const keysRequest = {};
+                            queueMicrotask(() => {
+                                keysRequest.result = [...idbValues.keys()];
+                                keysRequest.onsuccess?.();
+                                transaction.oncomplete?.();
+                            });
+                            return keysRequest;
+                        },
                         delete(key) {
                             idbOperations.push({ type: 'delete', key });
                             queueMicrotask(() => {
@@ -1811,6 +1833,284 @@ globalThis.indexedDB = {
 assert.equal(await pmIDBSet('abort-test', { value: 1 }), false);
 assert.equal(await pmIDBGet('abort-test'), null);
 assert.equal(await pmIDBDel('abort-test'), false);
+idbControl.abortAll = false;
+
+const previousDeleteConfirm = globalThis.confirm;
+const previousDeleteAlert = globalThis.alert;
+const previousDeleteDocument = globalThis.document;
+const previousDirectoryWindowDescriptors = new Map(Object.getOwnPropertyNames(window)
+    .filter(key => key.startsWith('__pm'))
+    .map(key => [key, Object.getOwnPropertyDescriptor(window, key)]));
+const deleteAlerts = [];
+globalThis.alert = message => deleteAlerts.push(String(message));
+globalThis.document = { getElementById: () => null };
+
+function directoryRuntimeSnapshot(state) {
+    return {
+        activeStorageId: state.activeStorageId,
+        currentPersona: state.currentPersona,
+        conversationHistory: structuredClone(state.conversationHistory),
+        isGroupChat: state.isGroupChat,
+        currentGroupKey: state.currentGroupKey,
+        groupMembers: state.groupMembers.slice(),
+        groupExtras: state.groupExtras.slice(),
+        groupDisplayName: state.groupDisplayName,
+        groupColorMap: { ...state.groupColorMap },
+    };
+}
+
+function directoryDeleteStores() {
+    return {
+        histories: {
+            story: {
+                Alice: [{ role: 'assistant', content: 'contact history' }],
+                __group_team: [{ role: 'assistant', content: 'group history' }],
+            },
+        },
+        groupMeta: {
+            story: {
+                __group_team: normalizeGroupMeta({ name: '测试群', members: ['Alice', 'Bob'] }),
+            },
+        },
+        bidirectional: { story: ['Alice', '__group_team'] },
+        poke: { story: { Alice: { interval: 2 }, __group_team: { interval: 3 } } },
+        backgrounds: { story_Alice: '#111111', story___group_team: '#222222' },
+    };
+}
+
+function createDirectoryDeleteFixture({ currentPersona = 'Alice', currentGroupKey = '__group_team', includeCurrentGroup = false } = {}) {
+    const runtime = createRuntimeState();
+    const stores = directoryDeleteStores();
+    if (includeCurrentGroup) {
+        stores.histories.story.__group_current = [{ role: 'assistant', content: 'current group history' }];
+        stores.groupMeta.story.__group_current = normalizeGroupMeta({ name: '当前群', members: ['Carol', 'Dave'] });
+        stores.bidirectional.story.push('__group_current');
+        stores.poke.story.__group_current = { interval: 4 };
+        stores.backgrounds.story___group_current = '#333333';
+    }
+    const currentGroupState = includeCurrentGroup ? {
+        currentPersona: '',
+        currentGroupKey: '__group_current',
+        groupMembers: ['Carol', 'Dave'],
+        groupExtras: ['当前群旁观者'],
+        groupDisplayName: '当前群',
+        groupColorMap: { Carol: '#333333', Dave: '#444444' },
+    } : null;
+    const state = {
+        activeStorageId: 'story',
+        currentPersona: currentGroupState?.currentPersona ?? currentPersona,
+        conversationHistory: [{ role: 'assistant', content: 'current conversation' }],
+        isGroupChat: !!(currentGroupState?.currentGroupKey ?? currentGroupKey),
+        currentGroupKey: currentGroupState?.currentGroupKey ?? currentGroupKey,
+        groupMembers: currentGroupState?.groupMembers ?? ['Alice', 'Bob'],
+        groupExtras: currentGroupState?.groupExtras ?? ['旁观者'],
+        groupDisplayName: currentGroupState?.groupDisplayName ?? '测试群',
+        groupColorMap: currentGroupState?.groupColorMap ?? { Alice: '#111111', Bob: '#222222' },
+    };
+    window.__pmHistories = structuredClone(stores.histories);
+    window.__pmGroupMeta = structuredClone(stores.groupMeta);
+    window.__pmBidirectional = structuredClone(stores.bidirectional);
+    window.__pmPokeConfig = structuredClone(stores.poke);
+    window.__pmBgLocal = structuredClone(stores.backgrounds);
+    localValues.set('ST_SMS_DATA_V2', JSON.stringify(stores.histories));
+    localValues.set('ST_SMS_GROUP_META', JSON.stringify(stores.groupMeta));
+    localValues.delete('ST_SMS_GROUP_META_LOCAL_FALLBACK');
+    localValues.set('ST_SMS_BIDIRECTIONAL', JSON.stringify(stores.bidirectional));
+    localValues.set('ST_SMS_POKE_CONFIG', JSON.stringify(stores.poke));
+    localValues.set('ST_SMS_BG_LOCAL', JSON.stringify(stores.backgrounds));
+    idbValues.set('ST_SMS_DATA_V2', structuredClone(stores.histories));
+    idbValues.set('ST_SMS_GROUP_META', structuredClone(stores.groupMeta));
+    runtime.pendingMessages.set('story', new Map([
+        ['Alice', [{ id: 1, status: 'pending' }]],
+        ['__group_team', [{ id: 2, status: 'pending' }]],
+        ...(includeCurrentGroup ? [['__group_current', [{ id: 3, status: 'pending' }]]] : []),
+    ]));
+    let injectionCalls = 0;
+    installPhoneDirectory(state, {
+        runtime,
+        getStorageId: () => 'story',
+        makeOverlay: () => {},
+        applyBidirectionalInjection: () => { injectionCalls += 1; },
+    });
+    let listRefreshes = 0;
+    window.__pmShowList = async () => { listRefreshes += 1; };
+    return {
+        runtime,
+        state,
+        stores,
+        injectionCalls: () => injectionCalls,
+        listRefreshes: () => listRefreshes,
+    };
+}
+
+try {
+    let fixture = createDirectoryDeleteFixture({ currentGroupKey: '' });
+    let runtimeBefore = directoryRuntimeSnapshot(fixture.state);
+    let storageWritesBefore = localStorageWrites.length;
+    let idbOperationsBefore = idbOperations.length;
+    globalThis.confirm = () => false;
+    assert.equal(await window.__pmDel('Alice'), false);
+    assert.deepEqual(window.__pmHistories, fixture.stores.histories, '取消删除联系人不得修改历史');
+    assert.deepEqual(window.__pmGroupMeta, fixture.stores.groupMeta);
+    assert.deepEqual(window.__pmBidirectional, fixture.stores.bidirectional);
+    assert.deepEqual(window.__pmPokeConfig, fixture.stores.poke);
+    assert.deepEqual(window.__pmBgLocal, fixture.stores.backgrounds);
+    assert.ok(fixture.runtime.pendingMessages.get('story')?.has('Alice'));
+    assert.deepEqual(directoryRuntimeSnapshot(fixture.state), runtimeBefore, '取消删除联系人不得修改任何会话运行态');
+    assert.equal(fixture.injectionCalls(), 0);
+    assert.equal(fixture.listRefreshes(), 0);
+    assert.equal(localStorageWrites.length, storageWritesBefore, '取消删除联系人不得写入 localStorage');
+    assert.equal(idbOperations.length, idbOperationsBefore, '取消删除联系人不得写入 IndexedDB');
+
+    fixture = createDirectoryDeleteFixture({ currentGroupKey: '' });
+    runtimeBefore = directoryRuntimeSnapshot(fixture.state);
+    globalThis.confirm = () => true;
+    await window.__pmDel('Alice');
+    assert.equal(window.__pmHistories.story.Alice, undefined);
+    assert.deepEqual(window.__pmBidirectional.story, ['__group_team']);
+    assert.equal(window.__pmPokeConfig.story.Alice, undefined);
+    assert.equal(window.__pmBgLocal.story_Alice, undefined);
+    assert.equal(fixture.runtime.pendingMessages.get('story')?.has('Alice'), false);
+    assert.deepEqual(directoryRuntimeSnapshot(fixture.state), {
+        ...runtimeBefore, currentPersona: '', conversationHistory: [],
+    }, '删除当前联系人只能清理联系人身份和当前会话历史');
+    assert.equal(fixture.injectionCalls(), 1);
+    assert.equal(fixture.listRefreshes(), 1);
+    assert.equal(JSON.parse(localValues.get('ST_SMS_DATA_V2')).story.Alice, undefined);
+    assert.equal(idbValues.get('ST_SMS_DATA_V2').story.Alice, undefined);
+    assert.equal(JSON.parse(localValues.get('ST_SMS_POKE_CONFIG')).story.Alice, undefined);
+    assert.deepEqual(JSON.parse(localValues.get('ST_SMS_BIDIRECTIONAL')).story, ['__group_team']);
+    assert.deepEqual(JSON.parse(localValues.get('ST_SMS_BG_LOCAL')), { story___group_team: '#222222' });
+
+    fixture = createDirectoryDeleteFixture({ currentGroupKey: '' });
+    runtimeBefore = directoryRuntimeSnapshot(fixture.state);
+    deleteAlerts.length = 0;
+    localStorageControl.failSet.add('ST_SMS_POKE_CONFIG');
+    await window.__pmDel('Alice');
+    assert.ok(window.__pmHistories.story.Alice, '联系人删除失败后必须恢复历史');
+    assert.deepEqual(window.__pmBidirectional.story, ['Alice', '__group_team']);
+    assert.ok(window.__pmPokeConfig.story.Alice);
+    assert.equal(window.__pmBgLocal.story_Alice, '#111111');
+    assert.deepEqual(directoryRuntimeSnapshot(fixture.state), runtimeBefore, '联系人删除回滚不得修改任何会话运行态');
+    assert.ok(fixture.runtime.pendingMessages.get('story')?.has('Alice'), '失败路径不得提前清理暂存');
+    assert.equal(fixture.injectionCalls(), 0);
+    assert.equal(fixture.listRefreshes(), 0);
+    assert.match(deleteAlerts.at(-1) || '', /自动消息配置保存失败/);
+    assert.deepEqual(JSON.parse(localValues.get('ST_SMS_DATA_V2')), fixture.stores.histories, '联系人回滚必须补偿持久化历史');
+    assert.deepEqual(idbValues.get('ST_SMS_DATA_V2'), fixture.stores.histories, '联系人回滚必须补偿 IndexedDB 历史');
+    assert.deepEqual(JSON.parse(localValues.get('ST_SMS_POKE_CONFIG')), fixture.stores.poke);
+    assert.deepEqual(JSON.parse(localValues.get('ST_SMS_BIDIRECTIONAL')), fixture.stores.bidirectional);
+    assert.deepEqual(JSON.parse(localValues.get('ST_SMS_BG_LOCAL')), fixture.stores.backgrounds);
+
+    fixture = createDirectoryDeleteFixture();
+    runtimeBefore = directoryRuntimeSnapshot(fixture.state);
+    storageWritesBefore = localStorageWrites.length;
+    idbOperationsBefore = idbOperations.length;
+    globalThis.confirm = () => false;
+    assert.equal(await window.__pmDelGroup('__group_team'), false);
+    assert.deepEqual(window.__pmHistories, fixture.stores.histories, '取消删除群聊不得修改历史');
+    assert.deepEqual(window.__pmGroupMeta, fixture.stores.groupMeta, '取消删除群聊不得修改群元数据');
+    assert.deepEqual(window.__pmBidirectional, fixture.stores.bidirectional);
+    assert.deepEqual(window.__pmPokeConfig, fixture.stores.poke);
+    assert.deepEqual(window.__pmBgLocal, fixture.stores.backgrounds);
+    assert.ok(fixture.runtime.pendingMessages.get('story')?.has('__group_team'));
+    assert.deepEqual(directoryRuntimeSnapshot(fixture.state), runtimeBefore, '取消删除群聊不得修改任何会话运行态');
+    assert.equal(fixture.injectionCalls(), 0);
+    assert.equal(fixture.listRefreshes(), 0);
+    assert.equal(localStorageWrites.length, storageWritesBefore, '取消删除群聊不得写入 localStorage');
+    assert.equal(idbOperations.length, idbOperationsBefore, '取消删除群聊不得写入 IndexedDB');
+
+    fixture = createDirectoryDeleteFixture();
+    runtimeBefore = directoryRuntimeSnapshot(fixture.state);
+    globalThis.confirm = () => true;
+    await window.__pmDelGroup('__group_team');
+    assert.equal(window.__pmGroupMeta.story?.__group_team, undefined);
+    assert.equal(window.__pmHistories.story.__group_team, undefined);
+    assert.deepEqual(window.__pmBidirectional.story, ['Alice']);
+    assert.equal(window.__pmPokeConfig.story.__group_team, undefined);
+    assert.equal(window.__pmBgLocal.story___group_team, undefined);
+    assert.equal(fixture.runtime.pendingMessages.get('story')?.has('__group_team'), false);
+    assert.deepEqual(directoryRuntimeSnapshot(fixture.state), {
+        ...runtimeBefore, currentPersona: '', conversationHistory: [], isGroupChat: false,
+        currentGroupKey: '', groupMembers: [], groupExtras: [], groupDisplayName: '', groupColorMap: {},
+    }, '删除当前群聊必须清理完整群聊运行态');
+    assert.equal(fixture.injectionCalls(), 1);
+    assert.equal(fixture.listRefreshes(), 1);
+    assert.equal(JSON.parse(localValues.get('ST_SMS_GROUP_META')).story?.__group_team, undefined);
+    assert.equal(idbValues.get('ST_SMS_GROUP_META').story?.__group_team, undefined);
+    assert.equal(JSON.parse(localValues.get('ST_SMS_DATA_V2')).story.__group_team, undefined);
+    assert.equal(idbValues.get('ST_SMS_DATA_V2').story.__group_team, undefined);
+    assert.deepEqual(JSON.parse(localValues.get('ST_SMS_POKE_CONFIG')).story, { Alice: { interval: 2 } });
+    assert.deepEqual(JSON.parse(localValues.get('ST_SMS_BIDIRECTIONAL')).story, ['Alice']);
+    assert.deepEqual(JSON.parse(localValues.get('ST_SMS_BG_LOCAL')), { story_Alice: '#111111' });
+
+    fixture = createDirectoryDeleteFixture({ includeCurrentGroup: true });
+    runtimeBefore = directoryRuntimeSnapshot(fixture.state);
+    const nonCurrentExpected = structuredClone(fixture.stores);
+    delete nonCurrentExpected.histories.story.__group_team;
+    delete nonCurrentExpected.groupMeta.story.__group_team;
+    nonCurrentExpected.bidirectional.story = ['Alice', '__group_current'];
+    delete nonCurrentExpected.poke.story.__group_team;
+    delete nonCurrentExpected.backgrounds.story___group_team;
+    const currentGroupPendingBefore = structuredClone(fixture.runtime.pendingMessages.get('story')?.get('__group_current'));
+    globalThis.confirm = () => true;
+    await window.__pmDelGroup('__group_team');
+    assert.deepEqual(window.__pmHistories, nonCurrentExpected.histories, '删除非当前群聊只能移除目标历史');
+    assert.deepEqual(window.__pmGroupMeta, nonCurrentExpected.groupMeta, '删除非当前群聊只能移除目标群元数据');
+    assert.deepEqual(window.__pmBidirectional, nonCurrentExpected.bidirectional, '删除非当前群聊只能移除目标注入关系');
+    assert.deepEqual(window.__pmPokeConfig, nonCurrentExpected.poke, '删除非当前群聊只能移除目标自动消息配置');
+    assert.deepEqual(window.__pmBgLocal, nonCurrentExpected.backgrounds, '删除非当前群聊只能移除目标背景');
+    assert.equal(fixture.runtime.pendingMessages.get('story')?.has('__group_team'), false);
+    assert.deepEqual(
+        fixture.runtime.pendingMessages.get('story')?.get('__group_current'),
+        currentGroupPendingBefore,
+        '删除其他群聊不得修改当前群聊暂存内容',
+    );
+    assert.deepEqual(fixture.runtime.pendingMessages.get('story')?.get('Alice'), [{ id: 1, status: 'pending' }], '删除群聊不得修改联系人暂存');
+    assert.deepEqual(directoryRuntimeSnapshot(fixture.state), runtimeBefore, '删除非当前群聊不得修改当前会话运行态');
+    assert.equal(fixture.injectionCalls(), 1);
+    assert.equal(fixture.listRefreshes(), 1);
+    assert.deepEqual(JSON.parse(localValues.get('ST_SMS_DATA_V2')), nonCurrentExpected.histories);
+    assert.deepEqual(idbValues.get('ST_SMS_DATA_V2'), nonCurrentExpected.histories);
+    assert.deepEqual(JSON.parse(localValues.get('ST_SMS_GROUP_META')), nonCurrentExpected.groupMeta);
+    assert.deepEqual(idbValues.get('ST_SMS_GROUP_META'), nonCurrentExpected.groupMeta);
+    assert.deepEqual(JSON.parse(localValues.get('ST_SMS_BIDIRECTIONAL')), nonCurrentExpected.bidirectional);
+    assert.deepEqual(JSON.parse(localValues.get('ST_SMS_POKE_CONFIG')), nonCurrentExpected.poke);
+    assert.deepEqual(JSON.parse(localValues.get('ST_SMS_BG_LOCAL')), nonCurrentExpected.backgrounds);
+
+    fixture = createDirectoryDeleteFixture();
+    runtimeBefore = directoryRuntimeSnapshot(fixture.state);
+    deleteAlerts.length = 0;
+    localStorageControl.failSet.add('ST_SMS_POKE_CONFIG');
+    await window.__pmDelGroup('__group_team');
+    assert.ok(window.__pmGroupMeta.story.__group_team, '群聊删除失败后必须恢复群元数据');
+    assert.ok(window.__pmHistories.story.__group_team, '群聊删除失败后必须恢复历史');
+    assert.deepEqual(window.__pmBidirectional.story, ['Alice', '__group_team']);
+    assert.ok(window.__pmPokeConfig.story.__group_team);
+    assert.equal(window.__pmBgLocal.story___group_team, '#222222');
+    assert.ok(fixture.runtime.pendingMessages.get('story')?.has('__group_team'), '失败路径不得提前清理群聊暂存');
+    assert.deepEqual(directoryRuntimeSnapshot(fixture.state), runtimeBefore, '群聊删除回滚不得修改任何会话运行态');
+    assert.equal(fixture.injectionCalls(), 0);
+    assert.equal(fixture.listRefreshes(), 0);
+    assert.match(deleteAlerts.at(-1) || '', /自动消息配置保存失败/);
+    assert.deepEqual(JSON.parse(localValues.get('ST_SMS_GROUP_META')), fixture.stores.groupMeta, '群聊回滚必须补偿持久化元数据');
+    assert.deepEqual(idbValues.get('ST_SMS_GROUP_META'), fixture.stores.groupMeta, '群聊回滚必须补偿 IndexedDB 元数据');
+    assert.deepEqual(JSON.parse(localValues.get('ST_SMS_DATA_V2')), fixture.stores.histories);
+    assert.deepEqual(idbValues.get('ST_SMS_DATA_V2'), fixture.stores.histories, '群聊回滚必须补偿 IndexedDB 历史');
+    assert.deepEqual(JSON.parse(localValues.get('ST_SMS_POKE_CONFIG')), fixture.stores.poke);
+    assert.deepEqual(JSON.parse(localValues.get('ST_SMS_BIDIRECTIONAL')), fixture.stores.bidirectional);
+    assert.deepEqual(JSON.parse(localValues.get('ST_SMS_BG_LOCAL')), fixture.stores.backgrounds);
+} finally {
+    globalThis.confirm = previousDeleteConfirm;
+    globalThis.alert = previousDeleteAlert;
+    globalThis.document = previousDeleteDocument;
+    for (const key of Object.getOwnPropertyNames(window)) {
+        if (key.startsWith('__pm')) delete window[key];
+    }
+    for (const [key, descriptor] of previousDirectoryWindowDescriptors) {
+        Object.defineProperty(window, key, descriptor);
+    }
+}
 
 idbControl.abortAll = false;
 const migrationBackground = label => `data:image/png;base64,${label}${'x'.repeat(5000)}`;
@@ -2087,6 +2387,33 @@ const quotedUserEntry = createMessageEntry({
     role: 'user', content: '回复内容', descriptors: ['回复内容'], quote: quoteSnapshot,
 });
 assert.deepEqual(quotedUserEntry.quote, quoteSnapshot, '用户 entry 必须持久化规范化引用快照');
+const compactQuote = {
+    messageId: groupEntry.messageId, bubbleId: groupBubbles[0].bubbleId,
+    sender: 'Alice', text: '第一行\n第二行',
+};
+const quoteContext = formatQuoteContext(compactQuote);
+assert.equal(quoteContext, '引用 Alice 的消息：“第一行 第二行”', 'Prompt 引用文本必须折叠换行并保留发送者');
+assert.equal(formatQuoteContext({ text: '无稳定 ID' }), '', '无效引用不得污染 Prompt');
+const historyWithQuote = buildHistoryText([
+    createMessageEntry({ role: 'user', content: '历史回复', descriptors: ['历史回复'], quote: compactQuote }),
+], 10, '用户', 'Alice');
+assert.match(historyWithQuote, /【引用 Alice 的消息：“第一行 第二行”】\n用户：历史回复/,
+    '历史 Prompt 必须在用户正文前序列化引用关系');
+const promptArgs = {
+    currentPersona: 'Alice', userName: '用户', userBlock: '用户名字：用户', contextBlockMain: '',
+    groupName: '测试群', memberList: 'Alice、Bob', cardScenario: '', worldBookText: '', mainChatText: '',
+    smsHistoryText: '旧历史', currentQuoteText: quoteContext, directorNote: '',
+    userMsgClean: '本轮回复', userMsg: '本轮回复',
+};
+for (const [label, prompt] of [
+    ['主 API 私聊', buildSingleInjectedInstruction(promptArgs)],
+    ['主 API 群聊', buildGroupInjectedInstruction(promptArgs)],
+    ['独立 API 私聊', buildIndependentSingleUserPrompt(promptArgs)],
+    ['独立 API 群聊', buildIndependentGroupUserPrompt(promptArgs)],
+]) {
+    assert.match(prompt, /【本轮回复关系】[\s\S]*引用 Alice 的消息：“第一行 第二行”/,
+        `${label} Prompt 必须显式包含本轮引用关系`);
+}
 assert.equal(describeMessageEntry(quotedUserEntry)[0].text, '回复内容',
     '引用元数据不得改变消息正文与历史 prompt 文本');
 
@@ -2275,6 +2602,12 @@ const currentBackup = {
     calendarHolidays: { version: 1, selectedCountry: 'JP', years: {} },
     calendarWeather: { version: 1, location: null, lastSuccess: null },
     calendarCycles: { version: 1, scopes: {} },
+    calendarRecipes: { version: 1, scopes: { current: {
+        regionPreference: '潮汕', lastGeneratedRegion: '', lastGeneratedAt: 0,
+        days: { '2026-07-01': {
+            breakfast: { text: '粿条汤', source: 'manual', updatedAt: 1 },
+        } },
+    } } },
     phoneUiState: {
         version: 1,
         scopes: { story: { pinnedSceneIds: [], lastPage: 'chat', lastSceneId: null, lastTab: 'feed' } },
@@ -2305,7 +2638,8 @@ for (const schemaVersion of [undefined, 2, 3]) {
     assert.equal(Object.hasOwn(backup.theme, 'ambientStatusEnabled'), true);
 }
 assert.throws(() => parseBackupData({ schemaVersion: '3' }, currentBackup), /备份版本无效/);
-assert.throws(() => parseBackupData({ schemaVersion: 7 }, currentBackup), /高于当前支持版本 6/);
+assert.deepEqual(parseBackupData({ schemaVersion: 7 }, currentBackup).calendarRecipes, currentBackup.calendarRecipes);
+assert.throws(() => parseBackupData({ schemaVersion: 8 }, currentBackup), /高于当前支持版本 7/);
 const parsedV4Backup = parseBackupData({
     schemaVersion: 4,
     theme: { darkMode: 'light', ambientStatusEnabled: true },
@@ -2358,6 +2692,48 @@ const parsedV5Backup = parseBackupData({
 }, currentBackup);
 assert.deepEqual(parsedV5Backup.calendarStore.scopes, {});
 assert.equal(parsedV5Backup.calendarHolidays.selectedCountry, 'US');
+assert.deepEqual(parsedV5Backup.calendarRecipes, currentBackup.calendarRecipes,
+    'v5 备份缺少菜谱字段时必须保留当前菜谱');
+for (const schemaVersion of [5, 6]) {
+    const parsedLegacyRecipes = parseBackupData({
+        schemaVersion,
+        calendarRecipes: { version: 1, scopes: { forged: {
+            regionPreference: '伪造地区', lastGeneratedRegion: '', days: {}, lastGeneratedAt: 0,
+        } } },
+    }, currentBackup);
+    assert.deepEqual(parsedLegacyRecipes.calendarRecipes, currentBackup.calendarRecipes,
+        `schema ${schemaVersion} 不得解析尚未定义的 calendarRecipes 字段`);
+}
+const importedRecipes = { version: 1, scopes: { story: {
+    regionPreference: '架空北境', lastGeneratedRegion: '架空北境', lastGeneratedAt: 12,
+    days: { '2032-03-15': { dinner: { text: '北境炖肉', source: 'ai', updatedAt: 12 } } },
+} } };
+assert.deepEqual(parseBackupData({ schemaVersion: 7, calendarRecipes: importedRecipes }, currentBackup).calendarRecipes,
+    importedRecipes, 'schema 7 必须读取规范菜谱 store');
+const canonicalWeatherLocation = {
+    name: '上海', latitude: 31.2, longitude: 121.4, country: 'CN', admin1: '上海', timezone: 'Asia/Shanghai',
+};
+const canonicalWeatherForecast = {
+    days: [{ date: '2026-07-01', weatherCode: 1, tempMax: 30, tempMin: 20 }],
+    attribution: 'Weather data © Open-Meteo (CC BY 4.0)',
+};
+const parsedOldWeatherBackup = parseBackupData({
+    schemaVersion: 5,
+    calendarWeather: {
+        version: 1, location: canonicalWeatherLocation,
+        lastSuccess: { locationKey: '31.2,121.4|上海', fetchedAt: 1, forecast: canonicalWeatherForecast },
+    },
+}, currentBackup);
+assert.equal(Object.hasOwn(parsedOldWeatherBackup.calendarWeather.lastSuccess, 'source'), false,
+    '旧天气备份缺少来源字段时必须保持原结构可读');
+const parsedSourcedWeatherBackup = parseBackupData({
+    schemaVersion: 5,
+    calendarWeather: {
+        version: 1, location: canonicalWeatherLocation,
+        lastSuccess: { locationKey: '31.2,121.4|上海', fetchedAt: 1, source: 'cached_forecast', forecast: canonicalWeatherForecast },
+    },
+}, currentBackup);
+assert.equal(parsedSourcedWeatherBackup.calendarWeather.lastSuccess.source, 'cached_forecast');
 assert.equal(parsedV5Backup.desktopBg, currentBackup.desktopBg);
 assert.equal(parseBackupData({ schemaVersion: 6 }, currentBackup).desktopBg, '');
 assert.equal(parseBackupData({ schemaVersion: 6, desktopBg: 'https://example.test/imported.png' }, currentBackup).desktopBg, 'https://example.test/imported.png');
@@ -2389,10 +2765,36 @@ assertInvalidV5CalendarField('calendarWeather', {
         forecast: { days: [{ date: '2026-07-01', weatherCode: 1, tempMax: 30, tempMin: 20 }], attribution: 'Weather data by Open-Meteo (CC BY 4.0)' },
     },
 });
+assertInvalidV5CalendarField('calendarWeather', {
+    version: 1,
+    location: canonicalWeatherLocation,
+    lastSuccess: {
+        locationKey: '31.2,121.4|上海', fetchedAt: 1, source: 'unknown', forecast: canonicalWeatherForecast,
+    },
+}, /calendarWeather/);
+for (const invalidDate of ['0000-01-01', '2026-02-30', '2026-13-01', '9999-02-29']) {
+    assertInvalidV5CalendarField('calendarWeather', {
+        version: 1,
+        location: canonicalWeatherLocation,
+        lastSuccess: {
+            locationKey: '31.2,121.4|上海', fetchedAt: 1,
+            forecast: { ...canonicalWeatherForecast, days: [{ date: invalidDate, weatherCode: 1, tempMax: 30, tempMin: 20 }] },
+        },
+    }, /calendarWeather/);
+}
 assertInvalidV5CalendarField('calendarCycles', {
     version: 1,
     scopes: { story: { enabled: true, lastPeriodStart: null, cycleLength: 28, periodLength: 5, overrides: {} } },
 }, /启用周期提示时必须设置/);
+assert.throws(() => parseBackupData({
+    schemaVersion: 7,
+    calendarRecipes: { version: 1, scopes: { story: {
+        regionPreference: '架空北境', lastGeneratedRegion: '', lastGeneratedAt: 0,
+        days: { '2032-03-15': {
+            breakfast: { text: '  非规范空白  ', source: 'manual', updatedAt: 1 },
+        } },
+    } } },
+}, currentBackup), /calendarRecipes 内容无效或不是规范格式/);
 
 let prepareBeforeApplyCalls = 0;
 let prepareApplyCalls = 0;
@@ -3028,6 +3430,8 @@ const runCommittedImportFailureCase = async ({ configModel, injection, expectedD
     const injectionCallsBefore = importInjectionCalls;
     const clearCallsBefore = importClearInjectionCalls;
     const cancelCallsBefore = importCancelCommunityCalls;
+    const cancelCalendarCallsBefore = importCancelCalendarReasons.length;
+    const reloadCalendarCallsBefore = importReloadCalendarCalls;
     importInjectionImpl = injection;
     const input = {
         files: [{ text: JSON.stringify({
@@ -3045,6 +3449,10 @@ const runCommittedImportFailureCase = async ({ configModel, injection, expectedD
     assert.equal(JSON.parse(localValues.get('ST_SMS_CONFIG')).model, configModel, '后处理注入失败前导入数据必须已经持久化');
     assert.equal(importClearInjectionCalls, clearCallsBefore + 1, '成功事务必须在 apply 前清理旧注入');
     assert.equal(importCancelCommunityCalls, cancelCallsBefore + 1, '成功事务必须取消旧社区任务');
+    assert.deepEqual(importCancelCalendarReasons.slice(cancelCalendarCallsBefore), ['backup-apply'],
+        '成功导入事务必须在 apply 前取消旧日历与菜谱任务');
+    assert.equal(importReloadCalendarCalls, reloadCalendarCallsBefore + 1,
+        '成功导入持久化后必须重载日历与菜谱 runtime');
     assert.equal(importInjectionCalls, injectionCallsBefore + 1, '事务提交后必须尝试刷新注入');
     assert.equal(importCloseCalls, closeCallsBefore + 1, '数据已提交时即使注入失败也必须关闭旧界面');
     assert.equal(uiElements.get('pm-overlay').removed, true, '数据已提交时即使注入失败也必须移除旧遮罩');
@@ -3194,6 +3602,32 @@ await assert.rejects(clearPluginData({
 });
 assert.ok(cleanupRollbackError.rollbackError instanceof AggregateError);
 
+const clearCancelCommunityBefore = importCancelCommunityCalls;
+const clearCancelCalendarBefore = importCancelCalendarReasons.length;
+const clearInjectionBefore = importClearInjectionCalls;
+const clearCloseBefore = importCloseCalls;
+const clearReloadBefore = importReloadCalendarCalls;
+const clearAlerts = [];
+globalThis.confirm = () => true;
+globalThis.alert = message => clearAlerts.push(String(message));
+globalThis.document = {
+    getElementById: id => id === 'pm-overlay' ? { remove() {} } : null,
+    querySelectorAll: () => [],
+};
+assert.equal(await window.__pmClearAllData(), true);
+assert.equal(importCancelCommunityCalls, clearCancelCommunityBefore + 1,
+    '清空插件数据必须取消旧社区任务');
+assert.deepEqual(importCancelCalendarReasons.slice(clearCancelCalendarBefore), ['plugin-data-clear'],
+    '清空插件数据必须取消旧日历与菜谱任务');
+assert.equal(importClearInjectionCalls, clearInjectionBefore + 1, '清空插件数据必须先清理旧注入');
+assert.equal(importReloadCalendarCalls, clearReloadBefore + 1,
+    '清空插件数据应用空状态后必须重载日历与菜谱 runtime');
+assert.equal(importCloseCalls, clearCloseBefore + 1, '清空成功后必须关闭旧界面');
+assert.match(clearAlerts.at(-1), /天音小笺数据已清理/);
+delete globalThis.confirm;
+delete globalThis.alert;
+delete globalThis.document;
+
 delete globalThis.indexedDB;
 delete globalThis.localStorage;
 delete globalThis.window;
@@ -3286,7 +3720,7 @@ assert.match(workspaceHtml, /class="pm-scene-title-tab is-active"[^>]*data-tab="
     '帖子页必须激活社区标题标签');
 assert.match(workspaceHtml, /class="pm-scene-title-tab "[^>]*data-tab="live"[^>]*aria-current="false"[^>]*><span>直播<\/span>/,
     '直播必须作为第二个文本标签');
-assert.match(workspaceHtml, /class="pm-scene-view-actions">[\s\S]*class="pm-scene-title-poke"[^>]*data-action="poke-scene"[\s\S]*class="pm-scene-exit"/,
+assert.match(workspaceHtml, /class="pm-scene-view-actions">[\s\S]*class="pm-header-icon-button pm-scene-title-poke"[^>]*data-action="poke-scene"[\s\S]*class="pm-header-icon-button pm-scene-exit"/,
     '拍一拍必须移出标题居中组并与退出按钮放在右侧操作区');
 assert.doesNotMatch(workspaceHtml, /<nav class="pm-scene-title"[\s\S]*pm-scene-title-poke[\s\S]*<\/nav>/,
     '拍一拍不得参与双标签的居中宽度计算');
@@ -3311,12 +3745,14 @@ assert.match(workspaceHtml, /data-action="post-comment"[^>]*aria-label="发送�
 assert.doesNotMatch(workspaceHtml, /生成更多评论|>喜欢<|>已喜欢</);
 assert.match(workspaceHtml, /class="pm-scene-bottom-bar"/);
 assert.match(workspaceHtml, /class="pm-control-menu pm-scene-menu" role="menu" aria-label="社区工具" hidden/);
-assert.match(workspaceHtml, /class="pm-scene-exit"[^>]*data-action="exit"/);
+assert.match(workspaceHtml, /class="pm-header-icon-button pm-scene-exit"[^>]*data-action="exit"/);
 assert.doesNotMatch(workspaceHtml, /生成热场内容|编辑社区风格/);
-const liveWorkspaceHtml = renderCommunityWorkspace(workspaceScene, 'live', { pinnedSceneIds: [] });
+const liveWorkspaceHtml = renderCommunityWorkspace(workspaceScene, 'live', { pinnedSceneIds: [] }, { liveState: 'active' });
 assert.match(liveWorkspaceHtml, /class="pm-scene-title-tab "[^>]*data-tab="feed"[^>]*aria-current="false"/);
 assert.match(liveWorkspaceHtml, /class="pm-scene-title-tab is-active"[^>]*data-tab="live"[^>]*aria-current="page"[^>]*>[\s\S]*<span>直播<\/span>/);
-assert.match(liveWorkspaceHtml, /pm-live-stage has-danmaku/);
+assert.match(liveWorkspaceHtml, /pm-live-stage has-danmaku" data-live-state="active"/);
+assert.match(liveWorkspaceHtml, /<section class="pm-live-details" aria-label="热场内容">/,
+    '热场完成后必须展开独立的下方内容区');
 assert.match(liveWorkspaceHtml, /--duration:[\d.]+s;--offset:-?\d+px/);
 assert.match(liveWorkspaceHtml, /data-action="send-danmaku"[^>]*aria-label="发送弹幕"[^>]*>[\s\S]*?<svg/,
     '弹幕发送必须使用图标按钮并保留无障碍名称');
@@ -3324,10 +3760,15 @@ const idleLiveWorkspaceHtml = renderCommunityWorkspace({ ...workspaceScene, live
 assert.match(idleLiveWorkspaceHtml, /class="pm-live-play-btn"[^>]*data-action="start-warmup"[^>]*aria-label="开始热场"[^>]*>[\s\S]*?<svg/);
 assert.doesNotMatch(idleLiveWorkspaceHtml, /pm-danmaku-list|pm-danmaku-input|data-action="send-danmaku"/,
     '未热场时只能显示黑屏中央播放键');
-const loadingLiveWorkspaceHtml = renderCommunityWorkspace(workspaceScene, 'live', { pinnedSceneIds: [] }, { liveActive: true });
+const loadingLiveWorkspaceHtml = renderCommunityWorkspace(workspaceScene, 'live', { pinnedSceneIds: [] }, { liveState: 'starting' });
 assert.match(loadingLiveWorkspaceHtml, /class="pm-live-play-btn"[^>]*aria-label="正在热场"[^>]*disabled aria-busy="true"/);
+assert.match(loadingLiveWorkspaceHtml, /data-live-state="starting"[\s\S]*正在准备热场…/);
 assert.doesNotMatch(loadingLiveWorkspaceHtml, /pm-danmaku-list|pm-danmaku-input/,
     '首次 feed_batch 完成前不得提前显示手动弹幕输入区');
+const failedLiveWorkspaceHtml = renderCommunityWorkspace(workspaceScene, 'live', { pinnedSceneIds: [] }, { liveState: 'error' });
+assert.match(failedLiveWorkspaceHtml, /data-live-state="error"[\s\S]*aria-label="重新开始热场"[\s\S]*热场未能启动，请重试。/,
+    '失败后必须保留可重试的播放入口，且不能伪装成已完成热场');
+assert.doesNotMatch(failedLiveWorkspaceHtml, /pm-live-details|pm-danmaku-list|pm-danmaku-input/);
 assert.doesNotMatch(liveWorkspaceHtml, /toggle-live|data-action="rhythm"|pm-live-actions/,
     '直播页不得保留旧直播控制与带节奏入口');
 assert.doesNotMatch(liveWorkspaceHtml, /class="pm-scene-bottom-bar"|class="pm-control-menu pm-scene-menu"/,
@@ -4097,5 +4538,44 @@ await assert.rejects(() => commitEditedGroupUpdate({
     switchConversation: async () => { throw new Error('不应执行切换'); },
 }), /群聊设置提交注入失败：1 项写入失败/,
 '注入返回部分失败时必须进入事务补偿，而不是误判为成功');
+
+const successfulInjectionEvents = [];
+assert.equal(await commitConversationInjectionUpdate({
+    persistCandidate: async () => { successfulInjectionEvents.push('persist-new'); },
+    restoreSnapshot: () => { successfulInjectionEvents.push('restore-old'); },
+    persistSnapshot: async () => { successfulInjectionEvents.push('persist-old'); },
+    applyInjection: async () => {
+        successfulInjectionEvents.push('inject-new');
+        return { written: 1, failedWrites: 0, failedKeys: [] };
+    },
+}), true);
+assert.deepEqual(successfulInjectionEvents, ['persist-new', 'inject-new'],
+    '上下文注入保存成功时不得执行补偿路径');
+
+const failedInjectionEvents = [];
+let injectionConfigState = 'new';
+await assert.rejects(() => commitConversationInjectionUpdate({
+    persistCandidate: async () => { failedInjectionEvents.push('persist-new'); },
+    restoreSnapshot: () => { injectionConfigState = 'old'; failedInjectionEvents.push('restore-old'); },
+    persistSnapshot: async () => { failedInjectionEvents.push('persist-old'); },
+    applyInjection: async () => {
+        failedInjectionEvents.push(`inject-${injectionConfigState}`);
+        return injectionConfigState === 'new'
+            ? { written: 0, failedWrites: 1, failedKeys: [] }
+            : { written: 1, failedWrites: 0, failedKeys: [] };
+    },
+}), /上下文注入设置应用失败：1 项写入失败/);
+assert.deepEqual(failedInjectionEvents, [
+    'persist-new', 'inject-new', 'restore-old', 'persist-old', 'inject-old',
+], '上下文注入刷新失败必须恢复、持久化并重放旧配置');
+
+await assert.rejects(() => commitConversationInjectionUpdate({
+    persistCandidate: async () => {},
+    restoreSnapshot: () => {},
+    persistSnapshot: async () => { throw new Error('rollback-storage-failed'); },
+    applyInjection: async () => ({ written: 0, failedWrites: 2, failedKeys: [] }),
+}), error => error?.rollbackError?.message === 'rollback-storage-failed'
+    && /原配置回滚也失败，请勿刷新并立即导出备份/.test(error.message),
+'上下文注入补偿失败必须暴露 rollbackError 和事故处置提示');
 
 console.log('Behavior configuration verified.');

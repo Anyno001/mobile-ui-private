@@ -134,27 +134,30 @@ export function getBudgetPercentageView(sourceWeights) {
         phone: Number(sourceWeights?.phone) || 0,
         community: Number(sourceWeights?.community) || 0,
         calendar: Number(sourceWeights?.calendar) || 0,
+        recipe: Number(sourceWeights?.recipe) || 0,
     };
     const total = Object.values(weights).reduce((sum, value) => sum + value, 0);
-    if (total <= 0) return { phone: 100, community: 0, calendar: 0 };
+    if (total <= 0) return { phone: 100, community: 0, calendar: 0, recipe: 0 };
     const phone = Number((weights.phone * 100 / total).toFixed(4));
     const community = Number((weights.community * 100 / total).toFixed(4));
-    return { phone, community, calendar: Number((100 - phone - community).toFixed(4)) };
+    const calendar = Number((weights.calendar * 100 / total).toFixed(4));
+    return { phone, community, calendar, recipe: Number((100 - phone - community - calendar).toFixed(4)) };
 }
 
 export function resolveBudgetPercentageInput({
-    sourceWeights, phone, community, calendar, initialPhone, initialCommunity, initialCalendar,
+    sourceWeights, phone, community, calendar, recipe,
+    initialPhone, initialCommunity, initialCalendar, initialRecipe,
 }) {
-    const next = { phone: Number(phone), community: Number(community), calendar: Number(calendar) };
-    const initial = { phone: Number(initialPhone), community: Number(initialCommunity), calendar: Number(initialCalendar) };
+    const next = { phone: Number(phone), community: Number(community), calendar: Number(calendar), recipe: Number(recipe) };
+    const initial = { phone: Number(initialPhone), community: Number(initialCommunity), calendar: Number(initialCalendar), recipe: Number(initialRecipe) };
     if (Object.keys(next).every(source => next[source] === initial[source])) {
-        return { phone: sourceWeights.phone, community: sourceWeights.community, calendar: sourceWeights.calendar || 0 };
+        return { phone: sourceWeights.phone, community: sourceWeights.community, calendar: sourceWeights.calendar || 0, recipe: sourceWeights.recipe || 0 };
     }
     if (!Object.values(next).every(value => Number.isFinite(value) && value >= 0 && value <= 100)) {
-        throw new Error('手机会话、互动社区和日历占比必须是 0 到 100 之间的数字');
+        throw new Error('手机会话、互动社区、日历和菜谱占比必须是 0 到 100 之间的数字');
     }
-    if (Math.abs(next.phone + next.community + next.calendar - 100) > 0.0001) {
-        throw new Error('手机会话、互动社区和日历占比合计必须为 100%');
+    if (Math.abs(next.phone + next.community + next.calendar + next.recipe - 100) > 0.0001) {
+        throw new Error('手机会话、互动社区、日历和菜谱占比合计必须为 100%');
     }
     return next;
 }
@@ -226,13 +229,15 @@ export function renderBudgetSettings({ config, sceneOptions }) {
           <label class="pm-cfg-label">手机会话占比 (%)<input id="pm-budget-phone-weight" class="pm-cfg-input" type="number" min="0" max="100" step="0.0001" value="${percentages.phone}" data-initial-value="${percentages.phone}"></label>
           <label class="pm-cfg-label">互动社区占比 (%)<input id="pm-budget-community-weight" class="pm-cfg-input" type="number" min="0" max="100" step="0.0001" value="${percentages.community}" data-initial-value="${percentages.community}"></label>
           <label class="pm-cfg-label">日历占比 (%)<input id="pm-budget-calendar-weight" class="pm-cfg-input" type="number" min="0" max="100" step="0.0001" value="${percentages.calendar}" data-initial-value="${percentages.calendar}"></label>
+          <label class="pm-cfg-label">菜谱占比 (%)<input id="pm-budget-recipe-weight" class="pm-cfg-input" type="number" min="0" max="100" step="0.0001" value="${percentages.recipe}" data-initial-value="${percentages.recipe}"></label>
         </div>
-        <div class="pm-cfg-tip" style="text-align:left;">三类内容占比合计必须为 100%。日历注入默认关闭，且只包含普通日程。</div>
+        <div class="pm-cfg-tip" style="text-align:left;">四类内容占比合计必须为 100%。日历和菜谱均默认关闭，菜谱默认占比为 0。</div>
         <label class="pm-cfg-label" for="pm-budget-priority">剩余额度优先补给</label>
         <select id="pm-budget-priority" class="pm-cfg-input">
           <option value="phone" ${priority === 'phone' ? 'selected' : ''}>手机会话优先</option>
           <option value="community" ${priority === 'community' ? 'selected' : ''}>互动社区优先</option>
           <option value="calendar" ${priority === 'calendar' ? 'selected' : ''}>日历优先</option>
+          <option value="recipe" ${priority === 'recipe' ? 'selected' : ''}>菜谱优先</option>
         </select>
         <label class="pm-cfg-label pm-check-setting">
           <span>把一方没用完的额度补给另一方</span>
@@ -269,6 +274,21 @@ export function renderBudgetSettings({ config, sceneOptions }) {
         </select>
         <label class="pm-cfg-label" for="pm-budget-calendar-depth">日历注入深度</label>
         <input id="pm-budget-calendar-depth" class="pm-cfg-input" type="number" min="0" max="10000" step="1" value="${config.calendarDepth}">
+      </div>
+      <div style="padding:12px 16px;border-top:1px solid var(--pm-color-border-subtle);display:flex;flex-direction:column;gap:10px;">
+        <label class="pm-cfg-label pm-check-setting">
+          <span>启用角色菜谱注入（默认关闭）</span>
+          <div id="pm-budget-recipe-enabled" class="pm-custom-check ${config.recipeEnabled ? 'is-checked' : ''}" role="checkbox" tabindex="0" aria-checked="${config.recipeEnabled}" onclick="this.classList.toggle('is-checked');this.setAttribute('aria-checked',String(this.classList.contains('is-checked')))" onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();this.click()}"></div>
+        </label>
+        <div class="pm-cfg-tip" style="text-align:left;color:#ff9500;">独立注入故事日期昨天、今天和明天的四餐，不与生活日历内容合并。</div>
+        <label class="pm-cfg-label" for="pm-budget-recipe-position">菜谱注入位置</label>
+        <select id="pm-budget-recipe-position" class="pm-cfg-input">
+          <option value="0" ${config.recipePosition === 0 ? 'selected' : ''}>主提示词内</option>
+          <option value="1" ${config.recipePosition === 1 ? 'selected' : ''}>聊天记录内</option>
+          <option value="2" ${config.recipePosition === 2 ? 'selected' : ''}>主提示词前</option>
+        </select>
+        <label class="pm-cfg-label" for="pm-budget-recipe-depth">菜谱注入深度</label>
+        <input id="pm-budget-recipe-depth" class="pm-cfg-input" type="number" min="0" max="10000" step="1" value="${config.recipeDepth}">
       </div>
       <div style="height:12px;"></div>
     </div>`;

@@ -2,6 +2,7 @@ import {
     BIDIRECTIONAL_KEY, BIDIRECTIONAL_LIMIT, DEFAULT_GROUP_INJECTION, MAX_INJECTION_CHARS,
 } from './constants.js';
 import { allocateContextBudget, estimateContextTokens, normalizeBudgetConfig, trimToEstimatedTokens } from './budget.js';
+import { formatQuoteContext } from './chat-message-model.js';
 import { renderCommunitySource } from './community-injection.js';
 import { resolveEmojiText } from './messaging.js';
 import { resolveCommunitySources, resolvePhoneSources } from './permissions.js';
@@ -11,9 +12,13 @@ import {
 import { occasionScopeFor, expandOccasions } from './calendar-occasion-model.js';
 import { buildCulturalFestivals, HOLIDAY_YEAR_RANGE, holidayYearFromCache, mergeCalendarDateFacts, normalizeHolidayCache } from './calendar-holiday.js';
 import { CYCLE_SELF_SUBJECT, cycleScopeFor, cycleSubjectKeys, predictCycleRange } from './calendar-cycle-model.js';
+import { recipeScopeFor, renderRecipeInjection } from './calendar-recipe-model.js';
+import { weatherCodeLabel } from './calendar-weather.js';
+import { resolveWeatherForDate } from './calendar-weather-source.js';
 
 const COMMUNITY_KEY_PREFIX = `${BIDIRECTIONAL_KEY}:community:`;
 const CALENDAR_KEY_PREFIX = `${BIDIRECTIONAL_KEY}:calendar:`;
+const RECIPE_KEY_PREFIX = `${BIDIRECTIONAL_KEY}:recipe:`;
 
 function injectionKey(name) {
     return `${BIDIRECTIONAL_KEY}:${encodeURIComponent(name)}`;
@@ -101,7 +106,7 @@ const CYCLE_INJECTION_LABELS = Object.freeze({
 });
 
 export function renderCalendarContextInjection({
-    currentStorageId, currentActorName, calendarStore, occasionStore, holidayStore, cycleStore,
+    currentStorageId, currentActorName, calendarStore, occasionStore, holidayStore, weatherStore, cycleStore,
     start,
 } = {}) {
     if (!currentStorageId) return '';
@@ -116,6 +121,12 @@ export function renderCalendarContextInjection({
         linesByDate.get(date).add(fact);
     };
     for (const date of regularDates) {
+        if (weatherStore?.location) {
+            const weather = resolveWeatherForDate(weatherStore, date);
+            if (weather.status === 'available') {
+                addFact(date, `天气（${weather.sourceLabel}）：${weatherCodeLabel(weather.day.weatherCode)}，${weather.day.tempMin}°/${weather.day.tempMax}°C`);
+            }
+        }
         for (const event of calendarScope.events[date] || []) {
             const note = event.note ? `（${event.note.replace(/\s+/g, ' ').slice(0, 180)}）` : '';
             addFact(date, `日程：${event.title}${note}`);
@@ -162,7 +173,7 @@ export function renderCalendarContextInjection({
 export function buildContextInjectionPrompts({
     currentStorageId, currentActorName, selectedByStorage, historiesByStorage, groupsByStorage,
     interactiveStore, budgetConfig, userName, emojis, safeMaxTokens, calendarStore,
-    calendarOccasions, calendarHolidays, calendarCycles,
+    calendarOccasions, calendarHolidays, calendarWeather, calendarCycles, calendarRecipes,
 } = {}) {
     const config = normalizeBudgetConfig(budgetConfig);
     const phonePermission = resolvePhoneSources({
@@ -200,7 +211,7 @@ export function buildContextInjectionPrompts({
     if (config.calendarEnabled && calendarStore && currentStorageId) {
         const body = renderCalendarContextInjection({
             currentStorageId, currentActorName, calendarStore, occasionStore: calendarOccasions,
-            holidayStore: calendarHolidays, cycleStore: calendarCycles,
+            holidayStore: calendarHolidays, weatherStore: calendarWeather, cycleStore: calendarCycles,
         });
         if (body) {
             calendarItems.push({
@@ -211,25 +222,45 @@ export function buildContextInjectionPrompts({
             });
         }
     }
+    const recipeItems = [];
+    if (config.recipeEnabled && calendarRecipes && calendarStore && currentStorageId) {
+        const calendarScope = calendarScopeFor(calendarStore, currentStorageId);
+        const body = renderRecipeInjection(recipeScopeFor(calendarRecipes, currentStorageId), {
+            start: calendarReferenceDate(calendarScope),
+        });
+        if (body) {
+            recipeItems.push({
+                key: `${RECIPE_KEY_PREFIX}${encodeURIComponent(currentStorageId)}`,
+                content: `[角色菜谱]
+${body}
+[结束]`,
+                position: config.recipePosition,
+                depth: config.recipeDepth,
+            });
+        }
+    }
     const demandBySource = {
         phone: phoneItems.reduce((sum, item) => sum + estimateContextTokens(item.content).estimatedTokens, 0),
         community: communityItems.reduce((sum, item) => sum + estimateContextTokens(item.content).estimatedTokens, 0),
         calendar: calendarItems.reduce((sum, item) => sum + estimateContextTokens(item.content).estimatedTokens, 0),
+        recipe: recipeItems.reduce((sum, item) => sum + estimateContextTokens(item.content).estimatedTokens, 0),
     };
     const budget = allocateContextBudget({ config, safeMaxTokens, demandBySource });
     const phone = allocateRenderedPrompts(phoneItems, budget.allocations.phone);
     const community = allocateRenderedPrompts(communityItems, budget.allocations.community);
     const calendar = allocateRenderedPrompts(calendarItems, budget.allocations.calendar);
+    const recipe = allocateRenderedPrompts(recipeItems, budget.allocations.recipe);
     return {
-        prompts: [...phone.prompts, ...community.prompts, ...calendar.prompts],
+        prompts: [...phone.prompts, ...community.prompts, ...calendar.prompts, ...recipe.prompts],
         diagnostics: {
             estimated: true,
             budget,
             phonePermission: { allowed: phonePermission.allowed, reason: phonePermission.reason, sourceCount: phonePermission.sources.length },
             communityPermission: { allowed: communityPermission.allowed, reason: communityPermission.reason, sourceCount: communityPermission.sources.length },
             calendarEnabled: config.calendarEnabled,
-            usedTokens: phone.usedTokens + community.usedTokens + calendar.usedTokens,
-            truncatedCount: phone.truncatedCount + community.truncatedCount + calendar.truncatedCount,
+            recipeEnabled: config.recipeEnabled,
+            usedTokens: phone.usedTokens + community.usedTokens + calendar.usedTokens + recipe.usedTokens,
+            truncatedCount: phone.truncatedCount + community.truncatedCount + calendar.truncatedCount + recipe.truncatedCount,
         },
     };
 }
@@ -242,9 +273,11 @@ export function applyContextInjections({ context, runtime, ...input }) {
 function renderConversation(name, history, meta, userName, emojis) {
     const lines = history.map(message => {
         const text = resolveEmojiText((message.content || '').replace(/\s*\/\s*/g, '。').replace(/\n/g, '；'), emojis);
+        const quote = formatQuoteContext(message.quote);
+        const body = [quote ? `【${quote}】` : '', text].filter(Boolean).join(' ');
         const director = message.directorNote ? `【剧情引导：${message.directorNote}】` : '';
-        if (message.role === 'user') return [text ? `${userName}：${text}` : '', director].filter(Boolean).join(' ');
-        return meta ? text : `${name}：${text}`;
+        if (message.role === 'user') return [body ? `${userName}：${body}` : '', director].filter(Boolean).join(' ');
+        return meta ? body : `${name}：${body}`;
     }).filter(Boolean).join('\n');
     if (!lines) return '';
     return meta

@@ -1,3 +1,8 @@
+import {
+    isStoredWeatherSource, isValidWeatherDate, WEATHER_SOURCE_CACHED_FORECAST, WEATHER_SOURCE_CLIMATE_ESTIMATE,
+    WEATHER_SOURCE_FORECAST,
+} from './calendar-weather-source.js';
+
 export const WEATHER_ATTRIBUTION = 'Weather data © Open-Meteo (CC BY 4.0)';
 export const WEATHER_STORE_VERSION = 1;
 
@@ -60,7 +65,7 @@ export function normalizeWeatherForecast(value) {
         for (const raw of src.days.slice(0, 31)) {
             if (!isRecord(raw)) continue;
             const weatherCode = Number(raw.weatherCode), tempMax = Number(raw.tempMax), tempMin = Number(raw.tempMin);
-            if (!/^\d{4}-\d{2}-\d{2}$/.test(String(raw.date || '')) || !isNum(weatherCode)
+            if (!isValidWeatherDate(raw.date) || !isNum(weatherCode)
                 || weatherCode < 0 || weatherCode > 99 || !isNum(tempMax) || !isNum(tempMin) || tempMin > tempMax) continue;
             days.push({ date: String(raw.date), weatherCode: Math.round(weatherCode), tempMax, tempMin });
         }
@@ -88,7 +93,7 @@ export function normalizeWeatherForecast(value) {
     }
     const days = [];
     for (let i = 0; i < len; i++) {
-        if (!/^\d{4}-\d{2}-\d{2}$/.test(times[i]) || !isNum(codes[i]) || codes[i] < 0 || codes[i] > 99
+        if (!isValidWeatherDate(times[i]) || !isNum(codes[i]) || codes[i] < 0 || codes[i] > 99
             || !isNum(tMax[i]) || !isNum(tMin[i]) || tMin[i] > tMax[i]) continue;
         days.push({ date: times[i], weatherCode: codes[i], tempMax: tMax[i], tempMin: tMin[i] });
     }
@@ -109,12 +114,16 @@ export function normalizeWeatherStore(value) {
     let lastSuccess = null;
     if (isRecord(src.lastSuccess)) {
         try {
-            lastSuccess = {
+            const normalized = {
                 locationKey: String(src.lastSuccess.locationKey ?? ''),
                 forecast: normalizeWeatherForecast(src.lastSuccess.forecast),
                 fetchedAt: isNum(src.lastSuccess.fetchedAt) && src.lastSuccess.fetchedAt >= 0
                     ? Math.floor(src.lastSuccess.fetchedAt) : 0,
             };
+            if (isStoredWeatherSource(src.lastSuccess.source)) {
+                normalized.source = src.lastSuccess.source;
+            }
+            lastSuccess = normalized;
         } catch { /* 忽略损坏的缓存 */ }
     }
     if (location && lastSuccess && lastSuccess.locationKey !== weatherLocationKey(location)) {
@@ -195,6 +204,24 @@ export async function searchWeatherLocations(query, { fetchImpl, signal, timeout
 
 // ── Fetch forecast ──
 
+function weatherFallback(location, key, store, reason) {
+    const current = normalizeWeatherStore(store);
+    if (current.lastSuccess && current.lastSuccess.locationKey === key) {
+        const nextStore = normalizeWeatherStore({
+            ...current, lastSuccess: { ...current.lastSuccess, source: WEATHER_SOURCE_CACHED_FORECAST },
+        });
+        return {
+            stale: true, source: WEATHER_SOURCE_CACHED_FORECAST, data: nextStore.lastSuccess.forecast,
+            locationKey: key, store: nextStore, reason,
+        };
+    }
+    const nextStore = normalizeWeatherStore({ location, lastSuccess: null });
+    return {
+        stale: false, source: WEATHER_SOURCE_CLIMATE_ESTIMATE, data: null,
+        locationKey: key, store: nextStore, reason,
+    };
+}
+
 export async function fetchWeatherForecast(location, store, { fetchImpl, signal, timeout } = {}) {
     const loc = normalizeWeatherLocation(location);
     const key = weatherLocationKey(loc);
@@ -211,31 +238,20 @@ export async function fetchWeatherForecast(location, store, { fetchImpl, signal,
         response = await fetch_(url, { signal: requestSignal.signal });
     } catch (e) {
         if (signal?.aborted) throw new Error('天气预报请求已取消');
-        const st = normalizeWeatherStore(store);
-        if (st.lastSuccess && st.lastSuccess.locationKey === key) {
-            return { stale: true, data: st.lastSuccess.forecast, locationKey: key, store: st, reason: 'network' };
-        }
-        throw new Error(requestSignal.signal.aborted ? '天气预报获取超时' : `天气预报获取失败：${e?.message || '网络错误'}`);
+        return weatherFallback(loc, key, store, requestSignal.signal.aborted ? 'timeout' : 'network');
     } finally { requestSignal.cleanup(); }
     if (!response.ok) {
-        const st = normalizeWeatherStore(store);
-        if (st.lastSuccess && st.lastSuccess.locationKey === key) {
-            return { stale: true, data: st.lastSuccess.forecast, locationKey: key, store: st, reason: 'http' };
-        }
-        throw new Error('天气预报获取失败：HTTP ' + response.status);
+        return weatherFallback(loc, key, store, 'http');
     }
     let json;
     try { json = await response.json(); } catch {
-        const st = normalizeWeatherStore(store);
-        if (st.lastSuccess && st.lastSuccess.locationKey === key) {
-            return { stale: true, data: st.lastSuccess.forecast, locationKey: key, store: st, reason: 'json' };
-        }
-        throw new Error('天气预报数据解析失败');
+        return weatherFallback(loc, key, store, 'json');
     }
-    const forecast = normalizeWeatherForecast(json);
+    let forecast;
+    try { forecast = normalizeWeatherForecast(json); } catch { return weatherFallback(loc, key, store, 'data'); }
     const nextStore = normalizeWeatherStore({
         location: loc,
-        lastSuccess: { locationKey: key, forecast, fetchedAt: Date.now() },
+        lastSuccess: { locationKey: key, forecast, fetchedAt: Date.now(), source: WEATHER_SOURCE_FORECAST },
     });
-    return { stale: false, data: forecast, locationKey: key, store: nextStore };
+    return { stale: false, source: WEATHER_SOURCE_FORECAST, data: forecast, locationKey: key, store: nextStore };
 }

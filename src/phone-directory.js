@@ -90,13 +90,52 @@ export async function commitEditedGroupUpdate({
     }
 }
 
+function conversationInjectionFailure(result, phase) {
+    const failedWrites = Number.isInteger(result?.failedWrites) && result.failedWrites > 0 ? result.failedWrites : 0;
+    const failedKeys = Array.isArray(result?.failedKeys) ? result.failedKeys : [];
+    if (!failedWrites && !failedKeys.length) return null;
+    const details = [
+        failedWrites ? `${failedWrites} 项写入失败` : '',
+        failedKeys.length ? `${failedKeys.length} 项清理失败` : '',
+    ].filter(Boolean).join('，');
+    return new Error(`上下文注入设置${phase}失败：${details}`);
+}
+
+export async function commitConversationInjectionUpdate({
+    persistCandidate, restoreSnapshot, persistSnapshot, applyInjection,
+}) {
+    try {
+        await persistCandidate();
+        const result = await applyInjection();
+        const error = conversationInjectionFailure(result, '应用');
+        if (error) throw error;
+        return true;
+    } catch (error) {
+        let rollbackError = null;
+        try {
+            restoreSnapshot();
+            await persistSnapshot();
+            const result = await applyInjection();
+            const compensationError = conversationInjectionFailure(result, '补偿');
+            if (compensationError) throw compensationError;
+        } catch (failure) {
+            rollbackError = failure;
+        }
+        if (!rollbackError) throw error;
+        const combined = new Error(`${error.message || '上下文注入设置保存失败'}；原配置回滚也失败，请勿刷新并立即导出备份：${rollbackError.message}`);
+        combined.cause = error;
+        combined.rollbackError = rollbackError;
+        throw combined;
+    }
+}
+
 import {
-    EXTENSION_PROMPT_POSITIONS, MAX_INJECTION_DEPTH, POPOVER_SUPPORTED,
+    BIDIRECTIONAL_LIMIT, DEFAULT_GROUP_INJECTION, EXTENSION_PROMPT_POSITIONS, MAX_INJECTION_DEPTH, POPOVER_SUPPORTED,
 } from './constants.js';
-import { normalizeGroupMeta } from './behavior-config.js';
+import { normalizeGroupInjection, normalizeGroupMeta } from './behavior-config.js';
 import { GROUP_COLORS } from './groups.js';
 import { escapeAttr, escapeHtml, safeJS } from './ui.js';
-import { CLOSE_ICON_SVG, REFRESH_ICON_SVG } from './icons.js';
+import { CLOSE_ICON_SVG, SPARKLES_ICON_SVG, UNLINK_ICON_SVG } from './icons.js';
 import { clearPendingMessages } from './pending-messages.js';
 import { saveBgLocal } from './storage-background.js';
 import {
@@ -105,6 +144,125 @@ import {
 
 export function installPhoneDirectory(state, deps) {
     const { runtime, getStorageId, makeOverlay, applyBidirectionalInjection } = deps;
+
+    function injectionPositionLabel(position) {
+        return ({
+            [EXTENSION_PROMPT_POSITIONS.NONE]: '关闭',
+            [EXTENSION_PROMPT_POSITIONS.IN_PROMPT]: '主提示词内',
+            [EXTENSION_PROMPT_POSITIONS.IN_CHAT]: '聊天记录内',
+            [EXTENSION_PROMPT_POSITIONS.BEFORE_PROMPT]: '主提示词前',
+        })[position] || '主提示词内';
+    }
+
+    function conversationInjectionState(targetKey) {
+        const id = getStorageId();
+        const isGroup = String(targetKey).startsWith('__group_');
+        const meta = isGroup ? normalizeGroupMeta(window.__pmGroupMeta[id]?.[targetKey]) : null;
+        const injection = meta?.injection || DEFAULT_GROUP_INJECTION;
+        const selected = (window.__pmBidirectional[id] || []).includes(targetKey);
+        return {
+            id, isGroup, meta, injection,
+            enabled: selected && injection.position !== EXTENSION_PROMPT_POSITIONS.NONE,
+        };
+    }
+
+    window.__pmConversationInjectionSummary = targetKey => {
+        const current = conversationInjectionState(targetKey);
+        if (!current.enabled) return '已关闭';
+        return `${injectionPositionLabel(current.injection.position)} · 深度 ${current.injection.depth} · 最近 ${current.isGroup ? current.injection.historyLimit : BIDIRECTIONAL_LIMIT} 条`;
+    };
+
+    window.__pmSyncConversationInjectionForm = () => {
+        const enabled = document.getElementById('pm-conversation-injection-enabled')?.checked === true;
+        for (const element of document.querySelectorAll('.pm-conversation-injection-config')) {
+            element.disabled = !enabled || element.dataset.readonly === 'true';
+        }
+        const status = document.getElementById('pm-conversation-injection-status');
+        if (status) status.textContent = enabled ? '启用后会把最近聊天作为私密上下文注入。' : '当前会话不会写入主提示词上下文。';
+    };
+
+    window.__pmShowConversationInjection = (targetKey, returnView = 'settings') => {
+        if (!targetKey) return false;
+        const current = conversationInjectionState(targetKey);
+        if (current.isGroup && !current.meta?.name) return false;
+        const title = current.isGroup ? current.meta.name : targetKey;
+        const position = current.injection.position === EXTENSION_PROMPT_POSITIONS.NONE
+            ? EXTENSION_PROMPT_POSITIONS.IN_PROMPT : current.injection.position;
+        const backAction = returnView === 'conversation-settings'
+            ? 'window.__pmShowConversationSettings()'
+            : `window.__pmShowCharacterBehavior('${safeJS(targetKey)}')`;
+        makeOverlay(`
+    <div class="pm-modal pm-modal-wide pm-conversation-injection-modal">
+      <div class="pm-modal-header"><button type="button" onclick="${backAction}" class="pm-modal-close" aria-label="返回">返回</button><b>上下文注入</b><button type="button" onclick="window.__pmCloseOverlay()" class="pm-modal-close" title="关闭" aria-label="关闭">${CLOSE_ICON_SVG}</button></div>
+      <div class="pm-modal-scroll pm-conversation-injection-body">
+        <div class="pm-conversation-injection-target"><b>${escapeHtml(title)}</b><span>${current.isGroup ? '群聊' : '私聊'}</span></div>
+        <label class="pm-global-setting" for="pm-conversation-injection-enabled">
+          <span><b>启用上下文注入</b><small id="pm-conversation-injection-status"></small></span>
+          <input id="pm-conversation-injection-enabled" type="checkbox" ${current.enabled ? 'checked' : ''} onchange="window.__pmSyncConversationInjectionForm()">
+        </label>
+        <label class="pm-conversation-injection-field">注入位置
+          <select id="pm-conversation-injection-position" class="pm-cfg-input pm-conversation-injection-config" ${current.isGroup ? '' : 'data-readonly="true" disabled'}>
+            <option value="0" ${position === 0 ? 'selected' : ''}>主提示词内</option>
+            <option value="1" ${position === 1 ? 'selected' : ''}>聊天记录内</option>
+            <option value="2" ${position === 2 ? 'selected' : ''}>主提示词前</option>
+          </select>
+        </label>
+        <label class="pm-conversation-injection-field">注入深度（0-${MAX_INJECTION_DEPTH}）
+          <input id="pm-conversation-injection-depth" class="pm-cfg-input pm-conversation-injection-config" type="number" min="0" max="${MAX_INJECTION_DEPTH}" value="${current.injection.depth}" ${current.isGroup ? '' : 'data-readonly="true" disabled'}>
+        </label>
+        <label class="pm-conversation-injection-field">最近消息范围
+          <input id="pm-conversation-injection-limit" class="pm-cfg-input pm-conversation-injection-config" type="number" min="1" max="100" value="${current.isGroup ? current.injection.historyLimit : BIDIRECTIONAL_LIMIT}" ${current.isGroup ? '' : 'data-readonly="true" disabled'}>
+        </label>
+        <div class="pm-cfg-tip pm-conversation-injection-note">${current.isGroup
+            ? '群聊可独立配置位置、深度和历史范围。'
+            : `私聊沿用系统安全参数：主提示词内、深度 0、最近 ${BIDIRECTIONAL_LIMIT} 条。`}</div>
+      </div>
+      <div class="pm-modal-add"><button type="button" class="pm-action-button" onclick="window.__pmSaveConversationInjection('${safeJS(targetKey)}','${safeJS(returnView)}')">保存上下文注入</button></div>
+    </div>`);
+        window.__pmSyncConversationInjectionForm();
+        return true;
+    };
+
+    window.__pmSaveConversationInjection = async (targetKey, returnView = 'settings') => {
+        const current = conversationInjectionState(targetKey);
+        if (current.isGroup && !current.meta?.name) return false;
+        const enabled = document.getElementById('pm-conversation-injection-enabled')?.checked === true;
+        const bidirectionalSnapshot = clone(window.__pmBidirectional);
+        const groupMetaSnapshot = clone(window.__pmGroupMeta);
+        const selected = new Set(window.__pmBidirectional[current.id] || []);
+        if (enabled) selected.add(targetKey); else selected.delete(targetKey);
+        window.__pmBidirectional[current.id] = [...selected];
+        if (current.isGroup) {
+            const injection = normalizeGroupInjection({
+                position: enabled ? document.getElementById('pm-conversation-injection-position')?.value : EXTENSION_PROMPT_POSITIONS.NONE,
+                depth: document.getElementById('pm-conversation-injection-depth')?.value,
+                historyLimit: document.getElementById('pm-conversation-injection-limit')?.value,
+            });
+            window.__pmGroupMeta[current.id][targetKey] = normalizeGroupMeta({ ...current.meta, injection });
+        }
+        try {
+            await commitConversationInjectionUpdate({
+                persistCandidate: async () => {
+                    if (current.isGroup) await saveGroupMeta();
+                    if (!saveBidirectional()) throw new Error('上下文注入设置保存失败：浏览器存储不可用或空间不足');
+                },
+                restoreSnapshot: () => {
+                    window.__pmBidirectional = bidirectionalSnapshot;
+                    window.__pmGroupMeta = groupMetaSnapshot;
+                },
+                persistSnapshot: async () => {
+                    if (current.isGroup) await saveGroupMeta();
+                    if (!saveBidirectional()) throw new Error('上下文注入设置回滚失败');
+                },
+                applyInjection: () => applyBidirectionalInjection(),
+            });
+            window.__pmShowConversationInjection(targetKey, returnView);
+            return true;
+        } catch (error) {
+            alert(error.message || '上下文注入设置保存失败');
+            return false;
+        }
+    };
 
     function parseGroupMembers(value) {
         const seen = new Set();
@@ -160,27 +318,11 @@ export function installPhoneDirectory(state, deps) {
             ${groupMeta.members.map((name, index) => `<label style="display:contents;"><span style="font-size:12px;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(name)}</span><input class="pm-group-member-color" data-member="${escapeAttr(name)}" type="color" value="${escapeAttr(groupMeta.memberColors[name] || GROUP_COLORS[index % GROUP_COLORS.length].bg)}"></label>`).join('')}
           </div>
         </div>` : '';
-        const injection = groupMeta.injection;
-        const injectionHtml = mode === 'edit' ? `
-        <div style="padding-top:12px;border-top:1px solid var(--pm-color-border-subtle);display:flex;flex-direction:column;gap:8px;">
-          <div class="pm-cfg-label">群聊记录注入</div>
-          <label style="font-size:12px;">位置
-            <select id="pm-group-injection-position" class="pm-cfg-input">
-              <option value="${EXTENSION_PROMPT_POSITIONS.NONE}" ${injection.position === EXTENSION_PROMPT_POSITIONS.NONE ? 'selected' : ''}>关闭</option>
-              <option value="${EXTENSION_PROMPT_POSITIONS.IN_PROMPT}" ${injection.position === EXTENSION_PROMPT_POSITIONS.IN_PROMPT ? 'selected' : ''}>主提示词内</option>
-              <option value="${EXTENSION_PROMPT_POSITIONS.IN_CHAT}" ${injection.position === EXTENSION_PROMPT_POSITIONS.IN_CHAT ? 'selected' : ''}>聊天记录内</option>
-              <option value="${EXTENSION_PROMPT_POSITIONS.BEFORE_PROMPT}" ${injection.position === EXTENSION_PROMPT_POSITIONS.BEFORE_PROMPT ? 'selected' : ''}>主提示词前</option>
-            </select>
-          </label>
-          <label style="font-size:12px;">深度（0-${MAX_INJECTION_DEPTH}）<input id="pm-group-injection-depth" class="pm-cfg-input" type="number" min="0" max="${MAX_INJECTION_DEPTH}" value="${injection.depth}"></label>
-          <label style="font-size:12px;">注入最近消息条数（1-100）<input id="pm-group-injection-limit" class="pm-cfg-input" type="number" min="1" max="100" value="${injection.historyLimit}"></label>
-          <div class="pm-cfg-tip" style="text-align:left;">成员数量不设产品上限；注入条数与深度保留资源安全边界。</div>
-        </div>` : '';
 
         makeOverlay(`
     <div class="pm-modal pm-modal-wide">
     <div class="pm-modal-header"><span></span><b>${title}</b><button type="button" onclick="${closeAction}" class="pm-modal-close" title="关闭" aria-label="关闭">${CLOSE_ICON_SVG}</button></div>
-    <div style="padding:14px 16px;display:flex;flex-direction:column;gap:10px;">
+    <div class="pm-modal-scroll pm-group-settings-scroll">
         <div class="pm-cfg-label">群聊名称</div>
         <input id="pm-group-name-input" class="pm-cfg-input" placeholder="给群聊起个名字" value="${escapeAttr(initName)}" maxlength="30">
         <div class="pm-cfg-label" style="margin-top:4px;">成员（用 / 分隔）</div>
@@ -190,7 +332,6 @@ export function installPhoneDirectory(state, deps) {
 
         ${mode === 'edit' ? `
         ${memberColorHtml}
-        ${injectionHtml}
         ${emojiCheckHtml}
         <div style="margin-top:0px;padding-top:8px;border-top:1px solid var(--pm-color-border-subtle);">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
@@ -246,14 +387,7 @@ export function installPhoneDirectory(state, deps) {
             document.querySelectorAll('.pm-group-member-color').forEach(input => {
                 if (names.includes(input.dataset.member) && /^#[0-9a-f]{6}$/i.test(input.value)) memberColors[input.dataset.member] = input.value;
             });
-            const updated = normalizeGroupMeta({
-                ...previous, name: groupName, members: names, memberColors,
-                injection: {
-                    position: document.getElementById('pm-group-injection-position')?.value,
-                    depth: document.getElementById('pm-group-injection-depth')?.value,
-                    historyLimit: document.getElementById('pm-group-injection-limit')?.value,
-                },
-            });
+            const updated = normalizeGroupMeta({ ...previous, name: groupName, members: names, memberColors });
             window.__pmGroupMeta[id][state.currentGroupKey] = updated;
             const checkEl = document.getElementById('pm-poke-check-group');
             const intervalEl = document.getElementById('pm-poke-interval-group');
@@ -350,26 +484,21 @@ export function installPhoneDirectory(state, deps) {
         await loadGroupMeta();
         const histories = window.__pmHistories[id] || {};
         const groups = window.__pmGroupMeta[id] || {};
-        const checked = window.__pmBidirectional[id] || [];
         const singleList = Object.keys(histories).filter(k => !k.startsWith('__group_'));
         const groupList = Object.keys(groups);
 
         const renderSingle = singleList.map(n => {
-            const isChk = checked.includes(n);
             return `<div class="pm-li">
-                <div class="pm-custom-check pm-bi-style ${isChk ? 'is-checked' : ''}" role="checkbox" tabindex="0" aria-checked="${isChk}" onclick="event.stopPropagation();window.__pmToggleBidirectional('${safeJS(n)}')" onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();this.click()}" style="width:20px;height:20px;min-width:20px;min-height:20px;flex-shrink:0;border-radius:50%;"></div>
                 <span onclick="window.__pmSwitchContact('${safeJS(n)}')">${escapeHtml(n)}</span>
-                <i onclick="window.__pmDel('${safeJS(n)}')">删除</i>
+                <button type="button" class="pm-entity-delete" onclick="window.__pmDel('${safeJS(n)}')" aria-label="永久删除联系人 ${escapeAttr(n)}" title="永久删除联系人">${UNLINK_ICON_SVG}<span>解除关系</span></button>
             </div>`;
         }).join('');
 
         const renderGroups = groupList.map(key => {
             const meta = groups[key];
-            const isChk = checked.includes(key);
             return `<div class="pm-li">
-                <div class="pm-custom-check pm-bi-style ${isChk ? 'is-checked' : ''}" role="checkbox" tabindex="0" aria-checked="${isChk}" onclick="event.stopPropagation();window.__pmToggleBidirectional('${safeJS(key)}')" onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();this.click()}" style="width:20px;height:20px;min-width:20px;min-height:20px;flex-shrink:0;border-radius:50%;"></div>
                 <span onclick="window.__pmSwitchContact('${safeJS(key)}')">${escapeHtml(meta.name)}<span class="pm-group-sub">${escapeHtml(meta.members.join('、'))}</span></span>
-                <i onclick="window.__pmDelGroup('${safeJS(key)}')">删除</i>
+                <button type="button" class="pm-entity-delete" onclick="window.__pmDelGroup('${safeJS(key)}')" aria-label="永久删除群聊 ${escapeAttr(meta.name)}" title="永久删除群聊">${UNLINK_ICON_SVG}<span>永久删除</span></button>
             </div>`;
         }).join('');
 
@@ -382,7 +511,6 @@ export function installPhoneDirectory(state, deps) {
       <b>联系人</b>
       <button type="button" onclick="window.__pmCloseOverlay()" class="pm-modal-close" title="关闭" aria-label="关闭">${CLOSE_ICON_SVG}</button>
     </div>
-    <div class="pm-bi-bar"><span>勾选会话可注入主楼；群聊资源参数在群聊设置中配置</span><span class="pm-bi-tip">已选 ${checked.length}</span></div>
     <div class="pm-modal-list">
         ${empty ? '<div style="text-align:center;color:var(--pm-color-text-tertiary);padding:20px;font-size:13px;">暂无联系人</div>' : (renderGroups + renderSingle)}
     </div>
@@ -409,7 +537,7 @@ export function installPhoneDirectory(state, deps) {
     </section>
     <section class="pm-contact-add-choice is-ai">
       <b>AI 生成</b><span>根据当前剧情、世界书和已有联系人生成一批候选。</span>
-      <button type="button" id="pm-autogen-btn" class="pm-contact-add-ai" onclick="window.__pmConfirmAutoGen()" aria-label="AI 自动生成联系人"><span class="pm-contact-add-icon">${REFRESH_ICON_SVG}</span><span>生成联系人与群聊</span></button>
+      <button type="button" id="pm-autogen-btn" class="pm-contact-add-ai" onclick="window.__pmConfirmAutoGen()" aria-label="AI 自动生成联系人"><span class="pm-contact-add-icon">${SPARKLES_ICON_SVG}</span><span>生成联系人与群聊</span></button>
     </section>
   </div>
 </div>`);
@@ -425,6 +553,8 @@ export function installPhoneDirectory(state, deps) {
 
     window.__pmDelGroup = async (key) => {
         const id = getStorageId();
+        const groupName = window.__pmGroupMeta[id]?.[key]?.name || '未命名群聊';
+        if (!confirm(`永久删除群聊“${groupName}”？聊天记录、注入关系、背景和自动消息配置都会一并删除，且无法恢复。`)) return false;
         const snapshots = {
             groupMeta: JSON.parse(JSON.stringify(window.__pmGroupMeta)), histories: JSON.parse(JSON.stringify(window.__pmHistories)),
             bidirectional: JSON.parse(JSON.stringify(window.__pmBidirectional)), poke: JSON.parse(JSON.stringify(window.__pmPokeConfig)),
@@ -446,7 +576,7 @@ export function installPhoneDirectory(state, deps) {
             await window.__pmShowList();
             applyBidirectionalInjection();
             clearPendingMessages(runtime, id, key);
-            if (state.currentGroupKey === key) { state.isGroupChat = false; state.currentGroupKey = ''; state.currentPersona = ''; state.conversationHistory = []; state.groupMembers = []; state.groupDisplayName = ''; state.groupColorMap = {}; }
+            if (state.currentGroupKey === key) { state.isGroupChat = false; state.currentGroupKey = ''; state.currentPersona = ''; state.conversationHistory = []; state.groupMembers = []; state.groupExtras = []; state.groupDisplayName = ''; state.groupColorMap = {}; }
         } catch (error) {
             window.__pmGroupMeta = snapshots.groupMeta; window.__pmHistories = snapshots.histories;
             window.__pmBidirectional = snapshots.bidirectional; window.__pmPokeConfig = snapshots.poke; window.__pmBgLocal = snapshots.backgrounds;
@@ -468,6 +598,7 @@ export function installPhoneDirectory(state, deps) {
 
     window.__pmDel = async (name) => {
         const id = getStorageId();
+        if (!confirm(`永久删除联系人“${name}”？聊天记录、注入关系、背景和自动消息配置都会一并删除，且无法恢复。`)) return false;
         const snapshots = {
             histories: JSON.parse(JSON.stringify(window.__pmHistories)),
             bidirectional: JSON.parse(JSON.stringify(window.__pmBidirectional)),

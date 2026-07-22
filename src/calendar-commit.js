@@ -2,8 +2,9 @@ import { normalizeCycleStore } from './calendar-cycle-model.js';
 import { normalizeHolidayCache } from './calendar-holiday.js';
 import { normalizeCalendarScope, normalizeCalendarStore } from './calendar-model.js';
 import { normalizeOccasionScope, normalizeOccasionStore } from './calendar-occasion-model.js';
+import { normalizeRecipeScope, normalizeRecipeStore } from './calendar-recipe-model.js';
 import {
-    saveCalendar, saveCalendarCycles, saveCalendarHolidays, saveCalendarOccasions, saveCalendarWeather,
+    saveCalendar, saveCalendarCycles, saveCalendarHolidays, saveCalendarOccasions, saveCalendarRecipes, saveCalendarWeather,
 } from './calendar-storage.js';
 import { normalizeWeatherStore } from './calendar-weather.js';
 
@@ -26,15 +27,19 @@ export function createCalendarCommitters({
     runtime, tasks, applyBidirectionalInjection, getCycles, getCycleSubject,
 }) {
     let scopeCommitQueue = Promise.resolve();
+    let recipeCommitQueue = Promise.resolve();
+    let commitGeneration = 0;
+    const invalidateCommits = () => { commitGeneration += 1; };
 
     const commitScope = (storageId, mutate, task = null) => {
+        const generation = commitGeneration;
         const operation = scopeCommitQueue.catch(() => {}).then(async () => {
-            if (task && !tasks.active(task)) return false;
+            if (generation !== commitGeneration || (task && !tasks.active(task))) return false;
             const previousStore = clone(runtime.store);
             const candidate = clone(previousStore);
             const current = normalizeCalendarScope(candidate.scopes[storageId]);
             const next = normalizeCalendarScope(await mutate(current));
-            if (task && !tasks.active(task)) return false;
+            if (generation !== commitGeneration || (task && !tasks.active(task))) return false;
             candidate.scopes[storageId] = next;
             const normalized = normalizeCalendarStore(candidate);
             if (!saveCalendar(normalized)) throw new Error('日历保存失败：浏览器存储不可用');
@@ -46,6 +51,10 @@ export function createCalendarCommitters({
                 injectionError = injectionFailure(result, '提交');
             } catch (error) {
                 injectionError = error;
+            }
+            if (generation !== commitGeneration) {
+                if (injectionError) throw injectionError;
+                return false;
             }
             const cancelled = !!task && !tasks.active(task);
             if (!injectionError && !cancelled) return next;
@@ -73,6 +82,59 @@ export function createCalendarCommitters({
             return false;
         });
         scopeCommitQueue = operation.catch(() => {});
+        return operation;
+    };
+
+    const commitRecipe = (storageId, mutate, task = null) => {
+        const generation = commitGeneration;
+        const operation = recipeCommitQueue.catch(() => {}).then(async () => {
+            if (generation !== commitGeneration || (task && !tasks.active(task))) return false;
+            const previousStore = clone(runtime.recipeStore);
+            const candidate = clone(previousStore);
+            const current = normalizeRecipeScope(candidate.scopes[storageId]);
+            const next = normalizeRecipeScope(await mutate(current));
+            if (generation !== commitGeneration || (task && !tasks.active(task))) return false;
+            candidate.scopes[storageId] = next;
+            const normalized = normalizeRecipeStore(candidate);
+            if (!saveCalendarRecipes(normalized)) throw new Error('菜谱保存失败：浏览器存储不可用');
+            runtime.recipeStore = normalized;
+
+            let injectionError = null;
+            try {
+                const result = await applyBidirectionalInjection?.();
+                injectionError = injectionFailure(result, '菜谱提交');
+            } catch (error) {
+                injectionError = error;
+            }
+            if (generation !== commitGeneration) {
+                if (injectionError) throw injectionError;
+                return false;
+            }
+            const cancelled = !!task && !tasks.active(task);
+            if (!injectionError && !cancelled) return next;
+
+            let rollbackError = null;
+            try {
+                if (!saveCalendarRecipes(previousStore)) throw new Error('菜谱回滚保存失败：浏览器存储不可用');
+                runtime.recipeStore = normalizeRecipeStore(previousStore);
+                const rollbackResult = await applyBidirectionalInjection?.();
+                const rollbackInjectionError = injectionFailure(rollbackResult, '菜谱补偿');
+                if (rollbackInjectionError) throw rollbackInjectionError;
+            } catch (error) {
+                rollbackError = error;
+            }
+            if (rollbackError) {
+                const original = injectionError || new Error('菜谱任务取消后的状态补偿失败');
+                const combined = new Error(`${original.message}；菜谱状态回滚失败：${rollbackError.message}`);
+                combined.cause = original;
+                combined.rollbackError = rollbackError;
+                combined.recipeRollbackError = true;
+                throw combined;
+            }
+            if (injectionError) throw injectionError;
+            return false;
+        });
+        recipeCommitQueue = operation.catch(() => {});
         return operation;
     };
 
@@ -109,5 +171,5 @@ export function createCalendarCommitters({
         return getCycles(storageId, getCycleSubject(storageId));
     };
 
-    return { commitScope, commitOccasions, commitHolidays, commitWeather, commitCycle };
+    return { commitScope, commitRecipe, commitOccasions, commitHolidays, commitWeather, commitCycle, invalidateCommits };
 }

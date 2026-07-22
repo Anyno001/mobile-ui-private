@@ -1,4 +1,5 @@
 import { cleanResponse } from './prompts.js';
+import { formatQuoteContext } from './chat-message-model.js';
 
 /**
  * 构建用户信息块
@@ -20,10 +21,12 @@ export function buildHistoryText(history, limit, userName, personaName, excludeL
     return slice.map(m => {
         const clean = cleanResponse(m.content);
         const director = m.directorNote ? `[剧情引导] ${m.directorNote}` : '';
+        const quote = formatQuoteContext(m.quote);
+        const quoteLine = quote ? `【${quote}】` : '';
         const userLine = clean ? `${userName}：${clean}` : '';
-        if (m.role === 'user') return [userLine, director].filter(Boolean).join('\n');
-        if (personaName) return `${personaName}：${clean}`;
-        return clean;
+        if (m.role === 'user') return [quoteLine, userLine, director].filter(Boolean).join('\n');
+        if (personaName) return [quoteLine, `${personaName}：${clean}`].filter(Boolean).join('\n');
+        return [quoteLine, clean].filter(Boolean).join('\n');
     }).filter(Boolean).join('\n');
 }
 
@@ -39,7 +42,7 @@ export function buildAntiFluff() {
  */
 export function buildSingleInjectedInstruction({
     currentPersona, userName, userBlock, contextBlockMain,
-    mainChatText, smsHistoryText, directorNote, userMsgClean, userMsg,
+    mainChatText, smsHistoryText, currentQuoteText, directorNote, userMsgClean, userMsg,
 }) {
     return `
 [短信模式指令——最高优先级]
@@ -61,6 +64,7 @@ ${contextBlockMain ? contextBlockMain + '\n\n' : ''}规则：
 
 短信对话历史：
 ${smsHistoryText}
+${currentQuoteText ? `\n【本轮回复关系】\n${currentQuoteText}\n` : ''}
 ${directorNote ? `\n[剧情引导] ${directorNote}\n` : ''}
 ${userMsg.trim() ? `${userName}：${userMsgClean}\n${currentPersona}：` : `[仅有剧情引导，无用户发言，请按引导推进剧情]\n${currentPersona}：`}`;
 }
@@ -94,7 +98,7 @@ export function buildSingleSystemPrompt({
  */
 export function buildGroupInjectedInstruction({
     groupName, memberList, userName, userBlock, cardScenario,
-    worldBookText, mainChatText, smsHistoryText, directorNote, userMsgClean, userMsg,
+    worldBookText, mainChatText, smsHistoryText, currentQuoteText, directorNote, userMsgClean, userMsg,
 }) {
     const groupRules = `
 [群聊短信模式——最高优先级]
@@ -130,6 +134,7 @@ ${userBlock}
 
 ${cardScenario ? '【场景】\n' + cardScenario + '\n\n' : ''}${worldBookText ? '【世界书】\n' + worldBookText + '\n\n' : ''}${mainChatText ? '【主线最近对话】\n' + mainChatText + '\n\n' : ''}群聊历史：
 ${smsHistoryText}
+${currentQuoteText ? `\n【本轮回复关系】\n${currentQuoteText}\n` : ''}
 ${directorNote ? `\n[剧情引导] ${directorNote}\n` : ''}
 ${userMsg.trim() ? `${userName}：${userMsgClean}` : '[仅有剧情引导，无用户发言，请按引导推进剧情]'}`;
 }
@@ -218,18 +223,18 @@ export function buildPokeGroupActivePrompt({
  * 独立API 单人聊天 — userPrompt
  */
 export function buildIndependentSingleUserPrompt({
-    smsHistoryText, directorNote, userMsgClean, userMsg, userName, currentPersona,
+    smsHistoryText, currentQuoteText, directorNote, userMsgClean, userMsg, userName, currentPersona,
 }) {
-    return `【短信对话历史】\n${smsHistoryText}\n${directorNote ? `\n[剧情引导] ${directorNote}\n` : ''}${userMsg.trim() ? `\n${userName}：${userMsgClean}\n${currentPersona}：` : `\n[仅有剧情引导，无用户发言，请按引导推进剧情]\n${currentPersona}：`}`;
+    return `【短信对话历史】\n${smsHistoryText}\n${currentQuoteText ? `\n【本轮回复关系】\n${currentQuoteText}\n` : ''}${directorNote ? `\n[剧情引导] ${directorNote}\n` : ''}${userMsg.trim() ? `\n${userName}：${userMsgClean}\n${currentPersona}：` : `\n[仅有剧情引导，无用户发言，请按引导推进剧情]\n${currentPersona}：`}`;
 }
 
 /**
  * 独立API 群聊聊天 — userPrompt
  */
 export function buildIndependentGroupUserPrompt({
-    smsHistoryText, directorNote, userMsgClean, userMsg, userName,
+    smsHistoryText, currentQuoteText, directorNote, userMsgClean, userMsg, userName,
 }) {
-    return `【群聊历史】\n${smsHistoryText}\n${directorNote ? `\n[剧情引导] ${directorNote}\n` : ''}${userMsg.trim() ? `\n${userName}：${userMsgClean}` : '\n[仅有剧情引导，无用户发言，请按引导推进剧情]'}`;
+    return `【群聊历史】\n${smsHistoryText}\n${currentQuoteText ? `\n【本轮回复关系】\n${currentQuoteText}\n` : ''}${directorNote ? `\n[剧情引导] ${directorNote}\n` : ''}${userMsg.trim() ? `\n${userName}：${userMsgClean}` : '\n[仅有剧情引导，无用户发言，请按引导推进剧情]'}`;
 }
 
 /**

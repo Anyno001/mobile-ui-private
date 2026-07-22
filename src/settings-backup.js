@@ -4,9 +4,10 @@ import {
 import { createEmptyHolidayCache, normalizeHolidayCache } from './calendar-holiday.js';
 import { createEmptyCalendarStore, normalizeCalendarStore } from './calendar-model.js';
 import { createEmptyOccasionStore, normalizeOccasionStore } from './calendar-occasion-model.js';
+import { createEmptyRecipeStore, normalizeRecipeStore } from './calendar-recipe-model.js';
 import {
-    loadCalendar, loadCalendarCycles, loadCalendarHolidays, loadCalendarOccasions, loadCalendarWeather,
-    saveCalendar, saveCalendarCycles, saveCalendarHolidays, saveCalendarOccasions, saveCalendarWeather,
+    loadCalendar, loadCalendarCycles, loadCalendarHolidays, loadCalendarOccasions, loadCalendarRecipes, loadCalendarWeather,
+    saveCalendar, saveCalendarCycles, saveCalendarHolidays, saveCalendarOccasions, saveCalendarRecipes, saveCalendarWeather,
 } from './calendar-storage.js';
 import { createEmptyWeatherStore, normalizeWeatherStore } from './calendar-weather.js';
 import { cloneEmojiLibrary } from './emoji-media.js';
@@ -48,13 +49,14 @@ function assertCycleBackupInvariants(store) {
     }
 }
 
-export function applyCalendarBackupFields(data, result, objectValue) {
+export function applyCalendarBackupFields(data, result, objectValue, { includeRecipes = false } = {}) {
     const fields = [
         ['calendarStore', normalizeCalendarStore],
         ['calendarOccasions', normalizeOccasionStore],
         ['calendarHolidays', normalizeHolidayCache],
         ['calendarWeather', normalizeWeatherStore],
         ['calendarCycles', normalizeCycleStore],
+        ...(includeRecipes ? [['calendarRecipes', normalizeRecipeStore]] : []),
     ];
     for (const [field, normalize] of fields) {
         if (!Object.hasOwn(data, field)) continue;
@@ -73,6 +75,7 @@ export function createEmptyCalendarBackupFields() {
         calendarHolidays: createEmptyHolidayCache(),
         calendarWeather: createEmptyWeatherStore(),
         calendarCycles: createEmptyCycleStore(),
+        calendarRecipes: createEmptyRecipeStore(),
     };
 }
 
@@ -123,7 +126,7 @@ export function createBackupStateHandlers(deps = {}) {
             ambientStatus: normalizeAmbientStatus({ enabled: window.__pmTheme?.ambientStatusEnabled }),
             calendarStore: loadCalendar(), calendarOccasions: loadCalendarOccasions(),
             calendarHolidays: loadCalendarHolidays(), calendarWeather: loadCalendarWeather(),
-            calendarCycles: loadCalendarCycles(),
+            calendarCycles: loadCalendarCycles(), calendarRecipes: loadCalendarRecipes(),
         };
     };
     const apply = async state => {
@@ -145,6 +148,7 @@ export function createBackupStateHandlers(deps = {}) {
             calendarHolidays: normalizeHolidayCache(state.calendarHolidays),
             calendarWeather: normalizeWeatherStore(state.calendarWeather),
             calendarCycles: normalizeCycleStore(state.calendarCycles),
+            calendarRecipes: normalizeRecipeStore(state.calendarRecipes),
         };
     };
     const persist = async state => {
@@ -161,7 +165,9 @@ export function createBackupStateHandlers(deps = {}) {
         if (!savePhoneUiState(phoneUiState, interactiveScenes)) throw new Error('手机界面状态保存失败：浏览器存储不可用');
         if (!saveCalendar(state.calendarStore) || !saveCalendarOccasions(state.calendarOccasions)
             || !saveCalendarHolidays(state.calendarHolidays) || !saveCalendarWeather(state.calendarWeather)
-            || !saveCalendarCycles(state.calendarCycles)) throw new Error('日历数据保存失败：浏览器存储不可用');
+            || !saveCalendarCycles(state.calendarCycles) || !saveCalendarRecipes(state.calendarRecipes)) {
+            throw new Error('日历与菜谱数据保存失败：浏览器存储不可用');
+        }
         deps.invalidateInteractiveStore?.(); deps.reloadCalendarStore?.();
     };
     return { capture, apply, persist };

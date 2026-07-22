@@ -1,8 +1,12 @@
 import { parseCalendarDate } from './calendar-model.js';
 import { predictCyclePhase } from './calendar-cycle-model.js';
 import { holidayYearFromCache } from './calendar-holiday.js';
+import { RECIPE_MEAL_LABELS, RECIPE_MEAL_TYPES, recipeDayFor } from './calendar-recipe-model.js';
 import { weatherCodeLabel } from './calendar-weather.js';
-import { CLOSE_ICON_SVG, EDIT_ICON_SVG, EVENT_EDITOR_ICON_SVG, MORE_ICON_SVG, OCCASION_EDITOR_ICON_SVG, TRASH_ICON_SVG } from './icons.js';
+import { resolveWeatherForDate, weatherSourceLabel } from './calendar-weather-source.js';
+import {
+    CLOSE_ICON_SVG, EDIT_ICON_SVG, EVENT_EDITOR_ICON_SVG, MORE_ICON_SVG, OCCASION_EDITOR_ICON_SVG, REMOVE_ICON_SVG,
+} from './icons.js';
 import { escapeAttr, escapeHtml } from './ui.js';
 
 const detailDate = new Intl.DateTimeFormat('zh-CN', { month: 'long', day: 'numeric' });
@@ -31,9 +35,11 @@ function holidayRows(cache, date) {
 }
 
 function weatherRow(weatherStore, date) {
-    const day = weatherStore?.lastSuccess?.forecast?.days?.find(item => item.date === date);
-    if (!day) return '';
-    return `<div class="pm-calendar-weather"><span>${escapeHtml(weatherCodeLabel(day.weatherCode))}</span><b>${day.tempMin}°/${day.tempMax}°C</b></div>`;
+    const resolved = resolveWeatherForDate(weatherStore, date);
+    if (resolved.status !== 'available') {
+        return `<p class="pm-calendar-empty-day">无法推演 · ${escapeHtml(resolved.unavailableReason)}</p>`;
+    }
+    return `<div class="pm-calendar-weather"><span>${escapeHtml(weatherCodeLabel(resolved.day.weatherCode))}<em>${escapeHtml(resolved.sourceLabel)}</em></span><b>${resolved.day.tempMin}°/${resolved.day.tempMax}°C</b></div>`;
 }
 
 function cycleRow(cycleScope, date) {
@@ -42,10 +48,24 @@ function cycleRow(cycleScope, date) {
     return `<div class="pm-calendar-cycle"><span>生理期提示</span><b>${CYCLE_LABELS[prediction.phase] || prediction.phase}</b>${prediction.status === 'override' ? '<em>手动</em>' : ''}</div>`;
 }
 
+function recipeRows(recipeScope, date) {
+    const day = recipeDayFor(recipeScope, date);
+    return RECIPE_MEAL_TYPES.flatMap(mealType => day[mealType]?.text ? [
+        `<article class="pm-calendar-event is-recipe" data-recipe-meal="${mealType}"><div><b>${RECIPE_MEAL_LABELS[mealType]}</b><span>${escapeHtml(day[mealType].text)}</span></div></article>`,
+    ] : []).join('');
+}
+
 export function renderSelectedDateDetail(
-    scope, occasionsByDate, holidayCache, weatherStore, cycleScope, selectedDate, viewMode, relativeLabel = '',
+    scope, occasionsByDate, holidayCache, weatherStore, cycleScope, selectedDate, viewMode, relativeLabel = '', recipeScope = {},
 ) {
     const parsed = parseCalendarDate(selectedDate);
+    if (viewMode === 'recipe') {
+        const content = recipeRows(recipeScope, selectedDate);
+        return `<section class="pm-calendar-selected-detail" data-calendar-selected-detail="${selectedDate}" data-calendar-detail-mode="recipe">
+          <header><div class="pm-calendar-detail-date">${relativeLabel ? `<strong>${escapeHtml(relativeLabel)}</strong>` : ''}<span><time datetime="${selectedDate}">${escapeHtml(detailDate.format(parsed))}</time><em>${escapeHtml(detailWeekday.format(parsed))}</em></span></div><div class="pm-calendar-detail-actions"><button type="button" class="pm-calendar-detail-more" data-action="calendar-detail-menu" aria-label="管理这一天的菜谱" title="管理这一天的菜谱" aria-expanded="false" aria-controls="pm-calendar-detail-menu">${MORE_ICON_SVG}</button><span id="pm-calendar-detail-menu" class="pm-calendar-detail-menu" hidden><button type="button" data-action="calendar-recipe-add" aria-label="新增餐食" title="新增餐食">${EDIT_ICON_SVG}</button><button type="button" data-action="calendar-recipe-manage" aria-label="管理已有餐食" title="管理已有餐食" ${content ? '' : 'disabled aria-disabled="true"'}>${MORE_ICON_SVG}</button></span></div></header>
+          <div class="pm-calendar-selected-content">${content || '<p class="pm-calendar-empty-day">这一天还没有菜谱。</p>'}</div>
+        </section>`;
+    }
     const entries = [...(scope.events[selectedDate] || []), ...(occasionsByDate.get(selectedDate) || [])];
     const content = viewMode === 'weather'
         ? weatherRow(weatherStore, selectedDate)
@@ -55,7 +75,7 @@ export function renderSelectedDateDetail(
     const emptyLabel = viewMode === 'weather' ? '这一天没有天气数据' : viewMode === 'cycle' ? '这一天没有生理期提示' : '这一天还没有安排';
     const actions = viewMode === 'schedule' ? `<div class="pm-calendar-detail-actions">
         <button type="button" class="pm-calendar-detail-more" data-action="calendar-detail-menu" aria-label="管理这一天" title="管理这一天" aria-expanded="false" aria-controls="pm-calendar-detail-menu">${MORE_ICON_SVG}</button>
-        <span id="pm-calendar-detail-menu" class="pm-calendar-detail-menu" hidden><button type="button" data-action="calendar-manage-date" aria-label="添加或编辑安排" title="添加或编辑安排">${EDIT_ICON_SVG}</button><button type="button" class="is-danger" data-action="calendar-delete-date" aria-label="删除安排" title="删除安排" ${entries.length ? '' : 'disabled aria-disabled="true"'}>${TRASH_ICON_SVG}</button></span>
+        <span id="pm-calendar-detail-menu" class="pm-calendar-detail-menu" hidden><button type="button" data-action="calendar-add-date" aria-label="新增安排" title="新增安排">${EDIT_ICON_SVG}</button><button type="button" data-action="calendar-manage-date" aria-label="管理已有安排" title="管理已有安排" ${entries.length ? '' : 'disabled aria-disabled="true"'}>${MORE_ICON_SVG}</button></span>
     </div>` : '';
     return `<section class="pm-calendar-selected-detail" data-calendar-selected-detail="${selectedDate}" data-calendar-detail-mode="${viewMode}">
         <header><div class="pm-calendar-detail-date">${relativeLabel ? `<strong>${escapeHtml(relativeLabel)}</strong>` : ''}<span><time datetime="${selectedDate}">${escapeHtml(detailDate.format(parsed))}</time><em>${escapeHtml(detailWeekday.format(parsed))}</em></span></div>${actions}</header>
@@ -72,11 +92,18 @@ export function weatherSearchResults(results) {
 
 
 export function renderCalendarManagement({
-    scope, holidayCache, weatherStore, cycleScope, weatherResults, viewMode,
+    scope, holidayCache, weatherStore, cycleScope, recipeScope, weatherResults, viewMode,
     holidayAvailable = true, holidayRange = null, cycleSubjects = [], selectedCycleSubject = '__self__',
 }) {
+    if (viewMode === 'recipe') {
+        const region = recipeScope?.regionPreference || '';
+        const applied = recipeScope?.lastGeneratedRegion || '';
+        return `<details class="pm-calendar-management" data-calendar-management="recipe" open><summary>菜谱设置</summary><div class="pm-calendar-management-content"><section class="pm-calendar-data-tools"><h3>饮食地区 / 文化</h3><p>可填写川渝、潮汕、日本关西、奥斯曼宫廷或架空地区。留空时从角色设定和剧情推断，不会把天气城市当作文化身份。</p><div class="pm-calendar-data-row"><input data-recipe-region maxlength="120" value="${escapeAttr(region)}" placeholder="留空则按剧情推断" aria-label="菜谱饮食地区或文化"><button type="button" data-action="calendar-recipe-region-save">保存</button></div><small class="pm-calendar-attribution">${region ? `手动指定：${escapeHtml(region)}` : applied ? `最近剧情推断：${escapeHtml(applied)}` : '尚未生成地区依据'}</small></section></div></details>`;
+    }
     if (viewMode === 'weather') {
-        return `<details class="pm-calendar-management" data-calendar-management="weather"><summary>天气设置</summary><div class="pm-calendar-management-content"><section class="pm-calendar-data-tools"><h3>天气位置</h3><div class="pm-calendar-data-row"><input data-weather-query placeholder="搜索城市或地区" maxlength="100" aria-label="搜索天气位置"><button type="button" data-action="calendar-weather-search">搜索</button><button type="button" data-action="calendar-weather-refresh">刷新</button></div>${weatherSearchResults(weatherResults)}<small class="pm-calendar-attribution">${weatherStore.location ? escapeHtml(weatherStore.location.name) : '尚未设置天气位置'}</small></section></div></details>`;
+        const storedSource = weatherStore?.lastSuccess?.source || (weatherStore?.lastSuccess ? 'forecast' : null);
+        const currentSource = storedSource ? weatherSourceLabel(storedSource) : '仅气候推演';
+        return `<details class="pm-calendar-management" data-calendar-management="weather"><summary>天气设置</summary><div class="pm-calendar-management-content"><section class="pm-calendar-data-tools"><h3>天气位置</h3><div class="pm-calendar-data-row"><input data-weather-query placeholder="搜索城市或地区" maxlength="100" aria-label="搜索天气位置"><button type="button" data-action="calendar-weather-search">搜索</button><button type="button" data-action="calendar-weather-refresh">刷新</button></div>${weatherSearchResults(weatherResults)}<small class="pm-calendar-attribution">${weatherStore.location ? `${escapeHtml(weatherStore.location.name)} · 当前数据 ${escapeHtml(currentSource)} · 预报外日期使用气候推演` : '尚未设置天气位置 · 无法推演'}</small></section></div></details>`;
     }
     if (viewMode === 'cycle') {
         const startDay = cycleScope.lastPeriodStart ? Number(cycleScope.lastPeriodStart.slice(8, 10)) : 1;
@@ -95,7 +122,37 @@ export function renderCalendarManagement({
     </div></details>`;
 }
 
-export function renderCalendarEntryDialog(selectedDate, events = [], occasions = []) {
-    const options = [...events.map(item => `<option value="event:${escapeAttr(item.id)}">日程 · ${escapeHtml(item.title)}</option>`), ...occasions.map(item => `<option value="occasion:${escapeAttr(item.id)}">${occasionTypeLabel(item.type)} · ${escapeHtml(item.title)}</option>`)].join('');
-    return `<div class="pm-modal pm-calendar-entry-dialog"><div class="pm-modal-header"><span></span><b>管理 ${escapeHtml(selectedDate)}</b><button type="button" class="pm-modal-close" data-calendar-entry-close aria-label="关闭">${CLOSE_ICON_SVG}</button></div><form data-calendar-entry-form><div class="pm-calendar-entry-kind" role="group" aria-label="安排类型"><button type="button" data-calendar-entry-kind="event" aria-pressed="true">${EVENT_EDITOR_ICON_SVG}<span>一次性日程</span></button><button type="button" data-calendar-entry-kind="occasion" aria-pressed="false">${OCCASION_EDITOR_ICON_SVG}<span>每年重复</span></button></div><label>编辑已有安排<select data-calendar-entry-existing><option value="">新建安排</option>${options}</select></label><input name="title" maxlength="120" placeholder="名称" aria-label="安排名称"><textarea name="note" maxlength="1000" placeholder="备注（可选）" aria-label="安排备注"></textarea><div data-calendar-occasion-fields hidden><label>长期类型<select name="occasionType"><option value="anniversary">纪念日</option><option value="birthday">生日</option></select></label><label>2 月 29 日在非闰年<select name="leapDayRule"><option value="feb28">按 2 月 28 日显示</option><option value="mar1">按 3 月 1 日显示</option><option value="skip">该年不显示</option></select></label></div><p class="pm-calendar-entry-error" data-calendar-entry-error role="status" aria-live="polite"></p><div class="pm-calendar-entry-actions"><button type="button" class="is-danger" data-calendar-entry-delete disabled>删除</button><button type="submit" class="is-primary">保存</button></div></form></div>`;
+export function renderCalendarMonthPanel(scope, viewYear, viewMonth, open = false) {
+    const baseDate = scope.baseDate || '';
+    return `<section class="pm-calendar-month-panel" data-calendar-month-panel ${open ? '' : 'hidden'}>
+      <div class="pm-calendar-month-jump"><label>年份<input type="number" min="1" max="9999" value="${viewYear}" data-calendar-jump-year aria-label="跳转年份"></label><label>月份<input type="number" min="1" max="12" value="${viewMonth}" data-calendar-jump-month aria-label="跳转月份"></label><button type="button" data-action="calendar-month-jump">跳转</button></div>
+      <div class="pm-calendar-base-content"><label>时间起点<input type="date" data-calendar-base-date value="${escapeAttr(baseDate)}" aria-label="自定义时间起点"></label><p>回到今天只导航到当前故事日期；使用设备日期会清除自定义时间起点。</p></div>
+      <div class="pm-calendar-month-panel-actions"><button type="button" data-action="calendar-base-save">保存时间起点</button><button type="button" data-action="calendar-base-clear" ${baseDate ? '' : 'disabled'}>使用设备日期</button><button type="button" data-action="calendar-date-rescan">正文重识别</button><button type="button" data-action="calendar-today">回到今天</button></div>
+    </section>`;
+}
+
+export function renderCalendarEntryManager(selectedDate, events = [], occasions = []) {
+    const rows = [
+        ...events.map(entry => ({ kind: 'event', label: '日程', entry })),
+        ...occasions.map(entry => ({ kind: 'occasion', label: occasionTypeLabel(entry.type), entry })),
+    ].map(({ kind, label, entry }) => `<li><button type="button" class="pm-calendar-entry-edit" data-calendar-entry-edit data-entry-kind="${kind}" data-entry-id="${escapeAttr(entry.id)}"><span><b>${escapeHtml(entry.title)}</b><small>${label}${entry.note ? ` · ${escapeHtml(entry.note)}` : ''}</small></span>${EDIT_ICON_SVG}</button><button type="button" class="pm-calendar-entry-remove" data-calendar-entry-remove data-entry-kind="${kind}" data-entry-id="${escapeAttr(entry.id)}" aria-label="移除${escapeAttr(entry.title)}" title="移除${escapeAttr(entry.title)}">${REMOVE_ICON_SVG}</button></li>`).join('');
+    return `<div class="pm-modal pm-calendar-entry-manager"><div class="pm-modal-header"><span></span><b>管理 ${escapeHtml(selectedDate)}</b><button type="button" class="pm-modal-close" data-calendar-entry-close aria-label="关闭">${CLOSE_ICON_SVG}</button></div><div class="pm-calendar-entry-manager-body">${rows ? `<ul>${rows}</ul>` : '<p>这一天还没有可管理的安排。</p>'}<button type="button" class="pm-action-button" data-calendar-entry-add>新增安排</button></div></div>`;
+}
+
+export function renderCalendarEntryDialog(selectedDate, entry = null, kind = 'event') {
+    const editing = Boolean(entry);
+    return `<div class="pm-modal pm-calendar-entry-dialog"><div class="pm-modal-header"><span></span><b>${editing ? '编辑' : '新增'} ${escapeHtml(selectedDate)}</b><button type="button" class="pm-modal-close" data-calendar-entry-close aria-label="关闭">${CLOSE_ICON_SVG}</button></div><form data-calendar-entry-form><div class="pm-calendar-entry-kind" role="group" aria-label="安排类型"><button type="button" data-calendar-entry-kind="event" aria-pressed="${kind === 'event'}" ${editing ? 'disabled' : ''}>${EVENT_EDITOR_ICON_SVG}<span>一次性日程</span></button><button type="button" data-calendar-entry-kind="occasion" aria-pressed="${kind === 'occasion'}" ${editing ? 'disabled' : ''}>${OCCASION_EDITOR_ICON_SVG}<span>每年重复</span></button></div><input name="title" maxlength="120" placeholder="名称" aria-label="安排名称"><textarea name="note" maxlength="1000" placeholder="备注（可选）" aria-label="安排备注"></textarea><div data-calendar-occasion-fields hidden><label>长期类型<select name="occasionType"><option value="anniversary">纪念日</option><option value="birthday">生日</option></select></label><label>2 月 29 日在非闰年<select name="leapDayRule"><option value="feb28">按 2 月 28 日显示</option><option value="mar1">按 3 月 1 日显示</option><option value="skip">该年不显示</option></select></label></div><p class="pm-calendar-entry-error" data-calendar-entry-error role="status" aria-live="polite"></p><div class="pm-calendar-entry-actions"><button type="submit" class="is-primary">保存</button></div></form></div>`;
+}
+
+export function renderRecipeMealDialog(selectedDate, mealType = 'breakfast', meal = null) {
+    const normalizedType = RECIPE_MEAL_TYPES.includes(mealType) ? mealType : 'breakfast';
+    return `<div class="pm-modal pm-calendar-entry-dialog pm-recipe-meal-dialog"><div class="pm-modal-header"><span></span><b>${meal ? '编辑' : '新增'} ${escapeHtml(selectedDate)} 餐食</b><button type="button" class="pm-modal-close" data-recipe-entry-close aria-label="关闭">${CLOSE_ICON_SVG}</button></div><form data-recipe-entry-form><label>餐次<select name="mealType" aria-label="菜谱餐次">${RECIPE_MEAL_TYPES.map(type => `<option value="${type}" ${type === normalizedType ? 'selected' : ''}>${RECIPE_MEAL_LABELS[type]}</option>`).join('')}</select></label><textarea name="text" maxlength="160" placeholder="填写这顿吃什么" aria-label="餐食内容">${escapeHtml(meal?.text || '')}</textarea><p class="pm-calendar-entry-error" data-recipe-entry-error role="status" aria-live="polite"></p><div class="pm-calendar-entry-actions"><button type="submit" class="is-primary">保存</button></div></form></div>`;
+}
+
+export function renderRecipeMealManager(selectedDate, recipeScope) {
+    const day = recipeDayFor(recipeScope, selectedDate);
+    const rows = RECIPE_MEAL_TYPES.flatMap(mealType => day[mealType]?.text ? [
+        `<li><button type="button" class="pm-calendar-entry-edit" data-recipe-entry-edit data-meal-type="${mealType}"><span><b>${RECIPE_MEAL_LABELS[mealType]}</b><small>${escapeHtml(day[mealType].text)}</small></span>${EDIT_ICON_SVG}</button><button type="button" class="pm-calendar-entry-remove" data-recipe-entry-remove data-meal-type="${mealType}" aria-label="移除${RECIPE_MEAL_LABELS[mealType]}" title="移除${RECIPE_MEAL_LABELS[mealType]}">${REMOVE_ICON_SVG}</button></li>`,
+    ] : []).join('');
+    return `<div class="pm-modal pm-calendar-entry-manager pm-recipe-meal-manager"><div class="pm-modal-header"><span></span><b>管理 ${escapeHtml(selectedDate)} 菜谱</b><button type="button" class="pm-modal-close" data-recipe-entry-close aria-label="关闭">${CLOSE_ICON_SVG}</button></div><div class="pm-calendar-entry-manager-body">${rows ? `<ul>${rows}</ul>` : '<p>这一天还没有可管理的餐食。</p>'}<button type="button" class="pm-action-button" data-recipe-entry-add>新增餐食</button></div></div>`;
 }

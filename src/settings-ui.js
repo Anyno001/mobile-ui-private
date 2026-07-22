@@ -148,7 +148,7 @@ export function installSettingsUi(deps) {
     window.__pmExportData = async () => {
         const snapshot = await captureBackupState();
         const data = {
-            schemaVersion: 6,
+            schemaVersion: 7,
             histories: snapshot.histories,
             config: snapshot.config,
             theme: legacyBackupTheme(snapshot.theme),
@@ -170,6 +170,7 @@ export function installSettingsUi(deps) {
             calendarHolidays: snapshot.calendarHolidays,
             calendarWeather: snapshot.calendarWeather,
             calendarCycles: snapshot.calendarCycles,
+            calendarRecipes: snapshot.calendarRecipes,
         };
         const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
@@ -193,7 +194,11 @@ export function installSettingsUi(deps) {
                 await runBackupTransaction({
                     capture: captureBackupState,
                     prepare: current => parseBackupData(data, current),
-                    beforeApply: async reason => { deps.cancelCommunityGeneration?.(`backup-${reason}`); clearBidirectionalInjection(); },
+                    beforeApply: async reason => {
+                        deps.cancelCommunityGeneration?.(`backup-${reason}`);
+                        deps.cancelCalendarTasks?.(`backup-${reason}`);
+                        clearBidirectionalInjection();
+                    },
                     apply: async (snapshot, imported) => {
                         if (snapshot) return applyBackupState(snapshot);
                         return applyBackupState(imported);
@@ -253,6 +258,7 @@ export function installSettingsUi(deps) {
         if (!confirm('最后确认：清理后只能通过之前导出的备份恢复。确定删除全部天音小笺数据？')) return false;
         const previous = await captureBackupState();
         deps.cancelCommunityGeneration?.('plugin-data-clear');
+        deps.cancelCalendarTasks?.('plugin-data-clear');
         clearBidirectionalInjection();
         try {
             await clearPluginData({ afterClear: async () => {
@@ -264,6 +270,7 @@ export function installSettingsUi(deps) {
                     phoneUiState: normalizePhoneUiState(null), ambientStatus: normalizeAmbientStatus(),
                     ...createEmptyCalendarBackupFields(),
                 });
+                deps.reloadCalendarStore?.();
                 window.__pmBudgetConfig = normalizeBudgetConfig();
                 deps.invalidateInteractiveStore?.();
             } });
@@ -273,6 +280,7 @@ export function installSettingsUi(deps) {
             return true;
         } catch (error) {
             await applyBackupState(previous);
+            deps.reloadCalendarStore?.();
             await applyBidirectionalInjection();
             alert(error.rollbackError
                 ? `清理失败，原数据回滚也失败。请勿刷新，并立即导出当前内存备份。\n${error.message}`
@@ -442,6 +450,7 @@ export function installSettingsUi(deps) {
         const phoneWeightInput = document.getElementById('pm-budget-phone-weight');
         const communityWeightInput = document.getElementById('pm-budget-community-weight');
         const calendarWeightInput = document.getElementById('pm-budget-calendar-weight');
+        const recipeWeightInput = document.getElementById('pm-budget-recipe-weight');
         let sourceWeights;
         try {
             sourceWeights = resolveBudgetPercentageInput({
@@ -449,13 +458,15 @@ export function installSettingsUi(deps) {
                 phone: phoneWeightInput?.value,
                 community: communityWeightInput?.value,
                 calendar: calendarWeightInput?.value,
+                recipe: recipeWeightInput?.value,
                 initialPhone: phoneWeightInput?.dataset.initialValue,
                 initialCommunity: communityWeightInput?.dataset.initialValue,
                 initialCalendar: calendarWeightInput?.dataset.initialValue,
+                initialRecipe: recipeWeightInput?.dataset.initialValue,
             });
         } catch (error) { alert(error.message); return; }
         const prioritySource = document.getElementById('pm-budget-priority')?.value;
-        const priority = [prioritySource, 'phone', 'community', 'calendar'].filter((value, index, values) => value && values.indexOf(value) === index);
+        const priority = [prioritySource, 'phone', 'community', 'calendar', 'recipe'].filter((value, index, values) => value && values.indexOf(value) === index);
         const current = normalizeBudgetConfig(window.__pmBudgetConfig);
         const communityFields = collectBudgetCommunityFields(document, current, storageId);
         const candidate = normalizeBudgetConfig({
@@ -471,6 +482,9 @@ export function installSettingsUi(deps) {
             calendarEnabled: document.getElementById('pm-budget-calendar-enabled')?.classList.contains('is-checked') === true,
             calendarPosition: Number(document.getElementById('pm-budget-calendar-position')?.value),
             calendarDepth: Number(document.getElementById('pm-budget-calendar-depth')?.value),
+            recipeEnabled: document.getElementById('pm-budget-recipe-enabled')?.classList.contains('is-checked') === true,
+            recipePosition: Number(document.getElementById('pm-budget-recipe-position')?.value),
+            recipeDepth: Number(document.getElementById('pm-budget-recipe-depth')?.value),
         });
         if (!saveBudgetConfig(candidate)) {
             alert('上下文预算保存失败：浏览器存储不可用');

@@ -44,7 +44,6 @@ export async function migrateInteractiveStore(rawStore, saveStore) {
     }
     return normalized;
 }
-
 export function createInteractiveOperationGuard({ getEpoch, getStorageId, getOpenSceneId, isMounted }, { epoch, storageId, sceneId }) {
     if (![getEpoch, getStorageId, getOpenSceneId, isMounted].every(value => typeof value === 'function')) {
         throw new TypeError('社区操作有效性依赖无效');
@@ -57,7 +56,6 @@ export function createInteractiveOperationGuard({ getEpoch, getStorageId, getOpe
             && isMounted();
     };
 }
-
 export function createInteractiveCommitQueue({ getStore, setStore, saveStore, syncStore = null }) {
     if (syncStore !== null && typeof syncStore !== 'function') throw new TypeError('互动场景同步依赖无效');
     let queue = Promise.resolve();
@@ -99,7 +97,6 @@ export function createInteractiveCommitQueue({ getStore, setStore, saveStore, sy
     };
     return commit;
 }
-
 export function createInteractiveStoreLoader({ runtime, load, migrate }) {
     if (!runtime || typeof load !== 'function' || typeof migrate !== 'function') {
         throw new TypeError('互动场景加载器依赖无效');
@@ -137,12 +134,12 @@ export function createInteractiveStoreLoader({ runtime, load, migrate }) {
     };
     return { loadStore, invalidateStore };
 }
-
 export function installInteractiveScenes(_state, deps) {
     const { getCtx, getStorageId, getUserPersona, gatherContext, callAI } = deps;
     const runtime = {
         store: null, loadPromise: null, mutationPromise: Promise.resolve(), requestId: 0, contextEpoch: 0,
         loadGeneration: 0, openSceneId: null, busy: false, creating: false, phoneUiState: null, requestController: null,
+        liveWarmupError: null,
     };
     const storeLoader = createInteractiveStoreLoader({
         runtime,
@@ -216,7 +213,7 @@ export function installInteractiveScenes(_state, deps) {
         runtime.requestController?.abort(reason);
         runtime.requestController = null;
         runtime.requestId += 1;
-        runtime.busy = false;
+        runtime.busy = false; setStatus('');
     };
     const setStatus = text => {
         const el = document.querySelector('.pm-scene-status');
@@ -225,7 +222,6 @@ export function installInteractiveScenes(_state, deps) {
         el.hidden = !text;
     };
     const confirmDelete = message => window.confirm(message);
-
     const getPhoneUiState = store => {
         if (!runtime.phoneUiState) {
             runtime.phoneUiState = loadPhoneUiState(store);
@@ -254,7 +250,6 @@ export function installInteractiveScenes(_state, deps) {
         setStatus(message);
         if (!document.querySelector('.pm-scene-status')) alert(message);
     };
-
     function refreshDesktop(scopeId = getStorageId(), store = runtime.store) {
         const validScope = !!store && !!scopeId && scopeId !== 'sms_unknown__default';
         const scope = validScope ? getScope(store, scopeId) : { scenes: {} };
@@ -262,7 +257,6 @@ export function installInteractiveScenes(_state, deps) {
             : { pinnedSceneIds: [], lastPage: 'desktop', lastSceneId: null, lastTab: 'feed' };
         return renderInto('.pm-desktop-page', renderPhoneDesktop(scope, uiScope));
     }
-
     const showPhoneDesktopPage = () => {
         const scopeId = getStorageId();
         const phoneWindow = _state.phoneWindow;
@@ -309,6 +303,9 @@ export function installInteractiveScenes(_state, deps) {
 
     const isLiveWarmupActive = (scopeId, sceneId) => communityTasks.state().task?.kind === 'live-warmup'
         && communityTasks.state().task.storageId === scopeId && communityTasks.state().task.sceneId === sceneId;
+    const getLiveWarmupState = (scopeId, sceneId, scene) => isLiveWarmupActive(scopeId, sceneId) ? 'starting'
+        : scene?.live?.warmupStarted === true ? 'active'
+            : runtime.liveWarmupError?.storageId === scopeId && runtime.liveWarmupError.sceneId === sceneId ? 'error' : 'idle';
 
     function renderCommunityWorkspace(scopeId, sceneId, tab, store = runtime.store) {
         const scope = getScope(store, scopeId);
@@ -317,7 +314,7 @@ export function installInteractiveScenes(_state, deps) {
         runtime.openSceneId = sceneId;
         return renderInto('.pm-community-page', renderCommunityWorkspaceView(scene, tab, phoneScope(scopeId, store), {
             autoActive: communityTasks.state().mode === 'auto',
-            liveActive: isLiveWarmupActive(scopeId, sceneId),
+            liveState: getLiveWarmupState(scopeId, sceneId, scene),
             ...getCommunityInjectionState(window.__pmBudgetConfig, scopeId, sceneId),
         }));
     }
@@ -372,7 +369,7 @@ export function installInteractiveScenes(_state, deps) {
         const feedScrollTop = preserveFeedScroll ? document.querySelector('#pm-scene-app .pm-scene-feed')?.scrollTop : null;
         replaceApp(renderCommunityWorkspaceView(scene, tab, phoneScope(scopeId), {
             autoActive: communityTasks.state().mode === 'auto',
-            liveActive: isLiveWarmupActive(scopeId, scene.id),
+            liveState: getLiveWarmupState(scopeId, scene.id, scene),
             ...getCommunityInjectionState(window.__pmBudgetConfig, scopeId, scene.id),
         }), { feedScrollTop });
     }
@@ -460,17 +457,16 @@ export function installInteractiveScenes(_state, deps) {
             runtime.creating = false;
         }
     }
-
     communityRunner = createCommunityGenerationRunner({
         controller: communityTasks, getTarget: getCommunityTarget, request,
-        commitFeed: (target, items, isValid) => commit(() => {
+        commitFeed: (target, items, isValid, onComplete) => commit(async () => {
             const { scopeId, scope, scene } = resolveTarget(target);
             if (!scene) throw new Error('生成已取消');
             appendPosts(scopeId, scope, scene, items);
+            if (typeof onComplete === 'function') await onComplete();
         }, isValid),
         onRender: rerender, onStatus: setStatus,
     });
-
     async function generateComments(postId) {
         const { scopeId, scene } = current();
         const post = scene?.posts.find(item => item.id === postId);
@@ -496,7 +492,6 @@ export function installInteractiveScenes(_state, deps) {
         if (!isValid()) throw new Error('生成已取消');
         rerender('feed');
     }
-
     async function regeneratePrompt() {
         const { scopeId, scene } = current();
         if (!scene) throw new Error('社区不存在或已被删除');
@@ -512,7 +507,6 @@ export function installInteractiveScenes(_state, deps) {
         if (!isValid()) throw new Error('生成已取消');
         rerender('prompt');
     }
-
     async function handleAction(button, app) {
         const action = button.dataset.action;
         if (app?.id === 'pm-calendar-app') {
@@ -610,20 +604,26 @@ export function installInteractiveScenes(_state, deps) {
             const { scopeId, scene } = current();
             if (!scene) return;
             const target = { storageId: scopeId, sceneId: scene.id };
-            await runLiveWarmup({
-                target,
-                isStarted: () => resolveTarget(target).scene?.live.warmupStarted === true,
-                isActive: () => isLiveWarmupActive(scopeId, scene.id),
-                setStarted: started => commit(() => {
-                    const targetScene = resolveTarget(target).scene;
-                    if (!targetScene) throw new Error('社区不存在或已被删除');
-                    targetScene.live.warmupStarted = started;
-                    targetScene.updatedAt = now();
-                }),
-                generateFeed: communityRunner.generateFeed,
-                render: () => rerender('live'),
-                isCurrent: () => current().scene?.id === target.sceneId,
-            });
+            runtime.liveWarmupError = null;
+            try {
+                await runLiveWarmup({
+                    target,
+                    isStarted: () => resolveTarget(target).scene?.live.warmupStarted === true,
+                    isActive: () => isLiveWarmupActive(scopeId, scene.id),
+                    setStarted: started => {
+                        const targetScene = resolveTarget(target).scene;
+                        if (!targetScene) throw new Error('社区不存在或已被删除');
+                        targetScene.live.warmupStarted = started;
+                        targetScene.updatedAt = now();
+                    },
+                    generateFeed: communityRunner.generateFeed,
+                    render: () => rerender('live'),
+                    isCurrent: () => isTargetActive(target) && phoneScope(target.storageId).lastTab === 'live',
+                });
+            } catch (error) {
+                if (error?.message !== '生成已取消' && isTargetActive(target) && phoneScope(target.storageId).lastTab === 'live') { runtime.liveWarmupError = { ...target, message: generationErrorMessage(error) }; rerender('live'); }
+                throw error;
+            }
             return;
         }
         if (action === 'comments') { await generateComments(button.dataset.postId); return; }

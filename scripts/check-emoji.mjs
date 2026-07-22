@@ -267,6 +267,22 @@ try {
     assert.equal(imageCount(), 4, '增量消息不得重置当前联系人预算');
     assert.equal(placeholderCount(), 2);
 
+    messageList.innerHTML = '';
+    state.isGroupChat = false;
+    state.currentPersona = 'Alice';
+    const privateNodes = deps.addBubble('私聊可引用目标', 'left', undefined, 0, {
+        historyIndex: 0, messageId: 'msg_private_target', bubbleId: 'bubble_private_target', sender: 'Alice',
+    });
+    const privateQuoteAction = privateNodes[0].querySelector('.pm-quote-action');
+    assert.ok(privateQuoteAction, '私聊稳定气泡必须提供引用操作');
+    privateQuoteAction.click();
+    assert.deepEqual(state.activeQuote, {
+        messageId: 'msg_private_target', bubbleId: 'bubble_private_target', sender: 'Alice', text: '私聊可引用目标',
+    }, '私聊引用必须写入与群聊一致的稳定快照');
+    assert.equal(quotePreview.hidden, false, '私聊引用后必须显示输入区预览');
+    deps.clearActiveQuote();
+    assert.equal(quotePreview.hidden, true, '取消私聊引用必须清空预览');
+
     window.__pmSwitch('Bob');
     assert.equal(imageCount(), 1, '切换联系人后必须在历史重放前重置预算');
 

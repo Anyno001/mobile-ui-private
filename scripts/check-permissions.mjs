@@ -9,6 +9,9 @@ import { resolveCommunitySources, resolvePhoneSources } from '../src/permissions
 import {
     calendarDateRangeKeys, calendarScopeFor, createEmptyCalendarStore, renderCalendarInjection,
 } from '../src/calendar-model.js';
+import {
+    normalizeRecipeStore, setRecipeRegionPreference, upsertRecipeMeal,
+} from '../src/calendar-recipe-model.js';
 import { allocateContextBudget, normalizeBudgetConfig, BUDGET_SOURCES, DEFAULT_BUDGET_CONFIG } from '../src/budget.js';
 
 function assertNoUnpairedSurrogates(value, label) {
@@ -448,8 +451,8 @@ const migratedTwoSourceBudget = normalizeBudgetConfig({
     sourcePriority: ['community', 'phone'],
     communityEnabled: true,
 });
-assert.deepEqual(migratedTwoSourceBudget.sourceWeights, { phone: 3, community: 1, calendar: 0 });
-assert.deepEqual(migratedTwoSourceBudget.sourcePriority, ['community', 'phone', 'calendar']);
+assert.deepEqual(migratedTwoSourceBudget.sourceWeights, { phone: 3, community: 1, calendar: 0, recipe: 0 });
+assert.deepEqual(migratedTwoSourceBudget.sourcePriority, ['community', 'phone', 'calendar', 'recipe']);
 assert.equal(migratedTwoSourceBudget.calendarEnabled, false);
 assert.equal(migratedTwoSourceBudget.calendarPosition, DEFAULT_BUDGET_CONFIG.calendarPosition);
 assert.equal(migratedTwoSourceBudget.calendarDepth, DEFAULT_BUDGET_CONFIG.calendarDepth);
@@ -537,7 +540,7 @@ const fullCalendarBody = renderCalendarContextInjection({
         country: 'CN', year: todayParts[0], fetchedAt: 1, source: 'test', entries: [{ date: today, name: '生活节', kind: 'holiday', source: 'test' }],
     } } },
     weatherStore: { version: 1, location: { name: '上海', latitude: 31.2, longitude: 121.4, country: 'CN', admin1: '上海', timezone: 'Asia/Shanghai' }, lastSuccess: {
-        locationKey: '31.2,121.4|上海', fetchedAt: 1, forecast: { days: [{ date: today, weatherCode: 1, tempMin: 20, tempMax: 30 }] },
+        locationKey: '31.2,121.4|上海', fetchedAt: 1, source: 'forecast', forecast: { days: [{ date: today, weatherCode: 1, tempMin: 20, tempMax: 30 }] },
     } },
     cycleStore: { version: 1, scopes: { 'story-a': {
         enabled: true, lastPeriodStart: today, cycleLength: 28, periodLength: 5, overrides: {},
@@ -546,15 +549,16 @@ const fullCalendarBody = renderCalendarContextInjection({
     start: now,
 });
 assert.match(fullCalendarBody, /项目评审会/);
-assert.match(fullCalendarBody, new RegExp(`大前天 ${threeDaysAgo}｜日程：三日前复盘`));
-assert.match(fullCalendarBody, new RegExp(`六天后 ${sixDaysLater}｜日程：六日后交付`));
+assert.match(fullCalendarBody, new RegExp(`大前天 ${threeDaysAgo}｜[^\\n]*日程：三日前复盘`));
+assert.match(fullCalendarBody, new RegExp(`六天后 ${sixDaysLater}｜[^\\n]*日程：六日后交付`));
 assert.match(fullCalendarBody, /生日：角色生日/);
 assert.match(fullCalendarBody, new RegExp(`${fiftyNineDaysLater}｜纪念日：五十九日纪念`), '生日与纪念日必须覆盖未来 60 天');
 assert.match(fullCalendarBody, /节假日：生活节/);
 assert.match(fullCalendarBody, /生理周期（我）：经期/);
 assert.match(fullCalendarBody, /生理周期（角色乙）：经期/);
+assert.match(fullCalendarBody, /今天 [^｜]+｜天气（真实预报）：少云，20°\/30°C/);
+assert.match(fullCalendarBody, /天气（气候推演）：/);
 assert.equal((fullCalendarBody.match(new RegExp(`${today}｜`, 'g')) || []).length, 1, '同一天必须只输出一个日期标题');
-assert.doesNotMatch(fullCalendarBody, /天气：|少云|20°\/30°C/, '日历上下文注入不得包含天气');
 const otherStorageBody = renderCalendarContextInjection({
     currentStorageId: 'story-b', calendarStore: calendarStoreWithEvents,
     occasionStore: { version: 1, scopes: { 'story-a': { occasions: [{ id: 'private', type: 'birthday', month: todayParts[1], day: todayParts[2], title: '私密生日' }] } } },
@@ -588,15 +592,19 @@ const storyCalendarPlan = buildContextInjectionPrompts({
     calendarHolidays: { version: 1, selectedCountry: 'CN', years: { 'CN:2032': {
         country: 'CN', year: 2032, fetchedAt: 1, source: 'test', entries: [{ date: storyDate, name: '架空节', kind: 'holiday', source: 'test' }],
     } } },
-    calendarWeather: { version: 1, lastSuccess: { forecast: { days: [{ date: storyDate, weatherCode: 1, tempMin: 10, tempMax: 20 }] } } },
+    calendarWeather: {
+        version: 1, location: { name: '上海', latitude: 31.2, longitude: 121.4, country: 'CN', admin1: '上海', timezone: 'Asia/Shanghai' },
+        lastSuccess: { locationKey: '31.2,121.4|上海', fetchedAt: 1, source: 'forecast', forecast: { days: [{ date: storyDate, weatherCode: 1, tempMin: 10, tempMax: 20 }] } },
+    },
     calendarCycles: { version: 1, scopes: { 'story-a': { enabled: true, lastPeriodStart: storyDate, cycleLength: 28, periodLength: 5, overrides: {} } } },
 });
 const storyCalendarPrompt = storyCalendarPlan.prompts.find(prompt => prompt.key.includes(':calendar:'));
 assert.ok(storyCalendarPrompt, '配置时间起点时应生成日历 prompt');
-assert.match(storyCalendarPrompt.content, /今天 2032-03-15｜日程：架空纪元会议；纪念日：架空纪念日；节假日：架空节；生理周期（我）：经期/);
+assert.match(storyCalendarPrompt.content, /今天 2032-03-15｜天气（真实预报）：少云，10°\/20°C；日程：架空纪元会议；纪念日：架空纪念日；节假日：架空节；生理周期（我）：经期/);
+assert.match(storyCalendarPrompt.content, /天气（气候推演）：/, '故事日期窗口中预报外日期必须使用气候推演');
 assert.equal((storyCalendarPrompt.content.match(/2032-03-15｜/g) || []).length, 1, '同日事实必须合并为单个日期标题');
-assert.doesNotMatch(storyCalendarPrompt.content, /设备日期诱饵|天气：/,
-    '最终日历 prompt 必须使用 scope.baseDate 窗口并排除天气');
+assert.doesNotMatch(storyCalendarPrompt.content, /设备日期诱饵/,
+    '最终日历 prompt 必须使用 scope.baseDate窗口，不得泄漏设备日期诱饵');
 
 // 4. Cross-storage: only currentStorageId's events
 const calendarStoreCrossStorage = {
@@ -652,3 +660,48 @@ const zeroWeightPlan = buildContextInjectionPrompts({
     calendarStore: calendarStoreWithEvents,
 });
 assert.equal(zeroWeightPlan.prompts.find(p => p.key.includes(':calendar:')), undefined, 'weight=0 且 redistributeUnused=false 无 calendar prompt');
+
+// === Recipe injection tests ===
+let recipeScope = setRecipeRegionPreference({}, '架空北境');
+for (const [offset, mealType, text] of [
+    [-2, 'breakfast', '窗口外前日餐'], [-1, 'breakfast', '昨日麦粥'], [0, 'lunch', '今日炖肉'],
+    [1, 'dinner', '明日烤鱼'], [2, 'snack', '窗口外后日餐'],
+]) {
+    recipeScope = upsertRecipeMeal(recipeScope, {
+        date: calendarDateRangeKeys(new Date(`${storyDate}T12:00:00`), offset, offset)[0], mealType, text,
+    }, 1);
+}
+const recipeStore = normalizeRecipeStore({ version: 1, scopes: { 'story-a': recipeScope, 'story-b': {
+    ...setRecipeRegionPreference({}, '泄漏地区'),
+    days: { [storyDate]: { breakfast: { text: '其他会话早餐', source: 'manual', updatedAt: 1 } } },
+} } });
+const recipePlan = buildContextInjectionPrompts({
+    ...baseInjectionInput,
+    budgetConfig: {
+        targetTokens: 2000, recipeEnabled: true, recipePosition: 2, recipeDepth: 4,
+        sourceWeights: { phone: 0, community: 0, calendar: 0, recipe: 1 },
+        sourcePriority: ['recipe', 'phone', 'community', 'calendar'], redistributeUnused: true,
+    },
+    calendarStore: { version: 1, scopes: { 'story-a': { baseDate: storyDate, events: {} } } },
+    calendarRecipes: recipeStore,
+});
+const recipePrompt = recipePlan.prompts.find(prompt => prompt.key.includes(':recipe:'));
+assert.ok(recipePrompt, '启用且有数据时必须生成独立菜谱 prompt');
+assert.equal(recipePrompt.key, 'PHONE_SMS_MEMORY:recipe:story-a');
+assert.equal(recipePrompt.position, 2);
+assert.equal(recipePrompt.depth, 4);
+assert.match(recipePrompt.content, /\[角色菜谱\]/);
+assert.match(recipePrompt.content, /饮食地区\/文化：架空北境/);
+assert.match(recipePrompt.content, /昨日麦粥|今日炖肉|明日烤鱼/);
+assert.doesNotMatch(recipePrompt.content, /窗口外前日餐|窗口外后日餐|泄漏地区|其他会话早餐/,
+    '菜谱注入必须严格限制 -1...+1 且按 storageId 隔离');
+assert.equal(recipePlan.prompts.some(prompt => prompt.key.includes(':calendar:')), false,
+    '菜谱 prompt 不得复用生活日历 key');
+assert.equal(recipePlan.diagnostics.recipeEnabled, true);
+const disabledRecipePlan = buildContextInjectionPrompts({
+    ...baseInjectionInput,
+    budgetConfig: { recipeEnabled: false, sourceWeights: { phone: 1, recipe: 0 } },
+    calendarStore: { version: 1, scopes: { 'story-a': { baseDate: storyDate, events: {} } } },
+    calendarRecipes: recipeStore,
+});
+assert.equal(disabledRecipePlan.prompts.some(prompt => prompt.key.includes(':recipe:')), false);

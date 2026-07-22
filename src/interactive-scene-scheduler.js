@@ -174,15 +174,19 @@ export async function runLiveWarmup({
         throw new TypeError('直播热场依赖无效');
     }
     if (isStarted() || isActive()) return false;
-    await setStarted(true);
-    const generation = generateFeed(null, { renderTab: 'live', taskKind: 'live-warmup' });
+    const generation = generateFeed(null, {
+        renderTab: 'live',
+        taskKind: 'live-warmup',
+        onComplete: () => setStarted(true),
+    });
     render();
     try {
         await generation;
         return true;
     } catch (error) {
-        await setStarted(false);
-        if (isCurrent()) render();
+        if (!isCurrent()) throw new Error('生成已取消');
+        if (error?.message === '生成已取消' || error?.name === 'AbortError') throw new Error('生成已取消');
+        render();
         throw error;
     }
 }
@@ -208,7 +212,7 @@ export function createCommunityGenerationRunner({
     const cancel = (reason = 'community-generation-cancelled', resetObservation = false) => {
         return controller.cancel(reason, resetObservation);
     };
-    const generateFeed = async (scheduledTask = null, { renderTab = 'feed', taskKind = 'manual-feed' } = {}) => {
+    const generateFeed = async (scheduledTask = null, { renderTab = 'feed', taskKind = 'manual-feed', onComplete = null } = {}) => {
         const task = scheduledTask || begin(taskKind);
         if (!task) throw new Error('已有社区生成任务正在进行');
         if (!controller.markGenerating(task)) return false;
@@ -217,12 +221,19 @@ export function createCommunityGenerationRunner({
         try {
             const items = await request('feed_batch', {}, target);
             if (!controller.isActive(task)) throw new Error('生成已取消');
-            await commitFeed(target, items, () => controller.isActive(task));
+            await commitFeed(target, items, () => controller.isActive(task), onComplete);
             if (!controller.isActive(task)) throw new Error('生成已取消');
             controller.finish(task);
             onRender(renderTab);
             return true;
         } catch (error) {
+            const cancelledWarmup = task.kind === 'live-warmup'
+                && (!controller.isActive(task) || error?.message === '生成已取消' || error?.name === 'AbortError');
+            if (cancelledWarmup) {
+                const cancelled = new Error('生成已取消');
+                controller.finish(task);
+                throw cancelled;
+            }
             reportFailure(task, error);
             throw error;
         }

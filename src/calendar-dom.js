@@ -9,7 +9,7 @@ export function setCalendarEntryKind(root, kind) {
     return normalized;
 }
 
-export function fillCalendarEntryForm(root, entry = null, kind = 'event') {
+export function fillCalendarEntryForm(root, entry = null, kind = 'event', { focusTitle = false } = {}) {
     const form = root?.querySelector?.('[data-calendar-entry-form]');
     if (!form) return false;
     const normalized = setCalendarEntryKind(root, kind);
@@ -17,9 +17,7 @@ export function fillCalendarEntryForm(root, entry = null, kind = 'event') {
     form.elements.note.value = entry?.note || '';
     form.elements.occasionType.value = entry?.type || 'anniversary';
     form.elements.leapDayRule.value = entry?.leapDayRule || 'feb28';
-    const remove = root.querySelector?.('[data-calendar-entry-delete]');
-    if (remove) remove.disabled = !entry;
-    form.elements.title.focus?.();
+    if (focusTitle) form.elements.title.focus?.({ preventScroll: true });
     return normalized;
 }
 

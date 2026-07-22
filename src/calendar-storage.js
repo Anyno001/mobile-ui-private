@@ -2,10 +2,11 @@ import { createEmptyCalendarStore, normalizeCalendarStore } from './calendar-mod
 import { createEmptyOccasionStore, normalizeOccasionStore } from './calendar-occasion-model.js';
 import { createEmptyCycleStore, normalizeCycleStore } from './calendar-cycle-model.js';
 import { createEmptyHolidayCache, normalizeHolidayCache } from './calendar-holiday.js';
+import { createEmptyRecipeStore, normalizeRecipeStore } from './calendar-recipe-model.js';
 import { createEmptyWeatherStore, normalizeWeatherStore } from './calendar-weather.js';
 import {
     CALENDAR_CYCLE_STORAGE_KEY, CALENDAR_HOLIDAY_STORAGE_KEY, CALENDAR_OCCASION_STORAGE_KEY,
-    CALENDAR_STORAGE_KEY, CALENDAR_WEATHER_STORAGE_KEY,
+    CALENDAR_RECIPE_STORAGE_KEY, CALENDAR_STORAGE_KEY, CALENDAR_WEATHER_STORAGE_KEY,
 } from './constants.js';
 
 function loadStore(key, normalize, empty, label, storage = globalThis.localStorage) {
@@ -58,4 +59,10 @@ export const loadCalendarCycles = storage => loadStore(
 );
 export const saveCalendarCycles = (store, storage) => saveStore(
     CALENDAR_CYCLE_STORAGE_KEY, store, normalizeCycleStore, '生理周期数据', storage,
+);
+export const loadCalendarRecipes = storage => loadStore(
+    CALENDAR_RECIPE_STORAGE_KEY, normalizeRecipeStore, createEmptyRecipeStore, '菜谱数据', storage,
+);
+export const saveCalendarRecipes = (store, storage) => saveStore(
+    CALENDAR_RECIPE_STORAGE_KEY, store, normalizeRecipeStore, '菜谱数据', storage,
 );

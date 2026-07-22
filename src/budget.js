@@ -1,16 +1,16 @@
 import { EXTENSION_PROMPT_POSITIONS, MAX_INJECTION_CHARS, MAX_INJECTION_DEPTH } from './constants.js';
 
 export const BUDGET_CONFIG_KEY = 'ST_SMS_BUDGET_CONFIG';
-export const BUDGET_VERSION = 1;
-export const BUDGET_SOURCES = Object.freeze(['phone', 'community', 'calendar']);
+export const BUDGET_VERSION = 2;
+export const BUDGET_SOURCES = Object.freeze(['phone', 'community', 'calendar', 'recipe']);
 export const DEFAULT_SAFE_INPUT_TOKENS = Math.floor(MAX_INJECTION_CHARS / 4);
 const MAX_TARGET_TOKENS = 12000;
 
 export const DEFAULT_BUDGET_CONFIG = Object.freeze({
     budgetVersion: BUDGET_VERSION,
     targetTokens: DEFAULT_SAFE_INPUT_TOKENS,
-    sourceWeights: Object.freeze({ phone: 1, community: 0, calendar: 0 }),
-    sourcePriority: Object.freeze(['phone', 'community', 'calendar']),
+    sourceWeights: Object.freeze({ phone: 1, community: 0, calendar: 0, recipe: 0 }),
+    sourcePriority: Object.freeze(['phone', 'community', 'calendar', 'recipe']),
     redistributeUnused: true,
     communityEnabled: false,
     communityPosition: EXTENSION_PROMPT_POSITIONS.IN_PROMPT,
@@ -20,6 +20,9 @@ export const DEFAULT_BUDGET_CONFIG = Object.freeze({
     calendarEnabled: false,
     calendarPosition: EXTENSION_PROMPT_POSITIONS.IN_PROMPT,
     calendarDepth: 0,
+    recipeEnabled: false,
+    recipePosition: EXTENSION_PROMPT_POSITIONS.IN_PROMPT,
+    recipeDepth: 0,
 });
 
 const finiteInteger = (value, min, max) => typeof value === 'number'
@@ -124,6 +127,11 @@ export function normalizeBudgetConfig(value) {
             ? source.calendarPosition : DEFAULT_BUDGET_CONFIG.calendarPosition,
         calendarDepth: finiteInteger(source.calendarDepth, 0, MAX_INJECTION_DEPTH)
             ? source.calendarDepth : DEFAULT_BUDGET_CONFIG.calendarDepth,
+        recipeEnabled: source.recipeEnabled === true,
+        recipePosition: allowedPositions.includes(source.recipePosition)
+            ? source.recipePosition : DEFAULT_BUDGET_CONFIG.recipePosition,
+        recipeDepth: finiteInteger(source.recipeDepth, 0, MAX_INJECTION_DEPTH)
+            ? source.recipeDepth : DEFAULT_BUDGET_CONFIG.recipeDepth,
     };
 }
 

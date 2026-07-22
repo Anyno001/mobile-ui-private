@@ -1,7 +1,8 @@
 export function createTaskController(getStorageId) {
     let epoch = 0, sequence = 0;
     const tasks = new Map();
-    const slotFor = (storageId, category) => category === 'generate' ? `${category}\0${storageId}` : category;
+    const slotFor = (storageId, category) => ['generate', 'recipe-generate'].includes(category)
+        ? `${category}\0${storageId}` : category;
     const begin = (storageId, category, { replace = true, mode = category, parentSignal } = {}) => {
         if (!storageId || storageId === 'sms_unknown__default' || getStorageId() !== storageId) return null;
         const slot = slotFor(storageId, category);
