@@ -84,6 +84,8 @@ const regionalPrompts = buildRecipePrompts({
 }, regionalScope, recipeStart);
 assert.match(regionalPrompts.userPrompt, /用户明确指定的饮食地区\/文化为“架空北境”/);
 assert.match(regionalPrompts.systemPrompt, /不得把天气地点、节假日国家或模型常识自动等同于人物籍贯和饮食文化/);
+assert.match(regionalPrompts.systemPrompt, /可包含简短的菜品质量或风味点评/);
+assert.match(regionalPrompts.systemPrompt, /不得预设角色行动、行动动机、进食过程或吃后感受/);
 const automaticPrompts = buildRecipePrompts({ cardScenario: '身处大阪', worldBookText: '关西商户家庭' }, {}, recipeStart);
 assert.match(automaticPrompts.userPrompt, /用户未指定饮食地区/);
 assert.doesNotMatch(automaticPrompts.userPrompt, /天气位置/);
@@ -152,7 +154,11 @@ assert.equal(extractCalendarDate('2027年十月二十八日见面', semanticRefe
 assert.equal(extractCalendarDate('2027年见面', semanticReference), null, '缺月和日期必须拒绝');
 assert.equal(extractCalendarDate('十月见面', semanticReference), null, '缺日期必须拒绝');
 assert.equal(extractCalendarBaseDate('<date>2027年十月二十八日</date>'), '2027-10-28');
+assert.equal(extractCalendarBaseDate('<date>2024-10-27</date>'), '2024-10-27');
 assert.equal(extractCalendarBaseDate('<when>2027-10-28</when>', ['when']), '2027-10-28');
+assert.equal(extractCalendarBaseDate('<date>2024-10-27</date><date>2024-10-28</date>'), '2024-10-28', '配置标签必须优先选择最后一个合法绝对日期');
+assert.equal(extractCalendarBaseDate('<date>2024-10-27</date><date>2024-02-30</date>'), '2024-10-27', '最后一个配置标签非法时必须回退此前合法日期');
+assert.equal(extractCalendarBaseDate('<when>2024-10-29</when><date>2024-10-27</date>'), '2024-10-27', '未配置标签不得抢占配置标签日期');
 assert.equal(extractCalendarBaseDate('<2027 10 28>'), '2027-10-28', '旧日期标签仍须支持明确年份');
 assert.equal(extractCalendarBaseDate('十月二十八日'), null, '今天基准不得接受无年份日期');
 assert.equal(extractCalendarBaseDate('明天见面'), null, '今天基准不得接受相对日期');
@@ -467,8 +473,10 @@ const climateInjection = renderCalendarContextInjection({
     start: new Date(`${climateDate}T12:00:00`),
 });
 const sharedWeatherText = `${climateResolved.day.tempMin}°/${climateResolved.day.tempMax}°C`;
-assert.match(climateDetail, new RegExp(sharedWeatherText.replace('/', '\\/')));
-assert.match(climateDetail, /气候推演/);
+assert.match(climateDetail, new RegExp(sharedWeatherText.replace('/', '\\s*\\/\\s*')));
+assert.match(climateDetail, /class="pm-calendar-weather"/);
+assert.match(climateDetail, /<svg/);
+assert.doesNotMatch(climateDetail, /气候推演|缓存预报|真实预报|体感|湿度/);
 assert.match(climateInjection, new RegExp(sharedWeatherText.replace('/', '\\/')));
 assert.match(climateInjection, /天气（气候推演）：/);
 assert.match(climateDetail, new RegExp(weatherCodeLabel(climateResolved.day.weatherCode)));
@@ -626,6 +634,10 @@ const renderedSchedule = renderCalendarPageHtml(
     [{ name: '<Location>', latitude: 1, longitude: 2, country: '<Country>', admin1: '', timezone: 'UTC' }],
     renderedView,
 );
+const renderedScheduleEditing = renderCalendarPageHtml(
+    renderedScope, { occasions: [] }, '<status>', holidayForToday, currentWeather, currentCycle,
+    [], { ...renderedView, detailEditing: true },
+);
 const renderedWeather = renderCalendarPageHtml(
     renderedScope, { occasions: [] }, '<status>', holidayForToday, currentWeather, currentCycle,
     [{ name: '<Location>', latitude: 1, longitude: 2, country: '<Country>', admin1: '', timezone: 'UTC' }],
@@ -650,13 +662,14 @@ const renderedBusyRecipe = renderCalendarPageHtml(
 );
 const renderedBusyWeather = renderCalendarPageHtml(
     renderedScope, { occasions: [] }, '', holidayForToday, currentWeather, currentCycle, [],
-    { ...renderedView, viewMode: 'weather', generating: true },
+    { ...renderedView, viewMode: 'weather', weatherRefreshing: true },
 );
 assert.match(renderedSchedule, /data-calendar-view-mode="schedule"/);
 assert.match(renderedSchedule, /data-action="calendar-home"[^>]*title="返回桌面"/);
-assert.match(renderedSchedule, /class="pm-calendar-title-row"><button[^>]*data-action="calendar-month-panel"[^>]*aria-expanded="false"[\s\S]*?<b>[^<]+<\/b>/);
+assert.match(renderedSchedule, /class="pm-calendar-title-row">[\s\S]*?data-action="calendar-prev-month"[\s\S]*?class="pm-calendar-title-control"[\s\S]*?data-action="calendar-month-panel"[^>]*aria-expanded="false"[\s\S]*?<b>[^<]+<\/b>[\s\S]*?class="pm-calendar-title-chevron[^\"]*"[\s\S]*?data-action="calendar-next-month"/);
 assert.match(renderedSchedule, /data-calendar-month-panel hidden[\s\S]*data-calendar-jump-year[\s\S]*data-calendar-jump-month/);
-assert.match(renderedSchedule, /data-action="calendar-base-save"[\s\S]*data-action="calendar-base-clear"[\s\S]*data-action="calendar-date-rescan"[\s\S]*data-action="calendar-today"/);
+assert.match(renderedSchedule, /data-action="calendar-base-save"[\s\S]*data-action="calendar-base-clear"[\s\S]*data-action="calendar-today"/);
+assert.doesNotMatch(renderedSchedule, /calendar-date-rescan/);
 assert.doesNotMatch(renderedSchedule, /calendar-base-edit|pm-calendar-base-dialog/);
 assert.match(renderedSchedule, /data-action="calendar-generate" aria-label="生成未来七日日程"/);
 assert.match(renderedSchedule, /class="pm-calendar-status" aria-live="polite">&lt;status&gt;<\/div>/);
@@ -667,9 +680,10 @@ assert.match(renderedBusySchedule, /data-action="calendar-generate"[\s\S]*?M12 3
 assert.doesNotMatch(renderedBusySchedule, /data-action="calendar-generate"[\s\S]*?M23 4v6h-6/);
 assert.match(renderedBusySchedule, /class="pm-calendar-status is-generating" aria-live="polite">/,
     '生成中状态必须使用独立样式类');
-assert.match(renderedBusyWeather, /data-action="calendar-weather-refresh"[^>]*aria-busy="false"/,
-    '切到天气模式后不得把日程生成 busy 状态串到天气刷新按钮');
-assert.doesNotMatch(renderedBusyWeather, /pm-calendar-header-action is-loading|calendar-weather-refresh[^>]*disabled/);
+assert.match(renderedBusyWeather, /class="pm-calendar-header-action is-loading"[^>]*data-action="calendar-weather-refresh"[^>]*aria-busy="true"[^>]*disabled/,
+    '天气刷新 pending 时刷新按钮必须 busy 并禁用');
+assert.doesNotMatch(renderedBusyWeather, /pm-calendar-status is-generating/,
+    '天气刷新不应复用日程或菜谱的生成状态样式');
 assert.ok(
     renderedSchedule.indexOf('data-calendar-management="schedule"') < renderedSchedule.indexOf('class="pm-calendar-status"'),
     '状态区必须位于全部管理内容之后',
@@ -682,10 +696,15 @@ assert.match(renderedSchedule, /data-action="calendar-mode-cycle"[^>]*aria-press
 assert.match(renderedSchedule, /data-action="calendar-mode-recipe"[^>]*aria-label="显示菜谱"[^>]*aria-pressed="false"[^>]*title="菜谱"/);
 assert.doesNotMatch(renderedSchedule, /is-preview|data-calendar-mode-status="preview"|菜谱模式尚未启用/,
     '菜谱入口不得继续伪装成预览功能');
-assert.match(renderedSchedule, /data-action="calendar-detail-menu"[^>]*aria-expanded="false"/);
-assert.match(renderedSchedule, /id="pm-calendar-detail-menu"[^>]*hidden[\s\S]*data-action="calendar-add-date"[\s\S]*data-action="calendar-manage-date"/);
-assert.doesNotMatch(renderedSchedule, /calendar-delete-date|TRASH_ICON_SVG/,
-    '详情区不得继续提供含糊的日期级垃圾桶删除');
+assert.match(renderedSchedule, /data-action="calendar-toggle-detail-edit"[^>]*aria-label="编辑这一天"[^>]*aria-pressed="false"/);
+assert.doesNotMatch(renderedSchedule, /data-action="calendar-edit-entry"|data-action="calendar-delete-entry"|\+ 新增一条/,
+    '默认详情态不得暴露编辑控件');
+assert.match(renderedScheduleEditing, /data-action="calendar-toggle-detail-edit"[^>]*aria-label="关闭编辑状态"[^>]*aria-pressed="true"[\s\S]*?M6 6l12 12M18 6L6 18/);
+assert.match(renderedScheduleEditing, /data-action="calendar-edit-entry"[^>]*data-entry-kind="event"[^>]*data-entry-id="event-current"/);
+assert.match(renderedScheduleEditing, /data-action="calendar-delete-entry"[^>]*data-entry-kind="event"[^>]*data-entry-id="event-current"[\s\S]*?M4 7h16/);
+assert.match(renderedScheduleEditing, /class="pm-calendar-inline-add"[^>]*data-action="calendar-add-date"[^>]*>\+ 新增一条<\/button>/);
+assert.doesNotMatch(renderedSchedule, /data-action="calendar-manage-date"/,
+    '详情主流程不得退回二级管理弹窗');
 assert.match(renderedSchedule, /class="pm-calendar-data-tools pm-calendar-scan-card"><h3>正文日期<\/h3>[\s\S]*?data-calendar-date-tags[\s\S]*?data-action="calendar-date-sync"[^>]*>保存并识别/);
 assert.match(renderedSchedule, /data-action="calendar-toggle-auto" role="switch" aria-checked="false"/);
 assert.match(renderedSchedule, /自动识别最后一条正文/);
@@ -734,16 +753,20 @@ assert.doesNotMatch(renderedWeather, /data-action="calendar-generate"/);
 assert.match(renderedWeather, /data-calendar-management="weather"/);
 assert.match(renderedWeather, /data-action="calendar-mode-weather"[^>]*aria-pressed="true"/);
 assert.match(renderedWeather, /少云/);
-assert.match(renderedWeather, /真实预报/);
-assert.match(renderedWeather, /20°\/30°C/);
+assert.match(renderedWeather, /20°\s*\/\s*30°C/);
 assert.doesNotMatch(renderedWeather, /Open-Meteo|CC BY/, '天气来源标签不得混成第三方 attribution');
 assert.match(renderedWeather, /预报外日期使用气候推演/);
 assert.match(renderedWeather, /&lt;Location&gt;/);
 assert.doesNotMatch(renderedWeather, /生理期提示|&lt;Holiday&gt;|&lt;日程&gt;|data-calendar-management="schedule"/);
+const renderedWeatherDetail = renderSelectedDateDetail(
+    renderedScope, new Map(), {}, currentWeather, {}, currentDates[0], 'weather', '今天', {}, false,
+);
+assert.match(renderedWeatherDetail, /20°\s*\/\s*30°C[\s\S]*少云[\s\S]*<svg/);
+assert.doesNotMatch(renderedWeatherDetail, /气候推演|真实预报|缓存预报|体感|湿度|pm-calendar-detail-more/);
 assert.match(renderedCycle, /data-calendar-view-mode="cycle"/);
 assert.match(renderedCycle, /data-calendar-management="cycle" open/);
 assert.match(renderedCycle, /data-action="calendar-mode-cycle"[^>]*aria-pressed="true"/);
-assert.match(renderedCycle, /生理期提示/);
+assert.doesNotMatch(renderedCycle.match(/data-calendar-selected-detail[\s\S]*?<\/section>/)?.[0] || '', /生理期提示|第\d+天|预计|pm-calendar-detail-more/);
 assert.match(renderedCycle, /name="subject"[^>]*data-action="calendar-cycle-subject"/);
 assert.match(renderedCycle, /&lt;user&gt;/);
 assert.match(renderedCycle, /name="periodStartDay"/);
@@ -764,7 +787,8 @@ assert.match(renderedRecipe, /data-calendar-detail-mode="recipe"/);
 assert.match(renderedRecipe, /data-calendar-management="recipe"/);
 assert.match(renderedRecipe, /data-recipe-meal="breakfast"[\s\S]*北境炖麦粥/);
 assert.match(renderedRecipe, /手动指定：架空北境/);
-assert.match(renderedRecipe, /不会把天气城市当作文化身份/);
+assert.match(renderedRecipe, /placeholder="川渝、潮汕、关西或架空地区；留空按剧情推断"/);
+assert.doesNotMatch(renderedRecipe, /不会把天气城市当作文化身份|奥斯曼宫廷/);
 assert.doesNotMatch(renderedRecipe, /菜谱模式尚未启用|菜谱存储、生成与注入协议尚未启用/);
 assert.doesNotMatch(renderedRecipe, /&lt;日程&gt;|&lt;备注&gt;/,
     '菜谱详情不得读取普通 calendar scope.events');
@@ -779,7 +803,7 @@ assert.match(renderedSchedule, /aria-pressed="true"/);
 assert.match(renderedSchedule, /data-calendar-selected-detail=/);
 assert.ok((renderedSchedule.match(/data-calendar-date=/g) || []).length >= 35, '月历必须完整铺开至少五周');
 for (const [html, label] of [
-    [renderedSchedule, '正文日期标签'], [renderedSchedule, '管理这一天'],
+    [renderedSchedule, '正文日期标签'], [renderedSchedule, '编辑这一天'],
     [renderedEntryDialog, '安排类型'], [renderedEntryDialog, '安排名称'], [renderedEntryDialog, '安排备注'],
 ]) {
     assert.match(html, new RegExp(`aria-label="${label}"`), `${label} 控件必须有可访问名称`);
@@ -965,29 +989,27 @@ try {
     const dayTag = date => container.innerHTML.match(new RegExp(`<button[^>]*data-calendar-date="${date}"[^>]*>`))?.[0] || '';
     assert.match(container.innerHTML, /data-calendar-view-mode="schedule"/);
     assert.doesNotMatch(container.innerHTML, /<h3>生理周期<\/h3>/);
-    await deps.handleCalendarAction({ dataset: { action: 'calendar-manage-date' } }, { querySelector: () => null });
-    const firstManager = overlayHistory.at(-1);
-    assert.equal(firstManager.kind, 'manager');
-    assert.equal(entryFocusCount, 0, '进入管理态不得聚焦输入框');
-    assert.equal(firstManager.edits.length, 2, '管理态必须列出同日 event 与 occasion');
-    assert.equal(firstManager.edits[0].dataset.entryId, sharedEntryId);
-    assert.equal(firstManager.edits[1].dataset.entryId, sharedEntryId, 'event 与 occasion 应使用共享 ID 验证 kind 隔离');
-    const occasionRemove = firstManager.removes.find(node => node.dataset.entryKind === 'occasion');
-    assert.equal(occasionRemove.dataset.entryId, sharedEntryId);
-    await occasionRemove.click();
-    assert.equal(deps.getCalendarOccasionStore().scopes[storageA].occasions.length, 0, '行级移除必须只删除指定 occasion');
+    await deps.handleCalendarAction({ dataset: { action: 'calendar-toggle-detail-edit' } }, { querySelector: () => null });
+    assert.match(container.innerHTML, /data-action="calendar-toggle-detail-edit"[^>]*aria-pressed="true"/);
+    assert.match(container.innerHTML, /data-action="calendar-edit-entry"[^>]*data-entry-kind="event"[^>]*data-entry-id="shared-entry-id"/);
+    assert.match(container.innerHTML, /data-action="calendar-delete-entry"[^>]*data-entry-kind="occasion"[^>]*data-entry-id="shared-entry-id"/);
+    assert.equal(entryFocusCount, 0, '进入详情编辑态不得聚焦输入框');
+    await deps.handleCalendarAction({
+        dataset: { action: 'calendar-delete-entry', entryKind: 'occasion', entryId: sharedEntryId },
+    }, { querySelector: () => null });
+    assert.equal(deps.getCalendarOccasionStore().scopes[storageA].occasions.length, 0, '行内删除必须只删除指定 occasion');
     assert.equal(
         JSON.parse(memory.get(CALENDAR_OCCASION_STORAGE_KEY)).scopes[storageA].occasions.length,
         0,
-        '行级移除 occasion 必须同步持久化，不能在刷新后复活',
+        '行内删除 occasion 必须同步持久化，不能在刷新后复活',
     );
     assert.equal(deps.getCalendarStore().scopes[storageA].events[currentDates[0]][0].id, editorEvent.id,
-        '移除 occasion 不得误删同日 event');
-    assert.equal(overlayCloseReasons.at(-1), 'removed');
-    await deps.handleCalendarAction({ dataset: { action: 'calendar-manage-date' } }, { querySelector: () => null });
-    const secondManager = overlayHistory.at(-1);
-    const eventEdit = secondManager.edits.find(node => node.dataset.entryKind === 'event');
-    await eventEdit.click();
+        '删除 occasion 不得误删同日 event');
+    assert.match(container.innerHTML, /data-action="calendar-toggle-detail-edit"[^>]*aria-pressed="true"/,
+        '删除后必须保留详情编辑态以支持连续操作');
+    await deps.handleCalendarAction({
+        dataset: { action: 'calendar-edit-entry', entryKind: 'event', entryId: sharedEntryId },
+    }, { querySelector: () => null });
     const eventEditor = overlayHistory.at(-1);
     assert.equal(eventEditor.kind, 'editor');
     assert.equal(entryFocusCount, 1, '选择具体条目后必须且只能聚焦一次');
@@ -1035,6 +1057,8 @@ try {
     const alternateDate = calendarMonthKeys(Number(currentMonthPrefix.slice(0, 4)), Number(currentMonthPrefix.slice(5, 7)))
         .find(date => date.startsWith(currentMonthPrefix) && date !== initialSelectedDate);
     await deps.handleCalendarAction({ dataset: { action: 'calendar-select-date', calendarDate: alternateDate } }, { querySelector: () => null });
+    assert.match(container.innerHTML, /data-action="calendar-toggle-detail-edit"[^>]*aria-pressed="false"/,
+        '切换日期必须退出上一天的详情编辑态');
     assert.match(dayTag(alternateDate), /class="[^"]*is-selected[^"]*"/);
     assert.match(dayTag(alternateDate), /aria-pressed="true"/);
     assert.doesNotMatch(dayTag(initialSelectedDate), /is-selected|aria-pressed="true"/);
@@ -1088,7 +1112,7 @@ try {
     assert.equal(deps.getCalendarStore().scopes[storageA].baseDate, '2032-02-29');
     assert.equal(JSON.parse(memory.get('ST_SMS_CALENDAR_V1')).scopes[storageA].baseDate, '2032-02-29', '时间起点必须持久化');
     assert.match(container.innerHTML, /class="pm-calendar-header-side is-left"/);
-    assert.match(container.innerHTML, /class="pm-calendar-title-row"><button[^>]*data-action="calendar-month-panel"/);
+    assert.match(container.innerHTML, /class="pm-calendar-title-row">[\s\S]*?data-action="calendar-month-panel"/);
     assert.doesNotMatch(container.innerHTML, /calendar-base-edit|pm-calendar-base-dialog/);
     await deps.handleCalendarAction({ dataset: { action: 'calendar-next-month' } }, app);
     assert.doesNotMatch(container.innerHTML, /aria-label="2032年2月月历"/);
@@ -1599,11 +1623,17 @@ try {
     const tagsApp = { querySelector: selector => selector === '[data-calendar-date-tags]' ? tagsInput : null };
     const eventsBeforeDateSync = structuredClone(deps.getCalendarStore().scopes[storageA].events);
     const customTagDate = currentDates[2];
+    await deps.handleCalendarAction({ dataset: { action: 'calendar-toggle-detail-edit' } }, app);
+    assert.match(container.innerHTML, /data-action="calendar-toggle-detail-edit"[^>]*aria-pressed="true"/,
+        '正文重识别前必须能进入详情编辑态');
     gatherImpl = async () => ({
         latestChatText: `<time_bar><when>${customTagDate}</when> 只校准今天</time_bar>`,
         latestChatIsUser: false, mainChatText: '', worldBookText: '',
     });
     await deps.handleCalendarAction(dateSyncButton, tagsApp);
+    assert.match(container.innerHTML, /data-action="calendar-toggle-detail-edit"[^>]*aria-pressed="false"/,
+        '正文重识别改变日期后必须退出详情编辑态');
+    assert.doesNotMatch(container.innerHTML, /data-action="calendar-edit-entry"|data-action="calendar-delete-entry"|\+ 新增一条/);
     assert.deepEqual(deps.getCalendarStore().scopes[storageA].dateTags, ['date', 'when'],
         '日期标签保存必须归一化、去重并拒绝非法标签');
     assert.match(container.innerHTML, /data-calendar-date-tags[^>]*value="date, when"/,
@@ -1694,10 +1724,17 @@ try {
     const storageBStatusTimer = asyncStatusTimers.at(-1);
     assert.equal(deps.getCalendarStore().scopes[storageB].autoAdjust, true);
     assert.match(container.innerHTML, /data-action="calendar-toggle-auto" role="switch" aria-checked="true"/);
-    const automaticDate = currentDates[1];
+    await deps.handleCalendarAction({ dataset: { action: 'calendar-toggle-detail-edit' } }, app);
+    assert.match(container.innerHTML, /data-action="calendar-toggle-detail-edit"[^>]*aria-pressed="true"/);
+    const automaticDate = '2032-03-01';
     gatherImpl = async () => ({ latestChatText: `角色正文日期 ${automaticDate}`, latestChatIsUser: false, mainChatText: '', worldBookText: '' });
     assert.equal(await deps.observeCalendarTurn(), true, '开启自动识别后应从角色最后正文校准今天日期');
     assert.equal(deps.getCalendarStore().scopes[storageB].baseDate, automaticDate);
+    assert.match(container.innerHTML, /aria-label="2032年3月月历"/,
+        '自动正文校准必须支持跨月更新视图');
+    assert.match(container.innerHTML, /data-action="calendar-toggle-detail-edit"[^>]*aria-pressed="false"/,
+        '自动正文校准改变日期后必须退出详情编辑态');
+    assert.doesNotMatch(container.innerHTML, /data-action="calendar-edit-entry"|data-action="calendar-delete-entry"|\+ 新增一条/);
     assert.deepEqual(deps.getCalendarStore().scopes[storageB].events, storageBEventsBefore,
         '自动日期识别不得生成正文日程');
     assert.equal(ensureAiCalls, 0, '正文日期自动识别不得请求 AI');
@@ -1987,6 +2024,23 @@ try {
     assert.match(container.innerHTML, /东京 · 当前数据 仅气候推演 · 预报外日期使用气候推演/);
     assert.match(container.innerHTML, /气候推演/);
     assert.equal(injectionCount, injectionCountBeforeOfflineLocation + 1, '保存气候推演地点后必须刷新上下文注入');
+
+    const weatherRefreshResponse = deferred();
+    let weatherRefreshSignal;
+    fetchImpl = async (url, options) => {
+        weatherRefreshSignal = options.signal;
+        return weatherRefreshResponse.promise;
+    };
+    const weatherRefreshPromise = deps.handleCalendarAction({ dataset: { action: 'calendar-weather-refresh' } }, weatherApp);
+    assert.ok(weatherRefreshSignal instanceof AbortSignal, '天气刷新必须向网络请求传递任务 signal');
+    assert.match(container.innerHTML, /class="pm-calendar-header-action is-loading"[^>]*data-action="calendar-weather-refresh"[^>]*aria-busy="true"[^>]*disabled/,
+        '天气刷新 pending 时必须显示可达的 loading 状态并禁用按钮');
+    weatherRefreshResponse.resolve({ ok: true, json: async () => weatherPayload });
+    await weatherRefreshPromise;
+    assert.match(container.innerHTML, /class="pm-calendar-header-action (?![^"]*is-loading)[^"]*"[^>]*data-action="calendar-weather-refresh"[^>]*aria-busy="false"/,
+        '天气刷新完成后必须释放 busy 状态');
+    assert.doesNotMatch(container.innerHTML, /class="pm-calendar-header-action is-loading"[^>]*data-action="calendar-weather-refresh"|class="pm-calendar-header-action[^"]*"[^>]*data-action="calendar-weather-refresh"[^>]*disabled/,
+        '天气刷新完成后不得遗留 loading class 或禁用状态');
 
     const holidayResponse = deferred();
     let holidaySignal;

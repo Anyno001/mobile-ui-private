@@ -66,9 +66,11 @@ export function getUserPersona(getCtx) {
 export async function gatherContext(getCtx) {
     const context = getCtx();
     const character = context?.characters?.[context.characterId] || {};
-    const cleanMessage = value => (value || '')
+    const removeProtectedBlocks = value => (value || '')
         .replace(/```[\s\S]*?```/g, '')
         .replace(/<think>[\s\S]*?<\/think>/gi, '')
+        .trim();
+    const cleanMessage = value => removeProtectedBlocks(value)
         .replace(/<[^>]+>/g, '')
         .trim();
     const recentChat = (context?.chat || []).slice(-8);
@@ -76,10 +78,12 @@ export async function gatherContext(getCtx) {
         .map(message => ({
             who: message.is_user ? '用户' : (message.name || '角色'),
             content: cleanMessage(message.mes || ''),
+            rawContent: removeProtectedBlocks(message.mes || ''),
             isUser: message.is_user === true,
         }));
     const latestMessage = [...normalizedChat].reverse().find(message => message.content);
     const latestChatText = latestMessage?.content || '';
+    const rawLatestChatText = latestMessage?.rawContent || '';
     const latestChatIsUser = latestMessage?.isUser === true;
     const mainChat = normalizedChat.filter(message => message.content);
     let worldBookText = '';
@@ -101,5 +105,5 @@ export async function gatherContext(getCtx) {
         warnHostContextFailureOnce('world-book', '读取世界书上下文失败', error);
     }
     const userPersona = getUserPersona(getCtx);
-    return { cardDesc: character.description ?? '', cardPersonality: character.personality ?? '', cardScenario: character.scenario ?? '', cardFirstMes: character.first_mes ?? '', cardMesExample: character.mes_example ?? '', mainChatText: mainChat.map(message => `${message.who}：${message.content}`).join('\n'), latestChatText, latestChatIsUser, worldBookText, userName: userPersona.name, userDesc: userPersona.description };
+    return { cardDesc: character.description ?? '', cardPersonality: character.personality ?? '', cardScenario: character.scenario ?? '', cardFirstMes: character.first_mes ?? '', cardMesExample: character.mes_example ?? '', mainChatText: mainChat.map(message => `${message.who}：${message.content}`).join('\n'), latestChatText, rawLatestChatText, latestChatIsUser, worldBookText, userName: userPersona.name, userDesc: userPersona.description };
 }

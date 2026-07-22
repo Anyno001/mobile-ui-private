@@ -89,7 +89,7 @@ export function installCalendar(state, deps) {
             viewYear: reference.getFullYear(), viewMonth: reference.getMonth() + 1,
             selectedDate: formatCalendarDate(reference),
             viewMode: 'schedule', editorKind: 'event', cycleSubject: CYCLE_SELF_SUBJECT,
-            generating: false, recipeGenerating: false,
+            generating: false, recipeGenerating: false, weatherRefreshing: false, detailEditing: false,
         };
         runtime.viewByStorage.set(storageId, view);
         return view;
@@ -101,6 +101,7 @@ export function installCalendar(state, deps) {
         runtime.viewByStorage.set(storageId, {
             ...current,
             viewYear: next.year, viewMonth: next.month,
+            detailEditing: false,
             selectedDate: calendarDateFromParts(next.year, next.month, 1),
         });
         return true;
@@ -237,6 +238,9 @@ export function installCalendar(state, deps) {
         }
         const task = tasks.begin(storageId, 'weather-forecast');
         if (!task) return false;
+        const currentView = viewFor(storageId);
+        runtime.viewByStorage.set(storageId, { ...currentView, weatherRefreshing: true, weatherRefreshTask: task });
+        rerender(storageId);
         try {
             const result = await fetchWeatherForecast(runtime.weatherStore.location, runtime.weatherStore, {
                 fetchImpl: fetchImpl || globalThis.fetch, signal: task.signal,
@@ -256,6 +260,11 @@ export function installCalendar(state, deps) {
             throw error;
         } finally {
             tasks.finish(task);
+            const latestView = viewFor(storageId);
+            if (latestView.weatherRefreshTask === task) {
+                runtime.viewByStorage.set(storageId, { ...latestView, weatherRefreshing: false, weatherRefreshTask: null });
+                rerender(storageId);
+            }
         }
     }
 
@@ -267,7 +276,7 @@ export function installCalendar(state, deps) {
             if (!tasks.active(task)) return false;
             if (assistantOnly && context.latestChatIsUser) return false;
             const currentScope = scope(storageId);
-            const baseDate = extractCalendarBaseDate(context.latestChatText, currentScope.dateTags);
+            const baseDate = extractCalendarBaseDate(context.rawLatestChatText || context.latestChatText, currentScope.dateTags);
             if (!baseDate) {
                 if (!silent) status(storageId, '最后一条正文中没有带年份的明确日期，今天日期未调整。');
                 return false;
@@ -282,7 +291,8 @@ export function installCalendar(state, deps) {
             if (!tasks.active(task)) return false;
             const parsed = parseCalendarDate(baseDate), currentView = viewFor(storageId);
             runtime.viewByStorage.set(storageId, {
-                ...currentView, viewYear: parsed.getFullYear(), viewMonth: parsed.getMonth() + 1, selectedDate: baseDate,
+                ...currentView, viewYear: parsed.getFullYear(), viewMonth: parsed.getMonth() + 1,
+                selectedDate: baseDate, detailEditing: false,
             });
             if (!silent) status(storageId, `已从最后一条正文将今天调整为 ${baseDate}。`);
             rerender(storageId);
@@ -376,7 +386,8 @@ export function installCalendar(state, deps) {
         const current = viewFor(storageId);
         runtime.viewByStorage.set(storageId, {
             ...current,
-            viewYear: parsed.getFullYear(), viewMonth: parsed.getMonth() + 1, selectedDate: formatCalendarDate(parsed), monthPanelOpen: false,
+            viewYear: parsed.getFullYear(), viewMonth: parsed.getMonth() + 1,
+            selectedDate: formatCalendarDate(parsed), monthPanelOpen: false, detailEditing: false,
         });
         const generationWindow = calendarWindowDescription(parsed, 7);
         status(storageId, `时间起点已设为 ${formatCalendarDate(parsed)}，相对日期与${generationWindow.label}生成将以此为准。`);
@@ -389,7 +400,8 @@ export function installCalendar(state, deps) {
         const current = viewFor(storageId);
         runtime.viewByStorage.set(storageId, {
             ...current,
-            viewYear: today.getFullYear(), viewMonth: today.getMonth() + 1, selectedDate: formatCalendarDate(today), monthPanelOpen: false,
+            viewYear: today.getFullYear(), viewMonth: today.getMonth() + 1,
+            selectedDate: formatCalendarDate(today), monthPanelOpen: false, detailEditing: false,
         });
         status(storageId, '已恢复设备日期作为时间起点。');
         rerender(storageId);
@@ -400,7 +412,7 @@ export function installCalendar(state, deps) {
         const current = viewFor(storageId);
         runtime.viewByStorage.set(storageId, {
             ...current, viewYear: reference.getFullYear(), viewMonth: reference.getMonth() + 1,
-            selectedDate: formatCalendarDate(reference), monthPanelOpen: false,
+            selectedDate: formatCalendarDate(reference), monthPanelOpen: false, detailEditing: false,
         });
         rerender(storageId);
     }
@@ -410,7 +422,8 @@ export function installCalendar(state, deps) {
         if (!target || !Number.isInteger(year) || !Number.isInteger(month)) throw new Error('跳转年月无效，请输入 1–9999 年和 1–12 月');
         const current = viewFor(storageId);
         runtime.viewByStorage.set(storageId, {
-            ...current, viewYear: year, viewMonth: month, selectedDate: formatCalendarDate(target), monthPanelOpen: false,
+            ...current, viewYear: year, viewMonth: month,
+            selectedDate: formatCalendarDate(target), monthPanelOpen: false, detailEditing: false,
         });
         rerender(storageId);
     }
@@ -429,6 +442,22 @@ export function installCalendar(state, deps) {
         if (kind === 'event') return findCalendarEvent(scope(storageId), id);
         if (kind === 'occasion') return findOccasion(occasions(storageId), id);
         return null;
+    }
+
+    async function removeEntry(storageId, kind, id) {
+        const entry = resolveEntry(storageId, kind, id);
+        if (!entry || !confirm(`删除“${entry.title}”？`)) return false;
+        if (kind === 'event') {
+            await commitScope(storageId, current => deleteCalendarEvent(current, entry.id).scope);
+            status(storageId, '日程已删除。');
+        } else if (kind === 'occasion') {
+            await commitOccasions(storageId, current => deleteOccasion(current, entry.id).scope);
+            status(storageId, `${occasionTypeLabel(entry.type)}已删除。`);
+        } else {
+            return false;
+        }
+        rerender(storageId);
+        return true;
     }
 
     function showEntryEditor(storageId, kind = 'event', id = '') {
@@ -494,17 +523,7 @@ export function installCalendar(state, deps) {
         }
         for (const button of overlay.querySelectorAll('[data-calendar-entry-remove]')) {
             button.addEventListener('click', async () => {
-                const entry = resolveEntry(storageId, button.dataset.entryKind, button.dataset.entryId);
-                if (!entry || !confirm(`移除“${entry.title}”？`)) return;
-                if (button.dataset.entryKind ==='event') {
-                    await commitScope(storageId, current => deleteCalendarEvent(current, entry.id).scope);
-                    status(storageId, '日程已移除。');
-                } else {
-                    await commitOccasions(storageId, current => deleteOccasion(current, entry.id).scope);
-                    status(storageId, `${occasionTypeLabel(entry.type)}已移除。`);
-                }
-                closeOverlay?.('removed');
-                rerender(storageId);
+                if (await removeEntry(storageId, button.dataset.entryKind, button.dataset.entryId)) closeOverlay?.('removed');
             });
         }
     }
@@ -557,7 +576,7 @@ export function installCalendar(state, deps) {
         if (['calendar-mode-schedule', 'calendar-mode-weather', 'calendar-mode-cycle', 'calendar-mode-recipe'].includes(action)) {
             const current = viewFor(storageId);
             const viewMode = action.slice('calendar-mode-'.length);
-            runtime.viewByStorage.set(storageId, { ...current, viewMode, monthPanelOpen: false });
+            runtime.viewByStorage.set(storageId, { ...current, viewMode, monthPanelOpen: false, detailEditing: false });
             rerender(storageId);
             return;
         }
@@ -567,8 +586,22 @@ export function installCalendar(state, deps) {
             if (!calendarMonthKeys(current.viewYear, current.viewMonth).includes(date)) {
                 throw new Error('选择的日历日期无效');
             }
-            runtime.viewByStorage.set(storageId, { ...current, selectedDate: date });
+            runtime.viewByStorage.set(storageId, { ...current, selectedDate: date, detailEditing: false });
             rerender(storageId);
+            return;
+        }
+        if (action === 'calendar-toggle-detail-edit') {
+            const current = viewFor(storageId);
+            runtime.viewByStorage.set(storageId, { ...current, detailEditing: current.detailEditing !== true });
+            rerender(storageId);
+            return;
+        }
+        if (action === 'calendar-edit-entry') {
+            showEntryEditor(storageId, button.dataset.entryKind, button.dataset.entryId);
+            return;
+        }
+        if (action === 'calendar-delete-entry') {
+            await removeEntry(storageId, button.dataset.entryKind, button.dataset.entryId);
             return;
         }
         if (action === 'calendar-detail-menu') {

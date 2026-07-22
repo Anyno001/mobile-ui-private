@@ -110,7 +110,7 @@ export function renderCalendarPageHtml(
 
     const relativeLabel = relativeCalendarLabel(today, selectedDate) || '';
     const selectedDetail = renderSelectedDateDetail(
-        scope, occasionsByDate, holidayCache, weatherStore, cycleScope, selectedDate, viewMode, relativeLabel, recipeScope,
+        scope, occasionsByDate, holidayCache, weatherStore, cycleScope, selectedDate, viewMode, relativeLabel, recipeScope, view.detailEditing === true,
     );
     const headerAction = viewMode === 'weather' ? 'calendar-weather-refresh'
         : viewMode === 'schedule' ? 'calendar-generate'
@@ -126,16 +126,18 @@ export function renderCalendarPageHtml(
         selectedCycleSubject: view.cycleSubject,
     });
     const monthPanel = renderCalendarMonthPanel(scope, viewYear, viewMonth, view.monthPanelOpen === true);
-    const headerBusy = viewMode === 'recipe'
+    const headerBusy = viewMode === 'weather' ? view.weatherRefreshing === true : viewMode === 'recipe'
+        ? view.recipeGenerating === true : viewMode === 'schedule' && view.generating === true;
+    const statusBusy = viewMode === 'recipe'
         ? view.recipeGenerating === true : viewMode === 'schedule' && view.generating === true;
     const headerIcon = viewMode === 'schedule' || viewMode === 'recipe' ? SPARKLES_ICON_SVG : REFRESH_ICON_SVG;
     const headerButton = headerAction ? `<button type="button" class="pm-calendar-header-action ${headerBusy ? 'is-loading' : ''}" data-action="${headerAction}" aria-label="${headerActionLabel}" title="${headerActionLabel}" aria-busy="${headerBusy}" ${headerBusy ? 'disabled' : ''}>${headerIcon}</button>` : '';
-    const statusClass = headerBusy ? 'pm-calendar-status is-generating' : 'pm-calendar-status';
+    const statusClass = statusBusy ? 'pm-calendar-status is-generating' : 'pm-calendar-status';
     return `<div id="pm-calendar-app" class="pm-calendar-shell" data-calendar-view-mode="${viewMode}">
-        <header class="pm-calendar-header"><span class="pm-calendar-header-side is-left"><button type="button" data-action="calendar-home" aria-label="返回桌面" title="返回桌面">${HOME_ICON_SVG}</button></span><div class="pm-calendar-title-row"><button type="button" data-action="calendar-month-panel" aria-label="打开月份与时间设置" aria-expanded="${view.monthPanelOpen === true}"><b>${escapeHtml(monthTitle.format(createCalendarDate(viewYear, viewMonth, 1)))}</b>${CHEVRON_DOWN_ICON_SVG}</button></div><span class="pm-calendar-header-side is-right">${headerButton}</span></header>
+        <header class="pm-calendar-header"><span class="pm-calendar-header-side is-left"><button type="button" data-action="calendar-home" aria-label="返回桌面" title="返回桌面">${HOME_ICON_SVG}</button></span><div class="pm-calendar-title-row"><button type="button" class="pm-calendar-month-step" data-action="calendar-prev-month" aria-label="上个月">‹</button><span class="pm-calendar-title-control"><button type="button" data-action="calendar-month-panel" aria-label="打开月份与时间设置" aria-expanded="${view.monthPanelOpen === true}"><b>${escapeHtml(monthTitle.format(createCalendarDate(viewYear, viewMonth, 1)))}</b></button><span class="pm-calendar-title-chevron ${view.monthPanelOpen === true ? 'is-expanded' : ''}" aria-hidden="true">${CHEVRON_DOWN_ICON_SVG}</span></span><button type="button" class="pm-calendar-month-step" data-action="calendar-next-month" aria-label="下个月">›</button></div><span class="pm-calendar-header-side is-right">${headerButton}</span></header>
         ${monthPanel}
-        <div class="pm-calendar-month-nav"><button type="button" class="pm-calendar-month-step" data-action="calendar-prev-month" aria-label="上个月">‹</button><div class="pm-calendar-view-switch" role="group" aria-label="日历信息分类"><button type="button" data-action="calendar-mode-schedule" aria-label="显示日程与假日" aria-pressed="${viewMode === 'schedule'}" title="日程与假日">${CALENDAR_ICON_SVG}</button><button type="button" data-action="calendar-mode-weather" aria-label="显示天气" aria-pressed="${viewMode === 'weather'}" title="天气">${WEATHER_ICON_SVG}</button><button type="button" data-action="calendar-mode-cycle" aria-label="显示生理期" aria-pressed="${viewMode === 'cycle'}" title="生理期">${CYCLE_ICON_SVG}</button><button type="button" data-action="calendar-mode-recipe" aria-label="显示菜谱" aria-pressed="${viewMode === 'recipe'}" title="菜谱">${RECIPE_ICON_SVG}</button></div><button type="button" class="pm-calendar-month-step" data-action="calendar-next-month" aria-label="下个月">›</button></div>
         <div class="pm-calendar-month" aria-label="${viewYear}年${viewMonth}月月历"><div class="pm-calendar-weekdays">${weekdays.map(day => `<span>周${day}</span>`).join('')}</div><div class="pm-calendar-month-grid">${days}</div></div>
+        <div class="pm-calendar-view-switch" role="group" aria-label="日历信息分类"><button type="button" data-action="calendar-mode-schedule" aria-label="显示日程与假日" aria-pressed="${viewMode === 'schedule'}" title="日程与假日">${CALENDAR_ICON_SVG}</button><button type="button" data-action="calendar-mode-weather" aria-label="显示天气" aria-pressed="${viewMode === 'weather'}" title="天气">${WEATHER_ICON_SVG}</button><button type="button" data-action="calendar-mode-cycle" aria-label="显示生理期" aria-pressed="${viewMode === 'cycle'}" title="生理期">${CYCLE_ICON_SVG}</button><button type="button" data-action="calendar-mode-recipe" aria-label="显示菜谱" aria-pressed="${viewMode === 'recipe'}" title="菜谱">${RECIPE_ICON_SVG}</button></div>
         ${selectedDetail}
         ${management}
         <div class="${statusClass}" aria-live="polite">${escapeHtml(status)}</div>

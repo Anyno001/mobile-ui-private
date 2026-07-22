@@ -5,7 +5,7 @@ import { RECIPE_MEAL_LABELS, RECIPE_MEAL_TYPES, recipeDayFor } from './calendar-
 import { weatherCodeLabel } from './calendar-weather.js';
 import { resolveWeatherForDate, weatherSourceLabel } from './calendar-weather-source.js';
 import {
-    CLOSE_ICON_SVG, EDIT_ICON_SVG, EVENT_EDITOR_ICON_SVG, MORE_ICON_SVG, OCCASION_EDITOR_ICON_SVG, REMOVE_ICON_SVG,
+    CLOSE_ICON_SVG, EDIT_ICON_SVG, EVENT_EDITOR_ICON_SVG, MORE_ICON_SVG, OCCASION_EDITOR_ICON_SVG, REMOVE_ICON_SVG, TRASH_ICON_SVG, WEATHER_ICON_SVG,
 } from './icons.js';
 import { escapeAttr, escapeHtml } from './ui.js';
 
@@ -15,13 +15,20 @@ const CYCLE_LABELS = { period: '经期', follicular: '安全期', ovulatory: '�
 
 export const occasionTypeLabel = type => type === 'birthday' ? '生日' : '纪念日';
 
-function eventRows(scope, occasionsByDate, date) {
+function inlineEntryActions(kind, id, title) {
+    const attrs = `data-entry-kind="${kind}" data-entry-id="${escapeAttr(id)}"`;
+    return `<span class="pm-calendar-inline-actions"><button type="button" data-action="calendar-edit-entry" ${attrs} aria-label="编辑${escapeAttr(title)}" title="编辑">${EDIT_ICON_SVG}</button><button type="button" class="is-danger" data-action="calendar-delete-entry" ${attrs} aria-label="删除${escapeAttr(title)}" title="删除">${TRASH_ICON_SVG}</button></span>`;
+}
+
+function eventRows(scope, occasionsByDate, date, editing = false) {
     const events = scope.events[date] || [];
     const occasionRows = (occasionsByDate.get(date) || []).map(occasion => `<article class="pm-calendar-event is-occasion" data-occasion-id="${escapeAttr(occasion.id)}">
         <div><b>${escapeHtml(occasion.title)}</b><span>${occasionTypeLabel(occasion.type)}${occasion.leapAdjusted ? '（闰日顺延）' : ''}${occasion.note ? ` · ${escapeHtml(occasion.note)}` : ''}</span></div>
+        ${editing ? inlineEntryActions('occasion', occasion.id, occasion.title) : ''}
     </article>`);
     const eventItems = events.map(event => `<article class="pm-calendar-event" data-event-id="${escapeAttr(event.id)}">
         <div><b>${escapeHtml(event.title)}</b>${event.note ? `<span>${escapeHtml(event.note)}</span>` : ''}</div>
+        ${editing ? inlineEntryActions('event', event.id, event.title) : ''}
     </article>`);
     return [...occasionRows, ...eventItems].join('');
 }
@@ -39,13 +46,13 @@ function weatherRow(weatherStore, date) {
     if (resolved.status !== 'available') {
         return `<p class="pm-calendar-empty-day">无法推演 · ${escapeHtml(resolved.unavailableReason)}</p>`;
     }
-    return `<div class="pm-calendar-weather"><span>${escapeHtml(weatherCodeLabel(resolved.day.weatherCode))}<em>${escapeHtml(resolved.sourceLabel)}</em></span><b>${resolved.day.tempMin}°/${resolved.day.tempMax}°C</b></div>`;
+    return `<div class="pm-calendar-weather"><b>${resolved.day.tempMin}° / ${resolved.day.tempMax}°C</b><span>${escapeHtml(weatherCodeLabel(resolved.day.weatherCode))}</span>${WEATHER_ICON_SVG}</div>`;
 }
 
 function cycleRow(cycleScope, date) {
     const prediction = predictCyclePhase(cycleScope, date);
     if (!prediction.phase) return '';
-    return `<div class="pm-calendar-cycle"><span>生理期提示</span><b>${CYCLE_LABELS[prediction.phase] || prediction.phase}</b>${prediction.status === 'override' ? '<em>手动</em>' : ''}</div>`;
+    return `<div class="pm-calendar-cycle"><b>${CYCLE_LABELS[prediction.phase] || prediction.phase}</b>${prediction.status === 'override' ? '<em>手动</em>' : ''}</div>`;
 }
 
 function recipeRows(recipeScope, date) {
@@ -56,7 +63,7 @@ function recipeRows(recipeScope, date) {
 }
 
 export function renderSelectedDateDetail(
-    scope, occasionsByDate, holidayCache, weatherStore, cycleScope, selectedDate, viewMode, relativeLabel = '', recipeScope = {},
+    scope, occasionsByDate, holidayCache, weatherStore, cycleScope, selectedDate, viewMode, relativeLabel = '', recipeScope = {}, detailEditing = false,
 ) {
     const parsed = parseCalendarDate(selectedDate);
     if (viewMode === 'recipe') {
@@ -66,20 +73,19 @@ export function renderSelectedDateDetail(
           <div class="pm-calendar-selected-content">${content || '<p class="pm-calendar-empty-day">这一天还没有菜谱。</p>'}</div>
         </section>`;
     }
-    const entries = [...(scope.events[selectedDate] || []), ...(occasionsByDate.get(selectedDate) || [])];
     const content = viewMode === 'weather'
         ? weatherRow(weatherStore, selectedDate)
         : viewMode === 'cycle'
             ? cycleRow(cycleScope, selectedDate)
-            : `${holidayRows(holidayCache, selectedDate)}${eventRows(scope, occasionsByDate, selectedDate)}`;
+            : `${holidayRows(holidayCache, selectedDate)}${eventRows(scope, occasionsByDate, selectedDate, detailEditing)}`;
     const emptyLabel = viewMode === 'weather' ? '这一天没有天气数据' : viewMode === 'cycle' ? '这一天没有生理期提示' : '这一天还没有安排';
     const actions = viewMode === 'schedule' ? `<div class="pm-calendar-detail-actions">
-        <button type="button" class="pm-calendar-detail-more" data-action="calendar-detail-menu" aria-label="管理这一天" title="管理这一天" aria-expanded="false" aria-controls="pm-calendar-detail-menu">${MORE_ICON_SVG}</button>
-        <span id="pm-calendar-detail-menu" class="pm-calendar-detail-menu" hidden><button type="button" data-action="calendar-add-date" aria-label="新增安排" title="新增安排">${EDIT_ICON_SVG}</button><button type="button" data-action="calendar-manage-date" aria-label="管理已有安排" title="管理已有安排" ${entries.length ? '' : 'disabled aria-disabled="true"'}>${MORE_ICON_SVG}</button></span>
+        <button type="button" class="pm-calendar-detail-more" data-action="calendar-toggle-detail-edit" aria-label="${detailEditing ? '关闭编辑状态' : '编辑这一天'}" title="${detailEditing ? '关闭编辑状态' : '编辑这一天'}" aria-pressed="${detailEditing}">${detailEditing ? CLOSE_ICON_SVG : MORE_ICON_SVG}</button>
     </div>` : '';
+    const addAction = viewMode === 'schedule' && detailEditing ? '<button type="button" class="pm-calendar-inline-add" data-action="calendar-add-date">+ 新增一条</button>' : '';
     return `<section class="pm-calendar-selected-detail" data-calendar-selected-detail="${selectedDate}" data-calendar-detail-mode="${viewMode}">
         <header><div class="pm-calendar-detail-date">${relativeLabel ? `<strong>${escapeHtml(relativeLabel)}</strong>` : ''}<span><time datetime="${selectedDate}">${escapeHtml(detailDate.format(parsed))}</time><em>${escapeHtml(detailWeekday.format(parsed))}</em></span></div>${actions}</header>
-        <div class="pm-calendar-selected-content">${content || `<p class="pm-calendar-empty-day">${emptyLabel}</p>`}</div>
+        <div class="pm-calendar-selected-content">${content || `<p class="pm-calendar-empty-day">${emptyLabel}</p>`}${addAction}</div>
     </section>`;
 }
 
@@ -98,7 +104,7 @@ export function renderCalendarManagement({
     if (viewMode === 'recipe') {
         const region = recipeScope?.regionPreference || '';
         const applied = recipeScope?.lastGeneratedRegion || '';
-        return `<details class="pm-calendar-management" data-calendar-management="recipe" open><summary>菜谱设置</summary><div class="pm-calendar-management-content"><section class="pm-calendar-data-tools"><h3>饮食地区 / 文化</h3><p>可填写川渝、潮汕、日本关西、奥斯曼宫廷或架空地区。留空时从角色设定和剧情推断，不会把天气城市当作文化身份。</p><div class="pm-calendar-data-row"><input data-recipe-region maxlength="120" value="${escapeAttr(region)}" placeholder="留空则按剧情推断" aria-label="菜谱饮食地区或文化"><button type="button" data-action="calendar-recipe-region-save">保存</button></div><small class="pm-calendar-attribution">${region ? `手动指定：${escapeHtml(region)}` : applied ? `最近剧情推断：${escapeHtml(applied)}` : '尚未生成地区依据'}</small></section></div></details>`;
+        return `<details class="pm-calendar-management" data-calendar-management="recipe" open><summary>菜谱设置</summary><div class="pm-calendar-management-content"><section class="pm-calendar-data-tools"><h3>饮食地区 / 文化</h3><div class="pm-calendar-data-row"><input data-recipe-region maxlength="120" value="${escapeAttr(region)}" placeholder="川渝、潮汕、关西或架空地区；留空按剧情推断" aria-label="菜谱饮食地区或文化"><button type="button" data-action="calendar-recipe-region-save">保存</button></div><small class="pm-calendar-attribution">${region ? `手动指定：${escapeHtml(region)}` : applied ? `最近剧情推断：${escapeHtml(applied)}` : '尚未生成地区依据'}</small></section></div></details>`;
     }
     if (viewMode === 'weather') {
         const storedSource = weatherStore?.lastSuccess?.source || (weatherStore?.lastSuccess ? 'forecast' : null);
@@ -125,9 +131,9 @@ export function renderCalendarManagement({
 export function renderCalendarMonthPanel(scope, viewYear, viewMonth, open = false) {
     const baseDate = scope.baseDate || '';
     return `<section class="pm-calendar-month-panel" data-calendar-month-panel ${open ? '' : 'hidden'}>
-      <div class="pm-calendar-month-jump"><label>年份<input type="number" min="1" max="9999" value="${viewYear}" data-calendar-jump-year aria-label="跳转年份"></label><label>月份<input type="number" min="1" max="12" value="${viewMonth}" data-calendar-jump-month aria-label="跳转月份"></label><button type="button" data-action="calendar-month-jump">跳转</button></div>
-      <div class="pm-calendar-base-content"><label>时间起点<input type="date" data-calendar-base-date value="${escapeAttr(baseDate)}" aria-label="自定义时间起点"></label><p>回到今天只导航到当前故事日期；使用设备日期会清除自定义时间起点。</p></div>
-      <div class="pm-calendar-month-panel-actions"><button type="button" data-action="calendar-base-save">保存时间起点</button><button type="button" data-action="calendar-base-clear" ${baseDate ? '' : 'disabled'}>使用设备日期</button><button type="button" data-action="calendar-date-rescan">正文重识别</button><button type="button" data-action="calendar-today">回到今天</button></div>
+      <section class="pm-calendar-panel-section"><span>跳转月份</span><div class="pm-calendar-month-jump"><label>年份<input type="number" min="1" max="9999" value="${viewYear}" data-calendar-jump-year aria-label="跳转年份"></label><label>月份<input type="number" min="1" max="12" value="${viewMonth}" data-calendar-jump-month aria-label="跳转月份"></label><button type="button" data-action="calendar-month-jump">跳转</button></div></section>
+      <section class="pm-calendar-panel-section"><label>时间起点<input type="date" data-calendar-base-date value="${escapeAttr(baseDate)}" aria-label="自定义时间起点"></label><p>仅影响日历今天与相对日期。</p></section>
+      <div class="pm-calendar-month-panel-actions"><button type="button" class="is-primary" data-action="calendar-base-save">保存</button><button type="button" data-action="calendar-base-clear" ${baseDate ? '' : 'disabled'}>设备日期</button><button type="button" data-action="calendar-today">回到今天</button></div>
     </section>`;
 }
 

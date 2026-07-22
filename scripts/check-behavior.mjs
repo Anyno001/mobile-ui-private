@@ -1271,7 +1271,7 @@ try {
 
     const worldBookContext = {
         chat: [
-            { is_user: false, name: '角色', mes: '最后一条有效正文' },
+            { is_user: false, name: '角色', mes: '最后一条有效正文 <date>2024-10-27</date>```不应保留的代码```<think>不应保留的思考</think>' },
             { is_user: true, mes: '<think>只有隐藏思考，不是正文</think>' },
         ],
         async getWorldInfoPrompt() { throw new RangeError('sensitive world book payload'); },
@@ -1280,8 +1280,16 @@ try {
     const secondGatheredContext = await gatherContext(() => worldBookContext);
     assert.equal(firstGatheredContext.worldBookText, '', '世界书读取失败必须回退为空文本');
     assert.equal(secondGatheredContext.worldBookText, '');
-    assert.equal(firstGatheredContext.latestChatText, '最后一条有效正文',
+    assert.equal(firstGatheredContext.latestChatText, '最后一条有效正文 2024-10-27',
         '最后正文必须跳过清洗后为空的末楼层');
+    assert.equal(firstGatheredContext.rawLatestChatText, '最后一条有效正文 <date>2024-10-27</date>',
+        '日历专用原文必须保留配置日期标签，但仍移除保护块');
+    assert.doesNotMatch(firstGatheredContext.latestChatText, /<date>|<\/date>/,
+        '通用最新正文必须继续清洗标签');
+    assert.doesNotMatch(firstGatheredContext.rawLatestChatText, /```|<think>/,
+        '日历专用原文不得泄漏代码块或隐藏思考');
+    assert.doesNotMatch(firstGatheredContext.mainChatText, /<date>|<\/date>/,
+        '原始日期标签不得污染普通 AI 上下文');
     assert.equal(firstGatheredContext.latestChatIsUser, false,
         '最后正文的作者标记必须与被选中的有效楼层一致');
     assert.equal(hostBoundaryWarnings.filter(args => String(args[0]).includes('读取世界书上下文失败')).length, 1,

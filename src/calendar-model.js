@@ -323,7 +323,7 @@ export function extractCalendarBaseDate(text, dateTags = DEFAULT_CALENDAR_DATE_T
     const source = String(text ?? '').trim();
     if (!source) return null;
     const reference = new Date();
-    for (const content of extractCalendarDateTagContents(source, dateTags)) {
+    for (const content of extractCalendarDateTagContents(source, dateTags).reverse()) {
         if (!hasExplicitCalendarYear(content)) continue;
         const date = dateFromNaturalText(content, reference);
         if (date) return date;
