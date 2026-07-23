@@ -111,8 +111,12 @@ export function renderCalendarPageHtml(
     }).join('');
 
     const relativeLabel = relativeCalendarLabel(today, selectedDate) || '';
+    const detailRegenerating = viewMode === 'recipe'
+        ? view.recipeGenerating === true && view.recipeGenerationTask?.mode === 'recipe-regenerate'
+        : viewMode === 'schedule' && view.generating === true && view.generationTask?.mode === 'regenerate';
     const selectedDetail = renderSelectedDateDetail(
-        scope, occasionsByDate, holidayCache, weatherStore, cycleScope, selectedDate, viewMode, relativeLabel, recipeScope, view.detailEditing === true,
+        scope, occasionsByDate, holidayCache, weatherStore, cycleScope, selectedDate, viewMode, relativeLabel, recipeScope,
+        view.detailEditing === true, detailRegenerating,
     );
     const headerAction = viewMode === 'weather' ? 'calendar-weather-refresh'
         : viewMode === 'schedule' ? 'calendar-generate'

@@ -70,12 +70,13 @@ function recipeRows(recipeScope, date, editing = false) {
 
 export function renderSelectedDateDetail(
     scope, occasionsByDate, holidayCache, weatherStore, cycleScope, selectedDate, viewMode, relativeLabel = '', recipeScope = {}, detailEditing = false,
+    detailRegenerating = false,
 ) {
     const parsed = parseCalendarDate(selectedDate);
     if (viewMode === 'recipe') {
         const content = recipeRows(recipeScope, selectedDate, detailEditing);
         const actions = `<div class="pm-calendar-detail-actions"><button type="button" class="pm-calendar-detail-more" data-action="calendar-toggle-detail-edit" aria-label="${detailEditing ? '关闭编辑状态' : '编辑这一天的菜谱'}" title="${detailEditing ? '关闭编辑状态' : '编辑这一天的菜谱'}" aria-pressed="${detailEditing}">${detailEditing ? CLOSE_ICON_SVG : MORE_ICON_SVG}</button></div>`;
-        const editActions = detailEditing ? `<div class="pm-calendar-detail-edit-actions"><button type="button" class="pm-calendar-inline-add" data-action="calendar-recipe-add">+ 新增一条</button><button type="button" class="pm-calendar-inline-regenerate" data-action="calendar-recipe-regenerate" aria-label="重新生成当日菜谱" title="重新生成当日菜谱">${REFRESH_ICON_SVG}<span>重新生成</span></button></div>` : '';
+        const editActions = detailEditing ? `<div class="pm-calendar-detail-edit-actions"><button type="button" class="pm-calendar-inline-add" data-action="calendar-recipe-add" ${detailRegenerating ? 'disabled' : ''}>+ 新增一条</button><button type="button" class="pm-calendar-inline-regenerate${detailRegenerating ? ' is-loading' : ''}" data-action="calendar-recipe-regenerate" aria-label="重新生成当日菜谱" title="重新生成当日菜谱" aria-busy="${detailRegenerating}" ${detailRegenerating ? 'disabled' : ''}>${REFRESH_ICON_SVG}<span>重新生成</span></button></div>` : '';
         return `<section class="pm-calendar-selected-detail" data-calendar-selected-detail="${selectedDate}" data-calendar-detail-mode="recipe">
           <header><div class="pm-calendar-detail-date">${relativeLabel ? `<strong>${escapeHtml(relativeLabel)}</strong>` : ''}<span><time datetime="${selectedDate}">${escapeHtml(detailDate.format(parsed))}</time><em>${escapeHtml(detailWeekday.format(parsed))}</em></span></div>${actions}</header>
           <div class="pm-calendar-selected-content">${content || '<p class="pm-calendar-empty-day">这一天还没有菜谱。</p>'}${editActions}</div>
@@ -91,7 +92,7 @@ export function renderSelectedDateDetail(
     const actions = viewMode === 'schedule' ? `<div class="pm-calendar-detail-actions">
         <button type="button" class="pm-calendar-detail-more" data-action="calendar-toggle-detail-edit" aria-label="${detailEditing ? '关闭编辑状态' : editingLabel}" title="${detailEditing ? '关闭编辑状态' : editingLabel}" aria-pressed="${detailEditing}">${detailEditing ? CLOSE_ICON_SVG : MORE_ICON_SVG}</button>
     </div>` : '';
-    const addAction = viewMode === 'schedule' && detailEditing ? `<div class="pm-calendar-detail-edit-actions"><button type="button" class="pm-calendar-inline-add" data-action="calendar-add-date">+ 新增一条</button><button type="button" class="pm-calendar-inline-regenerate" data-action="calendar-regenerate" aria-label="重新生成当日日程" title="重新生成当日日程">${REFRESH_ICON_SVG}<span>重新生成</span></button></div>` : '';
+    const addAction = viewMode === 'schedule' && detailEditing ? `<div class="pm-calendar-detail-edit-actions"><button type="button" class="pm-calendar-inline-add" data-action="calendar-add-date" ${detailRegenerating ? 'disabled' : ''}>+ 新增一条</button><button type="button" class="pm-calendar-inline-regenerate${detailRegenerating ? ' is-loading' : ''}" data-action="calendar-regenerate" aria-label="重新生成当日日程" title="重新生成当日日程" aria-busy="${detailRegenerating}" ${detailRegenerating ? 'disabled' : ''}>${REFRESH_ICON_SVG}<span>重新生成</span></button></div>` : '';
     return `<section class="pm-calendar-selected-detail" data-calendar-selected-detail="${selectedDate}" data-calendar-detail-mode="${viewMode}">
         <header><div class="pm-calendar-detail-date">${relativeLabel ? `<strong>${escapeHtml(relativeLabel)}</strong>` : ''}<span><time datetime="${selectedDate}">${escapeHtml(detailDate.format(parsed))}</time><em>${escapeHtml(detailWeekday.format(parsed))}</em></span></div>${actions}</header>
         <div class="pm-calendar-selected-content">${content || `<p class="pm-calendar-empty-day">${emptyLabel}</p>`}${addAction}</div>

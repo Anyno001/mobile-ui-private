@@ -764,6 +764,10 @@ const renderedScheduleEditing = renderCalendarPageHtml(
     renderedScope, { occasions: [] }, '<status>', holidayForToday, currentWeather, currentCycle,
     [], { ...renderedView, detailEditing: true },
 );
+const renderedRegeneratingSchedule = renderCalendarPageHtml(
+    renderedScope, { occasions: [] }, '', holidayForToday, currentWeather, currentCycle, [],
+    { ...renderedView, detailEditing: true, generating: true, generationTask: { mode: 'regenerate' } },
+);
 const renderedWeather = renderCalendarPageHtml(
     renderedScope, { occasions: [] }, '<status>', holidayForToday, currentWeather, currentCycle,
     [{ name: '<Location>', latitude: 1, longitude: 2, country: '<Country>', admin1: '', timezone: 'UTC' }],
@@ -785,6 +789,10 @@ const renderedBusySchedule = renderCalendarPageHtml(
 const renderedBusyRecipe = renderCalendarPageHtml(
     renderedScope, { occasions: [] }, '', holidayForToday, currentWeather, currentCycle, [],
     { ...renderedView, viewMode: 'recipe', recipeGenerating: true }, renderedRecipeScope,
+);
+const renderedRegeneratingRecipe = renderCalendarPageHtml(
+    renderedScope, { occasions: [] }, '', holidayForToday, currentWeather, currentCycle, [],
+    { ...renderedView, viewMode: 'recipe', detailEditing: true, recipeGenerating: true, recipeGenerationTask: { mode: 'recipe-regenerate' } }, renderedRecipeScope,
 );
 const renderedBusyWeather = renderCalendarPageHtml(
     renderedScope, { occasions: [] }, '', holidayForToday, currentWeather, currentCycle, [],
@@ -856,6 +864,12 @@ assert.match(renderedScheduleEditing, /class="pm-calendar-detail-edit-actions"[\
     '日程编辑态必须将新增与重新生成放在同一操作组');
 assert.match(renderedScheduleEditing, /data-action="calendar-regenerate"[^>]*aria-label="重新生成当日日程"[\s\S]*?M23 4v6h-6/,
     '日程详情重新生成必须使用刷新 SVG 并声明当日语义');
+assert.match(renderedRegeneratingSchedule, /class="pm-calendar-inline-regenerate is-loading"[^>]*data-action="calendar-regenerate"[^>]*aria-busy="true"[^>]*disabled/,
+    '当日日程重新生成期间，详情刷新按钮必须旋转并禁用');
+assert.match(renderedRegeneratingSchedule, /class="pm-calendar-header-action is-loading"[^>]*data-action="calendar-generate"[^>]*aria-busy="true"[^>]*disabled[\s\S]*?M12 3l1\.2 3\.8L17 8/,
+    '详情重新生成不得改变顶部星光生成按钮的既有 busy 行为');
+assert.doesNotMatch(renderedScheduleEditing, /pm-calendar-inline-regenerate is-loading/,
+    '未生成时详情刷新按钮不得错误旋转');
 assert.doesNotMatch(renderedScheduleEditing, /data-action="calendar-regenerate"[\s\S]*?M12 3l1\.2 3\.8L17 8/,
     '日程详情重新生成不得继续使用星光 SVG');
 assert.doesNotMatch(renderedSchedule, /data-action="calendar-manage-date"/,
@@ -981,6 +995,12 @@ assert.match(renderedRecipeEditing, /class="pm-calendar-detail-edit-actions"[\s\
     '菜谱编辑态必须将新增与重新生成放在同一操作组');
 assert.match(renderedRecipeEditing, /data-action="calendar-recipe-regenerate"[^>]*aria-label="重新生成当日菜谱"[\s\S]*?M23 4v6h-6/,
     '菜谱详情重新生成必须使用刷新 SVG 并声明当日语义');
+assert.match(renderedRegeneratingRecipe, /class="pm-calendar-inline-regenerate is-loading"[^>]*data-action="calendar-recipe-regenerate"[^>]*aria-busy="true"[^>]*disabled/,
+    '当日菜谱重新生成期间，详情刷新按钮必须旋转并禁用');
+assert.match(renderedRegeneratingRecipe, /class="pm-calendar-header-action is-loading"[^>]*data-action="calendar-recipe-generate"[^>]*aria-busy="true"[^>]*disabled[\s\S]*?M12 3l1\.2 3\.8L17 8/,
+    '菜谱详情重新生成不得改变顶部星光生成按钮的既有 busy 行为');
+assert.doesNotMatch(renderedRecipeEditing, /pm-calendar-inline-regenerate is-loading/,
+    '未生成时菜谱详情刷新按钮不得错误旋转');
 assert.doesNotMatch(renderedRecipeEditing, /data-action="calendar-recipe-regenerate"[\s\S]*?M12 3l1\.2 3\.8L17 8/,
     '菜谱详情重新生成不得继续使用星光 SVG');
 assert.match(renderedRecipe, /data-calendar-management="recipe"/);

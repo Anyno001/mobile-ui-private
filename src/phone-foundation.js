@@ -7,6 +7,7 @@ import { createEmojiRenderBudget } from './emoji-media.js';
 import { contrastText, cssUrlEscape, escapeHtml } from './ui.js';
 import { createBubbles } from './messaging.js';
 import { applyContextInjections, clearExtensionPrompts } from './phone-injection.js';
+import { bindIsland } from './phone-island-gesture.js';
 import {
     registerResolvedHostEvent, resolveCommunityMessageEvents, resolveHostEvent,
 } from './interactive-scene-scheduler.js';
@@ -513,38 +514,6 @@ export function installPhoneFoundation(state, deps) {
         return true;
     };
 
-
-    function bindIsland(el, handle) {
-        let isDragging = false, startX, startY, startTX = 0, startTY = 0, moved = false;
-        const getCoord = (e) => e.touches ? { x: e.touches[0].clientX, y: e.touches[0].clientY } : { x: e.clientX, y: e.clientY };
-        const getT = () => { const m = (el.style.transform || '').match(/translate\(\s*([-\d.]+)px\s*,\s*([-\d.]+)px/); return m ? { x: parseFloat(m[1]), y: parseFloat(m[2]) } : { x: 0, y: 0 }; };
-        const onStart = (e) => {
-            if (e.target.tagName === 'BUTTON') return;
-            isDragging = true; moved = false;
-            const coords = getCoord(e); startX = coords.x; startY = coords.y;
-            const t = getT(); startTX = t.x; startTY = t.y;
-            el.style.transition = 'none'; if (e.cancelable) e.preventDefault();
-        };
-        const onMove = (e) => {
-            if (!isDragging) return;
-            const coords = getCoord(e), dx = coords.x - startX, dy = coords.y - startY;
-            if (!moved && Math.abs(dx) < 5 && Math.abs(dy) < 5) return;
-            moved = true; if (e.cancelable) e.preventDefault();
-            el.style.setProperty('transform', `translate(${startTX + dx}px, ${startTY + dy}px)`, 'important');
-        };
-        const onEnd = () => { if (!isDragging) return; isDragging = false; el.style.transition = '.35s cubic-bezier(.18,.89,.32,1.2)'; if (!moved) window.__pmToggleMin(); };
-        handle.addEventListener('mousedown', onStart); window.addEventListener('mousemove', onMove); window.addEventListener('mouseup', onEnd);
-        handle.addEventListener('touchstart', onStart, { passive: false }); window.addEventListener('touchmove', onMove, { passive: false }); window.addEventListener('touchend', onEnd);
-        return () => {
-            isDragging = false;
-            handle.removeEventListener('mousedown', onStart);
-            window.removeEventListener('mousemove', onMove);
-            window.removeEventListener('mouseup', onEnd);
-            handle.removeEventListener('touchstart', onStart);
-            window.removeEventListener('touchmove', onMove);
-            window.removeEventListener('touchend', onEnd);
-        };
-    }
 
     function bindPhoneResize(el, handle) {
         let resizing = false;

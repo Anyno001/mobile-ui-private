@@ -2704,12 +2704,12 @@ ${userPrompt}` : userPrompt;
       `<article class="pm-calendar-event is-recipe" data-recipe-meal="${mealType}"><div><b>${RECIPE_MEAL_LABELS[mealType]}</b><span>${escapeHtml(day[mealType].text)}</span></div>${editing ? `<span class="pm-calendar-inline-actions"><button type="button" data-action="calendar-recipe-edit" data-meal-type="${mealType}" aria-label="\u7F16\u8F91${RECIPE_MEAL_LABELS[mealType]}" title="\u7F16\u8F91">${EDIT_ICON_SVG}</button><button type="button" class="is-danger" data-action="calendar-recipe-delete" data-meal-type="${mealType}" aria-label="\u5220\u9664${RECIPE_MEAL_LABELS[mealType]}" title="\u5220\u9664">${TRASH_ICON_SVG}</button></span>` : ""}</article>`
     ] : []).join("");
   }
-  function renderSelectedDateDetail(scope, occasionsByDate, holidayCache, weatherStore, cycleScope, selectedDate, viewMode, relativeLabel = "", recipeScope = {}, detailEditing = false) {
+  function renderSelectedDateDetail(scope, occasionsByDate, holidayCache, weatherStore, cycleScope, selectedDate, viewMode, relativeLabel = "", recipeScope = {}, detailEditing = false, detailRegenerating = false) {
     const parsed = parseCalendarDate(selectedDate);
     if (viewMode === "recipe") {
       const content2 = recipeRows(recipeScope, selectedDate, detailEditing);
       const actions2 = `<div class="pm-calendar-detail-actions"><button type="button" class="pm-calendar-detail-more" data-action="calendar-toggle-detail-edit" aria-label="${detailEditing ? "\u5173\u95ED\u7F16\u8F91\u72B6\u6001" : "\u7F16\u8F91\u8FD9\u4E00\u5929\u7684\u83DC\u8C31"}" title="${detailEditing ? "\u5173\u95ED\u7F16\u8F91\u72B6\u6001" : "\u7F16\u8F91\u8FD9\u4E00\u5929\u7684\u83DC\u8C31"}" aria-pressed="${detailEditing}">${detailEditing ? CLOSE_ICON_SVG : MORE_ICON_SVG}</button></div>`;
-      const editActions = detailEditing ? `<div class="pm-calendar-detail-edit-actions"><button type="button" class="pm-calendar-inline-add" data-action="calendar-recipe-add">+ \u65B0\u589E\u4E00\u6761</button><button type="button" class="pm-calendar-inline-regenerate" data-action="calendar-recipe-regenerate" aria-label="\u91CD\u65B0\u751F\u6210\u5F53\u65E5\u83DC\u8C31" title="\u91CD\u65B0\u751F\u6210\u5F53\u65E5\u83DC\u8C31">${REFRESH_ICON_SVG}<span>\u91CD\u65B0\u751F\u6210</span></button></div>` : "";
+      const editActions = detailEditing ? `<div class="pm-calendar-detail-edit-actions"><button type="button" class="pm-calendar-inline-add" data-action="calendar-recipe-add" ${detailRegenerating ? "disabled" : ""}>+ \u65B0\u589E\u4E00\u6761</button><button type="button" class="pm-calendar-inline-regenerate${detailRegenerating ? " is-loading" : ""}" data-action="calendar-recipe-regenerate" aria-label="\u91CD\u65B0\u751F\u6210\u5F53\u65E5\u83DC\u8C31" title="\u91CD\u65B0\u751F\u6210\u5F53\u65E5\u83DC\u8C31" aria-busy="${detailRegenerating}" ${detailRegenerating ? "disabled" : ""}>${REFRESH_ICON_SVG}<span>\u91CD\u65B0\u751F\u6210</span></button></div>` : "";
       return `<section class="pm-calendar-selected-detail" data-calendar-selected-detail="${selectedDate}" data-calendar-detail-mode="recipe">
           <header><div class="pm-calendar-detail-date">${relativeLabel ? `<strong>${escapeHtml(relativeLabel)}</strong>` : ""}<span><time datetime="${selectedDate}">${escapeHtml(detailDate.format(parsed))}</time><em>${escapeHtml(detailWeekday.format(parsed))}</em></span></div>${actions2}</header>
           <div class="pm-calendar-selected-content">${content2 || '<p class="pm-calendar-empty-day">\u8FD9\u4E00\u5929\u8FD8\u6CA1\u6709\u83DC\u8C31\u3002</p>'}${editActions}</div>
@@ -2721,7 +2721,7 @@ ${userPrompt}` : userPrompt;
     const actions = viewMode === "schedule" ? `<div class="pm-calendar-detail-actions">
         <button type="button" class="pm-calendar-detail-more" data-action="calendar-toggle-detail-edit" aria-label="${detailEditing ? "\u5173\u95ED\u7F16\u8F91\u72B6\u6001" : editingLabel}" title="${detailEditing ? "\u5173\u95ED\u7F16\u8F91\u72B6\u6001" : editingLabel}" aria-pressed="${detailEditing}">${detailEditing ? CLOSE_ICON_SVG : MORE_ICON_SVG}</button>
     </div>` : "";
-    const addAction = viewMode === "schedule" && detailEditing ? `<div class="pm-calendar-detail-edit-actions"><button type="button" class="pm-calendar-inline-add" data-action="calendar-add-date">+ \u65B0\u589E\u4E00\u6761</button><button type="button" class="pm-calendar-inline-regenerate" data-action="calendar-regenerate" aria-label="\u91CD\u65B0\u751F\u6210\u5F53\u65E5\u65E5\u7A0B" title="\u91CD\u65B0\u751F\u6210\u5F53\u65E5\u65E5\u7A0B">${REFRESH_ICON_SVG}<span>\u91CD\u65B0\u751F\u6210</span></button></div>` : "";
+    const addAction = viewMode === "schedule" && detailEditing ? `<div class="pm-calendar-detail-edit-actions"><button type="button" class="pm-calendar-inline-add" data-action="calendar-add-date" ${detailRegenerating ? "disabled" : ""}>+ \u65B0\u589E\u4E00\u6761</button><button type="button" class="pm-calendar-inline-regenerate${detailRegenerating ? " is-loading" : ""}" data-action="calendar-regenerate" aria-label="\u91CD\u65B0\u751F\u6210\u5F53\u65E5\u65E5\u7A0B" title="\u91CD\u65B0\u751F\u6210\u5F53\u65E5\u65E5\u7A0B" aria-busy="${detailRegenerating}" ${detailRegenerating ? "disabled" : ""}>${REFRESH_ICON_SVG}<span>\u91CD\u65B0\u751F\u6210</span></button></div>` : "";
     return `<section class="pm-calendar-selected-detail" data-calendar-selected-detail="${selectedDate}" data-calendar-detail-mode="${viewMode}">
         <header><div class="pm-calendar-detail-date">${relativeLabel ? `<strong>${escapeHtml(relativeLabel)}</strong>` : ""}<span><time datetime="${selectedDate}">${escapeHtml(detailDate.format(parsed))}</time><em>${escapeHtml(detailWeekday.format(parsed))}</em></span></div>${actions}</header>
         <div class="pm-calendar-selected-content">${content || `<p class="pm-calendar-empty-day">${emptyLabel}</p>`}${addAction}</div>
@@ -2896,6 +2896,7 @@ ${userPrompt}` : userPrompt;
       return `<button type="button" class="${classes.join(" ")}" data-action="calendar-select-date" data-calendar-date="${date}" aria-pressed="${date === selectedDate}" aria-label="${escapeAttr(labels)}"><b>${meta.parsed.getDate()}</b><span>${escapeHtml(meta.summary)}</span><i aria-hidden="true"></i></button>`;
     }).join("");
     const relativeLabel = relativeCalendarLabel(today, selectedDate) || "";
+    const detailRegenerating = viewMode === "recipe" ? view.recipeGenerating === true && view.recipeGenerationTask?.mode === "recipe-regenerate" : viewMode === "schedule" && view.generating === true && view.generationTask?.mode === "regenerate";
     const selectedDetail = renderSelectedDateDetail(
       scope,
       occasionsByDate,
@@ -2906,7 +2907,8 @@ ${userPrompt}` : userPrompt;
       viewMode,
       relativeLabel,
       recipeScope,
-      view.detailEditing === true
+      view.detailEditing === true,
+      detailRegenerating
     );
     const headerAction = viewMode === "weather" ? "calendar-weather-refresh" : viewMode === "schedule" ? "calendar-generate" : viewMode === "recipe" ? "calendar-recipe-generate" : "";
     const recipeWindow = calendarWindowDescription(today, 7);
@@ -2996,7 +2998,10 @@ ${userPrompt}` : userPrompt;
         if (hasExistingMeals && (typeof confirmImpl !== "function" || !confirmImpl(`${generationWindow.label}\u5DF2\u6709\u83DC\u8C31\uFF0C\u91CD\u65B0\u751F\u6210\u5C06\u8986\u76D6\u5DF2\u6709\u5185\u5BB9\u3002\u662F\u5426\u7EE7\u7EED\uFF1F`))) return false;
       }
       const requestedWindowSnapshot = windowSnapshot(getRecipeScope(storageId));
-      const task = tasks.begin(storageId, "recipe-generate", { replace: false, mode: "recipe-generate" });
+      const task = tasks.begin(storageId, "recipe-generate", {
+        replace: false,
+        mode: replaceWindow ? "recipe-regenerate" : "recipe-generate"
+      });
       if (!task) throw new Error("\u5F53\u524D\u4F1A\u8BDD\u5DF2\u6709\u83DC\u8C31\u751F\u6210\u4EFB\u52A1\uFF0C\u6216\u4F1A\u8BDD\u4E0D\u53EF\u7528");
       const view = getView(storageId);
       const previousStatus = view.recipeGenerationTask ? view.recipeGenerationPreviousStatus : getStatus(storageId);
@@ -11995,6 +12000,96 @@ ${lines}` : `\u3010\u4E0E ${name} \u7684\u77ED\u4FE1 \u2014 \u4EC5 ${name} \u4E0
 ${lines}`;
   }
 
+  // src/phone-island-gesture.js
+  function bindIsland(el, handle, {
+    setTimer = globalThis.setTimeout,
+    clearTimer = globalThis.clearTimeout,
+    doubleTapDelay = 300
+  } = {}) {
+    let active = true;
+    let isDragging = false, startX, startY, startTX = 0, startTY = 0;
+    let moved = false, secondTap = false, tapTimer = null;
+    const getCoord = (e) => e.touches ? { x: e.touches[0].clientX, y: e.touches[0].clientY } : { x: e.clientX, y: e.clientY };
+    const getT = () => {
+      const match = (el.style.transform || "").match(/translate\(\s*([-\d.]+)px\s*,\s*([-\d.]+)px/);
+      return match ? { x: parseFloat(match[1]), y: parseFloat(match[2]) } : { x: 0, y: 0 };
+    };
+    const onStart = (e) => {
+      if (e.target.tagName === "BUTTON") return;
+      secondTap = el.classList.contains("is-min") && tapTimer !== null;
+      if (secondTap) {
+        clearTimer(tapTimer);
+        tapTimer = null;
+      }
+      isDragging = true;
+      moved = false;
+      const coords = getCoord(e);
+      startX = coords.x;
+      startY = coords.y;
+      const translation = getT();
+      startTX = translation.x;
+      startTY = translation.y;
+      el.style.transition = "none";
+      if (e.cancelable) e.preventDefault();
+    };
+    const onMove = (e) => {
+      if (!isDragging) return;
+      const coords = getCoord(e), dx = coords.x - startX, dy = coords.y - startY;
+      if (!moved && Math.abs(dx) < 5 && Math.abs(dy) < 5) return;
+      moved = true;
+      secondTap = false;
+      if (e.cancelable) e.preventDefault();
+      el.style.setProperty("transform", `translate(${startTX + dx}px, ${startTY + dy}px)`, "important");
+    };
+    const cancelGesture = ({ clearPendingTap = false } = {}) => {
+      isDragging = false;
+      moved = false;
+      secondTap = false;
+      el.style.transition = ".35s cubic-bezier(.18,.89,.32,1.2)";
+      if (clearPendingTap && tapTimer !== null) {
+        clearTimer(tapTimer);
+        tapTimer = null;
+      }
+    };
+    const cancelAll = () => cancelGesture({ clearPendingTap: true });
+    const onEnd = () => {
+      if (!isDragging) return;
+      isDragging = false;
+      el.style.transition = ".35s cubic-bezier(.18,.89,.32,1.2)";
+      if (moved) return;
+      if (!el.classList.contains("is-min")) return window.__pmToggleMin();
+      if (secondTap) {
+        secondTap = false;
+        window.__pmEnd();
+        return;
+      }
+      tapTimer = setTimer(() => {
+        tapTimer = null;
+        if (active && el.classList.contains("is-min")) window.__pmToggleMin();
+      }, doubleTapDelay);
+    };
+    handle.addEventListener("mousedown", onStart);
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onEnd);
+    handle.addEventListener("touchstart", onStart, { passive: false });
+    window.addEventListener("touchmove", onMove, { passive: false });
+    window.addEventListener("touchend", onEnd);
+    window.addEventListener("touchcancel", cancelAll);
+    window.addEventListener("blur", cancelAll);
+    return () => {
+      active = false;
+      cancelGesture({ clearPendingTap: true });
+      handle.removeEventListener("mousedown", onStart);
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onEnd);
+      handle.removeEventListener("touchstart", onStart);
+      window.removeEventListener("touchmove", onMove);
+      window.removeEventListener("touchend", onEnd);
+      window.removeEventListener("touchcancel", cancelAll);
+      window.removeEventListener("blur", cancelAll);
+    };
+  }
+
   // src/phone-foundation.js
   var warnedHostEventRegistrationFailures = /* @__PURE__ */ new Set();
   function warnHostEventRegistrationFailureOnce(key, eventName, error) {
@@ -12466,56 +12561,6 @@ ${lines}`;
       window.__pmShowList();
       return true;
     };
-    function bindIsland(el, handle) {
-      let isDragging = false, startX, startY, startTX = 0, startTY = 0, moved = false;
-      const getCoord = (e) => e.touches ? { x: e.touches[0].clientX, y: e.touches[0].clientY } : { x: e.clientX, y: e.clientY };
-      const getT = () => {
-        const m = (el.style.transform || "").match(/translate\(\s*([-\d.]+)px\s*,\s*([-\d.]+)px/);
-        return m ? { x: parseFloat(m[1]), y: parseFloat(m[2]) } : { x: 0, y: 0 };
-      };
-      const onStart = (e) => {
-        if (e.target.tagName === "BUTTON") return;
-        isDragging = true;
-        moved = false;
-        const coords = getCoord(e);
-        startX = coords.x;
-        startY = coords.y;
-        const t = getT();
-        startTX = t.x;
-        startTY = t.y;
-        el.style.transition = "none";
-        if (e.cancelable) e.preventDefault();
-      };
-      const onMove = (e) => {
-        if (!isDragging) return;
-        const coords = getCoord(e), dx = coords.x - startX, dy = coords.y - startY;
-        if (!moved && Math.abs(dx) < 5 && Math.abs(dy) < 5) return;
-        moved = true;
-        if (e.cancelable) e.preventDefault();
-        el.style.setProperty("transform", `translate(${startTX + dx}px, ${startTY + dy}px)`, "important");
-      };
-      const onEnd = () => {
-        if (!isDragging) return;
-        isDragging = false;
-        el.style.transition = ".35s cubic-bezier(.18,.89,.32,1.2)";
-        if (!moved) window.__pmToggleMin();
-      };
-      handle.addEventListener("mousedown", onStart);
-      window.addEventListener("mousemove", onMove);
-      window.addEventListener("mouseup", onEnd);
-      handle.addEventListener("touchstart", onStart, { passive: false });
-      window.addEventListener("touchmove", onMove, { passive: false });
-      window.addEventListener("touchend", onEnd);
-      return () => {
-        isDragging = false;
-        handle.removeEventListener("mousedown", onStart);
-        window.removeEventListener("mousemove", onMove);
-        window.removeEventListener("mouseup", onEnd);
-        handle.removeEventListener("touchstart", onStart);
-        window.removeEventListener("touchmove", onMove);
-        window.removeEventListener("touchend", onEnd);
-      };
-    }
     function bindPhoneResize(el, handle) {
       let resizing = false;
       let pointerId = null;
@@ -13056,7 +13101,7 @@ ${lines}`;
       applyBackground,
       applyTheme,
       applyPhoneScale: applyPhoneScale2,
-      bindIsland,
+      bindIsland: bindIsland2,
       bindPhoneResize,
       migrateOldHistory,
       hookGenerationEvent,
@@ -13345,7 +13390,7 @@ ${lines}`;
           }
         }
       });
-      unbindIsland = bindIsland(state.phoneWindow, state.phoneWindow.querySelector(".pm-island"));
+      unbindIsland = bindIsland2(state.phoneWindow, state.phoneWindow.querySelector(".pm-island"));
       unbindPhoneResize = bindPhoneResize(state.phoneWindow, state.phoneWindow.querySelector(".pm-phone-resize-handle"));
       applyTheme();
       applyBackground();

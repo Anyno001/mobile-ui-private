@@ -45,7 +45,10 @@ export function createCalendarRecipeController({
                 || !confirmImpl(`${generationWindow.label}已有菜谱，重新生成将覆盖已有内容。是否继续？`))) return false;
         }
         const requestedWindowSnapshot = windowSnapshot(getRecipeScope(storageId));
-        const task = tasks.begin(storageId, 'recipe-generate', { replace: false, mode: 'recipe-generate' });
+        const task = tasks.begin(storageId, 'recipe-generate', {
+            replace: false,
+            mode: replaceWindow ? 'recipe-regenerate' : 'recipe-generate',
+        });
         if (!task) throw new Error('当前会话已有菜谱生成任务，或会话不可用');
         const view = getView(storageId);
         const previousStatus = view.recipeGenerationTask ? view.recipeGenerationPreviousStatus : getStatus(storageId);
