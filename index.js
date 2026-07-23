@@ -12436,12 +12436,13 @@ ${lines}`;
     async function applyBidirectionalInjection() {
       const epoch = ++runtime.injectionEpoch;
       const context = getCtx();
-      clearExtensionPrompts({ context, runtime });
       const id2 = getStorageId2();
-      if (!context || !id2 || id2 === "sms_unknown__default") return;
+      if (!context || !id2 || id2 === "sms_unknown__default") {
+        return clearExtensionPrompts({ context, runtime });
+      }
       const character = context.characters?.[context.characterId];
       const currentActorName = typeof character?.name === "string" ? character.name.trim() : "";
-      if (!currentActorName) return;
+      if (!currentActorName) return clearExtensionPrompts({ context, runtime });
       let interactiveStore;
       try {
         interactiveStore = await deps.getInteractiveStore?.();
@@ -12475,21 +12476,15 @@ ${lines}`;
       if (!c?.eventSource || !c?.event_types) return;
       const et = c.event_types;
       runtime.lastChatLength = (c.chat || []).length;
-      const events = [
+      const injectionEvents = [
         et.GENERATION_STARTED || "generation_started",
-        resolveHostEvent(et, "CHAT_CHANGED"),
         et.SETTINGS_UPDATED || "settings_updated",
         et.CHATCOMPLETION_SOURCE_CHANGED || "chatcompletion_source_changed",
         et.OAI_PRESET_CHANGED_AFTER || "oai_preset_changed_after"
       ].filter(Boolean);
-      events.forEach((ev) => {
+      injectionEvents.forEach((ev) => {
         try {
-          c.eventSource.on(ev, () => {
-            try {
-              applyBidirectionalInjection();
-            } catch (e) {
-            }
-          });
+          c.eventSource.on(ev, () => applyBidirectionalInjection().catch(() => void 0));
         } catch (error) {
           warnHostEventRegistrationFailureOnce(`injection:${ev}`, ev, error);
         }
@@ -12543,7 +12538,7 @@ ${lines}`;
         warnHostEventRegistrationFailureOnce("resolved:CHAT_CHANGED", "CHAT_CHANGED", error);
       }
       runtime.eventHooked = true;
-      console.log("[phone-mode] hooked", events.length, "events");
+      console.log("[phone-mode] hooked", injectionEvents.length, "injection events");
     }
     window.__pmToggleBidirectional = (name) => {
       const id2 = getStorageId2();

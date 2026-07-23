@@ -1299,6 +1299,70 @@ try {
     assert.equal(hostBoundaryWarnings.some(args => args.some(value => String(value).includes('sensitive world book payload'))), false,
         '世界书告警不得输出异常正文');
 
+    const injectionListeners = new Map();
+    const injectionPromptCalls = [];
+    let resolveInteractiveStore;
+    const interactiveStoreReady = new Promise(resolve => { resolveInteractiveStore = resolve; });
+    const injectionContext = {
+        chat: [],
+        characterId: 0,
+        characters: [{ name: 'Alice' }],
+        event_types: {
+            GENERATION_STARTED: 'generation_started', CHAT_CHANGED: 'chat_changed',
+            MESSAGE_RECEIVED: 'message_received', SETTINGS_UPDATED: 'settings_updated',
+        },
+        eventSource: {
+            on(eventName, listener) {
+                const listeners = injectionListeners.get(eventName) || [];
+                listeners.push(listener);
+                injectionListeners.set(eventName, listeners);
+            },
+        },
+        setExtensionPrompt(...args) { injectionPromptCalls.push(args); },
+    };
+    const previousBidirectional = window.__pmBidirectional;
+    const previousHistories = window.__pmHistories;
+    const previousGroupMeta = window.__pmGroupMeta;
+    const previousBudgetConfig = window.__pmBudgetConfig;
+    const previousEmojis = window.__pmEmojis;
+    window.__pmBidirectional = { story: ['Alice'] };
+    window.__pmHistories = { story: { Alice: [{ role: 'assistant', content: '必须在生成前完成注入' }] } };
+    window.__pmGroupMeta = { story: {} };
+    window.__pmBudgetConfig = undefined;
+    window.__pmEmojis = [];
+    try {
+        const injectionDeps = {
+            runtime: createRuntimeState(),
+            getCtx: () => injectionContext,
+            getStorageId: () => 'story',
+            getUserPersona: () => ({ name: '用户' }),
+            getInteractiveStore: () => interactiveStoreReady,
+        };
+        installPhoneFoundation({ phoneWindow: null, phoneActive: false, conversationHistory: [] }, injectionDeps);
+        injectionDeps.hookGenerationEvent();
+        assert.equal(injectionListeners.get('generation_started')?.length, 1,
+            '生成开始必须注册唯一的注入刷新监听器');
+        assert.equal(injectionListeners.get('chat_changed')?.length, 1,
+            'CHAT_CHANGED 只能注册会话失效处理器，不得先异步刷新再被关闭流程清空');
+        const generationRefresh = injectionListeners.get('generation_started')[0]();
+        assert.equal(typeof generationRefresh?.then, 'function',
+            '生成开始监听器必须返回注入 Promise，让宿主等待提示词写入完成');
+        assert.equal(injectionPromptCalls.length, 0,
+            '异步依赖未就绪时不得先清空现有注入，避免竞态留下空提示词');
+        resolveInteractiveStore({ version: 1, scopes: {} });
+        await generationRefresh;
+        const injectedMemory = injectionPromptCalls.find(call => String(call[1]).includes('必须在生成前完成注入'));
+        assert.ok(injectedMemory, '生成开始事件完成前必须写入所选聊天记录提示词');
+        assert.equal(injectedMemory[2], EXTENSION_PROMPT_POSITIONS.IN_PROMPT);
+        assert.equal(injectedMemory[3], 0);
+    } finally {
+        window.__pmBidirectional = previousBidirectional;
+        window.__pmHistories = previousHistories;
+        window.__pmGroupMeta = previousGroupMeta;
+        window.__pmBudgetConfig = previousBudgetConfig;
+        window.__pmEmojis = previousEmojis;
+    }
+
     const eventRegistrationContext = {
         chat: [],
         event_types: {
