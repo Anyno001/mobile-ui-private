@@ -401,17 +401,20 @@ export function installCalendar(state, deps) {
     }
 
     async function saveBaseDate(storageId, value) {
-        const parsed = parseCalendarDate(value);
-        if (!parsed) throw new Error('时间起点无效，请选择有效日期');
-        await commitScope(storageId, current => ({ ...current, baseDate: formatCalendarDate(parsed) }));
+        const directDate = parseCalendarDate(value);
+        const extractedDate = directDate ? null : extractCalendarBaseDate(value);
+        const parsed = directDate || parseCalendarDate(extractedDate);
+        if (!parsed) throw new Error('当前故事日期无效，请输入 YYYY-MM-DD、YYYY/MM/DD 或“YYYY年M月D日”');
+        const normalizedDate = formatCalendarDate(parsed);
+        await commitScope(storageId, current => ({ ...current, baseDate: normalizedDate }));
         const current = viewFor(storageId);
         runtime.viewByStorage.set(storageId, {
             ...current,
             viewYear: parsed.getFullYear(), viewMonth: parsed.getMonth() + 1,
-            selectedDate: formatCalendarDate(parsed), monthPanelOpen: false, detailEditing: false,
+            selectedDate: normalizedDate, monthPanelOpen: false, detailEditing: false,
         });
         const generationWindow = calendarWindowDescription(parsed, 7);
-        status(storageId, `时间起点已设为 ${formatCalendarDate(parsed)}，相对日期与${generationWindow.label}生成将以此为准。`);
+        status(storageId, `当前故事日期已设为 ${normalizedDate}，相对日期与${generationWindow.label}生成将以此为准。`);
         rerender(storageId);
     }
 
@@ -424,24 +427,7 @@ export function installCalendar(state, deps) {
             viewYear: today.getFullYear(), viewMonth: today.getMonth() + 1,
             selectedDate: formatCalendarDate(today), monthPanelOpen: false, detailEditing: false,
         });
-        status(storageId, '已恢复设备日期作为时间起点。');
-        rerender(storageId);
-    }
-
-    async function saveStoryInitialDate(storageId, value) {
-        const parsed = parseCalendarDate(value);
-        if (!parsed) throw new Error('故事初始日期无效，请选择有效日期');
-        const storyInitialDate = formatCalendarDate(parsed);
-        await commitScope(storageId, current => ({ ...current, storyInitialDate }), null, { refreshInjection: false });
-        status(storageId, `故事初始日期已保存为 ${storyInitialDate}。`);
-        rerender(storageId);
-    }
-
-    async function clearStoryInitialDate(storageId) {
-        await commitScope(storageId, current => {
-            const next = { ...current }; delete next.storyInitialDate; return next;
-        }, null, { refreshInjection: false });
-        status(storageId, '故事初始日期已清除。');
+        status(storageId, '已使用设备日期作为当前故事日期。');
         rerender(storageId);
     }
 
@@ -484,7 +470,7 @@ export function installCalendar(state, deps) {
         const current = viewFor(storageId);
         runtime.viewByStorage.set(storageId, {
             ...current, viewYear: year, viewMonth: month,
-            selectedDate: formatCalendarDate(target), monthPanelOpen: false, detailEditing: false,
+            selectedDate: formatCalendarDate(target), monthPanelOpen: true, detailEditing: false,
         });
         rerender(storageId);
     }
@@ -594,13 +580,6 @@ export function installCalendar(state, deps) {
         if (action === 'calendar-base-clear') {
             await clearBaseDate(storageId); return;
         }
-        if (action === 'calendar-story-initial-save') {
-            const value = app?.querySelector('[data-calendar-story-initial-date]')?.value || '';
-            await saveStoryInitialDate(storageId, value); return;
-        }
-        if (action === 'calendar-story-initial-clear') {
-            await clearStoryInitialDate(storageId); return;
-        }
         if (action === 'calendar-date-rescan') {
             await scanContext(storageId);
             return;
@@ -625,6 +604,10 @@ export function installCalendar(state, deps) {
             const current = viewFor(storageId);
             if (!calendarMonthKeys(current.viewYear, current.viewMonth).includes(date)) {
                 throw new Error('选择的日历日期无效');
+            }
+            if (current.monthPanelOpen === true) {
+                await saveBaseDate(storageId, date);
+                return;
             }
             runtime.viewByStorage.set(storageId, { ...current, selectedDate: date, detailEditing: false });
             rerender(storageId);
@@ -745,7 +728,7 @@ export function installCalendar(state, deps) {
         }
         if (action === 'calendar-toggle-auto') {
             await commitScope(storageId, current => ({ ...current, autoAdjust: !current.autoAdjust }));
-            status(storageId, scope(storageId).autoAdjust ? '自动识别已开启。角色回复后会从最后一条正文校准今天日期。' : '自动识别已关闭。');
+            status(storageId, scope(storageId).autoAdjust ? '自动跟随已开启。角色回复后，日历日期会随正文更新。' : '自动跟随已关闭。');
             rerender(storageId); return;
         }
     }

@@ -5,7 +5,7 @@ import { DEFAULT_RECIPE_GENERATION_RULE, RECIPE_MEAL_LABELS, RECIPE_MEAL_TYPES, 
 import { weatherCodeLabel } from './calendar-weather.js';
 import { resolveWeatherForDate, weatherSourceLabel } from './calendar-weather-source.js';
 import {
-    CLOSE_ICON_SVG, CYCLE_FERTILE_ICON_SVG, CYCLE_PERIOD_ICON_SVG, CYCLE_SAFE_ICON_SVG, EDIT_ICON_SVG,
+    CLOSE_ICON_SVG, CYCLE_FERTILE_ICON_SVG, CYCLE_PERIOD_ICON_SVG, EDIT_ICON_SVG,
     MORE_ICON_SVG, REFRESH_ICON_SVG, TRASH_ICON_SVG, WEATHER_ICON_SVG,
 } from './icons.js';
 import { escapeAttr, escapeHtml } from './ui.js';
@@ -15,7 +15,6 @@ const detailWeekday = new Intl.DateTimeFormat('zh-CN', { weekday: 'long' });
 const CYCLE_DETAILS = {
     period: { label: '经期', icon: CYCLE_PERIOD_ICON_SVG },
     ovulatory: { label: '易孕期', icon: CYCLE_FERTILE_ICON_SVG },
-    luteal: { label: '安全期', icon: CYCLE_SAFE_ICON_SVG },
 };
 
 export const occasionTypeLabel = type => type === 'birthday' ? '生日' : '纪念日';
@@ -51,14 +50,15 @@ function weatherRow(weatherStore, date) {
     if (resolved.status !== 'available') {
         return `<p class="pm-calendar-empty-day">无法推演 · ${escapeHtml(resolved.unavailableReason)}</p>`;
     }
-    return `<div class="pm-calendar-weather"><b>${resolved.day.tempMin}℃~${resolved.day.tempMax}℃</b><span>${escapeHtml(weatherCodeLabel(resolved.day.weatherCode))}</span>${WEATHER_ICON_SVG}</div>`;
+    return `<div class="pm-calendar-weather"><span class="pm-calendar-status-copy"><b>${resolved.day.tempMin}℃~${resolved.day.tempMax}℃</b><small>${escapeHtml(weatherCodeLabel(resolved.day.weatherCode))}</small></span><span class="pm-calendar-status-icon" aria-hidden="true">${WEATHER_ICON_SVG}</span></div>`;
 }
 
 function cycleRow(cycleScope, date) {
     const prediction = predictCyclePhase(cycleScope, date);
     const detail = CYCLE_DETAILS[prediction.phase];
     if (!detail) return '';
-    return `<div class="pm-calendar-cycle is-${prediction.phase}"><b>${detail.label}</b>${prediction.status === 'override' ? '<em>手动</em>' : ''}${detail.icon}</div>`;
+    const statusLabel = prediction.status === 'override' ? '手动记录' : '周期预测';
+    return `<div class="pm-calendar-cycle is-${prediction.phase}"><span class="pm-calendar-status-copy"><b>${detail.label}</b><small>${statusLabel}</small></span><span class="pm-calendar-status-icon" aria-hidden="true">${detail.icon}</span></div>`;
 }
 
 function recipeRows(recipeScope, date, editing = false) {
@@ -107,7 +107,7 @@ export function weatherSearchResults(results) {
 }
 
 function injectionToggle(action, label, enabled) {
-    return `<button type="button" class="pm-calendar-auto-switch" data-action="${action}" role="switch" aria-checked="${enabled === true}"><span><b>${label}</b><small>按当前会话独立保存</small></span><i aria-hidden="true"></i></button>`;
+    return `<button type="button" class="pm-calendar-auto-switch" data-action="${action}" role="switch" aria-checked="${enabled === true}"><span><b>${label}</b><small>开启后供正文生成读取；设置按当前会话独立保存。</small></span><i aria-hidden="true"></i></button>`;
 }
 
 
@@ -119,17 +119,17 @@ export function renderCalendarManagement({
         const region = recipeScope?.regionPreference || '';
         const applied = recipeScope?.lastGeneratedRegion || '';
         const generationRule = recipeScope?.generationRule || DEFAULT_RECIPE_GENERATION_RULE;
-        return `<details class="pm-calendar-management" data-calendar-management="recipe" open><summary>菜谱设置</summary><div class="pm-calendar-management-content"><section class="pm-calendar-data-tools"><h3>上下文注入</h3>${injectionToggle('calendar-toggle-recipe-injection', '注入菜谱', scope.injectionRecipeEnabled)}</section><section class="pm-calendar-data-tools"><h3>饮食地区 / 文化</h3><div class="pm-calendar-data-row"><input data-recipe-region maxlength="120" value="${escapeAttr(region)}" placeholder="川渝、潮汕、关西或架空地区；留空按剧情推断" aria-label="菜谱饮食地区或文化"><button type="button" data-action="calendar-recipe-region-save">保存</button></div><small class="pm-calendar-attribution">${region ? `手动指定：${escapeHtml(region)}` : applied ? `最近剧情推断：${escapeHtml(applied)}` : '尚未生成地区依据'}</small></section><section class="pm-calendar-data-tools"><h3>生成规则</h3><textarea class="pm-calendar-generation-rule" data-recipe-generation-rule maxlength="3000" aria-label="菜谱生成规则">${escapeHtml(generationRule)}</textarea><div class="pm-calendar-editor-actions"><button type="button" class="is-primary" data-action="calendar-recipe-generation-rule-save">保存生成规则</button></div></section></div></details>`;
+        return `<details class="pm-calendar-management" data-calendar-management="recipe" open><summary>菜谱设置</summary><div class="pm-calendar-management-content"><section class="pm-calendar-data-tools"><h3>上下文注入</h3>${injectionToggle('calendar-toggle-recipe-injection', '菜谱', scope.injectionRecipeEnabled)}</section><section class="pm-calendar-data-tools"><h3>饮食地区 / 文化</h3><div class="pm-calendar-data-row"><input data-recipe-region maxlength="120" value="${escapeAttr(region)}" placeholder="川渝、潮汕、关西或架空地区；留空按剧情推断" aria-label="菜谱饮食地区或文化"><button type="button" data-action="calendar-recipe-region-save">保存</button></div><small class="pm-calendar-attribution">${region ? `手动指定：${escapeHtml(region)}` : applied ? `最近剧情推断：${escapeHtml(applied)}` : '尚未生成地区依据'}</small></section><section class="pm-calendar-data-tools"><h3>生成规则</h3><textarea class="pm-calendar-generation-rule" data-recipe-generation-rule maxlength="3000" aria-label="菜谱生成规则">${escapeHtml(generationRule)}</textarea><div class="pm-calendar-editor-actions"><button type="button" class="is-primary" data-action="calendar-recipe-generation-rule-save">保存生成规则</button></div></section></div></details>`;
     }
     if (viewMode === 'weather') {
         const storedSource = weatherStore?.lastSuccess?.source || (weatherStore?.lastSuccess ? 'forecast' : null);
         const currentSource = storedSource ? weatherSourceLabel(storedSource) : '仅气候推演';
-        return `<details class="pm-calendar-management" data-calendar-management="weather"><summary>天气设置</summary><div class="pm-calendar-management-content"><section class="pm-calendar-data-tools"><h3>上下文注入</h3>${injectionToggle('calendar-toggle-weather-injection', '注入天气', scope.injectionWeatherEnabled)}</section><section class="pm-calendar-data-tools"><h3>天气位置</h3><div class="pm-calendar-data-row"><input data-weather-query placeholder="搜索城市或地区" maxlength="100" aria-label="搜索天气位置"><button type="button" data-action="calendar-weather-search">搜索</button><button type="button" data-action="calendar-weather-refresh">刷新</button></div>${weatherSearchResults(weatherResults)}<small class="pm-calendar-attribution">${weatherStore.location ? `${escapeHtml(weatherStore.location.name)} · 当前数据 ${escapeHtml(currentSource)} · 预报外日期使用气候推演` : '尚未设置天气位置 · 无法推演'}</small></section></div></details>`;
+        return `<details class="pm-calendar-management" data-calendar-management="weather"><summary>天气设置</summary><div class="pm-calendar-management-content"><section class="pm-calendar-data-tools"><h3>上下文注入</h3>${injectionToggle('calendar-toggle-weather-injection', '天气', scope.injectionWeatherEnabled)}</section><section class="pm-calendar-data-tools"><h3>天气位置</h3><div class="pm-calendar-data-row"><input data-weather-query placeholder="搜索城市或地区" maxlength="100" aria-label="搜索天气位置"><button type="button" data-action="calendar-weather-search">搜索</button><button type="button" data-action="calendar-weather-refresh">刷新</button></div>${weatherSearchResults(weatherResults)}<small class="pm-calendar-attribution">${weatherStore.location ? `${escapeHtml(weatherStore.location.name)} · 当前数据 ${escapeHtml(currentSource)} · 预报外日期使用气候推演` : '尚未设置天气位置 · 无法推演'}</small></section></div></details>`;
     }
     if (viewMode === 'cycle') {
         const startDay = cycleScope.lastPeriodStart ? Number(cycleScope.lastPeriodStart.slice(8, 10)) : 1;
         const subjects = cycleSubjects.length ? cycleSubjects : [{ value: '__self__', label: '<user>' }];
-        return `<details class="pm-calendar-management" data-calendar-management="cycle" open><summary>生理期设置</summary><div class="pm-calendar-management-content"><section class="pm-calendar-data-tools"><h3>上下文注入</h3>${injectionToggle('calendar-toggle-cycle-injection', '注入生理期', scope.injectionCycleEnabled)}</section><form class="pm-calendar-editor pm-calendar-cycle-editor" data-calendar-cycle-editor>
+        return `<details class="pm-calendar-management" data-calendar-management="cycle" open><summary>生理期设置</summary><div class="pm-calendar-management-content"><section class="pm-calendar-data-tools"><h3>上下文注入</h3>${injectionToggle('calendar-toggle-cycle-injection', '生理期', scope.injectionCycleEnabled)}</section><form class="pm-calendar-editor pm-calendar-cycle-editor" data-calendar-cycle-editor>
           <label>记录对象<select name="subject" data-action="calendar-cycle-subject" aria-label="生理期记录对象">${subjects.map(item => `<option value="${escapeAttr(item.value)}" ${item.value === selectedCycleSubject ? 'selected' : ''}>${escapeHtml(item.label)}</option>`).join('')}</select></label>
           <label class="pm-calendar-cycle-toggle"><span><b>启用生理期提示</b><small>仅在本地按当前会话和所选角色保存</small></span><span class="pm-calendar-cycle-switch"><input class="pm-calendar-cycle-input" name="enabled" type="checkbox" ${cycleScope.enabled ? 'checked' : ''} aria-label="启用生理期提示"><span class="pm-custom-check" aria-hidden="true"></span></span></label>
           <label>每月经期通常从几号开始<select name="periodStartDay" aria-label="每月经期开始日">${Array.from({ length: 28 }, (_, index) => index + 1).map(day => `<option value="${day}" ${day === startDay ? 'selected' : ''}>${day} 号</option>`).join('')}</select></label>
@@ -139,21 +139,19 @@ export function renderCalendarManagement({
     }
     const generationRule = scope.generationRule || DEFAULT_CALENDAR_GENERATION_RULE;
     return `<details class="pm-calendar-management" data-calendar-management="schedule"><summary>日历设置</summary><div class="pm-calendar-management-content">
-        <section class="pm-calendar-data-tools"><h3>上下文注入</h3>${injectionToggle('calendar-toggle-schedule-injection', '注入日程、节假日与生日纪念日', scope.injectionScheduleEnabled)}</section>
+        <section class="pm-calendar-data-tools"><h3>上下文注入</h3>${injectionToggle('calendar-toggle-schedule-injection', '日程', scope.injectionScheduleEnabled)}</section>
         <section class="pm-calendar-data-tools"><h3>生成规则</h3><textarea class="pm-calendar-generation-rule" data-calendar-generation-rule maxlength="3000" aria-label="日程生成规则">${escapeHtml(generationRule)}</textarea><div class="pm-calendar-editor-actions"><button type="button" class="is-primary" data-action="calendar-generation-rule-save">保存生成规则</button></div></section>
-        <section class="pm-calendar-data-tools pm-calendar-scan-card"><h3>正文日期</h3><p>从最后一条正文读取明确日期，并将它设为日历中的“今天”。</p><div class="pm-calendar-data-row pm-calendar-date-tags-row"><input data-calendar-date-tags value="${escapeAttr((scope.dateTags || ['date']).join(', '))}" maxlength="160" placeholder="date, time_date" aria-label="正文日期标签"><button type="button" data-action="calendar-date-sync">保存并识别</button></div><button type="button" class="pm-calendar-auto-switch" data-action="calendar-toggle-auto" role="switch" aria-checked="${scope.autoAdjust}"><span><b>自动识别最后一条正文</b><small>角色回复后自动校准今天日期</small></span><i aria-hidden="true"></i></button></section>
+        <section class="pm-calendar-data-tools pm-calendar-scan-card"><h3>正文日期</h3><p>识别最后一条正文中的完整日期，并设为当前故事日期。</p><div class="pm-calendar-data-row pm-calendar-date-tags-row"><input data-calendar-date-tags value="${escapeAttr((scope.dateTags || ['date']).join(', '))}" maxlength="160" placeholder="date, time_date" aria-label="正文日期标签"><button type="button" data-action="calendar-date-sync">保存并识别</button></div><button type="button" class="pm-calendar-auto-switch" data-action="calendar-toggle-auto" role="switch" aria-checked="${scope.autoAdjust}"><span><b>自动跟随正文日期</b><small>角色回复后，日历日期会随正文更新。</small></span><i aria-hidden="true"></i></button></section>
         <section class="pm-calendar-data-tools"><h3>节假日数据</h3><div class="pm-calendar-data-row pm-calendar-holiday-row"><select data-action="calendar-holiday-country" data-calendar-country aria-label="节假日国家"><option value="CN" ${holidayCache.selectedCountry === 'CN' ? 'selected' : ''}>中国</option><option value="US" ${holidayCache.selectedCountry === 'US' ? 'selected' : ''}>美国</option><option value="JP" ${holidayCache.selectedCountry === 'JP' ? 'selected' : ''}>日本</option></select><button type="button" data-action="calendar-holiday-refresh" ${holidayAvailable ? '' : 'disabled aria-disabled="true"'}>刷新节假日</button></div>${holidayAvailable ? '' : `<small class="pm-calendar-attribution">该国家在当前年代无外部数据源（仅支持 ${holidayRange?.min ?? '未知'}–${holidayRange?.max ?? '未知'} 年）</small>`}</section>
     </div></details>`;
 }
 
 export function renderCalendarMonthPanel(scope, viewYear, viewMonth, open = false) {
     const baseDate = scope.baseDate || '';
-    const storyInitialDate = scope.storyInitialDate || '';
     return `<section class="pm-calendar-month-panel" data-calendar-month-panel ${open ? '' : 'hidden'}>
       <section class="pm-calendar-panel-section"><span>跳转月份</span><div class="pm-calendar-month-jump"><label>年份<input type="number" min="1" max="9999" value="${viewYear}" data-calendar-jump-year aria-label="跳转年份"></label><label>月份<input type="number" min="1" max="12" value="${viewMonth}" data-calendar-jump-month aria-label="跳转月份"></label><button type="button" data-action="calendar-month-jump">跳转</button></div></section>
-      <section class="pm-calendar-panel-section"><label>时间起点<input type="date" data-calendar-base-date value="${escapeAttr(baseDate)}" aria-label="自定义时间起点"></label><p>仅影响日历今天与相对日期。</p></section>
-      <section class="pm-calendar-panel-section"><label>故事初始日期<input type="date" data-calendar-story-initial-date value="${escapeAttr(storyInitialDate)}" aria-label="故事初始日期"></label><p>仅记录故事开始日期，不改变日历今天、生成窗口或当前视图。</p><div class="pm-calendar-month-panel-actions"><button type="button" class="is-primary" data-action="calendar-story-initial-save">保存初始日期</button><button type="button" data-action="calendar-story-initial-clear" ${storyInitialDate ? '' : 'disabled'}>清除初始日期</button></div></section>
-      <div class="pm-calendar-month-panel-actions"><button type="button" class="is-primary" data-action="calendar-base-save">保存</button><button type="button" data-action="calendar-base-clear" ${baseDate ? '' : 'disabled'}>设备日期</button><button type="button" data-action="calendar-today">回到今天</button></div>
+      <section class="pm-calendar-panel-section"><label>当前故事日期<input type="text" inputmode="numeric" data-calendar-base-date value="${escapeAttr(baseDate)}" placeholder="例如 3726-08-17" aria-label="当前故事日期"></label><p>可直接输入日期，或跳转月份后点击下方日期。</p></section>
+      <div class="pm-calendar-month-panel-actions"><button type="button" class="is-primary" data-action="calendar-base-save">应用日期</button><button type="button" data-action="calendar-base-clear" ${baseDate ? '' : 'disabled'}>使用设备日期</button><button type="button" data-action="calendar-today">定位当前日期</button></div>
     </section>`;
 }
 

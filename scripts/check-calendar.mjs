@@ -61,9 +61,7 @@ assert.equal(parseCalendarDate('0500-02-29'), null, '前推公历中的古代非
 assert.equal(calendarDateFromParts(580, 3, 15), '0580-03-15', '分段日期必须保留四位年份格式');
 assert.equal(normalizeCalendarScope({ baseDate: '0580-03-15' }).baseDate, '0580-03-15', '旧 scope 的古代时间起点必须保留');
 assert.equal(normalizeCalendarScope({ storyInitialDate: '0580-03-01' }).storyInitialDate, '0580-03-01',
-    '合法故事初始日期必须被 scope 归一化保留');
-assert.equal(Object.hasOwn(normalizeCalendarScope({ storyInitialDate: '0580-02-30' }), 'storyInitialDate'), false,
-    '非法故事初始日期不得进入 scope');
+    '废弃字段必须保真以支持旧版本回退，但不得参与当前日期计算');
 assert.equal(normalizeCalendarScope({ generationRule: 'A'.repeat(3000) }).generationRule.length, 3000,
     '日程规则恰好 3000 字符必须被模型保留');
 assert.equal(normalizeCalendarScope({ generationRule: 'A'.repeat(3001) }).generationRule.length, 3000,
@@ -628,7 +626,7 @@ const cycleLabelCases = [
     { date: '2026-07-01', phase: 'period', label: '经期' },
     { date: '2026-07-06', phase: 'follicular', label: '' },
     { date: '2026-07-14', phase: 'ovulatory', label: '易孕期' },
-    { date: '2026-07-16', phase: 'luteal', label: '安全期' },
+    { date: '2026-07-16', phase: 'luteal', label: '' },
 ];
 for (const { date, phase, label } of cycleLabelCases) {
     const cycleScope = cycleScopeFor(cycleStore, storageA);
@@ -650,10 +648,14 @@ for (const { date, phase, label } of cycleLabelCases) {
     if (!label) {
         assert.doesNotMatch(detail, /<b>安全期<\/b>|<b>易孕期<\/b>|<b>经期<\/b>/,
             '空白周期阶段不得在详情显示周期标签');
+        assert.doesNotMatch(page, new RegExp(`data-calendar-date="${date}"[^>]*class="[^"]*has-cycle`),
+            '空白周期阶段不得在月格保留周期状态点');
         assert.doesNotMatch(page, new RegExp(`data-calendar-date="${date}"[^>]*>(?:(?!</button>)[\\s\\S])*?<span>(?:安全期|易孕期|经期)</span>`),
             '空白周期阶段不得在月格显示周期标签');
         assert.doesNotMatch(injection, new RegExp(`${date}｜[^\\n]*生理周期（我）：`),
             '空白周期阶段不得写入生理期上下文');
+        assert.match(injection, /生理周期规则：对所有已启用对象，未注明经期或易孕期的日期按安全期理解。/,
+            '启用周期资料时必须用完整规则说明未标注日期的含义');
     } else {
         assert.match(detail, new RegExp(`<b>${label}</b>`), `周期详情必须将 ${phase} 渲染为${label}`);
         assert.match(page, new RegExp(`data-calendar-date="${date}"[^>]*>(?:(?!</button>)[\\s\\S])*?<span>${label}</span>`),
@@ -812,8 +814,10 @@ assert.match(renderedSchedule, /data-calendar-month-navigation tabindex="0"[^>]*
 assert.match(renderedSchedule, /data-action="calendar-prev-month"[\s\S]*data-action="calendar-mode-schedule"[\s\S]*data-action="calendar-mode-weather"[\s\S]*data-action="calendar-mode-cycle"[\s\S]*data-action="calendar-mode-recipe"[\s\S]*data-action="calendar-next-month"/,
     '翻月按钮必须位于四个信息分类按钮两端');
 assert.match(renderedSchedule, /data-calendar-month-panel hidden[\s\S]*data-calendar-jump-year[\s\S]*data-calendar-jump-month/);
-assert.match(renderedSchedule, /data-calendar-story-initial-date[^>]*value=""[\s\S]*data-action="calendar-story-initial-save"[\s\S]*data-action="calendar-story-initial-clear" disabled/,
-    '月份面板必须追加独立的故事初始日期入口');
+assert.match(renderedSchedule, /当前故事日期[\s\S]*data-calendar-base-date[^>]*type="text"|type="text"[^>]*data-calendar-base-date/,
+    '月份面板必须提供可直接键入的当前故事日期');
+assert.doesNotMatch(renderedSchedule, /storyInitialDate|calendar-story-initial|故事初始日期/,
+    '月份面板不得保留无业务作用的故事初始日期入口');
 assert.match(renderedSchedule, /data-action="calendar-base-save"[\s\S]*data-action="calendar-base-clear"[\s\S]*data-action="calendar-today"/);
 assert.doesNotMatch(renderedSchedule, /calendar-date-rescan/);
 assert.doesNotMatch(renderedSchedule, /calendar-base-edit|pm-calendar-base-dialog/);
@@ -876,7 +880,13 @@ assert.doesNotMatch(renderedSchedule, /data-action="calendar-manage-date"/,
     '详情主流程不得退回二级管理弹窗');
 assert.match(renderedSchedule, /class="pm-calendar-data-tools pm-calendar-scan-card"><h3>正文日期<\/h3>[\s\S]*?data-calendar-date-tags[\s\S]*?data-action="calendar-date-sync"[^>]*>保存并识别/);
 assert.match(renderedSchedule, /data-action="calendar-toggle-auto" role="switch" aria-checked="false"/);
-assert.match(renderedSchedule, /自动识别最后一条正文/);
+assert.match(renderedSchedule, /自动跟随正文日期/);
+assert.match(renderedSchedule, /角色回复后，日历日期会随正文更新。/);
+assert.doesNotMatch(renderedSchedule, /避免误改/);
+for (const label of ['日程', '天气', '生理期', '菜谱']) {
+    const rendered = label === '天气' ? renderedWeather : label === '生理期' ? renderedCycle : label === '菜谱' ? renderedRecipe : renderedSchedule;
+    assert.match(rendered, new RegExp(`<b>${label}</b><small>开启后供正文生成读取；设置按当前会话独立保存。</small>`));
+}
 assert.doesNotMatch(renderedSchedule, /data-calendar-editor|data-calendar-occasion-editor|pm-calendar-editor-switch/,
     '安排管理区不得恢复独立新增表单');
 assert.doesNotMatch(renderedSchedule, /已选日期|>\d{4}-\d{2}-\d{2}<\/time>/);
@@ -968,8 +978,10 @@ assert.match(renderedCycle, /class="pm-calendar-cycle-input" name="enabled" type
     '周期开关必须保留原生 checkbox 的表单与辅助技术语义');
 assert.match(renderedCycle, /class="pm-custom-check" aria-hidden="true"/,
     '周期开关必须复用统一视觉控件');
-assert.match(renderedCycle, /class="pm-calendar-cycle is-period"><b>经期<\/b>[\s\S]*?<svg/,
-    '选中经期日期的详情必须显示经期标签和独立 SVG');
+assert.match(renderedCycle, /class="pm-calendar-cycle is-period">[\s\S]*?class="pm-calendar-status-copy">[\s\S]*?<b>经期<\/b>[\s\S]*?<small>周期预测<\/small>[\s\S]*?class="pm-calendar-status-icon"[^>]*>[\s\S]*?<svg/,
+    '选中经期日期的详情必须使用独立文本区和右侧 SVG 图标槽');
+assert.match(renderedWeather, /class="pm-calendar-weather">[\s\S]*?class="pm-calendar-status-copy">[\s\S]*?class="pm-calendar-status-icon"[^>]*>[\s\S]*?<svg/,
+    '天气详情必须使用独立文本区和右侧 SVG 图标槽');
 assert.doesNotMatch(renderedCycle, />follicular<|，follicular|<span>follicular<\/span>/,
     '空白周期阶段不得泄漏内部 phase key');
 assert.doesNotMatch(renderedCycle, /相对低风险期|不能作为避孕依据/);
@@ -1118,9 +1130,10 @@ try {
         id: sharedEntryId, type: 'birthday', month: editorDate.getMonth() + 1, day: editorDate.getDate(),
         title: '真实生日', note: '真实生日备注', leapDayRule: 'feb28', createdAt: 1, updatedAt: 1,
     };
+    const legacyStoryInitialDate = '0580-03-01';
     memory.set(CALENDAR_STORAGE_KEY, JSON.stringify({
         version: 1,
-        scopes: { [storageA]: { ...createEmptyCalendarScope(), events: { [editorEvent.date]: [editorEvent] } } },
+        scopes: { [storageA]: { ...createEmptyCalendarScope(), storyInitialDate: legacyStoryInitialDate, events: { [editorEvent.date]: [editorEvent] } } },
     }));
     memory.set(CALENDAR_OCCASION_STORAGE_KEY, JSON.stringify({
         version: 1,
@@ -1182,7 +1195,7 @@ try {
         overlayHistory.push(overlay);
         return overlay;
     };
-    let storyInitialInjectionCalls = 0;
+    let injectionCalls = 0;
     const deps = {
         getStorageId: () => storageA,
         gatherContext: async () => ({}),
@@ -1196,7 +1209,7 @@ try {
         clearTimeoutImpl,
         makeOverlay: makeCalendarOverlay,
         closeOverlay: reason => overlayCloseReasons.push(reason),
-        applyBidirectionalInjection: async () => { storyInitialInjectionCalls += 1; },
+        applyBidirectionalInjection: async () => { injectionCalls += 1; },
     };
     installCalendar({ phoneWindow }, deps);
     assert.equal(deps.renderCalendar(storageA), true);
@@ -1308,11 +1321,20 @@ try {
         deps.getCalendarOccasionStore(),
         'entry controller 完成后 occasion storage 必须与完整运行时 store 一致',
     );
+    assert.equal(JSON.parse(memory.get(CALENDAR_STORAGE_KEY)).scopes[storageA].storyInitialDate, legacyStoryInitialDate,
+        '无关日历保存不得破坏旧故事初始日期字段');
+    assert.equal(deps.getCalendarStore().scopes[storageA].storyInitialDate, legacyStoryInitialDate,
+        '运行时 store 必须保真旧字段以支持无损持久化');
+    assert.doesNotMatch(container.innerHTML, /故事初始日期|calendar-story-initial|data-calendar-story-initial-date/,
+        '保真旧字段不得使废弃入口重新出现在 UI');
     assert.equal(entryFocusCount, 4, '每次新增或编辑具体条目只能聚焦一次');
     const initialSelectedDate = detailDate();
     const currentMonthPrefix = initialSelectedDate.slice(0, 7);
     const alternateDate = calendarMonthKeys(Number(currentMonthPrefix.slice(0, 4)), Number(currentMonthPrefix.slice(5, 7)))
         .find(date => date.startsWith(currentMonthPrefix) && date !== initialSelectedDate);
+    const baseDateBeforeDetailSelection = deps.getCalendarStore().scopes[storageA].baseDate;
+    const persistedBaseDateBeforeDetailSelection = JSON.parse(memory.get(CALENDAR_STORAGE_KEY)).scopes[storageA].baseDate;
+    const injectionCallsBeforeDetailSelection = injectionCalls;
     await deps.handleCalendarAction({ dataset: { action: 'calendar-select-date', calendarDate: alternateDate } }, { querySelector: () => null });
     assert.match(container.innerHTML, /data-action="calendar-toggle-detail-edit"[^>]*aria-pressed="false"/,
         '切换日期必须退出上一天的详情编辑态');
@@ -1320,6 +1342,12 @@ try {
     assert.match(dayTag(alternateDate), /aria-pressed="true"/);
     assert.doesNotMatch(dayTag(initialSelectedDate), /is-selected|aria-pressed="true"/);
     assert.equal(detailDate(), alternateDate, '点击日期必须同步更新详情日期');
+    assert.equal(deps.getCalendarStore().scopes[storageA].baseDate, baseDateBeforeDetailSelection,
+        '月份面板关闭时点击日期不得修改当前故事日期');
+    assert.equal(JSON.parse(memory.get(CALENDAR_STORAGE_KEY)).scopes[storageA].baseDate, persistedBaseDateBeforeDetailSelection,
+        '月份面板关闭时点击日期不得写入当前故事日期');
+    assert.equal(injectionCalls, injectionCallsBeforeDetailSelection,
+        '仅查看日期详情不得刷新上下文注入');
     await deps.handleCalendarAction({ dataset: { action: 'calendar-mode-cycle' } }, { querySelector: () => null });
     assert.match(container.innerHTML, /data-calendar-view-mode="cycle"/);
     assert.match(container.innerHTML, /data-calendar-detail-mode="cycle"/);
@@ -1335,7 +1363,6 @@ try {
     const countryControl = { value: 'US' };
     const weatherQuery = { value: '上海' };
     const baseDateControl = { value: '2032-02-29' };
-    const storyInitialDateControl = { value: '2030-01-02' };
     const jumpYearControl = { value: '2035' };
     const jumpMonthControl = { value: '11' };
     const cycleForm = { elements: {
@@ -1346,7 +1373,6 @@ try {
         if (selector === '[data-calendar-country]') return countryControl;
         if (selector === '[data-weather-query]') return weatherQuery;
         if (selector === '[data-calendar-base-date]') return baseDateControl;
-        if (selector === '[data-calendar-story-initial-date]') return storyInitialDateControl;
         if (selector === '[data-calendar-jump-year]') return jumpYearControl;
         if (selector === '[data-calendar-jump-month]') return jumpMonthControl;
         if (selector === '[data-calendar-cycle-editor]') return cycleForm;
@@ -1357,6 +1383,8 @@ try {
     assert.match(container.innerHTML, /data-calendar-month-panel >/);
     await deps.handleCalendarAction({ dataset: { action: 'calendar-month-jump' } }, app);
     assert.match(container.innerHTML, /aria-label="2035年11月月历，使用左右方向键切换月份"/);
+    assert.match(container.innerHTML, /data-action="calendar-month-panel"[^>]*aria-expanded="true"/,
+        '跳转远年份后必须保持日期选取面板打开');
     jumpYearControl.value = '0';
     await assert.rejects(deps.handleCalendarAction({ dataset: { action: 'calendar-month-jump' } }, app), /跳转年月无效/);
     assert.match(container.innerHTML, /aria-label="2035年11月月历，使用左右方向键切换月份"/, '非法年月不得污染当前视图');
@@ -1378,35 +1406,25 @@ try {
     jumpYearControl.value = '2035';
     jumpMonthControl.value = '11';
     await deps.handleCalendarAction({ dataset: { action: 'calendar-month-jump' } }, app);
-    const viewBeforeStoryInitialSave = { month: monthLabel(), selectedDate: detailDate() };
-    const injectionCallsBeforeStoryInitialSave = storyInitialInjectionCalls;
-    await deps.handleCalendarAction({ dataset: { action: 'calendar-story-initial-save' } }, app);
-    assert.equal(deps.getCalendarStore().scopes[storageA].storyInitialDate, '2030-01-02');
-    assert.equal(JSON.parse(memory.get(CALENDAR_STORAGE_KEY)).scopes[storageA].storyInitialDate, '2030-01-02',
-        '故事初始日期必须持久化');
-    assert.equal(deps.getCalendarStore().scopes[storageA].baseDate, undefined,
-        '保存故事初始日期不得创建或覆盖故事今天');
-    assert.deepEqual({ month: monthLabel(), selectedDate: detailDate() }, viewBeforeStoryInitialSave,
-        '保存故事初始日期不得改变当前月份或选中日期');
-    assert.equal(storyInitialInjectionCalls, injectionCallsBeforeStoryInitialSave,
-        '保存故事初始日期不得刷新双向注入');
-    assert.match(container.innerHTML, /data-calendar-story-initial-date[^>]*value="2030-01-02"/);
-    storyInitialDateControl.value = '2030-02-30';
-    await assert.rejects(
-        deps.handleCalendarAction({ dataset: { action: 'calendar-story-initial-save' } }, app),
-        /故事初始日期无效/,
-    );
-    assert.equal(deps.getCalendarStore().scopes[storageA].storyInitialDate, '2030-01-02',
-        '非法故事初始日期不得污染已有值');
-    const injectionCallsBeforeStoryInitialClear = storyInitialInjectionCalls;
-    await deps.handleCalendarAction({ dataset: { action: 'calendar-story-initial-clear' } }, app);
-    assert.equal(Object.hasOwn(deps.getCalendarStore().scopes[storageA], 'storyInitialDate'), false);
-    assert.equal(Object.hasOwn(JSON.parse(memory.get(CALENDAR_STORAGE_KEY)).scopes[storageA], 'storyInitialDate'), false,
-        '清除故事初始日期必须同步持久化');
-    assert.equal(storyInitialInjectionCalls, injectionCallsBeforeStoryInitialClear,
-        '清除故事初始日期不得刷新双向注入');
-    assert.deepEqual({ month: monthLabel(), selectedDate: detailDate() }, viewBeforeStoryInitialSave,
-        '清除故事初始日期不得改变当前月份或选中日期');
+    const injectionCallsBeforeCalendarPick = injectionCalls;
+    await deps.handleCalendarAction({ dataset: { action: 'calendar-select-date', calendarDate: '2035-11-17' } }, app);
+    assert.equal(deps.getCalendarStore().scopes[storageA].baseDate, '2035-11-17',
+        '月份面板打开时点击日期必须设为当前故事日期');
+    assert.equal(JSON.parse(memory.get(CALENDAR_STORAGE_KEY)).scopes[storageA].baseDate, '2035-11-17',
+        '从日历选择的当前故事日期必须持久化');
+    assert.equal(injectionCalls, injectionCallsBeforeCalendarPick + 1,
+        '从日历选择当前故事日期必须刷新上下文注入');
+    assert.match(container.innerHTML, /data-action="calendar-month-panel"[^>]*aria-expanded="false"/,
+        '日期应用成功后必须退出日期选取模式');
+    baseDateControl.value = '3726/8/17';
+    await deps.handleCalendarAction({ dataset: { action: 'calendar-base-save' } }, app);
+    assert.equal(deps.getCalendarStore().scopes[storageA].baseDate, '3726-08-17',
+        '手动输入斜杠日期必须归一化并持久化');
+    baseDateControl.value = '3726年9月3日';
+    await deps.handleCalendarAction({ dataset: { action: 'calendar-base-save' } }, app);
+    assert.equal(deps.getCalendarStore().scopes[storageA].baseDate, '3726-09-03',
+        '手动输入中文年月日必须归一化并持久化');
+    baseDateControl.value = '2032-02-29';
     await deps.handleCalendarAction({ dataset: { action: 'calendar-base-save' } }, app);
     assert.equal(deps.getCalendarStore().scopes[storageA].baseDate, '2032-02-29');
     assert.equal(JSON.parse(memory.get('ST_SMS_CALENDAR_V1')).scopes[storageA].baseDate, '2032-02-29', '时间起点必须持久化');
@@ -1419,7 +1437,7 @@ try {
     baseDateControl.value = '2032-02-30';
     await assert.rejects(
         deps.handleCalendarAction({ dataset: { action: 'calendar-base-save' } }, app),
-        /时间起点无效/,
+        /当前故事日期无效/,
     );
     assert.equal(deps.getCalendarStore().scopes[storageA].baseDate, '2032-02-29', '非法时间起点不得污染现有状态');
     baseDateControl.value = '0580-03-15';
@@ -1429,7 +1447,7 @@ try {
     baseDateControl.value = '0000-01-01';
     await assert.rejects(
         deps.handleCalendarAction({ dataset: { action: 'calendar-base-save' } }, app),
-        /时间起点无效/,
+        /当前故事日期无效/,
     );
     assert.equal(deps.getCalendarStore().scopes[storageA].baseDate, '0580-03-15', '非法纪元日期不得污染古代时间起点');
     countryControl.value = 'JP';
@@ -1452,9 +1470,9 @@ try {
     assert.equal(deps.getCalendarCycleStore().scopes[storageB], undefined, '周期写入不得污染其他 storageId');
     await deps.handleCalendarAction({ dataset: { action: 'calendar-base-clear' } }, app);
     assert.equal(cycleStatusTimer.cancelled, true, '新状态必须取消同一 storageId 的旧清除定时器');
-    assert.equal(statusNode.textContent, '已恢复设备日期作为时间起点。');
+    assert.equal(statusNode.textContent, '已使用设备日期作为当前故事日期。');
     cycleStatusTimer.callback();
-    assert.equal(statusNode.textContent, '已恢复设备日期作为时间起点。', '旧定时器不得清除较新的状态');
+    assert.equal(statusNode.textContent, '已使用设备日期作为当前故事日期。', '旧定时器不得清除较新的状态');
     const clearStatusTimer = statusTimers.at(-1);
     assert.equal(clearStatusTimer.delay, 4000);
     await deps.handleCalendarAction({ dataset: { action: 'calendar-cycle-save' } }, app);

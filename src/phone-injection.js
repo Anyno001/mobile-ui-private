@@ -121,18 +121,30 @@ function renderedItemTokenDemand(item) {
 }
 
 const CYCLE_INJECTION_LABELS = Object.freeze({
-    period: '经期', ovulatory: '易孕期', luteal: '安全期',
+    period: '经期', ovulatory: '易孕期',
 });
 
 export function renderCalendarContextInjection({
     currentStorageId, currentActorName, calendarStore, occasionStore, holidayStore, weatherStore, cycleStore,
     start,
 } = {}) {
+    const fitCompleteLines = (lines, maxChars) => {
+        const fitted = [];
+        let used = 0;
+        for (const line of lines) {
+            const separatorLength = fitted.length ? 1 : 0;
+            if (used + separatorLength + line.length > maxChars) break;
+            fitted.push(line);
+            used += separatorLength + line.length;
+        }
+        return fitted.join('\n');
+    };
     if (!currentStorageId) return '';
     const calendarScope = calendarScopeFor(calendarStore, currentStorageId);
     const windowStart = calendarReferenceDate(calendarScope, start);
     const occasionDates = calendarDateRangeKeys(windowStart, 0, 59);
     const linesByDate = new Map();
+    let hasEnabledCycleProfile = false;
     const addFact = (date, fact) => {
         if (!fact) return;
         if (!linesByDate.has(date)) linesByDate.set(date, new Set());
@@ -180,21 +192,25 @@ export function renderCalendarContextInjection({
     if (calendarScope.injectionCycleEnabled) for (const subject of cycleSubjectKeys(cycleStore, currentStorageId)) {
         const profile = cycleScopeFor(cycleStore, currentStorageId, subject);
         if (!profile.enabled) continue;
-        const subjectLabel = subject === CYCLE_SELF_SUBJECT ? '我'
+        hasEnabledCycleProfile = true;
+        const rawSubjectLabel = subject === CYCLE_SELF_SUBJECT ? '我'
             : subject.startsWith('role:') ? subject.slice(5) : subject || currentActorName || '当前角色';
+        const subjectLabel = String(rawSubjectLabel).replace(/\s+/g, ' ').trim().slice(0, 120) || '当前角色';
         for (const prediction of predictCycleRange(profile, calendarDateRangeKeys(windowStart, -1, -1)[0], 5).predictions) {
             const label = CYCLE_INJECTION_LABELS[prediction.phase];
             if (!cycleDates.has(prediction.date) || !label) continue;
             addFact(prediction.date, `生理周期（${subjectLabel}）：${label}`);
         }
     }
+    const cycleRule = hasEnabledCycleProfile ? '生理周期规则：对所有已启用对象，未注明经期或易孕期的日期按安全期理解。' : '';
     const outputDates = [...new Set([...scheduleDates, ...weatherDates, ...cycleDates, ...occasionDates.filter(date => linesByDate.has(date))])].sort();
-    return outputDates.flatMap(date => {
+    const datedLines = outputDates.flatMap(date => {
         const facts = [...(linesByDate.get(date) || [])];
         if (!facts.length) return [];
         const relative = relativeCalendarLabel(windowStart, date);
         return `${relative ? `${relative} ` : ''}${date}｜${facts.join('；')}`;
-    }).join('\n').slice(0, 6000);
+    });
+    return fitCompleteLines([...(cycleRule ? [cycleRule] : []), ...datedLines], 6000);
 }
 
 export function buildContextInjectionPrompts({

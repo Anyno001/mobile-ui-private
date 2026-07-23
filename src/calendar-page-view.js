@@ -20,7 +20,7 @@ import { renderCalendarManagement, renderCalendarMonthPanel, renderSelectedDateD
 import { escapeAttr, escapeHtml } from './ui.js';
 
 const weekdays = ['一', '二', '三', '四', '五', '六', '日'];
-const cycleLabels = { period: '经期', follicular: '', ovulatory: '易孕期', luteal: '安全期' };
+const cycleLabels = { period: '经期', follicular: '', ovulatory: '易孕期', luteal: '' };
 const shortDate = new Intl.DateTimeFormat('zh-CN', { month: 'numeric', day: 'numeric' });
 const monthTitle = new Intl.DateTimeFormat('zh-CN', { year: 'numeric', month: 'long' });
 let lunarFormatter = null;
@@ -98,7 +98,7 @@ export function renderCalendarPageHtml(
         if (date === todayKey) classes.push('is-today');
         if (date === selectedDate) classes.push('is-selected');
         if (viewMode === 'weather' && meta.weather.status === 'available') classes.push('has-weather');
-        else if (viewMode === 'cycle' && meta.cycle.phase && meta.cycle.phase !== 'follicular') classes.push(`has-cycle is-cycle-${meta.cycle.phase}`);
+        else if (viewMode === 'cycle' && ['period', 'ovulatory'].includes(meta.cycle.phase)) classes.push(`has-cycle is-cycle-${meta.cycle.phase}`);
         else if (viewMode === 'recipe' && meta.hasRecipe) classes.push('has-recipe');
         else if (viewMode === 'schedule') {
             if (meta.hasSchedule) classes.push('has-schedule');

@@ -1500,16 +1500,18 @@ for (const expected of [
   '该国家在当前年代无外部数据源', 'EDIT_ICON_SVG', 'MORE_ICON_SVG',
   'data-action="calendar-recipe-edit"', 'data-action="calendar-recipe-delete"', 'pm-calendar-entry-dialog',
   'pm-calendar-scan-card', '<h3>正文日期</h3>', '保存并识别',
-  'role="switch"', 'aria-checked="${scope.autoAdjust}"', '自动识别最后一条正文', "label: '<user>'",
+  'role="switch"', 'aria-checked="${scope.autoAdjust}"', '自动跟随正文日期', "label: '<user>'",
   '<time datetime="${selectedDate}">${escapeHtml(detailDate.format(parsed))}</time>', 'detailWeekday.format(parsed)',
-  "period: { label: '经期'", "ovulatory: { label: '易孕期'", "luteal: { label: '安全期'", "if (!detail) return ''", 'resolveWeatherForDate(weatherStore, date)',
-  'WEATHER_ICON_SVG', 'pm-calendar-panel-section', '℃~${resolved.day.tempMax}℃',
-  '仅影响日历今天与相对日期。', '预报外日期使用气候推演', '无法推演',
+  "period: { label: '经期'", "ovulatory: { label: '易孕期'", "if (!detail) return ''", 'resolveWeatherForDate(weatherStore, date)',
+  'WEATHER_ICON_SVG', 'pm-calendar-panel-section', '℃~${resolved.day.tempMax}℃', 'pm-calendar-status-copy', 'pm-calendar-status-icon',
+  '当前故事日期', 'placeholder="例如 3726-08-17"', '可直接输入日期，或跳转月份后点击下方日期。',
+  '开启后供正文生成读取；设置按当前会话独立保存。', '预报外日期使用气候推演', '无法推演',
   'DEFAULT_CALENDAR_GENERATION_RULE', 'DEFAULT_RECIPE_GENERATION_RULE', 'data-calendar-generation-rule', 'data-recipe-generation-rule',
   'calendar-generation-rule-save', 'calendar-recipe-generation-rule-save', 'escapeHtml(generationRule)',
   '开启后可设置生日或纪念日', 'data-calendar-occasion-fields ${occasion ? \'\' : \'hidden aria-hidden="true"\'}',
 ]) requireText('calendar-view.js', calendarViewCode, expected);
 for (const forbidden of ['<span>已选日期</span>', '>${escapeHtml(selectedDate)}</time>', '>编辑</button>', 'calendar-editor-kind', 'pm-calendar-editor-switch']) if (calendarViewCode.includes(forbidden)) failures.push(`calendar-view.js: calendar UI remains: ${forbidden}`);
+for (const forbidden of ['storyInitialDate', 'calendar-story-initial', '故事初始日期', "luteal: { label: '安全期'"]) if (calendarViewCode.includes(forbidden)) failures.push(`calendar-view.js: removed calendar copy remains: ${forbidden}`);
 if (calendarViewCode.includes('Weather data © Open-Meteo')) failures.push('calendar-view.js: weather attribution must not be rendered in the UI');
 for (const forbidden of ['相对低风险期', '不能作为避孕依据', '预测仅供提醒', '不能用于避孕判断']) {
   if (calendarViewCode.includes(forbidden) || calendarCode.includes(forbidden)) {
@@ -1866,6 +1868,10 @@ for (const expected of [
   '.pm-calendar-month-panel{margin:0 12px 10px;padding:10px;border:1px solid var(--pm-color-border-subtle);border-radius:14px',
   '.pm-calendar-panel-section{display:flex;flex-direction:column;gap:6px;padding:8px 0}',
   '.pm-calendar-month-panel-actions{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;padding-top:8px}',
+  '.pm-calendar-weather,.pm-calendar-cycle{display:grid;grid-template-columns:minmax(0,1fr) 36px;align-items:stretch',
+  '.pm-calendar-status-copy{min-width:0;display:flex!important;flex-direction:column;justify-content:center',
+  '.pm-calendar-status-icon{display:grid!important;place-items:center;align-self:stretch',
+  '.pm-calendar-status-icon>svg{display:block;width:32px;height:32px}',
   '.pm-calendar-shell[data-calendar-view-mode="recipe"]{--pm-calendar-accent:#c77a32}',
   '.pm-calendar-day.has-recipe>span{color:var(--pm-calendar-accent)}',
   '.pm-calendar-event.is-recipe b{color:var(--pm-calendar-accent)}',
@@ -2176,7 +2182,7 @@ for (const expected of [
 ]) requireText('phone-foundation.js', foundationInjectionSource, expected);
 for (const expected of [
   'class="pm-calendar-cycle-input" name="enabled" type="checkbox"',
-  'class="pm-custom-check" aria-hidden="true"', '安全期',
+  'class="pm-custom-check" aria-hidden="true"', 'pm-calendar-status-icon',
 ]) requireText('calendar-view.js', calendarViewCode, expected);
 for (const forbidden of ['pm-calendar-base-menu', 'TIME_ORIGIN_ICON_SVG', 'calendar-base-edit', 'pm-calendar-base-dialog']) {
   if (calendarCode.includes(forbidden)) failures.push(`calendar.js: obsolete title control remains: ${forbidden}`);
@@ -2197,15 +2203,18 @@ for (const expected of [
   'cycleSubjectKeys', 'predictCycleRange', 'relativeCalendarLabel', "facts.join('；')", 'resolveWeatherForDate',
 ]) requireText('phone-injection.js', phoneInjectionCode, expected);
 for (const expected of [
-  "period: '经期'", "follicular: ''", "ovulatory: '易孕期'", "luteal: '安全期'",
+  "period: '经期'", "follicular: ''", "ovulatory: '易孕期'", "luteal: ''",
 ]) requireText('calendar-page-view.js', calendarPageViewCode, expected);
 for (const expected of [
-  "period: '经期'", "ovulatory: '易孕期'", "luteal: '安全期'",
+  "period: '经期'", "ovulatory: '易孕期'", '对所有已启用对象，未注明经期或易孕期的日期按安全期理解。', 'fitCompleteLines',
 ]) requireText('phone-injection.js', phoneInjectionCode, expected);
 const cycleInjectionLabelsSource = phoneInjectionCode.match(/const CYCLE_INJECTION_LABELS\s*=\s*Object\.freeze\(\{[\s\S]*?\}\);/)?.[0] || '';
 if (!cycleInjectionLabelsSource) failures.push('phone-injection.js: missing CYCLE_INJECTION_LABELS');
 if (cycleInjectionLabelsSource.includes('follicular')) failures.push('phone-injection.js: blank follicular phase must not have an injection label');
-requireText('phone-injection.js', cycleInjectionLabelsSource, "period: '经期', ovulatory: '易孕期', luteal: '安全期'");
+if (cycleInjectionLabelsSource.includes('luteal')) failures.push('phone-injection.js: safe phase must be represented by the default rule, not a dated label');
+requireText('phone-injection.js', cycleInjectionLabelsSource, "period: '经期', ovulatory: '易孕期'");
+for (const forbidden of ['calendar-story-initial', 'saveStoryInitialDate', 'clearStoryInitialDate']) if (calendarCode.includes(forbidden)) failures.push(`calendar.js: removed story initial date path remains: ${forbidden}`);
+requireText('calendar-model.js', calendarModelCode, 'if (parseCalendarDate(source.storyInitialDate)) normalized.storyInitialDate = source.storyInitialDate');
 requireText('interactive-scenes.js', interactiveCode, 'generationErrorMessage(error)');
 requireText('interactive-scene-scheduler.js', sourceModuleByName.get('interactive-scene-scheduler.js')?.code || '', 'generationErrorMessage(error)');
 
