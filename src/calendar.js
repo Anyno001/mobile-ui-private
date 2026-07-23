@@ -290,22 +290,33 @@ export function installCalendar(state, deps) {
         const selectedDate = mode === 'regenerate' ? viewFor(storageId).selectedDate : '';
         const start = selectedDate ? parseCalendarDate(selectedDate) : referenceDate;
         if (!start) throw new Error('重新生成日程的选中日期无效');
+        const generationDays = mode === 'regenerate' ? 1 : 7;
+        const generationWindow = calendarWindowDescription(start, generationDays);
+        const windowSnapshot = value => JSON.stringify(generationWindow.dates.map(date => ({
+            date, events: value.events[date] || [],
+        })));
+        const confirmGeneration = deps.confirmImpl || globalThis.confirm;
         if (mode === 'regenerate') {
             if (formatCalendarDate(start) < formatCalendarDate(referenceDate)) {
                 status(storageId, '不能重新生成故事今天之前的日程。');
                 rerender(storageId);
                 return false;
             }
-            const confirmRegenerate = deps.confirmImpl || globalThis.confirm;
-            if (typeof confirmRegenerate !== 'function'
-                || !confirmRegenerate(`重新生成 ${calendarWindowDescription(start, 7).label}日程？这会覆盖窗口内所有日程。`)) return false;
+            if (typeof confirmGeneration !== 'function'
+                || !confirmGeneration(`重新生成 ${generationWindow.label}日程？这会覆盖当日所有日程。`)) return false;
+        } else if (mode === 'generate') {
+            const hasExistingEvents = generationWindow.dates.some(date => (scope(storageId).events[date] || []).length > 0);
+            if (hasExistingEvents && (typeof confirmGeneration !== 'function'
+                || !confirmGeneration(`${generationWindow.label}已有日程，重新生成将覆盖已有内容。是否继续？`))) return false;
         }
+        const requestedWindowSnapshot = mode === 'generate' || mode === 'regenerate'
+            ? windowSnapshot(scope(storageId)) : '';
         const task = tasks.begin(storageId, 'generate', { replace: false, mode, parentSignal });
         if (!task) throw new Error('当前会话已有日历生成任务，或会话不可用');
         const currentView = viewFor(storageId);
         const previousStatus = currentView.generationTask ? currentView.generationPreviousStatus : runtime.statusByStorage.get(storageId) || '';
         runtime.viewByStorage.set(storageId, { ...currentView, generating: true, generationTask: task, generationPreviousStatus: previousStatus }); let statusSettled = false;
-        const generationCopy = calendarGenerationCopy(start, mode);
+        const generationCopy = calendarGenerationCopy(start, mode, generationDays);
         status(storageId, generationCopy.pending, { persistent: true }); rerender(storageId);
         try {
             const context = await gatherContext();
@@ -313,7 +324,7 @@ export function installCalendar(state, deps) {
             const current = scope(storageId);
             const requestedGenerationRule = current.generationRule;
             const historicalDates = calendarDateRangeKeys(start, -3, -1);
-            const currentDates = calendarDateRangeKeys(start, 0, 6);
+            const currentDates = calendarDateRangeKeys(start, 0, generationDays - 1);
             const historicalEvents = historicalDates.flatMap(date => current.events[date] || [])
                 .map(({ date, title, note, source }) => ({ date, title, note, source }));
             const existing = currentDates.flatMap(date => current.events[date] || [])
@@ -336,15 +347,20 @@ export function installCalendar(state, deps) {
                 currentEvents: existing,
                 dateFacts,
             });
-            const prompts = buildCalendarPrompts(payload, existing, mode, requestedGenerationRule);
+            const prompts = buildCalendarPrompts(payload, existing, mode, requestedGenerationRule, generationDays);
             const raw = await callAI(prompts.systemPrompt, prompts.userPrompt, { isolated: true, signal: task.signal });
             if (!tasks.active(task)) return false;
-            const events = parseCalendarAiResponse(raw, { start, days: 7 });
+            const events = parseCalendarAiResponse(raw, { start, days: generationDays });
             const committed = await commitScope(storageId, value => {
+                if (requestedWindowSnapshot && windowSnapshot(value) !== requestedWindowSnapshot) {
+                    throw new Error('待覆盖日程已在生成期间改变，请重新确认后生成');
+                }
                 if (value.generationRule !== requestedGenerationRule) {
                     throw new Error('日程生成规则已在生成期间改变，请重新生成日程');
                 }
-                if (mode === 'regenerate') return replaceCalendarEventsInWindow(value, events, { start, days: 7 });
+                if (mode === 'generate' || mode === 'regenerate') {
+                    return replaceCalendarEventsInWindow(value, events, { start, days: generationDays });
+                }
                 const next = mergeCalendarEvents(value, events, {
                     replaceAiInWindow: mode === 'adjust', windowStart: start, days: 7,
                 });

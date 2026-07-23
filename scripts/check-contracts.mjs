@@ -1397,7 +1397,8 @@ for (const expected of [
   'calendar-month-panel', 'pm-calendar-header-side is-left', 'pm-calendar-header-side is-right',
   'data-calendar-month-navigation tabindex="0"', 'calendar-prev-month', 'calendar-next-month',
   'pm-calendar-title-control', 'pm-calendar-title-chevron',
-  'relativeCalendarLabel(today, selectedDate)', 'calendar-recipe-generate', 'recipeScope',
+  'relativeCalendarLabel(today, selectedDate)', 'calendar-recipe-generate', 'recipeScope', 'calendarWindowDescription(today, 7)',
+  '`AI 生成${recipeWindow.label}菜谱`',
   "viewMode === 'weather' ? view.weatherRefreshing === true",
   "const statusBusy = viewMode === 'recipe'",
   "const headerIcon = viewMode === 'schedule' || viewMode === 'recipe' ? SPARKLES_ICON_SVG : REFRESH_ICON_SVG",
@@ -1406,7 +1407,9 @@ for (const expected of [
 for (const expected of ['rawContent: removeProtectedBlocks(message.mes || \'\')', 'rawLatestChatText', 'mainChatText: mainChat.map(message => `${message.who}：${message.content}`).join(\'\\n\')']) requireText('host-context.js', hostContextCode, expected);
 for (const expected of [
   "tasks.begin(storageId, 'recipe-generate'", 'isolated: true, signal: task.signal',
-  'expectedRegion: requestedRegion', 'mergeGeneratedRecipe', 'commitRecipe',
+  'expectedRegion: requestedRegion, days: generationDays', 'replaceRecipeInWindow', 'commitRecipe',
+  'generationDays = replaceWindow ? 1 : 7', 'hasExistingMeals', 'generationWindow.label', '覆盖当日所有餐食',
+  'requestedWindowSnapshot', '待覆盖菜谱已在生成期间改变，请重新确认后生成',
   'calendar-recipe-region-save', 'calendar-recipe-generation-rule-save', '菜谱生成规则不能为空',
   'refreshInjection: false', 'calendar-recipe-add', 'calendar-recipe-edit', 'calendar-recipe-delete',
   'renderRecipeMealDialog', 'recipeGenerationTask === task',
@@ -1417,12 +1420,13 @@ for (const expected of ['commitGeneration', 'invalidateCommits', 'generation !==
 for (const expected of ["reason === 'plugin-data-clear'", "reason === 'backup-apply'", "reason === 'backup-rollback'", 'invalidateCommits();']) {
   requireText('calendar.js', calendarCode, expected);
 }
-for (const expected of ['calendar-generation-rule-save', '日程生成规则不能为空', 'refreshInjection: false', 'requestedGenerationRule = current.generationRule', 'extractContextFestivals(context)', 'buildCalendarPrompts(payload, existing, mode, requestedGenerationRule)', '日程生成规则已在生成期间改变']) {
+for (const expected of ['calendar-generation-rule-save', '日程生成规则不能为空', 'refreshInjection: false', 'requestedGenerationRule = current.generationRule', 'extractContextFestivals(context)', 'buildCalendarPrompts(payload, existing, mode, requestedGenerationRule, generationDays)', 'generationDays = mode === \'regenerate\' ? 1 : 7', 'hasExistingEvents', 'generationWindow.label', '覆盖当日所有日程', 'requestedWindowSnapshot', '待覆盖日程已在生成期间改变，请重新确认后生成', '日程生成规则已在生成期间改变']) {
   requireText('calendar.js', calendarCode, expected);
 }
 for (const expected of [
   "RECIPE_MEAL_TYPES = Object.freeze(['breakfast', 'lunch', 'dinner', 'snack'])",
-  'calendarDateRangeKeys(start, 0, 6)', 'calendarDateRangeKeys(start, -1, 1)',
+  'calendarDateRangeKeys(start, 0, days - 1)', 'calendarDateRangeKeys(start, -1, 1)',
+  'calendarWindowDescription(start, days)',
   'appliedRegion', 'regionPreference', 'generationRule', 'lastGeneratedRegion',
 ]) requireText('calendar-recipe-model.js', calendarRecipeModelCode, expected);
 for (const expected of ['requestedScope = getRecipeScope(storageId)', 'requestedGenerationRule = requestedScope.generationRule', '菜谱生成规则已在生成期间改变']) {

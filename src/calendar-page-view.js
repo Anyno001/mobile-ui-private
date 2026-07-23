@@ -1,6 +1,6 @@
 import {
     calendarDateFromParts, calendarMonthCells, calendarMonthKeys, calendarReferenceDate, createCalendarDate,
-    formatCalendarDate, parseCalendarDate, relativeCalendarLabel, shiftCalendarMonth,
+    calendarWindowDescription, formatCalendarDate, parseCalendarDate, relativeCalendarLabel, shiftCalendarMonth,
 } from './calendar-model.js';
 import { expandOccasions } from './calendar-occasion-model.js';
 import {
@@ -117,8 +117,9 @@ export function renderCalendarPageHtml(
     const headerAction = viewMode === 'weather' ? 'calendar-weather-refresh'
         : viewMode === 'schedule' ? 'calendar-generate'
             : viewMode === 'recipe' ? 'calendar-recipe-generate' : '';
+    const recipeWindow = calendarWindowDescription(today, 7);
     const headerActionLabel = viewMode === 'weather' ? '刷新天气'
-        : viewMode === 'recipe' ? 'AI 生成七日菜谱' : calendarGenerationCopy(today).actionLabel;
+        : viewMode === 'recipe' ? `AI 生成${recipeWindow.label}菜谱` : calendarGenerationCopy(today).actionLabel;
     const holidayCountry = normalizeHolidayCache(holidayCache).selectedCountry;
     const holidayRange = holidayYearRange(holidayCountry);
     const holidayAvailable = monthKeys.some(date => isHolidayYearSupported(holidayCountry, Number(date.slice(0, 4))));

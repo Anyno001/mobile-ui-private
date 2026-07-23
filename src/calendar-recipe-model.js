@@ -127,9 +127,9 @@ export function mergeGeneratedRecipe(scope, generated, { start = new Date(), now
     return next;
 }
 
-export function replaceRecipeInWindow(scope, generated, { start = new Date(), now = Date.now() } = {}) {
+export function replaceRecipeInWindow(scope, generated, { start = new Date(), now = Date.now(), days = 7 } = {}) {
     const next = normalizeRecipeScope(scope);
-    const dates = calendarDateRangeKeys(start, 0, 6);
+    const dates = calendarDateRangeKeys(start, 0, days - 1);
     const incoming = new Map(generated.days.map(day => [day.date, day]));
     for (const date of dates) {
         const day = incoming.get(date);
@@ -150,8 +150,8 @@ function exactKeys(value, expected) {
     return keys.length === target.length && keys.every((key, index) => key === target[index]);
 }
 
-export function parseRecipeAiResponse(raw, { start = new Date(), expectedRegion = '' } = {}) {
-    const expectedDates = calendarDateRangeKeys(start, 0, 6);
+export function parseRecipeAiResponse(raw, { start = new Date(), expectedRegion = '', days = 7 } = {}) {
+    const expectedDates = calendarDateRangeKeys(start, 0, days - 1);
     const data = parseFirstJsonObject(raw, 'AI 未返回可解析的菜谱 JSON', candidate =>
         plainRecord(candidate) && candidate.version === 1 && candidate.kind === 'recipe_plan');
     if (!plainRecord(data) || data.version !== 1 || data.kind !== 'recipe_plan' || !Array.isArray(data.days)
@@ -166,7 +166,7 @@ export function parseRecipeAiResponse(raw, { start = new Date(), expectedRegion 
     }
     if (data.days.length !== expectedDates.length) throw new Error('AI 菜谱未完整覆盖生成窗口');
     const seen = new Set();
-    const days = data.days.map(rawDay => {
+    const parsedDays = data.days.map(rawDay => {
         if (!plainRecord(rawDay) || !exactKeys(rawDay, ['date', ...RECIPE_MEAL_TYPES])
             || !expectedDates.includes(rawDay.date) || seen.has(rawDay.date)) {
             throw new Error('AI 菜谱日期或字段无效');
@@ -183,13 +183,13 @@ export function parseRecipeAiResponse(raw, { start = new Date(), expectedRegion 
         return day;
     });
     if (expectedDates.some(date => !seen.has(date))) throw new Error('AI 菜谱未完整覆盖生成窗口');
-    days.sort((left, right) => left.date.localeCompare(right.date));
-    return { appliedRegion, days };
+    parsedDays.sort((left, right) => left.date.localeCompare(right.date));
+    return { appliedRegion, days: parsedDays };
 }
 
-export function buildRecipePrompts(context, recipeScope, start = new Date()) {
+export function buildRecipePrompts(context, recipeScope, start = new Date(), { days = 7 } = {}) {
     const scope = normalizeRecipeScope(recipeScope);
-    const window = calendarWindowDescription(start, 7);
+    const window = calendarWindowDescription(start, days);
     const generationRule = scope.generationRule || DEFAULT_RECIPE_GENERATION_RULE;
     const regionInstruction = scope.regionPreference
         ? `用户明确指定的饮食地区/文化为“${scope.regionPreference}”，这是最高优先级，不得改写。`

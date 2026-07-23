@@ -1,7 +1,7 @@
 import { generationErrorMessage } from './ai.js';
-import { formatCalendarDate, parseCalendarDate } from './calendar-model.js';
+import { calendarDateRangeKeys, calendarWindowDescription, formatCalendarDate, parseCalendarDate } from './calendar-model.js';
 import {
-    buildRecipePrompts, deleteRecipeMeal, mergeGeneratedRecipe, parseRecipeAiResponse, replaceRecipeInWindow,
+    buildRecipePrompts, deleteRecipeMeal, parseRecipeAiResponse, replaceRecipeInWindow,
     recipeDayFor, setRecipeRegionPreference, upsertRecipeMeal,
 } from './calendar-recipe-model.js';
 import { renderRecipeMealDialog } from './calendar-view.js';
@@ -24,6 +24,11 @@ export function createCalendarRecipeController({
         const selectedDate = replaceWindow ? getView(storageId).selectedDate : '';
         const start = startDate || (selectedDate ? parseCalendarDate(selectedDate) : referenceDate);
         if (!start) throw new Error('重新生成菜谱的选中日期无效');
+        const generationDays = replaceWindow ? 1 : 7;
+        const generationWindow = calendarWindowDescription(start, generationDays);
+        const windowSnapshot = value => JSON.stringify(generationWindow.dates.map(date => ({
+            date, meals: value.days[date] || {},
+        })));
         if (replaceWindow) {
             if (formatCalendarDate(start) < formatCalendarDate(referenceDate)) {
                 status(storageId, '不能重新生成故事今天之前的菜谱。');
@@ -31,14 +36,21 @@ export function createCalendarRecipeController({
                 return false;
             }
             if (typeof confirmImpl !== 'function'
-                || !confirmImpl(`重新生成 ${formatCalendarDate(start)} 起未来七日菜谱？这会覆盖窗口内所有餐食。`)) return false;
+                || !confirmImpl(`重新生成 ${generationWindow.label}菜谱？这会覆盖当日所有餐食。`)) return false;
+        } else {
+            const currentScope = getRecipeScope(storageId);
+            const hasExistingMeals = calendarDateRangeKeys(start, 0, generationDays - 1)
+                .some(date => Object.keys(currentScope.days[date] || {}).length > 0);
+            if (hasExistingMeals && (typeof confirmImpl !== 'function'
+                || !confirmImpl(`${generationWindow.label}已有菜谱，重新生成将覆盖已有内容。是否继续？`))) return false;
         }
+        const requestedWindowSnapshot = windowSnapshot(getRecipeScope(storageId));
         const task = tasks.begin(storageId, 'recipe-generate', { replace: false, mode: 'recipe-generate' });
         if (!task) throw new Error('当前会话已有菜谱生成任务，或会话不可用');
         const view = getView(storageId);
         const previousStatus = view.recipeGenerationTask ? view.recipeGenerationPreviousStatus : getStatus(storageId);
         setRecipeBusy(storageId, task, previousStatus);
-        status(storageId, replaceWindow ? '正在重新生成未来七日菜谱…' : '正在生成未来七日菜谱…', { persistent: true });
+        status(storageId, `正在${replaceWindow ? '重新' : ''}生成${generationWindow.label}菜谱…`, { persistent: true });
         rerender(storageId);
         let statusSettled = false;
         try {
@@ -47,25 +59,26 @@ export function createCalendarRecipeController({
             const requestedScope = getRecipeScope(storageId);
             const requestedRegion = requestedScope.regionPreference;
             const requestedGenerationRule = requestedScope.generationRule;
-            const prompts = buildRecipePrompts(context, requestedScope, start);
+            const prompts = buildRecipePrompts(context, requestedScope, start, { days: generationDays });
             const raw = await callAI(prompts.systemPrompt, prompts.userPrompt, {
                 isolated: true, signal: task.signal,
             });
             if (!tasks.active(task)) return false;
-            const generated = parseRecipeAiResponse(raw, { start, expectedRegion: requestedRegion });
+            const generated = parseRecipeAiResponse(raw, { start, expectedRegion: requestedRegion, days: generationDays });
             const committed = await commitRecipe(storageId, current => {
+                if (windowSnapshot(current) !== requestedWindowSnapshot) {
+                    throw new Error('待覆盖菜谱已在生成期间改变，请重新确认后生成');
+                }
                 if (current.regionPreference !== requestedRegion) {
                     throw new Error('饮食地区已在生成期间改变，请重新生成菜谱');
                 }
                 if (current.generationRule !== requestedGenerationRule) {
                     throw new Error('菜谱生成规则已在生成期间改变，请重新生成菜谱');
                 }
-                return replaceWindow
-                    ? replaceRecipeInWindow(current, generated, { start, now: Date.now() })
-                    : mergeGeneratedRecipe(current, generated, { start, now: Date.now() });
+                return replaceRecipeInWindow(current, generated, { start, now: Date.now(), days: generationDays });
             }, task);
             if (!committed || !tasks.active(task)) return false;
-            status(storageId, `七日菜谱已${replaceWindow ? '重新生成' : '生成'} · ${generated.appliedRegion}`);
+            status(storageId, `${generationWindow.label}菜谱已${replaceWindow ? '重新生成' : '生成'} · ${generated.appliedRegion}`);
             statusSettled = true;
             rerender(storageId);
             return true;

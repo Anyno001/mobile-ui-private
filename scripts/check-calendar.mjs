@@ -9,7 +9,7 @@ import { createTaskController } from '../src/calendar-task-controller.js';
 import {
     buildRecipePrompts, createEmptyRecipeScope, createEmptyRecipeStore, DEFAULT_RECIPE_GENERATION_RULE, deleteRecipeMeal, mergeGeneratedRecipe,
     normalizeRecipeScope, normalizeRecipeStore, parseRecipeAiResponse, recipeDayFor, recipeScopeFor,
-    renderRecipeInjection, setRecipeRegionPreference, upsertRecipeMeal,
+    renderRecipeInjection, replaceRecipeInWindow, setRecipeRegionPreference, upsertRecipeMeal,
 } from '../src/calendar-recipe-model.js';
 import {
     clearCycleScope, createEmptyCycleStore, cycleScopeFor, cycleSubjectKeys, normalizeCycleScope,
@@ -32,8 +32,8 @@ import {
     buildCalendarPrompts, calendarDateFromParts, calendarDateRangeKeys, calendarGenerationCopy, calendarMonthCells, calendarMonthKeys, DEFAULT_CALENDAR_GENERATION_RULE,
     calendarReferenceDate, calendarWeekKeys, calendarWindowDescription, createCalendarDate, createEmptyCalendarScope, createEmptyCalendarStore,
     extractCalendarBaseDate, extractCalendarDate, extractCalendarDateTagContents, extractContextCalendarEvents,
-    normalizeCalendarDateTags, normalizeCalendarScope, normalizeCalendarStore, parseCalendarDate, parseCalendarInput, relativeCalendarLabel,
-    shiftCalendarMonth,
+    normalizeCalendarDateTags, normalizeCalendarScope, normalizeCalendarStore, parseCalendarAiResponse, parseCalendarDate, parseCalendarInput,
+    relativeCalendarLabel, replaceCalendarEventsInWindow, shiftCalendarMonth,
 } from '../src/calendar-model.js';
 import {
     deleteOccasion, expandOccasions, findOccasion, normalizeOccasionStore,
@@ -71,11 +71,11 @@ assert.equal(normalizeCalendarScope({ generationRule: 'A'.repeat(3001) }).genera
 
 const recipeStart = parseCalendarDate('2032-03-15');
 const recipeDates = calendarDateRangeKeys(recipeStart, 0, 6);
-const recipeEnvelope = region => JSON.stringify({
+const recipeEnvelope = (region, dates = recipeDates) => JSON.stringify({
     version: 1,
     kind: 'recipe_plan',
     appliedRegion: region,
-    days: recipeDates.map((date, index) => ({
+    days: dates.map((date, index) => ({
         date,
         breakfast: `早餐${index + 1}`,
         lunch: `午餐${index + 1}`,
@@ -122,6 +122,23 @@ assert.throws(() => parseRecipeAiResponse(JSON.stringify(recipeWithMissingMeal),
 const recipeWithDuplicateDate = JSON.parse(recipeEnvelope('架空北境'));
 recipeWithDuplicateDate.days[1].date = recipeWithDuplicateDate.days[0].date;
 assert.throws(() => parseRecipeAiResponse(JSON.stringify(recipeWithDuplicateDate), { start: recipeStart }), /日期或字段无效/);
+const singleRecipeEnvelope = recipeEnvelope('架空北境', [recipeDates[0]]);
+const parsedSingleRecipe = parseRecipeAiResponse(singleRecipeEnvelope, {
+    start: recipeStart, expectedRegion: '架空北境', days: 1,
+});
+assert.equal(parsedSingleRecipe.days.length, 1, '当日菜谱响应只应接受选中日');
+assert.match(buildRecipePrompts({}, regionalScope, recipeStart, { days: 1 }).userPrompt, /2032-03-15 当日/,
+    '当日重新生成 prompt 必须明确限制为选中日');
+const recipeOutsideWindow = normalizeRecipeScope({ days: {
+    [recipeDates[0]]: { breakfast: { text: '旧早餐', source: 'manual' } },
+    [recipeDates[1]]: { dinner: { text: '次日晚餐', source: 'manual' } },
+} });
+const replacedSingleRecipe = replaceRecipeInWindow(recipeOutsideWindow, parsedSingleRecipe, {
+    start: recipeStart, now: 15, days: 1,
+});
+assert.equal(recipeDayFor(replacedSingleRecipe, recipeDates[0]).breakfast.text, '早餐1');
+assert.equal(recipeDayFor(replacedSingleRecipe, recipeDates[1]).dinner.text, '次日晚餐',
+    '当日菜谱重新生成不得改写窗口外日期');
 let recipeScope = upsertRecipeMeal({}, { date: recipeDates[0], mealType: 'breakfast', text: '手工豆浆油条' }, 10);
 recipeScope = mergeGeneratedRecipe(recipeScope, parsedRegionalRecipe, { start: recipeStart, now: 20 });
 assert.equal(recipeDayFor(recipeScope, recipeDates[0]).breakfast.text, '手工豆浆油条', 'AI 再生成不得覆盖手工餐食');
@@ -252,6 +269,25 @@ assert.match(ancientPrompts.userPrompt, /文化纪念日/);
 assert.match(ancientPrompts.userPrompt, /起始日（\+0）至六天后（\+6）/);
 assert.doesNotMatch(ancientPrompts.userPrompt, /第 7 天|七天后/);
 assert.match(ancientPrompts.userPrompt, /禁止复述角色设定、世界观、场景说明或聊天原文/);
+const singleSchedulePrompt = buildCalendarPrompts({
+    today: '2032-03-15', character: {}, historicalEvents: [], currentEvents: [], dateFacts: [],
+}, [], 'regenerate', '', 1);
+assert.match(singleSchedulePrompt.userPrompt, /2032-03-15 当日/);
+assert.match(singleSchedulePrompt.userPrompt, /窗口仅含起始日（\+0）/,
+    '当日日程重新生成 prompt 必须禁止输出其他日期');
+const parsedSingleSchedule = parseCalendarAiResponse(JSON.stringify({
+    version: 1, kind: 'calendar_events', events: [{ date: '2032-03-15', title: '当日新安排', note: '' }],
+}), { start: parseCalendarDate('2032-03-15'), days: 1 });
+const scheduleOutsideWindow = normalizeCalendarScope({ events: {
+    '2032-03-15': [{ date: '2032-03-15', title: '当日旧安排', source: 'manual' }],
+    '2032-03-16': [{ date: '2032-03-16', title: '次日保留安排', source: 'manual' }],
+} });
+const replacedSingleSchedule = replaceCalendarEventsInWindow(scheduleOutsideWindow, parsedSingleSchedule, {
+    start: parseCalendarDate('2032-03-15'), days: 1, timestamp: 20,
+});
+assert.equal(replacedSingleSchedule.events['2032-03-15'][0].title, '当日新安排');
+assert.equal(replacedSingleSchedule.events['2032-03-16'][0].title, '次日保留安排',
+    '当日日程重新生成不得改写窗口外日期');
 const terminalPrompts = buildCalendarPrompts({
     today: '9999-12-31', character: {}, worldFacts: '', recentConversation: '', candidateEvents: [],
 }, [], 'generate');
@@ -818,6 +854,10 @@ assert.match(renderedScheduleEditing, /data-action="calendar-edit-entry"[^>]*dat
 assert.match(renderedScheduleEditing, /data-action="calendar-delete-entry"[^>]*data-entry-kind="event"[^>]*data-entry-id="event-current"[\s\S]*?M4 7h16/);
 assert.match(renderedScheduleEditing, /class="pm-calendar-detail-edit-actions"[\s\S]*?class="pm-calendar-inline-add"[^>]*data-action="calendar-add-date"[^>]*>\+ 新增一条<\/button>[\s\S]*?class="pm-calendar-inline-regenerate"[^>]*data-action="calendar-regenerate"/,
     '日程编辑态必须将新增与重新生成放在同一操作组');
+assert.match(renderedScheduleEditing, /data-action="calendar-regenerate"[^>]*aria-label="重新生成当日日程"[\s\S]*?M23 4v6h-6/,
+    '日程详情重新生成必须使用刷新 SVG 并声明当日语义');
+assert.doesNotMatch(renderedScheduleEditing, /data-action="calendar-regenerate"[\s\S]*?M12 3l1\.2 3\.8L17 8/,
+    '日程详情重新生成不得继续使用星光 SVG');
 assert.doesNotMatch(renderedSchedule, /data-action="calendar-manage-date"/,
     '详情主流程不得退回二级管理弹窗');
 assert.match(renderedSchedule, /class="pm-calendar-data-tools pm-calendar-scan-card"><h3>正文日期<\/h3>[\s\S]*?data-calendar-date-tags[\s\S]*?data-action="calendar-date-sync"[^>]*>保存并识别/);
@@ -922,7 +962,7 @@ assert.doesNotMatch(renderedCycle, /相对低风险期|不能作为避孕依据/
 assert.doesNotMatch(renderedCycle, /少云|20°\/30°C|Open-Meteo|&lt;Holiday&gt;|&lt;日程&gt;/);
 assert.match(renderedRecipe, /data-calendar-view-mode="recipe"/);
 assert.match(renderedRecipe, /data-action="calendar-mode-recipe"[^>]*aria-label="显示菜谱"[^>]*aria-pressed="true"/);
-assert.match(renderedRecipe, /data-action="calendar-recipe-generate"[^>]*aria-label="AI 生成七日菜谱"/);
+assert.match(renderedRecipe, /data-action="calendar-recipe-generate"[^>]*aria-label="AI 生成未来七日菜谱"/);
 assert.match(renderedRecipe, /data-action="calendar-recipe-generate"[\s\S]*?M12 3l1\.2 3\.8L17 8/,
     'AI 菜谱生成必须使用星光 SVG');
 assert.match(renderedBusyRecipe, /data-action="calendar-recipe-generate"[^>]*aria-busy="true"[^>]*disabled/);
@@ -939,6 +979,10 @@ assert.match(renderedRecipeEditing, /data-recipe-meal="breakfast"[\s\S]*?data-ac
     '菜谱编辑态必须像日程一样在每条餐食后显示编辑与删除操作');
 assert.match(renderedRecipeEditing, /class="pm-calendar-detail-edit-actions"[\s\S]*?class="pm-calendar-inline-add"[^>]*data-action="calendar-recipe-add"[^>]*>\+ 新增一条<\/button>[\s\S]*?class="pm-calendar-inline-regenerate"[^>]*data-action="calendar-recipe-regenerate"/,
     '菜谱编辑态必须将新增与重新生成放在同一操作组');
+assert.match(renderedRecipeEditing, /data-action="calendar-recipe-regenerate"[^>]*aria-label="重新生成当日菜谱"[\s\S]*?M23 4v6h-6/,
+    '菜谱详情重新生成必须使用刷新 SVG 并声明当日语义');
+assert.doesNotMatch(renderedRecipeEditing, /data-action="calendar-recipe-regenerate"[\s\S]*?M12 3l1\.2 3\.8L17 8/,
+    '菜谱详情重新生成不得继续使用星光 SVG');
 assert.match(renderedRecipe, /data-calendar-management="recipe"/);
 assert.match(renderedRecipe, /data-recipe-meal="breakfast"[\s\S]*北境炖麦粥/);
 assert.match(renderedRecipe, /手动指定：架空北境/);
@@ -997,6 +1041,13 @@ const terminalSchedule = renderCalendarPageHtml(
     { ...createEmptyCalendarScope(), baseDate: '9999-12-31' }, { occasions: [] }, '', {}, {}, {}, [],
     { viewYear: 9999, viewMonth: 12, selectedDate: '9999-12-31', viewMode: 'schedule' },
 );
+const terminalRecipePage = renderCalendarPageHtml(
+    { ...createEmptyCalendarScope(), baseDate: '9999-12-31' }, { occasions: [] }, '', {}, {}, {}, [],
+    { viewYear: 9999, viewMonth: 12, selectedDate: '9999-12-31', viewMode: 'recipe' }, createEmptyRecipeScope(),
+);
+assert.match(terminalRecipePage, /data-action="calendar-recipe-generate"[^>]*aria-label="AI 生成9999-12-31 当日菜谱"/,
+    '年份上边界的菜谱生成按钮必须反映实际窗口');
+assert.doesNotMatch(terminalRecipePage, /AI 生成七日菜谱|10000-01-01/);
 assert.equal((terminalSchedule.match(/class="pm-calendar-day is-placeholder"/g) || []).length, 2,
     '9999 年 12 月必须用两个不可交互占位补齐网格');
 assert.equal((terminalSchedule.match(/data-calendar-date=/g) || []).length, 33,
@@ -1589,6 +1640,8 @@ try {
     let controllerRecipeScope = createEmptyRecipeScope();
     let controllerView = { selectedDate: recipeDates[0], recipeGenerating: false };
     const controllerStatuses = [];
+    const controllerConfirmMessages = [];
+    let controllerConfirmResult = true;
     const controllerCloseReasons = [];
     const controllerOverlays = [];
     let controllerRenders = 0;
@@ -1648,9 +1701,19 @@ try {
         getStatus: () => controllerStatuses.at(-1)?.text || '',
         status: (_storageId, text, options) => controllerStatuses.push({ text, options }),
         rerender: () => { controllerRenders += 1; },
-        confirmImpl: () => true,
+        confirmImpl: message => {
+            controllerConfirmMessages.push(message);
+            return controllerConfirmResult;
+        },
     });
     const controllerRecipeCommitOptions = [];
+    const confirmCountBeforeEmptyRecipeGenerate = controllerConfirmMessages.length;
+    assert.equal(await recipeController.generate(), true);
+    assert.equal(controllerConfirmMessages.length, confirmCountBeforeEmptyRecipeGenerate,
+        '未来七日没有菜谱时，顶部生成必须静默执行');
+    controllerRecipeScope = createEmptyRecipeScope();
+    controllerAiCalls.length = 0;
+    controllerStatuses.length = 0;
     const recipeRule = 'R'.repeat(3000);
     const recipeRuleApp = { querySelector: selector => selector === '[data-recipe-generation-rule]' ? { value: recipeRule } : null };
     assert.equal(await recipeController.handleAction({ dataset: { action: 'calendar-recipe-generation-rule-save' } }, recipeRuleApp), true);
@@ -1689,13 +1752,60 @@ try {
     assert.equal(controllerCloseReasons.at(-1), 'saved');
 
     assert.equal(await recipeController.handleAction({ dataset: { action: 'calendar-recipe-generate' } }, null), true);
+    assert.match(controllerConfirmMessages.at(-1), /未来七日已有菜谱.*覆盖已有内容/,
+        '顶部菜谱生成在窗口已有内容时必须先确认覆盖');
     assert.equal(controllerAiCalls.length, 1);
     assert.equal(controllerAiCalls[0].isolated, true, '菜谱 AI 请求必须使用隔离调用');
     assert.equal(controllerAiCalls[0].signal.aborted, false);
-    assert.equal(recipeDayFor(controllerRecipeScope, recipeDates[0]).breakfast.text, '手工北境麦粥', 'AI 生成不得覆盖手工餐食');
+    assert.equal(recipeDayFor(controllerRecipeScope, recipeDates[0]).breakfast.text, '早餐1', '确认后的顶部生成必须覆盖窗口内手工餐食');
     assert.equal(recipeDayFor(controllerRecipeScope, recipeDates[0]).lunch.text, '午餐1');
     assert.equal(controllerRecipeScope.lastGeneratedRegion, '架空北境');
     assert.equal(controllerView.recipeGenerating, false);
+
+    const recipeBeforeCancelledOverwrite = structuredClone(controllerRecipeScope);
+    const aiCallsBeforeCancelledOverwrite = controllerAiCalls.length;
+    controllerConfirmResult = false;
+    assert.equal(await recipeController.generate(), false);
+    controllerConfirmResult = true;
+    assert.equal(controllerAiCalls.length, aiCallsBeforeCancelledOverwrite,
+        '取消顶部菜谱覆盖后不得请求 AI');
+    assert.deepEqual(controllerRecipeScope, recipeBeforeCancelledOverwrite,
+        '取消顶部菜谱覆盖后不得修改菜谱');
+
+    controllerAiImpl = async () => singleRecipeEnvelope;
+    assert.equal(await recipeController.handleAction({ dataset: { action: 'calendar-recipe-regenerate' } }, null), true);
+    assert.match(controllerConfirmMessages.at(-1), /2032-03-15 当日菜谱.*覆盖当日所有餐食/,
+        '详情菜谱重新生成必须明确仅覆盖选中日');
+    assert.equal(recipeDayFor(controllerRecipeScope, recipeDates[0]).breakfast.text, '早餐1');
+    assert.equal(recipeDayFor(controllerRecipeScope, recipeDates[1]).breakfast.text, '早餐2',
+        '详情菜谱重新生成不得改写窗口外日期');
+    controllerAiImpl = async (_systemPrompt, _userPrompt, options) => {
+        controllerAiCalls.push(options);
+        return recipeEnvelope(controllerRecipeScope.regionPreference || '剧情推断地区');
+    };
+
+    const recipeWindowRaceResponse = deferred(), recipeWindowRaceStarted = deferred();
+    controllerAiImpl = async () => {
+        recipeWindowRaceStarted.resolve();
+        return recipeWindowRaceResponse.promise;
+    };
+    const recipeBeforeWindowRace = structuredClone(controllerRecipeScope);
+    const recipeWindowRaceGeneration = recipeController.generate();
+    await recipeWindowRaceStarted.promise;
+    controllerRecipeScope = upsertRecipeMeal(controllerRecipeScope, {
+        date: recipeDates[0], mealType: 'breakfast', text: '生成期间新增早餐', source: 'manual',
+    }, 31);
+    recipeWindowRaceResponse.resolve(recipeEnvelope('架空北境'));
+    await assert.rejects(recipeWindowRaceGeneration, /待覆盖菜谱已在生成期间改变/,
+        '菜谱生成期间窗口内容变化后，旧确认不得授权覆盖新内容');
+    assert.equal(recipeDayFor(controllerRecipeScope, recipeDates[0]).breakfast.text, '生成期间新增早餐');
+    assert.equal(recipeDayFor(controllerRecipeScope, recipeDates[1]).breakfast.text,
+        recipeDayFor(recipeBeforeWindowRace, recipeDates[1]).breakfast.text,
+        '菜谱窗口竞态拒绝不得污染其他日期');
+    controllerAiImpl = async (_systemPrompt, _userPrompt, options) => {
+        controllerAiCalls.push(options);
+        return recipeEnvelope(controllerRecipeScope.regionPreference || '剧情推断地区');
+    };
 
     assert.equal(await recipeController.handleAction({
         dataset: { action: 'calendar-recipe-edit', mealType: 'breakfast' },
@@ -1856,6 +1966,8 @@ try {
     let gatherImpl = async () => ({});
     let aiImpl = async () => '{"version":1,"kind":"calendar_events","events":[]}';
     let fetchImpl = async () => { throw new Error('unexpected fetch'); };
+    const scheduleConfirmMessages = [];
+    let scheduleConfirmResult = true;
     let injectionCount = 0;
     let injectionImpl = async () => { injectionCount += 1; };
     const deps = {
@@ -1866,6 +1978,10 @@ try {
         setTimeoutImpl,
         clearTimeoutImpl,
         applyBidirectionalInjection: () => injectionImpl(),
+        confirmImpl: message => {
+            scheduleConfirmMessages.push(message);
+            return scheduleConfirmResult;
+        },
     };
     installCalendar({ phoneWindow }, deps);
     deps.renderCalendar(storageA);
@@ -2051,8 +2167,11 @@ try {
     await deps.handleCalendarAction({ dataset: { action: 'calendar-mode-schedule' } }, app);
     const beforeCancelledGenerate = structuredClone(deps.getCalendarStore());
     const timerCountBeforePending = asyncStatusTimers.length;
+    const confirmCountBeforeEmptyScheduleGenerate = scheduleConfirmMessages.length;
     const generatePromise = deps.handleCalendarAction({ dataset: { action: 'calendar-generate' } }, app);
     await aiStarted.promise;
+    assert.equal(scheduleConfirmMessages.length, confirmCountBeforeEmptyScheduleGenerate,
+        '未来七日没有日程时，顶部生成必须静默执行');
     assert.equal(storageAStatusTimer.cancelled, true, '生成 pending 必须取消旧普通状态 timer');
     assert.equal(asyncStatusTimers.length, timerCountBeforePending, '生成 pending 必须持续到任务结束且不得创建自动消退 timer');
     assert.equal(Object.hasOwn(generatedOptions, 'maxTokens'), false, '日历生成不得设置服务商输出 token 上限');
@@ -2112,6 +2231,75 @@ try {
     assert.match(container.innerHTML, /data-action="calendar-mode-weather"[^>]*aria-pressed="true"/);
     assert.match(container.innerHTML, /data-action="calendar-mode-cycle"[^>]*aria-pressed="false"/);
     assert.match(container.innerHTML, /data-action="calendar-weather-refresh"[^>]*aria-busy="false"/);
+
+    const scheduleBeforeOverwriteConfirm = deps.getCalendarStore();
+    const scheduleScopeBeforeOverwriteConfirm = scheduleBeforeOverwriteConfirm.scopes[storageA];
+    memory.set(CALENDAR_STORAGE_KEY, JSON.stringify({
+        ...scheduleBeforeOverwriteConfirm,
+        scopes: { ...scheduleBeforeOverwriteConfirm.scopes, [storageA]: {
+            ...scheduleScopeBeforeOverwriteConfirm,
+            events: {
+                ...scheduleScopeBeforeOverwriteConfirm.events,
+                [currentDates[0]]: [{
+                    id: 'confirm-current', date: currentDates[0], title: '待确认当日日程', note: '',
+                    source: 'manual', createdAt: 1, updatedAt: 1,
+                }],
+                [currentDates[1]]: [{
+                    id: 'confirm-next', date: currentDates[1], title: '窗口外保留日程', note: '',
+                    source: 'manual', createdAt: 1, updatedAt: 1,
+                }],
+            },
+        } },
+    }));
+    deps.reloadCalendarStore();
+    deps.renderCalendar(storageA);
+    let scheduleAiCallsAfterConfirmSetup = 0;
+    aiImpl = async () => { scheduleAiCallsAfterConfirmSetup += 1; return '{"version":1,"kind":"calendar_events","events":[]}'; };
+    scheduleConfirmResult = false;
+    await deps.handleCalendarAction({ dataset: { action: 'calendar-generate' } }, app);
+    scheduleConfirmResult = true;
+    assert.equal(scheduleAiCallsAfterConfirmSetup, 0, '取消顶部日程覆盖后不得请求 AI');
+    assert.match(scheduleConfirmMessages.at(-1), /未来七日已有日程.*覆盖已有内容/,
+        '顶部日程生成在窗口已有内容时必须先确认覆盖');
+    aiImpl = async () => JSON.stringify({
+        version: 1, kind: 'calendar_events',
+        events: [{ date: currentDates[0], title: '当日重新生成结果', note: '' }],
+    });
+    await deps.handleCalendarAction({ dataset: { action: 'calendar-regenerate' } }, app);
+    assert.match(scheduleConfirmMessages.at(-1), new RegExp(`${currentDates[0]} 当日日程.*覆盖当日所有日程`));
+    assert.equal(deps.getCalendarStore().scopes[storageA].events[currentDates[0]][0].title, '当日重新生成结果');
+    assert.equal(deps.getCalendarStore().scopes[storageA].events[currentDates[1]][0].title, '窗口外保留日程',
+        '详情日程重新生成不得改写窗口外日期');
+
+    const scheduleWindowRaceResponse = deferred(), scheduleWindowRaceStarted = deferred();
+    aiImpl = async () => {
+        scheduleWindowRaceStarted.resolve();
+        return scheduleWindowRaceResponse.promise;
+    };
+    const scheduleWindowRaceGeneration = deps.handleCalendarAction({ dataset: { action: 'calendar-generate' } }, app);
+    await scheduleWindowRaceStarted.promise;
+    const scheduleDuringRace = deps.getCalendarStore();
+    const scheduleScopeDuringRace = scheduleDuringRace.scopes[storageA];
+    memory.set(CALENDAR_STORAGE_KEY, JSON.stringify({
+        ...scheduleDuringRace,
+        scopes: { ...scheduleDuringRace.scopes, [storageA]: {
+            ...scheduleScopeDuringRace,
+            events: { ...scheduleScopeDuringRace.events, [currentDates[0]]: [{
+                id: 'race-current', date: currentDates[0], title: '生成期间新增日程', note: '',
+                source: 'manual', createdAt: 2, updatedAt: 2,
+            }] },
+        } },
+    }));
+    deps.reloadCalendarStore();
+    scheduleWindowRaceResponse.resolve(JSON.stringify({
+        version: 1, kind: 'calendar_events',
+        events: [{ date: currentDates[0], title: '不应覆盖新增日程', note: '' }],
+    }));
+    await assert.rejects(scheduleWindowRaceGeneration, /待覆盖日程已在生成期间改变/,
+        '日程生成期间窗口内容变化后，旧确认不得授权覆盖新内容');
+    assert.equal(deps.getCalendarStore().scopes[storageA].events[currentDates[0]][0].title, '生成期间新增日程');
+    assert.equal(deps.getCalendarStore().scopes[storageA].events[currentDates[1]][0].title, '窗口外保留日程');
+    deps.renderCalendar(storageA);
 
     await deps.handleCalendarAction({ dataset: { action: 'calendar-mode-schedule' } }, app);
     aiImpl = async () => { throw new Error('generation-failed'); };
