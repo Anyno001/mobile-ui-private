@@ -1,11 +1,11 @@
 import {
     CALENDAR_CYCLE_STORAGE_KEY, CALENDAR_HOLIDAY_STORAGE_KEY, CALENDAR_OCCASION_STORAGE_KEY,
     CALENDAR_RECIPE_STORAGE_KEY, CALENDAR_STORAGE_KEY, CALENDAR_WEATHER_STORAGE_KEY, CHARACTER_BEHAVIOR_KEY,
-    PM_IDB_NAME, PM_IDB_STORE,
+    INJECTION_CONFIG_KEY, PM_IDB_NAME, PM_IDB_STORE,
 } from './constants.js';
 import { BUDGET_CONFIG_KEY, normalizeBudgetConfig } from './budget.js';
 import {
-    normalizeCharacterBehaviorStore, normalizeGroupMetaStore,
+    normalizeCharacterBehaviorStore, normalizeGroupMetaStore, normalizeInjectionConfig,
 } from './behavior-config.js';
 import { enqueueDirectorySave } from './directory-save-coordinator.js';
 import { createEmptyPhoneUiState, normalizePhoneUiState } from './interactive-scene-model.js';
@@ -23,7 +23,7 @@ export const DESKTOP_BG_KEY = 'ST_SMS_BG_DESKTOP';
 export const PLUGIN_LOCAL_STORAGE_KEYS = Object.freeze([
     'ST_SMS_DATA_V2', 'ST_SMS_CONFIG', 'ST_SMS_THEME', 'ST_SMS_POKE_CONFIG', 'ST_SMS_WORDY_LIMIT',
     BUDGET_CONFIG_KEY, 'ST_SMS_BG_GLOBAL', 'ST_SMS_BG_LOCAL', DESKTOP_BG_KEY, GROUP_META_STORE_KEY, GROUP_META_FALLBACK_KEY,
-    EMOJI_STORE_KEY, EMOJI_FALLBACK_KEY, CHARACTER_BEHAVIOR_KEY, 'ST_SMS_API_PROFILES', 'ST_SMS_BIDIRECTIONAL',
+    EMOJI_STORE_KEY, EMOJI_FALLBACK_KEY, CHARACTER_BEHAVIOR_KEY, INJECTION_CONFIG_KEY, 'ST_SMS_API_PROFILES', 'ST_SMS_BIDIRECTIONAL',
     INTERACTIVE_STORE_KEY, INTERACTIVE_FALLBACK_KEY, PHONE_UI_STATE_KEY, 'ST_SMS_PHONE_QR_INITIALIZED',
     CALENDAR_STORAGE_KEY, CALENDAR_OCCASION_STORAGE_KEY, CALENDAR_HOLIDAY_STORAGE_KEY,
     CALENDAR_WEATHER_STORAGE_KEY, CALENDAR_CYCLE_STORAGE_KEY, CALENDAR_RECIPE_STORAGE_KEY,
@@ -441,6 +441,26 @@ export function addOrUpdateProfile(profile) {
     if (saveProfiles()) return true;
     window.__pmProfiles = previous;
     return false;
+}
+
+export function loadInjectionConfig() {
+    try {
+        window.__pmInjectionConfig = normalizeInjectionConfig(JSON.parse(localStorage.getItem(INJECTION_CONFIG_KEY)));
+    } catch (error) {
+        window.__pmInjectionConfig = normalizeInjectionConfig(null);
+    }
+    return window.__pmInjectionConfig;
+}
+
+export function saveInjectionConfig() {
+    try {
+        const normalized = normalizeInjectionConfig(window.__pmInjectionConfig);
+        localStorage.setItem(INJECTION_CONFIG_KEY, JSON.stringify(normalized));
+        window.__pmInjectionConfig = normalized;
+        return true;
+    } catch (error) {
+        return false;
+    }
 }
 
 export function loadBidirectional() {

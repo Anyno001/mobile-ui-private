@@ -81,10 +81,13 @@ export function installConversation(state, deps) {
             state.groupMembers = groupMeta.members.slice();
             state.groupExtras = Array.isArray(groupMeta.extras) ? groupMeta.extras.slice() : [];
             state.groupDisplayName = groupMeta.name;
+            state.groupRandomNpcEnabled = groupMeta.randomNpcEnabled === true;
+            state.groupNature = typeof groupMeta.groupNature === 'string' ? groupMeta.groupNature : '';
             state.groupColorMap = {};
             state.groupMembers.forEach((n, i) => { state.groupColorMap[n] = groupMeta.memberColors?.[n] || GROUP_COLORS[i % GROUP_COLORS.length].bg; });
         } else {
-            state.isGroupChat = false; state.groupMembers = []; state.groupExtras = []; state.groupColorMap = {}; state.groupDisplayName = ''; state.currentGroupKey = '';
+            state.isGroupChat = false; state.groupMembers = []; state.groupExtras = []; state.groupColorMap = {};
+            state.groupDisplayName = ''; state.groupRandomNpcEnabled = false; state.groupNature = ''; state.currentGroupKey = '';
         }
         window.__pmSwitch(key, _prevSaveKey, _prevStorageId, { ...options, previousConversationContext });
     };

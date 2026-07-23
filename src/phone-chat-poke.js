@@ -76,6 +76,7 @@ export function installPhoneChatPoke(state, deps) {
                 memberList: groupMembers.join('、'),
                 userName, userBlock, cardDesc, cardPersonality,
                 cardScenario, worldBookText, mainChatText, smsHistoryText,
+                randomNpcEnabled: groupMeta.randomNpcEnabled, groupNature: groupMeta.groupNature,
               })
             : buildPokeSinglePrompt({
                 contactName, userName, userBlock, cardDesc, cardPersonality,
@@ -95,7 +96,9 @@ export function installPhoneChatPoke(state, deps) {
             let renderBlocks = [];
             let renderSentences = [];
             if (isGroup) {
-                const parsed = parseGroupResponse(raw, groupMembers);
+                const parsed = parseGroupResponse(raw, groupMembers, {
+                    allowUnknownSpeakers: groupMeta.randomNpcEnabled === true,
+                });
                 renderBlocks = parsed.filter(block => block.sentences.length > 0);
                 const contentParts = renderBlocks.map(block => `${block.name}：${block.sentences.join(' / ')}`);
                 if (!contentParts.length) return false;
@@ -224,9 +227,6 @@ export function installPhoneChatPoke(state, deps) {
         <button type="button" onclick="window.__pmCloseOverlay()" class="pm-modal-close" title="关闭" aria-label="关闭">${CLOSE_ICON_SVG}</button>
     </div>
     <div class="pm-contact-settings-scroll">
-        <button type="button" class="pm-injection-entry" onclick="window.__pmShowConversationInjection('${safeJS(contactName)}','contact-settings')">
-          <span><b>上下文注入</b><small>${escapeHtml(window.__pmConversationInjectionSummary?.(contactName) || '已关闭')}</small></span><span aria-hidden="true">›</span>
-        </button>
         <div class="pm-cfg-label">私聊线上风格</div>
         <textarea id="pm-behavior-private" class="pm-cfg-input" rows="2" maxlength="2000" placeholder="例如：回复克制、少用语气词">${escapeHtml(behavior.privateStylePrompt)}</textarea>
         <div class="pm-cfg-label">群聊发言风格</div>
@@ -294,11 +294,6 @@ export function installPhoneChatPoke(state, deps) {
         makeOverlay(`
     <div class="pm-modal pm-modal-wide">
       <div class="pm-modal-header"><span></span><b>成员聊天行为</b><button type="button" onclick="window.__pmCloseOverlay()" class="pm-modal-close" title="关闭" aria-label="关闭">${CLOSE_ICON_SVG}</button></div>
-      <div class="pm-conversation-settings-injection">
-        <button type="button" class="pm-injection-entry" onclick="window.__pmShowConversationInjection('${safeJS(state.currentGroupKey)}','conversation-settings')">
-          <span><b>上下文注入</b><small>${escapeHtml(window.__pmConversationInjectionSummary?.(state.currentGroupKey) || '已关闭')}</small></span><span aria-hidden="true">›</span>
-        </button>
-      </div>
       <div class="pm-member-behavior-list">
         ${members.map(name => `<button onclick="window.__pmShowCharacterBehavior('${safeJS(name)}')">
           <b>${escapeHtml(name)}</b><span>私聊风格、群聊风格与消息频率</span>
@@ -405,6 +400,8 @@ export function installPhoneChatPoke(state, deps) {
         const isGroup = state.isGroupChat;
         const groupDisplayName = state.groupDisplayName;
         const groupMembers = state.groupMembers.slice();
+        const groupRandomNpcEnabled = state.groupRandomNpcEnabled;
+        const groupNature = state.groupNature;
         const isStillTarget = () => isGenerationTaskActive(task) && state.activeStorageId === storageId
             && (state.isGroupChat && state.currentGroupKey ? state.currentGroupKey : state.currentPersona) === saveKey;
 
@@ -424,6 +421,7 @@ export function installPhoneChatPoke(state, deps) {
                 groupName: groupDisplayName || '群聊', memberList: groupMembers.join('、'),
                 userName, userBlock, cardDesc, cardPersonality, cardScenario,
                 worldBookText, mainChatText, smsHistoryText,
+                randomNpcEnabled: groupRandomNpcEnabled, groupNature,
               })
             : buildPokeSinglePrompt({
                 contactName, userName, userBlock, cardDesc, cardPersonality,
@@ -445,7 +443,9 @@ export function installPhoneChatPoke(state, deps) {
             if (isStillTarget()) hideTyping();
 
             if (isGroup) {
-                const parsed = parseGroupResponse(raw, groupMembers);
+                const parsed = parseGroupResponse(raw, groupMembers, {
+                    allowUnknownSpeakers: groupRandomNpcEnabled === true,
+                });
                 const blocks = parsed.filter(block => block.sentences.length > 0);
                 const contentParts = blocks.map(block => `${block.name}：${block.sentences.join(' / ')}`);
                 if (contentParts.length > 0) {
@@ -562,6 +562,8 @@ export function installPhoneChatPoke(state, deps) {
         const targetHistory = state.conversationHistory.slice();
         const groupDisplayName = state.groupDisplayName;
         const groupMembers = state.groupMembers.slice();
+        const groupRandomNpcEnabled = state.groupRandomNpcEnabled;
+        const groupNature = state.groupNature;
         const isStillTarget = () => isGenerationTaskActive(task) && state.activeStorageId === storageId
             && state.isGroupChat && state.currentGroupKey === saveKey;
 
@@ -578,6 +580,7 @@ export function installPhoneChatPoke(state, deps) {
             groupDisplayName, memberList: groupMembers.join('、'),
             userName, userBlock, cardDesc, cardPersonality, cardScenario,
             worldBookText, mainChatText, smsHistoryText,
+            randomNpcEnabled: groupRandomNpcEnabled, groupNature,
         })
             + buildChatPreferencePrompt({
                 store: window.__pmCharacterBehavior,
@@ -592,7 +595,9 @@ export function installPhoneChatPoke(state, deps) {
             if (!isGenerationTaskActive(task)) return;
             if (isStillTarget()) hideTyping();
 
-            const parsed = parseGroupResponse(raw, groupMembers);
+            const parsed = parseGroupResponse(raw, groupMembers, {
+                allowUnknownSpeakers: groupRandomNpcEnabled === true,
+            });
             let renderedTrimmedCount = 0;
             for (const block of parsed) {
                 if (block.sentences.length > 0) {

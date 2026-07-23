@@ -1,6 +1,7 @@
 import {
     DEFAULT_INDEPENDENT_API_TEMPERATURE, extractAiResponseContent, normalizeIndependentApiTemperature,
 } from './ai.js';
+import { normalizeInjectionConfig } from './behavior-config.js';
 import { normalizeBudgetConfig } from './budget.js';
 import { THEME_PRESETS, normalizeApiUrls } from './config.js';
 import { openCropper } from './cropper.js';
@@ -70,6 +71,12 @@ export function installSettingsUi(deps) {
         const error = new Error(`${phase}：${details}`);
         error.injectionResult = result;
         return error;
+    };
+    const requireInjectionSuccess = async (operation, phase) => {
+        const result = await operation();
+        const error = injectionFailure(result, phase);
+        if (error) throw error;
+        return result;
     };
     const syncLookControls = () => {
         const theme = window.__pmTheme;
@@ -148,7 +155,7 @@ export function installSettingsUi(deps) {
     window.__pmExportData = async () => {
         const snapshot = await captureBackupState();
         const data = {
-            schemaVersion: 7,
+            schemaVersion: 8,
             histories: snapshot.histories,
             config: snapshot.config,
             theme: legacyBackupTheme(snapshot.theme),
@@ -156,6 +163,7 @@ export function installSettingsUi(deps) {
             groupMeta: snapshot.groupMeta,
             pokeConfig: snapshot.pokeConfig,
             bidirectional: snapshot.bidirectional,
+            injectionConfig: snapshot.injectionConfig,
             emojis: snapshot.emojis,
             characterBehavior: snapshot.characterBehavior,
             wordyLimit: snapshot.wordyLimit,
@@ -197,55 +205,36 @@ export function installSettingsUi(deps) {
                     beforeApply: async reason => {
                         deps.cancelCommunityGeneration?.(`backup-${reason}`);
                         deps.cancelCalendarTasks?.(`backup-${reason}`);
-                        clearBidirectionalInjection();
+                        await requireInjectionSuccess(
+                            () => clearBidirectionalInjection(),
+                            reason === 'apply' ? '导入前清理旧注入失败' : '回滚前清理注入失败',
+                        );
                     },
                     apply: async (snapshot, imported) => {
                         if (snapshot) return applyBackupState(snapshot);
                         return applyBackupState(imported);
                     },
                     persist: persistBackupState,
+                    afterPersist: async reason => requireInjectionSuccess(
+                        () => applyBidirectionalInjection(),
+                        reason === 'apply' ? '导入后的注入刷新失败' : '恢复原数据后的注入刷新失败',
+                    ),
                 });
             } catch (err) {
                 transactionError = err;
             }
             if (transactionError) {
                 const err = transactionError;
-                let recoveryInjectionError = null;
-                if (err.backupPhase === 'rolled-back' || err.backupPhase === 'rollback-failed') {
-                    try {
-                        const recoveryResult = await applyBidirectionalInjection();
-                        recoveryInjectionError = injectionFailure(recoveryResult, '恢复原数据后的注入刷新失败');
-                    } catch (error) {
-                        recoveryInjectionError = error;
-                    }
-                }
                 if (err.backupPhase === 'rollback-failed') {
-                    const recoveryDetail = recoveryInjectionError ? `\n注入刷新也失败：${recoveryInjectionError.message}` : '';
-                    alert(`导入失败，原数据回滚也失败。请勿刷新，并立即导出当前内存备份。\n${err.message}${recoveryDetail}`);
+                    alert(`导入失败，原数据回滚也失败。请勿刷新，并立即导出当前内存备份。\n${err.message}`);
                 } else if (err.backupPhase === 'rolled-back') {
-                    if (recoveryInjectionError) {
-                        alert(`导入失败，原数据已恢复，但注入刷新失败。请刷新页面或重新打开手机界面。\n${err.message}\n${recoveryInjectionError.message}`);
-                    } else {
-                        alert(`导入失败，原数据已恢复。\n${err.message}`);
-                    }
+                    alert(`导入失败，原数据已恢复。\n${err.message}`);
                 } else {
                     alert(`导入失败，未修改现有数据。\n${err.message}`);
                 }
                 return;
             }
-
-            let postImportError = null;
-            try {
-                const injectionResult = await applyBidirectionalInjection();
-                postImportError = injectionFailure(injectionResult, '导入后的注入刷新失败');
-            } catch (error) {
-                postImportError = error;
-            }
-            if (postImportError) {
-                alert(`数据已导入，但注入刷新失败。请刷新页面或重新打开手机界面。\n${postImportError.message}`);
-            } else {
-                alert('数据导入成功，请重新打开界面生效。');
-            }
+            alert('数据导入成功，请重新打开界面生效。');
             document.getElementById('pm-overlay')?.remove();
             closePhone(true);
         };
@@ -259,13 +248,16 @@ export function installSettingsUi(deps) {
         const previous = await captureBackupState();
         deps.cancelCommunityGeneration?.('plugin-data-clear');
         deps.cancelCalendarTasks?.('plugin-data-clear');
-        clearBidirectionalInjection();
         try {
+            await requireInjectionSuccess(
+                () => clearBidirectionalInjection(), '清理数据前移除旧注入失败',
+            );
             await clearPluginData({ afterClear: async () => {
                 await applyBackupState({
                     histories: {}, config: { apiUrl: '', apiKey: '', model: '', temperature: DEFAULT_INDEPENDENT_API_TEMPERATURE, useIndependent: false },
                     theme: { preset: 'default', customRight: '', customLeft: '', borderColor: '', layout: 'standard', darkMode: 'light', ambientStatusEnabled: false, customTitle: '' },
-                    profiles: [], groupMeta: {}, pokeConfig: {}, bidirectional: {}, emojis: [], characterBehavior: {},
+                    profiles: [], groupMeta: {}, pokeConfig: {}, bidirectional: {}, injectionConfig: normalizeInjectionConfig(null),
+                    emojis: [], characterBehavior: {},
                     wordyLimit: false, desktopBg: '', bgGlobal: '', bgLocal: {}, interactiveScenes: normalizeInteractiveStore(null),
                     phoneUiState: normalizePhoneUiState(null), ambientStatus: normalizeAmbientStatus(),
                     ...createEmptyCalendarBackupFields(),
@@ -273,18 +265,31 @@ export function installSettingsUi(deps) {
                 deps.reloadCalendarStore?.();
                 window.__pmBudgetConfig = normalizeBudgetConfig();
                 deps.invalidateInteractiveStore?.();
+                await requireInjectionSuccess(
+                    () => clearBidirectionalInjection(), '应用空状态后清理注入失败',
+                );
             } });
             alert('天音小笺数据已清理。');
             document.getElementById('pm-overlay')?.remove();
             closePhone(true);
             return true;
         } catch (error) {
-            await applyBackupState(previous);
-            deps.reloadCalendarStore?.();
-            await applyBidirectionalInjection();
-            alert(error.rollbackError
-                ? `清理失败，原数据回滚也失败。请勿刷新，并立即导出当前内存备份。\n${error.message}`
-                : `清理失败，原数据已恢复。\n${error.message}`);
+            let rollbackError = error.rollbackError || null;
+            try {
+                await applyBackupState(previous);
+                await persistBackupState(previous);
+                deps.reloadCalendarStore?.();
+                await requireInjectionSuccess(
+                    () => applyBidirectionalInjection(), '恢复原数据后的注入刷新失败',
+                );
+            } catch (failure) {
+                rollbackError = failure;
+            }
+            if (rollbackError) {
+                alert(`清理失败，原数据回滚也失败。请勿刷新，并立即导出当前内存备份。\n${error.message}；${rollbackError.message}`);
+            } else {
+                alert(`清理失败，原数据已恢复。\n${error.message}`);
+            }
             return false;
         }
     };

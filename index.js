@@ -2049,6 +2049,7 @@ ${userPrompt}` : userPrompt;
   var CALENDAR_CYCLE_STORAGE_KEY = "ST_SMS_CALENDAR_CYCLES_V1";
   var CALENDAR_RECIPE_STORAGE_KEY = "ST_SMS_CALENDAR_RECIPES_V1";
   var CHARACTER_BEHAVIOR_KEY = "ST_SMS_CHARACTER_BEHAVIOR";
+  var INJECTION_CONFIG_KEY = "ST_SMS_INJECTION_CONFIG";
   var VOICE_MAX_SEC = 60;
   var MODEL_VISIBLE_ROWS = 4;
   var MESSAGE_LENGTH_VALUES = Object.freeze(["persona", "short", "medium", "long"]);
@@ -4203,6 +4204,13 @@ ${lines.join("\n")}
       historyLimit: boundedInteger(source.historyLimit, DEFAULT_GROUP_INJECTION.historyLimit, 1, 100)
     };
   }
+  function normalizeInjectionConfig(value) {
+    const normalized = normalizeGroupInjection(value);
+    return {
+      ...normalized,
+      position: normalized.position === EXTENSION_PROMPT_POSITIONS.NONE ? DEFAULT_GROUP_INJECTION.position : normalized.position
+    };
+  }
   function normalizeGroupMeta(value) {
     const source = plainObject(value);
     const members = uniqueNames(source.members);
@@ -4220,6 +4228,8 @@ ${lines.join("\n")}
       members,
       extras,
       memberColors,
+      randomNpcEnabled: Boolean(source.randomNpcEnabled),
+      groupNature: text(source.groupNature, 200),
       injection: normalizeGroupInjection(source.injection)
     };
   }
@@ -4982,6 +4992,7 @@ ${lines.join("\n")}
     EMOJI_STORE_KEY,
     EMOJI_FALLBACK_KEY,
     CHARACTER_BEHAVIOR_KEY,
+    INJECTION_CONFIG_KEY,
     "ST_SMS_API_PROFILES",
     "ST_SMS_BIDIRECTIONAL",
     INTERACTIVE_STORE_KEY,
@@ -5417,6 +5428,24 @@ ${lines.join("\n")}
     if (saveProfiles()) return true;
     window.__pmProfiles = previous;
     return false;
+  }
+  function loadInjectionConfig() {
+    try {
+      window.__pmInjectionConfig = normalizeInjectionConfig(JSON.parse(localStorage.getItem(INJECTION_CONFIG_KEY)));
+    } catch (error) {
+      window.__pmInjectionConfig = normalizeInjectionConfig(null);
+    }
+    return window.__pmInjectionConfig;
+  }
+  function saveInjectionConfig() {
+    try {
+      const normalized = normalizeInjectionConfig(window.__pmInjectionConfig);
+      localStorage.setItem(INJECTION_CONFIG_KEY, JSON.stringify(normalized));
+      window.__pmInjectionConfig = normalized;
+      return true;
+    } catch (error) {
+      return false;
+    }
   }
   function loadBidirectional() {
     try {
@@ -6085,6 +6114,8 @@ ${mainChatText}` : "",
         state.groupMembers = groupMeta.members.slice();
         state.groupExtras = Array.isArray(groupMeta.extras) ? groupMeta.extras.slice() : [];
         state.groupDisplayName = groupMeta.name;
+        state.groupRandomNpcEnabled = groupMeta.randomNpcEnabled === true;
+        state.groupNature = typeof groupMeta.groupNature === "string" ? groupMeta.groupNature : "";
         state.groupColorMap = {};
         state.groupMembers.forEach((n, i) => {
           state.groupColorMap[n] = groupMeta.memberColors?.[n] || GROUP_COLORS[i % GROUP_COLORS.length].bg;
@@ -6095,6 +6126,8 @@ ${mainChatText}` : "",
         state.groupExtras = [];
         state.groupColorMap = {};
         state.groupDisplayName = "";
+        state.groupRandomNpcEnabled = false;
+        state.groupNature = "";
         state.currentGroupKey = "";
       }
       window.__pmSwitch(key, _prevSaveKey, _prevStorageId, { ...options, previousConversationContext });
@@ -8596,7 +8629,7 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
 ${lines}
 \u8BF7\u5728\u81EA\u7136\u8BED\u5883\u4E0B\u9002\u5F53\u4F7F\u7528\uFF0C\u4E25\u7981\u81EA\u751F\u65B0\u683C\u5F0F\u3002`;
   }
-  function parseGroupResponse(raw, groupMembers) {
+  function parseGroupResponse(raw, groupMembers, { allowUnknownSpeakers = false } = {}) {
     const cleaned = cleanResponse(raw);
     const lines = cleaned.split("\n").map((line) => line.trim()).filter(Boolean);
     const result = [];
@@ -8604,28 +8637,59 @@ ${lines}
     const memberMap = /* @__PURE__ */ new Map();
     groupMembers.forEach((name) => memberMap.set(normalizeName(name), name));
     const speakerPattern = /^[\s\*【\[「『"'（\(]*(.{1,20}?)[\s\*】\]」』"'）\)]*\s*[：:]\s*([\s\S]+)$/;
+    const randomNpcPrefix = "\u8DEF\u4EBA\u7FA4\u53CB\xB7";
+    const reservedNpcNames = /* @__PURE__ */ new Set([
+      "\u7CFB\u7EDF",
+      "\u7528\u6237",
+      "\u65C1\u767D",
+      "\u63D0\u793A",
+      "\u65F6\u95F4",
+      "\u5907\u6CE8",
+      "\u7F51\u5740",
+      "\u6BD4\u4F8B",
+      "\u56FE\u7247",
+      "\u8BED\u97F3",
+      "\u8F6C\u8D26",
+      "\u6536\u6B3E",
+      "\u9000\u8FD8"
+    ]);
+    const resolveSpeaker = (value) => {
+      const normalized = normalizeName(value);
+      if (memberMap.has(normalized)) return memberMap.get(normalized);
+      if (!allowUnknownSpeakers || !normalized) return "";
+      const candidate = String(value || "").trim().replace(/^[【\[\(（*「『"'\s]+|[】\]\)）*「』」"'\s]+$/g, "").trim();
+      if (!candidate.startsWith(randomNpcPrefix)) return "";
+      const name = candidate.slice(randomNpcPrefix.length).trim();
+      if (!name || name.length > 12 || reservedNpcNames.has(name)) return "";
+      if (/[：:\/\\\[\]【】()（）<>]/.test(name) || /^\d+(?:\.\d+)?%?$/.test(name)) return "";
+      return `${randomNpcPrefix}${name}`;
+    };
     const stripSpeakerPrefix = (value) => {
       let text3 = (value || "").trim();
       const outer = text3.match(/^[\(（]\s*(.{1,20}?)\s*[：:]\s*([\s\S]+?)\s*[\)）]\s*$/);
-      if (outer && memberMap.has(normalizeName(outer[1]))) {
+      if (outer && resolveSpeaker(outer[1])) {
         return outer[2].trim();
       }
       for (let index = 0; index < 3; index++) {
         const match = text3.match(speakerPattern);
-        if (!match || !memberMap.has(normalizeName(match[1]))) break;
+        if (!match || !resolveSpeaker(match[1])) break;
         text3 = match[2].trim();
       }
       return text3;
     };
+    const splitGroupSentences = (value) => splitToSentences(
+      String(value || "").replace(/https?:\/\/\S+/gi, (url) => url.replace(/\//g, "")),
+      stripSpeakerPrefix
+    ).map((text3) => text3.replace(/\u0002/g, "/"));
     for (const line of lines) {
       const match = line.match(speakerPattern);
-      if (match && memberMap.has(normalizeName(match[1]))) {
-        const name = memberMap.get(normalizeName(match[1]));
-        const sentences2 = splitToSentences(match[2], stripSpeakerPrefix);
-        if (sentences2.length) result.push({ name, sentences: sentences2 });
+      const speaker = match ? resolveSpeaker(match[1]) : "";
+      if (match && speaker) {
+        const sentences2 = splitGroupSentences(match[2]);
+        if (sentences2.length) result.push({ name: speaker, sentences: sentences2 });
         continue;
       }
-      const sentences = splitToSentences(line, stripSpeakerPrefix);
+      const sentences = splitGroupSentences(line);
       if (!sentences.length) continue;
       if (result.length > 0) result[result.length - 1].sentences.push(...sentences);
       else result.push({ name: groupMembers[0] || "???", sentences });
@@ -8999,6 +9063,18 @@ ${mainChatText}` : "",
       "\u7981\u6B62\u4EFB\u4F55\u6807\u7B7E\u683C\u5F0F\u65C1\u767D\u9009\u9879\u72B6\u6001\u680F\u3002"
     ].filter(Boolean).join("\n\n");
   }
+  function buildGroupAdditionalContext({ randomNpcEnabled = false, groupNature = "" } = {}) {
+    const nature = typeof groupNature === "string" ? groupNature.trim() : "";
+    const parts = [];
+    if (nature) parts.push(`\u7FA4\u804A\u6027\u8D28\uFF1A${nature}`);
+    if (randomNpcEnabled) {
+      parts.push("\u5141\u8BB8\u4E0D\u5728\u56FA\u5B9A\u6210\u5458\u540D\u5355\u4E0A\u7684\u8DEF\u4EBA\u7FA4\u53CB\u81EA\u7136\u53C2\u4E0E\u804A\u5929\uFF1B\u4E34\u65F6\u89D2\u8272\u540D\u5FC5\u987B\u4F7F\u7528\u201C\u8DEF\u4EBA\u7FA4\u53CB\xB7\u540D\u5B57\u201D\u683C\u5F0F\uFF0C\u5E76\u6839\u636E\u7FA4\u804A\u6027\u8D28\u751F\u6210\u8EAB\u4EFD\u548C\u8BED\u6C14\u5408\u9002\u3001\u540D\u5B57\u7B80\u77ED\u660E\u786E\u7684\u4E34\u65F6\u89D2\u8272\u3002");
+    }
+    return parts.length ? `
+
+\u3010\u7FA4\u804A\u8865\u5145\u4FE1\u606F\u3011
+${parts.join("\n")}` : "";
+  }
   function buildGroupInjectedInstruction({
     groupName,
     memberList,
@@ -9011,8 +9087,11 @@ ${mainChatText}` : "",
     currentQuoteText,
     directorNote,
     userMsgClean,
-    userMsg
+    userMsg,
+    randomNpcEnabled = false,
+    groupNature = ""
   }) {
+    const speakerRule = randomNpcEnabled ? `\u89D2\u8272\u540D\u53EF\u4EE5\u6765\u81EA\u56FA\u5B9A\u6210\u5458\uFF08${memberList}\uFF09\uFF0C\u4E34\u65F6\u8DEF\u4EBA\u7FA4\u53CB\u5FC5\u987B\u547D\u540D\u4E3A\u201C\u8DEF\u4EBA\u7FA4\u53CB\xB7\u540D\u5B57\u201D` : `\u89D2\u8272\u540D\u5FC5\u987B\u6765\u81EA\uFF1A${memberList}`;
     const groupRules = `
 [\u7FA4\u804A\u77ED\u4FE1\u6A21\u5F0F\u2014\u2014\u6700\u9AD8\u4F18\u5148\u7EA7]
 \u7FA4\u804A\u540D\u79F0\uFF1A${groupName}
@@ -9020,7 +9099,7 @@ ${mainChatText}` : "",
 \u4F60\u540C\u65F6\u626E\u6F14\u4EE5\u4E0A\u6240\u6709\u89D2\u8272\u4E0E\u7528\u6237\uFF08${userName}\uFF09\u804A\u5929\u3002
 
 \u26A0\uFE0F \u8F93\u51FA\u5FC5\u987B\u6EE1\u8DB3\u4EE5\u4E0B\u5168\u90E8\u6761\u4EF6\uFF0C\u8FDD\u53CD\u5373\u89C6\u4E3A\u65E0\u6548\uFF1A
-1. \u6BCF\u4E00\u884C\u90FD\u5FC5\u987B\u4EE5 "\u89D2\u8272\u540D\uFF1A" \u5F00\u5934\uFF08\u89D2\u8272\u540D\u5FC5\u987B\u6765\u81EA\uFF1A${memberList}\uFF09
+1. \u6BCF\u4E00\u884C\u90FD\u5FC5\u987B\u4EE5 "\u89D2\u8272\u540D\uFF1A" \u5F00\u5934\uFF08${speakerRule}\uFF09
 2. \u4E25\u7981\u8F93\u51FA\u5BF9\u754C\u9762\u3001\u7CFB\u7EDF\u3001\u5BF9\u8BDD\u672C\u8EAB\u7684\u603B\u7ED3\u6216\u63CF\u8FF0\u6027\u6587\u5B57
 3. \u4E25\u7981\u8F93\u51FA\u7C7B\u4F3C"\u73B0\u5728\u5E94\u8BE5..."\u3001"\u6211\u5DF2\u7ECF..."\u3001"\u770B\u8D77\u6765..."\u8FD9\u7C7B\u53D9\u8FF0\u6027\u53E5\u5B50
 4. \u7279\u6B8A\u683C\u5F0F\u5FC5\u987B\u5728\u540C\u4E00\u884C\u5185\u5B8C\u6574\u5199\u51FA\u4E14\u95ED\u5408\uFF1A(\u8F6C\u8D26+\u91D1\u989D) (\u6536\u6B3E+\u91D1\u989D) (\u9000\u8FD8+\u91D1\u989D) (\u56FE\u7247+\u63CF\u8FF0) (\u8BED\u97F3+\u5185\u5BB9)\u3002\u6CE8\u610F\uFF1A\u9000\u8FD8\u6307\u62D2\u7EDD\u804A\u5929\u5BF9\u8C61\u8F6C\u8D26\u3002
@@ -9054,7 +9133,7 @@ ${currentQuoteText}
 ${directorNote ? `
 [\u5267\u60C5\u5F15\u5BFC] ${directorNote}
 ` : ""}
-${userMsg.trim() ? `${userName}\uFF1A${userMsgClean}` : "[\u4EC5\u6709\u5267\u60C5\u5F15\u5BFC\uFF0C\u65E0\u7528\u6237\u53D1\u8A00\uFF0C\u8BF7\u6309\u5F15\u5BFC\u63A8\u8FDB\u5267\u60C5]"}`;
+${userMsg.trim() ? `${userName}\uFF1A${userMsgClean}` : "[\u4EC5\u6709\u5267\u60C5\u5F15\u5BFC\uFF0C\u65E0\u7528\u6237\u53D1\u8A00\uFF0C\u8BF7\u6309\u5F15\u5BFC\u63A8\u8FDB\u5267\u60C5]"}${buildGroupAdditionalContext({ randomNpcEnabled, groupNature })}`;
   }
   function buildGroupSystemPrompt({
     memberList,
@@ -9065,10 +9144,12 @@ ${userMsg.trim() ? `${userName}\uFF1A${userMsgClean}` : "[\u4EC5\u6709\u5267\u60
     cardPersonality,
     cardScenario,
     worldBookText,
-    mainChatText
+    mainChatText,
+    randomNpcEnabled = false,
+    groupNature = ""
   }) {
     return [
-      `\u4F60\u540C\u65F6\u626E\u6F14 ${memberList} \u5728\u7FA4\u804A\u300C${groupName}\u300D\u4E2D\u4E0E\u7528\u6237 ${userName} \u5BF9\u8BDD\u3002`,
+      `\u4F60\u540C\u65F6\u626E\u6F14 ${memberList} \u5728\u7FA4\u804A\u300C${groupName}\u300D\u4E2D\u4E0E\u7528\u6237 ${userName} \u5BF9\u8BDD\u3002${randomNpcEnabled ? "\u5FC5\u8981\u65F6\u4E5F\u53EF\u751F\u6210\u7B26\u5408\u7FA4\u804A\u6027\u8D28\u7684\u4E34\u65F6\u8DEF\u4EBA\u7FA4\u53CB\u3002" : ""}`,
       `\u3010\u7528\u6237\u4FE1\u606F\u3011
 ${userBlock}`,
       cardDesc ? `\u3010\u89D2\u8272\u8BBE\u5B9A\u3011
@@ -9086,7 +9167,8 @@ ${mainChatText}` : "",
       `\u89D2\u8272\u540D\u540E\u53EA\u8DDF\u8BE5\u89D2\u8272\u7684\u8BDD\uFF0C\u4E25\u7981 "(\u89D2\u8272\u540D\uFF1Axxx)" \u8FD9\u79CD\u5D4C\u5957\u3002`,
       `\u89D2\u8272\u53EF\u7A7F\u63D2\u53D1\u8A00\uFF0C\u4E0D\u5FC5\u6240\u6709\u4EBA\u90FD\u8BF4\u8BDD\u3002`,
       "\u7279\u6B8A\u683C\u5F0F\uFF08\u5FC5\u987B\u4E2D\u6587\u4E14\u5355\u884C\u95ED\u5408\uFF09\uFF1A(\u8F6C\u8D26+\u91D1\u989D) (\u6536\u6B3E+\u91D1\u989D) (\u9000\u8FD8+\u91D1\u989D) (\u56FE\u7247+\u63CF\u8FF0) (\u8BED\u97F3+\u5185\u5BB9)\u3002\u6CE8\u610F\uFF1A\u9000\u8FD8\u6307\u62D2\u7EDD\u804A\u5929\u5BF9\u8C61\u8F6C\u8D26\u3002",
-      "\u7981\u6B62\u4EFB\u4F55\u6807\u7B7E\u683C\u5F0F\u65C1\u767D\u9009\u9879\u72B6\u6001\u680F\u3002"
+      "\u7981\u6B62\u4EFB\u4F55\u6807\u7B7E\u683C\u5F0F\u65C1\u767D\u9009\u9879\u72B6\u6001\u680F\u3002",
+      buildGroupAdditionalContext({ randomNpcEnabled, groupNature })
     ].filter(Boolean).join("\n\n");
   }
   function buildPokeSinglePrompt({
@@ -9139,7 +9221,9 @@ ${smsHistoryText}
     cardScenario,
     worldBookText,
     mainChatText,
-    smsHistoryText
+    smsHistoryText,
+    randomNpcEnabled = false,
+    groupNature = ""
   }) {
     return `\u7FA4\u804A\u540D\u79F0\uFF1A${groupName}
 \u7FA4\u804A\u6210\u5458\uFF1A${memberList}
@@ -9167,7 +9251,7 @@ ${worldBookText || ""}
 ${mainChatText || ""}
 
 \u3010\u7FA4\u804A\u5386\u53F2\u3011
-${smsHistoryText}`;
+${smsHistoryText}${buildGroupAdditionalContext({ randomNpcEnabled, groupNature })}`;
   }
   function buildPokeGroupActivePrompt({
     groupDisplayName,
@@ -9179,7 +9263,9 @@ ${smsHistoryText}`;
     cardScenario,
     worldBookText,
     mainChatText,
-    smsHistoryText
+    smsHistoryText,
+    randomNpcEnabled = false,
+    groupNature = ""
   }) {
     return `\u7FA4\u804A\u540D\u79F0\uFF1A${groupDisplayName || "\u7FA4\u804A"}
 \u7FA4\u804A\u6210\u5458\uFF1A${memberList}
@@ -9208,7 +9294,7 @@ ${worldBookText || ""}
 ${mainChatText || ""}
 
 \u3010\u7FA4\u804A\u5386\u53F2\u3011
-${smsHistoryText}`;
+${smsHistoryText}${buildGroupAdditionalContext({ randomNpcEnabled, groupNature })}`;
   }
   function buildIndependentSingleUserPrompt({
     smsHistoryText,
@@ -9287,6 +9373,8 @@ ${userName}\uFF1A${userMsgClean}` : "\n[\u4EC5\u6709\u5267\u60C5\u5F15\u5BFC\uFF
         currentPersona,
         groupMembers,
         groupDisplayName,
+        groupRandomNpcEnabled,
+        groupNature,
         targetHistory
       } = request;
       const userMsgClean = userMsg.replace(/\[emo:([^\]:]+):(\d+)\]/g, (_, setName, idxStr) => {
@@ -9316,7 +9404,9 @@ ${userName}\uFF1A${userMsgClean}` : "\n[\u4EC5\u6709\u5267\u60C5\u5F15\u5BFC\uFF
           currentQuoteText,
           directorNote,
           userMsgClean,
-          userMsg
+          userMsg,
+          randomNpcEnabled: groupRandomNpcEnabled,
+          groupNature
         });
         systemPrompt = buildGroupSystemPrompt({
           memberList,
@@ -9327,7 +9417,9 @@ ${userName}\uFF1A${userMsgClean}` : "\n[\u4EC5\u6709\u5267\u60C5\u5F15\u5BFC\uFF
           cardPersonality,
           cardScenario,
           worldBookText,
-          mainChatText
+          mainChatText,
+          randomNpcEnabled: groupRandomNpcEnabled,
+          groupNature
         });
       } else {
         const contextBlockMain = [
@@ -9411,7 +9503,9 @@ ${antiFluff}`;
         }
         let resultData;
         if (isGroup) {
-          const parsed = parseGroupResponse(raw, groupMembers);
+          const parsed = parseGroupResponse(raw, groupMembers, {
+            allowUnknownSpeakers: groupRandomNpcEnabled === true
+          });
           if (parsed.length) {
             const contentParts = parsed.map((p) => `${p.name}\uFF1A${p.sentences.join(" / ")}`);
             const assistantEntry = createMessageEntry({
@@ -9569,6 +9663,8 @@ ${antiFluff}`;
         currentPersona: state.currentPersona,
         groupMembers: state.groupMembers.slice(),
         groupDisplayName: state.groupDisplayName,
+        groupRandomNpcEnabled: state.groupRandomNpcEnabled,
+        groupNature: state.groupNature,
         targetHistory: state.conversationHistory.slice(),
         userHistoryEntry: createMessageEntry({
           role: "user",
@@ -9752,7 +9848,9 @@ ${antiFluff}`;
           cardScenario,
           worldBookText,
           mainChatText,
-          smsHistoryText
+          smsHistoryText,
+          randomNpcEnabled: groupMeta.randomNpcEnabled,
+          groupNature: groupMeta.groupNature
         }) : buildPokeSinglePrompt({
           contactName,
           userName,
@@ -9778,7 +9876,9 @@ ${antiFluff}`;
         let renderBlocks = [];
         let renderSentences = [];
         if (isGroup) {
-          const parsed = parseGroupResponse(raw, groupMembers);
+          const parsed = parseGroupResponse(raw, groupMembers, {
+            allowUnknownSpeakers: groupMeta.randomNpcEnabled === true
+          });
           renderBlocks = parsed.filter((block) => block.sentences.length > 0);
           const contentParts = renderBlocks.map((block) => `${block.name}\uFF1A${block.sentences.join(" / ")}`);
           if (!contentParts.length) return false;
@@ -9912,9 +10012,6 @@ ${antiFluff}`;
         <button type="button" onclick="window.__pmCloseOverlay()" class="pm-modal-close" title="\u5173\u95ED" aria-label="\u5173\u95ED">${CLOSE_ICON_SVG}</button>
     </div>
     <div class="pm-contact-settings-scroll">
-        <button type="button" class="pm-injection-entry" onclick="window.__pmShowConversationInjection('${safeJS(contactName)}','contact-settings')">
-          <span><b>\u4E0A\u4E0B\u6587\u6CE8\u5165</b><small>${escapeHtml(window.__pmConversationInjectionSummary?.(contactName) || "\u5DF2\u5173\u95ED")}</small></span><span aria-hidden="true">\u203A</span>
-        </button>
         <div class="pm-cfg-label">\u79C1\u804A\u7EBF\u4E0A\u98CE\u683C</div>
         <textarea id="pm-behavior-private" class="pm-cfg-input" rows="2" maxlength="2000" placeholder="\u4F8B\u5982\uFF1A\u56DE\u590D\u514B\u5236\u3001\u5C11\u7528\u8BED\u6C14\u8BCD">${escapeHtml(behavior.privateStylePrompt)}</textarea>
         <div class="pm-cfg-label">\u7FA4\u804A\u53D1\u8A00\u98CE\u683C</div>
@@ -9981,11 +10078,6 @@ ${antiFluff}`;
       makeOverlay(`
     <div class="pm-modal pm-modal-wide">
       <div class="pm-modal-header"><span></span><b>\u6210\u5458\u804A\u5929\u884C\u4E3A</b><button type="button" onclick="window.__pmCloseOverlay()" class="pm-modal-close" title="\u5173\u95ED" aria-label="\u5173\u95ED">${CLOSE_ICON_SVG}</button></div>
-      <div class="pm-conversation-settings-injection">
-        <button type="button" class="pm-injection-entry" onclick="window.__pmShowConversationInjection('${safeJS(state.currentGroupKey)}','conversation-settings')">
-          <span><b>\u4E0A\u4E0B\u6587\u6CE8\u5165</b><small>${escapeHtml(window.__pmConversationInjectionSummary?.(state.currentGroupKey) || "\u5DF2\u5173\u95ED")}</small></span><span aria-hidden="true">\u203A</span>
-        </button>
-      </div>
       <div class="pm-member-behavior-list">
         ${members.map((name) => `<button onclick="window.__pmShowCharacterBehavior('${safeJS(name)}')">
           <b>${escapeHtml(name)}</b><span>\u79C1\u804A\u98CE\u683C\u3001\u7FA4\u804A\u98CE\u683C\u4E0E\u6D88\u606F\u9891\u7387</span>
@@ -10078,6 +10170,8 @@ ${antiFluff}`;
       const isGroup = state.isGroupChat;
       const groupDisplayName = state.groupDisplayName;
       const groupMembers = state.groupMembers.slice();
+      const groupRandomNpcEnabled = state.groupRandomNpcEnabled;
+      const groupNature = state.groupNature;
       const isStillTarget = () => isGenerationTaskActive(task) && state.activeStorageId === storageId && (state.isGroupChat && state.currentGroupKey ? state.currentGroupKey : state.currentPersona) === saveKey;
       try {
         const ctxData = await gatherContext2(task.context);
@@ -10097,7 +10191,9 @@ ${antiFluff}`;
           cardScenario,
           worldBookText,
           mainChatText,
-          smsHistoryText
+          smsHistoryText,
+          randomNpcEnabled: groupRandomNpcEnabled,
+          groupNature
         }) : buildPokeSinglePrompt({
           contactName,
           userName,
@@ -10123,7 +10219,9 @@ ${antiFluff}`;
         let historyUpdated = false;
         if (isStillTarget()) hideTyping();
         if (isGroup) {
-          const parsed = parseGroupResponse(raw, groupMembers);
+          const parsed = parseGroupResponse(raw, groupMembers, {
+            allowUnknownSpeakers: groupRandomNpcEnabled === true
+          });
           const blocks = parsed.filter((block) => block.sentences.length > 0);
           const contentParts = blocks.map((block) => `${block.name}\uFF1A${block.sentences.join(" / ")}`);
           if (contentParts.length > 0) {
@@ -10242,6 +10340,8 @@ ${antiFluff}`;
       const targetHistory = state.conversationHistory.slice();
       const groupDisplayName = state.groupDisplayName;
       const groupMembers = state.groupMembers.slice();
+      const groupRandomNpcEnabled = state.groupRandomNpcEnabled;
+      const groupNature = state.groupNature;
       const isStillTarget = () => isGenerationTaskActive(task) && state.activeStorageId === storageId && state.isGroupChat && state.currentGroupKey === saveKey;
       try {
         const ctxData = await gatherContext2(task.context);
@@ -10260,7 +10360,9 @@ ${antiFluff}`;
           cardScenario,
           worldBookText,
           mainChatText,
-          smsHistoryText
+          smsHistoryText,
+          randomNpcEnabled: groupRandomNpcEnabled,
+          groupNature
         }) + buildChatPreferencePrompt({
           store: window.__pmCharacterBehavior,
           storageId,
@@ -10272,7 +10374,9 @@ ${antiFluff}`;
         const raw = await callAI(systemPrompt, userPrompt);
         if (!isGenerationTaskActive(task)) return;
         if (isStillTarget()) hideTyping();
-        const parsed = parseGroupResponse(raw, groupMembers);
+        const parsed = parseGroupResponse(raw, groupMembers, {
+          allowUnknownSpeakers: groupRandomNpcEnabled === true
+        });
         let renderedTrimmedCount = 0;
         for (const block of parsed) {
           if (block.sentences.length > 0) {
@@ -10324,8 +10428,28 @@ ${antiFluff}`;
   // src/phone-control-center.js
   var controlActionLabel = (action) => ({
     calendar: "\u6253\u5F00\u65E5\u5386",
-    contacts: "\u6253\u5F00\u8054\u7CFB\u4EBA"
+    contacts: "\u6253\u5F00\u8054\u7CFB\u4EBA",
+    "injection-toggle": "\u5207\u6362\u5F53\u524D\u4F1A\u8BDD\u6CE8\u5165",
+    "injection-settings": "\u6253\u5F00\u4E0A\u4E0B\u6587\u6CE8\u5165\u8BBE\u7F6E"
   })[action] || "\u6267\u884C\u5FEB\u6377\u64CD\u4F5C";
+  async function toggleConversationInjectionControl(button, toggleInjection, isEnabled) {
+    if (button?.disabled) return false;
+    if (button) button.disabled = true;
+    try {
+      const saved = await toggleInjection();
+      const enabled = isEnabled() === true;
+      if (button?.isConnected) {
+        button.setAttribute("aria-checked", String(enabled));
+        button.querySelector(".pm-control-toggle")?.classList.toggle("is-checked", enabled);
+      }
+      return saved;
+    } finally {
+      if (button?.isConnected) {
+        button.disabled = false;
+        button.focus({ preventScroll: true });
+      }
+    }
+  }
   function runControlMenuAction(action, runAction, reportActionError) {
     const result = runAction(action);
     if (result && typeof result.then === "function") {
@@ -10420,11 +10544,17 @@ ${antiFluff}`;
         editingTarget = null;
       } });
     }
-    function runControlAction(action) {
+    function runControlAction(action, button = null) {
       runtime.overlayOpener = state.phoneWindow?.querySelector(".pm-expand-btn") || null;
+      if (action === "injection-toggle") return toggleConversationInjectionControl(
+        button,
+        window.__pmToggleCurrentConversationInjection,
+        () => window.__pmCurrentConversationInjectionEnabled?.() === true
+      );
       closeControlCenter();
       if (action === "pending") showPendingManager();
       else if (action === "settings") window.__pmShowConversationSettings();
+      else if (action === "injection-settings") return window.__pmShowConversationInjection();
       else if (action === "contacts") return window.__pmShowList();
       else if (action === "emoji") window.__pmShowEmojiManager();
       else if (action === "group") window.__pmEditGroup();
@@ -10434,8 +10564,8 @@ ${antiFluff}`;
     function bindControlMenu(menu, anchor) {
       menu.addEventListener("click", (event) => {
         const button = event.target.closest("button[data-action]");
-        if (!button || !menu.contains(button)) return;
-        runControlMenuAction(button.dataset.action, runControlAction, (error, action) => {
+        if (!button || !menu.contains(button) || button.disabled) return;
+        runControlMenuAction(button.dataset.action, (action) => runControlAction(action, button), (error, action) => {
           alert(`${controlActionLabel(action)}\u5931\u8D25\uFF1A${error?.message || "\u672A\u77E5\u9519\u8BEF"}`);
         });
       });
@@ -10466,9 +10596,13 @@ ${antiFluff}`;
       menu.className = "pm-control-menu";
       menu.setAttribute("role", "menu");
       menu.setAttribute("aria-label", "\u5FEB\u6377\u5DE5\u5177");
+      const injectionEnabled = window.__pmCurrentConversationInjectionEnabled?.() === true;
+      const injectionLabel = state.isGroupChat ? "\u6CE8\u5165\u5F53\u524D\u7FA4\u804A" : "\u6CE8\u5165\u5F53\u524D\u89D2\u8272";
       menu.innerHTML = `
   <button type="button" role="menuitem" data-action="pending">${EDIT_ICON_SVG}\u7F16\u8F91\u6D88\u606F</button>
   <button type="button" role="menuitem" data-action="contacts">${CONTACTS_ICON_SVG}\u8054\u7CFB\u4EBA</button>
+  <button type="button" role="menuitemcheckbox" aria-checked="${injectionEnabled}" data-action="injection-toggle">${CHAT_ICON_SVG}${injectionLabel}<i class="pm-control-toggle ${injectionEnabled ? "is-checked" : ""}" aria-hidden="true"></i></button>
+  <button type="button" role="menuitem" data-action="injection-settings">${SETTINGS_ICON_SVG}\u4E0A\u4E0B\u6587\u6CE8\u5165</button>
   <button type="button" role="menuitem" data-action="settings">${SETTINGS_ICON_SVG}\u89D2\u8272\u8BBE\u7F6E</button>
   ${state.isGroupChat ? `<button type="button" role="menuitem" data-action="group">${CONTACTS_ICON_SVG}\u7FA4\u804A\u8BBE\u7F6E</button>` : ""}
   <button type="button" role="menuitem" data-action="emoji">${EMOJI_ICON_SVG}\u8868\u60C5\u5305\u7BA1\u7406</button>
@@ -10543,6 +10677,150 @@ ${antiFluff}`;
       editingTarget = null;
     };
     Object.assign(deps, { closeControlCenter });
+  }
+
+  // src/phone-context-injection.js
+  var clone3 = (value) => JSON.parse(JSON.stringify(value));
+  function injectionFailure2(result, phase) {
+    const failedWrites = Number.isInteger(result?.failedWrites) && result.failedWrites > 0 ? result.failedWrites : 0;
+    const failedKeys = Array.isArray(result?.failedKeys) ? result.failedKeys : [];
+    if (!failedWrites && !failedKeys.length) return null;
+    const details = [
+      failedWrites ? `${failedWrites} \u9879\u5199\u5165\u5931\u8D25` : "",
+      failedKeys.length ? `${failedKeys.length} \u9879\u6E05\u7406\u5931\u8D25` : ""
+    ].filter(Boolean).join("\uFF0C");
+    return new Error(`\u4E0A\u4E0B\u6587\u6CE8\u5165\u8BBE\u7F6E${phase}\u5931\u8D25\uFF1A${details}`);
+  }
+  async function commitConversationInjectionUpdate({
+    persistCandidate,
+    restoreSnapshot,
+    persistSnapshot,
+    applyInjection
+  }) {
+    try {
+      await persistCandidate();
+      const result = await applyInjection();
+      const error = injectionFailure2(result, "\u5E94\u7528");
+      if (error) throw error;
+      return true;
+    } catch (error) {
+      let rollbackError = null;
+      try {
+        restoreSnapshot();
+        await persistSnapshot();
+        const result = await applyInjection();
+        const compensationError = injectionFailure2(result, "\u8865\u507F");
+        if (compensationError) throw compensationError;
+      } catch (failure) {
+        rollbackError = failure;
+      }
+      if (!rollbackError) throw error;
+      const combined = new Error(`${error.message || "\u4E0A\u4E0B\u6587\u6CE8\u5165\u8BBE\u7F6E\u4FDD\u5B58\u5931\u8D25"}\uFF1B\u539F\u914D\u7F6E\u56DE\u6EDA\u4E5F\u5931\u8D25\uFF0C\u8BF7\u52FF\u5237\u65B0\u5E76\u7ACB\u5373\u5BFC\u51FA\u5907\u4EFD\uFF1A${rollbackError.message}`);
+      combined.cause = error;
+      combined.rollbackError = rollbackError;
+      throw combined;
+    }
+  }
+  function injectionPositionLabel(position) {
+    return {
+      [EXTENSION_PROMPT_POSITIONS.IN_PROMPT]: "\u4E3B\u63D0\u793A\u8BCD\u5185",
+      [EXTENSION_PROMPT_POSITIONS.IN_CHAT]: "\u804A\u5929\u8BB0\u5F55\u5185",
+      [EXTENSION_PROMPT_POSITIONS.BEFORE_PROMPT]: "\u4E3B\u63D0\u793A\u8BCD\u524D"
+    }[position] || "\u4E3B\u63D0\u793A\u8BCD\u5185";
+  }
+  function installPhoneContextInjection(state, deps) {
+    const { getStorageId: getStorageId2, makeOverlay, applyBidirectionalInjection } = deps;
+    const currentTarget = () => {
+      const storageId = state.activeStorageId || getStorageId2();
+      const targetKey = state.isGroupChat && state.currentGroupKey ? state.currentGroupKey : state.currentPersona;
+      if (!storageId || storageId === "sms_unknown__default" || !targetKey) return null;
+      return { storageId, targetKey, isGroup: state.isGroupChat };
+    };
+    const isEnabled = (target) => Boolean(target && (window.__pmBidirectional[target.storageId] || []).includes(target.targetKey));
+    window.__pmConversationInjectionSummary = () => {
+      const config = normalizeInjectionConfig(window.__pmInjectionConfig);
+      return `${injectionPositionLabel(config.position)} \xB7 \u6DF1\u5EA6 ${config.depth} \xB7 \u6700\u8FD1 ${config.historyLimit} \u6761`;
+    };
+    window.__pmCurrentConversationInjectionEnabled = () => isEnabled(currentTarget());
+    window.__pmToggleCurrentConversationInjection = async () => {
+      const target = currentTarget();
+      if (!target) return false;
+      const snapshot = clone3(window.__pmBidirectional);
+      const selected = new Set(window.__pmBidirectional[target.storageId] || []);
+      if (selected.has(target.targetKey)) selected.delete(target.targetKey);
+      else selected.add(target.targetKey);
+      window.__pmBidirectional[target.storageId] = [...selected];
+      try {
+        await commitConversationInjectionUpdate({
+          persistCandidate: async () => {
+            if (!saveBidirectional()) throw new Error("\u5F53\u524D\u4F1A\u8BDD\u6CE8\u5165\u5F00\u5173\u4FDD\u5B58\u5931\u8D25\uFF1A\u6D4F\u89C8\u5668\u5B58\u50A8\u4E0D\u53EF\u7528\u6216\u7A7A\u95F4\u4E0D\u8DB3");
+          },
+          restoreSnapshot: () => {
+            window.__pmBidirectional = snapshot;
+          },
+          persistSnapshot: async () => {
+            if (!saveBidirectional()) throw new Error("\u5F53\u524D\u4F1A\u8BDD\u6CE8\u5165\u5F00\u5173\u56DE\u6EDA\u5931\u8D25");
+          },
+          applyInjection: () => applyBidirectionalInjection()
+        });
+        return true;
+      } catch (error) {
+        alert(error.message || "\u5F53\u524D\u4F1A\u8BDD\u6CE8\u5165\u5F00\u5173\u4FDD\u5B58\u5931\u8D25");
+        return false;
+      }
+    };
+    window.__pmShowConversationInjection = () => {
+      const config = normalizeInjectionConfig(window.__pmInjectionConfig || loadInjectionConfig());
+      makeOverlay(`
+    <div class="pm-modal pm-modal-wide pm-conversation-injection-modal">
+      <div class="pm-modal-header"><button type="button" onclick="window.__pmCloseOverlay()" class="pm-modal-close" title="\u8FD4\u56DE" aria-label="\u8FD4\u56DE">${BACK_ICON_SVG}</button><b>\u4E0A\u4E0B\u6587\u6CE8\u5165</b><button type="button" onclick="window.__pmCloseOverlay()" class="pm-modal-close" title="\u5173\u95ED" aria-label="\u5173\u95ED">${CLOSE_ICON_SVG}</button></div>
+      <div class="pm-modal-scroll pm-conversation-injection-body">
+        <div class="pm-cfg-tip pm-conversation-injection-note">\u4EE5\u4E0B\u89C4\u5219\u7531\u6240\u6709\u79C1\u804A\u548C\u7FA4\u804A\u5171\u7528\uFF1B\u662F\u5426\u6CE8\u5165\u5F53\u524D\u4F1A\u8BDD\uFF0C\u8BF7\u76F4\u63A5\u5728\u4E8C\u7EA7\u83DC\u5355\u5207\u6362\u3002</div>
+        <label class="pm-conversation-injection-field">\u6CE8\u5165\u4F4D\u7F6E
+          <select id="pm-conversation-injection-position" class="pm-cfg-input pm-conversation-injection-config">
+            <option value="0" ${config.position === 0 ? "selected" : ""}>\u4E3B\u63D0\u793A\u8BCD\u5185</option>
+            <option value="1" ${config.position === 1 ? "selected" : ""}>\u804A\u5929\u8BB0\u5F55\u5185</option>
+            <option value="2" ${config.position === 2 ? "selected" : ""}>\u4E3B\u63D0\u793A\u8BCD\u524D</option>
+          </select>
+        </label>
+        <label class="pm-conversation-injection-field">\u6CE8\u5165\u6DF1\u5EA6\uFF080-${MAX_INJECTION_DEPTH}\uFF09
+          <input id="pm-conversation-injection-depth" class="pm-cfg-input pm-conversation-injection-config" type="number" min="0" max="${MAX_INJECTION_DEPTH}" value="${config.depth}">
+        </label>
+        <label class="pm-conversation-injection-field">\u6700\u8FD1\u6D88\u606F\u8303\u56F4
+          <input id="pm-conversation-injection-limit" class="pm-cfg-input pm-conversation-injection-config" type="number" min="1" max="100" value="${config.historyLimit}">
+        </label>
+      </div>
+      <div class="pm-modal-add pm-conversation-injection-actions"><button type="button" class="pm-action-button" onclick="window.__pmSaveConversationInjection()">\u4FDD\u5B58\u4E0A\u4E0B\u6587\u6CE8\u5165</button></div>
+    </div>`);
+      return true;
+    };
+    window.__pmSaveConversationInjection = async () => {
+      const snapshot = clone3(window.__pmInjectionConfig);
+      window.__pmInjectionConfig = normalizeInjectionConfig({
+        position: document.getElementById("pm-conversation-injection-position")?.value,
+        depth: document.getElementById("pm-conversation-injection-depth")?.value,
+        historyLimit: document.getElementById("pm-conversation-injection-limit")?.value
+      });
+      try {
+        await commitConversationInjectionUpdate({
+          persistCandidate: async () => {
+            if (!saveInjectionConfig()) throw new Error("\u7EDF\u4E00\u6CE8\u5165\u89C4\u5219\u4FDD\u5B58\u5931\u8D25\uFF1A\u6D4F\u89C8\u5668\u5B58\u50A8\u4E0D\u53EF\u7528\u6216\u7A7A\u95F4\u4E0D\u8DB3");
+          },
+          restoreSnapshot: () => {
+            window.__pmInjectionConfig = snapshot;
+          },
+          persistSnapshot: async () => {
+            if (!saveInjectionConfig()) throw new Error("\u7EDF\u4E00\u6CE8\u5165\u89C4\u5219\u56DE\u6EDA\u5931\u8D25");
+          },
+          applyInjection: () => applyBidirectionalInjection()
+        });
+        window.__pmShowConversationInjection();
+        return true;
+      } catch (error) {
+        alert(error.message || "\u7EDF\u4E00\u6CE8\u5165\u89C4\u5219\u4FDD\u5B58\u5931\u8D25");
+        return false;
+      }
+    };
   }
 
   // src/storage-background.js
@@ -10758,8 +11036,8 @@ ${antiFluff}`;
   }
 
   // src/phone-directory.js
-  var clone3 = (value) => JSON.parse(JSON.stringify(value));
-  function injectionFailure2(result, phase) {
+  var clone4 = (value) => JSON.parse(JSON.stringify(value));
+  function injectionFailure3(result, phase, subject = "\u7FA4\u804A\u8BBE\u7F6E") {
     const failedWrites = Number.isInteger(result?.failedWrites) && result.failedWrites > 0 ? result.failedWrites : 0;
     const failedKeys = Array.isArray(result?.failedKeys) ? result.failedKeys : [];
     if (!failedWrites && !failedKeys.length) return null;
@@ -10767,18 +11045,20 @@ ${antiFluff}`;
       failedWrites ? `${failedWrites} \u9879\u5199\u5165\u5931\u8D25` : "",
       failedKeys.length ? `${failedKeys.length} \u9879\u6E05\u7406\u5931\u8D25` : ""
     ].filter(Boolean).join("\uFF0C");
-    return new Error(`\u7FA4\u804A\u8BBE\u7F6E${phase}\u6CE8\u5165\u5931\u8D25\uFF1A${details}`);
+    return new Error(`${subject}${phase}\u6CE8\u5165\u5931\u8D25\uFF1A${details}`);
   }
   function snapshotConversationState(state) {
     return {
       activeStorageId: state.activeStorageId,
       currentPersona: state.currentPersona,
-      conversationHistory: clone3(state.conversationHistory),
+      conversationHistory: clone4(state.conversationHistory),
       isGroupChat: state.isGroupChat,
       currentGroupKey: state.currentGroupKey,
       groupMembers: state.groupMembers.slice(),
       groupExtras: state.groupExtras.slice(),
       groupDisplayName: state.groupDisplayName,
+      groupRandomNpcEnabled: state.groupRandomNpcEnabled,
+      groupNature: state.groupNature,
       groupColorMap: { ...state.groupColorMap }
     };
   }
@@ -10791,6 +11071,8 @@ ${antiFluff}`;
     state.groupMembers = snapshot.groupMembers;
     state.groupExtras = snapshot.groupExtras;
     state.groupDisplayName = snapshot.groupDisplayName;
+    state.groupRandomNpcEnabled = snapshot.groupRandomNpcEnabled;
+    state.groupNature = snapshot.groupNature;
     state.groupColorMap = snapshot.groupColorMap;
   }
   async function refreshEditedGroupRuntime({
@@ -10804,12 +11086,14 @@ ${antiFluff}`;
       state.groupMembers = updated.members.slice();
       state.groupExtras = updated.extras.slice();
       state.groupDisplayName = updated.name;
+      state.groupRandomNpcEnabled = updated.randomNpcEnabled;
+      state.groupNature = updated.groupNature;
       state.groupColorMap = {};
       updated.members.forEach((name, index) => {
         state.groupColorMap[name] = updated.memberColors[name] || GROUP_COLORS[index % GROUP_COLORS.length].bg;
       });
       const injectionResult = await applyInjection();
-      const injectionError = injectionFailure2(injectionResult, "\u63D0\u4EA4");
+      const injectionError = injectionFailure3(injectionResult, "\u63D0\u4EA4");
       if (injectionError) throw injectionError;
       await switchConversation();
       return true;
@@ -10837,7 +11121,7 @@ ${antiFluff}`;
         restoreConfig();
         await persistRestored();
         const rollbackResult = await applyInjection();
-        const rollbackInjectionError = injectionFailure2(rollbackResult, "\u8865\u507F");
+        const rollbackInjectionError = injectionFailure3(rollbackResult, "\u8865\u507F");
         if (rollbackInjectionError) throw rollbackInjectionError;
       } catch (rollbackFailure) {
         rollbackError = rollbackFailure;
@@ -10853,159 +11137,25 @@ ${antiFluff}`;
       throw error;
     }
   }
-  function conversationInjectionFailure(result, phase) {
-    const failedWrites = Number.isInteger(result?.failedWrites) && result.failedWrites > 0 ? result.failedWrites : 0;
-    const failedKeys = Array.isArray(result?.failedKeys) ? result.failedKeys : [];
-    if (!failedWrites && !failedKeys.length) return null;
-    const details = [
-      failedWrites ? `${failedWrites} \u9879\u5199\u5165\u5931\u8D25` : "",
-      failedKeys.length ? `${failedKeys.length} \u9879\u6E05\u7406\u5931\u8D25` : ""
-    ].filter(Boolean).join("\uFF0C");
-    return new Error(`\u4E0A\u4E0B\u6587\u6CE8\u5165\u8BBE\u7F6E${phase}\u5931\u8D25\uFF1A${details}`);
-  }
-  async function commitConversationInjectionUpdate({
-    persistCandidate,
-    restoreSnapshot,
-    persistSnapshot,
-    applyInjection
-  }) {
-    try {
-      await persistCandidate();
-      const result = await applyInjection();
-      const error = conversationInjectionFailure(result, "\u5E94\u7528");
-      if (error) throw error;
-      return true;
-    } catch (error) {
-      let rollbackError = null;
-      try {
-        restoreSnapshot();
-        await persistSnapshot();
-        const result = await applyInjection();
-        const compensationError = conversationInjectionFailure(result, "\u8865\u507F");
-        if (compensationError) throw compensationError;
-      } catch (failure) {
-        rollbackError = failure;
-      }
-      if (!rollbackError) throw error;
-      const combined = new Error(`${error.message || "\u4E0A\u4E0B\u6587\u6CE8\u5165\u8BBE\u7F6E\u4FDD\u5B58\u5931\u8D25"}\uFF1B\u539F\u914D\u7F6E\u56DE\u6EDA\u4E5F\u5931\u8D25\uFF0C\u8BF7\u52FF\u5237\u65B0\u5E76\u7ACB\u5373\u5BFC\u51FA\u5907\u4EFD\uFF1A${rollbackError.message}`);
-      combined.cause = error;
-      combined.rollbackError = rollbackError;
-      throw combined;
-    }
-  }
   function installPhoneDirectory(state, deps) {
     const { runtime, getStorageId: getStorageId2, makeOverlay, applyBidirectionalInjection } = deps;
-    function injectionPositionLabel(position) {
-      return {
-        [EXTENSION_PROMPT_POSITIONS.NONE]: "\u5173\u95ED",
-        [EXTENSION_PROMPT_POSITIONS.IN_PROMPT]: "\u4E3B\u63D0\u793A\u8BCD\u5185",
-        [EXTENSION_PROMPT_POSITIONS.IN_CHAT]: "\u804A\u5929\u8BB0\u5F55\u5185",
-        [EXTENSION_PROMPT_POSITIONS.BEFORE_PROMPT]: "\u4E3B\u63D0\u793A\u8BCD\u524D"
-      }[position] || "\u4E3B\u63D0\u793A\u8BCD\u5185";
-    }
-    function conversationInjectionState(targetKey) {
-      const id2 = getStorageId2();
-      const isGroup = String(targetKey).startsWith("__group_");
-      const meta = isGroup ? normalizeGroupMeta(window.__pmGroupMeta[id2]?.[targetKey]) : null;
-      const injection = meta?.injection || DEFAULT_GROUP_INJECTION;
-      const selected = (window.__pmBidirectional[id2] || []).includes(targetKey);
-      return {
-        id: id2,
-        isGroup,
-        meta,
-        injection,
-        enabled: selected && injection.position !== EXTENSION_PROMPT_POSITIONS.NONE
-      };
-    }
-    window.__pmConversationInjectionSummary = (targetKey) => {
-      const current = conversationInjectionState(targetKey);
-      if (!current.enabled) return "\u5DF2\u5173\u95ED";
-      return `${injectionPositionLabel(current.injection.position)} \xB7 \u6DF1\u5EA6 ${current.injection.depth} \xB7 \u6700\u8FD1 ${current.isGroup ? current.injection.historyLimit : BIDIRECTIONAL_LIMIT} \u6761`;
+    let deleteTransactionActive = false;
+    const setDeleteButtonsDisabled = (disabled) => {
+      const buttons = document.querySelectorAll?.(".pm-entity-delete") || [];
+      for (const button of buttons) button.disabled = disabled;
     };
-    window.__pmSyncConversationInjectionForm = () => {
-      const enabled = document.getElementById("pm-conversation-injection-enabled")?.checked === true;
-      for (const element of document.querySelectorAll(".pm-conversation-injection-config")) {
-        element.disabled = !enabled || element.dataset.readonly === "true";
-      }
-      const status = document.getElementById("pm-conversation-injection-status");
-      if (status) status.textContent = enabled ? "\u542F\u7528\u540E\u4F1A\u628A\u6700\u8FD1\u804A\u5929\u4F5C\u4E3A\u79C1\u5BC6\u4E0A\u4E0B\u6587\u6CE8\u5165\u3002" : "\u5F53\u524D\u4F1A\u8BDD\u4E0D\u4F1A\u5199\u5165\u4E3B\u63D0\u793A\u8BCD\u4E0A\u4E0B\u6587\u3002";
-    };
-    window.__pmShowConversationInjection = (targetKey, returnView = "settings") => {
-      if (!targetKey) return false;
-      const current = conversationInjectionState(targetKey);
-      if (current.isGroup && !current.meta?.name) return false;
-      const title = current.isGroup ? current.meta.name : targetKey;
-      const position = current.injection.position === EXTENSION_PROMPT_POSITIONS.NONE ? EXTENSION_PROMPT_POSITIONS.IN_PROMPT : current.injection.position;
-      const backAction = returnView === "conversation-settings" ? "window.__pmShowConversationSettings()" : `window.__pmShowCharacterBehavior('${safeJS(targetKey)}')`;
-      makeOverlay(`
-    <div class="pm-modal pm-modal-wide pm-conversation-injection-modal">
-      <div class="pm-modal-header"><button type="button" onclick="${backAction}" class="pm-modal-close" aria-label="\u8FD4\u56DE">\u8FD4\u56DE</button><b>\u4E0A\u4E0B\u6587\u6CE8\u5165</b><button type="button" onclick="window.__pmCloseOverlay()" class="pm-modal-close" title="\u5173\u95ED" aria-label="\u5173\u95ED">${CLOSE_ICON_SVG}</button></div>
-      <div class="pm-modal-scroll pm-conversation-injection-body">
-        <div class="pm-conversation-injection-target"><b>${escapeHtml(title)}</b><span>${current.isGroup ? "\u7FA4\u804A" : "\u79C1\u804A"}</span></div>
-        <label class="pm-global-setting" for="pm-conversation-injection-enabled">
-          <span><b>\u542F\u7528\u4E0A\u4E0B\u6587\u6CE8\u5165</b><small id="pm-conversation-injection-status"></small></span>
-          <input id="pm-conversation-injection-enabled" type="checkbox" ${current.enabled ? "checked" : ""} onchange="window.__pmSyncConversationInjectionForm()">
-        </label>
-        <label class="pm-conversation-injection-field">\u6CE8\u5165\u4F4D\u7F6E
-          <select id="pm-conversation-injection-position" class="pm-cfg-input pm-conversation-injection-config" ${current.isGroup ? "" : 'data-readonly="true" disabled'}>
-            <option value="0" ${position === 0 ? "selected" : ""}>\u4E3B\u63D0\u793A\u8BCD\u5185</option>
-            <option value="1" ${position === 1 ? "selected" : ""}>\u804A\u5929\u8BB0\u5F55\u5185</option>
-            <option value="2" ${position === 2 ? "selected" : ""}>\u4E3B\u63D0\u793A\u8BCD\u524D</option>
-          </select>
-        </label>
-        <label class="pm-conversation-injection-field">\u6CE8\u5165\u6DF1\u5EA6\uFF080-${MAX_INJECTION_DEPTH}\uFF09
-          <input id="pm-conversation-injection-depth" class="pm-cfg-input pm-conversation-injection-config" type="number" min="0" max="${MAX_INJECTION_DEPTH}" value="${current.injection.depth}" ${current.isGroup ? "" : 'data-readonly="true" disabled'}>
-        </label>
-        <label class="pm-conversation-injection-field">\u6700\u8FD1\u6D88\u606F\u8303\u56F4
-          <input id="pm-conversation-injection-limit" class="pm-cfg-input pm-conversation-injection-config" type="number" min="1" max="100" value="${current.isGroup ? current.injection.historyLimit : BIDIRECTIONAL_LIMIT}" ${current.isGroup ? "" : 'data-readonly="true" disabled'}>
-        </label>
-        <div class="pm-cfg-tip pm-conversation-injection-note">${current.isGroup ? "\u7FA4\u804A\u53EF\u72EC\u7ACB\u914D\u7F6E\u4F4D\u7F6E\u3001\u6DF1\u5EA6\u548C\u5386\u53F2\u8303\u56F4\u3002" : `\u79C1\u804A\u6CBF\u7528\u7CFB\u7EDF\u5B89\u5168\u53C2\u6570\uFF1A\u4E3B\u63D0\u793A\u8BCD\u5185\u3001\u6DF1\u5EA6 0\u3001\u6700\u8FD1 ${BIDIRECTIONAL_LIMIT} \u6761\u3002`}</div>
-      </div>
-      <div class="pm-modal-add"><button type="button" class="pm-action-button" onclick="window.__pmSaveConversationInjection('${safeJS(targetKey)}','${safeJS(returnView)}')">\u4FDD\u5B58\u4E0A\u4E0B\u6587\u6CE8\u5165</button></div>
-    </div>`);
-      window.__pmSyncConversationInjectionForm();
-      return true;
-    };
-    window.__pmSaveConversationInjection = async (targetKey, returnView = "settings") => {
-      const current = conversationInjectionState(targetKey);
-      if (current.isGroup && !current.meta?.name) return false;
-      const enabled = document.getElementById("pm-conversation-injection-enabled")?.checked === true;
-      const bidirectionalSnapshot = clone3(window.__pmBidirectional);
-      const groupMetaSnapshot = clone3(window.__pmGroupMeta);
-      const selected = new Set(window.__pmBidirectional[current.id] || []);
-      if (enabled) selected.add(targetKey);
-      else selected.delete(targetKey);
-      window.__pmBidirectional[current.id] = [...selected];
-      if (current.isGroup) {
-        const injection = normalizeGroupInjection({
-          position: enabled ? document.getElementById("pm-conversation-injection-position")?.value : EXTENSION_PROMPT_POSITIONS.NONE,
-          depth: document.getElementById("pm-conversation-injection-depth")?.value,
-          historyLimit: document.getElementById("pm-conversation-injection-limit")?.value
-        });
-        window.__pmGroupMeta[current.id][targetKey] = normalizeGroupMeta({ ...current.meta, injection });
-      }
-      try {
-        await commitConversationInjectionUpdate({
-          persistCandidate: async () => {
-            if (current.isGroup) await saveGroupMeta();
-            if (!saveBidirectional()) throw new Error("\u4E0A\u4E0B\u6587\u6CE8\u5165\u8BBE\u7F6E\u4FDD\u5B58\u5931\u8D25\uFF1A\u6D4F\u89C8\u5668\u5B58\u50A8\u4E0D\u53EF\u7528\u6216\u7A7A\u95F4\u4E0D\u8DB3");
-          },
-          restoreSnapshot: () => {
-            window.__pmBidirectional = bidirectionalSnapshot;
-            window.__pmGroupMeta = groupMetaSnapshot;
-          },
-          persistSnapshot: async () => {
-            if (current.isGroup) await saveGroupMeta();
-            if (!saveBidirectional()) throw new Error("\u4E0A\u4E0B\u6587\u6CE8\u5165\u8BBE\u7F6E\u56DE\u6EDA\u5931\u8D25");
-          },
-          applyInjection: () => applyBidirectionalInjection()
-        });
-        window.__pmShowConversationInjection(targetKey, returnView);
-        return true;
-      } catch (error) {
-        alert(error.message || "\u4E0A\u4E0B\u6587\u6CE8\u5165\u8BBE\u7F6E\u4FDD\u5B58\u5931\u8D25");
+    const acquireDeleteTransaction = () => {
+      if (deleteTransactionActive) {
+        alert("\u5DF2\u6709\u5220\u9664\u64CD\u4F5C\u6B63\u5728\u8FDB\u884C\uFF0C\u8BF7\u7B49\u5F85\u5B8C\u6210\u540E\u518D\u8BD5\u3002");
         return false;
       }
+      deleteTransactionActive = true;
+      setDeleteButtonsDisabled(true);
+      return true;
+    };
+    const releaseDeleteTransaction = () => {
+      deleteTransactionActive = false;
+      setDeleteButtonsDisabled(false);
     };
     function parseGroupMembers(value) {
       const seen = /* @__PURE__ */ new Set();
@@ -11058,6 +11208,21 @@ ${antiFluff}`;
             ${groupMeta.members.map((name, index) => `<label style="display:contents;"><span style="font-size:12px;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(name)}</span><input class="pm-group-member-color" data-member="${escapeAttr(name)}" type="color" value="${escapeAttr(groupMeta.memberColors[name] || GROUP_COLORS[index % GROUP_COLORS.length].bg)}"></label>`).join("")}
           </div>
         </div>` : "";
+      const randomNpcHtml = mode === "edit" ? `
+        <div style="padding-top:12px;border-top:1px solid var(--pm-color-border-subtle);">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
+            <div><div class="pm-cfg-label">\u5141\u8BB8\u8DEF\u4EBA\u7FA4\u53CB\u968F\u673A\u51FA\u73B0</div><div class="pm-cfg-tip" style="text-align:left;">\u5F00\u542F\u540E\uFF0CAI \u53EF\u4EE5\u751F\u6210\u4E0D\u5728\u56FA\u5B9A\u6210\u5458\u540D\u5355\u4E2D\u7684\u4E34\u65F6\u7FA4\u53CB\u3002</div></div>
+            <div id="pm-group-random-npc" class="pm-custom-check pm-bi-style ${groupMeta.randomNpcEnabled ? "is-checked" : ""}"
+              role="checkbox" tabindex="0" aria-checked="${groupMeta.randomNpcEnabled}"
+              onclick="this.classList.toggle('is-checked');this.setAttribute('aria-checked',String(this.classList.contains('is-checked')))"
+              onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();this.click()}"
+              style="cursor:pointer;width:22px;height:22px;min-width:22px;min-height:22px;flex-shrink:0;border-radius:50%;"></div>
+          </div>
+          <label class="pm-cfg-label" style="display:block;margin-top:12px;">\u7FA4\u804A\u6027\u8D28
+            <textarea id="pm-group-nature" class="pm-cfg-input" maxlength="200" rows="3" placeholder="\u4F8B\u5982\uFF1A\u8FD9\u662F\u4E00\u4E2A\u6C14\u6C1B\u5F88\u597D\u7684\u540C\u5B66\u7FA4">${escapeHtml(groupMeta.groupNature)}</textarea>
+          </label>
+          <div class="pm-cfg-tip" style="text-align:left;">\u8DEF\u4EBA\u7FA4\u53CB\u4F1A\u53C2\u8003\u8FD9\u6BB5\u63CF\u8FF0\u51B3\u5B9A\u8EAB\u4EFD\u3001\u8BED\u6C14\u548C\u4E92\u52A8\u65B9\u5F0F\u3002</div>
+        </div>` : "";
       makeOverlay(`
     <div class="pm-modal pm-modal-wide">
     <div class="pm-modal-header"><span></span><b>${title}</b><button type="button" onclick="${closeAction}" class="pm-modal-close" title="\u5173\u95ED" aria-label="\u5173\u95ED">${CLOSE_ICON_SVG}</button></div>
@@ -11070,6 +11235,7 @@ ${antiFluff}`;
         <div id="pm-group-preview" style="display:flex;flex-wrap:wrap;gap:4px;"></div>
 
         ${mode === "edit" ? `
+        ${randomNpcHtml}
         ${memberColorHtml}
         ${emojiCheckHtml}
         <div style="margin-top:0px;padding-top:8px;border-top:1px solid var(--pm-color-border-subtle);">
@@ -11122,11 +11288,20 @@ ${antiFluff}`;
       try {
         if (!window.__pmGroupMeta[id2]) window.__pmGroupMeta[id2] = {};
         const previous = window.__pmGroupMeta[id2][state.currentGroupKey] || {};
+        const randomNpcEnabled = document.getElementById("pm-group-random-npc")?.classList.contains("is-checked") === true;
+        const groupNature = document.getElementById("pm-group-nature")?.value || "";
         const memberColors = {};
         document.querySelectorAll(".pm-group-member-color").forEach((input) => {
           if (names.includes(input.dataset.member) && /^#[0-9a-f]{6}$/i.test(input.value)) memberColors[input.dataset.member] = input.value;
         });
-        const updated = normalizeGroupMeta({ ...previous, name: groupName, members: names, memberColors });
+        const updated = normalizeGroupMeta({
+          ...previous,
+          name: groupName,
+          members: names,
+          memberColors,
+          randomNpcEnabled,
+          groupNature
+        });
         window.__pmGroupMeta[id2][state.currentGroupKey] = updated;
         const checkEl = document.getElementById("pm-poke-check-group");
         const intervalEl = document.getElementById("pm-poke-interval-group");
@@ -11214,6 +11389,8 @@ ${antiFluff}`;
           state.groupExtras = [];
           state.groupDisplayName = groupName;
           state.currentGroupKey = groupKey;
+          state.groupRandomNpcEnabled = false;
+          state.groupNature = "";
           state.groupColorMap = {};
           names.forEach((n, i) => {
             state.groupColorMap[n] = GROUP_COLORS[i % GROUP_COLORS.length];
@@ -11235,14 +11412,14 @@ ${antiFluff}`;
       const renderSingle = singleList.map((n) => {
         return `<div class="pm-li">
                 <span onclick="window.__pmSwitchContact('${safeJS(n)}')">${escapeHtml(n)}</span>
-                <button type="button" class="pm-entity-delete" onclick="window.__pmDel('${safeJS(n)}')" aria-label="\u6C38\u4E45\u5220\u9664\u8054\u7CFB\u4EBA ${escapeAttr(n)}" title="\u6C38\u4E45\u5220\u9664\u8054\u7CFB\u4EBA">${UNLINK_ICON_SVG}<span>\u89E3\u9664\u5173\u7CFB</span></button>
+                <button type="button" class="pm-entity-delete" onclick="window.__pmDel('${safeJS(n)}')" aria-label="\u6C38\u4E45\u5220\u9664\u8054\u7CFB\u4EBA ${escapeAttr(n)}" title="\u6C38\u4E45\u5220\u9664\u8054\u7CFB\u4EBA">${UNLINK_ICON_SVG}</button>
             </div>`;
       }).join("");
       const renderGroups = groupList.map((key) => {
         const meta = groups[key];
         return `<div class="pm-li">
                 <span onclick="window.__pmSwitchContact('${safeJS(key)}')">${escapeHtml(meta.name)}<span class="pm-group-sub">${escapeHtml(meta.members.join("\u3001"))}</span></span>
-                <button type="button" class="pm-entity-delete" onclick="window.__pmDelGroup('${safeJS(key)}')" aria-label="\u6C38\u4E45\u5220\u9664\u7FA4\u804A ${escapeAttr(meta.name)}" title="\u6C38\u4E45\u5220\u9664\u7FA4\u804A">${UNLINK_ICON_SVG}<span>\u6C38\u4E45\u5220\u9664</span></button>
+                <button type="button" class="pm-entity-delete" onclick="window.__pmDelGroup('${safeJS(key)}')" aria-label="\u6C38\u4E45\u5220\u9664\u7FA4\u804A ${escapeAttr(meta.name)}" title="\u6C38\u4E45\u5220\u9664\u7FA4\u804A">${UNLINK_ICON_SVG}</button>
             </div>`;
       }).join("");
       const empty = !singleList.length && !groupList.length;
@@ -11297,14 +11474,16 @@ ${antiFluff}`;
       const id2 = getStorageId2();
       const groupName = window.__pmGroupMeta[id2]?.[key]?.name || "\u672A\u547D\u540D\u7FA4\u804A";
       if (!confirm(`\u6C38\u4E45\u5220\u9664\u7FA4\u804A\u201C${groupName}\u201D\uFF1F\u804A\u5929\u8BB0\u5F55\u3001\u6CE8\u5165\u5173\u7CFB\u3001\u80CC\u666F\u548C\u81EA\u52A8\u6D88\u606F\u914D\u7F6E\u90FD\u4F1A\u4E00\u5E76\u5220\u9664\uFF0C\u4E14\u65E0\u6CD5\u6062\u590D\u3002`)) return false;
-      const snapshots = {
-        groupMeta: JSON.parse(JSON.stringify(window.__pmGroupMeta)),
-        histories: JSON.parse(JSON.stringify(window.__pmHistories)),
-        bidirectional: JSON.parse(JSON.stringify(window.__pmBidirectional)),
-        poke: JSON.parse(JSON.stringify(window.__pmPokeConfig)),
-        backgrounds: JSON.parse(JSON.stringify(window.__pmBgLocal))
-      };
+      if (!acquireDeleteTransaction()) return false;
+      let snapshots = null;
       try {
+        snapshots = {
+          groupMeta: clone4(window.__pmGroupMeta),
+          histories: clone4(window.__pmHistories),
+          bidirectional: clone4(window.__pmBidirectional),
+          poke: clone4(window.__pmPokeConfig),
+          backgrounds: clone4(window.__pmBgLocal)
+        };
         if (window.__pmGroupMeta[id2]) delete window.__pmGroupMeta[id2][key];
         if (window.__pmHistories[id2]) delete window.__pmHistories[id2][key];
         const arr = window.__pmBidirectional[id2] || [], idx = arr.indexOf(key);
@@ -11317,8 +11496,10 @@ ${antiFluff}`;
         if (!savePokeConfig()) throw new Error("\u81EA\u52A8\u6D88\u606F\u914D\u7F6E\u4FDD\u5B58\u5931\u8D25");
         if (!saveBidirectional()) throw new Error("\u6CE8\u5165\u914D\u7F6E\u4FDD\u5B58\u5931\u8D25");
         if (snapshots.backgrounds[bgKey]) await saveBgLocal();
+        const injectionResult = await applyBidirectionalInjection();
+        const injectionError = injectionFailure3(injectionResult, "\u5220\u9664\u6E05\u7406", "\u7FA4\u804A");
+        if (injectionError) throw injectionError;
         await window.__pmShowList();
-        applyBidirectionalInjection();
         clearPendingMessages(runtime, id2, key);
         if (state.currentGroupKey === key) {
           state.isGroupChat = false;
@@ -11328,9 +11509,16 @@ ${antiFluff}`;
           state.groupMembers = [];
           state.groupExtras = [];
           state.groupDisplayName = "";
+          state.groupRandomNpcEnabled = false;
+          state.groupNature = "";
           state.groupColorMap = {};
         }
+        return true;
       } catch (error) {
+        if (!snapshots) {
+          alert(error.message || "\u7FA4\u804A\u5220\u9664\u5931\u8D25");
+          return false;
+        }
         window.__pmGroupMeta = snapshots.groupMeta;
         window.__pmHistories = snapshots.histories;
         window.__pmBidirectional = snapshots.bidirectional;
@@ -11342,22 +11530,30 @@ ${antiFluff}`;
           await saveGroupMeta();
           if (!savePokeConfig() || !saveBidirectional()) throw new Error("\u672C\u5730\u914D\u7F6E\u56DE\u6EDA\u5931\u8D25");
           await saveBgLocal();
+          const rollbackResult = await applyBidirectionalInjection();
+          const rollbackInjectionError = injectionFailure3(rollbackResult, "\u5220\u9664\u8865\u507F", "\u7FA4\u804A");
+          if (rollbackInjectionError) throw rollbackInjectionError;
         } catch (rollbackFailure) {
           rollbackError = rollbackFailure;
         }
         alert(rollbackError ? `${error.message || "\u7FA4\u804A\u5220\u9664\u5931\u8D25"}\uFF1B\u539F\u6570\u636E\u56DE\u6EDA\u4E5F\u5931\u8D25\uFF0C\u8BF7\u52FF\u5237\u65B0\u5E76\u7ACB\u5373\u5BFC\u51FA\u5907\u4EFD\uFF1A${rollbackError.message}` : error.message || "\u7FA4\u804A\u5220\u9664\u5931\u8D25");
+        return false;
+      } finally {
+        releaseDeleteTransaction();
       }
     };
     window.__pmDel = async (name) => {
       const id2 = getStorageId2();
       if (!confirm(`\u6C38\u4E45\u5220\u9664\u8054\u7CFB\u4EBA\u201C${name}\u201D\uFF1F\u804A\u5929\u8BB0\u5F55\u3001\u6CE8\u5165\u5173\u7CFB\u3001\u80CC\u666F\u548C\u81EA\u52A8\u6D88\u606F\u914D\u7F6E\u90FD\u4F1A\u4E00\u5E76\u5220\u9664\uFF0C\u4E14\u65E0\u6CD5\u6062\u590D\u3002`)) return false;
-      const snapshots = {
-        histories: JSON.parse(JSON.stringify(window.__pmHistories)),
-        bidirectional: JSON.parse(JSON.stringify(window.__pmBidirectional)),
-        poke: JSON.parse(JSON.stringify(window.__pmPokeConfig)),
-        backgrounds: JSON.parse(JSON.stringify(window.__pmBgLocal))
-      };
+      if (!acquireDeleteTransaction()) return false;
+      let snapshots = null;
       try {
+        snapshots = {
+          histories: clone4(window.__pmHistories),
+          bidirectional: clone4(window.__pmBidirectional),
+          poke: clone4(window.__pmPokeConfig),
+          backgrounds: clone4(window.__pmBgLocal)
+        };
         if (window.__pmHistories[id2]) delete window.__pmHistories[id2][name];
         const arr = window.__pmBidirectional[id2] || [], idx = arr.indexOf(name);
         if (idx >= 0) arr.splice(idx, 1);
@@ -11368,14 +11564,21 @@ ${antiFluff}`;
         if (!savePokeConfig()) throw new Error("\u81EA\u52A8\u6D88\u606F\u914D\u7F6E\u4FDD\u5B58\u5931\u8D25");
         if (!saveBidirectional()) throw new Error("\u6CE8\u5165\u914D\u7F6E\u4FDD\u5B58\u5931\u8D25");
         if (snapshots.backgrounds[bgKey]) await saveBgLocal();
+        const injectionResult = await applyBidirectionalInjection();
+        const injectionError = injectionFailure3(injectionResult, "\u5220\u9664\u6E05\u7406", "\u8054\u7CFB\u4EBA");
+        if (injectionError) throw injectionError;
         await window.__pmShowList();
-        applyBidirectionalInjection();
         clearPendingMessages(runtime, id2, name);
         if (!state.isGroupChat && state.currentPersona === name) {
           state.currentPersona = "";
           state.conversationHistory = [];
         }
+        return true;
       } catch (error) {
+        if (!snapshots) {
+          alert(error.message || "\u8054\u7CFB\u4EBA\u5220\u9664\u5931\u8D25");
+          return false;
+        }
         window.__pmHistories = snapshots.histories;
         window.__pmBidirectional = snapshots.bidirectional;
         window.__pmPokeConfig = snapshots.poke;
@@ -11385,10 +11588,16 @@ ${antiFluff}`;
           await saveHistoriesStrict();
           if (!savePokeConfig() || !saveBidirectional()) throw new Error("\u672C\u5730\u914D\u7F6E\u56DE\u6EDA\u5931\u8D25");
           await saveBgLocal();
+          const rollbackResult = await applyBidirectionalInjection();
+          const rollbackInjectionError = injectionFailure3(rollbackResult, "\u5220\u9664\u8865\u507F", "\u8054\u7CFB\u4EBA");
+          if (rollbackInjectionError) throw rollbackInjectionError;
         } catch (rollbackFailure) {
           rollbackError = rollbackFailure;
         }
         alert(rollbackError ? `${error.message || "\u8054\u7CFB\u4EBA\u5220\u9664\u5931\u8D25"}\uFF1B\u539F\u6570\u636E\u56DE\u6EDA\u4E5F\u5931\u8D25\uFF0C\u8BF7\u52FF\u5237\u65B0\u5E76\u7ACB\u5373\u5BFC\u51FA\u5907\u4EFD\uFF1A${rollbackError.message}` : error.message || "\u8054\u7CFB\u4EBA\u5220\u9664\u5931\u8D25");
+        return false;
+      } finally {
+        releaseDeleteTransaction();
       }
     };
     Object.assign(deps, { showGroupForm });
@@ -11460,29 +11669,18 @@ ${antiFluff}`;
     if (!plainRecord7(group)) return { valid: false, value: null };
     const name = optionalData(group, "name");
     const membersEntry = ownData(group, "members");
-    const injectionEntry = ownData(group, "injection");
-    if (!name.valid || membersEntry.invalid || !membersEntry.found || injectionEntry.invalid) {
+    if (!name.valid || membersEntry.invalid || !membersEntry.found) {
       return { valid: false, value: null };
     }
     const members = dataArraySnapshot(membersEntry.value);
     if (!members.valid || members.value.some((member) => typeof member !== "string")) {
       return { valid: false, value: null };
     }
-    let injection = null;
-    if (injectionEntry.found) {
-      if (!plainRecord7(injectionEntry.value)) return { valid: false, value: null };
-      const position = optionalData(injectionEntry.value, "position");
-      const depth = optionalData(injectionEntry.value, "depth");
-      const historyLimit = optionalData(injectionEntry.value, "historyLimit");
-      if (!position.valid || !depth.valid || !historyLimit.valid) return { valid: false, value: null };
-      injection = Object.freeze({ position: position.value, depth: depth.value, historyLimit: historyLimit.value });
-    }
     return {
       valid: true,
       value: Object.freeze({
         name: typeof name.value === "string" ? name.value : "",
-        members: Object.freeze(members.value.slice()),
-        injection
+        members: Object.freeze(members.value.slice())
       })
     };
   }
@@ -11753,16 +11951,15 @@ ${antiFluff}`;
     runtime.trackedExtensionPromptKeys = activeKeys;
     return { written, failedWrites, ...clearResult };
   }
-  function renderPhoneSource(source, userName, emojis) {
-    const limit = source.meta ? source.meta.injection?.historyLimit : BIDIRECTIONAL_LIMIT;
-    const historyLimit = Number.isInteger(limit) && limit > 0 ? limit : BIDIRECTIONAL_LIMIT;
+  function renderPhoneSource(source, userName, emojis, injectionConfig) {
+    const historyLimit = normalizeInjectionConfig(injectionConfig).historyLimit;
     return renderConversation(source.name, source.history.slice(-historyLimit), source.meta, userName, emojis);
   }
-  function phonePromptPosition(source) {
-    const injection = source.meta?.injection || DEFAULT_GROUP_INJECTION;
+  function phonePromptPosition(injectionConfig) {
+    const injection = normalizeInjectionConfig(injectionConfig);
     return {
-      position: typeof injection.position === "number" ? injection.position : DEFAULT_GROUP_INJECTION.position,
-      depth: typeof injection.depth === "number" ? injection.depth : DEFAULT_GROUP_INJECTION.depth
+      position: injection.position,
+      depth: injection.depth
     };
   }
   function allocateRenderedPrompts(items, tokenLimit) {
@@ -11865,6 +12062,7 @@ ${antiFluff}`;
     selectedByStorage,
     historiesByStorage,
     groupsByStorage,
+    injectionConfig,
     interactiveStore,
     budgetConfig,
     userName,
@@ -11892,10 +12090,11 @@ ${antiFluff}`;
       selectionsByStorage: config.communitySelectionsByStorage,
       store: interactiveStore
     });
+    const phoneInjection = normalizeInjectionConfig(injectionConfig);
     const phoneItems = phonePermission.allowed ? phonePermission.sources.flatMap((source) => {
-      const placement = phonePromptPosition(source);
+      const placement = phonePromptPosition(phoneInjection);
       if (placement.position < 0) return [];
-      const body = renderPhoneSource(source, userName, emojis);
+      const body = renderPhoneSource(source, userName, emojis, phoneInjection);
       if (!body) return [];
       return [{
         key: injectionKey(source.sourceId),
@@ -12270,6 +12469,7 @@ ${lines}`;
     window.__pmHistories = window.__pmHistories || {};
     window.__pmConfig = window.__pmConfig || { apiUrl: "", apiKey: "", model: "", temperature: 1.2, useIndependent: false };
     window.__pmProfiles = window.__pmProfiles || [];
+    window.__pmInjectionConfig = normalizeInjectionConfig(window.__pmInjectionConfig);
     window.__pmBidirectional = window.__pmBidirectional || {};
     window.__pmTheme = window.__pmTheme || {
       preset: "default",
@@ -12455,6 +12655,7 @@ ${lines}`;
         runtime,
         currentStorageId: id2,
         currentActorName,
+        injectionConfig: window.__pmInjectionConfig,
         selectedByStorage: window.__pmBidirectional,
         historiesByStorage: window.__pmHistories,
         groupsByStorage: window.__pmGroupMeta,
@@ -13239,8 +13440,11 @@ ${lines}`;
       state.conversationHistory = [];
       state.isGroupChat = false;
       state.groupMembers = [];
+      state.groupExtras = [];
       state.groupColorMap = {};
       state.groupDisplayName = "";
+      state.groupRandomNpcEnabled = false;
+      state.groupNature = "";
       state.currentGroupKey = "";
       runtime.firstOpen = true;
       if (runtime.visibilityTimer) {
@@ -13284,6 +13488,7 @@ ${lines}`;
       }
       loadProfiles();
       loadBidirectional();
+      loadInjectionConfig();
       loadTheme();
       loadPokeConfig();
       loadCharacterBehavior();
@@ -13391,8 +13596,11 @@ ${lines}`;
       applyBackground();
       state.isGroupChat = false;
       state.groupMembers = [];
+      state.groupExtras = [];
       state.groupColorMap = {};
       state.groupDisplayName = "";
+      state.groupRandomNpcEnabled = false;
+      state.groupNature = "";
       state.currentGroupKey = "";
       if (!runtime.firstOpen) {
         await deps.restorePhoneChat?.(defaultChar) || window.__pmSwitch(defaultChar, void 0, void 0, { preservePage: true });
@@ -13483,6 +13691,7 @@ ${lines}`;
     } catch (e) {
     }
     loadBidirectional();
+    loadInjectionConfig();
     loadPokeConfig();
     loadCharacterBehavior();
     loadWordyLimit();
@@ -14270,7 +14479,7 @@ ${lines}`;
   }
 
   // src/settings-backup.js
-  var clone4 = (value) => JSON.parse(JSON.stringify(value));
+  var clone5 = (value) => JSON.parse(JSON.stringify(value));
   function structurallyEqual(left, right) {
     if (Object.is(left, right)) return true;
     if (Array.isArray(left) || Array.isArray(right)) {
@@ -14324,8 +14533,16 @@ ${lines}`;
       calendarRecipes: createEmptyRecipeStore()
     };
   }
-  async function runBackupTransaction({ capture, prepare = async (snapshot) => snapshot, apply, persist, beforeApply = async () => {
-  } }) {
+  async function runBackupTransaction({
+    capture,
+    prepare = async (snapshot) => snapshot,
+    apply,
+    persist,
+    beforeApply = async () => {
+    },
+    afterPersist = async () => {
+    }
+  }) {
     const snapshot = await capture();
     let prepared;
     try {
@@ -14338,12 +14555,14 @@ ${lines}`;
       await beforeApply("apply");
       const nextState = await apply(void 0, prepared);
       await persist(nextState);
+      await afterPersist("apply", nextState);
     } catch (error) {
       let rollbackState;
       try {
         await beforeApply("rollback");
         rollbackState = await apply(snapshot);
         await persist(snapshot);
+        await afterPersist("rollback", rollbackState);
       } catch (rollbackError) {
         const combined = new Error(`${error.message}\uFF1B\u539F\u6570\u636E\u56DE\u6EDA\u5931\u8D25\uFF1A${rollbackError.message}`);
         combined.cause = error;
@@ -14360,19 +14579,20 @@ ${lines}`;
     const capture = async () => {
       const interactiveScenes = normalizeInteractiveStore(await loadInteractiveScenes());
       return {
-        histories: clone4(window.__pmHistories || {}),
-        config: clone4(window.__pmConfig || {}),
-        theme: clone4(window.__pmTheme || {}),
-        profiles: clone4(window.__pmProfiles || []),
-        groupMeta: clone4(window.__pmGroupMeta || {}),
-        pokeConfig: clone4(window.__pmPokeConfig || {}),
-        bidirectional: clone4(window.__pmBidirectional || {}),
+        histories: clone5(window.__pmHistories || {}),
+        config: clone5(window.__pmConfig || {}),
+        theme: clone5(window.__pmTheme || {}),
+        profiles: clone5(window.__pmProfiles || []),
+        groupMeta: clone5(window.__pmGroupMeta || {}),
+        pokeConfig: clone5(window.__pmPokeConfig || {}),
+        bidirectional: clone5(window.__pmBidirectional || {}),
+        injectionConfig: normalizeInjectionConfig(window.__pmInjectionConfig),
         emojis: cloneEmojiLibrary(window.__pmEmojis),
-        characterBehavior: clone4(window.__pmCharacterBehavior || {}),
+        characterBehavior: clone5(window.__pmCharacterBehavior || {}),
         wordyLimit: !!window.__pmWordyLimit,
         desktopBg: window.__pmDesktopBg || "",
         bgGlobal: window.__pmBgGlobal || "",
-        bgLocal: clone4(window.__pmBgLocal || {}),
+        bgLocal: clone5(window.__pmBgLocal || {}),
         interactiveScenes,
         phoneUiState: loadPhoneUiState(interactiveScenes),
         ambientStatus: normalizeAmbientStatus({ enabled: window.__pmTheme?.ambientStatusEnabled }),
@@ -14388,20 +14608,21 @@ ${lines}`;
       const interactiveScenes = normalizeInteractiveStore(state.interactiveScenes);
       const phoneUiState = normalizePhoneUiState(state.phoneUiState, interactiveScenes);
       const ambientStatus = normalizeAmbientStatus(state.ambientStatus ?? { enabled: state.theme?.ambientStatusEnabled });
-      window.__pmHistories = clone4(state.histories || {});
-      window.__pmConfig = clone4(state.config || {});
-      window.__pmTheme = clone4(state.theme || {});
+      window.__pmHistories = clone5(state.histories || {});
+      window.__pmConfig = clone5(state.config || {});
+      window.__pmTheme = clone5(state.theme || {});
       window.__pmTheme.ambientStatusEnabled = ambientStatus.enabled;
-      window.__pmProfiles = clone4(state.profiles || []);
-      window.__pmGroupMeta = clone4(state.groupMeta || {});
-      window.__pmPokeConfig = clone4(state.pokeConfig || {});
-      window.__pmBidirectional = clone4(state.bidirectional || {});
+      window.__pmProfiles = clone5(state.profiles || []);
+      window.__pmGroupMeta = clone5(state.groupMeta || {});
+      window.__pmPokeConfig = clone5(state.pokeConfig || {});
+      window.__pmBidirectional = clone5(state.bidirectional || {});
+      window.__pmInjectionConfig = normalizeInjectionConfig(state.injectionConfig);
       window.__pmEmojis = cloneEmojiLibrary(state.emojis);
-      window.__pmCharacterBehavior = clone4(state.characterBehavior || {});
+      window.__pmCharacterBehavior = clone5(state.characterBehavior || {});
       window.__pmWordyLimit = !!state.wordyLimit;
       window.__pmDesktopBg = typeof state.desktopBg === "string" ? state.desktopBg : "";
       window.__pmBgGlobal = typeof state.bgGlobal === "string" ? state.bgGlobal : "";
-      window.__pmBgLocal = clone4(state.bgLocal || {});
+      window.__pmBgLocal = clone5(state.bgLocal || {});
       window.__pmPhoneUiState = phoneUiState;
       return {
         ...state,
@@ -14428,7 +14649,9 @@ ${lines}`;
       if (!saveTheme()) throw new Error("\u4E3B\u9898\u914D\u7F6E\u4FDD\u5B58\u5931\u8D25\uFF1A\u6D4F\u89C8\u5668\u5B58\u50A8\u4E0D\u53EF\u7528");
       if (!saveProfiles()) throw new Error("API \u6863\u6848\u4FDD\u5B58\u5931\u8D25\uFF1A\u6D4F\u89C8\u5668\u5B58\u50A8\u4E0D\u53EF\u7528");
       await saveGroupMeta();
-      if (!saveCharacterBehavior() || !savePokeConfig() || !saveBidirectional() || !saveWordyLimit()) throw new Error("\u63D2\u4EF6\u914D\u7F6E\u4FDD\u5B58\u5931\u8D25\uFF1A\u6D4F\u89C8\u5668\u5B58\u50A8\u4E0D\u53EF\u7528");
+      if (!saveCharacterBehavior() || !savePokeConfig() || !saveBidirectional() || !saveInjectionConfig() || !saveWordyLimit()) {
+        throw new Error("\u63D2\u4EF6\u914D\u7F6E\u4FDD\u5B58\u5931\u8D25\uFF1A\u6D4F\u89C8\u5668\u5B58\u50A8\u4E0D\u53EF\u7528");
+      }
       await saveEmojis();
       await saveDesktopBg();
       await saveBgGlobal();
@@ -14445,14 +14668,14 @@ ${lines}`;
   }
 
   // src/settings-backup-validate.js
-  var clone5 = (value) => JSON.parse(JSON.stringify(value));
+  var clone6 = (value) => JSON.parse(JSON.stringify(value));
   var objectValue = (value, field) => {
     if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error(`\u5907\u4EFD\u5B57\u6BB5 ${field} \u5FC5\u987B\u662F\u5BF9\u8C61`);
-    return clone5(value);
+    return clone6(value);
   };
   var arrayValue = (value, field) => {
     if (!Array.isArray(value)) throw new Error(`\u5907\u4EFD\u5B57\u6BB5 ${field} \u5FC5\u987B\u662F\u6570\u7EC4`);
-    return clone5(value);
+    return clone6(value);
   };
   var legacyBackupTheme = (value) => {
     const theme = objectValue(value || {}, "theme");
@@ -14662,8 +14885,8 @@ ${lines}`;
     if (!data || typeof data !== "object" || Array.isArray(data)) throw new Error("\u5907\u4EFD\u6839\u8282\u70B9\u5FC5\u987B\u662F\u5BF9\u8C61");
     const version = data.schemaVersion === void 0 ? 1 : data.schemaVersion;
     if (!Number.isInteger(version) || version < 1) throw new Error("\u5907\u4EFD\u7248\u672C\u65E0\u6548");
-    if (version > 7) throw new Error(`\u5907\u4EFD\u7248\u672C ${version} \u9AD8\u4E8E\u5F53\u524D\u652F\u6301\u7248\u672C 7`);
-    const result = clone5(current);
+    if (version > 8) throw new Error(`\u5907\u4EFD\u7248\u672C ${version} \u9AD8\u4E8E\u5F53\u524D\u652F\u6301\u7248\u672C 8`);
+    const result = clone6(current);
     if (Object.hasOwn(data, "histories")) result.histories = objectValue(data.histories, "histories");
     if (Object.hasOwn(data, "config")) result.config = objectValue(data.config, "config");
     if (Object.hasOwn(data, "theme")) {
@@ -14674,6 +14897,9 @@ ${lines}`;
     if (Object.hasOwn(data, "groupMeta")) result.groupMeta = objectValue(data.groupMeta, "groupMeta");
     if (Object.hasOwn(data, "pokeConfig")) result.pokeConfig = objectValue(data.pokeConfig, "pokeConfig");
     if (Object.hasOwn(data, "bidirectional")) result.bidirectional = objectValue(data.bidirectional, "bidirectional");
+    if (version >= 8) {
+      result.injectionConfig = Object.hasOwn(data, "injectionConfig") ? normalizeInjectionConfig(objectValue(data.injectionConfig, "injectionConfig")) : normalizeInjectionConfig(null);
+    }
     if (Object.hasOwn(data, "emojis")) result.emojis = arrayValue(data.emojis, "emojis");
     if (Object.hasOwn(data, "characterBehavior")) result.characterBehavior = objectValue(data.characterBehavior, "characterBehavior");
     if (Object.hasOwn(data, "wordyLimit")) {
@@ -14704,7 +14930,7 @@ ${lines}`;
   }
 
   // src/settings-ui.js
-  var clone6 = (value) => JSON.parse(JSON.stringify(value));
+  var clone7 = (value) => JSON.parse(JSON.stringify(value));
   async function runBackgroundTransaction({ capture, mutate, restore, persist }) {
     const snapshot = capture();
     try {
@@ -14746,7 +14972,7 @@ ${lines}`;
     const quickReplySettings = installQuickReplySettings({ makeOverlay, addNote, saveTheme });
     const apiDraftMode = createApiDraftMode();
     let backgroundMutation = Promise.resolve();
-    const injectionFailure3 = (result, phase) => {
+    const injectionFailure4 = (result, phase) => {
       const failedWrites = Number.isInteger(result?.failedWrites) && result.failedWrites > 0 ? result.failedWrites : 0;
       const failedKeys = Array.isArray(result?.failedKeys) ? result.failedKeys : [];
       if (!failedWrites && !failedKeys.length) return null;
@@ -14754,6 +14980,12 @@ ${lines}`;
       const error = new Error(`${phase}\uFF1A${details}`);
       error.injectionResult = result;
       return error;
+    };
+    const requireInjectionSuccess = async (operation, phase) => {
+      const result = await operation();
+      const error = injectionFailure4(result, phase);
+      if (error) throw error;
+      return result;
     };
     const syncLookControls = () => {
       const theme = window.__pmTheme;
@@ -14773,7 +15005,7 @@ ${lines}`;
       if (border) border.value = theme.borderColor || "#1a1a1a";
     };
     const persistThemeMutation = (mutate) => {
-      const previous = clone6(window.__pmTheme);
+      const previous = clone7(window.__pmTheme);
       mutate();
       if (saveTheme()) {
         applyTheme();
@@ -14792,12 +15024,12 @@ ${lines}`;
       const operation = backgroundMutation.catch(() => {
       }).then(async () => {
         await runBackgroundTransaction({
-          capture: () => isDesktop ? window.__pmDesktopBg || "" : isGlobal ? window.__pmBgGlobal || "" : clone6(window.__pmBgLocal || {}),
+          capture: () => isDesktop ? window.__pmDesktopBg || "" : isGlobal ? window.__pmBgGlobal || "" : clone7(window.__pmBgLocal || {}),
           mutate,
           restore: (snapshot) => {
             if (isDesktop) window.__pmDesktopBg = snapshot;
             else if (isGlobal) window.__pmBgGlobal = snapshot;
-            else window.__pmBgLocal = clone6(snapshot);
+            else window.__pmBgLocal = clone7(snapshot);
           },
           persist: isDesktop ? saveDesktopBg : isGlobal ? saveBgGlobal : saveBgLocal
         });
@@ -14815,7 +15047,7 @@ ${error.message}`);
       });
     };
     window.__pmDeleteProfile = (idx) => {
-      const previous = clone6(window.__pmProfiles);
+      const previous = clone7(window.__pmProfiles);
       window.__pmProfiles.splice(idx, 1);
       if (!saveProfiles()) {
         window.__pmProfiles = previous;
@@ -14856,7 +15088,7 @@ ${error.message}`);
     window.__pmExportData = async () => {
       const snapshot = await captureBackupState();
       const data = {
-        schemaVersion: 7,
+        schemaVersion: 8,
         histories: snapshot.histories,
         config: snapshot.config,
         theme: legacyBackupTheme(snapshot.theme),
@@ -14864,6 +15096,7 @@ ${error.message}`);
         groupMeta: snapshot.groupMeta,
         pokeConfig: snapshot.pokeConfig,
         bidirectional: snapshot.bidirectional,
+        injectionConfig: snapshot.injectionConfig,
         emojis: snapshot.emojis,
         characterBehavior: snapshot.characterBehavior,
         wordyLimit: snapshot.wordyLimit,
@@ -14904,61 +15137,39 @@ ${error.message}`);
             beforeApply: async (reason) => {
               deps.cancelCommunityGeneration?.(`backup-${reason}`);
               deps.cancelCalendarTasks?.(`backup-${reason}`);
-              clearBidirectionalInjection();
+              await requireInjectionSuccess(
+                () => clearBidirectionalInjection(),
+                reason === "apply" ? "\u5BFC\u5165\u524D\u6E05\u7406\u65E7\u6CE8\u5165\u5931\u8D25" : "\u56DE\u6EDA\u524D\u6E05\u7406\u6CE8\u5165\u5931\u8D25"
+              );
             },
             apply: async (snapshot, imported) => {
               if (snapshot) return applyBackupState(snapshot);
               return applyBackupState(imported);
             },
-            persist: persistBackupState
+            persist: persistBackupState,
+            afterPersist: async (reason) => requireInjectionSuccess(
+              () => applyBidirectionalInjection(),
+              reason === "apply" ? "\u5BFC\u5165\u540E\u7684\u6CE8\u5165\u5237\u65B0\u5931\u8D25" : "\u6062\u590D\u539F\u6570\u636E\u540E\u7684\u6CE8\u5165\u5237\u65B0\u5931\u8D25"
+            )
           });
         } catch (err) {
           transactionError = err;
         }
         if (transactionError) {
           const err = transactionError;
-          let recoveryInjectionError = null;
-          if (err.backupPhase === "rolled-back" || err.backupPhase === "rollback-failed") {
-            try {
-              const recoveryResult = await applyBidirectionalInjection();
-              recoveryInjectionError = injectionFailure3(recoveryResult, "\u6062\u590D\u539F\u6570\u636E\u540E\u7684\u6CE8\u5165\u5237\u65B0\u5931\u8D25");
-            } catch (error) {
-              recoveryInjectionError = error;
-            }
-          }
           if (err.backupPhase === "rollback-failed") {
-            const recoveryDetail = recoveryInjectionError ? `
-\u6CE8\u5165\u5237\u65B0\u4E5F\u5931\u8D25\uFF1A${recoveryInjectionError.message}` : "";
             alert(`\u5BFC\u5165\u5931\u8D25\uFF0C\u539F\u6570\u636E\u56DE\u6EDA\u4E5F\u5931\u8D25\u3002\u8BF7\u52FF\u5237\u65B0\uFF0C\u5E76\u7ACB\u5373\u5BFC\u51FA\u5F53\u524D\u5185\u5B58\u5907\u4EFD\u3002
-${err.message}${recoveryDetail}`);
-          } else if (err.backupPhase === "rolled-back") {
-            if (recoveryInjectionError) {
-              alert(`\u5BFC\u5165\u5931\u8D25\uFF0C\u539F\u6570\u636E\u5DF2\u6062\u590D\uFF0C\u4F46\u6CE8\u5165\u5237\u65B0\u5931\u8D25\u3002\u8BF7\u5237\u65B0\u9875\u9762\u6216\u91CD\u65B0\u6253\u5F00\u624B\u673A\u754C\u9762\u3002
-${err.message}
-${recoveryInjectionError.message}`);
-            } else {
-              alert(`\u5BFC\u5165\u5931\u8D25\uFF0C\u539F\u6570\u636E\u5DF2\u6062\u590D\u3002
 ${err.message}`);
-            }
+          } else if (err.backupPhase === "rolled-back") {
+            alert(`\u5BFC\u5165\u5931\u8D25\uFF0C\u539F\u6570\u636E\u5DF2\u6062\u590D\u3002
+${err.message}`);
           } else {
             alert(`\u5BFC\u5165\u5931\u8D25\uFF0C\u672A\u4FEE\u6539\u73B0\u6709\u6570\u636E\u3002
 ${err.message}`);
           }
           return;
         }
-        let postImportError = null;
-        try {
-          const injectionResult = await applyBidirectionalInjection();
-          postImportError = injectionFailure3(injectionResult, "\u5BFC\u5165\u540E\u7684\u6CE8\u5165\u5237\u65B0\u5931\u8D25");
-        } catch (error) {
-          postImportError = error;
-        }
-        if (postImportError) {
-          alert(`\u6570\u636E\u5DF2\u5BFC\u5165\uFF0C\u4F46\u6CE8\u5165\u5237\u65B0\u5931\u8D25\u3002\u8BF7\u5237\u65B0\u9875\u9762\u6216\u91CD\u65B0\u6253\u5F00\u624B\u673A\u754C\u9762\u3002
-${postImportError.message}`);
-        } else {
-          alert("\u6570\u636E\u5BFC\u5165\u6210\u529F\uFF0C\u8BF7\u91CD\u65B0\u6253\u5F00\u754C\u9762\u751F\u6548\u3002");
-        }
+        alert("\u6570\u636E\u5BFC\u5165\u6210\u529F\uFF0C\u8BF7\u91CD\u65B0\u6253\u5F00\u754C\u9762\u751F\u6548\u3002");
         document.getElementById("pm-overlay")?.remove();
         closePhone(true);
       };
@@ -14971,8 +15182,11 @@ ${postImportError.message}`);
       const previous = await captureBackupState();
       deps.cancelCommunityGeneration?.("plugin-data-clear");
       deps.cancelCalendarTasks?.("plugin-data-clear");
-      clearBidirectionalInjection();
       try {
+        await requireInjectionSuccess(
+          () => clearBidirectionalInjection(),
+          "\u6E05\u7406\u6570\u636E\u524D\u79FB\u9664\u65E7\u6CE8\u5165\u5931\u8D25"
+        );
         await clearPluginData({ afterClear: async () => {
           await applyBackupState({
             histories: {},
@@ -14982,6 +15196,7 @@ ${postImportError.message}`);
             groupMeta: {},
             pokeConfig: {},
             bidirectional: {},
+            injectionConfig: normalizeInjectionConfig(null),
             emojis: [],
             characterBehavior: {},
             wordyLimit: false,
@@ -14996,18 +15211,35 @@ ${postImportError.message}`);
           deps.reloadCalendarStore?.();
           window.__pmBudgetConfig = normalizeBudgetConfig();
           deps.invalidateInteractiveStore?.();
+          await requireInjectionSuccess(
+            () => clearBidirectionalInjection(),
+            "\u5E94\u7528\u7A7A\u72B6\u6001\u540E\u6E05\u7406\u6CE8\u5165\u5931\u8D25"
+          );
         } });
         alert("\u5929\u97F3\u5C0F\u7B3A\u6570\u636E\u5DF2\u6E05\u7406\u3002");
         document.getElementById("pm-overlay")?.remove();
         closePhone(true);
         return true;
       } catch (error) {
-        await applyBackupState(previous);
-        deps.reloadCalendarStore?.();
-        await applyBidirectionalInjection();
-        alert(error.rollbackError ? `\u6E05\u7406\u5931\u8D25\uFF0C\u539F\u6570\u636E\u56DE\u6EDA\u4E5F\u5931\u8D25\u3002\u8BF7\u52FF\u5237\u65B0\uFF0C\u5E76\u7ACB\u5373\u5BFC\u51FA\u5F53\u524D\u5185\u5B58\u5907\u4EFD\u3002
-${error.message}` : `\u6E05\u7406\u5931\u8D25\uFF0C\u539F\u6570\u636E\u5DF2\u6062\u590D\u3002
+        let rollbackError = error.rollbackError || null;
+        try {
+          await applyBackupState(previous);
+          await persistBackupState(previous);
+          deps.reloadCalendarStore?.();
+          await requireInjectionSuccess(
+            () => applyBidirectionalInjection(),
+            "\u6062\u590D\u539F\u6570\u636E\u540E\u7684\u6CE8\u5165\u5237\u65B0\u5931\u8D25"
+          );
+        } catch (failure) {
+          rollbackError = failure;
+        }
+        if (rollbackError) {
+          alert(`\u6E05\u7406\u5931\u8D25\uFF0C\u539F\u6570\u636E\u56DE\u6EDA\u4E5F\u5931\u8D25\u3002\u8BF7\u52FF\u5237\u65B0\uFF0C\u5E76\u7ACB\u5373\u5BFC\u51FA\u5F53\u524D\u5185\u5B58\u5907\u4EFD\u3002
+${error.message}\uFF1B${rollbackError.message}`);
+        } else {
+          alert(`\u6E05\u7406\u5931\u8D25\uFF0C\u539F\u6570\u636E\u5DF2\u6062\u590D\u3002
 ${error.message}`);
+        }
         return false;
       }
     };
@@ -15273,7 +15505,7 @@ ${error.message}`);
         return false;
       }
       const temperature = useIndependent ? parsedTemperature : normalizeIndependentApiTemperature(temperatureText);
-      const previous = clone6(window.__pmConfig), candidate = { apiUrl, apiKey, model, temperature, useIndependent };
+      const previous = clone7(window.__pmConfig), candidate = { apiUrl, apiKey, model, temperature, useIndependent };
       window.__pmConfig = candidate;
       try {
         localStorage.setItem("ST_SMS_CONFIG", JSON.stringify(candidate));
@@ -15322,6 +15554,8 @@ ${error.message}`);
       groupMembers: [],
       groupColorMap: {},
       groupDisplayName: "",
+      groupRandomNpcEnabled: false,
+      groupNature: "",
       currentGroupKey: "",
       groupExtras: []
     };
@@ -15346,6 +15580,7 @@ ${error.message}`);
     installCalendar(state, deps);
     installSettingsUi(deps);
     installPhoneChat(state, deps);
+    installPhoneContextInjection(state, deps);
     installPhoneControlCenter(state, deps);
     installPhoneDirectory(state, deps);
     installContactGenerator(state, deps);

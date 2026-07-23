@@ -153,6 +153,15 @@ export function normalizeGroupInjection(value) {
     };
 }
 
+export function normalizeInjectionConfig(value) {
+    const normalized = normalizeGroupInjection(value);
+    return {
+        ...normalized,
+        position: normalized.position === EXTENSION_PROMPT_POSITIONS.NONE
+            ? DEFAULT_GROUP_INJECTION.position : normalized.position,
+    };
+}
+
 export function normalizeGroupMeta(value) {
     const source = plainObject(value);
     const members = uniqueNames(source.members);
@@ -170,6 +179,8 @@ export function normalizeGroupMeta(value) {
         members,
         extras,
         memberColors,
+        randomNpcEnabled: Boolean(source.randomNpcEnabled),
+        groupNature: text(source.groupNature, 200),
         injection: normalizeGroupInjection(source.injection),
     };
 }

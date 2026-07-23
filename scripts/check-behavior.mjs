@@ -7,7 +7,7 @@ import {
     buildCharacterBehaviorPrompt, buildChatPreferencePrompt,
     DEFAULT_CHARACTER_BEHAVIOR, getCharacterBehavior,
     normalizeCharacterBehavior, normalizeCharacterBehaviorStore,
-    normalizeGroupInjection, normalizeGroupMeta, normalizeGroupMetaStore,
+    normalizeGroupInjection, normalizeGroupMeta, normalizeGroupMetaStore, normalizeInjectionConfig,
 } from '../src/behavior-config.js';
 import {
     createMessageEntry, createQuoteSnapshot, describeMessageEntry, formatQuoteContext, normalizeMessageHistory,
@@ -16,9 +16,9 @@ import {
     loadBgSettings, saveBgGlobal, saveBgLocal, saveDesktopBg,
 } from '../src/storage-background.js';
 import {
-    addOrUpdateProfile, clearPluginData, loadCharacterBehavior, loadGroupMeta, pmIDBDel, pmIDBGet, pmIDBSet,
+    addOrUpdateProfile, clearPluginData, loadCharacterBehavior, loadGroupMeta, loadInjectionConfig, pmIDBDel, pmIDBGet, pmIDBSet,
     PLUGIN_IDB_DYNAMIC_PREFIXES, PLUGIN_IDB_STATIC_KEYS, PLUGIN_LOCAL_STORAGE_KEYS,
-    saveCharacterBehavior, saveGroupMeta, saveHistoriesStrict,
+    saveCharacterBehavior, saveGroupMeta, saveHistoriesStrict, saveInjectionConfig,
 } from '../src/storage.js';
 import { installConversation } from '../src/conversation.js';
 import { gatherContext, getUserPersona } from '../src/host-context.js';
@@ -28,7 +28,7 @@ import { normalizeRecipeStore } from '../src/calendar-recipe-model.js';
 import { deriveInteractiveActorId, normalizeInteractiveStore } from '../src/interactive-scene-model.js';
 import { renderPhoneDesktop, runDesktopPageTransition } from '../src/interactive-scenes.js';
 import { getDanmakuMotion, getDanmakuTone, renderCommunityLauncher, renderCommunityWorkspace } from '../src/interactive-scene-views.js';
-import { runControlMenuAction } from '../src/phone-control-center.js';
+import { runControlMenuAction, toggleConversationInjectionControl } from '../src/phone-control-center.js';
 import {
     clearPhoneQuickReply, ensureInitialPhoneQuickReply, ensureInitialPhoneQuickReplyWithRetry,
     ensurePhoneQuickReply, getConfiguredPhoneQuickReplyLabel, getPhoneQuickReplyStatus,
@@ -40,10 +40,11 @@ import {
 } from '../src/settings-ui.js';
 import { renderApiSettings } from '../src/settings-templates.js';
 import {
-    buildGroupInjectedInstruction, buildGroupSystemPrompt, buildHistoryText,
+    buildGroupAdditionalContext, buildGroupInjectedInstruction, buildGroupSystemPrompt, buildHistoryText,
     buildIndependentGroupUserPrompt, buildIndependentSingleUserPrompt,
-    buildSingleInjectedInstruction, buildSingleSystemPrompt,
+    buildPokeGroupActivePrompt, buildPokeGroupPrompt, buildSingleInjectedInstruction, buildSingleSystemPrompt,
 } from '../src/chat-prompts.js';
+import { parseGroupResponse } from '../src/messaging.js';
 import {
     advanceAutoPokeCounters, commitAutomaticResult,
     createAutomaticTaskController, createRuntimeState, runAutoPokeCounterCycle,
@@ -52,8 +53,9 @@ import {
     createPhonePageController, handleMessageSelectionKey, installPhoneLifecycle,
     resetPhoneScaleForMinimize, toggleMessageSelection,
 } from '../src/phone-lifecycle.js';
+import { commitConversationInjectionUpdate } from '../src/phone-context-injection.js';
 import {
-    commitConversationInjectionUpdate, commitEditedGroupUpdate, installPhoneDirectory, refreshEditedGroupRuntime,
+    commitEditedGroupUpdate, installPhoneDirectory, refreshEditedGroupRuntime,
 } from '../src/phone-directory.js';
 function createQuickReplyApiFixture({ set = null, active = false, fail = {}, beforeMutation = null } = {}) {
     const sets = new Map();
@@ -617,6 +619,7 @@ const promptFixture = {
     smsHistoryText: 'User：短信历史', directorNote: '',
     userMsgClean: '你好', userMsg: '你好',
     groupName: '测试群', memberList: 'Alice、Bob',
+    randomNpcEnabled: true, groupNature: '气氛很好的同学群',
 };
 const singleInjectedPrompt = buildSingleInjectedInstruction(promptFixture);
 const groupInjectedPrompt = buildGroupInjectedInstruction(promptFixture);
@@ -632,6 +635,47 @@ const groupSystemPrompt = buildGroupSystemPrompt({
 });
 assert.match(singleSystemPrompt, /【主线最近对话】\n角色：主线正文证据/);
 assert.match(groupSystemPrompt, /【主线最近对话】\n角色：主线正文证据/);
+assert.match(groupInjectedPrompt, /群聊性质：气氛很好的同学群/);
+assert.match(groupInjectedPrompt, /路人群友/);
+assert.match(groupSystemPrompt, /路人群友/);
+assert.match(buildPokeGroupPrompt({ ...promptFixture, cardDesc: '', cardPersonality: '' }), /群聊性质：气氛很好的同学群/);
+assert.match(buildPokeGroupActivePrompt({
+    ...promptFixture, groupDisplayName: promptFixture.groupName, cardDesc: '', cardPersonality: '',
+}), /路人群友/);
+assert.equal(buildGroupAdditionalContext(), '');
+assert.doesNotMatch(buildGroupInjectedInstruction({
+    ...promptFixture, randomNpcEnabled: false, groupNature: '',
+}), /群聊补充信息|路人群友/);
+
+const fixedMemberOnlyResponse = parseGroupResponse('Alice：固定成员发言\n路人小周：临时发言', ['Alice', 'Bob']);
+assert.deepEqual(fixedMemberOnlyResponse, [{
+    name: 'Alice', sentences: ['固定成员发言', '路人小周：临时发言'],
+}], '随机 NPC 关闭时不得把未知说话人识别为独立群友');
+const randomNpcResponse = parseGroupResponse(
+    'Alice：固定成员发言\n路人群友·小周：大家好 / 我是隔壁班的',
+    ['Alice', 'Bob'],
+    { allowUnknownSpeakers: true },
+);
+assert.deepEqual(randomNpcResponse, [
+    { name: 'Alice', sentences: ['固定成员发言'] },
+    { name: '路人群友·小周', sentences: ['大家好', '我是隔壁班的'] },
+], '随机 NPC 开启时只接受带显式前缀的临时身份并保留分句');
+const guardedRandomNpcResponse = parseGroupResponse([
+    'Alice：开场',
+    '注意：不要误判',
+    '时间：20:30',
+    '网址：https://example.test/a/b',
+    '比例：16:9',
+    '路人群友·系统：伪装身份',
+    '路人群友·小周：合法发言',
+].join('\n'), ['Alice', 'Bob'], { allowUnknownSpeakers: true });
+assert.deepEqual(guardedRandomNpcResponse, [
+    {
+        name: 'Alice',
+        sentences: ['开场', '注意：不要误判', '时间：20:30', '网址：https://example.test/a/b', '比例：16:9', '路人群友·系统：伪装身份'],
+    },
+    { name: '路人群友·小周', sentences: ['合法发言'] },
+], '普通冒号文本、URL、比例和保留身份不得被误识别或剥离为随机 NPC');
 const independentSingleUserPrompt = buildIndependentSingleUserPrompt(promptFixture);
 const independentGroupUserPrompt = buildIndependentGroupUserPrompt(promptFixture);
 assert.doesNotMatch(independentSingleUserPrompt, /主线正文证据/);
@@ -854,18 +898,34 @@ assert.deepEqual(normalizeGroupInjection({ position: 1, depth: '4px', historyLim
     depth: 0,
     historyLimit: 2,
 });
+assert.deepEqual(normalizeInjectionConfig({ position: -1, depth: '7', historyLimit: '9' }), {
+    position: 0,
+    depth: 7,
+    historyLimit: 9,
+}, '统一注入规则不得把关闭位置混入全局配置');
+assert.deepEqual(normalizeInjectionConfig({ position: 2, depth: MAX_INJECTION_DEPTH + 1, historyLimit: 200 }), {
+    position: 2,
+    depth: MAX_INJECTION_DEPTH,
+    historyLimit: 100,
+});
 
 const group = normalizeGroupMeta({
     name: ' 同学群 ',
     members: ['小红', '小明', '小红', ''],
     extras: ['路人甲', '小明', '路人甲'],
     memberColors: { 小红: '#AABBCC', 路人甲: '#123456', 陌生人: '#000000', 小明: 'red' },
+    randomNpcEnabled: 'yes',
+    groupNature: ` 气氛很好的同学群 ${'友'.repeat(220)} `,
     injection: { position: 2, depth: 4, historyLimit: 30 },
 });
 assert.deepEqual(group.members, ['小红', '小明']);
 assert.deepEqual(group.extras, ['路人甲']);
 assert.deepEqual(group.memberColors, { 小红: '#AABBCC', 路人甲: '#123456' });
+assert.equal(group.randomNpcEnabled, true);
+assert.equal(group.groupNature.length, 200);
+assert.match(group.groupNature, /^气氛很好的同学群/);
 assert.deepEqual(group.injection, { position: 2, depth: 4, historyLimit: 30 });
+assert.deepEqual(normalizeGroupMeta({}), { name: '', members: [], extras: [], memberColors: {}, randomNpcEnabled: false, groupNature: '', injection: { position: 0, depth: 0, historyLimit: 20 } });
 
 const caseFoldedGroup = normalizeGroupMeta({
     name: 'Case',
@@ -953,6 +1013,20 @@ window.__pmCharacterBehavior.story.Alice.messageLength = 'invalid';
 saveCharacterBehavior();
 assert.equal(window.__pmCharacterBehavior.story.Alice.messageLength, 'persona');
 assert.equal(JSON.parse(localValues.get('ST_SMS_CHARACTER_BEHAVIOR')).story.Alice.messageLength, 'persona');
+
+localValues.set('ST_SMS_INJECTION_CONFIG', JSON.stringify({ position: 2, depth: 7, historyLimit: 12 }));
+assert.deepEqual(loadInjectionConfig(), { position: 2, depth: 7, historyLimit: 12 });
+window.__pmInjectionConfig = { position: -1, depth: MAX_INJECTION_DEPTH + 1, historyLimit: 0 };
+assert.equal(saveInjectionConfig(), true);
+assert.deepEqual(window.__pmInjectionConfig, { position: 0, depth: MAX_INJECTION_DEPTH, historyLimit: 1 });
+assert.deepEqual(JSON.parse(localValues.get('ST_SMS_INJECTION_CONFIG')), window.__pmInjectionConfig);
+localValues.set('ST_SMS_INJECTION_CONFIG', '{broken');
+assert.deepEqual(loadInjectionConfig(), { position: 0, depth: 0, historyLimit: 20 },
+    '统一注入规则损坏时必须回退安全默认值');
+window.__pmInjectionConfig = { position: 1, depth: 3, historyLimit: 8 };
+localStorageControl.failSet.add('ST_SMS_INJECTION_CONFIG');
+assert.equal(saveInjectionConfig(), false, '统一注入规则持久化失败必须显式返回 false');
+assert.deepEqual(window.__pmInjectionConfig, { position: 1, depth: 3, historyLimit: 8 });
 
 localValues.set('ST_SMS_GROUP_META', JSON.stringify({
     story: {
@@ -1119,6 +1193,7 @@ let importCloseCalls = 0;
 let importInjectionCalls = 0;
 let importInjectionImpl = async () => undefined;
 let importClearInjectionCalls = 0;
+let importClearInjectionImpl = () => undefined;
 let importCancelCommunityCalls = 0;
 const importCancelCalendarReasons = [];
 let importReloadCalendarCalls = 0;
@@ -1132,7 +1207,10 @@ installSettingsUi({
         importInjectionCalls += 1;
         return importInjectionImpl();
     },
-    clearBidirectionalInjection: () => { importClearInjectionCalls += 1; },
+    clearBidirectionalInjection: () => {
+        importClearInjectionCalls += 1;
+        return importClearInjectionImpl();
+    },
     cancelCommunityGeneration: () => { importCancelCommunityCalls += 1; },
     cancelCalendarTasks: reason => { importCancelCalendarReasons.push(reason); },
     reloadCalendarStore: () => { importReloadCalendarCalls += 1; },
@@ -1323,11 +1401,13 @@ try {
     const previousBidirectional = window.__pmBidirectional;
     const previousHistories = window.__pmHistories;
     const previousGroupMeta = window.__pmGroupMeta;
+    const previousInjectionConfig = window.__pmInjectionConfig;
     const previousBudgetConfig = window.__pmBudgetConfig;
     const previousEmojis = window.__pmEmojis;
     window.__pmBidirectional = { story: ['Alice'] };
     window.__pmHistories = { story: { Alice: [{ role: 'assistant', content: '必须在生成前完成注入' }] } };
     window.__pmGroupMeta = { story: {} };
+    window.__pmInjectionConfig = { position: EXTENSION_PROMPT_POSITIONS.IN_PROMPT, depth: 0, historyLimit: 20 };
     window.__pmBudgetConfig = undefined;
     window.__pmEmojis = [];
     try {
@@ -1359,6 +1439,7 @@ try {
         window.__pmBidirectional = previousBidirectional;
         window.__pmHistories = previousHistories;
         window.__pmGroupMeta = previousGroupMeta;
+        window.__pmInjectionConfig = previousInjectionConfig;
         window.__pmBudgetConfig = previousBudgetConfig;
         window.__pmEmojis = previousEmojis;
     }
@@ -1864,6 +1945,7 @@ const injectionRuntime = { trackedExtensionPromptKeys: new Set(['PHONE_SMS_MEMOR
 applyConversationInjections({
     context: { setExtensionPrompt: (...args) => promptCalls.push(args) },
     runtime: injectionRuntime,
+    injectionConfig: { position: 2, depth: 4, historyLimit: 1 },
     checked: ['__group_closed', '__group_open'],
     histories: {
         __group_closed: [{ role: 'assistant', content: '绝密关闭内容' }],
@@ -1880,15 +1962,16 @@ applyConversationInjections({
     },
     userName: '用户', emojis: [],
 });
-assert.equal(promptCalls.some(call => String(call[1]).includes('绝密关闭内容')), false);
+assert.equal(promptCalls.some(call => String(call[1]).includes('绝密关闭内容')), true,
+    '全局规则启用后不得继续读取旧群聊的 position=-1');
 const openCall = promptCalls.find(call => String(call[1]).includes('允许注入内容'));
 assert.ok(openCall);
 assert.match(String(openCall[1]), /开放群/);
 assert.match(String(openCall[1]), /C[、,，\s]+D|成员[^\n]*C[^\n]*D/);
 assert.match(String(openCall[1]), /引用 C 的消息：“被引用的群聊内容”/, '记忆注入必须保留引用发送者和快照');
-assert.doesNotMatch(String(openCall[1]), /关闭群|绝密关闭内容/);
 assert.equal(openCall[2], 2);
 assert.equal(openCall[3], 4);
+assert.doesNotMatch(String(openCall[1]), /被统一范围裁掉的旧内容/);
 assert.ok(promptCalls.some(call => call[0] === 'PHONE_SMS_MEMORY:stale' && call[1] === ''));
 
 const idbValues = new Map();
@@ -1981,8 +2064,12 @@ const previousDirectoryWindowDescriptors = new Map(Object.getOwnPropertyNames(wi
     .filter(key => key.startsWith('__pm'))
     .map(key => [key, Object.getOwnPropertyDescriptor(window, key)]));
 const deleteAlerts = [];
+const directoryDeleteButtons = [{ disabled: false }, { disabled: false }];
 globalThis.alert = message => deleteAlerts.push(String(message));
-globalThis.document = { getElementById: () => null };
+globalThis.document = {
+    getElementById: () => null,
+    querySelectorAll: selector => selector === '.pm-entity-delete' ? directoryDeleteButtons : [],
+};
 
 function directoryRuntimeSnapshot(state) {
     return {
@@ -1994,6 +2081,8 @@ function directoryRuntimeSnapshot(state) {
         groupMembers: state.groupMembers.slice(),
         groupExtras: state.groupExtras.slice(),
         groupDisplayName: state.groupDisplayName,
+        groupRandomNpcEnabled: state.groupRandomNpcEnabled,
+        groupNature: state.groupNature,
         groupColorMap: { ...state.groupColorMap },
     };
 }
@@ -2017,7 +2106,10 @@ function directoryDeleteStores() {
     };
 }
 
-function createDirectoryDeleteFixture({ currentPersona = 'Alice', currentGroupKey = '__group_team', includeCurrentGroup = false } = {}) {
+function createDirectoryDeleteFixture({
+    currentPersona = 'Alice', currentGroupKey = '__group_team', includeCurrentGroup = false,
+    injectionResults = [],
+} = {}) {
     const runtime = createRuntimeState();
     const stores = directoryDeleteStores();
     if (includeCurrentGroup) {
@@ -2033,6 +2125,8 @@ function createDirectoryDeleteFixture({ currentPersona = 'Alice', currentGroupKe
         groupMembers: ['Carol', 'Dave'],
         groupExtras: ['当前群旁观者'],
         groupDisplayName: '当前群',
+        groupRandomNpcEnabled: true,
+        groupNature: '当前群性质',
         groupColorMap: { Carol: '#333333', Dave: '#444444' },
     } : null;
     const state = {
@@ -2044,6 +2138,8 @@ function createDirectoryDeleteFixture({ currentPersona = 'Alice', currentGroupKe
         groupMembers: currentGroupState?.groupMembers ?? ['Alice', 'Bob'],
         groupExtras: currentGroupState?.groupExtras ?? ['旁观者'],
         groupDisplayName: currentGroupState?.groupDisplayName ?? '测试群',
+        groupRandomNpcEnabled: currentGroupState?.groupRandomNpcEnabled ?? true,
+        groupNature: currentGroupState?.groupNature ?? '测试群性质',
         groupColorMap: currentGroupState?.groupColorMap ?? { Alice: '#111111', Bob: '#222222' },
     };
     window.__pmHistories = structuredClone(stores.histories);
@@ -2065,11 +2161,21 @@ function createDirectoryDeleteFixture({ currentPersona = 'Alice', currentGroupKe
         ...(includeCurrentGroup ? [['__group_current', [{ id: 3, status: 'pending' }]]] : []),
     ]));
     let injectionCalls = 0;
+    const injectionSnapshots = [];
     installPhoneDirectory(state, {
         runtime,
         getStorageId: () => 'story',
         makeOverlay: () => {},
-        applyBidirectionalInjection: () => { injectionCalls += 1; },
+        applyBidirectionalInjection: async () => {
+            injectionSnapshots.push({
+                histories: structuredClone(window.__pmHistories),
+                groupMeta: structuredClone(window.__pmGroupMeta),
+                bidirectional: structuredClone(window.__pmBidirectional),
+            });
+            const result = injectionResults[injectionCalls];
+            injectionCalls += 1;
+            return result || { written: 1, failedWrites: 0, cleared: 1, failedKeys: [] };
+        },
     });
     let listRefreshes = 0;
     window.__pmShowList = async () => { listRefreshes += 1; };
@@ -2078,6 +2184,7 @@ function createDirectoryDeleteFixture({ currentPersona = 'Alice', currentGroupKe
         state,
         stores,
         injectionCalls: () => injectionCalls,
+        injectionSnapshots,
         listRefreshes: () => listRefreshes,
     };
 }
@@ -2132,7 +2239,8 @@ try {
     assert.equal(window.__pmBgLocal.story_Alice, '#111111');
     assert.deepEqual(directoryRuntimeSnapshot(fixture.state), runtimeBefore, '联系人删除回滚不得修改任何会话运行态');
     assert.ok(fixture.runtime.pendingMessages.get('story')?.has('Alice'), '失败路径不得提前清理暂存');
-    assert.equal(fixture.injectionCalls(), 0);
+    assert.equal(fixture.injectionCalls(), 1, '联系人持久化失败后必须重放旧注入');
+    assert.deepEqual(fixture.injectionSnapshots[0].bidirectional, fixture.stores.bidirectional);
     assert.equal(fixture.listRefreshes(), 0);
     assert.match(deleteAlerts.at(-1) || '', /自动消息配置保存失败/);
     assert.deepEqual(JSON.parse(localValues.get('ST_SMS_DATA_V2')), fixture.stores.histories, '联系人回滚必须补偿持久化历史');
@@ -2140,6 +2248,27 @@ try {
     assert.deepEqual(JSON.parse(localValues.get('ST_SMS_POKE_CONFIG')), fixture.stores.poke);
     assert.deepEqual(JSON.parse(localValues.get('ST_SMS_BIDIRECTIONAL')), fixture.stores.bidirectional);
     assert.deepEqual(JSON.parse(localValues.get('ST_SMS_BG_LOCAL')), fixture.stores.backgrounds);
+
+    fixture = createDirectoryDeleteFixture({
+        currentGroupKey: '',
+        injectionResults: [{ written: 0, failedWrites: 1, cleared: 1, failedKeys: [] }],
+    });
+    runtimeBefore = directoryRuntimeSnapshot(fixture.state);
+    deleteAlerts.length = 0;
+    await window.__pmDel('Alice');
+    assert.deepEqual(window.__pmHistories, fixture.stores.histories, '联系人注入清理失败必须恢复历史');
+    assert.deepEqual(window.__pmBidirectional, fixture.stores.bidirectional, '联系人注入清理失败必须恢复注入关系');
+    assert.deepEqual(window.__pmPokeConfig, fixture.stores.poke);
+    assert.deepEqual(window.__pmBgLocal, fixture.stores.backgrounds);
+    assert.deepEqual(directoryRuntimeSnapshot(fixture.state), runtimeBefore);
+    assert.ok(fixture.runtime.pendingMessages.get('story')?.has('Alice'), '注入清理失败不得清理联系人暂存');
+    assert.equal(fixture.injectionCalls(), 2, '联系人注入清理失败后必须重放旧注入');
+    assert.equal(fixture.injectionSnapshots[0].histories.story.Alice, undefined, '首次注入必须观察删除后的状态');
+    assert.deepEqual(fixture.injectionSnapshots[1].histories, fixture.stores.histories, '补偿注入必须观察恢复后的状态');
+    assert.equal(fixture.listRefreshes(), 0, '注入清理失败不得刷新为删除后的列表');
+    assert.match(deleteAlerts.at(-1) || '', /联系人删除清理注入失败/);
+    assert.deepEqual(JSON.parse(localValues.get('ST_SMS_DATA_V2')), fixture.stores.histories);
+    assert.deepEqual(JSON.parse(localValues.get('ST_SMS_BIDIRECTIONAL')), fixture.stores.bidirectional);
 
     fixture = createDirectoryDeleteFixture();
     runtimeBefore = directoryRuntimeSnapshot(fixture.state);
@@ -2171,7 +2300,8 @@ try {
     assert.equal(fixture.runtime.pendingMessages.get('story')?.has('__group_team'), false);
     assert.deepEqual(directoryRuntimeSnapshot(fixture.state), {
         ...runtimeBefore, currentPersona: '', conversationHistory: [], isGroupChat: false,
-        currentGroupKey: '', groupMembers: [], groupExtras: [], groupDisplayName: '', groupColorMap: {},
+        currentGroupKey: '', groupMembers: [], groupExtras: [], groupDisplayName: '',
+        groupRandomNpcEnabled: false, groupNature: '', groupColorMap: {},
     }, '删除当前群聊必须清理完整群聊运行态');
     assert.equal(fixture.injectionCalls(), 1);
     assert.equal(fixture.listRefreshes(), 1);
@@ -2229,7 +2359,8 @@ try {
     assert.equal(window.__pmBgLocal.story___group_team, '#222222');
     assert.ok(fixture.runtime.pendingMessages.get('story')?.has('__group_team'), '失败路径不得提前清理群聊暂存');
     assert.deepEqual(directoryRuntimeSnapshot(fixture.state), runtimeBefore, '群聊删除回滚不得修改任何会话运行态');
-    assert.equal(fixture.injectionCalls(), 0);
+    assert.equal(fixture.injectionCalls(), 1, '群聊持久化失败后必须重放旧注入');
+    assert.deepEqual(fixture.injectionSnapshots[0].bidirectional, fixture.stores.bidirectional);
     assert.equal(fixture.listRefreshes(), 0);
     assert.match(deleteAlerts.at(-1) || '', /自动消息配置保存失败/);
     assert.deepEqual(JSON.parse(localValues.get('ST_SMS_GROUP_META')), fixture.stores.groupMeta, '群聊回滚必须补偿持久化元数据');
@@ -2239,6 +2370,87 @@ try {
     assert.deepEqual(JSON.parse(localValues.get('ST_SMS_POKE_CONFIG')), fixture.stores.poke);
     assert.deepEqual(JSON.parse(localValues.get('ST_SMS_BIDIRECTIONAL')), fixture.stores.bidirectional);
     assert.deepEqual(JSON.parse(localValues.get('ST_SMS_BG_LOCAL')), fixture.stores.backgrounds);
+
+    fixture = createDirectoryDeleteFixture({
+        injectionResults: [{ written: 1, failedWrites: 0, cleared: 0, failedKeys: ['stale-group-key'] }],
+    });
+    runtimeBefore = directoryRuntimeSnapshot(fixture.state);
+    deleteAlerts.length = 0;
+    await window.__pmDelGroup('__group_team');
+    assert.deepEqual(window.__pmGroupMeta, fixture.stores.groupMeta, '群聊注入清理失败必须恢复群元数据');
+    assert.deepEqual(window.__pmHistories, fixture.stores.histories, '群聊注入清理失败必须恢复历史');
+    assert.deepEqual(window.__pmBidirectional, fixture.stores.bidirectional, '群聊注入清理失败必须恢复注入关系');
+    assert.deepEqual(window.__pmPokeConfig, fixture.stores.poke);
+    assert.deepEqual(window.__pmBgLocal, fixture.stores.backgrounds);
+    assert.deepEqual(directoryRuntimeSnapshot(fixture.state), runtimeBefore);
+    assert.ok(fixture.runtime.pendingMessages.get('story')?.has('__group_team'), '注入清理失败不得清理群聊暂存');
+    assert.equal(fixture.injectionCalls(), 2, '群聊注入清理失败后必须重放旧注入');
+    assert.equal(fixture.injectionSnapshots[0].groupMeta.story?.__group_team, undefined, '首次注入必须观察删除后的群元数据');
+    assert.deepEqual(fixture.injectionSnapshots[1].groupMeta, fixture.stores.groupMeta, '补偿注入必须观察恢复后的群元数据');
+    assert.equal(fixture.listRefreshes(), 0, '注入清理失败不得刷新为删除后的列表');
+    assert.match(deleteAlerts.at(-1) || '', /群聊删除清理注入失败/);
+    assert.deepEqual(JSON.parse(localValues.get('ST_SMS_GROUP_META')), fixture.stores.groupMeta);
+    assert.deepEqual(JSON.parse(localValues.get('ST_SMS_DATA_V2')), fixture.stores.histories);
+    assert.deepEqual(JSON.parse(localValues.get('ST_SMS_BIDIRECTIONAL')), fixture.stores.bidirectional);
+
+    let releaseConcurrentDeleteInjection;
+    const concurrentDeleteInjection = new Promise(resolve => { releaseConcurrentDeleteInjection = resolve; });
+    fixture = createDirectoryDeleteFixture({
+        currentGroupKey: '',
+        injectionResults: [concurrentDeleteInjection],
+    });
+    deleteAlerts.length = 0;
+    const pendingContactDelete = window.__pmDel('Alice');
+    await new Promise(resolve => setTimeout(resolve, 0));
+    assert.equal(fixture.injectionCalls(), 1, '首个删除事务必须已进入注入阶段');
+    assert.equal(directoryDeleteButtons.every(button => button.disabled), true, '删除事务期间必须禁用全部实体删除按钮');
+    assert.equal(await window.__pmDelGroup('__group_team'), false, '共享删除锁必须拒绝并发群聊删除');
+    assert.match(deleteAlerts.at(-1) || '', /已有删除操作正在进行/);
+    assert.ok(window.__pmGroupMeta.story.__group_team, '被锁拒绝的并发操作不得删除群元数据');
+    assert.ok(window.__pmHistories.story.__group_team, '被锁拒绝的并发操作不得删除群历史');
+    releaseConcurrentDeleteInjection({ written: 1, failedWrites: 0, cleared: 1, failedKeys: [] });
+    assert.equal(await pendingContactDelete, true, '首个删除事务完成后必须明确返回成功');
+    assert.equal(directoryDeleteButtons.every(button => !button.disabled), true, '删除事务结束后必须恢复删除按钮');
+    assert.equal(window.__pmHistories.story.Alice, undefined);
+    assert.ok(window.__pmGroupMeta.story.__group_team, '联系人删除成功不得覆盖被锁保护的群聊');
+
+    fixture = createDirectoryDeleteFixture({
+        currentGroupKey: '',
+        injectionResults: [
+            { written: 0, failedWrites: 1, cleared: 1, failedKeys: [] },
+            { written: 1, failedWrites: 0, cleared: 0, failedKeys: ['private-contact-key'] },
+        ],
+    });
+    runtimeBefore = directoryRuntimeSnapshot(fixture.state);
+    deleteAlerts.length = 0;
+    assert.equal(await window.__pmDel('Alice'), false, '联系人补偿注入失败必须明确返回失败');
+    assert.deepEqual(window.__pmHistories, fixture.stores.histories);
+    assert.deepEqual(window.__pmBidirectional, fixture.stores.bidirectional);
+    assert.deepEqual(directoryRuntimeSnapshot(fixture.state), runtimeBefore);
+    assert.ok(fixture.runtime.pendingMessages.get('story')?.has('Alice'));
+    assert.equal(fixture.listRefreshes(), 0);
+    assert.match(deleteAlerts.at(-1) || '', /原数据回滚也失败/);
+    assert.doesNotMatch(deleteAlerts.at(-1) || '', /private-contact-key/, '错误提示不得泄漏失败注入键');
+    assert.equal(directoryDeleteButtons.every(button => !button.disabled), true, '联系人补偿失败也必须释放删除锁');
+
+    fixture = createDirectoryDeleteFixture({
+        injectionResults: [
+            { written: 1, failedWrites: 0, cleared: 0, failedKeys: ['private-group-key'] },
+            { written: 0, failedWrites: 1, cleared: 1, failedKeys: [] },
+        ],
+    });
+    runtimeBefore = directoryRuntimeSnapshot(fixture.state);
+    deleteAlerts.length = 0;
+    assert.equal(await window.__pmDelGroup('__group_team'), false, '群聊补偿注入失败必须明确返回失败');
+    assert.deepEqual(window.__pmGroupMeta, fixture.stores.groupMeta);
+    assert.deepEqual(window.__pmHistories, fixture.stores.histories);
+    assert.deepEqual(window.__pmBidirectional, fixture.stores.bidirectional);
+    assert.deepEqual(directoryRuntimeSnapshot(fixture.state), runtimeBefore);
+    assert.ok(fixture.runtime.pendingMessages.get('story')?.has('__group_team'));
+    assert.equal(fixture.listRefreshes(), 0);
+    assert.match(deleteAlerts.at(-1) || '', /原数据回滚也失败/);
+    assert.doesNotMatch(deleteAlerts.at(-1) || '', /private-group-key/, '错误提示不得泄漏失败注入键');
+    assert.equal(directoryDeleteButtons.every(button => !button.disabled), true, '群聊补偿失败也必须释放删除锁');
 } finally {
     globalThis.confirm = previousDeleteConfirm;
     globalThis.alert = previousDeleteAlert;
@@ -2734,7 +2946,7 @@ assert.equal(migratedSingleOnSwitch.bubbles[0].sender, '');
 
 const currentBackup = {
     histories: {}, config: {}, theme: { darkMode: 'dark', ambientStatusEnabled: true }, profiles: [], groupMeta: {}, pokeConfig: {},
-    bidirectional: {}, emojis: [], characterBehavior: {}, wordyLimit: false,
+    bidirectional: {}, injectionConfig: { position: 1, depth: 6, historyLimit: 14 }, emojis: [], characterBehavior: {}, wordyLimit: false,
     desktopBg: 'https://example.test/current-desktop.png', bgGlobal: '', bgLocal: {}, interactiveScenes: { version: 1, scopes: {} },
     calendarStore: { version: 1, scopes: { current: { events: {} } } },
     calendarOccasions: { version: 1, scopes: {} },
@@ -2778,7 +2990,14 @@ for (const schemaVersion of [undefined, 2, 3]) {
 }
 assert.throws(() => parseBackupData({ schemaVersion: '3' }, currentBackup), /备份版本无效/);
 assert.deepEqual(parseBackupData({ schemaVersion: 7 }, currentBackup).calendarRecipes, currentBackup.calendarRecipes);
-assert.throws(() => parseBackupData({ schemaVersion: 8 }, currentBackup), /高于当前支持版本 7/);
+assert.deepEqual(parseBackupData({ schemaVersion: 7, injectionConfig: { position: 2, depth: 9, historyLimit: 3 } }, currentBackup).injectionConfig,
+    currentBackup.injectionConfig, '旧版备份不得导入尚未定义的统一注入规则');
+assert.deepEqual(parseBackupData({ schemaVersion: 8, injectionConfig: { position: 2, depth: 9, historyLimit: 3 } }, currentBackup).injectionConfig,
+    { position: 2, depth: 9, historyLimit: 3 });
+assert.deepEqual(parseBackupData({ schemaVersion: 8 }, currentBackup).injectionConfig,
+    { position: 0, depth: 0, historyLimit: 20 }, 'schema 8 缺少统一注入规则时必须使用默认值');
+assert.throws(() => parseBackupData({ schemaVersion: 8, injectionConfig: [] }, currentBackup), /injectionConfig 必须是对象/);
+assert.throws(() => parseBackupData({ schemaVersion: 9 }, currentBackup), /高于当前支持版本 8/);
 const parsedV4Backup = parseBackupData({
     schemaVersion: 4,
     theme: { darkMode: 'light', ambientStatusEnabled: true },
@@ -3534,6 +3753,7 @@ const createBackupTransactionFixture = (sceneId, ambientStatusEnabled) => ({
     groupMeta: {},
     pokeConfig: {},
     bidirectional: {},
+    injectionConfig: { position: 1, depth: sceneId === 'scene-old' ? 2 : 5, historyLimit: 11 },
     emojis: [],
     characterBehavior: {},
     wordyLimit: false,
@@ -3583,7 +3803,7 @@ globalThis.document = {
     querySelectorAll: () => [],
 };
 globalThis.alert = message => uiAlerts.push(String(message));
-const runCommittedImportFailureCase = async ({ configModel, injection, expectedDetail }) => {
+const runTransactionalImportFailureCase = async ({ configModel, injection, expectedDetail }) => {
     uiElements.get('pm-overlay').removed = false;
     const alertsBefore = uiAlerts.length;
     const closeCallsBefore = importCloseCalls;
@@ -3592,10 +3812,12 @@ const runCommittedImportFailureCase = async ({ configModel, injection, expectedD
     const cancelCallsBefore = importCancelCommunityCalls;
     const cancelCalendarCallsBefore = importCancelCalendarReasons.length;
     const reloadCalendarCallsBefore = importReloadCalendarCalls;
+    const expectedModel = window.__pmConfig.model;
+    const expectedPersistedModel = JSON.parse(localValues.get('ST_SMS_CONFIG')).model;
     importInjectionImpl = injection;
     const input = {
         files: [{ text: JSON.stringify({
-            schemaVersion: 5,
+            schemaVersion: 8,
             config: { apiUrl: 'https://imported.example', apiKey: 'imported-key', model: configModel, useIndependent: false },
         }) }],
         value: `${configModel}.json`,
@@ -3605,31 +3827,34 @@ const runCommittedImportFailureCase = async ({ configModel, injection, expectedD
     await fileReadCompletion;
 
     assert.equal(input.value, '');
-    assert.equal(window.__pmConfig.model, configModel, '后处理注入失败前导入数据必须已经应用到运行时');
-    assert.equal(JSON.parse(localValues.get('ST_SMS_CONFIG')).model, configModel, '后处理注入失败前导入数据必须已经持久化');
-    assert.equal(importClearInjectionCalls, clearCallsBefore + 1, '成功事务必须在 apply 前清理旧注入');
-    assert.equal(importCancelCommunityCalls, cancelCallsBefore + 1, '成功事务必须取消旧社区任务');
-    assert.deepEqual(importCancelCalendarReasons.slice(cancelCalendarCallsBefore), ['backup-apply'],
-        '成功导入事务必须在 apply 前取消旧日历与菜谱任务');
-    assert.equal(importReloadCalendarCalls, reloadCalendarCallsBefore + 1,
-        '成功导入持久化后必须重载日历与菜谱 runtime');
-    assert.equal(importInjectionCalls, injectionCallsBefore + 1, '事务提交后必须尝试刷新注入');
-    assert.equal(importCloseCalls, closeCallsBefore + 1, '数据已提交时即使注入失败也必须关闭旧界面');
-    assert.equal(uiElements.get('pm-overlay').removed, true, '数据已提交时即使注入失败也必须移除旧遮罩');
+    assert.equal(window.__pmConfig.model, expectedModel, '导入后的注入刷新失败必须恢复原运行时数据');
+    assert.equal(JSON.parse(localValues.get('ST_SMS_CONFIG')).model, expectedPersistedModel, '导入后的注入刷新失败必须恢复原持久化数据');
+    assert.equal(importClearInjectionCalls, clearCallsBefore + 2, '导入失败回滚必须分别在 apply 与 rollback 前清理注入');
+    assert.equal(importCancelCommunityCalls, cancelCallsBefore + 2, '导入失败回滚必须取消 apply 与 rollback 两阶段的社区任务');
+    assert.deepEqual(importCancelCalendarReasons.slice(cancelCalendarCallsBefore), ['backup-apply', 'backup-rollback'],
+        '导入失败回滚必须取消 apply 与 rollback 两阶段的日历与菜谱任务');
+    assert.equal(importReloadCalendarCalls, reloadCalendarCallsBefore + 2,
+        '导入后的注入刷新失败必须重载导入态与回滚态日历 runtime');
+    assert.equal(importInjectionCalls, injectionCallsBefore + 2, '导入失败回滚必须刷新导入态与恢复态注入');
+    assert.equal(importCloseCalls, closeCallsBefore, '事务已回滚时不得关闭当前手机界面');
+    assert.equal(uiElements.get('pm-overlay').removed, false, '事务已回滚时必须保留当前遮罩');
     assert.equal(uiAlerts.length, alertsBefore + 1);
-    assert.match(uiAlerts.at(-1), /数据已导入，但注入刷新失败/);
+    assert.match(uiAlerts.at(-1), /导入失败，原数据已恢复/);
     assert.match(uiAlerts.at(-1), expectedDetail);
-    assert.doesNotMatch(uiAlerts.at(-1), /未修改现有数据|原数据已恢复/);
 };
 
-await runCommittedImportFailureCase({
+await runTransactionalImportFailureCase({
     configModel: 'post-import-reject',
-    injection: async () => { throw new Error('宿主注入接口拒绝'); },
+    injection: async () => {
+        if (window.__pmConfig.model === 'post-import-reject') throw new Error('宿主注入接口拒绝');
+    },
     expectedDetail: /宿主注入接口拒绝/,
 });
-await runCommittedImportFailureCase({
+await runTransactionalImportFailureCase({
     configModel: 'post-import-diagnostic',
-    injection: async () => ({ written: 1, failedWrites: 2, cleared: 1, failedKeys: ['PHONE_SMS_MEMORY:stale'] }),
+    injection: async () => window.__pmConfig.model === 'post-import-diagnostic'
+        ? ({ written: 1, failedWrites: 2, cleared: 1, failedKeys: ['PHONE_SMS_MEMORY:stale'] })
+        : undefined,
     expectedDetail: /导入后的注入刷新失败：2 项写入失败，1 项清理失败/,
 });
 await backupHandlers.persist(await backupHandlers.apply(originalBackupFixture));
@@ -3762,6 +3987,64 @@ await assert.rejects(clearPluginData({
 });
 assert.ok(cleanupRollbackError.rollbackError instanceof AggregateError);
 
+const failedClearBidirectional = { story: ['Alice'] };
+const failedClearInjectionConfig = { position: 2, depth: 7, historyLimit: 13 };
+window.__pmBidirectional = structuredClone(failedClearBidirectional);
+window.__pmInjectionConfig = structuredClone(failedClearInjectionConfig);
+localValues.set('ST_SMS_BIDIRECTIONAL', JSON.stringify(failedClearBidirectional));
+localValues.set('ST_SMS_INJECTION_CONFIG', JSON.stringify(failedClearInjectionConfig));
+const failedClearModel = window.__pmConfig.model;
+const failedClearPersistedModel = JSON.parse(localValues.get('ST_SMS_CONFIG')).model;
+let failedClearReplayState = null;
+const failedClearInjectionBefore = importClearInjectionCalls;
+const failedClearApplyBefore = importInjectionCalls;
+const failedClearCloseBefore = importCloseCalls;
+const failedClearReloadBefore = importReloadCalendarCalls;
+const failedClearAlerts = [];
+globalThis.confirm = () => true;
+globalThis.alert = message => failedClearAlerts.push(String(message));
+globalThis.document = {
+    getElementById: id => id === 'pm-overlay' ? { remove() { throw new Error('失败清理不得关闭遮罩'); } } : null,
+    querySelectorAll: () => [],
+};
+importClearInjectionImpl = () => importClearInjectionCalls === failedClearInjectionBefore + 2
+    ? { written: 0, failedWrites: 1, failedKeys: [] }
+    : undefined;
+importInjectionImpl = async () => {
+    failedClearReplayState = {
+        bidirectional: structuredClone(window.__pmBidirectional),
+        injectionConfig: structuredClone(window.__pmInjectionConfig),
+    };
+};
+assert.equal(await window.__pmClearAllData(), false);
+assert.equal(window.__pmConfig.model, failedClearModel,
+    '应用空状态后的注入清理失败必须恢复原运行时数据');
+assert.equal(JSON.parse(localValues.get('ST_SMS_CONFIG')).model, failedClearPersistedModel,
+    '应用空状态后的注入清理失败必须恢复原持久化数据');
+assert.deepEqual(window.__pmBidirectional, failedClearBidirectional);
+assert.deepEqual(window.__pmInjectionConfig, failedClearInjectionConfig);
+assert.deepEqual(JSON.parse(localValues.get('ST_SMS_BIDIRECTIONAL')), failedClearBidirectional);
+assert.deepEqual(JSON.parse(localValues.get('ST_SMS_INJECTION_CONFIG')), failedClearInjectionConfig);
+assert.deepEqual(failedClearReplayState, {
+    bidirectional: failedClearBidirectional,
+    injectionConfig: failedClearInjectionConfig,
+}, '旧注入必须在会话开关和全局规则恢复后重放');
+assert.equal(importClearInjectionCalls, failedClearInjectionBefore + 2,
+    '失败清理必须覆盖删除前与应用空状态后的两次注入清理');
+assert.equal(importInjectionCalls, failedClearApplyBefore + 1,
+    '失败清理回滚后必须重新应用旧注入');
+assert.equal(importReloadCalendarCalls, failedClearReloadBefore + 3,
+    '失败清理必须重载空状态、恢复持久化及最终恢复后的日历 runtime');
+assert.equal(importCloseCalls, failedClearCloseBefore,
+    '失败清理不得关闭当前手机界面');
+assert.match(failedClearAlerts.at(-1), /清理失败，原数据已恢复/);
+assert.match(failedClearAlerts.at(-1), /应用空状态后清理注入失败：1 项写入失败/);
+importClearInjectionImpl = () => undefined;
+importInjectionImpl = async () => undefined;
+delete globalThis.confirm;
+delete globalThis.alert;
+delete globalThis.document;
+
 const clearCancelCommunityBefore = importCancelCommunityCalls;
 const clearCancelCalendarBefore = importCancelCalendarReasons.length;
 const clearInjectionBefore = importClearInjectionCalls;
@@ -3779,7 +4062,8 @@ assert.equal(importCancelCommunityCalls, clearCancelCommunityBefore + 1,
     '清空插件数据必须取消旧社区任务');
 assert.deepEqual(importCancelCalendarReasons.slice(clearCancelCalendarBefore), ['plugin-data-clear'],
     '清空插件数据必须取消旧日历与菜谱任务');
-assert.equal(importClearInjectionCalls, clearInjectionBefore + 1, '清空插件数据必须先清理旧注入');
+assert.equal(importClearInjectionCalls, clearInjectionBefore + 2,
+    '清空插件数据必须在删除前及应用空状态后各清理一次注入');
 assert.equal(importReloadCalendarCalls, clearReloadBefore + 1,
     '清空插件数据应用空状态后必须重载日历与菜谱 runtime');
 assert.equal(importCloseCalls, clearCloseBefore + 1, '清空成功后必须关闭旧界面');
@@ -4616,6 +4900,8 @@ const createEditedGroupRuntimeFixture = () => ({
     groupMembers: ['Alice', 'Bob'],
     groupExtras: ['旁白'],
     groupDisplayName: '旧群名',
+    groupRandomNpcEnabled: false,
+    groupNature: '旧群性质',
     groupColorMap: { Alice: '#112233', Bob: '#445566' },
 });
 const snapshotEditedGroupRuntime = state => ({
@@ -4627,6 +4913,8 @@ const snapshotEditedGroupRuntime = state => ({
     groupMembers: state.groupMembers.slice(),
     groupExtras: state.groupExtras.slice(),
     groupDisplayName: state.groupDisplayName,
+    groupRandomNpcEnabled: state.groupRandomNpcEnabled,
+    groupNature: state.groupNature,
     groupColorMap: { ...state.groupColorMap },
 });
 const editedGroupMeta = normalizeGroupMeta({
@@ -4634,6 +4922,8 @@ const editedGroupMeta = normalizeGroupMeta({
     members: ['Alice', 'Carol'],
     extras: ['记录员'],
     memberColors: { Alice: '#abcdef' },
+    randomNpcEnabled: true,
+    groupNature: '气氛友好的同学群',
 });
 
 const successfulEditedGroupState = createEditedGroupRuntimeFixture();
@@ -4648,6 +4938,8 @@ assert.deepEqual(successfulEditedGroupCalls, ['inject', 'switch'], '群编辑运
 assert.deepEqual(successfulEditedGroupState.groupMembers, ['Alice', 'Carol']);
 assert.deepEqual(successfulEditedGroupState.groupExtras, ['记录员']);
 assert.equal(successfulEditedGroupState.groupDisplayName, '新群名');
+assert.equal(successfulEditedGroupState.groupRandomNpcEnabled, true);
+assert.equal(successfulEditedGroupState.groupNature, '气氛友好的同学群');
 assert.deepEqual(successfulEditedGroupState.groupColorMap, {
     Alice: '#abcdef',
     Carol: '#b8e6c8',
@@ -4745,6 +5037,62 @@ await assert.rejects(() => commitEditedGroupUpdate({
     switchConversation: async () => { throw new Error('不应执行切换'); },
 }), /群聊设置提交注入失败：1 项写入失败/,
 '注入返回部分失败时必须进入事务补偿，而不是误判为成功');
+
+const createInjectionToggleButton = () => {
+    const attributes = new Map([['aria-checked', 'false']]);
+    const toggleClasses = makeClassList([]);
+    return {
+        disabled: false, isConnected: true, focusCalls: 0,
+        setAttribute(name, value) { attributes.set(name, String(value)); },
+        getAttribute(name) { return attributes.get(name) ?? null; },
+        querySelector(selector) {
+            assert.equal(selector, '.pm-control-toggle');
+            return { classList: toggleClasses };
+        },
+        focus(options) {
+            assert.deepEqual(options, { preventScroll: true });
+            this.focusCalls += 1;
+        },
+        toggleClasses,
+    };
+};
+
+const pendingToggleButton = createInjectionToggleButton();
+let resolvePendingToggle;
+let pendingToggleCalls = 0;
+let pendingToggleEnabled = false;
+const pendingToggle = toggleConversationInjectionControl(
+    pendingToggleButton,
+    () => {
+        pendingToggleCalls += 1;
+        return new Promise(resolve => { resolvePendingToggle = resolve; });
+    },
+    () => pendingToggleEnabled,
+);
+assert.equal(pendingToggleButton.disabled, true, '会话注入切换进行中必须禁用按钮');
+assert.equal(await toggleConversationInjectionControl(
+    pendingToggleButton, () => { pendingToggleCalls += 1; }, () => false,
+), false, '禁用期间的重复切换必须被拒绝');
+assert.equal(pendingToggleCalls, 1, '禁用期间不得重复执行会话注入事务');
+pendingToggleEnabled = true;
+resolvePendingToggle(true);
+assert.equal(await pendingToggle, true);
+assert.equal(pendingToggleButton.disabled, false, '会话注入切换完成后必须恢复按钮');
+assert.equal(pendingToggleButton.getAttribute('aria-checked'), 'true');
+assert.equal(pendingToggleButton.toggleClasses.contains('is-checked'), true);
+assert.equal(pendingToggleButton.focusCalls, 1, '切换完成后必须恢复焦点');
+
+const rolledBackToggleButton = createInjectionToggleButton();
+rolledBackToggleButton.setAttribute('aria-checked', 'true');
+rolledBackToggleButton.toggleClasses.toggle('is-checked', true);
+assert.equal(await toggleConversationInjectionControl(
+    rolledBackToggleButton, async () => false, () => false,
+), false);
+assert.equal(rolledBackToggleButton.getAttribute('aria-checked'), 'false',
+    '注入事务补偿后控件必须显示回滚后的实际状态');
+assert.equal(rolledBackToggleButton.toggleClasses.contains('is-checked'), false);
+assert.equal(rolledBackToggleButton.disabled, false);
+assert.equal(rolledBackToggleButton.focusCalls, 1, '注入事务补偿后也必须通过 finally 恢复焦点');
 
 const successfulInjectionEvents = [];
 assert.equal(await commitConversationInjectionUpdate({

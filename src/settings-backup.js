@@ -11,10 +11,11 @@ import {
 } from './calendar-storage.js';
 import { createEmptyWeatherStore, normalizeWeatherStore } from './calendar-weather.js';
 import { cloneEmojiLibrary } from './emoji-media.js';
+import { normalizeInjectionConfig } from './behavior-config.js';
 import { normalizeAmbientStatus, normalizeInteractiveStore, normalizePhoneUiState } from './interactive-scene-model.js';
 import { saveBgGlobal, saveBgLocal, saveDesktopBg } from './storage-background.js';
 import {
-    loadInteractiveScenes, loadPhoneUiState, saveBidirectional,
+    loadInteractiveScenes, loadPhoneUiState, saveBidirectional, saveInjectionConfig,
     saveCharacterBehavior, saveEmojis, saveGroupMeta, saveHistoriesStrict, saveInteractiveScenes,
     savePhoneUiState, savePokeConfig, saveProfiles, saveTheme, saveWordyLimit,
 } from './storage.js';
@@ -79,7 +80,9 @@ export function createEmptyCalendarBackupFields() {
     };
 }
 
-export async function runBackupTransaction({ capture, prepare = async snapshot => snapshot, apply, persist, beforeApply = async () => {} }) {
+export async function runBackupTransaction({
+    capture, prepare = async snapshot => snapshot, apply, persist, beforeApply = async () => {}, afterPersist = async () => {},
+}) {
     const snapshot = await capture();
     let prepared;
     try {
@@ -92,12 +95,14 @@ export async function runBackupTransaction({ capture, prepare = async snapshot =
         await beforeApply('apply');
         const nextState = await apply(undefined, prepared);
         await persist(nextState);
+        await afterPersist('apply', nextState);
     } catch (error) {
         let rollbackState;
         try {
             await beforeApply('rollback');
             rollbackState = await apply(snapshot);
             await persist(snapshot);
+            await afterPersist('rollback', rollbackState);
         } catch (rollbackError) {
             const combined = new Error(`${error.message}；原数据回滚失败：${rollbackError.message}`);
             combined.cause = error;
@@ -119,7 +124,8 @@ export function createBackupStateHandlers(deps = {}) {
             histories: clone(window.__pmHistories || {}), config: clone(window.__pmConfig || {}),
             theme: clone(window.__pmTheme || {}), profiles: clone(window.__pmProfiles || []),
             groupMeta: clone(window.__pmGroupMeta || {}), pokeConfig: clone(window.__pmPokeConfig || {}),
-            bidirectional: clone(window.__pmBidirectional || {}), emojis: cloneEmojiLibrary(window.__pmEmojis),
+            bidirectional: clone(window.__pmBidirectional || {}), injectionConfig: normalizeInjectionConfig(window.__pmInjectionConfig),
+            emojis: cloneEmojiLibrary(window.__pmEmojis),
             characterBehavior: clone(window.__pmCharacterBehavior || {}), wordyLimit: !!window.__pmWordyLimit,
             desktopBg: window.__pmDesktopBg || '', bgGlobal: window.__pmBgGlobal || '', bgLocal: clone(window.__pmBgLocal || {}),
             interactiveScenes, phoneUiState: loadPhoneUiState(interactiveScenes),
@@ -137,6 +143,7 @@ export function createBackupStateHandlers(deps = {}) {
         window.__pmTheme = clone(state.theme || {}); window.__pmTheme.ambientStatusEnabled = ambientStatus.enabled;
         window.__pmProfiles = clone(state.profiles || []); window.__pmGroupMeta = clone(state.groupMeta || {});
         window.__pmPokeConfig = clone(state.pokeConfig || {}); window.__pmBidirectional = clone(state.bidirectional || {});
+        window.__pmInjectionConfig = normalizeInjectionConfig(state.injectionConfig);
         window.__pmEmojis = cloneEmojiLibrary(state.emojis); window.__pmCharacterBehavior = clone(state.characterBehavior || {});
         window.__pmWordyLimit = !!state.wordyLimit; window.__pmDesktopBg = typeof state.desktopBg === 'string' ? state.desktopBg : '';
         window.__pmBgGlobal = typeof state.bgGlobal === 'string' ? state.bgGlobal : '';
@@ -160,7 +167,9 @@ export function createBackupStateHandlers(deps = {}) {
         if (!saveTheme()) throw new Error('主题配置保存失败：浏览器存储不可用');
         if (!saveProfiles()) throw new Error('API 档案保存失败：浏览器存储不可用');
         await saveGroupMeta();
-        if (!saveCharacterBehavior() || !savePokeConfig() || !saveBidirectional() || !saveWordyLimit()) throw new Error('插件配置保存失败：浏览器存储不可用');
+        if (!saveCharacterBehavior() || !savePokeConfig() || !saveBidirectional() || !saveInjectionConfig() || !saveWordyLimit()) {
+            throw new Error('插件配置保存失败：浏览器存储不可用');
+        }
         await saveEmojis(); await saveDesktopBg(); await saveBgGlobal(); await saveBgLocal(); await saveInteractiveScenes(interactiveScenes);
         if (!savePhoneUiState(phoneUiState, interactiveScenes)) throw new Error('手机界面状态保存失败：浏览器存储不可用');
         if (!saveCalendar(state.calendarStore) || !saveCalendarOccasions(state.calendarOccasions)

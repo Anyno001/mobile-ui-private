@@ -1,6 +1,6 @@
 const clone = value => JSON.parse(JSON.stringify(value));
 
-function injectionFailure(result, phase) {
+function injectionFailure(result, phase, subject = '群聊设置') {
     const failedWrites = Number.isInteger(result?.failedWrites) && result.failedWrites > 0 ? result.failedWrites : 0;
     const failedKeys = Array.isArray(result?.failedKeys) ? result.failedKeys : [];
     if (!failedWrites && !failedKeys.length) return null;
@@ -8,7 +8,7 @@ function injectionFailure(result, phase) {
         failedWrites ? `${failedWrites} 项写入失败` : '',
         failedKeys.length ? `${failedKeys.length} 项清理失败` : '',
     ].filter(Boolean).join('，');
-    return new Error(`群聊设置${phase}注入失败：${details}`);
+    return new Error(`${subject}${phase}注入失败：${details}`);
 }
 
 function snapshotConversationState(state) {
@@ -21,6 +21,8 @@ function snapshotConversationState(state) {
         groupMembers: state.groupMembers.slice(),
         groupExtras: state.groupExtras.slice(),
         groupDisplayName: state.groupDisplayName,
+        groupRandomNpcEnabled: state.groupRandomNpcEnabled,
+        groupNature: state.groupNature,
         groupColorMap: { ...state.groupColorMap },
     };
 }
@@ -34,6 +36,8 @@ function restoreConversationState(state, snapshot) {
     state.groupMembers = snapshot.groupMembers;
     state.groupExtras = snapshot.groupExtras;
     state.groupDisplayName = snapshot.groupDisplayName;
+    state.groupRandomNpcEnabled = snapshot.groupRandomNpcEnabled;
+    state.groupNature = snapshot.groupNature;
     state.groupColorMap = snapshot.groupColorMap;
 }
 
@@ -45,6 +49,8 @@ export async function refreshEditedGroupRuntime({
         state.groupMembers = updated.members.slice();
         state.groupExtras = updated.extras.slice();
         state.groupDisplayName = updated.name;
+        state.groupRandomNpcEnabled = updated.randomNpcEnabled;
+        state.groupNature = updated.groupNature;
         state.groupColorMap = {};
         updated.members.forEach((name, index) => {
             state.groupColorMap[name] = updated.memberColors[name] || GROUP_COLORS[index % GROUP_COLORS.length].bg;
@@ -90,49 +96,10 @@ export async function commitEditedGroupUpdate({
     }
 }
 
-function conversationInjectionFailure(result, phase) {
-    const failedWrites = Number.isInteger(result?.failedWrites) && result.failedWrites > 0 ? result.failedWrites : 0;
-    const failedKeys = Array.isArray(result?.failedKeys) ? result.failedKeys : [];
-    if (!failedWrites && !failedKeys.length) return null;
-    const details = [
-        failedWrites ? `${failedWrites} 项写入失败` : '',
-        failedKeys.length ? `${failedKeys.length} 项清理失败` : '',
-    ].filter(Boolean).join('，');
-    return new Error(`上下文注入设置${phase}失败：${details}`);
-}
-
-export async function commitConversationInjectionUpdate({
-    persistCandidate, restoreSnapshot, persistSnapshot, applyInjection,
-}) {
-    try {
-        await persistCandidate();
-        const result = await applyInjection();
-        const error = conversationInjectionFailure(result, '应用');
-        if (error) throw error;
-        return true;
-    } catch (error) {
-        let rollbackError = null;
-        try {
-            restoreSnapshot();
-            await persistSnapshot();
-            const result = await applyInjection();
-            const compensationError = conversationInjectionFailure(result, '补偿');
-            if (compensationError) throw compensationError;
-        } catch (failure) {
-            rollbackError = failure;
-        }
-        if (!rollbackError) throw error;
-        const combined = new Error(`${error.message || '上下文注入设置保存失败'}；原配置回滚也失败，请勿刷新并立即导出备份：${rollbackError.message}`);
-        combined.cause = error;
-        combined.rollbackError = rollbackError;
-        throw combined;
-    }
-}
-
 import {
-    BIDIRECTIONAL_LIMIT, DEFAULT_GROUP_INJECTION, EXTENSION_PROMPT_POSITIONS, MAX_INJECTION_DEPTH, POPOVER_SUPPORTED,
+    POPOVER_SUPPORTED,
 } from './constants.js';
-import { normalizeGroupInjection, normalizeGroupMeta } from './behavior-config.js';
+import { normalizeGroupMeta } from './behavior-config.js';
 import { GROUP_COLORS } from './groups.js';
 import { escapeAttr, escapeHtml, safeJS } from './ui.js';
 import { CLOSE_ICON_SVG, SPARKLES_ICON_SVG, UNLINK_ICON_SVG } from './icons.js';
@@ -144,124 +111,26 @@ import {
 
 export function installPhoneDirectory(state, deps) {
     const { runtime, getStorageId, makeOverlay, applyBidirectionalInjection } = deps;
+    let deleteTransactionActive = false;
 
-    function injectionPositionLabel(position) {
-        return ({
-            [EXTENSION_PROMPT_POSITIONS.NONE]: '关闭',
-            [EXTENSION_PROMPT_POSITIONS.IN_PROMPT]: '主提示词内',
-            [EXTENSION_PROMPT_POSITIONS.IN_CHAT]: '聊天记录内',
-            [EXTENSION_PROMPT_POSITIONS.BEFORE_PROMPT]: '主提示词前',
-        })[position] || '主提示词内';
-    }
-
-    function conversationInjectionState(targetKey) {
-        const id = getStorageId();
-        const isGroup = String(targetKey).startsWith('__group_');
-        const meta = isGroup ? normalizeGroupMeta(window.__pmGroupMeta[id]?.[targetKey]) : null;
-        const injection = meta?.injection || DEFAULT_GROUP_INJECTION;
-        const selected = (window.__pmBidirectional[id] || []).includes(targetKey);
-        return {
-            id, isGroup, meta, injection,
-            enabled: selected && injection.position !== EXTENSION_PROMPT_POSITIONS.NONE,
-        };
-    }
-
-    window.__pmConversationInjectionSummary = targetKey => {
-        const current = conversationInjectionState(targetKey);
-        if (!current.enabled) return '已关闭';
-        return `${injectionPositionLabel(current.injection.position)} · 深度 ${current.injection.depth} · 最近 ${current.isGroup ? current.injection.historyLimit : BIDIRECTIONAL_LIMIT} 条`;
+    const setDeleteButtonsDisabled = disabled => {
+        const buttons = document.querySelectorAll?.('.pm-entity-delete') || [];
+        for (const button of buttons) button.disabled = disabled;
     };
 
-    window.__pmSyncConversationInjectionForm = () => {
-        const enabled = document.getElementById('pm-conversation-injection-enabled')?.checked === true;
-        for (const element of document.querySelectorAll('.pm-conversation-injection-config')) {
-            element.disabled = !enabled || element.dataset.readonly === 'true';
+    const acquireDeleteTransaction = () => {
+        if (deleteTransactionActive) {
+            alert('已有删除操作正在进行，请等待完成后再试。');
+            return false;
         }
-        const status = document.getElementById('pm-conversation-injection-status');
-        if (status) status.textContent = enabled ? '启用后会把最近聊天作为私密上下文注入。' : '当前会话不会写入主提示词上下文。';
-    };
-
-    window.__pmShowConversationInjection = (targetKey, returnView = 'settings') => {
-        if (!targetKey) return false;
-        const current = conversationInjectionState(targetKey);
-        if (current.isGroup && !current.meta?.name) return false;
-        const title = current.isGroup ? current.meta.name : targetKey;
-        const position = current.injection.position === EXTENSION_PROMPT_POSITIONS.NONE
-            ? EXTENSION_PROMPT_POSITIONS.IN_PROMPT : current.injection.position;
-        const backAction = returnView === 'conversation-settings'
-            ? 'window.__pmShowConversationSettings()'
-            : `window.__pmShowCharacterBehavior('${safeJS(targetKey)}')`;
-        makeOverlay(`
-    <div class="pm-modal pm-modal-wide pm-conversation-injection-modal">
-      <div class="pm-modal-header"><button type="button" onclick="${backAction}" class="pm-modal-close" aria-label="返回">返回</button><b>上下文注入</b><button type="button" onclick="window.__pmCloseOverlay()" class="pm-modal-close" title="关闭" aria-label="关闭">${CLOSE_ICON_SVG}</button></div>
-      <div class="pm-modal-scroll pm-conversation-injection-body">
-        <div class="pm-conversation-injection-target"><b>${escapeHtml(title)}</b><span>${current.isGroup ? '群聊' : '私聊'}</span></div>
-        <label class="pm-global-setting" for="pm-conversation-injection-enabled">
-          <span><b>启用上下文注入</b><small id="pm-conversation-injection-status"></small></span>
-          <input id="pm-conversation-injection-enabled" type="checkbox" ${current.enabled ? 'checked' : ''} onchange="window.__pmSyncConversationInjectionForm()">
-        </label>
-        <label class="pm-conversation-injection-field">注入位置
-          <select id="pm-conversation-injection-position" class="pm-cfg-input pm-conversation-injection-config" ${current.isGroup ? '' : 'data-readonly="true" disabled'}>
-            <option value="0" ${position === 0 ? 'selected' : ''}>主提示词内</option>
-            <option value="1" ${position === 1 ? 'selected' : ''}>聊天记录内</option>
-            <option value="2" ${position === 2 ? 'selected' : ''}>主提示词前</option>
-          </select>
-        </label>
-        <label class="pm-conversation-injection-field">注入深度（0-${MAX_INJECTION_DEPTH}）
-          <input id="pm-conversation-injection-depth" class="pm-cfg-input pm-conversation-injection-config" type="number" min="0" max="${MAX_INJECTION_DEPTH}" value="${current.injection.depth}" ${current.isGroup ? '' : 'data-readonly="true" disabled'}>
-        </label>
-        <label class="pm-conversation-injection-field">最近消息范围
-          <input id="pm-conversation-injection-limit" class="pm-cfg-input pm-conversation-injection-config" type="number" min="1" max="100" value="${current.isGroup ? current.injection.historyLimit : BIDIRECTIONAL_LIMIT}" ${current.isGroup ? '' : 'data-readonly="true" disabled'}>
-        </label>
-        <div class="pm-cfg-tip pm-conversation-injection-note">${current.isGroup
-            ? '群聊可独立配置位置、深度和历史范围。'
-            : `私聊沿用系统安全参数：主提示词内、深度 0、最近 ${BIDIRECTIONAL_LIMIT} 条。`}</div>
-      </div>
-      <div class="pm-modal-add"><button type="button" class="pm-action-button" onclick="window.__pmSaveConversationInjection('${safeJS(targetKey)}','${safeJS(returnView)}')">保存上下文注入</button></div>
-    </div>`);
-        window.__pmSyncConversationInjectionForm();
+        deleteTransactionActive = true;
+        setDeleteButtonsDisabled(true);
         return true;
     };
 
-    window.__pmSaveConversationInjection = async (targetKey, returnView = 'settings') => {
-        const current = conversationInjectionState(targetKey);
-        if (current.isGroup && !current.meta?.name) return false;
-        const enabled = document.getElementById('pm-conversation-injection-enabled')?.checked === true;
-        const bidirectionalSnapshot = clone(window.__pmBidirectional);
-        const groupMetaSnapshot = clone(window.__pmGroupMeta);
-        const selected = new Set(window.__pmBidirectional[current.id] || []);
-        if (enabled) selected.add(targetKey); else selected.delete(targetKey);
-        window.__pmBidirectional[current.id] = [...selected];
-        if (current.isGroup) {
-            const injection = normalizeGroupInjection({
-                position: enabled ? document.getElementById('pm-conversation-injection-position')?.value : EXTENSION_PROMPT_POSITIONS.NONE,
-                depth: document.getElementById('pm-conversation-injection-depth')?.value,
-                historyLimit: document.getElementById('pm-conversation-injection-limit')?.value,
-            });
-            window.__pmGroupMeta[current.id][targetKey] = normalizeGroupMeta({ ...current.meta, injection });
-        }
-        try {
-            await commitConversationInjectionUpdate({
-                persistCandidate: async () => {
-                    if (current.isGroup) await saveGroupMeta();
-                    if (!saveBidirectional()) throw new Error('上下文注入设置保存失败：浏览器存储不可用或空间不足');
-                },
-                restoreSnapshot: () => {
-                    window.__pmBidirectional = bidirectionalSnapshot;
-                    window.__pmGroupMeta = groupMetaSnapshot;
-                },
-                persistSnapshot: async () => {
-                    if (current.isGroup) await saveGroupMeta();
-                    if (!saveBidirectional()) throw new Error('上下文注入设置回滚失败');
-                },
-                applyInjection: () => applyBidirectionalInjection(),
-            });
-            window.__pmShowConversationInjection(targetKey, returnView);
-            return true;
-        } catch (error) {
-            alert(error.message || '上下文注入设置保存失败');
-            return false;
-        }
+    const releaseDeleteTransaction = () => {
+        deleteTransactionActive = false;
+        setDeleteButtonsDisabled(false);
     };
 
     function parseGroupMembers(value) {
@@ -318,6 +187,21 @@ export function installPhoneDirectory(state, deps) {
             ${groupMeta.members.map((name, index) => `<label style="display:contents;"><span style="font-size:12px;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(name)}</span><input class="pm-group-member-color" data-member="${escapeAttr(name)}" type="color" value="${escapeAttr(groupMeta.memberColors[name] || GROUP_COLORS[index % GROUP_COLORS.length].bg)}"></label>`).join('')}
           </div>
         </div>` : '';
+        const randomNpcHtml = mode === 'edit' ? `
+        <div style="padding-top:12px;border-top:1px solid var(--pm-color-border-subtle);">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
+            <div><div class="pm-cfg-label">允许路人群友随机出现</div><div class="pm-cfg-tip" style="text-align:left;">开启后，AI 可以生成不在固定成员名单中的临时群友。</div></div>
+            <div id="pm-group-random-npc" class="pm-custom-check pm-bi-style ${groupMeta.randomNpcEnabled ? 'is-checked' : ''}"
+              role="checkbox" tabindex="0" aria-checked="${groupMeta.randomNpcEnabled}"
+              onclick="this.classList.toggle('is-checked');this.setAttribute('aria-checked',String(this.classList.contains('is-checked')))"
+              onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();this.click()}"
+              style="cursor:pointer;width:22px;height:22px;min-width:22px;min-height:22px;flex-shrink:0;border-radius:50%;"></div>
+          </div>
+          <label class="pm-cfg-label" style="display:block;margin-top:12px;">群聊性质
+            <textarea id="pm-group-nature" class="pm-cfg-input" maxlength="200" rows="3" placeholder="例如：这是一个气氛很好的同学群">${escapeHtml(groupMeta.groupNature)}</textarea>
+          </label>
+          <div class="pm-cfg-tip" style="text-align:left;">路人群友会参考这段描述决定身份、语气和互动方式。</div>
+        </div>` : '';
 
         makeOverlay(`
     <div class="pm-modal pm-modal-wide">
@@ -331,6 +215,7 @@ export function installPhoneDirectory(state, deps) {
         <div id="pm-group-preview" style="display:flex;flex-wrap:wrap;gap:4px;"></div>
 
         ${mode === 'edit' ? `
+        ${randomNpcHtml}
         ${memberColorHtml}
         ${emojiCheckHtml}
         <div style="margin-top:0px;padding-top:8px;border-top:1px solid var(--pm-color-border-subtle);">
@@ -383,11 +268,15 @@ export function installPhoneDirectory(state, deps) {
         try {
             if (!window.__pmGroupMeta[id]) window.__pmGroupMeta[id] = {};
             const previous = window.__pmGroupMeta[id][state.currentGroupKey] || {};
+            const randomNpcEnabled = document.getElementById('pm-group-random-npc')?.classList.contains('is-checked') === true;
+            const groupNature = document.getElementById('pm-group-nature')?.value || '';
             const memberColors = {};
             document.querySelectorAll('.pm-group-member-color').forEach(input => {
                 if (names.includes(input.dataset.member) && /^#[0-9a-f]{6}$/i.test(input.value)) memberColors[input.dataset.member] = input.value;
             });
-            const updated = normalizeGroupMeta({ ...previous, name: groupName, members: names, memberColors });
+            const updated = normalizeGroupMeta({
+                ...previous, name: groupName, members: names, memberColors, randomNpcEnabled, groupNature,
+            });
             window.__pmGroupMeta[id][state.currentGroupKey] = updated;
             const checkEl = document.getElementById('pm-poke-check-group');
             const intervalEl = document.getElementById('pm-poke-interval-group');
@@ -466,7 +355,9 @@ export function installPhoneDirectory(state, deps) {
                 window.__pmGroupMeta[id][groupKey] = normalizeGroupMeta({ name: groupName, members: names });
                 await saveGroupMeta();
                 document.getElementById('pm-overlay')?.remove();
-                state.isGroupChat = true; state.groupMembers = names; state.groupExtras = []; state.groupDisplayName = groupName; state.currentGroupKey = groupKey;
+                state.isGroupChat = true; state.groupMembers = names; state.groupExtras = [];
+                state.groupDisplayName = groupName; state.currentGroupKey = groupKey;
+                state.groupRandomNpcEnabled = false; state.groupNature = '';
                 state.groupColorMap = {}; names.forEach((n, i) => { state.groupColorMap[n] = GROUP_COLORS[i % GROUP_COLORS.length]; });
                 window.__pmSwitch(groupKey, previousSaveKey, state.activeStorageId, { previousConversationContext });
             }
@@ -490,7 +381,7 @@ export function installPhoneDirectory(state, deps) {
         const renderSingle = singleList.map(n => {
             return `<div class="pm-li">
                 <span onclick="window.__pmSwitchContact('${safeJS(n)}')">${escapeHtml(n)}</span>
-                <button type="button" class="pm-entity-delete" onclick="window.__pmDel('${safeJS(n)}')" aria-label="永久删除联系人 ${escapeAttr(n)}" title="永久删除联系人">${UNLINK_ICON_SVG}<span>解除关系</span></button>
+                <button type="button" class="pm-entity-delete" onclick="window.__pmDel('${safeJS(n)}')" aria-label="永久删除联系人 ${escapeAttr(n)}" title="永久删除联系人">${UNLINK_ICON_SVG}</button>
             </div>`;
         }).join('');
 
@@ -498,7 +389,7 @@ export function installPhoneDirectory(state, deps) {
             const meta = groups[key];
             return `<div class="pm-li">
                 <span onclick="window.__pmSwitchContact('${safeJS(key)}')">${escapeHtml(meta.name)}<span class="pm-group-sub">${escapeHtml(meta.members.join('、'))}</span></span>
-                <button type="button" class="pm-entity-delete" onclick="window.__pmDelGroup('${safeJS(key)}')" aria-label="永久删除群聊 ${escapeAttr(meta.name)}" title="永久删除群聊">${UNLINK_ICON_SVG}<span>永久删除</span></button>
+                <button type="button" class="pm-entity-delete" onclick="window.__pmDelGroup('${safeJS(key)}')" aria-label="永久删除群聊 ${escapeAttr(meta.name)}" title="永久删除群聊">${UNLINK_ICON_SVG}</button>
             </div>`;
         }).join('');
 
@@ -555,12 +446,14 @@ export function installPhoneDirectory(state, deps) {
         const id = getStorageId();
         const groupName = window.__pmGroupMeta[id]?.[key]?.name || '未命名群聊';
         if (!confirm(`永久删除群聊“${groupName}”？聊天记录、注入关系、背景和自动消息配置都会一并删除，且无法恢复。`)) return false;
-        const snapshots = {
-            groupMeta: JSON.parse(JSON.stringify(window.__pmGroupMeta)), histories: JSON.parse(JSON.stringify(window.__pmHistories)),
-            bidirectional: JSON.parse(JSON.stringify(window.__pmBidirectional)), poke: JSON.parse(JSON.stringify(window.__pmPokeConfig)),
-            backgrounds: JSON.parse(JSON.stringify(window.__pmBgLocal)),
-        };
+        if (!acquireDeleteTransaction()) return false;
+        let snapshots = null;
         try {
+            snapshots = {
+                groupMeta: clone(window.__pmGroupMeta), histories: clone(window.__pmHistories),
+                bidirectional: clone(window.__pmBidirectional), poke: clone(window.__pmPokeConfig),
+                backgrounds: clone(window.__pmBgLocal),
+            };
             if (window.__pmGroupMeta[id]) delete window.__pmGroupMeta[id][key];
             if (window.__pmHistories[id]) delete window.__pmHistories[id][key];
             const arr = window.__pmBidirectional[id] || [], idx = arr.indexOf(key);
@@ -573,11 +466,22 @@ export function installPhoneDirectory(state, deps) {
             if (!savePokeConfig()) throw new Error('自动消息配置保存失败');
             if (!saveBidirectional()) throw new Error('注入配置保存失败');
             if (snapshots.backgrounds[bgKey]) await saveBgLocal();
+            const injectionResult = await applyBidirectionalInjection();
+            const injectionError = injectionFailure(injectionResult, '删除清理', '群聊');
+            if (injectionError) throw injectionError;
             await window.__pmShowList();
-            applyBidirectionalInjection();
             clearPendingMessages(runtime, id, key);
-            if (state.currentGroupKey === key) { state.isGroupChat = false; state.currentGroupKey = ''; state.currentPersona = ''; state.conversationHistory = []; state.groupMembers = []; state.groupExtras = []; state.groupDisplayName = ''; state.groupColorMap = {}; }
+            if (state.currentGroupKey === key) {
+                state.isGroupChat = false; state.currentGroupKey = ''; state.currentPersona = ''; state.conversationHistory = [];
+                state.groupMembers = []; state.groupExtras = []; state.groupDisplayName = '';
+                state.groupRandomNpcEnabled = false; state.groupNature = ''; state.groupColorMap = {};
+            }
+            return true;
         } catch (error) {
+            if (!snapshots) {
+                alert(error.message || '群聊删除失败');
+                return false;
+            }
             window.__pmGroupMeta = snapshots.groupMeta; window.__pmHistories = snapshots.histories;
             window.__pmBidirectional = snapshots.bidirectional; window.__pmPokeConfig = snapshots.poke; window.__pmBgLocal = snapshots.backgrounds;
             let rollbackError = null;
@@ -586,12 +490,18 @@ export function installPhoneDirectory(state, deps) {
                 await saveGroupMeta();
                 if (!savePokeConfig() || !saveBidirectional()) throw new Error('本地配置回滚失败');
                 await saveBgLocal();
+                const rollbackResult = await applyBidirectionalInjection();
+                const rollbackInjectionError = injectionFailure(rollbackResult, '删除补偿', '群聊');
+                if (rollbackInjectionError) throw rollbackInjectionError;
             } catch (rollbackFailure) {
                 rollbackError = rollbackFailure;
             }
             alert(rollbackError
                 ? `${error.message || '群聊删除失败'}；原数据回滚也失败，请勿刷新并立即导出备份：${rollbackError.message}`
                 : (error.message || '群聊删除失败'));
+            return false;
+        } finally {
+            releaseDeleteTransaction();
         }
     };
 
@@ -599,13 +509,15 @@ export function installPhoneDirectory(state, deps) {
     window.__pmDel = async (name) => {
         const id = getStorageId();
         if (!confirm(`永久删除联系人“${name}”？聊天记录、注入关系、背景和自动消息配置都会一并删除，且无法恢复。`)) return false;
-        const snapshots = {
-            histories: JSON.parse(JSON.stringify(window.__pmHistories)),
-            bidirectional: JSON.parse(JSON.stringify(window.__pmBidirectional)),
-            poke: JSON.parse(JSON.stringify(window.__pmPokeConfig)),
-            backgrounds: JSON.parse(JSON.stringify(window.__pmBgLocal)),
-        };
+        if (!acquireDeleteTransaction()) return false;
+        let snapshots = null;
         try {
+            snapshots = {
+                histories: clone(window.__pmHistories),
+                bidirectional: clone(window.__pmBidirectional),
+                poke: clone(window.__pmPokeConfig),
+                backgrounds: clone(window.__pmBgLocal),
+            };
             if (window.__pmHistories[id]) delete window.__pmHistories[id][name];
             const arr = window.__pmBidirectional[id] || [], idx = arr.indexOf(name);
             if (idx >= 0) arr.splice(idx, 1);
@@ -616,11 +528,18 @@ export function installPhoneDirectory(state, deps) {
             if (!savePokeConfig()) throw new Error('自动消息配置保存失败');
             if (!saveBidirectional()) throw new Error('注入配置保存失败');
             if (snapshots.backgrounds[bgKey]) await saveBgLocal();
+            const injectionResult = await applyBidirectionalInjection();
+            const injectionError = injectionFailure(injectionResult, '删除清理', '联系人');
+            if (injectionError) throw injectionError;
             await window.__pmShowList();
-            applyBidirectionalInjection();
             clearPendingMessages(runtime, id, name);
             if (!state.isGroupChat && state.currentPersona === name) { state.currentPersona = ''; state.conversationHistory = []; }
+            return true;
         } catch (error) {
+            if (!snapshots) {
+                alert(error.message || '联系人删除失败');
+                return false;
+            }
             window.__pmHistories = snapshots.histories; window.__pmBidirectional = snapshots.bidirectional;
             window.__pmPokeConfig = snapshots.poke; window.__pmBgLocal = snapshots.backgrounds;
             let rollbackError = null;
@@ -628,12 +547,18 @@ export function installPhoneDirectory(state, deps) {
                 await saveHistoriesStrict();
                 if (!savePokeConfig() || !saveBidirectional()) throw new Error('本地配置回滚失败');
                 await saveBgLocal();
+                const rollbackResult = await applyBidirectionalInjection();
+                const rollbackInjectionError = injectionFailure(rollbackResult, '删除补偿', '联系人');
+                if (rollbackInjectionError) throw rollbackInjectionError;
             } catch (rollbackFailure) {
                 rollbackError = rollbackFailure;
             }
             alert(rollbackError
                 ? `${error.message || '联系人删除失败'}；原数据回滚也失败，请勿刷新并立即导出备份：${rollbackError.message}`
                 : (error.message || '联系人删除失败'));
+            return false;
+        } finally {
+            releaseDeleteTransaction();
         }
     };
     Object.assign(deps, { showGroupForm });

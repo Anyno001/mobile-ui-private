@@ -30,7 +30,7 @@ export function installPhoneChat(state, deps) {
     async function fetchSMS(userMsg, directorNote, task, request) {
         const {
             storageId, saveKey, isGroup, currentPersona,
-            groupMembers, groupDisplayName, targetHistory,
+            groupMembers, groupDisplayName, groupRandomNpcEnabled, groupNature, targetHistory,
         } = request;
         // 存入历史前把表情包标记替换为可读描述，让 AI 理解表情含义但不学习格式
         const userMsgClean = userMsg.replace(/\[emo:([^\]:]+):(\d+)\]/g, (_, setName, idxStr) => {
@@ -54,11 +54,12 @@ export function installPhoneChat(state, deps) {
             injectedInstruction = buildGroupInjectedInstruction({
                 groupName, memberList, userName, userBlock,
                 cardScenario, worldBookText, mainChatText, smsHistoryText, currentQuoteText, directorNote,
-                userMsgClean, userMsg,
+                userMsgClean, userMsg, randomNpcEnabled: groupRandomNpcEnabled, groupNature,
             });
             systemPrompt = buildGroupSystemPrompt({
                 memberList, groupName, userName, userBlock,
                 cardDesc, cardPersonality, cardScenario, worldBookText, mainChatText,
+                randomNpcEnabled: groupRandomNpcEnabled, groupNature,
             });
         } else {
             const contextBlockMain = [
@@ -114,7 +115,9 @@ export function installPhoneChat(state, deps) {
             }
             let resultData;
             if (isGroup) {
-                const parsed = parseGroupResponse(raw, groupMembers);
+                const parsed = parseGroupResponse(raw, groupMembers, {
+                    allowUnknownSpeakers: groupRandomNpcEnabled === true,
+                });
                 if (parsed.length) {
                     const contentParts = parsed.map(p => `${p.name}：${p.sentences.join(' / ')}`);
                     const assistantEntry = createMessageEntry({
@@ -278,6 +281,8 @@ export function installPhoneChat(state, deps) {
             currentPersona: state.currentPersona,
             groupMembers: state.groupMembers.slice(),
             groupDisplayName: state.groupDisplayName,
+            groupRandomNpcEnabled: state.groupRandomNpcEnabled,
+            groupNature: state.groupNature,
             targetHistory: state.conversationHistory.slice(),
             userHistoryEntry: createMessageEntry({
                 role: 'user',

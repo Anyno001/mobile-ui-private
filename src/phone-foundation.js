@@ -1,6 +1,7 @@
 import {
     POPOVER_SUPPORTED,
 } from './constants.js';
+import { normalizeInjectionConfig } from './behavior-config.js';
 import { normalizeBudgetConfig } from './budget.js';
 import { THEME_PRESETS } from './config.js';
 import { createEmojiRenderBudget } from './emoji-media.js';
@@ -217,6 +218,7 @@ export function installPhoneFoundation(state, deps) {
     window.__pmHistories = window.__pmHistories || {};
     window.__pmConfig = window.__pmConfig || { apiUrl: '', apiKey: '', model: '', temperature: 1.2, useIndependent: false };
     window.__pmProfiles = window.__pmProfiles || [];
+    window.__pmInjectionConfig = normalizeInjectionConfig(window.__pmInjectionConfig);
     window.__pmBidirectional = window.__pmBidirectional || {};
     window.__pmTheme = window.__pmTheme || {
         preset: 'default',
@@ -406,6 +408,7 @@ export function installPhoneFoundation(state, deps) {
             runtime,
             currentStorageId: id,
             currentActorName,
+            injectionConfig: window.__pmInjectionConfig,
             selectedByStorage: window.__pmBidirectional,
             historiesByStorage: window.__pmHistories,
             groupsByStorage: window.__pmGroupMeta,

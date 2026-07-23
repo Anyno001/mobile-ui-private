@@ -1,6 +1,6 @@
 import { escapeAttr, escapeHtml } from './ui.js';
 import {
-    CALENDAR_ICON_SVG, CLOSE_ICON_SVG, CONTACTS_ICON_SVG, EDIT_ICON_SVG,
+    CALENDAR_ICON_SVG, CHAT_ICON_SVG, CLOSE_ICON_SVG, CONTACTS_ICON_SVG, EDIT_ICON_SVG,
     EMOJI_ICON_SVG, SETTINGS_ICON_SVG, TRASH_ICON_SVG,
 } from './icons.js';
 import {
@@ -10,7 +10,28 @@ import {
 const controlActionLabel = action => ({
     calendar: '打开日历',
     contacts: '打开联系人',
+    'injection-toggle': '切换当前会话注入',
+    'injection-settings': '打开上下文注入设置',
 })[action] || '执行快捷操作';
+
+export async function toggleConversationInjectionControl(button, toggleInjection, isEnabled) {
+    if (button?.disabled) return false;
+    if (button) button.disabled = true;
+    try {
+        const saved = await toggleInjection();
+        const enabled = isEnabled() === true;
+        if (button?.isConnected) {
+            button.setAttribute('aria-checked', String(enabled));
+            button.querySelector('.pm-control-toggle')?.classList.toggle('is-checked', enabled);
+        }
+        return saved;
+    } finally {
+        if (button?.isConnected) {
+            button.disabled = false;
+            button.focus({ preventScroll: true });
+        }
+    }
+}
 
 export function runControlMenuAction(action, runAction, reportActionError) {
     const result = runAction(action);
@@ -108,11 +129,16 @@ export function installPhoneControlCenter(state, deps) {
 </div>`, { onClose: () => { editingTarget = null; } });
     }
 
-    function runControlAction(action) {
+    function runControlAction(action, button = null) {
         runtime.overlayOpener = state.phoneWindow?.querySelector('.pm-expand-btn') || null;
+        if (action === 'injection-toggle') return toggleConversationInjectionControl(
+            button, window.__pmToggleCurrentConversationInjection,
+            () => window.__pmCurrentConversationInjectionEnabled?.() === true,
+        );
         closeControlCenter();
         if (action === 'pending') showPendingManager();
         else if (action === 'settings') window.__pmShowConversationSettings();
+        else if (action === 'injection-settings') return window.__pmShowConversationInjection();
         else if (action === 'contacts') return window.__pmShowList();
         else if (action === 'emoji') window.__pmShowEmojiManager();
         else if (action === 'group') window.__pmEditGroup();
@@ -123,8 +149,8 @@ export function installPhoneControlCenter(state, deps) {
     function bindControlMenu(menu, anchor) {
         menu.addEventListener('click', event => {
             const button = event.target.closest('button[data-action]');
-            if (!button || !menu.contains(button)) return;
-            runControlMenuAction(button.dataset.action, runControlAction, (error, action) => {
+            if (!button || !menu.contains(button) || button.disabled) return;
+            runControlMenuAction(button.dataset.action, action => runControlAction(action, button), (error, action) => {
                 alert(`${controlActionLabel(action)}失败：${error?.message || '未知错误'}`);
             });
         });
@@ -156,9 +182,13 @@ export function installPhoneControlCenter(state, deps) {
         menu.className = 'pm-control-menu';
         menu.setAttribute('role', 'menu');
         menu.setAttribute('aria-label', '快捷工具');
+        const injectionEnabled = window.__pmCurrentConversationInjectionEnabled?.() === true;
+        const injectionLabel = state.isGroupChat ? '注入当前群聊' : '注入当前角色';
         menu.innerHTML = `
   <button type="button" role="menuitem" data-action="pending">${EDIT_ICON_SVG}编辑消息</button>
   <button type="button" role="menuitem" data-action="contacts">${CONTACTS_ICON_SVG}联系人</button>
+  <button type="button" role="menuitemcheckbox" aria-checked="${injectionEnabled}" data-action="injection-toggle">${CHAT_ICON_SVG}${injectionLabel}<i class="pm-control-toggle ${injectionEnabled ? 'is-checked' : ''}" aria-hidden="true"></i></button>
+  <button type="button" role="menuitem" data-action="injection-settings">${SETTINGS_ICON_SVG}上下文注入</button>
   <button type="button" role="menuitem" data-action="settings">${SETTINGS_ICON_SVG}角色设置</button>
   ${state.isGroupChat ? `<button type="button" role="menuitem" data-action="group">${CONTACTS_ICON_SVG}群聊设置</button>` : ''}
   <button type="button" role="menuitem" data-action="emoji">${EMOJI_ICON_SVG}表情包管理</button>

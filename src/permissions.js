@@ -37,29 +37,18 @@ function snapshotGroup(group) {
     if (!plainRecord(group)) return { valid: false, value: null };
     const name = optionalData(group, 'name');
     const membersEntry = ownData(group, 'members');
-    const injectionEntry = ownData(group, 'injection');
-    if (!name.valid || membersEntry.invalid || !membersEntry.found || injectionEntry.invalid) {
+    if (!name.valid || membersEntry.invalid || !membersEntry.found) {
         return { valid: false, value: null };
     }
     const members = dataArraySnapshot(membersEntry.value);
     if (!members.valid || members.value.some(member => typeof member !== 'string')) {
         return { valid: false, value: null };
     }
-    let injection = null;
-    if (injectionEntry.found) {
-        if (!plainRecord(injectionEntry.value)) return { valid: false, value: null };
-        const position = optionalData(injectionEntry.value, 'position');
-        const depth = optionalData(injectionEntry.value, 'depth');
-        const historyLimit = optionalData(injectionEntry.value, 'historyLimit');
-        if (!position.valid || !depth.valid || !historyLimit.valid) return { valid: false, value: null };
-        injection = Object.freeze({ position: position.value, depth: depth.value, historyLimit: historyLimit.value });
-    }
     return {
         valid: true,
         value: Object.freeze({
             name: typeof name.value === 'string' ? name.value : '',
             members: Object.freeze(members.value.slice()),
-            injection,
         }),
     };
 }

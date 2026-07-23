@@ -1,6 +1,7 @@
 import {
-    BIDIRECTIONAL_KEY, BIDIRECTIONAL_LIMIT, DEFAULT_GROUP_INJECTION, MAX_INJECTION_CHARS,
+    BIDIRECTIONAL_KEY, MAX_INJECTION_CHARS,
 } from './constants.js';
+import { normalizeInjectionConfig } from './behavior-config.js';
 import { allocateContextBudget, estimateContextTokens, normalizeBudgetConfig, trimToEstimatedTokens } from './budget.js';
 import { formatQuoteContext } from './chat-message-model.js';
 import { renderCommunitySource } from './community-injection.js';
@@ -72,17 +73,16 @@ export function replaceExtensionPrompts({ context, runtime, prompts }) {
     return { written, failedWrites, ...clearResult };
 }
 
-function renderPhoneSource(source, userName, emojis) {
-    const limit = source.meta ? source.meta.injection?.historyLimit : BIDIRECTIONAL_LIMIT;
-    const historyLimit = Number.isInteger(limit) && limit > 0 ? limit : BIDIRECTIONAL_LIMIT;
+function renderPhoneSource(source, userName, emojis, injectionConfig) {
+    const historyLimit = normalizeInjectionConfig(injectionConfig).historyLimit;
     return renderConversation(source.name, source.history.slice(-historyLimit), source.meta, userName, emojis);
 }
 
-function phonePromptPosition(source) {
-    const injection = source.meta?.injection || DEFAULT_GROUP_INJECTION;
+function phonePromptPosition(injectionConfig) {
+    const injection = normalizeInjectionConfig(injectionConfig);
     return {
-        position: typeof injection.position === 'number' ? injection.position : DEFAULT_GROUP_INJECTION.position,
-        depth: typeof injection.depth === 'number' ? injection.depth : DEFAULT_GROUP_INJECTION.depth,
+        position: injection.position,
+        depth: injection.depth,
     };
 }
 
@@ -180,7 +180,7 @@ export function renderCalendarContextInjection({
 
 export function buildContextInjectionPrompts({
     currentStorageId, currentActorName, selectedByStorage, historiesByStorage, groupsByStorage,
-    interactiveStore, budgetConfig, userName, emojis, safeMaxTokens, calendarStore,
+    injectionConfig, interactiveStore, budgetConfig, userName, emojis, safeMaxTokens, calendarStore,
     calendarOccasions, calendarHolidays, calendarWeather, calendarCycles, calendarRecipes,
 } = {}) {
     const config = normalizeBudgetConfig(budgetConfig);
@@ -194,10 +194,11 @@ export function buildContextInjectionPrompts({
         selectionsByStorage: config.communitySelectionsByStorage,
         store: interactiveStore,
     });
+    const phoneInjection = normalizeInjectionConfig(injectionConfig);
     const phoneItems = phonePermission.allowed ? phonePermission.sources.flatMap(source => {
-        const placement = phonePromptPosition(source);
+        const placement = phonePromptPosition(phoneInjection);
         if (placement.position < 0) return [];
-        const body = renderPhoneSource(source, userName, emojis);
+        const body = renderPhoneSource(source, userName, emojis, phoneInjection);
         if (!body) return [];
         return [{
             key: injectionKey(source.sourceId),
@@ -293,15 +294,14 @@ function renderConversation(name, history, meta, userName, emojis) {
         : `【与 ${name} 的短信 — 仅 ${name} 与 ${userName} 知晓】\n${lines}`;
 }
 
-export function applyConversationInjections({ context, runtime, checked, histories, groups, userName, emojis }) {
+export function applyConversationInjections({ context, runtime, checked, histories, groups, injectionConfig, userName, emojis }) {
     const prompts = [];
     let remaining = MAX_INJECTION_CHARS;
+    const injection = normalizeInjectionConfig(injectionConfig);
     for (const name of Array.isArray(checked) ? checked : []) {
         const meta = name.startsWith('__group_') ? groups?.[name] : null;
-        const injection = meta?.injection || DEFAULT_GROUP_INJECTION;
         if (injection.position < 0 || remaining <= 0) continue;
-        const historyLimit = meta ? injection.historyLimit : BIDIRECTIONAL_LIMIT;
-        const history = (histories?.[name] || []).slice(-historyLimit);
+        const history = (histories?.[name] || []).slice(-injection.historyLimit);
         let content = renderConversation(name, history, meta, userName, emojis);
         if (!content) continue;
         if (content.length > remaining) {

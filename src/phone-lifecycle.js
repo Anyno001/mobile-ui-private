@@ -8,7 +8,7 @@ import { getPendingMessages } from './pending-messages.js';
 import { bindPressGesture } from './press-gesture.js';
 import { loadBgSettings } from './storage-background.js';
 import {
-    loadBidirectional, loadBudgetConfig, loadEmojis,
+    loadBidirectional, loadBudgetConfig, loadEmojis, loadInjectionConfig,
     loadCharacterBehavior, loadGroupMeta, loadHistoriesFromIDB,
     loadPokeConfig, loadProfiles, loadTheme, loadWordyLimit, saveTheme,
 } from './storage.js';
@@ -306,7 +306,8 @@ export function installPhoneLifecycle(state, deps) {
         state.activeStorageId = '';
         state.currentPersona = '';
         state.conversationHistory = [];
-        state.isGroupChat = false; state.groupMembers = []; state.groupColorMap = {}; state.groupDisplayName = ''; state.currentGroupKey = '';
+        state.isGroupChat = false; state.groupMembers = []; state.groupExtras = []; state.groupColorMap = {};
+        state.groupDisplayName = ''; state.groupRandomNpcEnabled = false; state.groupNature = ''; state.currentGroupKey = '';
         // 修复：关闭时重置冷启动标记，确保下次打开时（尤其是切换角色卡后）重新从 IDB 加载最新数据
         runtime.firstOpen = true;
         // 修复：关闭时清除可见性定时器，重新开启时再创建新的
@@ -343,7 +344,7 @@ export function installPhoneLifecycle(state, deps) {
             window.__pmConfig = saved || { apiUrl: '', apiKey: '', model: '', temperature: 1.2, useIndependent: false };
             if (typeof window.__pmConfig.useIndependent === 'undefined') window.__pmConfig.useIndependent = !!(window.__pmConfig.apiUrl && window.__pmConfig.apiKey);
         } catch (e) { window.__pmConfig = { apiUrl: '', apiKey: '', model: '', temperature: 1.2, useIndependent: false }; }
-        loadProfiles(); loadBidirectional(); loadTheme(); loadPokeConfig(); loadCharacterBehavior(); loadWordyLimit(); loadBudgetConfig(); migrateOldHistory();
+        loadProfiles(); loadBidirectional(); loadInjectionConfig(); loadTheme(); loadPokeConfig(); loadCharacterBehavior(); loadWordyLimit(); loadBudgetConfig(); migrateOldHistory();
         await Promise.all([loadGroupMeta(), loadEmojis()]);
         loadBgSettings().then(() => { try { applyBackground(); } catch (e) {} });
         hookGenerationEvent();
@@ -429,7 +430,8 @@ export function installPhoneLifecycle(state, deps) {
         });
         unbindIsland = bindIsland(state.phoneWindow, state.phoneWindow.querySelector('.pm-island'));
         unbindPhoneResize = bindPhoneResize(state.phoneWindow, state.phoneWindow.querySelector('.pm-phone-resize-handle'));
-        applyTheme(); applyBackground(); state.isGroupChat = false; state.groupMembers = []; state.groupColorMap = {}; state.groupDisplayName = ''; state.currentGroupKey = '';
+        applyTheme(); applyBackground(); state.isGroupChat = false; state.groupMembers = []; state.groupExtras = []; state.groupColorMap = {};
+        state.groupDisplayName = ''; state.groupRandomNpcEnabled = false; state.groupNature = ''; state.currentGroupKey = '';
 
 
         if (!runtime.firstOpen) {
@@ -486,7 +488,7 @@ export function installPhoneLifecycle(state, deps) {
     }, true);
 
     try { window.__pmHistories = window.__pmHistories || {}; } catch (e) {}
-    loadBidirectional(); loadPokeConfig(); loadCharacterBehavior(); loadWordyLimit(); loadBudgetConfig();
+    loadBidirectional(); loadInjectionConfig(); loadPokeConfig(); loadCharacterBehavior(); loadWordyLimit(); loadBudgetConfig();
     const initialGroupMetaLoad = loadGroupMeta();
     loadHistoriesOnce(); // 首次打开复用同一个恢复任务，避免并发读取用旧快照覆盖内存
     setTimeout(() => { initialGroupMetaLoad.then(() => { migrateOldHistory(); applyBidirectionalInjection(); hookGenerationEvent(); }); }, 1500);

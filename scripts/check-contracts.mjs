@@ -1034,8 +1034,10 @@ const PHONE_ENTRY_OWNERS = {
   'phone-directory.js': [
     '__pmSaveAndCloseGroupEdit', '__pmShowGroupCreate', '__pmGroupInputChanged',
     '__pmConfirmGroup', '__pmShowList', '__pmShowAddContact', '__pmDelGroup', '__pmDel',
-    '__pmConversationInjectionSummary', '__pmSyncConversationInjectionForm',
-    '__pmShowConversationInjection', '__pmSaveConversationInjection',
+  ],
+  'phone-context-injection.js': [
+    '__pmConversationInjectionSummary', '__pmCurrentConversationInjectionEnabled',
+    '__pmToggleCurrentConversationInjection', '__pmShowConversationInjection', '__pmSaveConversationInjection',
   ],
   'contact-generator.js': ['__pmConfirmAutoGen', '__pmAutoGenContacts'],
   'conversation.js': ['__pmSwitchContact', '__pmSwitch'],
@@ -1094,7 +1096,7 @@ if (mainFile) {
   const expectedInstallerCalls = [
     'installPhoneFoundation(state, deps)', 'installConversation(state, deps)',
     'installInteractiveScenes(state, deps)', 'installCalendar(state, deps)', 'installSettingsUi(deps)',
-    'installPhoneChat(state, deps)', 'installPhoneControlCenter(state, deps)', 'installPhoneDirectory(state, deps)',
+    'installPhoneChat(state, deps)', 'installPhoneContextInjection(state, deps)', 'installPhoneControlCenter(state, deps)', 'installPhoneDirectory(state, deps)',
     'installContactGenerator(state, deps)', 'installPhoneChatPoke(state, deps)',
     'installPhoneLifecycle(state, deps)',
   ];
@@ -1109,7 +1111,7 @@ if (mainFile) {
   const actualOrder = installerOrder.map(item => item.name);
   const expectedOrder = [
     'installPhoneFoundation', 'installConversation', 'installEmojiUi', 'installInteractiveScenes', 'installCalendar',
-    'installSettingsUi', 'installPhoneChat', 'installPhoneControlCenter', 'installPhoneDirectory', 'installContactGenerator',
+    'installSettingsUi', 'installPhoneChat', 'installPhoneContextInjection', 'installPhoneControlCenter', 'installPhoneDirectory', 'installContactGenerator',
     'installPhoneChatPoke', 'installPhoneLifecycle',
   ];
   if (actualOrder.length !== expectedOrder.length
@@ -1123,7 +1125,10 @@ if (mainFile) {
 requireText('source', source, "import { installSettingsUi } from './settings-ui.js'");
 requireText('main.js', mainFile?.code || '', 'installSettingsUi(deps)');
 requireText('behavior-config.js', sourceModuleByName.get('behavior-config.js')?.code || '', 'normalizeCharacterBehaviorStore');
-requireText('behavior-config.js', sourceModuleByName.get('behavior-config.js')?.code || '', 'normalizeGroupMetaStore');
+for (const expected of [
+  'normalizeGroupMetaStore', 'randomNpcEnabled: Boolean(source.randomNpcEnabled)',
+  'groupNature: text(source.groupNature, 200)',
+]) requireText('behavior-config.js', sourceModuleByName.get('behavior-config.js')?.code || '', expected);
 requireText('constants.js', sourceModuleByName.get('constants.js')?.code || '', 'NONE: -1');
 requireText('constants.js', sourceModuleByName.get('constants.js')?.code || '', 'IN_PROMPT: 0');
 requireText('constants.js', sourceModuleByName.get('constants.js')?.code || '', 'IN_CHAT: 1');
@@ -1166,7 +1171,22 @@ for (const expected of [
   'createMessageEntry({', 'quote: combined.quote', 'formatQuoteContext(request.userHistoryEntry?.quote)',
   'messageId: assistantEntry.messageId', 'bubbleId: bubble?.bubbleId', 'if (combined.quoteConflict)',
 ]) requireText('phone-chat.js', sourceModuleByName.get('phone-chat.js')?.code || '', expected);
-for (const expected of ['formatQuoteContext', '【本轮回复关系】']) requireText('chat-prompts.js', sourceModuleByName.get('chat-prompts.js')?.code || '', expected);
+for (const expected of [
+  'formatQuoteContext', '【本轮回复关系】', 'buildGroupAdditionalContext',
+  '群聊性质：${nature}', '允许不在固定成员名单上的路人群友',
+]) requireText('chat-prompts.js', sourceModuleByName.get('chat-prompts.js')?.code || '', expected);
+for (const expected of [
+  'groupRandomNpcEnabled', 'groupNature',
+  'allowUnknownSpeakers: groupRandomNpcEnabled === true',
+]) requireText('phone-chat.js', sourceModuleByName.get('phone-chat.js')?.code || '', expected);
+for (const expected of [
+  'randomNpcEnabled: groupMeta.randomNpcEnabled', 'groupNature: groupMeta.groupNature',
+  'allowUnknownSpeakers: groupMeta.randomNpcEnabled === true',
+  'allowUnknownSpeakers: groupRandomNpcEnabled === true',
+]) requireText('phone-chat-poke.js', sourceModuleByName.get('phone-chat-poke.js')?.code || '', expected);
+for (const expected of ['allowUnknownSpeakers = false', 'resolveSpeaker', "if (!allowUnknownSpeakers || !normalized) return ''"]) {
+  requireText('messaging.js', sourceModuleByName.get('messaging.js')?.code || '', expected);
+}
 requireText('phone-injection.js', sourceModuleByName.get('phone-injection.js')?.code || '', 'formatQuoteContext(message.quote)');
 for (const expected of [
   'dataset.messageId', 'dataset.bubbleId', 'pm-reply-card', 'locateQuotedBubble', 'setActiveQuote',
@@ -1179,15 +1199,27 @@ for (const expected of [
 for (const expected of [
   'commitEditedGroupUpdate', 'refreshEditedGroupRuntime', 'restoreConversationState', 'previousConversationContext',
   'persistRestored', "injectionFailure(rollbackResult, '补偿')",
+  'let deleteTransactionActive = false', 'acquireDeleteTransaction', 'releaseDeleteTransaction',
+  "document.querySelectorAll?.('.pm-entity-delete')", 'button.disabled = disabled',
+  '已有删除操作正在进行，请等待完成后再试。',
+  'const injectionResult = await applyBidirectionalInjection()',
+  "injectionFailure(injectionResult, '删除清理', '联系人')",
+  "injectionFailure(injectionResult, '删除清理', '群聊')",
+  "injectionFailure(rollbackResult, '删除补偿', '联系人')",
+  "injectionFailure(rollbackResult, '删除补偿', '群聊')",
   'groupMembers: state.groupMembers.slice()', 'window.__pmSwitch(state.currentGroupKey',
-  'commitConversationInjectionUpdate', '__pmShowConversationInjection', '__pmSaveConversationInjection',
-  '__pmConversationInjectionSummary', 'normalizeGroupInjection', 'pm-conversation-injection-enabled',
-  '私聊沿用系统安全参数', "position: enabled ? document.getElementById('pm-conversation-injection-position')?.value",
-  'pm-modal-scroll pm-group-settings-scroll',
+  'pm-modal-scroll pm-group-settings-scroll', 'id="pm-group-random-npc"',
+  'id="pm-group-nature"', '允许路人群友随机出现', '群聊性质',
+  "document.getElementById('pm-group-random-npc')", "document.getElementById('pm-group-nature')",
 ]) {
   requireText('phone-directory.js', sourceModuleByName.get('phone-directory.js')?.code || '', expected);
 }
-for (const expected of ['pm-injection-entry', '__pmShowConversationInjection', '__pmConversationInjectionSummary']) requireText('phone-chat-poke.js', sourceModuleByName.get('phone-chat-poke.js')?.code || '', expected);
+for (const expected of [
+  'commitConversationInjectionUpdate', '__pmShowConversationInjection', '__pmSaveConversationInjection',
+  '__pmConversationInjectionSummary', '__pmToggleCurrentConversationInjection', 'normalizeInjectionConfig',
+  'pm-conversation-injection-position', 'pm-conversation-injection-depth', 'pm-conversation-injection-limit',
+  '以下规则由所有私聊和群聊共用', '${BACK_ICON_SVG}',
+]) requireText('phone-context-injection.js', sourceModuleByName.get('phone-context-injection.js')?.code || '', expected);
 requireText('phone-chat.js', sourceModuleByName.get('phone-chat.js')?.code || '', 'removePendingBatch(runtime');
 requireText('phone-chat.js', sourceModuleByName.get('phone-chat.js')?.code || '', 'rebaseRenderedHistory(historyWindow.trimmedCount)');
 requireText('phone-chat-poke.js', sourceModuleByName.get('phone-chat-poke.js')?.code || '', 'rebaseRenderedHistory(historyWindow.trimmedCount)');
@@ -1360,7 +1392,7 @@ for (const expected of [
   'deriveInteractiveActorId(scopeId, actor.type, actor.bindingKey)',
 ]) requireText('settings-backup-validate.js', settingsBackupValidateCode, expected);
 for (const expected of [
-  'schemaVersion: 7', 'desktopBg: snapshot.desktopBg',
+  'schemaVersion: 8', 'desktopBg: snapshot.desktopBg', 'injectionConfig: snapshot.injectionConfig',
   'calendarStore: snapshot.calendarStore', 'calendarCycles: snapshot.calendarCycles',
   'calendarRecipes: snapshot.calendarRecipes',
 ]) requireText('settings-ui.js', settingsUiCodeForInteractive, expected);
@@ -1375,9 +1407,10 @@ for (const expected of [
 ]) requireText('settings-backup.js', settingsBackupCode, expected);
 for (const expected of [
   'prepare: current => parseBackupData(data, current)', 'apply: async (snapshot, imported)',
-  'deps.reloadCalendarStore?.()',
+  'deps.reloadCalendarStore?.()', 'afterPersist: async reason => requireInjectionSuccess(',
+  "reason === 'apply' ? '导入后的注入刷新失败' : '恢复原数据后的注入刷新失败'",
   "err.backupPhase === 'rolled-back'", "err.backupPhase === 'rollback-failed'", '导入失败，未修改现有数据',
-  'postImportError = injectionFailure', '数据已导入，但注入刷新失败',
+  '数据导入成功，请重新打开界面生效',
   "deps.cancelCalendarTasks?.(`backup-${reason}`)",
   "deps.cancelCalendarTasks?.('plugin-data-clear')",
 ]) requireText('settings-ui.js', settingsUiCodeForInteractive, expected);
@@ -1523,13 +1556,20 @@ if (directoryTemplate.includes('pm-forum-entry') || directoryTemplate.includes('
 if (controlCenterTemplate.includes('makeOverlay') || controlCenterTemplate.includes('<span')) {
   failures.push('phone-control-center.js: compact control menu must not use the full overlay or explanatory subtitles');
 }
-for (const title of ['编辑消息', '联系人', '角色设置', '表情包管理', '日历', '删除信息']) {
+for (const title of ['编辑消息', '联系人', '上下文注入', '角色设置', '表情包管理', '日历', '删除信息']) {
   if (!controlCenterTemplate.includes(title)) failures.push(`phone-control-center.js: compact control menu missing title ${title}`);
 }
 for (const expected of [
   "action === 'contacts'", "action === 'calendar'", 'return window.__pmShowList()', 'return showPhoneCalendarPage()',
   'runControlMenuAction', 'controlActionLabel', 'CALENDAR_ICON_SVG', 'EDIT_ICON_SVG', 'EMOJI_ICON_SVG', 'TRASH_ICON_SVG',
+  'toggleConversationInjectionControl', 'button.disabled = true',
+  "button.setAttribute('aria-checked', String(enabled))",
+  "button.querySelector('.pm-control-toggle')?.classList.toggle('is-checked', enabled)",
+  "state.isGroupChat ? '注入当前群聊' : '注入当前角色'",
 ]) requireText('phone-control-center.js', controlCenterCode, expected);
+if (!controlCenterTemplate.includes('role="menuitemcheckbox"') || !controlCenterCode.includes('aria-checked="${injectionEnabled}"')) {
+  failures.push('phone-control-center.js: current-conversation injection toggle must expose checkbox semantics and rendered state');
+}
 if (controlCenterCode.includes("action === 'rearm'") || controlCenterTemplate.includes('自动消息')) failures.push('phone-control-center.js: removed automatic-message rearm entry remains');
 if (controlCenterTemplate.includes('data-action="desktop"') || controlCenterTemplate.includes('返回桌面')) {
   failures.push('phone-control-center.js: compact control menu must not duplicate the chat navbar desktop action');
@@ -2042,6 +2082,9 @@ for (const expected of [
 ]) requireText('press-gesture.js', pressGestureCode, expected);
 const conversationCode = sourceModuleByName.get('conversation.js')?.code || '';
 requireText('conversation.js', conversationCode, 'deps.closeControlCenter?.()');
+for (const expected of ['state.groupRandomNpcEnabled = groupMeta.randomNpcEnabled === true', 'state.groupNature = typeof groupMeta.groupNature']) {
+  requireText('conversation.js', conversationCode, expected);
+}
 requireText('bundle', bundle, 'pm-settings-home');
 if (bundle.includes('pm-forum-entry')) failures.push('bundle: removed directory community entry must not remain');
 for (const iconName of [
@@ -2077,18 +2120,18 @@ for (const expected of [
   '永久删除联系人', '永久删除群聊', '且无法恢复',
 ]) requireText('phone-directory.js', directoryCode, expected);
 const contactDeleteButton = buttonContaining('phone-directory.js: contact delete button', directoryListSource, 'onclick="window.__pmDel(');
-for (const expected of ['class="pm-entity-delete"', 'aria-label="永久删除联系人', 'title="永久删除联系人"', '${UNLINK_ICON_SVG}', '<span>解除关系</span>']) {
+for (const expected of ['class="pm-entity-delete"', 'aria-label="永久删除联系人', 'title="永久删除联系人"', '${UNLINK_ICON_SVG}']) {
   requireText('phone-directory.js: contact delete button', contactDeleteButton, expected);
 }
-if (contactDeleteButton.includes('TRASH_ICON_SVG') || contactDeleteButton.includes('REMOVE_ICON_SVG') || contactDeleteButton.includes('<span>删除</span>')) {
-  failures.push('phone-directory.js: contact delete button must use unlink/permanent-removal semantics');
+if (contactDeleteButton.includes('<span>') || contactDeleteButton.includes('TRASH_ICON_SVG') || contactDeleteButton.includes('REMOVE_ICON_SVG')) {
+  failures.push('phone-directory.js: contact delete button must be SVG-only and use unlink semantics');
 }
 const groupDeleteButton = buttonContaining('phone-directory.js: group delete button', directoryListSource, 'onclick="window.__pmDelGroup(');
-for (const expected of ['class="pm-entity-delete"', 'aria-label="永久删除群聊', 'title="永久删除群聊"', '${UNLINK_ICON_SVG}', '<span>永久删除</span>']) {
+for (const expected of ['class="pm-entity-delete"', 'aria-label="永久删除群聊', 'title="永久删除群聊"', '${UNLINK_ICON_SVG}']) {
   requireText('phone-directory.js: group delete button', groupDeleteButton, expected);
 }
-if (groupDeleteButton.includes('TRASH_ICON_SVG') || groupDeleteButton.includes('REMOVE_ICON_SVG') || groupDeleteButton.includes('<span>删除</span>')) {
-  failures.push('phone-directory.js: group delete button must use unlink/permanent-removal semantics');
+if (groupDeleteButton.includes('<span>') || groupDeleteButton.includes('TRASH_ICON_SVG') || groupDeleteButton.includes('REMOVE_ICON_SVG')) {
+  failures.push('phone-directory.js: group delete button must be SVG-only and use unlink semantics');
 }
 for (const [label, marker, accessibleName] of [
   ['community poke button', 'data-action="poke-scene"', 'aria-label="拍一拍社区"'],

@@ -12,6 +12,7 @@ import {
 import { installPhoneChat } from './phone-chat.js';
 import { installPhoneChatPoke } from './phone-chat-poke.js';
 import { installPhoneControlCenter } from './phone-control-center.js';
+import { installPhoneContextInjection } from './phone-context-injection.js';
 import { installPhoneDirectory } from './phone-directory.js';
 import { installPhoneFoundation } from './phone-foundation.js';
 import { installPhoneLifecycle } from './phone-lifecycle.js';
@@ -41,6 +42,8 @@ import { saveBudgetConfig, saveEmojis } from './storage.js';
         groupMembers: [],
         groupColorMap: {},
         groupDisplayName: '',
+        groupRandomNpcEnabled: false,
+        groupNature: '',
         currentGroupKey: '',
         groupExtras: [],
     };
@@ -67,6 +70,7 @@ import { saveBudgetConfig, saveEmojis } from './storage.js';
     installCalendar(state, deps);
     installSettingsUi(deps);
     installPhoneChat(state, deps);
+    installPhoneContextInjection(state, deps);
     installPhoneControlCenter(state, deps);
     installPhoneDirectory(state, deps);
     installContactGenerator(state, deps);

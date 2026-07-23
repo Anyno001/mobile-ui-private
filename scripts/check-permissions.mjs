@@ -133,22 +133,35 @@ assert.equal(resolvePhoneSources({
     groupsByStorage: { 'story-a': { __group_sparse: { name: '稀疏群', members: sparseMembers } } },
 }).allowed, false);
 
-for (const field of ['name', 'injection']) {
-    let reads = 0;
-    const group = { name: '访问器群', members: ['Alice'], injection: { position: 0, depth: 0, historyLimit: 20 } };
-    Object.defineProperty(group, field, {
-        enumerable: true, configurable: true,
-        get() { reads += 1; return field === 'name' ? '伪造群名' : { position: 0, depth: 0, historyLimit: 20 }; },
-    });
-    const result = resolvePhoneSources({
-        currentStorageId: 'story-a', currentActorName: 'Alice', selectedByStorage: { 'story-a': ['__group_accessor'] },
-        historiesByStorage: { 'story-a': { __group_accessor: [] } },
-        groupsByStorage: { 'story-a': { __group_accessor: group } },
-    });
-    assert.equal(result.allowed, false);
-    assert.deepEqual(result.sources, []);
-    assert.equal(reads, 0);
-}
+let groupNameAccessorReads = 0;
+const nameAccessorGroup = { members: ['Alice'] };
+Object.defineProperty(nameAccessorGroup, 'name', {
+    enumerable: true, configurable: true,
+    get() { groupNameAccessorReads += 1; return '伪造群名'; },
+});
+const nameAccessorResult = resolvePhoneSources({
+    currentStorageId: 'story-a', currentActorName: 'Alice', selectedByStorage: { 'story-a': ['__group_accessor'] },
+    historiesByStorage: { 'story-a': { __group_accessor: [] } },
+    groupsByStorage: { 'story-a': { __group_accessor: nameAccessorGroup } },
+});
+assert.equal(nameAccessorResult.allowed, false);
+assert.deepEqual(nameAccessorResult.sources, []);
+assert.equal(groupNameAccessorReads, 0);
+
+let legacyInjectionAccessorReads = 0;
+const injectionAccessorGroup = { name: '访问器群', members: ['Alice'] };
+Object.defineProperty(injectionAccessorGroup, 'injection', {
+    enumerable: true, configurable: true,
+    get() { legacyInjectionAccessorReads += 1; throw new Error('旧群注入配置不得被读取'); },
+});
+const injectionAccessorResult = resolvePhoneSources({
+    currentStorageId: 'story-a', currentActorName: 'Alice', selectedByStorage: { 'story-a': ['__group_legacy_injection'] },
+    historiesByStorage: { 'story-a': { __group_legacy_injection: [] } },
+    groupsByStorage: { 'story-a': { __group_legacy_injection: injectionAccessorGroup } },
+});
+assert.equal(injectionAccessorResult.allowed, true);
+assert.equal(injectionAccessorResult.sources.length, 1);
+assert.equal(legacyInjectionAccessorReads, 0);
 
 let unauthorizedHistoryReads = 0;
 const unauthorizedMessage = { role: 'assistant' };
@@ -212,8 +225,7 @@ assert.equal(pollutedHistoryIteratorReads, 0);
 
 const safeSnapshotInput = { role: 'assistant', content: '快照正文' };
 const safeGroupInput = {
-    name: '快照群', members: ['Alice'],
-    injection: { position: 2, depth: 3, historyLimit: 4 },
+    name: '快照群', members: ['Alice'], injection: { position: 2, depth: 3, historyLimit: 4 },
 };
 const safeSnapshotResult = resolvePhoneSources({
     currentStorageId: 'story-a', currentActorName: 'Alice',
@@ -226,11 +238,11 @@ safeSnapshotInput.content = '事后篡改';
 assert.equal(safeSnapshotResult.sources[0].history[0].content, '快照正文');
 safeGroupInput.name = '篡改群名';
 safeGroupInput.members[0] = 'Mallory';
-safeGroupInput.injection.position = -1;
 const safeGroupSnapshot = safeSnapshotResult.sources.find(source => source.sourceId === '__group_snapshot').meta;
 assert.equal(safeGroupSnapshot.name, '快照群');
 assert.deepEqual(safeGroupSnapshot.members, ['Alice']);
-assert.equal(safeGroupSnapshot.injection.position, 2);
+assert.equal(Object.hasOwn(safeGroupSnapshot, 'injection'), false,
+    '权限快照不得携带旧群级注入配置');
 
 const sparseSelection = [];
 sparseSelection.length = 1;
