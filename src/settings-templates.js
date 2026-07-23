@@ -261,11 +261,7 @@ export function renderBudgetSettings({ config, sceneOptions }) {
         <div id="pm-budget-scenes" style="display:flex;flex-direction:column;gap:6px;">${sceneOptions || '<div class="pm-cfg-tip" style="text-align:left;">当前没有可选择的互动场景</div>'}</div>
       </div>
       <div style="padding:12px 16px;border-top:1px solid var(--pm-color-border-subtle);display:flex;flex-direction:column;gap:10px;">
-        <label class="pm-cfg-label pm-check-setting">
-          <span>启用生活日历注入（默认关闭）</span>
-          <div id="pm-budget-calendar-enabled" class="pm-custom-check ${config.calendarEnabled ? 'is-checked' : ''}" role="checkbox" tabindex="0" aria-checked="${config.calendarEnabled}" onclick="this.classList.toggle('is-checked');this.setAttribute('aria-checked',String(this.classList.contains('is-checked')))" onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();this.click()}"></div>
-        </label>
-        <div class="pm-cfg-tip" style="text-align:left;color:#ff9500;">注入当前角色/聊天未来七天的日程、生日与纪念日、节假日、天气和生理周期，让角色保有连续的生活安排。</div>
+        <div class="pm-cfg-tip" style="text-align:left;color:#ff9500;">日程、天气、生理期和菜谱的注入开关请在日历各模块设置区调整；此处统一设置它们的注入位置和深度。</div>
         <label class="pm-cfg-label" for="pm-budget-calendar-position">日历注入位置</label>
         <select id="pm-budget-calendar-position" class="pm-cfg-input">
           <option value="0" ${config.calendarPosition === 0 ? 'selected' : ''}>主提示词内</option>
@@ -274,21 +270,6 @@ export function renderBudgetSettings({ config, sceneOptions }) {
         </select>
         <label class="pm-cfg-label" for="pm-budget-calendar-depth">日历注入深度</label>
         <input id="pm-budget-calendar-depth" class="pm-cfg-input" type="number" min="0" max="10000" step="1" value="${config.calendarDepth}">
-      </div>
-      <div style="padding:12px 16px;border-top:1px solid var(--pm-color-border-subtle);display:flex;flex-direction:column;gap:10px;">
-        <label class="pm-cfg-label pm-check-setting">
-          <span>启用角色菜谱注入（默认关闭）</span>
-          <div id="pm-budget-recipe-enabled" class="pm-custom-check ${config.recipeEnabled ? 'is-checked' : ''}" role="checkbox" tabindex="0" aria-checked="${config.recipeEnabled}" onclick="this.classList.toggle('is-checked');this.setAttribute('aria-checked',String(this.classList.contains('is-checked')))" onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();this.click()}"></div>
-        </label>
-        <div class="pm-cfg-tip" style="text-align:left;color:#ff9500;">独立注入故事日期昨天、今天和明天的四餐，不与生活日历内容合并。</div>
-        <label class="pm-cfg-label" for="pm-budget-recipe-position">菜谱注入位置</label>
-        <select id="pm-budget-recipe-position" class="pm-cfg-input">
-          <option value="0" ${config.recipePosition === 0 ? 'selected' : ''}>主提示词内</option>
-          <option value="1" ${config.recipePosition === 1 ? 'selected' : ''}>聊天记录内</option>
-          <option value="2" ${config.recipePosition === 2 ? 'selected' : ''}>主提示词前</option>
-        </select>
-        <label class="pm-cfg-label" for="pm-budget-recipe-depth">菜谱注入深度</label>
-        <input id="pm-budget-recipe-depth" class="pm-cfg-input" type="number" min="0" max="10000" step="1" value="${config.recipeDepth}">
       </div>
       <div style="height:12px;"></div>
     </div>`;

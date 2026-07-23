@@ -7,7 +7,7 @@ import {
 } from '../src/phone-injection.js';
 import { resolveCommunitySources, resolvePhoneSources } from '../src/permissions.js';
 import {
-    calendarDateRangeKeys, calendarScopeFor, createEmptyCalendarStore, renderCalendarInjection,
+    calendarDateRangeKeys, calendarScopeFor, createEmptyCalendarStore, migrateLegacyCalendarInjectionConfig, renderCalendarInjection,
 } from '../src/calendar-model.js';
 import {
     normalizeRecipeStore, setRecipeRegionPreference, upsertRecipeMeal,
@@ -453,23 +453,59 @@ const migratedTwoSourceBudget = normalizeBudgetConfig({
 });
 assert.deepEqual(migratedTwoSourceBudget.sourceWeights, { phone: 3, community: 1, calendar: 0, recipe: 0 });
 assert.deepEqual(migratedTwoSourceBudget.sourcePriority, ['community', 'phone', 'calendar', 'recipe']);
-assert.equal(migratedTwoSourceBudget.calendarEnabled, false);
+assert.equal(Object.hasOwn(migratedTwoSourceBudget, 'calendarEnabled'), false);
 assert.equal(migratedTwoSourceBudget.calendarPosition, DEFAULT_BUDGET_CONFIG.calendarPosition);
 assert.equal(migratedTwoSourceBudget.calendarDepth, DEFAULT_BUDGET_CONFIG.calendarDepth);
 
-// 1. Default: calendarEnabled=false, so no calendar prompt
+const untouchedCalendarMigration = migrateLegacyCalendarInjectionConfig(createEmptyCalendarStore(), {});
+assert.equal(untouchedCalendarMigration.migrated, false, '没有旧开关时不得伪造迁移完成状态');
+assert.equal(untouchedCalendarMigration.store.legacyInjectionMigrated, undefined);
+
+const legacyDisabledMigration = migrateLegacyCalendarInjectionConfig({
+    version: 1,
+    scopes: {
+        inherited: { events: {} },
+        explicit: { events: {}, injectionScheduleEnabled: true, injectionRecipeEnabled: true },
+    },
+}, { calendarEnabled: false, recipeEnabled: false });
+assert.equal(legacyDisabledMigration.migrated, true);
+assert.equal(legacyDisabledMigration.store.legacyInjectionMigrated, true);
+assert.deepEqual(legacyDisabledMigration.store.injectionDefaults, {
+    injectionScheduleEnabled: false,
+    injectionWeatherEnabled: false,
+    injectionCycleEnabled: false,
+    injectionRecipeEnabled: false,
+});
+assert.deepEqual(calendarScopeFor(legacyDisabledMigration.store, 'inherited'), {
+    ...calendarScopeFor(legacyDisabledMigration.store, 'inherited'),
+    injectionScheduleEnabled: false,
+    injectionWeatherEnabled: false,
+    injectionCycleEnabled: false,
+    injectionRecipeEnabled: false,
+});
+assert.equal(calendarScopeFor(legacyDisabledMigration.store, 'explicit').injectionScheduleEnabled, true,
+    '既有 scope 的显式日程开关不得被旧总开关覆盖');
+assert.equal(calendarScopeFor(legacyDisabledMigration.store, 'explicit').injectionRecipeEnabled, true,
+    '既有 scope 的显式菜谱开关不得被旧总开关覆盖');
+const futureScope = calendarScopeFor(legacyDisabledMigration.store, 'future-storage');
+assert.equal(futureScope.injectionScheduleEnabled, false);
+assert.equal(futureScope.injectionWeatherEnabled, false);
+assert.equal(futureScope.injectionCycleEnabled, false);
+assert.equal(futureScope.injectionRecipeEnabled, false, '迁移后的新 scope 必须继承旧用户关闭状态');
+
+// 1. Default scope switches are enabled, but an empty store still emits no calendar prompt
 const defaultPlanWithCalendar = buildContextInjectionPrompts({
     ...baseInjectionInput,
     budgetConfig: undefined,
     calendarStore: createEmptyCalendarStore(),
 });
-assert.equal(defaultPlanWithCalendar.diagnostics.calendarEnabled, false, 'calendarEnabled default false');
+assert.equal(defaultPlanWithCalendar.diagnostics.calendarEnabled, true, '新 scope 的日历模块开关默认开启');
+assert.equal(defaultPlanWithCalendar.prompts.some(prompt => prompt.key.includes(':calendar:')), false, '空数据不得生成日历 prompt');
 
 // 2. Enabled but empty store → no prompt
 const emptyCalendarPlan = buildContextInjectionPrompts({
     ...baseInjectionInput,
     budgetConfig: {
-        calendarEnabled: true,
         calendarPosition: 0,
         calendarDepth: 0,
     },
@@ -508,7 +544,6 @@ const calendarPlan = buildContextInjectionPrompts({
     ...baseInjectionInput,
     budgetConfig: {
         targetTokens: 2000,
-        calendarEnabled: true,
         calendarPosition: 1,
         calendarDepth: 2,
         sourceWeights: { phone: 1, community: 0, calendar: 1 },
@@ -571,7 +606,6 @@ const storyCalendarPlan = buildContextInjectionPrompts({
     ...baseInjectionInput,
     budgetConfig: {
         targetTokens: 2000,
-        calendarEnabled: true,
         calendarPosition: 1,
         calendarDepth: 2,
         sourceWeights: { phone: 0, community: 0, calendar: 1 },
@@ -633,7 +667,6 @@ const calendarStoreCrossStorage = {
 const crossStoragePlan = buildContextInjectionPrompts({
     ...baseInjectionInput,
     budgetConfig: {
-        calendarEnabled: true,
         targetTokens: 2000,
         sourceWeights: { phone: 1, community: 0, calendar: 1 },
         calendarPosition: 0,
@@ -650,7 +683,6 @@ assert.doesNotMatch(crossCalendarPrompt.content, /Story B 事件/, '不应包含
 const zeroWeightPlan = buildContextInjectionPrompts({
     ...baseInjectionInput,
     budgetConfig: {
-        calendarEnabled: true,
         sourceWeights: { phone: 1, community: 0, calendar: 0 },
         redistributeUnused: false,
         targetTokens: 100,
@@ -678,11 +710,18 @@ const recipeStore = normalizeRecipeStore({ version: 1, scopes: { 'story-a': reci
 const recipePlan = buildContextInjectionPrompts({
     ...baseInjectionInput,
     budgetConfig: {
-        targetTokens: 2000, recipeEnabled: true, recipePosition: 2, recipeDepth: 4,
+        targetTokens: 2000, calendarPosition: 2, calendarDepth: 4,
         sourceWeights: { phone: 0, community: 0, calendar: 0, recipe: 1 },
         sourcePriority: ['recipe', 'phone', 'community', 'calendar'], redistributeUnused: true,
     },
-    calendarStore: { version: 1, scopes: { 'story-a': { baseDate: storyDate, events: {} } } },
+    calendarStore: { version: 1, scopes: { 'story-a': {
+        baseDate: storyDate,
+        events: {},
+        injectionScheduleEnabled: false,
+        injectionWeatherEnabled: false,
+        injectionCycleEnabled: false,
+        injectionRecipeEnabled: true,
+    } } },
     calendarRecipes: recipeStore,
 });
 const recipePrompt = recipePlan.prompts.find(prompt => prompt.key.includes(':recipe:'));
@@ -695,13 +734,19 @@ assert.match(recipePrompt.content, /饮食地区\/文化：架空北境/);
 assert.match(recipePrompt.content, /昨日麦粥|今日炖肉|明日烤鱼/);
 assert.doesNotMatch(recipePrompt.content, /窗口外前日餐|窗口外后日餐|泄漏地区|其他会话早餐/,
     '菜谱注入必须严格限制 -1...+1 且按 storageId 隔离');
+assert.notEqual(recipePrompt.key, 'PHONE_SMS_MEMORY:calendar:story-a', '菜谱必须使用独立注入 key');
 assert.equal(recipePlan.prompts.some(prompt => prompt.key.includes(':calendar:')), false,
     '菜谱 prompt 不得复用生活日历 key');
 assert.equal(recipePlan.diagnostics.recipeEnabled, true);
 const disabledRecipePlan = buildContextInjectionPrompts({
     ...baseInjectionInput,
-    budgetConfig: { recipeEnabled: false, sourceWeights: { phone: 1, recipe: 0 } },
-    calendarStore: { version: 1, scopes: { 'story-a': { baseDate: storyDate, events: {} } } },
+    budgetConfig: { sourceWeights: { phone: 1, recipe: 0 } },
+    calendarStore: { version: 1, scopes: { 'story-a': {
+        baseDate: storyDate,
+        events: {},
+        injectionRecipeEnabled: false,
+    } } },
     calendarRecipes: recipeStore,
 });
 assert.equal(disabledRecipePlan.prompts.some(prompt => prompt.key.includes(':recipe:')), false);
+assert.equal(disabledRecipePlan.diagnostics.recipeEnabled, false);

@@ -479,12 +479,8 @@ export function installSettingsUi(deps) {
             communityPosition: Number(document.getElementById('pm-budget-community-position')?.value),
             communityDepth: Number(document.getElementById('pm-budget-community-depth')?.value),
             ...communityFields,
-            calendarEnabled: document.getElementById('pm-budget-calendar-enabled')?.classList.contains('is-checked') === true,
             calendarPosition: Number(document.getElementById('pm-budget-calendar-position')?.value),
             calendarDepth: Number(document.getElementById('pm-budget-calendar-depth')?.value),
-            recipeEnabled: document.getElementById('pm-budget-recipe-enabled')?.classList.contains('is-checked') === true,
-            recipePosition: Number(document.getElementById('pm-budget-recipe-position')?.value),
-            recipeDepth: Number(document.getElementById('pm-budget-recipe-depth')?.value),
         });
         if (!saveBudgetConfig(candidate)) {
             alert('上下文预算保存失败：浏览器存储不可用');

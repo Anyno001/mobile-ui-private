@@ -1,4 +1,5 @@
-import { createEmptyCalendarStore, normalizeCalendarStore } from './calendar-model.js';
+import { BUDGET_CONFIG_KEY } from './budget.js';
+import { createEmptyCalendarStore, migrateLegacyCalendarInjectionConfig, normalizeCalendarStore } from './calendar-model.js';
 import { createEmptyOccasionStore, normalizeOccasionStore } from './calendar-occasion-model.js';
 import { createEmptyCycleStore, normalizeCycleStore } from './calendar-cycle-model.js';
 import { createEmptyHolidayCache, normalizeHolidayCache } from './calendar-holiday.js';
@@ -36,6 +37,26 @@ export const loadCalendar = storage => loadStore(
 export const saveCalendar = (store, storage) => saveStore(
     CALENDAR_STORAGE_KEY, store, normalizeCalendarStore, '日历数据', storage,
 );
+export function loadCalendarWithLegacyInjectionMigration(storage = globalThis.localStorage) {
+    const current = loadCalendar(storage);
+    try {
+        const rawBudget = storage?.getItem(BUDGET_CONFIG_KEY);
+        if (!rawBudget) return current;
+        const legacyConfig = JSON.parse(rawBudget);
+        const rawCalendar = storage?.getItem(CALENDAR_STORAGE_KEY);
+        const sourceStore = rawCalendar ? JSON.parse(rawCalendar) : current;
+        const migration = migrateLegacyCalendarInjectionConfig(sourceStore, legacyConfig);
+        if (!migration.migrated) return migration.store;
+        if (!saveCalendar(migration.store, storage)) {
+            console.warn('[phone-mode] 旧日历注入配置迁移未能持久化');
+            return current;
+        }
+        return migration.store;
+    } catch (error) {
+        console.warn('[phone-mode] 旧日历注入配置迁移失败', error);
+        return current;
+    }
+}
 export const loadCalendarOccasions = storage => loadStore(
     CALENDAR_OCCASION_STORAGE_KEY, normalizeOccasionStore, createEmptyOccasionStore, '生日与纪念日数据', storage,
 );

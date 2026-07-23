@@ -165,18 +165,18 @@ function cycleDayIndex(scope, dateStr) {
 /**
  * 根据周期天数（1-indexed）推断生理阶段。
  *   - 1 ~ periodLength: period
- *   - periodLength+1 ~ cycleLength-15: follicular
- *   - cycleLength-14: ovulatory（排卵日附近）
- *   - cycleLength-13 ~ cycleLength: luteal
- * 边界情况：若 cycleLength-14 <= periodLength，则排卵日顺延至 periodLength+1；
- * 若周期极短且 luteal 阶段不足 1 天，则合并入 ovulatory。
+ *   - 经期结束后至易孕窗口前: follicular（界面留空）
+ *   - 预计排卵日前 5 天至后 1 天: ovulatory（易孕期）
+ *   - 易孕窗口之后: luteal（安全期）
+ * 易孕窗口起点不得早于经期结束后的第一天，所有边界限制在当前周期内。
  */
 function phaseForDay(day, cycleLength, periodLength) {
     if (day <= periodLength) return 'period';
     const ovulationDay = Math.max(periodLength + 1, Math.min(cycleLength - 14, cycleLength - 1));
-    const lutealStart = ovulationDay + 1;
-    if (day < ovulationDay) return 'follicular';
-    if (day === ovulationDay) return 'ovulatory';
+    const fertileStart = Math.max(periodLength + 1, ovulationDay - 5);
+    const fertileEnd = Math.min(cycleLength, ovulationDay + 1);
+    if (day < fertileStart) return 'follicular';
+    if (day <= fertileEnd) return 'ovulatory';
     return 'luteal';
 }
 

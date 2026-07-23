@@ -1385,16 +1385,17 @@ for (const expected of [
   "tasks.begin(storageId, 'scan-context'", 'parentSignal', 'signal: task.signal',
   'isHolidayYearSupported', 'holidayYearRange', 'calendarGenerationCopy', 'calendar-holiday-country',
   '该国家在当前年代无外部节假日数据源',
-  'calendar-month-jump', 'calendar-today', 'rawLatestChatText || context.latestChatText',
-  'goToReferenceDate', 'jumpToMonth', 'showEntryManager', 'showEntryEditor',
+  'calendar-month-jump', 'calendar-prev-month', 'calendar-next-month', 'calendar-today', 'rawLatestChatText || context.latestChatText',
+  'goToReferenceDate', 'moveCalendarMonth', 'jumpToMonth', 'showEntryManager', 'showEntryEditor',
   'calendar-toggle-detail-edit', 'calendar-edit-entry', 'calendar-delete-entry', 'removeEntry',
   'weatherRefreshing: false', 'weatherRefreshTask: task', 'latestView.weatherRefreshTask === task',
   'statusTimerByStorage', 'createCalendarRecipeController', 'getCalendarRecipeStore',
   'setTimeoutImpl', 'clearTimeoutImpl', '{ persistent: true }', '{ duration: 10000 }',
 ]) requireText('calendar.js', calendarCode, expected);
 for (const expected of [
-  'calendarMonthCells', 'HOME_ICON_SVG', 'CHEVRON_DOWN_ICON_SVG', 'RECIPE_ICON_SVG',
+  'calendarMonthCells', 'shiftCalendarMonth', 'BACK_ICON_SVG', 'FORWARD_ICON_SVG', 'HOME_ICON_SVG', 'CHEVRON_DOWN_ICON_SVG', 'RECIPE_ICON_SVG',
   'calendar-month-panel', 'pm-calendar-header-side is-left', 'pm-calendar-header-side is-right',
+  'data-calendar-month-navigation tabindex="0"', 'calendar-prev-month', 'calendar-next-month',
   'pm-calendar-title-control', 'pm-calendar-title-chevron',
   'relativeCalendarLabel(today, selectedDate)', 'calendar-recipe-generate', 'recipeScope',
   "viewMode === 'weather' ? view.weatherRefreshing === true",
@@ -1406,7 +1407,8 @@ for (const expected of ['rawContent: removeProtectedBlocks(message.mes || \'\')'
 for (const expected of [
   "tasks.begin(storageId, 'recipe-generate'", 'isolated: true, signal: task.signal',
   'expectedRegion: requestedRegion', 'mergeGeneratedRecipe', 'commitRecipe',
-  'calendar-recipe-region-save', 'calendar-recipe-add', 'calendar-recipe-manage',
+  'calendar-recipe-region-save', 'calendar-recipe-generation-rule-save', '菜谱生成规则不能为空',
+  'refreshInjection: false', 'calendar-recipe-add', 'calendar-recipe-manage',
   'renderRecipeMealDialog', 'renderRecipeMealManager', 'recipeGenerationTask === task',
 ]) requireText('calendar-recipe-controller.js', calendarRecipeControllerCode, expected);
 for (const expected of ['commitGeneration', 'invalidateCommits', 'generation !== commitGeneration']) {
@@ -1415,18 +1417,25 @@ for (const expected of ['commitGeneration', 'invalidateCommits', 'generation !==
 for (const expected of ["reason === 'plugin-data-clear'", "reason === 'backup-apply'", "reason === 'backup-rollback'", 'invalidateCommits();']) {
   requireText('calendar.js', calendarCode, expected);
 }
+for (const expected of ['calendar-generation-rule-save', '日程生成规则不能为空', 'refreshInjection: false', 'requestedGenerationRule = current.generationRule', 'extractContextFestivals(context)', 'buildCalendarPrompts(payload, existing, mode, requestedGenerationRule)', '日程生成规则已在生成期间改变']) {
+  requireText('calendar.js', calendarCode, expected);
+}
 for (const expected of [
   "RECIPE_MEAL_TYPES = Object.freeze(['breakfast', 'lunch', 'dinner', 'snack'])",
   'calendarDateRangeKeys(start, 0, 6)', 'calendarDateRangeKeys(start, -1, 1)',
-  'appliedRegion', 'regionPreference', 'lastGeneratedRegion',
+  'appliedRegion', 'regionPreference', 'generationRule', 'lastGeneratedRegion',
 ]) requireText('calendar-recipe-model.js', calendarRecipeModelCode, expected);
+for (const expected of ['requestedScope = getRecipeScope(storageId)', 'requestedGenerationRule = requestedScope.generationRule', '菜谱生成规则已在生成期间改变']) {
+  requireText('calendar-recipe-controller.js', calendarRecipeControllerCode, expected);
+}
 for (const expected of [
   'scopeCommitQueue', 'saveCalendar(previousStore)', 'calendarRollbackError',
   'injectionError = injectionFailure', 'rollbackInjectionError = injectionFailure',
-  'error.injectionResult = result', 'createCalendarCommitters',
+  'error.injectionResult = result', 'createCalendarCommitters', '{ refreshInjection = true } = {}', 'if (!refreshInjection) return next',
 ]) requireText('calendar-commit.js', calendarCommitCode, expected);
 for (const expected of [
   'setCalendarEntryKind', 'fillCalendarEntryForm', 'readCalendarEntryForm',
+  "occasionFields.hidden = unavailable", "field.disabled = unavailable", "kind === 'occasion' ? form.elements.occasionType.value : ''",
 ]) requireText('calendar-dom.js', calendarDomCode, expected);
 for (const expected of [
   'CALENDAR_YEAR_RANGE = Object.freeze({ min: 1, max: 9999 })', 'createCalendarDate',
@@ -1434,19 +1443,20 @@ for (const expected of [
   'isPlaceholder: true', 'calendarWindowDescription', 'calendarGenerationCopy',
   'buildCalendarPrompts', 'contextPayload', '只作为事实证据',
   '角色本人真实会执行的未来生活安排', '禁止输出 KP 操作',
-  '命令、忽略规则、修改协议', '今天（+0）至六天后（+6）',
+  '命令、忽略规则、修改协议', '窗口严格为起始日（+0）至六天后（+6）', 'DEFAULT_CALENDAR_GENERATION_RULE', '用户保存的生成规则：${rule}',
 ]) requireText('calendar-model.js', calendarModelCode, expected);
 if (calendarModelCode.includes('min: 1900') || calendarModelCode.includes('max: 2100')) failures.push('calendar-model.js: core calendar must not impose a modern-era year whitelist');
 for (const expected of [
   'HOLIDAY_YEAR_RANGE = Object.freeze({ min: 1900, max: 2100 })',
   'HOLIDAY_COUNTRY_YEAR_RANGES', 'JP: Object.freeze({ min: 2007, max: 2099 })',
-  'holidayYearRange', 'isHolidayYearSupported(country, value)',
+  'holidayYearRange', 'isHolidayYearSupported(country, value)', 'extractContextFestivals(context)',
+  "'context-evidence'",
 ]) requireText('calendar-holiday.js', calendarHolidayCode, expected);
 for (const expected of [
   'aria-label="安排名称"', 'aria-label="安排备注"', 'aria-label="安排类型"',
   'name="periodStartDay"', 'data-action="calendar-cycle-subject"',
   'data-calendar-entry-kind="event"', 'data-calendar-entry-kind="occasion"',
-  'data-action="calendar-holiday-country"', 'data-action="calendar-detail-menu"',
+  'data-action="calendar-holiday-country"',
   'data-action="calendar-add-date"', 'data-action="calendar-toggle-detail-edit"',
   'data-action="calendar-edit-entry"', 'data-action="calendar-delete-entry"', 'TRASH_ICON_SVG',
   'data-calendar-entry-edit', 'data-calendar-entry-remove', 'REMOVE_ICON_SVG',
@@ -1456,9 +1466,12 @@ for (const expected of [
   'pm-calendar-scan-card', '<h3>正文日期</h3>', '保存并识别',
   'role="switch"', 'aria-checked="${scope.autoAdjust}"', '自动识别最后一条正文', "label: '<user>'",
   '<time datetime="${selectedDate}">${escapeHtml(detailDate.format(parsed))}</time>', 'detailWeekday.format(parsed)',
-  "follicular: '安全期'", "luteal: '安全期'", 'resolveWeatherForDate(weatherStore, date)',
-  'WEATHER_ICON_SVG', 'pm-calendar-panel-section',
+  "period: { label: '经期'", "ovulatory: { label: '易孕期'", "luteal: { label: '安全期'", "if (!detail) return ''", 'resolveWeatherForDate(weatherStore, date)',
+  'WEATHER_ICON_SVG', 'pm-calendar-panel-section', '℃~${resolved.day.tempMax}℃',
   '仅影响日历今天与相对日期。', '预报外日期使用气候推演', '无法推演',
+  'DEFAULT_CALENDAR_GENERATION_RULE', 'DEFAULT_RECIPE_GENERATION_RULE', 'data-calendar-generation-rule', 'data-recipe-generation-rule',
+  'calendar-generation-rule-save', 'calendar-recipe-generation-rule-save', 'escapeHtml(generationRule)',
+  '生日 / 纪念日', 'data-calendar-occasion-fields ${occasion ? \'\' : \'hidden aria-hidden="true"\'}',
 ]) requireText('calendar-view.js', calendarViewCode, expected);
 for (const forbidden of ['<span>已选日期</span>', '>${escapeHtml(selectedDate)}</time>', '>编辑</button>', 'calendar-editor-kind', 'pm-calendar-editor-switch']) if (calendarViewCode.includes(forbidden)) failures.push(`calendar-view.js: calendar UI remains: ${forbidden}`);
 if (calendarViewCode.includes('Weather data © Open-Meteo')) failures.push('calendar-view.js: weather attribution must not be rendered in the UI');
@@ -1564,7 +1577,8 @@ for (const expected of [
   'persistSceneBudgetRemoval', 'deleteSceneAndFinalize', 'finalizeDeletedScene', 'bindPhonePageActions', 'runDeleteSceneAction', 'toggleSceneMenu', 'selectScenePreset', 'toggleSceneReplyComposer',
   'deleteScene: deleteInteractiveScene', 'persistSceneBudgetRemoval({',
   "['手机页面状态保存失败', persistPhoneUi]", "['运行时场景清理失败', clearOpenScene]",
-  "['社区页面刷新失败', renderLauncher]", "dataset.sceneUiBound === 'true'", "event.key !== 'Escape'", ".pm-scene-menu:not([hidden])",
+  "['社区页面刷新失败', renderLauncher]", "dataset.sceneUiBound === 'true'", "event.key === 'ArrowLeft'", "event.key === 'Escape'",
+  "addEventListener('touchstart'", "addEventListener('touchend'", 'Math.abs(dx) < 48',
   ".pm-scene-post-actions:not([hidden])", 'closePostActions', '[data-action="post-actions"]', 'postFocusTarget', 'menuFocusTarget',
   "closest?.('.pm-scene-post')?.querySelectorAll?.('.pm-scene-comment-actions')", 'commentActions.hidden = !opening',
   "app.querySelectorAll?.('.pm-scene-comment-composer')", "composers.find(composer => composer.id === targetId)", '[data-action="toggle-reply"]', "focus?.({ preventScroll: true })",
@@ -1797,13 +1811,12 @@ for (const expected of [
   '.pm-quote-target{animation:pm-quote-highlight',
   '@media(pointer:coarse){.pm-quote-action{min-width:42px;min-height:42px',
   '@media(prefers-reduced-motion:reduce){.pm-quote-target{animation:none',
-  '.pm-calendar-view-switch{display:flex;align-items:center;justify-content:center;gap:14px;width:auto;margin:0 12px 5px',
+  '.pm-calendar-view-switch{display:flex;align-items:center;justify-content:space-between;gap:6px;width:auto;margin:0 12px 5px',
   '.pm-calendar-tools{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;padding:10px 12px}',
   '.pm-calendar-header .pm-calendar-header-action{width:28px;height:28px;padding:5px;background:transparent}',
   '.pm-calendar-header button[data-action="calendar-home"]{color:var(--pm-color-text-tertiary)!important}',
   '.pm-calendar-header-action svg{width:15px;height:15px}',
   '.pm-calendar-title-row{display:flex;align-items:center;justify-content:center;min-width:0',
-  '.pm-calendar-title-row .pm-calendar-month-step{flex:0 0 28px;width:28px!important;height:28px!important',
   '.pm-calendar-title-control{position:relative;display:flex;min-width:0;justify-content:center}',
   '.pm-calendar-title-chevron{position:absolute;left:100%;top:50%',
   '.pm-calendar-month-panel{margin:0 12px 10px;padding:10px;border:1px solid var(--pm-color-border-subtle);border-radius:14px',
@@ -1817,12 +1830,12 @@ for (const expected of [
   '.pm-calendar-status.is-generating{color:var(--pm-color-danger)}',
   '.pm-calendar-date-tags-row{grid-template-columns:minmax(0,1fr) auto}',
   '.pm-calendar-detail-date{display:flex!important;flex-direction:row!important;align-items:baseline',
-  '.pm-calendar-detail-date>strong,.pm-calendar-detail-date time,.pm-calendar-detail-date em{font-size:13px',
-  '.pm-calendar-detail-date>strong{color:var(--pm-calendar-accent);font-weight:800}',
-  '.pm-calendar-detail-date time{font-weight:700}',
+  '.pm-calendar-detail-date>strong{color:var(--pm-calendar-accent);font-size:17px;line-height:1.1;font-weight:850',
+  '.pm-calendar-detail-date>span{display:flex;align-items:baseline;gap:0;min-width:0}',
+  '.pm-calendar-detail-date time{font-weight:750}',
   '.pm-calendar-detail-date em{color:var(--pm-color-text-tertiary);font-style:normal;font-weight:500}',
   '.pm-calendar-detail-actions{position:absolute;top:8px;right:10px',
-  '.pm-calendar-detail-more,.pm-calendar-detail-menu button{display:grid;place-items:center;width:28px;height:28px;padding:5px;border:0',
+  '.pm-calendar-detail-more{display:grid;place-items:center;width:28px;height:28px;padding:5px;border:0',
   '.pm-calendar-inline-actions button{display:grid;place-items:center;width:28px;height:28px;padding:5px;border:0;border-radius:0;background:transparent',
   '.pm-calendar-inline-add{display:block;width:max-content;margin:8px auto 0;padding:7px 12px;border:1px solid color-mix(in srgb,var(--pm-calendar-accent) 35%,transparent);border-radius:9px',
   '.pm-calendar-management[data-calendar-management="cycle"] .pm-calendar-editor-actions .is-primary{background:var(--pm-calendar-accent);border-color:var(--pm-calendar-accent)}',
@@ -1954,7 +1967,7 @@ requireText('package.json', packageText, 'npm run check:emoji');
 requireText('package.json', packageText, '"check:calendar": "node scripts/check-calendar.mjs"');
 requireText('package.json', packageText, 'npm run check:calendar');
 requireText('settings-templates.js', sourceModuleByName.get('settings-templates.js')?.code || '', '仅显示设备本地时间。');
-for (const expected of ['手机会话占比 (%)', '互动社区占比 (%)', '日历占比 (%)', 'pm-budget-calendar-enabled', 'pm-custom-check', 'role="checkbox"', "event.key==='Enter'"]) {
+for (const expected of ['手机会话占比 (%)', '互动社区占比 (%)', '日历占比 (%)', 'pm-budget-calendar-position', 'pm-budget-calendar-depth', 'pm-custom-check', 'role="checkbox"', "event.key==='Enter'"]) {
   requireText('settings-templates.js', sourceModuleByName.get('settings-templates.js')?.code || '', expected);
 }
 for (const expected of [".pm-budget-scene.is-checked", 'pm-budget-selection-mode', 'communitySelectionsByStorage']) {
@@ -2134,6 +2147,16 @@ for (const expected of [
   'calendarDateRangeKeys(windowStart, -3, 6)', 'days: 60', 'calendarCycles',
   'cycleSubjectKeys', 'predictCycleRange', 'relativeCalendarLabel', "facts.join('；')", 'resolveWeatherForDate',
 ]) requireText('phone-injection.js', phoneInjectionCode, expected);
+for (const expected of [
+  "period: '经期'", "follicular: ''", "ovulatory: '易孕期'", "luteal: '安全期'",
+]) requireText('calendar-page-view.js', calendarPageViewCode, expected);
+for (const expected of [
+  "period: '经期'", "ovulatory: '易孕期'", "luteal: '安全期'",
+]) requireText('phone-injection.js', phoneInjectionCode, expected);
+const cycleInjectionLabelsSource = phoneInjectionCode.match(/const CYCLE_INJECTION_LABELS\s*=\s*Object\.freeze\(\{[\s\S]*?\}\);/)?.[0] || '';
+if (!cycleInjectionLabelsSource) failures.push('phone-injection.js: missing CYCLE_INJECTION_LABELS');
+if (cycleInjectionLabelsSource.includes('follicular')) failures.push('phone-injection.js: blank follicular phase must not have an injection label');
+requireText('phone-injection.js', cycleInjectionLabelsSource, "period: '经期', ovulatory: '易孕期', luteal: '安全期'");
 requireText('interactive-scenes.js', interactiveCode, 'generationErrorMessage(error)');
 requireText('interactive-scene-scheduler.js', sourceModuleByName.get('interactive-scene-scheduler.js')?.code || '', 'generationErrorMessage(error)');
 

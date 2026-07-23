@@ -1,6 +1,6 @@
 import { normalizeCycleStore } from './calendar-cycle-model.js';
 import { normalizeHolidayCache } from './calendar-holiday.js';
-import { normalizeCalendarScope, normalizeCalendarStore } from './calendar-model.js';
+import { calendarScopeFor, normalizeCalendarScope, normalizeCalendarStore } from './calendar-model.js';
 import { normalizeOccasionScope, normalizeOccasionStore } from './calendar-occasion-model.js';
 import { normalizeRecipeScope, normalizeRecipeStore } from './calendar-recipe-model.js';
 import {
@@ -31,19 +31,20 @@ export function createCalendarCommitters({
     let commitGeneration = 0;
     const invalidateCommits = () => { commitGeneration += 1; };
 
-    const commitScope = (storageId, mutate, task = null) => {
+    const commitScope = (storageId, mutate, task = null, { refreshInjection = true } = {}) => {
         const generation = commitGeneration;
         const operation = scopeCommitQueue.catch(() => {}).then(async () => {
             if (generation !== commitGeneration || (task && !tasks.active(task))) return false;
             const previousStore = clone(runtime.store);
             const candidate = clone(previousStore);
-            const current = normalizeCalendarScope(candidate.scopes[storageId]);
+            const current = calendarScopeFor(candidate, storageId);
             const next = normalizeCalendarScope(await mutate(current));
             if (generation !== commitGeneration || (task && !tasks.active(task))) return false;
             candidate.scopes[storageId] = next;
             const normalized = normalizeCalendarStore(candidate);
             if (!saveCalendar(normalized)) throw new Error('日历保存失败：浏览器存储不可用');
             runtime.store = normalized;
+            if (!refreshInjection) return next;
 
             let injectionError = null;
             try {
@@ -85,7 +86,7 @@ export function createCalendarCommitters({
         return operation;
     };
 
-    const commitRecipe = (storageId, mutate, task = null) => {
+    const commitRecipe = (storageId, mutate, task = null, { refreshInjection = true } = {}) => {
         const generation = commitGeneration;
         const operation = recipeCommitQueue.catch(() => {}).then(async () => {
             if (generation !== commitGeneration || (task && !tasks.active(task))) return false;
@@ -98,6 +99,7 @@ export function createCalendarCommitters({
             const normalized = normalizeRecipeStore(candidate);
             if (!saveCalendarRecipes(normalized)) throw new Error('菜谱保存失败：浏览器存储不可用');
             runtime.recipeStore = normalized;
+            if (!refreshInjection) return next;
 
             let injectionError = null;
             try {

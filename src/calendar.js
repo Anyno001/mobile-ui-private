@@ -2,35 +2,33 @@ import { generationErrorMessage } from './ai.js';
 import {
     buildCalendarPrompts, calendarDateFromParts, calendarDateRangeKeys, calendarGenerationCopy, calendarMonthKeys,
     calendarReferenceDate, calendarScopeFor, calendarWeekKeys, calendarWindowDescription, contextPayload, createCalendarDate, deleteCalendarEvent,
-    extractCalendarBaseDate, findCalendarEvent, formatCalendarDate, mergeCalendarEvents,
+    extractCalendarBaseDate, findCalendarEvent, formatCalendarDate, mergeCalendarEvents, replaceCalendarEventsInWindow,
     normalizeCalendarDateTags, normalizeCalendarStore, parseCalendarAiResponse, parseCalendarDate, shiftCalendarMonth,
     upsertCalendarEvent,
 } from './calendar-model.js';
 import { deleteOccasion, expandOccasions, findOccasion, normalizeOccasionStore, occasionScopeFor, upsertOccasion } from './calendar-occasion-model.js';
 import {
-    buildCulturalFestivals, HOLIDAY_YEAR_RANGE, holidayYearFromCache, holidayYearRange, isHolidayYearSupported,
-    mergeCalendarDateFacts, normalizeHolidayCache, resolveHolidayYear, selectHolidayCountry,
+    buildCulturalFestivals, extractContextFestivals, HOLIDAY_YEAR_RANGE, holidayYearFromCache, holidayYearRange,
+    isHolidayYearSupported, mergeCalendarDateFacts, normalizeHolidayCache, resolveHolidayYear, selectHolidayCountry,
 } from './calendar-holiday.js';
 import { fetchWeatherForecast, normalizeWeatherStore, searchWeatherLocations } from './calendar-weather.js';
 import { CYCLE_SELF_SUBJECT, clearCycleScope, cycleScopeFor, cycleSubjectKeys, normalizeCycleStore, upsertCycleScope } from './calendar-cycle-model.js';
 import { normalizeRecipeStore, recipeScopeFor } from './calendar-recipe-model.js';
 import { createCalendarCommitters } from './calendar-commit.js';
 import { fillCalendarEntryForm, readCalendarEntryForm, setCalendarEntryKind } from './calendar-dom.js';
-import { loadCalendar, loadCalendarCycles, loadCalendarHolidays, loadCalendarOccasions, loadCalendarRecipes, loadCalendarWeather } from './calendar-storage.js';
+import { loadCalendar, loadCalendarCycles, loadCalendarHolidays, loadCalendarOccasions, loadCalendarRecipes, loadCalendarWeather, loadCalendarWithLegacyInjectionMigration } from './calendar-storage.js';
 import {
     occasionTypeLabel, renderCalendarEntryDialog, renderCalendarEntryManager,
 } from './calendar-view.js';
 import { renderCalendarPageHtml } from './calendar-page-view.js';
 import { createCalendarRecipeController } from './calendar-recipe-controller.js';
 import { createTaskController } from './calendar-task-controller.js';
-
 export const calendarGenerationErrorMessage = generationErrorMessage;
 export { renderCalendarPageHtml };
-
 export function installCalendar(state, deps) {
     const { getStorageId, gatherContext, callAI, fetchImpl, makeOverlay, closeOverlay } = deps;
     const runtime = {
-        store: normalizeCalendarStore(loadCalendar()),
+        store: normalizeCalendarStore(loadCalendarWithLegacyInjectionMigration()),
         occasionStore: normalizeOccasionStore(loadCalendarOccasions()),
         holidayStore: normalizeHolidayCache(loadCalendarHolidays()),
         weatherStore: normalizeWeatherStore(loadCalendarWeather()),
@@ -94,18 +92,6 @@ export function installCalendar(state, deps) {
         runtime.viewByStorage.set(storageId, view);
         return view;
     };
-    const shiftView = (storageId, delta) => {
-        const current = viewFor(storageId);
-        const next = shiftCalendarMonth(current.viewYear, current.viewMonth, delta);
-        if (!next) return false;
-        runtime.viewByStorage.set(storageId, {
-            ...current,
-            viewYear: next.year, viewMonth: next.month,
-            detailEditing: false,
-            selectedDate: calendarDateFromParts(next.year, next.month, 1),
-        });
-        return true;
-    };
     const { commitScope, commitRecipe, commitOccasions, commitHolidays, commitWeather, commitCycle, invalidateCommits } = createCalendarCommitters({
         runtime,
         tasks,
@@ -113,7 +99,6 @@ export function installCalendar(state, deps) {
         getCycles: cycles,
         getCycleSubject: storageId => viewFor(storageId).cycleSubject,
     });
-
     const render = (storageId = getStorageId()) => {
         const container = state.phoneWindow?.querySelector('.pm-calendar-page');
         if (!container) return false;
@@ -303,45 +288,67 @@ export function installCalendar(state, deps) {
     }
 
     async function generate(storageId = getStorageId(), mode = 'generate', { parentSignal } = {}) {
+        const referenceDate = calendarReferenceDate(scope(storageId));
+        const selectedDate = mode === 'regenerate' ? viewFor(storageId).selectedDate : '';
+        const start = selectedDate ? parseCalendarDate(selectedDate) : referenceDate;
+        if (!start) throw new Error('重新生成日程的选中日期无效');
+        if (mode === 'regenerate') {
+            if (formatCalendarDate(start) < formatCalendarDate(referenceDate)) {
+                status(storageId, '不能重新生成故事今天之前的日程。');
+                rerender(storageId);
+                return false;
+            }
+            const confirmRegenerate = deps.confirmImpl || globalThis.confirm;
+            if (typeof confirmRegenerate !== 'function'
+                || !confirmRegenerate(`重新生成 ${calendarWindowDescription(start, 7).label}日程？这会覆盖窗口内所有日程。`)) return false;
+        }
         const task = tasks.begin(storageId, 'generate', { replace: false, mode, parentSignal });
         if (!task) throw new Error('当前会话已有日历生成任务，或会话不可用');
         const currentView = viewFor(storageId);
         const previousStatus = currentView.generationTask ? currentView.generationPreviousStatus : runtime.statusByStorage.get(storageId) || '';
         runtime.viewByStorage.set(storageId, { ...currentView, generating: true, generationTask: task, generationPreviousStatus: previousStatus }); let statusSettled = false;
-        const now = calendarReferenceDate(scope(storageId)), generationCopy = calendarGenerationCopy(now, mode);
+        const generationCopy = calendarGenerationCopy(start, mode);
         status(storageId, generationCopy.pending, { persistent: true }); rerender(storageId);
         try {
             const context = await gatherContext();
             if (!tasks.active(task)) return false;
             const current = scope(storageId);
-            const historicalDates = calendarDateRangeKeys(now, -3, -1);
-            const currentDates = calendarDateRangeKeys(now, 0, 6);
+            const requestedGenerationRule = current.generationRule;
+            const historicalDates = calendarDateRangeKeys(start, -3, -1);
+            const currentDates = calendarDateRangeKeys(start, 0, 6);
             const historicalEvents = historicalDates.flatMap(date => current.events[date] || [])
                 .map(({ date, title, note, source }) => ({ date, title, note, source }));
             const existing = currentDates.flatMap(date => current.events[date] || [])
                 .map(({ date, title, note, source }) => ({ date, title, note, source }));
             const holidayStore = normalizeHolidayCache(runtime.holidayStore);
+            const contextFestivals = extractContextFestivals(context);
             const years = [...new Set(currentDates.map(date => Number(date.slice(0, 4))))];
-            const dateFacts = years.flatMap(year => {
+            const knownDateFacts = years.flatMap(year => {
                 const legal = holidayYearFromCache(holidayStore, holidayStore.selectedCountry, year)?.entries || [];
                 const cultural = year >= HOLIDAY_YEAR_RANGE.min && year <= HOLIDAY_YEAR_RANGE.max
                     ? buildCulturalFestivals(year) : [];
                 return mergeCalendarDateFacts(legal, cultural);
-            }).filter(item => currentDates.includes(item.date))
+            });
+            const dateFacts = mergeCalendarDateFacts(knownDateFacts, contextFestivals)
+                .filter(item => currentDates.includes(item.date))
                 .map(({ date, name, kind }) => ({ date, name, kind }));
-            const payload = contextPayload(context, now, {
+            const payload = contextPayload(context, start, {
                 dateTags: current.dateTags,
                 historicalEvents,
                 currentEvents: existing,
                 dateFacts,
             });
-            const prompts = buildCalendarPrompts(payload, existing, mode);
+            const prompts = buildCalendarPrompts(payload, existing, mode, requestedGenerationRule);
             const raw = await callAI(prompts.systemPrompt, prompts.userPrompt, { isolated: true, signal: task.signal });
             if (!tasks.active(task)) return false;
-            const events = parseCalendarAiResponse(raw, { start: now, days: 7 });
+            const events = parseCalendarAiResponse(raw, { start, days: 7 });
             const committed = await commitScope(storageId, value => {
+                if (value.generationRule !== requestedGenerationRule) {
+                    throw new Error('日程生成规则已在生成期间改变，请重新生成日程');
+                }
+                if (mode === 'regenerate') return replaceCalendarEventsInWindow(value, events, { start, days: 7 });
                 const next = mergeCalendarEvents(value, events, {
-                    replaceAiInWindow: mode === 'adjust', windowStart: now, days: 7,
+                    replaceAiInWindow: mode === 'adjust', windowStart: start, days: 7,
                 });
                 if (mode === 'adjust') next.lastAdjustedAt = Date.now(); else next.lastGeneratedAt = Date.now();
                 return next;
@@ -407,6 +414,23 @@ export function installCalendar(state, deps) {
         rerender(storageId);
     }
 
+    async function saveStoryInitialDate(storageId, value) {
+        const parsed = parseCalendarDate(value);
+        if (!parsed) throw new Error('故事初始日期无效，请选择有效日期');
+        const storyInitialDate = formatCalendarDate(parsed);
+        await commitScope(storageId, current => ({ ...current, storyInitialDate }), null, { refreshInjection: false });
+        status(storageId, `故事初始日期已保存为 ${storyInitialDate}。`);
+        rerender(storageId);
+    }
+
+    async function clearStoryInitialDate(storageId) {
+        await commitScope(storageId, current => {
+            const next = { ...current }; delete next.storyInitialDate; return next;
+        }, null, { refreshInjection: false });
+        status(storageId, '故事初始日期已清除。');
+        rerender(storageId);
+    }
+
     function goToReferenceDate(storageId) {
         const reference = calendarReferenceDate(scope(storageId));
         const current = viewFor(storageId);
@@ -415,6 +439,29 @@ export function installCalendar(state, deps) {
             selectedDate: formatCalendarDate(reference), monthPanelOpen: false, detailEditing: false,
         });
         rerender(storageId);
+    }
+    function moveCalendarMonth(storageId, delta) {
+        const current = viewFor(storageId);
+        const targetMonth = shiftCalendarMonth(current.viewYear, current.viewMonth, delta);
+        if (!targetMonth) return false;
+        const selected = parseCalendarDate(current.selectedDate);
+        const preferredDay = selected && selected.getFullYear() === current.viewYear
+            && selected.getMonth() + 1 === current.viewMonth ? selected.getDate() : 1;
+        let targetDate = null;
+        for (let day = preferredDay; day >= 1 && !targetDate; day -= 1) {
+            targetDate = createCalendarDate(targetMonth.year, targetMonth.month, day);
+        }
+        if (!targetDate) throw new Error('目标月份没有可选择日期');
+        runtime.viewByStorage.set(storageId, {
+            ...current,
+            viewYear: targetMonth.year,
+            viewMonth: targetMonth.month,
+            selectedDate: formatCalendarDate(targetDate),
+            monthPanelOpen: false,
+            detailEditing: false,
+        });
+        rerender(storageId);
+        return true;
     }
     function jumpToMonth(storageId, yearValue, monthValue) {
         const year = Number(yearValue), month = Number(monthValue);
@@ -474,7 +521,7 @@ export function installCalendar(state, deps) {
         for (const button of overlay.querySelectorAll('[data-calendar-entry-kind]')) {
             button.addEventListener('click', () => {
                 if (existingEntry) return;
-                fillCalendarEntryForm(overlay, null, setCalendarEntryKind(overlay, button.dataset.calendarEntryKind));
+                setCalendarEntryKind(overlay, button.dataset.calendarEntryKind);
             });
         }
         form?.addEventListener('submit', async event => {
@@ -536,19 +583,10 @@ export function installCalendar(state, deps) {
             return;
         }
         if (action === 'calendar-generate') { await generate(storageId, 'generate'); return; }
+        if (action === 'calendar-regenerate') { await generate(storageId, 'regenerate'); return; }
         if (action === 'calendar-month-panel') {
             const current = viewFor(storageId);
             runtime.viewByStorage.set(storageId, { ...current, monthPanelOpen: current.monthPanelOpen !== true });
-            rerender(storageId);
-            return;
-        }
-        if (action === 'calendar-prev-month') {
-            shiftView(storageId, -1);
-            rerender(storageId);
-            return;
-        }
-        if (action === 'calendar-next-month') {
-            shiftView(storageId, 1);
             rerender(storageId);
             return;
         }
@@ -565,12 +603,23 @@ export function installCalendar(state, deps) {
         if (action === 'calendar-base-clear') {
             await clearBaseDate(storageId); return;
         }
+        if (action === 'calendar-story-initial-save') {
+            const value = app?.querySelector('[data-calendar-story-initial-date]')?.value || '';
+            await saveStoryInitialDate(storageId, value); return;
+        }
+        if (action === 'calendar-story-initial-clear') {
+            await clearStoryInitialDate(storageId); return;
+        }
         if (action === 'calendar-date-rescan') {
             await scanContext(storageId);
             return;
         }
         if (action === 'calendar-today') {
             goToReferenceDate(storageId);
+            return;
+        }
+        if (action === 'calendar-prev-month' || action === 'calendar-next-month') {
+            moveCalendarMonth(storageId, action === 'calendar-prev-month' ? -1 : 1);
             return;
         }
         if (['calendar-mode-schedule', 'calendar-mode-weather', 'calendar-mode-cycle', 'calendar-mode-recipe'].includes(action)) {
@@ -604,15 +653,20 @@ export function installCalendar(state, deps) {
             await removeEntry(storageId, button.dataset.entryKind, button.dataset.entryId);
             return;
         }
-        if (action === 'calendar-detail-menu') {
-            const menu = app?.querySelector('#pm-calendar-detail-menu');
-            if (!menu) return;
-            menu.hidden = !menu.hidden;
-            button.setAttribute('aria-expanded', String(!menu.hidden));
-            return;
-        }
         if (action === 'calendar-add-date') { showEntryEditor(storageId); return; }
         if (action === 'calendar-manage-date') { showEntryManager(storageId); return; }
+        if (action === 'calendar-generation-rule-save') {
+            const value = app?.querySelector('[data-calendar-generation-rule]')?.value || '';
+            if (!value.trim()) throw new Error('日程生成规则不能为空');
+            if (value.length > 3000) throw new Error('日程生成规则不能超过 3000 个字符');
+            await commitScope(storageId, current => ({
+                ...current,
+                generationRule: value,
+            }), null, { refreshInjection: false });
+            status(storageId, '日程生成规则已保存。');
+            rerender(storageId);
+            return;
+        }
         if (action === 'calendar-date-sync') {
             const input = app?.querySelector('[data-calendar-date-tags]');
             if (!input) return;
@@ -685,6 +739,18 @@ export function installCalendar(state, deps) {
         if (action === 'calendar-cycle-subject') {
             const current = viewFor(storageId);
             runtime.viewByStorage.set(storageId, { ...current, cycleSubject: button.value || CYCLE_SELF_SUBJECT });
+            rerender(storageId); return;
+        }
+        const injectionToggleFields = {
+            'calendar-toggle-schedule-injection': 'injectionScheduleEnabled',
+            'calendar-toggle-weather-injection': 'injectionWeatherEnabled',
+            'calendar-toggle-cycle-injection': 'injectionCycleEnabled',
+            'calendar-toggle-recipe-injection': 'injectionRecipeEnabled',
+        };
+        if (injectionToggleFields[action]) {
+            const field = injectionToggleFields[action];
+            await commitScope(storageId, current => ({ ...current, [field]: current[field] !== true }));
+            status(storageId, scope(storageId)[field] ? '当前模块上下文注入已开启。' : '当前模块上下文注入已关闭。');
             rerender(storageId); return;
         }
         if (action === 'calendar-toggle-auto') {

@@ -89,6 +89,38 @@ export function buildCulturalFestivals(year, { lunarFormatter } = {}) {
     return sortEntries(rows);
 }
 
+const CONTEXT_FESTIVAL_FIELDS = Object.freeze(['worldBookText', 'mainChatText', 'cardScenario']);
+const CONTEXT_FESTIVAL_DATE_SOURCE = '(?:\\d{4}年\\d{1,2}月\\d{1,2}日|\\d{4}-(?:\\d{1,2})-(?:\\d{1,2})|\\d{4}/(?:\\d{1,2})/(?:\\d{1,2})|\\d{4}\\.(?:\\d{1,2})\\.(?:\\d{1,2}))';
+const CONTEXT_FESTIVAL_NAME_SOURCE = "(?:[\\u4e00-\\u9fff]{2,40}(?:节日|节庆|庆典|纪念日|纪念活动|祭典|祭礼|庆祝日|庆祝活动|祭|节)|[A-Za-z][A-Za-z0-9 '’-]{1,38}(?:Festival|Day|Memorial))";
+const CONTEXT_FESTIVAL_DATE_FIRST = new RegExp(`(?<!\\d)(${CONTEXT_FESTIVAL_DATE_SOURCE})(?!\\d)\\s*(?:将|会|拟)?\\s*(?:举行|举办|庆祝|迎接|纪念|定为|称为|名为|是|为)\\s*(${CONTEXT_FESTIVAL_NAME_SOURCE})`, 'g');
+const CONTEXT_FESTIVAL_NAME_FIRST = new RegExp(`(${CONTEXT_FESTIVAL_NAME_SOURCE})\\s*(?:将于|定于|将在|于|在)\\s*(?<!\\d)(${CONTEXT_FESTIVAL_DATE_SOURCE})(?!\\d)`, 'g');
+
+function parseContextFestivalDate(value) {
+    const chinese = String(value).match(/^(\d{4})年(\d{1,2})月(\d{1,2})日$/);
+    const numeric = String(value).match(/^(\d{4})([-/.])(\d{1,2})\2(\d{1,2})$/);
+    return chinese ? calendarDateFromParts(Number(chinese[1]), Number(chinese[2]), Number(chinese[3]))
+        : numeric ? calendarDateFromParts(Number(numeric[1]), Number(numeric[3]), Number(numeric[4])) : null;
+}
+
+function appendContextFestival(rows, dateText, name) {
+    const date = parseContextFestivalDate(dateText);
+    if (!date) return;
+    try { rows.push(entry(date, name, 'cultural', 'context-evidence')); } catch (error) {}
+}
+
+export function extractContextFestivals(context) {
+    const rows = [];
+    for (const field of CONTEXT_FESTIVAL_FIELDS) {
+        const source = typeof context?.[field] === 'string' ? context[field].slice(0, 12000) : '';
+        const clauses = source.split(/[\r\n。！？!?；;，,]/).map(value => value.trim()).filter(Boolean).slice(-320);
+        for (const clause of clauses) {
+            for (const match of clause.matchAll(CONTEXT_FESTIVAL_DATE_FIRST)) appendContextFestival(rows, match[1], match[2]);
+            for (const match of clause.matchAll(CONTEXT_FESTIVAL_NAME_FIRST)) appendContextFestival(rows, match[2], match[1]);
+        }
+    }
+    return sortEntries(rows);
+}
+
 export function mergeCalendarDateFacts(holidayEntries, culturalEntries) {
     const rows = [], seen = new Set();
     for (const raw of [...(Array.isArray(holidayEntries) ? holidayEntries : []), ...(Array.isArray(culturalEntries) ? culturalEntries : [])]) {

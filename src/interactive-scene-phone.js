@@ -327,6 +327,12 @@ export function toggleSceneReplyComposer(button, app) {
 export function bindPhonePageActions(phoneWindow, handleAction, reportError) {
     if (!phoneWindow || phoneWindow.dataset.sceneUiBound === 'true') return false;
     phoneWindow.dataset.sceneUiBound = 'true';
+    let calendarTouch = null;
+    const runCalendarMonthAction = (action, app) => {
+        Promise.resolve(handleAction({ dataset: { action } }, app)).catch(error => {
+            if (error.message !== '生成已取消') reportError(error);
+        });
+    };
     phoneWindow.addEventListener('click', event => {
         const button = event.target.closest?.('[data-action]');
         const keepMenuWrap = button?.dataset?.action === 'more' ? button.closest('.pm-scene-menu-wrap') : null;
@@ -351,13 +357,40 @@ export function bindPhonePageActions(phoneWindow, handleAction, reportError) {
         });
     });
     phoneWindow.addEventListener('keydown', event => {
-        if (event.key !== 'Escape') return;
-        const postFocusTarget = closePostActions(phoneWindow);
-        const menuFocusTarget = closeSceneMenus(phoneWindow);
-        const focusTarget = postFocusTarget || menuFocusTarget;
-        if (!focusTarget) return;
-        event.preventDefault();
-        focusTarget.focus({ preventScroll: true });
+        if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+            const month = event.target.closest?.('[data-calendar-month-navigation]');
+            const app = month?.closest?.('#pm-calendar-app');
+            if (!month || !app || !phoneWindow.contains(month)) return;
+            event.preventDefault();
+            runCalendarMonthAction(event.key === 'ArrowLeft' ? 'calendar-prev-month' : 'calendar-next-month', app);
+            return;
+        }
+        if (event.key === 'Escape') {
+            const postFocusTarget = closePostActions(phoneWindow);
+            const menuFocusTarget = closeSceneMenus(phoneWindow);
+            const focusTarget = postFocusTarget || menuFocusTarget;
+            if (!focusTarget) return;
+            event.preventDefault();
+            focusTarget.focus({ preventScroll: true });
+        }
     });
+    phoneWindow.addEventListener('touchstart', event => {
+        const month = event.target.closest?.('[data-calendar-month-navigation]');
+        const app = month?.closest?.('#pm-calendar-app');
+        const touch = event.touches?.length === 1 ? event.touches[0] : null;
+        calendarTouch = month && app && touch && phoneWindow.contains(month)
+            ? { x: touch.clientX, y: touch.clientY, app } : null;
+    }, { passive: true });
+    phoneWindow.addEventListener('touchend', event => {
+        const start = calendarTouch;
+        calendarTouch = null;
+        const touch = event.changedTouches?.length === 1 ? event.changedTouches[0] : null;
+        if (!start || !touch) return;
+        const dx = touch.clientX - start.x;
+        const dy = touch.clientY - start.y;
+        if (Math.abs(dx) < 48 || Math.abs(dx) <= Math.abs(dy) * 1.25) return;
+        runCalendarMonthAction(dx < 0 ? 'calendar-next-month' : 'calendar-prev-month', start.app);
+    });
+    phoneWindow.addEventListener('touchcancel', () => { calendarTouch = null; });
     return true;
 }

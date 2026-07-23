@@ -102,7 +102,7 @@ function allocateRenderedPrompts(items, tokenLimit) {
 }
 
 const CYCLE_INJECTION_LABELS = Object.freeze({
-    period: '经期', follicular: '安全期', ovulatory: '易孕期', luteal: '安全期',
+    period: '经期', ovulatory: '易孕期', luteal: '安全期',
 });
 
 export function renderCalendarContextInjection({
@@ -112,7 +112,6 @@ export function renderCalendarContextInjection({
     if (!currentStorageId) return '';
     const calendarScope = calendarScopeFor(calendarStore, currentStorageId);
     const windowStart = calendarReferenceDate(calendarScope, start);
-    const regularDates = calendarDateRangeKeys(windowStart, -3, 6);
     const occasionDates = calendarDateRangeKeys(windowStart, 0, 59);
     const linesByDate = new Map();
     const addFact = (date, fact) => {
@@ -120,48 +119,57 @@ export function renderCalendarContextInjection({
         if (!linesByDate.has(date)) linesByDate.set(date, new Set());
         linesByDate.get(date).add(fact);
     };
-    for (const date of regularDates) {
-        if (weatherStore?.location) {
+    const scheduleDates = calendarDateRangeKeys(windowStart, -3, 6);
+    const weatherDates = calendarDateRangeKeys(windowStart, -1, 3);
+    const cycleDates = new Set(calendarDateRangeKeys(windowStart, -1, 3));
+    if (calendarScope.injectionWeatherEnabled && weatherStore?.location) {
+        for (const date of weatherDates) {
             const weather = resolveWeatherForDate(weatherStore, date);
             if (weather.status === 'available') {
                 addFact(date, `天气（${weather.sourceLabel}）：${weatherCodeLabel(weather.day.weatherCode)}，${weather.day.tempMin}°/${weather.day.tempMax}°C`);
             }
         }
+    }
+    if (calendarScope.injectionScheduleEnabled) {
+        for (const date of scheduleDates) {
         for (const event of calendarScope.events[date] || []) {
             const note = event.note ? `（${event.note.replace(/\s+/g, ' ').slice(0, 180)}）` : '';
             addFact(date, `日程：${event.title}${note}`);
         }
+        }
     }
-    const occasions = expandOccasions(occasionScopeFor(occasionStore, currentStorageId), { start: windowStart, days: 60 });
-    for (const occasion of occasions) {
-        const kind = occasion.type === 'birthday' ? '生日' : '纪念日';
-        addFact(occasion.date, `${kind}：${occasion.title}${occasion.note ? `（${occasion.note.replace(/\s+/g, ' ').slice(0, 180)}）` : ''}`);
+    if (calendarScope.injectionScheduleEnabled) {
+        const occasions = expandOccasions(occasionScopeFor(occasionStore, currentStorageId), { start: windowStart, days: 60 });
+        for (const occasion of occasions) {
+            const kind = occasion.type === 'birthday' ? '生日' : '纪念日';
+            addFact(occasion.date, `${kind}：${occasion.title}${occasion.note ? `（${occasion.note.replace(/\s+/g, ' ').slice(0, 180)}）` : ''}`);
+        }
     }
     const holidays = normalizeHolidayCache(holidayStore);
-    const holidayYears = [...new Set(regularDates.map(date => Number(date.slice(0, 4))))];
-    for (const year of holidayYears) {
+    const holidayYears = [...new Set(scheduleDates.map(date => Number(date.slice(0, 4))))];
+    if (calendarScope.injectionScheduleEnabled) for (const year of holidayYears) {
         const legal = holidayYearFromCache(holidays, holidays.selectedCountry, year)?.entries || [];
         const cultural = year >= HOLIDAY_YEAR_RANGE.min && year <= HOLIDAY_YEAR_RANGE.max
             ? buildCulturalFestivals(year) : [];
         for (const item of mergeCalendarDateFacts(legal, cultural)) {
-            if (!regularDates.includes(item.date)) continue;
+            if (!scheduleDates.includes(item.date)) continue;
             const kind = item.kind === 'workday' ? '调休工作日' : item.kind === 'in_lieu' ? '调休'
                 : item.kind === 'observed' ? '替代休息日' : item.kind === 'cultural' ? '文化节日' : '节假日';
             addFact(item.date, `${kind}：${item.name}`);
         }
     }
-    const cycleDates = new Set(calendarDateRangeKeys(windowStart, 0, 6));
-    for (const subject of cycleSubjectKeys(cycleStore, currentStorageId)) {
+    if (calendarScope.injectionCycleEnabled) for (const subject of cycleSubjectKeys(cycleStore, currentStorageId)) {
         const profile = cycleScopeFor(cycleStore, currentStorageId, subject);
         if (!profile.enabled) continue;
         const subjectLabel = subject === CYCLE_SELF_SUBJECT ? '我'
             : subject.startsWith('role:') ? subject.slice(5) : subject || currentActorName || '当前角色';
-        for (const prediction of predictCycleRange(profile, calendarDateRangeKeys(windowStart, 0, 0)[0], 7).predictions) {
-            if (!cycleDates.has(prediction.date) || !prediction.phase) continue;
-            addFact(prediction.date, `生理周期（${subjectLabel}）：${CYCLE_INJECTION_LABELS[prediction.phase] || prediction.phase}`);
+        for (const prediction of predictCycleRange(profile, calendarDateRangeKeys(windowStart, -1, -1)[0], 5).predictions) {
+            const label = CYCLE_INJECTION_LABELS[prediction.phase];
+            if (!cycleDates.has(prediction.date) || !label) continue;
+            addFact(prediction.date, `生理周期（${subjectLabel}）：${label}`);
         }
     }
-    const outputDates = [...new Set([...regularDates, ...occasionDates.filter(date => linesByDate.has(date))])].sort();
+    const outputDates = [...new Set([...scheduleDates, ...weatherDates, ...cycleDates, ...occasionDates.filter(date => linesByDate.has(date))])].sort();
     return outputDates.flatMap(date => {
         const facts = [...(linesByDate.get(date) || [])];
         if (!facts.length) return [];
@@ -208,7 +216,8 @@ export function buildContextInjectionPrompts({
         }];
     }) : [];
     let calendarItems = [];
-    if (config.calendarEnabled && calendarStore && currentStorageId) {
+    const calendarScope = calendarStore && currentStorageId ? calendarScopeFor(calendarStore, currentStorageId) : null;
+    if (calendarScope && (calendarScope.injectionScheduleEnabled || calendarScope.injectionWeatherEnabled || calendarScope.injectionCycleEnabled)) {
         const body = renderCalendarContextInjection({
             currentStorageId, currentActorName, calendarStore, occasionStore: calendarOccasions,
             holidayStore: calendarHolidays, weatherStore: calendarWeather, cycleStore: calendarCycles,
@@ -223,8 +232,7 @@ export function buildContextInjectionPrompts({
         }
     }
     const recipeItems = [];
-    if (config.recipeEnabled && calendarRecipes && calendarStore && currentStorageId) {
-        const calendarScope = calendarScopeFor(calendarStore, currentStorageId);
+    if (calendarScope?.injectionRecipeEnabled && calendarRecipes && currentStorageId) {
         const body = renderRecipeInjection(recipeScopeFor(calendarRecipes, currentStorageId), {
             start: calendarReferenceDate(calendarScope),
         });
@@ -234,8 +242,8 @@ export function buildContextInjectionPrompts({
                 content: `[角色菜谱]
 ${body}
 [结束]`,
-                position: config.recipePosition,
-                depth: config.recipeDepth,
+                position: config.calendarPosition,
+                depth: config.calendarDepth,
             });
         }
     }
@@ -257,8 +265,8 @@ ${body}
             budget,
             phonePermission: { allowed: phonePermission.allowed, reason: phonePermission.reason, sourceCount: phonePermission.sources.length },
             communityPermission: { allowed: communityPermission.allowed, reason: communityPermission.reason, sourceCount: communityPermission.sources.length },
-            calendarEnabled: config.calendarEnabled,
-            recipeEnabled: config.recipeEnabled,
+            calendarEnabled: Boolean(calendarScope?.injectionScheduleEnabled || calendarScope?.injectionWeatherEnabled || calendarScope?.injectionCycleEnabled),
+            recipeEnabled: calendarScope?.injectionRecipeEnabled === true,
             usedTokens: phone.usedTokens + community.usedTokens + calendar.usedTokens + recipe.usedTokens,
             truncatedCount: phone.truncatedCount + community.truncatedCount + calendar.truncatedCount + recipe.truncatedCount,
         },

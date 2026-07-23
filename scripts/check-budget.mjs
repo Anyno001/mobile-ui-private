@@ -31,9 +31,11 @@ assert.equal(normalized.budgetVersion, 2);
 assert.equal(normalized.targetTokens, DEFAULT_BUDGET_CONFIG.targetTokens);
 assert.deepEqual(normalized.sourceWeights, DEFAULT_BUDGET_CONFIG.sourceWeights);
 assert.deepEqual(normalized.sourcePriority, ['phone', 'community', 'calendar', 'recipe']);
-assert.equal(normalized.recipeEnabled, false);
-assert.equal(normalized.recipePosition, DEFAULT_BUDGET_CONFIG.recipePosition);
-assert.equal(normalized.recipeDepth, DEFAULT_BUDGET_CONFIG.recipeDepth);
+for (const removedField of ['calendarEnabled', 'recipeEnabled', 'recipePosition', 'recipeDepth']) {
+    assert.equal(Object.hasOwn(normalized, removedField), false, `预算配置不得保留旧字段 ${removedField}`);
+}
+assert.equal(normalized.calendarPosition, DEFAULT_BUDGET_CONFIG.calendarPosition);
+assert.equal(normalized.calendarDepth, DEFAULT_BUDGET_CONFIG.calendarDepth);
 assert.equal(normalized.redistributeUnused, DEFAULT_BUDGET_CONFIG.redistributeUnused);
 assert.equal(normalized.communityEnabled, true);
 assert.equal(normalized.communityPosition, DEFAULT_BUDGET_CONFIG.communityPosition);

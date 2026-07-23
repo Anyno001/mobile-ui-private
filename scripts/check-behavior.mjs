@@ -23,6 +23,8 @@ import {
 import { installConversation } from '../src/conversation.js';
 import { gatherContext, getUserPersona } from '../src/host-context.js';
 import { applyConversationInjections } from '../src/phone-injection.js';
+import { normalizeCalendarStore } from '../src/calendar-model.js';
+import { normalizeRecipeStore } from '../src/calendar-recipe-model.js';
 import { deriveInteractiveActorId, normalizeInteractiveStore } from '../src/interactive-scene-model.js';
 import { renderPhoneDesktop, runDesktopPageTransition } from '../src/interactive-scenes.js';
 import { getDanmakuMotion, getDanmakuTone, renderCommunityLauncher, renderCommunityWorkspace } from '../src/interactive-scene-views.js';
@@ -2712,12 +2714,33 @@ for (const schemaVersion of [5, 6]) {
     assert.deepEqual(parsedLegacyRecipes.calendarRecipes, currentBackup.calendarRecipes,
         `schema ${schemaVersion} 不得解析尚未定义的 calendarRecipes 字段`);
 }
+const importedGenerationRules = {
+    calendarStore: normalizeCalendarStore({ version: 1, scopes: {
+        storyA: { generationRule: '仅依据角色设定与近期剧情安排日程。' },
+        storyB: { generationRule: '另一角色的日程规则。' },
+    } }),
+    calendarRecipes: normalizeRecipeStore({ version: 1, scopes: {
+        storyA: { generationRule: '优先使用剧情中明确出现的食材。' },
+        storyB: { generationRule: '另一角色的菜谱规则。' },
+    } }),
+};
+const parsedGenerationRules = parseBackupData({ schemaVersion: 7, ...importedGenerationRules }, currentBackup);
+assert.equal(parsedGenerationRules.calendarStore.scopes.storyA.generationRule, '仅依据角色设定与近期剧情安排日程。',
+    'schema 7 备份恢复必须保留日程 generationRule');
+assert.equal(parsedGenerationRules.calendarStore.scopes.storyB.generationRule, '另一角色的日程规则。',
+    '备份恢复必须保留不同 storageId 的日程规则隔离');
+assert.equal(parsedGenerationRules.calendarRecipes.scopes.storyA.generationRule, '优先使用剧情中明确出现的食材。',
+    'schema 7 备份恢复必须保留菜谱 generationRule');
+assert.equal(parsedGenerationRules.calendarRecipes.scopes.storyB.generationRule, '另一角色的菜谱规则。',
+    '备份恢复必须保留不同 storageId 的菜谱规则隔离');
 const importedRecipes = { version: 1, scopes: { story: {
-    regionPreference: '架空北境', lastGeneratedRegion: '架空北境', lastGeneratedAt: 12,
+    regionPreference: '架空北境', generationRule: '只使用剧情中明确出现的北境食材。',
+    lastGeneratedRegion: '架空北境', lastGeneratedAt: 12,
     days: { '2032-03-15': { dinner: { text: '北境炖肉', source: 'ai', updatedAt: 12 } } },
 } } };
 assert.deepEqual(parseBackupData({ schemaVersion: 7, calendarRecipes: importedRecipes }, currentBackup).calendarRecipes,
     importedRecipes, 'schema 7 必须读取规范菜谱 store');
+assert.equal(importedRecipes.scopes.story.generationRule, '只使用剧情中明确出现的北境食材。');
 const canonicalWeatherLocation = {
     name: '上海', latitude: 31.2, longitude: 121.4, country: 'CN', admin1: '上海', timezone: 'Asia/Shanghai',
 };
@@ -4162,7 +4185,7 @@ const delegatedPhoneRoot = {
         if (selector === '.pm-scene-post-actions:not([hidden])') return openPostActions.filter(actions => !actions.hidden);
         assert.fail(`不应查询未知选择器：${selector}`);
     },
-    contains(node) { return node === actionButton || node === calendarActionButton || node === calendarCountryControl || delegatedExtraNodes.has(node); },
+    contains(node) { return node === actionButton || node === calendarActionButton || delegatedExtraNodes.has(node); },
 };
 assert.equal(bindPhonePageActions(
     delegatedPhoneRoot,
@@ -4174,7 +4197,7 @@ assert.equal(bindPhonePageActions(
     error => delegatedErrors.push(error),
 ), true);
 assert.equal(bindPhonePageActions(delegatedPhoneRoot, () => {}, () => {}), false);
-assert.deepEqual([...delegatedListeners.keys()], ['click', 'change', 'keydown']);
+assert.deepEqual([...delegatedListeners.keys()], ['click', 'change', 'keydown', 'touchstart', 'touchend', 'touchcancel']);
 delegatedListeners.get('click')({ target: actionTarget });
 await Promise.resolve();
 assert.deepEqual(delegatedActions, [{ button: actionButton, app: desktopApp }], '重复绑定后一次点击只能分发一次');
@@ -4202,6 +4225,52 @@ assert.deepEqual(delegatedActions, [
 ], '日历页面动作必须进入统一事件委托并保留目标 app');
 assert.deepEqual(delegatedErrors, []);
 
+const calendarMonthNavigation = {
+    closest(selector) {
+        if (selector === '[data-calendar-month-navigation]') return this;
+        if (selector === '#pm-calendar-app') return calendarApp;
+        return null;
+    },
+};
+delegatedExtraNodes.add(calendarMonthNavigation);
+let monthKeyPrevented = false;
+delegatedListeners.get('keydown')({
+    key: 'ArrowRight', target: calendarMonthNavigation,
+    preventDefault() { monthKeyPrevented = true; },
+});
+await Promise.resolve();
+assert.equal(monthKeyPrevented, true, '月历方向键必须阻止浏览器默认横向行为');
+assert.deepEqual(delegatedActions.at(-1), {
+    button: { dataset: { action: 'calendar-next-month' } }, app: calendarApp,
+}, '月历右方向键必须复用下个月 action');
+
+const actionsBeforeVerticalTouch = delegatedActions.length;
+delegatedListeners.get('touchstart')({
+    target: calendarMonthNavigation, touches: [{ clientX: 100, clientY: 100 }],
+});
+delegatedListeners.get('touchend')({ changedTouches: [{ clientX: 130, clientY: 180 }] });
+await Promise.resolve();
+assert.equal(delegatedActions.length, actionsBeforeVerticalTouch,
+    '纵向滚动或短距离手势不得误触翻月');
+
+delegatedListeners.get('touchstart')({
+    target: calendarMonthNavigation, touches: [{ clientX: 180, clientY: 100 }],
+});
+delegatedListeners.get('touchend')({ changedTouches: [{ clientX: 90, clientY: 108 }] });
+await Promise.resolve();
+assert.deepEqual(delegatedActions.at(-1), {
+    button: { dataset: { action: 'calendar-next-month' } }, app: calendarApp,
+}, '向左水平滑动必须复用下个月 action');
+
+delegatedListeners.get('touchstart')({
+    target: calendarMonthNavigation, touches: [{ clientX: 90, clientY: 100 }],
+});
+delegatedListeners.get('touchend')({ changedTouches: [{ clientX: 180, clientY: 105 }] });
+await Promise.resolve();
+assert.deepEqual(delegatedActions.at(-1), {
+    button: { dataset: { action: 'calendar-prev-month' } }, app: calendarApp,
+}, '向右水平滑动必须复用上个月 action');
+
 const calendarCountryControl = {
     tagName: 'SELECT',
     dataset: { action: 'calendar-holiday-country' }, value: 'JP',
@@ -4213,6 +4282,7 @@ const calendarCountryControl = {
         return null;
     },
 };
+delegatedExtraNodes.add(calendarCountryControl);
 const actionsBeforeCountrySelection = delegatedActions.length;
 delegatedListeners.get('click')({ target: calendarCountryControl });
 delegatedListeners.get('change')({ target: calendarCountryControl });

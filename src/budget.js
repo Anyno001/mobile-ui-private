@@ -17,12 +17,8 @@ export const DEFAULT_BUDGET_CONFIG = Object.freeze({
     communityDepth: 0,
     communitySceneIdsByStorage: Object.freeze({}),
     communitySelectionsByStorage: Object.freeze({}),
-    calendarEnabled: false,
-    calendarPosition: EXTENSION_PROMPT_POSITIONS.IN_PROMPT,
+    calendarPosition: EXTENSION_PROMPT_POSITIONS.IN_CHAT,
     calendarDepth: 0,
-    recipeEnabled: false,
-    recipePosition: EXTENSION_PROMPT_POSITIONS.IN_PROMPT,
-    recipeDepth: 0,
 });
 
 const finiteInteger = (value, min, max) => typeof value === 'number'
@@ -122,16 +118,10 @@ export function normalizeBudgetConfig(value) {
             ? source.communityDepth : DEFAULT_BUDGET_CONFIG.communityDepth,
         communitySceneIdsByStorage: normalizeSceneIds(source.communitySceneIdsByStorage),
         communitySelectionsByStorage: normalizeCommunitySelections(source.communitySelectionsByStorage),
-        calendarEnabled: source.calendarEnabled === true,
         calendarPosition: allowedPositions.includes(source.calendarPosition)
             ? source.calendarPosition : DEFAULT_BUDGET_CONFIG.calendarPosition,
         calendarDepth: finiteInteger(source.calendarDepth, 0, MAX_INJECTION_DEPTH)
             ? source.calendarDepth : DEFAULT_BUDGET_CONFIG.calendarDepth,
-        recipeEnabled: source.recipeEnabled === true,
-        recipePosition: allowedPositions.includes(source.recipePosition)
-            ? source.recipePosition : DEFAULT_BUDGET_CONFIG.recipePosition,
-        recipeDepth: finiteInteger(source.recipeDepth, 0, MAX_INJECTION_DEPTH)
-            ? source.recipeDepth : DEFAULT_BUDGET_CONFIG.recipeDepth,
     };
 }
 
