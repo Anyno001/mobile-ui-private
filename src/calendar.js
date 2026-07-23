@@ -17,9 +17,7 @@ import { normalizeRecipeStore, recipeScopeFor } from './calendar-recipe-model.js
 import { createCalendarCommitters } from './calendar-commit.js';
 import { fillCalendarEntryForm, readCalendarEntryForm, setCalendarEntryKind } from './calendar-dom.js';
 import { loadCalendar, loadCalendarCycles, loadCalendarHolidays, loadCalendarOccasions, loadCalendarRecipes, loadCalendarWeather, loadCalendarWithLegacyInjectionMigration } from './calendar-storage.js';
-import {
-    occasionTypeLabel, renderCalendarEntryDialog, renderCalendarEntryManager,
-} from './calendar-view.js';
+import { occasionTypeLabel, renderCalendarEntryDialog } from './calendar-view.js';
 import { renderCalendarPageHtml } from './calendar-page-view.js';
 import { createCalendarRecipeController } from './calendar-recipe-controller.js';
 import { createTaskController } from './calendar-task-controller.js';
@@ -518,12 +516,11 @@ export function installCalendar(state, deps) {
         const errorNode = overlay.querySelector('[data-calendar-entry-error]');
         const showError = error => { if (errorNode) errorNode.textContent = error?.message || '安排更新失败'; };
         overlay.querySelector('[data-calendar-entry-close]')?.addEventListener('click', () => closeOverlay?.('close'));
-        for (const button of overlay.querySelectorAll('[data-calendar-entry-kind]')) {
-            button.addEventListener('click', () => {
-                if (existingEntry) return;
-                setCalendarEntryKind(overlay, button.dataset.calendarEntryKind);
-            });
-        }
+        const repeatToggle = overlay.querySelector('[data-calendar-repeat-toggle]');
+        repeatToggle?.addEventListener('click', () => {
+            if (existingEntry) return;
+            setCalendarEntryKind(overlay, overlay.dataset.calendarEntryKind === 'occasion' ? 'event' : 'occasion');
+        });
         form?.addEventListener('submit', async event => {
             event.preventDefault();
             try {
@@ -551,28 +548,6 @@ export function installCalendar(state, deps) {
             } catch (error) { showError(error); }
         });
         fillCalendarEntryForm(overlay, existingEntry, normalizedKind, { focusTitle: true });
-    }
-
-    function showEntryManager(storageId) {
-        if (typeof makeOverlay !== 'function') throw new Error('安排管理器不可用');
-        const entries = selectedDateEntries(storageId);
-        const overlay = makeOverlay(renderCalendarEntryManager(entries.date, entries.events, entries.occasions));
-        overlay.querySelector('[data-calendar-entry-close]')?.addEventListener('click', () => closeOverlay?.('close'));
-        overlay.querySelector('[data-calendar-entry-add]')?.addEventListener('click', () => {
-            closeOverlay?.('add');
-            showEntryEditor(storageId);
-        });
-        for (const button of overlay.querySelectorAll('[data-calendar-entry-edit]')) {
-            button.addEventListener('click', () => {
-                closeOverlay?.('edit');
-                showEntryEditor(storageId, button.dataset.entryKind, button.dataset.entryId);
-            });
-        }
-        for (const button of overlay.querySelectorAll('[data-calendar-entry-remove]')) {
-            button.addEventListener('click', async () => {
-                if (await removeEntry(storageId, button.dataset.entryKind, button.dataset.entryId)) closeOverlay?.('removed');
-            });
-        }
     }
 
     async function handleAction(button, app) {
@@ -654,7 +629,6 @@ export function installCalendar(state, deps) {
             return;
         }
         if (action === 'calendar-add-date') { showEntryEditor(storageId); return; }
-        if (action === 'calendar-manage-date') { showEntryManager(storageId); return; }
         if (action === 'calendar-generation-rule-save') {
             const value = app?.querySelector('[data-calendar-generation-rule]')?.value || '';
             if (!value.trim()) throw new Error('日程生成规则不能为空');

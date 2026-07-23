@@ -4,7 +4,7 @@ import {
     buildRecipePrompts, deleteRecipeMeal, mergeGeneratedRecipe, parseRecipeAiResponse, replaceRecipeInWindow,
     recipeDayFor, setRecipeRegionPreference, upsertRecipeMeal,
 } from './calendar-recipe-model.js';
-import { renderRecipeMealDialog, renderRecipeMealManager } from './calendar-view.js';
+import { renderRecipeMealDialog } from './calendar-view.js';
 
 export function createCalendarRecipeController({
     tasks, getStorageId, gatherContext, callAI, makeOverlay, closeOverlay, commitRecipe,
@@ -95,7 +95,7 @@ export function createCalendarRecipeController({
         const date = getView(storageId).selectedDate;
         const day = recipeDayFor(getRecipeScope(storageId), date);
         const selectedType = mealType || ['breakfast', 'lunch', 'dinner', 'snack'].find(type => !day[type]);
-        if (!selectedType) throw new Error('这一天的四个餐次都已有内容，请从管理列表中编辑');
+        if (!selectedType) throw new Error('这一天的四个餐次都已有内容，请使用餐食右侧的编辑按钮');
         const existing = editing ? day[selectedType] || null : null;
         if (editing && !existing) throw new Error('要编辑的餐食不存在或已被移除');
         const overlay = makeOverlay(renderRecipeMealDialog(date, selectedType, existing));
@@ -124,34 +124,6 @@ export function createCalendarRecipeController({
             }
         });
         form?.elements.text?.focus?.({ preventScroll: true });
-    }
-
-    function showMealManager(storageId) {
-        if (typeof makeOverlay !== 'function') throw new Error('菜谱管理器不可用');
-        const date = getView(storageId).selectedDate;
-        const overlay = makeOverlay(renderRecipeMealManager(date, getRecipeScope(storageId)));
-        overlay.querySelector('[data-recipe-entry-close]')?.addEventListener('click', () => closeOverlay?.('close'));
-        overlay.querySelector('[data-recipe-entry-add]')?.addEventListener('click', () => {
-            closeOverlay?.('add');
-            showMealEditor(storageId);
-        });
-        for (const button of overlay.querySelectorAll('[data-recipe-entry-edit]')) {
-            button.addEventListener('click', () => {
-                closeOverlay?.('edit');
-                showMealEditor(storageId, button.dataset.mealType, true);
-            });
-        }
-        for (const button of overlay.querySelectorAll('[data-recipe-entry-remove]')) {
-            button.addEventListener('click', async () => {
-                const mealType = button.dataset.mealType;
-                const meal = recipeDayFor(getRecipeScope(storageId), date)[mealType];
-                if (!meal || !confirmImpl?.(`移除这份餐食“${meal.text}”？`)) return;
-                await commitRecipe(storageId, current => deleteRecipeMeal(current, date, mealType).scope);
-                status(storageId, '餐食已移除。');
-                closeOverlay?.('removed');
-                rerender(storageId);
-            });
-        }
     }
 
     async function handleAction(button, app, storageId = getStorageId()) {
@@ -183,16 +155,27 @@ export function createCalendarRecipeController({
             rerender(storageId);
             return true;
         }
-        if (action === 'calendar-recipe-add') {
-            showMealEditor(storageId);
+        if (action === 'calendar-recipe-edit') {
+            const mealType = button.dataset.mealType || '';
+            showMealEditor(storageId, mealType, true);
             return true;
         }
-        if (action === 'calendar-recipe-manage') {
-            showMealManager(storageId);
+        if (action === 'calendar-recipe-delete') {
+            const date = getView(storageId).selectedDate;
+            const mealType = button.dataset.mealType || '';
+            const meal = recipeDayFor(getRecipeScope(storageId), date)[mealType];
+            if (!meal || !confirmImpl?.(`删除这份餐食“${meal.text}”？`)) return true;
+            await commitRecipe(storageId, current => deleteRecipeMeal(current, date, mealType).scope);
+            status(storageId, '餐食已删除。');
+            rerender(storageId);
+            return true;
+        }
+        if (action === 'calendar-recipe-add') {
+            showMealEditor(storageId);
             return true;
         }
         return false;
     }
 
-    return { generate, handleAction, showMealEditor, showMealManager };
+    return { generate, handleAction, showMealEditor };
 }

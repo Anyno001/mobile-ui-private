@@ -1,8 +1,7 @@
 export function setCalendarEntryKind(root, kind) {
     const normalized = kind === 'occasion' ? 'occasion' : 'event';
-    for (const button of root?.querySelectorAll?.('[data-calendar-entry-kind]') || []) {
-        button.setAttribute('aria-pressed', String(button.dataset.calendarEntryKind === normalized));
-    }
+    const repeatToggle = root?.querySelector?.('[data-calendar-repeat-toggle]');
+    repeatToggle?.setAttribute?.('aria-checked', String(normalized === 'occasion'));
     const occasionFields = root?.querySelector?.('[data-calendar-occasion-fields]');
     if (occasionFields) {
         const unavailable = normalized !== 'occasion';

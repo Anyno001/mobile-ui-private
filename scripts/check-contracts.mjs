@@ -1386,7 +1386,7 @@ for (const expected of [
   'isHolidayYearSupported', 'holidayYearRange', 'calendarGenerationCopy', 'calendar-holiday-country',
   '该国家在当前年代无外部节假日数据源',
   'calendar-month-jump', 'calendar-prev-month', 'calendar-next-month', 'calendar-today', 'rawLatestChatText || context.latestChatText',
-  'goToReferenceDate', 'moveCalendarMonth', 'jumpToMonth', 'showEntryManager', 'showEntryEditor',
+  'goToReferenceDate', 'moveCalendarMonth', 'jumpToMonth', 'showEntryEditor',
   'calendar-toggle-detail-edit', 'calendar-edit-entry', 'calendar-delete-entry', 'removeEntry',
   'weatherRefreshing: false', 'weatherRefreshTask: task', 'latestView.weatherRefreshTask === task',
   'statusTimerByStorage', 'createCalendarRecipeController', 'getCalendarRecipeStore',
@@ -1408,8 +1408,8 @@ for (const expected of [
   "tasks.begin(storageId, 'recipe-generate'", 'isolated: true, signal: task.signal',
   'expectedRegion: requestedRegion', 'mergeGeneratedRecipe', 'commitRecipe',
   'calendar-recipe-region-save', 'calendar-recipe-generation-rule-save', '菜谱生成规则不能为空',
-  'refreshInjection: false', 'calendar-recipe-add', 'calendar-recipe-manage',
-  'renderRecipeMealDialog', 'renderRecipeMealManager', 'recipeGenerationTask === task',
+  'refreshInjection: false', 'calendar-recipe-add', 'calendar-recipe-edit', 'calendar-recipe-delete',
+  'renderRecipeMealDialog', 'recipeGenerationTask === task',
 ]) requireText('calendar-recipe-controller.js', calendarRecipeControllerCode, expected);
 for (const expected of ['commitGeneration', 'invalidateCommits', 'generation !== commitGeneration']) {
   requireText('calendar-commit.js', sourceModuleByName.get('calendar-commit.js')?.code || '', expected);
@@ -1453,16 +1453,15 @@ for (const expected of [
   "'context-evidence'",
 ]) requireText('calendar-holiday.js', calendarHolidayCode, expected);
 for (const expected of [
-  'aria-label="安排名称"', 'aria-label="安排备注"', 'aria-label="安排类型"',
+  'aria-label="安排名称"', 'aria-label="安排备注"', '<b>日程</b>',
   'name="periodStartDay"', 'data-action="calendar-cycle-subject"',
-  'data-calendar-entry-kind="event"', 'data-calendar-entry-kind="occasion"',
+  'data-calendar-repeat-toggle role="switch"', '每年同一天重复',
   'data-action="calendar-holiday-country"',
   'data-action="calendar-add-date"', 'data-action="calendar-toggle-detail-edit"',
   'data-action="calendar-edit-entry"', 'data-action="calendar-delete-entry"', 'TRASH_ICON_SVG',
-  'data-calendar-entry-edit', 'data-calendar-entry-remove', 'REMOVE_ICON_SVG',
   'renderCalendarMonthPanel', 'data-calendar-month-panel', 'data-action="calendar-today"',
   '该国家在当前年代无外部数据源', 'EDIT_ICON_SVG', 'MORE_ICON_SVG',
-  'EVENT_EDITOR_ICON_SVG', 'OCCASION_EDITOR_ICON_SVG', 'pm-calendar-entry-dialog',
+  'data-action="calendar-recipe-edit"', 'data-action="calendar-recipe-delete"', 'pm-calendar-entry-dialog',
   'pm-calendar-scan-card', '<h3>正文日期</h3>', '保存并识别',
   'role="switch"', 'aria-checked="${scope.autoAdjust}"', '自动识别最后一条正文', "label: '<user>'",
   '<time datetime="${selectedDate}">${escapeHtml(detailDate.format(parsed))}</time>', 'detailWeekday.format(parsed)',
@@ -1471,7 +1470,7 @@ for (const expected of [
   '仅影响日历今天与相对日期。', '预报外日期使用气候推演', '无法推演',
   'DEFAULT_CALENDAR_GENERATION_RULE', 'DEFAULT_RECIPE_GENERATION_RULE', 'data-calendar-generation-rule', 'data-recipe-generation-rule',
   'calendar-generation-rule-save', 'calendar-recipe-generation-rule-save', 'escapeHtml(generationRule)',
-  '生日 / 纪念日', 'data-calendar-occasion-fields ${occasion ? \'\' : \'hidden aria-hidden="true"\'}',
+  '开启后可设置生日或纪念日', 'data-calendar-occasion-fields ${occasion ? \'\' : \'hidden aria-hidden="true"\'}',
 ]) requireText('calendar-view.js', calendarViewCode, expected);
 for (const forbidden of ['<span>已选日期</span>', '>${escapeHtml(selectedDate)}</time>', '>编辑</button>', 'calendar-editor-kind', 'pm-calendar-editor-switch']) if (calendarViewCode.includes(forbidden)) failures.push(`calendar-view.js: calendar UI remains: ${forbidden}`);
 if (calendarViewCode.includes('Weather data © Open-Meteo')) failures.push('calendar-view.js: weather attribution must not be rendered in the UI');
@@ -1837,9 +1836,11 @@ for (const expected of [
   '.pm-calendar-detail-actions{position:absolute;top:8px;right:10px',
   '.pm-calendar-detail-more{display:grid;place-items:center;width:28px;height:28px;padding:5px;border:0',
   '.pm-calendar-inline-actions button{display:grid;place-items:center;width:28px;height:28px;padding:5px;border:0;border-radius:0;background:transparent',
-  '.pm-calendar-inline-add{display:block;width:max-content;margin:8px auto 0;padding:7px 12px;border:1px solid color-mix(in srgb,var(--pm-calendar-accent) 35%,transparent);border-radius:9px',
-  '.pm-calendar-management[data-calendar-management="cycle"] .pm-calendar-editor-actions .is-primary{background:var(--pm-calendar-accent);border-color:var(--pm-calendar-accent)}',
+  '.pm-calendar-detail-edit-actions{display:flex;align-items:center;justify-content:center;gap:8px;margin-top:8px;flex-wrap:wrap}',
+  '.pm-calendar-inline-add,.pm-calendar-inline-regenerate{display:inline-flex;align-items:center;justify-content:center;gap:5px;width:max-content;margin:0;padding:7px 12px;border:1px solid color-mix(in srgb,var(--pm-calendar-accent) 35%,transparent);border-radius:9px',
+  '.pm-calendar-management:is([data-calendar-management="schedule"],[data-calendar-management="recipe"],[data-calendar-management="cycle"]) .pm-calendar-editor-actions .is-primary{background:var(--pm-calendar-accent);border-color:var(--pm-calendar-accent)}',
   '.pm-calendar-auto-switch{display:flex;align-items:center;justify-content:space-between',
+  '.pm-calendar-entry-dialog [data-calendar-occasion-fields][hidden]{display:none!important}',
   '.pm-calendar-entry-dialog{width:min(330px,calc(100vw - 28px))}',
   '.pm-calendar-entry-actions button{min-height:38px;border:0',
   '.pm-calendar-view-switch button[aria-pressed="true"]{background:transparent;color:var(--pm-calendar-accent);box-shadow:inset 0 -2px 0 var(--pm-calendar-accent)',
@@ -2099,7 +2100,7 @@ for (const expected of [
   '.pm-action-button{', 'font-size:13px', 'background:var(--pm-r-bg,#007aff)',
   '.pm-header-icon-button{box-sizing:border-box;width:34px;height:34px;min-width:34px;min-height:34px',
   '.pm-action-button.is-danger{background:var(--pm-color-danger);color:var(--pm-color-on-dark)}',
-  '.pm-contact-add-choices{', '.pm-calendar-entry-manager{width:min(350px,calc(100vw - 28px))}',
+  '.pm-contact-add-choices{',
   '.pm-calendar-view-switch button{display:grid;place-items:center;flex:0 0 30px;width:30px;height:30px;padding:0;border:0;border-radius:50%',
   '.pm-calendar-header{position:sticky', 'grid-template-columns:72px minmax(0,1fr) 72px',
 ]) requireText('style.css', css, expected);

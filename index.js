@@ -2567,9 +2567,8 @@ ${userPrompt}` : userPrompt;
   // src/calendar-dom.js
   function setCalendarEntryKind(root, kind) {
     const normalized = kind === "occasion" ? "occasion" : "event";
-    for (const button of root?.querySelectorAll?.("[data-calendar-entry-kind]") || []) {
-      button.setAttribute("aria-pressed", String(button.dataset.calendarEntryKind === normalized));
-    }
+    const repeatToggle = root?.querySelector?.("[data-calendar-repeat-toggle]");
+    repeatToggle?.setAttribute?.("aria-checked", String(normalized === "occasion"));
     const occasionFields = root?.querySelector?.("[data-calendar-occasion-fields]");
     if (occasionFields) {
       const unavailable = normalized !== "occasion";
@@ -2631,14 +2630,12 @@ ${userPrompt}` : userPrompt;
   var CALENDAR_ICON_SVG = icon('<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18M8 14h.01M12 14h.01M16 14h.01M8 18h.01M12 18h.01"/>');
   var WEATHER_ICON_SVG = icon('<path d="M7 17h10a4 4 0 0 0 .5-8A6 6 0 0 0 6.2 10.5 3.5 3.5 0 0 0 7 17z"/><path d="M8 21l1-2M12 21l1-2M16 21l1-2"/>');
   var CYCLE_ICON_SVG = icon('<path d="M12 20c-4.6-2.8-7-6-7-9.2A4.8 4.8 0 0 1 12 6a4.8 4.8 0 0 1 7 4.8c0 3.2-2.4 6.4-7 9.2z"/><path d="M12 6c-1-1.8-2.5-2.8-4.2-3M12 6c1-1.8 2.5-2.8 4.2-3"/>');
-  var RECIPE_ICON_SVG = icon('<path d="M5 10h14v8a3 3 0 0 1-3 3H8a3 3 0 0 1-3-3z"/><path d="M3 10h18M8 6c1 1 2 2.2 2 4M12 5c.7 1.3 1 3 0 5M16 6c-1 1-2 2.2-2 4"/>');
+  var RECIPE_ICON_SVG = icon('<path d="M7 3v7M4 3v4a3 3 0 0 0 6 0V3M7 10v11"/><path d="M16 3v18M16 3c2.2 1.8 3.2 4.5 3 8h-3"/>');
   var CYCLE_PERIOD_ICON_SVG = icon('<path d="M6 5c2.5 0 3 2.4 6 2.4S15.5 5 18 5v5.1c-2.5 0-3 2.4-6 2.4s-3.5-2.4-6-2.4z"/><path d="M6 10.1c2.5 0 3 2.4 6 2.4s3.5-2.4 6-2.4V16c-2.5 0-3 2.4-6 2.4S8.5 16 6 16z"/>');
   var CYCLE_FERTILE_ICON_SVG = icon('<path d="M12 4l1.6 4.4L18 10l-4.4 1.6L12 16l-1.6-4.4L6 10l4.4-1.6z"/><path d="M18.5 15l.7 1.8L21 17.5l-1.8.7-.7 1.8-.7-1.8-1.8-.7 1.8-.7z"/>');
   var CYCLE_SAFE_ICON_SVG = icon('<path d="M5 7c2.5-2.4 5.4-2.2 7 1 1.6-3.2 4.5-3.4 7-1-1 4.4-3.4 7.3-7 11-3.6-3.7-6-6.6-7-11z"/><path d="M8.5 7.5l2 2M15.5 7.5l-2 2"/>');
   var TIME_ORIGIN_ICON_SVG = icon('<circle cx="12" cy="12" r="8"/><path d="M12 7v5l3 2"/>');
   var EDIT_ICON_SVG = icon('<path d="M4 20h4L19 9l-4-4L4 16v4z"/><path d="M13.5 6.5l4 4"/>');
-  var EVENT_EDITOR_ICON_SVG = icon('<rect x="4" y="5" width="16" height="15" rx="2"/><path d="M8 3v4M16 3v4M4 10h16M8 14h4M8 17h7"/>');
-  var OCCASION_EDITOR_ICON_SVG = icon('<path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"/>');
   var EMOJI_ICON_SVG = icon('<circle cx="12" cy="12" r="9"/><path d="M8 10h.01M16 10h.01M8.5 15c1 1 2.2 1.5 3.5 1.5s2.5-.5 3.5-1.5"/>');
   var TRASH_ICON_SVG = icon('<path d="M4 7h16M9 7V4h6v3M7 7l1 13h8l1-13M10 11v5M14 11v5"/>');
   var REMOVE_ICON_SVG = icon('<circle cx="12" cy="12" r="9"/><path d="M8 12h8"/>');
@@ -2719,18 +2716,18 @@ ${userPrompt}` : userPrompt;
     if (!detail) return "";
     return `<div class="pm-calendar-cycle is-${prediction.phase}"><b>${detail.label}</b>${prediction.status === "override" ? "<em>\u624B\u52A8</em>" : ""}${detail.icon}</div>`;
   }
-  function recipeRows(recipeScope, date) {
+  function recipeRows(recipeScope, date, editing = false) {
     const day = recipeDayFor(recipeScope, date);
     return RECIPE_MEAL_TYPES.flatMap((mealType) => day[mealType]?.text ? [
-      `<article class="pm-calendar-event is-recipe" data-recipe-meal="${mealType}"><div><b>${RECIPE_MEAL_LABELS[mealType]}</b><span>${escapeHtml(day[mealType].text)}</span></div></article>`
+      `<article class="pm-calendar-event is-recipe" data-recipe-meal="${mealType}"><div><b>${RECIPE_MEAL_LABELS[mealType]}</b><span>${escapeHtml(day[mealType].text)}</span></div>${editing ? `<span class="pm-calendar-inline-actions"><button type="button" data-action="calendar-recipe-edit" data-meal-type="${mealType}" aria-label="\u7F16\u8F91${RECIPE_MEAL_LABELS[mealType]}" title="\u7F16\u8F91">${EDIT_ICON_SVG}</button><button type="button" class="is-danger" data-action="calendar-recipe-delete" data-meal-type="${mealType}" aria-label="\u5220\u9664${RECIPE_MEAL_LABELS[mealType]}" title="\u5220\u9664">${TRASH_ICON_SVG}</button></span>` : ""}</article>`
     ] : []).join("");
   }
   function renderSelectedDateDetail(scope, occasionsByDate, holidayCache, weatherStore, cycleScope, selectedDate, viewMode, relativeLabel = "", recipeScope = {}, detailEditing = false) {
     const parsed = parseCalendarDate(selectedDate);
     if (viewMode === "recipe") {
-      const content2 = recipeRows(recipeScope, selectedDate);
+      const content2 = recipeRows(recipeScope, selectedDate, detailEditing);
       const actions2 = `<div class="pm-calendar-detail-actions"><button type="button" class="pm-calendar-detail-more" data-action="calendar-toggle-detail-edit" aria-label="${detailEditing ? "\u5173\u95ED\u7F16\u8F91\u72B6\u6001" : "\u7F16\u8F91\u8FD9\u4E00\u5929\u7684\u83DC\u8C31"}" title="${detailEditing ? "\u5173\u95ED\u7F16\u8F91\u72B6\u6001" : "\u7F16\u8F91\u8FD9\u4E00\u5929\u7684\u83DC\u8C31"}" aria-pressed="${detailEditing}">${detailEditing ? CLOSE_ICON_SVG : MORE_ICON_SVG}</button></div>`;
-      const editActions = detailEditing ? `<span class="pm-calendar-inline-actions"><button type="button" class="pm-calendar-inline-regenerate" data-action="calendar-recipe-regenerate" aria-label="\u91CD\u65B0\u751F\u6210\u4E03\u65E5\u83DC\u8C31" title="\u91CD\u65B0\u751F\u6210\u4E03\u65E5\u83DC\u8C31">${SPARKLES_ICON_SVG}<span>\u91CD\u65B0\u751F\u6210</span></button><button type="button" data-action="calendar-recipe-manage" aria-label="\u7BA1\u7406\u5DF2\u6709\u9910\u98DF" title="\u7BA1\u7406\u5DF2\u6709\u9910\u98DF" ${content2 ? "" : 'disabled aria-disabled="true"'}>${MORE_ICON_SVG}</button></span>` : "";
+      const editActions = detailEditing ? `<div class="pm-calendar-detail-edit-actions"><button type="button" class="pm-calendar-inline-add" data-action="calendar-recipe-add">+ \u65B0\u589E\u4E00\u6761</button><button type="button" class="pm-calendar-inline-regenerate" data-action="calendar-recipe-regenerate" aria-label="\u91CD\u65B0\u751F\u6210\u4E03\u65E5\u83DC\u8C31" title="\u91CD\u65B0\u751F\u6210\u4E03\u65E5\u83DC\u8C31">${SPARKLES_ICON_SVG}<span>\u91CD\u65B0\u751F\u6210</span></button></div>` : "";
       return `<section class="pm-calendar-selected-detail" data-calendar-selected-detail="${selectedDate}" data-calendar-detail-mode="recipe">
           <header><div class="pm-calendar-detail-date">${relativeLabel ? `<strong>${escapeHtml(relativeLabel)}</strong>` : ""}<span><time datetime="${selectedDate}">${escapeHtml(detailDate.format(parsed))}</time><em>${escapeHtml(detailWeekday.format(parsed))}</em></span></div>${actions2}</header>
           <div class="pm-calendar-selected-content">${content2 || '<p class="pm-calendar-empty-day">\u8FD9\u4E00\u5929\u8FD8\u6CA1\u6709\u83DC\u8C31\u3002</p>'}${editActions}</div>
@@ -2810,29 +2807,15 @@ ${userPrompt}` : userPrompt;
       <div class="pm-calendar-month-panel-actions"><button type="button" class="is-primary" data-action="calendar-base-save">\u4FDD\u5B58</button><button type="button" data-action="calendar-base-clear" ${baseDate ? "" : "disabled"}>\u8BBE\u5907\u65E5\u671F</button><button type="button" data-action="calendar-today">\u56DE\u5230\u4ECA\u5929</button></div>
     </section>`;
   }
-  function renderCalendarEntryManager(selectedDate, events = [], occasions = []) {
-    const rows = [
-      ...events.map((entry2) => ({ kind: "event", label: "\u65E5\u7A0B", entry: entry2 })),
-      ...occasions.map((entry2) => ({ kind: "occasion", label: occasionTypeLabel(entry2.type), entry: entry2 }))
-    ].map(({ kind, label, entry: entry2 }) => `<li><button type="button" class="pm-calendar-entry-edit" data-calendar-entry-edit data-entry-kind="${kind}" data-entry-id="${escapeAttr(entry2.id)}"><span><b>${escapeHtml(entry2.title)}</b><small>${label}${entry2.note ? ` \xB7 ${escapeHtml(entry2.note)}` : ""}</small></span>${EDIT_ICON_SVG}</button><button type="button" class="pm-calendar-entry-remove" data-calendar-entry-remove data-entry-kind="${kind}" data-entry-id="${escapeAttr(entry2.id)}" aria-label="\u79FB\u9664${escapeAttr(entry2.title)}" title="\u79FB\u9664${escapeAttr(entry2.title)}">${REMOVE_ICON_SVG}</button></li>`).join("");
-    return `<div class="pm-modal pm-calendar-entry-manager"><div class="pm-modal-header"><span></span><b>\u7BA1\u7406 ${escapeHtml(selectedDate)}</b><button type="button" class="pm-modal-close" data-calendar-entry-close aria-label="\u5173\u95ED">${CLOSE_ICON_SVG}</button></div><div class="pm-calendar-entry-manager-body">${rows ? `<ul>${rows}</ul>` : "<p>\u8FD9\u4E00\u5929\u8FD8\u6CA1\u6709\u53EF\u7BA1\u7406\u7684\u5B89\u6392\u3002</p>"}<button type="button" class="pm-action-button" data-calendar-entry-add>\u65B0\u589E\u5B89\u6392</button></div></div>`;
-  }
   function renderCalendarEntryDialog(selectedDate, entry2 = null, kind = "event") {
     const editing = Boolean(entry2);
     const occasion = kind === "occasion";
     const unavailable = occasion ? "" : "disabled";
-    return `<div class="pm-modal pm-calendar-entry-dialog"><div class="pm-modal-header"><span></span><b>${editing ? "\u7F16\u8F91" : "\u65B0\u589E"} ${escapeHtml(selectedDate)}</b><button type="button" class="pm-modal-close" data-calendar-entry-close aria-label="\u5173\u95ED">${CLOSE_ICON_SVG}</button></div><form data-calendar-entry-form><div class="pm-calendar-entry-kind" role="group" aria-label="\u5B89\u6392\u7C7B\u578B"><button type="button" data-calendar-entry-kind="event" aria-pressed="${kind === "event"}" ${editing ? "disabled" : ""}>${EVENT_EDITOR_ICON_SVG}<span>\u4E00\u6B21\u6027\u65E5\u7A0B</span></button><button type="button" data-calendar-entry-kind="occasion" aria-pressed="${occasion}" ${editing ? "disabled" : ""}>${OCCASION_EDITOR_ICON_SVG}<span>\u751F\u65E5 / \u7EAA\u5FF5\u65E5</span></button></div><input name="title" maxlength="120" placeholder="\u540D\u79F0" aria-label="\u5B89\u6392\u540D\u79F0"><textarea name="note" maxlength="1000" placeholder="\u5907\u6CE8\uFF08\u53EF\u9009\uFF09" aria-label="\u5B89\u6392\u5907\u6CE8"></textarea><div data-calendar-occasion-fields ${occasion ? "" : 'hidden aria-hidden="true"'}><label>\u957F\u671F\u7C7B\u578B<select name="occasionType" ${unavailable}><option value="anniversary">\u7EAA\u5FF5\u65E5</option><option value="birthday">\u751F\u65E5</option></select></label><label>2 \u6708 29 \u65E5\u5728\u975E\u95F0\u5E74<select name="leapDayRule" ${unavailable}><option value="feb28">\u6309 2 \u6708 28 \u65E5\u663E\u793A</option><option value="mar1">\u6309 3 \u6708 1 \u65E5\u663E\u793A</option><option value="skip">\u8BE5\u5E74\u4E0D\u663E\u793A</option></select></label></div><p class="pm-calendar-entry-error" data-calendar-entry-error role="status" aria-live="polite"></p><div class="pm-calendar-entry-actions"><button type="submit" class="is-primary">\u4FDD\u5B58</button></div></form></div>`;
+    return `<div class="pm-modal pm-calendar-entry-dialog"><div class="pm-modal-header"><span></span><b>\u65E5\u7A0B</b><button type="button" class="pm-modal-close" data-calendar-entry-close aria-label="\u5173\u95ED">${CLOSE_ICON_SVG}</button></div><form data-calendar-entry-form><button type="button" class="pm-calendar-auto-switch pm-calendar-repeat-toggle" data-calendar-repeat-toggle role="switch" aria-label="\u5B89\u6392\u7C7B\u578B" aria-checked="${occasion}" ${editing ? "disabled" : ""}><span><b>\u6BCF\u5E74\u540C\u4E00\u5929\u91CD\u590D</b><small>\u5F00\u542F\u540E\u53EF\u8BBE\u7F6E\u751F\u65E5\u6216\u7EAA\u5FF5\u65E5</small></span><i aria-hidden="true"></i></button><input name="title" maxlength="120" placeholder="\u540D\u79F0" aria-label="\u5B89\u6392\u540D\u79F0"><textarea name="note" maxlength="1000" placeholder="\u5907\u6CE8\uFF08\u53EF\u9009\uFF09" aria-label="\u5B89\u6392\u5907\u6CE8"></textarea><div data-calendar-occasion-fields ${occasion ? "" : 'hidden aria-hidden="true"'}><label>\u957F\u671F\u7C7B\u578B<select name="occasionType" ${unavailable}><option value="anniversary">\u7EAA\u5FF5\u65E5</option><option value="birthday">\u751F\u65E5</option></select></label><label>2 \u6708 29 \u65E5\u5728\u975E\u95F0\u5E74<select name="leapDayRule" ${unavailable}><option value="feb28">\u6309 2 \u6708 28 \u65E5\u663E\u793A</option><option value="mar1">\u6309 3 \u6708 1 \u65E5\u663E\u793A</option><option value="skip">\u8BE5\u5E74\u4E0D\u663E\u793A</option></select></label></div><p class="pm-calendar-entry-error" data-calendar-entry-error role="status" aria-live="polite"></p><div class="pm-calendar-entry-actions"><button type="submit" class="is-primary">\u4FDD\u5B58</button></div></form></div>`;
   }
   function renderRecipeMealDialog(selectedDate, mealType = "breakfast", meal = null) {
     const normalizedType = RECIPE_MEAL_TYPES.includes(mealType) ? mealType : "breakfast";
     return `<div class="pm-modal pm-calendar-entry-dialog pm-recipe-meal-dialog"><div class="pm-modal-header"><span></span><b>${meal ? "\u7F16\u8F91" : "\u65B0\u589E"} ${escapeHtml(selectedDate)} \u9910\u98DF</b><button type="button" class="pm-modal-close" data-recipe-entry-close aria-label="\u5173\u95ED">${CLOSE_ICON_SVG}</button></div><form data-recipe-entry-form><label>\u9910\u6B21<select name="mealType" aria-label="\u83DC\u8C31\u9910\u6B21">${RECIPE_MEAL_TYPES.map((type) => `<option value="${type}" ${type === normalizedType ? "selected" : ""}>${RECIPE_MEAL_LABELS[type]}</option>`).join("")}</select></label><textarea name="text" maxlength="160" placeholder="\u586B\u5199\u8FD9\u987F\u5403\u4EC0\u4E48" aria-label="\u9910\u98DF\u5185\u5BB9">${escapeHtml(meal?.text || "")}</textarea><p class="pm-calendar-entry-error" data-recipe-entry-error role="status" aria-live="polite"></p><div class="pm-calendar-entry-actions"><button type="submit" class="is-primary">\u4FDD\u5B58</button></div></form></div>`;
-  }
-  function renderRecipeMealManager(selectedDate, recipeScope) {
-    const day = recipeDayFor(recipeScope, selectedDate);
-    const rows = RECIPE_MEAL_TYPES.flatMap((mealType) => day[mealType]?.text ? [
-      `<li><button type="button" class="pm-calendar-entry-edit" data-recipe-entry-edit data-meal-type="${mealType}"><span><b>${RECIPE_MEAL_LABELS[mealType]}</b><small>${escapeHtml(day[mealType].text)}</small></span>${EDIT_ICON_SVG}</button><button type="button" class="pm-calendar-entry-remove" data-recipe-entry-remove data-meal-type="${mealType}" aria-label="\u79FB\u9664${RECIPE_MEAL_LABELS[mealType]}" title="\u79FB\u9664${RECIPE_MEAL_LABELS[mealType]}">${REMOVE_ICON_SVG}</button></li>`
-    ] : []).join("");
-    return `<div class="pm-modal pm-calendar-entry-manager pm-recipe-meal-manager"><div class="pm-modal-header"><span></span><b>\u7BA1\u7406 ${escapeHtml(selectedDate)} \u83DC\u8C31</b><button type="button" class="pm-modal-close" data-recipe-entry-close aria-label="\u5173\u95ED">${CLOSE_ICON_SVG}</button></div><div class="pm-calendar-entry-manager-body">${rows ? `<ul>${rows}</ul>` : "<p>\u8FD9\u4E00\u5929\u8FD8\u6CA1\u6709\u53EF\u7BA1\u7406\u7684\u9910\u98DF\u3002</p>"}<button type="button" class="pm-action-button" data-recipe-entry-add>\u65B0\u589E\u9910\u98DF</button></div></div>`;
   }
 
   // src/calendar-page-view.js
@@ -3080,7 +3063,7 @@ ${userPrompt}` : userPrompt;
       const date = getView(storageId).selectedDate;
       const day = recipeDayFor(getRecipeScope(storageId), date);
       const selectedType = mealType || ["breakfast", "lunch", "dinner", "snack"].find((type) => !day[type]);
-      if (!selectedType) throw new Error("\u8FD9\u4E00\u5929\u7684\u56DB\u4E2A\u9910\u6B21\u90FD\u5DF2\u6709\u5185\u5BB9\uFF0C\u8BF7\u4ECE\u7BA1\u7406\u5217\u8868\u4E2D\u7F16\u8F91");
+      if (!selectedType) throw new Error("\u8FD9\u4E00\u5929\u7684\u56DB\u4E2A\u9910\u6B21\u90FD\u5DF2\u6709\u5185\u5BB9\uFF0C\u8BF7\u4F7F\u7528\u9910\u98DF\u53F3\u4FA7\u7684\u7F16\u8F91\u6309\u94AE");
       const existing = editing ? day[selectedType] || null : null;
       if (editing && !existing) throw new Error("\u8981\u7F16\u8F91\u7684\u9910\u98DF\u4E0D\u5B58\u5728\u6216\u5DF2\u88AB\u79FB\u9664");
       const overlay = makeOverlay(renderRecipeMealDialog(date, selectedType, existing));
@@ -3109,33 +3092,6 @@ ${userPrompt}` : userPrompt;
         }
       });
       form?.elements.text?.focus?.({ preventScroll: true });
-    }
-    function showMealManager(storageId) {
-      if (typeof makeOverlay !== "function") throw new Error("\u83DC\u8C31\u7BA1\u7406\u5668\u4E0D\u53EF\u7528");
-      const date = getView(storageId).selectedDate;
-      const overlay = makeOverlay(renderRecipeMealManager(date, getRecipeScope(storageId)));
-      overlay.querySelector("[data-recipe-entry-close]")?.addEventListener("click", () => closeOverlay?.("close"));
-      overlay.querySelector("[data-recipe-entry-add]")?.addEventListener("click", () => {
-        closeOverlay?.("add");
-        showMealEditor(storageId);
-      });
-      for (const button of overlay.querySelectorAll("[data-recipe-entry-edit]")) {
-        button.addEventListener("click", () => {
-          closeOverlay?.("edit");
-          showMealEditor(storageId, button.dataset.mealType, true);
-        });
-      }
-      for (const button of overlay.querySelectorAll("[data-recipe-entry-remove]")) {
-        button.addEventListener("click", async () => {
-          const mealType = button.dataset.mealType;
-          const meal = recipeDayFor(getRecipeScope(storageId), date)[mealType];
-          if (!meal || !confirmImpl?.(`\u79FB\u9664\u8FD9\u4EFD\u9910\u98DF\u201C${meal.text}\u201D\uFF1F`)) return;
-          await commitRecipe(storageId, (current) => deleteRecipeMeal(current, date, mealType).scope);
-          status(storageId, "\u9910\u98DF\u5DF2\u79FB\u9664\u3002");
-          closeOverlay?.("removed");
-          rerender(storageId);
-        });
-      }
     }
     async function handleAction(button, app, storageId = getStorageId2()) {
       const action = button?.dataset?.action;
@@ -3166,17 +3122,28 @@ ${userPrompt}` : userPrompt;
         rerender(storageId);
         return true;
       }
+      if (action === "calendar-recipe-edit") {
+        const mealType = button.dataset.mealType || "";
+        showMealEditor(storageId, mealType, true);
+        return true;
+      }
+      if (action === "calendar-recipe-delete") {
+        const date = getView(storageId).selectedDate;
+        const mealType = button.dataset.mealType || "";
+        const meal = recipeDayFor(getRecipeScope(storageId), date)[mealType];
+        if (!meal || !confirmImpl?.(`\u5220\u9664\u8FD9\u4EFD\u9910\u98DF\u201C${meal.text}\u201D\uFF1F`)) return true;
+        await commitRecipe(storageId, (current) => deleteRecipeMeal(current, date, mealType).scope);
+        status(storageId, "\u9910\u98DF\u5DF2\u5220\u9664\u3002");
+        rerender(storageId);
+        return true;
+      }
       if (action === "calendar-recipe-add") {
         showMealEditor(storageId);
         return true;
       }
-      if (action === "calendar-recipe-manage") {
-        showMealManager(storageId);
-        return true;
-      }
       return false;
     }
-    return { generate, handleAction, showMealEditor, showMealManager };
+    return { generate, handleAction, showMealEditor };
   }
 
   // src/calendar-task-controller.js
@@ -3764,12 +3731,11 @@ ${userPrompt}` : userPrompt;
         if (errorNode) errorNode.textContent = error?.message || "\u5B89\u6392\u66F4\u65B0\u5931\u8D25";
       };
       overlay.querySelector("[data-calendar-entry-close]")?.addEventListener("click", () => closeOverlay?.("close"));
-      for (const button of overlay.querySelectorAll("[data-calendar-entry-kind]")) {
-        button.addEventListener("click", () => {
-          if (existingEntry) return;
-          setCalendarEntryKind(overlay, button.dataset.calendarEntryKind);
-        });
-      }
+      const repeatToggle = overlay.querySelector("[data-calendar-repeat-toggle]");
+      repeatToggle?.addEventListener("click", () => {
+        if (existingEntry) return;
+        setCalendarEntryKind(overlay, overlay.dataset.calendarEntryKind === "occasion" ? "event" : "occasion");
+      });
       form?.addEventListener("submit", async (event) => {
         event.preventDefault();
         try {
@@ -3810,27 +3776,6 @@ ${userPrompt}` : userPrompt;
         }
       });
       fillCalendarEntryForm(overlay, existingEntry, normalizedKind, { focusTitle: true });
-    }
-    function showEntryManager(storageId) {
-      if (typeof makeOverlay !== "function") throw new Error("\u5B89\u6392\u7BA1\u7406\u5668\u4E0D\u53EF\u7528");
-      const entries = selectedDateEntries(storageId);
-      const overlay = makeOverlay(renderCalendarEntryManager(entries.date, entries.events, entries.occasions));
-      overlay.querySelector("[data-calendar-entry-close]")?.addEventListener("click", () => closeOverlay?.("close"));
-      overlay.querySelector("[data-calendar-entry-add]")?.addEventListener("click", () => {
-        closeOverlay?.("add");
-        showEntryEditor(storageId);
-      });
-      for (const button of overlay.querySelectorAll("[data-calendar-entry-edit]")) {
-        button.addEventListener("click", () => {
-          closeOverlay?.("edit");
-          showEntryEditor(storageId, button.dataset.entryKind, button.dataset.entryId);
-        });
-      }
-      for (const button of overlay.querySelectorAll("[data-calendar-entry-remove]")) {
-        button.addEventListener("click", async () => {
-          if (await removeEntry(storageId, button.dataset.entryKind, button.dataset.entryId)) closeOverlay?.("removed");
-        });
-      }
     }
     async function handleAction(button, app) {
       const storageId = getStorageId2();
@@ -3922,10 +3867,6 @@ ${userPrompt}` : userPrompt;
       }
       if (action === "calendar-add-date") {
         showEntryEditor(storageId);
-        return;
-      }
-      if (action === "calendar-manage-date") {
-        showEntryManager(storageId);
         return;
       }
       if (action === "calendar-generation-rule-save") {

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { calendarGenerationErrorMessage, installCalendar, renderCalendarPageHtml } from '../src/calendar.js';
 import { fillCalendarEntryForm, readCalendarEntryForm, setCalendarEntryKind } from '../src/calendar-dom.js';
-import { renderCalendarEntryDialog, renderCalendarEntryManager, renderSelectedDateDetail } from '../src/calendar-view.js';
+import { renderCalendarEntryDialog, renderSelectedDateDetail } from '../src/calendar-view.js';
 import { renderCalendarContextInjection } from '../src/phone-injection.js';
 import { createCalendarCommitters } from '../src/calendar-commit.js';
 import { createCalendarRecipeController } from '../src/calendar-recipe-controller.js';
@@ -816,7 +816,8 @@ assert.doesNotMatch(renderedSchedule, /data-action="calendar-edit-entry"|data-ac
 assert.match(renderedScheduleEditing, /data-action="calendar-toggle-detail-edit"[^>]*aria-label="关闭编辑状态"[^>]*aria-pressed="true"[\s\S]*?M6 6l12 12M18 6L6 18/);
 assert.match(renderedScheduleEditing, /data-action="calendar-edit-entry"[^>]*data-entry-kind="event"[^>]*data-entry-id="event-current"/);
 assert.match(renderedScheduleEditing, /data-action="calendar-delete-entry"[^>]*data-entry-kind="event"[^>]*data-entry-id="event-current"[\s\S]*?M4 7h16/);
-assert.match(renderedScheduleEditing, /class="pm-calendar-inline-add"[^>]*data-action="calendar-add-date"[^>]*>\+ 新增一条<\/button>/);
+assert.match(renderedScheduleEditing, /class="pm-calendar-detail-edit-actions"[\s\S]*?class="pm-calendar-inline-add"[^>]*data-action="calendar-add-date"[^>]*>\+ 新增一条<\/button>[\s\S]*?class="pm-calendar-inline-regenerate"[^>]*data-action="calendar-regenerate"/,
+    '日程编辑态必须将新增与重新生成放在同一操作组');
 assert.doesNotMatch(renderedSchedule, /data-action="calendar-manage-date"/,
     '详情主流程不得退回二级管理弹窗');
 assert.match(renderedSchedule, /class="pm-calendar-data-tools pm-calendar-scan-card"><h3>正文日期<\/h3>[\s\S]*?data-calendar-date-tags[\s\S]*?data-action="calendar-date-sync"[^>]*>保存并识别/);
@@ -838,27 +839,21 @@ const renderedEntryDialog = renderCalendarEntryDialog(currentDates[0], renderedE
 const renderedOccasionDialog = renderCalendarEntryDialog(currentDates[0], {
     id: 'occasion-current', type: 'birthday', title: '生日', note: '', leapDayRule: 'mar1',
 }, 'occasion');
-const renderedEntryManager = renderCalendarEntryManager(currentDates[0], [renderedEntry], [{
-    id: 'occasion-current', type: 'anniversary', title: '<纪念日>', note: '', leapDayRule: 'feb28',
-}]);
 assert.match(renderedEntryDialog, /class="pm-modal pm-calendar-entry-dialog"/);
-assert.match(renderedEntryDialog, /编辑 [^<]+/);
-assert.match(renderedEntryDialog, /data-calendar-entry-kind="event"[^>]*aria-pressed="true"[^>]*disabled/);
-assert.match(renderedEntryDialog, /生日 \/ 纪念日/);
+assert.match(renderedEntryDialog, /<b>日程<\/b>/);
+assert.match(renderedEntryDialog, /data-calendar-repeat-toggle role="switch"[^>]*aria-checked="false"[^>]*disabled/);
+assert.match(renderedEntryDialog, /每年同一天重复/);
 assert.match(renderedEntryDialog, /data-calendar-occasion-fields hidden aria-hidden="true"[\s\S]*?name="occasionType" disabled[\s\S]*?name="leapDayRule" disabled/,
     '一次性日程不得向辅助技术或键盘焦点暴露长期字段');
+assert.match(renderedOccasionDialog, /data-calendar-repeat-toggle role="switch"[^>]*aria-checked="true"[^>]*disabled/);
 assert.match(renderedOccasionDialog, /data-calendar-occasion-fields\s*><label>长期类型<select name="occasionType" >[\s\S]*?name="leapDayRule" >/,
     '生日或纪念日必须恢复长期类型和闰日规则字段');
 
 assert.doesNotMatch(renderedEntryDialog, /data-calendar-entry-existing|data-calendar-entry-delete/);
-assert.match(renderedEntryManager, /class="pm-modal pm-calendar-entry-manager"/);
-assert.match(renderedEntryManager, /data-calendar-entry-edit[^>]*data-entry-kind="event"[^>]*data-entry-id="event-current"/);
-assert.match(renderedEntryManager, /data-calendar-entry-remove[^>]*data-entry-kind="occasion"[^>]*data-entry-id="occasion-current"/);
-assert.match(renderedEntryManager, /M8 12h8/, '行级移除必须使用圆形减号 SVG');
 let entryTitleFocusOptions = null;
-const entryKindButtons = ['event', 'occasion'].map(calendarEntryKind => ({
-    dataset: { calendarEntryKind }, pressed: '', setAttribute(name, value) { if (name === 'aria-pressed') this.pressed = value; },
-}));
+const entryRepeatToggle = {
+    checked: '', setAttribute(name, value) { if (name === 'aria-checked') this.checked = value; },
+};
 const occasionControls = [{ disabled: false }, { disabled: false }];
 const occasionFields = {
     hidden: false, ariaHidden: '',
@@ -872,19 +867,21 @@ const entryForm = { elements: {
 const entryRoot = {
     dataset: {},
     querySelector: selector => selector === '[data-calendar-entry-form]' ? entryForm
+        : selector === '[data-calendar-repeat-toggle]' ? entryRepeatToggle
         : selector === '[data-calendar-occasion-fields]' ? occasionFields : null,
-    querySelectorAll: selector => selector === '[data-calendar-entry-kind]' ? entryKindButtons : [],
 };
 fillCalendarEntryForm(entryRoot, null, 'event');
 assert.equal(entryTitleFocusOptions, null, '管理态填充数据不得自动聚焦输入框');
 assert.equal(occasionFields.hidden, true);
 assert.equal(occasionFields.ariaHidden, 'true');
 assert.ok(occasionControls.every(control => control.disabled), '一次性日程必须禁用长期字段');
+assert.equal(entryRepeatToggle.checked, 'false');
 assert.deepEqual(readCalendarEntryForm(entryRoot), { kind: 'event', title: '', note: '', type: '', leapDayRule: '' },
     '一次性日程读取时不得携带隐藏的长期字段');
 setCalendarEntryKind(entryRoot, 'occasion');
 assert.equal(occasionFields.hidden, false);
 assert.equal(occasionFields.ariaHidden, 'false');
+assert.equal(entryRepeatToggle.checked, 'true');
 assert.ok(occasionControls.every(control => !control.disabled), '生日或纪念日必须恢复长期字段可用性');
 assert.deepEqual(readCalendarEntryForm(entryRoot), { kind: 'occasion', title: '', note: '', type: 'birthday', leapDayRule: 'mar1' });
 fillCalendarEntryForm(entryRoot, renderedEntry, 'event', { focusTitle: true });
@@ -931,16 +928,17 @@ assert.match(renderedRecipe, /data-action="calendar-recipe-generate"[\s\S]*?M12 
 assert.match(renderedBusyRecipe, /data-action="calendar-recipe-generate"[^>]*aria-busy="true"[^>]*disabled/);
 assert.match(renderedRecipe, /data-calendar-detail-mode="recipe"/);
 assert.match(renderedRecipe, /data-action="calendar-toggle-detail-edit"[^>]*aria-label="编辑这一天的菜谱"[^>]*aria-pressed="false"/);
-assert.doesNotMatch(renderedRecipe, /data-action="calendar-recipe-add"|data-action="calendar-recipe-manage"/,
+assert.doesNotMatch(renderedRecipe, /data-action="calendar-recipe-add"|data-action="calendar-recipe-edit"|data-action="calendar-recipe-delete"/,
     '菜谱默认详情态不得暴露编辑操作');
 const renderedRecipeEditing = renderCalendarPageHtml(
     renderedScope, { occasions: [] }, '', holidayForToday, currentWeather, currentCycle, [],
     { ...renderedView, viewMode: 'recipe', detailEditing: true }, renderedRecipeScope,
 );
 assert.match(renderedRecipeEditing, /data-action="calendar-toggle-detail-edit"[^>]*aria-label="关闭编辑状态"[^>]*aria-pressed="true"[\s\S]*?M6 6l12 12M18 6L6 18/);
-assert.match(renderedRecipeEditing, /data-action="calendar-recipe-regenerate"[\s\S]*data-action="calendar-recipe-manage"/,
-    '菜谱编辑态必须提供重新生成和管理入口');
-assert.doesNotMatch(renderedRecipeEditing, /data-action="calendar-recipe-add"/);
+assert.match(renderedRecipeEditing, /data-recipe-meal="breakfast"[\s\S]*?data-action="calendar-recipe-edit"[^>]*data-meal-type="breakfast"[\s\S]*?data-action="calendar-recipe-delete"[^>]*data-meal-type="breakfast"/,
+    '菜谱编辑态必须像日程一样在每条餐食后显示编辑与删除操作');
+assert.match(renderedRecipeEditing, /class="pm-calendar-detail-edit-actions"[\s\S]*?class="pm-calendar-inline-add"[^>]*data-action="calendar-recipe-add"[^>]*>\+ 新增一条<\/button>[\s\S]*?class="pm-calendar-inline-regenerate"[^>]*data-action="calendar-recipe-regenerate"/,
+    '菜谱编辑态必须将新增与重新生成放在同一操作组');
 assert.match(renderedRecipe, /data-calendar-management="recipe"/);
 assert.match(renderedRecipe, /data-recipe-meal="breakfast"[\s\S]*北境炖麦粥/);
 assert.match(renderedRecipe, /手动指定：架空北境/);
@@ -1084,35 +1082,14 @@ try {
         async click() { return this.listeners.get('click')?.(); },
     });
     const makeCalendarOverlay = html => {
-        if (html.includes('pm-calendar-entry-manager')) {
-            const add = interactiveNode(), close = interactiveNode();
-            const parseRows = attribute => [...html.matchAll(new RegExp(`${attribute}[^>]*data-entry-kind="([^"]+)"[^>]*data-entry-id="([^"]+)"`, 'g'))]
-                .map(match => interactiveNode({ entryKind: match[1], entryId: match[2] }));
-            const overlay = {
-                kind: 'manager', html, add, close,
-                edits: parseRows('data-calendar-entry-edit'), removes: parseRows('data-calendar-entry-remove'),
-                querySelector(selector) {
-                    if (selector === '[data-calendar-entry-close]') return close;
-                    if (selector === '[data-calendar-entry-add]') return add;
-                    return null;
-                },
-                querySelectorAll(selector) {
-                    if (selector === '[data-calendar-entry-edit]') return this.edits;
-                    if (selector === '[data-calendar-entry-remove]') return this.removes;
-                    return [];
-                },
-            };
-            overlayHistory.push(overlay);
-            return overlay;
-        }
         const close = interactiveNode(), error = { textContent: '' };
+        const repeatToggle = interactiveNode();
         const occasionControls = [{ disabled: false }, { disabled: false }];
         const occasionFields = {
             hidden: true, ariaHidden: '',
             setAttribute(name, value) { if (name === 'aria-hidden') this.ariaHidden = value; },
             querySelectorAll: selector => selector === 'select, input, textarea, button' ? occasionControls : [],
         };
-        const kindButtons = ['event', 'occasion'].map(kind => interactiveNode({ calendarEntryKind: kind }));
         const form = interactiveNode();
         form.elements = {
             title: { value: '', focus(options) { assert.deepEqual(options, { preventScroll: true }); entryFocusCount += 1; } },
@@ -1120,15 +1097,16 @@ try {
         };
         form.submit = async () => form.listeners.get('submit')?.({ preventDefault() {} });
         const overlay = {
-            kind: 'editor', html, close, error, form, occasionFields, kindButtons, dataset: {},
+            kind: 'editor', html, close, error, form, occasionFields, repeatToggle, dataset: {},
             querySelector(selector) {
                 if (selector === '[data-calendar-entry-form]') return form;
                 if (selector === '[data-calendar-entry-error]') return error;
                 if (selector === '[data-calendar-entry-close]') return close;
+                if (selector === '[data-calendar-repeat-toggle]') return repeatToggle;
                 if (selector === '[data-calendar-occasion-fields]') return occasionFields;
                 return null;
             },
-            querySelectorAll(selector) { return selector === '[data-calendar-entry-kind]' ? kindButtons : []; },
+            querySelectorAll() { return []; },
         };
         overlayHistory.push(overlay);
         return overlay;
@@ -1210,15 +1188,17 @@ try {
         '新增 event 不得写入 occasion store');
     await deps.handleCalendarAction({ dataset: { action: 'calendar-add-date' } }, { querySelector: () => null });
     const occasionEditor = overlayHistory.at(-1);
-    await occasionEditor.kindButtons.find(button => button.dataset.calendarEntryKind === 'occasion').click();
+    await occasionEditor.repeatToggle.click();
+    assert.equal(occasionEditor.repeatToggle['aria-checked'], 'true');
     occasionEditor.form.elements.occasionType.value = 'birthday';
     occasionEditor.form.elements.leapDayRule.value = 'mar1';
-    await occasionEditor.kindButtons.find(button => button.dataset.calendarEntryKind === 'event').click();
-    await occasionEditor.kindButtons.find(button => button.dataset.calendarEntryKind === 'occasion').click();
+    await occasionEditor.repeatToggle.click();
+    assert.equal(occasionEditor.repeatToggle['aria-checked'], 'false');
+    await occasionEditor.repeatToggle.click();
     assert.equal(occasionEditor.form.elements.occasionType.value, 'birthday',
-        '新增生日在种类往返后不得重置为纪念日');
+        '年度重复开关往返后不得重置长期类型');
     assert.equal(occasionEditor.form.elements.leapDayRule.value, 'mar1',
-        '新增生日在种类往返后不得重置非闰年规则');
+        '年度重复开关往返后不得重置非闰年规则');
     assert.equal(occasionEditor.occasionFields.hidden, false);
     assert.ok(occasionEditor.occasionFields.querySelectorAll('select, input, textarea, button').every(control => !control.disabled));
     occasionEditor.form.elements.title.value = '闰日生日';
@@ -1618,28 +1598,6 @@ try {
         async click() { return this.listeners.get('click')?.(); },
     });
     const makeRecipeOverlay = html => {
-        if (html.includes('pm-recipe-meal-manager')) {
-            const add = recipeInteractiveNode(), close = recipeInteractiveNode();
-            const parseButtons = attribute => [...html.matchAll(new RegExp(`${attribute}[^>]*data-meal-type="([^"]+)"`, 'g'))]
-                .map(match => recipeInteractiveNode({ mealType: match[1] }));
-            const overlay = {
-                kind: 'recipe-manager', html, add, close,
-                edits: parseButtons('data-recipe-entry-edit'),
-                removes: parseButtons('data-recipe-entry-remove'),
-                querySelector(selector) {
-                    if (selector === '[data-recipe-entry-close]') return close;
-                    if (selector === '[data-recipe-entry-add]') return add;
-                    return null;
-                },
-                querySelectorAll(selector) {
-                    if (selector === '[data-recipe-entry-edit]') return this.edits;
-                    if (selector === '[data-recipe-entry-remove]') return this.removes;
-                    return [];
-                },
-            };
-            controllerOverlays.push(overlay);
-            return overlay;
-        }
         const close = recipeInteractiveNode(), form = recipeInteractiveNode(), error = { textContent: '' };
         const selectedType = html.match(/<option value="([^"]+)" selected/)?.[1] || 'breakfast';
         let recipeFocusCount = 0;
@@ -1739,23 +1697,20 @@ try {
     assert.equal(controllerRecipeScope.lastGeneratedRegion, '架空北境');
     assert.equal(controllerView.recipeGenerating, false);
 
-    assert.equal(await recipeController.handleAction({ dataset: { action: 'calendar-recipe-manage' } }, null), true);
-    const recipeManager = controllerOverlays.at(-1);
-    assert.equal(recipeManager.kind, 'recipe-manager');
-    assert.equal(recipeManager.edits.length, 4, '管理器必须列出已生成的四个餐次');
-    await recipeManager.edits.find(button => button.dataset.mealType === 'breakfast').click();
+    assert.equal(await recipeController.handleAction({
+        dataset: { action: 'calendar-recipe-edit', mealType: 'breakfast' },
+    }, null), true);
     const editedMealEditor = controllerOverlays.at(-1);
     editedMealEditor.form.elements.text.value = '手工北境麦粥（加坚果）';
     await editedMealEditor.form.submit();
     assert.equal(recipeDayFor(controllerRecipeScope, recipeDates[0]).breakfast.text, '手工北境麦粥（加坚果）');
-    assert.equal(controllerCloseReasons.at(-2), 'edit');
     assert.equal(controllerCloseReasons.at(-1), 'saved');
 
-    await recipeController.handleAction({ dataset: { action: 'calendar-recipe-manage' } }, null);
-    const removalManager = controllerOverlays.at(-1);
-    await removalManager.removes.find(button => button.dataset.mealType === 'snack').click();
-    assert.equal(recipeDayFor(controllerRecipeScope, recipeDates[0]).snack, undefined, '管理器移除 action 必须删除指定餐次');
-    assert.equal(controllerCloseReasons.at(-1), 'removed');
+    assert.equal(await recipeController.handleAction({
+        dataset: { action: 'calendar-recipe-delete', mealType: 'snack' },
+    }, null), true);
+    assert.equal(recipeDayFor(controllerRecipeScope, recipeDates[0]).snack, undefined, '行内删除 action 必须删除指定餐次');
+    assert.equal(controllerStatuses.at(-1).text, '餐食已删除。');
     assert.equal(await recipeController.handleAction({ dataset: { action: 'calendar-recipe-unknown' } }, null), false);
 
     const regionRaceResponse = deferred(), regionRaceStarted = deferred();
