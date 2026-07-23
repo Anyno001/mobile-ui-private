@@ -16,14 +16,36 @@ function injectionFailure(result, phase) {
     return new Error(`上下文注入设置${phase}失败：${details}`);
 }
 
+function currentPhoneInjectionFailure(result, target) {
+    if (!target) return null;
+    const diagnostics = result?.diagnostics;
+    if (!diagnostics) return new Error('手机短信记录未能应用，请重试。');
+    const phone = diagnostics.phone || {};
+    const permission = diagnostics.phonePermission || {};
+    if (!permission.allowed) return new Error('手机短信记录未能应用：当前会话数据不可用。');
+    if (permission.sourceCount < 1) {
+        return new Error(target.isGroup
+            ? '手机短信记录未能应用：当前角色不在该群聊中，或群聊记录为空。'
+            : '手机短信记录未能应用：当前角色没有可匹配的短信记录。');
+    }
+    if (phone.allocatedTokens < 1) return new Error('手机短信记录未能应用：手机会话预算为 0。');
+    if (phone.promptCount < 1) return new Error('手机短信记录未能应用：最近消息没有可注入内容。');
+    if ((result.writtenBySource?.phone || 0) < phone.promptCount) {
+        return new Error('手机短信记录未能应用：宿主未接受短信上下文。');
+    }
+    return null;
+}
+
 export async function commitConversationInjectionUpdate({
-    persistCandidate, restoreSnapshot, persistSnapshot, applyInjection,
+    persistCandidate, restoreSnapshot, persistSnapshot, applyInjection, validateResult,
 }) {
     try {
         await persistCandidate();
         const result = await applyInjection();
         const error = injectionFailure(result, '应用');
         if (error) throw error;
+        const validationError = validateResult?.(result);
+        if (validationError) throw validationError;
         return true;
     } catch (error) {
         let rollbackError = null;
@@ -91,6 +113,8 @@ export function installPhoneContextInjection(state, deps) {
                     if (!saveBidirectional()) throw new Error('当前会话注入开关回滚失败');
                 },
                 applyInjection: () => applyBidirectionalInjection(),
+                validateResult: result => isEnabled(target)
+                    ? currentPhoneInjectionFailure(result, target) : null,
             });
             return true;
         } catch (error) {
@@ -99,13 +123,14 @@ export function installPhoneContextInjection(state, deps) {
         }
     };
 
-    window.__pmShowConversationInjection = () => {
+    window.__pmShowConversationInjection = (statusMessage = '') => {
         const config = normalizeInjectionConfig(window.__pmInjectionConfig || loadInjectionConfig());
         makeOverlay(`
     <div class="pm-modal pm-modal-wide pm-conversation-injection-modal">
       <div class="pm-modal-header"><button type="button" onclick="window.__pmCloseOverlay()" class="pm-modal-close" title="返回" aria-label="返回">${BACK_ICON_SVG}</button><b>上下文注入</b><button type="button" onclick="window.__pmCloseOverlay()" class="pm-modal-close" title="关闭" aria-label="关闭">${CLOSE_ICON_SVG}</button></div>
       <div class="pm-modal-scroll pm-conversation-injection-body">
-        <div class="pm-cfg-tip pm-conversation-injection-note">以下规则由所有私聊和群聊共用；是否注入当前会话，请直接在二级菜单切换。</div>
+        <div class="pm-cfg-tip pm-conversation-injection-note">以下规则由所有私聊和群聊共用；是否注入当前会话，请在“会话行为”中单独设置。</div>
+        <div id="pm-conversation-injection-status" class="pm-conversation-injection-status" role="status" ${statusMessage ? '' : 'hidden'}>${statusMessage}</div>
         <label class="pm-conversation-injection-field">注入位置
           <select id="pm-conversation-injection-position" class="pm-cfg-input pm-conversation-injection-config">
             <option value="0" ${config.position === 0 ? 'selected' : ''}>主提示词内</option>
@@ -120,12 +145,18 @@ export function installPhoneContextInjection(state, deps) {
           <input id="pm-conversation-injection-limit" class="pm-cfg-input pm-conversation-injection-config" type="number" min="1" max="100" value="${config.historyLimit}">
         </label>
       </div>
-      <div class="pm-modal-add pm-conversation-injection-actions"><button type="button" class="pm-action-button" onclick="window.__pmSaveConversationInjection()">保存上下文注入</button></div>
+      <div class="pm-modal-add pm-conversation-injection-actions"><button id="pm-conversation-injection-save" type="button" class="pm-action-button" onclick="window.__pmSaveConversationInjection()">保存并应用</button></div>
     </div>`);
         return true;
     };
 
     window.__pmSaveConversationInjection = async () => {
+        const saveButton = document.getElementById('pm-conversation-injection-save');
+        if (saveButton?.disabled) return false;
+        if (saveButton) {
+            saveButton.disabled = true;
+            saveButton.textContent = '保存并应用中…';
+        }
         const snapshot = clone(window.__pmInjectionConfig);
         window.__pmInjectionConfig = normalizeInjectionConfig({
             position: document.getElementById('pm-conversation-injection-position')?.value,
@@ -142,12 +173,22 @@ export function installPhoneContextInjection(state, deps) {
                     if (!saveInjectionConfig()) throw new Error('统一注入规则回滚失败');
                 },
                 applyInjection: () => applyBidirectionalInjection(),
+                validateResult: result => {
+                    const target = currentTarget();
+                    return target && isEnabled(target) ? currentPhoneInjectionFailure(result, target) : null;
+                },
             });
-            window.__pmShowConversationInjection();
+            const config = normalizeInjectionConfig(window.__pmInjectionConfig);
+            window.__pmShowConversationInjection(`已应用到${injectionPositionLabel(config.position)}（深度 ${config.depth}）`);
             return true;
         } catch (error) {
             alert(error.message || '统一注入规则保存失败');
             return false;
+        } finally {
+            if (saveButton?.isConnected) {
+                saveButton.disabled = false;
+                saveButton.textContent = '保存并应用';
+            }
         }
     };
 }

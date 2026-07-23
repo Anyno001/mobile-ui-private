@@ -1,6 +1,4 @@
-import {
-    BIDIRECTIONAL_KEY, MAX_INJECTION_CHARS,
-} from './constants.js';
+import { BIDIRECTIONAL_KEY } from './constants.js';
 import { normalizeInjectionConfig } from './behavior-config.js';
 import { allocateContextBudget, estimateContextTokens, normalizeBudgetConfig, trimToEstimatedTokens } from './budget.js';
 import { formatQuoteContext } from './chat-message-model.js';
@@ -57,6 +55,8 @@ export function replaceExtensionPrompts({ context, runtime, prompts }) {
     const seen = new Set();
     let written = 0;
     let failedWrites = 0;
+    const writtenBySource = {};
+    const failedWritesBySource = {};
     for (const prompt of Array.isArray(prompts) ? prompts : []) {
         if (!prompt || typeof prompt.key !== 'string' || !prompt.key || seen.has(prompt.key)
             || typeof prompt.content !== 'string' || !prompt.content) continue;
@@ -65,12 +65,16 @@ export function replaceExtensionPrompts({ context, runtime, prompts }) {
             context.setExtensionPrompt(prompt.key, prompt.content, prompt.position, prompt.depth, false, 0);
             activeKeys.add(prompt.key);
             written += 1;
+            const source = prompt.source || 'other';
+            writtenBySource[source] = (writtenBySource[source] || 0) + 1;
         } catch (error) {
             failedWrites += 1;
+            const source = prompt.source || 'other';
+            failedWritesBySource[source] = (failedWritesBySource[source] || 0) + 1;
         }
     }
     runtime.trackedExtensionPromptKeys = activeKeys;
-    return { written, failedWrites, ...clearResult };
+    return { written, failedWrites, writtenBySource, failedWritesBySource, ...clearResult };
 }
 
 function renderPhoneSource(source, userName, emojis, injectionConfig) {
@@ -92,13 +96,28 @@ function allocateRenderedPrompts(items, tokenLimit) {
     let truncatedCount = 0;
     for (const item of items) {
         if (remaining <= 0) break;
-        const trimmed = trimToEstimatedTokens(item.content, remaining);
+        const prefix = item.contentPrefix || '';
+        const suffix = item.contentSuffix || '';
+        const framingTokens = estimateContextTokens(prefix + suffix).estimatedTokens;
+        const bodyLimit = Math.max(0, remaining - framingTokens);
+        const trimmed = trimToEstimatedTokens(item.content, bodyLimit);
         if (!trimmed.text) continue;
-        prompts.push({ ...item, content: trimmed.text });
-        remaining -= trimmed.estimatedTokens;
+        const {
+            contentPrefix: _contentPrefix, contentSuffix: _contentSuffix, ...prompt
+        } = item;
+        const content = `${prefix}${trimmed.text}${suffix}`;
+        const used = estimateContextTokens(content).estimatedTokens;
+        prompts.push({ ...prompt, content });
+        remaining -= used;
         if (trimmed.truncated) truncatedCount += 1;
     }
     return { prompts, usedTokens: tokenLimit - remaining, truncatedCount };
+}
+
+function renderedItemTokenDemand(item) {
+    return estimateContextTokens(
+        `${item.contentPrefix || ''}${item.content || ''}${item.contentSuffix || ''}`,
+    ).estimatedTokens;
 }
 
 const CYCLE_INJECTION_LABELS = Object.freeze({
@@ -202,7 +221,10 @@ export function buildContextInjectionPrompts({
         if (!body) return [];
         return [{
             key: injectionKey(source.sourceId),
-            content: `[手机短信记忆 — 私密]\n${body}\n[结束]`,
+            source: 'phone',
+            content: body,
+            contentPrefix: '[手机短信记忆 — 私密]\n',
+            contentSuffix: '\n[结束]',
             ...placement,
         }];
     }) : [];
@@ -211,6 +233,7 @@ export function buildContextInjectionPrompts({
         if (!body) return [];
         return [{
             key: `${COMMUNITY_KEY_PREFIX}${encodeURIComponent(source.sourceId)}`,
+            source: 'community',
             content: `[互动社区记忆 — 当前角色可见]\n${body}\n[结束]`,
             position: config.communityPosition,
             depth: config.communityDepth,
@@ -226,6 +249,7 @@ export function buildContextInjectionPrompts({
         if (body) {
             calendarItems.push({
                 key: `${CALENDAR_KEY_PREFIX}${encodeURIComponent(currentStorageId)}`,
+                source: 'calendar',
                 content: `[生活日历]\n${body}\n[结束]`,
                 position: config.calendarPosition,
                 depth: config.calendarDepth,
@@ -240,6 +264,7 @@ export function buildContextInjectionPrompts({
         if (body) {
             recipeItems.push({
                 key: `${RECIPE_KEY_PREFIX}${encodeURIComponent(currentStorageId)}`,
+                source: 'recipe',
                 content: `[角色菜谱]
 ${body}
 [结束]`,
@@ -249,10 +274,10 @@ ${body}
         }
     }
     const demandBySource = {
-        phone: phoneItems.reduce((sum, item) => sum + estimateContextTokens(item.content).estimatedTokens, 0),
-        community: communityItems.reduce((sum, item) => sum + estimateContextTokens(item.content).estimatedTokens, 0),
-        calendar: calendarItems.reduce((sum, item) => sum + estimateContextTokens(item.content).estimatedTokens, 0),
-        recipe: recipeItems.reduce((sum, item) => sum + estimateContextTokens(item.content).estimatedTokens, 0),
+        phone: phoneItems.reduce((sum, item) => sum + renderedItemTokenDemand(item), 0),
+        community: communityItems.reduce((sum, item) => sum + renderedItemTokenDemand(item), 0),
+        calendar: calendarItems.reduce((sum, item) => sum + renderedItemTokenDemand(item), 0),
+        recipe: recipeItems.reduce((sum, item) => sum + renderedItemTokenDemand(item), 0),
     };
     const budget = allocateContextBudget({ config, safeMaxTokens, demandBySource });
     const phone = allocateRenderedPrompts(phoneItems, budget.allocations.phone);
@@ -264,7 +289,17 @@ ${body}
         diagnostics: {
             estimated: true,
             budget,
-            phonePermission: { allowed: phonePermission.allowed, reason: phonePermission.reason, sourceCount: phonePermission.sources.length },
+            phonePermission: {
+                allowed: phonePermission.allowed,
+                reason: phonePermission.reason,
+                sourceCount: phonePermission.sources.length,
+            },
+            phone: {
+                demandTokens: demandBySource.phone,
+                allocatedTokens: budget.allocations.phone,
+                promptCount: phone.prompts.length,
+                usedTokens: phone.usedTokens,
+            },
             communityPermission: { allowed: communityPermission.allowed, reason: communityPermission.reason, sourceCount: communityPermission.sources.length },
             calendarEnabled: Boolean(calendarScope?.injectionScheduleEnabled || calendarScope?.injectionWeatherEnabled || calendarScope?.injectionCycleEnabled),
             recipeEnabled: calendarScope?.injectionRecipeEnabled === true,
@@ -292,30 +327,4 @@ function renderConversation(name, history, meta, userName, emojis) {
     return meta
         ? `【群聊"${meta.name}"（成员：${meta.members.join('、')}）的最近聊天 — 仅参与者与 ${userName} 知晓，其他角色不应知情】\n${lines}`
         : `【与 ${name} 的短信 — 仅 ${name} 与 ${userName} 知晓】\n${lines}`;
-}
-
-export function applyConversationInjections({ context, runtime, checked, histories, groups, injectionConfig, userName, emojis }) {
-    const prompts = [];
-    let remaining = MAX_INJECTION_CHARS;
-    const injection = normalizeInjectionConfig(injectionConfig);
-    for (const name of Array.isArray(checked) ? checked : []) {
-        const meta = name.startsWith('__group_') ? groups?.[name] : null;
-        if (injection.position < 0 || remaining <= 0) continue;
-        const history = (histories?.[name] || []).slice(-injection.historyLimit);
-        let content = renderConversation(name, history, meta, userName, emojis);
-        if (!content) continue;
-        if (content.length > remaining) {
-            const marker = '【较早内容因资源预算已省略】\n';
-            content = marker + content.slice(-(Math.max(0, remaining - marker.length)));
-        }
-        if (!content || content.length > remaining) continue;
-        prompts.push({
-            key: injectionKey(name),
-            content: `[手机短信记忆 — 私密]\n${content}\n[结束]`,
-            position: injection.position,
-            depth: injection.depth,
-        });
-        remaining -= content.length;
-    }
-    return replaceExtensionPrompts({ context, runtime, prompts });
 }

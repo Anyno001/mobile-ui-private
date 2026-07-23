@@ -2606,6 +2606,7 @@ ${userPrompt}` : userPrompt;
   var CHAT_ICON_SVG = icon('<path d="M4 5h16v11H8l-4 4z"/><path d="M8 9h8M8 12h5"/>');
   var CONTACTS_ICON_SVG = icon('<circle cx="9" cy="8" r="3"/><path d="M3 20c0-4 2.5-6 6-6s6 2 6 6"/><path d="M16 5a3 3 0 0 1 0 6M17 14c2.5.5 4 2.5 4 6"/>');
   var SETTINGS_ICON_SVG = icon('<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-4V21a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H2.8v-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1A1.7 1.7 0 0 0 9 4.6 1.7 1.7 0 0 0 10 3V2.8h4V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v4H21a1.7 1.7 0 0 0-1.6 1z"/>');
+  var INJECTION_ICON_SVG = icon('<path d="M8 7l4-4 4 4M12 3v8M16 17l-4 4-4-4M12 21v-8"/><path d="M5 12h14"/>');
   var COMMUNITY_ICON_SVG = icon('<path d="M4 19V8l8-4 8 4v11"/><path d="M8 19v-6h8v6M8 9h.01M12 9h.01M16 9h.01"/>');
   var FEED_ICON_SVG = icon('<path d="M5 5h14v14H5z"/><path d="M8 9h8M8 12h8M8 15h5"/>');
   var LIVE_ICON_SVG = icon('<rect x="3" y="6" width="14" height="12" rx="2"/><path d="M17 10l4-2v8l-4-2z"/><circle cx="8" cy="12" r="1" fill="currentColor" stroke="none"/>');
@@ -5595,10 +5596,10 @@ ${lines.join("\n")}
     const groupNames = Object.values(groups).map((group) => group.name).filter(Boolean);
     return { histories, groups, contacts, groupNames, total: contacts.length + groupNames.length };
   }
-  function setSpinning(active) {
+  function setGenerationLoading(active) {
     const button = document.getElementById("pm-autogen-btn");
     const icon2 = button?.querySelector("svg");
-    if (icon2) icon2.style.animation = active ? "pm-spin 0.8s linear infinite" : "";
+    if (icon2) icon2.style.animation = active ? "pm-calendar-sparkle-pulse 1s ease-in-out infinite" : "";
     if (button) {
       button.disabled = active;
       button.setAttribute("aria-busy", String(active));
@@ -5797,7 +5798,7 @@ ${mainChatText}` : "",
       const directory = getDirectoryState(id2);
       const task = beginGeneration(id2);
       if (!task) return;
-      setSpinning(true);
+      setGenerationLoading(true);
       try {
         const context = await gatherContext2(task.context);
         if (!isGenerationTaskActive(task)) return;
@@ -5835,7 +5836,7 @@ ${mainChatText}` : "",
         }
       } finally {
         const finishedOwnTask = finishGeneration(task);
-        if (finishedOwnTask || !state.generationTask) setSpinning(false);
+        if (finishedOwnTask || !state.generationTask) setGenerationLoading(false);
       }
     };
   }
@@ -7446,7 +7447,7 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
         <button type="button" class="pm-scene-more" data-action="more" aria-label="\u793E\u533A\u5DE5\u5177" title="\u793E\u533A\u5DE5\u5177" aria-haspopup="menu" aria-expanded="false">${CONTROL_ICON_SVG}</button>
         <div class="pm-control-menu pm-scene-menu" role="menu" aria-label="\u793E\u533A\u5DE5\u5177" hidden>
             <button type="button" role="menuitem" data-action="tab" data-tab="prompt">${EDIT_ICON_SVG}<span>\u98CE\u683C\u63D0\u793A\u8BCD</span></button>
-            <button type="button" role="menuitem" data-action="context-inject">${SETTINGS_ICON_SVG}<span>\u4E0A\u4E0B\u6587\u6CE8\u5165</span></button>
+            <button type="button" role="menuitem" data-action="context-inject">${INJECTION_ICON_SVG}<span>\u4E0A\u4E0B\u6587\u6CE8\u5165</span></button>
             <button type="button" role="menuitem" data-action="toggle-scene-pin" data-scene-id="${escapeAttr(scene.id)}" aria-pressed="${pinned}">${COMMUNITY_ICON_SVG}<span>${pinned ? "\u53D6\u6D88\u56FA\u5B9A" : "\u56FA\u5B9A\u793E\u533A"}</span></button>
             <button type="button" role="menuitem" class="pm-scene-danger" data-action="delete-scene" data-scene-id="${escapeAttr(scene.id)}">${TRASH_ICON_SVG}<span>\u5220\u9664\u793E\u533A</span></button>
         </div>
@@ -9777,14 +9778,61 @@ ${antiFluff}`;
         isAllowed: isAutoPokeAllowed,
         run: (contactName) => window.__pmAutoPoke(contactName),
         onUpdated: () => {
-          const counterEl = document.getElementById("pm-poke-counter");
-          if (counterEl && configs[state.currentPersona]) counterEl.textContent = configs[state.currentPersona].autoPoke.counter;
-          const groupCounterEl = document.getElementById("pm-poke-counter-group");
-          if (groupCounterEl && state.currentGroupKey && configs[state.currentGroupKey]) groupCounterEl.textContent = configs[state.currentGroupKey].autoPoke.counter;
+          const counterEl = document.getElementById("pm-session-auto-poke-counter");
+          const currentKey = state.isGroupChat ? state.currentGroupKey : state.currentPersona;
+          const autoPoke = currentKey ? configs[currentKey]?.autoPoke : null;
+          if (counterEl && autoPoke) counterEl.textContent = `\u5F53\u524D\u8BA1\u6570\uFF1A${autoPoke.counter} / ${autoPoke.interval}`;
         }
       });
     };
     Object.assign(deps, { fetchSMS });
+  }
+
+  // src/auto-poke-config.js
+  var DEFAULT_AUTO_POKE = Object.freeze({ enabled: false, interval: 3, counter: 0 });
+  var clone3 = (value) => JSON.parse(JSON.stringify(value));
+  function normalizeAutoPoke(value) {
+    const interval = Math.max(1, Math.min(99, Number.parseInt(value?.interval, 10) || DEFAULT_AUTO_POKE.interval));
+    const counter = Math.max(0, Number.parseInt(value?.counter, 10) || 0);
+    return {
+      enabled: value?.enabled === true,
+      interval,
+      counter
+    };
+  }
+  function getAutoPokeConfig(storageId, targetKey) {
+    return normalizeAutoPoke(window.__pmPokeConfig?.[storageId]?.[targetKey]?.autoPoke);
+  }
+  function commitAutoPokeConfig(storageId, targetKey, patch, persist = savePokeConfig) {
+    if (!storageId || !targetKey) return false;
+    const storageConfig = window.__pmPokeConfig?.[storageId];
+    const hadStorage = Boolean(storageConfig);
+    const hadTarget = Boolean(storageConfig && Object.prototype.hasOwnProperty.call(storageConfig, targetKey));
+    const snapshot = hadTarget ? clone3(storageConfig[targetKey]) : null;
+    if (!window.__pmPokeConfig) window.__pmPokeConfig = {};
+    if (!window.__pmPokeConfig[storageId]) window.__pmPokeConfig[storageId] = {};
+    const previous = window.__pmPokeConfig[storageId][targetKey] || {};
+    const nextAutoPoke = normalizeAutoPoke({ ...previous.autoPoke, ...patch });
+    if (nextAutoPoke.enabled) nextAutoPoke.counter = Math.min(nextAutoPoke.counter, nextAutoPoke.interval);
+    window.__pmPokeConfig[storageId][targetKey] = {
+      ...previous,
+      autoPoke: nextAutoPoke
+    };
+    let persisted = false;
+    try {
+      persisted = persist() === true;
+    } catch (error) {
+      persisted = false;
+    }
+    if (persisted) return true;
+    if (hadTarget) window.__pmPokeConfig[storageId][targetKey] = snapshot;
+    else delete window.__pmPokeConfig[storageId][targetKey];
+    if (!hadStorage && !Object.keys(window.__pmPokeConfig[storageId]).length) delete window.__pmPokeConfig[storageId];
+    return false;
+  }
+  function resetAutoPokeCounter(storageId, targetKey, persist = savePokeConfig) {
+    if (!window.__pmPokeConfig?.[storageId] || !Object.prototype.hasOwnProperty.call(window.__pmPokeConfig[storageId], targetKey)) return true;
+    return commitAutoPokeConfig(storageId, targetKey, { counter: 0 }, persist);
   }
 
   // src/phone-chat-poke.js
@@ -9979,9 +10027,7 @@ ${antiFluff}`;
     };
     function showContactConfig(contactName) {
       const id2 = getStorageId2();
-      const config = window.__pmPokeConfig[id2]?.[contactName] || {
-        autoPoke: { enabled: false, interval: 3, counter: 0 }
-      };
+      const config = window.__pmPokeConfig[id2]?.[contactName] || {};
       const behavior = getCharacterBehavior(window.__pmCharacterBehavior, id2, contactName);
       const assignedEmojis = config.emojis || [];
       const emojiCheckHtml = window.__pmEmojis.length ? `
@@ -10039,29 +10085,6 @@ ${antiFluff}`;
           </label>`).join("")}
         </div>
         ${emojiCheckHtml}
-        <div style="margin-top:-6px;">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
-            <span style="font-size:13px;font-weight:600;">\u23F0 \u81EA\u52A8\u53D1\u6D88\u606F</span>
-            <div onclick="window.__pmToggleAutoPoke('${safeJS(contactName)}')"
-                class="pm-custom-check pm-bi-style ${config.autoPoke.enabled ? "is-checked" : ""}"
-                id="pm-poke-check"
-                role="checkbox" tabindex="0" aria-checked="${config.autoPoke.enabled}"
-                onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();this.click()}"
-                style="cursor:pointer;width:22px;height:22px;min-width:22px;min-height:22px;flex-shrink:0;border-radius:50%;">
-            </div>
-        </div>
-        <div style="display:flex;align-items:center;gap:8px;">
-            <span style="font-size:12px;color:var(--pm-color-text-tertiary);">\u6BCF\u9694</span>
-            <input id="pm-poke-interval" type="number" min="1" max="99"
-                value="${config.autoPoke.interval}"
-                style="width:50px;border:1px solid var(--pm-color-border-default);border-radius:6px;padding:4px 8px;font-size:13px;text-align:center;"
-                ${!config.autoPoke.enabled ? "disabled" : ""}>
-            <span style="font-size:12px;color:var(--pm-color-text-tertiary);">\u8F6E\u65E0\u8F93\u5165\u4E3B\u52A8\u53D1\u6D88\u606F</span>
-        </div>
-        <div style="font-size:11px;color:var(--pm-color-text-tertiary);margin-top:4px;">
-            \u5F53\u524D\u8BA1\u6570\uFF1A<span id="pm-poke-counter">${config.autoPoke.counter}</span> / ${config.autoPoke.interval}
-        </div>
-        </div>
     <div class="pm-modal-add pm-contact-settings-actions">
         <button type="button" class="pm-contact-settings-save" onclick="window.__pmSaveContactConfig('${safeJS(contactName)}')">\u4FDD\u5B58\u89D2\u8272\u8BBE\u7F6E</button>
     </div>
@@ -10086,8 +10109,6 @@ ${antiFluff}`;
     </div>`);
     };
     window.__pmSaveContactConfig = (contactName) => {
-      const checkEl = document.getElementById("pm-poke-check");
-      const intervalEl = document.getElementById("pm-poke-interval");
       const behaviorSnapshot = JSON.parse(JSON.stringify(window.__pmCharacterBehavior));
       const pokeSnapshot = JSON.parse(JSON.stringify(window.__pmPokeConfig));
       const emojiChecks = document.querySelectorAll(".pm-emoji-assign-check.is-checked");
@@ -10113,45 +10134,29 @@ ${antiFluff}`;
         alert("\u89D2\u8272\u8BBE\u7F6E\u4FDD\u5B58\u5931\u8D25\uFF1A\u6D4F\u89C8\u5668\u5B58\u50A8\u4E0D\u53EF\u7528\u3002");
         return false;
       }
-      if (checkEl && intervalEl) {
-        if (!window.__pmPokeConfig[id2]) window.__pmPokeConfig[id2] = {};
-        const enabled = checkEl.classList.contains("is-checked");
-        const interval = parseInt(intervalEl.value) || 3;
-        const oldCounter = window.__pmPokeConfig[id2][contactName]?.autoPoke?.counter || 0;
-        window.__pmPokeConfig[id2][contactName] = {
-          autoPoke: {
-            enabled,
-            interval: Math.max(1, Math.min(99, interval)),
-            counter: enabled ? Math.min(oldCounter, interval) : oldCounter
-          },
-          emojis: selectedEmojis
-        };
-        if (!savePokeConfig()) {
-          window.__pmCharacterBehavior = behaviorSnapshot;
-          window.__pmPokeConfig = pokeSnapshot;
-          const rollbackOk = saveCharacterBehavior();
-          alert(rollbackOk ? "\u81EA\u52A8\u6D88\u606F\u8BBE\u7F6E\u4FDD\u5B58\u5931\u8D25\uFF1A\u6D4F\u89C8\u5668\u5B58\u50A8\u4E0D\u53EF\u7528\u3002" : "\u81EA\u52A8\u6D88\u606F\u8BBE\u7F6E\u4FDD\u5B58\u5931\u8D25\uFF0C\u4E14\u89D2\u8272\u8BBE\u7F6E\u56DE\u6EDA\u672A\u80FD\u5199\u5165\u5B58\u50A8\u3002\u8BF7\u7ACB\u5373\u5BFC\u51FA\u5907\u4EFD\u3002");
-          return false;
-        }
+      if (!window.__pmPokeConfig[id2]) window.__pmPokeConfig[id2] = {};
+      const previous = window.__pmPokeConfig[id2][contactName] || {};
+      window.__pmPokeConfig[id2][contactName] = {
+        ...previous,
+        autoPoke: getAutoPokeConfig(id2, contactName),
+        emojis: selectedEmojis
+      };
+      if (!savePokeConfig()) {
+        window.__pmCharacterBehavior = behaviorSnapshot;
+        window.__pmPokeConfig = pokeSnapshot;
+        const rollbackOk = saveCharacterBehavior();
+        alert(rollbackOk ? "\u8868\u60C5\u5305\u8BBE\u7F6E\u4FDD\u5B58\u5931\u8D25\uFF1A\u6D4F\u89C8\u5668\u5B58\u50A8\u4E0D\u53EF\u7528\u3002" : "\u8868\u60C5\u5305\u8BBE\u7F6E\u4FDD\u5B58\u5931\u8D25\uFF0C\u4E14\u89D2\u8272\u8BBE\u7F6E\u56DE\u6EDA\u672A\u80FD\u5199\u5165\u5B58\u50A8\u3002\u8BF7\u7ACB\u5373\u5BFC\u51FA\u5907\u4EFD\u3002");
+        return false;
       }
       addNote(`\u5DF2\u4FDD\u5B58 ${contactName} \u7684\u8BBE\u7F6E`);
       return true;
     };
     window.__pmSaveAndCloseContactConfig = (contactName) => window.__pmSaveContactConfig(contactName);
-    window.__pmToggleAutoPoke = (contactName) => {
-      const checkEl = document.getElementById("pm-poke-check");
-      const intervalEl = document.getElementById("pm-poke-interval");
-      if (!checkEl) return;
-      const isChecked = checkEl.classList.toggle("is-checked");
-      checkEl.setAttribute("aria-checked", String(isChecked));
-      if (intervalEl) intervalEl.disabled = !isChecked;
-    };
     window.__pmPoke = async (contactName) => {
       if (state.isGenerating) return;
       const id2 = getStorageId2();
-      if (window.__pmPokeConfig[id2]?.[contactName]) {
-        window.__pmPokeConfig[id2][contactName].autoPoke.counter = 0;
-        savePokeConfig();
+      if (!resetAutoPokeCounter(id2, contactName)) {
+        console.warn("[phone-mode] __pmPoke: \u81EA\u52A8\u6D88\u606F\u8BA1\u6570\u5668\u91CD\u7F6E\u4FDD\u5B58\u5931\u8D25\uFF0C\u4FDD\u7559\u539F\u503C");
       }
       document.getElementById("pm-overlay")?.remove();
       if (state.currentPersona !== contactName) {
@@ -10314,14 +10319,6 @@ ${antiFluff}`;
       }
       if (state.currentPersona) window.__pmPoke(state.currentPersona);
     };
-    window.__pmToggleAutoPokeGroup = () => {
-      const checkEl = document.getElementById("pm-poke-check-group");
-      const intervalEl = document.getElementById("pm-poke-interval-group");
-      if (!checkEl) return;
-      const isChecked = checkEl.classList.toggle("is-checked");
-      checkEl.setAttribute("aria-checked", String(isChecked));
-      if (intervalEl) intervalEl.disabled = !isChecked;
-    };
     window.__pmPokeGroup = async () => {
       if (!state.isGroupChat || !state.currentGroupKey) return;
       if (state.isGenerating) return;
@@ -10329,9 +10326,8 @@ ${antiFluff}`;
       const storageId = state.activeStorageId || id2;
       const saveKey = state.currentGroupKey;
       if (!storageId || storageId === "sms_unknown__default") return;
-      if (window.__pmPokeConfig[storageId]?.[saveKey]) {
-        window.__pmPokeConfig[storageId][saveKey].autoPoke.counter = 0;
-        savePokeConfig();
+      if (!resetAutoPokeCounter(storageId, saveKey)) {
+        console.warn("[phone-mode] __pmPokeGroup: \u81EA\u52A8\u6D88\u606F\u8BA1\u6570\u5668\u91CD\u7F6E\u4FDD\u5B58\u5931\u8D25\uFF0C\u4FDD\u7559\u539F\u503C");
       }
       document.getElementById("pm-overlay")?.remove();
       const task = beginGeneration(storageId);
@@ -10429,8 +10425,10 @@ ${antiFluff}`;
   var controlActionLabel = (action) => ({
     calendar: "\u6253\u5F00\u65E5\u5386",
     contacts: "\u6253\u5F00\u8054\u7CFB\u4EBA",
+    "session-behavior": "\u6253\u5F00\u4F1A\u8BDD\u884C\u4E3A",
+    "auto-poke-toggle": "\u5207\u6362\u81EA\u52A8\u53D1\u6D88\u606F",
     "injection-toggle": "\u5207\u6362\u5F53\u524D\u4F1A\u8BDD\u6CE8\u5165",
-    "injection-settings": "\u6253\u5F00\u4E0A\u4E0B\u6587\u6CE8\u5165\u8BBE\u7F6E"
+    "injection-settings": "\u6253\u5F00\u4E0A\u4E0B\u6587\u6CE8\u5165\u89C4\u5219"
   })[action] || "\u6267\u884C\u5FEB\u6377\u64CD\u4F5C";
   async function toggleConversationInjectionControl(button, toggleInjection, isEnabled) {
     if (button?.disabled) return false;
@@ -10473,7 +10471,11 @@ ${antiFluff}`;
     const getTarget = () => {
       const storageId = state.activeStorageId || getStorageId2();
       const saveKey = state.isGroupChat && state.currentGroupKey ? state.currentGroupKey : state.currentPersona;
-      return storageId && storageId !== "sms_unknown__default" && saveKey ? { storageId, saveKey } : null;
+      return storageId && storageId !== "sms_unknown__default" && saveKey ? {
+        storageId,
+        saveKey,
+        isGroup: state.isGroupChat
+      } : null;
     };
     function renderPendingList() {
       const target = getTarget();
@@ -10529,6 +10531,94 @@ ${antiFluff}`;
       }
       if (restoreFocus) anchor?.focus({ preventScroll: true });
     }
+    function showSessionBehaviorPanel() {
+      const target = getTarget();
+      if (!target) return alert("\u5F53\u524D\u6CA1\u6709\u53EF\u914D\u7F6E\u7684\u624B\u673A\u4F1A\u8BDD\u3002");
+      makeOverlay(`
+<div class="pm-modal pm-modal-wide pm-session-behavior-modal">
+  <div class="pm-modal-header"><button type="button" onclick="window.__pmCloseOverlay()" class="pm-modal-close" title="\u8FD4\u56DE" aria-label="\u8FD4\u56DE">${BACK_ICON_SVG}</button><b>\u4F1A\u8BDD\u884C\u4E3A</b><button type="button" onclick="window.__pmCloseOverlay()" class="pm-modal-close" title="\u5173\u95ED" aria-label="\u5173\u95ED">${CLOSE_ICON_SVG}</button></div>
+  <div class="pm-modal-scroll pm-session-behavior-body">
+    <div class="pm-session-behavior-links">
+      <button type="button" onclick="window.__pmShowAutoPokeSettings()">${CHAT_ICON_SVG}<span>\u81EA\u52A8\u53D1\u6D88\u606F</span></button>
+      <button type="button" onclick="window.__pmShowSessionInjectionSettings()">${INJECTION_ICON_SVG}<span>${target.isGroup ? "\u6CE8\u5165\u5F53\u524D\u7FA4\u804A" : "\u6CE8\u5165\u5F53\u524D\u89D2\u8272"}</span></button>
+      <button type="button" onclick="window.__pmShowConversationInjection()">${INJECTION_ICON_SVG}<span>\u4E0A\u4E0B\u6587\u6CE8\u5165\u89C4\u5219</span></button>
+      <button type="button" onclick="window.__pmShowConversationSettings()">${SETTINGS_ICON_SVG}<span>${target.isGroup ? "\u6210\u5458\u804A\u5929\u884C\u4E3A" : "\u89D2\u8272\u8BBE\u7F6E"}</span></button>
+      ${target.isGroup ? `<button type="button" onclick="window.__pmEditGroup()">${CONTACTS_ICON_SVG}<span>\u7FA4\u804A\u8BBE\u7F6E</span></button>` : ""}
+    </div>
+  </div>
+</div>`);
+    }
+    window.__pmShowSessionBehavior = showSessionBehaviorPanel;
+    window.__pmShowAutoPokeSettings = (statusMessage = "") => {
+      const target = getTarget();
+      if (!target) return alert("\u5F53\u524D\u6CA1\u6709\u53EF\u914D\u7F6E\u7684\u624B\u673A\u4F1A\u8BDD\u3002");
+      const autoPoke = getAutoPokeConfig(target.storageId, target.saveKey);
+      makeOverlay(`
+<div class="pm-modal pm-modal-wide pm-session-behavior-modal">
+  <div class="pm-modal-header"><button type="button" onclick="window.__pmShowSessionBehavior()" class="pm-modal-close" title="\u8FD4\u56DE\u4F1A\u8BDD\u884C\u4E3A" aria-label="\u8FD4\u56DE\u4F1A\u8BDD\u884C\u4E3A">${BACK_ICON_SVG}</button><b>\u81EA\u52A8\u53D1\u6D88\u606F</b><button type="button" onclick="window.__pmCloseOverlay()" class="pm-modal-close" title="\u5173\u95ED" aria-label="\u5173\u95ED">${CLOSE_ICON_SVG}</button></div>
+  <div class="pm-modal-scroll pm-session-behavior-body">
+    <div id="pm-session-auto-poke-status" class="pm-session-behavior-status" role="status" aria-live="polite" ${statusMessage ? "" : "hidden"}>${escapeHtml(statusMessage)}</div>
+    <section class="pm-session-behavior-section">
+      <button id="pm-session-auto-poke" type="button" class="pm-session-behavior-toggle" role="checkbox" aria-checked="${autoPoke.enabled}" onclick="window.__pmToggleCurrentAutoPoke(this)">
+        ${CHAT_ICON_SVG}<span><b>\u5141\u8BB8\u5F53\u524D\u4F1A\u8BDD\u4E3B\u52A8\u53D1\u6D88\u606F</b><small>\u8FDE\u7EED\u591A\u8F6E\u6CA1\u6709\u8F93\u5165\u65F6\u89E6\u53D1\u3002</small></span><i class="pm-control-toggle ${autoPoke.enabled ? "is-checked" : ""}" aria-hidden="true"></i>
+      </button>
+      <label class="pm-session-auto-poke-interval">\u6BCF\u9694 <input id="pm-session-auto-poke-interval" type="number" min="1" max="99" value="${autoPoke.interval}" ${autoPoke.enabled ? "" : "disabled"} onchange="window.__pmSaveCurrentAutoPokeInterval(this)"> \u8F6E\u65E0\u8F93\u5165\u89E6\u53D1</label>
+      <p id="pm-session-auto-poke-counter">\u5F53\u524D\u8BA1\u6570\uFF1A${autoPoke.counter} / ${autoPoke.interval}</p>
+    </section>
+  </div>
+</div>`);
+    };
+    window.__pmShowSessionInjectionSettings = () => {
+      const target = getTarget();
+      if (!target) return alert("\u5F53\u524D\u6CA1\u6709\u53EF\u914D\u7F6E\u7684\u624B\u673A\u4F1A\u8BDD\u3002");
+      const enabled = window.__pmCurrentConversationInjectionEnabled?.() === true;
+      const label = target.isGroup ? "\u6CE8\u5165\u5F53\u524D\u7FA4\u804A" : "\u6CE8\u5165\u5F53\u524D\u89D2\u8272";
+      makeOverlay(`
+<div class="pm-modal pm-modal-wide pm-session-behavior-modal">
+  <div class="pm-modal-header"><button type="button" onclick="window.__pmShowSessionBehavior()" class="pm-modal-close" title="\u8FD4\u56DE\u4F1A\u8BDD\u884C\u4E3A" aria-label="\u8FD4\u56DE\u4F1A\u8BDD\u884C\u4E3A">${BACK_ICON_SVG}</button><b>${label}</b><button type="button" onclick="window.__pmCloseOverlay()" class="pm-modal-close" title="\u5173\u95ED" aria-label="\u5173\u95ED">${CLOSE_ICON_SVG}</button></div>
+  <div class="pm-modal-scroll pm-session-behavior-body"><section class="pm-session-behavior-section"><button id="pm-session-injection-toggle" type="button" class="pm-session-behavior-toggle" role="checkbox" aria-checked="${enabled}" onclick="window.__pmToggleSessionInjection(this)">${INJECTION_ICON_SVG}<span><b>\u628A\u5F53\u524D\u624B\u673A\u77ED\u4FE1\u8BB0\u5F55\u5199\u5165\u89D2\u8272\u4E0A\u4E0B\u6587</b><small>\u53EA\u6709\u5F53\u524D\u89D2\u8272\u53EF\u8BFB\u53D6\u8FD9\u6BB5\u79C1\u5BC6\u77ED\u4FE1\u8BB0\u5FC6\u3002</small></span><i class="pm-control-toggle ${enabled ? "is-checked" : ""}" aria-hidden="true"></i></button></section></div>
+</div>`);
+    };
+    window.__pmToggleCurrentAutoPoke = (button) => {
+      if (button?.disabled) return false;
+      const target = getTarget();
+      if (!target) return false;
+      const current = getAutoPokeConfig(target.storageId, target.saveKey);
+      button.disabled = true;
+      button.setAttribute("aria-busy", "true");
+      const saved = commitAutoPokeConfig(target.storageId, target.saveKey, { enabled: !current.enabled });
+      if (!saved) {
+        button.disabled = false;
+        button.removeAttribute("aria-busy");
+        alert("\u81EA\u52A8\u53D1\u6D88\u606F\u8BBE\u7F6E\u4FDD\u5B58\u5931\u8D25\uFF1A\u6D4F\u89C8\u5668\u5B58\u50A8\u4E0D\u53EF\u7528\u6216\u7A7A\u95F4\u4E0D\u8DB3\u3002");
+        button.focus({ preventScroll: true });
+        return false;
+      }
+      window.__pmShowAutoPokeSettings(current.enabled ? "\u5DF2\u5173\u95ED\u81EA\u52A8\u53D1\u6D88\u606F\u3002" : "\u5DF2\u5F00\u542F\u81EA\u52A8\u53D1\u6D88\u606F\u3002");
+      document.getElementById("pm-session-auto-poke")?.focus({ preventScroll: true });
+      return true;
+    };
+    window.__pmSaveCurrentAutoPokeInterval = (input) => {
+      const target = getTarget();
+      if (!target || !input) return false;
+      const interval = Math.max(1, Math.min(99, Number.parseInt(input.value, 10) || 3));
+      input.disabled = true;
+      input.setAttribute("aria-busy", "true");
+      if (!commitAutoPokeConfig(target.storageId, target.saveKey, { interval })) {
+        alert("\u81EA\u52A8\u53D1\u6D88\u606F\u95F4\u9694\u4FDD\u5B58\u5931\u8D25\uFF1A\u6D4F\u89C8\u5668\u5B58\u50A8\u4E0D\u53EF\u7528\u6216\u7A7A\u95F4\u4E0D\u8DB3\u3002");
+        window.__pmShowAutoPokeSettings("\u81EA\u52A8\u53D1\u6D88\u606F\u95F4\u9694\u4FDD\u5B58\u5931\u8D25\uFF0C\u5DF2\u6062\u590D\u539F\u8BBE\u7F6E\u3002");
+        document.getElementById("pm-session-auto-poke-interval")?.focus({ preventScroll: true });
+        return false;
+      }
+      window.__pmShowAutoPokeSettings(`\u5DF2\u4FDD\u5B58\uFF1A\u6BCF\u9694 ${interval} \u8F6E\u65E0\u8F93\u5165\u89E6\u53D1\u3002`);
+      document.getElementById("pm-session-auto-poke-interval")?.focus({ preventScroll: true });
+      return true;
+    };
+    window.__pmToggleSessionInjection = (button) => toggleConversationInjectionControl(
+      button,
+      window.__pmToggleCurrentConversationInjection,
+      () => window.__pmCurrentConversationInjectionEnabled?.() === true
+    );
     function showPendingManager() {
       const target = getTarget();
       if (!sameTarget(editingTarget, target)) editingTarget = null;
@@ -10546,18 +10636,12 @@ ${antiFluff}`;
     }
     function runControlAction(action, button = null) {
       runtime.overlayOpener = state.phoneWindow?.querySelector(".pm-expand-btn") || null;
-      if (action === "injection-toggle") return toggleConversationInjectionControl(
-        button,
-        window.__pmToggleCurrentConversationInjection,
-        () => window.__pmCurrentConversationInjectionEnabled?.() === true
-      );
       closeControlCenter();
       if (action === "pending") showPendingManager();
-      else if (action === "settings") window.__pmShowConversationSettings();
+      else if (action === "session-behavior") showSessionBehaviorPanel();
       else if (action === "injection-settings") return window.__pmShowConversationInjection();
       else if (action === "contacts") return window.__pmShowList();
       else if (action === "emoji") window.__pmShowEmojiManager();
-      else if (action === "group") window.__pmEditGroup();
       else if (action === "delete") window.__pmStartDeleteMode();
       else if (action === "calendar") return showPhoneCalendarPage();
     }
@@ -10596,15 +10680,10 @@ ${antiFluff}`;
       menu.className = "pm-control-menu";
       menu.setAttribute("role", "menu");
       menu.setAttribute("aria-label", "\u5FEB\u6377\u5DE5\u5177");
-      const injectionEnabled = window.__pmCurrentConversationInjectionEnabled?.() === true;
-      const injectionLabel = state.isGroupChat ? "\u6CE8\u5165\u5F53\u524D\u7FA4\u804A" : "\u6CE8\u5165\u5F53\u524D\u89D2\u8272";
       menu.innerHTML = `
   <button type="button" role="menuitem" data-action="pending">${EDIT_ICON_SVG}\u7F16\u8F91\u6D88\u606F</button>
   <button type="button" role="menuitem" data-action="contacts">${CONTACTS_ICON_SVG}\u8054\u7CFB\u4EBA</button>
-  <button type="button" role="menuitemcheckbox" aria-checked="${injectionEnabled}" data-action="injection-toggle">${CHAT_ICON_SVG}${injectionLabel}<i class="pm-control-toggle ${injectionEnabled ? "is-checked" : ""}" aria-hidden="true"></i></button>
-  <button type="button" role="menuitem" data-action="injection-settings">${SETTINGS_ICON_SVG}\u4E0A\u4E0B\u6587\u6CE8\u5165</button>
-  <button type="button" role="menuitem" data-action="settings">${SETTINGS_ICON_SVG}\u89D2\u8272\u8BBE\u7F6E</button>
-  ${state.isGroupChat ? `<button type="button" role="menuitem" data-action="group">${CONTACTS_ICON_SVG}\u7FA4\u804A\u8BBE\u7F6E</button>` : ""}
+  <button type="button" role="menuitem" data-action="session-behavior">${SETTINGS_ICON_SVG}\u4F1A\u8BDD\u884C\u4E3A</button>
   <button type="button" role="menuitem" data-action="emoji">${EMOJI_ICON_SVG}\u8868\u60C5\u5305\u7BA1\u7406</button>
   <button type="button" role="menuitem" data-action="calendar">${CALENDAR_ICON_SVG}\u65E5\u5386</button>
   <button type="button" role="menuitem" data-action="delete" class="pm-control-menu-danger">${TRASH_ICON_SVG}\u5220\u9664\u4FE1\u606F</button>`;
@@ -10680,7 +10759,7 @@ ${antiFluff}`;
   }
 
   // src/phone-context-injection.js
-  var clone3 = (value) => JSON.parse(JSON.stringify(value));
+  var clone4 = (value) => JSON.parse(JSON.stringify(value));
   function injectionFailure2(result, phase) {
     const failedWrites = Number.isInteger(result?.failedWrites) && result.failedWrites > 0 ? result.failedWrites : 0;
     const failedKeys = Array.isArray(result?.failedKeys) ? result.failedKeys : [];
@@ -10691,17 +10770,37 @@ ${antiFluff}`;
     ].filter(Boolean).join("\uFF0C");
     return new Error(`\u4E0A\u4E0B\u6587\u6CE8\u5165\u8BBE\u7F6E${phase}\u5931\u8D25\uFF1A${details}`);
   }
+  function currentPhoneInjectionFailure(result, target) {
+    if (!target) return null;
+    const diagnostics = result?.diagnostics;
+    if (!diagnostics) return new Error("\u624B\u673A\u77ED\u4FE1\u8BB0\u5F55\u672A\u80FD\u5E94\u7528\uFF0C\u8BF7\u91CD\u8BD5\u3002");
+    const phone = diagnostics.phone || {};
+    const permission = diagnostics.phonePermission || {};
+    if (!permission.allowed) return new Error("\u624B\u673A\u77ED\u4FE1\u8BB0\u5F55\u672A\u80FD\u5E94\u7528\uFF1A\u5F53\u524D\u4F1A\u8BDD\u6570\u636E\u4E0D\u53EF\u7528\u3002");
+    if (permission.sourceCount < 1) {
+      return new Error(target.isGroup ? "\u624B\u673A\u77ED\u4FE1\u8BB0\u5F55\u672A\u80FD\u5E94\u7528\uFF1A\u5F53\u524D\u89D2\u8272\u4E0D\u5728\u8BE5\u7FA4\u804A\u4E2D\uFF0C\u6216\u7FA4\u804A\u8BB0\u5F55\u4E3A\u7A7A\u3002" : "\u624B\u673A\u77ED\u4FE1\u8BB0\u5F55\u672A\u80FD\u5E94\u7528\uFF1A\u5F53\u524D\u89D2\u8272\u6CA1\u6709\u53EF\u5339\u914D\u7684\u77ED\u4FE1\u8BB0\u5F55\u3002");
+    }
+    if (phone.allocatedTokens < 1) return new Error("\u624B\u673A\u77ED\u4FE1\u8BB0\u5F55\u672A\u80FD\u5E94\u7528\uFF1A\u624B\u673A\u4F1A\u8BDD\u9884\u7B97\u4E3A 0\u3002");
+    if (phone.promptCount < 1) return new Error("\u624B\u673A\u77ED\u4FE1\u8BB0\u5F55\u672A\u80FD\u5E94\u7528\uFF1A\u6700\u8FD1\u6D88\u606F\u6CA1\u6709\u53EF\u6CE8\u5165\u5185\u5BB9\u3002");
+    if ((result.writtenBySource?.phone || 0) < phone.promptCount) {
+      return new Error("\u624B\u673A\u77ED\u4FE1\u8BB0\u5F55\u672A\u80FD\u5E94\u7528\uFF1A\u5BBF\u4E3B\u672A\u63A5\u53D7\u77ED\u4FE1\u4E0A\u4E0B\u6587\u3002");
+    }
+    return null;
+  }
   async function commitConversationInjectionUpdate({
     persistCandidate,
     restoreSnapshot,
     persistSnapshot,
-    applyInjection
+    applyInjection,
+    validateResult
   }) {
     try {
       await persistCandidate();
       const result = await applyInjection();
       const error = injectionFailure2(result, "\u5E94\u7528");
       if (error) throw error;
+      const validationError = validateResult?.(result);
+      if (validationError) throw validationError;
       return true;
     } catch (error) {
       let rollbackError = null;
@@ -10745,7 +10844,7 @@ ${antiFluff}`;
     window.__pmToggleCurrentConversationInjection = async () => {
       const target = currentTarget();
       if (!target) return false;
-      const snapshot = clone3(window.__pmBidirectional);
+      const snapshot = clone4(window.__pmBidirectional);
       const selected = new Set(window.__pmBidirectional[target.storageId] || []);
       if (selected.has(target.targetKey)) selected.delete(target.targetKey);
       else selected.add(target.targetKey);
@@ -10761,7 +10860,8 @@ ${antiFluff}`;
           persistSnapshot: async () => {
             if (!saveBidirectional()) throw new Error("\u5F53\u524D\u4F1A\u8BDD\u6CE8\u5165\u5F00\u5173\u56DE\u6EDA\u5931\u8D25");
           },
-          applyInjection: () => applyBidirectionalInjection()
+          applyInjection: () => applyBidirectionalInjection(),
+          validateResult: (result) => isEnabled(target) ? currentPhoneInjectionFailure(result, target) : null
         });
         return true;
       } catch (error) {
@@ -10769,13 +10869,14 @@ ${antiFluff}`;
         return false;
       }
     };
-    window.__pmShowConversationInjection = () => {
+    window.__pmShowConversationInjection = (statusMessage = "") => {
       const config = normalizeInjectionConfig(window.__pmInjectionConfig || loadInjectionConfig());
       makeOverlay(`
     <div class="pm-modal pm-modal-wide pm-conversation-injection-modal">
       <div class="pm-modal-header"><button type="button" onclick="window.__pmCloseOverlay()" class="pm-modal-close" title="\u8FD4\u56DE" aria-label="\u8FD4\u56DE">${BACK_ICON_SVG}</button><b>\u4E0A\u4E0B\u6587\u6CE8\u5165</b><button type="button" onclick="window.__pmCloseOverlay()" class="pm-modal-close" title="\u5173\u95ED" aria-label="\u5173\u95ED">${CLOSE_ICON_SVG}</button></div>
       <div class="pm-modal-scroll pm-conversation-injection-body">
-        <div class="pm-cfg-tip pm-conversation-injection-note">\u4EE5\u4E0B\u89C4\u5219\u7531\u6240\u6709\u79C1\u804A\u548C\u7FA4\u804A\u5171\u7528\uFF1B\u662F\u5426\u6CE8\u5165\u5F53\u524D\u4F1A\u8BDD\uFF0C\u8BF7\u76F4\u63A5\u5728\u4E8C\u7EA7\u83DC\u5355\u5207\u6362\u3002</div>
+        <div class="pm-cfg-tip pm-conversation-injection-note">\u4EE5\u4E0B\u89C4\u5219\u7531\u6240\u6709\u79C1\u804A\u548C\u7FA4\u804A\u5171\u7528\uFF1B\u662F\u5426\u6CE8\u5165\u5F53\u524D\u4F1A\u8BDD\uFF0C\u8BF7\u5728\u201C\u4F1A\u8BDD\u884C\u4E3A\u201D\u4E2D\u5355\u72EC\u8BBE\u7F6E\u3002</div>
+        <div id="pm-conversation-injection-status" class="pm-conversation-injection-status" role="status" ${statusMessage ? "" : "hidden"}>${statusMessage}</div>
         <label class="pm-conversation-injection-field">\u6CE8\u5165\u4F4D\u7F6E
           <select id="pm-conversation-injection-position" class="pm-cfg-input pm-conversation-injection-config">
             <option value="0" ${config.position === 0 ? "selected" : ""}>\u4E3B\u63D0\u793A\u8BCD\u5185</option>
@@ -10790,12 +10891,18 @@ ${antiFluff}`;
           <input id="pm-conversation-injection-limit" class="pm-cfg-input pm-conversation-injection-config" type="number" min="1" max="100" value="${config.historyLimit}">
         </label>
       </div>
-      <div class="pm-modal-add pm-conversation-injection-actions"><button type="button" class="pm-action-button" onclick="window.__pmSaveConversationInjection()">\u4FDD\u5B58\u4E0A\u4E0B\u6587\u6CE8\u5165</button></div>
+      <div class="pm-modal-add pm-conversation-injection-actions"><button id="pm-conversation-injection-save" type="button" class="pm-action-button" onclick="window.__pmSaveConversationInjection()">\u4FDD\u5B58\u5E76\u5E94\u7528</button></div>
     </div>`);
       return true;
     };
     window.__pmSaveConversationInjection = async () => {
-      const snapshot = clone3(window.__pmInjectionConfig);
+      const saveButton = document.getElementById("pm-conversation-injection-save");
+      if (saveButton?.disabled) return false;
+      if (saveButton) {
+        saveButton.disabled = true;
+        saveButton.textContent = "\u4FDD\u5B58\u5E76\u5E94\u7528\u4E2D\u2026";
+      }
+      const snapshot = clone4(window.__pmInjectionConfig);
       window.__pmInjectionConfig = normalizeInjectionConfig({
         position: document.getElementById("pm-conversation-injection-position")?.value,
         depth: document.getElementById("pm-conversation-injection-depth")?.value,
@@ -10812,13 +10919,23 @@ ${antiFluff}`;
           persistSnapshot: async () => {
             if (!saveInjectionConfig()) throw new Error("\u7EDF\u4E00\u6CE8\u5165\u89C4\u5219\u56DE\u6EDA\u5931\u8D25");
           },
-          applyInjection: () => applyBidirectionalInjection()
+          applyInjection: () => applyBidirectionalInjection(),
+          validateResult: (result) => {
+            const target = currentTarget();
+            return target && isEnabled(target) ? currentPhoneInjectionFailure(result, target) : null;
+          }
         });
-        window.__pmShowConversationInjection();
+        const config = normalizeInjectionConfig(window.__pmInjectionConfig);
+        window.__pmShowConversationInjection(`\u5DF2\u5E94\u7528\u5230${injectionPositionLabel(config.position)}\uFF08\u6DF1\u5EA6 ${config.depth}\uFF09`);
         return true;
       } catch (error) {
         alert(error.message || "\u7EDF\u4E00\u6CE8\u5165\u89C4\u5219\u4FDD\u5B58\u5931\u8D25");
         return false;
+      } finally {
+        if (saveButton?.isConnected) {
+          saveButton.disabled = false;
+          saveButton.textContent = "\u4FDD\u5B58\u5E76\u5E94\u7528";
+        }
       }
     };
   }
@@ -11036,7 +11153,7 @@ ${antiFluff}`;
   }
 
   // src/phone-directory.js
-  var clone4 = (value) => JSON.parse(JSON.stringify(value));
+  var clone5 = (value) => JSON.parse(JSON.stringify(value));
   function injectionFailure3(result, phase, subject = "\u7FA4\u804A\u8BBE\u7F6E") {
     const failedWrites = Number.isInteger(result?.failedWrites) && result.failedWrites > 0 ? result.failedWrites : 0;
     const failedKeys = Array.isArray(result?.failedKeys) ? result.failedKeys : [];
@@ -11051,7 +11168,7 @@ ${antiFluff}`;
     return {
       activeStorageId: state.activeStorageId,
       currentPersona: state.currentPersona,
-      conversationHistory: clone4(state.conversationHistory),
+      conversationHistory: clone5(state.conversationHistory),
       isGroupChat: state.isGroupChat,
       currentGroupKey: state.currentGroupKey,
       groupMembers: state.groupMembers.slice(),
@@ -11173,13 +11290,11 @@ ${antiFluff}`;
       const initName = existingName || "";
       const initMembers = (existingMembers || []).join(" / ");
       const closeAction = "window.__pmShowList()";
-      let pokeConfig = { enabled: false, interval: 3, counter: 0 };
       let assignedEmojis = [];
       let groupMeta = normalizeGroupMeta({ name: initName, members: existingMembers || [] });
       if (mode === "edit" && state.currentGroupKey) {
         const id2 = getStorageId2();
         groupMeta = normalizeGroupMeta(window.__pmGroupMeta[id2]?.[state.currentGroupKey]);
-        pokeConfig = window.__pmPokeConfig[id2]?.[state.currentGroupKey]?.autoPoke || pokeConfig;
         assignedEmojis = window.__pmPokeConfig[id2]?.[state.currentGroupKey]?.emojis || [];
       }
       const emojiCheckHtml = mode === "edit" && window.__pmEmojis.length ? `
@@ -11238,29 +11353,6 @@ ${antiFluff}`;
         ${randomNpcHtml}
         ${memberColorHtml}
         ${emojiCheckHtml}
-        <div style="margin-top:0px;padding-top:8px;border-top:1px solid var(--pm-color-border-subtle);">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
-            <span style="font-size:13px;font-weight:600;">\u23F0 \u81EA\u52A8\u53D1\u6D88\u606F</span>
-            <div onclick="window.__pmToggleAutoPokeGroup()"
-                class="pm-custom-check pm-bi-style ${pokeConfig.enabled ? "is-checked" : ""}"
-                id="pm-poke-check-group"
-                role="checkbox" tabindex="0" aria-checked="${pokeConfig.enabled}"
-                onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();this.click()}"
-                style="cursor:pointer;width:22px;height:22px;min-width:22px;min-height:22px;flex-shrink:0;border-radius:50%;">
-            </div>
-        </div>
-        <div style="display:flex;align-items:center;gap:8px;">
-            <span style="font-size:12px;color:var(--pm-color-text-tertiary);">\u6BCF\u9694</span>
-            <input id="pm-poke-interval-group" type="number" min="1" max="99"
-                value="${pokeConfig.interval}"
-                style="width:50px;border:1px solid var(--pm-color-border-default);border-radius:6px;padding:4px 8px;font-size:13px;text-align:center;"
-                ${!pokeConfig.enabled ? "disabled" : ""}>
-            <span style="font-size:12px;color:var(--pm-color-text-tertiary);">\u8F6E\u65E0\u8F93\u5165\u4E3B\u52A8\u53D1\u6D88\u606F</span>
-        </div>
-        <div style="font-size:11px;color:var(--pm-color-text-tertiary);margin-top:4px;">
-            \u5F53\u524D\u8BA1\u6570\uFF1A<span id="pm-poke-counter-group">${pokeConfig.counter}</span> / ${pokeConfig.interval}
-        </div>
-        </div>
         ` : ""}
     </div>
     ${mode === "create" ? `
@@ -11303,18 +11395,13 @@ ${antiFluff}`;
           groupNature
         });
         window.__pmGroupMeta[id2][state.currentGroupKey] = updated;
-        const checkEl = document.getElementById("pm-poke-check-group");
-        const intervalEl = document.getElementById("pm-poke-interval-group");
-        if (checkEl && intervalEl) {
-          if (!window.__pmPokeConfig[id2]) window.__pmPokeConfig[id2] = {};
-          const enabled = checkEl.classList.contains("is-checked");
-          const interval = Math.max(1, Math.min(99, parseInt(intervalEl.value) || 3));
-          const oldCounter = window.__pmPokeConfig[id2][state.currentGroupKey]?.autoPoke?.counter || 0;
-          window.__pmPokeConfig[id2][state.currentGroupKey] = {
-            autoPoke: { enabled, interval, counter: enabled ? Math.min(oldCounter, interval) : oldCounter },
-            emojis: Array.from(document.querySelectorAll(".pm-emoji-assign-check.is-checked")).map((cb) => cb.dataset.id)
-          };
-        }
+        if (!window.__pmPokeConfig[id2]) window.__pmPokeConfig[id2] = {};
+        const previousPoke = window.__pmPokeConfig[id2][state.currentGroupKey] || {};
+        window.__pmPokeConfig[id2][state.currentGroupKey] = {
+          ...previousPoke,
+          autoPoke: getAutoPokeConfig(id2, state.currentGroupKey),
+          emojis: Array.from(document.querySelectorAll(".pm-emoji-assign-check.is-checked")).map((cb) => cb.dataset.id)
+        };
         await commitEditedGroupUpdate({
           state,
           updated,
@@ -11478,11 +11565,11 @@ ${antiFluff}`;
       let snapshots = null;
       try {
         snapshots = {
-          groupMeta: clone4(window.__pmGroupMeta),
-          histories: clone4(window.__pmHistories),
-          bidirectional: clone4(window.__pmBidirectional),
-          poke: clone4(window.__pmPokeConfig),
-          backgrounds: clone4(window.__pmBgLocal)
+          groupMeta: clone5(window.__pmGroupMeta),
+          histories: clone5(window.__pmHistories),
+          bidirectional: clone5(window.__pmBidirectional),
+          poke: clone5(window.__pmPokeConfig),
+          backgrounds: clone5(window.__pmBgLocal)
         };
         if (window.__pmGroupMeta[id2]) delete window.__pmGroupMeta[id2][key];
         if (window.__pmHistories[id2]) delete window.__pmHistories[id2][key];
@@ -11549,10 +11636,10 @@ ${antiFluff}`;
       let snapshots = null;
       try {
         snapshots = {
-          histories: clone4(window.__pmHistories),
-          bidirectional: clone4(window.__pmBidirectional),
-          poke: clone4(window.__pmPokeConfig),
-          backgrounds: clone4(window.__pmBgLocal)
+          histories: clone5(window.__pmHistories),
+          bidirectional: clone5(window.__pmBidirectional),
+          poke: clone5(window.__pmPokeConfig),
+          backgrounds: clone5(window.__pmBgLocal)
         };
         if (window.__pmHistories[id2]) delete window.__pmHistories[id2][name];
         const arr = window.__pmBidirectional[id2] || [], idx = arr.indexOf(name);
@@ -11720,6 +11807,29 @@ ${antiFluff}`;
       value: Object.freeze({ mode: "selected", postIds: Object.freeze(clean2) })
     };
   }
+  function snapshotQuote(value) {
+    if (value === void 0) return { valid: true, value: void 0 };
+    if (!plainRecord7(value)) return { valid: false, value: void 0 };
+    const messageId = optionalData(value, "messageId");
+    const bubbleId = optionalData(value, "bubbleId");
+    const sender = optionalData(value, "sender");
+    const text3 = optionalData(value, "text");
+    if (!messageId.valid || !bubbleId.valid || !sender.valid || !text3.valid) {
+      return { valid: false, value: void 0 };
+    }
+    for (const field of [messageId.value, bubbleId.value, sender.value, text3.value]) {
+      if (field !== void 0 && typeof field !== "string") return { valid: false, value: void 0 };
+    }
+    return {
+      valid: true,
+      value: Object.freeze({
+        messageId: messageId.value || "",
+        bubbleId: bubbleId.value || "",
+        sender: sender.value || "",
+        text: text3.value || ""
+      })
+    };
+  }
   function snapshotHistory(value) {
     const history = dataArraySnapshot(value);
     if (!history.valid) return { valid: false, value: [] };
@@ -11730,13 +11840,16 @@ ${antiFluff}`;
       const role = optionalData(message, "role");
       const content = optionalData(message, "content");
       const directorNote = optionalData(message, "directorNote");
-      if (!role.valid || !content.valid || !directorNote.valid || role.value !== void 0 && typeof role.value !== "string" || content.value !== void 0 && typeof content.value !== "string" || directorNote.value !== void 0 && typeof directorNote.value !== "string") {
+      const quoteEntry = optionalData(message, "quote");
+      const quote = quoteEntry.valid ? snapshotQuote(quoteEntry.value) : { valid: false, value: void 0 };
+      if (!role.valid || !content.valid || !directorNote.valid || !quote.valid || role.value !== void 0 && typeof role.value !== "string" || content.value !== void 0 && typeof content.value !== "string" || directorNote.value !== void 0 && typeof directorNote.value !== "string") {
         return { valid: false, value: [] };
       }
       snapshot.push(Object.freeze({
         role: role.value || "",
         content: content.value || "",
-        directorNote: directorNote.value || ""
+        directorNote: directorNote.value || "",
+        ...quote.value ? { quote: quote.value } : {}
       }));
     }
     return { valid: true, value: Object.freeze(snapshot) };
@@ -11937,6 +12050,8 @@ ${antiFluff}`;
     const seen = /* @__PURE__ */ new Set();
     let written = 0;
     let failedWrites = 0;
+    const writtenBySource = {};
+    const failedWritesBySource = {};
     for (const prompt2 of Array.isArray(prompts) ? prompts : []) {
       if (!prompt2 || typeof prompt2.key !== "string" || !prompt2.key || seen.has(prompt2.key) || typeof prompt2.content !== "string" || !prompt2.content) continue;
       seen.add(prompt2.key);
@@ -11944,12 +12059,16 @@ ${antiFluff}`;
         context.setExtensionPrompt(prompt2.key, prompt2.content, prompt2.position, prompt2.depth, false, 0);
         activeKeys.add(prompt2.key);
         written += 1;
+        const source = prompt2.source || "other";
+        writtenBySource[source] = (writtenBySource[source] || 0) + 1;
       } catch (error) {
         failedWrites += 1;
+        const source = prompt2.source || "other";
+        failedWritesBySource[source] = (failedWritesBySource[source] || 0) + 1;
       }
     }
     runtime.trackedExtensionPromptKeys = activeKeys;
-    return { written, failedWrites, ...clearResult };
+    return { written, failedWrites, writtenBySource, failedWritesBySource, ...clearResult };
   }
   function renderPhoneSource(source, userName, emojis, injectionConfig) {
     const historyLimit = normalizeInjectionConfig(injectionConfig).historyLimit;
@@ -11968,13 +12087,29 @@ ${antiFluff}`;
     let truncatedCount = 0;
     for (const item of items) {
       if (remaining <= 0) break;
-      const trimmed = trimToEstimatedTokens(item.content, remaining);
+      const prefix = item.contentPrefix || "";
+      const suffix = item.contentSuffix || "";
+      const framingTokens = estimateContextTokens(prefix + suffix).estimatedTokens;
+      const bodyLimit = Math.max(0, remaining - framingTokens);
+      const trimmed = trimToEstimatedTokens(item.content, bodyLimit);
       if (!trimmed.text) continue;
-      prompts.push({ ...item, content: trimmed.text });
-      remaining -= trimmed.estimatedTokens;
+      const {
+        contentPrefix: _contentPrefix,
+        contentSuffix: _contentSuffix,
+        ...prompt2
+      } = item;
+      const content = `${prefix}${trimmed.text}${suffix}`;
+      const used = estimateContextTokens(content).estimatedTokens;
+      prompts.push({ ...prompt2, content });
+      remaining -= used;
       if (trimmed.truncated) truncatedCount += 1;
     }
     return { prompts, usedTokens: tokenLimit - remaining, truncatedCount };
+  }
+  function renderedItemTokenDemand(item) {
+    return estimateContextTokens(
+      `${item.contentPrefix || ""}${item.content || ""}${item.contentSuffix || ""}`
+    ).estimatedTokens;
   }
   var CYCLE_INJECTION_LABELS = Object.freeze({
     period: "\u7ECF\u671F",
@@ -12098,9 +12233,10 @@ ${antiFluff}`;
       if (!body) return [];
       return [{
         key: injectionKey(source.sourceId),
-        content: `[\u624B\u673A\u77ED\u4FE1\u8BB0\u5FC6 \u2014 \u79C1\u5BC6]
-${body}
-[\u7ED3\u675F]`,
+        source: "phone",
+        content: body,
+        contentPrefix: "[\u624B\u673A\u77ED\u4FE1\u8BB0\u5FC6 \u2014 \u79C1\u5BC6]\n",
+        contentSuffix: "\n[\u7ED3\u675F]",
         ...placement
       }];
     }) : [];
@@ -12109,6 +12245,7 @@ ${body}
       if (!body) return [];
       return [{
         key: `${COMMUNITY_KEY_PREFIX}${encodeURIComponent(source.sourceId)}`,
+        source: "community",
         content: `[\u4E92\u52A8\u793E\u533A\u8BB0\u5FC6 \u2014 \u5F53\u524D\u89D2\u8272\u53EF\u89C1]
 ${body}
 [\u7ED3\u675F]`,
@@ -12131,6 +12268,7 @@ ${body}
       if (body) {
         calendarItems.push({
           key: `${CALENDAR_KEY_PREFIX}${encodeURIComponent(currentStorageId)}`,
+          source: "calendar",
           content: `[\u751F\u6D3B\u65E5\u5386]
 ${body}
 [\u7ED3\u675F]`,
@@ -12147,6 +12285,7 @@ ${body}
       if (body) {
         recipeItems.push({
           key: `${RECIPE_KEY_PREFIX}${encodeURIComponent(currentStorageId)}`,
+          source: "recipe",
           content: `[\u89D2\u8272\u83DC\u8C31]
 ${body}
 [\u7ED3\u675F]`,
@@ -12156,10 +12295,10 @@ ${body}
       }
     }
     const demandBySource = {
-      phone: phoneItems.reduce((sum, item) => sum + estimateContextTokens(item.content).estimatedTokens, 0),
-      community: communityItems.reduce((sum, item) => sum + estimateContextTokens(item.content).estimatedTokens, 0),
-      calendar: calendarItems.reduce((sum, item) => sum + estimateContextTokens(item.content).estimatedTokens, 0),
-      recipe: recipeItems.reduce((sum, item) => sum + estimateContextTokens(item.content).estimatedTokens, 0)
+      phone: phoneItems.reduce((sum, item) => sum + renderedItemTokenDemand(item), 0),
+      community: communityItems.reduce((sum, item) => sum + renderedItemTokenDemand(item), 0),
+      calendar: calendarItems.reduce((sum, item) => sum + renderedItemTokenDemand(item), 0),
+      recipe: recipeItems.reduce((sum, item) => sum + renderedItemTokenDemand(item), 0)
     };
     const budget = allocateContextBudget({ config, safeMaxTokens, demandBySource });
     const phone = allocateRenderedPrompts(phoneItems, budget.allocations.phone);
@@ -12171,7 +12310,17 @@ ${body}
       diagnostics: {
         estimated: true,
         budget,
-        phonePermission: { allowed: phonePermission.allowed, reason: phonePermission.reason, sourceCount: phonePermission.sources.length },
+        phonePermission: {
+          allowed: phonePermission.allowed,
+          reason: phonePermission.reason,
+          sourceCount: phonePermission.sources.length
+        },
+        phone: {
+          demandTokens: demandBySource.phone,
+          allocatedTokens: budget.allocations.phone,
+          promptCount: phone.prompts.length,
+          usedTokens: phone.usedTokens
+        },
         communityPermission: { allowed: communityPermission.allowed, reason: communityPermission.reason, sourceCount: communityPermission.sources.length },
         calendarEnabled: Boolean(calendarScope?.injectionScheduleEnabled || calendarScope?.injectionWeatherEnabled || calendarScope?.injectionCycleEnabled),
         recipeEnabled: calendarScope?.injectionRecipeEnabled === true,
@@ -14479,7 +14628,7 @@ ${lines}`;
   }
 
   // src/settings-backup.js
-  var clone5 = (value) => JSON.parse(JSON.stringify(value));
+  var clone6 = (value) => JSON.parse(JSON.stringify(value));
   function structurallyEqual(left, right) {
     if (Object.is(left, right)) return true;
     if (Array.isArray(left) || Array.isArray(right)) {
@@ -14579,20 +14728,20 @@ ${lines}`;
     const capture = async () => {
       const interactiveScenes = normalizeInteractiveStore(await loadInteractiveScenes());
       return {
-        histories: clone5(window.__pmHistories || {}),
-        config: clone5(window.__pmConfig || {}),
-        theme: clone5(window.__pmTheme || {}),
-        profiles: clone5(window.__pmProfiles || []),
-        groupMeta: clone5(window.__pmGroupMeta || {}),
-        pokeConfig: clone5(window.__pmPokeConfig || {}),
-        bidirectional: clone5(window.__pmBidirectional || {}),
+        histories: clone6(window.__pmHistories || {}),
+        config: clone6(window.__pmConfig || {}),
+        theme: clone6(window.__pmTheme || {}),
+        profiles: clone6(window.__pmProfiles || []),
+        groupMeta: clone6(window.__pmGroupMeta || {}),
+        pokeConfig: clone6(window.__pmPokeConfig || {}),
+        bidirectional: clone6(window.__pmBidirectional || {}),
         injectionConfig: normalizeInjectionConfig(window.__pmInjectionConfig),
         emojis: cloneEmojiLibrary(window.__pmEmojis),
-        characterBehavior: clone5(window.__pmCharacterBehavior || {}),
+        characterBehavior: clone6(window.__pmCharacterBehavior || {}),
         wordyLimit: !!window.__pmWordyLimit,
         desktopBg: window.__pmDesktopBg || "",
         bgGlobal: window.__pmBgGlobal || "",
-        bgLocal: clone5(window.__pmBgLocal || {}),
+        bgLocal: clone6(window.__pmBgLocal || {}),
         interactiveScenes,
         phoneUiState: loadPhoneUiState(interactiveScenes),
         ambientStatus: normalizeAmbientStatus({ enabled: window.__pmTheme?.ambientStatusEnabled }),
@@ -14608,21 +14757,21 @@ ${lines}`;
       const interactiveScenes = normalizeInteractiveStore(state.interactiveScenes);
       const phoneUiState = normalizePhoneUiState(state.phoneUiState, interactiveScenes);
       const ambientStatus = normalizeAmbientStatus(state.ambientStatus ?? { enabled: state.theme?.ambientStatusEnabled });
-      window.__pmHistories = clone5(state.histories || {});
-      window.__pmConfig = clone5(state.config || {});
-      window.__pmTheme = clone5(state.theme || {});
+      window.__pmHistories = clone6(state.histories || {});
+      window.__pmConfig = clone6(state.config || {});
+      window.__pmTheme = clone6(state.theme || {});
       window.__pmTheme.ambientStatusEnabled = ambientStatus.enabled;
-      window.__pmProfiles = clone5(state.profiles || []);
-      window.__pmGroupMeta = clone5(state.groupMeta || {});
-      window.__pmPokeConfig = clone5(state.pokeConfig || {});
-      window.__pmBidirectional = clone5(state.bidirectional || {});
+      window.__pmProfiles = clone6(state.profiles || []);
+      window.__pmGroupMeta = clone6(state.groupMeta || {});
+      window.__pmPokeConfig = clone6(state.pokeConfig || {});
+      window.__pmBidirectional = clone6(state.bidirectional || {});
       window.__pmInjectionConfig = normalizeInjectionConfig(state.injectionConfig);
       window.__pmEmojis = cloneEmojiLibrary(state.emojis);
-      window.__pmCharacterBehavior = clone5(state.characterBehavior || {});
+      window.__pmCharacterBehavior = clone6(state.characterBehavior || {});
       window.__pmWordyLimit = !!state.wordyLimit;
       window.__pmDesktopBg = typeof state.desktopBg === "string" ? state.desktopBg : "";
       window.__pmBgGlobal = typeof state.bgGlobal === "string" ? state.bgGlobal : "";
-      window.__pmBgLocal = clone5(state.bgLocal || {});
+      window.__pmBgLocal = clone6(state.bgLocal || {});
       window.__pmPhoneUiState = phoneUiState;
       return {
         ...state,
@@ -14668,14 +14817,14 @@ ${lines}`;
   }
 
   // src/settings-backup-validate.js
-  var clone6 = (value) => JSON.parse(JSON.stringify(value));
+  var clone7 = (value) => JSON.parse(JSON.stringify(value));
   var objectValue = (value, field) => {
     if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error(`\u5907\u4EFD\u5B57\u6BB5 ${field} \u5FC5\u987B\u662F\u5BF9\u8C61`);
-    return clone6(value);
+    return clone7(value);
   };
   var arrayValue = (value, field) => {
     if (!Array.isArray(value)) throw new Error(`\u5907\u4EFD\u5B57\u6BB5 ${field} \u5FC5\u987B\u662F\u6570\u7EC4`);
-    return clone6(value);
+    return clone7(value);
   };
   var legacyBackupTheme = (value) => {
     const theme = objectValue(value || {}, "theme");
@@ -14886,7 +15035,7 @@ ${lines}`;
     const version = data.schemaVersion === void 0 ? 1 : data.schemaVersion;
     if (!Number.isInteger(version) || version < 1) throw new Error("\u5907\u4EFD\u7248\u672C\u65E0\u6548");
     if (version > 8) throw new Error(`\u5907\u4EFD\u7248\u672C ${version} \u9AD8\u4E8E\u5F53\u524D\u652F\u6301\u7248\u672C 8`);
-    const result = clone6(current);
+    const result = clone7(current);
     if (Object.hasOwn(data, "histories")) result.histories = objectValue(data.histories, "histories");
     if (Object.hasOwn(data, "config")) result.config = objectValue(data.config, "config");
     if (Object.hasOwn(data, "theme")) {
@@ -14930,7 +15079,7 @@ ${lines}`;
   }
 
   // src/settings-ui.js
-  var clone7 = (value) => JSON.parse(JSON.stringify(value));
+  var clone8 = (value) => JSON.parse(JSON.stringify(value));
   async function runBackgroundTransaction({ capture, mutate, restore, persist }) {
     const snapshot = capture();
     try {
@@ -15005,7 +15154,7 @@ ${lines}`;
       if (border) border.value = theme.borderColor || "#1a1a1a";
     };
     const persistThemeMutation = (mutate) => {
-      const previous = clone7(window.__pmTheme);
+      const previous = clone8(window.__pmTheme);
       mutate();
       if (saveTheme()) {
         applyTheme();
@@ -15024,12 +15173,12 @@ ${lines}`;
       const operation = backgroundMutation.catch(() => {
       }).then(async () => {
         await runBackgroundTransaction({
-          capture: () => isDesktop ? window.__pmDesktopBg || "" : isGlobal ? window.__pmBgGlobal || "" : clone7(window.__pmBgLocal || {}),
+          capture: () => isDesktop ? window.__pmDesktopBg || "" : isGlobal ? window.__pmBgGlobal || "" : clone8(window.__pmBgLocal || {}),
           mutate,
           restore: (snapshot) => {
             if (isDesktop) window.__pmDesktopBg = snapshot;
             else if (isGlobal) window.__pmBgGlobal = snapshot;
-            else window.__pmBgLocal = clone7(snapshot);
+            else window.__pmBgLocal = clone8(snapshot);
           },
           persist: isDesktop ? saveDesktopBg : isGlobal ? saveBgGlobal : saveBgLocal
         });
@@ -15047,7 +15196,7 @@ ${error.message}`);
       });
     };
     window.__pmDeleteProfile = (idx) => {
-      const previous = clone7(window.__pmProfiles);
+      const previous = clone8(window.__pmProfiles);
       window.__pmProfiles.splice(idx, 1);
       if (!saveProfiles()) {
         window.__pmProfiles = previous;
@@ -15505,7 +15654,7 @@ ${error.message}`);
         return false;
       }
       const temperature = useIndependent ? parsedTemperature : normalizeIndependentApiTemperature(temperatureText);
-      const previous = clone7(window.__pmConfig), candidate = { apiUrl, apiKey, model, temperature, useIndependent };
+      const previous = clone8(window.__pmConfig), candidate = { apiUrl, apiKey, model, temperature, useIndependent };
       window.__pmConfig = candidate;
       try {
         localStorage.setItem("ST_SMS_CONFIG", JSON.stringify(candidate));

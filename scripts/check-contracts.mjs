@@ -1017,7 +1017,7 @@ const LEGACY_WINDOW_ENTRIES = [
   '__pmShowEmojiPicker', '__pmShowGroupCreate', '__pmShowList', '__pmShowModelPicker',
   '__pmSwitch', '__pmSwitchContact', '__pmTempText', '__pmTestApi',
   '__pmTestModel', '__pmTheme', '__pmRenderEmojiSetList', '__pmInsertEmoji',
-  '__pmToggleAutoPoke', '__pmToggleAutoPokeGroup', '__pmToggleBidirectional', '__pmToggleMin',
+  '__pmToggleBidirectional', '__pmToggleMin',
   '__pmToggleSelect', '__pmToggleWordyLimit', '__pmUploadBg', '__pmWordyLimit',
 ];
 
@@ -1042,8 +1042,8 @@ const PHONE_ENTRY_OWNERS = {
   'contact-generator.js': ['__pmConfirmAutoGen', '__pmAutoGenContacts'],
   'conversation.js': ['__pmSwitchContact', '__pmSwitch'],
   'phone-chat-poke.js': [
-    '__pmAutoPoke', '__pmSaveAndCloseContactConfig', '__pmToggleAutoPoke',
-    '__pmPoke', '__pmEditGroup', '__pmToggleAutoPokeGroup', '__pmPokeGroup',
+    '__pmAutoPoke', '__pmSaveAndCloseContactConfig',
+    '__pmPoke', '__pmEditGroup', '__pmPokeGroup',
     '__pmShowCharacterBehavior', '__pmShowConversationSettings',
   ],
   'phone-lifecycle.js': [
@@ -1556,21 +1556,22 @@ if (directoryTemplate.includes('pm-forum-entry') || directoryTemplate.includes('
 if (controlCenterTemplate.includes('makeOverlay') || controlCenterTemplate.includes('<span')) {
   failures.push('phone-control-center.js: compact control menu must not use the full overlay or explanatory subtitles');
 }
-for (const title of ['编辑消息', '联系人', '上下文注入', '角色设置', '表情包管理', '日历', '删除信息']) {
+for (const title of ['编辑消息', '联系人', '会话行为', '表情包管理', '日历', '删除信息']) {
   if (!controlCenterTemplate.includes(title)) failures.push(`phone-control-center.js: compact control menu missing title ${title}`);
 }
 for (const expected of [
-  "action === 'contacts'", "action === 'calendar'", 'return window.__pmShowList()', 'return showPhoneCalendarPage()',
+  "action === 'contacts'", "action === 'session-behavior'", "action === 'calendar'", 'return window.__pmShowList()', 'return showPhoneCalendarPage()',
   'runControlMenuAction', 'controlActionLabel', 'CALENDAR_ICON_SVG', 'EDIT_ICON_SVG', 'EMOJI_ICON_SVG', 'TRASH_ICON_SVG',
   'toggleConversationInjectionControl', 'button.disabled = true',
   "button.setAttribute('aria-checked', String(enabled))",
   "button.querySelector('.pm-control-toggle')?.classList.toggle('is-checked', enabled)",
-  "state.isGroupChat ? '注入当前群聊' : '注入当前角色'",
+  "target.isGroup ? '注入当前群聊' : '注入当前角色'",
+  'window.__pmShowAutoPokeSettings', 'window.__pmShowSessionInjectionSettings', 'INJECTION_ICON_SVG',
 ]) requireText('phone-control-center.js', controlCenterCode, expected);
-if (!controlCenterTemplate.includes('role="menuitemcheckbox"') || !controlCenterCode.includes('aria-checked="${injectionEnabled}"')) {
-  failures.push('phone-control-center.js: current-conversation injection toggle must expose checkbox semantics and rendered state');
+if (!controlCenterCode.includes('role="checkbox"') || !controlCenterCode.includes('aria-checked="${enabled}"')) {
+  failures.push('phone-control-center.js: nested current-conversation injection settings must expose checkbox semantics and rendered state');
 }
-if (controlCenterCode.includes("action === 'rearm'") || controlCenterTemplate.includes('自动消息')) failures.push('phone-control-center.js: removed automatic-message rearm entry remains');
+if (controlCenterCode.includes("action === 'rearm'") || controlCenterTemplate.includes('自动发消息')) failures.push('phone-control-center.js: automatic-message control must remain nested under session behavior');
 if (controlCenterTemplate.includes('data-action="desktop"') || controlCenterTemplate.includes('返回桌面')) {
   failures.push('phone-control-center.js: compact control menu must not duplicate the chat navbar desktop action');
 }
@@ -2262,7 +2263,10 @@ for (const expected of [
   'persistHistory: () => saveHistoriesStrict()',
   'applyBidirectionalInjection();',
   'window.__pmArmAutoPoke',
+  'resetAutoPokeCounter(id, contactName)',
+  'resetAutoPokeCounter(storageId, saveKey)',
 ]) requireText('phone-chat-poke.js', phoneChatPokeCode, expected);
+requireText('auto-poke-config.js', sourceModuleByName.get('auto-poke-config.js')?.code || '', 'export function resetAutoPokeCounter');
 for (const code of [phoneChatPokeCode, directoryCode]) {
   if (code.includes('Math.min(oldCounter, interval - 1)')) failures.push('auto-poke settings: failed threshold must not be truncated while saving settings');
 }

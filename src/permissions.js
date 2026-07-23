@@ -90,6 +90,30 @@ function snapshotCommunitySelection(value, storageId, sceneId) {
     };
 }
 
+function snapshotQuote(value) {
+    if (value === undefined) return { valid: true, value: undefined };
+    if (!plainRecord(value)) return { valid: false, value: undefined };
+    const messageId = optionalData(value, 'messageId');
+    const bubbleId = optionalData(value, 'bubbleId');
+    const sender = optionalData(value, 'sender');
+    const text = optionalData(value, 'text');
+    if (!messageId.valid || !bubbleId.valid || !sender.valid || !text.valid) {
+        return { valid: false, value: undefined };
+    }
+    for (const field of [messageId.value, bubbleId.value, sender.value, text.value]) {
+        if (field !== undefined && typeof field !== 'string') return { valid: false, value: undefined };
+    }
+    return {
+        valid: true,
+        value: Object.freeze({
+            messageId: messageId.value || '',
+            bubbleId: bubbleId.value || '',
+            sender: sender.value || '',
+            text: text.value || '',
+        }),
+    };
+}
+
 function snapshotHistory(value) {
     const history = dataArraySnapshot(value);
     if (!history.valid) return { valid: false, value: [] };
@@ -100,7 +124,9 @@ function snapshotHistory(value) {
         const role = optionalData(message, 'role');
         const content = optionalData(message, 'content');
         const directorNote = optionalData(message, 'directorNote');
-        if (!role.valid || !content.valid || !directorNote.valid
+        const quoteEntry = optionalData(message, 'quote');
+        const quote = quoteEntry.valid ? snapshotQuote(quoteEntry.value) : { valid: false, value: undefined };
+        if (!role.valid || !content.valid || !directorNote.valid || !quote.valid
             || (role.value !== undefined && typeof role.value !== 'string')
             || (content.value !== undefined && typeof content.value !== 'string')
             || (directorNote.value !== undefined && typeof directorNote.value !== 'string')) {
@@ -108,6 +134,7 @@ function snapshotHistory(value) {
         }
         snapshot.push(Object.freeze({
             role: role.value || '', content: content.value || '', directorNote: directorNote.value || '',
+            ...(quote.value ? { quote: quote.value } : {}),
         }));
     }
     return { valid: true, value: Object.freeze(snapshot) };

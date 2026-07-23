@@ -100,6 +100,7 @@ import {
     POPOVER_SUPPORTED,
 } from './constants.js';
 import { normalizeGroupMeta } from './behavior-config.js';
+import { getAutoPokeConfig } from './auto-poke-config.js';
 import { GROUP_COLORS } from './groups.js';
 import { escapeAttr, escapeHtml, safeJS } from './ui.js';
 import { CLOSE_ICON_SVG, SPARKLES_ICON_SVG, UNLINK_ICON_SVG } from './icons.js';
@@ -151,13 +152,11 @@ export function installPhoneDirectory(state, deps) {
         const initMembers = (existingMembers || []).join(' / ');
         const closeAction = "window.__pmShowList()";
 
-        let pokeConfig = { enabled: false, interval: 3, counter: 0 };
         let assignedEmojis = [];
         let groupMeta = normalizeGroupMeta({ name: initName, members: existingMembers || [] });
         if (mode === 'edit' && state.currentGroupKey) {
             const id = getStorageId();
             groupMeta = normalizeGroupMeta(window.__pmGroupMeta[id]?.[state.currentGroupKey]);
-            pokeConfig = window.__pmPokeConfig[id]?.[state.currentGroupKey]?.autoPoke || pokeConfig;
             assignedEmojis = window.__pmPokeConfig[id]?.[state.currentGroupKey]?.emojis || [];
         }
 
@@ -218,29 +217,6 @@ export function installPhoneDirectory(state, deps) {
         ${randomNpcHtml}
         ${memberColorHtml}
         ${emojiCheckHtml}
-        <div style="margin-top:0px;padding-top:8px;border-top:1px solid var(--pm-color-border-subtle);">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
-            <span style="font-size:13px;font-weight:600;">⏰ 自动发消息</span>
-            <div onclick="window.__pmToggleAutoPokeGroup()"
-                class="pm-custom-check pm-bi-style ${pokeConfig.enabled ? 'is-checked' : ''}"
-                id="pm-poke-check-group"
-                role="checkbox" tabindex="0" aria-checked="${pokeConfig.enabled}"
-                onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();this.click()}"
-                style="cursor:pointer;width:22px;height:22px;min-width:22px;min-height:22px;flex-shrink:0;border-radius:50%;">
-            </div>
-        </div>
-        <div style="display:flex;align-items:center;gap:8px;">
-            <span style="font-size:12px;color:var(--pm-color-text-tertiary);">每隔</span>
-            <input id="pm-poke-interval-group" type="number" min="1" max="99"
-                value="${pokeConfig.interval}"
-                style="width:50px;border:1px solid var(--pm-color-border-default);border-radius:6px;padding:4px 8px;font-size:13px;text-align:center;"
-                ${!pokeConfig.enabled ? 'disabled' : ''}>
-            <span style="font-size:12px;color:var(--pm-color-text-tertiary);">轮无输入主动发消息</span>
-        </div>
-        <div style="font-size:11px;color:var(--pm-color-text-tertiary);margin-top:4px;">
-            当前计数：<span id="pm-poke-counter-group">${pokeConfig.counter}</span> / ${pokeConfig.interval}
-        </div>
-        </div>
         ` : ''}
     </div>
     ${mode === 'create' ? `
@@ -278,18 +254,13 @@ export function installPhoneDirectory(state, deps) {
                 ...previous, name: groupName, members: names, memberColors, randomNpcEnabled, groupNature,
             });
             window.__pmGroupMeta[id][state.currentGroupKey] = updated;
-            const checkEl = document.getElementById('pm-poke-check-group');
-            const intervalEl = document.getElementById('pm-poke-interval-group');
-            if (checkEl && intervalEl) {
-                if (!window.__pmPokeConfig[id]) window.__pmPokeConfig[id] = {};
-                const enabled = checkEl.classList.contains('is-checked');
-                const interval = Math.max(1, Math.min(99, parseInt(intervalEl.value) || 3));
-                const oldCounter = window.__pmPokeConfig[id][state.currentGroupKey]?.autoPoke?.counter || 0;
-                window.__pmPokeConfig[id][state.currentGroupKey] = {
-                    autoPoke: { enabled, interval, counter: enabled ? Math.min(oldCounter, interval) : oldCounter },
-                    emojis: Array.from(document.querySelectorAll('.pm-emoji-assign-check.is-checked')).map(cb => cb.dataset.id),
-                };
-            }
+            if (!window.__pmPokeConfig[id]) window.__pmPokeConfig[id] = {};
+            const previousPoke = window.__pmPokeConfig[id][state.currentGroupKey] || {};
+            window.__pmPokeConfig[id][state.currentGroupKey] = {
+                ...previousPoke,
+                autoPoke: getAutoPokeConfig(id, state.currentGroupKey),
+                emojis: Array.from(document.querySelectorAll('.pm-emoji-assign-check.is-checked')).map(cb => cb.dataset.id),
+            };
             await commitEditedGroupUpdate({
                 state,
                 updated,

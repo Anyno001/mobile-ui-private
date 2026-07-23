@@ -3,7 +3,7 @@ import { getStorageId } from '../src/host-context.js';
 import { deriveInteractiveActorId } from '../src/interactive-scene-model.js';
 import { renderCommunitySource } from '../src/community-injection.js';
 import {
-    buildContextInjectionPrompts, clearExtensionPrompts, renderCalendarContextInjection, replaceExtensionPrompts,
+    applyContextInjections, buildContextInjectionPrompts, clearExtensionPrompts, renderCalendarContextInjection, replaceExtensionPrompts,
 } from '../src/phone-injection.js';
 import { resolveCommunitySources, resolvePhoneSources } from '../src/permissions.js';
 import {
@@ -194,7 +194,7 @@ assert.equal(accessorHistoryResult.allowed, false);
 assert.deepEqual(accessorHistoryResult.sources, []);
 assert.equal(historyContentGetterReads, 0);
 
-for (const field of ['role', 'directorNote']) {
+for (const field of ['role', 'directorNote', 'quote']) {
     let reads = 0;
     const message = { role: 'assistant', content: '正文', directorNote: '' };
     Object.defineProperty(message, field, {
@@ -223,7 +223,10 @@ assert.equal(pollutedHistoryResult.allowed, false);
 assert.deepEqual(pollutedHistoryResult.sources, []);
 assert.equal(pollutedHistoryIteratorReads, 0);
 
-const safeSnapshotInput = { role: 'assistant', content: '快照正文' };
+const safeQuoteInput = {
+    messageId: 'msg_snapshot', bubbleId: 'bubble_snapshot', sender: 'Alice', text: '引用快照正文',
+};
+const safeSnapshotInput = { role: 'assistant', content: '快照正文', quote: safeQuoteInput };
 const safeGroupInput = {
     name: '快照群', members: ['Alice'], injection: { position: 2, depth: 3, historyLimit: 4 },
 };
@@ -235,7 +238,10 @@ const safeSnapshotResult = resolvePhoneSources({
 });
 assert.equal(safeSnapshotResult.allowed, true);
 safeSnapshotInput.content = '事后篡改';
+safeQuoteInput.text = '事后篡改引用';
 assert.equal(safeSnapshotResult.sources[0].history[0].content, '快照正文');
+assert.equal(safeSnapshotResult.sources[0].history[0].quote.text, '引用快照正文',
+    '引用快照必须隔离后续原对象修改');
 safeGroupInput.name = '篡改群名';
 safeGroupInput.members[0] = 'Mallory';
 const safeGroupSnapshot = safeSnapshotResult.sources.find(source => source.sourceId === '__group_snapshot').meta;
@@ -415,16 +421,63 @@ const baseInjectionInput = {
     currentStorageId: 'story-a', currentActorName: 'Alice', userName: 'User', emojis: [],
     selectedByStorage: { 'story-a': ['Alice', 'Bob'], 'story-b': ['Alice'] },
     historiesByStorage: {
-        'story-a': { Alice: [{ role: 'assistant', content: '允许的短信' }], Bob: [{ role: 'assistant', content: 'Bob 私聊' }] },
+        'story-a': {
+            Alice: [{
+                role: 'user', content: '允许的短信',
+                quote: {
+                    messageId: 'msg_production', bubbleId: 'bubble_production',
+                    sender: 'Alice', text: '必须保留的引用快照',
+                },
+            }],
+            Bob: [{ role: 'assistant', content: 'Bob 私聊' }],
+        },
         'story-b': { Alice: [{ role: 'assistant', content: '其他角色卡短信' }] },
     },
     groupsByStorage: {}, interactiveStore: store,
 };
 const defaultPlan = buildContextInjectionPrompts({ ...baseInjectionInput, budgetConfig: undefined });
 assert.equal(defaultPlan.prompts.length, 1);
+assert.match(defaultPlan.prompts[0].content, /^\[手机短信记忆 — 私密\]\n/);
 assert.match(defaultPlan.prompts[0].content, /允许的短信/);
+assert.match(defaultPlan.prompts[0].content, /\n\[结束\]$/);
 assert.doesNotMatch(defaultPlan.prompts[0].content, /Bob 私聊|其他角色卡短信|帖子正文/);
 assert.equal(defaultPlan.diagnostics.communityPermission.reason, 'disabled');
+assert.equal(defaultPlan.diagnostics.phone.promptCount, 1);
+
+const productionPhoneCalls = [];
+const productionPhoneResult = applyContextInjections({
+    context: { setExtensionPrompt: (...args) => productionPhoneCalls.push(args) },
+    runtime: { trackedExtensionPromptKeys: new Set() },
+    ...baseInjectionInput,
+    injectionConfig: { position: 1, depth: 0, historyLimit: 20 },
+    budgetConfig: {
+        targetTokens: 3000,
+        sourceWeights: { phone: 1, community: 0, calendar: 0, recipe: 0 },
+        sourcePriority: ['phone', 'community', 'calendar', 'recipe'],
+        redistributeUnused: true,
+    },
+    safeMaxTokens: 3000,
+});
+const productionPhoneWrite = productionPhoneCalls.find(call => String(call[1]).startsWith('[手机短信记忆 — 私密]\n'));
+assert.ok(productionPhoneWrite, '已启用当前角色且手机预算为 3000 时必须实际写入私密短信 prompt');
+assert.match(productionPhoneWrite[1], /引用 Alice 的消息：“必须保留的引用快照”/,
+    '生产手机注入链必须把引用快照写入最终 Extension Prompt');
+assert.equal(productionPhoneWrite[2], 1, '聊天记录内注入必须使用 IN_CHAT 位置');
+assert.equal(productionPhoneWrite[3], 0, '深度 0 必须原样传给宿主');
+assert.equal(productionPhoneResult.writtenBySource.phone, 1);
+assert.equal(productionPhoneResult.diagnostics.phone.promptCount, 1);
+
+const zeroPhonePlan = buildContextInjectionPrompts({
+    ...baseInjectionInput,
+    budgetConfig: {
+        targetTokens: 3000,
+        sourceWeights: { phone: 0, community: 1, calendar: 0, recipe: 0 },
+        redistributeUnused: false,
+        communityEnabled: false,
+    },
+});
+assert.equal(zeroPhonePlan.diagnostics.phone.allocatedTokens, 0);
+assert.equal(zeroPhonePlan.diagnostics.phone.promptCount, 0);
 
 const communityPlan = buildContextInjectionPrompts({
     ...baseInjectionInput,

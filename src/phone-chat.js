@@ -391,10 +391,10 @@ export function installPhoneChat(state, deps) {
             isAllowed: isAutoPokeAllowed,
             run: contactName => window.__pmAutoPoke(contactName),
             onUpdated: () => {
-                const counterEl = document.getElementById('pm-poke-counter');
-                if (counterEl && configs[state.currentPersona]) counterEl.textContent = configs[state.currentPersona].autoPoke.counter;
-                const groupCounterEl = document.getElementById('pm-poke-counter-group');
-                if (groupCounterEl && state.currentGroupKey && configs[state.currentGroupKey]) groupCounterEl.textContent = configs[state.currentGroupKey].autoPoke.counter;
+                const counterEl = document.getElementById('pm-session-auto-poke-counter');
+                const currentKey = state.isGroupChat ? state.currentGroupKey : state.currentPersona;
+                const autoPoke = currentKey ? configs[currentKey]?.autoPoke : null;
+                if (counterEl && autoPoke) counterEl.textContent = `当前计数：${autoPoke.counter} / ${autoPoke.interval}`;
             },
         });
     };

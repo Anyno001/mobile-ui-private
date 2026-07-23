@@ -22,13 +22,17 @@ import {
 } from '../src/storage.js';
 import { installConversation } from '../src/conversation.js';
 import { gatherContext, getUserPersona } from '../src/host-context.js';
-import { applyConversationInjections } from '../src/phone-injection.js';
+import {
+    commitAutoPokeConfig, getAutoPokeConfig, normalizeAutoPoke, resetAutoPokeCounter,
+} from '../src/auto-poke-config.js';
+import { applyContextInjections } from '../src/phone-injection.js';
 import { normalizeCalendarStore } from '../src/calendar-model.js';
 import { normalizeRecipeStore } from '../src/calendar-recipe-model.js';
 import { deriveInteractiveActorId, normalizeInteractiveStore } from '../src/interactive-scene-model.js';
 import { renderPhoneDesktop, runDesktopPageTransition } from '../src/interactive-scenes.js';
 import { getDanmakuMotion, getDanmakuTone, renderCommunityLauncher, renderCommunityWorkspace } from '../src/interactive-scene-views.js';
-import { runControlMenuAction, toggleConversationInjectionControl } from '../src/phone-control-center.js';
+import { installPhoneControlCenter, runControlMenuAction, toggleConversationInjectionControl } from '../src/phone-control-center.js';
+import { installPhoneChatPoke } from '../src/phone-chat-poke.js';
 import {
     clearPhoneQuickReply, ensureInitialPhoneQuickReply, ensureInitialPhoneQuickReplyWithRetry,
     ensurePhoneQuickReply, getConfiguredPhoneQuickReplyLabel, getPhoneQuickReplyStatus,
@@ -1942,23 +1946,34 @@ delete globalThis.alert;
 
 const promptCalls = [];
 const injectionRuntime = { trackedExtensionPromptKeys: new Set(['PHONE_SMS_MEMORY:stale']) };
-applyConversationInjections({
+applyContextInjections({
     context: { setExtensionPrompt: (...args) => promptCalls.push(args) },
     runtime: injectionRuntime,
+    currentStorageId: 'story',
+    currentActorName: 'C',
     injectionConfig: { position: 2, depth: 4, historyLimit: 1 },
-    checked: ['__group_closed', '__group_open'],
-    histories: {
-        __group_closed: [{ role: 'assistant', content: '绝密关闭内容' }],
-        __group_open: [{
-            role: 'user', content: '允许注入内容',
-            quote: {
-                messageId: 'msg_open', bubbleId: 'bubble_open', sender: 'C', text: '被引用的群聊内容',
-            },
-        }],
+    selectedByStorage: { story: ['__group_closed', '__group_open'] },
+    historiesByStorage: {
+        story: {
+            __group_closed: [{ role: 'assistant', content: '绝密关闭内容' }],
+            __group_open: [{
+                role: 'user', content: '允许注入内容',
+                quote: {
+                    messageId: 'msg_open', bubbleId: 'bubble_open', sender: 'C', text: '被引用的群聊内容',
+                },
+            }],
+        },
     },
-    groups: {
-        __group_closed: normalizeGroupMeta({ name: '关闭群', members: ['A', 'B'], injection: { position: -1 } }),
-        __group_open: normalizeGroupMeta({ name: '开放群', members: ['C', 'D'], injection: { position: 2, depth: 4, historyLimit: 1 } }),
+    groupsByStorage: {
+        story: {
+            __group_closed: normalizeGroupMeta({ name: '关闭群', members: ['C', 'B'], injection: { position: -1 } }),
+            __group_open: normalizeGroupMeta({ name: '开放群', members: ['C', 'D'], injection: { position: 2, depth: 4, historyLimit: 1 } }),
+        },
+    },
+    budgetConfig: {
+        targetTokens: 3000,
+        sourceWeights: { phone: 1, community: 0, calendar: 0, recipe: 0 },
+        redistributeUnused: true,
     },
     userName: '用户', emojis: [],
 });
@@ -5132,5 +5147,250 @@ await assert.rejects(() => commitConversationInjectionUpdate({
 }), error => error?.rollbackError?.message === 'rollback-storage-failed'
     && /原配置回滚也失败，请勿刷新并立即导出备份/.test(error.message),
 '上下文注入补偿失败必须暴露 rollbackError 和事故处置提示');
+
+const previousAutoPokeWindow = globalThis.window;
+try {
+    globalThis.window = {
+        ...(previousAutoPokeWindow || {}),
+        __pmPokeConfig: {
+            story: {
+                Alice: { behavior: { messageLength: 'short' }, autoPoke: { enabled: false, interval: 5, counter: 4 } },
+                Legacy: { emojis: ['legacy-set'] },
+                __group_team: { autoPoke: { enabled: true, interval: 8, counter: 2 } },
+            },
+        },
+    };
+    assert.deepEqual(normalizeAutoPoke({ enabled: true, interval: 120, counter: -2 }), {
+        enabled: true, interval: 99, counter: 0,
+    });
+    assert.deepEqual(getAutoPokeConfig('story', 'Alice'), { enabled: false, interval: 5, counter: 4 });
+    assert.deepEqual(getAutoPokeConfig('story', '__group_team'), { enabled: true, interval: 8, counter: 2 });
+
+    let persistedSnapshot = null;
+    assert.equal(commitAutoPokeConfig('story', 'Alice', { enabled: true, interval: 3 }, () => {
+        persistedSnapshot = structuredClone(window.__pmPokeConfig);
+        return true;
+    }), true);
+    assert.deepEqual(getAutoPokeConfig('story', 'Alice'), { enabled: true, interval: 3, counter: 3 },
+        '启用自动消息时 counter 必须限制到 interval，避免切换后立刻越界触发');
+    assert.equal(persistedSnapshot.story.Alice.behavior.messageLength, 'short',
+        '共享事务不得覆盖同一会话的其他配置');
+
+    const beforeFailedCommit = structuredClone(window.__pmPokeConfig);
+    assert.equal(commitAutoPokeConfig('story', '__group_team', { interval: 2 }, () => false), false);
+    assert.deepEqual(window.__pmPokeConfig, beforeFailedCommit,
+        '群聊自动消息持久化失败时必须完整恢复原快照');
+
+    const beforeThrownCommit = structuredClone(window.__pmPokeConfig);
+    assert.equal(commitAutoPokeConfig('story', 'Alice', { interval: 7 }, () => {
+        throw new Error('persist-threw');
+    }), false);
+    assert.deepEqual(window.__pmPokeConfig, beforeThrownCommit,
+        '持久化同步抛错必须按普通保存失败处理并恢复私聊快照');
+    assert.equal(commitAutoPokeConfig('new-story', 'First', { enabled: true }, () => {
+        throw new Error('first-persist-threw');
+    }), false);
+    assert.equal(window.__pmPokeConfig['new-story'], undefined,
+        '首次创建配置时持久化抛错不得留下空 storage 或 target');
+
+    assert.equal(resetAutoPokeCounter('story', 'Legacy', () => true), true);
+    assert.deepEqual(window.__pmPokeConfig.story.Legacy, {
+        emojis: ['legacy-set'], autoPoke: { enabled: false, interval: 3, counter: 0 },
+    }, '旧配置缺少 autoPoke 时，手动触发必须补全默认结构且保留其他字段');
+
+    const beforeResetFailure = structuredClone(window.__pmPokeConfig.story.__group_team);
+    assert.equal(resetAutoPokeCounter('story', '__group_team', () => false), false);
+    assert.deepEqual(window.__pmPokeConfig.story.__group_team, beforeResetFailure,
+        '群聊计数器重置持久化失败时必须恢复原值');
+    assert.equal(resetAutoPokeCounter('story', '__group_team', () => {
+        throw new Error('reset-persist-threw');
+    }), false, '计数器重置遇到同步持久化异常必须返回失败而不是向外抛出');
+    assert.deepEqual(window.__pmPokeConfig.story.__group_team, beforeResetFailure);
+
+    let absentPersistCalls = 0;
+    assert.equal(resetAutoPokeCounter('story', 'Absent', () => {
+        absentPersistCalls += 1;
+        return true;
+    }), true);
+    assert.equal(absentPersistCalls, 0, '没有旧配置的会话无需为手动触发创建空配置');
+
+    assert.equal(commitAutoPokeConfig('story', 'NewContact', { enabled: true }, () => false), false);
+    assert.equal(window.__pmPokeConfig.story.NewContact, undefined,
+        '新会话首次保存失败时不得留下半成品配置');
+} finally {
+    if (previousAutoPokeWindow === undefined) delete globalThis.window;
+    else globalThis.window = previousAutoPokeWindow;
+}
+
+const previousSessionWindow = globalThis.window;
+const previousSessionDocument = globalThis.document;
+const previousSessionAlert = globalThis.alert;
+const previousSessionStorage = globalThis.localStorage;
+try {
+    const sessionElements = new Map();
+    const sessionAlerts = [];
+    let sessionOverlayHtml = '';
+    let persistProbe = null;
+    let storageShouldThrow = false;
+    const makeFocusableControl = (value = '') => {
+        const attributes = new Map();
+        return {
+            value, disabled: false, focusCalls: 0,
+            setAttribute(name, next) { attributes.set(name, String(next)); },
+            removeAttribute(name) { attributes.delete(name); },
+            getAttribute(name) { return attributes.get(name) ?? null; },
+            focus(options) { assert.deepEqual(options, { preventScroll: true }); this.focusCalls += 1; },
+        };
+    };
+    const makeSessionOverlay = html => {
+        sessionOverlayHtml = html;
+        sessionElements.clear();
+        const button = makeFocusableControl();
+        const intervalMatch = html.match(/id="pm-session-auto-poke-interval"[^>]*value="([^"]+)"/);
+        const input = makeFocusableControl(intervalMatch?.[1] || '3');
+        sessionElements.set('pm-session-auto-poke', button);
+        sessionElements.set('pm-session-auto-poke-interval', input);
+        return {};
+    };
+    globalThis.document = {
+        getElementById: id => sessionElements.get(id) || null,
+        querySelector: () => null,
+        querySelectorAll: () => [],
+        addEventListener() {}, removeEventListener() {},
+    };
+    globalThis.alert = message => sessionAlerts.push(String(message));
+    globalThis.localStorage = {
+        setItem(key, value) {
+            persistProbe?.(key, value);
+            if (storageShouldThrow) throw new Error('session-storage-failed');
+        },
+    };
+    globalThis.window = {
+        __pmPokeConfig: { story: { Alice: { autoPoke: { enabled: false, interval: 3, counter: 1 } } } },
+        __pmCurrentConversationInjectionEnabled: () => false,
+    };
+    installPhoneControlCenter({
+        activeStorageId: 'story', currentPersona: 'Alice', isGroupChat: false,
+        currentGroupKey: '', phoneWindow: null,
+    }, {
+        runtime: {}, getStorageId: () => 'story', makeOverlay: makeSessionOverlay,
+        parsePendingInput: () => null, renderPendingConversation() {}, showPhoneCalendarPage() {},
+        syncGenerationControls() {},
+    });
+
+    window.__pmShowAutoPokeSettings('<状态 & "引号">');
+    assert.match(sessionOverlayHtml, /role="status" aria-live="polite"/);
+    assert.match(sessionOverlayHtml, /&lt;状态 &amp; "引号"&gt;/,
+        '自动消息状态反馈必须转义文本节点中的 HTML 控制字符');
+
+    const successfulToggleButton = sessionElements.get('pm-session-auto-poke');
+    persistProbe = () => {
+        assert.equal(successfulToggleButton.disabled, true, '自动消息开关持久化期间必须禁用');
+        assert.equal(successfulToggleButton.getAttribute('aria-busy'), 'true');
+    };
+    assert.equal(window.__pmToggleCurrentAutoPoke(successfulToggleButton), true);
+    assert.match(sessionOverlayHtml, /已开启自动发消息。/);
+    assert.equal(sessionElements.get('pm-session-auto-poke').focusCalls, 1,
+        '保存成功后焦点必须落到重绘后的新开关');
+
+    const failedToggleButton = sessionElements.get('pm-session-auto-poke');
+    const failedToggleFocusBefore = failedToggleButton.focusCalls;
+    storageShouldThrow = true;
+    persistProbe = () => {
+        assert.equal(failedToggleButton.disabled, true);
+        assert.equal(failedToggleButton.getAttribute('aria-busy'), 'true');
+    };
+    assert.equal(window.__pmToggleCurrentAutoPoke(failedToggleButton), false);
+    assert.equal(failedToggleButton.disabled, false);
+    assert.equal(failedToggleButton.getAttribute('aria-busy'), null);
+    assert.equal(failedToggleButton.focusCalls, failedToggleFocusBefore + 1,
+        '开关保存异常后必须清理 busy 并恢复原控件焦点');
+    assert.match(sessionAlerts.at(-1), /自动发消息设置保存失败/,
+        '开关保存异常必须向用户提供可理解的错误反馈');
+    assert.equal(getAutoPokeConfig('story', 'Alice').enabled, true,
+        '开关保存异常必须恢复成功保存前的启用状态');
+    assert.match(sessionOverlayHtml, /id="pm-session-auto-poke"[^>]*aria-checked="true"/,
+        '保存异常后当前页面必须继续显示回滚后的真实开关状态');
+
+    storageShouldThrow = false;
+    window.__pmShowAutoPokeSettings();
+    const successfulInterval = sessionElements.get('pm-session-auto-poke-interval');
+    successfulInterval.value = '6';
+    persistProbe = () => {
+        assert.equal(successfulInterval.disabled, true, '间隔持久化期间必须禁用输入框');
+        assert.equal(successfulInterval.getAttribute('aria-busy'), 'true');
+    };
+    assert.equal(window.__pmSaveCurrentAutoPokeInterval(successfulInterval), true);
+    assert.match(sessionOverlayHtml, /已保存：每隔 6 轮无输入触发。/);
+    assert.equal(sessionElements.get('pm-session-auto-poke-interval').focusCalls, 1);
+
+    const failedInterval = sessionElements.get('pm-session-auto-poke-interval');
+    failedInterval.value = '9';
+    storageShouldThrow = true;
+    persistProbe = () => {
+        assert.equal(failedInterval.disabled, true);
+        assert.equal(failedInterval.getAttribute('aria-busy'), 'true');
+    };
+    assert.equal(window.__pmSaveCurrentAutoPokeInterval(failedInterval), false);
+    assert.match(sessionOverlayHtml, /自动发消息间隔保存失败，已恢复原设置。/);
+    assert.equal(sessionElements.get('pm-session-auto-poke-interval').focusCalls, 1,
+        '间隔保存异常后焦点必须落到重绘后的输入框');
+    assert.match(sessionAlerts.at(-1), /自动发消息间隔保存失败/,
+        '间隔保存异常必须向用户提供可理解的错误反馈');
+    assert.equal(getAutoPokeConfig('story', 'Alice').interval, 6,
+        '间隔保存异常必须恢复上一次成功保存的值');
+    assert.equal(sessionElements.get('pm-session-auto-poke-interval').value, '6',
+        '失败重绘后的输入框必须显示回滚后的真实间隔');
+} finally {
+    globalThis.window = previousSessionWindow;
+    globalThis.document = previousSessionDocument;
+    globalThis.alert = previousSessionAlert;
+    globalThis.localStorage = previousSessionStorage;
+}
+
+const previousPokeWindow = globalThis.window;
+const previousPokeDocument = globalThis.document;
+const previousPokeStorage = globalThis.localStorage;
+try {
+    globalThis.document = { getElementById: () => null };
+    globalThis.localStorage = { setItem() {} };
+    const pokeState = {
+        isGenerating: false, activeStorageId: 'story', currentPersona: 'Legacy', conversationHistory: [],
+        isGroupChat: false, currentGroupKey: '', groupMembers: [], groupDisplayName: '',
+        groupRandomNpcEnabled: false, groupNature: '', phoneActive: true,
+    };
+    let beginGenerationCalls = 0;
+    globalThis.window = {
+        __pmPokeConfig: { story: { Legacy: { emojis: ['old'] }, __group_team: { emojis: ['group-old'] } } },
+        __pmGroupMeta: { story: { __group_team: { name: '测试群', members: ['Alice'] } } },
+        __pmHistories: { story: { Legacy: [], __group_team: [] } },
+        __pmCharacterBehavior: {}, __pmEmojis: [],
+        __pmSwitchContact() { throw new Error('已在目标私聊，不应切换'); },
+    };
+    installPhoneChatPoke(pokeState, {
+        getStorageId: () => 'story', gatherContext: async () => ({}), callAI: async () => '',
+        applyBidirectionalInjection() {}, addBubble() {}, addNote() {}, rebaseRenderedHistory() {},
+        showTyping() {}, hideTyping() {}, makeOverlay() {}, showGroupForm() {},
+        beginGeneration() { beginGenerationCalls += 1; return null; },
+        isGenerationTaskActive: () => false, finishGeneration() {}, isAutoPokeAllowed: () => false,
+        armAutoPoke() {}, beginAutomaticTask: () => null, isAutomaticTaskActive: () => false,
+        finishAutomaticTask() {},
+    });
+    await window.__pmPoke('Legacy');
+    assert.equal(beginGenerationCalls, 1, '旧私聊配置缺少 autoPoke 时仍必须继续进入生成入口');
+    assert.equal(window.__pmPokeConfig.story.Legacy.autoPoke.counter, 0);
+
+    pokeState.isGroupChat = true;
+    pokeState.currentPersona = '__group_team';
+    pokeState.currentGroupKey = '__group_team';
+    pokeState.groupMembers = ['Alice'];
+    await window.__pmPokeGroup();
+    assert.equal(beginGenerationCalls, 2, '旧群聊配置缺少 autoPoke 时仍必须继续进入生成入口');
+    assert.equal(window.__pmPokeConfig.story.__group_team.autoPoke.counter, 0);
+} finally {
+    globalThis.window = previousPokeWindow;
+    globalThis.document = previousPokeDocument;
+    globalThis.localStorage = previousPokeStorage;
+}
 
 console.log('Behavior configuration verified.');

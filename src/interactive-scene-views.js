@@ -2,7 +2,7 @@ import { getInteractivePresets } from './interactive-scene-ai.js';
 import {
     BACK_ICON_SVG, CALENDAR_ICON_SVG, CHAT_ICON_SVG, CLOSE_ICON_SVG, COMMUNITY_ICON_SVG,
     CONTACTS_ICON_SVG, CONTROL_ICON_SVG, EDIT_ICON_SVG, HEART_ICON_SVG, HOME_ICON_SVG,
-    MORE_ICON_SVG, PLAY_ICON_SVG, POKE_ICON_SVG, REPLY_ICON_SVG, SEND_ICON_SVG, SETTINGS_ICON_SVG, SHARE_ICON_SVG, TRASH_ICON_SVG,
+    INJECTION_ICON_SVG, MORE_ICON_SVG, PLAY_ICON_SVG, POKE_ICON_SVG, REPLY_ICON_SVG, SEND_ICON_SVG, SETTINGS_ICON_SVG, SHARE_ICON_SVG, TRASH_ICON_SVG,
 } from './icons.js';
 import { escapeAttr, escapeHtml } from './ui.js';
 
@@ -148,7 +148,7 @@ function renderSceneMenu(scene, uiScope, autoActive) {
         <button type="button" class="pm-scene-more" data-action="more" aria-label="社区工具" title="社区工具" aria-haspopup="menu" aria-expanded="false">${CONTROL_ICON_SVG}</button>
         <div class="pm-control-menu pm-scene-menu" role="menu" aria-label="社区工具" hidden>
             <button type="button" role="menuitem" data-action="tab" data-tab="prompt">${EDIT_ICON_SVG}<span>风格提示词</span></button>
-            <button type="button" role="menuitem" data-action="context-inject">${SETTINGS_ICON_SVG}<span>上下文注入</span></button>
+            <button type="button" role="menuitem" data-action="context-inject">${INJECTION_ICON_SVG}<span>上下文注入</span></button>
             <button type="button" role="menuitem" data-action="toggle-scene-pin" data-scene-id="${escapeAttr(scene.id)}" aria-pressed="${pinned}">${COMMUNITY_ICON_SVG}<span>${pinned ? '取消固定' : '固定社区'}</span></button>
             <button type="button" role="menuitem" class="pm-scene-danger" data-action="delete-scene" data-scene-id="${escapeAttr(scene.id)}">${TRASH_ICON_SVG}<span>删除社区</span></button>
         </div>

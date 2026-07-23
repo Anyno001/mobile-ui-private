@@ -10,6 +10,7 @@ import {
 import { createHistoryWindow } from './history-window.js';
 import { cleanResponse, splitToSentences } from './prompts.js';
 import { escapeAttr, escapeHtml, safeJS } from './ui.js';
+import { getAutoPokeConfig, resetAutoPokeCounter } from './auto-poke-config.js';
 import { CLOSE_ICON_SVG } from './icons.js';
 import {
     getEmojiPrompt, getWordyPrompt, parseGroupResponse,
@@ -192,9 +193,7 @@ export function installPhoneChatPoke(state, deps) {
 
     function showContactConfig(contactName) {
         const id = getStorageId();
-        const config = window.__pmPokeConfig[id]?.[contactName] || {
-            autoPoke: { enabled: false, interval: 3, counter: 0 }
-        };
+        const config = window.__pmPokeConfig[id]?.[contactName] || {};
         const behavior = getCharacterBehavior(window.__pmCharacterBehavior, id, contactName);
         const assignedEmojis = config.emojis || [];
 
@@ -254,29 +253,6 @@ export function installPhoneChatPoke(state, deps) {
           </label>`).join('')}
         </div>
         ${emojiCheckHtml}
-        <div style="margin-top:-6px;">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
-            <span style="font-size:13px;font-weight:600;">⏰ 自动发消息</span>
-            <div onclick="window.__pmToggleAutoPoke('${safeJS(contactName)}')"
-                class="pm-custom-check pm-bi-style ${config.autoPoke.enabled ? 'is-checked' : ''}"
-                id="pm-poke-check"
-                role="checkbox" tabindex="0" aria-checked="${config.autoPoke.enabled}"
-                onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();this.click()}"
-                style="cursor:pointer;width:22px;height:22px;min-width:22px;min-height:22px;flex-shrink:0;border-radius:50%;">
-            </div>
-        </div>
-        <div style="display:flex;align-items:center;gap:8px;">
-            <span style="font-size:12px;color:var(--pm-color-text-tertiary);">每隔</span>
-            <input id="pm-poke-interval" type="number" min="1" max="99"
-                value="${config.autoPoke.interval}"
-                style="width:50px;border:1px solid var(--pm-color-border-default);border-radius:6px;padding:4px 8px;font-size:13px;text-align:center;"
-                ${!config.autoPoke.enabled ? 'disabled' : ''}>
-            <span style="font-size:12px;color:var(--pm-color-text-tertiary);">轮无输入主动发消息</span>
-        </div>
-        <div style="font-size:11px;color:var(--pm-color-text-tertiary);margin-top:4px;">
-            当前计数：<span id="pm-poke-counter">${config.autoPoke.counter}</span> / ${config.autoPoke.interval}
-        </div>
-        </div>
     <div class="pm-modal-add pm-contact-settings-actions">
         <button type="button" class="pm-contact-settings-save" onclick="window.__pmSaveContactConfig('${safeJS(contactName)}')">保存角色设置</button>
     </div>
@@ -303,8 +279,6 @@ export function installPhoneChatPoke(state, deps) {
     };
 
     window.__pmSaveContactConfig = (contactName) => {
-        const checkEl = document.getElementById('pm-poke-check');
-        const intervalEl = document.getElementById('pm-poke-interval');
         const behaviorSnapshot = JSON.parse(JSON.stringify(window.__pmCharacterBehavior));
         const pokeSnapshot = JSON.parse(JSON.stringify(window.__pmPokeConfig));
         const emojiChecks = document.querySelectorAll('.pm-emoji-assign-check.is-checked');
@@ -328,30 +302,19 @@ export function installPhoneChatPoke(state, deps) {
             return false;
         }
 
-        if (checkEl && intervalEl) {
-            if (!window.__pmPokeConfig[id]) window.__pmPokeConfig[id] = {};
-
-            const enabled = checkEl.classList.contains('is-checked');
-            const interval = parseInt(intervalEl.value) || 3;
-            const oldCounter = window.__pmPokeConfig[id][contactName]?.autoPoke?.counter || 0;
-
-            window.__pmPokeConfig[id][contactName] = {
-                autoPoke: {
-                    enabled,
-                    interval: Math.max(1, Math.min(99, interval)),
-                    counter: enabled ? Math.min(oldCounter, interval) : oldCounter
-                },
-                emojis: selectedEmojis
-            };
-            if (!savePokeConfig()) {
-                window.__pmCharacterBehavior = behaviorSnapshot;
-                window.__pmPokeConfig = pokeSnapshot;
-                const rollbackOk = saveCharacterBehavior();
-                alert(rollbackOk
-                    ? '自动消息设置保存失败：浏览器存储不可用。'
-                    : '自动消息设置保存失败，且角色设置回滚未能写入存储。请立即导出备份。');
-                return false;
-            }
+        if (!window.__pmPokeConfig[id]) window.__pmPokeConfig[id] = {};
+        const previous = window.__pmPokeConfig[id][contactName] || {};
+        window.__pmPokeConfig[id][contactName] = {
+            ...previous, autoPoke: getAutoPokeConfig(id, contactName), emojis: selectedEmojis,
+        };
+        if (!savePokeConfig()) {
+            window.__pmCharacterBehavior = behaviorSnapshot;
+            window.__pmPokeConfig = pokeSnapshot;
+            const rollbackOk = saveCharacterBehavior();
+            alert(rollbackOk
+                ? '表情包设置保存失败：浏览器存储不可用。'
+                : '表情包设置保存失败，且角色设置回滚未能写入存储。请立即导出备份。');
+            return false;
         }
 
         addNote(`已保存 ${contactName} 的设置`);
@@ -359,24 +322,13 @@ export function installPhoneChatPoke(state, deps) {
     };
     window.__pmSaveAndCloseContactConfig = contactName => window.__pmSaveContactConfig(contactName);
 
-
-    window.__pmToggleAutoPoke = (contactName) => {
-        const checkEl = document.getElementById('pm-poke-check');
-        const intervalEl = document.getElementById('pm-poke-interval');
-        if (!checkEl) return;
-        const isChecked = checkEl.classList.toggle('is-checked');
-        checkEl.setAttribute('aria-checked', String(isChecked));
-        if (intervalEl) intervalEl.disabled = !isChecked;
-    };
-
     window.__pmPoke = async (contactName) => {
         // 修复：先检查生成锁，再切换联系人，避免"界面已切换但函数直接 return"的幽灵切换问题
         if (state.isGenerating) return;
 
         const id = getStorageId();
-        if (window.__pmPokeConfig[id]?.[contactName]) {
-            window.__pmPokeConfig[id][contactName].autoPoke.counter = 0;
-            savePokeConfig();
+        if (!resetAutoPokeCounter(id, contactName)) {
+            console.warn('[phone-mode] __pmPoke: 自动消息计数器重置保存失败，保留原值');
         }
 
         document.getElementById('pm-overlay')?.remove();
@@ -530,14 +482,6 @@ export function installPhoneChatPoke(state, deps) {
         }
         if (state.currentPersona) window.__pmPoke(state.currentPersona);
     };
-    window.__pmToggleAutoPokeGroup = () => {
-        const checkEl = document.getElementById('pm-poke-check-group');
-        const intervalEl = document.getElementById('pm-poke-interval-group');
-        if (!checkEl) return;
-        const isChecked = checkEl.classList.toggle('is-checked');
-        checkEl.setAttribute('aria-checked', String(isChecked));
-        if (intervalEl) intervalEl.disabled = !isChecked;
-    };
 
     window.__pmPokeGroup = async () => {
         if (!state.isGroupChat || !state.currentGroupKey) return;
@@ -548,9 +492,8 @@ export function installPhoneChatPoke(state, deps) {
         const storageId = state.activeStorageId || id;
         const saveKey = state.currentGroupKey;
         if (!storageId || storageId === 'sms_unknown__default') return;
-        if (window.__pmPokeConfig[storageId]?.[saveKey]) {
-            window.__pmPokeConfig[storageId][saveKey].autoPoke.counter = 0;
-            savePokeConfig();
+        if (!resetAutoPokeCounter(storageId, saveKey)) {
+            console.warn('[phone-mode] __pmPokeGroup: 自动消息计数器重置保存失败，保留原值');
         }
 
         document.getElementById('pm-overlay')?.remove();

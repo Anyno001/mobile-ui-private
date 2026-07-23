@@ -12,10 +12,10 @@ function getDirectoryState(id) {
     return { histories, groups, contacts, groupNames, total: contacts.length + groupNames.length };
 }
 
-function setSpinning(active) {
+function setGenerationLoading(active) {
     const button = document.getElementById('pm-autogen-btn');
     const icon = button?.querySelector('svg');
-    if (icon) icon.style.animation = active ? 'pm-spin 0.8s linear infinite' : '';
+    if (icon) icon.style.animation = active ? 'pm-calendar-sparkle-pulse 1s ease-in-out infinite' : '';
     if (button) { button.disabled = active; button.setAttribute('aria-busy', String(active)); }
 }
 
@@ -203,7 +203,7 @@ export function installContactGenerator(state, deps) {
         const directory = getDirectoryState(id);
         const task = beginGeneration(id);
         if (!task) return;
-        setSpinning(true);
+        setGenerationLoading(true);
         try {
             const context = await gatherContext(task.context);
             if (!isGenerationTaskActive(task)) return;
@@ -244,7 +244,7 @@ export function installContactGenerator(state, deps) {
         } finally {
             const finishedOwnTask = finishGeneration(task);
             // 旧任务失效后可能已有新任务启动；旧 finally 只能在当前没有新任务时清理 spinner。
-            if (finishedOwnTask || !state.generationTask) setSpinning(false);
+            if (finishedOwnTask || !state.generationTask) setGenerationLoading(false);
         }
     };
 }

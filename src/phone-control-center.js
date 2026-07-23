@@ -1,8 +1,9 @@
 import { escapeAttr, escapeHtml } from './ui.js';
 import {
-    CALENDAR_ICON_SVG, CHAT_ICON_SVG, CLOSE_ICON_SVG, CONTACTS_ICON_SVG, EDIT_ICON_SVG,
-    EMOJI_ICON_SVG, SETTINGS_ICON_SVG, TRASH_ICON_SVG,
+    BACK_ICON_SVG, CALENDAR_ICON_SVG, CHAT_ICON_SVG, CLOSE_ICON_SVG, CONTACTS_ICON_SVG,
+    EDIT_ICON_SVG, EMOJI_ICON_SVG, INJECTION_ICON_SVG, SETTINGS_ICON_SVG, TRASH_ICON_SVG,
 } from './icons.js';
+import { commitAutoPokeConfig, getAutoPokeConfig } from './auto-poke-config.js';
 import {
     clearPendingMessages, getPendingMessages, removePendingMessage, updatePendingMessage,
 } from './pending-messages.js';
@@ -10,8 +11,10 @@ import {
 const controlActionLabel = action => ({
     calendar: '打开日历',
     contacts: '打开联系人',
+    'session-behavior': '打开会话行为',
+    'auto-poke-toggle': '切换自动发消息',
     'injection-toggle': '切换当前会话注入',
-    'injection-settings': '打开上下文注入设置',
+    'injection-settings': '打开上下文注入规则',
 })[action] || '执行快捷操作';
 
 export async function toggleConversationInjectionControl(button, toggleInjection, isEnabled) {
@@ -54,7 +57,11 @@ export function installPhoneControlCenter(state, deps) {
     const getTarget = () => {
         const storageId = state.activeStorageId || getStorageId();
         const saveKey = state.isGroupChat && state.currentGroupKey ? state.currentGroupKey : state.currentPersona;
-        return storageId && storageId !== 'sms_unknown__default' && saveKey ? { storageId, saveKey } : null;
+        return storageId && storageId !== 'sms_unknown__default' && saveKey ? {
+            storageId,
+            saveKey,
+            isGroup: state.isGroupChat,
+        } : null;
     };
 
     function renderPendingList() {
@@ -115,6 +122,100 @@ export function installPhoneControlCenter(state, deps) {
         if (restoreFocus) anchor?.focus({ preventScroll: true });
     }
 
+    function showSessionBehaviorPanel() {
+        const target = getTarget();
+        if (!target) return alert('当前没有可配置的手机会话。');
+        makeOverlay(`
+<div class="pm-modal pm-modal-wide pm-session-behavior-modal">
+  <div class="pm-modal-header"><button type="button" onclick="window.__pmCloseOverlay()" class="pm-modal-close" title="返回" aria-label="返回">${BACK_ICON_SVG}</button><b>会话行为</b><button type="button" onclick="window.__pmCloseOverlay()" class="pm-modal-close" title="关闭" aria-label="关闭">${CLOSE_ICON_SVG}</button></div>
+  <div class="pm-modal-scroll pm-session-behavior-body">
+    <div class="pm-session-behavior-links">
+      <button type="button" onclick="window.__pmShowAutoPokeSettings()">${CHAT_ICON_SVG}<span>自动发消息</span></button>
+      <button type="button" onclick="window.__pmShowSessionInjectionSettings()">${INJECTION_ICON_SVG}<span>${target.isGroup ? '注入当前群聊' : '注入当前角色'}</span></button>
+      <button type="button" onclick="window.__pmShowConversationInjection()">${INJECTION_ICON_SVG}<span>上下文注入规则</span></button>
+      <button type="button" onclick="window.__pmShowConversationSettings()">${SETTINGS_ICON_SVG}<span>${target.isGroup ? '成员聊天行为' : '角色设置'}</span></button>
+      ${target.isGroup ? `<button type="button" onclick="window.__pmEditGroup()">${CONTACTS_ICON_SVG}<span>群聊设置</span></button>` : ''}
+    </div>
+  </div>
+</div>`);
+    }
+
+    window.__pmShowSessionBehavior = showSessionBehaviorPanel;
+
+    window.__pmShowAutoPokeSettings = (statusMessage = '') => {
+        const target = getTarget();
+        if (!target) return alert('当前没有可配置的手机会话。');
+        const autoPoke = getAutoPokeConfig(target.storageId, target.saveKey);
+        makeOverlay(`
+<div class="pm-modal pm-modal-wide pm-session-behavior-modal">
+  <div class="pm-modal-header"><button type="button" onclick="window.__pmShowSessionBehavior()" class="pm-modal-close" title="返回会话行为" aria-label="返回会话行为">${BACK_ICON_SVG}</button><b>自动发消息</b><button type="button" onclick="window.__pmCloseOverlay()" class="pm-modal-close" title="关闭" aria-label="关闭">${CLOSE_ICON_SVG}</button></div>
+  <div class="pm-modal-scroll pm-session-behavior-body">
+    <div id="pm-session-auto-poke-status" class="pm-session-behavior-status" role="status" aria-live="polite" ${statusMessage ? '' : 'hidden'}>${escapeHtml(statusMessage)}</div>
+    <section class="pm-session-behavior-section">
+      <button id="pm-session-auto-poke" type="button" class="pm-session-behavior-toggle" role="checkbox" aria-checked="${autoPoke.enabled}" onclick="window.__pmToggleCurrentAutoPoke(this)">
+        ${CHAT_ICON_SVG}<span><b>允许当前会话主动发消息</b><small>连续多轮没有输入时触发。</small></span><i class="pm-control-toggle ${autoPoke.enabled ? 'is-checked' : ''}" aria-hidden="true"></i>
+      </button>
+      <label class="pm-session-auto-poke-interval">每隔 <input id="pm-session-auto-poke-interval" type="number" min="1" max="99" value="${autoPoke.interval}" ${autoPoke.enabled ? '' : 'disabled'} onchange="window.__pmSaveCurrentAutoPokeInterval(this)"> 轮无输入触发</label>
+      <p id="pm-session-auto-poke-counter">当前计数：${autoPoke.counter} / ${autoPoke.interval}</p>
+    </section>
+  </div>
+</div>`);
+    };
+
+    window.__pmShowSessionInjectionSettings = () => {
+        const target = getTarget();
+        if (!target) return alert('当前没有可配置的手机会话。');
+        const enabled = window.__pmCurrentConversationInjectionEnabled?.() === true;
+        const label = target.isGroup ? '注入当前群聊' : '注入当前角色';
+        makeOverlay(`
+<div class="pm-modal pm-modal-wide pm-session-behavior-modal">
+  <div class="pm-modal-header"><button type="button" onclick="window.__pmShowSessionBehavior()" class="pm-modal-close" title="返回会话行为" aria-label="返回会话行为">${BACK_ICON_SVG}</button><b>${label}</b><button type="button" onclick="window.__pmCloseOverlay()" class="pm-modal-close" title="关闭" aria-label="关闭">${CLOSE_ICON_SVG}</button></div>
+  <div class="pm-modal-scroll pm-session-behavior-body"><section class="pm-session-behavior-section"><button id="pm-session-injection-toggle" type="button" class="pm-session-behavior-toggle" role="checkbox" aria-checked="${enabled}" onclick="window.__pmToggleSessionInjection(this)">${INJECTION_ICON_SVG}<span><b>把当前手机短信记录写入角色上下文</b><small>只有当前角色可读取这段私密短信记忆。</small></span><i class="pm-control-toggle ${enabled ? 'is-checked' : ''}" aria-hidden="true"></i></button></section></div>
+</div>`);
+    };
+
+    window.__pmToggleCurrentAutoPoke = button => {
+        if (button?.disabled) return false;
+        const target = getTarget();
+        if (!target) return false;
+        const current = getAutoPokeConfig(target.storageId, target.saveKey);
+        button.disabled = true;
+        button.setAttribute('aria-busy', 'true');
+        const saved = commitAutoPokeConfig(target.storageId, target.saveKey, { enabled: !current.enabled });
+        if (!saved) {
+            button.disabled = false;
+            button.removeAttribute('aria-busy');
+            alert('自动发消息设置保存失败：浏览器存储不可用或空间不足。');
+            button.focus({ preventScroll: true });
+            return false;
+        }
+        window.__pmShowAutoPokeSettings(current.enabled ? '已关闭自动发消息。' : '已开启自动发消息。');
+        document.getElementById('pm-session-auto-poke')?.focus({ preventScroll: true });
+        return true;
+    };
+
+    window.__pmSaveCurrentAutoPokeInterval = input => {
+        const target = getTarget();
+        if (!target || !input) return false;
+        const interval = Math.max(1, Math.min(99, Number.parseInt(input.value, 10) || 3));
+        input.disabled = true;
+        input.setAttribute('aria-busy', 'true');
+        if (!commitAutoPokeConfig(target.storageId, target.saveKey, { interval })) {
+            alert('自动发消息间隔保存失败：浏览器存储不可用或空间不足。');
+            window.__pmShowAutoPokeSettings('自动发消息间隔保存失败，已恢复原设置。');
+            document.getElementById('pm-session-auto-poke-interval')?.focus({ preventScroll: true });
+            return false;
+        }
+        window.__pmShowAutoPokeSettings(`已保存：每隔 ${interval} 轮无输入触发。`);
+        document.getElementById('pm-session-auto-poke-interval')?.focus({ preventScroll: true });
+        return true;
+    };
+
+    window.__pmToggleSessionInjection = button => toggleConversationInjectionControl(
+        button, window.__pmToggleCurrentConversationInjection,
+        () => window.__pmCurrentConversationInjectionEnabled?.() === true,
+    );
+
     function showPendingManager() {
         const target = getTarget();
         if (!sameTarget(editingTarget, target)) editingTarget = null;
@@ -131,17 +232,12 @@ export function installPhoneControlCenter(state, deps) {
 
     function runControlAction(action, button = null) {
         runtime.overlayOpener = state.phoneWindow?.querySelector('.pm-expand-btn') || null;
-        if (action === 'injection-toggle') return toggleConversationInjectionControl(
-            button, window.__pmToggleCurrentConversationInjection,
-            () => window.__pmCurrentConversationInjectionEnabled?.() === true,
-        );
         closeControlCenter();
         if (action === 'pending') showPendingManager();
-        else if (action === 'settings') window.__pmShowConversationSettings();
+        else if (action === 'session-behavior') showSessionBehaviorPanel();
         else if (action === 'injection-settings') return window.__pmShowConversationInjection();
         else if (action === 'contacts') return window.__pmShowList();
         else if (action === 'emoji') window.__pmShowEmojiManager();
-        else if (action === 'group') window.__pmEditGroup();
         else if (action === 'delete') window.__pmStartDeleteMode();
         else if (action === 'calendar') return showPhoneCalendarPage();
     }
@@ -182,15 +278,10 @@ export function installPhoneControlCenter(state, deps) {
         menu.className = 'pm-control-menu';
         menu.setAttribute('role', 'menu');
         menu.setAttribute('aria-label', '快捷工具');
-        const injectionEnabled = window.__pmCurrentConversationInjectionEnabled?.() === true;
-        const injectionLabel = state.isGroupChat ? '注入当前群聊' : '注入当前角色';
         menu.innerHTML = `
   <button type="button" role="menuitem" data-action="pending">${EDIT_ICON_SVG}编辑消息</button>
   <button type="button" role="menuitem" data-action="contacts">${CONTACTS_ICON_SVG}联系人</button>
-  <button type="button" role="menuitemcheckbox" aria-checked="${injectionEnabled}" data-action="injection-toggle">${CHAT_ICON_SVG}${injectionLabel}<i class="pm-control-toggle ${injectionEnabled ? 'is-checked' : ''}" aria-hidden="true"></i></button>
-  <button type="button" role="menuitem" data-action="injection-settings">${SETTINGS_ICON_SVG}上下文注入</button>
-  <button type="button" role="menuitem" data-action="settings">${SETTINGS_ICON_SVG}角色设置</button>
-  ${state.isGroupChat ? `<button type="button" role="menuitem" data-action="group">${CONTACTS_ICON_SVG}群聊设置</button>` : ''}
+  <button type="button" role="menuitem" data-action="session-behavior">${SETTINGS_ICON_SVG}会话行为</button>
   <button type="button" role="menuitem" data-action="emoji">${EMOJI_ICON_SVG}表情包管理</button>
   <button type="button" role="menuitem" data-action="calendar">${CALENDAR_ICON_SVG}日历</button>
   <button type="button" role="menuitem" data-action="delete" class="pm-control-menu-danger">${TRASH_ICON_SVG}删除信息</button>`;
