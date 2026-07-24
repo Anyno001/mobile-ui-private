@@ -31,7 +31,7 @@ import { normalizeRecipeStore } from '../src/calendar-recipe-model.js';
 import { deriveInteractiveActorId, normalizeInteractiveStore } from '../src/interactive-scene-model.js';
 import { renderPhoneDesktop, runDesktopPageTransition } from '../src/interactive-scenes.js';
 import { getDanmakuMotion, getDanmakuTone, renderCommunityLauncher, renderCommunityWorkspace } from '../src/interactive-scene-views.js';
-import { installPhoneControlCenter, runControlMenuAction, toggleConversationInjectionControl } from '../src/phone-control-center.js';
+import { installPhoneControlCenter, runControlMenuAction } from '../src/phone-control-center.js';
 import { installPhoneChatPoke } from '../src/phone-chat-poke.js';
 import {
     clearPhoneQuickReply, ensureInitialPhoneQuickReply, ensureInitialPhoneQuickReplyWithRetry,
@@ -57,7 +57,7 @@ import {
     createPhonePageController, handleMessageSelectionKey, installPhoneLifecycle,
     resetPhoneScaleForMinimize, toggleMessageSelection,
 } from '../src/phone-lifecycle.js';
-import { commitConversationInjectionUpdate } from '../src/phone-context-injection.js';
+import { commitConversationInjectionUpdate, installPhoneContextInjection } from '../src/phone-context-injection.js';
 import {
     commitEditedGroupUpdate, installPhoneDirectory, refreshEditedGroupRuntime,
 } from '../src/phone-directory.js';
@@ -2176,6 +2176,8 @@ function directoryDeleteStores() {
 
 function createDirectoryDeleteFixture({
     currentPersona = 'Alice', currentGroupKey = '__group_team', includeCurrentGroup = false,
+    withoutOtherConversations = false,
+    coordinateInjectionMutations = false,
     injectionResults = [],
 } = {}) {
     const runtime = createRuntimeState();
@@ -2187,6 +2189,13 @@ function createDirectoryDeleteFixture({
         stores.poke.story.__group_current = { interval: 4 };
         stores.backgrounds.story___group_current = '#333333';
     }
+    if (withoutOtherConversations) {
+        delete stores.histories.story.__group_team;
+        delete stores.groupMeta.story.__group_team;
+        stores.bidirectional.story = stores.bidirectional.story.filter(key => key !== '__group_team');
+        delete stores.poke.story.__group_team;
+        delete stores.backgrounds.story___group_team;
+    }
     const currentGroupState = includeCurrentGroup ? {
         currentPersona: '',
         currentGroupKey: '__group_current',
@@ -2197,6 +2206,21 @@ function createDirectoryDeleteFixture({
         groupNature: '当前群性质',
         groupColorMap: { Carol: '#333333', Dave: '#444444' },
     } : null;
+    const phoneElements = {
+        name: { textContent: '' },
+        poke: {
+            classes: new Set(),
+            classList: {
+                add(name) { phoneElements.poke.classes.add(name); },
+                remove(name) { phoneElements.poke.classes.delete(name); },
+                contains(name) { return phoneElements.poke.classes.has(name); },
+            },
+        },
+        list: { innerHTML: '' },
+    };
+    const phoneWindow = {
+        querySelector: selector => ({ '.pm-name': phoneElements.name, '.pm-name-edit': phoneElements.poke, '.pm-msg-list': phoneElements.list }[selector] || null),
+    };
     const state = {
         activeStorageId: 'story',
         currentPersona: currentGroupState?.currentPersona ?? currentPersona,
@@ -2209,6 +2233,7 @@ function createDirectoryDeleteFixture({
         groupRandomNpcEnabled: currentGroupState?.groupRandomNpcEnabled ?? true,
         groupNature: currentGroupState?.groupNature ?? '测试群性质',
         groupColorMap: currentGroupState?.groupColorMap ?? { Alice: '#111111', Bob: '#222222' },
+        phoneWindow,
     };
     window.__pmHistories = structuredClone(stores.histories);
     window.__pmGroupMeta = structuredClone(stores.groupMeta);
@@ -2225,31 +2250,38 @@ function createDirectoryDeleteFixture({
     idbValues.set('ST_SMS_GROUP_META', structuredClone(stores.groupMeta));
     runtime.pendingMessages.set('story', new Map([
         ['Alice', [{ id: 1, status: 'pending' }]],
-        ['__group_team', [{ id: 2, status: 'pending' }]],
+        ...(withoutOtherConversations ? [] : [['__group_team', [{ id: 2, status: 'pending' }]]]),
         ...(includeCurrentGroup ? [['__group_current', [{ id: 3, status: 'pending' }]]] : []),
     ]));
     let injectionCalls = 0;
     const injectionSnapshots = [];
-    installPhoneDirectory(state, {
+    const applyBidirectionalInjection = async () => {
+        injectionSnapshots.push({
+            histories: structuredClone(window.__pmHistories),
+            groupMeta: structuredClone(window.__pmGroupMeta),
+            bidirectional: structuredClone(window.__pmBidirectional),
+        });
+        const result = injectionResults[injectionCalls];
+        injectionCalls += 1;
+        return result || { written: 1, failedWrites: 0, cleared: 1, failedKeys: [] };
+    };
+    const deps = {
         runtime,
         getStorageId: () => 'story',
         makeOverlay: () => {},
-        applyBidirectionalInjection: async () => {
-            injectionSnapshots.push({
-                histories: structuredClone(window.__pmHistories),
-                groupMeta: structuredClone(window.__pmGroupMeta),
-                bidirectional: structuredClone(window.__pmBidirectional),
-            });
-            const result = injectionResults[injectionCalls];
-            injectionCalls += 1;
-            return result || { written: 1, failedWrites: 0, cleared: 1, failedKeys: [] };
-        },
-    });
+        applyBidirectionalInjection,
+        addNote: () => {}, addBubble: () => {}, addDirector: () => {}, fitNameFont: () => {},
+        applyBackground: () => {}, resetEmojiRenderBudget: () => {},
+    };
+    if (coordinateInjectionMutations) installPhoneContextInjection(state, deps);
+    installConversation(state, deps);
+    installPhoneDirectory(state, deps);
     let listRefreshes = 0;
     window.__pmShowList = async () => { listRefreshes += 1; };
     return {
         runtime,
         state,
+        phoneElements,
         stores,
         injectionCalls: () => injectionCalls,
         injectionSnapshots,
@@ -2285,11 +2317,17 @@ try {
     assert.equal(window.__pmPokeConfig.story.Alice, undefined);
     assert.equal(window.__pmBgLocal.story_Alice, undefined);
     assert.equal(fixture.runtime.pendingMessages.get('story')?.has('Alice'), false);
-    assert.deepEqual(directoryRuntimeSnapshot(fixture.state), {
-        ...runtimeBefore, currentPersona: '', conversationHistory: [],
-    }, '删除当前联系人只能清理联系人身份和当前会话历史');
-    assert.equal(fixture.injectionCalls(), 1);
-    assert.equal(fixture.listRefreshes(), 1);
+    assert.equal(fixture.state.currentPersona, '__group_team', '删除当前联系人后必须切到剩余群聊');
+    assert.equal(fixture.state.isGroupChat, true);
+    assert.equal(fixture.state.currentGroupKey, '__group_team');
+    assert.deepEqual(fixture.state.groupMembers, ['Alice', 'Bob']);
+    assert.equal(fixture.state.groupDisplayName, '测试群');
+    assert.equal(fixture.state.conversationHistory.length, 1);
+    assert.equal(fixture.state.conversationHistory[0].content, 'group history');
+    assert.equal(fixture.phoneElements.name.textContent, '测试群');
+    assert.equal(fixture.phoneElements.poke.classList.contains('is-hidden'), false);
+    assert.equal(fixture.injectionCalls(), 2, '删除清理和切换目标都必须刷新注入');
+    assert.equal(fixture.listRefreshes(), 0, '切换当前会话不应重开旧目录浮层');
     assert.equal(JSON.parse(localValues.get('ST_SMS_DATA_V2')).story.Alice, undefined);
     assert.equal(idbValues.get('ST_SMS_DATA_V2').story.Alice, undefined);
     assert.equal(JSON.parse(localValues.get('ST_SMS_POKE_CONFIG')).story.Alice, undefined);
@@ -2366,13 +2404,17 @@ try {
     assert.equal(window.__pmPokeConfig.story.__group_team, undefined);
     assert.equal(window.__pmBgLocal.story___group_team, undefined);
     assert.equal(fixture.runtime.pendingMessages.get('story')?.has('__group_team'), false);
-    assert.deepEqual(directoryRuntimeSnapshot(fixture.state), {
-        ...runtimeBefore, currentPersona: '', conversationHistory: [], isGroupChat: false,
-        currentGroupKey: '', groupMembers: [], groupExtras: [], groupDisplayName: '',
-        groupRandomNpcEnabled: false, groupNature: '', groupColorMap: {},
-    }, '删除当前群聊必须清理完整群聊运行态');
-    assert.equal(fixture.injectionCalls(), 1);
-    assert.equal(fixture.listRefreshes(), 1);
+    assert.equal(fixture.state.currentPersona, 'Alice', '删除当前群聊后必须切到剩余联系人');
+    assert.equal(fixture.state.isGroupChat, false);
+    assert.equal(fixture.state.currentGroupKey, '');
+    assert.deepEqual(fixture.state.groupMembers, []);
+    assert.equal(fixture.state.groupDisplayName, '');
+    assert.equal(fixture.state.conversationHistory.length, 1);
+    assert.equal(fixture.state.conversationHistory[0].content, 'contact history');
+    assert.equal(fixture.phoneElements.name.textContent, 'Alice');
+    assert.equal(fixture.phoneElements.poke.classList.contains('is-hidden'), false);
+    assert.equal(fixture.injectionCalls(), 2, '删除清理和切换目标都必须刷新注入');
+    assert.equal(fixture.listRefreshes(), 0, '切换当前会话不应重开旧目录浮层');
     assert.equal(JSON.parse(localValues.get('ST_SMS_GROUP_META')).story?.__group_team, undefined);
     assert.equal(idbValues.get('ST_SMS_GROUP_META').story?.__group_team, undefined);
     assert.equal(JSON.parse(localValues.get('ST_SMS_DATA_V2')).story.__group_team, undefined);
@@ -2380,6 +2422,28 @@ try {
     assert.deepEqual(JSON.parse(localValues.get('ST_SMS_POKE_CONFIG')).story, { Alice: { interval: 2 } });
     assert.deepEqual(JSON.parse(localValues.get('ST_SMS_BIDIRECTIONAL')).story, ['Alice']);
     assert.deepEqual(JSON.parse(localValues.get('ST_SMS_BG_LOCAL')), { story_Alice: '#111111' });
+
+    fixture = createDirectoryDeleteFixture({ currentGroupKey: '', withoutOtherConversations: true });
+    globalThis.confirm = () => true;
+    await window.__pmDel('Alice');
+    assert.deepEqual(directoryRuntimeSnapshot(fixture.state), {
+        activeStorageId: 'story',
+        currentPersona: '',
+        conversationHistory: [],
+        isGroupChat: false,
+        currentGroupKey: '',
+        groupMembers: [],
+        groupExtras: [],
+        groupDisplayName: '',
+        groupRandomNpcEnabled: false,
+        groupNature: '',
+        groupColorMap: {},
+    }, '删除最后一个会话必须进入完整空态');
+    assert.equal(fixture.phoneElements.name.textContent, '选择联系人');
+    assert.equal(fixture.phoneElements.poke.classList.contains('is-hidden'), true, '空态必须隐藏拍一拍按钮');
+    assert.match(fixture.phoneElements.list.innerHTML, /暂无会话/);
+    assert.equal(fixture.injectionCalls(), 1, '删除清理完成后进入空态不得重复刷新注入');
+    assert.equal(fixture.listRefreshes(), 0);
 
     fixture = createDirectoryDeleteFixture({ includeCurrentGroup: true });
     runtimeBefore = directoryRuntimeSnapshot(fixture.state);
@@ -2406,7 +2470,7 @@ try {
     assert.deepEqual(fixture.runtime.pendingMessages.get('story')?.get('Alice'), [{ id: 1, status: 'pending' }], '删除群聊不得修改联系人暂存');
     assert.deepEqual(directoryRuntimeSnapshot(fixture.state), runtimeBefore, '删除非当前群聊不得修改当前会话运行态');
     assert.equal(fixture.injectionCalls(), 1);
-    assert.equal(fixture.listRefreshes(), 1);
+    assert.equal(fixture.listRefreshes(), 0, '没有打开联系人浮层或旧目录时不得强行重绘目录');
     assert.deepEqual(JSON.parse(localValues.get('ST_SMS_DATA_V2')), nonCurrentExpected.histories);
     assert.deepEqual(idbValues.get('ST_SMS_DATA_V2'), nonCurrentExpected.histories);
     assert.deepEqual(JSON.parse(localValues.get('ST_SMS_GROUP_META')), nonCurrentExpected.groupMeta);
@@ -2482,6 +2546,35 @@ try {
     assert.equal(window.__pmHistories.story.Alice, undefined);
     assert.ok(window.__pmGroupMeta.story.__group_team, '联系人删除成功不得覆盖被锁保护的群聊');
 
+    let releaseToggleDeleteRace;
+    const toggleDeleteRace = new Promise(resolve => { releaseToggleDeleteRace = resolve; });
+    fixture = createDirectoryDeleteFixture({
+        currentGroupKey: '',
+        coordinateInjectionMutations: true,
+        injectionResults: [
+            toggleDeleteRace,
+            { written: 1, failedWrites: 0, cleared: 1, failedKeys: [] },
+            { written: 1, failedWrites: 0, cleared: 1, failedKeys: [] },
+        ],
+    });
+    globalThis.confirm = () => true;
+    const failingToggleBeforeDelete = window.__pmToggleConversationInjection('story', 'Alice', false);
+    await new Promise(resolve => setTimeout(resolve, 0));
+    assert.equal(fixture.injectionCalls(), 1, '注入切换必须先进入共享协调队列');
+    const queuedGroupDelete = window.__pmDelGroup('__group_team');
+    await new Promise(resolve => setTimeout(resolve, 0));
+    assert.equal(fixture.injectionCalls(), 1, '删除不得越过正在执行的注入切换修改共享配置');
+    assert.ok(window.__pmGroupMeta.story.__group_team, '排队期间不得提前删除群聊');
+    releaseToggleDeleteRace({ written: 0, failedWrites: 1, cleared: 1, failedKeys: [] });
+    await assert.rejects(failingToggleBeforeDelete, /上下文注入设置应用失败/);
+    assert.equal(await queuedGroupDelete, true);
+    assert.equal(fixture.injectionCalls(), 3, '切换补偿完成后删除才能执行自己的注入清理');
+    assert.equal(window.__pmGroupMeta.story?.__group_team, undefined);
+    assert.equal(window.__pmHistories.story?.__group_team, undefined);
+    assert.deepEqual(window.__pmBidirectional.story, ['Alice'],
+        '失败切换的全量补偿不得复活随后成功删除的群聊注入 key');
+    assert.deepEqual(JSON.parse(localValues.get('ST_SMS_BIDIRECTIONAL')).story, ['Alice']);
+
     fixture = createDirectoryDeleteFixture({
         currentGroupKey: '',
         injectionResults: [
@@ -2519,6 +2612,116 @@ try {
     assert.match(deleteAlerts.at(-1) || '', /原数据回滚也失败/);
     assert.doesNotMatch(deleteAlerts.at(-1) || '', /private-group-key/, '错误提示不得泄漏失败注入键');
     assert.equal(directoryDeleteButtons.every(button => !button.disabled), true, '群聊补偿失败也必须释放删除锁');
+
+    fixture = createDirectoryDeleteFixture({ currentGroupKey: '' });
+    const switcherElements = new Map();
+    const switcherDocumentListeners = new Map();
+    const triggerAttributes = new Map([['aria-expanded', 'false']]);
+    const trigger = {
+        isConnected: true, focusCalls: 0,
+        setAttribute(name, value) { triggerAttributes.set(name, String(value)); },
+        getAttribute(name) { return triggerAttributes.get(name) ?? null; },
+        focus(options) { assert.deepEqual(options, { preventScroll: true }); this.focusCalls += 1; },
+        contains(target) { return target === this; },
+        getBoundingClientRect: () => ({ left: 60, bottom: 80, width: 120 }),
+    };
+    const phone = {
+        clientWidth: 360,
+        querySelector: selector => selector === '.pm-name-trigger' ? trigger : null,
+        getBoundingClientRect: () => ({ left: 0, top: 0, bottom: 640 }),
+        appendChild(element) { switcherElements.set(element.id, element); element.isConnected = true; return element; },
+    };
+    fixture.state.phoneWindow = phone;
+    const createSwitcherElement = () => {
+        const attributes = new Map();
+        const listeners = new Map();
+        const firstButton = { focusCalls: 0, focus() { this.focusCalls += 1; } };
+        return {
+            id: '', className: '', dataset: {}, style: {}, innerHTML: '', isConnected: false,
+            setAttribute(name, value) { attributes.set(name, String(value)); },
+            getAttribute(name) { return attributes.get(name) ?? null; },
+            addEventListener(type, listener) { listeners.set(type, listener); },
+            dispatch(type, event) { return listeners.get(type)?.(event); },
+            contains(target) { return target === this || target?.switcherOwner === this; },
+            querySelector(selector) {
+                if (selector === 'button') return firstButton;
+                return null;
+            },
+            remove() { this.isConnected = false; switcherElements.delete(this.id); },
+            firstButton,
+        };
+    };
+    globalThis.document = {
+        getElementById: id => switcherElements.get(id) || null,
+        querySelectorAll: () => [],
+        createElement: tag => { assert.equal(tag, 'div'); return createSwitcherElement(); },
+        addEventListener(type, listener, capture) {
+            assert.equal(capture, true);
+            switcherDocumentListeners.set(type, listener);
+        },
+        removeEventListener(type, listener, capture) {
+            assert.equal(capture, true);
+            if (switcherDocumentListeners.get(type) === listener) switcherDocumentListeners.delete(type);
+        },
+    };
+    window.__pmTheme = { darkMode: 'light' };
+    let injectionEnabled = false;
+    let injectionToggleCalls = 0;
+    window.__pmConversationInjectionEnabled = () => injectionEnabled;
+    window.__pmToggleConversationInjection = async (storageId, key, isGroup) => {
+        assert.deepEqual([storageId, key, isGroup], ['story', 'Alice', false]);
+        injectionToggleCalls += 1;
+        injectionEnabled = true;
+        return true;
+    };
+    assert.equal(await window.__pmToggleContactSwitcher(trigger), true);
+    let switcher = switcherElements.get('pm-contact-switcher');
+    assert.ok(switcher, '点击标题必须创建联系人浮层');
+    assert.equal(trigger.getAttribute('aria-expanded'), 'true');
+    assert.equal(switcher.getAttribute('role'), 'dialog');
+    assert.match(switcher.innerHTML, /data-contact-action="switch" data-key="Alice"/);
+    assert.match(switcher.innerHTML, /data-contact-action="inject" data-key="Alice"/);
+    assert.match(switcher.innerHTML, /data-contact-action="delete" data-key="Alice"/);
+    assert.match(switcher.innerHTML, />新建<\/button>[\s\S]*>添加<\/button>/);
+    assert.equal(switcher.firstButton.focusCalls, 1, '打开浮层后必须把焦点移入菜单');
+
+    const injectionAttributes = new Map([['aria-pressed', 'false'], ['aria-label', '开启 Alice 的正文注入']]);
+    const injectionClasses = new Set();
+    const injectionAction = {
+        switcherOwner: switcher, isConnected: true, disabled: false, title: '开启正文注入', focusCalls: 0,
+        dataset: { contactAction: 'inject', key: 'Alice', group: 'false', label: 'Alice' },
+        setAttribute(name, value) { injectionAttributes.set(name, String(value)); },
+        getAttribute(name) { return injectionAttributes.get(name) ?? null; },
+        removeAttribute(name) { injectionAttributes.delete(name); },
+        classList: { toggle(name, enabled) { if (enabled) injectionClasses.add(name); else injectionClasses.delete(name); } },
+        focus(options) { assert.deepEqual(options, { preventScroll: true }); this.focusCalls += 1; },
+    };
+    await switcher.dispatch('click', {
+        target: { closest: selector => selector === 'button[data-contact-action]' ? injectionAction : null },
+        stopPropagation() {},
+    });
+    assert.equal(injectionToggleCalls, 1);
+    assert.equal(injectionAction.disabled, false);
+    assert.equal(injectionAttributes.has('aria-busy'), false);
+    assert.equal(injectionAction.getAttribute('aria-pressed'), 'true');
+    assert.equal(injectionAction.getAttribute('aria-label'), '关闭 Alice 的正文注入');
+    assert.equal(injectionAction.title, '关闭正文注入');
+    assert.equal(injectionClasses.has('is-active'), true);
+    assert.equal(injectionAction.focusCalls, 1);
+
+    switcherDocumentListeners.get('keydown')?.({ key: 'Escape' });
+    assert.equal(switcherElements.has('pm-contact-switcher'), false);
+    assert.equal(trigger.getAttribute('aria-expanded'), 'false');
+    assert.equal(trigger.focusCalls, 1, 'Escape 关闭后必须恢复标题焦点');
+    assert.equal(switcherDocumentListeners.has('click'), false);
+    assert.equal(switcherDocumentListeners.has('keydown'), false);
+
+    const staleOpen = window.__pmToggleContactSwitcher(trigger);
+    fixture.state.phoneWindow = phone;
+    const latestOpen = window.__pmToggleContactSwitcher(trigger);
+    assert.equal(await staleOpen, false, '异步打开期间再次关闭必须让旧请求失效');
+    assert.equal(await latestOpen, true, '最后一次标题点击必须由最新请求打开浮层');
+    assert.equal(switcherElements.has('pm-contact-switcher'), true);
 } finally {
     globalThis.confirm = previousDeleteConfirm;
     globalThis.alert = previousDeleteAlert;
@@ -5110,62 +5313,6 @@ await assert.rejects(() => commitEditedGroupUpdate({
 }), /群聊设置提交注入失败：1 项写入失败/,
 '注入返回部分失败时必须进入事务补偿，而不是误判为成功');
 
-const createInjectionToggleButton = () => {
-    const attributes = new Map([['aria-checked', 'false']]);
-    const toggleClasses = makeClassList([]);
-    return {
-        disabled: false, isConnected: true, focusCalls: 0,
-        setAttribute(name, value) { attributes.set(name, String(value)); },
-        getAttribute(name) { return attributes.get(name) ?? null; },
-        querySelector(selector) {
-            assert.equal(selector, '.pm-control-toggle');
-            return { classList: toggleClasses };
-        },
-        focus(options) {
-            assert.deepEqual(options, { preventScroll: true });
-            this.focusCalls += 1;
-        },
-        toggleClasses,
-    };
-};
-
-const pendingToggleButton = createInjectionToggleButton();
-let resolvePendingToggle;
-let pendingToggleCalls = 0;
-let pendingToggleEnabled = false;
-const pendingToggle = toggleConversationInjectionControl(
-    pendingToggleButton,
-    () => {
-        pendingToggleCalls += 1;
-        return new Promise(resolve => { resolvePendingToggle = resolve; });
-    },
-    () => pendingToggleEnabled,
-);
-assert.equal(pendingToggleButton.disabled, true, '会话注入切换进行中必须禁用按钮');
-assert.equal(await toggleConversationInjectionControl(
-    pendingToggleButton, () => { pendingToggleCalls += 1; }, () => false,
-), false, '禁用期间的重复切换必须被拒绝');
-assert.equal(pendingToggleCalls, 1, '禁用期间不得重复执行会话注入事务');
-pendingToggleEnabled = true;
-resolvePendingToggle(true);
-assert.equal(await pendingToggle, true);
-assert.equal(pendingToggleButton.disabled, false, '会话注入切换完成后必须恢复按钮');
-assert.equal(pendingToggleButton.getAttribute('aria-checked'), 'true');
-assert.equal(pendingToggleButton.toggleClasses.contains('is-checked'), true);
-assert.equal(pendingToggleButton.focusCalls, 1, '切换完成后必须恢复焦点');
-
-const rolledBackToggleButton = createInjectionToggleButton();
-rolledBackToggleButton.setAttribute('aria-checked', 'true');
-rolledBackToggleButton.toggleClasses.toggle('is-checked', true);
-assert.equal(await toggleConversationInjectionControl(
-    rolledBackToggleButton, async () => false, () => false,
-), false);
-assert.equal(rolledBackToggleButton.getAttribute('aria-checked'), 'false',
-    '注入事务补偿后控件必须显示回滚后的实际状态');
-assert.equal(rolledBackToggleButton.toggleClasses.contains('is-checked'), false);
-assert.equal(rolledBackToggleButton.disabled, false);
-assert.equal(rolledBackToggleButton.focusCalls, 1, '注入事务补偿后也必须通过 finally 恢复焦点');
-
 const successfulInjectionEvents = [];
 assert.equal(await commitConversationInjectionUpdate({
     persistCandidate: async () => { successfulInjectionEvents.push('persist-new'); },
@@ -5204,6 +5351,57 @@ await assert.rejects(() => commitConversationInjectionUpdate({
 }), error => error?.rollbackError?.message === 'rollback-storage-failed'
     && /原配置回滚也失败，请勿刷新并立即导出备份/.test(error.message),
 '上下文注入补偿失败必须暴露 rollbackError 和事故处置提示');
+
+const previousExplicitInjectionWindow = globalThis.window;
+const previousExplicitInjectionStorage = globalThis.localStorage;
+try {
+    const persistedBidirectional = [];
+    const injectionResolvers = [];
+    let injectionCall = 0;
+    globalThis.localStorage = {
+        setItem(key, value) {
+            if (key === 'ST_SMS_BIDIRECTIONAL') persistedBidirectional.push(JSON.parse(value));
+        },
+    };
+    globalThis.window = {
+        __pmBidirectional: { story: [] },
+        __pmHistories: { story: { Alice: [], Bob: [] } },
+        __pmGroupMeta: { story: {} },
+        __pmInjectionConfig: {},
+    };
+    installPhoneContextInjection({
+        activeStorageId: 'story', currentPersona: 'Alice', isGroupChat: false, currentGroupKey: '',
+    }, {
+        getStorageId: () => 'story', makeOverlay: () => {},
+        applyBidirectionalInjection: () => {
+            injectionCall += 1;
+            if (injectionCall === 1) {
+                return new Promise(resolve => { injectionResolvers.push(resolve); });
+            }
+            if (injectionCall === 2) return Promise.resolve({ written: 1, failedWrites: 0, failedKeys: [] });
+            return Promise.resolve({ written: 1, failedWrites: 0, failedKeys: [] });
+        },
+    });
+    const failedAliceToggle = window.__pmToggleConversationInjection('story', 'Alice', false);
+    const queuedBobToggle = window.__pmToggleConversationInjection('story', 'Bob', false);
+    await new Promise(resolve => setTimeout(resolve, 0));
+    assert.equal(injectionCall, 1, '不同会话的注入切换必须串行，避免全量快照互相覆盖');
+    injectionResolvers[0]({ written: 0, failedWrites: 1, failedKeys: [] });
+    const [aliceResult, bobResult] = await Promise.allSettled([failedAliceToggle, queuedBobToggle]);
+    assert.equal(aliceResult.status, 'rejected');
+    assert.equal(bobResult.status, 'fulfilled');
+    assert.equal(bobResult.value, true);
+    assert.deepEqual(window.__pmBidirectional.story, ['Bob'],
+        '前一项失败补偿不得撤销后续成功的显式目标切换');
+    assert.deepEqual(persistedBidirectional.at(-1).story, ['Bob']);
+    assert.equal(await window.__pmToggleConversationInjection('story', 'Missing', false), false,
+        '显式注入 API 必须拒绝不存在的联系人');
+    assert.equal(await window.__pmToggleConversationInjection('story', 'Alice', true), false,
+        '显式注入 API 必须拒绝伪造的群聊类型');
+} finally {
+    globalThis.window = previousExplicitInjectionWindow;
+    globalThis.localStorage = previousExplicitInjectionStorage;
+}
 
 const previousAutoPokeWindow = globalThis.window;
 try {
@@ -5380,6 +5578,22 @@ try {
     assert.equal(window.__pmSaveCurrentAutoPokeProbability(successfulProbability), true);
     assert.match(sessionOverlayHtml, /已保存：每次有 60% 几率自动发消息。/);
     assert.equal(sessionElements.get('pm-session-auto-poke-probability').focusCalls, 1);
+
+    for (const invalidValue of ['', '-1', '101', '60.5', 'not-a-number']) {
+        const invalidProbability = sessionElements.get('pm-session-auto-poke-probability');
+        invalidProbability.value = invalidValue;
+        const focusBefore = invalidProbability.focusCalls;
+        const alertsBefore = sessionAlerts.length;
+        persistProbe = () => { throw new Error('非法概率不得触发持久化'); };
+        assert.equal(window.__pmSaveCurrentAutoPokeProbability(invalidProbability), false,
+            `非法概率 ${JSON.stringify(invalidValue)} 必须被拒绝`);
+        assert.equal(invalidProbability.value, '60', '非法概率必须恢复为当前已保存值');
+        assert.equal(invalidProbability.disabled, false);
+        assert.equal(invalidProbability.getAttribute('aria-busy'), null);
+        assert.equal(invalidProbability.focusCalls, focusBefore + 1);
+        assert.equal(sessionAlerts.length, alertsBefore + 1);
+        assert.match(sessionAlerts.at(-1), /0 到 100 之间的整数概率/);
+    }
 
     const failedProbability = sessionElements.get('pm-session-auto-poke-probability');
     failedProbability.value = '90';

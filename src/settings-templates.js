@@ -7,6 +7,7 @@ export function renderSettingsHome() {
       <button type="button" role="listitem" onclick="window.__pmShowConfig('api')"><b>API</b><span>默认使用酒馆 API 预设</span></button>
       <button type="button" role="listitem" onclick="window.__pmShowConfig('quick-reply')"><b>手机开关</b><span>创建或清除开关入口</span></button>
       <button type="button" role="listitem" onclick="window.__pmShowConfig('look')"><b>主题</b><span>日夜模式、气泡颜色与背景图</span></button>
+      <button type="button" role="listitem" onclick="window.__pmShowConversationInjection()"><b>正文注入</b><span>统一设置手机会话的注入位置、深度和消息范围</span></button>
       <button type="button" role="listitem" onclick="window.__pmShowConfig('backup')"><b>备份</b><span>导出、导入或安全清理插件数据</span></button>
       <button type="button" role="listitem" onclick="window.__pmShowConfig('budget')"><b>上下文预算</b><span>控制手机会话与社区写入主提示词的额度</span></button>
       <div class="pm-global-setting" role="group" aria-labelledby="pm-wordy-label">

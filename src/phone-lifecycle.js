@@ -1,8 +1,8 @@
 import { POPOVER_SUPPORTED } from './constants.js';
 import { escapeHtml } from './ui.js';
 import {
-    CLOSE_ICON_SVG, CONTROL_ICON_SVG, HOME_ICON_SVG,
-    POKE_ICON_SVG, SEND_ICON_SVG, SIGNAL_ICON_SVG,
+    CHEVRON_DOWN_ICON_SVG, CLOSE_ICON_SVG, CONTROL_ICON_SVG,
+    HOME_ICON_SVG, POKE_ICON_SVG, SEND_ICON_SVG, SIGNAL_ICON_SVG,
 } from './icons.js';
 import { getPendingMessages } from './pending-messages.js';
 import { bindPressGesture } from './press-gesture.js';
@@ -187,7 +187,10 @@ export function installPhoneLifecycle(state, deps) {
     } = deps;
     let unbindSendGesture = null;
     let unbindIsland = null, unbindPhoneResize = null;
-    const pageController = createPhonePageController({ getRoot: () => state.phoneWindow, closeTransientUi: () => closeControlCenter?.() });
+    const pageController = createPhonePageController({
+        getRoot: () => state.phoneWindow,
+        closeTransientUi: () => { deps.closeContactSwitcher?.('page-change'); closeControlCenter?.(); },
+    });
     window.__pmReturnToDesktop = () => deps.showPhoneDesktopPage?.();
     const ambientStatus = createAmbientStatusController({
         getTheme: () => window.__pmTheme,
@@ -255,6 +258,7 @@ export function installPhoneLifecycle(state, deps) {
     };
 
     window.__pmToggleMin = () => {
+        deps.closeContactSwitcher?.('minimize');
         closeControlCenter?.();
         state.isMinimized = !state.isMinimized;
         if (state.isMinimized) {
@@ -298,6 +302,7 @@ export function installPhoneLifecycle(state, deps) {
         unbindIsland = null;
         unbindPhoneResize?.();
         unbindPhoneResize = null;
+        deps.closeContactSwitcher?.('phone-close');
         closeControlCenter?.();
         closeOverlay('phone-close');
         deps.clearActiveQuote?.();
@@ -364,7 +369,10 @@ export function installPhoneLifecycle(state, deps) {
     <div class="pm-navbar">
       <button onclick="window.__pmReturnToDesktop()" class="pm-nav-btn pm-nav-left-btn" title="返回桌面" aria-label="返回桌面">${HOME_ICON_SVG}</button>
       <div class="pm-name-wrap">
-        <div class="pm-name">${escapeHtml(defaultChar)}</div>
+        <button type="button" class="pm-name-trigger" onclick="window.__pmToggleContactSwitcher(this)" aria-haspopup="dialog" aria-expanded="false" aria-controls="pm-contact-switcher" title="切换联系人或群聊">
+          <span class="pm-name">${escapeHtml(defaultChar)}</span>
+          <span class="pm-name-chevron">${CHEVRON_DOWN_ICON_SVG}</span>
+        </button>
         <button onclick="window.__pmPokeCurrent()" class="pm-header-icon-button pm-name-edit is-hidden" title="拍一拍" aria-label="拍一拍当前会话">${POKE_ICON_SVG}</button>
       </div>
       <div class="pm-nav-right">

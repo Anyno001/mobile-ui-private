@@ -220,7 +220,7 @@ export function installPhoneChatPoke(state, deps) {
         makeOverlay(`
     <div class="pm-modal pm-modal-wide">
     <div class="pm-modal-header">
-        <button type="button" onclick="${returnToMembers ? 'window.__pmShowConversationSettings()' : 'window.__pmCloseOverlay()'}" class="pm-modal-close" title="返回" aria-label="返回">${BACK_ICON_SVG}</button>
+        <button type="button" onclick="${returnToMembers ? 'window.__pmShowConversationSettings()' : 'window.__pmReturnToControlCenter()'}" class="pm-modal-close" title="返回" aria-label="返回">${BACK_ICON_SVG}</button>
         <b class="pm-contact-settings-title" title="${escapeAttr(contactName)}">${escapeHtml(contactName)}</b>
         <button type="button" onclick="window.__pmCloseOverlay()" class="pm-modal-close" title="关闭" aria-label="关闭">${CLOSE_ICON_SVG}</button>
     </div>
@@ -268,7 +268,7 @@ export function installPhoneChatPoke(state, deps) {
         const members = state.groupMembers.slice();
         makeOverlay(`
     <div class="pm-modal pm-modal-wide">
-      <div class="pm-modal-header"><button type="button" onclick="window.__pmCloseOverlay()" class="pm-modal-close" title="返回" aria-label="返回">${BACK_ICON_SVG}</button><b>成员聊天行为</b><button type="button" onclick="window.__pmCloseOverlay()" class="pm-modal-close" title="关闭" aria-label="关闭">${CLOSE_ICON_SVG}</button></div>
+      <div class="pm-modal-header"><button type="button" onclick="window.__pmReturnToControlCenter()" class="pm-modal-close" title="返回快捷工具" aria-label="返回快捷工具">${BACK_ICON_SVG}</button><b>成员设置</b><button type="button" onclick="window.__pmCloseOverlay()" class="pm-modal-close" title="关闭" aria-label="关闭">${CLOSE_ICON_SVG}</button></div>
       <div class="pm-member-behavior-list">
         ${members.map(name => `<button onclick="window.__pmShowCharacterBehavior('${safeJS(name)}')">
           <b>${escapeHtml(name)}</b><span>私聊风格、群聊风格与消息频率</span>

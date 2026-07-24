@@ -103,7 +103,10 @@ import { normalizeGroupMeta } from './behavior-config.js';
 import { getAutoPokeConfig } from './auto-poke-config.js';
 import { GROUP_COLORS } from './groups.js';
 import { escapeAttr, escapeHtml, safeJS } from './ui.js';
-import { BACK_ICON_SVG, CLOSE_ICON_SVG, SPARKLES_ICON_SVG, UNLINK_ICON_SVG } from './icons.js';
+import {
+    BACK_ICON_SVG, CHECK_ICON_SVG, CLOSE_ICON_SVG, SPARKLES_ICON_SVG,
+    SYRINGE_ICON_SVG, UNLINK_ICON_SVG,
+} from './icons.js';
 import { clearPendingMessages } from './pending-messages.js';
 import { saveBgLocal } from './storage-background.js';
 import {
@@ -111,8 +114,218 @@ import {
 } from './storage.js';
 
 export function installPhoneDirectory(state, deps) {
-    const { runtime, getStorageId, makeOverlay, applyBidirectionalInjection } = deps;
+    const {
+        runtime, getStorageId, makeOverlay, closeOverlay, closeControlCenter,
+        applyBackground, applyBidirectionalInjection,
+    } = deps;
+    const runConversationInjectionMutation = deps.runConversationInjectionMutation
+        || (task => Promise.resolve().then(task));
     let deleteTransactionActive = false;
+    let contactSwitcherLoadSequence = 0;
+    let contactSwitcherOutsideHandler = null;
+    let contactSwitcherEscapeHandler = null;
+
+    const CONTACT_SWITCHER_ID = 'pm-contact-switcher';
+
+    const currentConversationKey = () => state.isGroupChat && state.currentGroupKey
+        ? state.currentGroupKey : state.currentPersona;
+
+    function closeContactSwitcher(reason = 'close') {
+        contactSwitcherLoadSequence += 1;
+        const switcher = document.getElementById(CONTACT_SWITCHER_ID);
+        const trigger = state.phoneWindow?.querySelector('.pm-name-trigger');
+        switcher?.remove();
+        if (contactSwitcherOutsideHandler) {
+            document.removeEventListener('click', contactSwitcherOutsideHandler, true);
+            contactSwitcherOutsideHandler = null;
+        }
+        if (contactSwitcherEscapeHandler) {
+            document.removeEventListener('keydown', contactSwitcherEscapeHandler, true);
+            contactSwitcherEscapeHandler = null;
+        }
+        trigger?.setAttribute('aria-expanded', 'false');
+        if (['toggle', 'outside', 'escape'].includes(reason)) trigger?.focus({ preventScroll: true });
+        return Boolean(switcher);
+    }
+
+    function remainingConversationKey(storageId) {
+        const groups = Object.keys(window.__pmGroupMeta[storageId] || {});
+        if (groups.length) return groups[0];
+        return Object.keys(window.__pmHistories[storageId] || {})
+            .find(key => !key.startsWith('__group_')) || '';
+    }
+
+    function enterEmptyConversation(storageId) {
+        deps.closeControlCenter?.();
+        state.activeStorageId = storageId;
+        state.currentPersona = '';
+        state.conversationHistory = [];
+        state.isGroupChat = false;
+        state.currentGroupKey = '';
+        state.groupMembers = [];
+        state.groupExtras = [];
+        state.groupDisplayName = '';
+        state.groupRandomNpcEnabled = false;
+        state.groupNature = '';
+        state.groupColorMap = {};
+        const name = state.phoneWindow?.querySelector('.pm-name');
+        const poke = state.phoneWindow?.querySelector('.pm-name-edit');
+        const list = state.phoneWindow?.querySelector('.pm-msg-list');
+        if (name) name.textContent = '选择联系人';
+        poke?.classList.add('is-hidden');
+        if (list) list.innerHTML = '<div class="pm-chat-empty">暂无会话，请从标题处选择或添加联系人。</div>';
+        applyBackground?.();
+        deps.clearActiveQuote?.();
+    }
+
+    async function switchToFirstRemainingSessionOrEmpty(storageId) {
+        const nextKey = remainingConversationKey(storageId);
+        if (nextKey) {
+            try {
+                await window.__pmSwitchContact(nextKey, { skipPreviousPersist: true });
+                return nextKey;
+            } catch (error) {
+                console.error('[phone-mode] 删除后切换剩余会话失败，进入空态', error);
+            }
+        }
+        closeContactSwitcher('empty');
+        try {
+            enterEmptyConversation(storageId);
+        } catch (error) {
+            console.error('[phone-mode] 删除后进入空态失败', error);
+        }
+        return '';
+    }
+
+    async function finishDeletedConversation(storageId, targetKey, isCurrent) {
+        clearPendingMessages(runtime, storageId, targetKey);
+        if (isCurrent) await switchToFirstRemainingSessionOrEmpty(storageId);
+        else await refreshDirectorySurface();
+    }
+
+    async function refreshDirectorySurface(trigger = state.phoneWindow?.querySelector('.pm-name-trigger')) {
+        if (document.getElementById(CONTACT_SWITCHER_ID)) {
+            await renderContactSwitcher(trigger);
+        } else if (document.getElementById('pm-overlay')) {
+            await window.__pmShowList();
+        }
+    }
+
+    async function renderContactSwitcher(trigger) {
+        const phone = state.phoneWindow;
+        if (!phone || !trigger?.isConnected || state.isMinimized) return false;
+        const sequence = ++contactSwitcherLoadSequence;
+        await loadGroupMeta();
+        if (sequence !== contactSwitcherLoadSequence || !trigger.isConnected) return false;
+        closeContactSwitcher('replace');
+        closeControlCenter?.();
+        closeOverlay?.('replace');
+        const storageId = getStorageId();
+        if (!storageId || storageId === 'sms_unknown__default') return false;
+        const histories = window.__pmHistories[storageId] || {};
+        const groups = window.__pmGroupMeta[storageId] || {};
+        const currentKey = currentConversationKey();
+        const renderRow = (key, label, isGroup, detail = '') => {
+            const current = key === currentKey;
+            const enabled = window.__pmConversationInjectionEnabled?.(storageId, key) === true;
+            return `<div class="pm-contact-switcher-row" data-current="${current}">
+              <span class="pm-contact-switcher-current" aria-hidden="true">${current ? CHECK_ICON_SVG : ''}</span>
+              <button type="button" class="pm-contact-switcher-main" data-contact-action="switch" data-key="${escapeAttr(key)}" ${current ? 'aria-current="true"' : ''}>
+                <span>${escapeHtml(label)}</span>${detail ? `<small>${escapeHtml(detail)}</small>` : ''}
+              </button>
+              <button type="button" class="pm-contact-switcher-icon pm-contact-switcher-injection ${enabled ? 'is-active' : ''}" data-contact-action="inject" data-key="${escapeAttr(key)}" data-group="${isGroup}" data-label="${escapeAttr(label)}" aria-pressed="${enabled}" aria-label="${enabled ? '关闭' : '开启'} ${escapeAttr(label)} 的正文注入" title="${enabled ? '关闭正文注入' : '开启正文注入'}">${SYRINGE_ICON_SVG}</button>
+              <button type="button" class="pm-contact-switcher-icon pm-entity-delete" data-contact-action="delete" data-key="${escapeAttr(key)}" data-group="${isGroup}" aria-label="永久删除${isGroup ? '群聊' : '联系人'} ${escapeAttr(label)}" title="永久删除${isGroup ? '群聊' : '联系人'}">${UNLINK_ICON_SVG}</button>
+            </div>`;
+        };
+        const rows = [
+            ...Object.keys(groups).map(key => {
+                const meta = normalizeGroupMeta(groups[key]);
+                return renderRow(key, meta.name, true, meta.members.join('、'));
+            }),
+            ...Object.keys(histories)
+                .filter(key => !key.startsWith('__group_'))
+                .map(key => renderRow(key, key, false)),
+        ];
+        const switcher = document.createElement('div');
+        switcher.id = CONTACT_SWITCHER_ID;
+        switcher.className = 'pm-contact-switcher';
+        switcher.dataset.theme = window.__pmTheme?.darkMode || 'light';
+        switcher.setAttribute('role', 'dialog');
+        switcher.setAttribute('aria-label', '切换联系人或群聊');
+        switcher.innerHTML = `
+          <div class="pm-contact-switcher-list">${rows.length ? rows.join('') : '<div class="pm-contact-switcher-empty">暂无联系人或群聊</div>'}</div>
+          <div class="pm-contact-switcher-actions">
+            <button type="button" onclick="window.__pmShowGroupCreate()">新建</button>
+            <button type="button" onclick="window.__pmShowAddContact()">添加</button>
+          </div>`;
+        phone.appendChild(switcher);
+        const phoneRect = phone.getBoundingClientRect();
+        const triggerRect = trigger.getBoundingClientRect();
+        const width = Math.min(320, Math.max(240, phone.clientWidth - 20));
+        switcher.style.width = `${width}px`;
+        switcher.style.left = `${Math.max(10, Math.min(phone.clientWidth - width - 10, triggerRect.left - phoneRect.left + (triggerRect.width - width) / 2))}px`;
+        switcher.style.top = `${Math.max(8, triggerRect.bottom - phoneRect.top + 6)}px`;
+        trigger.setAttribute('aria-expanded', 'true');
+        bindContactSwitcher(switcher, trigger);
+        switcher.querySelector('[aria-current="true"]')?.scrollIntoView?.({ block: 'nearest' });
+        switcher.querySelector('button')?.focus({ preventScroll: true });
+        return true;
+    }
+
+    window.__pmToggleContactSwitcher = trigger => {
+        if (document.getElementById(CONTACT_SWITCHER_ID)) return closeContactSwitcher('toggle');
+        return renderContactSwitcher(trigger || state.phoneWindow?.querySelector('.pm-name-trigger'));
+    };
+
+    function bindContactSwitcher(switcher, trigger) {
+        switcher.addEventListener('click', async event => {
+            const action = event.target.closest('button[data-contact-action]');
+            if (!action || !switcher.contains(action) || action.disabled) return;
+            event.stopPropagation();
+            const key = action.dataset.key || '';
+            if (action.dataset.contactAction === 'switch') {
+                await window.__pmSwitchContact(key);
+                return;
+            }
+            if (action.dataset.contactAction === 'inject') {
+                action.disabled = true;
+                action.setAttribute('aria-busy', 'true');
+                try {
+                    await window.__pmToggleConversationInjection(getStorageId(), key, action.dataset.group === 'true');
+                    const enabled = window.__pmConversationInjectionEnabled(getStorageId(), key) === true;
+                    action.setAttribute('aria-pressed', String(enabled));
+                    action.classList.toggle('is-active', enabled);
+                    action.title = enabled ? '关闭正文注入' : '开启正文注入';
+                    const label = action.dataset.label || '会话';
+                    action.setAttribute('aria-label', `${enabled ? '关闭' : '开启'} ${label} 的正文注入`);
+                } catch (error) {
+                    alert(`${action.dataset.label || '会话'}注入开关保存失败：${error?.message || '请重试'}`);
+                } finally {
+                    if (action.isConnected) {
+                        action.disabled = false;
+                        action.removeAttribute('aria-busy');
+                        action.focus({ preventScroll: true });
+                    }
+                }
+                return;
+            }
+            if (action.dataset.contactAction === 'delete') {
+                if (action.dataset.group === 'true') await window.__pmDelGroup(key);
+                else await window.__pmDel(key);
+            }
+        });
+        contactSwitcherOutsideHandler = event => {
+            if (switcher.contains(event.target) || trigger.contains(event.target)) return;
+            closeContactSwitcher('outside');
+        };
+        contactSwitcherEscapeHandler = event => {
+            if (event.key === 'Escape') closeContactSwitcher('escape');
+        };
+        document.addEventListener('click', contactSwitcherOutsideHandler, true);
+        document.addEventListener('keydown', contactSwitcherEscapeHandler, true);
+    }
+
+    Object.assign(deps, { closeContactSwitcher });
 
     const setDeleteButtonsDisabled = disabled => {
         const buttons = document.querySelectorAll?.('.pm-entity-delete') || [];
@@ -146,7 +359,8 @@ export function installPhoneDirectory(state, deps) {
     }
 
     function showGroupForm(mode, existingName, existingMembers) {
-        document.getElementById('pm-overlay')?.remove();
+        closeContactSwitcher('replace');
+        closeOverlay?.('replace');
         const title = mode === 'create' ? '新建群聊' : '编辑群聊';
         const initName = existingName || '';
         const initMembers = (existingMembers || []).join(' / ');
@@ -283,7 +497,7 @@ export function installPhoneDirectory(state, deps) {
                     })
                     : true,
             });
-            document.getElementById('pm-overlay')?.remove();
+            closeOverlay?.('saved');
         } catch (error) {
             alert(error.message || '群聊设置保存失败');
         }
@@ -325,7 +539,7 @@ export function installPhoneDirectory(state, deps) {
                 };
                 window.__pmGroupMeta[id][groupKey] = normalizeGroupMeta({ name: groupName, members: names });
                 await saveGroupMeta();
-                document.getElementById('pm-overlay')?.remove();
+                closeOverlay?.('saved');
                 state.isGroupChat = true; state.groupMembers = names; state.groupExtras = [];
                 state.groupDisplayName = groupName; state.currentGroupKey = groupKey;
                 state.groupRandomNpcEnabled = false; state.groupNature = '';
@@ -384,7 +598,8 @@ export function installPhoneDirectory(state, deps) {
     };
 
     window.__pmShowAddContact = (resultMessage = '') => {
-        document.getElementById('pm-overlay')?.remove();
+        closeContactSwitcher('replace');
+        closeOverlay?.('replace');
         makeOverlay(`
 <div class="pm-modal">
   <div class="pm-modal-header"><span></span><b>添加联系人</b><button type="button" onclick="window.__pmShowList()" class="pm-modal-close" title="关闭" aria-label="关闭">${CLOSE_ICON_SVG}</button></div>
@@ -418,62 +633,62 @@ export function installPhoneDirectory(state, deps) {
         const groupName = window.__pmGroupMeta[id]?.[key]?.name || '未命名群聊';
         if (!confirm(`永久删除群聊“${groupName}”？聊天记录、注入关系、背景和自动消息配置都会一并删除，且无法恢复。`)) return false;
         if (!acquireDeleteTransaction()) return false;
-        let snapshots = null;
-        try {
-            snapshots = {
-                groupMeta: clone(window.__pmGroupMeta), histories: clone(window.__pmHistories),
-                bidirectional: clone(window.__pmBidirectional), poke: clone(window.__pmPokeConfig),
-                backgrounds: clone(window.__pmBgLocal),
-            };
-            if (window.__pmGroupMeta[id]) delete window.__pmGroupMeta[id][key];
-            if (window.__pmHistories[id]) delete window.__pmHistories[id][key];
-            const arr = window.__pmBidirectional[id] || [], idx = arr.indexOf(key);
-            if (idx >= 0) arr.splice(idx, 1);
-            const bgKey = `${id}_${key}`;
-            if (window.__pmBgLocal[bgKey]) delete window.__pmBgLocal[bgKey];
-            if (window.__pmPokeConfig[id]?.[key]) delete window.__pmPokeConfig[id][key];
-            await saveHistoriesStrict();
-            await saveGroupMeta();
-            if (!savePokeConfig()) throw new Error('自动消息配置保存失败');
-            if (!saveBidirectional()) throw new Error('注入配置保存失败');
-            if (snapshots.backgrounds[bgKey]) await saveBgLocal();
-            const injectionResult = await applyBidirectionalInjection();
-            const injectionError = injectionFailure(injectionResult, '删除清理', '群聊');
-            if (injectionError) throw injectionError;
-            await window.__pmShowList();
-            clearPendingMessages(runtime, id, key);
-            if (state.currentGroupKey === key) {
-                state.isGroupChat = false; state.currentGroupKey = ''; state.currentPersona = ''; state.conversationHistory = [];
-                state.groupMembers = []; state.groupExtras = []; state.groupDisplayName = '';
-                state.groupRandomNpcEnabled = false; state.groupNature = ''; state.groupColorMap = {};
-            }
-            return true;
-        } catch (error) {
-            if (!snapshots) {
-                alert(error.message || '群聊删除失败');
-                return false;
-            }
-            window.__pmGroupMeta = snapshots.groupMeta; window.__pmHistories = snapshots.histories;
-            window.__pmBidirectional = snapshots.bidirectional; window.__pmPokeConfig = snapshots.poke; window.__pmBgLocal = snapshots.backgrounds;
-            let rollbackError = null;
+        return runConversationInjectionMutation(async () => {
+            let snapshots = null;
             try {
+                snapshots = {
+                    groupMeta: clone(window.__pmGroupMeta), histories: clone(window.__pmHistories),
+                    bidirectional: clone(window.__pmBidirectional), poke: clone(window.__pmPokeConfig),
+                    backgrounds: clone(window.__pmBgLocal),
+                };
+                if (window.__pmGroupMeta[id]) delete window.__pmGroupMeta[id][key];
+                if (window.__pmHistories[id]) delete window.__pmHistories[id][key];
+                const arr = window.__pmBidirectional[id] || [], idx = arr.indexOf(key);
+                if (idx >= 0) arr.splice(idx, 1);
+                const bgKey = `${id}_${key}`;
+                if (window.__pmBgLocal[bgKey]) delete window.__pmBgLocal[bgKey];
+                if (window.__pmPokeConfig[id]?.[key]) delete window.__pmPokeConfig[id][key];
                 await saveHistoriesStrict();
                 await saveGroupMeta();
-                if (!savePokeConfig() || !saveBidirectional()) throw new Error('本地配置回滚失败');
-                await saveBgLocal();
-                const rollbackResult = await applyBidirectionalInjection();
-                const rollbackInjectionError = injectionFailure(rollbackResult, '删除补偿', '群聊');
-                if (rollbackInjectionError) throw rollbackInjectionError;
-            } catch (rollbackFailure) {
-                rollbackError = rollbackFailure;
+                if (!savePokeConfig()) throw new Error('自动消息配置保存失败');
+                if (!saveBidirectional()) throw new Error('注入配置保存失败');
+                if (snapshots.backgrounds[bgKey]) await saveBgLocal();
+                const injectionResult = await applyBidirectionalInjection();
+                const injectionError = injectionFailure(injectionResult, '删除清理', '群聊');
+                if (injectionError) throw injectionError;
+                try {
+                    await finishDeletedConversation(id, key, state.currentGroupKey === key);
+                } catch (error) {
+                    console.error('[phone-mode] 群聊已删除，但界面收尾失败', error);
+                }
+                return true;
+            } catch (error) {
+                if (!snapshots) {
+                    alert(error.message || '群聊删除失败');
+                    return false;
+                }
+                window.__pmGroupMeta = snapshots.groupMeta; window.__pmHistories = snapshots.histories;
+                window.__pmBidirectional = snapshots.bidirectional; window.__pmPokeConfig = snapshots.poke; window.__pmBgLocal = snapshots.backgrounds;
+                let rollbackError = null;
+                try {
+                    await saveHistoriesStrict();
+                    await saveGroupMeta();
+                    if (!savePokeConfig() || !saveBidirectional()) throw new Error('本地配置回滚失败');
+                    await saveBgLocal();
+                    const rollbackResult = await applyBidirectionalInjection();
+                    const rollbackInjectionError = injectionFailure(rollbackResult, '删除补偿', '群聊');
+                    if (rollbackInjectionError) throw rollbackInjectionError;
+                } catch (rollbackFailure) {
+                    rollbackError = rollbackFailure;
+                }
+                alert(rollbackError
+                    ? `${error.message || '群聊删除失败'}；原数据回滚也失败，请勿刷新并立即导出备份：${rollbackError.message}`
+                    : (error.message || '群聊删除失败'));
+                return false;
+            } finally {
+                releaseDeleteTransaction();
             }
-            alert(rollbackError
-                ? `${error.message || '群聊删除失败'}；原数据回滚也失败，请勿刷新并立即导出备份：${rollbackError.message}`
-                : (error.message || '群聊删除失败'));
-            return false;
-        } finally {
-            releaseDeleteTransaction();
-        }
+        });
     };
 
 
@@ -481,56 +696,60 @@ export function installPhoneDirectory(state, deps) {
         const id = getStorageId();
         if (!confirm(`永久删除联系人“${name}”？聊天记录、注入关系、背景和自动消息配置都会一并删除，且无法恢复。`)) return false;
         if (!acquireDeleteTransaction()) return false;
-        let snapshots = null;
-        try {
-            snapshots = {
-                histories: clone(window.__pmHistories),
-                bidirectional: clone(window.__pmBidirectional),
-                poke: clone(window.__pmPokeConfig),
-                backgrounds: clone(window.__pmBgLocal),
-            };
-            if (window.__pmHistories[id]) delete window.__pmHistories[id][name];
-            const arr = window.__pmBidirectional[id] || [], idx = arr.indexOf(name);
-            if (idx >= 0) arr.splice(idx, 1);
-            const bgKey = `${id}_${name}`;
-            if (window.__pmBgLocal[bgKey]) delete window.__pmBgLocal[bgKey];
-            if (window.__pmPokeConfig[id]?.[name]) delete window.__pmPokeConfig[id][name];
-            await saveHistoriesStrict();
-            if (!savePokeConfig()) throw new Error('自动消息配置保存失败');
-            if (!saveBidirectional()) throw new Error('注入配置保存失败');
-            if (snapshots.backgrounds[bgKey]) await saveBgLocal();
-            const injectionResult = await applyBidirectionalInjection();
-            const injectionError = injectionFailure(injectionResult, '删除清理', '联系人');
-            if (injectionError) throw injectionError;
-            await window.__pmShowList();
-            clearPendingMessages(runtime, id, name);
-            if (!state.isGroupChat && state.currentPersona === name) { state.currentPersona = ''; state.conversationHistory = []; }
-            return true;
-        } catch (error) {
-            if (!snapshots) {
-                alert(error.message || '联系人删除失败');
-                return false;
-            }
-            window.__pmHistories = snapshots.histories; window.__pmBidirectional = snapshots.bidirectional;
-            window.__pmPokeConfig = snapshots.poke; window.__pmBgLocal = snapshots.backgrounds;
-            let rollbackError = null;
+        return runConversationInjectionMutation(async () => {
+            let snapshots = null;
             try {
+                snapshots = {
+                    histories: clone(window.__pmHistories),
+                    bidirectional: clone(window.__pmBidirectional),
+                    poke: clone(window.__pmPokeConfig),
+                    backgrounds: clone(window.__pmBgLocal),
+                };
+                if (window.__pmHistories[id]) delete window.__pmHistories[id][name];
+                const arr = window.__pmBidirectional[id] || [], idx = arr.indexOf(name);
+                if (idx >= 0) arr.splice(idx, 1);
+                const bgKey = `${id}_${name}`;
+                if (window.__pmBgLocal[bgKey]) delete window.__pmBgLocal[bgKey];
+                if (window.__pmPokeConfig[id]?.[name]) delete window.__pmPokeConfig[id][name];
                 await saveHistoriesStrict();
-                if (!savePokeConfig() || !saveBidirectional()) throw new Error('本地配置回滚失败');
-                await saveBgLocal();
-                const rollbackResult = await applyBidirectionalInjection();
-                const rollbackInjectionError = injectionFailure(rollbackResult, '删除补偿', '联系人');
-                if (rollbackInjectionError) throw rollbackInjectionError;
-            } catch (rollbackFailure) {
-                rollbackError = rollbackFailure;
+                if (!savePokeConfig()) throw new Error('自动消息配置保存失败');
+                if (!saveBidirectional()) throw new Error('注入配置保存失败');
+                if (snapshots.backgrounds[bgKey]) await saveBgLocal();
+                const injectionResult = await applyBidirectionalInjection();
+                const injectionError = injectionFailure(injectionResult, '删除清理', '联系人');
+                if (injectionError) throw injectionError;
+                try {
+                    await finishDeletedConversation(id, name, !state.isGroupChat && state.currentPersona === name);
+                } catch (error) {
+                    console.error('[phone-mode] 联系人已删除，但界面收尾失败', error);
+                }
+                return true;
+            } catch (error) {
+                if (!snapshots) {
+                    alert(error.message || '联系人删除失败');
+                    return false;
+                }
+                window.__pmHistories = snapshots.histories; window.__pmBidirectional = snapshots.bidirectional;
+                window.__pmPokeConfig = snapshots.poke; window.__pmBgLocal = snapshots.backgrounds;
+                let rollbackError = null;
+                try {
+                    await saveHistoriesStrict();
+                    if (!savePokeConfig() || !saveBidirectional()) throw new Error('本地配置回滚失败');
+                    await saveBgLocal();
+                    const rollbackResult = await applyBidirectionalInjection();
+                    const rollbackInjectionError = injectionFailure(rollbackResult, '删除补偿', '联系人');
+                    if (rollbackInjectionError) throw rollbackInjectionError;
+                } catch (rollbackFailure) {
+                    rollbackError = rollbackFailure;
+                }
+                alert(rollbackError
+                    ? `${error.message || '联系人删除失败'}；原数据回滚也失败，请勿刷新并立即导出备份：${rollbackError.message}`
+                    : (error.message || '联系人删除失败'));
+                return false;
+            } finally {
+                releaseDeleteTransaction();
             }
-            alert(rollbackError
-                ? `${error.message || '联系人删除失败'}；原数据回滚也失败，请勿刷新并立即导出备份：${rollbackError.message}`
-                : (error.message || '联系人删除失败'));
-            return false;
-        } finally {
-            releaseDeleteTransaction();
-        }
+        });
     };
     Object.assign(deps, { showGroupForm });
 }

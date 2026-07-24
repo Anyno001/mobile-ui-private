@@ -1,6 +1,7 @@
 import { EXTENSION_PROMPT_POSITIONS, MAX_INJECTION_DEPTH } from './constants.js';
 import { normalizeInjectionConfig } from './behavior-config.js';
-import { BACK_ICON_SVG, CLOSE_ICON_SVG, INJECTION_ICON_SVG } from './icons.js';
+import { resolveConversationTarget } from './conversation.js';
+import { BACK_ICON_SVG, CLOSE_ICON_SVG } from './icons.js';
 import { loadInjectionConfig, saveBidirectional, saveInjectionConfig } from './storage.js';
 import { escapeHtml } from './ui.js';
 
@@ -78,16 +79,64 @@ function injectionPositionLabel(position) {
 
 export function installPhoneContextInjection(state, deps) {
     const { getStorageId, makeOverlay, applyBidirectionalInjection } = deps;
+    let injectionToggleQueue = Promise.resolve();
 
-    const currentTarget = () => {
-        const storageId = state.activeStorageId || getStorageId();
-        const targetKey = state.isGroupChat && state.currentGroupKey ? state.currentGroupKey : state.currentPersona;
-        if (!storageId || storageId === 'sms_unknown__default' || !targetKey) return null;
-        return { storageId, targetKey, isGroup: state.isGroupChat };
-    };
+    const currentTarget = () => resolveConversationTarget(state, getStorageId);
 
     const isEnabled = target => Boolean(target
         && (window.__pmBidirectional[target.storageId] || []).includes(target.targetKey));
+
+    const explicitTarget = (storageId, targetKey, isGroup = false, { requireExisting = false } = {}) => {
+        const normalizedStorageId = String(storageId || '').trim();
+        const normalizedTargetKey = String(targetKey || '').trim();
+        if (!normalizedStorageId || normalizedStorageId === 'sms_unknown__default' || !normalizedTargetKey) return null;
+        if (requireExisting) {
+            const groupExists = Object.prototype.hasOwnProperty.call(
+                window.__pmGroupMeta?.[normalizedStorageId] || {}, normalizedTargetKey,
+            );
+            const contactExists = !normalizedTargetKey.startsWith('__group_')
+                && Object.prototype.hasOwnProperty.call(
+                    window.__pmHistories?.[normalizedStorageId] || {}, normalizedTargetKey,
+                );
+            if ((isGroup === true && !groupExists) || (isGroup !== true && !contactExists)) return null;
+        }
+        return {
+            storageId: normalizedStorageId,
+            targetKey: normalizedTargetKey,
+            saveKey: normalizedTargetKey,
+            isGroup: isGroup === true,
+        };
+    };
+
+    const toggleTargetInjection = async (target, { validateCurrent = false } = {}) => {
+        if (!target) return false;
+        const snapshot = clone(window.__pmBidirectional);
+        const selected = new Set(window.__pmBidirectional[target.storageId] || []);
+        if (selected.has(target.targetKey)) selected.delete(target.targetKey);
+        else selected.add(target.targetKey);
+        window.__pmBidirectional[target.storageId] = [...selected];
+        await commitConversationInjectionUpdate({
+            persistCandidate: async () => {
+                if (!saveBidirectional()) throw new Error('会话注入开关保存失败：浏览器存储不可用或空间不足');
+            },
+            restoreSnapshot: () => { window.__pmBidirectional = snapshot; },
+            persistSnapshot: async () => {
+                if (!saveBidirectional()) throw new Error('会话注入开关回滚失败');
+            },
+            applyInjection: () => applyBidirectionalInjection(),
+            validateResult: result => validateCurrent && isEnabled(target)
+                ? currentPhoneInjectionFailure(result, target) : null,
+        });
+        return true;
+    };
+
+    const enqueueToggle = task => {
+        const pending = injectionToggleQueue.then(task, task);
+        injectionToggleQueue = pending.catch(() => {});
+        return pending;
+    };
+
+    Object.assign(deps, { runConversationInjectionMutation: enqueueToggle });
 
     window.__pmConversationInjectionSummary = () => {
         const config = normalizeInjectionConfig(window.__pmInjectionConfig);
@@ -96,28 +145,22 @@ export function installPhoneContextInjection(state, deps) {
 
     window.__pmCurrentConversationInjectionEnabled = () => isEnabled(currentTarget());
 
+    window.__pmConversationInjectionEnabled = (storageId, targetKey) => isEnabled(
+        explicitTarget(storageId, targetKey),
+    );
+
+    window.__pmToggleConversationInjection = async (storageId, targetKey, isGroup = false) => {
+        return enqueueToggle(() => {
+            const target = explicitTarget(storageId, targetKey, isGroup, { requireExisting: true });
+            return target ? toggleTargetInjection(target) : false;
+        });
+    };
+
     window.__pmToggleCurrentConversationInjection = async () => {
         const target = currentTarget();
         if (!target) return false;
-        const snapshot = clone(window.__pmBidirectional);
-        const selected = new Set(window.__pmBidirectional[target.storageId] || []);
-        if (selected.has(target.targetKey)) selected.delete(target.targetKey);
-        else selected.add(target.targetKey);
-        window.__pmBidirectional[target.storageId] = [...selected];
         try {
-            await commitConversationInjectionUpdate({
-                persistCandidate: async () => {
-                    if (!saveBidirectional()) throw new Error('当前会话注入开关保存失败：浏览器存储不可用或空间不足');
-                },
-                restoreSnapshot: () => { window.__pmBidirectional = snapshot; },
-                persistSnapshot: async () => {
-                    if (!saveBidirectional()) throw new Error('当前会话注入开关回滚失败');
-                },
-                applyInjection: () => applyBidirectionalInjection(),
-                validateResult: result => isEnabled(target)
-                    ? currentPhoneInjectionFailure(result, target) : null,
-            });
-            return true;
+            return await enqueueToggle(() => toggleTargetInjection(target, { validateCurrent: true }));
         } catch (error) {
             alert(error.message || '当前会话注入开关保存失败');
             return false;
@@ -126,15 +169,11 @@ export function installPhoneContextInjection(state, deps) {
 
     window.__pmShowConversationInjection = (statusMessage = '') => {
         const config = normalizeInjectionConfig(window.__pmInjectionConfig || loadInjectionConfig());
-        const target = currentTarget();
-        if (!target) return alert('当前没有可配置的手机会话。');
-        const enabled = isEnabled(target);
         makeOverlay(`
     <div class="pm-modal pm-modal-wide pm-conversation-injection-modal">
-      <div class="pm-modal-header"><button type="button" onclick="window.__pmShowSessionBehavior()" class="pm-modal-close" title="返回会话行为" aria-label="返回会话行为">${BACK_ICON_SVG}</button><b>正文注入</b><button type="button" onclick="window.__pmCloseOverlay()" class="pm-modal-close" title="关闭" aria-label="关闭">${CLOSE_ICON_SVG}</button></div>
+      <div class="pm-modal-header"><button type="button" onclick="window.__pmShowConfig('home')" class="pm-modal-close" title="返回设置" aria-label="返回设置">${BACK_ICON_SVG}</button><b>正文注入规则</b><button type="button" onclick="window.__pmCloseOverlay()" class="pm-modal-close" title="关闭" aria-label="关闭">${CLOSE_ICON_SVG}</button></div>
       <div class="pm-modal-scroll pm-conversation-injection-body">
-        <section class="pm-session-behavior-section"><button id="pm-session-injection-toggle" type="button" class="pm-session-behavior-toggle" role="checkbox" aria-checked="${enabled}" onclick="window.__pmToggleSessionInjection(this)">${INJECTION_ICON_SVG}<span><b>将当前${target.isGroup ? '群聊' : '聊天'}内容注入正文</b><small>开启后，当前角色生成正文时可读取这段手机会话；设置按当前会话保存。</small></span><i class="pm-control-toggle ${enabled ? 'is-checked' : ''}" aria-hidden="true"></i></button></section>
-        <div class="pm-cfg-tip pm-conversation-injection-note">下方位置、深度和消息范围由所有私聊与群聊共用。</div>
+        <div class="pm-cfg-tip pm-conversation-injection-note">会话是否启用注入请在聊天标题的联系人列表中切换；这里统一设置所有私聊与群聊的位置、深度和消息范围。</div>
         <div id="pm-conversation-injection-status" class="pm-conversation-injection-status" role="status" ${statusMessage ? '' : 'hidden'}>${escapeHtml(statusMessage)}</div>
         <label class="pm-conversation-injection-field">注入位置
           <select id="pm-conversation-injection-position" class="pm-cfg-input pm-conversation-injection-config">

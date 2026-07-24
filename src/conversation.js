@@ -47,6 +47,23 @@ function getStoredHistory(id, saveKey) {
     return Array.isArray(history) ? cloneHistory(history.slice(-SAVE_LIMIT)) : [];
 }
 
+
+/**
+ * 解析当前手机会话目标，注入位置显式提供 storageId/targetKey，
+ * 避免 phone-context-injection / phone-control-center / phone-directory 各算各的目标时漂移。
+ *
+ * @param {object} state
+ * @param {() => string} getStorageId
+ * @returns {{storageId:string,targetKey:string,saveKey:string,isGroup:boolean}|null}
+ */
+export function resolveConversationTarget(state, getStorageId) {
+    const storageId = state.activeStorageId || getStorageId();
+    const targetKey = state.isGroupChat && state.currentGroupKey ? state.currentGroupKey : state.currentPersona;
+    if (!storageId || storageId === 'sms_unknown__default' || !targetKey) return null;
+    return { storageId, targetKey, saveKey: targetKey, isGroup: state.isGroupChat };
+}
+
+
 /**
  * 安装会话管理功能
  * 集中管理：__pmSwitchContact（切换联系人/群聊）、__pmSwitch（切换并重绘历史）
@@ -89,11 +106,17 @@ export function installConversation(state, deps) {
             state.isGroupChat = false; state.groupMembers = []; state.groupExtras = []; state.groupColorMap = {};
             state.groupDisplayName = ''; state.groupRandomNpcEnabled = false; state.groupNature = ''; state.currentGroupKey = '';
         }
-        window.__pmSwitch(key, _prevSaveKey, _prevStorageId, { ...options, previousConversationContext });
+        window.__pmSwitch(
+            key,
+            options.skipPreviousPersist === true ? undefined : _prevSaveKey,
+            options.skipPreviousPersist === true ? undefined : _prevStorageId,
+            { ...options, previousConversationContext },
+        );
     };
 
     window.__pmSwitch = (name, _prevSaveKey, _prevStorageId, options = {}) => {
         if (!name?.trim()) return; name = name.trim();
+        deps.closeContactSwitcher?.('conversation-switch');
         deps.closeControlCenter?.();
         deps.closeOverlay?.('conversation-switch');
         deps.clearActiveQuote?.();
@@ -105,7 +128,7 @@ export function installConversation(state, deps) {
         // 切换前先把当前联系人的最新 state.conversationHistory 落盘，
         // 修复：调用方（__pmConfirmGroup）可能在调用本函数前已修改了 state.isGroupChat/state.currentGroupKey，
         // 导致落盘时 saveKey 错误地指向新目标，把旧聊天记录写入新会话。优先使用调用方传入的 _prevSaveKey。
-        if (_prevSaveKey || state.currentPersona) {
+        if (options.skipPreviousPersist !== true && (_prevSaveKey || state.currentPersona)) {
             persistCurrentHistory(
                 state, getStorageId, _prevSaveKey ?? getSaveKey(state), _prevStorageId,
                 undefined, options.previousConversationContext,

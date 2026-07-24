@@ -16,6 +16,8 @@ export const CONTACTS_ICON_SVG = icon('<circle cx="9" cy="8" r="3"/><path d="M3 
 export const CHARACTER_ICON_SVG = icon('<circle cx="9" cy="8" r="3"/><path d="M3.5 20c.3-4 2.4-6 5.5-6s5.2 2 5.5 6"/><path d="M17 7h4M19 5v4M16 14h5M16 18h5"/>');
 export const SETTINGS_ICON_SVG = icon('<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-4V21a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H2.8v-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1A1.7 1.7 0 0 0 9 4.6 1.7 1.7 0 0 0 10 3V2.8h4V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v4H21a1.7 1.7 0 0 0-1.6 1z"/>');
 export const INJECTION_ICON_SVG = icon('<path d="M8 7l4-4 4 4M12 3v8M16 17l-4 4-4-4M12 21v-8"/><path d="M5 12h14"/>');
+export const SYRINGE_ICON_SVG = icon('<path d="M14 4l6 6M17 3l4 4M13 8l3 3M5 19l8-8 3 3-8 8H5v-3zM3 21l3-3"/>');
+export const CHECK_ICON_SVG = icon('<path d="M5 12l4 4L19 6"/>');
 export const COMMUNITY_ICON_SVG = icon('<path d="M4 19V8l8-4 8 4v11"/><path d="M8 19v-6h8v6M8 9h.01M12 9h.01M16 9h.01"/>');
 export const FEED_ICON_SVG = icon('<path d="M5 5h14v14H5z"/><path d="M8 9h8M8 12h8M8 15h5"/>');
 export const LIVE_ICON_SVG = icon('<rect x="3" y="6" width="14" height="12" rx="2"/><path d="M17 10l4-2v8l-4-2z"/><circle cx="8" cy="12" r="1" fill="currentColor" stroke="none"/>');

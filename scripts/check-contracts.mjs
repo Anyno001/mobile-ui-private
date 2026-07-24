@@ -1216,12 +1216,21 @@ for (const expected of [
 }
 for (const expected of [
   'commitConversationInjectionUpdate', '__pmShowConversationInjection', '__pmSaveConversationInjection',
-  '__pmConversationInjectionSummary', '__pmToggleCurrentConversationInjection', 'normalizeInjectionConfig',
+  '__pmConversationInjectionSummary', '__pmToggleCurrentConversationInjection',
+  '__pmConversationInjectionEnabled', '__pmToggleConversationInjection', 'explicitTarget', 'toggleTargetInjection',
+  'enqueueToggle', 'injectionToggleQueue', '{ requireExisting: true }',
+  'runConversationInjectionMutation: enqueueToggle',
+  'normalizeInjectionConfig',
   'pm-conversation-injection-position', 'pm-conversation-injection-depth', 'pm-conversation-injection-limit',
-  '将当前${target.isGroup ? \'群聊\' : \'聊天\'}内容注入正文',
-  '下方位置、深度和消息范围由所有私聊与群聊共用', 'pm-session-injection-toggle',
-  'role="checkbox"', 'aria-checked="${enabled}"', '${BACK_ICON_SVG}',
+  '会话是否启用注入请在聊天标题的联系人列表中切换',
+  '这里统一设置所有私聊与群聊的位置、深度和消息范围',
+  "onclick=\"window.__pmShowConfig('home')\"", '${BACK_ICON_SVG}',
 ]) requireText('phone-context-injection.js', sourceModuleByName.get('phone-context-injection.js')?.code || '', expected);
+for (const expected of [
+  "action.setAttribute('aria-label', `${enabled ? '关闭' : '开启'} ${label} 的正文注入`)",
+  'finishDeletedConversation', '删除后切换剩余会话失败，进入空态',
+  'runConversationInjectionMutation(async () =>',
+]) requireText('phone-directory.js', sourceModuleByName.get('phone-directory.js')?.code || '', expected);
 requireText('phone-chat.js', sourceModuleByName.get('phone-chat.js')?.code || '', 'removePendingBatch(runtime');
 requireText('phone-chat.js', sourceModuleByName.get('phone-chat.js')?.code || '', 'rebaseRenderedHistory(historyWindow.trimmedCount)');
 requireText('phone-chat-poke.js', sourceModuleByName.get('phone-chat-poke.js')?.code || '', 'rebaseRenderedHistory(historyWindow.trimmedCount)');
@@ -1564,20 +1573,30 @@ if (directoryTemplate.includes('pm-forum-entry') || directoryTemplate.includes('
 if (controlCenterTemplate.includes('makeOverlay') || controlCenterTemplate.includes('<span')) {
   failures.push('phone-control-center.js: compact control menu must not use the full overlay or explanatory subtitles');
 }
-for (const title of ['编辑消息', '联系人', '会话行为', '表情包管理', '日历', '删除信息']) {
+for (const title of ['编辑消息', '角色设置', '成员设置', '自动发消息', '表情包管理', '日历', '删除消息']) {
   if (!controlCenterTemplate.includes(title)) failures.push(`phone-control-center.js: compact control menu missing title ${title}`);
 }
 for (const expected of [
-  "action === 'contacts'", "action === 'session-behavior'", "action === 'calendar'", 'return window.__pmShowList()', 'return showPhoneCalendarPage()',
+  "action === 'settings'", "action === 'auto-poke'", "action === 'calendar'", 'return window.__pmShowConversationSettings()',
+  'return window.__pmShowAutoPokeSettings()', 'return showPhoneCalendarPage()',
   'runControlMenuAction', 'controlActionLabel', 'CALENDAR_ICON_SVG', 'EDIT_ICON_SVG', 'EMOJI_ICON_SVG', 'TRASH_ICON_SVG',
-  'toggleConversationInjectionControl', 'button.disabled = true',
-  "button.setAttribute('aria-checked', String(enabled))",
-  "button.querySelector('.pm-control-toggle')?.classList.toggle('is-checked', enabled)",
-  'window.__pmShowAutoPokeSettings', 'window.__pmShowConversationInjection', '正文注入',
-  'CHARACTER_ICON_SVG', 'INJECTION_ICON_SVG',
+  'window.__pmShowAutoPokeSettings', 'window.__pmReturnToControlCenter', 'CHARACTER_ICON_SVG', 'CHAT_ICON_SVG',
 ]) requireText('phone-control-center.js', controlCenterCode, expected);
+for (const forbidden of [
+  "action === 'contacts'", "action === 'session-behavior'", 'return window.__pmShowList()',
+  'window.__pmShowConversationInjection', '正文注入', 'INJECTION_ICON_SVG',
+  '__pmToggleSessionInjection', 'toggleConversationInjectionControl',
+]) {
+  if (controlCenterCode.includes(forbidden)) failures.push(`phone-control-center.js: flattened compact menu still contains ${forbidden}`);
+}
 if (controlCenterCode.includes('__pmShowSessionInjectionSettings') || controlCenterCode.includes('上下文注入规则')) failures.push('phone-control-center.js: split injection settings entry remains after merge');
-if (controlCenterCode.includes("action === 'rearm'") || controlCenterTemplate.includes('自动发消息')) failures.push('phone-control-center.js: automatic-message control must remain nested under session behavior');
+if (controlCenterCode.includes("action === 'rearm'")) failures.push('phone-control-center.js: obsolete automatic-message rearm action remains');
+for (const removedTitle of ['联系人', '会话行为', '删除信息']) {
+  if (controlCenterTemplate.includes(removedTitle)) failures.push(`phone-control-center.js: compact control menu still contains removed title ${removedTitle}`);
+}
+for (const expected of ['required value="${autoPoke.probability}"', '请输入 0 到 100 之间的整数概率。']) {
+  requireText('phone-control-center.js', controlCenterCode, expected);
+}
 if (controlCenterTemplate.includes('data-action="desktop"') || controlCenterTemplate.includes('返回桌面')) {
   failures.push('phone-control-center.js: compact control menu must not duplicate the chat navbar desktop action');
 }
@@ -1946,10 +1965,9 @@ requireCssDeclarations(cssRules, '.pm-name-edit::before', {
 requireCssDeclarations(cssRules, '.pm-name-edit:active::before', { background: 'var(--pm-r-bg,#007aff)' });
 requireCssDeclarations(cssRules, '.pm-name', {
   'max-width': '100%',
-  'white-space': 'normal',
-  overflow: 'visible',
-  'text-overflow': 'clip',
-  'overflow-wrap': 'anywhere',
+  'white-space': 'nowrap',
+  overflow: 'hidden',
+  'text-overflow': 'ellipsis',
   'text-align': 'center',
 });
 requireCssDeclarations(cssRules, '.pm-nav-btn', {
@@ -2174,7 +2192,7 @@ for (const [label, marker, accessibleName] of [
   requireText(`interactive-scene-views.js: ${label}`, button, '${POKE_ICON_SVG}');
   if (button.includes('SPARKLES_ICON_SVG')) failures.push(`interactive-scene-views.js: ${label} must preserve poke semantics instead of generic AI sparkles`);
 }
-for (const expected of ['REMOVE_ICON_SVG', 'UNLINK_ICON_SVG', 'SPARKLES_ICON_SVG', 'CHEVRON_DOWN_ICON_SVG']) requireText('icons.js', sourceModuleByName.get('icons.js')?.code || '', expected);
+for (const expected of ['REMOVE_ICON_SVG', 'UNLINK_ICON_SVG', 'SPARKLES_ICON_SVG', 'CHEVRON_DOWN_ICON_SVG', 'SYRINGE_ICON_SVG', 'CHECK_ICON_SVG']) requireText('icons.js', sourceModuleByName.get('icons.js')?.code || '', expected);
 for (const expected of [
   '.pm-action-button{', 'font-size:13px', 'background:var(--pm-r-bg,#007aff)',
   '.pm-header-icon-button{box-sizing:border-box;width:34px;height:34px;min-width:34px;min-height:34px',
@@ -2183,13 +2201,16 @@ for (const expected of [
   '.pm-calendar-view-switch button{display:grid;place-items:center;flex:0 0 30px;width:30px;height:30px;padding:0;border:0;border-radius:50%',
   '.pm-calendar-header{position:sticky', 'grid-template-columns:72px minmax(0,1fr) 72px',
 ]) requireText('style.css', css, expected);
+for (const forbidden of ['.pm-session-behavior-links', '.pm-session-auto-poke-interval', '.pm-injection-entry', '.pm-conversation-settings-injection']) {
+  if (css.includes(forbidden)) failures.push(`style.css: obsolete flattened-menu selector remains ${forbidden}`);
+}
 for (const expected of [
   'onclick="window.__pmCloseOverlay()"', 'pm-contact-settings-title', 'pm-modal-add pm-contact-settings-actions',
   'onclick="window.__pmSaveContactConfig(',
   'window.__pmSaveAndCloseContactConfig = contactName => window.__pmSaveContactConfig(contactName)',
   'BACK_ICON_SVG', 'function showContactConfig(contactName, returnToMembers = false)',
-  "returnToMembers ? 'window.__pmShowConversationSettings()' : 'window.__pmCloseOverlay()'",
-  '<b>成员聊天行为</b>', 'title="返回" aria-label="返回">${BACK_ICON_SVG}</button>',
+  "returnToMembers ? 'window.__pmShowConversationSettings()' : 'window.__pmReturnToControlCenter()'",
+  '<b>成员设置</b>', 'onclick="window.__pmReturnToControlCenter()"',
 ]) requireText('phone-chat-poke.js', phoneChatPokeCode, expected);
 for (const expected of [
   'BACK_ICON_SVG', 'const closeAction = "window.__pmShowList()";',

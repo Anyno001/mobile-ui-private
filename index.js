@@ -2608,6 +2608,8 @@ ${userPrompt}` : userPrompt;
   var CHARACTER_ICON_SVG = icon('<circle cx="9" cy="8" r="3"/><path d="M3.5 20c.3-4 2.4-6 5.5-6s5.2 2 5.5 6"/><path d="M17 7h4M19 5v4M16 14h5M16 18h5"/>');
   var SETTINGS_ICON_SVG = icon('<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-4V21a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H2.8v-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1A1.7 1.7 0 0 0 9 4.6 1.7 1.7 0 0 0 10 3V2.8h4V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v4H21a1.7 1.7 0 0 0-1.6 1z"/>');
   var INJECTION_ICON_SVG = icon('<path d="M8 7l4-4 4 4M12 3v8M16 17l-4 4-4-4M12 21v-8"/><path d="M5 12h14"/>');
+  var SYRINGE_ICON_SVG = icon('<path d="M14 4l6 6M17 3l4 4M13 8l3 3M5 19l8-8 3 3-8 8H5v-3zM3 21l3-3"/>');
+  var CHECK_ICON_SVG = icon('<path d="M5 12l4 4L19 6"/>');
   var COMMUNITY_ICON_SVG = icon('<path d="M4 19V8l8-4 8 4v11"/><path d="M8 19v-6h8v6M8 9h.01M12 9h.01M16 9h.01"/>');
   var FEED_ICON_SVG = icon('<path d="M5 5h14v14H5z"/><path d="M8 9h8M8 12h8M8 15h5"/>');
   var LIVE_ICON_SVG = icon('<rect x="3" y="6" width="14" height="12" rx="2"/><path d="M17 10l4-2v8l-4-2z"/><circle cx="8" cy="12" r="1" fill="currentColor" stroke="none"/>');
@@ -6059,6 +6061,12 @@ ${mainChatText}` : "",
     const history = window.__pmHistories[id2]?.[saveKey];
     return Array.isArray(history) ? cloneHistory(history.slice(-SAVE_LIMIT)) : [];
   }
+  function resolveConversationTarget(state, getStorageId2) {
+    const storageId = state.activeStorageId || getStorageId2();
+    const targetKey = state.isGroupChat && state.currentGroupKey ? state.currentGroupKey : state.currentPersona;
+    if (!storageId || storageId === "sms_unknown__default" || !targetKey) return null;
+    return { storageId, targetKey, saveKey: targetKey, isGroup: state.isGroupChat };
+  }
   function installConversation(state, deps) {
     const {
       getStorageId: getStorageId2,
@@ -6109,11 +6117,17 @@ ${mainChatText}` : "",
         state.groupNature = "";
         state.currentGroupKey = "";
       }
-      window.__pmSwitch(key, _prevSaveKey, _prevStorageId, { ...options, previousConversationContext });
+      window.__pmSwitch(
+        key,
+        options.skipPreviousPersist === true ? void 0 : _prevSaveKey,
+        options.skipPreviousPersist === true ? void 0 : _prevStorageId,
+        { ...options, previousConversationContext }
+      );
     };
     window.__pmSwitch = (name, _prevSaveKey, _prevStorageId, options = {}) => {
       if (!name?.trim()) return;
       name = name.trim();
+      deps.closeContactSwitcher?.("conversation-switch");
       deps.closeControlCenter?.();
       deps.closeOverlay?.("conversation-switch");
       deps.clearActiveQuote?.();
@@ -6122,7 +6136,7 @@ ${mainChatText}` : "",
         console.warn("[phone-mode] __pmSwitch: storageId \u5C1A\u672A\u5C31\u7EEA\uFF0C\u8DF3\u8FC7\u5207\u6362");
         return;
       }
-      if (_prevSaveKey || state.currentPersona) {
+      if (options.skipPreviousPersist !== true && (_prevSaveKey || state.currentPersona)) {
         persistCurrentHistory(
           state,
           getStorageId2,
@@ -10124,7 +10138,7 @@ ${antiFluff}`;
       makeOverlay(`
     <div class="pm-modal pm-modal-wide">
     <div class="pm-modal-header">
-        <button type="button" onclick="${returnToMembers ? "window.__pmShowConversationSettings()" : "window.__pmCloseOverlay()"}" class="pm-modal-close" title="\u8FD4\u56DE" aria-label="\u8FD4\u56DE">${BACK_ICON_SVG}</button>
+        <button type="button" onclick="${returnToMembers ? "window.__pmShowConversationSettings()" : "window.__pmReturnToControlCenter()"}" class="pm-modal-close" title="\u8FD4\u56DE" aria-label="\u8FD4\u56DE">${BACK_ICON_SVG}</button>
         <b class="pm-contact-settings-title" title="${escapeAttr(contactName)}">${escapeHtml(contactName)}</b>
         <button type="button" onclick="window.__pmCloseOverlay()" class="pm-modal-close" title="\u5173\u95ED" aria-label="\u5173\u95ED">${CLOSE_ICON_SVG}</button>
     </div>
@@ -10171,7 +10185,7 @@ ${antiFluff}`;
       const members = state.groupMembers.slice();
       makeOverlay(`
     <div class="pm-modal pm-modal-wide">
-      <div class="pm-modal-header"><button type="button" onclick="window.__pmCloseOverlay()" class="pm-modal-close" title="\u8FD4\u56DE" aria-label="\u8FD4\u56DE">${BACK_ICON_SVG}</button><b>\u6210\u5458\u804A\u5929\u884C\u4E3A</b><button type="button" onclick="window.__pmCloseOverlay()" class="pm-modal-close" title="\u5173\u95ED" aria-label="\u5173\u95ED">${CLOSE_ICON_SVG}</button></div>
+      <div class="pm-modal-header"><button type="button" onclick="window.__pmReturnToControlCenter()" class="pm-modal-close" title="\u8FD4\u56DE\u5FEB\u6377\u5DE5\u5177" aria-label="\u8FD4\u56DE\u5FEB\u6377\u5DE5\u5177">${BACK_ICON_SVG}</button><b>\u6210\u5458\u8BBE\u7F6E</b><button type="button" onclick="window.__pmCloseOverlay()" class="pm-modal-close" title="\u5173\u95ED" aria-label="\u5173\u95ED">${CLOSE_ICON_SVG}</button></div>
       <div class="pm-member-behavior-list">
         ${members.map((name) => `<button onclick="window.__pmShowCharacterBehavior('${safeJS(name)}')">
           <b>${escapeHtml(name)}</b><span>\u79C1\u804A\u98CE\u683C\u3001\u7FA4\u804A\u98CE\u683C\u4E0E\u6D88\u606F\u9891\u7387</span>
@@ -10495,29 +10509,10 @@ ${antiFluff}`;
   // src/phone-control-center.js
   var controlActionLabel = (action) => ({
     calendar: "\u6253\u5F00\u65E5\u5386",
-    contacts: "\u6253\u5F00\u8054\u7CFB\u4EBA",
-    "session-behavior": "\u6253\u5F00\u4F1A\u8BDD\u884C\u4E3A",
-    "auto-poke-toggle": "\u5207\u6362\u81EA\u52A8\u53D1\u6D88\u606F",
-    "injection-toggle": "\u5207\u6362\u5F53\u524D\u4F1A\u8BDD\u6CE8\u5165"
+    settings: "\u6253\u5F00\u89D2\u8272\u8BBE\u7F6E",
+    "auto-poke": "\u6253\u5F00\u81EA\u52A8\u53D1\u6D88\u606F",
+    delete: "\u8FDB\u5165\u6D88\u606F\u5220\u9664\u6A21\u5F0F"
   })[action] || "\u6267\u884C\u5FEB\u6377\u64CD\u4F5C";
-  async function toggleConversationInjectionControl(button, toggleInjection, isEnabled) {
-    if (button?.disabled) return false;
-    if (button) button.disabled = true;
-    try {
-      const saved = await toggleInjection();
-      const enabled = isEnabled() === true;
-      if (button?.isConnected) {
-        button.setAttribute("aria-checked", String(enabled));
-        button.querySelector(".pm-control-toggle")?.classList.toggle("is-checked", enabled);
-      }
-      return saved;
-    } finally {
-      if (button?.isConnected) {
-        button.disabled = false;
-        button.focus({ preventScroll: true });
-      }
-    }
-  }
   function runControlMenuAction(action, runAction, reportActionError) {
     const result = runAction(action);
     if (result && typeof result.then === "function") {
@@ -10530,6 +10525,7 @@ ${antiFluff}`;
       runtime,
       getStorageId: getStorageId2,
       makeOverlay,
+      closeOverlay,
       parsePendingInput,
       renderPendingConversation,
       showPhoneCalendarPage,
@@ -10538,15 +10534,7 @@ ${antiFluff}`;
     const CONTROL_MENU_ID = "pm-control-menu";
     let outsideClickHandler = null;
     let escapeKeyHandler = null;
-    const getTarget = () => {
-      const storageId = state.activeStorageId || getStorageId2();
-      const saveKey = state.isGroupChat && state.currentGroupKey ? state.currentGroupKey : state.currentPersona;
-      return storageId && storageId !== "sms_unknown__default" && saveKey ? {
-        storageId,
-        saveKey,
-        isGroup: state.isGroupChat
-      } : null;
-    };
+    const getTarget = () => resolveConversationTarget(state, getStorageId2);
     function renderPendingList() {
       const target = getTarget();
       const items = target ? getPendingMessages(runtime, target.storageId, target.saveKey) : [];
@@ -10601,37 +10589,24 @@ ${antiFluff}`;
       }
       if (restoreFocus) anchor?.focus({ preventScroll: true });
     }
-    function showSessionBehaviorPanel() {
-      const target = getTarget();
-      if (!target) return alert("\u5F53\u524D\u6CA1\u6709\u53EF\u914D\u7F6E\u7684\u624B\u673A\u4F1A\u8BDD\u3002");
-      makeOverlay(`
-<div class="pm-modal pm-modal-wide pm-session-behavior-modal">
-  <div class="pm-modal-header"><button type="button" onclick="window.__pmCloseOverlay()" class="pm-modal-close" title="\u8FD4\u56DE" aria-label="\u8FD4\u56DE">${BACK_ICON_SVG}</button><b>\u4F1A\u8BDD\u884C\u4E3A</b><button type="button" onclick="window.__pmCloseOverlay()" class="pm-modal-close" title="\u5173\u95ED" aria-label="\u5173\u95ED">${CLOSE_ICON_SVG}</button></div>
-  <div class="pm-modal-scroll pm-session-behavior-body">
-    <div class="pm-session-behavior-links">
-      <button type="button" onclick="window.__pmShowAutoPokeSettings()">${CHAT_ICON_SVG}<span>\u81EA\u52A8\u53D1\u6D88\u606F</span></button>
-      <button type="button" onclick="window.__pmShowConversationInjection()">${INJECTION_ICON_SVG}<span>\u6B63\u6587\u6CE8\u5165</span></button>
-      <button type="button" onclick="window.__pmShowConversationSettings()">${CHARACTER_ICON_SVG}<span>${target.isGroup ? "\u6210\u5458\u804A\u5929\u884C\u4E3A" : "\u89D2\u8272\u8BBE\u7F6E"}</span></button>
-      ${target.isGroup ? `<button type="button" onclick="window.__pmEditGroup()">${CONTACTS_ICON_SVG}<span>\u7FA4\u804A\u8BBE\u7F6E</span></button>` : ""}
-    </div>
-  </div>
-</div>`);
-    }
-    window.__pmShowSessionBehavior = showSessionBehaviorPanel;
+    window.__pmReturnToControlCenter = () => {
+      closeOverlay?.("replace");
+      window.__pmShowControlCenter();
+    };
     window.__pmShowAutoPokeSettings = (statusMessage = "") => {
       const target = getTarget();
       if (!target) return alert("\u5F53\u524D\u6CA1\u6709\u53EF\u914D\u7F6E\u7684\u624B\u673A\u4F1A\u8BDD\u3002");
       const autoPoke = getAutoPokeConfig(target.storageId, target.saveKey);
       makeOverlay(`
 <div class="pm-modal pm-modal-wide pm-session-behavior-modal">
-  <div class="pm-modal-header"><button type="button" onclick="window.__pmShowSessionBehavior()" class="pm-modal-close" title="\u8FD4\u56DE\u4F1A\u8BDD\u884C\u4E3A" aria-label="\u8FD4\u56DE\u4F1A\u8BDD\u884C\u4E3A">${BACK_ICON_SVG}</button><b>\u81EA\u52A8\u53D1\u6D88\u606F</b><button type="button" onclick="window.__pmCloseOverlay()" class="pm-modal-close" title="\u5173\u95ED" aria-label="\u5173\u95ED">${CLOSE_ICON_SVG}</button></div>
+  <div class="pm-modal-header"><button type="button" onclick="window.__pmReturnToControlCenter()" class="pm-modal-close" title="\u8FD4\u56DE\u5FEB\u6377\u5DE5\u5177" aria-label="\u8FD4\u56DE\u5FEB\u6377\u5DE5\u5177">${BACK_ICON_SVG}</button><b>\u81EA\u52A8\u53D1\u6D88\u606F</b><button type="button" onclick="window.__pmCloseOverlay()" class="pm-modal-close" title="\u5173\u95ED" aria-label="\u5173\u95ED">${CLOSE_ICON_SVG}</button></div>
   <div class="pm-modal-scroll pm-session-behavior-body">
     <div id="pm-session-auto-poke-status" class="pm-session-behavior-status" role="status" aria-live="polite" ${statusMessage ? "" : "hidden"}>${escapeHtml(statusMessage)}</div>
     <section class="pm-session-behavior-section">
       <button id="pm-session-auto-poke" type="button" class="pm-session-behavior-toggle" role="checkbox" aria-checked="${autoPoke.enabled}" onclick="window.__pmToggleCurrentAutoPoke(this)">
         ${CHAT_ICON_SVG}<span><b>\u5141\u8BB8\u5F53\u524D\u4F1A\u8BDD\u4E3B\u52A8\u53D1\u6D88\u606F</b><small>\u804A\u5929\u505C\u4E0B\u6765\u65F6\uFF0C\u624B\u673A\u6709\u673A\u4F1A\u81EA\u5DF1\u53D1\u4E00\u53E5\u3002</small></span><i class="pm-control-toggle ${autoPoke.enabled ? "is-checked" : ""}" aria-hidden="true"></i>
       </button>
-      <label class="pm-session-auto-poke-probability">\u6BCF\u6B21\u6709 <input id="pm-session-auto-poke-probability" type="number" min="0" max="100" step="1" value="${autoPoke.probability}" ${autoPoke.enabled ? "" : "disabled"} onchange="window.__pmSaveCurrentAutoPokeProbability(this)"> % \u51E0\u7387\u81EA\u52A8\u53D1\u6D88\u606F</label>
+      <label class="pm-session-auto-poke-probability">\u6BCF\u6B21\u6709 <input id="pm-session-auto-poke-probability" type="number" min="0" max="100" step="1" required value="${autoPoke.probability}" ${autoPoke.enabled ? "" : "disabled"} onchange="window.__pmSaveCurrentAutoPokeProbability(this)"> % \u51E0\u7387\u81EA\u52A8\u53D1\u6D88\u606F</label>
       <p id="pm-session-auto-poke-counter">${autoPoke.counter === 1 ? "\u8FD9\u6B21\u4F1A\u81EA\u52A8\u53D1\u4E00\u6761\u3002" : "\u8FD9\u6B21\u6CA1\u6709\u81EA\u52A8\u53D1\u6D88\u606F\u3002"}</p>
     </section>
   </div>
@@ -10659,8 +10634,17 @@ ${antiFluff}`;
     window.__pmSaveCurrentAutoPokeProbability = (input) => {
       const target = getTarget();
       if (!target || !input) return false;
-      const parsedProbability = Number(input.value);
-      const probability = Number.isFinite(parsedProbability) ? Math.max(0, Math.min(100, Math.round(parsedProbability))) : 30;
+      const current = getAutoPokeConfig(target.storageId, target.saveKey);
+      const rawValue = String(input.value ?? "").trim();
+      const parsedProbability = Number(rawValue);
+      const valid = rawValue !== "" && Number.isInteger(parsedProbability) && parsedProbability >= 0 && parsedProbability <= 100 && input.checkValidity?.() !== false;
+      if (!valid) {
+        input.value = String(current.probability);
+        alert("\u8BF7\u8F93\u5165 0 \u5230 100 \u4E4B\u95F4\u7684\u6574\u6570\u6982\u7387\u3002");
+        input.focus?.({ preventScroll: true });
+        return false;
+      }
+      const probability = parsedProbability;
       input.disabled = true;
       input.setAttribute("aria-busy", "true");
       if (!commitAutoPokeConfig(target.storageId, target.saveKey, { probability })) {
@@ -10673,11 +10657,6 @@ ${antiFluff}`;
       document.getElementById("pm-session-auto-poke-probability")?.focus({ preventScroll: true });
       return true;
     };
-    window.__pmToggleSessionInjection = (button) => toggleConversationInjectionControl(
-      button,
-      window.__pmToggleCurrentConversationInjection,
-      () => window.__pmCurrentConversationInjectionEnabled?.() === true
-    );
     function showPendingManager() {
       const target = getTarget();
       if (!sameTarget(editingTarget, target)) editingTarget = null;
@@ -10697,9 +10676,8 @@ ${antiFluff}`;
       runtime.overlayOpener = state.phoneWindow?.querySelector(".pm-expand-btn") || null;
       closeControlCenter();
       if (action === "pending") showPendingManager();
-      else if (action === "session-behavior") showSessionBehaviorPanel();
-      else if (action === "injection-settings") return window.__pmShowConversationInjection();
-      else if (action === "contacts") return window.__pmShowList();
+      else if (action === "settings") return window.__pmShowConversationSettings();
+      else if (action === "auto-poke") return window.__pmShowAutoPokeSettings();
       else if (action === "emoji") window.__pmShowEmojiManager();
       else if (action === "delete") window.__pmStartDeleteMode();
       else if (action === "calendar") return showPhoneCalendarPage();
@@ -10731,6 +10709,7 @@ ${antiFluff}`;
         closeControlCenter();
         return;
       }
+      deps.closeContactSwitcher?.("replace");
       const phone = state.phoneWindow;
       const anchor = phone?.querySelector(".pm-expand-btn");
       if (!phone || !anchor || state.isMinimized) return;
@@ -10739,13 +10718,14 @@ ${antiFluff}`;
       menu.className = "pm-control-menu";
       menu.setAttribute("role", "menu");
       menu.setAttribute("aria-label", "\u5FEB\u6377\u5DE5\u5177");
+      const target = getTarget();
       menu.innerHTML = `
   <button type="button" role="menuitem" data-action="pending">${EDIT_ICON_SVG}\u7F16\u8F91\u6D88\u606F</button>
-  <button type="button" role="menuitem" data-action="contacts">${CONTACTS_ICON_SVG}\u8054\u7CFB\u4EBA</button>
-  <button type="button" role="menuitem" data-action="session-behavior">${SETTINGS_ICON_SVG}\u4F1A\u8BDD\u884C\u4E3A</button>
+  <button type="button" role="menuitem" data-action="settings" ${target ? "" : "disabled"}>${CHARACTER_ICON_SVG}${target?.isGroup ? "\u6210\u5458\u8BBE\u7F6E" : "\u89D2\u8272\u8BBE\u7F6E"}</button>
+  <button type="button" role="menuitem" data-action="auto-poke" ${target ? "" : "disabled"}>${CHAT_ICON_SVG}\u81EA\u52A8\u53D1\u6D88\u606F</button>
   <button type="button" role="menuitem" data-action="emoji">${EMOJI_ICON_SVG}\u8868\u60C5\u5305\u7BA1\u7406</button>
   <button type="button" role="menuitem" data-action="calendar">${CALENDAR_ICON_SVG}\u65E5\u5386</button>
-  <button type="button" role="menuitem" data-action="delete" class="pm-control-menu-danger">${TRASH_ICON_SVG}\u5220\u9664\u4FE1\u606F</button>`;
+  <button type="button" role="menuitem" data-action="delete" class="pm-control-menu-danger" ${target ? "" : "disabled"}>${TRASH_ICON_SVG}\u5220\u9664\u6D88\u606F</button>`;
       phone.appendChild(menu);
       const phoneRect = phone.getBoundingClientRect();
       const anchorRect = anchor.getBoundingClientRect();
@@ -10888,41 +10868,79 @@ ${antiFluff}`;
   }
   function installPhoneContextInjection(state, deps) {
     const { getStorageId: getStorageId2, makeOverlay, applyBidirectionalInjection } = deps;
-    const currentTarget = () => {
-      const storageId = state.activeStorageId || getStorageId2();
-      const targetKey = state.isGroupChat && state.currentGroupKey ? state.currentGroupKey : state.currentPersona;
-      if (!storageId || storageId === "sms_unknown__default" || !targetKey) return null;
-      return { storageId, targetKey, isGroup: state.isGroupChat };
-    };
+    let injectionToggleQueue = Promise.resolve();
+    const currentTarget = () => resolveConversationTarget(state, getStorageId2);
     const isEnabled = (target) => Boolean(target && (window.__pmBidirectional[target.storageId] || []).includes(target.targetKey));
-    window.__pmConversationInjectionSummary = () => {
-      const config = normalizeInjectionConfig(window.__pmInjectionConfig);
-      return `${injectionPositionLabel(config.position)} \xB7 \u6DF1\u5EA6 ${config.depth} \xB7 \u6700\u8FD1 ${config.historyLimit} \u6761`;
+    const explicitTarget = (storageId, targetKey, isGroup = false, { requireExisting = false } = {}) => {
+      const normalizedStorageId = String(storageId || "").trim();
+      const normalizedTargetKey = String(targetKey || "").trim();
+      if (!normalizedStorageId || normalizedStorageId === "sms_unknown__default" || !normalizedTargetKey) return null;
+      if (requireExisting) {
+        const groupExists = Object.prototype.hasOwnProperty.call(
+          window.__pmGroupMeta?.[normalizedStorageId] || {},
+          normalizedTargetKey
+        );
+        const contactExists = !normalizedTargetKey.startsWith("__group_") && Object.prototype.hasOwnProperty.call(
+          window.__pmHistories?.[normalizedStorageId] || {},
+          normalizedTargetKey
+        );
+        if (isGroup === true && !groupExists || isGroup !== true && !contactExists) return null;
+      }
+      return {
+        storageId: normalizedStorageId,
+        targetKey: normalizedTargetKey,
+        saveKey: normalizedTargetKey,
+        isGroup: isGroup === true
+      };
     };
-    window.__pmCurrentConversationInjectionEnabled = () => isEnabled(currentTarget());
-    window.__pmToggleCurrentConversationInjection = async () => {
-      const target = currentTarget();
+    const toggleTargetInjection = async (target, { validateCurrent = false } = {}) => {
       if (!target) return false;
       const snapshot = clone4(window.__pmBidirectional);
       const selected = new Set(window.__pmBidirectional[target.storageId] || []);
       if (selected.has(target.targetKey)) selected.delete(target.targetKey);
       else selected.add(target.targetKey);
       window.__pmBidirectional[target.storageId] = [...selected];
+      await commitConversationInjectionUpdate({
+        persistCandidate: async () => {
+          if (!saveBidirectional()) throw new Error("\u4F1A\u8BDD\u6CE8\u5165\u5F00\u5173\u4FDD\u5B58\u5931\u8D25\uFF1A\u6D4F\u89C8\u5668\u5B58\u50A8\u4E0D\u53EF\u7528\u6216\u7A7A\u95F4\u4E0D\u8DB3");
+        },
+        restoreSnapshot: () => {
+          window.__pmBidirectional = snapshot;
+        },
+        persistSnapshot: async () => {
+          if (!saveBidirectional()) throw new Error("\u4F1A\u8BDD\u6CE8\u5165\u5F00\u5173\u56DE\u6EDA\u5931\u8D25");
+        },
+        applyInjection: () => applyBidirectionalInjection(),
+        validateResult: (result) => validateCurrent && isEnabled(target) ? currentPhoneInjectionFailure(result, target) : null
+      });
+      return true;
+    };
+    const enqueueToggle = (task) => {
+      const pending = injectionToggleQueue.then(task, task);
+      injectionToggleQueue = pending.catch(() => {
+      });
+      return pending;
+    };
+    Object.assign(deps, { runConversationInjectionMutation: enqueueToggle });
+    window.__pmConversationInjectionSummary = () => {
+      const config = normalizeInjectionConfig(window.__pmInjectionConfig);
+      return `${injectionPositionLabel(config.position)} \xB7 \u6DF1\u5EA6 ${config.depth} \xB7 \u6700\u8FD1 ${config.historyLimit} \u6761`;
+    };
+    window.__pmCurrentConversationInjectionEnabled = () => isEnabled(currentTarget());
+    window.__pmConversationInjectionEnabled = (storageId, targetKey) => isEnabled(
+      explicitTarget(storageId, targetKey)
+    );
+    window.__pmToggleConversationInjection = async (storageId, targetKey, isGroup = false) => {
+      return enqueueToggle(() => {
+        const target = explicitTarget(storageId, targetKey, isGroup, { requireExisting: true });
+        return target ? toggleTargetInjection(target) : false;
+      });
+    };
+    window.__pmToggleCurrentConversationInjection = async () => {
+      const target = currentTarget();
+      if (!target) return false;
       try {
-        await commitConversationInjectionUpdate({
-          persistCandidate: async () => {
-            if (!saveBidirectional()) throw new Error("\u5F53\u524D\u4F1A\u8BDD\u6CE8\u5165\u5F00\u5173\u4FDD\u5B58\u5931\u8D25\uFF1A\u6D4F\u89C8\u5668\u5B58\u50A8\u4E0D\u53EF\u7528\u6216\u7A7A\u95F4\u4E0D\u8DB3");
-          },
-          restoreSnapshot: () => {
-            window.__pmBidirectional = snapshot;
-          },
-          persistSnapshot: async () => {
-            if (!saveBidirectional()) throw new Error("\u5F53\u524D\u4F1A\u8BDD\u6CE8\u5165\u5F00\u5173\u56DE\u6EDA\u5931\u8D25");
-          },
-          applyInjection: () => applyBidirectionalInjection(),
-          validateResult: (result) => isEnabled(target) ? currentPhoneInjectionFailure(result, target) : null
-        });
-        return true;
+        return await enqueueToggle(() => toggleTargetInjection(target, { validateCurrent: true }));
       } catch (error) {
         alert(error.message || "\u5F53\u524D\u4F1A\u8BDD\u6CE8\u5165\u5F00\u5173\u4FDD\u5B58\u5931\u8D25");
         return false;
@@ -10930,15 +10948,11 @@ ${antiFluff}`;
     };
     window.__pmShowConversationInjection = (statusMessage = "") => {
       const config = normalizeInjectionConfig(window.__pmInjectionConfig || loadInjectionConfig());
-      const target = currentTarget();
-      if (!target) return alert("\u5F53\u524D\u6CA1\u6709\u53EF\u914D\u7F6E\u7684\u624B\u673A\u4F1A\u8BDD\u3002");
-      const enabled = isEnabled(target);
       makeOverlay(`
     <div class="pm-modal pm-modal-wide pm-conversation-injection-modal">
-      <div class="pm-modal-header"><button type="button" onclick="window.__pmShowSessionBehavior()" class="pm-modal-close" title="\u8FD4\u56DE\u4F1A\u8BDD\u884C\u4E3A" aria-label="\u8FD4\u56DE\u4F1A\u8BDD\u884C\u4E3A">${BACK_ICON_SVG}</button><b>\u6B63\u6587\u6CE8\u5165</b><button type="button" onclick="window.__pmCloseOverlay()" class="pm-modal-close" title="\u5173\u95ED" aria-label="\u5173\u95ED">${CLOSE_ICON_SVG}</button></div>
+      <div class="pm-modal-header"><button type="button" onclick="window.__pmShowConfig('home')" class="pm-modal-close" title="\u8FD4\u56DE\u8BBE\u7F6E" aria-label="\u8FD4\u56DE\u8BBE\u7F6E">${BACK_ICON_SVG}</button><b>\u6B63\u6587\u6CE8\u5165\u89C4\u5219</b><button type="button" onclick="window.__pmCloseOverlay()" class="pm-modal-close" title="\u5173\u95ED" aria-label="\u5173\u95ED">${CLOSE_ICON_SVG}</button></div>
       <div class="pm-modal-scroll pm-conversation-injection-body">
-        <section class="pm-session-behavior-section"><button id="pm-session-injection-toggle" type="button" class="pm-session-behavior-toggle" role="checkbox" aria-checked="${enabled}" onclick="window.__pmToggleSessionInjection(this)">${INJECTION_ICON_SVG}<span><b>\u5C06\u5F53\u524D${target.isGroup ? "\u7FA4\u804A" : "\u804A\u5929"}\u5185\u5BB9\u6CE8\u5165\u6B63\u6587</b><small>\u5F00\u542F\u540E\uFF0C\u5F53\u524D\u89D2\u8272\u751F\u6210\u6B63\u6587\u65F6\u53EF\u8BFB\u53D6\u8FD9\u6BB5\u624B\u673A\u4F1A\u8BDD\uFF1B\u8BBE\u7F6E\u6309\u5F53\u524D\u4F1A\u8BDD\u4FDD\u5B58\u3002</small></span><i class="pm-control-toggle ${enabled ? "is-checked" : ""}" aria-hidden="true"></i></button></section>
-        <div class="pm-cfg-tip pm-conversation-injection-note">\u4E0B\u65B9\u4F4D\u7F6E\u3001\u6DF1\u5EA6\u548C\u6D88\u606F\u8303\u56F4\u7531\u6240\u6709\u79C1\u804A\u4E0E\u7FA4\u804A\u5171\u7528\u3002</div>
+        <div class="pm-cfg-tip pm-conversation-injection-note">\u4F1A\u8BDD\u662F\u5426\u542F\u7528\u6CE8\u5165\u8BF7\u5728\u804A\u5929\u6807\u9898\u7684\u8054\u7CFB\u4EBA\u5217\u8868\u4E2D\u5207\u6362\uFF1B\u8FD9\u91CC\u7EDF\u4E00\u8BBE\u7F6E\u6240\u6709\u79C1\u804A\u4E0E\u7FA4\u804A\u7684\u4F4D\u7F6E\u3001\u6DF1\u5EA6\u548C\u6D88\u606F\u8303\u56F4\u3002</div>
         <div id="pm-conversation-injection-status" class="pm-conversation-injection-status" role="status" ${statusMessage ? "" : "hidden"}>${escapeHtml(statusMessage)}</div>
         <label class="pm-conversation-injection-field">\u6CE8\u5165\u4F4D\u7F6E
           <select id="pm-conversation-injection-position" class="pm-cfg-input pm-conversation-injection-config">
@@ -11318,8 +11332,206 @@ ${antiFluff}`;
     }
   }
   function installPhoneDirectory(state, deps) {
-    const { runtime, getStorageId: getStorageId2, makeOverlay, applyBidirectionalInjection } = deps;
+    const {
+      runtime,
+      getStorageId: getStorageId2,
+      makeOverlay,
+      closeOverlay,
+      closeControlCenter,
+      applyBackground,
+      applyBidirectionalInjection
+    } = deps;
+    const runConversationInjectionMutation = deps.runConversationInjectionMutation || ((task) => Promise.resolve().then(task));
     let deleteTransactionActive = false;
+    let contactSwitcherLoadSequence = 0;
+    let contactSwitcherOutsideHandler = null;
+    let contactSwitcherEscapeHandler = null;
+    const CONTACT_SWITCHER_ID = "pm-contact-switcher";
+    const currentConversationKey = () => state.isGroupChat && state.currentGroupKey ? state.currentGroupKey : state.currentPersona;
+    function closeContactSwitcher(reason = "close") {
+      contactSwitcherLoadSequence += 1;
+      const switcher = document.getElementById(CONTACT_SWITCHER_ID);
+      const trigger = state.phoneWindow?.querySelector(".pm-name-trigger");
+      switcher?.remove();
+      if (contactSwitcherOutsideHandler) {
+        document.removeEventListener("click", contactSwitcherOutsideHandler, true);
+        contactSwitcherOutsideHandler = null;
+      }
+      if (contactSwitcherEscapeHandler) {
+        document.removeEventListener("keydown", contactSwitcherEscapeHandler, true);
+        contactSwitcherEscapeHandler = null;
+      }
+      trigger?.setAttribute("aria-expanded", "false");
+      if (["toggle", "outside", "escape"].includes(reason)) trigger?.focus({ preventScroll: true });
+      return Boolean(switcher);
+    }
+    function remainingConversationKey(storageId) {
+      const groups = Object.keys(window.__pmGroupMeta[storageId] || {});
+      if (groups.length) return groups[0];
+      return Object.keys(window.__pmHistories[storageId] || {}).find((key) => !key.startsWith("__group_")) || "";
+    }
+    function enterEmptyConversation(storageId) {
+      deps.closeControlCenter?.();
+      state.activeStorageId = storageId;
+      state.currentPersona = "";
+      state.conversationHistory = [];
+      state.isGroupChat = false;
+      state.currentGroupKey = "";
+      state.groupMembers = [];
+      state.groupExtras = [];
+      state.groupDisplayName = "";
+      state.groupRandomNpcEnabled = false;
+      state.groupNature = "";
+      state.groupColorMap = {};
+      const name = state.phoneWindow?.querySelector(".pm-name");
+      const poke = state.phoneWindow?.querySelector(".pm-name-edit");
+      const list2 = state.phoneWindow?.querySelector(".pm-msg-list");
+      if (name) name.textContent = "\u9009\u62E9\u8054\u7CFB\u4EBA";
+      poke?.classList.add("is-hidden");
+      if (list2) list2.innerHTML = '<div class="pm-chat-empty">\u6682\u65E0\u4F1A\u8BDD\uFF0C\u8BF7\u4ECE\u6807\u9898\u5904\u9009\u62E9\u6216\u6DFB\u52A0\u8054\u7CFB\u4EBA\u3002</div>';
+      applyBackground?.();
+      deps.clearActiveQuote?.();
+    }
+    async function switchToFirstRemainingSessionOrEmpty(storageId) {
+      const nextKey = remainingConversationKey(storageId);
+      if (nextKey) {
+        try {
+          await window.__pmSwitchContact(nextKey, { skipPreviousPersist: true });
+          return nextKey;
+        } catch (error) {
+          console.error("[phone-mode] \u5220\u9664\u540E\u5207\u6362\u5269\u4F59\u4F1A\u8BDD\u5931\u8D25\uFF0C\u8FDB\u5165\u7A7A\u6001", error);
+        }
+      }
+      closeContactSwitcher("empty");
+      try {
+        enterEmptyConversation(storageId);
+      } catch (error) {
+        console.error("[phone-mode] \u5220\u9664\u540E\u8FDB\u5165\u7A7A\u6001\u5931\u8D25", error);
+      }
+      return "";
+    }
+    async function finishDeletedConversation(storageId, targetKey, isCurrent) {
+      clearPendingMessages(runtime, storageId, targetKey);
+      if (isCurrent) await switchToFirstRemainingSessionOrEmpty(storageId);
+      else await refreshDirectorySurface();
+    }
+    async function refreshDirectorySurface(trigger = state.phoneWindow?.querySelector(".pm-name-trigger")) {
+      if (document.getElementById(CONTACT_SWITCHER_ID)) {
+        await renderContactSwitcher(trigger);
+      } else if (document.getElementById("pm-overlay")) {
+        await window.__pmShowList();
+      }
+    }
+    async function renderContactSwitcher(trigger) {
+      const phone = state.phoneWindow;
+      if (!phone || !trigger?.isConnected || state.isMinimized) return false;
+      const sequence = ++contactSwitcherLoadSequence;
+      await loadGroupMeta();
+      if (sequence !== contactSwitcherLoadSequence || !trigger.isConnected) return false;
+      closeContactSwitcher("replace");
+      closeControlCenter?.();
+      closeOverlay?.("replace");
+      const storageId = getStorageId2();
+      if (!storageId || storageId === "sms_unknown__default") return false;
+      const histories = window.__pmHistories[storageId] || {};
+      const groups = window.__pmGroupMeta[storageId] || {};
+      const currentKey = currentConversationKey();
+      const renderRow = (key, label, isGroup, detail = "") => {
+        const current = key === currentKey;
+        const enabled = window.__pmConversationInjectionEnabled?.(storageId, key) === true;
+        return `<div class="pm-contact-switcher-row" data-current="${current}">
+              <span class="pm-contact-switcher-current" aria-hidden="true">${current ? CHECK_ICON_SVG : ""}</span>
+              <button type="button" class="pm-contact-switcher-main" data-contact-action="switch" data-key="${escapeAttr(key)}" ${current ? 'aria-current="true"' : ""}>
+                <span>${escapeHtml(label)}</span>${detail ? `<small>${escapeHtml(detail)}</small>` : ""}
+              </button>
+              <button type="button" class="pm-contact-switcher-icon pm-contact-switcher-injection ${enabled ? "is-active" : ""}" data-contact-action="inject" data-key="${escapeAttr(key)}" data-group="${isGroup}" data-label="${escapeAttr(label)}" aria-pressed="${enabled}" aria-label="${enabled ? "\u5173\u95ED" : "\u5F00\u542F"} ${escapeAttr(label)} \u7684\u6B63\u6587\u6CE8\u5165" title="${enabled ? "\u5173\u95ED\u6B63\u6587\u6CE8\u5165" : "\u5F00\u542F\u6B63\u6587\u6CE8\u5165"}">${SYRINGE_ICON_SVG}</button>
+              <button type="button" class="pm-contact-switcher-icon pm-entity-delete" data-contact-action="delete" data-key="${escapeAttr(key)}" data-group="${isGroup}" aria-label="\u6C38\u4E45\u5220\u9664${isGroup ? "\u7FA4\u804A" : "\u8054\u7CFB\u4EBA"} ${escapeAttr(label)}" title="\u6C38\u4E45\u5220\u9664${isGroup ? "\u7FA4\u804A" : "\u8054\u7CFB\u4EBA"}">${UNLINK_ICON_SVG}</button>
+            </div>`;
+      };
+      const rows = [
+        ...Object.keys(groups).map((key) => {
+          const meta = normalizeGroupMeta(groups[key]);
+          return renderRow(key, meta.name, true, meta.members.join("\u3001"));
+        }),
+        ...Object.keys(histories).filter((key) => !key.startsWith("__group_")).map((key) => renderRow(key, key, false))
+      ];
+      const switcher = document.createElement("div");
+      switcher.id = CONTACT_SWITCHER_ID;
+      switcher.className = "pm-contact-switcher";
+      switcher.dataset.theme = window.__pmTheme?.darkMode || "light";
+      switcher.setAttribute("role", "dialog");
+      switcher.setAttribute("aria-label", "\u5207\u6362\u8054\u7CFB\u4EBA\u6216\u7FA4\u804A");
+      switcher.innerHTML = `
+          <div class="pm-contact-switcher-list">${rows.length ? rows.join("") : '<div class="pm-contact-switcher-empty">\u6682\u65E0\u8054\u7CFB\u4EBA\u6216\u7FA4\u804A</div>'}</div>
+          <div class="pm-contact-switcher-actions">
+            <button type="button" onclick="window.__pmShowGroupCreate()">\u65B0\u5EFA</button>
+            <button type="button" onclick="window.__pmShowAddContact()">\u6DFB\u52A0</button>
+          </div>`;
+      phone.appendChild(switcher);
+      const phoneRect = phone.getBoundingClientRect();
+      const triggerRect = trigger.getBoundingClientRect();
+      const width = Math.min(320, Math.max(240, phone.clientWidth - 20));
+      switcher.style.width = `${width}px`;
+      switcher.style.left = `${Math.max(10, Math.min(phone.clientWidth - width - 10, triggerRect.left - phoneRect.left + (triggerRect.width - width) / 2))}px`;
+      switcher.style.top = `${Math.max(8, triggerRect.bottom - phoneRect.top + 6)}px`;
+      trigger.setAttribute("aria-expanded", "true");
+      bindContactSwitcher(switcher, trigger);
+      switcher.querySelector('[aria-current="true"]')?.scrollIntoView?.({ block: "nearest" });
+      switcher.querySelector("button")?.focus({ preventScroll: true });
+      return true;
+    }
+    window.__pmToggleContactSwitcher = (trigger) => {
+      if (document.getElementById(CONTACT_SWITCHER_ID)) return closeContactSwitcher("toggle");
+      return renderContactSwitcher(trigger || state.phoneWindow?.querySelector(".pm-name-trigger"));
+    };
+    function bindContactSwitcher(switcher, trigger) {
+      switcher.addEventListener("click", async (event) => {
+        const action = event.target.closest("button[data-contact-action]");
+        if (!action || !switcher.contains(action) || action.disabled) return;
+        event.stopPropagation();
+        const key = action.dataset.key || "";
+        if (action.dataset.contactAction === "switch") {
+          await window.__pmSwitchContact(key);
+          return;
+        }
+        if (action.dataset.contactAction === "inject") {
+          action.disabled = true;
+          action.setAttribute("aria-busy", "true");
+          try {
+            await window.__pmToggleConversationInjection(getStorageId2(), key, action.dataset.group === "true");
+            const enabled = window.__pmConversationInjectionEnabled(getStorageId2(), key) === true;
+            action.setAttribute("aria-pressed", String(enabled));
+            action.classList.toggle("is-active", enabled);
+            action.title = enabled ? "\u5173\u95ED\u6B63\u6587\u6CE8\u5165" : "\u5F00\u542F\u6B63\u6587\u6CE8\u5165";
+            const label = action.dataset.label || "\u4F1A\u8BDD";
+            action.setAttribute("aria-label", `${enabled ? "\u5173\u95ED" : "\u5F00\u542F"} ${label} \u7684\u6B63\u6587\u6CE8\u5165`);
+          } catch (error) {
+            alert(`${action.dataset.label || "\u4F1A\u8BDD"}\u6CE8\u5165\u5F00\u5173\u4FDD\u5B58\u5931\u8D25\uFF1A${error?.message || "\u8BF7\u91CD\u8BD5"}`);
+          } finally {
+            if (action.isConnected) {
+              action.disabled = false;
+              action.removeAttribute("aria-busy");
+              action.focus({ preventScroll: true });
+            }
+          }
+          return;
+        }
+        if (action.dataset.contactAction === "delete") {
+          if (action.dataset.group === "true") await window.__pmDelGroup(key);
+          else await window.__pmDel(key);
+        }
+      });
+      contactSwitcherOutsideHandler = (event) => {
+        if (switcher.contains(event.target) || trigger.contains(event.target)) return;
+        closeContactSwitcher("outside");
+      };
+      contactSwitcherEscapeHandler = (event) => {
+        if (event.key === "Escape") closeContactSwitcher("escape");
+      };
+      document.addEventListener("click", contactSwitcherOutsideHandler, true);
+      document.addEventListener("keydown", contactSwitcherEscapeHandler, true);
+    }
+    Object.assign(deps, { closeContactSwitcher });
     const setDeleteButtonsDisabled = (disabled) => {
       const buttons = document.querySelectorAll?.(".pm-entity-delete") || [];
       for (const button of buttons) button.disabled = disabled;
@@ -11348,7 +11560,8 @@ ${antiFluff}`;
       });
     }
     function showGroupForm(mode, existingName, existingMembers) {
-      document.getElementById("pm-overlay")?.remove();
+      closeContactSwitcher("replace");
+      closeOverlay?.("replace");
       const title = mode === "create" ? "\u65B0\u5EFA\u7FA4\u804A" : "\u7F16\u8F91\u7FA4\u804A";
       const initName = existingName || "";
       const initMembers = (existingMembers || []).join(" / ");
@@ -11485,7 +11698,7 @@ ${antiFluff}`;
             previousConversationContext
           }) : true
         });
-        document.getElementById("pm-overlay")?.remove();
+        closeOverlay?.("saved");
       } catch (error) {
         alert(error.message || "\u7FA4\u804A\u8BBE\u7F6E\u4FDD\u5B58\u5931\u8D25");
       }
@@ -11533,7 +11746,7 @@ ${antiFluff}`;
           };
           window.__pmGroupMeta[id2][groupKey] = normalizeGroupMeta({ name: groupName, members: names });
           await saveGroupMeta();
-          document.getElementById("pm-overlay")?.remove();
+          closeOverlay?.("saved");
           state.isGroupChat = true;
           state.groupMembers = names;
           state.groupExtras = [];
@@ -11590,7 +11803,8 @@ ${antiFluff}`;
     </div>`);
     };
     window.__pmShowAddContact = (resultMessage = "") => {
-      document.getElementById("pm-overlay")?.remove();
+      closeContactSwitcher("replace");
+      closeOverlay?.("replace");
       makeOverlay(`
 <div class="pm-modal">
   <div class="pm-modal-header"><span></span><b>\u6DFB\u52A0\u8054\u7CFB\u4EBA</b><button type="button" onclick="window.__pmShowList()" class="pm-modal-close" title="\u5173\u95ED" aria-label="\u5173\u95ED">${CLOSE_ICON_SVG}</button></div>
@@ -11625,130 +11839,124 @@ ${antiFluff}`;
       const groupName = window.__pmGroupMeta[id2]?.[key]?.name || "\u672A\u547D\u540D\u7FA4\u804A";
       if (!confirm(`\u6C38\u4E45\u5220\u9664\u7FA4\u804A\u201C${groupName}\u201D\uFF1F\u804A\u5929\u8BB0\u5F55\u3001\u6CE8\u5165\u5173\u7CFB\u3001\u80CC\u666F\u548C\u81EA\u52A8\u6D88\u606F\u914D\u7F6E\u90FD\u4F1A\u4E00\u5E76\u5220\u9664\uFF0C\u4E14\u65E0\u6CD5\u6062\u590D\u3002`)) return false;
       if (!acquireDeleteTransaction()) return false;
-      let snapshots = null;
-      try {
-        snapshots = {
-          groupMeta: clone5(window.__pmGroupMeta),
-          histories: clone5(window.__pmHistories),
-          bidirectional: clone5(window.__pmBidirectional),
-          poke: clone5(window.__pmPokeConfig),
-          backgrounds: clone5(window.__pmBgLocal)
-        };
-        if (window.__pmGroupMeta[id2]) delete window.__pmGroupMeta[id2][key];
-        if (window.__pmHistories[id2]) delete window.__pmHistories[id2][key];
-        const arr = window.__pmBidirectional[id2] || [], idx = arr.indexOf(key);
-        if (idx >= 0) arr.splice(idx, 1);
-        const bgKey = `${id2}_${key}`;
-        if (window.__pmBgLocal[bgKey]) delete window.__pmBgLocal[bgKey];
-        if (window.__pmPokeConfig[id2]?.[key]) delete window.__pmPokeConfig[id2][key];
-        await saveHistoriesStrict();
-        await saveGroupMeta();
-        if (!savePokeConfig()) throw new Error("\u81EA\u52A8\u6D88\u606F\u914D\u7F6E\u4FDD\u5B58\u5931\u8D25");
-        if (!saveBidirectional()) throw new Error("\u6CE8\u5165\u914D\u7F6E\u4FDD\u5B58\u5931\u8D25");
-        if (snapshots.backgrounds[bgKey]) await saveBgLocal();
-        const injectionResult = await applyBidirectionalInjection();
-        const injectionError = injectionFailure3(injectionResult, "\u5220\u9664\u6E05\u7406", "\u7FA4\u804A");
-        if (injectionError) throw injectionError;
-        await window.__pmShowList();
-        clearPendingMessages(runtime, id2, key);
-        if (state.currentGroupKey === key) {
-          state.isGroupChat = false;
-          state.currentGroupKey = "";
-          state.currentPersona = "";
-          state.conversationHistory = [];
-          state.groupMembers = [];
-          state.groupExtras = [];
-          state.groupDisplayName = "";
-          state.groupRandomNpcEnabled = false;
-          state.groupNature = "";
-          state.groupColorMap = {};
-        }
-        return true;
-      } catch (error) {
-        if (!snapshots) {
-          alert(error.message || "\u7FA4\u804A\u5220\u9664\u5931\u8D25");
-          return false;
-        }
-        window.__pmGroupMeta = snapshots.groupMeta;
-        window.__pmHistories = snapshots.histories;
-        window.__pmBidirectional = snapshots.bidirectional;
-        window.__pmPokeConfig = snapshots.poke;
-        window.__pmBgLocal = snapshots.backgrounds;
-        let rollbackError = null;
+      return runConversationInjectionMutation(async () => {
+        let snapshots = null;
         try {
+          snapshots = {
+            groupMeta: clone5(window.__pmGroupMeta),
+            histories: clone5(window.__pmHistories),
+            bidirectional: clone5(window.__pmBidirectional),
+            poke: clone5(window.__pmPokeConfig),
+            backgrounds: clone5(window.__pmBgLocal)
+          };
+          if (window.__pmGroupMeta[id2]) delete window.__pmGroupMeta[id2][key];
+          if (window.__pmHistories[id2]) delete window.__pmHistories[id2][key];
+          const arr = window.__pmBidirectional[id2] || [], idx = arr.indexOf(key);
+          if (idx >= 0) arr.splice(idx, 1);
+          const bgKey = `${id2}_${key}`;
+          if (window.__pmBgLocal[bgKey]) delete window.__pmBgLocal[bgKey];
+          if (window.__pmPokeConfig[id2]?.[key]) delete window.__pmPokeConfig[id2][key];
           await saveHistoriesStrict();
           await saveGroupMeta();
-          if (!savePokeConfig() || !saveBidirectional()) throw new Error("\u672C\u5730\u914D\u7F6E\u56DE\u6EDA\u5931\u8D25");
-          await saveBgLocal();
-          const rollbackResult = await applyBidirectionalInjection();
-          const rollbackInjectionError = injectionFailure3(rollbackResult, "\u5220\u9664\u8865\u507F", "\u7FA4\u804A");
-          if (rollbackInjectionError) throw rollbackInjectionError;
-        } catch (rollbackFailure) {
-          rollbackError = rollbackFailure;
+          if (!savePokeConfig()) throw new Error("\u81EA\u52A8\u6D88\u606F\u914D\u7F6E\u4FDD\u5B58\u5931\u8D25");
+          if (!saveBidirectional()) throw new Error("\u6CE8\u5165\u914D\u7F6E\u4FDD\u5B58\u5931\u8D25");
+          if (snapshots.backgrounds[bgKey]) await saveBgLocal();
+          const injectionResult = await applyBidirectionalInjection();
+          const injectionError = injectionFailure3(injectionResult, "\u5220\u9664\u6E05\u7406", "\u7FA4\u804A");
+          if (injectionError) throw injectionError;
+          try {
+            await finishDeletedConversation(id2, key, state.currentGroupKey === key);
+          } catch (error) {
+            console.error("[phone-mode] \u7FA4\u804A\u5DF2\u5220\u9664\uFF0C\u4F46\u754C\u9762\u6536\u5C3E\u5931\u8D25", error);
+          }
+          return true;
+        } catch (error) {
+          if (!snapshots) {
+            alert(error.message || "\u7FA4\u804A\u5220\u9664\u5931\u8D25");
+            return false;
+          }
+          window.__pmGroupMeta = snapshots.groupMeta;
+          window.__pmHistories = snapshots.histories;
+          window.__pmBidirectional = snapshots.bidirectional;
+          window.__pmPokeConfig = snapshots.poke;
+          window.__pmBgLocal = snapshots.backgrounds;
+          let rollbackError = null;
+          try {
+            await saveHistoriesStrict();
+            await saveGroupMeta();
+            if (!savePokeConfig() || !saveBidirectional()) throw new Error("\u672C\u5730\u914D\u7F6E\u56DE\u6EDA\u5931\u8D25");
+            await saveBgLocal();
+            const rollbackResult = await applyBidirectionalInjection();
+            const rollbackInjectionError = injectionFailure3(rollbackResult, "\u5220\u9664\u8865\u507F", "\u7FA4\u804A");
+            if (rollbackInjectionError) throw rollbackInjectionError;
+          } catch (rollbackFailure) {
+            rollbackError = rollbackFailure;
+          }
+          alert(rollbackError ? `${error.message || "\u7FA4\u804A\u5220\u9664\u5931\u8D25"}\uFF1B\u539F\u6570\u636E\u56DE\u6EDA\u4E5F\u5931\u8D25\uFF0C\u8BF7\u52FF\u5237\u65B0\u5E76\u7ACB\u5373\u5BFC\u51FA\u5907\u4EFD\uFF1A${rollbackError.message}` : error.message || "\u7FA4\u804A\u5220\u9664\u5931\u8D25");
+          return false;
+        } finally {
+          releaseDeleteTransaction();
         }
-        alert(rollbackError ? `${error.message || "\u7FA4\u804A\u5220\u9664\u5931\u8D25"}\uFF1B\u539F\u6570\u636E\u56DE\u6EDA\u4E5F\u5931\u8D25\uFF0C\u8BF7\u52FF\u5237\u65B0\u5E76\u7ACB\u5373\u5BFC\u51FA\u5907\u4EFD\uFF1A${rollbackError.message}` : error.message || "\u7FA4\u804A\u5220\u9664\u5931\u8D25");
-        return false;
-      } finally {
-        releaseDeleteTransaction();
-      }
+      });
     };
     window.__pmDel = async (name) => {
       const id2 = getStorageId2();
       if (!confirm(`\u6C38\u4E45\u5220\u9664\u8054\u7CFB\u4EBA\u201C${name}\u201D\uFF1F\u804A\u5929\u8BB0\u5F55\u3001\u6CE8\u5165\u5173\u7CFB\u3001\u80CC\u666F\u548C\u81EA\u52A8\u6D88\u606F\u914D\u7F6E\u90FD\u4F1A\u4E00\u5E76\u5220\u9664\uFF0C\u4E14\u65E0\u6CD5\u6062\u590D\u3002`)) return false;
       if (!acquireDeleteTransaction()) return false;
-      let snapshots = null;
-      try {
-        snapshots = {
-          histories: clone5(window.__pmHistories),
-          bidirectional: clone5(window.__pmBidirectional),
-          poke: clone5(window.__pmPokeConfig),
-          backgrounds: clone5(window.__pmBgLocal)
-        };
-        if (window.__pmHistories[id2]) delete window.__pmHistories[id2][name];
-        const arr = window.__pmBidirectional[id2] || [], idx = arr.indexOf(name);
-        if (idx >= 0) arr.splice(idx, 1);
-        const bgKey = `${id2}_${name}`;
-        if (window.__pmBgLocal[bgKey]) delete window.__pmBgLocal[bgKey];
-        if (window.__pmPokeConfig[id2]?.[name]) delete window.__pmPokeConfig[id2][name];
-        await saveHistoriesStrict();
-        if (!savePokeConfig()) throw new Error("\u81EA\u52A8\u6D88\u606F\u914D\u7F6E\u4FDD\u5B58\u5931\u8D25");
-        if (!saveBidirectional()) throw new Error("\u6CE8\u5165\u914D\u7F6E\u4FDD\u5B58\u5931\u8D25");
-        if (snapshots.backgrounds[bgKey]) await saveBgLocal();
-        const injectionResult = await applyBidirectionalInjection();
-        const injectionError = injectionFailure3(injectionResult, "\u5220\u9664\u6E05\u7406", "\u8054\u7CFB\u4EBA");
-        if (injectionError) throw injectionError;
-        await window.__pmShowList();
-        clearPendingMessages(runtime, id2, name);
-        if (!state.isGroupChat && state.currentPersona === name) {
-          state.currentPersona = "";
-          state.conversationHistory = [];
-        }
-        return true;
-      } catch (error) {
-        if (!snapshots) {
-          alert(error.message || "\u8054\u7CFB\u4EBA\u5220\u9664\u5931\u8D25");
-          return false;
-        }
-        window.__pmHistories = snapshots.histories;
-        window.__pmBidirectional = snapshots.bidirectional;
-        window.__pmPokeConfig = snapshots.poke;
-        window.__pmBgLocal = snapshots.backgrounds;
-        let rollbackError = null;
+      return runConversationInjectionMutation(async () => {
+        let snapshots = null;
         try {
+          snapshots = {
+            histories: clone5(window.__pmHistories),
+            bidirectional: clone5(window.__pmBidirectional),
+            poke: clone5(window.__pmPokeConfig),
+            backgrounds: clone5(window.__pmBgLocal)
+          };
+          if (window.__pmHistories[id2]) delete window.__pmHistories[id2][name];
+          const arr = window.__pmBidirectional[id2] || [], idx = arr.indexOf(name);
+          if (idx >= 0) arr.splice(idx, 1);
+          const bgKey = `${id2}_${name}`;
+          if (window.__pmBgLocal[bgKey]) delete window.__pmBgLocal[bgKey];
+          if (window.__pmPokeConfig[id2]?.[name]) delete window.__pmPokeConfig[id2][name];
           await saveHistoriesStrict();
-          if (!savePokeConfig() || !saveBidirectional()) throw new Error("\u672C\u5730\u914D\u7F6E\u56DE\u6EDA\u5931\u8D25");
-          await saveBgLocal();
-          const rollbackResult = await applyBidirectionalInjection();
-          const rollbackInjectionError = injectionFailure3(rollbackResult, "\u5220\u9664\u8865\u507F", "\u8054\u7CFB\u4EBA");
-          if (rollbackInjectionError) throw rollbackInjectionError;
-        } catch (rollbackFailure) {
-          rollbackError = rollbackFailure;
+          if (!savePokeConfig()) throw new Error("\u81EA\u52A8\u6D88\u606F\u914D\u7F6E\u4FDD\u5B58\u5931\u8D25");
+          if (!saveBidirectional()) throw new Error("\u6CE8\u5165\u914D\u7F6E\u4FDD\u5B58\u5931\u8D25");
+          if (snapshots.backgrounds[bgKey]) await saveBgLocal();
+          const injectionResult = await applyBidirectionalInjection();
+          const injectionError = injectionFailure3(injectionResult, "\u5220\u9664\u6E05\u7406", "\u8054\u7CFB\u4EBA");
+          if (injectionError) throw injectionError;
+          try {
+            await finishDeletedConversation(id2, name, !state.isGroupChat && state.currentPersona === name);
+          } catch (error) {
+            console.error("[phone-mode] \u8054\u7CFB\u4EBA\u5DF2\u5220\u9664\uFF0C\u4F46\u754C\u9762\u6536\u5C3E\u5931\u8D25", error);
+          }
+          return true;
+        } catch (error) {
+          if (!snapshots) {
+            alert(error.message || "\u8054\u7CFB\u4EBA\u5220\u9664\u5931\u8D25");
+            return false;
+          }
+          window.__pmHistories = snapshots.histories;
+          window.__pmBidirectional = snapshots.bidirectional;
+          window.__pmPokeConfig = snapshots.poke;
+          window.__pmBgLocal = snapshots.backgrounds;
+          let rollbackError = null;
+          try {
+            await saveHistoriesStrict();
+            if (!savePokeConfig() || !saveBidirectional()) throw new Error("\u672C\u5730\u914D\u7F6E\u56DE\u6EDA\u5931\u8D25");
+            await saveBgLocal();
+            const rollbackResult = await applyBidirectionalInjection();
+            const rollbackInjectionError = injectionFailure3(rollbackResult, "\u5220\u9664\u8865\u507F", "\u8054\u7CFB\u4EBA");
+            if (rollbackInjectionError) throw rollbackInjectionError;
+          } catch (rollbackFailure) {
+            rollbackError = rollbackFailure;
+          }
+          alert(rollbackError ? `${error.message || "\u8054\u7CFB\u4EBA\u5220\u9664\u5931\u8D25"}\uFF1B\u539F\u6570\u636E\u56DE\u6EDA\u4E5F\u5931\u8D25\uFF0C\u8BF7\u52FF\u5237\u65B0\u5E76\u7ACB\u5373\u5BFC\u51FA\u5907\u4EFD\uFF1A${rollbackError.message}` : error.message || "\u8054\u7CFB\u4EBA\u5220\u9664\u5931\u8D25");
+          return false;
+        } finally {
+          releaseDeleteTransaction();
         }
-        alert(rollbackError ? `${error.message || "\u8054\u7CFB\u4EBA\u5220\u9664\u5931\u8D25"}\uFF1B\u539F\u6570\u636E\u56DE\u6EDA\u4E5F\u5931\u8D25\uFF0C\u8BF7\u52FF\u5237\u65B0\u5E76\u7ACB\u5373\u5BFC\u51FA\u5907\u4EFD\uFF1A${rollbackError.message}` : error.message || "\u8054\u7CFB\u4EBA\u5220\u9664\u5931\u8D25");
-        return false;
-      } finally {
-        releaseDeleteTransaction();
-      }
+      });
     };
     Object.assign(deps, { showGroupForm });
   }
@@ -13544,7 +13752,13 @@ ${lines}`;
     } = deps;
     let unbindSendGesture = null;
     let unbindIsland = null, unbindPhoneResize = null;
-    const pageController = createPhonePageController({ getRoot: () => state.phoneWindow, closeTransientUi: () => closeControlCenter?.() });
+    const pageController = createPhonePageController({
+      getRoot: () => state.phoneWindow,
+      closeTransientUi: () => {
+        deps.closeContactSwitcher?.("page-change");
+        closeControlCenter?.();
+      }
+    });
     window.__pmReturnToDesktop = () => deps.showPhoneDesktopPage?.();
     const ambientStatus = createAmbientStatusController({
       getTheme: () => window.__pmTheme,
@@ -13614,6 +13828,7 @@ ${lines}`;
       });
     };
     window.__pmToggleMin = () => {
+      deps.closeContactSwitcher?.("minimize");
       closeControlCenter?.();
       state.isMinimized = !state.isMinimized;
       if (state.isMinimized) {
@@ -13655,6 +13870,7 @@ ${lines}`;
       unbindIsland = null;
       unbindPhoneResize?.();
       unbindPhoneResize = null;
+      deps.closeContactSwitcher?.("phone-close");
       closeControlCenter?.();
       closeOverlay("phone-close");
       deps.clearActiveQuote?.();
@@ -13752,7 +13968,10 @@ ${lines}`;
     <div class="pm-navbar">
       <button onclick="window.__pmReturnToDesktop()" class="pm-nav-btn pm-nav-left-btn" title="\u8FD4\u56DE\u684C\u9762" aria-label="\u8FD4\u56DE\u684C\u9762">${HOME_ICON_SVG}</button>
       <div class="pm-name-wrap">
-        <div class="pm-name">${escapeHtml(defaultChar)}</div>
+        <button type="button" class="pm-name-trigger" onclick="window.__pmToggleContactSwitcher(this)" aria-haspopup="dialog" aria-expanded="false" aria-controls="pm-contact-switcher" title="\u5207\u6362\u8054\u7CFB\u4EBA\u6216\u7FA4\u804A">
+          <span class="pm-name">${escapeHtml(defaultChar)}</span>
+          <span class="pm-name-chevron">${CHEVRON_DOWN_ICON_SVG}</span>
+        </button>
         <button onclick="window.__pmPokeCurrent()" class="pm-header-icon-button pm-name-edit is-hidden" title="\u62CD\u4E00\u62CD" aria-label="\u62CD\u4E00\u62CD\u5F53\u524D\u4F1A\u8BDD">${POKE_ICON_SVG}</button>
       </div>
       <div class="pm-nav-right">
@@ -14356,6 +14575,7 @@ ${lines}`;
       <button type="button" role="listitem" onclick="window.__pmShowConfig('api')"><b>API</b><span>\u9ED8\u8BA4\u4F7F\u7528\u9152\u9986 API \u9884\u8BBE</span></button>
       <button type="button" role="listitem" onclick="window.__pmShowConfig('quick-reply')"><b>\u624B\u673A\u5F00\u5173</b><span>\u521B\u5EFA\u6216\u6E05\u9664\u5F00\u5173\u5165\u53E3</span></button>
       <button type="button" role="listitem" onclick="window.__pmShowConfig('look')"><b>\u4E3B\u9898</b><span>\u65E5\u591C\u6A21\u5F0F\u3001\u6C14\u6CE1\u989C\u8272\u4E0E\u80CC\u666F\u56FE</span></button>
+      <button type="button" role="listitem" onclick="window.__pmShowConversationInjection()"><b>\u6B63\u6587\u6CE8\u5165</b><span>\u7EDF\u4E00\u8BBE\u7F6E\u624B\u673A\u4F1A\u8BDD\u7684\u6CE8\u5165\u4F4D\u7F6E\u3001\u6DF1\u5EA6\u548C\u6D88\u606F\u8303\u56F4</span></button>
       <button type="button" role="listitem" onclick="window.__pmShowConfig('backup')"><b>\u5907\u4EFD</b><span>\u5BFC\u51FA\u3001\u5BFC\u5165\u6216\u5B89\u5168\u6E05\u7406\u63D2\u4EF6\u6570\u636E</span></button>
       <button type="button" role="listitem" onclick="window.__pmShowConfig('budget')"><b>\u4E0A\u4E0B\u6587\u9884\u7B97</b><span>\u63A7\u5236\u624B\u673A\u4F1A\u8BDD\u4E0E\u793E\u533A\u5199\u5165\u4E3B\u63D0\u793A\u8BCD\u7684\u989D\u5EA6</span></button>
       <div class="pm-global-setting" role="group" aria-labelledby="pm-wordy-label">
