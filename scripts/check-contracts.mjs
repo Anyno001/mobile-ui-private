@@ -1505,13 +1505,17 @@ for (const expected of [
   'role="switch"', 'aria-checked="${scope.autoAdjust}"', '自动跟随正文日期', "label: '<user>'",
   '<time datetime="${selectedDate}">${escapeHtml(detailDate.format(parsed))}</time>', 'detailWeekday.format(parsed)',
   "period: { label: '经期'", "ovulatory: { label: '易孕期'", "if (!detail) return ''", 'resolveWeatherForDate(weatherStore, date)',
-  'WEATHER_ICON_SVG', 'pm-calendar-panel-section', '℃~${resolved.day.tempMax}℃', 'pm-calendar-status-copy', 'pm-calendar-status-icon',
+  'CYCLE_MARK_HTML', 'CYCLE_FERTILE_ICON_SVG', 'WEATHER_ICON_SVG', 'pm-calendar-panel-section', '℃~${resolved.day.tempMax}℃', 'pm-calendar-status-copy', 'pm-calendar-status-icon',
   '当前故事日期', 'placeholder="例如 3726-08-17"', '可直接输入日期，或跳转月份后点击下方日期。',
   '开启后供正文生成读取；设置按当前会话独立保存。', '预报外日期使用气候推演', '无法推演',
   'DEFAULT_CALENDAR_GENERATION_RULE', 'DEFAULT_RECIPE_GENERATION_RULE', 'data-calendar-generation-rule', 'data-recipe-generation-rule',
   'calendar-generation-rule-save', 'calendar-recipe-generation-rule-save', 'escapeHtml(generationRule)',
   '开启后可设置生日或纪念日', 'data-calendar-occasion-fields ${occasion ? \'\' : \'hidden aria-hidden="true"\'}',
 ]) requireText('calendar-view.js', calendarViewCode, expected);
+if (calendarViewCode.includes('<h3>上下文注入</h3>')) failures.push('calendar-view.js: calendar management cards must not repeat the context-injection heading');
+if (!/<h3>正文日期<\/h3>[\s\S]*<h3>节假日数据<\/h3>[\s\S]*<h3>生成规则<\/h3>/.test(calendarViewCode)) {
+  failures.push('calendar-view.js: schedule generation rule card must remain last');
+}
 for (const forbidden of ['<span>已选日期</span>', '>${escapeHtml(selectedDate)}</time>', '>编辑</button>', 'calendar-editor-kind', 'pm-calendar-editor-switch']) if (calendarViewCode.includes(forbidden)) failures.push(`calendar-view.js: calendar UI remains: ${forbidden}`);
 for (const forbidden of ['storyInitialDate', 'calendar-story-initial', '故事初始日期', "luteal: { label: '安全期'"]) if (calendarViewCode.includes(forbidden)) failures.push(`calendar-view.js: removed calendar copy remains: ${forbidden}`);
 if (calendarViewCode.includes('Weather data © Open-Meteo')) failures.push('calendar-view.js: weather attribution must not be rendered in the UI');
@@ -1797,6 +1801,13 @@ for (const expected of [
   '.pm-model-opt:focus-visible{position:relative;z-index:1;outline:2px solid var(--pm-color-focus-ring);outline-offset:-2px;}',
   '.pm-model-dropdown{position:fixed;z-index:2147483647;background:var(--pm-color-surface-elevated) !important;border:1px solid var(--pm-color-border-default) !important;',
   '.pm-model-search{border:none !important;border-bottom:1px solid var(--pm-color-border-subtle) !important;',
+  ':is(#pm-iphone,#pm-overlay,#pm-overlay-sub,#pm-model-dropdown) :where(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]):not([type="button"]):not([type="submit"]):not([type="reset"]),textarea,select,[contenteditable="true"]){min-width:0;max-width:100%;border:1px solid var(--pm-color-border-default) !important;',
+  ':is(#pm-iphone,#pm-overlay,#pm-overlay-sub,#pm-model-dropdown) :where(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]):not([type="button"]):not([type="submit"]):not([type="reset"]),textarea,select,[contenteditable="true"]):focus{border-color:var(--pm-color-border-default) !important;outline:none !important;box-shadow:none !important;}',
+  ':is(#pm-iphone,#pm-overlay,#pm-overlay-sub,#pm-model-dropdown) :where(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]):not([type="button"]):not([type="submit"]):not([type="reset"]),textarea,select,[contenteditable="true"]):focus-visible{border-color:var(--pm-color-focus-ring) !important;outline:none !important;box-shadow:inset 0 0 0 1px var(--pm-color-focus-ring) !important;}',
+  ':is(#pm-iphone,#pm-overlay,#pm-overlay-sub,#pm-model-dropdown) :where(.pm-input,.pm-scene-composer textarea){border:0 !important;}',
+  ':is(#pm-iphone,#pm-overlay,#pm-overlay-sub,#pm-model-dropdown) .pm-model-search{border:0 !important;border-bottom:1px solid var(--pm-color-border-subtle) !important;border-radius:0;}',
+  ':is(#pm-iphone,#pm-overlay,#pm-overlay-sub,#pm-model-dropdown) :where(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]):not([type="button"]):not([type="submit"]):not([type="reset"]),textarea,select,[contenteditable="true"]):disabled{opacity:.55 !important;cursor:not-allowed;}',
+  ':-webkit-autofill{box-shadow:0 0 0 1000px var(--pm-color-surface-input) inset !important;',
   '.pm-model-opt{display:block;width:100%;padding:8px 12px;font:inherit;font-size:13px;text-align:left;background:var(--pm-color-surface-elevated);color:var(--pm-color-text-primary);',
   '.pm-model-empty{padding:14px;text-align:center;font-size:12px;color:var(--pm-color-text-tertiary);}',
 ]) requireText('style.css', css, expected);
@@ -1804,6 +1815,8 @@ for (const forbidden of [
   '#pm-overlay[data-theme="dark"] .pm-settings-home button',
   '.pm-model-dropdown[data-theme="dark"] .pm-model-search',
   '#pm-iphone[data-theme="dark"] .pm-scene-comment-composer input',
+  ':where(#pm-iphone,#pm-overlay,#pm-overlay-sub,.pm-model-dropdown)',
+  ':where(#pm-iphone,#pm-overlay,#pm-overlay-sub,#pm-model-dropdown)',
 ]) if (css.includes(forbidden)) failures.push(`style.css: obsolete dark-mode component override remains: ${forbidden}`);
 if (css.includes('pm-forum-entry')) failures.push('style.css: removed directory community entry styles must not remain');
 requireText('style.css', css, 'top:calc(18px + var(--lane)*31px + var(--offset))');
@@ -1868,10 +1881,11 @@ for (const expected of [
   '.pm-calendar-month-panel{margin:0 12px 10px;padding:10px;border:1px solid var(--pm-color-border-subtle);border-radius:14px',
   '.pm-calendar-panel-section{display:flex;flex-direction:column;gap:6px;padding:8px 0}',
   '.pm-calendar-month-panel-actions{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;padding-top:8px}',
-  '.pm-calendar-weather,.pm-calendar-cycle{display:grid;grid-template-columns:minmax(0,1fr) 36px;align-items:stretch',
-  '.pm-calendar-status-copy{min-width:0;display:flex!important;flex-direction:column;justify-content:center',
-  '.pm-calendar-status-icon{display:grid!important;place-items:center;align-self:stretch',
-  '.pm-calendar-status-icon>svg{display:block;width:32px;height:32px}',
+  '.pm-calendar-weather,.pm-calendar-cycle{position:relative;min-height:52px;padding:8px 48px 8px 0}',
+  '.pm-calendar-status-copy{min-width:0;min-height:36px;display:flex!important;flex-direction:column;justify-content:center;gap:2px',
+  '.pm-calendar-status-icon{position:absolute;top:50%;right:0;width:36px;height:36px;display:grid!important;place-items:center',
+  'transform:translateY(-50%)}.pm-calendar-status-icon>svg{display:block;width:28px;height:28px}',
+  '.pm-calendar-cycle-mark{display:inline-grid;place-items:center;',
   '.pm-calendar-shell[data-calendar-view-mode="recipe"]{--pm-calendar-accent:#c77a32}',
   '.pm-calendar-day.has-recipe>span{color:var(--pm-calendar-accent)}',
   '.pm-calendar-event.is-recipe b{color:var(--pm-calendar-accent)}',
@@ -2101,7 +2115,7 @@ if (bundle.includes('pm-forum-entry')) failures.push('bundle: removed directory 
 for (const iconName of [
   'MENU_ICON_SVG', 'CLOSE_ICON_SVG', 'HOME_ICON_SVG', 'CONTROL_ICON_SVG', 'SEND_ICON_SVG',
   'POKE_ICON_SVG', 'CHAT_ICON_SVG', 'CONTACTS_ICON_SVG', 'CHARACTER_ICON_SVG', 'SETTINGS_ICON_SVG', 'COMMUNITY_ICON_SVG',
-  'EDIT_ICON_SVG', 'EMOJI_ICON_SVG', 'TRASH_ICON_SVG', 'REMOVE_ICON_SVG', 'RECIPE_ICON_SVG',
+  'EDIT_ICON_SVG', 'EMOJI_ICON_SVG', 'TRASH_ICON_SVG', 'REMOVE_ICON_SVG', 'RECIPE_ICON_SVG', 'CYCLE_MARK_HTML', 'CYCLE_FERTILE_ICON_SVG',
 ]) {
   requireText('icons.js', sourceModuleByName.get('icons.js')?.code || '', `export const ${iconName}`);
 }

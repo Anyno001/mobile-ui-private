@@ -658,6 +658,11 @@ for (const { date, phase, label } of cycleLabelCases) {
             '启用周期资料时必须用完整规则说明未标注日期的含义');
     } else {
         assert.match(detail, new RegExp(`<b>${label}</b>`), `周期详情必须将 ${phase} 渲染为${label}`);
+        if (phase === 'period') {
+            assert.match(detail, /class="pm-calendar-cycle-mark"[^>]*>୨ৎ<\/span>/, '经期详情必须使用୨ৎ标记');
+        } else if (phase === 'ovulatory') {
+            assert.match(detail, /class="pm-calendar-status-icon"[^>]*>[\s\S]*?<circle cx="12" cy="12" r="3\.2"\/>/, '易孕期详情必须使用花蕊图标而不是生成星光');
+        }
         assert.match(page, new RegExp(`data-calendar-date="${date}"[^>]*>(?:(?!</button>)[\\s\\S])*?<span>${label}</span>`),
             `周期月格必须将 ${phase} 渲染为${label}`);
         assert.match(injection, new RegExp(`${date}｜[^\\n]*生理周期（我）：${label}`),
@@ -886,7 +891,10 @@ assert.doesNotMatch(renderedSchedule, /避免误改/);
 for (const label of ['日程', '天气', '生理期', '菜谱']) {
     const rendered = label === '天气' ? renderedWeather : label === '生理期' ? renderedCycle : label === '菜谱' ? renderedRecipe : renderedSchedule;
     assert.match(rendered, new RegExp(`<b>${label}</b><small>开启后供正文生成读取；设置按当前会话独立保存。</small>`));
+    assert.doesNotMatch(rendered, /<h3>上下文注入<\/h3>/, `${label}设置不得重复显示上下文注入模块标题`);
 }
+assert.match(renderedSchedule, /<h3>正文日期<\/h3>[\s\S]*?<h3>节假日数据<\/h3>[\s\S]*?<h3>生成规则<\/h3>/,
+    '日程生成规则模块必须位于设置区最下面');
 assert.doesNotMatch(renderedSchedule, /data-calendar-editor|data-calendar-occasion-editor|pm-calendar-editor-switch/,
     '安排管理区不得恢复独立新增表单');
 assert.doesNotMatch(renderedSchedule, /已选日期|>\d{4}-\d{2}-\d{2}<\/time>/);
@@ -978,8 +986,10 @@ assert.match(renderedCycle, /class="pm-calendar-cycle-input" name="enabled" type
     '周期开关必须保留原生 checkbox 的表单与辅助技术语义');
 assert.match(renderedCycle, /class="pm-custom-check" aria-hidden="true"/,
     '周期开关必须复用统一视觉控件');
-assert.match(renderedCycle, /class="pm-calendar-cycle is-period">[\s\S]*?class="pm-calendar-status-copy">[\s\S]*?<b>经期<\/b>[\s\S]*?<small>周期预测<\/small>[\s\S]*?class="pm-calendar-status-icon"[^>]*>[\s\S]*?<svg/,
-    '选中经期日期的详情必须使用独立文本区和右侧 SVG 图标槽');
+assert.match(renderedCycle, /class="pm-calendar-cycle is-period">[\s\S]*?class="pm-calendar-status-copy">[\s\S]*?<b>经期<\/b>[\s\S]*?<small>周期预测<\/small>[\s\S]*?class="pm-calendar-status-icon"[^>]*>[\s\S]*?class="pm-calendar-cycle-mark"[^>]*>୨ৎ<\/span>/,
+    '选中经期日期的详情必须使用独立文本区和右侧୨ৎ图标槽');
+assert.match(renderedCycle, /data-action="calendar-mode-cycle"[^>]*>[\s\S]*?class="pm-calendar-cycle-mark"[^>]*>୨ৎ<\/span>/,
+    '生理日历模式按钮必须使用୨ৎ标记');
 assert.match(renderedWeather, /class="pm-calendar-weather">[\s\S]*?class="pm-calendar-status-copy">[\s\S]*?class="pm-calendar-status-icon"[^>]*>[\s\S]*?<svg/,
     '天气详情必须使用独立文本区和右侧 SVG 图标槽');
 assert.doesNotMatch(renderedCycle, />follicular<|，follicular|<span>follicular<\/span>/,

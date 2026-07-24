@@ -23,10 +23,9 @@ export const PLAY_ICON_SVG = icon('<path d="M8 5l11 7-11 7z"/>');
 
 export const CALENDAR_ICON_SVG = icon('<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18M8 14h.01M12 14h.01M16 14h.01M8 18h.01M12 18h.01"/>');
 export const WEATHER_ICON_SVG = icon('<path d="M7 17h10a4 4 0 0 0 .5-8A6 6 0 0 0 6.2 10.5 3.5 3.5 0 0 0 7 17z"/><path d="M8 21l1-2M12 21l1-2M16 21l1-2"/>');
-export const CYCLE_ICON_SVG = icon('<path d="M12 10c-2.2-3.8-6.1-5.6-8-3.6-1.8 1.9.2 5.4 4.6 6.1L12 10z"/><path d="M12 10c2.2-3.8 6.1-5.6 8-3.6 1.8 1.9-.2 5.4-4.6 6.1L12 10z"/><path d="M9.4 12.1L7 20l5-3 5 3-2.4-7.9"/><circle cx="12" cy="11" r="2"/>');
+export const CYCLE_MARK_HTML = '<span class="pm-calendar-cycle-mark" aria-hidden="true">୨ৎ</span>';
 export const RECIPE_ICON_SVG = icon('<path d="M7 3v7M4 3v4a3 3 0 0 0 6 0V3M7 10v11"/><path d="M16 3v18M16 3c2.2 1.8 3.2 4.5 3 8h-3"/>');
-export const CYCLE_PERIOD_ICON_SVG = icon('<path d="M11.8 10.2C9.7 6.4 5.7 4.7 3.9 6.8c-1.6 1.9.5 5.2 4.8 5.6l3.1-2.2z"/><path d="M12.2 10.2c2.1-3.8 6.1-5.5 7.9-3.4 1.6 1.9-.5 5.2-4.8 5.6l-3.1-2.2z"/><path d="M9.2 12.3L6.8 20l5.2-3.2 5.2 3.2-2.4-7.7"/><circle cx="12" cy="11.2" r="2.2"/><path d="M5.8 8.1c.7.1 1.5.5 2.2 1.2M18.2 8.1c-.7.1-1.5.5-2.2 1.2"/>');
-export const CYCLE_FERTILE_ICON_SVG = icon('<path d="M12 4l1.6 4.4L18 10l-4.4 1.6L12 16l-1.6-4.4L6 10l4.4-1.6z"/><path d="M18.5 15l.7 1.8L21 17.5l-1.8.7-.7 1.8-.7-1.8-1.8-.7 1.8-.7z"/>');
+export const CYCLE_FERTILE_ICON_SVG = icon('<circle cx="12" cy="12" r="3.2"/><path d="M8.6 7.5C7.4 5.8 5.4 5.2 4 6.3c-1.4 1.2-.8 3.4 1.1 4.4M15.4 7.5c1.2-1.7 3.2-2.3 4.6-1.2 1.4 1.2.8 3.4-1.1 4.4M8.6 16.5c-1.2 1.7-3.2 2.3-4.6 1.2-1.4-1.2-.8-3.4 1.1-4.4M15.4 16.5c1.2 1.7 3.2 2.3 4.6 1.2 1.4-1.2.8-3.4-1.1-4.4"/>');
 export const TIME_ORIGIN_ICON_SVG = icon('<circle cx="12" cy="12" r="8"/><path d="M12 7v5l3 2"/>');
 export const EDIT_ICON_SVG = icon('<path d="M4 20h4L19 9l-4-4L4 16v4z"/><path d="M13.5 6.5l4 4"/>');
 export const EMOJI_ICON_SVG = icon('<circle cx="12" cy="12" r="9"/><path d="M8 10h.01M16 10h.01M8.5 15c1 1 2.2 1.5 3.5 1.5s2.5-.5 3.5-1.5"/>');
