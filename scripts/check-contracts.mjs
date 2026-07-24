@@ -1626,9 +1626,10 @@ for (const expected of [
   'placeholder="分享此刻……"', '<span class="pm-scene-post-time">刚刚</span>',
   "const liveState = ['idle', 'starting', 'active', 'error'].includes(state.liveState) ? state.liveState : 'idle'", 'const warmupStarted = liveState === \'active\' && scene.live.warmupStarted === true',
   'data-action="start-warmup"', '${PLAY_ICON_SVG}', 'aria-label="发送弹幕"', '设置社区内容的表达风格与氛围。',
-  "isPrompt || tab === 'live' || tab === 'context-inject' ? ''", 'pm-live-stage', 'pm-live-details', 'data-live-state=', 'pm-danmaku-float',
+  "isSubpage || tab === 'context-inject' ? ''", 'pm-live-stage', 'pm-live-details', 'data-live-state=', 'pm-danmaku-float',
+  'data-action="toggle-danmaku-actions"', 'aria-pressed="false"', 'aria-label="修改弹幕"', '修改弹幕', 'data-action="edit-danmaku"', 'data-action="delete-danmaku"', 'placeholder="发个弹幕见证当下"',
 ]) requireText('interactive-scene-views.js', interactiveViewsCode, expected);
-for (const expected of ['.pm-live-room{display:flex;flex-direction:column;gap:20px}', '.pm-live-play-btn{width:48px', '.pm-live-details{display:flex;flex-direction:column;gap:12px}', '.pm-danmaku-list{height:210px;overflow-y:auto;background:transparent;border:0']) {
+for (const expected of ['.pm-live-room{display:flex;flex-direction:column;gap:20px}', '.pm-live-play-btn{width:48px', '.pm-live-details{display:flex;flex-direction:column;gap:12px}', '.pm-danmaku-list{height:210px;overflow-y:auto;background:transparent;border:0', '.pm-danmaku-row .pm-scene-comment-actions[hidden]{display:none}']) {
   requireText('style.css', css, expected);
 }
 for (const forbidden of ['data-action="back"', 'pm-scene-back']) {
@@ -1650,7 +1651,7 @@ for (const expected of [
   "addEventListener('touchstart'", "addEventListener('touchend'", 'Math.abs(dx) < 48',
   ".pm-scene-post-actions:not([hidden])", 'closePostActions', '[data-action="post-actions"]', 'postFocusTarget', 'menuFocusTarget',
   "closest?.('.pm-scene-post')?.querySelectorAll?.('.pm-scene-comment-actions')", 'commentActions.hidden = !opening',
-  "app.querySelectorAll?.('.pm-scene-comment-composer')", "composers.find(composer => composer.id === targetId)", '[data-action="toggle-reply"]', "focus?.({ preventScroll: true })",
+  "app.querySelectorAll?.('.pm-scene-comment-composer')", "composers.find(composer => composer.id === targetId)", '[data-action="toggle-reply"]', 'toggleDanmakuActions', "app?.querySelector?.('.pm-danmaku-list')", "button.querySelector?.('span')?.replaceChildren?.(label)", "focus?.({ preventScroll: true })",
 ]) requireText('interactive-scene-phone.js', interactivePhoneCode, expected);
 for (const expected of [
   'runDeleteSceneAction(scopeId, sceneId, {', 'clearOpenScene:', 'renderLauncher:',
@@ -1889,7 +1890,7 @@ for (const expected of [
   '.pm-scene-comment-actions button svg{width:14px;height:14px}',
   '.pm-scene-post-actions button:focus-visible{background:color-mix(in srgb,var(--scene-accent) 10%,transparent);outline:2px solid var(--scene-accent);outline-offset:2px}',
   '.pm-scene-like.is-liked svg{fill:currentColor}',
-  '.pm-danmaku-input button svg{width:18px;height:18px}',
+  '.pm-scene-composer .pm-scene-primary svg{width:18px;height:18px}',
   '.pm-scene-title-poke svg,.pm-scene-exit svg{width:18px;height:18px}',
   '.pm-reply-card{box-sizing:border-box;width:100%',
   '.pm-quote-preview{display:flex;align-items:center',

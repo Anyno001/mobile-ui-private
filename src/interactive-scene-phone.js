@@ -304,6 +304,21 @@ export function toggleScenePostActions(button) {
     return opening;
 }
 
+export function toggleDanmakuActions(button, app) {
+    const list = app?.querySelector?.('.pm-danmaku-list');
+    const actions = list?.querySelectorAll?.('.pm-scene-comment-actions') || [];
+    if (!list) return false;
+    const opening = [...actions].some(item => item.hidden);
+    actions.forEach(item => { item.hidden = !opening; });
+    button.setAttribute?.('aria-pressed', String(opening));
+    const label = opening ? '停止修改' : '修改弹幕';
+    button.querySelector?.('span')?.replaceChildren?.(label);
+    button.setAttribute?.('aria-label', label);
+    button.title = label;
+    if (opening) list.querySelector?.('.pm-scene-comment-actions button')?.focus?.({ preventScroll: true });
+    return opening;
+}
+
 export function toggleSceneReplyComposer(button, app) {
     const postId = String(button?.dataset?.postId || '').trim();
     if (!postId || !app) return false;

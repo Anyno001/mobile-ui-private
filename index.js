@@ -4791,6 +4791,14 @@ ${lines.join("\n")}
     post.content = normalizedContent;
     scene.updatedAt = Date.now();
   }
+  function updateSceneDanmaku(scene, danmakuId, content) {
+    const danmaku = scene?.live?.danmaku?.find((item) => item.id === danmakuId);
+    const normalizedContent = text2(content, 200);
+    if (!danmaku) throw new Error("\u5F39\u5E55\u4E0D\u5B58\u5728");
+    if (!normalizedContent) throw new Error("\u5F39\u5E55\u5185\u5BB9\u4E0D\u80FD\u4E3A\u7A7A");
+    danmaku.content = normalizedContent;
+    scene.updatedAt = Date.now();
+  }
   function updateSceneComment(scene, postId, commentId, content) {
     const post = scene?.posts?.find((item) => item.id === postId);
     const comment = post?.comments?.find((item) => item.id === commentId);
@@ -4803,6 +4811,11 @@ ${lines.join("\n")}
   function deleteScenePost(scene, postId) {
     if (!scene?.posts?.some((item) => item.id === postId)) throw new Error("\u5E16\u5B50\u4E0D\u5B58\u5728");
     scene.posts = scene.posts.filter((item) => item.id !== postId);
+    scene.updatedAt = Date.now();
+  }
+  function deleteSceneDanmaku(scene, danmakuId) {
+    if (!scene?.live?.danmaku?.some((item) => item.id === danmakuId)) throw new Error("\u5F39\u5E55\u4E0D\u5B58\u5728");
+    scene.live.danmaku = scene.live.danmaku.filter((item) => item.id !== danmakuId);
     scene.updatedAt = Date.now();
   }
   function deleteSceneComment(scene, postId, commentId) {
@@ -6985,6 +6998,22 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
     if (opening) actions.querySelector?.("button")?.focus?.({ preventScroll: true });
     return opening;
   }
+  function toggleDanmakuActions(button, app) {
+    const list2 = app?.querySelector?.(".pm-danmaku-list");
+    const actions = list2?.querySelectorAll?.(".pm-scene-comment-actions") || [];
+    if (!list2) return false;
+    const opening = [...actions].some((item) => item.hidden);
+    actions.forEach((item) => {
+      item.hidden = !opening;
+    });
+    button.setAttribute?.("aria-pressed", String(opening));
+    const label = opening ? "\u505C\u6B62\u4FEE\u6539" : "\u4FEE\u6539\u5F39\u5E55";
+    button.querySelector?.("span")?.replaceChildren?.(label);
+    button.setAttribute?.("aria-label", label);
+    button.title = label;
+    if (opening) list2.querySelector?.(".pm-scene-comment-actions button")?.focus?.({ preventScroll: true });
+    return opening;
+  }
   function toggleSceneReplyComposer(button, app) {
     const postId = String(button?.dataset?.postId || "").trim();
     if (!postId || !app) return false;
@@ -7454,7 +7483,7 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
     }).join("");
   }
   function renderDanmaku(scene) {
-    return scene.live.danmaku.slice(-80).map((item) => `<div class="pm-danmaku-row is-${stableDanmakuTone(item)}"><b title="${escapeAttr(item.authorNameSnapshot)}">${escapeHtml(item.authorNameSnapshot)}</b><span>${escapeHtml(item.content)}</span></div>`).join("") || '<div class="pm-scene-empty"><span>\u8FD8\u6CA1\u6709\u5F39\u5E55\uFF0C\u53D1\u4E00\u6761\u548C\u5927\u5BB6\u6253\u4E2A\u62DB\u547C\u5427\u3002</span></div>';
+    return scene.live.danmaku.slice(-80).map((item) => `<div class="pm-danmaku-row is-${stableDanmakuTone(item)}"><div class="pm-danmaku-row-header"><b title="${escapeAttr(item.authorNameSnapshot)}">${escapeHtml(item.authorNameSnapshot)}</b><span class="pm-scene-comment-actions" hidden><button type="button" data-action="edit-danmaku" data-danmaku-id="${escapeAttr(item.id)}" aria-label="\u7F16\u8F91\u5F39\u5E55" title="\u7F16\u8F91\u5F39\u5E55">${EDIT_ICON_SVG}</button><button type="button" class="pm-scene-danger" data-action="delete-danmaku" data-danmaku-id="${escapeAttr(item.id)}" aria-label="\u5220\u9664\u5F39\u5E55" title="\u5220\u9664\u5F39\u5E55">${TRASH_ICON_SVG}</button></span></div><span class="pm-danmaku-content">${escapeHtml(item.content)}</span></div>`).join("") || '<div class="pm-scene-empty"><span>\u8FD8\u6CA1\u6709\u5F39\u5E55\uFF0C\u53D1\u4E00\u6761\u548C\u5927\u5BB6\u6253\u4E2A\u62DB\u547C\u5427\u3002</span></div>';
   }
   function renderContextInjectionSettings(scene, state) {
     const selection = state.communitySelection?.mode === "selected" ? state.communitySelection : { mode: "all", postIds: [] };
@@ -7475,13 +7504,15 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
         <div class="pm-scene-injection-actions"><button type="button" class="pm-scene-secondary" data-action="context-cancel">\u53D6\u6D88</button><button type="button" class="pm-scene-primary" data-action="context-save">\u4FDD\u5B58\u6CE8\u5165\u8BBE\u7F6E</button></div>
     </div>`;
   }
-  function renderSceneMenu(scene, uiScope, autoActive) {
+  function renderSceneMenu(scene, uiScope, autoActive, tab) {
     const pinned = uiScope.pinnedSceneIds.includes(scene.id);
+    const danmakuActions = tab === "live" ? `<button type="button" role="menuitem" data-action="toggle-danmaku-actions" aria-pressed="false" aria-label="\u4FEE\u6539\u5F39\u5E55" title="\u4FEE\u6539\u5F39\u5E55">${EDIT_ICON_SVG}<span>\u4FEE\u6539\u5F39\u5E55</span></button>` : "";
     return `<div class="pm-scene-menu-wrap" data-auto-active="${autoActive}">
         <button type="button" class="pm-scene-more" data-action="more" aria-label="\u793E\u533A\u5DE5\u5177" title="\u793E\u533A\u5DE5\u5177" aria-haspopup="menu" aria-expanded="false">${CONTROL_ICON_SVG}</button>
         <div class="pm-control-menu pm-scene-menu" role="menu" aria-label="\u793E\u533A\u5DE5\u5177" hidden>
             <button type="button" role="menuitem" data-action="tab" data-tab="prompt">${EDIT_ICON_SVG}<span>\u98CE\u683C\u63D0\u793A\u8BCD</span></button>
             <button type="button" role="menuitem" data-action="context-inject">${INJECTION_ICON_SVG}<span>\u4E0A\u4E0B\u6587\u6CE8\u5165</span></button>
+            ${danmakuActions}
             <button type="button" role="menuitem" data-action="toggle-scene-pin" data-scene-id="${escapeAttr(scene.id)}" aria-pressed="${pinned}">${COMMUNITY_ICON_SVG}<span>${pinned ? "\u53D6\u6D88\u56FA\u5B9A" : "\u56FA\u5B9A\u793E\u533A"}</span></button>
             <button type="button" role="menuitem" class="pm-scene-danger" data-action="delete-scene" data-scene-id="${escapeAttr(scene.id)}">${TRASH_ICON_SVG}<span>\u5220\u9664\u793E\u533A</span></button>
         </div>
@@ -7503,15 +7534,16 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
     const stageState = warmupStarted ? "active" : liveFailed ? "error" : liveStarting ? "starting" : "idle";
     const playControl = !warmupStarted && !liveStarting ? `<button type="button" class="pm-live-play-btn" data-action="start-warmup" aria-label="${liveFailed ? "\u91CD\u65B0\u5F00\u59CB\u70ED\u573A" : "\u5F00\u59CB\u70ED\u573A"}" title="${liveFailed ? "\u91CD\u65B0\u5F00\u59CB\u70ED\u573A" : "\u5F00\u59CB\u70ED\u573A"}">${PLAY_ICON_SVG}</button>` : "";
     const stageNote = liveStarting ? '<p class="pm-live-state-note">\u6B63\u5728\u51C6\u5907\u70ED\u573A\u2026</p>' : liveFailed ? '<p class="pm-live-state-note is-error">\u70ED\u573A\u672A\u80FD\u542F\u52A8\uFF0C\u8BF7\u91CD\u8BD5\u3002</p>' : "";
-    const liveContent = `<div class="pm-live-stage ${hasDanmaku ? "has-danmaku" : ""}" data-live-state="${stageState}">${playControl}<div class="pm-danmaku-float">${floatingDanmaku}</div>${stageNote}</div><section class="pm-live-details" aria-label="\u70ED\u573A\u5185\u5BB9"><div class="pm-danmaku-list">${renderDanmaku(scene)}</div><div class="pm-scene-composer pm-danmaku-input"><textarea id="pm-danmaku-input" rows="1" maxlength="200" placeholder="\u53D1\u6761\u5F39\u5E55\u2026\u2026"></textarea><button type="button" class="pm-scene-primary" data-action="send-danmaku" aria-label="\u53D1\u9001\u5F39\u5E55" title="\u53D1\u9001\u5F39\u5E55">${SEND_ICON_SVG}</button></div></section>`;
-    const composer = tab === "feed" ? `<div class="pm-scene-composer"><textarea id="pm-scene-post-input" maxlength="4000" placeholder="\u5206\u4EAB\u6B64\u523B\u2026\u2026"></textarea><button type="button" class="pm-scene-primary" data-action="publish" aria-label="\u53D1\u5E03" title="\u53D1\u5E03">${SEND_ICON_SVG}</button></div>` : "";
+    const liveContent = `<div class="pm-live-stage ${hasDanmaku ? "has-danmaku" : ""}" data-live-state="${stageState}">${playControl}<div class="pm-danmaku-float">${floatingDanmaku}</div>${stageNote}</div><section class="pm-live-details" aria-label="\u70ED\u573A\u5185\u5BB9"><div class="pm-danmaku-list">${renderDanmaku(scene)}</div></section>`;
+    const composer = tab === "feed" ? `<div class="pm-scene-composer"><textarea id="pm-scene-post-input" maxlength="4000" placeholder="\u5206\u4EAB\u6B64\u523B\u2026\u2026"></textarea><button type="button" class="pm-scene-primary" data-action="publish" aria-label="\u53D1\u5E03" title="\u53D1\u5E03">${SEND_ICON_SVG}</button></div>` : tab === "live" ? `<div class="pm-scene-composer pm-danmaku-input"><textarea id="pm-danmaku-input" rows="1" maxlength="200" placeholder="\u53D1\u4E2A\u5F39\u5E55\u89C1\u8BC1\u5F53\u4E0B"></textarea><button type="button" class="pm-scene-primary" data-action="send-danmaku" aria-label="\u53D1\u9001\u5F39\u5E55" title="\u53D1\u9001\u5F39\u5E55">${SEND_ICON_SVG}</button></div>` : "";
     const content = tab === "feed" ? `<div class="pm-scene-feed"><div class="pm-scene-posts">${renderPosts(scene)}</div></div>` : tab === "live" ? `<div class="pm-live-room">${liveContent}</div>` : tab === "context-inject" ? renderContextInjectionSettings(scene, state) : `<div class="pm-scene-prompt"><label>\u793E\u533A\u540D\u79F0<input id="pm-scene-title" maxlength="80" value="${escapeAttr(scene.title)}"></label><fieldset class="pm-scene-accent-field"><legend>\u793E\u533A\u4E3B\u9898\u8272</legend><div class="pm-scene-accent-options">${renderSceneAccentOptions(accent)}<label class="pm-scene-accent-custom" aria-label="\u81EA\u5B9A\u4E49\u793E\u533A\u4E3B\u9898\u8272"><input id="pm-scene-accent" type="color" data-action="scene-accent-custom" value="${escapeAttr(accent)}"><span>\u81EA\u5B9A\u4E49</span></label></div></fieldset><label>\u793E\u533A\u98CE\u683C<textarea id="pm-scene-prompt" maxlength="6000">${escapeHtml(scene.generatedPrompt)}</textarea></label><p>\u8BBE\u7F6E\u793E\u533A\u5185\u5BB9\u7684\u8868\u8FBE\u98CE\u683C\u4E0E\u6C1B\u56F4\u3002</p><div class="pm-scene-prompt-actions"><button type="button" class="pm-scene-secondary" data-action="regenerate-prompt">\u91CD\u65B0\u751F\u6210</button><button type="button" class="pm-scene-primary" data-action="save-prompt">\u4FDD\u5B58\u98CE\u683C</button></div></div>`;
     const isPrompt = tab === "prompt";
+    const isSubpage = isPrompt;
     const returnTab = ["feed", "live"].includes(uiScope.lastTab) ? uiScope.lastTab : "feed";
-    const leadingAction = isPrompt ? `data-action="tab" data-tab="${returnTab}" aria-label="\u8FD4\u56DE\u5B50\u793E\u533A" title="\u8FD4\u56DE\u5B50\u793E\u533A"` : 'data-action="desktop" aria-label="\u8FD4\u56DE\u684C\u9762" title="\u8FD4\u56DE\u684C\u9762"';
+    const leadingAction = isSubpage ? `data-action="tab" data-tab="${returnTab}" aria-label="\u8FD4\u56DE\u5B50\u793E\u533A" title="\u8FD4\u56DE\u5B50\u793E\u533A"` : 'data-action="desktop" aria-label="\u8FD4\u56DE\u684C\u9762" title="\u8FD4\u56DE\u684C\u9762"';
     return `<div id="pm-scene-app" class="pm-modal pm-scene-shell" style="--scene-accent:${escapeAttr(accent)}">
-        <div class="pm-scene-topbar"><div class="pm-scene-nav-actions"><button type="button" class="pm-scene-home" ${leadingAction}>${isPrompt ? BACK_ICON_SVG : HOME_ICON_SVG}</button></div><nav class="pm-scene-title" aria-label="\u5B50\u793E\u533A\u89C6\u56FE"><button type="button" class="pm-scene-title-tab ${tab === "feed" ? "is-active" : ""}" data-action="tab" data-tab="feed" aria-current="${tab === "feed" ? "page" : "false"}"><span>${escapeHtml(scene.title)}</span></button><button type="button" class="pm-scene-title-tab ${tab === "live" ? "is-active" : ""}" data-action="tab" data-tab="live" aria-current="${tab === "live" ? "page" : "false"}"><span>\u76F4\u64AD</span></button></nav><div class="pm-scene-view-actions"><button type="button" class="pm-header-icon-button pm-scene-title-poke" data-action="poke-scene" aria-label="\u62CD\u4E00\u62CD\u793E\u533A" title="\u62CD\u4E00\u62CD\u793E\u533A">${POKE_ICON_SVG}</button><button type="button" class="pm-header-icon-button pm-scene-exit" data-action="exit" aria-label="\u9000\u51FA\u624B\u673A" title="\u9000\u51FA\u624B\u673A">${CLOSE_ICON_SVG}</button></div></div><div class="pm-scene-status" aria-live="polite" hidden></div>
-        ${content}${isPrompt || tab === "live" || tab === "context-inject" ? "" : `<div class="pm-scene-bottom-bar">${renderSceneMenu(scene, uiScope, autoActive)}${composer}</div>`}
+        <div class="pm-scene-topbar"><div class="pm-scene-nav-actions"><button type="button" class="pm-scene-home" ${leadingAction}>${isSubpage ? BACK_ICON_SVG : HOME_ICON_SVG}</button></div><nav class="pm-scene-title" aria-label="\u5B50\u793E\u533A\u89C6\u56FE"><button type="button" class="pm-scene-title-tab ${tab === "feed" ? "is-active" : ""}" data-action="tab" data-tab="feed" aria-current="${tab === "feed" ? "page" : "false"}"><span>${escapeHtml(scene.title)}</span></button><button type="button" class="pm-scene-title-tab ${tab === "live" ? "is-active" : ""}" data-action="tab" data-tab="live" aria-current="${tab === "live" ? "page" : "false"}"><span>\u76F4\u64AD</span></button></nav><div class="pm-scene-view-actions"><button type="button" class="pm-header-icon-button pm-scene-title-poke" data-action="poke-scene" aria-label="\u62CD\u4E00\u62CD\u793E\u533A" title="\u62CD\u4E00\u62CD\u793E\u533A">${POKE_ICON_SVG}</button><button type="button" class="pm-header-icon-button pm-scene-exit" data-action="exit" aria-label="\u9000\u51FA\u624B\u673A" title="\u9000\u51FA\u624B\u673A">${CLOSE_ICON_SVG}</button></div></div><div class="pm-scene-status" aria-live="polite" hidden></div>
+        ${content}${isSubpage || tab === "context-inject" ? "" : `<div class="pm-scene-bottom-bar">${renderSceneMenu(scene, uiScope, autoActive, tab)}${composer}</div>`}
     </div>`;
   }
 
@@ -8028,6 +8060,10 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
         toggleScenePostActions(button);
         return;
       }
+      if (action === "toggle-danmaku-actions") {
+        toggleDanmakuActions(button, app);
+        return;
+      }
       if (action === "toggle-reply") {
         toggleSceneReplyComposer(button, app);
         return;
@@ -8271,6 +8307,21 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
           const userSeed = actorSeeds(scopeId).user;
           appendDanmaku(scopeId, scope, scene, [{ author: userSeed.displayName, authorSeed: userSeed, content }]);
         });
+        rerender("live");
+        return;
+      }
+      if (action === "edit-danmaku") {
+        const item = current().scene?.live?.danmaku?.find((value) => value.id === button.dataset.danmakuId);
+        if (!item) throw new Error("\u5F39\u5E55\u4E0D\u5B58\u5728");
+        const content = window.prompt("\u7F16\u8F91\u5F39\u5E55\u5185\u5BB9", item.content);
+        if (content === null) return;
+        await commit(() => updateSceneDanmaku(current().scene, button.dataset.danmakuId, content));
+        rerender("live");
+        return;
+      }
+      if (action === "delete-danmaku") {
+        if (!confirmDelete("\u786E\u5B9A\u5220\u9664\u8FD9\u6761\u5F39\u5E55\u5417\uFF1F")) return;
+        await commit(() => deleteSceneDanmaku(current().scene, button.dataset.danmakuId));
         rerender("live");
         return;
       }

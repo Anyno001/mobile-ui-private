@@ -573,6 +573,15 @@ export function updateScenePost(scene, postId, content) {
     scene.updatedAt = Date.now();
 }
 
+export function updateSceneDanmaku(scene, danmakuId, content) {
+    const danmaku = scene?.live?.danmaku?.find(item => item.id === danmakuId);
+    const normalizedContent = text(content, 200);
+    if (!danmaku) throw new Error('弹幕不存在');
+    if (!normalizedContent) throw new Error('弹幕内容不能为空');
+    danmaku.content = normalizedContent;
+    scene.updatedAt = Date.now();
+}
+
 export function updateSceneComment(scene, postId, commentId, content) {
     const post = scene?.posts?.find(item => item.id === postId);
     const comment = post?.comments?.find(item => item.id === commentId);
@@ -586,6 +595,12 @@ export function updateSceneComment(scene, postId, commentId, content) {
 export function deleteScenePost(scene, postId) {
     if (!scene?.posts?.some(item => item.id === postId)) throw new Error('帖子不存在');
     scene.posts = scene.posts.filter(item => item.id !== postId);
+    scene.updatedAt = Date.now();
+}
+
+export function deleteSceneDanmaku(scene, danmakuId) {
+    if (!scene?.live?.danmaku?.some(item => item.id === danmakuId)) throw new Error('弹幕不存在');
+    scene.live.danmaku = scene.live.danmaku.filter(item => item.id !== danmakuId);
     scene.updatedAt = Date.now();
 }
 

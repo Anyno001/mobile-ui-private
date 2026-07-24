@@ -1,18 +1,11 @@
 import { generationErrorMessage } from './ai.js';
 import { buildInteractiveRequest, buildStylePrompt, getInteractivePresets, parseInteractiveResponse } from './interactive-scene-ai.js';
 import {
-    INTERACTIVE_LIMITS, addSceneComment, appendScenePosts, deleteSceneComment,
-    deleteScenePost, enforceInteractiveSceneLimit, ensureInteractiveActor, normalizeInteractiveStore, normalizeScene,
-    createDefaultPhoneUiScope, incrementScenePostShare, normalizePhoneUiState, patchPhoneUiScope, resolveInteractiveAuthor, stripPersistedV2ContentRating, toggleScenePin, toggleScenePostLike, updateSceneComment, updateScenePost,
+    INTERACTIVE_LIMITS, addSceneComment, appendScenePosts, deleteSceneComment, deleteSceneDanmaku, deleteScenePost, enforceInteractiveSceneLimit, ensureInteractiveActor, normalizeInteractiveStore, normalizeScene,
+    createDefaultPhoneUiScope, incrementScenePostShare, normalizePhoneUiState, patchPhoneUiScope, resolveInteractiveAuthor, stripPersistedV2ContentRating, toggleScenePin, toggleScenePostLike, updateSceneComment, updateSceneDanmaku, updateScenePost,
 } from './interactive-scene-model.js';
-import {
-    loadInteractiveScenes, loadPhoneUiState, saveInteractiveScenes, savePhoneUiState,
-} from './storage.js';
-import {
-    bindPhonePageActions, getCommunityInjectionState, handleCommunityInjectionUiAction, handleSceneAccentAction,
-    persistCurrentPhoneUiSnapshot, resolvePhoneChatTarget, runDeleteSceneAction, runDesktopPageTransition,
-    selectScenePreset, toggleSceneMenu, toggleScenePostActions, toggleSceneReplyComposer,
-} from './interactive-scene-phone.js';
+import { loadInteractiveScenes, loadPhoneUiState, saveInteractiveScenes, savePhoneUiState } from './storage.js';
+import { bindPhonePageActions, getCommunityInjectionState, handleCommunityInjectionUiAction, handleSceneAccentAction, persistCurrentPhoneUiSnapshot, resolvePhoneChatTarget, runDeleteSceneAction, runDesktopPageTransition, selectScenePreset, toggleDanmakuActions, toggleSceneMenu, toggleScenePostActions, toggleSceneReplyComposer } from './interactive-scene-phone.js';
 import { createCommunityGenerationRunner, createCommunityTaskController, runLiveWarmup } from './interactive-scene-scheduler.js';
 import {
     renderCommunityLauncher as renderCommunityLauncherView,
@@ -521,6 +514,7 @@ export function installInteractiveScenes(_state, deps) {
         }
         if (action === 'more') { toggleSceneMenu(button); return; }
         if (action === 'post-actions') { toggleScenePostActions(button); return; }
+        if (action === 'toggle-danmaku-actions') { toggleDanmakuActions(button, app); return; }
         if (action === 'toggle-reply') { toggleSceneReplyComposer(button, app); return; }
         if (action === 'desktop-chat') { deps.showPhoneChatPage?.(getStorageId()); return; }
         if (action === 'desktop-directory') { window.__pmShowList?.(); return; }
@@ -707,6 +701,8 @@ export function installInteractiveScenes(_state, deps) {
             });
             rerender('live'); return;
         }
+        if (action === 'edit-danmaku') { const item = current().scene?.live?.danmaku?.find(value => value.id === button.dataset.danmakuId); if (!item) throw new Error('弹幕不存在'); const content = window.prompt('编辑弹幕内容', item.content); if (content === null) return; await commit(() => updateSceneDanmaku(current().scene, button.dataset.danmakuId, content)); rerender('live'); return; }
+        if (action === 'delete-danmaku') { if (!confirmDelete('确定删除这条弹幕吗？')) return; await commit(() => deleteSceneDanmaku(current().scene, button.dataset.danmakuId)); rerender('live'); return; }
     }
 
     const bindPhonePageUi = phoneWindow => bindPhonePageActions(

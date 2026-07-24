@@ -28,7 +28,7 @@ import {
 import { applyContextInjections } from '../src/phone-injection.js';
 import { normalizeCalendarStore } from '../src/calendar-model.js';
 import { normalizeRecipeStore } from '../src/calendar-recipe-model.js';
-import { deriveInteractiveActorId, normalizeInteractiveStore } from '../src/interactive-scene-model.js';
+import { deleteSceneDanmaku, deriveInteractiveActorId, normalizeInteractiveStore, updateSceneDanmaku } from '../src/interactive-scene-model.js';
 import { renderPhoneDesktop, runDesktopPageTransition } from '../src/interactive-scenes.js';
 import { getDanmakuMotion, getDanmakuTone, renderCommunityLauncher, renderCommunityWorkspace } from '../src/interactive-scene-views.js';
 import { installPhoneControlCenter, runControlMenuAction } from '../src/phone-control-center.js';
@@ -330,7 +330,7 @@ import {
     installPhoneFoundation, installPhonePageSuspensionListeners, normalizePhoneScale, phoneSizeForScale,
     phoneSizeForViewport, updatePhonePageSuspensionHandler,
 } from '../src/phone-foundation.js';
-import { bindPhonePageActions, finalizeDeletedScene, runDeleteSceneAction, toggleScenePostActions, toggleSceneReplyComposer } from '../src/interactive-scene-phone.js';
+import { bindPhonePageActions, finalizeDeletedScene, runDeleteSceneAction, toggleDanmakuActions, toggleScenePostActions, toggleSceneReplyComposer } from '../src/interactive-scene-phone.js';
 
 
 assert.equal(normalizePhoneScale(1, 1200, 1000), 1);
@@ -4474,29 +4474,42 @@ assert.doesNotMatch(liveWorkspaceHtml, /class="pm-live-play-btn"/,
 assert.match(liveWorkspaceHtml, /--duration:[\d.]+s;--offset:-?\d+px/);
 assert.match(liveWorkspaceHtml, /data-action="send-danmaku"[^>]*aria-label="发送弹幕"[^>]*>[\s\S]*?<svg/,
     '弹幕发送必须使用图标按钮并保留无障碍名称');
-assert.match(liveWorkspaceHtml, /class="pm-scene-composer pm-danmaku-input">[\s\S]*?<textarea id="pm-danmaku-input" rows="1" maxlength="200" placeholder="发条弹幕……"><\/textarea>[\s\S]*?class="pm-scene-primary" data-action="send-danmaku"/,
-    '直播输入区必须复用贴文输入结构并保留弹幕发送契约');
-assert.match(liveWorkspaceHtml, /pm-danmaku-row is-[^"]+"><b title="[^"]+">[^<]+<\/b><span>[^<]+<\/span><\/div>/,
-    '平铺弹幕必须分别保留完整昵称与正文列');
+assert.match(liveWorkspaceHtml, /class="pm-scene-bottom-bar">[\s\S]*?class="pm-scene-menu-wrap"[\s\S]*?class="pm-scene-composer pm-danmaku-input">[\s\S]*?<textarea id="pm-danmaku-input" rows="1" maxlength="200" placeholder="发个弹幕见证当下"><\/textarea>[\s\S]*?class="pm-scene-primary" data-action="send-danmaku"/,
+    '直播必须完整复用贴文底栏，并保留弹幕发送契约');
+assert.match(liveWorkspaceHtml, /data-action="toggle-danmaku-actions"[^>]*aria-pressed="false"[^>]*>[\s\S]*?<span>修改弹幕<\/span>/,
+    '仅直播底栏菜单必须提供修改弹幕入口并默认隐藏操作按钮');
+assert.match(liveWorkspaceHtml, /pm-danmaku-row is-[^"]+">[\s\S]*?pm-danmaku-row-header[\s\S]*?<b title="[^"]+">[^<]+<\/b>[\s\S]*?class="pm-scene-comment-actions" hidden>[\s\S]*?data-action="edit-danmaku"[^>]*data-danmaku-id="[^"]+"[\s\S]*?data-action="delete-danmaku"[^>]*data-danmaku-id="[^"]+"[\s\S]*?class="pm-danmaku-content">[^<]+<\/span>/,
+    '修改弹幕开启前必须隐藏同款编辑删除按钮，并维持昵称与正文上下结构');
+assert.doesNotMatch(liveWorkspaceHtml, /danmaku-manage|pm-danmaku-manager/,
+    '直播弹幕修改不得创建独立管理页');
+assert.doesNotMatch(workspaceHtml, /toggle-danmaku-actions|edit-danmaku|delete-danmaku/,
+    '贴文底栏与列表不得出现直播专属弹幕操作');
 const idleLiveWorkspaceHtml = renderCommunityWorkspace({ ...workspaceScene, live: { ...workspaceScene.live, warmupStarted: false, danmaku: [] } }, 'live', { pinnedSceneIds: [] });
 assert.match(idleLiveWorkspaceHtml, /class="pm-live-play-btn"[^>]*data-action="start-warmup"[^>]*aria-label="开始热场"[^>]*>[\s\S]*?<svg/);
-assert.match(idleLiveWorkspaceHtml, /pm-danmaku-list[\s\S]*pm-danmaku-input[\s\S]*data-action="send-danmaku"/,
+assert.match(idleLiveWorkspaceHtml, /pm-danmaku-list[\s\S]*pm-scene-bottom-bar[\s\S]*pm-danmaku-input[\s\S]*data-action="send-danmaku"/,
     '进入直播页时必须立即预留弹幕区和发送模块');
 const loadingLiveWorkspaceHtml = renderCommunityWorkspace(workspaceScene, 'live', { pinnedSceneIds: [] }, { liveState: 'starting' });
 assert.match(loadingLiveWorkspaceHtml, /data-live-state="starting"[\s\S]*正在准备热场…/);
 assert.doesNotMatch(loadingLiveWorkspaceHtml, /class="pm-live-play-btn"/,
     '点击播放后必须立即隐藏播放三角');
-assert.match(loadingLiveWorkspaceHtml, /pm-danmaku-list[\s\S]*pm-danmaku-input/,
+assert.match(loadingLiveWorkspaceHtml, /pm-danmaku-list[\s\S]*pm-scene-bottom-bar[\s\S]*pm-danmaku-input/,
     '热场生成期间必须保留基础直播布局');
 const failedLiveWorkspaceHtml = renderCommunityWorkspace(workspaceScene, 'live', { pinnedSceneIds: [] }, { liveState: 'error' });
 assert.match(failedLiveWorkspaceHtml, /data-live-state="error"[\s\S]*aria-label="重新开始热场"[\s\S]*热场未能启动，请重试。/,
     '失败后必须保留可重试的播放入口，且不能伪装成已完成热场');
-assert.match(failedLiveWorkspaceHtml, /pm-live-details[\s\S]*pm-danmaku-list[\s\S]*pm-danmaku-input/,
+assert.match(failedLiveWorkspaceHtml, /pm-live-details[\s\S]*pm-danmaku-list[\s\S]*pm-scene-bottom-bar[\s\S]*pm-danmaku-input/,
     '热场失败后仍必须保留弹幕预留区与手动发送能力');
 assert.doesNotMatch(liveWorkspaceHtml, /toggle-live|data-action="rhythm"|pm-live-actions/,
     '直播页不得保留旧直播控制与带节奏入口');
-assert.doesNotMatch(liveWorkspaceHtml, /class="pm-scene-bottom-bar"|class="pm-control-menu pm-scene-menu"/,
-    '直播页不得渲染底部二级菜单区域');
+const editableDanmakuScene = structuredClone(workspaceScene);
+editableDanmakuScene.live.danmaku = [{ id: 'danmaku-edit', authorNameSnapshot: '编辑者', content: '原内容' }];
+updateSceneDanmaku(editableDanmakuScene, 'danmaku-edit', '  新内容  ');
+assert.equal(editableDanmakuScene.live.danmaku[0].content, '新内容', '编辑弹幕必须规范化并写回正文');
+assert.throws(() => updateSceneDanmaku(editableDanmakuScene, 'missing', '内容'), /弹幕不存在/);
+assert.throws(() => updateSceneDanmaku(editableDanmakuScene, 'danmaku-edit', '   '), /弹幕内容不能为空/);
+deleteSceneDanmaku(editableDanmakuScene, 'danmaku-edit');
+assert.equal(editableDanmakuScene.live.danmaku.length, 0, '删除弹幕必须移除指定记录');
+assert.throws(() => deleteSceneDanmaku(editableDanmakuScene, 'missing'), /弹幕不存在/);
 const promptWorkspaceHtml = renderCommunityWorkspace(workspaceScene, 'prompt', { pinnedSceneIds: [], lastTab: 'live' });
 assert.match(promptWorkspaceHtml, /class="pm-scene-accent-options"/);
 assert.match(promptWorkspaceHtml, /data-action="scene-accent" data-accent="#ff8200"/);
@@ -5161,6 +5174,37 @@ assert.equal(postActionsExpanded, 'false');
 assert.equal(menuExpanded, 'false');
 assert.equal(escapePrevented, true);
 assert.equal(postActionsFocused, true, 'Escape 关闭帖子操作后必须把焦点还给省略号按钮');
+
+let danmakuActionsExpanded = 'false';
+let danmakuActionFocused = false;
+const danmakuEditAction = { hidden: true };
+const danmakuDeleteAction = { hidden: true };
+const danmakuList = {
+    querySelectorAll(selector) { assert.equal(selector, '.pm-scene-comment-actions'); return [danmakuEditAction, danmakuDeleteAction]; },
+    querySelector(selector) { assert.equal(selector, '.pm-scene-comment-actions button'); return { focus(options) { assert.deepEqual(options, { preventScroll: true }); danmakuActionFocused = true; } }; },
+};
+let danmakuMenuLabel = '';
+const danmakuMenuAction = {
+    setAttribute(name, value) {
+        if (name === 'aria-pressed') danmakuActionsExpanded = value;
+        else assert.equal(name, 'aria-label');
+    },
+    querySelector(selector) {
+        assert.equal(selector, 'span');
+        return { replaceChildren(value) { danmakuMenuLabel = value; } };
+    },
+};
+const danmakuApp = {
+    querySelector(selector) { assert.equal(selector, '.pm-danmaku-list'); return danmakuList; },
+};
+assert.equal(toggleDanmakuActions(danmakuMenuAction, danmakuApp), true);
+assert.deepEqual([danmakuEditAction.hidden, danmakuDeleteAction.hidden], [false, false], '修改弹幕必须显示全部弹幕操作');
+assert.equal(danmakuActionsExpanded, 'true');
+assert.equal(danmakuMenuLabel, '停止修改', '展开弹幕操作后菜单文案必须切换为停止修改');
+assert.equal(danmakuActionFocused, true, '展开弹幕操作后必须聚焦第一个操作按钮');
+assert.equal(toggleDanmakuActions(danmakuMenuAction, danmakuApp), false);
+assert.deepEqual([danmakuEditAction.hidden, danmakuDeleteAction.hidden], [true, true], '再次点击修改弹幕必须隐藏全部弹幕操作');
+assert.equal(danmakuMenuLabel, '修改弹幕', '收起弹幕操作后菜单文案必须恢复');
 
 const groupStore = normalizeGroupMetaStore({
     story: {
