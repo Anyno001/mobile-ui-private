@@ -6263,6 +6263,17 @@ ${mainChatText}` : "",
 
   // src/emoji-ui.js
   var SUB_OVERLAY_STYLE = "position:fixed !important; inset:0 !important; margin:0 !important; padding:0 !important; border:none !important; width:100vw !important; height:100vh !important; max-width:none !important; max-height:none !important; background:var(--pm-color-overlay) !important; z-index:2147483648 !important; display:flex !important; align-items:center !important; justify-content:center !important;";
+  function applySubOverlayTheme(overlay) {
+    const theme = window.__pmTheme || {};
+    const preset = THEME_PRESETS[theme.preset] || THEME_PRESETS.default;
+    const rightBackground = theme.customRight || preset.right;
+    const rightText = theme.customRight ? contrastText(theme.customRight) : preset.rightText;
+    overlay.style.setProperty("--pm-r-bg", rightBackground);
+    overlay.style.setProperty("--pm-r-txt", rightText);
+    overlay.style.setProperty("--pm-l-bg", theme.customLeft || preset.left);
+    overlay.style.setProperty("--pm-l-txt", theme.customLeft ? contrastText(theme.customLeft) : preset.leftText);
+    overlay.style.setProperty("--pm-border", theme.borderColor || "#1a1a1a");
+  }
   function createSubOverlay(html) {
     document.getElementById("pm-overlay-sub")?.remove();
     const overlay = document.createElement("div");
@@ -6272,6 +6283,7 @@ ${mainChatText}` : "",
       overlay.setAttribute("popover", "manual");
     }
     overlay.style.cssText = SUB_OVERLAY_STYLE;
+    applySubOverlayTheme(overlay);
     overlay.innerHTML = html;
     overlay.addEventListener("click", (event) => {
       if (event.target === overlay) overlay.remove();
@@ -6318,7 +6330,7 @@ ${mainChatText}` : "",
   <div class="pm-modal-header"><span></span><b>\u8868\u60C5\u5305\u7BA1\u7406</b><button type="button" onclick="window.__pmCloseOverlay()" class="pm-modal-close" title="\u5173\u95ED" aria-label="\u5173\u95ED">${CLOSE_ICON_SVG}</button></div>
   <div class="pm-modal-scroll" style="padding:14px 16px;">
     <div id="pm-emoji-set-list"></div>
-    <button onclick="window.__pmAddEmojiSet()" style="width:100%;margin-top:8px;background:var(--pm-color-accent);color:var(--pm-color-on-dark);border:none;border-radius:10px;padding:10px;font-size:13px;cursor:pointer;font-weight:600;">\u6DFB\u52A0\u65B0\u5957\u7EC4</button>
+    <button type="button" class="pm-emoji-action is-full" onclick="window.__pmAddEmojiSet()">\u6DFB\u52A0\u65B0\u5957\u7EC4</button>
     <div class="pm-cfg-tip" style="text-align:left;margin-top:6px;">\u6BCF\u5957\u8868\u60C5\u72EC\u7ACB\u7BA1\u7406\uFF1B\u56FE\u7247\u63CF\u8FF0\u4F1A\u63D0\u4F9B\u7ED9 AI \u5224\u65AD\u4F7F\u7528\u573A\u666F\u3002</div>
   </div>
 </div>`);
@@ -6338,8 +6350,8 @@ ${mainChatText}` : "",
                 <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
                     <span style="font-weight:600;font-size:13px;color:var(--pm-color-text-primary);">${escapeHtml(set.name)}</span>
                     <div style="display:flex;gap:6px;">
-                        <button onclick="window.__pmAddEmojiImage(${setIndex})" style="font-size:11px;background:var(--pm-color-accent);color:var(--pm-color-on-dark);border:none;border-radius:6px;padding:4px 8px;cursor:pointer;">\u6DFB\u52A0\u56FE\u7247</button>
-                        <button onclick="window.__pmDeleteEmojiSet(${setIndex})" style="font-size:11px;background:var(--pm-color-danger);color:var(--pm-color-on-dark);border:none;border-radius:6px;padding:4px 8px;cursor:pointer;">\u5220\u9664</button>
+                        <button type="button" class="pm-emoji-action is-compact" onclick="window.__pmAddEmojiImage(${setIndex})">\u6DFB\u52A0\u56FE\u7247</button>
+                        <button type="button" class="pm-emoji-action is-compact is-danger" onclick="window.__pmDeleteEmojiSet(${setIndex})">\u5220\u9664</button>
                     </div>
                 </div>
                 <div style="display:flex;flex-wrap:wrap;gap:8px;">
@@ -6362,7 +6374,7 @@ ${mainChatText}` : "",
   <div style="padding:14px 16px;display:flex;flex-direction:column;gap:10px;">
     <input id="pm-new-set-name" class="pm-cfg-input" placeholder="\u5957\u7EC4\u540D\u79F0\uFF08\u5982\uFF1A\u5F00\u5FC3\u3001\u65E5\u5E38\u3001\u53EF\u7231\uFF09" style="padding:8px 10px;font-size:13px;border-radius:8px;border:1px solid var(--pm-color-border-default);">
   </div>
-  <div class="pm-modal-add"><button onclick="window.__pmConfirmAddEmojiSet()" style="width:100%;background:var(--pm-color-accent);color:var(--pm-color-on-dark);border:none;border-radius:10px;padding:10px;font-size:13px;cursor:pointer;font-weight:600;">\u786E\u8BA4</button></div>
+  <div class="pm-modal-add"><button type="button" class="pm-action-button" onclick="window.__pmConfirmAddEmojiSet()" style="width:100%;">\u786E\u8BA4</button></div>
 </div>`);
       setTimeout(() => document.getElementById("pm-new-set-name")?.focus(), 10);
     };
@@ -6398,13 +6410,13 @@ ${mainChatText}` : "",
   <div style="padding:14px 16px;display:flex;flex-direction:column;gap:10px;">
     <div style="font-size:12px;color:var(--pm-color-text-secondary);margin-bottom:2px;">\u56FE\u7247 URL \u6216\u672C\u5730\u4E0A\u4F20</div>
     <input id="pm-emo-url" class="pm-cfg-input" placeholder="https://... \u6216\u70B9\u4E0B\u65B9\u9009\u62E9\u6587\u4EF6" style="padding:8px 10px;font-size:13px;border-radius:8px;border:1px solid var(--pm-color-border-default);">
-    <button onclick="document.getElementById('pm-emo-file').click()" style="background:var(--pm-color-surface-elevated);color:var(--pm-color-text-primary);border:1px solid var(--pm-color-border-default);border-radius:8px;padding:8px 10px;font-size:12px;cursor:pointer;">\u4E0A\u4F20\u672C\u5730\u56FE\u7247</button>
+    <button type="button" class="pm-emoji-upload" onclick="document.getElementById('pm-emo-file').click()">\u4E0A\u4F20\u672C\u5730\u56FE\u7247</button>
     <input id="pm-emo-file" type="file" accept="image/*" hidden onchange="window.__pmEmoFileRead(${setIndex},this)">
     <div id="pm-emo-preview" style="display:none;text-align:center;"><img id="pm-emo-preview-img" decoding="async" width="120" height="120" style="width:120px;height:120px;object-fit:contain;border-radius:10px;border:1px solid var(--pm-color-border-subtle);"></div>
     <input id="pm-emo-desc" class="pm-cfg-input" placeholder="\u56FE\u7247\u63CF\u8FF0\uFF08\u5FC5\u586B\uFF0C\u5982\uFF1A\u732B\u732B\u5F00\u5FC3\uFF09" style="padding:8px 10px;font-size:13px;border-radius:8px;border:1px solid var(--pm-color-border-default);">
     <div style="font-size:11px;color:var(--pm-color-text-tertiary);">\u63CF\u8FF0\u5C06\u544A\u8BC9 AI \u8FD9\u5F20\u56FE\u5728\u4EC0\u4E48\u60C5\u5F62\u4E0B\u4F7F\u7528</div>
   </div>
-  <div class="pm-modal-add"><button onclick="window.__pmConfirmAddEmojiImage(${setIndex})" style="width:100%;background:var(--pm-color-accent);color:var(--pm-color-on-dark);border:none;border-radius:10px;padding:10px;font-size:13px;cursor:pointer;font-weight:600;">\u786E\u8BA4\u6DFB\u52A0</button></div>
+  <div class="pm-modal-add"><button type="button" class="pm-action-button" onclick="window.__pmConfirmAddEmojiImage(${setIndex})" style="width:100%;">\u786E\u8BA4\u6DFB\u52A0</button></div>
 </div>`);
       setTimeout(() => document.getElementById("pm-emo-url")?.focus(), 10);
     };

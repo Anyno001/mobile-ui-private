@@ -1803,11 +1803,16 @@ for (const expected of [
   '.pm-model-search{border:none !important;border-bottom:1px solid var(--pm-color-border-subtle) !important;',
   ':is(#pm-iphone,#pm-overlay,#pm-overlay-sub,#pm-model-dropdown) :where(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]):not([type="button"]):not([type="submit"]):not([type="reset"]),textarea,select,[contenteditable="true"]){min-width:0;max-width:100%;border:1px solid var(--pm-color-border-default) !important;',
   ':is(#pm-iphone,#pm-overlay,#pm-overlay-sub,#pm-model-dropdown) :where(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]):not([type="button"]):not([type="submit"]):not([type="reset"]),textarea,select,[contenteditable="true"]):focus{border-color:var(--pm-color-border-default) !important;outline:none !important;box-shadow:none !important;}',
-  ':is(#pm-iphone,#pm-overlay,#pm-overlay-sub,#pm-model-dropdown) :where(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]):not([type="button"]):not([type="submit"]):not([type="reset"]),textarea,select,[contenteditable="true"]):focus-visible{border-color:var(--pm-color-focus-ring) !important;outline:none !important;box-shadow:inset 0 0 0 1px var(--pm-color-focus-ring) !important;}',
+  ':is(#pm-iphone,#pm-overlay,#pm-overlay-sub,#pm-model-dropdown) :where(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]):not([type="button"]):not([type="submit"]):not([type="reset"]),textarea,select,[contenteditable="true"]):focus-visible{border-color:var(--pm-color-border-default) !important;outline:1px solid var(--pm-r-bg,var(--pm-color-focus-ring)) !important;outline-offset:1px !important;box-shadow:none !important;}',
   ':is(#pm-iphone,#pm-overlay,#pm-overlay-sub,#pm-model-dropdown) :where(.pm-input,.pm-scene-composer textarea){border:0 !important;}',
   ':is(#pm-iphone,#pm-overlay,#pm-overlay-sub,#pm-model-dropdown) .pm-model-search{border:0 !important;border-bottom:1px solid var(--pm-color-border-subtle) !important;border-radius:0;}',
   ':is(#pm-iphone,#pm-overlay,#pm-overlay-sub,#pm-model-dropdown) :where(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]):not([type="button"]):not([type="submit"]):not([type="reset"]),textarea,select,[contenteditable="true"]):disabled{opacity:.55 !important;cursor:not-allowed;}',
   ':-webkit-autofill{box-shadow:0 0 0 1000px var(--pm-color-surface-input) inset !important;',
+  '#pm-iphone :is(.pm-scene-label textarea,.pm-scene-prompt textarea,.pm-calendar-generation-rule,.pm-calendar-month-panel input){border-color:var(--pm-color-border-default) !important;background:var(--pm-color-surface-input) !important;box-shadow:none !important;}',
+  '#pm-iphone .pm-scene-composer textarea{border:1px solid var(--pm-color-border-default) !important;}',
+  '#pm-overlay :is(.pm-cfg-input,textarea.pm-cfg-input){border-color:var(--pm-color-border-default) !important;background:var(--pm-color-surface-input) !important;box-shadow:none !important;}',
+  '.pm-emoji-action,.pm-emoji-upload{border:1px solid var(--pm-r-bg,#007aff);border-radius:8px;background:color-mix(in srgb,var(--pm-r-bg,#007aff) 10%,var(--pm-color-surface-elevated));color:var(--pm-r-bg,#007aff);',
+  '.pm-emoji-action:focus-visible,.pm-emoji-upload:focus-visible,.pm-emoji-image-delete:focus-visible{outline:1px solid var(--pm-r-bg,var(--pm-color-focus-ring));outline-offset:2px;}',
   '.pm-model-opt{display:block;width:100%;padding:8px 12px;font:inherit;font-size:13px;text-align:left;background:var(--pm-color-surface-elevated);color:var(--pm-color-text-primary);',
   '.pm-model-empty{padding:14px;text-align:center;font-size:12px;color:var(--pm-color-text-tertiary);}',
 ]) requireText('style.css', css, expected);
@@ -2243,9 +2248,47 @@ for (const expected of [
   'MAX_EMOJI_FILE_BYTES', 'MAX_EMOJI_INLINE_LIBRARY_BYTES', 'cloneEmojiLibrary',
   'emojiFileError', 'emojiSourceError', 'createEmojiRenderBudget', 'isRenderableEmojiSource',
 ]) requireText('emoji-media.js', emojiMediaCode, expected);
-for (const expected of ['loading="lazy"', 'decoding="async"', 'emojiFileError(file)', 'emojiSourceError(url, window.__pmEmojis)']) {
+for (const expected of [
+  'applySubOverlayTheme(overlay)',
+  "overlay.style.setProperty('--pm-r-bg', rightBackground)",
+  "overlay.style.setProperty('--pm-r-txt', rightText)",
+  "overlay.style.setProperty('--pm-l-bg', theme.customLeft || preset.left)",
+  "overlay.style.setProperty('--pm-l-txt', theme.customLeft ? contrastText(theme.customLeft) : preset.leftText)",
+  "overlay.style.setProperty('--pm-border', theme.borderColor || '#1a1a1a')",
+  'loading="lazy"', 'decoding="async"', 'emojiFileError(file)', 'emojiSourceError(url, window.__pmEmojis)',
+]) {
   requireText('emoji-ui.js', emojiUiCode, expected);
 }
+for (const [label, marker, expected] of [
+  ['new-set trigger', 'window.__pmAddEmojiSet()', 'class="pm-emoji-action is-full"'],
+  ['add-image trigger', 'window.__pmAddEmojiImage(${setIndex})', 'class="pm-emoji-action is-compact"'],
+  ['delete-set trigger', 'window.__pmDeleteEmojiSet(${setIndex})', 'class="pm-emoji-action is-compact is-danger"'],
+  ['delete-image trigger', 'window.__pmDeleteEmojiImage(${setIndex},${imageIndex})', 'class="pm-emoji-image-delete"'],
+  ['upload trigger', "document.getElementById('pm-emo-file').click()", 'class="pm-emoji-upload"'],
+  ['new-set confirmation', 'window.__pmConfirmAddEmojiSet()', 'class="pm-action-button"'],
+  ['add-image confirmation', 'window.__pmConfirmAddEmojiImage(${setIndex})', 'class="pm-action-button"'],
+]) requireText(`emoji-ui.js: ${label}`, buttonContaining(`emoji-ui.js: ${label}`, emojiUiCode, marker), expected);
+requireText(
+  'emoji-ui.js: delete-image accessible name',
+  buttonContaining('emoji-ui.js: delete-image accessible name', emojiUiCode, 'window.__pmDeleteEmojiImage(${setIndex},${imageIndex})'),
+  'aria-label="删除图片 ${escapeAttr(image.desc)}"',
+);
+requireCssDeclarations(cssRules, '.pm-emoji-action', {
+  border: '1px solid var(--pm-r-bg,#007aff)', background: 'color-mix(in srgb,var(--pm-r-bg,#007aff) 10%,var(--pm-color-surface-elevated))', color: 'var(--pm-r-bg,#007aff)',
+});
+requireCssDeclarations(cssRules, '.pm-emoji-upload', {
+  border: '1px solid var(--pm-r-bg,#007aff)', background: 'color-mix(in srgb,var(--pm-r-bg,#007aff) 10%,var(--pm-color-surface-elevated))', color: 'var(--pm-r-bg,#007aff)',
+});
+requireCssDeclarations(cssRules, '.pm-emoji-action.is-full', { width: '100%', 'margin-top': '8px' });
+requireCssDeclarations(cssRules, '.pm-emoji-action.is-compact', { padding: '5px 10px', 'font-size': '11px' });
+requireCssDeclarations(cssRules, '.pm-emoji-action.is-danger', {
+  'border-color': 'var(--pm-color-danger)', background: 'color-mix(in srgb,var(--pm-color-danger) 10%,var(--pm-color-surface-elevated))', color: 'var(--pm-color-danger)',
+});
+requireCssDeclarations(cssRules, '.pm-emoji-image-delete', { background: 'var(--pm-color-danger)', color: 'var(--pm-color-on-dark)' });
+requireCssDeclarations(cssRules, '.pm-emoji-action:focus-visible', { outline: '1px solid var(--pm-r-bg,var(--pm-color-focus-ring))', 'outline-offset': '2px' });
+requireCssDeclarations(cssRules, '.pm-emoji-upload:focus-visible', { outline: '1px solid var(--pm-r-bg,var(--pm-color-focus-ring))', 'outline-offset': '2px' });
+requireCssDeclarations(cssRules, '.pm-emoji-image-delete:focus-visible', { outline: '1px solid var(--pm-r-bg,var(--pm-color-focus-ring))', 'outline-offset': '2px' });
+requireCssDeclarations(cssRules, '.pm-action-button', { background: 'var(--pm-r-bg,#007aff)', color: 'var(--pm-r-txt,#fff)' });
 for (const expected of ['isRenderableEmojiSource(url)', "typeof emojiBudget === 'function'", '!emojiBudget(url)', 'loading="lazy"', 'decoding="async"', 'object-fit:contain']) {
   requireText('messaging.js', messagingCode, expected);
 }
