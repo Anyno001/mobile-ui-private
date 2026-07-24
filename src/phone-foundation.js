@@ -14,7 +14,7 @@ import {
 } from './interactive-scene-scheduler.js';
 import { createAutomaticTaskController } from './runtime.js';
 import {
-    saveBidirectional, saveHistories, saveHistoriesBeforeUnload, saveTheme,
+    saveHistories, saveHistoriesBeforeUnload, saveTheme,
 } from './storage.js';
 
 const warnedHostEventRegistrationFailures = new Set();
@@ -501,21 +501,11 @@ export function installPhoneFoundation(state, deps) {
         console.log('[phone-mode] hooked', injectionEvents.length, 'injection events');
     }
 
-    window.__pmToggleBidirectional = (name) => {
+    window.__pmToggleBidirectional = name => {
         const id = getStorageId();
-        const previous = [...(window.__pmBidirectional[id] || [])];
-        const next = previous.filter(item => item !== name);
-        if (next.length === previous.length) next.push(name);
-        window.__pmBidirectional[id] = next;
-        if (!saveBidirectional()) {
-            window.__pmBidirectional[id] = previous;
-            alert('注入设置保存失败：浏览器存储不可用。');
-            window.__pmShowList();
-            return false;
-        }
-        applyBidirectionalInjection();
-        window.__pmShowList();
-        return true;
+        const targetKey = String(name || '').trim();
+        const isGroup = Object.hasOwn(window.__pmGroupMeta?.[id] || {}, targetKey);
+        return window.__pmToggleConversationInjection?.(id, targetKey, isGroup) || Promise.resolve(false);
     };
 
 

@@ -659,7 +659,7 @@ for (const { date, phase, label } of cycleLabelCases) {
     } else {
         assert.match(detail, new RegExp(`<b>${label}</b>`), `周期详情必须将 ${phase} 渲染为${label}`);
         if (phase === 'period') {
-            assert.match(detail, /class="pm-calendar-cycle-mark"[^>]*>୨ৎ<\/span>/, '经期详情必须使用୨ৎ标记');
+            assert.match(detail, /class="pm-calendar-status-icon"[^>]*>[\s\S]*?<svg[\s\S]*?<path d="M12 20V11"\/>[\s\S]*?<path d="M12 15c2\.8-\.2 4\.8\.8 5\.5 3-2\.5\.4-4\.4-\.5-5\.5-3z"\/>/, '经期详情必须使用花苞 SVG');
         } else if (phase === 'ovulatory') {
             assert.match(detail, /class="pm-calendar-status-icon"[^>]*>[\s\S]*?<circle cx="12" cy="12" r="3\.2"\/>/, '易孕期详情必须使用花蕊图标而不是生成星光');
         }
@@ -986,10 +986,10 @@ assert.match(renderedCycle, /class="pm-calendar-cycle-input" name="enabled" type
     '周期开关必须保留原生 checkbox 的表单与辅助技术语义');
 assert.match(renderedCycle, /class="pm-custom-check" aria-hidden="true"/,
     '周期开关必须复用统一视觉控件');
-assert.match(renderedCycle, /class="pm-calendar-cycle is-period">[\s\S]*?class="pm-calendar-status-copy">[\s\S]*?<b>经期<\/b>[\s\S]*?<small>周期预测<\/small>[\s\S]*?class="pm-calendar-status-icon"[^>]*>[\s\S]*?class="pm-calendar-cycle-mark"[^>]*>୨ৎ<\/span>/,
-    '选中经期日期的详情必须使用独立文本区和右侧୨ৎ图标槽');
-assert.match(renderedCycle, /data-action="calendar-mode-cycle"[^>]*>[\s\S]*?class="pm-calendar-cycle-mark"[^>]*>୨ৎ<\/span>/,
-    '生理日历模式按钮必须使用୨ৎ标记');
+assert.match(renderedCycle, /class="pm-calendar-cycle is-period">[\s\S]*?class="pm-calendar-status-copy">[\s\S]*?<b>经期<\/b>[\s\S]*?<small>周期预测<\/small>[\s\S]*?class="pm-calendar-status-icon"[^>]*>[\s\S]*?<svg[\s\S]*?<path d="M12 20V11"\/>[\s\S]*?<path d="M12 15c2\.8-\.2 4\.8\.8 5\.5 3-2\.5\.4-4\.4-\.5-5\.5-3z"\/>/,
+    '选中经期日期的详情必须使用独立文本区和右侧花苞 SVG 图标槽');
+assert.match(renderedCycle, /data-action="calendar-mode-cycle"[^>]*>[\s\S]*?<svg[\s\S]*?<path d="M12 20V11"\/>[\s\S]*?<path d="M12 15c2\.8-\.2 4\.8\.8 5\.5 3-2\.5\.4-4\.4-\.5-5\.5-3z"\/>/,
+    '生理日历模式按钮必须使用花苞 SVG');
 assert.match(renderedWeather, /class="pm-calendar-weather">[\s\S]*?class="pm-calendar-status-copy">[\s\S]*?class="pm-calendar-status-icon"[^>]*>[\s\S]*?<svg/,
     '天气详情必须使用独立文本区和右侧 SVG 图标槽');
 assert.doesNotMatch(renderedCycle, />follicular<|，follicular|<span>follicular<\/span>/,

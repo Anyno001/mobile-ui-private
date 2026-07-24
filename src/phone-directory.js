@@ -263,7 +263,7 @@ export function installPhoneDirectory(state, deps) {
         const triggerRect = trigger.getBoundingClientRect();
         const width = Math.min(300, Math.max(224, phone.clientWidth - 20));
         switcher.style.width = `${width}px`;
-        switcher.style.left = `${Math.max(10, Math.min(phone.clientWidth - width - 10, triggerRect.left - phoneRect.left + (triggerRect.width - width) / 2))}px`;
+        switcher.style.left = `${(phone.clientWidth - width) / 2}px`;
         switcher.style.top = `${Math.max(8, triggerRect.bottom - phoneRect.top - 4)}px`;
         trigger.setAttribute('aria-expanded', 'true');
         bindContactSwitcher(switcher, trigger);

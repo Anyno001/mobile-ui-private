@@ -118,7 +118,7 @@ export function getDanmakuTone(item) {
 }
 
 function renderDanmaku(scene) {
-    return scene.live.danmaku.slice(-80).map(item => `<div class="pm-danmaku-row is-${stableDanmakuTone(item)}"><b>${escapeHtml(item.authorNameSnapshot)}</b><span>${escapeHtml(item.content)}</span></div>`).join('') || '<div class="pm-scene-empty"><span>还没有弹幕，发一条和大家打个招呼吧。</span></div>';
+    return scene.live.danmaku.slice(-80).map(item => `<div class="pm-danmaku-row is-${stableDanmakuTone(item)}"><b title="${escapeAttr(item.authorNameSnapshot)}">${escapeHtml(item.authorNameSnapshot)}</b><span>${escapeHtml(item.content)}</span></div>`).join('') || '<div class="pm-scene-empty"><span>还没有弹幕，发一条和大家打个招呼吧。</span></div>';
 }
 
 function renderContextInjectionSettings(scene, state) {
@@ -172,7 +172,7 @@ export function renderCommunityWorkspace(scene, tab = 'feed', uiScope = { pinned
     const playControl = !warmupStarted && !liveStarting
         ? `<button type="button" class="pm-live-play-btn" data-action="start-warmup" aria-label="${liveFailed ? '重新开始热场' : '开始热场'}" title="${liveFailed ? '重新开始热场' : '开始热场'}">${PLAY_ICON_SVG}</button>` : '';
     const stageNote = liveStarting ? '<p class="pm-live-state-note">正在准备热场…</p>' : liveFailed ? '<p class="pm-live-state-note is-error">热场未能启动，请重试。</p>' : '';
-    const liveContent = `<div class="pm-live-stage ${hasDanmaku ? 'has-danmaku' : ''}" data-live-state="${stageState}">${playControl}<div class="pm-danmaku-float">${floatingDanmaku}</div>${stageNote}</div><section class="pm-live-details" aria-label="热场内容"><div class="pm-danmaku-list">${renderDanmaku(scene)}</div><div class="pm-danmaku-input"><input id="pm-danmaku-input" maxlength="200" placeholder="发条弹幕……"><button type="button" data-action="send-danmaku" aria-label="发送弹幕" title="发送弹幕">${SEND_ICON_SVG}</button></div></section>`;
+    const liveContent = `<div class="pm-live-stage ${hasDanmaku ? 'has-danmaku' : ''}" data-live-state="${stageState}">${playControl}<div class="pm-danmaku-float">${floatingDanmaku}</div>${stageNote}</div><section class="pm-live-details" aria-label="热场内容"><div class="pm-danmaku-list">${renderDanmaku(scene)}</div><div class="pm-scene-composer pm-danmaku-input"><textarea id="pm-danmaku-input" rows="1" maxlength="200" placeholder="发条弹幕……"></textarea><button type="button" class="pm-scene-primary" data-action="send-danmaku" aria-label="发送弹幕" title="发送弹幕">${SEND_ICON_SVG}</button></div></section>`;
     const composer = tab === 'feed' ? `<div class="pm-scene-composer"><textarea id="pm-scene-post-input" maxlength="4000" placeholder="分享此刻……"></textarea><button type="button" class="pm-scene-primary" data-action="publish" aria-label="发布" title="发布">${SEND_ICON_SVG}</button></div>` : '';
     const content = tab === 'feed' ? `<div class="pm-scene-feed"><div class="pm-scene-posts">${renderPosts(scene)}</div></div>`
         : tab === 'live' ? `<div class="pm-live-room">${liveContent}</div>`

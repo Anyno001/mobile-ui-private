@@ -38,7 +38,8 @@ const phone = resolvePhoneSources({
     groupsByStorage: { 'story-a': { __group_team: { name: '群', members: ['Alice', 'Carol'], injection: { position: 0, depth: 0, historyLimit: 20 } } } },
 });
 assert.equal(phone.allowed, true);
-assert.deepEqual(phone.sources.map(source => source.sourceId), ['Alice', '__group_team']);
+assert.deepEqual(phone.sources.map(source => source.sourceId), ['Alice', 'Bob', '__group_team'],
+    '联系人下拉中显式点亮的同一存储会话都应参与手机 Prompt 来源解析');
 assert.equal(phone.sources.some(source => source.history.some(item => item.content === '泄漏')), false);
 const aliasedConversation = resolvePhoneSources({
     currentStorageId: 'story-a', currentActorName: 'Alice', currentConversationKey: '爱丽丝',
@@ -50,8 +51,8 @@ const aliasedConversation = resolvePhoneSources({
     groupsByStorage: { 'story-a': {} },
 });
 assert.equal(aliasedConversation.allowed, true);
-assert.deepEqual(aliasedConversation.sources.map(source => source.sourceId), ['爱丽丝'],
-    '提供当前会话键后只能读取用户正在查看的私聊，不得同时放行宿主角色名旧键');
+assert.deepEqual(aliasedConversation.sources.map(source => source.sourceId), ['Alice', '爱丽丝'],
+    '当前会话键不得覆盖助手已显式点亮的其他同存储私聊');
 const legacyActorFallback = resolvePhoneSources({
     currentStorageId: 'story-a', currentActorName: 'Alice',
     selectedByStorage: { 'story-a': ['Alice'] },
@@ -187,16 +188,25 @@ let unauthorizedHistoryReads = 0;
 const unauthorizedMessage = { role: 'assistant' };
 Object.defineProperty(unauthorizedMessage, 'content', {
     enumerable: true,
-    get() { unauthorizedHistoryReads += 1; return '未授权正文'; },
+    get() { unauthorizedHistoryReads += 1; return '恶意访问器不得读取'; },
 });
 const unauthorizedGroup = resolvePhoneSources({
     currentStorageId: 'story-a', currentActorName: 'Alice', selectedByStorage: { 'story-a': ['__group_other'] },
     historiesByStorage: { 'story-a': { __group_other: [unauthorizedMessage] } },
     groupsByStorage: { 'story-a': { __group_other: { name: '他人群', members: ['Bob'] } } },
 });
-assert.equal(unauthorizedGroup.allowed, true);
+assert.equal(unauthorizedGroup.allowed, false,
+    '显式群聊授权不应跳过历史结构审计');
 assert.deepEqual(unauthorizedGroup.sources, []);
 assert.equal(unauthorizedHistoryReads, 0);
+const explicitNonMemberGroup = resolvePhoneSources({
+    currentStorageId: 'story-a', currentActorName: 'Alice', selectedByStorage: { 'story-a': ['__group_other'] },
+    historiesByStorage: { 'story-a': { __group_other: [{ role: 'assistant', content: '用户明确选择的群聊正文' }] } },
+    groupsByStorage: { 'story-a': { __group_other: { name: '他人群', members: ['Bob'] } } },
+});
+assert.equal(explicitNonMemberGroup.allowed, true);
+assert.deepEqual(explicitNonMemberGroup.sources.map(source => source.sourceId), ['__group_other'],
+    '当前角色不在成员表中不得阻止用户显式点亮的群聊参与注入');
 
 let historyContentGetterReads = 0;
 const accessorMessage = { role: 'assistant' };
@@ -456,13 +466,16 @@ const baseInjectionInput = {
     groupsByStorage: {}, interactiveStore: store,
 };
 const defaultPlan = buildContextInjectionPrompts({ ...baseInjectionInput, budgetConfig: undefined });
-assert.equal(defaultPlan.prompts.length, 1);
-assert.match(defaultPlan.prompts[0].content, /^\[手机短信记忆 — 私密\]\n/);
-assert.match(defaultPlan.prompts[0].content, /允许的短信/);
-assert.match(defaultPlan.prompts[0].content, /\n\[结束\]$/);
-assert.doesNotMatch(defaultPlan.prompts[0].content, /Bob 私聊|其他角色卡短信|帖子正文/);
+assert.equal(defaultPlan.prompts.length, 2);
+const defaultPhonePrompts = defaultPlan.prompts.filter(prompt => prompt.source === 'phone');
+assert.equal(defaultPhonePrompts.length, 2);
+assert.match(defaultPhonePrompts[0].content, /^\[手机短信记忆 — 私密\]\n/);
+assert.match(defaultPhonePrompts[0].content, /允许的短信/);
+assert.match(defaultPhonePrompts[1].content, /Bob 私聊/);
+assert.ok(defaultPhonePrompts.every(prompt => /\n\[结束\]$/.test(prompt.content)));
+assert.ok(defaultPhonePrompts.every(prompt => !/其他角色卡短信|帖子正文/.test(prompt.content)));
 assert.equal(defaultPlan.diagnostics.communityPermission.reason, 'disabled');
-assert.equal(defaultPlan.diagnostics.phone.promptCount, 1);
+assert.equal(defaultPlan.diagnostics.phone.promptCount, 2);
 
 const productionPhoneCalls = [];
 const productionPhoneResult = applyContextInjections({
@@ -484,8 +497,8 @@ assert.match(productionPhoneWrite[1], /引用 Alice 的消息：“必须保留�
     '生产手机注入链必须把引用快照写入最终 Extension Prompt');
 assert.equal(productionPhoneWrite[2], 1, '聊天记录内注入必须使用 IN_CHAT 位置');
 assert.equal(productionPhoneWrite[3], 0, '深度 0 必须原样传给宿主');
-assert.equal(productionPhoneResult.writtenBySource.phone, 1);
-assert.equal(productionPhoneResult.diagnostics.phone.promptCount, 1);
+assert.equal(productionPhoneResult.writtenBySource.phone, 2);
+assert.equal(productionPhoneResult.diagnostics.phone.promptCount, 2);
 
 const zeroPhonePlan = buildContextInjectionPrompts({
     ...baseInjectionInput,
@@ -512,7 +525,7 @@ const communityPlan = buildContextInjectionPrompts({
         communitySceneIdsByStorage: { 'story-a': ['scene-a'] },
     },
 });
-assert.equal(communityPlan.prompts.length, 2);
+assert.equal(communityPlan.prompts.length, 3);
 const communityPrompt = communityPlan.prompts.find(prompt => prompt.key.includes(':community:'));
 assert.ok(communityPrompt);
 assert.match(communityPrompt.content, /帖子正文/);
@@ -637,7 +650,7 @@ const calendarPlan = buildContextInjectionPrompts({
     },
     calendarStore: calendarStoreWithEvents,
 });
-assert.equal(calendarPlan.prompts.length, 2);
+assert.equal(calendarPlan.prompts.length, 3);
 const calendarPrompt = calendarPlan.prompts.find(p => p.key.includes(':calendar:'));
 assert.ok(calendarPrompt, '应有 calendar prompt');
 assert.equal(calendarPrompt.key, 'PHONE_SMS_MEMORY:calendar:story-a');

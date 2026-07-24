@@ -2079,7 +2079,9 @@ for (const [owner, code, expected] of [
     'toggleMessageSelection({ checkbox: cb, wrap, list })', 'handleMessageSelectionKey(event, cb)',
   ]],
   ['phone-foundation.js', foundationCode, [
-    'const previous = [...(window.__pmBidirectional[id] || [])]', 'if (!saveBidirectional())', 'window.__pmBidirectional[id] = previous',
+    'window.__pmToggleBidirectional = name => {', 'const targetKey = String(name || \'\').trim();',
+    'Object.hasOwn(window.__pmGroupMeta?.[id] || {}, targetKey)',
+    'window.__pmToggleConversationInjection?.(id, targetKey, isGroup) || Promise.resolve(false)',
     "handle.addEventListener('lostpointercapture', finish)", "window.addEventListener('blur', finish)",
     "handle.removeEventListener('lostpointercapture', finish)", "window.removeEventListener('blur', finish)", 'finish();',
     'export function phoneSizeForViewport(', 'const visualViewport = window.visualViewport;',
@@ -2192,7 +2194,31 @@ for (const [label, marker, accessibleName] of [
   requireText(`interactive-scene-views.js: ${label}`, button, '${POKE_ICON_SVG}');
   if (button.includes('SPARKLES_ICON_SVG')) failures.push(`interactive-scene-views.js: ${label} must preserve poke semantics instead of generic AI sparkles`);
 }
-for (const expected of ['REMOVE_ICON_SVG', 'UNLINK_ICON_SVG', 'SPARKLES_ICON_SVG', 'CHEVRON_DOWN_ICON_SVG', 'EYE_ICON_SVG', 'FLOWER_BUD_ICON_SVG', 'CHECK_ICON_SVG']) requireText('icons.js', sourceModuleByName.get('icons.js')?.code || '', expected);
+const iconsCode = sourceModuleByName.get('icons.js')?.code || '';
+for (const expected of ['REMOVE_ICON_SVG', 'UNLINK_ICON_SVG', 'SPARKLES_ICON_SVG', 'CHEVRON_DOWN_ICON_SVG', 'EYE_ICON_SVG', 'FLOWER_BUD_ICON_SVG', 'CHECK_ICON_SVG']) requireText('icons.js', iconsCode, expected);
+for (const expected of [
+  `export const EYE_ICON_SVG = icon('<path d="M2.5 12s3.5-5 9.5-5 9.5 5 9.5 5-3.5 5-9.5 5-9.5-5-9.5-5z"/><circle cx="12" cy="12" r="2.5"/>');`,
+  `export const FLOWER_BUD_ICON_SVG = icon('<path d="M12 20V11"/>`,
+]) requireText('icons.js geometry', iconsCode, expected);
+for (const forbidden of ['୨ৎ', "M12 21c-4-2-8-7-8-12"]) {
+  if (iconsCode.includes(forbidden) || calendarViewCode.includes(forbidden) || calendarPageViewCode.includes(forbidden)) {
+    failures.push(`calendar icon migration: obsolete period marker remains ${forbidden}`);
+  }
+}
+requireText('phone-directory.js injection button', directoryCode, 'class="pm-contact-switcher-icon pm-contact-switcher-injection ${enabled ? \'is-active\' : \'\'}"');
+requireText('phone-directory.js injection button', directoryCode, '${EYE_ICON_SVG}</button>');
+if ((directoryCode.match(/pm-contact-switcher-injection[\s\S]*?\$\{EYE_ICON_SVG\}/g) || []).length !== 1) {
+  failures.push('phone-directory.js injection button: must render exactly one shared eye SVG');
+}
+requireCssDeclarations(cssRules, '.pm-name-trigger[aria-expanded="true"]', { 'border-radius': '10px 10px 0 0', 'background': 'var(--pm-color-surface-card)' });
+requireCssDeclarations(cssRules, '.pm-contact-switcher', {
+  'border-top-left-radius': '0', 'border-top-right-radius': '0',
+  'border-bottom-left-radius': '14px', 'border-bottom-right-radius': '14px',
+});
+requireCssDeclarations(cssRules, '.pm-name-trigger', { 'z-index': '31' });
+requireCssDeclarations(cssRules, '.pm-contact-switcher', { 'z-index': '30' });
+requireText('phone-directory.js contact switcher positioning', directoryCode,
+  'switcher.style.top = `${Math.max(8, triggerRect.bottom - phoneRect.top - 4)}px`;');
 for (const expected of [
   '.pm-action-button{', 'font-size:13px', 'background:var(--pm-r-bg,#007aff)',
   '.pm-header-icon-button{box-sizing:border-box;width:34px;height:34px;min-width:34px;min-height:34px',

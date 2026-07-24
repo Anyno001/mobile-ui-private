@@ -18,26 +18,6 @@ function injectionFailure(result, phase) {
     return new Error(`上下文注入设置${phase}失败：${details}`);
 }
 
-function currentPhoneInjectionFailure(result, target) {
-    if (!target) return null;
-    const diagnostics = result?.diagnostics;
-    if (!diagnostics) return new Error('手机短信记录未能应用，请重试。');
-    const phone = diagnostics.phone || {};
-    const permission = diagnostics.phonePermission || {};
-    if (!permission.allowed) return new Error('手机短信记录未能应用：当前会话数据不可用。');
-    if (permission.sourceCount < 1) {
-        return new Error(target.isGroup
-            ? '手机短信记录未能应用：当前角色不在该群聊中，或群聊记录为空。'
-            : '手机短信记录未能应用：当前角色没有可匹配的短信记录。');
-    }
-    if (phone.allocatedTokens < 1) return new Error('手机短信记录未能应用：手机会话预算为 0。');
-    if (phone.promptCount < 1) return new Error('手机短信记录未能应用：最近消息没有可注入内容。');
-    if ((result.writtenBySource?.phone || 0) < phone.promptCount) {
-        return new Error('手机短信记录未能应用：宿主未接受短信上下文。');
-    }
-    return null;
-}
-
 export async function commitConversationInjectionUpdate({
     persistCandidate, restoreSnapshot, persistSnapshot, applyInjection, validateResult,
 }) {
@@ -108,7 +88,7 @@ export function installPhoneContextInjection(state, deps) {
         };
     };
 
-    const toggleTargetInjection = async (target, { validateCurrent = false } = {}) => {
+    const toggleTargetInjection = async target => {
         if (!target) return false;
         const snapshot = clone(window.__pmBidirectional);
         const selected = new Set(window.__pmBidirectional[target.storageId] || []);
@@ -124,8 +104,6 @@ export function installPhoneContextInjection(state, deps) {
                 if (!saveBidirectional()) throw new Error('会话注入开关回滚失败');
             },
             applyInjection: () => applyBidirectionalInjection(),
-            validateResult: result => validateCurrent && isEnabled(target)
-                ? currentPhoneInjectionFailure(result, target) : null,
         });
         return true;
     };
@@ -160,7 +138,7 @@ export function installPhoneContextInjection(state, deps) {
         const target = currentTarget();
         if (!target) return false;
         try {
-            return await enqueueToggle(() => toggleTargetInjection(target, { validateCurrent: true }));
+            return await enqueueToggle(() => toggleTargetInjection(target));
         } catch (error) {
             alert(error.message || '当前会话注入开关保存失败');
             return false;
@@ -217,10 +195,6 @@ export function installPhoneContextInjection(state, deps) {
                     if (!saveInjectionConfig()) throw new Error('统一注入规则回滚失败');
                 },
                 applyInjection: () => applyBidirectionalInjection(),
-                validateResult: result => {
-                    const target = currentTarget();
-                    return target && isEnabled(target) ? currentPhoneInjectionFailure(result, target) : null;
-                },
             });
             const config = normalizeInjectionConfig(window.__pmInjectionConfig);
             window.__pmShowConversationInjection(`已应用到${injectionPositionLabel(config.position)}（深度 ${config.depth}）`);

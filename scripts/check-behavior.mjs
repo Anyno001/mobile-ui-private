@@ -2683,6 +2683,7 @@ try {
     assert.match(switcher.innerHTML, /data-contact-action="inject" data-key="Alice"/);
     assert.match(switcher.innerHTML, /data-contact-action="delete" data-key="Alice"/);
     assert.match(switcher.innerHTML, />新建<\/button>[\s\S]*>添加<\/button>/);
+    assert.equal(switcher.style.left, '30px', '联系人浮层必须相对手机窗口水平居中');
     assert.equal(switcher.firstButton.focusCalls, 1, '打开浮层后必须把焦点移入菜单');
 
     const injectionAttributes = new Map([['aria-pressed', 'false'], ['aria-label', '开启 Alice 的正文注入']]);
@@ -4473,6 +4474,10 @@ assert.doesNotMatch(liveWorkspaceHtml, /class="pm-live-play-btn"/,
 assert.match(liveWorkspaceHtml, /--duration:[\d.]+s;--offset:-?\d+px/);
 assert.match(liveWorkspaceHtml, /data-action="send-danmaku"[^>]*aria-label="发送弹幕"[^>]*>[\s\S]*?<svg/,
     '弹幕发送必须使用图标按钮并保留无障碍名称');
+assert.match(liveWorkspaceHtml, /class="pm-scene-composer pm-danmaku-input">[\s\S]*?<textarea id="pm-danmaku-input" rows="1" maxlength="200" placeholder="发条弹幕……"><\/textarea>[\s\S]*?class="pm-scene-primary" data-action="send-danmaku"/,
+    '直播输入区必须复用贴文输入结构并保留弹幕发送契约');
+assert.match(liveWorkspaceHtml, /pm-danmaku-row is-[^"]+"><b title="[^"]+">[^<]+<\/b><span>[^<]+<\/span><\/div>/,
+    '平铺弹幕必须分别保留完整昵称与正文列');
 const idleLiveWorkspaceHtml = renderCommunityWorkspace({ ...workspaceScene, live: { ...workspaceScene.live, warmupStarted: false, danmaku: [] } }, 'live', { pinnedSceneIds: [] });
 assert.match(idleLiveWorkspaceHtml, /class="pm-live-play-btn"[^>]*data-action="start-warmup"[^>]*aria-label="开始热场"[^>]*>[\s\S]*?<svg/);
 assert.match(idleLiveWorkspaceHtml, /pm-danmaku-list[\s\S]*pm-danmaku-input[\s\S]*data-action="send-danmaku"/,
@@ -5354,6 +5359,7 @@ await assert.rejects(() => commitConversationInjectionUpdate({
 
 const previousExplicitInjectionWindow = globalThis.window;
 const previousExplicitInjectionStorage = globalThis.localStorage;
+const previousExplicitInjectionDocument = globalThis.document;
 try {
     const persistedBidirectional = [];
     const injectionResolvers = [];
@@ -5368,6 +5374,11 @@ try {
         __pmHistories: { story: { Alice: [], Bob: [] } },
         __pmGroupMeta: { story: {} },
         __pmInjectionConfig: {},
+        addEventListener() {},
+    };
+    globalThis.document = {
+        visibilityState: 'visible',
+        addEventListener() {},
     };
     installPhoneContextInjection({
         activeStorageId: 'story', currentPersona: 'Alice', isGroupChat: false, currentGroupKey: '',
@@ -5398,9 +5409,31 @@ try {
         '显式注入 API 必须拒绝不存在的联系人');
     assert.equal(await window.__pmToggleConversationInjection('story', 'Alice', true), false,
         '显式注入 API 必须拒绝伪造的群聊类型');
+
+    const delegatedCalls = [];
+    window.__pmToggleConversationInjection = (...args) => {
+        delegatedCalls.push(args);
+        if (args[1] === 'Reject') return Promise.reject(new Error('delegated-rejection'));
+        return Promise.resolve('delegated-result');
+    };
+    window.__pmGroupMeta.story.__group_team = { name: '测试群' };
+    installPhoneFoundation({ phoneWindow: null, phoneActive: false, conversationHistory: [] }, {
+        runtime: createRuntimeState(), getCtx: () => ({}), getStorageId: () => 'story',
+        getUserPersona: () => ({ name: '用户' }),
+    });
+    const directResult = window.__pmToggleBidirectional(' Alice ');
+    assert.equal(typeof directResult?.then, 'function', '旧注入入口必须返回受托 API 的 Promise');
+    assert.equal(await directResult, 'delegated-result');
+    assert.equal(await window.__pmToggleBidirectional('__group_team'), 'delegated-result');
+    assert.deepEqual(delegatedCalls, [
+        ['story', 'Alice', false], ['story', '__group_team', true],
+    ], '旧注入入口必须按当前 storage、规范化 key 与群聊类型委托统一事务');
+    await assert.rejects(() => window.__pmToggleBidirectional('Reject'), /delegated-rejection/,
+        '旧注入入口不得吞掉统一事务的拒绝结果');
 } finally {
     globalThis.window = previousExplicitInjectionWindow;
     globalThis.localStorage = previousExplicitInjectionStorage;
+    globalThis.document = previousExplicitInjectionDocument;
 }
 
 const previousAutoPokeWindow = globalThis.window;
