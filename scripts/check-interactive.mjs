@@ -68,6 +68,12 @@ assert.throws(() => parseInteractiveResponse('抱歉，当前无法生成。', '
 assert.throws(() => parseInteractiveResponse('<html><title>502 Bad Gateway</title></html>', 'feed_batch'), /AI 未返回可解析的社区 JSON/);
 
 assert.deepEqual(parseInteractiveResponse('{"version":1,"kind":"comment_batch","items":[{"author":"甲","content":"评论"}]}', 'comment_batch'), [{ author: '甲', content: '评论', tags: [] }]);
+const danmakuRequest = buildInteractiveRequest({ kind: 'danmaku_batch', presetKey: 'weibo', context: '直播上下文', actorRoster: ['甲', '乙'] });
+assert.match(danmakuRequest.userPrompt, /8-14 条短弹幕|不得生成帖子/);
+assert.deepEqual(parseInteractiveResponse(
+    '{"version":1,"kind":"danmaku_batch","items":[{"author":"甲","content":"来了来了"},{"author":"乙","content":"前排"}]}',
+    'danmaku_batch',
+), [{ author: '甲', content: '来了来了', tags: [] }, { author: '乙', content: '前排', tags: [] }]);
 
 const feed = parseInteractiveResponse(JSON.stringify({
     version: 1, kind: 'feed_batch', items: [
@@ -1209,15 +1215,19 @@ const runnerController = createCommunityTaskController({
     isTargetActive: task => task.storageId === runnerTarget?.storageId && task.sceneId === runnerTarget?.sceneId,
 });
 const feedCommits = [];
+const danmakuCommits = [];
 const runner = createCommunityGenerationRunner({
     controller: runnerController,
     getTarget: () => runnerTarget,
-    request: kind => kind === 'feed_batch' ? lateFeed.promise : [],
+    request: kind => kind === 'feed_batch' ? lateFeed.promise : [{ author: '观众', content: '弹幕生成成功' }],
     commitFeed: async (target, items, isValid) => {
         if (!isValid()) throw new Error('生成已取消');
         feedCommits.push({ target, items });
     },
-    commitDanmaku: async () => {},
+    commitDanmaku: async (target, items, isValid) => {
+        if (!isValid()) throw new Error('生成已取消');
+        danmakuCommits.push({ target, items });
+    },
 });
 const lateFeedResult = runner.generateFeed();
 await assert.rejects(runner.generateFeed(), /已有社区生成任务正在进行/);
@@ -1226,6 +1236,10 @@ lateFeed.resolve([{ content: '不得跨场景提交' }]);
 await assert.rejects(lateFeedResult, /生成已取消/);
 assert.deepEqual(feedCommits, []);
 assert.equal(runnerController.state().phase, COMMUNITY_TASK_PHASES.FAILED);
+runnerTarget = { storageId: 'story', sceneId: 'scene-b' };
+assert.equal(await runner.generateDanmaku(null, { renderTab: 'live' }), true);
+assert.equal(danmakuCommits.length, 1);
+assert.equal(danmakuCommits[0].items[0].content, '弹幕生成成功');
 
 const failureStatuses = [];
 const failureRunner = createCommunityGenerationRunner({

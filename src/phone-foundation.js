@@ -396,6 +396,8 @@ export function installPhoneFoundation(state, deps) {
         const character = context.characters?.[context.characterId];
         const currentActorName = typeof character?.name === 'string' ? character.name.trim() : '';
         if (!currentActorName) return clearExtensionPrompts({ context, runtime });
+        const currentConversationKey = state.isGroupChat && state.currentGroupKey
+            ? state.currentGroupKey : state.currentPersona;
         let interactiveStore;
         try {
             interactiveStore = await deps.getInteractiveStore?.();
@@ -408,6 +410,7 @@ export function installPhoneFoundation(state, deps) {
             runtime,
             currentStorageId: id,
             currentActorName,
+            currentConversationKey,
             injectionConfig: window.__pmInjectionConfig,
             selectedByStorage: window.__pmBidirectional,
             historiesByStorage: window.__pmHistories,

@@ -214,13 +214,13 @@ export function renderCalendarContextInjection({
 }
 
 export function buildContextInjectionPrompts({
-    currentStorageId, currentActorName, selectedByStorage, historiesByStorage, groupsByStorage,
+    currentStorageId, currentActorName, currentConversationKey, selectedByStorage, historiesByStorage, groupsByStorage,
     injectionConfig, interactiveStore, budgetConfig, userName, emojis, safeMaxTokens, calendarStore,
     calendarOccasions, calendarHolidays, calendarWeather, calendarCycles, calendarRecipes,
 } = {}) {
     const config = normalizeBudgetConfig(budgetConfig);
     const phonePermission = resolvePhoneSources({
-        currentStorageId, currentActorName, selectedByStorage, historiesByStorage, groupsByStorage,
+        currentStorageId, currentActorName, currentConversationKey, selectedByStorage, historiesByStorage, groupsByStorage,
     });
     const communityPermission = resolveCommunitySources({
         currentStorageId,

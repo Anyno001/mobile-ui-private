@@ -1,7 +1,7 @@
 import { escapeAttr, escapeHtml } from './ui.js';
 import {
-    BACK_ICON_SVG, CALENDAR_ICON_SVG, CHAT_ICON_SVG, CLOSE_ICON_SVG, CONTACTS_ICON_SVG,
-    EDIT_ICON_SVG, EMOJI_ICON_SVG, INJECTION_ICON_SVG, SETTINGS_ICON_SVG, TRASH_ICON_SVG,
+    BACK_ICON_SVG, CALENDAR_ICON_SVG, CHARACTER_ICON_SVG, CHAT_ICON_SVG, CLOSE_ICON_SVG,
+    CONTACTS_ICON_SVG, EDIT_ICON_SVG, EMOJI_ICON_SVG, INJECTION_ICON_SVG, SETTINGS_ICON_SVG, TRASH_ICON_SVG,
 } from './icons.js';
 import { commitAutoPokeConfig, getAutoPokeConfig } from './auto-poke-config.js';
 import {
@@ -14,7 +14,6 @@ const controlActionLabel = action => ({
     'session-behavior': '打开会话行为',
     'auto-poke-toggle': '切换自动发消息',
     'injection-toggle': '切换当前会话注入',
-    'injection-settings': '打开上下文注入规则',
 })[action] || '执行快捷操作';
 
 export async function toggleConversationInjectionControl(button, toggleInjection, isEnabled) {
@@ -131,9 +130,8 @@ export function installPhoneControlCenter(state, deps) {
   <div class="pm-modal-scroll pm-session-behavior-body">
     <div class="pm-session-behavior-links">
       <button type="button" onclick="window.__pmShowAutoPokeSettings()">${CHAT_ICON_SVG}<span>自动发消息</span></button>
-      <button type="button" onclick="window.__pmShowSessionInjectionSettings()">${INJECTION_ICON_SVG}<span>${target.isGroup ? '注入当前群聊' : '注入当前角色'}</span></button>
-      <button type="button" onclick="window.__pmShowConversationInjection()">${INJECTION_ICON_SVG}<span>上下文注入规则</span></button>
-      <button type="button" onclick="window.__pmShowConversationSettings()">${SETTINGS_ICON_SVG}<span>${target.isGroup ? '成员聊天行为' : '角色设置'}</span></button>
+      <button type="button" onclick="window.__pmShowConversationInjection()">${INJECTION_ICON_SVG}<span>正文注入</span></button>
+      <button type="button" onclick="window.__pmShowConversationSettings()">${CHARACTER_ICON_SVG}<span>${target.isGroup ? '成员聊天行为' : '角色设置'}</span></button>
       ${target.isGroup ? `<button type="button" onclick="window.__pmEditGroup()">${CONTACTS_ICON_SVG}<span>群聊设置</span></button>` : ''}
     </div>
   </div>
@@ -159,18 +157,6 @@ export function installPhoneControlCenter(state, deps) {
       <p id="pm-session-auto-poke-counter">当前计数：${autoPoke.counter} / ${autoPoke.interval}</p>
     </section>
   </div>
-</div>`);
-    };
-
-    window.__pmShowSessionInjectionSettings = () => {
-        const target = getTarget();
-        if (!target) return alert('当前没有可配置的手机会话。');
-        const enabled = window.__pmCurrentConversationInjectionEnabled?.() === true;
-        const label = target.isGroup ? '注入当前群聊' : '注入当前角色';
-        makeOverlay(`
-<div class="pm-modal pm-modal-wide pm-session-behavior-modal">
-  <div class="pm-modal-header"><button type="button" onclick="window.__pmShowSessionBehavior()" class="pm-modal-close" title="返回会话行为" aria-label="返回会话行为">${BACK_ICON_SVG}</button><b>${label}</b><button type="button" onclick="window.__pmCloseOverlay()" class="pm-modal-close" title="关闭" aria-label="关闭">${CLOSE_ICON_SVG}</button></div>
-  <div class="pm-modal-scroll pm-session-behavior-body"><section class="pm-session-behavior-section"><button id="pm-session-injection-toggle" type="button" class="pm-session-behavior-toggle" role="checkbox" aria-checked="${enabled}" onclick="window.__pmToggleSessionInjection(this)">${INJECTION_ICON_SVG}<span><b>把当前手机短信记录写入角色上下文</b><small>只有当前角色可读取这段私密短信记忆。</small></span><i class="pm-control-toggle ${enabled ? 'is-checked' : ''}" aria-hidden="true"></i></button></section></div>
 </div>`);
     };
 

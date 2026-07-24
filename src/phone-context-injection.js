@@ -1,7 +1,8 @@
 import { EXTENSION_PROMPT_POSITIONS, MAX_INJECTION_DEPTH } from './constants.js';
 import { normalizeInjectionConfig } from './behavior-config.js';
-import { BACK_ICON_SVG, CLOSE_ICON_SVG } from './icons.js';
+import { BACK_ICON_SVG, CLOSE_ICON_SVG, INJECTION_ICON_SVG } from './icons.js';
 import { loadInjectionConfig, saveBidirectional, saveInjectionConfig } from './storage.js';
+import { escapeHtml } from './ui.js';
 
 const clone = value => JSON.parse(JSON.stringify(value));
 
@@ -125,12 +126,16 @@ export function installPhoneContextInjection(state, deps) {
 
     window.__pmShowConversationInjection = (statusMessage = '') => {
         const config = normalizeInjectionConfig(window.__pmInjectionConfig || loadInjectionConfig());
+        const target = currentTarget();
+        if (!target) return alert('当前没有可配置的手机会话。');
+        const enabled = isEnabled(target);
         makeOverlay(`
     <div class="pm-modal pm-modal-wide pm-conversation-injection-modal">
-      <div class="pm-modal-header"><button type="button" onclick="window.__pmCloseOverlay()" class="pm-modal-close" title="返回" aria-label="返回">${BACK_ICON_SVG}</button><b>上下文注入</b><button type="button" onclick="window.__pmCloseOverlay()" class="pm-modal-close" title="关闭" aria-label="关闭">${CLOSE_ICON_SVG}</button></div>
+      <div class="pm-modal-header"><button type="button" onclick="window.__pmShowSessionBehavior()" class="pm-modal-close" title="返回会话行为" aria-label="返回会话行为">${BACK_ICON_SVG}</button><b>正文注入</b><button type="button" onclick="window.__pmCloseOverlay()" class="pm-modal-close" title="关闭" aria-label="关闭">${CLOSE_ICON_SVG}</button></div>
       <div class="pm-modal-scroll pm-conversation-injection-body">
-        <div class="pm-cfg-tip pm-conversation-injection-note">以下规则由所有私聊和群聊共用；是否注入当前会话，请在“会话行为”中单独设置。</div>
-        <div id="pm-conversation-injection-status" class="pm-conversation-injection-status" role="status" ${statusMessage ? '' : 'hidden'}>${statusMessage}</div>
+        <section class="pm-session-behavior-section"><button id="pm-session-injection-toggle" type="button" class="pm-session-behavior-toggle" role="checkbox" aria-checked="${enabled}" onclick="window.__pmToggleSessionInjection(this)">${INJECTION_ICON_SVG}<span><b>将当前${target.isGroup ? '群聊' : '聊天'}内容注入正文</b><small>开启后，当前角色生成正文时可读取这段手机会话；设置按当前会话保存。</small></span><i class="pm-control-toggle ${enabled ? 'is-checked' : ''}" aria-hidden="true"></i></button></section>
+        <div class="pm-cfg-tip pm-conversation-injection-note">下方位置、深度和消息范围由所有私聊与群聊共用。</div>
+        <div id="pm-conversation-injection-status" class="pm-conversation-injection-status" role="status" ${statusMessage ? '' : 'hidden'}>${escapeHtml(statusMessage)}</div>
         <label class="pm-conversation-injection-field">注入位置
           <select id="pm-conversation-injection-position" class="pm-cfg-input pm-conversation-injection-config">
             <option value="0" ${config.position === 0 ? 'selected' : ''}>主提示词内</option>

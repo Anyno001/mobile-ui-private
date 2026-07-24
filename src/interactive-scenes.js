@@ -461,9 +461,11 @@ export function installInteractiveScenes(_state, deps) {
         controller: communityTasks, getTarget: getCommunityTarget, request,
         commitFeed: (target, items, isValid, onComplete) => commit(async () => {
             const { scopeId, scope, scene } = resolveTarget(target);
-            if (!scene) throw new Error('生成已取消');
-            appendPosts(scopeId, scope, scene, items);
-            if (typeof onComplete === 'function') await onComplete();
+            if (!scene) throw new Error('生成已取消'); appendPosts(scopeId, scope, scene, items); await onComplete?.();
+        }, isValid),
+        commitDanmaku: (target, items, isValid, onComplete) => commit(async () => {
+            const { scopeId, scope, scene } = resolveTarget(target);
+            if (!scene) throw new Error('生成已取消'); appendDanmaku(scopeId, scope, scene, items); await onComplete?.();
         }, isValid),
         onRender: rerender, onStatus: setStatus,
     });
@@ -599,7 +601,10 @@ export function installInteractiveScenes(_state, deps) {
             });
             rerender('feed'); return;
         }
-        if (action === 'poke-scene') { await communityRunner.generateFeed(); return; }
+        if (action === 'poke-scene') {
+            const tab = phoneScope(getStorageId()).lastTab;
+            await communityRunner[tab === 'live' ? 'generateDanmaku' : 'generateFeed'](null, { renderTab: tab === 'live' ? 'live' : 'feed' }); return;
+        }
         if (action === 'start-warmup') {
             const { scopeId, scene } = current();
             if (!scene) return;
@@ -607,22 +612,20 @@ export function installInteractiveScenes(_state, deps) {
             runtime.liveWarmupError = null;
             try {
                 await runLiveWarmup({
-                    target,
+                    target, generateDanmaku: communityRunner.generateDanmaku,
                     isStarted: () => resolveTarget(target).scene?.live.warmupStarted === true,
                     isActive: () => isLiveWarmupActive(scopeId, scene.id),
                     setStarted: started => {
                         const targetScene = resolveTarget(target).scene;
                         if (!targetScene) throw new Error('社区不存在或已被删除');
-                        targetScene.live.warmupStarted = started;
-                        targetScene.updatedAt = now();
+                        targetScene.live.warmupStarted = started; targetScene.updatedAt = now();
                     },
-                    generateFeed: communityRunner.generateFeed,
                     render: () => rerender('live'),
                     isCurrent: () => isTargetActive(target) && phoneScope(target.storageId).lastTab === 'live',
                 });
             } catch (error) {
                 if (error?.message !== '生成已取消' && isTargetActive(target) && phoneScope(target.storageId).lastTab === 'live') { runtime.liveWarmupError = { ...target, message: generationErrorMessage(error) }; rerender('live'); }
-                throw error;
+                if (error?.message !== '生成已取消') setStatus(generationErrorMessage(error));
             }
             return;
         }
@@ -790,10 +793,7 @@ export function installInteractiveScenes(_state, deps) {
             });
         },
         invalidateInteractiveStore() {
-            invalidate();
-            storeLoader.invalidateStore();
-            runtime.openSceneId = null;
-            runtime.phoneUiState = null;
+            invalidate(); storeLoader.invalidateStore(); runtime.openSceneId = null; runtime.phoneUiState = null;
         },
     });
 }

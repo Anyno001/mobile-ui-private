@@ -40,6 +40,26 @@ const phone = resolvePhoneSources({
 assert.equal(phone.allowed, true);
 assert.deepEqual(phone.sources.map(source => source.sourceId), ['Alice', '__group_team']);
 assert.equal(phone.sources.some(source => source.history.some(item => item.content === '泄漏')), false);
+const aliasedConversation = resolvePhoneSources({
+    currentStorageId: 'story-a', currentActorName: 'Alice', currentConversationKey: '爱丽丝',
+    selectedByStorage: { 'story-a': ['Alice', '爱丽丝'] },
+    historiesByStorage: { 'story-a': {
+        Alice: [{ role: 'assistant', content: '旧角色名会话不得注入' }],
+        爱丽丝: [{ role: 'assistant', content: '别名会话正文' }],
+    } },
+    groupsByStorage: { 'story-a': {} },
+});
+assert.equal(aliasedConversation.allowed, true);
+assert.deepEqual(aliasedConversation.sources.map(source => source.sourceId), ['爱丽丝'],
+    '提供当前会话键后只能读取用户正在查看的私聊，不得同时放行宿主角色名旧键');
+const legacyActorFallback = resolvePhoneSources({
+    currentStorageId: 'story-a', currentActorName: 'Alice',
+    selectedByStorage: { 'story-a': ['Alice'] },
+    historiesByStorage: { 'story-a': { Alice: [{ role: 'assistant', content: '旧调用链正文' }] } },
+    groupsByStorage: { 'story-a': {} },
+});
+assert.deepEqual(legacyActorFallback.sources.map(source => source.sourceId), ['Alice'],
+    '旧调用方未提供当前会话键时仍须按宿主角色名授权');
 assert.deepEqual(resolvePhoneSources({ currentStorageId: 'sms_unknown__default', currentActorName: 'Alice' }).sources, []);
 const inheritedSelections = Object.create({ 'story-a': ['Alice'] });
 assert.deepEqual(resolvePhoneSources({ currentStorageId: 'story-a', currentActorName: 'Alice', selectedByStorage: inheritedSelections, historiesByStorage: { 'story-a': { Alice: [] } } }).sources, []);

@@ -1218,7 +1218,9 @@ for (const expected of [
   'commitConversationInjectionUpdate', '__pmShowConversationInjection', '__pmSaveConversationInjection',
   '__pmConversationInjectionSummary', '__pmToggleCurrentConversationInjection', 'normalizeInjectionConfig',
   'pm-conversation-injection-position', 'pm-conversation-injection-depth', 'pm-conversation-injection-limit',
-  '以下规则由所有私聊和群聊共用', '${BACK_ICON_SVG}',
+  '将当前${target.isGroup ? \'群聊\' : \'聊天\'}内容注入正文',
+  '下方位置、深度和消息范围由所有私聊与群聊共用', 'pm-session-injection-toggle',
+  'role="checkbox"', 'aria-checked="${enabled}"', '${BACK_ICON_SVG}',
 ]) requireText('phone-context-injection.js', sourceModuleByName.get('phone-context-injection.js')?.code || '', expected);
 requireText('phone-chat.js', sourceModuleByName.get('phone-chat.js')?.code || '', 'removePendingBatch(runtime');
 requireText('phone-chat.js', sourceModuleByName.get('phone-chat.js')?.code || '', 'rebaseRenderedHistory(historyWindow.trimmedCount)');
@@ -1567,12 +1569,10 @@ for (const expected of [
   'toggleConversationInjectionControl', 'button.disabled = true',
   "button.setAttribute('aria-checked', String(enabled))",
   "button.querySelector('.pm-control-toggle')?.classList.toggle('is-checked', enabled)",
-  "target.isGroup ? '注入当前群聊' : '注入当前角色'",
-  'window.__pmShowAutoPokeSettings', 'window.__pmShowSessionInjectionSettings', 'INJECTION_ICON_SVG',
+  'window.__pmShowAutoPokeSettings', 'window.__pmShowConversationInjection', '正文注入',
+  'CHARACTER_ICON_SVG', 'INJECTION_ICON_SVG',
 ]) requireText('phone-control-center.js', controlCenterCode, expected);
-if (!controlCenterCode.includes('role="checkbox"') || !controlCenterCode.includes('aria-checked="${enabled}"')) {
-  failures.push('phone-control-center.js: nested current-conversation injection settings must expose checkbox semantics and rendered state');
-}
+if (controlCenterCode.includes('__pmShowSessionInjectionSettings') || controlCenterCode.includes('上下文注入规则')) failures.push('phone-control-center.js: split injection settings entry remains after merge');
 if (controlCenterCode.includes("action === 'rearm'") || controlCenterTemplate.includes('自动发消息')) failures.push('phone-control-center.js: automatic-message control must remain nested under session behavior');
 if (controlCenterTemplate.includes('data-action="desktop"') || controlCenterTemplate.includes('返回桌面')) {
   failures.push('phone-control-center.js: compact control menu must not duplicate the chat navbar desktop action');
@@ -1642,7 +1642,7 @@ for (const expected of [
   "isTargetActive(target) && phoneScope(target.storageId).lastTab === 'live'",
 ]) requireText('interactive-scenes.js', interactiveCode, expected);
 for (const expected of [
-  'createCommunityTaskController', 'createCommunityGenerationRunner', "request('feed_batch', {}, target)",
+  'createCommunityTaskController', 'createCommunityGenerationRunner', "request('feed_batch', {}, target)", "request('danmaku_batch', {}, target)",
   'createCommunityTurnSnapshot(chat)', 'registerResolvedHostEvent', 'resolveHostEvent', 'runtime.communityTask', 'resetObservation',
 ]) requireText('interactive-scene-scheduler.js', interactiveSchedulerCode, expected);
 requireText('interactive-scene-scheduler.js', interactiveSchedulerCode, "if (!isCurrent()) throw new Error('生成已取消')");
@@ -1917,8 +1917,12 @@ requireCssDeclarations(cssRules, '.pm-name-edit:hover', {
   background: 'transparent !important', color: 'var(--pm-r-bg,#007aff) !important',
 });
 requireCssDeclarations(cssRules, '.pm-name-edit:active', {
-  background: 'var(--pm-r-bg,#007aff) !important', color: 'var(--pm-r-txt,#fff) !important',
+  background: 'transparent !important', color: 'var(--pm-r-txt,#fff) !important',
 });
+requireCssDeclarations(cssRules, '.pm-name-edit::before', {
+  width: '24px', height: '24px', 'border-radius': '50%', background: 'transparent',
+});
+requireCssDeclarations(cssRules, '.pm-name-edit:active::before', { background: 'var(--pm-r-bg,#007aff)' });
 requireCssDeclarations(cssRules, '.pm-name', {
   'max-width': '100%',
   'white-space': 'normal',
@@ -2096,7 +2100,7 @@ requireText('bundle', bundle, 'pm-settings-home');
 if (bundle.includes('pm-forum-entry')) failures.push('bundle: removed directory community entry must not remain');
 for (const iconName of [
   'MENU_ICON_SVG', 'CLOSE_ICON_SVG', 'HOME_ICON_SVG', 'CONTROL_ICON_SVG', 'SEND_ICON_SVG',
-  'POKE_ICON_SVG', 'CHAT_ICON_SVG', 'CONTACTS_ICON_SVG', 'SETTINGS_ICON_SVG', 'COMMUNITY_ICON_SVG',
+  'POKE_ICON_SVG', 'CHAT_ICON_SVG', 'CONTACTS_ICON_SVG', 'CHARACTER_ICON_SVG', 'SETTINGS_ICON_SVG', 'COMMUNITY_ICON_SVG',
   'EDIT_ICON_SVG', 'EMOJI_ICON_SVG', 'TRASH_ICON_SVG', 'REMOVE_ICON_SVG', 'RECIPE_ICON_SVG',
 ]) {
   requireText('icons.js', sourceModuleByName.get('icons.js')?.code || '', `export const ${iconName}`);

@@ -49,8 +49,8 @@ export function renderApiSettings({ cfg, useIndependent, profilesHtml }) {
         <div class="pm-cfg-help">范围 0–2；数值越高，回复越随机。默认 1.2。</div>
         <div id="pm-api-status" class="pm-cfg-tip" style="font-weight:bold;">测试连接不会覆盖当前配置，点击保存后生效</div>
         <div class="pm-action-row">
-          <button class="pm-action-button is-model-fetch" onclick="window.__pmTestApi()">拉取模型</button>
-          <button class="pm-action-button is-api-test" onclick="window.__pmTestModel()">测试 API</button>
+          <button id="pm-api-fetch-models" type="button" class="pm-action-button is-model-fetch" onclick="window.__pmTestApi(this)">拉取模型</button>
+          <button id="pm-api-test-model" type="button" class="pm-action-button is-api-test" onclick="window.__pmTestModel(this)">测试 API</button>
         </div>
       </div>
       <div style="height:12px;"></div>

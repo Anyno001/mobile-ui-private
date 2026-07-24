@@ -35,6 +35,7 @@ export function buildInteractiveRequest({ kind, presetKey, styleInput, generated
         style_prompt: 'items 返回 1 项，字段为 title、prompt。prompt 要可直接供后续社区内容生成使用。',
         feed_batch: 'items 返回 4-6 项，字段只能为 author、content、tags（字符串数组）、comments（数组）。每个 comments 返回 2-5 项，每项字段只能为 author、content；评论要有呼应、分歧和自然口吻。内容彼此有联系但不要重复。不得返回 actorId、authorId 或任何内部标识。',
         comment_batch: `围绕帖子生成 4-8 条自然评论。items 字段为 author、content。${dataBlock('post_data', post, 3000)}`,
+        danmaku_batch: '围绕当前直播氛围生成 8-14 条短弹幕。items 字段只能为 author、content；内容应有即时反应、互相呼应和不同语气，不得生成帖子、标题、标签或评论数组。',
     };
     return { systemPrompt: system, userPrompt: `${common}\n\n任务：${instructions[kind] || instructions.feed_batch}` };
 }
@@ -68,7 +69,7 @@ function cleanFeedComments(value) {
 }
 
 export function parseInteractiveResponse(raw, kind) {
-    const maxItems = kind === 'style_prompt' ? 1 : kind === 'feed_batch' ? 8 : kind === 'comment_batch' ? 12 : 20;
+    const maxItems = kind === 'style_prompt' ? 1 : kind === 'feed_batch' ? 8 : kind === 'comment_batch' ? 12 : kind === 'danmaku_batch' ? 20 : 20;
     const items = parseEnvelope(raw, kind).slice(0, maxItems).flatMap(item => {
         if (!item || typeof item !== 'object' || Array.isArray(item)) return [];
         if (kind === 'style_prompt') {

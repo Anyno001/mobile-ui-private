@@ -1147,6 +1147,8 @@ const uiElements = new Map([
     ['pm-cfg-model', { value: 'model-beta', getBoundingClientRect: () => ({ left: 20, bottom: 80, width: 240 }) }],
     ['pm-cfg-temperature', { value: '0.7' }],
     ['pm-api-status', { textContent: '', style: {} }],
+    ['pm-api-fetch-models', { textContent: '拉取模型', disabled: false, isConnected: true, setAttribute(name, value) { this[name] = String(value); }, removeAttribute(name) { delete this[name]; } }],
+    ['pm-api-test-model', { textContent: '测试 API', disabled: false, isConnected: true, setAttribute(name, value) { this[name] = String(value); }, removeAttribute(name) { delete this[name]; } }],
     ['pm-mode-main', { classList: makeClassList(['pm-mode-active']) }],
     ['pm-mode-indep', { classList: makeClassList([]) }],
     ['pm-mode-tip', { textContent: '主 API 使用宿主当前选择的预设与接口' }],
@@ -1752,6 +1754,34 @@ assert.equal(uiElements.get('pm-api-status').style.color, '#ff9500');
 assert.equal(documentClickListeners.size, lifecycleDocumentClickBaseline);
 settingsRuntime.modelList = ['model-alpha', 'model-beta'];
 
+const originalFetch = globalThis.fetch;
+const apiFetchCalls = [];
+globalThis.fetch = async (url, options = {}) => {
+    apiFetchCalls.push({ url, options });
+    if (String(url).endsWith('/models')) return {
+        ok: true,
+        async json() { return { data: [{ id: 'model-zeta' }, { id: 'model-zeta' }, { id: 'model-eta' }] }; },
+    };
+    return {
+        ok: true,
+        async json() { return { choices: [{ message: { content: 'OK' } }] }; },
+    };
+};
+uiElements.get('pm-cfg-model').value = '';
+assert.equal(await window.__pmTestApi(uiElements.get('pm-api-fetch-models')), true);
+assert.deepEqual(settingsRuntime.modelList, ['model-zeta', 'model-eta'], '模型拉取必须去重并过滤无效项');
+assert.equal(uiElements.get('pm-cfg-model').value, 'model-zeta', '模型输入为空时应自动选中第一个可用模型');
+assert.match(uiElements.get('pm-api-status').textContent, /已拉取 2 个模型/);
+assert.equal(uiElements.get('pm-api-fetch-models').disabled, false);
+assert.equal(uiElements.get('pm-api-test-model').disabled, false);
+assert.equal(apiFetchCalls[0].options.headers.Authorization, 'Bearer new-key');
+assert.ok(apiFetchCalls[0].options.signal, '模型拉取必须支持超时取消');
+assert.equal(await window.__pmTestModel(uiElements.get('pm-api-test-model')), true);
+assert.match(uiElements.get('pm-api-status').textContent, /测试成功.*OK/);
+assert.equal(apiFetchCalls[1].options.method, 'POST');
+assert.equal(JSON.parse(apiFetchCalls[1].options.body).model, 'model-zeta');
+globalThis.fetch = originalFetch;
+
 const lifecycleOverlay = uiElements.get('pm-overlay');
 lifecycleCalls.length = 0;
 foundationPhone.removed = false;
@@ -1871,23 +1901,16 @@ assert.equal(window.__pmConfig.apiUrl, 'https://old.example');
 assert.equal(uiElements.get('pm-overlay').removed, false);
 assert.match(uiAlerts.at(-1), /API 配置保存失败/);
 
+uiElements.get('pm-overlay').removed = false;
 localStorageControl.failSet.add('ST_SMS_API_PROFILES');
-assert.equal(window.__pmSaveConfig(), false);
-assert.equal(window.__pmConfig.apiUrl, 'https://old.example');
-assert.equal(JSON.parse(localValues.get('ST_SMS_CONFIG')).apiUrl, 'https://old.example');
-assert.equal(window.__pmProfiles.length, 1);
-assert.equal(uiElements.get('pm-overlay').removed, false);
-assert.match(uiAlerts.at(-1), /API 档案保存失败，API 配置已恢复/);
-
-const nextConfigWrite = (localStorageControl.setCalls.get('ST_SMS_CONFIG') || 0) + 1;
-localStorageControl.failSet.add('ST_SMS_API_PROFILES');
-localStorageControl.failSetOnCalls.set('ST_SMS_CONFIG', new Set([nextConfigWrite + 1]));
-assert.equal(window.__pmSaveConfig(), false);
+assert.equal(window.__pmSaveConfig(), true);
 assert.equal(window.__pmConfig.apiUrl, 'https://new.example');
 assert.equal(JSON.parse(localValues.get('ST_SMS_CONFIG')).apiUrl, 'https://new.example');
+assert.equal(window.__pmProfiles.length, 1);
 assert.equal(window.__pmProfiles[0].apiUrl, 'https://old.example');
-assert.equal(uiElements.get('pm-overlay').removed, false);
-assert.match(uiAlerts.at(-1), /API 配置回滚也失败/);
+assert.equal(uiElements.get('pm-overlay').removed, true);
+assert.match(uiNotes.at(-1), /API 设置已保存；档案列表保存失败/,
+    '档案列表保存失败不得回滚已经持久化的当前 API 配置');
 
 uiElements.get('pm-overlay').removed = false;
 window.__pmProfiles = [{ apiUrl: 'https://profile.example/v1', apiKey: 'profile-key', model: 'profile-model', temperature: 0.4 }];
@@ -4212,22 +4235,26 @@ assert.match(liveWorkspaceHtml, /class="pm-scene-title-tab is-active"[^>]*data-t
 assert.match(liveWorkspaceHtml, /pm-live-stage has-danmaku" data-live-state="active"/);
 assert.match(liveWorkspaceHtml, /<section class="pm-live-details" aria-label="热场内容">/,
     '热场完成后必须展开独立的下方内容区');
+assert.doesNotMatch(liveWorkspaceHtml, /class="pm-live-play-btn"/,
+    '热场完成后播放三角必须消失');
 assert.match(liveWorkspaceHtml, /--duration:[\d.]+s;--offset:-?\d+px/);
 assert.match(liveWorkspaceHtml, /data-action="send-danmaku"[^>]*aria-label="发送弹幕"[^>]*>[\s\S]*?<svg/,
     '弹幕发送必须使用图标按钮并保留无障碍名称');
 const idleLiveWorkspaceHtml = renderCommunityWorkspace({ ...workspaceScene, live: { ...workspaceScene.live, warmupStarted: false, danmaku: [] } }, 'live', { pinnedSceneIds: [] });
 assert.match(idleLiveWorkspaceHtml, /class="pm-live-play-btn"[^>]*data-action="start-warmup"[^>]*aria-label="开始热场"[^>]*>[\s\S]*?<svg/);
-assert.doesNotMatch(idleLiveWorkspaceHtml, /pm-danmaku-list|pm-danmaku-input|data-action="send-danmaku"/,
-    '未热场时只能显示黑屏中央播放键');
+assert.match(idleLiveWorkspaceHtml, /pm-danmaku-list[\s\S]*pm-danmaku-input[\s\S]*data-action="send-danmaku"/,
+    '进入直播页时必须立即预留弹幕区和发送模块');
 const loadingLiveWorkspaceHtml = renderCommunityWorkspace(workspaceScene, 'live', { pinnedSceneIds: [] }, { liveState: 'starting' });
-assert.match(loadingLiveWorkspaceHtml, /class="pm-live-play-btn"[^>]*aria-label="正在热场"[^>]*disabled aria-busy="true"/);
 assert.match(loadingLiveWorkspaceHtml, /data-live-state="starting"[\s\S]*正在准备热场…/);
-assert.doesNotMatch(loadingLiveWorkspaceHtml, /pm-danmaku-list|pm-danmaku-input/,
-    '首次 feed_batch 完成前不得提前显示手动弹幕输入区');
+assert.doesNotMatch(loadingLiveWorkspaceHtml, /class="pm-live-play-btn"/,
+    '点击播放后必须立即隐藏播放三角');
+assert.match(loadingLiveWorkspaceHtml, /pm-danmaku-list[\s\S]*pm-danmaku-input/,
+    '热场生成期间必须保留基础直播布局');
 const failedLiveWorkspaceHtml = renderCommunityWorkspace(workspaceScene, 'live', { pinnedSceneIds: [] }, { liveState: 'error' });
 assert.match(failedLiveWorkspaceHtml, /data-live-state="error"[\s\S]*aria-label="重新开始热场"[\s\S]*热场未能启动，请重试。/,
     '失败后必须保留可重试的播放入口，且不能伪装成已完成热场');
-assert.doesNotMatch(failedLiveWorkspaceHtml, /pm-live-details|pm-danmaku-list|pm-danmaku-input/);
+assert.match(failedLiveWorkspaceHtml, /pm-live-details[\s\S]*pm-danmaku-list[\s\S]*pm-danmaku-input/,
+    '热场失败后仍必须保留弹幕预留区与手动发送能力');
 assert.doesNotMatch(liveWorkspaceHtml, /toggle-live|data-action="rhythm"|pm-live-actions/,
     '直播页不得保留旧直播控制与带节奏入口');
 assert.doesNotMatch(liveWorkspaceHtml, /class="pm-scene-bottom-bar"|class="pm-control-menu pm-scene-menu"/,

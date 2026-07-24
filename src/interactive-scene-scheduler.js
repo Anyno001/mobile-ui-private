@@ -166,15 +166,16 @@ export function createCommunityTaskController({ runtime, isAllowed, isTargetActi
 }
 
 export async function runLiveWarmup({
-    target, isStarted, isActive, setStarted, generateFeed, render, isCurrent,
+    target, isStarted, isActive, setStarted, generateDanmaku, generateFeed, render, isCurrent,
 }) {
+    const generate = generateDanmaku || generateFeed;
     if (!target || typeof isStarted !== 'function' || typeof isActive !== 'function'
-        || typeof setStarted !== 'function' || typeof generateFeed !== 'function'
+        || typeof setStarted !== 'function' || typeof generate !== 'function'
         || typeof render !== 'function' || typeof isCurrent !== 'function') {
         throw new TypeError('直播热场依赖无效');
     }
     if (isStarted() || isActive()) return false;
-    const generation = generateFeed(null, {
+    const generation = generate(null, {
         renderTab: 'live',
         taskKind: 'live-warmup',
         onComplete: () => setStarted(true),
@@ -192,7 +193,7 @@ export async function runLiveWarmup({
 }
 
 export function createCommunityGenerationRunner({
-    controller, getTarget, request, commitFeed,
+    controller, getTarget, request, commitFeed, commitDanmaku,
     onRender = () => {}, onStatus = () => {},
 }) {
     if (!controller || typeof getTarget !== 'function' || typeof request !== 'function'
@@ -238,6 +239,33 @@ export function createCommunityGenerationRunner({
             throw error;
         }
     };
+    const generateDanmaku = async (scheduledTask = null, { renderTab = 'live', taskKind = 'manual-danmaku', onComplete = null } = {}) => {
+        if (typeof commitDanmaku !== 'function') throw new TypeError('直播弹幕提交依赖无效');
+        const task = scheduledTask || begin(taskKind);
+        if (!task) throw new Error('已有社区生成任务正在进行');
+        if (!controller.markGenerating(task)) return false;
+        const target = targetOf(task);
+        if (!scheduledTask) controller.consumeReminder(target);
+        try {
+            const items = await request('danmaku_batch', {}, target);
+            if (!controller.isActive(task)) throw new Error('生成已取消');
+            await commitDanmaku(target, items, () => controller.isActive(task), onComplete);
+            if (!controller.isActive(task)) throw new Error('生成已取消');
+            controller.finish(task);
+            onRender(renderTab);
+            return true;
+        } catch (error) {
+            const cancelledWarmup = task.kind === 'live-warmup'
+                && (!controller.isActive(task) || error?.message === '生成已取消' || error?.name === 'AbortError');
+            if (cancelledWarmup) {
+                const cancelled = new Error('生成已取消');
+                controller.finish(task);
+                throw cancelled;
+            }
+            reportFailure(task, error);
+            throw error;
+        }
+    };
     const observe = chat => {
         const target = getTarget();
         const task = controller.observe(createCommunityTurnSnapshot(chat), target);
@@ -245,5 +273,5 @@ export function createCommunityGenerationRunner({
         else if (controller.state().reminder && target) onStatus('正文有新进展，可以生成一批热场内容');
         return task;
     };
-    return { cancel, generateFeed, observe };
+    return { cancel, generateFeed, generateDanmaku, observe };
 }

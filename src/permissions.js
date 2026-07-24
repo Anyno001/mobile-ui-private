@@ -145,11 +145,13 @@ export function isValidContextStorageId(value) {
 }
 
 export function resolvePhoneSources({
-    currentStorageId, currentActorName, selectedByStorage, historiesByStorage, groupsByStorage,
+    currentStorageId, currentActorName, currentConversationKey,
+    selectedByStorage, historiesByStorage, groupsByStorage,
 } = {}) {
     try {
         if (!isValidContextStorageId(currentStorageId)) return { allowed: false, reason: 'invalid-storage', sources: [] };
         const actorName = typeof currentActorName === 'string' ? currentActorName.trim() : '';
+        const conversationKey = typeof currentConversationKey === 'string' ? currentConversationKey.trim() : '';
         if (!actorName) return { allowed: false, reason: 'unknown-audience', sources: [] };
         const selectedEntry = ownData(selectedByStorage, currentStorageId);
         if (selectedEntry.invalid) return { allowed: false, reason: 'invalid-selection-store', sources: [] };
@@ -190,8 +192,9 @@ export function resolvePhoneSources({
                     if (group.members[memberIndex] === actorName) { actorIncluded = true; break; }
                 }
                 if (!actorIncluded) continue;
-            } else if (name !== actorName) {
-                continue;
+            } else {
+                const authorizedPrivateKey = conversationKey || actorName;
+                if (name !== authorizedPrivateKey) continue;
             }
             const history = snapshotHistory(historyEntry.value);
             if (!history.valid) return { allowed: false, reason: 'invalid-history-source', sources: [] };

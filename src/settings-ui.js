@@ -424,31 +424,79 @@ export function installSettingsUi(deps) {
             else delete window.__pmBgLocal[key];
         });
     };
-    window.__pmTestApi = async () => {
-        const u = document.getElementById('pm-cfg-url').value.trim(), k = document.getElementById('pm-cfg-key').value.trim(), m = document.getElementById('pm-cfg-model').value.trim();
+    const setApiStatus = (message, color) => {
         const s = document.getElementById('pm-api-status');
-        if (!u) { s.textContent = "请填写 API 地址"; s.style.color = "#ff3b30"; return; }
-        s.textContent = "连接中..."; s.style.color = "#007aff";
-        try {
-            const r = await fetch(normalizeApiUrls(u).modelsUrl, { method: 'GET', headers: { 'Authorization': `Bearer ${k}` } });
-            if (!r.ok) throw new Error(`HTTP ${r.status}`);
-            const d = await r.json();
-            if (d?.data && Array.isArray(d.data)) { runtime.modelList = d.data.map(x => x.id).filter(Boolean); s.textContent = `已拉取 ${runtime.modelList.length} 个模型`; s.style.color = "#34c759"; }
-            else { s.textContent = "连接成功"; s.style.color = "#34c759"; }
-        } catch (e) { s.textContent = "连接失败：" + e.message; s.style.color = "#ff3b30"; }
+        if (s) { s.textContent = message; s.style.color = color; }
     };
-    window.__pmTestModel = async () => {
-        const u = document.getElementById('pm-cfg-url').value.trim(), k = document.getElementById('pm-cfg-key').value.trim(), m = document.getElementById('pm-cfg-model').value.trim();
-        const s = document.getElementById('pm-api-status');
-        if (!u || !k || !m) { s.textContent = '请填写完整的 API、密钥与模型'; s.style.color = '#ff3b30'; return; }
-        s.textContent = `测试「${m}」...`; s.style.color = '#007aff';
-        const ctrl = new AbortController(); const tm = setTimeout(() => ctrl.abort(), 15000);
+    const readApiFailure = async response => {
+        let detail = '';
         try {
-            const r = await fetch(normalizeApiUrls(u).chatUrl, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${k}` }, body: JSON.stringify({ model: m, messages: [{ role: 'user', content: '只回复：OK' }] }), signal: ctrl.signal });
-            clearTimeout(tm); if (!r.ok) throw new Error(`HTTP ${r.status}`);
-            const j = await r.json(), reply = extractAiResponseContent(j);
-            s.textContent = reply ? `测试成功："${reply.slice(0, 25)}"` : '响应格式异常'; s.style.color = reply ? '#34c759' : '#ff9500';
-        } catch (e) { clearTimeout(tm); s.textContent = '测试失败：' + (e.name === 'AbortError' ? '超时' : e.message); s.style.color = '#ff3b30'; }
+            const raw = await response.text();
+            if (raw) {
+                try {
+                    const data = JSON.parse(raw);
+                    detail = data?.error?.message || data?.message || data?.error || '';
+                } catch (error) { detail = raw; }
+            }
+        } catch (error) {}
+        return `HTTP ${response.status}${detail ? `：${String(detail).trim().slice(0, 160)}` : ''}`;
+    };
+    const runApiAction = async (button, pendingLabel, operation) => {
+        const controls = ['pm-api-fetch-models', 'pm-api-test-model']
+            .map(id => document.getElementById(id)).filter(Boolean);
+        if (controls.some(control => control.disabled)) return false;
+        const originalLabel = button?.textContent || '';
+        controls.forEach(control => { control.disabled = true; control.setAttribute?.('aria-busy', 'true'); });
+        if (button) button.textContent = pendingLabel;
+        try { return await operation(); }
+        finally {
+            controls.forEach(control => { control.disabled = false; control.removeAttribute?.('aria-busy'); });
+            if (button?.isConnected !== false && originalLabel) button.textContent = originalLabel;
+        }
+    };
+    window.__pmTestApi = async button => {
+        const u = document.getElementById('pm-cfg-url')?.value.trim() || '';
+        const k = document.getElementById('pm-cfg-key')?.value.trim() || '';
+        if (!u || !k) { setApiStatus('请填写 API 地址和密钥', '#ff3b30'); return false; }
+        return runApiAction(button, '拉取中…', async () => {
+            setApiStatus('正在拉取模型…', '#007aff');
+            const ctrl = new AbortController(); const timer = setTimeout(() => ctrl.abort(), 15000);
+            try {
+                const r = await fetch(normalizeApiUrls(u).modelsUrl, { method: 'GET', headers: { Authorization: `Bearer ${k}` }, signal: ctrl.signal });
+                if (!r.ok) throw new Error(await readApiFailure(r));
+                const d = await r.json();
+                const models = Array.isArray(d?.data)
+                    ? [...new Set(d.data.map(item => typeof item?.id === 'string' ? item.id.trim() : '').filter(Boolean))] : [];
+                if (!models.length) throw new Error('接口未返回可用模型');
+                runtime.modelList = models;
+                const modelInput = document.getElementById('pm-cfg-model');
+                if (modelInput && !modelInput.value.trim()) modelInput.value = models[0];
+                setApiStatus(`已拉取 ${models.length} 个模型`, '#34c759');
+                return true;
+            } catch (error) {
+                setApiStatus(`拉取失败：${error.name === 'AbortError' ? '请求超时' : error.message}`, '#ff3b30');
+                return false;
+            } finally { clearTimeout(timer); }
+        });
+    };
+    window.__pmTestModel = async button => {
+        const u = document.getElementById('pm-cfg-url')?.value.trim() || '', k = document.getElementById('pm-cfg-key')?.value.trim() || '', m = document.getElementById('pm-cfg-model')?.value.trim() || '';
+        if (!u || !k || !m) { setApiStatus('请填写完整的 API 地址、密钥与模型', '#ff3b30'); return false; }
+        return runApiAction(button, '测试中…', async () => {
+            setApiStatus(`正在测试「${m}」…`, '#007aff');
+            const ctrl = new AbortController(); const timer = setTimeout(() => ctrl.abort(), 15000);
+            try {
+                const r = await fetch(normalizeApiUrls(u).chatUrl, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${k}` }, body: JSON.stringify({ model: m, messages: [{ role: 'user', content: '只回复：OK' }] }), signal: ctrl.signal });
+                if (!r.ok) throw new Error(await readApiFailure(r));
+                const j = await r.json(), reply = extractAiResponseContent(j);
+                if (!reply) throw new Error('响应中没有可读取的文本');
+                setApiStatus(`测试成功：“${reply.slice(0, 25)}”`, '#34c759');
+                return true;
+            } catch (error) {
+                setApiStatus(`测试失败：${error.name === 'AbortError' ? '请求超时' : error.message}`, '#ff3b30');
+                return false;
+            } finally { clearTimeout(timer); }
+        });
     };
     window.__pmSaveBudgetConfig = async () => {
         const storageId = getStorageId();
@@ -520,18 +568,11 @@ export function installSettingsUi(deps) {
         window.__pmConfig = candidate;
         try { localStorage.setItem('ST_SMS_CONFIG', JSON.stringify(candidate)); }
         catch (error) { window.__pmConfig = previous; alert('API 配置保存失败：浏览器存储不可用。'); return false; }
-        if (apiUrl && apiKey && !addOrUpdateProfile({ apiUrl, apiKey, model, temperature })) {
-            window.__pmConfig = previous;
-            try { localStorage.setItem('ST_SMS_CONFIG', JSON.stringify(previous)); }
-            catch (rollbackError) {
-                window.__pmConfig = candidate;
-                alert('API 档案保存失败，API 配置回滚也失败。请勿刷新，并立即导出备份。');
-                return false;
-            }
-            alert('API 档案保存失败，API 配置已恢复。'); return false;
-        }
+        const profileSaved = !apiUrl || !apiKey || addOrUpdateProfile({ apiUrl, apiKey, model, temperature });
         document.getElementById('pm-overlay')?.remove();
-        addNote(`已保存：${window.__pmConfig.useIndependent && apiUrl ? '独立API' : '主API'}`);
+        addNote(profileSaved
+            ? `已保存：${window.__pmConfig.useIndependent && apiUrl ? '独立API' : '主API'}`
+            : 'API 设置已保存；档案列表保存失败，不影响当前配置。');
         return true;
     };
     window.__pmShowModelPicker = () => showModelPicker(runtime);
