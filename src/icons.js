@@ -16,7 +16,7 @@ export const CONTACTS_ICON_SVG = icon('<circle cx="9" cy="8" r="3"/><path d="M3 
 export const CHARACTER_ICON_SVG = icon('<circle cx="9" cy="8" r="3"/><path d="M3.5 20c.3-4 2.4-6 5.5-6s5.2 2 5.5 6"/><path d="M17 7h4M19 5v4M16 14h5M16 18h5"/>');
 export const SETTINGS_ICON_SVG = icon('<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-4V21a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H2.8v-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1A1.7 1.7 0 0 0 9 4.6 1.7 1.7 0 0 0 10 3V2.8h4V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v4H21a1.7 1.7 0 0 0-1.6 1z"/>');
 export const INJECTION_ICON_SVG = icon('<path d="M8 7l4-4 4 4M12 3v8M16 17l-4 4-4-4M12 21v-8"/><path d="M5 12h14"/>');
-export const SYRINGE_ICON_SVG = icon('<path d="M14 4l6 6M17 3l4 4M13 8l3 3M5 19l8-8 3 3-8 8H5v-3zM3 21l3-3"/>');
+export const EYE_ICON_SVG = icon('<path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"/><circle cx="12" cy="12" r="3"/>');
 export const CHECK_ICON_SVG = icon('<path d="M5 12l4 4L19 6"/>');
 export const COMMUNITY_ICON_SVG = icon('<path d="M4 19V8l8-4 8 4v11"/><path d="M8 19v-6h8v6M8 9h.01M12 9h.01M16 9h.01"/>');
 export const FEED_ICON_SVG = icon('<path d="M5 5h14v14H5z"/><path d="M8 9h8M8 12h8M8 15h5"/>');
@@ -25,7 +25,7 @@ export const PLAY_ICON_SVG = icon('<path d="M8 5l11 7-11 7z"/>');
 
 export const CALENDAR_ICON_SVG = icon('<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18M8 14h.01M12 14h.01M16 14h.01M8 18h.01M12 18h.01"/>');
 export const WEATHER_ICON_SVG = icon('<path d="M7 17h10a4 4 0 0 0 .5-8A6 6 0 0 0 6.2 10.5 3.5 3.5 0 0 0 7 17z"/><path d="M8 21l1-2M12 21l1-2M16 21l1-2"/>');
-export const CYCLE_MARK_HTML = '<span class="pm-calendar-cycle-mark" aria-hidden="true">୨ৎ</span>';
+export const FLOWER_BUD_ICON_SVG = icon('<path d="M12 21c-4-2-8-7-8-12 0-3 2-5 4-5 1.5 0 3 1 4 3 1-2 2.5-3 4-3 2 0 4 2 4 5 0 5-4 10-8 12z"/>');
 export const RECIPE_ICON_SVG = icon('<path d="M7 3v7M4 3v4a3 3 0 0 0 6 0V3M7 10v11"/><path d="M16 3v18M16 3c2.2 1.8 3.2 4.5 3 8h-3"/>');
 export const CYCLE_FERTILE_ICON_SVG = icon('<circle cx="12" cy="12" r="3.2"/><path d="M8.6 7.5C7.4 5.8 5.4 5.2 4 6.3c-1.4 1.2-.8 3.4 1.1 4.4M15.4 7.5c1.2-1.7 3.2-2.3 4.6-1.2 1.4 1.2.8 3.4-1.1 4.4M8.6 16.5c-1.2 1.7-3.2 2.3-4.6 1.2-1.4-1.2-.8-3.4 1.1-4.4M15.4 16.5c1.2 1.7 3.2 2.3 4.6 1.2 1.4-1.2.8-3.4-1.1-4.4"/>');
 export const TIME_ORIGIN_ICON_SVG = icon('<circle cx="12" cy="12" r="8"/><path d="M12 7v5l3 2"/>');

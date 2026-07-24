@@ -1514,7 +1514,7 @@ for (const expected of [
   'role="switch"', 'aria-checked="${scope.autoAdjust}"', '自动跟随正文日期', "label: '<user>'",
   '<time datetime="${selectedDate}">${escapeHtml(detailDate.format(parsed))}</time>', 'detailWeekday.format(parsed)',
   "period: { label: '经期'", "ovulatory: { label: '易孕期'", "if (!detail) return ''", 'resolveWeatherForDate(weatherStore, date)',
-  'CYCLE_MARK_HTML', 'CYCLE_FERTILE_ICON_SVG', 'WEATHER_ICON_SVG', 'pm-calendar-panel-section', '℃~${resolved.day.tempMax}℃', 'pm-calendar-status-copy', 'pm-calendar-status-icon',
+  'FLOWER_BUD_ICON_SVG', 'CYCLE_FERTILE_ICON_SVG', 'WEATHER_ICON_SVG', 'pm-calendar-panel-section', '℃~${resolved.day.tempMax}℃', 'pm-calendar-status-copy', 'pm-calendar-status-icon',
   '当前故事日期', 'placeholder="例如 3726-08-17"', '可直接输入日期，或跳转月份后点击下方日期。',
   '开启后供正文生成读取；设置按当前会话独立保存。', '预报外日期使用气候推演', '无法推演',
   'DEFAULT_CALENDAR_GENERATION_RULE', 'DEFAULT_RECIPE_GENERATION_RULE', 'data-calendar-generation-rule', 'data-recipe-generation-rule',
@@ -2140,7 +2140,7 @@ if (bundle.includes('pm-forum-entry')) failures.push('bundle: removed directory 
 for (const iconName of [
   'MENU_ICON_SVG', 'CLOSE_ICON_SVG', 'HOME_ICON_SVG', 'CONTROL_ICON_SVG', 'SEND_ICON_SVG',
   'POKE_ICON_SVG', 'CHAT_ICON_SVG', 'CONTACTS_ICON_SVG', 'CHARACTER_ICON_SVG', 'SETTINGS_ICON_SVG', 'COMMUNITY_ICON_SVG',
-  'EDIT_ICON_SVG', 'EMOJI_ICON_SVG', 'TRASH_ICON_SVG', 'REMOVE_ICON_SVG', 'RECIPE_ICON_SVG', 'CYCLE_MARK_HTML', 'CYCLE_FERTILE_ICON_SVG',
+  'EDIT_ICON_SVG', 'EMOJI_ICON_SVG', 'TRASH_ICON_SVG', 'REMOVE_ICON_SVG', 'RECIPE_ICON_SVG', 'FLOWER_BUD_ICON_SVG', 'CYCLE_FERTILE_ICON_SVG',
 ]) {
   requireText('icons.js', sourceModuleByName.get('icons.js')?.code || '', `export const ${iconName}`);
 }
@@ -2192,7 +2192,7 @@ for (const [label, marker, accessibleName] of [
   requireText(`interactive-scene-views.js: ${label}`, button, '${POKE_ICON_SVG}');
   if (button.includes('SPARKLES_ICON_SVG')) failures.push(`interactive-scene-views.js: ${label} must preserve poke semantics instead of generic AI sparkles`);
 }
-for (const expected of ['REMOVE_ICON_SVG', 'UNLINK_ICON_SVG', 'SPARKLES_ICON_SVG', 'CHEVRON_DOWN_ICON_SVG', 'SYRINGE_ICON_SVG', 'CHECK_ICON_SVG']) requireText('icons.js', sourceModuleByName.get('icons.js')?.code || '', expected);
+for (const expected of ['REMOVE_ICON_SVG', 'UNLINK_ICON_SVG', 'SPARKLES_ICON_SVG', 'CHEVRON_DOWN_ICON_SVG', 'EYE_ICON_SVG', 'FLOWER_BUD_ICON_SVG', 'CHECK_ICON_SVG']) requireText('icons.js', sourceModuleByName.get('icons.js')?.code || '', expected);
 for (const expected of [
   '.pm-action-button{', 'font-size:13px', 'background:var(--pm-r-bg,#007aff)',
   '.pm-header-icon-button{box-sizing:border-box;width:34px;height:34px;min-width:34px;min-height:34px',

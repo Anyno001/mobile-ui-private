@@ -2608,7 +2608,7 @@ ${userPrompt}` : userPrompt;
   var CHARACTER_ICON_SVG = icon('<circle cx="9" cy="8" r="3"/><path d="M3.5 20c.3-4 2.4-6 5.5-6s5.2 2 5.5 6"/><path d="M17 7h4M19 5v4M16 14h5M16 18h5"/>');
   var SETTINGS_ICON_SVG = icon('<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-4V21a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H2.8v-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1A1.7 1.7 0 0 0 9 4.6 1.7 1.7 0 0 0 10 3V2.8h4V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v4H21a1.7 1.7 0 0 0-1.6 1z"/>');
   var INJECTION_ICON_SVG = icon('<path d="M8 7l4-4 4 4M12 3v8M16 17l-4 4-4-4M12 21v-8"/><path d="M5 12h14"/>');
-  var SYRINGE_ICON_SVG = icon('<path d="M14 4l6 6M17 3l4 4M13 8l3 3M5 19l8-8 3 3-8 8H5v-3zM3 21l3-3"/>');
+  var EYE_ICON_SVG = icon('<path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"/><circle cx="12" cy="12" r="3"/>');
   var CHECK_ICON_SVG = icon('<path d="M5 12l4 4L19 6"/>');
   var COMMUNITY_ICON_SVG = icon('<path d="M4 19V8l8-4 8 4v11"/><path d="M8 19v-6h8v6M8 9h.01M12 9h.01M16 9h.01"/>');
   var FEED_ICON_SVG = icon('<path d="M5 5h14v14H5z"/><path d="M8 9h8M8 12h8M8 15h5"/>');
@@ -2616,7 +2616,7 @@ ${userPrompt}` : userPrompt;
   var PLAY_ICON_SVG = icon('<path d="M8 5l11 7-11 7z"/>');
   var CALENDAR_ICON_SVG = icon('<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18M8 14h.01M12 14h.01M16 14h.01M8 18h.01M12 18h.01"/>');
   var WEATHER_ICON_SVG = icon('<path d="M7 17h10a4 4 0 0 0 .5-8A6 6 0 0 0 6.2 10.5 3.5 3.5 0 0 0 7 17z"/><path d="M8 21l1-2M12 21l1-2M16 21l1-2"/>');
-  var CYCLE_MARK_HTML = '<span class="pm-calendar-cycle-mark" aria-hidden="true">\u0B68\u09CE</span>';
+  var FLOWER_BUD_ICON_SVG = icon('<path d="M12 21c-4-2-8-7-8-12 0-3 2-5 4-5 1.5 0 3 1 4 3 1-2 2.5-3 4-3 2 0 4 2 4 5 0 5-4 10-8 12z"/>');
   var RECIPE_ICON_SVG = icon('<path d="M7 3v7M4 3v4a3 3 0 0 0 6 0V3M7 10v11"/><path d="M16 3v18M16 3c2.2 1.8 3.2 4.5 3 8h-3"/>');
   var CYCLE_FERTILE_ICON_SVG = icon('<circle cx="12" cy="12" r="3.2"/><path d="M8.6 7.5C7.4 5.8 5.4 5.2 4 6.3c-1.4 1.2-.8 3.4 1.1 4.4M15.4 7.5c1.2-1.7 3.2-2.3 4.6-1.2 1.4 1.2.8 3.4-1.1 4.4M8.6 16.5c-1.2 1.7-3.2 2.3-4.6 1.2-1.4-1.2-.8-3.4 1.1-4.4M15.4 16.5c1.2 1.7 3.2 2.3 4.6 1.2 1.4-1.2.8-3.4-1.1-4.4"/>');
   var TIME_ORIGIN_ICON_SVG = icon('<circle cx="12" cy="12" r="8"/><path d="M12 7v5l3 2"/>');
@@ -2660,7 +2660,7 @@ ${userPrompt}` : userPrompt;
   var detailDate = new Intl.DateTimeFormat("zh-CN", { month: "long", day: "numeric" });
   var detailWeekday = new Intl.DateTimeFormat("zh-CN", { weekday: "long" });
   var CYCLE_DETAILS = {
-    period: { label: "\u7ECF\u671F", icon: CYCLE_MARK_HTML },
+    period: { label: "\u7ECF\u671F", icon: FLOWER_BUD_ICON_SVG },
     ovulatory: { label: "\u6613\u5B55\u671F", icon: CYCLE_FERTILE_ICON_SVG }
   };
   var occasionTypeLabel = (type) => type === "birthday" ? "\u751F\u65E5" : "\u7EAA\u5FF5\u65E5";
@@ -2941,7 +2941,7 @@ ${userPrompt}` : userPrompt;
         <header class="pm-calendar-header"><span class="pm-calendar-header-side is-left"><button type="button" data-action="calendar-home" aria-label="\u8FD4\u56DE\u684C\u9762" title="\u8FD4\u56DE\u684C\u9762">${HOME_ICON_SVG}</button></span><div class="pm-calendar-title-row"><span class="pm-calendar-title-control"><button type="button" data-action="calendar-month-panel" aria-label="\u6253\u5F00\u6708\u4EFD\u4E0E\u65F6\u95F4\u8BBE\u7F6E" aria-expanded="${view.monthPanelOpen === true}"><b>${escapeHtml(monthTitle.format(createCalendarDate(viewYear, viewMonth, 1)))}</b></button><span class="pm-calendar-title-chevron ${view.monthPanelOpen === true ? "is-expanded" : ""}" aria-hidden="true">${CHEVRON_DOWN_ICON_SVG}</span></span></div><span class="pm-calendar-header-side is-right">${headerButton}</span></header>
         ${monthPanel}
         <div class="pm-calendar-month" data-calendar-month-navigation tabindex="0" aria-label="${viewYear}\u5E74${viewMonth}\u6708\u6708\u5386\uFF0C\u4F7F\u7528\u5DE6\u53F3\u65B9\u5411\u952E\u5207\u6362\u6708\u4EFD"><div class="pm-calendar-weekdays">${weekdays.map((day) => `<span>\u5468${day}</span>`).join("")}</div><div class="pm-calendar-month-grid">${days}</div></div>
-        <div class="pm-calendar-view-switch" role="group" aria-label="\u6708\u4EFD\u4E0E\u65E5\u5386\u4FE1\u606F\u5206\u7C7B"><button type="button" class="pm-calendar-month-nav" data-action="calendar-prev-month" aria-label="\u4E0A\u4E2A\u6708" title="\u4E0A\u4E2A\u6708" ${previousMonth ? "" : "disabled"}>${BACK_ICON_SVG}</button><button type="button" data-action="calendar-mode-schedule" aria-label="\u663E\u793A\u65E5\u7A0B\u4E0E\u5047\u65E5" aria-pressed="${viewMode === "schedule"}" title="\u65E5\u7A0B\u4E0E\u5047\u65E5">${CALENDAR_ICON_SVG}</button><button type="button" data-action="calendar-mode-weather" aria-label="\u663E\u793A\u5929\u6C14" aria-pressed="${viewMode === "weather"}" title="\u5929\u6C14">${WEATHER_ICON_SVG}</button><button type="button" data-action="calendar-mode-cycle" aria-label="\u663E\u793A\u751F\u7406\u671F" aria-pressed="${viewMode === "cycle"}" title="\u751F\u7406\u671F">${CYCLE_MARK_HTML}</button><button type="button" data-action="calendar-mode-recipe" aria-label="\u663E\u793A\u83DC\u8C31" aria-pressed="${viewMode === "recipe"}" title="\u83DC\u8C31">${RECIPE_ICON_SVG}</button><button type="button" class="pm-calendar-month-nav" data-action="calendar-next-month" aria-label="\u4E0B\u4E2A\u6708" title="\u4E0B\u4E2A\u6708" ${nextMonth ? "" : "disabled"}>${FORWARD_ICON_SVG}</button></div>
+        <div class="pm-calendar-view-switch" role="group" aria-label="\u6708\u4EFD\u4E0E\u65E5\u5386\u4FE1\u606F\u5206\u7C7B"><button type="button" class="pm-calendar-month-nav" data-action="calendar-prev-month" aria-label="\u4E0A\u4E2A\u6708" title="\u4E0A\u4E2A\u6708" ${previousMonth ? "" : "disabled"}>${BACK_ICON_SVG}</button><button type="button" data-action="calendar-mode-schedule" aria-label="\u663E\u793A\u65E5\u7A0B\u4E0E\u5047\u65E5" aria-pressed="${viewMode === "schedule"}" title="\u65E5\u7A0B\u4E0E\u5047\u65E5">${CALENDAR_ICON_SVG}</button><button type="button" data-action="calendar-mode-weather" aria-label="\u663E\u793A\u5929\u6C14" aria-pressed="${viewMode === "weather"}" title="\u5929\u6C14">${WEATHER_ICON_SVG}</button><button type="button" data-action="calendar-mode-cycle" aria-label="\u663E\u793A\u751F\u7406\u671F" aria-pressed="${viewMode === "cycle"}" title="\u751F\u7406\u671F">${FLOWER_BUD_ICON_SVG}</button><button type="button" data-action="calendar-mode-recipe" aria-label="\u663E\u793A\u83DC\u8C31" aria-pressed="${viewMode === "recipe"}" title="\u83DC\u8C31">${RECIPE_ICON_SVG}</button><button type="button" class="pm-calendar-month-nav" data-action="calendar-next-month" aria-label="\u4E0B\u4E2A\u6708" title="\u4E0B\u4E2A\u6708" ${nextMonth ? "" : "disabled"}>${FORWARD_ICON_SVG}</button></div>
         ${selectedDetail}
         ${management}
         <div class="${statusClass}" aria-live="polite">${escapeHtml(status)}</div>
@@ -11444,7 +11444,7 @@ ${antiFluff}`;
               <button type="button" class="pm-contact-switcher-main" data-contact-action="switch" data-key="${escapeAttr(key)}" ${current ? 'aria-current="true"' : ""}>
                 <span>${escapeHtml(label)}</span>${detail ? `<small>${escapeHtml(detail)}</small>` : ""}
               </button>
-              <button type="button" class="pm-contact-switcher-icon pm-contact-switcher-injection ${enabled ? "is-active" : ""}" data-contact-action="inject" data-key="${escapeAttr(key)}" data-group="${isGroup}" data-label="${escapeAttr(label)}" aria-pressed="${enabled}" aria-label="${enabled ? "\u5173\u95ED" : "\u5F00\u542F"} ${escapeAttr(label)} \u7684\u6B63\u6587\u6CE8\u5165" title="${enabled ? "\u5173\u95ED\u6B63\u6587\u6CE8\u5165" : "\u5F00\u542F\u6B63\u6587\u6CE8\u5165"}">${SYRINGE_ICON_SVG}</button>
+              <button type="button" class="pm-contact-switcher-icon pm-contact-switcher-injection ${enabled ? "is-active" : ""}" data-contact-action="inject" data-key="${escapeAttr(key)}" data-group="${isGroup}" data-label="${escapeAttr(label)}" aria-pressed="${enabled}" aria-label="${enabled ? "\u5173\u95ED" : "\u5F00\u542F"} ${escapeAttr(label)} \u7684\u6B63\u6587\u6CE8\u5165" title="${enabled ? "\u5173\u95ED\u6B63\u6587\u6CE8\u5165" : "\u5F00\u542F\u6B63\u6587\u6CE8\u5165"}">${EYE_ICON_SVG}</button>
               <button type="button" class="pm-contact-switcher-icon pm-entity-delete" data-contact-action="delete" data-key="${escapeAttr(key)}" data-group="${isGroup}" aria-label="\u6C38\u4E45\u5220\u9664${isGroup ? "\u7FA4\u804A" : "\u8054\u7CFB\u4EBA"} ${escapeAttr(label)}" title="\u6C38\u4E45\u5220\u9664${isGroup ? "\u7FA4\u804A" : "\u8054\u7CFB\u4EBA"}">${UNLINK_ICON_SVG}</button>
             </div>`;
       };
@@ -11470,10 +11470,10 @@ ${antiFluff}`;
       phone.appendChild(switcher);
       const phoneRect = phone.getBoundingClientRect();
       const triggerRect = trigger.getBoundingClientRect();
-      const width = Math.min(320, Math.max(240, phone.clientWidth - 20));
+      const width = Math.min(300, Math.max(224, phone.clientWidth - 20));
       switcher.style.width = `${width}px`;
       switcher.style.left = `${Math.max(10, Math.min(phone.clientWidth - width - 10, triggerRect.left - phoneRect.left + (triggerRect.width - width) / 2))}px`;
-      switcher.style.top = `${Math.max(8, triggerRect.bottom - phoneRect.top + 6)}px`;
+      switcher.style.top = `${Math.max(8, triggerRect.bottom - phoneRect.top - 4)}px`;
       trigger.setAttribute("aria-expanded", "true");
       bindContactSwitcher(switcher, trigger);
       switcher.querySelector('[aria-current="true"]')?.scrollIntoView?.({ block: "nearest" });

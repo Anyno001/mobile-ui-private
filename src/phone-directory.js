@@ -104,8 +104,8 @@ import { getAutoPokeConfig } from './auto-poke-config.js';
 import { GROUP_COLORS } from './groups.js';
 import { escapeAttr, escapeHtml, safeJS } from './ui.js';
 import {
-    BACK_ICON_SVG, CHECK_ICON_SVG, CLOSE_ICON_SVG, SPARKLES_ICON_SVG,
-    SYRINGE_ICON_SVG, UNLINK_ICON_SVG,
+    BACK_ICON_SVG, CHECK_ICON_SVG, CLOSE_ICON_SVG, EYE_ICON_SVG,
+    SPARKLES_ICON_SVG, UNLINK_ICON_SVG,
 } from './icons.js';
 import { clearPendingMessages } from './pending-messages.js';
 import { saveBgLocal } from './storage-background.js';
@@ -233,7 +233,7 @@ export function installPhoneDirectory(state, deps) {
               <button type="button" class="pm-contact-switcher-main" data-contact-action="switch" data-key="${escapeAttr(key)}" ${current ? 'aria-current="true"' : ''}>
                 <span>${escapeHtml(label)}</span>${detail ? `<small>${escapeHtml(detail)}</small>` : ''}
               </button>
-              <button type="button" class="pm-contact-switcher-icon pm-contact-switcher-injection ${enabled ? 'is-active' : ''}" data-contact-action="inject" data-key="${escapeAttr(key)}" data-group="${isGroup}" data-label="${escapeAttr(label)}" aria-pressed="${enabled}" aria-label="${enabled ? '关闭' : '开启'} ${escapeAttr(label)} 的正文注入" title="${enabled ? '关闭正文注入' : '开启正文注入'}">${SYRINGE_ICON_SVG}</button>
+              <button type="button" class="pm-contact-switcher-icon pm-contact-switcher-injection ${enabled ? 'is-active' : ''}" data-contact-action="inject" data-key="${escapeAttr(key)}" data-group="${isGroup}" data-label="${escapeAttr(label)}" aria-pressed="${enabled}" aria-label="${enabled ? '关闭' : '开启'} ${escapeAttr(label)} 的正文注入" title="${enabled ? '关闭正文注入' : '开启正文注入'}">${EYE_ICON_SVG}</button>
               <button type="button" class="pm-contact-switcher-icon pm-entity-delete" data-contact-action="delete" data-key="${escapeAttr(key)}" data-group="${isGroup}" aria-label="永久删除${isGroup ? '群聊' : '联系人'} ${escapeAttr(label)}" title="永久删除${isGroup ? '群聊' : '联系人'}">${UNLINK_ICON_SVG}</button>
             </div>`;
         };
@@ -261,10 +261,10 @@ export function installPhoneDirectory(state, deps) {
         phone.appendChild(switcher);
         const phoneRect = phone.getBoundingClientRect();
         const triggerRect = trigger.getBoundingClientRect();
-        const width = Math.min(320, Math.max(240, phone.clientWidth - 20));
+        const width = Math.min(300, Math.max(224, phone.clientWidth - 20));
         switcher.style.width = `${width}px`;
         switcher.style.left = `${Math.max(10, Math.min(phone.clientWidth - width - 10, triggerRect.left - phoneRect.left + (triggerRect.width - width) / 2))}px`;
-        switcher.style.top = `${Math.max(8, triggerRect.bottom - phoneRect.top + 6)}px`;
+        switcher.style.top = `${Math.max(8, triggerRect.bottom - phoneRect.top - 4)}px`;
         trigger.setAttribute('aria-expanded', 'true');
         bindContactSwitcher(switcher, trigger);
         switcher.querySelector('[aria-current="true"]')?.scrollIntoView?.({ block: 'nearest' });

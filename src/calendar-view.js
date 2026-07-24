@@ -5,7 +5,7 @@ import { DEFAULT_RECIPE_GENERATION_RULE, RECIPE_MEAL_LABELS, RECIPE_MEAL_TYPES, 
 import { weatherCodeLabel } from './calendar-weather.js';
 import { resolveWeatherForDate, weatherSourceLabel } from './calendar-weather-source.js';
 import {
-    CLOSE_ICON_SVG, CYCLE_FERTILE_ICON_SVG, CYCLE_MARK_HTML, EDIT_ICON_SVG,
+    CLOSE_ICON_SVG, CYCLE_FERTILE_ICON_SVG, EDIT_ICON_SVG, FLOWER_BUD_ICON_SVG,
     MORE_ICON_SVG, REFRESH_ICON_SVG, TRASH_ICON_SVG, WEATHER_ICON_SVG,
 } from './icons.js';
 import { escapeAttr, escapeHtml } from './ui.js';
@@ -13,7 +13,7 @@ import { escapeAttr, escapeHtml } from './ui.js';
 const detailDate = new Intl.DateTimeFormat('zh-CN', { month: 'long', day: 'numeric' });
 const detailWeekday = new Intl.DateTimeFormat('zh-CN', { weekday: 'long' });
 const CYCLE_DETAILS = {
-    period: { label: '经期', icon: CYCLE_MARK_HTML },
+    period: { label: '经期', icon: FLOWER_BUD_ICON_SVG },
     ovulatory: { label: '易孕期', icon: CYCLE_FERTILE_ICON_SVG },
 };
 
