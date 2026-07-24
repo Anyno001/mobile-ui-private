@@ -224,7 +224,6 @@ export function buildContextInjectionPrompts({
     });
     const communityPermission = resolveCommunitySources({
         currentStorageId,
-        enabled: config.communityEnabled,
         sceneIdsByStorage: config.communitySceneIdsByStorage,
         selectionsByStorage: config.communitySelectionsByStorage,
         store: interactiveStore,
@@ -251,8 +250,8 @@ export function buildContextInjectionPrompts({
             key: `${COMMUNITY_KEY_PREFIX}${encodeURIComponent(source.sourceId)}`,
             source: 'community',
             content: `[互动社区记忆 — 当前角色可见]\n${body}\n[结束]`,
-            position: config.communityPosition,
-            depth: config.communityDepth,
+            position: phoneInjection.position,
+            depth: phoneInjection.depth,
         }];
     }) : [];
     let calendarItems = [];

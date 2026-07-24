@@ -30,6 +30,7 @@ import { normalizeCalendarStore } from '../src/calendar-model.js';
 import { normalizeRecipeStore } from '../src/calendar-recipe-model.js';
 import { deleteSceneDanmaku, deriveInteractiveActorId, normalizeInteractiveStore, updateSceneDanmaku } from '../src/interactive-scene-model.js';
 import { renderPhoneDesktop, runDesktopPageTransition } from '../src/interactive-scenes.js';
+import { getCommunityInjectionState, runCommunityInjectionAction } from '../src/interactive-scene-phone.js';
 import { getDanmakuMotion, getDanmakuTone, renderCommunityLauncher, renderCommunityWorkspace } from '../src/interactive-scene-views.js';
 import { installPhoneControlCenter, runControlMenuAction } from '../src/phone-control-center.js';
 import { installPhoneChatPoke } from '../src/phone-chat-poke.js';
@@ -2128,6 +2129,7 @@ idbControl.abortAll = false;
 const previousDeleteConfirm = globalThis.confirm;
 const previousDeleteAlert = globalThis.alert;
 const previousDeleteDocument = globalThis.document;
+const previousDirectoryResizeObserver = globalThis.ResizeObserver;
 const previousDirectoryWindowDescriptors = new Map(Object.getOwnPropertyNames(window)
     .filter(key => key.startsWith('__pm'))
     .map(key => [key, Object.getOwnPropertyDescriptor(window, key)]));
@@ -2137,6 +2139,17 @@ globalThis.alert = message => deleteAlerts.push(String(message));
 globalThis.document = {
     getElementById: () => null,
     querySelectorAll: selector => selector === '.pm-entity-delete' ? directoryDeleteButtons : [],
+};
+const resizeObserverRecords = [];
+globalThis.ResizeObserver = class {
+    constructor(callback) {
+        this.callback = callback;
+        this.observed = [];
+        this.disconnectCalls = 0;
+        resizeObserverRecords.push(this);
+    }
+    observe(target) { this.observed.push(target); }
+    disconnect() { this.disconnectCalls += 1; }
 };
 
 function directoryRuntimeSnapshot(state) {
@@ -2617,13 +2630,14 @@ try {
     const switcherElements = new Map();
     const switcherDocumentListeners = new Map();
     const triggerAttributes = new Map([['aria-expanded', 'false']]);
+    let triggerBottom = 80;
     const trigger = {
         isConnected: true, focusCalls: 0,
         setAttribute(name, value) { triggerAttributes.set(name, String(value)); },
         getAttribute(name) { return triggerAttributes.get(name) ?? null; },
         focus(options) { assert.deepEqual(options, { preventScroll: true }); this.focusCalls += 1; },
         contains(target) { return target === this; },
-        getBoundingClientRect: () => ({ left: 60, bottom: 80, width: 120 }),
+        getBoundingClientRect: () => ({ left: 60, bottom: triggerBottom, width: 120 }),
     };
     const phone = {
         clientWidth: 360,
@@ -2683,7 +2697,13 @@ try {
     assert.match(switcher.innerHTML, /data-contact-action="inject" data-key="Alice"/);
     assert.match(switcher.innerHTML, /data-contact-action="delete" data-key="Alice"/);
     assert.match(switcher.innerHTML, />新建<\/button>[\s\S]*>添加<\/button>/);
-    assert.equal(switcher.style.left, '30px', '联系人浮层必须相对手机窗口水平居中');
+    assert.equal(switcher.style.left, undefined, '联系人浮层不得写入固定 left 偏移');
+    assert.equal(switcher.style.top, '80px', '联系人浮层必须与标题栏底边无缝对齐');
+    const switcherResizeObserver = resizeObserverRecords.at(-1);
+    assert.deepEqual(switcherResizeObserver.observed, [phone, trigger], '浮层必须同时监听手机与标题尺寸变化');
+    triggerBottom = 100;
+    switcherResizeObserver.callback();
+    assert.equal(switcher.style.top, '100px', '标题或手机尺寸变化后必须重新贴齐标题栏底边');
     assert.equal(switcher.firstButton.focusCalls, 1, '打开浮层后必须把焦点移入菜单');
 
     const injectionAttributes = new Map([['aria-pressed', 'false'], ['aria-label', '开启 Alice 的正文注入']]);
@@ -2716,6 +2736,7 @@ try {
     assert.equal(trigger.focusCalls, 1, 'Escape 关闭后必须恢复标题焦点');
     assert.equal(switcherDocumentListeners.has('click'), false);
     assert.equal(switcherDocumentListeners.has('keydown'), false);
+    assert.equal(switcherResizeObserver.disconnectCalls, 1, '关闭浮层必须释放尺寸观察器');
 
     const staleOpen = window.__pmToggleContactSwitcher(trigger);
     fixture.state.phoneWindow = phone;
@@ -2727,6 +2748,7 @@ try {
     globalThis.confirm = previousDeleteConfirm;
     globalThis.alert = previousDeleteAlert;
     globalThis.document = previousDeleteDocument;
+    globalThis.ResizeObserver = previousDirectoryResizeObserver;
     for (const key of Object.getOwnPropertyNames(window)) {
         if (key.startsWith('__pm')) delete window[key];
     }
@@ -4532,14 +4554,80 @@ const emptyWorkspaceHtml = renderCommunityWorkspace({ ...workspaceScene, posts: 
 assert.match(emptyWorkspaceHtml, /class="pm-scene-empty"[\s\S]*这里还很安静[\s\S]*发第一篇帖子/);
 assert.doesNotMatch(emptyWorkspaceHtml, /class="pm-scene-post"/);
 const injectionWorkspaceHtml = renderCommunityWorkspace(workspaceScene, 'context-inject', { pinnedSceneIds: [] }, {
-    communitySceneAllowed: true,
     communitySelection: { mode: 'selected', postIds: ['post'] },
 });
-assert.match(injectionWorkspaceHtml, /id="pm-scene-injection-enabled"[^>]*checked/);
-assert.match(injectionWorkspaceHtml, /id="pm-scene-injection-mode"[\s\S]*value="selected" selected/);
-assert.match(injectionWorkspaceHtml, /class="pm-scene-injection-post-input" value="post" checked/);
+assert.match(injectionWorkspaceHtml, /<h2>正文注入<\/h2>/);
+assert.match(injectionWorkspaceHtml, /class="pm-scene-injection-post-toggle is-selected" data-action="context-toggle-post" data-post-id="post" aria-pressed="true"/);
+assert.match(injectionWorkspaceHtml, /aria-label="取消注入此博文"/);
+assert.doesNotMatch(injectionWorkspaceHtml, /pm-scene-injection-enabled|pm-scene-injection-mode|pm-scene-injection-post-input|配置当前社区进入角色上下文/);
 assert.match(injectionWorkspaceHtml, /data-action="context-select-all"[\s\S]*data-action="context-clear"/);
 assert.match(injectionWorkspaceHtml, /data-action="context-save"/);
+
+const createInjectionPostControl = (postId, selected = false) => {
+    const classes = new Set(selected ? ['is-selected'] : []);
+    const attributes = new Map();
+    return {
+        dataset: { postId }, title: '',
+        classList: {
+            contains: name => classes.has(name),
+            toggle(name, force) { if (force) classes.add(name); else classes.delete(name); },
+        },
+        matches: selector => selector === '[data-action="context-toggle-post"]',
+        setAttribute(name, value) { attributes.set(name, String(value)); },
+        getAttribute(name) { return attributes.get(name) || null; },
+    };
+};
+const firstInjectionPost = createInjectionPostControl('post-a');
+const secondInjectionPost = createInjectionPostControl('post-b');
+const injectionApp = {
+    querySelectorAll(selector) {
+        const controls = [firstInjectionPost, secondInjectionPost];
+        if (selector === '.pm-scene-injection-post-toggle') return controls;
+        if (selector === '.pm-scene-injection-post-toggle.is-selected') {
+            return controls.filter(control => control.classList.contains('is-selected'));
+        }
+        throw new Error(`unexpected injection selector: ${selector}`);
+    },
+    contains(control) { return control === firstInjectionPost || control === secondInjectionPost; },
+};
+const legacyCommunityConfig = {
+    communitySceneIdsByStorage: { story: ['scene-a'] },
+    communitySelectionsByStorage: {},
+};
+assert.deepEqual(getCommunityInjectionState(legacyCommunityConfig, 'story', 'scene-a').communitySelection, { mode: 'all', postIds: [] },
+    '旧场景授权缺少帖子选择时必须投影为全部帖子，不能静默清空注入');
+await runCommunityInjectionAction('context-select-all', { app: injectionApp });
+assert.equal(firstInjectionPost.getAttribute('aria-pressed'), 'true');
+assert.equal(secondInjectionPost.getAttribute('aria-pressed'), 'true');
+await runCommunityInjectionAction('context-toggle-post', { app: injectionApp, button: firstInjectionPost });
+assert.equal(firstInjectionPost.getAttribute('aria-pressed'), 'false', '单条小眼睛必须独立切换');
+let savedCommunityCandidate = null;
+let refreshCommunityCalls = 0;
+const saveCommunityAction = async () => runCommunityInjectionAction('context-save', {
+    app: injectionApp,
+    storageId: 'story',
+    scene: { id: 'scene-a' },
+    lastTab: 'feed',
+    config: legacyCommunityConfig,
+    saveConfig: candidate => { savedCommunityCandidate = candidate; return true; },
+    refreshInjection: async () => { refreshCommunityCalls += 1; return { failedWrites: 0, failedKeys: [] }; },
+});
+await saveCommunityAction();
+assert.deepEqual(savedCommunityCandidate.communitySceneIdsByStorage.story, ['scene-a']);
+assert.deepEqual(savedCommunityCandidate.communitySelectionsByStorage.story['scene-a'], { mode: 'selected', postIds: ['post-b'] });
+assert.equal(refreshCommunityCalls, 1, '保存后必须刷新宿主注入');
+await runCommunityInjectionAction('context-clear', { app: injectionApp });
+await saveCommunityAction();
+assert.equal(savedCommunityCandidate.communitySceneIdsByStorage.story, undefined, '清空后必须撤销场景注入');
+assert.equal(savedCommunityCandidate.communitySelectionsByStorage.story, undefined, '清空后必须移除帖子选择');
+await assert.rejects(() => runCommunityInjectionAction('context-save', {
+    app: injectionApp, storageId: 'story', scene: { id: 'scene-a' }, lastTab: 'feed', config: legacyCommunityConfig,
+    saveConfig: () => false, refreshInjection: async () => ({ failedWrites: 0, failedKeys: [] }),
+}), /浏览器存储不可用/);
+await assert.rejects(() => runCommunityInjectionAction('context-save', {
+    app: injectionApp, storageId: 'story', scene: { id: 'scene-a' }, lastTab: 'feed', config: legacyCommunityConfig,
+    saveConfig: () => true, refreshInjection: async () => ({ failedWrites: 1, failedKeys: [] }),
+}), /刷新失败/);
 
 const launcherScope = {
     sceneOrder: ['scene-card'],

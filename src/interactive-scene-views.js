@@ -2,7 +2,7 @@ import { getInteractivePresets } from './interactive-scene-ai.js';
 import {
     BACK_ICON_SVG, CALENDAR_ICON_SVG, CHAT_ICON_SVG, CLOSE_ICON_SVG, COMMUNITY_ICON_SVG,
     CONTACTS_ICON_SVG, CONTROL_ICON_SVG, EDIT_ICON_SVG, HEART_ICON_SVG, HOME_ICON_SVG,
-    INJECTION_ICON_SVG, MORE_ICON_SVG, PLAY_ICON_SVG, POKE_ICON_SVG, REPLY_ICON_SVG, SEND_ICON_SVG, SETTINGS_ICON_SVG, SHARE_ICON_SVG, TRASH_ICON_SVG,
+    EYE_ICON_SVG, INJECTION_ICON_SVG, MORE_ICON_SVG, PLAY_ICON_SVG, POKE_ICON_SVG, REPLY_ICON_SVG, SEND_ICON_SVG, SETTINGS_ICON_SVG, SHARE_ICON_SVG, TRASH_ICON_SVG,
 } from './icons.js';
 import { escapeAttr, escapeHtml } from './ui.js';
 
@@ -122,20 +122,14 @@ function renderDanmaku(scene) {
 }
 
 function renderContextInjectionSettings(scene, state) {
-    const selection = state.communitySelection?.mode === 'selected'
-        ? state.communitySelection : { mode: 'all', postIds: [] };
-    const selectedPostIds = new Set(selection.postIds || []);
-    const posts = scene.posts.map(post => `<label class="pm-scene-injection-post">
-        <input type="checkbox" class="pm-scene-injection-post-input" value="${escapeAttr(post.id)}" ${selectedPostIds.has(post.id) ? 'checked' : ''}>
+    const selectedPostIds = new Set(state.communitySelection?.mode === 'all'
+        ? scene.posts.map(post => post.id) : state.communitySelection?.postIds || []);
+    const posts = scene.posts.map(post => `<article class="pm-scene-injection-post">
         <span>${escapeHtml(post.content || '无正文帖子')}</span>
-    </label>`).join('') || '<div class="pm-scene-empty"><span>当前社区还没有帖子。</span></div>';
+        <button type="button" class="pm-scene-injection-post-toggle ${selectedPostIds.has(post.id) ? 'is-selected' : ''}" data-action="context-toggle-post" data-post-id="${escapeAttr(post.id)}" aria-pressed="${selectedPostIds.has(post.id)}" aria-label="${selectedPostIds.has(post.id) ? '取消注入' : '注入'}此博文" title="${selectedPostIds.has(post.id) ? '取消注入' : '注入此博文'}">${EYE_ICON_SVG}</button>
+    </article>`).join('') || '<div class="pm-scene-empty"><span>当前社区还没有帖子。</span></div>';
     return `<div class="pm-scene-injection-settings">
-        <div class="pm-scene-injection-heading"><div><h2>上下文注入</h2><p>配置当前社区进入角色上下文的帖子。选中帖子会自动包含其评论。</p></div>
-        <label class="pm-scene-injection-enable"><span>允许当前社区注入</span><input id="pm-scene-injection-enabled" type="checkbox" ${state.communitySceneAllowed ? 'checked' : ''}></label></div>
-        <label class="pm-scene-label">帖子范围<select id="pm-scene-injection-mode">
-            <option value="all" ${selection.mode === 'all' ? 'selected' : ''}>全部帖子</option>
-            <option value="selected" ${selection.mode === 'selected' ? 'selected' : ''}>仅选中帖子</option>
-        </select></label>
+        <div class="pm-scene-injection-heading"><h2>正文注入</h2></div>
         <div class="pm-scene-injection-toolbar"><button type="button" data-action="context-select-all">全选</button><button type="button" data-action="context-clear">清空</button></div>
         <div class="pm-scene-injection-posts">${posts}</div>
         <div class="pm-scene-injection-actions"><button type="button" class="pm-scene-secondary" data-action="context-cancel">取消</button><button type="button" class="pm-scene-primary" data-action="context-save">保存注入设置</button></div>
@@ -181,7 +175,7 @@ export function renderCommunityWorkspace(scene, tab = 'feed', uiScope = { pinned
         : tab === 'context-inject' ? renderContextInjectionSettings(scene, state)
             : `<div class="pm-scene-prompt"><label>社区名称<input id="pm-scene-title" maxlength="80" value="${escapeAttr(scene.title)}"></label><fieldset class="pm-scene-accent-field"><legend>社区主题色</legend><div class="pm-scene-accent-options">${renderSceneAccentOptions(accent)}<label class="pm-scene-accent-custom" aria-label="自定义社区主题色"><input id="pm-scene-accent" type="color" data-action="scene-accent-custom" value="${escapeAttr(accent)}"><span>自定义</span></label></div></fieldset><label>社区风格<textarea id="pm-scene-prompt" maxlength="6000">${escapeHtml(scene.generatedPrompt)}</textarea></label><p>设置社区内容的表达风格与氛围。</p><div class="pm-scene-prompt-actions"><button type="button" class="pm-scene-secondary" data-action="regenerate-prompt">重新生成</button><button type="button" class="pm-scene-primary" data-action="save-prompt">保存风格</button></div></div>`;
     const isPrompt = tab === 'prompt';
-    const isSubpage = isPrompt;
+    const isSubpage = isPrompt || tab === 'context-inject';
     const returnTab = ['feed', 'live'].includes(uiScope.lastTab) ? uiScope.lastTab : 'feed';
     const leadingAction = isSubpage
         ? `data-action="tab" data-tab="${returnTab}" aria-label="返回子社区" title="返回子社区"`

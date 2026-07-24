@@ -171,6 +171,7 @@ export function deleteSelectedMessages({
         applyBidirectionalInjection();
     }
     state.isSelectMode = false;
+    list.classList.remove('is-selecting');
     const confirmBar = state.phoneWindow?.querySelector('.pm-confirm-bar');
     if (confirmBar) confirmBar.style.display = 'none';
     return toRemoveIndices.size;
@@ -219,6 +220,7 @@ export function installPhoneLifecycle(state, deps) {
         const confirmBar = state.phoneWindow?.querySelector('.pm-confirm-bar');
         if (!list) return;
         if (state.isSelectMode) {
+            list.classList.add('is-selecting');
             if (confirmBar) confirmBar.style.display = 'flex';
             // 气泡上已在渲染时打好 data-history-index，直接读取，无需事后映射
             list.querySelectorAll('.pm-bubble, .pm-group-bubble-wrap, .pm-director')
@@ -236,13 +238,15 @@ export function installPhoneLifecycle(state, deps) {
                 cb.onclick = () => toggleMessageSelection({ checkbox: cb, wrap, list });
                 cb.onkeydown = event => handleMessageSelectionKey(event, cb);
                 b.parentNode.insertBefore(wrap, b);
-                wrap.appendChild(cb); wrap.appendChild(b);
+                wrap.appendChild(b);
+                wrap.appendChild(cb);
                 wrap.dataset.side = side; wrap.dataset.text = b.dataset.text || '';
                 // 直接从气泡上读下标，渲染时已打好
                 const hi = b.dataset.historyIndex;
                 if (hi !== undefined && hi !== '') wrap.dataset.historyIndex = hi;
             });
         } else {
+            list.classList.remove('is-selecting');
             if (confirmBar) confirmBar.style.display = 'none';
             list.querySelectorAll('.pm-select-wrap').forEach(wrap => {
                 const b = wrap.querySelector('.pm-bubble, .pm-group-bubble-wrap, .pm-director');

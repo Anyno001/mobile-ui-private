@@ -12,9 +12,6 @@ export const DEFAULT_BUDGET_CONFIG = Object.freeze({
     sourceWeights: Object.freeze({ phone: 1, community: 0, calendar: 0, recipe: 0 }),
     sourcePriority: Object.freeze(['phone', 'community', 'calendar', 'recipe']),
     redistributeUnused: true,
-    communityEnabled: false,
-    communityPosition: EXTENSION_PROMPT_POSITIONS.IN_PROMPT,
-    communityDepth: 0,
     communitySceneIdsByStorage: Object.freeze({}),
     communitySelectionsByStorage: Object.freeze({}),
     calendarPosition: EXTENSION_PROMPT_POSITIONS.IN_CHAT,
@@ -111,11 +108,6 @@ export function normalizeBudgetConfig(value) {
         sourcePriority: normalizePriority(source.sourcePriority),
         redistributeUnused: typeof source.redistributeUnused === 'boolean'
             ? source.redistributeUnused : DEFAULT_BUDGET_CONFIG.redistributeUnused,
-        communityEnabled: source.communityEnabled === true,
-        communityPosition: allowedPositions.includes(source.communityPosition)
-            ? source.communityPosition : DEFAULT_BUDGET_CONFIG.communityPosition,
-        communityDepth: finiteInteger(source.communityDepth, 0, MAX_INJECTION_DEPTH)
-            ? source.communityDepth : DEFAULT_BUDGET_CONFIG.communityDepth,
         communitySceneIdsByStorage: normalizeSceneIds(source.communitySceneIdsByStorage),
         communitySelectionsByStorage: normalizeCommunitySelections(source.communitySelectionsByStorage),
         calendarPosition: allowedPositions.includes(source.calendarPosition)

@@ -199,10 +199,9 @@ export function resolvePhoneSources({
 }
 
 export function resolveCommunitySources({
-    currentStorageId, enabled, sceneIdsByStorage, selectionsByStorage, store,
+    currentStorageId, sceneIdsByStorage, selectionsByStorage, store,
 } = {}) {
     try {
-        if (!enabled) return { allowed: true, reason: 'disabled', sources: [] };
         if (!isValidContextStorageId(currentStorageId)) return { allowed: false, reason: 'invalid-storage', sources: [] };
         const sceneIdsEntry = ownData(sceneIdsByStorage, currentStorageId);
         if (sceneIdsEntry.invalid) return { allowed: false, reason: 'invalid-selection-store', sources: [] };

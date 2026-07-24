@@ -1,4 +1,4 @@
-import { EXTENSION_PROMPT_POSITIONS, MAX_INJECTION_DEPTH } from './constants.js';
+import { EXTENSION_PROMPT_POSITIONS } from './constants.js';
 import { normalizeInjectionConfig } from './behavior-config.js';
 import { resolveConversationTarget } from './conversation.js';
 import { BACK_ICON_SVG, CLOSE_ICON_SVG } from './icons.js';
@@ -118,7 +118,7 @@ export function installPhoneContextInjection(state, deps) {
 
     window.__pmConversationInjectionSummary = () => {
         const config = normalizeInjectionConfig(window.__pmInjectionConfig);
-        return `${injectionPositionLabel(config.position)} · 深度 ${config.depth} · 最近 ${config.historyLimit} 条`;
+        return injectionPositionLabel(config.position);
     };
 
     window.__pmCurrentConversationInjectionEnabled = () => isEnabled(currentTarget());
@@ -149,9 +149,8 @@ export function installPhoneContextInjection(state, deps) {
         const config = normalizeInjectionConfig(window.__pmInjectionConfig || loadInjectionConfig());
         makeOverlay(`
     <div class="pm-modal pm-modal-wide pm-conversation-injection-modal">
-      <div class="pm-modal-header"><button type="button" onclick="window.__pmShowConfig('home')" class="pm-modal-close" title="返回设置" aria-label="返回设置">${BACK_ICON_SVG}</button><b>正文注入规则</b><button type="button" onclick="window.__pmCloseOverlay()" class="pm-modal-close" title="关闭" aria-label="关闭">${CLOSE_ICON_SVG}</button></div>
+      <div class="pm-modal-header"><button type="button" onclick="window.__pmShowConfig('home')" class="pm-modal-close" title="返回设置" aria-label="返回设置">${BACK_ICON_SVG}</button><b>正文注入</b><button type="button" onclick="window.__pmCloseOverlay()" class="pm-modal-close" title="关闭" aria-label="关闭">${CLOSE_ICON_SVG}</button></div>
       <div class="pm-modal-scroll pm-conversation-injection-body">
-        <div class="pm-cfg-tip pm-conversation-injection-note">会话是否启用注入请在聊天标题的联系人列表中切换；这里统一设置所有私聊与群聊的位置、深度和消息范围。</div>
         <div id="pm-conversation-injection-status" class="pm-conversation-injection-status" role="status" ${statusMessage ? '' : 'hidden'}>${escapeHtml(statusMessage)}</div>
         <label class="pm-conversation-injection-field">注入位置
           <select id="pm-conversation-injection-position" class="pm-cfg-input pm-conversation-injection-config">
@@ -159,12 +158,6 @@ export function installPhoneContextInjection(state, deps) {
             <option value="1" ${config.position === 1 ? 'selected' : ''}>聊天记录内</option>
             <option value="2" ${config.position === 2 ? 'selected' : ''}>主提示词前</option>
           </select>
-        </label>
-        <label class="pm-conversation-injection-field">注入深度（0-${MAX_INJECTION_DEPTH}）
-          <input id="pm-conversation-injection-depth" class="pm-cfg-input pm-conversation-injection-config" type="number" min="0" max="${MAX_INJECTION_DEPTH}" value="${config.depth}">
-        </label>
-        <label class="pm-conversation-injection-field">最近消息范围
-          <input id="pm-conversation-injection-limit" class="pm-cfg-input pm-conversation-injection-config" type="number" min="1" max="100" value="${config.historyLimit}">
         </label>
       </div>
       <div class="pm-modal-add pm-conversation-injection-actions"><button id="pm-conversation-injection-save" type="button" class="pm-action-button" onclick="window.__pmSaveConversationInjection()">保存并应用</button></div>
@@ -181,9 +174,8 @@ export function installPhoneContextInjection(state, deps) {
         }
         const snapshot = clone(window.__pmInjectionConfig);
         window.__pmInjectionConfig = normalizeInjectionConfig({
+            ...snapshot,
             position: document.getElementById('pm-conversation-injection-position')?.value,
-            depth: document.getElementById('pm-conversation-injection-depth')?.value,
-            historyLimit: document.getElementById('pm-conversation-injection-limit')?.value,
         });
         try {
             await commitConversationInjectionUpdate({

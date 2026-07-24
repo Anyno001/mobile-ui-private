@@ -9,8 +9,8 @@ import { createApiDraftMode } from './settings-api-mode.js';
 import { showModelPicker } from './settings-model-picker.js';
 import { installQuickReplySettings } from './settings-quick-reply.js';
 import {
-    collectBudgetCommunityFields, renderApiSettings, renderBackupSettings, renderBudgetSceneOptions,
-    renderBudgetSettings, renderLookSettings, renderSettingsHome, renderSettingsModal, resolveBudgetPercentageInput,
+    renderApiSettings, renderBackupSettings, renderBudgetSettings, renderLookSettings,
+    renderSettingsHome, renderSettingsModal, resolveBudgetPercentageInput,
 } from './settings-templates.js';
 import { legacyBackupTheme, parseBackupData } from './settings-backup-validate.js';
 import { createBackupStateHandlers, createEmptyCalendarBackupFields, runBackupTransaction } from './settings-backup.js';
@@ -312,14 +312,7 @@ export function installSettingsUi(deps) {
         }
         if (page === 'budget') {
             const config = normalizeBudgetConfig(window.__pmBudgetConfig);
-            const storageId = getStorageId();
-            let scope = null;
-            try {
-                const store = await getInteractiveStore?.();
-                scope = store?.scopes?.[storageId] || null;
-            } catch (error) {}
-            const sceneOptions = renderBudgetSceneOptions({ config, scope, storageId });
-            const content = renderBudgetSettings({ config, sceneOptions });
+            const content = renderBudgetSettings({ config });
             const footer = '<div class="pm-modal-add"><button class="pm-action-button is-secondary" onclick="window.__pmResetBudgetConfig()" style="flex:1">恢复默认</button><button class="pm-action-button" onclick="window.__pmSaveBudgetConfig()" style="flex:2">保存上下文预算</button></div>';
             makeOverlay(renderSettingsModal({ title: '上下文预算', content, footer }));
             return;
@@ -499,7 +492,6 @@ export function installSettingsUi(deps) {
         });
     };
     window.__pmSaveBudgetConfig = async () => {
-        const storageId = getStorageId();
         const phoneWeightInput = document.getElementById('pm-budget-phone-weight');
         const communityWeightInput = document.getElementById('pm-budget-community-weight');
         const calendarWeightInput = document.getElementById('pm-budget-calendar-weight');
@@ -521,17 +513,12 @@ export function installSettingsUi(deps) {
         const prioritySource = document.getElementById('pm-budget-priority')?.value;
         const priority = [prioritySource, 'phone', 'community', 'calendar', 'recipe'].filter((value, index, values) => value && values.indexOf(value) === index);
         const current = normalizeBudgetConfig(window.__pmBudgetConfig);
-        const communityFields = collectBudgetCommunityFields(document, current, storageId);
         const candidate = normalizeBudgetConfig({
             ...current,
             targetTokens: Number(document.getElementById('pm-budget-target')?.value),
             sourceWeights,
             sourcePriority: priority,
             redistributeUnused: document.getElementById('pm-budget-redistribute')?.classList.contains('is-checked') === true,
-            communityEnabled: document.getElementById('pm-budget-community-enabled')?.classList.contains('is-checked') === true,
-            communityPosition: Number(document.getElementById('pm-budget-community-position')?.value),
-            communityDepth: Number(document.getElementById('pm-budget-community-depth')?.value),
-            ...communityFields,
             calendarPosition: Number(document.getElementById('pm-budget-calendar-position')?.value),
             calendarDepth: Number(document.getElementById('pm-budget-calendar-depth')?.value),
         });

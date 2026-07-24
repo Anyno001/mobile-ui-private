@@ -7,9 +7,9 @@ export function renderSettingsHome() {
       <button type="button" role="listitem" onclick="window.__pmShowConfig('api')"><b>API</b><span>默认使用酒馆 API 预设</span></button>
       <button type="button" role="listitem" onclick="window.__pmShowConfig('quick-reply')"><b>手机开关</b><span>创建或清除开关入口</span></button>
       <button type="button" role="listitem" onclick="window.__pmShowConfig('look')"><b>主题</b><span>日夜模式、气泡颜色与背景图</span></button>
-      <button type="button" role="listitem" onclick="window.__pmShowConversationInjection()"><b>正文注入</b><span>统一设置手机会话的注入位置、深度和消息范围</span></button>
       <button type="button" role="listitem" onclick="window.__pmShowConfig('backup')"><b>备份</b><span>导出、导入或安全清理插件数据</span></button>
       <button type="button" role="listitem" onclick="window.__pmShowConfig('budget')"><b>上下文预算</b><span>控制手机会话与社区写入主提示词的额度</span></button>
+      <button type="button" role="listitem" onclick="window.__pmShowConversationInjection()"><b>正文注入</b><span>统一设置手机会话与社区的注入位置、深度和消息范围</span></button>
       <div class="pm-global-setting" role="group" aria-labelledby="pm-wordy-label">
         <span><b id="pm-wordy-label">全局短消息限制</b><small>除话痨人设外，每条独立消息不超过 35 字</small></span>
         <div id="pm-wordy-check" onclick="window.__pmToggleWordyLimit()"
@@ -163,59 +163,7 @@ export function resolveBudgetPercentageInput({
     return next;
 }
 
-export function renderBudgetSceneOptions({ config, scope, storageId }) {
-    const allowed = new Set(config.communitySceneIdsByStorage[storageId] || []);
-    const storedSelections = config.communitySelectionsByStorage[storageId] || {};
-    if (!Array.isArray(scope?.sceneOrder)) return '';
-    return scope.sceneOrder.flatMap(sceneId => {
-        const scene = scope.scenes?.[sceneId];
-        if (!scene) return [];
-        const selection = storedSelections[sceneId]?.mode === 'selected'
-            ? storedSelections[sceneId] : { mode: 'all', postIds: [] };
-        const postIds = new Set(selection.postIds || []);
-        const posts = Array.isArray(scene.posts) ? scene.posts.map(post => `
-          <label class="pm-budget-post-option">
-            <input type="checkbox" class="pm-budget-post" data-scene-id="${escapeAttr(sceneId)}" value="${escapeAttr(post.id)}" ${postIds.has(post.id) ? 'checked' : ''}>
-            <span>${escapeHtml(post.content || '无正文帖子')}</span>
-          </label>`).join('') : '';
-        return [`<section class="pm-budget-scene-card ${selection.mode === 'selected' ? 'is-selected-mode' : ''}" data-scene-id="${escapeAttr(sceneId)}">
-          <label class="pm-cfg-label pm-check-setting"><span>${escapeHtml(scene.title)}</span><div class="pm-custom-check pm-budget-scene ${allowed.has(sceneId) ? 'is-checked' : ''}" role="checkbox" tabindex="0" aria-checked="${allowed.has(sceneId)}" data-value="${escapeAttr(sceneId)}" onclick="this.classList.toggle('is-checked');this.setAttribute('aria-checked',String(this.classList.contains('is-checked')))" onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();this.click()}"></div></label>
-          <label class="pm-cfg-label">帖子注入范围
-            <select class="pm-cfg-input pm-budget-selection-mode" data-scene-id="${escapeAttr(sceneId)}" onchange="this.closest('.pm-budget-scene-card').classList.toggle('is-selected-mode',this.value==='selected')">
-              <option value="all" ${selection.mode === 'all' ? 'selected' : ''}>全部帖子</option>
-              <option value="selected" ${selection.mode === 'selected' ? 'selected' : ''}>仅选中帖子</option>
-            </select>
-          </label>
-          <div class="pm-budget-post-list">${posts || '<div class="pm-cfg-tip">当前场景没有帖子</div>'}</div>
-        </section>`];
-    }).join('');
-}
-
-export function collectBudgetCommunityFields(root, current, storageId) {
-    const sceneIds = Array.from(root.querySelectorAll('.pm-budget-scene.is-checked'))
-        .map(control => control.dataset.value).filter(Boolean);
-    const communitySceneIdsByStorage = { ...current.communitySceneIdsByStorage };
-    const communitySelectionsByStorage = { ...current.communitySelectionsByStorage };
-    if (!storageId || storageId === 'sms_unknown__default') {
-        return { communitySceneIdsByStorage, communitySelectionsByStorage };
-    }
-    if (sceneIds.length) communitySceneIdsByStorage[storageId] = sceneIds;
-    else delete communitySceneIdsByStorage[storageId];
-    const sceneSelections = {};
-    root.querySelectorAll('.pm-budget-selection-mode').forEach(control => {
-        const sceneId = control.dataset.sceneId;
-        if (!sceneId) return;
-        const postIds = Array.from(root.querySelectorAll('.pm-budget-post:checked'))
-            .filter(input => input.dataset.sceneId === sceneId).map(input => input.value).filter(Boolean);
-        sceneSelections[sceneId] = control.value === 'selected'
-            ? { mode: 'selected', postIds } : { mode: 'all', postIds: [] };
-    });
-    if (Object.keys(sceneSelections).length) communitySelectionsByStorage[storageId] = sceneSelections;
-    else delete communitySelectionsByStorage[storageId];
-    return { communitySceneIdsByStorage, communitySelectionsByStorage };
-}
-
-export function renderBudgetSettings({ config, sceneOptions }) {
+export function renderBudgetSettings({ config }) {
     const priority = config.sourcePriority[0];
     const percentages = getBudgetPercentageView(config.sourceWeights);
     return `
@@ -244,22 +192,6 @@ export function renderBudgetSettings({ config, sceneOptions }) {
           <span>把一方没用完的额度补给另一方</span>
           <div id="pm-budget-redistribute" class="pm-custom-check ${config.redistributeUnused ? 'is-checked' : ''}" role="checkbox" tabindex="0" aria-checked="${config.redistributeUnused}" onclick="this.classList.toggle('is-checked');this.setAttribute('aria-checked',String(this.classList.contains('is-checked')))" onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();this.click()}"></div>
         </label>
-      </div>
-      <div style="padding:12px 16px;border-top:1px solid var(--pm-color-border-subtle);display:flex;flex-direction:column;gap:10px;">
-        <label class="pm-cfg-label pm-check-setting">
-          <span>启用互动社区注入（默认关闭）</span>
-          <div id="pm-budget-community-enabled" class="pm-custom-check ${config.communityEnabled ? 'is-checked' : ''}" role="checkbox" tabindex="0" aria-checked="${config.communityEnabled}" onclick="this.classList.toggle('is-checked');this.setAttribute('aria-checked',String(this.classList.contains('is-checked')))" onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();this.click()}"></div>
-        </label>
-        <label class="pm-cfg-label" for="pm-budget-community-position">社区注入位置</label>
-        <select id="pm-budget-community-position" class="pm-cfg-input">
-          <option value="0" ${config.communityPosition === 0 ? 'selected' : ''}>主提示词内</option>
-          <option value="1" ${config.communityPosition === 1 ? 'selected' : ''}>聊天记录内</option>
-          <option value="2" ${config.communityPosition === 2 ? 'selected' : ''}>主提示词前</option>
-        </select>
-        <label class="pm-cfg-label" for="pm-budget-community-depth">社区注入深度</label>
-        <input id="pm-budget-community-depth" class="pm-cfg-input" type="number" min="0" max="10000" step="1" value="${config.communityDepth}">
-        <div class="pm-cfg-label">当前角色卡允许注入的场景</div>
-        <div id="pm-budget-scenes" style="display:flex;flex-direction:column;gap:6px;">${sceneOptions || '<div class="pm-cfg-tip" style="text-align:left;">当前没有可选择的互动场景</div>'}</div>
       </div>
       <div style="padding:12px 16px;border-top:1px solid var(--pm-color-border-subtle);display:flex;flex-direction:column;gap:10px;">
         <div class="pm-cfg-tip" style="text-align:left;color:#ff9500;">日程、天气、生理期和菜谱的注入开关请在日历各模块设置区调整；此处统一设置它们的注入位置和深度。</div>

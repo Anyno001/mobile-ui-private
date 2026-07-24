@@ -2083,9 +2083,6 @@ ${userPrompt}` : userPrompt;
     sourceWeights: Object.freeze({ phone: 1, community: 0, calendar: 0, recipe: 0 }),
     sourcePriority: Object.freeze(["phone", "community", "calendar", "recipe"]),
     redistributeUnused: true,
-    communityEnabled: false,
-    communityPosition: EXTENSION_PROMPT_POSITIONS.IN_PROMPT,
-    communityDepth: 0,
     communitySceneIdsByStorage: Object.freeze({}),
     communitySelectionsByStorage: Object.freeze({}),
     calendarPosition: EXTENSION_PROMPT_POSITIONS.IN_CHAT,
@@ -2170,9 +2167,6 @@ ${userPrompt}` : userPrompt;
       sourceWeights: normalizeWeights(source.sourceWeights),
       sourcePriority: normalizePriority(source.sourcePriority),
       redistributeUnused: typeof source.redistributeUnused === "boolean" ? source.redistributeUnused : DEFAULT_BUDGET_CONFIG.redistributeUnused,
-      communityEnabled: source.communityEnabled === true,
-      communityPosition: allowedPositions.includes(source.communityPosition) ? source.communityPosition : DEFAULT_BUDGET_CONFIG.communityPosition,
-      communityDepth: finiteInteger(source.communityDepth, 0, MAX_INJECTION_DEPTH) ? source.communityDepth : DEFAULT_BUDGET_CONFIG.communityDepth,
       communitySceneIdsByStorage: normalizeSceneIds(source.communitySceneIdsByStorage),
       communitySelectionsByStorage: normalizeCommunitySelections(source.communitySelectionsByStorage),
       calendarPosition: allowedPositions.includes(source.calendarPosition) ? source.calendarPosition : DEFAULT_BUDGET_CONFIG.calendarPosition,
@@ -6701,13 +6695,14 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
   }
   function getCommunityInjectionState(config, storageId, sceneId) {
     const normalized = normalizeBudgetConfig(config);
-    return {
-      communitySceneAllowed: (normalized.communitySceneIdsByStorage[storageId] || []).includes(sceneId),
-      communitySelection: normalized.communitySelectionsByStorage[storageId]?.[sceneId] || { mode: "all", postIds: [] }
-    };
+    const selection = normalized.communitySelectionsByStorage[storageId]?.[sceneId];
+    if (selection) return { communitySelection: selection };
+    const allowed = (normalized.communitySceneIdsByStorage[storageId] || []).includes(sceneId);
+    return { communitySelection: allowed ? { mode: "all", postIds: [] } : { mode: "selected", postIds: [] } };
   }
   async function runCommunityInjectionAction(action, {
     app,
+    button,
     storageId,
     scene,
     lastTab,
@@ -6718,11 +6713,22 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
     if (action === "context-inject") return { handled: true, view: "context-inject" };
     if (action === "context-select-all" || action === "context-clear") {
       const checked = action === "context-select-all";
-      app.querySelectorAll(".pm-scene-injection-post-input").forEach((input) => {
-        input.checked = checked;
+      app.querySelectorAll(".pm-scene-injection-post-toggle").forEach((control) => {
+        control.classList.toggle("is-selected", checked);
+        control.setAttribute("aria-pressed", String(checked));
+        control.setAttribute("aria-label", `${checked ? "\u53D6\u6D88\u6CE8\u5165" : "\u6CE8\u5165"}\u6B64\u535A\u6587`);
+        control.title = checked ? "\u53D6\u6D88\u6CE8\u5165\u6B64\u535A\u6587" : "\u6CE8\u5165\u6B64\u535A\u6587";
       });
-      const modeControl = app.querySelector("#pm-scene-injection-mode");
-      if (modeControl) modeControl.value = "selected";
+      return { handled: true };
+    }
+    if (action === "context-toggle-post") {
+      const control = button?.matches?.('[data-action="context-toggle-post"]') ? button : null;
+      if (!control || !app.contains(control)) return { handled: false };
+      const selected = !control.classList.contains("is-selected");
+      control.classList.toggle("is-selected", selected);
+      control.setAttribute("aria-pressed", String(selected));
+      control.setAttribute("aria-label", `${selected ? "\u53D6\u6D88\u6CE8\u5165" : "\u6CE8\u5165"}\u6B64\u535A\u6587`);
+      control.title = selected ? "\u53D6\u6D88\u6CE8\u5165\u6B64\u535A\u6587" : "\u6CE8\u5165\u6B64\u535A\u6587";
       return { handled: true };
     }
     if (action === "context-cancel") return { handled: true, view: lastTab };
@@ -6731,16 +6737,21 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
     const current = normalizeBudgetConfig(config);
     const sceneIdsByStorage = { ...current.communitySceneIdsByStorage };
     const allowed = new Set(sceneIdsByStorage[storageId] || []);
-    if (app.querySelector("#pm-scene-injection-enabled")?.checked) allowed.add(scene.id);
+    const postIds = Array.from(app.querySelectorAll(".pm-scene-injection-post-toggle.is-selected")).map((control) => control.dataset.postId).filter(Boolean);
+    if (postIds.length) allowed.add(scene.id);
     else allowed.delete(scene.id);
     if (allowed.size) sceneIdsByStorage[storageId] = [...allowed];
     else delete sceneIdsByStorage[storageId];
     const selectionsByStorage = { ...current.communitySelectionsByStorage };
     const storageSelections = { ...selectionsByStorage[storageId] || {} };
-    const mode = app.querySelector("#pm-scene-injection-mode")?.value === "selected" ? "selected" : "all";
-    const postIds = mode === "selected" ? Array.from(app.querySelectorAll(".pm-scene-injection-post-input:checked")).map((input) => input.value).filter(Boolean) : [];
-    storageSelections[scene.id] = { mode, postIds };
-    selectionsByStorage[storageId] = storageSelections;
+    if (postIds.length) {
+      storageSelections[scene.id] = { mode: "selected", postIds };
+      selectionsByStorage[storageId] = storageSelections;
+    } else {
+      delete storageSelections[scene.id];
+      if (Object.keys(storageSelections).length) selectionsByStorage[storageId] = storageSelections;
+      else delete selectionsByStorage[storageId];
+    }
     const candidate = normalizeBudgetConfig({
       ...current,
       communitySceneIdsByStorage: sceneIdsByStorage,
@@ -6765,6 +6776,7 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
   }
   async function handleCommunityInjectionUiAction(action, {
     app,
+    button,
     getCurrent,
     getLastTab,
     config,
@@ -6778,6 +6790,7 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
     const lastTab = getLastTab(scopeId);
     const result = await runCommunityInjectionAction(action, {
       app,
+      button,
       storageId: scopeId,
       scene,
       lastTab,
@@ -7486,19 +7499,13 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
     return scene.live.danmaku.slice(-80).map((item) => `<div class="pm-danmaku-row is-${stableDanmakuTone(item)}"><div class="pm-danmaku-row-header"><b title="${escapeAttr(item.authorNameSnapshot)}">${escapeHtml(item.authorNameSnapshot)}</b><span class="pm-scene-comment-actions" hidden><button type="button" data-action="edit-danmaku" data-danmaku-id="${escapeAttr(item.id)}" aria-label="\u7F16\u8F91\u5F39\u5E55" title="\u7F16\u8F91\u5F39\u5E55">${EDIT_ICON_SVG}</button><button type="button" class="pm-scene-danger" data-action="delete-danmaku" data-danmaku-id="${escapeAttr(item.id)}" aria-label="\u5220\u9664\u5F39\u5E55" title="\u5220\u9664\u5F39\u5E55">${TRASH_ICON_SVG}</button></span></div><span class="pm-danmaku-content">${escapeHtml(item.content)}</span></div>`).join("") || '<div class="pm-scene-empty"><span>\u8FD8\u6CA1\u6709\u5F39\u5E55\uFF0C\u53D1\u4E00\u6761\u548C\u5927\u5BB6\u6253\u4E2A\u62DB\u547C\u5427\u3002</span></div>';
   }
   function renderContextInjectionSettings(scene, state) {
-    const selection = state.communitySelection?.mode === "selected" ? state.communitySelection : { mode: "all", postIds: [] };
-    const selectedPostIds = new Set(selection.postIds || []);
-    const posts = scene.posts.map((post) => `<label class="pm-scene-injection-post">
-        <input type="checkbox" class="pm-scene-injection-post-input" value="${escapeAttr(post.id)}" ${selectedPostIds.has(post.id) ? "checked" : ""}>
+    const selectedPostIds = new Set(state.communitySelection?.mode === "all" ? scene.posts.map((post) => post.id) : state.communitySelection?.postIds || []);
+    const posts = scene.posts.map((post) => `<article class="pm-scene-injection-post">
         <span>${escapeHtml(post.content || "\u65E0\u6B63\u6587\u5E16\u5B50")}</span>
-    </label>`).join("") || '<div class="pm-scene-empty"><span>\u5F53\u524D\u793E\u533A\u8FD8\u6CA1\u6709\u5E16\u5B50\u3002</span></div>';
+        <button type="button" class="pm-scene-injection-post-toggle ${selectedPostIds.has(post.id) ? "is-selected" : ""}" data-action="context-toggle-post" data-post-id="${escapeAttr(post.id)}" aria-pressed="${selectedPostIds.has(post.id)}" aria-label="${selectedPostIds.has(post.id) ? "\u53D6\u6D88\u6CE8\u5165" : "\u6CE8\u5165"}\u6B64\u535A\u6587" title="${selectedPostIds.has(post.id) ? "\u53D6\u6D88\u6CE8\u5165" : "\u6CE8\u5165\u6B64\u535A\u6587"}">${EYE_ICON_SVG}</button>
+    </article>`).join("") || '<div class="pm-scene-empty"><span>\u5F53\u524D\u793E\u533A\u8FD8\u6CA1\u6709\u5E16\u5B50\u3002</span></div>';
     return `<div class="pm-scene-injection-settings">
-        <div class="pm-scene-injection-heading"><div><h2>\u4E0A\u4E0B\u6587\u6CE8\u5165</h2><p>\u914D\u7F6E\u5F53\u524D\u793E\u533A\u8FDB\u5165\u89D2\u8272\u4E0A\u4E0B\u6587\u7684\u5E16\u5B50\u3002\u9009\u4E2D\u5E16\u5B50\u4F1A\u81EA\u52A8\u5305\u542B\u5176\u8BC4\u8BBA\u3002</p></div>
-        <label class="pm-scene-injection-enable"><span>\u5141\u8BB8\u5F53\u524D\u793E\u533A\u6CE8\u5165</span><input id="pm-scene-injection-enabled" type="checkbox" ${state.communitySceneAllowed ? "checked" : ""}></label></div>
-        <label class="pm-scene-label">\u5E16\u5B50\u8303\u56F4<select id="pm-scene-injection-mode">
-            <option value="all" ${selection.mode === "all" ? "selected" : ""}>\u5168\u90E8\u5E16\u5B50</option>
-            <option value="selected" ${selection.mode === "selected" ? "selected" : ""}>\u4EC5\u9009\u4E2D\u5E16\u5B50</option>
-        </select></label>
+        <div class="pm-scene-injection-heading"><h2>\u6B63\u6587\u6CE8\u5165</h2></div>
         <div class="pm-scene-injection-toolbar"><button type="button" data-action="context-select-all">\u5168\u9009</button><button type="button" data-action="context-clear">\u6E05\u7A7A</button></div>
         <div class="pm-scene-injection-posts">${posts}</div>
         <div class="pm-scene-injection-actions"><button type="button" class="pm-scene-secondary" data-action="context-cancel">\u53D6\u6D88</button><button type="button" class="pm-scene-primary" data-action="context-save">\u4FDD\u5B58\u6CE8\u5165\u8BBE\u7F6E</button></div>
@@ -7538,7 +7545,7 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
     const composer = tab === "feed" ? `<div class="pm-scene-composer"><textarea id="pm-scene-post-input" maxlength="4000" placeholder="\u5206\u4EAB\u6B64\u523B\u2026\u2026"></textarea><button type="button" class="pm-scene-primary" data-action="publish" aria-label="\u53D1\u5E03" title="\u53D1\u5E03">${SEND_ICON_SVG}</button></div>` : tab === "live" ? `<div class="pm-scene-composer pm-danmaku-input"><textarea id="pm-danmaku-input" rows="1" maxlength="200" placeholder="\u53D1\u4E2A\u5F39\u5E55\u89C1\u8BC1\u5F53\u4E0B"></textarea><button type="button" class="pm-scene-primary" data-action="send-danmaku" aria-label="\u53D1\u9001\u5F39\u5E55" title="\u53D1\u9001\u5F39\u5E55">${SEND_ICON_SVG}</button></div>` : "";
     const content = tab === "feed" ? `<div class="pm-scene-feed"><div class="pm-scene-posts">${renderPosts(scene)}</div></div>` : tab === "live" ? `<div class="pm-live-room">${liveContent}</div>` : tab === "context-inject" ? renderContextInjectionSettings(scene, state) : `<div class="pm-scene-prompt"><label>\u793E\u533A\u540D\u79F0<input id="pm-scene-title" maxlength="80" value="${escapeAttr(scene.title)}"></label><fieldset class="pm-scene-accent-field"><legend>\u793E\u533A\u4E3B\u9898\u8272</legend><div class="pm-scene-accent-options">${renderSceneAccentOptions(accent)}<label class="pm-scene-accent-custom" aria-label="\u81EA\u5B9A\u4E49\u793E\u533A\u4E3B\u9898\u8272"><input id="pm-scene-accent" type="color" data-action="scene-accent-custom" value="${escapeAttr(accent)}"><span>\u81EA\u5B9A\u4E49</span></label></div></fieldset><label>\u793E\u533A\u98CE\u683C<textarea id="pm-scene-prompt" maxlength="6000">${escapeHtml(scene.generatedPrompt)}</textarea></label><p>\u8BBE\u7F6E\u793E\u533A\u5185\u5BB9\u7684\u8868\u8FBE\u98CE\u683C\u4E0E\u6C1B\u56F4\u3002</p><div class="pm-scene-prompt-actions"><button type="button" class="pm-scene-secondary" data-action="regenerate-prompt">\u91CD\u65B0\u751F\u6210</button><button type="button" class="pm-scene-primary" data-action="save-prompt">\u4FDD\u5B58\u98CE\u683C</button></div></div>`;
     const isPrompt = tab === "prompt";
-    const isSubpage = isPrompt;
+    const isSubpage = isPrompt || tab === "context-inject";
     const returnTab = ["feed", "live"].includes(uiScope.lastTab) ? uiScope.lastTab : "feed";
     const leadingAction = isSubpage ? `data-action="tab" data-tab="${returnTab}" aria-label="\u8FD4\u56DE\u5B50\u793E\u533A" title="\u8FD4\u56DE\u5B50\u793E\u533A"` : 'data-action="desktop" aria-label="\u8FD4\u56DE\u684C\u9762" title="\u8FD4\u56DE\u684C\u9762"';
     return `<div id="pm-scene-app" class="pm-modal pm-scene-shell" style="--scene-accent:${escapeAttr(accent)}">
@@ -8094,6 +8101,7 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
       }
       if (await handleCommunityInjectionUiAction(action, {
         app,
+        button,
         getCurrent: current,
         getLastTab: (scopeId) => phoneScope(scopeId).lastTab,
         config: window.__pmBudgetConfig,
@@ -10957,7 +10965,7 @@ ${antiFluff}`;
     Object.assign(deps, { runConversationInjectionMutation: enqueueToggle });
     window.__pmConversationInjectionSummary = () => {
       const config = normalizeInjectionConfig(window.__pmInjectionConfig);
-      return `${injectionPositionLabel(config.position)} \xB7 \u6DF1\u5EA6 ${config.depth} \xB7 \u6700\u8FD1 ${config.historyLimit} \u6761`;
+      return injectionPositionLabel(config.position);
     };
     window.__pmCurrentConversationInjectionEnabled = () => isEnabled(currentTarget());
     window.__pmConversationInjectionEnabled = (storageId, targetKey) => isEnabled(
@@ -10983,9 +10991,8 @@ ${antiFluff}`;
       const config = normalizeInjectionConfig(window.__pmInjectionConfig || loadInjectionConfig());
       makeOverlay(`
     <div class="pm-modal pm-modal-wide pm-conversation-injection-modal">
-      <div class="pm-modal-header"><button type="button" onclick="window.__pmShowConfig('home')" class="pm-modal-close" title="\u8FD4\u56DE\u8BBE\u7F6E" aria-label="\u8FD4\u56DE\u8BBE\u7F6E">${BACK_ICON_SVG}</button><b>\u6B63\u6587\u6CE8\u5165\u89C4\u5219</b><button type="button" onclick="window.__pmCloseOverlay()" class="pm-modal-close" title="\u5173\u95ED" aria-label="\u5173\u95ED">${CLOSE_ICON_SVG}</button></div>
+      <div class="pm-modal-header"><button type="button" onclick="window.__pmShowConfig('home')" class="pm-modal-close" title="\u8FD4\u56DE\u8BBE\u7F6E" aria-label="\u8FD4\u56DE\u8BBE\u7F6E">${BACK_ICON_SVG}</button><b>\u6B63\u6587\u6CE8\u5165</b><button type="button" onclick="window.__pmCloseOverlay()" class="pm-modal-close" title="\u5173\u95ED" aria-label="\u5173\u95ED">${CLOSE_ICON_SVG}</button></div>
       <div class="pm-modal-scroll pm-conversation-injection-body">
-        <div class="pm-cfg-tip pm-conversation-injection-note">\u4F1A\u8BDD\u662F\u5426\u542F\u7528\u6CE8\u5165\u8BF7\u5728\u804A\u5929\u6807\u9898\u7684\u8054\u7CFB\u4EBA\u5217\u8868\u4E2D\u5207\u6362\uFF1B\u8FD9\u91CC\u7EDF\u4E00\u8BBE\u7F6E\u6240\u6709\u79C1\u804A\u4E0E\u7FA4\u804A\u7684\u4F4D\u7F6E\u3001\u6DF1\u5EA6\u548C\u6D88\u606F\u8303\u56F4\u3002</div>
         <div id="pm-conversation-injection-status" class="pm-conversation-injection-status" role="status" ${statusMessage ? "" : "hidden"}>${escapeHtml(statusMessage)}</div>
         <label class="pm-conversation-injection-field">\u6CE8\u5165\u4F4D\u7F6E
           <select id="pm-conversation-injection-position" class="pm-cfg-input pm-conversation-injection-config">
@@ -10993,12 +11000,6 @@ ${antiFluff}`;
             <option value="1" ${config.position === 1 ? "selected" : ""}>\u804A\u5929\u8BB0\u5F55\u5185</option>
             <option value="2" ${config.position === 2 ? "selected" : ""}>\u4E3B\u63D0\u793A\u8BCD\u524D</option>
           </select>
-        </label>
-        <label class="pm-conversation-injection-field">\u6CE8\u5165\u6DF1\u5EA6\uFF080-${MAX_INJECTION_DEPTH}\uFF09
-          <input id="pm-conversation-injection-depth" class="pm-cfg-input pm-conversation-injection-config" type="number" min="0" max="${MAX_INJECTION_DEPTH}" value="${config.depth}">
-        </label>
-        <label class="pm-conversation-injection-field">\u6700\u8FD1\u6D88\u606F\u8303\u56F4
-          <input id="pm-conversation-injection-limit" class="pm-cfg-input pm-conversation-injection-config" type="number" min="1" max="100" value="${config.historyLimit}">
         </label>
       </div>
       <div class="pm-modal-add pm-conversation-injection-actions"><button id="pm-conversation-injection-save" type="button" class="pm-action-button" onclick="window.__pmSaveConversationInjection()">\u4FDD\u5B58\u5E76\u5E94\u7528</button></div>
@@ -11014,9 +11015,8 @@ ${antiFluff}`;
       }
       const snapshot = clone4(window.__pmInjectionConfig);
       window.__pmInjectionConfig = normalizeInjectionConfig({
-        position: document.getElementById("pm-conversation-injection-position")?.value,
-        depth: document.getElementById("pm-conversation-injection-depth")?.value,
-        historyLimit: document.getElementById("pm-conversation-injection-limit")?.value
+        ...snapshot,
+        position: document.getElementById("pm-conversation-injection-position")?.value
       });
       try {
         await commitConversationInjectionUpdate({
@@ -11375,11 +11375,16 @@ ${antiFluff}`;
     let contactSwitcherLoadSequence = 0;
     let contactSwitcherOutsideHandler = null;
     let contactSwitcherEscapeHandler = null;
+    let contactSwitcherResizeObserver = null;
     const CONTACT_SWITCHER_ID = "pm-contact-switcher";
     const currentConversationKey = () => state.isGroupChat && state.currentGroupKey ? state.currentGroupKey : state.currentPersona;
     function closeContactSwitcher(reason = "close") {
       contactSwitcherLoadSequence += 1;
       const switcher = document.getElementById(CONTACT_SWITCHER_ID);
+      if (contactSwitcherResizeObserver) {
+        contactSwitcherResizeObserver.disconnect();
+        contactSwitcherResizeObserver = null;
+      }
       const trigger = state.phoneWindow?.querySelector(".pm-name-trigger");
       switcher?.remove();
       if (contactSwitcherOutsideHandler) {
@@ -11451,6 +11456,13 @@ ${antiFluff}`;
         await window.__pmShowList();
       }
     }
+    function positionContactSwitcher(switcher, trigger, phone) {
+      if (!switcher?.isConnected || !trigger?.isConnected || !phone) return false;
+      const phoneRect = phone.getBoundingClientRect();
+      const triggerRect = trigger.getBoundingClientRect();
+      switcher.style.top = `${Math.max(0, triggerRect.bottom - phoneRect.top)}px`;
+      return true;
+    }
     async function renderContactSwitcher(trigger) {
       const phone = state.phoneWindow;
       if (!phone || !trigger?.isConnected || state.isMinimized) return false;
@@ -11497,12 +11509,14 @@ ${antiFluff}`;
             <button type="button" onclick="window.__pmShowAddContact()">\u6DFB\u52A0</button>
           </div>`;
       phone.appendChild(switcher);
-      const phoneRect = phone.getBoundingClientRect();
-      const triggerRect = trigger.getBoundingClientRect();
-      const width = Math.min(300, Math.max(224, phone.clientWidth - 20));
-      switcher.style.width = `${width}px`;
-      switcher.style.left = `${(phone.clientWidth - width) / 2}px`;
-      switcher.style.top = `${Math.max(8, triggerRect.bottom - phoneRect.top - 4)}px`;
+      positionContactSwitcher(switcher, trigger, phone);
+      if (typeof ResizeObserver === "function") {
+        contactSwitcherResizeObserver = new ResizeObserver(() => {
+          positionContactSwitcher(switcher, trigger, phone);
+        });
+        contactSwitcherResizeObserver.observe(phone);
+        contactSwitcherResizeObserver.observe(trigger);
+      }
       trigger.setAttribute("aria-expanded", "true");
       bindContactSwitcher(switcher, trigger);
       switcher.querySelector('[aria-current="true"]')?.scrollIntoView?.({ block: "nearest" });
@@ -12221,13 +12235,11 @@ ${antiFluff}`;
   }
   function resolveCommunitySources({
     currentStorageId,
-    enabled,
     sceneIdsByStorage,
     selectionsByStorage,
     store
   } = {}) {
     try {
-      if (!enabled) return { allowed: true, reason: "disabled", sources: [] };
       if (!isValidContextStorageId(currentStorageId)) return { allowed: false, reason: "invalid-storage", sources: [] };
       const sceneIdsEntry = ownData(sceneIdsByStorage, currentStorageId);
       if (sceneIdsEntry.invalid) return { allowed: false, reason: "invalid-selection-store", sources: [] };
@@ -12526,7 +12538,6 @@ ${antiFluff}`;
     });
     const communityPermission = resolveCommunitySources({
       currentStorageId,
-      enabled: config.communityEnabled,
       sceneIdsByStorage: config.communitySceneIdsByStorage,
       selectionsByStorage: config.communitySelectionsByStorage,
       store: interactiveStore
@@ -12555,8 +12566,8 @@ ${antiFluff}`;
         content: `[\u4E92\u52A8\u793E\u533A\u8BB0\u5FC6 \u2014 \u5F53\u524D\u89D2\u8272\u53EF\u89C1]
 ${body}
 [\u7ED3\u675F]`,
-        position: config.communityPosition,
-        depth: config.communityDepth
+        position: phoneInjection.position,
+        depth: phoneInjection.depth
       }];
     }) : [];
     let calendarItems = [];
@@ -13729,6 +13740,7 @@ ${lines}`;
       applyBidirectionalInjection();
     }
     state.isSelectMode = false;
+    list2.classList.remove("is-selecting");
     const confirmBar = state.phoneWindow?.querySelector(".pm-confirm-bar");
     if (confirmBar) confirmBar.style.display = "none";
     return toRemoveIndices.size;
@@ -13790,6 +13802,7 @@ ${lines}`;
       const confirmBar = state.phoneWindow?.querySelector(".pm-confirm-bar");
       if (!list2) return;
       if (state.isSelectMode) {
+        list2.classList.add("is-selecting");
         if (confirmBar) confirmBar.style.display = "flex";
         list2.querySelectorAll(".pm-bubble, .pm-group-bubble-wrap, .pm-director").forEach((b) => {
           if (b.id === "pm-typing" || b.closest(".pm-select-wrap") || b.closest(".pm-pending-entry")) return;
@@ -13808,14 +13821,15 @@ ${lines}`;
           cb.onclick = () => toggleMessageSelection({ checkbox: cb, wrap, list: list2 });
           cb.onkeydown = (event) => handleMessageSelectionKey(event, cb);
           b.parentNode.insertBefore(wrap, b);
-          wrap.appendChild(cb);
           wrap.appendChild(b);
+          wrap.appendChild(cb);
           wrap.dataset.side = side;
           wrap.dataset.text = b.dataset.text || "";
           const hi = b.dataset.historyIndex;
           if (hi !== void 0 && hi !== "") wrap.dataset.historyIndex = hi;
         });
       } else {
+        list2.classList.remove("is-selecting");
         if (confirmBar) confirmBar.style.display = "none";
         list2.querySelectorAll(".pm-select-wrap").forEach((wrap) => {
           const b = wrap.querySelector(".pm-bubble, .pm-group-bubble-wrap, .pm-director");
@@ -14580,9 +14594,9 @@ ${lines}`;
       <button type="button" role="listitem" onclick="window.__pmShowConfig('api')"><b>API</b><span>\u9ED8\u8BA4\u4F7F\u7528\u9152\u9986 API \u9884\u8BBE</span></button>
       <button type="button" role="listitem" onclick="window.__pmShowConfig('quick-reply')"><b>\u624B\u673A\u5F00\u5173</b><span>\u521B\u5EFA\u6216\u6E05\u9664\u5F00\u5173\u5165\u53E3</span></button>
       <button type="button" role="listitem" onclick="window.__pmShowConfig('look')"><b>\u4E3B\u9898</b><span>\u65E5\u591C\u6A21\u5F0F\u3001\u6C14\u6CE1\u989C\u8272\u4E0E\u80CC\u666F\u56FE</span></button>
-      <button type="button" role="listitem" onclick="window.__pmShowConversationInjection()"><b>\u6B63\u6587\u6CE8\u5165</b><span>\u7EDF\u4E00\u8BBE\u7F6E\u624B\u673A\u4F1A\u8BDD\u7684\u6CE8\u5165\u4F4D\u7F6E\u3001\u6DF1\u5EA6\u548C\u6D88\u606F\u8303\u56F4</span></button>
       <button type="button" role="listitem" onclick="window.__pmShowConfig('backup')"><b>\u5907\u4EFD</b><span>\u5BFC\u51FA\u3001\u5BFC\u5165\u6216\u5B89\u5168\u6E05\u7406\u63D2\u4EF6\u6570\u636E</span></button>
       <button type="button" role="listitem" onclick="window.__pmShowConfig('budget')"><b>\u4E0A\u4E0B\u6587\u9884\u7B97</b><span>\u63A7\u5236\u624B\u673A\u4F1A\u8BDD\u4E0E\u793E\u533A\u5199\u5165\u4E3B\u63D0\u793A\u8BCD\u7684\u989D\u5EA6</span></button>
+      <button type="button" role="listitem" onclick="window.__pmShowConversationInjection()"><b>\u6B63\u6587\u6CE8\u5165</b><span>\u7EDF\u4E00\u8BBE\u7F6E\u624B\u673A\u4F1A\u8BDD\u4E0E\u793E\u533A\u7684\u6CE8\u5165\u4F4D\u7F6E\u3001\u6DF1\u5EA6\u548C\u6D88\u606F\u8303\u56F4</span></button>
       <div class="pm-global-setting" role="group" aria-labelledby="pm-wordy-label">
         <span><b id="pm-wordy-label">\u5168\u5C40\u77ED\u6D88\u606F\u9650\u5236</b><small>\u9664\u8BDD\u75E8\u4EBA\u8BBE\u5916\uFF0C\u6BCF\u6761\u72EC\u7ACB\u6D88\u606F\u4E0D\u8D85\u8FC7 35 \u5B57</small></span>
         <div id="pm-wordy-check" onclick="window.__pmToggleWordyLimit()"
@@ -14736,53 +14750,7 @@ ${lines}`;
     }
     return next;
   }
-  function renderBudgetSceneOptions({ config, scope, storageId }) {
-    const allowed = new Set(config.communitySceneIdsByStorage[storageId] || []);
-    const storedSelections = config.communitySelectionsByStorage[storageId] || {};
-    if (!Array.isArray(scope?.sceneOrder)) return "";
-    return scope.sceneOrder.flatMap((sceneId) => {
-      const scene = scope.scenes?.[sceneId];
-      if (!scene) return [];
-      const selection = storedSelections[sceneId]?.mode === "selected" ? storedSelections[sceneId] : { mode: "all", postIds: [] };
-      const postIds = new Set(selection.postIds || []);
-      const posts = Array.isArray(scene.posts) ? scene.posts.map((post) => `
-          <label class="pm-budget-post-option">
-            <input type="checkbox" class="pm-budget-post" data-scene-id="${escapeAttr(sceneId)}" value="${escapeAttr(post.id)}" ${postIds.has(post.id) ? "checked" : ""}>
-            <span>${escapeHtml(post.content || "\u65E0\u6B63\u6587\u5E16\u5B50")}</span>
-          </label>`).join("") : "";
-      return [`<section class="pm-budget-scene-card ${selection.mode === "selected" ? "is-selected-mode" : ""}" data-scene-id="${escapeAttr(sceneId)}">
-          <label class="pm-cfg-label pm-check-setting"><span>${escapeHtml(scene.title)}</span><div class="pm-custom-check pm-budget-scene ${allowed.has(sceneId) ? "is-checked" : ""}" role="checkbox" tabindex="0" aria-checked="${allowed.has(sceneId)}" data-value="${escapeAttr(sceneId)}" onclick="this.classList.toggle('is-checked');this.setAttribute('aria-checked',String(this.classList.contains('is-checked')))" onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();this.click()}"></div></label>
-          <label class="pm-cfg-label">\u5E16\u5B50\u6CE8\u5165\u8303\u56F4
-            <select class="pm-cfg-input pm-budget-selection-mode" data-scene-id="${escapeAttr(sceneId)}" onchange="this.closest('.pm-budget-scene-card').classList.toggle('is-selected-mode',this.value==='selected')">
-              <option value="all" ${selection.mode === "all" ? "selected" : ""}>\u5168\u90E8\u5E16\u5B50</option>
-              <option value="selected" ${selection.mode === "selected" ? "selected" : ""}>\u4EC5\u9009\u4E2D\u5E16\u5B50</option>
-            </select>
-          </label>
-          <div class="pm-budget-post-list">${posts || '<div class="pm-cfg-tip">\u5F53\u524D\u573A\u666F\u6CA1\u6709\u5E16\u5B50</div>'}</div>
-        </section>`];
-    }).join("");
-  }
-  function collectBudgetCommunityFields(root, current, storageId) {
-    const sceneIds = Array.from(root.querySelectorAll(".pm-budget-scene.is-checked")).map((control) => control.dataset.value).filter(Boolean);
-    const communitySceneIdsByStorage = { ...current.communitySceneIdsByStorage };
-    const communitySelectionsByStorage = { ...current.communitySelectionsByStorage };
-    if (!storageId || storageId === "sms_unknown__default") {
-      return { communitySceneIdsByStorage, communitySelectionsByStorage };
-    }
-    if (sceneIds.length) communitySceneIdsByStorage[storageId] = sceneIds;
-    else delete communitySceneIdsByStorage[storageId];
-    const sceneSelections = {};
-    root.querySelectorAll(".pm-budget-selection-mode").forEach((control) => {
-      const sceneId = control.dataset.sceneId;
-      if (!sceneId) return;
-      const postIds = Array.from(root.querySelectorAll(".pm-budget-post:checked")).filter((input) => input.dataset.sceneId === sceneId).map((input) => input.value).filter(Boolean);
-      sceneSelections[sceneId] = control.value === "selected" ? { mode: "selected", postIds } : { mode: "all", postIds: [] };
-    });
-    if (Object.keys(sceneSelections).length) communitySelectionsByStorage[storageId] = sceneSelections;
-    else delete communitySelectionsByStorage[storageId];
-    return { communitySceneIdsByStorage, communitySelectionsByStorage };
-  }
-  function renderBudgetSettings({ config, sceneOptions }) {
+  function renderBudgetSettings({ config }) {
     const priority = config.sourcePriority[0];
     const percentages = getBudgetPercentageView(config.sourceWeights);
     return `
@@ -14811,22 +14779,6 @@ ${lines}`;
           <span>\u628A\u4E00\u65B9\u6CA1\u7528\u5B8C\u7684\u989D\u5EA6\u8865\u7ED9\u53E6\u4E00\u65B9</span>
           <div id="pm-budget-redistribute" class="pm-custom-check ${config.redistributeUnused ? "is-checked" : ""}" role="checkbox" tabindex="0" aria-checked="${config.redistributeUnused}" onclick="this.classList.toggle('is-checked');this.setAttribute('aria-checked',String(this.classList.contains('is-checked')))" onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();this.click()}"></div>
         </label>
-      </div>
-      <div style="padding:12px 16px;border-top:1px solid var(--pm-color-border-subtle);display:flex;flex-direction:column;gap:10px;">
-        <label class="pm-cfg-label pm-check-setting">
-          <span>\u542F\u7528\u4E92\u52A8\u793E\u533A\u6CE8\u5165\uFF08\u9ED8\u8BA4\u5173\u95ED\uFF09</span>
-          <div id="pm-budget-community-enabled" class="pm-custom-check ${config.communityEnabled ? "is-checked" : ""}" role="checkbox" tabindex="0" aria-checked="${config.communityEnabled}" onclick="this.classList.toggle('is-checked');this.setAttribute('aria-checked',String(this.classList.contains('is-checked')))" onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();this.click()}"></div>
-        </label>
-        <label class="pm-cfg-label" for="pm-budget-community-position">\u793E\u533A\u6CE8\u5165\u4F4D\u7F6E</label>
-        <select id="pm-budget-community-position" class="pm-cfg-input">
-          <option value="0" ${config.communityPosition === 0 ? "selected" : ""}>\u4E3B\u63D0\u793A\u8BCD\u5185</option>
-          <option value="1" ${config.communityPosition === 1 ? "selected" : ""}>\u804A\u5929\u8BB0\u5F55\u5185</option>
-          <option value="2" ${config.communityPosition === 2 ? "selected" : ""}>\u4E3B\u63D0\u793A\u8BCD\u524D</option>
-        </select>
-        <label class="pm-cfg-label" for="pm-budget-community-depth">\u793E\u533A\u6CE8\u5165\u6DF1\u5EA6</label>
-        <input id="pm-budget-community-depth" class="pm-cfg-input" type="number" min="0" max="10000" step="1" value="${config.communityDepth}">
-        <div class="pm-cfg-label">\u5F53\u524D\u89D2\u8272\u5361\u5141\u8BB8\u6CE8\u5165\u7684\u573A\u666F</div>
-        <div id="pm-budget-scenes" style="display:flex;flex-direction:column;gap:6px;">${sceneOptions || '<div class="pm-cfg-tip" style="text-align:left;">\u5F53\u524D\u6CA1\u6709\u53EF\u9009\u62E9\u7684\u4E92\u52A8\u573A\u666F</div>'}</div>
       </div>
       <div style="padding:12px 16px;border-top:1px solid var(--pm-color-border-subtle);display:flex;flex-direction:column;gap:10px;">
         <div class="pm-cfg-tip" style="text-align:left;color:#ff9500;">\u65E5\u7A0B\u3001\u5929\u6C14\u3001\u751F\u7406\u671F\u548C\u83DC\u8C31\u7684\u6CE8\u5165\u5F00\u5173\u8BF7\u5728\u65E5\u5386\u5404\u6A21\u5757\u8BBE\u7F6E\u533A\u8C03\u6574\uFF1B\u6B64\u5904\u7EDF\u4E00\u8BBE\u7F6E\u5B83\u4EEC\u7684\u6CE8\u5165\u4F4D\u7F6E\u548C\u6DF1\u5EA6\u3002</div>
@@ -15721,15 +15673,7 @@ ${error.message}`);
       }
       if (page === "budget") {
         const config = normalizeBudgetConfig(window.__pmBudgetConfig);
-        const storageId = getStorageId2();
-        let scope = null;
-        try {
-          const store = await getInteractiveStore?.();
-          scope = store?.scopes?.[storageId] || null;
-        } catch (error) {
-        }
-        const sceneOptions = renderBudgetSceneOptions({ config, scope, storageId });
-        const content2 = renderBudgetSettings({ config, sceneOptions });
+        const content2 = renderBudgetSettings({ config });
         const footer = '<div class="pm-modal-add"><button class="pm-action-button is-secondary" onclick="window.__pmResetBudgetConfig()" style="flex:1">\u6062\u590D\u9ED8\u8BA4</button><button class="pm-action-button" onclick="window.__pmSaveBudgetConfig()" style="flex:2">\u4FDD\u5B58\u4E0A\u4E0B\u6587\u9884\u7B97</button></div>';
         makeOverlay(renderSettingsModal({ title: "\u4E0A\u4E0B\u6587\u9884\u7B97", content: content2, footer }));
         return;
@@ -15932,7 +15876,6 @@ ${error.message}`);
       });
     };
     window.__pmSaveBudgetConfig = async () => {
-      const storageId = getStorageId2();
       const phoneWeightInput = document.getElementById("pm-budget-phone-weight");
       const communityWeightInput = document.getElementById("pm-budget-community-weight");
       const calendarWeightInput = document.getElementById("pm-budget-calendar-weight");
@@ -15957,17 +15900,12 @@ ${error.message}`);
       const prioritySource = document.getElementById("pm-budget-priority")?.value;
       const priority = [prioritySource, "phone", "community", "calendar", "recipe"].filter((value, index, values) => value && values.indexOf(value) === index);
       const current = normalizeBudgetConfig(window.__pmBudgetConfig);
-      const communityFields = collectBudgetCommunityFields(document, current, storageId);
       const candidate = normalizeBudgetConfig({
         ...current,
         targetTokens: Number(document.getElementById("pm-budget-target")?.value),
         sourceWeights,
         sourcePriority: priority,
         redistributeUnused: document.getElementById("pm-budget-redistribute")?.classList.contains("is-checked") === true,
-        communityEnabled: document.getElementById("pm-budget-community-enabled")?.classList.contains("is-checked") === true,
-        communityPosition: Number(document.getElementById("pm-budget-community-position")?.value),
-        communityDepth: Number(document.getElementById("pm-budget-community-depth")?.value),
-        ...communityFields,
         calendarPosition: Number(document.getElementById("pm-budget-calendar-position")?.value),
         calendarDepth: Number(document.getElementById("pm-budget-calendar-depth")?.value)
       });

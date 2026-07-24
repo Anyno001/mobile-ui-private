@@ -39,22 +39,34 @@ export function resolvePhoneChatTarget(uiScope, histories, groups, defaultContac
 
 export function getCommunityInjectionState(config, storageId, sceneId) {
     const normalized = normalizeBudgetConfig(config);
-    return {
-        communitySceneAllowed: (normalized.communitySceneIdsByStorage[storageId] || []).includes(sceneId),
-        communitySelection: normalized.communitySelectionsByStorage[storageId]?.[sceneId]
-            || { mode: 'all', postIds: [] },
-    };
+    const selection = normalized.communitySelectionsByStorage[storageId]?.[sceneId];
+    if (selection) return { communitySelection: selection };
+    const allowed = (normalized.communitySceneIdsByStorage[storageId] || []).includes(sceneId);
+    return { communitySelection: allowed ? { mode: 'all', postIds: [] } : { mode: 'selected', postIds: [] } };
 }
 
 export async function runCommunityInjectionAction(action, {
-    app, storageId, scene, lastTab, config, saveConfig, refreshInjection,
+    app, button, storageId, scene, lastTab, config, saveConfig, refreshInjection,
 }) {
     if (action === 'context-inject') return { handled: true, view: 'context-inject' };
     if (action === 'context-select-all' || action === 'context-clear') {
         const checked = action === 'context-select-all';
-        app.querySelectorAll('.pm-scene-injection-post-input').forEach(input => { input.checked = checked; });
-        const modeControl = app.querySelector('#pm-scene-injection-mode');
-        if (modeControl) modeControl.value = 'selected';
+        app.querySelectorAll('.pm-scene-injection-post-toggle').forEach(control => {
+            control.classList.toggle('is-selected', checked);
+            control.setAttribute('aria-pressed', String(checked));
+            control.setAttribute('aria-label', `${checked ? '取消注入' : '注入'}此博文`);
+            control.title = checked ? '取消注入此博文' : '注入此博文';
+        });
+        return { handled: true };
+    }
+    if (action === 'context-toggle-post') {
+        const control = button?.matches?.('[data-action="context-toggle-post"]') ? button : null;
+        if (!control || !app.contains(control)) return { handled: false };
+        const selected = !control.classList.contains('is-selected');
+        control.classList.toggle('is-selected', selected);
+        control.setAttribute('aria-pressed', String(selected));
+        control.setAttribute('aria-label', `${selected ? '取消注入' : '注入'}此博文`);
+        control.title = selected ? '取消注入此博文' : '注入此博文';
         return { handled: true };
     }
     if (action === 'context-cancel') return { handled: true, view: lastTab };
@@ -63,18 +75,22 @@ export async function runCommunityInjectionAction(action, {
     const current = normalizeBudgetConfig(config);
     const sceneIdsByStorage = { ...current.communitySceneIdsByStorage };
     const allowed = new Set(sceneIdsByStorage[storageId] || []);
-    if (app.querySelector('#pm-scene-injection-enabled')?.checked) allowed.add(scene.id);
+    const postIds = Array.from(app.querySelectorAll('.pm-scene-injection-post-toggle.is-selected'))
+        .map(control => control.dataset.postId).filter(Boolean);
+    if (postIds.length) allowed.add(scene.id);
     else allowed.delete(scene.id);
     if (allowed.size) sceneIdsByStorage[storageId] = [...allowed];
     else delete sceneIdsByStorage[storageId];
     const selectionsByStorage = { ...current.communitySelectionsByStorage };
     const storageSelections = { ...(selectionsByStorage[storageId] || {}) };
-    const mode = app.querySelector('#pm-scene-injection-mode')?.value === 'selected' ? 'selected' : 'all';
-    const postIds = mode === 'selected'
-        ? Array.from(app.querySelectorAll('.pm-scene-injection-post-input:checked')).map(input => input.value).filter(Boolean)
-        : [];
-    storageSelections[scene.id] = { mode, postIds };
-    selectionsByStorage[storageId] = storageSelections;
+    if (postIds.length) {
+        storageSelections[scene.id] = { mode: 'selected', postIds };
+        selectionsByStorage[storageId] = storageSelections;
+    } else {
+        delete storageSelections[scene.id];
+        if (Object.keys(storageSelections).length) selectionsByStorage[storageId] = storageSelections;
+        else delete selectionsByStorage[storageId];
+    }
     const candidate = normalizeBudgetConfig({
         ...current,
         communitySceneIdsByStorage: sceneIdsByStorage,
@@ -99,13 +115,13 @@ export async function runCommunityInjectionAction(action, {
 }
 
 export async function handleCommunityInjectionUiAction(action, {
-    app, getCurrent, getLastTab, config, saveConfig, refreshInjection, rerender, setStatus,
+    app, button, getCurrent, getLastTab, config, saveConfig, refreshInjection, rerender, setStatus,
 }) {
     if (!action.startsWith('context-')) return false;
     const { scopeId, scene } = getCurrent();
     const lastTab = getLastTab(scopeId);
     const result = await runCommunityInjectionAction(action, {
-        app, storageId: scopeId, scene, lastTab, config, saveConfig, refreshInjection,
+        app, button, storageId: scopeId, scene, lastTab, config, saveConfig, refreshInjection,
     });
     if (!result.handled) return false;
     if (result.view) rerender(result.view);

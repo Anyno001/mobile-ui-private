@@ -297,8 +297,7 @@ const scene = {
     live: { title: '直播', status: 'idle', danmaku: [{ id: 'danmaku-a', authorId: actorId, authorNameSnapshot: 'Alice', content: '弹幕正文', createdAt: 4 }] },
 };
 const store = { version: 2, scopes: { 'story-a': { activeSceneId: 'scene-a', sceneOrder: ['scene-a'], actors: { [actorId]: { actorId, type: 'story', displayName: 'Alice', bindingKey: 'character:alice', profile: '', createdAt: 1 } }, scenes: { 'scene-a': scene } } } };
-assert.deepEqual(resolveCommunitySources({ currentStorageId: 'story-a', enabled: false, sceneIdsByStorage: { 'story-a': ['scene-a'] }, store }).sources, []);
-const community = resolveCommunitySources({ currentStorageId: 'story-a', enabled: true, sceneIdsByStorage: { 'story-a': ['scene-a', 'deleted'] }, store });
+const community = resolveCommunitySources({ currentStorageId: 'story-a', sceneIdsByStorage: { 'story-a': ['scene-a', 'deleted'] }, store });
 assert.equal(community.allowed, true);
 assert.deepEqual(community.sources.map(source => source.sourceId), ['scene-a']);
 assert.deepEqual(community.sources[0].selection, { mode: 'all', postIds: [] });
@@ -308,7 +307,7 @@ assert.match(renderCommunitySource(community.sources[0]), /新帖子正文/);
 assert.match(renderCommunitySource(community.sources[0]), /弹幕正文/);
 
 const selectedCommunity = resolveCommunitySources({
-    currentStorageId: 'story-a', enabled: true,
+    currentStorageId: 'story-a',
     sceneIdsByStorage: { 'story-a': ['scene-a'] },
     selectionsByStorage: {
         'story-a': { 'scene-a': { mode: 'selected', postIds: ['post-a', 'deleted-post'] } },
@@ -325,7 +324,7 @@ assert.match(selectedCommunityText, /评论正文/);
 assert.doesNotMatch(selectedCommunityText, /新帖子正文/);
 assert.match(selectedCommunityText, /弹幕正文/);
 assert.equal(resolveCommunitySources({
-    currentStorageId: 'story-a', enabled: true,
+    currentStorageId: 'story-a',
     sceneIdsByStorage: { 'story-a': ['scene-a'] },
     selectionsByStorage: { 'story-a': { 'scene-a': { mode: 'selected', postIds: 'post-a' } } },
     store,
@@ -337,7 +336,7 @@ const isolatedScopes = { 'story-a': { ...store.scopes['story-a'], scenes: { 'sce
 Object.defineProperty(isolatedScopes, 'story-b', { enumerable: true, get() { crossScopeReads += 1; throw new Error('不得读取其他 scope'); } });
 Object.defineProperty(isolatedScopes['story-a'].scenes, 'scene-secret', { enumerable: true, get() { unselectedSceneReads += 1; throw new Error('不得读取未选中 scene'); } });
 const isolatedCommunity = resolveCommunitySources({
-    currentStorageId: 'story-a', enabled: true,
+    currentStorageId: 'story-a',
     sceneIdsByStorage: { 'story-a': ['scene-a'] }, store: { version: 2, scopes: isolatedScopes },
 });
 assert.equal(isolatedCommunity.allowed, true);
@@ -357,7 +356,7 @@ Object.defineProperty(pollutedScenes, 'scene-secret', {
     get() { secretSceneReads += 1; return scene; },
 });
 const pollutedCommunity = resolveCommunitySources({
-    currentStorageId: 'story-a', enabled: true,
+    currentStorageId: 'story-a',
     sceneIdsByStorage: { 'story-a': pollutedSceneSelection },
     store: { version: 2, scopes: { 'story-a': { ...store.scopes['story-a'], scenes: pollutedScenes } } },
 });
@@ -378,7 +377,7 @@ for (const selection of [
     ownIteratorSceneSelection,
 ]) {
     const result = resolveCommunitySources({
-        currentStorageId: 'story-a', enabled: true,
+        currentStorageId: 'story-a',
         sceneIdsByStorage: { 'story-a': selection }, store,
     });
     assert.equal(result.allowed, false);
@@ -394,7 +393,7 @@ Object.defineProperty(accessorSceneSelection, '0', {
 });
 accessorSceneSelection.length = 1;
 const accessorSceneSelectionResult = resolveCommunitySources({
-    currentStorageId: 'story-a', enabled: true,
+    currentStorageId: 'story-a',
     sceneIdsByStorage: { 'story-a': accessorSceneSelection }, store,
 });
 assert.equal(accessorSceneSelectionResult.allowed, false);
@@ -404,7 +403,7 @@ assert.equal(communityIndexGetterReads, 0);
 const sparseSceneSelection = [];
 sparseSceneSelection.length = 1;
 assert.equal(resolveCommunitySources({
-    currentStorageId: 'story-a', enabled: true,
+    currentStorageId: 'story-a',
     sceneIdsByStorage: { 'story-a': sparseSceneSelection }, store,
 }).allowed, false);
 
@@ -415,7 +414,7 @@ Object.defineProperty(accessorActor, 'displayName', {
     get() { actorDisplayNameReads += 1; return '伪造作者'; },
 });
 const actorAccessorResult = resolveCommunitySources({
-    currentStorageId: 'story-a', enabled: true,
+    currentStorageId: 'story-a',
     sceneIdsByStorage: { 'story-a': ['scene-a'] },
     store: {
         version: 2,
@@ -474,7 +473,7 @@ assert.match(defaultPhonePrompts[0].content, /允许的短信/);
 assert.match(defaultPhonePrompts[1].content, /Bob 私聊/);
 assert.ok(defaultPhonePrompts.every(prompt => /\n\[结束\]$/.test(prompt.content)));
 assert.ok(defaultPhonePrompts.every(prompt => !/其他角色卡短信|帖子正文/.test(prompt.content)));
-assert.equal(defaultPlan.diagnostics.communityPermission.reason, 'disabled');
+assert.equal(defaultPlan.diagnostics.communityPermission.reason, 'no-selection');
 assert.equal(defaultPlan.diagnostics.phone.promptCount, 2);
 
 const productionPhoneCalls = [];
@@ -506,7 +505,6 @@ const zeroPhonePlan = buildContextInjectionPrompts({
         targetTokens: 3000,
         sourceWeights: { phone: 0, community: 1, calendar: 0, recipe: 0 },
         redistributeUnused: false,
-        communityEnabled: false,
     },
 });
 assert.equal(zeroPhonePlan.diagnostics.phone.allocatedTokens, 0);
@@ -519,11 +517,9 @@ const communityPlan = buildContextInjectionPrompts({
         sourceWeights: { phone: 1, community: 1 },
         sourcePriority: ['community', 'phone'],
         redistributeUnused: true,
-        communityEnabled: true,
-        communityPosition: 2,
-        communityDepth: 3,
         communitySceneIdsByStorage: { 'story-a': ['scene-a'] },
     },
+    injectionConfig: { position: 2, depth: 3, historyLimit: 20 },
 });
 assert.equal(communityPlan.prompts.length, 3);
 const communityPrompt = communityPlan.prompts.find(prompt => prompt.key.includes(':community:'));
@@ -531,6 +527,29 @@ assert.ok(communityPrompt);
 assert.match(communityPrompt.content, /帖子正文/);
 assert.equal(communityPrompt.position, 2);
 assert.equal(communityPrompt.depth, 3);
+const productionCommunityCalls = [];
+const productionCommunityResult = applyContextInjections({
+    context: { setExtensionPrompt: (...args) => productionCommunityCalls.push(args) },
+    runtime: { trackedExtensionPromptKeys: new Set() },
+    ...baseInjectionInput,
+    injectionConfig: { position: 2, depth: 3, historyLimit: 20 },
+    budgetConfig: {
+        targetTokens: 3000,
+        sourceWeights: { phone: 0, community: 1, calendar: 0, recipe: 0 },
+        redistributeUnused: false,
+        communitySceneIdsByStorage: { 'story-a': ['scene-a'] },
+        communitySelectionsByStorage: { 'story-a': { 'scene-a': { mode: 'selected', postIds: ['post-a'] } } },
+    },
+    safeMaxTokens: 3000,
+});
+const productionCommunityWrite = productionCommunityCalls.find(call => String(call[1]).startsWith('[互动社区记忆 — 当前角色可见]\n'));
+assert.ok(productionCommunityWrite, '社区注入必须实际写入宿主 Extension Prompt');
+assert.match(productionCommunityWrite[0], /:community:/);
+assert.match(productionCommunityWrite[1], /帖子正文[\s\S]*评论正文/);
+assert.doesNotMatch(productionCommunityWrite[1], /新帖子正文/);
+assert.equal(productionCommunityWrite[2], 2);
+assert.equal(productionCommunityWrite[3], 3);
+assert.equal(productionCommunityResult.writtenBySource.community, 1);
 assert.deepEqual(buildContextInjectionPrompts({ ...baseInjectionInput, currentStorageId: 'sms_unknown__default' }).prompts, []);
 
 const calls = [];
@@ -547,7 +566,6 @@ assert.deepEqual([...runtime.trackedExtensionPromptKeys], ['retry']);
 const migratedTwoSourceBudget = normalizeBudgetConfig({
     sourceWeights: { phone: 3, community: 1 },
     sourcePriority: ['community', 'phone'],
-    communityEnabled: true,
 });
 assert.deepEqual(migratedTwoSourceBudget.sourceWeights, { phone: 3, community: 1, calendar: 0, recipe: 0 });
 assert.deepEqual(migratedTwoSourceBudget.sourcePriority, ['community', 'phone', 'calendar', 'recipe']);

@@ -124,6 +124,7 @@ export function installPhoneDirectory(state, deps) {
     let contactSwitcherLoadSequence = 0;
     let contactSwitcherOutsideHandler = null;
     let contactSwitcherEscapeHandler = null;
+    let contactSwitcherResizeObserver = null;
 
     const CONTACT_SWITCHER_ID = 'pm-contact-switcher';
 
@@ -133,6 +134,10 @@ export function installPhoneDirectory(state, deps) {
     function closeContactSwitcher(reason = 'close') {
         contactSwitcherLoadSequence += 1;
         const switcher = document.getElementById(CONTACT_SWITCHER_ID);
+        if (contactSwitcherResizeObserver) {
+            contactSwitcherResizeObserver.disconnect();
+            contactSwitcherResizeObserver = null;
+        }
         const trigger = state.phoneWindow?.querySelector('.pm-name-trigger');
         switcher?.remove();
         if (contactSwitcherOutsideHandler) {
@@ -211,6 +216,14 @@ export function installPhoneDirectory(state, deps) {
         }
     }
 
+    function positionContactSwitcher(switcher, trigger, phone) {
+        if (!switcher?.isConnected || !trigger?.isConnected || !phone) return false;
+        const phoneRect = phone.getBoundingClientRect();
+        const triggerRect = trigger.getBoundingClientRect();
+        switcher.style.top = `${Math.max(0, triggerRect.bottom - phoneRect.top)}px`;
+        return true;
+    }
+
     async function renderContactSwitcher(trigger) {
         const phone = state.phoneWindow;
         if (!phone || !trigger?.isConnected || state.isMinimized) return false;
@@ -259,12 +272,14 @@ export function installPhoneDirectory(state, deps) {
             <button type="button" onclick="window.__pmShowAddContact()">添加</button>
           </div>`;
         phone.appendChild(switcher);
-        const phoneRect = phone.getBoundingClientRect();
-        const triggerRect = trigger.getBoundingClientRect();
-        const width = Math.min(300, Math.max(224, phone.clientWidth - 20));
-        switcher.style.width = `${width}px`;
-        switcher.style.left = `${(phone.clientWidth - width) / 2}px`;
-        switcher.style.top = `${Math.max(8, triggerRect.bottom - phoneRect.top - 4)}px`;
+        positionContactSwitcher(switcher, trigger, phone);
+        if (typeof ResizeObserver === 'function') {
+            contactSwitcherResizeObserver = new ResizeObserver(() => {
+                positionContactSwitcher(switcher, trigger, phone);
+            });
+            contactSwitcherResizeObserver.observe(phone);
+            contactSwitcherResizeObserver.observe(trigger);
+        }
         trigger.setAttribute('aria-expanded', 'true');
         bindContactSwitcher(switcher, trigger);
         switcher.querySelector('[aria-current="true"]')?.scrollIntoView?.({ block: 'nearest' });

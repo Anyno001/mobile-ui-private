@@ -15,8 +15,6 @@ const normalized = normalizeBudgetConfig({
     sourcePriority: ['unknown', 'phone', 'phone'],
     redistributeUnused: 'yes',
     communityEnabled: true,
-    communityPosition: 999,
-    communityDepth: -4,
     communitySceneIdsByStorage: { story: [' scene-a ', 'scene-a', '', 3] },
     communitySelectionsByStorage: {
         story: {
@@ -31,15 +29,12 @@ assert.equal(normalized.budgetVersion, 2);
 assert.equal(normalized.targetTokens, DEFAULT_BUDGET_CONFIG.targetTokens);
 assert.deepEqual(normalized.sourceWeights, DEFAULT_BUDGET_CONFIG.sourceWeights);
 assert.deepEqual(normalized.sourcePriority, ['phone', 'community', 'calendar', 'recipe']);
-for (const removedField of ['calendarEnabled', 'recipeEnabled', 'recipePosition', 'recipeDepth']) {
+for (const removedField of ['calendarEnabled', 'recipeEnabled', 'recipePosition', 'recipeDepth', 'communityEnabled', 'communityPosition', 'communityDepth']) {
     assert.equal(Object.hasOwn(normalized, removedField), false, `预算配置不得保留旧字段 ${removedField}`);
 }
 assert.equal(normalized.calendarPosition, DEFAULT_BUDGET_CONFIG.calendarPosition);
 assert.equal(normalized.calendarDepth, DEFAULT_BUDGET_CONFIG.calendarDepth);
 assert.equal(normalized.redistributeUnused, DEFAULT_BUDGET_CONFIG.redistributeUnused);
-assert.equal(normalized.communityEnabled, true);
-assert.equal(normalized.communityPosition, DEFAULT_BUDGET_CONFIG.communityPosition);
-assert.equal(normalized.communityDepth, DEFAULT_BUDGET_CONFIG.communityDepth);
 assert.deepEqual(normalized.communitySceneIdsByStorage.story, ['scene-a']);
 assert.deepEqual(normalized.communitySelectionsByStorage, {
     story: {
@@ -134,7 +129,6 @@ globalThis.localStorage = {
 storedValues.set('ST_SMS_BUDGET_CONFIG', JSON.stringify({
     targetTokens: 321,
     sourceWeights: { phone: 2, community: 1 },
-    communityEnabled: true,
     communitySceneIdsByStorage: { story: ['scene-a'] },
     communitySelectionsByStorage: {
         story: { 'scene-a': { mode: 'selected', postIds: ['post-a'] } },
@@ -155,13 +149,12 @@ globalThis.localStorage = {
     setItem() { throw new Error('quota'); },
 };
 assert.deepEqual(loadBudgetConfig(), DEFAULT_BUDGET_CONFIG);
-const previousBudgetConfig = normalizeBudgetConfig({ targetTokens: 123, communityEnabled: false });
+const previousBudgetConfig = normalizeBudgetConfig({ targetTokens: 123 });
 window.__pmBudgetConfig = previousBudgetConfig;
-const failedCandidate = normalizeBudgetConfig({ targetTokens: 999, communityEnabled: true });
+const failedCandidate = normalizeBudgetConfig({ targetTokens: 999 });
 assert.equal(saveBudgetConfig(failedCandidate), false);
 assert.equal(window.__pmBudgetConfig, previousBudgetConfig);
 assert.equal(window.__pmBudgetConfig.targetTokens, 123);
-assert.equal(window.__pmBudgetConfig.communityEnabled, false);
 delete globalThis.localStorage;
 delete globalThis.window;
 
@@ -177,7 +170,7 @@ const callAI = createAiClient({
 let budgetConfig = normalizeBudgetConfig({ targetTokens: 800 });
 await callAI('', 'single');
 assert.equal(Object.hasOwn(requestBody, 'max_tokens'), false);
-budgetConfig = normalizeBudgetConfig({ ...budgetConfig, targetTokens: 9000, communityEnabled: true });
+budgetConfig = normalizeBudgetConfig({ ...budgetConfig, targetTokens: 9000 });
 await callAI('', 'group');
 assert.equal(Object.hasOwn(requestBody, 'max_tokens'), false);
 await callAI('', 'explicit');

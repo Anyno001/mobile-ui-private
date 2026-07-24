@@ -1221,9 +1221,8 @@ for (const expected of [
   'enqueueToggle', 'injectionToggleQueue', '{ requireExisting: true }',
   'runConversationInjectionMutation: enqueueToggle',
   'normalizeInjectionConfig',
-  'pm-conversation-injection-position', 'pm-conversation-injection-depth', 'pm-conversation-injection-limit',
-  '会话是否启用注入请在聊天标题的联系人列表中切换',
-  '这里统一设置所有私聊与群聊的位置、深度和消息范围',
+  'pm-conversation-injection-position',
+  '正文注入',
   "onclick=\"window.__pmShowConfig('home')\"", '${BACK_ICON_SVG}',
 ]) requireText('phone-context-injection.js', sourceModuleByName.get('phone-context-injection.js')?.code || '', expected);
 for (const expected of [
@@ -1629,7 +1628,7 @@ for (const expected of [
   "isSubpage || tab === 'context-inject' ? ''", 'pm-live-stage', 'pm-live-details', 'data-live-state=', 'pm-danmaku-float',
   'data-action="toggle-danmaku-actions"', 'aria-pressed="false"', 'aria-label="修改弹幕"', '修改弹幕', 'data-action="edit-danmaku"', 'data-action="delete-danmaku"', 'placeholder="发个弹幕见证当下"',
 ]) requireText('interactive-scene-views.js', interactiveViewsCode, expected);
-for (const expected of ['.pm-live-room{display:flex;flex-direction:column;gap:20px}', '.pm-live-play-btn{width:48px', '.pm-live-details{display:flex;flex-direction:column;gap:12px}', '.pm-danmaku-list{height:210px;overflow-y:auto;background:transparent;border:0', '.pm-danmaku-row .pm-scene-comment-actions[hidden]{display:none}']) {
+for (const expected of ['.pm-live-room{display:flex;flex-direction:column;gap:20px}', '.pm-live-play-btn{width:48px', '.pm-live-details{display:flex;flex-direction:column;gap:12px}', '.pm-danmaku-list{height:210px;overflow-y:auto;background:transparent;border:0', '.pm-danmaku-row{padding:10px 6px;border-bottom:1px solid var(--pm-color-border-subtle);font-size:11px;line-height:1.5}', '.pm-danmaku-row .pm-scene-comment-actions[hidden]{display:none}']) {
   requireText('style.css', css, expected);
 }
 for (const forbidden of ['data-action="back"', 'pm-scene-back']) {
@@ -1828,7 +1827,7 @@ for (const expected of [
   ':is(#pm-iphone,#pm-overlay,#pm-overlay-sub,#pm-model-dropdown) .pm-model-search{border:0 !important;border-bottom:1px solid var(--pm-color-border-subtle) !important;border-radius:0;}',
   ':is(#pm-iphone,#pm-overlay,#pm-overlay-sub,#pm-model-dropdown) :where(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]):not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="hidden"]):not([type="image"]),textarea,select,[contenteditable="true"]):disabled{opacity:.55 !important;cursor:not-allowed;}',
   ':-webkit-autofill{box-shadow:0 0 0 1000px var(--pm-color-surface-input) inset !important;',
-  '#pm-iphone :is(.pm-scene-label textarea,.pm-scene-prompt :is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]):not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="hidden"]):not([type="image"]),textarea),.pm-scene-composer textarea,.pm-calendar-management :is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]):not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="hidden"]):not([type="image"]),textarea,select),.pm-calendar-entry-dialog :is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]):not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="hidden"]):not([type="image"]),textarea,select),.pm-recipe-meal-dialog :is(textarea,select),.pm-danmaku-input,.pm-scene-comment-composer input),:is(#pm-overlay,#pm-overlay-sub) .pm-cfg-input{box-sizing:border-box !important;border:1px solid var(--pm-color-border-default) !important;border-radius:10px !important;background-color:var(--pm-color-surface-input) !important;',
+  '#pm-iphone :is(.pm-scene-label textarea,.pm-scene-prompt :is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]):not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="hidden"]):not([type="image"]),textarea),.pm-scene-composer textarea,.pm-calendar-management :is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]):not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="hidden"]):not([type="image"]),textarea,select),.pm-calendar-entry-dialog :is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]):not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="hidden"]):not([type="image"]),textarea,select),.pm-recipe-meal-dialog :is(textarea,select),.pm-scene-comment-composer input),:is(#pm-overlay,#pm-overlay-sub) .pm-cfg-input{box-sizing:border-box !important;border:1px solid var(--pm-color-border-default) !important;border-radius:10px !important;background-color:var(--pm-color-surface-input) !important;',
   '#pm-iphone .pm-scene-composer textarea{padding:8px 14px !important;resize:none !important;}',
   '#pm-iphone .pm-calendar-generation-rule{padding:9px 10px !important;resize:vertical !important;}',
   '#pm-iphone .pm-calendar-management :is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]):not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="hidden"]):not([type="image"]),select){padding:7px !important;}',
@@ -1868,6 +1867,9 @@ for (const expected of [
   '@media(max-width:320px){.pm-scene-topbar{padding-inline:5px}',
   '.pm-scene-view-actions{display:flex;align-items:center;justify-content:flex-end;gap:2px;margin-left:auto',
   '.pm-scene-bottom-bar{position:relative;z-index:20',
+  '.pm-contact-switcher{position:absolute;left:50%;z-index:30;width:min(300px,calc(100% - 20px));max-height:min(304px,calc(100% - 72px));display:flex',
+  'transform:translateX(-50%)',
+  '.pm-contact-switcher-row{display:grid;grid-template-columns:22px minmax(0,1fr) 40px 40px;align-items:center;gap:2px',
   '.pm-control-menu.pm-scene-menu{left:0;right:auto;top:auto;bottom:46px;z-index:20;width:148px;max-height:none;overflow-y:visible',
   '.pm-control-menu.pm-scene-menu[hidden]{display:none}',
   '.pm-scene-composer textarea{height:36px;min-height:36px;max-height:88px;box-shadow:none !important;appearance:none}',
@@ -2066,10 +2068,7 @@ requireText('settings-templates.js', sourceModuleByName.get('settings-templates.
 for (const expected of ['手机会话占比 (%)', '互动社区占比 (%)', '日历占比 (%)', 'pm-budget-calendar-position', 'pm-budget-calendar-depth', 'pm-custom-check', 'role="checkbox"', "event.key==='Enter'"]) {
   requireText('settings-templates.js', sourceModuleByName.get('settings-templates.js')?.code || '', expected);
 }
-for (const expected of [".pm-budget-scene.is-checked", 'pm-budget-selection-mode', 'communitySelectionsByStorage']) {
-  requireText('settings-templates.js', sourceModuleByName.get('settings-templates.js')?.code || '', expected);
-}
-for (const expected of ["classList.contains('is-checked') === true", 'extractAiResponseContent(j)', 'resolveBudgetPercentageInput', 'collectBudgetCommunityFields']) {
+for (const expected of ['extractAiResponseContent(j)', 'resolveBudgetPercentageInput']) {
   requireText('settings-ui.js', settingsCode, expected);
 }
 for (const [owner, code, expected] of [
@@ -2078,6 +2077,7 @@ for (const [owner, code, expected] of [
   ['phone-lifecycle.js', lifecycleCode, [
     "setAttribute('role', 'checkbox')", "setAttribute('aria-checked'", 'cb.tabIndex = 0',
     'toggleMessageSelection({ checkbox: cb, wrap, list })', 'handleMessageSelectionKey(event, cb)',
+    "list.classList.add('is-selecting')", 'wrap.appendChild(b);', 'wrap.appendChild(cb);', "list.classList.remove('is-selecting')",
   ]],
   ['phone-foundation.js', foundationCode, [
     'window.__pmToggleBidirectional = name => {', 'const targetKey = String(name || \'\').trim();',
@@ -2218,8 +2218,19 @@ requireCssDeclarations(cssRules, '.pm-contact-switcher', {
 });
 requireCssDeclarations(cssRules, '.pm-name-trigger', { 'z-index': '31' });
 requireCssDeclarations(cssRules, '.pm-contact-switcher', { 'z-index': '30' });
+requireCssDeclarations(cssRules, '.pm-contact-switcher', { left: '50%', transform: 'translateX(-50%)', 'max-height': 'min(304px,calc(100% - 72px))' });
 requireText('phone-directory.js contact switcher positioning', directoryCode,
-  'switcher.style.top = `${Math.max(8, triggerRect.bottom - phoneRect.top - 4)}px`;');
+  'switcher.style.top = `${Math.max(0, triggerRect.bottom - phoneRect.top)}px`;');
+requireText('phone-directory.js contact switcher responsive positioning', directoryCode, 'contactSwitcherResizeObserver = new ResizeObserver');
+requireText('style.css selection mode quote exclusion', css, '.pm-msg-list.is-selecting .pm-quote-action{display:none !important;}');
+requireText('style.css title arrow isolation', css, '.pm-name-chevron{position:absolute;left:100%;top:50%');
+requireCssDeclarations(cssRules, '.pm-contact-switcher', { 'box-shadow': 'none' });
+requireCssDeclarations(cssRules, '.pm-contact-switcher-row', { 'grid-template-columns': '22px minmax(0,1fr) 40px 40px', gap: '2px' });
+requireCssDeclarations(cssRules, '.pm-contact-settings-actions', { 'border-top': '0 !important' });
+requireCssDeclarations(cssRules, '#pm-overlay .pm-contact-settings-scroll textarea.pm-cfg-input', {
+  width: '100% !important', 'min-height': '58px !important', resize: 'vertical !important',
+  'box-shadow': 'none !important', appearance: 'none !important',
+});
 for (const expected of [
   '.pm-action-button{', 'font-size:13px', 'background:var(--pm-r-bg,#007aff)',
   '.pm-header-icon-button{box-sizing:border-box;width:34px;height:34px;min-width:34px;min-height:34px',

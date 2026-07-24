@@ -523,7 +523,7 @@ export function installInteractiveScenes(_state, deps) {
         if (action === 'desktop-community') { await window.__pmOpenForumMode(); return; }
         if (action === 'desktop-exit' || action === 'exit') { await window.__pmEnd?.(); return; }
         if (await handleCommunityInjectionUiAction(action, {
-            app, getCurrent: current,
+            app, button, getCurrent: current,
             getLastTab: scopeId => phoneScope(scopeId).lastTab,
                 config: window.__pmBudgetConfig,
                 saveConfig: deps.saveBudgetConfig,
