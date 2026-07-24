@@ -103,7 +103,7 @@ import { normalizeGroupMeta } from './behavior-config.js';
 import { getAutoPokeConfig } from './auto-poke-config.js';
 import { GROUP_COLORS } from './groups.js';
 import { escapeAttr, escapeHtml, safeJS } from './ui.js';
-import { CLOSE_ICON_SVG, SPARKLES_ICON_SVG, UNLINK_ICON_SVG } from './icons.js';
+import { BACK_ICON_SVG, CLOSE_ICON_SVG, SPARKLES_ICON_SVG, UNLINK_ICON_SVG } from './icons.js';
 import { clearPendingMessages } from './pending-messages.js';
 import { saveBgLocal } from './storage-background.js';
 import {
@@ -204,7 +204,7 @@ export function installPhoneDirectory(state, deps) {
 
         makeOverlay(`
     <div class="pm-modal pm-modal-wide">
-    <div class="pm-modal-header"><span></span><b>${title}</b><button type="button" onclick="${closeAction}" class="pm-modal-close" title="关闭" aria-label="关闭">${CLOSE_ICON_SVG}</button></div>
+    <div class="pm-modal-header"><button type="button" onclick="${closeAction}" class="pm-modal-close" title="返回列表" aria-label="返回列表">${BACK_ICON_SVG}</button><b>${title}</b><button type="button" onclick="${closeAction}" class="pm-modal-close" title="关闭" aria-label="关闭">${CLOSE_ICON_SVG}</button></div>
     <div class="pm-modal-scroll pm-group-settings-scroll">
         <div class="pm-cfg-label">群聊名称</div>
         <input id="pm-group-name-input" class="pm-cfg-input" placeholder="给群聊起个名字" value="${escapeAttr(initName)}" maxlength="30">

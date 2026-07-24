@@ -8896,20 +8896,51 @@ ${lines}
     };
     return { isAllowed, arm, disarm, begin, isActive, finish };
   }
-  function advanceAutoPokeCounters(configs, persist) {
+  function resolveAutoPokeProbability(autoPoke) {
+    if (autoPoke.probability != null) return Math.max(0, Math.min(100, Number(autoPoke.probability) || 0));
+    const interval = Number.parseInt(autoPoke.interval, 10);
+    const probability = Number.isFinite(interval) && interval > 0 ? Math.round(100 / interval) : 30;
+    autoPoke.probability = Math.max(0, Math.min(100, probability));
+    autoPoke.counter = 0;
+    delete autoPoke.interval;
+    return autoPoke.probability;
+  }
+  function advanceAutoPokeCounters(configs, persist, rng = Math.random) {
     const snapshots = [];
     const toPoke = [];
     for (const [contactName, config] of Object.entries(configs || {})) {
       if (!config?.autoPoke?.enabled) continue;
-      const interval = Math.max(1, Number(config.autoPoke.interval) || 1);
-      const previousCounter = Math.max(0, Number(config.autoPoke.counter) || 0);
-      snapshots.push({ autoPoke: config.autoPoke, previousCounter });
-      config.autoPoke.counter = Math.min(previousCounter + 1, interval);
-      if (config.autoPoke.counter >= interval) toPoke.push(contactName);
+      const autoPoke = config.autoPoke;
+      const snapshot = {
+        autoPoke,
+        previousCounter: autoPoke.counter,
+        previousProbability: autoPoke.probability,
+        hadProbability: Object.prototype.hasOwnProperty.call(autoPoke, "probability"),
+        previousInterval: autoPoke.interval,
+        hadInterval: Object.prototype.hasOwnProperty.call(autoPoke, "interval")
+      };
+      const probability = resolveAutoPokeProbability(autoPoke);
+      const previousCounter = autoPoke.counter === 1 ? 1 : 0;
+      snapshots.push(snapshot);
+      if (previousCounter === 1) {
+        toPoke.push(contactName);
+        continue;
+      }
+      const roll = Math.max(0, Math.min(99.9999, (typeof rng === "function" ? rng() : Math.random()) * 100));
+      if (roll < probability) {
+        autoPoke.counter = 1;
+        toPoke.push(contactName);
+      }
     }
     if (!snapshots.length) return { updated: false, toPoke: [] };
     if (persist()) return { updated: true, toPoke };
-    for (const snapshot of snapshots) snapshot.autoPoke.counter = snapshot.previousCounter;
+    for (const snapshot of snapshots) {
+      snapshot.autoPoke.counter = snapshot.previousCounter;
+      if (snapshot.hadProbability) snapshot.autoPoke.probability = snapshot.previousProbability;
+      else delete snapshot.autoPoke.probability;
+      if (snapshot.hadInterval) snapshot.autoPoke.interval = snapshot.previousInterval;
+      else delete snapshot.autoPoke.interval;
+    }
     return { updated: false, toPoke: [] };
   }
   async function runAutoPokeCounterCycle({
@@ -9811,7 +9842,7 @@ ${antiFluff}`;
           const counterEl = document.getElementById("pm-session-auto-poke-counter");
           const currentKey = state.isGroupChat ? state.currentGroupKey : state.currentPersona;
           const autoPoke = currentKey ? configs[currentKey]?.autoPoke : null;
-          if (counterEl && autoPoke) counterEl.textContent = `\u5F53\u524D\u8BA1\u6570\uFF1A${autoPoke.counter} / ${autoPoke.interval}`;
+          if (counterEl && autoPoke) counterEl.textContent = autoPoke.counter === 1 ? "\u8FD9\u6B21\u4F1A\u81EA\u52A8\u53D1\u4E00\u6761\u3002" : "\u8FD9\u6B21\u6CA1\u6709\u81EA\u52A8\u53D1\u6D88\u606F\u3002";
         }
       });
     };
@@ -9819,14 +9850,25 @@ ${antiFluff}`;
   }
 
   // src/auto-poke-config.js
-  var DEFAULT_AUTO_POKE = Object.freeze({ enabled: false, interval: 3, counter: 0 });
+  var DEFAULT_AUTO_POKE = Object.freeze({ enabled: false, probability: 30, counter: 0 });
   var clone3 = (value) => JSON.parse(JSON.stringify(value));
+  var clampProbability = (raw) => {
+    const num = Number(raw);
+    if (!Number.isFinite(num)) return DEFAULT_AUTO_POKE.probability;
+    return Math.max(0, Math.min(100, Math.round(num)));
+  };
+  var migrateIntervalToProbability = (interval) => {
+    const num = Number.parseInt(interval, 10);
+    if (!Number.isFinite(num) || num <= 0) return DEFAULT_AUTO_POKE.probability;
+    return clampProbability(100 / num);
+  };
+  var normalizeCounter = (value) => value === 1 ? 1 : 0;
   function normalizeAutoPoke(value) {
-    const interval = Math.max(1, Math.min(99, Number.parseInt(value?.interval, 10) || DEFAULT_AUTO_POKE.interval));
-    const counter = Math.max(0, Number.parseInt(value?.counter, 10) || 0);
+    const counter = normalizeCounter(value?.counter);
+    const probability = value?.probability != null ? clampProbability(value.probability) : migrateIntervalToProbability(value?.interval);
     return {
       enabled: value?.enabled === true,
-      interval,
+      probability,
       counter
     };
   }
@@ -9843,7 +9885,7 @@ ${antiFluff}`;
     if (!window.__pmPokeConfig[storageId]) window.__pmPokeConfig[storageId] = {};
     const previous = window.__pmPokeConfig[storageId][targetKey] || {};
     const nextAutoPoke = normalizeAutoPoke({ ...previous.autoPoke, ...patch });
-    if (nextAutoPoke.enabled) nextAutoPoke.counter = Math.min(nextAutoPoke.counter, nextAutoPoke.interval);
+    if (nextAutoPoke.enabled && patch?.enabled === true) nextAutoPoke.counter = 0;
     window.__pmPokeConfig[storageId][targetKey] = {
       ...previous,
       autoPoke: nextAutoPoke
@@ -9978,8 +10020,7 @@ ${antiFluff}`;
         if (!isAutomaticRequestActive()) return false;
         const autoPoke = window.__pmPokeConfig[id2]?.[contactName]?.autoPoke;
         if (!autoPoke) return false;
-        const interval = Math.max(1, Number(autoPoke.interval) || 1);
-        const previousCounter = Math.max(0, Number(autoPoke.counter) || 0);
+        const previousCounter = autoPoke.counter === 1 ? 1 : 0;
         const previousHistory = window.__pmHistories[id2]?.[contactName];
         const historyWindow = createHistoryWindow(targetHistory, SAVE_LIMIT);
         const historyIndex = historyWindow.toWindowIndex(targetHistory.length - 1);
@@ -9995,7 +10036,7 @@ ${antiFluff}`;
           },
           persistHistory: () => saveHistoriesStrict(),
           applyCounter: () => {
-            autoPoke.counter = Math.max(0, previousCounter - interval);
+            autoPoke.counter = 0;
           },
           restoreCounter: () => {
             autoPoke.counter = previousCounter;
@@ -10055,7 +10096,7 @@ ${antiFluff}`;
       addNote("\u5DF2\u91CD\u65B0\u542F\u7528\u672C\u6B21\u624B\u673A\u4F1A\u8BDD\u7684\u81EA\u52A8\u6D88\u606F");
       return true;
     };
-    function showContactConfig(contactName) {
+    function showContactConfig(contactName, returnToMembers = false) {
       const id2 = getStorageId2();
       const config = window.__pmPokeConfig[id2]?.[contactName] || {};
       const behavior = getCharacterBehavior(window.__pmCharacterBehavior, id2, contactName);
@@ -10083,7 +10124,7 @@ ${antiFluff}`;
       makeOverlay(`
     <div class="pm-modal pm-modal-wide">
     <div class="pm-modal-header">
-        <span></span>
+        <button type="button" onclick="${returnToMembers ? "window.__pmShowConversationSettings()" : "window.__pmCloseOverlay()"}" class="pm-modal-close" title="\u8FD4\u56DE" aria-label="\u8FD4\u56DE">${BACK_ICON_SVG}</button>
         <b class="pm-contact-settings-title" title="${escapeAttr(contactName)}">${escapeHtml(contactName)}</b>
         <button type="button" onclick="window.__pmCloseOverlay()" class="pm-modal-close" title="\u5173\u95ED" aria-label="\u5173\u95ED">${CLOSE_ICON_SVG}</button>
     </div>
@@ -10121,7 +10162,7 @@ ${antiFluff}`;
     </div>
     </div>`);
     }
-    window.__pmShowCharacterBehavior = (contactName) => showContactConfig(contactName);
+    window.__pmShowCharacterBehavior = (contactName) => showContactConfig(contactName, true);
     window.__pmShowConversationSettings = () => {
       if (!state.isGroupChat) {
         showContactConfig(state.currentPersona);
@@ -10130,7 +10171,7 @@ ${antiFluff}`;
       const members = state.groupMembers.slice();
       makeOverlay(`
     <div class="pm-modal pm-modal-wide">
-      <div class="pm-modal-header"><span></span><b>\u6210\u5458\u804A\u5929\u884C\u4E3A</b><button type="button" onclick="window.__pmCloseOverlay()" class="pm-modal-close" title="\u5173\u95ED" aria-label="\u5173\u95ED">${CLOSE_ICON_SVG}</button></div>
+      <div class="pm-modal-header"><button type="button" onclick="window.__pmCloseOverlay()" class="pm-modal-close" title="\u8FD4\u56DE" aria-label="\u8FD4\u56DE">${BACK_ICON_SVG}</button><b>\u6210\u5458\u804A\u5929\u884C\u4E3A</b><button type="button" onclick="window.__pmCloseOverlay()" class="pm-modal-close" title="\u5173\u95ED" aria-label="\u5173\u95ED">${CLOSE_ICON_SVG}</button></div>
       <div class="pm-member-behavior-list">
         ${members.map((name) => `<button onclick="window.__pmShowCharacterBehavior('${safeJS(name)}')">
           <b>${escapeHtml(name)}</b><span>\u79C1\u804A\u98CE\u683C\u3001\u7FA4\u804A\u98CE\u683C\u4E0E\u6D88\u606F\u9891\u7387</span>
@@ -10588,10 +10629,10 @@ ${antiFluff}`;
     <div id="pm-session-auto-poke-status" class="pm-session-behavior-status" role="status" aria-live="polite" ${statusMessage ? "" : "hidden"}>${escapeHtml(statusMessage)}</div>
     <section class="pm-session-behavior-section">
       <button id="pm-session-auto-poke" type="button" class="pm-session-behavior-toggle" role="checkbox" aria-checked="${autoPoke.enabled}" onclick="window.__pmToggleCurrentAutoPoke(this)">
-        ${CHAT_ICON_SVG}<span><b>\u5141\u8BB8\u5F53\u524D\u4F1A\u8BDD\u4E3B\u52A8\u53D1\u6D88\u606F</b><small>\u8FDE\u7EED\u591A\u8F6E\u6CA1\u6709\u8F93\u5165\u65F6\u89E6\u53D1\u3002</small></span><i class="pm-control-toggle ${autoPoke.enabled ? "is-checked" : ""}" aria-hidden="true"></i>
+        ${CHAT_ICON_SVG}<span><b>\u5141\u8BB8\u5F53\u524D\u4F1A\u8BDD\u4E3B\u52A8\u53D1\u6D88\u606F</b><small>\u804A\u5929\u505C\u4E0B\u6765\u65F6\uFF0C\u624B\u673A\u6709\u673A\u4F1A\u81EA\u5DF1\u53D1\u4E00\u53E5\u3002</small></span><i class="pm-control-toggle ${autoPoke.enabled ? "is-checked" : ""}" aria-hidden="true"></i>
       </button>
-      <label class="pm-session-auto-poke-interval">\u6BCF\u9694 <input id="pm-session-auto-poke-interval" type="number" min="1" max="99" value="${autoPoke.interval}" ${autoPoke.enabled ? "" : "disabled"} onchange="window.__pmSaveCurrentAutoPokeInterval(this)"> \u8F6E\u65E0\u8F93\u5165\u89E6\u53D1</label>
-      <p id="pm-session-auto-poke-counter">\u5F53\u524D\u8BA1\u6570\uFF1A${autoPoke.counter} / ${autoPoke.interval}</p>
+      <label class="pm-session-auto-poke-probability">\u6BCF\u6B21\u6709 <input id="pm-session-auto-poke-probability" type="number" min="0" max="100" step="1" value="${autoPoke.probability}" ${autoPoke.enabled ? "" : "disabled"} onchange="window.__pmSaveCurrentAutoPokeProbability(this)"> % \u51E0\u7387\u81EA\u52A8\u53D1\u6D88\u606F</label>
+      <p id="pm-session-auto-poke-counter">${autoPoke.counter === 1 ? "\u8FD9\u6B21\u4F1A\u81EA\u52A8\u53D1\u4E00\u6761\u3002" : "\u8FD9\u6B21\u6CA1\u6709\u81EA\u52A8\u53D1\u6D88\u606F\u3002"}</p>
     </section>
   </div>
 </div>`);
@@ -10615,20 +10656,21 @@ ${antiFluff}`;
       document.getElementById("pm-session-auto-poke")?.focus({ preventScroll: true });
       return true;
     };
-    window.__pmSaveCurrentAutoPokeInterval = (input) => {
+    window.__pmSaveCurrentAutoPokeProbability = (input) => {
       const target = getTarget();
       if (!target || !input) return false;
-      const interval = Math.max(1, Math.min(99, Number.parseInt(input.value, 10) || 3));
+      const parsedProbability = Number(input.value);
+      const probability = Number.isFinite(parsedProbability) ? Math.max(0, Math.min(100, Math.round(parsedProbability))) : 30;
       input.disabled = true;
       input.setAttribute("aria-busy", "true");
-      if (!commitAutoPokeConfig(target.storageId, target.saveKey, { interval })) {
-        alert("\u81EA\u52A8\u53D1\u6D88\u606F\u95F4\u9694\u4FDD\u5B58\u5931\u8D25\uFF1A\u6D4F\u89C8\u5668\u5B58\u50A8\u4E0D\u53EF\u7528\u6216\u7A7A\u95F4\u4E0D\u8DB3\u3002");
-        window.__pmShowAutoPokeSettings("\u81EA\u52A8\u53D1\u6D88\u606F\u95F4\u9694\u4FDD\u5B58\u5931\u8D25\uFF0C\u5DF2\u6062\u590D\u539F\u8BBE\u7F6E\u3002");
-        document.getElementById("pm-session-auto-poke-interval")?.focus({ preventScroll: true });
+      if (!commitAutoPokeConfig(target.storageId, target.saveKey, { probability })) {
+        alert("\u81EA\u52A8\u53D1\u6D88\u606F\u6982\u7387\u4FDD\u5B58\u5931\u8D25\uFF1A\u6D4F\u89C8\u5668\u5B58\u50A8\u4E0D\u53EF\u7528\u6216\u7A7A\u95F4\u4E0D\u8DB3\u3002");
+        window.__pmShowAutoPokeSettings("\u81EA\u52A8\u53D1\u6D88\u606F\u6982\u7387\u4FDD\u5B58\u5931\u8D25\uFF0C\u5DF2\u6062\u590D\u539F\u8BBE\u7F6E\u3002");
+        document.getElementById("pm-session-auto-poke-probability")?.focus({ preventScroll: true });
         return false;
       }
-      window.__pmShowAutoPokeSettings(`\u5DF2\u4FDD\u5B58\uFF1A\u6BCF\u9694 ${interval} \u8F6E\u65E0\u8F93\u5165\u89E6\u53D1\u3002`);
-      document.getElementById("pm-session-auto-poke-interval")?.focus({ preventScroll: true });
+      window.__pmShowAutoPokeSettings(`\u5DF2\u4FDD\u5B58\uFF1A\u6BCF\u6B21\u6709 ${probability}% \u51E0\u7387\u81EA\u52A8\u53D1\u6D88\u606F\u3002`);
+      document.getElementById("pm-session-auto-poke-probability")?.focus({ preventScroll: true });
       return true;
     };
     window.__pmToggleSessionInjection = (button) => toggleConversationInjectionControl(
@@ -11361,7 +11403,7 @@ ${antiFluff}`;
         </div>` : "";
       makeOverlay(`
     <div class="pm-modal pm-modal-wide">
-    <div class="pm-modal-header"><span></span><b>${title}</b><button type="button" onclick="${closeAction}" class="pm-modal-close" title="\u5173\u95ED" aria-label="\u5173\u95ED">${CLOSE_ICON_SVG}</button></div>
+    <div class="pm-modal-header"><button type="button" onclick="${closeAction}" class="pm-modal-close" title="\u8FD4\u56DE\u5217\u8868" aria-label="\u8FD4\u56DE\u5217\u8868">${BACK_ICON_SVG}</button><b>${title}</b><button type="button" onclick="${closeAction}" class="pm-modal-close" title="\u5173\u95ED" aria-label="\u5173\u95ED">${CLOSE_ICON_SVG}</button></div>
     <div class="pm-modal-scroll pm-group-settings-scroll">
         <div class="pm-cfg-label">\u7FA4\u804A\u540D\u79F0</div>
         <input id="pm-group-name-input" class="pm-cfg-input" placeholder="\u7ED9\u7FA4\u804A\u8D77\u4E2A\u540D\u5B57" value="${escapeAttr(initName)}" maxlength="30">

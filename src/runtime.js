@@ -69,20 +69,56 @@ export function createAutomaticTaskController({ runtime, state, getStorageId, is
     return { isAllowed, arm, disarm, begin, isActive, finish };
 }
 
-export function advanceAutoPokeCounters(configs, persist) {
+function resolveAutoPokeProbability(autoPoke) {
+    if (autoPoke.probability != null) return Math.max(0, Math.min(100, Number(autoPoke.probability) || 0));
+    const interval = Number.parseInt(autoPoke.interval, 10);
+    const probability = Number.isFinite(interval) && interval > 0 ? Math.round(100 / interval) : 30;
+    autoPoke.probability = Math.max(0, Math.min(100, probability));
+    autoPoke.counter = 0;
+    delete autoPoke.interval;
+    return autoPoke.probability;
+}
+
+// 按百分比概率独立投骰子决定每个启用了的会话本轮是否主动发消息。
+// rng 默认 Math.random；测试可注入确定性随机源。
+// counter 现在是 0/1 抽签旗标：抽中置 1；下一次投骰遇到上一轮抽中但还没提交完成的会直接进入执行队列、不重复投骰。
+export function advanceAutoPokeCounters(configs, persist, rng = Math.random) {
     const snapshots = [];
     const toPoke = [];
     for (const [contactName, config] of Object.entries(configs || {})) {
         if (!config?.autoPoke?.enabled) continue;
-        const interval = Math.max(1, Number(config.autoPoke.interval) || 1);
-        const previousCounter = Math.max(0, Number(config.autoPoke.counter) || 0);
-        snapshots.push({ autoPoke: config.autoPoke, previousCounter });
-        config.autoPoke.counter = Math.min(previousCounter + 1, interval);
-        if (config.autoPoke.counter >= interval) toPoke.push(contactName);
+        const autoPoke = config.autoPoke;
+        const snapshot = {
+            autoPoke,
+            previousCounter: autoPoke.counter,
+            previousProbability: autoPoke.probability,
+            hadProbability: Object.prototype.hasOwnProperty.call(autoPoke, 'probability'),
+            previousInterval: autoPoke.interval,
+            hadInterval: Object.prototype.hasOwnProperty.call(autoPoke, 'interval'),
+        };
+        const probability = resolveAutoPokeProbability(autoPoke);
+        const previousCounter = autoPoke.counter === 1 ? 1 : 0;
+        snapshots.push(snapshot);
+        if (previousCounter === 1) {
+            // 沿用上一轮的抽签结果，避免重投导致重复触发；成功后 applyCounter 会清掉旗标
+            toPoke.push(contactName);
+            continue;
+        }
+        const roll = Math.max(0, Math.min(99.9999, (typeof rng === 'function' ? rng() : Math.random()) * 100));
+        if (roll < probability) {
+            autoPoke.counter = 1;
+            toPoke.push(contactName);
+        }
     }
     if (!snapshots.length) return { updated: false, toPoke: [] };
     if (persist()) return { updated: true, toPoke };
-    for (const snapshot of snapshots) snapshot.autoPoke.counter = snapshot.previousCounter;
+    for (const snapshot of snapshots) {
+        snapshot.autoPoke.counter = snapshot.previousCounter;
+        if (snapshot.hadProbability) snapshot.autoPoke.probability = snapshot.previousProbability;
+        else delete snapshot.autoPoke.probability;
+        if (snapshot.hadInterval) snapshot.autoPoke.interval = snapshot.previousInterval;
+        else delete snapshot.autoPoke.interval;
+    }
     return { updated: false, toPoke: [] };
 }
 

@@ -734,27 +734,57 @@ assert.equal(automaticController.arm(), false);
 automaticState.isMinimized = false;
 
 const counterConfigs = {
-    Alice: { autoPoke: { enabled: true, interval: 2, counter: 1 } },
-    Bob: { autoPoke: { enabled: true, interval: 3, counter: 0 } },
-    Carol: { autoPoke: { enabled: false, interval: 1, counter: 0 } },
+    Alice: { autoPoke: { enabled: true, probability: 0, counter: 0 } },
+    Bob: { autoPoke: { enabled: true, probability: 100, counter: 0 } },
+    Carol: { autoPoke: { enabled: false, probability: 50, counter: 0 } },
 };
-assert.deepEqual(advanceAutoPokeCounters(counterConfigs, () => true), {
+assert.deepEqual(advanceAutoPokeCounters(counterConfigs, () => true, () => 0), {
+    updated: true,
+    toPoke: ['Bob'],
+});
+assert.equal(counterConfigs.Alice.autoPoke.counter, 0, '概率 0 永不应该触发');
+assert.equal(counterConfigs.Bob.autoPoke.counter, 1, '概率 100 必触发并写入旗标');
+assert.equal(counterConfigs.Carol.autoPoke.counter, 0, '禁用的会话不能产生抽签旗标');
+const legacyIntervalConfigs = {
+    Alice: { autoPoke: { enabled: true, interval: 5, counter: 4 } },
+};
+assert.deepEqual(advanceAutoPokeCounters(legacyIntervalConfigs, () => true, () => 0.19), {
     updated: true,
     toPoke: ['Alice'],
-});
-assert.equal(counterConfigs.Alice.autoPoke.counter, 2);
-assert.equal(counterConfigs.Bob.autoPoke.counter, 1);
-const failedCounterConfigs = {
-    Alice: { autoPoke: { enabled: true, interval: 2, counter: 1 } },
+}, '旧 interval 配置必须无需打开设置页就能参与自动抽签');
+assert.deepEqual(legacyIntervalConfigs.Alice.autoPoke, {
+    enabled: true, probability: 20, counter: 1,
+}, '旧 interval 配置成功抽签后必须迁移为当前概率配置，不能继续写出旧字段');
+const failedLegacyIntervalConfigs = {
+    Alice: { autoPoke: { enabled: true, interval: 5, counter: 4 } },
 };
-assert.deepEqual(advanceAutoPokeCounters(failedCounterConfigs, () => false), {
+assert.deepEqual(advanceAutoPokeCounters(failedLegacyIntervalConfigs, () => false, () => 0.19), {
     updated: false,
     toPoke: [],
 });
-assert.equal(failedCounterConfigs.Alice.autoPoke.counter, 1);
+assert.deepEqual(failedLegacyIntervalConfigs.Alice.autoPoke, { enabled: true, interval: 5, counter: 4 },
+    '旧 interval 配置迁移持久化失败时必须完整恢复原始数据');
+// 重试语义：上一轮抽中但 commit 没完成，counter=1 残留，下次不应重新投骰
+const retryConfigs = {
+    Alice: { autoPoke: { enabled: true, probability: 0, counter: 1 } },
+};
+assert.deepEqual(advanceAutoPokeCounters(retryConfigs, () => true, () => 0.999), {
+    updated: true,
+    toPoke: ['Alice'],
+});
+assert.equal(retryConfigs.Alice.autoPoke.counter, 1, '遗留旗标必须沿用，不重复投骰');
+
+const failedCounterConfigs = {
+    Alice: { autoPoke: { enabled: true, probability: 100, counter: 0 } },
+};
+assert.deepEqual(advanceAutoPokeCounters(failedCounterConfigs, () => false, () => 0), {
+    updated: false,
+    toPoke: [],
+});
+assert.equal(failedCounterConfigs.Alice.autoPoke.counter, 0, '持久化失败必须把抽签旗标回滚到原值');
 
 const failedCycleConfigs = {
-    Alice: { autoPoke: { enabled: true, interval: 2, counter: 1 } },
+    Alice: { autoPoke: { enabled: true, probability: 100, counter: 0 } },
 };
 const failedCycleRuns = [];
 assert.equal(await runAutoPokeCounterCycle({
@@ -764,13 +794,13 @@ assert.equal(await runAutoPokeCounterCycle({
     run: async contactName => { failedCycleRuns.push(contactName); },
 }), false);
 assert.deepEqual(failedCycleRuns, []);
-assert.equal(failedCycleConfigs.Alice.autoPoke.counter, 1);
+assert.equal(failedCycleConfigs.Alice.autoPoke.counter, 0, '持久化失败的循环不得泄漏已抽中的旗标');
 
 const serialCycleRuns = [];
 assert.equal(await runAutoPokeCounterCycle({
     configs: {
-        Alice: { autoPoke: { enabled: true, interval: 1, counter: 0 } },
-        Bob: { autoPoke: { enabled: true, interval: 1, counter: 0 } },
+        Alice: { autoPoke: { enabled: true, probability: 100, counter: 0 } },
+        Bob: { autoPoke: { enabled: true, probability: 100, counter: 0 } },
     },
     persist: () => true,
     isAllowed: () => true,
@@ -5188,28 +5218,28 @@ try {
         },
     };
     assert.deepEqual(normalizeAutoPoke({ enabled: true, interval: 120, counter: -2 }), {
-        enabled: true, interval: 99, counter: 0,
+        enabled: true, probability: 1, counter: 0,
     });
-    assert.deepEqual(getAutoPokeConfig('story', 'Alice'), { enabled: false, interval: 5, counter: 4 });
-    assert.deepEqual(getAutoPokeConfig('story', '__group_team'), { enabled: true, interval: 8, counter: 2 });
+    assert.deepEqual(getAutoPokeConfig('story', 'Alice'), { enabled: false, probability: 20, counter: 0 });
+    assert.deepEqual(getAutoPokeConfig('story', '__group_team'), { enabled: true, probability: 13, counter: 0 });
 
     let persistedSnapshot = null;
-    assert.equal(commitAutoPokeConfig('story', 'Alice', { enabled: true, interval: 3 }, () => {
+    assert.equal(commitAutoPokeConfig('story', 'Alice', { enabled: true, probability: 35 }, () => {
         persistedSnapshot = structuredClone(window.__pmPokeConfig);
         return true;
     }), true);
-    assert.deepEqual(getAutoPokeConfig('story', 'Alice'), { enabled: true, interval: 3, counter: 3 },
-        '启用自动消息时 counter 必须限制到 interval，避免切换后立刻越界触发');
+    assert.deepEqual(getAutoPokeConfig('story', 'Alice'), { enabled: true, probability: 35, counter: 0 },
+        '启用自动消息时必须清理旧轮次遗留的抽签旗标');
     assert.equal(persistedSnapshot.story.Alice.behavior.messageLength, 'short',
         '共享事务不得覆盖同一会话的其他配置');
 
     const beforeFailedCommit = structuredClone(window.__pmPokeConfig);
-    assert.equal(commitAutoPokeConfig('story', '__group_team', { interval: 2 }, () => false), false);
+    assert.equal(commitAutoPokeConfig('story', '__group_team', { probability: 50 }, () => false), false);
     assert.deepEqual(window.__pmPokeConfig, beforeFailedCommit,
         '群聊自动消息持久化失败时必须完整恢复原快照');
 
     const beforeThrownCommit = structuredClone(window.__pmPokeConfig);
-    assert.equal(commitAutoPokeConfig('story', 'Alice', { interval: 7 }, () => {
+    assert.equal(commitAutoPokeConfig('story', 'Alice', { probability: 75 }, () => {
         throw new Error('persist-threw');
     }), false);
     assert.deepEqual(window.__pmPokeConfig, beforeThrownCommit,
@@ -5222,8 +5252,8 @@ try {
 
     assert.equal(resetAutoPokeCounter('story', 'Legacy', () => true), true);
     assert.deepEqual(window.__pmPokeConfig.story.Legacy, {
-        emojis: ['legacy-set'], autoPoke: { enabled: false, interval: 3, counter: 0 },
-    }, '旧配置缺少 autoPoke 时，手动触发必须补全默认结构且保留其他字段');
+        emojis: ['legacy-set'], autoPoke: { enabled: false, probability: 30, counter: 0 },
+    }, '旧配置缺少 autoPoke 时，手动触发必须补全概率结构且保留其他字段');
 
     const beforeResetFailure = structuredClone(window.__pmPokeConfig.story.__group_team);
     assert.equal(resetAutoPokeCounter('story', '__group_team', () => false), false);
@@ -5273,10 +5303,10 @@ try {
         sessionOverlayHtml = html;
         sessionElements.clear();
         const button = makeFocusableControl();
-        const intervalMatch = html.match(/id="pm-session-auto-poke-interval"[^>]*value="([^"]+)"/);
-        const input = makeFocusableControl(intervalMatch?.[1] || '3');
+        const probabilityMatch = html.match(/id="pm-session-auto-poke-probability"[^>]*value="([^"]+)"/);
+        const input = makeFocusableControl(probabilityMatch?.[1] || '30');
         sessionElements.set('pm-session-auto-poke', button);
-        sessionElements.set('pm-session-auto-poke-interval', input);
+        sessionElements.set('pm-session-auto-poke-probability', input);
         return {};
     };
     globalThis.document = {
@@ -5293,7 +5323,7 @@ try {
         },
     };
     globalThis.window = {
-        __pmPokeConfig: { story: { Alice: { autoPoke: { enabled: false, interval: 3, counter: 1 } } } },
+        __pmPokeConfig: { story: { Alice: { autoPoke: { enabled: false, probability: 30, counter: 1 } } } },
         __pmCurrentConversationInjectionEnabled: () => false,
     };
     installPhoneControlCenter({
@@ -5341,33 +5371,33 @@ try {
 
     storageShouldThrow = false;
     window.__pmShowAutoPokeSettings();
-    const successfulInterval = sessionElements.get('pm-session-auto-poke-interval');
-    successfulInterval.value = '6';
+    const successfulProbability = sessionElements.get('pm-session-auto-poke-probability');
+    successfulProbability.value = '60';
     persistProbe = () => {
-        assert.equal(successfulInterval.disabled, true, '间隔持久化期间必须禁用输入框');
-        assert.equal(successfulInterval.getAttribute('aria-busy'), 'true');
+        assert.equal(successfulProbability.disabled, true, '概率持久化期间必须禁用输入框');
+        assert.equal(successfulProbability.getAttribute('aria-busy'), 'true');
     };
-    assert.equal(window.__pmSaveCurrentAutoPokeInterval(successfulInterval), true);
-    assert.match(sessionOverlayHtml, /已保存：每隔 6 轮无输入触发。/);
-    assert.equal(sessionElements.get('pm-session-auto-poke-interval').focusCalls, 1);
+    assert.equal(window.__pmSaveCurrentAutoPokeProbability(successfulProbability), true);
+    assert.match(sessionOverlayHtml, /已保存：每次有 60% 几率自动发消息。/);
+    assert.equal(sessionElements.get('pm-session-auto-poke-probability').focusCalls, 1);
 
-    const failedInterval = sessionElements.get('pm-session-auto-poke-interval');
-    failedInterval.value = '9';
+    const failedProbability = sessionElements.get('pm-session-auto-poke-probability');
+    failedProbability.value = '90';
     storageShouldThrow = true;
     persistProbe = () => {
-        assert.equal(failedInterval.disabled, true);
-        assert.equal(failedInterval.getAttribute('aria-busy'), 'true');
+        assert.equal(failedProbability.disabled, true);
+        assert.equal(failedProbability.getAttribute('aria-busy'), 'true');
     };
-    assert.equal(window.__pmSaveCurrentAutoPokeInterval(failedInterval), false);
-    assert.match(sessionOverlayHtml, /自动发消息间隔保存失败，已恢复原设置。/);
-    assert.equal(sessionElements.get('pm-session-auto-poke-interval').focusCalls, 1,
-        '间隔保存异常后焦点必须落到重绘后的输入框');
-    assert.match(sessionAlerts.at(-1), /自动发消息间隔保存失败/,
-        '间隔保存异常必须向用户提供可理解的错误反馈');
-    assert.equal(getAutoPokeConfig('story', 'Alice').interval, 6,
-        '间隔保存异常必须恢复上一次成功保存的值');
-    assert.equal(sessionElements.get('pm-session-auto-poke-interval').value, '6',
-        '失败重绘后的输入框必须显示回滚后的真实间隔');
+    assert.equal(window.__pmSaveCurrentAutoPokeProbability(failedProbability), false);
+    assert.match(sessionOverlayHtml, /自动发消息概率保存失败，已恢复原设置。/);
+    assert.equal(sessionElements.get('pm-session-auto-poke-probability').focusCalls, 1,
+        '概率保存异常后焦点必须落到重绘后的输入框');
+    assert.match(sessionAlerts.at(-1), /自动发消息概率保存失败/,
+        '概率保存异常必须向用户提供可理解的错误反馈');
+    assert.equal(getAutoPokeConfig('story', 'Alice').probability, 60,
+        '概率保存异常必须恢复上一次成功保存的值');
+    assert.equal(sessionElements.get('pm-session-auto-poke-probability').value, '60',
+        '失败重绘后的输入框必须显示回滚后的真实概率');
 } finally {
     globalThis.window = previousSessionWindow;
     globalThis.document = previousSessionDocument;

@@ -1801,16 +1801,18 @@ for (const expected of [
   '.pm-model-opt:focus-visible{position:relative;z-index:1;outline:2px solid var(--pm-color-focus-ring);outline-offset:-2px;}',
   '.pm-model-dropdown{position:fixed;z-index:2147483647;background:var(--pm-color-surface-elevated) !important;border:1px solid var(--pm-color-border-default) !important;',
   '.pm-model-search{border:none !important;border-bottom:1px solid var(--pm-color-border-subtle) !important;',
-  ':is(#pm-iphone,#pm-overlay,#pm-overlay-sub,#pm-model-dropdown) :where(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]):not([type="button"]):not([type="submit"]):not([type="reset"]),textarea,select,[contenteditable="true"]){min-width:0;max-width:100%;border:1px solid var(--pm-color-border-default) !important;',
-  ':is(#pm-iphone,#pm-overlay,#pm-overlay-sub,#pm-model-dropdown) :where(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]):not([type="button"]):not([type="submit"]):not([type="reset"]),textarea,select,[contenteditable="true"]):focus{border-color:var(--pm-color-border-default) !important;outline:none !important;box-shadow:none !important;}',
-  ':is(#pm-iphone,#pm-overlay,#pm-overlay-sub,#pm-model-dropdown) :where(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]):not([type="button"]):not([type="submit"]):not([type="reset"]),textarea,select,[contenteditable="true"]):focus-visible{border-color:var(--pm-color-border-default) !important;outline:1px solid var(--pm-r-bg,var(--pm-color-focus-ring)) !important;outline-offset:1px !important;box-shadow:none !important;}',
+  ':is(#pm-iphone,#pm-overlay,#pm-overlay-sub,#pm-model-dropdown) :where(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]):not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="hidden"]):not([type="image"]),textarea,select,[contenteditable="true"]){min-width:0;max-width:100%;border:1px solid var(--pm-color-border-default) !important;',
+  ':is(#pm-iphone,#pm-overlay,#pm-overlay-sub,#pm-model-dropdown) :where(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]):not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="hidden"]):not([type="image"]),textarea,select,[contenteditable="true"]):focus{border-color:var(--pm-color-border-default) !important;outline:none !important;box-shadow:none !important;}',
+  ':is(#pm-iphone,#pm-overlay,#pm-overlay-sub,#pm-model-dropdown) :where(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]):not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="hidden"]):not([type="image"]),textarea,select,[contenteditable="true"]):focus-visible{border-color:var(--pm-color-border-default) !important;outline:1px solid var(--pm-r-bg,var(--pm-color-focus-ring)) !important;outline-offset:1px !important;box-shadow:none !important;}',
   ':is(#pm-iphone,#pm-overlay,#pm-overlay-sub,#pm-model-dropdown) :where(.pm-input,.pm-scene-composer textarea){border:0 !important;}',
   ':is(#pm-iphone,#pm-overlay,#pm-overlay-sub,#pm-model-dropdown) .pm-model-search{border:0 !important;border-bottom:1px solid var(--pm-color-border-subtle) !important;border-radius:0;}',
-  ':is(#pm-iphone,#pm-overlay,#pm-overlay-sub,#pm-model-dropdown) :where(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]):not([type="button"]):not([type="submit"]):not([type="reset"]),textarea,select,[contenteditable="true"]):disabled{opacity:.55 !important;cursor:not-allowed;}',
+  ':is(#pm-iphone,#pm-overlay,#pm-overlay-sub,#pm-model-dropdown) :where(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]):not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="hidden"]):not([type="image"]),textarea,select,[contenteditable="true"]):disabled{opacity:.55 !important;cursor:not-allowed;}',
   ':-webkit-autofill{box-shadow:0 0 0 1000px var(--pm-color-surface-input) inset !important;',
-  '#pm-iphone :is(.pm-scene-label textarea,.pm-scene-prompt textarea,.pm-calendar-generation-rule,.pm-calendar-month-panel input){border-color:var(--pm-color-border-default) !important;background:var(--pm-color-surface-input) !important;box-shadow:none !important;}',
-  '#pm-iphone .pm-scene-composer textarea{border:1px solid var(--pm-color-border-default) !important;}',
-  '#pm-overlay :is(.pm-cfg-input,textarea.pm-cfg-input){border-color:var(--pm-color-border-default) !important;background:var(--pm-color-surface-input) !important;box-shadow:none !important;}',
+  '#pm-iphone :is(.pm-scene-label textarea,.pm-scene-prompt :is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]):not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="hidden"]):not([type="image"]),textarea),.pm-scene-composer textarea,.pm-calendar-management :is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]):not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="hidden"]):not([type="image"]),textarea,select),.pm-calendar-entry-dialog :is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]):not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="hidden"]):not([type="image"]),textarea,select),.pm-recipe-meal-dialog :is(textarea,select),.pm-danmaku-input,.pm-scene-comment-composer input),:is(#pm-overlay,#pm-overlay-sub) .pm-cfg-input{box-sizing:border-box !important;border:1px solid var(--pm-color-border-default) !important;border-radius:10px !important;background-color:var(--pm-color-surface-input) !important;',
+  '#pm-iphone .pm-scene-composer textarea{padding:8px 14px !important;resize:none !important;}',
+  '#pm-iphone .pm-calendar-generation-rule{padding:9px 10px !important;resize:vertical !important;}',
+  '#pm-iphone .pm-calendar-management :is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]):not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="hidden"]):not([type="image"]),select){padding:7px !important;}',
+  ':is(#pm-overlay,#pm-overlay-sub) .pm-cfg-input{padding:9px 12px !important;}',
   '.pm-emoji-action,.pm-emoji-upload{border:1px solid var(--pm-r-bg,#007aff);border-radius:8px;background:color-mix(in srgb,var(--pm-r-bg,#007aff) 10%,var(--pm-color-surface-elevated));color:var(--pm-r-bg,#007aff);',
   '.pm-emoji-action:focus-visible,.pm-emoji-upload:focus-visible,.pm-emoji-image-delete:focus-visible{outline:1px solid var(--pm-r-bg,var(--pm-color-focus-ring));outline-offset:2px;}',
   '.pm-model-opt{display:block;width:100%;padding:8px 12px;font:inherit;font-size:13px;text-align:left;background:var(--pm-color-surface-elevated);color:var(--pm-color-text-primary);',
@@ -2185,7 +2187,14 @@ for (const expected of [
   'onclick="window.__pmCloseOverlay()"', 'pm-contact-settings-title', 'pm-modal-add pm-contact-settings-actions',
   'onclick="window.__pmSaveContactConfig(',
   'window.__pmSaveAndCloseContactConfig = contactName => window.__pmSaveContactConfig(contactName)',
+  'BACK_ICON_SVG', 'function showContactConfig(contactName, returnToMembers = false)',
+  "returnToMembers ? 'window.__pmShowConversationSettings()' : 'window.__pmCloseOverlay()'",
+  '<b>成员聊天行为</b>', 'title="返回" aria-label="返回">${BACK_ICON_SVG}</button>',
 ]) requireText('phone-chat-poke.js', phoneChatPokeCode, expected);
+for (const expected of [
+  'BACK_ICON_SVG', 'const closeAction = "window.__pmShowList()";',
+  'title="返回列表" aria-label="返回列表">${BACK_ICON_SVG}</button>',
+]) requireText('phone-directory.js group settings back action', directoryCode, expected);
 if (!/pm-contact-settings-scroll[\s\S]*pm-modal-add pm-contact-settings-actions[\s\S]*保存角色设置[\s\S]*<\/div>\s*<\/div>\s*<\/div>`/.test(showContactConfigSource)) {
   failures.push('phone-chat-poke.js: character settings save action must remain inside the scroll content');
 }
@@ -2321,6 +2330,7 @@ for (const expected of [
 for (const expected of [
   'runAutoPokeCounterCycle({',
   'run: contactName => window.__pmAutoPoke(contactName)',
+  "'这次会自动发一条。'", "'这次没有自动发消息。'",
 ]) requireText('phone-chat.js', phoneChatCode, expected);
 if (phoneChatCode.includes('config.autoPoke.counter = 0')) {
   failures.push('phone-chat.js: threshold detection must not clear auto-poke counters before a successful commit');
@@ -2336,7 +2346,18 @@ for (const expected of [
   'resetAutoPokeCounter(id, contactName)',
   'resetAutoPokeCounter(storageId, saveKey)',
 ]) requireText('phone-chat-poke.js', phoneChatPokeCode, expected);
-requireText('auto-poke-config.js', sourceModuleByName.get('auto-poke-config.js')?.code || '', 'export function resetAutoPokeCounter');
+for (const expected of [
+  'export function resetAutoPokeCounter', 'probability: 30', 'migrateIntervalToProbability',
+  "if (nextAutoPoke.enabled && patch?.enabled === true) nextAutoPoke.counter = 0",
+]) requireText('auto-poke-config.js', sourceModuleByName.get('auto-poke-config.js')?.code || '', expected);
+for (const expected of [
+  'advanceAutoPokeCounters(configs, persist, rng = Math.random)',
+  'if (roll < probability)', 'autoPoke.counter = 1',
+]) requireText('runtime.js probability auto-poke', runtimeCode, expected);
+for (const expected of [
+  'pm-session-auto-poke-probability', '__pmSaveCurrentAutoPokeProbability',
+  '每次有', '几率自动发消息',
+]) requireText('phone-control-center.js probability auto-poke', controlCenterCode, expected);
 for (const code of [phoneChatPokeCode, directoryCode]) {
   if (code.includes('Math.min(oldCounter, interval - 1)')) failures.push('auto-poke settings: failed threshold must not be truncated while saving settings');
 }

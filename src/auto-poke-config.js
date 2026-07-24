@@ -1,14 +1,33 @@
 import { savePokeConfig } from './storage.js';
 
-const DEFAULT_AUTO_POKE = Object.freeze({ enabled: false, interval: 3, counter: 0 });
+// 自动消息配置：enabled + probability（百分比 0-100，整数）+ counter（0/1 抽签旗标）
+const DEFAULT_AUTO_POKE = Object.freeze({ enabled: false, probability: 30, counter: 0 });
 const clone = value => JSON.parse(JSON.stringify(value));
 
+const clampProbability = raw => {
+    const num = Number(raw);
+    if (!Number.isFinite(num)) return DEFAULT_AUTO_POKE.probability;
+    return Math.max(0, Math.min(100, Math.round(num)));
+};
+
+// 兼容旧字段 interval（"每 N 轮触发一次"）：折算为概率，round(100/N)。
+// 仅在新字段 probability 缺失时使用，读后落盘即升级；旧字段不再写出。
+const migrateIntervalToProbability = interval => {
+    const num = Number.parseInt(interval, 10);
+    if (!Number.isFinite(num) || num <= 0) return DEFAULT_AUTO_POKE.probability;
+    return clampProbability(100 / num);
+};
+
+const normalizeCounter = value => (value === 1 ? 1 : 0);
+
 export function normalizeAutoPoke(value) {
-    const interval = Math.max(1, Math.min(99, Number.parseInt(value?.interval, 10) || DEFAULT_AUTO_POKE.interval));
-    const counter = Math.max(0, Number.parseInt(value?.counter, 10) || 0);
+    const counter = normalizeCounter(value?.counter);
+    const probability = value?.probability != null
+        ? clampProbability(value.probability)
+        : migrateIntervalToProbability(value?.interval);
     return {
         enabled: value?.enabled === true,
-        interval,
+        probability,
         counter,
     };
 }
@@ -27,7 +46,8 @@ export function commitAutoPokeConfig(storageId, targetKey, patch, persist = save
     if (!window.__pmPokeConfig[storageId]) window.__pmPokeConfig[storageId] = {};
     const previous = window.__pmPokeConfig[storageId][targetKey] || {};
     const nextAutoPoke = normalizeAutoPoke({ ...previous.autoPoke, ...patch });
-    if (nextAutoPoke.enabled) nextAutoPoke.counter = Math.min(nextAutoPoke.counter, nextAutoPoke.interval);
+    // probability 模型下 counter 是 0/1 二值旗标：切换启用时清掉残留旗标，避免上一轮抽签"复活"
+    if (nextAutoPoke.enabled && patch?.enabled === true) nextAutoPoke.counter = 0;
     window.__pmPokeConfig[storageId][targetKey] = {
         ...previous,
         autoPoke: nextAutoPoke,

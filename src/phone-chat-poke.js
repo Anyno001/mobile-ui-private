@@ -11,7 +11,7 @@ import { createHistoryWindow } from './history-window.js';
 import { cleanResponse, splitToSentences } from './prompts.js';
 import { escapeAttr, escapeHtml, safeJS } from './ui.js';
 import { getAutoPokeConfig, resetAutoPokeCounter } from './auto-poke-config.js';
-import { CLOSE_ICON_SVG } from './icons.js';
+import { BACK_ICON_SVG, CLOSE_ICON_SVG } from './icons.js';
 import {
     getEmojiPrompt, getWordyPrompt, parseGroupResponse,
 } from './messaging.js';
@@ -120,8 +120,7 @@ export function installPhoneChatPoke(state, deps) {
             if (!isAutomaticRequestActive()) return false;
             const autoPoke = window.__pmPokeConfig[id]?.[contactName]?.autoPoke;
             if (!autoPoke) return false;
-            const interval = Math.max(1, Number(autoPoke.interval) || 1);
-            const previousCounter = Math.max(0, Number(autoPoke.counter) || 0);
+            const previousCounter = autoPoke.counter === 1 ? 1 : 0;
             const previousHistory = window.__pmHistories[id]?.[contactName];
             const historyWindow = createHistoryWindow(targetHistory, SAVE_LIMIT);
             const historyIndex = historyWindow.toWindowIndex(targetHistory.length - 1);
@@ -136,7 +135,7 @@ export function installPhoneChatPoke(state, deps) {
                     else window.__pmHistories[id][contactName] = previousHistory;
                 },
                 persistHistory: () => saveHistoriesStrict(),
-                applyCounter: () => { autoPoke.counter = Math.max(0, previousCounter - interval); },
+                applyCounter: () => { autoPoke.counter = 0; },
                 restoreCounter: () => { autoPoke.counter = previousCounter; },
                 persistCounter: savePokeConfig,
             });
@@ -191,7 +190,7 @@ export function installPhoneChatPoke(state, deps) {
         return true;
     };
 
-    function showContactConfig(contactName) {
+    function showContactConfig(contactName, returnToMembers = false) {
         const id = getStorageId();
         const config = window.__pmPokeConfig[id]?.[contactName] || {};
         const behavior = getCharacterBehavior(window.__pmCharacterBehavior, id, contactName);
@@ -221,7 +220,7 @@ export function installPhoneChatPoke(state, deps) {
         makeOverlay(`
     <div class="pm-modal pm-modal-wide">
     <div class="pm-modal-header">
-        <span></span>
+        <button type="button" onclick="${returnToMembers ? 'window.__pmShowConversationSettings()' : 'window.__pmCloseOverlay()'}" class="pm-modal-close" title="返回" aria-label="返回">${BACK_ICON_SVG}</button>
         <b class="pm-contact-settings-title" title="${escapeAttr(contactName)}">${escapeHtml(contactName)}</b>
         <button type="button" onclick="window.__pmCloseOverlay()" class="pm-modal-close" title="关闭" aria-label="关闭">${CLOSE_ICON_SVG}</button>
     </div>
@@ -260,7 +259,7 @@ export function installPhoneChatPoke(state, deps) {
     </div>`);
     }
 
-    window.__pmShowCharacterBehavior = contactName => showContactConfig(contactName);
+    window.__pmShowCharacterBehavior = contactName => showContactConfig(contactName, true);
     window.__pmShowConversationSettings = () => {
         if (!state.isGroupChat) {
             showContactConfig(state.currentPersona);
@@ -269,7 +268,7 @@ export function installPhoneChatPoke(state, deps) {
         const members = state.groupMembers.slice();
         makeOverlay(`
     <div class="pm-modal pm-modal-wide">
-      <div class="pm-modal-header"><span></span><b>成员聊天行为</b><button type="button" onclick="window.__pmCloseOverlay()" class="pm-modal-close" title="关闭" aria-label="关闭">${CLOSE_ICON_SVG}</button></div>
+      <div class="pm-modal-header"><button type="button" onclick="window.__pmCloseOverlay()" class="pm-modal-close" title="返回" aria-label="返回">${BACK_ICON_SVG}</button><b>成员聊天行为</b><button type="button" onclick="window.__pmCloseOverlay()" class="pm-modal-close" title="关闭" aria-label="关闭">${CLOSE_ICON_SVG}</button></div>
       <div class="pm-member-behavior-list">
         ${members.map(name => `<button onclick="window.__pmShowCharacterBehavior('${safeJS(name)}')">
           <b>${escapeHtml(name)}</b><span>私聊风格、群聊风格与消息频率</span>

@@ -151,10 +151,10 @@ export function installPhoneControlCenter(state, deps) {
     <div id="pm-session-auto-poke-status" class="pm-session-behavior-status" role="status" aria-live="polite" ${statusMessage ? '' : 'hidden'}>${escapeHtml(statusMessage)}</div>
     <section class="pm-session-behavior-section">
       <button id="pm-session-auto-poke" type="button" class="pm-session-behavior-toggle" role="checkbox" aria-checked="${autoPoke.enabled}" onclick="window.__pmToggleCurrentAutoPoke(this)">
-        ${CHAT_ICON_SVG}<span><b>允许当前会话主动发消息</b><small>连续多轮没有输入时触发。</small></span><i class="pm-control-toggle ${autoPoke.enabled ? 'is-checked' : ''}" aria-hidden="true"></i>
+        ${CHAT_ICON_SVG}<span><b>允许当前会话主动发消息</b><small>聊天停下来时，手机有机会自己发一句。</small></span><i class="pm-control-toggle ${autoPoke.enabled ? 'is-checked' : ''}" aria-hidden="true"></i>
       </button>
-      <label class="pm-session-auto-poke-interval">每隔 <input id="pm-session-auto-poke-interval" type="number" min="1" max="99" value="${autoPoke.interval}" ${autoPoke.enabled ? '' : 'disabled'} onchange="window.__pmSaveCurrentAutoPokeInterval(this)"> 轮无输入触发</label>
-      <p id="pm-session-auto-poke-counter">当前计数：${autoPoke.counter} / ${autoPoke.interval}</p>
+      <label class="pm-session-auto-poke-probability">每次有 <input id="pm-session-auto-poke-probability" type="number" min="0" max="100" step="1" value="${autoPoke.probability}" ${autoPoke.enabled ? '' : 'disabled'} onchange="window.__pmSaveCurrentAutoPokeProbability(this)"> % 几率自动发消息</label>
+      <p id="pm-session-auto-poke-counter">${autoPoke.counter === 1 ? '这次会自动发一条。' : '这次没有自动发消息。'}</p>
     </section>
   </div>
 </div>`);
@@ -180,20 +180,21 @@ export function installPhoneControlCenter(state, deps) {
         return true;
     };
 
-    window.__pmSaveCurrentAutoPokeInterval = input => {
+    window.__pmSaveCurrentAutoPokeProbability = input => {
         const target = getTarget();
         if (!target || !input) return false;
-        const interval = Math.max(1, Math.min(99, Number.parseInt(input.value, 10) || 3));
+        const parsedProbability = Number(input.value);
+        const probability = Number.isFinite(parsedProbability) ? Math.max(0, Math.min(100, Math.round(parsedProbability))) : 30;
         input.disabled = true;
         input.setAttribute('aria-busy', 'true');
-        if (!commitAutoPokeConfig(target.storageId, target.saveKey, { interval })) {
-            alert('自动发消息间隔保存失败：浏览器存储不可用或空间不足。');
-            window.__pmShowAutoPokeSettings('自动发消息间隔保存失败，已恢复原设置。');
-            document.getElementById('pm-session-auto-poke-interval')?.focus({ preventScroll: true });
+        if (!commitAutoPokeConfig(target.storageId, target.saveKey, { probability })) {
+            alert('自动发消息概率保存失败：浏览器存储不可用或空间不足。');
+            window.__pmShowAutoPokeSettings('自动发消息概率保存失败，已恢复原设置。');
+            document.getElementById('pm-session-auto-poke-probability')?.focus({ preventScroll: true });
             return false;
         }
-        window.__pmShowAutoPokeSettings(`已保存：每隔 ${interval} 轮无输入触发。`);
-        document.getElementById('pm-session-auto-poke-interval')?.focus({ preventScroll: true });
+        window.__pmShowAutoPokeSettings(`已保存：每次有 ${probability}% 几率自动发消息。`);
+        document.getElementById('pm-session-auto-poke-probability')?.focus({ preventScroll: true });
         return true;
     };
 

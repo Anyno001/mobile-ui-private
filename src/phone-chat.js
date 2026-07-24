@@ -394,7 +394,9 @@ export function installPhoneChat(state, deps) {
                 const counterEl = document.getElementById('pm-session-auto-poke-counter');
                 const currentKey = state.isGroupChat ? state.currentGroupKey : state.currentPersona;
                 const autoPoke = currentKey ? configs[currentKey]?.autoPoke : null;
-                if (counterEl && autoPoke) counterEl.textContent = `当前计数：${autoPoke.counter} / ${autoPoke.interval}`;
+                if (counterEl && autoPoke) counterEl.textContent = autoPoke.counter === 1
+                    ? '这次会自动发一条。'
+                    : '这次没有自动发消息。';
             },
         });
     };
