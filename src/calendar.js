@@ -100,6 +100,8 @@ export function installCalendar(state, deps) {
     const render = (storageId = getStorageId()) => {
         const container = state.phoneWindow?.querySelector('.pm-calendar-page');
         if (!container) return false;
+        const previousShell = container.querySelector?.('.pm-calendar-shell');
+        const scrollTop = previousShell?.scrollTop;
         container.innerHTML = renderCalendarPageHtml(
             scope(storageId), occasions(storageId), runtime.statusByStorage.get(storageId) || '',
             runtime.holidayStore, runtime.weatherStore,
@@ -110,6 +112,8 @@ export function installCalendar(state, deps) {
             },
             recipeScopeFor(runtime.recipeStore, storageId),
         );
+        const nextShell = container.querySelector?.('.pm-calendar-shell');
+        if (Number.isFinite(scrollTop) && nextShell) nextShell.scrollTop = scrollTop;
         return true;
     };
     const rerender = storageId => { if (getStorageId() === storageId) render(storageId); };

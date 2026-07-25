@@ -1159,7 +1159,18 @@ try {
         version: 1,
         scopes: { [storageA]: { occasions: [editorOccasion] } },
     }));
-    const container = { innerHTML: '' };
+    let calendarMarkup = '';
+    let calendarShell = { scrollTop: 0 };
+    const container = {
+        get innerHTML() { return calendarMarkup; },
+        set innerHTML(value) {
+            calendarMarkup = value;
+            calendarShell = { scrollTop: 0 };
+        },
+        querySelector(selector) {
+            return selector === '.pm-calendar-shell' ? calendarShell : null;
+        },
+    };
     const statusNode = { textContent: '' };
     const phoneWindow = {
         querySelector(selector) {
@@ -1480,8 +1491,11 @@ try {
     countryControl.value = 'US';
     await deps.handleCalendarAction({ dataset: { action: 'calendar-holiday-country' }, value: 'US' }, app);
     cycleForm.elements.periodStartDay.value = '1';
+    calendarShell.scrollTop = 173;
     await deps.handleCalendarAction({ dataset: { action: 'calendar-cycle-save' } }, app);
     assert.equal(statusNode.textContent, '生理期提示已保存。');
+    assert.equal(calendarShell.scrollTop, 173,
+        '保存生理期重新渲染后必须保留设置区滚动位置，不能让详情和表单看似消失');
     const cycleStatusTimer = statusTimers.at(-1);
     assert.equal(cycleStatusTimer.delay, 4000, '普通保存状态应使用短时自动消退');
     assert.doesNotMatch(statusNode.textContent, /预测仅供提醒|不能用于避孕判断|不能作为避孕依据/);

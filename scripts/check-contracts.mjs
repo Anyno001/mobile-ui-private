@@ -1918,6 +1918,7 @@ for (const expected of [
   '.pm-calendar-month-panel{margin:0 12px 10px;padding:10px;border:1px solid var(--pm-color-border-subtle);border-radius:14px',
   '.pm-calendar-panel-section{display:flex;flex-direction:column;gap:6px;padding:8px 0}',
   '.pm-calendar-month-panel-actions{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;padding-top:8px}',
+  '.pm-calendar-shell>*{flex:0 0 auto}',
   '.pm-calendar-selected-detail.is-status-card{overflow:hidden;padding:0;background:color-mix(in srgb,var(--pm-calendar-accent) 8%,var(--pm-color-surface-card))}',
   '.pm-calendar-status-card{position:relative;isolation:isolate;min-height:126px;padding:15px 16px;overflow:hidden}',
   '.pm-calendar-status-value{font-size:30px;line-height:1;font-weight:850;font-variant-numeric:tabular-nums',
@@ -2241,9 +2242,15 @@ requireText('style.css selection mode quote exclusion', css, '.pm-msg-list.is-se
 requireText('style.css title arrow isolation', css, '.pm-name-chevron{position:absolute;left:100%;top:50%');
 requireCssDeclarations(cssRules, '.pm-contact-switcher', { 'box-shadow': 'none' });
 requireCssDeclarations(cssRules, '.pm-contact-switcher-row', { 'grid-template-columns': '22px minmax(0,1fr) 40px 40px', 'column-gap': '4px' });
-requireCssDeclarations(cssRules, '.pm-contact-switcher-current', { 'grid-column': '1', 'justify-self': 'center' });
-requireCssDeclarations(cssRules, '#pm-overlay[data-theme="dark"] .pm-global-setting small', { color: 'var(--pm-color-text-primary)' });
+requireCssDeclarations(cssRules, '.pm-contact-switcher-current', {
+  'grid-column': '1', 'justify-self': 'center', transform: 'translateX(2px)',
+});
+requireCssDeclarations(cssRules, '#pm-overlay[data-theme="dark"] .pm-global-setting small', {
+  color: 'var(--pm-color-text-primary)!important',
+});
 requireText('settings-templates.js wordy-limit copy', sourceModuleByName.get('settings-templates.js')?.code || '', '除话痨人设外，每条消息不超过 35 字');
+requireText('calendar.js preserves calendar scroll position on rerender', sourceModuleByName.get('calendar.js')?.code || '', "const previousShell = container.querySelector?.('.pm-calendar-shell');");
+requireText('calendar.js restores calendar scroll position on rerender', sourceModuleByName.get('calendar.js')?.code || '', 'if (Number.isFinite(scrollTop) && nextShell) nextShell.scrollTop = scrollTop;');
 requireCssDeclarations(cssRules, '.pm-contact-settings-actions', { 'border-top': '0 !important' });
 requireCssDeclarations(cssRules, '#pm-overlay .pm-contact-settings-scroll textarea.pm-cfg-input', {
   width: '100% !important', 'min-height': '58px !important', resize: 'vertical !important',

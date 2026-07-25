@@ -3323,6 +3323,8 @@ ${userPrompt}` : userPrompt;
     const render = (storageId = getStorageId2()) => {
       const container = state.phoneWindow?.querySelector(".pm-calendar-page");
       if (!container) return false;
+      const previousShell = container.querySelector?.(".pm-calendar-shell");
+      const scrollTop = previousShell?.scrollTop;
       container.innerHTML = renderCalendarPageHtml(
         scope(storageId),
         occasions(storageId),
@@ -3337,6 +3339,8 @@ ${userPrompt}` : userPrompt;
         },
         recipeScopeFor(runtime.recipeStore, storageId)
       );
+      const nextShell = container.querySelector?.(".pm-calendar-shell");
+      if (Number.isFinite(scrollTop) && nextShell) nextShell.scrollTop = scrollTop;
       return true;
     };
     const rerender = (storageId) => {
