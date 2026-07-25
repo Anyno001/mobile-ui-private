@@ -1521,7 +1521,9 @@ for (const expected of [
   "period: { label: '经期'", "ovulatory: { label: '易孕期'", 'resolveWeatherForDate(weatherStore, date)',
   'CYCLE_PERIOD_ICON_SVG', 'CYCLE_FERTILE_ICON_SVG', 'WEATHER_ICON_SVG', 'LOCATION_ICON_SVG', 'WEATHER_PARTLY_CLOUDY_ICON_SVG',
   'weatherStatusIcon', 'statusCard', 'pm-calendar-status-card', 'pm-calendar-status-watermark', 'pm-calendar-panel-section',
-  'pm-calendar-status-relative', 'value: `${resolved.day.tempMin} - ${resolved.day.tempMax} ℃`', "'天气记录'", '健康记录', 'statusDate',
+  'pm-calendar-status-relative', 'data-cycle-phase="${escapeAttr(phase)}"', 'value: `${resolved.day.tempMin} - ${resolved.day.tempMax} ℃`', "'天气记录'", '健康记录',
+  'detailDate.format(parsed)}${detailWeekday.format(parsed)',
+  'meta: `${relativeLabel ? `<span class="pm-calendar-status-relative">${escapeHtml(relativeLabel)}</span> ` : \'\'}健康记录`',
   '当前故事日期', 'placeholder="例如 3726-08-17"', '可直接输入日期，或跳转月份后点击下方日期。',
   '开启后供正文生成读取；设置按当前会话独立保存。', '预报外日期使用气候推演', '无法推演',
   'DEFAULT_CALENDAR_GENERATION_RULE', 'DEFAULT_RECIPE_GENERATION_RULE', 'data-calendar-generation-rule', 'data-recipe-generation-rule',
@@ -1820,6 +1822,7 @@ for (const expected of [
   '--pm-color-accent:', '--pm-color-focus-ring:', '--pm-color-success:', '--pm-color-warning:', '--pm-color-danger:', '--pm-color-overlay:', '--pm-color-on-dark:', '--pm-color-on-light:',
   '.pm-settings-home button{border:1px solid var(--pm-color-border-default);border-radius:14px;background:var(--pm-color-surface-card);color:var(--pm-color-text-primary)',
   '.pm-global-setting{border:1px solid var(--pm-color-border-default);border-radius:14px;background:var(--pm-color-surface-card);color:var(--pm-color-text-primary)',
+  '.pm-global-setting small{font-size:11px;line-height:1.5;color:var(--pm-color-text-tertiary)}',
   '.pm-scene-header{display:grid;grid-template-columns:44px 1fr 44px;align-items:center;padding:11px 10px;background:var(--pm-color-surface-card);border-bottom:1px solid var(--pm-color-border-subtle)}',
   '.pm-scene-comments{margin-top:9px;background:var(--pm-color-surface-elevated)',
   '.pm-scene-comment-composer input{flex:1;min-width:0;border:1px solid var(--pm-color-border-default);border-radius:10px;padding:8px;background:var(--pm-color-surface-input);color:var(--pm-color-text-primary)}',
@@ -1921,11 +1924,15 @@ for (const expected of [
   '.pm-calendar-shell>*{flex:0 0 auto}',
   '.pm-calendar-selected-detail.is-status-card{overflow:hidden;padding:0;background:color-mix(in srgb,var(--pm-calendar-accent) 8%,var(--pm-color-surface-card))}',
   '.pm-calendar-status-card{position:relative;isolation:isolate;min-height:126px;padding:15px 16px;overflow:hidden}',
-  '.pm-calendar-status-meta{display:flex;align-items:center;min-width:0;gap:4px;color:var(--pm-color-text-secondary)',
-  '.pm-calendar-status-relative{color:var(--pm-calendar-accent);font-weight:750}',
-  '.pm-calendar-status-value{color:color-mix(in srgb,var(--pm-color-text-primary) 86%,var(--pm-calendar-accent));font-family:ui-rounded',
-  '.pm-calendar-status-content time{color:var(--pm-color-text-tertiary);font-size:11px;line-height:1.3;font-weight:600',
-  '.pm-calendar-status-watermark{position:absolute;z-index:0;top:50%;right:-32px;width:112px;height:96px',
+  '.pm-calendar-status-meta{display:flex;align-items:center;min-width:0;gap:4px;color:var(--pm-color-text-primary);font-size:13px;font-weight:750;line-height:1.2;white-space:nowrap}',
+  '.pm-calendar-status-relative{color:var(--pm-calendar-accent);font-size:17px;line-height:1.1;font-weight:850;white-space:nowrap}',
+  '.pm-calendar-status-value{color:color-mix(in srgb,var(--pm-color-text-primary) 74%,var(--pm-calendar-accent));font-family:ui-rounded',
+  '.pm-calendar-status-card-weather .pm-calendar-status-value{font-family:"Iowan Old Style","Palatino Linotype","Book Antiqua","STSong","Songti SC",serif}',
+  '.pm-calendar-status-card-cycle .pm-calendar-status-value{letter-spacing:.12em}',
+  '.pm-calendar-status-content time{color:var(--pm-color-text-tertiary);font-size:10px;line-height:1.3;font-weight:400}',
+  '.pm-calendar-status-watermark{position:absolute;z-index:0;top:50%;right:-64px;width:202px;height:173px',
+  '.pm-calendar-status-watermark svg{width:173px;height:173px;stroke-width:1.55}',
+  '.pm-calendar-status-card-cycle[data-cycle-phase="period"] .pm-calendar-status-watermark{right:-82px}',
   '-webkit-mask-image:linear-gradient(90deg,transparent 0%,#000 44%)',
   '.pm-calendar-shell[data-calendar-view-mode="recipe"]{--pm-calendar-accent:#c77a32}',
   '.pm-calendar-day.has-recipe>span{color:var(--pm-calendar-accent)}',
@@ -1976,6 +1983,9 @@ requireCssDeclarations(cssRules, '.pm-name-edit:hover', {
 });
 requireCssDeclarations(cssRules, '.pm-name-edit:active', {
   background: 'transparent !important', color: 'var(--pm-r-txt,#fff) !important',
+});
+requireCssDeclarations(cssRules, '.pm-name-edit:active svg', {
+  color: 'var(--pm-r-txt,#fff) !important', stroke: 'currentColor',
 });
 requireCssDeclarations(cssRules, '.pm-name-edit::before', {
   width: '24px', height: '24px', 'border-radius': '50%', background: 'transparent',
@@ -2253,10 +2263,7 @@ requireText('style.css title arrow isolation', css, '.pm-name-chevron{position:a
 requireCssDeclarations(cssRules, '.pm-contact-switcher', { 'box-shadow': 'none' });
 requireCssDeclarations(cssRules, '.pm-contact-switcher-row', { 'grid-template-columns': '22px minmax(0,1fr) 40px 40px', 'column-gap': '4px' });
 requireCssDeclarations(cssRules, '.pm-contact-switcher-current', {
-  'grid-column': '1', 'justify-self': 'center', transform: 'translateX(4px)',
-});
-requireCssDeclarations(cssRules, '#pm-overlay[data-theme="dark"] .pm-global-setting small', {
-  color: 'var(--pm-color-text-primary)!important',
+  'grid-column': '1', 'justify-self': 'center', transform: 'translate(6px,1.5px)',
 });
 requireText('settings-templates.js wordy-limit copy', sourceModuleByName.get('settings-templates.js')?.code || '', '除话痨人设外，每条消息不超过 35 字');
 requireText('calendar.js preserves calendar scroll position on rerender', sourceModuleByName.get('calendar.js')?.code || '', "const previousShell = container.querySelector?.('.pm-calendar-shell');");

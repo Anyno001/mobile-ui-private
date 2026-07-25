@@ -2658,7 +2658,6 @@ ${userPrompt}` : userPrompt;
   // src/calendar-view.js
   var detailDate = new Intl.DateTimeFormat("zh-CN", { month: "long", day: "numeric" });
   var detailWeekday = new Intl.DateTimeFormat("zh-CN", { weekday: "long" });
-  var statusDate = new Intl.DateTimeFormat("zh-CN", { year: "numeric", month: "long", day: "numeric", weekday: "long" });
   var CYCLE_DETAILS = {
     period: { label: "\u7ECF\u671F", icon: CYCLE_PERIOD_ICON_SVG },
     ovulatory: { label: "\u6613\u5B55\u671F", icon: CYCLE_FERTILE_ICON_SVG }
@@ -2697,13 +2696,13 @@ ${userPrompt}` : userPrompt;
     if ([95, 96, 99].includes(weatherCode)) return WEATHER_STORM_ICON_SVG;
     return WEATHER_ICON_SVG;
   }
-  function statusCard({ meta, value, icon: icon2, parsed, date, kind }) {
-    return `<div class="pm-calendar-status-card pm-calendar-status-card-${kind}">
+  function statusCard({ meta, value, icon: icon2, parsed, date, kind, phase = "" }) {
+    return `<div class="pm-calendar-status-card pm-calendar-status-card-${kind}"${phase ? ` data-cycle-phase="${escapeAttr(phase)}"` : ""}>
         <span class="pm-calendar-status-watermark" aria-hidden="true">${icon2}</span>
         <div class="pm-calendar-status-content">
             <div class="pm-calendar-status-meta">${meta}</div>
             <b class="pm-calendar-status-value">${value}</b>
-            <time datetime="${escapeAttr(date)}">${escapeHtml(statusDate.format(parsed))}</time>
+            <time datetime="${escapeAttr(date)}">${escapeHtml(`${detailDate.format(parsed)}${detailWeekday.format(parsed)}`)}</time>
         </div>
     </div>`;
   }
@@ -2730,10 +2729,11 @@ ${userPrompt}` : userPrompt;
     if (!detail) return { content: "", isCard: false };
     return { content: statusCard({
       kind: "cycle",
+      phase: prediction.phase,
       parsed,
       date,
       icon: detail.icon,
-      meta: `${relativeLabel ? `<span class="pm-calendar-status-relative">${escapeHtml(relativeLabel)}</span> \xB7 ` : ""}\u5065\u5EB7\u8BB0\u5F55`,
+      meta: `${relativeLabel ? `<span class="pm-calendar-status-relative">${escapeHtml(relativeLabel)}</span> ` : ""}\u5065\u5EB7\u8BB0\u5F55`,
       value: detail.label
     }), isCard: true };
   }

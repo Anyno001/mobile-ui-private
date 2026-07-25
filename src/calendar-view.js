@@ -14,7 +14,6 @@ import { escapeAttr, escapeHtml } from './ui.js';
 
 const detailDate = new Intl.DateTimeFormat('zh-CN', { month: 'long', day: 'numeric' });
 const detailWeekday = new Intl.DateTimeFormat('zh-CN', { weekday: 'long' });
-const statusDate = new Intl.DateTimeFormat('zh-CN', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' });
 const CYCLE_DETAILS = {
     period: { label: '经期', icon: CYCLE_PERIOD_ICON_SVG },
     ovulatory: { label: '易孕期', icon: CYCLE_FERTILE_ICON_SVG },
@@ -59,13 +58,13 @@ function weatherStatusIcon(code) {
     return WEATHER_ICON_SVG;
 }
 
-function statusCard({ meta, value, icon, parsed, date, kind }) {
-    return `<div class="pm-calendar-status-card pm-calendar-status-card-${kind}">
+function statusCard({ meta, value, icon, parsed, date, kind, phase = '' }) {
+    return `<div class="pm-calendar-status-card pm-calendar-status-card-${kind}"${phase ? ` data-cycle-phase="${escapeAttr(phase)}"` : ''}>
         <span class="pm-calendar-status-watermark" aria-hidden="true">${icon}</span>
         <div class="pm-calendar-status-content">
             <div class="pm-calendar-status-meta">${meta}</div>
             <b class="pm-calendar-status-value">${value}</b>
-            <time datetime="${escapeAttr(date)}">${escapeHtml(statusDate.format(parsed))}</time>
+            <time datetime="${escapeAttr(date)}">${escapeHtml(`${detailDate.format(parsed)}${detailWeekday.format(parsed)}`)}</time>
         </div>
     </div>`;
 }
@@ -90,8 +89,8 @@ function cycleStatusCard(cycleScope, date, parsed, relativeLabel) {
     const detail = CYCLE_DETAILS[prediction.phase];
     if (!detail) return { content: '', isCard: false };
     return { content: statusCard({
-        kind: 'cycle', parsed, date, icon: detail.icon,
-        meta: `${relativeLabel ? `<span class="pm-calendar-status-relative">${escapeHtml(relativeLabel)}</span> · ` : ''}健康记录`, value: detail.label,
+        kind: 'cycle', phase: prediction.phase, parsed, date, icon: detail.icon,
+        meta: `${relativeLabel ? `<span class="pm-calendar-status-relative">${escapeHtml(relativeLabel)}</span> ` : ''}健康记录`, value: detail.label,
     }), isCard: true };
 }
 
