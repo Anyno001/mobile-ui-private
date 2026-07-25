@@ -1221,7 +1221,13 @@ for (const expected of [
   'enqueueToggle', 'injectionToggleQueue', '{ requireExisting: true }',
   'runConversationInjectionMutation: enqueueToggle',
   'normalizeInjectionConfig',
-  'pm-conversation-injection-position',
+  'pm-conversation-injection-phone-position',
+  'pm-conversation-injection-phone-depth',
+  'pm-conversation-injection-phone-history-limit',
+  'pm-conversation-injection-community-position',
+  'pm-conversation-injection-community-depth',
+  'pm-conversation-injection-calendar-position',
+  'pm-conversation-injection-calendar-depth',
   '正文注入',
   "onclick=\"window.__pmShowConfig('home')\"", '${BACK_ICON_SVG}',
 ]) requireText('phone-context-injection.js', sourceModuleByName.get('phone-context-injection.js')?.code || '', expected);
@@ -1402,7 +1408,7 @@ for (const expected of [
   'deriveInteractiveActorId(scopeId, actor.type, actor.bindingKey)',
 ]) requireText('settings-backup-validate.js', settingsBackupValidateCode, expected);
 for (const expected of [
-  'schemaVersion: 8', 'desktopBg: snapshot.desktopBg', 'injectionConfig: snapshot.injectionConfig',
+  'schemaVersion: 9', 'desktopBg: snapshot.desktopBg', 'injectionConfig: snapshot.injectionConfig',
   'calendarStore: snapshot.calendarStore', 'calendarCycles: snapshot.calendarCycles',
   'calendarRecipes: snapshot.calendarRecipes',
 ]) requireText('settings-ui.js', settingsUiCodeForInteractive, expected);
@@ -1512,8 +1518,8 @@ for (const expected of [
   'pm-calendar-scan-card', '<h3>正文日期</h3>', '保存并识别',
   'role="switch"', 'aria-checked="${scope.autoAdjust}"', '自动跟随正文日期', "label: '<user>'",
   '<time datetime="${selectedDate}">${escapeHtml(detailDate.format(parsed))}</time>', 'detailWeekday.format(parsed)',
-  "period: { label: '经期'", "ovulatory: { label: '易孕期'", "if (!detail) return ''", 'resolveWeatherForDate(weatherStore, date)',
-  'FLOWER_BUD_ICON_SVG', 'CYCLE_FERTILE_ICON_SVG', 'WEATHER_ICON_SVG', 'pm-calendar-panel-section', '℃~${resolved.day.tempMax}℃', 'pm-calendar-status-copy', 'pm-calendar-status-icon',
+  "period: { label: '经期'", "ovulatory: { label: '易孕期'", "if (!detail) return { content: '', icon: '' }", 'resolveWeatherForDate(weatherStore, date)',
+  'CYCLE_PERIOD_ICON_SVG', 'CYCLE_FERTILE_ICON_SVG', 'WEATHER_ICON_SVG', 'pm-calendar-panel-section', '℃~${resolved.day.tempMax}℃', 'pm-calendar-detail-big-icon', 'has-status-icon',
   '当前故事日期', 'placeholder="例如 3726-08-17"', '可直接输入日期，或跳转月份后点击下方日期。',
   '开启后供正文生成读取；设置按当前会话独立保存。', '预报外日期使用气候推演', '无法推演',
   'DEFAULT_CALENDAR_GENERATION_RULE', 'DEFAULT_RECIPE_GENERATION_RULE', 'data-calendar-generation-rule', 'data-recipe-generation-rule',
@@ -1869,7 +1875,7 @@ for (const expected of [
   '.pm-scene-bottom-bar{position:relative;z-index:20',
   '.pm-contact-switcher{position:absolute;left:50%;z-index:30;width:min(300px,calc(100% - 20px));max-height:min(304px,calc(100% - 72px));display:flex',
   'transform:translateX(-50%)',
-  '.pm-contact-switcher-row{display:grid;grid-template-columns:22px minmax(0,1fr) 40px 40px;align-items:center;gap:2px',
+  '.pm-contact-switcher-row{display:grid;grid-template-columns:minmax(0,1fr) 40px 40px 22px;align-items:center;gap:2px',
   '.pm-control-menu.pm-scene-menu{left:0;right:auto;top:auto;bottom:46px;z-index:20;width:148px;max-height:none;overflow-y:visible',
   '.pm-control-menu.pm-scene-menu[hidden]{display:none}',
   '.pm-scene-composer textarea{height:36px;min-height:36px;max-height:88px;box-shadow:none !important;appearance:none}',
@@ -1910,11 +1916,9 @@ for (const expected of [
   '.pm-calendar-month-panel{margin:0 12px 10px;padding:10px;border:1px solid var(--pm-color-border-subtle);border-radius:14px',
   '.pm-calendar-panel-section{display:flex;flex-direction:column;gap:6px;padding:8px 0}',
   '.pm-calendar-month-panel-actions{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;padding-top:8px}',
-  '.pm-calendar-weather,.pm-calendar-cycle{position:relative;min-height:52px;padding:8px 48px 8px 0}',
-  '.pm-calendar-status-copy{min-width:0;min-height:36px;display:flex!important;flex-direction:column;justify-content:center;gap:2px',
-  '.pm-calendar-status-icon{position:absolute;top:50%;right:0;width:36px;height:36px;display:grid!important;place-items:center',
-  'transform:translateY(-50%)}.pm-calendar-status-icon>svg{display:block;width:28px;height:28px}',
-  '.pm-calendar-cycle-mark{display:inline-grid;place-items:center;',
+  '.pm-calendar-selected-detail.has-status-icon>header,.pm-calendar-selected-detail.has-status-icon>.pm-calendar-selected-content{padding-right:58px}',
+  '.pm-calendar-detail-big-icon{position:absolute;top:50%;right:13px;width:44px;height:44px;display:grid;place-items:center;color:var(--pm-color-text-tertiary);transform:translateY(-50%);pointer-events:none}',
+  '.pm-calendar-detail-big-icon svg{display:block;width:40px;height:40px}',
   '.pm-calendar-shell[data-calendar-view-mode="recipe"]{--pm-calendar-accent:#c77a32}',
   '.pm-calendar-day.has-recipe>span{color:var(--pm-calendar-accent)}',
   '.pm-calendar-event.is-recipe b{color:var(--pm-calendar-accent)}',
@@ -1950,6 +1954,9 @@ for (const expected of [
 ]) requireText('style.css', css, expected);
 if (css.includes('.pm-calendar-selected-detail>header time{font-size:14px')) {
   failures.push('style.css: legacy detail time font size overrides the unified calendar detail typography');
+}
+if (css.includes('.pm-calendar-shell[data-calendar-view-mode="cycle"] .pm-calendar-cycle{color:var(--pm-calendar-accent)}')) {
+  failures.push('style.css: cycle detail body must remain neutral instead of inheriting the calendar accent');
 }
 
 requireCssDeclarations(cssRules, '.pm-name-edit', {
@@ -2065,7 +2072,7 @@ requireText('package.json', packageText, 'npm run check:emoji');
 requireText('package.json', packageText, '"check:calendar": "node scripts/check-calendar.mjs"');
 requireText('package.json', packageText, 'npm run check:calendar');
 requireText('settings-templates.js', sourceModuleByName.get('settings-templates.js')?.code || '', '仅显示设备本地时间。');
-for (const expected of ['手机会话占比 (%)', '互动社区占比 (%)', '日历占比 (%)', 'pm-budget-calendar-position', 'pm-budget-calendar-depth', 'pm-custom-check', 'role="checkbox"', "event.key==='Enter'"]) {
+for (const expected of ['手机会话占比 (%)', '互动社区占比 (%)', '日历占比 (%)', '菜谱占比 (%)', 'pm-custom-check', 'role="checkbox"', "event.key==='Enter'"]) {
   requireText('settings-templates.js', sourceModuleByName.get('settings-templates.js')?.code || '', expected);
 }
 for (const expected of ['extractAiResponseContent(j)', 'resolveBudgetPercentageInput']) {
@@ -2143,7 +2150,7 @@ if (bundle.includes('pm-forum-entry')) failures.push('bundle: removed directory 
 for (const iconName of [
   'MENU_ICON_SVG', 'CLOSE_ICON_SVG', 'HOME_ICON_SVG', 'CONTROL_ICON_SVG', 'SEND_ICON_SVG',
   'POKE_ICON_SVG', 'CHAT_ICON_SVG', 'CONTACTS_ICON_SVG', 'CHARACTER_ICON_SVG', 'SETTINGS_ICON_SVG', 'COMMUNITY_ICON_SVG',
-  'EDIT_ICON_SVG', 'EMOJI_ICON_SVG', 'TRASH_ICON_SVG', 'REMOVE_ICON_SVG', 'RECIPE_ICON_SVG', 'FLOWER_BUD_ICON_SVG', 'CYCLE_FERTILE_ICON_SVG',
+  'EDIT_ICON_SVG', 'EMOJI_ICON_SVG', 'TRASH_ICON_SVG', 'REMOVE_ICON_SVG', 'RECIPE_ICON_SVG', 'MOON_ICON_SVG', 'CYCLE_PERIOD_ICON_SVG', 'BOOK_ICON_SVG', 'CYCLE_FERTILE_ICON_SVG',
 ]) {
   requireText('icons.js', sourceModuleByName.get('icons.js')?.code || '', `export const ${iconName}`);
 }
@@ -2196,10 +2203,11 @@ for (const [label, marker, accessibleName] of [
   if (button.includes('SPARKLES_ICON_SVG')) failures.push(`interactive-scene-views.js: ${label} must preserve poke semantics instead of generic AI sparkles`);
 }
 const iconsCode = sourceModuleByName.get('icons.js')?.code || '';
-for (const expected of ['REMOVE_ICON_SVG', 'UNLINK_ICON_SVG', 'SPARKLES_ICON_SVG', 'CHEVRON_DOWN_ICON_SVG', 'EYE_ICON_SVG', 'FLOWER_BUD_ICON_SVG', 'CHECK_ICON_SVG']) requireText('icons.js', iconsCode, expected);
+for (const expected of ['REMOVE_ICON_SVG', 'UNLINK_ICON_SVG', 'SPARKLES_ICON_SVG', 'CHEVRON_DOWN_ICON_SVG', 'EYE_ICON_SVG', 'MOON_ICON_SVG', 'CYCLE_PERIOD_ICON_SVG', 'BOOK_ICON_SVG', 'CHECK_ICON_SVG']) requireText('icons.js', iconsCode, expected);
 for (const expected of [
-  `export const EYE_ICON_SVG = icon('<path d="M2.5 12s3.5-5 9.5-5 9.5 5 9.5 5-3.5 5-9.5 5-9.5-5-9.5-5z"/><circle cx="12" cy="12" r="2.5"/>');`,
-  `export const FLOWER_BUD_ICON_SVG = icon('<path d="M12 20V11"/>`,
+  `export const EYE_ICON_SVG = icon('<path d="M2.5 12s3.5-5 9.5-5 9.5 5 9.5 5-3.5 5-9.5 5-9.5-5-9.5-5z"/>');`,
+  `export const MOON_ICON_SVG = icon('<path d="M20 15.2A8.5 8.5 0 0 1 8.8 4 8.5 8.5 0 1 0 20 15.2z"/>');`,
+  `export const CYCLE_PERIOD_ICON_SVG = icon('<path d="M12 3.8s-5 5.7-5 10.1a5 5 0 0 0 10 0C17 9.5 12 3.8 12 3.8z"/>');`,
 ]) requireText('icons.js geometry', iconsCode, expected);
 for (const forbidden of ['୨ৎ', "M12 21c-4-2-8-7-8-12"]) {
   if (iconsCode.includes(forbidden) || calendarViewCode.includes(forbidden) || calendarPageViewCode.includes(forbidden)) {
@@ -2220,12 +2228,12 @@ requireCssDeclarations(cssRules, '.pm-name-trigger', { 'z-index': '31' });
 requireCssDeclarations(cssRules, '.pm-contact-switcher', { 'z-index': '30' });
 requireCssDeclarations(cssRules, '.pm-contact-switcher', { left: '50%', transform: 'translateX(-50%)', 'max-height': 'min(304px,calc(100% - 72px))' });
 requireText('phone-directory.js contact switcher positioning', directoryCode,
-  'switcher.style.top = `${Math.max(0, triggerRect.bottom - phoneRect.top)}px`;');
+  'switcher.style.top = `${Math.max(0, triggerRect.bottom - phoneRect.top - 2)}px`;');
 requireText('phone-directory.js contact switcher responsive positioning', directoryCode, 'contactSwitcherResizeObserver = new ResizeObserver');
 requireText('style.css selection mode quote exclusion', css, '.pm-msg-list.is-selecting .pm-quote-action{display:none !important;}');
 requireText('style.css title arrow isolation', css, '.pm-name-chevron{position:absolute;left:100%;top:50%');
 requireCssDeclarations(cssRules, '.pm-contact-switcher', { 'box-shadow': 'none' });
-requireCssDeclarations(cssRules, '.pm-contact-switcher-row', { 'grid-template-columns': '22px minmax(0,1fr) 40px 40px', gap: '2px' });
+requireCssDeclarations(cssRules, '.pm-contact-switcher-row', { 'grid-template-columns': 'minmax(0,1fr) 40px 40px 22px', gap: '2px' });
 requireCssDeclarations(cssRules, '.pm-contact-settings-actions', { 'border-top': '0 !important' });
 requireCssDeclarations(cssRules, '#pm-overlay .pm-contact-settings-scroll textarea.pm-cfg-input', {
   width: '100% !important', 'min-height': '58px !important', resize: 'vertical !important',
@@ -2273,7 +2281,7 @@ for (const expected of [
 ]) requireText('phone-foundation.js', foundationInjectionSource, expected);
 for (const expected of [
   'class="pm-calendar-cycle-input" name="enabled" type="checkbox"',
-  'class="pm-custom-check" aria-hidden="true"', 'pm-calendar-status-icon',
+  'class="pm-custom-check" aria-hidden="true"', 'pm-calendar-detail-big-icon',
 ]) requireText('calendar-view.js', calendarViewCode, expected);
 for (const forbidden of ['pm-calendar-base-menu', 'TIME_ORIGIN_ICON_SVG', 'calendar-base-edit', 'pm-calendar-base-dialog']) {
   if (calendarCode.includes(forbidden)) failures.push(`calendar.js: obsolete title control remains: ${forbidden}`);

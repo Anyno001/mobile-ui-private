@@ -1,7 +1,7 @@
-import { EXTENSION_PROMPT_POSITIONS, MAX_INJECTION_CHARS, MAX_INJECTION_DEPTH } from './constants.js';
+import { MAX_INJECTION_CHARS } from './constants.js';
 
 export const BUDGET_CONFIG_KEY = 'ST_SMS_BUDGET_CONFIG';
-export const BUDGET_VERSION = 2;
+export const BUDGET_VERSION = 3;
 export const BUDGET_SOURCES = Object.freeze(['phone', 'community', 'calendar', 'recipe']);
 export const DEFAULT_SAFE_INPUT_TOKENS = Math.floor(MAX_INJECTION_CHARS / 4);
 const MAX_TARGET_TOKENS = 12000;
@@ -14,8 +14,6 @@ export const DEFAULT_BUDGET_CONFIG = Object.freeze({
     redistributeUnused: true,
     communitySceneIdsByStorage: Object.freeze({}),
     communitySelectionsByStorage: Object.freeze({}),
-    calendarPosition: EXTENSION_PROMPT_POSITIONS.IN_CHAT,
-    calendarDepth: 0,
 });
 
 const finiteInteger = (value, min, max) => typeof value === 'number'
@@ -99,7 +97,6 @@ function normalizeCommunitySelections(value) {
 
 export function normalizeBudgetConfig(value) {
     const source = plainRecord(value) ? value : {};
-    const allowedPositions = Object.values(EXTENSION_PROMPT_POSITIONS).filter(position => position >= 0);
     return {
         budgetVersion: BUDGET_VERSION,
         targetTokens: finiteInteger(source.targetTokens, 1, MAX_TARGET_TOKENS)
@@ -110,10 +107,6 @@ export function normalizeBudgetConfig(value) {
             ? source.redistributeUnused : DEFAULT_BUDGET_CONFIG.redistributeUnused,
         communitySceneIdsByStorage: normalizeSceneIds(source.communitySceneIdsByStorage),
         communitySelectionsByStorage: normalizeCommunitySelections(source.communitySelectionsByStorage),
-        calendarPosition: allowedPositions.includes(source.calendarPosition)
-            ? source.calendarPosition : DEFAULT_BUDGET_CONFIG.calendarPosition,
-        calendarDepth: finiteInteger(source.calendarDepth, 0, MAX_INJECTION_DEPTH)
-            ? source.calendarDepth : DEFAULT_BUDGET_CONFIG.calendarDepth,
     };
 }
 

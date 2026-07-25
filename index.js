@@ -2073,7 +2073,7 @@ ${userPrompt}` : userPrompt;
 
   // src/budget.js
   var BUDGET_CONFIG_KEY = "ST_SMS_BUDGET_CONFIG";
-  var BUDGET_VERSION = 2;
+  var BUDGET_VERSION = 3;
   var BUDGET_SOURCES = Object.freeze(["phone", "community", "calendar", "recipe"]);
   var DEFAULT_SAFE_INPUT_TOKENS = Math.floor(MAX_INJECTION_CHARS / 4);
   var MAX_TARGET_TOKENS = 12e3;
@@ -2084,9 +2084,7 @@ ${userPrompt}` : userPrompt;
     sourcePriority: Object.freeze(["phone", "community", "calendar", "recipe"]),
     redistributeUnused: true,
     communitySceneIdsByStorage: Object.freeze({}),
-    communitySelectionsByStorage: Object.freeze({}),
-    calendarPosition: EXTENSION_PROMPT_POSITIONS.IN_CHAT,
-    calendarDepth: 0
+    communitySelectionsByStorage: Object.freeze({})
   });
   var finiteInteger = (value, min, max) => typeof value === "number" && Number.isFinite(value) && Number.isInteger(value) && value >= min && value <= max;
   var plainRecord6 = (value) => value && typeof value === "object" && !Array.isArray(value) && (Object.getPrototypeOf(value) === Object.prototype || Object.getPrototypeOf(value) === null);
@@ -2160,7 +2158,6 @@ ${userPrompt}` : userPrompt;
   }
   function normalizeBudgetConfig(value) {
     const source = plainRecord6(value) ? value : {};
-    const allowedPositions = Object.values(EXTENSION_PROMPT_POSITIONS).filter((position) => position >= 0);
     return {
       budgetVersion: BUDGET_VERSION,
       targetTokens: finiteInteger(source.targetTokens, 1, MAX_TARGET_TOKENS) ? source.targetTokens : DEFAULT_BUDGET_CONFIG.targetTokens,
@@ -2168,9 +2165,7 @@ ${userPrompt}` : userPrompt;
       sourcePriority: normalizePriority(source.sourcePriority),
       redistributeUnused: typeof source.redistributeUnused === "boolean" ? source.redistributeUnused : DEFAULT_BUDGET_CONFIG.redistributeUnused,
       communitySceneIdsByStorage: normalizeSceneIds(source.communitySceneIdsByStorage),
-      communitySelectionsByStorage: normalizeCommunitySelections(source.communitySelectionsByStorage),
-      calendarPosition: allowedPositions.includes(source.calendarPosition) ? source.calendarPosition : DEFAULT_BUDGET_CONFIG.calendarPosition,
-      calendarDepth: finiteInteger(source.calendarDepth, 0, MAX_INJECTION_DEPTH) ? source.calendarDepth : DEFAULT_BUDGET_CONFIG.calendarDepth
+      communitySelectionsByStorage: normalizeCommunitySelections(source.communitySelectionsByStorage)
     };
   }
   function estimateContextTokens(value) {
@@ -2602,7 +2597,7 @@ ${userPrompt}` : userPrompt;
   var CHARACTER_ICON_SVG = icon('<circle cx="9" cy="8" r="3"/><path d="M3.5 20c.3-4 2.4-6 5.5-6s5.2 2 5.5 6"/><path d="M17 7h4M19 5v4M16 14h5M16 18h5"/>');
   var SETTINGS_ICON_SVG = icon('<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-4V21a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H2.8v-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1A1.7 1.7 0 0 0 9 4.6 1.7 1.7 0 0 0 10 3V2.8h4V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v4H21a1.7 1.7 0 0 0-1.6 1z"/>');
   var INJECTION_ICON_SVG = icon('<path d="M8 7l4-4 4 4M12 3v8M16 17l-4 4-4-4M12 21v-8"/><path d="M5 12h14"/>');
-  var EYE_ICON_SVG = icon('<path d="M2.5 12s3.5-5 9.5-5 9.5 5 9.5 5-3.5 5-9.5 5-9.5-5-9.5-5z"/><circle cx="12" cy="12" r="2.5"/>');
+  var EYE_ICON_SVG = icon('<path d="M2.5 12s3.5-5 9.5-5 9.5 5 9.5 5-3.5 5-9.5 5-9.5-5-9.5-5z"/>');
   var CHECK_ICON_SVG = icon('<path d="M5 12l4 4L19 6"/>');
   var COMMUNITY_ICON_SVG = icon('<path d="M4 19V8l8-4 8 4v11"/><path d="M8 19v-6h8v6M8 9h.01M12 9h.01M16 9h.01"/>');
   var FEED_ICON_SVG = icon('<path d="M5 5h14v14H5z"/><path d="M8 9h8M8 12h8M8 15h5"/>');
@@ -2611,10 +2606,13 @@ ${userPrompt}` : userPrompt;
   var CALENDAR_ICON_SVG = icon('<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18M8 14h.01M12 14h.01M16 14h.01M8 18h.01M12 18h.01"/>');
   var WEATHER_ICON_SVG = icon('<path d="M7 17h10a4 4 0 0 0 .5-8A6 6 0 0 0 6.2 10.5 3.5 3.5 0 0 0 7 17z"/><path d="M8 21l1-2M12 21l1-2M16 21l1-2"/>');
   var FLOWER_BUD_ICON_SVG = icon('<path d="M12 20V11"/><path d="M12 11C9 10 6.5 7.5 7.5 4c2.5.3 4 1.8 4.5 4.3C12.5 5.8 14.3 4.3 16.8 4c1 3.5-1.8 6-4.8 7z"/><path d="M12 15c2.8-.2 4.8.8 5.5 3-2.5.4-4.4-.5-5.5-3z"/><path d="M8.5 20h7"/>');
+  var MOON_ICON_SVG = icon('<path d="M20 15.2A8.5 8.5 0 0 1 8.8 4 8.5 8.5 0 1 0 20 15.2z"/>');
+  var CYCLE_PERIOD_ICON_SVG = icon('<path d="M12 3.8s-5 5.7-5 10.1a5 5 0 0 0 10 0C17 9.5 12 3.8 12 3.8z"/>');
   var RECIPE_ICON_SVG = icon('<path d="M7 3v7M4 3v4a3 3 0 0 0 6 0V3M7 10v11"/><path d="M16 3v18M16 3c2.2 1.8 3.2 4.5 3 8h-3"/>');
   var CYCLE_FERTILE_ICON_SVG = icon('<circle cx="12" cy="12" r="3.2"/><path d="M8.6 7.5C7.4 5.8 5.4 5.2 4 6.3c-1.4 1.2-.8 3.4 1.1 4.4M15.4 7.5c1.2-1.7 3.2-2.3 4.6-1.2 1.4 1.2.8 3.4-1.1 4.4M8.6 16.5c-1.2 1.7-3.2 2.3-4.6 1.2-1.4-1.2-.8-3.4 1.1-4.4M15.4 16.5c1.2 1.7 3.2 2.3 4.6 1.2 1.4-1.2.8-3.4-1.1-4.4"/>');
   var TIME_ORIGIN_ICON_SVG = icon('<circle cx="12" cy="12" r="8"/><path d="M12 7v5l3 2"/>');
   var EDIT_ICON_SVG = icon('<path d="M4 20h4L19 9l-4-4L4 16v4z"/><path d="M13.5 6.5l4 4"/>');
+  var BOOK_ICON_SVG = icon('<path d="M4 5.5 12 3l8 2.5v13L12 16l-8 2.5z"/><path d="M12 3v13"/>');
   var EMOJI_ICON_SVG = icon('<circle cx="12" cy="12" r="9"/><path d="M8 10h.01M16 10h.01M8.5 15c1 1 2.2 1.5 3.5 1.5s2.5-.5 3.5-1.5"/>');
   var TRASH_ICON_SVG = icon('<path d="M4 7h16M9 7V4h6v3M7 7l1 13h8l1-13M10 11v5M14 11v5"/>');
   var REMOVE_ICON_SVG = icon('<circle cx="12" cy="12" r="9"/><path d="M8 12h8"/>');
@@ -2654,7 +2652,7 @@ ${userPrompt}` : userPrompt;
   var detailDate = new Intl.DateTimeFormat("zh-CN", { month: "long", day: "numeric" });
   var detailWeekday = new Intl.DateTimeFormat("zh-CN", { weekday: "long" });
   var CYCLE_DETAILS = {
-    period: { label: "\u7ECF\u671F", icon: FLOWER_BUD_ICON_SVG },
+    period: { label: "\u7ECF\u671F", icon: CYCLE_PERIOD_ICON_SVG },
     ovulatory: { label: "\u6613\u5B55\u671F", icon: CYCLE_FERTILE_ICON_SVG }
   };
   var occasionTypeLabel = (type) => type === "birthday" ? "\u751F\u65E5" : "\u7EAA\u5FF5\u65E5";
@@ -2684,22 +2682,24 @@ ${userPrompt}` : userPrompt;
   function weatherRow(weatherStore, date) {
     const resolved = resolveWeatherForDate(weatherStore, date);
     if (resolved.status !== "available") {
-      return `<p class="pm-calendar-empty-day">\u65E0\u6CD5\u63A8\u6F14 \xB7 ${escapeHtml(resolved.unavailableReason)}</p>`;
+      return { content: `<p class="pm-calendar-empty-day">\u65E0\u6CD5\u63A8\u6F14 \xB7 ${escapeHtml(resolved.unavailableReason)}</p>`, icon: "" };
     }
-    return `<div class="pm-calendar-weather"><span class="pm-calendar-status-copy"><b>${resolved.day.tempMin}\u2103~${resolved.day.tempMax}\u2103</b><small>${escapeHtml(weatherCodeLabel(resolved.day.weatherCode))}</small></span><span class="pm-calendar-status-icon" aria-hidden="true">${WEATHER_ICON_SVG}</span></div>`;
+    return { content: `<div class="pm-calendar-weather"><b>${resolved.day.tempMin}\u2103~${resolved.day.tempMax}\u2103</b><small>${escapeHtml(weatherCodeLabel(resolved.day.weatherCode))}</small></div>`, icon: WEATHER_ICON_SVG };
   }
   function cycleRow(cycleScope, date) {
     const prediction = predictCyclePhase(cycleScope, date);
     const detail = CYCLE_DETAILS[prediction.phase];
-    if (!detail) return "";
-    const statusLabel = prediction.status === "override" ? "\u624B\u52A8\u8BB0\u5F55" : "\u5468\u671F\u9884\u6D4B";
-    return `<div class="pm-calendar-cycle is-${prediction.phase}"><span class="pm-calendar-status-copy"><b>${detail.label}</b><small>${statusLabel}</small></span><span class="pm-calendar-status-icon" aria-hidden="true">${detail.icon}</span></div>`;
+    if (!detail) return { content: "", icon: "" };
+    return { content: `<div class="pm-calendar-cycle is-${prediction.phase}"><b>${detail.label}</b></div>`, icon: detail.icon };
   }
   function recipeRows(recipeScope, date, editing = false) {
     const day = recipeDayFor(recipeScope, date);
     return RECIPE_MEAL_TYPES.flatMap((mealType) => day[mealType]?.text ? [
       `<article class="pm-calendar-event is-recipe" data-recipe-meal="${mealType}"><div><b>${RECIPE_MEAL_LABELS[mealType]}</b><span>${escapeHtml(day[mealType].text)}</span></div>${editing ? `<span class="pm-calendar-inline-actions"><button type="button" data-action="calendar-recipe-edit" data-meal-type="${mealType}" aria-label="\u7F16\u8F91${RECIPE_MEAL_LABELS[mealType]}" title="\u7F16\u8F91">${EDIT_ICON_SVG}</button><button type="button" class="is-danger" data-action="calendar-recipe-delete" data-meal-type="${mealType}" aria-label="\u5220\u9664${RECIPE_MEAL_LABELS[mealType]}" title="\u5220\u9664">${TRASH_ICON_SVG}</button></span>` : ""}</article>`
     ] : []).join("");
+  }
+  function detailHeader(selectedDate, parsed, relativeLabel, actions = "") {
+    return `<header><div class="pm-calendar-detail-date">${relativeLabel ? `<strong>${escapeHtml(relativeLabel)}</strong>` : ""}<span><time datetime="${selectedDate}">${escapeHtml(detailDate.format(parsed))}</time><em>${escapeHtml(detailWeekday.format(parsed))}</em></span></div>${actions}</header>`;
   }
   function renderSelectedDateDetail(scope, occasionsByDate, holidayCache, weatherStore, cycleScope, selectedDate, viewMode, relativeLabel = "", recipeScope = {}, detailEditing = false, detailRegenerating = false) {
     const parsed = parseCalendarDate(selectedDate);
@@ -2708,20 +2708,23 @@ ${userPrompt}` : userPrompt;
       const actions2 = `<div class="pm-calendar-detail-actions"><button type="button" class="pm-calendar-detail-more" data-action="calendar-toggle-detail-edit" aria-label="${detailEditing ? "\u5173\u95ED\u7F16\u8F91\u72B6\u6001" : "\u7F16\u8F91\u8FD9\u4E00\u5929\u7684\u83DC\u8C31"}" title="${detailEditing ? "\u5173\u95ED\u7F16\u8F91\u72B6\u6001" : "\u7F16\u8F91\u8FD9\u4E00\u5929\u7684\u83DC\u8C31"}" aria-pressed="${detailEditing}">${detailEditing ? CLOSE_ICON_SVG : MORE_ICON_SVG}</button></div>`;
       const editActions = detailEditing ? `<div class="pm-calendar-detail-edit-actions"><button type="button" class="pm-calendar-inline-add" data-action="calendar-recipe-add" ${detailRegenerating ? "disabled" : ""}>+ \u65B0\u589E\u4E00\u6761</button><button type="button" class="pm-calendar-inline-regenerate${detailRegenerating ? " is-loading" : ""}" data-action="calendar-recipe-regenerate" aria-label="\u91CD\u65B0\u751F\u6210\u5F53\u65E5\u83DC\u8C31" title="\u91CD\u65B0\u751F\u6210\u5F53\u65E5\u83DC\u8C31" aria-busy="${detailRegenerating}" ${detailRegenerating ? "disabled" : ""}>${REFRESH_ICON_SVG}<span>\u91CD\u65B0\u751F\u6210</span></button></div>` : "";
       return `<section class="pm-calendar-selected-detail" data-calendar-selected-detail="${selectedDate}" data-calendar-detail-mode="recipe">
-          <header><div class="pm-calendar-detail-date">${relativeLabel ? `<strong>${escapeHtml(relativeLabel)}</strong>` : ""}<span><time datetime="${selectedDate}">${escapeHtml(detailDate.format(parsed))}</time><em>${escapeHtml(detailWeekday.format(parsed))}</em></span></div>${actions2}</header>
+          ${detailHeader(selectedDate, parsed, relativeLabel, actions2)}
           <div class="pm-calendar-selected-content">${content2 || '<p class="pm-calendar-empty-day">\u8FD9\u4E00\u5929\u8FD8\u6CA1\u6709\u83DC\u8C31\u3002</p>'}${editActions}</div>
         </section>`;
     }
-    const content = viewMode === "weather" ? weatherRow(weatherStore, selectedDate) : viewMode === "cycle" ? cycleRow(cycleScope, selectedDate) : `${holidayRows(holidayCache, selectedDate)}${eventRows(scope, occasionsByDate, selectedDate, detailEditing)}`;
+    const statusDetail = viewMode === "weather" ? weatherRow(weatherStore, selectedDate) : viewMode === "cycle" ? cycleRow(cycleScope, selectedDate) : null;
+    const content = statusDetail?.content ?? `${holidayRows(holidayCache, selectedDate)}${eventRows(scope, occasionsByDate, selectedDate, detailEditing)}`;
+    const bigIcon = statusDetail?.icon ? `<span class="pm-calendar-detail-big-icon" aria-hidden="true">${statusDetail.icon}</span>` : "";
     const emptyLabel = viewMode === "weather" ? "\u8FD9\u4E00\u5929\u6CA1\u6709\u5929\u6C14\u6570\u636E" : viewMode === "cycle" ? "\u8FD9\u4E00\u5929\u6CA1\u6709\u751F\u7406\u671F\u63D0\u793A" : "\u8FD9\u4E00\u5929\u8FD8\u6CA1\u6709\u5B89\u6392";
     const editingLabel = viewMode === "schedule" ? "\u7F16\u8F91\u8FD9\u4E00\u5929" : "";
     const actions = viewMode === "schedule" ? `<div class="pm-calendar-detail-actions">
         <button type="button" class="pm-calendar-detail-more" data-action="calendar-toggle-detail-edit" aria-label="${detailEditing ? "\u5173\u95ED\u7F16\u8F91\u72B6\u6001" : editingLabel}" title="${detailEditing ? "\u5173\u95ED\u7F16\u8F91\u72B6\u6001" : editingLabel}" aria-pressed="${detailEditing}">${detailEditing ? CLOSE_ICON_SVG : MORE_ICON_SVG}</button>
     </div>` : "";
     const addAction = viewMode === "schedule" && detailEditing ? `<div class="pm-calendar-detail-edit-actions"><button type="button" class="pm-calendar-inline-add" data-action="calendar-add-date" ${detailRegenerating ? "disabled" : ""}>+ \u65B0\u589E\u4E00\u6761</button><button type="button" class="pm-calendar-inline-regenerate${detailRegenerating ? " is-loading" : ""}" data-action="calendar-regenerate" aria-label="\u91CD\u65B0\u751F\u6210\u5F53\u65E5\u65E5\u7A0B" title="\u91CD\u65B0\u751F\u6210\u5F53\u65E5\u65E5\u7A0B" aria-busy="${detailRegenerating}" ${detailRegenerating ? "disabled" : ""}>${REFRESH_ICON_SVG}<span>\u91CD\u65B0\u751F\u6210</span></button></div>` : "";
-    return `<section class="pm-calendar-selected-detail" data-calendar-selected-detail="${selectedDate}" data-calendar-detail-mode="${viewMode}">
-        <header><div class="pm-calendar-detail-date">${relativeLabel ? `<strong>${escapeHtml(relativeLabel)}</strong>` : ""}<span><time datetime="${selectedDate}">${escapeHtml(detailDate.format(parsed))}</time><em>${escapeHtml(detailWeekday.format(parsed))}</em></span></div>${actions}</header>
+    return `<section class="pm-calendar-selected-detail${bigIcon ? " has-status-icon" : ""}" data-calendar-selected-detail="${selectedDate}" data-calendar-detail-mode="${viewMode}">
+        ${detailHeader(selectedDate, parsed, relativeLabel, actions)}
         <div class="pm-calendar-selected-content">${content || `<p class="pm-calendar-empty-day">${emptyLabel}</p>`}${addAction}</div>
+        ${bigIcon}
     </section>`;
   }
   function weatherSearchResults(results) {
@@ -2935,7 +2938,7 @@ ${userPrompt}` : userPrompt;
         <header class="pm-calendar-header"><span class="pm-calendar-header-side is-left"><button type="button" data-action="calendar-home" aria-label="\u8FD4\u56DE\u684C\u9762" title="\u8FD4\u56DE\u684C\u9762">${HOME_ICON_SVG}</button></span><div class="pm-calendar-title-row"><span class="pm-calendar-title-control"><button type="button" data-action="calendar-month-panel" aria-label="\u6253\u5F00\u6708\u4EFD\u4E0E\u65F6\u95F4\u8BBE\u7F6E" aria-expanded="${view.monthPanelOpen === true}"><b>${escapeHtml(monthTitle.format(createCalendarDate(viewYear, viewMonth, 1)))}</b></button><span class="pm-calendar-title-chevron ${view.monthPanelOpen === true ? "is-expanded" : ""}" aria-hidden="true">${CHEVRON_DOWN_ICON_SVG}</span></span></div><span class="pm-calendar-header-side is-right">${headerButton}</span></header>
         ${monthPanel}
         <div class="pm-calendar-month" data-calendar-month-navigation tabindex="0" aria-label="${viewYear}\u5E74${viewMonth}\u6708\u6708\u5386\uFF0C\u4F7F\u7528\u5DE6\u53F3\u65B9\u5411\u952E\u5207\u6362\u6708\u4EFD"><div class="pm-calendar-weekdays">${weekdays.map((day) => `<span>\u5468${day}</span>`).join("")}</div><div class="pm-calendar-month-grid">${days}</div></div>
-        <div class="pm-calendar-view-switch" role="group" aria-label="\u6708\u4EFD\u4E0E\u65E5\u5386\u4FE1\u606F\u5206\u7C7B"><button type="button" class="pm-calendar-month-nav" data-action="calendar-prev-month" aria-label="\u4E0A\u4E2A\u6708" title="\u4E0A\u4E2A\u6708" ${previousMonth ? "" : "disabled"}>${BACK_ICON_SVG}</button><button type="button" data-action="calendar-mode-schedule" aria-label="\u663E\u793A\u65E5\u7A0B\u4E0E\u5047\u65E5" aria-pressed="${viewMode === "schedule"}" title="\u65E5\u7A0B\u4E0E\u5047\u65E5">${CALENDAR_ICON_SVG}</button><button type="button" data-action="calendar-mode-weather" aria-label="\u663E\u793A\u5929\u6C14" aria-pressed="${viewMode === "weather"}" title="\u5929\u6C14">${WEATHER_ICON_SVG}</button><button type="button" data-action="calendar-mode-cycle" aria-label="\u663E\u793A\u751F\u7406\u671F" aria-pressed="${viewMode === "cycle"}" title="\u751F\u7406\u671F">${FLOWER_BUD_ICON_SVG}</button><button type="button" data-action="calendar-mode-recipe" aria-label="\u663E\u793A\u83DC\u8C31" aria-pressed="${viewMode === "recipe"}" title="\u83DC\u8C31">${RECIPE_ICON_SVG}</button><button type="button" class="pm-calendar-month-nav" data-action="calendar-next-month" aria-label="\u4E0B\u4E2A\u6708" title="\u4E0B\u4E2A\u6708" ${nextMonth ? "" : "disabled"}>${FORWARD_ICON_SVG}</button></div>
+        <div class="pm-calendar-view-switch" role="group" aria-label="\u6708\u4EFD\u4E0E\u65E5\u5386\u4FE1\u606F\u5206\u7C7B"><button type="button" class="pm-calendar-month-nav" data-action="calendar-prev-month" aria-label="\u4E0A\u4E2A\u6708" title="\u4E0A\u4E2A\u6708" ${previousMonth ? "" : "disabled"}>${BACK_ICON_SVG}</button><button type="button" data-action="calendar-mode-schedule" aria-label="\u663E\u793A\u65E5\u7A0B\u4E0E\u5047\u65E5" aria-pressed="${viewMode === "schedule"}" title="\u65E5\u7A0B\u4E0E\u5047\u65E5">${CALENDAR_ICON_SVG}</button><button type="button" data-action="calendar-mode-weather" aria-label="\u663E\u793A\u5929\u6C14" aria-pressed="${viewMode === "weather"}" title="\u5929\u6C14">${WEATHER_ICON_SVG}</button><button type="button" data-action="calendar-mode-cycle" aria-label="\u663E\u793A\u751F\u7406\u671F" aria-pressed="${viewMode === "cycle"}" title="\u751F\u7406\u671F">${MOON_ICON_SVG}</button><button type="button" data-action="calendar-mode-recipe" aria-label="\u663E\u793A\u83DC\u8C31" aria-pressed="${viewMode === "recipe"}" title="\u83DC\u8C31">${RECIPE_ICON_SVG}</button><button type="button" class="pm-calendar-month-nav" data-action="calendar-next-month" aria-label="\u4E0B\u4E2A\u6708" title="\u4E0B\u4E2A\u6708" ${nextMonth ? "" : "disabled"}>${FORWARD_ICON_SVG}</button></div>
         ${selectedDetail}
         ${management}
         <div class="${statusClass}" aria-live="polite">${escapeHtml(status)}</div>
@@ -4179,12 +4182,38 @@ ${lines.join("\n")}
       historyLimit: boundedInteger(source.historyLimit, DEFAULT_GROUP_INJECTION.historyLimit, 1, 100)
     };
   }
-  function normalizeInjectionConfig(value) {
-    const normalized = normalizeGroupInjection(value);
+  function normalizePromptPlacement(value, fallback) {
+    const source = plainObject(value);
+    const allowedPositions = Object.values(EXTENSION_PROMPT_POSITIONS).filter((position) => position >= 0);
     return {
-      ...normalized,
-      position: normalized.position === EXTENSION_PROMPT_POSITIONS.NONE ? DEFAULT_GROUP_INJECTION.position : normalized.position
+      position: enumValue(Number(source.position), allowedPositions, fallback.position),
+      depth: boundedInteger(source.depth, fallback.depth, 0, MAX_INJECTION_DEPTH)
     };
+  }
+  function normalizePhonePromptPlacement(value, fallback) {
+    const source = plainObject(value);
+    const placement = normalizePromptPlacement(source, fallback);
+    return {
+      ...placement,
+      historyLimit: boundedInteger(source.historyLimit, fallback.historyLimit, 1, 100)
+    };
+  }
+  function normalizeInjectionConfig(value, legacyCalendar = null) {
+    const source = plainObject(value);
+    const defaultPhone = {
+      position: DEFAULT_GROUP_INJECTION.position,
+      depth: DEFAULT_GROUP_INJECTION.depth,
+      historyLimit: DEFAULT_GROUP_INJECTION.historyLimit
+    };
+    const legacy = normalizePhonePromptPlacement(source, defaultPhone);
+    const phone = Object.hasOwn(source, "phone") ? normalizePhonePromptPlacement(source.phone, legacy) : legacy;
+    const community = normalizePromptPlacement(source.community, phone);
+    const calendarFallback = normalizePromptPlacement(legacyCalendar, {
+      position: DEFAULT_GROUP_INJECTION.position,
+      depth: DEFAULT_GROUP_INJECTION.depth
+    });
+    const calendar = Object.hasOwn(source, "calendar") ? normalizePromptPlacement(source.calendar, calendarFallback) : calendarFallback;
+    return { phone, community, calendar };
   }
   function normalizeGroupMeta(value) {
     const source = plainObject(value);
@@ -5419,17 +5448,29 @@ ${lines.join("\n")}
   }
   function loadInjectionConfig() {
     try {
-      window.__pmInjectionConfig = normalizeInjectionConfig(JSON.parse(localStorage.getItem(INJECTION_CONFIG_KEY)));
+      let legacyCalendar = null;
+      try {
+        const legacyBudget = JSON.parse(localStorage.getItem(BUDGET_CONFIG_KEY));
+        legacyCalendar = {
+          position: legacyBudget?.calendarPosition,
+          depth: legacyBudget?.calendarDepth
+        };
+      } catch (error) {
+      }
+      window.__pmInjectionConfig = normalizeInjectionConfig(
+        JSON.parse(localStorage.getItem(INJECTION_CONFIG_KEY)),
+        legacyCalendar
+      );
     } catch (error) {
       window.__pmInjectionConfig = normalizeInjectionConfig(null);
     }
     return window.__pmInjectionConfig;
   }
   function saveInjectionConfig() {
+    const normalized = normalizeInjectionConfig(window.__pmInjectionConfig);
+    window.__pmInjectionConfig = normalized;
     try {
-      const normalized = normalizeInjectionConfig(window.__pmInjectionConfig);
       localStorage.setItem(INJECTION_CONFIG_KEY, JSON.stringify(normalized));
-      window.__pmInjectionConfig = normalized;
       return true;
     } catch (error) {
       return false;
@@ -7517,7 +7558,7 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
     return `<div class="pm-scene-menu-wrap" data-auto-active="${autoActive}">
         <button type="button" class="pm-scene-more" data-action="more" aria-label="\u793E\u533A\u5DE5\u5177" title="\u793E\u533A\u5DE5\u5177" aria-haspopup="menu" aria-expanded="false">${CONTROL_ICON_SVG}</button>
         <div class="pm-control-menu pm-scene-menu" role="menu" aria-label="\u793E\u533A\u5DE5\u5177" hidden>
-            <button type="button" role="menuitem" data-action="tab" data-tab="prompt">${EDIT_ICON_SVG}<span>\u98CE\u683C\u63D0\u793A\u8BCD</span></button>
+            <button type="button" role="menuitem" data-action="tab" data-tab="prompt">${BOOK_ICON_SVG}<span>\u98CE\u683C\u63D0\u793A\u8BCD</span></button>
             <button type="button" role="menuitem" data-action="context-inject">${INJECTION_ICON_SVG}<span>\u4E0A\u4E0B\u6587\u6CE8\u5165</span></button>
             ${danmakuActions}
             <button type="button" role="menuitem" data-action="toggle-scene-pin" data-scene-id="${escapeAttr(scene.id)}" aria-pressed="${pinned}">${COMMUNITY_ICON_SVG}<span>${pinned ? "\u53D6\u6D88\u56FA\u5B9A" : "\u56FA\u5B9A\u793E\u533A"}</span></button>
@@ -10908,6 +10949,20 @@ ${antiFluff}`;
       [EXTENSION_PROMPT_POSITIONS.BEFORE_PROMPT]: "\u4E3B\u63D0\u793A\u8BCD\u524D"
     }[position] || "\u4E3B\u63D0\u793A\u8BCD\u5185";
   }
+  function promptPlacementFields(prefix, label, config, { includeHistoryLimit = false } = {}) {
+    const options = [
+      [EXTENSION_PROMPT_POSITIONS.IN_PROMPT, "\u4E3B\u63D0\u793A\u8BCD\u5185"],
+      [EXTENSION_PROMPT_POSITIONS.IN_CHAT, "\u804A\u5929\u8BB0\u5F55\u5185"],
+      [EXTENSION_PROMPT_POSITIONS.BEFORE_PROMPT, "\u4E3B\u63D0\u793A\u8BCD\u524D"]
+    ].map(([value, text3]) => `<option value="${value}" ${config.position === value ? "selected" : ""}>${text3}</option>`).join("");
+    return `<fieldset class="pm-conversation-injection-group"><legend>${label}</legend><label class="pm-conversation-injection-field">\u6CE8\u5165\u4F4D\u7F6E
+      <select id="pm-conversation-injection-${prefix}-position" class="pm-cfg-input pm-conversation-injection-config">${options}</select>
+    </label><label class="pm-conversation-injection-field">\u6CE8\u5165\u6DF1\u5EA6
+      <input id="pm-conversation-injection-${prefix}-depth" class="pm-cfg-input pm-conversation-injection-config" type="number" min="0" max="10000" step="1" value="${config.depth}">
+    </label>${includeHistoryLimit ? `<label class="pm-conversation-injection-field">\u6D88\u606F\u8303\u56F4
+      <input id="pm-conversation-injection-${prefix}-history-limit" class="pm-cfg-input pm-conversation-injection-config" type="number" min="1" max="100" step="1" value="${config.historyLimit}">
+    </label>` : ""}</fieldset>`;
+  }
   function installPhoneContextInjection(state, deps) {
     const { getStorageId: getStorageId2, makeOverlay, applyBidirectionalInjection } = deps;
     let injectionToggleQueue = Promise.resolve();
@@ -10965,7 +11020,7 @@ ${antiFluff}`;
     Object.assign(deps, { runConversationInjectionMutation: enqueueToggle });
     window.__pmConversationInjectionSummary = () => {
       const config = normalizeInjectionConfig(window.__pmInjectionConfig);
-      return injectionPositionLabel(config.position);
+      return injectionPositionLabel(config.phone.position);
     };
     window.__pmCurrentConversationInjectionEnabled = () => isEnabled(currentTarget());
     window.__pmConversationInjectionEnabled = (storageId, targetKey) => isEnabled(
@@ -10994,13 +11049,9 @@ ${antiFluff}`;
       <div class="pm-modal-header"><button type="button" onclick="window.__pmShowConfig('home')" class="pm-modal-close" title="\u8FD4\u56DE\u8BBE\u7F6E" aria-label="\u8FD4\u56DE\u8BBE\u7F6E">${BACK_ICON_SVG}</button><b>\u6B63\u6587\u6CE8\u5165</b><button type="button" onclick="window.__pmCloseOverlay()" class="pm-modal-close" title="\u5173\u95ED" aria-label="\u5173\u95ED">${CLOSE_ICON_SVG}</button></div>
       <div class="pm-modal-scroll pm-conversation-injection-body">
         <div id="pm-conversation-injection-status" class="pm-conversation-injection-status" role="status" ${statusMessage ? "" : "hidden"}>${escapeHtml(statusMessage)}</div>
-        <label class="pm-conversation-injection-field">\u6CE8\u5165\u4F4D\u7F6E
-          <select id="pm-conversation-injection-position" class="pm-cfg-input pm-conversation-injection-config">
-            <option value="0" ${config.position === 0 ? "selected" : ""}>\u4E3B\u63D0\u793A\u8BCD\u5185</option>
-            <option value="1" ${config.position === 1 ? "selected" : ""}>\u804A\u5929\u8BB0\u5F55\u5185</option>
-            <option value="2" ${config.position === 2 ? "selected" : ""}>\u4E3B\u63D0\u793A\u8BCD\u524D</option>
-          </select>
-        </label>
+        ${promptPlacementFields("phone", "\u804A\u5929", config.phone, { includeHistoryLimit: true })}
+        ${promptPlacementFields("community", "\u793E\u533A", config.community)}
+        ${promptPlacementFields("calendar", "\u65E5\u5386\u4E0E\u83DC\u8C31", config.calendar)}
       </div>
       <div class="pm-modal-add pm-conversation-injection-actions"><button id="pm-conversation-injection-save" type="button" class="pm-action-button" onclick="window.__pmSaveConversationInjection()">\u4FDD\u5B58\u5E76\u5E94\u7528</button></div>
     </div>`);
@@ -11016,7 +11067,19 @@ ${antiFluff}`;
       const snapshot = clone4(window.__pmInjectionConfig);
       window.__pmInjectionConfig = normalizeInjectionConfig({
         ...snapshot,
-        position: document.getElementById("pm-conversation-injection-position")?.value
+        phone: {
+          position: document.getElementById("pm-conversation-injection-phone-position")?.value,
+          depth: document.getElementById("pm-conversation-injection-phone-depth")?.value,
+          historyLimit: document.getElementById("pm-conversation-injection-phone-history-limit")?.value
+        },
+        community: {
+          position: document.getElementById("pm-conversation-injection-community-position")?.value,
+          depth: document.getElementById("pm-conversation-injection-community-depth")?.value
+        },
+        calendar: {
+          position: document.getElementById("pm-conversation-injection-calendar-position")?.value,
+          depth: document.getElementById("pm-conversation-injection-calendar-depth")?.value
+        }
       });
       try {
         await commitConversationInjectionUpdate({
@@ -11032,7 +11095,7 @@ ${antiFluff}`;
           applyInjection: () => applyBidirectionalInjection()
         });
         const config = normalizeInjectionConfig(window.__pmInjectionConfig);
-        window.__pmShowConversationInjection(`\u5DF2\u5E94\u7528\u5230${injectionPositionLabel(config.position)}\uFF08\u6DF1\u5EA6 ${config.depth}\uFF09`);
+        window.__pmShowConversationInjection(`\u5DF2\u5E94\u7528\uFF1A\u804A\u5929 ${injectionPositionLabel(config.phone.position)}\uFF08\u6DF1\u5EA6 ${config.phone.depth}\uFF09\uFF0C\u793E\u533A ${injectionPositionLabel(config.community.position)}\uFF08\u6DF1\u5EA6 ${config.community.depth}\uFF09\uFF0C\u65E5\u5386 ${injectionPositionLabel(config.calendar.position)}\uFF08\u6DF1\u5EA6 ${config.calendar.depth}\uFF09`);
         return true;
       } catch (error) {
         alert(error.message || "\u7EDF\u4E00\u6CE8\u5165\u89C4\u5219\u4FDD\u5B58\u5931\u8D25");
@@ -11460,7 +11523,7 @@ ${antiFluff}`;
       if (!switcher?.isConnected || !trigger?.isConnected || !phone) return false;
       const phoneRect = phone.getBoundingClientRect();
       const triggerRect = trigger.getBoundingClientRect();
-      switcher.style.top = `${Math.max(0, triggerRect.bottom - phoneRect.top)}px`;
+      switcher.style.top = `${Math.max(0, triggerRect.bottom - phoneRect.top - 2)}px`;
       return true;
     }
     async function renderContactSwitcher(trigger) {
@@ -11481,12 +11544,12 @@ ${antiFluff}`;
         const current = key === currentKey;
         const enabled = window.__pmConversationInjectionEnabled?.(storageId, key) === true;
         return `<div class="pm-contact-switcher-row" data-current="${current}">
-              <span class="pm-contact-switcher-current" aria-hidden="true">${current ? CHECK_ICON_SVG : ""}</span>
               <button type="button" class="pm-contact-switcher-main" data-contact-action="switch" data-key="${escapeAttr(key)}" ${current ? 'aria-current="true"' : ""}>
                 <span>${escapeHtml(label)}</span>${detail ? `<small>${escapeHtml(detail)}</small>` : ""}
               </button>
               <button type="button" class="pm-contact-switcher-icon pm-contact-switcher-injection ${enabled ? "is-active" : ""}" data-contact-action="inject" data-key="${escapeAttr(key)}" data-group="${isGroup}" data-label="${escapeAttr(label)}" aria-pressed="${enabled}" aria-label="${enabled ? "\u5173\u95ED" : "\u5F00\u542F"} ${escapeAttr(label)} \u7684\u6B63\u6587\u6CE8\u5165" title="${enabled ? "\u5173\u95ED\u6B63\u6587\u6CE8\u5165" : "\u5F00\u542F\u6B63\u6587\u6CE8\u5165"}">${EYE_ICON_SVG}</button>
               <button type="button" class="pm-contact-switcher-icon pm-entity-delete" data-contact-action="delete" data-key="${escapeAttr(key)}" data-group="${isGroup}" aria-label="\u6C38\u4E45\u5220\u9664${isGroup ? "\u7FA4\u804A" : "\u8054\u7CFB\u4EBA"} ${escapeAttr(label)}" title="\u6C38\u4E45\u5220\u9664${isGroup ? "\u7FA4\u804A" : "\u8054\u7CFB\u4EBA"}">${UNLINK_ICON_SVG}</button>
+              <span class="pm-contact-switcher-current" aria-hidden="true">${current ? CHECK_ICON_SVG : ""}</span>
             </div>`;
       };
       const rows = [
@@ -12372,11 +12435,11 @@ ${antiFluff}`;
     return { written, failedWrites, writtenBySource, failedWritesBySource, ...clearResult };
   }
   function renderPhoneSource(source, userName, emojis, injectionConfig) {
-    const historyLimit = normalizeInjectionConfig(injectionConfig).historyLimit;
+    const historyLimit = normalizeInjectionConfig(injectionConfig).phone.historyLimit;
     return renderConversation(source.name, source.history.slice(-historyLimit), source.meta, userName, emojis);
   }
   function phonePromptPosition(injectionConfig) {
-    const injection = normalizeInjectionConfig(injectionConfig);
+    const injection = normalizeInjectionConfig(injectionConfig).phone;
     return {
       position: injection.position,
       depth: injection.depth
@@ -12542,7 +12605,8 @@ ${antiFluff}`;
       selectionsByStorage: config.communitySelectionsByStorage,
       store: interactiveStore
     });
-    const phoneInjection = normalizeInjectionConfig(injectionConfig);
+    const injection = normalizeInjectionConfig(injectionConfig);
+    const phoneInjection = injection.phone;
     const phoneItems = phonePermission.allowed ? phonePermission.sources.flatMap((source) => {
       const placement = phonePromptPosition(phoneInjection);
       if (placement.position < 0) return [];
@@ -12566,8 +12630,8 @@ ${antiFluff}`;
         content: `[\u4E92\u52A8\u793E\u533A\u8BB0\u5FC6 \u2014 \u5F53\u524D\u89D2\u8272\u53EF\u89C1]
 ${body}
 [\u7ED3\u675F]`,
-        position: phoneInjection.position,
-        depth: phoneInjection.depth
+        position: injection.community.position,
+        depth: injection.community.depth
       }];
     }) : [];
     let calendarItems = [];
@@ -12589,8 +12653,8 @@ ${body}
           content: `[\u751F\u6D3B\u65E5\u5386]
 ${body}
 [\u7ED3\u675F]`,
-          position: config.calendarPosition,
-          depth: config.calendarDepth
+          position: injection.calendar.position,
+          depth: injection.calendar.depth
         });
       }
     }
@@ -12606,8 +12670,8 @@ ${body}
           content: `[\u89D2\u8272\u83DC\u8C31]
 ${body}
 [\u7ED3\u675F]`,
-          position: config.calendarPosition,
-          depth: config.calendarDepth
+          position: injection.calendar.position,
+          depth: injection.calendar.depth
         });
       }
     }
@@ -14596,7 +14660,7 @@ ${lines}`;
       <button type="button" role="listitem" onclick="window.__pmShowConfig('look')"><b>\u4E3B\u9898</b><span>\u65E5\u591C\u6A21\u5F0F\u3001\u6C14\u6CE1\u989C\u8272\u4E0E\u80CC\u666F\u56FE</span></button>
       <button type="button" role="listitem" onclick="window.__pmShowConfig('backup')"><b>\u5907\u4EFD</b><span>\u5BFC\u51FA\u3001\u5BFC\u5165\u6216\u5B89\u5168\u6E05\u7406\u63D2\u4EF6\u6570\u636E</span></button>
       <button type="button" role="listitem" onclick="window.__pmShowConfig('budget')"><b>\u4E0A\u4E0B\u6587\u9884\u7B97</b><span>\u63A7\u5236\u624B\u673A\u4F1A\u8BDD\u4E0E\u793E\u533A\u5199\u5165\u4E3B\u63D0\u793A\u8BCD\u7684\u989D\u5EA6</span></button>
-      <button type="button" role="listitem" onclick="window.__pmShowConversationInjection()"><b>\u6B63\u6587\u6CE8\u5165</b><span>\u7EDF\u4E00\u8BBE\u7F6E\u624B\u673A\u4F1A\u8BDD\u4E0E\u793E\u533A\u7684\u6CE8\u5165\u4F4D\u7F6E\u3001\u6DF1\u5EA6\u548C\u6D88\u606F\u8303\u56F4</span></button>
+      <button type="button" role="listitem" onclick="window.__pmShowConversationInjection()"><b>\u6B63\u6587\u6CE8\u5165</b><span>\u5206\u522B\u8BBE\u7F6E\u804A\u5929\u3001\u793E\u533A\u3001\u65E5\u5386\u4E0E\u83DC\u8C31\u7684\u6CE8\u5165\u4F4D\u7F6E\u548C\u6DF1\u5EA6</span></button>
       <div class="pm-global-setting" role="group" aria-labelledby="pm-wordy-label">
         <span><b id="pm-wordy-label">\u5168\u5C40\u77ED\u6D88\u606F\u9650\u5236</b><small>\u9664\u8BDD\u75E8\u4EBA\u8BBE\u5916\uFF0C\u6BCF\u6761\u72EC\u7ACB\u6D88\u606F\u4E0D\u8D85\u8FC7 35 \u5B57</small></span>
         <div id="pm-wordy-check" onclick="window.__pmToggleWordyLimit()"
@@ -14779,17 +14843,6 @@ ${lines}`;
           <span>\u628A\u4E00\u65B9\u6CA1\u7528\u5B8C\u7684\u989D\u5EA6\u8865\u7ED9\u53E6\u4E00\u65B9</span>
           <div id="pm-budget-redistribute" class="pm-custom-check ${config.redistributeUnused ? "is-checked" : ""}" role="checkbox" tabindex="0" aria-checked="${config.redistributeUnused}" onclick="this.classList.toggle('is-checked');this.setAttribute('aria-checked',String(this.classList.contains('is-checked')))" onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();this.click()}"></div>
         </label>
-      </div>
-      <div style="padding:12px 16px;border-top:1px solid var(--pm-color-border-subtle);display:flex;flex-direction:column;gap:10px;">
-        <div class="pm-cfg-tip" style="text-align:left;color:#ff9500;">\u65E5\u7A0B\u3001\u5929\u6C14\u3001\u751F\u7406\u671F\u548C\u83DC\u8C31\u7684\u6CE8\u5165\u5F00\u5173\u8BF7\u5728\u65E5\u5386\u5404\u6A21\u5757\u8BBE\u7F6E\u533A\u8C03\u6574\uFF1B\u6B64\u5904\u7EDF\u4E00\u8BBE\u7F6E\u5B83\u4EEC\u7684\u6CE8\u5165\u4F4D\u7F6E\u548C\u6DF1\u5EA6\u3002</div>
-        <label class="pm-cfg-label" for="pm-budget-calendar-position">\u65E5\u5386\u6CE8\u5165\u4F4D\u7F6E</label>
-        <select id="pm-budget-calendar-position" class="pm-cfg-input">
-          <option value="0" ${config.calendarPosition === 0 ? "selected" : ""}>\u4E3B\u63D0\u793A\u8BCD\u5185</option>
-          <option value="1" ${config.calendarPosition === 1 ? "selected" : ""}>\u804A\u5929\u8BB0\u5F55\u5185</option>
-          <option value="2" ${config.calendarPosition === 2 ? "selected" : ""}>\u4E3B\u63D0\u793A\u8BCD\u524D</option>
-        </select>
-        <label class="pm-cfg-label" for="pm-budget-calendar-depth">\u65E5\u5386\u6CE8\u5165\u6DF1\u5EA6</label>
-        <input id="pm-budget-calendar-depth" class="pm-cfg-input" type="number" min="0" max="10000" step="1" value="${config.calendarDepth}">
       </div>
       <div style="height:12px;"></div>
     </div>`;
@@ -15296,7 +15349,7 @@ ${lines}`;
     if (!data || typeof data !== "object" || Array.isArray(data)) throw new Error("\u5907\u4EFD\u6839\u8282\u70B9\u5FC5\u987B\u662F\u5BF9\u8C61");
     const version = data.schemaVersion === void 0 ? 1 : data.schemaVersion;
     if (!Number.isInteger(version) || version < 1) throw new Error("\u5907\u4EFD\u7248\u672C\u65E0\u6548");
-    if (version > 8) throw new Error(`\u5907\u4EFD\u7248\u672C ${version} \u9AD8\u4E8E\u5F53\u524D\u652F\u6301\u7248\u672C 8`);
+    if (version > 9) throw new Error(`\u5907\u4EFD\u7248\u672C ${version} \u9AD8\u4E8E\u5F53\u524D\u652F\u6301\u7248\u672C 9`);
     const result = clone7(current);
     if (Object.hasOwn(data, "histories")) result.histories = objectValue(data.histories, "histories");
     if (Object.hasOwn(data, "config")) result.config = objectValue(data.config, "config");
@@ -15309,7 +15362,8 @@ ${lines}`;
     if (Object.hasOwn(data, "pokeConfig")) result.pokeConfig = objectValue(data.pokeConfig, "pokeConfig");
     if (Object.hasOwn(data, "bidirectional")) result.bidirectional = objectValue(data.bidirectional, "bidirectional");
     if (version >= 8) {
-      result.injectionConfig = Object.hasOwn(data, "injectionConfig") ? normalizeInjectionConfig(objectValue(data.injectionConfig, "injectionConfig")) : normalizeInjectionConfig(null);
+      const config = Object.hasOwn(data, "injectionConfig") ? objectValue(data.injectionConfig, "injectionConfig") : null;
+      result.injectionConfig = version >= 9 ? normalizeInjectionConfig(config) : normalizeInjectionConfig(config, current.injectionConfig?.calendar);
     }
     if (Object.hasOwn(data, "emojis")) result.emojis = arrayValue(data.emojis, "emojis");
     if (Object.hasOwn(data, "characterBehavior")) result.characterBehavior = objectValue(data.characterBehavior, "characterBehavior");
@@ -15499,7 +15553,7 @@ ${error.message}`);
     window.__pmExportData = async () => {
       const snapshot = await captureBackupState();
       const data = {
-        schemaVersion: 8,
+        schemaVersion: 9,
         histories: snapshot.histories,
         config: snapshot.config,
         theme: legacyBackupTheme(snapshot.theme),
@@ -15905,9 +15959,7 @@ ${error.message}`);
         targetTokens: Number(document.getElementById("pm-budget-target")?.value),
         sourceWeights,
         sourcePriority: priority,
-        redistributeUnused: document.getElementById("pm-budget-redistribute")?.classList.contains("is-checked") === true,
-        calendarPosition: Number(document.getElementById("pm-budget-calendar-position")?.value),
-        calendarDepth: Number(document.getElementById("pm-budget-calendar-depth")?.value)
+        redistributeUnused: document.getElementById("pm-budget-redistribute")?.classList.contains("is-checked") === true
       });
       if (!saveBudgetConfig(candidate)) {
         alert("\u4E0A\u4E0B\u6587\u9884\u7B97\u4FDD\u5B58\u5931\u8D25\uFF1A\u6D4F\u89C8\u5668\u5B58\u50A8\u4E0D\u53EF\u7528");

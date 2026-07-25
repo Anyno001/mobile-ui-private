@@ -25,15 +25,13 @@ const normalized = normalizeBudgetConfig({
         invalid: [],
     },
 });
-assert.equal(normalized.budgetVersion, 2);
+assert.equal(normalized.budgetVersion, 3);
 assert.equal(normalized.targetTokens, DEFAULT_BUDGET_CONFIG.targetTokens);
 assert.deepEqual(normalized.sourceWeights, DEFAULT_BUDGET_CONFIG.sourceWeights);
 assert.deepEqual(normalized.sourcePriority, ['phone', 'community', 'calendar', 'recipe']);
-for (const removedField of ['calendarEnabled', 'recipeEnabled', 'recipePosition', 'recipeDepth', 'communityEnabled', 'communityPosition', 'communityDepth']) {
+for (const removedField of ['calendarEnabled', 'calendarPosition', 'calendarDepth', 'recipeEnabled', 'recipePosition', 'recipeDepth', 'communityEnabled', 'communityPosition', 'communityDepth']) {
     assert.equal(Object.hasOwn(normalized, removedField), false, `预算配置不得保留旧字段 ${removedField}`);
 }
-assert.equal(normalized.calendarPosition, DEFAULT_BUDGET_CONFIG.calendarPosition);
-assert.equal(normalized.calendarDepth, DEFAULT_BUDGET_CONFIG.calendarDepth);
 assert.equal(normalized.redistributeUnused, DEFAULT_BUDGET_CONFIG.redistributeUnused);
 assert.deepEqual(normalized.communitySceneIdsByStorage.story, ['scene-a']);
 assert.deepEqual(normalized.communitySelectionsByStorage, {
@@ -135,7 +133,7 @@ storedValues.set('ST_SMS_BUDGET_CONFIG', JSON.stringify({
     },
 }));
 assert.equal(loadBudgetConfig().targetTokens, 321);
-assert.equal(window.__pmBudgetConfig.budgetVersion, 2);
+assert.equal(window.__pmBudgetConfig.budgetVersion, 3);
 assert.deepEqual(window.__pmBudgetConfig.sourceWeights, { phone: 2, community: 1, calendar: 0, recipe: 0 });
 assert.deepEqual(window.__pmBudgetConfig.sourcePriority, ['phone', 'community', 'calendar', 'recipe']);
 assert.deepEqual(window.__pmBudgetConfig.communitySelectionsByStorage.story['scene-a'], {

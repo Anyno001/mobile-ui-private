@@ -934,14 +934,21 @@ assert.deepEqual(normalizeGroupInjection({ position: 1, depth: '4px', historyLim
     historyLimit: 2,
 });
 assert.deepEqual(normalizeInjectionConfig({ position: -1, depth: '7', historyLimit: '9' }), {
-    position: 0,
-    depth: 7,
-    historyLimit: 9,
+    phone: { position: 0, depth: 7, historyLimit: 9 },
+    community: { position: 0, depth: 7 },
+    calendar: { position: 0, depth: 0 },
 }, '统一注入规则不得把关闭位置混入全局配置');
 assert.deepEqual(normalizeInjectionConfig({ position: 2, depth: MAX_INJECTION_DEPTH + 1, historyLimit: 200 }), {
-    position: 2,
-    depth: MAX_INJECTION_DEPTH,
-    historyLimit: 100,
+    phone: { position: 2, depth: MAX_INJECTION_DEPTH, historyLimit: 100 },
+    community: { position: 2, depth: MAX_INJECTION_DEPTH },
+    calendar: { position: 0, depth: 0 },
+});
+assert.deepEqual(normalizeInjectionConfig({
+    phone: { position: 1, depth: 2, historyLimit: 8 },
+    community: { position: 2, depth: 3 }, calendar: { position: 0, depth: 4 },
+}), {
+    phone: { position: 1, depth: 2, historyLimit: 8 },
+    community: { position: 2, depth: 3 }, calendar: { position: 0, depth: 4 },
 });
 
 const group = normalizeGroupMeta({
@@ -1050,18 +1057,30 @@ assert.equal(window.__pmCharacterBehavior.story.Alice.messageLength, 'persona');
 assert.equal(JSON.parse(localValues.get('ST_SMS_CHARACTER_BEHAVIOR')).story.Alice.messageLength, 'persona');
 
 localValues.set('ST_SMS_INJECTION_CONFIG', JSON.stringify({ position: 2, depth: 7, historyLimit: 12 }));
-assert.deepEqual(loadInjectionConfig(), { position: 2, depth: 7, historyLimit: 12 });
+assert.deepEqual(loadInjectionConfig(), {
+    phone: { position: 2, depth: 7, historyLimit: 12 },
+    community: { position: 2, depth: 7 }, calendar: { position: 0, depth: 0 },
+});
 window.__pmInjectionConfig = { position: -1, depth: MAX_INJECTION_DEPTH + 1, historyLimit: 0 };
 assert.equal(saveInjectionConfig(), true);
-assert.deepEqual(window.__pmInjectionConfig, { position: 0, depth: MAX_INJECTION_DEPTH, historyLimit: 1 });
+assert.deepEqual(window.__pmInjectionConfig, {
+    phone: { position: 0, depth: MAX_INJECTION_DEPTH, historyLimit: 1 },
+    community: { position: 0, depth: MAX_INJECTION_DEPTH }, calendar: { position: 0, depth: 0 },
+});
 assert.deepEqual(JSON.parse(localValues.get('ST_SMS_INJECTION_CONFIG')), window.__pmInjectionConfig);
 localValues.set('ST_SMS_INJECTION_CONFIG', '{broken');
-assert.deepEqual(loadInjectionConfig(), { position: 0, depth: 0, historyLimit: 20 },
+assert.deepEqual(loadInjectionConfig(), {
+    phone: { position: 0, depth: 0, historyLimit: 20 },
+    community: { position: 0, depth: 0 }, calendar: { position: 0, depth: 0 },
+},
     '统一注入规则损坏时必须回退安全默认值');
 window.__pmInjectionConfig = { position: 1, depth: 3, historyLimit: 8 };
 localStorageControl.failSet.add('ST_SMS_INJECTION_CONFIG');
 assert.equal(saveInjectionConfig(), false, '统一注入规则持久化失败必须显式返回 false');
-assert.deepEqual(window.__pmInjectionConfig, { position: 1, depth: 3, historyLimit: 8 });
+assert.deepEqual(window.__pmInjectionConfig, {
+    phone: { position: 1, depth: 3, historyLimit: 8 },
+    community: { position: 1, depth: 3 }, calendar: { position: 0, depth: 0 },
+});
 
 localValues.set('ST_SMS_GROUP_META', JSON.stringify({
     story: {
@@ -2698,12 +2717,12 @@ try {
     assert.match(switcher.innerHTML, /data-contact-action="delete" data-key="Alice"/);
     assert.match(switcher.innerHTML, />新建<\/button>[\s\S]*>添加<\/button>/);
     assert.equal(switcher.style.left, undefined, '联系人浮层不得写入固定 left 偏移');
-    assert.equal(switcher.style.top, '80px', '联系人浮层必须与标题栏底边无缝对齐');
+    assert.equal(switcher.style.top, '78px', '联系人浮层必须比标题栏底边上移 2px');
     const switcherResizeObserver = resizeObserverRecords.at(-1);
     assert.deepEqual(switcherResizeObserver.observed, [phone, trigger], '浮层必须同时监听手机与标题尺寸变化');
     triggerBottom = 100;
     switcherResizeObserver.callback();
-    assert.equal(switcher.style.top, '100px', '标题或手机尺寸变化后必须重新贴齐标题栏底边');
+    assert.equal(switcher.style.top, '98px', '标题或手机尺寸变化后必须保持上移 2px');
     assert.equal(switcher.firstButton.focusCalls, 1, '打开浮层后必须把焦点移入菜单');
 
     const injectionAttributes = new Map([['aria-pressed', 'false'], ['aria-label', '开启 Alice 的正文注入']]);
@@ -3240,7 +3259,10 @@ assert.equal(migratedSingleOnSwitch.bubbles[0].sender, '');
 
 const currentBackup = {
     histories: {}, config: {}, theme: { darkMode: 'dark', ambientStatusEnabled: true }, profiles: [], groupMeta: {}, pokeConfig: {},
-    bidirectional: {}, injectionConfig: { position: 1, depth: 6, historyLimit: 14 }, emojis: [], characterBehavior: {}, wordyLimit: false,
+    bidirectional: {}, injectionConfig: {
+        phone: { position: 1, depth: 6, historyLimit: 14 },
+        community: { position: 2, depth: 3 }, calendar: { position: 1, depth: 4 },
+    }, emojis: [], characterBehavior: {}, wordyLimit: false,
     desktopBg: 'https://example.test/current-desktop.png', bgGlobal: '', bgLocal: {}, interactiveScenes: { version: 1, scopes: {} },
     calendarStore: { version: 1, scopes: { current: { events: {} } } },
     calendarOccasions: { version: 1, scopes: {} },
@@ -3287,11 +3309,18 @@ assert.deepEqual(parseBackupData({ schemaVersion: 7 }, currentBackup).calendarRe
 assert.deepEqual(parseBackupData({ schemaVersion: 7, injectionConfig: { position: 2, depth: 9, historyLimit: 3 } }, currentBackup).injectionConfig,
     currentBackup.injectionConfig, '旧版备份不得导入尚未定义的统一注入规则');
 assert.deepEqual(parseBackupData({ schemaVersion: 8, injectionConfig: { position: 2, depth: 9, historyLimit: 3 } }, currentBackup).injectionConfig,
-    { position: 2, depth: 9, historyLimit: 3 });
-assert.deepEqual(parseBackupData({ schemaVersion: 8 }, currentBackup).injectionConfig,
-    { position: 0, depth: 0, historyLimit: 20 }, 'schema 8 缺少统一注入规则时必须使用默认值');
+    { phone: { position: 2, depth: 9, historyLimit: 3 }, community: { position: 2, depth: 9 }, calendar: { position: 1, depth: 4 } });
+assert.deepEqual(parseBackupData({ schemaVersion: 8 }, currentBackup).injectionConfig, {
+    phone: { position: 0, depth: 0, historyLimit: 20 },
+    community: { position: 0, depth: 0 }, calendar: { position: 1, depth: 4 },
+}, 'schema 8 缺少统一注入规则时必须保留现有日历放置规则');
 assert.throws(() => parseBackupData({ schemaVersion: 8, injectionConfig: [] }, currentBackup), /injectionConfig 必须是对象/);
-assert.throws(() => parseBackupData({ schemaVersion: 9 }, currentBackup), /高于当前支持版本 8/);
+assert.deepEqual(parseBackupData({ schemaVersion: 9, injectionConfig: {
+    phone: { position: 1, depth: 2, historyLimit: 8 }, community: { position: 2, depth: 3 }, calendar: { position: 0, depth: 4 },
+} }, currentBackup).injectionConfig, {
+    phone: { position: 1, depth: 2, historyLimit: 8 }, community: { position: 2, depth: 3 }, calendar: { position: 0, depth: 4 },
+});
+assert.throws(() => parseBackupData({ schemaVersion: 10 }, currentBackup), /高于当前支持版本 9/);
 const parsedV4Backup = parseBackupData({
     schemaVersion: 4,
     theme: { darkMode: 'light', ambientStatusEnabled: true },
@@ -4282,7 +4311,11 @@ await assert.rejects(clearPluginData({
 assert.ok(cleanupRollbackError.rollbackError instanceof AggregateError);
 
 const failedClearBidirectional = { story: ['Alice'] };
-const failedClearInjectionConfig = { position: 2, depth: 7, historyLimit: 13 };
+const failedClearInjectionConfig = {
+    phone: { position: 2, depth: 7, historyLimit: 13 },
+    community: { position: 2, depth: 7 },
+    calendar: { position: 0, depth: 0 },
+};
 window.__pmBidirectional = structuredClone(failedClearBidirectional);
 window.__pmInjectionConfig = structuredClone(failedClearInjectionConfig);
 localValues.set('ST_SMS_BIDIRECTIONAL', JSON.stringify(failedClearBidirectional));

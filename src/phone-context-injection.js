@@ -57,6 +57,21 @@ function injectionPositionLabel(position) {
     })[position] || '主提示词内';
 }
 
+function promptPlacementFields(prefix, label, config, { includeHistoryLimit = false } = {}) {
+    const options = [
+        [EXTENSION_PROMPT_POSITIONS.IN_PROMPT, '主提示词内'],
+        [EXTENSION_PROMPT_POSITIONS.IN_CHAT, '聊天记录内'],
+        [EXTENSION_PROMPT_POSITIONS.BEFORE_PROMPT, '主提示词前'],
+    ].map(([value, text]) => `<option value="${value}" ${config.position === value ? 'selected' : ''}>${text}</option>`).join('');
+    return `<fieldset class="pm-conversation-injection-group"><legend>${label}</legend><label class="pm-conversation-injection-field">注入位置
+      <select id="pm-conversation-injection-${prefix}-position" class="pm-cfg-input pm-conversation-injection-config">${options}</select>
+    </label><label class="pm-conversation-injection-field">注入深度
+      <input id="pm-conversation-injection-${prefix}-depth" class="pm-cfg-input pm-conversation-injection-config" type="number" min="0" max="10000" step="1" value="${config.depth}">
+    </label>${includeHistoryLimit ? `<label class="pm-conversation-injection-field">消息范围
+      <input id="pm-conversation-injection-${prefix}-history-limit" class="pm-cfg-input pm-conversation-injection-config" type="number" min="1" max="100" step="1" value="${config.historyLimit}">
+    </label>` : ''}</fieldset>`;
+}
+
 export function installPhoneContextInjection(state, deps) {
     const { getStorageId, makeOverlay, applyBidirectionalInjection } = deps;
     let injectionToggleQueue = Promise.resolve();
@@ -118,7 +133,7 @@ export function installPhoneContextInjection(state, deps) {
 
     window.__pmConversationInjectionSummary = () => {
         const config = normalizeInjectionConfig(window.__pmInjectionConfig);
-        return injectionPositionLabel(config.position);
+        return injectionPositionLabel(config.phone.position);
     };
 
     window.__pmCurrentConversationInjectionEnabled = () => isEnabled(currentTarget());
@@ -152,13 +167,9 @@ export function installPhoneContextInjection(state, deps) {
       <div class="pm-modal-header"><button type="button" onclick="window.__pmShowConfig('home')" class="pm-modal-close" title="返回设置" aria-label="返回设置">${BACK_ICON_SVG}</button><b>正文注入</b><button type="button" onclick="window.__pmCloseOverlay()" class="pm-modal-close" title="关闭" aria-label="关闭">${CLOSE_ICON_SVG}</button></div>
       <div class="pm-modal-scroll pm-conversation-injection-body">
         <div id="pm-conversation-injection-status" class="pm-conversation-injection-status" role="status" ${statusMessage ? '' : 'hidden'}>${escapeHtml(statusMessage)}</div>
-        <label class="pm-conversation-injection-field">注入位置
-          <select id="pm-conversation-injection-position" class="pm-cfg-input pm-conversation-injection-config">
-            <option value="0" ${config.position === 0 ? 'selected' : ''}>主提示词内</option>
-            <option value="1" ${config.position === 1 ? 'selected' : ''}>聊天记录内</option>
-            <option value="2" ${config.position === 2 ? 'selected' : ''}>主提示词前</option>
-          </select>
-        </label>
+        ${promptPlacementFields('phone', '聊天', config.phone, { includeHistoryLimit: true })}
+        ${promptPlacementFields('community', '社区', config.community)}
+        ${promptPlacementFields('calendar', '日历与菜谱', config.calendar)}
       </div>
       <div class="pm-modal-add pm-conversation-injection-actions"><button id="pm-conversation-injection-save" type="button" class="pm-action-button" onclick="window.__pmSaveConversationInjection()">保存并应用</button></div>
     </div>`);
@@ -175,7 +186,19 @@ export function installPhoneContextInjection(state, deps) {
         const snapshot = clone(window.__pmInjectionConfig);
         window.__pmInjectionConfig = normalizeInjectionConfig({
             ...snapshot,
-            position: document.getElementById('pm-conversation-injection-position')?.value,
+            phone: {
+                position: document.getElementById('pm-conversation-injection-phone-position')?.value,
+                depth: document.getElementById('pm-conversation-injection-phone-depth')?.value,
+                historyLimit: document.getElementById('pm-conversation-injection-phone-history-limit')?.value,
+            },
+            community: {
+                position: document.getElementById('pm-conversation-injection-community-position')?.value,
+                depth: document.getElementById('pm-conversation-injection-community-depth')?.value,
+            },
+            calendar: {
+                position: document.getElementById('pm-conversation-injection-calendar-position')?.value,
+                depth: document.getElementById('pm-conversation-injection-calendar-depth')?.value,
+            },
         });
         try {
             await commitConversationInjectionUpdate({
@@ -189,7 +212,7 @@ export function installPhoneContextInjection(state, deps) {
                 applyInjection: () => applyBidirectionalInjection(),
             });
             const config = normalizeInjectionConfig(window.__pmInjectionConfig);
-            window.__pmShowConversationInjection(`已应用到${injectionPositionLabel(config.position)}（深度 ${config.depth}）`);
+            window.__pmShowConversationInjection(`已应用：聊天 ${injectionPositionLabel(config.phone.position)}（深度 ${config.phone.depth}），社区 ${injectionPositionLabel(config.community.position)}（深度 ${config.community.depth}），日历 ${injectionPositionLabel(config.calendar.position)}（深度 ${config.calendar.depth}）`);
             return true;
         } catch (error) {
             alert(error.message || '统一注入规则保存失败');

@@ -78,12 +78,12 @@ export function replaceExtensionPrompts({ context, runtime, prompts }) {
 }
 
 function renderPhoneSource(source, userName, emojis, injectionConfig) {
-    const historyLimit = normalizeInjectionConfig(injectionConfig).historyLimit;
+    const historyLimit = normalizeInjectionConfig(injectionConfig).phone.historyLimit;
     return renderConversation(source.name, source.history.slice(-historyLimit), source.meta, userName, emojis);
 }
 
 function phonePromptPosition(injectionConfig) {
-    const injection = normalizeInjectionConfig(injectionConfig);
+    const injection = normalizeInjectionConfig(injectionConfig).phone;
     return {
         position: injection.position,
         depth: injection.depth,
@@ -228,7 +228,8 @@ export function buildContextInjectionPrompts({
         selectionsByStorage: config.communitySelectionsByStorage,
         store: interactiveStore,
     });
-    const phoneInjection = normalizeInjectionConfig(injectionConfig);
+    const injection = normalizeInjectionConfig(injectionConfig);
+    const phoneInjection = injection.phone;
     const phoneItems = phonePermission.allowed ? phonePermission.sources.flatMap(source => {
         const placement = phonePromptPosition(phoneInjection);
         if (placement.position < 0) return [];
@@ -250,8 +251,8 @@ export function buildContextInjectionPrompts({
             key: `${COMMUNITY_KEY_PREFIX}${encodeURIComponent(source.sourceId)}`,
             source: 'community',
             content: `[互动社区记忆 — 当前角色可见]\n${body}\n[结束]`,
-            position: phoneInjection.position,
-            depth: phoneInjection.depth,
+            position: injection.community.position,
+            depth: injection.community.depth,
         }];
     }) : [];
     let calendarItems = [];
@@ -266,8 +267,8 @@ export function buildContextInjectionPrompts({
                 key: `${CALENDAR_KEY_PREFIX}${encodeURIComponent(currentStorageId)}`,
                 source: 'calendar',
                 content: `[生活日历]\n${body}\n[结束]`,
-                position: config.calendarPosition,
-                depth: config.calendarDepth,
+                position: injection.calendar.position,
+                depth: injection.calendar.depth,
             });
         }
     }
@@ -283,8 +284,8 @@ export function buildContextInjectionPrompts({
                 content: `[角色菜谱]
 ${body}
 [结束]`,
-                position: config.calendarPosition,
-                depth: config.calendarDepth,
+                position: injection.calendar.position,
+                depth: injection.calendar.depth,
             });
         }
     }

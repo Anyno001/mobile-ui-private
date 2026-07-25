@@ -5,7 +5,7 @@ import { DEFAULT_RECIPE_GENERATION_RULE, RECIPE_MEAL_LABELS, RECIPE_MEAL_TYPES, 
 import { weatherCodeLabel } from './calendar-weather.js';
 import { resolveWeatherForDate, weatherSourceLabel } from './calendar-weather-source.js';
 import {
-    CLOSE_ICON_SVG, CYCLE_FERTILE_ICON_SVG, EDIT_ICON_SVG, FLOWER_BUD_ICON_SVG,
+    CLOSE_ICON_SVG, CYCLE_FERTILE_ICON_SVG, CYCLE_PERIOD_ICON_SVG, EDIT_ICON_SVG,
     MORE_ICON_SVG, REFRESH_ICON_SVG, TRASH_ICON_SVG, WEATHER_ICON_SVG,
 } from './icons.js';
 import { escapeAttr, escapeHtml } from './ui.js';
@@ -13,7 +13,7 @@ import { escapeAttr, escapeHtml } from './ui.js';
 const detailDate = new Intl.DateTimeFormat('zh-CN', { month: 'long', day: 'numeric' });
 const detailWeekday = new Intl.DateTimeFormat('zh-CN', { weekday: 'long' });
 const CYCLE_DETAILS = {
-    period: { label: '经期', icon: FLOWER_BUD_ICON_SVG },
+    period: { label: '经期', icon: CYCLE_PERIOD_ICON_SVG },
     ovulatory: { label: '易孕期', icon: CYCLE_FERTILE_ICON_SVG },
 };
 
@@ -48,17 +48,16 @@ function holidayRows(cache, date) {
 function weatherRow(weatherStore, date) {
     const resolved = resolveWeatherForDate(weatherStore, date);
     if (resolved.status !== 'available') {
-        return `<p class="pm-calendar-empty-day">无法推演 · ${escapeHtml(resolved.unavailableReason)}</p>`;
+        return { content: `<p class="pm-calendar-empty-day">无法推演 · ${escapeHtml(resolved.unavailableReason)}</p>`, icon: '' };
     }
-    return `<div class="pm-calendar-weather"><span class="pm-calendar-status-copy"><b>${resolved.day.tempMin}℃~${resolved.day.tempMax}℃</b><small>${escapeHtml(weatherCodeLabel(resolved.day.weatherCode))}</small></span><span class="pm-calendar-status-icon" aria-hidden="true">${WEATHER_ICON_SVG}</span></div>`;
+    return { content: `<div class="pm-calendar-weather"><b>${resolved.day.tempMin}℃~${resolved.day.tempMax}℃</b><small>${escapeHtml(weatherCodeLabel(resolved.day.weatherCode))}</small></div>`, icon: WEATHER_ICON_SVG };
 }
 
 function cycleRow(cycleScope, date) {
     const prediction = predictCyclePhase(cycleScope, date);
     const detail = CYCLE_DETAILS[prediction.phase];
-    if (!detail) return '';
-    const statusLabel = prediction.status === 'override' ? '手动记录' : '周期预测';
-    return `<div class="pm-calendar-cycle is-${prediction.phase}"><span class="pm-calendar-status-copy"><b>${detail.label}</b><small>${statusLabel}</small></span><span class="pm-calendar-status-icon" aria-hidden="true">${detail.icon}</span></div>`;
+    if (!detail) return { content: '', icon: '' };
+    return { content: `<div class="pm-calendar-cycle is-${prediction.phase}"><b>${detail.label}</b></div>`, icon: detail.icon };
 }
 
 function recipeRows(recipeScope, date, editing = false) {
@@ -66,6 +65,10 @@ function recipeRows(recipeScope, date, editing = false) {
     return RECIPE_MEAL_TYPES.flatMap(mealType => day[mealType]?.text ? [
         `<article class="pm-calendar-event is-recipe" data-recipe-meal="${mealType}"><div><b>${RECIPE_MEAL_LABELS[mealType]}</b><span>${escapeHtml(day[mealType].text)}</span></div>${editing ? `<span class="pm-calendar-inline-actions"><button type="button" data-action="calendar-recipe-edit" data-meal-type="${mealType}" aria-label="编辑${RECIPE_MEAL_LABELS[mealType]}" title="编辑">${EDIT_ICON_SVG}</button><button type="button" class="is-danger" data-action="calendar-recipe-delete" data-meal-type="${mealType}" aria-label="删除${RECIPE_MEAL_LABELS[mealType]}" title="删除">${TRASH_ICON_SVG}</button></span>` : ''}</article>`,
     ] : []).join('');
+}
+
+function detailHeader(selectedDate, parsed, relativeLabel, actions = '') {
+    return `<header><div class="pm-calendar-detail-date">${relativeLabel ? `<strong>${escapeHtml(relativeLabel)}</strong>` : ''}<span><time datetime="${selectedDate}">${escapeHtml(detailDate.format(parsed))}</time><em>${escapeHtml(detailWeekday.format(parsed))}</em></span></div>${actions}</header>`;
 }
 
 export function renderSelectedDateDetail(
@@ -78,24 +81,27 @@ export function renderSelectedDateDetail(
         const actions = `<div class="pm-calendar-detail-actions"><button type="button" class="pm-calendar-detail-more" data-action="calendar-toggle-detail-edit" aria-label="${detailEditing ? '关闭编辑状态' : '编辑这一天的菜谱'}" title="${detailEditing ? '关闭编辑状态' : '编辑这一天的菜谱'}" aria-pressed="${detailEditing}">${detailEditing ? CLOSE_ICON_SVG : MORE_ICON_SVG}</button></div>`;
         const editActions = detailEditing ? `<div class="pm-calendar-detail-edit-actions"><button type="button" class="pm-calendar-inline-add" data-action="calendar-recipe-add" ${detailRegenerating ? 'disabled' : ''}>+ 新增一条</button><button type="button" class="pm-calendar-inline-regenerate${detailRegenerating ? ' is-loading' : ''}" data-action="calendar-recipe-regenerate" aria-label="重新生成当日菜谱" title="重新生成当日菜谱" aria-busy="${detailRegenerating}" ${detailRegenerating ? 'disabled' : ''}>${REFRESH_ICON_SVG}<span>重新生成</span></button></div>` : '';
         return `<section class="pm-calendar-selected-detail" data-calendar-selected-detail="${selectedDate}" data-calendar-detail-mode="recipe">
-          <header><div class="pm-calendar-detail-date">${relativeLabel ? `<strong>${escapeHtml(relativeLabel)}</strong>` : ''}<span><time datetime="${selectedDate}">${escapeHtml(detailDate.format(parsed))}</time><em>${escapeHtml(detailWeekday.format(parsed))}</em></span></div>${actions}</header>
+          ${detailHeader(selectedDate, parsed, relativeLabel, actions)}
           <div class="pm-calendar-selected-content">${content || '<p class="pm-calendar-empty-day">这一天还没有菜谱。</p>'}${editActions}</div>
         </section>`;
     }
-    const content = viewMode === 'weather'
+    const statusDetail = viewMode === 'weather'
         ? weatherRow(weatherStore, selectedDate)
         : viewMode === 'cycle'
             ? cycleRow(cycleScope, selectedDate)
-            : `${holidayRows(holidayCache, selectedDate)}${eventRows(scope, occasionsByDate, selectedDate, detailEditing)}`;
+            : null;
+    const content = statusDetail?.content ?? `${holidayRows(holidayCache, selectedDate)}${eventRows(scope, occasionsByDate, selectedDate, detailEditing)}`;
+    const bigIcon = statusDetail?.icon ? `<span class="pm-calendar-detail-big-icon" aria-hidden="true">${statusDetail.icon}</span>` : '';
     const emptyLabel = viewMode === 'weather' ? '这一天没有天气数据' : viewMode === 'cycle' ? '这一天没有生理期提示' : '这一天还没有安排';
     const editingLabel = viewMode === 'schedule' ? '编辑这一天' : '';
     const actions = viewMode === 'schedule' ? `<div class="pm-calendar-detail-actions">
         <button type="button" class="pm-calendar-detail-more" data-action="calendar-toggle-detail-edit" aria-label="${detailEditing ? '关闭编辑状态' : editingLabel}" title="${detailEditing ? '关闭编辑状态' : editingLabel}" aria-pressed="${detailEditing}">${detailEditing ? CLOSE_ICON_SVG : MORE_ICON_SVG}</button>
     </div>` : '';
     const addAction = viewMode === 'schedule' && detailEditing ? `<div class="pm-calendar-detail-edit-actions"><button type="button" class="pm-calendar-inline-add" data-action="calendar-add-date" ${detailRegenerating ? 'disabled' : ''}>+ 新增一条</button><button type="button" class="pm-calendar-inline-regenerate${detailRegenerating ? ' is-loading' : ''}" data-action="calendar-regenerate" aria-label="重新生成当日日程" title="重新生成当日日程" aria-busy="${detailRegenerating}" ${detailRegenerating ? 'disabled' : ''}>${REFRESH_ICON_SVG}<span>重新生成</span></button></div>` : '';
-    return `<section class="pm-calendar-selected-detail" data-calendar-selected-detail="${selectedDate}" data-calendar-detail-mode="${viewMode}">
-        <header><div class="pm-calendar-detail-date">${relativeLabel ? `<strong>${escapeHtml(relativeLabel)}</strong>` : ''}<span><time datetime="${selectedDate}">${escapeHtml(detailDate.format(parsed))}</time><em>${escapeHtml(detailWeekday.format(parsed))}</em></span></div>${actions}</header>
+    return `<section class="pm-calendar-selected-detail${bigIcon ? ' has-status-icon' : ''}" data-calendar-selected-detail="${selectedDate}" data-calendar-detail-mode="${viewMode}">
+        ${detailHeader(selectedDate, parsed, relativeLabel, actions)}
         <div class="pm-calendar-selected-content">${content || `<p class="pm-calendar-empty-day">${emptyLabel}</p>`}${addAction}</div>
+        ${bigIcon}
     </section>`;
 }
 

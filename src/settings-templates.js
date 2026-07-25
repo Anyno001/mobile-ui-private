@@ -9,7 +9,7 @@ export function renderSettingsHome() {
       <button type="button" role="listitem" onclick="window.__pmShowConfig('look')"><b>主题</b><span>日夜模式、气泡颜色与背景图</span></button>
       <button type="button" role="listitem" onclick="window.__pmShowConfig('backup')"><b>备份</b><span>导出、导入或安全清理插件数据</span></button>
       <button type="button" role="listitem" onclick="window.__pmShowConfig('budget')"><b>上下文预算</b><span>控制手机会话与社区写入主提示词的额度</span></button>
-      <button type="button" role="listitem" onclick="window.__pmShowConversationInjection()"><b>正文注入</b><span>统一设置手机会话与社区的注入位置、深度和消息范围</span></button>
+      <button type="button" role="listitem" onclick="window.__pmShowConversationInjection()"><b>正文注入</b><span>分别设置聊天、社区、日历与菜谱的注入位置和深度</span></button>
       <div class="pm-global-setting" role="group" aria-labelledby="pm-wordy-label">
         <span><b id="pm-wordy-label">全局短消息限制</b><small>除话痨人设外，每条独立消息不超过 35 字</small></span>
         <div id="pm-wordy-check" onclick="window.__pmToggleWordyLimit()"
@@ -192,17 +192,6 @@ export function renderBudgetSettings({ config }) {
           <span>把一方没用完的额度补给另一方</span>
           <div id="pm-budget-redistribute" class="pm-custom-check ${config.redistributeUnused ? 'is-checked' : ''}" role="checkbox" tabindex="0" aria-checked="${config.redistributeUnused}" onclick="this.classList.toggle('is-checked');this.setAttribute('aria-checked',String(this.classList.contains('is-checked')))" onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();this.click()}"></div>
         </label>
-      </div>
-      <div style="padding:12px 16px;border-top:1px solid var(--pm-color-border-subtle);display:flex;flex-direction:column;gap:10px;">
-        <div class="pm-cfg-tip" style="text-align:left;color:#ff9500;">日程、天气、生理期和菜谱的注入开关请在日历各模块设置区调整；此处统一设置它们的注入位置和深度。</div>
-        <label class="pm-cfg-label" for="pm-budget-calendar-position">日历注入位置</label>
-        <select id="pm-budget-calendar-position" class="pm-cfg-input">
-          <option value="0" ${config.calendarPosition === 0 ? 'selected' : ''}>主提示词内</option>
-          <option value="1" ${config.calendarPosition === 1 ? 'selected' : ''}>聊天记录内</option>
-          <option value="2" ${config.calendarPosition === 2 ? 'selected' : ''}>主提示词前</option>
-        </select>
-        <label class="pm-cfg-label" for="pm-budget-calendar-depth">日历注入深度</label>
-        <input id="pm-budget-calendar-depth" class="pm-cfg-input" type="number" min="0" max="10000" step="1" value="${config.calendarDepth}">
       </div>
       <div style="height:12px;"></div>
     </div>`;

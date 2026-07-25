@@ -155,7 +155,7 @@ export function installSettingsUi(deps) {
     window.__pmExportData = async () => {
         const snapshot = await captureBackupState();
         const data = {
-            schemaVersion: 8,
+            schemaVersion: 9,
             histories: snapshot.histories,
             config: snapshot.config,
             theme: legacyBackupTheme(snapshot.theme),
@@ -519,8 +519,6 @@ export function installSettingsUi(deps) {
             sourceWeights,
             sourcePriority: priority,
             redistributeUnused: document.getElementById('pm-budget-redistribute')?.classList.contains('is-checked') === true,
-            calendarPosition: Number(document.getElementById('pm-budget-calendar-position')?.value),
-            calendarDepth: Number(document.getElementById('pm-budget-calendar-depth')?.value),
         });
         if (!saveBudgetConfig(candidate)) {
             alert('上下文预算保存失败：浏览器存储不可用');

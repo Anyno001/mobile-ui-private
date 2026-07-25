@@ -481,7 +481,7 @@ const productionPhoneResult = applyContextInjections({
     context: { setExtensionPrompt: (...args) => productionPhoneCalls.push(args) },
     runtime: { trackedExtensionPromptKeys: new Set() },
     ...baseInjectionInput,
-    injectionConfig: { position: 1, depth: 0, historyLimit: 20 },
+    injectionConfig: { phone: { position: 1, depth: 0, historyLimit: 20 } },
     budgetConfig: {
         targetTokens: 3000,
         sourceWeights: { phone: 1, community: 0, calendar: 0, recipe: 0 },
@@ -519,7 +519,7 @@ const communityPlan = buildContextInjectionPrompts({
         redistributeUnused: true,
         communitySceneIdsByStorage: { 'story-a': ['scene-a'] },
     },
-    injectionConfig: { position: 2, depth: 3, historyLimit: 20 },
+    injectionConfig: { community: { position: 2, depth: 3 } },
 });
 assert.equal(communityPlan.prompts.length, 3);
 const communityPrompt = communityPlan.prompts.find(prompt => prompt.key.includes(':community:'));
@@ -532,7 +532,7 @@ const productionCommunityResult = applyContextInjections({
     context: { setExtensionPrompt: (...args) => productionCommunityCalls.push(args) },
     runtime: { trackedExtensionPromptKeys: new Set() },
     ...baseInjectionInput,
-    injectionConfig: { position: 2, depth: 3, historyLimit: 20 },
+    injectionConfig: { community: { position: 2, depth: 3 } },
     budgetConfig: {
         targetTokens: 3000,
         sourceWeights: { phone: 0, community: 1, calendar: 0, recipe: 0 },
@@ -570,8 +570,8 @@ const migratedTwoSourceBudget = normalizeBudgetConfig({
 assert.deepEqual(migratedTwoSourceBudget.sourceWeights, { phone: 3, community: 1, calendar: 0, recipe: 0 });
 assert.deepEqual(migratedTwoSourceBudget.sourcePriority, ['community', 'phone', 'calendar', 'recipe']);
 assert.equal(Object.hasOwn(migratedTwoSourceBudget, 'calendarEnabled'), false);
-assert.equal(migratedTwoSourceBudget.calendarPosition, DEFAULT_BUDGET_CONFIG.calendarPosition);
-assert.equal(migratedTwoSourceBudget.calendarDepth, DEFAULT_BUDGET_CONFIG.calendarDepth);
+assert.equal(Object.hasOwn(migratedTwoSourceBudget, 'calendarPosition'), false);
+assert.equal(Object.hasOwn(migratedTwoSourceBudget, 'calendarDepth'), false);
 
 const untouchedCalendarMigration = migrateLegacyCalendarInjectionConfig(createEmptyCalendarStore(), {});
 assert.equal(untouchedCalendarMigration.migrated, false, '没有旧开关时不得伪造迁移完成状态');
@@ -621,10 +621,7 @@ assert.equal(defaultPlanWithCalendar.prompts.some(prompt => prompt.key.includes(
 // 2. Enabled but empty store → no prompt
 const emptyCalendarPlan = buildContextInjectionPrompts({
     ...baseInjectionInput,
-    budgetConfig: {
-        calendarPosition: 0,
-        calendarDepth: 0,
-    },
+    injectionConfig: { calendar: { position: 0, depth: 0 } },
     calendarStore: createEmptyCalendarStore(),
 });
 assert.equal(emptyCalendarPlan.prompts.find(p => p.key.includes(':calendar:')), undefined, '空数据无 prompt');
@@ -658,10 +655,9 @@ const calendarStoreWithEvents = {
 };
 const calendarPlan = buildContextInjectionPrompts({
     ...baseInjectionInput,
+    injectionConfig: { calendar: { position: 1, depth: 2 } },
     budgetConfig: {
         targetTokens: 2000,
-        calendarPosition: 1,
-        calendarDepth: 2,
         sourceWeights: { phone: 1, community: 0, calendar: 1 },
         sourcePriority: ['phone', 'community', 'calendar'],
         redistributeUnused: true,
@@ -746,10 +742,9 @@ assert.ok(maximumCycleBody.length <= 6000, '日历上下文仍须遵守 6000 字
 const storyDate = '2032-03-15';
 const storyCalendarPlan = buildContextInjectionPrompts({
     ...baseInjectionInput,
+    injectionConfig: { calendar: { position: 1, depth: 2 } },
     budgetConfig: {
         targetTokens: 2000,
-        calendarPosition: 1,
-        calendarDepth: 2,
         sourceWeights: { phone: 0, community: 0, calendar: 1 },
         sourcePriority: ['calendar', 'phone', 'community'],
         redistributeUnused: true,
@@ -809,11 +804,10 @@ const calendarStoreCrossStorage = {
 };
 const crossStoragePlan = buildContextInjectionPrompts({
     ...baseInjectionInput,
+    injectionConfig: { calendar: { position: 0, depth: 0 } },
     budgetConfig: {
         targetTokens: 2000,
         sourceWeights: { phone: 1, community: 0, calendar: 1 },
-        calendarPosition: 0,
-        calendarDepth: 0,
     },
     calendarStore: calendarStoreCrossStorage,
 });
@@ -825,12 +819,11 @@ assert.doesNotMatch(crossCalendarPrompt.content, /Story B 事件/, '不应包含
 // 5. Calendar enabled but weight=0 → calendar should get 0 allocation
 const zeroWeightPlan = buildContextInjectionPrompts({
     ...baseInjectionInput,
+    injectionConfig: { calendar: { position: 0, depth: 0 } },
     budgetConfig: {
         sourceWeights: { phone: 1, community: 0, calendar: 0 },
         redistributeUnused: false,
         targetTokens: 100,
-        calendarPosition: 0,
-        calendarDepth: 0,
     },
     calendarStore: calendarStoreWithEvents,
 });
@@ -852,8 +845,9 @@ const recipeStore = normalizeRecipeStore({ version: 1, scopes: { 'story-a': reci
 } } });
 const recipePlan = buildContextInjectionPrompts({
     ...baseInjectionInput,
+    injectionConfig: { calendar: { position: 2, depth: 4 } },
     budgetConfig: {
-        targetTokens: 2000, calendarPosition: 2, calendarDepth: 4,
+        targetTokens: 2000,
         sourceWeights: { phone: 0, community: 0, calendar: 0, recipe: 1 },
         sourcePriority: ['recipe', 'phone', 'community', 'calendar'], redistributeUnused: true,
     },

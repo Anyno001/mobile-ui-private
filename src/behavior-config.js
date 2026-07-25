@@ -153,13 +153,42 @@ export function normalizeGroupInjection(value) {
     };
 }
 
-export function normalizeInjectionConfig(value) {
-    const normalized = normalizeGroupInjection(value);
+function normalizePromptPlacement(value, fallback) {
+    const source = plainObject(value);
+    const allowedPositions = Object.values(EXTENSION_PROMPT_POSITIONS).filter(position => position >= 0);
     return {
-        ...normalized,
-        position: normalized.position === EXTENSION_PROMPT_POSITIONS.NONE
-            ? DEFAULT_GROUP_INJECTION.position : normalized.position,
+        position: enumValue(Number(source.position), allowedPositions, fallback.position),
+        depth: boundedInteger(source.depth, fallback.depth, 0, MAX_INJECTION_DEPTH),
     };
+}
+
+function normalizePhonePromptPlacement(value, fallback) {
+    const source = plainObject(value);
+    const placement = normalizePromptPlacement(source, fallback);
+    return {
+        ...placement,
+        historyLimit: boundedInteger(source.historyLimit, fallback.historyLimit, 1, 100),
+    };
+}
+
+export function normalizeInjectionConfig(value, legacyCalendar = null) {
+    const source = plainObject(value);
+    const defaultPhone = {
+        position: DEFAULT_GROUP_INJECTION.position,
+        depth: DEFAULT_GROUP_INJECTION.depth,
+        historyLimit: DEFAULT_GROUP_INJECTION.historyLimit,
+    };
+    const legacy = normalizePhonePromptPlacement(source, defaultPhone);
+    const phone = Object.hasOwn(source, 'phone')
+        ? normalizePhonePromptPlacement(source.phone, legacy) : legacy;
+    const community = normalizePromptPlacement(source.community, phone);
+    const calendarFallback = normalizePromptPlacement(legacyCalendar, {
+        position: DEFAULT_GROUP_INJECTION.position,
+        depth: DEFAULT_GROUP_INJECTION.depth,
+    });
+    const calendar = Object.hasOwn(source, 'calendar')
+        ? normalizePromptPlacement(source.calendar, calendarFallback) : calendarFallback;
+    return { phone, community, calendar };
 }
 
 export function normalizeGroupMeta(value) {

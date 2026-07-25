@@ -229,7 +229,7 @@ export function parseBackupData(data, current) {
     if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error('备份根节点必须是对象');
     const version = data.schemaVersion === undefined ? 1 : data.schemaVersion;
     if (!Number.isInteger(version) || version < 1) throw new Error('备份版本无效');
-    if (version > 8) throw new Error(`备份版本 ${version} 高于当前支持版本 8`);
+    if (version > 9) throw new Error(`备份版本 ${version} 高于当前支持版本 9`);
     const result = clone(current);
     if (Object.hasOwn(data, 'histories')) result.histories = objectValue(data.histories, 'histories');
     if (Object.hasOwn(data, 'config')) result.config = objectValue(data.config, 'config');
@@ -243,8 +243,9 @@ export function parseBackupData(data, current) {
     if (Object.hasOwn(data, 'pokeConfig')) result.pokeConfig = objectValue(data.pokeConfig, 'pokeConfig');
     if (Object.hasOwn(data, 'bidirectional')) result.bidirectional = objectValue(data.bidirectional, 'bidirectional');
     if (version >= 8) {
-        result.injectionConfig = Object.hasOwn(data, 'injectionConfig')
-            ? normalizeInjectionConfig(objectValue(data.injectionConfig, 'injectionConfig')) : normalizeInjectionConfig(null);
+        const config = Object.hasOwn(data, 'injectionConfig') ? objectValue(data.injectionConfig, 'injectionConfig') : null;
+        result.injectionConfig = version >= 9 ? normalizeInjectionConfig(config)
+            : normalizeInjectionConfig(config, current.injectionConfig?.calendar);
     }
     if (Object.hasOwn(data, 'emojis')) result.emojis = arrayValue(data.emojis, 'emojis');
     if (Object.hasOwn(data, 'characterBehavior')) result.characterBehavior = objectValue(data.characterBehavior, 'characterBehavior');

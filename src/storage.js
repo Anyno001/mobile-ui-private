@@ -445,7 +445,17 @@ export function addOrUpdateProfile(profile) {
 
 export function loadInjectionConfig() {
     try {
-        window.__pmInjectionConfig = normalizeInjectionConfig(JSON.parse(localStorage.getItem(INJECTION_CONFIG_KEY)));
+        let legacyCalendar = null;
+        try {
+            const legacyBudget = JSON.parse(localStorage.getItem(BUDGET_CONFIG_KEY));
+            legacyCalendar = {
+                position: legacyBudget?.calendarPosition,
+                depth: legacyBudget?.calendarDepth,
+            };
+        } catch (error) {}
+        window.__pmInjectionConfig = normalizeInjectionConfig(
+            JSON.parse(localStorage.getItem(INJECTION_CONFIG_KEY)), legacyCalendar,
+        );
     } catch (error) {
         window.__pmInjectionConfig = normalizeInjectionConfig(null);
     }
@@ -453,10 +463,10 @@ export function loadInjectionConfig() {
 }
 
 export function saveInjectionConfig() {
+    const normalized = normalizeInjectionConfig(window.__pmInjectionConfig);
+    window.__pmInjectionConfig = normalized;
     try {
-        const normalized = normalizeInjectionConfig(window.__pmInjectionConfig);
         localStorage.setItem(INJECTION_CONFIG_KEY, JSON.stringify(normalized));
-        window.__pmInjectionConfig = normalized;
         return true;
     } catch (error) {
         return false;
