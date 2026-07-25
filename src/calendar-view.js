@@ -6,12 +6,15 @@ import { weatherCodeLabel } from './calendar-weather.js';
 import { resolveWeatherForDate, weatherSourceLabel } from './calendar-weather-source.js';
 import {
     CLOSE_ICON_SVG, CYCLE_FERTILE_ICON_SVG, CYCLE_PERIOD_ICON_SVG, EDIT_ICON_SVG,
-    MORE_ICON_SVG, REFRESH_ICON_SVG, TRASH_ICON_SVG, WEATHER_ICON_SVG,
+    LOCATION_ICON_SVG, MORE_ICON_SVG, REFRESH_ICON_SVG, TRASH_ICON_SVG, WEATHER_CLOUD_ICON_SVG,
+    WEATHER_FOG_ICON_SVG, WEATHER_ICON_SVG, WEATHER_PARTLY_CLOUDY_ICON_SVG, WEATHER_SNOW_ICON_SVG,
+    WEATHER_STORM_ICON_SVG, WEATHER_SUN_ICON_SVG,
 } from './icons.js';
 import { escapeAttr, escapeHtml } from './ui.js';
 
 const detailDate = new Intl.DateTimeFormat('zh-CN', { month: 'long', day: 'numeric' });
 const detailWeekday = new Intl.DateTimeFormat('zh-CN', { weekday: 'long' });
+const statusDate = new Intl.DateTimeFormat('zh-CN', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' });
 const CYCLE_DETAILS = {
     period: { label: '经期', icon: CYCLE_PERIOD_ICON_SVG },
     ovulatory: { label: '易孕期', icon: CYCLE_FERTILE_ICON_SVG },
@@ -45,19 +48,51 @@ function holidayRows(cache, date) {
     ).join('');
 }
 
-function weatherRow(weatherStore, date) {
-    const resolved = resolveWeatherForDate(weatherStore, date);
-    if (resolved.status !== 'available') {
-        return { content: `<p class="pm-calendar-empty-day">无法推演 · ${escapeHtml(resolved.unavailableReason)}</p>`, icon: '' };
-    }
-    return { content: `<div class="pm-calendar-weather"><b>${resolved.day.tempMin}℃~${resolved.day.tempMax}℃</b><small>${escapeHtml(weatherCodeLabel(resolved.day.weatherCode))}</small></div>`, icon: WEATHER_ICON_SVG };
+function weatherStatusIcon(code) {
+    const weatherCode = Number(code);
+    if (weatherCode === 0) return WEATHER_SUN_ICON_SVG;
+    if (weatherCode === 1 || weatherCode === 2) return WEATHER_PARTLY_CLOUDY_ICON_SVG;
+    if (weatherCode === 3) return WEATHER_CLOUD_ICON_SVG;
+    if (weatherCode === 45 || weatherCode === 48) return WEATHER_FOG_ICON_SVG;
+    if ([71, 73, 75, 77, 85, 86].includes(weatherCode)) return WEATHER_SNOW_ICON_SVG;
+    if ([95, 96, 99].includes(weatherCode)) return WEATHER_STORM_ICON_SVG;
+    return WEATHER_ICON_SVG;
 }
 
-function cycleRow(cycleScope, date) {
+function statusCard({ meta, value, icon, parsed, date, kind }) {
+    return `<div class="pm-calendar-status-card pm-calendar-status-card-${kind}">
+        <span class="pm-calendar-status-watermark" aria-hidden="true">${icon}</span>
+        <div class="pm-calendar-status-content">
+            <div class="pm-calendar-status-meta">${meta}</div>
+            <b class="pm-calendar-status-value">${value}</b>
+            <time datetime="${escapeAttr(date)}">${escapeHtml(statusDate.format(parsed))}</time>
+        </div>
+    </div>`;
+}
+
+function weatherStatusCard(weatherStore, date, parsed, relativeLabel) {
+    const resolved = resolveWeatherForDate(weatherStore, date);
+    if (resolved.status !== 'available') {
+        return { content: `<p class="pm-calendar-empty-day">无法推演 · ${escapeHtml(resolved.unavailableReason)}</p>`, isCard: false };
+    }
+    const condition = weatherCodeLabel(resolved.day.weatherCode);
+    const location = weatherStore?.location?.country || weatherStore?.location?.name || '天气记录';
+    const leading = `${relativeLabel ? `${escapeHtml(relativeLabel)} ` : ''}${escapeHtml(condition)} · ${escapeHtml(location)}`;
+    return { content: statusCard({
+        kind: 'weather', parsed, date, icon: weatherStatusIcon(resolved.day.weatherCode),
+        meta: `${leading}<span class="pm-calendar-status-location" aria-hidden="true">${LOCATION_ICON_SVG}</span>`,
+        value: `${resolved.day.tempMin}–${resolved.day.tempMax}℃`,
+    }), isCard: true };
+}
+
+function cycleStatusCard(cycleScope, date, parsed, relativeLabel) {
     const prediction = predictCyclePhase(cycleScope, date);
     const detail = CYCLE_DETAILS[prediction.phase];
-    if (!detail) return { content: '', icon: '' };
-    return { content: `<div class="pm-calendar-cycle is-${prediction.phase}"><b>${detail.label}</b></div>`, icon: detail.icon };
+    if (!detail) return { content: '', isCard: false };
+    return { content: statusCard({
+        kind: 'cycle', parsed, date, icon: detail.icon,
+        meta: `${relativeLabel ? `${escapeHtml(relativeLabel)} · ` : ''}健康记录`, value: detail.label,
+    }), isCard: true };
 }
 
 function recipeRows(recipeScope, date, editing = false) {
@@ -86,22 +121,21 @@ export function renderSelectedDateDetail(
         </section>`;
     }
     const statusDetail = viewMode === 'weather'
-        ? weatherRow(weatherStore, selectedDate)
+        ? weatherStatusCard(weatherStore, selectedDate, parsed, relativeLabel)
         : viewMode === 'cycle'
-            ? cycleRow(cycleScope, selectedDate)
+            ? cycleStatusCard(cycleScope, selectedDate, parsed, relativeLabel)
             : null;
     const content = statusDetail?.content ?? `${holidayRows(holidayCache, selectedDate)}${eventRows(scope, occasionsByDate, selectedDate, detailEditing)}`;
-    const bigIcon = statusDetail?.icon ? `<span class="pm-calendar-detail-big-icon" aria-hidden="true">${statusDetail.icon}</span>` : '';
+    const isStatusCard = statusDetail?.isCard === true;
     const emptyLabel = viewMode === 'weather' ? '这一天没有天气数据' : viewMode === 'cycle' ? '这一天没有生理期提示' : '这一天还没有安排';
     const editingLabel = viewMode === 'schedule' ? '编辑这一天' : '';
     const actions = viewMode === 'schedule' ? `<div class="pm-calendar-detail-actions">
         <button type="button" class="pm-calendar-detail-more" data-action="calendar-toggle-detail-edit" aria-label="${detailEditing ? '关闭编辑状态' : editingLabel}" title="${detailEditing ? '关闭编辑状态' : editingLabel}" aria-pressed="${detailEditing}">${detailEditing ? CLOSE_ICON_SVG : MORE_ICON_SVG}</button>
     </div>` : '';
     const addAction = viewMode === 'schedule' && detailEditing ? `<div class="pm-calendar-detail-edit-actions"><button type="button" class="pm-calendar-inline-add" data-action="calendar-add-date" ${detailRegenerating ? 'disabled' : ''}>+ 新增一条</button><button type="button" class="pm-calendar-inline-regenerate${detailRegenerating ? ' is-loading' : ''}" data-action="calendar-regenerate" aria-label="重新生成当日日程" title="重新生成当日日程" aria-busy="${detailRegenerating}" ${detailRegenerating ? 'disabled' : ''}>${REFRESH_ICON_SVG}<span>重新生成</span></button></div>` : '';
-    return `<section class="pm-calendar-selected-detail${bigIcon ? ' has-status-icon' : ''}" data-calendar-selected-detail="${selectedDate}" data-calendar-detail-mode="${viewMode}">
-        ${detailHeader(selectedDate, parsed, relativeLabel, actions)}
+    return `<section class="pm-calendar-selected-detail${isStatusCard ? ' is-status-card' : ''}" data-calendar-selected-detail="${selectedDate}" data-calendar-detail-mode="${viewMode}">
+        ${isStatusCard ? '' : detailHeader(selectedDate, parsed, relativeLabel, actions)}
         <div class="pm-calendar-selected-content">${content || `<p class="pm-calendar-empty-day">${emptyLabel}</p>`}${addAction}</div>
-        ${bigIcon}
     </section>`;
 }
 

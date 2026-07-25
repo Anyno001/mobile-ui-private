@@ -2604,7 +2604,14 @@ ${userPrompt}` : userPrompt;
   var LIVE_ICON_SVG = icon('<rect x="3" y="6" width="14" height="12" rx="2"/><path d="M17 10l4-2v8l-4-2z"/><circle cx="8" cy="12" r="1" fill="currentColor" stroke="none"/>');
   var PLAY_ICON_SVG = icon('<path d="M8 5l11 7-11 7z"/>');
   var CALENDAR_ICON_SVG = icon('<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18M8 14h.01M12 14h.01M16 14h.01M8 18h.01M12 18h.01"/>');
+  var LOCATION_ICON_SVG = icon('<path d="M20 10c0 5-8 11-8 11S4 15 4 10a8 8 0 1 1 16 0z"/><circle cx="12" cy="10" r="2.5"/>');
   var WEATHER_ICON_SVG = icon('<path d="M7 17h10a4 4 0 0 0 .5-8A6 6 0 0 0 6.2 10.5 3.5 3.5 0 0 0 7 17z"/><path d="M8 21l1-2M12 21l1-2M16 21l1-2"/>');
+  var WEATHER_SUN_ICON_SVG = icon('<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>');
+  var WEATHER_PARTLY_CLOUDY_ICON_SVG = icon('<path d="M8 5V3M4.5 6.5 3 5M3 11H1M7 8a4 4 0 0 1 7.6 1.7"/><path d="M7 19h10a4 4 0 0 0 .5-8A6 6 0 0 0 6.2 12.53.5 3.5 0 0 0 7 19z"/>');
+  var WEATHER_CLOUD_ICON_SVG = icon('<path d="M5.5 18h12a4.5 4.5 0 0 0 .4-9A6.2 6.2 0 0 0 6.1 11 3.7 3.7 0 0 0 5.5 18z"/>');
+  var WEATHER_FOG_ICON_SVG = icon('<path d="M4 8h16M2 12h20M4 16h16"/>');
+  var WEATHER_SNOW_ICON_SVG = icon('<path d="M7 17h10a4 4 0 0 0 .5-8A6 6 0 0 0 6.2 10.5 3.5 3.5 0 0 0 7 17z"/><path d="M9 20v2M7.3 21l3.4-2M10.7 21l-3.4-2M16 20v2M14.3 21l3.4-2M17.7 21l-3.4-2"/>');
+  var WEATHER_STORM_ICON_SVG = icon('<path d="M6.5 16h11a4 4 0 0 0 .5-8A6 6 0 0 0 6.2 9.5 3.5 3.5 0 0 0 6.5 16z"/><path d="m11 18-2 4 5-5h-3l2-3"/>');
   var FLOWER_BUD_ICON_SVG = icon('<path d="M12 20V11"/><path d="M12 11C9 10 6.5 7.5 7.5 4c2.5.3 4 1.8 4.5 4.3C12.5 5.8 14.3 4.3 16.8 4c1 3.5-1.8 6-4.8 7z"/><path d="M12 15c2.8-.2 4.8.8 5.5 3-2.5.4-4.4-.5-5.5-3z"/><path d="M8.5 20h7"/>');
   var MOON_ICON_SVG = icon('<path d="M20 15.2A8.5 8.5 0 0 1 8.8 4 8.5 8.5 0 1 0 20 15.2z"/>');
   var CYCLE_PERIOD_ICON_SVG = icon('<path d="M12 3.8s-5 5.7-5 10.1a5 5 0 0 0 10 0C17 9.5 12 3.8 12 3.8z"/>');
@@ -2651,6 +2658,7 @@ ${userPrompt}` : userPrompt;
   // src/calendar-view.js
   var detailDate = new Intl.DateTimeFormat("zh-CN", { month: "long", day: "numeric" });
   var detailWeekday = new Intl.DateTimeFormat("zh-CN", { weekday: "long" });
+  var statusDate = new Intl.DateTimeFormat("zh-CN", { year: "numeric", month: "long", day: "numeric", weekday: "long" });
   var CYCLE_DETAILS = {
     period: { label: "\u7ECF\u671F", icon: CYCLE_PERIOD_ICON_SVG },
     ovulatory: { label: "\u6613\u5B55\u671F", icon: CYCLE_FERTILE_ICON_SVG }
@@ -2679,18 +2687,55 @@ ${userPrompt}` : userPrompt;
       (item) => `<article class="pm-calendar-event is-holiday"><div><b>${escapeHtml(item.name)}</b><span>${escapeHtml(item.kind === "workday" ? "\u8C03\u4F11\u5DE5\u4F5C\u65E5" : item.kind === "in_lieu" ? "\u8C03\u4F11" : item.kind === "observed" ? "\u66FF\u4EE3\u4F11\u606F\u65E5" : "\u8282\u5047\u65E5")}</span></div></article>`
     ).join("");
   }
-  function weatherRow(weatherStore, date) {
+  function weatherStatusIcon(code) {
+    const weatherCode = Number(code);
+    if (weatherCode === 0) return WEATHER_SUN_ICON_SVG;
+    if (weatherCode === 1 || weatherCode === 2) return WEATHER_PARTLY_CLOUDY_ICON_SVG;
+    if (weatherCode === 3) return WEATHER_CLOUD_ICON_SVG;
+    if (weatherCode === 45 || weatherCode === 48) return WEATHER_FOG_ICON_SVG;
+    if ([71, 73, 75, 77, 85, 86].includes(weatherCode)) return WEATHER_SNOW_ICON_SVG;
+    if ([95, 96, 99].includes(weatherCode)) return WEATHER_STORM_ICON_SVG;
+    return WEATHER_ICON_SVG;
+  }
+  function statusCard({ meta, value, icon: icon2, parsed, date, kind }) {
+    return `<div class="pm-calendar-status-card pm-calendar-status-card-${kind}">
+        <span class="pm-calendar-status-watermark" aria-hidden="true">${icon2}</span>
+        <div class="pm-calendar-status-content">
+            <div class="pm-calendar-status-meta">${meta}</div>
+            <b class="pm-calendar-status-value">${value}</b>
+            <time datetime="${escapeAttr(date)}">${escapeHtml(statusDate.format(parsed))}</time>
+        </div>
+    </div>`;
+  }
+  function weatherStatusCard(weatherStore, date, parsed, relativeLabel) {
     const resolved = resolveWeatherForDate(weatherStore, date);
     if (resolved.status !== "available") {
-      return { content: `<p class="pm-calendar-empty-day">\u65E0\u6CD5\u63A8\u6F14 \xB7 ${escapeHtml(resolved.unavailableReason)}</p>`, icon: "" };
+      return { content: `<p class="pm-calendar-empty-day">\u65E0\u6CD5\u63A8\u6F14 \xB7 ${escapeHtml(resolved.unavailableReason)}</p>`, isCard: false };
     }
-    return { content: `<div class="pm-calendar-weather"><b>${resolved.day.tempMin}\u2103~${resolved.day.tempMax}\u2103</b><small>${escapeHtml(weatherCodeLabel(resolved.day.weatherCode))}</small></div>`, icon: WEATHER_ICON_SVG };
+    const condition = weatherCodeLabel(resolved.day.weatherCode);
+    const location = weatherStore?.location?.country || weatherStore?.location?.name || "\u5929\u6C14\u8BB0\u5F55";
+    const leading = `${relativeLabel ? `${escapeHtml(relativeLabel)} ` : ""}${escapeHtml(condition)} \xB7 ${escapeHtml(location)}`;
+    return { content: statusCard({
+      kind: "weather",
+      parsed,
+      date,
+      icon: weatherStatusIcon(resolved.day.weatherCode),
+      meta: `${leading}<span class="pm-calendar-status-location" aria-hidden="true">${LOCATION_ICON_SVG}</span>`,
+      value: `${resolved.day.tempMin}\u2013${resolved.day.tempMax}\u2103`
+    }), isCard: true };
   }
-  function cycleRow(cycleScope, date) {
+  function cycleStatusCard(cycleScope, date, parsed, relativeLabel) {
     const prediction = predictCyclePhase(cycleScope, date);
     const detail = CYCLE_DETAILS[prediction.phase];
-    if (!detail) return { content: "", icon: "" };
-    return { content: `<div class="pm-calendar-cycle is-${prediction.phase}"><b>${detail.label}</b></div>`, icon: detail.icon };
+    if (!detail) return { content: "", isCard: false };
+    return { content: statusCard({
+      kind: "cycle",
+      parsed,
+      date,
+      icon: detail.icon,
+      meta: `${relativeLabel ? `${escapeHtml(relativeLabel)} \xB7 ` : ""}\u5065\u5EB7\u8BB0\u5F55`,
+      value: detail.label
+    }), isCard: true };
   }
   function recipeRows(recipeScope, date, editing = false) {
     const day = recipeDayFor(recipeScope, date);
@@ -2712,19 +2757,18 @@ ${userPrompt}` : userPrompt;
           <div class="pm-calendar-selected-content">${content2 || '<p class="pm-calendar-empty-day">\u8FD9\u4E00\u5929\u8FD8\u6CA1\u6709\u83DC\u8C31\u3002</p>'}${editActions}</div>
         </section>`;
     }
-    const statusDetail = viewMode === "weather" ? weatherRow(weatherStore, selectedDate) : viewMode === "cycle" ? cycleRow(cycleScope, selectedDate) : null;
+    const statusDetail = viewMode === "weather" ? weatherStatusCard(weatherStore, selectedDate, parsed, relativeLabel) : viewMode === "cycle" ? cycleStatusCard(cycleScope, selectedDate, parsed, relativeLabel) : null;
     const content = statusDetail?.content ?? `${holidayRows(holidayCache, selectedDate)}${eventRows(scope, occasionsByDate, selectedDate, detailEditing)}`;
-    const bigIcon = statusDetail?.icon ? `<span class="pm-calendar-detail-big-icon" aria-hidden="true">${statusDetail.icon}</span>` : "";
+    const isStatusCard = statusDetail?.isCard === true;
     const emptyLabel = viewMode === "weather" ? "\u8FD9\u4E00\u5929\u6CA1\u6709\u5929\u6C14\u6570\u636E" : viewMode === "cycle" ? "\u8FD9\u4E00\u5929\u6CA1\u6709\u751F\u7406\u671F\u63D0\u793A" : "\u8FD9\u4E00\u5929\u8FD8\u6CA1\u6709\u5B89\u6392";
     const editingLabel = viewMode === "schedule" ? "\u7F16\u8F91\u8FD9\u4E00\u5929" : "";
     const actions = viewMode === "schedule" ? `<div class="pm-calendar-detail-actions">
         <button type="button" class="pm-calendar-detail-more" data-action="calendar-toggle-detail-edit" aria-label="${detailEditing ? "\u5173\u95ED\u7F16\u8F91\u72B6\u6001" : editingLabel}" title="${detailEditing ? "\u5173\u95ED\u7F16\u8F91\u72B6\u6001" : editingLabel}" aria-pressed="${detailEditing}">${detailEditing ? CLOSE_ICON_SVG : MORE_ICON_SVG}</button>
     </div>` : "";
     const addAction = viewMode === "schedule" && detailEditing ? `<div class="pm-calendar-detail-edit-actions"><button type="button" class="pm-calendar-inline-add" data-action="calendar-add-date" ${detailRegenerating ? "disabled" : ""}>+ \u65B0\u589E\u4E00\u6761</button><button type="button" class="pm-calendar-inline-regenerate${detailRegenerating ? " is-loading" : ""}" data-action="calendar-regenerate" aria-label="\u91CD\u65B0\u751F\u6210\u5F53\u65E5\u65E5\u7A0B" title="\u91CD\u65B0\u751F\u6210\u5F53\u65E5\u65E5\u7A0B" aria-busy="${detailRegenerating}" ${detailRegenerating ? "disabled" : ""}>${REFRESH_ICON_SVG}<span>\u91CD\u65B0\u751F\u6210</span></button></div>` : "";
-    return `<section class="pm-calendar-selected-detail${bigIcon ? " has-status-icon" : ""}" data-calendar-selected-detail="${selectedDate}" data-calendar-detail-mode="${viewMode}">
-        ${detailHeader(selectedDate, parsed, relativeLabel, actions)}
+    return `<section class="pm-calendar-selected-detail${isStatusCard ? " is-status-card" : ""}" data-calendar-selected-detail="${selectedDate}" data-calendar-detail-mode="${viewMode}">
+        ${isStatusCard ? "" : detailHeader(selectedDate, parsed, relativeLabel, actions)}
         <div class="pm-calendar-selected-content">${content || `<p class="pm-calendar-empty-day">${emptyLabel}</p>`}${addAction}</div>
-        ${bigIcon}
     </section>`;
   }
   function weatherSearchResults(results) {
@@ -11544,10 +11588,10 @@ ${antiFluff}`;
         const current = key === currentKey;
         const enabled = window.__pmConversationInjectionEnabled?.(storageId, key) === true;
         return `<div class="pm-contact-switcher-row" data-current="${current}">
+              <span class="pm-contact-switcher-current" aria-hidden="true">${current ? CHECK_ICON_SVG : ""}</span>
               <button type="button" class="pm-contact-switcher-main" data-contact-action="switch" data-key="${escapeAttr(key)}" ${current ? 'aria-current="true"' : ""}>
                 <span>${escapeHtml(label)}</span>${detail ? `<small>${escapeHtml(detail)}</small>` : ""}
               </button>
-              <span class="pm-contact-switcher-current" aria-hidden="true">${current ? CHECK_ICON_SVG : ""}</span>
               <button type="button" class="pm-contact-switcher-icon pm-contact-switcher-injection ${enabled ? "is-active" : ""}" data-contact-action="inject" data-key="${escapeAttr(key)}" data-group="${isGroup}" data-label="${escapeAttr(label)}" aria-pressed="${enabled}" aria-label="${enabled ? "\u5173\u95ED" : "\u5F00\u542F"} ${escapeAttr(label)} \u7684\u6B63\u6587\u6CE8\u5165" title="${enabled ? "\u5173\u95ED\u6B63\u6587\u6CE8\u5165" : "\u5F00\u542F\u6B63\u6587\u6CE8\u5165"}">${EYE_ICON_SVG}</button>
               <button type="button" class="pm-contact-switcher-icon pm-entity-delete" data-contact-action="delete" data-key="${escapeAttr(key)}" data-group="${isGroup}" aria-label="\u6C38\u4E45\u5220\u9664${isGroup ? "\u7FA4\u804A" : "\u8054\u7CFB\u4EBA"} ${escapeAttr(label)}" title="\u6C38\u4E45\u5220\u9664${isGroup ? "\u7FA4\u804A" : "\u8054\u7CFB\u4EBA"}">${UNLINK_ICON_SVG}</button>
             </div>`;
@@ -14662,7 +14706,7 @@ ${lines}`;
       <button type="button" role="listitem" onclick="window.__pmShowConfig('budget')"><b>\u4E0A\u4E0B\u6587\u9884\u7B97</b><span>\u63A7\u5236\u624B\u673A\u4F1A\u8BDD\u4E0E\u793E\u533A\u5199\u5165\u4E3B\u63D0\u793A\u8BCD\u7684\u989D\u5EA6</span></button>
       <button type="button" role="listitem" onclick="window.__pmShowConversationInjection()"><b>\u6B63\u6587\u6CE8\u5165</b><span>\u5206\u522B\u8BBE\u7F6E\u804A\u5929\u3001\u793E\u533A\u3001\u65E5\u5386\u4E0E\u83DC\u8C31\u7684\u6CE8\u5165\u4F4D\u7F6E\u548C\u6DF1\u5EA6</span></button>
       <div class="pm-global-setting" role="group" aria-labelledby="pm-wordy-label">
-        <span><b id="pm-wordy-label">\u5168\u5C40\u77ED\u6D88\u606F\u9650\u5236</b><small>\u9664\u8BDD\u75E8\u4EBA\u8BBE\u5916\uFF0C\u6BCF\u6761\u72EC\u7ACB\u6D88\u606F\u4E0D\u8D85\u8FC7 35 \u5B57</small></span>
+        <span><b id="pm-wordy-label">\u5168\u5C40\u77ED\u6D88\u606F\u9650\u5236</b><small>\u9664\u8BDD\u75E8\u4EBA\u8BBE\u5916\uFF0C\u6BCF\u6761\u6D88\u606F\u4E0D\u8D85\u8FC7 35 \u5B57</small></span>
         <div id="pm-wordy-check" onclick="window.__pmToggleWordyLimit()"
           class="pm-custom-check ${window.__pmWordyLimit === true ? "is-checked" : ""}" role="checkbox" tabindex="0"
           aria-checked="${window.__pmWordyLimit === true}"

@@ -559,8 +559,9 @@ const climateInjection = renderCalendarContextInjection({
     start: new Date(`${climateDate}T12:00:00`),
 });
 const sharedWeatherText = `${climateResolved.day.tempMin}°/${climateResolved.day.tempMax}°C`;
-assert.match(climateDetail, new RegExp(`${climateResolved.day.tempMin}℃~${climateResolved.day.tempMax}℃`));
-assert.match(climateDetail, /class="pm-calendar-weather"/);
+assert.match(climateDetail, new RegExp(`${climateResolved.day.tempMin}–${climateResolved.day.tempMax}℃`));
+assert.match(climateDetail, /class="pm-calendar-status-card pm-calendar-status-card-weather"/);
+assert.match(climateDetail, /今天 小雨 · 中国/);
 assert.match(climateDetail, /<svg/);
 assert.doesNotMatch(climateDetail, /气候推演|缓存预报|真实预报|体感|湿度/);
 assert.match(climateInjection, new RegExp(sharedWeatherText.replace('/', '\\/')));
@@ -657,11 +658,11 @@ for (const { date, phase, label } of cycleLabelCases) {
         assert.match(injection, /生理周期规则：对所有已启用对象，未注明经期或易孕期的日期按安全期理解。/,
             '启用周期资料时必须用完整规则说明未标注日期的含义');
     } else {
-        assert.match(detail, new RegExp(`<b>${label}</b>`), `周期详情必须将 ${phase} 渲染为${label}`);
+        assert.match(detail, new RegExp(`<b class="pm-calendar-status-value">${label}</b>`), `周期详情必须将 ${phase} 渲染为${label}`);
         if (phase === 'period') {
-            assert.match(detail, /class="pm-calendar-detail-big-icon"[^>]*>[\s\S]*?<svg[\s\S]*?<path d="M12 3\.8s-5 5\.7-5 10\.1a5 5 0 0 0 10 0C17 9\.5 12 3\.8 12 3\.8z"\/>/, '经期详情必须使用独立的大水滴 SVG');
+            assert.match(detail, /class="pm-calendar-status-card pm-calendar-status-card-cycle"[\s\S]*?class="pm-calendar-status-watermark"[^>]*>[\s\S]*?<path d="M12 3\.8s-5 5\.7-5 10\.1a5 5 0 0 0 10 0C17 9\.5 12 3\.8 12 3.8z"\/>/, '经期详情必须将大水滴作为海报式背景水印');
         } else if (phase === 'ovulatory') {
-            assert.match(detail, /class="pm-calendar-detail-big-icon"[^>]*>[\s\S]*?<svg[\s\S]*?<circle cx="12" cy="12" r="3\.2"\/>/, '易孕期详情必须使用独立的大花蕊图标');
+            assert.match(detail, /class="pm-calendar-status-card pm-calendar-status-card-cycle"[\s\S]*?class="pm-calendar-status-watermark"[^>]*>[\s\S]*?<circle cx="12" cy="12" r="3\.2"\/>/, '易孕期详情必须将花蕊作为海报式背景水印');
         }
         assert.match(page, new RegExp(`data-calendar-date="${date}"[^>]*>(?:(?!</button>)[\\s\\S])*?<span>${label}</span>`),
             `周期月格必须将 ${phase} 渲染为${label}`);
@@ -965,7 +966,7 @@ assert.doesNotMatch(renderedWeather, /data-action="calendar-generate"/);
 assert.match(renderedWeather, /data-calendar-management="weather"/);
 assert.match(renderedWeather, /data-action="calendar-mode-weather"[^>]*aria-pressed="true"/);
 assert.match(renderedWeather, /少云/);
-assert.match(renderedWeather, /20℃~30℃/);
+assert.match(renderedWeather, /20–30℃/);
 assert.doesNotMatch(renderedWeather, /Open-Meteo|CC BY/, '天气来源标签不得混成第三方 attribution');
 assert.match(renderedWeather, /预报外日期使用气候推演/);
 assert.match(renderedWeather, /&lt;Location&gt;/);
@@ -973,7 +974,12 @@ assert.doesNotMatch(renderedWeather, /生理期提示|&lt;Holiday&gt;|&lt;日程
 const renderedWeatherDetail = renderSelectedDateDetail(
     renderedScope, new Map(), {}, currentWeather, {}, currentDates[0], 'weather', '今天', {}, false,
 );
-assert.match(renderedWeatherDetail, /20℃~30℃[\s\S]*少云[\s\S]*<svg/);
+assert.match(renderedWeatherDetail, /class="pm-calendar-selected-detail is-status-card"/);
+assert.match(renderedWeatherDetail, /今天 少云 · CN[\s\S]*?pm-calendar-status-location[\s\S]*?<svg/);
+assert.match(renderedWeatherDetail, /class="pm-calendar-status-value">20–30℃<\/b>/);
+assert.match(renderedWeatherDetail, new RegExp(`<time datetime="${currentDates[0]}">\\d{4}年\\d{1,2}月\\d{1,2}日星期[日一二三四五六]<\\/time>`));
+assert.match(renderedWeatherDetail, /class="pm-calendar-status-watermark"/, '天气详情必须保留背景水印层');
+assert.match(renderedWeatherDetail, /<path d="M8 5V3/, '少云必须使用对应的背景水印图标');
 assert.doesNotMatch(renderedWeatherDetail, /气候推演|真实预报|缓存预报|体感|湿度|pm-calendar-detail-more/);
 assert.match(renderedCycle, /data-calendar-view-mode="cycle"/);
 assert.match(renderedCycle, /data-calendar-management="cycle" open/);
@@ -986,14 +992,16 @@ assert.match(renderedCycle, /class="pm-calendar-cycle-input" name="enabled" type
     '周期开关必须保留原生 checkbox 的表单与辅助技术语义');
 assert.match(renderedCycle, /class="pm-custom-check" aria-hidden="true"/,
     '周期开关必须复用统一视觉控件');
-assert.match(renderedCycle, /class="pm-calendar-selected-detail has-status-icon"[\s\S]*?class="pm-calendar-cycle is-period"><b>经期<\/b>[\s\S]*?class="pm-calendar-detail-big-icon"[^>]*>[\s\S]*?<path d="M12 3\.8s-5 5\.7-5 10\.1a5 5 0 0 0 10 0C17 9\.5 12 3\.8 12 3\.8z"\/>/,
-    '选中经期日期的详情必须使用独立的大水滴图标区');
+const renderedCycleDetail = renderedCycle.match(/<section[^>]*data-calendar-selected-detail[\s\S]*?<\/section>/)?.[0] || '';
+assert.match(renderedCycleDetail, /class="pm-calendar-selected-detail is-status-card"[\s\S]*?今天 · 健康记录[\s\S]*?class="pm-calendar-status-value">经期<\/b>/,
+    '选中经期日期必须使用海报式健康状态卡');
+assert.match(renderedCycleDetail, /class="pm-calendar-status-watermark"[^>]*>[\s\S]*?<path d="M12 3\.8s-5 5\.7-5 10\.1a5 5 0 0 0 10 0C17 9\.5 12 3\.8 12 3\.8z"\/>/,
+    '选中经期日期必须使用水滴背景水印');
 assert.doesNotMatch(renderedCycle, /周期预测|手动记录/,
     '生理期浏览态不得显示预测或记录来源');
 assert.match(renderedCycle, /data-action="calendar-mode-cycle"[^>]*>[\s\S]*?<svg[\s\S]*?<path d="M20 15\.2A8\.5 8\.5 0 0 1 8\.8 4 8\.5 8\.5 0 1 0 20 15\.2z"\/>/,
     '生理日历模式按钮必须使用新月 SVG');
-assert.match(renderedWeather, /class="pm-calendar-selected-detail has-status-icon"[\s\S]*?class="pm-calendar-weather"><b>20℃~30℃<\/b><small>少云<\/small><\/div>[\s\S]*?class="pm-calendar-detail-big-icon"[^>]*>[\s\S]*?<svg/,
-    '天气详情必须使用独立的大图标区');
+assert.doesNotMatch(renderedWeather, /pm-calendar-detail-big-icon|pm-calendar-weather"><b>20℃~30℃/, '天气详情不得残留独立前景图标或旧温度排版');
 assert.doesNotMatch(renderedCycle, />follicular<|，follicular|<span>follicular<\/span>/,
     '空白周期阶段不得泄漏内部 phase key');
 assert.doesNotMatch(renderedCycle, /相对低风险期|不能作为避孕依据/);

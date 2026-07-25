@@ -24,7 +24,14 @@ export const LIVE_ICON_SVG = icon('<rect x="3" y="6" width="14" height="12" rx="
 export const PLAY_ICON_SVG = icon('<path d="M8 5l11 7-11 7z"/>');
 
 export const CALENDAR_ICON_SVG = icon('<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18M8 14h.01M12 14h.01M16 14h.01M8 18h.01M12 18h.01"/>');
+export const LOCATION_ICON_SVG = icon('<path d="M20 10c0 5-8 11-8 11S4 15 4 10a8 8 0 1 1 16 0z"/><circle cx="12" cy="10" r="2.5"/>');
 export const WEATHER_ICON_SVG = icon('<path d="M7 17h10a4 4 0 0 0 .5-8A6 6 0 0 0 6.2 10.5 3.5 3.5 0 0 0 7 17z"/><path d="M8 21l1-2M12 21l1-2M16 21l1-2"/>');
+export const WEATHER_SUN_ICON_SVG = icon('<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>');
+export const WEATHER_PARTLY_CLOUDY_ICON_SVG = icon('<path d="M8 5V3M4.5 6.5 3 5M3 11H1M7 8a4 4 0 0 1 7.6 1.7"/><path d="M7 19h10a4 4 0 0 0 .5-8A6 6 0 0 0 6.2 12.53.5 3.5 0 0 0 7 19z"/>');
+export const WEATHER_CLOUD_ICON_SVG = icon('<path d="M5.5 18h12a4.5 4.5 0 0 0 .4-9A6.2 6.2 0 0 0 6.1 11 3.7 3.7 0 0 0 5.5 18z"/>');
+export const WEATHER_FOG_ICON_SVG = icon('<path d="M4 8h16M2 12h20M4 16h16"/>');
+export const WEATHER_SNOW_ICON_SVG = icon('<path d="M7 17h10a4 4 0 0 0 .5-8A6 6 0 0 0 6.2 10.5 3.5 3.5 0 0 0 7 17z"/><path d="M9 20v2M7.3 21l3.4-2M10.7 21l-3.4-2M16 20v2M14.3 21l3.4-2M17.7 21l-3.4-2"/>');
+export const WEATHER_STORM_ICON_SVG = icon('<path d="M6.5 16h11a4 4 0 0 0 .5-8A6 6 0 0 0 6.2 9.5 3.5 3.5 0 0 0 6.5 16z"/><path d="m11 18-2 4 5-5h-3l2-3"/>');
 export const FLOWER_BUD_ICON_SVG = icon('<path d="M12 20V11"/><path d="M12 11C9 10 6.5 7.5 7.5 4c2.5.3 4 1.8 4.5 4.3C12.5 5.8 14.3 4.3 16.8 4c1 3.5-1.8 6-4.8 7z"/><path d="M12 15c2.8-.2 4.8.8 5.5 3-2.5.4-4.4-.5-5.5-3z"/><path d="M8.5 20h7"/>');
 export const MOON_ICON_SVG = icon('<path d="M20 15.2A8.5 8.5 0 0 1 8.8 4 8.5 8.5 0 1 0 20 15.2z"/>');
 export const CYCLE_PERIOD_ICON_SVG = icon('<path d="M12 3.8s-5 5.7-5 10.1a5 5 0 0 0 10 0C17 9.5 12 3.8 12 3.8z"/>');

@@ -1518,8 +1518,10 @@ for (const expected of [
   'pm-calendar-scan-card', '<h3>正文日期</h3>', '保存并识别',
   'role="switch"', 'aria-checked="${scope.autoAdjust}"', '自动跟随正文日期', "label: '<user>'",
   '<time datetime="${selectedDate}">${escapeHtml(detailDate.format(parsed))}</time>', 'detailWeekday.format(parsed)',
-  "period: { label: '经期'", "ovulatory: { label: '易孕期'", "if (!detail) return { content: '', icon: '' }", 'resolveWeatherForDate(weatherStore, date)',
-  'CYCLE_PERIOD_ICON_SVG', 'CYCLE_FERTILE_ICON_SVG', 'WEATHER_ICON_SVG', 'pm-calendar-panel-section', '℃~${resolved.day.tempMax}℃', 'pm-calendar-detail-big-icon', 'has-status-icon',
+  "period: { label: '经期'", "ovulatory: { label: '易孕期'", 'resolveWeatherForDate(weatherStore, date)',
+  'CYCLE_PERIOD_ICON_SVG', 'CYCLE_FERTILE_ICON_SVG', 'WEATHER_ICON_SVG', 'LOCATION_ICON_SVG', 'WEATHER_PARTLY_CLOUDY_ICON_SVG',
+  'weatherStatusIcon', 'statusCard', 'pm-calendar-status-card', 'pm-calendar-status-watermark', 'pm-calendar-panel-section',
+  'value: `${resolved.day.tempMin}–${resolved.day.tempMax}℃`', "'天气记录'", '健康记录', 'statusDate',
   '当前故事日期', 'placeholder="例如 3726-08-17"', '可直接输入日期，或跳转月份后点击下方日期。',
   '开启后供正文生成读取；设置按当前会话独立保存。', '预报外日期使用气候推演', '无法推演',
   'DEFAULT_CALENDAR_GENERATION_RULE', 'DEFAULT_RECIPE_GENERATION_RULE', 'data-calendar-generation-rule', 'data-recipe-generation-rule',
@@ -1875,7 +1877,7 @@ for (const expected of [
   '.pm-scene-bottom-bar{position:relative;z-index:20',
   '.pm-contact-switcher{position:absolute;left:50%;z-index:30;width:min(300px,calc(100% - 20px));max-height:min(304px,calc(100% - 72px));display:flex',
   'transform:translateX(-50%)',
-  '.pm-contact-switcher-row{display:grid;grid-template-columns:minmax(0,1fr) 22px 40px 40px;align-items:center;gap:2px',
+  '.pm-contact-switcher-row{display:grid;grid-template-columns:22px minmax(0,1fr) 40px 40px;align-items:center;column-gap:4px',
   '.pm-control-menu.pm-scene-menu{left:0;right:auto;top:auto;bottom:46px;z-index:20;width:148px;max-height:none;overflow-y:visible',
   '.pm-control-menu.pm-scene-menu[hidden]{display:none}',
   '.pm-scene-composer textarea{height:36px;min-height:36px;max-height:88px;box-shadow:none !important;appearance:none}',
@@ -1916,9 +1918,11 @@ for (const expected of [
   '.pm-calendar-month-panel{margin:0 12px 10px;padding:10px;border:1px solid var(--pm-color-border-subtle);border-radius:14px',
   '.pm-calendar-panel-section{display:flex;flex-direction:column;gap:6px;padding:8px 0}',
   '.pm-calendar-month-panel-actions{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;padding-top:8px}',
-  '.pm-calendar-selected-detail.has-status-icon>header,.pm-calendar-selected-detail.has-status-icon>.pm-calendar-selected-content{padding-right:58px}',
-  '.pm-calendar-detail-big-icon{position:absolute;top:50%;right:13px;width:44px;height:44px;display:grid;place-items:center;color:var(--pm-calendar-accent);transform:translateY(-50%);pointer-events:none}',
-  '.pm-calendar-detail-big-icon svg{display:block;width:40px;height:40px}',
+  '.pm-calendar-selected-detail.is-status-card{overflow:hidden;padding:0;background:color-mix(in srgb,var(--pm-calendar-accent) 8%,var(--pm-color-surface-card))}',
+  '.pm-calendar-status-card{position:relative;isolation:isolate;min-height:126px;padding:15px 16px;overflow:hidden}',
+  '.pm-calendar-status-value{font-size:30px;line-height:1;font-weight:850;font-variant-numeric:tabular-nums',
+  '.pm-calendar-status-watermark{position:absolute;z-index:0;top:50%;right:-7px;width:104px;height:104px',
+  '-webkit-mask-image:linear-gradient(90deg,transparent 0%,#000 44%)',
   '.pm-calendar-shell[data-calendar-view-mode="recipe"]{--pm-calendar-accent:#c77a32}',
   '.pm-calendar-day.has-recipe>span{color:var(--pm-calendar-accent)}',
   '.pm-calendar-event.is-recipe b{color:var(--pm-calendar-accent)}',
@@ -2219,8 +2223,8 @@ requireText('phone-directory.js injection button', directoryCode, '${EYE_ICON_SV
 if ((directoryCode.match(/pm-contact-switcher-injection[\s\S]*?\$\{EYE_ICON_SVG\}/g) || []).length !== 1) {
   failures.push('phone-directory.js injection button: must render exactly one shared eye SVG');
 }
-if (!/pm-contact-switcher-main[\s\S]*?pm-contact-switcher-current[\s\S]*?pm-contact-switcher-injection[\s\S]*?pm-entity-delete/.test(directoryCode)) {
-  failures.push('phone-directory.js: current-conversation checkmark must stay between the name and action buttons');
+if (!/pm-contact-switcher-current[\s\S]*?pm-contact-switcher-main[\s\S]*?pm-contact-switcher-injection[\s\S]*?pm-entity-delete/.test(directoryCode)) {
+  failures.push('phone-directory.js: current-conversation checkmark must stay before the name and action buttons');
 }
 requireCssDeclarations(cssRules, '.pm-name-trigger[aria-expanded="true"]', { 'border-radius': '10px 10px 0 0', 'background': 'var(--pm-color-surface-card)' });
 requireCssDeclarations(cssRules, '.pm-contact-switcher', {
@@ -2236,9 +2240,10 @@ requireText('phone-directory.js contact switcher responsive positioning', direct
 requireText('style.css selection mode quote exclusion', css, '.pm-msg-list.is-selecting .pm-quote-action{display:none !important;}');
 requireText('style.css title arrow isolation', css, '.pm-name-chevron{position:absolute;left:100%;top:50%');
 requireCssDeclarations(cssRules, '.pm-contact-switcher', { 'box-shadow': 'none' });
-requireCssDeclarations(cssRules, '.pm-contact-switcher-row', { 'grid-template-columns': 'minmax(0,1fr) 22px 40px 40px', gap: '2px' });
-requireCssDeclarations(cssRules, '.pm-contact-switcher-current', { 'grid-column': '2' });
+requireCssDeclarations(cssRules, '.pm-contact-switcher-row', { 'grid-template-columns': '22px minmax(0,1fr) 40px 40px', 'column-gap': '4px' });
+requireCssDeclarations(cssRules, '.pm-contact-switcher-current', { 'grid-column': '1', 'justify-self': 'center' });
 requireCssDeclarations(cssRules, '#pm-overlay[data-theme="dark"] .pm-global-setting small', { color: 'var(--pm-color-text-primary)' });
+requireText('settings-templates.js wordy-limit copy', sourceModuleByName.get('settings-templates.js')?.code || '', '除话痨人设外，每条消息不超过 35 字');
 requireCssDeclarations(cssRules, '.pm-contact-settings-actions', { 'border-top': '0 !important' });
 requireCssDeclarations(cssRules, '#pm-overlay .pm-contact-settings-scroll textarea.pm-cfg-input', {
   width: '100% !important', 'min-height': '58px !important', resize: 'vertical !important',
@@ -2286,7 +2291,7 @@ for (const expected of [
 ]) requireText('phone-foundation.js', foundationInjectionSource, expected);
 for (const expected of [
   'class="pm-calendar-cycle-input" name="enabled" type="checkbox"',
-  'class="pm-custom-check" aria-hidden="true"', 'pm-calendar-detail-big-icon',
+  'class="pm-custom-check" aria-hidden="true"', 'pm-calendar-status-card', 'pm-calendar-status-watermark',
 ]) requireText('calendar-view.js', calendarViewCode, expected);
 for (const forbidden of ['pm-calendar-base-menu', 'TIME_ORIGIN_ICON_SVG', 'calendar-base-edit', 'pm-calendar-base-dialog']) {
   if (calendarCode.includes(forbidden)) failures.push(`calendar.js: obsolete title control remains: ${forbidden}`);

@@ -11,7 +11,7 @@ export function renderSettingsHome() {
       <button type="button" role="listitem" onclick="window.__pmShowConfig('budget')"><b>上下文预算</b><span>控制手机会话与社区写入主提示词的额度</span></button>
       <button type="button" role="listitem" onclick="window.__pmShowConversationInjection()"><b>正文注入</b><span>分别设置聊天、社区、日历与菜谱的注入位置和深度</span></button>
       <div class="pm-global-setting" role="group" aria-labelledby="pm-wordy-label">
-        <span><b id="pm-wordy-label">全局短消息限制</b><small>除话痨人设外，每条独立消息不超过 35 字</small></span>
+        <span><b id="pm-wordy-label">全局短消息限制</b><small>除话痨人设外，每条消息不超过 35 字</small></span>
         <div id="pm-wordy-check" onclick="window.__pmToggleWordyLimit()"
           class="pm-custom-check ${window.__pmWordyLimit === true ? 'is-checked' : ''}" role="checkbox" tabindex="0"
           aria-checked="${window.__pmWordyLimit === true}"

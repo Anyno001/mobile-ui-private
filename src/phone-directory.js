@@ -242,10 +242,10 @@ export function installPhoneDirectory(state, deps) {
             const current = key === currentKey;
             const enabled = window.__pmConversationInjectionEnabled?.(storageId, key) === true;
             return `<div class="pm-contact-switcher-row" data-current="${current}">
+              <span class="pm-contact-switcher-current" aria-hidden="true">${current ? CHECK_ICON_SVG : ''}</span>
               <button type="button" class="pm-contact-switcher-main" data-contact-action="switch" data-key="${escapeAttr(key)}" ${current ? 'aria-current="true"' : ''}>
                 <span>${escapeHtml(label)}</span>${detail ? `<small>${escapeHtml(detail)}</small>` : ''}
               </button>
-              <span class="pm-contact-switcher-current" aria-hidden="true">${current ? CHECK_ICON_SVG : ''}</span>
               <button type="button" class="pm-contact-switcher-icon pm-contact-switcher-injection ${enabled ? 'is-active' : ''}" data-contact-action="inject" data-key="${escapeAttr(key)}" data-group="${isGroup}" data-label="${escapeAttr(label)}" aria-pressed="${enabled}" aria-label="${enabled ? '关闭' : '开启'} ${escapeAttr(label)} 的正文注入" title="${enabled ? '关闭正文注入' : '开启正文注入'}">${EYE_ICON_SVG}</button>
               <button type="button" class="pm-contact-switcher-icon pm-entity-delete" data-contact-action="delete" data-key="${escapeAttr(key)}" data-group="${isGroup}" aria-label="永久删除${isGroup ? '群聊' : '联系人'} ${escapeAttr(label)}" title="永久删除${isGroup ? '群聊' : '联系人'}">${UNLINK_ICON_SVG}</button>
             </div>`;
