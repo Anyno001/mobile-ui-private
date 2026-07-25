@@ -1875,7 +1875,7 @@ for (const expected of [
   '.pm-scene-bottom-bar{position:relative;z-index:20',
   '.pm-contact-switcher{position:absolute;left:50%;z-index:30;width:min(300px,calc(100% - 20px));max-height:min(304px,calc(100% - 72px));display:flex',
   'transform:translateX(-50%)',
-  '.pm-contact-switcher-row{display:grid;grid-template-columns:minmax(0,1fr) 40px 40px 22px;align-items:center;gap:2px',
+  '.pm-contact-switcher-row{display:grid;grid-template-columns:minmax(0,1fr) 22px 40px 40px;align-items:center;gap:2px',
   '.pm-control-menu.pm-scene-menu{left:0;right:auto;top:auto;bottom:46px;z-index:20;width:148px;max-height:none;overflow-y:visible',
   '.pm-control-menu.pm-scene-menu[hidden]{display:none}',
   '.pm-scene-composer textarea{height:36px;min-height:36px;max-height:88px;box-shadow:none !important;appearance:none}',
@@ -1917,7 +1917,7 @@ for (const expected of [
   '.pm-calendar-panel-section{display:flex;flex-direction:column;gap:6px;padding:8px 0}',
   '.pm-calendar-month-panel-actions{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;padding-top:8px}',
   '.pm-calendar-selected-detail.has-status-icon>header,.pm-calendar-selected-detail.has-status-icon>.pm-calendar-selected-content{padding-right:58px}',
-  '.pm-calendar-detail-big-icon{position:absolute;top:50%;right:13px;width:44px;height:44px;display:grid;place-items:center;color:var(--pm-color-text-tertiary);transform:translateY(-50%);pointer-events:none}',
+  '.pm-calendar-detail-big-icon{position:absolute;top:50%;right:13px;width:44px;height:44px;display:grid;place-items:center;color:var(--pm-calendar-accent);transform:translateY(-50%);pointer-events:none}',
   '.pm-calendar-detail-big-icon svg{display:block;width:40px;height:40px}',
   '.pm-calendar-shell[data-calendar-view-mode="recipe"]{--pm-calendar-accent:#c77a32}',
   '.pm-calendar-day.has-recipe>span{color:var(--pm-calendar-accent)}',
@@ -2205,7 +2205,7 @@ for (const [label, marker, accessibleName] of [
 const iconsCode = sourceModuleByName.get('icons.js')?.code || '';
 for (const expected of ['REMOVE_ICON_SVG', 'UNLINK_ICON_SVG', 'SPARKLES_ICON_SVG', 'CHEVRON_DOWN_ICON_SVG', 'EYE_ICON_SVG', 'MOON_ICON_SVG', 'CYCLE_PERIOD_ICON_SVG', 'BOOK_ICON_SVG', 'CHECK_ICON_SVG']) requireText('icons.js', iconsCode, expected);
 for (const expected of [
-  `export const EYE_ICON_SVG = icon('<path d="M2.5 12s3.5-5 9.5-5 9.5 5 9.5 5-3.5 5-9.5 5-9.5-5-9.5-5z"/>');`,
+  `export const EYE_ICON_SVG = icon('<path d="M2.5 12s3.5-5 9.5-5 9.5 5 9.5 5-3.5 5-9.5 5-9.5-5-9.5-5z"/><circle cx="12" cy="12" r="2.5"/>');`,
   `export const MOON_ICON_SVG = icon('<path d="M20 15.2A8.5 8.5 0 0 1 8.8 4 8.5 8.5 0 1 0 20 15.2z"/>');`,
   `export const CYCLE_PERIOD_ICON_SVG = icon('<path d="M12 3.8s-5 5.7-5 10.1a5 5 0 0 0 10 0C17 9.5 12 3.8 12 3.8z"/>');`,
 ]) requireText('icons.js geometry', iconsCode, expected);
@@ -2218,6 +2218,9 @@ requireText('phone-directory.js injection button', directoryCode, 'class="pm-con
 requireText('phone-directory.js injection button', directoryCode, '${EYE_ICON_SVG}</button>');
 if ((directoryCode.match(/pm-contact-switcher-injection[\s\S]*?\$\{EYE_ICON_SVG\}/g) || []).length !== 1) {
   failures.push('phone-directory.js injection button: must render exactly one shared eye SVG');
+}
+if (!/pm-contact-switcher-main[\s\S]*?pm-contact-switcher-current[\s\S]*?pm-contact-switcher-injection[\s\S]*?pm-entity-delete/.test(directoryCode)) {
+  failures.push('phone-directory.js: current-conversation checkmark must stay between the name and action buttons');
 }
 requireCssDeclarations(cssRules, '.pm-name-trigger[aria-expanded="true"]', { 'border-radius': '10px 10px 0 0', 'background': 'var(--pm-color-surface-card)' });
 requireCssDeclarations(cssRules, '.pm-contact-switcher', {
@@ -2233,7 +2236,9 @@ requireText('phone-directory.js contact switcher responsive positioning', direct
 requireText('style.css selection mode quote exclusion', css, '.pm-msg-list.is-selecting .pm-quote-action{display:none !important;}');
 requireText('style.css title arrow isolation', css, '.pm-name-chevron{position:absolute;left:100%;top:50%');
 requireCssDeclarations(cssRules, '.pm-contact-switcher', { 'box-shadow': 'none' });
-requireCssDeclarations(cssRules, '.pm-contact-switcher-row', { 'grid-template-columns': 'minmax(0,1fr) 40px 40px 22px', gap: '2px' });
+requireCssDeclarations(cssRules, '.pm-contact-switcher-row', { 'grid-template-columns': 'minmax(0,1fr) 22px 40px 40px', gap: '2px' });
+requireCssDeclarations(cssRules, '.pm-contact-switcher-current', { 'grid-column': '2' });
+requireCssDeclarations(cssRules, '#pm-overlay[data-theme="dark"] .pm-global-setting small', { color: 'var(--pm-color-text-primary)' });
 requireCssDeclarations(cssRules, '.pm-contact-settings-actions', { 'border-top': '0 !important' });
 requireCssDeclarations(cssRules, '#pm-overlay .pm-contact-settings-scroll textarea.pm-cfg-input', {
   width: '100% !important', 'min-height': '58px !important', resize: 'vertical !important',

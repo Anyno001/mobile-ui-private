@@ -2597,7 +2597,7 @@ ${userPrompt}` : userPrompt;
   var CHARACTER_ICON_SVG = icon('<circle cx="9" cy="8" r="3"/><path d="M3.5 20c.3-4 2.4-6 5.5-6s5.2 2 5.5 6"/><path d="M17 7h4M19 5v4M16 14h5M16 18h5"/>');
   var SETTINGS_ICON_SVG = icon('<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-4V21a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H2.8v-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1A1.7 1.7 0 0 0 9 4.6 1.7 1.7 0 0 0 10 3V2.8h4V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v4H21a1.7 1.7 0 0 0-1.6 1z"/>');
   var INJECTION_ICON_SVG = icon('<path d="M8 7l4-4 4 4M12 3v8M16 17l-4 4-4-4M12 21v-8"/><path d="M5 12h14"/>');
-  var EYE_ICON_SVG = icon('<path d="M2.5 12s3.5-5 9.5-5 9.5 5 9.5 5-3.5 5-9.5 5-9.5-5-9.5-5z"/>');
+  var EYE_ICON_SVG = icon('<path d="M2.5 12s3.5-5 9.5-5 9.5 5 9.5 5-3.5 5-9.5 5-9.5-5-9.5-5z"/><circle cx="12" cy="12" r="2.5"/>');
   var CHECK_ICON_SVG = icon('<path d="M5 12l4 4L19 6"/>');
   var COMMUNITY_ICON_SVG = icon('<path d="M4 19V8l8-4 8 4v11"/><path d="M8 19v-6h8v6M8 9h.01M12 9h.01M16 9h.01"/>');
   var FEED_ICON_SVG = icon('<path d="M5 5h14v14H5z"/><path d="M8 9h8M8 12h8M8 15h5"/>');
@@ -11547,9 +11547,9 @@ ${antiFluff}`;
               <button type="button" class="pm-contact-switcher-main" data-contact-action="switch" data-key="${escapeAttr(key)}" ${current ? 'aria-current="true"' : ""}>
                 <span>${escapeHtml(label)}</span>${detail ? `<small>${escapeHtml(detail)}</small>` : ""}
               </button>
+              <span class="pm-contact-switcher-current" aria-hidden="true">${current ? CHECK_ICON_SVG : ""}</span>
               <button type="button" class="pm-contact-switcher-icon pm-contact-switcher-injection ${enabled ? "is-active" : ""}" data-contact-action="inject" data-key="${escapeAttr(key)}" data-group="${isGroup}" data-label="${escapeAttr(label)}" aria-pressed="${enabled}" aria-label="${enabled ? "\u5173\u95ED" : "\u5F00\u542F"} ${escapeAttr(label)} \u7684\u6B63\u6587\u6CE8\u5165" title="${enabled ? "\u5173\u95ED\u6B63\u6587\u6CE8\u5165" : "\u5F00\u542F\u6B63\u6587\u6CE8\u5165"}">${EYE_ICON_SVG}</button>
               <button type="button" class="pm-contact-switcher-icon pm-entity-delete" data-contact-action="delete" data-key="${escapeAttr(key)}" data-group="${isGroup}" aria-label="\u6C38\u4E45\u5220\u9664${isGroup ? "\u7FA4\u804A" : "\u8054\u7CFB\u4EBA"} ${escapeAttr(label)}" title="\u6C38\u4E45\u5220\u9664${isGroup ? "\u7FA4\u804A" : "\u8054\u7CFB\u4EBA"}">${UNLINK_ICON_SVG}</button>
-              <span class="pm-contact-switcher-current" aria-hidden="true">${current ? CHECK_ICON_SVG : ""}</span>
             </div>`;
       };
       const rows = [
