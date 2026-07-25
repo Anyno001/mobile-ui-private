@@ -64,7 +64,7 @@ function statusCard({ meta, value, icon, parsed, date, kind, phase = '' }) {
         <div class="pm-calendar-status-content">
             <div class="pm-calendar-status-meta">${meta}</div>
             <b class="pm-calendar-status-value">${value}</b>
-            <span class="pm-calendar-status-date"><time datetime="${escapeAttr(date)}">${escapeHtml(detailDate.format(parsed))}</time><em>${escapeHtml(detailWeekday.format(parsed))}</em></span>
+            <span class="pm-calendar-status-date"><time datetime="${escapeAttr(date)}">${escapeHtml(detailDate.format(parsed))}</time><span class="pm-calendar-status-date-separator" aria-hidden="true"> · </span><em>${escapeHtml(detailWeekday.format(parsed))}</em></span>
         </div>
     </div>`;
 }
@@ -80,7 +80,7 @@ function weatherStatusCard(weatherStore, date, parsed, relativeLabel) {
     return { content: statusCard({
         kind: 'weather', parsed, date, icon: weatherStatusIcon(resolved.day.weatherCode),
         meta: `${leading}<span class="pm-calendar-status-location" aria-hidden="true">${LOCATION_ICON_SVG}</span>`,
-        value: `${resolved.day.tempMin} - ${resolved.day.tempMax} ℃`,
+        value: `${resolved.day.tempMin}°–${resolved.day.tempMax}°`,
     }), isCard: true };
 }
 
@@ -90,7 +90,7 @@ function cycleStatusCard(cycleScope, date, parsed, relativeLabel) {
     if (!detail) return { content: '', isCard: false };
     return { content: statusCard({
         kind: 'cycle', phase: prediction.phase, parsed, date, icon: detail.icon,
-        meta: `${relativeLabel ? `<span class="pm-calendar-status-relative">${escapeHtml(relativeLabel)}</span>` : ''}健康记录`, value: detail.label,
+        meta: `${relativeLabel ? `<span class="pm-calendar-status-relative">${escapeHtml(relativeLabel)}</span>` : ''}<span class="pm-calendar-status-cycle-context">生理周期</span>`, value: detail.label,
     }), isCard: true };
 }
 

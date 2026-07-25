@@ -1590,14 +1590,16 @@ const foundationDeps = {
 installPhoneFoundation(foundationState, foundationDeps);
 const lifecycleSetTimeout = globalThis.setTimeout;
 const lifecycleSetInterval = globalThis.setInterval;
+let lifecycleIntervalCalls = 0;
 try {
     globalThis.setTimeout = () => 0;
-    globalThis.setInterval = () => 0;
+    globalThis.setInterval = () => { lifecycleIntervalCalls += 1; return 0; };
     installPhoneLifecycle(foundationState, foundationDeps);
 } finally {
     globalThis.setTimeout = lifecycleSetTimeout;
     globalThis.setInterval = lifecycleSetInterval;
 }
+assert.equal(lifecycleIntervalCalls, 0, '插件安装但手机未打开时不得启动可见性巡检定时器');
 const lifecycleDocumentClickBaseline = documentClickListeners.size - 1;
 
 const islandWindowListeners = new Map();
@@ -1872,6 +1874,88 @@ if (lifecycleOverlay) {
     lifecycleOverlay.removed = false;
     uiElements.set('pm-overlay', lifecycleOverlay);
 }
+const originalLifecycleCreateElement = document.createElement;
+const originalLifecycleAppendChild = document.body.appendChild;
+const originalLifecycleSetInterval = globalThis.setInterval;
+const originalLifecycleClearInterval = globalThis.clearInterval;
+const originalLifecycleGetComputedStyle = globalThis.getComputedStyle;
+const originalLifecycleWindowAddEventListener = window.addEventListener;
+const originalLifecycleWindowRemoveEventListener = window.removeEventListener;
+const lifecycleIntervalIds = [];
+const lifecycleClearedIds = [];
+const lifecyclePhoneListeners = new Map();
+const lifecyclePhone = {
+    id: '', dataset: {}, innerHTML: '', removed: false,
+    style: { setProperty() {}, removeProperty() {} },
+    classList: { toggle() {}, remove() {} },
+    setAttribute(name, value) { this[name] = value; },
+    showPopover() {}, hidePopover() {}, remove() { this.removed = true; },
+    querySelector(selector) {
+        if (selector === '.pm-status-bar') return null;
+        const control = { disabled: false, addEventListener(type, listener) { lifecyclePhoneListeners.set(`${selector}:${type}`, listener); }, removeEventListener() {}, setPointerCapture() {} };
+        return control;
+    },
+};
+const lifecycleFixtureState = {
+    phoneWindow: null, phoneActive: false, isMinimized: false, isSelectMode: false,
+    activeStorageId: '', currentPersona: '', conversationHistory: [], isGroupChat: false,
+    groupMembers: [], groupExtras: [], groupColorMap: {}, groupDisplayName: '',
+    groupRandomNpcEnabled: false, groupNature: '', currentGroupKey: '', isGenerating: false,
+};
+const lifecycleFixtureDeps = {
+    runtime: createRuntimeState(), getCtx: () => ({ registerSlashCommand() {} }),
+    getStorageId: () => 'story', getUserPersona: () => ({ name: '用户' }),
+    applyBidirectionalInjection: () => {}, clearBidirectionalInjection: () => {},
+    persistCurrentHistory: () => {}, persistPhoneUiSnapshot: () => {},
+    applyBackground: () => {}, applyTheme: () => {}, applyPhoneScale: () => {},
+    bindIsland: () => () => {}, bindPhoneResize: () => () => {}, bindPhonePageUi: () => {},
+    migrateOldHistory: () => {}, hookGenerationEvent: () => {}, invalidateGeneration: () => {},
+    disarmAutoPoke: () => {}, syncGenerationControls: () => {}, closeOverlay: () => {},
+    closeControlCenter: () => {}, refreshReplyCardAvailability: () => {}, clearActiveQuote: () => {},
+    restorePhoneChat: async () => true, restorePhoneUi: async () => {},
+};
+try {
+    document.createElement = tag => { assert.equal(tag, 'div'); return lifecyclePhone; };
+    document.body.appendChild = element => element;
+    globalThis.setInterval = () => { lifecycleIntervalIds.push(0); return 0; };
+    globalThis.clearInterval = id => lifecycleClearedIds.push(id);
+    globalThis.getComputedStyle = () => ({ display: 'flex', visibility: 'visible', opacity: '1' });
+    window.addEventListener = () => {};
+    window.removeEventListener = () => {};
+    const lifecycleFailureState = {
+        ...lifecycleFixtureState, groupMembers: [], groupExtras: [], groupColorMap: {}, conversationHistory: [],
+    };
+    const lifecycleFailureDeps = {
+        ...lifecycleFixtureDeps, runtime: createRuntimeState(), applyPhoneScale: () => { throw new Error('fixture-open-failed'); },
+    };
+    lifecycleFailureDeps.runtime.firstOpen = false;
+    installPhoneLifecycle(lifecycleFailureState, lifecycleFailureDeps);
+    window.__pmTheme = structuredClone(baseTheme);
+    await assert.rejects(window.__pmOpen(), /fixture-open-failed/);
+    assert.deepEqual(lifecycleIntervalIds, [], '同步打开初始化失败时不得启动可见性巡检定时器');
+    assert.equal(lifecycleFailureDeps.runtime.visibilityTimer, null, '同步打开初始化失败后不得残留可见性巡检状态');
+    lifecycleFixtureDeps.runtime.firstOpen = false;
+    installPhoneLifecycle(lifecycleFixtureState, lifecycleFixtureDeps);
+    window.__pmTheme = structuredClone(baseTheme);
+    await window.__pmOpen();
+    assert.deepEqual(lifecycleIntervalIds, [0], '成功打开必须且只能启动一个可见性巡检定时器');
+    assert.equal(lifecycleFixtureDeps.runtime.visibilityTimer, 0, '可见性巡检必须保存 setInterval 返回的 0 号 timer');
+    await window.__pmOpen();
+    assert.deepEqual(lifecycleIntervalIds, [0], '重复打开既有手机不得重复启动可见性巡检');
+    window.__pmEnd(true);
+    assert.deepEqual(lifecycleClearedIds, [0], '关闭手机必须清理 timer id 为 0 的可见性巡检');
+    assert.equal(lifecycleFixtureDeps.runtime.visibilityTimer, null, '关闭手机后可见性巡检状态必须恢复为空');
+} finally {
+    document.createElement = originalLifecycleCreateElement;
+    document.body.appendChild = originalLifecycleAppendChild;
+    globalThis.setInterval = originalLifecycleSetInterval;
+    globalThis.clearInterval = originalLifecycleClearInterval;
+    if (originalLifecycleGetComputedStyle === undefined) delete globalThis.getComputedStyle; else globalThis.getComputedStyle = originalLifecycleGetComputedStyle;
+    window.addEventListener = originalLifecycleWindowAddEventListener;
+    window.removeEventListener = originalLifecycleWindowRemoveEventListener;
+}
+
+
 
 window.__pmTheme = structuredClone(baseTheme);
 uiElements.get('pm-custom-title').value = '  雨夜电台  ';

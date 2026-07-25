@@ -319,8 +319,7 @@ export function installPhoneLifecycle(state, deps) {
         state.groupDisplayName = ''; state.groupRandomNpcEnabled = false; state.groupNature = ''; state.currentGroupKey = '';
         // 修复：关闭时重置冷启动标记，确保下次打开时（尤其是切换角色卡后）重新从 IDB 加载最新数据
         runtime.firstOpen = true;
-        // 修复：关闭时清除可见性定时器，重新开启时再创建新的
-        if (runtime.visibilityTimer) { clearInterval(runtime.visibilityTimer); runtime.visibilityTimer = null; }
+        if (runtime.visibilityTimer !== null) { clearInterval(runtime.visibilityTimer); runtime.visibilityTimer = null; }
     };
 
     function loadHistoriesOnce() {
@@ -339,15 +338,12 @@ export function installPhoneLifecycle(state, deps) {
             state.phoneWindow.style.setProperty('opacity', '1', 'important');
         }
     }
-    // 修复：保存定时器 ID，在 __pmEnd 时清除，避免永久泄漏
-    runtime.visibilityTimer = setInterval(ensureVisibility, 2000);
 
     window.__pmOpen = async () => {
         if (state.phoneActive && state.phoneWindow) { try { state.phoneWindow.showPopover?.(); } catch (e) {} state.phoneWindow.style.display = 'flex'; ensureVisibility(); return; }
         // 修复：删除每次打开都用 localStorage 覆盖内存的逻辑
         // localStorage 因容量限制可能保存的是旧数据，而内存和 IDB 才是最新的
         // 冷启动时（内存为空）靠 loadHistoriesFromIDB() 从 IDB 加载后再渲染
-        if (!runtime.visibilityTimer) runtime.visibilityTimer = setInterval(ensureVisibility, 2000);
         try {
             const saved = JSON.parse(localStorage.getItem('ST_SMS_CONFIG'));
             window.__pmConfig = saved || { apiUrl: '', apiKey: '', model: '', temperature: 1.2, useIndependent: false };
@@ -471,6 +467,8 @@ export function installPhoneLifecycle(state, deps) {
                     if (runtime.historyLoadPromise === historyLoad) runtime.historyLoadPromise = null;
                 });
         }
+        // 初始化完成后才启动巡检；插件空闲或打开失败时不得保留后台定时器。
+        if (runtime.visibilityTimer === null && state.phoneActive && state.phoneWindow) runtime.visibilityTimer = setInterval(ensureVisibility, 2000);
     };
 
 

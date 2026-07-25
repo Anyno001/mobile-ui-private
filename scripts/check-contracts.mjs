@@ -1195,7 +1195,19 @@ for (const expected of [
 ]) requireText('phone-foundation.js', sourceModuleByName.get('phone-foundation.js')?.code || '', expected);
 for (const expected of [
   'pm-quote-preview', 'deleteSelectedMessages', 'refreshReplyCardAvailability?.()',
+  'if (runtime.visibilityTimer !== null) { clearInterval(runtime.visibilityTimer); runtime.visibilityTimer = null; }',
+  'if (runtime.visibilityTimer === null && state.phoneActive && state.phoneWindow) runtime.visibilityTimer = setInterval(ensureVisibility, 2000);',
 ]) requireText('phone-lifecycle.js', sourceModuleByName.get('phone-lifecycle.js')?.code || '', expected);
+const lifecycleTimerCode = sourceModuleByName.get('phone-lifecycle.js')?.code || '';
+const visibilityTimerStart = lifecycleTimerCode.indexOf('runtime.visibilityTimer = setInterval(ensureVisibility, 2000)');
+const phoneOpenStart = lifecycleTimerCode.indexOf('window.__pmOpen = async () => {');
+const phoneActiveStart = lifecycleTimerCode.indexOf('state.phoneActive = true;', phoneOpenStart);
+if (visibilityTimerStart < phoneActiveStart) {
+  failures.push('phone-lifecycle.js: visibility timer must start only after phone initialization marks the window active');
+}
+if (lifecycleTimerCode.slice(0, phoneOpenStart).includes('runtime.visibilityTimer = setInterval(ensureVisibility, 2000)')) {
+  failures.push('phone-lifecycle.js: plugin installation must not start the visibility timer while no phone window exists');
+}
 for (const expected of [
   'commitEditedGroupUpdate', 'refreshEditedGroupRuntime', 'restoreConversationState', 'previousConversationContext',
   'persistRestored', "injectionFailure(rollbackResult, '补偿')",
@@ -1521,10 +1533,10 @@ for (const expected of [
   "period: { label: '经期'", "ovulatory: { label: '易孕期'", 'resolveWeatherForDate(weatherStore, date)',
   'CYCLE_PERIOD_ICON_SVG', 'CYCLE_FERTILE_ICON_SVG', 'WEATHER_ICON_SVG', 'LOCATION_ICON_SVG', 'WEATHER_PARTLY_CLOUDY_ICON_SVG',
   'weatherStatusIcon', 'statusCard', 'pm-calendar-status-card', 'pm-calendar-status-watermark', 'pm-calendar-panel-section',
-  'pm-calendar-status-relative', 'pm-calendar-status-weather-context', 'pm-calendar-status-date', 'data-cycle-phase="${escapeAttr(phase)}"',
-  'value: `${resolved.day.tempMin} - ${resolved.day.tempMax} ℃`', "'天气记录'", '健康记录',
-  'detailDate.format(parsed))}</time><em>${escapeHtml(detailWeekday.format(parsed))}</em>',
-  'meta: `${relativeLabel ? `<span class="pm-calendar-status-relative">${escapeHtml(relativeLabel)}</span>` : \'\'}健康记录`',
+  'pm-calendar-status-relative', 'pm-calendar-status-weather-context', 'pm-calendar-status-cycle-context', 'pm-calendar-status-date', 'pm-calendar-status-date-separator', 'data-cycle-phase="${escapeAttr(phase)}"',
+  'value: `${resolved.day.tempMin}°–${resolved.day.tempMax}°`', "'天气记录'", '生理周期',
+  'detailDate.format(parsed))}</time><span class="pm-calendar-status-date-separator" aria-hidden="true"> · </span><em>${escapeHtml(detailWeekday.format(parsed))}</em>',
+  'meta: `${relativeLabel ? `<span class="pm-calendar-status-relative">${escapeHtml(relativeLabel)}</span>` : \'\'}<span class="pm-calendar-status-cycle-context">生理周期</span>`',
   '当前故事日期', 'placeholder="例如 3726-08-17"', '可直接输入日期，或跳转月份后点击下方日期。',
   '开启后供正文生成读取；设置按当前会话独立保存。', '预报外日期使用气候推演', '无法推演',
   'DEFAULT_CALENDAR_GENERATION_RULE', 'DEFAULT_RECIPE_GENERATION_RULE', 'data-calendar-generation-rule', 'data-recipe-generation-rule',
@@ -1537,6 +1549,9 @@ if (!/<h3>正文日期<\/h3>[\s\S]*<h3>节假日数据<\/h3>[\s\S]*<h3>生成规
 }
 for (const forbidden of ['<span>已选日期</span>', '>${escapeHtml(selectedDate)}</time>', '>编辑</button>', 'calendar-editor-kind', 'pm-calendar-editor-switch']) if (calendarViewCode.includes(forbidden)) failures.push(`calendar-view.js: calendar UI remains: ${forbidden}`);
 for (const forbidden of ['storyInitialDate', 'calendar-story-initial', '故事初始日期', "luteal: { label: '安全期'"]) if (calendarViewCode.includes(forbidden)) failures.push(`calendar-view.js: removed calendar copy remains: ${forbidden}`);
+for (const forbidden of ['value: `${resolved.day.tempMin} - ${resolved.day.tempMax} ℃`', '健康记录']) {
+  if (calendarViewCode.includes(forbidden)) failures.push(`calendar-view.js: legacy status-card copy remains: ${forbidden}`);
+}
 if (calendarViewCode.includes('Weather data © Open-Meteo')) failures.push('calendar-view.js: weather attribution must not be rendered in the UI');
 for (const forbidden of ['相对低风险期', '不能作为避孕依据', '预测仅供提醒', '不能用于避孕判断']) {
   if (calendarViewCode.includes(forbidden) || calendarCode.includes(forbidden)) {
@@ -1927,12 +1942,11 @@ for (const expected of [
   '.pm-calendar-selected-detail.is-status-card{overflow:hidden;padding:0;background:color-mix(in srgb,var(--pm-calendar-accent) 8%,var(--pm-color-surface-card))}',
   '.pm-calendar-status-card{position:relative;isolation:isolate;min-height:126px;padding:15px 16px;overflow:hidden}',
   '.pm-calendar-status-meta{display:flex;align-items:center;min-width:0;gap:8px;color:var(--pm-color-text-primary);font-size:13px;font-weight:750;line-height:1.2;white-space:nowrap}',
-  '.pm-calendar-status-relative{color:var(--pm-calendar-accent);font-size:17px;line-height:1.1;font-weight:850;white-space:nowrap}',
-  '.pm-calendar-status-weather-context{color:var(--pm-color-text-primary);font-size:13px;font-weight:750;line-height:1.2}',
-  '.pm-calendar-status-value{color:color-mix(in srgb,var(--pm-color-text-primary) 88%,var(--pm-color-text-secondary));font-size:30px;line-height:1;font-weight:700',
-  '.pm-calendar-status-card-cycle .pm-calendar-status-value{letter-spacing:.12em}',
+  '.pm-calendar-status-relative{color:var(--pm-calendar-accent);font-size:17px;line-height:1.1;font-weight:750;white-space:nowrap}',
+  '.pm-calendar-status-weather-context,.pm-calendar-status-cycle-context{color:var(--pm-color-text-secondary);font-size:13px;font-weight:500;line-height:1.2}',
+  '.pm-calendar-status-value{color:color-mix(in srgb,var(--pm-color-text-primary) 70%,var(--pm-color-text-secondary));font-size:28px;line-height:1;font-weight:650',
   '.pm-calendar-status-date{display:flex;align-items:baseline;gap:0;min-width:0;margin-top:3px;color:var(--pm-color-text-tertiary);font-size:11px;font-weight:400;line-height:1.2}',
-  '.pm-calendar-status-date time,.pm-calendar-status-date em{color:inherit;font:inherit;white-space:nowrap}',
+  '.pm-calendar-status-date time,.pm-calendar-status-date em{color:inherit;font:inherit;white-space:nowrap}.pm-calendar-status-date-separator{color:inherit;font:inherit;white-space:pre}',
   '.pm-calendar-status-date em{font-style:normal}',
   '.pm-calendar-status-watermark{position:absolute;z-index:0;top:50%;right:-64px;width:202px;height:173px',
   '.pm-calendar-status-watermark svg{width:173px;height:173px;stroke-width:1.55}',
@@ -1973,6 +1987,21 @@ for (const expected of [
   '.pm-scene-comment-composer input{font-size:14px}',
   '.pm-scene-empty{font-size:12px;line-height:1.55}',
 ]) requireText('style.css', css, expected);
+requireCssDeclarations(cssRules, '.pm-calendar-status-relative', {
+  color: 'var(--pm-calendar-accent)', 'font-size': '17px', 'line-height': '1.1', 'font-weight': '750',
+});
+requireCssDeclarations(cssRules, '.pm-calendar-status-value', {
+  color: 'color-mix(in srgb,var(--pm-color-text-primary) 70%,var(--pm-color-text-secondary))',
+  'font-size': '28px', 'line-height': '1', 'font-weight': '650',
+});
+requireCssDeclarations(cssRules, '.pm-calendar-status-date', {
+  'margin-top': '3px', color: 'var(--pm-color-text-tertiary)', 'font-size': '11px', 'font-weight': '400', 'line-height': '1.2',
+});
+for (const forbidden of [
+  '.pm-calendar-status-weather-context{color:var(--pm-color-text-primary);font-size:13px;font-weight:750;line-height:1.2}',
+  '.pm-calendar-status-value{color:color-mix(in srgb,var(--pm-color-text-primary) 88%,var(--pm-color-text-secondary));font-size:30px;line-height:1;font-weight:700',
+  '.pm-calendar-status-card-cycle .pm-calendar-status-value{letter-spacing:.12em}',
+]) if (css.includes(forbidden)) failures.push(`style.css: legacy status-card typography remains: ${forbidden}`);
 if (css.includes('.pm-calendar-selected-detail>header time{font-size:14px')) {
   failures.push('style.css: legacy detail time font size overrides the unified calendar detail typography');
 }

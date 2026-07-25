@@ -2702,7 +2702,7 @@ ${userPrompt}` : userPrompt;
         <div class="pm-calendar-status-content">
             <div class="pm-calendar-status-meta">${meta}</div>
             <b class="pm-calendar-status-value">${value}</b>
-            <span class="pm-calendar-status-date"><time datetime="${escapeAttr(date)}">${escapeHtml(detailDate.format(parsed))}</time><em>${escapeHtml(detailWeekday.format(parsed))}</em></span>
+            <span class="pm-calendar-status-date"><time datetime="${escapeAttr(date)}">${escapeHtml(detailDate.format(parsed))}</time><span class="pm-calendar-status-date-separator" aria-hidden="true"> \xB7 </span><em>${escapeHtml(detailWeekday.format(parsed))}</em></span>
         </div>
     </div>`;
   }
@@ -2720,7 +2720,7 @@ ${userPrompt}` : userPrompt;
       date,
       icon: weatherStatusIcon(resolved.day.weatherCode),
       meta: `${leading}<span class="pm-calendar-status-location" aria-hidden="true">${LOCATION_ICON_SVG}</span>`,
-      value: `${resolved.day.tempMin} - ${resolved.day.tempMax} \u2103`
+      value: `${resolved.day.tempMin}\xB0\u2013${resolved.day.tempMax}\xB0`
     }), isCard: true };
   }
   function cycleStatusCard(cycleScope, date, parsed, relativeLabel) {
@@ -2733,7 +2733,7 @@ ${userPrompt}` : userPrompt;
       parsed,
       date,
       icon: detail.icon,
-      meta: `${relativeLabel ? `<span class="pm-calendar-status-relative">${escapeHtml(relativeLabel)}</span>` : ""}\u5065\u5EB7\u8BB0\u5F55`,
+      meta: `${relativeLabel ? `<span class="pm-calendar-status-relative">${escapeHtml(relativeLabel)}</span>` : ""}<span class="pm-calendar-status-cycle-context">\u751F\u7406\u5468\u671F</span>`,
       value: detail.label
     }), isCard: true };
   }
@@ -14028,7 +14028,7 @@ ${lines}`;
       state.groupNature = "";
       state.currentGroupKey = "";
       runtime.firstOpen = true;
-      if (runtime.visibilityTimer) {
+      if (runtime.visibilityTimer !== null) {
         clearInterval(runtime.visibilityTimer);
         runtime.visibilityTimer = null;
       }
@@ -14048,7 +14048,6 @@ ${lines}`;
         state.phoneWindow.style.setProperty("opacity", "1", "important");
       }
     }
-    runtime.visibilityTimer = setInterval(ensureVisibility, 2e3);
     window.__pmOpen = async () => {
       if (state.phoneActive && state.phoneWindow) {
         try {
@@ -14059,7 +14058,6 @@ ${lines}`;
         ensureVisibility();
         return;
       }
-      if (!runtime.visibilityTimer) runtime.visibilityTimer = setInterval(ensureVisibility, 2e3);
       try {
         const saved = JSON.parse(localStorage.getItem("ST_SMS_CONFIG"));
         window.__pmConfig = saved || { apiUrl: "", apiKey: "", model: "", temperature: 1.2, useIndependent: false };
@@ -14211,6 +14209,7 @@ ${lines}`;
           if (runtime.historyLoadPromise === historyLoad) runtime.historyLoadPromise = null;
         });
       }
+      if (runtime.visibilityTimer === null && state.phoneActive && state.phoneWindow) runtime.visibilityTimer = setInterval(ensureVisibility, 2e3);
     };
     function registerPhoneCommand() {
       const ctx = getCtx();
