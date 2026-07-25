@@ -2714,14 +2714,14 @@ ${userPrompt}` : userPrompt;
     }
     const condition = weatherCodeLabel(resolved.day.weatherCode);
     const location = weatherStore?.location?.country || weatherStore?.location?.name || "\u5929\u6C14\u8BB0\u5F55";
-    const leading = `${relativeLabel ? `${escapeHtml(relativeLabel)} ` : ""}${escapeHtml(condition)} \xB7 ${escapeHtml(location)}`;
+    const leading = `${relativeLabel ? `<span class="pm-calendar-status-relative">${escapeHtml(relativeLabel)}</span> ` : ""}${escapeHtml(condition)} \xB7 ${escapeHtml(location)}`;
     return { content: statusCard({
       kind: "weather",
       parsed,
       date,
       icon: weatherStatusIcon(resolved.day.weatherCode),
       meta: `${leading}<span class="pm-calendar-status-location" aria-hidden="true">${LOCATION_ICON_SVG}</span>`,
-      value: `${resolved.day.tempMin}\u2013${resolved.day.tempMax}\u2103`
+      value: `${resolved.day.tempMin} - ${resolved.day.tempMax} \u2103`
     }), isCard: true };
   }
   function cycleStatusCard(cycleScope, date, parsed, relativeLabel) {
@@ -2733,7 +2733,7 @@ ${userPrompt}` : userPrompt;
       parsed,
       date,
       icon: detail.icon,
-      meta: `${relativeLabel ? `${escapeHtml(relativeLabel)} \xB7 ` : ""}\u5065\u5EB7\u8BB0\u5F55`,
+      meta: `${relativeLabel ? `<span class="pm-calendar-status-relative">${escapeHtml(relativeLabel)}</span> \xB7 ` : ""}\u5065\u5EB7\u8BB0\u5F55`,
       value: detail.label
     }), isCard: true };
   }

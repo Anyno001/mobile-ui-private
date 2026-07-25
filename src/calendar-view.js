@@ -77,11 +77,11 @@ function weatherStatusCard(weatherStore, date, parsed, relativeLabel) {
     }
     const condition = weatherCodeLabel(resolved.day.weatherCode);
     const location = weatherStore?.location?.country || weatherStore?.location?.name || '天气记录';
-    const leading = `${relativeLabel ? `${escapeHtml(relativeLabel)} ` : ''}${escapeHtml(condition)} · ${escapeHtml(location)}`;
+    const leading = `${relativeLabel ? `<span class="pm-calendar-status-relative">${escapeHtml(relativeLabel)}</span> ` : ''}${escapeHtml(condition)} · ${escapeHtml(location)}`;
     return { content: statusCard({
         kind: 'weather', parsed, date, icon: weatherStatusIcon(resolved.day.weatherCode),
         meta: `${leading}<span class="pm-calendar-status-location" aria-hidden="true">${LOCATION_ICON_SVG}</span>`,
-        value: `${resolved.day.tempMin}–${resolved.day.tempMax}℃`,
+        value: `${resolved.day.tempMin} - ${resolved.day.tempMax} ℃`,
     }), isCard: true };
 }
 
@@ -91,7 +91,7 @@ function cycleStatusCard(cycleScope, date, parsed, relativeLabel) {
     if (!detail) return { content: '', isCard: false };
     return { content: statusCard({
         kind: 'cycle', parsed, date, icon: detail.icon,
-        meta: `${relativeLabel ? `${escapeHtml(relativeLabel)} · ` : ''}健康记录`, value: detail.label,
+        meta: `${relativeLabel ? `<span class="pm-calendar-status-relative">${escapeHtml(relativeLabel)}</span> · ` : ''}健康记录`, value: detail.label,
     }), isCard: true };
 }
 

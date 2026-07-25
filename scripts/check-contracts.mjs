@@ -1521,7 +1521,7 @@ for (const expected of [
   "period: { label: '经期'", "ovulatory: { label: '易孕期'", 'resolveWeatherForDate(weatherStore, date)',
   'CYCLE_PERIOD_ICON_SVG', 'CYCLE_FERTILE_ICON_SVG', 'WEATHER_ICON_SVG', 'LOCATION_ICON_SVG', 'WEATHER_PARTLY_CLOUDY_ICON_SVG',
   'weatherStatusIcon', 'statusCard', 'pm-calendar-status-card', 'pm-calendar-status-watermark', 'pm-calendar-panel-section',
-  'value: `${resolved.day.tempMin}–${resolved.day.tempMax}℃`', "'天气记录'", '健康记录', 'statusDate',
+  'pm-calendar-status-relative', 'value: `${resolved.day.tempMin} - ${resolved.day.tempMax} ℃`', "'天气记录'", '健康记录', 'statusDate',
   '当前故事日期', 'placeholder="例如 3726-08-17"', '可直接输入日期，或跳转月份后点击下方日期。',
   '开启后供正文生成读取；设置按当前会话独立保存。', '预报外日期使用气候推演', '无法推演',
   'DEFAULT_CALENDAR_GENERATION_RULE', 'DEFAULT_RECIPE_GENERATION_RULE', 'data-calendar-generation-rule', 'data-recipe-generation-rule',
@@ -1921,8 +1921,11 @@ for (const expected of [
   '.pm-calendar-shell>*{flex:0 0 auto}',
   '.pm-calendar-selected-detail.is-status-card{overflow:hidden;padding:0;background:color-mix(in srgb,var(--pm-calendar-accent) 8%,var(--pm-color-surface-card))}',
   '.pm-calendar-status-card{position:relative;isolation:isolate;min-height:126px;padding:15px 16px;overflow:hidden}',
-  '.pm-calendar-status-value{font-size:30px;line-height:1;font-weight:850;font-variant-numeric:tabular-nums',
-  '.pm-calendar-status-watermark{position:absolute;z-index:0;top:50%;right:-7px;width:104px;height:104px',
+  '.pm-calendar-status-meta{display:flex;align-items:center;min-width:0;gap:4px;color:var(--pm-color-text-secondary)',
+  '.pm-calendar-status-relative{color:var(--pm-calendar-accent);font-weight:750}',
+  '.pm-calendar-status-value{color:color-mix(in srgb,var(--pm-color-text-primary) 86%,var(--pm-calendar-accent));font-family:ui-rounded',
+  '.pm-calendar-status-content time{color:var(--pm-color-text-tertiary);font-size:11px;line-height:1.3;font-weight:600',
+  '.pm-calendar-status-watermark{position:absolute;z-index:0;top:50%;right:-32px;width:112px;height:96px',
   '-webkit-mask-image:linear-gradient(90deg,transparent 0%,#000 44%)',
   '.pm-calendar-shell[data-calendar-view-mode="recipe"]{--pm-calendar-accent:#c77a32}',
   '.pm-calendar-day.has-recipe>span{color:var(--pm-calendar-accent)}',
@@ -2239,11 +2242,18 @@ requireText('phone-directory.js contact switcher positioning', directoryCode,
   'switcher.style.top = `${Math.max(0, triggerRect.bottom - phoneRect.top - 2)}px`;');
 requireText('phone-directory.js contact switcher responsive positioning', directoryCode, 'contactSwitcherResizeObserver = new ResizeObserver');
 requireText('style.css selection mode quote exclusion', css, '.pm-msg-list.is-selecting .pm-quote-action{display:none !important;}');
+requireCssDeclarations(cssRules, '.pm-msg-list', {
+  'overflow-x': 'hidden !important', 'overflow-y': 'auto !important',
+});
+requireCssDeclarations(cssRules, '.pm-quote-action', { right: 'calc(100% + 6px)' });
+requireCssDeclarations(cssRules, '.pm-right>.pm-quote-action', {
+  right: 'auto', left: 'calc(100% + 6px)',
+});
 requireText('style.css title arrow isolation', css, '.pm-name-chevron{position:absolute;left:100%;top:50%');
 requireCssDeclarations(cssRules, '.pm-contact-switcher', { 'box-shadow': 'none' });
 requireCssDeclarations(cssRules, '.pm-contact-switcher-row', { 'grid-template-columns': '22px minmax(0,1fr) 40px 40px', 'column-gap': '4px' });
 requireCssDeclarations(cssRules, '.pm-contact-switcher-current', {
-  'grid-column': '1', 'justify-self': 'center', transform: 'translateX(2px)',
+  'grid-column': '1', 'justify-self': 'center', transform: 'translateX(4px)',
 });
 requireCssDeclarations(cssRules, '#pm-overlay[data-theme="dark"] .pm-global-setting small', {
   color: 'var(--pm-color-text-primary)!important',
