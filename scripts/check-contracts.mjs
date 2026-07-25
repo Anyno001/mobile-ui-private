@@ -1521,9 +1521,10 @@ for (const expected of [
   "period: { label: '经期'", "ovulatory: { label: '易孕期'", 'resolveWeatherForDate(weatherStore, date)',
   'CYCLE_PERIOD_ICON_SVG', 'CYCLE_FERTILE_ICON_SVG', 'WEATHER_ICON_SVG', 'LOCATION_ICON_SVG', 'WEATHER_PARTLY_CLOUDY_ICON_SVG',
   'weatherStatusIcon', 'statusCard', 'pm-calendar-status-card', 'pm-calendar-status-watermark', 'pm-calendar-panel-section',
-  'pm-calendar-status-relative', 'data-cycle-phase="${escapeAttr(phase)}"', 'value: `${resolved.day.tempMin} - ${resolved.day.tempMax} ℃`', "'天气记录'", '健康记录',
-  'detailDate.format(parsed)}${detailWeekday.format(parsed)',
-  'meta: `${relativeLabel ? `<span class="pm-calendar-status-relative">${escapeHtml(relativeLabel)}</span> ` : \'\'}健康记录`',
+  'pm-calendar-status-relative', 'pm-calendar-status-weather-context', 'pm-calendar-status-date', 'data-cycle-phase="${escapeAttr(phase)}"',
+  'value: `${resolved.day.tempMin} - ${resolved.day.tempMax} ℃`', "'天气记录'", '健康记录',
+  'detailDate.format(parsed))}</time><em>${escapeHtml(detailWeekday.format(parsed))}</em>',
+  'meta: `${relativeLabel ? `<span class="pm-calendar-status-relative">${escapeHtml(relativeLabel)}</span>` : \'\'}健康记录`',
   '当前故事日期', 'placeholder="例如 3726-08-17"', '可直接输入日期，或跳转月份后点击下方日期。',
   '开启后供正文生成读取；设置按当前会话独立保存。', '预报外日期使用气候推演', '无法推演',
   'DEFAULT_CALENDAR_GENERATION_RULE', 'DEFAULT_RECIPE_GENERATION_RULE', 'data-calendar-generation-rule', 'data-recipe-generation-rule',
@@ -1822,7 +1823,8 @@ for (const expected of [
   '--pm-color-accent:', '--pm-color-focus-ring:', '--pm-color-success:', '--pm-color-warning:', '--pm-color-danger:', '--pm-color-overlay:', '--pm-color-on-dark:', '--pm-color-on-light:',
   '.pm-settings-home button{border:1px solid var(--pm-color-border-default);border-radius:14px;background:var(--pm-color-surface-card);color:var(--pm-color-text-primary)',
   '.pm-global-setting{border:1px solid var(--pm-color-border-default);border-radius:14px;background:var(--pm-color-surface-card);color:var(--pm-color-text-primary)',
-  '.pm-global-setting small{font-size:11px;line-height:1.5;color:var(--pm-color-text-tertiary)}',
+  '.pm-settings-home-hint{font-size:11px;line-height:1.5;color:var(--pm-color-text-tertiary)}',
+  '.pm-settings-home button .pm-settings-home-hint{font-size:11px;line-height:1.5;color:var(--pm-color-text-tertiary)}',
   '.pm-scene-header{display:grid;grid-template-columns:44px 1fr 44px;align-items:center;padding:11px 10px;background:var(--pm-color-surface-card);border-bottom:1px solid var(--pm-color-border-subtle)}',
   '.pm-scene-comments{margin-top:9px;background:var(--pm-color-surface-elevated)',
   '.pm-scene-comment-composer input{flex:1;min-width:0;border:1px solid var(--pm-color-border-default);border-radius:10px;padding:8px;background:var(--pm-color-surface-input);color:var(--pm-color-text-primary)}',
@@ -1924,15 +1926,17 @@ for (const expected of [
   '.pm-calendar-shell>*{flex:0 0 auto}',
   '.pm-calendar-selected-detail.is-status-card{overflow:hidden;padding:0;background:color-mix(in srgb,var(--pm-calendar-accent) 8%,var(--pm-color-surface-card))}',
   '.pm-calendar-status-card{position:relative;isolation:isolate;min-height:126px;padding:15px 16px;overflow:hidden}',
-  '.pm-calendar-status-meta{display:flex;align-items:center;min-width:0;gap:4px;color:var(--pm-color-text-primary);font-size:13px;font-weight:750;line-height:1.2;white-space:nowrap}',
+  '.pm-calendar-status-meta{display:flex;align-items:center;min-width:0;gap:8px;color:var(--pm-color-text-primary);font-size:13px;font-weight:750;line-height:1.2;white-space:nowrap}',
   '.pm-calendar-status-relative{color:var(--pm-calendar-accent);font-size:17px;line-height:1.1;font-weight:850;white-space:nowrap}',
-  '.pm-calendar-status-value{color:color-mix(in srgb,var(--pm-color-text-primary) 74%,var(--pm-calendar-accent));font-family:ui-rounded',
-  '.pm-calendar-status-card-weather .pm-calendar-status-value{font-family:"Iowan Old Style","Palatino Linotype","Book Antiqua","STSong","Songti SC",serif}',
+  '.pm-calendar-status-weather-context{color:var(--pm-color-text-primary);font-size:13px;font-weight:750;line-height:1.2}',
+  '.pm-calendar-status-value{color:color-mix(in srgb,var(--pm-color-text-primary) 88%,var(--pm-color-text-secondary));font-size:30px;line-height:1;font-weight:700',
   '.pm-calendar-status-card-cycle .pm-calendar-status-value{letter-spacing:.12em}',
-  '.pm-calendar-status-content time{color:var(--pm-color-text-tertiary);font-size:10px;line-height:1.3;font-weight:400}',
+  '.pm-calendar-status-date{display:flex;align-items:baseline;gap:0;min-width:0;margin-top:3px;color:var(--pm-color-text-tertiary);font-size:11px;font-weight:400;line-height:1.2}',
+  '.pm-calendar-status-date time,.pm-calendar-status-date em{color:inherit;font:inherit;white-space:nowrap}',
+  '.pm-calendar-status-date em{font-style:normal}',
   '.pm-calendar-status-watermark{position:absolute;z-index:0;top:50%;right:-64px;width:202px;height:173px',
   '.pm-calendar-status-watermark svg{width:173px;height:173px;stroke-width:1.55}',
-  '.pm-calendar-status-card-cycle[data-cycle-phase="period"] .pm-calendar-status-watermark{right:-82px}',
+  '.pm-calendar-status-card-cycle[data-cycle-phase="period"] .pm-calendar-status-watermark{right:-82px;transform:translateY(calc(-50% + 8px))}',
   '-webkit-mask-image:linear-gradient(90deg,transparent 0%,#000 44%)',
   '.pm-calendar-shell[data-calendar-view-mode="recipe"]{--pm-calendar-accent:#c77a32}',
   '.pm-calendar-day.has-recipe>span{color:var(--pm-calendar-accent)}',
@@ -1955,6 +1959,8 @@ for (const expected of [
   '.pm-calendar-auto-switch{display:flex;align-items:center;justify-content:space-between',
   '.pm-calendar-entry-dialog [data-calendar-occasion-fields][hidden]{display:none!important}',
   '.pm-calendar-entry-dialog{width:min(330px,calc(100vw - 28px))}',
+  '#pm-overlay .pm-calendar-entry-dialog textarea[name="note"]{box-sizing:border-box!important;width:100%!important;min-height:72px!important;border:1px solid var(--pm-color-border-default)!important;border-radius:10px!important;background:var(--pm-color-surface-input)!important;color:var(--pm-color-text-primary)!important;font:400 13px/1.45 -apple-system',
+  '#pm-overlay .pm-calendar-entry-dialog textarea[name="note"]:focus-visible{outline:1px solid var(--pm-r-bg,var(--pm-color-focus-ring))!important;outline-offset:1px!important}',
   '.pm-calendar-entry-actions button{min-height:38px;border:0',
   '.pm-calendar-view-switch button[aria-pressed="true"]{background:transparent;color:var(--pm-calendar-accent);box-shadow:inset 0 -2px 0 var(--pm-calendar-accent)',
   '@media (prefers-reduced-motion:reduce){.pm-calendar-header-action.is-loading svg{animation:none}}',
@@ -2265,7 +2271,10 @@ requireCssDeclarations(cssRules, '.pm-contact-switcher-row', { 'grid-template-co
 requireCssDeclarations(cssRules, '.pm-contact-switcher-current', {
   'grid-column': '1', 'justify-self': 'center', transform: 'translate(6px,1.5px)',
 });
-requireText('settings-templates.js wordy-limit copy', sourceModuleByName.get('settings-templates.js')?.code || '', '除话痨人设外，每条消息不超过 35 字');
+const settingsTemplatesCode = sourceModuleByName.get('settings-templates.js')?.code || '';
+requireText('settings-templates.js wordy-limit copy', settingsTemplatesCode, '除话痨人设外，每条消息不超过 35 字');
+requireText('settings-templates.js shared settings-home hint class', settingsTemplatesCode, 'class="pm-settings-home-hint">日夜模式、气泡颜色与背景图</span>');
+requireText('settings-templates.js wordy-limit shared settings-home hint class', settingsTemplatesCode, 'small class="pm-settings-home-hint">除话痨人设外，每条消息不超过 35 字</small>');
 requireText('calendar.js preserves calendar scroll position on rerender', sourceModuleByName.get('calendar.js')?.code || '', "const previousShell = container.querySelector?.('.pm-calendar-shell');");
 requireText('calendar.js restores calendar scroll position on rerender', sourceModuleByName.get('calendar.js')?.code || '', 'if (Number.isFinite(scrollTop) && nextShell) nextShell.scrollTop = scrollTop;');
 requireCssDeclarations(cssRules, '.pm-contact-settings-actions', { 'border-top': '0 !important' });
@@ -2512,7 +2521,7 @@ if (packageLock.version !== packageJson.version
     || packageLock.packages?.['']?.version !== packageJson.version) {
   failures.push('version: package-lock.json root versions must match package.json');
 }
-if (packageJson.version !== '1.4.0') failures.push('version: expected release version 1.4.0');
+if (packageJson.version !== '1.5.0') failures.push('version: expected release version 1.5.0');
 
 const readmeLines = readme.split(/\r?\n/);
 if (readmeLines[0] !== '# 天音小笺') failures.push('README: title must be 天音小笺');

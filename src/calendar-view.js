@@ -64,7 +64,7 @@ function statusCard({ meta, value, icon, parsed, date, kind, phase = '' }) {
         <div class="pm-calendar-status-content">
             <div class="pm-calendar-status-meta">${meta}</div>
             <b class="pm-calendar-status-value">${value}</b>
-            <time datetime="${escapeAttr(date)}">${escapeHtml(`${detailDate.format(parsed)}${detailWeekday.format(parsed)}`)}</time>
+            <span class="pm-calendar-status-date"><time datetime="${escapeAttr(date)}">${escapeHtml(detailDate.format(parsed))}</time><em>${escapeHtml(detailWeekday.format(parsed))}</em></span>
         </div>
     </div>`;
 }
@@ -76,7 +76,7 @@ function weatherStatusCard(weatherStore, date, parsed, relativeLabel) {
     }
     const condition = weatherCodeLabel(resolved.day.weatherCode);
     const location = weatherStore?.location?.country || weatherStore?.location?.name || '天气记录';
-    const leading = `${relativeLabel ? `<span class="pm-calendar-status-relative">${escapeHtml(relativeLabel)}</span> ` : ''}${escapeHtml(condition)} · ${escapeHtml(location)}`;
+    const leading = `${relativeLabel ? `<span class="pm-calendar-status-relative">${escapeHtml(relativeLabel)}</span>` : ''}<span class="pm-calendar-status-weather-context">${escapeHtml(condition)} · ${escapeHtml(location)}</span>`;
     return { content: statusCard({
         kind: 'weather', parsed, date, icon: weatherStatusIcon(resolved.day.weatherCode),
         meta: `${leading}<span class="pm-calendar-status-location" aria-hidden="true">${LOCATION_ICON_SVG}</span>`,
@@ -90,7 +90,7 @@ function cycleStatusCard(cycleScope, date, parsed, relativeLabel) {
     if (!detail) return { content: '', isCard: false };
     return { content: statusCard({
         kind: 'cycle', phase: prediction.phase, parsed, date, icon: detail.icon,
-        meta: `${relativeLabel ? `<span class="pm-calendar-status-relative">${escapeHtml(relativeLabel)}</span> ` : ''}健康记录`, value: detail.label,
+        meta: `${relativeLabel ? `<span class="pm-calendar-status-relative">${escapeHtml(relativeLabel)}</span>` : ''}健康记录`, value: detail.label,
     }), isCard: true };
 }
 

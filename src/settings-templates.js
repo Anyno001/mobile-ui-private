@@ -4,14 +4,14 @@ import { escapeAttr, escapeHtml } from './ui.js';
 export function renderSettingsHome() {
     return `
     <div class="pm-settings-home" role="list">
-      <button type="button" role="listitem" onclick="window.__pmShowConfig('api')"><b>API</b><span>默认使用酒馆 API 预设</span></button>
-      <button type="button" role="listitem" onclick="window.__pmShowConfig('quick-reply')"><b>手机开关</b><span>创建或清除开关入口</span></button>
-      <button type="button" role="listitem" onclick="window.__pmShowConfig('look')"><b>主题</b><span>日夜模式、气泡颜色与背景图</span></button>
-      <button type="button" role="listitem" onclick="window.__pmShowConfig('backup')"><b>备份</b><span>导出、导入或安全清理插件数据</span></button>
-      <button type="button" role="listitem" onclick="window.__pmShowConfig('budget')"><b>上下文预算</b><span>控制手机会话与社区写入主提示词的额度</span></button>
-      <button type="button" role="listitem" onclick="window.__pmShowConversationInjection()"><b>正文注入</b><span>分别设置聊天、社区、日历与菜谱的注入位置和深度</span></button>
+      <button type="button" role="listitem" onclick="window.__pmShowConfig('api')"><b>API</b><span class="pm-settings-home-hint">默认使用酒馆 API 预设</span></button>
+      <button type="button" role="listitem" onclick="window.__pmShowConfig('quick-reply')"><b>手机开关</b><span class="pm-settings-home-hint">创建或清除开关入口</span></button>
+      <button type="button" role="listitem" onclick="window.__pmShowConfig('look')"><b>主题</b><span class="pm-settings-home-hint">日夜模式、气泡颜色与背景图</span></button>
+      <button type="button" role="listitem" onclick="window.__pmShowConfig('backup')"><b>备份</b><span class="pm-settings-home-hint">导出、导入或安全清理插件数据</span></button>
+      <button type="button" role="listitem" onclick="window.__pmShowConfig('budget')"><b>上下文预算</b><span class="pm-settings-home-hint">控制手机会话与社区写入主提示词的额度</span></button>
+      <button type="button" role="listitem" onclick="window.__pmShowConversationInjection()"><b>正文注入</b><span class="pm-settings-home-hint">分别设置聊天、社区、日历与菜谱的注入位置和深度</span></button>
       <div class="pm-global-setting" role="group" aria-labelledby="pm-wordy-label">
-        <span><b id="pm-wordy-label">全局短消息限制</b><small>除话痨人设外，每条消息不超过 35 字</small></span>
+        <span><b id="pm-wordy-label">全局短消息限制</b><small class="pm-settings-home-hint">除话痨人设外，每条消息不超过 35 字</small></span>
         <div id="pm-wordy-check" onclick="window.__pmToggleWordyLimit()"
           class="pm-custom-check ${window.__pmWordyLimit === true ? 'is-checked' : ''}" role="checkbox" tabindex="0"
           aria-checked="${window.__pmWordyLimit === true}"

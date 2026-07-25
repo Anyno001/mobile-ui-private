@@ -2702,7 +2702,7 @@ ${userPrompt}` : userPrompt;
         <div class="pm-calendar-status-content">
             <div class="pm-calendar-status-meta">${meta}</div>
             <b class="pm-calendar-status-value">${value}</b>
-            <time datetime="${escapeAttr(date)}">${escapeHtml(`${detailDate.format(parsed)}${detailWeekday.format(parsed)}`)}</time>
+            <span class="pm-calendar-status-date"><time datetime="${escapeAttr(date)}">${escapeHtml(detailDate.format(parsed))}</time><em>${escapeHtml(detailWeekday.format(parsed))}</em></span>
         </div>
     </div>`;
   }
@@ -2713,7 +2713,7 @@ ${userPrompt}` : userPrompt;
     }
     const condition = weatherCodeLabel(resolved.day.weatherCode);
     const location = weatherStore?.location?.country || weatherStore?.location?.name || "\u5929\u6C14\u8BB0\u5F55";
-    const leading = `${relativeLabel ? `<span class="pm-calendar-status-relative">${escapeHtml(relativeLabel)}</span> ` : ""}${escapeHtml(condition)} \xB7 ${escapeHtml(location)}`;
+    const leading = `${relativeLabel ? `<span class="pm-calendar-status-relative">${escapeHtml(relativeLabel)}</span>` : ""}<span class="pm-calendar-status-weather-context">${escapeHtml(condition)} \xB7 ${escapeHtml(location)}</span>`;
     return { content: statusCard({
       kind: "weather",
       parsed,
@@ -2733,7 +2733,7 @@ ${userPrompt}` : userPrompt;
       parsed,
       date,
       icon: detail.icon,
-      meta: `${relativeLabel ? `<span class="pm-calendar-status-relative">${escapeHtml(relativeLabel)}</span> ` : ""}\u5065\u5EB7\u8BB0\u5F55`,
+      meta: `${relativeLabel ? `<span class="pm-calendar-status-relative">${escapeHtml(relativeLabel)}</span>` : ""}\u5065\u5EB7\u8BB0\u5F55`,
       value: detail.label
     }), isCard: true };
   }
@@ -14703,14 +14703,14 @@ ${lines}`;
   function renderSettingsHome() {
     return `
     <div class="pm-settings-home" role="list">
-      <button type="button" role="listitem" onclick="window.__pmShowConfig('api')"><b>API</b><span>\u9ED8\u8BA4\u4F7F\u7528\u9152\u9986 API \u9884\u8BBE</span></button>
-      <button type="button" role="listitem" onclick="window.__pmShowConfig('quick-reply')"><b>\u624B\u673A\u5F00\u5173</b><span>\u521B\u5EFA\u6216\u6E05\u9664\u5F00\u5173\u5165\u53E3</span></button>
-      <button type="button" role="listitem" onclick="window.__pmShowConfig('look')"><b>\u4E3B\u9898</b><span>\u65E5\u591C\u6A21\u5F0F\u3001\u6C14\u6CE1\u989C\u8272\u4E0E\u80CC\u666F\u56FE</span></button>
-      <button type="button" role="listitem" onclick="window.__pmShowConfig('backup')"><b>\u5907\u4EFD</b><span>\u5BFC\u51FA\u3001\u5BFC\u5165\u6216\u5B89\u5168\u6E05\u7406\u63D2\u4EF6\u6570\u636E</span></button>
-      <button type="button" role="listitem" onclick="window.__pmShowConfig('budget')"><b>\u4E0A\u4E0B\u6587\u9884\u7B97</b><span>\u63A7\u5236\u624B\u673A\u4F1A\u8BDD\u4E0E\u793E\u533A\u5199\u5165\u4E3B\u63D0\u793A\u8BCD\u7684\u989D\u5EA6</span></button>
-      <button type="button" role="listitem" onclick="window.__pmShowConversationInjection()"><b>\u6B63\u6587\u6CE8\u5165</b><span>\u5206\u522B\u8BBE\u7F6E\u804A\u5929\u3001\u793E\u533A\u3001\u65E5\u5386\u4E0E\u83DC\u8C31\u7684\u6CE8\u5165\u4F4D\u7F6E\u548C\u6DF1\u5EA6</span></button>
+      <button type="button" role="listitem" onclick="window.__pmShowConfig('api')"><b>API</b><span class="pm-settings-home-hint">\u9ED8\u8BA4\u4F7F\u7528\u9152\u9986 API \u9884\u8BBE</span></button>
+      <button type="button" role="listitem" onclick="window.__pmShowConfig('quick-reply')"><b>\u624B\u673A\u5F00\u5173</b><span class="pm-settings-home-hint">\u521B\u5EFA\u6216\u6E05\u9664\u5F00\u5173\u5165\u53E3</span></button>
+      <button type="button" role="listitem" onclick="window.__pmShowConfig('look')"><b>\u4E3B\u9898</b><span class="pm-settings-home-hint">\u65E5\u591C\u6A21\u5F0F\u3001\u6C14\u6CE1\u989C\u8272\u4E0E\u80CC\u666F\u56FE</span></button>
+      <button type="button" role="listitem" onclick="window.__pmShowConfig('backup')"><b>\u5907\u4EFD</b><span class="pm-settings-home-hint">\u5BFC\u51FA\u3001\u5BFC\u5165\u6216\u5B89\u5168\u6E05\u7406\u63D2\u4EF6\u6570\u636E</span></button>
+      <button type="button" role="listitem" onclick="window.__pmShowConfig('budget')"><b>\u4E0A\u4E0B\u6587\u9884\u7B97</b><span class="pm-settings-home-hint">\u63A7\u5236\u624B\u673A\u4F1A\u8BDD\u4E0E\u793E\u533A\u5199\u5165\u4E3B\u63D0\u793A\u8BCD\u7684\u989D\u5EA6</span></button>
+      <button type="button" role="listitem" onclick="window.__pmShowConversationInjection()"><b>\u6B63\u6587\u6CE8\u5165</b><span class="pm-settings-home-hint">\u5206\u522B\u8BBE\u7F6E\u804A\u5929\u3001\u793E\u533A\u3001\u65E5\u5386\u4E0E\u83DC\u8C31\u7684\u6CE8\u5165\u4F4D\u7F6E\u548C\u6DF1\u5EA6</span></button>
       <div class="pm-global-setting" role="group" aria-labelledby="pm-wordy-label">
-        <span><b id="pm-wordy-label">\u5168\u5C40\u77ED\u6D88\u606F\u9650\u5236</b><small>\u9664\u8BDD\u75E8\u4EBA\u8BBE\u5916\uFF0C\u6BCF\u6761\u6D88\u606F\u4E0D\u8D85\u8FC7 35 \u5B57</small></span>
+        <span><b id="pm-wordy-label">\u5168\u5C40\u77ED\u6D88\u606F\u9650\u5236</b><small class="pm-settings-home-hint">\u9664\u8BDD\u75E8\u4EBA\u8BBE\u5916\uFF0C\u6BCF\u6761\u6D88\u606F\u4E0D\u8D85\u8FC7 35 \u5B57</small></span>
         <div id="pm-wordy-check" onclick="window.__pmToggleWordyLimit()"
           class="pm-custom-check ${window.__pmWordyLimit === true ? "is-checked" : ""}" role="checkbox" tabindex="0"
           aria-checked="${window.__pmWordyLimit === true}"
