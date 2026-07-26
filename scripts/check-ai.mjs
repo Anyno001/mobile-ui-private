@@ -8,7 +8,8 @@ import {
     shouldReportGeneratedDirectoryError, installContactGenerator,
 } from '../src/contact-generator.js';
 import {
-    enqueueDirectorySave, getDirectorySaveRevision,
+    completeDirectoryBranchScope, enqueueDirectoryOperation, enqueueDirectorySave, getDirectorySaveRevision,
+    getActiveDirectoryBranchScopes, markDirectoryBranchScope,
 } from '../src/directory-save-coordinator.js';
 
 assert.deepEqual(parseFirstJsonObject('<think>{"wrong":true}</think>以下是结果：```json\n{"contacts":["甲{乙}"],"groups":[]}\n```'), { contacts: ['甲{乙}'], groups: [] });
@@ -42,6 +43,26 @@ assert.deepEqual(coordinatorOrder, ['failed', 'recovered-2']);
 const revisionBeforeMark = getDirectorySaveRevision();
 await enqueueDirectorySave('groupMeta', {}, async () => {}, true);
 assert.equal(getDirectorySaveRevision().groupMeta, revisionBeforeMark.groupMeta + 1);
+
+let releaseCoordinatorGate;
+const coordinatorGate = new Promise(resolve => { releaseCoordinatorGate = resolve; });
+const protectedScopes = [];
+const coordinatorBlocker = enqueueDirectoryOperation('interactive', () => coordinatorGate);
+const staleInteractiveSave = enqueueDirectorySave('interactive', {
+    scopes: { existing: { value: 1 }, target: undefined },
+}, async (snapshot, scopes) => {
+    assert.equal(Object.hasOwn(snapshot.scopes, 'target'), true, '队列快照不得吞掉 undefined 输入字段');
+    protectedScopes.push(...scopes);
+});
+const branchScopeToken = markDirectoryBranchScope('interactive', 'target');
+const branchInteractiveCommit = enqueueDirectoryOperation('interactive', async () => {
+    completeDirectoryBranchScope('interactive', branchScopeToken);
+});
+releaseCoordinatorGate();
+await Promise.all([coordinatorBlocker, staleInteractiveSave, branchInteractiveCommit]);
+assert.deepEqual(protectedScopes, ['target'], '分支登记后，已排队的旧快照必须在执行时保护目标 scope');
+assert.deepEqual(getActiveDirectoryBranchScopes('interactive'), [], '分支提交完成后不得遗留活跃 scope 标记');
+
 
 assert.deepEqual(parseGeneratedDirectory('<think>先分析</think>以下是结果：```json\n[{"contacts":["甲"],"groups":[{"name":"同行会","members":["乙","丙"]}]}]\n```'), {
     contacts: ['甲'], groups: [{ name: '同行会', members: ['乙', '丙'] }],

@@ -1389,7 +1389,7 @@ for (const expected of [
   'patchPhoneUiScope', 'toggleScenePin',
   "assertV2Keys(value, ['activeSceneId', 'sceneOrder', 'scenes', 'actors']",
 ]) requireText('interactive-scene-model.js', interactiveModelCode, expected);
-for (const expected of ['ST_SMS_PHONE_UI_STATE', 'loadPhoneUiState', 'savePhoneUiState']) requireText('storage.js', sourceModuleByName.get('storage.js')?.code || '', expected);
+for (const expected of ['ST_SMS_PHONE_UI_STATE', 'loadPhoneUiState', 'savePhoneUiState', 'savePhoneUiScope', 'const current = loadPhoneUiState(interactiveStore)']) requireText('storage.js', sourceModuleByName.get('storage.js')?.code || '', expected);
 if ((source.match(/ST_SMS_PHONE_UI_STATE/g) || []).length !== 1) failures.push('source: phone UI state must retain exactly one storage-key definition');
 for (const expected of [
   "['author', 'content', 'tags', 'comments']", 'cleanFeedComments',
@@ -1420,19 +1420,22 @@ for (const expected of [
   'deriveInteractiveActorId(scopeId, actor.type, actor.bindingKey)',
 ]) requireText('settings-backup-validate.js', settingsBackupValidateCode, expected);
 for (const expected of [
-  'schemaVersion: 9', 'desktopBg: snapshot.desktopBg', 'injectionConfig: snapshot.injectionConfig',
+  'schemaVersion: 10', 'desktopBg: snapshot.desktopBg', 'injectionConfig: snapshot.injectionConfig',
   'calendarStore: snapshot.calendarStore', 'calendarCycles: snapshot.calendarCycles',
-  'calendarRecipes: snapshot.calendarRecipes',
+  'calendarRecipes: snapshot.calendarRecipes', 'branchLineage: snapshot.branchLineage',
 ]) requireText('settings-ui.js', settingsUiCodeForInteractive, expected);
 requireText('settings-backup-validate.js', settingsBackupValidateCode, 'applyCalendarBackupFields(data, result, objectValue, { includeRecipes: version >= 7 })');
 for (const expected of [
   'phoneUiState: loadPhoneUiState(interactiveScenes)', 'ambientStatus: normalizeAmbientStatus',
   'normalizePhoneUiState(state.phoneUiState, interactiveScenes)', 'savePhoneUiState(phoneUiState, interactiveScenes)',
-  "beforeApply('apply')", "beforeApply('rollback')", 'prepared = await prepare(snapshot)',
+  "beforeApply('apply')", "beforeApply('rollback')", "persist(nextState, 'apply')", "persist(snapshot, 'rollback')", 'prepared = await prepare(snapshot)',
   "error.backupPhase = 'prepare'", "error.backupPhase = 'rolled-back'", "combined.backupPhase = 'rollback-failed'",
   'assertCanonicalCalendarField', 'assertCycleBackupInvariants',
   'loadCalendarHolidays()', 'loadCalendarRecipes()', 'saveCalendarCycles(state.calendarCycles)', 'saveCalendarRecipes(state.calendarRecipes)',
+  'loadBranchLineage()', 'saveBranchLineageForBackup(state.branchLineage || {})',
+  'rollbackBranchLineageBackup(branchLineageInserted)', 'saveBranchLineage(state.branchLineage || {})',
 ]) requireText('settings-backup.js', settingsBackupCode, expected);
+requireText('settings-backup-validate.js', settingsBackupValidateCode, 'const assertBranchLineage = value =>');
 for (const expected of [
   'prepare: current => parseBackupData(data, current)', 'apply: async (snapshot, imported)',
   'deps.reloadCalendarStore?.()', 'afterPersist: async reason => requireInjectionSuccess(',
@@ -1494,7 +1497,9 @@ for (const expected of ['requestedScope = getRecipeScope(storageId)', 'requested
   requireText('calendar-recipe-controller.js', calendarRecipeControllerCode, expected);
 }
 for (const expected of [
-  'scopeCommitQueue', 'saveCalendar(previousStore)', 'calendarRollbackError',
+  "enqueueDirectoryOperation('calendar'", "enqueueDirectoryOperation('recipes'", "enqueueDirectoryOperation('occasions'",
+  'loadCalendar()', 'loadCalendarRecipes()', 'loadCalendarOccasions()',
+  'rollbackStore.scopes[storageId]', 'calendarRollbackError',
   'injectionError = injectionFailure', 'rollbackInjectionError = injectionFailure',
   'error.injectionResult = result', 'createCalendarCommitters', '{ refreshInjection = true } = {}', 'if (!refreshInjection) return next',
 ]) requireText('calendar-commit.js', calendarCommitCode, expected);

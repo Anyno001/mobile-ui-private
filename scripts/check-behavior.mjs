@@ -17,11 +17,16 @@ import {
 } from '../src/storage-background.js';
 import {
     addOrUpdateProfile, clearPluginData, loadCharacterBehavior, loadGroupMeta, loadInjectionConfig, pmIDBDel, pmIDBGet, pmIDBSet,
-    PLUGIN_IDB_DYNAMIC_PREFIXES, PLUGIN_IDB_STATIC_KEYS, PLUGIN_LOCAL_STORAGE_KEYS,
-    saveCharacterBehavior, saveGroupMeta, saveHistoriesStrict, saveInjectionConfig,
+    BRANCH_LINEAGE_STORE_KEY, PLUGIN_IDB_DYNAMIC_PREFIXES, PLUGIN_IDB_STATIC_KEYS, PLUGIN_LOCAL_STORAGE_KEYS,
+    commitBranchLineage, loadBranchLineage, loadHistoriesFromIDB, saveCharacterBehavior, saveGroupMeta, saveHistoriesStrict, saveInjectionConfig,
+    rollbackBranchLineageBackup, saveBidirectional, saveBranchLineage, saveBranchLineageForBackup, saveBudgetConfig, savePokeConfig,
 } from '../src/storage.js';
 import { installConversation } from '../src/conversation.js';
-import { gatherContext, getUserPersona } from '../src/host-context.js';
+import { gatherContext, getStorageIdFor, getUserPersona } from '../src/host-context.js';
+import { awaitPendingBranchInheritance, beginBranchInheritance, inheritPhoneDataOnBranch, mergeBranchScope, resolveBranchInheritance } from '../src/branch-scope-inheritance.js';
+import {
+    completeDirectoryBranchScope, enqueueDirectoryOperation, getActiveDirectoryBranchScopes, markDirectoryBranchScope,
+} from '../src/directory-save-coordinator.js';
 import {
     commitAutoPokeConfig, getAutoPokeConfig, normalizeAutoPoke, resetAutoPokeCounter,
 } from '../src/auto-poke-config.js';
@@ -29,6 +34,7 @@ import { applyContextInjections } from '../src/phone-injection.js';
 import { normalizeCalendarStore } from '../src/calendar-model.js';
 import { normalizeRecipeStore } from '../src/calendar-recipe-model.js';
 import { deleteSceneDanmaku, deriveInteractiveActorId, normalizeInteractiveStore, updateSceneDanmaku } from '../src/interactive-scene-model.js';
+import { pmIDBKeys } from '../src/pm-idb.js';
 import { renderPhoneDesktop, runDesktopPageTransition } from '../src/interactive-scenes.js';
 import { getCommunityInjectionState, runCommunityInjectionAction } from '../src/interactive-scene-phone.js';
 import { getDanmakuMotion, getDanmakuTone, renderCommunityLauncher, renderCommunityWorkspace } from '../src/interactive-scene-views.js';
@@ -1055,6 +1061,37 @@ window.__pmCharacterBehavior.story.Alice.messageLength = 'invalid';
 saveCharacterBehavior();
 assert.equal(window.__pmCharacterBehavior.story.Alice.messageLength, 'persona');
 assert.equal(JSON.parse(localValues.get('ST_SMS_CHARACTER_BEHAVIOR')).story.Alice.messageLength, 'persona');
+
+const activeScopeFailureCases = [
+    { store: 'pokeConfig', key: 'ST_SMS_POKE_CONFIG', property: '__pmPokeConfig', save: savePokeConfig,
+        persisted: { protected: { Alice: { interval: 2 } } }, candidate: { unrelated: { Bob: { interval: 99 } } } },
+    { store: 'characterBehavior', key: 'ST_SMS_CHARACTER_BEHAVIOR', property: '__pmCharacterBehavior', save: saveCharacterBehavior,
+        persisted: { protected: { Alice: { messageLength: 'short' } } }, candidate: { unrelated: { Bob: { messageLength: 'long' } } } },
+    { store: 'bidirectional', key: 'ST_SMS_BIDIRECTIONAL', property: '__pmBidirectional', save: saveBidirectional,
+        persisted: { protected: ['Alice'] }, candidate: { unrelated: ['Bob'] } },
+    { store: 'budget', key: 'ST_SMS_BUDGET_CONFIG', property: '__pmBudgetConfig', save: saveBudgetConfig,
+        persisted: { communitySceneIdsByStorage: { protected: ['scene'] }, communitySelectionsByStorage: { protected: {} } },
+        candidate: { communitySceneIdsByStorage: { unrelated: ['other'] }, communitySelectionsByStorage: { unrelated: {} } } },
+];
+for (const { store, key, property, save, persisted, candidate } of activeScopeFailureCases) {
+    for (const failure of ['read', 'parse']) {
+        const persistedRaw = failure === 'parse' ? '{broken' : JSON.stringify(persisted);
+        localValues.set(key, persistedRaw);
+        window[property] = structuredClone(candidate);
+        const token = markDirectoryBranchScope(store, 'protected');
+        const writesBefore = localStorageWrites.length;
+        try {
+            if (failure === 'read') localStorageControl.failGet.add(key);
+            assert.equal(save(), false, `${store} 在 active scope 权威值${failure === 'read' ? '不可读' : '损坏'}时必须拒绝覆盖写入`);
+            assert.equal(localStorageWrites.length, writesBefore,
+                `${store} 读取或解析 active scope 失败时不得执行覆盖写入`);
+            assert.equal(localValues.get(key), persistedRaw,
+                `${store} 读取或解析 active scope 失败时必须保留原始持久化数据`);
+        } finally {
+            completeDirectoryBranchScope(store, token);
+        }
+    }
+}
 
 localValues.set('ST_SMS_INJECTION_CONFIG', JSON.stringify({ position: 2, depth: 7, historyLimit: 12 }));
 assert.deepEqual(loadInjectionConfig(), {
@@ -2151,7 +2188,21 @@ const idbOperations = [];
 const idbControl = {
     abortAll: true,
     abortOperations: [],
+    blockOperations: [],
 };
+function consumeIDBBlock(type, key) {
+    const index = idbControl.blockOperations.findIndex(rule => rule.type === type && rule.key === key);
+    if (index < 0) return null;
+    return idbControl.blockOperations.splice(index, 1)[0];
+}
+function blockIDBOperation(type, key) {
+    let enter;
+    let release;
+    const entered = new Promise(resolve => { enter = resolve; });
+    const pending = new Promise(resolve => { release = resolve; });
+    idbControl.blockOperations.push({ type, key, enter, pending });
+    return { entered, release };
+}
 function consumeIDBAbort(type, key) {
     if (idbControl.abortAll) return true;
     const index = idbControl.abortOperations.findIndex(rule => rule.type === type && rule.key === key);
@@ -2170,7 +2221,9 @@ globalThis.indexedDB = {
                     transaction.objectStore = () => ({
                         put(value, key) {
                             idbOperations.push({ type: 'put', key });
-                            queueMicrotask(() => {
+                            queueMicrotask(async () => {
+                                const block = consumeIDBBlock('put', key);
+                                if (block) { block.enter(); await block.pending; }
                                 if (consumeIDBAbort('put', key)) {
                                     transaction.onabort?.();
                                     return;
@@ -3210,6 +3263,13 @@ window.__pmHistories = { story: { Alice: [{ role: 'user', content: '保留' }] }
 idbControl.abortAll = true;
 await assert.rejects(saveHistoriesStrict(), /IndexedDB 不可用/);
 idbControl.abortAll = false;
+localStorageControl.failSet.add('ST_SMS_DATA_V2');
+await assert.rejects(
+    saveHistoriesStrict(window.__pmHistories, { requireLocalMirror: true }),
+    /聊天记录保存失败：浏览器存储不可用/,
+);
+assert.deepEqual(idbValues.get('ST_SMS_DATA_V2'), window.__pmHistories,
+    '严格镜像模式在 IndexedDB 已写入而 localStorage 失败时必须向调用方报告失败，以便事务补偿');
 
 const oldStorageId = 'sms_alice.png__chat-old';
 const newStorageId = 'sms_alice.png__chat-copy';
@@ -3341,6 +3401,12 @@ assert.equal(migratedSingleOnSwitch.bubbles.length, 1,
     '旧单聊切到群聊时不得按目标群成员拆解旧单聊正文');
 assert.equal(migratedSingleOnSwitch.bubbles[0].sender, '');
 
+const validBranchLineage = {
+    [getStorageIdFor('alice.png', 'branch-chat')]: {
+        sourceId: getStorageIdFor('alice.png', 'parent-chat'), parentChatId: 'parent-chat',
+        targetChatId: 'branch-chat', avatar: 'alice.png', completedAt: 123, schemaVersion: 1,
+    },
+};
 const currentBackup = {
     histories: {}, config: {}, theme: { darkMode: 'dark', ambientStatusEnabled: true }, profiles: [], groupMeta: {}, pokeConfig: {},
     bidirectional: {}, injectionConfig: {
@@ -3364,6 +3430,7 @@ const currentBackup = {
         scopes: { story: { pinnedSceneIds: [], lastPage: 'chat', lastSceneId: null, lastTab: 'feed' } },
     },
     ambientStatus: { enabled: true },
+    branchLineage: validBranchLineage,
 };
 const parsedLegacyBackup = parseBackupData({ histories: { story: {} } }, currentBackup);
 assert.deepEqual(parsedLegacyBackup.histories, { story: {} });
@@ -3404,7 +3471,14 @@ assert.deepEqual(parseBackupData({ schemaVersion: 9, injectionConfig: {
 } }, currentBackup).injectionConfig, {
     phone: { position: 1, depth: 2, historyLimit: 8 }, community: { position: 2, depth: 3 }, calendar: { position: 0, depth: 4 },
 });
-assert.throws(() => parseBackupData({ schemaVersion: 10 }, currentBackup), /高于当前支持版本 9/);
+assert.deepEqual(parseBackupData({ schemaVersion: 10, branchLineage: validBranchLineage }, currentBackup).branchLineage,
+    validBranchLineage, 'schema 10 必须导入经过校验的分支继承完成标记');
+assert.throws(() => parseBackupData({ schemaVersion: 10 }, currentBackup), /缺少 branchLineage/);
+assert.throws(() => parseBackupData({ schemaVersion: 10, branchLineage: [] }, currentBackup), /branchLineage 必须是对象/);
+assert.throws(() => parseBackupData({ schemaVersion: 10, branchLineage: {
+    bad: { ...Object.values(validBranchLineage)[0], targetChatId: 'other-chat' },
+} }, currentBackup), /targetChatId 与目标 scope 不一致/);
+assert.throws(() => parseBackupData({ schemaVersion: 11 }, currentBackup), /高于当前支持版本 10/);
 const parsedV4Backup = parseBackupData({
     schemaVersion: 4,
     theme: { darkMode: 'light', ambientStatusEnabled: true },
@@ -4191,9 +4265,17 @@ const createBackupTransactionFixture = (sceneId, ambientStatusEnabled) => ({
     calendarHolidays: { version: 1, selectedCountry: sceneId === 'scene-old' ? 'JP' : 'US', years: {} },
     calendarWeather: { version: 1, location: { name: sceneId, latitude: 35, longitude: 139, country: 'JP', timezone: 'Asia/Tokyo' }, lastSuccess: null },
     calendarCycles: { version: 1, scopes: { story: { enabled: true, lastPeriodStart: '2026-07-01', cycleLength: sceneId === 'scene-old' ? 28 : 30, periodLength: 5, overrides: {} } } },
+    branchLineage: structuredClone(validBranchLineage),
 });
 const originalBackupFixture = createBackupTransactionFixture('scene-old', true);
 const importedBackupFixture = createBackupTransactionFixture('scene-new', false);
+const importedBranchLineage = {
+    [getStorageIdFor('alice.png', 'branch-restored')]: {
+        sourceId: getStorageIdFor('alice.png', 'parent-restored'), parentChatId: 'parent-restored',
+        targetChatId: 'branch-restored', avatar: 'alice.png', completedAt: 456, schemaVersion: 1,
+    },
+};
+const importedBackupWithLineage = { ...importedBackupFixture, branchLineage: importedBranchLineage };
 localValues.set('ST_SMS_BG_DESKTOP', '');
 localValues.set('ST_SMS_BG_GLOBAL', '');
 localValues.set('ST_SMS_BG_LOCAL', '{}');
@@ -4204,6 +4286,42 @@ const backupHandlers = createBackupStateHandlers({
     invalidateInteractiveStore: () => { interactiveInvalidations += 1; },
 });
 await backupHandlers.persist(await backupHandlers.apply(originalBackupFixture));
+assert.deepEqual(idbValues.get(BRANCH_LINEAGE_STORE_KEY), validBranchLineage, '备份持久化必须提交分支继承完成标记');
+assert.deepEqual((await backupHandlers.capture()).branchLineage, validBranchLineage,
+    '备份事务捕获必须携带当前分支继承完成标记');
+
+idbControl.abortOperations.push({ type: 'put', key: BRANCH_LINEAGE_STORE_KEY });
+await assert.rejects(runBackupTransaction({
+    capture: backupHandlers.capture,
+    apply: snapshot => backupHandlers.apply(snapshot || importedBackupWithLineage),
+    persist: backupHandlers.persist,
+}), /分支继承记录保存失败/);
+assert.deepEqual(window.__pmBranchLineage, validBranchLineage,
+    '分支继承完成标记写入失败时，备份事务必须恢复原运行时标记');
+assert.deepEqual(idbValues.get(BRANCH_LINEAGE_STORE_KEY), validBranchLineage,
+    '分支继承完成标记写入失败时，备份事务必须恢复原持久化标记');
+
+const concurrentBackupTargetId = getStorageIdFor('alice.png', 'branch-during-backup');
+await assert.rejects(runBackupTransaction({
+    capture: backupHandlers.capture,
+    apply: snapshot => backupHandlers.apply(snapshot || importedBackupWithLineage),
+    persist: backupHandlers.persist,
+    afterPersist: async phase => {
+        if (phase !== 'apply') return;
+        await commitBranchLineage(concurrentBackupTargetId, {
+            sourceId: getStorageIdFor('alice.png', 'parent-during-backup'), targetChatId: 'branch-during-backup',
+        });
+        throw new Error('after-persist-failed');
+    },
+}), /after-persist-failed/);
+const lineageAfterBackupRollback = await loadBranchLineage();
+const originalBackupTargetId = getStorageIdFor('alice.png', 'branch-chat');
+assert.deepEqual(lineageAfterBackupRollback[originalBackupTargetId], validBranchLineage[originalBackupTargetId],
+    '备份回滚必须保留事务开始前已有的 lineage marker');
+assert.equal(Object.hasOwn(lineageAfterBackupRollback, getStorageIdFor('alice.png', 'branch-restored')), false,
+    '备份回滚只能删除本事务实际插入且未被后续修改的 lineage marker');
+assert.equal(lineageAfterBackupRollback[concurrentBackupTargetId].targetChatId, 'branch-during-backup',
+    '备份回滚不得删除事务期间其他合法提交的 lineage marker');
 
 globalThis.document = {
     getElementById: id => uiElements.get(id) || null,
@@ -5945,5 +6063,337 @@ try {
     globalThis.document = previousPokeDocument;
     globalThis.localStorage = previousPokeStorage;
 }
+
+const previousBranchWindow = globalThis.window;
+try {
+    globalThis.window = { ...(previousBranchWindow || {}) };
+    const branchContext = {
+        chatId: 'branch-chat', characterId: 0, characters: [{ avatar: 'alice.png' }],
+        chatMetadata: { main_chat: 'parent-chat' },
+    };
+    const branchIds = {
+        source: getStorageIdFor('alice.png', 'parent-chat'),
+        target: getStorageIdFor('alice.png', 'branch-chat'),
+    };
+    assert.deepEqual(resolveBranchInheritance(branchContext), {
+        avatar: 'alice.png', parentChatId: 'parent-chat', targetChatId: 'branch-chat',
+        sourceId: branchIds.source, targetId: branchIds.target,
+    }, '分支来源必须仅由当前 avatar 与 main_chat 构造');
+    assert.equal(resolveBranchInheritance({ ...branchContext, chatMetadata: { main_chat: 'branch-chat' } }), null,
+        'main_chat 指向当前聊天时不得触发继承');
+    assert.equal(resolveBranchInheritance({ ...branchContext, chatMetadata: {} }), null,
+        '缺少 main_chat 时不得猜测来源');
+    assert.equal(resolveBranchInheritance({ ...branchContext, characters: [{}] }), null,
+        '缺失真实 avatar 时不得使用不稳定索引作为跨聊天复制授权');
+
+    const emptyBranchStores = () => ({
+        histories: { [branchIds.source]: { Alice: [{ content: 'source' }] } },
+        groupMeta: {}, pokeConfig: {}, characterBehavior: {}, bidirectional: {}, backgrounds: {},
+        interactive: { version: 2, scopes: {} }, phoneUi: { version: 1, scopes: {} },
+        calendar: { version: 1, scopes: {} }, occasions: { version: 1, scopes: {} },
+        cycles: { version: 1, scopes: {} }, recipes: { version: 1, scopes: {} },
+        budget: { communitySceneIdsByStorage: {}, communitySelectionsByStorage: {} },
+    });
+    const populatedBranchStores = () => ({
+        histories: { [branchIds.source]: { Alice: [{ content: 'source' }] } },
+        groupMeta: { [branchIds.source]: { __group_team: normalizeGroupMeta({ name: '团队', members: ['Alice', 'Bob'] }) } },
+        pokeConfig: { [branchIds.source]: { Alice: { interval: 2 } } },
+        characterBehavior: { [branchIds.source]: { Alice: { messageLength: 'short' } } },
+        bidirectional: { [branchIds.source]: ['Alice'] },
+        backgrounds: { [`${branchIds.source}_Alice`]: 'background' },
+        interactive: { version: 2, scopes: { [branchIds.source]: { activeSceneId: null, sceneOrder: [], scenes: {}, actors: {} } } },
+        phoneUi: { version: 1, scopes: { [branchIds.source]: { pinnedSceneIds: [], lastPage: 'community', lastSceneId: null, lastTab: 'feed' } } },
+        calendar: { version: 1, scopes: { [branchIds.source]: { events: {} } } },
+        occasions: { version: 1, scopes: { [branchIds.source]: { occasions: [] } } },
+        cycles: { version: 1, scopes: { [branchIds.source]: { enabled: false, lastPeriodStart: null, cycleLength: 28, periodLength: 5, overrides: {} } } },
+        recipes: { version: 1, scopes: { [branchIds.source]: { regionPreference: '', lastGeneratedRegion: '', lastGeneratedAt: 0, days: {} } } },
+        budget: { communitySceneIdsByStorage: { [branchIds.source]: ['scene'] }, communitySelectionsByStorage: { [branchIds.source]: { selected: 'scene' } } },
+    });
+    let persistedStores = emptyBranchStores();
+    let persistedLineage = {};
+    const cloneResult = await inheritPhoneDataOnBranch({
+        context: branchContext,
+        loadStores: async () => structuredClone(persistedStores),
+        saveStores: async value => { persistedStores = structuredClone(value); },
+        loadLineage: async () => structuredClone(persistedLineage),
+        saveLineage: async value => { persistedLineage = structuredClone(value); },
+        now: () => 123,
+    });
+    assert.equal(cloneResult.status, 'cloned');
+    assert.deepEqual(persistedStores.histories[branchIds.target], { Alice: [{ content: 'source' }] });
+    persistedStores.histories[branchIds.source].Alice[0].content = 'mutated-source';
+    assert.equal(persistedStores.histories[branchIds.target].Alice[0].content, 'source',
+        '继承必须为深拷贝，来源后续修改不得串入目标');
+    assert.equal(persistedLineage[branchIds.target].sourceId, branchIds.source,
+        '完成标记必须在克隆成功后写入');
+    assert.equal((await inheritPhoneDataOnBranch({
+        context: branchContext, loadStores: async () => persistedStores, saveStores: async () => {},
+        loadLineage: async () => persistedLineage, saveLineage: async () => {},
+    })).reason, 'already-cloned', '幂等重试不得覆盖已克隆目标');
+
+    let richStores = populatedBranchStores();
+    await inheritPhoneDataOnBranch({
+        context: { ...branchContext, chatId: 'rich-branch' },
+        loadStores: async () => structuredClone(richStores), saveStores: async value => { richStores = structuredClone(value); },
+        loadLineage: async () => ({}), saveLineage: async () => {},
+    });
+    const richTargetId = getStorageIdFor('alice.png', 'rich-branch');
+    for (const store of [richStores.groupMeta, richStores.pokeConfig, richStores.characterBehavior, richStores.bidirectional]) {
+        assert.ok(Object.hasOwn(store, richTargetId), '全部按 scope 隔离的普通 store 都必须继承');
+    }
+    assert.equal(richStores.backgrounds[`${richTargetId}_Alice`], 'background');
+    for (const store of [richStores.interactive, richStores.phoneUi, richStores.calendar, richStores.occasions, richStores.cycles, richStores.recipes]) {
+        assert.ok(Object.hasOwn(store.scopes, richTargetId), '全部按 scope 隔离的模型 store 都必须继承');
+    }
+    assert.deepEqual(richStores.budget.communitySceneIdsByStorage[richTargetId], ['scene']);
+    richStores.calendar.scopes[branchIds.source].events.changed = true;
+    assert.equal(richStores.calendar.scopes[richTargetId].events.changed, undefined,
+        '模型 scope 继承必须深拷贝，来源后续修改不得串入目标');
+
+    let releasePendingClone;
+    const pendingStores = emptyBranchStores();
+    const pendingClone = inheritPhoneDataOnBranch({
+        context: { ...branchContext, chatId: 'pending-branch' }, loadStores: async () => structuredClone(pendingStores),
+        saveStores: () => new Promise(resolve => { releasePendingClone = () => { pendingStores.histories.pending = {}; resolve(); }; }),
+        loadLineage: async () => ({}), saveLineage: async () => {},
+    });
+    const pendingTargetId = getStorageIdFor('alice.png', 'pending-branch');
+    const pendingWait = awaitPendingBranchInheritance(pendingTargetId);
+    let pendingSettled = false;
+    pendingWait.finally(() => { pendingSettled = true; });
+    for (let index = 0; index < 4 && !releasePendingClone; index += 1) await Promise.resolve();
+    assert.equal(typeof releasePendingClone, 'function', '继承写入进入 pending 后才允许验证打开屏障');
+    assert.equal(pendingSettled, false, '打开屏障必须等待当前目标尚未完成的继承事务');
+    releasePendingClone(); await Promise.all([pendingClone, pendingWait]);
+
+    const occupiedStores = emptyBranchStores();
+    occupiedStores.bidirectional[branchIds.target] = { Alice: [] };
+    assert.equal((await inheritPhoneDataOnBranch({
+        context: branchContext, loadStores: async () => occupiedStores, saveStores: async () => { throw new Error('不得写入'); },
+        loadLineage: async () => ({}), saveLineage: async () => { throw new Error('不得写入'); },
+    })).reason, 'target-not-empty', '任何已存在的目标 scope 数据都必须拒绝覆盖');
+
+    for (const configureTarget of [
+        stores => { stores.histories[branchIds.target] = {}; },
+        stores => { stores.groupMeta[branchIds.target] = {}; },
+        stores => { stores.pokeConfig[branchIds.target] = {}; },
+        stores => { stores.characterBehavior[branchIds.target] = {}; },
+        stores => { stores.backgrounds[`${branchIds.target}_Alice`] = 'bg'; },
+        stores => { stores.interactive.scopes[branchIds.target] = {}; },
+        stores => { stores.phoneUi.scopes[branchIds.target] = {}; },
+        stores => { stores.calendar.scopes[branchIds.target] = {}; },
+        stores => { stores.occasions.scopes[branchIds.target] = {}; },
+        stores => { stores.cycles.scopes[branchIds.target] = {}; },
+        stores => { stores.recipes.scopes[branchIds.target] = {}; },
+        stores => { stores.budget.communitySceneIdsByStorage[branchIds.target] = []; },
+        stores => { stores.budget.communitySelectionsByStorage[branchIds.target] = {}; },
+    ]) {
+        const occupied = emptyBranchStores();
+        configureTarget(occupied);
+        assert.equal((await inheritPhoneDataOnBranch({
+            context: branchContext, loadStores: async () => occupied, saveStores: async () => { throw new Error('不得写入'); },
+            loadLineage: async () => ({}), saveLineage: async () => { throw new Error('不得写入'); },
+        })).reason, 'target-not-empty', '任一受管目标 scope 已存在时都不得覆盖');
+    }
+
+    let rollbackStores = emptyBranchStores();
+    await assert.rejects(() => inheritPhoneDataOnBranch({
+        context: branchContext,
+        loadStores: async () => structuredClone(rollbackStores),
+        saveStores: async value => { rollbackStores = structuredClone(value); },
+        loadLineage: async () => ({}),
+        saveLineage: async () => { throw new Error('lineage-write-failed'); },
+    }), /lineage-write-failed/);
+    assert.equal(Object.hasOwn(rollbackStores.histories, branchIds.target), false,
+        '完成标记写入失败时必须回滚已写入目标 scope');
+
+    idbControl.abortAll = true;
+    assert.equal(await loadHistoriesFromIDB({ requireConfirmedPrimary: true }), false,
+        '持久化来源无法确认时必须返回失败，分支事务不得据此写入 marker');
+    idbControl.abortAll = false;
+
+    await pmIDBDel(BRANCH_LINEAGE_STORE_KEY);
+    const secondTargetId = getStorageIdFor('alice.png', 'second-branch');
+    await Promise.all([
+        commitBranchLineage(branchIds.target, { sourceId: branchIds.source, targetChatId: 'branch-chat' }),
+        commitBranchLineage(secondTargetId, { sourceId: branchIds.source, targetChatId: 'second-branch' }),
+    ]);
+    const concurrentLineage = await loadBranchLineage();
+    assert.equal(concurrentLineage[branchIds.target].targetChatId, 'branch-chat',
+        '共享 lineage 提交不得丢失先完成的其他目标 marker');
+    assert.equal(concurrentLineage[secondTargetId].targetChatId, 'second-branch',
+        '共享 lineage 提交不得丢失后完成的其他目标 marker');
+
+    await pmIDBDel(BRANCH_LINEAGE_STORE_KEY);
+    const sameValueTargetId = getStorageIdFor('alice.png', 'same-value-branch');
+    const sameValueMarker = { sourceId: branchIds.source, targetChatId: 'same-value-branch' };
+    const sameValueBackup = await saveBranchLineageForBackup({ [sameValueTargetId]: sameValueMarker });
+    await commitBranchLineage(sameValueTargetId, sameValueMarker);
+    await rollbackBranchLineageBackup(sameValueBackup);
+    const lineageAfterSameValueRollback = await loadBranchLineage();
+    assert.deepEqual(lineageAfterSameValueRollback[sameValueTargetId], sameValueMarker,
+        '同 target 同值的后续 lineage 提交必须通过修订号阻止备份回滚误删');
+
+    await pmIDBDel(BRANCH_LINEAGE_STORE_KEY);
+    await saveBranchLineage({
+        [branchIds.target]: { sourceId: branchIds.source, targetChatId: 'branch-chat' },
+        [secondTargetId]: { sourceId: branchIds.source, targetChatId: 'second-branch' },
+    });
+    const backupOnlyTargetId = getStorageIdFor('alice.png', 'backup-only-branch');
+    await saveBranchLineage({
+        [backupOnlyTargetId]: { sourceId: branchIds.source, targetChatId: 'backup-only-branch' },
+    });
+    const lineageAfterBackupRestore = await loadBranchLineage();
+    assert.equal(lineageAfterBackupRestore[branchIds.target].targetChatId, 'branch-chat',
+        '备份恢复不得覆盖在其开始前或期间已提交的分支 marker');
+    assert.equal(lineageAfterBackupRestore[backupOnlyTargetId].targetChatId, 'backup-only-branch',
+        '备份恢复仍必须写入其独有的 lineage marker');
+
+    let concurrentStores = emptyBranchStores();
+    concurrentStores.histories.unrelated = { Alice: [{ content: 'initial' }] };
+    await assert.rejects(() => inheritPhoneDataOnBranch({
+        context: branchContext,
+        loadStores: async () => structuredClone(concurrentStores),
+        saveStores: async (value, { branch }) => {
+            concurrentStores.histories.unrelated = { Alice: [{ content: 'concurrent' }] };
+            concurrentStores = mergeBranchScope(concurrentStores, value, branch.targetId);
+        },
+        loadLineage: async () => ({}),
+        saveLineage: async () => { throw new Error('lineage-write-failed'); },
+    }), /lineage-write-failed/);
+    assert.equal(concurrentStores.histories.unrelated.Alice[0].content, 'concurrent',
+        '目标 scope 回滚不得覆盖事务期间写入的无关聊天数据');
+    assert.equal(Object.hasOwn(concurrentStores.histories, branchIds.target), false,
+        '并发保护下的补偿仍必须移除本事务目标 scope');
+
+    idbValues.clear();
+    localValues.clear();
+    idbControl.abortAll = false;
+    idbControl.abortOperations.length = 0;
+    idbControl.blockOperations.length = 0;
+    globalThis.localStorage = {
+        getItem: key => localValues.has(key) ? localValues.get(key) : null,
+        setItem(key, value) { localValues.set(key, String(value)); },
+        removeItem: key => localValues.delete(key),
+    };
+    localStorageControl.failGet.clear();
+    localStorageControl.failSet.clear();
+    localStorageControl.failSetCounts.clear();
+    localStorageControl.failSetOnCalls.clear();
+    await pmIDBDel(BRANCH_LINEAGE_STORE_KEY);
+    const productionTargetId = getStorageIdFor('alice.png', 'production-branch');
+    const productionContext = { ...branchContext, chatId: 'production-branch' };
+    idbValues.set('ST_SMS_DATA_V2', {
+        [branchIds.source]: { Alice: [{ content: 'production-source' }] },
+        unrelated: { Bob: [{ content: 'unrelated-history' }] },
+    });
+    await pmIDBSet('ST_INTERACTIVE_SCENES_V1', { version: 2, scopes: {} });
+    assert.deepEqual(await pmIDBGet('ST_INTERACTIVE_SCENES_V1'), { version: 2, scopes: {} },
+        '生产分支回归夹具必须先写入可读取的互动主存储');
+    localValues.set('ST_INTERACTIVE_SCENES_V1_LOCAL_FALLBACK', JSON.stringify({ version: 2, scopes: {} }));
+    assert.deepEqual(normalizeInteractiveStore(JSON.parse(localValues.get('ST_INTERACTIVE_SCENES_V1_LOCAL_FALLBACK'))),
+        { version: 2, scopes: {} }, '生产分支回归夹具必须提供可规范化的互动后备存储');
+    assert.equal(localStorage.getItem('ST_INTERACTIVE_SCENES_V1_LOCAL_FALLBACK'),
+        localValues.get('ST_INTERACTIVE_SCENES_V1_LOCAL_FALLBACK'), '生产分支回归夹具不得遗留 localStorage 读取故障注入');
+    assert.ok((await pmIDBKeys()).includes('ST_INTERACTIVE_SCENES_V1'),
+        '生产分支回归夹具必须让共享 IndexedDB 枚举器看到互动主存储');
+    localValues.set('ST_SMS_GROUP_META', JSON.stringify({ unrelated: {} }));
+    localValues.set('ST_SMS_POKE_CONFIG', JSON.stringify({
+        [branchIds.source]: { Alice: { interval: 2 } }, unrelated: { Bob: { interval: 3 } },
+    }));
+    localValues.set('ST_SMS_CHARACTER_BEHAVIOR', JSON.stringify({
+        [branchIds.source]: { Alice: { messageLength: 'short' } },
+    }));
+    localValues.set('ST_SMS_BIDIRECTIONAL', JSON.stringify({ [branchIds.source]: ['Alice'] }));
+    localValues.set('ST_SMS_BG_LOCAL', '{}');
+    localValues.set('ST_SMS_BUDGET_CONFIG', JSON.stringify({
+        communitySceneIdsByStorage: { [branchIds.source]: ['scene-source'] },
+        communitySelectionsByStorage: { [branchIds.source]: { 'scene-source': { mode: 'all' } } },
+    }));
+    const lineageCommitBlocker = blockIDBOperation('put', BRANCH_LINEAGE_STORE_KEY);
+    const productionBranch = beginBranchInheritance(productionContext);
+    let productionFailure = null;
+    productionBranch.catch(error => { productionFailure = error; });
+    await lineageCommitBlocker.entered;
+    try {
+        assert.equal(productionFailure, null, `真实生产分支提交不得在交错窗口前失败：${productionFailure?.message || ''}`);
+        assert.ok(Object.hasOwn(JSON.parse(localValues.get('ST_SMS_POKE_CONFIG') || '{}'), productionTargetId),
+            '真实分支提交必须在 lineage 阻塞前写入目标 scope');
+        for (const store of ['pokeConfig', 'characterBehavior', 'bidirectional', 'budget']) {
+            assert.deepEqual(getActiveDirectoryBranchScopes(store), [productionTargetId],
+                `lineage 提交被阻塞时必须登记 ${store} 的 active target scope`);
+        }
+        window.__pmPokeConfig = { unrelated: { Bob: { interval: 99 } } };
+        assert.equal(savePokeConfig(), true, '普通生产保存器仍必须保持同步 boolean 成功契约');
+        const pokeDuringProductionBranch = JSON.parse(localValues.get('ST_SMS_POKE_CONFIG'));
+        assert.deepEqual(pokeDuringProductionBranch[productionTargetId], { Alice: { interval: 2 } },
+            '普通生产保存器的旧快照不得覆盖真实分支事务刚写入的 target scope');
+        assert.deepEqual(pokeDuringProductionBranch.unrelated, { Bob: { interval: 99 } },
+            '普通生产保存器交错时无关 scope 的更新不得丢失');
+        window.__pmCharacterBehavior = { unrelated: { Bob: { messageLength: 'long' } } };
+        assert.equal(saveCharacterBehavior(), true, '角色行为保存器仍必须保持同步 boolean 成功契约');
+        const behaviorDuringProductionBranch = JSON.parse(localValues.get('ST_SMS_CHARACTER_BEHAVIOR'));
+        assert.equal(behaviorDuringProductionBranch[productionTargetId].Alice.messageLength, 'short',
+            '角色行为保存器的旧快照不得覆盖 lineage 尚未完成的 target scope；保留值仍须经既有规范化');
+        assert.equal(behaviorDuringProductionBranch.unrelated.Bob.messageLength, 'long',
+            '角色行为保存器交错时无关 scope 的更新不得丢失；写入值仍须经既有规范化');
+        window.__pmBidirectional = { unrelated: ['Bob'] };
+        assert.equal(saveBidirectional(), true, '双向注入保存器仍必须保持同步 boolean 成功契约');
+        const bidirectionalDuringProductionBranch = JSON.parse(localValues.get('ST_SMS_BIDIRECTIONAL'));
+        assert.deepEqual(bidirectionalDuringProductionBranch[productionTargetId], ['Alice'],
+            '双向注入保存器的旧快照不得覆盖 lineage 尚未完成的 target scope');
+        assert.deepEqual(bidirectionalDuringProductionBranch.unrelated, ['Bob'],
+            '双向注入保存器交错时无关 scope 的更新不得丢失');
+        window.__pmBudgetConfig = {
+            communitySceneIdsByStorage: { unrelated: ['scene-unrelated'] },
+            communitySelectionsByStorage: { unrelated: { 'scene-unrelated': { mode: 'all' } } },
+        };
+        assert.equal(saveBudgetConfig(), true, '预算保存器仍必须保持同步 boolean 成功契约');
+        const budgetDuringProductionBranch = JSON.parse(localValues.get('ST_SMS_BUDGET_CONFIG'));
+        assert.deepEqual(budgetDuringProductionBranch.communitySceneIdsByStorage[productionTargetId], ['scene-source'],
+            '预算保存器的旧快照不得覆盖 lineage 尚未完成的 target scope');
+        assert.equal(budgetDuringProductionBranch.communitySelectionsByStorage[productionTargetId]['scene-source'].mode, 'all',
+            '预算保存器必须保护 lineage 尚未完成的 target scope；保留值仍须经既有规范化');
+        assert.deepEqual(budgetDuringProductionBranch.communitySceneIdsByStorage.unrelated, ['scene-unrelated'],
+            '预算保存器交错时无关 scope 的更新不得丢失');
+    } finally {
+        lineageCommitBlocker.release();
+        await productionBranch.catch(() => {});
+    }
+    assert.equal((await productionBranch).status, 'cloned');
+    for (const store of ['pokeConfig', 'characterBehavior', 'bidirectional', 'budget']) {
+        assert.deepEqual(getActiveDirectoryBranchScopes(store), [], `成功提交后必须清除 ${store} 的 active scope`);
+    }
+
+    const failedProductionTargetId = getStorageIdFor('alice.png', 'production-failed-branch');
+    const failedLineageBlocker = blockIDBOperation('put', BRANCH_LINEAGE_STORE_KEY);
+    idbControl.abortOperations.push({ type: 'put', key: BRANCH_LINEAGE_STORE_KEY });
+    const failedProductionBranch = beginBranchInheritance({ ...branchContext, chatId: 'production-failed-branch' });
+    await failedLineageBlocker.entered;
+    let failedProductionError;
+    try {
+        for (const store of ['pokeConfig', 'characterBehavior', 'bidirectional', 'budget']) {
+            assert.deepEqual(getActiveDirectoryBranchScopes(store), [failedProductionTargetId],
+                `lineage 失败前必须继续登记 ${store} 的 active target scope`);
+        }
+    } finally {
+        failedLineageBlocker.release();
+        try {
+            await failedProductionBranch;
+        } catch (error) {
+            failedProductionError = error;
+        }
+    }
+    assert.match(failedProductionError?.message || '', /分支继承记录保存失败/);
+    for (const store of ['pokeConfig', 'characterBehavior', 'bidirectional', 'budget']) {
+        assert.deepEqual(getActiveDirectoryBranchScopes(store), [], `lineage 失败并补偿后必须清除 ${store} 的 active scope`);
+    }
+    assert.equal(Object.hasOwn(JSON.parse(localValues.get('ST_SMS_POKE_CONFIG')), failedProductionTargetId), false,
+        'lineage 失败后必须补偿移除真实生产保存器已写入的 target scope');
+} finally {
+    if (previousBranchWindow === undefined) delete globalThis.window;
+    else globalThis.window = previousBranchWindow;
+}
+
 
 console.log('Behavior configuration verified.');

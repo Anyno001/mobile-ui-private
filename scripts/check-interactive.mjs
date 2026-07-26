@@ -11,8 +11,11 @@ import {
 } from '../src/interactive-scene-model.js';
 import {
     INTERACTIVE_STORAGE_KEYS, PHONE_UI_STORAGE_KEY, loadInteractiveScenes, loadPhoneUiState,
-    saveInteractiveScenes, savePhoneUiState,
+    saveInteractiveScenes, savePhoneUiScope, savePhoneUiState,
 } from '../src/storage.js';
+import {
+    completeDirectoryBranchScope, markDirectoryBranchScope,
+} from '../src/directory-save-coordinator.js';
 import {
     createInteractiveCommitQueue, createInteractiveOperationGuard, createInteractiveStoreLoader,
     installInteractiveScenes, migrateInteractiveStore, resolvePhoneChatTarget,
@@ -1011,6 +1014,31 @@ assert.deepEqual(await loadInteractiveScenes(), fallbackStore);
 assert.equal(savePhoneUiState(validCommunityState, phoneInteractiveStore), true);
 assert.ok(localData.has(PHONE_UI_STORAGE_KEY));
 assert.deepEqual(loadPhoneUiState(phoneInteractiveStore), validCommunityState);
+assert.equal(savePhoneUiState({
+    version: 1,
+    scopes: {
+        story: validCommunityState.scopes.story,
+        branchTarget: { pinnedSceneIds: [], lastPage: 'chat', lastSceneId: null, lastTab: 'feed' },
+    },
+}, phoneInteractiveStore), true);
+const mergedPhoneUiScope = savePhoneUiScope('story', {
+    version: 1,
+    scopes: {
+        story: { pinnedSceneIds: ['scene-a'], lastPage: 'community', lastSceneId: 'scene-a', lastTab: 'live' },
+    },
+}, phoneInteractiveStore);
+assert.deepEqual(mergedPhoneUiScope.scopes.branchTarget, {
+    pinnedSceneIds: [], lastPage: 'chat', lastSceneId: null, lastTab: 'feed', lastChatType: null, lastChatKey: null,
+}, '普通手机 UI 保存必须按 scope 合并，不得用旧运行态覆盖分支新建 target scope');
+assert.deepEqual(loadPhoneUiState(phoneInteractiveStore).scopes.story, {
+    pinnedSceneIds: ['scene-a'], lastPage: 'community', lastSceneId: 'scene-a', lastTab: 'live', lastChatType: null, lastChatKey: null,
+});
+const phoneUiBranchToken = markDirectoryBranchScope('phoneUi', 'branchTarget');
+assert.equal(savePhoneUiState(validCommunityState, phoneInteractiveStore), true);
+completeDirectoryBranchScope('phoneUi', phoneUiBranchToken);
+assert.deepEqual(loadPhoneUiState(phoneInteractiveStore).scopes.branchTarget, {
+    pinnedSceneIds: [], lastPage: 'chat', lastSceneId: null, lastTab: 'feed', lastChatType: null, lastChatKey: null,
+}, '普通整库手机 UI 保存必须保护正在提交的分支 target scope');
 localData.set(PHONE_UI_STORAGE_KEY, JSON.stringify({
     version: 1,
     scopes: {

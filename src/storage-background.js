@@ -1,5 +1,6 @@
 import { IDB_MARKER } from './constants.js';
 import { DESKTOP_BG_KEY, isBigData, pmIDBDel, pmIDBGet, pmIDBSet } from './storage.js';
+import { enqueueDirectorySave } from './directory-save-coordinator.js';
 
 const GLOBAL_BG_KEY = 'ST_SMS_BG_GLOBAL';
 const LOCAL_BG_INDEX_KEY = 'ST_SMS_BG_LOCAL';
@@ -161,52 +162,76 @@ export async function saveDesktopBg() {
     return saveSingleBackground({ storageKey: DESKTOP_BG_KEY, value: window.__pmDesktopBg || '', label: '桌面背景' });
 }
 
-export async function saveBgLocal() {
-    const current = window.__pmBgLocal || {};
-    if (!current || typeof current !== 'object' || Array.isArray(current)) throw new Error('会话背景数据损坏：必须是对象');
-    assertBackgroundEntries(current, '会话背景数据');
-    const pointers = Object.create(null);
-    const previousPointers = readLocalBackgroundPointers();
-    const mutations = [];
-    const prepareMutation = async key => {
-        const storageKey = LOCAL_BG_PREFIX + key;
-        const hadPrimary = previousPointers[key] === IDB_MARKER;
-        const previousValue = await readPreviousBackground(storageKey, hadPrimary, '会话背景');
-        return { key: storageKey, hadPrimary, previousValue };
-    };
-    try {
-        for (const [key, value] of Object.entries(current)) {
-            if (isBigData(value)) {
-                const mutation = await prepareMutation(key);
-                if (!await pmIDBSet(mutation.key, value)) throw new Error('会话背景保存失败：IndexedDB 不可用');
-                mutations.push(mutation);
-                pointers[key] = IDB_MARKER;
-            } else {
-                if (previousPointers[key] === IDB_MARKER) {
-                    const mutation = await prepareMutation(key);
-                    if (!await pmIDBDel(mutation.key)) throw new Error('会话背景删除失败：IndexedDB 不可用');
-                    mutations.push(mutation);
+export async function saveBgLocal({ data = window.__pmBgLocal, coordinated = false } = {}) {
+    const persist = async (snapshot, protectedScopes = []) => {
+        if (!snapshot || typeof snapshot !== 'object' || Array.isArray(snapshot)) throw new Error('会话背景数据损坏：必须是对象');
+        assertBackgroundEntries(snapshot, '会话背景数据');
+        let current = snapshot;
+        if (protectedScopes.length) {
+            const pointers = readLocalBackgroundPointers();
+            current = structuredClone(snapshot);
+            for (const scope of protectedScopes) {
+                const prefix = `${scope}_`;
+                for (const key of Object.keys(current)) {
+                    if (key.startsWith(prefix)) delete current[key];
                 }
-                pointers[key] = value;
+                for (const [key, pointer] of Object.entries(pointers)) {
+                    if (!key.startsWith(prefix)) continue;
+                    if (pointer === IDB_MARKER) {
+                        const value = await pmIDBGet(LOCAL_BG_PREFIX + key);
+                        if (typeof value !== 'string') throw new Error('会话背景主存储读取失败：IndexedDB 不可用或数据缺失');
+                        current[key] = value;
+                    } else {
+                        current[key] = pointer;
+                    }
+                }
             }
         }
+        const pointers = Object.create(null);
+        const previousPointers = readLocalBackgroundPointers();
+        const mutations = [];
+        const prepareMutation = async key => {
+            const storageKey = LOCAL_BG_PREFIX + key;
+            const hadPrimary = previousPointers[key] === IDB_MARKER;
+            const previousValue = await readPreviousBackground(storageKey, hadPrimary, '会话背景');
+            return { key: storageKey, hadPrimary, previousValue };
+        };
+        try {
+            for (const [key, value] of Object.entries(current)) {
+                if (isBigData(value)) {
+                    const mutation = await prepareMutation(key);
+                    if (!await pmIDBSet(mutation.key, value)) throw new Error('会话背景保存失败：IndexedDB 不可用');
+                    mutations.push(mutation);
+                    pointers[key] = IDB_MARKER;
+                } else {
+                    if (previousPointers[key] === IDB_MARKER) {
+                        const mutation = await prepareMutation(key);
+                        if (!await pmIDBDel(mutation.key)) throw new Error('会话背景删除失败：IndexedDB 不可用');
+                        mutations.push(mutation);
+                    }
+                    pointers[key] = value;
+                }
+            }
 
-        for (const [key, previousValue] of Object.entries(previousPointers)) {
-            if (previousValue !== IDB_MARKER || Object.hasOwn(current, key)) continue;
-            const mutation = await prepareMutation(key);
-            if (!await pmIDBDel(mutation.key)) throw new Error('会话背景删除失败：IndexedDB 不可用');
-            mutations.push(mutation);
-        }
-        try { localStorage.setItem(LOCAL_BG_INDEX_KEY, JSON.stringify(pointers)); }
-        catch (error) { throw new Error('会话背景索引保存失败：浏览器存储不可用'); }
-    } catch (error) {
-        if (mutations.length) {
-            try {
-                await restoreBackgroundMutations(mutations, '会话背景');
-            } catch (compensationError) {
-                throw combinedBackgroundError(error, compensationError);
+            for (const [key, previousValue] of Object.entries(previousPointers)) {
+                if (previousValue !== IDB_MARKER || Object.hasOwn(current, key)) continue;
+                const mutation = await prepareMutation(key);
+                if (!await pmIDBDel(mutation.key)) throw new Error('会话背景删除失败：IndexedDB 不可用');
+                mutations.push(mutation);
             }
+            try { localStorage.setItem(LOCAL_BG_INDEX_KEY, JSON.stringify(pointers)); }
+            catch (error) { throw new Error('会话背景索引保存失败：浏览器存储不可用'); }
+        } catch (error) {
+            if (mutations.length) {
+                try {
+                    await restoreBackgroundMutations(mutations, '会话背景');
+                } catch (compensationError) {
+                    throw combinedBackgroundError(error, compensationError);
+                }
+            }
+            throw error;
         }
-        throw error;
-    }
+    };
+    if (coordinated) return persist(structuredClone(data));
+    return enqueueDirectorySave('backgrounds', data, persist);
 }

@@ -690,15 +690,14 @@ export function installCalendar(state, deps) {
                 anchor = createCalendarDate(previousMonth.year, previousMonth.month, requestedDay);
             }
             if (!anchor) throw new Error('经期开始日不适用于当前月份，请选择 1 到 28 日');
-            const nextStore = upsertCycleScope(runtime.cycleStore, storageId, {
+            await commitCycle(storageId, current => upsertCycleScope(current, storageId, {
                 enabled: form.elements.enabled.checked,
                 lastPeriodStart: form.elements.enabled.checked ? formatCalendarDate(anchor) : null,
                 cycleLength: Number(form.elements.cycleLength.value),
                 periodLength: Number(form.elements.periodLength.value),
-                overrides: cycles(storageId, subject).overrides,
-            }, subject);
+                overrides: cycleScopeFor(current, storageId, subject).overrides,
+            }, subject));
             runtime.viewByStorage.set(storageId, { ...currentView, cycleSubject: subject });
-            commitCycle(storageId, nextStore);
             await deps.applyBidirectionalInjection?.();
             status(storageId, '生理期提示已保存。');
             rerender(storageId);
@@ -707,7 +706,7 @@ export function installCalendar(state, deps) {
         if (action === 'calendar-cycle-clear') {
             const subject = app?.querySelector('[data-calendar-cycle-editor]')?.elements.subject?.value || viewFor(storageId).cycleSubject || CYCLE_SELF_SUBJECT;
             if (!confirm('清除当前所选角色的生理期资料？')) return;
-            commitCycle(storageId, clearCycleScope(runtime.cycleStore, storageId, subject));
+            await commitCycle(storageId, current => clearCycleScope(current, storageId, subject));
             await deps.applyBidirectionalInjection?.();
             status(storageId, '所选角色的生理期资料已清除。');
             rerender(storageId);

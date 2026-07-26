@@ -3,6 +3,7 @@ import {
     INTERACTIVE_ACTOR_TYPES, INTERACTIVE_LIMITS, INTERACTIVE_STORE_VERSION,
     deriveInteractiveActorId, normalizeAmbientStatus, normalizeInteractiveStore, normalizePhoneUiState,
 } from './interactive-scene-model.js';
+import { getStorageIdFor } from './host-context.js';
 import { applyCalendarBackupFields } from './settings-backup.js';
 
 const clone = value => JSON.parse(JSON.stringify(value));
@@ -225,11 +226,40 @@ const assertInteractiveBackupStore = value => {
     return store;
 };
 
+const assertBranchLineageText = (value, field) => {
+    if (typeof value !== 'string' || !value || value !== value.trim()) throw new Error(`备份字段 ${field} 必须是非空且无首尾空白的字符串`);
+    return value;
+};
+
+const assertBranchLineage = value => {
+    const lineage = objectValue(value, 'branchLineage');
+    for (const [targetId, entryValue] of Object.entries(lineage)) {
+        assertSafeDictionaryKey(assertBranchLineageText(targetId, 'branchLineage'), 'branchLineage');
+        const entry = objectValue(entryValue, `branchLineage.${targetId}`);
+        assertAllowedKeys(entry, `branchLineage.${targetId}`, [
+            'sourceId', 'parentChatId', 'targetChatId', 'avatar', 'completedAt', 'schemaVersion',
+        ]);
+        for (const key of ['sourceId', 'parentChatId', 'targetChatId', 'avatar']) {
+            assertBranchLineageText(entry[key], `branchLineage.${targetId}.${key}`);
+        }
+        if (getStorageIdFor(entry.avatar, entry.targetChatId) !== targetId) {
+            throw new Error(`备份字段 branchLineage.${targetId}.targetChatId 与目标 scope 不一致`);
+        }
+        if (getStorageIdFor(entry.avatar, entry.parentChatId) !== entry.sourceId) {
+            throw new Error(`备份字段 branchLineage.${targetId}.sourceId 与来源聊天不一致`);
+        }
+        assertOptionalTimestamp(entry, 'completedAt', `branchLineage.${targetId}`);
+        if (!Object.hasOwn(entry, 'completedAt')) throw new Error(`备份字段 branchLineage.${targetId}.completedAt 缺失`);
+        if (entry.schemaVersion !== 1) throw new Error(`备份字段 branchLineage.${targetId}.schemaVersion 必须为 1`);
+    }
+    return lineage;
+};
+
 export function parseBackupData(data, current) {
     if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error('备份根节点必须是对象');
     const version = data.schemaVersion === undefined ? 1 : data.schemaVersion;
     if (!Number.isInteger(version) || version < 1) throw new Error('备份版本无效');
-    if (version > 9) throw new Error(`备份版本 ${version} 高于当前支持版本 9`);
+    if (version > 10) throw new Error(`备份版本 ${version} 高于当前支持版本 10`);
     const result = clone(current);
     if (Object.hasOwn(data, 'histories')) result.histories = objectValue(data.histories, 'histories');
     if (Object.hasOwn(data, 'config')) result.config = objectValue(data.config, 'config');
@@ -276,5 +306,9 @@ export function parseBackupData(data, current) {
         result.theme.ambientStatusEnabled = result.ambientStatus.enabled;
     }
     if (version >= 5) applyCalendarBackupFields(data, result, objectValue, { includeRecipes: version >= 7 });
+    if (version >= 10) {
+        if (!Object.hasOwn(data, 'branchLineage')) throw new Error('备份版本 10 缺少 branchLineage');
+        result.branchLineage = assertBranchLineage(data.branchLineage);
+    }
     return result;
 }

@@ -1,6 +1,7 @@
 import {
     POPOVER_SUPPORTED,
 } from './constants.js';
+import { beginBranchInheritance } from './branch-scope-inheritance.js';
 import { normalizeInjectionConfig } from './behavior-config.js';
 import { normalizeBudgetConfig } from './budget.js';
 import { THEME_PRESETS } from './config.js';
@@ -484,13 +485,21 @@ export function installPhoneFoundation(state, deps) {
         try {
             registerResolvedHostEvent(c.eventSource, et, 'CHAT_CHANGED', () => {
                 // 宿主切换会使所有在途生成失效；关闭手机并清空旧会话内存，避免跨聊天串档。
+                const currentContext = getCtx();
                 handleHostChatChanged({
-                    state, runtime, chatLength: (c.chat || []).length,
+                    state, runtime, chatLength: (currentContext?.chat || []).length,
                     cancelCommunityGeneration: deps.cancelCommunityGeneration,
                     cancelCalendarTasks: deps.cancelCalendarTasks,
                     disarmAutoPoke,
                     endPhone: window.__pmEnd,
                     invalidateGeneration,
+                });
+                beginBranchInheritance(currentContext, {
+                    getStorageId,
+                    invalidateInteractiveStore: deps.invalidateInteractiveStore,
+                    reloadCalendarStore: deps.reloadCalendarStore,
+                }).catch(error => {
+                    console.warn('[phone-mode] 分支手机数据继承失败', error?.name || 'Error');
                 });
             });
         } catch (error) {

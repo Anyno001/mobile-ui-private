@@ -155,7 +155,7 @@ export function installSettingsUi(deps) {
     window.__pmExportData = async () => {
         const snapshot = await captureBackupState();
         const data = {
-            schemaVersion: 9,
+            schemaVersion: 10,
             histories: snapshot.histories,
             config: snapshot.config,
             theme: legacyBackupTheme(snapshot.theme),
@@ -179,6 +179,7 @@ export function installSettingsUi(deps) {
             calendarWeather: snapshot.calendarWeather,
             calendarCycles: snapshot.calendarCycles,
             calendarRecipes: snapshot.calendarRecipes,
+            branchLineage: snapshot.branchLineage,
         };
         const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
         const url = URL.createObjectURL(blob);

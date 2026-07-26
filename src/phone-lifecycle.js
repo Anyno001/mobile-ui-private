@@ -1,4 +1,5 @@
 import { POPOVER_SUPPORTED } from './constants.js';
+import { awaitPendingBranchInheritance } from './branch-scope-inheritance.js';
 import { escapeHtml } from './ui.js';
 import {
     CHEVRON_DOWN_ICON_SVG, CLOSE_ICON_SVG, CONTROL_ICON_SVG,
@@ -341,6 +342,14 @@ export function installPhoneLifecycle(state, deps) {
 
     window.__pmOpen = async () => {
         if (state.phoneActive && state.phoneWindow) { try { state.phoneWindow.showPopover?.(); } catch (e) {} state.phoneWindow.style.display = 'flex'; ensureVisibility(); return; }
+        const branchTargetId = getStorageId();
+        try {
+            await awaitPendingBranchInheritance(branchTargetId);
+            // 分支事务可能刚覆盖同一 IDB 键；不能复用启动期的旧读取 Promise。
+            await loadHistoriesFromIDB();
+        } catch (error) {
+            console.warn('[phone-mode] 分支手机数据继承未完成，按当前已持久化状态打开', error?.name || 'Error');
+        }
         // 修复：删除每次打开都用 localStorage 覆盖内存的逻辑
         // localStorage 因容量限制可能保存的是旧数据，而内存和 IDB 才是最新的
         // 冷启动时（内存为空）靠 loadHistoriesFromIDB() 从 IDB 加载后再渲染

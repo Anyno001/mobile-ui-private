@@ -2371,6 +2371,99 @@ ${userPrompt}` : userPrompt;
     storage
   );
 
+  // src/directory-save-coordinator.js
+  var revisions = { histories: 0, groupMeta: 0 };
+  var queues = {
+    histories: Promise.resolve(),
+    groupMeta: Promise.resolve(),
+    interactive: Promise.resolve(),
+    backgrounds: Promise.resolve(),
+    phoneUi: Promise.resolve(),
+    calendar: Promise.resolve(),
+    occasions: Promise.resolve(),
+    cycles: Promise.resolve(),
+    recipes: Promise.resolve(),
+    pokeConfig: Promise.resolve(),
+    characterBehavior: Promise.resolve(),
+    bidirectional: Promise.resolve(),
+    budget: Promise.resolve()
+  };
+  var branchScopeEvents = /* @__PURE__ */ new Map();
+  var nextBranchScopeToken = 0;
+  function assertStore(store) {
+    if (!Object.hasOwn(queues, store)) throw new Error(`\u672A\u77E5\u76EE\u5F55\u5B58\u50A8\uFF1A${store}`);
+  }
+  function getDirectorySaveRevision() {
+    return { ...revisions };
+  }
+  function enqueueDirectoryOperation(store, operation) {
+    assertStore(store);
+    if (typeof operation !== "function") throw new TypeError("\u76EE\u5F55\u5B58\u50A8\u64CD\u4F5C\u5FC5\u987B\u662F\u51FD\u6570");
+    const pending = queues[store].catch(() => {
+    }).then(operation);
+    queues[store] = pending;
+    return pending;
+  }
+  function branchScopes(store) {
+    if (!branchScopeEvents.has(store)) {
+      branchScopeEvents.set(store, { active: /* @__PURE__ */ new Map(), events: [], offset: 0, pendingSaveVersions: /* @__PURE__ */ new Set() });
+    }
+    return branchScopeEvents.get(store);
+  }
+  function getDirectoryOperationVersion(store) {
+    assertStore(store);
+    const state = branchScopes(store);
+    return state.offset + state.events.length;
+  }
+  function markDirectoryBranchScope(store, targetId) {
+    assertStore(store);
+    if (typeof targetId !== "string" || !targetId) throw new TypeError("\u5206\u652F scope \u5FC5\u987B\u662F\u975E\u7A7A\u5B57\u7B26\u4E32");
+    const state = branchScopes(store);
+    const token = `${store}:${++nextBranchScopeToken}`;
+    state.active.set(token, targetId);
+    state.events.push(targetId);
+    return token;
+  }
+  function getActiveDirectoryBranchScopes(store) {
+    assertStore(store);
+    return [...new Set(branchScopes(store).active.values())];
+  }
+  function compactBranchScopeEvents(store) {
+    const state = branchScopes(store);
+    const earliestVersion = state.pendingSaveVersions.size ? Math.min(...state.pendingSaveVersions) : state.offset + state.events.length;
+    const discarded = Math.max(0, Math.min(state.events.length, earliestVersion - state.offset));
+    if (discarded) {
+      state.events.splice(0, discarded);
+      state.offset += discarded;
+    }
+  }
+  function completeDirectoryBranchScope(store, token) {
+    assertStore(store);
+    if (typeof token !== "string" || !token) throw new TypeError("\u5206\u652F scope \u5FC5\u987B\u662F\u975E\u7A7A\u5B57\u7B26\u4E32");
+    const state = branchScopes(store);
+    if (!state.active.delete(token)) throw new Error("\u5206\u652F scope \u5B8C\u6210\u4EE4\u724C\u65E0\u6548");
+    compactBranchScopeEvents(store);
+  }
+  function getDirectoryBranchScopesSince(store, version) {
+    assertStore(store);
+    const state = branchScopes(store);
+    if (!Number.isInteger(version) || version < 0) throw new TypeError("\u76EE\u5F55\u64CD\u4F5C\u7248\u672C\u5FC5\u987B\u662F\u975E\u8D1F\u6574\u6570");
+    return [...new Set(state.events.slice(Math.max(0, version - state.offset)))];
+  }
+  function enqueueDirectorySave(store, data, operation, marksGlobalSave = false) {
+    assertStore(store);
+    if (typeof operation !== "function") throw new TypeError("\u76EE\u5F55\u4FDD\u5B58\u64CD\u4F5C\u5FC5\u987B\u662F\u51FD\u6570");
+    if (marksGlobalSave) revisions[store] += 1;
+    const version = getDirectoryOperationVersion(store);
+    const state = branchScopes(store);
+    state.pendingSaveVersions.add(version);
+    const snapshot = structuredClone(data);
+    return enqueueDirectoryOperation(store, () => operation(snapshot, getDirectoryBranchScopesSince(store, version))).finally(() => {
+      state.pendingSaveVersions.delete(version);
+      compactBranchScopeEvents(store);
+    });
+  }
+
   // src/calendar-commit.js
   var clone = (value) => JSON.parse(JSON.stringify(value));
   function injectionFailure(result, phase) {
@@ -2392,18 +2485,15 @@ ${userPrompt}` : userPrompt;
     getCycles,
     getCycleSubject
   }) {
-    let scopeCommitQueue = Promise.resolve();
-    let recipeCommitQueue = Promise.resolve();
     let commitGeneration = 0;
     const invalidateCommits = () => {
       commitGeneration += 1;
     };
     const commitScope = (storageId, mutate, task = null, { refreshInjection = true } = {}) => {
       const generation = commitGeneration;
-      const operation = scopeCommitQueue.catch(() => {
-      }).then(async () => {
+      return enqueueDirectoryOperation("calendar", async () => {
         if (generation !== commitGeneration || task && !tasks.active(task)) return false;
-        const previousStore = clone(runtime.store);
+        const previousStore = clone(loadCalendar());
         const candidate = clone(previousStore);
         const current = calendarScopeFor(candidate, storageId);
         const next = normalizeCalendarScope(await mutate(current));
@@ -2428,8 +2518,11 @@ ${userPrompt}` : userPrompt;
         if (!injectionError && !cancelled) return next;
         let rollbackError = null;
         try {
-          if (!saveCalendar(previousStore)) throw new Error("\u65E5\u5386\u56DE\u6EDA\u4FDD\u5B58\u5931\u8D25\uFF1A\u6D4F\u89C8\u5668\u5B58\u50A8\u4E0D\u53EF\u7528");
-          runtime.store = normalizeCalendarStore(previousStore);
+          const rollbackStore = clone(loadCalendar());
+          if (Object.hasOwn(previousStore.scopes, storageId)) rollbackStore.scopes[storageId] = clone(previousStore.scopes[storageId]);
+          else delete rollbackStore.scopes[storageId];
+          if (!saveCalendar(rollbackStore)) throw new Error("\u65E5\u5386\u56DE\u6EDA\u4FDD\u5B58\u5931\u8D25\uFF1A\u6D4F\u89C8\u5668\u5B58\u50A8\u4E0D\u53EF\u7528");
+          runtime.store = normalizeCalendarStore(rollbackStore);
           const rollbackResult = await applyBidirectionalInjection?.();
           const rollbackInjectionError = injectionFailure(rollbackResult, "\u8865\u507F");
           if (rollbackInjectionError) throw rollbackInjectionError;
@@ -2447,16 +2540,12 @@ ${userPrompt}` : userPrompt;
         if (injectionError) throw injectionError;
         return false;
       });
-      scopeCommitQueue = operation.catch(() => {
-      });
-      return operation;
     };
     const commitRecipe = (storageId, mutate, task = null, { refreshInjection = true } = {}) => {
       const generation = commitGeneration;
-      const operation = recipeCommitQueue.catch(() => {
-      }).then(async () => {
+      return enqueueDirectoryOperation("recipes", async () => {
         if (generation !== commitGeneration || task && !tasks.active(task)) return false;
-        const previousStore = clone(runtime.recipeStore);
+        const previousStore = clone(loadCalendarRecipes());
         const candidate = clone(previousStore);
         const current = normalizeRecipeScope(candidate.scopes[storageId]);
         const next = normalizeRecipeScope(await mutate(current));
@@ -2481,8 +2570,11 @@ ${userPrompt}` : userPrompt;
         if (!injectionError && !cancelled) return next;
         let rollbackError = null;
         try {
-          if (!saveCalendarRecipes(previousStore)) throw new Error("\u83DC\u8C31\u56DE\u6EDA\u4FDD\u5B58\u5931\u8D25\uFF1A\u6D4F\u89C8\u5668\u5B58\u50A8\u4E0D\u53EF\u7528");
-          runtime.recipeStore = normalizeRecipeStore(previousStore);
+          const rollbackStore = clone(loadCalendarRecipes());
+          if (Object.hasOwn(previousStore.scopes, storageId)) rollbackStore.scopes[storageId] = clone(previousStore.scopes[storageId]);
+          else delete rollbackStore.scopes[storageId];
+          if (!saveCalendarRecipes(rollbackStore)) throw new Error("\u83DC\u8C31\u56DE\u6EDA\u4FDD\u5B58\u5931\u8D25\uFF1A\u6D4F\u89C8\u5668\u5B58\u50A8\u4E0D\u53EF\u7528");
+          runtime.recipeStore = normalizeRecipeStore(rollbackStore);
           const rollbackResult = await applyBidirectionalInjection?.();
           const rollbackInjectionError = injectionFailure(rollbackResult, "\u83DC\u8C31\u8865\u507F");
           if (rollbackInjectionError) throw rollbackInjectionError;
@@ -2500,12 +2592,9 @@ ${userPrompt}` : userPrompt;
         if (injectionError) throw injectionError;
         return false;
       });
-      recipeCommitQueue = operation.catch(() => {
-      });
-      return operation;
     };
-    const commitOccasions = async (storageId, mutate) => {
-      const candidate = clone(runtime.occasionStore);
+    const commitOccasions = (storageId, mutate) => enqueueDirectoryOperation("occasions", async () => {
+      const candidate = clone(loadCalendarOccasions());
       const current = normalizeOccasionScope(candidate.scopes[storageId]);
       const next = normalizeOccasionScope(await mutate(current));
       candidate.scopes[storageId] = next;
@@ -2514,7 +2603,7 @@ ${userPrompt}` : userPrompt;
       runtime.occasionStore = normalized;
       await applyBidirectionalInjection?.();
       return next;
-    };
+    });
     const commitHolidays = (nextStore) => {
       const normalized = normalizeHolidayCache(nextStore);
       if (!saveCalendarHolidays(normalized)) throw new Error("\u8282\u5047\u65E5\u7F13\u5B58\u4FDD\u5B58\u5931\u8D25\uFF1A\u6D4F\u89C8\u5668\u5B58\u50A8\u4E0D\u53EF\u7528");
@@ -2527,12 +2616,13 @@ ${userPrompt}` : userPrompt;
       runtime.weatherStore = normalized;
       return normalized;
     };
-    const commitCycle = (storageId, nextStore) => {
-      const normalized = normalizeCycleStore(nextStore);
+    const commitCycle = (storageId, mutate) => enqueueDirectoryOperation("cycles", async () => {
+      const current = normalizeCycleStore(loadCalendarCycles());
+      const normalized = normalizeCycleStore(await mutate(current));
       if (!saveCalendarCycles(normalized)) throw new Error("\u751F\u7406\u5468\u671F\u6570\u636E\u4FDD\u5B58\u5931\u8D25\uFF1A\u6D4F\u89C8\u5668\u5B58\u50A8\u4E0D\u53EF\u7528");
       runtime.cycleStore = normalized;
       return getCycles(storageId, getCycleSubject(storageId));
-    };
+    });
     return { commitScope, commitRecipe, commitOccasions, commitHolidays, commitWeather, commitCycle, invalidateCommits };
   }
 
@@ -3971,15 +4061,14 @@ ${userPrompt}` : userPrompt;
           anchor = createCalendarDate(previousMonth.year, previousMonth.month, requestedDay);
         }
         if (!anchor) throw new Error("\u7ECF\u671F\u5F00\u59CB\u65E5\u4E0D\u9002\u7528\u4E8E\u5F53\u524D\u6708\u4EFD\uFF0C\u8BF7\u9009\u62E9 1 \u5230 28 \u65E5");
-        const nextStore = upsertCycleScope(runtime.cycleStore, storageId, {
+        await commitCycle(storageId, (current) => upsertCycleScope(current, storageId, {
           enabled: form.elements.enabled.checked,
           lastPeriodStart: form.elements.enabled.checked ? formatCalendarDate(anchor) : null,
           cycleLength: Number(form.elements.cycleLength.value),
           periodLength: Number(form.elements.periodLength.value),
-          overrides: cycles(storageId, subject).overrides
-        }, subject);
+          overrides: cycleScopeFor(current, storageId, subject).overrides
+        }, subject));
         runtime.viewByStorage.set(storageId, { ...currentView, cycleSubject: subject });
-        commitCycle(storageId, nextStore);
         await deps.applyBidirectionalInjection?.();
         status(storageId, "\u751F\u7406\u671F\u63D0\u793A\u5DF2\u4FDD\u5B58\u3002");
         rerender(storageId);
@@ -3988,7 +4077,7 @@ ${userPrompt}` : userPrompt;
       if (action === "calendar-cycle-clear") {
         const subject = app?.querySelector("[data-calendar-cycle-editor]")?.elements.subject?.value || viewFor(storageId).cycleSubject || CYCLE_SELF_SUBJECT;
         if (!confirm("\u6E05\u9664\u5F53\u524D\u6240\u9009\u89D2\u8272\u7684\u751F\u7406\u671F\u8D44\u6599\uFF1F")) return;
-        commitCycle(storageId, clearCycleScope(runtime.cycleStore, storageId, subject));
+        await commitCycle(storageId, (current) => clearCycleScope(current, storageId, subject));
         await deps.applyBidirectionalInjection?.();
         status(storageId, "\u6240\u9009\u89D2\u8272\u7684\u751F\u7406\u671F\u8D44\u6599\u5DF2\u6E05\u9664\u3002");
         rerender(storageId);
@@ -4058,26 +4147,6 @@ ${userPrompt}` : userPrompt;
       },
       renderCalendar: render
     });
-  }
-
-  // src/directory-save-coordinator.js
-  var revisions = { histories: 0, groupMeta: 0 };
-  var queues = { histories: Promise.resolve(), groupMeta: Promise.resolve() };
-  function assertStore(store) {
-    if (!Object.hasOwn(queues, store)) throw new Error(`\u672A\u77E5\u76EE\u5F55\u5B58\u50A8\uFF1A${store}`);
-  }
-  function getDirectorySaveRevision() {
-    return { ...revisions };
-  }
-  function enqueueDirectorySave(store, data, operation, marksGlobalSave = false) {
-    assertStore(store);
-    if (typeof operation !== "function") throw new TypeError("\u76EE\u5F55\u4FDD\u5B58\u64CD\u4F5C\u5FC5\u987B\u662F\u51FD\u6570");
-    if (marksGlobalSave) revisions[store] += 1;
-    const snapshot = JSON.parse(JSON.stringify(data));
-    const pending = queues[store].catch(() => {
-    }).then(() => operation(snapshot));
-    queues[store] = pending;
-    return pending;
   }
 
   // src/behavior-config.js
@@ -5032,54 +5101,8 @@ ${lines.join("\n")}
     return result;
   }
 
-  // src/storage.js
+  // src/pm-idb.js
   var database = null;
-  var EMOJI_STORE_KEY = "ST_SMS_EMOJIS";
-  var EMOJI_FALLBACK_KEY = `${EMOJI_STORE_KEY}_LOCAL_FALLBACK`;
-  var GROUP_META_STORE_KEY = "ST_SMS_GROUP_META";
-  var GROUP_META_FALLBACK_KEY = `${GROUP_META_STORE_KEY}_LOCAL_FALLBACK`;
-  var INTERACTIVE_STORE_KEY = "ST_INTERACTIVE_SCENES_V1";
-  var INTERACTIVE_FALLBACK_KEY = `${INTERACTIVE_STORE_KEY}_LOCAL_FALLBACK`;
-  var PHONE_UI_STATE_KEY = "ST_SMS_PHONE_UI_STATE";
-  var DESKTOP_BG_KEY = "ST_SMS_BG_DESKTOP";
-  var PLUGIN_LOCAL_STORAGE_KEYS = Object.freeze([
-    "ST_SMS_DATA_V2",
-    "ST_SMS_CONFIG",
-    "ST_SMS_THEME",
-    "ST_SMS_POKE_CONFIG",
-    "ST_SMS_WORDY_LIMIT",
-    BUDGET_CONFIG_KEY,
-    "ST_SMS_BG_GLOBAL",
-    "ST_SMS_BG_LOCAL",
-    DESKTOP_BG_KEY,
-    GROUP_META_STORE_KEY,
-    GROUP_META_FALLBACK_KEY,
-    EMOJI_STORE_KEY,
-    EMOJI_FALLBACK_KEY,
-    CHARACTER_BEHAVIOR_KEY,
-    INJECTION_CONFIG_KEY,
-    "ST_SMS_API_PROFILES",
-    "ST_SMS_BIDIRECTIONAL",
-    INTERACTIVE_STORE_KEY,
-    INTERACTIVE_FALLBACK_KEY,
-    PHONE_UI_STATE_KEY,
-    "ST_SMS_PHONE_QR_INITIALIZED",
-    CALENDAR_STORAGE_KEY,
-    CALENDAR_OCCASION_STORAGE_KEY,
-    CALENDAR_HOLIDAY_STORAGE_KEY,
-    CALENDAR_WEATHER_STORAGE_KEY,
-    CALENDAR_CYCLE_STORAGE_KEY,
-    CALENDAR_RECIPE_STORAGE_KEY
-  ]);
-  var PLUGIN_IDB_STATIC_KEYS = Object.freeze([
-    "ST_SMS_DATA_V2",
-    EMOJI_STORE_KEY,
-    GROUP_META_STORE_KEY,
-    INTERACTIVE_STORE_KEY,
-    "ST_SMS_BG_GLOBAL",
-    DESKTOP_BG_KEY
-  ]);
-  var PLUGIN_IDB_DYNAMIC_PREFIXES = Object.freeze(["ST_SMS_BG_LOCAL_"]);
   function pmOpenIDB() {
     return new Promise((resolve) => {
       if (database) {
@@ -5222,23 +5245,92 @@ ${lines.join("\n")}
       }
     });
   }
+
+  // src/storage.js
+  var EMOJI_STORE_KEY = "ST_SMS_EMOJIS";
+  var EMOJI_FALLBACK_KEY = `${EMOJI_STORE_KEY}_LOCAL_FALLBACK`;
+  var GROUP_META_STORE_KEY = "ST_SMS_GROUP_META";
+  var GROUP_META_FALLBACK_KEY = `${GROUP_META_STORE_KEY}_LOCAL_FALLBACK`;
+  var INTERACTIVE_STORE_KEY = "ST_INTERACTIVE_SCENES_V1";
+  var INTERACTIVE_FALLBACK_KEY = `${INTERACTIVE_STORE_KEY}_LOCAL_FALLBACK`;
+  var PHONE_UI_STATE_KEY = "ST_SMS_PHONE_UI_STATE";
+  var BRANCH_LINEAGE_STORE_KEY = "ST_SMS_BRANCH_LINEAGE_V1";
+  var DESKTOP_BG_KEY = "ST_SMS_BG_DESKTOP";
+  var PLUGIN_LOCAL_STORAGE_KEYS = Object.freeze([
+    "ST_SMS_DATA_V2",
+    "ST_SMS_CONFIG",
+    "ST_SMS_THEME",
+    "ST_SMS_POKE_CONFIG",
+    "ST_SMS_WORDY_LIMIT",
+    BUDGET_CONFIG_KEY,
+    "ST_SMS_BG_GLOBAL",
+    "ST_SMS_BG_LOCAL",
+    DESKTOP_BG_KEY,
+    GROUP_META_STORE_KEY,
+    GROUP_META_FALLBACK_KEY,
+    EMOJI_STORE_KEY,
+    EMOJI_FALLBACK_KEY,
+    CHARACTER_BEHAVIOR_KEY,
+    INJECTION_CONFIG_KEY,
+    "ST_SMS_API_PROFILES",
+    "ST_SMS_BIDIRECTIONAL",
+    INTERACTIVE_STORE_KEY,
+    INTERACTIVE_FALLBACK_KEY,
+    PHONE_UI_STATE_KEY,
+    "ST_SMS_PHONE_QR_INITIALIZED",
+    CALENDAR_STORAGE_KEY,
+    CALENDAR_OCCASION_STORAGE_KEY,
+    CALENDAR_HOLIDAY_STORAGE_KEY,
+    CALENDAR_WEATHER_STORAGE_KEY,
+    CALENDAR_CYCLE_STORAGE_KEY,
+    CALENDAR_RECIPE_STORAGE_KEY
+  ]);
+  var PLUGIN_IDB_STATIC_KEYS = Object.freeze([
+    "ST_SMS_DATA_V2",
+    EMOJI_STORE_KEY,
+    GROUP_META_STORE_KEY,
+    INTERACTIVE_STORE_KEY,
+    BRANCH_LINEAGE_STORE_KEY,
+    "ST_SMS_BG_GLOBAL",
+    DESKTOP_BG_KEY
+  ]);
+  var PLUGIN_IDB_DYNAMIC_PREFIXES = Object.freeze(["ST_SMS_BG_LOCAL_"]);
   function isBigData(value) {
     return typeof value === "string" && value.length > 4096 && (value.startsWith("data:") || value.startsWith("blob:"));
   }
   function saveHistories() {
     saveHistoriesStrict().catch((error) => console.warn("[phone-mode] \u77ED\u4FE1\u5386\u53F2\u4FDD\u5B58\u5931\u8D25", error));
   }
-  async function saveHistoriesStrict(data = window.__pmHistories) {
-    return enqueueDirectorySave("histories", data, async (snapshot) => {
-      const saved = await pmIDBSet("ST_SMS_DATA_V2", snapshot);
+  async function saveHistoriesStrict(data = window.__pmHistories, { requireLocalMirror = false, coordinated = false } = {}) {
+    const persist = async (snapshot, protectedScopes = []) => {
+      let value = snapshot;
+      if (protectedScopes.length) {
+        const current = await pmIDBGet("ST_SMS_DATA_V2");
+        if (current && typeof current === "object" && !Array.isArray(current)) {
+          value = structuredClone(snapshot);
+          for (const scope of protectedScopes) {
+            if (Object.hasOwn(current, scope)) value[scope] = structuredClone(current[scope]);
+            else delete value[scope];
+          }
+        }
+      }
+      const saved = await pmIDBSet("ST_SMS_DATA_V2", value);
       if (!saved) throw new Error("\u804A\u5929\u8BB0\u5F55\u4FDD\u5B58\u5931\u8D25\uFF1AIndexedDB \u4E0D\u53EF\u7528");
       try {
-        localStorage.setItem("ST_SMS_DATA_V2", JSON.stringify(snapshot));
+        localStorage.setItem("ST_SMS_DATA_V2", JSON.stringify(value));
       } catch (error) {
+        if (requireLocalMirror) throw new Error("\u804A\u5929\u8BB0\u5F55\u4FDD\u5B58\u5931\u8D25\uFF1A\u6D4F\u89C8\u5668\u5B58\u50A8\u4E0D\u53EF\u7528");
         console.warn("[phone-mode] localStorage \u5DF2\u6EE1\uFF0C\u77ED\u4FE1\u5386\u53F2\u4EC5\u4FDD\u5B58\u5728 IDB");
       }
       return true;
-    }, arguments.length === 0);
+    };
+    if (coordinated) return persist(structuredClone(data));
+    return enqueueDirectorySave(
+      "histories",
+      data,
+      (snapshot, protectedScopes) => persist(snapshot, protectedScopes),
+      arguments.length === 0
+    );
   }
   function saveHistoriesBeforeUnload() {
     const data = window.__pmHistories;
@@ -5262,32 +5354,49 @@ ${lines.join("\n")}
     pmIDBSet("ST_SMS_DATA_V2", data).catch(() => {
     });
   }
-  async function loadHistoriesFromIDB() {
+  async function loadHistoriesFromIDB({ requireConfirmedPrimary = false } = {}) {
     try {
+      const keys = await pmIDBKeys();
+      if (!Array.isArray(keys)) throw new Error("\u65E0\u6CD5\u679A\u4E3E IndexedDB");
+      const hasPrimary = keys.includes("ST_SMS_DATA_V2");
+      if (!hasPrimary) {
+        const rawFallback = localStorage.getItem("ST_SMS_DATA_V2");
+        if (!rawFallback) {
+          window.__pmHistories = {};
+          return true;
+        }
+        const fallback = JSON.parse(rawFallback);
+        if (!fallback || typeof fallback !== "object" || Array.isArray(fallback)) {
+          throw new Error("localStorage \u540E\u5907\u8BB0\u5F55\u683C\u5F0F\u65E0\u6548");
+        }
+        window.__pmHistories = fallback;
+        return true;
+      }
       const value = await pmIDBGet("ST_SMS_DATA_V2");
-      if (!value) {
+      if (value === null || value === void 0) {
+        if (requireConfirmedPrimary) throw new Error("IndexedDB \u4E3B\u8BB0\u5F55\u8BFB\u53D6\u5931\u8D25");
         try {
           const fallback = JSON.parse(localStorage.getItem("ST_SMS_DATA_V2"));
           if (fallback && typeof fallback === "object" && Object.keys(fallback).length > 0) {
             window.__pmHistories = fallback;
-            console.log("[phone-mode] IDB \u65E0\u6570\u636E\uFF0C\u5DF2\u4ECE localStorage \u6062\u590D");
           }
         } catch (error) {
         }
-        return;
+        return true;
       }
       const parsed = typeof value === "string" ? JSON.parse(value) : value;
-      if (!parsed || typeof parsed !== "object") return;
-      const idbCount = Object.keys(parsed).length;
-      if (idbCount > 0) {
-        window.__pmHistories = parsed;
-        try {
-          localStorage.setItem("ST_SMS_DATA_V2", JSON.stringify(parsed));
-        } catch (error) {
-          console.warn("[phone-mode] localStorage \u5DF2\u6EE1\uFF0C\u4EC5\u4F7F\u7528 IDB \u5B58\u50A8");
-        }
-        console.log("[phone-mode] \u4ECE IndexedDB \u52A0\u8F7D\u4E86\u77ED\u4FE1\u5386\u53F2\uFF0C\u5171", idbCount, "\u4E2A\u4F1A\u8BDD");
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+        throw new Error("IndexedDB \u4E3B\u8BB0\u5F55\u683C\u5F0F\u65E0\u6548");
       }
+      const idbCount = Object.keys(parsed).length;
+      window.__pmHistories = parsed;
+      try {
+        localStorage.setItem("ST_SMS_DATA_V2", JSON.stringify(parsed));
+      } catch (error) {
+        console.warn("[phone-mode] localStorage \u5DF2\u6EE1\uFF0C\u4EC5\u4F7F\u7528 IDB \u5B58\u50A8");
+      }
+      console.log("[phone-mode] \u4ECE IndexedDB \u52A0\u8F7D\u4E86\u77ED\u4FE1\u5386\u53F2\uFF0C\u5171", idbCount, "\u4E2A\u4F1A\u8BDD");
+      return true;
     } catch (error) {
       console.warn("[phone-mode] IDB \u6062\u590D\u5931\u8D25\uFF0C\u5C1D\u8BD5 localStorage \u515C\u5E95", error);
       try {
@@ -5297,6 +5406,7 @@ ${lines.join("\n")}
         }
       } catch (fallbackError) {
       }
+      return false;
     }
   }
   async function loadEmojis() {
@@ -5360,8 +5470,45 @@ ${lines.join("\n")}
       window.__pmPokeConfig = {};
     }
   }
+  function preserveActiveLocalScopes(storageKey, store, snapshot) {
+    const activeScopes = getActiveDirectoryBranchScopes(store);
+    if (!activeScopes.length) return snapshot;
+    try {
+      const raw = localStorage.getItem(storageKey);
+      const current = raw ? JSON.parse(raw) : {};
+      if (!current || typeof current !== "object" || Array.isArray(current)) throw new Error("\u6D3B\u52A8\u5206\u652F scope \u8BFB\u53D6\u7ED3\u679C\u65E0\u6548");
+      const merged = structuredClone(snapshot);
+      for (const storageId of activeScopes) {
+        if (Object.hasOwn(current, storageId)) merged[storageId] = structuredClone(current[storageId]);
+        else delete merged[storageId];
+      }
+      return merged;
+    } catch (error) {
+      throw new Error(`\u6D3B\u52A8\u5206\u652F scope \u8BFB\u53D6\u5931\u8D25\uFF1A${store}`);
+    }
+  }
+  function preserveActiveBudgetScopes(snapshot) {
+    const activeScopes = getActiveDirectoryBranchScopes("budget");
+    if (!activeScopes.length) return snapshot;
+    try {
+      const current = normalizeBudgetConfig(JSON.parse(localStorage.getItem(BUDGET_CONFIG_KEY)));
+      const merged = normalizeBudgetConfig(snapshot);
+      for (const storageId of activeScopes) {
+        if (Object.hasOwn(current.communitySceneIdsByStorage, storageId)) {
+          merged.communitySceneIdsByStorage[storageId] = structuredClone(current.communitySceneIdsByStorage[storageId]);
+        } else delete merged.communitySceneIdsByStorage[storageId];
+        if (Object.hasOwn(current.communitySelectionsByStorage, storageId)) {
+          merged.communitySelectionsByStorage[storageId] = structuredClone(current.communitySelectionsByStorage[storageId]);
+        } else delete merged.communitySelectionsByStorage[storageId];
+      }
+      return merged;
+    } catch (error) {
+      throw new Error("\u6D3B\u52A8\u5206\u652F\u9884\u7B97 scope \u8BFB\u53D6\u5931\u8D25");
+    }
+  }
   function savePokeConfig() {
     try {
+      window.__pmPokeConfig = preserveActiveLocalScopes("ST_SMS_POKE_CONFIG", "pokeConfig", window.__pmPokeConfig);
       localStorage.setItem("ST_SMS_POKE_CONFIG", JSON.stringify(window.__pmPokeConfig));
       return true;
     } catch (error) {
@@ -5392,8 +5539,8 @@ ${lines.join("\n")}
     return window.__pmBudgetConfig;
   }
   function saveBudgetConfig(candidate = window.__pmBudgetConfig) {
-    const normalized = normalizeBudgetConfig(candidate);
     try {
+      const normalized = preserveActiveBudgetScopes(normalizeBudgetConfig(candidate));
       localStorage.setItem(BUDGET_CONFIG_KEY, JSON.stringify(normalized));
       window.__pmBudgetConfig = normalized;
       return true;
@@ -5427,14 +5574,26 @@ ${lines.join("\n")}
     return window.__pmGroupMeta;
   }
   async function saveGroupMeta(data) {
+    const { coordinated = false } = arguments[1] || {};
     const updatesGlobalState = arguments.length === 0;
     const snapshot = normalizeGroupMetaStore(updatesGlobalState ? window.__pmGroupMeta : data);
     if (updatesGlobalState) window.__pmGroupMeta = snapshot;
-    return enqueueDirectorySave("groupMeta", snapshot, async (frozen) => {
-      const saved = await pmIDBSet(GROUP_META_STORE_KEY, frozen);
+    const persist = async (frozen, protectedScopes = []) => {
+      let value = frozen;
+      if (protectedScopes.length) {
+        const current = await pmIDBGet(GROUP_META_STORE_KEY);
+        if (current && typeof current === "object" && !Array.isArray(current)) {
+          value = normalizeGroupMetaStore(frozen);
+          for (const scope of protectedScopes) {
+            if (Object.hasOwn(current, scope)) value[scope] = structuredClone(current[scope]);
+            else delete value[scope];
+          }
+        }
+      }
+      const saved = await pmIDBSet(GROUP_META_STORE_KEY, value);
       if (saved) {
         try {
-          localStorage.setItem(GROUP_META_STORE_KEY, JSON.stringify(frozen));
+          localStorage.setItem(GROUP_META_STORE_KEY, JSON.stringify(value));
         } catch (error) {
         }
         try {
@@ -5443,13 +5602,20 @@ ${lines.join("\n")}
         }
       } else {
         try {
-          localStorage.setItem(GROUP_META_FALLBACK_KEY, JSON.stringify(frozen));
+          localStorage.setItem(GROUP_META_FALLBACK_KEY, JSON.stringify(value));
         } catch {
           throw new Error("\u7FA4\u804A\u914D\u7F6E\u4FDD\u5B58\u5931\u8D25\uFF1A\u6D4F\u89C8\u5668\u5B58\u50A8\u4E0D\u53EF\u7528\u6216\u7A7A\u95F4\u4E0D\u8DB3");
         }
       }
-      return frozen;
-    }, updatesGlobalState);
+      return value;
+    };
+    if (coordinated) return persist(structuredClone(snapshot));
+    return enqueueDirectorySave(
+      "groupMeta",
+      snapshot,
+      (frozen, protectedScopes) => persist(frozen, protectedScopes),
+      updatesGlobalState
+    );
   }
   function loadCharacterBehavior() {
     try {
@@ -5463,6 +5629,11 @@ ${lines.join("\n")}
   function saveCharacterBehavior() {
     window.__pmCharacterBehavior = normalizeCharacterBehaviorStore(window.__pmCharacterBehavior);
     try {
+      window.__pmCharacterBehavior = preserveActiveLocalScopes(
+        CHARACTER_BEHAVIOR_KEY,
+        "characterBehavior",
+        window.__pmCharacterBehavior
+      );
       localStorage.setItem(CHARACTER_BEHAVIOR_KEY, JSON.stringify(window.__pmCharacterBehavior));
       return true;
     } catch (error) {
@@ -5533,6 +5704,7 @@ ${lines.join("\n")}
   }
   function saveBidirectional() {
     try {
+      window.__pmBidirectional = preserveActiveLocalScopes("ST_SMS_BIDIRECTIONAL", "bidirectional", window.__pmBidirectional);
       localStorage.setItem("ST_SMS_BIDIRECTIONAL", JSON.stringify(window.__pmBidirectional));
       return true;
     } catch (error) {
@@ -5557,25 +5729,47 @@ ${lines.join("\n")}
       return null;
     }
   }
-  async function saveInteractiveScenes(store) {
-    const saved = await pmIDBSet(INTERACTIVE_STORE_KEY, store);
-    if (saved) {
-      try {
-        localStorage.removeItem(INTERACTIVE_FALLBACK_KEY);
-      } catch (error) {
-        try {
-          localStorage.setItem(INTERACTIVE_FALLBACK_KEY, JSON.stringify(store));
-        } catch (fallbackError) {
-          throw new Error("\u4E92\u52A8\u573A\u666F\u4E3B\u5B58\u50A8\u5DF2\u66F4\u65B0\uFF0C\u4F46\u540E\u5907\u6570\u636E\u540C\u6B65\u5931\u8D25");
+  async function saveInteractiveScenes(store, { coordinated = false } = {}) {
+    const persist = async (snapshot, protectedScopes = []) => {
+      let value = snapshot;
+      if (protectedScopes.length) {
+        const current = await pmIDBGet(INTERACTIVE_STORE_KEY);
+        if (current && typeof current === "object" && !Array.isArray(current)) {
+          const currentScopes = current.scopes;
+          if (currentScopes && typeof currentScopes === "object" && !Array.isArray(currentScopes)) {
+            value = structuredClone(snapshot);
+            value.scopes || (value.scopes = {});
+            for (const scope of protectedScopes) {
+              if (Object.hasOwn(currentScopes, scope)) {
+                value.scopes[scope] = structuredClone(currentScopes[scope]);
+              } else {
+                delete value.scopes[scope];
+              }
+            }
+          }
         }
       }
-      return;
-    }
-    try {
-      localStorage.setItem(INTERACTIVE_FALLBACK_KEY, JSON.stringify(store));
-    } catch (error) {
-      throw new Error("\u4E92\u52A8\u573A\u666F\u4FDD\u5B58\u5931\u8D25\uFF1A\u6D4F\u89C8\u5668\u5B58\u50A8\u4E0D\u53EF\u7528");
-    }
+      const saved = await pmIDBSet(INTERACTIVE_STORE_KEY, value);
+      if (saved) {
+        try {
+          localStorage.removeItem(INTERACTIVE_FALLBACK_KEY);
+        } catch (error) {
+          try {
+            localStorage.setItem(INTERACTIVE_FALLBACK_KEY, JSON.stringify(value));
+          } catch (fallbackError) {
+            throw new Error("\u4E92\u52A8\u573A\u666F\u4E3B\u5B58\u50A8\u5DF2\u66F4\u65B0\uFF0C\u4F46\u540E\u5907\u6570\u636E\u540C\u6B65\u5931\u8D25");
+          }
+        }
+        return;
+      }
+      try {
+        localStorage.setItem(INTERACTIVE_FALLBACK_KEY, JSON.stringify(value));
+      } catch (error) {
+        throw new Error("\u4E92\u52A8\u573A\u666F\u4FDD\u5B58\u5931\u8D25\uFF1A\u6D4F\u89C8\u5668\u5B58\u50A8\u4E0D\u53EF\u7528");
+      }
+    };
+    if (coordinated) return persist(structuredClone(store));
+    return enqueueDirectorySave("interactive", store, persist);
   }
   function loadPhoneUiState(interactiveStore) {
     try {
@@ -5587,20 +5781,149 @@ ${lines.join("\n")}
       return createEmptyPhoneUiState();
     }
   }
+  function preserveActivePhoneUiScopes(snapshot, interactiveStore) {
+    const activeScopes = getActiveDirectoryBranchScopes("phoneUi");
+    if (!activeScopes.length) return snapshot;
+    const current = loadPhoneUiState(interactiveStore);
+    const merged = structuredClone(snapshot);
+    for (const storageId of activeScopes) {
+      if (Object.hasOwn(current.scopes, storageId)) merged.scopes[storageId] = structuredClone(current.scopes[storageId]);
+      else delete merged.scopes[storageId];
+    }
+    return normalizePhoneUiState(merged, interactiveStore);
+  }
   function savePhoneUiState(state, interactiveStore) {
     try {
       const normalized = normalizePhoneUiState(state, interactiveStore);
-      localStorage.setItem(PHONE_UI_STATE_KEY, JSON.stringify(normalized));
+      const value = preserveActivePhoneUiScopes(normalized, interactiveStore);
+      localStorage.setItem(PHONE_UI_STATE_KEY, JSON.stringify(value));
       return true;
     } catch (error) {
       console.error("[phone-mode] \u624B\u673A\u754C\u9762\u72B6\u6001\u4FDD\u5B58\u5931\u8D25", error);
       return false;
     }
   }
+  function savePhoneUiScope(storageId, state, interactiveStore) {
+    try {
+      if (typeof storageId !== "string" || !storageId) throw new TypeError("\u624B\u673A\u9875\u9762\u72B6\u6001 scope \u65E0\u6548");
+      const normalized = normalizePhoneUiState(state, interactiveStore);
+      const current = loadPhoneUiState(interactiveStore);
+      if (Object.hasOwn(normalized.scopes, storageId)) current.scopes[storageId] = structuredClone(normalized.scopes[storageId]);
+      else delete current.scopes[storageId];
+      const merged = normalizePhoneUiState(current, interactiveStore);
+      localStorage.setItem(PHONE_UI_STATE_KEY, JSON.stringify(merged));
+      return merged;
+    } catch (error) {
+      console.error("[phone-mode] \u624B\u673A\u9875\u9762\u72B6\u6001\u4FDD\u5B58\u5931\u8D25", error);
+      return null;
+    }
+  }
   var INTERACTIVE_STORAGE_KEYS = Object.freeze({
     primary: INTERACTIVE_STORE_KEY,
     fallback: INTERACTIVE_FALLBACK_KEY
   });
+  var branchLineageQueue = Promise.resolve();
+  var branchLineageRevisions = /* @__PURE__ */ new Map();
+  function branchLineageRevision(targetId) {
+    return branchLineageRevisions.get(targetId) || 0;
+  }
+  function markBranchLineageWrite(targetId) {
+    const revision = branchLineageRevision(targetId) + 1;
+    branchLineageRevisions.set(targetId, revision);
+    return revision;
+  }
+  async function loadBranchLineage() {
+    const keys = await pmIDBKeys();
+    if (!Array.isArray(keys)) throw new Error("\u5206\u652F\u7EE7\u627F\u8BB0\u5F55\u8BFB\u53D6\u5931\u8D25\uFF1A\u65E0\u6CD5\u679A\u4E3E IndexedDB");
+    if (!keys.includes(BRANCH_LINEAGE_STORE_KEY)) return {};
+    const value = await pmIDBGet(BRANCH_LINEAGE_STORE_KEY);
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      throw new Error("\u5206\u652F\u7EE7\u627F\u8BB0\u5F55\u8BFB\u53D6\u5931\u8D25\uFF1A\u6570\u636E\u635F\u574F\u6216 IndexedDB \u4E0D\u53EF\u7528");
+    }
+    return value;
+  }
+  function assertBranchLineageValue(value) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      throw new Error("\u5206\u652F\u7EE7\u627F\u8BB0\u5F55\u4FDD\u5B58\u5931\u8D25\uFF1A\u8BB0\u5F55\u5FC5\u987B\u662F\u5BF9\u8C61");
+    }
+  }
+  async function writeBranchLineage(value) {
+    if (!await pmIDBSet(BRANCH_LINEAGE_STORE_KEY, value)) {
+      throw new Error("\u5206\u652F\u7EE7\u627F\u8BB0\u5F55\u4FDD\u5B58\u5931\u8D25\uFF1AIndexedDB \u4E0D\u53EF\u7528");
+    }
+  }
+  function saveBranchLineage(value) {
+    assertBranchLineageValue(value);
+    const operation = branchLineageQueue.catch(() => {
+    }).then(async () => {
+      const current = await loadBranchLineage();
+      const next = { ...structuredClone(value), ...current };
+      await writeBranchLineage(next);
+      for (const targetId of Object.keys(value)) {
+        if (!Object.hasOwn(current, targetId)) markBranchLineageWrite(targetId);
+      }
+      return next;
+    });
+    branchLineageQueue = operation;
+    return operation;
+  }
+  function saveBranchLineageForBackup(value) {
+    assertBranchLineageValue(value);
+    const operation = branchLineageQueue.catch(() => {
+    }).then(async () => {
+      const current = await loadBranchLineage();
+      const entries = {};
+      for (const [targetId, entry2] of Object.entries(value)) {
+        if (!Object.hasOwn(current, targetId)) entries[targetId] = structuredClone(entry2);
+      }
+      const next = { ...structuredClone(value), ...current };
+      await writeBranchLineage(next);
+      const revisions2 = {};
+      for (const targetId of Object.keys(entries)) revisions2[targetId] = markBranchLineageWrite(targetId);
+      return { entries, revisions: revisions2 };
+    });
+    branchLineageQueue = operation;
+    return operation;
+  }
+  function rollbackBranchLineageBackup(inserted) {
+    assertBranchLineageValue(inserted);
+    assertBranchLineageValue(inserted.entries);
+    assertBranchLineageValue(inserted.revisions);
+    const operation = branchLineageQueue.catch(() => {
+    }).then(async () => {
+      const current = await loadBranchLineage();
+      const next = structuredClone(current);
+      for (const [targetId, entry2] of Object.entries(inserted.entries)) {
+        if (branchLineageRevision(targetId) === inserted.revisions[targetId] && Object.hasOwn(next, targetId) && JSON.stringify(next[targetId]) === JSON.stringify(entry2)) {
+          delete next[targetId];
+          markBranchLineageWrite(targetId);
+        }
+      }
+      await writeBranchLineage(next);
+      return next;
+    });
+    branchLineageQueue = operation;
+    return operation;
+  }
+  function commitBranchLineage(targetId, entry2) {
+    if (typeof targetId !== "string" || !targetId.trim()) {
+      return Promise.reject(new Error("\u5206\u652F\u7EE7\u627F\u8BB0\u5F55\u4FDD\u5B58\u5931\u8D25\uFF1A\u76EE\u6807 scope \u65E0\u6548"));
+    }
+    if (!entry2 || typeof entry2 !== "object" || Array.isArray(entry2)) {
+      return Promise.reject(new Error("\u5206\u652F\u7EE7\u627F\u8BB0\u5F55\u4FDD\u5B58\u5931\u8D25\uFF1A\u8BB0\u5F55\u6761\u76EE\u5FC5\u987B\u662F\u5BF9\u8C61"));
+    }
+    const operation = branchLineageQueue.catch(() => {
+    }).then(async () => {
+      const current = await loadBranchLineage();
+      const next = { ...current, [targetId]: structuredClone(entry2) };
+      await writeBranchLineage(next);
+      markBranchLineageWrite(targetId);
+      return next;
+    });
+    branchLineageQueue = operation;
+    return operation;
+  }
+  var PHONE_UI_STORAGE_KEY = PHONE_UI_STATE_KEY;
   var isPluginIdbKey = (key) => typeof key === "string" && (PLUGIN_IDB_STATIC_KEYS.includes(key) || PLUGIN_IDB_DYNAMIC_PREFIXES.some((prefix) => key.startsWith(prefix)));
   async function clearPluginData({
     localStorageRef = globalThis.localStorage,
@@ -7859,13 +8182,15 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
       }
       return normalizePhoneUiState(runtime.phoneUiState, store);
     };
-    const persistPhoneUiState = (nextState, store = runtime.store) => {
+    const persistPhoneUiState = (storageId, nextState, store = runtime.store) => {
       const normalized = normalizePhoneUiState(nextState, store);
-      if (!savePhoneUiState(normalized, store)) throw new Error("\u624B\u673A\u9875\u9762\u72B6\u6001\u4FDD\u5B58\u5931\u8D25\uFF1A\u6D4F\u89C8\u5668\u5B58\u50A8\u4E0D\u53EF\u7528");
-      runtime.phoneUiState = normalized;
-      return normalized;
+      const merged = savePhoneUiScope(storageId, normalized, store);
+      if (!merged) throw new Error("\u624B\u673A\u9875\u9762\u72B6\u6001\u4FDD\u5B58\u5931\u8D25\uFF1A\u6D4F\u89C8\u5668\u5B58\u50A8\u4E0D\u53EF\u7528");
+      runtime.phoneUiState = merged;
+      return merged;
     };
     const updatePhoneUiScope = (storageId, patch, store = runtime.store) => persistPhoneUiState(
+      storageId,
       patchPhoneUiScope(getPhoneUiState(store), storageId, patch, store),
       store
     );
@@ -8223,7 +8548,7 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
       if (action === "toggle-scene-pin" || action === "unpin-scene") {
         const scopeId = getStorageId2();
         const nextState = toggleScenePin(getPhoneUiState(runtime.store), scopeId, button.dataset.sceneId, runtime.store);
-        persistPhoneUiState(nextState);
+        persistPhoneUiState(scopeId, nextState);
         refreshDesktop(scopeId);
         if (button.closest("#pm-scene-app") && !button.closest(".pm-scene-card")) {
           rerender(phoneScope(scopeId).lastTab);
@@ -8243,7 +8568,7 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
           confirm: confirmDelete,
           invalidate,
           commit,
-          persistPhoneUi: () => persistPhoneUiState(getPhoneUiState(runtime.store), runtime.store),
+          persistPhoneUi: () => persistPhoneUiState(scopeId, getPhoneUiState(runtime.store), runtime.store),
           refreshDesktop,
           getBudgetConfig: () => window.__pmBudgetConfig,
           saveBudgetConfig: deps.saveBudgetConfig,
@@ -8528,14 +8853,23 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
     const errorType = typeof error?.name === "string" && error.name ? error.name : "Error";
     console.warn(`[phone-mode] ${message}\uFF0C\u5DF2\u4F7F\u7528\u964D\u7EA7\u503C\u3002`, errorType);
   }
+  function getCurrentChatId(context) {
+    if (!context) return null;
+    return context.chatId || (typeof context.getCurrentChatId === "function" ? context.getCurrentChatId() : null) || context.chat_metadata?.chat_id_hash || context.chat_file;
+  }
+  function getStorageIdFor(avatar, chatId) {
+    const characterAvatar = typeof avatar === "string" && avatar.trim() ? avatar : "";
+    if (chatId === null || chatId === void 0 || String(chatId).trim() === "" || !characterAvatar) {
+      return "sms_unknown__default";
+    }
+    return `sms_${characterAvatar}__${chatId}`;
+  }
   function getStorageId(getCtx) {
     const context = getCtx();
     if (!context) return "sms_unknown__default";
     const character = context.characters?.[context.characterId];
     const avatar = character?.avatar || `idx_${context.characterId}`;
-    const chatFile = context.chatId || (typeof context.getCurrentChatId === "function" ? context.getCurrentChatId() : null) || context.chat_metadata?.chat_id_hash || context.chat_file;
-    if (chatFile === null || chatFile === void 0 || String(chatFile).trim() === "") return "sms_unknown__default";
-    return `sms_${avatar}__${chatFile}`;
+    return getStorageIdFor(avatar, getCurrentChatId(context));
   }
   function getUserPersona(getCtx) {
     const context = getCtx();
@@ -11317,56 +11651,80 @@ ${antiFluff}`;
   async function saveDesktopBg() {
     return saveSingleBackground({ storageKey: DESKTOP_BG_KEY, value: window.__pmDesktopBg || "", label: "\u684C\u9762\u80CC\u666F" });
   }
-  async function saveBgLocal() {
-    const current = window.__pmBgLocal || {};
-    if (!current || typeof current !== "object" || Array.isArray(current)) throw new Error("\u4F1A\u8BDD\u80CC\u666F\u6570\u636E\u635F\u574F\uFF1A\u5FC5\u987B\u662F\u5BF9\u8C61");
-    assertBackgroundEntries(current, "\u4F1A\u8BDD\u80CC\u666F\u6570\u636E");
-    const pointers = /* @__PURE__ */ Object.create(null);
-    const previousPointers = readLocalBackgroundPointers();
-    const mutations = [];
-    const prepareMutation = async (key) => {
-      const storageKey = LOCAL_BG_PREFIX + key;
-      const hadPrimary = previousPointers[key] === IDB_MARKER;
-      const previousValue = await readPreviousBackground(storageKey, hadPrimary, "\u4F1A\u8BDD\u80CC\u666F");
-      return { key: storageKey, hadPrimary, previousValue };
-    };
-    try {
-      for (const [key, value] of Object.entries(current)) {
-        if (isBigData(value)) {
-          const mutation = await prepareMutation(key);
-          if (!await pmIDBSet(mutation.key, value)) throw new Error("\u4F1A\u8BDD\u80CC\u666F\u4FDD\u5B58\u5931\u8D25\uFF1AIndexedDB \u4E0D\u53EF\u7528");
-          mutations.push(mutation);
-          pointers[key] = IDB_MARKER;
-        } else {
-          if (previousPointers[key] === IDB_MARKER) {
-            const mutation = await prepareMutation(key);
-            if (!await pmIDBDel(mutation.key)) throw new Error("\u4F1A\u8BDD\u80CC\u666F\u5220\u9664\u5931\u8D25\uFF1AIndexedDB \u4E0D\u53EF\u7528");
-            mutations.push(mutation);
+  async function saveBgLocal({ data = window.__pmBgLocal, coordinated = false } = {}) {
+    const persist = async (snapshot, protectedScopes = []) => {
+      if (!snapshot || typeof snapshot !== "object" || Array.isArray(snapshot)) throw new Error("\u4F1A\u8BDD\u80CC\u666F\u6570\u636E\u635F\u574F\uFF1A\u5FC5\u987B\u662F\u5BF9\u8C61");
+      assertBackgroundEntries(snapshot, "\u4F1A\u8BDD\u80CC\u666F\u6570\u636E");
+      let current = snapshot;
+      if (protectedScopes.length) {
+        const pointers2 = readLocalBackgroundPointers();
+        current = structuredClone(snapshot);
+        for (const scope of protectedScopes) {
+          const prefix = `${scope}_`;
+          for (const key of Object.keys(current)) {
+            if (key.startsWith(prefix)) delete current[key];
           }
-          pointers[key] = value;
+          for (const [key, pointer] of Object.entries(pointers2)) {
+            if (!key.startsWith(prefix)) continue;
+            if (pointer === IDB_MARKER) {
+              const value = await pmIDBGet(LOCAL_BG_PREFIX + key);
+              if (typeof value !== "string") throw new Error("\u4F1A\u8BDD\u80CC\u666F\u4E3B\u5B58\u50A8\u8BFB\u53D6\u5931\u8D25\uFF1AIndexedDB \u4E0D\u53EF\u7528\u6216\u6570\u636E\u7F3A\u5931");
+              current[key] = value;
+            } else {
+              current[key] = pointer;
+            }
+          }
         }
       }
-      for (const [key, previousValue] of Object.entries(previousPointers)) {
-        if (previousValue !== IDB_MARKER || Object.hasOwn(current, key)) continue;
-        const mutation = await prepareMutation(key);
-        if (!await pmIDBDel(mutation.key)) throw new Error("\u4F1A\u8BDD\u80CC\u666F\u5220\u9664\u5931\u8D25\uFF1AIndexedDB \u4E0D\u53EF\u7528");
-        mutations.push(mutation);
-      }
+      const pointers = /* @__PURE__ */ Object.create(null);
+      const previousPointers = readLocalBackgroundPointers();
+      const mutations = [];
+      const prepareMutation = async (key) => {
+        const storageKey = LOCAL_BG_PREFIX + key;
+        const hadPrimary = previousPointers[key] === IDB_MARKER;
+        const previousValue = await readPreviousBackground(storageKey, hadPrimary, "\u4F1A\u8BDD\u80CC\u666F");
+        return { key: storageKey, hadPrimary, previousValue };
+      };
       try {
-        localStorage.setItem(LOCAL_BG_INDEX_KEY, JSON.stringify(pointers));
-      } catch (error) {
-        throw new Error("\u4F1A\u8BDD\u80CC\u666F\u7D22\u5F15\u4FDD\u5B58\u5931\u8D25\uFF1A\u6D4F\u89C8\u5668\u5B58\u50A8\u4E0D\u53EF\u7528");
-      }
-    } catch (error) {
-      if (mutations.length) {
-        try {
-          await restoreBackgroundMutations(mutations, "\u4F1A\u8BDD\u80CC\u666F");
-        } catch (compensationError) {
-          throw combinedBackgroundError(error, compensationError);
+        for (const [key, value] of Object.entries(current)) {
+          if (isBigData(value)) {
+            const mutation = await prepareMutation(key);
+            if (!await pmIDBSet(mutation.key, value)) throw new Error("\u4F1A\u8BDD\u80CC\u666F\u4FDD\u5B58\u5931\u8D25\uFF1AIndexedDB \u4E0D\u53EF\u7528");
+            mutations.push(mutation);
+            pointers[key] = IDB_MARKER;
+          } else {
+            if (previousPointers[key] === IDB_MARKER) {
+              const mutation = await prepareMutation(key);
+              if (!await pmIDBDel(mutation.key)) throw new Error("\u4F1A\u8BDD\u80CC\u666F\u5220\u9664\u5931\u8D25\uFF1AIndexedDB \u4E0D\u53EF\u7528");
+              mutations.push(mutation);
+            }
+            pointers[key] = value;
+          }
         }
+        for (const [key, previousValue] of Object.entries(previousPointers)) {
+          if (previousValue !== IDB_MARKER || Object.hasOwn(current, key)) continue;
+          const mutation = await prepareMutation(key);
+          if (!await pmIDBDel(mutation.key)) throw new Error("\u4F1A\u8BDD\u80CC\u666F\u5220\u9664\u5931\u8D25\uFF1AIndexedDB \u4E0D\u53EF\u7528");
+          mutations.push(mutation);
+        }
+        try {
+          localStorage.setItem(LOCAL_BG_INDEX_KEY, JSON.stringify(pointers));
+        } catch (error) {
+          throw new Error("\u4F1A\u8BDD\u80CC\u666F\u7D22\u5F15\u4FDD\u5B58\u5931\u8D25\uFF1A\u6D4F\u89C8\u5668\u5B58\u50A8\u4E0D\u53EF\u7528");
+        }
+      } catch (error) {
+        if (mutations.length) {
+          try {
+            await restoreBackgroundMutations(mutations, "\u4F1A\u8BDD\u80CC\u666F");
+          } catch (compensationError) {
+            throw combinedBackgroundError(error, compensationError);
+          }
+        }
+        throw error;
       }
-      throw error;
-    }
+    };
+    if (coordinated) return persist(structuredClone(data));
+    return enqueueDirectorySave("backgrounds", data, persist);
   }
 
   // src/phone-directory.js
@@ -12113,6 +12471,566 @@ ${antiFluff}`;
       });
     };
     Object.assign(deps, { showGroupForm });
+  }
+
+  // src/branch-scope-inheritance.js
+  var clone6 = (value) => structuredClone(value);
+  var own = (value, key) => !!value && typeof value === "object" && Object.hasOwn(value, key);
+  var validText = (value) => typeof value === "string" && value.trim() ? value.trim() : "";
+  var BRANCH_INTERACTIVE_STORE_KEY = "ST_INTERACTIVE_SCENES_V1";
+  var pendingByTarget = /* @__PURE__ */ new Map();
+  function resolveBranchInheritance(context) {
+    const avatar = validText(context?.characters?.[context.characterId]?.avatar);
+    const targetChatId = validText(getCurrentChatId(context));
+    const parentChatId = validText(context?.chatMetadata?.main_chat || context?.chat_metadata?.main_chat);
+    if (!avatar || !targetChatId || !parentChatId || parentChatId === targetChatId) return null;
+    const sourceId = getStorageIdFor(avatar, parentChatId);
+    const targetId = getStorageIdFor(avatar, targetChatId);
+    if (sourceId === "sms_unknown__default" || targetId === "sms_unknown__default" || sourceId === targetId) return null;
+    return { avatar, parentChatId, targetChatId, sourceId, targetId };
+  }
+  function scopeBackgroundKeys(storageId, backgrounds) {
+    const prefix = `${storageId}_`;
+    return Object.keys(backgrounds || {}).filter((key) => key.startsWith(prefix));
+  }
+  function hasTargetData(targetId, stores) {
+    const maps = [stores.histories, stores.groupMeta, stores.pokeConfig, stores.characterBehavior, stores.bidirectional];
+    if (maps.some((store) => own(store, targetId))) return true;
+    if (scopeBackgroundKeys(targetId, stores.backgrounds).length) return true;
+    if (own(stores.interactive?.scopes, targetId) || own(stores.phoneUi?.scopes, targetId)) return true;
+    if (own(stores.calendar?.scopes, targetId) || own(stores.occasions?.scopes, targetId) || own(stores.cycles?.scopes, targetId) || own(stores.recipes?.scopes, targetId)) return true;
+    return own(stores.budget?.communitySceneIdsByStorage, targetId) || own(stores.budget?.communitySelectionsByStorage, targetId);
+  }
+  function copyEntry(target, source, sourceId, targetId) {
+    if (own(source, sourceId)) target[targetId] = clone6(source[sourceId]);
+  }
+  function remapInteractiveScope(sourceScope, targetId) {
+    const scope = clone6(sourceScope);
+    const actorIdMap = /* @__PURE__ */ new Map();
+    const actors = {};
+    for (const [sourceActorId, actor] of Object.entries(scope.actors || {})) {
+      const targetActorId = deriveInteractiveActorId(targetId, actor.type, actor.bindingKey);
+      actorIdMap.set(sourceActorId, targetActorId);
+      actors[targetActorId] = { ...actor, actorId: targetActorId };
+    }
+    const remapAuthor = (item) => {
+      if (actorIdMap.has(item.authorId)) item.authorId = actorIdMap.get(item.authorId);
+    };
+    for (const scene of Object.values(scope.scenes || {})) {
+      for (const post of scene.posts || []) {
+        remapAuthor(post);
+        for (const comment of post.comments || []) remapAuthor(comment);
+      }
+      for (const danmaku of scene.live?.danmaku || []) remapAuthor(danmaku);
+    }
+    scope.actors = actors;
+    return scope;
+  }
+  function createCandidates(sourceId, targetId, stores) {
+    const next = clone6(stores);
+    for (const key of ["histories", "groupMeta", "pokeConfig", "characterBehavior", "bidirectional"]) {
+      copyEntry(next[key], stores[key], sourceId, targetId);
+    }
+    for (const key of scopeBackgroundKeys(sourceId, stores.backgrounds)) {
+      next.backgrounds[`${targetId}${key.slice(sourceId.length)}`] = clone6(stores.backgrounds[key]);
+    }
+    if (own(stores.interactive.scopes, sourceId)) {
+      next.interactive.scopes[targetId] = remapInteractiveScope(stores.interactive.scopes[sourceId], targetId);
+    }
+    for (const key of ["phoneUi", "calendar", "occasions", "cycles", "recipes"]) {
+      copyEntry(next[key].scopes, stores[key].scopes, sourceId, targetId);
+    }
+    copyEntry(next.budget.communitySceneIdsByStorage, stores.budget.communitySceneIdsByStorage, sourceId, targetId);
+    copyEntry(next.budget.communitySelectionsByStorage, stores.budget.communitySelectionsByStorage, sourceId, targetId);
+    next.groupMeta = normalizeGroupMetaStore(next.groupMeta);
+    next.characterBehavior = normalizeCharacterBehaviorStore(next.characterBehavior);
+    next.interactive = normalizeInteractiveStore(next.interactive);
+    next.phoneUi = normalizePhoneUiState(next.phoneUi, next.interactive);
+    next.calendar = normalizeCalendarStore(next.calendar);
+    next.occasions = normalizeOccasionStore(next.occasions);
+    next.cycles = normalizeCycleStore(next.cycles);
+    next.recipes = normalizeRecipeStore(next.recipes);
+    next.budget = normalizeBudgetConfig(next.budget);
+    return next;
+  }
+  function replaceEntry(target, source, key) {
+    if (own(source, key)) target[key] = clone6(source[key]);
+    else delete target[key];
+  }
+  function mergeBranchScope(current, desired, targetId) {
+    const next = clone6(normalizeStores(current));
+    const source = normalizeStores(desired);
+    for (const key of ["histories", "groupMeta", "pokeConfig", "characterBehavior", "bidirectional"]) {
+      replaceEntry(next[key], source[key], targetId);
+    }
+    for (const key of scopeBackgroundKeys(targetId, next.backgrounds)) delete next.backgrounds[key];
+    for (const key of scopeBackgroundKeys(targetId, source.backgrounds)) next.backgrounds[key] = clone6(source.backgrounds[key]);
+    for (const key of ["interactive", "phoneUi", "calendar", "occasions", "cycles", "recipes"]) {
+      replaceEntry(next[key].scopes, source[key].scopes, targetId);
+    }
+    replaceEntry(next.budget.communitySceneIdsByStorage, source.budget.communitySceneIdsByStorage, targetId);
+    replaceEntry(next.budget.communitySelectionsByStorage, source.budget.communitySelectionsByStorage, targetId);
+    return normalizeStores(next);
+  }
+  function normalizeStores(stores) {
+    return {
+      histories: stores.histories || {},
+      groupMeta: stores.groupMeta || {},
+      pokeConfig: stores.pokeConfig || {},
+      characterBehavior: stores.characterBehavior || {},
+      bidirectional: stores.bidirectional || {},
+      backgrounds: stores.backgrounds || {},
+      interactive: stores.interactive || { version: 2, scopes: {} },
+      phoneUi: stores.phoneUi || { version: 1, scopes: {} },
+      calendar: stores.calendar || { version: 1, scopes: {} },
+      occasions: stores.occasions || { version: 1, scopes: {} },
+      cycles: stores.cycles || { version: 1, scopes: {} },
+      recipes: stores.recipes || { version: 1, scopes: {} },
+      budget: stores.budget || normalizeBudgetConfig()
+    };
+  }
+  function same(value, other) {
+    return JSON.stringify(value) === JSON.stringify(other);
+  }
+  function replaceScope(store, desired, targetId) {
+    const next = clone6(store || {});
+    replaceEntry(next, desired || {}, targetId);
+    return next;
+  }
+  async function readHistoriesForBranch() {
+    const keys = await pmIDBKeys();
+    if (!Array.isArray(keys)) throw new Error("\u5206\u652F\u7EE7\u627F\u6765\u6E90\u8BFB\u53D6\u5931\u8D25\uFF1A\u65E0\u6CD5\u679A\u4E3E\u804A\u5929\u8BB0\u5F55");
+    if (keys.includes("ST_SMS_DATA_V2")) {
+      const value = await pmIDBGet("ST_SMS_DATA_V2");
+      if (!value || typeof value !== "object" || Array.isArray(value)) {
+        throw new Error("\u5206\u652F\u7EE7\u627F\u6765\u6E90\u8BFB\u53D6\u5931\u8D25\uFF1A\u804A\u5929\u8BB0\u5F55\u4E3B\u5B58\u50A8\u65E0\u6548");
+      }
+      return value;
+    }
+    try {
+      const raw = localStorage.getItem("ST_SMS_DATA_V2");
+      if (!raw) return {};
+      const value = JSON.parse(raw);
+      if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("\u683C\u5F0F\u65E0\u6548");
+      return value;
+    } catch (error) {
+      throw new Error("\u5206\u652F\u7EE7\u627F\u6765\u6E90\u8BFB\u53D6\u5931\u8D25\uFF1A\u804A\u5929\u8BB0\u5F55\u540E\u5907\u5B58\u50A8\u65E0\u6548");
+    }
+  }
+  async function readGroupMetaForBranch() {
+    const fallback = localStorage.getItem("ST_SMS_GROUP_META_LOCAL_FALLBACK");
+    if (fallback) return normalizeGroupMetaStore(JSON.parse(fallback));
+    const value = await pmIDBGet("ST_SMS_GROUP_META");
+    if (value && typeof value === "object" && !Array.isArray(value)) return normalizeGroupMetaStore(value);
+    const raw = localStorage.getItem("ST_SMS_GROUP_META");
+    return normalizeGroupMetaStore(raw ? JSON.parse(raw) : {});
+  }
+  function readLocalStoreForBranch(key, normalize, label) {
+    try {
+      const raw = localStorage.getItem(key);
+      return normalize(raw ? JSON.parse(raw) : {});
+    } catch (error) {
+      throw new Error(`\u5206\u652F\u7EE7\u627F\u6765\u6E90\u8BFB\u53D6\u5931\u8D25\uFF1A${label}`);
+    }
+  }
+  async function readInteractiveForBranch() {
+    try {
+      const fallback = localStorage.getItem(`${BRANCH_INTERACTIVE_STORE_KEY}_LOCAL_FALLBACK`);
+      if (fallback) return normalizeInteractiveStore(JSON.parse(fallback));
+      const keys = await pmIDBKeys();
+      if (!Array.isArray(keys)) throw new Error("\u65E0\u6CD5\u679A\u4E3E IndexedDB");
+      if (!keys.includes(BRANCH_INTERACTIVE_STORE_KEY)) return normalizeInteractiveStore(null);
+      const value = await pmIDBGet(BRANCH_INTERACTIVE_STORE_KEY);
+      if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("\u4E3B\u5B58\u50A8\u65E0\u6548");
+      return normalizeInteractiveStore(value);
+    } catch (error) {
+      throw new Error("\u5206\u652F\u7EE7\u627F\u6765\u6E90\u8BFB\u53D6\u5931\u8D25\uFF1A\u4E92\u52A8\u793E\u533A\u6570\u636E\u65E0\u6548");
+    }
+  }
+  function readPhoneUiForBranch(interactive) {
+    try {
+      return normalizePhoneUiState(JSON.parse(localStorage.getItem(PHONE_UI_STORAGE_KEY) || "null"), interactive);
+    } catch (error) {
+      throw new Error("\u5206\u652F\u7EE7\u627F\u6765\u6E90\u8BFB\u53D6\u5931\u8D25\uFF1A\u624B\u673A\u754C\u9762\u72B6\u6001\u65E0\u6548");
+    }
+  }
+  function readCalendarForBranch(key, normalize, label) {
+    return readLocalStoreForBranch(key, (value) => normalize({ version: 1, scopes: value?.scopes || {} }), label);
+  }
+  async function readBackgroundsForBranch() {
+    const pointers = readLocalStoreForBranch("ST_SMS_BG_LOCAL", (value) => value, "\u4F1A\u8BDD\u80CC\u666F\u7D22\u5F15");
+    const backgrounds = {};
+    for (const [key, pointer] of Object.entries(pointers)) {
+      if (typeof pointer !== "string") throw new Error("\u5206\u652F\u7EE7\u627F\u6765\u6E90\u8BFB\u53D6\u5931\u8D25\uFF1A\u4F1A\u8BDD\u80CC\u666F\u7D22\u5F15\u65E0\u6548");
+      if (pointer !== IDB_MARKER) {
+        backgrounds[key] = pointer;
+        continue;
+      }
+      const value = await pmIDBGet(`ST_SMS_BG_LOCAL_${key}`);
+      if (typeof value !== "string") throw new Error("\u5206\u652F\u7EE7\u627F\u6765\u6E90\u8BFB\u53D6\u5931\u8D25\uFF1A\u4F1A\u8BDD\u80CC\u666F\u4E3B\u5B58\u50A8\u65E0\u6548");
+      backgrounds[key] = value;
+    }
+    return backgrounds;
+  }
+  function readBudgetForBranch() {
+    return readLocalStoreForBranch(BUDGET_CONFIG_KEY, normalizeBudgetConfig, "\u793E\u533A\u9884\u7B97\u914D\u7F6E");
+  }
+  function commitBudgetScope({ desired, expected, targetId }) {
+    const current = readBudgetForBranch();
+    const restoring = !own(desired.communitySceneIdsByStorage, targetId) && !own(desired.communitySelectionsByStorage, targetId);
+    const targetChanged = !same(current.communitySceneIdsByStorage[targetId], expected.communitySceneIdsByStorage[targetId]) || !same(current.communitySelectionsByStorage[targetId], expected.communitySelectionsByStorage[targetId]);
+    if (!restoring && (own(current.communitySceneIdsByStorage, targetId) || own(current.communitySelectionsByStorage, targetId))) {
+      throw new Error("\u5206\u652F\u7EE7\u627F\u4FDD\u5B58\u5931\u8D25\uFF1A\u76EE\u6807 scope \u5DF2\u88AB\u5E76\u53D1\u5199\u5165 (\u793E\u533A\u9884\u7B97\u914D\u7F6E)");
+    }
+    if (restoring && targetChanged) {
+      throw new Error("\u5206\u652F\u7EE7\u627F\u8865\u507F\u53D6\u6D88\uFF1A\u76EE\u6807 scope \u5DF2\u5728\u4E8B\u52A1\u540E\u88AB\u66F4\u65B0 (\u793E\u533A\u9884\u7B97\u914D\u7F6E)");
+    }
+    const merged = clone6(current);
+    replaceEntry(merged.communitySceneIdsByStorage, desired.communitySceneIdsByStorage, targetId);
+    replaceEntry(merged.communitySelectionsByStorage, desired.communitySelectionsByStorage, targetId);
+    try {
+      localStorage.setItem(BUDGET_CONFIG_KEY, JSON.stringify(normalizeBudgetConfig(merged)));
+    } catch (error) {
+      throw new Error("\u5206\u652F\u7EE7\u627F\u4FDD\u5B58\u5931\u8D25\uFF1A\u793E\u533A\u9884\u7B97\u914D\u7F6E\u4E0D\u53EF\u7528");
+    }
+    return normalizeBudgetConfig(merged);
+  }
+  function commitLocalScope({ key, desired, expected, targetId, normalize, label }) {
+    const current = readLocalStoreForBranch(key, normalize, label);
+    const restoring = !own(desired, targetId);
+    if (!restoring && own(current, targetId)) {
+      throw new Error(`\u5206\u652F\u7EE7\u627F\u4FDD\u5B58\u5931\u8D25\uFF1A\u76EE\u6807 scope \u5DF2\u88AB\u5E76\u53D1\u5199\u5165 (${label})`);
+    }
+    if (restoring && own(current, targetId) && !same(current[targetId], expected[targetId])) {
+      throw new Error(`\u5206\u652F\u7EE7\u627F\u8865\u507F\u53D6\u6D88\uFF1A\u76EE\u6807 scope \u5DF2\u5728\u4E8B\u52A1\u540E\u88AB\u66F4\u65B0 (${label})`);
+    }
+    const merged = replaceScope(current, desired, targetId);
+    try {
+      localStorage.setItem(key, JSON.stringify(normalize(merged)));
+    } catch (error) {
+      throw new Error(`\u5206\u652F\u7EE7\u627F\u4FDD\u5B58\u5931\u8D25\uFF1A${label}\u4E0D\u53EF\u7528`);
+    }
+    return merged;
+  }
+  async function commitLocalScopeCoordinated(store, options) {
+    const token = markDirectoryBranchScope(store, options.targetId);
+    try {
+      return await enqueueDirectoryOperation(store, () => commitLocalScope(options));
+    } finally {
+      completeDirectoryBranchScope(store, token);
+    }
+  }
+  async function commitBudgetScopeCoordinated(options) {
+    const token = markDirectoryBranchScope("budget", options.targetId);
+    try {
+      return await enqueueDirectoryOperation("budget", () => commitBudgetScope(options));
+    } finally {
+      completeDirectoryBranchScope("budget", token);
+    }
+  }
+  async function commitCalendarScope({ store, key, desired, expected, targetId, normalize, label }) {
+    return enqueueDirectoryOperation(store, async () => {
+      const current = readCalendarForBranch(key, normalize, label);
+      const restoring = !own(desired.scopes, targetId);
+      if (!restoring && own(current.scopes, targetId)) {
+        throw new Error(`\u5206\u652F\u7EE7\u627F\u4FDD\u5B58\u5931\u8D25\uFF1A\u76EE\u6807 scope \u5DF2\u88AB\u5E76\u53D1\u5199\u5165 (${label})`);
+      }
+      if (restoring && own(current.scopes, targetId) && !same(current.scopes[targetId], expected.scopes[targetId])) {
+        throw new Error(`\u5206\u652F\u7EE7\u627F\u8865\u507F\u53D6\u6D88\uFF1A\u76EE\u6807 scope \u5DF2\u5728\u4E8B\u52A1\u540E\u88AB\u66F4\u65B0 (${label})`);
+      }
+      const merged = clone6(current);
+      replaceEntry(merged.scopes, desired.scopes, targetId);
+      try {
+        localStorage.setItem(key, JSON.stringify(normalize(merged)));
+      } catch (error) {
+        throw new Error(`\u5206\u652F\u7EE7\u627F\u4FDD\u5B58\u5931\u8D25\uFF1A${label}\u4E0D\u53EF\u7528`);
+      }
+      return merged;
+    });
+  }
+  async function commitInteractiveScope({ desired, expected, targetId }) {
+    const token = markDirectoryBranchScope("interactive", targetId);
+    try {
+      return await enqueueDirectoryOperation("interactive", async () => {
+        const current = await readInteractiveForBranch();
+        const restoring = !own(desired.scopes, targetId);
+        if (!restoring && own(current.scopes, targetId)) {
+          throw new Error("\u5206\u652F\u7EE7\u627F\u4FDD\u5B58\u5931\u8D25\uFF1A\u76EE\u6807 scope \u5DF2\u88AB\u5E76\u53D1\u5199\u5165 (\u4E92\u52A8\u793E\u533A\u6570\u636E)");
+        }
+        if (restoring && own(current.scopes, targetId) && !same(current.scopes[targetId], expected.scopes[targetId])) {
+          throw new Error("\u5206\u652F\u7EE7\u627F\u8865\u507F\u53D6\u6D88\uFF1A\u76EE\u6807 scope \u5DF2\u5728\u4E8B\u52A1\u540E\u88AB\u66F4\u65B0 (\u4E92\u52A8\u793E\u533A\u6570\u636E)");
+        }
+        const merged = clone6(current);
+        replaceEntry(merged.scopes, desired.scopes, targetId);
+        await saveInteractiveScenes(normalizeInteractiveStore(merged), { coordinated: true });
+        return merged;
+      });
+    } finally {
+      completeDirectoryBranchScope("interactive", token);
+    }
+  }
+  async function commitBackgroundScope({ desired, expected, targetId }) {
+    const token = markDirectoryBranchScope("backgrounds", targetId);
+    try {
+      return await enqueueDirectoryOperation("backgrounds", async () => {
+        const current = await readBackgroundsForBranch();
+        const expectedKeys = scopeBackgroundKeys(targetId, expected);
+        const currentKeys = scopeBackgroundKeys(targetId, current);
+        const desiredKeys = scopeBackgroundKeys(targetId, desired);
+        const restoring = desiredKeys.length === 0;
+        const currentMatchesExpected = currentKeys.length === expectedKeys.length && currentKeys.every((key) => expectedKeys.includes(key) && same(current[key], expected[key]));
+        if (!restoring && currentKeys.length) {
+          throw new Error("\u5206\u652F\u7EE7\u627F\u4FDD\u5B58\u5931\u8D25\uFF1A\u76EE\u6807 scope \u5DF2\u88AB\u5E76\u53D1\u5199\u5165 (\u4F1A\u8BDD\u80CC\u666F)");
+        }
+        if (restoring && currentKeys.length && !currentMatchesExpected) {
+          throw new Error("\u5206\u652F\u7EE7\u627F\u8865\u507F\u53D6\u6D88\uFF1A\u76EE\u6807 scope \u5DF2\u5728\u4E8B\u52A1\u540E\u88AB\u66F4\u65B0 (\u4F1A\u8BDD\u80CC\u666F)");
+        }
+        const merged = clone6(current);
+        for (const key of currentKeys) delete merged[key];
+        for (const key of desiredKeys) merged[key] = clone6(desired[key]);
+        await saveBgLocal({ data: merged, coordinated: true });
+        return merged;
+      });
+    } finally {
+      completeDirectoryBranchScope("backgrounds", token);
+    }
+  }
+  async function commitDirectoryScope(store, desired, expected, targetId) {
+    const token = markDirectoryBranchScope(store, targetId);
+    try {
+      return await enqueueDirectoryOperation(store, async () => {
+        const current = store === "histories" ? await readHistoriesForBranch() : await readGroupMetaForBranch();
+        const restoring = !own(desired, targetId);
+        if (!restoring && own(current, targetId)) {
+          throw new Error(`\u5206\u652F\u7EE7\u627F\u4FDD\u5B58\u5931\u8D25\uFF1A\u76EE\u6807 scope \u5DF2\u88AB\u5E76\u53D1\u5199\u5165 (${store})`);
+        }
+        if (restoring && own(current, targetId) && !same(current[targetId], expected[targetId])) {
+          throw new Error(`\u5206\u652F\u7EE7\u627F\u8865\u507F\u53D6\u6D88\uFF1A\u76EE\u6807 scope \u5DF2\u5728\u4E8B\u52A1\u540E\u88AB\u66F4\u65B0 (${store})`);
+        }
+        const merged = replaceScope(current, desired, targetId);
+        if (store === "histories") await saveHistoriesStrict(merged, { requireLocalMirror: true, coordinated: true });
+        else await saveGroupMeta(merged, { coordinated: true });
+        return merged;
+      });
+    } finally {
+      completeDirectoryBranchScope(store, token);
+    }
+  }
+  async function inheritPhoneDataOnBranch({ context, loadStores, saveStores, loadLineage, saveLineage, commitLineage, now: now2 = Date.now }) {
+    const branch = resolveBranchInheritance(context);
+    if (!branch) return { status: "skipped", reason: "not-branch" };
+    if (pendingByTarget.has(branch.targetId)) return pendingByTarget.get(branch.targetId);
+    const operation = (async () => {
+      const lineage = await loadLineage();
+      if (own(lineage, branch.targetId)) return { status: "skipped", reason: "already-cloned" };
+      const stores = normalizeStores(await loadStores());
+      if (hasTargetData(branch.targetId, stores)) return { status: "skipped", reason: "target-not-empty" };
+      const candidate = createCandidates(branch.sourceId, branch.targetId, stores);
+      const nextLineage = {
+        ...lineage,
+        [branch.targetId]: {
+          sourceId: branch.sourceId,
+          parentChatId: branch.parentChatId,
+          targetChatId: branch.targetChatId,
+          avatar: branch.avatar,
+          completedAt: now2(),
+          schemaVersion: 1
+        }
+      };
+      let storesSaved = false;
+      try {
+        await saveStores(candidate, { branch, previous: stores });
+        storesSaved = true;
+        if (commitLineage) await commitLineage(branch.targetId, nextLineage[branch.targetId]);
+        else await saveLineage(nextLineage);
+        return { status: "cloned", ...branch };
+      } catch (error) {
+        if (storesSaved) {
+          try {
+            await saveStores(stores, { branch, previous: candidate });
+          } catch (rollbackError) {
+            const combined = new Error(`${error.message}\uFF1B\u5206\u652F\u7EE7\u627F\u6570\u636E\u56DE\u6EDA\u5931\u8D25\uFF1A${rollbackError.message}`);
+            combined.cause = error;
+            combined.rollbackError = rollbackError;
+            throw combined;
+          }
+        }
+        throw error;
+      }
+    })().finally(() => pendingByTarget.delete(branch.targetId));
+    pendingByTarget.set(branch.targetId, operation);
+    return operation;
+  }
+  function awaitPendingBranchInheritance(storageId) {
+    return pendingByTarget.get(storageId) || Promise.resolve(null);
+  }
+  async function loadProductionStores() {
+    const interactive = await readInteractiveForBranch();
+    return normalizeStores({
+      histories: await readHistoriesForBranch(),
+      groupMeta: await readGroupMetaForBranch(),
+      pokeConfig: readLocalStoreForBranch("ST_SMS_POKE_CONFIG", (value) => value, "\u62CD\u4E00\u62CD\u914D\u7F6E"),
+      characterBehavior: readLocalStoreForBranch(CHARACTER_BEHAVIOR_KEY, normalizeCharacterBehaviorStore, "\u89D2\u8272\u884C\u4E3A\u914D\u7F6E"),
+      bidirectional: readLocalStoreForBranch("ST_SMS_BIDIRECTIONAL", (value) => value, "\u53CC\u5411\u6CE8\u5165\u914D\u7F6E"),
+      backgrounds: await readBackgroundsForBranch(),
+      interactive,
+      phoneUi: readPhoneUiForBranch(interactive),
+      calendar: readCalendarForBranch(CALENDAR_STORAGE_KEY, normalizeCalendarStore, "\u65E5\u5386\u6570\u636E"),
+      occasions: readCalendarForBranch(CALENDAR_OCCASION_STORAGE_KEY, normalizeOccasionStore, "\u751F\u65E5\u4E0E\u7EAA\u5FF5\u65E5\u6570\u636E"),
+      cycles: readCalendarForBranch(CALENDAR_CYCLE_STORAGE_KEY, normalizeCycleStore, "\u751F\u7406\u5468\u671F\u6570\u636E"),
+      recipes: readCalendarForBranch(CALENDAR_RECIPE_STORAGE_KEY, normalizeRecipeStore, "\u83DC\u8C31\u6570\u636E"),
+      budget: readBudgetForBranch()
+    });
+  }
+  async function persistProductionStores(next, { branch } = {}) {
+    const targetId = branch?.targetId;
+    const previous = clone6(await loadProductionStores());
+    const apply = async (desired, expected) => {
+      if (targetId) {
+        globalThis.window.__pmHistories = await commitDirectoryScope("histories", desired.histories, expected.histories, targetId);
+        globalThis.window.__pmGroupMeta = await commitDirectoryScope("groupMeta", desired.groupMeta, expected.groupMeta, targetId);
+      } else {
+        globalThis.window.__pmHistories = desired.histories;
+        await saveHistoriesStrict(desired.histories, { requireLocalMirror: true });
+        globalThis.window.__pmGroupMeta = desired.groupMeta;
+        await saveGroupMeta(desired.groupMeta);
+      }
+      if (targetId) {
+        globalThis.window.__pmPokeConfig = await commitLocalScopeCoordinated("pokeConfig", {
+          key: "ST_SMS_POKE_CONFIG",
+          desired: desired.pokeConfig,
+          expected: expected.pokeConfig,
+          targetId,
+          normalize: (value) => value,
+          label: "\u62CD\u4E00\u62CD\u914D\u7F6E"
+        });
+        globalThis.window.__pmCharacterBehavior = await commitLocalScopeCoordinated("characterBehavior", {
+          key: CHARACTER_BEHAVIOR_KEY,
+          desired: desired.characterBehavior,
+          expected: expected.characterBehavior,
+          targetId,
+          normalize: normalizeCharacterBehaviorStore,
+          label: "\u89D2\u8272\u884C\u4E3A\u914D\u7F6E"
+        });
+        globalThis.window.__pmBidirectional = await commitLocalScopeCoordinated("bidirectional", {
+          key: "ST_SMS_BIDIRECTIONAL",
+          desired: desired.bidirectional,
+          expected: expected.bidirectional,
+          targetId,
+          normalize: (value) => value,
+          label: "\u53CC\u5411\u6CE8\u5165\u914D\u7F6E"
+        });
+        globalThis.window.__pmBudgetConfig = await commitBudgetScopeCoordinated({ desired: desired.budget, expected: expected.budget, targetId });
+      } else {
+        globalThis.window.__pmPokeConfig = desired.pokeConfig;
+        if (!savePokeConfig()) throw new Error("\u5206\u652F\u7EE7\u627F\u4FDD\u5B58\u5931\u8D25\uFF1A\u62CD\u4E00\u62CD\u914D\u7F6E\u4E0D\u53EF\u7528");
+        globalThis.window.__pmCharacterBehavior = desired.characterBehavior;
+        if (!saveCharacterBehavior()) throw new Error("\u5206\u652F\u7EE7\u627F\u4FDD\u5B58\u5931\u8D25\uFF1A\u89D2\u8272\u884C\u4E3A\u914D\u7F6E\u4E0D\u53EF\u7528");
+        globalThis.window.__pmBidirectional = desired.bidirectional;
+        if (!saveBidirectional()) throw new Error("\u5206\u652F\u7EE7\u627F\u4FDD\u5B58\u5931\u8D25\uFF1A\u53CC\u5411\u6CE8\u5165\u914D\u7F6E\u4E0D\u53EF\u7528");
+        globalThis.window.__pmBudgetConfig = desired.budget;
+        if (!saveBudgetConfig(desired.budget)) throw new Error("\u5206\u652F\u7EE7\u627F\u4FDD\u5B58\u5931\u8D25\uFF1A\u793E\u533A\u9884\u7B97\u914D\u7F6E\u4E0D\u53EF\u7528");
+      }
+      if (targetId) {
+        globalThis.window.__pmBgLocal = await commitBackgroundScope({ desired: desired.backgrounds, expected: expected.backgrounds, targetId });
+        const interactive = await commitInteractiveScope({ desired: desired.interactive, expected: expected.interactive, targetId });
+        const phoneUiScopes = await commitLocalScopeCoordinated("phoneUi", {
+          key: PHONE_UI_STORAGE_KEY,
+          desired: desired.phoneUi.scopes,
+          expected: expected.phoneUi.scopes,
+          targetId,
+          normalize: (value) => normalizePhoneUiState({ version: 1, scopes: value }, interactive),
+          label: "\u624B\u673A\u9875\u9762\u72B6\u6001"
+        });
+        globalThis.window.__pmPhoneUiState = normalizePhoneUiState({ version: 1, scopes: phoneUiScopes }, interactive);
+        await commitCalendarScope({
+          store: "calendar",
+          key: CALENDAR_STORAGE_KEY,
+          desired: desired.calendar,
+          expected: expected.calendar,
+          targetId,
+          normalize: normalizeCalendarStore,
+          label: "\u65E5\u5386\u6570\u636E"
+        });
+        await commitCalendarScope({
+          store: "occasions",
+          key: CALENDAR_OCCASION_STORAGE_KEY,
+          desired: desired.occasions,
+          expected: expected.occasions,
+          targetId,
+          normalize: normalizeOccasionStore,
+          label: "\u751F\u65E5\u4E0E\u7EAA\u5FF5\u65E5\u6570\u636E"
+        });
+        await commitCalendarScope({
+          store: "cycles",
+          key: CALENDAR_CYCLE_STORAGE_KEY,
+          desired: desired.cycles,
+          expected: expected.cycles,
+          targetId,
+          normalize: normalizeCycleStore,
+          label: "\u751F\u7406\u5468\u671F\u6570\u636E"
+        });
+        await commitCalendarScope({
+          store: "recipes",
+          key: CALENDAR_RECIPE_STORAGE_KEY,
+          desired: desired.recipes,
+          expected: expected.recipes,
+          targetId,
+          normalize: normalizeRecipeStore,
+          label: "\u83DC\u8C31\u6570\u636E"
+        });
+      } else {
+        globalThis.window.__pmBgLocal = desired.backgrounds;
+        await saveBgLocal();
+        await saveInteractiveScenes(desired.interactive);
+        if (!savePhoneUiState(desired.phoneUi, desired.interactive)) throw new Error("\u5206\u652F\u7EE7\u627F\u4FDD\u5B58\u5931\u8D25\uFF1A\u624B\u673A\u9875\u9762\u72B6\u6001\u4E0D\u53EF\u7528");
+        if (!saveCalendar(desired.calendar) || !saveCalendarOccasions(desired.occasions) || !saveCalendarCycles(desired.cycles) || !saveCalendarRecipes(desired.recipes)) {
+          throw new Error("\u5206\u652F\u7EE7\u627F\u4FDD\u5B58\u5931\u8D25\uFF1A\u65E5\u5386 scope \u4E0D\u53EF\u7528");
+        }
+      }
+    };
+    try {
+      await apply(next, previous);
+    } catch (error) {
+      try {
+        const latest = await loadProductionStores();
+        await apply(targetId ? mergeBranchScope(latest, previous, targetId) : previous, next);
+      } catch (rollbackError) {
+        const combined = new Error(`${error.message}\uFF1B\u5206\u652F\u7EE7\u627F\u6301\u4E45\u5316\u56DE\u6EDA\u5931\u8D25\uFF1A${rollbackError.message}`);
+        combined.cause = error;
+        combined.rollbackError = rollbackError;
+        throw combined;
+      }
+      throw error;
+    }
+  }
+  function beginBranchInheritance(context, { getStorageId: getStorageId2, invalidateInteractiveStore, reloadCalendarStore } = {}) {
+    const branch = resolveBranchInheritance(context);
+    const branchScopeTokens = branch ? ["pokeConfig", "characterBehavior", "bidirectional", "budget"].map((store) => [store, markDirectoryBranchScope(store, branch.targetId)]) : [];
+    const operation = inheritPhoneDataOnBranch({
+      context,
+      loadStores: loadProductionStores,
+      saveStores: persistProductionStores,
+      loadLineage: loadBranchLineage,
+      commitLineage: commitBranchLineage
+    }).finally(() => {
+      for (const [store, token] of branchScopeTokens) completeDirectoryBranchScope(store, token);
+    });
+    return operation.then((result) => {
+      if (result.status === "cloned" && (!getStorageId2 || getStorageId2() === result.targetId)) {
+        try {
+          invalidateInteractiveStore?.();
+        } catch (error) {
+          console.warn("[phone-mode] \u5206\u652F\u7EE7\u627F\u540E\u7684\u4E92\u52A8\u8FD0\u884C\u6001\u5237\u65B0\u5931\u8D25", error);
+        }
+        try {
+          reloadCalendarStore?.();
+        } catch (error) {
+          console.warn("[phone-mode] \u5206\u652F\u7EE7\u627F\u540E\u7684\u65E5\u5386\u8FD0\u884C\u6001\u5237\u65B0\u5931\u8D25", error);
+        }
+      }
+      return result;
+    });
   }
 
   // src/community-injection.js
@@ -13304,15 +14222,23 @@ ${lines}`;
       }
       try {
         registerResolvedHostEvent(c.eventSource, et, "CHAT_CHANGED", () => {
+          const currentContext = getCtx();
           handleHostChatChanged({
             state,
             runtime,
-            chatLength: (c.chat || []).length,
+            chatLength: (currentContext?.chat || []).length,
             cancelCommunityGeneration: deps.cancelCommunityGeneration,
             cancelCalendarTasks: deps.cancelCalendarTasks,
             disarmAutoPoke,
             endPhone: window.__pmEnd,
             invalidateGeneration
+          });
+          beginBranchInheritance(currentContext, {
+            getStorageId: getStorageId2,
+            invalidateInteractiveStore: deps.invalidateInteractiveStore,
+            reloadCalendarStore: deps.reloadCalendarStore
+          }).catch((error) => {
+            console.warn("[phone-mode] \u5206\u652F\u624B\u673A\u6570\u636E\u7EE7\u627F\u5931\u8D25", error?.name || "Error");
           });
         });
       } catch (error) {
@@ -14057,6 +14983,13 @@ ${lines}`;
         state.phoneWindow.style.display = "flex";
         ensureVisibility();
         return;
+      }
+      const branchTargetId = getStorageId2();
+      try {
+        await awaitPendingBranchInheritance(branchTargetId);
+        await loadHistoriesFromIDB();
+      } catch (error) {
+        console.warn("[phone-mode] \u5206\u652F\u624B\u673A\u6570\u636E\u7EE7\u627F\u672A\u5B8C\u6210\uFF0C\u6309\u5F53\u524D\u5DF2\u6301\u4E45\u5316\u72B6\u6001\u6253\u5F00", error?.name || "Error");
       }
       try {
         const saved = JSON.parse(localStorage.getItem("ST_SMS_CONFIG"));
@@ -14990,7 +15923,7 @@ ${lines}`;
   }
 
   // src/settings-backup.js
-  var clone6 = (value) => JSON.parse(JSON.stringify(value));
+  var clone7 = (value) => JSON.parse(JSON.stringify(value));
   function structurallyEqual(left, right) {
     if (Object.is(left, right)) return true;
     if (Array.isArray(left) || Array.isArray(right)) {
@@ -15065,14 +15998,14 @@ ${lines}`;
     try {
       await beforeApply("apply");
       const nextState = await apply(void 0, prepared);
-      await persist(nextState);
+      await persist(nextState, "apply");
       await afterPersist("apply", nextState);
     } catch (error) {
       let rollbackState;
       try {
         await beforeApply("rollback");
         rollbackState = await apply(snapshot);
-        await persist(snapshot);
+        await persist(snapshot, "rollback");
         await afterPersist("rollback", rollbackState);
       } catch (rollbackError) {
         const combined = new Error(`${error.message}\uFF1B\u539F\u6570\u636E\u56DE\u6EDA\u5931\u8D25\uFF1A${rollbackError.message}`);
@@ -15089,21 +16022,22 @@ ${lines}`;
   function createBackupStateHandlers(deps = {}) {
     const capture = async () => {
       const interactiveScenes = normalizeInteractiveStore(await loadInteractiveScenes());
+      const branchLineage = await loadBranchLineage();
       return {
-        histories: clone6(window.__pmHistories || {}),
-        config: clone6(window.__pmConfig || {}),
-        theme: clone6(window.__pmTheme || {}),
-        profiles: clone6(window.__pmProfiles || []),
-        groupMeta: clone6(window.__pmGroupMeta || {}),
-        pokeConfig: clone6(window.__pmPokeConfig || {}),
-        bidirectional: clone6(window.__pmBidirectional || {}),
+        histories: clone7(window.__pmHistories || {}),
+        config: clone7(window.__pmConfig || {}),
+        theme: clone7(window.__pmTheme || {}),
+        profiles: clone7(window.__pmProfiles || []),
+        groupMeta: clone7(window.__pmGroupMeta || {}),
+        pokeConfig: clone7(window.__pmPokeConfig || {}),
+        bidirectional: clone7(window.__pmBidirectional || {}),
         injectionConfig: normalizeInjectionConfig(window.__pmInjectionConfig),
         emojis: cloneEmojiLibrary(window.__pmEmojis),
-        characterBehavior: clone6(window.__pmCharacterBehavior || {}),
+        characterBehavior: clone7(window.__pmCharacterBehavior || {}),
         wordyLimit: !!window.__pmWordyLimit,
         desktopBg: window.__pmDesktopBg || "",
         bgGlobal: window.__pmBgGlobal || "",
-        bgLocal: clone6(window.__pmBgLocal || {}),
+        bgLocal: clone7(window.__pmBgLocal || {}),
         interactiveScenes,
         phoneUiState: loadPhoneUiState(interactiveScenes),
         ambientStatus: normalizeAmbientStatus({ enabled: window.__pmTheme?.ambientStatusEnabled }),
@@ -15112,29 +16046,31 @@ ${lines}`;
         calendarHolidays: loadCalendarHolidays(),
         calendarWeather: loadCalendarWeather(),
         calendarCycles: loadCalendarCycles(),
-        calendarRecipes: loadCalendarRecipes()
+        calendarRecipes: loadCalendarRecipes(),
+        branchLineage: clone7(branchLineage)
       };
     };
     const apply = async (state) => {
       const interactiveScenes = normalizeInteractiveStore(state.interactiveScenes);
       const phoneUiState = normalizePhoneUiState(state.phoneUiState, interactiveScenes);
       const ambientStatus = normalizeAmbientStatus(state.ambientStatus ?? { enabled: state.theme?.ambientStatusEnabled });
-      window.__pmHistories = clone6(state.histories || {});
-      window.__pmConfig = clone6(state.config || {});
-      window.__pmTheme = clone6(state.theme || {});
+      window.__pmHistories = clone7(state.histories || {});
+      window.__pmConfig = clone7(state.config || {});
+      window.__pmTheme = clone7(state.theme || {});
       window.__pmTheme.ambientStatusEnabled = ambientStatus.enabled;
-      window.__pmProfiles = clone6(state.profiles || []);
-      window.__pmGroupMeta = clone6(state.groupMeta || {});
-      window.__pmPokeConfig = clone6(state.pokeConfig || {});
-      window.__pmBidirectional = clone6(state.bidirectional || {});
+      window.__pmProfiles = clone7(state.profiles || []);
+      window.__pmGroupMeta = clone7(state.groupMeta || {});
+      window.__pmPokeConfig = clone7(state.pokeConfig || {});
+      window.__pmBidirectional = clone7(state.bidirectional || {});
       window.__pmInjectionConfig = normalizeInjectionConfig(state.injectionConfig);
       window.__pmEmojis = cloneEmojiLibrary(state.emojis);
-      window.__pmCharacterBehavior = clone6(state.characterBehavior || {});
+      window.__pmCharacterBehavior = clone7(state.characterBehavior || {});
       window.__pmWordyLimit = !!state.wordyLimit;
       window.__pmDesktopBg = typeof state.desktopBg === "string" ? state.desktopBg : "";
       window.__pmBgGlobal = typeof state.bgGlobal === "string" ? state.bgGlobal : "";
-      window.__pmBgLocal = clone6(state.bgLocal || {});
+      window.__pmBgLocal = clone7(state.bgLocal || {});
       window.__pmPhoneUiState = phoneUiState;
+      window.__pmBranchLineage = clone7(state.branchLineage || {});
       return {
         ...state,
         interactiveScenes,
@@ -15145,10 +16081,14 @@ ${lines}`;
         calendarHolidays: normalizeHolidayCache(state.calendarHolidays),
         calendarWeather: normalizeWeatherStore(state.calendarWeather),
         calendarCycles: normalizeCycleStore(state.calendarCycles),
-        calendarRecipes: normalizeRecipeStore(state.calendarRecipes)
+        calendarRecipes: normalizeRecipeStore(state.calendarRecipes),
+        branchLineage: clone7(state.branchLineage || {})
       };
     };
-    const persist = async (state) => {
+    let branchLineageInserted = null;
+    let branchLineageApplied = false;
+    const persist = async (state, phase = "apply") => {
+      if (phase === "apply") branchLineageApplied = false;
       const interactiveScenes = normalizeInteractiveStore(state.interactiveScenes);
       const phoneUiState = normalizePhoneUiState(state.phoneUiState, interactiveScenes);
       await saveHistoriesStrict();
@@ -15172,6 +16112,15 @@ ${lines}`;
       if (!saveCalendar(state.calendarStore) || !saveCalendarOccasions(state.calendarOccasions) || !saveCalendarHolidays(state.calendarHolidays) || !saveCalendarWeather(state.calendarWeather) || !saveCalendarCycles(state.calendarCycles) || !saveCalendarRecipes(state.calendarRecipes)) {
         throw new Error("\u65E5\u5386\u4E0E\u83DC\u8C31\u6570\u636E\u4FDD\u5B58\u5931\u8D25\uFF1A\u6D4F\u89C8\u5668\u5B58\u50A8\u4E0D\u53EF\u7528");
       }
+      if (phase === "rollback") {
+        if (branchLineageApplied) await rollbackBranchLineageBackup(branchLineageInserted);
+        else await saveBranchLineage(state.branchLineage || {});
+        branchLineageInserted = null;
+        branchLineageApplied = false;
+      } else {
+        branchLineageInserted = await saveBranchLineageForBackup(state.branchLineage || {});
+        branchLineageApplied = true;
+      }
       deps.invalidateInteractiveStore?.();
       deps.reloadCalendarStore?.();
     };
@@ -15179,14 +16128,14 @@ ${lines}`;
   }
 
   // src/settings-backup-validate.js
-  var clone7 = (value) => JSON.parse(JSON.stringify(value));
+  var clone8 = (value) => JSON.parse(JSON.stringify(value));
   var objectValue = (value, field) => {
     if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error(`\u5907\u4EFD\u5B57\u6BB5 ${field} \u5FC5\u987B\u662F\u5BF9\u8C61`);
-    return clone7(value);
+    return clone8(value);
   };
   var arrayValue = (value, field) => {
     if (!Array.isArray(value)) throw new Error(`\u5907\u4EFD\u5B57\u6BB5 ${field} \u5FC5\u987B\u662F\u6570\u7EC4`);
-    return clone7(value);
+    return clone8(value);
   };
   var legacyBackupTheme = (value) => {
     const theme = objectValue(value || {}, "theme");
@@ -15392,12 +16341,44 @@ ${lines}`;
     }
     return store;
   };
+  var assertBranchLineageText = (value, field) => {
+    if (typeof value !== "string" || !value || value !== value.trim()) throw new Error(`\u5907\u4EFD\u5B57\u6BB5 ${field} \u5FC5\u987B\u662F\u975E\u7A7A\u4E14\u65E0\u9996\u5C3E\u7A7A\u767D\u7684\u5B57\u7B26\u4E32`);
+    return value;
+  };
+  var assertBranchLineage = (value) => {
+    const lineage = objectValue(value, "branchLineage");
+    for (const [targetId, entryValue] of Object.entries(lineage)) {
+      assertSafeDictionaryKey2(assertBranchLineageText(targetId, "branchLineage"), "branchLineage");
+      const entry2 = objectValue(entryValue, `branchLineage.${targetId}`);
+      assertAllowedKeys(entry2, `branchLineage.${targetId}`, [
+        "sourceId",
+        "parentChatId",
+        "targetChatId",
+        "avatar",
+        "completedAt",
+        "schemaVersion"
+      ]);
+      for (const key of ["sourceId", "parentChatId", "targetChatId", "avatar"]) {
+        assertBranchLineageText(entry2[key], `branchLineage.${targetId}.${key}`);
+      }
+      if (getStorageIdFor(entry2.avatar, entry2.targetChatId) !== targetId) {
+        throw new Error(`\u5907\u4EFD\u5B57\u6BB5 branchLineage.${targetId}.targetChatId \u4E0E\u76EE\u6807 scope \u4E0D\u4E00\u81F4`);
+      }
+      if (getStorageIdFor(entry2.avatar, entry2.parentChatId) !== entry2.sourceId) {
+        throw new Error(`\u5907\u4EFD\u5B57\u6BB5 branchLineage.${targetId}.sourceId \u4E0E\u6765\u6E90\u804A\u5929\u4E0D\u4E00\u81F4`);
+      }
+      assertOptionalTimestamp(entry2, "completedAt", `branchLineage.${targetId}`);
+      if (!Object.hasOwn(entry2, "completedAt")) throw new Error(`\u5907\u4EFD\u5B57\u6BB5 branchLineage.${targetId}.completedAt \u7F3A\u5931`);
+      if (entry2.schemaVersion !== 1) throw new Error(`\u5907\u4EFD\u5B57\u6BB5 branchLineage.${targetId}.schemaVersion \u5FC5\u987B\u4E3A 1`);
+    }
+    return lineage;
+  };
   function parseBackupData(data, current) {
     if (!data || typeof data !== "object" || Array.isArray(data)) throw new Error("\u5907\u4EFD\u6839\u8282\u70B9\u5FC5\u987B\u662F\u5BF9\u8C61");
     const version = data.schemaVersion === void 0 ? 1 : data.schemaVersion;
     if (!Number.isInteger(version) || version < 1) throw new Error("\u5907\u4EFD\u7248\u672C\u65E0\u6548");
-    if (version > 9) throw new Error(`\u5907\u4EFD\u7248\u672C ${version} \u9AD8\u4E8E\u5F53\u524D\u652F\u6301\u7248\u672C 9`);
-    const result = clone7(current);
+    if (version > 10) throw new Error(`\u5907\u4EFD\u7248\u672C ${version} \u9AD8\u4E8E\u5F53\u524D\u652F\u6301\u7248\u672C 10`);
+    const result = clone8(current);
     if (Object.hasOwn(data, "histories")) result.histories = objectValue(data.histories, "histories");
     if (Object.hasOwn(data, "config")) result.config = objectValue(data.config, "config");
     if (Object.hasOwn(data, "theme")) {
@@ -15438,11 +16419,15 @@ ${lines}`;
       result.theme.ambientStatusEnabled = result.ambientStatus.enabled;
     }
     if (version >= 5) applyCalendarBackupFields(data, result, objectValue, { includeRecipes: version >= 7 });
+    if (version >= 10) {
+      if (!Object.hasOwn(data, "branchLineage")) throw new Error("\u5907\u4EFD\u7248\u672C 10 \u7F3A\u5C11 branchLineage");
+      result.branchLineage = assertBranchLineage(data.branchLineage);
+    }
     return result;
   }
 
   // src/settings-ui.js
-  var clone8 = (value) => JSON.parse(JSON.stringify(value));
+  var clone9 = (value) => JSON.parse(JSON.stringify(value));
   async function runBackgroundTransaction({ capture, mutate, restore, persist }) {
     const snapshot = capture();
     try {
@@ -15517,7 +16502,7 @@ ${lines}`;
       if (border) border.value = theme.borderColor || "#1a1a1a";
     };
     const persistThemeMutation = (mutate) => {
-      const previous = clone8(window.__pmTheme);
+      const previous = clone9(window.__pmTheme);
       mutate();
       if (saveTheme()) {
         applyTheme();
@@ -15536,12 +16521,12 @@ ${lines}`;
       const operation = backgroundMutation.catch(() => {
       }).then(async () => {
         await runBackgroundTransaction({
-          capture: () => isDesktop ? window.__pmDesktopBg || "" : isGlobal ? window.__pmBgGlobal || "" : clone8(window.__pmBgLocal || {}),
+          capture: () => isDesktop ? window.__pmDesktopBg || "" : isGlobal ? window.__pmBgGlobal || "" : clone9(window.__pmBgLocal || {}),
           mutate,
           restore: (snapshot) => {
             if (isDesktop) window.__pmDesktopBg = snapshot;
             else if (isGlobal) window.__pmBgGlobal = snapshot;
-            else window.__pmBgLocal = clone8(snapshot);
+            else window.__pmBgLocal = clone9(snapshot);
           },
           persist: isDesktop ? saveDesktopBg : isGlobal ? saveBgGlobal : saveBgLocal
         });
@@ -15559,7 +16544,7 @@ ${error.message}`);
       });
     };
     window.__pmDeleteProfile = (idx) => {
-      const previous = clone8(window.__pmProfiles);
+      const previous = clone9(window.__pmProfiles);
       window.__pmProfiles.splice(idx, 1);
       if (!saveProfiles()) {
         window.__pmProfiles = previous;
@@ -15600,7 +16585,7 @@ ${error.message}`);
     window.__pmExportData = async () => {
       const snapshot = await captureBackupState();
       const data = {
-        schemaVersion: 9,
+        schemaVersion: 10,
         histories: snapshot.histories,
         config: snapshot.config,
         theme: legacyBackupTheme(snapshot.theme),
@@ -15623,7 +16608,8 @@ ${error.message}`);
         calendarHolidays: snapshot.calendarHolidays,
         calendarWeather: snapshot.calendarWeather,
         calendarCycles: snapshot.calendarCycles,
-        calendarRecipes: snapshot.calendarRecipes
+        calendarRecipes: snapshot.calendarRecipes,
+        branchLineage: snapshot.branchLineage
       };
       const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
       const url = URL.createObjectURL(blob);
@@ -16046,7 +17032,7 @@ ${error.message}`);
         return false;
       }
       const temperature = useIndependent ? parsedTemperature : normalizeIndependentApiTemperature(temperatureText);
-      const previous = clone8(window.__pmConfig), candidate = { apiUrl, apiKey, model, temperature, useIndependent };
+      const previous = clone9(window.__pmConfig), candidate = { apiUrl, apiKey, model, temperature, useIndependent };
       window.__pmConfig = candidate;
       try {
         localStorage.setItem("ST_SMS_CONFIG", JSON.stringify(candidate));

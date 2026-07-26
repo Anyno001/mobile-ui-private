@@ -1,16 +1,19 @@
 import {
     CALENDAR_CYCLE_STORAGE_KEY, CALENDAR_HOLIDAY_STORAGE_KEY, CALENDAR_OCCASION_STORAGE_KEY,
     CALENDAR_RECIPE_STORAGE_KEY, CALENDAR_STORAGE_KEY, CALENDAR_WEATHER_STORAGE_KEY, CHARACTER_BEHAVIOR_KEY,
-    INJECTION_CONFIG_KEY, PM_IDB_NAME, PM_IDB_STORE,
+    INJECTION_CONFIG_KEY,
 } from './constants.js';
 import { BUDGET_CONFIG_KEY, normalizeBudgetConfig } from './budget.js';
 import {
     normalizeCharacterBehaviorStore, normalizeGroupMetaStore, normalizeInjectionConfig,
 } from './behavior-config.js';
-import { enqueueDirectorySave } from './directory-save-coordinator.js';
+import {
+    enqueueDirectorySave, getActiveDirectoryBranchScopes,
+} from './directory-save-coordinator.js';
 import { createEmptyPhoneUiState, normalizePhoneUiState } from './interactive-scene-model.js';
+import { pmIDBDel, pmIDBGet, pmIDBKeys, pmIDBReadEntry, pmIDBSet, pmOpenIDB } from './pm-idb.js';
 
-let database = null;
+export { pmIDBDel, pmIDBGet, pmIDBKeys, pmIDBSet, pmOpenIDB } from './pm-idb.js';
 
 const EMOJI_STORE_KEY = 'ST_SMS_EMOJIS';
 const EMOJI_FALLBACK_KEY = `${EMOJI_STORE_KEY}_LOCAL_FALLBACK`;
@@ -19,6 +22,7 @@ const GROUP_META_FALLBACK_KEY = `${GROUP_META_STORE_KEY}_LOCAL_FALLBACK`;
 const INTERACTIVE_STORE_KEY = 'ST_INTERACTIVE_SCENES_V1';
 const INTERACTIVE_FALLBACK_KEY = `${INTERACTIVE_STORE_KEY}_LOCAL_FALLBACK`;
 const PHONE_UI_STATE_KEY = 'ST_SMS_PHONE_UI_STATE';
+export const BRANCH_LINEAGE_STORE_KEY = 'ST_SMS_BRANCH_LINEAGE_V1';
 export const DESKTOP_BG_KEY = 'ST_SMS_BG_DESKTOP';
 export const PLUGIN_LOCAL_STORAGE_KEYS = Object.freeze([
     'ST_SMS_DATA_V2', 'ST_SMS_CONFIG', 'ST_SMS_THEME', 'ST_SMS_POKE_CONFIG', 'ST_SMS_WORDY_LIMIT',
@@ -29,155 +33,9 @@ export const PLUGIN_LOCAL_STORAGE_KEYS = Object.freeze([
     CALENDAR_WEATHER_STORAGE_KEY, CALENDAR_CYCLE_STORAGE_KEY, CALENDAR_RECIPE_STORAGE_KEY,
 ]);
 export const PLUGIN_IDB_STATIC_KEYS = Object.freeze([
-    'ST_SMS_DATA_V2', EMOJI_STORE_KEY, GROUP_META_STORE_KEY, INTERACTIVE_STORE_KEY, 'ST_SMS_BG_GLOBAL', DESKTOP_BG_KEY,
+    'ST_SMS_DATA_V2', EMOJI_STORE_KEY, GROUP_META_STORE_KEY, INTERACTIVE_STORE_KEY, BRANCH_LINEAGE_STORE_KEY, 'ST_SMS_BG_GLOBAL', DESKTOP_BG_KEY,
 ]);
 export const PLUGIN_IDB_DYNAMIC_PREFIXES = Object.freeze(['ST_SMS_BG_LOCAL_']);
-
-export function pmOpenIDB() {
-    return new Promise(resolve => {
-        if (database) {
-            try {
-                database.transaction(PM_IDB_STORE, 'readonly');
-                resolve(database);
-                return;
-            } catch (error) {
-                database = null;
-            }
-        }
-        try {
-            const request = indexedDB.open(PM_IDB_NAME, 1);
-            request.onupgradeneeded = () => {
-                const db = request.result;
-                if (!db.objectStoreNames.contains(PM_IDB_STORE)) db.createObjectStore(PM_IDB_STORE);
-            };
-            request.onsuccess = () => {
-                database = request.result;
-                database.onversionchange = () => {
-                    database?.close();
-                    database = null;
-                };
-                resolve(database);
-            };
-            request.onerror = () => resolve(null);
-        } catch (error) {
-            resolve(null);
-        }
-    });
-}
-
-export async function pmIDBSet(key, value) {
-    const db = await pmOpenIDB();
-    if (!db) return false;
-    return new Promise(resolve => {
-        let settled = false;
-        const finish = result => {
-            if (settled) return;
-            settled = true;
-            resolve(result);
-        };
-        try {
-            const transaction = db.transaction(PM_IDB_STORE, 'readwrite');
-            transaction.objectStore(PM_IDB_STORE).put(value, key);
-            transaction.oncomplete = () => finish(true);
-            transaction.onerror = () => finish(false);
-            transaction.onabort = () => finish(false);
-        } catch (error) {
-            finish(false);
-        }
-    });
-}
-
-export async function pmIDBGet(key) {
-    const db = await pmOpenIDB();
-    if (!db) return null;
-    return new Promise(resolve => {
-        let settled = false;
-        const finish = result => {
-            if (settled) return;
-            settled = true;
-            resolve(result);
-        };
-        try {
-            const transaction = db.transaction(PM_IDB_STORE, 'readonly');
-            const request = transaction.objectStore(PM_IDB_STORE).get(key);
-            request.onsuccess = () => finish(request.result ?? null);
-            request.onerror = () => finish(null);
-            transaction.onabort = () => finish(null);
-        } catch (error) {
-            finish(null);
-        }
-    });
-}
-
-export async function pmIDBDel(key) {
-    const db = await pmOpenIDB();
-    if (!db) return false;
-    return new Promise(resolve => {
-        let settled = false;
-        const finish = result => {
-            if (settled) return;
-            settled = true;
-            resolve(result);
-        };
-        try {
-            const transaction = db.transaction(PM_IDB_STORE, 'readwrite');
-            transaction.objectStore(PM_IDB_STORE).delete(key);
-            transaction.oncomplete = () => finish(true);
-            transaction.onerror = () => finish(false);
-            transaction.onabort = () => finish(false);
-        } catch (error) {
-            finish(false);
-        }
-    });
-}
-
-export async function pmIDBKeys() {
-    const db = await pmOpenIDB();
-    if (!db) return null;
-    return new Promise(resolve => {
-        let settled = false;
-        let keys = null;
-        const finish = result => {
-            if (settled) return;
-            settled = true;
-            resolve(result);
-        };
-        try {
-            const transaction = db.transaction(PM_IDB_STORE, 'readonly');
-            const request = transaction.objectStore(PM_IDB_STORE).getAllKeys();
-            request.onsuccess = () => { keys = Array.isArray(request.result) ? request.result : []; };
-            request.onerror = () => finish(null);
-            transaction.oncomplete = () => finish(keys);
-            transaction.onerror = () => finish(null);
-            transaction.onabort = () => finish(null);
-        } catch (error) {
-            finish(null);
-        }
-    });
-}
-
-async function pmIDBReadEntry(key) {
-    const db = await pmOpenIDB();
-    if (!db) return { ok: false, value: undefined };
-    return new Promise(resolve => {
-        let settled = false;
-        const finish = result => {
-            if (settled) return;
-            settled = true;
-            resolve(result);
-        };
-        try {
-            const transaction = db.transaction(PM_IDB_STORE, 'readonly');
-            const request = transaction.objectStore(PM_IDB_STORE).get(key);
-            request.onsuccess = () => finish({ ok: true, value: request.result });
-            request.onerror = () => finish({ ok: false, value: undefined });
-            transaction.onerror = () => finish({ ok: false, value: undefined });
-            transaction.onabort = () => finish({ ok: false, value: undefined });
-        } catch (error) {
-            finish({ ok: false, value: undefined });
-        }
-    });
-}
 
 export function isBigData(value) {
     return typeof value === 'string' && value.length > 4096 && (value.startsWith('data:') || value.startsWith('blob:'));
@@ -187,17 +45,32 @@ export function saveHistories() {
     saveHistoriesStrict().catch(error => console.warn('[phone-mode] 短信历史保存失败', error));
 }
 
-export async function saveHistoriesStrict(data = window.__pmHistories) {
-    return enqueueDirectorySave('histories', data, async snapshot => {
-        const saved = await pmIDBSet('ST_SMS_DATA_V2', snapshot);
+export async function saveHistoriesStrict(data = window.__pmHistories, { requireLocalMirror = false, coordinated = false } = {}) {
+    const persist = async (snapshot, protectedScopes = []) => {
+        let value = snapshot;
+        if (protectedScopes.length) {
+            const current = await pmIDBGet('ST_SMS_DATA_V2');
+            if (current && typeof current === 'object' && !Array.isArray(current)) {
+                value = structuredClone(snapshot);
+                for (const scope of protectedScopes) {
+                    if (Object.hasOwn(current, scope)) value[scope] = structuredClone(current[scope]);
+                    else delete value[scope];
+                }
+            }
+        }
+        const saved = await pmIDBSet('ST_SMS_DATA_V2', value);
         if (!saved) throw new Error('聊天记录保存失败：IndexedDB 不可用');
         try {
-            localStorage.setItem('ST_SMS_DATA_V2', JSON.stringify(snapshot));
+            localStorage.setItem('ST_SMS_DATA_V2', JSON.stringify(value));
         } catch (error) {
+            if (requireLocalMirror) throw new Error('聊天记录保存失败：浏览器存储不可用');
             console.warn('[phone-mode] localStorage 已满，短信历史仅保存在 IDB');
         }
         return true;
-    }, arguments.length === 0);
+    };
+    if (coordinated) return persist(structuredClone(data));
+    return enqueueDirectorySave('histories', data,
+        (snapshot, protectedScopes) => persist(snapshot, protectedScopes), arguments.length === 0);
 }
 
 export function saveHistoriesBeforeUnload() {
@@ -222,31 +95,48 @@ export function saveHistoriesBeforeUnload() {
     pmIDBSet('ST_SMS_DATA_V2', data).catch(() => {});
 }
 
-export async function loadHistoriesFromIDB() {
+export async function loadHistoriesFromIDB({ requireConfirmedPrimary = false } = {}) {
     try {
+        const keys = await pmIDBKeys();
+        if (!Array.isArray(keys)) throw new Error('无法枚举 IndexedDB');
+        const hasPrimary = keys.includes('ST_SMS_DATA_V2');
+        if (!hasPrimary) {
+            const rawFallback = localStorage.getItem('ST_SMS_DATA_V2');
+            if (!rawFallback) {
+                window.__pmHistories = {};
+                return true;
+            }
+            const fallback = JSON.parse(rawFallback);
+            if (!fallback || typeof fallback !== 'object' || Array.isArray(fallback)) {
+                throw new Error('localStorage 后备记录格式无效');
+            }
+            window.__pmHistories = fallback;
+            return true;
+        }
         const value = await pmIDBGet('ST_SMS_DATA_V2');
-        if (!value) {
+        if (value === null || value === undefined) {
+            if (requireConfirmedPrimary) throw new Error('IndexedDB 主记录读取失败');
             try {
                 const fallback = JSON.parse(localStorage.getItem('ST_SMS_DATA_V2'));
                 if (fallback && typeof fallback === 'object' && Object.keys(fallback).length > 0) {
                     window.__pmHistories = fallback;
-                    console.log('[phone-mode] IDB 无数据，已从 localStorage 恢复');
                 }
             } catch (error) {}
-            return;
+            return true;
         }
         const parsed = typeof value === 'string' ? JSON.parse(value) : value;
-        if (!parsed || typeof parsed !== 'object') return;
-        const idbCount = Object.keys(parsed).length;
-        if (idbCount > 0) {
-            window.__pmHistories = parsed;
-            try {
-                localStorage.setItem('ST_SMS_DATA_V2', JSON.stringify(parsed));
-            } catch (error) {
-                console.warn('[phone-mode] localStorage 已满，仅使用 IDB 存储');
-            }
-            console.log('[phone-mode] 从 IndexedDB 加载了短信历史，共', idbCount, '个会话');
+        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+            throw new Error('IndexedDB 主记录格式无效');
         }
+        const idbCount = Object.keys(parsed).length;
+        window.__pmHistories = parsed;
+        try {
+            localStorage.setItem('ST_SMS_DATA_V2', JSON.stringify(parsed));
+        } catch (error) {
+            console.warn('[phone-mode] localStorage 已满，仅使用 IDB 存储');
+        }
+        console.log('[phone-mode] 从 IndexedDB 加载了短信历史，共', idbCount, '个会话');
+        return true;
     } catch (error) {
         console.warn('[phone-mode] IDB 恢复失败，尝试 localStorage 兜底', error);
         try {
@@ -255,6 +145,7 @@ export async function loadHistoriesFromIDB() {
                 window.__pmHistories = fallback;
             }
         } catch (fallbackError) {}
+        return false;
     }
 }
 
@@ -314,8 +205,47 @@ export function loadPokeConfig() {
     catch (error) { window.__pmPokeConfig = {}; }
 }
 
+function preserveActiveLocalScopes(storageKey, store, snapshot) {
+    const activeScopes = getActiveDirectoryBranchScopes(store);
+    if (!activeScopes.length) return snapshot;
+    try {
+        const raw = localStorage.getItem(storageKey);
+        const current = raw ? JSON.parse(raw) : {};
+        if (!current || typeof current !== 'object' || Array.isArray(current)) throw new Error('活动分支 scope 读取结果无效');
+        const merged = structuredClone(snapshot);
+        for (const storageId of activeScopes) {
+            if (Object.hasOwn(current, storageId)) merged[storageId] = structuredClone(current[storageId]);
+            else delete merged[storageId];
+        }
+        return merged;
+    } catch (error) {
+        throw new Error(`活动分支 scope 读取失败：${store}`);
+    }
+}
+
+function preserveActiveBudgetScopes(snapshot) {
+    const activeScopes = getActiveDirectoryBranchScopes('budget');
+    if (!activeScopes.length) return snapshot;
+    try {
+        const current = normalizeBudgetConfig(JSON.parse(localStorage.getItem(BUDGET_CONFIG_KEY)));
+        const merged = normalizeBudgetConfig(snapshot);
+        for (const storageId of activeScopes) {
+            if (Object.hasOwn(current.communitySceneIdsByStorage, storageId)) {
+                merged.communitySceneIdsByStorage[storageId] = structuredClone(current.communitySceneIdsByStorage[storageId]);
+            } else delete merged.communitySceneIdsByStorage[storageId];
+            if (Object.hasOwn(current.communitySelectionsByStorage, storageId)) {
+                merged.communitySelectionsByStorage[storageId] = structuredClone(current.communitySelectionsByStorage[storageId]);
+            } else delete merged.communitySelectionsByStorage[storageId];
+        }
+        return merged;
+    } catch (error) {
+        throw new Error('活动分支预算 scope 读取失败');
+    }
+}
+
 export function savePokeConfig() {
     try {
+        window.__pmPokeConfig = preserveActiveLocalScopes('ST_SMS_POKE_CONFIG', 'pokeConfig', window.__pmPokeConfig);
         localStorage.setItem('ST_SMS_POKE_CONFIG', JSON.stringify(window.__pmPokeConfig));
         return true;
     } catch (error) {
@@ -347,8 +277,8 @@ export function loadBudgetConfig() {
 }
 
 export function saveBudgetConfig(candidate = window.__pmBudgetConfig) {
-    const normalized = normalizeBudgetConfig(candidate);
     try {
+        const normalized = preserveActiveBudgetScopes(normalizeBudgetConfig(candidate));
         localStorage.setItem(BUDGET_CONFIG_KEY, JSON.stringify(normalized));
         window.__pmBudgetConfig = normalized;
         return true;
@@ -382,20 +312,35 @@ export async function loadGroupMeta() {
 }
 
 export async function saveGroupMeta(data) {
+    const { coordinated = false } = arguments[1] || {};
     const updatesGlobalState = arguments.length === 0;
     const snapshot = normalizeGroupMetaStore(updatesGlobalState ? window.__pmGroupMeta : data);
     if (updatesGlobalState) window.__pmGroupMeta = snapshot;
-    return enqueueDirectorySave('groupMeta', snapshot, async frozen => {
-        const saved = await pmIDBSet(GROUP_META_STORE_KEY, frozen);
+    const persist = async (frozen, protectedScopes = []) => {
+        let value = frozen;
+        if (protectedScopes.length) {
+            const current = await pmIDBGet(GROUP_META_STORE_KEY);
+            if (current && typeof current === 'object' && !Array.isArray(current)) {
+                value = normalizeGroupMetaStore(frozen);
+                for (const scope of protectedScopes) {
+                    if (Object.hasOwn(current, scope)) value[scope] = structuredClone(current[scope]);
+                    else delete value[scope];
+                }
+            }
+        }
+        const saved = await pmIDBSet(GROUP_META_STORE_KEY, value);
         if (saved) {
-            try { localStorage.setItem(GROUP_META_STORE_KEY, JSON.stringify(frozen)); } catch (error) {}
+            try { localStorage.setItem(GROUP_META_STORE_KEY, JSON.stringify(value)); } catch (error) {}
             try { localStorage.removeItem(GROUP_META_FALLBACK_KEY); } catch (error) {}
         } else {
-            try { localStorage.setItem(GROUP_META_FALLBACK_KEY, JSON.stringify(frozen)); }
+            try { localStorage.setItem(GROUP_META_FALLBACK_KEY, JSON.stringify(value)); }
             catch { throw new Error('群聊配置保存失败：浏览器存储不可用或空间不足'); }
         }
-        return frozen;
-    }, updatesGlobalState);
+        return value;
+    };
+    if (coordinated) return persist(structuredClone(snapshot));
+    return enqueueDirectorySave('groupMeta', snapshot,
+        (frozen, protectedScopes) => persist(frozen, protectedScopes), updatesGlobalState);
 }
 
 export function loadCharacterBehavior() {
@@ -411,6 +356,8 @@ export function loadCharacterBehavior() {
 export function saveCharacterBehavior() {
     window.__pmCharacterBehavior = normalizeCharacterBehaviorStore(window.__pmCharacterBehavior);
     try {
+        window.__pmCharacterBehavior = preserveActiveLocalScopes(CHARACTER_BEHAVIOR_KEY,
+            'characterBehavior', window.__pmCharacterBehavior);
         localStorage.setItem(CHARACTER_BEHAVIOR_KEY, JSON.stringify(window.__pmCharacterBehavior));
         return true;
     } catch (error) {
@@ -480,6 +427,7 @@ export function loadBidirectional() {
 
 export function saveBidirectional() {
     try {
+        window.__pmBidirectional = preserveActiveLocalScopes('ST_SMS_BIDIRECTIONAL', 'bidirectional', window.__pmBidirectional);
         localStorage.setItem('ST_SMS_BIDIRECTIONAL', JSON.stringify(window.__pmBidirectional));
         return true;
     } catch (error) {
@@ -503,25 +451,47 @@ export async function loadInteractiveScenes() {
     }
 }
 
-export async function saveInteractiveScenes(store) {
-    const saved = await pmIDBSet(INTERACTIVE_STORE_KEY, store);
-    if (saved) {
-        try {
-            localStorage.removeItem(INTERACTIVE_FALLBACK_KEY);
-        } catch (error) {
-            try {
-                localStorage.setItem(INTERACTIVE_FALLBACK_KEY, JSON.stringify(store));
-            } catch (fallbackError) {
-                throw new Error('互动场景主存储已更新，但后备数据同步失败');
+export async function saveInteractiveScenes(store, { coordinated = false } = {}) {
+    const persist = async (snapshot, protectedScopes = []) => {
+        let value = snapshot;
+        if (protectedScopes.length) {
+            const current = await pmIDBGet(INTERACTIVE_STORE_KEY);
+            if (current && typeof current === 'object' && !Array.isArray(current)) {
+                const currentScopes = current.scopes;
+                if (currentScopes && typeof currentScopes === 'object' && !Array.isArray(currentScopes)) {
+                    value = structuredClone(snapshot);
+                    value.scopes ||= {};
+                    for (const scope of protectedScopes) {
+                        if (Object.hasOwn(currentScopes, scope)) {
+                            value.scopes[scope] = structuredClone(currentScopes[scope]);
+                        } else {
+                            delete value.scopes[scope];
+                        }
+                    }
+                }
             }
         }
-        return;
-    }
-    try {
-        localStorage.setItem(INTERACTIVE_FALLBACK_KEY, JSON.stringify(store));
-    } catch (error) {
-        throw new Error('互动场景保存失败：浏览器存储不可用');
-    }
+        const saved = await pmIDBSet(INTERACTIVE_STORE_KEY, value);
+        if (saved) {
+            try {
+                localStorage.removeItem(INTERACTIVE_FALLBACK_KEY);
+            } catch (error) {
+                try {
+                    localStorage.setItem(INTERACTIVE_FALLBACK_KEY, JSON.stringify(value));
+                } catch (fallbackError) {
+                    throw new Error('互动场景主存储已更新，但后备数据同步失败');
+                }
+            }
+            return;
+        }
+        try {
+            localStorage.setItem(INTERACTIVE_FALLBACK_KEY, JSON.stringify(value));
+        } catch (error) {
+            throw new Error('互动场景保存失败：浏览器存储不可用');
+        }
+    };
+    if (coordinated) return persist(structuredClone(store));
+    return enqueueDirectorySave('interactive', store, persist);
 }
 
 export function loadPhoneUiState(interactiveStore) {
@@ -535,10 +505,23 @@ export function loadPhoneUiState(interactiveStore) {
     }
 }
 
+function preserveActivePhoneUiScopes(snapshot, interactiveStore) {
+    const activeScopes = getActiveDirectoryBranchScopes('phoneUi');
+    if (!activeScopes.length) return snapshot;
+    const current = loadPhoneUiState(interactiveStore);
+    const merged = structuredClone(snapshot);
+    for (const storageId of activeScopes) {
+        if (Object.hasOwn(current.scopes, storageId)) merged.scopes[storageId] = structuredClone(current.scopes[storageId]);
+        else delete merged.scopes[storageId];
+    }
+    return normalizePhoneUiState(merged, interactiveStore);
+}
+
 export function savePhoneUiState(state, interactiveStore) {
     try {
         const normalized = normalizePhoneUiState(state, interactiveStore);
-        localStorage.setItem(PHONE_UI_STATE_KEY, JSON.stringify(normalized));
+        const value = preserveActivePhoneUiScopes(normalized, interactiveStore);
+        localStorage.setItem(PHONE_UI_STATE_KEY, JSON.stringify(value));
         return true;
     } catch (error) {
         console.error('[phone-mode] 手机界面状态保存失败', error);
@@ -546,10 +529,134 @@ export function savePhoneUiState(state, interactiveStore) {
     }
 }
 
+export function savePhoneUiScope(storageId, state, interactiveStore) {
+    try {
+        if (typeof storageId !== 'string' || !storageId) throw new TypeError('手机页面状态 scope 无效');
+        const normalized = normalizePhoneUiState(state, interactiveStore);
+        const current = loadPhoneUiState(interactiveStore);
+        if (Object.hasOwn(normalized.scopes, storageId)) current.scopes[storageId] = structuredClone(normalized.scopes[storageId]);
+        else delete current.scopes[storageId];
+        const merged = normalizePhoneUiState(current, interactiveStore);
+        localStorage.setItem(PHONE_UI_STATE_KEY, JSON.stringify(merged));
+        return merged;
+    } catch (error) {
+        console.error('[phone-mode] 手机页面状态保存失败', error);
+        return null;
+    }
+}
+
 export const INTERACTIVE_STORAGE_KEYS = Object.freeze({
     primary: INTERACTIVE_STORE_KEY,
     fallback: INTERACTIVE_FALLBACK_KEY,
 });
+
+let branchLineageQueue = Promise.resolve();
+const branchLineageRevisions = new Map();
+
+function branchLineageRevision(targetId) {
+    return branchLineageRevisions.get(targetId) || 0;
+}
+
+function markBranchLineageWrite(targetId) {
+    const revision = branchLineageRevision(targetId) + 1;
+    branchLineageRevisions.set(targetId, revision);
+    return revision;
+}
+
+export async function loadBranchLineage() {
+    const keys = await pmIDBKeys();
+    if (!Array.isArray(keys)) throw new Error('分支继承记录读取失败：无法枚举 IndexedDB');
+    if (!keys.includes(BRANCH_LINEAGE_STORE_KEY)) return {};
+    const value = await pmIDBGet(BRANCH_LINEAGE_STORE_KEY);
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+        throw new Error('分支继承记录读取失败：数据损坏或 IndexedDB 不可用');
+    }
+    return value;
+}
+
+function assertBranchLineageValue(value) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+        throw new Error('分支继承记录保存失败：记录必须是对象');
+    }
+}
+
+async function writeBranchLineage(value) {
+    if (!await pmIDBSet(BRANCH_LINEAGE_STORE_KEY, value)) {
+        throw new Error('分支继承记录保存失败：IndexedDB 不可用');
+    }
+}
+
+export function saveBranchLineage(value) {
+    assertBranchLineageValue(value);
+    const operation = branchLineageQueue.catch(() => {}).then(async () => {
+        const current = await loadBranchLineage();
+        const next = { ...structuredClone(value), ...current };
+        await writeBranchLineage(next);
+        for (const targetId of Object.keys(value)) {
+            if (!Object.hasOwn(current, targetId)) markBranchLineageWrite(targetId);
+        }
+        return next;
+    });
+    branchLineageQueue = operation;
+    return operation;
+}
+
+export function saveBranchLineageForBackup(value) {
+    assertBranchLineageValue(value);
+    const operation = branchLineageQueue.catch(() => {}).then(async () => {
+        const current = await loadBranchLineage();
+        const entries = {};
+        for (const [targetId, entry] of Object.entries(value)) {
+            if (!Object.hasOwn(current, targetId)) entries[targetId] = structuredClone(entry);
+        }
+        const next = { ...structuredClone(value), ...current };
+        await writeBranchLineage(next);
+        const revisions = {};
+        for (const targetId of Object.keys(entries)) revisions[targetId] = markBranchLineageWrite(targetId);
+        return { entries, revisions };
+    });
+    branchLineageQueue = operation;
+    return operation;
+}
+
+export function rollbackBranchLineageBackup(inserted) {
+    assertBranchLineageValue(inserted);
+    assertBranchLineageValue(inserted.entries);
+    assertBranchLineageValue(inserted.revisions);
+    const operation = branchLineageQueue.catch(() => {}).then(async () => {
+        const current = await loadBranchLineage();
+        const next = structuredClone(current);
+        for (const [targetId, entry] of Object.entries(inserted.entries)) {
+            if (branchLineageRevision(targetId) === inserted.revisions[targetId]
+                && Object.hasOwn(next, targetId) && JSON.stringify(next[targetId]) === JSON.stringify(entry)) {
+                delete next[targetId];
+                markBranchLineageWrite(targetId);
+            }
+        }
+        await writeBranchLineage(next);
+        return next;
+    });
+    branchLineageQueue = operation;
+    return operation;
+}
+
+export function commitBranchLineage(targetId, entry) {
+    if (typeof targetId !== 'string' || !targetId.trim()) {
+        return Promise.reject(new Error('分支继承记录保存失败：目标 scope 无效'));
+    }
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
+        return Promise.reject(new Error('分支继承记录保存失败：记录条目必须是对象'));
+    }
+    const operation = branchLineageQueue.catch(() => {}).then(async () => {
+        const current = await loadBranchLineage();
+        const next = { ...current, [targetId]: structuredClone(entry) };
+        await writeBranchLineage(next);
+        markBranchLineageWrite(targetId);
+        return next;
+    });
+    branchLineageQueue = operation;
+    return operation;
+}
 
 export const PHONE_UI_STORAGE_KEY = PHONE_UI_STATE_KEY;
 

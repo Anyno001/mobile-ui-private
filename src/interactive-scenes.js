@@ -4,7 +4,7 @@ import {
     INTERACTIVE_LIMITS, addSceneComment, appendScenePosts, deleteSceneComment, deleteSceneDanmaku, deleteScenePost, enforceInteractiveSceneLimit, ensureInteractiveActor, normalizeInteractiveStore, normalizeScene,
     createDefaultPhoneUiScope, incrementScenePostShare, normalizePhoneUiState, patchPhoneUiScope, resolveInteractiveAuthor, stripPersistedV2ContentRating, toggleScenePin, toggleScenePostLike, updateSceneComment, updateSceneDanmaku, updateScenePost,
 } from './interactive-scene-model.js';
-import { loadInteractiveScenes, loadPhoneUiState, saveInteractiveScenes, savePhoneUiState } from './storage.js';
+import { loadInteractiveScenes, loadPhoneUiState, saveInteractiveScenes, savePhoneUiScope, savePhoneUiState } from './storage.js';
 import { bindPhonePageActions, getCommunityInjectionState, handleCommunityInjectionUiAction, handleSceneAccentAction, persistCurrentPhoneUiSnapshot, resolvePhoneChatTarget, runDeleteSceneAction, runDesktopPageTransition, selectScenePreset, toggleDanmakuActions, toggleSceneMenu, toggleScenePostActions, toggleSceneReplyComposer } from './interactive-scene-phone.js';
 import { createCommunityGenerationRunner, createCommunityTaskController, runLiveWarmup } from './interactive-scene-scheduler.js';
 import {
@@ -221,14 +221,15 @@ export function installInteractiveScenes(_state, deps) {
         }
         return normalizePhoneUiState(runtime.phoneUiState, store);
     };
-    const persistPhoneUiState = (nextState, store = runtime.store) => {
+    const persistPhoneUiState = (storageId, nextState, store = runtime.store) => {
         const normalized = normalizePhoneUiState(nextState, store);
-        if (!savePhoneUiState(normalized, store)) throw new Error('手机页面状态保存失败：浏览器存储不可用');
-        runtime.phoneUiState = normalized;
-        return normalized;
+        const merged = savePhoneUiScope(storageId, normalized, store);
+        if (!merged) throw new Error('手机页面状态保存失败：浏览器存储不可用');
+        runtime.phoneUiState = merged;
+        return merged;
     };
     const updatePhoneUiScope = (storageId, patch, store = runtime.store) => persistPhoneUiState(
-        patchPhoneUiScope(getPhoneUiState(store), storageId, patch, store), store,
+        storageId, patchPhoneUiScope(getPhoneUiState(store), storageId, patch, store), store,
     );
     const phoneScope = (storageId, store = runtime.store) => getPhoneUiState(store).scopes[storageId] || createDefaultPhoneUiScope();
     const renderInto = (selector, html) => {
@@ -548,7 +549,7 @@ export function installInteractiveScenes(_state, deps) {
         if (action === 'toggle-scene-pin' || action === 'unpin-scene') {
             const scopeId = getStorageId();
             const nextState = toggleScenePin(getPhoneUiState(runtime.store), scopeId, button.dataset.sceneId, runtime.store);
-            persistPhoneUiState(nextState);
+            persistPhoneUiState(scopeId, nextState);
             refreshDesktop(scopeId);
             if (button.closest('#pm-scene-app') && !button.closest('.pm-scene-card')) {
                 rerender(phoneScope(scopeId).lastTab);
@@ -565,7 +566,7 @@ export function installInteractiveScenes(_state, deps) {
                 confirm: confirmDelete,
                 invalidate,
                 commit,
-                persistPhoneUi: () => persistPhoneUiState(getPhoneUiState(runtime.store), runtime.store),
+                persistPhoneUi: () => persistPhoneUiState(scopeId, getPhoneUiState(runtime.store), runtime.store),
                 refreshDesktop,
                 getBudgetConfig: () => window.__pmBudgetConfig,
                 saveBudgetConfig: deps.saveBudgetConfig,

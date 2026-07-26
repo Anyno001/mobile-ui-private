@@ -17,7 +17,8 @@ import { saveBgGlobal, saveBgLocal, saveDesktopBg } from './storage-background.j
 import {
     loadInteractiveScenes, loadPhoneUiState, saveBidirectional, saveInjectionConfig,
     saveCharacterBehavior, saveEmojis, saveGroupMeta, saveHistoriesStrict, saveInteractiveScenes,
-    savePhoneUiState, savePokeConfig, saveProfiles, saveTheme, saveWordyLimit,
+    loadBranchLineage, rollbackBranchLineageBackup, saveBranchLineageForBackup, savePhoneUiState,
+    saveBranchLineage, savePokeConfig, saveProfiles, saveTheme, saveWordyLimit,
 } from './storage.js';
 
 const clone = value => JSON.parse(JSON.stringify(value));
@@ -94,14 +95,14 @@ export async function runBackupTransaction({
     try {
         await beforeApply('apply');
         const nextState = await apply(undefined, prepared);
-        await persist(nextState);
+        await persist(nextState, 'apply');
         await afterPersist('apply', nextState);
     } catch (error) {
         let rollbackState;
         try {
             await beforeApply('rollback');
             rollbackState = await apply(snapshot);
-            await persist(snapshot);
+            await persist(snapshot, 'rollback');
             await afterPersist('rollback', rollbackState);
         } catch (rollbackError) {
             const combined = new Error(`${error.message}；原数据回滚失败：${rollbackError.message}`);
@@ -120,6 +121,7 @@ export async function runBackupTransaction({
 export function createBackupStateHandlers(deps = {}) {
     const capture = async () => {
         const interactiveScenes = normalizeInteractiveStore(await loadInteractiveScenes());
+        const branchLineage = await loadBranchLineage();
         return {
             histories: clone(window.__pmHistories || {}), config: clone(window.__pmConfig || {}),
             theme: clone(window.__pmTheme || {}), profiles: clone(window.__pmProfiles || []),
@@ -133,6 +135,7 @@ export function createBackupStateHandlers(deps = {}) {
             calendarStore: loadCalendar(), calendarOccasions: loadCalendarOccasions(),
             calendarHolidays: loadCalendarHolidays(), calendarWeather: loadCalendarWeather(),
             calendarCycles: loadCalendarCycles(), calendarRecipes: loadCalendarRecipes(),
+            branchLineage: clone(branchLineage),
         };
     };
     const apply = async state => {
@@ -148,6 +151,7 @@ export function createBackupStateHandlers(deps = {}) {
         window.__pmWordyLimit = !!state.wordyLimit; window.__pmDesktopBg = typeof state.desktopBg === 'string' ? state.desktopBg : '';
         window.__pmBgGlobal = typeof state.bgGlobal === 'string' ? state.bgGlobal : '';
         window.__pmBgLocal = clone(state.bgLocal || {}); window.__pmPhoneUiState = phoneUiState;
+        window.__pmBranchLineage = clone(state.branchLineage || {});
         return {
             ...state, interactiveScenes, phoneUiState, ambientStatus,
             calendarStore: normalizeCalendarStore(state.calendarStore),
@@ -156,9 +160,13 @@ export function createBackupStateHandlers(deps = {}) {
             calendarWeather: normalizeWeatherStore(state.calendarWeather),
             calendarCycles: normalizeCycleStore(state.calendarCycles),
             calendarRecipes: normalizeRecipeStore(state.calendarRecipes),
+            branchLineage: clone(state.branchLineage || {}),
         };
     };
-    const persist = async state => {
+    let branchLineageInserted = null;
+    let branchLineageApplied = false;
+    const persist = async (state, phase = 'apply') => {
+        if (phase === 'apply') branchLineageApplied = false;
         const interactiveScenes = normalizeInteractiveStore(state.interactiveScenes);
         const phoneUiState = normalizePhoneUiState(state.phoneUiState, interactiveScenes);
         await saveHistoriesStrict();
@@ -176,6 +184,15 @@ export function createBackupStateHandlers(deps = {}) {
             || !saveCalendarHolidays(state.calendarHolidays) || !saveCalendarWeather(state.calendarWeather)
             || !saveCalendarCycles(state.calendarCycles) || !saveCalendarRecipes(state.calendarRecipes)) {
             throw new Error('日历与菜谱数据保存失败：浏览器存储不可用');
+        }
+        if (phase === 'rollback') {
+            if (branchLineageApplied) await rollbackBranchLineageBackup(branchLineageInserted);
+            else await saveBranchLineage(state.branchLineage || {});
+            branchLineageInserted = null;
+            branchLineageApplied = false;
+        } else {
+            branchLineageInserted = await saveBranchLineageForBackup(state.branchLineage || {});
+            branchLineageApplied = true;
         }
         deps.invalidateInteractiveStore?.(); deps.reloadCalendarStore?.();
     };

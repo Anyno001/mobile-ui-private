@@ -7,17 +7,28 @@ function warnHostContextFailureOnce(stage, message, error) {
     console.warn(`[phone-mode] ${message}，已使用降级值。`, errorType);
 }
 
+export function getCurrentChatId(context) {
+    if (!context) return null;
+    return context.chatId
+        || (typeof context.getCurrentChatId === 'function' ? context.getCurrentChatId() : null)
+        || context.chat_metadata?.chat_id_hash
+        || context.chat_file;
+}
+
+export function getStorageIdFor(avatar, chatId) {
+    const characterAvatar = typeof avatar === 'string' && avatar.trim() ? avatar : '';
+    if (chatId === null || chatId === undefined || String(chatId).trim() === '' || !characterAvatar) {
+        return 'sms_unknown__default';
+    }
+    return `sms_${characterAvatar}__${chatId}`;
+}
+
 export function getStorageId(getCtx) {
     const context = getCtx();
     if (!context) return 'sms_unknown__default';
     const character = context.characters?.[context.characterId];
     const avatar = character?.avatar || `idx_${context.characterId}`;
-    const chatFile = context.chatId
-        || (typeof context.getCurrentChatId === 'function' ? context.getCurrentChatId() : null)
-        || context.chat_metadata?.chat_id_hash
-        || context.chat_file;
-    if (chatFile === null || chatFile === undefined || String(chatFile).trim() === '') return 'sms_unknown__default';
-    return `sms_${avatar}__${chatFile}`;
+    return getStorageIdFor(avatar, getCurrentChatId(context));
 }
 
 export function getUserPersona(getCtx) {
