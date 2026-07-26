@@ -11,7 +11,7 @@ import { createBubbles } from './messaging.js';
 import { applyContextInjections, clearExtensionPrompts } from './phone-injection.js';
 import { bindIsland } from './phone-island-gesture.js';
 import {
-    registerResolvedHostEvent, resolveCommunityMessageEvents, resolveHostEvent,
+    resolveCommunityMessageEvents, resolveHostEvent,
 } from './interactive-scene-scheduler.js';
 import { createAutomaticTaskController } from './runtime.js';
 import {
@@ -430,13 +430,20 @@ export function installPhoneFoundation(state, deps) {
     }
 
     function hookGenerationEvent() {
-        if (runtime.eventHooked) return;
         const c = getCtx();
-        if (!c?.eventSource || !c?.event_types) return;
-        const et = c.event_types;
+        const et = c?.eventTypes || c?.event_types;
+        if (!c?.eventSource || !et) return;
+        if (runtime.hostEventSource !== c.eventSource) {
+            runtime.hostEventSource = c.eventSource;
+            runtime.hostEventRegistrations = new Set();
+            runtime.eventHooked = false;
+        }
+        const registrations = runtime.hostEventRegistrations instanceof Set
+            ? runtime.hostEventRegistrations
+            : (runtime.hostEventRegistrations = new Set());
+        if (runtime.eventHooked) return;
 
         runtime.lastChatLength = (c.chat || []).length;
-
         const injectionEvents = [
             et.GENERATION_STARTED || 'generation_started',
             et.SETTINGS_UPDATED || 'settings_updated',
@@ -444,70 +451,77 @@ export function installPhoneFoundation(state, deps) {
             et.OAI_PRESET_CHANGED_AFTER || 'oai_preset_changed_after',
         ].filter(Boolean);
 
-        injectionEvents.forEach(ev => {
+        const registerOnce = (key, eventName, callback) => {
+            if (registrations.has(key)) return true;
+            if (!eventName || typeof c.eventSource?.on !== 'function') return false;
             try {
-                c.eventSource.on(ev, () => applyBidirectionalInjection().catch(() => undefined));
+                c.eventSource.on(eventName, callback);
+                registrations.add(key);
+                return true;
             } catch (error) {
-                warnHostEventRegistrationFailureOnce(`injection:${ev}`, ev, error);
+                warnHostEventRegistrationFailureOnce(key, eventName, error);
+                return false;
             }
-        });
+        };
+
+        const results = injectionEvents.map(eventName => registerOnce(
+            `injection:${eventName}`,
+            eventName,
+            () => applyBidirectionalInjection().catch(() => undefined),
+        ));
 
         for (const eventName of resolveCommunityMessageEvents(et)) {
-            try {
-                c.eventSource.on(eventName, () => {
-                    try { deps.observeCommunityTurn?.(c.chat || []); } catch (error) {}
-                    Promise.resolve(deps.observeCalendarTurn?.()).catch(() => {});
-                });
-            } catch (error) {
-                warnHostEventRegistrationFailureOnce(`community:${eventName}`, eventName, error);
-            }
-        }
-
-        try {
-            registerResolvedHostEvent(c.eventSource, et, 'MESSAGE_RECEIVED', () => {
-                const chat = c.chat || [];
-                const previousLen = runtime.lastChatLength;
-                const currentLen = chat.length;
-                if (currentLen > runtime.lastChatLength) {
-                    runtime.lastChatLength = currentLen;
-                    const hasCompletedAssistantMessage = chat.slice(previousLen).some(message => !message?.is_user);
-                    if (hasCompletedAssistantMessage && isAutoPokeAllowed()
-                        && typeof window.__pmIncrementCounters === 'function') {
-                        window.__pmIncrementCounters();
-                    }
-                } else if (currentLen < runtime.lastChatLength) {
-                    runtime.lastChatLength = currentLen;
-                }
-            });
-        } catch (error) {
-            warnHostEventRegistrationFailureOnce('resolved:MESSAGE_RECEIVED', 'MESSAGE_RECEIVED', error);
-        }
-        try {
-            registerResolvedHostEvent(c.eventSource, et, 'CHAT_CHANGED', () => {
-                // 宿主切换会使所有在途生成失效；关闭手机并清空旧会话内存，避免跨聊天串档。
+            results.push(registerOnce(`community:${eventName}`, eventName, () => {
                 const currentContext = getCtx();
-                handleHostChatChanged({
-                    state, runtime, chatLength: (currentContext?.chat || []).length,
-                    cancelCommunityGeneration: deps.cancelCommunityGeneration,
-                    cancelCalendarTasks: deps.cancelCalendarTasks,
-                    disarmAutoPoke,
-                    endPhone: window.__pmEnd,
-                    invalidateGeneration,
-                });
-                beginBranchInheritance(currentContext, {
-                    getStorageId,
-                    invalidateInteractiveStore: deps.invalidateInteractiveStore,
-                    reloadCalendarStore: deps.reloadCalendarStore,
-                }).catch(error => {
-                    console.warn('[phone-mode] 分支手机数据继承失败', error?.name || 'Error');
-                });
-            });
-        } catch (error) {
-            warnHostEventRegistrationFailureOnce('resolved:CHAT_CHANGED', 'CHAT_CHANGED', error);
+                try { deps.observeCommunityTurn?.(currentContext?.chat || []); } catch (error) {}
+                Promise.resolve(deps.observeCalendarTurn?.()).catch(() => {});
+            }));
         }
 
-        runtime.eventHooked = true;
-        console.log('[phone-mode] hooked', injectionEvents.length, 'injection events');
+        const messageReceivedEvent = resolveHostEvent(et, 'MESSAGE_RECEIVED');
+        results.push(registerOnce('resolved:MESSAGE_RECEIVED', messageReceivedEvent, () => {
+            const chat = getCtx()?.chat || [];
+            const previousLen = runtime.lastChatLength;
+            const currentLen = chat.length;
+            if (currentLen > runtime.lastChatLength) {
+                runtime.lastChatLength = currentLen;
+                const hasCompletedAssistantMessage = chat.slice(previousLen).some(message => !message?.is_user);
+                if (hasCompletedAssistantMessage && isAutoPokeAllowed()
+                    && typeof window.__pmIncrementCounters === 'function') {
+                    window.__pmIncrementCounters();
+                }
+            } else if (currentLen < runtime.lastChatLength) {
+                runtime.lastChatLength = currentLen;
+            }
+        }));
+
+        const chatChangedEvent = resolveHostEvent(et, 'CHAT_CHANGED');
+        results.push(registerOnce('resolved:CHAT_CHANGED', chatChangedEvent, () => {
+            // 宿主切换会使所有在途生成失效；关闭手机并清空旧会话内存，避免跨聊天串档。
+            const currentContext = getCtx();
+            handleHostChatChanged({
+                state, runtime, chatLength: (currentContext?.chat || []).length,
+                cancelCommunityGeneration: deps.cancelCommunityGeneration,
+                cancelCalendarTasks: deps.cancelCalendarTasks,
+                disarmAutoPoke,
+                endPhone: window.__pmEnd,
+                invalidateGeneration,
+            });
+            const inheritBranch = deps.beginBranchInheritance || beginBranchInheritance;
+            return inheritBranch(currentContext, {
+                getStorageId,
+                invalidateInteractiveStore: deps.invalidateInteractiveStore,
+                reloadCalendarStore: deps.reloadCalendarStore,
+            }).catch(error => {
+                console.warn('[phone-mode] 分支手机数据继承失败', error?.name || 'Error');
+                return { status: 'failed', error };
+            });
+        }));
+
+        runtime.eventHooked = results.every(Boolean);
+        if (runtime.eventHooked) {
+            console.log('[phone-mode] hooked', injectionEvents.length, 'injection events');
+        }
     }
 
     window.__pmToggleBidirectional = name => {

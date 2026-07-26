@@ -7590,12 +7590,6 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
     const value = ownValue(eventTypes, key);
     return typeof value === "string" && value ? value : null;
   }
-  function registerResolvedHostEvent(eventSource, eventTypes, key, callback) {
-    const eventName = resolveHostEvent(eventTypes, key);
-    if (!eventName || typeof eventSource?.on !== "function" || typeof callback !== "function") return false;
-    eventSource.on(eventName, callback);
-    return true;
-  }
   function resolveCommunityMessageEvents(eventTypes) {
     const values = EVENT_KEYS.flatMap((key) => {
       const value = resolveHostEvent(eventTypes, key);
@@ -9340,6 +9334,8 @@ ${lines}
     return {
       modelList: [],
       eventHooked: false,
+      hostEventSource: null,
+      hostEventRegistrations: /* @__PURE__ */ new Set(),
       firstOpen: true,
       lastChatLength: 0,
       historyLoadPromise: null,
@@ -14170,10 +14166,16 @@ ${lines}`;
       });
     }
     function hookGenerationEvent() {
-      if (runtime.eventHooked) return;
       const c = getCtx();
-      if (!c?.eventSource || !c?.event_types) return;
-      const et = c.event_types;
+      const et = c?.eventTypes || c?.event_types;
+      if (!c?.eventSource || !et) return;
+      if (runtime.hostEventSource !== c.eventSource) {
+        runtime.hostEventSource = c.eventSource;
+        runtime.hostEventRegistrations = /* @__PURE__ */ new Set();
+        runtime.eventHooked = false;
+      }
+      const registrations = runtime.hostEventRegistrations instanceof Set ? runtime.hostEventRegistrations : runtime.hostEventRegistrations = /* @__PURE__ */ new Set();
+      if (runtime.eventHooked) return;
       runtime.lastChatLength = (c.chat || []).length;
       const injectionEvents = [
         et.GENERATION_STARTED || "generation_started",
@@ -14181,71 +14183,76 @@ ${lines}`;
         et.CHATCOMPLETION_SOURCE_CHANGED || "chatcompletion_source_changed",
         et.OAI_PRESET_CHANGED_AFTER || "oai_preset_changed_after"
       ].filter(Boolean);
-      injectionEvents.forEach((ev) => {
+      const registerOnce = (key, eventName, callback) => {
+        if (registrations.has(key)) return true;
+        if (!eventName || typeof c.eventSource?.on !== "function") return false;
         try {
-          c.eventSource.on(ev, () => applyBidirectionalInjection().catch(() => void 0));
+          c.eventSource.on(eventName, callback);
+          registrations.add(key);
+          return true;
         } catch (error) {
-          warnHostEventRegistrationFailureOnce(`injection:${ev}`, ev, error);
+          warnHostEventRegistrationFailureOnce(key, eventName, error);
+          return false;
         }
-      });
+      };
+      const results = injectionEvents.map((eventName) => registerOnce(
+        `injection:${eventName}`,
+        eventName,
+        () => applyBidirectionalInjection().catch(() => void 0)
+      ));
       for (const eventName of resolveCommunityMessageEvents(et)) {
-        try {
-          c.eventSource.on(eventName, () => {
-            try {
-              deps.observeCommunityTurn?.(c.chat || []);
-            } catch (error) {
-            }
-            Promise.resolve(deps.observeCalendarTurn?.()).catch(() => {
-            });
-          });
-        } catch (error) {
-          warnHostEventRegistrationFailureOnce(`community:${eventName}`, eventName, error);
-        }
-      }
-      try {
-        registerResolvedHostEvent(c.eventSource, et, "MESSAGE_RECEIVED", () => {
-          const chat = c.chat || [];
-          const previousLen = runtime.lastChatLength;
-          const currentLen = chat.length;
-          if (currentLen > runtime.lastChatLength) {
-            runtime.lastChatLength = currentLen;
-            const hasCompletedAssistantMessage = chat.slice(previousLen).some((message) => !message?.is_user);
-            if (hasCompletedAssistantMessage && isAutoPokeAllowed() && typeof window.__pmIncrementCounters === "function") {
-              window.__pmIncrementCounters();
-            }
-          } else if (currentLen < runtime.lastChatLength) {
-            runtime.lastChatLength = currentLen;
-          }
-        });
-      } catch (error) {
-        warnHostEventRegistrationFailureOnce("resolved:MESSAGE_RECEIVED", "MESSAGE_RECEIVED", error);
-      }
-      try {
-        registerResolvedHostEvent(c.eventSource, et, "CHAT_CHANGED", () => {
+        results.push(registerOnce(`community:${eventName}`, eventName, () => {
           const currentContext = getCtx();
-          handleHostChatChanged({
-            state,
-            runtime,
-            chatLength: (currentContext?.chat || []).length,
-            cancelCommunityGeneration: deps.cancelCommunityGeneration,
-            cancelCalendarTasks: deps.cancelCalendarTasks,
-            disarmAutoPoke,
-            endPhone: window.__pmEnd,
-            invalidateGeneration
+          try {
+            deps.observeCommunityTurn?.(currentContext?.chat || []);
+          } catch (error) {
+          }
+          Promise.resolve(deps.observeCalendarTurn?.()).catch(() => {
           });
-          beginBranchInheritance(currentContext, {
-            getStorageId: getStorageId2,
-            invalidateInteractiveStore: deps.invalidateInteractiveStore,
-            reloadCalendarStore: deps.reloadCalendarStore
-          }).catch((error) => {
-            console.warn("[phone-mode] \u5206\u652F\u624B\u673A\u6570\u636E\u7EE7\u627F\u5931\u8D25", error?.name || "Error");
-          });
-        });
-      } catch (error) {
-        warnHostEventRegistrationFailureOnce("resolved:CHAT_CHANGED", "CHAT_CHANGED", error);
+        }));
       }
-      runtime.eventHooked = true;
-      console.log("[phone-mode] hooked", injectionEvents.length, "injection events");
+      const messageReceivedEvent = resolveHostEvent(et, "MESSAGE_RECEIVED");
+      results.push(registerOnce("resolved:MESSAGE_RECEIVED", messageReceivedEvent, () => {
+        const chat = getCtx()?.chat || [];
+        const previousLen = runtime.lastChatLength;
+        const currentLen = chat.length;
+        if (currentLen > runtime.lastChatLength) {
+          runtime.lastChatLength = currentLen;
+          const hasCompletedAssistantMessage = chat.slice(previousLen).some((message) => !message?.is_user);
+          if (hasCompletedAssistantMessage && isAutoPokeAllowed() && typeof window.__pmIncrementCounters === "function") {
+            window.__pmIncrementCounters();
+          }
+        } else if (currentLen < runtime.lastChatLength) {
+          runtime.lastChatLength = currentLen;
+        }
+      }));
+      const chatChangedEvent = resolveHostEvent(et, "CHAT_CHANGED");
+      results.push(registerOnce("resolved:CHAT_CHANGED", chatChangedEvent, () => {
+        const currentContext = getCtx();
+        handleHostChatChanged({
+          state,
+          runtime,
+          chatLength: (currentContext?.chat || []).length,
+          cancelCommunityGeneration: deps.cancelCommunityGeneration,
+          cancelCalendarTasks: deps.cancelCalendarTasks,
+          disarmAutoPoke,
+          endPhone: window.__pmEnd,
+          invalidateGeneration
+        });
+        const inheritBranch = deps.beginBranchInheritance || beginBranchInheritance;
+        return inheritBranch(currentContext, {
+          getStorageId: getStorageId2,
+          invalidateInteractiveStore: deps.invalidateInteractiveStore,
+          reloadCalendarStore: deps.reloadCalendarStore
+        }).catch((error) => {
+          console.warn("[phone-mode] \u5206\u652F\u624B\u673A\u6570\u636E\u7EE7\u627F\u5931\u8D25", error?.name || "Error");
+          return { status: "failed", error };
+        });
+      }));
+      runtime.eventHooked = results.every(Boolean);
+      if (runtime.eventHooked) {
+        console.log("[phone-mode] hooked", injectionEvents.length, "injection events");
+      }
     }
     window.__pmToggleBidirectional = (name) => {
       const id2 = getStorageId2();
@@ -15202,6 +15209,7 @@ ${lines}`;
         window.__pmOpen();
       }
     }, true);
+    hookGenerationEvent();
     try {
       window.__pmHistories = window.__pmHistories || {};
     } catch (e) {
@@ -15212,13 +15220,14 @@ ${lines}`;
     loadCharacterBehavior();
     loadWordyLimit();
     loadBudgetConfig();
-    const initialGroupMetaLoad = loadGroupMeta();
+    const initialGroupMetaLoad = (deps.loadGroupMeta || loadGroupMeta)();
     loadHistoriesOnce();
     setTimeout(() => {
+      hookGenerationEvent();
       initialGroupMetaLoad.then(() => {
         migrateOldHistory();
         applyBidirectionalInjection();
-        hookGenerationEvent();
+      }).catch(() => {
       });
     }, 1500);
     console.log("[phone-mode] v9.5.7 \u5DF2\u52A0\u8F7D\uFF1A\u4E16\u754C\u4E66\u9884\u7B97\u6539\u4E3A\u8BFB\u53D6ST\u5B9E\u9645\u4E0A\u4E0B\u6587\u7A97\u53E3\u5927\u5C0F");

@@ -506,11 +506,20 @@ export function installPhoneLifecycle(state, deps) {
         if (ta.value.trim() === '/phone') { e.preventDefault(); e.stopImmediatePropagation(); ta.value = ''; window.__pmOpen(); }
     }, true);
 
+    // 宿主分支在切换聊天后立即发出 CHAT_CHANGED；事件监听不能被本地存储恢复阻塞。
+    hookGenerationEvent();
     try { window.__pmHistories = window.__pmHistories || {}; } catch (e) {}
     loadBidirectional(); loadInjectionConfig(); loadPokeConfig(); loadCharacterBehavior(); loadWordyLimit(); loadBudgetConfig();
-    const initialGroupMetaLoad = loadGroupMeta();
+    const initialGroupMetaLoad = (deps.loadGroupMeta || loadGroupMeta)();
     loadHistoriesOnce(); // 首次打开复用同一个恢复任务，避免并发读取用旧快照覆盖内存
-    setTimeout(() => { initialGroupMetaLoad.then(() => { migrateOldHistory(); applyBidirectionalInjection(); hookGenerationEvent(); }); }, 1500);
+    // 宿主事件重试不能依赖本地数据恢复成功；否则 IDB 故障会永久漏掉 CHAT_CHANGED。
+    setTimeout(() => {
+        hookGenerationEvent();
+        initialGroupMetaLoad.then(() => {
+            migrateOldHistory();
+            applyBidirectionalInjection();
+        }).catch(() => {});
+    }, 1500);
 
     console.log('[phone-mode] v9.5.7 已加载：世界书预算改为读取ST实际上下文窗口大小');
 }

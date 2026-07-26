@@ -1476,10 +1476,12 @@ try {
     const interactiveStoreReady = new Promise(resolve => { resolveInteractiveStore = resolve; });
     const injectionContext = {
         chat: [],
+        chatId: 'official-branch-chat',
         characterId: 0,
-        characters: [{ name: 'Alice' }],
-        event_types: {
-            GENERATION_STARTED: 'generation_started', CHAT_CHANGED: 'chat_changed',
+        characters: [{ name: 'Alice', avatar: 'alice.png' }],
+        chatMetadata: { main_chat: 'official-parent-chat' },
+        eventTypes: {
+            GENERATION_STARTED: 'generation_started', CHAT_CHANGED: 'chat_id_changed',
             MESSAGE_RECEIVED: 'message_received', SETTINGS_UPDATED: 'settings_updated',
         },
         eventSource: {
@@ -1504,19 +1506,23 @@ try {
     window.__pmBudgetConfig = undefined;
     window.__pmEmojis = [];
     try {
+        const officialBranchCalls = [];
         const injectionDeps = {
             runtime: createRuntimeState(),
             getCtx: () => injectionContext,
             getStorageId: () => 'story',
             getUserPersona: () => ({ name: '用户' }),
             getInteractiveStore: () => interactiveStoreReady,
+            beginBranchInheritance: async context => {
+                officialBranchCalls.push(context); return { status: 'cloned' };
+            },
         };
         installPhoneFoundation({ phoneWindow: null, phoneActive: false, conversationHistory: [] }, injectionDeps);
         injectionDeps.hookGenerationEvent();
         assert.equal(injectionListeners.get('generation_started')?.length, 1,
-            '生成开始必须注册唯一的注入刷新监听器');
-        assert.equal(injectionListeners.get('chat_changed')?.length, 1,
-            'CHAT_CHANGED 只能注册会话失效处理器，不得先异步刷新再被关闭流程清空');
+            '真实宿主 eventTypes 必须注册唯一的注入刷新监听器');
+        assert.equal(injectionListeners.get('chat_id_changed')?.length, 1,
+            '真实宿主 eventTypes.CHAT_CHANGED 必须按官方 chat_id_changed 值注册会话失效处理器');
         const generationRefresh = injectionListeners.get('generation_started')[0]();
         assert.equal(typeof generationRefresh?.then, 'function',
             '生成开始监听器必须返回注入 Promise，让宿主等待提示词写入完成');
@@ -1528,6 +1534,12 @@ try {
         assert.ok(injectedMemory, '生成开始事件完成前必须写入所选聊天记录提示词');
         assert.equal(injectedMemory[2], EXTENSION_PROMPT_POSITIONS.IN_PROMPT);
         assert.equal(injectedMemory[3], 0);
+        const branchEventResult = injectionListeners.get('chat_id_changed')[0]('official-branch-chat');
+        assert.equal(typeof branchEventResult?.then, 'function',
+            'CHAT_CHANGED 监听器必须返回分支继承 Promise，让宿主事件总线等待事务启动结果');
+        await branchEventResult;
+        assert.deepEqual(officialBranchCalls, [injectionContext],
+            '官方分支 CHAT_CHANGED 必须把含 main_chat 的最新 getContext 快照交给继承入口');
     } finally {
         window.__pmBidirectional = previousBidirectional;
         window.__pmHistories = previousHistories;
@@ -1537,33 +1549,129 @@ try {
         window.__pmEmojis = previousEmojis;
     }
 
+    const legacyEventListeners = new Map();
+    const legacyEventContext = {
+        chat: [],
+        chatId: 'legacy-branch-chat',
+        characterId: 0,
+        characters: [{ name: 'Alice', avatar: 'alice.png' }],
+        chatMetadata: { main_chat: 'legacy-parent-chat' },
+        event_types: {
+            GENERATION_STARTED: 'legacy_generation_started', CHAT_CHANGED: 'legacy_chat_changed',
+            MESSAGE_RECEIVED: 'legacy_message_received', SETTINGS_UPDATED: 'legacy_settings_updated',
+        },
+        eventSource: {
+            on(eventName, listener) {
+                const listeners = legacyEventListeners.get(eventName) || [];
+                listeners.push(listener);
+                legacyEventListeners.set(eventName, listeners);
+            },
+        },
+    };
+    const legacyBranchCalls = [];
+    const legacyDeps = {
+        runtime: createRuntimeState(), getCtx: () => legacyEventContext, getStorageId: () => 'story',
+        getUserPersona: () => ({ name: '用户' }),
+        beginBranchInheritance: async context => {
+            legacyBranchCalls.push(context); return { status: 'cloned' };
+        },
+    };
+    installPhoneFoundation({ phoneWindow: null, phoneActive: false, conversationHistory: [] }, legacyDeps);
+    legacyDeps.hookGenerationEvent();
+    assert.equal(legacyEventListeners.get('legacy_generation_started')?.length, 1,
+        '旧宿主 event_types 仍必须注册注入刷新监听器');
+    assert.equal(legacyEventListeners.get('legacy_chat_changed')?.length, 1,
+        '旧宿主 event_types 仍必须注册 CHAT_CHANGED 会话失效处理器');
+    const legacyBranchResult = legacyEventListeners.get('legacy_chat_changed')[0]('legacy-branch-chat');
+    assert.equal(typeof legacyBranchResult?.then, 'function', '旧宿主 CHAT_CHANGED 也必须返回分支继承 Promise');
+    await legacyBranchResult;
+    assert.deepEqual(legacyBranchCalls, [legacyEventContext],
+        '旧宿主 event_types 路径必须继续把最新上下文交给分支继承入口');
+
+    const registrationAttempts = new Map();
+    const recoveredEventListeners = new Map();
+    let failChatRegistration = true;
+    let currentEventRegistrationContext;
     const eventRegistrationContext = {
         chat: [],
-        event_types: {
+        eventTypes: {
             GENERATION_STARTED: 'generation_started', CHAT_CHANGED: 'chat_changed',
             MESSAGE_RECEIVED: 'message_received', SETTINGS_UPDATED: 'settings_updated',
         },
-        eventSource: { on() { throw new SyntaxError('sensitive host event payload'); } },
+        eventSource: {
+            on(eventName, listener) {
+                registrationAttempts.set(eventName, (registrationAttempts.get(eventName) || 0) + 1);
+                if (eventName === 'chat_changed' && failChatRegistration) {
+                    throw new SyntaxError('sensitive host event payload');
+                }
+                const listeners = recoveredEventListeners.get(eventName) || [];
+                listeners.push(listener);
+                recoveredEventListeners.set(eventName, listeners);
+            },
+        },
     };
-    const installFailingFoundation = () => {
-        const state = { phoneWindow: null, phoneActive: false, conversationHistory: [] };
-        const deps = {
-            runtime: createRuntimeState(),
-            getCtx: () => eventRegistrationContext,
-            getStorageId: () => 'story',
-            getUserPersona: () => ({ name: '用户' }),
-        };
-        installPhoneFoundation(state, deps);
-        deps.hookGenerationEvent();
-        return deps.runtime;
+    currentEventRegistrationContext = eventRegistrationContext;
+    const recoveringDeps = {
+        runtime: createRuntimeState(),
+        getCtx: () => currentEventRegistrationContext,
+        getStorageId: () => 'story',
+        getUserPersona: () => ({ name: '用户' }),
     };
-    const firstFailedRuntime = installFailingFoundation();
+    installPhoneFoundation({ phoneWindow: null, phoneActive: false, conversationHistory: [] }, recoveringDeps);
+    recoveringDeps.hookGenerationEvent();
     const registrationWarningCount = hostBoundaryWarnings.filter(args => String(args[0]).includes('宿主事件')).length;
-    assert.equal(firstFailedRuntime.eventHooked, true, '事件注册异常不得中断 foundation 初始化');
+    assert.equal(recoveringDeps.runtime.eventHooked, false,
+        '任一关键宿主事件注册失败时不得把 runtime 锁死为已完成');
     assert.ok(registrationWarningCount > 0, '事件注册异常必须产生可诊断告警');
-    installFailingFoundation();
+    const successfulAttemptSnapshot = new Map(registrationAttempts);
+    failChatRegistration = false;
+    recoveringDeps.hookGenerationEvent();
+    assert.equal(recoveringDeps.runtime.eventHooked, true,
+        '宿主恢复后必须允许失败事件重试并完成注册');
+    assert.equal(registrationAttempts.get('chat_changed'), 2,
+        '失败的 CHAT_CHANGED 必须且只能在恢复后重试一次');
+    for (const [eventName, attempts] of successfulAttemptSnapshot) {
+        if (eventName === 'chat_changed') continue;
+        assert.equal(registrationAttempts.get(eventName), attempts,
+            `已成功注册的 ${eventName} 不得在局部失败重试时重复绑定`);
+    }
+    assert.equal(recoveredEventListeners.get('chat_changed')?.length, 1,
+        '恢复后 CHAT_CHANGED 必须只有一个有效监听器');
+    recoveringDeps.hookGenerationEvent();
+    assert.equal(registrationAttempts.get('chat_changed'), 2,
+        '完成注册后的重复 hook 必须保持幂等');
+    const replacementListeners = new Map();
+    const replacementEventSource = {
+        on(eventName, listener) {
+            const listeners = replacementListeners.get(eventName) || [];
+            listeners.push(listener);
+            replacementListeners.set(eventName, listeners);
+        },
+    };
+    currentEventRegistrationContext = {
+        ...eventRegistrationContext,
+        eventSource: replacementEventSource,
+    };
+    recoveringDeps.hookGenerationEvent();
+    assert.equal(recoveringDeps.runtime.hostEventSource, replacementEventSource,
+        '宿主替换 eventSource 后 runtime 必须切换到新事件源');
+    assert.equal(recoveringDeps.runtime.eventHooked, true,
+        '新 eventSource 上所有事件重新注册成功后必须恢复完成状态');
+    const expectedReplacementListenerCounts = new Map([
+        ['generation_started', 1], ['settings_updated', 1],
+        ['chatcompletion_source_changed', 1], ['oai_preset_changed_after', 1],
+        // MESSAGE_RECEIVED 同时服务社区观察和自动计数，两个职责必须各有一个监听器。
+        ['message_received', 2], ['chat_changed', 1],
+    ]);
+    for (const [eventName, expectedCount] of expectedReplacementListenerCounts) {
+        assert.equal(replacementListeners.get(eventName)?.length, expectedCount,
+            `新 eventSource 的 ${eventName} 监听器数量必须与独立职责一致`);
+    }
+    recoveringDeps.hookGenerationEvent();
+    assert.equal(replacementListeners.get('chat_changed')?.length, 1,
+        '新 eventSource 完成注册后重复 hook 不得再次绑定 CHAT_CHANGED');
     assert.equal(hostBoundaryWarnings.filter(args => String(args[0]).includes('宿主事件')).length, registrationWarningCount,
-        '同一宿主事件注册失败跨重复安装必须保持去重');
+        '同一宿主事件注册失败重试期间必须保持告警去重');
     assert.equal(hostBoundaryWarnings.some(args => args.some(value => String(value).includes('sensitive host event payload'))), false,
         '事件注册告警不得输出异常正文');
 
@@ -1574,7 +1682,7 @@ try {
     installPhoneFoundation({ phoneWindow: null, phoneActive: false, conversationHistory: [] }, quietDeps);
     quietDeps.hookGenerationEvent();
     assert.equal(hostBoundaryWarnings.filter(args => String(args[0]).includes('宿主事件')).length, registrationWarningCount,
-        '缺少 eventSource/event_types 的未就绪宿主必须安静跳过');
+        '缺少 eventSource/eventTypes 的未就绪宿主必须安静跳过');
 } finally {
     console.warn = originalConsoleWarn;
 }
@@ -1913,6 +2021,7 @@ if (lifecycleOverlay) {
 }
 const originalLifecycleCreateElement = document.createElement;
 const originalLifecycleAppendChild = document.body.appendChild;
+const originalLifecycleSetTimeout = globalThis.setTimeout;
 const originalLifecycleSetInterval = globalThis.setInterval;
 const originalLifecycleClearInterval = globalThis.clearInterval;
 const originalLifecycleGetComputedStyle = globalThis.getComputedStyle;
@@ -1920,6 +2029,7 @@ const originalLifecycleWindowAddEventListener = window.addEventListener;
 const originalLifecycleWindowRemoveEventListener = window.removeEventListener;
 const lifecycleIntervalIds = [];
 const lifecycleClearedIds = [];
+const lifecycleTimeoutCallbacks = [];
 const lifecyclePhoneListeners = new Map();
 const lifecyclePhone = {
     id: '', dataset: {}, innerHTML: '', removed: false,
@@ -1939,14 +2049,16 @@ const lifecycleFixtureState = {
     groupMembers: [], groupExtras: [], groupColorMap: {}, groupDisplayName: '',
     groupRandomNpcEnabled: false, groupNature: '', currentGroupKey: '', isGenerating: false,
 };
+let lifecycleHookCalls = 0;
 const lifecycleFixtureDeps = {
     runtime: createRuntimeState(), getCtx: () => ({ registerSlashCommand() {} }),
     getStorageId: () => 'story', getUserPersona: () => ({ name: '用户' }),
+    loadGroupMeta: async () => ({}),
     applyBidirectionalInjection: () => {}, clearBidirectionalInjection: () => {},
     persistCurrentHistory: () => {}, persistPhoneUiSnapshot: () => {},
     applyBackground: () => {}, applyTheme: () => {}, applyPhoneScale: () => {},
     bindIsland: () => () => {}, bindPhoneResize: () => () => {}, bindPhonePageUi: () => {},
-    migrateOldHistory: () => {}, hookGenerationEvent: () => {}, invalidateGeneration: () => {},
+    migrateOldHistory: () => {}, hookGenerationEvent: () => { lifecycleHookCalls += 1; }, invalidateGeneration: () => {},
     disarmAutoPoke: () => {}, syncGenerationControls: () => {}, closeOverlay: () => {},
     closeControlCenter: () => {}, refreshReplyCardAvailability: () => {}, clearActiveQuote: () => {},
     restorePhoneChat: async () => true, restorePhoneUi: async () => {},
@@ -1954,6 +2066,7 @@ const lifecycleFixtureDeps = {
 try {
     document.createElement = tag => { assert.equal(tag, 'div'); return lifecyclePhone; };
     document.body.appendChild = element => element;
+    globalThis.setTimeout = callback => { lifecycleTimeoutCallbacks.push(callback); return lifecycleTimeoutCallbacks.length; };
     globalThis.setInterval = () => { lifecycleIntervalIds.push(0); return 0; };
     globalThis.clearInterval = id => lifecycleClearedIds.push(id);
     globalThis.getComputedStyle = () => ({ display: 'flex', visibility: 'visible', opacity: '1' });
@@ -1965,14 +2078,29 @@ try {
     const lifecycleFailureDeps = {
         ...lifecycleFixtureDeps, runtime: createRuntimeState(), applyPhoneScale: () => { throw new Error('fixture-open-failed'); },
     };
+    let rejectInitialGroupMeta;
+    lifecycleFailureDeps.loadGroupMeta = () => new Promise((resolve, reject) => { rejectInitialGroupMeta = reject; });
     lifecycleFailureDeps.runtime.firstOpen = false;
+    const hookCallsBeforeFailureInstall = lifecycleHookCalls;
     installPhoneLifecycle(lifecycleFailureState, lifecycleFailureDeps);
+    assert.equal(lifecycleHookCalls, hookCallsBeforeFailureInstall + 1,
+        '生命周期安装必须立即注册宿主事件，不能等本地存储恢复后才监听首个分支 CHAT_CHANGED');
+    assert.equal(lifecycleTimeoutCallbacks.length, 1, '生命周期安装必须安排一次有限的宿主事件延迟重试');
+    lifecycleTimeoutCallbacks.shift()();
+    assert.equal(lifecycleHookCalls, hookCallsBeforeFailureInstall + 2,
+        '延迟宿主事件重试不得等待群组元数据恢复完成');
+    rejectInitialGroupMeta(new Error('fixture-group-meta-failed'));
+    await Promise.resolve();
+    await Promise.resolve();
     window.__pmTheme = structuredClone(baseTheme);
     await assert.rejects(window.__pmOpen(), /fixture-open-failed/);
     assert.deepEqual(lifecycleIntervalIds, [], '同步打开初始化失败时不得启动可见性巡检定时器');
     assert.equal(lifecycleFailureDeps.runtime.visibilityTimer, null, '同步打开初始化失败后不得残留可见性巡检状态');
     lifecycleFixtureDeps.runtime.firstOpen = false;
+    const hookCallsBeforeSuccessInstall = lifecycleHookCalls;
     installPhoneLifecycle(lifecycleFixtureState, lifecycleFixtureDeps);
+    assert.equal(lifecycleHookCalls, hookCallsBeforeSuccessInstall + 1,
+        '每个独立 runtime 安装时都必须同步尝试注册宿主事件');
     window.__pmTheme = structuredClone(baseTheme);
     await window.__pmOpen();
     assert.deepEqual(lifecycleIntervalIds, [0], '成功打开必须且只能启动一个可见性巡检定时器');
@@ -1985,6 +2113,7 @@ try {
 } finally {
     document.createElement = originalLifecycleCreateElement;
     document.body.appendChild = originalLifecycleAppendChild;
+    globalThis.setTimeout = originalLifecycleSetTimeout;
     globalThis.setInterval = originalLifecycleSetInterval;
     globalThis.clearInterval = originalLifecycleClearInterval;
     if (originalLifecycleGetComputedStyle === undefined) delete globalThis.getComputedStyle; else globalThis.getComputedStyle = originalLifecycleGetComputedStyle;

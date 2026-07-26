@@ -2,6 +2,8 @@ export function createRuntimeState() {
     return {
         modelList: [],
         eventHooked: false,
+        hostEventSource: null,
+        hostEventRegistrations: new Set(),
         firstOpen: true,
         lastChatLength: 0,
         historyLoadPromise: null,

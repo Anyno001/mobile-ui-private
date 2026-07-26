@@ -1208,6 +1208,43 @@ if (visibilityTimerStart < phoneActiveStart) {
 if (lifecycleTimerCode.slice(0, phoneOpenStart).includes('runtime.visibilityTimer = setInterval(ensureVisibility, 2000)')) {
   failures.push('phone-lifecycle.js: plugin installation must not start the visibility timer while no phone window exists');
 }
+const lifecycleAst = parseJavaScript(lifecycleTimerCode, 'module');
+const lifecycleExport = lifecycleAst.body.find(statement => statement.type === 'ExportNamedDeclaration'
+  && statement.declaration?.type === 'FunctionDeclaration'
+  && statement.declaration.id?.name === 'installPhoneLifecycle');
+const lifecycleInstallStatements = lifecycleExport?.declaration?.body?.body || [];
+const isDirectCall = (statement, name) => statement?.type === 'ExpressionStatement'
+  && statement.expression?.type === 'CallExpression'
+  && statement.expression.callee?.type === 'Identifier'
+  && statement.expression.callee.name === name;
+const directHostHookIndex = lifecycleInstallStatements.findIndex(statement => isDirectCall(statement, 'hookGenerationEvent'));
+const initialGroupMetaIndex = lifecycleInstallStatements.findIndex(statement => statement.type === 'VariableDeclaration'
+  && statement.declarations.some(declaration => declaration.id?.type === 'Identifier'
+    && declaration.id.name === 'initialGroupMetaLoad'));
+if (directHostHookIndex < 0 || initialGroupMetaIndex < 0 || directHostHookIndex > initialGroupMetaIndex) {
+  failures.push('phone-lifecycle.js: host events must be hooked before initial local metadata recovery starts');
+}
+const delayedRetryStatement = lifecycleInstallStatements.find(statement => statement.type === 'ExpressionStatement'
+  && statement.expression?.type === 'CallExpression'
+  && statement.expression.callee?.type === 'Identifier'
+  && statement.expression.callee.name === 'setTimeout');
+const delayedRetryCallback = delayedRetryStatement?.expression?.arguments?.[0];
+const delayedRetryStatements = delayedRetryCallback?.type === 'ArrowFunctionExpression'
+  && delayedRetryCallback.body?.type === 'BlockStatement'
+  ? delayedRetryCallback.body.body : [];
+const delayedDirectHookIndex = delayedRetryStatements.findIndex(statement => isDirectCall(statement, 'hookGenerationEvent'));
+const delayedMetadataIndex = delayedRetryStatements.findIndex(statement => {
+  let hasMetadataThen = false;
+  walk(statement, node => {
+    if (node.type === 'CallExpression' && node.callee?.type === 'MemberExpression'
+        && node.callee.object?.type === 'Identifier' && node.callee.object.name === 'initialGroupMetaLoad'
+        && memberName(node.callee) === 'then') hasMetadataThen = true;
+  });
+  return hasMetadataThen;
+});
+if (delayedDirectHookIndex < 0 || delayedMetadataIndex < 0 || delayedDirectHookIndex > delayedMetadataIndex) {
+  failures.push('phone-lifecycle.js: delayed host-event retry must run before and independently from metadata success continuation');
+}
 for (const expected of [
   'commitEditedGroupUpdate', 'refreshEditedGroupRuntime', 'restoreConversationState', 'previousConversationContext',
   'persistRestored', "injectionFailure(rollbackResult, '补偿')",
@@ -1711,13 +1748,17 @@ for (const stateField of [
   }
 }
 for (const expected of [
-  'resolveCommunityMessageEvents(et)', 'deps.observeCommunityTurn?.(c.chat || [])',
-  "registerResolvedHostEvent(c.eventSource, et, 'MESSAGE_RECEIVED'", "registerResolvedHostEvent(c.eventSource, et, 'CHAT_CHANGED'",
+  'resolveCommunityMessageEvents(et)', 'deps.observeCommunityTurn?.(currentContext?.chat || [])',
+  "resolveHostEvent(et, 'MESSAGE_RECEIVED')", "resolveHostEvent(et, 'CHAT_CHANGED')",
+  "registerOnce('resolved:MESSAGE_RECEIVED'", "registerOnce('resolved:CHAT_CHANGED'",
+  'runtime.hostEventSource !== c.eventSource', 'runtime.hostEventRegistrations = new Set()',
+  'runtime.eventHooked = results.every(Boolean)',
   'handleHostChatChanged({', "cancelCommunityGeneration?.('host-chat-changed')", "cancelCalendarTasks?.('host-chat-changed')",
   "disarmAutoPoke?.('host-chat-changed')", 'endPhone(true)',
   'installPhonePageSuspensionListeners', 'updatePhonePageSuspensionHandler', '__pmPageSuspensionHandler',
   "__pmPageSuspensionHandler?.('beforeunload')", "__pmPageSuspensionHandler?.('document-hidden')",
 ]) requireText('phone-foundation.js', sourceModuleByName.get('phone-foundation.js')?.code || '', expected);
+for (const expected of ['hostEventSource: null', 'hostEventRegistrations: new Set()']) requireText('runtime.js', sourceModuleByName.get('runtime.js')?.code || '', expected);
 for (const forbidden of [
   "et.MESSAGE_RECEIVED || 'message_received'", "et.CHAT_CHANGED || 'chat_id_changed'",
   "et.MESSAGE_SENT || 'message_sent'", "et.MESSAGE_EDITED || 'message_edited'",
