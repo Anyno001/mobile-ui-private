@@ -1507,6 +1507,7 @@ try {
     window.__pmEmojis = [];
     try {
         const officialBranchCalls = [];
+        let officialBranchFailure = null;
         const injectionDeps = {
             runtime: createRuntimeState(),
             getCtx: () => injectionContext,
@@ -1514,6 +1515,7 @@ try {
             getUserPersona: () => ({ name: '用户' }),
             getInteractiveStore: () => interactiveStoreReady,
             beginBranchInheritance: async context => {
+                if (officialBranchFailure) throw officialBranchFailure;
                 officialBranchCalls.push(context); return { status: 'cloned' };
             },
         };
@@ -1540,6 +1542,21 @@ try {
         await branchEventResult;
         assert.deepEqual(officialBranchCalls, [injectionContext],
             '官方分支 CHAT_CHANGED 必须把含 main_chat 的最新 getContext 快照交给继承入口');
+        assert.deepEqual(injectionDeps.runtime.lastBranchInheritance, {
+            status: 'cloned', reason: null, sourceId: null, targetId: null,
+        }, '宿主监听器必须记录真实继承入口返回的可诊断状态');
+        assert.equal(injectionDeps.runtime.lastBranchInheritanceError, null,
+            '成功或跳过的分支继承不得遗留失败诊断');
+        officialBranchFailure = new Error(`保留前缀${'x'.repeat(260)}敏感尾标记`);
+        const failedBranchEvent = injectionListeners.get('chat_id_changed')[0]('official-branch-chat');
+        assert.equal((await failedBranchEvent).status, 'failed',
+            '真实宿主 CHAT_CHANGED 监听器必须将继承异常转为可诊断失败状态');
+        assert.equal(injectionDeps.runtime.lastBranchInheritanceError?.message.length, 240,
+            '运行态失败诊断必须截断过长错误消息');
+        assert.match(injectionDeps.runtime.lastBranchInheritanceError?.message || '', /^保留前缀x+$/,
+            '截断诊断必须保留开头的可识别错误前缀');
+        assert.doesNotMatch(injectionDeps.runtime.lastBranchInheritanceError?.message || '', /敏感尾标记/,
+            '截断诊断不得保留超过上限的敏感尾部内容');
     } finally {
         window.__pmBidirectional = previousBidirectional;
         window.__pmHistories = previousHistories;
@@ -6412,6 +6429,51 @@ try {
     await pmIDBDel(BRANCH_LINEAGE_STORE_KEY);
     const productionTargetId = getStorageIdFor('alice.png', 'production-branch');
     const productionContext = { ...branchContext, chatId: 'production-branch' };
+    const previousProductionBeforeUnloadRegistration = window.__pmBeforeUnloadRegistered;
+    const previousProductionWindowAddEventListener = window.addEventListener;
+    const previousProductionDocument = globalThis.document;
+    globalThis.document = {
+        visibilityState: 'visible',
+        addEventListener() {},
+        getElementById() { return null; },
+        querySelector() { return null; },
+        querySelectorAll() { return []; },
+    };
+    window.addEventListener = () => {};
+    window.__pmBeforeUnloadRegistered = false;
+    const productionListeners = new Map();
+    const previousProductionEnd = window.__pmEnd;
+    const productionCleanupCalls = [];
+    const productionFoundationState = { phoneWindow: null, phoneActive: true, conversationHistory: [] };
+    const productionEventContext = {
+        ...productionContext,
+        eventTypes: {
+            GENERATION_STARTED: 'production_generation_started', CHAT_CHANGED: 'production_chat_changed',
+            MESSAGE_RECEIVED: 'production_message_received', SETTINGS_UPDATED: 'production_settings_updated',
+        },
+        eventSource: {
+            on(eventName, listener) {
+                const listeners = productionListeners.get(eventName) || [];
+                listeners.push(listener);
+                productionListeners.set(eventName, listeners);
+            },
+        },
+    };
+    let currentProductionEventContext = productionEventContext;
+    window.__pmEnd = force => {
+        productionCleanupCalls.push(['end-phone', force]);
+        productionFoundationState.phoneActive = false;
+    };
+    const productionFoundationDeps = {
+        runtime: createRuntimeState(), getCtx: () => currentProductionEventContext,
+        getStorageId: () => productionTargetId, getUserPersona: () => ({ name: '用户' }),
+        cancelCommunityGeneration: reason => productionCleanupCalls.push(['community', reason]),
+        cancelCalendarTasks: reason => productionCleanupCalls.push(['calendar', reason]),
+    };
+    installPhoneFoundation(productionFoundationState, productionFoundationDeps);
+    productionFoundationDeps.hookGenerationEvent();
+    assert.equal(productionListeners.get('production_chat_changed')?.length, 1,
+        '生产继承回归必须通过真实 CHAT_CHANGED 监听器进入分支事务');
     idbValues.set('ST_SMS_DATA_V2', {
         [branchIds.source]: { Alice: [{ content: 'production-source' }] },
         unrelated: { Bob: [{ content: 'unrelated-history' }] },
@@ -6440,10 +6502,12 @@ try {
         communitySelectionsByStorage: { [branchIds.source]: { 'scene-source': { mode: 'all' } } },
     }));
     const lineageCommitBlocker = blockIDBOperation('put', BRANCH_LINEAGE_STORE_KEY);
-    const productionBranch = beginBranchInheritance(productionContext);
+    const productionBranch = productionListeners.get('production_chat_changed')[0](productionTargetId);
     let productionFailure = null;
     productionBranch.catch(error => { productionFailure = error; });
     await lineageCommitBlocker.entered;
+    assert.deepEqual(productionCleanupCalls, [],
+        '分支持久化尚未完成时不得提前清理旧会话或中断宿主任务');
     try {
         assert.equal(productionFailure, null, `真实生产分支提交不得在交错窗口前失败：${productionFailure?.message || ''}`);
         assert.ok(Object.hasOwn(JSON.parse(localValues.get('ST_SMS_POKE_CONFIG') || '{}'), productionTargetId),
@@ -6490,16 +6554,36 @@ try {
         await productionBranch.catch(() => {});
     }
     assert.equal((await productionBranch).status, 'cloned');
+    assert.equal(productionFoundationDeps.runtime.lastBranchInheritance?.status, 'cloned',
+        '真实 CHAT_CHANGED 链路必须记录已完成的生产继承结果');
+    assert.equal(productionFoundationDeps.runtime.lastBranchInheritance?.targetId, productionTargetId,
+        '真实 CHAT_CHANGED 链路必须记录继承目标 scope');
     for (const store of ['pokeConfig', 'characterBehavior', 'bidirectional', 'budget']) {
         assert.deepEqual(getActiveDirectoryBranchScopes(store), [], `成功提交后必须清除 ${store} 的 active scope`);
     }
+    assert.deepEqual(productionCleanupCalls, [
+        ['community', 'host-chat-changed'], ['calendar', 'host-chat-changed'], ['end-phone', true],
+    ], '分支继承成功后才必须且只能执行一次宿主聊天切换清理');
+
+    productionFoundationState.phoneActive = true;
+    const skippedProductionBranch = productionListeners.get('production_chat_changed')[0](productionTargetId);
+    assert.equal((await skippedProductionBranch).reason, 'already-cloned',
+        '同一分支事件重入必须通过真实继承入口返回已完成标记');
+    assert.equal(productionFoundationDeps.runtime.lastBranchInheritance?.status, 'skipped',
+        '真实 CHAT_CHANGED 跳过路径必须记录状态');
+    assert.equal(productionFoundationDeps.runtime.lastBranchInheritance?.reason, 'already-cloned',
+        '真实 CHAT_CHANGED 跳过路径必须记录准确原因');
+    assert.deepEqual(productionCleanupCalls.slice(-3), [
+        ['community', 'host-chat-changed'], ['calendar', 'host-chat-changed'], ['end-phone', true],
+    ], '继承跳过完成后也必须恰好执行一次聊天切换清理');
 
     const failedProductionTargetId = getStorageIdFor('alice.png', 'production-failed-branch');
+    currentProductionEventContext = { ...productionEventContext, chatId: 'production-failed-branch' };
+    productionFoundationState.phoneActive = true;
     const failedLineageBlocker = blockIDBOperation('put', BRANCH_LINEAGE_STORE_KEY);
     idbControl.abortOperations.push({ type: 'put', key: BRANCH_LINEAGE_STORE_KEY });
-    const failedProductionBranch = beginBranchInheritance({ ...branchContext, chatId: 'production-failed-branch' });
+    const failedProductionBranch = productionListeners.get('production_chat_changed')[0](failedProductionTargetId);
     await failedLineageBlocker.entered;
-    let failedProductionError;
     try {
         for (const store of ['pokeConfig', 'characterBehavior', 'bidirectional', 'budget']) {
             assert.deepEqual(getActiveDirectoryBranchScopes(store), [failedProductionTargetId],
@@ -6507,18 +6591,30 @@ try {
         }
     } finally {
         failedLineageBlocker.release();
-        try {
-            await failedProductionBranch;
-        } catch (error) {
-            failedProductionError = error;
-        }
+        await failedProductionBranch;
     }
-    assert.match(failedProductionError?.message || '', /分支继承记录保存失败/);
+    assert.equal(productionFoundationDeps.runtime.lastBranchInheritance?.status, 'failed',
+        '真实 CHAT_CHANGED 失败路径必须记录失败状态');
+    assert.equal(productionFoundationDeps.runtime.lastBranchInheritance?.sourceId, branchIds.source,
+        '失败诊断必须保留已确认的父 scope');
+    assert.equal(productionFoundationDeps.runtime.lastBranchInheritance?.targetId, failedProductionTargetId,
+        '失败诊断必须保留已确认的目标 scope');
+    assert.equal(productionFoundationDeps.runtime.lastBranchInheritanceError?.name, 'Error',
+        '失败诊断必须保留错误类型');
+    assert.match(productionFoundationDeps.runtime.lastBranchInheritanceError?.message || '', /分支继承记录保存失败/,
+        '失败诊断必须保留脱敏后的可区分原因');
     for (const store of ['pokeConfig', 'characterBehavior', 'bidirectional', 'budget']) {
         assert.deepEqual(getActiveDirectoryBranchScopes(store), [], `lineage 失败并补偿后必须清除 ${store} 的 active scope`);
     }
     assert.equal(Object.hasOwn(JSON.parse(localValues.get('ST_SMS_POKE_CONFIG')), failedProductionTargetId), false,
         'lineage 失败后必须补偿移除真实生产保存器已写入的 target scope');
+    assert.deepEqual(productionCleanupCalls.slice(-3), [
+        ['community', 'host-chat-changed'], ['calendar', 'host-chat-changed'], ['end-phone', true],
+    ], '继承失败完成后也必须恰好执行一次聊天切换清理');
+    window.__pmEnd = previousProductionEnd;
+    window.addEventListener = previousProductionWindowAddEventListener;
+    window.__pmBeforeUnloadRegistered = previousProductionBeforeUnloadRegistration;
+    globalThis.document = previousProductionDocument;
 } finally {
     if (previousBranchWindow === undefined) delete globalThis.window;
     else globalThis.window = previousBranchWindow;

@@ -5,6 +5,8 @@ export function createRuntimeState() {
         hostEventSource: null,
         hostEventRegistrations: new Set(),
         firstOpen: true,
+        lastBranchInheritance: null,
+        lastBranchInheritanceError: null,
         lastChatLength: 0,
         historyLoadPromise: null,
         visibilityTimer: null,

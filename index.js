@@ -9337,6 +9337,8 @@ ${lines}
       hostEventSource: null,
       hostEventRegistrations: /* @__PURE__ */ new Set(),
       firstOpen: true,
+      lastBranchInheritance: null,
+      lastBranchInheritanceError: null,
       lastChatLength: 0,
       historyLoadPromise: null,
       visibilityTimer: null,
@@ -14229,24 +14231,51 @@ ${lines}`;
       const chatChangedEvent = resolveHostEvent(et, "CHAT_CHANGED");
       results.push(registerOnce("resolved:CHAT_CHANGED", chatChangedEvent, () => {
         const currentContext = getCtx();
-        handleHostChatChanged({
-          state,
-          runtime,
-          chatLength: (currentContext?.chat || []).length,
-          cancelCommunityGeneration: deps.cancelCommunityGeneration,
-          cancelCalendarTasks: deps.cancelCalendarTasks,
-          disarmAutoPoke,
-          endPhone: window.__pmEnd,
-          invalidateGeneration
-        });
+        const branch = resolveBranchInheritance(currentContext);
         const inheritBranch = deps.beginBranchInheritance || beginBranchInheritance;
+        const branchMetadata = currentContext?.chatMetadata || currentContext?.chat_metadata;
         return inheritBranch(currentContext, {
           getStorageId: getStorageId2,
           invalidateInteractiveStore: deps.invalidateInteractiveStore,
           reloadCalendarStore: deps.reloadCalendarStore
+        }).then((result) => {
+          runtime.lastBranchInheritance = {
+            status: result?.status || "unknown",
+            reason: result?.reason || null,
+            sourceId: result?.sourceId || null,
+            targetId: result?.targetId || null
+          };
+          runtime.lastBranchInheritanceError = null;
+          if (result?.status === "cloned") {
+            console.info("[phone-mode] \u5206\u652F\u624B\u673A\u6570\u636E\u7EE7\u627F\u5B8C\u6210");
+          } else if (result?.status === "skipped" && branchMetadata?.main_chat) {
+            console.warn("[phone-mode] \u5206\u652F\u624B\u673A\u6570\u636E\u7EE7\u627F\u5DF2\u8DF3\u8FC7", result.reason || "unknown");
+          }
+          return result;
         }).catch((error) => {
+          runtime.lastBranchInheritance = {
+            status: "failed",
+            reason: null,
+            sourceId: branch?.sourceId || null,
+            targetId: branch?.targetId || null
+          };
+          runtime.lastBranchInheritanceError = {
+            name: typeof error?.name === "string" && error.name ? error.name : "Error",
+            message: typeof error?.message === "string" ? error.message.slice(0, 240) : ""
+          };
           console.warn("[phone-mode] \u5206\u652F\u624B\u673A\u6570\u636E\u7EE7\u627F\u5931\u8D25", error?.name || "Error");
           return { status: "failed", error };
+        }).finally(() => {
+          handleHostChatChanged({
+            state,
+            runtime,
+            chatLength: (currentContext?.chat || []).length,
+            cancelCommunityGeneration: deps.cancelCommunityGeneration,
+            cancelCalendarTasks: deps.cancelCalendarTasks,
+            disarmAutoPoke,
+            endPhone: window.__pmEnd,
+            invalidateGeneration
+          });
         });
       }));
       runtime.eventHooked = results.every(Boolean);

@@ -1,7 +1,7 @@
 import {
     POPOVER_SUPPORTED,
 } from './constants.js';
-import { beginBranchInheritance } from './branch-scope-inheritance.js';
+import { beginBranchInheritance, resolveBranchInheritance } from './branch-scope-inheritance.js';
 import { normalizeInjectionConfig } from './behavior-config.js';
 import { normalizeBudgetConfig } from './budget.js';
 import { THEME_PRESETS } from './config.js';
@@ -17,7 +17,6 @@ import { createAutomaticTaskController } from './runtime.js';
 import {
     saveHistories, saveHistoriesBeforeUnload, saveTheme,
 } from './storage.js';
-
 const warnedHostEventRegistrationFailures = new Set();
 
 function warnHostEventRegistrationFailureOnce(key, eventName, error) {
@@ -497,24 +496,44 @@ export function installPhoneFoundation(state, deps) {
 
         const chatChangedEvent = resolveHostEvent(et, 'CHAT_CHANGED');
         results.push(registerOnce('resolved:CHAT_CHANGED', chatChangedEvent, () => {
-            // 宿主切换会使所有在途生成失效；关闭手机并清空旧会话内存，避免跨聊天串档。
             const currentContext = getCtx();
-            handleHostChatChanged({
-                state, runtime, chatLength: (currentContext?.chat || []).length,
-                cancelCommunityGeneration: deps.cancelCommunityGeneration,
-                cancelCalendarTasks: deps.cancelCalendarTasks,
-                disarmAutoPoke,
-                endPhone: window.__pmEnd,
-                invalidateGeneration,
-            });
+            const branch = resolveBranchInheritance(currentContext);
             const inheritBranch = deps.beginBranchInheritance || beginBranchInheritance;
+            const branchMetadata = currentContext?.chatMetadata || currentContext?.chat_metadata;
             return inheritBranch(currentContext, {
                 getStorageId,
                 invalidateInteractiveStore: deps.invalidateInteractiveStore,
                 reloadCalendarStore: deps.reloadCalendarStore,
+            }).then(result => {
+                runtime.lastBranchInheritance = {
+                    status: result?.status || 'unknown', reason: result?.reason || null,
+                    sourceId: result?.sourceId || null, targetId: result?.targetId || null,
+                };
+                runtime.lastBranchInheritanceError = null;
+                if (result?.status === 'cloned') {
+                    console.info('[phone-mode] 分支手机数据继承完成');
+                } else if (result?.status === 'skipped' && branchMetadata?.main_chat) {
+                    console.warn('[phone-mode] 分支手机数据继承已跳过', result.reason || 'unknown');
+                }
+                return result;
             }).catch(error => {
+                runtime.lastBranchInheritance = { status: 'failed', reason: null,
+                    sourceId: branch?.sourceId || null, targetId: branch?.targetId || null };
+                runtime.lastBranchInheritanceError = { name: typeof error?.name === 'string' && error.name ? error.name : 'Error',
+                    message: typeof error?.message === 'string' ? error.message.slice(0, 240) : '' };
                 console.warn('[phone-mode] 分支手机数据继承失败', error?.name || 'Error');
                 return { status: 'failed', error };
+            }).finally(() => {
+                // 继承必须先读取父聊天的持久化状态；提前强制关闭会清空旧会话运行态，
+                // 并让未完成的父聊天保存与目标 scope 复制发生竞争。
+                handleHostChatChanged({
+                    state, runtime, chatLength: (currentContext?.chat || []).length,
+                    cancelCommunityGeneration: deps.cancelCommunityGeneration,
+                    cancelCalendarTasks: deps.cancelCalendarTasks,
+                    disarmAutoPoke,
+                    endPhone: window.__pmEnd,
+                    invalidateGeneration,
+                });
             });
         }));
 
