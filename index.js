@@ -6607,7 +6607,7 @@ ${mainChatText}` : "",
               {
                 ...baseMetadata,
                 bubbleId: bubble.bubbleId,
-                sender: bubble.sender || (m.role === "user" ? "\u6211" : ""),
+                sender: bubble.sender || (m.role === "user" ? "\u6211" : state.currentPersona),
                 ...index === 0 && m.quote ? { quote: m.quote } : {}
               }
             ));
@@ -11631,21 +11631,25 @@ ${antiFluff}`;
     </div>`);
     }
     window.__pmShowCharacterBehavior = (contactName, returnToGroupSettings = false) => showContactConfig(contactName, true, returnToGroupSettings);
+    window.__pmShowGroupMemberSettings = () => {
+      if (!state.isGroupChat) return;
+      const members = state.groupMembers.slice();
+      makeOverlay(`
+    <div class="pm-modal pm-modal-wide">
+      <div class="pm-modal-header"><button type="button" onclick="window.__pmEditGroup()" class="pm-modal-close" title="\u8FD4\u56DE\u7FA4\u804A\u7F16\u8F91" aria-label="\u8FD4\u56DE\u7FA4\u804A\u7F16\u8F91">${BACK_ICON_SVG}</button><b>\u6210\u5458\u89D2\u8272\u8BBE\u7F6E</b><button type="button" onclick="window.__pmCloseOverlay()" class="pm-modal-close" title="\u5173\u95ED" aria-label="\u5173\u95ED">${CLOSE_ICON_SVG}</button></div>
+      <div class="pm-member-behavior-list">
+        ${members.map((name) => `<button onclick="window.__pmShowCharacterBehavior('${safeJS(name)}', true)">
+          <b>${escapeHtml(name)}</b><span>\u79C1\u804A\u98CE\u683C\u3001\u7FA4\u804A\u53D1\u8A00\u98CE\u683C\u4E0E\u6D88\u606F\u9891\u7387</span>
+        </button>`).join("")}
+      </div>
+    </div>`);
+    };
     window.__pmShowConversationSettings = (returnToGroupSettings = false) => {
       if (!state.isGroupChat) {
         showContactConfig(state.currentPersona);
         return;
       }
-      const members = state.groupMembers.slice();
-      makeOverlay(`
-    <div class="pm-modal pm-modal-wide">
-      <div class="pm-modal-header"><button type="button" onclick="${returnToGroupSettings ? "window.__pmEditGroup()" : "window.__pmReturnToControlCenter()"}" class="pm-modal-close" title="${returnToGroupSettings ? "\u8FD4\u56DE\u7FA4\u804A\u8BBE\u7F6E" : "\u8FD4\u56DE\u5FEB\u6377\u5DE5\u5177"}" aria-label="${returnToGroupSettings ? "\u8FD4\u56DE\u7FA4\u804A\u8BBE\u7F6E" : "\u8FD4\u56DE\u5FEB\u6377\u5DE5\u5177"}">${BACK_ICON_SVG}</button><b>\u6210\u5458\u8BBE\u7F6E</b><button type="button" onclick="window.__pmCloseOverlay()" class="pm-modal-close" title="\u5173\u95ED" aria-label="\u5173\u95ED">${CLOSE_ICON_SVG}</button></div>
-      <div class="pm-member-behavior-list">
-        ${members.map((name) => `<button onclick="window.__pmShowCharacterBehavior('${safeJS(name)}', ${returnToGroupSettings})">
-          <b>${escapeHtml(name)}</b><span>\u79C1\u804A\u98CE\u683C\u3001\u7FA4\u804A\u98CE\u683C\u4E0E\u6D88\u606F\u9891\u7387</span>
-        </button>`).join("")}
-      </div>
-    </div>`);
+      window.__pmShowGroupRandomNpcSettings?.({ returnToControlCenter: !returnToGroupSettings });
     };
     window.__pmSaveContactConfig = (contactName) => {
       const behaviorSnapshot = JSON.parse(JSON.stringify(window.__pmCharacterBehavior));
@@ -11967,7 +11971,7 @@ ${antiFluff}`;
   // src/phone-control-center.js
   var controlActionLabel = (action) => ({
     calendar: "\u6253\u5F00\u65E5\u5386",
-    settings: "\u6253\u5F00\u89D2\u8272\u8BBE\u7F6E",
+    settings: "\u6253\u5F00\u4F1A\u8BDD\u8BBE\u7F6E",
     "auto-poke": "\u6253\u5F00\u81EA\u52A8\u53D1\u6D88\u606F",
     delete: "\u8FDB\u5165\u6D88\u606F\u5220\u9664\u6A21\u5F0F"
   })[action] || "\u6267\u884C\u5FEB\u6377\u64CD\u4F5C";
@@ -12179,7 +12183,7 @@ ${antiFluff}`;
       const target = getTarget();
       menu.innerHTML = `
   <button type="button" role="menuitem" data-action="pending">${EDIT_ICON_SVG}\u7F16\u8F91\u6D88\u606F</button>
-  <button type="button" role="menuitem" data-action="settings" ${target ? "" : "disabled"}>${CHARACTER_ICON_SVG}${target?.isGroup ? "\u6210\u5458\u8BBE\u7F6E" : "\u89D2\u8272\u8BBE\u7F6E"}</button>
+  <button type="button" role="menuitem" data-action="settings" ${target ? "" : "disabled"}>${target?.isGroup ? SETTINGS_ICON_SVG : CHARACTER_ICON_SVG}${target?.isGroup ? "\u7FA4\u804A\u8BBE\u7F6E" : "\u89D2\u8272\u8BBE\u7F6E"}</button>
   <button type="button" role="menuitem" data-action="auto-poke" ${target ? "" : "disabled"}>${CHAT_ICON_SVG}\u81EA\u52A8\u53D1\u6D88\u606F</button>
   <button type="button" role="menuitem" data-action="emoji">${EMOJI_ICON_SVG}\u8868\u60C5\u5305\u7BA1\u7406</button>
   <button type="button" role="menuitem" data-action="calendar">${CALENDAR_ICON_SVG}\u65E5\u5386</button>
@@ -12872,7 +12876,7 @@ ${antiFluff}`;
         <div style="padding-top:12px;border-top:1px solid var(--pm-color-border-subtle);">
           <div class="pm-cfg-label" style="margin-bottom:8px;">\u7FA4\u804A\u529F\u80FD</div>
           <div class="pm-member-behavior-list">
-            <button type="button" onclick="window.__pmShowConversationSettings(true)"><b>\u7FA4\u804A\u98CE\u683C</b><span>\u6309\u6210\u5458\u8BBE\u7F6E\u7FA4\u804A\u53D1\u8A00\u98CE\u683C</span></button>
+            <button type="button" onclick="window.__pmShowGroupMemberSettings()"><b>\u7FA4\u804A\u98CE\u683C</b><span>\u6309\u6210\u5458\u8BBE\u7F6E\u7FA4\u804A\u53D1\u8A00\u98CE\u683C</span></button>
             <button type="button" onclick="window.__pmShowGroupRandomNpcSettings()"><b>\u8DEF\u4EBA\u7FA4\u53CB</b><span>\u8BBE\u7F6E\u968F\u673A\u51FA\u73B0\u7684\u4E34\u65F6\u7FA4\u53CB</span></button>
           </div>
         </div>
@@ -12946,13 +12950,15 @@ ${antiFluff}`;
         alert(error.message || "\u7FA4\u804A\u8BBE\u7F6E\u4FDD\u5B58\u5931\u8D25");
       }
     };
-    window.__pmShowGroupRandomNpcSettings = () => {
+    window.__pmShowGroupRandomNpcSettings = ({ returnToControlCenter = false } = {}) => {
       if (!state.isGroupChat || !state.currentGroupKey) return;
       const id2 = getStorageId2();
       const groupMeta = normalizeGroupMeta(window.__pmGroupMeta[id2]?.[state.currentGroupKey]);
+      const returnAction = returnToControlCenter ? "window.__pmReturnToControlCenter()" : "window.__pmEditGroup()";
+      const returnLabel = returnToControlCenter ? "\u8FD4\u56DE\u5FEB\u6377\u5DE5\u5177" : "\u8FD4\u56DE\u7FA4\u804A\u8BBE\u7F6E";
       makeOverlay(`
     <div class="pm-modal pm-modal-wide">
-      <div class="pm-modal-header"><button type="button" onclick="window.__pmEditGroup()" class="pm-modal-close" title="\u8FD4\u56DE\u7FA4\u804A\u8BBE\u7F6E" aria-label="\u8FD4\u56DE\u7FA4\u804A\u8BBE\u7F6E">${BACK_ICON_SVG}</button><b>\u8DEF\u4EBA\u7FA4\u53CB</b><button type="button" onclick="window.__pmCloseOverlay()" class="pm-modal-close" title="\u5173\u95ED" aria-label="\u5173\u95ED">${CLOSE_ICON_SVG}</button></div>
+      <div class="pm-modal-header"><button type="button" onclick="${returnAction}" class="pm-modal-close" title="${returnLabel}" aria-label="${returnLabel}">${BACK_ICON_SVG}</button><b>\u7FA4\u804A\u8BBE\u7F6E</b><button type="button" onclick="window.__pmCloseOverlay()" class="pm-modal-close" title="\u5173\u95ED" aria-label="\u5173\u95ED">${CLOSE_ICON_SVG}</button></div>
       <div class="pm-modal-scroll pm-group-settings-scroll">
         <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
           <div><div class="pm-cfg-label">\u5141\u8BB8\u8DEF\u4EBA\u7FA4\u53CB\u968F\u673A\u51FA\u73B0</div><div class="pm-cfg-tip" style="text-align:left;">\u5F00\u542F\u540E\uFF0CAI \u53EF\u4EE5\u751F\u6210\u4E0D\u5728\u56FA\u5B9A\u6210\u5458\u540D\u5355\u4E2D\u7684\u4E34\u65F6\u7FA4\u53CB\u3002</div></div><div id="pm-group-random-npc" class="pm-custom-check pm-bi-style ${groupMeta.randomNpcEnabled ? "is-checked" : ""}" role="checkbox" tabindex="0" aria-checked="${groupMeta.randomNpcEnabled}" onclick="this.classList.toggle('is-checked');this.setAttribute('aria-checked',String(this.classList.contains('is-checked')))" onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();this.click()}" style="cursor:pointer;width:22px;height:22px;min-width:22px;min-height:22px;flex-shrink:0;border-radius:50%;"></div>
@@ -12963,10 +12969,10 @@ ${antiFluff}`;
         <label class="pm-cfg-label" style="display:block;margin-top:12px;">\u9ED8\u8BA4\u63D0\u793A\u8BCD
           <textarea id="pm-group-random-npc-prompt" class="pm-cfg-input" maxlength="2000" rows="5">${escapeHtml(groupMeta.randomNpcPrompt || DEFAULT_RANDOM_NPC_PROMPT)}</textarea></label>
         <div class="pm-cfg-tip" style="text-align:left;">\u4EC5\u5728\u5F00\u542F\u8DEF\u4EBA\u7FA4\u53CB\u65F6\u751F\u6548\uFF1B\u4E34\u65F6\u89D2\u8272\u540D\u4ECD\u987B\u4F7F\u7528\u201C\u8DEF\u4EBA\u7FA4\u53CB\xB7\u540D\u5B57\u201D\u3002</div></div>
-      <div class="pm-modal-add"><button type="button" class="pm-action-button" onclick="window.__pmSaveGroupRandomNpcSettings()" style="flex:1">\u4FDD\u5B58\u8DEF\u4EBA\u7FA4\u53CB\u8BBE\u7F6E</button></div>
+      <div class="pm-modal-add"><button type="button" class="pm-action-button" onclick="window.__pmSaveGroupRandomNpcSettings(${returnToControlCenter})" style="flex:1">\u4FDD\u5B58\u7FA4\u804A\u8BBE\u7F6E</button></div>
     </div>`);
     };
-    window.__pmSaveGroupRandomNpcSettings = async () => {
+    window.__pmSaveGroupRandomNpcSettings = async (returnToControlCenter = false) => {
       if (!state.isGroupChat || !state.currentGroupKey) return;
       const id2 = getStorageId2();
       const groupSnapshot = JSON.parse(JSON.stringify(window.__pmGroupMeta));
@@ -12991,9 +12997,9 @@ ${antiFluff}`;
           applyInjection: () => applyBidirectionalInjection(),
           switchConversation: () => state.phoneWindow ? window.__pmSwitch(state.currentGroupKey) : true
         });
-        window.__pmEditGroup();
+        returnToControlCenter ? window.__pmReturnToControlCenter() : window.__pmEditGroup();
       } catch (error) {
-        alert(error.message || "\u8DEF\u4EBA\u7FA4\u53CB\u8BBE\u7F6E\u4FDD\u5B58\u5931\u8D25");
+        alert(error.message || "\u7FA4\u804A\u8BBE\u7F6E\u4FDD\u5B58\u5931\u8D25");
       }
     };
     window.__pmShowGroupCreate = () => showGroupForm("create");

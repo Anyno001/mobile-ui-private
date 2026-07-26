@@ -3495,6 +3495,18 @@ assert.equal(Object.hasOwn(isolatedBubbleCalls[1][4], 'quote'), false,
     '同一 entry 的非首气泡不得重复渲染引用卡');
 assert.equal(isolatedBubbleCalls[0][4].messageId, copiedConversationHistory[0].messageId);
 assert.equal(isolatedBubbleCalls[0][4].bubbleId, copiedConversationHistory[0].bubbles[0].bubbleId);
+const quotedContactHistory = [createMessageEntry({
+    role: 'assistant', content: '这是 Alice 的历史消息', descriptors: ['这是 Alice 的历史消息'],
+})];
+window.__pmHistories[newStorageId].Alice = structuredClone(quotedContactHistory);
+isolatedConversationState.conversationHistory = structuredClone(quotedContactHistory);
+isolatedBubbleCalls.length = 0;
+window.__pmSwitch('Alice', undefined, undefined, { preservePage: true });
+assert.equal(isolatedBubbleCalls[0][4].sender, 'Alice',
+    '重绘单聊对方历史时，引用快照必须保留联系人名而不是错误回退为“我”');
+assert.equal(isolatedBubbleCalls[0][1], 'left', '单聊对方历史必须继续渲染在左侧');
+window.__pmHistories[newStorageId].Alice = structuredClone(copiedConversationHistory);
+isolatedConversationState.conversationHistory = structuredClone(copiedConversationHistory);
 const oldScopeBeforeMutation = structuredClone(window.__pmHistories[oldStorageId].Alice);
 const newScopeBeforeMutation = structuredClone(window.__pmHistories[newStorageId].Alice);
 isolatedConversationState.conversationHistory[0].bubbles[0].text = '仅修改运行态气泡';

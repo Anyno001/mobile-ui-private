@@ -110,7 +110,6 @@ import { saveBgLocal } from './storage-background.js';
 import {
     loadGroupMeta, saveBidirectional, saveGroupMeta, saveHistoriesStrict, savePokeConfig,
 } from './storage.js';
-
 export function installPhoneDirectory(state, deps) {
     const {
         runtime, getStorageId, makeOverlay, closeOverlay, closeControlCenter,
@@ -126,7 +125,6 @@ export function installPhoneDirectory(state, deps) {
     const CONTACT_SWITCHER_ID = 'pm-contact-switcher';
     const currentConversationKey = () => state.isGroupChat && state.currentGroupKey
         ? state.currentGroupKey : state.currentPersona;
-
     function closeContactSwitcher(reason = 'close') {
         contactSwitcherLoadSequence += 1;
         const switcher = document.getElementById(CONTACT_SWITCHER_ID);
@@ -148,7 +146,6 @@ export function installPhoneDirectory(state, deps) {
         if (['toggle', 'outside', 'escape'].includes(reason)) trigger?.focus({ preventScroll: true });
         return Boolean(switcher);
     }
-
     function remainingConversationKey(storageId) {
         const groups = Object.keys(window.__pmGroupMeta[storageId] || {});
         if (groups.length) return groups[0];
@@ -336,7 +333,6 @@ export function installPhoneDirectory(state, deps) {
         document.addEventListener('click', contactSwitcherOutsideHandler, true);
         document.addEventListener('keydown', contactSwitcherEscapeHandler, true);
     }
-
     Object.assign(deps, { closeContactSwitcher });
     const setDeleteButtonsDisabled = disabled => {
         const buttons = document.querySelectorAll?.('.pm-entity-delete') || [];
@@ -428,7 +424,7 @@ export function installPhoneDirectory(state, deps) {
         <div style="padding-top:12px;border-top:1px solid var(--pm-color-border-subtle);">
           <div class="pm-cfg-label" style="margin-bottom:8px;">群聊功能</div>
           <div class="pm-member-behavior-list">
-            <button type="button" onclick="window.__pmShowConversationSettings(true)"><b>群聊风格</b><span>按成员设置群聊发言风格</span></button>
+            <button type="button" onclick="window.__pmShowGroupMemberSettings()"><b>群聊风格</b><span>按成员设置群聊发言风格</span></button>
             <button type="button" onclick="window.__pmShowGroupRandomNpcSettings()"><b>路人群友</b><span>设置随机出现的临时群友</span></button>
           </div>
         </div>
@@ -501,13 +497,17 @@ export function installPhoneDirectory(state, deps) {
             alert(error.message || '群聊设置保存失败');
         }
     };
-    window.__pmShowGroupRandomNpcSettings = () => {
+    window.__pmShowGroupRandomNpcSettings = ({ returnToControlCenter = false } = {}) => {
         if (!state.isGroupChat || !state.currentGroupKey) return;
         const id = getStorageId();
         const groupMeta = normalizeGroupMeta(window.__pmGroupMeta[id]?.[state.currentGroupKey]);
+        const returnAction = returnToControlCenter
+            ? 'window.__pmReturnToControlCenter()'
+            : 'window.__pmEditGroup()';
+        const returnLabel = returnToControlCenter ? '返回快捷工具' : '返回群聊设置';
         makeOverlay(`
     <div class="pm-modal pm-modal-wide">
-      <div class="pm-modal-header"><button type="button" onclick="window.__pmEditGroup()" class="pm-modal-close" title="返回群聊设置" aria-label="返回群聊设置">${BACK_ICON_SVG}</button><b>路人群友</b><button type="button" onclick="window.__pmCloseOverlay()" class="pm-modal-close" title="关闭" aria-label="关闭">${CLOSE_ICON_SVG}</button></div>
+      <div class="pm-modal-header"><button type="button" onclick="${returnAction}" class="pm-modal-close" title="${returnLabel}" aria-label="${returnLabel}">${BACK_ICON_SVG}</button><b>群聊设置</b><button type="button" onclick="window.__pmCloseOverlay()" class="pm-modal-close" title="关闭" aria-label="关闭">${CLOSE_ICON_SVG}</button></div>
       <div class="pm-modal-scroll pm-group-settings-scroll">
         <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
           <div><div class="pm-cfg-label">允许路人群友随机出现</div><div class="pm-cfg-tip" style="text-align:left;">开启后，AI 可以生成不在固定成员名单中的临时群友。</div></div><div id="pm-group-random-npc" class="pm-custom-check pm-bi-style ${groupMeta.randomNpcEnabled ? 'is-checked' : ''}" role="checkbox" tabindex="0" aria-checked="${groupMeta.randomNpcEnabled}" onclick="this.classList.toggle('is-checked');this.setAttribute('aria-checked',String(this.classList.contains('is-checked')))" onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();this.click()}" style="cursor:pointer;width:22px;height:22px;min-width:22px;min-height:22px;flex-shrink:0;border-radius:50%;"></div>
@@ -518,10 +518,10 @@ export function installPhoneDirectory(state, deps) {
         <label class="pm-cfg-label" style="display:block;margin-top:12px;">默认提示词
           <textarea id="pm-group-random-npc-prompt" class="pm-cfg-input" maxlength="2000" rows="5">${escapeHtml(groupMeta.randomNpcPrompt || DEFAULT_RANDOM_NPC_PROMPT)}</textarea></label>
         <div class="pm-cfg-tip" style="text-align:left;">仅在开启路人群友时生效；临时角色名仍须使用“路人群友·名字”。</div></div>
-      <div class="pm-modal-add"><button type="button" class="pm-action-button" onclick="window.__pmSaveGroupRandomNpcSettings()" style="flex:1">保存路人群友设置</button></div>
+      <div class="pm-modal-add"><button type="button" class="pm-action-button" onclick="window.__pmSaveGroupRandomNpcSettings(${returnToControlCenter})" style="flex:1">保存群聊设置</button></div>
     </div>`);
     };
-    window.__pmSaveGroupRandomNpcSettings = async () => {
+    window.__pmSaveGroupRandomNpcSettings = async (returnToControlCenter = false) => {
         if (!state.isGroupChat || !state.currentGroupKey) return;
         const id = getStorageId();
         const groupSnapshot = JSON.parse(JSON.stringify(window.__pmGroupMeta));
@@ -544,9 +544,9 @@ export function installPhoneDirectory(state, deps) {
                 applyInjection: () => applyBidirectionalInjection(),
                 switchConversation: () => state.phoneWindow ? window.__pmSwitch(state.currentGroupKey) : true,
             });
-            window.__pmEditGroup();
+            returnToControlCenter ? window.__pmReturnToControlCenter() : window.__pmEditGroup();
         } catch (error) {
-            alert(error.message || '路人群友设置保存失败');
+            alert(error.message || '群聊设置保存失败');
         }
     };
     window.__pmShowGroupCreate = () => showGroupForm('create');

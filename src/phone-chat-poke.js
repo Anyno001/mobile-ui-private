@@ -260,21 +260,25 @@ export function installPhoneChatPoke(state, deps) {
     }
 
     window.__pmShowCharacterBehavior = (contactName, returnToGroupSettings = false) => showContactConfig(contactName, true, returnToGroupSettings);
+    window.__pmShowGroupMemberSettings = () => {
+        if (!state.isGroupChat) return;
+        const members = state.groupMembers.slice();
+        makeOverlay(`
+    <div class="pm-modal pm-modal-wide">
+      <div class="pm-modal-header"><button type="button" onclick="window.__pmEditGroup()" class="pm-modal-close" title="返回群聊编辑" aria-label="返回群聊编辑">${BACK_ICON_SVG}</button><b>成员角色设置</b><button type="button" onclick="window.__pmCloseOverlay()" class="pm-modal-close" title="关闭" aria-label="关闭">${CLOSE_ICON_SVG}</button></div>
+      <div class="pm-member-behavior-list">
+        ${members.map(name => `<button onclick="window.__pmShowCharacterBehavior('${safeJS(name)}', true)">
+          <b>${escapeHtml(name)}</b><span>私聊风格、群聊发言风格与消息频率</span>
+        </button>`).join('')}
+      </div>
+    </div>`);
+    };
     window.__pmShowConversationSettings = (returnToGroupSettings = false) => {
         if (!state.isGroupChat) {
             showContactConfig(state.currentPersona);
             return;
         }
-        const members = state.groupMembers.slice();
-        makeOverlay(`
-    <div class="pm-modal pm-modal-wide">
-      <div class="pm-modal-header"><button type="button" onclick="${returnToGroupSettings ? 'window.__pmEditGroup()' : 'window.__pmReturnToControlCenter()'}" class="pm-modal-close" title="${returnToGroupSettings ? '返回群聊设置' : '返回快捷工具'}" aria-label="${returnToGroupSettings ? '返回群聊设置' : '返回快捷工具'}">${BACK_ICON_SVG}</button><b>成员设置</b><button type="button" onclick="window.__pmCloseOverlay()" class="pm-modal-close" title="关闭" aria-label="关闭">${CLOSE_ICON_SVG}</button></div>
-      <div class="pm-member-behavior-list">
-        ${members.map(name => `<button onclick="window.__pmShowCharacterBehavior('${safeJS(name)}', ${returnToGroupSettings})">
-          <b>${escapeHtml(name)}</b><span>私聊风格、群聊风格与消息频率</span>
-        </button>`).join('')}
-      </div>
-    </div>`);
+        window.__pmShowGroupRandomNpcSettings?.({ returnToControlCenter: !returnToGroupSettings });
     };
 
     window.__pmSaveContactConfig = (contactName) => {

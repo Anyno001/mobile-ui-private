@@ -2,7 +2,7 @@ import { escapeAttr, escapeHtml } from './ui.js';
 import { resolveConversationTarget } from './conversation.js';
 import {
     BACK_ICON_SVG, CALENDAR_ICON_SVG, CHARACTER_ICON_SVG, CHAT_ICON_SVG, CLOSE_ICON_SVG,
-    EDIT_ICON_SVG, EMOJI_ICON_SVG, TRASH_ICON_SVG,
+    EDIT_ICON_SVG, EMOJI_ICON_SVG, SETTINGS_ICON_SVG, TRASH_ICON_SVG,
 } from './icons.js';
 import { commitAutoPokeConfig, getAutoPokeConfig } from './auto-poke-config.js';
 import {
@@ -11,7 +11,7 @@ import {
 
 const controlActionLabel = action => ({
     calendar: '打开日历',
-    settings: '打开角色设置',
+    settings: '打开会话设置',
     'auto-poke': '打开自动发消息',
     delete: '进入消息删除模式',
 })[action] || '执行快捷操作';
@@ -234,7 +234,7 @@ export function installPhoneControlCenter(state, deps) {
         const target = getTarget();
         menu.innerHTML = `
   <button type="button" role="menuitem" data-action="pending">${EDIT_ICON_SVG}编辑消息</button>
-  <button type="button" role="menuitem" data-action="settings" ${target ? '' : 'disabled'}>${CHARACTER_ICON_SVG}${target?.isGroup ? '成员设置' : '角色设置'}</button>
+  <button type="button" role="menuitem" data-action="settings" ${target ? '' : 'disabled'}>${target?.isGroup ? SETTINGS_ICON_SVG : CHARACTER_ICON_SVG}${target?.isGroup ? '群聊设置' : '角色设置'}</button>
   <button type="button" role="menuitem" data-action="auto-poke" ${target ? '' : 'disabled'}>${CHAT_ICON_SVG}自动发消息</button>
   <button type="button" role="menuitem" data-action="emoji">${EMOJI_ICON_SVG}表情包管理</button>
   <button type="button" role="menuitem" data-action="calendar">${CALENDAR_ICON_SVG}日历</button>

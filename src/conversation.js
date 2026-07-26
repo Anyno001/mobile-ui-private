@@ -174,7 +174,7 @@ export function installConversation(state, deps) {
                         {
                             ...baseMetadata,
                             bubbleId: bubble.bubbleId,
-                            sender: bubble.sender || (m.role === 'user' ? '我' : ''),
+                            sender: bubble.sender || (m.role === 'user' ? '我' : state.currentPersona),
                             ...(index === 0 && m.quote ? { quote: m.quote } : {}),
                         },
                     ));

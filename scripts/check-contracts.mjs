@@ -1044,7 +1044,7 @@ const PHONE_ENTRY_OWNERS = {
   'phone-chat-poke.js': [
     '__pmAutoPoke', '__pmSaveAndCloseContactConfig',
     '__pmPoke', '__pmEditGroup', '__pmPokeGroup',
-    '__pmShowCharacterBehavior', '__pmShowConversationSettings',
+    '__pmShowCharacterBehavior', '__pmShowGroupMemberSettings', '__pmShowConversationSettings',
   ],
   'phone-lifecycle.js': [
     '__pmSetAmbientStatus', '__pmToggleSelect', '__pmDeleteSelected', '__pmToggleMin', '__pmEnd', '__pmOpen',
@@ -1258,11 +1258,14 @@ for (const expected of [
   "injectionFailure(rollbackResult, '删除补偿', '群聊')",
   'groupMembers: state.groupMembers.slice()', 'window.__pmSwitch(state.currentGroupKey',
   'pm-modal-scroll pm-group-settings-scroll', 'id="pm-group-random-npc"',
-  'id="pm-group-nature"', '允许路人群友随机出现', '群聊性质',
+  'id="pm-group-nature"', '允许路人群友随机出现', '群聊设置',
+  'returnToControlCenter = false', 'window.__pmReturnToControlCenter()',
   "document.getElementById('pm-group-random-npc')", "document.getElementById('pm-group-nature')",
 ]) {
   requireText('phone-directory.js', sourceModuleByName.get('phone-directory.js')?.code || '', expected);
 }
+requireText('phone-chat-poke.js', sourceModuleByName.get('phone-chat-poke.js')?.code || '',
+  'window.__pmShowGroupRandomNpcSettings?.({ returnToControlCenter: !returnToGroupSettings })');
 for (const expected of [
   'commitConversationInjectionUpdate', '__pmShowConversationInjection', '__pmSaveConversationInjection',
   '__pmConversationInjectionSummary', '__pmToggleCurrentConversationInjection',
@@ -1640,14 +1643,15 @@ if (directoryTemplate.includes('pm-forum-entry') || directoryTemplate.includes('
 if (controlCenterTemplate.includes('makeOverlay') || controlCenterTemplate.includes('<span')) {
   failures.push('phone-control-center.js: compact control menu must not use the full overlay or explanatory subtitles');
 }
-for (const title of ['编辑消息', '角色设置', '成员设置', '自动发消息', '表情包管理', '日历', '删除消息']) {
+for (const title of ['编辑消息', '角色设置', '群聊设置', '自动发消息', '表情包管理', '日历', '删除消息']) {
   if (!controlCenterTemplate.includes(title)) failures.push(`phone-control-center.js: compact control menu missing title ${title}`);
 }
 for (const expected of [
   "action === 'settings'", "action === 'auto-poke'", "action === 'calendar'", 'return window.__pmShowConversationSettings()',
   'return window.__pmShowAutoPokeSettings()', 'return showPhoneCalendarPage()',
   'runControlMenuAction', 'controlActionLabel', 'CALENDAR_ICON_SVG', 'EDIT_ICON_SVG', 'EMOJI_ICON_SVG', 'TRASH_ICON_SVG',
-  'window.__pmShowAutoPokeSettings', 'window.__pmReturnToControlCenter', 'CHARACTER_ICON_SVG', 'CHAT_ICON_SVG',
+  'window.__pmShowAutoPokeSettings', 'window.__pmReturnToControlCenter', 'CHARACTER_ICON_SVG', 'SETTINGS_ICON_SVG', 'CHAT_ICON_SVG',
+  "target?.isGroup ? SETTINGS_ICON_SVG : CHARACTER_ICON_SVG", "target?.isGroup ? '群聊设置' : '角色设置'",
 ]) requireText('phone-control-center.js', controlCenterCode, expected);
 for (const forbidden of [
   "action === 'contacts'", "action === 'session-behavior'", 'return window.__pmShowList()',
@@ -2383,14 +2387,21 @@ for (const expected of [
   'onclick="window.__pmSaveContactConfig(',
   'window.__pmSaveAndCloseContactConfig = contactName => window.__pmSaveContactConfig(contactName)',
   'BACK_ICON_SVG', 'function showContactConfig(contactName, returnToMembers = false, returnMembersToGroupSettings = false)',
+  'window.__pmShowGroupMemberSettings = () =>', '<b>成员角色设置</b>',
+  "window.__pmShowCharacterBehavior('${safeJS(name)}', true)",
   'window.__pmShowConversationSettings(${returnMembersToGroupSettings})',
-  '<b>成员设置</b>', "returnToGroupSettings ? 'window.__pmEditGroup()' : 'window.__pmReturnToControlCenter()'",
+  'window.__pmShowGroupRandomNpcSettings?.({ returnToControlCenter: !returnToGroupSettings })',
   '__pmShowConversationSettings = (returnToGroupSettings = false)',
 ]) requireText('phone-chat-poke.js', phoneChatPokeCode, expected);
 for (const expected of [
   'BACK_ICON_SVG', 'const closeAction = "window.__pmShowList()";',
   'title="返回列表" aria-label="返回列表">${BACK_ICON_SVG}</button>',
+  'onclick="window.__pmShowGroupMemberSettings()"',
 ]) requireText('phone-directory.js group settings back action', directoryCode, expected);
+requireText('conversation.js quote sender attribution', sourceModuleByName.get('conversation.js')?.code || '',
+  "sender: bubble.sender || (m.role === 'user' ? '我' : state.currentPersona)");
+requireText('phone-foundation.js quote sender snapshot', foundationCode,
+  "sender: String(senderName || metadata.sender || '我')");
 if (!/pm-contact-settings-scroll[\s\S]*pm-modal-add pm-contact-settings-actions[\s\S]*保存角色设置[\s\S]*<\/div>\s*<\/div>\s*<\/div>`/.test(showContactConfigSource)) {
   failures.push('phone-chat-poke.js: character settings save action must remain inside the scroll content');
 }
