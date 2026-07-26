@@ -4,6 +4,7 @@ import { installEmojiUi } from '../src/emoji-ui.js';
 import { createBubbles } from '../src/messaging.js';
 import { installPhoneFoundation } from '../src/phone-foundation.js';
 import { deleteSelectedMessages } from '../src/phone-lifecycle.js';
+import { splitToSentences } from '../src/prompts.js';
 import { createRuntimeState } from '../src/runtime.js';
 import {
     MAX_EMOJI_FILE_BYTES, MAX_EMOJI_INLINE_LIBRARY_BYTES,
@@ -153,6 +154,62 @@ try {
     const remoteBubble = createBubbles('[emo:远程:1]', 'left', undefined, remoteOptions)[0];
     assert.doesNotMatch(remoteBubble.innerHTML, /<img /, '无法验证体积的远程表情不得进入浏览器解码路径');
     assert.match(remoteBubble.innerHTML, /表情图片暂不加载/);
+
+    const specialOptions = { groupColorMap: {}, groupMembers: [], emojis: [] };
+    assert.match(createBubbles('(语音+你好)', 'left', undefined, specialOptions)[0].innerHTML, /pm-voice-card/, '旧括号语音格式必须继续渲染');
+    assert.match(createBubbles('（图片：风景）', 'left', undefined, specialOptions)[0].innerHTML, /pm-img-card/, '旧中文括号图片格式必须继续渲染');
+    assert.match(createBubbles('(转账+88)', 'left', undefined, specialOptions)[0].innerHTML, /¥88\.00/, '旧括号转账格式必须继续渲染');
+    assert.match(createBubbles('(收款+12.5)', 'left', undefined, specialOptions)[0].innerHTML, /¥12\.50/, '旧括号收款格式必须继续渲染');
+    assert.match(createBubbles('(退还+20)', 'left', undefined, specialOptions)[0].innerHTML, /¥20\.00/, '旧括号退还格式必须继续渲染');
+    const mixedLegacy = createBubbles('看看 (图片+风景) 了吗', 'left', undefined, specialOptions);
+    assert.equal(mixedLegacy.length, 3, '旧括号格式必须继续支持与普通文本混排');
+    assert.match(mixedLegacy[1].innerHTML, /pm-img-card/, '旧括号格式混排时图片卡片必须继续渲染');
+    for (const input of ['(转账+给你)', '（收款：-1）', '(退还+88元)']) {
+        const plainBubble = createBubbles(input, 'left', undefined, specialOptions)[0];
+        assert.doesNotMatch(plainBubble.className, /pm-special/, `无效括号金额不得伪造交易卡片：${JSON.stringify(input)}`);
+    }
+    for (const input of ['(语音+)', '（图片：）', '(语音   )', '（图片：   ）']) {
+        const plainBubble = createBubbles(input, 'left', undefined, specialOptions)[0];
+        assert.doesNotMatch(plainBubble.className, /pm-special/, `空括号特殊消息不得渲染卡片：${JSON.stringify(input)}`);
+    }
+    for (const input of ['(图片很好看)', '（语音很好听）']) {
+        const plainBubble = createBubbles(input, 'left', undefined, specialOptions)[0];
+        assert.doesNotMatch(plainBubble.className, /pm-special/, `无分隔符的括号自然语言不得误识别：${JSON.stringify(input)}`);
+    }
+
+    assert.match(createBubbles('语音 你好', 'left', undefined, specialOptions)[0].innerHTML, /pm-voice-card/, '无括号空格语音格式必须渲染');
+    assert.match(createBubbles('图片：风景', 'left', undefined, specialOptions)[0].innerHTML, /pm-img-card/, '无括号中文冒号图片格式必须渲染');
+    assert.match(createBubbles('转账 88', 'left', undefined, specialOptions)[0].innerHTML, /¥88\.00/, '无括号空格转账格式必须渲染');
+    assert.match(createBubbles('收款: 12.5', 'left', undefined, specialOptions)[0].innerHTML, /¥12\.50/, '无括号英文冒号收款格式必须渲染');
+    assert.match(createBubbles('退还+20', 'left', undefined, specialOptions)[0].innerHTML, /¥20\.00/, '无括号加号退还格式必须渲染');
+    assert.deepEqual(splitToSentences('语音 你好 / 普通消息'), ['语音 你好', '普通消息'], '无括号特殊消息必须可作为 / 分隔片段传递给渲染器');
+
+    const groupVoice = createBubbles('语音 你好', 'left', '小明', {
+        ...specialOptions,
+        groupColorMap: { 小明: '#123456' },
+        groupMembers: ['小明'],
+    })[0];
+    assert.match(groupVoice.className, /pm-group-bubble-wrap/, '群聊无括号特殊消息必须保留成员包装');
+    assert.equal(groupVoice.children[0].textContent, '小明', '群聊无括号特殊消息不得丢失成员名称');
+    assert.match(groupVoice.children[1].className, /pm-special/, '群聊无括号特殊消息必须保留特殊气泡');
+    assert.match(groupVoice.children[1].innerHTML, /pm-voice-group/, '群聊无括号语音必须保留成员颜色分支');
+
+    for (const input of ['语音   ', '图片:', '图片：   ', '转账+', '收款:\t', '退还 \t']) {
+        const plainBubble = createBubbles(input, 'left', undefined, specialOptions)[0];
+        assert.doesNotMatch(plainBubble.className, /pm-special/, `空白内容不得渲染特殊消息：${JSON.stringify(input)}`);
+        assert.equal(plainBubble.innerHTML, input.trim(), `空白内容必须保留为普通文本：${JSON.stringify(input)}`);
+    }
+
+    const plainPicture = createBubbles('图片很好看', 'left', undefined, specialOptions)[0];
+    const plainVoice = createBubbles('语音很好听', 'left', undefined, specialOptions)[0];
+    const embeddedPicture = createBubbles('这是图片：描述', 'left', undefined, specialOptions)[0];
+    assert.doesNotMatch(plainPicture.className, /pm-special/, '无分隔符的图片自然语言不得误识别');
+    assert.doesNotMatch(plainVoice.className, /pm-special/, '无分隔符的语音自然语言不得误识别');
+    assert.doesNotMatch(embeddedPicture.className, /pm-special/, '非消息开头的特殊关键词不得误识别');
+    for (const input of ['转账 给你', '收款 明天再说', '退还 abc', '转账 88元', '收款 -1']) {
+        const plainBubble = createBubbles(input, 'left', undefined, specialOptions)[0];
+        assert.doesNotMatch(plainBubble.className, /pm-special/, `无效无括号金额不得伪造交易卡片：${JSON.stringify(input)}`);
+    }
 } finally {
     if (previousBubbleDocument === undefined) delete globalThis.document;
     else globalThis.document = previousBubbleDocument;

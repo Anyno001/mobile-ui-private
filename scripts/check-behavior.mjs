@@ -22,6 +22,7 @@ import {
     rollbackBranchLineageBackup, saveBidirectional, saveBranchLineage, saveBranchLineageForBackup, saveBudgetConfig, savePokeConfig,
 } from '../src/storage.js';
 import { installConversation } from '../src/conversation.js';
+import { installDiagnosticApi } from '../src/diagnostic.js';
 import { gatherContext, getStorageIdFor, getUserPersona } from '../src/host-context.js';
 import { awaitPendingBranchInheritance, beginBranchInheritance, inheritPhoneDataOnBranch, mergeBranchScope, resolveBranchInheritance } from '../src/branch-scope-inheritance.js';
 import {
@@ -630,7 +631,7 @@ const promptFixture = {
     smsHistoryText: 'User：短信历史', directorNote: '',
     userMsgClean: '你好', userMsg: '你好',
     groupName: '测试群', memberList: 'Alice、Bob',
-    randomNpcEnabled: true, groupNature: '气氛很好的同学群',
+    randomNpcEnabled: true, groupNature: '气氛很好的同学群', randomNpcPrompt: '只允许自然路过、与话题相关的临时群友发言。',
 };
 const singleInjectedPrompt = buildSingleInjectedInstruction(promptFixture);
 const groupInjectedPrompt = buildGroupInjectedInstruction(promptFixture);
@@ -649,6 +650,7 @@ assert.match(groupSystemPrompt, /【主线最近对话】\n角色：主线正文
 assert.match(groupInjectedPrompt, /群聊性质：气氛很好的同学群/);
 assert.match(groupInjectedPrompt, /路人群友/);
 assert.match(groupSystemPrompt, /路人群友/);
+assert.match(groupInjectedPrompt, /只允许自然路过、与话题相关的临时群友发言。/);
 assert.match(buildPokeGroupPrompt({ ...promptFixture, cardDesc: '', cardPersonality: '' }), /群聊性质：气氛很好的同学群/);
 assert.match(buildPokeGroupActivePrompt({
     ...promptFixture, groupDisplayName: promptFixture.groupName, cardDesc: '', cardPersonality: '',
@@ -973,7 +975,7 @@ assert.equal(group.randomNpcEnabled, true);
 assert.equal(group.groupNature.length, 200);
 assert.match(group.groupNature, /^气氛很好的同学群/);
 assert.deepEqual(group.injection, { position: 2, depth: 4, historyLimit: 30 });
-assert.deepEqual(normalizeGroupMeta({}), { name: '', members: [], extras: [], memberColors: {}, randomNpcEnabled: false, groupNature: '', injection: { position: 0, depth: 0, historyLimit: 20 } });
+assert.deepEqual(normalizeGroupMeta({}), { name: '', members: [], extras: [], memberColors: {}, randomNpcEnabled: false, groupNature: '', randomNpcPrompt: '', injection: { position: 0, depth: 0, historyLimit: 20 } });
 
 const caseFoldedGroup = normalizeGroupMeta({
     name: 'Case',
@@ -1543,7 +1545,7 @@ try {
         assert.deepEqual(officialBranchCalls, [injectionContext],
             '官方分支 CHAT_CHANGED 必须把含 main_chat 的最新 getContext 快照交给继承入口');
         assert.deepEqual(injectionDeps.runtime.lastBranchInheritance, {
-            status: 'cloned', reason: null, sourceId: null, targetId: null,
+            status: 'cloned', reason: null, sourceId: null, targetId: null, sourcePresence: null, targetPresence: null,
         }, '宿主监听器必须记录真实继承入口返回的可诊断状态');
         assert.equal(injectionDeps.runtime.lastBranchInheritanceError, null,
             '成功或跳过的分支继承不得遗留失败诊断');
@@ -6255,6 +6257,96 @@ try {
         recipes: { version: 1, scopes: { [branchIds.source]: { regionPreference: '', lastGeneratedRegion: '', lastGeneratedAt: 0, days: {} } } },
         budget: { communitySceneIdsByStorage: { [branchIds.source]: ['scene'] }, communitySelectionsByStorage: { [branchIds.source]: { selected: 'scene' } } },
     });
+    let emptySourceSaveCalls = 0;
+    let emptySourceLineage = {};
+    const emptySourceResult = await inheritPhoneDataOnBranch({
+        context: { ...branchContext, chatId: 'empty-source-branch' },
+        loadStores: async () => ({
+            histories: {}, groupMeta: {}, pokeConfig: {}, characterBehavior: {}, bidirectional: {}, backgrounds: {},
+            interactive: { version: 2, scopes: {} }, phoneUi: { version: 1, scopes: {} },
+            calendar: { version: 1, scopes: {} }, occasions: { version: 1, scopes: {} },
+            cycles: { version: 1, scopes: {} }, recipes: { version: 1, scopes: {} },
+            budget: { communitySceneIdsByStorage: {}, communitySelectionsByStorage: {} },
+        }),
+        saveStores: async () => { emptySourceSaveCalls += 1; },
+        loadLineage: async () => structuredClone(emptySourceLineage),
+        saveLineage: async value => { emptySourceLineage = structuredClone(value); },
+    });
+    assert.equal(emptySourceResult.reason, 'source-empty',
+        '父 scope 不含任何受管数据时必须明确跳过继承');
+    assert.equal(emptySourceSaveCalls, 0, '空来源不得触发任一 store 保存');
+    assert.deepEqual(emptySourceLineage, {}, '空来源不得写入不可重试的 lineage marker');
+    assert.deepEqual(emptySourceResult.sourcePresence.histories, { present: false, count: 0 },
+        '空来源诊断必须逐 store 记录缺失状态');
+
+    let emptyContainerSaveCalls = 0;
+    let emptyContainerLineage = {};
+    const emptyContainerStores = emptyBranchStores();
+    emptyContainerStores.histories[branchIds.source] = {};
+    emptyContainerStores.interactive.scopes[branchIds.source] = { actors: {}, scenes: {} };
+    emptyContainerStores.budget.communitySceneIdsByStorage[branchIds.source] = [];
+    const emptyContainerResult = await inheritPhoneDataOnBranch({
+        context: { ...branchContext, chatId: 'empty-container-branch' },
+        loadStores: async () => structuredClone(emptyContainerStores),
+        saveStores: async () => { emptyContainerSaveCalls += 1; },
+        loadLineage: async () => structuredClone(emptyContainerLineage),
+        saveLineage: async value => { emptyContainerLineage = structuredClone(value); },
+    });
+    assert.equal(emptyContainerResult.reason, 'source-empty',
+        '仅含空容器的来源不得伪装成可复制数据');
+    assert.equal(emptyContainerSaveCalls, 0, '空容器来源不得保存任何 store');
+    assert.deepEqual(emptyContainerLineage, {}, '空容器来源不得写 lineage marker');
+
+    window.__pmDiagEnabled = true;
+    const diagnosticRuntime = createRuntimeState();
+    diagnosticRuntime.eventHooked = true;
+    diagnosticRuntime.hostEventRegistrations.add('resolved:CHAT_CHANGED');
+    diagnosticRuntime.lastBranchInheritance = emptySourceResult;
+    assert.equal(installDiagnosticApi({ runtime: diagnosticRuntime, getCtx: () => branchContext,
+        getStorageId: () => branchIds.target }), true, '显式打开诊断开关时必须挂载只读诊断面');
+    const diagnosticSnapshot = window.__pmDiag.snapshot();
+    assert.equal(Object.isFrozen(window.__pmDiag), true, '诊断 API 顶层对象必须冻结');
+    assert.equal(Object.isFrozen(diagnosticSnapshot), true, '诊断快照必须冻结');
+    assert.equal(diagnosticSnapshot.lastBranchInheritance.reason, 'source-empty',
+        '诊断面必须暴露最后一次空来源跳过原因');
+    assert.deepEqual(diagnosticSnapshot.lastBranchInheritance.sourcePresence.histories, { present: false, count: 0 },
+        '诊断面只能暴露 store presence 元数据，不得泄露聊天正文');
+    assert.equal(Object.hasOwn(diagnosticSnapshot.lastBranchInheritance, 'messages'), false,
+        '诊断面不得暴露消息正文');
+    diagnosticRuntime.lastBranchInheritanceError = { name: 'Error', message: '潜在聊天正文不得经诊断 API 暴露' };
+    assert.equal(window.__pmDiag.snapshot().lastBranchInheritanceError?.message, '', '诊断 API 必须剥离原始错误文本');
+    delete window.__pmDiagEnabled;
+    delete window.__pmDiag;
+    delete window.__pmRetryBranch;
+
+    let retryStores = emptyBranchStores();
+    const retryTargetId = getStorageIdFor('alice.png', 'retry-branch');
+    const retryLineage = { [retryTargetId]: { sourceId: branchIds.source } };
+    const retryResult = await inheritPhoneDataOnBranch({
+        context: { ...branchContext, chatId: 'retry-branch' },
+        loadStores: async () => structuredClone(retryStores),
+        saveStores: async value => { retryStores = structuredClone(value); },
+        loadLineage: async () => structuredClone(retryLineage),
+        saveLineage: async value => { Object.assign(retryLineage, structuredClone(value)); },
+        force: true,
+    });
+    assert.equal(retryResult.status, 'cloned', '受伪 marker 影响但目标为空的分支必须允许受控重试');
+    assert.ok(Object.hasOwn(retryStores.histories, retryTargetId), '受控重试必须实际写入目标 scope');
+    const occupiedRetryStores = emptyBranchStores();
+    occupiedRetryStores.histories[retryTargetId] = {};
+    let occupiedRetrySaveCalls = 0;
+    let occupiedRetryLineageWrites = 0;
+    const occupiedRetryResult = await inheritPhoneDataOnBranch({
+        context: { ...branchContext, chatId: 'retry-branch' }, force: true,
+        loadStores: async () => structuredClone(occupiedRetryStores),
+        saveStores: async () => { occupiedRetrySaveCalls += 1; },
+        loadLineage: async () => structuredClone(retryLineage),
+        saveLineage: async () => { occupiedRetryLineageWrites += 1; },
+    });
+    assert.equal(occupiedRetryResult.reason, 'target-not-empty',
+        'force 只能绕过伪 marker，绝不得覆盖已存在的空目标 scope');
+    assert.equal(occupiedRetrySaveCalls, 0, 'force 遇到占用目标不得写入 store');
+    assert.equal(occupiedRetryLineageWrites, 0, 'force 遇到占用目标不得重写 lineage');
     let persistedStores = emptyBranchStores();
     let persistedLineage = {};
     const cloneResult = await inheritPhoneDataOnBranch({
@@ -6341,6 +6433,18 @@ try {
             loadLineage: async () => ({}), saveLineage: async () => { throw new Error('不得写入'); },
         })).reason, 'target-not-empty', '任一受管目标 scope 已存在时都不得覆盖');
     }
+    const forceOccupied = emptyBranchStores();
+    forceOccupied.histories[branchIds.target] = {};
+    let forceOccupiedStoreWrites = 0;
+    let forceOccupiedLineageWrites = 0;
+    assert.equal((await inheritPhoneDataOnBranch({
+        context: branchContext, force: true, loadStores: async () => forceOccupied,
+        saveStores: async () => { forceOccupiedStoreWrites += 1; },
+        loadLineage: async () => ({ [branchIds.target]: { sourceId: branchIds.source } }),
+        saveLineage: async () => { forceOccupiedLineageWrites += 1; },
+    })).reason, 'target-not-empty', 'force 不得覆盖任何已占用目标 scope');
+    assert.equal(forceOccupiedStoreWrites, 0, 'force 遇到已占用目标不得写 store');
+    assert.equal(forceOccupiedLineageWrites, 0, 'force 遇到已占用目标不得改写 lineage');
 
     let rollbackStores = emptyBranchStores();
     await assert.rejects(() => inheritPhoneDataOnBranch({
@@ -6558,6 +6662,16 @@ try {
         '真实 CHAT_CHANGED 链路必须记录已完成的生产继承结果');
     assert.equal(productionFoundationDeps.runtime.lastBranchInheritance?.targetId, productionTargetId,
         '真实 CHAT_CHANGED 链路必须记录继承目标 scope');
+    window.__pmDiagEnabled = true;
+    assert.equal(installDiagnosticApi(productionFoundationDeps), true,
+        '真实 listener fixture 打开诊断开关后必须安装现场诊断面');
+    const listenerDiagnostic = window.__pmDiag.snapshot();
+    assert.equal(listenerDiagnostic.lastBranchInheritance?.status, 'cloned',
+        '真实 CHAT_CHANGED 完成后诊断面必须可见继承状态');
+    assert.equal(listenerDiagnostic.lastBranchInheritance?.sourcePresence?.histories?.present, true,
+        '真实 CHAT_CHANGED 完成后诊断面必须可见来源 scope presence');
+    assert.equal(Object.hasOwn(listenerDiagnostic, 'chat'), false,
+        '真实 listener 诊断快照不得暴露宿主聊天对象');
     for (const store of ['pokeConfig', 'characterBehavior', 'bidirectional', 'budget']) {
         assert.deepEqual(getActiveDirectoryBranchScopes(store), [], `成功提交后必须清除 ${store} 的 active scope`);
     }
@@ -6603,6 +6717,11 @@ try {
         '失败诊断必须保留错误类型');
     assert.match(productionFoundationDeps.runtime.lastBranchInheritanceError?.message || '', /分支继承记录保存失败/,
         '失败诊断必须保留脱敏后的可区分原因');
+    assert.equal(window.__pmDiag.snapshot().lastBranchInheritanceError?.message, '',
+        '公开诊断面不得暴露未分类异常正文');
+    delete window.__pmDiagEnabled;
+    delete window.__pmDiag;
+    delete window.__pmRetryBranch;
     for (const store of ['pokeConfig', 'characterBehavior', 'bidirectional', 'budget']) {
         assert.deepEqual(getActiveDirectoryBranchScopes(store), [], `lineage 失败并补偿后必须清除 ${store} 的 active scope`);
     }

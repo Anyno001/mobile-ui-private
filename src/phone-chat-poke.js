@@ -77,7 +77,7 @@ export function installPhoneChatPoke(state, deps) {
                 memberList: groupMembers.join('、'),
                 userName, userBlock, cardDesc, cardPersonality,
                 cardScenario, worldBookText, mainChatText, smsHistoryText,
-                randomNpcEnabled: groupMeta.randomNpcEnabled, groupNature: groupMeta.groupNature,
+                randomNpcEnabled: groupMeta.randomNpcEnabled, groupNature: groupMeta.groupNature, randomNpcPrompt: groupMeta.randomNpcPrompt,
               })
             : buildPokeSinglePrompt({
                 contactName, userName, userBlock, cardDesc, cardPersonality,
@@ -190,7 +190,7 @@ export function installPhoneChatPoke(state, deps) {
         return true;
     };
 
-    function showContactConfig(contactName, returnToMembers = false) {
+    function showContactConfig(contactName, returnToMembers = false, returnMembersToGroupSettings = false) {
         const id = getStorageId();
         const config = window.__pmPokeConfig[id]?.[contactName] || {};
         const behavior = getCharacterBehavior(window.__pmCharacterBehavior, id, contactName);
@@ -220,7 +220,7 @@ export function installPhoneChatPoke(state, deps) {
         makeOverlay(`
     <div class="pm-modal pm-modal-wide">
     <div class="pm-modal-header">
-        <button type="button" onclick="${returnToMembers ? 'window.__pmShowConversationSettings()' : 'window.__pmReturnToControlCenter()'}" class="pm-modal-close" title="返回" aria-label="返回">${BACK_ICON_SVG}</button>
+        <button type="button" onclick="${returnToMembers ? `window.__pmShowConversationSettings(${returnMembersToGroupSettings})` : 'window.__pmReturnToControlCenter()'}" class="pm-modal-close" title="返回" aria-label="返回">${BACK_ICON_SVG}</button>
         <b class="pm-contact-settings-title" title="${escapeAttr(contactName)}">${escapeHtml(contactName)}</b>
         <button type="button" onclick="window.__pmCloseOverlay()" class="pm-modal-close" title="关闭" aria-label="关闭">${CLOSE_ICON_SVG}</button>
     </div>
@@ -259,8 +259,8 @@ export function installPhoneChatPoke(state, deps) {
     </div>`);
     }
 
-    window.__pmShowCharacterBehavior = contactName => showContactConfig(contactName, true);
-    window.__pmShowConversationSettings = () => {
+    window.__pmShowCharacterBehavior = (contactName, returnToGroupSettings = false) => showContactConfig(contactName, true, returnToGroupSettings);
+    window.__pmShowConversationSettings = (returnToGroupSettings = false) => {
         if (!state.isGroupChat) {
             showContactConfig(state.currentPersona);
             return;
@@ -268,9 +268,9 @@ export function installPhoneChatPoke(state, deps) {
         const members = state.groupMembers.slice();
         makeOverlay(`
     <div class="pm-modal pm-modal-wide">
-      <div class="pm-modal-header"><button type="button" onclick="window.__pmReturnToControlCenter()" class="pm-modal-close" title="返回快捷工具" aria-label="返回快捷工具">${BACK_ICON_SVG}</button><b>成员设置</b><button type="button" onclick="window.__pmCloseOverlay()" class="pm-modal-close" title="关闭" aria-label="关闭">${CLOSE_ICON_SVG}</button></div>
+      <div class="pm-modal-header"><button type="button" onclick="${returnToGroupSettings ? 'window.__pmEditGroup()' : 'window.__pmReturnToControlCenter()'}" class="pm-modal-close" title="${returnToGroupSettings ? '返回群聊设置' : '返回快捷工具'}" aria-label="${returnToGroupSettings ? '返回群聊设置' : '返回快捷工具'}">${BACK_ICON_SVG}</button><b>成员设置</b><button type="button" onclick="window.__pmCloseOverlay()" class="pm-modal-close" title="关闭" aria-label="关闭">${CLOSE_ICON_SVG}</button></div>
       <div class="pm-member-behavior-list">
-        ${members.map(name => `<button onclick="window.__pmShowCharacterBehavior('${safeJS(name)}')">
+        ${members.map(name => `<button onclick="window.__pmShowCharacterBehavior('${safeJS(name)}', ${returnToGroupSettings})">
           <b>${escapeHtml(name)}</b><span>私聊风格、群聊风格与消息频率</span>
         </button>`).join('')}
       </div>
@@ -353,6 +353,7 @@ export function installPhoneChatPoke(state, deps) {
         const groupMembers = state.groupMembers.slice();
         const groupRandomNpcEnabled = state.groupRandomNpcEnabled;
         const groupNature = state.groupNature;
+        const groupRandomNpcPrompt = state.groupRandomNpcPrompt;
         const isStillTarget = () => isGenerationTaskActive(task) && state.activeStorageId === storageId
             && (state.isGroupChat && state.currentGroupKey ? state.currentGroupKey : state.currentPersona) === saveKey;
 
@@ -372,7 +373,7 @@ export function installPhoneChatPoke(state, deps) {
                 groupName: groupDisplayName || '群聊', memberList: groupMembers.join('、'),
                 userName, userBlock, cardDesc, cardPersonality, cardScenario,
                 worldBookText, mainChatText, smsHistoryText,
-                randomNpcEnabled: groupRandomNpcEnabled, groupNature,
+                randomNpcEnabled: groupRandomNpcEnabled, groupNature, randomNpcPrompt: groupRandomNpcPrompt,
               })
             : buildPokeSinglePrompt({
                 contactName, userName, userBlock, cardDesc, cardPersonality,
@@ -506,6 +507,7 @@ export function installPhoneChatPoke(state, deps) {
         const groupMembers = state.groupMembers.slice();
         const groupRandomNpcEnabled = state.groupRandomNpcEnabled;
         const groupNature = state.groupNature;
+        const groupRandomNpcPrompt = state.groupRandomNpcPrompt;
         const isStillTarget = () => isGenerationTaskActive(task) && state.activeStorageId === storageId
             && state.isGroupChat && state.currentGroupKey === saveKey;
 
@@ -522,7 +524,7 @@ export function installPhoneChatPoke(state, deps) {
             groupDisplayName, memberList: groupMembers.join('、'),
             userName, userBlock, cardDesc, cardPersonality, cardScenario,
             worldBookText, mainChatText, smsHistoryText,
-            randomNpcEnabled: groupRandomNpcEnabled, groupNature,
+            randomNpcEnabled: groupRandomNpcEnabled, groupNature, randomNpcPrompt: groupRandomNpcPrompt,
         })
             + buildChatPreferencePrompt({
                 store: window.__pmCharacterBehavior,

@@ -507,7 +507,7 @@ export function installPhoneFoundation(state, deps) {
             }).then(result => {
                 runtime.lastBranchInheritance = {
                     status: result?.status || 'unknown', reason: result?.reason || null,
-                    sourceId: result?.sourceId || null, targetId: result?.targetId || null,
+                    sourceId: result?.sourceId || null, targetId: result?.targetId || null, sourcePresence: result?.sourcePresence || null, targetPresence: result?.targetPresence || null,
                 };
                 runtime.lastBranchInheritanceError = null;
                 if (result?.status === 'cloned') {
@@ -518,7 +518,7 @@ export function installPhoneFoundation(state, deps) {
                 return result;
             }).catch(error => {
                 runtime.lastBranchInheritance = { status: 'failed', reason: null,
-                    sourceId: branch?.sourceId || null, targetId: branch?.targetId || null };
+                    sourceId: branch?.sourceId || null, targetId: branch?.targetId || null, sourcePresence: null, targetPresence: null };
                 runtime.lastBranchInheritanceError = { name: typeof error?.name === 'string' && error.name ? error.name : 'Error',
                     message: typeof error?.message === 'string' ? error.message.slice(0, 240) : '' };
                 console.warn('[phone-mode] 分支手机数据继承失败', error?.name || 'Error');

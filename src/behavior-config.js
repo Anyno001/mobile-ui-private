@@ -210,6 +210,7 @@ export function normalizeGroupMeta(value) {
         memberColors,
         randomNpcEnabled: Boolean(source.randomNpcEnabled),
         groupNature: text(source.groupNature, 200),
+        randomNpcPrompt: text(source.randomNpcPrompt, 2000),
         injection: normalizeGroupInjection(source.injection),
     };
 }

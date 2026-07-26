@@ -57,7 +57,7 @@ ${mainChatText ? `【主线最近对话】\n${mainChatText}\n\n` : ''}
 ${contextBlockMain ? contextBlockMain + '\n\n' : ''}规则：
 - 只输出短信文字，3到8句，每句用 / 分隔
 - 禁止旁白心理描写场景描述角色名前缀标签格式
-- 特殊格式（中文单行闭合）：(转账+金额) (收款+金额) (退还+金额) (图片+描述) (语音+内容)。注意：退还指拒绝聊天对象转账。
+- 特殊消息必须独占一个 / 分隔片段，使用中文关键词和单行格式：转账+金额、收款：金额、退还 金额、图片：描述、语音 内容。注意：退还指拒绝聊天对象转账。
 - 严禁英文格式
 - 完全沉浸于角色设定，褪去AI助手的客观语气
 - 根据用户的引导自然推进剧情，在用户明确发起成人或极端互动前，保持符合日常社交尺度的全年龄对话风格
@@ -88,17 +88,20 @@ export function buildSingleSystemPrompt({
         mainChatText ? `【主线最近对话】\n${mainChatText}` : '',
         '',
         '只输出3到8句短信，每句用 / 分隔，不得中途截断。',
-        '特殊格式（必须中文单行闭合）：(转账+金额) (收款+金额) (退还+金额) (图片+描述) (语音+内容)。注意：退还指拒绝聊天对象转账。',
+        '特殊消息必须独占一个 / 分隔片段，使用中文关键词和单行格式：转账+金额、收款：金额、退还 金额、图片：描述、语音 内容。注意：退还指拒绝聊天对象转账。',
         '禁止任何标签格式旁白选项状态栏。',
     ].filter(Boolean).join('\n\n');
 }
 
-export function buildGroupAdditionalContext({ randomNpcEnabled = false, groupNature = '' } = {}) {
+export const DEFAULT_RANDOM_NPC_PROMPT = '允许不在固定成员名单上的路人群友自然参与聊天；临时角色名必须使用“路人群友·名字”格式，并根据群聊性质生成身份和语气合适、名字简短明确的临时角色。';
+
+export function buildGroupAdditionalContext({ randomNpcEnabled = false, groupNature = '', randomNpcPrompt = '' } = {}) {
     const nature = typeof groupNature === 'string' ? groupNature.trim() : '';
+    const prompt = typeof randomNpcPrompt === 'string' ? randomNpcPrompt.trim() : '';
     const parts = [];
     if (nature) parts.push(`群聊性质：${nature}`);
     if (randomNpcEnabled) {
-        parts.push('允许不在固定成员名单上的路人群友自然参与聊天；临时角色名必须使用“路人群友·名字”格式，并根据群聊性质生成身份和语气合适、名字简短明确的临时角色。');
+        parts.push(`路人群友提示词：${prompt || DEFAULT_RANDOM_NPC_PROMPT}`);
     }
     return parts.length ? `\n\n【群聊补充信息】\n${parts.join('\n')}` : '';
 }
@@ -109,7 +112,7 @@ export function buildGroupAdditionalContext({ randomNpcEnabled = false, groupNat
 export function buildGroupInjectedInstruction({
     groupName, memberList, userName, userBlock, cardScenario,
     worldBookText, mainChatText, smsHistoryText, currentQuoteText, directorNote, userMsgClean, userMsg,
-    randomNpcEnabled = false, groupNature = '',
+    randomNpcEnabled = false, groupNature = '', randomNpcPrompt = '',
 }) {
     const speakerRule = randomNpcEnabled
         ? `角色名可以来自固定成员（${memberList}），临时路人群友必须命名为“路人群友·名字”`
@@ -124,8 +127,8 @@ export function buildGroupInjectedInstruction({
 1. 每一行都必须以 "角色名：" 开头（${speakerRule}）
 2. 严禁输出对界面、系统、对话本身的总结或描述性文字
 3. 严禁输出类似"现在应该..."、"我已经..."、"看起来..."这类叙述性句子
-4. 特殊格式必须在同一行内完整写出且闭合：(转账+金额) (收款+金额) (退还+金额) (图片+描述) (语音+内容)。注意：退还指拒绝聊天对象转账。
-5. 特殊格式括号内严禁换行、编号（1. 2. 3.）、列表
+4. 特殊消息必须独占一个 / 分隔片段，使用中文关键词和单行格式：转账+金额、收款：金额、退还 金额、图片：描述、语音 内容。注意：退还指拒绝聊天对象转账。
+5. 特殊消息内容严禁换行、编号（1. 2. 3.）、列表
 6. 每条消息内的 / 只用于分隔同一角色的多条短信
 7. 每个角色根据自己的人设和当前剧情主动决定发言条数，0-8句，可穿插发言，不必所有人都说话
 8. 严禁英文格式 (Voice+/Image+/Transfer+/Refund+)
@@ -133,13 +136,12 @@ export function buildGroupInjectedInstruction({
 
 ✅ 正确示例：
 小明：我先到了 / 这家店真不错
-小红：等我五分钟 / (语音+马上到别急)
-小明：好 / (图片+刚拍的店门口)
-小李：(退还+50) / 昨天多给的钱退你啦
+小红：等我五分钟 / 语音 马上到别急
+小明：好 / 图片：刚拍的店门口
+小李：退还+50 / 昨天多给的钱退你啦
 
 ❌ 错误示例（绝对禁止）：
-小明：(语音+内容有换行
-1. 第一点)
+小明：语音 内容有换行
 小红：界面现在应该正常了...`;
     return `${groupRules}
 
@@ -150,7 +152,7 @@ ${cardScenario ? '【场景】\n' + cardScenario + '\n\n' : ''}${worldBookText ?
 ${smsHistoryText}
 ${currentQuoteText ? `\n【本轮回复关系】\n${currentQuoteText}\n` : ''}
 ${directorNote ? `\n[剧情引导] ${directorNote}\n` : ''}
-${userMsg.trim() ? `${userName}：${userMsgClean}` : '[仅有剧情引导，无用户发言，请按引导推进剧情]'}${buildGroupAdditionalContext({ randomNpcEnabled, groupNature })}`;
+${userMsg.trim() ? `${userName}：${userMsgClean}` : '[仅有剧情引导，无用户发言，请按引导推进剧情]'}${buildGroupAdditionalContext({ randomNpcEnabled, groupNature, randomNpcPrompt })}`;
 }
 
 /**
@@ -159,7 +161,7 @@ ${userMsg.trim() ? `${userName}：${userMsgClean}` : '[仅有剧情引导，无�
 export function buildGroupSystemPrompt({
     memberList, groupName, userName, userBlock, cardDesc,
     cardPersonality, cardScenario, worldBookText, mainChatText,
-    randomNpcEnabled = false, groupNature = '',
+    randomNpcEnabled = false, groupNature = '', randomNpcPrompt = '',
 }) {
     return [
         `你同时扮演 ${memberList} 在群聊「${groupName}」中与用户 ${userName} 对话。${randomNpcEnabled ? '必要时也可生成符合群聊性质的临时路人群友。' : ''}`,
@@ -173,9 +175,9 @@ export function buildGroupSystemPrompt({
         `输出格式：角色名：消息 / 消息（每个角色0-8句，根据人设和剧情决定是否发言及发言数量）`,
         `角色名后只跟该角色的话，严禁 "(角色名：xxx)" 这种嵌套。`,
         `角色可穿插发言，不必所有人都说话。`,
-        '特殊格式（必须中文且单行闭合）：(转账+金额) (收款+金额) (退还+金额) (图片+描述) (语音+内容)。注意：退还指拒绝聊天对象转账。',
+        '特殊消息必须独占一个 / 分隔片段，使用中文关键词和单行格式：转账+金额、收款：金额、退还 金额、图片：描述、语音 内容。注意：退还指拒绝聊天对象转账。',
         '禁止任何标签格式旁白选项状态栏。',
-        buildGroupAdditionalContext({ randomNpcEnabled, groupNature }),
+        buildGroupAdditionalContext({ randomNpcEnabled, groupNature, randomNpcPrompt }),
     ].filter(Boolean).join('\n\n');
 }
 
@@ -212,7 +214,7 @@ ${mainChatText || ''}
 【短信对话历史】
 ${smsHistoryText}
 
-输出格式：短信内容 / 短信内容（每句用 / 分隔，特殊格式中文单行闭合）`;
+输出格式：短信内容 / 短信内容（每句用 / 分隔；特殊消息必须独占一个片段，使用中文单行格式：转账+金额、收款：金额、退还 金额、图片：描述、语音 内容；退还指拒绝聊天对象转账）`;
 }
 
 /**
@@ -221,9 +223,9 @@ ${smsHistoryText}
 export function buildPokeGroupPrompt({
     groupName, memberList, userName, userBlock, cardDesc,
     cardPersonality, cardScenario, worldBookText, mainChatText, smsHistoryText,
-    randomNpcEnabled = false, groupNature = '',
+    randomNpcEnabled = false, groupNature = '', randomNpcPrompt = '',
 }) {
-    return `群聊名称：${groupName}\n群聊成员：${memberList}\n\n用户有一段时间没有说话。请以所有群成员的身份，根据各自的性格、人设和当前聊天上下文，自然地发起话题或继续聊天。每个成员根据人设决定发言 0-8 句。\n\n输出格式：角色名：消息 / 消息\n\n【用户信息】\n${userBlock}\n\n【角色设定】\n${cardDesc || ''}\n\n【性格】\n${cardPersonality || ''}\n\n【场景】\n${cardScenario || ''}\n\n【世界书】\n${worldBookText || ''}\n\n【主线最近对话】\n${mainChatText || ''}\n\n【群聊历史】\n${smsHistoryText}${buildGroupAdditionalContext({ randomNpcEnabled, groupNature })}`;
+    return `群聊名称：${groupName}\n群聊成员：${memberList}\n\n用户有一段时间没有说话。请以所有群成员的身份，根据各自的性格、人设和当前聊天上下文，自然地发起话题或继续聊天。每个成员根据人设决定发言 0-8 句。\n\n输出格式：角色名：消息 / 消息。特殊消息必须独占一个 / 分隔片段，使用中文单行格式：转账+金额、收款：金额、退还 金额、图片：描述、语音 内容；退还指拒绝聊天对象转账。\n\n【用户信息】\n${userBlock}\n\n【角色设定】\n${cardDesc || ''}\n\n【性格】\n${cardPersonality || ''}\n\n【场景】\n${cardScenario || ''}\n\n【世界书】\n${worldBookText || ''}\n\n【主线最近对话】\n${mainChatText || ''}\n\n【群聊历史】\n${smsHistoryText}${buildGroupAdditionalContext({ randomNpcEnabled, groupNature, randomNpcPrompt })}`;
 }
 
 /**
@@ -232,9 +234,9 @@ export function buildPokeGroupPrompt({
 export function buildPokeGroupActivePrompt({
     groupDisplayName, memberList, userName, userBlock, cardDesc,
     cardPersonality, cardScenario, worldBookText, mainChatText, smsHistoryText,
-    randomNpcEnabled = false, groupNature = '',
+    randomNpcEnabled = false, groupNature = '', randomNpcPrompt = '',
 }) {
-    return `群聊名称：${groupDisplayName || '群聊'}\n群聊成员：${memberList}\n\n请以每个群成员的身份，根据各自的性格、人设和当前聊天上下文，自然地发起话题或继续聊天，不要提及任何外部触发。\n每个成员根据自己的判断选择发言 0-8 条。\n\n输出格式：角色名：消息内容 / 消息内容\n\n【用户信息】\n${userBlock}\n\n【角色设定】\n${cardDesc || ''}\n\n【性格】\n${cardPersonality || ''}\n\n【场景】\n${cardScenario || ''}\n\n【世界书】\n${worldBookText || ''}\n\n【主线最近对话】\n${mainChatText || ''}\n\n【群聊历史】\n${smsHistoryText}${buildGroupAdditionalContext({ randomNpcEnabled, groupNature })}`;
+    return `群聊名称：${groupDisplayName || '群聊'}\n群聊成员：${memberList}\n\n请以每个群成员的身份，根据各自的性格、人设和当前聊天上下文，自然地发起话题或继续聊天，不要提及任何外部触发。\n每个成员根据自己的判断选择发言 0-8 条。\n\n输出格式：角色名：消息内容 / 消息内容。特殊消息必须独占一个 / 分隔片段，使用中文单行格式：转账+金额、收款：金额、退还 金额、图片：描述、语音 内容；退还指拒绝聊天对象转账。\n\n【用户信息】\n${userBlock}\n\n【角色设定】\n${cardDesc || ''}\n\n【性格】\n${cardPersonality || ''}\n\n【场景】\n${cardScenario || ''}\n\n【世界书】\n${worldBookText || ''}\n\n【主线最近对话】\n${mainChatText || ''}\n\n【群聊历史】\n${smsHistoryText}${buildGroupAdditionalContext({ randomNpcEnabled, groupNature, randomNpcPrompt })}`;
 }
 
 /**

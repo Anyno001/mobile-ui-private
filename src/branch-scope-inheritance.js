@@ -44,15 +44,42 @@ function scopeBackgroundKeys(storageId, backgrounds) {
     return Object.keys(backgrounds || {}).filter(key => key.startsWith(prefix));
 }
 
+function hasContent(value) {
+    if (Array.isArray(value)) return value.some(hasContent);
+    if (value && typeof value === 'object') return Object.values(value).some(hasContent);
+    return typeof value === 'string' ? value.length > 0 : value !== null && value !== undefined;
+}
+
+function scopePresence(storageId, stores, contentOnly = false) {
+    const flat = ['histories', 'groupMeta', 'pokeConfig', 'characterBehavior', 'bidirectional'];
+    const scoped = ['interactive', 'phoneUi', 'calendar', 'occasions', 'cycles', 'recipes'];
+    const presence = {};
+    const included = value => !contentOnly || hasContent(value);
+    for (const key of flat) {
+        const present = own(stores[key], storageId) && included(stores[key][storageId]);
+        presence[key] = { present, count: present ? 1 : 0 };
+    }
+    const backgroundCount = scopeBackgroundKeys(storageId, stores.backgrounds)
+        .filter(key => included(stores.backgrounds[key])).length;
+    presence.backgrounds = { present: backgroundCount > 0, count: backgroundCount };
+    for (const key of scoped) {
+        const present = own(stores[key]?.scopes, storageId) && included(stores[key].scopes[storageId]);
+        presence[key] = { present, count: present ? 1 : 0 };
+    }
+    const budgetCount = Number(own(stores.budget?.communitySceneIdsByStorage, storageId)
+        && included(stores.budget.communitySceneIdsByStorage[storageId]))
+        + Number(own(stores.budget?.communitySelectionsByStorage, storageId)
+        && included(stores.budget.communitySelectionsByStorage[storageId]));
+    presence.budget = { present: budgetCount > 0, count: budgetCount };
+    return Object.freeze(presence);
+}
+
+function hasScopeData(presence) {
+    return Object.values(presence).some(value => value.present);
+}
+
 function hasTargetData(targetId, stores) {
-    const maps = [stores.histories, stores.groupMeta, stores.pokeConfig, stores.characterBehavior, stores.bidirectional];
-    if (maps.some(store => own(store, targetId))) return true;
-    if (scopeBackgroundKeys(targetId, stores.backgrounds).length) return true;
-    if (own(stores.interactive?.scopes, targetId) || own(stores.phoneUi?.scopes, targetId)) return true;
-    if (own(stores.calendar?.scopes, targetId) || own(stores.occasions?.scopes, targetId)
-        || own(stores.cycles?.scopes, targetId) || own(stores.recipes?.scopes, targetId)) return true;
-    return own(stores.budget?.communitySceneIdsByStorage, targetId)
-        || own(stores.budget?.communitySelectionsByStorage, targetId);
+    return hasScopeData(scopePresence(targetId, stores, false));
 }
 
 function copyEntry(target, source, sourceId, targetId) {
@@ -390,15 +417,19 @@ async function commitDirectoryScope(store, desired, expected, targetId) {
     }
 }
 
-export async function inheritPhoneDataOnBranch({ context, loadStores, saveStores, loadLineage, saveLineage, commitLineage, now = Date.now }) {
+export async function inheritPhoneDataOnBranch({ context, loadStores, saveStores, loadLineage, saveLineage, commitLineage, now = Date.now, force = false }) {
     const branch = resolveBranchInheritance(context);
     if (!branch) return { status: 'skipped', reason: 'not-branch' };
     if (pendingByTarget.has(branch.targetId)) return pendingByTarget.get(branch.targetId);
     const operation = (async () => {
         const lineage = await loadLineage();
-        if (own(lineage, branch.targetId)) return { status: 'skipped', reason: 'already-cloned' };
+        if (own(lineage, branch.targetId) && !force) return { status: 'skipped', reason: 'already-cloned', ...branch };
         const stores = normalizeStores(await loadStores());
-        if (hasTargetData(branch.targetId, stores)) return { status: 'skipped', reason: 'target-not-empty' };
+        const sourcePresence = scopePresence(branch.sourceId, stores, true);
+        const targetPresence = scopePresence(branch.targetId, stores, false);
+        const diagnostics = { sourcePresence, targetPresence };
+        if (hasTargetData(branch.targetId, stores)) return { status: 'skipped', reason: 'target-not-empty', ...branch, ...diagnostics };
+        if (!hasScopeData(sourcePresence)) return { status: 'skipped', reason: 'source-empty', ...branch, ...diagnostics };
         const candidate = createCandidates(branch.sourceId, branch.targetId, stores);
         const nextLineage = {
             ...lineage,
@@ -413,7 +444,7 @@ export async function inheritPhoneDataOnBranch({ context, loadStores, saveStores
             storesSaved = true;
             if (commitLineage) await commitLineage(branch.targetId, nextLineage[branch.targetId]);
             else await saveLineage(nextLineage);
-            return { status: 'cloned', ...branch };
+            return { status: 'cloned', ...branch, ...diagnostics };
         } catch (error) {
             if (storesSaved) {
                 try { await saveStores(stores, { branch, previous: candidate }); }
@@ -431,6 +462,10 @@ export async function inheritPhoneDataOnBranch({ context, loadStores, saveStores
 
 export function awaitPendingBranchInheritance(storageId) {
     return pendingByTarget.get(storageId) || Promise.resolve(null);
+}
+
+export function getPendingBranchInheritanceTargets() {
+    return Object.freeze(Array.from(pendingByTarget.keys()));
 }
 
 async function loadProductionStores() {
@@ -537,7 +572,7 @@ async function persistProductionStores(next, { branch } = {}) {
     }
 }
 
-export function beginBranchInheritance(context, { getStorageId, invalidateInteractiveStore, reloadCalendarStore } = {}) {
+export function beginBranchInheritance(context, { getStorageId, invalidateInteractiveStore, reloadCalendarStore, force = false } = {}) {
     const branch = resolveBranchInheritance(context);
     const branchScopeTokens = branch
         ? ['pokeConfig', 'characterBehavior', 'bidirectional', 'budget'].map(store => [store, markDirectoryBranchScope(store, branch.targetId)])
@@ -548,6 +583,7 @@ export function beginBranchInheritance(context, { getStorageId, invalidateIntera
         saveStores: persistProductionStores,
         loadLineage: loadBranchLineage,
         commitLineage: commitBranchLineage,
+        force,
     }).finally(() => {
         for (const [store, token] of branchScopeTokens) completeDirectoryBranchScope(store, token);
     });

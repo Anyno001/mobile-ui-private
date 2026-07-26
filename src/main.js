@@ -2,6 +2,7 @@ import { createAiClient } from './ai.js';
 import { installCalendar } from './calendar.js';
 import { installContactGenerator } from './contact-generator.js';
 import { installConversation } from './conversation.js';
+import { installDiagnosticApi } from './diagnostic.js';
 import { installEmojiUi } from './emoji-ui.js';
 import { installInteractiveScenes } from './interactive-scenes.js';
 import {
@@ -44,6 +45,7 @@ import { saveBudgetConfig, saveEmojis } from './storage.js';
         groupDisplayName: '',
         groupRandomNpcEnabled: false,
         groupNature: '',
+        groupRandomNpcPrompt: '',
         currentGroupKey: '',
         groupExtras: [],
     };
@@ -76,6 +78,7 @@ import { saveBudgetConfig, saveEmojis } from './storage.js';
     installContactGenerator(state, deps);
     installPhoneChatPoke(state, deps);
     installPhoneLifecycle(state, deps);
+    installDiagnosticApi(deps);
     ensureInitialPhoneQuickReplyWithRetry().catch(error => {
         console.warn('[phone-mode] 首次创建手机入口失败，有限重试已结束', error);
     });

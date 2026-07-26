@@ -100,11 +100,12 @@ export function installConversation(state, deps) {
             state.groupDisplayName = groupMeta.name;
             state.groupRandomNpcEnabled = groupMeta.randomNpcEnabled === true;
             state.groupNature = typeof groupMeta.groupNature === 'string' ? groupMeta.groupNature : '';
+            state.groupRandomNpcPrompt = typeof groupMeta.randomNpcPrompt === 'string' ? groupMeta.randomNpcPrompt : '';
             state.groupColorMap = {};
             state.groupMembers.forEach((n, i) => { state.groupColorMap[n] = groupMeta.memberColors?.[n] || GROUP_COLORS[i % GROUP_COLORS.length].bg; });
         } else {
             state.isGroupChat = false; state.groupMembers = []; state.groupExtras = []; state.groupColorMap = {};
-            state.groupDisplayName = ''; state.groupRandomNpcEnabled = false; state.groupNature = ''; state.currentGroupKey = '';
+            state.groupDisplayName = ''; state.groupRandomNpcEnabled = false; state.groupNature = ''; state.groupRandomNpcPrompt = ''; state.currentGroupKey = '';
         }
         window.__pmSwitch(
             key,

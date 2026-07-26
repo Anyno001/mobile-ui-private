@@ -13,8 +13,15 @@ const SPECIAL_KEYWORDS = {
 };
 const KEYWORD_PATTERN = Object.keys(SPECIAL_KEYWORDS).join('|');
 
-export const SPECIAL_RE = new RegExp(`[\\(（]\\s*(${KEYWORD_PATTERN})\\s*[+：:\\s]*([^)）]+)[\\)）]`, 'gi');
+export const SPECIAL_RE = new RegExp(`[\\(（][ \\t]*(${KEYWORD_PATTERN})(?:[ \\t]*(?:\\+|：|:)[ \\t]*|[ \\t]+)([^)）]+)[\\)）]`, 'gi');
+export const STANDALONE_SPECIAL_RE = new RegExp(`^[ \\t]*(${KEYWORD_PATTERN})(?:[ \\t]*(?:\\+|：|:)[ \\t]*|[ \\t]+)(\\S(?:[^\\r\\n]*\\S)?)[ \\t]*$`, 'i');
 export const EMO_RE = /\[emo:([^\]:]+):(\d+)\]/gi;
+
+function isValidSpecialContent(kind, content) {
+    const value = content.trim();
+    if (!value || /^[+：:]+$/.test(value)) return false;
+    return !['转账', '收款', '退还'].includes(kind) || /^(?:0|[1-9]\d*)(?:\.\d{1,2})?$/.test(value);
+}
 
 export function normalizeKeyword(keyword) {
     return SPECIAL_KEYWORDS[keyword] || SPECIAL_KEYWORDS[keyword.toLowerCase()] || keyword;
@@ -164,9 +171,7 @@ export function createBubbles(text, side, senderName, { groupColorMap, groupMemb
         results.push(bubble);
     };
 
-    while ((match = specialPattern.exec(text)) !== null) {
-        if (match.index > lastIndex) pushPlain(text.slice(lastIndex, match.index));
-        const kind = normalizeKeyword(match[1]);
+    const pushSpecial = (kind, content) => {
         const isGroupLeft = senderName && side === 'left';
         let container;
         if (isGroupLeft) {
@@ -181,14 +186,14 @@ export function createBubbles(text, side, senderName, { groupColorMap, groupMemb
         const bubble = document.createElement('div');
         bubble.className = `pm-bubble pm-${side} pm-special`;
         if (kind === '转账' || kind === '收款' || kind === '退还') {
-            const amount = parseFloat(match[2]) || 0;
+            const amount = parseFloat(content) || 0;
             const className = kind === '转账' ? 'pm-transfer-card' : kind === '收款' ? 'pm-receive-card' : 'pm-refund-card';
             const title = kind === '退还' ? '已退还' : kind;
             bubble.innerHTML = `<div class="${className}"><div class="pm-t-icon">¥</div><div class="pm-t-info"><b>${title}</b><span>¥${amount.toFixed(2)}</span></div></div>`;
         } else if (kind === '图片') {
-            bubble.innerHTML = `<div class="pm-img-card">🖼️ ${escapeHtml(match[2].trim())}</div>`;
+            bubble.innerHTML = `<div class="pm-img-card">🖼️ ${escapeHtml(content.trim())}</div>`;
         } else {
-            const voiceText = match[2].trim();
+            const voiceText = content.trim();
             const length = [...voiceText].length;
             const duration = length <= 5 ? Math.max(1, length)
                 : length <= 15 ? 5 + (length - 5)
@@ -205,9 +210,30 @@ export function createBubbles(text, side, senderName, { groupColorMap, groupMemb
         }
         if (container) { container.appendChild(bubble); results.push(container); }
         else results.push(bubble);
-        lastIndex = match.index + match[0].length;
+    };
+
+    const standaloneSpecial = text.match(STANDALONE_SPECIAL_RE);
+    if (standaloneSpecial) {
+        const kind = normalizeKeyword(standaloneSpecial[1]);
+        const content = standaloneSpecial[2];
+        if (isValidSpecialContent(kind, content)) {
+            pushSpecial(kind, content);
+        } else {
+            pushPlain(text);
+        }
+    } else {
+        while ((match = specialPattern.exec(text)) !== null) {
+            if (match.index > lastIndex) pushPlain(text.slice(lastIndex, match.index));
+            const kind = normalizeKeyword(match[1]);
+            if (isValidSpecialContent(kind, match[2])) {
+                pushSpecial(kind, match[2]);
+            } else {
+                pushPlain(match[0]);
+            }
+            lastIndex = match.index + match[0].length;
+        }
+        if (lastIndex < text.length) pushPlain(text.slice(lastIndex));
     }
-    if (lastIndex < text.length) pushPlain(text.slice(lastIndex));
     if (!results.length) pushPlain(text);
 
     for (const bubble of results) {

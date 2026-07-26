@@ -317,7 +317,7 @@ export function installPhoneLifecycle(state, deps) {
         state.currentPersona = '';
         state.conversationHistory = [];
         state.isGroupChat = false; state.groupMembers = []; state.groupExtras = []; state.groupColorMap = {};
-        state.groupDisplayName = ''; state.groupRandomNpcEnabled = false; state.groupNature = ''; state.currentGroupKey = '';
+        state.groupDisplayName = ''; state.groupRandomNpcEnabled = false; state.groupNature = ''; state.groupRandomNpcPrompt = ''; state.currentGroupKey = '';
         // 修复：关闭时重置冷启动标记，确保下次打开时（尤其是切换角色卡后）重新从 IDB 加载最新数据
         runtime.firstOpen = true;
         if (runtime.visibilityTimer !== null) { clearInterval(runtime.visibilityTimer); runtime.visibilityTimer = null; }
@@ -448,7 +448,7 @@ export function installPhoneLifecycle(state, deps) {
         unbindIsland = bindIsland(state.phoneWindow, state.phoneWindow.querySelector('.pm-island'));
         unbindPhoneResize = bindPhoneResize(state.phoneWindow, state.phoneWindow.querySelector('.pm-phone-resize-handle'));
         applyTheme(); applyBackground(); state.isGroupChat = false; state.groupMembers = []; state.groupExtras = []; state.groupColorMap = {};
-        state.groupDisplayName = ''; state.groupRandomNpcEnabled = false; state.groupNature = ''; state.currentGroupKey = '';
+        state.groupDisplayName = ''; state.groupRandomNpcEnabled = false; state.groupNature = ''; state.groupRandomNpcPrompt = ''; state.currentGroupKey = '';
 
 
         if (!runtime.firstOpen) {

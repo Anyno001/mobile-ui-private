@@ -1098,7 +1098,7 @@ if (mainFile) {
     'installInteractiveScenes(state, deps)', 'installCalendar(state, deps)', 'installSettingsUi(deps)',
     'installPhoneChat(state, deps)', 'installPhoneContextInjection(state, deps)', 'installPhoneControlCenter(state, deps)', 'installPhoneDirectory(state, deps)',
     'installContactGenerator(state, deps)', 'installPhoneChatPoke(state, deps)',
-    'installPhoneLifecycle(state, deps)',
+    'installPhoneLifecycle(state, deps)', 'installDiagnosticApi(deps)',
   ];
   for (const installerCall of expectedInstallerCalls) requireText('main.js', mainFile.code, installerCall);
 
@@ -1112,7 +1112,7 @@ if (mainFile) {
   const expectedOrder = [
     'installPhoneFoundation', 'installConversation', 'installEmojiUi', 'installInteractiveScenes', 'installCalendar',
     'installSettingsUi', 'installPhoneChat', 'installPhoneContextInjection', 'installPhoneControlCenter', 'installPhoneDirectory', 'installContactGenerator',
-    'installPhoneChatPoke', 'installPhoneLifecycle',
+    'installPhoneChatPoke', 'installPhoneLifecycle', 'installDiagnosticApi',
   ];
   if (actualOrder.length !== expectedOrder.length
       || actualOrder.some((installer, index) => installer !== expectedOrder[index])) {
@@ -1759,6 +1759,16 @@ for (const expected of [
   "__pmPageSuspensionHandler?.('beforeunload')", "__pmPageSuspensionHandler?.('document-hidden')",
 ]) requireText('phone-foundation.js', sourceModuleByName.get('phone-foundation.js')?.code || '', expected);
 for (const expected of ['hostEventSource: null', 'hostEventRegistrations: new Set()']) requireText('runtime.js', sourceModuleByName.get('runtime.js')?.code || '', expected);
+for (const expected of [
+  'installDiagnosticApi(deps)', "globalThis.window?.__pmDiagEnabled !== true", 'window.__pmDiag = freeze({ snapshot, readLineage })',
+  'Object.freeze(Array.from(pendingByTarget.keys()))', "reason: 'source-empty'", 'sourcePresence', 'targetPresence', 'force = false',
+]) requireText('branch inheritance diagnostics', [
+  sourceModuleByName.get('main.js')?.code || '', sourceModuleByName.get('diagnostic.js')?.code || '',
+  sourceModuleByName.get('branch-scope-inheritance.js')?.code || '',
+].join('\n'), expected);
+for (const forbidden of ['messages:', 'swipes:', 'mes:']) {
+  if ((sourceModuleByName.get('diagnostic.js')?.code || '').includes(forbidden)) failures.push(`diagnostic.js: diagnostic payload must not expose ${forbidden}`);
+}
 for (const forbidden of [
   "et.MESSAGE_RECEIVED || 'message_received'", "et.CHAT_CHANGED || 'chat_id_changed'",
   "et.MESSAGE_SENT || 'message_sent'", "et.MESSAGE_EDITED || 'message_edited'",
@@ -2372,9 +2382,10 @@ for (const expected of [
   'onclick="window.__pmCloseOverlay()"', 'pm-contact-settings-title', 'pm-modal-add pm-contact-settings-actions',
   'onclick="window.__pmSaveContactConfig(',
   'window.__pmSaveAndCloseContactConfig = contactName => window.__pmSaveContactConfig(contactName)',
-  'BACK_ICON_SVG', 'function showContactConfig(contactName, returnToMembers = false)',
-  "returnToMembers ? 'window.__pmShowConversationSettings()' : 'window.__pmReturnToControlCenter()'",
-  '<b>成员设置</b>', 'onclick="window.__pmReturnToControlCenter()"',
+  'BACK_ICON_SVG', 'function showContactConfig(contactName, returnToMembers = false, returnMembersToGroupSettings = false)',
+  'window.__pmShowConversationSettings(${returnMembersToGroupSettings})',
+  '<b>成员设置</b>', "returnToGroupSettings ? 'window.__pmEditGroup()' : 'window.__pmReturnToControlCenter()'",
+  '__pmShowConversationSettings = (returnToGroupSettings = false)',
 ]) requireText('phone-chat-poke.js', phoneChatPokeCode, expected);
 for (const expected of [
   'BACK_ICON_SVG', 'const closeAction = "window.__pmShowList()";',

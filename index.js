@@ -4351,6 +4351,7 @@ ${lines.join("\n")}
       memberColors,
       randomNpcEnabled: Boolean(source.randomNpcEnabled),
       groupNature: text(source.groupNature, 200),
+      randomNpcPrompt: text(source.randomNpcPrompt, 2e3),
       injection: normalizeGroupInjection(source.injection)
     };
   }
@@ -6522,6 +6523,7 @@ ${mainChatText}` : "",
         state.groupDisplayName = groupMeta.name;
         state.groupRandomNpcEnabled = groupMeta.randomNpcEnabled === true;
         state.groupNature = typeof groupMeta.groupNature === "string" ? groupMeta.groupNature : "";
+        state.groupRandomNpcPrompt = typeof groupMeta.randomNpcPrompt === "string" ? groupMeta.randomNpcPrompt : "";
         state.groupColorMap = {};
         state.groupMembers.forEach((n, i) => {
           state.groupColorMap[n] = groupMeta.memberColors?.[n] || GROUP_COLORS[i % GROUP_COLORS.length].bg;
@@ -6534,6 +6536,7 @@ ${mainChatText}` : "",
         state.groupDisplayName = "";
         state.groupRandomNpcEnabled = false;
         state.groupNature = "";
+        state.groupRandomNpcPrompt = "";
         state.currentGroupKey = "";
       }
       window.__pmSwitch(
@@ -6630,6 +6633,1045 @@ ${mainChatText}` : "",
       ),
       getSaveKey: () => getSaveKey(state)
     });
+  }
+
+  // src/host-context.js
+  var warnedHostContextFailures = /* @__PURE__ */ new Set();
+  function warnHostContextFailureOnce(stage, message, error) {
+    if (warnedHostContextFailures.has(stage)) return;
+    warnedHostContextFailures.add(stage);
+    const errorType = typeof error?.name === "string" && error.name ? error.name : "Error";
+    console.warn(`[phone-mode] ${message}\uFF0C\u5DF2\u4F7F\u7528\u964D\u7EA7\u503C\u3002`, errorType);
+  }
+  function getCurrentChatId(context) {
+    if (!context) return null;
+    return context.chatId || (typeof context.getCurrentChatId === "function" ? context.getCurrentChatId() : null) || context.chat_metadata?.chat_id_hash || context.chat_file;
+  }
+  function getStorageIdFor(avatar, chatId) {
+    const characterAvatar = typeof avatar === "string" && avatar.trim() ? avatar : "";
+    if (chatId === null || chatId === void 0 || String(chatId).trim() === "" || !characterAvatar) {
+      return "sms_unknown__default";
+    }
+    return `sms_${characterAvatar}__${chatId}`;
+  }
+  function getStorageId(getCtx) {
+    const context = getCtx();
+    if (!context) return "sms_unknown__default";
+    const character = context.characters?.[context.characterId];
+    const avatar = character?.avatar || `idx_${context.characterId}`;
+    return getStorageIdFor(avatar, getCurrentChatId(context));
+  }
+  function getUserPersona(getCtx) {
+    const context = getCtx();
+    if (!context) return { name: "\u7528\u6237", description: "" };
+    let name = context.name1 || "User";
+    let description = "";
+    try {
+      const settings = context.powerUserSettings || context.power_user || window.power_user;
+      if (settings) {
+        description = settings.persona_description || settings.personaDescription || "";
+        const avatar = context.userAvatar || settings.user_avatar || settings.default_persona;
+        if (!description && avatar) {
+          const descriptions = settings.persona_descriptions || settings.personaDescriptions;
+          const persona = descriptions?.[avatar];
+          if (typeof persona === "string") description = persona;
+          else if (persona?.description) description = persona.description;
+        }
+      }
+    } catch (error) {
+      warnHostContextFailureOnce("persona-settings", "\u8BFB\u53D6\u7528\u6237\u4EBA\u8BBE\u8BBE\u7F6E\u5931\u8D25", error);
+    }
+    if (!description) {
+      try {
+        const metadata = context.chatMetadata || context.chat_metadata;
+        if (metadata?.persona) description = String(metadata.persona);
+      } catch (error) {
+        warnHostContextFailureOnce("persona-metadata", "\u8BFB\u53D6\u804A\u5929\u4EBA\u8BBE\u5143\u6570\u636E\u5931\u8D25", error);
+      }
+    }
+    try {
+      if (typeof context.substituteParams === "function") {
+        const resolvedName = context.substituteParams("{{user}}");
+        if (resolvedName && resolvedName !== "{{user}}" && resolvedName.trim()) name = resolvedName.trim();
+      }
+    } catch (error) {
+      warnHostContextFailureOnce("persona-name", "\u89E3\u6790\u7528\u6237\u540D\u79F0\u5931\u8D25", error);
+    }
+    return { name, description };
+  }
+  async function gatherContext(getCtx) {
+    const context = getCtx();
+    const character = context?.characters?.[context.characterId] || {};
+    const removeProtectedBlocks = (value) => (value || "").replace(/```[\s\S]*?```/g, "").replace(/<think>[\s\S]*?<\/think>/gi, "").trim();
+    const cleanMessage = (value) => removeProtectedBlocks(value).replace(/<[^>]+>/g, "").trim();
+    const recentChat = (context?.chat || []).slice(-8);
+    const normalizedChat = recentChat.map((message) => ({
+      who: message.is_user ? "\u7528\u6237" : message.name || "\u89D2\u8272",
+      content: cleanMessage(message.mes || ""),
+      rawContent: removeProtectedBlocks(message.mes || ""),
+      isUser: message.is_user === true
+    }));
+    const latestMessage = [...normalizedChat].reverse().find((message) => message.content);
+    const latestChatText = latestMessage?.content || "";
+    const rawLatestChatText = latestMessage?.rawContent || "";
+    const latestChatIsUser = latestMessage?.isUser === true;
+    const mainChat = normalizedChat.filter((message) => message.content);
+    let worldBookText = "";
+    try {
+      if (typeof context?.getWorldInfoPrompt === "function") {
+        const contextSize = context?.powerUserSettings?.openai_max_context || context?.oai_settings?.openai_max_context || context?.maxContext || 131072;
+        const worldInfo = await context.getWorldInfoPrompt(
+          (context.chat || []).map((message) => message.mes || "").slice(-10),
+          contextSize,
+          false
+        );
+        worldBookText = worldInfo?.worldInfoString || worldInfo?.worldInfoBefore || "";
+        if (!worldBookText && worldInfo && typeof worldInfo === "object") {
+          worldBookText = [worldInfo.worldInfoBefore, worldInfo.worldInfoAfter].filter(Boolean).join("\n");
+        }
+      }
+    } catch (error) {
+      warnHostContextFailureOnce("world-book", "\u8BFB\u53D6\u4E16\u754C\u4E66\u4E0A\u4E0B\u6587\u5931\u8D25", error);
+    }
+    const userPersona = getUserPersona(getCtx);
+    return { cardDesc: character.description ?? "", cardPersonality: character.personality ?? "", cardScenario: character.scenario ?? "", cardFirstMes: character.first_mes ?? "", cardMesExample: character.mes_example ?? "", mainChatText: mainChat.map((message) => `${message.who}\uFF1A${message.content}`).join("\n"), latestChatText, rawLatestChatText, latestChatIsUser, worldBookText, userName: userPersona.name, userDesc: userPersona.description };
+  }
+
+  // src/storage-background.js
+  var GLOBAL_BG_KEY = "ST_SMS_BG_GLOBAL";
+  var LOCAL_BG_INDEX_KEY = "ST_SMS_BG_LOCAL";
+  var LOCAL_BG_PREFIX = "ST_SMS_BG_LOCAL_";
+  async function migrateSingleBackground(storageKey, value) {
+    if (!await pmIDBSet(storageKey, value)) return false;
+    try {
+      localStorage.setItem(storageKey, IDB_MARKER);
+      return true;
+    } catch (error) {
+      await pmIDBDel(storageKey);
+      return false;
+    }
+  }
+  async function loadBgSettings() {
+    try {
+      const storedDesktop = localStorage.getItem(DESKTOP_BG_KEY) || "";
+      if (storedDesktop === IDB_MARKER) {
+        window.__pmDesktopBg = await pmIDBGet(DESKTOP_BG_KEY) || "";
+      } else if (isBigData(storedDesktop)) {
+        window.__pmDesktopBg = storedDesktop;
+        await migrateSingleBackground(DESKTOP_BG_KEY, storedDesktop);
+      } else {
+        window.__pmDesktopBg = storedDesktop;
+      }
+    } catch (error) {
+      window.__pmDesktopBg = "";
+    }
+    try {
+      const storedGlobal = localStorage.getItem(GLOBAL_BG_KEY) || "";
+      if (storedGlobal === IDB_MARKER) {
+        window.__pmBgGlobal = await pmIDBGet(GLOBAL_BG_KEY) || "";
+      } else if (isBigData(storedGlobal)) {
+        window.__pmBgGlobal = storedGlobal;
+        await migrateSingleBackground(GLOBAL_BG_KEY, storedGlobal);
+      } else {
+        window.__pmBgGlobal = storedGlobal;
+      }
+    } catch (error) {
+      window.__pmBgGlobal = "";
+    }
+    try {
+      const storedLocal = readLocalBackgroundPointers();
+      const result = /* @__PURE__ */ Object.create(null);
+      let migrated = 0;
+      const stagedKeys = [];
+      for (const [key, value] of Object.entries(storedLocal)) {
+        if (value === IDB_MARKER) {
+          result[key] = await pmIDBGet(LOCAL_BG_PREFIX + key) || "";
+        } else if (isBigData(value)) {
+          result[key] = value;
+          const storageKey = LOCAL_BG_PREFIX + key;
+          if (await pmIDBSet(storageKey, value)) {
+            storedLocal[key] = IDB_MARKER;
+            stagedKeys.push(storageKey);
+            migrated++;
+          }
+        } else {
+          result[key] = value;
+        }
+      }
+      if (migrated > 0) {
+        try {
+          localStorage.setItem(LOCAL_BG_INDEX_KEY, JSON.stringify(storedLocal));
+        } catch (error) {
+          for (const storageKey of stagedKeys) await pmIDBDel(storageKey);
+        }
+      }
+      window.__pmBgLocal = result;
+    } catch (error) {
+      window.__pmBgLocal = /* @__PURE__ */ Object.create(null);
+    }
+  }
+  var UNSAFE_BACKGROUND_KEYS = /* @__PURE__ */ new Set(["__proto__", "prototype", "constructor"]);
+  function assertBackgroundEntries(value, label) {
+    for (const [key, entry2] of Object.entries(value)) {
+      if (UNSAFE_BACKGROUND_KEYS.has(key)) throw new Error(`${label}\u635F\u574F\uFF1A\u5305\u542B\u5371\u9669\u952E ${key}`);
+      if (typeof entry2 !== "string") throw new Error(`${label}\u635F\u574F\uFF1A${key} \u5FC5\u987B\u662F\u5B57\u7B26\u4E32`);
+    }
+  }
+  function readLocalBackgroundPointers() {
+    let serialized;
+    try {
+      serialized = localStorage.getItem(LOCAL_BG_INDEX_KEY);
+    } catch (error) {
+      throw new Error("\u4F1A\u8BDD\u80CC\u666F\u7D22\u5F15\u8BFB\u53D6\u5931\u8D25\uFF1A\u6D4F\u89C8\u5668\u5B58\u50A8\u4E0D\u53EF\u7528");
+    }
+    if (!serialized) return {};
+    let parsed;
+    try {
+      parsed = JSON.parse(serialized);
+    } catch (error) {
+      throw new Error("\u4F1A\u8BDD\u80CC\u666F\u7D22\u5F15\u635F\u574F\uFF1A\u65E0\u6CD5\u89E3\u6790");
+    }
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("\u4F1A\u8BDD\u80CC\u666F\u7D22\u5F15\u635F\u574F\uFF1A\u5FC5\u987B\u662F\u5BF9\u8C61");
+    assertBackgroundEntries(parsed, "\u4F1A\u8BDD\u80CC\u666F\u7D22\u5F15");
+    return parsed;
+  }
+  async function restoreBackgroundMutations(mutations, label) {
+    const failures = [];
+    for (const mutation of mutations.slice().reverse()) {
+      const restored = mutation.hadPrimary ? await pmIDBSet(mutation.key, mutation.previousValue) : await pmIDBDel(mutation.key);
+      if (!restored) failures.push(mutation.key);
+    }
+    if (failures.length) throw new Error(`${label}\u4E3B\u6570\u636E\u8865\u507F\u5931\u8D25`);
+  }
+  async function readPreviousBackground(key, hasPrimary, label) {
+    if (!hasPrimary) return null;
+    const value = await pmIDBGet(key);
+    if (value === null) throw new Error(`${label}\u539F\u6570\u636E\u8BFB\u53D6\u5931\u8D25\uFF1AIndexedDB \u4E0D\u53EF\u7528\u6216\u6570\u636E\u7F3A\u5931`);
+    return value;
+  }
+  function combinedBackgroundError(error, compensationError) {
+    const combined = new Error(`${error.message}\uFF1B${compensationError.message}`);
+    combined.cause = error;
+    return combined;
+  }
+  async function saveSingleBackground({ storageKey, value, label }) {
+    let previousPointer;
+    try {
+      previousPointer = localStorage.getItem(storageKey) || "";
+    } catch (error) {
+      throw new Error(`${label}\u7D22\u5F15\u8BFB\u53D6\u5931\u8D25\uFF1A\u6D4F\u89C8\u5668\u5B58\u50A8\u4E0D\u53EF\u7528`);
+    }
+    const hadPrimary = previousPointer === IDB_MARKER;
+    const previousValue = await readPreviousBackground(storageKey, hadPrimary, label);
+    let primaryMutated = false;
+    const rollbackPrimary = async (error) => {
+      if (!primaryMutated) throw error;
+      try {
+        await restoreBackgroundMutations([{ key: storageKey, hadPrimary, previousValue }], label);
+      } catch (compensationError) {
+        throw combinedBackgroundError(error, compensationError);
+      }
+      throw error;
+    };
+    if (isBigData(value)) {
+      if (!await pmIDBSet(storageKey, value)) throw new Error(`${label}\u4FDD\u5B58\u5931\u8D25\uFF1AIndexedDB \u4E0D\u53EF\u7528`);
+      primaryMutated = true;
+      try {
+        localStorage.setItem(storageKey, IDB_MARKER);
+      } catch (error) {
+        await rollbackPrimary(new Error(`${label}\u7D22\u5F15\u4FDD\u5B58\u5931\u8D25\uFF1A\u6D4F\u89C8\u5668\u5B58\u50A8\u4E0D\u53EF\u7528`));
+      }
+    } else {
+      if (hadPrimary && !await pmIDBDel(storageKey)) throw new Error(`${label}\u5220\u9664\u5931\u8D25\uFF1AIndexedDB \u4E0D\u53EF\u7528`);
+      primaryMutated = hadPrimary;
+      try {
+        localStorage.setItem(storageKey, value);
+      } catch (error) {
+        await rollbackPrimary(new Error(`${label}\u4FDD\u5B58\u5931\u8D25\uFF1A\u6D4F\u89C8\u5668\u5B58\u50A8\u4E0D\u53EF\u7528`));
+      }
+    }
+  }
+  async function saveBgGlobal() {
+    return saveSingleBackground({ storageKey: GLOBAL_BG_KEY, value: window.__pmBgGlobal || "", label: "\u5168\u5C40\u80CC\u666F" });
+  }
+  async function saveDesktopBg() {
+    return saveSingleBackground({ storageKey: DESKTOP_BG_KEY, value: window.__pmDesktopBg || "", label: "\u684C\u9762\u80CC\u666F" });
+  }
+  async function saveBgLocal({ data = window.__pmBgLocal, coordinated = false } = {}) {
+    const persist = async (snapshot, protectedScopes = []) => {
+      if (!snapshot || typeof snapshot !== "object" || Array.isArray(snapshot)) throw new Error("\u4F1A\u8BDD\u80CC\u666F\u6570\u636E\u635F\u574F\uFF1A\u5FC5\u987B\u662F\u5BF9\u8C61");
+      assertBackgroundEntries(snapshot, "\u4F1A\u8BDD\u80CC\u666F\u6570\u636E");
+      let current = snapshot;
+      if (protectedScopes.length) {
+        const pointers2 = readLocalBackgroundPointers();
+        current = structuredClone(snapshot);
+        for (const scope of protectedScopes) {
+          const prefix = `${scope}_`;
+          for (const key of Object.keys(current)) {
+            if (key.startsWith(prefix)) delete current[key];
+          }
+          for (const [key, pointer] of Object.entries(pointers2)) {
+            if (!key.startsWith(prefix)) continue;
+            if (pointer === IDB_MARKER) {
+              const value = await pmIDBGet(LOCAL_BG_PREFIX + key);
+              if (typeof value !== "string") throw new Error("\u4F1A\u8BDD\u80CC\u666F\u4E3B\u5B58\u50A8\u8BFB\u53D6\u5931\u8D25\uFF1AIndexedDB \u4E0D\u53EF\u7528\u6216\u6570\u636E\u7F3A\u5931");
+              current[key] = value;
+            } else {
+              current[key] = pointer;
+            }
+          }
+        }
+      }
+      const pointers = /* @__PURE__ */ Object.create(null);
+      const previousPointers = readLocalBackgroundPointers();
+      const mutations = [];
+      const prepareMutation = async (key) => {
+        const storageKey = LOCAL_BG_PREFIX + key;
+        const hadPrimary = previousPointers[key] === IDB_MARKER;
+        const previousValue = await readPreviousBackground(storageKey, hadPrimary, "\u4F1A\u8BDD\u80CC\u666F");
+        return { key: storageKey, hadPrimary, previousValue };
+      };
+      try {
+        for (const [key, value] of Object.entries(current)) {
+          if (isBigData(value)) {
+            const mutation = await prepareMutation(key);
+            if (!await pmIDBSet(mutation.key, value)) throw new Error("\u4F1A\u8BDD\u80CC\u666F\u4FDD\u5B58\u5931\u8D25\uFF1AIndexedDB \u4E0D\u53EF\u7528");
+            mutations.push(mutation);
+            pointers[key] = IDB_MARKER;
+          } else {
+            if (previousPointers[key] === IDB_MARKER) {
+              const mutation = await prepareMutation(key);
+              if (!await pmIDBDel(mutation.key)) throw new Error("\u4F1A\u8BDD\u80CC\u666F\u5220\u9664\u5931\u8D25\uFF1AIndexedDB \u4E0D\u53EF\u7528");
+              mutations.push(mutation);
+            }
+            pointers[key] = value;
+          }
+        }
+        for (const [key, previousValue] of Object.entries(previousPointers)) {
+          if (previousValue !== IDB_MARKER || Object.hasOwn(current, key)) continue;
+          const mutation = await prepareMutation(key);
+          if (!await pmIDBDel(mutation.key)) throw new Error("\u4F1A\u8BDD\u80CC\u666F\u5220\u9664\u5931\u8D25\uFF1AIndexedDB \u4E0D\u53EF\u7528");
+          mutations.push(mutation);
+        }
+        try {
+          localStorage.setItem(LOCAL_BG_INDEX_KEY, JSON.stringify(pointers));
+        } catch (error) {
+          throw new Error("\u4F1A\u8BDD\u80CC\u666F\u7D22\u5F15\u4FDD\u5B58\u5931\u8D25\uFF1A\u6D4F\u89C8\u5668\u5B58\u50A8\u4E0D\u53EF\u7528");
+        }
+      } catch (error) {
+        if (mutations.length) {
+          try {
+            await restoreBackgroundMutations(mutations, "\u4F1A\u8BDD\u80CC\u666F");
+          } catch (compensationError) {
+            throw combinedBackgroundError(error, compensationError);
+          }
+        }
+        throw error;
+      }
+    };
+    if (coordinated) return persist(structuredClone(data));
+    return enqueueDirectorySave("backgrounds", data, persist);
+  }
+
+  // src/branch-scope-inheritance.js
+  var clone3 = (value) => structuredClone(value);
+  var own = (value, key) => !!value && typeof value === "object" && Object.hasOwn(value, key);
+  var validText = (value) => typeof value === "string" && value.trim() ? value.trim() : "";
+  var BRANCH_INTERACTIVE_STORE_KEY = "ST_INTERACTIVE_SCENES_V1";
+  var pendingByTarget = /* @__PURE__ */ new Map();
+  function resolveBranchInheritance(context) {
+    const avatar = validText(context?.characters?.[context.characterId]?.avatar);
+    const targetChatId = validText(getCurrentChatId(context));
+    const parentChatId = validText(context?.chatMetadata?.main_chat || context?.chat_metadata?.main_chat);
+    if (!avatar || !targetChatId || !parentChatId || parentChatId === targetChatId) return null;
+    const sourceId = getStorageIdFor(avatar, parentChatId);
+    const targetId = getStorageIdFor(avatar, targetChatId);
+    if (sourceId === "sms_unknown__default" || targetId === "sms_unknown__default" || sourceId === targetId) return null;
+    return { avatar, parentChatId, targetChatId, sourceId, targetId };
+  }
+  function scopeBackgroundKeys(storageId, backgrounds) {
+    const prefix = `${storageId}_`;
+    return Object.keys(backgrounds || {}).filter((key) => key.startsWith(prefix));
+  }
+  function hasContent(value) {
+    if (Array.isArray(value)) return value.some(hasContent);
+    if (value && typeof value === "object") return Object.values(value).some(hasContent);
+    return typeof value === "string" ? value.length > 0 : value !== null && value !== void 0;
+  }
+  function scopePresence(storageId, stores, contentOnly = false) {
+    const flat = ["histories", "groupMeta", "pokeConfig", "characterBehavior", "bidirectional"];
+    const scoped = ["interactive", "phoneUi", "calendar", "occasions", "cycles", "recipes"];
+    const presence = {};
+    const included = (value) => !contentOnly || hasContent(value);
+    for (const key of flat) {
+      const present = own(stores[key], storageId) && included(stores[key][storageId]);
+      presence[key] = { present, count: present ? 1 : 0 };
+    }
+    const backgroundCount = scopeBackgroundKeys(storageId, stores.backgrounds).filter((key) => included(stores.backgrounds[key])).length;
+    presence.backgrounds = { present: backgroundCount > 0, count: backgroundCount };
+    for (const key of scoped) {
+      const present = own(stores[key]?.scopes, storageId) && included(stores[key].scopes[storageId]);
+      presence[key] = { present, count: present ? 1 : 0 };
+    }
+    const budgetCount = Number(own(stores.budget?.communitySceneIdsByStorage, storageId) && included(stores.budget.communitySceneIdsByStorage[storageId])) + Number(own(stores.budget?.communitySelectionsByStorage, storageId) && included(stores.budget.communitySelectionsByStorage[storageId]));
+    presence.budget = { present: budgetCount > 0, count: budgetCount };
+    return Object.freeze(presence);
+  }
+  function hasScopeData(presence) {
+    return Object.values(presence).some((value) => value.present);
+  }
+  function hasTargetData(targetId, stores) {
+    return hasScopeData(scopePresence(targetId, stores, false));
+  }
+  function copyEntry(target, source, sourceId, targetId) {
+    if (own(source, sourceId)) target[targetId] = clone3(source[sourceId]);
+  }
+  function remapInteractiveScope(sourceScope, targetId) {
+    const scope = clone3(sourceScope);
+    const actorIdMap = /* @__PURE__ */ new Map();
+    const actors = {};
+    for (const [sourceActorId, actor] of Object.entries(scope.actors || {})) {
+      const targetActorId = deriveInteractiveActorId(targetId, actor.type, actor.bindingKey);
+      actorIdMap.set(sourceActorId, targetActorId);
+      actors[targetActorId] = { ...actor, actorId: targetActorId };
+    }
+    const remapAuthor = (item) => {
+      if (actorIdMap.has(item.authorId)) item.authorId = actorIdMap.get(item.authorId);
+    };
+    for (const scene of Object.values(scope.scenes || {})) {
+      for (const post of scene.posts || []) {
+        remapAuthor(post);
+        for (const comment of post.comments || []) remapAuthor(comment);
+      }
+      for (const danmaku of scene.live?.danmaku || []) remapAuthor(danmaku);
+    }
+    scope.actors = actors;
+    return scope;
+  }
+  function createCandidates(sourceId, targetId, stores) {
+    const next = clone3(stores);
+    for (const key of ["histories", "groupMeta", "pokeConfig", "characterBehavior", "bidirectional"]) {
+      copyEntry(next[key], stores[key], sourceId, targetId);
+    }
+    for (const key of scopeBackgroundKeys(sourceId, stores.backgrounds)) {
+      next.backgrounds[`${targetId}${key.slice(sourceId.length)}`] = clone3(stores.backgrounds[key]);
+    }
+    if (own(stores.interactive.scopes, sourceId)) {
+      next.interactive.scopes[targetId] = remapInteractiveScope(stores.interactive.scopes[sourceId], targetId);
+    }
+    for (const key of ["phoneUi", "calendar", "occasions", "cycles", "recipes"]) {
+      copyEntry(next[key].scopes, stores[key].scopes, sourceId, targetId);
+    }
+    copyEntry(next.budget.communitySceneIdsByStorage, stores.budget.communitySceneIdsByStorage, sourceId, targetId);
+    copyEntry(next.budget.communitySelectionsByStorage, stores.budget.communitySelectionsByStorage, sourceId, targetId);
+    next.groupMeta = normalizeGroupMetaStore(next.groupMeta);
+    next.characterBehavior = normalizeCharacterBehaviorStore(next.characterBehavior);
+    next.interactive = normalizeInteractiveStore(next.interactive);
+    next.phoneUi = normalizePhoneUiState(next.phoneUi, next.interactive);
+    next.calendar = normalizeCalendarStore(next.calendar);
+    next.occasions = normalizeOccasionStore(next.occasions);
+    next.cycles = normalizeCycleStore(next.cycles);
+    next.recipes = normalizeRecipeStore(next.recipes);
+    next.budget = normalizeBudgetConfig(next.budget);
+    return next;
+  }
+  function replaceEntry(target, source, key) {
+    if (own(source, key)) target[key] = clone3(source[key]);
+    else delete target[key];
+  }
+  function mergeBranchScope(current, desired, targetId) {
+    const next = clone3(normalizeStores(current));
+    const source = normalizeStores(desired);
+    for (const key of ["histories", "groupMeta", "pokeConfig", "characterBehavior", "bidirectional"]) {
+      replaceEntry(next[key], source[key], targetId);
+    }
+    for (const key of scopeBackgroundKeys(targetId, next.backgrounds)) delete next.backgrounds[key];
+    for (const key of scopeBackgroundKeys(targetId, source.backgrounds)) next.backgrounds[key] = clone3(source.backgrounds[key]);
+    for (const key of ["interactive", "phoneUi", "calendar", "occasions", "cycles", "recipes"]) {
+      replaceEntry(next[key].scopes, source[key].scopes, targetId);
+    }
+    replaceEntry(next.budget.communitySceneIdsByStorage, source.budget.communitySceneIdsByStorage, targetId);
+    replaceEntry(next.budget.communitySelectionsByStorage, source.budget.communitySelectionsByStorage, targetId);
+    return normalizeStores(next);
+  }
+  function normalizeStores(stores) {
+    return {
+      histories: stores.histories || {},
+      groupMeta: stores.groupMeta || {},
+      pokeConfig: stores.pokeConfig || {},
+      characterBehavior: stores.characterBehavior || {},
+      bidirectional: stores.bidirectional || {},
+      backgrounds: stores.backgrounds || {},
+      interactive: stores.interactive || { version: 2, scopes: {} },
+      phoneUi: stores.phoneUi || { version: 1, scopes: {} },
+      calendar: stores.calendar || { version: 1, scopes: {} },
+      occasions: stores.occasions || { version: 1, scopes: {} },
+      cycles: stores.cycles || { version: 1, scopes: {} },
+      recipes: stores.recipes || { version: 1, scopes: {} },
+      budget: stores.budget || normalizeBudgetConfig()
+    };
+  }
+  function same(value, other) {
+    return JSON.stringify(value) === JSON.stringify(other);
+  }
+  function replaceScope(store, desired, targetId) {
+    const next = clone3(store || {});
+    replaceEntry(next, desired || {}, targetId);
+    return next;
+  }
+  async function readHistoriesForBranch() {
+    const keys = await pmIDBKeys();
+    if (!Array.isArray(keys)) throw new Error("\u5206\u652F\u7EE7\u627F\u6765\u6E90\u8BFB\u53D6\u5931\u8D25\uFF1A\u65E0\u6CD5\u679A\u4E3E\u804A\u5929\u8BB0\u5F55");
+    if (keys.includes("ST_SMS_DATA_V2")) {
+      const value = await pmIDBGet("ST_SMS_DATA_V2");
+      if (!value || typeof value !== "object" || Array.isArray(value)) {
+        throw new Error("\u5206\u652F\u7EE7\u627F\u6765\u6E90\u8BFB\u53D6\u5931\u8D25\uFF1A\u804A\u5929\u8BB0\u5F55\u4E3B\u5B58\u50A8\u65E0\u6548");
+      }
+      return value;
+    }
+    try {
+      const raw = localStorage.getItem("ST_SMS_DATA_V2");
+      if (!raw) return {};
+      const value = JSON.parse(raw);
+      if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("\u683C\u5F0F\u65E0\u6548");
+      return value;
+    } catch (error) {
+      throw new Error("\u5206\u652F\u7EE7\u627F\u6765\u6E90\u8BFB\u53D6\u5931\u8D25\uFF1A\u804A\u5929\u8BB0\u5F55\u540E\u5907\u5B58\u50A8\u65E0\u6548");
+    }
+  }
+  async function readGroupMetaForBranch() {
+    const fallback = localStorage.getItem("ST_SMS_GROUP_META_LOCAL_FALLBACK");
+    if (fallback) return normalizeGroupMetaStore(JSON.parse(fallback));
+    const value = await pmIDBGet("ST_SMS_GROUP_META");
+    if (value && typeof value === "object" && !Array.isArray(value)) return normalizeGroupMetaStore(value);
+    const raw = localStorage.getItem("ST_SMS_GROUP_META");
+    return normalizeGroupMetaStore(raw ? JSON.parse(raw) : {});
+  }
+  function readLocalStoreForBranch(key, normalize, label) {
+    try {
+      const raw = localStorage.getItem(key);
+      return normalize(raw ? JSON.parse(raw) : {});
+    } catch (error) {
+      throw new Error(`\u5206\u652F\u7EE7\u627F\u6765\u6E90\u8BFB\u53D6\u5931\u8D25\uFF1A${label}`);
+    }
+  }
+  async function readInteractiveForBranch() {
+    try {
+      const fallback = localStorage.getItem(`${BRANCH_INTERACTIVE_STORE_KEY}_LOCAL_FALLBACK`);
+      if (fallback) return normalizeInteractiveStore(JSON.parse(fallback));
+      const keys = await pmIDBKeys();
+      if (!Array.isArray(keys)) throw new Error("\u65E0\u6CD5\u679A\u4E3E IndexedDB");
+      if (!keys.includes(BRANCH_INTERACTIVE_STORE_KEY)) return normalizeInteractiveStore(null);
+      const value = await pmIDBGet(BRANCH_INTERACTIVE_STORE_KEY);
+      if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("\u4E3B\u5B58\u50A8\u65E0\u6548");
+      return normalizeInteractiveStore(value);
+    } catch (error) {
+      throw new Error("\u5206\u652F\u7EE7\u627F\u6765\u6E90\u8BFB\u53D6\u5931\u8D25\uFF1A\u4E92\u52A8\u793E\u533A\u6570\u636E\u65E0\u6548");
+    }
+  }
+  function readPhoneUiForBranch(interactive) {
+    try {
+      return normalizePhoneUiState(JSON.parse(localStorage.getItem(PHONE_UI_STORAGE_KEY) || "null"), interactive);
+    } catch (error) {
+      throw new Error("\u5206\u652F\u7EE7\u627F\u6765\u6E90\u8BFB\u53D6\u5931\u8D25\uFF1A\u624B\u673A\u754C\u9762\u72B6\u6001\u65E0\u6548");
+    }
+  }
+  function readCalendarForBranch(key, normalize, label) {
+    return readLocalStoreForBranch(key, (value) => normalize({ version: 1, scopes: value?.scopes || {} }), label);
+  }
+  async function readBackgroundsForBranch() {
+    const pointers = readLocalStoreForBranch("ST_SMS_BG_LOCAL", (value) => value, "\u4F1A\u8BDD\u80CC\u666F\u7D22\u5F15");
+    const backgrounds = {};
+    for (const [key, pointer] of Object.entries(pointers)) {
+      if (typeof pointer !== "string") throw new Error("\u5206\u652F\u7EE7\u627F\u6765\u6E90\u8BFB\u53D6\u5931\u8D25\uFF1A\u4F1A\u8BDD\u80CC\u666F\u7D22\u5F15\u65E0\u6548");
+      if (pointer !== IDB_MARKER) {
+        backgrounds[key] = pointer;
+        continue;
+      }
+      const value = await pmIDBGet(`ST_SMS_BG_LOCAL_${key}`);
+      if (typeof value !== "string") throw new Error("\u5206\u652F\u7EE7\u627F\u6765\u6E90\u8BFB\u53D6\u5931\u8D25\uFF1A\u4F1A\u8BDD\u80CC\u666F\u4E3B\u5B58\u50A8\u65E0\u6548");
+      backgrounds[key] = value;
+    }
+    return backgrounds;
+  }
+  function readBudgetForBranch() {
+    return readLocalStoreForBranch(BUDGET_CONFIG_KEY, normalizeBudgetConfig, "\u793E\u533A\u9884\u7B97\u914D\u7F6E");
+  }
+  function commitBudgetScope({ desired, expected, targetId }) {
+    const current = readBudgetForBranch();
+    const restoring = !own(desired.communitySceneIdsByStorage, targetId) && !own(desired.communitySelectionsByStorage, targetId);
+    const targetChanged = !same(current.communitySceneIdsByStorage[targetId], expected.communitySceneIdsByStorage[targetId]) || !same(current.communitySelectionsByStorage[targetId], expected.communitySelectionsByStorage[targetId]);
+    if (!restoring && (own(current.communitySceneIdsByStorage, targetId) || own(current.communitySelectionsByStorage, targetId))) {
+      throw new Error("\u5206\u652F\u7EE7\u627F\u4FDD\u5B58\u5931\u8D25\uFF1A\u76EE\u6807 scope \u5DF2\u88AB\u5E76\u53D1\u5199\u5165 (\u793E\u533A\u9884\u7B97\u914D\u7F6E)");
+    }
+    if (restoring && targetChanged) {
+      throw new Error("\u5206\u652F\u7EE7\u627F\u8865\u507F\u53D6\u6D88\uFF1A\u76EE\u6807 scope \u5DF2\u5728\u4E8B\u52A1\u540E\u88AB\u66F4\u65B0 (\u793E\u533A\u9884\u7B97\u914D\u7F6E)");
+    }
+    const merged = clone3(current);
+    replaceEntry(merged.communitySceneIdsByStorage, desired.communitySceneIdsByStorage, targetId);
+    replaceEntry(merged.communitySelectionsByStorage, desired.communitySelectionsByStorage, targetId);
+    try {
+      localStorage.setItem(BUDGET_CONFIG_KEY, JSON.stringify(normalizeBudgetConfig(merged)));
+    } catch (error) {
+      throw new Error("\u5206\u652F\u7EE7\u627F\u4FDD\u5B58\u5931\u8D25\uFF1A\u793E\u533A\u9884\u7B97\u914D\u7F6E\u4E0D\u53EF\u7528");
+    }
+    return normalizeBudgetConfig(merged);
+  }
+  function commitLocalScope({ key, desired, expected, targetId, normalize, label }) {
+    const current = readLocalStoreForBranch(key, normalize, label);
+    const restoring = !own(desired, targetId);
+    if (!restoring && own(current, targetId)) {
+      throw new Error(`\u5206\u652F\u7EE7\u627F\u4FDD\u5B58\u5931\u8D25\uFF1A\u76EE\u6807 scope \u5DF2\u88AB\u5E76\u53D1\u5199\u5165 (${label})`);
+    }
+    if (restoring && own(current, targetId) && !same(current[targetId], expected[targetId])) {
+      throw new Error(`\u5206\u652F\u7EE7\u627F\u8865\u507F\u53D6\u6D88\uFF1A\u76EE\u6807 scope \u5DF2\u5728\u4E8B\u52A1\u540E\u88AB\u66F4\u65B0 (${label})`);
+    }
+    const merged = replaceScope(current, desired, targetId);
+    try {
+      localStorage.setItem(key, JSON.stringify(normalize(merged)));
+    } catch (error) {
+      throw new Error(`\u5206\u652F\u7EE7\u627F\u4FDD\u5B58\u5931\u8D25\uFF1A${label}\u4E0D\u53EF\u7528`);
+    }
+    return merged;
+  }
+  async function commitLocalScopeCoordinated(store, options) {
+    const token = markDirectoryBranchScope(store, options.targetId);
+    try {
+      return await enqueueDirectoryOperation(store, () => commitLocalScope(options));
+    } finally {
+      completeDirectoryBranchScope(store, token);
+    }
+  }
+  async function commitBudgetScopeCoordinated(options) {
+    const token = markDirectoryBranchScope("budget", options.targetId);
+    try {
+      return await enqueueDirectoryOperation("budget", () => commitBudgetScope(options));
+    } finally {
+      completeDirectoryBranchScope("budget", token);
+    }
+  }
+  async function commitCalendarScope({ store, key, desired, expected, targetId, normalize, label }) {
+    return enqueueDirectoryOperation(store, async () => {
+      const current = readCalendarForBranch(key, normalize, label);
+      const restoring = !own(desired.scopes, targetId);
+      if (!restoring && own(current.scopes, targetId)) {
+        throw new Error(`\u5206\u652F\u7EE7\u627F\u4FDD\u5B58\u5931\u8D25\uFF1A\u76EE\u6807 scope \u5DF2\u88AB\u5E76\u53D1\u5199\u5165 (${label})`);
+      }
+      if (restoring && own(current.scopes, targetId) && !same(current.scopes[targetId], expected.scopes[targetId])) {
+        throw new Error(`\u5206\u652F\u7EE7\u627F\u8865\u507F\u53D6\u6D88\uFF1A\u76EE\u6807 scope \u5DF2\u5728\u4E8B\u52A1\u540E\u88AB\u66F4\u65B0 (${label})`);
+      }
+      const merged = clone3(current);
+      replaceEntry(merged.scopes, desired.scopes, targetId);
+      try {
+        localStorage.setItem(key, JSON.stringify(normalize(merged)));
+      } catch (error) {
+        throw new Error(`\u5206\u652F\u7EE7\u627F\u4FDD\u5B58\u5931\u8D25\uFF1A${label}\u4E0D\u53EF\u7528`);
+      }
+      return merged;
+    });
+  }
+  async function commitInteractiveScope({ desired, expected, targetId }) {
+    const token = markDirectoryBranchScope("interactive", targetId);
+    try {
+      return await enqueueDirectoryOperation("interactive", async () => {
+        const current = await readInteractiveForBranch();
+        const restoring = !own(desired.scopes, targetId);
+        if (!restoring && own(current.scopes, targetId)) {
+          throw new Error("\u5206\u652F\u7EE7\u627F\u4FDD\u5B58\u5931\u8D25\uFF1A\u76EE\u6807 scope \u5DF2\u88AB\u5E76\u53D1\u5199\u5165 (\u4E92\u52A8\u793E\u533A\u6570\u636E)");
+        }
+        if (restoring && own(current.scopes, targetId) && !same(current.scopes[targetId], expected.scopes[targetId])) {
+          throw new Error("\u5206\u652F\u7EE7\u627F\u8865\u507F\u53D6\u6D88\uFF1A\u76EE\u6807 scope \u5DF2\u5728\u4E8B\u52A1\u540E\u88AB\u66F4\u65B0 (\u4E92\u52A8\u793E\u533A\u6570\u636E)");
+        }
+        const merged = clone3(current);
+        replaceEntry(merged.scopes, desired.scopes, targetId);
+        await saveInteractiveScenes(normalizeInteractiveStore(merged), { coordinated: true });
+        return merged;
+      });
+    } finally {
+      completeDirectoryBranchScope("interactive", token);
+    }
+  }
+  async function commitBackgroundScope({ desired, expected, targetId }) {
+    const token = markDirectoryBranchScope("backgrounds", targetId);
+    try {
+      return await enqueueDirectoryOperation("backgrounds", async () => {
+        const current = await readBackgroundsForBranch();
+        const expectedKeys = scopeBackgroundKeys(targetId, expected);
+        const currentKeys = scopeBackgroundKeys(targetId, current);
+        const desiredKeys = scopeBackgroundKeys(targetId, desired);
+        const restoring = desiredKeys.length === 0;
+        const currentMatchesExpected = currentKeys.length === expectedKeys.length && currentKeys.every((key) => expectedKeys.includes(key) && same(current[key], expected[key]));
+        if (!restoring && currentKeys.length) {
+          throw new Error("\u5206\u652F\u7EE7\u627F\u4FDD\u5B58\u5931\u8D25\uFF1A\u76EE\u6807 scope \u5DF2\u88AB\u5E76\u53D1\u5199\u5165 (\u4F1A\u8BDD\u80CC\u666F)");
+        }
+        if (restoring && currentKeys.length && !currentMatchesExpected) {
+          throw new Error("\u5206\u652F\u7EE7\u627F\u8865\u507F\u53D6\u6D88\uFF1A\u76EE\u6807 scope \u5DF2\u5728\u4E8B\u52A1\u540E\u88AB\u66F4\u65B0 (\u4F1A\u8BDD\u80CC\u666F)");
+        }
+        const merged = clone3(current);
+        for (const key of currentKeys) delete merged[key];
+        for (const key of desiredKeys) merged[key] = clone3(desired[key]);
+        await saveBgLocal({ data: merged, coordinated: true });
+        return merged;
+      });
+    } finally {
+      completeDirectoryBranchScope("backgrounds", token);
+    }
+  }
+  async function commitDirectoryScope(store, desired, expected, targetId) {
+    const token = markDirectoryBranchScope(store, targetId);
+    try {
+      return await enqueueDirectoryOperation(store, async () => {
+        const current = store === "histories" ? await readHistoriesForBranch() : await readGroupMetaForBranch();
+        const restoring = !own(desired, targetId);
+        if (!restoring && own(current, targetId)) {
+          throw new Error(`\u5206\u652F\u7EE7\u627F\u4FDD\u5B58\u5931\u8D25\uFF1A\u76EE\u6807 scope \u5DF2\u88AB\u5E76\u53D1\u5199\u5165 (${store})`);
+        }
+        if (restoring && own(current, targetId) && !same(current[targetId], expected[targetId])) {
+          throw new Error(`\u5206\u652F\u7EE7\u627F\u8865\u507F\u53D6\u6D88\uFF1A\u76EE\u6807 scope \u5DF2\u5728\u4E8B\u52A1\u540E\u88AB\u66F4\u65B0 (${store})`);
+        }
+        const merged = replaceScope(current, desired, targetId);
+        if (store === "histories") await saveHistoriesStrict(merged, { requireLocalMirror: true, coordinated: true });
+        else await saveGroupMeta(merged, { coordinated: true });
+        return merged;
+      });
+    } finally {
+      completeDirectoryBranchScope(store, token);
+    }
+  }
+  async function inheritPhoneDataOnBranch({ context, loadStores, saveStores, loadLineage, saveLineage, commitLineage, now: now2 = Date.now, force = false }) {
+    const branch = resolveBranchInheritance(context);
+    if (!branch) return { status: "skipped", reason: "not-branch" };
+    if (pendingByTarget.has(branch.targetId)) return pendingByTarget.get(branch.targetId);
+    const operation = (async () => {
+      const lineage = await loadLineage();
+      if (own(lineage, branch.targetId) && !force) return { status: "skipped", reason: "already-cloned", ...branch };
+      const stores = normalizeStores(await loadStores());
+      const sourcePresence = scopePresence(branch.sourceId, stores, true);
+      const targetPresence = scopePresence(branch.targetId, stores, false);
+      const diagnostics = { sourcePresence, targetPresence };
+      if (hasTargetData(branch.targetId, stores)) return { status: "skipped", reason: "target-not-empty", ...branch, ...diagnostics };
+      if (!hasScopeData(sourcePresence)) return { status: "skipped", reason: "source-empty", ...branch, ...diagnostics };
+      const candidate = createCandidates(branch.sourceId, branch.targetId, stores);
+      const nextLineage = {
+        ...lineage,
+        [branch.targetId]: {
+          sourceId: branch.sourceId,
+          parentChatId: branch.parentChatId,
+          targetChatId: branch.targetChatId,
+          avatar: branch.avatar,
+          completedAt: now2(),
+          schemaVersion: 1
+        }
+      };
+      let storesSaved = false;
+      try {
+        await saveStores(candidate, { branch, previous: stores });
+        storesSaved = true;
+        if (commitLineage) await commitLineage(branch.targetId, nextLineage[branch.targetId]);
+        else await saveLineage(nextLineage);
+        return { status: "cloned", ...branch, ...diagnostics };
+      } catch (error) {
+        if (storesSaved) {
+          try {
+            await saveStores(stores, { branch, previous: candidate });
+          } catch (rollbackError) {
+            const combined = new Error(`${error.message}\uFF1B\u5206\u652F\u7EE7\u627F\u6570\u636E\u56DE\u6EDA\u5931\u8D25\uFF1A${rollbackError.message}`);
+            combined.cause = error;
+            combined.rollbackError = rollbackError;
+            throw combined;
+          }
+        }
+        throw error;
+      }
+    })().finally(() => pendingByTarget.delete(branch.targetId));
+    pendingByTarget.set(branch.targetId, operation);
+    return operation;
+  }
+  function awaitPendingBranchInheritance(storageId) {
+    return pendingByTarget.get(storageId) || Promise.resolve(null);
+  }
+  function getPendingBranchInheritanceTargets() {
+    return Object.freeze(Array.from(pendingByTarget.keys()));
+  }
+  async function loadProductionStores() {
+    const interactive = await readInteractiveForBranch();
+    return normalizeStores({
+      histories: await readHistoriesForBranch(),
+      groupMeta: await readGroupMetaForBranch(),
+      pokeConfig: readLocalStoreForBranch("ST_SMS_POKE_CONFIG", (value) => value, "\u62CD\u4E00\u62CD\u914D\u7F6E"),
+      characterBehavior: readLocalStoreForBranch(CHARACTER_BEHAVIOR_KEY, normalizeCharacterBehaviorStore, "\u89D2\u8272\u884C\u4E3A\u914D\u7F6E"),
+      bidirectional: readLocalStoreForBranch("ST_SMS_BIDIRECTIONAL", (value) => value, "\u53CC\u5411\u6CE8\u5165\u914D\u7F6E"),
+      backgrounds: await readBackgroundsForBranch(),
+      interactive,
+      phoneUi: readPhoneUiForBranch(interactive),
+      calendar: readCalendarForBranch(CALENDAR_STORAGE_KEY, normalizeCalendarStore, "\u65E5\u5386\u6570\u636E"),
+      occasions: readCalendarForBranch(CALENDAR_OCCASION_STORAGE_KEY, normalizeOccasionStore, "\u751F\u65E5\u4E0E\u7EAA\u5FF5\u65E5\u6570\u636E"),
+      cycles: readCalendarForBranch(CALENDAR_CYCLE_STORAGE_KEY, normalizeCycleStore, "\u751F\u7406\u5468\u671F\u6570\u636E"),
+      recipes: readCalendarForBranch(CALENDAR_RECIPE_STORAGE_KEY, normalizeRecipeStore, "\u83DC\u8C31\u6570\u636E"),
+      budget: readBudgetForBranch()
+    });
+  }
+  async function persistProductionStores(next, { branch } = {}) {
+    const targetId = branch?.targetId;
+    const previous = clone3(await loadProductionStores());
+    const apply = async (desired, expected) => {
+      if (targetId) {
+        globalThis.window.__pmHistories = await commitDirectoryScope("histories", desired.histories, expected.histories, targetId);
+        globalThis.window.__pmGroupMeta = await commitDirectoryScope("groupMeta", desired.groupMeta, expected.groupMeta, targetId);
+      } else {
+        globalThis.window.__pmHistories = desired.histories;
+        await saveHistoriesStrict(desired.histories, { requireLocalMirror: true });
+        globalThis.window.__pmGroupMeta = desired.groupMeta;
+        await saveGroupMeta(desired.groupMeta);
+      }
+      if (targetId) {
+        globalThis.window.__pmPokeConfig = await commitLocalScopeCoordinated("pokeConfig", {
+          key: "ST_SMS_POKE_CONFIG",
+          desired: desired.pokeConfig,
+          expected: expected.pokeConfig,
+          targetId,
+          normalize: (value) => value,
+          label: "\u62CD\u4E00\u62CD\u914D\u7F6E"
+        });
+        globalThis.window.__pmCharacterBehavior = await commitLocalScopeCoordinated("characterBehavior", {
+          key: CHARACTER_BEHAVIOR_KEY,
+          desired: desired.characterBehavior,
+          expected: expected.characterBehavior,
+          targetId,
+          normalize: normalizeCharacterBehaviorStore,
+          label: "\u89D2\u8272\u884C\u4E3A\u914D\u7F6E"
+        });
+        globalThis.window.__pmBidirectional = await commitLocalScopeCoordinated("bidirectional", {
+          key: "ST_SMS_BIDIRECTIONAL",
+          desired: desired.bidirectional,
+          expected: expected.bidirectional,
+          targetId,
+          normalize: (value) => value,
+          label: "\u53CC\u5411\u6CE8\u5165\u914D\u7F6E"
+        });
+        globalThis.window.__pmBudgetConfig = await commitBudgetScopeCoordinated({ desired: desired.budget, expected: expected.budget, targetId });
+      } else {
+        globalThis.window.__pmPokeConfig = desired.pokeConfig;
+        if (!savePokeConfig()) throw new Error("\u5206\u652F\u7EE7\u627F\u4FDD\u5B58\u5931\u8D25\uFF1A\u62CD\u4E00\u62CD\u914D\u7F6E\u4E0D\u53EF\u7528");
+        globalThis.window.__pmCharacterBehavior = desired.characterBehavior;
+        if (!saveCharacterBehavior()) throw new Error("\u5206\u652F\u7EE7\u627F\u4FDD\u5B58\u5931\u8D25\uFF1A\u89D2\u8272\u884C\u4E3A\u914D\u7F6E\u4E0D\u53EF\u7528");
+        globalThis.window.__pmBidirectional = desired.bidirectional;
+        if (!saveBidirectional()) throw new Error("\u5206\u652F\u7EE7\u627F\u4FDD\u5B58\u5931\u8D25\uFF1A\u53CC\u5411\u6CE8\u5165\u914D\u7F6E\u4E0D\u53EF\u7528");
+        globalThis.window.__pmBudgetConfig = desired.budget;
+        if (!saveBudgetConfig(desired.budget)) throw new Error("\u5206\u652F\u7EE7\u627F\u4FDD\u5B58\u5931\u8D25\uFF1A\u793E\u533A\u9884\u7B97\u914D\u7F6E\u4E0D\u53EF\u7528");
+      }
+      if (targetId) {
+        globalThis.window.__pmBgLocal = await commitBackgroundScope({ desired: desired.backgrounds, expected: expected.backgrounds, targetId });
+        const interactive = await commitInteractiveScope({ desired: desired.interactive, expected: expected.interactive, targetId });
+        const phoneUiScopes = await commitLocalScopeCoordinated("phoneUi", {
+          key: PHONE_UI_STORAGE_KEY,
+          desired: desired.phoneUi.scopes,
+          expected: expected.phoneUi.scopes,
+          targetId,
+          normalize: (value) => normalizePhoneUiState({ version: 1, scopes: value }, interactive),
+          label: "\u624B\u673A\u9875\u9762\u72B6\u6001"
+        });
+        globalThis.window.__pmPhoneUiState = normalizePhoneUiState({ version: 1, scopes: phoneUiScopes }, interactive);
+        await commitCalendarScope({
+          store: "calendar",
+          key: CALENDAR_STORAGE_KEY,
+          desired: desired.calendar,
+          expected: expected.calendar,
+          targetId,
+          normalize: normalizeCalendarStore,
+          label: "\u65E5\u5386\u6570\u636E"
+        });
+        await commitCalendarScope({
+          store: "occasions",
+          key: CALENDAR_OCCASION_STORAGE_KEY,
+          desired: desired.occasions,
+          expected: expected.occasions,
+          targetId,
+          normalize: normalizeOccasionStore,
+          label: "\u751F\u65E5\u4E0E\u7EAA\u5FF5\u65E5\u6570\u636E"
+        });
+        await commitCalendarScope({
+          store: "cycles",
+          key: CALENDAR_CYCLE_STORAGE_KEY,
+          desired: desired.cycles,
+          expected: expected.cycles,
+          targetId,
+          normalize: normalizeCycleStore,
+          label: "\u751F\u7406\u5468\u671F\u6570\u636E"
+        });
+        await commitCalendarScope({
+          store: "recipes",
+          key: CALENDAR_RECIPE_STORAGE_KEY,
+          desired: desired.recipes,
+          expected: expected.recipes,
+          targetId,
+          normalize: normalizeRecipeStore,
+          label: "\u83DC\u8C31\u6570\u636E"
+        });
+      } else {
+        globalThis.window.__pmBgLocal = desired.backgrounds;
+        await saveBgLocal();
+        await saveInteractiveScenes(desired.interactive);
+        if (!savePhoneUiState(desired.phoneUi, desired.interactive)) throw new Error("\u5206\u652F\u7EE7\u627F\u4FDD\u5B58\u5931\u8D25\uFF1A\u624B\u673A\u9875\u9762\u72B6\u6001\u4E0D\u53EF\u7528");
+        if (!saveCalendar(desired.calendar) || !saveCalendarOccasions(desired.occasions) || !saveCalendarCycles(desired.cycles) || !saveCalendarRecipes(desired.recipes)) {
+          throw new Error("\u5206\u652F\u7EE7\u627F\u4FDD\u5B58\u5931\u8D25\uFF1A\u65E5\u5386 scope \u4E0D\u53EF\u7528");
+        }
+      }
+    };
+    try {
+      await apply(next, previous);
+    } catch (error) {
+      try {
+        const latest = await loadProductionStores();
+        await apply(targetId ? mergeBranchScope(latest, previous, targetId) : previous, next);
+      } catch (rollbackError) {
+        const combined = new Error(`${error.message}\uFF1B\u5206\u652F\u7EE7\u627F\u6301\u4E45\u5316\u56DE\u6EDA\u5931\u8D25\uFF1A${rollbackError.message}`);
+        combined.cause = error;
+        combined.rollbackError = rollbackError;
+        throw combined;
+      }
+      throw error;
+    }
+  }
+  function beginBranchInheritance(context, { getStorageId: getStorageId2, invalidateInteractiveStore, reloadCalendarStore, force = false } = {}) {
+    const branch = resolveBranchInheritance(context);
+    const branchScopeTokens = branch ? ["pokeConfig", "characterBehavior", "bidirectional", "budget"].map((store) => [store, markDirectoryBranchScope(store, branch.targetId)]) : [];
+    const operation = inheritPhoneDataOnBranch({
+      context,
+      loadStores: loadProductionStores,
+      saveStores: persistProductionStores,
+      loadLineage: loadBranchLineage,
+      commitLineage: commitBranchLineage,
+      force
+    }).finally(() => {
+      for (const [store, token] of branchScopeTokens) completeDirectoryBranchScope(store, token);
+    });
+    return operation.then((result) => {
+      if (result.status === "cloned" && (!getStorageId2 || getStorageId2() === result.targetId)) {
+        try {
+          invalidateInteractiveStore?.();
+        } catch (error) {
+          console.warn("[phone-mode] \u5206\u652F\u7EE7\u627F\u540E\u7684\u4E92\u52A8\u8FD0\u884C\u6001\u5237\u65B0\u5931\u8D25", error);
+        }
+        try {
+          reloadCalendarStore?.();
+        } catch (error) {
+          console.warn("[phone-mode] \u5206\u652F\u7EE7\u627F\u540E\u7684\u65E5\u5386\u8FD0\u884C\u6001\u5237\u65B0\u5931\u8D25", error);
+        }
+      }
+      return result;
+    });
+  }
+
+  // src/diagnostic.js
+  var freeze = (value) => Object.freeze(value);
+  function safePresence(value) {
+    if (!value || typeof value !== "object") return null;
+    const result = {};
+    for (const [key, entry2] of Object.entries(value)) {
+      if (!entry2 || typeof entry2 !== "object") continue;
+      const present = entry2.present === true;
+      const count = Number.isSafeInteger(entry2.count) && entry2.count >= 0 ? entry2.count : 0;
+      result[key] = freeze({ present, count });
+    }
+    return freeze(result);
+  }
+  function safeResult(value) {
+    if (!value || typeof value !== "object") return null;
+    return freeze({
+      status: typeof value.status === "string" ? value.status : "unknown",
+      reason: typeof value.reason === "string" ? value.reason : null,
+      sourceId: typeof value.sourceId === "string" ? value.sourceId : null,
+      targetId: typeof value.targetId === "string" ? value.targetId : null,
+      sourcePresence: safePresence(value.sourcePresence),
+      targetPresence: safePresence(value.targetPresence)
+    });
+  }
+  function recordResult(runtime, result) {
+    runtime.lastBranchInheritance = safeResult(result);
+    runtime.lastBranchInheritanceError = null;
+    return runtime.lastBranchInheritance;
+  }
+  function recordError(runtime, branch, error) {
+    runtime.lastBranchInheritance = freeze({
+      status: "failed",
+      reason: null,
+      sourceId: branch?.sourceId || null,
+      targetId: branch?.targetId || null,
+      sourcePresence: null,
+      targetPresence: null
+    });
+    runtime.lastBranchInheritanceError = freeze({
+      name: typeof error?.name === "string" && error.name ? error.name : "Error",
+      message: ""
+    });
+  }
+  function safeBranch(branch) {
+    if (!branch) return null;
+    return freeze({
+      avatar: branch.avatar,
+      parentChatId: branch.parentChatId,
+      targetChatId: branch.targetChatId,
+      sourceId: branch.sourceId,
+      targetId: branch.targetId
+    });
+  }
+  function safeError(error) {
+    if (!error || typeof error !== "object") return null;
+    return freeze({
+      name: typeof error.name === "string" && error.name ? error.name : "Error",
+      message: ""
+    });
+  }
+  function installDiagnosticApi(deps) {
+    if (globalThis.window?.__pmDiagEnabled !== true) return false;
+    const { runtime, getCtx, getStorageId: getStorageId2 } = deps;
+    const snapshot = () => {
+      const branch = resolveBranchInheritance(getCtx());
+      return freeze({
+        eventHooked: runtime.eventHooked === true,
+        hostRegistrationKeys: freeze(Array.from(runtime.hostEventRegistrations || [])),
+        beforeUnloadRegistered: window.__pmBeforeUnloadRegistered === true,
+        branch: safeBranch(branch),
+        lastBranchInheritance: safeResult(runtime.lastBranchInheritance),
+        lastBranchInheritanceError: safeError(runtime.lastBranchInheritanceError),
+        pendingTargets: getPendingBranchInheritanceTargets(),
+        currentStorageId: typeof getStorageId2 === "function" ? getStorageId2() : null
+      });
+    };
+    const readLineage = async (targetId) => {
+      const resolvedTargetId = targetId || runtime.lastBranchInheritance?.targetId || resolveBranchInheritance(getCtx())?.targetId;
+      if (typeof resolvedTargetId !== "string" || !resolvedTargetId) return null;
+      const entry2 = (await loadBranchLineage())[resolvedTargetId];
+      if (!entry2) return null;
+      return freeze({
+        targetId: resolvedTargetId,
+        sourceId: entry2.sourceId,
+        parentChatId: entry2.parentChatId,
+        targetChatId: entry2.targetChatId,
+        avatar: entry2.avatar,
+        completedAt: entry2.completedAt,
+        schemaVersion: entry2.schemaVersion
+      });
+    };
+    window.__pmDiag = freeze({ snapshot, readLineage });
+    window.__pmRetryBranch = async () => {
+      const context = getCtx();
+      const branch = resolveBranchInheritance(context);
+      if (!branch) return freeze({ status: "skipped", reason: "not-branch" });
+      try {
+        return recordResult(runtime, await beginBranchInheritance(context, {
+          getStorageId: getStorageId2,
+          invalidateInteractiveStore: deps.invalidateInteractiveStore,
+          reloadCalendarStore: deps.reloadCalendarStore,
+          force: true
+        }));
+      } catch (error) {
+        recordError(runtime, branch, error);
+        throw error;
+      }
+    };
+    return true;
   }
 
   // src/emoji-media.js
@@ -8839,108 +9881,6 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
     });
   }
 
-  // src/host-context.js
-  var warnedHostContextFailures = /* @__PURE__ */ new Set();
-  function warnHostContextFailureOnce(stage, message, error) {
-    if (warnedHostContextFailures.has(stage)) return;
-    warnedHostContextFailures.add(stage);
-    const errorType = typeof error?.name === "string" && error.name ? error.name : "Error";
-    console.warn(`[phone-mode] ${message}\uFF0C\u5DF2\u4F7F\u7528\u964D\u7EA7\u503C\u3002`, errorType);
-  }
-  function getCurrentChatId(context) {
-    if (!context) return null;
-    return context.chatId || (typeof context.getCurrentChatId === "function" ? context.getCurrentChatId() : null) || context.chat_metadata?.chat_id_hash || context.chat_file;
-  }
-  function getStorageIdFor(avatar, chatId) {
-    const characterAvatar = typeof avatar === "string" && avatar.trim() ? avatar : "";
-    if (chatId === null || chatId === void 0 || String(chatId).trim() === "" || !characterAvatar) {
-      return "sms_unknown__default";
-    }
-    return `sms_${characterAvatar}__${chatId}`;
-  }
-  function getStorageId(getCtx) {
-    const context = getCtx();
-    if (!context) return "sms_unknown__default";
-    const character = context.characters?.[context.characterId];
-    const avatar = character?.avatar || `idx_${context.characterId}`;
-    return getStorageIdFor(avatar, getCurrentChatId(context));
-  }
-  function getUserPersona(getCtx) {
-    const context = getCtx();
-    if (!context) return { name: "\u7528\u6237", description: "" };
-    let name = context.name1 || "User";
-    let description = "";
-    try {
-      const settings = context.powerUserSettings || context.power_user || window.power_user;
-      if (settings) {
-        description = settings.persona_description || settings.personaDescription || "";
-        const avatar = context.userAvatar || settings.user_avatar || settings.default_persona;
-        if (!description && avatar) {
-          const descriptions = settings.persona_descriptions || settings.personaDescriptions;
-          const persona = descriptions?.[avatar];
-          if (typeof persona === "string") description = persona;
-          else if (persona?.description) description = persona.description;
-        }
-      }
-    } catch (error) {
-      warnHostContextFailureOnce("persona-settings", "\u8BFB\u53D6\u7528\u6237\u4EBA\u8BBE\u8BBE\u7F6E\u5931\u8D25", error);
-    }
-    if (!description) {
-      try {
-        const metadata = context.chatMetadata || context.chat_metadata;
-        if (metadata?.persona) description = String(metadata.persona);
-      } catch (error) {
-        warnHostContextFailureOnce("persona-metadata", "\u8BFB\u53D6\u804A\u5929\u4EBA\u8BBE\u5143\u6570\u636E\u5931\u8D25", error);
-      }
-    }
-    try {
-      if (typeof context.substituteParams === "function") {
-        const resolvedName = context.substituteParams("{{user}}");
-        if (resolvedName && resolvedName !== "{{user}}" && resolvedName.trim()) name = resolvedName.trim();
-      }
-    } catch (error) {
-      warnHostContextFailureOnce("persona-name", "\u89E3\u6790\u7528\u6237\u540D\u79F0\u5931\u8D25", error);
-    }
-    return { name, description };
-  }
-  async function gatherContext(getCtx) {
-    const context = getCtx();
-    const character = context?.characters?.[context.characterId] || {};
-    const removeProtectedBlocks = (value) => (value || "").replace(/```[\s\S]*?```/g, "").replace(/<think>[\s\S]*?<\/think>/gi, "").trim();
-    const cleanMessage = (value) => removeProtectedBlocks(value).replace(/<[^>]+>/g, "").trim();
-    const recentChat = (context?.chat || []).slice(-8);
-    const normalizedChat = recentChat.map((message) => ({
-      who: message.is_user ? "\u7528\u6237" : message.name || "\u89D2\u8272",
-      content: cleanMessage(message.mes || ""),
-      rawContent: removeProtectedBlocks(message.mes || ""),
-      isUser: message.is_user === true
-    }));
-    const latestMessage = [...normalizedChat].reverse().find((message) => message.content);
-    const latestChatText = latestMessage?.content || "";
-    const rawLatestChatText = latestMessage?.rawContent || "";
-    const latestChatIsUser = latestMessage?.isUser === true;
-    const mainChat = normalizedChat.filter((message) => message.content);
-    let worldBookText = "";
-    try {
-      if (typeof context?.getWorldInfoPrompt === "function") {
-        const contextSize = context?.powerUserSettings?.openai_max_context || context?.oai_settings?.openai_max_context || context?.maxContext || 131072;
-        const worldInfo = await context.getWorldInfoPrompt(
-          (context.chat || []).map((message) => message.mes || "").slice(-10),
-          contextSize,
-          false
-        );
-        worldBookText = worldInfo?.worldInfoString || worldInfo?.worldInfoBefore || "";
-        if (!worldBookText && worldInfo && typeof worldInfo === "object") {
-          worldBookText = [worldInfo.worldInfoBefore, worldInfo.worldInfoAfter].filter(Boolean).join("\n");
-        }
-      }
-    } catch (error) {
-      warnHostContextFailureOnce("world-book", "\u8BFB\u53D6\u4E16\u754C\u4E66\u4E0A\u4E0B\u6587\u5931\u8D25", error);
-    }
-    const userPersona = getUserPersona(getCtx);
-    return { cardDesc: character.description ?? "", cardPersonality: character.personality ?? "", cardScenario: character.scenario ?? "", cardFirstMes: character.first_mes ?? "", cardMesExample: character.mes_example ?? "", mainChatText: mainChat.map((message) => `${message.who}\uFF1A${message.content}`).join("\n"), latestChatText, rawLatestChatText, latestChatIsUser, worldBookText, userName: userPersona.name, userDesc: userPersona.description };
-  }
-
   // src/history-window.js
   function createHistoryWindow(history, limit) {
     const source = Array.isArray(history) ? history : [];
@@ -9117,7 +10057,13 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
     "\u8A9E\u97F3": "\u8BED\u97F3"
   };
   var KEYWORD_PATTERN = Object.keys(SPECIAL_KEYWORDS).join("|");
-  var SPECIAL_RE = new RegExp(`[\\(\uFF08]\\s*(${KEYWORD_PATTERN})\\s*[+\uFF1A:\\s]*([^)\uFF09]+)[\\)\uFF09]`, "gi");
+  var SPECIAL_RE = new RegExp(`[\\(\uFF08][ \\t]*(${KEYWORD_PATTERN})(?:[ \\t]*(?:\\+|\uFF1A|:)[ \\t]*|[ \\t]+)([^)\uFF09]+)[\\)\uFF09]`, "gi");
+  var STANDALONE_SPECIAL_RE = new RegExp(`^[ \\t]*(${KEYWORD_PATTERN})(?:[ \\t]*(?:\\+|\uFF1A|:)[ \\t]*|[ \\t]+)(\\S(?:[^\\r\\n]*\\S)?)[ \\t]*$`, "i");
+  function isValidSpecialContent(kind, content) {
+    const value = content.trim();
+    if (!value || /^[+：:]+$/.test(value)) return false;
+    return !["\u8F6C\u8D26", "\u6536\u6B3E", "\u9000\u8FD8"].includes(kind) || /^(?:0|[1-9]\d*)(?:\.\d{1,2})?$/.test(value);
+  }
   function normalizeKeyword(keyword) {
     return SPECIAL_KEYWORDS[keyword] || SPECIAL_KEYWORDS[keyword.toLowerCase()] || keyword;
   }
@@ -9261,9 +10207,7 @@ ${lines}
       bubble.innerHTML = escapeHtml(plain).replace(/\n/g, "<br>");
       results.push(bubble);
     };
-    while ((match = specialPattern.exec(text3)) !== null) {
-      if (match.index > lastIndex) pushPlain(text3.slice(lastIndex, match.index));
-      const kind = normalizeKeyword(match[1]);
+    const pushSpecial = (kind, content) => {
       const isGroupLeft = senderName && side === "left";
       let container;
       if (isGroupLeft) {
@@ -9278,14 +10222,14 @@ ${lines}
       const bubble = document.createElement("div");
       bubble.className = `pm-bubble pm-${side} pm-special`;
       if (kind === "\u8F6C\u8D26" || kind === "\u6536\u6B3E" || kind === "\u9000\u8FD8") {
-        const amount = parseFloat(match[2]) || 0;
+        const amount = parseFloat(content) || 0;
         const className = kind === "\u8F6C\u8D26" ? "pm-transfer-card" : kind === "\u6536\u6B3E" ? "pm-receive-card" : "pm-refund-card";
         const title = kind === "\u9000\u8FD8" ? "\u5DF2\u9000\u8FD8" : kind;
         bubble.innerHTML = `<div class="${className}"><div class="pm-t-icon">\xA5</div><div class="pm-t-info"><b>${title}</b><span>\xA5${amount.toFixed(2)}</span></div></div>`;
       } else if (kind === "\u56FE\u7247") {
-        bubble.innerHTML = `<div class="pm-img-card">\u{1F5BC}\uFE0F ${escapeHtml(match[2].trim())}</div>`;
+        bubble.innerHTML = `<div class="pm-img-card">\u{1F5BC}\uFE0F ${escapeHtml(content.trim())}</div>`;
       } else {
-        const voiceText = match[2].trim();
+        const voiceText = content.trim();
         const length = [...voiceText].length;
         const duration = length <= 5 ? Math.max(1, length) : length <= 15 ? 5 + (length - 5) : length <= 40 ? 15 + Math.ceil((length - 15) * 0.8) : Math.min(VOICE_MAX_SEC, 35 + Math.ceil((length - 40) * 0.5));
         const width = Math.min(240, Math.max(110, 90 + Math.min(length, 30) * 4));
@@ -9301,9 +10245,29 @@ ${lines}
         container.appendChild(bubble);
         results.push(container);
       } else results.push(bubble);
-      lastIndex = match.index + match[0].length;
+    };
+    const standaloneSpecial = text3.match(STANDALONE_SPECIAL_RE);
+    if (standaloneSpecial) {
+      const kind = normalizeKeyword(standaloneSpecial[1]);
+      const content = standaloneSpecial[2];
+      if (isValidSpecialContent(kind, content)) {
+        pushSpecial(kind, content);
+      } else {
+        pushPlain(text3);
+      }
+    } else {
+      while ((match = specialPattern.exec(text3)) !== null) {
+        if (match.index > lastIndex) pushPlain(text3.slice(lastIndex, match.index));
+        const kind = normalizeKeyword(match[1]);
+        if (isValidSpecialContent(kind, match[2])) {
+          pushSpecial(kind, match[2]);
+        } else {
+          pushPlain(match[0]);
+        }
+        lastIndex = match.index + match[0].length;
+      }
+      if (lastIndex < text3.length) pushPlain(text3.slice(lastIndex));
     }
-    if (lastIndex < text3.length) pushPlain(text3.slice(lastIndex));
     if (!results.length) pushPlain(text3);
     for (const bubble of results) {
       const elements = bubble.classList?.contains("pm-group-bubble-wrap") ? bubble.querySelectorAll(".pm-bubble") : bubble.classList?.contains("pm-bubble") ? [bubble] : [];
@@ -9565,7 +10529,7 @@ ${mainChatText}
 ${contextBlockMain ? contextBlockMain + "\n\n" : ""}\u89C4\u5219\uFF1A
 - \u53EA\u8F93\u51FA\u77ED\u4FE1\u6587\u5B57\uFF0C3\u52308\u53E5\uFF0C\u6BCF\u53E5\u7528 / \u5206\u9694
 - \u7981\u6B62\u65C1\u767D\u5FC3\u7406\u63CF\u5199\u573A\u666F\u63CF\u8FF0\u89D2\u8272\u540D\u524D\u7F00\u6807\u7B7E\u683C\u5F0F
-- \u7279\u6B8A\u683C\u5F0F\uFF08\u4E2D\u6587\u5355\u884C\u95ED\u5408\uFF09\uFF1A(\u8F6C\u8D26+\u91D1\u989D) (\u6536\u6B3E+\u91D1\u989D) (\u9000\u8FD8+\u91D1\u989D) (\u56FE\u7247+\u63CF\u8FF0) (\u8BED\u97F3+\u5185\u5BB9)\u3002\u6CE8\u610F\uFF1A\u9000\u8FD8\u6307\u62D2\u7EDD\u804A\u5929\u5BF9\u8C61\u8F6C\u8D26\u3002
+- \u7279\u6B8A\u6D88\u606F\u5FC5\u987B\u72EC\u5360\u4E00\u4E2A / \u5206\u9694\u7247\u6BB5\uFF0C\u4F7F\u7528\u4E2D\u6587\u5173\u952E\u8BCD\u548C\u5355\u884C\u683C\u5F0F\uFF1A\u8F6C\u8D26+\u91D1\u989D\u3001\u6536\u6B3E\uFF1A\u91D1\u989D\u3001\u9000\u8FD8 \u91D1\u989D\u3001\u56FE\u7247\uFF1A\u63CF\u8FF0\u3001\u8BED\u97F3 \u5185\u5BB9\u3002\u6CE8\u610F\uFF1A\u9000\u8FD8\u6307\u62D2\u7EDD\u804A\u5929\u5BF9\u8C61\u8F6C\u8D26\u3002
 - \u4E25\u7981\u82F1\u6587\u683C\u5F0F
 - \u5B8C\u5168\u6C89\u6D78\u4E8E\u89D2\u8272\u8BBE\u5B9A\uFF0C\u892A\u53BBAI\u52A9\u624B\u7684\u5BA2\u89C2\u8BED\u6C14
 - \u6839\u636E\u7528\u6237\u7684\u5F15\u5BFC\u81EA\u7136\u63A8\u8FDB\u5267\u60C5\uFF0C\u5728\u7528\u6237\u660E\u786E\u53D1\u8D77\u6210\u4EBA\u6216\u6781\u7AEF\u4E92\u52A8\u524D\uFF0C\u4FDD\u6301\u7B26\u5408\u65E5\u5E38\u793E\u4EA4\u5C3A\u5EA6\u7684\u5168\u5E74\u9F84\u5BF9\u8BDD\u98CE\u683C
@@ -9615,16 +10579,18 @@ ${worldBookText}` : "",
 ${mainChatText}` : "",
       "",
       "\u53EA\u8F93\u51FA3\u52308\u53E5\u77ED\u4FE1\uFF0C\u6BCF\u53E5\u7528 / \u5206\u9694\uFF0C\u4E0D\u5F97\u4E2D\u9014\u622A\u65AD\u3002",
-      "\u7279\u6B8A\u683C\u5F0F\uFF08\u5FC5\u987B\u4E2D\u6587\u5355\u884C\u95ED\u5408\uFF09\uFF1A(\u8F6C\u8D26+\u91D1\u989D) (\u6536\u6B3E+\u91D1\u989D) (\u9000\u8FD8+\u91D1\u989D) (\u56FE\u7247+\u63CF\u8FF0) (\u8BED\u97F3+\u5185\u5BB9)\u3002\u6CE8\u610F\uFF1A\u9000\u8FD8\u6307\u62D2\u7EDD\u804A\u5929\u5BF9\u8C61\u8F6C\u8D26\u3002",
+      "\u7279\u6B8A\u6D88\u606F\u5FC5\u987B\u72EC\u5360\u4E00\u4E2A / \u5206\u9694\u7247\u6BB5\uFF0C\u4F7F\u7528\u4E2D\u6587\u5173\u952E\u8BCD\u548C\u5355\u884C\u683C\u5F0F\uFF1A\u8F6C\u8D26+\u91D1\u989D\u3001\u6536\u6B3E\uFF1A\u91D1\u989D\u3001\u9000\u8FD8 \u91D1\u989D\u3001\u56FE\u7247\uFF1A\u63CF\u8FF0\u3001\u8BED\u97F3 \u5185\u5BB9\u3002\u6CE8\u610F\uFF1A\u9000\u8FD8\u6307\u62D2\u7EDD\u804A\u5929\u5BF9\u8C61\u8F6C\u8D26\u3002",
       "\u7981\u6B62\u4EFB\u4F55\u6807\u7B7E\u683C\u5F0F\u65C1\u767D\u9009\u9879\u72B6\u6001\u680F\u3002"
     ].filter(Boolean).join("\n\n");
   }
-  function buildGroupAdditionalContext({ randomNpcEnabled = false, groupNature = "" } = {}) {
+  var DEFAULT_RANDOM_NPC_PROMPT = "\u5141\u8BB8\u4E0D\u5728\u56FA\u5B9A\u6210\u5458\u540D\u5355\u4E0A\u7684\u8DEF\u4EBA\u7FA4\u53CB\u81EA\u7136\u53C2\u4E0E\u804A\u5929\uFF1B\u4E34\u65F6\u89D2\u8272\u540D\u5FC5\u987B\u4F7F\u7528\u201C\u8DEF\u4EBA\u7FA4\u53CB\xB7\u540D\u5B57\u201D\u683C\u5F0F\uFF0C\u5E76\u6839\u636E\u7FA4\u804A\u6027\u8D28\u751F\u6210\u8EAB\u4EFD\u548C\u8BED\u6C14\u5408\u9002\u3001\u540D\u5B57\u7B80\u77ED\u660E\u786E\u7684\u4E34\u65F6\u89D2\u8272\u3002";
+  function buildGroupAdditionalContext({ randomNpcEnabled = false, groupNature = "", randomNpcPrompt = "" } = {}) {
     const nature = typeof groupNature === "string" ? groupNature.trim() : "";
+    const prompt2 = typeof randomNpcPrompt === "string" ? randomNpcPrompt.trim() : "";
     const parts = [];
     if (nature) parts.push(`\u7FA4\u804A\u6027\u8D28\uFF1A${nature}`);
     if (randomNpcEnabled) {
-      parts.push("\u5141\u8BB8\u4E0D\u5728\u56FA\u5B9A\u6210\u5458\u540D\u5355\u4E0A\u7684\u8DEF\u4EBA\u7FA4\u53CB\u81EA\u7136\u53C2\u4E0E\u804A\u5929\uFF1B\u4E34\u65F6\u89D2\u8272\u540D\u5FC5\u987B\u4F7F\u7528\u201C\u8DEF\u4EBA\u7FA4\u53CB\xB7\u540D\u5B57\u201D\u683C\u5F0F\uFF0C\u5E76\u6839\u636E\u7FA4\u804A\u6027\u8D28\u751F\u6210\u8EAB\u4EFD\u548C\u8BED\u6C14\u5408\u9002\u3001\u540D\u5B57\u7B80\u77ED\u660E\u786E\u7684\u4E34\u65F6\u89D2\u8272\u3002");
+      parts.push(`\u8DEF\u4EBA\u7FA4\u53CB\u63D0\u793A\u8BCD\uFF1A${prompt2 || DEFAULT_RANDOM_NPC_PROMPT}`);
     }
     return parts.length ? `
 
@@ -9645,7 +10611,8 @@ ${parts.join("\n")}` : "";
     userMsgClean,
     userMsg,
     randomNpcEnabled = false,
-    groupNature = ""
+    groupNature = "",
+    randomNpcPrompt = ""
   }) {
     const speakerRule = randomNpcEnabled ? `\u89D2\u8272\u540D\u53EF\u4EE5\u6765\u81EA\u56FA\u5B9A\u6210\u5458\uFF08${memberList}\uFF09\uFF0C\u4E34\u65F6\u8DEF\u4EBA\u7FA4\u53CB\u5FC5\u987B\u547D\u540D\u4E3A\u201C\u8DEF\u4EBA\u7FA4\u53CB\xB7\u540D\u5B57\u201D` : `\u89D2\u8272\u540D\u5FC5\u987B\u6765\u81EA\uFF1A${memberList}`;
     const groupRules = `
@@ -9658,8 +10625,8 @@ ${parts.join("\n")}` : "";
 1. \u6BCF\u4E00\u884C\u90FD\u5FC5\u987B\u4EE5 "\u89D2\u8272\u540D\uFF1A" \u5F00\u5934\uFF08${speakerRule}\uFF09
 2. \u4E25\u7981\u8F93\u51FA\u5BF9\u754C\u9762\u3001\u7CFB\u7EDF\u3001\u5BF9\u8BDD\u672C\u8EAB\u7684\u603B\u7ED3\u6216\u63CF\u8FF0\u6027\u6587\u5B57
 3. \u4E25\u7981\u8F93\u51FA\u7C7B\u4F3C"\u73B0\u5728\u5E94\u8BE5..."\u3001"\u6211\u5DF2\u7ECF..."\u3001"\u770B\u8D77\u6765..."\u8FD9\u7C7B\u53D9\u8FF0\u6027\u53E5\u5B50
-4. \u7279\u6B8A\u683C\u5F0F\u5FC5\u987B\u5728\u540C\u4E00\u884C\u5185\u5B8C\u6574\u5199\u51FA\u4E14\u95ED\u5408\uFF1A(\u8F6C\u8D26+\u91D1\u989D) (\u6536\u6B3E+\u91D1\u989D) (\u9000\u8FD8+\u91D1\u989D) (\u56FE\u7247+\u63CF\u8FF0) (\u8BED\u97F3+\u5185\u5BB9)\u3002\u6CE8\u610F\uFF1A\u9000\u8FD8\u6307\u62D2\u7EDD\u804A\u5929\u5BF9\u8C61\u8F6C\u8D26\u3002
-5. \u7279\u6B8A\u683C\u5F0F\u62EC\u53F7\u5185\u4E25\u7981\u6362\u884C\u3001\u7F16\u53F7\uFF081. 2. 3.\uFF09\u3001\u5217\u8868
+4. \u7279\u6B8A\u6D88\u606F\u5FC5\u987B\u72EC\u5360\u4E00\u4E2A / \u5206\u9694\u7247\u6BB5\uFF0C\u4F7F\u7528\u4E2D\u6587\u5173\u952E\u8BCD\u548C\u5355\u884C\u683C\u5F0F\uFF1A\u8F6C\u8D26+\u91D1\u989D\u3001\u6536\u6B3E\uFF1A\u91D1\u989D\u3001\u9000\u8FD8 \u91D1\u989D\u3001\u56FE\u7247\uFF1A\u63CF\u8FF0\u3001\u8BED\u97F3 \u5185\u5BB9\u3002\u6CE8\u610F\uFF1A\u9000\u8FD8\u6307\u62D2\u7EDD\u804A\u5929\u5BF9\u8C61\u8F6C\u8D26\u3002
+5. \u7279\u6B8A\u6D88\u606F\u5185\u5BB9\u4E25\u7981\u6362\u884C\u3001\u7F16\u53F7\uFF081. 2. 3.\uFF09\u3001\u5217\u8868
 6. \u6BCF\u6761\u6D88\u606F\u5185\u7684 / \u53EA\u7528\u4E8E\u5206\u9694\u540C\u4E00\u89D2\u8272\u7684\u591A\u6761\u77ED\u4FE1
 7. \u6BCF\u4E2A\u89D2\u8272\u6839\u636E\u81EA\u5DF1\u7684\u4EBA\u8BBE\u548C\u5F53\u524D\u5267\u60C5\u4E3B\u52A8\u51B3\u5B9A\u53D1\u8A00\u6761\u6570\uFF0C0-8\u53E5\uFF0C\u53EF\u7A7F\u63D2\u53D1\u8A00\uFF0C\u4E0D\u5FC5\u6240\u6709\u4EBA\u90FD\u8BF4\u8BDD
 8. \u4E25\u7981\u82F1\u6587\u683C\u5F0F (Voice+/Image+/Transfer+/Refund+)
@@ -9667,13 +10634,12 @@ ${parts.join("\n")}` : "";
 
 \u2705 \u6B63\u786E\u793A\u4F8B\uFF1A
 \u5C0F\u660E\uFF1A\u6211\u5148\u5230\u4E86 / \u8FD9\u5BB6\u5E97\u771F\u4E0D\u9519
-\u5C0F\u7EA2\uFF1A\u7B49\u6211\u4E94\u5206\u949F / (\u8BED\u97F3+\u9A6C\u4E0A\u5230\u522B\u6025)
-\u5C0F\u660E\uFF1A\u597D / (\u56FE\u7247+\u521A\u62CD\u7684\u5E97\u95E8\u53E3)
-\u5C0F\u674E\uFF1A(\u9000\u8FD8+50) / \u6628\u5929\u591A\u7ED9\u7684\u94B1\u9000\u4F60\u5566
+\u5C0F\u7EA2\uFF1A\u7B49\u6211\u4E94\u5206\u949F / \u8BED\u97F3 \u9A6C\u4E0A\u5230\u522B\u6025
+\u5C0F\u660E\uFF1A\u597D / \u56FE\u7247\uFF1A\u521A\u62CD\u7684\u5E97\u95E8\u53E3
+\u5C0F\u674E\uFF1A\u9000\u8FD8+50 / \u6628\u5929\u591A\u7ED9\u7684\u94B1\u9000\u4F60\u5566
 
 \u274C \u9519\u8BEF\u793A\u4F8B\uFF08\u7EDD\u5BF9\u7981\u6B62\uFF09\uFF1A
-\u5C0F\u660E\uFF1A(\u8BED\u97F3+\u5185\u5BB9\u6709\u6362\u884C
-1. \u7B2C\u4E00\u70B9)
+\u5C0F\u660E\uFF1A\u8BED\u97F3 \u5185\u5BB9\u6709\u6362\u884C
 \u5C0F\u7EA2\uFF1A\u754C\u9762\u73B0\u5728\u5E94\u8BE5\u6B63\u5E38\u4E86...`;
     return `${groupRules}
 
@@ -9689,7 +10655,7 @@ ${currentQuoteText}
 ${directorNote ? `
 [\u5267\u60C5\u5F15\u5BFC] ${directorNote}
 ` : ""}
-${userMsg.trim() ? `${userName}\uFF1A${userMsgClean}` : "[\u4EC5\u6709\u5267\u60C5\u5F15\u5BFC\uFF0C\u65E0\u7528\u6237\u53D1\u8A00\uFF0C\u8BF7\u6309\u5F15\u5BFC\u63A8\u8FDB\u5267\u60C5]"}${buildGroupAdditionalContext({ randomNpcEnabled, groupNature })}`;
+${userMsg.trim() ? `${userName}\uFF1A${userMsgClean}` : "[\u4EC5\u6709\u5267\u60C5\u5F15\u5BFC\uFF0C\u65E0\u7528\u6237\u53D1\u8A00\uFF0C\u8BF7\u6309\u5F15\u5BFC\u63A8\u8FDB\u5267\u60C5]"}${buildGroupAdditionalContext({ randomNpcEnabled, groupNature, randomNpcPrompt })}`;
   }
   function buildGroupSystemPrompt({
     memberList,
@@ -9702,7 +10668,8 @@ ${userMsg.trim() ? `${userName}\uFF1A${userMsgClean}` : "[\u4EC5\u6709\u5267\u60
     worldBookText,
     mainChatText,
     randomNpcEnabled = false,
-    groupNature = ""
+    groupNature = "",
+    randomNpcPrompt = ""
   }) {
     return [
       `\u4F60\u540C\u65F6\u626E\u6F14 ${memberList} \u5728\u7FA4\u804A\u300C${groupName}\u300D\u4E2D\u4E0E\u7528\u6237 ${userName} \u5BF9\u8BDD\u3002${randomNpcEnabled ? "\u5FC5\u8981\u65F6\u4E5F\u53EF\u751F\u6210\u7B26\u5408\u7FA4\u804A\u6027\u8D28\u7684\u4E34\u65F6\u8DEF\u4EBA\u7FA4\u53CB\u3002" : ""}`,
@@ -9722,9 +10689,9 @@ ${mainChatText}` : "",
       `\u8F93\u51FA\u683C\u5F0F\uFF1A\u89D2\u8272\u540D\uFF1A\u6D88\u606F / \u6D88\u606F\uFF08\u6BCF\u4E2A\u89D2\u82720-8\u53E5\uFF0C\u6839\u636E\u4EBA\u8BBE\u548C\u5267\u60C5\u51B3\u5B9A\u662F\u5426\u53D1\u8A00\u53CA\u53D1\u8A00\u6570\u91CF\uFF09`,
       `\u89D2\u8272\u540D\u540E\u53EA\u8DDF\u8BE5\u89D2\u8272\u7684\u8BDD\uFF0C\u4E25\u7981 "(\u89D2\u8272\u540D\uFF1Axxx)" \u8FD9\u79CD\u5D4C\u5957\u3002`,
       `\u89D2\u8272\u53EF\u7A7F\u63D2\u53D1\u8A00\uFF0C\u4E0D\u5FC5\u6240\u6709\u4EBA\u90FD\u8BF4\u8BDD\u3002`,
-      "\u7279\u6B8A\u683C\u5F0F\uFF08\u5FC5\u987B\u4E2D\u6587\u4E14\u5355\u884C\u95ED\u5408\uFF09\uFF1A(\u8F6C\u8D26+\u91D1\u989D) (\u6536\u6B3E+\u91D1\u989D) (\u9000\u8FD8+\u91D1\u989D) (\u56FE\u7247+\u63CF\u8FF0) (\u8BED\u97F3+\u5185\u5BB9)\u3002\u6CE8\u610F\uFF1A\u9000\u8FD8\u6307\u62D2\u7EDD\u804A\u5929\u5BF9\u8C61\u8F6C\u8D26\u3002",
+      "\u7279\u6B8A\u6D88\u606F\u5FC5\u987B\u72EC\u5360\u4E00\u4E2A / \u5206\u9694\u7247\u6BB5\uFF0C\u4F7F\u7528\u4E2D\u6587\u5173\u952E\u8BCD\u548C\u5355\u884C\u683C\u5F0F\uFF1A\u8F6C\u8D26+\u91D1\u989D\u3001\u6536\u6B3E\uFF1A\u91D1\u989D\u3001\u9000\u8FD8 \u91D1\u989D\u3001\u56FE\u7247\uFF1A\u63CF\u8FF0\u3001\u8BED\u97F3 \u5185\u5BB9\u3002\u6CE8\u610F\uFF1A\u9000\u8FD8\u6307\u62D2\u7EDD\u804A\u5929\u5BF9\u8C61\u8F6C\u8D26\u3002",
       "\u7981\u6B62\u4EFB\u4F55\u6807\u7B7E\u683C\u5F0F\u65C1\u767D\u9009\u9879\u72B6\u6001\u680F\u3002",
-      buildGroupAdditionalContext({ randomNpcEnabled, groupNature })
+      buildGroupAdditionalContext({ randomNpcEnabled, groupNature, randomNpcPrompt })
     ].filter(Boolean).join("\n\n");
   }
   function buildPokeSinglePrompt({
@@ -9765,7 +10732,7 @@ ${mainChatText || ""}
 \u3010\u77ED\u4FE1\u5BF9\u8BDD\u5386\u53F2\u3011
 ${smsHistoryText}
 
-\u8F93\u51FA\u683C\u5F0F\uFF1A\u77ED\u4FE1\u5185\u5BB9 / \u77ED\u4FE1\u5185\u5BB9\uFF08\u6BCF\u53E5\u7528 / \u5206\u9694\uFF0C\u7279\u6B8A\u683C\u5F0F\u4E2D\u6587\u5355\u884C\u95ED\u5408\uFF09`;
+\u8F93\u51FA\u683C\u5F0F\uFF1A\u77ED\u4FE1\u5185\u5BB9 / \u77ED\u4FE1\u5185\u5BB9\uFF08\u6BCF\u53E5\u7528 / \u5206\u9694\uFF1B\u7279\u6B8A\u6D88\u606F\u5FC5\u987B\u72EC\u5360\u4E00\u4E2A\u7247\u6BB5\uFF0C\u4F7F\u7528\u4E2D\u6587\u5355\u884C\u683C\u5F0F\uFF1A\u8F6C\u8D26+\u91D1\u989D\u3001\u6536\u6B3E\uFF1A\u91D1\u989D\u3001\u9000\u8FD8 \u91D1\u989D\u3001\u56FE\u7247\uFF1A\u63CF\u8FF0\u3001\u8BED\u97F3 \u5185\u5BB9\uFF1B\u9000\u8FD8\u6307\u62D2\u7EDD\u804A\u5929\u5BF9\u8C61\u8F6C\u8D26\uFF09`;
   }
   function buildPokeGroupPrompt({
     groupName,
@@ -9779,14 +10746,15 @@ ${smsHistoryText}
     mainChatText,
     smsHistoryText,
     randomNpcEnabled = false,
-    groupNature = ""
+    groupNature = "",
+    randomNpcPrompt = ""
   }) {
     return `\u7FA4\u804A\u540D\u79F0\uFF1A${groupName}
 \u7FA4\u804A\u6210\u5458\uFF1A${memberList}
 
 \u7528\u6237\u6709\u4E00\u6BB5\u65F6\u95F4\u6CA1\u6709\u8BF4\u8BDD\u3002\u8BF7\u4EE5\u6240\u6709\u7FA4\u6210\u5458\u7684\u8EAB\u4EFD\uFF0C\u6839\u636E\u5404\u81EA\u7684\u6027\u683C\u3001\u4EBA\u8BBE\u548C\u5F53\u524D\u804A\u5929\u4E0A\u4E0B\u6587\uFF0C\u81EA\u7136\u5730\u53D1\u8D77\u8BDD\u9898\u6216\u7EE7\u7EED\u804A\u5929\u3002\u6BCF\u4E2A\u6210\u5458\u6839\u636E\u4EBA\u8BBE\u51B3\u5B9A\u53D1\u8A00 0-8 \u53E5\u3002
 
-\u8F93\u51FA\u683C\u5F0F\uFF1A\u89D2\u8272\u540D\uFF1A\u6D88\u606F / \u6D88\u606F
+\u8F93\u51FA\u683C\u5F0F\uFF1A\u89D2\u8272\u540D\uFF1A\u6D88\u606F / \u6D88\u606F\u3002\u7279\u6B8A\u6D88\u606F\u5FC5\u987B\u72EC\u5360\u4E00\u4E2A / \u5206\u9694\u7247\u6BB5\uFF0C\u4F7F\u7528\u4E2D\u6587\u5355\u884C\u683C\u5F0F\uFF1A\u8F6C\u8D26+\u91D1\u989D\u3001\u6536\u6B3E\uFF1A\u91D1\u989D\u3001\u9000\u8FD8 \u91D1\u989D\u3001\u56FE\u7247\uFF1A\u63CF\u8FF0\u3001\u8BED\u97F3 \u5185\u5BB9\uFF1B\u9000\u8FD8\u6307\u62D2\u7EDD\u804A\u5929\u5BF9\u8C61\u8F6C\u8D26\u3002
 
 \u3010\u7528\u6237\u4FE1\u606F\u3011
 ${userBlock}
@@ -9807,7 +10775,7 @@ ${worldBookText || ""}
 ${mainChatText || ""}
 
 \u3010\u7FA4\u804A\u5386\u53F2\u3011
-${smsHistoryText}${buildGroupAdditionalContext({ randomNpcEnabled, groupNature })}`;
+${smsHistoryText}${buildGroupAdditionalContext({ randomNpcEnabled, groupNature, randomNpcPrompt })}`;
   }
   function buildPokeGroupActivePrompt({
     groupDisplayName,
@@ -9821,7 +10789,8 @@ ${smsHistoryText}${buildGroupAdditionalContext({ randomNpcEnabled, groupNature }
     mainChatText,
     smsHistoryText,
     randomNpcEnabled = false,
-    groupNature = ""
+    groupNature = "",
+    randomNpcPrompt = ""
   }) {
     return `\u7FA4\u804A\u540D\u79F0\uFF1A${groupDisplayName || "\u7FA4\u804A"}
 \u7FA4\u804A\u6210\u5458\uFF1A${memberList}
@@ -9829,7 +10798,7 @@ ${smsHistoryText}${buildGroupAdditionalContext({ randomNpcEnabled, groupNature }
 \u8BF7\u4EE5\u6BCF\u4E2A\u7FA4\u6210\u5458\u7684\u8EAB\u4EFD\uFF0C\u6839\u636E\u5404\u81EA\u7684\u6027\u683C\u3001\u4EBA\u8BBE\u548C\u5F53\u524D\u804A\u5929\u4E0A\u4E0B\u6587\uFF0C\u81EA\u7136\u5730\u53D1\u8D77\u8BDD\u9898\u6216\u7EE7\u7EED\u804A\u5929\uFF0C\u4E0D\u8981\u63D0\u53CA\u4EFB\u4F55\u5916\u90E8\u89E6\u53D1\u3002
 \u6BCF\u4E2A\u6210\u5458\u6839\u636E\u81EA\u5DF1\u7684\u5224\u65AD\u9009\u62E9\u53D1\u8A00 0-8 \u6761\u3002
 
-\u8F93\u51FA\u683C\u5F0F\uFF1A\u89D2\u8272\u540D\uFF1A\u6D88\u606F\u5185\u5BB9 / \u6D88\u606F\u5185\u5BB9
+\u8F93\u51FA\u683C\u5F0F\uFF1A\u89D2\u8272\u540D\uFF1A\u6D88\u606F\u5185\u5BB9 / \u6D88\u606F\u5185\u5BB9\u3002\u7279\u6B8A\u6D88\u606F\u5FC5\u987B\u72EC\u5360\u4E00\u4E2A / \u5206\u9694\u7247\u6BB5\uFF0C\u4F7F\u7528\u4E2D\u6587\u5355\u884C\u683C\u5F0F\uFF1A\u8F6C\u8D26+\u91D1\u989D\u3001\u6536\u6B3E\uFF1A\u91D1\u989D\u3001\u9000\u8FD8 \u91D1\u989D\u3001\u56FE\u7247\uFF1A\u63CF\u8FF0\u3001\u8BED\u97F3 \u5185\u5BB9\uFF1B\u9000\u8FD8\u6307\u62D2\u7EDD\u804A\u5929\u5BF9\u8C61\u8F6C\u8D26\u3002
 
 \u3010\u7528\u6237\u4FE1\u606F\u3011
 ${userBlock}
@@ -9850,7 +10819,7 @@ ${worldBookText || ""}
 ${mainChatText || ""}
 
 \u3010\u7FA4\u804A\u5386\u53F2\u3011
-${smsHistoryText}${buildGroupAdditionalContext({ randomNpcEnabled, groupNature })}`;
+${smsHistoryText}${buildGroupAdditionalContext({ randomNpcEnabled, groupNature, randomNpcPrompt })}`;
   }
   function buildIndependentSingleUserPrompt({
     smsHistoryText,
@@ -9931,6 +10900,7 @@ ${userName}\uFF1A${userMsgClean}` : "\n[\u4EC5\u6709\u5267\u60C5\u5F15\u5BFC\uFF
         groupDisplayName,
         groupRandomNpcEnabled,
         groupNature,
+        groupRandomNpcPrompt,
         targetHistory
       } = request;
       const userMsgClean = userMsg.replace(/\[emo:([^\]:]+):(\d+)\]/g, (_, setName, idxStr) => {
@@ -9962,7 +10932,8 @@ ${userName}\uFF1A${userMsgClean}` : "\n[\u4EC5\u6709\u5267\u60C5\u5F15\u5BFC\uFF
           userMsgClean,
           userMsg,
           randomNpcEnabled: groupRandomNpcEnabled,
-          groupNature
+          groupNature,
+          randomNpcPrompt: groupRandomNpcPrompt
         });
         systemPrompt = buildGroupSystemPrompt({
           memberList,
@@ -9975,7 +10946,8 @@ ${userName}\uFF1A${userMsgClean}` : "\n[\u4EC5\u6709\u5267\u60C5\u5F15\u5BFC\uFF
           worldBookText,
           mainChatText,
           randomNpcEnabled: groupRandomNpcEnabled,
-          groupNature
+          groupNature,
+          randomNpcPrompt: groupRandomNpcPrompt
         });
       } else {
         const contextBlockMain = [
@@ -10221,6 +11193,7 @@ ${antiFluff}`;
         groupDisplayName: state.groupDisplayName,
         groupRandomNpcEnabled: state.groupRandomNpcEnabled,
         groupNature: state.groupNature,
+        groupRandomNpcPrompt: state.groupRandomNpcPrompt,
         targetHistory: state.conversationHistory.slice(),
         userHistoryEntry: createMessageEntry({
           role: "user",
@@ -10345,7 +11318,7 @@ ${antiFluff}`;
 
   // src/auto-poke-config.js
   var DEFAULT_AUTO_POKE = Object.freeze({ enabled: false, probability: 30, counter: 0 });
-  var clone3 = (value) => JSON.parse(JSON.stringify(value));
+  var clone4 = (value) => JSON.parse(JSON.stringify(value));
   var clampProbability = (raw) => {
     const num = Number(raw);
     if (!Number.isFinite(num)) return DEFAULT_AUTO_POKE.probability;
@@ -10374,7 +11347,7 @@ ${antiFluff}`;
     const storageConfig = window.__pmPokeConfig?.[storageId];
     const hadStorage = Boolean(storageConfig);
     const hadTarget = Boolean(storageConfig && Object.prototype.hasOwnProperty.call(storageConfig, targetKey));
-    const snapshot = hadTarget ? clone3(storageConfig[targetKey]) : null;
+    const snapshot = hadTarget ? clone4(storageConfig[targetKey]) : null;
     if (!window.__pmPokeConfig) window.__pmPokeConfig = {};
     if (!window.__pmPokeConfig[storageId]) window.__pmPokeConfig[storageId] = {};
     const previous = window.__pmPokeConfig[storageId][targetKey] || {};
@@ -10464,7 +11437,8 @@ ${antiFluff}`;
           mainChatText,
           smsHistoryText,
           randomNpcEnabled: groupMeta.randomNpcEnabled,
-          groupNature: groupMeta.groupNature
+          groupNature: groupMeta.groupNature,
+          randomNpcPrompt: groupMeta.randomNpcPrompt
         }) : buildPokeSinglePrompt({
           contactName,
           userName,
@@ -10590,7 +11564,7 @@ ${antiFluff}`;
       addNote("\u5DF2\u91CD\u65B0\u542F\u7528\u672C\u6B21\u624B\u673A\u4F1A\u8BDD\u7684\u81EA\u52A8\u6D88\u606F");
       return true;
     };
-    function showContactConfig(contactName, returnToMembers = false) {
+    function showContactConfig(contactName, returnToMembers = false, returnMembersToGroupSettings = false) {
       const id2 = getStorageId2();
       const config = window.__pmPokeConfig[id2]?.[contactName] || {};
       const behavior = getCharacterBehavior(window.__pmCharacterBehavior, id2, contactName);
@@ -10618,7 +11592,7 @@ ${antiFluff}`;
       makeOverlay(`
     <div class="pm-modal pm-modal-wide">
     <div class="pm-modal-header">
-        <button type="button" onclick="${returnToMembers ? "window.__pmShowConversationSettings()" : "window.__pmReturnToControlCenter()"}" class="pm-modal-close" title="\u8FD4\u56DE" aria-label="\u8FD4\u56DE">${BACK_ICON_SVG}</button>
+        <button type="button" onclick="${returnToMembers ? `window.__pmShowConversationSettings(${returnMembersToGroupSettings})` : "window.__pmReturnToControlCenter()"}" class="pm-modal-close" title="\u8FD4\u56DE" aria-label="\u8FD4\u56DE">${BACK_ICON_SVG}</button>
         <b class="pm-contact-settings-title" title="${escapeAttr(contactName)}">${escapeHtml(contactName)}</b>
         <button type="button" onclick="window.__pmCloseOverlay()" class="pm-modal-close" title="\u5173\u95ED" aria-label="\u5173\u95ED">${CLOSE_ICON_SVG}</button>
     </div>
@@ -10656,8 +11630,8 @@ ${antiFluff}`;
     </div>
     </div>`);
     }
-    window.__pmShowCharacterBehavior = (contactName) => showContactConfig(contactName, true);
-    window.__pmShowConversationSettings = () => {
+    window.__pmShowCharacterBehavior = (contactName, returnToGroupSettings = false) => showContactConfig(contactName, true, returnToGroupSettings);
+    window.__pmShowConversationSettings = (returnToGroupSettings = false) => {
       if (!state.isGroupChat) {
         showContactConfig(state.currentPersona);
         return;
@@ -10665,9 +11639,9 @@ ${antiFluff}`;
       const members = state.groupMembers.slice();
       makeOverlay(`
     <div class="pm-modal pm-modal-wide">
-      <div class="pm-modal-header"><button type="button" onclick="window.__pmReturnToControlCenter()" class="pm-modal-close" title="\u8FD4\u56DE\u5FEB\u6377\u5DE5\u5177" aria-label="\u8FD4\u56DE\u5FEB\u6377\u5DE5\u5177">${BACK_ICON_SVG}</button><b>\u6210\u5458\u8BBE\u7F6E</b><button type="button" onclick="window.__pmCloseOverlay()" class="pm-modal-close" title="\u5173\u95ED" aria-label="\u5173\u95ED">${CLOSE_ICON_SVG}</button></div>
+      <div class="pm-modal-header"><button type="button" onclick="${returnToGroupSettings ? "window.__pmEditGroup()" : "window.__pmReturnToControlCenter()"}" class="pm-modal-close" title="${returnToGroupSettings ? "\u8FD4\u56DE\u7FA4\u804A\u8BBE\u7F6E" : "\u8FD4\u56DE\u5FEB\u6377\u5DE5\u5177"}" aria-label="${returnToGroupSettings ? "\u8FD4\u56DE\u7FA4\u804A\u8BBE\u7F6E" : "\u8FD4\u56DE\u5FEB\u6377\u5DE5\u5177"}">${BACK_ICON_SVG}</button><b>\u6210\u5458\u8BBE\u7F6E</b><button type="button" onclick="window.__pmCloseOverlay()" class="pm-modal-close" title="\u5173\u95ED" aria-label="\u5173\u95ED">${CLOSE_ICON_SVG}</button></div>
       <div class="pm-member-behavior-list">
-        ${members.map((name) => `<button onclick="window.__pmShowCharacterBehavior('${safeJS(name)}')">
+        ${members.map((name) => `<button onclick="window.__pmShowCharacterBehavior('${safeJS(name)}', ${returnToGroupSettings})">
           <b>${escapeHtml(name)}</b><span>\u79C1\u804A\u98CE\u683C\u3001\u7FA4\u804A\u98CE\u683C\u4E0E\u6D88\u606F\u9891\u7387</span>
         </button>`).join("")}
       </div>
@@ -10742,6 +11716,7 @@ ${antiFluff}`;
       const groupMembers = state.groupMembers.slice();
       const groupRandomNpcEnabled = state.groupRandomNpcEnabled;
       const groupNature = state.groupNature;
+      const groupRandomNpcPrompt = state.groupRandomNpcPrompt;
       const isStillTarget = () => isGenerationTaskActive(task) && state.activeStorageId === storageId && (state.isGroupChat && state.currentGroupKey ? state.currentGroupKey : state.currentPersona) === saveKey;
       try {
         const ctxData = await gatherContext2(task.context);
@@ -10763,7 +11738,8 @@ ${antiFluff}`;
           mainChatText,
           smsHistoryText,
           randomNpcEnabled: groupRandomNpcEnabled,
-          groupNature
+          groupNature,
+          randomNpcPrompt: groupRandomNpcPrompt
         }) : buildPokeSinglePrompt({
           contactName,
           userName,
@@ -10903,6 +11879,7 @@ ${antiFluff}`;
       const groupMembers = state.groupMembers.slice();
       const groupRandomNpcEnabled = state.groupRandomNpcEnabled;
       const groupNature = state.groupNature;
+      const groupRandomNpcPrompt = state.groupRandomNpcPrompt;
       const isStillTarget = () => isGenerationTaskActive(task) && state.activeStorageId === storageId && state.isGroupChat && state.currentGroupKey === saveKey;
       try {
         const ctxData = await gatherContext2(task.context);
@@ -10923,7 +11900,8 @@ ${antiFluff}`;
           mainChatText,
           smsHistoryText,
           randomNpcEnabled: groupRandomNpcEnabled,
-          groupNature
+          groupNature,
+          randomNpcPrompt: groupRandomNpcPrompt
         }) + buildChatPreferencePrompt({
           store: window.__pmCharacterBehavior,
           storageId,
@@ -11278,7 +12256,7 @@ ${antiFluff}`;
   }
 
   // src/phone-context-injection.js
-  var clone4 = (value) => JSON.parse(JSON.stringify(value));
+  var clone5 = (value) => JSON.parse(JSON.stringify(value));
   function injectionFailure2(result, phase) {
     const failedWrites = Number.isInteger(result?.failedWrites) && result.failedWrites > 0 ? result.failedWrites : 0;
     const failedKeys = Array.isArray(result?.failedKeys) ? result.failedKeys : [];
@@ -11372,7 +12350,7 @@ ${antiFluff}`;
     };
     const toggleTargetInjection = async (target) => {
       if (!target) return false;
-      const snapshot = clone4(window.__pmBidirectional);
+      const snapshot = clone5(window.__pmBidirectional);
       const selected = new Set(window.__pmBidirectional[target.storageId] || []);
       if (selected.has(target.targetKey)) selected.delete(target.targetKey);
       else selected.add(target.targetKey);
@@ -11444,7 +12422,7 @@ ${antiFluff}`;
         saveButton.disabled = true;
         saveButton.textContent = "\u4FDD\u5B58\u5E76\u5E94\u7528\u4E2D\u2026";
       }
-      const snapshot = clone4(window.__pmInjectionConfig);
+      const snapshot = clone5(window.__pmInjectionConfig);
       window.__pmInjectionConfig = normalizeInjectionConfig({
         ...snapshot,
         phone: {
@@ -11489,244 +12467,8 @@ ${antiFluff}`;
     };
   }
 
-  // src/storage-background.js
-  var GLOBAL_BG_KEY = "ST_SMS_BG_GLOBAL";
-  var LOCAL_BG_INDEX_KEY = "ST_SMS_BG_LOCAL";
-  var LOCAL_BG_PREFIX = "ST_SMS_BG_LOCAL_";
-  async function migrateSingleBackground(storageKey, value) {
-    if (!await pmIDBSet(storageKey, value)) return false;
-    try {
-      localStorage.setItem(storageKey, IDB_MARKER);
-      return true;
-    } catch (error) {
-      await pmIDBDel(storageKey);
-      return false;
-    }
-  }
-  async function loadBgSettings() {
-    try {
-      const storedDesktop = localStorage.getItem(DESKTOP_BG_KEY) || "";
-      if (storedDesktop === IDB_MARKER) {
-        window.__pmDesktopBg = await pmIDBGet(DESKTOP_BG_KEY) || "";
-      } else if (isBigData(storedDesktop)) {
-        window.__pmDesktopBg = storedDesktop;
-        await migrateSingleBackground(DESKTOP_BG_KEY, storedDesktop);
-      } else {
-        window.__pmDesktopBg = storedDesktop;
-      }
-    } catch (error) {
-      window.__pmDesktopBg = "";
-    }
-    try {
-      const storedGlobal = localStorage.getItem(GLOBAL_BG_KEY) || "";
-      if (storedGlobal === IDB_MARKER) {
-        window.__pmBgGlobal = await pmIDBGet(GLOBAL_BG_KEY) || "";
-      } else if (isBigData(storedGlobal)) {
-        window.__pmBgGlobal = storedGlobal;
-        await migrateSingleBackground(GLOBAL_BG_KEY, storedGlobal);
-      } else {
-        window.__pmBgGlobal = storedGlobal;
-      }
-    } catch (error) {
-      window.__pmBgGlobal = "";
-    }
-    try {
-      const storedLocal = readLocalBackgroundPointers();
-      const result = /* @__PURE__ */ Object.create(null);
-      let migrated = 0;
-      const stagedKeys = [];
-      for (const [key, value] of Object.entries(storedLocal)) {
-        if (value === IDB_MARKER) {
-          result[key] = await pmIDBGet(LOCAL_BG_PREFIX + key) || "";
-        } else if (isBigData(value)) {
-          result[key] = value;
-          const storageKey = LOCAL_BG_PREFIX + key;
-          if (await pmIDBSet(storageKey, value)) {
-            storedLocal[key] = IDB_MARKER;
-            stagedKeys.push(storageKey);
-            migrated++;
-          }
-        } else {
-          result[key] = value;
-        }
-      }
-      if (migrated > 0) {
-        try {
-          localStorage.setItem(LOCAL_BG_INDEX_KEY, JSON.stringify(storedLocal));
-        } catch (error) {
-          for (const storageKey of stagedKeys) await pmIDBDel(storageKey);
-        }
-      }
-      window.__pmBgLocal = result;
-    } catch (error) {
-      window.__pmBgLocal = /* @__PURE__ */ Object.create(null);
-    }
-  }
-  var UNSAFE_BACKGROUND_KEYS = /* @__PURE__ */ new Set(["__proto__", "prototype", "constructor"]);
-  function assertBackgroundEntries(value, label) {
-    for (const [key, entry2] of Object.entries(value)) {
-      if (UNSAFE_BACKGROUND_KEYS.has(key)) throw new Error(`${label}\u635F\u574F\uFF1A\u5305\u542B\u5371\u9669\u952E ${key}`);
-      if (typeof entry2 !== "string") throw new Error(`${label}\u635F\u574F\uFF1A${key} \u5FC5\u987B\u662F\u5B57\u7B26\u4E32`);
-    }
-  }
-  function readLocalBackgroundPointers() {
-    let serialized;
-    try {
-      serialized = localStorage.getItem(LOCAL_BG_INDEX_KEY);
-    } catch (error) {
-      throw new Error("\u4F1A\u8BDD\u80CC\u666F\u7D22\u5F15\u8BFB\u53D6\u5931\u8D25\uFF1A\u6D4F\u89C8\u5668\u5B58\u50A8\u4E0D\u53EF\u7528");
-    }
-    if (!serialized) return {};
-    let parsed;
-    try {
-      parsed = JSON.parse(serialized);
-    } catch (error) {
-      throw new Error("\u4F1A\u8BDD\u80CC\u666F\u7D22\u5F15\u635F\u574F\uFF1A\u65E0\u6CD5\u89E3\u6790");
-    }
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("\u4F1A\u8BDD\u80CC\u666F\u7D22\u5F15\u635F\u574F\uFF1A\u5FC5\u987B\u662F\u5BF9\u8C61");
-    assertBackgroundEntries(parsed, "\u4F1A\u8BDD\u80CC\u666F\u7D22\u5F15");
-    return parsed;
-  }
-  async function restoreBackgroundMutations(mutations, label) {
-    const failures = [];
-    for (const mutation of mutations.slice().reverse()) {
-      const restored = mutation.hadPrimary ? await pmIDBSet(mutation.key, mutation.previousValue) : await pmIDBDel(mutation.key);
-      if (!restored) failures.push(mutation.key);
-    }
-    if (failures.length) throw new Error(`${label}\u4E3B\u6570\u636E\u8865\u507F\u5931\u8D25`);
-  }
-  async function readPreviousBackground(key, hasPrimary, label) {
-    if (!hasPrimary) return null;
-    const value = await pmIDBGet(key);
-    if (value === null) throw new Error(`${label}\u539F\u6570\u636E\u8BFB\u53D6\u5931\u8D25\uFF1AIndexedDB \u4E0D\u53EF\u7528\u6216\u6570\u636E\u7F3A\u5931`);
-    return value;
-  }
-  function combinedBackgroundError(error, compensationError) {
-    const combined = new Error(`${error.message}\uFF1B${compensationError.message}`);
-    combined.cause = error;
-    return combined;
-  }
-  async function saveSingleBackground({ storageKey, value, label }) {
-    let previousPointer;
-    try {
-      previousPointer = localStorage.getItem(storageKey) || "";
-    } catch (error) {
-      throw new Error(`${label}\u7D22\u5F15\u8BFB\u53D6\u5931\u8D25\uFF1A\u6D4F\u89C8\u5668\u5B58\u50A8\u4E0D\u53EF\u7528`);
-    }
-    const hadPrimary = previousPointer === IDB_MARKER;
-    const previousValue = await readPreviousBackground(storageKey, hadPrimary, label);
-    let primaryMutated = false;
-    const rollbackPrimary = async (error) => {
-      if (!primaryMutated) throw error;
-      try {
-        await restoreBackgroundMutations([{ key: storageKey, hadPrimary, previousValue }], label);
-      } catch (compensationError) {
-        throw combinedBackgroundError(error, compensationError);
-      }
-      throw error;
-    };
-    if (isBigData(value)) {
-      if (!await pmIDBSet(storageKey, value)) throw new Error(`${label}\u4FDD\u5B58\u5931\u8D25\uFF1AIndexedDB \u4E0D\u53EF\u7528`);
-      primaryMutated = true;
-      try {
-        localStorage.setItem(storageKey, IDB_MARKER);
-      } catch (error) {
-        await rollbackPrimary(new Error(`${label}\u7D22\u5F15\u4FDD\u5B58\u5931\u8D25\uFF1A\u6D4F\u89C8\u5668\u5B58\u50A8\u4E0D\u53EF\u7528`));
-      }
-    } else {
-      if (hadPrimary && !await pmIDBDel(storageKey)) throw new Error(`${label}\u5220\u9664\u5931\u8D25\uFF1AIndexedDB \u4E0D\u53EF\u7528`);
-      primaryMutated = hadPrimary;
-      try {
-        localStorage.setItem(storageKey, value);
-      } catch (error) {
-        await rollbackPrimary(new Error(`${label}\u4FDD\u5B58\u5931\u8D25\uFF1A\u6D4F\u89C8\u5668\u5B58\u50A8\u4E0D\u53EF\u7528`));
-      }
-    }
-  }
-  async function saveBgGlobal() {
-    return saveSingleBackground({ storageKey: GLOBAL_BG_KEY, value: window.__pmBgGlobal || "", label: "\u5168\u5C40\u80CC\u666F" });
-  }
-  async function saveDesktopBg() {
-    return saveSingleBackground({ storageKey: DESKTOP_BG_KEY, value: window.__pmDesktopBg || "", label: "\u684C\u9762\u80CC\u666F" });
-  }
-  async function saveBgLocal({ data = window.__pmBgLocal, coordinated = false } = {}) {
-    const persist = async (snapshot, protectedScopes = []) => {
-      if (!snapshot || typeof snapshot !== "object" || Array.isArray(snapshot)) throw new Error("\u4F1A\u8BDD\u80CC\u666F\u6570\u636E\u635F\u574F\uFF1A\u5FC5\u987B\u662F\u5BF9\u8C61");
-      assertBackgroundEntries(snapshot, "\u4F1A\u8BDD\u80CC\u666F\u6570\u636E");
-      let current = snapshot;
-      if (protectedScopes.length) {
-        const pointers2 = readLocalBackgroundPointers();
-        current = structuredClone(snapshot);
-        for (const scope of protectedScopes) {
-          const prefix = `${scope}_`;
-          for (const key of Object.keys(current)) {
-            if (key.startsWith(prefix)) delete current[key];
-          }
-          for (const [key, pointer] of Object.entries(pointers2)) {
-            if (!key.startsWith(prefix)) continue;
-            if (pointer === IDB_MARKER) {
-              const value = await pmIDBGet(LOCAL_BG_PREFIX + key);
-              if (typeof value !== "string") throw new Error("\u4F1A\u8BDD\u80CC\u666F\u4E3B\u5B58\u50A8\u8BFB\u53D6\u5931\u8D25\uFF1AIndexedDB \u4E0D\u53EF\u7528\u6216\u6570\u636E\u7F3A\u5931");
-              current[key] = value;
-            } else {
-              current[key] = pointer;
-            }
-          }
-        }
-      }
-      const pointers = /* @__PURE__ */ Object.create(null);
-      const previousPointers = readLocalBackgroundPointers();
-      const mutations = [];
-      const prepareMutation = async (key) => {
-        const storageKey = LOCAL_BG_PREFIX + key;
-        const hadPrimary = previousPointers[key] === IDB_MARKER;
-        const previousValue = await readPreviousBackground(storageKey, hadPrimary, "\u4F1A\u8BDD\u80CC\u666F");
-        return { key: storageKey, hadPrimary, previousValue };
-      };
-      try {
-        for (const [key, value] of Object.entries(current)) {
-          if (isBigData(value)) {
-            const mutation = await prepareMutation(key);
-            if (!await pmIDBSet(mutation.key, value)) throw new Error("\u4F1A\u8BDD\u80CC\u666F\u4FDD\u5B58\u5931\u8D25\uFF1AIndexedDB \u4E0D\u53EF\u7528");
-            mutations.push(mutation);
-            pointers[key] = IDB_MARKER;
-          } else {
-            if (previousPointers[key] === IDB_MARKER) {
-              const mutation = await prepareMutation(key);
-              if (!await pmIDBDel(mutation.key)) throw new Error("\u4F1A\u8BDD\u80CC\u666F\u5220\u9664\u5931\u8D25\uFF1AIndexedDB \u4E0D\u53EF\u7528");
-              mutations.push(mutation);
-            }
-            pointers[key] = value;
-          }
-        }
-        for (const [key, previousValue] of Object.entries(previousPointers)) {
-          if (previousValue !== IDB_MARKER || Object.hasOwn(current, key)) continue;
-          const mutation = await prepareMutation(key);
-          if (!await pmIDBDel(mutation.key)) throw new Error("\u4F1A\u8BDD\u80CC\u666F\u5220\u9664\u5931\u8D25\uFF1AIndexedDB \u4E0D\u53EF\u7528");
-          mutations.push(mutation);
-        }
-        try {
-          localStorage.setItem(LOCAL_BG_INDEX_KEY, JSON.stringify(pointers));
-        } catch (error) {
-          throw new Error("\u4F1A\u8BDD\u80CC\u666F\u7D22\u5F15\u4FDD\u5B58\u5931\u8D25\uFF1A\u6D4F\u89C8\u5668\u5B58\u50A8\u4E0D\u53EF\u7528");
-        }
-      } catch (error) {
-        if (mutations.length) {
-          try {
-            await restoreBackgroundMutations(mutations, "\u4F1A\u8BDD\u80CC\u666F");
-          } catch (compensationError) {
-            throw combinedBackgroundError(error, compensationError);
-          }
-        }
-        throw error;
-      }
-    };
-    if (coordinated) return persist(structuredClone(data));
-    return enqueueDirectorySave("backgrounds", data, persist);
-  }
-
   // src/phone-directory.js
-  var clone5 = (value) => JSON.parse(JSON.stringify(value));
+  var clone6 = (value) => JSON.parse(JSON.stringify(value));
   function injectionFailure3(result, phase, subject = "\u7FA4\u804A\u8BBE\u7F6E") {
     const failedWrites = Number.isInteger(result?.failedWrites) && result.failedWrites > 0 ? result.failedWrites : 0;
     const failedKeys = Array.isArray(result?.failedKeys) ? result.failedKeys : [];
@@ -11741,7 +12483,7 @@ ${antiFluff}`;
     return {
       activeStorageId: state.activeStorageId,
       currentPersona: state.currentPersona,
-      conversationHistory: clone5(state.conversationHistory),
+      conversationHistory: clone6(state.conversationHistory),
       isGroupChat: state.isGroupChat,
       currentGroupKey: state.currentGroupKey,
       groupMembers: state.groupMembers.slice(),
@@ -11749,6 +12491,7 @@ ${antiFluff}`;
       groupDisplayName: state.groupDisplayName,
       groupRandomNpcEnabled: state.groupRandomNpcEnabled,
       groupNature: state.groupNature,
+      groupRandomNpcPrompt: state.groupRandomNpcPrompt,
       groupColorMap: { ...state.groupColorMap }
     };
   }
@@ -11763,6 +12506,7 @@ ${antiFluff}`;
     state.groupDisplayName = snapshot.groupDisplayName;
     state.groupRandomNpcEnabled = snapshot.groupRandomNpcEnabled;
     state.groupNature = snapshot.groupNature;
+    state.groupRandomNpcPrompt = snapshot.groupRandomNpcPrompt;
     state.groupColorMap = snapshot.groupColorMap;
   }
   async function refreshEditedGroupRuntime({
@@ -11778,6 +12522,7 @@ ${antiFluff}`;
       state.groupDisplayName = updated.name;
       state.groupRandomNpcEnabled = updated.randomNpcEnabled;
       state.groupNature = updated.groupNature;
+      state.groupRandomNpcPrompt = updated.randomNpcPrompt;
       state.groupColorMap = {};
       updated.members.forEach((name, index) => {
         state.groupColorMap[name] = updated.memberColors[name] || GROUP_COLORS[index % GROUP_COLORS.length].bg;
@@ -11883,6 +12628,7 @@ ${antiFluff}`;
       state.groupDisplayName = "";
       state.groupRandomNpcEnabled = false;
       state.groupNature = "";
+      state.groupRandomNpcPrompt = "";
       state.groupColorMap = {};
       const name = state.phoneWindow?.querySelector(".pm-name");
       const poke = state.phoneWindow?.querySelector(".pm-name-edit");
@@ -12109,21 +12855,6 @@ ${antiFluff}`;
             ${groupMeta.members.map((name, index) => `<label style="display:contents;"><span style="font-size:12px;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(name)}</span><input class="pm-group-member-color" data-member="${escapeAttr(name)}" type="color" value="${escapeAttr(groupMeta.memberColors[name] || GROUP_COLORS[index % GROUP_COLORS.length].bg)}"></label>`).join("")}
           </div>
         </div>` : "";
-      const randomNpcHtml = mode === "edit" ? `
-        <div style="padding-top:12px;border-top:1px solid var(--pm-color-border-subtle);">
-          <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
-            <div><div class="pm-cfg-label">\u5141\u8BB8\u8DEF\u4EBA\u7FA4\u53CB\u968F\u673A\u51FA\u73B0</div><div class="pm-cfg-tip" style="text-align:left;">\u5F00\u542F\u540E\uFF0CAI \u53EF\u4EE5\u751F\u6210\u4E0D\u5728\u56FA\u5B9A\u6210\u5458\u540D\u5355\u4E2D\u7684\u4E34\u65F6\u7FA4\u53CB\u3002</div></div>
-            <div id="pm-group-random-npc" class="pm-custom-check pm-bi-style ${groupMeta.randomNpcEnabled ? "is-checked" : ""}"
-              role="checkbox" tabindex="0" aria-checked="${groupMeta.randomNpcEnabled}"
-              onclick="this.classList.toggle('is-checked');this.setAttribute('aria-checked',String(this.classList.contains('is-checked')))"
-              onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();this.click()}"
-              style="cursor:pointer;width:22px;height:22px;min-width:22px;min-height:22px;flex-shrink:0;border-radius:50%;"></div>
-          </div>
-          <label class="pm-cfg-label" style="display:block;margin-top:12px;">\u7FA4\u804A\u6027\u8D28
-            <textarea id="pm-group-nature" class="pm-cfg-input" maxlength="200" rows="3" placeholder="\u4F8B\u5982\uFF1A\u8FD9\u662F\u4E00\u4E2A\u6C14\u6C1B\u5F88\u597D\u7684\u540C\u5B66\u7FA4">${escapeHtml(groupMeta.groupNature)}</textarea>
-          </label>
-          <div class="pm-cfg-tip" style="text-align:left;">\u8DEF\u4EBA\u7FA4\u53CB\u4F1A\u53C2\u8003\u8FD9\u6BB5\u63CF\u8FF0\u51B3\u5B9A\u8EAB\u4EFD\u3001\u8BED\u6C14\u548C\u4E92\u52A8\u65B9\u5F0F\u3002</div>
-        </div>` : "";
       makeOverlay(`
     <div class="pm-modal pm-modal-wide">
     <div class="pm-modal-header"><button type="button" onclick="${closeAction}" class="pm-modal-close" title="\u8FD4\u56DE\u5217\u8868" aria-label="\u8FD4\u56DE\u5217\u8868">${BACK_ICON_SVG}</button><b>${title}</b><button type="button" onclick="${closeAction}" class="pm-modal-close" title="\u5173\u95ED" aria-label="\u5173\u95ED">${CLOSE_ICON_SVG}</button></div>
@@ -12136,9 +12867,15 @@ ${antiFluff}`;
         <div id="pm-group-preview" style="display:flex;flex-wrap:wrap;gap:4px;"></div>
 
         ${mode === "edit" ? `
-        ${randomNpcHtml}
         ${memberColorHtml}
         ${emojiCheckHtml}
+        <div style="padding-top:12px;border-top:1px solid var(--pm-color-border-subtle);">
+          <div class="pm-cfg-label" style="margin-bottom:8px;">\u7FA4\u804A\u529F\u80FD</div>
+          <div class="pm-member-behavior-list">
+            <button type="button" onclick="window.__pmShowConversationSettings(true)"><b>\u7FA4\u804A\u98CE\u683C</b><span>\u6309\u6210\u5458\u8BBE\u7F6E\u7FA4\u804A\u53D1\u8A00\u98CE\u683C</span></button>
+            <button type="button" onclick="window.__pmShowGroupRandomNpcSettings()"><b>\u8DEF\u4EBA\u7FA4\u53CB</b><span>\u8BBE\u7F6E\u968F\u673A\u51FA\u73B0\u7684\u4E34\u65F6\u7FA4\u53CB</span></button>
+          </div>
+        </div>
         ` : ""}
     </div>
     ${mode === "create" ? `
@@ -12166,8 +12903,6 @@ ${antiFluff}`;
       try {
         if (!window.__pmGroupMeta[id2]) window.__pmGroupMeta[id2] = {};
         const previous = window.__pmGroupMeta[id2][state.currentGroupKey] || {};
-        const randomNpcEnabled = document.getElementById("pm-group-random-npc")?.classList.contains("is-checked") === true;
-        const groupNature = document.getElementById("pm-group-nature")?.value || "";
         const memberColors = {};
         document.querySelectorAll(".pm-group-member-color").forEach((input) => {
           if (names.includes(input.dataset.member) && /^#[0-9a-f]{6}$/i.test(input.value)) memberColors[input.dataset.member] = input.value;
@@ -12176,9 +12911,7 @@ ${antiFluff}`;
           ...previous,
           name: groupName,
           members: names,
-          memberColors,
-          randomNpcEnabled,
-          groupNature
+          memberColors
         });
         window.__pmGroupMeta[id2][state.currentGroupKey] = updated;
         if (!window.__pmPokeConfig[id2]) window.__pmPokeConfig[id2] = {};
@@ -12211,6 +12944,56 @@ ${antiFluff}`;
         closeOverlay?.("saved");
       } catch (error) {
         alert(error.message || "\u7FA4\u804A\u8BBE\u7F6E\u4FDD\u5B58\u5931\u8D25");
+      }
+    };
+    window.__pmShowGroupRandomNpcSettings = () => {
+      if (!state.isGroupChat || !state.currentGroupKey) return;
+      const id2 = getStorageId2();
+      const groupMeta = normalizeGroupMeta(window.__pmGroupMeta[id2]?.[state.currentGroupKey]);
+      makeOverlay(`
+    <div class="pm-modal pm-modal-wide">
+      <div class="pm-modal-header"><button type="button" onclick="window.__pmEditGroup()" class="pm-modal-close" title="\u8FD4\u56DE\u7FA4\u804A\u8BBE\u7F6E" aria-label="\u8FD4\u56DE\u7FA4\u804A\u8BBE\u7F6E">${BACK_ICON_SVG}</button><b>\u8DEF\u4EBA\u7FA4\u53CB</b><button type="button" onclick="window.__pmCloseOverlay()" class="pm-modal-close" title="\u5173\u95ED" aria-label="\u5173\u95ED">${CLOSE_ICON_SVG}</button></div>
+      <div class="pm-modal-scroll pm-group-settings-scroll">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
+          <div><div class="pm-cfg-label">\u5141\u8BB8\u8DEF\u4EBA\u7FA4\u53CB\u968F\u673A\u51FA\u73B0</div><div class="pm-cfg-tip" style="text-align:left;">\u5F00\u542F\u540E\uFF0CAI \u53EF\u4EE5\u751F\u6210\u4E0D\u5728\u56FA\u5B9A\u6210\u5458\u540D\u5355\u4E2D\u7684\u4E34\u65F6\u7FA4\u53CB\u3002</div></div><div id="pm-group-random-npc" class="pm-custom-check pm-bi-style ${groupMeta.randomNpcEnabled ? "is-checked" : ""}" role="checkbox" tabindex="0" aria-checked="${groupMeta.randomNpcEnabled}" onclick="this.classList.toggle('is-checked');this.setAttribute('aria-checked',String(this.classList.contains('is-checked')))" onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();this.click()}" style="cursor:pointer;width:22px;height:22px;min-width:22px;min-height:22px;flex-shrink:0;border-radius:50%;"></div>
+        </div>
+        <label class="pm-cfg-label" style="display:block;margin-top:12px;">\u7FA4\u804A\u6027\u8D28
+          <textarea id="pm-group-nature" class="pm-cfg-input" maxlength="200" rows="3" placeholder="\u4F8B\u5982\uFF1A\u8FD9\u662F\u4E00\u4E2A\u6C14\u6C1B\u5F88\u597D\u7684\u540C\u5B66\u7FA4">${escapeHtml(groupMeta.groupNature)}</textarea></label>
+        <div class="pm-cfg-tip" style="text-align:left;">\u8DEF\u4EBA\u7FA4\u53CB\u4F1A\u53C2\u8003\u8FD9\u6BB5\u63CF\u8FF0\u51B3\u5B9A\u8EAB\u4EFD\u3001\u8BED\u6C14\u548C\u4E92\u52A8\u65B9\u5F0F\u3002</div>
+        <label class="pm-cfg-label" style="display:block;margin-top:12px;">\u9ED8\u8BA4\u63D0\u793A\u8BCD
+          <textarea id="pm-group-random-npc-prompt" class="pm-cfg-input" maxlength="2000" rows="5">${escapeHtml(groupMeta.randomNpcPrompt || DEFAULT_RANDOM_NPC_PROMPT)}</textarea></label>
+        <div class="pm-cfg-tip" style="text-align:left;">\u4EC5\u5728\u5F00\u542F\u8DEF\u4EBA\u7FA4\u53CB\u65F6\u751F\u6548\uFF1B\u4E34\u65F6\u89D2\u8272\u540D\u4ECD\u987B\u4F7F\u7528\u201C\u8DEF\u4EBA\u7FA4\u53CB\xB7\u540D\u5B57\u201D\u3002</div></div>
+      <div class="pm-modal-add"><button type="button" class="pm-action-button" onclick="window.__pmSaveGroupRandomNpcSettings()" style="flex:1">\u4FDD\u5B58\u8DEF\u4EBA\u7FA4\u53CB\u8BBE\u7F6E</button></div>
+    </div>`);
+    };
+    window.__pmSaveGroupRandomNpcSettings = async () => {
+      if (!state.isGroupChat || !state.currentGroupKey) return;
+      const id2 = getStorageId2();
+      const groupSnapshot = JSON.parse(JSON.stringify(window.__pmGroupMeta));
+      try {
+        const previous = window.__pmGroupMeta[id2]?.[state.currentGroupKey] || {};
+        const updated = normalizeGroupMeta({
+          ...previous,
+          randomNpcEnabled: document.getElementById("pm-group-random-npc")?.classList.contains("is-checked") === true,
+          groupNature: document.getElementById("pm-group-nature")?.value || "",
+          randomNpcPrompt: document.getElementById("pm-group-random-npc-prompt")?.value || ""
+        });
+        if (!window.__pmGroupMeta[id2]) window.__pmGroupMeta[id2] = {};
+        window.__pmGroupMeta[id2][state.currentGroupKey] = updated;
+        await commitEditedGroupUpdate({
+          state,
+          updated,
+          persistUpdated: () => saveGroupMeta(),
+          restoreConfig: () => {
+            window.__pmGroupMeta = groupSnapshot;
+          },
+          persistRestored: () => saveGroupMeta(),
+          applyInjection: () => applyBidirectionalInjection(),
+          switchConversation: () => state.phoneWindow ? window.__pmSwitch(state.currentGroupKey) : true
+        });
+        window.__pmEditGroup();
+      } catch (error) {
+        alert(error.message || "\u8DEF\u4EBA\u7FA4\u53CB\u8BBE\u7F6E\u4FDD\u5B58\u5931\u8D25");
       }
     };
     window.__pmShowGroupCreate = () => showGroupForm("create");
@@ -12264,6 +13047,7 @@ ${antiFluff}`;
           state.currentGroupKey = groupKey;
           state.groupRandomNpcEnabled = false;
           state.groupNature = "";
+          state.groupRandomNpcPrompt = "";
           state.groupColorMap = {};
           names.forEach((n, i) => {
             state.groupColorMap[n] = GROUP_COLORS[i % GROUP_COLORS.length];
@@ -12353,11 +13137,11 @@ ${antiFluff}`;
         let snapshots = null;
         try {
           snapshots = {
-            groupMeta: clone5(window.__pmGroupMeta),
-            histories: clone5(window.__pmHistories),
-            bidirectional: clone5(window.__pmBidirectional),
-            poke: clone5(window.__pmPokeConfig),
-            backgrounds: clone5(window.__pmBgLocal)
+            groupMeta: clone6(window.__pmGroupMeta),
+            histories: clone6(window.__pmHistories),
+            bidirectional: clone6(window.__pmBidirectional),
+            poke: clone6(window.__pmPokeConfig),
+            backgrounds: clone6(window.__pmBgLocal)
           };
           if (window.__pmGroupMeta[id2]) delete window.__pmGroupMeta[id2][key];
           if (window.__pmHistories[id2]) delete window.__pmHistories[id2][key];
@@ -12417,10 +13201,10 @@ ${antiFluff}`;
         let snapshots = null;
         try {
           snapshots = {
-            histories: clone5(window.__pmHistories),
-            bidirectional: clone5(window.__pmBidirectional),
-            poke: clone5(window.__pmPokeConfig),
-            backgrounds: clone5(window.__pmBgLocal)
+            histories: clone6(window.__pmHistories),
+            bidirectional: clone6(window.__pmBidirectional),
+            poke: clone6(window.__pmPokeConfig),
+            backgrounds: clone6(window.__pmBgLocal)
           };
           if (window.__pmHistories[id2]) delete window.__pmHistories[id2][name];
           const arr = window.__pmBidirectional[id2] || [], idx = arr.indexOf(name);
@@ -12469,566 +13253,6 @@ ${antiFluff}`;
       });
     };
     Object.assign(deps, { showGroupForm });
-  }
-
-  // src/branch-scope-inheritance.js
-  var clone6 = (value) => structuredClone(value);
-  var own = (value, key) => !!value && typeof value === "object" && Object.hasOwn(value, key);
-  var validText = (value) => typeof value === "string" && value.trim() ? value.trim() : "";
-  var BRANCH_INTERACTIVE_STORE_KEY = "ST_INTERACTIVE_SCENES_V1";
-  var pendingByTarget = /* @__PURE__ */ new Map();
-  function resolveBranchInheritance(context) {
-    const avatar = validText(context?.characters?.[context.characterId]?.avatar);
-    const targetChatId = validText(getCurrentChatId(context));
-    const parentChatId = validText(context?.chatMetadata?.main_chat || context?.chat_metadata?.main_chat);
-    if (!avatar || !targetChatId || !parentChatId || parentChatId === targetChatId) return null;
-    const sourceId = getStorageIdFor(avatar, parentChatId);
-    const targetId = getStorageIdFor(avatar, targetChatId);
-    if (sourceId === "sms_unknown__default" || targetId === "sms_unknown__default" || sourceId === targetId) return null;
-    return { avatar, parentChatId, targetChatId, sourceId, targetId };
-  }
-  function scopeBackgroundKeys(storageId, backgrounds) {
-    const prefix = `${storageId}_`;
-    return Object.keys(backgrounds || {}).filter((key) => key.startsWith(prefix));
-  }
-  function hasTargetData(targetId, stores) {
-    const maps = [stores.histories, stores.groupMeta, stores.pokeConfig, stores.characterBehavior, stores.bidirectional];
-    if (maps.some((store) => own(store, targetId))) return true;
-    if (scopeBackgroundKeys(targetId, stores.backgrounds).length) return true;
-    if (own(stores.interactive?.scopes, targetId) || own(stores.phoneUi?.scopes, targetId)) return true;
-    if (own(stores.calendar?.scopes, targetId) || own(stores.occasions?.scopes, targetId) || own(stores.cycles?.scopes, targetId) || own(stores.recipes?.scopes, targetId)) return true;
-    return own(stores.budget?.communitySceneIdsByStorage, targetId) || own(stores.budget?.communitySelectionsByStorage, targetId);
-  }
-  function copyEntry(target, source, sourceId, targetId) {
-    if (own(source, sourceId)) target[targetId] = clone6(source[sourceId]);
-  }
-  function remapInteractiveScope(sourceScope, targetId) {
-    const scope = clone6(sourceScope);
-    const actorIdMap = /* @__PURE__ */ new Map();
-    const actors = {};
-    for (const [sourceActorId, actor] of Object.entries(scope.actors || {})) {
-      const targetActorId = deriveInteractiveActorId(targetId, actor.type, actor.bindingKey);
-      actorIdMap.set(sourceActorId, targetActorId);
-      actors[targetActorId] = { ...actor, actorId: targetActorId };
-    }
-    const remapAuthor = (item) => {
-      if (actorIdMap.has(item.authorId)) item.authorId = actorIdMap.get(item.authorId);
-    };
-    for (const scene of Object.values(scope.scenes || {})) {
-      for (const post of scene.posts || []) {
-        remapAuthor(post);
-        for (const comment of post.comments || []) remapAuthor(comment);
-      }
-      for (const danmaku of scene.live?.danmaku || []) remapAuthor(danmaku);
-    }
-    scope.actors = actors;
-    return scope;
-  }
-  function createCandidates(sourceId, targetId, stores) {
-    const next = clone6(stores);
-    for (const key of ["histories", "groupMeta", "pokeConfig", "characterBehavior", "bidirectional"]) {
-      copyEntry(next[key], stores[key], sourceId, targetId);
-    }
-    for (const key of scopeBackgroundKeys(sourceId, stores.backgrounds)) {
-      next.backgrounds[`${targetId}${key.slice(sourceId.length)}`] = clone6(stores.backgrounds[key]);
-    }
-    if (own(stores.interactive.scopes, sourceId)) {
-      next.interactive.scopes[targetId] = remapInteractiveScope(stores.interactive.scopes[sourceId], targetId);
-    }
-    for (const key of ["phoneUi", "calendar", "occasions", "cycles", "recipes"]) {
-      copyEntry(next[key].scopes, stores[key].scopes, sourceId, targetId);
-    }
-    copyEntry(next.budget.communitySceneIdsByStorage, stores.budget.communitySceneIdsByStorage, sourceId, targetId);
-    copyEntry(next.budget.communitySelectionsByStorage, stores.budget.communitySelectionsByStorage, sourceId, targetId);
-    next.groupMeta = normalizeGroupMetaStore(next.groupMeta);
-    next.characterBehavior = normalizeCharacterBehaviorStore(next.characterBehavior);
-    next.interactive = normalizeInteractiveStore(next.interactive);
-    next.phoneUi = normalizePhoneUiState(next.phoneUi, next.interactive);
-    next.calendar = normalizeCalendarStore(next.calendar);
-    next.occasions = normalizeOccasionStore(next.occasions);
-    next.cycles = normalizeCycleStore(next.cycles);
-    next.recipes = normalizeRecipeStore(next.recipes);
-    next.budget = normalizeBudgetConfig(next.budget);
-    return next;
-  }
-  function replaceEntry(target, source, key) {
-    if (own(source, key)) target[key] = clone6(source[key]);
-    else delete target[key];
-  }
-  function mergeBranchScope(current, desired, targetId) {
-    const next = clone6(normalizeStores(current));
-    const source = normalizeStores(desired);
-    for (const key of ["histories", "groupMeta", "pokeConfig", "characterBehavior", "bidirectional"]) {
-      replaceEntry(next[key], source[key], targetId);
-    }
-    for (const key of scopeBackgroundKeys(targetId, next.backgrounds)) delete next.backgrounds[key];
-    for (const key of scopeBackgroundKeys(targetId, source.backgrounds)) next.backgrounds[key] = clone6(source.backgrounds[key]);
-    for (const key of ["interactive", "phoneUi", "calendar", "occasions", "cycles", "recipes"]) {
-      replaceEntry(next[key].scopes, source[key].scopes, targetId);
-    }
-    replaceEntry(next.budget.communitySceneIdsByStorage, source.budget.communitySceneIdsByStorage, targetId);
-    replaceEntry(next.budget.communitySelectionsByStorage, source.budget.communitySelectionsByStorage, targetId);
-    return normalizeStores(next);
-  }
-  function normalizeStores(stores) {
-    return {
-      histories: stores.histories || {},
-      groupMeta: stores.groupMeta || {},
-      pokeConfig: stores.pokeConfig || {},
-      characterBehavior: stores.characterBehavior || {},
-      bidirectional: stores.bidirectional || {},
-      backgrounds: stores.backgrounds || {},
-      interactive: stores.interactive || { version: 2, scopes: {} },
-      phoneUi: stores.phoneUi || { version: 1, scopes: {} },
-      calendar: stores.calendar || { version: 1, scopes: {} },
-      occasions: stores.occasions || { version: 1, scopes: {} },
-      cycles: stores.cycles || { version: 1, scopes: {} },
-      recipes: stores.recipes || { version: 1, scopes: {} },
-      budget: stores.budget || normalizeBudgetConfig()
-    };
-  }
-  function same(value, other) {
-    return JSON.stringify(value) === JSON.stringify(other);
-  }
-  function replaceScope(store, desired, targetId) {
-    const next = clone6(store || {});
-    replaceEntry(next, desired || {}, targetId);
-    return next;
-  }
-  async function readHistoriesForBranch() {
-    const keys = await pmIDBKeys();
-    if (!Array.isArray(keys)) throw new Error("\u5206\u652F\u7EE7\u627F\u6765\u6E90\u8BFB\u53D6\u5931\u8D25\uFF1A\u65E0\u6CD5\u679A\u4E3E\u804A\u5929\u8BB0\u5F55");
-    if (keys.includes("ST_SMS_DATA_V2")) {
-      const value = await pmIDBGet("ST_SMS_DATA_V2");
-      if (!value || typeof value !== "object" || Array.isArray(value)) {
-        throw new Error("\u5206\u652F\u7EE7\u627F\u6765\u6E90\u8BFB\u53D6\u5931\u8D25\uFF1A\u804A\u5929\u8BB0\u5F55\u4E3B\u5B58\u50A8\u65E0\u6548");
-      }
-      return value;
-    }
-    try {
-      const raw = localStorage.getItem("ST_SMS_DATA_V2");
-      if (!raw) return {};
-      const value = JSON.parse(raw);
-      if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("\u683C\u5F0F\u65E0\u6548");
-      return value;
-    } catch (error) {
-      throw new Error("\u5206\u652F\u7EE7\u627F\u6765\u6E90\u8BFB\u53D6\u5931\u8D25\uFF1A\u804A\u5929\u8BB0\u5F55\u540E\u5907\u5B58\u50A8\u65E0\u6548");
-    }
-  }
-  async function readGroupMetaForBranch() {
-    const fallback = localStorage.getItem("ST_SMS_GROUP_META_LOCAL_FALLBACK");
-    if (fallback) return normalizeGroupMetaStore(JSON.parse(fallback));
-    const value = await pmIDBGet("ST_SMS_GROUP_META");
-    if (value && typeof value === "object" && !Array.isArray(value)) return normalizeGroupMetaStore(value);
-    const raw = localStorage.getItem("ST_SMS_GROUP_META");
-    return normalizeGroupMetaStore(raw ? JSON.parse(raw) : {});
-  }
-  function readLocalStoreForBranch(key, normalize, label) {
-    try {
-      const raw = localStorage.getItem(key);
-      return normalize(raw ? JSON.parse(raw) : {});
-    } catch (error) {
-      throw new Error(`\u5206\u652F\u7EE7\u627F\u6765\u6E90\u8BFB\u53D6\u5931\u8D25\uFF1A${label}`);
-    }
-  }
-  async function readInteractiveForBranch() {
-    try {
-      const fallback = localStorage.getItem(`${BRANCH_INTERACTIVE_STORE_KEY}_LOCAL_FALLBACK`);
-      if (fallback) return normalizeInteractiveStore(JSON.parse(fallback));
-      const keys = await pmIDBKeys();
-      if (!Array.isArray(keys)) throw new Error("\u65E0\u6CD5\u679A\u4E3E IndexedDB");
-      if (!keys.includes(BRANCH_INTERACTIVE_STORE_KEY)) return normalizeInteractiveStore(null);
-      const value = await pmIDBGet(BRANCH_INTERACTIVE_STORE_KEY);
-      if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("\u4E3B\u5B58\u50A8\u65E0\u6548");
-      return normalizeInteractiveStore(value);
-    } catch (error) {
-      throw new Error("\u5206\u652F\u7EE7\u627F\u6765\u6E90\u8BFB\u53D6\u5931\u8D25\uFF1A\u4E92\u52A8\u793E\u533A\u6570\u636E\u65E0\u6548");
-    }
-  }
-  function readPhoneUiForBranch(interactive) {
-    try {
-      return normalizePhoneUiState(JSON.parse(localStorage.getItem(PHONE_UI_STORAGE_KEY) || "null"), interactive);
-    } catch (error) {
-      throw new Error("\u5206\u652F\u7EE7\u627F\u6765\u6E90\u8BFB\u53D6\u5931\u8D25\uFF1A\u624B\u673A\u754C\u9762\u72B6\u6001\u65E0\u6548");
-    }
-  }
-  function readCalendarForBranch(key, normalize, label) {
-    return readLocalStoreForBranch(key, (value) => normalize({ version: 1, scopes: value?.scopes || {} }), label);
-  }
-  async function readBackgroundsForBranch() {
-    const pointers = readLocalStoreForBranch("ST_SMS_BG_LOCAL", (value) => value, "\u4F1A\u8BDD\u80CC\u666F\u7D22\u5F15");
-    const backgrounds = {};
-    for (const [key, pointer] of Object.entries(pointers)) {
-      if (typeof pointer !== "string") throw new Error("\u5206\u652F\u7EE7\u627F\u6765\u6E90\u8BFB\u53D6\u5931\u8D25\uFF1A\u4F1A\u8BDD\u80CC\u666F\u7D22\u5F15\u65E0\u6548");
-      if (pointer !== IDB_MARKER) {
-        backgrounds[key] = pointer;
-        continue;
-      }
-      const value = await pmIDBGet(`ST_SMS_BG_LOCAL_${key}`);
-      if (typeof value !== "string") throw new Error("\u5206\u652F\u7EE7\u627F\u6765\u6E90\u8BFB\u53D6\u5931\u8D25\uFF1A\u4F1A\u8BDD\u80CC\u666F\u4E3B\u5B58\u50A8\u65E0\u6548");
-      backgrounds[key] = value;
-    }
-    return backgrounds;
-  }
-  function readBudgetForBranch() {
-    return readLocalStoreForBranch(BUDGET_CONFIG_KEY, normalizeBudgetConfig, "\u793E\u533A\u9884\u7B97\u914D\u7F6E");
-  }
-  function commitBudgetScope({ desired, expected, targetId }) {
-    const current = readBudgetForBranch();
-    const restoring = !own(desired.communitySceneIdsByStorage, targetId) && !own(desired.communitySelectionsByStorage, targetId);
-    const targetChanged = !same(current.communitySceneIdsByStorage[targetId], expected.communitySceneIdsByStorage[targetId]) || !same(current.communitySelectionsByStorage[targetId], expected.communitySelectionsByStorage[targetId]);
-    if (!restoring && (own(current.communitySceneIdsByStorage, targetId) || own(current.communitySelectionsByStorage, targetId))) {
-      throw new Error("\u5206\u652F\u7EE7\u627F\u4FDD\u5B58\u5931\u8D25\uFF1A\u76EE\u6807 scope \u5DF2\u88AB\u5E76\u53D1\u5199\u5165 (\u793E\u533A\u9884\u7B97\u914D\u7F6E)");
-    }
-    if (restoring && targetChanged) {
-      throw new Error("\u5206\u652F\u7EE7\u627F\u8865\u507F\u53D6\u6D88\uFF1A\u76EE\u6807 scope \u5DF2\u5728\u4E8B\u52A1\u540E\u88AB\u66F4\u65B0 (\u793E\u533A\u9884\u7B97\u914D\u7F6E)");
-    }
-    const merged = clone6(current);
-    replaceEntry(merged.communitySceneIdsByStorage, desired.communitySceneIdsByStorage, targetId);
-    replaceEntry(merged.communitySelectionsByStorage, desired.communitySelectionsByStorage, targetId);
-    try {
-      localStorage.setItem(BUDGET_CONFIG_KEY, JSON.stringify(normalizeBudgetConfig(merged)));
-    } catch (error) {
-      throw new Error("\u5206\u652F\u7EE7\u627F\u4FDD\u5B58\u5931\u8D25\uFF1A\u793E\u533A\u9884\u7B97\u914D\u7F6E\u4E0D\u53EF\u7528");
-    }
-    return normalizeBudgetConfig(merged);
-  }
-  function commitLocalScope({ key, desired, expected, targetId, normalize, label }) {
-    const current = readLocalStoreForBranch(key, normalize, label);
-    const restoring = !own(desired, targetId);
-    if (!restoring && own(current, targetId)) {
-      throw new Error(`\u5206\u652F\u7EE7\u627F\u4FDD\u5B58\u5931\u8D25\uFF1A\u76EE\u6807 scope \u5DF2\u88AB\u5E76\u53D1\u5199\u5165 (${label})`);
-    }
-    if (restoring && own(current, targetId) && !same(current[targetId], expected[targetId])) {
-      throw new Error(`\u5206\u652F\u7EE7\u627F\u8865\u507F\u53D6\u6D88\uFF1A\u76EE\u6807 scope \u5DF2\u5728\u4E8B\u52A1\u540E\u88AB\u66F4\u65B0 (${label})`);
-    }
-    const merged = replaceScope(current, desired, targetId);
-    try {
-      localStorage.setItem(key, JSON.stringify(normalize(merged)));
-    } catch (error) {
-      throw new Error(`\u5206\u652F\u7EE7\u627F\u4FDD\u5B58\u5931\u8D25\uFF1A${label}\u4E0D\u53EF\u7528`);
-    }
-    return merged;
-  }
-  async function commitLocalScopeCoordinated(store, options) {
-    const token = markDirectoryBranchScope(store, options.targetId);
-    try {
-      return await enqueueDirectoryOperation(store, () => commitLocalScope(options));
-    } finally {
-      completeDirectoryBranchScope(store, token);
-    }
-  }
-  async function commitBudgetScopeCoordinated(options) {
-    const token = markDirectoryBranchScope("budget", options.targetId);
-    try {
-      return await enqueueDirectoryOperation("budget", () => commitBudgetScope(options));
-    } finally {
-      completeDirectoryBranchScope("budget", token);
-    }
-  }
-  async function commitCalendarScope({ store, key, desired, expected, targetId, normalize, label }) {
-    return enqueueDirectoryOperation(store, async () => {
-      const current = readCalendarForBranch(key, normalize, label);
-      const restoring = !own(desired.scopes, targetId);
-      if (!restoring && own(current.scopes, targetId)) {
-        throw new Error(`\u5206\u652F\u7EE7\u627F\u4FDD\u5B58\u5931\u8D25\uFF1A\u76EE\u6807 scope \u5DF2\u88AB\u5E76\u53D1\u5199\u5165 (${label})`);
-      }
-      if (restoring && own(current.scopes, targetId) && !same(current.scopes[targetId], expected.scopes[targetId])) {
-        throw new Error(`\u5206\u652F\u7EE7\u627F\u8865\u507F\u53D6\u6D88\uFF1A\u76EE\u6807 scope \u5DF2\u5728\u4E8B\u52A1\u540E\u88AB\u66F4\u65B0 (${label})`);
-      }
-      const merged = clone6(current);
-      replaceEntry(merged.scopes, desired.scopes, targetId);
-      try {
-        localStorage.setItem(key, JSON.stringify(normalize(merged)));
-      } catch (error) {
-        throw new Error(`\u5206\u652F\u7EE7\u627F\u4FDD\u5B58\u5931\u8D25\uFF1A${label}\u4E0D\u53EF\u7528`);
-      }
-      return merged;
-    });
-  }
-  async function commitInteractiveScope({ desired, expected, targetId }) {
-    const token = markDirectoryBranchScope("interactive", targetId);
-    try {
-      return await enqueueDirectoryOperation("interactive", async () => {
-        const current = await readInteractiveForBranch();
-        const restoring = !own(desired.scopes, targetId);
-        if (!restoring && own(current.scopes, targetId)) {
-          throw new Error("\u5206\u652F\u7EE7\u627F\u4FDD\u5B58\u5931\u8D25\uFF1A\u76EE\u6807 scope \u5DF2\u88AB\u5E76\u53D1\u5199\u5165 (\u4E92\u52A8\u793E\u533A\u6570\u636E)");
-        }
-        if (restoring && own(current.scopes, targetId) && !same(current.scopes[targetId], expected.scopes[targetId])) {
-          throw new Error("\u5206\u652F\u7EE7\u627F\u8865\u507F\u53D6\u6D88\uFF1A\u76EE\u6807 scope \u5DF2\u5728\u4E8B\u52A1\u540E\u88AB\u66F4\u65B0 (\u4E92\u52A8\u793E\u533A\u6570\u636E)");
-        }
-        const merged = clone6(current);
-        replaceEntry(merged.scopes, desired.scopes, targetId);
-        await saveInteractiveScenes(normalizeInteractiveStore(merged), { coordinated: true });
-        return merged;
-      });
-    } finally {
-      completeDirectoryBranchScope("interactive", token);
-    }
-  }
-  async function commitBackgroundScope({ desired, expected, targetId }) {
-    const token = markDirectoryBranchScope("backgrounds", targetId);
-    try {
-      return await enqueueDirectoryOperation("backgrounds", async () => {
-        const current = await readBackgroundsForBranch();
-        const expectedKeys = scopeBackgroundKeys(targetId, expected);
-        const currentKeys = scopeBackgroundKeys(targetId, current);
-        const desiredKeys = scopeBackgroundKeys(targetId, desired);
-        const restoring = desiredKeys.length === 0;
-        const currentMatchesExpected = currentKeys.length === expectedKeys.length && currentKeys.every((key) => expectedKeys.includes(key) && same(current[key], expected[key]));
-        if (!restoring && currentKeys.length) {
-          throw new Error("\u5206\u652F\u7EE7\u627F\u4FDD\u5B58\u5931\u8D25\uFF1A\u76EE\u6807 scope \u5DF2\u88AB\u5E76\u53D1\u5199\u5165 (\u4F1A\u8BDD\u80CC\u666F)");
-        }
-        if (restoring && currentKeys.length && !currentMatchesExpected) {
-          throw new Error("\u5206\u652F\u7EE7\u627F\u8865\u507F\u53D6\u6D88\uFF1A\u76EE\u6807 scope \u5DF2\u5728\u4E8B\u52A1\u540E\u88AB\u66F4\u65B0 (\u4F1A\u8BDD\u80CC\u666F)");
-        }
-        const merged = clone6(current);
-        for (const key of currentKeys) delete merged[key];
-        for (const key of desiredKeys) merged[key] = clone6(desired[key]);
-        await saveBgLocal({ data: merged, coordinated: true });
-        return merged;
-      });
-    } finally {
-      completeDirectoryBranchScope("backgrounds", token);
-    }
-  }
-  async function commitDirectoryScope(store, desired, expected, targetId) {
-    const token = markDirectoryBranchScope(store, targetId);
-    try {
-      return await enqueueDirectoryOperation(store, async () => {
-        const current = store === "histories" ? await readHistoriesForBranch() : await readGroupMetaForBranch();
-        const restoring = !own(desired, targetId);
-        if (!restoring && own(current, targetId)) {
-          throw new Error(`\u5206\u652F\u7EE7\u627F\u4FDD\u5B58\u5931\u8D25\uFF1A\u76EE\u6807 scope \u5DF2\u88AB\u5E76\u53D1\u5199\u5165 (${store})`);
-        }
-        if (restoring && own(current, targetId) && !same(current[targetId], expected[targetId])) {
-          throw new Error(`\u5206\u652F\u7EE7\u627F\u8865\u507F\u53D6\u6D88\uFF1A\u76EE\u6807 scope \u5DF2\u5728\u4E8B\u52A1\u540E\u88AB\u66F4\u65B0 (${store})`);
-        }
-        const merged = replaceScope(current, desired, targetId);
-        if (store === "histories") await saveHistoriesStrict(merged, { requireLocalMirror: true, coordinated: true });
-        else await saveGroupMeta(merged, { coordinated: true });
-        return merged;
-      });
-    } finally {
-      completeDirectoryBranchScope(store, token);
-    }
-  }
-  async function inheritPhoneDataOnBranch({ context, loadStores, saveStores, loadLineage, saveLineage, commitLineage, now: now2 = Date.now }) {
-    const branch = resolveBranchInheritance(context);
-    if (!branch) return { status: "skipped", reason: "not-branch" };
-    if (pendingByTarget.has(branch.targetId)) return pendingByTarget.get(branch.targetId);
-    const operation = (async () => {
-      const lineage = await loadLineage();
-      if (own(lineage, branch.targetId)) return { status: "skipped", reason: "already-cloned" };
-      const stores = normalizeStores(await loadStores());
-      if (hasTargetData(branch.targetId, stores)) return { status: "skipped", reason: "target-not-empty" };
-      const candidate = createCandidates(branch.sourceId, branch.targetId, stores);
-      const nextLineage = {
-        ...lineage,
-        [branch.targetId]: {
-          sourceId: branch.sourceId,
-          parentChatId: branch.parentChatId,
-          targetChatId: branch.targetChatId,
-          avatar: branch.avatar,
-          completedAt: now2(),
-          schemaVersion: 1
-        }
-      };
-      let storesSaved = false;
-      try {
-        await saveStores(candidate, { branch, previous: stores });
-        storesSaved = true;
-        if (commitLineage) await commitLineage(branch.targetId, nextLineage[branch.targetId]);
-        else await saveLineage(nextLineage);
-        return { status: "cloned", ...branch };
-      } catch (error) {
-        if (storesSaved) {
-          try {
-            await saveStores(stores, { branch, previous: candidate });
-          } catch (rollbackError) {
-            const combined = new Error(`${error.message}\uFF1B\u5206\u652F\u7EE7\u627F\u6570\u636E\u56DE\u6EDA\u5931\u8D25\uFF1A${rollbackError.message}`);
-            combined.cause = error;
-            combined.rollbackError = rollbackError;
-            throw combined;
-          }
-        }
-        throw error;
-      }
-    })().finally(() => pendingByTarget.delete(branch.targetId));
-    pendingByTarget.set(branch.targetId, operation);
-    return operation;
-  }
-  function awaitPendingBranchInheritance(storageId) {
-    return pendingByTarget.get(storageId) || Promise.resolve(null);
-  }
-  async function loadProductionStores() {
-    const interactive = await readInteractiveForBranch();
-    return normalizeStores({
-      histories: await readHistoriesForBranch(),
-      groupMeta: await readGroupMetaForBranch(),
-      pokeConfig: readLocalStoreForBranch("ST_SMS_POKE_CONFIG", (value) => value, "\u62CD\u4E00\u62CD\u914D\u7F6E"),
-      characterBehavior: readLocalStoreForBranch(CHARACTER_BEHAVIOR_KEY, normalizeCharacterBehaviorStore, "\u89D2\u8272\u884C\u4E3A\u914D\u7F6E"),
-      bidirectional: readLocalStoreForBranch("ST_SMS_BIDIRECTIONAL", (value) => value, "\u53CC\u5411\u6CE8\u5165\u914D\u7F6E"),
-      backgrounds: await readBackgroundsForBranch(),
-      interactive,
-      phoneUi: readPhoneUiForBranch(interactive),
-      calendar: readCalendarForBranch(CALENDAR_STORAGE_KEY, normalizeCalendarStore, "\u65E5\u5386\u6570\u636E"),
-      occasions: readCalendarForBranch(CALENDAR_OCCASION_STORAGE_KEY, normalizeOccasionStore, "\u751F\u65E5\u4E0E\u7EAA\u5FF5\u65E5\u6570\u636E"),
-      cycles: readCalendarForBranch(CALENDAR_CYCLE_STORAGE_KEY, normalizeCycleStore, "\u751F\u7406\u5468\u671F\u6570\u636E"),
-      recipes: readCalendarForBranch(CALENDAR_RECIPE_STORAGE_KEY, normalizeRecipeStore, "\u83DC\u8C31\u6570\u636E"),
-      budget: readBudgetForBranch()
-    });
-  }
-  async function persistProductionStores(next, { branch } = {}) {
-    const targetId = branch?.targetId;
-    const previous = clone6(await loadProductionStores());
-    const apply = async (desired, expected) => {
-      if (targetId) {
-        globalThis.window.__pmHistories = await commitDirectoryScope("histories", desired.histories, expected.histories, targetId);
-        globalThis.window.__pmGroupMeta = await commitDirectoryScope("groupMeta", desired.groupMeta, expected.groupMeta, targetId);
-      } else {
-        globalThis.window.__pmHistories = desired.histories;
-        await saveHistoriesStrict(desired.histories, { requireLocalMirror: true });
-        globalThis.window.__pmGroupMeta = desired.groupMeta;
-        await saveGroupMeta(desired.groupMeta);
-      }
-      if (targetId) {
-        globalThis.window.__pmPokeConfig = await commitLocalScopeCoordinated("pokeConfig", {
-          key: "ST_SMS_POKE_CONFIG",
-          desired: desired.pokeConfig,
-          expected: expected.pokeConfig,
-          targetId,
-          normalize: (value) => value,
-          label: "\u62CD\u4E00\u62CD\u914D\u7F6E"
-        });
-        globalThis.window.__pmCharacterBehavior = await commitLocalScopeCoordinated("characterBehavior", {
-          key: CHARACTER_BEHAVIOR_KEY,
-          desired: desired.characterBehavior,
-          expected: expected.characterBehavior,
-          targetId,
-          normalize: normalizeCharacterBehaviorStore,
-          label: "\u89D2\u8272\u884C\u4E3A\u914D\u7F6E"
-        });
-        globalThis.window.__pmBidirectional = await commitLocalScopeCoordinated("bidirectional", {
-          key: "ST_SMS_BIDIRECTIONAL",
-          desired: desired.bidirectional,
-          expected: expected.bidirectional,
-          targetId,
-          normalize: (value) => value,
-          label: "\u53CC\u5411\u6CE8\u5165\u914D\u7F6E"
-        });
-        globalThis.window.__pmBudgetConfig = await commitBudgetScopeCoordinated({ desired: desired.budget, expected: expected.budget, targetId });
-      } else {
-        globalThis.window.__pmPokeConfig = desired.pokeConfig;
-        if (!savePokeConfig()) throw new Error("\u5206\u652F\u7EE7\u627F\u4FDD\u5B58\u5931\u8D25\uFF1A\u62CD\u4E00\u62CD\u914D\u7F6E\u4E0D\u53EF\u7528");
-        globalThis.window.__pmCharacterBehavior = desired.characterBehavior;
-        if (!saveCharacterBehavior()) throw new Error("\u5206\u652F\u7EE7\u627F\u4FDD\u5B58\u5931\u8D25\uFF1A\u89D2\u8272\u884C\u4E3A\u914D\u7F6E\u4E0D\u53EF\u7528");
-        globalThis.window.__pmBidirectional = desired.bidirectional;
-        if (!saveBidirectional()) throw new Error("\u5206\u652F\u7EE7\u627F\u4FDD\u5B58\u5931\u8D25\uFF1A\u53CC\u5411\u6CE8\u5165\u914D\u7F6E\u4E0D\u53EF\u7528");
-        globalThis.window.__pmBudgetConfig = desired.budget;
-        if (!saveBudgetConfig(desired.budget)) throw new Error("\u5206\u652F\u7EE7\u627F\u4FDD\u5B58\u5931\u8D25\uFF1A\u793E\u533A\u9884\u7B97\u914D\u7F6E\u4E0D\u53EF\u7528");
-      }
-      if (targetId) {
-        globalThis.window.__pmBgLocal = await commitBackgroundScope({ desired: desired.backgrounds, expected: expected.backgrounds, targetId });
-        const interactive = await commitInteractiveScope({ desired: desired.interactive, expected: expected.interactive, targetId });
-        const phoneUiScopes = await commitLocalScopeCoordinated("phoneUi", {
-          key: PHONE_UI_STORAGE_KEY,
-          desired: desired.phoneUi.scopes,
-          expected: expected.phoneUi.scopes,
-          targetId,
-          normalize: (value) => normalizePhoneUiState({ version: 1, scopes: value }, interactive),
-          label: "\u624B\u673A\u9875\u9762\u72B6\u6001"
-        });
-        globalThis.window.__pmPhoneUiState = normalizePhoneUiState({ version: 1, scopes: phoneUiScopes }, interactive);
-        await commitCalendarScope({
-          store: "calendar",
-          key: CALENDAR_STORAGE_KEY,
-          desired: desired.calendar,
-          expected: expected.calendar,
-          targetId,
-          normalize: normalizeCalendarStore,
-          label: "\u65E5\u5386\u6570\u636E"
-        });
-        await commitCalendarScope({
-          store: "occasions",
-          key: CALENDAR_OCCASION_STORAGE_KEY,
-          desired: desired.occasions,
-          expected: expected.occasions,
-          targetId,
-          normalize: normalizeOccasionStore,
-          label: "\u751F\u65E5\u4E0E\u7EAA\u5FF5\u65E5\u6570\u636E"
-        });
-        await commitCalendarScope({
-          store: "cycles",
-          key: CALENDAR_CYCLE_STORAGE_KEY,
-          desired: desired.cycles,
-          expected: expected.cycles,
-          targetId,
-          normalize: normalizeCycleStore,
-          label: "\u751F\u7406\u5468\u671F\u6570\u636E"
-        });
-        await commitCalendarScope({
-          store: "recipes",
-          key: CALENDAR_RECIPE_STORAGE_KEY,
-          desired: desired.recipes,
-          expected: expected.recipes,
-          targetId,
-          normalize: normalizeRecipeStore,
-          label: "\u83DC\u8C31\u6570\u636E"
-        });
-      } else {
-        globalThis.window.__pmBgLocal = desired.backgrounds;
-        await saveBgLocal();
-        await saveInteractiveScenes(desired.interactive);
-        if (!savePhoneUiState(desired.phoneUi, desired.interactive)) throw new Error("\u5206\u652F\u7EE7\u627F\u4FDD\u5B58\u5931\u8D25\uFF1A\u624B\u673A\u9875\u9762\u72B6\u6001\u4E0D\u53EF\u7528");
-        if (!saveCalendar(desired.calendar) || !saveCalendarOccasions(desired.occasions) || !saveCalendarCycles(desired.cycles) || !saveCalendarRecipes(desired.recipes)) {
-          throw new Error("\u5206\u652F\u7EE7\u627F\u4FDD\u5B58\u5931\u8D25\uFF1A\u65E5\u5386 scope \u4E0D\u53EF\u7528");
-        }
-      }
-    };
-    try {
-      await apply(next, previous);
-    } catch (error) {
-      try {
-        const latest = await loadProductionStores();
-        await apply(targetId ? mergeBranchScope(latest, previous, targetId) : previous, next);
-      } catch (rollbackError) {
-        const combined = new Error(`${error.message}\uFF1B\u5206\u652F\u7EE7\u627F\u6301\u4E45\u5316\u56DE\u6EDA\u5931\u8D25\uFF1A${rollbackError.message}`);
-        combined.cause = error;
-        combined.rollbackError = rollbackError;
-        throw combined;
-      }
-      throw error;
-    }
-  }
-  function beginBranchInheritance(context, { getStorageId: getStorageId2, invalidateInteractiveStore, reloadCalendarStore } = {}) {
-    const branch = resolveBranchInheritance(context);
-    const branchScopeTokens = branch ? ["pokeConfig", "characterBehavior", "bidirectional", "budget"].map((store) => [store, markDirectoryBranchScope(store, branch.targetId)]) : [];
-    const operation = inheritPhoneDataOnBranch({
-      context,
-      loadStores: loadProductionStores,
-      saveStores: persistProductionStores,
-      loadLineage: loadBranchLineage,
-      commitLineage: commitBranchLineage
-    }).finally(() => {
-      for (const [store, token] of branchScopeTokens) completeDirectoryBranchScope(store, token);
-    });
-    return operation.then((result) => {
-      if (result.status === "cloned" && (!getStorageId2 || getStorageId2() === result.targetId)) {
-        try {
-          invalidateInteractiveStore?.();
-        } catch (error) {
-          console.warn("[phone-mode] \u5206\u652F\u7EE7\u627F\u540E\u7684\u4E92\u52A8\u8FD0\u884C\u6001\u5237\u65B0\u5931\u8D25", error);
-        }
-        try {
-          reloadCalendarStore?.();
-        } catch (error) {
-          console.warn("[phone-mode] \u5206\u652F\u7EE7\u627F\u540E\u7684\u65E5\u5386\u8FD0\u884C\u6001\u5237\u65B0\u5931\u8D25", error);
-        }
-      }
-      return result;
-    });
   }
 
   // src/community-injection.js
@@ -14243,7 +14467,9 @@ ${lines}`;
             status: result?.status || "unknown",
             reason: result?.reason || null,
             sourceId: result?.sourceId || null,
-            targetId: result?.targetId || null
+            targetId: result?.targetId || null,
+            sourcePresence: result?.sourcePresence || null,
+            targetPresence: result?.targetPresence || null
           };
           runtime.lastBranchInheritanceError = null;
           if (result?.status === "cloned") {
@@ -14257,7 +14483,9 @@ ${lines}`;
             status: "failed",
             reason: null,
             sourceId: branch?.sourceId || null,
-            targetId: branch?.targetId || null
+            targetId: branch?.targetId || null,
+            sourcePresence: null,
+            targetPresence: null
           };
           runtime.lastBranchInheritanceError = {
             name: typeof error?.name === "string" && error.name ? error.name : "Error",
@@ -14988,6 +15216,7 @@ ${lines}`;
       state.groupDisplayName = "";
       state.groupRandomNpcEnabled = false;
       state.groupNature = "";
+      state.groupRandomNpcPrompt = "";
       state.currentGroupKey = "";
       runtime.firstOpen = true;
       if (runtime.visibilityTimer !== null) {
@@ -15152,6 +15381,7 @@ ${lines}`;
       state.groupDisplayName = "";
       state.groupRandomNpcEnabled = false;
       state.groupNature = "";
+      state.groupRandomNpcPrompt = "";
       state.currentGroupKey = "";
       if (!runtime.firstOpen) {
         await deps.restorePhoneChat?.(defaultChar) || window.__pmSwitch(defaultChar, void 0, void 0, { preservePage: true });
@@ -17110,6 +17340,7 @@ ${error.message}`);
       groupDisplayName: "",
       groupRandomNpcEnabled: false,
       groupNature: "",
+      groupRandomNpcPrompt: "",
       currentGroupKey: "",
       groupExtras: []
     };
@@ -17140,6 +17371,7 @@ ${error.message}`);
     installContactGenerator(state, deps);
     installPhoneChatPoke(state, deps);
     installPhoneLifecycle(state, deps);
+    installDiagnosticApi(deps);
     ensureInitialPhoneQuickReplyWithRetry().catch((error) => {
       console.warn("[phone-mode] \u9996\u6B21\u521B\u5EFA\u624B\u673A\u5165\u53E3\u5931\u8D25\uFF0C\u6709\u9650\u91CD\u8BD5\u5DF2\u7ED3\u675F", error);
     });
