@@ -85,7 +85,7 @@ function weatherStatusCard(weatherStore, date, parsed, relativeLabel) {
         kind: 'weather', parsed, date, icon: weatherStatusIcon(resolved.day.weatherCode),
         relativeLabel,
         context: `<span class="pm-calendar-status-weather-context">${escapeHtml(condition)} · ${escapeHtml(location)}</span><span class="pm-calendar-status-location" aria-hidden="true">${LOCATION_ICON_SVG}</span>`,
-        value: `${resolved.day.tempMin}°–${resolved.day.tempMax}°`,
+        value: `${resolved.day.tempMin}° – ${resolved.day.tempMax}°`,
     }), isCard: true };
 }
 
