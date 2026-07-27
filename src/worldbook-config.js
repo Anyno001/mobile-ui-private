@@ -67,7 +67,7 @@ function normalizeOverrides(value, options) {
 
 export function createDefaultWorldBookConfig() {
     return { version: WORLD_BOOK_CONFIG_VERSION, entries: {}, columns: {}, characters: {}, groups: {},
-        mainChatMessages: 8, scanMessages: 10, maxChars: 24000 };
+        mainChatMessages: 8, scanMessages: 2, maxChars: 24000 };
 }
 
 export function normalizeWorldBookConfig(value) {

@@ -3106,6 +3106,7 @@ ${userPrompt}` : userPrompt;
     const generationRule = scope.generationRule || DEFAULT_CALENDAR_GENERATION_RULE;
     return `<details class="pm-calendar-management" data-calendar-management="schedule"><summary>\u65E5\u5386\u8BBE\u7F6E</summary><div class="pm-calendar-management-content">
         <section class="pm-calendar-data-tools">${injectionToggle("calendar-toggle-schedule-injection", "\u65E5\u7A0B", scope.injectionScheduleEnabled)}</section>
+        <section class="pm-calendar-data-tools"><h3>\u6570\u636E\u5E93\u8BB0\u5FC6</h3><div class="pm-calendar-data-row"><span>\u9009\u62E9\u65E5\u5386\u751F\u6210\u53EF\u8BFB\u53D6\u7684 TavernDB \u680F\u76EE</span><button type="button" data-action="calendar-worldbook-columns">\u8BBE\u7F6E</button></div></section>
         <section class="pm-calendar-data-tools pm-calendar-scan-card"><h3>\u6B63\u6587\u65E5\u671F</h3><p>\u8BC6\u522B\u6700\u540E\u4E00\u6761\u6B63\u6587\u4E2D\u7684\u5B8C\u6574\u65E5\u671F\uFF0C\u5E76\u8BBE\u4E3A\u5F53\u524D\u6545\u4E8B\u65E5\u671F\u3002</p><div class="pm-calendar-data-row pm-calendar-date-tags-row"><input data-calendar-date-tags value="${escapeAttr((scope.dateTags || ["date"]).join(", "))}" maxlength="160" placeholder="date, time_date" aria-label="\u6B63\u6587\u65E5\u671F\u6807\u7B7E"><button type="button" data-action="calendar-date-sync">\u4FDD\u5B58\u5E76\u8BC6\u522B</button></div><button type="button" class="pm-calendar-auto-switch" data-action="calendar-toggle-auto" role="switch" aria-checked="${scope.autoAdjust}"><span><b>\u81EA\u52A8\u8DDF\u968F\u6B63\u6587\u65E5\u671F</b><small>\u89D2\u8272\u56DE\u590D\u540E\uFF0C\u65E5\u5386\u65E5\u671F\u4F1A\u968F\u6B63\u6587\u66F4\u65B0\u3002</small></span><i aria-hidden="true"></i></button></section>
         <section class="pm-calendar-data-tools"><h3>\u8282\u5047\u65E5\u6570\u636E</h3><div class="pm-calendar-data-row pm-calendar-holiday-row"><select data-action="calendar-holiday-country" data-calendar-country aria-label="\u8282\u5047\u65E5\u56FD\u5BB6"><option value="CN" ${holidayCache.selectedCountry === "CN" ? "selected" : ""}>\u4E2D\u56FD</option><option value="US" ${holidayCache.selectedCountry === "US" ? "selected" : ""}>\u7F8E\u56FD</option><option value="JP" ${holidayCache.selectedCountry === "JP" ? "selected" : ""}>\u65E5\u672C</option></select><button type="button" data-action="calendar-holiday-refresh" ${holidayAvailable ? "" : 'disabled aria-disabled="true"'}>\u5237\u65B0\u8282\u5047\u65E5</button></div>${holidayAvailable ? "" : `<small class="pm-calendar-attribution">\u8BE5\u56FD\u5BB6\u5728\u5F53\u524D\u5E74\u4EE3\u65E0\u5916\u90E8\u6570\u636E\u6E90\uFF08\u4EC5\u652F\u6301 ${holidayRange?.min ?? "\u672A\u77E5"}\u2013${holidayRange?.max ?? "\u672A\u77E5"} \u5E74\uFF09</small>`}</section>
         <section class="pm-calendar-data-tools"><h3>\u751F\u6210\u89C4\u5219</h3><textarea class="pm-calendar-generation-rule" data-calendar-generation-rule maxlength="3000" aria-label="\u65E5\u7A0B\u751F\u6210\u89C4\u5219">${escapeHtml(generationRule)}</textarea><div class="pm-calendar-editor-actions"><button type="button" class="is-primary" data-action="calendar-generation-rule-save">\u4FDD\u5B58\u751F\u6210\u89C4\u5219</button></div></section>
@@ -4124,6 +4125,10 @@ ${userPrompt}` : userPrompt;
       const action = button.dataset.action;
       if (action.startsWith("calendar-recipe-")) {
         if (!await recipeController.handleAction(button, app, storageId)) throw new Error(`\u672A\u77E5\u83DC\u8C31\u64CD\u4F5C\uFF1A${action}`);
+        return;
+      }
+      if (action === "calendar-worldbook-columns") {
+        await window.__pmShowWorldBookColumns?.({ title: "\u65E5\u5386\u53EF\u8BFB\u7684\u6570\u636E\u5E93\u8BB0\u5FC6", module: "calendar" });
         return;
       }
       if (action === "calendar-generate") {
@@ -5493,17 +5498,23 @@ ${lines.join("\n")}
     }
     return result;
   }
-  function normalizeOverride(value) {
+  function normalizeOverride(value, { group = false } = {}) {
     const source = plainObject2(value);
-    return { entries: normalizeSwitches(source.entries), columns: normalizeColumnModes(source.columns) };
+    return {
+      entries: normalizeSwitches(source.entries),
+      columns: normalizeColumnModes(source.columns),
+      ...group ? { allowMemberPrivateMemory: source.allowMemberPrivateMemory === true } : {}
+    };
   }
-  function normalizeOverrides(value) {
+  function normalizeOverrides(value, options) {
     const result = {};
     for (const [scopeId, override] of Object.entries(plainObject2(value))) {
       const cleanScopeId = cleanText4(scopeId, MAX_KEY_LENGTH);
       if (!cleanScopeId) continue;
-      const normalized = normalizeOverride(override);
-      if (Object.keys(normalized.entries).length || Object.keys(normalized.columns).length) setOwn2(result, cleanScopeId, normalized);
+      const normalized = normalizeOverride(override, options);
+      if (Object.keys(normalized.entries).length || Object.keys(normalized.columns).length || normalized.allowMemberPrivateMemory) {
+        setOwn2(result, cleanScopeId, normalized);
+      }
     }
     return result;
   }
@@ -5515,7 +5526,7 @@ ${lines.join("\n")}
       characters: {},
       groups: {},
       mainChatMessages: 8,
-      scanMessages: 10,
+      scanMessages: 2,
       maxChars: 24e3
     };
   }
@@ -5527,7 +5538,7 @@ ${lines.join("\n")}
       entries: normalizeSwitches(source.entries),
       columns: normalizeColumnModes(source.columns),
       characters: normalizeOverrides(source.characters),
-      groups: normalizeOverrides(source.groups),
+      groups: normalizeOverrides(source.groups, { group: true }),
       mainChatMessages: boundedInteger2(source.mainChatMessages, defaults.mainChatMessages, 1, 100),
       scanMessages: boundedInteger2(source.scanMessages, defaults.scanMessages, 1, 100),
       maxChars: boundedInteger2(source.maxChars, defaults.maxChars, 1e3, 8e4)
@@ -5537,17 +5548,29 @@ ${lines.join("\n")}
     const match = /^TavernDB-ACU-CustomExport-([^\n-]+)(?:-|$)/.exec(cleanText4(comment, 240));
     return match ? cleanText4(match[1], MAX_COLUMN_LENGTH) : "";
   }
+  function scopeOverride(config, scope) {
+    if (scope?.kind === "group") return config.groups[cleanText4(scope.id, MAX_KEY_LENGTH)] || null;
+    if (scope?.kind === "character") return config.characters[cleanText4(scope.id, MAX_KEY_LENGTH)] || null;
+    return null;
+  }
   function isWorldBookEntryAllowed(config, entry2, { module, scope = null } = {}) {
     if (!WORLD_BOOK_MODULES.includes(module)) return false;
     const current = normalizeWorldBookConfig(config);
     const entryKey = createWorldBookEntryKey(entry2?.bookName, entry2?.uid);
     if (!entryKey) return false;
     const column = cleanText4(entry2?.column, MAX_COLUMN_LENGTH);
-    const override = scope?.kind === "group" ? current.groups[cleanText4(scope.id, MAX_KEY_LENGTH)] : scope?.kind === "character" ? current.characters[cleanText4(scope.id, MAX_KEY_LENGTH)] : null;
+    const override = scopeOverride(current, scope);
     const entrySetting = override?.entries?.[entryKey] ?? current.entries[entryKey];
     if (entrySetting === false) return false;
     const columnSetting = override?.columns?.[column]?.[module] ?? current.columns[column]?.[module];
     return columnSetting !== false;
+  }
+  function isMemberPrivateWorldBookEntryAllowed(config, entry2, memberId) {
+    const current = normalizeWorldBookConfig(config);
+    const column = cleanText4(entry2?.column, MAX_COLUMN_LENGTH);
+    if (!column) return false;
+    const member = current.characters[cleanText4(memberId, MAX_KEY_LENGTH)];
+    return member?.columns?.[column]?.chat === true && isWorldBookEntryAllowed(current, entry2, { module: "chat", scope: { kind: "character", id: memberId } });
   }
 
   // src/storage.js
@@ -7015,7 +7038,9 @@ ${mainChatText}` : "",
   async function buildWorldBookContext(context, {
     module,
     config = globalThis.window?.__pmWorldBookConfig,
-    signal
+    signal,
+    scope: requestedScope = null,
+    memberIds = []
   } = {}) {
     const current = normalizeWorldBookConfig(config);
     if (!["chat", "calendar", "community"].includes(module)) return "";
@@ -7031,7 +7056,9 @@ ${mainChatText}` : "",
     }
     if (!Array.isArray(names)) return "";
     const messages = (Array.isArray(context.chat) ? context.chat : []).slice(-current.scanMessages).map((message) => visibleText(message?.mes));
-    const scope = contextScope(context);
+    const scope = requestedScope?.kind === "group" || requestedScope?.kind === "character" ? requestedScope : contextScope(context);
+    const groupMemberIds = scope?.kind === "group" ? [...new Set(memberIds.map((memberId) => text3(memberId).trim()).filter(Boolean))] : [];
+    const privateMemberIds = current.groups[scope?.id]?.allowMemberPrivateMemory === true ? groupMemberIds : [];
     const selected = [];
     for (const rawName of names) {
       const bookName = text3(rawName).trim();
@@ -7046,15 +7073,28 @@ ${mainChatText}` : "",
       }
       throwIfAborted(signal);
       for (const entry2 of normalizeBookEntries(bookName, book)) {
-        if (isWorldBookEntryAllowed(current, entry2, { module, scope }) && scanMatches(entry2, messages)) selected.push(entry2);
+        if (!scanMatches(entry2, messages)) continue;
+        const memberPrivate = scope?.kind === "group" && groupMemberIds.some((memberId) => isMemberPrivateWorldBookEntryAllowed(current, entry2, memberId));
+        const groupExplicitlyAllowsColumn = scope?.kind === "group" && current.groups[scope.id]?.columns?.[entry2.column]?.[module] === true;
+        if (isWorldBookEntryAllowed(current, entry2, { module, scope }) && (!memberPrivate || groupExplicitlyAllowsColumn)) {
+          selected.push({ ...entry2, privateMemberId: "" });
+          continue;
+        }
+        for (const memberId of privateMemberIds) {
+          if (isMemberPrivateWorldBookEntryAllowed(current, entry2, memberId)) {
+            selected.push({ ...entry2, privateMemberId: memberId });
+          }
+        }
       }
     }
     let length = 0;
     const contents = [];
     for (const entry2 of selected) {
-      const nextLength = length + entry2.content.length + (contents.length ? 2 : 0);
+      const content = entry2.privateMemberId ? `\u3010\u6210\u5458\u79C1\u6709\u8BB0\u5FC6\uFF1A\u4EC5${entry2.privateMemberId}\u77E5\u6653\uFF0C\u4E0D\u5F97\u8BA9\u5176\u4ED6\u6210\u5458\u77E5\u6653\u3001\u8F6C\u8FF0\u6216\u636E\u6B64\u53D1\u8A00\u3011
+${entry2.content}` : entry2.content;
+      const nextLength = length + content.length + (contents.length ? 2 : 0);
       if (nextLength > current.maxChars) continue;
-      contents.push(entry2.content);
+      contents.push(content);
       length = nextLength;
     }
     return contents.join("\n\n");
@@ -7124,7 +7164,7 @@ ${mainChatText}` : "",
     }
     return { name, description };
   }
-  async function gatherContext(getCtx, { module = "chat", signal } = {}) {
+  async function gatherContext(getCtx, { module = "chat", signal, worldBookScope = null, worldBookMemberNames = [] } = {}) {
     const context = getCtx();
     const character = context?.characters?.[context.characterId] || {};
     const worldBookConfig = normalizeWorldBookConfig(globalThis.window?.__pmWorldBookConfig);
@@ -7144,10 +7184,13 @@ ${mainChatText}` : "",
     const mainChat = normalizedChat.filter((message) => message.content);
     let worldBookText = "";
     try {
+      const memberIds = worldBookScope?.kind === "group" ? [...new Set(worldBookMemberNames.filter((name) => typeof name === "string").map((name) => name.trim()).filter(Boolean))] : [];
       worldBookText = await buildWorldBookContext(context, {
         module,
         config: worldBookConfig,
-        signal
+        signal,
+        scope: worldBookScope,
+        memberIds
       });
     } catch (error) {
       if (error?.name === "AbortError") throw error;
@@ -9392,6 +9435,7 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
     </article>`).join("") || '<div class="pm-scene-empty"><span>\u5F53\u524D\u793E\u533A\u8FD8\u6CA1\u6709\u5E16\u5B50\u3002</span></div>';
     return `<div class="pm-scene-injection-settings">
         <div class="pm-scene-injection-heading"><h2>\u6B63\u6587\u6CE8\u5165</h2></div>
+        <div class="pm-scene-injection-toolbar"><button type="button" data-action="community-worldbook-columns">\u6570\u636E\u5E93\u8BB0\u5FC6</button></div>
         <div class="pm-scene-injection-toolbar"><button type="button" data-action="context-select-all">\u5168\u9009</button><button type="button" data-action="context-clear">\u6E05\u7A7A</button></div>
         <div class="pm-scene-injection-posts">${posts}</div>
         <div class="pm-scene-injection-actions"><button type="button" class="pm-scene-secondary" data-action="context-cancel">\u53D6\u6D88</button><button type="button" class="pm-scene-primary" data-action="context-save">\u4FDD\u5B58\u6CE8\u5165\u8BBE\u7F6E</button></div>
@@ -9963,6 +10007,10 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
       }
       if (action === "toggle-reply") {
         toggleSceneReplyComposer(button, app);
+        return;
+      }
+      if (action === "community-worldbook-columns") {
+        await window.__pmShowWorldBookColumns?.({ title: "\u793E\u533A\u53EF\u8BFB\u7684\u6570\u636E\u5E93\u8BB0\u5FC6", module: "community" });
         return;
       }
       if (action === "desktop-chat") {
@@ -11348,7 +11396,12 @@ ${userName}\uFF1A${userMsgClean}` : "\n[\u4EC5\u6709\u5267\u60C5\u5F15\u5BFC\uFF
         const image = set?.images?.[parseInt(idxStr, 10) - 1];
         return image?.desc ? `[\u8868\u60C5\u5305\uFF1A${image.desc}]` : "[\u8868\u60C5\u5305]";
       }).replace(/\s{2,}/g, " ").trim();
-      const ctxData = await gatherContext2(task.context, { module: "chat", signal: task.signal });
+      const ctxData = await gatherContext2(task.context, {
+        module: "chat",
+        signal: task.signal,
+        worldBookScope: { kind: isGroup ? "group" : "character", id: isGroup ? saveKey : currentPersona },
+        worldBookMemberNames: isGroup ? groupMembers : []
+      });
       if (!isGenerationTaskActive(task)) {
         if (task.signal.aborted) {
           const error = new Error("\u8BF7\u6C42\u5DF2\u53D6\u6D88");
@@ -11872,7 +11925,12 @@ ${antiFluff}`;
         showTyping();
       }
       try {
-        const ctxData = await gatherContext2(task.context, { module: "chat", signal: task.signal });
+        const ctxData = await gatherContext2(task.context, {
+          module: "chat",
+          signal: task.signal,
+          worldBookScope: { kind: isGroup ? "group" : "character", id: contactName },
+          worldBookMemberNames: isGroup ? groupMembers : []
+        });
         if (!isAutomaticRequestActive()) return false;
         const { cardDesc, cardPersonality, cardScenario, cardMesExample, mainChatText, worldBookText, userName, userDesc } = ctxData;
         const userBlock = buildUserBlock(userName, userDesc);
@@ -12078,6 +12136,7 @@ ${antiFluff}`;
           </label>`).join("")}
         </div>
         ${emojiCheckHtml}
+        <button type="button" class="pm-action-button is-secondary" onclick="window.__pmShowWorldBookColumns({title:'${safeJS(contactName)}\u53EF\u8BFB\u7684\u6570\u636E\u5E93\u8BB0\u5FC6',module:'chat',scope:{kind:'character',id:'${safeJS(contactName)}'}})">\u6570\u636E\u5E93\u8BB0\u5FC6</button>
     <div class="pm-modal-add pm-contact-settings-actions">
         <button type="button" class="pm-contact-settings-save" onclick="window.__pmSaveContactConfig('${safeJS(contactName)}')">\u4FDD\u5B58\u89D2\u8272\u8BBE\u7F6E</button>
     </div>
@@ -12179,7 +12238,12 @@ ${antiFluff}`;
       const groupRandomNpcPrompt = state.groupRandomNpcPrompt;
       const isStillTarget = () => isGenerationTaskActive(task) && state.activeStorageId === storageId && (state.isGroupChat && state.currentGroupKey ? state.currentGroupKey : state.currentPersona) === saveKey;
       try {
-        const ctxData = await gatherContext2(task.context, { module: "chat", signal: task.signal });
+        const ctxData = await gatherContext2(task.context, {
+          module: "chat",
+          signal: task.signal,
+          worldBookScope: { kind: isGroup ? "group" : "character", id: isGroup ? saveKey : contactName },
+          worldBookMemberNames: isGroup ? groupMembers : []
+        });
         if (!isGenerationTaskActive(task)) return;
         const { cardDesc, cardPersonality, cardScenario, cardMesExample, mainChatText, worldBookText, userName, userDesc } = ctxData;
         const userBlock = buildUserBlock(userName, userDesc);
@@ -12343,7 +12407,12 @@ ${antiFluff}`;
       const groupRandomNpcPrompt = state.groupRandomNpcPrompt;
       const isStillTarget = () => isGenerationTaskActive(task) && state.activeStorageId === storageId && state.isGroupChat && state.currentGroupKey === saveKey;
       try {
-        const ctxData = await gatherContext2(task.context, { module: "chat", signal: task.signal });
+        const ctxData = await gatherContext2(task.context, {
+          module: "chat",
+          signal: task.signal,
+          worldBookScope: { kind: "group", id: saveKey },
+          worldBookMemberNames: groupMembers
+        });
         if (!isGenerationTaskActive(task)) return;
         const { cardDesc, cardPersonality, cardScenario, mainChatText, worldBookText, userName, userDesc } = ctxData;
         const userBlock = buildUserBlock(userName, userDesc);
@@ -13340,6 +13409,8 @@ ${antiFluff}`;
           <div class="pm-cfg-label" style="margin-bottom:8px;">\u7FA4\u804A\u529F\u80FD</div>
           <div class="pm-member-behavior-list">
             <button type="button" onclick="window.__pmShowGroupMemberSettings()"><b>\u7FA4\u804A\u98CE\u683C</b><span>\u6309\u6210\u5458\u8BBE\u7F6E\u7FA4\u804A\u53D1\u8A00\u98CE\u683C</span></button>
+            <button type="button" onclick="window.__pmShowWorldBookColumns({title:'${safeJS(groupMeta.name)}\u53EF\u8BFB\u7684\u6570\u636E\u5E93\u8BB0\u5FC6',module:'chat',scope:{kind:'group',id:'${safeJS(state.currentGroupKey)}'}})"><b>\u6570\u636E\u5E93\u8BB0\u5FC6</b><span>\u8BBE\u7F6E\u7FA4\u804A\u516C\u5171\u53EF\u8BFB\u680F\u76EE</span></button>
+            <button type="button" onclick="window.__pmToggleGroupMemberPrivateMemory('${safeJS(state.currentGroupKey)}')"><b>\u6210\u5458\u79C1\u4EBA\u8BB0\u5FC6</b><span>${window.__pmWorldBookConfig?.groups?.[state.currentGroupKey]?.allowMemberPrivateMemory === true ? "\u5DF2\u5F00\u542F" : "\u5173\u95ED"}</span></button>
             <button type="button" onclick="window.__pmShowGroupRandomNpcSettings()"><b>\u8DEF\u4EBA\u7FA4\u53CB</b><span>\u8BBE\u7F6E\u968F\u673A\u51FA\u73B0\u7684\u4E34\u65F6\u7FA4\u53CB</span></button>
           </div>
         </div>
@@ -16720,17 +16791,23 @@ ${lines}`;
 
   // src/settings-worldbook.js
   var text4 = (value) => typeof value === "string" ? value : "";
-  async function loadWorldBookDirectory(context) {
+  var MODULE_LABELS = Object.freeze({ chat: "\u4F1A\u8BDD", calendar: "\u65E5\u5386", community: "\u793E\u533A" });
+  var MODULE_ICONS = Object.freeze({ chat: CHAT_ICON_SVG, calendar: CALENDAR_ICON_SVG, community: COMMUNITY_ICON_SVG });
+  var isCurrentRequest = (epoch, controller, currentEpoch) => epoch === currentEpoch() && !controller.signal.aborted;
+  var DATABASE_ICON_SVG = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><ellipse cx="12" cy="5" rx="7" ry="3"/><path d="M5 5v7c0 1.7 3.1 3 7 3s7-1.3 7-3V5M5 12v7c0 1.7 3.1 3 7 3s7-1.3 7-3v-7"/></svg>';
+  async function loadWorldBookDirectory(context, { signal } = {}) {
     if (typeof context?.getWorldInfoNames !== "function" || typeof context?.loadWorldInfo !== "function") return [];
+    if (signal?.aborted) return [];
     let names;
     try {
       names = await context.getWorldInfoNames();
     } catch (error) {
       return [];
     }
-    if (!Array.isArray(names)) return [];
+    if (signal?.aborted || !Array.isArray(names)) return [];
     const books = [];
     for (const rawName of names) {
+      if (signal?.aborted) return [];
       const name = text4(rawName).trim();
       if (!name) continue;
       let book;
@@ -16739,6 +16816,7 @@ ${lines}`;
       } catch (error) {
         continue;
       }
+      if (signal?.aborted) return [];
       const source = book && typeof book === "object" && !Array.isArray(book) ? book.entries : null;
       if (!source || typeof source !== "object" || Array.isArray(source)) continue;
       const entries = Object.entries(source).flatMap(([fallbackUid, value]) => {
@@ -16753,21 +16831,152 @@ ${lines}`;
     }
     return books;
   }
-  function toggle(id2, checked, dataset) {
-    return `<div${id2 ? ` id="${id2}"` : ""} class="pm-custom-check ${checked ? "is-checked" : ""}" role="checkbox" tabindex="0" aria-checked="${checked}" ${dataset} onclick="this.classList.toggle('is-checked');this.setAttribute('aria-checked',String(this.classList.contains('is-checked')))" onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();this.click()}"></div>`;
+  function eyeToggle(checked, dataset, label) {
+    return `<button type="button" class="pm-worldbook-eye ${checked ? "is-checked" : ""}" aria-pressed="${checked}" aria-label="${escapeAttr(label)}" title="${escapeAttr(label)}" ${dataset} onclick="this.classList.toggle('is-checked');this.setAttribute('aria-pressed',String(this.classList.contains('is-checked')))" onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();this.click()}">${EYE_ICON_SVG}</button>`;
   }
   function renderPage(config, books) {
     const columns = [...new Set(books.flatMap((book) => book.entries.map((entry2) => entry2.column).filter(Boolean)))];
-    const columnRows = columns.length ? columns.map((column) => `<div class="pm-li"><span><b>${escapeHtml(column)}</b><small class="pm-group-sub">TavernDB \u680F\u76EE</small></span>${WORLD_BOOK_MODULES.map((module) => `<label class="pm-cfg-label" style="margin:0;display:flex;align-items:center;gap:4px">${module}${toggle("", config.columns[column]?.[module] !== false, `data-world-column="${escapeAttr(column)}" data-world-module="${module}"`)}</label>`).join("")}</div>`).join("") : '<div class="pm-prof-empty">\u672A\u53D1\u73B0\u7B26\u5408 TavernDB-ACU-CustomExport \u534F\u8BAE\u7684\u680F\u76EE\u3002</div>';
-    const entryRows = books.length ? books.map((book) => `<div style="padding:10px 14px;border-top:1px solid var(--pm-color-border-subtle)"><div class="pm-cfg-label" style="margin:0 0 6px"><b>${escapeHtml(book.name)}</b></div>${book.entries.map((entry2) => `<div class="pm-li"><span><b>${escapeHtml(entry2.content.slice(0, 48))}</b><small class="pm-group-sub">UID ${escapeHtml(entry2.uid)}${entry2.column ? ` \xB7 ${escapeHtml(entry2.column)}` : ""}${entry2.disabled ? " \xB7 \u5BBF\u4E3B\u5DF2\u7981\u7528" : ""}</small></span>${toggle("", config.entries[entry2.key] !== false, `data-world-entry="${escapeAttr(entry2.key)}"`)}</div>`).join("")}</div>`).join("") : '<div class="pm-prof-empty">\u5F53\u524D\u5BBF\u4E3B\u6CA1\u6709\u53EF\u8BFB\u53D6\u7684\u4E16\u754C\u4E66\uFF0C\u6216\u672A\u63D0\u4F9B\u8BFB\u53D6 API\u3002</div>';
-    return `<div class="pm-settings-page"><div style="padding:12px 14px;display:flex;flex-direction:column;gap:10px"><div class="pm-cfg-tip" style="text-align:left">\u53EA\u5F71\u54CD\u5929\u97F3\u5C0F\u7B3A\u81EA\u8EAB\u8BFB\u53D6\uFF0C\u4E0D\u4FEE\u6539\u5BBF\u4E3B\u5F00\u5173\u3001\u4E16\u754C\u4E66\u6587\u4EF6\u6216\u4E3B\u804A\u5929\u6CE8\u5165\u3002</div><label class="pm-cfg-label">\u4E3B\u7EBF\u6B63\u6587\u6761\u6570<input id="pm-world-main-messages" class="pm-cfg-input" type="number" min="1" max="100" value="${config.mainChatMessages}"></label><label class="pm-cfg-label">\u4E16\u754C\u4E66\u626B\u63CF\u6761\u6570<input id="pm-world-scan-messages" class="pm-cfg-input" type="number" min="1" max="100" value="${config.scanMessages}"></label><label class="pm-cfg-label">\u4E16\u754C\u4E66\u5B57\u7B26\u4E0A\u9650<input id="pm-world-max-chars" class="pm-cfg-input" type="number" min="1000" max="80000" value="${config.maxChars}"></label></div><div style="padding:10px 14px;border-top:1px solid var(--pm-color-border-subtle)"><div class="pm-cfg-label" style="margin-bottom:6px">TavernDB \u680F\u76EE\u8BFB\u53D6\u77E9\u9635</div>${columnRows}</div><div style="padding-bottom:12px"><div class="pm-cfg-label" style="padding:10px 14px 4px">\u539F\u751F\u4E16\u754C\u4E66\u6761\u76EE</div>${entryRows}</div></div>`;
+    const columnRows = columns.length ? `<div class="pm-worldbook-matrix"><div class="pm-worldbook-matrix-header"><span></span>${WORLD_BOOK_MODULES.map((module) => `<span title="${MODULE_LABELS[module]}">${MODULE_ICONS[module]}<b>${MODULE_LABELS[module]}</b></span>`).join("")}</div>${columns.map((column) => `<div class="pm-worldbook-matrix-row"><b title="${escapeAttr(column)}">${escapeHtml(column)}</b>${WORLD_BOOK_MODULES.map((module) => eyeToggle(config.columns[column]?.[module] !== false, `data-world-column="${escapeAttr(column)}" data-world-module="${module}"`, `${column}\uFF1A${MODULE_LABELS[module]}\u8BFB\u53D6\u5F00\u5173`)).join("")}</div>`).join("")}</div>` : '<div class="pm-prof-empty">\u672A\u53D1\u73B0\u7B26\u5408 TavernDB-ACU-CustomExport \u534F\u8BAE\u7684\u680F\u76EE\u3002</div>';
+    const entryRows = books.map((book) => {
+      const entries = book.entries.filter((entry2) => !entry2.column);
+      if (!entries.length) return "";
+      return `<div style="padding:10px 14px;border-top:1px solid var(--pm-color-border-subtle)"><div class="pm-cfg-label" style="margin:0 0 6px"><b>${escapeHtml(book.name)}</b></div>${entries.map((entry2) => `<div class="pm-li"><span><b>${escapeHtml(entry2.content.slice(0, 48))}</b><small class="pm-group-sub">UID ${escapeHtml(entry2.uid)}${entry2.disabled ? " \xB7 \u5BBF\u4E3B\u5DF2\u7981\u7528" : ""}</small></span>${eyeToggle(config.entries[entry2.key] !== false, `data-world-entry="${escapeAttr(entry2.key)}"`, `${book.name} \u6761\u76EE ${entry2.uid} \u8BFB\u53D6\u5F00\u5173`)}</div>`).join("")}</div>`;
+    }).join("") || '<div class="pm-prof-empty">\u672A\u53D1\u73B0\u4E0D\u5C5E\u4E8E TavernDB \u680F\u76EE\u7684\u539F\u751F\u4E16\u754C\u4E66\u6761\u76EE\u3002</div>';
+    return `<div class="pm-settings-page"><div style="padding:12px 14px;display:flex;flex-direction:column;gap:10px"><div class="pm-cfg-label" style="margin:0">\u8BFB\u53D6\u8303\u56F4</div><div class="pm-cfg-tip" style="text-align:left">\u4E3B\u7EBF\u6B63\u6587\u7528\u4E8E\u63D0\u793A\u8BCD\u53C2\u8003\uFF1B\u626B\u63CF\u7A97\u53E3\u4EC5\u51B3\u5B9A\u54EA\u4E9B\u4E16\u754C\u4E66\u6761\u76EE\u4F1A\u88AB\u89E6\u53D1\u3002</div><label class="pm-cfg-label">\u8BFB\u53D6\u6B63\u6587\u697C\u5C42\u6570<input id="pm-world-main-messages" class="pm-cfg-input" type="number" min="1" max="100" value="${config.mainChatMessages}"></label><label class="pm-cfg-label">\u4E16\u754C\u4E66\u626B\u63CF\u6DF1\u5EA6<input id="pm-world-scan-messages" class="pm-cfg-input" type="number" min="1" max="100" value="${config.scanMessages}"></label><label class="pm-cfg-label">\u53D1\u9001\u4E16\u754C\u4E66\u5B57\u7B26\u6570\u4E0A\u9650<input id="pm-world-max-chars" class="pm-cfg-input" type="number" min="1000" max="80000" value="${config.maxChars}"></label></div><div style="padding:10px 14px;border-top:1px solid var(--pm-color-border-subtle)"><div class="pm-cfg-label" style="margin-bottom:6px;display:flex;align-items:center;gap:6px">${DATABASE_ICON_SVG}<span>\u6570\u636E\u5E93\u6761\u76EE\u4E00\u89C8</span></div>${columnRows}</div><div style="padding-bottom:12px"><div class="pm-cfg-label" style="padding:10px 14px 4px;display:flex;align-items:center;gap:6px">${EYE_ICON_SVG}<span>\u539F\u751F\u4E16\u754C\u4E66\u6761\u76EE</span></div>${entryRows}</div></div>`;
+  }
+  function columnNames(books) {
+    return [...new Set(books.flatMap((book) => book.entries.map((entry2) => entry2.column).filter(Boolean)))];
+  }
+  function renderColumnSelector({ title, module, scope, config, books }) {
+    const override = scope?.kind === "group" ? config.groups[scope.id] : scope?.kind === "character" ? config.characters[scope.id] : null;
+    const columns = columnNames(books);
+    const rows = columns.length ? columns.map((column) => {
+      const checked = override?.columns?.[column]?.[module] ?? config.columns[column]?.[module] !== false;
+      return `<div class="pm-li"><span><b>${escapeHtml(column)}</b><small class="pm-group-sub">TavernDB \u680F\u76EE</small></span>${eyeToggle(checked, `data-world-quick-column="${escapeAttr(column)}"`, `${title}\uFF1A${column}\u8BFB\u53D6\u5F00\u5173`)}</div>`;
+    }).join("") : '<div class="pm-prof-empty">\u672A\u53D1\u73B0\u7B26\u5408 TavernDB-ACU-CustomExport \u534F\u8BAE\u7684\u680F\u76EE\u3002</div>';
+    const reset = scope ? '<button class="pm-action-button is-secondary" onclick="window.__pmResetWorldBookColumnOverride()" style="flex:1">\u6062\u590D\u8DDF\u968F\u5168\u5C40</button>' : "";
+    return renderSettingsModal({ title, content: `<div class="pm-settings-page"><div class="pm-cfg-tip" style="text-align:left;padding:12px 14px">${scope ? "\u5F53\u524D\u9009\u62E9\u4EC5\u4F5C\u7528\u4E8E\u6B64\u5904\uFF1B\u6062\u590D\u540E\u7EE7\u7EED\u8DDF\u968F\u5168\u5C40\u8BFB\u53D6\u8BBE\u7F6E\u3002" : `\u76F4\u63A5\u4FEE\u6539\u5168\u5C40\u201C${MODULE_LABELS[module]}\u201D\u8BFB\u53D6\u5217\u3002`}</div><div style="padding-bottom:12px">${rows}</div></div>`, footer: `<div class="pm-modal-add">${reset}<button class="pm-action-button" onclick="window.__pmSaveWorldBookColumns()" style="flex:2">\u5B8C\u6210</button></div>` });
   }
   function installWorldBookSettings({ makeOverlay, addNote, getCtx }) {
+    let requestEpoch = 0;
+    let requestController = null;
+    const cancelRequest = (epoch, controller) => {
+      if (epoch !== requestEpoch || controller !== requestController) return;
+      requestEpoch += 1;
+      controller.abort();
+      requestController = null;
+    };
+    const cancelPendingPage = () => {
+      if (requestController) cancelRequest(requestEpoch, requestController);
+    };
+    let quickSelector = null;
+    const cloneConfig = (config) => structuredClone(normalizeWorldBookConfig(config));
     const showPage = async () => {
+      cancelPendingPage();
+      const epoch = requestEpoch;
+      const controller = new AbortController();
+      requestController = controller;
+      let committingOverlay = false;
+      const previousOverlay = document.getElementById("pm-overlay");
+      if (previousOverlay) {
+        const previousOnClose = previousOverlay.__pmOnClose;
+        previousOverlay.__pmOnClose = (reason) => {
+          if (typeof previousOnClose === "function") previousOnClose(reason);
+          if (!(committingOverlay && reason === "replace")) cancelRequest(epoch, controller);
+        };
+      }
+      const config = loadWorldBookConfig();
+      const books = await loadWorldBookDirectory(getCtx(), { signal: controller.signal });
+      if (!isCurrentRequest(epoch, controller, () => requestEpoch)) return false;
+      const footer = '<div class="pm-modal-add"><button class="pm-action-button is-secondary" onclick="window.__pmResetWorldBookConfig()" style="flex:1">\u6062\u590D\u9ED8\u8BA4</button><button class="pm-action-button" onclick="window.__pmSaveWorldBookConfig()" style="flex:2">\u4FDD\u5B58\u4E16\u754C\u4E66\u8BBE\u7F6E</button></div>';
+      committingOverlay = true;
+      try {
+        makeOverlay(renderSettingsModal({ title: "\u4E16\u754C\u4E66\u8BFB\u53D6", content: renderPage(config, books), footer }), {
+          onClose: (reason) => {
+            if (reason !== "replace") cancelRequest(epoch, controller);
+          }
+        });
+      } finally {
+        committingOverlay = false;
+      }
+      return true;
+    };
+    window.__pmShowWorldBookColumns = async ({ title, module, scope = null } = {}) => {
+      if (!WORLD_BOOK_MODULES.includes(module)) return false;
       const config = loadWorldBookConfig();
       const books = await loadWorldBookDirectory(getCtx());
-      const footer = '<div class="pm-modal-add"><button class="pm-action-button is-secondary" onclick="window.__pmResetWorldBookConfig()" style="flex:1">\u6062\u590D\u9ED8\u8BA4</button><button class="pm-action-button" onclick="window.__pmSaveWorldBookConfig()" style="flex:2">\u4FDD\u5B58\u4E16\u754C\u4E66\u8BBE\u7F6E</button></div>';
-      makeOverlay(renderSettingsModal({ title: "\u4E16\u754C\u4E66\u8BFB\u53D6", content: renderPage(config, books), footer }));
+      quickSelector = { title: text4(title).trim() || `${MODULE_LABELS[module]}\u53EF\u8BFB\u7684\u6570\u636E\u5E93\u8BB0\u5FC6`, module, scope, books };
+      makeOverlay(renderColumnSelector({ ...quickSelector, config }));
+      return true;
+    };
+    window.__pmSaveWorldBookColumns = () => {
+      if (!quickSelector) return false;
+      const current = normalizeWorldBookConfig(window.__pmWorldBookConfig);
+      const candidate = cloneConfig(current);
+      const { module, scope } = quickSelector;
+      const target = scope?.kind === "group" ? candidate.groups : scope?.kind === "character" ? candidate.characters : null;
+      const id2 = text4(scope?.id).trim();
+      if (target && !id2) return false;
+      const override = target ? target[id2] = { ...target[id2] || {}, entries: { ...target[id2]?.entries || {} }, columns: { ...target[id2]?.columns || {} } } : candidate;
+      document.querySelectorAll("[data-world-quick-column]").forEach((control) => {
+        const column = control.dataset.worldQuickColumn;
+        override.columns[column] = { ...override.columns[column], [module]: control.classList.contains("is-checked") };
+      });
+      if (!saveWorldBookConfig(candidate)) {
+        alert("\u4E16\u754C\u4E66\u8BBE\u7F6E\u4FDD\u5B58\u5931\u8D25\uFF1A\u6D4F\u89C8\u5668\u5B58\u50A8\u4E0D\u53EF\u7528");
+        return false;
+      }
+      document.getElementById("pm-overlay")?.remove();
+      addNote("\u4E16\u754C\u4E66\u8BFB\u53D6\u8BBE\u7F6E\u5DF2\u4FDD\u5B58");
+      quickSelector = null;
+      return true;
+    };
+    window.__pmResetWorldBookColumnOverride = () => {
+      if (!quickSelector?.scope) return false;
+      const current = normalizeWorldBookConfig(window.__pmWorldBookConfig);
+      const candidate = cloneConfig(current);
+      const target = quickSelector.scope.kind === "group" ? candidate.groups : candidate.characters;
+      const id2 = text4(quickSelector.scope.id).trim();
+      if (!id2) return false;
+      const existing = target[id2];
+      if (existing) {
+        const columns = { ...existing.columns };
+        for (const column of Object.keys(columns)) {
+          const modes = { ...columns[column] };
+          delete modes[quickSelector.module];
+          if (Object.keys(modes).length) columns[column] = modes;
+          else delete columns[column];
+        }
+        const next = { ...existing, columns };
+        if (!Object.keys(next.entries || {}).length && !Object.keys(columns).length && !next.allowMemberPrivateMemory) delete target[id2];
+        else target[id2] = next;
+      }
+      if (!saveWorldBookConfig(candidate)) {
+        alert("\u4E16\u754C\u4E66\u8BBE\u7F6E\u91CD\u7F6E\u5931\u8D25\uFF1A\u6D4F\u89C8\u5668\u5B58\u50A8\u4E0D\u53EF\u7528");
+        return false;
+      }
+      makeOverlay(renderColumnSelector({ ...quickSelector, config: candidate }));
+      return true;
+    };
+    window.__pmSetGroupMemberPrivateMemory = (groupId, enabled) => {
+      const id2 = text4(groupId).trim();
+      if (!id2) return false;
+      const candidate = cloneConfig(window.__pmWorldBookConfig);
+      candidate.groups[id2] = { ...candidate.groups[id2] || {}, entries: { ...candidate.groups[id2]?.entries || {} }, columns: { ...candidate.groups[id2]?.columns || {} }, allowMemberPrivateMemory: enabled === true };
+      if (!saveWorldBookConfig(candidate)) {
+        alert("\u6210\u5458\u79C1\u4EBA\u8BB0\u5FC6\u8BBE\u7F6E\u4FDD\u5B58\u5931\u8D25\uFF1A\u6D4F\u89C8\u5668\u5B58\u50A8\u4E0D\u53EF\u7528");
+        return false;
+      }
+      return true;
+    };
+    window.__pmToggleGroupMemberPrivateMemory = (groupId) => {
+      const id2 = text4(groupId).trim();
+      if (!id2) return false;
+      const enabled = window.__pmWorldBookConfig?.groups?.[id2]?.allowMemberPrivateMemory === true;
+      if (!enabled && !confirm("\u5F00\u542F\u540E\uFF0C\u7FA4\u804A\u4F1A\u8F7D\u5165\u6210\u5458\u5728\u79C1\u4EBA\u7A97\u53E3\u4E2D\u542F\u7528\u7684\u6570\u636E\u5E93\u680F\u76EE\u3002\u7FA4\u804A\u4F7F\u7528\u5171\u4EAB\u6A21\u578B\u4E0A\u4E0B\u6587\uFF0C\u89D2\u8272\u95F4\u9694\u79BB\u4F9D\u8D56\u63D0\u793A\u8BCD\u7EA6\u675F\uFF0C\u5E76\u975E\u4E25\u683C\u6570\u636E\u9694\u79BB\u3002")) return false;
+      const saved = window.__pmSetGroupMemberPrivateMemory(id2, !enabled);
+      if (saved) window.__pmEditGroup?.();
+      return saved;
     };
     window.__pmSaveWorldBookConfig = () => {
       const current = normalizeWorldBookConfig(window.__pmWorldBookConfig);
@@ -16787,15 +16996,15 @@ ${lines}`;
       addNote("\u4E16\u754C\u4E66\u8BFB\u53D6\u8BBE\u7F6E\u5DF2\u4FDD\u5B58");
       return true;
     };
-    window.__pmResetWorldBookConfig = () => {
+    window.__pmResetWorldBookConfig = async () => {
       if (!saveWorldBookConfig(null)) {
         alert("\u4E16\u754C\u4E66\u8BBE\u7F6E\u91CD\u7F6E\u5931\u8D25\uFF1A\u6D4F\u89C8\u5668\u5B58\u50A8\u4E0D\u53EF\u7528");
         return false;
       }
-      showPage();
+      await showPage();
       return true;
     };
-    return { showPage };
+    return { showPage, cancelPendingPage };
   }
 
   // src/settings-backup.js
@@ -17637,6 +17846,7 @@ ${error.message}`);
       }
     };
     window.__pmShowConfig = async (page = "home") => {
+      if (page !== "worldbook") worldBookSettings.cancelPendingPage();
       loadProfiles();
       loadTheme();
       loadBudgetConfig();

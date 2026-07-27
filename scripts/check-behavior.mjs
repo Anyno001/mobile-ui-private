@@ -1435,13 +1435,15 @@ installSettingsUi({
     getCtx: () => worldBookContext,
 });
 await window.__pmShowConfig('worldbook');
-assert.match(settingsOverlayHtml, /世界书读取|TavernDB 栏目读取矩阵|设置页条目/,
+assert.match(settingsOverlayHtml, /世界书读取|数据库条目一览|设置页条目/,
     '设置首页必须能打开世界书读取页并展示原始条目与栏目');
 assert.match(settingsOverlayHtml, /读取范围|主线正文用于提示词参考；扫描窗口仅决定哪些世界书条目会被触发。/,
     '世界书设置页必须解释正文与扫描两个读取范围的不同用途');
 assert.match(settingsOverlayHtml, /aria-label="设置书 条目 1 读取开关"|aria-label="纪要：聊天读取开关"/,
     '世界书条目与栏目矩阵必须提供带 SVG 图标的可访问读取开关');
-assert.match(settingsOverlayHtml, /聊天|日历|社区/, '世界书栏目矩阵必须使用中文模块标签');
+assert.match(settingsOverlayHtml, /pm-worldbook-matrix-header[\s\S]*会话[\s\S]*日历[\s\S]*社区/,
+    '世界书栏目矩阵必须只在表头展示中文模块标签');
+assert.match(settingsOverlayHtml, /pm-worldbook-eye is-checked/, '世界书读取状态必须使用绿色眼睛而非滑动开关');
 assert.doesNotMatch(settingsOverlayHtml, />\s*(?:chat|calendar|community)\s*</, '世界书栏目矩阵不得向用户暴露内部模块键');
 assert.equal((settingsOverlayHtml.match(/TavernDB 条目/g) || []).length, 0,
     'TavernDB 条目不得在原生条目区重复渲染');

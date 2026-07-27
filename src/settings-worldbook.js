@@ -2,10 +2,11 @@ import { createWorldBookEntryKey, getTavernDbColumn, normalizeWorldBookConfig, W
 import { loadWorldBookConfig, saveWorldBookConfig } from './storage.js';
 import { renderSettingsModal } from './settings-templates.js';
 import { escapeAttr, escapeHtml } from './ui.js';
-import { EYE_ICON_SVG } from './icons.js';
+import { CALENDAR_ICON_SVG, CHAT_ICON_SVG, COMMUNITY_ICON_SVG, EYE_ICON_SVG } from './icons.js';
 
 const text = value => typeof value === 'string' ? value : '';
-const MODULE_LABELS = Object.freeze({ chat: '聊天', calendar: '日历', community: '社区' });
+const MODULE_LABELS = Object.freeze({ chat: '会话', calendar: '日历', community: '社区' });
+const MODULE_ICONS = Object.freeze({ chat: CHAT_ICON_SVG, calendar: CALENDAR_ICON_SVG, community: COMMUNITY_ICON_SVG });
 const isCurrentRequest = (epoch, controller, currentEpoch) => epoch === currentEpoch() && !controller.signal.aborted;
 const DATABASE_ICON_SVG = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><ellipse cx="12" cy="5" rx="7" ry="3"/><path d="M5 5v7c0 1.7 3.1 3 7 3s7-1.3 7-3V5M5 12v7c0 1.7 3.1 3 7 3s7-1.3 7-3v-7"/></svg>';
 
@@ -38,19 +39,19 @@ export async function loadWorldBookDirectory(context, { signal } = {}) {
     return books;
 }
 
-function toggle(id, checked, dataset, label, icon = '') {
-    return `<button${id ? ` id="${id}"` : ''} type="button" class="pm-custom-check ${checked ? 'is-checked' : ''}" role="checkbox" aria-checked="${checked}" aria-label="${escapeAttr(label)}" title="${escapeAttr(label)}" ${dataset} onclick="this.classList.toggle('is-checked');this.setAttribute('aria-checked',String(this.classList.contains('is-checked')))" onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();this.click()}">${icon}</button>`;
+function eyeToggle(checked, dataset, label) {
+    return `<button type="button" class="pm-worldbook-eye ${checked ? 'is-checked' : ''}" aria-pressed="${checked}" aria-label="${escapeAttr(label)}" title="${escapeAttr(label)}" ${dataset} onclick="this.classList.toggle('is-checked');this.setAttribute('aria-pressed',String(this.classList.contains('is-checked')))" onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();this.click()}">${EYE_ICON_SVG}</button>`;
 }
 
 function renderPage(config, books) {
     const columns = [...new Set(books.flatMap(book => book.entries.map(entry => entry.column).filter(Boolean)))];
-    const columnRows = columns.length ? columns.map(column => `<div style="padding:8px 0;border-top:1px solid var(--pm-color-border-subtle)"><div class="pm-cfg-label" style="margin:0 0 6px"><b>${escapeHtml(column)}</b><small class="pm-group-sub">TavernDB 栏目</small></div><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(80px,1fr));gap:6px">${WORLD_BOOK_MODULES.map(module => `<label class="pm-cfg-label" style="margin:0;display:flex;align-items:center;justify-content:space-between;gap:4px;min-width:0"><span>${MODULE_LABELS[module]}</span>${toggle('', config.columns[column]?.[module] !== false, `data-world-column="${escapeAttr(column)}" data-world-module="${module}"`, `${column}：${MODULE_LABELS[module]}读取开关`, EYE_ICON_SVG)}</label>`).join('')}</div></div>`).join('') : '<div class="pm-prof-empty">未发现符合 TavernDB-ACU-CustomExport 协议的栏目。</div>';
+    const columnRows = columns.length ? `<div class="pm-worldbook-matrix"><div class="pm-worldbook-matrix-header"><span></span>${WORLD_BOOK_MODULES.map(module => `<span title="${MODULE_LABELS[module]}">${MODULE_ICONS[module]}<b>${MODULE_LABELS[module]}</b></span>`).join('')}</div>${columns.map(column => `<div class="pm-worldbook-matrix-row"><b title="${escapeAttr(column)}">${escapeHtml(column)}</b>${WORLD_BOOK_MODULES.map(module => eyeToggle(config.columns[column]?.[module] !== false, `data-world-column="${escapeAttr(column)}" data-world-module="${module}"`, `${column}：${MODULE_LABELS[module]}读取开关`)).join('')}</div>`).join('')}</div>` : '<div class="pm-prof-empty">未发现符合 TavernDB-ACU-CustomExport 协议的栏目。</div>';
     const entryRows = books.map(book => {
         const entries = book.entries.filter(entry => !entry.column);
         if (!entries.length) return '';
-        return `<div style="padding:10px 14px;border-top:1px solid var(--pm-color-border-subtle)"><div class="pm-cfg-label" style="margin:0 0 6px"><b>${escapeHtml(book.name)}</b></div>${entries.map(entry => `<div class="pm-li"><span><b>${escapeHtml(entry.content.slice(0, 48))}</b><small class="pm-group-sub">UID ${escapeHtml(entry.uid)}${entry.disabled ? ' · 宿主已禁用' : ''}</small></span>${toggle('', config.entries[entry.key] !== false, `data-world-entry="${escapeAttr(entry.key)}"`, `${book.name} 条目 ${entry.uid} 读取开关`, EYE_ICON_SVG)}</div>`).join('')}</div>`;
+        return `<div style="padding:10px 14px;border-top:1px solid var(--pm-color-border-subtle)"><div class="pm-cfg-label" style="margin:0 0 6px"><b>${escapeHtml(book.name)}</b></div>${entries.map(entry => `<div class="pm-li"><span><b>${escapeHtml(entry.content.slice(0, 48))}</b><small class="pm-group-sub">UID ${escapeHtml(entry.uid)}${entry.disabled ? ' · 宿主已禁用' : ''}</small></span>${eyeToggle(config.entries[entry.key] !== false, `data-world-entry="${escapeAttr(entry.key)}"`, `${book.name} 条目 ${entry.uid} 读取开关`)}</div>`).join('')}</div>`;
     }).join('') || '<div class="pm-prof-empty">未发现不属于 TavernDB 栏目的原生世界书条目。</div>';
-    return `<div class="pm-settings-page"><div style="padding:12px 14px;display:flex;flex-direction:column;gap:10px"><div class="pm-cfg-tip" style="text-align:left">只影响天音小笺自身读取，不修改宿主开关、世界书文件或主聊天注入。</div><div class="pm-cfg-label" style="margin:0">读取范围</div><div class="pm-cfg-tip" style="text-align:left">主线正文用于提示词参考；扫描窗口仅决定哪些世界书条目会被触发。</div><label class="pm-cfg-label">主线正文条数<input id="pm-world-main-messages" class="pm-cfg-input" type="number" min="1" max="100" value="${config.mainChatMessages}"></label><label class="pm-cfg-label">世界书扫描条数<input id="pm-world-scan-messages" class="pm-cfg-input" type="number" min="1" max="100" value="${config.scanMessages}"></label><label class="pm-cfg-label">世界书字符上限<input id="pm-world-max-chars" class="pm-cfg-input" type="number" min="1000" max="80000" value="${config.maxChars}"></label></div><div style="padding:10px 14px;border-top:1px solid var(--pm-color-border-subtle)"><div class="pm-cfg-label" style="margin-bottom:6px;display:flex;align-items:center;gap:6px">${DATABASE_ICON_SVG}<span>TavernDB 栏目读取矩阵</span></div>${columnRows}</div><div style="padding-bottom:12px"><div class="pm-cfg-label" style="padding:10px 14px 4px;display:flex;align-items:center;gap:6px">${EYE_ICON_SVG}<span>原生世界书条目</span></div>${entryRows}</div></div>`;
+    return `<div class="pm-settings-page"><div style="padding:12px 14px;display:flex;flex-direction:column;gap:10px"><div class="pm-cfg-label" style="margin:0">读取范围</div><div class="pm-cfg-tip" style="text-align:left">主线正文用于提示词参考；扫描窗口仅决定哪些世界书条目会被触发。</div><label class="pm-cfg-label">读取正文楼层数<input id="pm-world-main-messages" class="pm-cfg-input" type="number" min="1" max="100" value="${config.mainChatMessages}"></label><label class="pm-cfg-label">世界书扫描深度<input id="pm-world-scan-messages" class="pm-cfg-input" type="number" min="1" max="100" value="${config.scanMessages}"></label><label class="pm-cfg-label">发送世界书字符数上限<input id="pm-world-max-chars" class="pm-cfg-input" type="number" min="1000" max="80000" value="${config.maxChars}"></label></div><div style="padding:10px 14px;border-top:1px solid var(--pm-color-border-subtle)"><div class="pm-cfg-label" style="margin-bottom:6px;display:flex;align-items:center;gap:6px">${DATABASE_ICON_SVG}<span>数据库条目一览</span></div>${columnRows}</div><div style="padding-bottom:12px"><div class="pm-cfg-label" style="padding:10px 14px 4px;display:flex;align-items:center;gap:6px">${EYE_ICON_SVG}<span>原生世界书条目</span></div>${entryRows}</div></div>`;
 }
 
 function columnNames(books) {
@@ -62,7 +63,7 @@ function renderColumnSelector({ title, module, scope, config, books }) {
     const columns = columnNames(books);
     const rows = columns.length ? columns.map(column => {
         const checked = override?.columns?.[column]?.[module] ?? config.columns[column]?.[module] !== false;
-        return `<div class="pm-li"><span><b>${escapeHtml(column)}</b><small class="pm-group-sub">TavernDB 栏目</small></span>${toggle('', checked, `data-world-quick-column="${escapeAttr(column)}"`, `${title}：${column}读取开关`, EYE_ICON_SVG)}</div>`;
+        return `<div class="pm-li"><span><b>${escapeHtml(column)}</b><small class="pm-group-sub">TavernDB 栏目</small></span>${eyeToggle(checked, `data-world-quick-column="${escapeAttr(column)}"`, `${title}：${column}读取开关`)}</div>`;
     }).join('') : '<div class="pm-prof-empty">未发现符合 TavernDB-ACU-CustomExport 协议的栏目。</div>';
     const reset = scope ? '<button class="pm-action-button is-secondary" onclick="window.__pmResetWorldBookColumnOverride()" style="flex:1">恢复跟随全局</button>' : '';
     return renderSettingsModal({ title, content: `<div class="pm-settings-page"><div class="pm-cfg-tip" style="text-align:left;padding:12px 14px">${scope ? '当前选择仅作用于此处；恢复后继续跟随全局读取设置。' : `直接修改全局“${MODULE_LABELS[module]}”读取列。`}</div><div style="padding-bottom:12px">${rows}</div></div>`, footer: `<div class="pm-modal-add">${reset}<button class="pm-action-button" onclick="window.__pmSaveWorldBookColumns()" style="flex:2">完成</button></div>` });
