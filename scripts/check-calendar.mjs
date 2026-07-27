@@ -36,7 +36,7 @@ import {
     relativeCalendarLabel, replaceCalendarEventsInWindow, shiftCalendarMonth,
 } from '../src/calendar-model.js';
 import {
-    deleteOccasion, expandOccasions, findOccasion, normalizeOccasionStore,
+    deleteOccasion, expandOccasions, findOccasion, normalizeOccasion, normalizeOccasionStore,
     occasionDateForYear, upsertOccasion,
 } from '../src/calendar-occasion-model.js';
 import {
@@ -334,7 +334,9 @@ assert.equal(findOccasion(scope, birthdayId)?.title, '小林生日');
 const repeatScope = { occasions: [
     { type: 'anniversary', date: '2027-01-02', month: 1, day: 2, repeat: 'daily', title: '每日记录' },
     { type: 'anniversary', date: '2027-01-02', month: 1, day: 2, repeat: 'weekly', title: '每周例会' },
+    { type: 'anniversary', date: '2027-01-02', month: 1, day: 2, repeat: 'biweekly', title: '双周例会' },
     { type: 'anniversary', date: '2027-01-31', month: 1, day: 31, repeat: 'monthly', title: '月底结算' },
+    { type: 'anniversary', date: '2027-01-02', month: 1, day: 2, repeat: 'custom', intervalDays: 3, title: '每三天记录' },
 ] };
 const repeated = expandOccasions(repeatScope, { start: new Date(2027, 1, 26, 12), days: 4 });
 assert.deepEqual(
@@ -347,6 +349,21 @@ assert.deepEqual(
     ['2027-02-27'],
     '每周重复必须按锚点的星期几展开',
 );
+assert.deepEqual(
+    repeated.filter(item => item.title === '双周例会').map(item => item.date),
+    ['2027-02-27'],
+    '每两周重复必须按锚点的星期几和十四天间隔展开',
+);
+assert.deepEqual(
+    repeated.filter(item => item.title === '每三天记录').map(item => item.date),
+    ['2027-02-28'],
+    '自定义重复必须按填写的天数间隔展开',
+);
+for (const invalidIntervalDays of [0, -1, 1.5, 10000, 'invalid']) {
+    const normalized = normalizeOccasion({ type: 'anniversary', date: '2027-01-02', month: 1, day: 2,
+        repeat: 'custom', intervalDays: invalidIntervalDays, title: '非法间隔' });
+    assert.equal(normalized.intervalDays, 1, '自定义重复必须将非法间隔钳制为一天');
+}
 assert.deepEqual(
     repeated.filter(item => item.title === '月底结算').map(item => item.date),
     ['2027-02-28'],
@@ -580,7 +597,7 @@ const climateInjection = renderCalendarContextInjection({
     start: new Date(`${climateDate}T12:00:00`),
 });
 const sharedWeatherText = `${climateResolved.day.tempMin}°/${climateResolved.day.tempMax}°C`;
-assert.match(climateDetail, new RegExp(`${climateResolved.day.tempMin}°–${climateResolved.day.tempMax}°`));
+assert.match(climateDetail, new RegExp(`${climateResolved.day.tempMin}° – ${climateResolved.day.tempMax}°`));
 assert.doesNotMatch(climateDetail, /\d+ - \d+ ℃/, '状态卡天气温度不得回退为连字符加摄氏符号格式');
 assert.match(climateDetail, /class="pm-calendar-status-card pm-calendar-status-card-weather"/);
 assert.match(climateDetail, /class="pm-calendar-status-heading"><strong class="pm-calendar-status-relative">今天<\/strong><span class="pm-calendar-status-date"><time datetime="2032-03-15">3月15日<\/time><em>星期一<\/em><\/span><\/div>/);
@@ -592,7 +609,7 @@ const longLocationDetail = renderSelectedDateDetail(
         location: { ...freshWeather.store.location, country: longLocation },
     }, {}, climateDate, 'weather', '今天',
 );
-assert.match(longLocationDetail, new RegExp(`class="pm-calendar-status-value">${climateResolved.day.tempMin}°–${climateResolved.day.tempMax}°<\\/b>[\\s\\S]*?class="pm-calendar-status-weather-context">${weatherCodeLabel(climateResolved.day.weatherCode)} · ${longLocation}<\\/span><span class="pm-calendar-status-location"[^>]*><svg`),
+assert.match(longLocationDetail, new RegExp(`class="pm-calendar-status-value">${climateResolved.day.tempMin}° – ${climateResolved.day.tempMax}°<\\/b>[\\s\\S]*?class="pm-calendar-status-weather-context">${weatherCodeLabel(climateResolved.day.weatherCode)} · ${longLocation}<\\/span><span class="pm-calendar-status-location"[^>]*><svg`),
     '长地点必须位于独立的可省略文本节点中，且不得吞掉定位图标');
 assert.doesNotMatch(climateDetail, /pm-calendar-status-date-separator/);
 assert.match(climateDetail, /<svg/);
@@ -949,7 +966,9 @@ assert.match(renderedEntryDialog, /class="pm-modal pm-calendar-entry-dialog"/);
 assert.match(renderedEntryDialog, /<b>日程<\/b>/);
 assert.match(renderedEntryDialog, /name="repeat" data-calendar-repeat-select aria-label="日程重复规则"/);
 assert.match(renderedEntryDialog, /<option value="none" selected>不重复<\/option>/);
-assert.match(renderedEntryDialog, /每日重复[\s\S]*?每周（同星期）[\s\S]*?每月（同日）[\s\S]*?每年重复/);
+assert.match(renderedEntryDialog, /每日重复[\s\S]*?每周（同星期）[\s\S]*?每两周（同星期）[\s\S]*?每月（同日）[\s\S]*?自定义[\s\S]*?每年重复/);
+assert.match(renderedEntryDialog, /data-calendar-interval-days hidden aria-hidden="true"[\s\S]*?name="intervalDays"[^>]*min="1"[^>]*max="9999"[^>]*disabled/,
+    '非自定义重复不得暴露每N天输入框');
 assert.match(renderedEntryDialog, /data-calendar-occasion-fields hidden aria-hidden="true"[\s\S]*?name="occasionType" disabled[\s\S]*?name="leapDayRule" disabled/,
     '不重复日程不得向辅助技术或键盘焦点暴露年度字段');
 assert.match(renderedOccasionDialog, /<option value="none" >不重复<\/option>[\s\S]*?<option value="yearly" selected>每年重复<\/option>/);
@@ -965,14 +984,21 @@ const occasionFields = {
     setAttribute(name, value) { if (name === 'aria-hidden') this.ariaHidden = value; },
     querySelectorAll: selector => selector === 'select, input, textarea, button' ? occasionControls : [],
 };
+const intervalInput = { value: '1', disabled: false };
+const intervalFields = {
+    hidden: false, ariaHidden: '',
+    setAttribute(name, value) { if (name === 'aria-hidden') this.ariaHidden = value; },
+    querySelector: selector => selector === 'input' ? intervalInput : null,
+};
 const entryForm = { elements: {
     title: { value: '', focus: options => { entryTitleFocusOptions = options; } },
-    note: { value: '' }, repeat: entryRepeatSelect, occasionType: { value: 'birthday' }, leapDayRule: { value: 'mar1' },
+    note: { value: '' }, repeat: entryRepeatSelect, occasionType: { value: 'birthday' }, leapDayRule: { value: 'mar1' }, intervalDays: intervalInput,
 } };
 const entryRoot = {
     dataset: {},
     querySelector: selector => selector === '[data-calendar-entry-form]' ? entryForm
         : selector === '[data-calendar-repeat-select]' ? entryRepeatSelect
+            : selector === '[data-calendar-interval-days]' ? intervalFields
         : selector === '[data-calendar-occasion-fields]' ? occasionFields : null,
 };
 fillCalendarEntryForm(entryRoot, null, 'event');
@@ -980,9 +1006,17 @@ assert.equal(entryTitleFocusOptions, null, '管理态填充数据不得自动聚
 assert.equal(occasionFields.hidden, true);
 assert.equal(occasionFields.ariaHidden, 'true');
 assert.ok(occasionControls.every(control => control.disabled), '不重复日程必须禁用年度字段');
+assert.equal(intervalFields.hidden, true);
+assert.equal(intervalInput.disabled, true);
 assert.equal(entryRepeatSelect.value, 'none');
 assert.deepEqual(readCalendarEntryForm(entryRoot), { repeat: 'none', kind: 'event', title: '', note: '', type: 'anniversary', leapDayRule: 'feb28' },
     '不重复日程读取时不得携带年度专用字段');
+setCalendarEntryRepeat(entryRoot, 'custom');
+intervalInput.value = '3';
+assert.equal(intervalFields.hidden, false);
+assert.equal(intervalFields.ariaHidden, 'false');
+assert.equal(intervalInput.disabled, false);
+assert.deepEqual(readCalendarEntryForm(entryRoot), { repeat: 'custom', kind: 'occasion', title: '', note: '', type: 'anniversary', leapDayRule: 'feb28', intervalDays: 3 });
 setCalendarEntryRepeat(entryRoot, 'yearly');
 assert.equal(occasionFields.hidden, false);
 assert.equal(occasionFields.ariaHidden, 'false');
@@ -998,7 +1032,7 @@ assert.doesNotMatch(renderedWeather, /data-action="calendar-generate"/);
 assert.match(renderedWeather, /data-calendar-management="weather"/);
 assert.match(renderedWeather, /data-action="calendar-mode-weather"[^>]*aria-pressed="true"/);
 assert.match(renderedWeather, /少云/);
-assert.match(renderedWeather, /20°–30°/);
+assert.match(renderedWeather, /少云 30°/);
 assert.doesNotMatch(renderedWeather, /20 - 30 ℃/, '天气状态卡不得保留旧温度格式');
 assert.doesNotMatch(renderedWeather, /Open-Meteo|CC BY/, '天气来源标签不得混成第三方 attribution');
 assert.match(renderedWeather, /预报外日期使用气候推演/);
@@ -1009,7 +1043,7 @@ const renderedWeatherDetail = renderSelectedDateDetail(
 );
 assert.match(renderedWeatherDetail, /class="pm-calendar-selected-detail is-status-card"/);
 assert.match(renderedWeatherDetail, /class="pm-calendar-status-heading"><strong class="pm-calendar-status-relative">今天<\/strong><span class="pm-calendar-status-date"><time[^>]*>\d{1,2}月\d{1,2}日<\/time><em>星期[日一二三四五六]<\/em><\/span><\/div>/);
-assert.match(renderedWeatherDetail, /class="pm-calendar-status-value">20°–30°<\/b>[\s\S]*?class="pm-calendar-status-context"><span class="pm-calendar-status-weather-context">少云 · CN<\/span><span class="pm-calendar-status-location"[^>]*><svg/,
+assert.match(renderedWeatherDetail, /class="pm-calendar-status-value">20° – 30°<\/b>[\s\S]*?class="pm-calendar-status-context"><span class="pm-calendar-status-weather-context">少云 · CN<\/span><span class="pm-calendar-status-location"[^>]*><svg/,
     '天气状态卡必须先显示温度，再在末行显示天气条件和地点');
 assert.doesNotMatch(renderedWeatherDetail, /20 - 30 ℃/, '天气详情不得回退为旧温度格式');
 assert.doesNotMatch(renderedWeatherDetail, /pm-calendar-status-date-separator/);
@@ -1028,7 +1062,7 @@ assert.match(renderedCycle, /class="pm-calendar-cycle-input" name="enabled" type
 assert.match(renderedCycle, /class="pm-custom-check" aria-hidden="true"/,
     '周期开关必须复用统一视觉控件');
 const renderedCycleDetail = renderedCycle.match(/<section[^>]*data-calendar-selected-detail[\s\S]*?<\/section>/)?.[0] || '';
-assert.match(renderedCycleDetail, /class="pm-calendar-selected-detail is-status-card"[\s\S]*?class="pm-calendar-status-card pm-calendar-status-card-cycle" data-cycle-phase="period"[\s\S]*?pm-calendar-status-heading">[\s\S]*?pm-calendar-status-relative">今天<\/strong>[\s\S]*?class="pm-calendar-status-value">经期<\/b>[\s\S]*?pm-calendar-status-context"><span class="pm-calendar-status-cycle-context">生理周期<\/span>/,
+assert.match(renderedCycleDetail, /class="pm-calendar-selected-detail is-status-card"[\s\S]*?class="pm-calendar-status-card pm-calendar-status-card-cycle" data-cycle-phase="period"[\s\S]*?pm-calendar-status-heading">[\s\S]*?pm-calendar-status-relative">今天<\/strong>[\s\S]*?class="pm-calendar-status-value">经期<\/b>[\s\S]*?pm-calendar-status-context"><span class="pm-calendar-status-cycle-context">是特殊的日子 &gt; &lt; ！要注意保重身体呀<\/span>/,
     '选中经期日期必须使用海报式健康状态卡');
 assert.doesNotMatch(renderedCycleDetail, /健康记录/, '周期状态卡不得保留旧上下文文案');
 assert.match(renderedCycleDetail, /class="pm-calendar-status-watermark"[^>]*>[\s\S]*?<circle cx="12" cy="7" r="3"\/>/,
@@ -1237,6 +1271,12 @@ try {
         const close = interactiveNode(), error = { textContent: '' };
         const repeatSelect = interactiveNode();
         repeatSelect.value = 'none';
+        const intervalInput = { value: '1', disabled: true };
+        const intervalFields = {
+            hidden: true, ariaHidden: '',
+            setAttribute(name, value) { if (name === 'aria-hidden') this.ariaHidden = value; },
+            querySelector: selector => selector === 'input' ? intervalInput : null,
+        };
         const occasionControls = [{ disabled: false }, { disabled: false }];
         const occasionFields = {
             hidden: true, ariaHidden: '',
@@ -1246,16 +1286,17 @@ try {
         const form = interactiveNode();
         form.elements = {
             title: { value: '', focus(options) { assert.deepEqual(options, { preventScroll: true }); entryFocusCount += 1; } },
-            note: { value: '' }, repeat: repeatSelect, occasionType: { value: 'anniversary' }, leapDayRule: { value: 'feb28' },
+            note: { value: '' }, repeat: repeatSelect, occasionType: { value: 'anniversary' }, leapDayRule: { value: 'feb28' }, intervalDays: intervalInput,
         };
         form.submit = async () => form.listeners.get('submit')?.({ preventDefault() {} });
         const overlay = {
-            kind: 'editor', html, close, error, form, occasionFields, repeatSelect, dataset: {},
+            kind: 'editor', html, close, error, form, occasionFields, intervalFields, intervalInput, repeatSelect, dataset: {},
             querySelector(selector) {
                 if (selector === '[data-calendar-entry-form]') return form;
                 if (selector === '[data-calendar-entry-error]') return error;
                 if (selector === '[data-calendar-entry-close]') return close;
                 if (selector === '[data-calendar-repeat-select]') return repeatSelect;
+                if (selector === '[data-calendar-interval-days]') return intervalFields;
                 if (selector === '[data-calendar-occasion-fields]') return occasionFields;
                 return null;
             },

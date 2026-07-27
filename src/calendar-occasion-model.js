@@ -3,8 +3,8 @@ import { calendarDateFromParts, calendarDateRangeKeys, parseCalendarDate } from 
 export const OCCASION_STORE_VERSION = 1;
 export const OCCASION_TYPES = Object.freeze(['birthday', 'anniversary']);
 export const OCCASION_LEAP_DAY_RULES = Object.freeze(['feb28', 'mar1', 'skip']);
-export const OCCASION_REPEAT_RULES = Object.freeze(['daily', 'weekly', 'monthly', 'yearly']);
-export const OCCASION_LIMITS = Object.freeze({ scopes: 80, occasions: 80, title: 120, note: 1000 });
+export const OCCASION_REPEAT_RULES = Object.freeze(['daily', 'weekly', 'biweekly', 'monthly', 'custom', 'yearly']);
+export const OCCASION_LIMITS = Object.freeze({ scopes: 80, occasions: 80, title: 120, note: 1000, intervalDays: 9999 });
 
 const plainRecord = value => value && typeof value === 'object' && !Array.isArray(value)
     && (Object.getPrototypeOf(value) === Object.prototype || Object.getPrototypeOf(value) === null);
@@ -20,6 +20,11 @@ export function isLeapYear(year) {
 
 function normalizedRepeat(value) {
     return OCCASION_REPEAT_RULES.includes(value) ? value : 'yearly';
+}
+
+function normalizedIntervalDays(value) {
+    const numeric = Number(value);
+    return Number.isInteger(numeric) && numeric >= 1 && numeric <= OCCASION_LIMITS.intervalDays ? numeric : 1;
 }
 
 function anchorDate(value, month, day) {
@@ -61,11 +66,13 @@ export function normalizeOccasion(value, now = Date.now()) {
     const createdAt = timestamp(value.createdAt, now);
     const hasRepeat = Object.hasOwn(value, 'repeat');
     const hasDate = Object.hasOwn(value, 'date');
+    const repeat = hasRepeat ? normalizedRepeat(value.repeat) : undefined;
     return {
         id: cleanText(value.id, 80) || uid(), type, month, day, title,
         note: cleanText(value.note, OCCASION_LIMITS.note),
         leapDayRule: OCCASION_LEAP_DAY_RULES.includes(value.leapDayRule) ? value.leapDayRule : 'feb28',
-        ...(hasRepeat ? { repeat: normalizedRepeat(value.repeat) } : {}),
+        ...(repeat ? { repeat } : {}),
+        ...(repeat === 'custom' ? { intervalDays: normalizedIntervalDays(value.intervalDays) } : {}),
         ...(hasDate ? { date: `${date.getFullYear().toString().padStart(4, '0')}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}` } : {}),
         createdAt, updatedAt: Math.max(createdAt, timestamp(value.updatedAt, createdAt)),
     };
@@ -163,12 +170,16 @@ export function expandOccasions(scope, { start = new Date(), days = 7 } = {}) {
             const anchorKey = `${anchor.getFullYear().toString().padStart(4, '0')}-${pad(anchor.getMonth() + 1)}-${pad(anchor.getDate())}`;
             if (!parsed || date < anchorKey) continue;
             const sameWeekday = parsed.getDay() === anchor.getDay();
+            const elapsedDays = Math.round((parsed.getTime() - anchor.getTime()) / 86400000);
             const sameMonthDay = parsed.getDate() === anchor.getDate();
             const lastDayOfMonth = !calendarDateFromParts(parsed.getFullYear(), parsed.getMonth() + 1, anchor.getDate())
                 && parsed.getDate() === daysInCalendarMonth(parsed.getFullYear(), parsed.getMonth() + 1);
             if (repeat === 'daily'
                 || (repeat === 'weekly' && sameWeekday)
+                || (repeat === 'biweekly' && sameWeekday && elapsedDays % 14 === 0)
                 || (repeat === 'monthly' && (sameMonthDay || lastDayOfMonth))) {
+                result.push({ ...occasion, date, leapAdjusted: false });
+            } else if (repeat === 'custom' && elapsedDays % normalizedIntervalDays(occasion.intervalDays) === 0) {
                 result.push({ ...occasion, date, leapAdjusted: false });
             }
         }

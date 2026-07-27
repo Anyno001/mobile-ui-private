@@ -553,6 +553,7 @@ export function installCalendar(state, deps) {
                         month: normalizedKind === 'occasion' ? existingEntry?.month || parsed.getMonth() + 1 : parsed.getMonth() + 1,
                         day: normalizedKind === 'occasion' ? existingEntry?.day || parsed.getDate() : parsed.getDate(),
                         repeat: value.repeat, title: value.title, note: value.note, leapDayRule: value.leapDayRule,
+                        ...(value.intervalDays === undefined ? {} : { intervalDays: value.intervalDays }),
                         createdAt: normalizedKind === 'occasion' ? existingEntry?.createdAt : undefined, updatedAt: Date.now(),
                     }),
                     };

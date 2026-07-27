@@ -18,7 +18,9 @@ import { resolveWeatherForDate } from './calendar-weather-source.js';
 const calendarRepeatLabel = repeat => ({
     daily: '每日重复日程',
     weekly: '每周重复日程',
+    biweekly: '每两周重复日程',
     monthly: '每月重复日程',
+    custom: '自定义周期日程',
     yearly: null,
 })[repeat] || null;
 

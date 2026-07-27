@@ -800,8 +800,8 @@ ${userPrompt}` : userPrompt;
   var OCCASION_STORE_VERSION = 1;
   var OCCASION_TYPES = Object.freeze(["birthday", "anniversary"]);
   var OCCASION_LEAP_DAY_RULES = Object.freeze(["feb28", "mar1", "skip"]);
-  var OCCASION_REPEAT_RULES = Object.freeze(["daily", "weekly", "monthly", "yearly"]);
-  var OCCASION_LIMITS = Object.freeze({ scopes: 80, occasions: 80, title: 120, note: 1e3 });
+  var OCCASION_REPEAT_RULES = Object.freeze(["daily", "weekly", "biweekly", "monthly", "custom", "yearly"]);
+  var OCCASION_LIMITS = Object.freeze({ scopes: 80, occasions: 80, title: 120, note: 1e3, intervalDays: 9999 });
   var plainRecord2 = (value) => value && typeof value === "object" && !Array.isArray(value) && (Object.getPrototypeOf(value) === Object.prototype || Object.getPrototypeOf(value) === null);
   var cleanText2 = (value, max) => String(value ?? "").trim().slice(0, max);
   var unsafeKey2 = (value) => value === "prototype" || Object.hasOwn(Object.prototype, value);
@@ -813,6 +813,10 @@ ${userPrompt}` : userPrompt;
   }
   function normalizedRepeat(value) {
     return OCCASION_REPEAT_RULES.includes(value) ? value : "yearly";
+  }
+  function normalizedIntervalDays(value) {
+    const numeric = Number(value);
+    return Number.isInteger(numeric) && numeric >= 1 && numeric <= OCCASION_LIMITS.intervalDays ? numeric : 1;
   }
   function anchorDate(value, month, day) {
     return parseCalendarDate(value) || parseCalendarDate(`2000-${pad2(month)}-${pad2(day)}`);
@@ -848,6 +852,7 @@ ${userPrompt}` : userPrompt;
     const createdAt = timestamp(value.createdAt, now2);
     const hasRepeat = Object.hasOwn(value, "repeat");
     const hasDate = Object.hasOwn(value, "date");
+    const repeat = hasRepeat ? normalizedRepeat(value.repeat) : void 0;
     return {
       id: cleanText2(value.id, 80) || uid2(),
       type,
@@ -856,7 +861,8 @@ ${userPrompt}` : userPrompt;
       title,
       note: cleanText2(value.note, OCCASION_LIMITS.note),
       leapDayRule: OCCASION_LEAP_DAY_RULES.includes(value.leapDayRule) ? value.leapDayRule : "feb28",
-      ...hasRepeat ? { repeat: normalizedRepeat(value.repeat) } : {},
+      ...repeat ? { repeat } : {},
+      ...repeat === "custom" ? { intervalDays: normalizedIntervalDays(value.intervalDays) } : {},
       ...hasDate ? { date: `${date.getFullYear().toString().padStart(4, "0")}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}` } : {},
       createdAt,
       updatedAt: Math.max(createdAt, timestamp(value.updatedAt, createdAt))
@@ -951,9 +957,12 @@ ${userPrompt}` : userPrompt;
         const anchorKey = `${anchor.getFullYear().toString().padStart(4, "0")}-${pad2(anchor.getMonth() + 1)}-${pad2(anchor.getDate())}`;
         if (!parsed || date < anchorKey) continue;
         const sameWeekday = parsed.getDay() === anchor.getDay();
+        const elapsedDays = Math.round((parsed.getTime() - anchor.getTime()) / 864e5);
         const sameMonthDay = parsed.getDate() === anchor.getDate();
         const lastDayOfMonth = !calendarDateFromParts(parsed.getFullYear(), parsed.getMonth() + 1, anchor.getDate()) && parsed.getDate() === daysInCalendarMonth(parsed.getFullYear(), parsed.getMonth() + 1);
-        if (repeat === "daily" || repeat === "weekly" && sameWeekday || repeat === "monthly" && (sameMonthDay || lastDayOfMonth)) {
+        if (repeat === "daily" || repeat === "weekly" && sameWeekday || repeat === "biweekly" && sameWeekday && elapsedDays % 14 === 0 || repeat === "monthly" && (sameMonthDay || lastDayOfMonth)) {
+          result.push({ ...occasion, date, leapAdjusted: false });
+        } else if (repeat === "custom" && elapsedDays % normalizedIntervalDays(occasion.intervalDays) === 0) {
           result.push({ ...occasion, date, leapAdjusted: false });
         }
       }
@@ -2750,11 +2759,23 @@ ${userPrompt}` : userPrompt;
   }
 
   // src/calendar-dom.js
-  var REPEAT_VALUES = /* @__PURE__ */ new Set(["none", "daily", "weekly", "monthly", "yearly"]);
+  var REPEAT_VALUES = /* @__PURE__ */ new Set(["none", "daily", "weekly", "biweekly", "monthly", "custom", "yearly"]);
+  var normalizedIntervalDays2 = (value) => {
+    const numeric = Number(value);
+    return Number.isInteger(numeric) && numeric >= 1 && numeric <= 9999 ? numeric : 1;
+  };
   function setCalendarEntryRepeat(root, repeat) {
     const normalized = REPEAT_VALUES.has(repeat) ? repeat : "none";
     const repeatSelect = root?.querySelector?.("[data-calendar-repeat-select]");
     if (repeatSelect) repeatSelect.value = normalized;
+    const intervalDays = root?.querySelector?.("[data-calendar-interval-days]");
+    if (intervalDays) {
+      const unavailable = normalized !== "custom";
+      intervalDays.hidden = unavailable;
+      intervalDays.setAttribute?.("aria-hidden", String(unavailable));
+      const field = intervalDays.querySelector?.("input");
+      if (field) field.disabled = unavailable;
+    }
     const occasionFields = root?.querySelector?.("[data-calendar-occasion-fields]");
     if (occasionFields) {
       const unavailable = normalized !== "yearly";
@@ -2777,6 +2798,7 @@ ${userPrompt}` : userPrompt;
     form.elements.repeat.value = normalized;
     form.elements.occasionType.value = entry2?.type || "anniversary";
     form.elements.leapDayRule.value = entry2?.leapDayRule || "feb28";
+    if (form.elements.intervalDays) form.elements.intervalDays.value = normalizedIntervalDays2(entry2?.intervalDays);
     if (focusTitle) form.elements.title.focus?.({ preventScroll: true });
     return normalized;
   }
@@ -2790,7 +2812,8 @@ ${userPrompt}` : userPrompt;
       title: form.elements.title.value.trim(),
       note: form.elements.note.value,
       type: repeat === "yearly" ? form.elements.occasionType.value : "anniversary",
-      leapDayRule: repeat === "yearly" ? form.elements.leapDayRule.value : "feb28"
+      leapDayRule: repeat === "yearly" ? form.elements.leapDayRule.value : "feb28",
+      ...repeat === "custom" ? { intervalDays: normalizedIntervalDays2(form.elements.intervalDays.value) } : {}
     };
   }
 
@@ -2880,7 +2903,9 @@ ${userPrompt}` : userPrompt;
   var occasionTypeLabel = (type, repeat = "yearly") => {
     if (repeat === "daily") return "\u6BCF\u65E5\u91CD\u590D";
     if (repeat === "weekly") return "\u6BCF\u5468\u91CD\u590D";
+    if (repeat === "biweekly") return "\u6BCF\u4E24\u5468\u91CD\u590D";
     if (repeat === "monthly") return "\u6BCF\u6708\u91CD\u590D";
+    if (repeat === "custom") return "\u6BCFN\u5929\u91CD\u590D";
     return type === "birthday" ? "\u751F\u65E5" : "\u7EAA\u5FF5\u65E5";
   };
   function inlineEntryActions(kind, id2, title) {
@@ -3056,7 +3081,8 @@ ${userPrompt}` : userPrompt;
   function renderCalendarEntryDialog(selectedDate, entry2 = null, kind = "event") {
     const repeat = kind === "occasion" ? entry2?.repeat || "yearly" : "none";
     const yearly = repeat === "yearly";
-    return `<div class="pm-modal pm-calendar-entry-dialog"><div class="pm-modal-header"><span></span><b>\u65E5\u7A0B</b><button type="button" class="pm-modal-close" data-calendar-entry-close aria-label="\u5173\u95ED">${CLOSE_ICON_SVG}</button></div><form data-calendar-entry-form><label>\u91CD\u590D<select name="repeat" data-calendar-repeat-select aria-label="\u65E5\u7A0B\u91CD\u590D\u89C4\u5219"><option value="none" ${repeat === "none" ? "selected" : ""}>\u4E0D\u91CD\u590D</option><option value="daily" ${repeat === "daily" ? "selected" : ""}>\u6BCF\u65E5\u91CD\u590D</option><option value="weekly" ${repeat === "weekly" ? "selected" : ""}>\u6BCF\u5468\uFF08\u540C\u661F\u671F\uFF09</option><option value="monthly" ${repeat === "monthly" ? "selected" : ""}>\u6BCF\u6708\uFF08\u540C\u65E5\uFF09</option><option value="yearly" ${yearly ? "selected" : ""}>\u6BCF\u5E74\u91CD\u590D</option></select></label><input name="title" maxlength="120" placeholder="\u540D\u79F0" aria-label="\u5B89\u6392\u540D\u79F0"><textarea name="note" maxlength="1000" placeholder="\u5907\u6CE8\uFF08\u53EF\u9009\uFF09" aria-label="\u5B89\u6392\u5907\u6CE8"></textarea><div data-calendar-occasion-fields ${yearly ? "" : 'hidden aria-hidden="true"'}><label>\u957F\u671F\u7C7B\u578B<select name="occasionType" ${yearly ? "" : "disabled"}><option value="anniversary">\u7EAA\u5FF5\u65E5</option><option value="birthday">\u751F\u65E5</option></select></label><label>2 \u6708 29 \u65E5\u5728\u975E\u95F0\u5E74<select name="leapDayRule" ${yearly ? "" : "disabled"}><option value="feb28">\u6309 2 \u6708 28 \u65E5\u663E\u793A</option><option value="mar1">\u6309 3 \u6708 1 \u65E5\u663E\u793A</option><option value="skip">\u8BE5\u5E74\u4E0D\u663E\u793A</option></select></label></div><p class="pm-calendar-entry-error" data-calendar-entry-error role="status" aria-live="polite"></p><div class="pm-calendar-entry-actions"><button type="submit" class="is-primary">\u4FDD\u5B58</button></div></form></div>`;
+    const custom = repeat === "custom";
+    return `<div class="pm-modal pm-calendar-entry-dialog"><div class="pm-modal-header"><span></span><b>\u65E5\u7A0B</b><button type="button" class="pm-modal-close" data-calendar-entry-close aria-label="\u5173\u95ED">${CLOSE_ICON_SVG}</button></div><form data-calendar-entry-form><label>\u91CD\u590D<select name="repeat" data-calendar-repeat-select aria-label="\u65E5\u7A0B\u91CD\u590D\u89C4\u5219"><option value="none" ${repeat === "none" ? "selected" : ""}>\u4E0D\u91CD\u590D</option><option value="daily" ${repeat === "daily" ? "selected" : ""}>\u6BCF\u65E5\u91CD\u590D</option><option value="weekly" ${repeat === "weekly" ? "selected" : ""}>\u6BCF\u5468\uFF08\u540C\u661F\u671F\uFF09</option><option value="biweekly" ${repeat === "biweekly" ? "selected" : ""}>\u6BCF\u4E24\u5468\uFF08\u540C\u661F\u671F\uFF09</option><option value="monthly" ${repeat === "monthly" ? "selected" : ""}>\u6BCF\u6708\uFF08\u540C\u65E5\uFF09</option><option value="custom" ${custom ? "selected" : ""}>\u81EA\u5B9A\u4E49</option><option value="yearly" ${yearly ? "selected" : ""}>\u6BCF\u5E74\u91CD\u590D</option></select></label><label class="pm-calendar-repeat-interval" data-calendar-interval-days ${custom ? "" : 'hidden aria-hidden="true"'}>\u6BCF<input name="intervalDays" type="number" min="1" max="9999" step="1" inputmode="numeric" value="${custom ? Number(entry2?.intervalDays) || 1 : 1}" ${custom ? "" : "disabled"} aria-label="\u6BCF\u51E0\u5929\u91CD\u590D\u4E00\u6B21">\u5929\u91CD\u590D\u4E00\u6B21</label><input name="title" maxlength="120" placeholder="\u540D\u79F0" aria-label="\u5B89\u6392\u540D\u79F0"><textarea name="note" maxlength="1000" placeholder="\u5907\u6CE8\uFF08\u53EF\u9009\uFF09" aria-label="\u5B89\u6392\u5907\u6CE8"></textarea><div data-calendar-occasion-fields ${yearly ? "" : 'hidden aria-hidden="true"'}><label>\u957F\u671F\u7C7B\u578B<select name="occasionType" ${yearly ? "" : "disabled"}><option value="anniversary">\u7EAA\u5FF5\u65E5</option><option value="birthday">\u751F\u65E5</option></select></label><label>2 \u6708 29 \u65E5\u5728\u975E\u95F0\u5E74<select name="leapDayRule" ${yearly ? "" : "disabled"}><option value="feb28">\u6309 2 \u6708 28 \u65E5\u663E\u793A</option><option value="mar1">\u6309 3 \u6708 1 \u65E5\u663E\u793A</option><option value="skip">\u8BE5\u5E74\u4E0D\u663E\u793A</option></select></label></div><p class="pm-calendar-entry-error" data-calendar-entry-error role="status" aria-live="polite"></p><div class="pm-calendar-entry-actions"><button type="submit" class="is-primary">\u4FDD\u5B58</button></div></form></div>`;
   }
   function renderRecipeMealDialog(selectedDate, mealType = "breakfast", meal = null) {
     const normalizedType = RECIPE_MEAL_TYPES.includes(mealType) ? mealType : "breakfast";
@@ -4037,6 +4063,7 @@ ${userPrompt}` : userPrompt;
                 title: value.title,
                 note: value.note,
                 leapDayRule: value.leapDayRule,
+                ...value.intervalDays === void 0 ? {} : { intervalDays: value.intervalDays },
                 createdAt: normalizedKind === "occasion" ? existingEntry?.createdAt : void 0,
                 updatedAt: Date.now()
               })
@@ -13723,7 +13750,9 @@ ${antiFluff}`;
   var calendarRepeatLabel = (repeat) => ({
     daily: "\u6BCF\u65E5\u91CD\u590D\u65E5\u7A0B",
     weekly: "\u6BCF\u5468\u91CD\u590D\u65E5\u7A0B",
+    biweekly: "\u6BCF\u4E24\u5468\u91CD\u590D\u65E5\u7A0B",
     monthly: "\u6BCF\u6708\u91CD\u590D\u65E5\u7A0B",
+    custom: "\u81EA\u5B9A\u4E49\u5468\u671F\u65E5\u7A0B",
     yearly: null
   })[repeat] || null;
   var COMMUNITY_KEY_PREFIX = `${BIDIRECTIONAL_KEY}:community:`;

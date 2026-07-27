@@ -1547,7 +1547,8 @@ for (const expected of [
 ]) requireText('calendar-commit.js', calendarCommitCode, expected);
 for (const expected of [
   'setCalendarEntryRepeat', 'fillCalendarEntryForm', 'readCalendarEntryForm',
-  "occasionFields.hidden = unavailable", "field.disabled = unavailable", "repeat === 'yearly' ? form.elements.occasionType.value : 'anniversary'",
+  "intervalDays.hidden = unavailable", "field.disabled = unavailable", "repeat === 'yearly' ? form.elements.occasionType.value : 'anniversary'",
+  "repeat === 'custom' ? { intervalDays: normalizedIntervalDays(form.elements.intervalDays.value) } : {}",
 ]) requireText('calendar-dom.js', calendarDomCode, expected);
 for (const expected of [
   'CALENDAR_YEAR_RANGE = Object.freeze({ min: 1, max: 9999 })', 'createCalendarDate',
@@ -1567,7 +1568,8 @@ for (const expected of [
 for (const expected of [
   'aria-label="安排名称"', 'aria-label="安排备注"', '<b>日程</b>',
   'name="periodStartDay"', 'data-action="calendar-cycle-subject"',
-  'name="repeat" data-calendar-repeat-select aria-label="日程重复规则"', '不重复', '每日重复', '每周（同星期）', '每月（同日）', '每年重复',
+  'name="repeat" data-calendar-repeat-select aria-label="日程重复规则"', '不重复', '每日重复', '每周（同星期）', '每两周（同星期）', '每月（同日）', '自定义', '每年重复',
+  'data-calendar-interval-days', 'name="intervalDays"',
   'data-action="calendar-holiday-country"',
   'data-action="calendar-add-date"', 'data-action="calendar-toggle-detail-edit"',
   'data-action="calendar-edit-entry"', 'data-action="calendar-delete-entry"', 'TRASH_ICON_SVG',
@@ -1581,15 +1583,15 @@ for (const expected of [
   'CYCLE_PERIOD_ICON_SVG', 'CYCLE_FERTILE_ICON_SVG', 'WEATHER_ICON_SVG', 'LOCATION_ICON_SVG', 'WEATHER_PARTLY_CLOUDY_ICON_SVG',
   'weatherStatusIcon', 'statusCard', 'pm-calendar-status-card', 'pm-calendar-status-watermark', 'pm-calendar-panel-section',
   'pm-calendar-status-heading', 'pm-calendar-status-context', 'pm-calendar-status-relative', 'pm-calendar-status-weather-context', 'pm-calendar-status-cycle-context', 'pm-calendar-status-date', 'data-cycle-phase="${escapeAttr(phase)}"',
-  'value: `${resolved.day.tempMin}°–${resolved.day.tempMax}°`', "'天气记录'", '生理周期',
+  'value: `${resolved.day.tempMin}° – ${resolved.day.tempMax}°`', "'天气记录'", '每两周重复', '每N天重复',
   'relativeLabel, context, value, icon, parsed, date, kind, phase = \'\'',
-  'context: \'<span class="pm-calendar-status-cycle-context">生理周期</span>\'',
+  "? '是特殊的日子 &gt; &lt; ！要注意保重身体呀'",
   '当前故事日期', 'placeholder="例如 3726-08-17"', '可直接输入日期，或跳转月份后点击下方日期。',
   '开启后供正文生成读取；设置按当前会话独立保存。', '预报外日期使用气候推演', '无法推演',
   'DEFAULT_CALENDAR_GENERATION_RULE', 'DEFAULT_RECIPE_GENERATION_RULE', 'data-calendar-generation-rule', 'data-recipe-generation-rule',
   'calendar-generation-rule-save', 'calendar-recipe-generation-rule-save', 'escapeHtml(generationRule)',
   'name="repeat" data-calendar-repeat-select aria-label="日程重复规则"',
-  'data-calendar-occasion-fields ${yearly ? \'\' : \'hidden aria-hidden="true"\'}',
+  'data-calendar-interval-days ${custom ? \'\' : \'hidden aria-hidden="true"\'}',
 ]) requireText('calendar-view.js', calendarViewCode, expected);
 if (calendarViewCode.includes('<h3>上下文注入</h3>')) failures.push('calendar-view.js: calendar management cards must not repeat the context-injection heading');
 if (!/<h3>正文日期<\/h3>[\s\S]*<h3>节假日数据<\/h3>[\s\S]*<h3>生成规则<\/h3>/.test(calendarViewCode)) {
@@ -2004,22 +2006,21 @@ for (const expected of [
   '.pm-calendar-month-panel-actions{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;padding-top:8px}',
   '.pm-calendar-shell>*{flex:0 0 auto}',
   '.pm-calendar-selected-detail.is-status-card{overflow:hidden;padding:0;background:color-mix(in srgb,var(--pm-calendar-accent) 8%,var(--pm-color-surface-card))}',
-  '.pm-calendar-status-card{position:relative;isolation:isolate;min-height:126px;padding:15px 16px;overflow:hidden}',
-  '.pm-calendar-status-content{position:relative;z-index:1;display:flex;min-width:0;min-height:96px;flex-direction:column;align-items:flex-start;justify-content:flex-start;gap:8px}',
+  '.pm-calendar-status-card{position:relative;isolation:isolate;min-height:126px;padding:12px 14px;overflow:hidden}',
+  '.pm-calendar-status-content{position:relative;z-index:1;display:flex;min-width:0;min-height:96px;flex-direction:column;align-items:flex-start;justify-content:flex-start;gap:6px}',
   '.pm-calendar-status-heading{display:flex;align-items:baseline;gap:8px;min-width:0}',
   '.pm-calendar-status-relative{color:var(--pm-calendar-accent);font-size:17px;line-height:1.1;font-weight:850;white-space:nowrap}',
   '.pm-calendar-status-context{display:flex;align-items:center;gap:4px;width:100%;min-width:0;margin-top:auto}',
-  '.pm-calendar-status-weather-context,.pm-calendar-status-cycle-context{color:var(--pm-color-text-secondary);font-size:13px;font-weight:500;line-height:1.2}',
+  '.pm-calendar-status-weather-context,.pm-calendar-status-cycle-context{color:var(--pm-color-text-secondary);font-size:13px;font-weight:500;line-height:1.2;opacity:.86}',
   '.pm-calendar-status-context .pm-calendar-status-weather-context{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
-  '.pm-calendar-status-location{display:inline-grid;place-items:center;flex:0 0 auto;color:var(--pm-color-text-tertiary)}.pm-calendar-status-location svg{width:13px;height:13px}',
-  '.pm-calendar-status-card-weather .pm-calendar-status-value{color:var(--pm-color-text-secondary);font-weight:550;letter-spacing:.01em}',
-  '.pm-calendar-status-card-cycle .pm-calendar-status-value{color:var(--pm-color-text-primary);font-weight:650;letter-spacing:.06em}',
+  '.pm-calendar-status-location{display:inline-grid;place-items:center;flex:0 0 auto;color:var(--pm-color-text-tertiary);opacity:.86}.pm-calendar-status-location svg{width:13px;height:13px}',
+  '.pm-calendar-status-card-weather .pm-calendar-status-value,.pm-calendar-status-card-cycle .pm-calendar-status-value{color:color-mix(in srgb,var(--pm-calendar-accent) 82%,#000);font-weight:600;letter-spacing:.01em}',
   '.pm-calendar-status-date time{color:var(--pm-color-text-primary);font-weight:750}',
   '.pm-calendar-status-date em{color:var(--pm-color-text-tertiary);font-style:normal;font-weight:500}',
   '.pm-calendar-status-watermark{position:absolute;z-index:0;top:50%;right:-64px;width:202px;height:173px',
   '.pm-calendar-status-watermark svg{width:173px;height:173px;stroke-width:1.55}',
-  '.pm-calendar-status-card-cycle[data-cycle-phase="period"] .pm-calendar-status-watermark{top:50%;right:-64px;left:auto;width:190px;height:150px;opacity:.18;transform:translateY(-50%)',
-  '.pm-calendar-status-card-cycle[data-cycle-phase="period"] .pm-calendar-status-watermark{top:50%;right:-64px;left:auto;width:190px;height:150px;opacity:.18;transform:translateY(-50%);-webkit-mask-image:linear-gradient(90deg,transparent 0%,#000 44%);mask-image:linear-gradient(90deg,transparent 0%,#000 44%)}',
+  '.pm-calendar-status-card-cycle[data-cycle-phase="period"] .pm-calendar-status-watermark{top:46%;right:-72px;left:auto;width:190px;height:150px;opacity:.18;transform:translateY(-50%)',
+  '.pm-calendar-status-card-cycle[data-cycle-phase="period"] .pm-calendar-status-watermark{top:46%;right:-72px;left:auto;width:190px;height:150px;opacity:.18;transform:translateY(-50%);-webkit-mask-image:linear-gradient(90deg,transparent 0%,#000 44%);mask-image:linear-gradient(90deg,transparent 0%,#000 44%)}',
   '-webkit-mask-image:linear-gradient(90deg,transparent 0%,#000 44%)',
   '.pm-calendar-shell[data-calendar-view-mode="recipe"]{--pm-calendar-accent:#c77a32}',
   '.pm-calendar-day.has-recipe>span{color:var(--pm-calendar-accent)}',
@@ -2063,7 +2064,7 @@ requireCssDeclarations(cssRules, '.pm-calendar-status-value', {
   'font-size': '28px', 'line-height': '1', 'font-variant-numeric': 'tabular-nums',
 });
 requireCssDeclarations(cssRules, '.pm-calendar-status-date', {
-  display: 'flex', 'align-items': 'baseline', gap: '0', 'min-width': '0',
+  display: 'flex!important', 'align-items': 'baseline', gap: '0', 'min-width': '0',
 });
 requireCssDeclarations(cssRules, '.pm-calendar-status-context', {
   display: 'flex', 'align-items': 'center', gap: '4px', width: '100%', 'min-width': '0', 'margin-top': 'auto',
@@ -2080,15 +2081,14 @@ for (const selector of [
 }
 requireCssDeclarations(cssRules, '.pm-calendar-status-location svg', { width: '13px', height: '13px' });
 requireCssDeclarations(cssRules, '.pm-calendar-status-card-weather .pm-calendar-status-value', {
-  color: 'var(--pm-color-text-secondary)', 'font-weight': '550', 'letter-spacing': '.01em',
+  color: 'color-mix(in srgb,var(--pm-calendar-accent) 82%,#000)', 'font-weight': '600', 'letter-spacing': '.01em',
 });
 requireCssDeclarations(cssRules, '.pm-calendar-status-card-cycle .pm-calendar-status-value', {
-  color: 'var(--pm-color-text-primary)', 'font-weight': '650', 'letter-spacing': '.06em',
+  color: 'color-mix(in srgb,var(--pm-calendar-accent) 82%,#000)', 'font-weight': '600', 'letter-spacing': '.01em',
 });
 for (const forbidden of [
   '.pm-calendar-status-weather-context{color:var(--pm-color-text-primary);font-size:13px;font-weight:750;line-height:1.2}',
   '.pm-calendar-status-value{color:color-mix(in srgb,var(--pm-color-text-primary) 88%,var(--pm-color-text-secondary));font-size:30px;line-height:1;font-weight:700',
-  '.pm-calendar-status-card-cycle .pm-calendar-status-value{letter-spacing:.12em}',
 ]) if (css.includes(forbidden)) failures.push(`style.css: legacy status-card typography remains: ${forbidden}`);
 if (css.includes('.pm-calendar-selected-detail>header time{font-size:14px')) {
   failures.push('style.css: legacy detail time font size overrides the unified calendar detail typography');
