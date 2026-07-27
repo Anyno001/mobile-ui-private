@@ -4,7 +4,7 @@ import {
     CALENDAR_STORAGE_KEY, CALENDAR_WEATHER_STORAGE_KEY, EXTENSION_PROMPT_POSITIONS, MAX_INJECTION_DEPTH,
 } from '../src/constants.js';
 import { THEME_PRESETS } from '../src/config.js';
-import { createWorldBookEntryKey, getTavernDbColumn, isMemberPrivateWorldBookEntryAllowed, isWorldBookEntryAllowed, normalizeWorldBookConfig } from '../src/worldbook-config.js';
+import { createWorldBookEntryKey, getEnabledWorldBookNames, getTavernDbColumn, isMemberPrivateWorldBookEntryAllowed, isWorldBookEntryAllowed, normalizeWorldBookConfig } from '../src/worldbook-config.js';
 import { buildWorldBookContext } from '../src/worldbook-context.js';
 import {
     buildCharacterBehaviorPrompt, buildChatPreferencePrompt,
@@ -568,13 +568,15 @@ const normalizedWorldBook = normalizeWorldBookConfig({
     version: 999, entries: { [worldBookKey]: false, ignored: 'false' },
     columns: { 纪要: { chat: false, calendar: true, ignored: false } },
     characters: { alice: { entries: { [worldBookKey]: true } } },
-    groups: { group: { columns: { 纪要: { community: false } } } },
+    groups: { group: { columns: { 纪要: { community: false } } } }, books: { 已关闭世界书: false, ignored: 'false' },
     mainChatMessages: 0, scanMessages: 999, maxChars: 1,
 });
 assert.equal(normalizedWorldBook.version, 1);
 assert.equal(normalizedWorldBook.mainChatMessages, 1);
 assert.equal(normalizedWorldBook.scanMessages, 100);
 assert.equal(normalizedWorldBook.maxChars, 1000);
+assert.equal(normalizedWorldBook.books.已关闭世界书, false, '世界书总开关必须持久化');
+assert.equal(isWorldBookEntryAllowed(normalizedWorldBook, { bookName: '已关闭世界书', uid: 42, column: '纪要' }, { module: 'calendar' }), false, '关闭世界书总开关必须拒绝全部模块读取');
 assert.equal(isWorldBookEntryAllowed(normalizedWorldBook, { bookName: '世界书 A', uid: 42, column: '纪要' }, { module: 'chat' }), false);
 assert.equal(isWorldBookEntryAllowed(normalizedWorldBook, { bookName: '世界书 A', uid: 42, column: '纪要' }, { module: 'calendar' }), false);
 assert.equal(isWorldBookEntryAllowed(normalizedWorldBook, { bookName: '世界书 A', uid: 42, column: '纪要' }, {
@@ -596,9 +598,23 @@ const worldBookDirectory = await loadWorldBookDirectory({
     },
 });
 assert.deepEqual(worldBookDirectory, [{ name: '主世界', entries: [
-    { key: createWorldBookEntryKey('主世界', 3), uid: '3', content: '第一条', column: '', disabled: false },
-    { key: createWorldBookEntryKey('主世界', 20), uid: '20', content: '第二条', column: '纪要', disabled: false },
-] }], '设置页目录必须只读取原始条目、跳过故障书并按 UID 稳定排序');
+    { key: createWorldBookEntryKey('主世界', 3), uid: '3', title: '普通条目', column: '', disabled: false },
+    { key: createWorldBookEntryKey('主世界', 20), uid: '20', title: 'TavernDB-ACU-CustomExport-纪要-2', column: '纪要', disabled: false },
+] }], '设置页目录必须只读取原始条目、使用条目标题并按 UID 稳定排序');
+const enabledWorldBookContext = {
+    chatMetadata: { world_info: '会话书' },
+    characters: [{ data: { extensions: { world: '角色书' } } }], characterId: 0,
+};
+assert.deepEqual([...getEnabledWorldBookNames(enabledWorldBookContext)].sort(), ['会话书', '角色书'],
+    '当前启用世界书必须合并会话与角色绑定来源');
+assert.deepEqual(await loadWorldBookDirectory({
+    ...enabledWorldBookContext,
+    getWorldInfoNames() { return ['会话书', '角色书', '未启用书']; },
+    async loadWorldInfo(name) { return { entries: { 1: { uid: 1, content: `${name}正文`, comment: `${name}标题` } } }; },
+}), [
+    { name: '会话书', entries: [{ key: createWorldBookEntryKey('会话书', 1), uid: '1', title: '会话书标题', column: '', disabled: false }] },
+    { name: '角色书', entries: [{ key: createWorldBookEntryKey('角色书', 1), uid: '1', title: '角色书标题', column: '', disabled: false }] },
+], '设置页不得读取未启用的世界书');
 const cancelledDirectoryController = new AbortController();
 const cancelledDirectoryLoads = [];
 assert.deepEqual(await loadWorldBookDirectory({
@@ -1345,6 +1361,7 @@ globalThis.document = {
     querySelectorAll: selector => {
         if (selector === '.pm-theme-chip') return themeChips;
         if (selector === '.pm-generation-cancel') return generationCancelButtons;
+        if (selector === '[data-world-book]') return worldBookToggleControls.filter(control => control.dataset.worldBook);
         if (selector === '[data-world-entry]') return worldBookToggleControls.filter(control => control.dataset.worldEntry);
         if (selector === '[data-world-column]') return worldBookToggleControls.filter(control => control.dataset.worldColumn);
         if (selector === '[data-world-quick-column]') return worldBookToggleControls.filter(control => control.dataset.worldQuickColumn);
@@ -1388,7 +1405,7 @@ let worldBookContext = {
     updateWorldInfoList() { forbiddenWorldBookHostCalls.updateWorldInfoList += 1; },
     reloadWorldInfoEditor() { forbiddenWorldBookHostCalls.reloadWorldInfoEditor += 1; },
     async loadWorldInfo() { return { entries: {
-        1: { uid: 1, content: '设置页条目' },
+        1: { uid: 1, content: '设置页正文', comment: '设置页条目标题' },
         2: { uid: 2, content: 'TavernDB 条目', comment: 'TavernDB-ACU-CustomExport-纪要-1' },
     } }; },
 };
@@ -1435,9 +1452,11 @@ installSettingsUi({
     getCtx: () => worldBookContext,
 });
 await window.__pmShowConfig('worldbook');
-assert.match(settingsOverlayHtml, /世界书读取|数据库条目一览|设置页条目/,
-    '设置首页必须能打开世界书读取页并展示原始条目与栏目');
-assert.match(settingsOverlayHtml, /读取范围|主线正文用于提示词参考；扫描窗口仅决定哪些世界书条目会被触发。/,
+assert.match(settingsOverlayHtml, /世界书读取|数据库条目一览|设置页条目标题/,
+    '设置首页必须能打开世界书读取页并展示原始条目标题与栏目');
+assert.doesNotMatch(settingsOverlayHtml, /设置页正文/,
+    '设置页不得将世界书正文误作条目标题展示');
+assert.match(settingsOverlayHtml, /主线正文用于提示词参考；扫描窗口仅决定哪些世界书条目会被触发。/,
     '世界书设置页必须解释正文与扫描两个读取范围的不同用途');
 assert.match(settingsOverlayHtml, /aria-label="设置书 条目 1 读取开关"|aria-label="纪要：聊天读取开关"/,
     '世界书条目与栏目矩阵必须提供带 SVG 图标的可访问读取开关');
@@ -1453,6 +1472,7 @@ uiElements.set('pm-world-main-messages', { value: '9' });
 uiElements.set('pm-world-scan-messages', { value: '11' });
 uiElements.set('pm-world-max-chars', { value: '26000' });
 worldBookToggleControls = [
+    { dataset: { worldBook: '设置书' }, classList: makeClassList([]) },
     { dataset: { worldEntry: worldBookEntryKey }, classList: makeClassList([]) },
     { dataset: { worldColumn: '纪要', worldModule: 'calendar' }, classList: makeClassList([]) },
 ];
@@ -1462,6 +1482,7 @@ const savedWorldBookConfig = JSON.parse(localValues.get('ST_SMS_WORLD_BOOK_CONFI
 assert.equal(savedWorldBookConfig.mainChatMessages, 9, '保存必须写入主线正文条数');
 assert.equal(savedWorldBookConfig.scanMessages, 11, '保存必须写入扫描条数');
 assert.equal(savedWorldBookConfig.maxChars, 26000, '保存必须写入字符预算');
+assert.equal(savedWorldBookConfig.books.设置书, false, '保存必须写入世界书总开关');
 assert.equal(savedWorldBookConfig.entries[worldBookEntryKey], false, '保存必须写入原生条目开关');
 assert.equal(savedWorldBookConfig.columns.纪要.calendar, false, '保存必须写入栏目模块开关');
 assert.deepEqual(window.__pmWorldBookConfig, savedWorldBookConfig, '保存成功后内存配置必须与持久化配置一致');

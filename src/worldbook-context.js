@@ -1,4 +1,4 @@
-import { getTavernDbColumn, isMemberPrivateWorldBookEntryAllowed, isWorldBookEntryAllowed, normalizeWorldBookConfig } from './worldbook-config.js';
+import { getEnabledWorldBookNames, getTavernDbColumn, hasWorldBookSelectionSource, isMemberPrivateWorldBookEntryAllowed, isWorldBookEntryAllowed, normalizeWorldBookConfig } from './worldbook-config.js';
 
 const text = value => typeof value === 'string' ? value : '';
 const visibleText = value => text(value)
@@ -62,6 +62,8 @@ export async function buildWorldBookContext(context, {
         return '';
     }
     if (!Array.isArray(names)) return '';
+    const enabledNames = getEnabledWorldBookNames(context);
+    const selectedNames = hasWorldBookSelectionSource(context) ? names.filter(name => enabledNames.has(text(name).trim())) : names;
     const messages = (Array.isArray(context.chat) ? context.chat : [])
         .slice(-current.scanMessages).map(message => visibleText(message?.mes));
     const scope = requestedScope?.kind === 'group' || requestedScope?.kind === 'character'
@@ -70,7 +72,7 @@ export async function buildWorldBookContext(context, {
         ? [...new Set(memberIds.map(memberId => text(memberId).trim()).filter(Boolean))] : [];
     const privateMemberIds = current.groups[scope?.id]?.allowMemberPrivateMemory === true ? groupMemberIds : [];
     const selected = [];
-    for (const rawName of names) {
+    for (const rawName of selectedNames) {
         const bookName = text(rawName).trim();
         if (!bookName) continue;
         let book;

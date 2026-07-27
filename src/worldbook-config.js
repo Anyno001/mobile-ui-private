@@ -29,6 +29,31 @@ function normalizeSwitches(value) {
     return result;
 }
 
+function activeBookNames(value, target) {
+    const values = Array.isArray(value) ? value : [value];
+    for (const candidate of values) {
+        const name = cleanText(candidate, 120);
+        if (name) target.add(name);
+    }
+}
+
+export function getEnabledWorldBookNames(context) {
+    const names = new Set();
+    const globalSelector = globalThis.document?.getElementById?.('world_info');
+    const metadata = plainObject(context?.chatMetadata || context?.chat_metadata);
+    const character = context?.characters?.[context?.characterId];
+    if (globalSelector?.selectedOptions) activeBookNames([...globalSelector.selectedOptions].map(option => option.textContent || option.label), names);
+    activeBookNames(metadata.world_info, names);
+    activeBookNames(character?.data?.extensions?.world, names);
+    return names;
+}
+
+export function hasWorldBookSelectionSource(context) {
+    const character = context?.characters?.[context?.characterId];
+    const globalSelector = globalThis.document?.getElementById?.('world_info');
+    return Boolean(globalSelector?.selectedOptions || context?.chatMetadata?.world_info || context?.chat_metadata?.world_info || character?.data?.extensions?.world);
+}
+
 function normalizeColumnModes(value) {
     const result = {};
     for (const [column, modes] of Object.entries(plainObject(value))) {
@@ -66,14 +91,14 @@ function normalizeOverrides(value, options) {
 }
 
 export function createDefaultWorldBookConfig() {
-    return { version: WORLD_BOOK_CONFIG_VERSION, entries: {}, columns: {}, characters: {}, groups: {},
+    return { version: WORLD_BOOK_CONFIG_VERSION, books: {}, entries: {}, columns: {}, characters: {}, groups: {},
         mainChatMessages: 8, scanMessages: 2, maxChars: 24000 };
 }
 
 export function normalizeWorldBookConfig(value) {
     const source = plainObject(value);
     const defaults = createDefaultWorldBookConfig();
-    return { version: WORLD_BOOK_CONFIG_VERSION, entries: normalizeSwitches(source.entries),
+    return { version: WORLD_BOOK_CONFIG_VERSION, books: normalizeSwitches(source.books), entries: normalizeSwitches(source.entries),
         columns: normalizeColumnModes(source.columns), characters: normalizeOverrides(source.characters),
         groups: normalizeOverrides(source.groups, { group: true }),
         mainChatMessages: boundedInteger(source.mainChatMessages, defaults.mainChatMessages, 1, 100),
@@ -100,6 +125,8 @@ export function isWorldBookEntryAllowed(config, entry, { module, scope = null } 
     const entryKey = createWorldBookEntryKey(entry?.bookName, entry?.uid);
     if (!entryKey) return false;
     const column = cleanText(entry?.column, MAX_COLUMN_LENGTH);
+    const bookName = cleanText(entry?.bookName, 120);
+    if (!bookName || current.books[bookName] === false) return false;
     const override = scopeOverride(current, scope);
     const entrySetting = override?.entries?.[entryKey] ?? current.entries[entryKey];
     if (entrySetting === false) return false;
