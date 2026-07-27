@@ -190,7 +190,7 @@ export function installPhoneChatPoke(state, deps) {
         return true;
     };
 
-    function showContactConfig(contactName, returnToMembers = false, returnMembersToGroupSettings = false) {
+    function showContactConfig(contactName, returnToMembers = false, returnMembersToControlCenter = false) {
         const id = getStorageId();
         const config = window.__pmPokeConfig[id]?.[contactName] || {};
         const behavior = getCharacterBehavior(window.__pmCharacterBehavior, id, contactName);
@@ -220,7 +220,7 @@ export function installPhoneChatPoke(state, deps) {
         makeOverlay(`
     <div class="pm-modal pm-modal-wide">
     <div class="pm-modal-header">
-        <button type="button" onclick="${returnToMembers ? `window.__pmShowConversationSettings(${returnMembersToGroupSettings})` : 'window.__pmReturnToControlCenter()'}" class="pm-modal-close" title="返回" aria-label="返回">${BACK_ICON_SVG}</button>
+        <button type="button" onclick="${returnToMembers ? `window.__pmShowGroupMemberSettings(${returnMembersToControlCenter})` : 'window.__pmReturnToControlCenter()'}" class="pm-modal-close" title="返回" aria-label="返回">${BACK_ICON_SVG}</button>
         <b class="pm-contact-settings-title" title="${escapeAttr(contactName)}">${escapeHtml(contactName)}</b>
         <button type="button" onclick="window.__pmCloseOverlay()" class="pm-modal-close" title="关闭" aria-label="关闭">${CLOSE_ICON_SVG}</button>
     </div>
@@ -260,14 +260,16 @@ export function installPhoneChatPoke(state, deps) {
     }
 
     window.__pmShowCharacterBehavior = (contactName, returnToGroupSettings = false) => showContactConfig(contactName, true, returnToGroupSettings);
-    window.__pmShowGroupMemberSettings = () => {
+    window.__pmShowGroupMemberSettings = (returnToControlCenter = false) => {
         if (!state.isGroupChat) return;
         const members = state.groupMembers.slice();
+        const returnAction = returnToControlCenter ? 'window.__pmReturnToControlCenter()' : 'window.__pmEditGroup()';
+        const returnLabel = returnToControlCenter ? '返回快捷工具' : '返回群聊编辑';
         makeOverlay(`
     <div class="pm-modal pm-modal-wide">
-      <div class="pm-modal-header"><button type="button" onclick="window.__pmEditGroup()" class="pm-modal-close" title="返回群聊编辑" aria-label="返回群聊编辑">${BACK_ICON_SVG}</button><b>成员角色设置</b><button type="button" onclick="window.__pmCloseOverlay()" class="pm-modal-close" title="关闭" aria-label="关闭">${CLOSE_ICON_SVG}</button></div>
+      <div class="pm-modal-header"><button type="button" onclick="${returnAction}" class="pm-modal-close" title="${returnLabel}" aria-label="${returnLabel}">${BACK_ICON_SVG}</button><b>成员角色设置</b><button type="button" onclick="window.__pmCloseOverlay()" class="pm-modal-close" title="关闭" aria-label="关闭">${CLOSE_ICON_SVG}</button></div>
       <div class="pm-member-behavior-list">
-        ${members.map(name => `<button onclick="window.__pmShowCharacterBehavior('${safeJS(name)}', true)">
+        ${members.map(name => `<button onclick="window.__pmShowCharacterBehavior('${safeJS(name)}', ${returnToControlCenter})">
           <b>${escapeHtml(name)}</b><span>私聊风格、群聊发言风格与消息频率</span>
         </button>`).join('')}
       </div>

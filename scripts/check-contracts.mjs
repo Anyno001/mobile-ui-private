@@ -1331,7 +1331,7 @@ const storageInspection = inspectModule(sourceModuleByName.get('storage.js')?.co
 const storageBackgroundInspection = inspectModule(storageBackgroundCode);
 requireNamedImports('calendar.js', calendarInspection, './calendar-commit.js', ['createCalendarCommitters']);
 requireNamedImports('calendar.js', calendarInspection, './calendar-dom.js', [
-  'fillCalendarEntryForm', 'readCalendarEntryForm', 'setCalendarEntryKind',
+  'fillCalendarEntryForm', 'readCalendarEntryForm', 'setCalendarEntryRepeat',
 ]);
 if (!calendarInspection.calls.has('createCalendarCommitters')) failures.push('calendar.js: must call createCalendarCommitters');
 for (const name of ['commitScope', 'injectionFailure']) {
@@ -1341,7 +1341,7 @@ if (calendarInspection.declarations.has('scopeCommitQueue')) failures.push('cale
 for (const name of ['createCalendarCommitters']) {
   if (!calendarCommitInspection.exports.has(name)) failures.push(`calendar-commit.js: missing exported ${name}`);
 }
-for (const name of ['fillCalendarEntryForm', 'readCalendarEntryForm', 'setCalendarEntryKind']) {
+for (const name of ['fillCalendarEntryForm', 'readCalendarEntryForm', 'setCalendarEntryRepeat']) {
   if (!calendarDomInspection.exports.has(name)) failures.push(`calendar-dom.js: missing exported ${name}`);
 }
 for (const name of ['loadBgSettings', 'saveBgGlobal', 'saveBgLocal', 'saveDesktopBg']) {
@@ -1537,15 +1537,17 @@ for (const expected of ['requestedScope = getRecipeScope(storageId)', 'requested
   requireText('calendar-recipe-controller.js', calendarRecipeControllerCode, expected);
 }
 for (const expected of [
-  "enqueueDirectoryOperation('calendar'", "enqueueDirectoryOperation('recipes'", "enqueueDirectoryOperation('occasions'",
+  "enqueueDirectoryOperation('schedule'", "enqueueDirectoryOperation('recipes'",
   'loadCalendar()', 'loadCalendarRecipes()', 'loadCalendarOccasions()',
   'rollbackStore.scopes[storageId]', 'calendarRollbackError',
-  'injectionError = injectionFailure', 'rollbackInjectionError = injectionFailure',
+  'injectionError = injectionFailure', 'rollbackInjectionError = injectionFailure', 'commitSchedule',
+  'saveCalendar(previousCalendarStore)', 'saveCalendarOccasions(previousOccasionStore)', 'occasionRollbackError',
+  'occasionRolledBack', 'calendarRolledBack', 'occasionsRolledBack', 'scheduleRollbackError',
   'error.injectionResult = result', 'createCalendarCommitters', '{ refreshInjection = true } = {}', 'if (!refreshInjection) return next',
 ]) requireText('calendar-commit.js', calendarCommitCode, expected);
 for (const expected of [
-  'setCalendarEntryKind', 'fillCalendarEntryForm', 'readCalendarEntryForm',
-  "occasionFields.hidden = unavailable", "field.disabled = unavailable", "kind === 'occasion' ? form.elements.occasionType.value : ''",
+  'setCalendarEntryRepeat', 'fillCalendarEntryForm', 'readCalendarEntryForm',
+  "occasionFields.hidden = unavailable", "field.disabled = unavailable", "repeat === 'yearly' ? form.elements.occasionType.value : 'anniversary'",
 ]) requireText('calendar-dom.js', calendarDomCode, expected);
 for (const expected of [
   'CALENDAR_YEAR_RANGE = Object.freeze({ min: 1, max: 9999 })', 'createCalendarDate',
@@ -1565,7 +1567,7 @@ for (const expected of [
 for (const expected of [
   'aria-label="安排名称"', 'aria-label="安排备注"', '<b>日程</b>',
   'name="periodStartDay"', 'data-action="calendar-cycle-subject"',
-  'data-calendar-repeat-toggle role="switch"', '每年同一天重复',
+  'name="repeat" data-calendar-repeat-select aria-label="日程重复规则"', '不重复', '每日重复', '每周（同星期）', '每月（同日）', '每年重复',
   'data-action="calendar-holiday-country"',
   'data-action="calendar-add-date"', 'data-action="calendar-toggle-detail-edit"',
   'data-action="calendar-edit-entry"', 'data-action="calendar-delete-entry"', 'TRASH_ICON_SVG',
@@ -1578,15 +1580,16 @@ for (const expected of [
   "period: { label: '经期'", "ovulatory: { label: '易孕期'", 'resolveWeatherForDate(weatherStore, date)',
   'CYCLE_PERIOD_ICON_SVG', 'CYCLE_FERTILE_ICON_SVG', 'WEATHER_ICON_SVG', 'LOCATION_ICON_SVG', 'WEATHER_PARTLY_CLOUDY_ICON_SVG',
   'weatherStatusIcon', 'statusCard', 'pm-calendar-status-card', 'pm-calendar-status-watermark', 'pm-calendar-panel-section',
-  'pm-calendar-status-relative', 'pm-calendar-status-weather-context', 'pm-calendar-status-cycle-context', 'pm-calendar-status-date', 'pm-calendar-status-date-separator', 'data-cycle-phase="${escapeAttr(phase)}"',
+  'pm-calendar-status-heading', 'pm-calendar-status-context', 'pm-calendar-status-relative', 'pm-calendar-status-weather-context', 'pm-calendar-status-cycle-context', 'pm-calendar-status-date', 'data-cycle-phase="${escapeAttr(phase)}"',
   'value: `${resolved.day.tempMin}°–${resolved.day.tempMax}°`', "'天气记录'", '生理周期',
-  'detailDate.format(parsed))}</time><span class="pm-calendar-status-date-separator" aria-hidden="true"> · </span><em>${escapeHtml(detailWeekday.format(parsed))}</em>',
-  'meta: `${relativeLabel ? `<span class="pm-calendar-status-relative">${escapeHtml(relativeLabel)}</span>` : \'\'}<span class="pm-calendar-status-cycle-context">生理周期</span>`',
+  'relativeLabel, context, value, icon, parsed, date, kind, phase = \'\'',
+  'context: \'<span class="pm-calendar-status-cycle-context">生理周期</span>\'',
   '当前故事日期', 'placeholder="例如 3726-08-17"', '可直接输入日期，或跳转月份后点击下方日期。',
   '开启后供正文生成读取；设置按当前会话独立保存。', '预报外日期使用气候推演', '无法推演',
   'DEFAULT_CALENDAR_GENERATION_RULE', 'DEFAULT_RECIPE_GENERATION_RULE', 'data-calendar-generation-rule', 'data-recipe-generation-rule',
   'calendar-generation-rule-save', 'calendar-recipe-generation-rule-save', 'escapeHtml(generationRule)',
-  '开启后可设置生日或纪念日', 'data-calendar-occasion-fields ${occasion ? \'\' : \'hidden aria-hidden="true"\'}',
+  'name="repeat" data-calendar-repeat-select aria-label="日程重复规则"',
+  'data-calendar-occasion-fields ${yearly ? \'\' : \'hidden aria-hidden="true"\'}',
 ]) requireText('calendar-view.js', calendarViewCode, expected);
 if (calendarViewCode.includes('<h3>上下文注入</h3>')) failures.push('calendar-view.js: calendar management cards must not repeat the context-injection heading');
 if (!/<h3>正文日期<\/h3>[\s\S]*<h3>节假日数据<\/h3>[\s\S]*<h3>生成规则<\/h3>/.test(calendarViewCode)) {
@@ -1647,11 +1650,12 @@ for (const title of ['编辑消息', '角色设置', '群聊设置', '自动发�
   if (!controlCenterTemplate.includes(title)) failures.push(`phone-control-center.js: compact control menu missing title ${title}`);
 }
 for (const expected of [
-  "action === 'settings'", "action === 'auto-poke'", "action === 'calendar'", 'return window.__pmShowConversationSettings()',
+  "action === 'character-settings'", "action === 'group-settings'", "action === 'auto-poke'", "action === 'calendar'", 'return window.__pmShowConversationSettings()',
   'return window.__pmShowAutoPokeSettings()', 'return showPhoneCalendarPage()',
   'runControlMenuAction', 'controlActionLabel', 'CALENDAR_ICON_SVG', 'EDIT_ICON_SVG', 'EMOJI_ICON_SVG', 'TRASH_ICON_SVG',
   'window.__pmShowAutoPokeSettings', 'window.__pmReturnToControlCenter', 'CHARACTER_ICON_SVG', 'SETTINGS_ICON_SVG', 'CHAT_ICON_SVG',
-  "target?.isGroup ? SETTINGS_ICON_SVG : CHARACTER_ICON_SVG", "target?.isGroup ? '群聊设置' : '角色设置'",
+  'data-action="character-settings"', 'data-action="group-settings"', 'window.__pmShowGroupMemberSettings?.(true)',
+  'window.__pmShowGroupRandomNpcSettings?.({ returnToControlCenter: true })',
 ]) requireText('phone-control-center.js', controlCenterCode, expected);
 for (const forbidden of [
   "action === 'contacts'", "action === 'session-behavior'", 'return window.__pmShowList()',
@@ -2001,16 +2005,20 @@ for (const expected of [
   '.pm-calendar-shell>*{flex:0 0 auto}',
   '.pm-calendar-selected-detail.is-status-card{overflow:hidden;padding:0;background:color-mix(in srgb,var(--pm-calendar-accent) 8%,var(--pm-color-surface-card))}',
   '.pm-calendar-status-card{position:relative;isolation:isolate;min-height:126px;padding:15px 16px;overflow:hidden}',
-  '.pm-calendar-status-meta{display:flex;align-items:center;min-width:0;gap:8px;color:var(--pm-color-text-primary);font-size:13px;font-weight:750;line-height:1.2;white-space:nowrap}',
-  '.pm-calendar-status-relative{color:var(--pm-calendar-accent);font-size:17px;line-height:1.1;font-weight:750;white-space:nowrap}',
+  '.pm-calendar-status-content{position:relative;z-index:1;display:flex;min-width:0;min-height:96px;flex-direction:column;align-items:flex-start;justify-content:flex-start;gap:8px}',
+  '.pm-calendar-status-heading{display:flex;align-items:baseline;gap:8px;min-width:0}',
+  '.pm-calendar-status-relative{color:var(--pm-calendar-accent);font-size:17px;line-height:1.1;font-weight:850;white-space:nowrap}',
+  '.pm-calendar-status-context{display:flex;align-items:center;gap:4px;min-width:0}',
   '.pm-calendar-status-weather-context,.pm-calendar-status-cycle-context{color:var(--pm-color-text-secondary);font-size:13px;font-weight:500;line-height:1.2}',
-  '.pm-calendar-status-value{color:color-mix(in srgb,var(--pm-color-text-primary) 70%,var(--pm-color-text-secondary));font-size:28px;line-height:1;font-weight:650',
-  '.pm-calendar-status-date{display:flex;align-items:baseline;gap:0;min-width:0;margin-top:3px;color:var(--pm-color-text-tertiary);font-size:11px;font-weight:400;line-height:1.2}',
-  '.pm-calendar-status-date time,.pm-calendar-status-date em{color:inherit;font:inherit;white-space:nowrap}.pm-calendar-status-date-separator{color:inherit;font:inherit;white-space:pre}',
-  '.pm-calendar-status-date em{font-style:normal}',
+  '.pm-calendar-status-location{display:inline-grid;place-items:center;color:var(--pm-color-text-tertiary)}.pm-calendar-status-location svg{width:13px;height:13px}',
+  '.pm-calendar-status-card-weather .pm-calendar-status-value{color:var(--pm-color-text-secondary);font-weight:550;letter-spacing:.01em}',
+  '.pm-calendar-status-card-cycle .pm-calendar-status-value{color:var(--pm-color-text-primary);font-weight:650;letter-spacing:.06em}',
+  '.pm-calendar-status-date time{color:var(--pm-color-text-primary);font-weight:750}',
+  '.pm-calendar-status-date em{color:var(--pm-color-text-tertiary);font-style:normal;font-weight:500}',
   '.pm-calendar-status-watermark{position:absolute;z-index:0;top:50%;right:-64px;width:202px;height:173px',
   '.pm-calendar-status-watermark svg{width:173px;height:173px;stroke-width:1.55}',
-  '.pm-calendar-status-card-cycle[data-cycle-phase="period"] .pm-calendar-status-watermark{right:-82px;transform:translateY(calc(-50% + 8px))}',
+  '.pm-calendar-status-card-cycle[data-cycle-phase="period"] .pm-calendar-status-watermark{top:50%;right:auto;left:50%;width:190px;height:150px;opacity:.12;transform:translate(-50%,-50%)',
+  '.pm-calendar-status-card-cycle[data-cycle-phase="period"] .pm-calendar-status-watermark{top:50%;right:auto;left:50%;width:190px;height:150px;opacity:.12;transform:translate(-50%,-50%);-webkit-mask-image:radial-gradient(circle at center,#000 0 48%,transparent 78%);mask-image:radial-gradient(circle at center,#000 0 48%,transparent 78%)}',
   '-webkit-mask-image:linear-gradient(90deg,transparent 0%,#000 44%)',
   '.pm-calendar-shell[data-calendar-view-mode="recipe"]{--pm-calendar-accent:#c77a32}',
   '.pm-calendar-day.has-recipe>span{color:var(--pm-calendar-accent)}',
@@ -2048,14 +2056,20 @@ for (const expected of [
   '.pm-scene-empty{font-size:12px;line-height:1.55}',
 ]) requireText('style.css', css, expected);
 requireCssDeclarations(cssRules, '.pm-calendar-status-relative', {
-  color: 'var(--pm-calendar-accent)', 'font-size': '17px', 'line-height': '1.1', 'font-weight': '750',
+  color: 'var(--pm-calendar-accent)', 'font-size': '17px', 'line-height': '1.1', 'font-weight': '850',
 });
 requireCssDeclarations(cssRules, '.pm-calendar-status-value', {
-  color: 'color-mix(in srgb,var(--pm-color-text-primary) 70%,var(--pm-color-text-secondary))',
-  'font-size': '28px', 'line-height': '1', 'font-weight': '650',
+  'font-size': '28px', 'line-height': '1', 'font-variant-numeric': 'tabular-nums',
 });
 requireCssDeclarations(cssRules, '.pm-calendar-status-date', {
-  'margin-top': '3px', color: 'var(--pm-color-text-tertiary)', 'font-size': '11px', 'font-weight': '400', 'line-height': '1.2',
+  display: 'flex', 'align-items': 'baseline', gap: '0', 'min-width': '0',
+});
+requireCssDeclarations(cssRules, '.pm-calendar-status-location svg', { width: '13px', height: '13px' });
+requireCssDeclarations(cssRules, '.pm-calendar-status-card-weather .pm-calendar-status-value', {
+  color: 'var(--pm-color-text-secondary)', 'font-weight': '550', 'letter-spacing': '.01em',
+});
+requireCssDeclarations(cssRules, '.pm-calendar-status-card-cycle .pm-calendar-status-value', {
+  color: 'var(--pm-color-text-primary)', 'font-weight': '650', 'letter-spacing': '.06em',
 });
 for (const forbidden of [
   '.pm-calendar-status-weather-context{color:var(--pm-color-text-primary);font-size:13px;font-weight:750;line-height:1.2}',
@@ -2320,7 +2334,7 @@ for (const expected of ['REMOVE_ICON_SVG', 'UNLINK_ICON_SVG', 'SPARKLES_ICON_SVG
 for (const expected of [
   `export const EYE_ICON_SVG = icon('<path d="M2.5 12s3.5-5 9.5-5 9.5 5 9.5 5-3.5 5-9.5 5-9.5-5-9.5-5z"/><circle cx="12" cy="12" r="2.5"/>');`,
   `export const MOON_ICON_SVG = icon('<path d="M20 15.2A8.5 8.5 0 0 1 8.8 4 8.5 8.5 0 1 0 20 15.2z"/>');`,
-  `export const CYCLE_PERIOD_ICON_SVG = icon('<path d="M12 3.8s-5 5.7-5 10.1a5 5 0 0 0 10 0C17 9.5 12 3.8 12 3.8z"/>');`,
+  `export const CYCLE_PERIOD_ICON_SVG = icon('<circle cx="12" cy="7" r="3"/><circle cx="16.8" cy="10.5" r="3"/><circle cx="15" cy="16" r="3"/><circle cx="9" cy="16" r="3"/><circle cx="7.2" cy="10.5" r="3"/><circle cx="12" cy="12" r="2.2"/>');`,
 ]) requireText('icons.js geometry', iconsCode, expected);
 for (const forbidden of ['୨ৎ', "M12 21c-4-2-8-7-8-12"]) {
   if (iconsCode.includes(forbidden) || calendarViewCode.includes(forbidden) || calendarPageViewCode.includes(forbidden)) {
@@ -2371,6 +2385,10 @@ requireCssDeclarations(cssRules, '#pm-overlay .pm-contact-settings-scroll textar
   width: '100% !important', 'min-height': '58px !important', resize: 'vertical !important',
   'box-shadow': 'none !important', appearance: 'none !important',
 });
+requireCssDeclarations(cssRules, '#pm-overlay .pm-group-settings-scroll textarea.pm-cfg-input', {
+  width: '100% !important', 'min-height': '58px !important', resize: 'vertical !important',
+  'box-shadow': 'none !important', appearance: 'none !important',
+});
 for (const expected of [
   '.pm-action-button{', 'font-size:13px', 'background:var(--pm-r-bg,#007aff)',
   '.pm-header-icon-button{box-sizing:border-box;width:34px;height:34px;min-width:34px;min-height:34px',
@@ -2386,10 +2404,10 @@ for (const expected of [
   'onclick="window.__pmCloseOverlay()"', 'pm-contact-settings-title', 'pm-modal-add pm-contact-settings-actions',
   'onclick="window.__pmSaveContactConfig(',
   'window.__pmSaveAndCloseContactConfig = contactName => window.__pmSaveContactConfig(contactName)',
-  'BACK_ICON_SVG', 'function showContactConfig(contactName, returnToMembers = false, returnMembersToGroupSettings = false)',
-  'window.__pmShowGroupMemberSettings = () =>', '<b>成员角色设置</b>',
-  "window.__pmShowCharacterBehavior('${safeJS(name)}', true)",
-  'window.__pmShowConversationSettings(${returnMembersToGroupSettings})',
+  'BACK_ICON_SVG', 'function showContactConfig(contactName, returnToMembers = false, returnMembersToControlCenter = false)',
+  'window.__pmShowGroupMemberSettings = (returnToControlCenter = false) =>', '<b>成员角色设置</b>',
+  "window.__pmShowCharacterBehavior('${safeJS(name)}', ${returnToControlCenter})",
+  'window.__pmShowGroupMemberSettings(${returnMembersToControlCenter})',
   'window.__pmShowGroupRandomNpcSettings?.({ returnToControlCenter: !returnToGroupSettings })',
   '__pmShowConversationSettings = (returnToGroupSettings = false)',
 ]) requireText('phone-chat-poke.js', phoneChatPokeCode, expected);
@@ -2445,13 +2463,12 @@ for (const expected of [
   "period: '经期'", "follicular: ''", "ovulatory: '易孕期'", "luteal: ''",
 ]) requireText('calendar-page-view.js', calendarPageViewCode, expected);
 for (const expected of [
-  "period: '经期'", "ovulatory: '易孕期'", '对所有已启用对象，未注明经期或易孕期的日期按安全期理解。', 'fitCompleteLines',
+  "period: '经期'", "follicular: '相对安全期'", "ovulatory: '易孕期'", "luteal: '安全期'", 'fitCompleteLines',
 ]) requireText('phone-injection.js', phoneInjectionCode, expected);
 const cycleInjectionLabelsSource = phoneInjectionCode.match(/const CYCLE_INJECTION_LABELS\s*=\s*Object\.freeze\(\{[\s\S]*?\}\);/)?.[0] || '';
 if (!cycleInjectionLabelsSource) failures.push('phone-injection.js: missing CYCLE_INJECTION_LABELS');
-if (cycleInjectionLabelsSource.includes('follicular')) failures.push('phone-injection.js: blank follicular phase must not have an injection label');
-if (cycleInjectionLabelsSource.includes('luteal')) failures.push('phone-injection.js: safe phase must be represented by the default rule, not a dated label');
-requireText('phone-injection.js', cycleInjectionLabelsSource, "period: '经期', ovulatory: '易孕期'");
+requireText('phone-injection.js', cycleInjectionLabelsSource, "period: '经期', follicular: '相对安全期', ovulatory: '易孕期', luteal: '安全期'");
+if (renderCalendarInjectionSource.includes('生理周期规则：')) failures.push('phone-injection.js: dated cycle labels must replace the removed default-rule sentence');
 for (const forbidden of ['calendar-story-initial', 'saveStoryInitialDate', 'clearStoryInitialDate']) if (calendarCode.includes(forbidden)) failures.push(`calendar.js: removed story initial date path remains: ${forbidden}`);
 requireText('calendar-model.js', calendarModelCode, 'if (parseCalendarDate(source.storyInitialDate)) normalized.storyInitialDate = source.storyInitialDate');
 requireText('interactive-scenes.js', interactiveCode, 'generationErrorMessage(error)');

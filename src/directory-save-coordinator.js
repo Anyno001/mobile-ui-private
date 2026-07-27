@@ -1,7 +1,7 @@
 const revisions = { histories: 0, groupMeta: 0 };
 const queues = {
     histories: Promise.resolve(), groupMeta: Promise.resolve(), interactive: Promise.resolve(), backgrounds: Promise.resolve(),
-    phoneUi: Promise.resolve(), calendar: Promise.resolve(), occasions: Promise.resolve(), cycles: Promise.resolve(), recipes: Promise.resolve(),
+    phoneUi: Promise.resolve(), calendar: Promise.resolve(), occasions: Promise.resolve(), schedule: Promise.resolve(), cycles: Promise.resolve(), recipes: Promise.resolve(),
     pokeConfig: Promise.resolve(), characterBehavior: Promise.resolve(), bidirectional: Promise.resolve(), budget: Promise.resolve(),
 };
 const branchScopeEvents = new Map();

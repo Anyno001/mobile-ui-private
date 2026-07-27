@@ -12,6 +12,8 @@ import {
 const controlActionLabel = action => ({
     calendar: '打开日历',
     settings: '打开会话设置',
+    'character-settings': '打开角色设置',
+    'group-settings': '打开群聊设置',
     'auto-poke': '打开自动发消息',
     delete: '进入消息删除模式',
 })[action] || '执行快捷操作';
@@ -188,6 +190,9 @@ export function installPhoneControlCenter(state, deps) {
         closeControlCenter();
         if (action === 'pending') showPendingManager();
         else if (action === 'settings') return window.__pmShowConversationSettings();
+        else if (action === 'character-settings') return state.isGroupChat
+            ? window.__pmShowGroupMemberSettings?.(true) : window.__pmShowConversationSettings();
+        else if (action === 'group-settings') return window.__pmShowGroupRandomNpcSettings?.({ returnToControlCenter: true });
         else if (action === 'auto-poke') return window.__pmShowAutoPokeSettings();
         else if (action === 'emoji') window.__pmShowEmojiManager();
         else if (action === 'delete') window.__pmStartDeleteMode();
@@ -234,7 +239,8 @@ export function installPhoneControlCenter(state, deps) {
         const target = getTarget();
         menu.innerHTML = `
   <button type="button" role="menuitem" data-action="pending">${EDIT_ICON_SVG}编辑消息</button>
-  <button type="button" role="menuitem" data-action="settings" ${target ? '' : 'disabled'}>${target?.isGroup ? SETTINGS_ICON_SVG : CHARACTER_ICON_SVG}${target?.isGroup ? '群聊设置' : '角色设置'}</button>
+  <button type="button" role="menuitem" data-action="character-settings" ${target ? '' : 'disabled'}>${CHARACTER_ICON_SVG}角色设置</button>
+  ${target?.isGroup ? `<button type="button" role="menuitem" data-action="group-settings">${SETTINGS_ICON_SVG}群聊设置</button>` : ''}
   <button type="button" role="menuitem" data-action="auto-poke" ${target ? '' : 'disabled'}>${CHAT_ICON_SVG}自动发消息</button>
   <button type="button" role="menuitem" data-action="emoji">${EMOJI_ICON_SVG}表情包管理</button>
   <button type="button" role="menuitem" data-action="calendar">${CALENDAR_ICON_SVG}日历</button>

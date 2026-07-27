@@ -15,7 +15,7 @@ import { fetchWeatherForecast, normalizeWeatherStore, searchWeatherLocations } f
 import { CYCLE_SELF_SUBJECT, clearCycleScope, cycleScopeFor, cycleSubjectKeys, normalizeCycleStore, upsertCycleScope } from './calendar-cycle-model.js';
 import { normalizeRecipeStore, recipeScopeFor } from './calendar-recipe-model.js';
 import { createCalendarCommitters } from './calendar-commit.js';
-import { fillCalendarEntryForm, readCalendarEntryForm, setCalendarEntryKind } from './calendar-dom.js';
+import { fillCalendarEntryForm, readCalendarEntryForm, setCalendarEntryRepeat } from './calendar-dom.js';
 import { loadCalendar, loadCalendarCycles, loadCalendarHolidays, loadCalendarOccasions, loadCalendarRecipes, loadCalendarWeather, loadCalendarWithLegacyInjectionMigration } from './calendar-storage.js';
 import { occasionTypeLabel, renderCalendarEntryDialog } from './calendar-view.js';
 import { renderCalendarPageHtml } from './calendar-page-view.js';
@@ -90,7 +90,7 @@ export function installCalendar(state, deps) {
         runtime.viewByStorage.set(storageId, view);
         return view;
     };
-    const { commitScope, commitRecipe, commitOccasions, commitHolidays, commitWeather, commitCycle, invalidateCommits } = createCalendarCommitters({
+    const { commitScope, commitRecipe, commitOccasions, commitSchedule, commitHolidays, commitWeather, commitCycle, invalidateCommits } = createCalendarCommitters({
         runtime,
         tasks,
         applyBidirectionalInjection: deps.applyBidirectionalInjection,
@@ -522,34 +522,42 @@ export function installCalendar(state, deps) {
         const errorNode = overlay.querySelector('[data-calendar-entry-error]');
         const showError = error => { if (errorNode) errorNode.textContent = error?.message || '安排更新失败'; };
         overlay.querySelector('[data-calendar-entry-close]')?.addEventListener('click', () => closeOverlay?.('close'));
-        const repeatToggle = overlay.querySelector('[data-calendar-repeat-toggle]');
-        repeatToggle?.addEventListener('click', () => {
-            if (existingEntry) return;
-            setCalendarEntryKind(overlay, overlay.dataset.calendarEntryKind === 'occasion' ? 'event' : 'occasion');
+        overlay.querySelector('[data-calendar-repeat-select]')?.addEventListener('change', event => {
+            setCalendarEntryRepeat(overlay, event.currentTarget.value);
         });
         form?.addEventListener('submit', async event => {
             event.preventDefault();
             try {
                 const value = readCalendarEntryForm(overlay);
                 if (!value.title) throw new Error('安排名称不能为空');
-                if (value.kind === 'event') {
-                    const previous = normalizedKind === 'event' ? existingEntry : null;
-                    await commitScope(storageId, current => upsertCalendarEvent(current, {
-                        id: previous?.id, date: entries.date, title: value.title, note: value.note,
-                        source: previous?.source || 'manual', createdAt: previous?.createdAt, updatedAt: Date.now(),
-                    }));
-                    status(storageId, previous ? '日程已更新。' : '日程已添加。');
-                } else {
-                    const previous = normalizedKind === 'occasion' ? existingEntry : null;
+                await commitSchedule(storageId, current => {
+                    const calendar = normalizedKind === 'event' && existingEntry
+                        ? deleteCalendarEvent(current.calendar, existingEntry.id).scope : current.calendar;
+                    const occasionScope = normalizedKind === 'occasion' && existingEntry
+                        ? deleteOccasion(current.occasions, existingEntry.id).scope : current.occasions;
+                    if (value.kind === 'event') return {
+                        calendar: upsertCalendarEvent(calendar, {
+                            id: normalizedKind === 'event' ? existingEntry?.id : undefined,
+                            date: entries.date, title: value.title, note: value.note,
+                            source: normalizedKind === 'event' ? existingEntry?.source || 'manual' : 'manual',
+                            createdAt: normalizedKind === 'event' ? existingEntry?.createdAt : undefined, updatedAt: Date.now(),
+                        }),
+                        occasions: occasionScope,
+                    };
                     const parsed = parseCalendarDate(entries.date);
-                    await commitOccasions(storageId, current => upsertOccasion(current, {
-                        id: previous?.id, type: value.type,
-                        month: previous?.month || parsed.getMonth() + 1, day: previous?.day || parsed.getDate(),
-                        title: value.title, note: value.note, leapDayRule: value.leapDayRule,
-                        createdAt: previous?.createdAt, updatedAt: Date.now(),
-                    }));
-                    status(storageId, previous ? `${occasionTypeLabel(previous.type)}已更新。` : `${occasionTypeLabel(value.type)}已添加。`);
-                }
+                    return {
+                        calendar,
+                        occasions: upsertOccasion(occasionScope, {
+                        id: normalizedKind === 'occasion' ? existingEntry?.id : undefined, type: value.type,
+                        date: normalizedKind === 'occasion' ? existingEntry?.date || entries.date : entries.date,
+                        month: normalizedKind === 'occasion' ? existingEntry?.month || parsed.getMonth() + 1 : parsed.getMonth() + 1,
+                        day: normalizedKind === 'occasion' ? existingEntry?.day || parsed.getDate() : parsed.getDate(),
+                        repeat: value.repeat, title: value.title, note: value.note, leapDayRule: value.leapDayRule,
+                        createdAt: normalizedKind === 'occasion' ? existingEntry?.createdAt : undefined, updatedAt: Date.now(),
+                    }),
+                    };
+                });
+                status(storageId, existingEntry ? '日程已更新。' : '日程已添加。');
                 closeOverlay?.('saved'); rerender(storageId);
             } catch (error) { showError(error); }
         });

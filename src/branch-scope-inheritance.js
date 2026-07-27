@@ -324,9 +324,8 @@ async function commitBudgetScopeCoordinated(options) {
     }
 }
 
-async function commitCalendarScope({ store, key, desired, expected, targetId, normalize, label }) {
-    return enqueueDirectoryOperation(store, async () => {
-        const current = readCalendarForBranch(key, normalize, label);
+function mergeCalendarBranchScope({ key, desired, expected, targetId, normalize, label }) {
+    const current = readCalendarForBranch(key, normalize, label);
     const restoring = !own(desired.scopes, targetId);
     if (!restoring && own(current.scopes, targetId)) {
         throw new Error(`分支继承保存失败：目标 scope 已被并发写入 (${label})`);
@@ -336,13 +335,28 @@ async function commitCalendarScope({ store, key, desired, expected, targetId, no
     }
     const merged = clone(current);
     replaceEntry(merged.scopes, desired.scopes, targetId);
+    return normalize(merged);
+}
+
+async function commitCalendarScopes({ desired, expected, targetId }) {
+    const token = markDirectoryBranchScope('schedule', targetId);
     try {
-        localStorage.setItem(key, JSON.stringify(normalize(merged)));
-    } catch (error) {
-        throw new Error(`分支继承保存失败：${label}不可用`);
+        return await enqueueDirectoryOperation('schedule', async () => {
+        const calendar = mergeCalendarBranchScope({ key: CALENDAR_STORAGE_KEY, desired: desired.calendar, expected: expected.calendar, targetId,
+            normalize: normalizeCalendarStore, label: '日历数据' });
+        const occasions = mergeCalendarBranchScope({ key: CALENDAR_OCCASION_STORAGE_KEY, desired: desired.occasions, expected: expected.occasions, targetId,
+            normalize: normalizeOccasionStore, label: '生日与纪念日数据' });
+        try {
+            localStorage.setItem(CALENDAR_STORAGE_KEY, JSON.stringify(calendar));
+            localStorage.setItem(CALENDAR_OCCASION_STORAGE_KEY, JSON.stringify(occasions));
+        } catch (error) {
+            throw new Error('分支继承保存：日程数据不可用');
+        }
+        return { calendar, occasions };
+        });
+    } finally {
+        completeDirectoryBranchScope('schedule', token);
     }
-    return merged;
-    });
 }
 
 async function commitInteractiveScope({ desired, expected, targetId }) {
@@ -534,16 +548,11 @@ async function persistProductionStores(next, { branch } = {}) {
                 normalize: value => normalizePhoneUiState({ version: 1, scopes: value }, interactive), label: '手机页面状态',
             });
             globalThis.window.__pmPhoneUiState = normalizePhoneUiState({ version: 1, scopes: phoneUiScopes }, interactive);
-            await commitCalendarScope({ store: 'calendar', key: CALENDAR_STORAGE_KEY,
-                desired: desired.calendar, expected: expected.calendar, targetId,
-                normalize: normalizeCalendarStore, label: '日历数据' });
-            await commitCalendarScope({ store: 'occasions', key: CALENDAR_OCCASION_STORAGE_KEY,
-                desired: desired.occasions, expected: expected.occasions, targetId,
-                normalize: normalizeOccasionStore, label: '生日与纪念日数据' });
-            await commitCalendarScope({ store: 'cycles', key: CALENDAR_CYCLE_STORAGE_KEY,
+            await commitCalendarScopes({ desired, expected, targetId });
+            await commitLocalScopeCoordinated('cycles', { key: CALENDAR_CYCLE_STORAGE_KEY,
                 desired: desired.cycles, expected: expected.cycles, targetId,
                 normalize: normalizeCycleStore, label: '生理周期数据' });
-            await commitCalendarScope({ store: 'recipes', key: CALENDAR_RECIPE_STORAGE_KEY,
+            await commitLocalScopeCoordinated('recipes', { key: CALENDAR_RECIPE_STORAGE_KEY,
                 desired: desired.recipes, expected: expected.recipes, targetId,
                 normalize: normalizeRecipeStore, label: '菜谱数据' });
         } else {

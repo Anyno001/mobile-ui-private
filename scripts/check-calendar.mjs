@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { calendarGenerationErrorMessage, installCalendar, renderCalendarPageHtml } from '../src/calendar.js';
-import { fillCalendarEntryForm, readCalendarEntryForm, setCalendarEntryKind } from '../src/calendar-dom.js';
+import { fillCalendarEntryForm, readCalendarEntryForm, setCalendarEntryRepeat } from '../src/calendar-dom.js';
 import { renderCalendarEntryDialog, renderSelectedDateDetail } from '../src/calendar-view.js';
 import { renderCalendarContextInjection } from '../src/phone-injection.js';
 import { createCalendarCommitters } from '../src/calendar-commit.js';
@@ -331,6 +331,27 @@ assert.equal(expanded.length, 1);
 assert.equal(expanded[0].date, '2028-01-01');
 assert.equal(expanded[0].type, 'anniversary');
 assert.equal(findOccasion(scope, birthdayId)?.title, '小林生日');
+const repeatScope = { occasions: [
+    { type: 'anniversary', date: '2027-01-02', month: 1, day: 2, repeat: 'daily', title: '每日记录' },
+    { type: 'anniversary', date: '2027-01-02', month: 1, day: 2, repeat: 'weekly', title: '每周例会' },
+    { type: 'anniversary', date: '2027-01-31', month: 1, day: 31, repeat: 'monthly', title: '月底结算' },
+] };
+const repeated = expandOccasions(repeatScope, { start: new Date(2027, 1, 26, 12), days: 4 });
+assert.deepEqual(
+    repeated.filter(item => item.title === '每日记录').map(item => item.date),
+    ['2027-02-26', '2027-02-27', '2027-02-28', '2027-03-01'],
+    '每日重复必须覆盖锚点之后窗口内的每一天',
+);
+assert.deepEqual(
+    repeated.filter(item => item.title === '每周例会').map(item => item.date),
+    ['2027-02-27'],
+    '每周重复必须按锚点的星期几展开',
+);
+assert.deepEqual(
+    repeated.filter(item => item.title === '月底结算').map(item => item.date),
+    ['2027-02-28'],
+    '每月重复在目标月份没有锚点日时必须落在月末',
+);
 const removed = deleteOccasion(scope, birthdayId);
 assert.equal(removed.removed, true);
 assert.equal(removed.scope.occasions.length, 1);
@@ -562,9 +583,9 @@ const sharedWeatherText = `${climateResolved.day.tempMin}°/${climateResolved.da
 assert.match(climateDetail, new RegExp(`${climateResolved.day.tempMin}°–${climateResolved.day.tempMax}°`));
 assert.doesNotMatch(climateDetail, /\d+ - \d+ ℃/, '状态卡天气温度不得回退为连字符加摄氏符号格式');
 assert.match(climateDetail, /class="pm-calendar-status-card pm-calendar-status-card-weather"/);
-assert.match(climateDetail, /pm-calendar-status-relative">今天<\/span><span class="pm-calendar-status-weather-context">小雨 · 中国<\/span>/);
-assert.doesNotMatch(climateDetail, /pm-calendar-status-relative">今天<\/span>\s+<span class="pm-calendar-status-weather-context">/);
-assert.match(climateDetail, /<span class="pm-calendar-status-date"><time datetime="2032-03-15">3月15日<\/time><span class="pm-calendar-status-date-separator" aria-hidden="true"> · <\/span><em>星期一<\/em><\/span>/);
+assert.match(climateDetail, /class="pm-calendar-status-heading"><strong class="pm-calendar-status-relative">今天<\/strong><span class="pm-calendar-status-date"><time datetime="2032-03-15">3月15日<\/time><em>星期一<\/em><\/span><\/div>/);
+assert.match(climateDetail, /class="pm-calendar-status-context"><span class="pm-calendar-status-weather-context">小雨 · 中国<\/span><span class="pm-calendar-status-location"[^>]*><svg/);
+assert.doesNotMatch(climateDetail, /pm-calendar-status-date-separator/);
 assert.match(climateDetail, /<svg/);
 assert.doesNotMatch(climateDetail, /气候推演|缓存预报|真实预报|体感|湿度/);
 assert.match(climateInjection, new RegExp(sharedWeatherText.replace('/', '\\/')));
@@ -656,14 +677,14 @@ for (const { date, phase, label } of cycleLabelCases) {
             '空白周期阶段不得在月格保留周期状态点');
         assert.doesNotMatch(page, new RegExp(`data-calendar-date="${date}"[^>]*>(?:(?!</button>)[\\s\\S])*?<span>(?:安全期|易孕期|经期)</span>`),
             '空白周期阶段不得在月格显示周期标签');
-        assert.doesNotMatch(injection, new RegExp(`${date}｜[^\\n]*生理周期（我）：`),
-            '空白周期阶段不得写入生理期上下文');
-        assert.match(injection, /生理周期规则：对所有已启用对象，未注明经期或易孕期的日期按安全期理解。/,
-            '启用周期资料时必须用完整规则说明未标注日期的含义');
+        const promptLabel = phase === 'follicular' ? '相对安全期' : '安全期';
+        assert.match(injection, new RegExp(`${date}｜[^\\n]*生理周期（我）：${promptLabel}`),
+            '空白周期阶段必须只在后台上下文使用明确中文标签');
+        assert.doesNotMatch(injection, /生理周期规则：/, '周期上下文不得保留默认安全期推断规则');
     } else {
         assert.match(detail, new RegExp(`<b class="pm-calendar-status-value">${label}</b>`), `周期详情必须将 ${phase} 渲染为${label}`);
         if (phase === 'period') {
-            assert.match(detail, /class="pm-calendar-status-card pm-calendar-status-card-cycle" data-cycle-phase="period"[\s\S]*?class="pm-calendar-status-watermark"[^>]*>[\s\S]*?<path d="M12 3\.8s-5 5\.7-5 10\.1a5 5 0 0 0 10 0C17 9\.5 12 3\.8 12 3.8z"\/>/, '经期详情必须将大水滴作为海报式背景水印');
+            assert.match(detail, /class="pm-calendar-status-card pm-calendar-status-card-cycle" data-cycle-phase="period"[\s\S]*?class="pm-calendar-status-watermark"[^>]*>[\s\S]*?<circle cx="12" cy="7" r="3"\/>/, '经期详情必须将花朵作为海报式背景水印');
         } else if (phase === 'ovulatory') {
             assert.match(detail, /class="pm-calendar-status-card pm-calendar-status-card-cycle"[\s\S]*?class="pm-calendar-status-watermark"[^>]*>[\s\S]*?<circle cx="12" cy="12" r="3\.2"\/>/, '易孕期详情必须将花蕊作为海报式背景水印');
         }
@@ -917,19 +938,18 @@ const renderedOccasionDialog = renderCalendarEntryDialog(currentDates[0], {
 }, 'occasion');
 assert.match(renderedEntryDialog, /class="pm-modal pm-calendar-entry-dialog"/);
 assert.match(renderedEntryDialog, /<b>日程<\/b>/);
-assert.match(renderedEntryDialog, /data-calendar-repeat-toggle role="switch"[^>]*aria-checked="false"[^>]*disabled/);
-assert.match(renderedEntryDialog, /每年同一天重复/);
+assert.match(renderedEntryDialog, /name="repeat" data-calendar-repeat-select aria-label="日程重复规则"/);
+assert.match(renderedEntryDialog, /<option value="none" selected>不重复<\/option>/);
+assert.match(renderedEntryDialog, /每日重复[\s\S]*?每周（同星期）[\s\S]*?每月（同日）[\s\S]*?每年重复/);
 assert.match(renderedEntryDialog, /data-calendar-occasion-fields hidden aria-hidden="true"[\s\S]*?name="occasionType" disabled[\s\S]*?name="leapDayRule" disabled/,
-    '一次性日程不得向辅助技术或键盘焦点暴露长期字段');
-assert.match(renderedOccasionDialog, /data-calendar-repeat-toggle role="switch"[^>]*aria-checked="true"[^>]*disabled/);
+    '不重复日程不得向辅助技术或键盘焦点暴露年度字段');
+assert.match(renderedOccasionDialog, /<option value="none" >不重复<\/option>[\s\S]*?<option value="yearly" selected>每年重复<\/option>/);
 assert.match(renderedOccasionDialog, /data-calendar-occasion-fields\s*><label>长期类型<select name="occasionType" >[\s\S]*?name="leapDayRule" >/,
-    '生日或纪念日必须恢复长期类型和闰日规则字段');
+    '年度重复必须恢复长期类型和闰日规则字段');
 
 assert.doesNotMatch(renderedEntryDialog, /data-calendar-entry-existing|data-calendar-entry-delete/);
 let entryTitleFocusOptions = null;
-const entryRepeatToggle = {
-    checked: '', setAttribute(name, value) { if (name === 'aria-checked') this.checked = value; },
-};
+const entryRepeatSelect = { value: 'none' };
 const occasionControls = [{ disabled: false }, { disabled: false }];
 const occasionFields = {
     hidden: false, ariaHidden: '',
@@ -938,28 +958,28 @@ const occasionFields = {
 };
 const entryForm = { elements: {
     title: { value: '', focus: options => { entryTitleFocusOptions = options; } },
-    note: { value: '' }, occasionType: { value: 'birthday' }, leapDayRule: { value: 'mar1' },
+    note: { value: '' }, repeat: entryRepeatSelect, occasionType: { value: 'birthday' }, leapDayRule: { value: 'mar1' },
 } };
 const entryRoot = {
     dataset: {},
     querySelector: selector => selector === '[data-calendar-entry-form]' ? entryForm
-        : selector === '[data-calendar-repeat-toggle]' ? entryRepeatToggle
+        : selector === '[data-calendar-repeat-select]' ? entryRepeatSelect
         : selector === '[data-calendar-occasion-fields]' ? occasionFields : null,
 };
 fillCalendarEntryForm(entryRoot, null, 'event');
 assert.equal(entryTitleFocusOptions, null, '管理态填充数据不得自动聚焦输入框');
 assert.equal(occasionFields.hidden, true);
 assert.equal(occasionFields.ariaHidden, 'true');
-assert.ok(occasionControls.every(control => control.disabled), '一次性日程必须禁用长期字段');
-assert.equal(entryRepeatToggle.checked, 'false');
-assert.deepEqual(readCalendarEntryForm(entryRoot), { kind: 'event', title: '', note: '', type: '', leapDayRule: '' },
-    '一次性日程读取时不得携带隐藏的长期字段');
-setCalendarEntryKind(entryRoot, 'occasion');
+assert.ok(occasionControls.every(control => control.disabled), '不重复日程必须禁用年度字段');
+assert.equal(entryRepeatSelect.value, 'none');
+assert.deepEqual(readCalendarEntryForm(entryRoot), { repeat: 'none', kind: 'event', title: '', note: '', type: 'anniversary', leapDayRule: 'feb28' },
+    '不重复日程读取时不得携带年度专用字段');
+setCalendarEntryRepeat(entryRoot, 'yearly');
 assert.equal(occasionFields.hidden, false);
 assert.equal(occasionFields.ariaHidden, 'false');
-assert.equal(entryRepeatToggle.checked, 'true');
-assert.ok(occasionControls.every(control => !control.disabled), '生日或纪念日必须恢复长期字段可用性');
-assert.deepEqual(readCalendarEntryForm(entryRoot), { kind: 'occasion', title: '', note: '', type: 'birthday', leapDayRule: 'mar1' });
+assert.equal(entryRepeatSelect.value, 'yearly');
+assert.ok(occasionControls.every(control => !control.disabled), '年度重复必须恢复长期字段可用性');
+assert.deepEqual(readCalendarEntryForm(entryRoot), { repeat: 'yearly', kind: 'occasion', title: '', note: '', type: 'anniversary', leapDayRule: 'feb28' });
 fillCalendarEntryForm(entryRoot, renderedEntry, 'event', { focusTitle: true });
 assert.deepEqual(entryTitleFocusOptions, { preventScroll: true }, '主动新增或编辑具体条目时才聚焦标题');
 assert.doesNotMatch(renderedSchedule, /20°\/30°C|生理期提示|data-calendar-management="weather"|data-calendar-management="cycle"/);
@@ -979,11 +999,11 @@ const renderedWeatherDetail = renderSelectedDateDetail(
     renderedScope, new Map(), {}, currentWeather, {}, currentDates[0], 'weather', '今天', {}, false,
 );
 assert.match(renderedWeatherDetail, /class="pm-calendar-selected-detail is-status-card"/);
-assert.match(renderedWeatherDetail, /pm-calendar-status-relative">今天<\/span><span class="pm-calendar-status-weather-context">少云 · CN<\/span>[\s\S]*?pm-calendar-status-location[\s\S]*?<svg/);
-assert.doesNotMatch(renderedWeatherDetail, /pm-calendar-status-relative">今天<\/span>\s+<span class="pm-calendar-status-weather-context">/);
+assert.match(renderedWeatherDetail, /class="pm-calendar-status-heading"><strong class="pm-calendar-status-relative">今天<\/strong><span class="pm-calendar-status-date"><time[^>]*>\d{1,2}月\d{1,2}日<\/time><em>星期[日一二三四五六]<\/em><\/span><\/div>/);
+assert.match(renderedWeatherDetail, /class="pm-calendar-status-context"><span class="pm-calendar-status-weather-context">少云 · CN<\/span><span class="pm-calendar-status-location"[^>]*><svg/);
 assert.match(renderedWeatherDetail, /class="pm-calendar-status-value">20°–30°<\/b>/);
 assert.doesNotMatch(renderedWeatherDetail, /20 - 30 ℃/, '天气详情不得回退为旧温度格式');
-assert.match(renderedWeatherDetail, new RegExp(`<span class="pm-calendar-status-date"><time datetime="${currentDates[0]}">\\d{1,2}月\\d{1,2}日<\\/time><span class="pm-calendar-status-date-separator" aria-hidden="true"> · <\\/span><em>星期[日一二三四五六]<\\/em><\\/span>`));
+assert.doesNotMatch(renderedWeatherDetail, /pm-calendar-status-date-separator/);
 assert.match(renderedWeatherDetail, /class="pm-calendar-status-watermark"/, '天气详情必须保留背景水印层');
 assert.match(renderedWeatherDetail, /<path d="M8 5V3/, '少云必须使用对应的背景水印图标');
 assert.doesNotMatch(renderedWeatherDetail, /气候推演|真实预报|缓存预报|体感|湿度|pm-calendar-detail-more/);
@@ -999,11 +1019,12 @@ assert.match(renderedCycle, /class="pm-calendar-cycle-input" name="enabled" type
 assert.match(renderedCycle, /class="pm-custom-check" aria-hidden="true"/,
     '周期开关必须复用统一视觉控件');
 const renderedCycleDetail = renderedCycle.match(/<section[^>]*data-calendar-selected-detail[\s\S]*?<\/section>/)?.[0] || '';
-assert.match(renderedCycleDetail, /class="pm-calendar-selected-detail is-status-card"[\s\S]*?class="pm-calendar-status-card pm-calendar-status-card-cycle" data-cycle-phase="period"[\s\S]*?pm-calendar-status-relative">今天<\/span><span class="pm-calendar-status-cycle-context">生理周期<\/span>[\s\S]*?class="pm-calendar-status-value">经期<\/b>/,
+assert.match(renderedCycleDetail, /class="pm-calendar-selected-detail is-status-card"[\s\S]*?class="pm-calendar-status-card pm-calendar-status-card-cycle" data-cycle-phase="period"[\s\S]*?pm-calendar-status-heading">[\s\S]*?pm-calendar-status-relative">今天<\/strong>[\s\S]*?pm-calendar-status-context"><span class="pm-calendar-status-cycle-context">生理周期<\/span>[\s\S]*?class="pm-calendar-status-value">经期<\/b>/,
     '选中经期日期必须使用海报式健康状态卡');
 assert.doesNotMatch(renderedCycleDetail, /健康记录/, '周期状态卡不得保留旧上下文文案');
-assert.match(renderedCycleDetail, /class="pm-calendar-status-watermark"[^>]*>[\s\S]*?<path d="M12 3\.8s-5 5\.7-5 10\.1a5 5 0 0 0 10 0C17 9\.5 12 3\.8 12 3\.8z"\/>/,
-    '选中经期日期必须使用水滴背景水印');
+assert.match(renderedCycleDetail, /class="pm-calendar-status-watermark"[^>]*>[\s\S]*?<circle cx="12" cy="7" r="3"\/>/,
+    '选中经期日期必须使用花朵背景水印');
+
 assert.doesNotMatch(renderedCycle, /周期预测|手动记录/,
     '生理期浏览态不得显示预测或记录来源');
 assert.match(renderedCycle, /data-action="calendar-mode-cycle"[^>]*>[\s\S]*?<svg[\s\S]*?<path d="M20 15\.2A8\.5 8\.5 0 0 1 8\.8 4 8\.5 8\.5 0 1 0 20 15\.2z"\/>/,
@@ -1062,7 +1083,7 @@ assert.match(renderedSchedule, /data-calendar-selected-detail=/);
 assert.ok((renderedSchedule.match(/data-calendar-date=/g) || []).length >= 35, '月历必须完整铺开至少五周');
 for (const [html, label] of [
     [renderedSchedule, '正文日期标签'], [renderedSchedule, '编辑这一天'],
-    [renderedEntryDialog, '安排类型'], [renderedEntryDialog, '安排名称'], [renderedEntryDialog, '安排备注'],
+    [renderedEntryDialog, '日程重复规则'], [renderedEntryDialog, '安排名称'], [renderedEntryDialog, '安排备注'],
 ]) {
     assert.match(html, new RegExp(`aria-label="${label}"`), `${label} 控件必须有可访问名称`);
 }
@@ -1205,7 +1226,8 @@ try {
     });
     const makeCalendarOverlay = html => {
         const close = interactiveNode(), error = { textContent: '' };
-        const repeatToggle = interactiveNode();
+        const repeatSelect = interactiveNode();
+        repeatSelect.value = 'none';
         const occasionControls = [{ disabled: false }, { disabled: false }];
         const occasionFields = {
             hidden: true, ariaHidden: '',
@@ -1215,16 +1237,16 @@ try {
         const form = interactiveNode();
         form.elements = {
             title: { value: '', focus(options) { assert.deepEqual(options, { preventScroll: true }); entryFocusCount += 1; } },
-            note: { value: '' }, occasionType: { value: 'anniversary' }, leapDayRule: { value: 'feb28' },
+            note: { value: '' }, repeat: repeatSelect, occasionType: { value: 'anniversary' }, leapDayRule: { value: 'feb28' },
         };
         form.submit = async () => form.listeners.get('submit')?.({ preventDefault() {} });
         const overlay = {
-            kind: 'editor', html, close, error, form, occasionFields, repeatToggle, dataset: {},
+            kind: 'editor', html, close, error, form, occasionFields, repeatSelect, dataset: {},
             querySelector(selector) {
                 if (selector === '[data-calendar-entry-form]') return form;
                 if (selector === '[data-calendar-entry-error]') return error;
                 if (selector === '[data-calendar-entry-close]') return close;
-                if (selector === '[data-calendar-repeat-toggle]') return repeatToggle;
+                if (selector === '[data-calendar-repeat-select]') return repeatSelect;
                 if (selector === '[data-calendar-occasion-fields]') return occasionFields;
                 return null;
             },
@@ -1283,12 +1305,13 @@ try {
     assert.equal(eventEditor.form.elements.title.value, editorEvent.title, '编辑器必须读取目标 event，而非依赖标题匹配');
     eventEditor.form.elements.title.value = '已更新日程';
     await eventEditor.form.submit();
+    assert.equal(eventEditor.error.textContent, '', `编辑 event 不得失败：${eventEditor.error.textContent}`);
     const editedEvents = deps.getCalendarStore().scopes[storageA].events[currentDates[0]];
-    assert.equal(editedEvents[0].id, editorEvent.id, '编辑 event 必须保留原 ID');
-    assert.equal(editedEvents[0].title, '已更新日程');
+    assert.equal(editedEvents.length, 1, '编辑 event 不得保留旧条目或重复新增');
+    assert.equal(editedEvents.find(item => item.id === editorEvent.id)?.title, '已更新日程', '编辑 event 必须保留原 ID 并更新内容');
     const persistedEditedEvents = JSON.parse(memory.get(CALENDAR_STORAGE_KEY)).scopes[storageA].events[currentDates[0]];
-    assert.equal(persistedEditedEvents[0].id, editorEvent.id);
-    assert.equal(persistedEditedEvents[0].title, '已更新日程', 'event 编辑必须同步持久化');
+    assert.equal(persistedEditedEvents.length, 1);
+    assert.equal(persistedEditedEvents.find(item => item.id === editorEvent.id)?.title, '已更新日程', 'event 编辑必须同步持久化');
     assert.equal(entryFocusCount, 1, 'event 编辑完整提交路径只能聚焦一次');
     const occasionStoreBeforeAdd = structuredClone(deps.getCalendarOccasionStore());
     await deps.handleCalendarAction({ dataset: { action: 'calendar-add-date' } }, { querySelector: () => null });
@@ -1310,17 +1333,19 @@ try {
         '新增 event 不得写入 occasion store');
     await deps.handleCalendarAction({ dataset: { action: 'calendar-add-date' } }, { querySelector: () => null });
     const occasionEditor = overlayHistory.at(-1);
-    await occasionEditor.repeatToggle.click();
-    assert.equal(occasionEditor.repeatToggle['aria-checked'], 'true');
+    occasionEditor.repeatSelect.value = 'yearly';
+    await occasionEditor.repeatSelect.listeners.get('change')?.({ currentTarget: occasionEditor.repeatSelect });
+    assert.equal(occasionEditor.repeatSelect.value, 'yearly');
     occasionEditor.form.elements.occasionType.value = 'birthday';
     occasionEditor.form.elements.leapDayRule.value = 'mar1';
-    await occasionEditor.repeatToggle.click();
-    assert.equal(occasionEditor.repeatToggle['aria-checked'], 'false');
-    await occasionEditor.repeatToggle.click();
+    occasionEditor.repeatSelect.value = 'monthly';
+    await occasionEditor.repeatSelect.listeners.get('change')?.({ currentTarget: occasionEditor.repeatSelect });
+    occasionEditor.repeatSelect.value = 'yearly';
+    await occasionEditor.repeatSelect.listeners.get('change')?.({ currentTarget: occasionEditor.repeatSelect });
     assert.equal(occasionEditor.form.elements.occasionType.value, 'birthday',
-        '年度重复开关往返后不得重置长期类型');
+        '重复规则切换往返后不得重置长期类型');
     assert.equal(occasionEditor.form.elements.leapDayRule.value, 'mar1',
-        '年度重复开关往返后不得重置非闰年规则');
+        '重复规则切换往返后不得重置非闰年规则');
     assert.equal(occasionEditor.occasionFields.hidden, false);
     assert.ok(occasionEditor.occasionFields.querySelectorAll('select, input, textarea, button').every(control => !control.disabled));
     occasionEditor.form.elements.title.value = '闰日生日';
@@ -1342,12 +1367,17 @@ try {
     const occasionEditEditor = overlayHistory.at(-1);
     assert.equal(occasionEditEditor.form.elements.occasionType.value, 'birthday');
     assert.equal(occasionEditEditor.form.elements.leapDayRule.value, 'mar1');
+    occasionEditEditor.repeatSelect.value = 'none';
+    await occasionEditEditor.repeatSelect.listeners.get('change')?.({ currentTarget: occasionEditEditor.repeatSelect });
     occasionEditEditor.form.elements.note.value = '已更新生日备注';
     await occasionEditEditor.form.submit();
-    const editedOccasion = deps.getCalendarOccasionStore().scopes[storageA].occasions.find(item => item.id === savedOccasion.id);
-    assert.equal(editedOccasion.note, '已更新生日备注');
-    assert.equal(editedOccasion.type, 'birthday');
-    assert.equal(editedOccasion.leapDayRule, 'mar1', '编辑 occasion 不得丢失既有长期字段');
+    assert.equal(deps.getCalendarOccasionStore().scopes[storageA].occasions.some(item => item.id === savedOccasion.id), false,
+        '年度重复改为不重复后原 occasion 不得残留');
+    const convertedEvent = deps.getCalendarStore().scopes[storageA].events[currentDates[0]].find(item => item.title === '闰日生日');
+    assert.equal(convertedEvent.note, '已更新生日备注');
+    assert.equal(convertedEvent.source, 'manual');
+    assert.equal(JSON.parse(memory.get(CALENDAR_OCCASION_STORAGE_KEY)).scopes[storageA].occasions.some(item => item.id === savedOccasion.id), false,
+        '年度重复改为不重复后持久化 occasion store 不得残留');
 
     assert.deepEqual(
         normalizeCalendarStore(JSON.parse(memory.get(CALENDAR_STORAGE_KEY))),
@@ -1595,6 +1625,134 @@ try {
         normalizeCalendarStore(queueRuntime.store),
         '串行提交完成后持久化状态必须与内存状态一致',
     );
+
+    memory.clear();
+    const occasionPreviousStore = normalizeOccasionStore({ version: 1, scopes: {
+        [storageA]: { occasions: [] },
+    } });
+    memory.set(CALENDAR_OCCASION_STORAGE_KEY, JSON.stringify(occasionPreviousStore));
+    const occasionRuntime = { store: createEmptyCalendarStore(), occasionStore: occasionPreviousStore };
+    let occasionInjectionCalls = 0;
+    const { commitOccasions: commitOccasionsWithRollback } = createCalendarCommitters({
+        runtime: occasionRuntime,
+        tasks: { active: () => true },
+        applyBidirectionalInjection: async () => {
+            occasionInjectionCalls += 1;
+            return occasionInjectionCalls === 1 ? { failedWrites: 1, failedKeys: [] } : { failedWrites: 0, failedKeys: [] };
+        },
+        getCycles: () => null,
+        getCycleSubject: () => 'self',
+    });
+    await assert.rejects(commitOccasionsWithRollback(storageA, current => upsertOccasion(current, {
+        type: 'anniversary', month: 6, day: 1, date: '2032-06-01', repeat: 'monthly', title: '应当回滚',
+    })), /生日与纪念日提交注入失败/);
+    assert.equal(occasionInjectionCalls, 2, '生日与纪念日注入失败后必须执行一次补偿刷新');
+    assert.deepEqual(occasionRuntime.occasionStore, occasionPreviousStore, '生日与纪念日注入失败后必须恢复内存 store');
+    assert.deepEqual(JSON.parse(memory.get(CALENDAR_OCCASION_STORAGE_KEY)), occasionPreviousStore,
+        '生日与纪念日注入失败后必须恢复 localStorage store');
+
+    const defaultSetItem = storage.setItem;
+    memory.clear();
+    memory.set(CALENDAR_OCCASION_STORAGE_KEY, JSON.stringify(occasionPreviousStore));
+    let occasionWrites = 0;
+    storage.setItem = (key, value) => {
+        if (key === CALENDAR_OCCASION_STORAGE_KEY && ++occasionWrites === 2) throw new Error('occasion rollback blocked');
+        memory.set(key, value);
+    };
+    const { commitOccasions: commitOccasionsWithBrokenRollback } = createCalendarCommitters({
+        runtime: { store: createEmptyCalendarStore(), occasionStore: occasionPreviousStore },
+        tasks: { active: () => true },
+        applyBidirectionalInjection: async () => ({ failedWrites: 1, failedKeys: [] }),
+        getCycles: () => null,
+        getCycleSubject: () => 'self',
+    });
+    try {
+        await assert.rejects(
+            commitOccasionsWithBrokenRollback(storageA, current => upsertOccasion(current, {
+                type: 'anniversary', month: 6, day: 2, date: '2032-06-02', repeat: 'weekly', title: '回滚失败',
+            })),
+            error => error?.occasionRollbackError === true && error?.occasionRolledBack === false && error?.rollbackError instanceof Error,
+            '生日与纪念日回滚失败必须提供结构化诊断',
+        );
+    } finally {
+        storage.setItem = defaultSetItem;
+    }
+
+    memory.clear();
+    const schedulePreviousCalendar = normalizeCalendarStore({ version: 1, scopes: {
+        [storageA]: { generationRule: '转换前规则' },
+    } });
+    const schedulePreviousOccasions = normalizeOccasionStore({ version: 1, scopes: {
+        [storageA]: { occasions: [] },
+    } });
+    memory.set(CALENDAR_STORAGE_KEY, JSON.stringify(schedulePreviousCalendar));
+    memory.set(CALENDAR_OCCASION_STORAGE_KEY, JSON.stringify(schedulePreviousOccasions));
+    const scheduleRuntime = { store: schedulePreviousCalendar, occasionStore: schedulePreviousOccasions };
+    storage.setItem = (key, value) => {
+        if (key === CALENDAR_OCCASION_STORAGE_KEY) throw new Error('occasion write blocked');
+        memory.set(key, value);
+    };
+    const { commitSchedule: commitScheduleWithRollback } = createCalendarCommitters({
+        runtime: scheduleRuntime,
+        tasks: { active: () => true },
+        applyBidirectionalInjection: async () => ({ failedWrites: 0, failedKeys: [] }),
+        getCycles: () => null,
+        getCycleSubject: () => 'self',
+    });
+    try {
+        await assert.rejects(commitScheduleWithRollback(storageA, current => ({
+            calendar: { ...current.calendar, generationRule: '不应留下的规则' },
+            occasions: current.occasions,
+        })), /生日与纪念日保存失败/);
+        assert.deepEqual(scheduleRuntime.store, schedulePreviousCalendar, '第二个 store 保存失败后必须恢复日历内存 store');
+        assert.deepEqual(scheduleRuntime.occasionStore, schedulePreviousOccasions, '第二个 store 保存失败后必须恢复纪念日内存 store');
+        assert.deepEqual(JSON.parse(memory.get(CALENDAR_STORAGE_KEY)), schedulePreviousCalendar,
+            '第二个 store 保存失败后必须恢复日历持久化 store');
+    } finally {
+        storage.setItem = defaultSetItem;
+    }
+
+    memory.clear();
+    memory.set(CALENDAR_STORAGE_KEY, JSON.stringify(schedulePreviousCalendar));
+    memory.set(CALENDAR_OCCASION_STORAGE_KEY, JSON.stringify(schedulePreviousOccasions));
+    let calendarWrites = 0;
+    let partialRollbackInjectionCalls = 0;
+    storage.setItem = (key, value) => {
+        if (key === CALENDAR_STORAGE_KEY && ++calendarWrites === 2) throw new Error('calendar rollback blocked');
+        memory.set(key, value);
+    };
+    const partialRollbackRuntime = { store: schedulePreviousCalendar, occasionStore: schedulePreviousOccasions };
+    const { commitSchedule: commitScheduleWithBrokenRollback } = createCalendarCommitters({
+        runtime: partialRollbackRuntime,
+        tasks: { active: () => true },
+        applyBidirectionalInjection: async () => {
+            partialRollbackInjectionCalls += 1;
+            return { failedWrites: 1, failedKeys: [] };
+        },
+        getCycles: () => null,
+        getCycleSubject: () => 'self',
+    });
+    try {
+        await assert.rejects(
+            commitScheduleWithBrokenRollback(storageA, current => ({
+                calendar: { ...current.calendar, generationRule: '部分回滚失败' }, occasions: current.occasions,
+            })),
+            error => error?.scheduleRollbackError === true && error?.calendarRolledBack === false
+                && error?.occasionsRolledBack === true && error?.rollbackError instanceof Error,
+            '跨 store 回滚失败必须提供每个 store 的结果与根因',
+        );
+        assert.equal(partialRollbackInjectionCalls, 1, '部分 store 回滚失败时不得继续执行错误的补偿注入');
+        const persistedCalendarAfterPartialRollback = normalizeCalendarStore(JSON.parse(memory.get(CALENDAR_STORAGE_KEY)));
+        const persistedOccasionsAfterPartialRollback = normalizeOccasionStore(JSON.parse(memory.get(CALENDAR_OCCASION_STORAGE_KEY)));
+        assert.deepEqual(partialRollbackRuntime.store, persistedCalendarAfterPartialRollback,
+            '部分回滚失败后日历 runtime 必须刷新为持久化真值');
+        assert.deepEqual(partialRollbackRuntime.occasionStore, persistedOccasionsAfterPartialRollback,
+            '部分回滚失败后纪念日 runtime 必须刷新为持久化真值');
+        assert.deepEqual(persistedOccasionsAfterPartialRollback, schedulePreviousOccasions,
+            '成功回滚的纪念日 store 必须恢复原值');
+    } finally {
+        storage.setItem = defaultSetItem;
+    }
 
     memory.clear();
     const recipePreviousStore = normalizeRecipeStore({ version: 1, scopes: {

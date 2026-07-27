@@ -19,7 +19,12 @@ const CYCLE_DETAILS = {
     ovulatory: { label: '易孕期', icon: CYCLE_FERTILE_ICON_SVG },
 };
 
-export const occasionTypeLabel = type => type === 'birthday' ? '生日' : '纪念日';
+export const occasionTypeLabel = (type, repeat = 'yearly') => {
+    if (repeat === 'daily') return '每日重复';
+    if (repeat === 'weekly') return '每周重复';
+    if (repeat === 'monthly') return '每月重复';
+    return type === 'birthday' ? '生日' : '纪念日';
+};
 
 function inlineEntryActions(kind, id, title) {
     const attrs = `data-entry-kind="${kind}" data-entry-id="${escapeAttr(id)}"`;
@@ -29,7 +34,7 @@ function inlineEntryActions(kind, id, title) {
 function eventRows(scope, occasionsByDate, date, editing = false) {
     const events = scope.events[date] || [];
     const occasionRows = (occasionsByDate.get(date) || []).map(occasion => `<article class="pm-calendar-event is-occasion" data-occasion-id="${escapeAttr(occasion.id)}">
-        <div><b>${escapeHtml(occasion.title)}</b><span>${occasionTypeLabel(occasion.type)}${occasion.leapAdjusted ? '（闰日顺延）' : ''}${occasion.note ? ` · ${escapeHtml(occasion.note)}` : ''}</span></div>
+        <div><b>${escapeHtml(occasion.title)}</b><span>${occasionTypeLabel(occasion.type, occasion.repeat)}${occasion.leapAdjusted ? '（闰日顺延）' : ''}${occasion.note ? ` · ${escapeHtml(occasion.note)}` : ''}</span></div>
         ${editing ? inlineEntryActions('occasion', occasion.id, occasion.title) : ''}
     </article>`);
     const eventItems = events.map(event => `<article class="pm-calendar-event" data-event-id="${escapeAttr(event.id)}">
@@ -58,13 +63,13 @@ function weatherStatusIcon(code) {
     return WEATHER_ICON_SVG;
 }
 
-function statusCard({ meta, value, icon, parsed, date, kind, phase = '' }) {
+function statusCard({ relativeLabel, context, value, icon, parsed, date, kind, phase = '' }) {
     return `<div class="pm-calendar-status-card pm-calendar-status-card-${kind}"${phase ? ` data-cycle-phase="${escapeAttr(phase)}"` : ''}>
         <span class="pm-calendar-status-watermark" aria-hidden="true">${icon}</span>
         <div class="pm-calendar-status-content">
-            <div class="pm-calendar-status-meta">${meta}</div>
+            <div class="pm-calendar-status-heading">${relativeLabel ? `<strong class="pm-calendar-status-relative">${escapeHtml(relativeLabel)}</strong>` : ''}<span class="pm-calendar-status-date"><time datetime="${escapeAttr(date)}">${escapeHtml(detailDate.format(parsed))}</time><em>${escapeHtml(detailWeekday.format(parsed))}</em></span></div>
+            <div class="pm-calendar-status-context">${context}</div>
             <b class="pm-calendar-status-value">${value}</b>
-            <span class="pm-calendar-status-date"><time datetime="${escapeAttr(date)}">${escapeHtml(detailDate.format(parsed))}</time><span class="pm-calendar-status-date-separator" aria-hidden="true"> · </span><em>${escapeHtml(detailWeekday.format(parsed))}</em></span>
         </div>
     </div>`;
 }
@@ -76,10 +81,10 @@ function weatherStatusCard(weatherStore, date, parsed, relativeLabel) {
     }
     const condition = weatherCodeLabel(resolved.day.weatherCode);
     const location = weatherStore?.location?.country || weatherStore?.location?.name || '天气记录';
-    const leading = `${relativeLabel ? `<span class="pm-calendar-status-relative">${escapeHtml(relativeLabel)}</span>` : ''}<span class="pm-calendar-status-weather-context">${escapeHtml(condition)} · ${escapeHtml(location)}</span>`;
     return { content: statusCard({
         kind: 'weather', parsed, date, icon: weatherStatusIcon(resolved.day.weatherCode),
-        meta: `${leading}<span class="pm-calendar-status-location" aria-hidden="true">${LOCATION_ICON_SVG}</span>`,
+        relativeLabel,
+        context: `<span class="pm-calendar-status-weather-context">${escapeHtml(condition)} · ${escapeHtml(location)}</span><span class="pm-calendar-status-location" aria-hidden="true">${LOCATION_ICON_SVG}</span>`,
         value: `${resolved.day.tempMin}°–${resolved.day.tempMax}°`,
     }), isCard: true };
 }
@@ -90,7 +95,7 @@ function cycleStatusCard(cycleScope, date, parsed, relativeLabel) {
     if (!detail) return { content: '', isCard: false };
     return { content: statusCard({
         kind: 'cycle', phase: prediction.phase, parsed, date, icon: detail.icon,
-        meta: `${relativeLabel ? `<span class="pm-calendar-status-relative">${escapeHtml(relativeLabel)}</span>` : ''}<span class="pm-calendar-status-cycle-context">生理周期</span>`, value: detail.label,
+        relativeLabel, context: '<span class="pm-calendar-status-cycle-context">生理周期</span>', value: detail.label,
     }), isCard: true };
 }
 
@@ -195,10 +200,9 @@ export function renderCalendarMonthPanel(scope, viewYear, viewMonth, open = fals
 }
 
 export function renderCalendarEntryDialog(selectedDate, entry = null, kind = 'event') {
-    const editing = Boolean(entry);
-    const occasion = kind === 'occasion';
-    const unavailable = occasion ? '' : 'disabled';
-    return `<div class="pm-modal pm-calendar-entry-dialog"><div class="pm-modal-header"><span></span><b>日程</b><button type="button" class="pm-modal-close" data-calendar-entry-close aria-label="关闭">${CLOSE_ICON_SVG}</button></div><form data-calendar-entry-form><button type="button" class="pm-calendar-auto-switch pm-calendar-repeat-toggle" data-calendar-repeat-toggle role="switch" aria-label="安排类型" aria-checked="${occasion}" ${editing ? 'disabled' : ''}><span><b>每年同一天重复</b><small>开启后可设置生日或纪念日</small></span><i aria-hidden="true"></i></button><input name="title" maxlength="120" placeholder="名称" aria-label="安排名称"><textarea name="note" maxlength="1000" placeholder="备注（可选）" aria-label="安排备注"></textarea><div data-calendar-occasion-fields ${occasion ? '' : 'hidden aria-hidden="true"'}><label>长期类型<select name="occasionType" ${unavailable}><option value="anniversary">纪念日</option><option value="birthday">生日</option></select></label><label>2 月 29 日在非闰年<select name="leapDayRule" ${unavailable}><option value="feb28">按 2 月 28 日显示</option><option value="mar1">按 3 月 1 日显示</option><option value="skip">该年不显示</option></select></label></div><p class="pm-calendar-entry-error" data-calendar-entry-error role="status" aria-live="polite"></p><div class="pm-calendar-entry-actions"><button type="submit" class="is-primary">保存</button></div></form></div>`;
+    const repeat = kind === 'occasion' ? entry?.repeat || 'yearly' : 'none';
+    const yearly = repeat === 'yearly';
+    return `<div class="pm-modal pm-calendar-entry-dialog"><div class="pm-modal-header"><span></span><b>日程</b><button type="button" class="pm-modal-close" data-calendar-entry-close aria-label="关闭">${CLOSE_ICON_SVG}</button></div><form data-calendar-entry-form><label>重复<select name="repeat" data-calendar-repeat-select aria-label="日程重复规则"><option value="none" ${repeat === 'none' ? 'selected' : ''}>不重复</option><option value="daily" ${repeat === 'daily' ? 'selected' : ''}>每日重复</option><option value="weekly" ${repeat === 'weekly' ? 'selected' : ''}>每周（同星期）</option><option value="monthly" ${repeat === 'monthly' ? 'selected' : ''}>每月（同日）</option><option value="yearly" ${yearly ? 'selected' : ''}>每年重复</option></select></label><input name="title" maxlength="120" placeholder="名称" aria-label="安排名称"><textarea name="note" maxlength="1000" placeholder="备注（可选）" aria-label="安排备注"></textarea><div data-calendar-occasion-fields ${yearly ? '' : 'hidden aria-hidden="true"'}><label>长期类型<select name="occasionType" ${yearly ? '' : 'disabled'}><option value="anniversary">纪念日</option><option value="birthday">生日</option></select></label><label>2 月 29 日在非闰年<select name="leapDayRule" ${yearly ? '' : 'disabled'}><option value="feb28">按 2 月 28 日显示</option><option value="mar1">按 3 月 1 日显示</option><option value="skip">该年不显示</option></select></label></div><p class="pm-calendar-entry-error" data-calendar-entry-error role="status" aria-live="polite"></p><div class="pm-calendar-entry-actions"><button type="submit" class="is-primary">保存</button></div></form></div>`;
 }
 
 export function renderRecipeMealDialog(selectedDate, mealType = 'breakfast', meal = null) {

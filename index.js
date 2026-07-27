@@ -800,20 +800,34 @@ ${userPrompt}` : userPrompt;
   var OCCASION_STORE_VERSION = 1;
   var OCCASION_TYPES = Object.freeze(["birthday", "anniversary"]);
   var OCCASION_LEAP_DAY_RULES = Object.freeze(["feb28", "mar1", "skip"]);
+  var OCCASION_REPEAT_RULES = Object.freeze(["daily", "weekly", "monthly", "yearly"]);
   var OCCASION_LIMITS = Object.freeze({ scopes: 80, occasions: 80, title: 120, note: 1e3 });
   var plainRecord2 = (value) => value && typeof value === "object" && !Array.isArray(value) && (Object.getPrototypeOf(value) === Object.prototype || Object.getPrototypeOf(value) === null);
   var cleanText2 = (value, max) => String(value ?? "").trim().slice(0, max);
   var unsafeKey2 = (value) => value === "prototype" || Object.hasOwn(Object.prototype, value);
   var timestamp = (value, fallback = 0) => Number.isFinite(value) && value >= 0 ? Math.floor(value) : fallback;
   var uid2 = () => `occasion_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 9)}`;
+  var pad2 = (value) => String(value).padStart(2, "0");
   function isLeapYear(year) {
     return Number.isInteger(year) && year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  }
+  function normalizedRepeat(value) {
+    return OCCASION_REPEAT_RULES.includes(value) ? value : "yearly";
+  }
+  function anchorDate(value, month, day) {
+    return parseCalendarDate(value) || parseCalendarDate(`2000-${pad2(month)}-${pad2(day)}`);
   }
   function isValidOccasionMonthDay(month, day) {
     const numericMonth = Number(month), numericDay = Number(day);
     if (!Number.isInteger(numericMonth) || !Number.isInteger(numericDay)) return false;
     const probe = new Date(2e3, numericMonth - 1, numericDay, 12, 0, 0, 0);
     return probe.getFullYear() === 2e3 && probe.getMonth() === numericMonth - 1 && probe.getDate() === numericDay;
+  }
+  function daysInCalendarMonth(year, month) {
+    for (let day = 31; day >= 28; day -= 1) {
+      if (calendarDateFromParts(year, month, day)) return day;
+    }
+    return 0;
   }
   function createEmptyOccasionStore() {
     return { version: OCCASION_STORE_VERSION, scopes: {} };
@@ -827,9 +841,13 @@ ${userPrompt}` : userPrompt;
     if (!type) throw new Error("\u7C7B\u578B\u5FC5\u987B\u662F\u751F\u65E5\u6216\u7EAA\u5FF5\u65E5");
     const month = Number(value.month), day = Number(value.day);
     if (!isValidOccasionMonthDay(month, day)) throw new Error("\u751F\u65E5\u6216\u7EAA\u5FF5\u65E5\u65E5\u671F\u65E0\u6548");
+    const date = anchorDate(value.date, month, day);
+    if (!date) throw new Error("\u91CD\u590D\u65E5\u7A0B\u65E5\u671F\u65E0\u6548");
     const title = cleanText2(value.title, OCCASION_LIMITS.title);
     if (!title) throw new Error("\u751F\u65E5\u6216\u7EAA\u5FF5\u65E5\u6807\u9898\u4E0D\u80FD\u4E3A\u7A7A");
     const createdAt = timestamp(value.createdAt, now2);
+    const hasRepeat = Object.hasOwn(value, "repeat");
+    const hasDate = Object.hasOwn(value, "date");
     return {
       id: cleanText2(value.id, 80) || uid2(),
       type,
@@ -838,6 +856,8 @@ ${userPrompt}` : userPrompt;
       title,
       note: cleanText2(value.note, OCCASION_LIMITS.note),
       leapDayRule: OCCASION_LEAP_DAY_RULES.includes(value.leapDayRule) ? value.leapDayRule : "feb28",
+      ...hasRepeat ? { repeat: normalizedRepeat(value.repeat) } : {},
+      ...hasDate ? { date: `${date.getFullYear().toString().padStart(4, "0")}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}` } : {},
       createdAt,
       updatedAt: Math.max(createdAt, timestamp(value.updatedAt, createdAt))
     };
@@ -897,7 +917,7 @@ ${userPrompt}` : userPrompt;
   function occasionDateForYear(occasionValue, year) {
     const occasion = normalizeOccasion(occasionValue, 0);
     const numericYear = Number(year);
-    if (!Number.isInteger(numericYear)) return null;
+    if (!Number.isInteger(numericYear) || (occasion.repeat || "yearly") !== "yearly") return null;
     let month = occasion.month, day = occasion.day, leapAdjusted = false;
     if (month === 2 && day === 29 && !isLeapYear(numericYear)) {
       if (occasion.leapDayRule === "skip") return null;
@@ -912,13 +932,30 @@ ${userPrompt}` : userPrompt;
   }
   function expandOccasions(scope, { start = /* @__PURE__ */ new Date(), days = 7 } = {}) {
     const length = Math.max(1, Math.min(366, Number.isInteger(days) ? days : 7));
-    const dates = new Set(calendarDateRangeKeys(start, 0, length - 1));
+    const dateKeys = calendarDateRangeKeys(start, 0, length - 1);
+    const dates = new Set(dateKeys);
     const years = new Set([...dates].map((date) => Number(date.slice(0, 4))));
     const result = [];
     for (const occasion of normalizeOccasionScope(scope).occasions) {
-      for (const year of years) {
-        const occurrence = occasionDateForYear(occasion, year);
-        if (occurrence && dates.has(occurrence.date)) result.push({ ...occasion, ...occurrence });
+      const repeat = occasion.repeat || "yearly";
+      if (repeat === "yearly") {
+        for (const year of years) {
+          const occurrence = occasionDateForYear(occasion, year);
+          if (occurrence && dates.has(occurrence.date)) result.push({ ...occasion, ...occurrence });
+        }
+        continue;
+      }
+      const anchor = anchorDate(occasion.date, occasion.month, occasion.day);
+      for (const date of dateKeys) {
+        const parsed = parseCalendarDate(date);
+        const anchorKey = `${anchor.getFullYear().toString().padStart(4, "0")}-${pad2(anchor.getMonth() + 1)}-${pad2(anchor.getDate())}`;
+        if (!parsed || date < anchorKey) continue;
+        const sameWeekday = parsed.getDay() === anchor.getDay();
+        const sameMonthDay = parsed.getDate() === anchor.getDate();
+        const lastDayOfMonth = !calendarDateFromParts(parsed.getFullYear(), parsed.getMonth() + 1, anchor.getDate()) && parsed.getDate() === daysInCalendarMonth(parsed.getFullYear(), parsed.getMonth() + 1);
+        if (repeat === "daily" || repeat === "weekly" && sameWeekday || repeat === "monthly" && (sameMonthDay || lastDayOfMonth)) {
+          result.push({ ...occasion, date, leapAdjusted: false });
+        }
       }
     }
     return result.sort((left, right) => left.date.localeCompare(right.date) || left.type.localeCompare(right.type) || left.title.localeCompare(right.title));
@@ -943,8 +980,8 @@ ${userPrompt}` : userPrompt;
   });
   var CHINESE_DAYS_YEAR_URL = (year) => `https://cdn.jsdelivr.net/npm/chinese-days/dist/years/${year}.json`;
   var plainRecord3 = (value) => value && typeof value === "object" && !Array.isArray(value);
-  var pad2 = (value) => String(value).padStart(2, "0");
-  var dateKey = (date) => `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
+  var pad3 = (value) => String(value).padStart(2, "0");
+  var dateKey = (date) => `${date.getFullYear()}-${pad3(date.getMonth() + 1)}-${pad3(date.getDate())}`;
   function holidayYearRange(country) {
     return HOLIDAY_COUNTRY_YEAR_RANGES[country] || null;
   }
@@ -2381,6 +2418,7 @@ ${userPrompt}` : userPrompt;
     phoneUi: Promise.resolve(),
     calendar: Promise.resolve(),
     occasions: Promise.resolve(),
+    schedule: Promise.resolve(),
     cycles: Promise.resolve(),
     recipes: Promise.resolve(),
     pokeConfig: Promise.resolve(),
@@ -2491,7 +2529,7 @@ ${userPrompt}` : userPrompt;
     };
     const commitScope = (storageId, mutate, task = null, { refreshInjection = true } = {}) => {
       const generation = commitGeneration;
-      return enqueueDirectoryOperation("calendar", async () => {
+      return enqueueDirectoryOperation("schedule", async () => {
         if (generation !== commitGeneration || task && !tasks.active(task)) return false;
         const previousStore = clone(loadCalendar());
         const candidate = clone(previousStore);
@@ -2593,16 +2631,101 @@ ${userPrompt}` : userPrompt;
         return false;
       });
     };
-    const commitOccasions = (storageId, mutate) => enqueueDirectoryOperation("occasions", async () => {
-      const candidate = clone(loadCalendarOccasions());
+    const commitOccasions = (storageId, mutate) => enqueueDirectoryOperation("schedule", async () => {
+      const previousStore = clone(loadCalendarOccasions());
+      const candidate = clone(previousStore);
       const current = normalizeOccasionScope(candidate.scopes[storageId]);
       const next = normalizeOccasionScope(await mutate(current));
       candidate.scopes[storageId] = next;
       const normalized = normalizeOccasionStore(candidate);
-      if (!saveCalendarOccasions(normalized)) throw new Error("\u751F\u65E5\u4E0E\u7EAA\u5FF5\u65E5\u4FDD\u5B58\u5931\u8D25\uFF1A\u6D4F\u89C8\u5668\u5B58\u50A8\u4E0D\u53EF\u7528");
-      runtime.occasionStore = normalized;
-      await applyBidirectionalInjection?.();
-      return next;
+      try {
+        if (!saveCalendarOccasions(normalized)) throw new Error("\u751F\u65E5\u4E0E\u7EAA\u5FF5\u65E5\u4FDD\u5B58\u5931\u8D25\uFF1A\u6D4F\u89C8\u5668\u5B58\u50A8\u4E0D\u53EF\u7528");
+        runtime.occasionStore = normalized;
+        const result = await applyBidirectionalInjection?.();
+        const injectionError = injectionFailure(result, "\u751F\u65E5\u4E0E\u7EAA\u5FF5\u65E5\u63D0\u4EA4");
+        if (!injectionError) return next;
+        throw injectionError;
+      } catch (error) {
+        if (!saveCalendarOccasions(previousStore)) {
+          const rollbackError = new Error("\u751F\u65E5\u4E0E\u7EAA\u5FF5\u65E5\u56DE\u6EDA\u5931\u8D25\uFF1A\u6D4F\u89C8\u5668\u5B58\u50A8\u4E0D\u53EF\u7528");
+          const combined = new Error(`${error.message}\uFF1B${rollbackError.message}`);
+          combined.cause = error;
+          combined.rollbackError = rollbackError;
+          combined.occasionRolledBack = false;
+          combined.occasionRollbackError = true;
+          throw combined;
+        }
+        runtime.occasionStore = normalizeOccasionStore(previousStore);
+        try {
+          const rollbackResult = await applyBidirectionalInjection?.();
+          const rollbackError = injectionFailure(rollbackResult, "\u751F\u65E5\u4E0E\u7EAA\u5FF5\u65E5\u8865\u507F");
+          if (rollbackError) throw rollbackError;
+        } catch (rollbackError) {
+          const combined = new Error(`${error.message}\uFF1B\u751F\u65E5\u4E0E\u7EAA\u5FF5\u65E5\u56DE\u6EDA\u6CE8\u5165\u5931\u8D25\uFF1A${rollbackError.message}`);
+          combined.cause = error;
+          combined.rollbackError = rollbackError;
+          combined.occasionRolledBack = true;
+          combined.occasionRollbackError = true;
+          throw combined;
+        }
+        throw error;
+      }
+    });
+    const commitSchedule = (storageId, mutate) => enqueueDirectoryOperation("schedule", async () => {
+      const previousCalendarStore = clone(loadCalendar());
+      const previousOccasionStore = clone(loadCalendarOccasions());
+      const calendarCandidate = clone(previousCalendarStore);
+      const occasionCandidate = clone(previousOccasionStore);
+      const current = {
+        calendar: calendarScopeFor(calendarCandidate, storageId),
+        occasions: normalizeOccasionScope(occasionCandidate.scopes[storageId])
+      };
+      const result = await mutate(current);
+      calendarCandidate.scopes[storageId] = normalizeCalendarScope(result.calendar);
+      occasionCandidate.scopes[storageId] = normalizeOccasionScope(result.occasions);
+      const calendar = normalizeCalendarStore(calendarCandidate);
+      const occasionStore = normalizeOccasionStore(occasionCandidate);
+      try {
+        if (!saveCalendar(calendar)) throw new Error("\u65E5\u5386\u4FDD\u5B58\u5931\u8D25\uFF1A\u6D4F\u89C8\u5668\u5B58\u50A8\u4E0D\u53EF\u7528");
+        if (!saveCalendarOccasions(occasionStore)) throw new Error("\u751F\u65E5\u4E0E\u7EAA\u5FF5\u65E5\u4FDD\u5B58\u5931\u8D25\uFF1A\u6D4F\u89C8\u5668\u5B58\u50A8\u4E0D\u53EF\u7528");
+        runtime.store = calendar;
+        runtime.occasionStore = occasionStore;
+        const injectionResult = await applyBidirectionalInjection?.();
+        const error = injectionFailure(injectionResult, "\u65E5\u7A0B\u63D0\u4EA4");
+        if (!error) return { calendar: calendarCandidate.scopes[storageId], occasions: occasionCandidate.scopes[storageId] };
+        throw error;
+      } catch (error) {
+        const calendarRolledBack = saveCalendar(previousCalendarStore);
+        const occasionsRolledBack = saveCalendarOccasions(previousOccasionStore);
+        if (!calendarRolledBack || !occasionsRolledBack) {
+          runtime.store = normalizeCalendarStore(loadCalendar());
+          runtime.occasionStore = normalizeOccasionStore(loadCalendarOccasions());
+          const rollbackError = new Error("\u65E5\u7A0B\u8F6C\u6362\u56DE\u6EDA\u5931\u8D25\uFF1A\u6D4F\u89C8\u5668\u5B58\u50A8\u4E0D\u53EF\u7528");
+          const combined = new Error(`${error.message}\uFF1B${rollbackError.message}`);
+          combined.cause = error;
+          combined.calendarRolledBack = calendarRolledBack;
+          combined.occasionsRolledBack = occasionsRolledBack;
+          combined.rollbackError = rollbackError;
+          combined.scheduleRollbackError = true;
+          throw combined;
+        }
+        runtime.store = normalizeCalendarStore(previousCalendarStore);
+        runtime.occasionStore = normalizeOccasionStore(previousOccasionStore);
+        try {
+          const rollbackResult = await applyBidirectionalInjection?.();
+          const rollbackError = injectionFailure(rollbackResult, "\u65E5\u7A0B\u8F6C\u6362\u8865\u507F");
+          if (rollbackError) throw rollbackError;
+        } catch (rollbackError) {
+          const combined = new Error(`${error.message}\uFF1B\u65E5\u7A0B\u8F6C\u6362\u56DE\u6EDA\u6CE8\u5165\u5931\u8D25\uFF1A${rollbackError.message}`);
+          combined.cause = error;
+          combined.rollbackError = rollbackError;
+          combined.calendarRolledBack = true;
+          combined.occasionsRolledBack = true;
+          combined.scheduleRollbackError = true;
+          throw combined;
+        }
+        throw error;
+      }
     });
     const commitHolidays = (nextStore) => {
       const normalized = normalizeHolidayCache(nextStore);
@@ -2623,49 +2746,51 @@ ${userPrompt}` : userPrompt;
       runtime.cycleStore = normalized;
       return getCycles(storageId, getCycleSubject(storageId));
     });
-    return { commitScope, commitRecipe, commitOccasions, commitHolidays, commitWeather, commitCycle, invalidateCommits };
+    return { commitScope, commitRecipe, commitOccasions, commitSchedule, commitHolidays, commitWeather, commitCycle, invalidateCommits };
   }
 
   // src/calendar-dom.js
-  function setCalendarEntryKind(root, kind) {
-    const normalized = kind === "occasion" ? "occasion" : "event";
-    const repeatToggle = root?.querySelector?.("[data-calendar-repeat-toggle]");
-    repeatToggle?.setAttribute?.("aria-checked", String(normalized === "occasion"));
+  var REPEAT_VALUES = /* @__PURE__ */ new Set(["none", "daily", "weekly", "monthly", "yearly"]);
+  function setCalendarEntryRepeat(root, repeat) {
+    const normalized = REPEAT_VALUES.has(repeat) ? repeat : "none";
+    const repeatSelect = root?.querySelector?.("[data-calendar-repeat-select]");
+    if (repeatSelect) repeatSelect.value = normalized;
     const occasionFields = root?.querySelector?.("[data-calendar-occasion-fields]");
     if (occasionFields) {
-      const unavailable = normalized !== "occasion";
+      const unavailable = normalized !== "yearly";
       occasionFields.hidden = unavailable;
       occasionFields.setAttribute?.("aria-hidden", String(unavailable));
       for (const field of occasionFields.querySelectorAll?.("select, input, textarea, button") || []) {
         field.disabled = unavailable;
       }
     }
-    if (root?.dataset) root.dataset.calendarEntryKind = normalized;
+    if (root?.dataset) root.dataset.calendarEntryRepeat = normalized;
     return normalized;
   }
   function fillCalendarEntryForm(root, entry2 = null, kind = "event", { focusTitle = false } = {}) {
     const form = root?.querySelector?.("[data-calendar-entry-form]");
     if (!form) return false;
-    const normalized = setCalendarEntryKind(root, kind);
+    const repeat = kind === "occasion" ? entry2?.repeat || "yearly" : "none";
+    const normalized = setCalendarEntryRepeat(root, repeat);
     form.elements.title.value = entry2?.title || "";
     form.elements.note.value = entry2?.note || "";
-    if (normalized === "occasion") {
-      form.elements.occasionType.value = entry2?.type || "anniversary";
-      form.elements.leapDayRule.value = entry2?.leapDayRule || "feb28";
-    }
+    form.elements.repeat.value = normalized;
+    form.elements.occasionType.value = entry2?.type || "anniversary";
+    form.elements.leapDayRule.value = entry2?.leapDayRule || "feb28";
     if (focusTitle) form.elements.title.focus?.({ preventScroll: true });
     return normalized;
   }
   function readCalendarEntryForm(root) {
     const form = root?.querySelector?.("[data-calendar-entry-form]");
     if (!form) throw new Error("\u5B89\u6392\u7F16\u8F91\u5668\u4E0D\u53EF\u7528");
-    const kind = root.dataset?.calendarEntryKind === "occasion" ? "occasion" : "event";
+    const repeat = REPEAT_VALUES.has(form.elements.repeat.value) ? form.elements.repeat.value : "none";
     return {
-      kind,
+      repeat,
+      kind: repeat === "none" ? "event" : "occasion",
       title: form.elements.title.value.trim(),
       note: form.elements.note.value,
-      type: kind === "occasion" ? form.elements.occasionType.value : "",
-      leapDayRule: kind === "occasion" ? form.elements.leapDayRule.value : ""
+      type: repeat === "yearly" ? form.elements.occasionType.value : "anniversary",
+      leapDayRule: repeat === "yearly" ? form.elements.leapDayRule.value : "feb28"
     };
   }
 
@@ -2704,7 +2829,7 @@ ${userPrompt}` : userPrompt;
   var WEATHER_STORM_ICON_SVG = icon('<path d="M6.5 16h11a4 4 0 0 0 .5-8A6 6 0 0 0 6.2 9.5 3.5 3.5 0 0 0 6.5 16z"/><path d="m11 18-2 4 5-5h-3l2-3"/>');
   var FLOWER_BUD_ICON_SVG = icon('<path d="M12 20V11"/><path d="M12 11C9 10 6.5 7.5 7.5 4c2.5.3 4 1.8 4.5 4.3C12.5 5.8 14.3 4.3 16.8 4c1 3.5-1.8 6-4.8 7z"/><path d="M12 15c2.8-.2 4.8.8 5.5 3-2.5.4-4.4-.5-5.5-3z"/><path d="M8.5 20h7"/>');
   var MOON_ICON_SVG = icon('<path d="M20 15.2A8.5 8.5 0 0 1 8.8 4 8.5 8.5 0 1 0 20 15.2z"/>');
-  var CYCLE_PERIOD_ICON_SVG = icon('<path d="M12 3.8s-5 5.7-5 10.1a5 5 0 0 0 10 0C17 9.5 12 3.8 12 3.8z"/>');
+  var CYCLE_PERIOD_ICON_SVG = icon('<circle cx="12" cy="7" r="3"/><circle cx="16.8" cy="10.5" r="3"/><circle cx="15" cy="16" r="3"/><circle cx="9" cy="16" r="3"/><circle cx="7.2" cy="10.5" r="3"/><circle cx="12" cy="12" r="2.2"/>');
   var RECIPE_ICON_SVG = icon('<path d="M7 3v7M4 3v4a3 3 0 0 0 6 0V3M7 10v11"/><path d="M16 3v18M16 3c2.2 1.8 3.2 4.5 3 8h-3"/>');
   var CYCLE_FERTILE_ICON_SVG = icon('<circle cx="12" cy="12" r="3.2"/><path d="M8.6 7.5C7.4 5.8 5.4 5.2 4 6.3c-1.4 1.2-.8 3.4 1.1 4.4M15.4 7.5c1.2-1.7 3.2-2.3 4.6-1.2 1.4 1.2.8 3.4-1.1 4.4M8.6 16.5c-1.2 1.7-3.2 2.3-4.6 1.2-1.4-1.2-.8-3.4 1.1-4.4M15.4 16.5c1.2 1.7 3.2 2.3 4.6 1.2 1.4-1.2.8-3.4-1.1-4.4"/>');
   var TIME_ORIGIN_ICON_SVG = icon('<circle cx="12" cy="12" r="8"/><path d="M12 7v5l3 2"/>');
@@ -2752,7 +2877,12 @@ ${userPrompt}` : userPrompt;
     period: { label: "\u7ECF\u671F", icon: CYCLE_PERIOD_ICON_SVG },
     ovulatory: { label: "\u6613\u5B55\u671F", icon: CYCLE_FERTILE_ICON_SVG }
   };
-  var occasionTypeLabel = (type) => type === "birthday" ? "\u751F\u65E5" : "\u7EAA\u5FF5\u65E5";
+  var occasionTypeLabel = (type, repeat = "yearly") => {
+    if (repeat === "daily") return "\u6BCF\u65E5\u91CD\u590D";
+    if (repeat === "weekly") return "\u6BCF\u5468\u91CD\u590D";
+    if (repeat === "monthly") return "\u6BCF\u6708\u91CD\u590D";
+    return type === "birthday" ? "\u751F\u65E5" : "\u7EAA\u5FF5\u65E5";
+  };
   function inlineEntryActions(kind, id2, title) {
     const attrs = `data-entry-kind="${kind}" data-entry-id="${escapeAttr(id2)}"`;
     return `<span class="pm-calendar-inline-actions"><button type="button" data-action="calendar-edit-entry" ${attrs} aria-label="\u7F16\u8F91${escapeAttr(title)}" title="\u7F16\u8F91">${EDIT_ICON_SVG}</button><button type="button" class="is-danger" data-action="calendar-delete-entry" ${attrs} aria-label="\u5220\u9664${escapeAttr(title)}" title="\u5220\u9664">${TRASH_ICON_SVG}</button></span>`;
@@ -2760,7 +2890,7 @@ ${userPrompt}` : userPrompt;
   function eventRows(scope, occasionsByDate, date, editing = false) {
     const events = scope.events[date] || [];
     const occasionRows = (occasionsByDate.get(date) || []).map((occasion) => `<article class="pm-calendar-event is-occasion" data-occasion-id="${escapeAttr(occasion.id)}">
-        <div><b>${escapeHtml(occasion.title)}</b><span>${occasionTypeLabel(occasion.type)}${occasion.leapAdjusted ? "\uFF08\u95F0\u65E5\u987A\u5EF6\uFF09" : ""}${occasion.note ? ` \xB7 ${escapeHtml(occasion.note)}` : ""}</span></div>
+        <div><b>${escapeHtml(occasion.title)}</b><span>${occasionTypeLabel(occasion.type, occasion.repeat)}${occasion.leapAdjusted ? "\uFF08\u95F0\u65E5\u987A\u5EF6\uFF09" : ""}${occasion.note ? ` \xB7 ${escapeHtml(occasion.note)}` : ""}</span></div>
         ${editing ? inlineEntryActions("occasion", occasion.id, occasion.title) : ""}
     </article>`);
     const eventItems = events.map((event) => `<article class="pm-calendar-event" data-event-id="${escapeAttr(event.id)}">
@@ -2786,13 +2916,13 @@ ${userPrompt}` : userPrompt;
     if ([95, 96, 99].includes(weatherCode)) return WEATHER_STORM_ICON_SVG;
     return WEATHER_ICON_SVG;
   }
-  function statusCard({ meta, value, icon: icon2, parsed, date, kind, phase = "" }) {
+  function statusCard({ relativeLabel, context, value, icon: icon2, parsed, date, kind, phase = "" }) {
     return `<div class="pm-calendar-status-card pm-calendar-status-card-${kind}"${phase ? ` data-cycle-phase="${escapeAttr(phase)}"` : ""}>
         <span class="pm-calendar-status-watermark" aria-hidden="true">${icon2}</span>
         <div class="pm-calendar-status-content">
-            <div class="pm-calendar-status-meta">${meta}</div>
+            <div class="pm-calendar-status-heading">${relativeLabel ? `<strong class="pm-calendar-status-relative">${escapeHtml(relativeLabel)}</strong>` : ""}<span class="pm-calendar-status-date"><time datetime="${escapeAttr(date)}">${escapeHtml(detailDate.format(parsed))}</time><em>${escapeHtml(detailWeekday.format(parsed))}</em></span></div>
+            <div class="pm-calendar-status-context">${context}</div>
             <b class="pm-calendar-status-value">${value}</b>
-            <span class="pm-calendar-status-date"><time datetime="${escapeAttr(date)}">${escapeHtml(detailDate.format(parsed))}</time><span class="pm-calendar-status-date-separator" aria-hidden="true"> \xB7 </span><em>${escapeHtml(detailWeekday.format(parsed))}</em></span>
         </div>
     </div>`;
   }
@@ -2803,13 +2933,13 @@ ${userPrompt}` : userPrompt;
     }
     const condition = weatherCodeLabel(resolved.day.weatherCode);
     const location = weatherStore?.location?.country || weatherStore?.location?.name || "\u5929\u6C14\u8BB0\u5F55";
-    const leading = `${relativeLabel ? `<span class="pm-calendar-status-relative">${escapeHtml(relativeLabel)}</span>` : ""}<span class="pm-calendar-status-weather-context">${escapeHtml(condition)} \xB7 ${escapeHtml(location)}</span>`;
     return { content: statusCard({
       kind: "weather",
       parsed,
       date,
       icon: weatherStatusIcon(resolved.day.weatherCode),
-      meta: `${leading}<span class="pm-calendar-status-location" aria-hidden="true">${LOCATION_ICON_SVG}</span>`,
+      relativeLabel,
+      context: `<span class="pm-calendar-status-weather-context">${escapeHtml(condition)} \xB7 ${escapeHtml(location)}</span><span class="pm-calendar-status-location" aria-hidden="true">${LOCATION_ICON_SVG}</span>`,
       value: `${resolved.day.tempMin}\xB0\u2013${resolved.day.tempMax}\xB0`
     }), isCard: true };
   }
@@ -2823,7 +2953,8 @@ ${userPrompt}` : userPrompt;
       parsed,
       date,
       icon: detail.icon,
-      meta: `${relativeLabel ? `<span class="pm-calendar-status-relative">${escapeHtml(relativeLabel)}</span>` : ""}<span class="pm-calendar-status-cycle-context">\u751F\u7406\u5468\u671F</span>`,
+      relativeLabel,
+      context: '<span class="pm-calendar-status-cycle-context">\u751F\u7406\u5468\u671F</span>',
       value: detail.label
     }), isCard: true };
   }
@@ -2922,10 +3053,9 @@ ${userPrompt}` : userPrompt;
     </section>`;
   }
   function renderCalendarEntryDialog(selectedDate, entry2 = null, kind = "event") {
-    const editing = Boolean(entry2);
-    const occasion = kind === "occasion";
-    const unavailable = occasion ? "" : "disabled";
-    return `<div class="pm-modal pm-calendar-entry-dialog"><div class="pm-modal-header"><span></span><b>\u65E5\u7A0B</b><button type="button" class="pm-modal-close" data-calendar-entry-close aria-label="\u5173\u95ED">${CLOSE_ICON_SVG}</button></div><form data-calendar-entry-form><button type="button" class="pm-calendar-auto-switch pm-calendar-repeat-toggle" data-calendar-repeat-toggle role="switch" aria-label="\u5B89\u6392\u7C7B\u578B" aria-checked="${occasion}" ${editing ? "disabled" : ""}><span><b>\u6BCF\u5E74\u540C\u4E00\u5929\u91CD\u590D</b><small>\u5F00\u542F\u540E\u53EF\u8BBE\u7F6E\u751F\u65E5\u6216\u7EAA\u5FF5\u65E5</small></span><i aria-hidden="true"></i></button><input name="title" maxlength="120" placeholder="\u540D\u79F0" aria-label="\u5B89\u6392\u540D\u79F0"><textarea name="note" maxlength="1000" placeholder="\u5907\u6CE8\uFF08\u53EF\u9009\uFF09" aria-label="\u5B89\u6392\u5907\u6CE8"></textarea><div data-calendar-occasion-fields ${occasion ? "" : 'hidden aria-hidden="true"'}><label>\u957F\u671F\u7C7B\u578B<select name="occasionType" ${unavailable}><option value="anniversary">\u7EAA\u5FF5\u65E5</option><option value="birthday">\u751F\u65E5</option></select></label><label>2 \u6708 29 \u65E5\u5728\u975E\u95F0\u5E74<select name="leapDayRule" ${unavailable}><option value="feb28">\u6309 2 \u6708 28 \u65E5\u663E\u793A</option><option value="mar1">\u6309 3 \u6708 1 \u65E5\u663E\u793A</option><option value="skip">\u8BE5\u5E74\u4E0D\u663E\u793A</option></select></label></div><p class="pm-calendar-entry-error" data-calendar-entry-error role="status" aria-live="polite"></p><div class="pm-calendar-entry-actions"><button type="submit" class="is-primary">\u4FDD\u5B58</button></div></form></div>`;
+    const repeat = kind === "occasion" ? entry2?.repeat || "yearly" : "none";
+    const yearly = repeat === "yearly";
+    return `<div class="pm-modal pm-calendar-entry-dialog"><div class="pm-modal-header"><span></span><b>\u65E5\u7A0B</b><button type="button" class="pm-modal-close" data-calendar-entry-close aria-label="\u5173\u95ED">${CLOSE_ICON_SVG}</button></div><form data-calendar-entry-form><label>\u91CD\u590D<select name="repeat" data-calendar-repeat-select aria-label="\u65E5\u7A0B\u91CD\u590D\u89C4\u5219"><option value="none" ${repeat === "none" ? "selected" : ""}>\u4E0D\u91CD\u590D</option><option value="daily" ${repeat === "daily" ? "selected" : ""}>\u6BCF\u65E5\u91CD\u590D</option><option value="weekly" ${repeat === "weekly" ? "selected" : ""}>\u6BCF\u5468\uFF08\u540C\u661F\u671F\uFF09</option><option value="monthly" ${repeat === "monthly" ? "selected" : ""}>\u6BCF\u6708\uFF08\u540C\u65E5\uFF09</option><option value="yearly" ${yearly ? "selected" : ""}>\u6BCF\u5E74\u91CD\u590D</option></select></label><input name="title" maxlength="120" placeholder="\u540D\u79F0" aria-label="\u5B89\u6392\u540D\u79F0"><textarea name="note" maxlength="1000" placeholder="\u5907\u6CE8\uFF08\u53EF\u9009\uFF09" aria-label="\u5B89\u6392\u5907\u6CE8"></textarea><div data-calendar-occasion-fields ${yearly ? "" : 'hidden aria-hidden="true"'}><label>\u957F\u671F\u7C7B\u578B<select name="occasionType" ${yearly ? "" : "disabled"}><option value="anniversary">\u7EAA\u5FF5\u65E5</option><option value="birthday">\u751F\u65E5</option></select></label><label>2 \u6708 29 \u65E5\u5728\u975E\u95F0\u5E74<select name="leapDayRule" ${yearly ? "" : "disabled"}><option value="feb28">\u6309 2 \u6708 28 \u65E5\u663E\u793A</option><option value="mar1">\u6309 3 \u6708 1 \u65E5\u663E\u793A</option><option value="skip">\u8BE5\u5E74\u4E0D\u663E\u793A</option></select></label></div><p class="pm-calendar-entry-error" data-calendar-entry-error role="status" aria-live="polite"></p><div class="pm-calendar-entry-actions"><button type="submit" class="is-primary">\u4FDD\u5B58</button></div></form></div>`;
   }
   function renderRecipeMealDialog(selectedDate, mealType = "breakfast", meal = null) {
     const normalizedType = RECIPE_MEAL_TYPES.includes(mealType) ? mealType : "breakfast";
@@ -3403,7 +3533,7 @@ ${userPrompt}` : userPrompt;
       runtime.viewByStorage.set(storageId, view);
       return view;
     };
-    const { commitScope, commitRecipe, commitOccasions, commitHolidays, commitWeather, commitCycle, invalidateCommits } = createCalendarCommitters({
+    const { commitScope, commitRecipe, commitOccasions, commitSchedule, commitHolidays, commitWeather, commitCycle, invalidateCommits } = createCalendarCommitters({
       runtime,
       tasks,
       applyBidirectionalInjection: deps.applyBidirectionalInjection,
@@ -3870,44 +4000,48 @@ ${userPrompt}` : userPrompt;
         if (errorNode) errorNode.textContent = error?.message || "\u5B89\u6392\u66F4\u65B0\u5931\u8D25";
       };
       overlay.querySelector("[data-calendar-entry-close]")?.addEventListener("click", () => closeOverlay?.("close"));
-      const repeatToggle = overlay.querySelector("[data-calendar-repeat-toggle]");
-      repeatToggle?.addEventListener("click", () => {
-        if (existingEntry) return;
-        setCalendarEntryKind(overlay, overlay.dataset.calendarEntryKind === "occasion" ? "event" : "occasion");
+      overlay.querySelector("[data-calendar-repeat-select]")?.addEventListener("change", (event) => {
+        setCalendarEntryRepeat(overlay, event.currentTarget.value);
       });
       form?.addEventListener("submit", async (event) => {
         event.preventDefault();
         try {
           const value = readCalendarEntryForm(overlay);
           if (!value.title) throw new Error("\u5B89\u6392\u540D\u79F0\u4E0D\u80FD\u4E3A\u7A7A");
-          if (value.kind === "event") {
-            const previous = normalizedKind === "event" ? existingEntry : null;
-            await commitScope(storageId, (current) => upsertCalendarEvent(current, {
-              id: previous?.id,
-              date: entries.date,
-              title: value.title,
-              note: value.note,
-              source: previous?.source || "manual",
-              createdAt: previous?.createdAt,
-              updatedAt: Date.now()
-            }));
-            status(storageId, previous ? "\u65E5\u7A0B\u5DF2\u66F4\u65B0\u3002" : "\u65E5\u7A0B\u5DF2\u6DFB\u52A0\u3002");
-          } else {
-            const previous = normalizedKind === "occasion" ? existingEntry : null;
+          await commitSchedule(storageId, (current) => {
+            const calendar = normalizedKind === "event" && existingEntry ? deleteCalendarEvent(current.calendar, existingEntry.id).scope : current.calendar;
+            const occasionScope = normalizedKind === "occasion" && existingEntry ? deleteOccasion(current.occasions, existingEntry.id).scope : current.occasions;
+            if (value.kind === "event") return {
+              calendar: upsertCalendarEvent(calendar, {
+                id: normalizedKind === "event" ? existingEntry?.id : void 0,
+                date: entries.date,
+                title: value.title,
+                note: value.note,
+                source: normalizedKind === "event" ? existingEntry?.source || "manual" : "manual",
+                createdAt: normalizedKind === "event" ? existingEntry?.createdAt : void 0,
+                updatedAt: Date.now()
+              }),
+              occasions: occasionScope
+            };
             const parsed = parseCalendarDate(entries.date);
-            await commitOccasions(storageId, (current) => upsertOccasion(current, {
-              id: previous?.id,
-              type: value.type,
-              month: previous?.month || parsed.getMonth() + 1,
-              day: previous?.day || parsed.getDate(),
-              title: value.title,
-              note: value.note,
-              leapDayRule: value.leapDayRule,
-              createdAt: previous?.createdAt,
-              updatedAt: Date.now()
-            }));
-            status(storageId, previous ? `${occasionTypeLabel(previous.type)}\u5DF2\u66F4\u65B0\u3002` : `${occasionTypeLabel(value.type)}\u5DF2\u6DFB\u52A0\u3002`);
-          }
+            return {
+              calendar,
+              occasions: upsertOccasion(occasionScope, {
+                id: normalizedKind === "occasion" ? existingEntry?.id : void 0,
+                type: value.type,
+                date: normalizedKind === "occasion" ? existingEntry?.date || entries.date : entries.date,
+                month: normalizedKind === "occasion" ? existingEntry?.month || parsed.getMonth() + 1 : parsed.getMonth() + 1,
+                day: normalizedKind === "occasion" ? existingEntry?.day || parsed.getDate() : parsed.getDate(),
+                repeat: value.repeat,
+                title: value.title,
+                note: value.note,
+                leapDayRule: value.leapDayRule,
+                createdAt: normalizedKind === "occasion" ? existingEntry?.createdAt : void 0,
+                updatedAt: Date.now()
+              })
+            };
+          });
+          status(storageId, existingEntry ? "\u65E5\u7A0B\u5DF2\u66F4\u65B0\u3002" : "\u65E5\u7A0B\u5DF2\u6DFB\u52A0\u3002");
           closeOverlay?.("saved");
           rerender(storageId);
         } catch (error) {
@@ -7250,25 +7384,50 @@ ${mainChatText}` : "",
       completeDirectoryBranchScope("budget", token);
     }
   }
-  async function commitCalendarScope({ store, key, desired, expected, targetId, normalize, label }) {
-    return enqueueDirectoryOperation(store, async () => {
-      const current = readCalendarForBranch(key, normalize, label);
-      const restoring = !own(desired.scopes, targetId);
-      if (!restoring && own(current.scopes, targetId)) {
-        throw new Error(`\u5206\u652F\u7EE7\u627F\u4FDD\u5B58\u5931\u8D25\uFF1A\u76EE\u6807 scope \u5DF2\u88AB\u5E76\u53D1\u5199\u5165 (${label})`);
-      }
-      if (restoring && own(current.scopes, targetId) && !same(current.scopes[targetId], expected.scopes[targetId])) {
-        throw new Error(`\u5206\u652F\u7EE7\u627F\u8865\u507F\u53D6\u6D88\uFF1A\u76EE\u6807 scope \u5DF2\u5728\u4E8B\u52A1\u540E\u88AB\u66F4\u65B0 (${label})`);
-      }
-      const merged = clone3(current);
-      replaceEntry(merged.scopes, desired.scopes, targetId);
-      try {
-        localStorage.setItem(key, JSON.stringify(normalize(merged)));
-      } catch (error) {
-        throw new Error(`\u5206\u652F\u7EE7\u627F\u4FDD\u5B58\u5931\u8D25\uFF1A${label}\u4E0D\u53EF\u7528`);
-      }
-      return merged;
-    });
+  function mergeCalendarBranchScope({ key, desired, expected, targetId, normalize, label }) {
+    const current = readCalendarForBranch(key, normalize, label);
+    const restoring = !own(desired.scopes, targetId);
+    if (!restoring && own(current.scopes, targetId)) {
+      throw new Error(`\u5206\u652F\u7EE7\u627F\u4FDD\u5B58\u5931\u8D25\uFF1A\u76EE\u6807 scope \u5DF2\u88AB\u5E76\u53D1\u5199\u5165 (${label})`);
+    }
+    if (restoring && own(current.scopes, targetId) && !same(current.scopes[targetId], expected.scopes[targetId])) {
+      throw new Error(`\u5206\u652F\u7EE7\u627F\u8865\u507F\u53D6\u6D88\uFF1A\u76EE\u6807 scope \u5DF2\u5728\u4E8B\u52A1\u540E\u88AB\u66F4\u65B0 (${label})`);
+    }
+    const merged = clone3(current);
+    replaceEntry(merged.scopes, desired.scopes, targetId);
+    return normalize(merged);
+  }
+  async function commitCalendarScopes({ desired, expected, targetId }) {
+    const token = markDirectoryBranchScope("schedule", targetId);
+    try {
+      return await enqueueDirectoryOperation("schedule", async () => {
+        const calendar = mergeCalendarBranchScope({
+          key: CALENDAR_STORAGE_KEY,
+          desired: desired.calendar,
+          expected: expected.calendar,
+          targetId,
+          normalize: normalizeCalendarStore,
+          label: "\u65E5\u5386\u6570\u636E"
+        });
+        const occasions = mergeCalendarBranchScope({
+          key: CALENDAR_OCCASION_STORAGE_KEY,
+          desired: desired.occasions,
+          expected: expected.occasions,
+          targetId,
+          normalize: normalizeOccasionStore,
+          label: "\u751F\u65E5\u4E0E\u7EAA\u5FF5\u65E5\u6570\u636E"
+        });
+        try {
+          localStorage.setItem(CALENDAR_STORAGE_KEY, JSON.stringify(calendar));
+          localStorage.setItem(CALENDAR_OCCASION_STORAGE_KEY, JSON.stringify(occasions));
+        } catch (error) {
+          throw new Error("\u5206\u652F\u7EE7\u627F\u4FDD\u5B58\uFF1A\u65E5\u7A0B\u6570\u636E\u4E0D\u53EF\u7528");
+        }
+        return { calendar, occasions };
+      });
+    } finally {
+      completeDirectoryBranchScope("schedule", token);
+    }
   }
   async function commitInteractiveScope({ desired, expected, targetId }) {
     const token = markDirectoryBranchScope("interactive", targetId);
@@ -7472,26 +7631,8 @@ ${mainChatText}` : "",
           label: "\u624B\u673A\u9875\u9762\u72B6\u6001"
         });
         globalThis.window.__pmPhoneUiState = normalizePhoneUiState({ version: 1, scopes: phoneUiScopes }, interactive);
-        await commitCalendarScope({
-          store: "calendar",
-          key: CALENDAR_STORAGE_KEY,
-          desired: desired.calendar,
-          expected: expected.calendar,
-          targetId,
-          normalize: normalizeCalendarStore,
-          label: "\u65E5\u5386\u6570\u636E"
-        });
-        await commitCalendarScope({
-          store: "occasions",
-          key: CALENDAR_OCCASION_STORAGE_KEY,
-          desired: desired.occasions,
-          expected: expected.occasions,
-          targetId,
-          normalize: normalizeOccasionStore,
-          label: "\u751F\u65E5\u4E0E\u7EAA\u5FF5\u65E5\u6570\u636E"
-        });
-        await commitCalendarScope({
-          store: "cycles",
+        await commitCalendarScopes({ desired, expected, targetId });
+        await commitLocalScopeCoordinated("cycles", {
           key: CALENDAR_CYCLE_STORAGE_KEY,
           desired: desired.cycles,
           expected: expected.cycles,
@@ -7499,8 +7640,7 @@ ${mainChatText}` : "",
           normalize: normalizeCycleStore,
           label: "\u751F\u7406\u5468\u671F\u6570\u636E"
         });
-        await commitCalendarScope({
-          store: "recipes",
+        await commitLocalScopeCoordinated("recipes", {
           key: CALENDAR_RECIPE_STORAGE_KEY,
           desired: desired.recipes,
           expected: expected.recipes,
@@ -11564,7 +11704,7 @@ ${antiFluff}`;
       addNote("\u5DF2\u91CD\u65B0\u542F\u7528\u672C\u6B21\u624B\u673A\u4F1A\u8BDD\u7684\u81EA\u52A8\u6D88\u606F");
       return true;
     };
-    function showContactConfig(contactName, returnToMembers = false, returnMembersToGroupSettings = false) {
+    function showContactConfig(contactName, returnToMembers = false, returnMembersToControlCenter = false) {
       const id2 = getStorageId2();
       const config = window.__pmPokeConfig[id2]?.[contactName] || {};
       const behavior = getCharacterBehavior(window.__pmCharacterBehavior, id2, contactName);
@@ -11592,7 +11732,7 @@ ${antiFluff}`;
       makeOverlay(`
     <div class="pm-modal pm-modal-wide">
     <div class="pm-modal-header">
-        <button type="button" onclick="${returnToMembers ? `window.__pmShowConversationSettings(${returnMembersToGroupSettings})` : "window.__pmReturnToControlCenter()"}" class="pm-modal-close" title="\u8FD4\u56DE" aria-label="\u8FD4\u56DE">${BACK_ICON_SVG}</button>
+        <button type="button" onclick="${returnToMembers ? `window.__pmShowGroupMemberSettings(${returnMembersToControlCenter})` : "window.__pmReturnToControlCenter()"}" class="pm-modal-close" title="\u8FD4\u56DE" aria-label="\u8FD4\u56DE">${BACK_ICON_SVG}</button>
         <b class="pm-contact-settings-title" title="${escapeAttr(contactName)}">${escapeHtml(contactName)}</b>
         <button type="button" onclick="window.__pmCloseOverlay()" class="pm-modal-close" title="\u5173\u95ED" aria-label="\u5173\u95ED">${CLOSE_ICON_SVG}</button>
     </div>
@@ -11631,14 +11771,16 @@ ${antiFluff}`;
     </div>`);
     }
     window.__pmShowCharacterBehavior = (contactName, returnToGroupSettings = false) => showContactConfig(contactName, true, returnToGroupSettings);
-    window.__pmShowGroupMemberSettings = () => {
+    window.__pmShowGroupMemberSettings = (returnToControlCenter = false) => {
       if (!state.isGroupChat) return;
       const members = state.groupMembers.slice();
+      const returnAction = returnToControlCenter ? "window.__pmReturnToControlCenter()" : "window.__pmEditGroup()";
+      const returnLabel = returnToControlCenter ? "\u8FD4\u56DE\u5FEB\u6377\u5DE5\u5177" : "\u8FD4\u56DE\u7FA4\u804A\u7F16\u8F91";
       makeOverlay(`
     <div class="pm-modal pm-modal-wide">
-      <div class="pm-modal-header"><button type="button" onclick="window.__pmEditGroup()" class="pm-modal-close" title="\u8FD4\u56DE\u7FA4\u804A\u7F16\u8F91" aria-label="\u8FD4\u56DE\u7FA4\u804A\u7F16\u8F91">${BACK_ICON_SVG}</button><b>\u6210\u5458\u89D2\u8272\u8BBE\u7F6E</b><button type="button" onclick="window.__pmCloseOverlay()" class="pm-modal-close" title="\u5173\u95ED" aria-label="\u5173\u95ED">${CLOSE_ICON_SVG}</button></div>
+      <div class="pm-modal-header"><button type="button" onclick="${returnAction}" class="pm-modal-close" title="${returnLabel}" aria-label="${returnLabel}">${BACK_ICON_SVG}</button><b>\u6210\u5458\u89D2\u8272\u8BBE\u7F6E</b><button type="button" onclick="window.__pmCloseOverlay()" class="pm-modal-close" title="\u5173\u95ED" aria-label="\u5173\u95ED">${CLOSE_ICON_SVG}</button></div>
       <div class="pm-member-behavior-list">
-        ${members.map((name) => `<button onclick="window.__pmShowCharacterBehavior('${safeJS(name)}', true)">
+        ${members.map((name) => `<button onclick="window.__pmShowCharacterBehavior('${safeJS(name)}', ${returnToControlCenter})">
           <b>${escapeHtml(name)}</b><span>\u79C1\u804A\u98CE\u683C\u3001\u7FA4\u804A\u53D1\u8A00\u98CE\u683C\u4E0E\u6D88\u606F\u9891\u7387</span>
         </button>`).join("")}
       </div>
@@ -11972,6 +12114,8 @@ ${antiFluff}`;
   var controlActionLabel = (action) => ({
     calendar: "\u6253\u5F00\u65E5\u5386",
     settings: "\u6253\u5F00\u4F1A\u8BDD\u8BBE\u7F6E",
+    "character-settings": "\u6253\u5F00\u89D2\u8272\u8BBE\u7F6E",
+    "group-settings": "\u6253\u5F00\u7FA4\u804A\u8BBE\u7F6E",
     "auto-poke": "\u6253\u5F00\u81EA\u52A8\u53D1\u6D88\u606F",
     delete: "\u8FDB\u5165\u6D88\u606F\u5220\u9664\u6A21\u5F0F"
   })[action] || "\u6267\u884C\u5FEB\u6377\u64CD\u4F5C";
@@ -12139,6 +12283,8 @@ ${antiFluff}`;
       closeControlCenter();
       if (action === "pending") showPendingManager();
       else if (action === "settings") return window.__pmShowConversationSettings();
+      else if (action === "character-settings") return state.isGroupChat ? window.__pmShowGroupMemberSettings?.(true) : window.__pmShowConversationSettings();
+      else if (action === "group-settings") return window.__pmShowGroupRandomNpcSettings?.({ returnToControlCenter: true });
       else if (action === "auto-poke") return window.__pmShowAutoPokeSettings();
       else if (action === "emoji") window.__pmShowEmojiManager();
       else if (action === "delete") window.__pmStartDeleteMode();
@@ -12183,7 +12329,8 @@ ${antiFluff}`;
       const target = getTarget();
       menu.innerHTML = `
   <button type="button" role="menuitem" data-action="pending">${EDIT_ICON_SVG}\u7F16\u8F91\u6D88\u606F</button>
-  <button type="button" role="menuitem" data-action="settings" ${target ? "" : "disabled"}>${target?.isGroup ? SETTINGS_ICON_SVG : CHARACTER_ICON_SVG}${target?.isGroup ? "\u7FA4\u804A\u8BBE\u7F6E" : "\u89D2\u8272\u8BBE\u7F6E"}</button>
+  <button type="button" role="menuitem" data-action="character-settings" ${target ? "" : "disabled"}>${CHARACTER_ICON_SVG}\u89D2\u8272\u8BBE\u7F6E</button>
+  ${target?.isGroup ? `<button type="button" role="menuitem" data-action="group-settings">${SETTINGS_ICON_SVG}\u7FA4\u804A\u8BBE\u7F6E</button>` : ""}
   <button type="button" role="menuitem" data-action="auto-poke" ${target ? "" : "disabled"}>${CHAT_ICON_SVG}\u81EA\u52A8\u53D1\u6D88\u606F</button>
   <button type="button" role="menuitem" data-action="emoji">${EMOJI_ICON_SVG}\u8868\u60C5\u5305\u7BA1\u7406</button>
   <button type="button" role="menuitem" data-action="calendar">${CALENDAR_ICON_SVG}\u65E5\u5386</button>
@@ -13572,6 +13719,12 @@ ${antiFluff}`;
   }
 
   // src/phone-injection.js
+  var calendarRepeatLabel = (repeat) => ({
+    daily: "\u6BCF\u65E5\u91CD\u590D\u65E5\u7A0B",
+    weekly: "\u6BCF\u5468\u91CD\u590D\u65E5\u7A0B",
+    monthly: "\u6BCF\u6708\u91CD\u590D\u65E5\u7A0B",
+    yearly: null
+  })[repeat] || null;
   var COMMUNITY_KEY_PREFIX = `${BIDIRECTIONAL_KEY}:community:`;
   var CALENDAR_KEY_PREFIX = `${BIDIRECTIONAL_KEY}:calendar:`;
   var RECIPE_KEY_PREFIX = `${BIDIRECTIONAL_KEY}:recipe:`;
@@ -13671,7 +13824,9 @@ ${antiFluff}`;
   }
   var CYCLE_INJECTION_LABELS = Object.freeze({
     period: "\u7ECF\u671F",
-    ovulatory: "\u6613\u5B55\u671F"
+    follicular: "\u76F8\u5BF9\u5B89\u5168\u671F",
+    ovulatory: "\u6613\u5B55\u671F",
+    luteal: "\u5B89\u5168\u671F"
   });
   function renderCalendarContextInjection({
     currentStorageId,
@@ -13699,7 +13854,6 @@ ${antiFluff}`;
     const windowStart = calendarReferenceDate(calendarScope, start);
     const occasionDates = calendarDateRangeKeys(windowStart, 0, 59);
     const linesByDate = /* @__PURE__ */ new Map();
-    let hasEnabledCycleProfile = false;
     const addFact = (date, fact) => {
       if (!fact) return;
       if (!linesByDate.has(date)) linesByDate.set(date, /* @__PURE__ */ new Set());
@@ -13727,7 +13881,7 @@ ${antiFluff}`;
     if (calendarScope.injectionScheduleEnabled) {
       const occasions = expandOccasions(occasionScopeFor(occasionStore, currentStorageId), { start: windowStart, days: 60 });
       for (const occasion of occasions) {
-        const kind = occasion.type === "birthday" ? "\u751F\u65E5" : "\u7EAA\u5FF5\u65E5";
+        const kind = calendarRepeatLabel(occasion.repeat) || (occasion.type === "birthday" ? "\u751F\u65E5" : "\u7EAA\u5FF5\u65E5");
         addFact(occasion.date, `${kind}\uFF1A${occasion.title}${occasion.note ? `\uFF08${occasion.note.replace(/\s+/g, " ").slice(0, 180)}\uFF09` : ""}`);
       }
     }
@@ -13745,7 +13899,6 @@ ${antiFluff}`;
     if (calendarScope.injectionCycleEnabled) for (const subject of cycleSubjectKeys(cycleStore, currentStorageId)) {
       const profile = cycleScopeFor(cycleStore, currentStorageId, subject);
       if (!profile.enabled) continue;
-      hasEnabledCycleProfile = true;
       const rawSubjectLabel = subject === CYCLE_SELF_SUBJECT ? "\u6211" : subject.startsWith("role:") ? subject.slice(5) : subject || currentActorName || "\u5F53\u524D\u89D2\u8272";
       const subjectLabel = String(rawSubjectLabel).replace(/\s+/g, " ").trim().slice(0, 120) || "\u5F53\u524D\u89D2\u8272";
       for (const prediction of predictCycleRange(profile, calendarDateRangeKeys(windowStart, -1, -1)[0], 5).predictions) {
@@ -13754,7 +13907,6 @@ ${antiFluff}`;
         addFact(prediction.date, `\u751F\u7406\u5468\u671F\uFF08${subjectLabel}\uFF09\uFF1A${label}`);
       }
     }
-    const cycleRule = hasEnabledCycleProfile ? "\u751F\u7406\u5468\u671F\u89C4\u5219\uFF1A\u5BF9\u6240\u6709\u5DF2\u542F\u7528\u5BF9\u8C61\uFF0C\u672A\u6CE8\u660E\u7ECF\u671F\u6216\u6613\u5B55\u671F\u7684\u65E5\u671F\u6309\u5B89\u5168\u671F\u7406\u89E3\u3002" : "";
     const outputDates = [.../* @__PURE__ */ new Set([...scheduleDates, ...weatherDates, ...cycleDates, ...occasionDates.filter((date) => linesByDate.has(date))])].sort();
     const datedLines = outputDates.flatMap((date) => {
       const facts = [...linesByDate.get(date) || []];
@@ -13762,7 +13914,7 @@ ${antiFluff}`;
       const relative = relativeCalendarLabel(windowStart, date);
       return `${relative ? `${relative} ` : ""}${date}\uFF5C${facts.join("\uFF1B")}`;
     });
-    return fitCompleteLines([...cycleRule ? [cycleRule] : [], ...datedLines], 6e3);
+    return fitCompleteLines(datedLines, 6e3);
   }
   function buildContextInjectionPrompts({
     currentStorageId,

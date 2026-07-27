@@ -1,8 +1,9 @@
-import { calendarDateFromParts, calendarDateRangeKeys } from './calendar-model.js';
+import { calendarDateFromParts, calendarDateRangeKeys, parseCalendarDate } from './calendar-model.js';
 
 export const OCCASION_STORE_VERSION = 1;
 export const OCCASION_TYPES = Object.freeze(['birthday', 'anniversary']);
 export const OCCASION_LEAP_DAY_RULES = Object.freeze(['feb28', 'mar1', 'skip']);
+export const OCCASION_REPEAT_RULES = Object.freeze(['daily', 'weekly', 'monthly', 'yearly']);
 export const OCCASION_LIMITS = Object.freeze({ scopes: 80, occasions: 80, title: 120, note: 1000 });
 
 const plainRecord = value => value && typeof value === 'object' && !Array.isArray(value)
@@ -17,11 +18,26 @@ export function isLeapYear(year) {
     return Number.isInteger(year) && year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
 }
 
+function normalizedRepeat(value) {
+    return OCCASION_REPEAT_RULES.includes(value) ? value : 'yearly';
+}
+
+function anchorDate(value, month, day) {
+    return parseCalendarDate(value) || parseCalendarDate(`2000-${pad(month)}-${pad(day)}`);
+}
+
 export function isValidOccasionMonthDay(month, day) {
     const numericMonth = Number(month), numericDay = Number(day);
     if (!Number.isInteger(numericMonth) || !Number.isInteger(numericDay)) return false;
     const probe = new Date(2000, numericMonth - 1, numericDay, 12, 0, 0, 0);
     return probe.getFullYear() === 2000 && probe.getMonth() === numericMonth - 1 && probe.getDate() === numericDay;
+}
+
+function daysInCalendarMonth(year, month) {
+    for (let day = 31; day >= 28; day -= 1) {
+        if (calendarDateFromParts(year, month, day)) return day;
+    }
+    return 0;
 }
 
 export function createEmptyOccasionStore() {
@@ -38,13 +54,19 @@ export function normalizeOccasion(value, now = Date.now()) {
     if (!type) throw new Error('类型必须是生日或纪念日');
     const month = Number(value.month), day = Number(value.day);
     if (!isValidOccasionMonthDay(month, day)) throw new Error('生日或纪念日日期无效');
+    const date = anchorDate(value.date, month, day);
+    if (!date) throw new Error('重复日程日期无效');
     const title = cleanText(value.title, OCCASION_LIMITS.title);
     if (!title) throw new Error('生日或纪念日标题不能为空');
     const createdAt = timestamp(value.createdAt, now);
+    const hasRepeat = Object.hasOwn(value, 'repeat');
+    const hasDate = Object.hasOwn(value, 'date');
     return {
         id: cleanText(value.id, 80) || uid(), type, month, day, title,
         note: cleanText(value.note, OCCASION_LIMITS.note),
         leapDayRule: OCCASION_LEAP_DAY_RULES.includes(value.leapDayRule) ? value.leapDayRule : 'feb28',
+        ...(hasRepeat ? { repeat: normalizedRepeat(value.repeat) } : {}),
+        ...(hasDate ? { date: `${date.getFullYear().toString().padStart(4, '0')}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}` } : {}),
         createdAt, updatedAt: Math.max(createdAt, timestamp(value.updatedAt, createdAt)),
     };
 }
@@ -108,7 +130,7 @@ export function deleteOccasion(scope, occasionId) {
 export function occasionDateForYear(occasionValue, year) {
     const occasion = normalizeOccasion(occasionValue, 0);
     const numericYear = Number(year);
-    if (!Number.isInteger(numericYear)) return null;
+    if (!Number.isInteger(numericYear) || (occasion.repeat || 'yearly') !== 'yearly') return null;
     let month = occasion.month, day = occasion.day, leapAdjusted = false;
     if (month === 2 && day === 29 && !isLeapYear(numericYear)) {
         if (occasion.leapDayRule === 'skip') return null;
@@ -122,13 +144,33 @@ export function occasionDateForYear(occasionValue, year) {
 
 export function expandOccasions(scope, { start = new Date(), days = 7 } = {}) {
     const length = Math.max(1, Math.min(366, Number.isInteger(days) ? days : 7));
-    const dates = new Set(calendarDateRangeKeys(start, 0, length - 1));
+    const dateKeys = calendarDateRangeKeys(start, 0, length - 1);
+    const dates = new Set(dateKeys);
     const years = new Set([...dates].map(date => Number(date.slice(0, 4))));
     const result = [];
     for (const occasion of normalizeOccasionScope(scope).occasions) {
-        for (const year of years) {
-            const occurrence = occasionDateForYear(occasion, year);
-            if (occurrence && dates.has(occurrence.date)) result.push({ ...occasion, ...occurrence });
+        const repeat = occasion.repeat || 'yearly';
+        if (repeat === 'yearly') {
+            for (const year of years) {
+                const occurrence = occasionDateForYear(occasion, year);
+                if (occurrence && dates.has(occurrence.date)) result.push({ ...occasion, ...occurrence });
+            }
+            continue;
+        }
+        const anchor = anchorDate(occasion.date, occasion.month, occasion.day);
+        for (const date of dateKeys) {
+            const parsed = parseCalendarDate(date);
+            const anchorKey = `${anchor.getFullYear().toString().padStart(4, '0')}-${pad(anchor.getMonth() + 1)}-${pad(anchor.getDate())}`;
+            if (!parsed || date < anchorKey) continue;
+            const sameWeekday = parsed.getDay() === anchor.getDay();
+            const sameMonthDay = parsed.getDate() === anchor.getDate();
+            const lastDayOfMonth = !calendarDateFromParts(parsed.getFullYear(), parsed.getMonth() + 1, anchor.getDate())
+                && parsed.getDate() === daysInCalendarMonth(parsed.getFullYear(), parsed.getMonth() + 1);
+            if (repeat === 'daily'
+                || (repeat === 'weekly' && sameWeekday)
+                || (repeat === 'monthly' && (sameMonthDay || lastDayOfMonth))) {
+                result.push({ ...occasion, date, leapAdjusted: false });
+            }
         }
     }
     return result.sort((left, right) => left.date.localeCompare(right.date)

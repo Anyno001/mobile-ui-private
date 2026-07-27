@@ -33,7 +33,7 @@ export function createCalendarCommitters({
 
     const commitScope = (storageId, mutate, task = null, { refreshInjection = true } = {}) => {
         const generation = commitGeneration;
-        return enqueueDirectoryOperation('calendar', async () => {
+        return enqueueDirectoryOperation('schedule', async () => {
             if (generation !== commitGeneration || (task && !tasks.active(task))) return false;
             const previousStore = clone(loadCalendar());
             const candidate = clone(previousStore);
@@ -142,16 +142,102 @@ export function createCalendarCommitters({
         });
     };
 
-    const commitOccasions = (storageId, mutate) => enqueueDirectoryOperation('occasions', async () => {
-        const candidate = clone(loadCalendarOccasions());
+    const commitOccasions = (storageId, mutate) => enqueueDirectoryOperation('schedule', async () => {
+        const previousStore = clone(loadCalendarOccasions());
+        const candidate = clone(previousStore);
         const current = normalizeOccasionScope(candidate.scopes[storageId]);
         const next = normalizeOccasionScope(await mutate(current));
         candidate.scopes[storageId] = next;
         const normalized = normalizeOccasionStore(candidate);
-        if (!saveCalendarOccasions(normalized)) throw new Error('生日与纪念日保存失败：浏览器存储不可用');
-        runtime.occasionStore = normalized;
-        await applyBidirectionalInjection?.();
-        return next;
+        try {
+            if (!saveCalendarOccasions(normalized)) throw new Error('生日与纪念日保存失败：浏览器存储不可用');
+            runtime.occasionStore = normalized;
+            const result = await applyBidirectionalInjection?.();
+            const injectionError = injectionFailure(result, '生日与纪念日提交');
+            if (!injectionError) return next;
+            throw injectionError;
+        } catch (error) {
+            if (!saveCalendarOccasions(previousStore)) {
+                const rollbackError = new Error('生日与纪念日回滚失败：浏览器存储不可用');
+                const combined = new Error(`${error.message}；${rollbackError.message}`);
+                combined.cause = error;
+                combined.rollbackError = rollbackError;
+                combined.occasionRolledBack = false;
+                combined.occasionRollbackError = true;
+                throw combined;
+            }
+            runtime.occasionStore = normalizeOccasionStore(previousStore);
+            try {
+                const rollbackResult = await applyBidirectionalInjection?.();
+                const rollbackError = injectionFailure(rollbackResult, '生日与纪念日补偿');
+                if (rollbackError) throw rollbackError;
+            } catch (rollbackError) {
+                const combined = new Error(`${error.message}；生日与纪念日回滚注入失败：${rollbackError.message}`);
+                combined.cause = error;
+                combined.rollbackError = rollbackError;
+                combined.occasionRolledBack = true;
+                combined.occasionRollbackError = true;
+                throw combined;
+            }
+            throw error;
+        }
+    });
+
+    const commitSchedule = (storageId, mutate) => enqueueDirectoryOperation('schedule', async () => {
+        const previousCalendarStore = clone(loadCalendar());
+        const previousOccasionStore = clone(loadCalendarOccasions());
+        const calendarCandidate = clone(previousCalendarStore);
+        const occasionCandidate = clone(previousOccasionStore);
+        const current = {
+            calendar: calendarScopeFor(calendarCandidate, storageId),
+            occasions: normalizeOccasionScope(occasionCandidate.scopes[storageId]),
+        };
+        const result = await mutate(current);
+        calendarCandidate.scopes[storageId] = normalizeCalendarScope(result.calendar);
+        occasionCandidate.scopes[storageId] = normalizeOccasionScope(result.occasions);
+        const calendar = normalizeCalendarStore(calendarCandidate);
+        const occasionStore = normalizeOccasionStore(occasionCandidate);
+        try {
+            if (!saveCalendar(calendar)) throw new Error('日历保存失败：浏览器存储不可用');
+            if (!saveCalendarOccasions(occasionStore)) throw new Error('生日与纪念日保存失败：浏览器存储不可用');
+            runtime.store = calendar;
+            runtime.occasionStore = occasionStore;
+            const injectionResult = await applyBidirectionalInjection?.();
+            const error = injectionFailure(injectionResult, '日程提交');
+            if (!error) return { calendar: calendarCandidate.scopes[storageId], occasions: occasionCandidate.scopes[storageId] };
+            throw error;
+        } catch (error) {
+            const calendarRolledBack = saveCalendar(previousCalendarStore);
+            const occasionsRolledBack = saveCalendarOccasions(previousOccasionStore);
+            if (!calendarRolledBack || !occasionsRolledBack) {
+                runtime.store = normalizeCalendarStore(loadCalendar());
+                runtime.occasionStore = normalizeOccasionStore(loadCalendarOccasions());
+                const rollbackError = new Error('日程转换回滚失败：浏览器存储不可用');
+                const combined = new Error(`${error.message}；${rollbackError.message}`);
+                combined.cause = error;
+                combined.calendarRolledBack = calendarRolledBack;
+                combined.occasionsRolledBack = occasionsRolledBack;
+                combined.rollbackError = rollbackError;
+                combined.scheduleRollbackError = true;
+                throw combined;
+            }
+            runtime.store = normalizeCalendarStore(previousCalendarStore);
+            runtime.occasionStore = normalizeOccasionStore(previousOccasionStore);
+            try {
+                const rollbackResult = await applyBidirectionalInjection?.();
+                const rollbackError = injectionFailure(rollbackResult, '日程转换补偿');
+                if (rollbackError) throw rollbackError;
+            } catch (rollbackError) {
+                const combined = new Error(`${error.message}；日程转换回滚注入失败：${rollbackError.message}`);
+                combined.cause = error;
+                combined.rollbackError = rollbackError;
+                combined.calendarRolledBack = true;
+                combined.occasionsRolledBack = true;
+                combined.scheduleRollbackError = true;
+                throw combined;
+            }
+            throw error;
+        }
     });
 
     const commitHolidays = nextStore => {
@@ -176,5 +262,5 @@ export function createCalendarCommitters({
         return getCycles(storageId, getCycleSubject(storageId));
     });
 
-    return { commitScope, commitRecipe, commitOccasions, commitHolidays, commitWeather, commitCycle, invalidateCommits };
+    return { commitScope, commitRecipe, commitOccasions, commitSchedule, commitHolidays, commitWeather, commitCycle, invalidateCommits };
 }

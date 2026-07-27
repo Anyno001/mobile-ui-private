@@ -15,6 +15,13 @@ import { recipeScopeFor, renderRecipeInjection } from './calendar-recipe-model.j
 import { weatherCodeLabel } from './calendar-weather.js';
 import { resolveWeatherForDate } from './calendar-weather-source.js';
 
+const calendarRepeatLabel = repeat => ({
+    daily: '每日重复日程',
+    weekly: '每周重复日程',
+    monthly: '每月重复日程',
+    yearly: null,
+})[repeat] || null;
+
 const COMMUNITY_KEY_PREFIX = `${BIDIRECTIONAL_KEY}:community:`;
 const CALENDAR_KEY_PREFIX = `${BIDIRECTIONAL_KEY}:calendar:`;
 const RECIPE_KEY_PREFIX = `${BIDIRECTIONAL_KEY}:recipe:`;
@@ -121,7 +128,7 @@ function renderedItemTokenDemand(item) {
 }
 
 const CYCLE_INJECTION_LABELS = Object.freeze({
-    period: '经期', ovulatory: '易孕期',
+    period: '经期', follicular: '相对安全期', ovulatory: '易孕期', luteal: '安全期',
 });
 
 export function renderCalendarContextInjection({
@@ -144,7 +151,6 @@ export function renderCalendarContextInjection({
     const windowStart = calendarReferenceDate(calendarScope, start);
     const occasionDates = calendarDateRangeKeys(windowStart, 0, 59);
     const linesByDate = new Map();
-    let hasEnabledCycleProfile = false;
     const addFact = (date, fact) => {
         if (!fact) return;
         if (!linesByDate.has(date)) linesByDate.set(date, new Set());
@@ -172,7 +178,7 @@ export function renderCalendarContextInjection({
     if (calendarScope.injectionScheduleEnabled) {
         const occasions = expandOccasions(occasionScopeFor(occasionStore, currentStorageId), { start: windowStart, days: 60 });
         for (const occasion of occasions) {
-            const kind = occasion.type === 'birthday' ? '生日' : '纪念日';
+            const kind = calendarRepeatLabel(occasion.repeat) || (occasion.type === 'birthday' ? '生日' : '纪念日');
             addFact(occasion.date, `${kind}：${occasion.title}${occasion.note ? `（${occasion.note.replace(/\s+/g, ' ').slice(0, 180)}）` : ''}`);
         }
     }
@@ -192,7 +198,6 @@ export function renderCalendarContextInjection({
     if (calendarScope.injectionCycleEnabled) for (const subject of cycleSubjectKeys(cycleStore, currentStorageId)) {
         const profile = cycleScopeFor(cycleStore, currentStorageId, subject);
         if (!profile.enabled) continue;
-        hasEnabledCycleProfile = true;
         const rawSubjectLabel = subject === CYCLE_SELF_SUBJECT ? '我'
             : subject.startsWith('role:') ? subject.slice(5) : subject || currentActorName || '当前角色';
         const subjectLabel = String(rawSubjectLabel).replace(/\s+/g, ' ').trim().slice(0, 120) || '当前角色';
@@ -202,7 +207,6 @@ export function renderCalendarContextInjection({
             addFact(prediction.date, `生理周期（${subjectLabel}）：${label}`);
         }
     }
-    const cycleRule = hasEnabledCycleProfile ? '生理周期规则：对所有已启用对象，未注明经期或易孕期的日期按安全期理解。' : '';
     const outputDates = [...new Set([...scheduleDates, ...weatherDates, ...cycleDates, ...occasionDates.filter(date => linesByDate.has(date))])].sort();
     const datedLines = outputDates.flatMap(date => {
         const facts = [...(linesByDate.get(date) || [])];
@@ -210,7 +214,7 @@ export function renderCalendarContextInjection({
         const relative = relativeCalendarLabel(windowStart, date);
         return `${relative ? `${relative} ` : ''}${date}｜${facts.join('；')}`;
     });
-    return fitCompleteLines([...(cycleRule ? [cycleRule] : []), ...datedLines], 6000);
+    return fitCompleteLines(datedLines, 6000);
 }
 
 export function buildContextInjectionPrompts({

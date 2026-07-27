@@ -630,6 +630,8 @@ assert.equal(emptyCalendarPlan.prompts.find(p => p.key.includes(':calendar:')), 
 const now = new Date();
 const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
 const threeDaysAgo = calendarDateRangeKeys(now, -3, -3)[0];
+const twoDaysAgo = calendarDateRangeKeys(now, -2, -2)[0];
+const yesterday = calendarDateRangeKeys(now, -1, -1)[0];
 const sixDaysLater = calendarDateRangeKeys(now, 6, 6)[0];
 const fiftyNineDaysLater = calendarDateRangeKeys(now, 59, 59)[0];
 const calendarStoreWithEvents = {
@@ -703,8 +705,36 @@ assert.match(fullCalendarBody, new RegExp(`${fiftyNineDaysLater}｜纪念日：�
 assert.match(fullCalendarBody, /节假日：生活节/);
 assert.match(fullCalendarBody, /生理周期（我）：经期/);
 assert.match(fullCalendarBody, /生理周期（角色乙）：经期/);
-assert.match(fullCalendarBody, /生理周期规则：对所有已启用对象，未注明经期或易孕期的日期按安全期理解。/);
-assert.equal((fullCalendarBody.match(/生理周期规则：/g) || []).length, 1, '所有启用周期对象必须共用一条完整安全期规则');
+assert.doesNotMatch(fullCalendarBody, /生理周期规则：/, '逐日周期标签不得保留默认安全期推断规则');
+const relativeSafeWindow = renderCalendarContextInjection({
+    currentStorageId: 'cycle-window',
+    calendarStore: { version: 1, scopes: { 'cycle-window': { injectionCycleEnabled: true, events: {} } } },
+    cycleStore: { version: 1, scopes: { 'cycle-window': {
+        enabled: true, lastPeriodStart: calendarDateRangeKeys(now, -6, -6)[0], cycleLength: 28, periodLength: 5, overrides: {},
+    } } },
+    start: now,
+});
+for (const date of [yesterday, today, calendarDateRangeKeys(now, 1, 1)[0]]) {
+    assert.match(relativeSafeWindow, new RegExp(`${date}｜[^\n]*生理周期（我）：相对安全期`));
+}
+for (const date of [calendarDateRangeKeys(now, 2, 2)[0], calendarDateRangeKeys(now, 3, 3)[0]]) {
+    assert.match(relativeSafeWindow, new RegExp(`${date}｜[^\n]*生理周期（我）：易孕期`));
+}
+const safeWindow = renderCalendarContextInjection({
+    currentStorageId: 'safe-window',
+    calendarStore: { version: 1, scopes: { 'safe-window': { injectionCycleEnabled: true, events: {} } } },
+    cycleStore: { version: 1, scopes: { 'safe-window': {
+        enabled: true, lastPeriodStart: calendarDateRangeKeys(now, -17, -17)[0], cycleLength: 28, periodLength: 5, overrides: {},
+    } } },
+    start: now,
+});
+for (const date of [yesterday, today, calendarDateRangeKeys(now, 1, 1)[0], calendarDateRangeKeys(now, 2, 2)[0], calendarDateRangeKeys(now, 3, 3)[0]]) {
+    assert.match(safeWindow, new RegExp(`${date}｜[^\n]*生理周期（我）：安全期`));
+}
+for (const body of [relativeSafeWindow, safeWindow]) {
+    assert.doesNotMatch(body, new RegExp(`${twoDaysAgo}｜[^\n]*生理周期（`), '周期事实不得超出动态五日窗口的昨天边界');
+    assert.doesNotMatch(body, new RegExp(`${calendarDateRangeKeys(now, 4, 4)[0]}｜[^\n]*生理周期（`), '周期事实不得超出动态五日窗口的大后天边界');
+}
 assert.match(fullCalendarBody, /今天 [^｜]+｜天气（真实预报）：少云，20°\/30°C/);
 assert.match(fullCalendarBody, /天气（气候推演）：/);
 assert.equal((fullCalendarBody.match(new RegExp(`${today}｜`, 'g')) || []).length, 1, '同一天必须只输出一个日期标题');
@@ -714,7 +744,7 @@ const otherStorageBody = renderCalendarContextInjection({
     start: now,
 });
 assert.doesNotMatch(otherStorageBody, /角色生日|私密生日|项目评审会/, '生活日历不得串用其他 storageId 的私有数据');
-assert.doesNotMatch(otherStorageBody, /生理周期规则|安全期理解/, '没有启用周期资料的会话不得生成安全期默认规则');
+assert.doesNotMatch(otherStorageBody, /生理周期（/, '没有启用周期资料的会话不得生成周期事实');
 
 const maximumCycleSubjects = Object.fromEntries(Array.from({ length: 40 }, (_, index) => {
     const suffix = String(index).padStart(2, '0');
@@ -730,9 +760,8 @@ const maximumCycleBody = renderCalendarContextInjection({
     } } },
     start: now,
 });
-const maximumCycleRule = maximumCycleBody.split('\n')[0];
-assert.equal(maximumCycleRule, '生理周期规则：对所有已启用对象，未注明经期或易孕期的日期按安全期理解。',
-    '周期规则不得在字符上限处被截成半行');
+assert.match(maximumCycleBody.split('\n')[0], new RegExp(`${today}｜.*生理周期（我）：经期`),
+    '动态五日的首个周期事实不得在字符上限处被截断');
 for (const subject of Object.keys(maximumCycleSubjects)) {
     assert.match(maximumCycleBody, new RegExp(`生理周期（${subject.slice(5)}）：经期`),
         `合法上限周期对象不得丢失日期事实：${subject}`);
@@ -771,7 +800,7 @@ const storyCalendarPlan = buildContextInjectionPrompts({
 });
 const storyCalendarPrompt = storyCalendarPlan.prompts.find(prompt => prompt.key.includes(':calendar:'));
 assert.ok(storyCalendarPrompt, '配置时间起点时应生成日历 prompt');
-assert.match(storyCalendarPrompt.content, /生理周期规则：对所有已启用对象，未注明经期或易孕期的日期按安全期理解。/);
+assert.doesNotMatch(storyCalendarPrompt.content, /生理周期规则：/, '故事日期窗口不得保留默认安全期推断规则');
 assert.match(storyCalendarPrompt.content, /今天 2032-03-15｜天气（真实预报）：少云，10°\/20°C；日程：架空纪元会议；纪念日：架空纪念日；节假日：架空节；生理周期（我）：经期/);
 assert.match(storyCalendarPrompt.content, /天气（气候推演）：/, '故事日期窗口中预报外日期必须使用气候推演');
 assert.equal((storyCalendarPrompt.content.match(/2032-03-15｜/g) || []).length, 1, '同日事实必须合并为单个日期标题');
