@@ -25,6 +25,10 @@ export const calendarGenerationErrorMessage = generationErrorMessage;
 export { renderCalendarPageHtml };
 export function installCalendar(state, deps) {
     const { getStorageId, gatherContext, callAI, fetchImpl, makeOverlay, closeOverlay } = deps;
+    window.__pmReturnToCalendarDataSource = () => {
+        closeOverlay?.('replace');
+        return deps.showPhoneCalendarPage?.();
+    };
     const runtime = {
         store: normalizeCalendarStore(loadCalendarWithLegacyInjectionMigration()),
         occasionStore: normalizeOccasionStore(loadCalendarOccasions()),
@@ -573,7 +577,12 @@ export function installCalendar(state, deps) {
             return;
         }
         if (action === 'calendar-worldbook-columns') {
-            await window.__pmShowWorldBookColumns?.({ title: '日历可读的数据库记忆', module: 'calendar' });
+            await window.__pmShowWorldBookColumns?.({
+                title: '数据来源',
+                module: 'calendar',
+                backAction: 'window.__pmReturnToCalendarDataSource()',
+                backLabel: '返回日历',
+            });
             return;
         }
         if (action === 'calendar-generate') { await generate(storageId, 'generate'); return; }

@@ -156,7 +156,7 @@ export function weatherSearchResults(results) {
 }
 
 function injectionToggle(action, label, enabled) {
-    return `<button type="button" class="pm-calendar-auto-switch" data-action="${action}" role="switch" aria-checked="${enabled === true}"><span><b>${label}</b><small>开启后供正文生成读取；设置按当前会话独立保存。</small></span><i aria-hidden="true"></i></button>`;
+    return `<button type="button" class="pm-calendar-auto-switch" data-action="${action}" role="switch" aria-checked="${enabled === true}"><span><b>${label}</b><small class="pm-calendar-setting-hint">开启后供正文生成读取；设置按当前会话独立保存。</small></span><i aria-hidden="true"></i></button>`;
 }
 
 
@@ -189,7 +189,7 @@ export function renderCalendarManagement({
     const generationRule = scope.generationRule || DEFAULT_CALENDAR_GENERATION_RULE;
     return `<details class="pm-calendar-management" data-calendar-management="schedule"><summary>日历设置</summary><div class="pm-calendar-management-content">
         <section class="pm-calendar-data-tools">${injectionToggle('calendar-toggle-schedule-injection', '日程', scope.injectionScheduleEnabled)}</section>
-        <section class="pm-calendar-data-tools"><h3>数据库记忆</h3><div class="pm-calendar-data-row"><span>选择日历生成可读取的 TavernDB 栏目</span><button type="button" data-action="calendar-worldbook-columns">设置</button></div></section>
+        <section class="pm-calendar-data-tools pm-calendar-database-card"><h3>数据库记忆</h3><div class="pm-calendar-data-row"><span class="pm-calendar-setting-hint">选择日历生成可读取的 TavernDB 栏目</span><button type="button" data-action="calendar-worldbook-columns">设置</button></div></section>
         <section class="pm-calendar-data-tools pm-calendar-scan-card"><h3>正文日期</h3><p>识别最后一条正文中的完整日期，并设为当前故事日期。</p><div class="pm-calendar-data-row pm-calendar-date-tags-row"><input data-calendar-date-tags value="${escapeAttr((scope.dateTags || ['date']).join(', '))}" maxlength="160" placeholder="date, time_date" aria-label="正文日期标签"><button type="button" data-action="calendar-date-sync">保存并识别</button></div><button type="button" class="pm-calendar-auto-switch" data-action="calendar-toggle-auto" role="switch" aria-checked="${scope.autoAdjust}"><span><b>自动跟随正文日期</b><small>角色回复后，日历日期会随正文更新。</small></span><i aria-hidden="true"></i></button></section>
         <section class="pm-calendar-data-tools"><h3>节假日数据</h3><div class="pm-calendar-data-row pm-calendar-holiday-row"><select data-action="calendar-holiday-country" data-calendar-country aria-label="节假日国家"><option value="CN" ${holidayCache.selectedCountry === 'CN' ? 'selected' : ''}>中国</option><option value="US" ${holidayCache.selectedCountry === 'US' ? 'selected' : ''}>美国</option><option value="JP" ${holidayCache.selectedCountry === 'JP' ? 'selected' : ''}>日本</option></select><button type="button" data-action="calendar-holiday-refresh" ${holidayAvailable ? '' : 'disabled aria-disabled="true"'}>刷新节假日</button></div>${holidayAvailable ? '' : `<small class="pm-calendar-attribution">该国家在当前年代无外部数据源（仅支持 ${holidayRange?.min ?? '未知'}–${holidayRange?.max ?? '未知'} 年）</small>`}</section>
         <section class="pm-calendar-data-tools"><h3>生成规则</h3><textarea class="pm-calendar-generation-rule" data-calendar-generation-rule maxlength="3000" aria-label="日程生成规则">${escapeHtml(generationRule)}</textarea><div class="pm-calendar-editor-actions"><button type="button" class="is-primary" data-action="calendar-generation-rule-save">保存生成规则</button></div></section>
@@ -200,8 +200,8 @@ export function renderCalendarMonthPanel(scope, viewYear, viewMonth, open = fals
     const baseDate = scope.baseDate || '';
     return `<section class="pm-calendar-month-panel" data-calendar-month-panel ${open ? '' : 'hidden'}>
       <section class="pm-calendar-panel-section"><span>跳转月份</span><div class="pm-calendar-month-jump"><label>年份<input type="number" min="1" max="9999" value="${viewYear}" data-calendar-jump-year aria-label="跳转年份"></label><label>月份<input type="number" min="1" max="12" value="${viewMonth}" data-calendar-jump-month aria-label="跳转月份"></label><button type="button" data-action="calendar-month-jump">跳转</button></div></section>
-      <section class="pm-calendar-panel-section"><label>当前故事日期<input type="text" inputmode="numeric" data-calendar-base-date value="${escapeAttr(baseDate)}" placeholder="例如 3726-08-17" aria-label="当前故事日期"></label><p>可直接输入日期，或跳转月份后点击下方日期。</p></section>
-      <div class="pm-calendar-month-panel-actions"><button type="button" class="is-primary" data-action="calendar-base-save">应用日期</button><button type="button" data-action="calendar-base-clear" ${baseDate ? '' : 'disabled'}>使用设备日期</button><button type="button" data-action="calendar-today">定位当前日期</button></div>
+      <section class="pm-calendar-panel-section"><label>当前故事日期<input class="pm-calendar-base-date-input" type="text" inputmode="numeric" data-calendar-base-date value="${escapeAttr(baseDate)}" placeholder="例如 3726-08-17" aria-label="当前故事日期"></label><p>可直接输入日期，或跳转月份后点击下方日期。</p></section>
+      <div class="pm-calendar-month-panel-actions"><button type="button" class="is-primary" data-action="calendar-base-save">应用日期</button><button type="button" data-action="calendar-base-clear" ${baseDate ? '' : 'disabled'} aria-label="使用设备日期" title="使用设备日期">设备日期</button><button type="button" data-action="calendar-today" aria-label="定位当前日期" title="定位当前日期">回到今天</button></div>
     </section>`;
 }
 

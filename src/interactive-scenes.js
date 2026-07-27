@@ -313,6 +313,18 @@ export function installInteractiveScenes(_state, deps) {
         }));
     }
 
+    window.__pmReturnToCommunityDataSource = async () => {
+        const scopeId = getStorageId();
+        const sceneId = runtime.openSceneId;
+        const tab = phoneScope(scopeId).lastTab;
+        document.getElementById('pm-overlay')?.remove();
+        if (sceneId && renderCommunityWorkspace(scopeId, sceneId, tab)) {
+            showPhonePage('community');
+            return true;
+        }
+        return window.__pmOpenForumMode?.() || false;
+    };
+
     async function contextText(signal) {
         const ctx = await gatherContext(null, { module: 'community', signal });
         const context = [ctx.cardDesc, ctx.cardPersonality, ctx.cardScenario, ctx.mainChatText]
@@ -519,7 +531,13 @@ export function installInteractiveScenes(_state, deps) {
         if (action === 'more') { toggleSceneMenu(button); return; } if (action === 'post-actions') { toggleScenePostActions(button); return; }
         if (action === 'toggle-danmaku-actions') { toggleDanmakuActions(button, app); return; }
         if (action === 'toggle-reply') { toggleSceneReplyComposer(button, app); return; }
-        if (action === 'community-worldbook-columns') { await window.__pmShowWorldBookColumns?.({ title: '社区可读的数据库记忆', module: 'community' }); return; }
+        if (action === 'community-worldbook-columns') {
+            await window.__pmShowWorldBookColumns?.({
+                title: '数据来源', module: 'community',
+                backAction: 'window.__pmReturnToCommunityDataSource()', backLabel: '返回社区',
+            });
+            return;
+        }
         if (action === 'desktop-chat') { deps.showPhoneChatPage?.(getStorageId()); return; }
         if (action === 'desktop-directory') { window.__pmShowList?.(); return; }
         if (action === 'desktop-settings') { window.__pmOpenSettingsTab?.('home'); return; }

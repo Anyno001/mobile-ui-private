@@ -3106,7 +3106,7 @@ ${userPrompt}` : userPrompt;
     ).join("")}</div>`;
   }
   function injectionToggle(action, label, enabled) {
-    return `<button type="button" class="pm-calendar-auto-switch" data-action="${action}" role="switch" aria-checked="${enabled === true}"><span><b>${label}</b><small>\u5F00\u542F\u540E\u4F9B\u6B63\u6587\u751F\u6210\u8BFB\u53D6\uFF1B\u8BBE\u7F6E\u6309\u5F53\u524D\u4F1A\u8BDD\u72EC\u7ACB\u4FDD\u5B58\u3002</small></span><i aria-hidden="true"></i></button>`;
+    return `<button type="button" class="pm-calendar-auto-switch" data-action="${action}" role="switch" aria-checked="${enabled === true}"><span><b>${label}</b><small class="pm-calendar-setting-hint">\u5F00\u542F\u540E\u4F9B\u6B63\u6587\u751F\u6210\u8BFB\u53D6\uFF1B\u8BBE\u7F6E\u6309\u5F53\u524D\u4F1A\u8BDD\u72EC\u7ACB\u4FDD\u5B58\u3002</small></span><i aria-hidden="true"></i></button>`;
   }
   function renderCalendarManagement({
     scope,
@@ -3146,7 +3146,7 @@ ${userPrompt}` : userPrompt;
     const generationRule = scope.generationRule || DEFAULT_CALENDAR_GENERATION_RULE;
     return `<details class="pm-calendar-management" data-calendar-management="schedule"><summary>\u65E5\u5386\u8BBE\u7F6E</summary><div class="pm-calendar-management-content">
         <section class="pm-calendar-data-tools">${injectionToggle("calendar-toggle-schedule-injection", "\u65E5\u7A0B", scope.injectionScheduleEnabled)}</section>
-        <section class="pm-calendar-data-tools"><h3>\u6570\u636E\u5E93\u8BB0\u5FC6</h3><div class="pm-calendar-data-row"><span>\u9009\u62E9\u65E5\u5386\u751F\u6210\u53EF\u8BFB\u53D6\u7684 TavernDB \u680F\u76EE</span><button type="button" data-action="calendar-worldbook-columns">\u8BBE\u7F6E</button></div></section>
+        <section class="pm-calendar-data-tools pm-calendar-database-card"><h3>\u6570\u636E\u5E93\u8BB0\u5FC6</h3><div class="pm-calendar-data-row"><span class="pm-calendar-setting-hint">\u9009\u62E9\u65E5\u5386\u751F\u6210\u53EF\u8BFB\u53D6\u7684 TavernDB \u680F\u76EE</span><button type="button" data-action="calendar-worldbook-columns">\u8BBE\u7F6E</button></div></section>
         <section class="pm-calendar-data-tools pm-calendar-scan-card"><h3>\u6B63\u6587\u65E5\u671F</h3><p>\u8BC6\u522B\u6700\u540E\u4E00\u6761\u6B63\u6587\u4E2D\u7684\u5B8C\u6574\u65E5\u671F\uFF0C\u5E76\u8BBE\u4E3A\u5F53\u524D\u6545\u4E8B\u65E5\u671F\u3002</p><div class="pm-calendar-data-row pm-calendar-date-tags-row"><input data-calendar-date-tags value="${escapeAttr((scope.dateTags || ["date"]).join(", "))}" maxlength="160" placeholder="date, time_date" aria-label="\u6B63\u6587\u65E5\u671F\u6807\u7B7E"><button type="button" data-action="calendar-date-sync">\u4FDD\u5B58\u5E76\u8BC6\u522B</button></div><button type="button" class="pm-calendar-auto-switch" data-action="calendar-toggle-auto" role="switch" aria-checked="${scope.autoAdjust}"><span><b>\u81EA\u52A8\u8DDF\u968F\u6B63\u6587\u65E5\u671F</b><small>\u89D2\u8272\u56DE\u590D\u540E\uFF0C\u65E5\u5386\u65E5\u671F\u4F1A\u968F\u6B63\u6587\u66F4\u65B0\u3002</small></span><i aria-hidden="true"></i></button></section>
         <section class="pm-calendar-data-tools"><h3>\u8282\u5047\u65E5\u6570\u636E</h3><div class="pm-calendar-data-row pm-calendar-holiday-row"><select data-action="calendar-holiday-country" data-calendar-country aria-label="\u8282\u5047\u65E5\u56FD\u5BB6"><option value="CN" ${holidayCache.selectedCountry === "CN" ? "selected" : ""}>\u4E2D\u56FD</option><option value="US" ${holidayCache.selectedCountry === "US" ? "selected" : ""}>\u7F8E\u56FD</option><option value="JP" ${holidayCache.selectedCountry === "JP" ? "selected" : ""}>\u65E5\u672C</option></select><button type="button" data-action="calendar-holiday-refresh" ${holidayAvailable ? "" : 'disabled aria-disabled="true"'}>\u5237\u65B0\u8282\u5047\u65E5</button></div>${holidayAvailable ? "" : `<small class="pm-calendar-attribution">\u8BE5\u56FD\u5BB6\u5728\u5F53\u524D\u5E74\u4EE3\u65E0\u5916\u90E8\u6570\u636E\u6E90\uFF08\u4EC5\u652F\u6301 ${holidayRange?.min ?? "\u672A\u77E5"}\u2013${holidayRange?.max ?? "\u672A\u77E5"} \u5E74\uFF09</small>`}</section>
         <section class="pm-calendar-data-tools"><h3>\u751F\u6210\u89C4\u5219</h3><textarea class="pm-calendar-generation-rule" data-calendar-generation-rule maxlength="3000" aria-label="\u65E5\u7A0B\u751F\u6210\u89C4\u5219">${escapeHtml(generationRule)}</textarea><div class="pm-calendar-editor-actions"><button type="button" class="is-primary" data-action="calendar-generation-rule-save">\u4FDD\u5B58\u751F\u6210\u89C4\u5219</button></div></section>
@@ -3156,8 +3156,8 @@ ${userPrompt}` : userPrompt;
     const baseDate = scope.baseDate || "";
     return `<section class="pm-calendar-month-panel" data-calendar-month-panel ${open ? "" : "hidden"}>
       <section class="pm-calendar-panel-section"><span>\u8DF3\u8F6C\u6708\u4EFD</span><div class="pm-calendar-month-jump"><label>\u5E74\u4EFD<input type="number" min="1" max="9999" value="${viewYear}" data-calendar-jump-year aria-label="\u8DF3\u8F6C\u5E74\u4EFD"></label><label>\u6708\u4EFD<input type="number" min="1" max="12" value="${viewMonth}" data-calendar-jump-month aria-label="\u8DF3\u8F6C\u6708\u4EFD"></label><button type="button" data-action="calendar-month-jump">\u8DF3\u8F6C</button></div></section>
-      <section class="pm-calendar-panel-section"><label>\u5F53\u524D\u6545\u4E8B\u65E5\u671F<input type="text" inputmode="numeric" data-calendar-base-date value="${escapeAttr(baseDate)}" placeholder="\u4F8B\u5982 3726-08-17" aria-label="\u5F53\u524D\u6545\u4E8B\u65E5\u671F"></label><p>\u53EF\u76F4\u63A5\u8F93\u5165\u65E5\u671F\uFF0C\u6216\u8DF3\u8F6C\u6708\u4EFD\u540E\u70B9\u51FB\u4E0B\u65B9\u65E5\u671F\u3002</p></section>
-      <div class="pm-calendar-month-panel-actions"><button type="button" class="is-primary" data-action="calendar-base-save">\u5E94\u7528\u65E5\u671F</button><button type="button" data-action="calendar-base-clear" ${baseDate ? "" : "disabled"}>\u4F7F\u7528\u8BBE\u5907\u65E5\u671F</button><button type="button" data-action="calendar-today">\u5B9A\u4F4D\u5F53\u524D\u65E5\u671F</button></div>
+      <section class="pm-calendar-panel-section"><label>\u5F53\u524D\u6545\u4E8B\u65E5\u671F<input class="pm-calendar-base-date-input" type="text" inputmode="numeric" data-calendar-base-date value="${escapeAttr(baseDate)}" placeholder="\u4F8B\u5982 3726-08-17" aria-label="\u5F53\u524D\u6545\u4E8B\u65E5\u671F"></label><p>\u53EF\u76F4\u63A5\u8F93\u5165\u65E5\u671F\uFF0C\u6216\u8DF3\u8F6C\u6708\u4EFD\u540E\u70B9\u51FB\u4E0B\u65B9\u65E5\u671F\u3002</p></section>
+      <div class="pm-calendar-month-panel-actions"><button type="button" class="is-primary" data-action="calendar-base-save">\u5E94\u7528\u65E5\u671F</button><button type="button" data-action="calendar-base-clear" ${baseDate ? "" : "disabled"} aria-label="\u4F7F\u7528\u8BBE\u5907\u65E5\u671F" title="\u4F7F\u7528\u8BBE\u5907\u65E5\u671F">\u8BBE\u5907\u65E5\u671F</button><button type="button" data-action="calendar-today" aria-label="\u5B9A\u4F4D\u5F53\u524D\u65E5\u671F" title="\u5B9A\u4F4D\u5F53\u524D\u65E5\u671F">\u56DE\u5230\u4ECA\u5929</button></div>
     </section>`;
   }
   function renderCalendarEntryDialog(selectedDate, entry2 = null, kind = "event") {
@@ -3571,6 +3571,10 @@ ${userPrompt}` : userPrompt;
   var calendarGenerationErrorMessage = generationErrorMessage;
   function installCalendar(state, deps) {
     const { getStorageId: getStorageId2, gatherContext: gatherContext2, callAI, fetchImpl, makeOverlay, closeOverlay } = deps;
+    window.__pmReturnToCalendarDataSource = () => {
+      closeOverlay?.("replace");
+      return deps.showPhoneCalendarPage?.();
+    };
     const runtime = {
       store: normalizeCalendarStore(loadCalendarWithLegacyInjectionMigration()),
       occasionStore: normalizeOccasionStore(loadCalendarOccasions()),
@@ -4168,7 +4172,12 @@ ${userPrompt}` : userPrompt;
         return;
       }
       if (action === "calendar-worldbook-columns") {
-        await window.__pmShowWorldBookColumns?.({ title: "\u65E5\u5386\u53EF\u8BFB\u7684\u6570\u636E\u5E93\u8BB0\u5FC6", module: "calendar" });
+        await window.__pmShowWorldBookColumns?.({
+          title: "\u6570\u636E\u6765\u6E90",
+          module: "calendar",
+          backAction: "window.__pmReturnToCalendarDataSource()",
+          backLabel: "\u8FD4\u56DE\u65E5\u5386"
+        });
         return;
       }
       if (action === "calendar-generate") {
@@ -9508,7 +9517,7 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
     </article>`).join("") || '<div class="pm-scene-empty"><span>\u5F53\u524D\u793E\u533A\u8FD8\u6CA1\u6709\u5E16\u5B50\u3002</span></div>';
     return `<div class="pm-scene-injection-settings">
         <div class="pm-scene-injection-heading"><h2>\u6B63\u6587\u6CE8\u5165</h2></div>
-        <div class="pm-scene-injection-toolbar"><button type="button" data-action="community-worldbook-columns">\u6570\u636E\u5E93\u8BB0\u5FC6</button></div>
+        <div class="pm-scene-injection-toolbar pm-scene-injection-toolbar-single"><button type="button" data-action="community-worldbook-columns">\u6570\u636E\u5E93\u8BB0\u5FC6</button></div>
         <div class="pm-scene-injection-toolbar"><button type="button" data-action="context-select-all">\u5168\u9009</button><button type="button" data-action="context-clear">\u6E05\u7A7A</button></div>
         <div class="pm-scene-injection-posts">${posts}</div>
         <div class="pm-scene-injection-actions"><button type="button" class="pm-scene-secondary" data-action="context-cancel">\u53D6\u6D88</button><button type="button" class="pm-scene-primary" data-action="context-save">\u4FDD\u5B58\u6CE8\u5165\u8BBE\u7F6E</button></div>
@@ -9861,6 +9870,17 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
         ...getCommunityInjectionState(window.__pmBudgetConfig, scopeId, sceneId)
       }));
     }
+    window.__pmReturnToCommunityDataSource = async () => {
+      const scopeId = getStorageId2();
+      const sceneId = runtime.openSceneId;
+      const tab = phoneScope(scopeId).lastTab;
+      document.getElementById("pm-overlay")?.remove();
+      if (sceneId && renderCommunityWorkspace2(scopeId, sceneId, tab)) {
+        showPhonePage("community");
+        return true;
+      }
+      return window.__pmOpenForumMode?.() || false;
+    };
     async function contextText(signal) {
       const ctx = await gatherContext2(null, { module: "community", signal });
       const context = [ctx.cardDesc, ctx.cardPersonality, ctx.cardScenario, ctx.mainChatText].filter(Boolean).join("\n").slice(0, 9e3);
@@ -10083,7 +10103,12 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
         return;
       }
       if (action === "community-worldbook-columns") {
-        await window.__pmShowWorldBookColumns?.({ title: "\u793E\u533A\u53EF\u8BFB\u7684\u6570\u636E\u5E93\u8BB0\u5FC6", module: "community" });
+        await window.__pmShowWorldBookColumns?.({
+          title: "\u6570\u636E\u6765\u6E90",
+          module: "community",
+          backAction: "window.__pmReturnToCommunityDataSource()",
+          backLabel: "\u8FD4\u56DE\u793E\u533A"
+        });
         return;
       }
       if (action === "desktop-chat") {
@@ -16928,7 +16953,7 @@ ${lines}`;
       const entries = book.entries.filter((entry2) => !entry2.column);
       if (!entries.length) return "";
       const enabled = config.books[book.name] !== false;
-      return `<div data-world-book-section style="padding:10px 14px;border-top:1px solid var(--pm-color-border-subtle)"><div class="pm-li" style="min-height:34px"><span><b title="${escapeAttr(book.name)}">${escapeHtml(shortTitle(book.name))}</b></span>${bookToggle(enabled, book.name)}</div><div data-world-book-entries${enabled ? "" : " hidden"}>${entries.map((entry2) => `<div class="pm-li"><span><b>${escapeHtml(entry2.title)}</b><small class="pm-group-sub">${entry2.disabled ? "\u5DF2\u7981\u7528" : ""}</small></span>${eyeToggle(!entry2.disabled && config.entries[entry2.key] !== false, `data-world-entry="${escapeAttr(entry2.key)}"`, `${book.name} \u6761\u76EE\u8BFB\u53D6\u5F00\u5173`, entry2.disabled)}</div>`).join("")}</div></div>`;
+      return `<div data-world-book-section style="padding:10px 14px;border-top:1px solid var(--pm-color-border-subtle)"><div class="pm-li" style="min-height:34px"><span><b title="${escapeAttr(book.name)}">${escapeHtml(shortTitle(book.name))}</b></span>${bookToggle(enabled, book.name)}</div><div data-world-book-entries${enabled ? "" : " hidden"}>${entries.map((entry2) => `<div class="pm-li"><span><b title="${escapeAttr(entry2.title)}">${escapeHtml(shortTitle(entry2.title))}</b><small class="pm-group-sub">${entry2.disabled ? "\u5DF2\u7981\u7528" : ""}</small></span>${eyeToggle(!entry2.disabled && config.entries[entry2.key] !== false, `data-world-entry="${escapeAttr(entry2.key)}"`, `${book.name} \u6761\u76EE\u8BFB\u53D6\u5F00\u5173`, entry2.disabled)}</div>`).join("")}</div></div>`;
     }).join("") || '<div class="pm-prof-empty">\u672A\u53D1\u73B0\u4E0D\u5C5E\u4E8E TavernDB \u680F\u76EE\u7684\u539F\u751F\u4E16\u754C\u4E66\u6761\u76EE\u3002</div>';
     return `<div class="pm-settings-page"><div class="pm-worldbook-range"><label class="pm-cfg-label">\u8BFB\u53D6\u6B63\u6587\u697C\u5C42\u6570<input id="pm-world-main-messages" class="pm-cfg-input" type="number" min="1" max="100" value="${config.mainChatMessages}"></label><label class="pm-cfg-label">\u4E16\u754C\u4E66\u626B\u63CF\u6DF1\u5EA6<input id="pm-world-scan-messages" class="pm-cfg-input" type="number" min="1" max="100" value="${config.scanMessages}"></label><label class="pm-cfg-label">\u53D1\u9001\u4E16\u754C\u4E66\u5B57\u7B26\u6570\u4E0A\u9650<input id="pm-world-max-chars" class="pm-cfg-input" type="number" min="1000" max="80000" value="${config.maxChars}"></label></div><div style="padding:10px 14px;border-top:1px solid var(--pm-color-border-subtle)"><div class="pm-cfg-label" style="margin-bottom:6px;display:flex;align-items:center;gap:4px">${DATABASE_ICON_SVG}<span>\u6570\u636E\u5E93\u6761\u76EE\u4E00\u89C8</span></div>${columnRows}</div><div style="padding-bottom:12px"><div class="pm-cfg-label" style="padding:10px 14px 4px;display:flex;align-items:center;gap:6px">${BOOK_ICON_SVG}<span>\u539F\u751F\u4E16\u754C\u4E66\u6761\u76EE</span></div>${entryRows}</div></div>`;
   }
@@ -16943,7 +16968,7 @@ ${lines}`;
       return `<div class="pm-li"><span><b>${escapeHtml(column)}</b></span>${eyeToggle(checked, `data-world-quick-column="${escapeAttr(column)}"`, `${title}\uFF1A${column}\u8BFB\u53D6\u5F00\u5173`)}</div>`;
     }).join("") : '<div class="pm-prof-empty">\u672A\u53D1\u73B0\u7B26\u5408 TavernDB-ACU \u534F\u8BAE\u7684\u680F\u76EE\u3002</div>';
     const reset = scope ? '<button class="pm-action-button is-secondary" onclick="window.__pmResetWorldBookColumnOverride()" style="flex:1">\u6062\u590D\u8DDF\u968F\u5168\u5C40</button>' : "";
-    return renderSettingsModal({ title, content: `<div class="pm-settings-page"><div class="pm-cfg-tip" style="text-align:left;padding:12px 14px">${scope ? "\u5F53\u524D\u9009\u62E9\u4EC5\u4F5C\u7528\u4E8E\u6B64\u5904\uFF1B\u6062\u590D\u540E\u7EE7\u7EED\u8DDF\u968F\u5168\u5C40\u8BFB\u53D6\u8BBE\u7F6E\u3002" : `\u76F4\u63A5\u4FEE\u6539\u5168\u5C40\u201C${MODULE_LABELS[module]}\u201D\u8BFB\u53D6\u5217\u3002`}</div><div style="padding-bottom:12px">${rows}</div></div>`, footer: `<div class="pm-modal-add">${reset}<button class="pm-action-button" onclick="window.__pmSaveWorldBookColumns()" style="flex:2">\u5B8C\u6210</button></div>`, backAction, backLabel });
+    return renderSettingsModal({ title, content: `<div class="pm-settings-page"><div class="pm-cfg-tip" style="text-align:left;padding:12px 14px">\u63A7\u5236\u5F53\u524D\u6A21\u5757\u53EF\u8BFB\u53D6\u7684\u6570\u636E\u5E93\u6761\u76EE\u3002</div><div style="padding-bottom:12px">${rows}</div></div>`, footer: `<div class="pm-modal-add">${reset}<button class="pm-action-button" onclick="window.__pmSaveWorldBookColumns()" style="flex:2">\u5B8C\u6210</button></div>`, backAction, backLabel });
   }
   function installWorldBookSettings({ makeOverlay, addNote, getCtx }) {
     let requestEpoch = 0;
