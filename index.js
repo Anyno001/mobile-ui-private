@@ -2940,13 +2940,14 @@ ${userPrompt}` : userPrompt;
       icon: weatherStatusIcon(resolved.day.weatherCode),
       relativeLabel,
       context: `<span class="pm-calendar-status-weather-context">${escapeHtml(condition)} \xB7 ${escapeHtml(location)}</span><span class="pm-calendar-status-location" aria-hidden="true">${LOCATION_ICON_SVG}</span>`,
-      value: `${resolved.day.tempMin}\xB0\u2013${resolved.day.tempMax}\xB0`
+      value: `${resolved.day.tempMin}\xB0 \u2013 ${resolved.day.tempMax}\xB0`
     }), isCard: true };
   }
   function cycleStatusCard(cycleScope, date, parsed, relativeLabel) {
     const prediction = predictCyclePhase(cycleScope, date);
     const detail = CYCLE_DETAILS[prediction.phase];
     if (!detail) return { content: "", isCard: false };
+    const context = prediction.phase === "period" ? "\u662F\u7279\u6B8A\u7684\u65E5\u5B50 &gt; &lt; \uFF01\u8981\u6CE8\u610F\u4FDD\u91CD\u8EAB\u4F53\u5440" : "\u54CE\u5440\u5440\uFF0C\u662F\u505A\u5B89\u5168\u9632\u62A4\u8FD8\u662F\u2026\u2026";
     return { content: statusCard({
       kind: "cycle",
       phase: prediction.phase,
@@ -2954,7 +2955,7 @@ ${userPrompt}` : userPrompt;
       date,
       icon: detail.icon,
       relativeLabel,
-      context: '<span class="pm-calendar-status-cycle-context">\u751F\u7406\u5468\u671F</span>',
+      context: `<span class="pm-calendar-status-cycle-context">${context}</span>`,
       value: detail.label
     }), isCard: true };
   }
@@ -2981,7 +2982,7 @@ ${userPrompt}` : userPrompt;
     const statusDetail = viewMode === "weather" ? weatherStatusCard(weatherStore, selectedDate, parsed, relativeLabel) : viewMode === "cycle" ? cycleStatusCard(cycleScope, selectedDate, parsed, relativeLabel) : null;
     const content = statusDetail?.content ?? `${holidayRows(holidayCache, selectedDate)}${eventRows(scope, occasionsByDate, selectedDate, detailEditing)}`;
     const isStatusCard = statusDetail?.isCard === true;
-    const emptyLabel = viewMode === "weather" ? "\u8FD9\u4E00\u5929\u6CA1\u6709\u5929\u6C14\u6570\u636E" : viewMode === "cycle" ? "\u8FD9\u4E00\u5929\u6CA1\u6709\u751F\u7406\u671F\u63D0\u793A" : "\u8FD9\u4E00\u5929\u8FD8\u6CA1\u6709\u5B89\u6392";
+    const emptyLabel = viewMode === "weather" ? "\u8FD9\u4E00\u5929\u6CA1\u6709\u5929\u6C14\u6570\u636E" : viewMode === "cycle" ? "\u8FD9\u4E00\u5929\u6CA1\u6709\u751F\u7406\u63D0\u793A\uFF0C\u8BF4\u4E0D\u5B9A\u662F\u4E2A\u5E73\u5B89\u65E5~" : "\u8FD9\u4E00\u5929\u8FD8\u6CA1\u6709\u5B89\u6392";
     const editingLabel = viewMode === "schedule" ? "\u7F16\u8F91\u8FD9\u4E00\u5929" : "";
     const actions = viewMode === "schedule" ? `<div class="pm-calendar-detail-actions">
         <button type="button" class="pm-calendar-detail-more" data-action="calendar-toggle-detail-edit" aria-label="${detailEditing ? "\u5173\u95ED\u7F16\u8F91\u72B6\u6001" : editingLabel}" title="${detailEditing ? "\u5173\u95ED\u7F16\u8F91\u72B6\u6001" : editingLabel}" aria-pressed="${detailEditing}">${detailEditing ? CLOSE_ICON_SVG : MORE_ICON_SVG}</button>
