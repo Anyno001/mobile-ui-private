@@ -93,9 +93,12 @@ function cycleStatusCard(cycleScope, date, parsed, relativeLabel) {
     const prediction = predictCyclePhase(cycleScope, date);
     const detail = CYCLE_DETAILS[prediction.phase];
     if (!detail) return { content: '', isCard: false };
+    const context = prediction.phase === 'period'
+        ? '是特殊的日子 &gt; &lt; ！要注意保重身体呀'
+        : '哎呀呀，是做安全防护还是……';
     return { content: statusCard({
         kind: 'cycle', phase: prediction.phase, parsed, date, icon: detail.icon,
-        relativeLabel, context: '<span class="pm-calendar-status-cycle-context">生理周期</span>', value: detail.label,
+        relativeLabel, context: `<span class="pm-calendar-status-cycle-context">${context}</span>`, value: detail.label,
     }), isCard: true };
 }
 
@@ -131,7 +134,7 @@ export function renderSelectedDateDetail(
             : null;
     const content = statusDetail?.content ?? `${holidayRows(holidayCache, selectedDate)}${eventRows(scope, occasionsByDate, selectedDate, detailEditing)}`;
     const isStatusCard = statusDetail?.isCard === true;
-    const emptyLabel = viewMode === 'weather' ? '这一天没有天气数据' : viewMode === 'cycle' ? '这一天没有生理期提示' : '这一天还没有安排';
+    const emptyLabel = viewMode === 'weather' ? '这一天没有天气数据' : viewMode === 'cycle' ? '这一天没有生理提示，说不定是个平安日~' : '这一天还没有安排';
     const editingLabel = viewMode === 'schedule' ? '编辑这一天' : '';
     const actions = viewMode === 'schedule' ? `<div class="pm-calendar-detail-actions">
         <button type="button" class="pm-calendar-detail-more" data-action="calendar-toggle-detail-edit" aria-label="${detailEditing ? '关闭编辑状态' : editingLabel}" title="${detailEditing ? '关闭编辑状态' : editingLabel}" aria-pressed="${detailEditing}">${detailEditing ? CLOSE_ICON_SVG : MORE_ICON_SVG}</button>
