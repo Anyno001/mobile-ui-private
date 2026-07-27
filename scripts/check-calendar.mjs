@@ -597,7 +597,7 @@ const climateInjection = renderCalendarContextInjection({
     start: new Date(`${climateDate}T12:00:00`),
 });
 const sharedWeatherText = `${climateResolved.day.tempMin}°/${climateResolved.day.tempMax}°C`;
-assert.match(climateDetail, new RegExp(`${climateResolved.day.tempMin}° – ${climateResolved.day.tempMax}°`));
+assert.match(climateDetail, new RegExp(`${climateResolved.day.tempMin}°–${climateResolved.day.tempMax}°`));
 assert.doesNotMatch(climateDetail, /\d+ - \d+ ℃/, '状态卡天气温度不得回退为连字符加摄氏符号格式');
 assert.match(climateDetail, /class="pm-calendar-status-card pm-calendar-status-card-weather"/);
 assert.match(climateDetail, /class="pm-calendar-status-heading"><strong class="pm-calendar-status-relative">今天<\/strong><span class="pm-calendar-status-date"><time datetime="2032-03-15">3月15日<\/time><em>星期一<\/em><\/span><\/div>/);
@@ -609,7 +609,7 @@ const longLocationDetail = renderSelectedDateDetail(
         location: { ...freshWeather.store.location, country: longLocation },
     }, {}, climateDate, 'weather', '今天',
 );
-assert.match(longLocationDetail, new RegExp(`class="pm-calendar-status-value">${climateResolved.day.tempMin}° – ${climateResolved.day.tempMax}°<\\/b>[\\s\\S]*?class="pm-calendar-status-weather-context">${weatherCodeLabel(climateResolved.day.weatherCode)} · ${longLocation}<\\/span><span class="pm-calendar-status-location"[^>]*><svg`),
+assert.match(longLocationDetail, new RegExp(`class="pm-calendar-status-value">${climateResolved.day.tempMin}°–${climateResolved.day.tempMax}°<\\/b>[\\s\\S]*?class="pm-calendar-status-weather-context">${weatherCodeLabel(climateResolved.day.weatherCode)} · ${longLocation}<\\/span><span class="pm-calendar-status-location"[^>]*><svg`),
     '长地点必须位于独立的可省略文本节点中，且不得吞掉定位图标');
 assert.doesNotMatch(climateDetail, /pm-calendar-status-date-separator/);
 assert.match(climateDetail, /<svg/);
@@ -966,7 +966,7 @@ assert.match(renderedEntryDialog, /class="pm-modal pm-calendar-entry-dialog"/);
 assert.match(renderedEntryDialog, /<b>日程<\/b>/);
 assert.match(renderedEntryDialog, /name="repeat" data-calendar-repeat-select aria-label="日程重复规则"/);
 assert.match(renderedEntryDialog, /<option value="none" selected>不重复<\/option>/);
-assert.match(renderedEntryDialog, /每日重复[\s\S]*?每周（同星期）[\s\S]*?每两周（同星期）[\s\S]*?每月（同日）[\s\S]*?自定义[\s\S]*?每年重复/);
+assert.match(renderedEntryDialog, /每日重复[\s\S]*?每周（同星期）[\s\S]*?每两周（同星期）[\s\S]*?每月（同日）[\s\S]*?每年重复[\s\S]*?自定义/);
 assert.match(renderedEntryDialog, /data-calendar-interval-days hidden aria-hidden="true"[\s\S]*?name="intervalDays"[^>]*min="1"[^>]*max="9999"[^>]*disabled/,
     '非自定义重复不得暴露每N天输入框');
 assert.match(renderedEntryDialog, /data-calendar-occasion-fields hidden aria-hidden="true"[\s\S]*?name="occasionType" disabled[\s\S]*?name="leapDayRule" disabled/,
@@ -1043,7 +1043,7 @@ const renderedWeatherDetail = renderSelectedDateDetail(
 );
 assert.match(renderedWeatherDetail, /class="pm-calendar-selected-detail is-status-card"/);
 assert.match(renderedWeatherDetail, /class="pm-calendar-status-heading"><strong class="pm-calendar-status-relative">今天<\/strong><span class="pm-calendar-status-date"><time[^>]*>\d{1,2}月\d{1,2}日<\/time><em>星期[日一二三四五六]<\/em><\/span><\/div>/);
-assert.match(renderedWeatherDetail, /class="pm-calendar-status-value">20° – 30°<\/b>[\s\S]*?class="pm-calendar-status-context"><span class="pm-calendar-status-weather-context">少云 · CN<\/span><span class="pm-calendar-status-location"[^>]*><svg/,
+assert.match(renderedWeatherDetail, /class="pm-calendar-status-value">20°–30°<\/b>[\s\S]*?class="pm-calendar-status-context"><span class="pm-calendar-status-weather-context">少云 · CN<\/span><span class="pm-calendar-status-location"[^>]*><svg/,
     '天气状态卡必须先显示温度，再在末行显示天气条件和地点');
 assert.doesNotMatch(renderedWeatherDetail, /20 - 30 ℃/, '天气详情不得回退为旧温度格式');
 assert.doesNotMatch(renderedWeatherDetail, /pm-calendar-status-date-separator/);
