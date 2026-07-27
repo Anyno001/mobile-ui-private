@@ -257,7 +257,7 @@ export function installPhoneChatPoke(state, deps) {
           </label>`).join('')}
         </div>
         ${emojiCheckHtml}
-        <button type="button" class="pm-action-button is-secondary" onclick="window.__pmShowWorldBookColumns({title:'${safeJS(contactName)}可读的数据库记忆',module:'chat',scope:{kind:'character',id:'${safeJS(contactName)}'}})">数据库记忆</button>
+        <button type="button" class="pm-action-button is-secondary" onclick="window.__pmShowWorldBookColumns({title:'${safeJS(contactName)}的记忆来源',module:'chat',scope:{kind:'character',id:'${safeJS(contactName)}'},backAction:&quot;window.__pmShowCharacterBehavior('${safeJS(contactName)}',${returnMembersToControlCenter})&quot;,backLabel:'返回角色设置'})">数据库记忆</button>
     <div class="pm-modal-add pm-contact-settings-actions">
         <button type="button" class="pm-contact-settings-save" onclick="window.__pmSaveContactConfig('${safeJS(contactName)}')">保存角色设置</button>
     </div>

@@ -563,6 +563,8 @@ assert.equal(worldBookKey, '%E4%B8%96%E7%95%8C%E4%B9%A6%20A:42');
 assert.equal(createWorldBookEntryKey('', 42), '');
 assert.equal(getTavernDbColumn('TavernDB-ACU-CustomExport-纪要-1'), '纪要');
 assert.equal(getTavernDbColumn('TavernDB-ACU-CustomExport-重要角色表-包裹-上'), '重要角色表');
+assert.equal(getTavernDbColumn('TavernDB-ACU-ReadableDataTable'), 'ReadableDataTable', '英文数据表标记也必须归入数据库条目');
+assert.equal(getTavernDbColumn('TavernDB-ACU-EnglishDataTable-2026'), 'EnglishDataTable', 'TavernDB-ACU 的第三段标记可变时也必须归入数据库条目');
 assert.equal(getTavernDbColumn('任意标题-纪要'), '', '不得从普通标题猜测 TavernDB 栏目');
 const normalizedWorldBook = normalizeWorldBookConfig({
     version: 999, entries: { [worldBookKey]: false, ignored: 'false' },
@@ -593,6 +595,8 @@ const worldBookDirectory = await loadWorldBookDirectory({
         return { entries: {
             b: { uid: 20, content: '第二条', comment: 'TavernDB-ACU-CustomExport-纪要-2' },
             a: { uid: 3, content: '第一条', comment: '普通条目' },
+            packageTop: { uid: 4, content: '包裹上层正文仍应默认读取', comment: '小明日记-包裹-上' },
+            packageBottom: { uid: 5, content: '包裹下层正文仍应默认读取', comment: '【变化内容】-包裹-下' },
             empty: { uid: 4, content: '' },
         } };
     },
@@ -600,7 +604,7 @@ const worldBookDirectory = await loadWorldBookDirectory({
 assert.deepEqual(worldBookDirectory, [{ name: '主世界', entries: [
     { key: createWorldBookEntryKey('主世界', 3), uid: '3', title: '普通条目', column: '', disabled: false },
     { key: createWorldBookEntryKey('主世界', 20), uid: '20', title: 'TavernDB-ACU-CustomExport-纪要-2', column: '纪要', disabled: false },
-] }], '设置页目录必须只读取原始条目、使用条目标题并按 UID 稳定排序');
+] }], '设置页目录必须隐藏包裹分段条目、使用条目标题并按 UID 稳定排序');
 const enabledWorldBookContext = {
     chatMetadata: { world_info: '会话书' },
     characters: [{ data: { extensions: { world: '角色书' } } }], characterId: 0,
@@ -1454,11 +1458,15 @@ installSettingsUi({
 await window.__pmShowConfig('worldbook');
 assert.match(settingsOverlayHtml, /世界书读取|数据库条目一览|设置页条目标题/,
     '设置首页必须能打开世界书读取页并展示原始条目标题与栏目');
+assert.match(settingsOverlayHtml, /<path d="M4 5\.5 12 3l8 2\.5v13L12 16l-8 2\.5z"/,
+    '原生世界书条目标题必须使用书本图标');
 assert.doesNotMatch(settingsOverlayHtml, /设置页正文/,
     '设置页不得将世界书正文误作条目标题展示');
-assert.match(settingsOverlayHtml, /主线正文用于提示词参考；扫描窗口仅决定哪些世界书条目会被触发。/,
-    '世界书设置页必须解释正文与扫描两个读取范围的不同用途');
-assert.match(settingsOverlayHtml, /aria-label="设置书 条目 1 读取开关"|aria-label="纪要：聊天读取开关"/,
+assert.match(settingsOverlayHtml, /读取正文楼层数|世界书扫描深度|发送世界书字符数上限/,
+    '世界书设置页必须展示正文、扫描与字符数配置项');
+assert.doesNotMatch(settingsOverlayHtml, /主线正文用于提示词参考；扫描窗口仅决定哪些世界书条目会被触发。/,
+    '世界书设置页不得保留已删除的顶部说明');
+assert.match(settingsOverlayHtml, /aria-label="设置书 条目读取开关"|aria-label="纪要：会话读取开关"/,
     '世界书条目与栏目矩阵必须提供带 SVG 图标的可访问读取开关');
 assert.match(settingsOverlayHtml, /pm-worldbook-matrix-header[\s\S]*会话[\s\S]*日历[\s\S]*社区/,
     '世界书栏目矩阵必须只在表头展示中文模块标签');
@@ -1490,8 +1498,12 @@ assert.equal(savedWorldBookOverlay.removed, true, '保存成功必须关闭设�
 assert.equal(document.getElementById('pm-overlay'), null, '保存成功后 overlay 必须从 DOM 查询中消失');
 assert.equal(uiNotes.at(-1), '世界书读取设置已保存', '保存成功必须给出确认提示');
 
-await window.__pmShowWorldBookColumns({ title: '小明可读的数据库记忆', module: 'chat', scope: { kind: 'character', id: '小明' } });
-assert.match(settingsOverlayHtml, /小明可读的数据库记忆|恢复跟随全局/, '角色快捷入口必须复用统一栏目选择面板');
+await window.__pmShowWorldBookColumns({ title: '小明的记忆来源', module: 'chat', scope: { kind: 'character', id: '小明' },
+    backAction: "window.__pmShowCharacterBehavior('小明',false)", backLabel: '返回角色设置' });
+assert.match(settingsOverlayHtml, /小明的记忆来源|恢复跟随全局/, '角色快捷入口必须使用精简标题并复用统一栏目选择面板');
+assert.match(settingsOverlayHtml, /__pmShowCharacterBehavior\(&#39;小明&#39;,false\)|返回角色设置/,
+    '角色快捷入口返回键必须回到角色设置');
+assert.doesNotMatch(settingsOverlayHtml, /TavernDB 栏目/, '快捷栏目面板不得重复显示栏目类型灰字');
 worldBookToggleControls = [{ dataset: { worldQuickColumn: '纪要' }, classList: makeClassList(['is-checked']) }];
 assert.equal(window.__pmSaveWorldBookColumns(), true, '角色快捷栏目保存必须报告成功');
 assert.equal(window.__pmWorldBookConfig.characters.小明.columns.纪要.chat, true,

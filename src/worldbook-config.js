@@ -109,8 +109,11 @@ export function normalizeWorldBookConfig(value) {
 // TavernDB-ACU exports encode their column in a producer-owned comment grammar.
 // This is intentionally strict: arbitrary titles and content never become a column.
 export function getTavernDbColumn(comment) {
-    const match = /^TavernDB-ACU-CustomExport-([^\n-]+)(?:-|$)/.exec(cleanText(comment, 240));
-    return match ? cleanText(match[1], MAX_COLUMN_LENGTH) : '';
+    const value = cleanText(comment, 240);
+    const customExport = /^TavernDB-ACU-CustomExport-([^\n-]+)(?:-|$)/.exec(value);
+    if (customExport) return cleanText(customExport[1], MAX_COLUMN_LENGTH);
+    const dataTable = /^TavernDB-ACU-([^\n-]+)(?:-|$)/.exec(value);
+    return dataTable ? cleanText(dataTable[1], MAX_COLUMN_LENGTH) : '';
 }
 
 function scopeOverride(config, scope) {

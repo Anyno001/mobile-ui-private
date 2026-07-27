@@ -5569,8 +5569,11 @@ ${lines.join("\n")}
     };
   }
   function getTavernDbColumn(comment) {
-    const match = /^TavernDB-ACU-CustomExport-([^\n-]+)(?:-|$)/.exec(cleanText4(comment, 240));
-    return match ? cleanText4(match[1], MAX_COLUMN_LENGTH) : "";
+    const value = cleanText4(comment, 240);
+    const customExport = /^TavernDB-ACU-CustomExport-([^\n-]+)(?:-|$)/.exec(value);
+    if (customExport) return cleanText4(customExport[1], MAX_COLUMN_LENGTH);
+    const dataTable = /^TavernDB-ACU-([^\n-]+)(?:-|$)/.exec(value);
+    return dataTable ? cleanText4(dataTable[1], MAX_COLUMN_LENGTH) : "";
   }
   function scopeOverride(config, scope) {
     if (scope?.kind === "group") return config.groups[cleanText4(scope.id, MAX_KEY_LENGTH)] || null;
@@ -12164,7 +12167,7 @@ ${antiFluff}`;
           </label>`).join("")}
         </div>
         ${emojiCheckHtml}
-        <button type="button" class="pm-action-button is-secondary" onclick="window.__pmShowWorldBookColumns({title:'${safeJS(contactName)}\u53EF\u8BFB\u7684\u6570\u636E\u5E93\u8BB0\u5FC6',module:'chat',scope:{kind:'character',id:'${safeJS(contactName)}'}})">\u6570\u636E\u5E93\u8BB0\u5FC6</button>
+        <button type="button" class="pm-action-button is-secondary" onclick="window.__pmShowWorldBookColumns({title:'${safeJS(contactName)}\u7684\u8BB0\u5FC6\u6765\u6E90',module:'chat',scope:{kind:'character',id:'${safeJS(contactName)}'},backAction:&quot;window.__pmShowCharacterBehavior('${safeJS(contactName)}',${returnMembersToControlCenter})&quot;,backLabel:'\u8FD4\u56DE\u89D2\u8272\u8BBE\u7F6E'})">\u6570\u636E\u5E93\u8BB0\u5FC6</button>
     <div class="pm-modal-add pm-contact-settings-actions">
         <button type="button" class="pm-contact-settings-save" onclick="window.__pmSaveContactConfig('${safeJS(contactName)}')">\u4FDD\u5B58\u89D2\u8272\u8BBE\u7F6E</button>
     </div>
@@ -16522,7 +16525,7 @@ ${lines}`;
       <button type="button" role="listitem" onclick="window.__pmShowConfig('quick-reply')"><b>\u624B\u673A\u5F00\u5173</b><span class="pm-settings-home-hint">\u521B\u5EFA\u6216\u6E05\u9664\u5F00\u5173\u5165\u53E3</span></button>
       <button type="button" role="listitem" onclick="window.__pmShowConfig('look')"><b>\u4E3B\u9898</b><span class="pm-settings-home-hint">\u65E5\u591C\u6A21\u5F0F\u3001\u6C14\u6CE1\u989C\u8272\u4E0E\u80CC\u666F\u56FE</span></button>
       <button type="button" role="listitem" onclick="window.__pmShowConfig('backup')"><b>\u5907\u4EFD</b><span class="pm-settings-home-hint">\u5BFC\u51FA\u3001\u5BFC\u5165\u6216\u5B89\u5168\u6E05\u7406\u63D2\u4EF6\u6570\u636E</span></button>
-      <button type="button" role="listitem" onclick="window.__pmShowConfig('worldbook')"><b>\u4E16\u754C\u4E66\u8BFB\u53D6</b><span class="pm-settings-home-hint">\u6309\u6761\u76EE\u3001TavernDB \u680F\u76EE\u548C\u6A21\u5757\u63A7\u5236\u624B\u673A\u5185\u90E8\u8BFB\u53D6</span></button>
+      <button type="button" role="listitem" onclick="window.__pmShowConfig('worldbook')"><b>\u4E16\u754C\u4E66\u8BFB\u53D6</b><span class="pm-settings-home-hint">\u5305\u62EC\u6570\u636E\u5E93\u6761\u76EE\u5728\u5185\uFF0C\u63A7\u5236\u624B\u673A\u8BFB\u53D6\u7684\u4E16\u754C\u4E66\u6761\u76EE</span></button>
       <button type="button" role="listitem" onclick="window.__pmShowConfig('budget')"><b>\u4E0A\u4E0B\u6587\u9884\u7B97</b><span class="pm-settings-home-hint">\u63A7\u5236\u624B\u673A\u4F1A\u8BDD\u4E0E\u793E\u533A\u5199\u5165\u4E3B\u63D0\u793A\u8BCD\u7684\u989D\u5EA6</span></button>
       <button type="button" role="listitem" onclick="window.__pmShowConversationInjection()"><b>\u6B63\u6587\u6CE8\u5165</b><span class="pm-settings-home-hint">\u5206\u522B\u8BBE\u7F6E\u804A\u5929\u3001\u793E\u533A\u3001\u65E5\u5386\u4E0E\u83DC\u8C31\u7684\u6CE8\u5165\u4F4D\u7F6E\u548C\u6DF1\u5EA6</span></button>
       <div class="pm-global-setting" role="group" aria-labelledby="pm-wordy-label">
@@ -16742,10 +16745,10 @@ ${lines}`;
       <div style="height:12px;"></div>
     </div>`;
   }
-  function renderSettingsModal({ title, content, footer = "", showBack = true }) {
+  function renderSettingsModal({ title, content, footer = "", showBack = true, backAction = "window.__pmShowConfig('home')", backLabel = "\u8FD4\u56DE\u8BBE\u7F6E" }) {
     return `
 <div class="pm-modal pm-modal-wide" style="height: 560px;">
-  <div class="pm-modal-header"><span>${showBack ? `<button type="button" onclick="window.__pmShowConfig('home')" class="pm-modal-close" title="\u8FD4\u56DE\u8BBE\u7F6E" aria-label="\u8FD4\u56DE\u8BBE\u7F6E">${BACK_ICON_SVG}</button>` : ""}</span><b>${title}</b><button type="button" onclick="window.__pmCloseOverlay()" class="pm-modal-close" title="\u5173\u95ED" aria-label="\u5173\u95ED">${CLOSE_ICON_SVG}</button></div>
+  <div class="pm-modal-header"><span>${showBack ? `<button type="button" onclick="${escapeAttr(backAction)}" class="pm-modal-close" title="${escapeAttr(backLabel)}" aria-label="${escapeAttr(backLabel)}">${BACK_ICON_SVG}</button>` : ""}</span><b>${title}</b><button type="button" onclick="window.__pmCloseOverlay()" class="pm-modal-close" title="\u5173\u95ED" aria-label="\u5173\u95ED">${CLOSE_ICON_SVG}</button></div>
   <div class="pm-modal-scroll">${content}</div>
   ${footer}
 </div>`;
@@ -16819,10 +16822,12 @@ ${lines}`;
 
   // src/settings-worldbook.js
   var text4 = (value) => typeof value === "string" ? value : "";
+  var HIDDEN_ENTRY_TITLE = /(?:^|-)包裹-(?:上|下)$/;
   var MODULE_LABELS = Object.freeze({ chat: "\u4F1A\u8BDD", calendar: "\u65E5\u5386", community: "\u793E\u533A" });
   var MODULE_ICONS = Object.freeze({ chat: CHAT_ICON_SVG, calendar: CALENDAR_ICON_SVG, community: COMMUNITY_ICON_SVG });
   var isCurrentRequest = (epoch, controller, currentEpoch) => epoch === currentEpoch() && !controller.signal.aborted;
   var DATABASE_ICON_SVG = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><ellipse cx="12" cy="5" rx="7" ry="3"/><path d="M5 5v7c0 1.7 3.1 3 7 3s7-1.3 7-3V5M5 12v7c0 1.7 3.1 3 7 3s7-1.3 7-3v-7"/></svg>';
+  var shortTitle = (value) => value.length > 15 ? `${value.slice(0, 14)}\u2026` : value;
   async function loadWorldBookDirectory(context, { signal } = {}) {
     if (typeof context?.getWorldInfoNames !== "function" || typeof context?.loadWorldInfo !== "function") return [];
     if (signal?.aborted) return [];
@@ -16856,14 +16861,15 @@ ${lines}`;
         const content = text4(value.content).trim();
         if (!key || !content) return [];
         const title = text4(value.comment).trim() || `\u6761\u76EE ${uid5}`;
+        if (HIDDEN_ENTRY_TITLE.test(title)) return [];
         return [{ key, uid: String(uid5), title, column: getTavernDbColumn(value.comment), disabled: value.disable === true || value.enabled === false }];
       }).sort((left, right) => left.uid.localeCompare(right.uid, void 0, { numeric: true }));
       if (entries.length) books.push({ name, entries });
     }
     return books;
   }
-  function eyeToggle(checked, dataset, label) {
-    return `<button type="button" class="pm-worldbook-eye ${checked ? "is-checked" : ""}" aria-pressed="${checked}" aria-label="${escapeAttr(label)}" title="${escapeAttr(label)}" ${dataset} onclick="this.classList.toggle('is-checked');this.setAttribute('aria-pressed',String(this.classList.contains('is-checked')))" onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();this.click()}">${EYE_ICON_SVG}</button>`;
+  function eyeToggle(checked, dataset, label, disabled = false) {
+    return `<button type="button" class="pm-worldbook-eye ${checked ? "is-checked" : ""}" aria-pressed="${checked}" aria-label="${escapeAttr(label)}" title="${escapeAttr(label)}" ${dataset}${disabled ? " disabled" : ""} onclick="this.classList.toggle('is-checked');this.setAttribute('aria-pressed',String(this.classList.contains('is-checked')))" onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();this.click()}">${EYE_ICON_SVG}</button>`;
   }
   function bookToggle(checked, bookName) {
     return `<button type="button" class="pm-worldbook-eye ${checked ? "is-checked" : ""}" aria-pressed="${checked}" aria-label="${escapeAttr(`${bookName}\u8BFB\u53D6\u5F00\u5173`)}" title="${escapeAttr(`${bookName}\u8BFB\u53D6\u5F00\u5173`)}" data-world-book="${escapeAttr(bookName)}" onclick="this.classList.toggle('is-checked');const enabled=this.classList.contains('is-checked');this.setAttribute('aria-pressed',String(enabled));this.closest('[data-world-book-section]').querySelector('[data-world-book-entries]').hidden=!enabled" onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();this.click()}">${EYE_ICON_SVG}</button>`;
@@ -16875,22 +16881,22 @@ ${lines}`;
       const entries = book.entries.filter((entry2) => !entry2.column);
       if (!entries.length) return "";
       const enabled = config.books[book.name] !== false;
-      return `<div data-world-book-section style="padding:10px 14px;border-top:1px solid var(--pm-color-border-subtle)"><div class="pm-li" style="min-height:34px"><span><b>${escapeHtml(book.name)}</b></span>${bookToggle(enabled, book.name)}</div><div data-world-book-entries${enabled ? "" : " hidden"}>${entries.map((entry2) => `<div class="pm-li"><span><b>${escapeHtml(entry2.title)}</b><small class="pm-group-sub">UID ${escapeHtml(entry2.uid)}${entry2.disabled ? " \xB7 \u5BBF\u4E3B\u5DF2\u7981\u7528" : ""}</small></span>${eyeToggle(config.entries[entry2.key] !== false, `data-world-entry="${escapeAttr(entry2.key)}"`, `${book.name} \u6761\u76EE ${entry2.uid} \u8BFB\u53D6\u5F00\u5173`)}</div>`).join("")}</div></div>`;
+      return `<div data-world-book-section style="padding:10px 14px;border-top:1px solid var(--pm-color-border-subtle)"><div class="pm-li" style="min-height:34px"><span><b title="${escapeAttr(book.name)}">${escapeHtml(shortTitle(book.name))}</b></span>${bookToggle(enabled, book.name)}</div><div data-world-book-entries${enabled ? "" : " hidden"}>${entries.map((entry2) => `<div class="pm-li"><span><b>${escapeHtml(entry2.title)}</b><small class="pm-group-sub">${entry2.disabled ? "\u5DF2\u7981\u7528" : ""}</small></span>${eyeToggle(!entry2.disabled && config.entries[entry2.key] !== false, `data-world-entry="${escapeAttr(entry2.key)}"`, `${book.name} \u6761\u76EE\u8BFB\u53D6\u5F00\u5173`, entry2.disabled)}</div>`).join("")}</div></div>`;
     }).join("") || '<div class="pm-prof-empty">\u672A\u53D1\u73B0\u4E0D\u5C5E\u4E8E TavernDB \u680F\u76EE\u7684\u539F\u751F\u4E16\u754C\u4E66\u6761\u76EE\u3002</div>';
-    return `<div class="pm-settings-page"><div style="padding:12px 14px;display:flex;flex-direction:column;gap:10px"><div class="pm-cfg-tip" style="text-align:left">\u5305\u62EC\u6570\u636E\u5E93\u6761\u76EE\u5728\u5185\uFF0C\u63A7\u5236\u624B\u673A\u8BFB\u53D6\u7684\u4E16\u754C\u4E66\u6761\u76EE\u3002</div><div class="pm-cfg-tip" style="text-align:left">\u4E3B\u7EBF\u6B63\u6587\u7528\u4E8E\u63D0\u793A\u8BCD\u53C2\u8003\uFF1B\u626B\u63CF\u7A97\u53E3\u4EC5\u51B3\u5B9A\u54EA\u4E9B\u4E16\u754C\u4E66\u6761\u76EE\u4F1A\u88AB\u89E6\u53D1\u3002</div><label class="pm-cfg-label">\u8BFB\u53D6\u6B63\u6587\u697C\u5C42\u6570<input id="pm-world-main-messages" class="pm-cfg-input" type="number" min="1" max="100" value="${config.mainChatMessages}"></label><label class="pm-cfg-label">\u4E16\u754C\u4E66\u626B\u63CF\u6DF1\u5EA6<input id="pm-world-scan-messages" class="pm-cfg-input" type="number" min="1" max="100" value="${config.scanMessages}"></label><label class="pm-cfg-label">\u53D1\u9001\u4E16\u754C\u4E66\u5B57\u7B26\u6570\u4E0A\u9650<input id="pm-world-max-chars" class="pm-cfg-input" type="number" min="1000" max="80000" value="${config.maxChars}"></label></div><div style="padding:10px 14px;border-top:1px solid var(--pm-color-border-subtle)"><div class="pm-cfg-label" style="margin-bottom:6px;display:flex;align-items:center;gap:4px">${DATABASE_ICON_SVG}<span>\u6570\u636E\u5E93\u6761\u76EE\u4E00\u89C8</span></div>${columnRows}</div><div style="padding-bottom:12px"><div class="pm-cfg-label" style="padding:10px 14px 4px;display:flex;align-items:center;gap:6px">${EYE_ICON_SVG}<span>\u539F\u751F\u4E16\u754C\u4E66\u6761\u76EE</span></div>${entryRows}</div></div>`;
+    return `<div class="pm-settings-page"><div class="pm-worldbook-range"><label class="pm-cfg-label">\u8BFB\u53D6\u6B63\u6587\u697C\u5C42\u6570<input id="pm-world-main-messages" class="pm-cfg-input" type="number" min="1" max="100" value="${config.mainChatMessages}"></label><label class="pm-cfg-label">\u4E16\u754C\u4E66\u626B\u63CF\u6DF1\u5EA6<input id="pm-world-scan-messages" class="pm-cfg-input" type="number" min="1" max="100" value="${config.scanMessages}"></label><label class="pm-cfg-label">\u53D1\u9001\u4E16\u754C\u4E66\u5B57\u7B26\u6570\u4E0A\u9650<input id="pm-world-max-chars" class="pm-cfg-input" type="number" min="1000" max="80000" value="${config.maxChars}"></label></div><div style="padding:10px 14px;border-top:1px solid var(--pm-color-border-subtle)"><div class="pm-cfg-label" style="margin-bottom:6px;display:flex;align-items:center;gap:4px">${DATABASE_ICON_SVG}<span>\u6570\u636E\u5E93\u6761\u76EE\u4E00\u89C8</span></div>${columnRows}</div><div style="padding-bottom:12px"><div class="pm-cfg-label" style="padding:10px 14px 4px;display:flex;align-items:center;gap:6px">${BOOK_ICON_SVG}<span>\u539F\u751F\u4E16\u754C\u4E66\u6761\u76EE</span></div>${entryRows}</div></div>`;
   }
   function columnNames(books) {
     return [...new Set(books.flatMap((book) => book.entries.map((entry2) => entry2.column).filter(Boolean)))];
   }
-  function renderColumnSelector({ title, module, scope, config, books }) {
+  function renderColumnSelector({ title, module, scope, config, books, backAction = "window.__pmShowConfig('home')", backLabel = "\u8FD4\u56DE\u8BBE\u7F6E" }) {
     const override = scope?.kind === "group" ? config.groups[scope.id] : scope?.kind === "character" ? config.characters[scope.id] : null;
     const columns = columnNames(books);
     const rows = columns.length ? columns.map((column) => {
       const checked = override?.columns?.[column]?.[module] ?? config.columns[column]?.[module] !== false;
-      return `<div class="pm-li"><span><b>${escapeHtml(column)}</b><small class="pm-group-sub">TavernDB \u680F\u76EE</small></span>${eyeToggle(checked, `data-world-quick-column="${escapeAttr(column)}"`, `${title}\uFF1A${column}\u8BFB\u53D6\u5F00\u5173`)}</div>`;
-    }).join("") : '<div class="pm-prof-empty">\u672A\u53D1\u73B0\u7B26\u5408 TavernDB-ACU-CustomExport \u534F\u8BAE\u7684\u680F\u76EE\u3002</div>';
+      return `<div class="pm-li"><span><b>${escapeHtml(column)}</b></span>${eyeToggle(checked, `data-world-quick-column="${escapeAttr(column)}"`, `${title}\uFF1A${column}\u8BFB\u53D6\u5F00\u5173`)}</div>`;
+    }).join("") : '<div class="pm-prof-empty">\u672A\u53D1\u73B0\u7B26\u5408 TavernDB-ACU \u534F\u8BAE\u7684\u680F\u76EE\u3002</div>';
     const reset = scope ? '<button class="pm-action-button is-secondary" onclick="window.__pmResetWorldBookColumnOverride()" style="flex:1">\u6062\u590D\u8DDF\u968F\u5168\u5C40</button>' : "";
-    return renderSettingsModal({ title, content: `<div class="pm-settings-page"><div class="pm-cfg-tip" style="text-align:left;padding:12px 14px">${scope ? "\u5F53\u524D\u9009\u62E9\u4EC5\u4F5C\u7528\u4E8E\u6B64\u5904\uFF1B\u6062\u590D\u540E\u7EE7\u7EED\u8DDF\u968F\u5168\u5C40\u8BFB\u53D6\u8BBE\u7F6E\u3002" : `\u76F4\u63A5\u4FEE\u6539\u5168\u5C40\u201C${MODULE_LABELS[module]}\u201D\u8BFB\u53D6\u5217\u3002`}</div><div style="padding-bottom:12px">${rows}</div></div>`, footer: `<div class="pm-modal-add">${reset}<button class="pm-action-button" onclick="window.__pmSaveWorldBookColumns()" style="flex:2">\u5B8C\u6210</button></div>` });
+    return renderSettingsModal({ title, content: `<div class="pm-settings-page"><div class="pm-cfg-tip" style="text-align:left;padding:12px 14px">${scope ? "\u5F53\u524D\u9009\u62E9\u4EC5\u4F5C\u7528\u4E8E\u6B64\u5904\uFF1B\u6062\u590D\u540E\u7EE7\u7EED\u8DDF\u968F\u5168\u5C40\u8BFB\u53D6\u8BBE\u7F6E\u3002" : `\u76F4\u63A5\u4FEE\u6539\u5168\u5C40\u201C${MODULE_LABELS[module]}\u201D\u8BFB\u53D6\u5217\u3002`}</div><div style="padding-bottom:12px">${rows}</div></div>`, footer: `<div class="pm-modal-add">${reset}<button class="pm-action-button" onclick="window.__pmSaveWorldBookColumns()" style="flex:2">\u5B8C\u6210</button></div>`, backAction, backLabel });
   }
   function installWorldBookSettings({ makeOverlay, addNote, getCtx }) {
     let requestEpoch = 0;
@@ -16936,11 +16942,11 @@ ${lines}`;
       }
       return true;
     };
-    window.__pmShowWorldBookColumns = async ({ title, module, scope = null } = {}) => {
+    window.__pmShowWorldBookColumns = async ({ title, module, scope = null, backAction, backLabel } = {}) => {
       if (!WORLD_BOOK_MODULES.includes(module)) return false;
       const config = loadWorldBookConfig();
       const books = await loadWorldBookDirectory(getCtx());
-      quickSelector = { title: text4(title).trim() || `${MODULE_LABELS[module]}\u53EF\u8BFB\u7684\u6570\u636E\u5E93\u8BB0\u5FC6`, module, scope, books };
+      quickSelector = { title: text4(title).trim() || `${MODULE_LABELS[module]}\u53EF\u8BFB\u7684\u6570\u636E\u5E93\u8BB0\u5FC6`, module, scope, books, backAction, backLabel };
       makeOverlay(renderColumnSelector({ ...quickSelector, config }));
       return true;
     };
