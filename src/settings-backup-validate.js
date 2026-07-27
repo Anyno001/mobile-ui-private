@@ -5,6 +5,7 @@ import {
 } from './interactive-scene-model.js';
 import { getStorageIdFor } from './host-context.js';
 import { applyCalendarBackupFields } from './settings-backup.js';
+import { normalizeWorldBookConfig } from './worldbook-config.js';
 
 const clone = value => JSON.parse(JSON.stringify(value));
 const objectValue = (value, field) => {
@@ -259,7 +260,7 @@ export function parseBackupData(data, current) {
     if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error('备份根节点必须是对象');
     const version = data.schemaVersion === undefined ? 1 : data.schemaVersion;
     if (!Number.isInteger(version) || version < 1) throw new Error('备份版本无效');
-    if (version > 10) throw new Error(`备份版本 ${version} 高于当前支持版本 10`);
+    if (version > 11) throw new Error(`备份版本 ${version} 高于当前支持版本 11`);
     const result = clone(current);
     if (Object.hasOwn(data, 'histories')) result.histories = objectValue(data.histories, 'histories');
     if (Object.hasOwn(data, 'config')) result.config = objectValue(data.config, 'config');
@@ -282,6 +283,10 @@ export function parseBackupData(data, current) {
     if (Object.hasOwn(data, 'wordyLimit')) {
         if (typeof data.wordyLimit !== 'boolean') throw new Error('备份字段 wordyLimit 必须是布尔值');
         result.wordyLimit = data.wordyLimit;
+    }
+    if (version >= 11) {
+        if (!Object.hasOwn(data, 'worldBookConfig')) throw new Error('备份版本 11 缺少 worldBookConfig');
+        result.worldBookConfig = normalizeWorldBookConfig(objectValue(data.worldBookConfig, 'worldBookConfig'));
     }
     if (version >= 6) {
         if (Object.hasOwn(data, 'desktopBg')) {

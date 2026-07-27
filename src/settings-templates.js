@@ -9,6 +9,7 @@ export function renderSettingsHome() {
       <button type="button" role="listitem" onclick="window.__pmShowConfig('quick-reply')"><b>手机开关</b><span class="pm-settings-home-hint">创建或清除开关入口</span></button>
       <button type="button" role="listitem" onclick="window.__pmShowConfig('look')"><b>主题</b><span class="pm-settings-home-hint">日夜模式、气泡颜色与背景图</span></button>
       <button type="button" role="listitem" onclick="window.__pmShowConfig('backup')"><b>备份</b><span class="pm-settings-home-hint">导出、导入或安全清理插件数据</span></button>
+      <button type="button" role="listitem" onclick="window.__pmShowConfig('worldbook')"><b>世界书读取</b><span class="pm-settings-home-hint">按条目、TavernDB 栏目和模块控制手机内部读取</span></button>
       <button type="button" role="listitem" onclick="window.__pmShowConfig('budget')"><b>上下文预算</b><span class="pm-settings-home-hint">控制手机会话与社区写入主提示词的额度</span></button>
       <button type="button" role="listitem" onclick="window.__pmShowConversationInjection()"><b>正文注入</b><span class="pm-settings-home-hint">分别设置聊天、社区、日历与菜谱的注入位置和深度</span></button>
       <div class="pm-global-setting" role="group" aria-labelledby="pm-wordy-label">

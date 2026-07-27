@@ -130,6 +130,7 @@ function renderContextInjectionSettings(scene, state) {
     </article>`).join('') || '<div class="pm-scene-empty"><span>当前社区还没有帖子。</span></div>';
     return `<div class="pm-scene-injection-settings">
         <div class="pm-scene-injection-heading"><h2>正文注入</h2></div>
+        <div class="pm-scene-injection-toolbar"><button type="button" data-action="community-worldbook-columns">数据库记忆</button></div>
         <div class="pm-scene-injection-toolbar"><button type="button" data-action="context-select-all">全选</button><button type="button" data-action="context-clear">清空</button></div>
         <div class="pm-scene-injection-posts">${posts}</div>
         <div class="pm-scene-injection-actions"><button type="button" class="pm-scene-secondary" data-action="context-cancel">取消</button><button type="button" class="pm-scene-primary" data-action="context-save">保存注入设置</button></div>

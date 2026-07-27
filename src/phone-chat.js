@@ -38,7 +38,11 @@ export function installPhoneChat(state, deps) {
             const image = set?.images?.[parseInt(idxStr, 10) - 1];
             return image?.desc ? `[表情包：${image.desc}]` : '[表情包]';
         }).replace(/\s{2,}/g, ' ').trim();
-        const ctxData = await gatherContext(task.context);
+        const ctxData = await gatherContext(task.context, {
+            module: 'chat', signal: task.signal,
+            worldBookScope: { kind: isGroup ? 'group' : 'character', id: isGroup ? saveKey : currentPersona },
+            worldBookMemberNames: isGroup ? groupMembers : [],
+        });
         if (!isGenerationTaskActive(task)) {
             // 取消必须进入外层的 pending 回退分支；静默返回会被 finally 误判为失败。
             if (task.signal.aborted) {

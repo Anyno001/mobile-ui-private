@@ -152,7 +152,6 @@ export function installPhoneDirectory(state, deps) {
         return Object.keys(window.__pmHistories[storageId] || {})
             .find(key => !key.startsWith('__group_')) || '';
     }
-
     function enterEmptyConversation(storageId) {
         deps.closeControlCenter?.();
         state.activeStorageId = storageId;
@@ -425,6 +424,8 @@ export function installPhoneDirectory(state, deps) {
           <div class="pm-cfg-label" style="margin-bottom:8px;">群聊功能</div>
           <div class="pm-member-behavior-list">
             <button type="button" onclick="window.__pmShowGroupMemberSettings()"><b>群聊风格</b><span>按成员设置群聊发言风格</span></button>
+            <button type="button" onclick="window.__pmShowWorldBookColumns({title:'${safeJS(groupMeta.name)}可读的数据库记忆',module:'chat',scope:{kind:'group',id:'${safeJS(state.currentGroupKey)}'}})"><b>数据库记忆</b><span>设置群聊公共可读栏目</span></button>
+            <button type="button" onclick="window.__pmToggleGroupMemberPrivateMemory('${safeJS(state.currentGroupKey)}')"><b>成员私人记忆</b><span>${window.__pmWorldBookConfig?.groups?.[state.currentGroupKey]?.allowMemberPrivateMemory === true ? '已开启' : '关闭'}</span></button>
             <button type="button" onclick="window.__pmShowGroupRandomNpcSettings()"><b>路人群友</b><span>设置随机出现的临时群友</span></button>
           </div>
         </div>

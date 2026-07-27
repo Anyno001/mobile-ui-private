@@ -259,7 +259,7 @@ export function installCalendar(state, deps) {
         const task = parentTask || tasks.begin(storageId, 'scan-context');
         if (!task || !tasks.active(task)) return false;
         try {
-            const context = await gatherContext();
+            const context = await gatherContext(null, { module: 'calendar', signal: task.signal });
             if (!tasks.active(task)) return false;
             if (assistantOnly && context.latestChatIsUser) return false;
             const currentScope = scope(storageId);
@@ -323,7 +323,7 @@ export function installCalendar(state, deps) {
         const generationCopy = calendarGenerationCopy(start, mode, generationDays);
         status(storageId, generationCopy.pending, { persistent: true }); rerender(storageId);
         try {
-            const context = await gatherContext();
+            const context = await gatherContext(null, { module: 'calendar', signal: task.signal });
             if (!tasks.active(task)) return false;
             const current = scope(storageId);
             const requestedGenerationRule = current.generationRule;
@@ -570,6 +570,10 @@ export function installCalendar(state, deps) {
         const action = button.dataset.action;
         if (action.startsWith('calendar-recipe-')) {
             if (!await recipeController.handleAction(button, app, storageId)) throw new Error(`未知菜谱操作：${action}`);
+            return;
+        }
+        if (action === 'calendar-worldbook-columns') {
+            await window.__pmShowWorldBookColumns?.({ title: '日历可读的数据库记忆', module: 'calendar' });
             return;
         }
         if (action === 'calendar-generate') { await generate(storageId, 'generate'); return; }

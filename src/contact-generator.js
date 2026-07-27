@@ -205,7 +205,7 @@ export function installContactGenerator(state, deps) {
         if (!task) return;
         setGenerationLoading(true);
         try {
-            const context = await gatherContext(task.context);
+            const context = await gatherContext(task.context, { module: 'community', signal: task.signal });
             if (!isGenerationTaskActive(task)) return;
             const existingNames = [...directory.contacts, ...directory.groupNames];
             const { systemPrompt, userPrompt } = buildPrompts(context, existingNames);

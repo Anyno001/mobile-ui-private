@@ -14,11 +14,12 @@ import { cloneEmojiLibrary } from './emoji-media.js';
 import { normalizeInjectionConfig } from './behavior-config.js';
 import { normalizeAmbientStatus, normalizeInteractiveStore, normalizePhoneUiState } from './interactive-scene-model.js';
 import { saveBgGlobal, saveBgLocal, saveDesktopBg } from './storage-background.js';
+import { normalizeWorldBookConfig } from './worldbook-config.js';
 import {
     loadInteractiveScenes, loadPhoneUiState, saveBidirectional, saveInjectionConfig,
     saveCharacterBehavior, saveEmojis, saveGroupMeta, saveHistoriesStrict, saveInteractiveScenes,
     loadBranchLineage, rollbackBranchLineageBackup, saveBranchLineageForBackup, savePhoneUiState,
-    saveBranchLineage, savePokeConfig, saveProfiles, saveTheme, saveWordyLimit,
+    saveBranchLineage, savePokeConfig, saveProfiles, saveTheme, saveWordyLimit, saveWorldBookConfig,
 } from './storage.js';
 
 const clone = value => JSON.parse(JSON.stringify(value));
@@ -129,6 +130,7 @@ export function createBackupStateHandlers(deps = {}) {
             bidirectional: clone(window.__pmBidirectional || {}), injectionConfig: normalizeInjectionConfig(window.__pmInjectionConfig),
             emojis: cloneEmojiLibrary(window.__pmEmojis),
             characterBehavior: clone(window.__pmCharacterBehavior || {}), wordyLimit: !!window.__pmWordyLimit,
+            worldBookConfig: normalizeWorldBookConfig(window.__pmWorldBookConfig),
             desktopBg: window.__pmDesktopBg || '', bgGlobal: window.__pmBgGlobal || '', bgLocal: clone(window.__pmBgLocal || {}),
             interactiveScenes, phoneUiState: loadPhoneUiState(interactiveScenes),
             ambientStatus: normalizeAmbientStatus({ enabled: window.__pmTheme?.ambientStatusEnabled }),
@@ -149,6 +151,7 @@ export function createBackupStateHandlers(deps = {}) {
         window.__pmInjectionConfig = normalizeInjectionConfig(state.injectionConfig);
         window.__pmEmojis = cloneEmojiLibrary(state.emojis); window.__pmCharacterBehavior = clone(state.characterBehavior || {});
         window.__pmWordyLimit = !!state.wordyLimit; window.__pmDesktopBg = typeof state.desktopBg === 'string' ? state.desktopBg : '';
+        window.__pmWorldBookConfig = normalizeWorldBookConfig(state.worldBookConfig);
         window.__pmBgGlobal = typeof state.bgGlobal === 'string' ? state.bgGlobal : '';
         window.__pmBgLocal = clone(state.bgLocal || {}); window.__pmPhoneUiState = phoneUiState;
         window.__pmBranchLineage = clone(state.branchLineage || {});
@@ -175,7 +178,7 @@ export function createBackupStateHandlers(deps = {}) {
         if (!saveTheme()) throw new Error('主题配置保存失败：浏览器存储不可用');
         if (!saveProfiles()) throw new Error('API 档案保存失败：浏览器存储不可用');
         await saveGroupMeta();
-        if (!saveCharacterBehavior() || !savePokeConfig() || !saveBidirectional() || !saveInjectionConfig() || !saveWordyLimit()) {
+        if (!saveCharacterBehavior() || !savePokeConfig() || !saveBidirectional() || !saveInjectionConfig() || !saveWordyLimit() || !saveWorldBookConfig()) {
             throw new Error('插件配置保存失败：浏览器存储不可用');
         }
         await saveEmojis(); await saveDesktopBg(); await saveBgGlobal(); await saveBgLocal(); await saveInteractiveScenes(interactiveScenes);

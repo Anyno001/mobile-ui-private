@@ -1,3 +1,6 @@
+import { buildWorldBookContext } from './worldbook-context.js';
+import { normalizeWorldBookConfig } from './worldbook-config.js';
+
 const warnedHostContextFailures = new Set();
 
 function warnHostContextFailureOnce(stage, message, error) {
@@ -74,17 +77,18 @@ export function getUserPersona(getCtx) {
     return { name, description };
 }
 
-export async function gatherContext(getCtx) {
+export async function gatherContext(getCtx, { module = 'chat', signal, worldBookScope = null, worldBookMemberNames = [] } = {}) {
     const context = getCtx();
     const character = context?.characters?.[context.characterId] || {};
+    const worldBookConfig = normalizeWorldBookConfig(globalThis.window?.__pmWorldBookConfig);
     const removeProtectedBlocks = value => (value || '')
-        .replace(/```[\s\S]*?```/g, '')
-        .replace(/<think>[\s\S]*?<\/think>/gi, '')
+        .replace(/```[\s\S]*?(?:```|$)/g, '')
+        .replace(/<think\b[^>]*>[\s\S]*?(?:<\/think\s*>|$)/gi, '')
         .trim();
     const cleanMessage = value => removeProtectedBlocks(value)
         .replace(/<[^>]+>/g, '')
         .trim();
-    const recentChat = (context?.chat || []).slice(-8);
+    const recentChat = (context?.chat || []).slice(-worldBookConfig.mainChatMessages);
     const normalizedChat = recentChat
         .map(message => ({
             who: message.is_user ? '用户' : (message.name || '角色'),
@@ -99,20 +103,14 @@ export async function gatherContext(getCtx) {
     const mainChat = normalizedChat.filter(message => message.content);
     let worldBookText = '';
     try {
-        if (typeof context?.getWorldInfoPrompt === 'function') {
-            const contextSize = context?.powerUserSettings?.openai_max_context
-                || context?.oai_settings?.openai_max_context
-                || context?.maxContext
-                || 131072;
-            const worldInfo = await context.getWorldInfoPrompt(
-                (context.chat || []).map(message => message.mes || '').slice(-10), contextSize, false,
-            );
-            worldBookText = worldInfo?.worldInfoString || worldInfo?.worldInfoBefore || '';
-            if (!worldBookText && worldInfo && typeof worldInfo === 'object') {
-                worldBookText = [worldInfo.worldInfoBefore, worldInfo.worldInfoAfter].filter(Boolean).join('\n');
-            }
-        }
+        const memberIds = worldBookScope?.kind === 'group'
+            ? [...new Set(worldBookMemberNames.filter(name => typeof name === 'string').map(name => name.trim()).filter(Boolean))]
+            : [];
+        worldBookText = await buildWorldBookContext(context, {
+            module, config: worldBookConfig, signal, scope: worldBookScope, memberIds,
+        });
     } catch (error) {
+        if (error?.name === 'AbortError') throw error;
         warnHostContextFailureOnce('world-book', '读取世界书上下文失败', error);
     }
     const userPersona = getUserPersona(getCtx);

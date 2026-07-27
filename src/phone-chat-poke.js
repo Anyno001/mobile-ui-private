@@ -62,7 +62,11 @@ export function installPhoneChatPoke(state, deps) {
         }
 
         try {
-        const ctxData = await gatherContext(task.context);
+        const ctxData = await gatherContext(task.context, {
+            module: 'chat', signal: task.signal,
+            worldBookScope: { kind: isGroup ? 'group' : 'character', id: contactName },
+            worldBookMemberNames: isGroup ? groupMembers : [],
+        });
         if (!isAutomaticRequestActive()) return false;
         const { cardDesc, cardPersonality, cardScenario, cardMesExample, mainChatText, worldBookText, userName, userDesc } = ctxData;
         const userBlock = buildUserBlock(userName, userDesc);
@@ -253,6 +257,7 @@ export function installPhoneChatPoke(state, deps) {
           </label>`).join('')}
         </div>
         ${emojiCheckHtml}
+        <button type="button" class="pm-action-button is-secondary" onclick="window.__pmShowWorldBookColumns({title:'${safeJS(contactName)}可读的数据库记忆',module:'chat',scope:{kind:'character',id:'${safeJS(contactName)}'}})">数据库记忆</button>
     <div class="pm-modal-add pm-contact-settings-actions">
         <button type="button" class="pm-contact-settings-save" onclick="window.__pmSaveContactConfig('${safeJS(contactName)}')">保存角色设置</button>
     </div>
@@ -365,7 +370,11 @@ export function installPhoneChatPoke(state, deps) {
             && (state.isGroupChat && state.currentGroupKey ? state.currentGroupKey : state.currentPersona) === saveKey;
 
         try {
-        const ctxData = await gatherContext(task.context);
+        const ctxData = await gatherContext(task.context, {
+            module: 'chat', signal: task.signal,
+            worldBookScope: { kind: isGroup ? 'group' : 'character', id: isGroup ? saveKey : contactName },
+            worldBookMemberNames: isGroup ? groupMembers : [],
+        });
         if (!isGenerationTaskActive(task)) return;
         const { cardDesc, cardPersonality, cardScenario, cardMesExample, mainChatText, worldBookText, userName, userDesc } = ctxData;
 
@@ -520,7 +529,10 @@ export function installPhoneChatPoke(state, deps) {
             && state.isGroupChat && state.currentGroupKey === saveKey;
 
         try {
-        const ctxData = await gatherContext(task.context);
+        const ctxData = await gatherContext(task.context, {
+            module: 'chat', signal: task.signal,
+            worldBookScope: { kind: 'group', id: saveKey }, worldBookMemberNames: groupMembers,
+        });
         if (!isGenerationTaskActive(task)) return;
         const { cardDesc, cardPersonality, cardScenario, mainChatText, worldBookText, userName, userDesc } = ctxData;
 

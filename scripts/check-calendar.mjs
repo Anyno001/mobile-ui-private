@@ -1322,6 +1322,16 @@ try {
         applyBidirectionalInjection: async () => { injectionCalls += 1; },
     };
     installCalendar({ phoneWindow }, deps);
+    const previousWorldBookWindow = globalThis.window;
+    const calendarWorldBookCalls = [];
+    globalThis.window = {
+        ...previousWorldBookWindow,
+        __pmShowWorldBookColumns: async options => { calendarWorldBookCalls.push(options); },
+    };
+    await deps.handleCalendarAction({ dataset: { action: 'calendar-worldbook-columns' } }, { querySelector: () => null });
+    assert.deepEqual(calendarWorldBookCalls, [{ title: '日历可读的数据库记忆', module: 'calendar' }],
+        '日历数据库记忆入口必须路由到统一栏目选择器并传入 calendar 模块');
+    if (previousWorldBookWindow === undefined) delete globalThis.window; else globalThis.window = previousWorldBookWindow;
     assert.equal(deps.renderCalendar(storageA), true);
     const monthLabel = () => container.innerHTML.match(/class="pm-calendar-month" aria-label="([^"]+)"/)?.[1];
     const detailDate = () => container.innerHTML.match(/data-calendar-selected-detail="(\d{4}-\d{2}-\d{2})"/)?.[1];

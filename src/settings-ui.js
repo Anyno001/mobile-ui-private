@@ -8,6 +8,7 @@ import { openCropper } from './cropper.js';
 import { createApiDraftMode } from './settings-api-mode.js';
 import { showModelPicker } from './settings-model-picker.js';
 import { installQuickReplySettings } from './settings-quick-reply.js';
+import { installWorldBookSettings } from './settings-worldbook.js';
 import {
     renderApiSettings, renderBackupSettings, renderBudgetSettings, renderLookSettings,
     renderSettingsHome, renderSettingsModal, resolveBudgetPercentageInput,
@@ -60,6 +61,7 @@ export function installSettingsUi(deps) {
         persist: persistBackupState,
     } = createBackupStateHandlers(deps);
     const quickReplySettings = installQuickReplySettings({ makeOverlay, addNote, saveTheme });
+    const worldBookSettings = installWorldBookSettings({ makeOverlay, addNote, getCtx: deps.getCtx });
     const apiDraftMode = createApiDraftMode();
     let backgroundMutation = Promise.resolve();
     const injectionFailure = (result, phase) => {
@@ -167,7 +169,7 @@ export function installSettingsUi(deps) {
     window.__pmExportData = async () => {
         const snapshot = await captureBackupState();
         const data = {
-            schemaVersion: 10,
+            schemaVersion: 11,
             histories: snapshot.histories,
             config: snapshot.config,
             theme: legacyBackupTheme(snapshot.theme),
@@ -178,6 +180,7 @@ export function installSettingsUi(deps) {
             injectionConfig: snapshot.injectionConfig,
             emojis: snapshot.emojis,
             characterBehavior: snapshot.characterBehavior,
+            worldBookConfig: snapshot.worldBookConfig,
             wordyLimit: snapshot.wordyLimit,
             desktopBg: snapshot.desktopBg,
             bgGlobal: snapshot.bgGlobal,
@@ -271,7 +274,7 @@ export function installSettingsUi(deps) {
                     theme: { preset: 'default', customRight: '', customLeft: '', borderColor: '', layout: 'standard', darkMode: 'light', ambientStatusEnabled: false, customTitle: '' },
                     profiles: [], groupMeta: {}, pokeConfig: {}, bidirectional: {}, injectionConfig: normalizeInjectionConfig(null),
                     emojis: [], characterBehavior: {},
-                    wordyLimit: false, desktopBg: '', bgGlobal: '', bgLocal: {}, interactiveScenes: normalizeInteractiveStore(null),
+                    worldBookConfig: null, wordyLimit: false, desktopBg: '', bgGlobal: '', bgLocal: {}, interactiveScenes: normalizeInteractiveStore(null),
                     phoneUiState: normalizePhoneUiState(null), ambientStatus: normalizeAmbientStatus(),
                     ...createEmptyCalendarBackupFields(),
                 });
@@ -309,6 +312,7 @@ export function installSettingsUi(deps) {
 
     // ========== 独立设置页面 ==========
     window.__pmShowConfig = async (page = 'home') => {
+        if (page !== 'worldbook') worldBookSettings.cancelPendingPage();
         loadProfiles(); loadTheme(); loadBudgetConfig();
         const cfg = window.__pmConfig, t = window.__pmTheme;
         if (page === 'home') {
@@ -321,6 +325,10 @@ export function installSettingsUi(deps) {
         }
         if (page === 'quick-reply') {
             quickReplySettings.showPage();
+            return;
+        }
+        if (page === 'worldbook') {
+            await worldBookSettings.showPage();
             return;
         }
         if (page === 'budget') {

@@ -313,9 +313,11 @@ export function installInteractiveScenes(_state, deps) {
         }));
     }
 
-    async function contextText() {
-        const ctx = await gatherContext();
-        return [ctx.cardDesc, ctx.cardPersonality, ctx.cardScenario, ctx.worldBookText, ctx.mainChatText].filter(Boolean).join('\n').slice(0, 9000);
+    async function contextText(signal) {
+        const ctx = await gatherContext(null, { module: 'community', signal });
+        const context = [ctx.cardDesc, ctx.cardPersonality, ctx.cardScenario, ctx.mainChatText]
+            .filter(Boolean).join('\n').slice(0, 9000);
+        return { context, worldBookText: ctx.worldBookText };
     }
 
     async function request(kind, extra = {}, target = null) {
@@ -334,7 +336,8 @@ export function installInteractiveScenes(_state, deps) {
                 .filter(actor => actor.type === 'story')
                 .map(actor => actor.displayName), currentStorySeed.displayName]
                 .filter((name, index, values) => name && values.indexOf(name) === index);
-            const prompts = buildInteractiveRequest({ kind, presetKey: scene.preset, styleInput: scene.styleInput, generatedPrompt: scene.generatedPrompt, context: await contextText(), actorRoster, ...extra });
+            const contextData = await contextText(controller.signal);
+            const prompts = buildInteractiveRequest({ kind, presetKey: scene.preset, styleInput: scene.styleInput, generatedPrompt: scene.generatedPrompt, ...contextData, actorRoster, ...extra });
             const raw = await callAI(prompts.systemPrompt, prompts.userPrompt, {
                 isolated: true,
                 signal: controller.signal,
@@ -513,10 +516,10 @@ export function installInteractiveScenes(_state, deps) {
             }
             return;
         }
-        if (action === 'more') { toggleSceneMenu(button); return; }
-        if (action === 'post-actions') { toggleScenePostActions(button); return; }
+        if (action === 'more') { toggleSceneMenu(button); return; } if (action === 'post-actions') { toggleScenePostActions(button); return; }
         if (action === 'toggle-danmaku-actions') { toggleDanmakuActions(button, app); return; }
         if (action === 'toggle-reply') { toggleSceneReplyComposer(button, app); return; }
+        if (action === 'community-worldbook-columns') { await window.__pmShowWorldBookColumns?.({ title: '社区可读的数据库记忆', module: 'community' }); return; }
         if (action === 'desktop-chat') { deps.showPhoneChatPage?.(getStorageId()); return; }
         if (action === 'desktop-directory') { window.__pmShowList?.(); return; }
         if (action === 'desktop-settings') { window.__pmOpenSettingsTab?.('home'); return; }

@@ -1,7 +1,7 @@
 import {
     CALENDAR_CYCLE_STORAGE_KEY, CALENDAR_HOLIDAY_STORAGE_KEY, CALENDAR_OCCASION_STORAGE_KEY,
     CALENDAR_RECIPE_STORAGE_KEY, CALENDAR_STORAGE_KEY, CALENDAR_WEATHER_STORAGE_KEY, CHARACTER_BEHAVIOR_KEY,
-    INJECTION_CONFIG_KEY,
+    INJECTION_CONFIG_KEY, WORLD_BOOK_CONFIG_KEY,
 } from './constants.js';
 import { BUDGET_CONFIG_KEY, normalizeBudgetConfig } from './budget.js';
 import {
@@ -13,6 +13,7 @@ import {
 import { createEmptyPhoneUiState, normalizePhoneUiState } from './interactive-scene-model.js';
 import { pmIDBDel, pmIDBGet, pmIDBKeys, pmIDBReadEntry, pmIDBSet, pmOpenIDB } from './pm-idb.js';
 import { THEME_PRESETS } from './config.js';
+import { normalizeWorldBookConfig } from './worldbook-config.js';
 
 export { pmIDBDel, pmIDBGet, pmIDBKeys, pmIDBSet, pmOpenIDB } from './pm-idb.js';
 
@@ -28,7 +29,7 @@ export const DESKTOP_BG_KEY = 'ST_SMS_BG_DESKTOP';
 export const PLUGIN_LOCAL_STORAGE_KEYS = Object.freeze([
     'ST_SMS_DATA_V2', 'ST_SMS_CONFIG', 'ST_SMS_THEME', 'ST_SMS_POKE_CONFIG', 'ST_SMS_WORDY_LIMIT',
     BUDGET_CONFIG_KEY, 'ST_SMS_BG_GLOBAL', 'ST_SMS_BG_LOCAL', DESKTOP_BG_KEY, GROUP_META_STORE_KEY, GROUP_META_FALLBACK_KEY,
-    EMOJI_STORE_KEY, EMOJI_FALLBACK_KEY, CHARACTER_BEHAVIOR_KEY, INJECTION_CONFIG_KEY, 'ST_SMS_API_PROFILES', 'ST_SMS_BIDIRECTIONAL',
+    EMOJI_STORE_KEY, EMOJI_FALLBACK_KEY, CHARACTER_BEHAVIOR_KEY, INJECTION_CONFIG_KEY, WORLD_BOOK_CONFIG_KEY, 'ST_SMS_API_PROFILES', 'ST_SMS_BIDIRECTIONAL',
     INTERACTIVE_STORE_KEY, INTERACTIVE_FALLBACK_KEY, PHONE_UI_STATE_KEY, 'ST_SMS_PHONE_QR_INITIALIZED',
     CALENDAR_STORAGE_KEY, CALENDAR_OCCASION_STORAGE_KEY, CALENDAR_HOLIDAY_STORAGE_KEY,
     CALENDAR_WEATHER_STORAGE_KEY, CALENDAR_CYCLE_STORAGE_KEY, CALENDAR_RECIPE_STORAGE_KEY,
@@ -420,6 +421,28 @@ export function saveInjectionConfig() {
     window.__pmInjectionConfig = normalized;
     try {
         localStorage.setItem(INJECTION_CONFIG_KEY, JSON.stringify(normalized));
+        return true;
+    } catch (error) {
+        return false;
+    }
+}
+
+export function loadWorldBookConfig() {
+    try {
+        window.__pmWorldBookConfig = normalizeWorldBookConfig(
+            JSON.parse(localStorage.getItem(WORLD_BOOK_CONFIG_KEY)),
+        );
+    } catch (error) {
+        window.__pmWorldBookConfig = normalizeWorldBookConfig(null);
+    }
+    return window.__pmWorldBookConfig;
+}
+
+export function saveWorldBookConfig(candidate = window.__pmWorldBookConfig) {
+    const normalized = normalizeWorldBookConfig(candidate);
+    try {
+        localStorage.setItem(WORLD_BOOK_CONFIG_KEY, JSON.stringify(normalized));
+        window.__pmWorldBookConfig = normalized;
         return true;
     } catch (error) {
         return false;

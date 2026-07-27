@@ -53,7 +53,10 @@ import { saveBudgetConfig, saveEmojis } from './storage.js';
     const getCtx = () => typeof SillyTavern !== 'undefined' ? SillyTavern.getContext() : null;
     const getStorageId = () => resolveStorageId(getCtx);
     const getUserPersona = () => resolveUserPersona(getCtx);
-    const gatherContext = context => collectHostContext(context ? () => context : getCtx);
+    const gatherContext = (context, options) => collectHostContext(
+        context ? () => context : getCtx,
+        options,
+    );
     const deps = { runtime, getCtx, getStorageId, getUserPersona, gatherContext, saveBudgetConfig };
     deps.callAI = createAiClient({
         getConfig: () => window.__pmConfig,
