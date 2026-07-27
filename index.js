@@ -2921,8 +2921,8 @@ ${userPrompt}` : userPrompt;
         <span class="pm-calendar-status-watermark" aria-hidden="true">${icon2}</span>
         <div class="pm-calendar-status-content">
             <div class="pm-calendar-status-heading">${relativeLabel ? `<strong class="pm-calendar-status-relative">${escapeHtml(relativeLabel)}</strong>` : ""}<span class="pm-calendar-status-date"><time datetime="${escapeAttr(date)}">${escapeHtml(detailDate.format(parsed))}</time><em>${escapeHtml(detailWeekday.format(parsed))}</em></span></div>
-            <div class="pm-calendar-status-context">${context}</div>
             <b class="pm-calendar-status-value">${value}</b>
+            <div class="pm-calendar-status-context">${context}</div>
         </div>
     </div>`;
   }

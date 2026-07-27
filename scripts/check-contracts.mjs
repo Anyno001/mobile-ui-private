@@ -2008,17 +2008,18 @@ for (const expected of [
   '.pm-calendar-status-content{position:relative;z-index:1;display:flex;min-width:0;min-height:96px;flex-direction:column;align-items:flex-start;justify-content:flex-start;gap:8px}',
   '.pm-calendar-status-heading{display:flex;align-items:baseline;gap:8px;min-width:0}',
   '.pm-calendar-status-relative{color:var(--pm-calendar-accent);font-size:17px;line-height:1.1;font-weight:850;white-space:nowrap}',
-  '.pm-calendar-status-context{display:flex;align-items:center;gap:4px;min-width:0}',
+  '.pm-calendar-status-context{display:flex;align-items:center;gap:4px;width:100%;min-width:0;margin-top:auto}',
   '.pm-calendar-status-weather-context,.pm-calendar-status-cycle-context{color:var(--pm-color-text-secondary);font-size:13px;font-weight:500;line-height:1.2}',
-  '.pm-calendar-status-location{display:inline-grid;place-items:center;color:var(--pm-color-text-tertiary)}.pm-calendar-status-location svg{width:13px;height:13px}',
+  '.pm-calendar-status-context .pm-calendar-status-weather-context{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
+  '.pm-calendar-status-location{display:inline-grid;place-items:center;flex:0 0 auto;color:var(--pm-color-text-tertiary)}.pm-calendar-status-location svg{width:13px;height:13px}',
   '.pm-calendar-status-card-weather .pm-calendar-status-value{color:var(--pm-color-text-secondary);font-weight:550;letter-spacing:.01em}',
   '.pm-calendar-status-card-cycle .pm-calendar-status-value{color:var(--pm-color-text-primary);font-weight:650;letter-spacing:.06em}',
   '.pm-calendar-status-date time{color:var(--pm-color-text-primary);font-weight:750}',
   '.pm-calendar-status-date em{color:var(--pm-color-text-tertiary);font-style:normal;font-weight:500}',
   '.pm-calendar-status-watermark{position:absolute;z-index:0;top:50%;right:-64px;width:202px;height:173px',
   '.pm-calendar-status-watermark svg{width:173px;height:173px;stroke-width:1.55}',
-  '.pm-calendar-status-card-cycle[data-cycle-phase="period"] .pm-calendar-status-watermark{top:50%;right:auto;left:50%;width:190px;height:150px;opacity:.12;transform:translate(-50%,-50%)',
-  '.pm-calendar-status-card-cycle[data-cycle-phase="period"] .pm-calendar-status-watermark{top:50%;right:auto;left:50%;width:190px;height:150px;opacity:.12;transform:translate(-50%,-50%);-webkit-mask-image:radial-gradient(circle at center,#000 0 48%,transparent 78%);mask-image:radial-gradient(circle at center,#000 0 48%,transparent 78%)}',
+  '.pm-calendar-status-card-cycle[data-cycle-phase="period"] .pm-calendar-status-watermark{top:50%;right:-64px;left:auto;width:190px;height:150px;opacity:.18;transform:translateY(-50%)',
+  '.pm-calendar-status-card-cycle[data-cycle-phase="period"] .pm-calendar-status-watermark{top:50%;right:-64px;left:auto;width:190px;height:150px;opacity:.18;transform:translateY(-50%);-webkit-mask-image:linear-gradient(90deg,transparent 0%,#000 44%);mask-image:linear-gradient(90deg,transparent 0%,#000 44%)}',
   '-webkit-mask-image:linear-gradient(90deg,transparent 0%,#000 44%)',
   '.pm-calendar-shell[data-calendar-view-mode="recipe"]{--pm-calendar-accent:#c77a32}',
   '.pm-calendar-day.has-recipe>span{color:var(--pm-calendar-accent)}',
@@ -2030,7 +2031,7 @@ for (const expected of [
   '.pm-calendar-detail-date{display:flex!important;flex-direction:row!important;align-items:baseline',
   '.pm-calendar-detail-date>strong{color:var(--pm-calendar-accent);font-size:17px;line-height:1.1;font-weight:850',
   '.pm-calendar-detail-date>span{display:flex;align-items:baseline;gap:0;min-width:0}',
-  '.pm-calendar-detail-date time{font-weight:750}',
+  '.pm-calendar-detail-date time{color:var(--pm-color-text-primary);font-weight:750}',
   '.pm-calendar-detail-date em{color:var(--pm-color-text-tertiary);font-style:normal;font-weight:500}',
   '.pm-calendar-detail-actions{position:absolute;top:8px;right:10px',
   '.pm-calendar-detail-more{display:grid;place-items:center;width:28px;height:28px;padding:5px;border:0',
@@ -2064,6 +2065,19 @@ requireCssDeclarations(cssRules, '.pm-calendar-status-value', {
 requireCssDeclarations(cssRules, '.pm-calendar-status-date', {
   display: 'flex', 'align-items': 'baseline', gap: '0', 'min-width': '0',
 });
+requireCssDeclarations(cssRules, '.pm-calendar-status-context', {
+  display: 'flex', 'align-items': 'center', gap: '4px', width: '100%', 'min-width': '0', 'margin-top': 'auto',
+});
+requireCssDeclarations(cssRules, '.pm-calendar-status-context .pm-calendar-status-weather-context', {
+  'min-width': '0', overflow: 'hidden', 'text-overflow': 'ellipsis', 'white-space': 'nowrap',
+});
+for (const selector of [
+  '.pm-calendar-status-heading',
+  '.pm-calendar-status-value',
+  '.pm-calendar-status-context',
+]) if (cssRules.find(candidate => candidate.selectors.includes(selector))?.declarations.has('order')) {
+  failures.push(`style.css: ${selector} must not use flex order to change status-card reading order`);
+}
 requireCssDeclarations(cssRules, '.pm-calendar-status-location svg', { width: '13px', height: '13px' });
 requireCssDeclarations(cssRules, '.pm-calendar-status-card-weather .pm-calendar-status-value', {
   color: 'var(--pm-color-text-secondary)', 'font-weight': '550', 'letter-spacing': '.01em',

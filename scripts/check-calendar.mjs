@@ -585,6 +585,15 @@ assert.doesNotMatch(climateDetail, /\d+ - \d+ ℃/, '状态卡天气温度不得
 assert.match(climateDetail, /class="pm-calendar-status-card pm-calendar-status-card-weather"/);
 assert.match(climateDetail, /class="pm-calendar-status-heading"><strong class="pm-calendar-status-relative">今天<\/strong><span class="pm-calendar-status-date"><time datetime="2032-03-15">3月15日<\/time><em>星期一<\/em><\/span><\/div>/);
 assert.match(climateDetail, /class="pm-calendar-status-context"><span class="pm-calendar-status-weather-context">小雨 · 中国<\/span><span class="pm-calendar-status-location"[^>]*><svg/);
+const longLocation = '北大西洋群岛特别行政区极北海岸天气观测站';
+const longLocationDetail = renderSelectedDateDetail(
+    createEmptyCalendarScope(), new Map(), {}, {
+        ...freshWeather.store,
+        location: { ...freshWeather.store.location, country: longLocation },
+    }, {}, climateDate, 'weather', '今天',
+);
+assert.match(longLocationDetail, new RegExp(`class="pm-calendar-status-value">${climateResolved.day.tempMin}°–${climateResolved.day.tempMax}°<\\/b>[\\s\\S]*?class="pm-calendar-status-weather-context">${weatherCodeLabel(climateResolved.day.weatherCode)} · ${longLocation}<\\/span><span class="pm-calendar-status-location"[^>]*><svg`),
+    '长地点必须位于独立的可省略文本节点中，且不得吞掉定位图标');
 assert.doesNotMatch(climateDetail, /pm-calendar-status-date-separator/);
 assert.match(climateDetail, /<svg/);
 assert.doesNotMatch(climateDetail, /气候推演|缓存预报|真实预报|体感|湿度/);
@@ -1000,8 +1009,8 @@ const renderedWeatherDetail = renderSelectedDateDetail(
 );
 assert.match(renderedWeatherDetail, /class="pm-calendar-selected-detail is-status-card"/);
 assert.match(renderedWeatherDetail, /class="pm-calendar-status-heading"><strong class="pm-calendar-status-relative">今天<\/strong><span class="pm-calendar-status-date"><time[^>]*>\d{1,2}月\d{1,2}日<\/time><em>星期[日一二三四五六]<\/em><\/span><\/div>/);
-assert.match(renderedWeatherDetail, /class="pm-calendar-status-context"><span class="pm-calendar-status-weather-context">少云 · CN<\/span><span class="pm-calendar-status-location"[^>]*><svg/);
-assert.match(renderedWeatherDetail, /class="pm-calendar-status-value">20°–30°<\/b>/);
+assert.match(renderedWeatherDetail, /class="pm-calendar-status-value">20°–30°<\/b>[\s\S]*?class="pm-calendar-status-context"><span class="pm-calendar-status-weather-context">少云 · CN<\/span><span class="pm-calendar-status-location"[^>]*><svg/,
+    '天气状态卡必须先显示温度，再在末行显示天气条件和地点');
 assert.doesNotMatch(renderedWeatherDetail, /20 - 30 ℃/, '天气详情不得回退为旧温度格式');
 assert.doesNotMatch(renderedWeatherDetail, /pm-calendar-status-date-separator/);
 assert.match(renderedWeatherDetail, /class="pm-calendar-status-watermark"/, '天气详情必须保留背景水印层');
@@ -1019,7 +1028,7 @@ assert.match(renderedCycle, /class="pm-calendar-cycle-input" name="enabled" type
 assert.match(renderedCycle, /class="pm-custom-check" aria-hidden="true"/,
     '周期开关必须复用统一视觉控件');
 const renderedCycleDetail = renderedCycle.match(/<section[^>]*data-calendar-selected-detail[\s\S]*?<\/section>/)?.[0] || '';
-assert.match(renderedCycleDetail, /class="pm-calendar-selected-detail is-status-card"[\s\S]*?class="pm-calendar-status-card pm-calendar-status-card-cycle" data-cycle-phase="period"[\s\S]*?pm-calendar-status-heading">[\s\S]*?pm-calendar-status-relative">今天<\/strong>[\s\S]*?pm-calendar-status-context"><span class="pm-calendar-status-cycle-context">生理周期<\/span>[\s\S]*?class="pm-calendar-status-value">经期<\/b>/,
+assert.match(renderedCycleDetail, /class="pm-calendar-selected-detail is-status-card"[\s\S]*?class="pm-calendar-status-card pm-calendar-status-card-cycle" data-cycle-phase="period"[\s\S]*?pm-calendar-status-heading">[\s\S]*?pm-calendar-status-relative">今天<\/strong>[\s\S]*?class="pm-calendar-status-value">经期<\/b>[\s\S]*?pm-calendar-status-context"><span class="pm-calendar-status-cycle-context">生理周期<\/span>/,
     '选中经期日期必须使用海报式健康状态卡');
 assert.doesNotMatch(renderedCycleDetail, /健康记录/, '周期状态卡不得保留旧上下文文案');
 assert.match(renderedCycleDetail, /class="pm-calendar-status-watermark"[^>]*>[\s\S]*?<circle cx="12" cy="7" r="3"\/>/,
