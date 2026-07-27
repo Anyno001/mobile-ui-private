@@ -12,6 +12,7 @@ import {
 } from './directory-save-coordinator.js';
 import { createEmptyPhoneUiState, normalizePhoneUiState } from './interactive-scene-model.js';
 import { pmIDBDel, pmIDBGet, pmIDBKeys, pmIDBReadEntry, pmIDBSet, pmOpenIDB } from './pm-idb.js';
+import { THEME_PRESETS } from './config.js';
 
 export { pmIDBDel, pmIDBGet, pmIDBKeys, pmIDBSet, pmOpenIDB } from './pm-idb.js';
 
@@ -182,6 +183,11 @@ export function loadTheme() {
         const saved = JSON.parse(localStorage.getItem('ST_SMS_THEME'));
         if (saved && typeof saved === 'object' && !Array.isArray(saved)) {
             window.__pmTheme = { ...window.__pmTheme, ...saved };
+        }
+        const preset = window.__pmTheme.preset;
+        if (preset !== 'custom' && !Object.hasOwn(THEME_PRESETS, preset)) {
+            window.__pmTheme.preset = 'default';
+            saveTheme();
         }
         if (window.__pmTheme.layout !== 'standard') {
             window.__pmTheme.layout = 'standard';

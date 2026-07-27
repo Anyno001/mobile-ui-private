@@ -1891,7 +1891,7 @@ for (const expected of [
 ]) requireText('settings-model-picker.js showModelPicker', modelPickerImplementation, expected);
 for (const expected of [
   '<button type="button" class="pm-theme-chip',
-  'aria-label="使用${escapeAttr(v.label)}气泡主题"',
+  'aria-label="使用${escapeAttr(v.label)}界面主题"',
   'aria-pressed="${t.preset === k}"',
   "el.setAttribute('aria-pressed', String(active))",
 ]) requireText('settings-ui.js', settingsCode, expected);
@@ -1916,7 +1916,7 @@ for (const expected of [
   '.pm-model-search{border:none !important;border-bottom:1px solid var(--pm-color-border-subtle) !important;',
   ':is(#pm-iphone,#pm-overlay,#pm-overlay-sub,#pm-model-dropdown) :where(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]):not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="hidden"]):not([type="image"]),textarea,select,[contenteditable="true"]){min-width:0;max-width:100%;border:1px solid var(--pm-color-border-default) !important;',
   ':is(#pm-iphone,#pm-overlay,#pm-overlay-sub,#pm-model-dropdown) :where(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]):not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="hidden"]):not([type="image"]),textarea,select,[contenteditable="true"]):focus{border-color:var(--pm-color-border-default) !important;outline:none !important;box-shadow:none !important;}',
-  ':is(#pm-iphone,#pm-overlay,#pm-overlay-sub,#pm-model-dropdown) :where(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]):not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="hidden"]):not([type="image"]),textarea,select,[contenteditable="true"]):focus-visible{border-color:var(--pm-color-border-default) !important;outline:1px solid var(--pm-r-bg,var(--pm-color-focus-ring)) !important;outline-offset:1px !important;box-shadow:none !important;}',
+  ':is(#pm-iphone,#pm-overlay,#pm-overlay-sub,#pm-model-dropdown) :where(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]):not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="hidden"]):not([type="image"]),textarea,select,[contenteditable="true"]):focus-visible{border-color:var(--pm-color-border-default) !important;outline:1px solid var(--pm-color-focus-ring) !important;outline-offset:1px !important;box-shadow:none !important;}',
   ':is(#pm-iphone,#pm-overlay,#pm-overlay-sub,#pm-model-dropdown) :where(.pm-input,.pm-scene-composer textarea){border:0 !important;}',
   ':is(#pm-iphone,#pm-overlay,#pm-overlay-sub,#pm-model-dropdown) .pm-model-search{border:0 !important;border-bottom:1px solid var(--pm-color-border-subtle) !important;border-radius:0;}',
   ':is(#pm-iphone,#pm-overlay,#pm-overlay-sub,#pm-model-dropdown) :where(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]):not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="hidden"]):not([type="image"]),textarea,select,[contenteditable="true"]):disabled{opacity:.55 !important;cursor:not-allowed;}',
@@ -1926,8 +1926,8 @@ for (const expected of [
   '#pm-iphone .pm-calendar-generation-rule{padding:9px 10px !important;resize:vertical !important;}',
   '#pm-iphone .pm-calendar-management :is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]):not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="hidden"]):not([type="image"]),select){padding:7px !important;}',
   ':is(#pm-overlay,#pm-overlay-sub) .pm-cfg-input{padding:9px 12px !important;}',
-  '.pm-emoji-action,.pm-emoji-upload{border:1px solid var(--pm-r-bg,#007aff);border-radius:8px;background:color-mix(in srgb,var(--pm-r-bg,#007aff) 10%,var(--pm-color-surface-elevated));color:var(--pm-r-bg,#007aff);',
-  '.pm-emoji-action:focus-visible,.pm-emoji-upload:focus-visible,.pm-emoji-image-delete:focus-visible{outline:1px solid var(--pm-r-bg,var(--pm-color-focus-ring));outline-offset:2px;}',
+  '.pm-emoji-action,.pm-emoji-upload{border:1px solid var(--pm-color-accent,#007aff);border-radius:8px;background:color-mix(in srgb,var(--pm-color-accent,#007aff) 10%,var(--pm-color-surface-elevated));color:var(--pm-color-accent,#007aff);',
+  '.pm-emoji-action:focus-visible,.pm-emoji-upload:focus-visible,.pm-emoji-image-delete:focus-visible{outline:1px solid var(--pm-color-focus-ring);outline-offset:2px;}',
   '.pm-model-opt{display:block;width:100%;padding:8px 12px;font:inherit;font-size:13px;text-align:left;background:var(--pm-color-surface-elevated);color:var(--pm-color-text-primary);',
   '.pm-model-empty{padding:14px;text-align:center;font-size:12px;color:var(--pm-color-text-tertiary);}',
 ]) requireText('style.css', css, expected);
@@ -2044,7 +2044,7 @@ for (const expected of [
   '.pm-calendar-entry-dialog [data-calendar-occasion-fields][hidden]{display:none!important}',
   '.pm-calendar-entry-dialog{width:min(330px,calc(100vw - 28px))}',
   '#pm-overlay .pm-calendar-entry-dialog textarea[name="note"]{box-sizing:border-box!important;width:100%!important;min-height:72px!important;border:1px solid var(--pm-color-border-default)!important;border-radius:10px!important;background:var(--pm-color-surface-input)!important;color:var(--pm-color-text-primary)!important;font:400 13px/1.45 -apple-system',
-  '#pm-overlay .pm-calendar-entry-dialog textarea[name="note"]:focus-visible{outline:1px solid var(--pm-r-bg,var(--pm-color-focus-ring))!important;outline-offset:1px!important}',
+  '#pm-overlay .pm-calendar-entry-dialog textarea[name="note"]:focus-visible{outline:1px solid var(--pm-color-focus-ring)!important;outline-offset:1px!important}',
   '.pm-calendar-entry-actions button{min-height:38px;border:0',
   '.pm-calendar-view-switch button[aria-pressed="true"]{background:transparent;color:var(--pm-calendar-accent);box-shadow:inset 0 -2px 0 var(--pm-calendar-accent)',
   '@media (prefers-reduced-motion:reduce){.pm-calendar-header-action.is-loading svg{animation:none}}',
@@ -2102,18 +2102,18 @@ requireCssDeclarations(cssRules, '.pm-name-edit', {
   width: '34px', height: '34px', 'border-radius': '50% !important',
 });
 requireCssDeclarations(cssRules, '.pm-name-edit:hover', {
-  background: 'transparent !important', color: 'var(--pm-r-bg,#007aff) !important',
+  background: 'transparent !important', color: 'var(--pm-color-accent,#007aff) !important',
 });
 requireCssDeclarations(cssRules, '.pm-name-edit:active', {
-  background: 'transparent !important', color: 'var(--pm-r-txt,#fff) !important',
+  background: 'transparent !important', color: 'var(--pm-color-on-dark) !important',
 });
 requireCssDeclarations(cssRules, '.pm-name-edit:active svg', {
-  color: 'var(--pm-r-txt,#fff) !important', stroke: 'currentColor',
+  color: 'var(--pm-color-on-dark) !important', stroke: 'currentColor',
 });
 requireCssDeclarations(cssRules, '.pm-name-edit::before', {
   width: '24px', height: '24px', 'border-radius': '50%', background: 'transparent',
 });
-requireCssDeclarations(cssRules, '.pm-name-edit:active::before', { background: 'var(--pm-r-bg,#007aff)' });
+requireCssDeclarations(cssRules, '.pm-name-edit:active::before', { background: 'var(--pm-color-accent,#007aff)' });
 requireCssDeclarations(cssRules, '.pm-name', {
   'max-width': '100%',
   'white-space': 'nowrap',
@@ -2122,20 +2122,20 @@ requireCssDeclarations(cssRules, '.pm-name', {
   'text-align': 'center',
 });
 requireCssDeclarations(cssRules, '.pm-nav-btn', {
-  background: 'none !important', color: 'var(--pm-r-bg,#007aff) !important',
+  background: 'none !important', color: 'var(--pm-color-accent,#007aff) !important',
 });
 requireCssDeclarations(cssRules, '.pm-nav-btn.pm-nav-left-btn', {
   color: 'var(--pm-color-text-tertiary) !important',
 });
 requireCssDeclarations(cssRules, '.pm-up-btn', {
   width: '32px !important', height: '32px !important',
-  background: 'var(--pm-r-bg,#007aff) !important', color: 'var(--pm-r-txt,#fff) !important',
+  background: 'var(--pm-color-accent,#007aff) !important', color: 'var(--pm-color-on-dark) !important',
 });
 requireCssDeclarations(cssRules, '.pm-expand-btn:hover', {
-  color: 'var(--pm-r-bg,#007aff) !important',
+  color: 'var(--pm-color-accent,#007aff) !important',
 });
 requireCssDeclarations(cssRules, '.pm-expand-btn[aria-expanded="true"]', {
-  color: 'var(--pm-r-bg,#007aff) !important',
+  color: 'var(--pm-color-accent,#007aff) !important',
 });
 requireCssDeclarations(cssRules, '.pm-message-select-check', {
   width: '22px', height: '22px', 'min-width': '22px', 'min-height': '22px',
@@ -2144,8 +2144,8 @@ requireCssDeclarations(cssRules, '.pm-message-select-check', {
 });
 requireCssDeclarations(cssRules, '.pm-message-select-check[data-checked="1"]', {
   'background-color': 'var(--pm-color-accent)',
-  'background-image': 'linear-gradient(var(--pm-r-bg,#007aff),var(--pm-r-bg,#007aff))',
-  'border-color': 'var(--pm-r-bg,#007aff)',
+  'background-image': 'linear-gradient(var(--pm-color-accent,#007aff),var(--pm-color-accent,#007aff))',
+  'border-color': 'var(--pm-color-accent,#007aff)',
 });
 requireCssDeclarations(cssRules, '.pm-message-select-check[data-checked="1"]::after', {
   content: "'✓'", 'font-size': '15px', 'font-weight': '800',
@@ -2391,7 +2391,7 @@ requireCssDeclarations(cssRules, '.pm-contact-switcher-current', {
 const settingsTemplatesCode = sourceModuleByName.get('settings-templates.js')?.code || '';
 requireText('settings-templates.js wordy-limit copy', settingsTemplatesCode, '除话痨人设外，每条消息不超过 35 字');
 requireText('settings-templates.js shared settings-home hint class', settingsTemplatesCode, 'class="pm-settings-home-hint">日夜模式、气泡颜色与背景图</span>');
-requireText('settings-templates.js wordy-limit shared settings-home hint class', settingsTemplatesCode, 'small class="pm-settings-home-hint">除话痨人设外，每条消息不超过 35 字</small>');
+requireText('settings-templates.js wordy-limit shared settings-home hint class', settingsTemplatesCode, 'span class="pm-settings-home-hint">除话痨人设外，每条消息不超过 35 字</span>');
 requireText('calendar.js preserves calendar scroll position on rerender', sourceModuleByName.get('calendar.js')?.code || '', "const previousShell = container.querySelector?.('.pm-calendar-shell');");
 requireText('calendar.js restores calendar scroll position on rerender', sourceModuleByName.get('calendar.js')?.code || '', 'if (Number.isFinite(scrollTop) && nextShell) nextShell.scrollTop = scrollTop;');
 requireCssDeclarations(cssRules, '.pm-contact-settings-actions', { 'border-top': '0 !important' });
@@ -2404,7 +2404,7 @@ requireCssDeclarations(cssRules, '#pm-overlay .pm-group-settings-scroll textarea
   'box-shadow': 'none !important', appearance: 'none !important',
 });
 for (const expected of [
-  '.pm-action-button{', 'font-size:13px', 'background:var(--pm-r-bg,#007aff)',
+  '.pm-action-button{', 'font-size:13px', 'background:var(--pm-color-accent,#007aff)',
   '.pm-header-icon-button{box-sizing:border-box;width:34px;height:34px;min-width:34px;min-height:34px',
   '.pm-action-button.is-danger{background:var(--pm-color-danger);color:var(--pm-color-on-dark)}',
   '.pm-contact-add-choices{',
@@ -2521,10 +2521,10 @@ requireText(
   'aria-label="删除图片 ${escapeAttr(image.desc)}"',
 );
 requireCssDeclarations(cssRules, '.pm-emoji-action', {
-  border: '1px solid var(--pm-r-bg,#007aff)', background: 'color-mix(in srgb,var(--pm-r-bg,#007aff) 10%,var(--pm-color-surface-elevated))', color: 'var(--pm-r-bg,#007aff)',
+  border: '1px solid var(--pm-color-accent,#007aff)', background: 'color-mix(in srgb,var(--pm-color-accent,#007aff) 10%,var(--pm-color-surface-elevated))', color: 'var(--pm-color-accent,#007aff)',
 });
 requireCssDeclarations(cssRules, '.pm-emoji-upload', {
-  border: '1px solid var(--pm-r-bg,#007aff)', background: 'color-mix(in srgb,var(--pm-r-bg,#007aff) 10%,var(--pm-color-surface-elevated))', color: 'var(--pm-r-bg,#007aff)',
+  border: '1px solid var(--pm-color-accent,#007aff)', background: 'color-mix(in srgb,var(--pm-color-accent,#007aff) 10%,var(--pm-color-surface-elevated))', color: 'var(--pm-color-accent,#007aff)',
 });
 requireCssDeclarations(cssRules, '.pm-emoji-action.is-full', { width: '100%', 'margin-top': '8px' });
 requireCssDeclarations(cssRules, '.pm-emoji-action.is-compact', { padding: '5px 10px', 'font-size': '11px' });
@@ -2532,10 +2532,10 @@ requireCssDeclarations(cssRules, '.pm-emoji-action.is-danger', {
   'border-color': 'var(--pm-color-danger)', background: 'color-mix(in srgb,var(--pm-color-danger) 10%,var(--pm-color-surface-elevated))', color: 'var(--pm-color-danger)',
 });
 requireCssDeclarations(cssRules, '.pm-emoji-image-delete', { background: 'var(--pm-color-danger)', color: 'var(--pm-color-on-dark)' });
-requireCssDeclarations(cssRules, '.pm-emoji-action:focus-visible', { outline: '1px solid var(--pm-r-bg,var(--pm-color-focus-ring))', 'outline-offset': '2px' });
-requireCssDeclarations(cssRules, '.pm-emoji-upload:focus-visible', { outline: '1px solid var(--pm-r-bg,var(--pm-color-focus-ring))', 'outline-offset': '2px' });
-requireCssDeclarations(cssRules, '.pm-emoji-image-delete:focus-visible', { outline: '1px solid var(--pm-r-bg,var(--pm-color-focus-ring))', 'outline-offset': '2px' });
-requireCssDeclarations(cssRules, '.pm-action-button', { background: 'var(--pm-r-bg,#007aff)', color: 'var(--pm-r-txt,#fff)' });
+requireCssDeclarations(cssRules, '.pm-emoji-action:focus-visible', { outline: '1px solid var(--pm-color-focus-ring)', 'outline-offset': '2px' });
+requireCssDeclarations(cssRules, '.pm-emoji-upload:focus-visible', { outline: '1px solid var(--pm-color-focus-ring)', 'outline-offset': '2px' });
+requireCssDeclarations(cssRules, '.pm-emoji-image-delete:focus-visible', { outline: '1px solid var(--pm-color-focus-ring)', 'outline-offset': '2px' });
+requireCssDeclarations(cssRules, '.pm-action-button', { background: 'var(--pm-color-accent,#007aff)', color: 'var(--pm-color-on-dark)' });
 for (const expected of ['isRenderableEmojiSource(url)', "typeof emojiBudget === 'function'", '!emojiBudget(url)', 'loading="lazy"', 'decoding="async"', 'object-fit:contain']) {
   requireText('messaging.js', messagingCode, expected);
 }

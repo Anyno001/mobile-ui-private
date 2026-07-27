@@ -169,6 +169,22 @@ export function createAiClient({
 
     const throwIfAborted = signal => { if (signal?.aborted) throw abortError(); };
 
+    // 宿主生成接口不接受 AbortSignal，无法真正取消底层请求。
+    // 这里让调用层在取消时立即拿到 AbortError 退出，避免宿主 Promise 悬挂时
+    // 生成状态机永久停在“正在生成”。迟到的宿主结果被显式吞掉，防止未处理 rejection。
+    function raceAbort(promise, signal) {
+        if (!signal) return promise;
+        throwIfAborted(signal);
+        return new Promise((resolve, reject) => {
+            const onAbort = () => reject(abortError());
+            signal.addEventListener('abort', onAbort, { once: true });
+            promise.then(
+                value => { signal.removeEventListener('abort', onAbort); resolve(value); },
+                error => { signal.removeEventListener('abort', onAbort); reject(error); },
+            );
+        });
+    }
+
     return async function callAI(systemPrompt, userPrompt, options = {}) {
         const cfg = getConfig() || {};
         const useIndependent = cfg.useIndependent === true;
@@ -243,18 +259,18 @@ export function createAiClient({
         if (options.isolated) {
             if (typeof context.generateRaw !== 'function') throw new Error('当前 SillyTavern 版本不支持隔离生成，请升级后重试');
             throwIfAborted(signal);
-            const result = await context.generateRaw({
+            const result = await raceAbort(context.generateRaw({
                 prompt: userPrompt,
                 systemPrompt,
                 trimNames: false,
-            });
+            }), signal);
             throwIfAborted(signal);
             return result;
         }
         if (typeof context.generateQuietPrompt !== 'function') throw new Error('当前 SillyTavern 上下文缺少 generateQuietPrompt');
         const fullPrompt = systemPrompt ? `${systemPrompt}\n\n${userPrompt}` : userPrompt;
         throwIfAborted(signal);
-        const result = await context.generateQuietPrompt({ quietPrompt: fullPrompt });
+        const result = await raceAbort(context.generateQuietPrompt({ quietPrompt: fullPrompt }), signal);
         throwIfAborted(signal);
         return result;
     };

@@ -11,7 +11,7 @@ export function renderSettingsHome() {
       <button type="button" role="listitem" onclick="window.__pmShowConfig('budget')"><b>上下文预算</b><span class="pm-settings-home-hint">控制手机会话与社区写入主提示词的额度</span></button>
       <button type="button" role="listitem" onclick="window.__pmShowConversationInjection()"><b>正文注入</b><span class="pm-settings-home-hint">分别设置聊天、社区、日历与菜谱的注入位置和深度</span></button>
       <div class="pm-global-setting" role="group" aria-labelledby="pm-wordy-label">
-        <span><b id="pm-wordy-label">全局短消息限制</b><small class="pm-settings-home-hint">除话痨人设外，每条消息不超过 35 字</small></span>
+        <span><b id="pm-wordy-label">全局短消息限制</b><span class="pm-settings-home-hint">除话痨人设外，每条消息不超过 35 字</span></span>
         <div id="pm-wordy-check" onclick="window.__pmToggleWordyLimit()"
           class="pm-custom-check ${window.__pmWordyLimit === true ? 'is-checked' : ''}" role="checkbox" tabindex="0"
           aria-checked="${window.__pmWordyLimit === true}"
@@ -85,13 +85,6 @@ export function renderLookSettings({ theme, presetButtons, desktopBackgroundButt
     return `
     <div class="pm-settings-page">
       <div style="padding:12px 16px;">
-        <div class="pm-cfg-label" style="margin-bottom:8px;">日夜模式</div>
-        <div class="pm-theme-row" style="margin-bottom:8px;">
-          <div class="pm-layout-chip ${theme.darkMode === 'light' ? 'pm-layout-active' : ''}" onclick="window.__pmSetDarkMode('light')">日间</div>
-          <div class="pm-layout-chip ${theme.darkMode === 'dark' ? 'pm-layout-active' : ''}" onclick="window.__pmSetDarkMode('dark')">夜间</div>
-        </div>
-      </div>
-      <div style="padding:12px 16px;border-top:1px solid var(--pm-color-border-subtle);">
         <label class="pm-cfg-label pm-ambient-setting">
           <span><b>显示本地状态栏</b><small>仅显示设备本地时间。</small></span>
           <div id="pm-ambient-status-enabled" class="pm-custom-check ${theme.ambientStatusEnabled === true ? 'is-checked' : ''}" role="checkbox" tabindex="0" aria-checked="${theme.ambientStatusEnabled === true}" onclick="const enabled=!this.classList.contains('is-checked');this.classList.toggle('is-checked',enabled);this.setAttribute('aria-checked',String(enabled));window.__pmSetAmbientStatus(enabled)" onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();this.click()}"></div>
@@ -102,9 +95,19 @@ export function renderLookSettings({ theme, presetButtons, desktopBackgroundButt
         <input id="pm-custom-title" class="pm-cfg-input" maxlength="20" value="${String(theme.customTitle || '').replaceAll('&', '&amp;').replaceAll('"', '&quot;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')}" placeholder="天音小笺" oninput="window.__pmSetCustomTitle()">
         <small class="pm-cfg-help">留空时显示“天音小笺”。</small>
       </div>
+      <div style="padding:12px 16px;border-top:1px solid var(--pm-color-border-subtle);">
+        <div class="pm-cfg-label" style="margin-bottom:8px;">日夜模式</div>
+        <div class="pm-theme-row" style="margin-bottom:8px;">
+          <button type="button" class="pm-layout-chip ${theme.darkMode === 'light' ? 'pm-layout-active' : ''}" data-theme-mode="light" aria-pressed="${theme.darkMode === 'light'}" onclick="window.__pmSetDarkMode('light')">日间</button>
+          <button type="button" class="pm-layout-chip ${theme.darkMode === 'dark' ? 'pm-layout-active' : ''}" data-theme-mode="dark" aria-pressed="${theme.darkMode === 'dark'}" onclick="window.__pmSetDarkMode('dark')">夜间</button>
+        </div>
+      </div>
       <div style="padding:14px 16px 12px;border-top:1px solid var(--pm-color-border-subtle);">
-        <div class="pm-cfg-label" style="margin-bottom:10px;">气泡主题</div>
+        <div class="pm-cfg-label" style="margin-bottom:10px;">主题颜色</div>
         <div class="pm-theme-row">${presetButtons}</div>
+      </div>
+      <div style="padding:14px 16px 12px;border-top:1px solid var(--pm-color-border-subtle);">
+        <div class="pm-cfg-label" style="margin-bottom:10px;">气泡颜色</div>
         <div style="display:flex;gap:8px;margin-top:14px;align-items:center;flex-wrap:wrap;">
           <label class="pm-cfg-label" style="margin:0;">自定义右</label>
           <input id="pm-custom-right" type="color" value="${theme.customRight || '#007aff'}" onchange="window.__pmSetCustomColor()" class="pm-color-pick">
@@ -112,9 +115,11 @@ export function renderLookSettings({ theme, presetButtons, desktopBackgroundButt
           <input id="pm-custom-left" type="color" value="${theme.customLeft || '#e9e9eb'}" onchange="window.__pmSetCustomColor()" class="pm-color-pick">
           <button type="button" onclick="window.__pmClearCustomColor()" class="pm-color-clear">重置</button>
         </div>
-        <div style="display:flex;gap:8px;margin-top:12px;align-items:center;">
-          <label class="pm-cfg-label" style="margin:0;">边框颜色</label>
-          <input id="pm-border-color" type="color" value="${theme.borderColor || '#1a1a1a'}" onchange="window.__pmSetBorderColor()" class="pm-color-pick">
+      </div>
+      <div style="padding:12px 16px;border-top:1px solid var(--pm-color-border-subtle);">
+        <div class="pm-cfg-label" style="margin-bottom:10px;">手机外框颜色</div>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <input id="pm-border-color" type="color" value="${theme.borderColor || '#1a1a1a'}" onchange="window.__pmSetBorderColor()" class="pm-color-pick" aria-label="手机外框颜色">
           <button type="button" onclick="document.getElementById('pm-border-color').value='#1a1a1a';window.__pmSetBorderColor()" class="pm-color-clear">重置</button>
         </div>
       </div>

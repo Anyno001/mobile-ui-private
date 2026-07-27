@@ -428,6 +428,99 @@ await assert.rejects(
     '主 API generateRaw 返回后必须拒绝已取消的迟到结果',
 );
 
+// 宿主生成接口不接受 AbortSignal：它悬挂时取消必须仍然能立即退出，
+// 否则生成状态机会永久停在“正在生成”。
+for (const [label, hostContext, options] of [
+    ['generateRaw', { generateRaw: () => new Promise(() => {}) }, { isolated: true }],
+    ['generateQuietPrompt', { generateQuietPrompt: () => new Promise(() => {}) }, {}],
+]) {
+    const hangingClient = createAiClient({
+        getConfig: () => ({}),
+        getContext: () => hostContext,
+        fetchImpl: async () => { throw new Error('主 API 测试不应调用 fetch'); },
+    });
+    const hangingController = new AbortController();
+    const hangingRequest = hangingClient('system', 'hanging host request', {
+        ...options, signal: hangingController.signal,
+    });
+    await Promise.resolve();
+    hangingController.abort('generation-cancelled-by-user');
+    await assert.rejects(
+        hangingRequest,
+        error => error.name === 'AbortError' && /已取消/.test(error.message),
+        `宿主 ${label} 永不返回时，取消必须立即拒绝请求而不是永久悬挂`,
+    );
+}
+
+// 取消后宿主 Promise 迟到 reject 必须由 raceAbort 消费，不得产生未处理 rejection。
+let releaseLateHostFailure;
+const lateHostFailure = new Promise((resolve, reject) => { releaseLateHostFailure = reject; });
+const lateFailureClient = createAiClient({
+    getConfig: () => ({}),
+    getContext: () => ({ generateRaw: () => lateHostFailure }),
+    fetchImpl: async () => { throw new Error('主 API 测试不应调用 fetch'); },
+});
+const lateFailureController = new AbortController();
+const unhandledRejections = [];
+const onUnhandledRejection = reason => unhandledRejections.push(reason);
+process.on('unhandledRejection', onUnhandledRejection);
+try {
+    const lateFailureRequest = lateFailureClient('system', 'late host failure', {
+        isolated: true, signal: lateFailureController.signal,
+    });
+    await Promise.resolve();
+    lateFailureController.abort('generation-cancelled-by-user');
+    await assert.rejects(
+        lateFailureRequest,
+        error => error.name === 'AbortError' && /已取消/.test(error.message),
+        '取消必须立即以 AbortError 拒绝，不等宿主结果',
+    );
+    releaseLateHostFailure(new Error('late host failure'));
+    await new Promise(resolve => setTimeout(resolve, 0));
+    assert.deepEqual(unhandledRejections, [],
+        '取消后宓主 Promise 迟到失败不得遗留未处理 rejection');
+} finally {
+    process.off('unhandledRejection', onUnhandledRejection);
+}
+
+// 无 signal 时不得访问 signal API；正常收尾后必须清理 abort 监听器。
+const noSignalClient = createAiClient({
+    getConfig: () => ({}),
+    getContext: () => ({ generateRaw: async () => 'no signal reply' }),
+    fetchImpl: async () => { throw new Error('主 API 测试不应调用 fetch'); },
+});
+assert.equal(await noSignalClient('system', 'no signal', { isolated: true }), 'no signal reply',
+    '未传入 signal 时宿主生成必须正常完成');
+
+const listenerController = new AbortController();
+let abortListenerCount = 0;
+const listenerSignal = {
+    get aborted() { return listenerController.signal.aborted; },
+    addEventListener(...args) { abortListenerCount += 1; listenerController.signal.addEventListener(...args); },
+    removeEventListener(...args) { abortListenerCount -= 1; listenerController.signal.removeEventListener(...args); },
+};
+const listenerClient = createAiClient({
+    getConfig: () => ({}),
+    getContext: () => ({ generateRaw: async () => 'listener reply' }),
+    fetchImpl: async () => { throw new Error('主 API 测试不应调用 fetch'); },
+});
+assert.equal(await listenerClient('system', 'listener cleanup', { isolated: true, signal: listenerSignal }),
+    'listener reply');
+assert.equal(abortListenerCount, 0, '宿主生成正常完成后必须移除 abort 监听器');
+
+const failingListenerClient = createAiClient({
+    getConfig: () => ({}),
+    getContext: () => ({ generateRaw: async () => { throw new Error('host failed'); } }),
+    fetchImpl: async () => { throw new Error('主 API 测试不应调用 fetch'); },
+});
+await assert.rejects(
+    failingListenerClient('system', 'listener cleanup on failure', { isolated: true, signal: listenerSignal }),
+    /host failed/,
+);
+assert.equal(abortListenerCount, 0, '宿主生成失败后也必须移除 abort 监听器');
+
+
+
 config = {
     useIndependent: true,
     apiUrl: 'https://example.test/v1/',

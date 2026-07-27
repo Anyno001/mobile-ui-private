@@ -184,7 +184,7 @@ export function installPhoneLifecycle(state, deps) {
         clearBidirectionalInjection,
         applyBackground, applyTheme, applyPhoneScale, bindIsland, bindPhoneResize,
         migrateOldHistory, hookGenerationEvent,
-        invalidateGeneration, disarmAutoPoke, syncGenerationControls, closeOverlay, closeControlCenter,
+        cancelGeneration, invalidateGeneration, disarmAutoPoke, syncGenerationControls, closeOverlay, closeControlCenter,
         refreshReplyCardAvailability,
     } = deps;
     let unbindSendGesture = null;
@@ -404,6 +404,7 @@ export function installPhoneLifecycle(state, deps) {
     <div class="pm-input-bar">
       <button type="button" onclick="window.__pmShowControlCenter()" class="pm-expand-btn" title="快捷工具" aria-haspopup="menu" aria-expanded="false">${CONTROL_ICON_SVG}</button>
       <input class="pm-input" placeholder="长按提交全部消息">
+      <button type="button" class="pm-generation-cancel" hidden disabled onclick="window.__pmCancelGeneration()" title="停止生成" aria-label="停止生成">停止</button>
       <button type="button" class="pm-up-btn" title="点击加入暂存，长按最终提交给 AI">${SEND_ICON_SVG}</button>
     </div>
   </section>
@@ -424,6 +425,7 @@ export function installPhoneLifecycle(state, deps) {
         syncGenerationControls();
         state.phoneWindow.querySelector('.pm-quote-preview-cancel')?.addEventListener('click', () => deps.clearActiveQuote?.());
         state.phoneWindow.querySelector('.pm-input').addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); window.__pmSend(); } });
+        window.__pmCancelGeneration = () => cancelGeneration();
         const sendButton = state.phoneWindow.querySelector('.pm-up-btn');
         unbindSendGesture = bindPressGesture(sendButton, {
             delay: 550,

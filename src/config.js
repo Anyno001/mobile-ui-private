@@ -1,9 +1,16 @@
+// Presets define the UI skin and its default bubble palette. Custom bubble colors
+// deliberately override only message bubbles; UI controls use the skin accent.
 export const THEME_PRESETS = {
-    default: { right: '#007aff', left: '#e9e9eb', rightText: '#fff', leftText: '#000', label: '默认蓝' },
-    pink: { right: '#ff6b8a', left: '#fce4ec', rightText: '#fff', leftText: '#4a2030', label: '樱花粉' },
-    dark: { right: '#5856d6', left: '#2c2c2e', rightText: '#fff', leftText: '#e0e0e0', label: '暗夜紫' },
-    frost: { right: 'rgba(0,122,255,0.55)', left: 'rgba(255,255,255,0.35)', rightText: '#fff', leftText: '#222', label: '磨砂玻璃', frost: true },
-    mint: { right: '#34c759', left: '#e8f5e9', rightText: '#fff', leftText: '#1b4332', label: '薄荷绿' },
+    default: { right: '#007aff', left: '#e9e9eb', rightText: '#fff', leftText: '#000', label: '日间', accent: '#007aff' },
+    dark: { right: '#5856d6', left: '#2c2c2e', rightText: '#fff', leftText: '#e0e0e0', label: '夜间', accent: '#5856d6' },
+    apple: {
+        right: '#893619', left: '#F8F5EE', rightText: '#F8F5EE', leftText: '#0E2110', label: '苹果', accent: '#893619',
+        ui: {
+            '--pm-color-surface-page': '#F8F5EE', '--pm-color-surface-card': '#EEE9DE', '--pm-color-surface-input': '#F8F5EE', '--pm-color-surface-elevated': '#EEE9DE',
+            '--pm-color-text-primary': '#0E2110', '--pm-color-text-secondary': '#4A503A', '--pm-color-text-tertiary': '#6C705A',
+            '--pm-color-border-default': '#B26B5F', '--pm-color-border-subtle': '#DED5C3', '--pm-color-focus-ring': '#7A9C45',
+        },
+    },
 };
 
 export function normalizeApiUrls(input) {

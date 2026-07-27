@@ -10,13 +10,22 @@ const SUB_OVERLAY_STYLE = 'position:fixed !important; inset:0 !important; margin
 function applySubOverlayTheme(overlay) {
     const theme = window.__pmTheme || {};
     const preset = THEME_PRESETS[theme.preset] || THEME_PRESETS.default;
+    // 与 applyTheme 保持同一语义：苹果皮肤是独立浅色界面，不继承暗色骨架变量。
+    const interfaceMode = theme.preset === 'apple' ? 'light' : (theme.darkMode || 'light');
     const rightBackground = theme.customRight || preset.right;
     const rightText = theme.customRight ? contrastText(theme.customRight) : preset.rightText;
+    const skinTokens = THEME_PRESETS.apple?.ui || {};
     overlay.style.setProperty('--pm-r-bg', rightBackground);
     overlay.style.setProperty('--pm-r-txt', rightText);
     overlay.style.setProperty('--pm-l-bg', theme.customLeft || preset.left);
     overlay.style.setProperty('--pm-l-txt', theme.customLeft ? contrastText(theme.customLeft) : preset.leftText);
     overlay.style.setProperty('--pm-border', theme.borderColor || '#1a1a1a');
+    overlay.style.setProperty('--pm-color-accent', preset.accent || preset.right);
+    for (const token of Object.keys(skinTokens)) overlay.style.removeProperty(token);
+    for (const [token, value] of Object.entries(preset.ui || {})) overlay.style.setProperty(token, value);
+    overlay.dataset.theme = interfaceMode;
+    if (theme.preset === 'apple') overlay.dataset.skin = 'apple';
+    else delete overlay.dataset.skin;
 }
 
 function createSubOverlay(html) {

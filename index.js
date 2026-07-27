@@ -1,11 +1,28 @@
 (() => {
   // src/config.js
   var THEME_PRESETS = {
-    default: { right: "#007aff", left: "#e9e9eb", rightText: "#fff", leftText: "#000", label: "\u9ED8\u8BA4\u84DD" },
-    pink: { right: "#ff6b8a", left: "#fce4ec", rightText: "#fff", leftText: "#4a2030", label: "\u6A31\u82B1\u7C89" },
-    dark: { right: "#5856d6", left: "#2c2c2e", rightText: "#fff", leftText: "#e0e0e0", label: "\u6697\u591C\u7D2B" },
-    frost: { right: "rgba(0,122,255,0.55)", left: "rgba(255,255,255,0.35)", rightText: "#fff", leftText: "#222", label: "\u78E8\u7802\u73BB\u7483", frost: true },
-    mint: { right: "#34c759", left: "#e8f5e9", rightText: "#fff", leftText: "#1b4332", label: "\u8584\u8377\u7EFF" }
+    default: { right: "#007aff", left: "#e9e9eb", rightText: "#fff", leftText: "#000", label: "\u65E5\u95F4", accent: "#007aff" },
+    dark: { right: "#5856d6", left: "#2c2c2e", rightText: "#fff", leftText: "#e0e0e0", label: "\u591C\u95F4", accent: "#5856d6" },
+    apple: {
+      right: "#893619",
+      left: "#F8F5EE",
+      rightText: "#F8F5EE",
+      leftText: "#0E2110",
+      label: "\u82F9\u679C",
+      accent: "#893619",
+      ui: {
+        "--pm-color-surface-page": "#F8F5EE",
+        "--pm-color-surface-card": "#EEE9DE",
+        "--pm-color-surface-input": "#F8F5EE",
+        "--pm-color-surface-elevated": "#EEE9DE",
+        "--pm-color-text-primary": "#0E2110",
+        "--pm-color-text-secondary": "#4A503A",
+        "--pm-color-text-tertiary": "#6C705A",
+        "--pm-color-border-default": "#B26B5F",
+        "--pm-color-border-subtle": "#DED5C3",
+        "--pm-color-focus-ring": "#7A9C45"
+      }
+    }
   };
   function normalizeApiUrls(input) {
     const url = (input || "").trim().replace(/\/+$/, "");
@@ -164,6 +181,24 @@
     const throwIfAborted = (signal) => {
       if (signal?.aborted) throw abortError();
     };
+    function raceAbort(promise, signal) {
+      if (!signal) return promise;
+      throwIfAborted(signal);
+      return new Promise((resolve, reject) => {
+        const onAbort = () => reject(abortError());
+        signal.addEventListener("abort", onAbort, { once: true });
+        promise.then(
+          (value) => {
+            signal.removeEventListener("abort", onAbort);
+            resolve(value);
+          },
+          (error) => {
+            signal.removeEventListener("abort", onAbort);
+            reject(error);
+          }
+        );
+      });
+    }
     return async function callAI(systemPrompt, userPrompt, options = {}) {
       const cfg = getConfig() || {};
       const useIndependent = cfg.useIndependent === true;
@@ -237,11 +272,11 @@
       if (options.isolated) {
         if (typeof context.generateRaw !== "function") throw new Error("\u5F53\u524D SillyTavern \u7248\u672C\u4E0D\u652F\u6301\u9694\u79BB\u751F\u6210\uFF0C\u8BF7\u5347\u7EA7\u540E\u91CD\u8BD5");
         throwIfAborted(signal);
-        const result2 = await context.generateRaw({
+        const result2 = await raceAbort(context.generateRaw({
           prompt: userPrompt,
           systemPrompt,
           trimNames: false
-        });
+        }), signal);
         throwIfAborted(signal);
         return result2;
       }
@@ -250,7 +285,7 @@
 
 ${userPrompt}` : userPrompt;
       throwIfAborted(signal);
-      const result = await context.generateQuietPrompt({ quietPrompt: fullPrompt });
+      const result = await raceAbort(context.generateQuietPrompt({ quietPrompt: fullPrompt }), signal);
       throwIfAborted(signal);
       return result;
     };
@@ -5610,6 +5645,11 @@ ${lines.join("\n")}
       if (saved && typeof saved === "object" && !Array.isArray(saved)) {
         window.__pmTheme = { ...window.__pmTheme, ...saved };
       }
+      const preset = window.__pmTheme.preset;
+      if (preset !== "custom" && !Object.hasOwn(THEME_PRESETS, preset)) {
+        window.__pmTheme.preset = "default";
+        saveTheme();
+      }
       if (window.__pmTheme.layout !== "standard") {
         window.__pmTheme.layout = "standard";
         saveTheme();
@@ -7909,13 +7949,21 @@ ${mainChatText}` : "",
   function applySubOverlayTheme(overlay) {
     const theme = window.__pmTheme || {};
     const preset = THEME_PRESETS[theme.preset] || THEME_PRESETS.default;
+    const interfaceMode = theme.preset === "apple" ? "light" : theme.darkMode || "light";
     const rightBackground = theme.customRight || preset.right;
     const rightText = theme.customRight ? contrastText(theme.customRight) : preset.rightText;
+    const skinTokens = THEME_PRESETS.apple?.ui || {};
     overlay.style.setProperty("--pm-r-bg", rightBackground);
     overlay.style.setProperty("--pm-r-txt", rightText);
     overlay.style.setProperty("--pm-l-bg", theme.customLeft || preset.left);
     overlay.style.setProperty("--pm-l-txt", theme.customLeft ? contrastText(theme.customLeft) : preset.leftText);
     overlay.style.setProperty("--pm-border", theme.borderColor || "#1a1a1a");
+    overlay.style.setProperty("--pm-color-accent", preset.accent || preset.right);
+    for (const token of Object.keys(skinTokens)) overlay.style.removeProperty(token);
+    for (const [token, value] of Object.entries(preset.ui || {})) overlay.style.setProperty(token, value);
+    overlay.dataset.theme = interfaceMode;
+    if (theme.preset === "apple") overlay.dataset.skin = "apple";
+    else delete overlay.dataset.skin;
   }
   function createSubOverlay(html) {
     document.getElementById("pm-overlay-sub")?.remove();
@@ -11077,7 +11125,14 @@ ${userName}\uFF1A${userMsgClean}` : "\n[\u4EC5\u6709\u5267\u60C5\u5F15\u5BFC\uFF
         return image?.desc ? `[\u8868\u60C5\u5305\uFF1A${image.desc}]` : "[\u8868\u60C5\u5305]";
       }).replace(/\s{2,}/g, " ").trim();
       const ctxData = await gatherContext2(task.context);
-      if (!isGenerationTaskActive(task)) return null;
+      if (!isGenerationTaskActive(task)) {
+        if (task.signal.aborted) {
+          const error = new Error("\u8BF7\u6C42\u5DF2\u53D6\u6D88");
+          error.name = "AbortError";
+          throw error;
+        }
+        return null;
+      }
       const { cardDesc, cardPersonality, cardScenario, cardFirstMes, cardMesExample, mainChatText, worldBookText, userName, userDesc } = ctxData;
       const userBlock = buildUserBlock(userName, userDesc);
       const smsHistoryText = buildHistoryText(targetHistory, CONTEXT_LIMIT, userName, isGroup ? null : currentPersona);
@@ -11189,9 +11244,9 @@ ${antiFluff}`;
             userName,
             currentPersona
           });
-          raw = await callAI(systemPrompt, indepUserPrompt);
+          raw = await callAI(systemPrompt, indepUserPrompt, { signal: task.signal });
         } else {
-          raw = await callAI("", injectedInstruction);
+          raw = await callAI("", injectedInstruction, { signal: task.signal });
         }
         if (!isGenerationTaskActive(task)) return null;
         if (request.userHistoryEntry) {
@@ -11244,6 +11299,7 @@ ${antiFluff}`;
         if (isGenerationTaskActive(task)) applyBidirectionalInjection();
         return resultData;
       } catch (e) {
+        if (e?.name === "AbortError") throw e;
         console.error("[phone-mode]", e);
         if (!isGenerationTaskActive(task)) return null;
         throw e;
@@ -11411,11 +11467,12 @@ ${antiFluff}`;
         const assistantBubbles = describeMessageEntry(assistantEntry);
         let assistantBubbleIndex = 0;
         if (result.type === "group") {
-          for (const block of result.data) {
+          renderGroup: for (const block of result.data) {
             for (const sentence of block.sentences) {
               await new Promise((resolve) => setTimeout(resolve, 120));
+              if (!isStillTarget()) break renderGroup;
               const bubble = assistantBubbles[assistantBubbleIndex++];
-              if (isStillTarget()) addBubble(sentence, "left", block.name, aiHistoryIndex, {
+              addBubble(sentence, "left", block.name, aiHistoryIndex, {
                 historyIndex: aiHistoryIndex,
                 messageId: assistantEntry.messageId,
                 bubbleId: bubble?.bubbleId,
@@ -11426,8 +11483,9 @@ ${antiFluff}`;
         } else {
           for (const sentence of result.data) {
             await new Promise((resolve) => setTimeout(resolve, 150));
+            if (!isStillTarget()) break;
             const bubble = assistantBubbles[assistantBubbleIndex++];
-            if (isStillTarget()) addBubble(sentence, "left", void 0, aiHistoryIndex, {
+            addBubble(sentence, "left", void 0, aiHistoryIndex, {
               historyIndex: aiHistoryIndex,
               messageId: assistantEntry.messageId,
               bubbleId: bubble?.bubbleId,
@@ -11439,17 +11497,21 @@ ${antiFluff}`;
           if (!state.isGenerating && typeof window.__pmIncrementCounters === "function") window.__pmIncrementCounters();
         }, 300);
       } catch (error) {
-        setPendingBatchStatus(runtime, target.storageId, target.saveKey, itemIds, "failed");
-        updatePendingDomStatus(itemIds, "failed");
-        if (isStillTarget()) {
+        const cancelled = error?.name === "AbortError";
+        const status = cancelled ? "pending" : "failed";
+        setPendingBatchStatus(runtime, target.storageId, target.saveKey, itemIds, status);
+        updatePendingDomStatus(itemIds, status);
+        if (cancelled) {
+          if (isStillTarget()) hideTyping();
+        } else if (isStillTarget()) {
           hideTyping();
           addNote(`\uFF08\u53D1\u9001\u5931\u8D25\uFF1A${error?.message || error}\uFF0C\u6682\u5B58\u5185\u5BB9\u5DF2\u4FDD\u7559\uFF09`);
         }
-        console.error("[phone-mode] __pmSubmitPending \u5F02\u5E38", error);
+        if (!cancelled) console.error("[phone-mode] __pmSubmitPending \u5F02\u5E38", error);
       } finally {
         const remaining = getPendingMessages(runtime, target.storageId, target.saveKey);
         const remainingIds = new Set(remaining.map((item) => item.id));
-        const interruptedIds = itemIds.filter((itemId) => remainingIds.has(itemId));
+        const interruptedIds = itemIds.filter((itemId) => remainingIds.has(itemId) && remaining.find((item) => item.id === itemId)?.status === "submitting");
         if (interruptedIds.length) {
           setPendingBatchStatus(runtime, target.storageId, target.saveKey, interruptedIds, "failed");
           updatePendingDomStatus(interruptedIds, "failed");
@@ -11627,7 +11689,7 @@ ${antiFluff}`;
           emojiPrompt: getEmojiPrompt(contactName, id2, window.__pmPokeConfig, window.__pmEmojis),
           wordyPrompt: getWordyPrompt(window.__pmWordyLimit)
         });
-        const raw = await callAI(systemPrompt, userPrompt);
+        const raw = await callAI(systemPrompt, userPrompt, { signal: task.signal });
         if (!isAutomaticRequestActive()) return false;
         let renderBlocks = [];
         let renderSentences = [];
@@ -11719,7 +11781,7 @@ ${antiFluff}`;
         return true;
       } catch (e) {
         if (isStillActiveView()) hideTyping();
-        console.error("[phone-mode] \u81EA\u52A8\u53D1\u6D88\u606F\u5931\u8D25", e);
+        if (e?.name !== "AbortError") console.error("[phone-mode] \u81EA\u52A8\u53D1\u6D88\u606F\u5931\u8D25", e);
         return false;
       } finally {
         hideTyping();
@@ -11934,7 +11996,7 @@ ${antiFluff}`;
           emojiPrompt: getEmojiPrompt(targetContactKey, storageId, window.__pmPokeConfig, window.__pmEmojis),
           wordyPrompt: getWordyPrompt(window.__pmWordyLimit)
         });
-        const raw = await callAI(systemPrompt, userPrompt);
+        const raw = await callAI(systemPrompt, userPrompt, { signal: task.signal });
         if (!isGenerationTaskActive(task)) return;
         let historyUpdated = false;
         if (isStillTarget()) hideTyping();
@@ -12011,7 +12073,8 @@ ${antiFluff}`;
           if (isGenerationTaskActive(task)) applyBidirectionalInjection();
         }
       } catch (e) {
-        if (isStillTarget()) {
+        if (e?.name === "AbortError") hideTyping();
+        else if (isStillTarget()) {
           hideTyping();
           addNote(`\uFF08\u53D1\u9001\u5931\u8D25\uFF1A${e?.message || e}\uFF09`);
         }
@@ -12084,7 +12147,7 @@ ${antiFluff}`;
           emojiPrompt: getEmojiPrompt(saveKey, storageId, window.__pmPokeConfig, window.__pmEmojis),
           wordyPrompt: getWordyPrompt(window.__pmWordyLimit)
         });
-        const raw = await callAI(systemPrompt, userPrompt);
+        const raw = await callAI(systemPrompt, userPrompt, { signal: task.signal });
         if (!isGenerationTaskActive(task)) return;
         if (isStillTarget()) hideTyping();
         const parsed = parseGroupResponse(raw, groupMembers, {
@@ -12128,7 +12191,8 @@ ${antiFluff}`;
           if (isGenerationTaskActive(task)) applyBidirectionalInjection();
         }
       } catch (e) {
-        if (isStillTarget()) {
+        if (e?.name === "AbortError") hideTyping();
+        else if (isStillTarget()) {
           hideTyping();
           addNote(`\uFF08\u53D1\u9001\u5931\u8D25\uFF1A${e?.message || e}\uFF09`);
         }
@@ -13436,6 +13500,72 @@ ${antiFluff}`;
     Object.assign(deps, { showGroupForm });
   }
 
+  // src/phone-appearance.js
+  function createPhoneAppearance(state, deps) {
+    const { getCtx, getStorageId: getStorageId2 } = deps;
+    function applyBackground() {
+      const phone = state.phoneWindow;
+      const msgList = phone?.querySelector(".pm-msg-list");
+      if (!msgList || !phone) return;
+      const desktopBg = window.__pmDesktopBg || "";
+      if (desktopBg) phone.style.setProperty("--pm-desktop-bg-image", `url("${cssUrlEscape(desktopBg)}")`);
+      else phone.style.removeProperty("--pm-desktop-bg-image");
+      const id2 = getStorageId2(), localKey = `${id2}_${state.currentPersona}`;
+      const bg = window.__pmBgLocal[localKey] || window.__pmBgGlobal || "";
+      if (bg) {
+        msgList.style.setProperty("background-image", `url("${cssUrlEscape(bg)}")`, "important");
+        msgList.style.setProperty("background-size", "cover", "important");
+        msgList.style.setProperty("background-position", "center", "important");
+      } else {
+        msgList.style.removeProperty("background-image");
+        msgList.style.removeProperty("background-size");
+        msgList.style.removeProperty("background-position");
+      }
+    }
+    function fitNameFont() {
+      const nameEl = state.phoneWindow?.querySelector(".pm-name");
+      if (!nameEl) return;
+      nameEl.style.fontSize = "15px";
+      requestAnimationFrame(() => {
+        let fs = 15;
+        while (nameEl.scrollWidth > nameEl.clientWidth && fs > 9) {
+          fs -= 0.5;
+          nameEl.style.fontSize = fs + "px";
+        }
+      });
+    }
+    function migrateOldHistory() {
+      if (localStorage.getItem("ST_SMS_MIGRATED_V3")) return;
+      const c = getCtx();
+      if (!c) return;
+      try {
+        const oldData = window.__pmHistories || {}, newData = {};
+        let migrated = 0;
+        for (const oldKey of Object.keys(oldData)) {
+          if (oldKey.startsWith("sms_")) {
+            newData[oldKey] = oldData[oldKey];
+            continue;
+          }
+          const m = oldKey.match(/^(\d+)_(.+)$/);
+          if (!m) {
+            newData[oldKey] = oldData[oldKey];
+            continue;
+          }
+          const ch = c.characters?.[parseInt(m[1])];
+          if (ch?.avatar) {
+            newData[`sms_${ch.avatar}__${m[2]}`] = oldData[oldKey];
+            migrated++;
+          } else newData[oldKey] = oldData[oldKey];
+        }
+        window.__pmHistories = newData;
+        saveHistories();
+        localStorage.setItem("ST_SMS_MIGRATED_V3", "1");
+      } catch (e) {
+      }
+    }
+    return { applyBackground, fitNameFont, migrateOldHistory };
+  }
+
   // src/community-injection.js
   var cleanText4 = (value, max) => {
     if (typeof value !== "string") return "";
@@ -14404,6 +14534,10 @@ ${lines}`;
         const empty = button.dataset.empty === "true";
         button.disabled = disabled || empty;
       }
+      for (const button of document.querySelectorAll(".pm-generation-cancel")) {
+        button.hidden = !disabled;
+        button.disabled = !disabled;
+      }
       const status = document.querySelector(".pm-control-generation-status");
       if (status) status.textContent = disabled ? "AI \u6B63\u5728\u56DE\u590D\uFF0C\u6682\u5B58\u4ECD\u53EF\u7EE7\u7EED\u7F16\u8F91" : "";
     }
@@ -14427,13 +14561,19 @@ ${lines}`;
       return task;
     }
     function isGenerationTaskActive(task) {
-      return !!task && state.generationTask === task && state.hostEpoch === task.hostEpoch && getStorageId2() === task.storageId;
+      return !!task && !task.signal.aborted && state.generationTask === task && state.hostEpoch === task.hostEpoch && getStorageId2() === task.storageId;
     }
     function finishGeneration(task) {
       if (state.generationTask !== task) return false;
       state.generationTask = null;
       state.isGenerating = false;
       syncGenerationControls();
+      return true;
+    }
+    function cancelGeneration() {
+      if (!state.generationTask) return false;
+      state.generationTask.controller.abort("generation-cancelled-by-user");
+      hideTyping();
       return true;
     }
     function invalidateGeneration() {
@@ -14446,11 +14586,12 @@ ${lines}`;
     }
     function applyTheme() {
       const t = window.__pmTheme || {}, p = THEME_PRESETS[t.preset] || THEME_PRESETS.default;
-      const darkMode = t.darkMode || "light";
+      const interfaceMode = t.preset === "apple" ? "light" : t.darkMode || "light";
       const rBg = t.customRight || p.right, lBg = t.customLeft || p.left;
       const rTxt = t.customRight ? contrastText(t.customRight) : p.rightText;
       const lTxt = t.customLeft ? contrastText(t.customLeft) : p.leftText;
       const border = t.borderColor || "#1a1a1a";
+      const skinTokens = THEME_PRESETS.apple?.ui || {};
       const applyProperties = (element) => {
         if (!element) return;
         element.style.setProperty("--pm-r-bg", rBg);
@@ -14459,74 +14600,21 @@ ${lines}`;
         element.style.setProperty("--pm-l-txt", lTxt);
         element.style.setProperty("--pm-border", border);
         element.style.setProperty("--pm-frost", p.frost ? "1" : "0");
-        element.setAttribute("data-theme", darkMode);
+        element.style.setProperty("--pm-color-accent", p.accent || p.right);
+        for (const token of Object.keys(skinTokens)) element.style.removeProperty(token);
+        for (const [token, value] of Object.entries(p.ui || {})) element.style.setProperty(token, value);
+        element.setAttribute("data-theme", interfaceMode);
+        if (t.preset === "apple") element.setAttribute("data-skin", "apple");
+        else element.removeAttribute("data-skin");
       };
       applyProperties(document.getElementById("pm-overlay"));
+      applyProperties(document.getElementById("pm-overlay-sub"));
       applyProperties(document.getElementById("pm-model-dropdown"));
       applyProperties(state.phoneWindow);
       const desktopTitle = state.phoneWindow?.querySelector(".pm-desktop-toolbar span");
       if (desktopTitle) desktopTitle.textContent = String(t.customTitle || "").trim() || "\u5929\u97F3\u5C0F\u7B3A";
     }
-    function applyBackground() {
-      const phone = state.phoneWindow;
-      const msgList = phone?.querySelector(".pm-msg-list");
-      if (!msgList || !phone) return;
-      const desktopBg = window.__pmDesktopBg || "";
-      if (desktopBg) phone.style.setProperty("--pm-desktop-bg-image", `url("${cssUrlEscape(desktopBg)}")`);
-      else phone.style.removeProperty("--pm-desktop-bg-image");
-      const id2 = getStorageId2(), localKey = `${id2}_${state.currentPersona}`;
-      const bg = window.__pmBgLocal[localKey] || window.__pmBgGlobal || "";
-      if (bg) {
-        msgList.style.setProperty("background-image", `url("${cssUrlEscape(bg)}")`, "important");
-        msgList.style.setProperty("background-size", "cover", "important");
-        msgList.style.setProperty("background-position", "center", "important");
-      } else {
-        msgList.style.removeProperty("background-image");
-        msgList.style.removeProperty("background-size");
-        msgList.style.removeProperty("background-position");
-      }
-    }
-    function fitNameFont() {
-      const nameEl = state.phoneWindow?.querySelector(".pm-name");
-      if (!nameEl) return;
-      nameEl.style.fontSize = "15px";
-      requestAnimationFrame(() => {
-        let fs = 15;
-        while (nameEl.scrollWidth > nameEl.clientWidth && fs > 9) {
-          fs -= 0.5;
-          nameEl.style.fontSize = fs + "px";
-        }
-      });
-    }
-    function migrateOldHistory() {
-      if (localStorage.getItem("ST_SMS_MIGRATED_V3")) return;
-      const c = getCtx();
-      if (!c) return;
-      try {
-        const oldData = window.__pmHistories || {}, newData = {};
-        let migrated = 0;
-        for (const oldKey of Object.keys(oldData)) {
-          if (oldKey.startsWith("sms_")) {
-            newData[oldKey] = oldData[oldKey];
-            continue;
-          }
-          const m = oldKey.match(/^(\d+)_(.+)$/);
-          if (!m) {
-            newData[oldKey] = oldData[oldKey];
-            continue;
-          }
-          const ch = c.characters?.[parseInt(m[1])];
-          if (ch?.avatar) {
-            newData[`sms_${ch.avatar}__${m[2]}`] = oldData[oldKey];
-            migrated++;
-          } else newData[oldKey] = oldData[oldKey];
-        }
-        window.__pmHistories = newData;
-        saveHistories();
-        localStorage.setItem("ST_SMS_MIGRATED_V3", "1");
-      } catch (e) {
-      }
-    }
+    const { applyBackground, fitNameFont, migrateOldHistory } = createPhoneAppearance(state, deps);
     function clearBidirectionalInjection() {
       runtime.injectionEpoch += 1;
       return clearExtensionPrompts({ context: getCtx(), runtime });
@@ -14973,6 +15061,7 @@ ${lines}`;
       beginGeneration,
       isGenerationTaskActive,
       finishGeneration,
+      cancelGeneration,
       invalidateGeneration,
       syncGenerationControls,
       isAutoPokeAllowed,
@@ -15250,6 +15339,7 @@ ${lines}`;
       bindPhoneResize,
       migrateOldHistory,
       hookGenerationEvent,
+      cancelGeneration,
       invalidateGeneration,
       disarmAutoPoke,
       syncGenerationControls,
@@ -15509,6 +15599,7 @@ ${lines}`;
     <div class="pm-input-bar">
       <button type="button" onclick="window.__pmShowControlCenter()" class="pm-expand-btn" title="\u5FEB\u6377\u5DE5\u5177" aria-haspopup="menu" aria-expanded="false">${CONTROL_ICON_SVG}</button>
       <input class="pm-input" placeholder="\u957F\u6309\u63D0\u4EA4\u5168\u90E8\u6D88\u606F">
+      <button type="button" class="pm-generation-cancel" hidden disabled onclick="window.__pmCancelGeneration()" title="\u505C\u6B62\u751F\u6210" aria-label="\u505C\u6B62\u751F\u6210">\u505C\u6B62</button>
       <button type="button" class="pm-up-btn" title="\u70B9\u51FB\u52A0\u5165\u6682\u5B58\uFF0C\u957F\u6309\u6700\u7EC8\u63D0\u4EA4\u7ED9 AI">${SEND_ICON_SVG}</button>
     </div>
   </section>
@@ -15537,6 +15628,7 @@ ${lines}`;
           window.__pmSend();
         }
       });
+      window.__pmCancelGeneration = () => cancelGeneration();
       const sendButton = state.phoneWindow.querySelector(".pm-up-btn");
       unbindSendGesture = bindPressGesture(sendButton, {
         delay: 550,
@@ -16040,6 +16132,10 @@ ${lines}`;
     dropdown.id = "pm-model-dropdown";
     dropdown.className = "pm-model-dropdown";
     dropdown.dataset.theme = window.__pmTheme?.darkMode || "light";
+    if (window.__pmTheme?.preset === "apple") {
+      dropdown.dataset.theme = "light";
+      dropdown.dataset.skin = "apple";
+    }
     dropdown.style.setProperty("--pm-model-visible-rows", String(MODEL_VISIBLE_ROWS));
     if (POPOVER_SUPPORTED) dropdown.setAttribute("popover", "manual");
     dropdown.innerHTML = `<input class="pm-model-search" aria-label="\u641C\u7D22\u6A21\u578B" placeholder="\u{1F50D} \u641C\u7D22..." /><div class="pm-model-options"></div>`;
@@ -16098,7 +16194,7 @@ ${lines}`;
       <button type="button" role="listitem" onclick="window.__pmShowConfig('budget')"><b>\u4E0A\u4E0B\u6587\u9884\u7B97</b><span class="pm-settings-home-hint">\u63A7\u5236\u624B\u673A\u4F1A\u8BDD\u4E0E\u793E\u533A\u5199\u5165\u4E3B\u63D0\u793A\u8BCD\u7684\u989D\u5EA6</span></button>
       <button type="button" role="listitem" onclick="window.__pmShowConversationInjection()"><b>\u6B63\u6587\u6CE8\u5165</b><span class="pm-settings-home-hint">\u5206\u522B\u8BBE\u7F6E\u804A\u5929\u3001\u793E\u533A\u3001\u65E5\u5386\u4E0E\u83DC\u8C31\u7684\u6CE8\u5165\u4F4D\u7F6E\u548C\u6DF1\u5EA6</span></button>
       <div class="pm-global-setting" role="group" aria-labelledby="pm-wordy-label">
-        <span><b id="pm-wordy-label">\u5168\u5C40\u77ED\u6D88\u606F\u9650\u5236</b><small class="pm-settings-home-hint">\u9664\u8BDD\u75E8\u4EBA\u8BBE\u5916\uFF0C\u6BCF\u6761\u6D88\u606F\u4E0D\u8D85\u8FC7 35 \u5B57</small></span>
+        <span><b id="pm-wordy-label">\u5168\u5C40\u77ED\u6D88\u606F\u9650\u5236</b><span class="pm-settings-home-hint">\u9664\u8BDD\u75E8\u4EBA\u8BBE\u5916\uFF0C\u6BCF\u6761\u6D88\u606F\u4E0D\u8D85\u8FC7 35 \u5B57</span></span>
         <div id="pm-wordy-check" onclick="window.__pmToggleWordyLimit()"
           class="pm-custom-check ${window.__pmWordyLimit === true ? "is-checked" : ""}" role="checkbox" tabindex="0"
           aria-checked="${window.__pmWordyLimit === true}"
@@ -16168,13 +16264,6 @@ ${lines}`;
     return `
     <div class="pm-settings-page">
       <div style="padding:12px 16px;">
-        <div class="pm-cfg-label" style="margin-bottom:8px;">\u65E5\u591C\u6A21\u5F0F</div>
-        <div class="pm-theme-row" style="margin-bottom:8px;">
-          <div class="pm-layout-chip ${theme.darkMode === "light" ? "pm-layout-active" : ""}" onclick="window.__pmSetDarkMode('light')">\u65E5\u95F4</div>
-          <div class="pm-layout-chip ${theme.darkMode === "dark" ? "pm-layout-active" : ""}" onclick="window.__pmSetDarkMode('dark')">\u591C\u95F4</div>
-        </div>
-      </div>
-      <div style="padding:12px 16px;border-top:1px solid var(--pm-color-border-subtle);">
         <label class="pm-cfg-label pm-ambient-setting">
           <span><b>\u663E\u793A\u672C\u5730\u72B6\u6001\u680F</b><small>\u4EC5\u663E\u793A\u8BBE\u5907\u672C\u5730\u65F6\u95F4\u3002</small></span>
           <div id="pm-ambient-status-enabled" class="pm-custom-check ${theme.ambientStatusEnabled === true ? "is-checked" : ""}" role="checkbox" tabindex="0" aria-checked="${theme.ambientStatusEnabled === true}" onclick="const enabled=!this.classList.contains('is-checked');this.classList.toggle('is-checked',enabled);this.setAttribute('aria-checked',String(enabled));window.__pmSetAmbientStatus(enabled)" onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();this.click()}"></div>
@@ -16185,9 +16274,19 @@ ${lines}`;
         <input id="pm-custom-title" class="pm-cfg-input" maxlength="20" value="${String(theme.customTitle || "").replaceAll("&", "&amp;").replaceAll('"', "&quot;").replaceAll("<", "&lt;").replaceAll(">", "&gt;")}" placeholder="\u5929\u97F3\u5C0F\u7B3A" oninput="window.__pmSetCustomTitle()">
         <small class="pm-cfg-help">\u7559\u7A7A\u65F6\u663E\u793A\u201C\u5929\u97F3\u5C0F\u7B3A\u201D\u3002</small>
       </div>
+      <div style="padding:12px 16px;border-top:1px solid var(--pm-color-border-subtle);">
+        <div class="pm-cfg-label" style="margin-bottom:8px;">\u65E5\u591C\u6A21\u5F0F</div>
+        <div class="pm-theme-row" style="margin-bottom:8px;">
+          <button type="button" class="pm-layout-chip ${theme.darkMode === "light" ? "pm-layout-active" : ""}" data-theme-mode="light" aria-pressed="${theme.darkMode === "light"}" onclick="window.__pmSetDarkMode('light')">\u65E5\u95F4</button>
+          <button type="button" class="pm-layout-chip ${theme.darkMode === "dark" ? "pm-layout-active" : ""}" data-theme-mode="dark" aria-pressed="${theme.darkMode === "dark"}" onclick="window.__pmSetDarkMode('dark')">\u591C\u95F4</button>
+        </div>
+      </div>
       <div style="padding:14px 16px 12px;border-top:1px solid var(--pm-color-border-subtle);">
-        <div class="pm-cfg-label" style="margin-bottom:10px;">\u6C14\u6CE1\u4E3B\u9898</div>
+        <div class="pm-cfg-label" style="margin-bottom:10px;">\u4E3B\u9898\u989C\u8272</div>
         <div class="pm-theme-row">${presetButtons}</div>
+      </div>
+      <div style="padding:14px 16px 12px;border-top:1px solid var(--pm-color-border-subtle);">
+        <div class="pm-cfg-label" style="margin-bottom:10px;">\u6C14\u6CE1\u989C\u8272</div>
         <div style="display:flex;gap:8px;margin-top:14px;align-items:center;flex-wrap:wrap;">
           <label class="pm-cfg-label" style="margin:0;">\u81EA\u5B9A\u4E49\u53F3</label>
           <input id="pm-custom-right" type="color" value="${theme.customRight || "#007aff"}" onchange="window.__pmSetCustomColor()" class="pm-color-pick">
@@ -16195,9 +16294,11 @@ ${lines}`;
           <input id="pm-custom-left" type="color" value="${theme.customLeft || "#e9e9eb"}" onchange="window.__pmSetCustomColor()" class="pm-color-pick">
           <button type="button" onclick="window.__pmClearCustomColor()" class="pm-color-clear">\u91CD\u7F6E</button>
         </div>
-        <div style="display:flex;gap:8px;margin-top:12px;align-items:center;">
-          <label class="pm-cfg-label" style="margin:0;">\u8FB9\u6846\u989C\u8272</label>
-          <input id="pm-border-color" type="color" value="${theme.borderColor || "#1a1a1a"}" onchange="window.__pmSetBorderColor()" class="pm-color-pick">
+      </div>
+      <div style="padding:12px 16px;border-top:1px solid var(--pm-color-border-subtle);">
+        <div class="pm-cfg-label" style="margin-bottom:10px;">\u624B\u673A\u5916\u6846\u989C\u8272</div>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <input id="pm-border-color" type="color" value="${theme.borderColor || "#1a1a1a"}" onchange="window.__pmSetBorderColor()" class="pm-color-pick" aria-label="\u624B\u673A\u5916\u6846\u989C\u8272">
           <button type="button" onclick="document.getElementById('pm-border-color').value='#1a1a1a';window.__pmSetBorderColor()" class="pm-color-clear">\u91CD\u7F6E</button>
         </div>
       </div>
@@ -16948,8 +17049,11 @@ ${lines}`;
         el.setAttribute("aria-pressed", String(active));
       });
       document.querySelectorAll(".pm-layout-chip").forEach((el) => {
-        const value = el.textContent.includes("\u591C\u95F4") ? "dark" : el.textContent.includes("\u65E5\u95F4") ? "light" : "";
-        if (value) el.classList.toggle("pm-layout-active", value === theme.darkMode);
+        const value = el.dataset.themeMode;
+        if (!value) return;
+        const active = value === theme.darkMode;
+        el.classList.toggle("pm-layout-active", active);
+        el.setAttribute("aria-pressed", String(active));
       });
       const title = document.getElementById("pm-custom-title"), right = document.getElementById("pm-custom-right"), left = document.getElementById("pm-custom-left"), border = document.getElementById("pm-border-color");
       if (title) title.value = theme.customTitle || "";
@@ -17243,7 +17347,7 @@ ${error.message}`);
       await loadBgSettings();
       const persona = getCurrentPersona();
       const presetBtns = Object.entries(THEME_PRESETS).map(
-        ([k, v]) => `<button type="button" class="pm-theme-chip ${t.preset === k ? "pm-theme-active" : ""}" data-preset="${k}" aria-label="\u4F7F\u7528${escapeAttr(v.label)}\u6C14\u6CE1\u4E3B\u9898" aria-pressed="${t.preset === k}" onclick="window.__pmSetPreset('${safeJS(k)}')"><span class="pm-theme-dot" style="background:${v.right}" aria-hidden="true"></span>${escapeHtml(v.label)}</button>`
+        ([k, v]) => `<button type="button" class="pm-theme-chip ${t.preset === k ? "pm-theme-active" : ""}" data-preset="${k}" aria-label="\u4F7F\u7528${escapeAttr(v.label)}\u754C\u9762\u4E3B\u9898" aria-pressed="${t.preset === k}" onclick="window.__pmSetPreset('${safeJS(k)}')"><span class="pm-theme-dot" style="background:${v.accent || v.right}" aria-hidden="true"></span>${escapeHtml(v.label)}</button>`
       ).join("");
       const id2 = getStorageId2(), localKey = `${id2}_${persona}`;
       const hasDesktopBg = !!window.__pmDesktopBg, hasGlobalBg = !!window.__pmBgGlobal, hasLocalBg = !!window.__pmBgLocal[localKey];
@@ -17263,6 +17367,7 @@ ${error.message}`);
       makeOverlay(renderSettingsModal({ title: "\u4E3B\u9898\u989C\u8272", content }));
     };
     window.__pmSetPreset = (p) => persistThemeMutation(() => {
+      if (!Object.hasOwn(THEME_PRESETS, p)) return;
       window.__pmTheme.preset = p;
       window.__pmTheme.customRight = "";
       window.__pmTheme.customLeft = "";

@@ -22,6 +22,11 @@ export function showModelPicker(runtime) {
     dropdown.id = 'pm-model-dropdown';
     dropdown.className = 'pm-model-dropdown';
     dropdown.dataset.theme = window.__pmTheme?.darkMode || 'light';
+    // 苹果皮肤是独立浅色界面，与 applyTheme 保持同一语义。
+    if (window.__pmTheme?.preset === 'apple') {
+        dropdown.dataset.theme = 'light';
+        dropdown.dataset.skin = 'apple';
+    }
     dropdown.style.setProperty('--pm-model-visible-rows', String(MODEL_VISIBLE_ROWS));
     if (POPOVER_SUPPORTED) dropdown.setAttribute('popover', 'manual');
     dropdown.innerHTML = `<input class="pm-model-search" aria-label="搜索模型" placeholder="🔍 搜索..." /><div class="pm-model-options"></div>`;

@@ -92,7 +92,7 @@ export function installPhoneChatPoke(state, deps) {
             wordyPrompt: getWordyPrompt(window.__pmWordyLimit),
         });
 
-            const raw = await callAI(systemPrompt, userPrompt);
+            const raw = await callAI(systemPrompt, userPrompt, { signal: task.signal });
             if (!isAutomaticRequestActive()) return false;
             let renderBlocks = [];
             let renderSentences = [];
@@ -175,7 +175,8 @@ export function installPhoneChatPoke(state, deps) {
             return true;
         } catch (e) {
             if (isStillActiveView()) hideTyping();
-            console.error('[phone-mode] 自动发消息失败', e);
+            // 用户主动停止不是失败，不产生错误日志。
+            if (e?.name !== 'AbortError') console.error('[phone-mode] 自动发消息失败', e);
             return false;
         } finally {
             hideTyping();
@@ -394,7 +395,7 @@ export function installPhoneChatPoke(state, deps) {
             wordyPrompt: getWordyPrompt(window.__pmWordyLimit),
         });
 
-            const raw = await callAI(systemPrompt, userPrompt);
+            const raw = await callAI(systemPrompt, userPrompt, { signal: task.signal });
             if (!isGenerationTaskActive(task)) return;
             let historyUpdated = false;
 
@@ -467,7 +468,8 @@ export function installPhoneChatPoke(state, deps) {
                 if (isGenerationTaskActive(task)) applyBidirectionalInjection();
             }
         } catch (e) {
-            if (isStillTarget()) { hideTyping(); addNote(`（发送失败：${e?.message || e}）`); }
+            if (e?.name === 'AbortError') hideTyping();
+            else if (isStillTarget()) { hideTyping(); addNote(`（发送失败：${e?.message || e}）`); }
         } finally {
             finishGeneration(task);
         }
@@ -541,7 +543,7 @@ export function installPhoneChatPoke(state, deps) {
                 wordyPrompt: getWordyPrompt(window.__pmWordyLimit),
             });
 
-            const raw = await callAI(systemPrompt, userPrompt);
+            const raw = await callAI(systemPrompt, userPrompt, { signal: task.signal });
             if (!isGenerationTaskActive(task)) return;
             if (isStillTarget()) hideTyping();
 
@@ -587,7 +589,8 @@ export function installPhoneChatPoke(state, deps) {
                 if (isGenerationTaskActive(task)) applyBidirectionalInjection();
             }
         } catch (e) {
-            if (isStillTarget()) { hideTyping(); addNote(`（发送失败：${e?.message || e}）`); }
+            if (e?.name === 'AbortError') hideTyping();
+            else if (isStillTarget()) { hideTyping(); addNote(`（发送失败：${e?.message || e}）`); }
         } finally {
             finishGeneration(task);
         }

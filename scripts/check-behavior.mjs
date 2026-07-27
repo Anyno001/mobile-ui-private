@@ -1165,7 +1165,7 @@ const makeClassList = initial => {
         toggle: (value, force) => { if (force) values.add(value); else values.delete(value); return !!force; },
     };
 };
-const themeChips = ['default', 'pink', 'frost'].map(preset => {
+const themeChips = ['default', 'dark', 'apple'].map(preset => {
     const attributes = new Map();
     return {
         dataset: { preset },
@@ -1206,10 +1206,12 @@ const createModelDropdownFixture = () => {
     };
     return {
         id: '', className: '', dataset: {}, removed: false,
-        style: { values: new Map(), setProperty(name, value) { this.values.set(name, String(value)); } },
+        style: { values: new Map(), setProperty(name, value) { this.values.set(name, String(value)); }, removeProperty(name) { this.values.delete(name); } },
         setAttribute(name, value) {
             if (name === 'data-theme') this.dataset.theme = String(value);
+            else if (name === 'data-skin') this.dataset.skin = String(value);
         },
+        removeAttribute(name) { if (name === 'data-skin') delete this.dataset.skin; },
         set innerHTML(value) { this.html = String(value); },
         get innerHTML() { return this.html || ''; },
         querySelector(selector) {
@@ -1245,8 +1247,9 @@ const uiElements = new Map([
     ['pm-indep-config-fields', { hidden: true }],
     ['pm-overlay', {
         removed: false,
-        style: { setProperty() {} },
+        style: { setProperty() {}, removeProperty() {} },
         setAttribute(name, value) { this[name] = String(value); },
+        removeAttribute(name) { delete this[name]; },
         remove() { this.removed = true; },
     }],
 ]);
@@ -1260,10 +1263,15 @@ globalThis.FileReader = class FakeFileReader {
 };
 const documentClickListeners = new Set();
 const dispatchDocumentClick = target => { for (const listener of [...documentClickListeners]) listener({ target }); };
+const generationCancelButtons = [{ hidden: true, disabled: true }];
 globalThis.document = {
     getElementById: id => uiElements.get(id) || null,
     querySelector: () => null,
-    querySelectorAll: selector => selector === '.pm-theme-chip' ? themeChips : [],
+    querySelectorAll: selector => {
+        if (selector === '.pm-theme-chip') return themeChips;
+        if (selector === '.pm-generation-cancel') return generationCancelButtons;
+        return [];
+    },
     createElement: tag => {
         assert.equal(tag, 'div');
         return createModelDropdownFixture();
@@ -1311,11 +1319,11 @@ installSettingsUi({
     reloadCalendarStore: () => { importReloadCalendarCalls += 1; },
     getInteractiveStore: async () => ({ scopes: {} }),
 });
-window.__pmTheme = { preset: 'frost', customRight: '', customLeft: '', borderColor: '#1a1a1a', darkMode: 'dark', customTitle: '', qrLabel: '天音' };
+window.__pmTheme = { preset: 'apple', customRight: '', customLeft: '', borderColor: '#1a1a1a', darkMode: 'dark', customTitle: '', qrLabel: '天音' };
 await window.__pmShowConfig('look');
-assert.match(settingsOverlayHtml, /<button type="button" class="pm-theme-chip pm-theme-active" data-preset="frost"/);
-assert.match(settingsOverlayHtml, /aria-label="使用磨砂玻璃气泡主题" aria-pressed="true"/);
-assert.match(settingsOverlayHtml, /style="background:rgba\(0,122,255,0\.55\)" aria-hidden="true"/);
+assert.match(settingsOverlayHtml, /<button type="button" class="pm-theme-chip pm-theme-active" data-preset="apple"/);
+assert.match(settingsOverlayHtml, /aria-label="使用苹果界面主题" aria-pressed="true"/);
+assert.match(settingsOverlayHtml, /style="background:#893619" aria-hidden="true"/);
 assert.doesNotMatch(settingsOverlayHtml, /<div class="pm-theme-chip/);
 const modeBeforeInvalidProfile = uiElements.get('pm-mode-main').classList.contains('pm-mode-active');
 window.__pmPickProfile(99);
@@ -1359,7 +1367,7 @@ assert.doesNotMatch(uiAlerts.at(-1), /原数据已恢复/);
 const baseTheme = { preset: 'default', customRight: '', customLeft: '', borderColor: '#1a1a1a', darkMode: 'light', customTitle: '', qrLabel: '天音' };
 for (const [handler, setup, invoke] of [
     ['__pmSetDarkMode', () => {}, () => window.__pmSetDarkMode('dark')],
-    ['__pmSetPreset', () => {}, () => window.__pmSetPreset('pink')],
+    ['__pmSetPreset', () => {}, () => window.__pmSetPreset('apple')],
     ['__pmSetCustomColor', () => {}, () => window.__pmSetCustomColor()],
     ['__pmClearCustomColor', () => { window.__pmTheme = { ...window.__pmTheme, preset: 'custom', customRight: '#111111', customLeft: '#222222' }; }, () => window.__pmClearCustomColor()],
     ['__pmSetBorderColor', () => {}, () => window.__pmSetBorderColor()],
@@ -1380,12 +1388,12 @@ assert.equal(window.__pmTheme.darkMode, 'dark');
 assert.equal(JSON.parse(localValues.get('ST_SMS_THEME')).darkMode, 'dark');
 assert.equal(appliedThemes.at(-1).darkMode, 'dark');
 window.__pmTheme = { ...structuredClone(baseTheme), customRight: '#111111', customLeft: '#222222' };
-assert.equal(window.__pmSetPreset('frost'), true);
-assert.equal(window.__pmTheme.preset, 'frost');
+assert.equal(window.__pmSetPreset('apple'), true);
+assert.equal(window.__pmTheme.preset, 'apple');
 assert.equal(window.__pmTheme.customRight, '');
 assert.equal(window.__pmTheme.customLeft, '');
-assert.equal(JSON.parse(localValues.get('ST_SMS_THEME')).preset, 'frost');
-assert.equal(themeChips.find(chip => chip.dataset.preset === 'frost').getAttribute('aria-pressed'), 'true');
+assert.equal(JSON.parse(localValues.get('ST_SMS_THEME')).preset, 'apple');
+assert.equal(themeChips.find(chip => chip.dataset.preset === 'apple').getAttribute('aria-pressed'), 'true');
 assert.equal(themeChips.find(chip => chip.dataset.preset === 'default').getAttribute('aria-pressed'), 'false');
 uiElements.get('pm-custom-right').value = '#123456';
 uiElements.get('pm-custom-left').value = '#654321';
@@ -1726,6 +1734,7 @@ const foundationPhone = {
     },
     classList: makeClassList([]),
     setAttribute(name, value) { this[name] = value; },
+    removeAttribute(name) { delete this[name]; },
     hidePopover() {},
     remove() { this.removed = true; },
     querySelector() { return null; },
@@ -1943,6 +1952,49 @@ window.__pmTheme.darkMode = 'light';
 foundationDeps.applyTheme();
 assert.equal(synchronizedDropdown.dataset.theme, 'light', '主题切换必须同步已存在的 body 级模型浮层');
 assert.equal(foundationPhone['data-theme'], 'light');
+
+// 苹果皮肤是独立浅色界面：即使保存的日夜模式是 dark，界面模式也必须强制 light。
+window.__pmTheme.preset = 'apple';
+window.__pmTheme.darkMode = 'dark';
+foundationDeps.applyTheme();
+assert.equal(foundationPhone['data-theme'], 'light', '苹果主题必须强制浅色界面，不得继承 darkMode');
+assert.equal(foundationPhone['data-skin'], 'apple', '苹果主题必须标记 data-skin');
+assert.equal(foundationPhoneStyleValues.get('--pm-color-accent'), '#893619', '苹果主题必须写入自身强调色');
+assert.equal(foundationPhoneStyleValues.get('--pm-color-surface-page'), '#F8F5EE', '苹果主题必须写入浅色骨架变量');
+
+// 自定义气泡色只影响气泡，不得改写全局强调色。
+window.__pmTheme.customRight = '#123456';
+foundationDeps.applyTheme();
+assert.equal(foundationPhoneStyleValues.get('--pm-r-bg'), '#123456', '自定义右气泡色必须生效');
+assert.equal(foundationPhoneStyleValues.get('--pm-color-accent'), '#893619', '自定义气泡色不得覆盖界面强调色');
+delete window.__pmTheme.customRight;
+
+// 切回内置浅色主题必须清除苹果专属 token 与皮肤标记。
+window.__pmTheme.preset = 'default';
+window.__pmTheme.darkMode = 'light';
+foundationDeps.applyTheme();
+assert.equal(foundationPhone['data-skin'], undefined, '非苹果主题必须移除 data-skin');
+assert.equal(foundationPhoneStyleValues.has('--pm-color-surface-page'), false, '切回内置主题必须清除苹果专属 token');
+assert.equal(foundationPhoneStyleValues.get('--pm-color-accent'), '#007aff', '切回日间主题必须恢复默认强调色');
+
+// 停止生成必须真正中止请求信号，并同步停止按钮可用性。
+assert.equal(foundationDeps.cancelGeneration(), false, '没有进行中的生成时停止操作必须返回 false');
+const cancellableTask = foundationDeps.beginGeneration('story');
+assert.ok(cancellableTask, '有效会话必须能开始生成任务');
+assert.equal(generationCancelButtons[0].hidden, false, '生成开始后停止按钮必须可见');
+assert.equal(generationCancelButtons[0].disabled, false, '生成开始后停止按钮必须可用');
+assert.equal(cancellableTask.signal.aborted, false, '新任务的中止信号初始必须未触发');
+assert.equal(foundationDeps.cancelGeneration(), true, '生成进行中必须允许停止');
+assert.equal(cancellableTask.signal.aborted, true, '停止生成必须中止请求信号');
+assert.equal(cancellableTask.signal.reason, 'generation-cancelled-by-user', '停止生成必须携带用户取消原因');
+// 取消后不得再被判定为可继续：后续渲染、落盘和注入都必须停下。
+assert.equal(foundationDeps.isGenerationTaskActive(cancellableTask), false,
+    '停止生成后任务不得再被判定为活跃，否则已返回的结果会继续渲染');
+assert.equal(foundationDeps.finishGeneration(cancellableTask), true, '取消后的任务必须能正常收尾');
+assert.equal(generationCancelButtons[0].hidden, true, '生成收尾后停止按钮必须隐藏');
+assert.equal(generationCancelButtons[0].disabled, true, '生成收尾后停止按钮必须禁用');
+assert.equal(foundationState.isGenerating, false, '取消收尾后必须释放生成状态');
+
 window.__pmShowModelPicker();
 assert.equal(uiElements.has('pm-model-dropdown'), false, '再次点击模型箭头必须关闭现有浮层');
 assert.equal(documentClickListeners.size, lifecycleDocumentClickBaseline, '模型箭头关闭后必须只保留宿主生命周期监听器');

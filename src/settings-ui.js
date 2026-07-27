@@ -86,8 +86,11 @@ export function installSettingsUi(deps) {
             el.setAttribute('aria-pressed', String(active));
         });
         document.querySelectorAll('.pm-layout-chip').forEach(el => {
-            const value = el.textContent.includes('夜间') ? 'dark' : el.textContent.includes('日间') ? 'light' : '';
-            if (value) el.classList.toggle('pm-layout-active', value === theme.darkMode);
+            const value = el.dataset.themeMode;
+            if (!value) return;
+            const active = value === theme.darkMode;
+            el.classList.toggle('pm-layout-active', active);
+            el.setAttribute('aria-pressed', String(active));
         });
         const title = document.getElementById('pm-custom-title'), right = document.getElementById('pm-custom-right'), left = document.getElementById('pm-custom-left'), border = document.getElementById('pm-border-color');
         if (title) title.value = theme.customTitle || '';
@@ -342,7 +345,7 @@ export function installSettingsUi(deps) {
         await loadBgSettings();
         const persona = getCurrentPersona();
         const presetBtns = Object.entries(THEME_PRESETS).map(([k, v]) =>
-            `<button type="button" class="pm-theme-chip ${t.preset === k ? 'pm-theme-active' : ''}" data-preset="${k}" aria-label="使用${escapeAttr(v.label)}气泡主题" aria-pressed="${t.preset === k}" onclick="window.__pmSetPreset('${safeJS(k)}')"><span class="pm-theme-dot" style="background:${v.right}" aria-hidden="true"></span>${escapeHtml(v.label)}</button>`
+            `<button type="button" class="pm-theme-chip ${t.preset === k ? 'pm-theme-active' : ''}" data-preset="${k}" aria-label="使用${escapeAttr(v.label)}界面主题" aria-pressed="${t.preset === k}" onclick="window.__pmSetPreset('${safeJS(k)}')"><span class="pm-theme-dot" style="background:${v.accent || v.right}" aria-hidden="true"></span>${escapeHtml(v.label)}</button>`
         ).join('');
         const id = getStorageId(), localKey = `${id}_${persona}`;
         const hasDesktopBg = !!window.__pmDesktopBg, hasGlobalBg = !!window.__pmBgGlobal, hasLocalBg = !!window.__pmBgLocal[localKey];
@@ -368,6 +371,7 @@ export function installSettingsUi(deps) {
         makeOverlay(renderSettingsModal({ title: '主题颜色', content }));
     };
     window.__pmSetPreset = p => persistThemeMutation(() => {
+        if (!Object.hasOwn(THEME_PRESETS, p)) return;
         window.__pmTheme.preset = p; window.__pmTheme.customRight = ''; window.__pmTheme.customLeft = '';
     });
     window.__pmSetCustomColor = () => persistThemeMutation(() => {

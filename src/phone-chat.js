@@ -39,7 +39,15 @@ export function installPhoneChat(state, deps) {
             return image?.desc ? `[表情包：${image.desc}]` : '[表情包]';
         }).replace(/\s{2,}/g, ' ').trim();
         const ctxData = await gatherContext(task.context);
-        if (!isGenerationTaskActive(task)) return null;
+        if (!isGenerationTaskActive(task)) {
+            // 取消必须进入外层的 pending 回退分支；静默返回会被 finally 误判为失败。
+            if (task.signal.aborted) {
+                const error = new Error('请求已取消');
+                error.name = 'AbortError';
+                throw error;
+            }
+            return null;
+        }
         const { cardDesc, cardPersonality, cardScenario, cardFirstMes, cardMesExample, mainChatText, worldBookText, userName, userDesc } = ctxData;
 
         const userBlock = buildUserBlock(userName, userDesc);
@@ -104,9 +112,9 @@ export function installPhoneChat(state, deps) {
                         smsHistoryText, currentQuoteText, directorNote, userMsgClean, userMsg, userName,
                         currentPersona,
                     });
-                raw = await callAI(systemPrompt, indepUserPrompt);
+                raw = await callAI(systemPrompt, indepUserPrompt, { signal: task.signal });
             } else {
-                raw = await callAI('', injectedInstruction);
+                raw = await callAI('', injectedInstruction, { signal: task.signal });
             }
             if (!isGenerationTaskActive(task)) return null;
 
@@ -161,6 +169,8 @@ export function installPhoneChat(state, deps) {
             if (isGenerationTaskActive(task)) applyBidirectionalInjection();
             return resultData;
         } catch (e) {
+            // 用户主动停止必须向外传播，否则外层无法区分取消与失败。
+            if (e?.name === 'AbortError') throw e;
             console.error('[phone-mode]', e);
             if (!isGenerationTaskActive(task)) return null;
             throw e;
@@ -332,11 +342,12 @@ export function installPhoneChat(state, deps) {
             const assistantBubbles = describeMessageEntry(assistantEntry);
             let assistantBubbleIndex = 0;
             if (result.type === 'group') {
-                for (const block of result.data) {
+                renderGroup: for (const block of result.data) {
                     for (const sentence of block.sentences) {
                         await new Promise(resolve => setTimeout(resolve, 120));
+                        if (!isStillTarget()) break renderGroup;
                         const bubble = assistantBubbles[assistantBubbleIndex++];
-                        if (isStillTarget()) addBubble(sentence, 'left', block.name, aiHistoryIndex, {
+                        addBubble(sentence, 'left', block.name, aiHistoryIndex, {
                             historyIndex: aiHistoryIndex, messageId: assistantEntry.messageId,
                             bubbleId: bubble?.bubbleId, sender: block.name,
                         });
@@ -345,8 +356,9 @@ export function installPhoneChat(state, deps) {
             } else {
                 for (const sentence of result.data) {
                     await new Promise(resolve => setTimeout(resolve, 150));
+                    if (!isStillTarget()) break;
                     const bubble = assistantBubbles[assistantBubbleIndex++];
-                    if (isStillTarget()) addBubble(sentence, 'left', undefined, aiHistoryIndex, {
+                    addBubble(sentence, 'left', undefined, aiHistoryIndex, {
                         historyIndex: aiHistoryIndex, messageId: assistantEntry.messageId,
                         bubbleId: bubble?.bubbleId, sender: state.currentPersona,
                     });
@@ -356,17 +368,23 @@ export function installPhoneChat(state, deps) {
                 if (!state.isGenerating && typeof window.__pmIncrementCounters === 'function') window.__pmIncrementCounters();
             }, 300);
         } catch (error) {
-            setPendingBatchStatus(runtime, target.storageId, target.saveKey, itemIds, 'failed');
-            updatePendingDomStatus(itemIds, 'failed');
-            if (isStillTarget()) {
+            // 用户主动停止不是失败：暂存回到可提交状态，也不产生错误提示。
+            const cancelled = error?.name === 'AbortError';
+            const status = cancelled ? 'pending' : 'failed';
+            setPendingBatchStatus(runtime, target.storageId, target.saveKey, itemIds, status);
+            updatePendingDomStatus(itemIds, status);
+            if (cancelled) {
+                if (isStillTarget()) hideTyping();
+            } else if (isStillTarget()) {
                 hideTyping();
                 addNote(`（发送失败：${error?.message || error}，暂存内容已保留）`);
             }
-            console.error('[phone-mode] __pmSubmitPending 异常', error);
+            if (!cancelled) console.error('[phone-mode] __pmSubmitPending 异常', error);
         } finally {
             const remaining = getPendingMessages(runtime, target.storageId, target.saveKey);
             const remainingIds = new Set(remaining.map(item => item.id));
-            const interruptedIds = itemIds.filter(itemId => remainingIds.has(itemId));
+            const interruptedIds = itemIds.filter(itemId => remainingIds.has(itemId)
+                && remaining.find(item => item.id === itemId)?.status === 'submitting');
             if (interruptedIds.length) {
                 setPendingBatchStatus(runtime, target.storageId, target.saveKey, interruptedIds, 'failed');
                 updatePendingDomStatus(interruptedIds, 'failed');

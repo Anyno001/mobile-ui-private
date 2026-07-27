@@ -6,8 +6,9 @@ import { normalizeInjectionConfig } from './behavior-config.js';
 import { normalizeBudgetConfig } from './budget.js';
 import { THEME_PRESETS } from './config.js';
 import { createEmojiRenderBudget } from './emoji-media.js';
-import { contrastText, cssUrlEscape, escapeHtml } from './ui.js';
+import { contrastText, escapeHtml } from './ui.js';
 import { createBubbles } from './messaging.js';
+import { createPhoneAppearance } from './phone-appearance.js';
 import { applyContextInjections, clearExtensionPrompts } from './phone-injection.js';
 import { bindIsland } from './phone-island-gesture.js';
 import {
@@ -15,7 +16,7 @@ import {
 } from './interactive-scene-scheduler.js';
 import { createAutomaticTaskController } from './runtime.js';
 import {
-    saveHistories, saveHistoriesBeforeUnload, saveTheme,
+    saveHistoriesBeforeUnload, saveTheme,
 } from './storage.js';
 const warnedHostEventRegistrationFailures = new Set();
 
@@ -248,6 +249,10 @@ export function installPhoneFoundation(state, deps) {
             const empty = button.dataset.empty === 'true';
             button.disabled = disabled || empty;
         }
+        for (const button of document.querySelectorAll('.pm-generation-cancel')) {
+            button.hidden = !disabled;
+            button.disabled = !disabled;
+        }
         const status = document.querySelector('.pm-control-generation-status');
         if (status) status.textContent = disabled ? 'AI 正在回复，暂存仍可继续编辑' : '';
     }
@@ -274,6 +279,8 @@ export function installPhoneFoundation(state, deps) {
 
     function isGenerationTaskActive(task) {
         return !!task
+            // 用户主动停止后信号已中止，后续渲染、落盘和注入都必须停下。
+            && !task.signal.aborted
             && state.generationTask === task
             && state.hostEpoch === task.hostEpoch
             && getStorageId() === task.storageId;
@@ -284,6 +291,13 @@ export function installPhoneFoundation(state, deps) {
         state.generationTask = null;
         state.isGenerating = false;
         syncGenerationControls();
+        return true;
+    }
+
+    function cancelGeneration() {
+        if (!state.generationTask) return false;
+        state.generationTask.controller.abort('generation-cancelled-by-user');
+        hideTyping();
         return true;
     }
 
@@ -299,78 +313,35 @@ export function installPhoneFoundation(state, deps) {
 
     function applyTheme() {
         const t = window.__pmTheme || {}, p = THEME_PRESETS[t.preset] || THEME_PRESETS.default;
-        const darkMode = t.darkMode || 'light';
+        // 苹果皮肤是独立的浅色界面，不继承暗色骨架变量。
+        const interfaceMode = t.preset === 'apple' ? 'light' : (t.darkMode || 'light');
         const rBg = t.customRight || p.right, lBg = t.customLeft || p.left;
         const rTxt = t.customRight ? contrastText(t.customRight) : p.rightText;
         const lTxt = t.customLeft ? contrastText(t.customLeft) : p.leftText;
         const border = t.borderColor || '#1a1a1a';
+        const skinTokens = THEME_PRESETS.apple?.ui || {};
         const applyProperties = element => {
             if (!element) return;
             element.style.setProperty('--pm-r-bg', rBg); element.style.setProperty('--pm-l-bg', lBg);
             element.style.setProperty('--pm-r-txt', rTxt); element.style.setProperty('--pm-l-txt', lTxt);
             element.style.setProperty('--pm-border', border);
             element.style.setProperty('--pm-frost', p.frost ? '1' : '0');
-            element.setAttribute('data-theme', darkMode);
+            element.style.setProperty('--pm-color-accent', p.accent || p.right);
+            for (const token of Object.keys(skinTokens)) element.style.removeProperty(token);
+            for (const [token, value] of Object.entries(p.ui || {})) element.style.setProperty(token, value);
+            element.setAttribute('data-theme', interfaceMode);
+            if (t.preset === 'apple') element.setAttribute('data-skin', 'apple');
+            else element.removeAttribute('data-skin');
         };
         applyProperties(document.getElementById('pm-overlay'));
+        applyProperties(document.getElementById('pm-overlay-sub'));
         applyProperties(document.getElementById('pm-model-dropdown'));
         applyProperties(state.phoneWindow);
         const desktopTitle = state.phoneWindow?.querySelector('.pm-desktop-toolbar span');
         if (desktopTitle) desktopTitle.textContent = String(t.customTitle || '').trim() || '天音小笺';
     }
 
-    function applyBackground() {
-        const phone = state.phoneWindow;
-        const msgList = phone?.querySelector('.pm-msg-list'); if (!msgList || !phone) return;
-        const desktopBg = window.__pmDesktopBg || '';
-        if (desktopBg) phone.style.setProperty('--pm-desktop-bg-image', `url("${cssUrlEscape(desktopBg)}")`);
-        else phone.style.removeProperty('--pm-desktop-bg-image');
-        const id = getStorageId(), localKey = `${id}_${state.currentPersona}`;
-        const bg = window.__pmBgLocal[localKey] || window.__pmBgGlobal || '';
-        if (bg) {
-            msgList.style.setProperty('background-image', `url("${cssUrlEscape(bg)}")`, 'important');
-            msgList.style.setProperty('background-size', 'cover', 'important');
-            msgList.style.setProperty('background-position', 'center', 'important');
-        } else {
-            msgList.style.removeProperty('background-image');
-            msgList.style.removeProperty('background-size');
-            msgList.style.removeProperty('background-position');
-        }
-    }
-
-    function fitNameFont() {
-        const nameEl = state.phoneWindow?.querySelector('.pm-name');
-        if (!nameEl) return;
-        nameEl.style.fontSize = '15px';
-        requestAnimationFrame(() => {
-            let fs = 15;
-            while (nameEl.scrollWidth > nameEl.clientWidth && fs > 9) {
-                fs -= 0.5; nameEl.style.fontSize = fs + 'px';
-            }
-        });
-    }
-
-
-    function migrateOldHistory() {
-        if (localStorage.getItem('ST_SMS_MIGRATED_V3')) return;
-        const c = getCtx(); if (!c) return;
-        try {
-            const oldData = window.__pmHistories || {}, newData = {}; let migrated = 0;
-            for (const oldKey of Object.keys(oldData)) {
-                if (oldKey.startsWith('sms_')) { newData[oldKey] = oldData[oldKey]; continue; }
-                // 旧格式：数字索引_chatId，迁移为 sms_avatar__chatId
-                const m = oldKey.match(/^(\d+)_(.+)$/);
-                if (!m) { newData[oldKey] = oldData[oldKey]; continue; }
-                const ch = c.characters?.[parseInt(m[1])];
-                if (ch?.avatar) { newData[`sms_${ch.avatar}__${m[2]}`] = oldData[oldKey]; migrated++; }
-                else newData[oldKey] = oldData[oldKey];
-            }
-            window.__pmHistories = newData;
-            saveHistories();
-            localStorage.setItem('ST_SMS_MIGRATED_V3', '1');
-        } catch (e) {}
-    }
-
+    const { applyBackground, fitNameFont, migrateOldHistory } = createPhoneAppearance(state, deps);
 
     function clearBidirectionalInjection() {
         runtime.injectionEpoch += 1;
@@ -790,7 +761,7 @@ export function installPhoneFoundation(state, deps) {
         addBubble, addNote, addDirector, rebaseRenderedHistory, resetEmojiRenderBudget,
         showTyping, hideTyping, makeOverlay, closeOverlay,
         beginGeneration, isGenerationTaskActive, finishGeneration,
-        invalidateGeneration, syncGenerationControls,
+        cancelGeneration, invalidateGeneration, syncGenerationControls,
         isAutoPokeAllowed, armAutoPoke, disarmAutoPoke,
         beginAutomaticTask, isAutomaticTaskActive, finishAutomaticTask,
         setActiveQuote, clearActiveQuote, renderActiveQuote, findQuotedBubble, locateQuotedBubble,
