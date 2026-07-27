@@ -2413,10 +2413,10 @@ requireCssDeclarations(cssRules, '#pm-overlay .pm-group-settings-scroll textarea
   'box-shadow': 'none !important', appearance: 'none !important',
 });
 for (const expected of [
-  '.pm-action-button{', 'font-size:13px', 'background:var(--pm-color-accent,#007aff)',
+  '.pm-action-button{', 'font-size:13px',
   '.pm-header-icon-button{box-sizing:border-box;width:34px;height:34px;min-width:34px;min-height:34px',
-  '.pm-action-button.is-success{background:var(--pm-color-success);color:var(--pm-color-on-success)}',
-  '.pm-action-button.is-danger{background:var(--pm-color-danger);color:var(--pm-color-on-danger)}',
+  '.pm-action-button.is-success{background:var(--pm-color-success);color:var(--pm-color-on-success);border-color:var(--pm-color-success)}',
+  '.pm-action-button.is-danger{background:var(--pm-color-danger);color:var(--pm-color-on-danger);border-color:var(--pm-color-danger)}',
   '.pm-confirm-btn{background:var(--pm-color-danger) !important;color:var(--pm-color-on-danger) !important',
   '.pm-prof-del:hover{background:var(--pm-color-danger) !important;color:var(--pm-color-on-danger) !important',
   '.pm-emoji-image-delete{position:absolute;top:-6px;right:-8px;border:0;background:var(--pm-color-danger);color:var(--pm-color-on-danger)',
@@ -2549,7 +2549,17 @@ requireCssDeclarations(cssRules, '.pm-emoji-image-delete', { background: 'var(--
 requireCssDeclarations(cssRules, '.pm-emoji-action:focus-visible', { outline: '1px solid var(--pm-color-focus-ring)', 'outline-offset': '2px' });
 requireCssDeclarations(cssRules, '.pm-emoji-upload:focus-visible', { outline: '1px solid var(--pm-color-focus-ring)', 'outline-offset': '2px' });
 requireCssDeclarations(cssRules, '.pm-emoji-image-delete:focus-visible', { outline: '1px solid var(--pm-color-focus-ring)', 'outline-offset': '2px' });
-requireCssDeclarations(cssRules, '.pm-action-button', { background: 'var(--pm-color-accent,#007aff)', color: 'var(--pm-color-on-dark)' });
+requireCssDeclarations(cssRules, '.pm-action-button', { border: '1px solid var(--pm-color-border-default)', 'border-radius': '10px', background: 'var(--pm-color-surface-elevated)', color: 'var(--pm-color-text-primary)' });
+requireCssDeclarations(cssRules, '.pm-action-button.is-secondary', { background: 'var(--pm-color-surface-elevated)', color: 'var(--pm-color-text-primary)', 'border-color': 'var(--pm-color-border-default)' });
+requireCssDeclarations(cssRules, '.pm-action-button.is-success', { background: 'var(--pm-color-success)', color: 'var(--pm-color-on-success)', 'border-color': 'var(--pm-color-success)' });
+requireCssDeclarations(cssRules, '.pm-action-button.is-accent', { background: 'var(--pm-color-accent)', color: 'var(--pm-color-on-dark)', 'border-color': 'var(--pm-color-accent)' });
+requireCssDeclarations(cssRules, '.pm-action-button.is-danger', { background: 'var(--pm-color-danger)', color: 'var(--pm-color-on-danger)', 'border-color': 'var(--pm-color-danger)' });
+requireCssDeclarations(cssRules, '.pm-modal-add button', { border: '1px solid var(--pm-color-border-default)', 'border-radius': '10px', background: 'var(--pm-color-surface-elevated) !important', color: 'var(--pm-color-text-primary) !important' });
+requireCssDeclarations(cssRules, '.pm-modal-add .pm-action-button.is-success', { background: 'var(--pm-color-success) !important', color: 'var(--pm-color-on-success) !important', 'border-color': 'var(--pm-color-success) !important' });
+requireCssDeclarations(cssRules, '.pm-modal-add .pm-action-button.is-accent', { background: 'var(--pm-color-accent) !important', color: 'var(--pm-color-on-dark) !important', 'border-color': 'var(--pm-color-accent) !important' });
+requireCssDeclarations(cssRules, '.pm-modal-add .pm-action-button.is-danger', { background: 'var(--pm-color-danger) !important', color: 'var(--pm-color-on-danger) !important', 'border-color': 'var(--pm-color-danger) !important' });
+requireCssDeclarations(cssRules, '.pm-btn-group', { border: '1px solid var(--pm-color-border-default) !important', 'border-radius': '10px !important', background: 'var(--pm-color-surface-elevated) !important', color: 'var(--pm-color-text-primary) !important' });
+requireCssDeclarations(cssRules, '.pm-btn-add', { border: '1px solid var(--pm-color-border-default) !important', 'border-radius': '10px !important', background: 'var(--pm-color-surface-elevated) !important', color: 'var(--pm-color-text-primary) !important' });
 for (const expected of ['isRenderableEmojiSource(url)', "typeof emojiBudget === 'function'", '!emojiBudget(url)', 'loading="lazy"', 'decoding="async"', 'object-fit:contain']) {
   requireText('messaging.js', messagingCode, expected);
 }
