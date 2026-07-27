@@ -1,31 +1,71 @@
 (() => {
   // src/config.js
   var THEME_PRESETS = {
-    default: { right: "#007aff", left: "#e9e9eb", rightText: "#fff", leftText: "#000", label: "\u9ED8\u8BA4\u84DD", accent: "#007aff" },
-    dark: { right: "#5856d6", left: "#2c2c2e", rightText: "#fff", leftText: "#e0e0e0", label: "\u6697\u591C\u7D2B", accent: "#5856d6" },
-    pink: { right: "#FFC4D4", left: "#FFF0F5", rightText: "#2B2B2B", leftText: "#4E3840", label: "\u67D4\u7C89", accent: "#FFC4D4" },
-    mint: { right: "#8FC9B3", left: "#EDF7F1", rightText: "#15372B", leftText: "#315A4A", label: "\u8584\u8377", accent: "#8FC9B3" },
-    frost: { right: "rgba(111, 172, 218, 0.62)", left: "rgba(255,255,255,0.48)", rightText: "#fff", leftText: "#22303A", label: "\u78E8\u7802", accent: "#6FAEDA", frost: true },
-    apple: {
-      right: "#D85B4F",
-      left: "#E9DCC6",
-      rightText: "#FFF9F1",
-      leftText: "#3F3021",
-      label: "\u82F9\u679C",
-      accent: "#D85B4F",
-      ui: {
-        "--pm-color-surface-page": "#FFF7E8",
-        "--pm-color-surface-card": "#FFF1D8",
-        "--pm-color-surface-input": "#FFF9F0",
-        "--pm-color-surface-elevated": "#F8EBCF",
-        "--pm-color-text-primary": "#2D3A20",
-        "--pm-color-text-secondary": "#5E6847",
-        "--pm-color-text-tertiary": "#7C8464",
+    default: { right: "#1677d2", left: "#e9e9eb", rightText: "#fff", leftText: "#000", label: "\u9ED8\u8BA4\u84DD", accent: "#1677d2" },
+    dark: { right: "#5856d6", left: "#E6EDF3", leftDark: "#2c2c2e", rightText: "#fff", leftText: "#33404C", leftTextDark: "#e0e0e0", label: "\u6697\u591C\u7D2B", accent: "#5856d6" },
+    pink: {
+      right: "#E7A9B9",
+      rightDark: "#FFC4D4",
+      left: "#E8EEF3",
+      leftDark: "#343B43",
+      rightText: "#2B2B2B",
+      leftText: "#4E3840",
+      leftTextDark: "#E6EDF3",
+      label: "\u67D4\u7C89",
+      accent: "#FFC4D4",
+      uiDark: {
+        "--pm-color-surface-page": "#2B2B2B",
+        "--pm-color-surface-card": "#1F1F1F",
+        "--pm-color-surface-elevated": "#242424",
+        "--pm-color-surface-input": "#1F1F1F",
+        "--pm-color-surface-inverse": "#1F1F1F",
+        "--pm-color-text-primary": "#FFFFFF",
+        "--pm-color-text-secondary": "rgba(255, 255, 255, 0.70)",
+        "--pm-color-text-tertiary": "rgba(255, 255, 255, 0.50)",
+        "--pm-color-text-placeholder": "rgba(255, 255, 255, 0.50)",
+        "--pm-color-border-subtle": "transparent",
         "--pm-color-border-default": "transparent",
-        "--pm-color-border-subtle": "rgba(111, 142, 70, 0.16)",
-        "--pm-color-focus-ring": "#7AA34A",
-        "--pm-color-success": "#7AA34A",
-        "--pm-color-danger": "#D85B4F"
+        "--pm-color-border-strong": "transparent",
+        "--pm-color-control-off": "#3A3A3A",
+        "--pm-color-focus-ring": "#FFD9E4",
+        "--pm-color-success": "#E5A0B5",
+        "--pm-color-warning": "#FFB38B",
+        "--pm-color-danger": "#D96C6C",
+        "--pm-color-on-success": "#2B2B2B",
+        "--pm-color-on-warning": "#2B2B2B",
+        "--pm-color-on-danger": "#FFFFFF"
+      }
+    },
+    mint: { right: "#9FBE8C", rightDark: "#B6D39D", left: "#F3EBDD", leftDark: "#3B443B", rightText: "#243522", leftText: "#4D4034", leftTextDark: "#E8EEE5", label: "\u8584\u8377", accent: "#9FBE8C" },
+    frost: { right: "rgba(111, 172, 218, 0.62)", left: "rgba(255,255,255,0.48)", leftDark: "rgba(54, 68, 82, 0.72)", rightText: "#fff", leftText: "#22303A", leftTextDark: "#E7EFF7", label: "\u78E8\u7802", accent: "#6FAEDA", frost: true },
+    apple: {
+      right: "#893619",
+      left: "#EEE9DE",
+      rightText: "#F8F5EE",
+      leftText: "#0E2110",
+      label: "\u82F9\u679C",
+      accent: "#893619",
+      ui: {
+        "--pm-color-surface-page": "#F8F5EE",
+        "--pm-color-surface-card": "#EEE9DE",
+        "--pm-color-surface-input": "#EEE9DE",
+        "--pm-color-surface-elevated": "#F4F0E6",
+        "--pm-color-surface-inverse": "#0E2110",
+        "--pm-color-text-primary": "#0E2110",
+        "--pm-color-text-secondary": "rgba(14, 33, 16, 0.70)",
+        "--pm-color-text-tertiary": "rgba(14, 33, 16, 0.52)",
+        "--pm-color-text-placeholder": "rgba(14, 33, 16, 0.42)",
+        "--pm-color-border-default": "rgba(137, 54, 25, 0.20)",
+        "--pm-color-border-subtle": "rgba(137, 54, 25, 0.15)",
+        "--pm-color-border-strong": "rgba(137, 54, 25, 0.34)",
+        "--pm-color-control-off": "#D9D4C8",
+        "--pm-color-focus-ring": "#7A9C45",
+        "--pm-color-success": "#7A9C45",
+        "--pm-color-warning": "#B26B5F",
+        "--pm-color-danger": "#B64B45",
+        "--pm-color-on-success": "#0E2110",
+        "--pm-color-on-warning": "#0E2110",
+        "--pm-color-on-danger": "#FFFFFF"
       }
     }
   };
@@ -8243,18 +8283,20 @@ ${entry2.content}` : entry2.content;
     const preset = THEME_PRESETS[theme.preset] || THEME_PRESETS.default;
     const interfaceMode = theme.preset === "apple" ? "light" : theme.darkMode || "light";
     const customAccent = theme.preset === "custom" ? String(theme.customAccent || "").trim() : "";
-    const defaultRight = theme.preset === "custom" && customAccent ? customAccent : preset.right;
+    const defaultRight = theme.preset === "custom" && customAccent ? customAccent : interfaceMode === "dark" ? preset.rightDark || preset.right : preset.right;
+    const defaultLeft = interfaceMode === "dark" ? preset.leftDark || preset.left : preset.left;
     const rightBackground = theme.customRight || defaultRight;
     const rightText = theme.customRight || theme.preset === "custom" && customAccent ? contrastText(rightBackground) : preset.rightText;
-    const skinTokens = THEME_PRESETS.apple?.ui || {};
+    const skinTokens = { ...THEME_PRESETS.apple?.ui, ...THEME_PRESETS.pink?.uiDark };
+    const uiTokens = interfaceMode === "dark" ? preset.uiDark || {} : preset.ui || {};
     overlay.style.setProperty("--pm-r-bg", rightBackground);
     overlay.style.setProperty("--pm-r-txt", rightText);
-    overlay.style.setProperty("--pm-l-bg", theme.customLeft || preset.left);
-    overlay.style.setProperty("--pm-l-txt", theme.customLeft ? contrastText(theme.customLeft) : preset.leftText);
+    overlay.style.setProperty("--pm-l-bg", theme.customLeft || defaultLeft);
+    overlay.style.setProperty("--pm-l-txt", theme.customLeft ? contrastText(theme.customLeft) : interfaceMode === "dark" ? preset.leftTextDark || preset.leftText : preset.leftText);
     overlay.style.setProperty("--pm-border", theme.borderColor || "#1a1a1a");
     overlay.style.setProperty("--pm-color-accent", customAccent || preset.accent || preset.right);
     for (const token of Object.keys(skinTokens)) overlay.style.removeProperty(token);
-    for (const [token, value] of Object.entries(preset.ui || {})) overlay.style.setProperty(token, value);
+    for (const [token, value] of Object.entries(uiTokens)) overlay.style.setProperty(token, value);
     overlay.dataset.theme = interfaceMode;
     if (theme.preset === "apple") overlay.dataset.skin = "apple";
     else delete overlay.dataset.skin;
@@ -14914,12 +14956,14 @@ ${lines}`;
       const t = window.__pmTheme || {}, p = THEME_PRESETS[t.preset] || THEME_PRESETS.default;
       const interfaceMode = t.preset === "apple" ? "light" : t.darkMode || "light";
       const customAccent = t.preset === "custom" ? String(t.customAccent || "").trim() : "";
-      const defaultRight = t.preset === "custom" && customAccent ? customAccent : p.right;
-      const rBg = t.customRight || defaultRight, lBg = t.customLeft || p.left;
+      const defaultRight = t.preset === "custom" && customAccent ? customAccent : interfaceMode === "dark" ? p.rightDark || p.right : p.right;
+      const defaultLeft = interfaceMode === "dark" ? p.leftDark || p.left : p.left;
+      const rBg = t.customRight || defaultRight, lBg = t.customLeft || defaultLeft;
       const rTxt = t.customRight || t.preset === "custom" && customAccent ? contrastText(rBg) : p.rightText;
-      const lTxt = t.customLeft ? contrastText(t.customLeft) : p.leftText;
+      const lTxt = t.customLeft ? contrastText(t.customLeft) : interfaceMode === "dark" ? p.leftTextDark || p.leftText : p.leftText;
       const border = t.borderColor || "#1a1a1a";
-      const skinTokens = THEME_PRESETS.apple?.ui || {};
+      const skinTokens = { ...THEME_PRESETS.apple?.ui, ...THEME_PRESETS.pink?.uiDark };
+      const uiTokens = interfaceMode === "dark" ? p.uiDark || {} : p.ui || {};
       const applyProperties = (element) => {
         if (!element) return;
         element.style.setProperty("--pm-r-bg", rBg);
@@ -14930,7 +14974,7 @@ ${lines}`;
         element.style.setProperty("--pm-frost", p.frost ? "1" : "0");
         element.style.setProperty("--pm-color-accent", customAccent || p.accent || p.right);
         for (const token of Object.keys(skinTokens)) element.style.removeProperty(token);
-        for (const [token, value] of Object.entries(p.ui || {})) element.style.setProperty(token, value);
+        for (const [token, value] of Object.entries(uiTokens)) element.style.setProperty(token, value);
         element.setAttribute("data-theme", interfaceMode);
         if (t.preset === "apple") element.setAttribute("data-skin", "apple");
         else element.removeAttribute("data-skin");
@@ -16463,12 +16507,14 @@ ${lines}`;
     dropdown.className = "pm-model-dropdown";
     const theme = window.__pmTheme || {};
     const preset = THEME_PRESETS[theme.preset] || THEME_PRESETS.default;
-    dropdown.dataset.theme = theme.preset === "apple" ? "light" : theme.darkMode || "light";
+    const interfaceMode = theme.preset === "apple" ? "light" : theme.darkMode || "light";
+    dropdown.dataset.theme = interfaceMode;
     const customAccent = theme.preset === "custom" ? String(theme.customAccent || "").trim() : "";
-    if (customAccent) dropdown.style.setProperty("--pm-color-accent", customAccent);
+    dropdown.style.setProperty("--pm-color-accent", customAccent || preset.accent || preset.right);
+    const uiTokens = interfaceMode === "dark" ? preset.uiDark || {} : preset.ui || {};
+    for (const [token, value] of Object.entries(uiTokens)) dropdown.style.setProperty(token, value);
     if (theme.preset === "apple") {
       dropdown.dataset.skin = "apple";
-      for (const [token, value] of Object.entries(preset.ui || {})) dropdown.style.setProperty(token, value);
     }
     dropdown.style.setProperty("--pm-model-visible-rows", String(MODEL_VISIBLE_ROWS));
     if (POPOVER_SUPPORTED) dropdown.setAttribute("popover", "manual");
@@ -16598,8 +16644,9 @@ ${lines}`;
   function renderLookSettings({ theme, presetButtons, desktopBackgroundButtons, globalBackgroundButtons, localBackgroundButtons }) {
     const preset = THEME_PRESETS[theme.preset] || THEME_PRESETS.default;
     const customAccent = theme.preset === "custom" ? theme.customAccent || "" : "";
-    const rightColor = theme.customRight || customAccent || preset.right;
-    const leftColor = theme.customLeft || preset.left;
+    const interfaceMode = theme.preset === "apple" ? "light" : theme.darkMode || "light";
+    const rightColor = theme.customRight || customAccent || (interfaceMode === "dark" ? preset.rightDark || preset.right : preset.right);
+    const leftColor = theme.customLeft || (interfaceMode === "dark" ? preset.leftDark || preset.left : preset.left);
     const appleActive = theme.preset === "apple";
     return `
     <div class="pm-settings-page">
@@ -17637,10 +17684,11 @@ ${lines}`;
       });
       const preset = THEME_PRESETS[theme.preset] || THEME_PRESETS.default;
       const accent = theme.preset === "custom" && theme.customAccent ? theme.customAccent : preset.accent || preset.right;
+      const interfaceMode = theme.preset === "apple" ? "light" : theme.darkMode || "light";
       const title = document.getElementById("pm-custom-title"), right = document.getElementById("pm-custom-right"), left = document.getElementById("pm-custom-left"), border = document.getElementById("pm-border-color"), customAccent = document.getElementById("pm-custom-accent");
       if (title) title.value = theme.customTitle || "";
-      if (right) right.value = theme.customRight || accent;
-      if (left) left.value = theme.customLeft || preset.left;
+      if (right) right.value = theme.customRight || (theme.preset === "custom" && theme.customAccent ? accent : interfaceMode === "dark" ? preset.rightDark || preset.right : preset.right);
+      if (left) left.value = theme.customLeft || (interfaceMode === "dark" ? preset.leftDark || preset.left : preset.left);
       if (border) border.value = theme.borderColor || "#1a1a1a";
       if (customAccent) customAccent.value = accent;
     };

@@ -316,13 +316,15 @@ export function installPhoneFoundation(state, deps) {
         // 苹果皮肤是独立的浅色界面，不继承暗色骨架变量。
         const interfaceMode = t.preset === 'apple' ? 'light' : (t.darkMode || 'light');
         const customAccent = t.preset === 'custom' ? String(t.customAccent || '').trim() : '';
-        const defaultRight = t.preset === 'custom' && customAccent ? customAccent : p.right;
-        const rBg = t.customRight || defaultRight, lBg = t.customLeft || p.left;
+        const defaultRight = t.preset === 'custom' && customAccent ? customAccent : interfaceMode === 'dark' ? p.rightDark || p.right : p.right;
+        const defaultLeft = interfaceMode === 'dark' ? p.leftDark || p.left : p.left;
+        const rBg = t.customRight || defaultRight, lBg = t.customLeft || defaultLeft;
         const rTxt = t.customRight || (t.preset === 'custom' && customAccent)
             ? contrastText(rBg) : p.rightText;
-        const lTxt = t.customLeft ? contrastText(t.customLeft) : p.leftText;
+        const lTxt = t.customLeft ? contrastText(t.customLeft) : interfaceMode === 'dark' ? p.leftTextDark || p.leftText : p.leftText;
         const border = t.borderColor || '#1a1a1a';
-        const skinTokens = THEME_PRESETS.apple?.ui || {};
+        const skinTokens = { ...THEME_PRESETS.apple?.ui, ...THEME_PRESETS.pink?.uiDark };
+        const uiTokens = interfaceMode === 'dark' ? p.uiDark || {} : p.ui || {};
         const applyProperties = element => {
             if (!element) return;
             element.style.setProperty('--pm-r-bg', rBg); element.style.setProperty('--pm-l-bg', lBg);
@@ -331,7 +333,7 @@ export function installPhoneFoundation(state, deps) {
             element.style.setProperty('--pm-frost', p.frost ? '1' : '0');
             element.style.setProperty('--pm-color-accent', customAccent || p.accent || p.right);
             for (const token of Object.keys(skinTokens)) element.style.removeProperty(token);
-            for (const [token, value] of Object.entries(p.ui || {})) element.style.setProperty(token, value);
+            for (const [token, value] of Object.entries(uiTokens)) element.style.setProperty(token, value);
             element.setAttribute('data-theme', interfaceMode);
             if (t.preset === 'apple') element.setAttribute('data-skin', 'apple');
             else element.removeAttribute('data-skin');

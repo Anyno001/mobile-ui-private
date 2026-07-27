@@ -97,10 +97,11 @@ export function installSettingsUi(deps) {
         });
         const preset = THEME_PRESETS[theme.preset] || THEME_PRESETS.default;
         const accent = theme.preset === 'custom' && theme.customAccent ? theme.customAccent : preset.accent || preset.right;
+        const interfaceMode = theme.preset === 'apple' ? 'light' : theme.darkMode || 'light';
         const title = document.getElementById('pm-custom-title'), right = document.getElementById('pm-custom-right'), left = document.getElementById('pm-custom-left'), border = document.getElementById('pm-border-color'), customAccent = document.getElementById('pm-custom-accent');
         if (title) title.value = theme.customTitle || '';
-        if (right) right.value = theme.customRight || accent;
-        if (left) left.value = theme.customLeft || preset.left;
+        if (right) right.value = theme.customRight || (theme.preset === 'custom' && theme.customAccent ? accent : interfaceMode === 'dark' ? preset.rightDark || preset.right : preset.right);
+        if (left) left.value = theme.customLeft || (interfaceMode === 'dark' ? preset.leftDark || preset.left : preset.left);
         if (border) border.value = theme.borderColor || '#1a1a1a';
         if (customAccent) customAccent.value = accent;
     };

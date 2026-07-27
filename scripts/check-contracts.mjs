@@ -1460,7 +1460,7 @@ for (const expected of [
   'deriveInteractiveActorId(scopeId, actor.type, actor.bindingKey)',
 ]) requireText('settings-backup-validate.js', settingsBackupValidateCode, expected);
 for (const expected of [
-  'schemaVersion: 10', 'desktopBg: snapshot.desktopBg', 'injectionConfig: snapshot.injectionConfig',
+  'schemaVersion: 11', 'desktopBg: snapshot.desktopBg', 'injectionConfig: snapshot.injectionConfig',
   'calendarStore: snapshot.calendarStore', 'calendarCycles: snapshot.calendarCycles',
   'calendarRecipes: snapshot.calendarRecipes', 'branchLineage: snapshot.branchLineage',
 ]) requireText('settings-ui.js', settingsUiCodeForInteractive, expected);
@@ -1879,8 +1879,11 @@ if (!showModelPickerSource.includes('showModelPicker(runtime)')) {
   failures.push('settings-ui.js: __pmShowModelPicker must delegate to the settings model picker with runtime state');
 }
 for (const expected of [
-  "dropdown.dataset.theme = theme.preset === 'apple' ? 'light' : (theme.darkMode || 'light')",
-  "for (const [token, value] of Object.entries(preset.ui || {})) dropdown.style.setProperty(token, value)",
+  "const interfaceMode = theme.preset === 'apple' ? 'light' : theme.darkMode || 'light'",
+  'dropdown.dataset.theme = interfaceMode',
+  "dropdown.style.setProperty('--pm-color-accent', customAccent || preset.accent || preset.right)",
+  "const uiTokens = interfaceMode === 'dark' ? preset.uiDark || {} : preset.ui || {}",
+  'for (const [token, value] of Object.entries(uiTokens)) dropdown.style.setProperty(token, value)',
   '<button type="button" class="pm-model-opt"',
   'aria-pressed="${model === current}"',
   'aria-label="搜索模型"',
@@ -1904,7 +1907,7 @@ for (const expected of [
   '--pm-color-text-primary:', '--pm-color-text-secondary:', '--pm-color-text-tertiary:', '--pm-color-text-placeholder:', '--pm-color-text-disabled:',
   '--pm-color-surface-page:', '--pm-color-surface-card:', '--pm-color-surface-elevated:', '--pm-color-surface-input:', '--pm-color-surface-inverse:',
   '--pm-color-border-subtle:', '--pm-color-border-default:', '--pm-color-border-strong:', '--pm-color-control-off:',
-  '--pm-color-accent:', '--pm-color-focus-ring:', '--pm-color-success:', '--pm-color-warning:', '--pm-color-danger:', '--pm-color-overlay:', '--pm-color-on-dark:', '--pm-color-on-light:',
+  '--pm-color-accent:', '--pm-color-focus-ring:', '--pm-color-success:', '--pm-color-warning:', '--pm-color-danger:', '--pm-color-on-success:', '--pm-color-on-warning:', '--pm-color-on-danger:', '--pm-color-overlay:', '--pm-color-on-dark:', '--pm-color-on-light:',
   '.pm-settings-home button{border:1px solid var(--pm-color-border-default);border-radius:14px;background:var(--pm-color-surface-card);color:var(--pm-color-text-primary)',
   '.pm-global-setting{border:1px solid var(--pm-color-border-default);border-radius:14px;background:var(--pm-color-surface-card);color:var(--pm-color-text-primary)',
   '.pm-settings-home-hint{font-size:11px;line-height:1.5;color:var(--pm-color-text-tertiary)}',
@@ -2412,7 +2415,12 @@ requireCssDeclarations(cssRules, '#pm-overlay .pm-group-settings-scroll textarea
 for (const expected of [
   '.pm-action-button{', 'font-size:13px', 'background:var(--pm-color-accent,#007aff)',
   '.pm-header-icon-button{box-sizing:border-box;width:34px;height:34px;min-width:34px;min-height:34px',
-  '.pm-action-button.is-danger{background:var(--pm-color-danger);color:var(--pm-color-on-dark)}',
+  '.pm-action-button.is-success{background:var(--pm-color-success);color:var(--pm-color-on-success)}',
+  '.pm-action-button.is-danger{background:var(--pm-color-danger);color:var(--pm-color-on-danger)}',
+  '.pm-confirm-btn{background:var(--pm-color-danger) !important;color:var(--pm-color-on-danger) !important',
+  '.pm-prof-del:hover{background:var(--pm-color-danger) !important;color:var(--pm-color-on-danger) !important',
+  '.pm-emoji-image-delete{position:absolute;top:-6px;right:-8px;border:0;background:var(--pm-color-danger);color:var(--pm-color-on-danger)',
+  '.pm-quick-reply-actions button.is-danger{background:var(--pm-color-danger);color:var(--pm-color-on-danger)}',
   '.pm-contact-add-choices{',
   '.pm-calendar-view-switch button{display:grid;place-items:center;flex:0 0 30px;width:30px;height:30px;padding:0;border:0;border-radius:50%',
   '.pm-calendar-header{position:sticky', 'grid-template-columns:72px minmax(0,1fr) 72px',
@@ -2505,8 +2513,8 @@ for (const expected of [
   'applySubOverlayTheme(overlay)',
   "overlay.style.setProperty('--pm-r-bg', rightBackground)",
   "overlay.style.setProperty('--pm-r-txt', rightText)",
-  "overlay.style.setProperty('--pm-l-bg', theme.customLeft || preset.left)",
-  "overlay.style.setProperty('--pm-l-txt', theme.customLeft ? contrastText(theme.customLeft) : preset.leftText)",
+  "overlay.style.setProperty('--pm-l-bg', theme.customLeft || defaultLeft)",
+  "overlay.style.setProperty('--pm-l-txt', theme.customLeft ? contrastText(theme.customLeft) : interfaceMode === 'dark' ? preset.leftTextDark || preset.leftText : preset.leftText)",
   "overlay.style.setProperty('--pm-border', theme.borderColor || '#1a1a1a')",
   'loading="lazy"', 'decoding="async"', 'emojiFileError(file)', 'emojiSourceError(url, window.__pmEmojis)',
 ]) {
@@ -2537,7 +2545,7 @@ requireCssDeclarations(cssRules, '.pm-emoji-action.is-compact', { padding: '5px 
 requireCssDeclarations(cssRules, '.pm-emoji-action.is-danger', {
   'border-color': 'var(--pm-color-danger)', background: 'color-mix(in srgb,var(--pm-color-danger) 10%,var(--pm-color-surface-elevated))', color: 'var(--pm-color-danger)',
 });
-requireCssDeclarations(cssRules, '.pm-emoji-image-delete', { background: 'var(--pm-color-danger)', color: 'var(--pm-color-on-dark)' });
+requireCssDeclarations(cssRules, '.pm-emoji-image-delete', { background: 'var(--pm-color-danger)', color: 'var(--pm-color-on-danger)' });
 requireCssDeclarations(cssRules, '.pm-emoji-action:focus-visible', { outline: '1px solid var(--pm-color-focus-ring)', 'outline-offset': '2px' });
 requireCssDeclarations(cssRules, '.pm-emoji-upload:focus-visible', { outline: '1px solid var(--pm-color-focus-ring)', 'outline-offset': '2px' });
 requireCssDeclarations(cssRules, '.pm-emoji-image-delete:focus-visible', { outline: '1px solid var(--pm-color-focus-ring)', 'outline-offset': '2px' });

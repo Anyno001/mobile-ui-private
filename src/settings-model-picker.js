@@ -24,13 +24,15 @@ export function showModelPicker(runtime) {
     dropdown.className = 'pm-model-dropdown';
     const theme = window.__pmTheme || {};
     const preset = THEME_PRESETS[theme.preset] || THEME_PRESETS.default;
-    dropdown.dataset.theme = theme.preset === 'apple' ? 'light' : (theme.darkMode || 'light');
+    const interfaceMode = theme.preset === 'apple' ? 'light' : theme.darkMode || 'light';
+    dropdown.dataset.theme = interfaceMode;
     const customAccent = theme.preset === 'custom' ? String(theme.customAccent || '').trim() : '';
-    if (customAccent) dropdown.style.setProperty('--pm-color-accent', customAccent);
+    dropdown.style.setProperty('--pm-color-accent', customAccent || preset.accent || preset.right);
     // 苹果皮肤是独立浅色界面，与 applyTheme 保持同一语义。
+    const uiTokens = interfaceMode === 'dark' ? preset.uiDark || {} : preset.ui || {};
+    for (const [token, value] of Object.entries(uiTokens)) dropdown.style.setProperty(token, value);
     if (theme.preset === 'apple') {
         dropdown.dataset.skin = 'apple';
-        for (const [token, value] of Object.entries(preset.ui || {})) dropdown.style.setProperty(token, value);
     }
     dropdown.style.setProperty('--pm-model-visible-rows', String(MODEL_VISIBLE_ROWS));
     if (POPOVER_SUPPORTED) dropdown.setAttribute('popover', 'manual');

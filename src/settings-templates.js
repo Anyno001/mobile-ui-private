@@ -86,8 +86,9 @@ export function renderQuickReplySettings(status, label = '天音') {
 export function renderLookSettings({ theme, presetButtons, desktopBackgroundButtons, globalBackgroundButtons, localBackgroundButtons }) {
     const preset = THEME_PRESETS[theme.preset] || THEME_PRESETS.default;
     const customAccent = theme.preset === 'custom' ? theme.customAccent || '' : '';
-    const rightColor = theme.customRight || customAccent || preset.right;
-    const leftColor = theme.customLeft || preset.left;
+    const interfaceMode = theme.preset === 'apple' ? 'light' : theme.darkMode || 'light';
+    const rightColor = theme.customRight || customAccent || (interfaceMode === 'dark' ? preset.rightDark || preset.right : preset.right);
+    const leftColor = theme.customLeft || (interfaceMode === 'dark' ? preset.leftDark || preset.left : preset.left);
     const appleActive = theme.preset === 'apple';
     return `
     <div class="pm-settings-page">
