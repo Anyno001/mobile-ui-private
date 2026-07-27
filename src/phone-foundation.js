@@ -315,8 +315,11 @@ export function installPhoneFoundation(state, deps) {
         const t = window.__pmTheme || {}, p = THEME_PRESETS[t.preset] || THEME_PRESETS.default;
         // 苹果皮肤是独立的浅色界面，不继承暗色骨架变量。
         const interfaceMode = t.preset === 'apple' ? 'light' : (t.darkMode || 'light');
-        const rBg = t.customRight || p.right, lBg = t.customLeft || p.left;
-        const rTxt = t.customRight ? contrastText(t.customRight) : p.rightText;
+        const customAccent = t.preset === 'custom' ? String(t.customAccent || '').trim() : '';
+        const defaultRight = t.preset === 'custom' && customAccent ? customAccent : p.right;
+        const rBg = t.customRight || defaultRight, lBg = t.customLeft || p.left;
+        const rTxt = t.customRight || (t.preset === 'custom' && customAccent)
+            ? contrastText(rBg) : p.rightText;
         const lTxt = t.customLeft ? contrastText(t.customLeft) : p.leftText;
         const border = t.borderColor || '#1a1a1a';
         const skinTokens = THEME_PRESETS.apple?.ui || {};
@@ -326,7 +329,7 @@ export function installPhoneFoundation(state, deps) {
             element.style.setProperty('--pm-r-txt', rTxt); element.style.setProperty('--pm-l-txt', lTxt);
             element.style.setProperty('--pm-border', border);
             element.style.setProperty('--pm-frost', p.frost ? '1' : '0');
-            element.style.setProperty('--pm-color-accent', p.accent || p.right);
+            element.style.setProperty('--pm-color-accent', customAccent || p.accent || p.right);
             for (const token of Object.keys(skinTokens)) element.style.removeProperty(token);
             for (const [token, value] of Object.entries(p.ui || {})) element.style.setProperty(token, value);
             element.setAttribute('data-theme', interfaceMode);

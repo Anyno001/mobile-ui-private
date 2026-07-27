@@ -1,4 +1,5 @@
 import { BACK_ICON_SVG, CLOSE_ICON_SVG } from './icons.js';
+import { THEME_PRESETS } from './config.js';
 import { escapeAttr, escapeHtml } from './ui.js';
 
 export function renderSettingsHome() {
@@ -82,6 +83,11 @@ export function renderQuickReplySettings(status, label = '天音') {
 
 
 export function renderLookSettings({ theme, presetButtons, desktopBackgroundButtons, globalBackgroundButtons, localBackgroundButtons }) {
+    const preset = THEME_PRESETS[theme.preset] || THEME_PRESETS.default;
+    const customAccent = theme.preset === 'custom' ? theme.customAccent || '' : '';
+    const rightColor = theme.customRight || customAccent || preset.right;
+    const leftColor = theme.customLeft || preset.left;
+    const appleActive = theme.preset === 'apple';
     return `
     <div class="pm-settings-page">
       <div style="padding:12px 16px;">
@@ -98,21 +104,22 @@ export function renderLookSettings({ theme, presetButtons, desktopBackgroundButt
       <div style="padding:12px 16px;border-top:1px solid var(--pm-color-border-subtle);">
         <div class="pm-cfg-label" style="margin-bottom:8px;">日夜模式</div>
         <div class="pm-theme-row" style="margin-bottom:8px;">
-          <button type="button" class="pm-layout-chip ${theme.darkMode === 'light' ? 'pm-layout-active' : ''}" data-theme-mode="light" aria-pressed="${theme.darkMode === 'light'}" onclick="window.__pmSetDarkMode('light')">日间</button>
-          <button type="button" class="pm-layout-chip ${theme.darkMode === 'dark' ? 'pm-layout-active' : ''}" data-theme-mode="dark" aria-pressed="${theme.darkMode === 'dark'}" onclick="window.__pmSetDarkMode('dark')">夜间</button>
+          <button type="button" class="pm-layout-chip ${appleActive || theme.darkMode === 'light' ? 'pm-layout-active' : ''}" data-theme-mode="light" aria-pressed="${appleActive || theme.darkMode === 'light'}" onclick="window.__pmSetDarkMode('light')" ${appleActive ? 'disabled' : ''}>日间</button>
+          <button type="button" class="pm-layout-chip ${!appleActive && theme.darkMode === 'dark' ? 'pm-layout-active' : ''}" data-theme-mode="dark" aria-pressed="${!appleActive && theme.darkMode === 'dark'}" onclick="window.__pmSetDarkMode('dark')" ${appleActive ? 'disabled' : ''}>夜间</button>
         </div>
+        ${appleActive ? '<small class="pm-cfg-help">苹果皮肤固定为浅色。</small>' : ''}
       </div>
       <div style="padding:14px 16px 12px;border-top:1px solid var(--pm-color-border-subtle);">
         <div class="pm-cfg-label" style="margin-bottom:10px;">主题颜色</div>
-        <div class="pm-theme-row">${presetButtons}</div>
+        <div class="pm-theme-row" style="align-items:center;">${presetButtons}<label class="pm-theme-custom" title="自定义主题色" aria-label="自定义主题色"><input id="pm-custom-accent" type="color" value="${customAccent || preset.accent || preset.right}" onchange="window.__pmSetCustomAccent()"></label></div>
       </div>
       <div style="padding:14px 16px 12px;border-top:1px solid var(--pm-color-border-subtle);">
         <div class="pm-cfg-label" style="margin-bottom:10px;">气泡颜色</div>
         <div style="display:flex;gap:8px;margin-top:14px;align-items:center;flex-wrap:wrap;">
           <label class="pm-cfg-label" style="margin:0;">自定义右</label>
-          <input id="pm-custom-right" type="color" value="${theme.customRight || '#007aff'}" onchange="window.__pmSetCustomColor()" class="pm-color-pick">
+          <input id="pm-custom-right" type="color" value="${rightColor}" onchange="window.__pmSetCustomColor()" class="pm-color-pick">
           <label class="pm-cfg-label" style="margin:0;">自定义左</label>
-          <input id="pm-custom-left" type="color" value="${theme.customLeft || '#e9e9eb'}" onchange="window.__pmSetCustomColor()" class="pm-color-pick">
+          <input id="pm-custom-left" type="color" value="${leftColor}" onchange="window.__pmSetCustomColor()" class="pm-color-pick">
           <button type="button" onclick="window.__pmClearCustomColor()" class="pm-color-clear">重置</button>
         </div>
       </div>

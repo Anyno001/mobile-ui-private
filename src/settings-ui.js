@@ -88,13 +88,19 @@ export function installSettingsUi(deps) {
         document.querySelectorAll('.pm-layout-chip').forEach(el => {
             const value = el.dataset.themeMode;
             if (!value) return;
-            const active = value === theme.darkMode;
+            const active = theme.preset === 'apple' ? value === 'light' : value === theme.darkMode;
             el.classList.toggle('pm-layout-active', active);
             el.setAttribute('aria-pressed', String(active));
+            el.disabled = theme.preset === 'apple';
         });
-        const title = document.getElementById('pm-custom-title'), right = document.getElementById('pm-custom-right'), left = document.getElementById('pm-custom-left'), border = document.getElementById('pm-border-color');
+        const preset = THEME_PRESETS[theme.preset] || THEME_PRESETS.default;
+        const accent = theme.preset === 'custom' && theme.customAccent ? theme.customAccent : preset.accent || preset.right;
+        const title = document.getElementById('pm-custom-title'), right = document.getElementById('pm-custom-right'), left = document.getElementById('pm-custom-left'), border = document.getElementById('pm-border-color'), customAccent = document.getElementById('pm-custom-accent');
         if (title) title.value = theme.customTitle || '';
-        if (right) right.value = theme.customRight || '#007aff'; if (left) left.value = theme.customLeft || '#e9e9eb'; if (border) border.value = theme.borderColor || '#1a1a1a';
+        if (right) right.value = theme.customRight || accent;
+        if (left) left.value = theme.customLeft || preset.left;
+        if (border) border.value = theme.borderColor || '#1a1a1a';
+        if (customAccent) customAccent.value = accent;
     };
     const persistThemeMutation = mutate => {
         const previous = clone(window.__pmTheme); mutate();
@@ -153,7 +159,10 @@ export function installSettingsUi(deps) {
         if (el) { el.classList.toggle('is-checked', window.__pmWordyLimit); el.setAttribute('aria-checked', String(window.__pmWordyLimit)); }
         return window.__pmWordyLimit !== previous;
     };
-    window.__pmSetDarkMode = mode => persistThemeMutation(() => { window.__pmTheme.darkMode = mode; });
+    window.__pmSetDarkMode = mode => {
+        if (window.__pmTheme.preset === 'apple') return false;
+        return persistThemeMutation(() => { window.__pmTheme.darkMode = mode; });
+    };
     // ========== 导出 / 导入 数据功能 ==========
     window.__pmExportData = async () => {
         const snapshot = await captureBackupState();
@@ -345,7 +354,7 @@ export function installSettingsUi(deps) {
         await loadBgSettings();
         const persona = getCurrentPersona();
         const presetBtns = Object.entries(THEME_PRESETS).map(([k, v]) =>
-            `<button type="button" class="pm-theme-chip ${t.preset === k ? 'pm-theme-active' : ''}" data-preset="${k}" aria-label="使用${escapeAttr(v.label)}界面主题" aria-pressed="${t.preset === k}" onclick="window.__pmSetPreset('${safeJS(k)}')"><span class="pm-theme-dot" style="background:${v.accent || v.right}" aria-hidden="true"></span>${escapeHtml(v.label)}</button>`
+            `<button type="button" class="pm-theme-chip ${t.preset === k ? 'pm-theme-active' : ''}" data-preset="${k}" aria-label="使用${escapeAttr(v.label)}界面主题" aria-pressed="${t.preset === k}" onclick="window.__pmSetPreset('${safeJS(k)}')"><span class="pm-theme-dot" style="background:${v.accent || v.right}" aria-hidden="true"></span></button>`
         ).join('');
         const id = getStorageId(), localKey = `${id}_${persona}`;
         const hasDesktopBg = !!window.__pmDesktopBg, hasGlobalBg = !!window.__pmBgGlobal, hasLocalBg = !!window.__pmBgLocal[localKey];
@@ -372,16 +381,25 @@ export function installSettingsUi(deps) {
     };
     window.__pmSetPreset = p => persistThemeMutation(() => {
         if (!Object.hasOwn(THEME_PRESETS, p)) return;
-        window.__pmTheme.preset = p; window.__pmTheme.customRight = ''; window.__pmTheme.customLeft = '';
+        window.__pmTheme.preset = p;
+        window.__pmTheme.customAccent = '';
+        window.__pmTheme.customRight = '';
+        window.__pmTheme.customLeft = '';
+    });
+    window.__pmSetCustomAccent = () => persistThemeMutation(() => {
+        const accent = document.getElementById('pm-custom-accent')?.value || '';
+        if (!accent) return;
+        window.__pmTheme.preset = 'custom';
+        window.__pmTheme.customAccent = accent;
+        window.__pmTheme.customRight = '';
+        window.__pmTheme.customLeft = '';
     });
     window.__pmSetCustomColor = () => persistThemeMutation(() => {
         window.__pmTheme.customRight = document.getElementById('pm-custom-right')?.value || '';
         window.__pmTheme.customLeft = document.getElementById('pm-custom-left')?.value || '';
-        window.__pmTheme.preset = 'custom';
     });
     window.__pmClearCustomColor = () => persistThemeMutation(() => {
         window.__pmTheme.customRight = ''; window.__pmTheme.customLeft = '';
-        window.__pmTheme.preset = 'default';
     });
     window.__pmSetBorderColor = () => persistThemeMutation(() => { window.__pmTheme.borderColor = document.getElementById('pm-border-color')?.value || '#1a1a1a'; });
     window.__pmSetCustomTitle = () => persistThemeMutation(() => { window.__pmTheme.customTitle = (document.getElementById('pm-custom-title')?.value || '').trim().slice(0, 20); });

@@ -1879,7 +1879,8 @@ if (!showModelPickerSource.includes('showModelPicker(runtime)')) {
   failures.push('settings-ui.js: __pmShowModelPicker must delegate to the settings model picker with runtime state');
 }
 for (const expected of [
-  "dropdown.dataset.theme = window.__pmTheme?.darkMode || 'light'",
+  "dropdown.dataset.theme = theme.preset === 'apple' ? 'light' : (theme.darkMode || 'light')",
+  "for (const [token, value] of Object.entries(preset.ui || {})) dropdown.style.setProperty(token, value)",
   '<button type="button" class="pm-model-opt"',
   'aria-pressed="${model === current}"',
   'aria-label="搜索模型"',
@@ -1894,6 +1895,8 @@ for (const expected of [
   'aria-label="使用${escapeAttr(v.label)}界面主题"',
   'aria-pressed="${t.preset === k}"',
   "el.setAttribute('aria-pressed', String(active))",
+  "window.__pmTheme.preset = 'custom'", 'window.__pmTheme.customAccent = accent',
+  "if (window.__pmTheme.preset === 'apple') return false;",
 ]) requireText('settings-ui.js', settingsCode, expected);
 for (const expected of [
   '#pm-iphone[data-theme="light"],', '#pm-overlay[data-theme="light"],', '#pm-overlay-sub[data-theme="light"],', '.pm-model-dropdown[data-theme="light"] {',
@@ -2392,6 +2395,9 @@ const settingsTemplatesCode = sourceModuleByName.get('settings-templates.js')?.c
 requireText('settings-templates.js wordy-limit copy', settingsTemplatesCode, '除话痨人设外，每条消息不超过 35 字');
 requireText('settings-templates.js shared settings-home hint class', settingsTemplatesCode, 'class="pm-settings-home-hint">日夜模式、气泡颜色与背景图</span>');
 requireText('settings-templates.js wordy-limit shared settings-home hint class', settingsTemplatesCode, 'span class="pm-settings-home-hint">除话痨人设外，每条消息不超过 35 字</span>');
+for (const expected of ['data-theme-mode="light"', '苹果皮肤固定为浅色。', 'id="pm-custom-accent"']) {
+  requireText('settings-templates.js theme synchronization controls', settingsTemplatesCode, expected);
+}
 requireText('calendar.js preserves calendar scroll position on rerender', sourceModuleByName.get('calendar.js')?.code || '', "const previousShell = container.querySelector?.('.pm-calendar-shell');");
 requireText('calendar.js restores calendar scroll position on rerender', sourceModuleByName.get('calendar.js')?.code || '', 'if (Number.isFinite(scrollTop) && nextShell) nextShell.scrollTop = scrollTop;');
 requireCssDeclarations(cssRules, '.pm-contact-settings-actions', { 'border-top': '0 !important' });

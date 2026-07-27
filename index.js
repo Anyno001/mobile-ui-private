@@ -1,26 +1,31 @@
 (() => {
   // src/config.js
   var THEME_PRESETS = {
-    default: { right: "#007aff", left: "#e9e9eb", rightText: "#fff", leftText: "#000", label: "\u65E5\u95F4", accent: "#007aff" },
-    dark: { right: "#5856d6", left: "#2c2c2e", rightText: "#fff", leftText: "#e0e0e0", label: "\u591C\u95F4", accent: "#5856d6" },
+    default: { right: "#007aff", left: "#e9e9eb", rightText: "#fff", leftText: "#000", label: "\u9ED8\u8BA4\u84DD", accent: "#007aff" },
+    dark: { right: "#5856d6", left: "#2c2c2e", rightText: "#fff", leftText: "#e0e0e0", label: "\u6697\u591C\u7D2B", accent: "#5856d6" },
+    pink: { right: "#FFC4D4", left: "#FFF0F5", rightText: "#2B2B2B", leftText: "#4E3840", label: "\u67D4\u7C89", accent: "#FFC4D4" },
+    mint: { right: "#8FC9B3", left: "#EDF7F1", rightText: "#15372B", leftText: "#315A4A", label: "\u8584\u8377", accent: "#8FC9B3" },
+    frost: { right: "rgba(111, 172, 218, 0.62)", left: "rgba(255,255,255,0.48)", rightText: "#fff", leftText: "#22303A", label: "\u78E8\u7802", accent: "#6FAEDA", frost: true },
     apple: {
-      right: "#893619",
-      left: "#F8F5EE",
-      rightText: "#F8F5EE",
-      leftText: "#0E2110",
+      right: "#D85B4F",
+      left: "#E9DCC6",
+      rightText: "#FFF9F1",
+      leftText: "#3F3021",
       label: "\u82F9\u679C",
-      accent: "#893619",
+      accent: "#D85B4F",
       ui: {
-        "--pm-color-surface-page": "#F8F5EE",
-        "--pm-color-surface-card": "#EEE9DE",
-        "--pm-color-surface-input": "#F8F5EE",
-        "--pm-color-surface-elevated": "#EEE9DE",
-        "--pm-color-text-primary": "#0E2110",
-        "--pm-color-text-secondary": "#4A503A",
-        "--pm-color-text-tertiary": "#6C705A",
-        "--pm-color-border-default": "#B26B5F",
-        "--pm-color-border-subtle": "#DED5C3",
-        "--pm-color-focus-ring": "#7A9C45"
+        "--pm-color-surface-page": "#FFF7E8",
+        "--pm-color-surface-card": "#FFF1D8",
+        "--pm-color-surface-input": "#FFF9F0",
+        "--pm-color-surface-elevated": "#F8EBCF",
+        "--pm-color-text-primary": "#2D3A20",
+        "--pm-color-text-secondary": "#5E6847",
+        "--pm-color-text-tertiary": "#7C8464",
+        "--pm-color-border-default": "transparent",
+        "--pm-color-border-subtle": "rgba(111, 142, 70, 0.16)",
+        "--pm-color-focus-ring": "#7AA34A",
+        "--pm-color-success": "#7AA34A",
+        "--pm-color-danger": "#D85B4F"
       }
     }
   };
@@ -7950,15 +7955,17 @@ ${mainChatText}` : "",
     const theme = window.__pmTheme || {};
     const preset = THEME_PRESETS[theme.preset] || THEME_PRESETS.default;
     const interfaceMode = theme.preset === "apple" ? "light" : theme.darkMode || "light";
-    const rightBackground = theme.customRight || preset.right;
-    const rightText = theme.customRight ? contrastText(theme.customRight) : preset.rightText;
+    const customAccent = theme.preset === "custom" ? String(theme.customAccent || "").trim() : "";
+    const defaultRight = theme.preset === "custom" && customAccent ? customAccent : preset.right;
+    const rightBackground = theme.customRight || defaultRight;
+    const rightText = theme.customRight || theme.preset === "custom" && customAccent ? contrastText(rightBackground) : preset.rightText;
     const skinTokens = THEME_PRESETS.apple?.ui || {};
     overlay.style.setProperty("--pm-r-bg", rightBackground);
     overlay.style.setProperty("--pm-r-txt", rightText);
     overlay.style.setProperty("--pm-l-bg", theme.customLeft || preset.left);
     overlay.style.setProperty("--pm-l-txt", theme.customLeft ? contrastText(theme.customLeft) : preset.leftText);
     overlay.style.setProperty("--pm-border", theme.borderColor || "#1a1a1a");
-    overlay.style.setProperty("--pm-color-accent", preset.accent || preset.right);
+    overlay.style.setProperty("--pm-color-accent", customAccent || preset.accent || preset.right);
     for (const token of Object.keys(skinTokens)) overlay.style.removeProperty(token);
     for (const [token, value] of Object.entries(preset.ui || {})) overlay.style.setProperty(token, value);
     overlay.dataset.theme = interfaceMode;
@@ -14587,8 +14594,10 @@ ${lines}`;
     function applyTheme() {
       const t = window.__pmTheme || {}, p = THEME_PRESETS[t.preset] || THEME_PRESETS.default;
       const interfaceMode = t.preset === "apple" ? "light" : t.darkMode || "light";
-      const rBg = t.customRight || p.right, lBg = t.customLeft || p.left;
-      const rTxt = t.customRight ? contrastText(t.customRight) : p.rightText;
+      const customAccent = t.preset === "custom" ? String(t.customAccent || "").trim() : "";
+      const defaultRight = t.preset === "custom" && customAccent ? customAccent : p.right;
+      const rBg = t.customRight || defaultRight, lBg = t.customLeft || p.left;
+      const rTxt = t.customRight || t.preset === "custom" && customAccent ? contrastText(rBg) : p.rightText;
       const lTxt = t.customLeft ? contrastText(t.customLeft) : p.leftText;
       const border = t.borderColor || "#1a1a1a";
       const skinTokens = THEME_PRESETS.apple?.ui || {};
@@ -14600,7 +14609,7 @@ ${lines}`;
         element.style.setProperty("--pm-l-txt", lTxt);
         element.style.setProperty("--pm-border", border);
         element.style.setProperty("--pm-frost", p.frost ? "1" : "0");
-        element.style.setProperty("--pm-color-accent", p.accent || p.right);
+        element.style.setProperty("--pm-color-accent", customAccent || p.accent || p.right);
         for (const token of Object.keys(skinTokens)) element.style.removeProperty(token);
         for (const [token, value] of Object.entries(p.ui || {})) element.style.setProperty(token, value);
         element.setAttribute("data-theme", interfaceMode);
@@ -16131,10 +16140,14 @@ ${lines}`;
     const dropdown = document.createElement("div");
     dropdown.id = "pm-model-dropdown";
     dropdown.className = "pm-model-dropdown";
-    dropdown.dataset.theme = window.__pmTheme?.darkMode || "light";
-    if (window.__pmTheme?.preset === "apple") {
-      dropdown.dataset.theme = "light";
+    const theme = window.__pmTheme || {};
+    const preset = THEME_PRESETS[theme.preset] || THEME_PRESETS.default;
+    dropdown.dataset.theme = theme.preset === "apple" ? "light" : theme.darkMode || "light";
+    const customAccent = theme.preset === "custom" ? String(theme.customAccent || "").trim() : "";
+    if (customAccent) dropdown.style.setProperty("--pm-color-accent", customAccent);
+    if (theme.preset === "apple") {
       dropdown.dataset.skin = "apple";
+      for (const [token, value] of Object.entries(preset.ui || {})) dropdown.style.setProperty(token, value);
     }
     dropdown.style.setProperty("--pm-model-visible-rows", String(MODEL_VISIBLE_ROWS));
     if (POPOVER_SUPPORTED) dropdown.setAttribute("popover", "manual");
@@ -16261,6 +16274,11 @@ ${lines}`;
     </div>`;
   }
   function renderLookSettings({ theme, presetButtons, desktopBackgroundButtons, globalBackgroundButtons, localBackgroundButtons }) {
+    const preset = THEME_PRESETS[theme.preset] || THEME_PRESETS.default;
+    const customAccent = theme.preset === "custom" ? theme.customAccent || "" : "";
+    const rightColor = theme.customRight || customAccent || preset.right;
+    const leftColor = theme.customLeft || preset.left;
+    const appleActive = theme.preset === "apple";
     return `
     <div class="pm-settings-page">
       <div style="padding:12px 16px;">
@@ -16277,21 +16295,22 @@ ${lines}`;
       <div style="padding:12px 16px;border-top:1px solid var(--pm-color-border-subtle);">
         <div class="pm-cfg-label" style="margin-bottom:8px;">\u65E5\u591C\u6A21\u5F0F</div>
         <div class="pm-theme-row" style="margin-bottom:8px;">
-          <button type="button" class="pm-layout-chip ${theme.darkMode === "light" ? "pm-layout-active" : ""}" data-theme-mode="light" aria-pressed="${theme.darkMode === "light"}" onclick="window.__pmSetDarkMode('light')">\u65E5\u95F4</button>
-          <button type="button" class="pm-layout-chip ${theme.darkMode === "dark" ? "pm-layout-active" : ""}" data-theme-mode="dark" aria-pressed="${theme.darkMode === "dark"}" onclick="window.__pmSetDarkMode('dark')">\u591C\u95F4</button>
+          <button type="button" class="pm-layout-chip ${appleActive || theme.darkMode === "light" ? "pm-layout-active" : ""}" data-theme-mode="light" aria-pressed="${appleActive || theme.darkMode === "light"}" onclick="window.__pmSetDarkMode('light')" ${appleActive ? "disabled" : ""}>\u65E5\u95F4</button>
+          <button type="button" class="pm-layout-chip ${!appleActive && theme.darkMode === "dark" ? "pm-layout-active" : ""}" data-theme-mode="dark" aria-pressed="${!appleActive && theme.darkMode === "dark"}" onclick="window.__pmSetDarkMode('dark')" ${appleActive ? "disabled" : ""}>\u591C\u95F4</button>
         </div>
+        ${appleActive ? '<small class="pm-cfg-help">\u82F9\u679C\u76AE\u80A4\u56FA\u5B9A\u4E3A\u6D45\u8272\u3002</small>' : ""}
       </div>
       <div style="padding:14px 16px 12px;border-top:1px solid var(--pm-color-border-subtle);">
         <div class="pm-cfg-label" style="margin-bottom:10px;">\u4E3B\u9898\u989C\u8272</div>
-        <div class="pm-theme-row">${presetButtons}</div>
+        <div class="pm-theme-row" style="align-items:center;">${presetButtons}<label class="pm-theme-custom" title="\u81EA\u5B9A\u4E49\u4E3B\u9898\u8272" aria-label="\u81EA\u5B9A\u4E49\u4E3B\u9898\u8272"><input id="pm-custom-accent" type="color" value="${customAccent || preset.accent || preset.right}" onchange="window.__pmSetCustomAccent()"></label></div>
       </div>
       <div style="padding:14px 16px 12px;border-top:1px solid var(--pm-color-border-subtle);">
         <div class="pm-cfg-label" style="margin-bottom:10px;">\u6C14\u6CE1\u989C\u8272</div>
         <div style="display:flex;gap:8px;margin-top:14px;align-items:center;flex-wrap:wrap;">
           <label class="pm-cfg-label" style="margin:0;">\u81EA\u5B9A\u4E49\u53F3</label>
-          <input id="pm-custom-right" type="color" value="${theme.customRight || "#007aff"}" onchange="window.__pmSetCustomColor()" class="pm-color-pick">
+          <input id="pm-custom-right" type="color" value="${rightColor}" onchange="window.__pmSetCustomColor()" class="pm-color-pick">
           <label class="pm-cfg-label" style="margin:0;">\u81EA\u5B9A\u4E49\u5DE6</label>
-          <input id="pm-custom-left" type="color" value="${theme.customLeft || "#e9e9eb"}" onchange="window.__pmSetCustomColor()" class="pm-color-pick">
+          <input id="pm-custom-left" type="color" value="${leftColor}" onchange="window.__pmSetCustomColor()" class="pm-color-pick">
           <button type="button" onclick="window.__pmClearCustomColor()" class="pm-color-clear">\u91CD\u7F6E</button>
         </div>
       </div>
@@ -17051,15 +17070,19 @@ ${lines}`;
       document.querySelectorAll(".pm-layout-chip").forEach((el) => {
         const value = el.dataset.themeMode;
         if (!value) return;
-        const active = value === theme.darkMode;
+        const active = theme.preset === "apple" ? value === "light" : value === theme.darkMode;
         el.classList.toggle("pm-layout-active", active);
         el.setAttribute("aria-pressed", String(active));
+        el.disabled = theme.preset === "apple";
       });
-      const title = document.getElementById("pm-custom-title"), right = document.getElementById("pm-custom-right"), left = document.getElementById("pm-custom-left"), border = document.getElementById("pm-border-color");
+      const preset = THEME_PRESETS[theme.preset] || THEME_PRESETS.default;
+      const accent = theme.preset === "custom" && theme.customAccent ? theme.customAccent : preset.accent || preset.right;
+      const title = document.getElementById("pm-custom-title"), right = document.getElementById("pm-custom-right"), left = document.getElementById("pm-custom-left"), border = document.getElementById("pm-border-color"), customAccent = document.getElementById("pm-custom-accent");
       if (title) title.value = theme.customTitle || "";
-      if (right) right.value = theme.customRight || "#007aff";
-      if (left) left.value = theme.customLeft || "#e9e9eb";
+      if (right) right.value = theme.customRight || accent;
+      if (left) left.value = theme.customLeft || preset.left;
       if (border) border.value = theme.borderColor || "#1a1a1a";
+      if (customAccent) customAccent.value = accent;
     };
     const persistThemeMutation = (mutate) => {
       const previous = clone9(window.__pmTheme);
@@ -17139,9 +17162,12 @@ ${error.message}`);
       }
       return window.__pmWordyLimit !== previous;
     };
-    window.__pmSetDarkMode = (mode) => persistThemeMutation(() => {
-      window.__pmTheme.darkMode = mode;
-    });
+    window.__pmSetDarkMode = (mode) => {
+      if (window.__pmTheme.preset === "apple") return false;
+      return persistThemeMutation(() => {
+        window.__pmTheme.darkMode = mode;
+      });
+    };
     window.__pmExportData = async () => {
       const snapshot = await captureBackupState();
       const data = {
@@ -17347,7 +17373,7 @@ ${error.message}`);
       await loadBgSettings();
       const persona = getCurrentPersona();
       const presetBtns = Object.entries(THEME_PRESETS).map(
-        ([k, v]) => `<button type="button" class="pm-theme-chip ${t.preset === k ? "pm-theme-active" : ""}" data-preset="${k}" aria-label="\u4F7F\u7528${escapeAttr(v.label)}\u754C\u9762\u4E3B\u9898" aria-pressed="${t.preset === k}" onclick="window.__pmSetPreset('${safeJS(k)}')"><span class="pm-theme-dot" style="background:${v.accent || v.right}" aria-hidden="true"></span>${escapeHtml(v.label)}</button>`
+        ([k, v]) => `<button type="button" class="pm-theme-chip ${t.preset === k ? "pm-theme-active" : ""}" data-preset="${k}" aria-label="\u4F7F\u7528${escapeAttr(v.label)}\u754C\u9762\u4E3B\u9898" aria-pressed="${t.preset === k}" onclick="window.__pmSetPreset('${safeJS(k)}')"><span class="pm-theme-dot" style="background:${v.accent || v.right}" aria-hidden="true"></span></button>`
       ).join("");
       const id2 = getStorageId2(), localKey = `${id2}_${persona}`;
       const hasDesktopBg = !!window.__pmDesktopBg, hasGlobalBg = !!window.__pmBgGlobal, hasLocalBg = !!window.__pmBgLocal[localKey];
@@ -17369,18 +17395,25 @@ ${error.message}`);
     window.__pmSetPreset = (p) => persistThemeMutation(() => {
       if (!Object.hasOwn(THEME_PRESETS, p)) return;
       window.__pmTheme.preset = p;
+      window.__pmTheme.customAccent = "";
+      window.__pmTheme.customRight = "";
+      window.__pmTheme.customLeft = "";
+    });
+    window.__pmSetCustomAccent = () => persistThemeMutation(() => {
+      const accent = document.getElementById("pm-custom-accent")?.value || "";
+      if (!accent) return;
+      window.__pmTheme.preset = "custom";
+      window.__pmTheme.customAccent = accent;
       window.__pmTheme.customRight = "";
       window.__pmTheme.customLeft = "";
     });
     window.__pmSetCustomColor = () => persistThemeMutation(() => {
       window.__pmTheme.customRight = document.getElementById("pm-custom-right")?.value || "";
       window.__pmTheme.customLeft = document.getElementById("pm-custom-left")?.value || "";
-      window.__pmTheme.preset = "custom";
     });
     window.__pmClearCustomColor = () => persistThemeMutation(() => {
       window.__pmTheme.customRight = "";
       window.__pmTheme.customLeft = "";
-      window.__pmTheme.preset = "default";
     });
     window.__pmSetBorderColor = () => persistThemeMutation(() => {
       window.__pmTheme.borderColor = document.getElementById("pm-border-color")?.value || "#1a1a1a";

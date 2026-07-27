@@ -3,6 +3,7 @@ import {
     CALENDAR_CYCLE_STORAGE_KEY, CALENDAR_HOLIDAY_STORAGE_KEY, CALENDAR_OCCASION_STORAGE_KEY,
     CALENDAR_STORAGE_KEY, CALENDAR_WEATHER_STORAGE_KEY, EXTENSION_PROMPT_POSITIONS, MAX_INJECTION_DEPTH,
 } from '../src/constants.js';
+import { THEME_PRESETS } from '../src/config.js';
 import {
     buildCharacterBehaviorPrompt, buildChatPreferencePrompt,
     DEFAULT_CHARACTER_BEHAVIOR, getCharacterBehavior,
@@ -1165,7 +1166,7 @@ const makeClassList = initial => {
         toggle: (value, force) => { if (force) values.add(value); else values.delete(value); return !!force; },
     };
 };
-const themeChips = ['default', 'dark', 'apple'].map(preset => {
+const themeChips = ['default', 'dark', 'pink', 'mint', 'frost', 'apple'].map(preset => {
     const attributes = new Map();
     return {
         dataset: { preset },
@@ -1232,6 +1233,7 @@ const uiElements = new Map([
     ['pm-quick-reply-status', { textContent: '', dataset: {} }],
     ['pm-custom-right', { value: '#123456' }],
     ['pm-custom-left', { value: '#654321' }],
+    ['pm-custom-accent', { value: '#c8647d' }],
     ['pm-border-color', { value: '#abcdef' }],
     ['pm-cfg-url', { value: 'https://new.example' }],
     ['pm-cfg-key', { value: 'new-key' }],
@@ -1321,9 +1323,26 @@ installSettingsUi({
 });
 window.__pmTheme = { preset: 'apple', customRight: '', customLeft: '', borderColor: '#1a1a1a', darkMode: 'dark', customTitle: '', qrLabel: '天音' };
 await window.__pmShowConfig('look');
+assert.deepEqual(Object.keys(THEME_PRESETS), ['default', 'dark', 'pink', 'mint', 'frost', 'apple'],
+    '颜色预设必须保留蓝、紫、粉、薄荷、磨砂并新增苹果');
+assert.equal(THEME_PRESETS.pink.accent, '#FFC4D4', '粉色预设必须使用指定的低饱和粉');
+assert.equal(THEME_PRESETS.pink.right, '#FFC4D4', '粉色右气泡必须使用指定的低饱和粉');
+assert.equal(THEME_PRESETS.mint.accent, '#8FC9B3', '薄荷预设必须保持柔和低饱和配色');
+assert.equal(THEME_PRESETS.mint.right, '#8FC9B3', '薄荷右气泡必须保持柔和低饱和配色');
+assert.equal(THEME_PRESETS.frost.frost, true, '磨砂预设必须启用玻璃效果标记');
+assert.notEqual(THEME_PRESETS.apple.left, THEME_PRESETS.apple.ui['--pm-color-surface-page'],
+    '苹果左气泡必须与页面底色区分，不能融合');
+assert.equal(THEME_PRESETS.apple.ui['--pm-color-border-default'], 'transparent',
+    '苹果皮肤必须使用无描边卡片层次');
 assert.match(settingsOverlayHtml, /<button type="button" class="pm-theme-chip pm-theme-active" data-preset="apple"/);
 assert.match(settingsOverlayHtml, /aria-label="使用苹果界面主题" aria-pressed="true"/);
-assert.match(settingsOverlayHtml, /style="background:#893619" aria-hidden="true"/);
+assert.match(settingsOverlayHtml, /data-theme-mode="light" aria-pressed="true" onclick="window\.__pmSetDarkMode\('light'\)" disabled>日间<\/button>/,
+    '苹果皮肤必须明确显示日间已选中且锁定');
+assert.match(settingsOverlayHtml, /data-theme-mode="dark" aria-pressed="false" onclick="window\.__pmSetDarkMode\('dark'\)" disabled>夜间<\/button>/,
+    '苹果皮肤必须明确显示夜间未选中且锁定');
+assert.match(settingsOverlayHtml, /style="background:#D85B4F" aria-hidden="true"/);
+assert.doesNotMatch(settingsOverlayHtml, /pm-theme-dot[^>]*><\/span>[^<]+<\/button>/,
+    '颜色预设按钮只能显示色点，不得出现可见标签正文');
 assert.doesNotMatch(settingsOverlayHtml, /<div class="pm-theme-chip/);
 const modeBeforeInvalidProfile = uiElements.get('pm-mode-main').classList.contains('pm-mode-active');
 window.__pmPickProfile(99);
@@ -1368,6 +1387,7 @@ const baseTheme = { preset: 'default', customRight: '', customLeft: '', borderCo
 for (const [handler, setup, invoke] of [
     ['__pmSetDarkMode', () => {}, () => window.__pmSetDarkMode('dark')],
     ['__pmSetPreset', () => {}, () => window.__pmSetPreset('apple')],
+    ['__pmSetCustomAccent', () => {}, () => window.__pmSetCustomAccent()],
     ['__pmSetCustomColor', () => {}, () => window.__pmSetCustomColor()],
     ['__pmClearCustomColor', () => { window.__pmTheme = { ...window.__pmTheme, preset: 'custom', customRight: '#111111', customLeft: '#222222' }; }, () => window.__pmClearCustomColor()],
     ['__pmSetBorderColor', () => {}, () => window.__pmSetBorderColor()],
@@ -1387,26 +1407,34 @@ assert.equal(window.__pmSetDarkMode('dark'), true);
 assert.equal(window.__pmTheme.darkMode, 'dark');
 assert.equal(JSON.parse(localValues.get('ST_SMS_THEME')).darkMode, 'dark');
 assert.equal(appliedThemes.at(-1).darkMode, 'dark');
-window.__pmTheme = { ...structuredClone(baseTheme), customRight: '#111111', customLeft: '#222222' };
+window.__pmTheme = { ...structuredClone(baseTheme), customRight: '#111111', customLeft: '#222222', customAccent: '#ff00aa' };
 assert.equal(window.__pmSetPreset('apple'), true);
 assert.equal(window.__pmTheme.preset, 'apple');
+assert.equal(window.__pmTheme.customAccent, '');
 assert.equal(window.__pmTheme.customRight, '');
 assert.equal(window.__pmTheme.customLeft, '');
 assert.equal(JSON.parse(localValues.get('ST_SMS_THEME')).preset, 'apple');
 assert.equal(themeChips.find(chip => chip.dataset.preset === 'apple').getAttribute('aria-pressed'), 'true');
 assert.equal(themeChips.find(chip => chip.dataset.preset === 'default').getAttribute('aria-pressed'), 'false');
+assert.equal(window.__pmSetDarkMode('dark'), false, '苹果皮肤必须锁定浅色，不得切换日夜模式');
 uiElements.get('pm-custom-right').value = '#123456';
 uiElements.get('pm-custom-left').value = '#654321';
 assert.equal(window.__pmSetCustomColor(), true);
-assert.equal(window.__pmTheme.preset, 'custom');
+assert.equal(window.__pmTheme.preset, 'apple', '手动气泡色不得反向改写上方主题色');
 assert.equal(window.__pmTheme.customRight, '#123456');
 assert.equal(window.__pmTheme.customLeft, '#654321');
-assert.ok(themeChips.every(chip => chip.getAttribute('aria-pressed') === 'false'));
+assert.equal(themeChips.find(chip => chip.dataset.preset === 'apple').getAttribute('aria-pressed'), 'true');
 assert.equal(window.__pmClearCustomColor(), true);
-assert.equal(window.__pmTheme.preset, 'default');
+assert.equal(window.__pmTheme.preset, 'apple', '重置气泡色不得改写当前主题色');
 assert.equal(window.__pmTheme.customRight, '');
 assert.equal(window.__pmTheme.customLeft, '');
-assert.equal(themeChips.find(chip => chip.dataset.preset === 'default').getAttribute('aria-pressed'), 'true');
+uiElements.get('pm-custom-accent').value = '#c8647d';
+assert.equal(window.__pmSetCustomAccent(), true);
+assert.equal(window.__pmTheme.preset, 'custom', '自定义主题色必须进入 custom 预设');
+assert.equal(window.__pmTheme.customAccent, '#c8647d');
+assert.equal(window.__pmTheme.customRight, '');
+assert.equal(window.__pmTheme.customLeft, '');
+assert.ok(themeChips.every(chip => chip.getAttribute('aria-pressed') === 'false'));
 
 window.__pmTheme = { ...structuredClone(baseTheme), darkMode: 'dark' };
 window.__pmShowModelPicker();
@@ -1430,6 +1458,17 @@ modelDropdown.options.buttons[0].click();
 assert.equal(uiElements.get('pm-cfg-model').value, 'model-beta');
 assert.equal(uiElements.has('pm-model-dropdown'), false, '选择模型后必须移除浮层');
 assert.equal(documentClickListeners.size, 0, '选择模型后必须注销 document 关闭监听器');
+
+window.__pmTheme = { ...structuredClone(baseTheme), preset: 'apple', darkMode: 'dark' };
+window.__pmShowModelPicker();
+await new Promise(resolve => setTimeout(resolve, 0));
+const appleModelDropdown = uiElements.get('pm-model-dropdown');
+assert.equal(appleModelDropdown.dataset.theme, 'light', '苹果主题首次创建模型浮层必须强制浅色');
+assert.equal(appleModelDropdown.dataset.skin, 'apple', '苹果主题首次创建模型浮层必须标记苹果皮肤');
+assert.equal(appleModelDropdown.style.values.get('--pm-color-surface-page'), '#FFF7E8', '苹果主题首次创建模型浮层必须注入米色页面 token');
+assert.equal(appleModelDropdown.style.values.get('--pm-color-success'), '#7AA34A', '苹果主题首次创建模型浮层必须注入叶绿色 token');
+window.__pmShowModelPicker();
+assert.equal(uiElements.has('pm-model-dropdown'), false, '苹果模型浮层关闭后不得残留');
 
 window.addEventListener = () => {};
 const originalConsoleWarn = console.warn;
@@ -1959,14 +1998,15 @@ window.__pmTheme.darkMode = 'dark';
 foundationDeps.applyTheme();
 assert.equal(foundationPhone['data-theme'], 'light', '苹果主题必须强制浅色界面，不得继承 darkMode');
 assert.equal(foundationPhone['data-skin'], 'apple', '苹果主题必须标记 data-skin');
-assert.equal(foundationPhoneStyleValues.get('--pm-color-accent'), '#893619', '苹果主题必须写入自身强调色');
-assert.equal(foundationPhoneStyleValues.get('--pm-color-surface-page'), '#F8F5EE', '苹果主题必须写入浅色骨架变量');
+assert.equal(foundationPhoneStyleValues.get('--pm-color-accent'), '#D85B4F', '苹果主题必须写入明亮果实红强调色');
+assert.equal(foundationPhoneStyleValues.get('--pm-color-surface-page'), '#FFF7E8', '苹果主题必须写入春日米色骨架变量');
+assert.equal(foundationPhoneStyleValues.get('--pm-color-success'), '#7AA34A', '苹果主题必须写入叶绿色点缀');
 
 // 自定义气泡色只影响气泡，不得改写全局强调色。
 window.__pmTheme.customRight = '#123456';
 foundationDeps.applyTheme();
 assert.equal(foundationPhoneStyleValues.get('--pm-r-bg'), '#123456', '自定义右气泡色必须生效');
-assert.equal(foundationPhoneStyleValues.get('--pm-color-accent'), '#893619', '自定义气泡色不得覆盖界面强调色');
+assert.equal(foundationPhoneStyleValues.get('--pm-color-accent'), '#D85B4F', '自定义气泡色不得覆盖界面强调色');
 delete window.__pmTheme.customRight;
 
 // 切回内置浅色主题必须清除苹果专属 token 与皮肤标记。
@@ -1976,6 +2016,22 @@ foundationDeps.applyTheme();
 assert.equal(foundationPhone['data-skin'], undefined, '非苹果主题必须移除 data-skin');
 assert.equal(foundationPhoneStyleValues.has('--pm-color-surface-page'), false, '切回内置主题必须清除苹果专属 token');
 assert.equal(foundationPhoneStyleValues.get('--pm-color-accent'), '#007aff', '切回日间主题必须恢复默认强调色');
+
+window.__pmTheme.preset = 'frost';
+foundationDeps.applyTheme();
+assert.equal(foundationPhoneStyleValues.get('--pm-frost'), '1', '磨砂预设必须实际启用气泡玻璃效果');
+window.__pmTheme.preset = 'apple';
+foundationDeps.applyTheme();
+assert.equal(foundationPhoneStyleValues.get('--pm-l-bg'), '#E9DCC6', '苹果左气泡必须使用独立暖米色');
+assert.equal(foundationPhoneStyleValues.get('--pm-color-border-default'), 'transparent', '苹果皮肤必须写入无描边 token');
+window.__pmTheme = { ...window.__pmTheme, preset: 'custom', customAccent: '#c8647d', customRight: '', customLeft: '' };
+foundationDeps.applyTheme();
+assert.equal(foundationPhoneStyleValues.get('--pm-color-accent'), '#c8647d', '自定义主题色必须驱动界面强调色');
+assert.equal(foundationPhoneStyleValues.get('--pm-r-bg'), '#c8647d', '自定义主题色必须同步默认右气泡色');
+window.__pmTheme.customRight = '#123456';
+foundationDeps.applyTheme();
+assert.equal(foundationPhoneStyleValues.get('--pm-r-bg'), '#123456', '自定义右气泡必须覆盖主题色默认右气泡');
+assert.equal(foundationPhoneStyleValues.get('--pm-color-accent'), '#c8647d', '自定义右气泡不得反向改写自定义主题色');
 
 // 停止生成必须真正中止请求信号，并同步停止按钮可用性。
 assert.equal(foundationDeps.cancelGeneration(), false, '没有进行中的生成时停止操作必须返回 false');

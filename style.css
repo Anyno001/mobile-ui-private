@@ -100,6 +100,8 @@
 .pm-navbar{background:var(--pm-navbar-bg,#fff) !important;border-bottom-color:var(--pm-navbar-border,#f0f0f0) !important;}
 .pm-input{background:var(--pm-input-bg,#f2f2f7) !important;color:var(--pm-text,#000) !important;}
 
+/* 苹果皮肤采用浅色无描边卡片层次；消息左气泡保留更深暖米色以免融入页面。 */
+
 
 #pm-iphone.is-min{--pm-phone-inner-radius:19px;inset:auto 40px 40px auto !important;height:50px !important;min-height:50px !important;max-height:50px !important;width:140px !important;min-width:140px !important;max-width:140px !important;border-radius:25px !important;border-width:6px !important;}
 #pm-iphone.is-min .pm-main-ui{display:none !important;}
@@ -346,10 +348,11 @@
 .pm-prof-del:hover{background:var(--pm-color-danger) !important;color:var(--pm-color-on-dark) !important;}
 .pm-prof-empty{text-align:center;color:var(--pm-color-text-tertiary);font-size:12px;padding:10px 0;}
 .pm-theme-row{display:flex;gap:6px;flex-wrap:wrap;}
-.pm-theme-chip{display:flex;align-items:center;gap:4px;padding:5px 10px;border-radius:16px;font:inherit;font-size:12px;color:var(--pm-color-text-secondary);background:var(--pm-color-surface-elevated);cursor:pointer;border:2px solid transparent;transition:all .15s;user-select:none;}
-.pm-theme-chip:hover{background:var(--pm-color-surface-input);}.pm-theme-active{border-color:var(--pm-color-accent);color:var(--pm-color-accent);background:color-mix(in srgb,var(--pm-color-accent) 8%,var(--pm-color-surface-page));}
+.pm-theme-chip{display:grid;place-items:center;width:26px;height:26px;padding:3px;border:2px solid transparent;border-radius:50%;background:transparent;cursor:pointer;transition:border-color .15s,box-shadow .15s;user-select:none;}
+.pm-theme-chip:hover{background:transparent;}.pm-theme-active{border-color:var(--pm-color-accent);background:transparent;box-shadow:0 0 0 2px color-mix(in srgb,var(--pm-color-accent) 14%,transparent);}
 .pm-theme-chip:focus-visible{outline:2px solid var(--pm-color-focus-ring);outline-offset:2px;}
-.pm-theme-dot{width:14px;height:14px;border:1px solid color-mix(in srgb,currentColor 20%,transparent);border-radius:50%;flex-shrink:0;}
+.pm-theme-dot{width:16px;height:16px;border:1px solid color-mix(in srgb,#000 14%,transparent);border-radius:50%;}
+.pm-theme-custom{display:grid;place-items:center;width:26px;height:26px;border:2px dashed var(--pm-color-border-strong);border-radius:50%;cursor:pointer;overflow:hidden;box-sizing:border-box;}.pm-theme-custom input{width:32px;height:32px;padding:0;border:0;background:transparent;cursor:pointer;}
 .pm-color-pick{width:32px;height:28px;padding:0;border:1px solid var(--pm-color-border-default);border-radius:6px;cursor:pointer;background:none;}
 .pm-color-clear{background:none;border:1px solid var(--pm-color-border-default);border-radius:6px;padding:3px 8px;font-size:11px;color:var(--pm-color-text-tertiary);cursor:pointer;white-space:nowrap;}.pm-color-clear:hover{background:var(--pm-color-surface-elevated);}.pm-color-clear:focus-visible{outline:2px solid var(--pm-color-focus-ring);outline-offset:2px;}
 .pm-layout-row{display:flex;gap:6px;}
@@ -417,9 +420,13 @@
 
 /* 手机桌面与内容区 */
 .pm-desktop-page{overflow-y:auto;padding:18px 14px;background-color:var(--pm-bg,#fff);background-image:linear-gradient(color-mix(in srgb,var(--pm-bg,#fff) 22%,transparent),color-mix(in srgb,var(--pm-bg,#fff) 22%,transparent)),var(--pm-desktop-bg-image,none);background-size:cover;background-position:center;background-attachment:local}
-.pm-desktop-toolbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;font-size:13px;font-weight:700}.pm-desktop-toolbar button{border:0;background:transparent;color:var(--pm-color-danger);padding:4px;display:inline-flex;cursor:pointer}
+.pm-desktop-toolbar{display:flex;align-items:center;justify-content:space-between;min-height:28px;margin-bottom:16px;font-size:13px;font-weight:700;line-height:1.2}.pm-desktop-toolbar>span{display:block;line-height:1.2}.pm-desktop-toolbar button{border:0;background:transparent;color:var(--pm-color-danger);padding:4px;line-height:1;display:inline-flex;cursor:pointer}
 .pm-desktop-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}.pm-desktop-app{min-width:0;border:0;border-radius:14px;background:transparent;color:var(--pm-color-text-primary);display:flex;flex-direction:column;align-items:center;justify-content:flex-start;gap:5px;padding:5px 2px 7px;cursor:pointer;box-shadow:none}.pm-desktop-app:hover{background:color-mix(in srgb,currentColor 6%,transparent)}.pm-desktop-app:focus-visible{outline:2px solid var(--pm-color-focus-ring);outline-offset:2px}
 .pm-desktop-app-icon{width:46px;height:46px;border:1px solid color-mix(in srgb,var(--pm-color-accent,#007aff) 72%,#000);border-radius:14px;background:var(--pm-color-accent,#007aff);color:var(--pm-color-on-dark);display:grid;place-items:center;box-shadow:0 5px 14px color-mix(in srgb,var(--pm-color-accent,#007aff) 24%,transparent)}.pm-desktop-app svg{width:23px;height:23px;pointer-events:none}.pm-desktop-app-label{display:block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:inherit;font-size:10px;font-weight:650;line-height:1.2;text-align:center}
+.pm-nav-left-btn{color:var(--pm-color-text-tertiary) !important;}
+#pm-iphone[data-skin="apple"] .pm-nav-left-btn{color:var(--pm-color-success) !important;}
+#pm-iphone[data-skin="apple"] .pm-generation-cancel{border-color:var(--pm-color-success);color:var(--pm-color-success);background:color-mix(in srgb,var(--pm-color-success) 8%,transparent);}
+#pm-iphone[data-skin="apple"] .pm-desktop-app-icon{border-color:transparent;background:linear-gradient(135deg,#E7785D,#C9433D);box-shadow:0 5px 14px rgba(201,67,61,.22);}
 .pm-independent-api-fields[hidden]{display:none !important}.pm-quick-reply-settings{padding:14px 16px;display:flex;flex-direction:column;gap:12px}.pm-quick-reply-settings section{padding:12px;border:1px solid color-mix(in srgb,currentColor 11%,transparent);border-radius:13px}.pm-quick-reply-settings section>b{font-size:14px}.pm-quick-reply-settings section p{margin:6px 0 10px;color:var(--pm-color-text-tertiary);font-size:12px;line-height:1.55}.pm-quick-reply-settings code{font-family:ui-monospace,SFMono-Regular,Consolas,monospace}.pm-quick-reply-label{display:grid;grid-template-columns:auto minmax(0,1fr);gap:10px;align-items:center;font-size:12px;font-weight:650}.pm-quick-reply-label .pm-cfg-input{min-width:0}.pm-quick-reply-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.pm-quick-reply-actions button{border:0;border-radius:10px;background:var(--pm-color-accent,#007aff);color:var(--pm-color-on-dark);padding:10px 8px;font-size:13px;font-weight:650;cursor:pointer}.pm-quick-reply-actions button.is-danger{background:var(--pm-color-danger);color:var(--pm-color-on-dark)}.pm-quick-reply-actions button:disabled{cursor:not-allowed;opacity:.45}
 .pm-desktop-pins{margin-top:20px}.pm-desktop-pins h3{font-size:13px;margin:0 0 9px}.pm-desktop-pins>p{font-size:11px;color:var(--pm-color-text-tertiary);line-height:1.6;margin:0}
 .pm-desktop-pin{display:grid;grid-template-columns:minmax(0,1fr) auto;border:1px solid var(--pm-color-border-default);border-radius:12px;background:color-mix(in srgb,var(--pm-color-surface-card) 88%,transparent);overflow:hidden;margin-bottom:7px;backdrop-filter:blur(8px)}.pm-desktop-pin>button:first-child{min-width:0;border:0;background:transparent;color:inherit;padding:11px 12px;text-align:left;cursor:pointer}.pm-desktop-pin b{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px}.pm-desktop-pin>button:last-child{border:0;border-left:1px solid var(--pm-color-border-subtle);background:transparent;color:var(--pm-color-danger);padding:0 10px;cursor:pointer;font-size:10px}
