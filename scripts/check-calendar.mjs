@@ -959,8 +959,9 @@ for (const label of ['日程', '天气', '生理期', '菜谱']) {
         `${label}注入开关必须使用独立卡片区域`);
     assert.doesNotMatch(rendered, /<h3>上下文注入<\/h3>/, `${label}设置不得重复显示上下文注入模块标题`);
 }
-assert.match(renderedSchedule, /class="pm-calendar-card-action"[^>]*data-action="calendar-worldbook-columns"[^>]*>选择栏目<\/button>/,
-    '数据库记忆入口必须使用统一的卡片动作按钮');
+assert.match(renderedSchedule, /<button type="button" data-action="calendar-worldbook-columns"[^>]*>选择栏目<\/button>/,
+    '数据库记忆入口必须保留选择栏目按钮');
+assert.doesNotMatch(renderedSchedule, /pm-calendar-card-action/, '选择栏目不得使用额外的强调色按钮样式');
 assert.match(renderedSchedule, /选择生成日程时可参考的数据库记忆栏目。/);
 assert.match(renderedSchedule, /<h3>正文日期<\/h3>[\s\S]*?<h3>节假日数据<\/h3>[\s\S]*?<h3>生成规则<\/h3>/,
     '日程生成规则模块必须位于设置区最下面');

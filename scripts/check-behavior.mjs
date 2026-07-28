@@ -1410,7 +1410,16 @@ let worldBookContext = {
     reloadWorldInfoEditor() { forbiddenWorldBookHostCalls.reloadWorldInfoEditor += 1; },
     async loadWorldInfo() { return { entries: {
         1: { uid: 1, content: '设置页正文', comment: '设置页条目标题' },
-        2: { uid: 2, content: 'TavernDB 条目', comment: 'TavernDB-ACU-CustomExport-纪要-1' },
+        2: { uid: 2, content: '数据库条目 1', comment: 'TavernDB-ACU-ReadableDataTable' },
+        3: { uid: 3, content: '数据库条目 2', comment: 'TavernDB-ACU-CustomExport-纪要-1' },
+        4: { uid: 4, content: '数据库条目 3', comment: 'TavernDB-ACU-CustomExport-纪要-2' },
+        5: { uid: 5, content: '数据库条目 4', comment: 'TavernDB-ACU-CustomExport-纪要-3' },
+        6: { uid: 6, content: '数据库条目 5', comment: 'TavernDB-ACU-CustomExport-纪要-4' },
+        7: { uid: 7, content: '数据库条目 6', comment: 'TavernDB-ACU-CustomExport-重要角色表-1' },
+        8: { uid: 8, content: '数据库条目 7', comment: 'TavernDB-ACU-CustomExport-重要角色表-2' },
+        9: { uid: 9, content: '数据库条目 8', comment: 'TavernDB-ACU-CustomExport-重要角色表-3' },
+        10: { uid: 10, content: '数据库条目 9', comment: 'TavernDB-ACU-CustomExport-重要角色表-4' },
+        11: { uid: 11, content: '数据库条目 10', comment: 'TavernDB-ACU-CustomExport-重要角色表-5' },
     } }; },
 };
 window.__pmTheme = { preset: 'default', layout: 'standard', ambientStatusEnabled: false };
@@ -1458,6 +1467,14 @@ installSettingsUi({
 await window.__pmShowConfig('worldbook');
 assert.match(settingsOverlayHtml, /世界书读取|数据库条目一览|设置页条目标题/,
     '设置首页必须能打开世界书读取页并展示原始条目标题与栏目');
+await window.__pmShowWorldBookColumns({ title: '数据来源', module: 'calendar' });
+assert.equal((settingsOverlayHtml.match(/class="pm-li pm-worldbook-quick-entry"/g) || []).length, 10,
+    '数据库来源快捷页必须逐条显示全部数据库条目，不得按栏目去重成少数几行');
+assert.match(settingsOverlayHtml, /TavernDB-ACU-ReadableDataTable/,
+    '三段式数据库条目必须显示在数据库来源快捷页');
+assert.match(settingsOverlayHtml, /TavernDB-ACU-CustomExport-重要角色表-5/,
+    '四段式数据库条目必须完整显示在数据库来源快捷页');
+await window.__pmShowConfig('worldbook');
 assert.match(settingsOverlayHtml, /<path d="M4 5\.5 12 3l8 2\.5v13L12 16l-8 2\.5z"/,
     '原生世界书条目标题必须使用书本图标');
 assert.doesNotMatch(settingsOverlayHtml, /设置页正文/,
