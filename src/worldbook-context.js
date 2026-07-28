@@ -27,8 +27,11 @@ function normalizeBookEntries(bookName, book) {
         if (!value || typeof value !== 'object' || Array.isArray(value)) return [];
         const uid = value.uid ?? value.id ?? fallbackUid;
         const content = text(value.content);
-        if ((typeof uid !== 'number' && typeof uid !== 'string') || !String(uid).trim() || !content || value.disable === true || value.enabled === false) return [];
-        return [{ bookName, uid, content, comment: text(value.comment), column: getTavernDbColumn(value.comment),
+        const comment = text(value.comment);
+        const column = getTavernDbColumn(comment);
+        const hostDisabled = value.disable === true || value.enabled === false;
+        if ((typeof uid !== 'number' && typeof uid !== 'string') || !String(uid).trim() || !content || (hostDisabled && !column)) return [];
+        return [{ bookName, uid, content, comment, column,
             constant: value.constant === true, key: value.key ?? value.keys, order: entryOrder(value) }];
     }).sort((left, right) => left.order - right.order || String(left.uid).localeCompare(String(right.uid)));
 }

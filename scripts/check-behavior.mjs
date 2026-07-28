@@ -571,25 +571,28 @@ assert.equal(getTavernDbColumn('任意标题-纪要'), '', '不得从普通标�
 const databaseWrapperContext = {
     chat: [], getWorldInfoNames() { return ['数据库包装测试']; },
     async loadWorldInfo() { return { entries: {
-        top: { uid: 'top', content: '包装上正文', constant: true, comment: 'TavernDB-ACU-CustomExport-纪要-包裹-上' },
-        body: { uid: 'body', content: '系列正文', constant: true, comment: 'TavernDB-ACU-CustomExport-纪要-3' },
-        bottom: { uid: 'bottom', content: '包装下正文', constant: true, comment: 'TavernDB-ACU-CustomExport-纪要-包裹-下' },
+        top: { uid: 'top', content: '包装上正文', constant: true, disable: true, comment: 'TavernDB-ACU-CustomExport-纪要-包裹-上' },
+        body: { uid: 'body', content: '系列正文', constant: true, disable: true, comment: 'TavernDB-ACU-CustomExport-纪要-3' },
+        role: { uid: 'role', content: '角色表正文', constant: true, enabled: false, comment: 'TavernDB-ACU-CustomExport-重要角色表-2' },
+        table: { uid: 'table', content: '数据表正文', constant: true, disable: true, comment: 'TavernDB-ACU-ReadableDataTable' },
+        hiddenNative: { uid: 'native', content: '普通禁用正文', constant: true, disable: true, comment: '普通条目' },
+        bottom: { uid: 'bottom', content: '包装下正文', constant: true, disable: true, comment: 'TavernDB-ACU-CustomExport-纪要-包裹-下' },
     } }; },
 };
 assert.deepEqual((await buildWorldBookContext(databaseWrapperContext, { module: 'chat', config: {} })).split('\n\n').sort(),
-    ['包装上正文', '系列正文', '包装下正文'].sort(),
-    '包裹上下条目虽然不单独显示，但缺省配置必须与所属系列一起启用');
+    ['包装上正文', '系列正文', '角色表正文', '数据表正文', '包装下正文'].sort(),
+    '宿主禁用的 TavernDB 各栏目必须由插件独立读取，普通禁用条目不得混入');
 assert.equal(await buildWorldBookContext(databaseWrapperContext, {
     module: 'chat', config: { columns: { 纪要: { chat: false } } },
-}), '', '关闭一个 CustomExport 栏目必须同时关闭该系列正文与包裹上下条目');
+}), '角色表正文\n\n数据表正文', '关闭一个 CustomExport 栏目必须同时关闭该系列正文与包裹上下条目');
 const wrapperStartContext = {
     chat: [], getWorldInfoNames() { return ['包装标记测试']; },
     async loadWorldInfo() { return { entries: {
-        wrapperStart: { uid: 'wrapper-start', content: '包装起点正文', constant: true, comment: 'TavernDB-ACU-WrapperStart' },
+        wrapperStart: { uid: 'wrapper-start', content: '包装起点正文', constant: true, disable: true, comment: 'TavernDB-ACU-WrapperStart' },
     } }; },
 };
 assert.equal(await buildWorldBookContext(wrapperStartContext, { module: 'chat', config: {} }), '包装起点正文',
-    '第三段栏目必须默认启用并参与上下文读取');
+    '宿主禁用的第三段栏目必须默认启用并参与插件上下文读取');
 assert.equal(await buildWorldBookContext(wrapperStartContext, {
     module: 'chat', config: { columns: { WrapperStart: { chat: false } } },
 }), '', '关闭第三段栏目必须阻止该系列进入上下文');
