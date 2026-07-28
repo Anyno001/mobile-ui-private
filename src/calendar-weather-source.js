@@ -43,7 +43,9 @@ function climateEstimate(location, date, parts) {
     const name = typeof location?.name === 'string' ? location.name.trim() : '';
     if (!name || !Number.isFinite(latitude) || latitude < -90 || latitude > 90
         || !Number.isFinite(longitude) || longitude < -180 || longitude > 180) return null;
-    const key = `${latitude.toFixed(4)},${longitude.toFixed(4)}|${name}|${date}`;
+    const revision = Number.isSafeInteger(location?.climateRevision) && location.climateRevision >= 0 ? location.climateRevision : 0;
+    const baseKey = `${latitude.toFixed(4)},${longitude.toFixed(4)}|${name}|${date}`;
+    const key = revision ? `${baseKey}|${revision}` : baseKey;
     const hash = stableHash(key);
     const random = offset => ((hash >>> offset) & 0xff) / 255;
     const absoluteLatitude = Math.abs(latitude);
@@ -95,7 +97,8 @@ export function resolveWeatherForDate(weatherStore, date) {
         const tempMax = Math.round(Math.max(persisted.tempMin, persisted.tempMax));
         return { status: 'available', source, sourceLabel: weatherSourceLabel(source), day: { ...persisted, tempMin, tempMax } };
     }
-    const day = climateEstimate(weatherStore?.location, date, parts);
+    const day = climateEstimate(weatherStore?.location
+        ? { ...weatherStore.location, climateRevision: weatherStore.climateRevision } : null, date, parts);
     if (!day) return { status: 'unavailable', source: null, sourceLabel: '无法推演', unavailableReason: '尚未设置有效天气位置' };
     return {
         status: 'available', source: WEATHER_SOURCE_CLIMATE_ESTIMATE,

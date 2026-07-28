@@ -563,9 +563,36 @@ assert.equal(worldBookKey, '%E4%B8%96%E7%95%8C%E4%B9%A6%20A:42');
 assert.equal(createWorldBookEntryKey('', 42), '');
 assert.equal(getTavernDbColumn('TavernDB-ACU-CustomExport-纪要-1'), '纪要');
 assert.equal(getTavernDbColumn('TavernDB-ACU-CustomExport-重要角色表-包裹-上'), '重要角色表');
+assert.equal(getTavernDbColumn('TavernDB-ACU-CustomExport-纪要-3'), '纪要', 'CustomExport 系列必须用第四段作为栏目名');
+assert.equal(getTavernDbColumn('TavernDB-ACU-WrapperStart'), 'WrapperStart', '非 CustomExport 系列必须用第三段作为栏目名');
 assert.equal(getTavernDbColumn('TavernDB-ACU-ReadableDataTable'), 'ReadableDataTable', '英文数据表标记也必须归入数据库条目');
 assert.equal(getTavernDbColumn('TavernDB-ACU-EnglishDataTable-2026'), 'EnglishDataTable', 'TavernDB-ACU 的第三段标记可变时也必须归入数据库条目');
 assert.equal(getTavernDbColumn('任意标题-纪要'), '', '不得从普通标题猜测 TavernDB 栏目');
+const databaseWrapperContext = {
+    chat: [], getWorldInfoNames() { return ['数据库包装测试']; },
+    async loadWorldInfo() { return { entries: {
+        top: { uid: 'top', content: '包装上正文', constant: true, comment: 'TavernDB-ACU-CustomExport-纪要-包裹-上' },
+        body: { uid: 'body', content: '系列正文', constant: true, comment: 'TavernDB-ACU-CustomExport-纪要-3' },
+        bottom: { uid: 'bottom', content: '包装下正文', constant: true, comment: 'TavernDB-ACU-CustomExport-纪要-包裹-下' },
+    } }; },
+};
+assert.deepEqual((await buildWorldBookContext(databaseWrapperContext, { module: 'chat', config: {} })).split('\n\n').sort(),
+    ['包装上正文', '系列正文', '包装下正文'].sort(),
+    '包裹上下条目虽然不单独显示，但缺省配置必须与所属系列一起启用');
+assert.equal(await buildWorldBookContext(databaseWrapperContext, {
+    module: 'chat', config: { columns: { 纪要: { chat: false } } },
+}), '', '关闭一个 CustomExport 栏目必须同时关闭该系列正文与包裹上下条目');
+const wrapperStartContext = {
+    chat: [], getWorldInfoNames() { return ['包装标记测试']; },
+    async loadWorldInfo() { return { entries: {
+        wrapperStart: { uid: 'wrapper-start', content: '包装起点正文', constant: true, comment: 'TavernDB-ACU-WrapperStart' },
+    } }; },
+};
+assert.equal(await buildWorldBookContext(wrapperStartContext, { module: 'chat', config: {} }), '包装起点正文',
+    '第三段栏目必须默认启用并参与上下文读取');
+assert.equal(await buildWorldBookContext(wrapperStartContext, {
+    module: 'chat', config: { columns: { WrapperStart: { chat: false } } },
+}), '', '关闭第三段栏目必须阻止该系列进入上下文');
 const normalizedWorldBook = normalizeWorldBookConfig({
     version: 999, entries: { [worldBookKey]: false, ignored: 'false' },
     columns: { 纪要: { chat: false, calendar: true, ignored: false } },
@@ -597,14 +624,18 @@ const worldBookDirectory = await loadWorldBookDirectory({
             a: { uid: 3, content: '第一条', comment: '普通条目' },
             packageTop: { uid: 4, content: '包裹上层正文仍应默认读取', comment: '小明日记-包裹-上' },
             packageBottom: { uid: 5, content: '包裹下层正文仍应默认读取', comment: '【变化内容】-包裹-下' },
+            databasePackageTop: { uid: 6, content: '数据库包裹上层正文', comment: 'TavernDB-ACU-CustomExport-纪要-包裹-上' },
+            databasePackageBottom: { uid: 7, content: '数据库包裹下层正文', comment: 'TavernDB-ACU-CustomExport-纪要-包裹-下' },
             empty: { uid: 4, content: '' },
         } };
     },
 });
 assert.deepEqual(worldBookDirectory, [{ name: '主世界', entries: [
     { key: createWorldBookEntryKey('主世界', 3), uid: '3', title: '普通条目', column: '', disabled: false },
+    { key: createWorldBookEntryKey('主世界', 6), uid: '6', title: 'TavernDB-ACU-CustomExport-纪要-包裹-上', column: '纪要', disabled: false },
+    { key: createWorldBookEntryKey('主世界', 7), uid: '7', title: 'TavernDB-ACU-CustomExport-纪要-包裹-下', column: '纪要', disabled: false },
     { key: createWorldBookEntryKey('主世界', 20), uid: '20', title: 'TavernDB-ACU-CustomExport-纪要-2', column: '纪要', disabled: false },
-] }], '设置页目录必须隐藏包裹分段条目、使用条目标题并按 UID 稳定排序');
+] }], '设置页目录必须隐藏原生包裹条目、保留数据库包裹条目的栏目归属并按 UID 稳定排序');
 const enabledWorldBookContext = {
     chatMetadata: { world_info: '会话书' },
     characters: [{ data: { extensions: { world: '角色书' } } }], characterId: 0,
@@ -1420,6 +1451,9 @@ let worldBookContext = {
         9: { uid: 9, content: '数据库条目 8', comment: 'TavernDB-ACU-CustomExport-重要角色表-3' },
         10: { uid: 10, content: '数据库条目 9', comment: 'TavernDB-ACU-CustomExport-重要角色表-4' },
         11: { uid: 11, content: '数据库条目 10', comment: 'TavernDB-ACU-CustomExport-重要角色表-5' },
+        12: { uid: 12, content: '数据库包裹上', comment: 'TavernDB-ACU-CustomExport-纪要-包裹-上' },
+        13: { uid: 13, content: '数据库包裹下', comment: 'TavernDB-ACU-CustomExport-纪要-包裹-下' },
+        14: { uid: 14, content: '包装起点', comment: 'TavernDB-ACU-WrapperStart' },
     } }; },
 };
 window.__pmTheme = { preset: 'default', layout: 'standard', ambientStatusEnabled: false };
@@ -1468,12 +1502,15 @@ await window.__pmShowConfig('worldbook');
 assert.match(settingsOverlayHtml, /世界书读取|数据库条目一览|设置页条目标题/,
     '设置首页必须能打开世界书读取页并展示原始条目标题与栏目');
 await window.__pmShowWorldBookColumns({ title: '数据来源', module: 'calendar' });
-assert.equal((settingsOverlayHtml.match(/class="pm-li pm-worldbook-quick-entry"/g) || []).length, 10,
-    '数据库来源快捷页必须逐条显示全部数据库条目，不得按栏目去重成少数几行');
-assert.match(settingsOverlayHtml, /TavernDB-ACU-ReadableDataTable/,
-    '三段式数据库条目必须显示在数据库来源快捷页');
-assert.match(settingsOverlayHtml, /TavernDB-ACU-CustomExport-重要角色表-5/,
-    '四段式数据库条目必须完整显示在数据库来源快捷页');
+assert.deepEqual([...settingsOverlayHtml.matchAll(/data-world-quick-column="([^"]+)"/g)].map(match => match[1]),
+    ['ReadableDataTable', '纪要', '重要角色表', 'WrapperStart'],
+    '数据库来源快捷页必须将 CustomExport 按第四段合并为系列，将其他 ACU 格式按第三段显示');
+assert.equal((settingsOverlayHtml.match(/data-world-quick-column="纪要"/g) || []).length, 1,
+    '同一 CustomExport 系列只能显示一个栏目开关，一处设置必须影响整个系列');
+assert.doesNotMatch(settingsOverlayHtml, /TavernDB-ACU-|包裹-(?:上|下)/,
+    '数据库来源快捷页不得显示完整协议标题或包裹上下条目');
+assert.equal((settingsOverlayHtml.match(/pm-worldbook-eye is-checked/g) || []).length, 4,
+    '未配置的数据库系列必须默认全部启用');
 await window.__pmShowConfig('worldbook');
 assert.match(settingsOverlayHtml, /<path d="M4 5\.5 12 3l8 2\.5v13L12 16l-8 2\.5z"/,
     '原生世界书条目标题必须使用书本图标');

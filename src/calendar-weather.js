@@ -26,7 +26,7 @@ function isNum(v) {
 // ── Empty store ──
 
 export function createEmptyWeatherStore() {
-    return { version: WEATHER_STORE_VERSION, lastSuccess: null };
+    return { version: WEATHER_STORE_VERSION, location: null, lastSuccess: null, climateRevision: 0 };
 }
 
 
@@ -109,6 +109,8 @@ export function normalizeWeatherForecast(value) {
 
 export function normalizeWeatherStore(value) {
     const src = isRecord(value) ? value : {};
+    const climateRevision = Number.isSafeInteger(src.climateRevision) && src.climateRevision >= 0
+        ? src.climateRevision : 0;
     let location = null;
     try { if (src.location) location = normalizeWeatherLocation(src.location); } catch {}
     let lastSuccess = null;
@@ -129,7 +131,7 @@ export function normalizeWeatherStore(value) {
     if (location && lastSuccess && lastSuccess.locationKey !== weatherLocationKey(location)) {
         lastSuccess = null;
     }
-    return { version: WEATHER_STORE_VERSION, location, lastSuccess };
+    return { version: WEATHER_STORE_VERSION, location, lastSuccess, climateRevision };
 }
 
 
@@ -206,6 +208,9 @@ export async function searchWeatherLocations(query, { fetchImpl, signal, timeout
 
 function weatherFallback(location, key, store, reason, { resetCache = false } = {}) {
     const current = normalizeWeatherStore(store);
+    const sameLocation = current.location && weatherLocationKey(current.location) === key;
+    const climateRevision = sameLocation
+        ? current.climateRevision + (resetCache ? 1 : 0) : 0;
     if (!resetCache && current.lastSuccess && current.lastSuccess.locationKey === key) {
         const nextStore = normalizeWeatherStore({
             ...current, lastSuccess: { ...current.lastSuccess, source: WEATHER_SOURCE_CACHED_FORECAST },
@@ -215,7 +220,7 @@ function weatherFallback(location, key, store, reason, { resetCache = false } = 
             locationKey: key, store: nextStore, reason,
         };
     }
-    const nextStore = normalizeWeatherStore({ location, lastSuccess: null });
+    const nextStore = normalizeWeatherStore({ location, lastSuccess: null, climateRevision });
     return {
         stale: false, source: WEATHER_SOURCE_CLIMATE_ESTIMATE, data: null,
         locationKey: key, store: nextStore, reason,
@@ -249,9 +254,14 @@ export async function fetchWeatherForecast(location, store, { fetchImpl, signal,
     }
     let forecast;
     try { forecast = normalizeWeatherForecast(json); } catch { return weatherFallback(loc, key, store, 'data', { resetCache }); }
+    const current = normalizeWeatherStore(store);
+    const sameLocation = current.location && weatherLocationKey(current.location) === key;
+    const climateRevision = sameLocation
+        ? current.climateRevision + (resetCache ? 1 : 0) : 0;
     const nextStore = normalizeWeatherStore({
         location: loc,
         lastSuccess: { locationKey: key, forecast, fetchedAt: Date.now(), source: WEATHER_SOURCE_FORECAST },
+        climateRevision,
     });
     return { stale: false, source: WEATHER_SOURCE_FORECAST, data: forecast, locationKey: key, store: nextStore };
 }

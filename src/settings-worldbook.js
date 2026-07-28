@@ -37,8 +37,9 @@ export async function loadWorldBookDirectory(context, { signal } = {}) {
             const content = text(value.content).trim();
             if (!key || !content) return [];
             const title = text(value.comment).trim() || `条目 ${uid}`;
-            if (HIDDEN_ENTRY_TITLE.test(title)) return [];
-            return [{ key, uid: String(uid), title, column: getTavernDbColumn(value.comment), disabled: value.disable === true || value.enabled === false }];
+            const column = getTavernDbColumn(value.comment);
+            if (HIDDEN_ENTRY_TITLE.test(title) && !column) return [];
+            return [{ key, uid: String(uid), title, column, disabled: value.disable === true || value.enabled === false }];
         }).sort((left, right) => left.uid.localeCompare(right.uid, undefined, { numeric: true }));
         if (entries.length) books.push({ name, entries });
     }
@@ -53,8 +54,12 @@ function bookToggle(checked, bookName) {
     return `<button type="button" class="pm-worldbook-eye ${checked ? 'is-checked' : ''}" aria-pressed="${checked}" aria-label="${escapeAttr(`${bookName}读取开关`)}" title="${escapeAttr(`${bookName}读取开关`)}" data-world-book="${escapeAttr(bookName)}" onclick="this.classList.toggle('is-checked');const enabled=this.classList.contains('is-checked');this.setAttribute('aria-pressed',String(enabled));this.closest('[data-world-book-section]').querySelector('[data-world-book-entries]').hidden=!enabled" onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();this.click()}">${EYE_ICON_SVG}</button>`;
 }
 
+function visibleDatabaseColumns(books) {
+    return [...new Set(books.flatMap(book => book.entries.map(entry => entry.column).filter(Boolean)))];
+}
+
 function renderPage(config, books) {
-    const columns = [...new Set(books.flatMap(book => book.entries.map(entry => entry.column).filter(Boolean)))];
+    const columns = visibleDatabaseColumns(books);
     const columnRows = columns.length ? `<div class="pm-worldbook-matrix"><div class="pm-worldbook-matrix-header"><span></span>${WORLD_BOOK_MODULES.map(module => `<span title="${MODULE_LABELS[module]}">${MODULE_ICONS[module]}<b>${MODULE_LABELS[module]}</b></span>`).join('')}</div>${columns.map(column => `<div class="pm-worldbook-matrix-row"><b title="${escapeAttr(column)}">${escapeHtml(column)}</b>${WORLD_BOOK_MODULES.map(module => eyeToggle(config.columns[column]?.[module] !== false, `data-world-column="${escapeAttr(column)}" data-world-module="${module}"`, `${column}：${MODULE_LABELS[module]}读取开关`)).join('')}</div>`).join('')}</div>` : '<div class="pm-prof-empty">未发现符合 TavernDB-ACU-CustomExport 协议的栏目。</div>';
     const entryRows = books.map(book => {
         const entries = book.entries.filter(entry => !entry.column);
@@ -66,23 +71,12 @@ function renderPage(config, books) {
     return `<div class="pm-settings-page"><div class="pm-worldbook-range"><label class="pm-cfg-label">读取正文楼层数<input id="pm-world-main-messages" class="pm-cfg-input" type="number" min="1" max="100" value="${config.mainChatMessages}"></label><label class="pm-cfg-label">世界书扫描深度<input id="pm-world-scan-messages" class="pm-cfg-input" type="number" min="1" max="100" value="${config.scanMessages}"></label><label class="pm-cfg-label">发送世界书字符数上限<input id="pm-world-max-chars" class="pm-cfg-input" type="number" min="1000" max="80000" value="${config.maxChars}"></label></div><div class="pm-worldbook-content ${hasColumns ? 'has-columns' : ''}">${columnRows}<div class="pm-worldbook-native-list">${entryRows}</div></div></div>`;
 }
 
-function databaseColumns(books) {
-    const columns = new Map();
-    for (const book of books) for (const entry of book.entries) {
-        if (!entry.column) continue;
-        if (!columns.has(entry.column)) columns.set(entry.column, []);
-        columns.get(entry.column).push({ ...entry, bookName: book.name });
-    }
-    return [...columns].map(([name, entries]) => ({ name, entries }));
-}
-
 function renderColumnSelector({ title, module, scope, config, books, backAction = "window.__pmShowConfig('home')", backLabel = '返回设置' }) {
     const override = scope?.kind === 'group' ? config.groups[scope.id] : scope?.kind === 'character' ? config.characters[scope.id] : null;
-    const columns = databaseColumns(books);
-    const rows = columns.length ? columns.map(({ name, entries }) => {
+    const columns = visibleDatabaseColumns(books);
+    const rows = columns.length ? columns.map(name => {
         const checked = override?.columns?.[name]?.[module] ?? config.columns[name]?.[module] !== false;
-        const entryRows = entries.map(entry => `<div class="pm-li pm-worldbook-quick-entry"><span><b>${escapeHtml(entry.title)}</b><small class="pm-group-sub">${escapeHtml(entry.bookName)}</small></span></div>`).join('');
-        return `<div class="pm-worldbook-quick-column"><div class="pm-li"><span><b>${escapeHtml(name)}</b></span>${eyeToggle(checked, `data-world-quick-column="${escapeAttr(name)}"`, `${title}：${name}读取开关`)}</div>${entryRows}</div>`;
+        return `<div class="pm-li"><span><b>${escapeHtml(name)}</b></span>${eyeToggle(checked, `data-world-quick-column="${escapeAttr(name)}"`, `${title}：${name}读取开关`)}</div>`;
     }).join('') : '<div class="pm-prof-empty">未发现符合 TavernDB-ACU 协议的栏目。</div>';
     const reset = scope ? '<button class="pm-action-button is-secondary" onclick="window.__pmResetWorldBookColumnOverride()" style="flex:1">恢复跟随全局</button>' : '';
     return renderSettingsModal({ title, content: `<div class="pm-settings-page"><div class="pm-cfg-tip" style="text-align:left;padding:12px 14px">控制当前模块可读取的数据库条目。</div><div style="padding-bottom:12px">${rows}</div></div>`, footer: `<div class="pm-modal-add">${reset}<button class="pm-action-button" onclick="window.__pmSaveWorldBookColumns()" style="flex:2">完成</button></div>`, backAction, backLabel });

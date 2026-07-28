@@ -524,9 +524,21 @@ assert.equal(freshWeather.source, WEATHER_SOURCE_FORECAST);
 assert.equal(freshWeather.store.location.name, '上海');
 assert.equal(freshWeather.store.lastSuccess.forecast.days.length, 2);
 assert.equal(freshWeather.store.lastSuccess.source, WEATHER_SOURCE_FORECAST);
+assert.equal(freshWeather.store.climateRevision, 0);
 const forecastDay = resolveWeatherForDate(freshWeather.store, '2026-07-17');
 assert.equal(forecastDay.source, WEATHER_SOURCE_FORECAST);
 assert.deepEqual(forecastDay.day, { date: '2026-07-17', weatherCode: 1, tempMax: 34, tempMin: 27 });
+const refreshedWeather = await fetchWeatherForecast(shanghai, freshWeather.store, {
+    resetCache: true,
+    fetchImpl: async () => ({ ok: true, json: async () => weatherPayload }),
+});
+assert.equal(refreshedWeather.store.climateRevision, 1,
+    '右上角刷新成功后也必须更新预报外日期的气候推演批次');
+assert.notDeepEqual(
+    resolveWeatherForDate(refreshedWeather.store, '2032-03-15').day,
+    resolveWeatherForDate(freshWeather.store, '2032-03-15').day,
+    '刷新成功后，预报范围外的天气也必须实际重新生成',
+);
 const climateDay = resolveWeatherForDate(freshWeather.store, '2032-03-15');
 assert.equal(climateDay.source, WEATHER_SOURCE_CLIMATE_ESTIMATE);
 assert.deepEqual(climateDay, resolveWeatherForDate(freshWeather.store, '2032-03-15'),
@@ -566,6 +578,11 @@ assert.notDeepEqual(
     resolveWeatherForDate(climateStore('地点甲', 30, 120), '2032-03-15').day,
     resolveWeatherForDate(climateStore('地点乙',30, 120), '2032-03-15').day,
     '同坐标不同地点身份应产生稳定但隔离的模拟序列',
+);
+assert.notDeepEqual(
+    resolveWeatherForDate(climateStore('伦敦', 51.5072, -0.1276), '2032-07-15').day,
+    resolveWeatherForDate(climateStore('新德里', 28.6139, 77.209), '2032-07-15').day,
+    '从英国切换到印度后不得沿用原地点的天气结果',
 );
 const sampledCodes = new Set();
 for (let year = 2000; year < 2025; year += 1) {
@@ -641,6 +658,12 @@ assert.equal(resetCacheMode, 'no-store', '用户主动刷新天气必须绕过�
 assert.equal(resetWeather.stale, false, '用户主动刷新失败时不得重新采用旧预报缓存');
 assert.equal(resetWeather.source, WEATHER_SOURCE_CLIMATE_ESTIMATE);
 assert.equal(resetWeather.store.lastSuccess, null, '用户主动刷新必须清空无法验证的新鲜度缓存');
+assert.equal(resetWeather.store.climateRevision, 1, '用户主动刷新失败后也必须重新生成当前地点的气候推演');
+assert.notDeepEqual(
+    resolveWeatherForDate(resetWeather.store, '2032-03-15').day,
+    resolveWeatherForDate(freshWeather.store, '2032-03-15').day,
+    '右上角刷新不得让预报外日期继续显示同一批气候推演结果',
+);
 for (const [reason, response] of [
     ['http', { ok: false, status: 503 }],
     ['json', { ok: true, json: async () => { throw new Error('broken json'); } }],
@@ -660,6 +683,7 @@ assert.equal(locationOnlyFallback.source, WEATHER_SOURCE_CLIMATE_ESTIMATE);
 assert.equal(locationOnlyFallback.stale, false);
 assert.equal(locationOnlyFallback.store.location.name, '东京');
 assert.equal(locationOnlyFallback.store.lastSuccess, null, '不同地点的旧缓存不得误用于新地点');
+assert.equal(locationOnlyFallback.store.climateRevision, 0, '切换地点必须从该地点独立的气候序列开始');
 assert.equal(resolveWeatherForDate(locationOnlyFallback.store, '0580-03-15').source, WEATHER_SOURCE_CLIMATE_ESTIMATE);
 for (const response of [{ ok: false, status: 503 }, { ok: true, json: async () => ({ broken: true }) }]) {
     const fallback = await fetchWeatherForecast(shanghai, {}, { fetchImpl: async () => response });

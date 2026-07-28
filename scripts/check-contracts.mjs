@@ -2407,6 +2407,13 @@ requireText('settings-templates.js wordy-limit shared settings-home hint class',
 for (const expected of ['data-theme-mode="light"', '苹果皮肤固定为浅色。', 'id="pm-custom-accent"']) {
   requireText('settings-templates.js theme synchronization controls', settingsTemplatesCode, expected);
 }
+requireCssDeclarations(cssRules, '.pm-theme-custom', {
+  width: '32px', height: '28px', border: '1px solid var(--pm-color-border-default)', 'border-radius': '6px',
+});
+requireCssDeclarations(cssRules, '.pm-calendar-setting-hint', {
+  color: 'var(--pm-color-text-tertiary)!important', 'font-size': '11px', 'line-height': '1.5',
+});
+requireText('calendar-weather.js refreshes climate estimates', sourceModuleByName.get('calendar-weather.js')?.code || '', 'current.climateRevision + (resetCache ? 1 : 0)');
 requireText('calendar.js preserves calendar scroll position on rerender', sourceModuleByName.get('calendar.js')?.code || '', "const previousShell = container.querySelector?.('.pm-calendar-shell');");
 requireText('calendar.js restores calendar scroll position on rerender', sourceModuleByName.get('calendar.js')?.code || '', 'if (Number.isFinite(scrollTop) && nextShell) nextShell.scrollTop = scrollTop;');
 requireCssDeclarations(cssRules, '.pm-contact-settings-actions', { 'border-top': '0 !important' });

@@ -1454,7 +1454,9 @@ ${userPrompt}` : userPrompt;
     const latitude = Number(location?.latitude), longitude = Number(location?.longitude);
     const name = typeof location?.name === "string" ? location.name.trim() : "";
     if (!name || !Number.isFinite(latitude) || latitude < -90 || latitude > 90 || !Number.isFinite(longitude) || longitude < -180 || longitude > 180) return null;
-    const key = `${latitude.toFixed(4)},${longitude.toFixed(4)}|${name}|${date}`;
+    const revision = Number.isSafeInteger(location?.climateRevision) && location.climateRevision >= 0 ? location.climateRevision : 0;
+    const baseKey = `${latitude.toFixed(4)},${longitude.toFixed(4)}|${name}|${date}`;
+    const key = revision ? `${baseKey}|${revision}` : baseKey;
     const hash = stableHash(key);
     const random = (offset) => (hash >>> offset & 255) / 255;
     const absoluteLatitude = Math.abs(latitude);
@@ -1504,7 +1506,7 @@ ${userPrompt}` : userPrompt;
       const tempMax = Math.round(Math.max(persisted.tempMin, persisted.tempMax));
       return { status: "available", source, sourceLabel: weatherSourceLabel(source), day: { ...persisted, tempMin, tempMax } };
     }
-    const day = climateEstimate(weatherStore?.location, date, parts);
+    const day = climateEstimate(weatherStore?.location ? { ...weatherStore.location, climateRevision: weatherStore.climateRevision } : null, date, parts);
     if (!day) return { status: "unavailable", source: null, sourceLabel: "\u65E0\u6CD5\u63A8\u6F14", unavailableReason: "\u5C1A\u672A\u8BBE\u7F6E\u6709\u6548\u5929\u6C14\u4F4D\u7F6E" };
     return {
       status: "available",
@@ -1530,7 +1532,7 @@ ${userPrompt}` : userPrompt;
     return typeof v === "number" && Number.isFinite(v);
   }
   function createEmptyWeatherStore() {
-    return { version: WEATHER_STORE_VERSION, lastSuccess: null };
+    return { version: WEATHER_STORE_VERSION, location: null, lastSuccess: null, climateRevision: 0 };
   }
   function normalizeWeatherLocation(value) {
     const src = isRecord(value) ? value : {};
@@ -1601,6 +1603,7 @@ ${userPrompt}` : userPrompt;
   }
   function normalizeWeatherStore(value) {
     const src = isRecord(value) ? value : {};
+    const climateRevision = Number.isSafeInteger(src.climateRevision) && src.climateRevision >= 0 ? src.climateRevision : 0;
     let location = null;
     try {
       if (src.location) location = normalizeWeatherLocation(src.location);
@@ -1624,7 +1627,7 @@ ${userPrompt}` : userPrompt;
     if (location && lastSuccess && lastSuccess.locationKey !== weatherLocationKey(location)) {
       lastSuccess = null;
     }
-    return { version: WEATHER_STORE_VERSION, location, lastSuccess };
+    return { version: WEATHER_STORE_VERSION, location, lastSuccess, climateRevision };
   }
   function weatherCodeLabel(code) {
     const n = Number(code);
@@ -1716,6 +1719,8 @@ ${userPrompt}` : userPrompt;
   }
   function weatherFallback(location, key, store, reason, { resetCache = false } = {}) {
     const current = normalizeWeatherStore(store);
+    const sameLocation = current.location && weatherLocationKey(current.location) === key;
+    const climateRevision = sameLocation ? current.climateRevision + (resetCache ? 1 : 0) : 0;
     if (!resetCache && current.lastSuccess && current.lastSuccess.locationKey === key) {
       const nextStore2 = normalizeWeatherStore({
         ...current,
@@ -1730,7 +1735,7 @@ ${userPrompt}` : userPrompt;
         reason
       };
     }
-    const nextStore = normalizeWeatherStore({ location, lastSuccess: null });
+    const nextStore = normalizeWeatherStore({ location, lastSuccess: null, climateRevision });
     return {
       stale: false,
       source: WEATHER_SOURCE_CLIMATE_ESTIMATE,
@@ -1771,9 +1776,13 @@ ${userPrompt}` : userPrompt;
     } catch {
       return weatherFallback(loc, key, store, "data", { resetCache });
     }
+    const current = normalizeWeatherStore(store);
+    const sameLocation = current.location && weatherLocationKey(current.location) === key;
+    const climateRevision = sameLocation ? current.climateRevision + (resetCache ? 1 : 0) : 0;
     const nextStore = normalizeWeatherStore({
       location: loc,
-      lastSuccess: { locationKey: key, forecast, fetchedAt: Date.now(), source: WEATHER_SOURCE_FORECAST }
+      lastSuccess: { locationKey: key, forecast, fetchedAt: Date.now(), source: WEATHER_SOURCE_FORECAST },
+      climateRevision
     });
     return { stale: false, source: WEATHER_SOURCE_FORECAST, data: forecast, locationKey: key, store: nextStore };
   }
@@ -16996,8 +17005,9 @@ ${lines}`;
         const content = text4(value.content).trim();
         if (!key || !content) return [];
         const title = text4(value.comment).trim() || `\u6761\u76EE ${uid5}`;
-        if (HIDDEN_ENTRY_TITLE.test(title)) return [];
-        return [{ key, uid: String(uid5), title, column: getTavernDbColumn(value.comment), disabled: value.disable === true || value.enabled === false }];
+        const column = getTavernDbColumn(value.comment);
+        if (HIDDEN_ENTRY_TITLE.test(title) && !column) return [];
+        return [{ key, uid: String(uid5), title, column, disabled: value.disable === true || value.enabled === false }];
       }).sort((left, right) => left.uid.localeCompare(right.uid, void 0, { numeric: true }));
       if (entries.length) books.push({ name, entries });
     }
@@ -17009,8 +17019,11 @@ ${lines}`;
   function bookToggle(checked, bookName) {
     return `<button type="button" class="pm-worldbook-eye ${checked ? "is-checked" : ""}" aria-pressed="${checked}" aria-label="${escapeAttr(`${bookName}\u8BFB\u53D6\u5F00\u5173`)}" title="${escapeAttr(`${bookName}\u8BFB\u53D6\u5F00\u5173`)}" data-world-book="${escapeAttr(bookName)}" onclick="this.classList.toggle('is-checked');const enabled=this.classList.contains('is-checked');this.setAttribute('aria-pressed',String(enabled));this.closest('[data-world-book-section]').querySelector('[data-world-book-entries]').hidden=!enabled" onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();this.click()}">${EYE_ICON_SVG}</button>`;
   }
+  function visibleDatabaseColumns(books) {
+    return [...new Set(books.flatMap((book) => book.entries.map((entry2) => entry2.column).filter(Boolean)))];
+  }
   function renderPage(config, books) {
-    const columns = [...new Set(books.flatMap((book) => book.entries.map((entry2) => entry2.column).filter(Boolean)))];
+    const columns = visibleDatabaseColumns(books);
     const columnRows = columns.length ? `<div class="pm-worldbook-matrix"><div class="pm-worldbook-matrix-header"><span></span>${WORLD_BOOK_MODULES.map((module) => `<span title="${MODULE_LABELS[module]}">${MODULE_ICONS[module]}<b>${MODULE_LABELS[module]}</b></span>`).join("")}</div>${columns.map((column) => `<div class="pm-worldbook-matrix-row"><b title="${escapeAttr(column)}">${escapeHtml(column)}</b>${WORLD_BOOK_MODULES.map((module) => eyeToggle(config.columns[column]?.[module] !== false, `data-world-column="${escapeAttr(column)}" data-world-module="${module}"`, `${column}\uFF1A${MODULE_LABELS[module]}\u8BFB\u53D6\u5F00\u5173`)).join("")}</div>`).join("")}</div>` : '<div class="pm-prof-empty">\u672A\u53D1\u73B0\u7B26\u5408 TavernDB-ACU-CustomExport \u534F\u8BAE\u7684\u680F\u76EE\u3002</div>';
     const entryRows = books.map((book) => {
       const entries = book.entries.filter((entry2) => !entry2.column);
@@ -17021,22 +17034,12 @@ ${lines}`;
     const hasColumns = columns.length > 0;
     return `<div class="pm-settings-page"><div class="pm-worldbook-range"><label class="pm-cfg-label">\u8BFB\u53D6\u6B63\u6587\u697C\u5C42\u6570<input id="pm-world-main-messages" class="pm-cfg-input" type="number" min="1" max="100" value="${config.mainChatMessages}"></label><label class="pm-cfg-label">\u4E16\u754C\u4E66\u626B\u63CF\u6DF1\u5EA6<input id="pm-world-scan-messages" class="pm-cfg-input" type="number" min="1" max="100" value="${config.scanMessages}"></label><label class="pm-cfg-label">\u53D1\u9001\u4E16\u754C\u4E66\u5B57\u7B26\u6570\u4E0A\u9650<input id="pm-world-max-chars" class="pm-cfg-input" type="number" min="1000" max="80000" value="${config.maxChars}"></label></div><div class="pm-worldbook-content ${hasColumns ? "has-columns" : ""}">${columnRows}<div class="pm-worldbook-native-list">${entryRows}</div></div></div>`;
   }
-  function databaseColumns(books) {
-    const columns = /* @__PURE__ */ new Map();
-    for (const book of books) for (const entry2 of book.entries) {
-      if (!entry2.column) continue;
-      if (!columns.has(entry2.column)) columns.set(entry2.column, []);
-      columns.get(entry2.column).push({ ...entry2, bookName: book.name });
-    }
-    return [...columns].map(([name, entries]) => ({ name, entries }));
-  }
   function renderColumnSelector({ title, module, scope, config, books, backAction = "window.__pmShowConfig('home')", backLabel = "\u8FD4\u56DE\u8BBE\u7F6E" }) {
     const override = scope?.kind === "group" ? config.groups[scope.id] : scope?.kind === "character" ? config.characters[scope.id] : null;
-    const columns = databaseColumns(books);
-    const rows = columns.length ? columns.map(({ name, entries }) => {
+    const columns = visibleDatabaseColumns(books);
+    const rows = columns.length ? columns.map((name) => {
       const checked = override?.columns?.[name]?.[module] ?? config.columns[name]?.[module] !== false;
-      const entryRows = entries.map((entry2) => `<div class="pm-li pm-worldbook-quick-entry"><span><b>${escapeHtml(entry2.title)}</b><small class="pm-group-sub">${escapeHtml(entry2.bookName)}</small></span></div>`).join("");
-      return `<div class="pm-worldbook-quick-column"><div class="pm-li"><span><b>${escapeHtml(name)}</b></span>${eyeToggle(checked, `data-world-quick-column="${escapeAttr(name)}"`, `${title}\uFF1A${name}\u8BFB\u53D6\u5F00\u5173`)}</div>${entryRows}</div>`;
+      return `<div class="pm-li"><span><b>${escapeHtml(name)}</b></span>${eyeToggle(checked, `data-world-quick-column="${escapeAttr(name)}"`, `${title}\uFF1A${name}\u8BFB\u53D6\u5F00\u5173`)}</div>`;
     }).join("") : '<div class="pm-prof-empty">\u672A\u53D1\u73B0\u7B26\u5408 TavernDB-ACU \u534F\u8BAE\u7684\u680F\u76EE\u3002</div>';
     const reset = scope ? '<button class="pm-action-button is-secondary" onclick="window.__pmResetWorldBookColumnOverride()" style="flex:1">\u6062\u590D\u8DDF\u968F\u5168\u5C40</button>' : "";
     return renderSettingsModal({ title, content: `<div class="pm-settings-page"><div class="pm-cfg-tip" style="text-align:left;padding:12px 14px">\u63A7\u5236\u5F53\u524D\u6A21\u5757\u53EF\u8BFB\u53D6\u7684\u6570\u636E\u5E93\u6761\u76EE\u3002</div><div style="padding-bottom:12px">${rows}</div></div>`, footer: `<div class="pm-modal-add">${reset}<button class="pm-action-button" onclick="window.__pmSaveWorldBookColumns()" style="flex:2">\u5B8C\u6210</button></div>`, backAction, backLabel });
