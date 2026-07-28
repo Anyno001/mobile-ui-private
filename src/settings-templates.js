@@ -113,7 +113,7 @@ export function renderLookSettings({ theme, presetButtons, desktopBackgroundButt
       </div>
       <div style="padding:14px 16px 12px;border-top:1px solid var(--pm-color-border-subtle);">
         <div class="pm-cfg-label" style="margin-bottom:10px;">主题颜色</div>
-        <div class="pm-theme-row" style="align-items:center;">${presetButtons}<label class="pm-theme-custom" title="自定义主题色" aria-label="自定义主题色"><input id="pm-custom-accent" type="color" value="${customAccent || preset.accent || preset.right}" onchange="window.__pmSetCustomAccent()"></label></div>
+        <div class="pm-theme-row" style="align-items:center;">${presetButtons}<input id="pm-custom-accent" type="color" value="${customAccent || preset.accent || preset.right}" onchange="window.__pmSetCustomAccent()" class="pm-color-pick" title="自定义主题色" aria-label="自定义主题色"></div>
       </div>
       <div style="padding:14px 16px 12px;border-top:1px solid var(--pm-color-border-subtle);">
         <div class="pm-cfg-label" style="margin-bottom:10px;">气泡颜色</div>

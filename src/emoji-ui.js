@@ -136,7 +136,7 @@ export function installEmojiUi({ makeOverlay, saveEmojis }) {
   <div style="padding:14px 16px;display:flex;flex-direction:column;gap:10px;">
     <input id="pm-new-set-name" class="pm-cfg-input" placeholder="套组名称（如：开心、日常、可爱）" style="padding:8px 10px;font-size:13px;border-radius:8px;border:1px solid var(--pm-color-border-default);">
   </div>
-  <div class="pm-modal-add"><button type="button" class="pm-action-button" onclick="window.__pmConfirmAddEmojiSet()" style="width:100%;">确认</button></div>
+  <div class="pm-modal-add"><button type="button" class="pm-action-button is-accent" onclick="window.__pmConfirmAddEmojiSet()" style="width:100%;">确认</button></div>
 </div>`);
         setTimeout(() => document.getElementById('pm-new-set-name')?.focus(), 10);
     };
@@ -182,7 +182,7 @@ export function installEmojiUi({ makeOverlay, saveEmojis }) {
     <input id="pm-emo-desc" class="pm-cfg-input" placeholder="图片描述（必填，如：猫猫开心）" style="padding:8px 10px;font-size:13px;border-radius:8px;border:1px solid var(--pm-color-border-default);">
     <div style="font-size:11px;color:var(--pm-color-text-tertiary);">描述将告诉 AI 这张图在什么情形下使用</div>
   </div>
-  <div class="pm-modal-add"><button type="button" class="pm-action-button" onclick="window.__pmConfirmAddEmojiImage(${setIndex})" style="width:100%;">确认添加</button></div>
+  <div class="pm-modal-add"><button type="button" class="pm-action-button is-accent" onclick="window.__pmConfirmAddEmojiImage(${setIndex})" style="width:100%;">确认添加</button></div>
 </div>`);
         setTimeout(() => document.getElementById('pm-emo-url')?.focus(), 10);
     };

@@ -433,8 +433,8 @@ export function installPhoneDirectory(state, deps) {
     </div>
     ${mode === 'create' ? `
     <div class="pm-modal-add">
-        <button class="pm-action-button" onclick="window.__pmConfirmGroup('${safeJS(mode)}')" style="flex:1">创建</button>
-    </div>` : `<div class="pm-modal-add"><button class="pm-action-button" onclick="window.__pmSaveAndCloseGroupEdit()" style="flex:1">保存群聊设置</button></div>`}
+        <button class="pm-action-button is-accent" onclick="window.__pmConfirmGroup('${safeJS(mode)}')" style="flex:1">创建</button>
+    </div>` : `<div class="pm-modal-add"><button class="pm-action-button is-accent" onclick="window.__pmSaveAndCloseGroupEdit()" style="flex:1">保存群聊设置</button></div>`}
     </div>`);
         setTimeout(() => window.__pmGroupInputChanged(), 0);
     }
@@ -519,7 +519,7 @@ export function installPhoneDirectory(state, deps) {
         <label class="pm-cfg-label" style="display:block;margin-top:12px;">默认提示词
           <textarea id="pm-group-random-npc-prompt" class="pm-cfg-input" maxlength="2000" rows="5">${escapeHtml(groupMeta.randomNpcPrompt || DEFAULT_RANDOM_NPC_PROMPT)}</textarea></label>
         <div class="pm-cfg-tip" style="text-align:left;">仅在开启路人群友时生效；临时角色名仍须使用“路人群友·名字”。</div></div>
-      <div class="pm-modal-add"><button type="button" class="pm-action-button" onclick="window.__pmSaveGroupRandomNpcSettings(${returnToControlCenter})" style="flex:1">保存群聊设置</button></div>
+      <div class="pm-modal-add"><button type="button" class="pm-action-button is-accent" onclick="window.__pmSaveGroupRandomNpcSettings(${returnToControlCenter})" style="flex:1">保存群聊设置</button></div>
     </div>`);
     };
     window.__pmSaveGroupRandomNpcSettings = async (returnToControlCenter = false) => {

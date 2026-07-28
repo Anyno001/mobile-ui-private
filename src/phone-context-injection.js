@@ -171,7 +171,7 @@ export function installPhoneContextInjection(state, deps) {
         ${promptPlacementFields('community', '社区', config.community)}
         ${promptPlacementFields('calendar', '日历与菜谱', config.calendar)}
       </div>
-      <div class="pm-modal-add pm-conversation-injection-actions"><button id="pm-conversation-injection-save" type="button" class="pm-action-button" onclick="window.__pmSaveConversationInjection()">保存并应用</button></div>
+      <div class="pm-modal-add pm-conversation-injection-actions"><button id="pm-conversation-injection-save" type="button" class="pm-action-button is-accent" onclick="window.__pmSaveConversationInjection()">保存并应用</button></div>
     </div>`);
         return true;
     };

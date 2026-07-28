@@ -67,7 +67,7 @@ function renderPage(config, books) {
         const entries = book.entries.filter(entry => !entry.column);
         if (!entries.length) return '';
         const enabled = config.books[book.name] !== false;
-        return `<div data-world-book-section style="padding:10px 14px;border-top:1px solid var(--pm-color-border-subtle)"><div class="pm-li" style="min-height:34px"><span><b title="${escapeAttr(book.name)}">${escapeHtml(shortTitle(book.name))}</b></span>${bookToggle(enabled, book.name)}</div><div data-world-book-entries${enabled ? '' : ' hidden'}>${entries.map(entry => `<div class="pm-li"><span><b title="${escapeAttr(entry.title)}">${escapeHtml(shortTitle(entry.title))}</b><small class="pm-group-sub">${entry.disabled ? '已禁用' : ''}</small></span>${eyeToggle(!entry.disabled && config.entries[entry.key] !== false, `data-world-entry="${escapeAttr(entry.key)}"`, `${book.name} 条目读取开关`, entry.disabled)}</div>`).join('')}</div></div>`;
+        return `<div class="pm-worldbook-native-book" data-world-book-section><div class="pm-li pm-worldbook-native-book-title"><span><b title="${escapeAttr(book.name)}">${escapeHtml(shortTitle(book.name))}</b></span>${bookToggle(enabled, book.name)}</div><div data-world-book-entries${enabled ? '' : ' hidden'}>${entries.map(entry => `<div class="pm-li pm-worldbook-native-entry"><span><b title="${escapeAttr(entry.title)}">${escapeHtml(shortTitle(entry.title))}</b><small class="pm-group-sub">${entry.disabled ? '已禁用' : ''}</small></span>${eyeToggle(!entry.disabled && config.entries[entry.key] !== false, `data-world-entry="${escapeAttr(entry.key)}"`, `${book.name} 条目读取开关`, entry.disabled)}</div>`).join('')}</div></div>`;
     }).join('') || '<div class="pm-prof-empty">未发现不属于 TavernDB 栏目的原生世界书条目。</div>';
     const hasColumns = columns.length > 0;
     return `<div class="pm-settings-page"><div class="pm-worldbook-range"><label class="pm-cfg-label">读取正文楼层数<input id="pm-world-main-messages" class="pm-cfg-input" type="number" min="1" max="100" value="${config.mainChatMessages}"></label><label class="pm-cfg-label">世界书扫描深度<input id="pm-world-scan-messages" class="pm-cfg-input" type="number" min="1" max="100" value="${config.scanMessages}"></label><label class="pm-cfg-label">发送世界书字符数上限<input id="pm-world-max-chars" class="pm-cfg-input" type="number" min="1000" max="80000" value="${config.maxChars}"></label></div><div class="pm-worldbook-content ${hasColumns ? 'has-columns' : ''}"><div class="pm-worldbook-section-heading">${DATABASE_ICON_SVG}<span>数据库条目一览</span></div>${columnRows}<div class="pm-worldbook-native-list"><div class="pm-worldbook-section-heading">${BOOK_ICON_SVG}<span>原生世界书条目</span></div>${entryRows}</div></div></div>`;
@@ -81,7 +81,7 @@ function renderColumnSelector({ title, module, scope, config, books, backAction 
         return `<div class="pm-li"><span><b>${escapeHtml(name)}</b></span>${eyeToggle(checked, `data-world-quick-column="${escapeAttr(name)}"`, `${title}：${name}读取开关`)}</div>`;
     }).join('') : '<div class="pm-prof-empty">未发现符合 TavernDB-ACU 协议的栏目。</div>';
     const reset = scope ? '<button class="pm-action-button is-secondary" onclick="window.__pmResetWorldBookColumnOverride()" style="flex:1">恢复跟随全局</button>' : '';
-    return renderSettingsModal({ title, content: `<div class="pm-settings-page"><div class="pm-cfg-tip" style="text-align:left;padding:12px 14px">控制当前模块可读取的数据库条目。</div><div style="padding-bottom:12px">${rows}</div></div>`, footer: `<div class="pm-modal-add">${reset}<button class="pm-action-button" onclick="window.__pmSaveWorldBookColumns()" style="flex:2">完成</button></div>`, backAction, backLabel });
+    return renderSettingsModal({ title, content: `<div class="pm-settings-page"><div class="pm-cfg-tip" style="text-align:left;padding:12px 14px">控制当前模块可读取的数据库条目。</div><div style="padding-bottom:12px">${rows}</div></div>`, footer: `<div class="pm-modal-add">${reset}<button class="pm-action-button is-accent" onclick="window.__pmSaveWorldBookColumns()" style="flex:2">完成</button></div>`, backAction, backLabel });
 }
 
 export function installWorldBookSettings({ makeOverlay, addNote, getCtx }) {
@@ -115,7 +115,7 @@ export function installWorldBookSettings({ makeOverlay, addNote, getCtx }) {
         const config = loadWorldBookConfig();
         const books = await loadWorldBookDirectory(getCtx(), { signal: controller.signal });
         if (!isCurrentRequest(epoch, controller, () => requestEpoch)) return false;
-        const footer = '<div class="pm-modal-add"><button class="pm-action-button is-secondary" onclick="window.__pmResetWorldBookConfig()" style="flex:1">恢复默认</button><button class="pm-action-button" onclick="window.__pmSaveWorldBookConfig()" style="flex:2">保存世界书设置</button></div>';
+        const footer = '<div class="pm-modal-add"><button class="pm-action-button is-secondary" onclick="window.__pmResetWorldBookConfig()" style="flex:1">恢复默认</button><button class="pm-action-button is-accent" onclick="window.__pmSaveWorldBookConfig()" style="flex:2">保存世界书设置</button></div>';
         committingOverlay = true;
         try {
             makeOverlay(renderSettingsModal({ title: '世界书读取', content: renderPage(config, books), footer }), {

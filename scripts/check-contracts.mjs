@@ -2407,9 +2407,71 @@ requireText('settings-templates.js wordy-limit shared settings-home hint class',
 for (const expected of ['data-theme-mode="light"', '苹果皮肤固定为浅色。', 'id="pm-custom-accent"']) {
   requireText('settings-templates.js theme synchronization controls', settingsTemplatesCode, expected);
 }
-requireCssDeclarations(cssRules, '.pm-theme-custom', {
+requireText('settings-templates.js shared custom theme picker class', settingsTemplatesCode, 'id="pm-custom-accent" type="color"');
+requireText('settings-templates.js shared custom theme picker class', settingsTemplatesCode, 'class="pm-color-pick" title="自定义主题色"');
+for (const id of ['pm-custom-accent', 'pm-custom-right', 'pm-custom-left']) {
+  const input = new RegExp(`<input[^>]*id="${id}"[^>]*>`).exec(settingsTemplatesCode)?.[0] || '';
+  if (!/\bclass="pm-color-pick"/.test(input)) {
+    failures.push(`settings-templates.js: ${id} must use the shared pm-color-pick class`);
+  }
+}
+requireCssDeclarations(cssRules, '.pm-color-pick', {
   width: '32px', height: '28px', border: '1px solid var(--pm-color-border-default)', 'border-radius': '6px',
+  'box-sizing': 'border-box', flex: '0 0 32px',
 });
+if (css.includes('.pm-theme-custom')) failures.push('style.css: obsolete theme-only color picker rule must not remain');
+const worldBookSettingsCode = sourceModuleByName.get('settings-worldbook.js')?.code || '';
+requireText('settings-worldbook.js native entries use dedicated book container', worldBookSettingsCode, 'class="pm-worldbook-native-book" data-world-book-section');
+requireText('settings-worldbook.js native entries use dedicated title row', worldBookSettingsCode, 'class="pm-li pm-worldbook-native-book-title"');
+requireText('settings-worldbook.js native entries use dedicated entry row', worldBookSettingsCode, 'class="pm-li pm-worldbook-native-entry"');
+if (buttonContaining('settings-worldbook.js restore default', worldBookSettingsCode, 'window.__pmResetWorldBookConfig()').includes('is-accent')) {
+  failures.push('settings-worldbook.js: restore default must remain secondary, not accent');
+}
+for (const [label, marker] of [
+  ['save columns', 'window.__pmSaveWorldBookColumns()'],
+  ['save world-book settings', 'window.__pmSaveWorldBookConfig()'],
+]) requireText(`settings-worldbook.js: ${label}`, buttonContaining(`settings-worldbook.js: ${label}`, worldBookSettingsCode, marker), 'class="pm-action-button is-accent"');
+requireCssDeclarations(cssRules, '.pm-worldbook-content', { padding: '0 10px 10px' });
+requireCssDeclarations(cssRules, '.pm-worldbook-content.has-columns .pm-worldbook-native-list', { display: 'block', border: '0' });
+requireCssDeclarations(cssRules, '.pm-worldbook-native-book', { border: '0' });
+requireCssDeclarations(cssRules, '.pm-worldbook-native-book-title', { gap: '6px', padding: '7px 2px' });
+requireCssDeclarations(cssRules, '.pm-worldbook-native-entry', { gap: '6px', padding: '7px 2px' });
+requireCssDeclarations(cssRules, '.pm-worldbook-native-book-title>span', { 'font-size': '13px!important' });
+requireCssDeclarations(cssRules, '.pm-worldbook-native-entry>span', { 'font-size': '12px!important' });
+requireCssDeclarations(cssRules, '.pm-worldbook-native-book .pm-worldbook-eye', { width: '34px', height: '30px', 'flex-basis': '34px' });
+const settingsUiSaveCode = sourceModuleByName.get('settings-ui.js')?.code || '';
+for (const [label, marker] of [
+  ['save budget', 'window.__pmSaveBudgetConfig()'],
+  ['save API settings', 'window.__pmSaveConfig()'],
+]) requireText(`settings-ui.js: ${label}`, buttonContaining(`settings-ui.js: ${label}`, settingsUiSaveCode, marker), 'class="pm-action-button is-accent"');
+if (buttonContaining('settings-ui.js restore budget defaults', settingsUiSaveCode, 'window.__pmResetBudgetConfig()').includes('is-accent')) {
+  failures.push('settings-ui.js: restore budget defaults must remain secondary, not accent');
+}
+const apiTestButton = buttonContaining('settings-templates.js API test button', settingsTemplatesCode, 'window.__pmTestModel(this)');
+requireText('settings-templates.js API test button preserves dedicated class', apiTestButton, 'class="pm-action-button is-api-test"');
+if (/\bis-(?:accent|primary)\b/.test(apiTestButton)) {
+  failures.push('settings-templates.js: API test button must not use a save-action color class');
+}
+const directorySaveCode = sourceModuleByName.get('phone-directory.js')?.code || '';
+for (const [label, marker] of [
+  ['create group', 'window.__pmConfirmGroup('],
+  ['save group', 'window.__pmSaveAndCloseGroupEdit()'],
+  ['save random group members', 'window.__pmSaveGroupRandomNpcSettings('],
+]) requireText(`phone-directory.js: ${label}`, buttonContaining(`phone-directory.js: ${label}`, directorySaveCode, marker), 'class="pm-action-button is-accent"');
+const injectionSaveCode = sourceModuleByName.get('phone-context-injection.js')?.code || '';
+requireText('phone-context-injection.js: save injection', buttonContaining('phone-context-injection.js: save injection', injectionSaveCode, 'window.__pmSaveConversationInjection()'), 'class="pm-action-button is-accent"');
+requireCssDeclarations(cssRules, '.pm-contact-settings-save', { background: 'var(--pm-color-accent)!important', color: 'var(--pm-color-on-dark)!important', 'border-color': 'var(--pm-color-accent)!important' });
+requireText('phone-chat-poke.js: save character settings uses dedicated save action', phoneChatPokeCode, 'class="pm-contact-settings-save" onclick="window.__pmSaveContactConfig');
+for (const [label, marker] of [
+  ['save recipe region', 'calendar-recipe-region-save'],
+  ['save detected date', 'calendar-date-sync'],
+]) requireText(`calendar-view.js: ${label}`, buttonContaining(`calendar-view.js: ${label}`, calendarViewCode, marker), 'class="is-primary"');
+for (const marker of ['calendar-weather-search', 'calendar-weather-refresh', 'calendar-holiday-refresh', 'calendar-cycle-clear']) {
+  if (buttonContaining(`calendar-view.js: ${marker}`, calendarViewCode, marker).includes('class="is-primary"')) {
+    failures.push(`calendar-view.js: ${marker} must not be styled as a primary save action`);
+  }
+}
+requireCssDeclarations(cssRules, '.pm-calendar-data-row .is-primary', { background: 'var(--pm-calendar-accent)!important', color: 'var(--pm-color-on-dark)!important', 'border-color': 'var(--pm-calendar-accent)!important' });
 requireCssDeclarations(cssRules, '.pm-calendar-setting-hint', {
   color: 'var(--pm-color-text-tertiary)!important', 'font-size': '11px', 'line-height': '1.5',
 });
@@ -2540,8 +2602,8 @@ for (const [label, marker, expected] of [
   ['delete-set trigger', 'window.__pmDeleteEmojiSet(${setIndex})', 'class="pm-emoji-action is-compact is-danger"'],
   ['delete-image trigger', 'window.__pmDeleteEmojiImage(${setIndex},${imageIndex})', 'class="pm-emoji-image-delete"'],
   ['upload trigger', "document.getElementById('pm-emo-file').click()", 'class="pm-emoji-upload"'],
-  ['new-set confirmation', 'window.__pmConfirmAddEmojiSet()', 'class="pm-action-button"'],
-  ['add-image confirmation', 'window.__pmConfirmAddEmojiImage(${setIndex})', 'class="pm-action-button"'],
+  ['new-set confirmation', 'window.__pmConfirmAddEmojiSet()', 'class="pm-action-button is-accent"'],
+  ['add-image confirmation', 'window.__pmConfirmAddEmojiImage(${setIndex})', 'class="pm-action-button is-accent"'],
 ]) requireText(`emoji-ui.js: ${label}`, buttonContaining(`emoji-ui.js: ${label}`, emojiUiCode, marker), expected);
 requireText(
   'emoji-ui.js: delete-image accessible name',

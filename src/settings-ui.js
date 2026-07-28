@@ -335,7 +335,7 @@ export function installSettingsUi(deps) {
         if (page === 'budget') {
             const config = normalizeBudgetConfig(window.__pmBudgetConfig);
             const content = renderBudgetSettings({ config });
-            const footer = '<div class="pm-modal-add"><button class="pm-action-button is-secondary" onclick="window.__pmResetBudgetConfig()" style="flex:1">恢复默认</button><button class="pm-action-button" onclick="window.__pmSaveBudgetConfig()" style="flex:2">保存上下文预算</button></div>';
+            const footer = '<div class="pm-modal-add"><button class="pm-action-button is-secondary" onclick="window.__pmResetBudgetConfig()" style="flex:1">恢复默认</button><button class="pm-action-button is-accent" onclick="window.__pmSaveBudgetConfig()" style="flex:2">保存上下文预算</button></div>';
             makeOverlay(renderSettingsModal({ title: '上下文预算', content, footer }));
             return;
         }
@@ -356,7 +356,7 @@ export function installSettingsUi(deps) {
                 useIndependent: apiDraftMode.current(),
                 profilesHtml,
             });
-            const footer = '<div class="pm-modal-add"><button class="pm-action-button" onclick="window.__pmSaveConfig()" style="width:100%">保存 API 设置</button></div>';
+            const footer = '<div class="pm-modal-add"><button class="pm-action-button is-accent" onclick="window.__pmSaveConfig()" style="width:100%">保存 API 设置</button></div>';
             makeOverlay(renderSettingsModal({ title: 'API 设置', content, footer }));
             return;
         }

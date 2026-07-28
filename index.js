@@ -3139,7 +3139,7 @@ ${userPrompt}` : userPrompt;
       const region = recipeScope?.regionPreference || "";
       const applied = recipeScope?.lastGeneratedRegion || "";
       const generationRule2 = recipeScope?.generationRule || DEFAULT_RECIPE_GENERATION_RULE;
-      return `<details class="pm-calendar-management" data-calendar-management="recipe"${open}><summary>\u83DC\u8C31\u8BBE\u7F6E</summary><div class="pm-calendar-management-content"><section class="pm-calendar-data-tools pm-calendar-injection-card">${injectionToggle("calendar-toggle-recipe-injection", "\u83DC\u8C31\u6CE8\u5165", scope.injectionRecipeEnabled)}</section><section class="pm-calendar-data-tools"><h3>\u996E\u98DF\u5730\u533A / \u6587\u5316</h3><div class="pm-calendar-data-row"><input data-recipe-region maxlength="120" value="${escapeAttr(region)}" placeholder="\u5DDD\u6E1D\u3001\u6F6E\u6C55\u3001\u5173\u897F\u6216\u67B6\u7A7A\u5730\u533A\uFF1B\u7559\u7A7A\u6309\u5267\u60C5\u63A8\u65AD" aria-label="\u83DC\u8C31\u996E\u98DF\u5730\u533A\u6216\u6587\u5316"><button type="button" data-action="calendar-recipe-region-save">\u4FDD\u5B58</button></div><small class="pm-calendar-attribution">${region ? `\u624B\u52A8\u6307\u5B9A\uFF1A${escapeHtml(region)}` : applied ? `\u6700\u8FD1\u5267\u60C5\u63A8\u65AD\uFF1A${escapeHtml(applied)}` : "\u5C1A\u672A\u751F\u6210\u5730\u533A\u4F9D\u636E"}</small></section><section class="pm-calendar-data-tools"><h3>\u751F\u6210\u89C4\u5219</h3><textarea class="pm-calendar-generation-rule" data-recipe-generation-rule maxlength="3000" aria-label="\u83DC\u8C31\u751F\u6210\u89C4\u5219">${escapeHtml(generationRule2)}</textarea><div class="pm-calendar-editor-actions"><button type="button" class="is-primary" data-action="calendar-recipe-generation-rule-save">\u4FDD\u5B58\u751F\u6210\u89C4\u5219</button></div></section></div></details>`;
+      return `<details class="pm-calendar-management" data-calendar-management="recipe"${open}><summary>\u83DC\u8C31\u8BBE\u7F6E</summary><div class="pm-calendar-management-content"><section class="pm-calendar-data-tools pm-calendar-injection-card">${injectionToggle("calendar-toggle-recipe-injection", "\u83DC\u8C31\u6CE8\u5165", scope.injectionRecipeEnabled)}</section><section class="pm-calendar-data-tools"><h3>\u996E\u98DF\u5730\u533A / \u6587\u5316</h3><div class="pm-calendar-data-row"><input data-recipe-region maxlength="120" value="${escapeAttr(region)}" placeholder="\u5DDD\u6E1D\u3001\u6F6E\u6C55\u3001\u5173\u897F\u6216\u67B6\u7A7A\u5730\u533A\uFF1B\u7559\u7A7A\u6309\u5267\u60C5\u63A8\u65AD" aria-label="\u83DC\u8C31\u996E\u98DF\u5730\u533A\u6216\u6587\u5316"><button type="button" class="is-primary" data-action="calendar-recipe-region-save">\u4FDD\u5B58</button></div><small class="pm-calendar-attribution">${region ? `\u624B\u52A8\u6307\u5B9A\uFF1A${escapeHtml(region)}` : applied ? `\u6700\u8FD1\u5267\u60C5\u63A8\u65AD\uFF1A${escapeHtml(applied)}` : "\u5C1A\u672A\u751F\u6210\u5730\u533A\u4F9D\u636E"}</small></section><section class="pm-calendar-data-tools"><h3>\u751F\u6210\u89C4\u5219</h3><textarea class="pm-calendar-generation-rule" data-recipe-generation-rule maxlength="3000" aria-label="\u83DC\u8C31\u751F\u6210\u89C4\u5219">${escapeHtml(generationRule2)}</textarea><div class="pm-calendar-editor-actions"><button type="button" class="is-primary" data-action="calendar-recipe-generation-rule-save">\u4FDD\u5B58\u751F\u6210\u89C4\u5219</button></div></section></div></details>`;
     }
     if (viewMode === "weather") {
       const storedSource = weatherStore?.lastSuccess?.source || (weatherStore?.lastSuccess ? "forecast" : null);
@@ -3161,7 +3161,7 @@ ${userPrompt}` : userPrompt;
     return `<details class="pm-calendar-management" data-calendar-management="schedule"${open}><summary>\u65E5\u5386\u8BBE\u7F6E</summary><div class="pm-calendar-management-content">
         <section class="pm-calendar-data-tools pm-calendar-injection-card">${injectionToggle("calendar-toggle-schedule-injection", "\u65E5\u7A0B\u6CE8\u5165", scope.injectionScheduleEnabled)}</section>
         <section class="pm-calendar-data-tools pm-calendar-database-card"><div class="pm-calendar-database-copy"><h3>\u6570\u636E\u5E93\u8BB0\u5FC6</h3><span class="pm-calendar-setting-hint">\u9009\u62E9\u751F\u6210\u65E5\u7A0B\u65F6\u53EF\u53C2\u8003\u7684\u6570\u636E\u5E93\u8BB0\u5FC6\u680F\u76EE\u3002</span></div><button type="button" data-action="calendar-worldbook-columns" aria-label="\u9009\u62E9\u65E5\u5386\u53EF\u8BFB\u53D6\u7684\u6570\u636E\u5E93\u8BB0\u5FC6\u680F\u76EE">\u9009\u62E9\u680F\u76EE</button></section>
-        <section class="pm-calendar-data-tools pm-calendar-scan-card"><h3>\u6B63\u6587\u65E5\u671F</h3><p>\u8BC6\u522B\u6700\u540E\u4E00\u6761\u6B63\u6587\u4E2D\u7684\u5B8C\u6574\u65E5\u671F\uFF0C\u5E76\u8BBE\u4E3A\u5F53\u524D\u6545\u4E8B\u65E5\u671F\u3002</p><div class="pm-calendar-data-row pm-calendar-date-tags-row"><input data-calendar-date-tags value="${escapeAttr((scope.dateTags || ["date"]).join(", "))}" maxlength="160" placeholder="date, time_date" aria-label="\u6B63\u6587\u65E5\u671F\u6807\u7B7E"><button type="button" data-action="calendar-date-sync">\u4FDD\u5B58\u5E76\u8BC6\u522B</button></div><button type="button" class="pm-calendar-auto-switch" data-action="calendar-toggle-auto" role="switch" aria-checked="${scope.autoAdjust}"><span><b>\u81EA\u52A8\u8DDF\u968F\u6B63\u6587\u65E5\u671F</b><small>\u89D2\u8272\u56DE\u590D\u540E\uFF0C\u65E5\u5386\u65E5\u671F\u4F1A\u968F\u6B63\u6587\u66F4\u65B0\u3002</small></span><i aria-hidden="true"></i></button></section>
+        <section class="pm-calendar-data-tools pm-calendar-scan-card"><h3>\u6B63\u6587\u65E5\u671F</h3><p>\u8BC6\u522B\u6700\u540E\u4E00\u6761\u6B63\u6587\u4E2D\u7684\u5B8C\u6574\u65E5\u671F\uFF0C\u5E76\u8BBE\u4E3A\u5F53\u524D\u6545\u4E8B\u65E5\u671F\u3002</p><div class="pm-calendar-data-row pm-calendar-date-tags-row"><input data-calendar-date-tags value="${escapeAttr((scope.dateTags || ["date"]).join(", "))}" maxlength="160" placeholder="date, time_date" aria-label="\u6B63\u6587\u65E5\u671F\u6807\u7B7E"><button type="button" class="is-primary" data-action="calendar-date-sync">\u4FDD\u5B58\u5E76\u8BC6\u522B</button></div><button type="button" class="pm-calendar-auto-switch" data-action="calendar-toggle-auto" role="switch" aria-checked="${scope.autoAdjust}"><span><b>\u81EA\u52A8\u8DDF\u968F\u6B63\u6587\u65E5\u671F</b><small>\u89D2\u8272\u56DE\u590D\u540E\uFF0C\u65E5\u5386\u65E5\u671F\u4F1A\u968F\u6B63\u6587\u66F4\u65B0\u3002</small></span><i aria-hidden="true"></i></button></section>
         <section class="pm-calendar-data-tools"><h3>\u8282\u5047\u65E5\u6570\u636E</h3><div class="pm-calendar-data-row pm-calendar-holiday-row"><select data-action="calendar-holiday-country" data-calendar-country aria-label="\u8282\u5047\u65E5\u56FD\u5BB6"><option value="CN" ${holidayCache.selectedCountry === "CN" ? "selected" : ""}>\u4E2D\u56FD</option><option value="US" ${holidayCache.selectedCountry === "US" ? "selected" : ""}>\u7F8E\u56FD</option><option value="JP" ${holidayCache.selectedCountry === "JP" ? "selected" : ""}>\u65E5\u672C</option></select><button type="button" data-action="calendar-holiday-refresh" ${holidayAvailable ? "" : 'disabled aria-disabled="true"'}>\u5237\u65B0\u8282\u5047\u65E5</button></div>${holidayAvailable ? "" : `<small class="pm-calendar-attribution">\u8BE5\u56FD\u5BB6\u5728\u5F53\u524D\u5E74\u4EE3\u65E0\u5916\u90E8\u6570\u636E\u6E90\uFF08\u4EC5\u652F\u6301 ${holidayRange?.min ?? "\u672A\u77E5"}\u2013${holidayRange?.max ?? "\u672A\u77E5"} \u5E74\uFF09</small>`}</section>
         <section class="pm-calendar-data-tools"><h3>\u751F\u6210\u89C4\u5219</h3><textarea class="pm-calendar-generation-rule" data-calendar-generation-rule maxlength="3000" aria-label="\u65E5\u7A0B\u751F\u6210\u89C4\u5219">${escapeHtml(generationRule)}</textarea><div class="pm-calendar-editor-actions"><button type="button" class="is-primary" data-action="calendar-generation-rule-save">\u4FDD\u5B58\u751F\u6210\u89C4\u5219</button></div></section>
     </div></details>`;
@@ -8444,7 +8444,7 @@ ${entry2.content}` : entry2.content;
   <div style="padding:14px 16px;display:flex;flex-direction:column;gap:10px;">
     <input id="pm-new-set-name" class="pm-cfg-input" placeholder="\u5957\u7EC4\u540D\u79F0\uFF08\u5982\uFF1A\u5F00\u5FC3\u3001\u65E5\u5E38\u3001\u53EF\u7231\uFF09" style="padding:8px 10px;font-size:13px;border-radius:8px;border:1px solid var(--pm-color-border-default);">
   </div>
-  <div class="pm-modal-add"><button type="button" class="pm-action-button" onclick="window.__pmConfirmAddEmojiSet()" style="width:100%;">\u786E\u8BA4</button></div>
+  <div class="pm-modal-add"><button type="button" class="pm-action-button is-accent" onclick="window.__pmConfirmAddEmojiSet()" style="width:100%;">\u786E\u8BA4</button></div>
 </div>`);
       setTimeout(() => document.getElementById("pm-new-set-name")?.focus(), 10);
     };
@@ -8486,7 +8486,7 @@ ${entry2.content}` : entry2.content;
     <input id="pm-emo-desc" class="pm-cfg-input" placeholder="\u56FE\u7247\u63CF\u8FF0\uFF08\u5FC5\u586B\uFF0C\u5982\uFF1A\u732B\u732B\u5F00\u5FC3\uFF09" style="padding:8px 10px;font-size:13px;border-radius:8px;border:1px solid var(--pm-color-border-default);">
     <div style="font-size:11px;color:var(--pm-color-text-tertiary);">\u63CF\u8FF0\u5C06\u544A\u8BC9 AI \u8FD9\u5F20\u56FE\u5728\u4EC0\u4E48\u60C5\u5F62\u4E0B\u4F7F\u7528</div>
   </div>
-  <div class="pm-modal-add"><button type="button" class="pm-action-button" onclick="window.__pmConfirmAddEmojiImage(${setIndex})" style="width:100%;">\u786E\u8BA4\u6DFB\u52A0</button></div>
+  <div class="pm-modal-add"><button type="button" class="pm-action-button is-accent" onclick="window.__pmConfirmAddEmojiImage(${setIndex})" style="width:100%;">\u786E\u8BA4\u6DFB\u52A0</button></div>
 </div>`);
       setTimeout(() => document.getElementById("pm-emo-url")?.focus(), 10);
     };
@@ -13111,7 +13111,7 @@ ${antiFluff}`;
         ${promptPlacementFields("community", "\u793E\u533A", config.community)}
         ${promptPlacementFields("calendar", "\u65E5\u5386\u4E0E\u83DC\u8C31", config.calendar)}
       </div>
-      <div class="pm-modal-add pm-conversation-injection-actions"><button id="pm-conversation-injection-save" type="button" class="pm-action-button" onclick="window.__pmSaveConversationInjection()">\u4FDD\u5B58\u5E76\u5E94\u7528</button></div>
+      <div class="pm-modal-add pm-conversation-injection-actions"><button id="pm-conversation-injection-save" type="button" class="pm-action-button is-accent" onclick="window.__pmSaveConversationInjection()">\u4FDD\u5B58\u5E76\u5E94\u7528</button></div>
     </div>`);
       return true;
     };
@@ -13582,8 +13582,8 @@ ${antiFluff}`;
     </div>
     ${mode === "create" ? `
     <div class="pm-modal-add">
-        <button class="pm-action-button" onclick="window.__pmConfirmGroup('${safeJS(mode)}')" style="flex:1">\u521B\u5EFA</button>
-    </div>` : `<div class="pm-modal-add"><button class="pm-action-button" onclick="window.__pmSaveAndCloseGroupEdit()" style="flex:1">\u4FDD\u5B58\u7FA4\u804A\u8BBE\u7F6E</button></div>`}
+        <button class="pm-action-button is-accent" onclick="window.__pmConfirmGroup('${safeJS(mode)}')" style="flex:1">\u521B\u5EFA</button>
+    </div>` : `<div class="pm-modal-add"><button class="pm-action-button is-accent" onclick="window.__pmSaveAndCloseGroupEdit()" style="flex:1">\u4FDD\u5B58\u7FA4\u804A\u8BBE\u7F6E</button></div>`}
     </div>`);
       setTimeout(() => window.__pmGroupInputChanged(), 0);
     }
@@ -13667,7 +13667,7 @@ ${antiFluff}`;
         <label class="pm-cfg-label" style="display:block;margin-top:12px;">\u9ED8\u8BA4\u63D0\u793A\u8BCD
           <textarea id="pm-group-random-npc-prompt" class="pm-cfg-input" maxlength="2000" rows="5">${escapeHtml(groupMeta.randomNpcPrompt || DEFAULT_RANDOM_NPC_PROMPT)}</textarea></label>
         <div class="pm-cfg-tip" style="text-align:left;">\u4EC5\u5728\u5F00\u542F\u8DEF\u4EBA\u7FA4\u53CB\u65F6\u751F\u6548\uFF1B\u4E34\u65F6\u89D2\u8272\u540D\u4ECD\u987B\u4F7F\u7528\u201C\u8DEF\u4EBA\u7FA4\u53CB\xB7\u540D\u5B57\u201D\u3002</div></div>
-      <div class="pm-modal-add"><button type="button" class="pm-action-button" onclick="window.__pmSaveGroupRandomNpcSettings(${returnToControlCenter})" style="flex:1">\u4FDD\u5B58\u7FA4\u804A\u8BBE\u7F6E</button></div>
+      <div class="pm-modal-add"><button type="button" class="pm-action-button is-accent" onclick="window.__pmSaveGroupRandomNpcSettings(${returnToControlCenter})" style="flex:1">\u4FDD\u5B58\u7FA4\u804A\u8BBE\u7F6E</button></div>
     </div>`);
     };
     window.__pmSaveGroupRandomNpcSettings = async (returnToControlCenter = false) => {
@@ -16772,7 +16772,7 @@ ${lines}`;
       </div>
       <div style="padding:14px 16px 12px;border-top:1px solid var(--pm-color-border-subtle);">
         <div class="pm-cfg-label" style="margin-bottom:10px;">\u4E3B\u9898\u989C\u8272</div>
-        <div class="pm-theme-row" style="align-items:center;">${presetButtons}<label class="pm-theme-custom" title="\u81EA\u5B9A\u4E49\u4E3B\u9898\u8272" aria-label="\u81EA\u5B9A\u4E49\u4E3B\u9898\u8272"><input id="pm-custom-accent" type="color" value="${customAccent || preset.accent || preset.right}" onchange="window.__pmSetCustomAccent()"></label></div>
+        <div class="pm-theme-row" style="align-items:center;">${presetButtons}<input id="pm-custom-accent" type="color" value="${customAccent || preset.accent || preset.right}" onchange="window.__pmSetCustomAccent()" class="pm-color-pick" title="\u81EA\u5B9A\u4E49\u4E3B\u9898\u8272" aria-label="\u81EA\u5B9A\u4E49\u4E3B\u9898\u8272"></div>
       </div>
       <div style="padding:14px 16px 12px;border-top:1px solid var(--pm-color-border-subtle);">
         <div class="pm-cfg-label" style="margin-bottom:10px;">\u6C14\u6CE1\u989C\u8272</div>
@@ -17033,7 +17033,7 @@ ${lines}`;
       const entries = book.entries.filter((entry2) => !entry2.column);
       if (!entries.length) return "";
       const enabled = config.books[book.name] !== false;
-      return `<div data-world-book-section style="padding:10px 14px;border-top:1px solid var(--pm-color-border-subtle)"><div class="pm-li" style="min-height:34px"><span><b title="${escapeAttr(book.name)}">${escapeHtml(shortTitle(book.name))}</b></span>${bookToggle(enabled, book.name)}</div><div data-world-book-entries${enabled ? "" : " hidden"}>${entries.map((entry2) => `<div class="pm-li"><span><b title="${escapeAttr(entry2.title)}">${escapeHtml(shortTitle(entry2.title))}</b><small class="pm-group-sub">${entry2.disabled ? "\u5DF2\u7981\u7528" : ""}</small></span>${eyeToggle(!entry2.disabled && config.entries[entry2.key] !== false, `data-world-entry="${escapeAttr(entry2.key)}"`, `${book.name} \u6761\u76EE\u8BFB\u53D6\u5F00\u5173`, entry2.disabled)}</div>`).join("")}</div></div>`;
+      return `<div class="pm-worldbook-native-book" data-world-book-section><div class="pm-li pm-worldbook-native-book-title"><span><b title="${escapeAttr(book.name)}">${escapeHtml(shortTitle(book.name))}</b></span>${bookToggle(enabled, book.name)}</div><div data-world-book-entries${enabled ? "" : " hidden"}>${entries.map((entry2) => `<div class="pm-li pm-worldbook-native-entry"><span><b title="${escapeAttr(entry2.title)}">${escapeHtml(shortTitle(entry2.title))}</b><small class="pm-group-sub">${entry2.disabled ? "\u5DF2\u7981\u7528" : ""}</small></span>${eyeToggle(!entry2.disabled && config.entries[entry2.key] !== false, `data-world-entry="${escapeAttr(entry2.key)}"`, `${book.name} \u6761\u76EE\u8BFB\u53D6\u5F00\u5173`, entry2.disabled)}</div>`).join("")}</div></div>`;
     }).join("") || '<div class="pm-prof-empty">\u672A\u53D1\u73B0\u4E0D\u5C5E\u4E8E TavernDB \u680F\u76EE\u7684\u539F\u751F\u4E16\u754C\u4E66\u6761\u76EE\u3002</div>';
     const hasColumns = columns.length > 0;
     return `<div class="pm-settings-page"><div class="pm-worldbook-range"><label class="pm-cfg-label">\u8BFB\u53D6\u6B63\u6587\u697C\u5C42\u6570<input id="pm-world-main-messages" class="pm-cfg-input" type="number" min="1" max="100" value="${config.mainChatMessages}"></label><label class="pm-cfg-label">\u4E16\u754C\u4E66\u626B\u63CF\u6DF1\u5EA6<input id="pm-world-scan-messages" class="pm-cfg-input" type="number" min="1" max="100" value="${config.scanMessages}"></label><label class="pm-cfg-label">\u53D1\u9001\u4E16\u754C\u4E66\u5B57\u7B26\u6570\u4E0A\u9650<input id="pm-world-max-chars" class="pm-cfg-input" type="number" min="1000" max="80000" value="${config.maxChars}"></label></div><div class="pm-worldbook-content ${hasColumns ? "has-columns" : ""}"><div class="pm-worldbook-section-heading">${DATABASE_ICON_SVG}<span>\u6570\u636E\u5E93\u6761\u76EE\u4E00\u89C8</span></div>${columnRows}<div class="pm-worldbook-native-list"><div class="pm-worldbook-section-heading">${BOOK_ICON_SVG}<span>\u539F\u751F\u4E16\u754C\u4E66\u6761\u76EE</span></div>${entryRows}</div></div></div>`;
@@ -17046,7 +17046,7 @@ ${lines}`;
       return `<div class="pm-li"><span><b>${escapeHtml(name)}</b></span>${eyeToggle(checked, `data-world-quick-column="${escapeAttr(name)}"`, `${title}\uFF1A${name}\u8BFB\u53D6\u5F00\u5173`)}</div>`;
     }).join("") : '<div class="pm-prof-empty">\u672A\u53D1\u73B0\u7B26\u5408 TavernDB-ACU \u534F\u8BAE\u7684\u680F\u76EE\u3002</div>';
     const reset = scope ? '<button class="pm-action-button is-secondary" onclick="window.__pmResetWorldBookColumnOverride()" style="flex:1">\u6062\u590D\u8DDF\u968F\u5168\u5C40</button>' : "";
-    return renderSettingsModal({ title, content: `<div class="pm-settings-page"><div class="pm-cfg-tip" style="text-align:left;padding:12px 14px">\u63A7\u5236\u5F53\u524D\u6A21\u5757\u53EF\u8BFB\u53D6\u7684\u6570\u636E\u5E93\u6761\u76EE\u3002</div><div style="padding-bottom:12px">${rows}</div></div>`, footer: `<div class="pm-modal-add">${reset}<button class="pm-action-button" onclick="window.__pmSaveWorldBookColumns()" style="flex:2">\u5B8C\u6210</button></div>`, backAction, backLabel });
+    return renderSettingsModal({ title, content: `<div class="pm-settings-page"><div class="pm-cfg-tip" style="text-align:left;padding:12px 14px">\u63A7\u5236\u5F53\u524D\u6A21\u5757\u53EF\u8BFB\u53D6\u7684\u6570\u636E\u5E93\u6761\u76EE\u3002</div><div style="padding-bottom:12px">${rows}</div></div>`, footer: `<div class="pm-modal-add">${reset}<button class="pm-action-button is-accent" onclick="window.__pmSaveWorldBookColumns()" style="flex:2">\u5B8C\u6210</button></div>`, backAction, backLabel });
   }
   function installWorldBookSettings({ makeOverlay, addNote, getCtx }) {
     let requestEpoch = 0;
@@ -17079,7 +17079,7 @@ ${lines}`;
       const config = loadWorldBookConfig();
       const books = await loadWorldBookDirectory(getCtx(), { signal: controller.signal });
       if (!isCurrentRequest(epoch, controller, () => requestEpoch)) return false;
-      const footer = '<div class="pm-modal-add"><button class="pm-action-button is-secondary" onclick="window.__pmResetWorldBookConfig()" style="flex:1">\u6062\u590D\u9ED8\u8BA4</button><button class="pm-action-button" onclick="window.__pmSaveWorldBookConfig()" style="flex:2">\u4FDD\u5B58\u4E16\u754C\u4E66\u8BBE\u7F6E</button></div>';
+      const footer = '<div class="pm-modal-add"><button class="pm-action-button is-secondary" onclick="window.__pmResetWorldBookConfig()" style="flex:1">\u6062\u590D\u9ED8\u8BA4</button><button class="pm-action-button is-accent" onclick="window.__pmSaveWorldBookConfig()" style="flex:2">\u4FDD\u5B58\u4E16\u754C\u4E66\u8BBE\u7F6E</button></div>';
       committingOverlay = true;
       try {
         makeOverlay(renderSettingsModal({ title: "\u4E16\u754C\u4E66\u8BFB\u53D6", content: renderPage(config, books), footer }), {
@@ -18066,7 +18066,7 @@ ${error.message}`);
       if (page === "budget") {
         const config = normalizeBudgetConfig(window.__pmBudgetConfig);
         const content2 = renderBudgetSettings({ config });
-        const footer = '<div class="pm-modal-add"><button class="pm-action-button is-secondary" onclick="window.__pmResetBudgetConfig()" style="flex:1">\u6062\u590D\u9ED8\u8BA4</button><button class="pm-action-button" onclick="window.__pmSaveBudgetConfig()" style="flex:2">\u4FDD\u5B58\u4E0A\u4E0B\u6587\u9884\u7B97</button></div>';
+        const footer = '<div class="pm-modal-add"><button class="pm-action-button is-secondary" onclick="window.__pmResetBudgetConfig()" style="flex:1">\u6062\u590D\u9ED8\u8BA4</button><button class="pm-action-button is-accent" onclick="window.__pmSaveBudgetConfig()" style="flex:2">\u4FDD\u5B58\u4E0A\u4E0B\u6587\u9884\u7B97</button></div>';
         makeOverlay(renderSettingsModal({ title: "\u4E0A\u4E0B\u6587\u9884\u7B97", content: content2, footer }));
         return;
       }
@@ -18085,7 +18085,7 @@ ${error.message}`);
           useIndependent: apiDraftMode.current(),
           profilesHtml
         });
-        const footer = '<div class="pm-modal-add"><button class="pm-action-button" onclick="window.__pmSaveConfig()" style="width:100%">\u4FDD\u5B58 API \u8BBE\u7F6E</button></div>';
+        const footer = '<div class="pm-modal-add"><button class="pm-action-button is-accent" onclick="window.__pmSaveConfig()" style="width:100%">\u4FDD\u5B58 API \u8BBE\u7F6E</button></div>';
         makeOverlay(renderSettingsModal({ title: "API \u8BBE\u7F6E", content: content2, footer }));
         return;
       }
