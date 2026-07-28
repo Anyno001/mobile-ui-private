@@ -37,15 +37,42 @@ function activeBookNames(value, target) {
     }
 }
 
-export function getEnabledWorldBookNames(context) {
+function appendWorldBookSource(result, byName, value, source) {
     const names = new Set();
+    activeBookNames(value, names);
+    for (const name of names) {
+        const existing = byName.get(name);
+        if (existing) {
+            if (!existing.sources.includes(source)) existing.sources.push(source);
+            continue;
+        }
+        const item = { name, sources: [source] };
+        byName.set(name, item);
+        result.push(item);
+    }
+}
+
+export function getCurrentChatWorldBooks(context) {
+    const result = [], byName = new Map();
     const globalSelector = globalThis.document?.getElementById?.('world_info');
     const metadata = plainObject(context?.chatMetadata || context?.chat_metadata);
     const character = context?.characters?.[context?.characterId];
-    if (globalSelector?.selectedOptions) activeBookNames([...globalSelector.selectedOptions].map(option => option.textContent || option.label), names);
-    activeBookNames(metadata.world_info, names);
-    activeBookNames(character?.data?.extensions?.world, names);
-    return names;
+    if (globalSelector?.selectedOptions) {
+        appendWorldBookSource(result, byName, [...globalSelector.selectedOptions]
+            .map(option => option.textContent || option.label), 'global');
+    }
+    appendWorldBookSource(result, byName, metadata.world_info, 'chat');
+    appendWorldBookSource(result, byName, character?.data?.extensions?.world, 'character');
+    return result;
+}
+
+export function getEnabledWorldBookNames(context) {
+    return new Set(getCurrentChatWorldBooks(context).map(book => book.name));
+}
+
+export function getReadableWorldBookNames(context, config) {
+    const current = normalizeWorldBookConfig(config);
+    return getCurrentChatWorldBooks(context).flatMap(book => current.books[book.name] === false ? [] : [book.name]);
 }
 
 export function hasWorldBookSelectionSource(context) {

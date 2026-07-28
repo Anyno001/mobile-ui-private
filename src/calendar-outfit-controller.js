@@ -23,7 +23,7 @@ export function createCalendarOutfitController({ tasks, getStorageId, gatherCont
         setBusy(storageId, task, previousStatus); status(storageId, `正在${replaceWindow ? '重新' : ''}生成${window.label} OOTD…`, { persistent: true }); rerender(storageId);
         let settled = false;
         try {
-            const context = await gatherContext(null, { module: 'calendar', signal: task.signal });
+            const context = await gatherContext(null, { module: 'outfit', signal: task.signal, worldBookMaxChars: 3500 });
             if (!tasks.active(task)) return false;
             const requested = getProfile(storageId, subject), prompts = buildOutfitPrompts(context, requested, start, { days, subject });
             const generated = parseOutfitAiResponse(await callAI(prompts.systemPrompt, prompts.userPrompt, { isolated: true, signal: task.signal }), { start, days });

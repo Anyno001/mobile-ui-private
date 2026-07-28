@@ -57,7 +57,7 @@ export function createCalendarRecipeController({
         rerender(storageId);
         let statusSettled = false;
         try {
-            const context = await gatherContext(null, { module: 'calendar', signal: task.signal });
+            const context = await gatherContext(null, { module: 'calendar', signal: task.signal, worldBookMaxChars: 3500 });
             if (!tasks.active(task)) return false;
             const requestedScope = getRecipeScope(storageId);
             const requestedRegion = requestedScope.regionPreference;

@@ -77,7 +77,9 @@ export function getUserPersona(getCtx) {
     return { name, description };
 }
 
-export async function gatherContext(getCtx, { module = 'chat', signal, worldBookScope = null, worldBookMemberNames = [] } = {}) {
+export async function gatherContext(getCtx, {
+    module = 'chat', signal, includeWorldBook = true, worldBookMaxChars, worldBookScope = null, worldBookMemberNames = [],
+} = {}) {
     const context = getCtx();
     const character = context?.characters?.[context.characterId] || {};
     const worldBookConfig = normalizeWorldBookConfig(globalThis.window?.__pmWorldBookConfig);
@@ -102,16 +104,18 @@ export async function gatherContext(getCtx, { module = 'chat', signal, worldBook
     const latestChatIsUser = latestMessage?.isUser === true;
     const mainChat = normalizedChat.filter(message => message.content);
     let worldBookText = '';
-    try {
-        const memberIds = worldBookScope?.kind === 'group'
-            ? [...new Set(worldBookMemberNames.filter(name => typeof name === 'string').map(name => name.trim()).filter(Boolean))]
-            : [];
-        worldBookText = await buildWorldBookContext(context, {
-            module, config: worldBookConfig, signal, scope: worldBookScope, memberIds,
-        });
-    } catch (error) {
-        if (error?.name === 'AbortError') throw error;
-        warnHostContextFailureOnce('world-book', '读取世界书上下文失败', error);
+    if (includeWorldBook) {
+        try {
+            const memberIds = worldBookScope?.kind === 'group'
+                ? [...new Set(worldBookMemberNames.filter(name => typeof name === 'string').map(name => name.trim()).filter(Boolean))]
+                : [];
+            worldBookText = await buildWorldBookContext(context, {
+                module, config: worldBookConfig, signal, scope: worldBookScope, memberIds, maxChars: worldBookMaxChars,
+            });
+        } catch (error) {
+            if (error?.name === 'AbortError') throw error;
+            warnHostContextFailureOnce('world-book', '读取世界书上下文失败', error);
+        }
     }
     const userPersona = getUserPersona(getCtx);
     return { cardDesc: character.description ?? '', cardPersonality: character.personality ?? '', cardScenario: character.scenario ?? '', cardFirstMes: character.first_mes ?? '', cardMesExample: character.mes_example ?? '', mainChatText: mainChat.map(message => `${message.who}：${message.content}`).join('\n'), latestChatText, rawLatestChatText, latestChatIsUser, worldBookText, userName: userPersona.name, userDesc: userPersona.description };

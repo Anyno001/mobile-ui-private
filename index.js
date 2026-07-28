@@ -1,3 +1,4 @@
+"use strict";
 (() => {
   // src/config.js
   var THEME_PRESETS = {
@@ -205,7 +206,7 @@
       try {
         raw = await response.text();
       } catch (error) {
-        if (signal?.aborted || error?.name === "AbortError") throw abortError();
+        if (signal?.aborted || error?.name === "AbortError") throw abortError2();
         raw = "";
       }
       throwIfAborted2(signal);
@@ -218,19 +219,19 @@
       }
       return `HTTP ${response.status}: ${raw.trim().slice(0, 240)}`;
     }
-    function abortError() {
+    function abortError2() {
       const error = new Error("\u8BF7\u6C42\u5DF2\u53D6\u6D88");
       error.name = "AbortError";
       return error;
     }
     const throwIfAborted2 = (signal) => {
-      if (signal?.aborted) throw abortError();
+      if (signal?.aborted) throw abortError2();
     };
     function raceAbort(promise, signal) {
       if (!signal) return promise;
       throwIfAborted2(signal);
       return new Promise((resolve, reject) => {
-        const onAbort = () => reject(abortError());
+        const onAbort = () => reject(abortError2());
         signal.addEventListener("abort", onAbort, { once: true });
         promise.then(
           (value) => {
@@ -276,7 +277,7 @@
             signal
           });
         } catch (error) {
-          if (signal?.aborted || error?.name === "AbortError") throw abortError();
+          if (signal?.aborted || error?.name === "AbortError") throw abortError2();
           throw new Error(`\u72EC\u7ACB API \u8BF7\u6C42\u5931\u8D25\uFF1A${error?.message || "\u7F51\u7EDC\u9519\u8BEF"}`);
         }
         throwIfAborted2(signal);
@@ -290,7 +291,7 @@
             throwIfAborted2(signal);
             json = JSON.parse(raw);
           } catch (error) {
-            if (signal?.aborted || error?.name === "AbortError") throw abortError();
+            if (signal?.aborted || error?.name === "AbortError") throw abortError2();
             const preview = raw.trim().replace(/\s+/g, " ").slice(0, 120);
             throw new Error(`\u72EC\u7ACB API \u8FD4\u56DE\u4E86\u65E0\u6CD5\u89E3\u6790\u7684 JSON${preview ? `\uFF1A${preview}` : ""}`);
           }
@@ -298,7 +299,7 @@
           try {
             json = await response.json();
           } catch (error) {
-            if (signal?.aborted || error?.name === "AbortError") throw abortError();
+            if (signal?.aborted || error?.name === "AbortError") throw abortError2();
             throw new Error("\u72EC\u7ACB API \u8FD4\u56DE\u4E86\u65E0\u6CD5\u89E3\u6790\u7684 JSON");
           }
         }
@@ -3621,7 +3622,7 @@ ${userPrompt}` : userPrompt;
       rerender(storageId);
       let settled = false;
       try {
-        const context = await gatherContext2(null, { module: "calendar", signal: task.signal });
+        const context = await gatherContext2(null, { module: "outfit", signal: task.signal, worldBookMaxChars: 3500 });
         if (!tasks.active(task)) return false;
         const requested = getProfile(storageId, subject), prompts = buildOutfitPrompts(context, requested, start, { days, subject });
         const generated = parseOutfitAiResponse(await callAI(prompts.systemPrompt, prompts.userPrompt, { isolated: true, signal: task.signal }), { start, days });
@@ -3805,7 +3806,7 @@ ${userPrompt}` : userPrompt;
       rerender(storageId);
       let statusSettled = false;
       try {
-        const context = await gatherContext2(null, { module: "calendar", signal: task.signal });
+        const context = await gatherContext2(null, { module: "calendar", signal: task.signal, worldBookMaxChars: 3500 });
         if (!tasks.active(task)) return false;
         const requestedScope = getRecipeScope(storageId);
         const requestedRegion = requestedScope.regionPreference;
@@ -4284,7 +4285,7 @@ ${userPrompt}` : userPrompt;
       const task = parentTask || tasks.begin(storageId, "scan-context");
       if (!task || !tasks.active(task)) return false;
       try {
-        const context = await gatherContext2(null, { module: "calendar", signal: task.signal });
+        const context = await gatherContext2(null, { module: "calendar", signal: task.signal, includeWorldBook: false });
         if (!tasks.active(task)) return false;
         if (assistantOnly && context.latestChatIsUser) return false;
         const currentScope = scope(storageId);
@@ -4350,7 +4351,7 @@ ${userPrompt}` : userPrompt;
       status(storageId, generationCopy.pending, { persistent: true });
       rerender(storageId);
       try {
-        const context = await gatherContext2(null, { module: "calendar", signal: task.signal });
+        const context = await gatherContext2(null, { module: "calendar", signal: task.signal, worldBookMaxChars: 12e3 });
         if (!tasks.active(task)) return false;
         const current = scope(storageId);
         const requestedGenerationRule = current.generationRule;
@@ -5996,20 +5997,35 @@ ${lines.join("\n")}
       if (name) target.add(name);
     }
   }
-  function getEnabledWorldBookNames(context) {
+  function appendWorldBookSource(result, byName, value, source) {
     const names = /* @__PURE__ */ new Set();
+    activeBookNames(value, names);
+    for (const name of names) {
+      const existing = byName.get(name);
+      if (existing) {
+        if (!existing.sources.includes(source)) existing.sources.push(source);
+        continue;
+      }
+      const item = { name, sources: [source] };
+      byName.set(name, item);
+      result.push(item);
+    }
+  }
+  function getCurrentChatWorldBooks(context) {
+    const result = [], byName = /* @__PURE__ */ new Map();
     const globalSelector = globalThis.document?.getElementById?.("world_info");
     const metadata = plainObject2(context?.chatMetadata || context?.chat_metadata);
     const character = context?.characters?.[context?.characterId];
-    if (globalSelector?.selectedOptions) activeBookNames([...globalSelector.selectedOptions].map((option) => option.textContent || option.label), names);
-    activeBookNames(metadata.world_info, names);
-    activeBookNames(character?.data?.extensions?.world, names);
-    return names;
+    if (globalSelector?.selectedOptions) {
+      appendWorldBookSource(result, byName, [...globalSelector.selectedOptions].map((option) => option.textContent || option.label), "global");
+    }
+    appendWorldBookSource(result, byName, metadata.world_info, "chat");
+    appendWorldBookSource(result, byName, character?.data?.extensions?.world, "character");
+    return result;
   }
-  function hasWorldBookSelectionSource(context) {
-    const character = context?.characters?.[context?.characterId];
-    const globalSelector = globalThis.document?.getElementById?.("world_info");
-    return Boolean(globalSelector?.selectedOptions || context?.chatMetadata?.world_info || context?.chat_metadata?.world_info || character?.data?.extensions?.world);
+  function getReadableWorldBookNames(context, config) {
+    const current = normalizeWorldBookConfig(config);
+    return getCurrentChatWorldBooks(context).flatMap((book) => current.books[book.name] === false ? [] : [book.name]);
   }
   function normalizeColumnModes(value) {
     const result = {};
@@ -7576,29 +7592,34 @@ ${mainChatText}` : "",
     config = globalThis.window?.__pmWorldBookConfig,
     signal,
     scope: requestedScope = null,
-    memberIds = []
+    memberIds = [],
+    maxChars
   } = {}) {
     const current = normalizeWorldBookConfig(config);
     if (!["chat", "calendar", "outfit", "community"].includes(module)) return "";
-    if (typeof context?.getWorldInfoNames !== "function" || typeof context?.loadWorldInfo !== "function") return "";
+    if (typeof context?.loadWorldInfo !== "function") return "";
     throwIfAborted(signal);
-    let names;
-    try {
-      names = await context.getWorldInfoNames();
-    } catch (error) {
-      if (signal?.aborted) throwIfAborted(signal);
-      if (isAbortError(error)) throw error;
-      return "";
-    }
-    if (!Array.isArray(names)) return "";
-    const enabledNames = getEnabledWorldBookNames(context);
-    const selectedNames = hasWorldBookSelectionSource(context) ? names.filter((name) => enabledNames.has(text3(name).trim())) : names;
+    const selectedNames = getReadableWorldBookNames(context, current);
+    if (!selectedNames.length) return "";
+    const requestedMaxChars = Number(maxChars);
+    const outputMaxChars = Number.isFinite(requestedMaxChars) && requestedMaxChars > 0 ? Math.min(current.maxChars, Math.trunc(requestedMaxChars)) : current.maxChars;
     const messages = (Array.isArray(context.chat) ? context.chat : []).slice(-current.scanMessages).map((message) => visibleText(message?.mes));
     const scope = requestedScope?.kind === "group" || requestedScope?.kind === "character" ? requestedScope : contextScope(context);
     const groupMemberIds = scope?.kind === "group" ? [...new Set(memberIds.map((memberId) => text3(memberId).trim()).filter(Boolean))] : [];
     const privateMemberIds = current.groups[scope?.id]?.allowMemberPrivateMemory === true ? groupMemberIds : [];
-    const selected = [];
+    let length = 0;
+    const contents = [];
+    const appendContent = (entry2, privateMemberId = "") => {
+      const content = privateMemberId ? `\u3010\u6210\u5458\u79C1\u6709\u8BB0\u5FC6\uFF1A\u4EC5${privateMemberId}\u77E5\u6653\uFF0C\u4E0D\u5F97\u8BA9\u5176\u4ED6\u6210\u5458\u77E5\u6653\u3001\u8F6C\u8FF0\u6216\u636E\u6B64\u53D1\u8A00\u3011
+${entry2.content}` : entry2.content;
+      const nextLength = length + content.length + (contents.length ? 2 : 0);
+      if (nextLength > outputMaxChars) return false;
+      contents.push(content);
+      length = nextLength;
+      return true;
+    };
     for (const rawName of selectedNames) {
+      throwIfAborted(signal);
       const bookName = text3(rawName).trim();
       if (!bookName) continue;
       let book;
@@ -7611,29 +7632,20 @@ ${mainChatText}` : "",
       }
       throwIfAborted(signal);
       for (const entry2 of normalizeBookEntries(bookName, book)) {
+        throwIfAborted(signal);
         if (!scanMatches(entry2, messages)) continue;
         const memberPrivate = scope?.kind === "group" && groupMemberIds.some((memberId) => isMemberPrivateWorldBookEntryAllowed(current, entry2, memberId));
         const groupExplicitlyAllowsColumn = scope?.kind === "group" && current.groups[scope.id]?.columns?.[entry2.column]?.[module] === true;
         if (isWorldBookEntryAllowed(current, entry2, { module, scope }) && (!memberPrivate || groupExplicitlyAllowsColumn)) {
-          selected.push({ ...entry2, privateMemberId: "" });
+          appendContent(entry2);
           continue;
         }
         for (const memberId of privateMemberIds) {
           if (isMemberPrivateWorldBookEntryAllowed(current, entry2, memberId)) {
-            selected.push({ ...entry2, privateMemberId: memberId });
+            appendContent(entry2, memberId);
           }
         }
       }
-    }
-    let length = 0;
-    const contents = [];
-    for (const entry2 of selected) {
-      const content = entry2.privateMemberId ? `\u3010\u6210\u5458\u79C1\u6709\u8BB0\u5FC6\uFF1A\u4EC5${entry2.privateMemberId}\u77E5\u6653\uFF0C\u4E0D\u5F97\u8BA9\u5176\u4ED6\u6210\u5458\u77E5\u6653\u3001\u8F6C\u8FF0\u6216\u636E\u6B64\u53D1\u8A00\u3011
-${entry2.content}` : entry2.content;
-      const nextLength = length + content.length + (contents.length ? 2 : 0);
-      if (nextLength > current.maxChars) continue;
-      contents.push(content);
-      length = nextLength;
     }
     return contents.join("\n\n");
   }
@@ -7702,7 +7714,14 @@ ${entry2.content}` : entry2.content;
     }
     return { name, description };
   }
-  async function gatherContext(getCtx, { module = "chat", signal, worldBookScope = null, worldBookMemberNames = [] } = {}) {
+  async function gatherContext(getCtx, {
+    module = "chat",
+    signal,
+    includeWorldBook = true,
+    worldBookMaxChars,
+    worldBookScope = null,
+    worldBookMemberNames = []
+  } = {}) {
     const context = getCtx();
     const character = context?.characters?.[context.characterId] || {};
     const worldBookConfig = normalizeWorldBookConfig(globalThis.window?.__pmWorldBookConfig);
@@ -7721,18 +7740,21 @@ ${entry2.content}` : entry2.content;
     const latestChatIsUser = latestMessage?.isUser === true;
     const mainChat = normalizedChat.filter((message) => message.content);
     let worldBookText = "";
-    try {
-      const memberIds = worldBookScope?.kind === "group" ? [...new Set(worldBookMemberNames.filter((name) => typeof name === "string").map((name) => name.trim()).filter(Boolean))] : [];
-      worldBookText = await buildWorldBookContext(context, {
-        module,
-        config: worldBookConfig,
-        signal,
-        scope: worldBookScope,
-        memberIds
-      });
-    } catch (error) {
-      if (error?.name === "AbortError") throw error;
-      warnHostContextFailureOnce("world-book", "\u8BFB\u53D6\u4E16\u754C\u4E66\u4E0A\u4E0B\u6587\u5931\u8D25", error);
+    if (includeWorldBook) {
+      try {
+        const memberIds = worldBookScope?.kind === "group" ? [...new Set(worldBookMemberNames.filter((name) => typeof name === "string").map((name) => name.trim()).filter(Boolean))] : [];
+        worldBookText = await buildWorldBookContext(context, {
+          module,
+          config: worldBookConfig,
+          signal,
+          scope: worldBookScope,
+          memberIds,
+          maxChars: worldBookMaxChars
+        });
+      } catch (error) {
+        if (error?.name === "AbortError") throw error;
+        warnHostContextFailureOnce("world-book", "\u8BFB\u53D6\u4E16\u754C\u4E66\u4E0A\u4E0B\u6587\u5931\u8D25", error);
+      }
     }
     const userPersona = getUserPersona(getCtx);
     return { cardDesc: character.description ?? "", cardPersonality: character.personality ?? "", cardScenario: character.scenario ?? "", cardFirstMes: character.first_mes ?? "", cardMesExample: character.mes_example ?? "", mainChatText: mainChat.map((message) => `${message.who}\uFF1A${message.content}`).join("\n"), latestChatText, rawLatestChatText, latestChatIsUser, worldBookText, userName: userPersona.name, userDesc: userPersona.description };
@@ -17438,72 +17460,114 @@ ${lines}`;
   // src/settings-worldbook.js
   var text4 = (value) => typeof value === "string" ? value : "";
   var HIDDEN_ENTRY_TITLE = /(?:^|-)包裹-(?:上|下)$/;
+  var WORLD_BOOK_BATCH_SIZE = 30;
   var MODULE_LABELS = Object.freeze({ chat: "\u4F1A\u8BDD", calendar: "\u65E5\u5386", outfit: "\u7A7F\u642D", community: "\u793E\u533A" });
   var MODULE_ICONS = Object.freeze({ chat: CHAT_ICON_SVG, calendar: CALENDAR_ICON_SVG, outfit: OUTFIT_ICON_SVG, community: COMMUNITY_ICON_SVG });
-  var isCurrentRequest = (epoch, controller, currentEpoch) => epoch === currentEpoch() && !controller.signal.aborted;
+  var SOURCE_LABELS2 = Object.freeze({ global: "\u5168\u5C40", chat: "\u804A\u5929", character: "\u89D2\u8272" });
   var DATABASE_ICON_SVG = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><ellipse cx="12" cy="5" rx="7" ry="3"/><path d="M5 5v7c0 1.7 3.1 3 7 3s7-1.3 7-3V5M5 12v7c0 1.7 3.1 3 7 3s7-1.3 7-3v-7"/></svg>';
   var shortTitle = (value) => value.length > 15 ? `${value.slice(0, 14)}\u2026` : value;
-  async function loadWorldBookDirectory(context, { signal } = {}) {
-    if (typeof context?.getWorldInfoNames !== "function" || typeof context?.loadWorldInfo !== "function") return [];
-    if (signal?.aborted) return [];
+  var abortError = () => {
+    const error = new Error("\u8BF7\u6C42\u5DF2\u53D6\u6D88");
+    error.name = "AbortError";
+    return error;
+  };
+  function normalizeWorldBookDetails(name, book) {
+    const source = book && typeof book === "object" && !Array.isArray(book) ? book.entries : null;
+    const pairs = Array.isArray(source) ? source.map((value, index) => [index, value]) : source && typeof source === "object" ? Object.entries(source) : [];
+    return pairs.flatMap(([fallbackUid, value]) => {
+      if (!value || typeof value !== "object" || Array.isArray(value)) return [];
+      const uid5 = value.uid ?? value.id ?? fallbackUid;
+      const key = createWorldBookEntryKey(name, uid5);
+      const content = text4(value.content).trim();
+      if (!key || !content) return [];
+      const title = text4(value.comment).trim() || `\u6761\u76EE ${uid5}`;
+      const column = getTavernDbColumn(value.comment);
+      if (HIDDEN_ENTRY_TITLE.test(title) && !column) return [];
+      return [{ key, uid: String(uid5), title, column, disabled: value.disable === true || value.enabled === false }];
+    }).sort((left, right) => left.uid.localeCompare(right.uid, void 0, { numeric: true }));
+  }
+  async function loadWorldBookDetails(context, rawName, { signal } = {}) {
+    const name = text4(rawName).trim();
+    if (!name || typeof context?.loadWorldInfo !== "function") return null;
+    if (signal?.aborted) throw abortError();
+    let book;
+    try {
+      book = await context.loadWorldInfo(name);
+    } catch (error) {
+      if (signal?.aborted) throw abortError();
+      if (error?.name === "AbortError") throw error;
+      return null;
+    }
+    if (signal?.aborted) throw abortError();
+    return { name, entries: normalizeWorldBookDetails(name, book) };
+  }
+  async function loadWorldBookSettingsDirectory(context, config, { signal } = {}) {
+    if (typeof context?.getWorldInfoNames !== "function" || signal?.aborted) return { current: [], others: [] };
     let names;
     try {
       names = await context.getWorldInfoNames();
     } catch (error) {
-      return [];
+      return { current: [], others: [] };
     }
-    if (signal?.aborted || !Array.isArray(names)) return [];
-    const enabledNames = getEnabledWorldBookNames(context);
-    const selectedNames = hasWorldBookSelectionSource(context) ? names.filter((name) => enabledNames.has(text4(name).trim())) : names;
+    if (signal?.aborted || !Array.isArray(names)) return { current: [], others: [] };
+    const currentConfig = normalizeWorldBookConfig(config);
+    const current = getCurrentChatWorldBooks(context).map((book) => ({ ...book, enabled: currentConfig.books[book.name] !== false }));
+    const currentNames = new Set(current.map((book) => book.name));
+    const others = [...new Set(names.map((name) => text4(name).trim()).filter(Boolean))].filter((name) => !currentNames.has(name)).map((name) => ({ name, enabled: currentConfig.books[name] !== false }));
+    return { current, others };
+  }
+  async function loadWorldBookDirectory(context, { signal } = {}) {
+    if (typeof context?.loadWorldInfo !== "function") return [];
+    const selectedNames = getCurrentChatWorldBooks(context).map((book) => book.name);
     const books = [];
     for (const rawName of selectedNames) {
       if (signal?.aborted) return [];
       const name = text4(rawName).trim();
       if (!name) continue;
-      let book;
-      try {
-        book = await context.loadWorldInfo(name);
-      } catch (error) {
-        continue;
-      }
+      const details = await loadWorldBookDetails(context, name, { signal });
       if (signal?.aborted) return [];
-      const source = book && typeof book === "object" && !Array.isArray(book) ? book.entries : null;
-      const pairs = Array.isArray(source) ? source.map((value, index) => [index, value]) : source && typeof source === "object" ? Object.entries(source) : [];
-      const entries = pairs.flatMap(([fallbackUid, value]) => {
-        if (!value || typeof value !== "object" || Array.isArray(value)) return [];
-        const uid5 = value.uid ?? value.id ?? fallbackUid;
-        const key = createWorldBookEntryKey(name, uid5);
-        const content = text4(value.content).trim();
-        if (!key || !content) return [];
-        const title = text4(value.comment).trim() || `\u6761\u76EE ${uid5}`;
-        const column = getTavernDbColumn(value.comment);
-        if (HIDDEN_ENTRY_TITLE.test(title) && !column) return [];
-        return [{ key, uid: String(uid5), title, column, disabled: value.disable === true || value.enabled === false }];
-      }).sort((left, right) => left.uid.localeCompare(right.uid, void 0, { numeric: true }));
-      if (entries.length) books.push({ name, entries });
+      if (details?.entries.length) books.push(details);
     }
     return books;
   }
-  function eyeToggle(checked, dataset, label, disabled = false) {
-    return `<button type="button" class="pm-worldbook-eye ${checked ? "is-checked" : ""}" aria-pressed="${checked}" aria-label="${escapeAttr(label)}" title="${escapeAttr(label)}" ${dataset}${disabled ? " disabled" : ""} onclick="this.classList.toggle('is-checked');this.setAttribute('aria-pressed',String(this.classList.contains('is-checked')))" onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();this.click()}">${EYE_ICON_SVG}</button>`;
-  }
-  function bookToggle(checked, bookName) {
-    return `<button type="button" class="pm-worldbook-eye ${checked ? "is-checked" : ""}" aria-pressed="${checked}" aria-label="${escapeAttr(`${bookName}\u8BFB\u53D6\u5F00\u5173`)}" title="${escapeAttr(`${bookName}\u8BFB\u53D6\u5F00\u5173`)}" data-world-book="${escapeAttr(bookName)}" onclick="this.classList.toggle('is-checked');const enabled=this.classList.contains('is-checked');this.setAttribute('aria-pressed',String(enabled));this.closest('[data-world-book-section]').querySelector('[data-world-book-entries]').hidden=!enabled" onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();this.click()}">${EYE_ICON_SVG}</button>`;
+  function eyeToggle(checked, dataset, label, disabled = false, onclick = "") {
+    const handler = onclick || "this.classList.toggle('is-checked');this.setAttribute('aria-pressed',String(this.classList.contains('is-checked')))";
+    return `<button type="button" class="pm-worldbook-eye ${checked ? "is-checked" : ""}" aria-pressed="${checked}" aria-label="${escapeAttr(label)}" title="${escapeAttr(label)}" ${dataset}${disabled ? " disabled" : ""} onclick="${handler}" onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();this.click()}">${EYE_ICON_SVG}</button>`;
   }
   function visibleDatabaseColumns(books) {
     return [...new Set(books.flatMap((book) => book.entries.map((entry2) => entry2.column).filter(Boolean)))];
   }
-  function renderPage(config, books) {
-    const columns = visibleDatabaseColumns(books);
-    const columnRows = columns.length ? `<div class="pm-worldbook-matrix"><div class="pm-worldbook-matrix-header"><span></span>${WORLD_BOOK_MODULES.map((module) => `<span title="${MODULE_LABELS[module]}">${MODULE_ICONS[module]}<b>${MODULE_LABELS[module]}</b></span>`).join("")}</div>${columns.map((column) => `<div class="pm-worldbook-matrix-row"><b title="${escapeAttr(column)}">${escapeHtml(column)}</b>${WORLD_BOOK_MODULES.map((module) => eyeToggle(config.columns[column]?.[module] !== false, `data-world-column="${escapeAttr(column)}" data-world-module="${module}"`, `${column}\uFF1A${MODULE_LABELS[module]}\u8BFB\u53D6\u5F00\u5173`)).join("")}</div>`).join("")}</div>` : '<div class="pm-prof-empty">\u672A\u53D1\u73B0\u7B26\u5408 TavernDB-ACU-CustomExport \u534F\u8BAE\u7684\u680F\u76EE\u3002</div>';
-    const entryRows = books.map((book) => {
-      const entries = book.entries.filter((entry2) => !entry2.column);
-      if (!entries.length) return "";
-      const enabled = config.books[book.name] !== false;
-      return `<div class="pm-worldbook-native-book" data-world-book-section><div class="pm-li pm-worldbook-native-book-title"><span><b title="${escapeAttr(book.name)}">${escapeHtml(shortTitle(book.name))}</b></span>${bookToggle(enabled, book.name)}</div><div data-world-book-entries${enabled ? "" : " hidden"}>${entries.map((entry2) => `<div class="pm-li pm-worldbook-native-entry"><span><b title="${escapeAttr(entry2.title)}">${escapeHtml(shortTitle(entry2.title))}</b><small class="pm-group-sub">${entry2.disabled ? "\u5DF2\u7981\u7528" : ""}</small></span>${eyeToggle(!entry2.disabled && config.entries[entry2.key] !== false, `data-world-entry="${escapeAttr(entry2.key)}"`, `${book.name} \u6761\u76EE\u8BFB\u53D6\u5F00\u5173`, entry2.disabled)}</div>`).join("")}</div></div>`;
-    }).join("") || '<div class="pm-prof-empty">\u672A\u53D1\u73B0\u4E0D\u5C5E\u4E8E TavernDB \u680F\u76EE\u7684\u539F\u751F\u4E16\u754C\u4E66\u6761\u76EE\u3002</div>';
-    const hasColumns = columns.length > 0;
-    return `<div class="pm-settings-page"><div class="pm-worldbook-range"><label class="pm-cfg-label">\u8BFB\u53D6\u6B63\u6587\u697C\u5C42\u6570<input id="pm-world-main-messages" class="pm-cfg-input" type="number" min="1" max="100" value="${config.mainChatMessages}"></label><label class="pm-cfg-label">\u4E16\u754C\u4E66\u626B\u63CF\u6DF1\u5EA6<input id="pm-world-scan-messages" class="pm-cfg-input" type="number" min="1" max="100" value="${config.scanMessages}"></label><label class="pm-cfg-label">\u53D1\u9001\u4E16\u754C\u4E66\u5B57\u7B26\u6570\u4E0A\u9650<input id="pm-world-max-chars" class="pm-cfg-input" type="number" min="1000" max="80000" value="${config.maxChars}"></label></div><div class="pm-worldbook-content ${hasColumns ? "has-columns" : ""}"><div class="pm-worldbook-section-heading">${DATABASE_ICON_SVG}<span>\u6570\u636E\u5E93\u6761\u76EE\u4E00\u89C8</span></div>${columnRows}<div class="pm-worldbook-native-list"><div class="pm-worldbook-section-heading">${BOOK_ICON_SVG}<span>\u539F\u751F\u4E16\u754C\u4E66\u6761\u76EE</span></div>${entryRows}</div></div></div>`;
+  function renderDetail(detail, config) {
+    if (detail.status === "loading") return '<div class="pm-worldbook-detail-status" role="status">\u6B63\u5728\u8BFB\u53D6\u8BE5\u4E16\u754C\u4E66\u2026</div>';
+    if (detail.status === "error") return `<div class="pm-worldbook-detail-status is-error" role="alert">\u8BFB\u53D6\u5931\u8D25\u3002<button type="button" data-world-book-name="${escapeAttr(detail.name)}" onclick="window.__pmToggleWorldBookDetails(this.dataset.worldBookName,true)">\u91CD\u8BD5</button></div>`;
+    const entries = detail.entries || [];
+    const columns = [...new Set(entries.map((entry2) => entry2.column).filter(Boolean))];
+    const nativeEntries = entries.filter((entry2) => !entry2.column);
+    const columnRows = columns.length ? `<div class="pm-worldbook-matrix"><div class="pm-worldbook-matrix-header"><span></span>${WORLD_BOOK_MODULES.map((module) => `<span title="${MODULE_LABELS[module]}">${MODULE_ICONS[module]}<b>${MODULE_LABELS[module]}</b></span>`).join("")}</div>${columns.map((column) => `<div class="pm-worldbook-matrix-row"><b title="${escapeAttr(column)}">${escapeHtml(column)}</b>${WORLD_BOOK_MODULES.map((module) => eyeToggle(config.columns[column]?.[module] !== false, `data-world-column="${escapeAttr(column)}" data-world-module="${module}"`, `${column}\uFF1A${MODULE_LABELS[module]}\u8BFB\u53D6\u5F00\u5173`, false, "this.classList.toggle('is-checked');this.setAttribute('aria-pressed',String(this.classList.contains('is-checked')));window.__pmSetWorldBookColumn(this)")).join("")}</div>`).join("")}</div>` : '<div class="pm-prof-empty">\u672A\u53D1\u73B0\u6570\u636E\u5E93\u680F\u76EE\u3002</div>';
+    const nativeRows = nativeEntries.length ? nativeEntries.map((entry2) => `<div class="pm-li pm-worldbook-native-entry"><span><b title="${escapeAttr(entry2.title)}">${escapeHtml(shortTitle(entry2.title))}</b><small class="pm-group-sub">${entry2.disabled ? "\u5DF2\u7981\u7528" : ""}</small></span>${eyeToggle(!entry2.disabled && config.entries[entry2.key] !== false, `data-world-entry="${escapeAttr(entry2.key)}"`, `${detail.name} \u6761\u76EE\u8BFB\u53D6\u5F00\u5173`, entry2.disabled, "this.classList.toggle('is-checked');this.setAttribute('aria-pressed',String(this.classList.contains('is-checked')));window.__pmSetWorldBookEntry(this)")}</div>`).join("") : '<div class="pm-prof-empty">\u672A\u53D1\u73B0\u539F\u751F\u4E16\u754C\u4E66\u6761\u76EE\u3002</div>';
+    return `<div class="pm-worldbook-book-detail"><div class="pm-worldbook-section-heading">${DATABASE_ICON_SVG}<span>\u6570\u636E\u5E93\u680F\u76EE</span></div>${columnRows}<div class="pm-worldbook-section-heading">${BOOK_ICON_SVG}<span>\u539F\u751F\u6761\u76EE</span></div>${nativeRows}</div>`;
+  }
+  function renderBookRow(book, state) {
+    const enabled = state.config.books[book.name] !== false;
+    const expanded = state.detail?.name === book.name;
+    const sources = Array.isArray(book.sources) ? book.sources.map((source) => SOURCE_LABELS2[source]).filter(Boolean) : [];
+    return `<div class="pm-worldbook-native-book" data-world-book-section data-world-book-name="${escapeAttr(book.name)}" data-world-book-expanded="${expanded}"><div class="pm-li pm-worldbook-native-book-title"><button type="button" class="pm-worldbook-expand" data-world-book-name="${escapeAttr(book.name)}" aria-expanded="${expanded}" onclick="window.__pmToggleWorldBookDetails(this.dataset.worldBookName)"><span aria-hidden="true">\u203A</span><b title="${escapeAttr(book.name)}">${escapeHtml(book.name)}</b>${sources.length ? `<small>${sources.join(" \xB7 ")}</small>` : ""}</button>${eyeToggle(enabled, `data-world-book="${escapeAttr(book.name)}"`, `${book.name}\u8BFB\u53D6\u5F00\u5173`, false, "this.classList.toggle('is-checked');this.setAttribute('aria-pressed',String(this.classList.contains('is-checked')));window.__pmSetWorldBookEnabled(this)")}</div>${expanded ? renderDetail(state.detail, state.config) : ""}</div>`;
+  }
+  function filteredOthers(state) {
+    const query = state.search.trim().toLocaleLowerCase();
+    return query ? state.directory.others.filter((book) => book.name.toLocaleLowerCase().includes(query)) : state.directory.others;
+  }
+  function renderDirectoryLists(state) {
+    const currentRows = state.directory.current.map((book) => renderBookRow(book, state)).join("") || '<div class="pm-prof-empty">\u5F53\u524D\u804A\u5929\u672A\u5173\u8054\u4E16\u754C\u4E66\u3002</div>';
+    const matching = filteredOthers(state);
+    const visible = matching.slice(0, state.otherLimit);
+    const otherRows = visible.map((book) => renderBookRow(book, state)).join("") || '<div class="pm-prof-empty">\u6CA1\u6709\u5339\u914D\u7684\u5176\u4ED6\u4E16\u754C\u4E66\u3002</div>';
+    const more = visible.length < matching.length ? `<button type="button" class="pm-worldbook-load-more" onclick="window.__pmLoadMoreWorldBooks()">\u52A0\u8F7D\u66F4\u591A\uFF08\u5269\u4F59 ${matching.length - visible.length} \u672C\uFF09</button>` : "";
+    return `<div class="pm-worldbook-columns"><section class="pm-worldbook-column"><div class="pm-worldbook-column-heading"><span><b>\u5F53\u524D\u804A\u5929\u4E16\u754C\u4E66</b><small>${state.directory.current.length} \u672C</small></span></div><div class="pm-worldbook-native-list" data-world-book-current-list>${currentRows}</div></section><section class="pm-worldbook-column"><div class="pm-worldbook-column-heading"><span><b>\u5176\u4ED6\u4E16\u754C\u4E66</b><small>${matching.length} \u672C</small></span><label class="pm-worldbook-search"><span class="sr-only">\u641C\u7D22\u5176\u4ED6\u4E16\u754C\u4E66</span><input type="search" value="${escapeAttr(state.search)}" placeholder="\u641C\u7D22\u540D\u79F0" oninput="window.__pmSearchWorldBooks(this.value)"></label></div><div class="pm-worldbook-native-list" data-world-book-other-list>${otherRows}</div>${more}</section></div>`;
+  }
+  function renderPage(state) {
+    const config = state.config;
+    return `<div class="pm-settings-page"><div class="pm-worldbook-range"><label class="pm-cfg-label">\u8BFB\u53D6\u6B63\u6587\u697C\u5C42\u6570<input id="pm-world-main-messages" class="pm-cfg-input" type="number" min="1" max="100" value="${config.mainChatMessages}"></label><label class="pm-cfg-label">\u4E16\u754C\u4E66\u626B\u63CF\u6DF1\u5EA6<input id="pm-world-scan-messages" class="pm-cfg-input" type="number" min="1" max="100" value="${config.scanMessages}"></label><label class="pm-cfg-label">\u53D1\u9001\u4E16\u754C\u4E66\u5B57\u7B26\u6570\u4E0A\u9650<input id="pm-world-max-chars" class="pm-cfg-input" type="number" min="1000" max="80000" value="${config.maxChars}"></label></div><div class="pm-worldbook-content" data-world-book-directory>${renderDirectoryLists(state)}</div></div>`;
   }
   function renderColumnSelector({ title, module, scope, config, books, backAction = "window.__pmShowConfig('home')", backLabel = "\u8FD4\u56DE\u8BBE\u7F6E" }) {
     const override = scope?.kind === "group" ? config.groups[scope.id] : scope?.kind === "character" ? config.characters[scope.id] : null;
@@ -17518,17 +17582,47 @@ ${lines}`;
   function installWorldBookSettings({ makeOverlay, addNote, getCtx }) {
     let requestEpoch = 0;
     let requestController = null;
-    const cancelRequest = (epoch, controller) => {
-      if (epoch !== requestEpoch || controller !== requestController) return;
-      requestEpoch += 1;
-      controller.abort();
-      requestController = null;
+    let detailEpoch = 0;
+    let detailController = null;
+    let pageState = null;
+    let quickSelector = null;
+    let quickController = null;
+    let contentLoadTail = Promise.resolve();
+    const cloneConfig = (config) => structuredClone(normalizeWorldBookConfig(config));
+    const enqueueContentLoad = (task) => {
+      const pending = contentLoadTail.catch(() => {
+      }).then(task);
+      contentLoadTail = pending.catch(() => {
+      });
+      return pending;
+    };
+    const cancelDetail = () => {
+      detailEpoch += 1;
+      detailController?.abort();
+      detailController = null;
+      if (pageState) pageState.detail = null;
     };
     const cancelPendingPage = () => {
-      if (requestController) cancelRequest(requestEpoch, requestController);
+      requestEpoch += 1;
+      requestController?.abort();
+      requestController = null;
+      quickController?.abort();
+      quickController = null;
+      quickSelector = null;
+      cancelDetail();
+      pageState = null;
     };
-    let quickSelector = null;
-    const cloneConfig = (config) => structuredClone(normalizeWorldBookConfig(config));
+    const showQuickSelector = (config) => makeOverlay(renderColumnSelector({ ...quickSelector, config }), { onClose: (reason) => {
+      if (reason !== "replace") quickSelector = null;
+    } });
+    const isActivePage = (state) => pageState === state && document.getElementById("pm-overlay") === state.overlay;
+    const rerenderLists = (state) => {
+      if (!isActivePage(state)) return false;
+      const root = state.overlay.querySelector("[data-world-book-directory]");
+      if (!root) return false;
+      root.innerHTML = renderDirectoryLists(state);
+      return true;
+    };
     const showPage = async () => {
       cancelPendingPage();
       const epoch = requestEpoch;
@@ -17540,31 +17634,107 @@ ${lines}`;
         const previousOnClose = previousOverlay.__pmOnClose;
         previousOverlay.__pmOnClose = (reason) => {
           if (typeof previousOnClose === "function") previousOnClose(reason);
-          if (!(committingOverlay && reason === "replace")) cancelRequest(epoch, controller);
+          if (!(committingOverlay && reason === "replace") && epoch === requestEpoch) cancelPendingPage();
         };
       }
-      const config = loadWorldBookConfig();
-      const books = await loadWorldBookDirectory(getCtx(), { signal: controller.signal });
-      if (!isCurrentRequest(epoch, controller, () => requestEpoch)) return false;
+      const config = cloneConfig(loadWorldBookConfig());
+      const directory = await loadWorldBookSettingsDirectory(getCtx(), config, { signal: controller.signal });
+      if (epoch !== requestEpoch || controller.signal.aborted) return false;
+      const state = { config, directory, search: "", otherLimit: WORLD_BOOK_BATCH_SIZE, detail: null, overlay: null };
       const footer = '<div class="pm-modal-add"><button class="pm-action-button is-secondary" onclick="window.__pmResetWorldBookConfig()" style="flex:1">\u6062\u590D\u9ED8\u8BA4</button><button class="pm-action-button is-accent" onclick="window.__pmSaveWorldBookConfig()" style="flex:2">\u4FDD\u5B58\u4E16\u754C\u4E66\u8BBE\u7F6E</button></div>';
       committingOverlay = true;
       try {
-        makeOverlay(renderSettingsModal({ title: "\u4E16\u754C\u4E66\u8BFB\u53D6", content: renderPage(config, books), footer }), {
+        state.overlay = makeOverlay(renderSettingsModal({ title: "\u4E16\u754C\u4E66\u8BFB\u53D6", content: renderPage(state), footer }), {
           onClose: (reason) => {
-            if (reason !== "replace") cancelRequest(epoch, controller);
+            if (reason !== "replace" && pageState === state) cancelPendingPage();
           }
         });
+        pageState = state;
       } finally {
         committingOverlay = false;
       }
       return true;
     };
+    window.__pmSetWorldBookEnabled = (control) => {
+      if (!pageState || !control?.dataset.worldBook) return false;
+      pageState.config.books[control.dataset.worldBook] = control.classList.contains("is-checked");
+      return true;
+    };
+    window.__pmSetWorldBookEntry = (control) => {
+      if (!pageState || !control?.dataset.worldEntry) return false;
+      pageState.config.entries[control.dataset.worldEntry] = control.classList.contains("is-checked");
+      return true;
+    };
+    window.__pmSetWorldBookColumn = (control) => {
+      if (!pageState || !control?.dataset.worldColumn || !WORLD_BOOK_MODULES.includes(control.dataset.worldModule)) return false;
+      const column = control.dataset.worldColumn, module = control.dataset.worldModule;
+      pageState.config.columns[column] = { ...pageState.config.columns[column], [module]: control.classList.contains("is-checked") };
+      return true;
+    };
+    window.__pmSearchWorldBooks = (value) => {
+      if (!pageState) return false;
+      cancelDetail();
+      pageState.search = text4(value);
+      pageState.otherLimit = WORLD_BOOK_BATCH_SIZE;
+      const updated = rerenderLists(pageState);
+      const input = pageState?.overlay?.querySelector(".pm-worldbook-search input");
+      input?.focus({ preventScroll: true });
+      input?.setSelectionRange?.(input.value.length, input.value.length);
+      return updated;
+    };
+    window.__pmLoadMoreWorldBooks = () => {
+      if (!pageState) return false;
+      pageState.otherLimit += WORLD_BOOK_BATCH_SIZE;
+      return rerenderLists(pageState);
+    };
+    window.__pmToggleWorldBookDetails = async (rawName, retry = false) => {
+      const state = pageState;
+      const name = text4(rawName).trim();
+      if (!state || !name || !isActivePage(state)) return false;
+      if (!retry && state.detail?.name === name) {
+        cancelDetail();
+        rerenderLists(state);
+        return true;
+      }
+      cancelDetail();
+      const epoch = detailEpoch;
+      const controller = new AbortController();
+      detailController = controller;
+      state.detail = { name, status: "loading", entries: [] };
+      rerenderLists(state);
+      try {
+        const details = await enqueueContentLoad(() => {
+          if (epoch !== detailEpoch || controller.signal.aborted || !isActivePage(state)) throw abortError();
+          return loadWorldBookDetails(getCtx(), name, { signal: controller.signal });
+        });
+        if (epoch !== detailEpoch || controller.signal.aborted || !isActivePage(state)) return false;
+        detailController = null;
+        state.detail = details ? { ...details, status: "loaded" } : { name, status: "error", entries: [] };
+        rerenderLists(state);
+        return Boolean(details);
+      } catch (error) {
+        if (epoch !== detailEpoch || controller.signal.aborted || error?.name === "AbortError" || !isActivePage(state)) return false;
+        detailController = null;
+        state.detail = { name, status: "error", entries: [] };
+        rerenderLists(state);
+        return false;
+      }
+    };
     window.__pmShowWorldBookColumns = async ({ title, module, scope = null, backAction, backLabel } = {}) => {
       if (!WORLD_BOOK_MODULES.includes(module)) return false;
+      cancelPendingPage();
+      const controller = new AbortController();
+      quickController = controller;
+      const books = await enqueueContentLoad(() => {
+        if (controller.signal.aborted || quickController !== controller) throw abortError();
+        return loadWorldBookDirectory(getCtx(), { signal: controller.signal });
+      }).catch((error) => error?.name === "AbortError" ? null : Promise.reject(error));
+      if (!books) return false;
+      if (controller.signal.aborted || quickController !== controller) return false;
+      quickController = null;
       const config = loadWorldBookConfig();
-      const books = await loadWorldBookDirectory(getCtx());
       quickSelector = { title: text4(title).trim() || `${MODULE_LABELS[module]}\u53EF\u8BFB\u7684\u6570\u636E\u5E93\u8BB0\u5FC6`, module, scope, books, backAction, backLabel };
-      makeOverlay(renderColumnSelector({ ...quickSelector, config }));
+      showQuickSelector(config);
       return true;
     };
     window.__pmSaveWorldBookColumns = () => {
@@ -17613,7 +17783,7 @@ ${lines}`;
         alert("\u4E16\u754C\u4E66\u8BBE\u7F6E\u91CD\u7F6E\u5931\u8D25\uFF1A\u6D4F\u89C8\u5668\u5B58\u50A8\u4E0D\u53EF\u7528");
         return false;
       }
-      makeOverlay(renderColumnSelector({ ...quickSelector, config: candidate }));
+      showQuickSelector(candidate);
       return true;
     };
     window.__pmSetGroupMemberPrivateMemory = (groupId, enabled) => {
@@ -17637,22 +17807,16 @@ ${lines}`;
       return saved;
     };
     window.__pmSaveWorldBookConfig = () => {
-      const current = normalizeWorldBookConfig(window.__pmWorldBookConfig);
-      const candidate = { ...current, books: { ...current.books }, entries: { ...current.entries }, columns: { ...current.columns }, mainChatMessages: Number(document.getElementById("pm-world-main-messages")?.value), scanMessages: Number(document.getElementById("pm-world-scan-messages")?.value), maxChars: Number(document.getElementById("pm-world-max-chars")?.value) };
-      document.querySelectorAll("[data-world-book]").forEach((control) => {
-        candidate.books[control.dataset.worldBook] = control.classList.contains("is-checked");
-      });
-      document.querySelectorAll("[data-world-entry]").forEach((control) => {
-        candidate.entries[control.dataset.worldEntry] = control.classList.contains("is-checked");
-      });
-      document.querySelectorAll("[data-world-column]").forEach((control) => {
-        const column = control.dataset.worldColumn, module = control.dataset.worldModule;
-        candidate.columns[column] = { ...candidate.columns[column], [module]: control.classList.contains("is-checked") };
-      });
+      if (!pageState) return false;
+      const candidate = cloneConfig(pageState.config);
+      candidate.mainChatMessages = Number(document.getElementById("pm-world-main-messages")?.value);
+      candidate.scanMessages = Number(document.getElementById("pm-world-scan-messages")?.value);
+      candidate.maxChars = Number(document.getElementById("pm-world-max-chars")?.value);
       if (!saveWorldBookConfig(candidate)) {
         alert("\u4E16\u754C\u4E66\u8BBE\u7F6E\u4FDD\u5B58\u5931\u8D25\uFF1A\u6D4F\u89C8\u5668\u5B58\u50A8\u4E0D\u53EF\u7528");
         return false;
       }
+      cancelPendingPage();
       document.getElementById("pm-overlay")?.remove();
       addNote("\u4E16\u754C\u4E66\u8BFB\u53D6\u8BBE\u7F6E\u5DF2\u4FDD\u5B58");
       return true;
