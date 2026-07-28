@@ -16983,8 +16983,10 @@ ${lines}`;
       return [];
     }
     if (signal?.aborted || !Array.isArray(names)) return [];
+    const enabledNames = getEnabledWorldBookNames(context);
+    const selectedNames = hasWorldBookSelectionSource(context) ? names.filter((name) => enabledNames.has(text4(name).trim())) : names;
     const books = [];
-    for (const rawName of names) {
+    for (const rawName of selectedNames) {
       if (signal?.aborted) return [];
       const name = text4(rawName).trim();
       if (!name) continue;

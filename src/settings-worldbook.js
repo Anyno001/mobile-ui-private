@@ -1,4 +1,4 @@
-import { createWorldBookEntryKey, getTavernDbColumn, normalizeWorldBookConfig, WORLD_BOOK_MODULES } from './worldbook-config.js';
+import { createWorldBookEntryKey, getEnabledWorldBookNames, getTavernDbColumn, hasWorldBookSelectionSource, normalizeWorldBookConfig, WORLD_BOOK_MODULES } from './worldbook-config.js';
 import { loadWorldBookConfig, saveWorldBookConfig } from './storage.js';
 import { renderSettingsModal } from './settings-templates.js';
 import { escapeAttr, escapeHtml } from './ui.js';
@@ -18,8 +18,10 @@ export async function loadWorldBookDirectory(context, { signal } = {}) {
     let names;
     try { names = await context.getWorldInfoNames(); } catch (error) { return []; }
     if (signal?.aborted || !Array.isArray(names)) return [];
+    const enabledNames = getEnabledWorldBookNames(context);
+    const selectedNames = hasWorldBookSelectionSource(context) ? names.filter(name => enabledNames.has(text(name).trim())) : names;
     const books = [];
-    for (const rawName of names) {
+    for (const rawName of selectedNames) {
         if (signal?.aborted) return [];
         const name = text(rawName).trim();
         if (!name) continue;

@@ -637,20 +637,26 @@ assert.deepEqual(worldBookDirectory, [{ name: '主世界', entries: [
     { key: createWorldBookEntryKey('主世界', 20), uid: '20', title: 'TavernDB-ACU-CustomExport-纪要-2', column: '纪要', disabled: false },
 ] }], '设置页目录必须隐藏原生包裹条目、保留数据库包裹条目的栏目归属并按 UID 稳定排序');
 const enabledWorldBookContext = {
-    chatMetadata: { world_info: '会话书' },
+    chatMetadata: { world_info: ['会话书', '数据库书'] },
     characters: [{ data: { extensions: { world: '角色书' } } }], characterId: 0,
 };
-assert.deepEqual([...getEnabledWorldBookNames(enabledWorldBookContext)].sort(), ['会话书', '角色书'],
+assert.deepEqual([...getEnabledWorldBookNames(enabledWorldBookContext)].sort(), ['会话书', '数据库书', '角色书'],
     '当前启用世界书必须合并会话与角色绑定来源');
 assert.deepEqual(await loadWorldBookDirectory({
     ...enabledWorldBookContext,
-    getWorldInfoNames() { return ['会话书', '角色书', '未启用书']; },
-    async loadWorldInfo(name) { return { entries: { 1: { uid: 1, content: `${name}正文`, comment: `${name}标题` } } }; },
+    getWorldInfoNames() { return ['会话书', '数据库书', '角色书', '未启用书']; },
+    async loadWorldInfo(name) { return { entries: {
+        1: { uid: 1, content: `${name}正文`, comment: name === '数据库书' ? 'TavernDB-ACU-CustomExport-纪要-1' : `${name}标题` },
+        ...(name === '会话书' ? { 2: { uid: 2, content: '已禁用条目正文', comment: '已禁用条目', disable: true } } : {}),
+    } }; },
 }), [
-    { name: '会话书', entries: [{ key: createWorldBookEntryKey('会话书', 1), uid: '1', title: '会话书标题', column: '', disabled: false }] },
+    { name: '会话书', entries: [
+        { key: createWorldBookEntryKey('会话书', 1), uid: '1', title: '会话书标题', column: '', disabled: false },
+        { key: createWorldBookEntryKey('会话书', 2), uid: '2', title: '已禁用条目', column: '', disabled: true },
+    ] },
+    { name: '数据库书', entries: [{ key: createWorldBookEntryKey('数据库书', 1), uid: '1', title: 'TavernDB-ACU-CustomExport-纪要-1', column: '纪要', disabled: false }] },
     { name: '角色书', entries: [{ key: createWorldBookEntryKey('角色书', 1), uid: '1', title: '角色书标题', column: '', disabled: false }] },
-    { name: '未启用书', entries: [{ key: createWorldBookEntryKey('未启用书', 1), uid: '1', title: '未启用书标题', column: '', disabled: false }] },
-], '世界书读取设置页必须枚举完整目录，不能把未绑定到当前会话的数据库世界书隐藏掉');
+], '设置页必须显示已启用世界书及其中的禁用条目，同时拒绝渲染未启用世界书');
 const cancelledDirectoryController = new AbortController();
 const cancelledDirectoryLoads = [];
 assert.deepEqual(await loadWorldBookDirectory({
