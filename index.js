@@ -7118,13 +7118,16 @@ ${mainChatText}` : "",
       if (!value || typeof value !== "object" || Array.isArray(value)) return [];
       const uid5 = value.uid ?? value.id ?? fallbackUid;
       const content = text3(value.content);
-      if (typeof uid5 !== "number" && typeof uid5 !== "string" || !String(uid5).trim() || !content || value.disable === true || value.enabled === false) return [];
+      const comment = text3(value.comment);
+      const column = getTavernDbColumn(comment);
+      const hostDisabled = value.disable === true || value.enabled === false;
+      if (typeof uid5 !== "number" && typeof uid5 !== "string" || !String(uid5).trim() || !content || hostDisabled && !column) return [];
       return [{
         bookName,
         uid: uid5,
         content,
-        comment: text3(value.comment),
-        column: getTavernDbColumn(value.comment),
+        comment,
+        column,
         constant: value.constant === true,
         key: value.key ?? value.keys,
         order: entryOrder(value)
