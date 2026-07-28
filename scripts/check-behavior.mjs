@@ -649,7 +649,8 @@ assert.deepEqual(await loadWorldBookDirectory({
 }), [
     { name: '会话书', entries: [{ key: createWorldBookEntryKey('会话书', 1), uid: '1', title: '会话书标题', column: '', disabled: false }] },
     { name: '角色书', entries: [{ key: createWorldBookEntryKey('角色书', 1), uid: '1', title: '角色书标题', column: '', disabled: false }] },
-], '设置页不得读取未启用的世界书');
+    { name: '未启用书', entries: [{ key: createWorldBookEntryKey('未启用书', 1), uid: '1', title: '未启用书标题', column: '', disabled: false }] },
+], '世界书读取设置页必须枚举完整目录，不能把未绑定到当前会话的数据库世界书隐藏掉');
 const cancelledDirectoryController = new AbortController();
 const cancelledDirectoryLoads = [];
 assert.deepEqual(await loadWorldBookDirectory({

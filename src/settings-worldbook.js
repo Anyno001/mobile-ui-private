@@ -1,4 +1,4 @@
-import { createWorldBookEntryKey, getEnabledWorldBookNames, getTavernDbColumn, hasWorldBookSelectionSource, normalizeWorldBookConfig, WORLD_BOOK_MODULES } from './worldbook-config.js';
+import { createWorldBookEntryKey, getTavernDbColumn, normalizeWorldBookConfig, WORLD_BOOK_MODULES } from './worldbook-config.js';
 import { loadWorldBookConfig, saveWorldBookConfig } from './storage.js';
 import { renderSettingsModal } from './settings-templates.js';
 import { escapeAttr, escapeHtml } from './ui.js';
@@ -18,10 +18,8 @@ export async function loadWorldBookDirectory(context, { signal } = {}) {
     let names;
     try { names = await context.getWorldInfoNames(); } catch (error) { return []; }
     if (signal?.aborted || !Array.isArray(names)) return [];
-    const enabledNames = getEnabledWorldBookNames(context);
-    const selectedNames = hasWorldBookSelectionSource(context) ? names.filter(name => enabledNames.has(text(name).trim())) : names;
     const books = [];
-    for (const rawName of selectedNames) {
+    for (const rawName of names) {
         if (signal?.aborted) return [];
         const name = text(rawName).trim();
         if (!name) continue;
@@ -68,7 +66,7 @@ function renderPage(config, books) {
         return `<div data-world-book-section style="padding:10px 14px;border-top:1px solid var(--pm-color-border-subtle)"><div class="pm-li" style="min-height:34px"><span><b title="${escapeAttr(book.name)}">${escapeHtml(shortTitle(book.name))}</b></span>${bookToggle(enabled, book.name)}</div><div data-world-book-entries${enabled ? '' : ' hidden'}>${entries.map(entry => `<div class="pm-li"><span><b title="${escapeAttr(entry.title)}">${escapeHtml(shortTitle(entry.title))}</b><small class="pm-group-sub">${entry.disabled ? '已禁用' : ''}</small></span>${eyeToggle(!entry.disabled && config.entries[entry.key] !== false, `data-world-entry="${escapeAttr(entry.key)}"`, `${book.name} 条目读取开关`, entry.disabled)}</div>`).join('')}</div></div>`;
     }).join('') || '<div class="pm-prof-empty">未发现不属于 TavernDB 栏目的原生世界书条目。</div>';
     const hasColumns = columns.length > 0;
-    return `<div class="pm-settings-page"><div class="pm-worldbook-range"><label class="pm-cfg-label">读取正文楼层数<input id="pm-world-main-messages" class="pm-cfg-input" type="number" min="1" max="100" value="${config.mainChatMessages}"></label><label class="pm-cfg-label">世界书扫描深度<input id="pm-world-scan-messages" class="pm-cfg-input" type="number" min="1" max="100" value="${config.scanMessages}"></label><label class="pm-cfg-label">发送世界书字符数上限<input id="pm-world-max-chars" class="pm-cfg-input" type="number" min="1000" max="80000" value="${config.maxChars}"></label></div><div class="pm-worldbook-content ${hasColumns ? 'has-columns' : ''}">${columnRows}<div class="pm-worldbook-native-list">${entryRows}</div></div></div>`;
+    return `<div class="pm-settings-page"><div class="pm-worldbook-range"><label class="pm-cfg-label">读取正文楼层数<input id="pm-world-main-messages" class="pm-cfg-input" type="number" min="1" max="100" value="${config.mainChatMessages}"></label><label class="pm-cfg-label">世界书扫描深度<input id="pm-world-scan-messages" class="pm-cfg-input" type="number" min="1" max="100" value="${config.scanMessages}"></label><label class="pm-cfg-label">发送世界书字符数上限<input id="pm-world-max-chars" class="pm-cfg-input" type="number" min="1000" max="80000" value="${config.maxChars}"></label></div><div class="pm-worldbook-content ${hasColumns ? 'has-columns' : ''}"><div class="pm-worldbook-section-heading">${DATABASE_ICON_SVG}<span>数据库条目一览</span></div>${columnRows}<div class="pm-worldbook-native-list"><div class="pm-worldbook-section-heading">${BOOK_ICON_SVG}<span>原生世界书条目</span></div>${entryRows}</div></div></div>`;
 }
 
 function renderColumnSelector({ title, module, scope, config, books, backAction = "window.__pmShowConfig('home')", backLabel = '返回设置' }) {

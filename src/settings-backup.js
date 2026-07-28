@@ -66,7 +66,10 @@ export function applyCalendarBackupFields(data, result, objectValue, { includeRe
         const value = objectValue(data[field], field);
         const normalized = normalize(value);
         if (field === 'calendarCycles') assertCycleBackupInvariants(normalized);
-        result[field] = assertCanonicalCalendarField(value, normalized, field);
+        const canonicalValue = field === 'calendarWeather' && !Object.hasOwn(value, 'climateRevision')
+            ? { ...value, climateRevision: normalized.climateRevision }
+            : value;
+        result[field] = assertCanonicalCalendarField(canonicalValue, normalized, field);
     }
     return result;
 }

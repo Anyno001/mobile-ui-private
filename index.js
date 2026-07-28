@@ -16971,6 +16971,7 @@ ${lines}`;
   var MODULE_LABELS = Object.freeze({ chat: "\u4F1A\u8BDD", calendar: "\u65E5\u5386", community: "\u793E\u533A" });
   var MODULE_ICONS = Object.freeze({ chat: CHAT_ICON_SVG, calendar: CALENDAR_ICON_SVG, community: COMMUNITY_ICON_SVG });
   var isCurrentRequest = (epoch, controller, currentEpoch) => epoch === currentEpoch() && !controller.signal.aborted;
+  var DATABASE_ICON_SVG = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><ellipse cx="12" cy="5" rx="7" ry="3"/><path d="M5 5v7c0 1.7 3.1 3 7 3s7-1.3 7-3V5M5 12v7c0 1.7 3.1 3 7 3s7-1.3 7-3v-7"/></svg>';
   var shortTitle = (value) => value.length > 15 ? `${value.slice(0, 14)}\u2026` : value;
   async function loadWorldBookDirectory(context, { signal } = {}) {
     if (typeof context?.getWorldInfoNames !== "function" || typeof context?.loadWorldInfo !== "function") return [];
@@ -16982,10 +16983,8 @@ ${lines}`;
       return [];
     }
     if (signal?.aborted || !Array.isArray(names)) return [];
-    const enabledNames = getEnabledWorldBookNames(context);
-    const selectedNames = hasWorldBookSelectionSource(context) ? names.filter((name) => enabledNames.has(text4(name).trim())) : names;
     const books = [];
-    for (const rawName of selectedNames) {
+    for (const rawName of names) {
       if (signal?.aborted) return [];
       const name = text4(rawName).trim();
       if (!name) continue;
@@ -17032,7 +17031,7 @@ ${lines}`;
       return `<div data-world-book-section style="padding:10px 14px;border-top:1px solid var(--pm-color-border-subtle)"><div class="pm-li" style="min-height:34px"><span><b title="${escapeAttr(book.name)}">${escapeHtml(shortTitle(book.name))}</b></span>${bookToggle(enabled, book.name)}</div><div data-world-book-entries${enabled ? "" : " hidden"}>${entries.map((entry2) => `<div class="pm-li"><span><b title="${escapeAttr(entry2.title)}">${escapeHtml(shortTitle(entry2.title))}</b><small class="pm-group-sub">${entry2.disabled ? "\u5DF2\u7981\u7528" : ""}</small></span>${eyeToggle(!entry2.disabled && config.entries[entry2.key] !== false, `data-world-entry="${escapeAttr(entry2.key)}"`, `${book.name} \u6761\u76EE\u8BFB\u53D6\u5F00\u5173`, entry2.disabled)}</div>`).join("")}</div></div>`;
     }).join("") || '<div class="pm-prof-empty">\u672A\u53D1\u73B0\u4E0D\u5C5E\u4E8E TavernDB \u680F\u76EE\u7684\u539F\u751F\u4E16\u754C\u4E66\u6761\u76EE\u3002</div>';
     const hasColumns = columns.length > 0;
-    return `<div class="pm-settings-page"><div class="pm-worldbook-range"><label class="pm-cfg-label">\u8BFB\u53D6\u6B63\u6587\u697C\u5C42\u6570<input id="pm-world-main-messages" class="pm-cfg-input" type="number" min="1" max="100" value="${config.mainChatMessages}"></label><label class="pm-cfg-label">\u4E16\u754C\u4E66\u626B\u63CF\u6DF1\u5EA6<input id="pm-world-scan-messages" class="pm-cfg-input" type="number" min="1" max="100" value="${config.scanMessages}"></label><label class="pm-cfg-label">\u53D1\u9001\u4E16\u754C\u4E66\u5B57\u7B26\u6570\u4E0A\u9650<input id="pm-world-max-chars" class="pm-cfg-input" type="number" min="1000" max="80000" value="${config.maxChars}"></label></div><div class="pm-worldbook-content ${hasColumns ? "has-columns" : ""}">${columnRows}<div class="pm-worldbook-native-list">${entryRows}</div></div></div>`;
+    return `<div class="pm-settings-page"><div class="pm-worldbook-range"><label class="pm-cfg-label">\u8BFB\u53D6\u6B63\u6587\u697C\u5C42\u6570<input id="pm-world-main-messages" class="pm-cfg-input" type="number" min="1" max="100" value="${config.mainChatMessages}"></label><label class="pm-cfg-label">\u4E16\u754C\u4E66\u626B\u63CF\u6DF1\u5EA6<input id="pm-world-scan-messages" class="pm-cfg-input" type="number" min="1" max="100" value="${config.scanMessages}"></label><label class="pm-cfg-label">\u53D1\u9001\u4E16\u754C\u4E66\u5B57\u7B26\u6570\u4E0A\u9650<input id="pm-world-max-chars" class="pm-cfg-input" type="number" min="1000" max="80000" value="${config.maxChars}"></label></div><div class="pm-worldbook-content ${hasColumns ? "has-columns" : ""}"><div class="pm-worldbook-section-heading">${DATABASE_ICON_SVG}<span>\u6570\u636E\u5E93\u6761\u76EE\u4E00\u89C8</span></div>${columnRows}<div class="pm-worldbook-native-list"><div class="pm-worldbook-section-heading">${BOOK_ICON_SVG}<span>\u539F\u751F\u4E16\u754C\u4E66\u6761\u76EE</span></div>${entryRows}</div></div></div>`;
   }
   function renderColumnSelector({ title, module, scope, config, books, backAction = "window.__pmShowConfig('home')", backLabel = "\u8FD4\u56DE\u8BBE\u7F6E" }) {
     const override = scope?.kind === "group" ? config.groups[scope.id] : scope?.kind === "character" ? config.characters[scope.id] : null;
@@ -17238,7 +17237,8 @@ ${lines}`;
       const value = objectValue2(data[field], field);
       const normalized = normalize(value);
       if (field === "calendarCycles") assertCycleBackupInvariants(normalized);
-      result[field] = assertCanonicalCalendarField(value, normalized, field);
+      const canonicalValue = field === "calendarWeather" && !Object.hasOwn(value, "climateRevision") ? { ...value, climateRevision: normalized.climateRevision } : value;
+      result[field] = assertCanonicalCalendarField(canonicalValue, normalized, field);
     }
     return result;
   }
