@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { calendarGenerationErrorMessage, installCalendar, renderCalendarPageHtml } from '../src/calendar.js';
 import { fillCalendarEntryForm, readCalendarEntryForm, setCalendarEntryRepeat } from '../src/calendar-dom.js';
-import { renderCalendarEntryDialog, renderSelectedDateDetail } from '../src/calendar-view.js';
+import { occasionTypeLabel, renderCalendarEntryDialog, renderSelectedDateDetail } from '../src/calendar-view.js';
 import { renderCalendarContextInjection } from '../src/phone-injection.js';
 import { createCalendarCommitters } from '../src/calendar-commit.js';
 import { createCalendarRecipeController } from '../src/calendar-recipe-controller.js';
@@ -359,6 +359,10 @@ assert.deepEqual(
     ['2027-02-28'],
     '自定义重复必须按填写的天数间隔展开',
 );
+assert.equal(occasionTypeLabel('anniversary', 'custom', 3), '每3天重复',
+    '自定义重复的小字说明必须显示实际间隔天数');
+assert.equal(occasionTypeLabel('anniversary', 'custom', 'invalid'), '每1天重复',
+    '自定义重复的小字说明遇到无效间隔时必须使用模型默认值');
 for (const invalidIntervalDays of [0, -1, 1.5, 10000, 'invalid']) {
     const normalized = normalizeOccasion({ type: 'anniversary', date: '2027-01-02', month: 1, day: 2,
         repeat: 'custom', intervalDays: invalidIntervalDays, title: '非法间隔' });
@@ -628,6 +632,15 @@ assert.equal(staleWeather.store.location.name, '上海');
 assert.equal(staleWeather.locationKey, freshWeather.locationKey);
 assert.equal(staleWeather.store.lastSuccess.source, WEATHER_SOURCE_CACHED_FORECAST);
 assert.equal(resolveWeatherForDate(staleWeather.store, '2026-07-17').source, WEATHER_SOURCE_CACHED_FORECAST);
+let resetCacheMode;
+const resetWeather = await fetchWeatherForecast(shanghai, freshWeather.store, {
+    resetCache: true,
+    fetchImpl: async (url, options) => { resetCacheMode = options.cache; throw new Error('offline'); },
+});
+assert.equal(resetCacheMode, 'no-store', '用户主动刷新天气必须绕过浏览器 HTTP 缓存');
+assert.equal(resetWeather.stale, false, '用户主动刷新失败时不得重新采用旧预报缓存');
+assert.equal(resetWeather.source, WEATHER_SOURCE_CLIMATE_ESTIMATE);
+assert.equal(resetWeather.store.lastSuccess, null, '用户主动刷新必须清空无法验证的新鲜度缓存');
 for (const [reason, response] of [
     ['http', { ok: false, status: 503 }],
     ['json', { ok: true, json: async () => { throw new Error('broken json'); } }],
@@ -941,9 +954,14 @@ assert.match(renderedSchedule, /角色回复后，日历日期会随正文更新
 assert.doesNotMatch(renderedSchedule, /避免误改/);
 for (const label of ['日程', '天气', '生理期', '菜谱']) {
     const rendered = label === '天气' ? renderedWeather : label === '生理期' ? renderedCycle : label === '菜谱' ? renderedRecipe : renderedSchedule;
-    assert.match(rendered, new RegExp(`<b>${label}</b><small>开启后供正文生成读取；设置按当前会话独立保存。</small>`));
+    assert.match(rendered, new RegExp(`<b>${label}注入</b><small class="pm-calendar-setting-hint">开启后，角色回复时会参考当前会话中的相关信息。</small>`));
+    assert.match(rendered, /class="pm-calendar-data-tools pm-calendar-injection-card"/,
+        `${label}注入开关必须使用独立卡片区域`);
     assert.doesNotMatch(rendered, /<h3>上下文注入<\/h3>/, `${label}设置不得重复显示上下文注入模块标题`);
 }
+assert.match(renderedSchedule, /class="pm-calendar-card-action"[^>]*data-action="calendar-worldbook-columns"[^>]*>选择栏目<\/button>/,
+    '数据库记忆入口必须使用统一的卡片动作按钮');
+assert.match(renderedSchedule, /选择生成日程时可参考的数据库记忆栏目。/);
 assert.match(renderedSchedule, /<h3>正文日期<\/h3>[\s\S]*?<h3>节假日数据<\/h3>[\s\S]*?<h3>生成规则<\/h3>/,
     '日程生成规则模块必须位于设置区最下面');
 assert.doesNotMatch(renderedSchedule, /data-calendar-editor|data-calendar-occasion-editor|pm-calendar-editor-switch/,
@@ -1232,14 +1250,22 @@ try {
     }));
     let calendarMarkup = '';
     let calendarShell = { scrollTop: 0 };
+    let calendarManagement = null;
     const container = {
         get innerHTML() { return calendarMarkup; },
         set innerHTML(value) {
             calendarMarkup = value;
             calendarShell = { scrollTop: 0 };
+            const match = value.match(/data-calendar-management="([^"]+)"([^>]*)>/);
+            calendarManagement = match ? {
+                dataset: { calendarManagement: match[1] },
+                open: /\sopen(?:\s|>|$)/.test(match[2]),
+            } : null;
         },
         querySelector(selector) {
-            return selector === '.pm-calendar-shell' ? calendarShell : null;
+            if (selector === '.pm-calendar-shell') return calendarShell;
+            if (selector === '[data-calendar-management]') return calendarManagement;
+            return null;
         },
     };
     const statusNode = { textContent: '' };
@@ -1306,6 +1332,12 @@ try {
         return overlay;
     };
     let injectionCalls = 0;
+    const previousWorldBookWindow = globalThis.window;
+    const calendarWorldBookCalls = [];
+    globalThis.window = {
+        ...previousWorldBookWindow,
+        __pmShowWorldBookColumns: async options => { calendarWorldBookCalls.push(options); },
+    };
     const deps = {
         getStorageId: () => storageA,
         gatherContext: async () => ({}),
@@ -1322,14 +1354,11 @@ try {
         applyBidirectionalInjection: async () => { injectionCalls += 1; },
     };
     installCalendar({ phoneWindow }, deps);
-    const previousWorldBookWindow = globalThis.window;
-    const calendarWorldBookCalls = [];
-    globalThis.window = {
-        ...previousWorldBookWindow,
-        __pmShowWorldBookColumns: async options => { calendarWorldBookCalls.push(options); },
-    };
     await deps.handleCalendarAction({ dataset: { action: 'calendar-worldbook-columns' } }, { querySelector: () => null });
-    assert.deepEqual(calendarWorldBookCalls, [{ title: '日历可读的数据库记忆', module: 'calendar' }],
+    assert.deepEqual(calendarWorldBookCalls, [{
+        title: '数据来源', module: 'calendar',
+        backAction: 'window.__pmReturnToCalendarDataSource()', backLabel: '返回日历',
+    }],
         '日历数据库记忆入口必须路由到统一栏目选择器并传入 calendar 模块');
     if (previousWorldBookWindow === undefined) delete globalThis.window; else globalThis.window = previousWorldBookWindow;
     assert.equal(deps.renderCalendar(storageA), true);
@@ -1337,8 +1366,12 @@ try {
     const detailDate = () => container.innerHTML.match(/data-calendar-selected-detail="(\d{4}-\d{2}-\d{2})"/)?.[1];
     const dayTag = date => container.innerHTML.match(new RegExp(`<button[^>]*data-calendar-date="${date}"[^>]*>`))?.[0] || '';
     assert.match(container.innerHTML, /data-calendar-view-mode="schedule"/);
+    calendarManagement.open = true;
+    calendarShell.scrollTop = 146;
     assert.doesNotMatch(container.innerHTML, /<h3>生理周期<\/h3>/);
     await deps.handleCalendarAction({ dataset: { action: 'calendar-toggle-detail-edit' } }, { querySelector: () => null });
+    assert.equal(calendarManagement.open, true, '日历设置展开后重新渲染不得自动闭合');
+    assert.equal(calendarShell.scrollTop, 146, '日历设置重新渲染不得回滚到页面头部');
     assert.match(container.innerHTML, /data-action="calendar-toggle-detail-edit"[^>]*aria-pressed="true"/);
     assert.match(container.innerHTML, /data-action="calendar-edit-entry"[^>]*data-entry-kind="event"[^>]*data-entry-id="shared-entry-id"/);
     assert.match(container.innerHTML, /data-action="calendar-delete-entry"[^>]*data-entry-kind="occasion"[^>]*data-entry-id="shared-entry-id"/);
@@ -2828,12 +2861,15 @@ try {
 
     const weatherRefreshResponse = deferred();
     let weatherRefreshSignal;
+    let weatherRefreshCacheMode;
     fetchImpl = async (url, options) => {
         weatherRefreshSignal = options.signal;
+        weatherRefreshCacheMode = options.cache;
         return weatherRefreshResponse.promise;
     };
     const weatherRefreshPromise = deps.handleCalendarAction({ dataset: { action: 'calendar-weather-refresh' } }, weatherApp);
     assert.ok(weatherRefreshSignal instanceof AbortSignal, '天气刷新必须向网络请求传递任务 signal');
+    assert.equal(weatherRefreshCacheMode, 'no-store', '右上角天气刷新必须绕过浏览器缓存');
     assert.match(container.innerHTML, /class="pm-calendar-header-action is-loading"[^>]*data-action="calendar-weather-refresh"[^>]*aria-busy="true"[^>]*disabled/,
         '天气刷新 pending 时必须显示可达的 loading 状态并禁用按钮');
     weatherRefreshResponse.resolve({ ok: true, json: async () => weatherPayload });

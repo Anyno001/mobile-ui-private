@@ -1714,9 +1714,9 @@ ${userPrompt}` : userPrompt;
       }
     }).filter(Boolean);
   }
-  function weatherFallback(location, key, store, reason) {
+  function weatherFallback(location, key, store, reason, { resetCache = false } = {}) {
     const current = normalizeWeatherStore(store);
-    if (current.lastSuccess && current.lastSuccess.locationKey === key) {
+    if (!resetCache && current.lastSuccess && current.lastSuccess.locationKey === key) {
       const nextStore2 = normalizeWeatherStore({
         ...current,
         lastSuccess: { ...current.lastSuccess, source: WEATHER_SOURCE_CACHED_FORECAST }
@@ -1740,7 +1740,7 @@ ${userPrompt}` : userPrompt;
       reason
     };
   }
-  async function fetchWeatherForecast(location, store, { fetchImpl, signal, timeout } = {}) {
+  async function fetchWeatherForecast(location, store, { fetchImpl, signal, timeout, resetCache = false } = {}) {
     const loc = normalizeWeatherLocation(location);
     const key = weatherLocationKey(loc);
     const fetch_ = fetchImpl || globalThis.fetch;
@@ -1749,27 +1749,27 @@ ${userPrompt}` : userPrompt;
     const requestSignal = makeSignal(ms, signal);
     let response;
     try {
-      response = await fetch_(url, { signal: requestSignal.signal });
+      response = await fetch_(url, { signal: requestSignal.signal, cache: resetCache ? "no-store" : "default" });
     } catch (e) {
       if (signal?.aborted) throw new Error("\u5929\u6C14\u9884\u62A5\u8BF7\u6C42\u5DF2\u53D6\u6D88");
-      return weatherFallback(loc, key, store, requestSignal.signal.aborted ? "timeout" : "network");
+      return weatherFallback(loc, key, store, requestSignal.signal.aborted ? "timeout" : "network", { resetCache });
     } finally {
       requestSignal.cleanup();
     }
     if (!response.ok) {
-      return weatherFallback(loc, key, store, "http");
+      return weatherFallback(loc, key, store, "http", { resetCache });
     }
     let json;
     try {
       json = await response.json();
     } catch {
-      return weatherFallback(loc, key, store, "json");
+      return weatherFallback(loc, key, store, "json", { resetCache });
     }
     let forecast;
     try {
       forecast = normalizeWeatherForecast(json);
     } catch {
-      return weatherFallback(loc, key, store, "data");
+      return weatherFallback(loc, key, store, "data", { resetCache });
     }
     const nextStore = normalizeWeatherStore({
       location: loc,
@@ -2981,12 +2981,15 @@ ${userPrompt}` : userPrompt;
     period: { label: "\u7ECF\u671F", icon: CYCLE_PERIOD_ICON_SVG },
     ovulatory: { label: "\u6613\u5B55\u671F", icon: CYCLE_FERTILE_ICON_SVG }
   };
-  var occasionTypeLabel = (type, repeat = "yearly") => {
+  var occasionTypeLabel = (type, repeat = "yearly", intervalDays = 1) => {
     if (repeat === "daily") return "\u6BCF\u65E5\u91CD\u590D";
     if (repeat === "weekly") return "\u6BCF\u5468\u91CD\u590D";
     if (repeat === "biweekly") return "\u6BCF\u4E24\u5468\u91CD\u590D";
     if (repeat === "monthly") return "\u6BCF\u6708\u91CD\u590D";
-    if (repeat === "custom") return "\u6BCFN\u5929\u91CD\u590D";
+    if (repeat === "custom") {
+      const days = Number(intervalDays);
+      return `\u6BCF${Number.isInteger(days) && days >= 1 && days <= 9999 ? days : 1}\u5929\u91CD\u590D`;
+    }
     return type === "birthday" ? "\u751F\u65E5" : "\u7EAA\u5FF5\u65E5";
   };
   function inlineEntryActions(kind, id2, title) {
@@ -2996,7 +2999,7 @@ ${userPrompt}` : userPrompt;
   function eventRows(scope, occasionsByDate, date, editing = false) {
     const events = scope.events[date] || [];
     const occasionRows = (occasionsByDate.get(date) || []).map((occasion) => `<article class="pm-calendar-event is-occasion" data-occasion-id="${escapeAttr(occasion.id)}">
-        <div><b>${escapeHtml(occasion.title)}</b><span>${occasionTypeLabel(occasion.type, occasion.repeat)}${occasion.leapAdjusted ? "\uFF08\u95F0\u65E5\u987A\u5EF6\uFF09" : ""}${occasion.note ? ` \xB7 ${escapeHtml(occasion.note)}` : ""}</span></div>
+        <div><b>${escapeHtml(occasion.title)}</b><span>${occasionTypeLabel(occasion.type, occasion.repeat, occasion.intervalDays)}${occasion.leapAdjusted ? "\uFF08\u95F0\u65E5\u987A\u5EF6\uFF09" : ""}${occasion.note ? ` \xB7 ${escapeHtml(occasion.note)}` : ""}</span></div>
         ${editing ? inlineEntryActions("occasion", occasion.id, occasion.title) : ""}
     </article>`);
     const eventItems = events.map((event) => `<article class="pm-calendar-event" data-event-id="${escapeAttr(event.id)}">
@@ -3106,7 +3109,7 @@ ${userPrompt}` : userPrompt;
     ).join("")}</div>`;
   }
   function injectionToggle(action, label, enabled) {
-    return `<button type="button" class="pm-calendar-auto-switch" data-action="${action}" role="switch" aria-checked="${enabled === true}"><span><b>${label}</b><small class="pm-calendar-setting-hint">\u5F00\u542F\u540E\u4F9B\u6B63\u6587\u751F\u6210\u8BFB\u53D6\uFF1B\u8BBE\u7F6E\u6309\u5F53\u524D\u4F1A\u8BDD\u72EC\u7ACB\u4FDD\u5B58\u3002</small></span><i aria-hidden="true"></i></button>`;
+    return `<button type="button" class="pm-calendar-auto-switch" data-action="${action}" role="switch" aria-checked="${enabled === true}"><span><b>${label}</b><small class="pm-calendar-setting-hint">\u5F00\u542F\u540E\uFF0C\u89D2\u8272\u56DE\u590D\u65F6\u4F1A\u53C2\u8003\u5F53\u524D\u4F1A\u8BDD\u4E2D\u7684\u76F8\u5173\u4FE1\u606F\u3002</small></span><i aria-hidden="true"></i></button>`;
   }
   function renderCalendarManagement({
     scope,
@@ -3119,23 +3122,25 @@ ${userPrompt}` : userPrompt;
     holidayAvailable = true,
     holidayRange = null,
     cycleSubjects = [],
-    selectedCycleSubject = "__self__"
+    selectedCycleSubject = "__self__",
+    managementOpen
   }) {
+    const open = managementOpen ?? ["recipe", "cycle"].includes(viewMode) ? " open" : "";
     if (viewMode === "recipe") {
       const region = recipeScope?.regionPreference || "";
       const applied = recipeScope?.lastGeneratedRegion || "";
       const generationRule2 = recipeScope?.generationRule || DEFAULT_RECIPE_GENERATION_RULE;
-      return `<details class="pm-calendar-management" data-calendar-management="recipe" open><summary>\u83DC\u8C31\u8BBE\u7F6E</summary><div class="pm-calendar-management-content"><section class="pm-calendar-data-tools">${injectionToggle("calendar-toggle-recipe-injection", "\u83DC\u8C31", scope.injectionRecipeEnabled)}</section><section class="pm-calendar-data-tools"><h3>\u996E\u98DF\u5730\u533A / \u6587\u5316</h3><div class="pm-calendar-data-row"><input data-recipe-region maxlength="120" value="${escapeAttr(region)}" placeholder="\u5DDD\u6E1D\u3001\u6F6E\u6C55\u3001\u5173\u897F\u6216\u67B6\u7A7A\u5730\u533A\uFF1B\u7559\u7A7A\u6309\u5267\u60C5\u63A8\u65AD" aria-label="\u83DC\u8C31\u996E\u98DF\u5730\u533A\u6216\u6587\u5316"><button type="button" data-action="calendar-recipe-region-save">\u4FDD\u5B58</button></div><small class="pm-calendar-attribution">${region ? `\u624B\u52A8\u6307\u5B9A\uFF1A${escapeHtml(region)}` : applied ? `\u6700\u8FD1\u5267\u60C5\u63A8\u65AD\uFF1A${escapeHtml(applied)}` : "\u5C1A\u672A\u751F\u6210\u5730\u533A\u4F9D\u636E"}</small></section><section class="pm-calendar-data-tools"><h3>\u751F\u6210\u89C4\u5219</h3><textarea class="pm-calendar-generation-rule" data-recipe-generation-rule maxlength="3000" aria-label="\u83DC\u8C31\u751F\u6210\u89C4\u5219">${escapeHtml(generationRule2)}</textarea><div class="pm-calendar-editor-actions"><button type="button" class="is-primary" data-action="calendar-recipe-generation-rule-save">\u4FDD\u5B58\u751F\u6210\u89C4\u5219</button></div></section></div></details>`;
+      return `<details class="pm-calendar-management" data-calendar-management="recipe"${open}><summary>\u83DC\u8C31\u8BBE\u7F6E</summary><div class="pm-calendar-management-content"><section class="pm-calendar-data-tools pm-calendar-injection-card">${injectionToggle("calendar-toggle-recipe-injection", "\u83DC\u8C31\u6CE8\u5165", scope.injectionRecipeEnabled)}</section><section class="pm-calendar-data-tools"><h3>\u996E\u98DF\u5730\u533A / \u6587\u5316</h3><div class="pm-calendar-data-row"><input data-recipe-region maxlength="120" value="${escapeAttr(region)}" placeholder="\u5DDD\u6E1D\u3001\u6F6E\u6C55\u3001\u5173\u897F\u6216\u67B6\u7A7A\u5730\u533A\uFF1B\u7559\u7A7A\u6309\u5267\u60C5\u63A8\u65AD" aria-label="\u83DC\u8C31\u996E\u98DF\u5730\u533A\u6216\u6587\u5316"><button type="button" data-action="calendar-recipe-region-save">\u4FDD\u5B58</button></div><small class="pm-calendar-attribution">${region ? `\u624B\u52A8\u6307\u5B9A\uFF1A${escapeHtml(region)}` : applied ? `\u6700\u8FD1\u5267\u60C5\u63A8\u65AD\uFF1A${escapeHtml(applied)}` : "\u5C1A\u672A\u751F\u6210\u5730\u533A\u4F9D\u636E"}</small></section><section class="pm-calendar-data-tools"><h3>\u751F\u6210\u89C4\u5219</h3><textarea class="pm-calendar-generation-rule" data-recipe-generation-rule maxlength="3000" aria-label="\u83DC\u8C31\u751F\u6210\u89C4\u5219">${escapeHtml(generationRule2)}</textarea><div class="pm-calendar-editor-actions"><button type="button" class="is-primary" data-action="calendar-recipe-generation-rule-save">\u4FDD\u5B58\u751F\u6210\u89C4\u5219</button></div></section></div></details>`;
     }
     if (viewMode === "weather") {
       const storedSource = weatherStore?.lastSuccess?.source || (weatherStore?.lastSuccess ? "forecast" : null);
       const currentSource = storedSource ? weatherSourceLabel(storedSource) : "\u4EC5\u6C14\u5019\u63A8\u6F14";
-      return `<details class="pm-calendar-management" data-calendar-management="weather"><summary>\u5929\u6C14\u8BBE\u7F6E</summary><div class="pm-calendar-management-content"><section class="pm-calendar-data-tools">${injectionToggle("calendar-toggle-weather-injection", "\u5929\u6C14", scope.injectionWeatherEnabled)}</section><section class="pm-calendar-data-tools"><h3>\u5929\u6C14\u4F4D\u7F6E</h3><div class="pm-calendar-data-row"><input data-weather-query placeholder="\u641C\u7D22\u57CE\u5E02\u6216\u5730\u533A" maxlength="100" aria-label="\u641C\u7D22\u5929\u6C14\u4F4D\u7F6E"><button type="button" data-action="calendar-weather-search">\u641C\u7D22</button><button type="button" data-action="calendar-weather-refresh">\u5237\u65B0</button></div>${weatherSearchResults(weatherResults)}<small class="pm-calendar-attribution">${weatherStore.location ? `${escapeHtml(weatherStore.location.name)} \xB7 \u5F53\u524D\u6570\u636E ${escapeHtml(currentSource)} \xB7 \u9884\u62A5\u5916\u65E5\u671F\u4F7F\u7528\u6C14\u5019\u63A8\u6F14` : "\u5C1A\u672A\u8BBE\u7F6E\u5929\u6C14\u4F4D\u7F6E \xB7 \u65E0\u6CD5\u63A8\u6F14"}</small></section></div></details>`;
+      return `<details class="pm-calendar-management" data-calendar-management="weather"${open}><summary>\u5929\u6C14\u8BBE\u7F6E</summary><div class="pm-calendar-management-content"><section class="pm-calendar-data-tools pm-calendar-injection-card">${injectionToggle("calendar-toggle-weather-injection", "\u5929\u6C14\u6CE8\u5165", scope.injectionWeatherEnabled)}</section><section class="pm-calendar-data-tools"><h3>\u5929\u6C14\u4F4D\u7F6E</h3><div class="pm-calendar-data-row"><input data-weather-query placeholder="\u641C\u7D22\u57CE\u5E02\u6216\u5730\u533A" maxlength="100" aria-label="\u641C\u7D22\u5929\u6C14\u4F4D\u7F6E"><button type="button" data-action="calendar-weather-search">\u641C\u7D22</button><button type="button" data-action="calendar-weather-refresh">\u5237\u65B0</button></div>${weatherSearchResults(weatherResults)}<small class="pm-calendar-attribution">${weatherStore.location ? `${escapeHtml(weatherStore.location.name)} \xB7 \u5F53\u524D\u6570\u636E ${escapeHtml(currentSource)} \xB7 \u9884\u62A5\u5916\u65E5\u671F\u4F7F\u7528\u6C14\u5019\u63A8\u6F14` : "\u5C1A\u672A\u8BBE\u7F6E\u5929\u6C14\u4F4D\u7F6E \xB7 \u65E0\u6CD5\u63A8\u6F14"}</small></section></div></details>`;
     }
     if (viewMode === "cycle") {
       const startDay = cycleScope.lastPeriodStart ? Number(cycleScope.lastPeriodStart.slice(8, 10)) : 1;
       const subjects = cycleSubjects.length ? cycleSubjects : [{ value: "__self__", label: "<user>" }];
-      return `<details class="pm-calendar-management" data-calendar-management="cycle" open><summary>\u751F\u7406\u671F\u8BBE\u7F6E</summary><div class="pm-calendar-management-content"><section class="pm-calendar-data-tools">${injectionToggle("calendar-toggle-cycle-injection", "\u751F\u7406\u671F", scope.injectionCycleEnabled)}</section><form class="pm-calendar-editor pm-calendar-cycle-editor" data-calendar-cycle-editor>
+      return `<details class="pm-calendar-management" data-calendar-management="cycle"${open}><summary>\u751F\u7406\u671F\u8BBE\u7F6E</summary><div class="pm-calendar-management-content"><section class="pm-calendar-data-tools pm-calendar-injection-card">${injectionToggle("calendar-toggle-cycle-injection", "\u751F\u7406\u671F\u6CE8\u5165", scope.injectionCycleEnabled)}</section><form class="pm-calendar-editor pm-calendar-cycle-editor" data-calendar-cycle-editor>
           <label>\u8BB0\u5F55\u5BF9\u8C61<select name="subject" data-action="calendar-cycle-subject" aria-label="\u751F\u7406\u671F\u8BB0\u5F55\u5BF9\u8C61">${subjects.map((item) => `<option value="${escapeAttr(item.value)}" ${item.value === selectedCycleSubject ? "selected" : ""}>${escapeHtml(item.label)}</option>`).join("")}</select></label>
           <label class="pm-calendar-cycle-toggle"><span><b>\u542F\u7528\u751F\u7406\u671F\u63D0\u793A</b><small>\u4EC5\u5728\u672C\u5730\u6309\u5F53\u524D\u4F1A\u8BDD\u548C\u6240\u9009\u89D2\u8272\u4FDD\u5B58</small></span><span class="pm-calendar-cycle-switch"><input class="pm-calendar-cycle-input" name="enabled" type="checkbox" ${cycleScope.enabled ? "checked" : ""} aria-label="\u542F\u7528\u751F\u7406\u671F\u63D0\u793A"><span class="pm-custom-check" aria-hidden="true"></span></span></label>
           <label>\u6BCF\u6708\u7ECF\u671F\u901A\u5E38\u4ECE\u51E0\u53F7\u5F00\u59CB<select name="periodStartDay" aria-label="\u6BCF\u6708\u7ECF\u671F\u5F00\u59CB\u65E5">${Array.from({ length: 28 }, (_, index) => index + 1).map((day) => `<option value="${day}" ${day === startDay ? "selected" : ""}>${day} \u53F7</option>`).join("")}</select></label>
@@ -3144,9 +3149,9 @@ ${userPrompt}` : userPrompt;
         </form></div></details>`;
     }
     const generationRule = scope.generationRule || DEFAULT_CALENDAR_GENERATION_RULE;
-    return `<details class="pm-calendar-management" data-calendar-management="schedule"><summary>\u65E5\u5386\u8BBE\u7F6E</summary><div class="pm-calendar-management-content">
-        <section class="pm-calendar-data-tools">${injectionToggle("calendar-toggle-schedule-injection", "\u65E5\u7A0B", scope.injectionScheduleEnabled)}</section>
-        <section class="pm-calendar-data-tools pm-calendar-database-card"><div class="pm-calendar-database-copy"><h3>\u6570\u636E\u5E93\u8BB0\u5FC6</h3><span class="pm-calendar-setting-hint">\u9009\u62E9\u65E5\u5386\u751F\u6210\u53EF\u8BFB\u53D6\u7684 TavernDB \u680F\u76EE</span></div><button type="button" data-action="calendar-worldbook-columns">\u8BBE\u7F6E</button></section>
+    return `<details class="pm-calendar-management" data-calendar-management="schedule"${open}><summary>\u65E5\u5386\u8BBE\u7F6E</summary><div class="pm-calendar-management-content">
+        <section class="pm-calendar-data-tools pm-calendar-injection-card">${injectionToggle("calendar-toggle-schedule-injection", "\u65E5\u7A0B\u6CE8\u5165", scope.injectionScheduleEnabled)}</section>
+        <section class="pm-calendar-data-tools pm-calendar-database-card"><div class="pm-calendar-database-copy"><h3>\u6570\u636E\u5E93\u8BB0\u5FC6</h3><span class="pm-calendar-setting-hint">\u9009\u62E9\u751F\u6210\u65E5\u7A0B\u65F6\u53EF\u53C2\u8003\u7684\u6570\u636E\u5E93\u8BB0\u5FC6\u680F\u76EE\u3002</span></div><button type="button" class="pm-calendar-card-action" data-action="calendar-worldbook-columns" aria-label="\u9009\u62E9\u65E5\u5386\u53EF\u8BFB\u53D6\u7684\u6570\u636E\u5E93\u8BB0\u5FC6\u680F\u76EE">\u9009\u62E9\u680F\u76EE</button></section>
         <section class="pm-calendar-data-tools pm-calendar-scan-card"><h3>\u6B63\u6587\u65E5\u671F</h3><p>\u8BC6\u522B\u6700\u540E\u4E00\u6761\u6B63\u6587\u4E2D\u7684\u5B8C\u6574\u65E5\u671F\uFF0C\u5E76\u8BBE\u4E3A\u5F53\u524D\u6545\u4E8B\u65E5\u671F\u3002</p><div class="pm-calendar-data-row pm-calendar-date-tags-row"><input data-calendar-date-tags value="${escapeAttr((scope.dateTags || ["date"]).join(", "))}" maxlength="160" placeholder="date, time_date" aria-label="\u6B63\u6587\u65E5\u671F\u6807\u7B7E"><button type="button" data-action="calendar-date-sync">\u4FDD\u5B58\u5E76\u8BC6\u522B</button></div><button type="button" class="pm-calendar-auto-switch" data-action="calendar-toggle-auto" role="switch" aria-checked="${scope.autoAdjust}"><span><b>\u81EA\u52A8\u8DDF\u968F\u6B63\u6587\u65E5\u671F</b><small>\u89D2\u8272\u56DE\u590D\u540E\uFF0C\u65E5\u5386\u65E5\u671F\u4F1A\u968F\u6B63\u6587\u66F4\u65B0\u3002</small></span><i aria-hidden="true"></i></button></section>
         <section class="pm-calendar-data-tools"><h3>\u8282\u5047\u65E5\u6570\u636E</h3><div class="pm-calendar-data-row pm-calendar-holiday-row"><select data-action="calendar-holiday-country" data-calendar-country aria-label="\u8282\u5047\u65E5\u56FD\u5BB6"><option value="CN" ${holidayCache.selectedCountry === "CN" ? "selected" : ""}>\u4E2D\u56FD</option><option value="US" ${holidayCache.selectedCountry === "US" ? "selected" : ""}>\u7F8E\u56FD</option><option value="JP" ${holidayCache.selectedCountry === "JP" ? "selected" : ""}>\u65E5\u672C</option></select><button type="button" data-action="calendar-holiday-refresh" ${holidayAvailable ? "" : 'disabled aria-disabled="true"'}>\u5237\u65B0\u8282\u5047\u65E5</button></div>${holidayAvailable ? "" : `<small class="pm-calendar-attribution">\u8BE5\u56FD\u5BB6\u5728\u5F53\u524D\u5E74\u4EE3\u65E0\u5916\u90E8\u6570\u636E\u6E90\uFF08\u4EC5\u652F\u6301 ${holidayRange?.min ?? "\u672A\u77E5"}\u2013${holidayRange?.max ?? "\u672A\u77E5"} \u5E74\uFF09</small>`}</section>
         <section class="pm-calendar-data-tools"><h3>\u751F\u6210\u89C4\u5219</h3><textarea class="pm-calendar-generation-rule" data-calendar-generation-rule maxlength="3000" aria-label="\u65E5\u7A0B\u751F\u6210\u89C4\u5219">${escapeHtml(generationRule)}</textarea><div class="pm-calendar-editor-actions"><button type="button" class="is-primary" data-action="calendar-generation-rule-save">\u4FDD\u5B58\u751F\u6210\u89C4\u5219</button></div></section>
@@ -3225,6 +3230,18 @@ ${userPrompt}` : userPrompt;
       hasRecipe: Boolean(firstMeal)
     };
   }
+  function preserveCalendarManagementState(container, view) {
+    const management = container?.querySelector?.("[data-calendar-management]");
+    const mode = management?.dataset?.calendarManagement;
+    if (!mode) return view;
+    return {
+      ...view,
+      managementOpenByMode: {
+        ...view.managementOpenByMode || {},
+        [mode]: management.open === true
+      }
+    };
+  }
   function renderCalendarPageHtml(scope, occasionScope, status = "", holidayCache = {}, weatherStore = {}, cycleScope = {}, weatherResults = [], view = {}, recipeScope = {}) {
     const today = calendarReferenceDate(scope);
     const viewMode = ["schedule", "weather", "cycle", "recipe"].includes(view.viewMode) ? view.viewMode : "schedule";
@@ -3299,7 +3316,8 @@ ${userPrompt}` : userPrompt;
       holidayRange,
       editorKind: view.editorKind,
       cycleSubjects: view.cycleSubjects,
-      selectedCycleSubject: view.cycleSubject
+      selectedCycleSubject: view.cycleSubject,
+      managementOpen: view.managementOpenByMode?.[viewMode]
     });
     const monthPanel = renderCalendarMonthPanel(scope, viewYear, viewMonth, view.monthPanelOpen === true);
     const headerBusy = viewMode === "weather" ? view.weatherRefreshing === true : viewMode === "recipe" ? view.recipeGenerating === true : viewMode === "schedule" && view.generating === true;
@@ -3571,7 +3589,7 @@ ${userPrompt}` : userPrompt;
   var calendarGenerationErrorMessage = generationErrorMessage;
   function installCalendar(state, deps) {
     const { getStorageId: getStorageId2, gatherContext: gatherContext2, callAI, fetchImpl, makeOverlay, closeOverlay } = deps;
-    window.__pmReturnToCalendarDataSource = () => {
+    if (typeof window !== "undefined") window.__pmReturnToCalendarDataSource = () => {
       closeOverlay?.("replace");
       return deps.showPhoneCalendarPage?.();
     };
@@ -3641,7 +3659,8 @@ ${userPrompt}` : userPrompt;
         generating: false,
         recipeGenerating: false,
         weatherRefreshing: false,
-        detailEditing: false
+        detailEditing: false,
+        managementOpenByMode: {}
       };
       runtime.viewByStorage.set(storageId, view);
       return view;
@@ -3658,16 +3677,18 @@ ${userPrompt}` : userPrompt;
       if (!container) return false;
       const previousShell = container.querySelector?.(".pm-calendar-shell");
       const scrollTop = previousShell?.scrollTop;
+      const currentView = preserveCalendarManagementState(container, viewFor(storageId));
+      runtime.viewByStorage.set(storageId, currentView);
       container.innerHTML = renderCalendarPageHtml(
         scope(storageId),
         occasions(storageId),
         runtime.statusByStorage.get(storageId) || "",
         runtime.holidayStore,
         runtime.weatherStore,
-        cycles(storageId, viewFor(storageId).cycleSubject),
+        cycles(storageId, currentView.cycleSubject),
         runtime.weatherSearchResults,
         {
-          ...viewFor(storageId),
+          ...currentView,
           cycleSubjects: cycleSubjectOptions(storageId)
         },
         recipeScopeFor(runtime.recipeStore, storageId)
@@ -3803,6 +3824,7 @@ ${userPrompt}` : userPrompt;
       rerender(storageId);
       try {
         const result = await fetchWeatherForecast(runtime.weatherStore.location, runtime.weatherStore, {
+          resetCache: true,
           fetchImpl: fetchImpl || globalThis.fetch,
           signal: task.signal
         });
@@ -4172,7 +4194,7 @@ ${userPrompt}` : userPrompt;
         return;
       }
       if (action === "calendar-worldbook-columns") {
-        await window.__pmShowWorldBookColumns?.({
+        await globalThis.window?.__pmShowWorldBookColumns?.({
           title: "\u6570\u636E\u6765\u6E90",
           module: "calendar",
           backAction: "window.__pmReturnToCalendarDataSource()",
@@ -8698,6 +8720,45 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
     clearOpenScene();
     return true;
   }
+  async function runCalendarPageTransition({
+    scopeId,
+    loadStore: loadStore2,
+    renderCalendar,
+    updatePhoneUi,
+    refreshDesktop,
+    showPhonePage,
+    clearOpenScene,
+    isCurrent = () => true,
+    getCurrentPage = () => "desktop"
+  }) {
+    if (!scopeId || scopeId === "sms_unknown__default") throw new Error("\u8BF7\u5148\u6253\u5F00\u6709\u6548\u7684\u89D2\u8272\u804A\u5929");
+    clearOpenScene();
+    const store = await loadStore2();
+    if (!isCurrent()) return false;
+    if (!renderCalendar(scopeId)) throw new Error("\u65E5\u5386\u9875\u9762\u6E32\u67D3\u5931\u8D25");
+    if (!isCurrent()) return false;
+    const previousPage = getCurrentPage();
+    if (!showPhonePage("calendar")) throw new Error("\u65E5\u5386\u9875\u9762\u4E0D\u53EF\u7528");
+    try {
+      updatePhoneUi(scopeId, store);
+      refreshDesktop(scopeId, store);
+    } catch (error) {
+      if (isCurrent() && getCurrentPage() === "calendar") showPhonePage(previousPage);
+      throw error;
+    }
+    return isCurrent() && getCurrentPage() === "calendar";
+  }
+  function dispatchCalendarAppAction(button, app, { showPhoneDesktopPage, handleCalendarAction }) {
+    if (app?.id !== "pm-calendar-app") return false;
+    return (async () => {
+      if (button.dataset.action === "calendar-home") await showPhoneDesktopPage();
+      else {
+        if (typeof handleCalendarAction !== "function") throw new Error("\u65E5\u5386\u52A8\u4F5C\u5904\u7406\u5668\u5C1A\u672A\u5B89\u88C5");
+        await handleCalendarAction(button, app);
+      }
+      return true;
+    })();
+  }
   function resolvePhoneChatTarget(uiScope, histories, groups, defaultContact) {
     const historyMap = histories && typeof histories === "object" ? histories : {};
     const groupMap = groups && typeof groups === "object" ? groups : {};
@@ -9830,28 +9891,24 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
         getCurrentPage: () => phoneWindow?.querySelector(".pm-main-ui")?.dataset.page || null
       });
     };
-    async function showPhoneCalendarPage() {
-      invalidate();
-      runtime.openSceneId = null;
+    const showPhoneCalendarPage = () => {
       const scopeId = getStorageId2();
       const phoneWindow = _state.phoneWindow;
-      if (!scopeId || scopeId === "sms_unknown__default") throw new Error("\u8BF7\u5148\u6253\u5F00\u6709\u6548\u7684\u89D2\u8272\u804A\u5929");
-      const store = await loadStore2();
-      const isCurrent = () => _state.phoneActive && _state.phoneWindow === phoneWindow && getStorageId2() === scopeId;
-      if (!isCurrent()) return false;
-      if (!deps.renderCalendar?.(scopeId)) throw new Error("\u65E5\u5386\u9875\u9762\u6E32\u67D3\u5931\u8D25");
-      if (!isCurrent()) return false;
-      const previousPage = phoneWindow?.querySelector(".pm-main-ui")?.dataset.page || "desktop";
-      if (!showPhonePage("calendar")) throw new Error("\u65E5\u5386\u9875\u9762\u4E0D\u53EF\u7528");
-      try {
-        updatePhoneUiScope(scopeId, { lastPage: "calendar", lastSceneId: null }, store);
-        refreshDesktop(scopeId, store);
-      } catch (error) {
-        if (isCurrent() && phoneWindow?.querySelector(".pm-main-ui")?.dataset.page === "calendar") showPhonePage(previousPage);
-        throw error;
-      }
-      return isCurrent() && phoneWindow?.querySelector(".pm-main-ui")?.dataset.page === "calendar";
-    }
+      return runCalendarPageTransition({
+        scopeId,
+        loadStore: loadStore2,
+        renderCalendar: (id2) => deps.renderCalendar?.(id2) === true,
+        updatePhoneUi: (id2, store) => updatePhoneUiScope(id2, { lastPage: "calendar", lastSceneId: null }, store),
+        refreshDesktop,
+        showPhonePage,
+        clearOpenScene: () => {
+          invalidate();
+          runtime.openSceneId = null;
+        },
+        isCurrent: () => _state.phoneActive && _state.phoneWindow === phoneWindow && getStorageId2() === scopeId,
+        getCurrentPage: () => phoneWindow?.querySelector(".pm-main-ui")?.dataset.page || "desktop"
+      });
+    };
     function renderCommunityLauncher2(scopeId, store = runtime.store) {
       const scope = getScope(store, scopeId);
       runtime.openSceneId = null;
@@ -10078,12 +10135,9 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
     }
     async function handleAction(button, app) {
       const action = button.dataset.action;
-      if (app?.id === "pm-calendar-app") {
-        if (action === "calendar-home") await showPhoneDesktopPage();
-        else {
-          if (typeof deps.handleCalendarAction !== "function") throw new Error("\u65E5\u5386\u52A8\u4F5C\u5904\u7406\u5668\u5C1A\u672A\u5B89\u88C5");
-          await deps.handleCalendarAction(button, app);
-        }
+      const calendarAction = dispatchCalendarAppAction(button, app, { showPhoneDesktopPage, handleCalendarAction: deps.handleCalendarAction });
+      if (calendarAction) {
+        await calendarAction;
         return;
       }
       if (action === "more") {
@@ -14278,6 +14332,10 @@ ${antiFluff}`;
     custom: "\u81EA\u5B9A\u4E49\u5468\u671F\u65E5\u7A0B",
     yearly: null
   })[repeat] || null;
+  var usesExtendedOccasionWindow = (occasion) => {
+    const repeat = occasion.repeat || "yearly";
+    return repeat === "yearly" || repeat === "monthly" || repeat === "custom" && Number(occasion.intervalDays) >= 30;
+  };
   var COMMUNITY_KEY_PREFIX = `${BIDIRECTIONAL_KEY}:community:`;
   var CALENDAR_KEY_PREFIX = `${BIDIRECTIONAL_KEY}:calendar:`;
   var RECIPE_KEY_PREFIX = `${BIDIRECTIONAL_KEY}:recipe:`;
@@ -14405,7 +14463,6 @@ ${antiFluff}`;
     if (!currentStorageId) return "";
     const calendarScope = calendarScopeFor(calendarStore, currentStorageId);
     const windowStart = calendarReferenceDate(calendarScope, start);
-    const occasionDates = calendarDateRangeKeys(windowStart, 0, 59);
     const linesByDate = /* @__PURE__ */ new Map();
     const addFact = (date, fact) => {
       if (!fact) return;
@@ -14432,8 +14489,15 @@ ${antiFluff}`;
       }
     }
     if (calendarScope.injectionScheduleEnabled) {
-      const occasions = expandOccasions(occasionScopeFor(occasionStore, currentStorageId), { start: windowStart, days: 60 });
-      for (const occasion of occasions) {
+      const occasionScope = occasionScopeFor(occasionStore, currentStorageId);
+      const extendedScope = { occasions: occasionScope.occasions.filter(usesExtendedOccasionWindow) };
+      const standardScope = { occasions: occasionScope.occasions.filter((occasion) => !usesExtendedOccasionWindow(occasion)) };
+      const standardStart = calendarDateRangeKeys(windowStart, -3, -3)[0];
+      const expanded = [
+        ...expandOccasions(extendedScope, { start: windowStart, days: 60 }),
+        ...expandOccasions(standardScope, { start: standardStart, days: 10 })
+      ];
+      for (const occasion of expanded) {
         const kind = calendarRepeatLabel(occasion.repeat) || (occasion.type === "birthday" ? "\u751F\u65E5" : "\u7EAA\u5FF5\u65E5");
         addFact(occasion.date, `${kind}\uFF1A${occasion.title}${occasion.note ? `\uFF08${occasion.note.replace(/\s+/g, " ").slice(0, 180)}\uFF09` : ""}`);
       }
@@ -14460,7 +14524,7 @@ ${antiFluff}`;
         addFact(prediction.date, `\u751F\u7406\u5468\u671F\uFF08${subjectLabel}\uFF09\uFF1A${label}`);
       }
     }
-    const outputDates = [.../* @__PURE__ */ new Set([...scheduleDates, ...weatherDates, ...cycleDates, ...occasionDates.filter((date) => linesByDate.has(date))])].sort();
+    const outputDates = [...linesByDate.keys()].sort();
     const datedLines = outputDates.flatMap((date) => {
       const facts = [...linesByDate.get(date) || []];
       if (!facts.length) return [];

@@ -204,9 +204,9 @@ export async function searchWeatherLocations(query, { fetchImpl, signal, timeout
 
 // ── Fetch forecast ──
 
-function weatherFallback(location, key, store, reason) {
+function weatherFallback(location, key, store, reason, { resetCache = false } = {}) {
     const current = normalizeWeatherStore(store);
-    if (current.lastSuccess && current.lastSuccess.locationKey === key) {
+    if (!resetCache && current.lastSuccess && current.lastSuccess.locationKey === key) {
         const nextStore = normalizeWeatherStore({
             ...current, lastSuccess: { ...current.lastSuccess, source: WEATHER_SOURCE_CACHED_FORECAST },
         });
@@ -222,7 +222,7 @@ function weatherFallback(location, key, store, reason) {
     };
 }
 
-export async function fetchWeatherForecast(location, store, { fetchImpl, signal, timeout } = {}) {
+export async function fetchWeatherForecast(location, store, { fetchImpl, signal, timeout, resetCache = false } = {}) {
     const loc = normalizeWeatherLocation(location);
     const key = weatherLocationKey(loc);
     const fetch_ = fetchImpl || globalThis.fetch;
@@ -235,20 +235,20 @@ export async function fetchWeatherForecast(location, store, { fetchImpl, signal,
     const requestSignal = makeSignal(ms, signal);
     let response;
     try {
-        response = await fetch_(url, { signal: requestSignal.signal });
+        response = await fetch_(url, { signal: requestSignal.signal, cache: resetCache ? 'no-store' : 'default' });
     } catch (e) {
         if (signal?.aborted) throw new Error('天气预报请求已取消');
-        return weatherFallback(loc, key, store, requestSignal.signal.aborted ? 'timeout' : 'network');
+        return weatherFallback(loc, key, store, requestSignal.signal.aborted ? 'timeout' : 'network', { resetCache });
     } finally { requestSignal.cleanup(); }
     if (!response.ok) {
-        return weatherFallback(loc, key, store, 'http');
+        return weatherFallback(loc, key, store, 'http', { resetCache });
     }
     let json;
     try { json = await response.json(); } catch {
-        return weatherFallback(loc, key, store, 'json');
+        return weatherFallback(loc, key, store, 'json', { resetCache });
     }
     let forecast;
-    try { forecast = normalizeWeatherForecast(json); } catch { return weatherFallback(loc, key, store, 'data'); }
+    try { forecast = normalizeWeatherForecast(json); } catch { return weatherFallback(loc, key, store, 'data', { resetCache }); }
     const nextStore = normalizeWeatherStore({
         location: loc,
         lastSuccess: { locationKey: key, forecast, fetchedAt: Date.now(), source: WEATHER_SOURCE_FORECAST },

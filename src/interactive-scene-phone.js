@@ -24,6 +24,40 @@ export async function runDesktopPageTransition({
     return true;
 }
 
+export async function runCalendarPageTransition({
+    scopeId, loadStore, renderCalendar, updatePhoneUi, refreshDesktop, showPhonePage, clearOpenScene,
+    isCurrent = () => true, getCurrentPage = () => 'desktop',
+}) {
+    if (!scopeId || scopeId === 'sms_unknown__default') throw new Error('请先打开有效的角色聊天');
+    clearOpenScene();
+    const store = await loadStore();
+    if (!isCurrent()) return false;
+    if (!renderCalendar(scopeId)) throw new Error('日历页面渲染失败');
+    if (!isCurrent()) return false;
+    const previousPage = getCurrentPage();
+    if (!showPhonePage('calendar')) throw new Error('日历页面不可用');
+    try {
+        updatePhoneUi(scopeId, store);
+        refreshDesktop(scopeId, store);
+    } catch (error) {
+        if (isCurrent() && getCurrentPage() === 'calendar') showPhonePage(previousPage);
+        throw error;
+    }
+    return isCurrent() && getCurrentPage() === 'calendar';
+}
+
+export function dispatchCalendarAppAction(button, app, { showPhoneDesktopPage, handleCalendarAction }) {
+    if (app?.id !== 'pm-calendar-app') return false;
+    return (async () => {
+        if (button.dataset.action === 'calendar-home') await showPhoneDesktopPage();
+        else {
+            if (typeof handleCalendarAction !== 'function') throw new Error('日历动作处理器尚未安装');
+            await handleCalendarAction(button, app);
+        }
+        return true;
+    })();
+}
+
 export function resolvePhoneChatTarget(uiScope, histories, groups, defaultContact) {
     const historyMap = histories && typeof histories === 'object' ? histories : {};
     const groupMap = groups && typeof groups === 'object' ? groups : {};

@@ -24,6 +24,12 @@ const calendarRepeatLabel = repeat => ({
     yearly: null,
 })[repeat] || null;
 
+const usesExtendedOccasionWindow = occasion => {
+    const repeat = occasion.repeat || 'yearly';
+    return repeat === 'yearly' || repeat === 'monthly'
+        || (repeat === 'custom' && Number(occasion.intervalDays) >= 30);
+};
+
 const COMMUNITY_KEY_PREFIX = `${BIDIRECTIONAL_KEY}:community:`;
 const CALENDAR_KEY_PREFIX = `${BIDIRECTIONAL_KEY}:calendar:`;
 const RECIPE_KEY_PREFIX = `${BIDIRECTIONAL_KEY}:recipe:`;
@@ -151,7 +157,6 @@ export function renderCalendarContextInjection({
     if (!currentStorageId) return '';
     const calendarScope = calendarScopeFor(calendarStore, currentStorageId);
     const windowStart = calendarReferenceDate(calendarScope, start);
-    const occasionDates = calendarDateRangeKeys(windowStart, 0, 59);
     const linesByDate = new Map();
     const addFact = (date, fact) => {
         if (!fact) return;
@@ -178,8 +183,15 @@ export function renderCalendarContextInjection({
         }
     }
     if (calendarScope.injectionScheduleEnabled) {
-        const occasions = expandOccasions(occasionScopeFor(occasionStore, currentStorageId), { start: windowStart, days: 60 });
-        for (const occasion of occasions) {
+        const occasionScope = occasionScopeFor(occasionStore, currentStorageId);
+        const extendedScope = { occasions: occasionScope.occasions.filter(usesExtendedOccasionWindow) };
+        const standardScope = { occasions: occasionScope.occasions.filter(occasion => !usesExtendedOccasionWindow(occasion)) };
+        const standardStart = calendarDateRangeKeys(windowStart, -3, -3)[0];
+        const expanded = [
+            ...expandOccasions(extendedScope, { start: windowStart, days: 60 }),
+            ...expandOccasions(standardScope, { start: standardStart, days: 10 }),
+        ];
+        for (const occasion of expanded) {
             const kind = calendarRepeatLabel(occasion.repeat) || (occasion.type === 'birthday' ? '生日' : '纪念日');
             addFact(occasion.date, `${kind}：${occasion.title}${occasion.note ? `（${occasion.note.replace(/\s+/g, ' ').slice(0, 180)}）` : ''}`);
         }
@@ -209,7 +221,7 @@ export function renderCalendarContextInjection({
             addFact(prediction.date, `生理周期（${subjectLabel}）：${label}`);
         }
     }
-    const outputDates = [...new Set([...scheduleDates, ...weatherDates, ...cycleDates, ...occasionDates.filter(date => linesByDate.has(date))])].sort();
+    const outputDates = [...linesByDate.keys()].sort();
     const datedLines = outputDates.flatMap(date => {
         const facts = [...(linesByDate.get(date) || [])];
         if (!facts.length) return [];

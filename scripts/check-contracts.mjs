@@ -1493,6 +1493,7 @@ for (const expected of [
   'goToReferenceDate', 'moveCalendarMonth', 'jumpToMonth', 'showEntryEditor',
   'calendar-toggle-detail-edit', 'calendar-edit-entry', 'calendar-delete-entry', 'removeEntry',
   'weatherRefreshing: false', 'weatherRefreshTask: task', 'latestView.weatherRefreshTask === task',
+  'managementOpenByMode', 'resetCache: true',
   'statusTimerByStorage', 'createCalendarRecipeController', 'getCalendarRecipeStore',
   'setTimeoutImpl', 'clearTimeoutImpl', '{ persistent: true }', '{ duration: 10000 }',
 ]) requireText('calendar.js', calendarCode, expected);
@@ -1503,6 +1504,7 @@ for (const expected of [
   'pm-calendar-title-control', 'pm-calendar-title-chevron',
   'relativeCalendarLabel(today, selectedDate)', 'calendar-recipe-generate', 'recipeScope', 'calendarWindowDescription(today, 7)',
   '`AI 生成${recipeWindow.label}菜谱`',
+  "container?.querySelector?.('[data-calendar-management]')", 'managementOpen: view.managementOpenByMode?.[viewMode]',
   "viewMode === 'weather' ? view.weatherRefreshing === true",
   "const statusBusy = viewMode === 'recipe'",
   "const headerIcon = viewMode === 'schedule' || viewMode === 'recipe' ? SPARKLES_ICON_SVG : REFRESH_ICON_SVG",
@@ -1583,11 +1585,12 @@ for (const expected of [
   'CYCLE_PERIOD_ICON_SVG', 'CYCLE_FERTILE_ICON_SVG', 'WEATHER_ICON_SVG', 'LOCATION_ICON_SVG', 'WEATHER_PARTLY_CLOUDY_ICON_SVG',
   'weatherStatusIcon', 'statusCard', 'pm-calendar-status-card', 'pm-calendar-status-watermark', 'pm-calendar-panel-section',
   'pm-calendar-status-heading', 'pm-calendar-status-context', 'pm-calendar-status-relative', 'pm-calendar-status-weather-context', 'pm-calendar-status-cycle-context', 'pm-calendar-status-date', 'data-cycle-phase="${escapeAttr(phase)}"',
-  'value: `${resolved.day.tempMin}°–${resolved.day.tempMax}°`', "'天气记录'", '每两周重复', '每N天重复',
+  'value: `${resolved.day.tempMin}°–${resolved.day.tempMax}°`', "'天气记录'", '每两周重复',
+  'intervalDays = 1', 'occasionTypeLabel(occasion.type, occasion.repeat, occasion.intervalDays)',
   'relativeLabel, context, value, icon, parsed, date, kind, phase = \'\'',
   "? '是特殊的日子 &gt; &lt; ！要注意保重身体呀'",
   '当前故事日期', 'placeholder="例如 3726-08-17"', '可直接输入日期，或跳转月份后点击下方日期。',
-  '开启后供正文生成读取；设置按当前会话独立保存。', '预报外日期使用气候推演', '无法推演',
+  '开启后，角色回复时会参考当前会话中的相关信息。', '预报外日期使用气候推演', '无法推演',
   'DEFAULT_CALENDAR_GENERATION_RULE', 'DEFAULT_RECIPE_GENERATION_RULE', 'data-calendar-generation-rule', 'data-recipe-generation-rule',
   'calendar-generation-rule-save', 'calendar-recipe-generation-rule-save', 'escapeHtml(generationRule)',
   'name="repeat" data-calendar-repeat-select aria-label="日程重复规则"',
@@ -2046,6 +2049,8 @@ for (const expected of [
   '.pm-calendar-detail-edit-actions{display:flex;align-items:center;justify-content:center;gap:8px;margin-top:8px;flex-wrap:wrap}',
   '.pm-calendar-inline-add,.pm-calendar-inline-regenerate{display:inline-flex;align-items:center;justify-content:center;gap:5px;width:max-content;margin:0;padding:7px 12px;border:1px solid color-mix(in srgb,var(--pm-calendar-accent) 35%,transparent);border-radius:9px',
   '.pm-calendar-management:is([data-calendar-management="schedule"],[data-calendar-management="recipe"],[data-calendar-management="cycle"]) .pm-calendar-editor-actions .is-primary{background:var(--pm-calendar-accent);border-color:var(--pm-calendar-accent)}',
+  '.pm-calendar-injection-card{border-color:',
+  '.pm-calendar-card-action{box-sizing:border-box;',
   '.pm-calendar-auto-switch{display:flex;align-items:center;justify-content:space-between',
   '.pm-calendar-entry-dialog [data-calendar-occasion-fields][hidden]{display:none!important}',
   '.pm-calendar-entry-dialog{width:min(330px,calc(100vw - 28px))}',
@@ -2485,6 +2490,7 @@ for (const expected of ['weatherStore', 'resolveWeatherForDate(weatherStore, dat
 for (const expected of ['calendarWeather', 'weatherStore: calendarWeather']) requireText('phone-injection.js', buildContextInjectionSource, expected);
 for (const expected of [
   'calendarDateRangeKeys(windowStart, -3, 6)', 'days: 60', 'calendarCycles',
+  'usesExtendedOccasionWindow', 'days: 10', 'Number(occasion.intervalDays) >= 30',
   'cycleSubjectKeys', 'predictCycleRange', 'relativeCalendarLabel', "facts.join('；')", 'resolveWeatherForDate',
 ]) requireText('phone-injection.js', phoneInjectionCode, expected);
 for (const expected of [

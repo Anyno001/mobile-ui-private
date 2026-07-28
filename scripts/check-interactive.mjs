@@ -1629,8 +1629,12 @@ try {
     };
     listeners.get('click')({ target: communityWorldBookButton });
     await Promise.resolve();
-    assert.deepEqual(communityWorldBookCalls, [{ title: '社区可读的数据库记忆', module: 'community' }],
-        '社区数据库记忆入口必须路由到统一栏目选择器并传入 community 模块');
+    assert.deepEqual(communityWorldBookCalls, [{
+        title: '数据来源',
+        module: 'community',
+        backAction: 'window.__pmReturnToCommunityDataSource()',
+        backLabel: '返回社区',
+    }], '社区数据来源入口必须使用简洁标题，并保留返回社区的导航参数');
     if (previousShowWorldBookColumns === undefined) delete globalThis.window.__pmShowWorldBookColumns;
     else globalThis.window.__pmShowWorldBookColumns = previousShowWorldBookColumns;
     const createButton = {

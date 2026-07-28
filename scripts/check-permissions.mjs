@@ -633,6 +633,8 @@ const threeDaysAgo = calendarDateRangeKeys(now, -3, -3)[0];
 const twoDaysAgo = calendarDateRangeKeys(now, -2, -2)[0];
 const yesterday = calendarDateRangeKeys(now, -1, -1)[0];
 const sixDaysLater = calendarDateRangeKeys(now, 6, 6)[0];
+const sevenDaysLater = calendarDateRangeKeys(now, 7, 7)[0];
+const thirtyDaysLater = calendarDateRangeKeys(now, 30, 30)[0];
 const fiftyNineDaysLater = calendarDateRangeKeys(now, 59, 59)[0];
 const calendarStoreWithEvents = {
     version: 1,
@@ -706,6 +708,32 @@ assert.match(fullCalendarBody, /节假日：生活节/);
 assert.match(fullCalendarBody, /生理周期（我）：经期/);
 assert.match(fullCalendarBody, /生理周期（角色乙）：经期/);
 assert.doesNotMatch(fullCalendarBody, /生理周期规则：/, '逐日周期标签不得保留默认安全期推断规则');
+const recurrenceWindowBody = renderCalendarContextInjection({
+    currentStorageId: 'recurrence-window',
+    calendarStore: { version: 1, scopes: { 'recurrence-window': { injectionScheduleEnabled: true, events: {} } } },
+    occasionStore: { version: 1, scopes: { 'recurrence-window': { occasions: [{
+        id: 'daily-short', type: 'anniversary', date: threeDaysAgo,
+        month: Number(threeDaysAgo.slice(5, 7)), day: Number(threeDaysAgo.slice(8, 10)),
+        title: '每日短周期', note: '', repeat: 'daily', leapDayRule: 'feb28', createdAt: 1, updatedAt: 1,
+    }, {
+        id: 'custom-29', type: 'anniversary', date: today,
+        month: todayParts[1], day: todayParts[2], title: '二十九日周期', note: '', repeat: 'custom', intervalDays: 29,
+        leapDayRule: 'feb28', createdAt: 2, updatedAt: 2,
+    }, {
+        id: 'custom-30', type: 'anniversary', date: today,
+        month: todayParts[1], day: todayParts[2], title: '三十日周期', note: '', repeat: 'custom', intervalDays: 30,
+        leapDayRule: 'feb28', createdAt: 3, updatedAt: 3,
+    }] } } },
+    start: now,
+});
+assert.equal((recurrenceWindowBody.match(/每日重复日程：每日短周期/g) || []).length, 10,
+    '小于 30 天的重复日程必须只按普通日程的前 3 天至后 6 天窗口注入');
+assert.doesNotMatch(recurrenceWindowBody, new RegExp(`${sevenDaysLater}｜[^\n]*每日重复日程：每日短周期`),
+    '短周期重复日程不得扩展到普通日程窗口之外');
+assert.equal((recurrenceWindowBody.match(/自定义周期日程：二十九日周期/g) || []).length, 1,
+    '29 天重复日程不得按两个月范围重复展开');
+assert.match(recurrenceWindowBody, new RegExp(`${thirtyDaysLater}｜[^\n]*自定义周期日程：三十日周期`),
+    '30 天重复日程必须保留两个月范围内的后续实例');
 const relativeSafeWindow = renderCalendarContextInjection({
     currentStorageId: 'cycle-window',
     calendarStore: { version: 1, scopes: { 'cycle-window': { injectionCycleEnabled: true, events: {} } } },

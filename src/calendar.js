@@ -18,16 +18,14 @@ import { createCalendarCommitters } from './calendar-commit.js';
 import { fillCalendarEntryForm, readCalendarEntryForm, setCalendarEntryRepeat } from './calendar-dom.js';
 import { loadCalendar, loadCalendarCycles, loadCalendarHolidays, loadCalendarOccasions, loadCalendarRecipes, loadCalendarWeather, loadCalendarWithLegacyInjectionMigration } from './calendar-storage.js';
 import { occasionTypeLabel, renderCalendarEntryDialog } from './calendar-view.js';
-import { renderCalendarPageHtml } from './calendar-page-view.js';
+import { preserveCalendarManagementState, renderCalendarPageHtml } from './calendar-page-view.js';
 import { createCalendarRecipeController } from './calendar-recipe-controller.js';
 import { createTaskController } from './calendar-task-controller.js';
-export const calendarGenerationErrorMessage = generationErrorMessage;
-export { renderCalendarPageHtml };
+export const calendarGenerationErrorMessage = generationErrorMessage; export { renderCalendarPageHtml };
 export function installCalendar(state, deps) {
     const { getStorageId, gatherContext, callAI, fetchImpl, makeOverlay, closeOverlay } = deps;
-    window.__pmReturnToCalendarDataSource = () => {
-        closeOverlay?.('replace');
-        return deps.showPhoneCalendarPage?.();
+    if (typeof window !== 'undefined') window.__pmReturnToCalendarDataSource = () => {
+        closeOverlay?.('replace'); return deps.showPhoneCalendarPage?.();
     };
     const runtime = {
         store: normalizeCalendarStore(loadCalendarWithLegacyInjectionMigration()),
@@ -90,6 +88,7 @@ export function installCalendar(state, deps) {
             selectedDate: formatCalendarDate(reference),
             viewMode: 'schedule', editorKind: 'event', cycleSubject: CYCLE_SELF_SUBJECT,
             generating: false, recipeGenerating: false, weatherRefreshing: false, detailEditing: false,
+            managementOpenByMode: {},
         };
         runtime.viewByStorage.set(storageId, view);
         return view;
@@ -106,12 +105,14 @@ export function installCalendar(state, deps) {
         if (!container) return false;
         const previousShell = container.querySelector?.('.pm-calendar-shell');
         const scrollTop = previousShell?.scrollTop;
+        const currentView = preserveCalendarManagementState(container, viewFor(storageId));
+        runtime.viewByStorage.set(storageId, currentView);
         container.innerHTML = renderCalendarPageHtml(
             scope(storageId), occasions(storageId), runtime.statusByStorage.get(storageId) || '',
             runtime.holidayStore, runtime.weatherStore,
-            cycles(storageId, viewFor(storageId).cycleSubject), runtime.weatherSearchResults,
+            cycles(storageId, currentView.cycleSubject), runtime.weatherSearchResults,
             {
-                ...viewFor(storageId),
+                ...currentView,
                 cycleSubjects: cycleSubjectOptions(storageId),
             },
             recipeScopeFor(runtime.recipeStore, storageId),
@@ -234,6 +235,7 @@ export function installCalendar(state, deps) {
         rerender(storageId);
         try {
             const result = await fetchWeatherForecast(runtime.weatherStore.location, runtime.weatherStore, {
+                resetCache: true,
                 fetchImpl: fetchImpl || globalThis.fetch, signal: task.signal,
             });
             if (!tasks.active(task)) return false;
@@ -577,7 +579,7 @@ export function installCalendar(state, deps) {
             return;
         }
         if (action === 'calendar-worldbook-columns') {
-            await window.__pmShowWorldBookColumns?.({
+            await globalThis.window?.__pmShowWorldBookColumns?.({
                 title: '数据来源',
                 module: 'calendar',
                 backAction: 'window.__pmReturnToCalendarDataSource()',

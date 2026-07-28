@@ -67,6 +67,19 @@ function dateMeta(scope, occasionsByDate, holidayCache, weatherStore, cycleScope
         hasSchedule: events.length > 0 || occasions.length > 0, hasRecipe: Boolean(firstMeal) };
 }
 
+export function preserveCalendarManagementState(container, view) {
+    const management = container?.querySelector?.('[data-calendar-management]');
+    const mode = management?.dataset?.calendarManagement;
+    if (!mode) return view;
+    return {
+        ...view,
+        managementOpenByMode: {
+            ...(view.managementOpenByMode || {}),
+            [mode]: management.open === true,
+        },
+    };
+}
+
 export function renderCalendarPageHtml(
     scope, occasionScope, status = '', holidayCache = {}, weatherStore = {}, cycleScope = {}, weatherResults = [],
     view = {}, recipeScope = {},
@@ -130,7 +143,7 @@ export function renderCalendarPageHtml(
     const management = renderCalendarManagement({
         scope, holidayCache, weatherStore, cycleScope, recipeScope, weatherResults, viewMode,
         holidayAvailable, holidayRange, editorKind: view.editorKind, cycleSubjects: view.cycleSubjects,
-        selectedCycleSubject: view.cycleSubject,
+        selectedCycleSubject: view.cycleSubject, managementOpen: view.managementOpenByMode?.[viewMode],
     });
     const monthPanel = renderCalendarMonthPanel(scope, viewYear, viewMonth, view.monthPanelOpen === true);
     const headerBusy = viewMode === 'weather' ? view.weatherRefreshing === true : viewMode === 'recipe'

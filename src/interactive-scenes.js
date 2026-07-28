@@ -5,7 +5,7 @@ import {
     createDefaultPhoneUiScope, incrementScenePostShare, normalizePhoneUiState, patchPhoneUiScope, resolveInteractiveAuthor, stripPersistedV2ContentRating, toggleScenePin, toggleScenePostLike, updateSceneComment, updateSceneDanmaku, updateScenePost,
 } from './interactive-scene-model.js';
 import { loadInteractiveScenes, loadPhoneUiState, saveInteractiveScenes, savePhoneUiScope, savePhoneUiState } from './storage.js';
-import { bindPhonePageActions, getCommunityInjectionState, handleCommunityInjectionUiAction, handleSceneAccentAction, persistCurrentPhoneUiSnapshot, resolvePhoneChatTarget, runDeleteSceneAction, runDesktopPageTransition, selectScenePreset, toggleDanmakuActions, toggleSceneMenu, toggleScenePostActions, toggleSceneReplyComposer } from './interactive-scene-phone.js';
+import { bindPhonePageActions, dispatchCalendarAppAction, getCommunityInjectionState, handleCommunityInjectionUiAction, handleSceneAccentAction, persistCurrentPhoneUiSnapshot, resolvePhoneChatTarget, runCalendarPageTransition, runDeleteSceneAction, runDesktopPageTransition, selectScenePreset, toggleDanmakuActions, toggleSceneMenu, toggleScenePostActions, toggleSceneReplyComposer } from './interactive-scene-phone.js';
 import { createCommunityGenerationRunner, createCommunityTaskController, runLiveWarmup } from './interactive-scene-scheduler.js';
 import {
     renderCommunityLauncher as renderCommunityLauncherView,
@@ -266,29 +266,18 @@ export function installInteractiveScenes(_state, deps) {
     });
     };
 
-    async function showPhoneCalendarPage() {
-        invalidate();
-        runtime.openSceneId = null;
+    const showPhoneCalendarPage = () => {
         const scopeId = getStorageId();
         const phoneWindow = _state.phoneWindow;
-        if (!scopeId || scopeId === 'sms_unknown__default') throw new Error('请先打开有效的角色聊天');
-        const store = await loadStore();
-        const isCurrent = () => _state.phoneActive && _state.phoneWindow === phoneWindow && getStorageId() === scopeId;
-        if (!isCurrent()) return false;
-        if (!deps.renderCalendar?.(scopeId)) throw new Error('日历页面渲染失败');
-        if (!isCurrent()) return false;
-        const previousPage = phoneWindow?.querySelector('.pm-main-ui')?.dataset.page || 'desktop';
-        if (!showPhonePage('calendar')) throw new Error('日历页面不可用');
-        try {
-            updatePhoneUiScope(scopeId, { lastPage: 'calendar', lastSceneId: null }, store);
-            refreshDesktop(scopeId, store);
-        } catch (error) {
-            if (isCurrent() && phoneWindow?.querySelector('.pm-main-ui')?.dataset.page === 'calendar') showPhonePage(previousPage);
-            throw error;
-        }
-        return isCurrent() && phoneWindow?.querySelector('.pm-main-ui')?.dataset.page === 'calendar';
-    }
-
+        return runCalendarPageTransition({
+            scopeId, loadStore, renderCalendar: id => deps.renderCalendar?.(id) === true,
+            updatePhoneUi: (id, store) => updatePhoneUiScope(id, { lastPage: 'calendar', lastSceneId: null }, store),
+            refreshDesktop, showPhonePage,
+            clearOpenScene: () => { invalidate(); runtime.openSceneId = null; },
+            isCurrent: () => _state.phoneActive && _state.phoneWindow === phoneWindow && getStorageId() === scopeId,
+            getCurrentPage: () => phoneWindow?.querySelector('.pm-main-ui')?.dataset.page || 'desktop',
+        });
+    };
     function renderCommunityLauncher(scopeId, store = runtime.store) {
         const scope = getScope(store, scopeId);
         runtime.openSceneId = null;
@@ -520,14 +509,7 @@ export function installInteractiveScenes(_state, deps) {
     }
     async function handleAction(button, app) {
         const action = button.dataset.action;
-        if (app?.id === 'pm-calendar-app') {
-            if (action === 'calendar-home') await showPhoneDesktopPage();
-            else {
-                if (typeof deps.handleCalendarAction !== 'function') throw new Error('日历动作处理器尚未安装');
-                await deps.handleCalendarAction(button, app);
-            }
-            return;
-        }
+        const calendarAction = dispatchCalendarAppAction(button, app, { showPhoneDesktopPage, handleCalendarAction: deps.handleCalendarAction }); if (calendarAction) { await calendarAction; return; }
         if (action === 'more') { toggleSceneMenu(button); return; } if (action === 'post-actions') { toggleScenePostActions(button); return; }
         if (action === 'toggle-danmaku-actions') { toggleDanmakuActions(button, app); return; }
         if (action === 'toggle-reply') { toggleSceneReplyComposer(button, app); return; }
