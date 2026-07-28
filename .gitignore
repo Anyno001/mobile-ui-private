@@ -18,6 +18,9 @@ TianyinXiaojian_Backup_*.json
 *TianyinXiaojian*Backup*.json
 backups/
 
+# User-supplied external reference material; must remain local only
+/用户提供的外部资料（不需要推送）/
+
 # Browser and local application data
 *.sqlite
 *.sqlite3
