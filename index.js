@@ -7113,8 +7113,8 @@ ${mainChatText}` : "",
   }
   function normalizeBookEntries(bookName, book) {
     const entries = book && typeof book === "object" && !Array.isArray(book) ? book.entries : null;
-    if (!entries || typeof entries !== "object" || Array.isArray(entries)) return [];
-    return Object.entries(entries).flatMap(([fallbackUid, value]) => {
+    const pairs = Array.isArray(entries) ? entries.map((value, index) => [index, value]) : entries && typeof entries === "object" ? Object.entries(entries) : [];
+    return pairs.flatMap(([fallbackUid, value]) => {
       if (!value || typeof value !== "object" || Array.isArray(value)) return [];
       const uid5 = value.uid ?? value.id ?? fallbackUid;
       const content = text3(value.content);
@@ -17001,8 +17001,8 @@ ${lines}`;
       }
       if (signal?.aborted) return [];
       const source = book && typeof book === "object" && !Array.isArray(book) ? book.entries : null;
-      if (!source || typeof source !== "object" || Array.isArray(source)) continue;
-      const entries = Object.entries(source).flatMap(([fallbackUid, value]) => {
+      const pairs = Array.isArray(source) ? source.map((value, index) => [index, value]) : source && typeof source === "object" ? Object.entries(source) : [];
+      const entries = pairs.flatMap(([fallbackUid, value]) => {
         if (!value || typeof value !== "object" || Array.isArray(value)) return [];
         const uid5 = value.uid ?? value.id ?? fallbackUid;
         const key = createWorldBookEntryKey(name, uid5);

@@ -22,8 +22,10 @@ function scanMatches(entry, messages) {
 
 function normalizeBookEntries(bookName, book) {
     const entries = book && typeof book === 'object' && !Array.isArray(book) ? book.entries : null;
-    if (!entries || typeof entries !== 'object' || Array.isArray(entries)) return [];
-    return Object.entries(entries).flatMap(([fallbackUid, value]) => {
+    const pairs = Array.isArray(entries)
+        ? entries.map((value, index) => [index, value])
+        : entries && typeof entries === 'object' ? Object.entries(entries) : [];
+    return pairs.flatMap(([fallbackUid, value]) => {
         if (!value || typeof value !== 'object' || Array.isArray(value)) return [];
         const uid = value.uid ?? value.id ?? fallbackUid;
         const content = text(value.content);

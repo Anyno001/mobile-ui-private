@@ -596,6 +596,20 @@ assert.equal(await buildWorldBookContext(wrapperStartContext, { module: 'chat', 
 assert.equal(await buildWorldBookContext(wrapperStartContext, {
     module: 'chat', config: { columns: { WrapperStart: { chat: false } } },
 }), '', '关闭第三段栏目必须阻止该系列进入上下文');
+const arrayWorldBookContext = {
+    chat: [], getWorldInfoNames() { return ['角色卡数组世界书']; },
+    async loadWorldInfo() { return { entries: [
+        { id: 11, content: '数组包装正文', constant: true, enabled: false, comment: 'TavernDB-ACU-CustomExport-纪要-包裹-上' },
+        { id: 12, content: '数组角色表正文', constant: true, enabled: false, comment: 'TavernDB-ACU-CustomExport-重要角色表-1' },
+        { id: 13, content: '数组普通禁用正文', constant: true, enabled: false, comment: '普通禁用条目' },
+    ] }; },
+};
+assert.equal(await buildWorldBookContext(arrayWorldBookContext, { module: 'chat', config: {} }),
+    '数组包装正文\n\n数组角色表正文',
+    '角色卡与宿主可能返回 entries 数组；数据库条目必须读取，普通禁用条目仍不得混入');
+assert.equal(await buildWorldBookContext(arrayWorldBookContext, {
+    module: 'chat', config: { columns: { 纪要: { chat: false } } },
+}), '数组角色表正文', '数组形态必须继续服从插件栏目开关');
 const normalizedWorldBook = normalizeWorldBookConfig({
     version: 999, entries: { [worldBookKey]: false, ignored: 'false' },
     columns: { 纪要: { chat: false, calendar: true, ignored: false } },
@@ -639,6 +653,16 @@ assert.deepEqual(worldBookDirectory, [{ name: '主世界', entries: [
     { key: createWorldBookEntryKey('主世界', 7), uid: '7', title: 'TavernDB-ACU-CustomExport-纪要-包裹-下', column: '纪要', disabled: false },
     { key: createWorldBookEntryKey('主世界', 20), uid: '20', title: 'TavernDB-ACU-CustomExport-纪要-2', column: '纪要', disabled: false },
 ] }], '设置页目录必须隐藏原生包裹条目、保留数据库包裹条目的栏目归属并按 UID 稳定排序');
+assert.deepEqual(await loadWorldBookDirectory({
+    getWorldInfoNames() { return ['角色卡数组世界书']; },
+    async loadWorldInfo() { return { entries: [
+        { id: 21, content: '数组栏目正文', comment: 'TavernDB-ACU-CustomExport-重要角色表-1', enabled: false },
+        { id: 22, content: '数组普通正文', comment: '数组普通条目', enabled: true },
+    ] }; },
+}), [{ name: '角色卡数组世界书', entries: [
+    { key: createWorldBookEntryKey('角色卡数组世界书', 21), uid: '21', title: 'TavernDB-ACU-CustomExport-重要角色表-1', column: '重要角色表', disabled: true },
+    { key: createWorldBookEntryKey('角色卡数组世界书', 22), uid: '22', title: '数组普通条目', column: '', disabled: false },
+] }], '设置页目录必须兼容角色卡 entries 数组，并使用数组条目的 id 生成稳定键');
 const enabledWorldBookContext = {
     chatMetadata: { world_info: ['会话书', '数据库书'] },
     characters: [{ data: { extensions: { world: '角色书' } } }], characterId: 0,

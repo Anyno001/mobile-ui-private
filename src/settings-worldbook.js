@@ -29,8 +29,10 @@ export async function loadWorldBookDirectory(context, { signal } = {}) {
         try { book = await context.loadWorldInfo(name); } catch (error) { continue; }
         if (signal?.aborted) return [];
         const source = book && typeof book === 'object' && !Array.isArray(book) ? book.entries : null;
-        if (!source || typeof source !== 'object' || Array.isArray(source)) continue;
-        const entries = Object.entries(source).flatMap(([fallbackUid, value]) => {
+        const pairs = Array.isArray(source)
+            ? source.map((value, index) => [index, value])
+            : source && typeof source === 'object' ? Object.entries(source) : [];
+        const entries = pairs.flatMap(([fallbackUid, value]) => {
             if (!value || typeof value !== 'object' || Array.isArray(value)) return [];
             const uid = value.uid ?? value.id ?? fallbackUid;
             const key = createWorldBookEntryKey(name, uid);
