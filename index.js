@@ -6000,15 +6000,23 @@ ${lines.join("\n")}
   function getCharacterWorldBookBindings(context) {
     const character = context?.characters?.[context?.characterId];
     const fallback = { primary: character?.data?.extensions?.world, additional: [] };
-    const getBindings = context?.getCharWorldbookNames || globalThis.getCharWorldbookNames;
-    if (typeof getBindings !== "function") return fallback;
-    try {
-      const bindings = plainObject2(getBindings("current"));
-      const primary = typeof bindings.primary === "string" || bindings.primary === null ? bindings.primary : fallback.primary;
-      return { primary, additional: Array.isArray(bindings.additional) ? bindings.additional : [] };
-    } catch (error) {
-      return fallback;
+    const candidates = [
+      [context, context?.getCharWorldbookNames],
+      [globalThis.TavernHelper, globalThis.TavernHelper?.getCharWorldbookNames],
+      [globalThis, globalThis.getCharWorldbookNames]
+    ];
+    for (const [owner, getBindings] of candidates) {
+      if (typeof getBindings !== "function") continue;
+      try {
+        const bindings = plainObject2(getBindings.call(owner, "current"));
+        const validPrimary = typeof bindings.primary === "string" || bindings.primary === null;
+        if (!validPrimary || !Array.isArray(bindings.additional)) continue;
+        return { primary: bindings.primary, additional: bindings.additional };
+      } catch (error) {
+        continue;
+      }
     }
+    return fallback;
   }
   function appendWorldBookSource(result, byName, value, source) {
     const names = /* @__PURE__ */ new Set();
@@ -17563,21 +17571,23 @@ ${lines}`;
     return [...new Set(books.flatMap((book) => book.entries.map((entry2) => entry2.column).filter(Boolean)))];
   }
   function renderDetail(detail, config) {
-    if (detail.status === "loading") return '<div class="pm-worldbook-detail-status" role="status">\u6B63\u5728\u8BFB\u53D6\u8BE5\u4E16\u754C\u4E66\u2026</div>';
-    if (detail.status === "error") return `<div class="pm-worldbook-detail-status is-error" role="alert">\u8BFB\u53D6\u5931\u8D25\u3002<button type="button" data-world-book-name="${escapeAttr(detail.name)}" onclick="window.__pmToggleWorldBookDetails(this.dataset.worldBookName,true)">\u91CD\u8BD5</button></div>`;
+    const detailId = `pm-worldbook-detail-${encodeURIComponent(detail.name)}`;
+    if (detail.status === "loading") return `<div id="${escapeAttr(detailId)}" class="pm-worldbook-detail-status" role="status">\u6B63\u5728\u8BFB\u53D6\u8BE5\u4E16\u754C\u4E66\u2026</div>`;
+    if (detail.status === "error") return `<div id="${escapeAttr(detailId)}" class="pm-worldbook-detail-status is-error" role="alert">\u8BFB\u53D6\u5931\u8D25\u3002<button type="button" data-world-book-name="${escapeAttr(detail.name)}" onclick="window.__pmToggleWorldBookDetails(this.dataset.worldBookName,true)">\u91CD\u8BD5</button></div>`;
     const entries = detail.entries || [];
     const columns = [...new Set(entries.map((entry2) => entry2.column).filter(Boolean))];
     const nativeEntries = entries.filter((entry2) => !entry2.column);
     const columnRows = columns.length ? `<div class="pm-worldbook-matrix"><div class="pm-worldbook-matrix-header"><span></span>${WORLD_BOOK_MODULES.map((module) => `<span title="${MODULE_LABELS[module]}">${MODULE_ICONS[module]}<b>${MODULE_LABELS[module]}</b></span>`).join("")}</div>${columns.map((column) => `<div class="pm-worldbook-matrix-row"><b title="${escapeAttr(column)}">${escapeHtml(column)}</b>${WORLD_BOOK_MODULES.map((module) => eyeToggle(config.columns[column]?.[module] !== false, `data-world-column="${escapeAttr(column)}" data-world-module="${module}"`, `${column}\uFF1A${MODULE_LABELS[module]}\u8BFB\u53D6\u5F00\u5173`, false, "this.classList.toggle('is-checked');this.setAttribute('aria-pressed',String(this.classList.contains('is-checked')));window.__pmSetWorldBookColumn(this)")).join("")}</div>`).join("")}</div>` : '<div class="pm-prof-empty">\u672A\u53D1\u73B0\u6570\u636E\u5E93\u680F\u76EE\u3002</div>';
     const nativeRows = nativeEntries.length ? nativeEntries.map((entry2) => `<div class="pm-li pm-worldbook-native-entry"><span><b title="${escapeAttr(entry2.title)}">${escapeHtml(shortTitle(entry2.title))}</b><small class="pm-group-sub">${entry2.disabled ? "\u5DF2\u7981\u7528" : ""}</small></span>${eyeToggle(!entry2.disabled && config.entries[entry2.key] !== false, `data-world-entry="${escapeAttr(entry2.key)}"`, `${detail.name} \u6761\u76EE\u8BFB\u53D6\u5F00\u5173`, entry2.disabled, "this.classList.toggle('is-checked');this.setAttribute('aria-pressed',String(this.classList.contains('is-checked')));window.__pmSetWorldBookEntry(this)")}</div>`).join("") : '<div class="pm-prof-empty">\u672A\u53D1\u73B0\u539F\u751F\u4E16\u754C\u4E66\u6761\u76EE\u3002</div>';
-    return `<div class="pm-worldbook-book-detail"><div class="pm-worldbook-section-heading">${DATABASE_ICON_SVG}<span>\u6570\u636E\u5E93\u680F\u76EE</span></div>${columnRows}<div class="pm-worldbook-section-heading">${BOOK_ICON_SVG}<span>\u539F\u751F\u6761\u76EE</span></div>${nativeRows}</div>`;
+    return `<div id="${escapeAttr(detailId)}" class="pm-worldbook-book-detail"><div class="pm-worldbook-section-heading">${DATABASE_ICON_SVG}<span>\u6570\u636E\u5E93\u680F\u76EE</span></div>${columnRows}<div class="pm-worldbook-section-heading">${BOOK_ICON_SVG}<span>\u539F\u751F\u6761\u76EE</span></div>${nativeRows}</div>`;
   }
   function renderBookRow(book, state) {
     const expanded = state.detail?.name === book.name;
     const sources = Array.isArray(book.sources) ? book.sources.map((source) => SOURCE_LABELS2[source]).filter(Boolean) : [];
     const configured = Object.prototype.hasOwnProperty.call(state.config.books, book.name);
     const enabled = configured ? state.config.books[book.name] === true : sources.length > 0;
-    return `<div class="pm-worldbook-native-book" data-world-book-section data-world-book-name="${escapeAttr(book.name)}" data-world-book-expanded="${expanded}"><div class="pm-li pm-worldbook-native-book-title"><button type="button" class="pm-worldbook-expand" data-world-book-name="${escapeAttr(book.name)}" aria-expanded="${expanded}" onclick="window.__pmToggleWorldBookDetails(this.dataset.worldBookName)"><span aria-hidden="true">\u203A</span><b title="${escapeAttr(book.name)}">${escapeHtml(book.name)}</b>${sources.length ? `<small>${sources.join(" \xB7 ")}</small>` : ""}</button>${eyeToggle(enabled, `data-world-book="${escapeAttr(book.name)}"`, `${book.name}\u8BFB\u53D6\u5F00\u5173`, false, "this.classList.toggle('is-checked');this.setAttribute('aria-pressed',String(this.classList.contains('is-checked')));window.__pmSetWorldBookEnabled(this)")}</div>${expanded ? renderDetail(state.detail, state.config) : ""}</div>`;
+    const detailId = `pm-worldbook-detail-${encodeURIComponent(book.name)}`;
+    return `<div class="pm-worldbook-native-book" data-world-book-section data-world-book-name="${escapeAttr(book.name)}" data-world-book-expanded="${expanded}"><div class="pm-li pm-worldbook-native-book-title"><button type="button" class="pm-worldbook-expand" data-world-book-name="${escapeAttr(book.name)}" aria-expanded="${expanded}" aria-controls="${escapeAttr(detailId)}" onclick="window.__pmToggleWorldBookDetails(this.dataset.worldBookName)"><span aria-hidden="true">\u203A</span><b title="${escapeAttr(book.name)}">${escapeHtml(book.name)}</b>${sources.length ? `<small>${sources.join(" \xB7 ")}</small>` : ""}</button>${eyeToggle(enabled, `data-world-book="${escapeAttr(book.name)}"`, `${book.name}\u8BFB\u53D6\u5F00\u5173`, false, "this.classList.toggle('is-checked');this.setAttribute('aria-pressed',String(this.classList.contains('is-checked')));window.__pmSetWorldBookEnabled(this)")}</div>${expanded ? renderDetail(state.detail, state.config) : ""}</div>`;
   }
   function filteredOthers(state) {
     const query = state.search.trim().toLocaleLowerCase();
@@ -17587,9 +17597,13 @@ ${lines}`;
     const currentRows = state.directory.current.map((book) => renderBookRow(book, state)).join("") || '<div class="pm-prof-empty">\u5F53\u524D\u804A\u5929\u672A\u5173\u8054\u4E16\u754C\u4E66\u3002</div>';
     const matching = filteredOthers(state);
     const visible = matching.slice(0, state.otherLimit);
-    const otherRows = visible.map((book) => renderBookRow(book, state)).join("") || '<div class="pm-prof-empty">\u6CA1\u6709\u5339\u914D\u7684\u5176\u4ED6\u4E16\u754C\u4E66\u3002</div>';
-    const more = visible.length < matching.length ? `<button type="button" class="pm-worldbook-load-more" onclick="window.__pmLoadMoreWorldBooks()">\u52A0\u8F7D\u66F4\u591A\uFF08\u5269\u4F59 ${matching.length - visible.length} \u672C\uFF09</button>` : "";
-    return `<div class="pm-worldbook-columns"><section class="pm-worldbook-column"><div class="pm-worldbook-column-heading"><span><b>\u5F53\u524D\u804A\u5929\u4E16\u754C\u4E66</b><small>${state.directory.current.length} \u672C</small></span></div><div class="pm-worldbook-native-list" data-world-book-current-list>${currentRows}</div></section><section class="pm-worldbook-column"><div class="pm-worldbook-column-heading"><span><b>\u5176\u4ED6\u4E16\u754C\u4E66</b><small>${matching.length} \u672C</small></span><label class="pm-worldbook-search"><span class="sr-only">\u641C\u7D22\u5176\u4ED6\u4E16\u754C\u4E66</span><input type="search" value="${escapeAttr(state.search)}" placeholder="\u641C\u7D22\u540D\u79F0" oninput="window.__pmSearchWorldBooks(this.value)"></label></div><div class="pm-worldbook-native-list" data-world-book-other-list>${otherRows}</div>${more}</section></div>`;
+    const expanded = state.otherExpanded === true;
+    const otherPanel = expanded ? (() => {
+      const otherRows = visible.map((book) => renderBookRow(book, state)).join("") || '<div class="pm-prof-empty">\u6CA1\u6709\u5339\u914D\u7684\u5176\u4ED6\u4E16\u754C\u4E66\u3002</div>';
+      const more = visible.length < matching.length ? `<button type="button" class="pm-worldbook-load-more" onclick="window.__pmLoadMoreWorldBooks()">\u52A0\u8F7D\u66F4\u591A\uFF08\u5269\u4F59 ${matching.length - visible.length} \u672C\uFF09</button>` : "";
+      return `<div id="pm-worldbook-other-panel" class="pm-worldbook-other-panel"><label class="pm-worldbook-search"><span class="sr-only">\u641C\u7D22\u5176\u4ED6\u4E16\u754C\u4E66</span><input type="search" value="${escapeAttr(state.search)}" placeholder="\u641C\u7D22\u540D\u79F0" oninput="window.__pmSearchWorldBooks(this.value)"></label><div class="pm-worldbook-native-list" data-world-book-other-list>${otherRows}</div>${more}</div>`;
+    })() : '<div id="pm-worldbook-other-panel" class="pm-worldbook-other-panel" hidden></div>';
+    return `<div class="pm-worldbook-columns"><section class="pm-worldbook-column"><div class="pm-worldbook-column-heading"><span><b>\u5F53\u524D\u804A\u5929\u4E16\u754C\u4E66</b><small>${state.directory.current.length} \u672C</small></span></div><div class="pm-worldbook-native-list" data-world-book-current-list>${currentRows}</div></section><section class="pm-worldbook-column"><button type="button" class="pm-worldbook-column-toggle" aria-expanded="${expanded}" aria-controls="pm-worldbook-other-panel" onclick="window.__pmToggleOtherWorldBooks()"><span aria-hidden="true">\u203A</span><span><b>\u5176\u4ED6\u4E16\u754C\u4E66</b><small>${matching.length} \u672C</small></span></button>${otherPanel}</section></div>`;
   }
   function renderPage(state) {
     const config = state.config;
@@ -17666,7 +17680,7 @@ ${lines}`;
       const config = cloneConfig(loadWorldBookConfig());
       const directory = await loadWorldBookSettingsDirectory(getCtx(), config, { signal: controller.signal });
       if (epoch !== requestEpoch || controller.signal.aborted) return false;
-      const state = { config, directory, search: "", otherLimit: WORLD_BOOK_BATCH_SIZE, detail: null, overlay: null };
+      const state = { config, directory, search: "", otherLimit: WORLD_BOOK_BATCH_SIZE, otherExpanded: false, detail: null, overlay: null };
       const footer = '<div class="pm-modal-add"><button class="pm-action-button is-secondary" onclick="window.__pmResetWorldBookConfig()" style="flex:1">\u6062\u590D\u9ED8\u8BA4</button><button class="pm-action-button is-accent" onclick="window.__pmSaveWorldBookConfig()" style="flex:2">\u4FDD\u5B58\u4E16\u754C\u4E66\u8BBE\u7F6E</button></div>';
       committingOverlay = true;
       try {
@@ -17697,8 +17711,16 @@ ${lines}`;
       pageState.config.columns[column] = { ...pageState.config.columns[column], [module]: control.classList.contains("is-checked") };
       return true;
     };
-    window.__pmSearchWorldBooks = (value) => {
+    window.__pmToggleOtherWorldBooks = () => {
       if (!pageState) return false;
+      if (pageState.otherExpanded && pageState.detail && pageState.directory.others.some((book) => book.name === pageState.detail.name)) {
+        cancelDetail();
+      }
+      pageState.otherExpanded = !pageState.otherExpanded;
+      return rerenderLists(pageState);
+    };
+    window.__pmSearchWorldBooks = (value) => {
+      if (!pageState || !pageState.otherExpanded) return false;
       cancelDetail();
       pageState.search = text4(value);
       pageState.otherLimit = WORLD_BOOK_BATCH_SIZE;
@@ -17709,7 +17731,7 @@ ${lines}`;
       return updated;
     };
     window.__pmLoadMoreWorldBooks = () => {
-      if (!pageState) return false;
+      if (!pageState || !pageState.otherExpanded) return false;
       pageState.otherLimit += WORLD_BOOK_BATCH_SIZE;
       return rerenderLists(pageState);
     };

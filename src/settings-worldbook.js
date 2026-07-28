@@ -88,14 +88,15 @@ function visibleDatabaseColumns(books) {
 }
 
 function renderDetail(detail, config) {
-    if (detail.status === 'loading') return '<div class="pm-worldbook-detail-status" role="status">正在读取该世界书…</div>';
-    if (detail.status === 'error') return `<div class="pm-worldbook-detail-status is-error" role="alert">读取失败。<button type="button" data-world-book-name="${escapeAttr(detail.name)}" onclick="window.__pmToggleWorldBookDetails(this.dataset.worldBookName,true)">重试</button></div>`;
+    const detailId = `pm-worldbook-detail-${encodeURIComponent(detail.name)}`;
+    if (detail.status === 'loading') return `<div id="${escapeAttr(detailId)}" class="pm-worldbook-detail-status" role="status">正在读取该世界书…</div>`;
+    if (detail.status === 'error') return `<div id="${escapeAttr(detailId)}" class="pm-worldbook-detail-status is-error" role="alert">读取失败。<button type="button" data-world-book-name="${escapeAttr(detail.name)}" onclick="window.__pmToggleWorldBookDetails(this.dataset.worldBookName,true)">重试</button></div>`;
     const entries = detail.entries || [];
     const columns = [...new Set(entries.map(entry => entry.column).filter(Boolean))];
     const nativeEntries = entries.filter(entry => !entry.column);
     const columnRows = columns.length ? `<div class="pm-worldbook-matrix"><div class="pm-worldbook-matrix-header"><span></span>${WORLD_BOOK_MODULES.map(module => `<span title="${MODULE_LABELS[module]}">${MODULE_ICONS[module]}<b>${MODULE_LABELS[module]}</b></span>`).join('')}</div>${columns.map(column => `<div class="pm-worldbook-matrix-row"><b title="${escapeAttr(column)}">${escapeHtml(column)}</b>${WORLD_BOOK_MODULES.map(module => eyeToggle(config.columns[column]?.[module] !== false, `data-world-column="${escapeAttr(column)}" data-world-module="${module}"`, `${column}：${MODULE_LABELS[module]}读取开关`, false, "this.classList.toggle('is-checked');this.setAttribute('aria-pressed',String(this.classList.contains('is-checked')));window.__pmSetWorldBookColumn(this)")).join('')}</div>`).join('')}</div>` : '<div class="pm-prof-empty">未发现数据库栏目。</div>';
     const nativeRows = nativeEntries.length ? nativeEntries.map(entry => `<div class="pm-li pm-worldbook-native-entry"><span><b title="${escapeAttr(entry.title)}">${escapeHtml(shortTitle(entry.title))}</b><small class="pm-group-sub">${entry.disabled ? '已禁用' : ''}</small></span>${eyeToggle(!entry.disabled && config.entries[entry.key] !== false, `data-world-entry="${escapeAttr(entry.key)}"`, `${detail.name} 条目读取开关`, entry.disabled, "this.classList.toggle('is-checked');this.setAttribute('aria-pressed',String(this.classList.contains('is-checked')));window.__pmSetWorldBookEntry(this)")}</div>`).join('') : '<div class="pm-prof-empty">未发现原生世界书条目。</div>';
-    return `<div class="pm-worldbook-book-detail"><div class="pm-worldbook-section-heading">${DATABASE_ICON_SVG}<span>数据库栏目</span></div>${columnRows}<div class="pm-worldbook-section-heading">${BOOK_ICON_SVG}<span>原生条目</span></div>${nativeRows}</div>`;
+    return `<div id="${escapeAttr(detailId)}" class="pm-worldbook-book-detail"><div class="pm-worldbook-section-heading">${DATABASE_ICON_SVG}<span>数据库栏目</span></div>${columnRows}<div class="pm-worldbook-section-heading">${BOOK_ICON_SVG}<span>原生条目</span></div>${nativeRows}</div>`;
 }
 
 function renderBookRow(book, state) {
@@ -103,7 +104,8 @@ function renderBookRow(book, state) {
     const sources = Array.isArray(book.sources) ? book.sources.map(source => SOURCE_LABELS[source]).filter(Boolean) : [];
     const configured = Object.prototype.hasOwnProperty.call(state.config.books, book.name);
     const enabled = configured ? state.config.books[book.name] === true : sources.length > 0;
-    return `<div class="pm-worldbook-native-book" data-world-book-section data-world-book-name="${escapeAttr(book.name)}" data-world-book-expanded="${expanded}"><div class="pm-li pm-worldbook-native-book-title"><button type="button" class="pm-worldbook-expand" data-world-book-name="${escapeAttr(book.name)}" aria-expanded="${expanded}" onclick="window.__pmToggleWorldBookDetails(this.dataset.worldBookName)"><span aria-hidden="true">›</span><b title="${escapeAttr(book.name)}">${escapeHtml(book.name)}</b>${sources.length ? `<small>${sources.join(' · ')}</small>` : ''}</button>${eyeToggle(enabled, `data-world-book="${escapeAttr(book.name)}"`, `${book.name}读取开关`, false, "this.classList.toggle('is-checked');this.setAttribute('aria-pressed',String(this.classList.contains('is-checked')));window.__pmSetWorldBookEnabled(this)")}</div>${expanded ? renderDetail(state.detail, state.config) : ''}</div>`;
+    const detailId = `pm-worldbook-detail-${encodeURIComponent(book.name)}`;
+    return `<div class="pm-worldbook-native-book" data-world-book-section data-world-book-name="${escapeAttr(book.name)}" data-world-book-expanded="${expanded}"><div class="pm-li pm-worldbook-native-book-title"><button type="button" class="pm-worldbook-expand" data-world-book-name="${escapeAttr(book.name)}" aria-expanded="${expanded}" aria-controls="${escapeAttr(detailId)}" onclick="window.__pmToggleWorldBookDetails(this.dataset.worldBookName)"><span aria-hidden="true">›</span><b title="${escapeAttr(book.name)}">${escapeHtml(book.name)}</b>${sources.length ? `<small>${sources.join(' · ')}</small>` : ''}</button>${eyeToggle(enabled, `data-world-book="${escapeAttr(book.name)}"`, `${book.name}读取开关`, false, "this.classList.toggle('is-checked');this.setAttribute('aria-pressed',String(this.classList.contains('is-checked')));window.__pmSetWorldBookEnabled(this)")}</div>${expanded ? renderDetail(state.detail, state.config) : ''}</div>`;
 }
 
 function filteredOthers(state) {
@@ -115,9 +117,13 @@ function renderDirectoryLists(state) {
     const currentRows = state.directory.current.map(book => renderBookRow(book, state)).join('') || '<div class="pm-prof-empty">当前聊天未关联世界书。</div>';
     const matching = filteredOthers(state);
     const visible = matching.slice(0, state.otherLimit);
-    const otherRows = visible.map(book => renderBookRow(book, state)).join('') || '<div class="pm-prof-empty">没有匹配的其他世界书。</div>';
-    const more = visible.length < matching.length ? `<button type="button" class="pm-worldbook-load-more" onclick="window.__pmLoadMoreWorldBooks()">加载更多（剩余 ${matching.length - visible.length} 本）</button>` : '';
-    return `<div class="pm-worldbook-columns"><section class="pm-worldbook-column"><div class="pm-worldbook-column-heading"><span><b>当前聊天世界书</b><small>${state.directory.current.length} 本</small></span></div><div class="pm-worldbook-native-list" data-world-book-current-list>${currentRows}</div></section><section class="pm-worldbook-column"><div class="pm-worldbook-column-heading"><span><b>其他世界书</b><small>${matching.length} 本</small></span><label class="pm-worldbook-search"><span class="sr-only">搜索其他世界书</span><input type="search" value="${escapeAttr(state.search)}" placeholder="搜索名称" oninput="window.__pmSearchWorldBooks(this.value)"></label></div><div class="pm-worldbook-native-list" data-world-book-other-list>${otherRows}</div>${more}</section></div>`;
+    const expanded = state.otherExpanded === true;
+    const otherPanel = expanded ? (() => {
+        const otherRows = visible.map(book => renderBookRow(book, state)).join('') || '<div class="pm-prof-empty">没有匹配的其他世界书。</div>';
+        const more = visible.length < matching.length ? `<button type="button" class="pm-worldbook-load-more" onclick="window.__pmLoadMoreWorldBooks()">加载更多（剩余 ${matching.length - visible.length} 本）</button>` : '';
+        return `<div id="pm-worldbook-other-panel" class="pm-worldbook-other-panel"><label class="pm-worldbook-search"><span class="sr-only">搜索其他世界书</span><input type="search" value="${escapeAttr(state.search)}" placeholder="搜索名称" oninput="window.__pmSearchWorldBooks(this.value)"></label><div class="pm-worldbook-native-list" data-world-book-other-list>${otherRows}</div>${more}</div>`;
+    })() : '<div id="pm-worldbook-other-panel" class="pm-worldbook-other-panel" hidden></div>';
+    return `<div class="pm-worldbook-columns"><section class="pm-worldbook-column"><div class="pm-worldbook-column-heading"><span><b>当前聊天世界书</b><small>${state.directory.current.length} 本</small></span></div><div class="pm-worldbook-native-list" data-world-book-current-list>${currentRows}</div></section><section class="pm-worldbook-column"><button type="button" class="pm-worldbook-column-toggle" aria-expanded="${expanded}" aria-controls="pm-worldbook-other-panel" onclick="window.__pmToggleOtherWorldBooks()"><span aria-hidden="true">›</span><span><b>其他世界书</b><small>${matching.length} 本</small></span></button>${otherPanel}</section></div>`;
 }
 
 function renderPage(state) {
@@ -193,7 +199,7 @@ export function installWorldBookSettings({ makeOverlay, addNote, getCtx }) {
         const config = cloneConfig(loadWorldBookConfig());
         const directory = await loadWorldBookSettingsDirectory(getCtx(), config, { signal: controller.signal });
         if (epoch !== requestEpoch || controller.signal.aborted) return false;
-        const state = { config, directory, search: '', otherLimit: WORLD_BOOK_BATCH_SIZE, detail: null, overlay: null };
+        const state = { config, directory, search: '', otherLimit: WORLD_BOOK_BATCH_SIZE, otherExpanded: false, detail: null, overlay: null };
         const footer = '<div class="pm-modal-add"><button class="pm-action-button is-secondary" onclick="window.__pmResetWorldBookConfig()" style="flex:1">恢复默认</button><button class="pm-action-button is-accent" onclick="window.__pmSaveWorldBookConfig()" style="flex:2">保存世界书设置</button></div>';
         committingOverlay = true;
         try {
@@ -222,8 +228,17 @@ export function installWorldBookSettings({ makeOverlay, addNote, getCtx }) {
         pageState.config.columns[column] = { ...pageState.config.columns[column], [module]: control.classList.contains('is-checked') };
         return true;
     };
-    window.__pmSearchWorldBooks = value => {
+    window.__pmToggleOtherWorldBooks = () => {
         if (!pageState) return false;
+        if (pageState.otherExpanded && pageState.detail
+            && pageState.directory.others.some(book => book.name === pageState.detail.name)) {
+            cancelDetail();
+        }
+        pageState.otherExpanded = !pageState.otherExpanded;
+        return rerenderLists(pageState);
+    };
+    window.__pmSearchWorldBooks = value => {
+        if (!pageState || !pageState.otherExpanded) return false;
         cancelDetail();
         pageState.search = text(value);
         pageState.otherLimit = WORLD_BOOK_BATCH_SIZE;
@@ -234,7 +249,7 @@ export function installWorldBookSettings({ makeOverlay, addNote, getCtx }) {
         return updated;
     };
     window.__pmLoadMoreWorldBooks = () => {
-        if (!pageState) return false;
+        if (!pageState || !pageState.otherExpanded) return false;
         pageState.otherLimit += WORLD_BOOK_BATCH_SIZE;
         return rerenderLists(pageState);
     };

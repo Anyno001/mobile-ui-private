@@ -40,16 +40,23 @@ function activeBookNames(value, target) {
 function getCharacterWorldBookBindings(context) {
     const character = context?.characters?.[context?.characterId];
     const fallback = { primary: character?.data?.extensions?.world, additional: [] };
-    const getBindings = context?.getCharWorldbookNames || globalThis.getCharWorldbookNames;
-    if (typeof getBindings !== 'function') return fallback;
-    try {
-        const bindings = plainObject(getBindings('current'));
-        const primary = typeof bindings.primary === 'string' || bindings.primary === null
-            ? bindings.primary : fallback.primary;
-        return { primary, additional: Array.isArray(bindings.additional) ? bindings.additional : [] };
-    } catch (error) {
-        return fallback;
+    const candidates = [
+        [context, context?.getCharWorldbookNames],
+        [globalThis.TavernHelper, globalThis.TavernHelper?.getCharWorldbookNames],
+        [globalThis, globalThis.getCharWorldbookNames],
+    ];
+    for (const [owner, getBindings] of candidates) {
+        if (typeof getBindings !== 'function') continue;
+        try {
+            const bindings = plainObject(getBindings.call(owner, 'current'));
+            const validPrimary = typeof bindings.primary === 'string' || bindings.primary === null;
+            if (!validPrimary || !Array.isArray(bindings.additional)) continue;
+            return { primary: bindings.primary, additional: bindings.additional };
+        } catch (error) {
+            continue;
+        }
     }
+    return fallback;
 }
 
 function appendWorldBookSource(result, byName, value, source) {

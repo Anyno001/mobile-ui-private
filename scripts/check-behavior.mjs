@@ -694,6 +694,69 @@ assert.deepEqual(getCurrentChatWorldBooks({
     { name: '同名书', sources: ['chat', 'character', 'additional'] },
     { name: '独立附加书', sources: ['additional'] },
 ], '聊天、角色主书和附加书同名时必须只保留一本并准确合并来源');
+const previousWorldBookTavernHelper = globalThis.TavernHelper;
+const previousGlobalWorldBookBindings = globalThis.getCharWorldbookNames;
+try {
+    const candidateCalls = [];
+    globalThis.TavernHelper = {
+        bindingOwner: '酒馆助手',
+        getCharWorldbookNames() {
+            candidateCalls.push('tavern-helper');
+            assert.equal(this.bindingOwner, '酒馆助手', '酒馆助手世界书 API 必须保留方法所属对象');
+            return { primary: '助手主书', additional: ['助手附加书一', '助手附加书二'] };
+        },
+    };
+    globalThis.getCharWorldbookNames = function () {
+        candidateCalls.push('global');
+        assert.equal(this, globalThis, '全局世界书 API 必须保留 globalThis 所属对象');
+        return { primary: '全局主书', additional: ['全局附加书'] };
+    };
+    assert.deepEqual(getCurrentChatWorldBooks({}), [
+        { name: '助手主书', sources: ['character'] },
+        { name: '助手附加书一', sources: ['additional'] },
+        { name: '助手附加书二', sources: ['additional'] },
+    ], '上下文未导出绑定 API 时必须从 window.TavernHelper 读取角色主书与附加书');
+    assert.deepEqual(candidateCalls, ['tavern-helper'], '酒馆助手返回合法绑定后不得继续调用全局候选');
+    candidateCalls.length = 0;
+    assert.deepEqual(getCurrentChatWorldBooks({
+        getCharWorldbookNames() { candidateCalls.push('context-throw'); throw new Error('上下文候选失败'); },
+    }), [
+        { name: '助手主书', sources: ['character'] },
+        { name: '助手附加书一', sources: ['additional'] },
+        { name: '助手附加书二', sources: ['additional'] },
+    ], '上下文候选抛错后必须继续降级到酒馆助手候选');
+    assert.deepEqual(candidateCalls, ['context-throw', 'tavern-helper']);
+    candidateCalls.length = 0;
+    globalThis.TavernHelper.getCharWorldbookNames = () => { candidateCalls.push('tavern-helper-invalid'); return { primary: '畸形主书', additional: '非数组' }; };
+    assert.deepEqual(getCurrentChatWorldBooks({
+        getCharWorldbookNames() { candidateCalls.push('context-invalid'); return null; },
+    }), [
+        { name: '全局主书', sources: ['character'] },
+        { name: '全局附加书', sources: ['additional'] },
+    ], '上下文与酒馆助手候选畸形时必须继续降级到全局候选');
+    assert.deepEqual(candidateCalls, ['context-invalid', 'tavern-helper-invalid', 'global']);
+    candidateCalls.length = 0;
+    const validContextOwner = {
+        bindingOwner: '上下文',
+        getCharWorldbookNames() {
+            candidateCalls.push('context-valid');
+            assert.equal(this, validContextOwner, '上下文世界书 API 必须保留 context 所属对象');
+            return { primary: '上下文主书', additional: [] };
+        },
+    };
+    assert.deepEqual(getCurrentChatWorldBooks(validContextOwner),
+        [{ name: '上下文主书', sources: ['character'] }], '上下文候选合法时必须立即采用，不得调用后续候选');
+    assert.deepEqual(candidateCalls, ['context-valid']);
+    globalThis.TavernHelper.getCharWorldbookNames = () => { throw new Error('酒馆助手候选失败'); };
+    globalThis.getCharWorldbookNames = () => ({ primary: false, additional: [] });
+    assert.deepEqual(getCurrentChatWorldBooks({
+        characters: [{ data: { extensions: { world: '最终旧版主书' } } }], characterId: 0,
+        getCharWorldbookNames() { return []; },
+    }), [{ name: '最终旧版主书', sources: ['character'] }], '全部候选无效后才允许回退旧版角色主世界书字段');
+} finally {
+    if (previousWorldBookTavernHelper === undefined) delete globalThis.TavernHelper; else globalThis.TavernHelper = previousWorldBookTavernHelper;
+    if (previousGlobalWorldBookBindings === undefined) delete globalThis.getCharWorldbookNames; else globalThis.getCharWorldbookNames = previousGlobalWorldBookBindings;
+}
 let settingsDirectoryNameCalls = 0, settingsDirectoryDetailCalls = 0;
 assert.deepEqual(await loadWorldBookSettingsDirectory({
     ...enabledWorldBookContext,
@@ -1586,19 +1649,30 @@ installSettingsUi({
     getCtx: () => worldBookContext,
 });
 await window.__pmShowConfig('worldbook');
-assert.match(settingsOverlayHtml, /世界书读取|当前聊天世界书|其他世界书|搜索名称/,
-    '设置首页必须展示当前/其他世界书双栏与搜索入口');
+assert.match(settingsOverlayHtml, /世界书读取|当前聊天世界书|其他世界书/,
+    '设置首页必须展示当前聊天世界书与其他世界书收纳区');
 assert.deepEqual(currentSettingsBooks.filter(name => settingsOverlayHtml.includes(name)), currentSettingsBooks,
     '当前聊天栏必须精确展示角色主世界书与附加世界书合并后的结果');
 assert.match(settingsOverlayHtml, /设置书 D<\/b><small>附加<\/small>/,
     '附加世界书必须在当前聊天栏标记为附加来源');
+assert.match(settingsOverlayHtml, /class="pm-worldbook-column-toggle" aria-expanded="false" aria-controls="pm-worldbook-other-panel"/,
+    '其他世界书手风琴必须默认收起并声明受控面板');
+assert.match(settingsOverlayHtml, /id="pm-worldbook-other-panel" class="pm-worldbook-other-panel" hidden/,
+    '默认收起时其他世界书面板必须使用 hidden 隐藏');
+assert.doesNotMatch(settingsOverlayHtml, /搜索名称|其他设置书 001|pm-worldbook-load-more/,
+    '默认收起时不得渲染其他世界书列表、搜索框或加载更多按钮');
+assert.equal(window.__pmLoadMoreWorldBooks(), false, '其他世界书收起时加载更多不得修改分页状态');
+assert.equal(window.__pmSearchWorldBooks('其他设置书'), false, '其他世界书收起时搜索不得修改筛选状态');
+assert.equal(window.__pmToggleOtherWorldBooks(), true, '其他世界书手风琴必须可展开');
+assert.match(settingsWorldBookDirectoryHtml, /class="pm-worldbook-column-toggle" aria-expanded="true"[\s\S]*搜索名称/,
+    '展开后必须更新 aria-expanded 并渲染搜索入口');
 assert.match(settingsOverlayHtml, /data-world-book-name="其他设置书 001"[\s\S]*?aria-pressed="false" aria-label="其他设置书 001读取开关"/,
     '未保存过配置的其他世界书读取开关必须默认关闭');
 assert.equal(otherSettingsBooks.filter(name => settingsOverlayHtml.includes(name)).length, 30,
-    '其他世界书初次只能渲染首批 30 行');
+    '其他世界书展开后只能渲染首批 30 行');
 assert.doesNotMatch(settingsOverlayHtml, /其他设置书 031/, '首批不得提前渲染第 31 本其他书');
 assert.match(settingsOverlayHtml, /当前聊天世界书<\/b><small>4 本|其他世界书<\/b><small>97 本/,
-    '双栏计数必须精确反映四本当前书与九十七本差集');
+    '两组计数必须精确反映四本当前书与九十七本差集');
 assert.doesNotMatch(settingsOverlayHtml, /设置页条目标题|数据库栏目|原生条目/,
     '设置首页初次渲染不得预加载条目或栏目');
 assert.equal(settingsWorldBookNameCalls, 1, '设置首页初次渲染只能读取一次目录名称');
@@ -1627,6 +1701,10 @@ await window.__pmShowConfig('worldbook');
 assert.equal(settingsWorldBookDetailCalls, 4, '快捷栏目应串行读取四本当前聊天世界书（含附加书），设置页目录不得追加详情请求');
 assert.equal(await window.__pmToggleWorldBookDetails('设置书 A'), true, '显式展开世界书后必须加载单本详情');
 assert.equal(settingsWorldBookDetailCalls, 5, '显式展开只能新增一次单本详情请求');
+assert.match(settingsWorldBookDirectoryHtml, /data-world-book-name="设置书 A"[\s\S]*?aria-expanded="true" aria-controls="pm-worldbook-detail-%E8%AE%BE%E7%BD%AE%E4%B9%A6%20A"/,
+    '详情按钮展开后必须通过 aria-controls 精确关联详情面板');
+assert.match(settingsWorldBookDirectoryHtml, /id="pm-worldbook-detail-%E8%AE%BE%E7%BD%AE%E4%B9%A6%20A" class="pm-worldbook-book-detail"/,
+    '已加载详情必须保留与触发按钮一致的受控面板 ID');
 assert.match(settingsOverlayHtml, /<path d="M4 5\.5 12 3l8 2\.5v13L12 16l-8 2\.5z"/,
     '原生世界书条目标题必须使用书本图标');
 assert.doesNotMatch(settingsOverlayHtml, /设置页正文/,
@@ -1883,6 +1961,41 @@ worldBookContext = {
 await window.__pmShowConfig('worldbook');
 assert.equal(await window.__pmToggleWorldBookDetails('Abort 书'), false, '宿主 AbortError 必须作为取消返回');
 assert.doesNotMatch(settingsWorldBookDirectoryHtml, /读取失败|重试/, '宿主主动抛 AbortError 不得渲染普通读取错误');
+
+const parentCollapseDetail = makeDeferredWorldBook(), parentCollapseStarted = makeDeferredWorldBook();
+worldBookContext = {
+    chatMetadata: { world_info: [] },
+    getWorldInfoNames() { return ['其他父折叠书']; },
+    async loadWorldInfo() { parentCollapseStarted.resolve(); return parentCollapseDetail.promise; },
+};
+await window.__pmShowConfig('worldbook');
+assert.equal(window.__pmToggleOtherWorldBooks(), true);
+const pendingParentCollapse = window.__pmToggleWorldBookDetails('其他父折叠书');
+await parentCollapseStarted.promise;
+assert.match(settingsWorldBookDirectoryHtml, /data-world-book-name="其他父折叠书"[\s\S]*?aria-expanded="true" aria-controls="pm-worldbook-detail-%E5%85%B6%E4%BB%96%E7%88%B6%E6%8A%98%E5%8F%A0%E4%B9%A6"/,
+    '其他世界书加载中详情按钮必须声明展开状态并关联详情 ID');
+assert.match(settingsWorldBookDirectoryHtml, /id="pm-worldbook-detail-%E5%85%B6%E4%BB%96%E7%88%B6%E6%8A%98%E5%8F%A0%E4%B9%A6" class="pm-worldbook-detail-status" role="status"/,
+    '加载中详情必须使用与触发按钮一致的受控面板 ID');
+assert.equal(window.__pmToggleOtherWorldBooks(), true, '折叠其他世界书父级必须取消其加载中详情');
+assert.doesNotMatch(settingsWorldBookDirectoryHtml, /pm-worldbook-detail-%E5%85%B6%E4%BB%96%E7%88%B6%E6%8A%98%E5%8F%A0%E4%B9%A6/,
+    '折叠父级后必须立即移除其他世界书详情 DOM');
+parentCollapseDetail.resolve({ entries: { 1: { uid: 1, content: '父级折叠后正文', comment: '父级折叠后旧结果' } } });
+assert.equal(await pendingParentCollapse, false, '父级折叠取消的详情请求不得提交');
+assert.doesNotMatch(settingsWorldBookDirectoryHtml, /父级折叠后旧结果/,
+    '父级折叠后的迟到详情不得重新出现');
+assert.equal(window.__pmToggleOtherWorldBooks(), true);
+assert.doesNotMatch(settingsWorldBookDirectoryHtml, /id="pm-worldbook-detail-%E5%85%B6%E4%BB%96%E7%88%B6%E6%8A%98%E5%8F%A0%E4%B9%A6"|父级折叠后旧结果/,
+    '重新展开其他世界书时不得恢复已清理的旧详情状态');
+
+worldBookContext = {
+    chatMetadata: { world_info: ['错误详情书'] },
+    getWorldInfoNames() { return ['错误详情书']; },
+    async loadWorldInfo() { throw new Error('详情读取失败'); },
+};
+await window.__pmShowConfig('worldbook');
+assert.equal(await window.__pmToggleWorldBookDetails('错误详情书'), false);
+assert.match(settingsWorldBookDirectoryHtml, /aria-expanded="true" aria-controls="pm-worldbook-detail-%E9%94%99%E8%AF%AF%E8%AF%A6%E6%83%85%E4%B9%A6"[\s\S]*?id="pm-worldbook-detail-%E9%94%99%E8%AF%AF%E8%AF%A6%E6%83%85%E4%B9%A6" class="pm-worldbook-detail-status is-error" role="alert"/,
+    '错误详情必须保留按钮与告警面板之间的精确 ARIA 关联');
 
 window.__pmTheme = { preset: 'apple', customRight: '', customLeft: '', borderColor: '#1a1a1a', darkMode: 'dark', customTitle: '', qrLabel: '天音' };
 await window.__pmShowConfig('look');
