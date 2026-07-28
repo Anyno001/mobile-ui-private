@@ -2421,6 +2421,12 @@ requireCssDeclarations(cssRules, '.pm-color-pick', {
   'box-sizing': 'border-box', flex: '0 0 32px',
 });
 if (css.includes('.pm-theme-custom')) failures.push('style.css: obsolete theme-only color picker rule must not remain');
+const worldBookConfigCode = sourceModuleByName.get('worldbook-config.js')?.code || '';
+const worldBookModulesMatch = /WORLD_BOOK_MODULES\s*=\s*Object\.freeze\(\[([^\]]*)\]\)/.exec(worldBookConfigCode);
+const worldBookModuleCount = worldBookModulesMatch
+  ? [...worldBookModulesMatch[1].matchAll(/['"]([^'"]+)['"]/g)].length : 0;
+if (!worldBookModuleCount) failures.push('worldbook-config.js: WORLD_BOOK_MODULES must declare at least one module');
+const worldBookModuleColumns = `minmax(0,1fr) repeat(${worldBookModuleCount},minmax(24px,34px))`;
 const worldBookSettingsCode = sourceModuleByName.get('settings-worldbook.js')?.code || '';
 requireText('settings-worldbook.js native entries use dedicated book container', worldBookSettingsCode, 'class="pm-worldbook-native-book" data-world-book-section');
 requireText('settings-worldbook.js native entries use dedicated title row', worldBookSettingsCode, 'class="pm-li pm-worldbook-native-book-title"');
@@ -2433,6 +2439,12 @@ for (const [label, marker] of [
   ['save world-book settings', 'window.__pmSaveWorldBookConfig()'],
 ]) requireText(`settings-worldbook.js: ${label}`, buttonContaining(`settings-worldbook.js: ${label}`, worldBookSettingsCode, marker), 'class="pm-action-button is-accent"');
 requireCssDeclarations(cssRules, '.pm-worldbook-content', { padding: '0 10px 10px' });
+requireCssDeclarations(cssRules, '.pm-worldbook-matrix', {
+  display: 'grid', 'grid-template-columns': worldBookModuleColumns, gap: '6px 4px',
+});
+requireCssDeclarations(cssRules, '.pm-worldbook-matrix .pm-worldbook-eye', {
+  'box-sizing': 'border-box', width: '100%', 'min-width': '0',
+});
 requireCssDeclarations(cssRules, '.pm-worldbook-content.has-columns .pm-worldbook-native-list', { display: 'block', border: '0' });
 requireCssDeclarations(cssRules, '.pm-worldbook-native-book', { border: '0' });
 requireCssDeclarations(cssRules, '.pm-worldbook-native-book-title', { gap: '6px', padding: '7px 2px' });

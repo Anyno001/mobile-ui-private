@@ -175,12 +175,13 @@
 .pm-custom-check[data-checked="1"],.pm-custom-check.is-checked{background:var(--pm-color-success) !important;}
 .pm-custom-check[data-checked="1"]::after,.pm-custom-check.is-checked::after{transform:translateX(16px);}
 .pm-custom-check:focus-visible{outline:2px solid var(--pm-color-focus-ring);outline-offset:2px;}
-.pm-worldbook-matrix{display:grid;grid-template-columns:minmax(0,1fr) repeat(3,38px);gap:6px 8px;align-items:center;}
+.pm-worldbook-matrix{display:grid;grid-template-columns:minmax(0,1fr) repeat(4,minmax(24px,34px));gap:6px 4px;align-items:center;}
 .pm-worldbook-matrix-header,.pm-worldbook-matrix-row{display:contents;}
 .pm-worldbook-matrix-header>span:not(:first-child){display:grid;justify-items:center;gap:2px;color:var(--pm-color-text-tertiary);font-size:10px;font-weight:650;}
 .pm-worldbook-matrix-header svg{width:16px;height:16px;}
 .pm-worldbook-matrix-row>b{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px;}
 .pm-worldbook-eye{width:38px;height:34px;flex:0 0 38px;display:grid;place-items:center;border:0;border-radius:8px;background:transparent;color:var(--pm-color-text-tertiary);padding:0;cursor:pointer;}
+.pm-worldbook-matrix .pm-worldbook-eye{box-sizing:border-box;width:100%;min-width:0;}
 .pm-worldbook-eye svg{width:18px;height:18px;}.pm-worldbook-eye.is-checked{color:var(--pm-color-success);}.pm-worldbook-eye:focus-visible{outline:2px solid var(--pm-color-focus-ring);outline-offset:1px;}
 .pm-worldbook-range{box-sizing:border-box;max-width:100%;padding:16px 14px 14px;display:flex;flex-direction:column;gap:14px;overflow-x:hidden;}
 .pm-worldbook-range .pm-cfg-label{display:flex;flex-direction:column;gap:6px;margin:0;min-width:0;}
@@ -512,7 +513,7 @@
 .pm-worldbook-book-detail{padding:2px 6px 10px 20px}.pm-worldbook-book-detail .pm-worldbook-matrix{padding:5px 0 8px}.pm-worldbook-detail-status{padding:10px 8px 12px 24px;color:var(--pm-color-text-tertiary);font-size:11px}.pm-worldbook-detail-status.is-error{color:var(--pm-color-danger)}.pm-worldbook-detail-status button{margin-left:6px;border:0;border-radius:7px;background:color-mix(in srgb,currentColor 9%,transparent);color:inherit;padding:4px 8px;font:inherit;font-weight:700;cursor:pointer}
 .pm-worldbook-load-more{display:block;width:100%;margin-top:8px;border:1px solid var(--pm-color-border-default);border-radius:9px;background:transparent;color:var(--pm-color-text-secondary);padding:8px;font:inherit;font-size:11px;font-weight:700;cursor:pointer}.pm-worldbook-load-more:hover,.pm-worldbook-load-more:focus-visible{background:var(--pm-color-surface-input);outline:none}
 @media(max-width:600px){.pm-worldbook-column{padding-inline:9px}.pm-worldbook-search{max-width:min(48%,160px)}.pm-worldbook-book-detail{padding-left:14px}.pm-worldbook-range{padding:12px 10px}.pm-worldbook-content{padding-inline:8px}}
-@media(max-width:340px){.pm-worldbook-column-heading{align-items:flex-start;flex-direction:column;padding:9px 0}.pm-worldbook-search{width:100%;max-width:none}.pm-worldbook-other-panel>.pm-worldbook-search{margin-left:0}.pm-worldbook-expand>small{display:none}.pm-worldbook-matrix{grid-template-columns:minmax(0,1fr) repeat(3,34px);gap-inline:4px}.pm-worldbook-book-detail{padding-left:8px}}
+@media(max-width:340px){.pm-worldbook-column-heading{align-items:flex-start;flex-direction:column;padding:9px 0}.pm-worldbook-search{width:100%;max-width:none}.pm-worldbook-other-panel>.pm-worldbook-search{margin-left:0}.pm-worldbook-expand>small{display:none}.pm-worldbook-book-detail{padding-left:8px}}
 .pm-calendar-data-row .is-primary{background:var(--pm-calendar-accent)!important;color:var(--pm-color-on-dark)!important;border-color:var(--pm-calendar-accent)!important}
 .pm-calendar-setting-hint{color:var(--pm-color-text-tertiary)!important;font-size:11px;line-height:1.5}
 .pm-calendar-management .pm-calendar-data-tools{padding:10px;gap:8px;font-size:12px}.pm-calendar-management .pm-calendar-data-tools h3{font-size:12px}.pm-calendar-management .pm-calendar-data-row{gap:7px;align-items:center}.pm-calendar-management .pm-calendar-data-row :is(input,select,button),.pm-calendar-management .pm-calendar-database-card>button,.pm-calendar-management .pm-calendar-location-results button{min-height:34px;padding:7px 9px;font-size:12px}
