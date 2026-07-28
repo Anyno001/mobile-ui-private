@@ -664,28 +664,56 @@ const enabledWorldBookContext = {
     chatMetadata: { world_info: ['会话书', '数据库书'] },
     chat_metadata: { world_info: ['数据库书', '兼容字段书'] },
     characters: [{ data: { extensions: { world: ['角色书', '会话书'] } } }], characterId: 0,
+    getCharWorldbookNames() { return { primary: '角色书', additional: ['附加书', '会话书', '附加书'] }; },
 };
 assert.deepEqual(getCurrentChatWorldBooks(enabledWorldBookContext), [
-    { name: '会话书', sources: ['chat', 'character'] },
+    { name: '会话书', sources: ['chat', 'additional'] },
     { name: '数据库书', sources: ['chat'] },
     { name: '角色书', sources: ['character'] },
-], '同名来源必须稳定去重并合并 sources；chatMetadata 优先于兼容字段');
-assert.deepEqual([...getEnabledWorldBookNames(enabledWorldBookContext)], ['会话书', '数据库书', '角色书']);
-assert.deepEqual(getReadableWorldBookNames(enabledWorldBookContext, { books: { 数据库书: false } }), ['会话书', '角色书'],
+    { name: '附加书', sources: ['additional'] },
+], '角色主世界书与附加世界书必须通过宿主绑定 API 合并，同名来源需稳定去重');
+assert.deepEqual([...getEnabledWorldBookNames(enabledWorldBookContext)], ['会话书', '数据库书', '角色书', '附加书']);
+assert.deepEqual(getReadableWorldBookNames(enabledWorldBookContext, { books: { 数据库书: false } }), ['会话书', '角色书', '附加书'],
     '世界书总开关必须在读取详情前过滤');
+assert.deepEqual(getCurrentChatWorldBooks({
+    characters: [{ data: { extensions: { world: '旧版角色书' } } }], characterId: 0,
+}), [{ name: '旧版角色书', sources: ['character'] }], '宿主绑定 API 缺失时必须兼容旧版角色主世界书字段');
+assert.deepEqual(getCurrentChatWorldBooks({
+    characters: [{ data: { extensions: { world: '异常回退角色书' } } }], characterId: 0,
+    getCharWorldbookNames() { throw new Error('宿主绑定 API 失败'); },
+}), [{ name: '异常回退角色书', sources: ['character'] }], '宿主绑定 API 抛错时必须回退旧版角色主世界书字段');
+assert.deepEqual(getCurrentChatWorldBooks({
+    characters: [{ data: { extensions: { world: '不得恢复的旧主书' } } }], characterId: 0,
+    getCharWorldbookNames() { return { primary: null, additional: ['仅附加书'] }; },
+}), [{ name: '仅附加书', sources: ['additional'] }], '宿主明确返回 primary=null 时不得偷偷恢复旧版主世界书');
+assert.deepEqual(getCurrentChatWorldBooks({
+    chatMetadata: { world_info: ['同名书'] },
+    characters: [{ data: { extensions: { world: '旧主书' } } }], characterId: 0,
+    getCharWorldbookNames() { return { primary: '同名书', additional: ['同名书', '独立附加书'] }; },
+}), [
+    { name: '同名书', sources: ['chat', 'character', 'additional'] },
+    { name: '独立附加书', sources: ['additional'] },
+], '聊天、角色主书和附加书同名时必须只保留一本并准确合并来源');
 let settingsDirectoryNameCalls = 0, settingsDirectoryDetailCalls = 0;
 assert.deepEqual(await loadWorldBookSettingsDirectory({
     ...enabledWorldBookContext,
-    getWorldInfoNames() { settingsDirectoryNameCalls += 1; return ['会话书', '数据库书', '角色书', '未启用书', '未启用书']; },
+    getWorldInfoNames() { settingsDirectoryNameCalls += 1; return ['会话书', '数据库书', '角色书', '附加书', '未启用书', '未启用书']; },
     async loadWorldInfo() { settingsDirectoryDetailCalls += 1; throw new Error('初次目录不得读取详情'); },
 }, { books: { 数据库书: false } }), {
     current: [
-        { name: '会话书', sources: ['chat', 'character'], enabled: true },
+        { name: '会话书', sources: ['chat', 'additional'], enabled: true },
         { name: '数据库书', sources: ['chat'], enabled: false },
         { name: '角色书', sources: ['character'], enabled: true },
+        { name: '附加书', sources: ['additional'], enabled: true },
     ],
-    others: [{ name: '未启用书', enabled: true }],
-}, '设置页目录必须返回当前/其他双栏差集且不加载详情');
+    others: [{ name: '未启用书', enabled: false }],
+}, '设置页目录必须纳入角色附加世界书，其他世界书默认关闭且不加载详情');
+assert.deepEqual((await loadWorldBookSettingsDirectory({
+    ...enabledWorldBookContext,
+    getWorldInfoNames() { return ['会话书', '数据库书', '角色书', '附加书', '显式开启书']; },
+}, { books: { 显式开启书: true } })).others, [
+    { name: '显式开启书', enabled: true },
+], '其他世界书只有显式保存为 true 时才能显示为开启');
 assert.equal(settingsDirectoryNameCalls, 1, '设置页初次目录只能调用 getWorldInfoNames 一次');
 assert.equal(settingsDirectoryDetailCalls, 0, '设置页初次目录不得调用 loadWorldInfo');
 const quickDirectoryLoads = [];
@@ -1474,11 +1502,12 @@ const forbiddenWorldBookHostCalls = { getWorldInfoPrompt: 0, saveWorldInfo: 0, u
 const settingsRuntime = { modelList: ['model-alpha', 'model-beta'] };
 let settingsWorldBookNameCalls = 0;
 let settingsWorldBookDetailCalls = 0;
-const currentSettingsBooks = ['设置书 A', '设置书 B', '设置书 C'];
+const currentSettingsBooks = ['设置书 A', '设置书 B', '设置书 C', '设置书 D'];
 const otherSettingsBooks = Array.from({ length: 97 }, (_, index) => `其他设置书 ${String(index + 1).padStart(3, '0')}`);
 let worldBookContext = {
     chatMetadata: { world_info: ['设置书 A', '设置书 B'] },
     characters: [{ data: { extensions: { world: ['设置书 C', '设置书 A'] } } }], characterId: 0,
+    getCharWorldbookNames() { return { primary: '设置书 C', additional: ['设置书 D', '设置书 A'] }; },
     getWorldInfoNames() { settingsWorldBookNameCalls += 1; return [...currentSettingsBooks, ...otherSettingsBooks, '设置书 A']; },
     getWorldInfoPrompt() { forbiddenWorldBookHostCalls.getWorldInfoPrompt += 1; },
     saveWorldInfo() { forbiddenWorldBookWriteCalls += 1; forbiddenWorldBookHostCalls.saveWorldInfo += 1; },
@@ -1560,12 +1589,16 @@ await window.__pmShowConfig('worldbook');
 assert.match(settingsOverlayHtml, /世界书读取|当前聊天世界书|其他世界书|搜索名称/,
     '设置首页必须展示当前/其他世界书双栏与搜索入口');
 assert.deepEqual(currentSettingsBooks.filter(name => settingsOverlayHtml.includes(name)), currentSettingsBooks,
-    '当前聊天栏必须精确展示三本去重后的当前聊天世界书');
+    '当前聊天栏必须精确展示角色主世界书与附加世界书合并后的结果');
+assert.match(settingsOverlayHtml, /设置书 D<\/b><small>附加<\/small>/,
+    '附加世界书必须在当前聊天栏标记为附加来源');
+assert.match(settingsOverlayHtml, /data-world-book-name="其他设置书 001"[\s\S]*?aria-pressed="false" aria-label="其他设置书 001读取开关"/,
+    '未保存过配置的其他世界书读取开关必须默认关闭');
 assert.equal(otherSettingsBooks.filter(name => settingsOverlayHtml.includes(name)).length, 30,
     '其他世界书初次只能渲染首批 30 行');
 assert.doesNotMatch(settingsOverlayHtml, /其他设置书 031/, '首批不得提前渲染第 31 本其他书');
-assert.match(settingsOverlayHtml, /当前聊天世界书<\/b><small>3 本|其他世界书<\/b><small>97 本/,
-    '双栏计数必须精确反映三本当前书与九十七本差集');
+assert.match(settingsOverlayHtml, /当前聊天世界书<\/b><small>4 本|其他世界书<\/b><small>97 本/,
+    '双栏计数必须精确反映四本当前书与九十七本差集');
 assert.doesNotMatch(settingsOverlayHtml, /设置页条目标题|数据库栏目|原生条目/,
     '设置首页初次渲染不得预加载条目或栏目');
 assert.equal(settingsWorldBookNameCalls, 1, '设置首页初次渲染只能读取一次目录名称');
@@ -1591,9 +1624,9 @@ assert.doesNotMatch(settingsOverlayHtml, /TavernDB-ACU-|包裹-(?:上|下)/,
 assert.equal((settingsOverlayHtml.match(/pm-worldbook-eye is-checked/g) || []).length, 4,
     '未配置的数据库系列必须默认全部启用');
 await window.__pmShowConfig('worldbook');
-assert.equal(settingsWorldBookDetailCalls, 3, '快捷栏目应串行读取三本当前聊天世界书，设置页目录不得追加详情请求');
+assert.equal(settingsWorldBookDetailCalls, 4, '快捷栏目应串行读取四本当前聊天世界书（含附加书），设置页目录不得追加详情请求');
 assert.equal(await window.__pmToggleWorldBookDetails('设置书 A'), true, '显式展开世界书后必须加载单本详情');
-assert.equal(settingsWorldBookDetailCalls, 4, '显式展开只能新增一次单本详情请求');
+assert.equal(settingsWorldBookDetailCalls, 5, '显式展开只能新增一次单本详情请求');
 assert.match(settingsOverlayHtml, /<path d="M4 5\.5 12 3l8 2\.5v13L12 16l-8 2\.5z"/,
     '原生世界书条目标题必须使用书本图标');
 assert.doesNotMatch(settingsOverlayHtml, /设置页正文/,
@@ -2204,6 +2237,23 @@ try {
     assert.equal(await buildWorldBookContext({ chatMetadata: { world_info: ['关闭书'] }, async loadWorldInfo() { disabledBookLoads += 1; return {}; } },
         { module: 'chat', config: { books: { 关闭书: false } } }), '', '关闭书必须输出空上下文');
     assert.equal(disabledBookLoads, 0, 'config.books=false 必须在 loadWorldInfo 前排除');
+    const explicitBookLoads = [];
+    assert.equal(await buildWorldBookContext({
+        chat: [{ mes: '显式读取触发词' }], chatMetadata: { world_info: ['当前书'] },
+        getWorldInfoNames() { throw new Error('运行时不得读取全量目录'); },
+        async loadWorldInfo(name) {
+            explicitBookLoads.push(name);
+            return { entries: {
+                [name]: { uid: name, content: `${name}正文`, key: ['显式读取触发词'] },
+            } };
+        },
+    }, { module: 'chat', config: { books: { 当前书: true, 其他显式开启书: true, 其他关闭书: false } } }),
+    '当前书正文\n\n其他显式开启书正文', '其他世界书显式开启后必须真正进入运行时读取链路');
+    assert.deepEqual(explicitBookLoads, ['当前书', '其他显式开启书'],
+        '当前书与显式开启的其他书必须稳定去重，未配置或关闭的其他书不得读取');
+    assert.deepEqual(getReadableWorldBookNames({ chatMetadata: { world_info: ['当前书'] } }, {
+        books: { 未配置其他书: false, 其他显式开启书: true },
+    }), ['当前书', '其他显式开启书'], '可读名单必须先保留当前书，再追加显式开启的其他书');
     const firstRuntimeBook = makeDeferredWorldBook();
     let runtimeLoadCalls = 0, runtimeActiveLoads = 0, runtimeMaxActiveLoads = 0;
     const runtimeAbortController = new AbortController();

@@ -9,7 +9,7 @@ const HIDDEN_ENTRY_TITLE = /(?:^|-)包裹-(?:上|下)$/;
 const WORLD_BOOK_BATCH_SIZE = 30;
 const MODULE_LABELS = Object.freeze({ chat: '会话', calendar: '日历', outfit: '穿搭', community: '社区' });
 const MODULE_ICONS = Object.freeze({ chat: CHAT_ICON_SVG, calendar: CALENDAR_ICON_SVG, outfit: OUTFIT_ICON_SVG, community: COMMUNITY_ICON_SVG });
-const SOURCE_LABELS = Object.freeze({ global: '全局', chat: '聊天', character: '角色' });
+const SOURCE_LABELS = Object.freeze({ global: '全局', chat: '聊天', character: '角色', additional: '附加' });
 const DATABASE_ICON_SVG = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><ellipse cx="12" cy="5" rx="7" ry="3"/><path d="M5 5v7c0 1.7 3.1 3 7 3s7-1.3 7-3V5M5 12v7c0 1.7 3.1 3 7 3s7-1.3 7-3v-7"/></svg>';
 const shortTitle = value => value.length > 15 ? `${value.slice(0, 14)}…` : value;
 const abortError = () => {
@@ -59,7 +59,7 @@ export async function loadWorldBookSettingsDirectory(context, config, { signal }
     const current = getCurrentChatWorldBooks(context).map(book => ({ ...book, enabled: currentConfig.books[book.name] !== false }));
     const currentNames = new Set(current.map(book => book.name));
     const others = [...new Set(names.map(name => text(name).trim()).filter(Boolean))]
-        .filter(name => !currentNames.has(name)).map(name => ({ name, enabled: currentConfig.books[name] !== false }));
+        .filter(name => !currentNames.has(name)).map(name => ({ name, enabled: currentConfig.books[name] === true }));
     return { current, others };
 }
 
@@ -99,9 +99,10 @@ function renderDetail(detail, config) {
 }
 
 function renderBookRow(book, state) {
-    const enabled = state.config.books[book.name] !== false;
     const expanded = state.detail?.name === book.name;
     const sources = Array.isArray(book.sources) ? book.sources.map(source => SOURCE_LABELS[source]).filter(Boolean) : [];
+    const configured = Object.prototype.hasOwnProperty.call(state.config.books, book.name);
+    const enabled = configured ? state.config.books[book.name] === true : sources.length > 0;
     return `<div class="pm-worldbook-native-book" data-world-book-section data-world-book-name="${escapeAttr(book.name)}" data-world-book-expanded="${expanded}"><div class="pm-li pm-worldbook-native-book-title"><button type="button" class="pm-worldbook-expand" data-world-book-name="${escapeAttr(book.name)}" aria-expanded="${expanded}" onclick="window.__pmToggleWorldBookDetails(this.dataset.worldBookName)"><span aria-hidden="true">›</span><b title="${escapeAttr(book.name)}">${escapeHtml(book.name)}</b>${sources.length ? `<small>${sources.join(' · ')}</small>` : ''}</button>${eyeToggle(enabled, `data-world-book="${escapeAttr(book.name)}"`, `${book.name}读取开关`, false, "this.classList.toggle('is-checked');this.setAttribute('aria-pressed',String(this.classList.contains('is-checked')));window.__pmSetWorldBookEnabled(this)")}</div>${expanded ? renderDetail(state.detail, state.config) : ''}</div>`;
 }
 

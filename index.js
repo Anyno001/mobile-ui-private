@@ -5997,6 +5997,19 @@ ${lines.join("\n")}
       if (name) target.add(name);
     }
   }
+  function getCharacterWorldBookBindings(context) {
+    const character = context?.characters?.[context?.characterId];
+    const fallback = { primary: character?.data?.extensions?.world, additional: [] };
+    const getBindings = context?.getCharWorldbookNames || globalThis.getCharWorldbookNames;
+    if (typeof getBindings !== "function") return fallback;
+    try {
+      const bindings = plainObject2(getBindings("current"));
+      const primary = typeof bindings.primary === "string" || bindings.primary === null ? bindings.primary : fallback.primary;
+      return { primary, additional: Array.isArray(bindings.additional) ? bindings.additional : [] };
+    } catch (error) {
+      return fallback;
+    }
+  }
   function appendWorldBookSource(result, byName, value, source) {
     const names = /* @__PURE__ */ new Set();
     activeBookNames(value, names);
@@ -6015,17 +6028,29 @@ ${lines.join("\n")}
     const result = [], byName = /* @__PURE__ */ new Map();
     const globalSelector = globalThis.document?.getElementById?.("world_info");
     const metadata = plainObject2(context?.chatMetadata || context?.chat_metadata);
-    const character = context?.characters?.[context?.characterId];
+    const characterBooks = getCharacterWorldBookBindings(context);
     if (globalSelector?.selectedOptions) {
       appendWorldBookSource(result, byName, [...globalSelector.selectedOptions].map((option) => option.textContent || option.label), "global");
     }
     appendWorldBookSource(result, byName, metadata.world_info, "chat");
-    appendWorldBookSource(result, byName, character?.data?.extensions?.world, "character");
+    appendWorldBookSource(result, byName, characterBooks.primary, "character");
+    appendWorldBookSource(result, byName, characterBooks.additional, "additional");
     return result;
   }
   function getReadableWorldBookNames(context, config) {
     const current = normalizeWorldBookConfig(config);
-    return getCurrentChatWorldBooks(context).flatMap((book) => current.books[book.name] === false ? [] : [book.name]);
+    const names = [], seen = /* @__PURE__ */ new Set();
+    for (const book of getCurrentChatWorldBooks(context)) {
+      if (current.books[book.name] === false || seen.has(book.name)) continue;
+      seen.add(book.name);
+      names.push(book.name);
+    }
+    for (const [name, enabled] of Object.entries(current.books)) {
+      if (enabled !== true || seen.has(name)) continue;
+      seen.add(name);
+      names.push(name);
+    }
+    return names;
   }
   function normalizeColumnModes(value) {
     const result = {};
@@ -17463,7 +17488,7 @@ ${lines}`;
   var WORLD_BOOK_BATCH_SIZE = 30;
   var MODULE_LABELS = Object.freeze({ chat: "\u4F1A\u8BDD", calendar: "\u65E5\u5386", outfit: "\u7A7F\u642D", community: "\u793E\u533A" });
   var MODULE_ICONS = Object.freeze({ chat: CHAT_ICON_SVG, calendar: CALENDAR_ICON_SVG, outfit: OUTFIT_ICON_SVG, community: COMMUNITY_ICON_SVG });
-  var SOURCE_LABELS2 = Object.freeze({ global: "\u5168\u5C40", chat: "\u804A\u5929", character: "\u89D2\u8272" });
+  var SOURCE_LABELS2 = Object.freeze({ global: "\u5168\u5C40", chat: "\u804A\u5929", character: "\u89D2\u8272", additional: "\u9644\u52A0" });
   var DATABASE_ICON_SVG = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><ellipse cx="12" cy="5" rx="7" ry="3"/><path d="M5 5v7c0 1.7 3.1 3 7 3s7-1.3 7-3V5M5 12v7c0 1.7 3.1 3 7 3s7-1.3 7-3v-7"/></svg>';
   var shortTitle = (value) => value.length > 15 ? `${value.slice(0, 14)}\u2026` : value;
   var abortError = () => {
@@ -17513,7 +17538,7 @@ ${lines}`;
     const currentConfig = normalizeWorldBookConfig(config);
     const current = getCurrentChatWorldBooks(context).map((book) => ({ ...book, enabled: currentConfig.books[book.name] !== false }));
     const currentNames = new Set(current.map((book) => book.name));
-    const others = [...new Set(names.map((name) => text4(name).trim()).filter(Boolean))].filter((name) => !currentNames.has(name)).map((name) => ({ name, enabled: currentConfig.books[name] !== false }));
+    const others = [...new Set(names.map((name) => text4(name).trim()).filter(Boolean))].filter((name) => !currentNames.has(name)).map((name) => ({ name, enabled: currentConfig.books[name] === true }));
     return { current, others };
   }
   async function loadWorldBookDirectory(context, { signal } = {}) {
@@ -17548,9 +17573,10 @@ ${lines}`;
     return `<div class="pm-worldbook-book-detail"><div class="pm-worldbook-section-heading">${DATABASE_ICON_SVG}<span>\u6570\u636E\u5E93\u680F\u76EE</span></div>${columnRows}<div class="pm-worldbook-section-heading">${BOOK_ICON_SVG}<span>\u539F\u751F\u6761\u76EE</span></div>${nativeRows}</div>`;
   }
   function renderBookRow(book, state) {
-    const enabled = state.config.books[book.name] !== false;
     const expanded = state.detail?.name === book.name;
     const sources = Array.isArray(book.sources) ? book.sources.map((source) => SOURCE_LABELS2[source]).filter(Boolean) : [];
+    const configured = Object.prototype.hasOwnProperty.call(state.config.books, book.name);
+    const enabled = configured ? state.config.books[book.name] === true : sources.length > 0;
     return `<div class="pm-worldbook-native-book" data-world-book-section data-world-book-name="${escapeAttr(book.name)}" data-world-book-expanded="${expanded}"><div class="pm-li pm-worldbook-native-book-title"><button type="button" class="pm-worldbook-expand" data-world-book-name="${escapeAttr(book.name)}" aria-expanded="${expanded}" onclick="window.__pmToggleWorldBookDetails(this.dataset.worldBookName)"><span aria-hidden="true">\u203A</span><b title="${escapeAttr(book.name)}">${escapeHtml(book.name)}</b>${sources.length ? `<small>${sources.join(" \xB7 ")}</small>` : ""}</button>${eyeToggle(enabled, `data-world-book="${escapeAttr(book.name)}"`, `${book.name}\u8BFB\u53D6\u5F00\u5173`, false, "this.classList.toggle('is-checked');this.setAttribute('aria-pressed',String(this.classList.contains('is-checked')));window.__pmSetWorldBookEnabled(this)")}</div>${expanded ? renderDetail(state.detail, state.config) : ""}</div>`;
   }
   function filteredOthers(state) {
