@@ -170,7 +170,7 @@ export function installSettingsUi(deps) {
     window.__pmExportData = async () => {
         const snapshot = await captureBackupState();
         const data = {
-            schemaVersion: 11,
+            schemaVersion: 12,
             histories: snapshot.histories,
             config: snapshot.config,
             theme: legacyBackupTheme(snapshot.theme),
@@ -195,6 +195,7 @@ export function installSettingsUi(deps) {
             calendarWeather: snapshot.calendarWeather,
             calendarCycles: snapshot.calendarCycles,
             calendarRecipes: snapshot.calendarRecipes,
+            calendarOutfits: snapshot.calendarOutfits,
             branchLineage: snapshot.branchLineage,
         };
         const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
@@ -528,6 +529,7 @@ export function installSettingsUi(deps) {
         const communityWeightInput = document.getElementById('pm-budget-community-weight');
         const calendarWeightInput = document.getElementById('pm-budget-calendar-weight');
         const recipeWeightInput = document.getElementById('pm-budget-recipe-weight');
+        const outfitWeightInput = document.getElementById('pm-budget-outfit-weight');
         let sourceWeights;
         try {
             sourceWeights = resolveBudgetPercentageInput({
@@ -536,14 +538,16 @@ export function installSettingsUi(deps) {
                 community: communityWeightInput?.value,
                 calendar: calendarWeightInput?.value,
                 recipe: recipeWeightInput?.value,
+                outfit: outfitWeightInput?.value,
                 initialPhone: phoneWeightInput?.dataset.initialValue,
                 initialCommunity: communityWeightInput?.dataset.initialValue,
                 initialCalendar: calendarWeightInput?.dataset.initialValue,
                 initialRecipe: recipeWeightInput?.dataset.initialValue,
+                initialOutfit: outfitWeightInput?.dataset.initialValue,
             });
         } catch (error) { alert(error.message); return; }
         const prioritySource = document.getElementById('pm-budget-priority')?.value;
-        const priority = [prioritySource, 'phone', 'community', 'calendar', 'recipe'].filter((value, index, values) => value && values.indexOf(value) === index);
+        const priority = [prioritySource, 'phone', 'community', 'calendar', 'recipe', 'outfit'].filter((value, index, values) => value && values.indexOf(value) === index);
         const current = normalizeBudgetConfig(window.__pmBudgetConfig);
         const candidate = normalizeBudgetConfig({
             ...current,

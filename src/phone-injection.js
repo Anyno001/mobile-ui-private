@@ -11,6 +11,7 @@ import {
 import { occasionScopeFor, expandOccasions } from './calendar-occasion-model.js';
 import { buildCulturalFestivals, HOLIDAY_YEAR_RANGE, holidayYearFromCache, mergeCalendarDateFacts, normalizeHolidayCache } from './calendar-holiday.js';
 import { CYCLE_SELF_SUBJECT, cycleScopeFor, cycleSubjectKeys, predictCycleRange } from './calendar-cycle-model.js';
+import { outfitScopeFor, renderOutfitInjection } from './calendar-outfit-model.js';
 import { recipeScopeFor, renderRecipeInjection } from './calendar-recipe-model.js';
 import { weatherCodeLabel } from './calendar-weather.js';
 import { resolveWeatherForDate } from './calendar-weather-source.js';
@@ -32,6 +33,7 @@ const usesExtendedOccasionWindow = occasion => {
 
 const COMMUNITY_KEY_PREFIX = `${BIDIRECTIONAL_KEY}:community:`;
 const CALENDAR_KEY_PREFIX = `${BIDIRECTIONAL_KEY}:calendar:`;
+const OUTFIT_KEY_PREFIX = `${BIDIRECTIONAL_KEY}:outfit:`;
 const RECIPE_KEY_PREFIX = `${BIDIRECTIONAL_KEY}:recipe:`;
 
 function injectionKey(name) {
@@ -234,7 +236,7 @@ export function renderCalendarContextInjection({
 export function buildContextInjectionPrompts({
     currentStorageId, currentActorName, currentConversationKey, selectedByStorage, historiesByStorage, groupsByStorage,
     injectionConfig, interactiveStore, budgetConfig, userName, emojis, safeMaxTokens, calendarStore,
-    calendarOccasions, calendarHolidays, calendarWeather, calendarCycles, calendarRecipes,
+    calendarOccasions, calendarHolidays, calendarWeather, calendarCycles, calendarRecipes, calendarOutfits,
 } = {}) {
     const config = normalizeBudgetConfig(budgetConfig);
     const phonePermission = resolvePhoneSources({
@@ -290,6 +292,22 @@ export function buildContextInjectionPrompts({
             });
         }
     }
+    const outfitItems = [];
+    if (calendarScope?.injectionOutfitEnabled && calendarOutfits && currentStorageId) {
+        const subject = `role:${currentActorName || '当前角色'}`;
+        const body = renderOutfitInjection(outfitScopeFor(calendarOutfits, currentStorageId, subject), {
+            start: calendarReferenceDate(calendarScope), subject: currentActorName,
+        });
+        if (body) {
+            outfitItems.push({
+                key: `${OUTFIT_KEY_PREFIX}${encodeURIComponent(currentStorageId)}`,
+                source: 'outfit',
+                content: `[角色穿搭]\n${body}\n[结束]`,
+                position: injection.calendar.position,
+                depth: injection.calendar.depth,
+            });
+        }
+    }
     const recipeItems = [];
     if (calendarScope?.injectionRecipeEnabled && calendarRecipes && currentStorageId) {
         const body = renderRecipeInjection(recipeScopeFor(calendarRecipes, currentStorageId), {
@@ -312,14 +330,16 @@ ${body}
         community: communityItems.reduce((sum, item) => sum + renderedItemTokenDemand(item), 0),
         calendar: calendarItems.reduce((sum, item) => sum + renderedItemTokenDemand(item), 0),
         recipe: recipeItems.reduce((sum, item) => sum + renderedItemTokenDemand(item), 0),
+        outfit: outfitItems.reduce((sum, item) => sum + renderedItemTokenDemand(item), 0),
     };
     const budget = allocateContextBudget({ config, safeMaxTokens, demandBySource });
     const phone = allocateRenderedPrompts(phoneItems, budget.allocations.phone);
     const community = allocateRenderedPrompts(communityItems, budget.allocations.community);
     const calendar = allocateRenderedPrompts(calendarItems, budget.allocations.calendar);
     const recipe = allocateRenderedPrompts(recipeItems, budget.allocations.recipe);
+    const outfit = allocateRenderedPrompts(outfitItems, budget.allocations.outfit);
     return {
-        prompts: [...phone.prompts, ...community.prompts, ...calendar.prompts, ...recipe.prompts],
+        prompts: [...phone.prompts, ...community.prompts, ...calendar.prompts, ...recipe.prompts, ...outfit.prompts],
         diagnostics: {
             estimated: true,
             budget,
@@ -336,9 +356,11 @@ ${body}
             },
             communityPermission: { allowed: communityPermission.allowed, reason: communityPermission.reason, sourceCount: communityPermission.sources.length },
             calendarEnabled: Boolean(calendarScope?.injectionScheduleEnabled || calendarScope?.injectionWeatherEnabled || calendarScope?.injectionCycleEnabled),
+            outfitEnabled: calendarScope?.injectionOutfitEnabled === true,
             recipeEnabled: calendarScope?.injectionRecipeEnabled === true,
-            usedTokens: phone.usedTokens + community.usedTokens + calendar.usedTokens + recipe.usedTokens,
-            truncatedCount: phone.truncatedCount + community.truncatedCount + calendar.truncatedCount + recipe.truncatedCount,
+            outfit: { demandTokens: demandBySource.outfit, allocatedTokens: budget.allocations.outfit, promptCount: outfit.prompts.length, usedTokens: outfit.usedTokens },
+            usedTokens: phone.usedTokens + community.usedTokens + calendar.usedTokens + recipe.usedTokens + outfit.usedTokens,
+            truncatedCount: phone.truncatedCount + community.truncatedCount + calendar.truncatedCount + recipe.truncatedCount + outfit.truncatedCount,
         },
     };
 }

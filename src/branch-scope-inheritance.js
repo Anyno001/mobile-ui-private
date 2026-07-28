@@ -3,11 +3,12 @@ import { normalizeCharacterBehaviorStore, normalizeGroupMetaStore } from './beha
 import { normalizeCalendarStore } from './calendar-model.js';
 import { normalizeOccasionStore } from './calendar-occasion-model.js';
 import { normalizeCycleStore } from './calendar-cycle-model.js';
+import { normalizeOutfitStore } from './calendar-outfit-model.js';
 import { normalizeRecipeStore } from './calendar-recipe-model.js';
 import { deriveInteractiveActorId, normalizeInteractiveStore, normalizePhoneUiState } from './interactive-scene-model.js';
 import { getCurrentChatId, getStorageIdFor } from './host-context.js';
 import {
-    CALENDAR_CYCLE_STORAGE_KEY, CALENDAR_OCCASION_STORAGE_KEY, CALENDAR_RECIPE_STORAGE_KEY,
+    CALENDAR_CYCLE_STORAGE_KEY, CALENDAR_OCCASION_STORAGE_KEY, CALENDAR_OUTFIT_STORAGE_KEY, CALENDAR_RECIPE_STORAGE_KEY,
     CALENDAR_STORAGE_KEY, CHARACTER_BEHAVIOR_KEY, IDB_MARKER,
 } from './constants.js';
 import {
@@ -19,7 +20,7 @@ import {
 import { completeDirectoryBranchScope, enqueueDirectoryOperation, markDirectoryBranchScope } from './directory-save-coordinator.js';
 import { saveBgLocal } from './storage-background.js';
 import {
-    saveCalendar, saveCalendarCycles, saveCalendarOccasions, saveCalendarRecipes,
+    saveCalendar, saveCalendarCycles, saveCalendarOccasions, saveCalendarOutfits, saveCalendarRecipes,
 } from './calendar-storage.js';
 
 const clone = value => structuredClone(value);
@@ -52,7 +53,7 @@ function hasContent(value) {
 
 function scopePresence(storageId, stores, contentOnly = false) {
     const flat = ['histories', 'groupMeta', 'pokeConfig', 'characterBehavior', 'bidirectional'];
-    const scoped = ['interactive', 'phoneUi', 'calendar', 'occasions', 'cycles', 'recipes'];
+    const scoped = ['interactive', 'phoneUi', 'calendar', 'occasions', 'cycles', 'recipes', 'outfits'];
     const presence = {};
     const included = value => !contentOnly || hasContent(value);
     for (const key of flat) {
@@ -120,7 +121,7 @@ function createCandidates(sourceId, targetId, stores) {
     if (own(stores.interactive.scopes, sourceId)) {
         next.interactive.scopes[targetId] = remapInteractiveScope(stores.interactive.scopes[sourceId], targetId);
     }
-    for (const key of ['phoneUi', 'calendar', 'occasions', 'cycles', 'recipes']) {
+    for (const key of ['phoneUi', 'calendar', 'occasions', 'cycles', 'recipes', 'outfits']) {
         copyEntry(next[key].scopes, stores[key].scopes, sourceId, targetId);
     }
     copyEntry(next.budget.communitySceneIdsByStorage, stores.budget.communitySceneIdsByStorage, sourceId, targetId);
@@ -133,6 +134,7 @@ function createCandidates(sourceId, targetId, stores) {
     next.occasions = normalizeOccasionStore(next.occasions);
     next.cycles = normalizeCycleStore(next.cycles);
     next.recipes = normalizeRecipeStore(next.recipes);
+    next.outfits = normalizeOutfitStore(next.outfits);
     next.budget = normalizeBudgetConfig(next.budget);
     return next;
 }
@@ -150,7 +152,7 @@ export function mergeBranchScope(current, desired, targetId) {
     }
     for (const key of scopeBackgroundKeys(targetId, next.backgrounds)) delete next.backgrounds[key];
     for (const key of scopeBackgroundKeys(targetId, source.backgrounds)) next.backgrounds[key] = clone(source.backgrounds[key]);
-    for (const key of ['interactive', 'phoneUi', 'calendar', 'occasions', 'cycles', 'recipes']) {
+    for (const key of ['interactive', 'phoneUi', 'calendar', 'occasions', 'cycles', 'recipes', 'outfits']) {
         replaceEntry(next[key].scopes, source[key].scopes, targetId);
     }
     replaceEntry(next.budget.communitySceneIdsByStorage, source.budget.communitySceneIdsByStorage, targetId);
@@ -164,7 +166,7 @@ function normalizeStores(stores) {
         characterBehavior: stores.characterBehavior || {}, bidirectional: stores.bidirectional || {}, backgrounds: stores.backgrounds || {},
         interactive: stores.interactive || { version: 2, scopes: {} }, phoneUi: stores.phoneUi || { version: 1, scopes: {} },
         calendar: stores.calendar || { version: 1, scopes: {} }, occasions: stores.occasions || { version: 1, scopes: {} },
-        cycles: stores.cycles || { version: 1, scopes: {} }, recipes: stores.recipes || { version: 1, scopes: {} },
+        cycles: stores.cycles || { version: 1, scopes: {} }, recipes: stores.recipes || { version: 1, scopes: {} }, outfits: stores.outfits || { version: 1, scopes: {} },
         budget: stores.budget || normalizeBudgetConfig(),
     };
 }
@@ -497,6 +499,7 @@ async function loadProductionStores() {
         occasions: readCalendarForBranch(CALENDAR_OCCASION_STORAGE_KEY, normalizeOccasionStore, '生日与纪念日数据'),
         cycles: readCalendarForBranch(CALENDAR_CYCLE_STORAGE_KEY, normalizeCycleStore, '生理周期数据'),
         recipes: readCalendarForBranch(CALENDAR_RECIPE_STORAGE_KEY, normalizeRecipeStore, '菜谱数据'),
+        outfits: readCalendarForBranch(CALENDAR_OUTFIT_STORAGE_KEY, normalizeOutfitStore, '穿搭数据'),
         budget: readBudgetForBranch(),
     });
 }
@@ -555,13 +558,16 @@ async function persistProductionStores(next, { branch } = {}) {
             await commitLocalScopeCoordinated('recipes', { key: CALENDAR_RECIPE_STORAGE_KEY,
                 desired: desired.recipes, expected: expected.recipes, targetId,
                 normalize: normalizeRecipeStore, label: '菜谱数据' });
+            await commitLocalScopeCoordinated('outfits', { key: CALENDAR_OUTFIT_STORAGE_KEY,
+                desired: desired.outfits, expected: expected.outfits, targetId,
+                normalize: normalizeOutfitStore, label: '穿搭数据' });
         } else {
             globalThis.window.__pmBgLocal = desired.backgrounds;
             await saveBgLocal();
             await saveInteractiveScenes(desired.interactive);
             if (!savePhoneUiState(desired.phoneUi, desired.interactive)) throw new Error('分支继承保存失败：手机页面状态不可用');
             if (!saveCalendar(desired.calendar) || !saveCalendarOccasions(desired.occasions)
-                || !saveCalendarCycles(desired.cycles) || !saveCalendarRecipes(desired.recipes)) {
+                || !saveCalendarCycles(desired.cycles) || !saveCalendarRecipes(desired.recipes) || !saveCalendarOutfits(desired.outfits)) {
                 throw new Error('分支继承保存失败：日历 scope 不可用');
             }
         }

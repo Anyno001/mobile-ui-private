@@ -1,12 +1,13 @@
 import { DEFAULT_CALENDAR_GENERATION_RULE, parseCalendarDate } from './calendar-model.js';
 import { predictCyclePhase } from './calendar-cycle-model.js';
 import { holidayYearFromCache } from './calendar-holiday.js';
+import { DEFAULT_OUTFIT_GENERATION_RULE, outfitForDate } from './calendar-outfit-model.js';
 import { DEFAULT_RECIPE_GENERATION_RULE, RECIPE_MEAL_LABELS, RECIPE_MEAL_TYPES, recipeDayFor } from './calendar-recipe-model.js';
 import { weatherCodeLabel } from './calendar-weather.js';
 import { resolveWeatherForDate, weatherSourceLabel } from './calendar-weather-source.js';
 import {
     CLOSE_ICON_SVG, CYCLE_FERTILE_ICON_SVG, CYCLE_PERIOD_ICON_SVG, EDIT_ICON_SVG,
-    LOCATION_ICON_SVG, MORE_ICON_SVG, REFRESH_ICON_SVG, TRASH_ICON_SVG, WEATHER_CLOUD_ICON_SVG,
+    LOCATION_ICON_SVG, MORE_ICON_SVG, OUTFIT_ICON_SVG, REFRESH_ICON_SVG, TRASH_ICON_SVG, WEATHER_CLOUD_ICON_SVG,
     WEATHER_FOG_ICON_SVG, WEATHER_ICON_SVG, WEATHER_PARTLY_CLOUDY_ICON_SVG, WEATHER_SNOW_ICON_SVG,
     WEATHER_STORM_ICON_SVG, WEATHER_SUN_ICON_SVG,
 } from './icons.js';
@@ -111,15 +112,29 @@ function recipeRows(recipeScope, date, editing = false) {
     ] : []).join('');
 }
 
+function outfitRow(outfit, editing = false) {
+    if (!outfit?.text) return '';
+    return `<article class="pm-calendar-event is-outfit"><div><b>${OUTFIT_ICON_SVG} OOTD</b><span>${escapeHtml(outfit.text)}</span></div>${editing ? `<span class="pm-calendar-inline-actions"><button type="button" data-action="calendar-outfit-edit" aria-label="编辑 OOTD" title="编辑">${EDIT_ICON_SVG}</button><button type="button" class="is-danger" data-action="calendar-outfit-delete" aria-label="删除 OOTD" title="删除">${TRASH_ICON_SVG}</button></span>` : ''}</article>`;
+}
+
 function detailHeader(selectedDate, parsed, relativeLabel, actions = '') {
     return `<header><div class="pm-calendar-detail-date">${relativeLabel ? `<strong>${escapeHtml(relativeLabel)}</strong>` : ''}<span><time datetime="${selectedDate}">${escapeHtml(detailDate.format(parsed))}</time><em>${escapeHtml(detailWeekday.format(parsed))}</em></span></div>${actions}</header>`;
 }
 
 export function renderSelectedDateDetail(
     scope, occasionsByDate, holidayCache, weatherStore, cycleScope, selectedDate, viewMode, relativeLabel = '', recipeScope = {}, detailEditing = false,
-    detailRegenerating = false,
+    detailRegenerating = false, outfitProfile = {},
 ) {
     const parsed = parseCalendarDate(selectedDate);
+    if (viewMode === 'outfit') {
+        const outfit = outfitForDate(outfitProfile, selectedDate);
+        const actions = `<div class="pm-calendar-detail-actions"><button type="button" class="pm-calendar-detail-more" data-action="calendar-toggle-detail-edit" aria-label="${detailEditing ? '关闭编辑状态' : '编辑这一天的 OOTD'}" title="${detailEditing ? '关闭编辑状态' : '编辑这一天的 OOTD'}" aria-pressed="${detailEditing}">${detailEditing ? CLOSE_ICON_SVG : MORE_ICON_SVG}</button></div>`;
+        const editActions = detailEditing ? `<div class="pm-calendar-detail-edit-actions"><button type="button" class="pm-calendar-inline-add" data-action="calendar-outfit-edit">${outfit ? '编辑 OOTD' : '+ 记录 OOTD'}</button><button type="button" class="pm-calendar-inline-regenerate${detailRegenerating ? ' is-loading' : ''}" data-action="calendar-outfit-regenerate" aria-label="重新生成当日 OOTD" title="重新生成当日 OOTD" aria-busy="${detailRegenerating}" ${detailRegenerating ? 'disabled' : ''}>${REFRESH_ICON_SVG}<span>重新生成</span></button></div>` : '';
+        return `<section class="pm-calendar-selected-detail" data-calendar-selected-detail="${selectedDate}" data-calendar-detail-mode="outfit">
+          ${detailHeader(selectedDate, parsed, relativeLabel, actions)}
+          <div class="pm-calendar-selected-content">${outfitRow(outfit, detailEditing) || '<p class="pm-calendar-empty-day">这一天还没有记录 OOTD。</p>'}${editActions}</div>
+        </section>`;
+    }
     if (viewMode === 'recipe') {
         const content = recipeRows(recipeScope, selectedDate, detailEditing);
         const actions = `<div class="pm-calendar-detail-actions"><button type="button" class="pm-calendar-detail-more" data-action="calendar-toggle-detail-edit" aria-label="${detailEditing ? '关闭编辑状态' : '编辑这一天的菜谱'}" title="${detailEditing ? '关闭编辑状态' : '编辑这一天的菜谱'}" aria-pressed="${detailEditing}">${detailEditing ? CLOSE_ICON_SVG : MORE_ICON_SVG}</button></div>`;
@@ -162,9 +177,17 @@ function injectionToggle(action, label, enabled) {
 
 export function renderCalendarManagement({
     scope, holidayCache, weatherStore, cycleScope, recipeScope, weatherResults, viewMode,
-    holidayAvailable = true, holidayRange = null, cycleSubjects = [], selectedCycleSubject = '__self__', managementOpen,
+    holidayAvailable = true, holidayRange = null, cycleSubjects = [], selectedCycleSubject = '__self__',
+    outfitProfile = {}, outfitSubjects = [], selectedOutfitSubject = '', managementOpen,
 }) {
-    const open = (managementOpen ?? ['recipe', 'cycle'].includes(viewMode)) ? ' open' : '';
+    const open = (managementOpen ?? ['recipe', 'cycle', 'outfit'].includes(viewMode)) ? ' open' : '';
+    if (viewMode === 'outfit') {
+        const subjects = outfitSubjects.length ? outfitSubjects : [{ value: selectedOutfitSubject || 'role:角色', label: '角色' }];
+        const colorPreference = outfitProfile?.colorPreference || '';
+        const preference = outfitProfile?.preference || '';
+        const generationRule = outfitProfile?.generationRule || DEFAULT_OUTFIT_GENERATION_RULE;
+        return `<details class="pm-calendar-management" data-calendar-management="outfit"${open}><summary>穿搭设置</summary><div class="pm-calendar-management-content"><section class="pm-calendar-data-tools pm-calendar-injection-card">${injectionToggle('calendar-toggle-outfit-injection', '穿搭注入', scope.injectionOutfitEnabled)}</section><section class="pm-calendar-data-tools pm-calendar-database-card"><div class="pm-calendar-database-copy"><h3>数据库记忆</h3><span class="pm-calendar-setting-hint">选择生成 OOTD 时可参考的数据库记忆栏目。</span></div><button type="button" data-action="calendar-outfit-worldbook-columns" aria-label="选择穿搭可读取的数据库记忆栏目">选择栏目</button></section><section class="pm-calendar-data-tools"><h3>角色与偏好</h3><div class="pm-calendar-data-row"><select data-action="calendar-outfit-subject" aria-label="穿搭记录对象">${subjects.map(item => `<option value="${escapeAttr(item.value)}" ${item.value === selectedOutfitSubject ? 'selected' : ''}>${escapeHtml(item.label)}</option>`).join('')}</select></div><input data-outfit-color-preference maxlength="120" value="${escapeAttr(colorPreference)}" placeholder="喜好颜色（可选）" aria-label="喜好颜色"><textarea data-outfit-preference maxlength="800" placeholder="穿衣偏好与限制（可选）" aria-label="穿衣偏好与限制">${escapeHtml(preference)}</textarea><div class="pm-calendar-editor-actions"><button type="button" class="is-primary" data-action="calendar-outfit-preferences-save">保存偏好</button></div></section><section class="pm-calendar-data-tools"><h3>高级生成规则</h3><textarea class="pm-calendar-generation-rule" data-outfit-generation-rule maxlength="3000" aria-label="穿搭生成规则">${escapeHtml(generationRule)}</textarea><div class="pm-calendar-editor-actions"><button type="button" class="is-primary" data-action="calendar-outfit-generation-rule-save">保存生成规则</button></div></section></div></details>`;
+    }
     if (viewMode === 'recipe') {
         const region = recipeScope?.regionPreference || '';
         const applied = recipeScope?.lastGeneratedRegion || '';
@@ -216,4 +239,8 @@ export function renderCalendarEntryDialog(selectedDate, entry = null, kind = 'ev
 export function renderRecipeMealDialog(selectedDate, mealType = 'breakfast', meal = null) {
     const normalizedType = RECIPE_MEAL_TYPES.includes(mealType) ? mealType : 'breakfast';
     return `<div class="pm-modal pm-calendar-entry-dialog pm-recipe-meal-dialog"><div class="pm-modal-header"><span></span><b>${meal ? '编辑' : '新增'} ${escapeHtml(selectedDate)} 餐食</b><button type="button" class="pm-modal-close" data-recipe-entry-close aria-label="关闭">${CLOSE_ICON_SVG}</button></div><form data-recipe-entry-form><label>餐次<select name="mealType" aria-label="菜谱餐次">${RECIPE_MEAL_TYPES.map(type => `<option value="${type}" ${type === normalizedType ? 'selected' : ''}>${RECIPE_MEAL_LABELS[type]}</option>`).join('')}</select></label><textarea name="text" maxlength="160" placeholder="填写这顿吃什么" aria-label="餐食内容">${escapeHtml(meal?.text || '')}</textarea><p class="pm-calendar-entry-error" data-recipe-entry-error role="status" aria-live="polite"></p><div class="pm-calendar-entry-actions"><button type="submit" class="is-primary">保存</button></div></form></div>`;
+}
+
+export function renderOutfitDialog(selectedDate, outfit = null) {
+    return `<div class="pm-modal pm-calendar-entry-dialog pm-outfit-dialog"><div class="pm-modal-header"><span></span><b>${outfit ? '编辑' : '记录'} ${escapeHtml(selectedDate)} OOTD</b><button type="button" class="pm-modal-close" data-outfit-entry-close aria-label="关闭">${CLOSE_ICON_SVG}</button></div><form data-outfit-entry-form><textarea name="text" maxlength="600" placeholder="填写当天实际穿着的关键服饰、鞋履及必要配饰" aria-label="OOTD 内容">${escapeHtml(outfit?.text || '')}</textarea><p class="pm-calendar-entry-error" data-outfit-entry-error role="status" aria-live="polite"></p><div class="pm-calendar-entry-actions"><button type="submit" class="is-primary">保存</button></div></form></div>`;
 }

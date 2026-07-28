@@ -3,11 +3,12 @@ import { createEmptyCalendarStore, migrateLegacyCalendarInjectionConfig, normali
 import { createEmptyOccasionStore, normalizeOccasionStore } from './calendar-occasion-model.js';
 import { createEmptyCycleStore, normalizeCycleStore } from './calendar-cycle-model.js';
 import { createEmptyHolidayCache, normalizeHolidayCache } from './calendar-holiday.js';
+import { createEmptyOutfitStore, normalizeOutfitStore } from './calendar-outfit-model.js';
 import { createEmptyRecipeStore, normalizeRecipeStore } from './calendar-recipe-model.js';
 import { createEmptyWeatherStore, normalizeWeatherStore } from './calendar-weather.js';
 import {
     CALENDAR_CYCLE_STORAGE_KEY, CALENDAR_HOLIDAY_STORAGE_KEY, CALENDAR_OCCASION_STORAGE_KEY,
-    CALENDAR_RECIPE_STORAGE_KEY, CALENDAR_STORAGE_KEY, CALENDAR_WEATHER_STORAGE_KEY,
+    CALENDAR_OUTFIT_STORAGE_KEY, CALENDAR_RECIPE_STORAGE_KEY, CALENDAR_STORAGE_KEY, CALENDAR_WEATHER_STORAGE_KEY,
 } from './constants.js';
 
 function loadStore(key, normalize, empty, label, storage = globalThis.localStorage) {
@@ -86,4 +87,10 @@ export const loadCalendarRecipes = storage => loadStore(
 );
 export const saveCalendarRecipes = (store, storage) => saveStore(
     CALENDAR_RECIPE_STORAGE_KEY, store, normalizeRecipeStore, '菜谱数据', storage,
+);
+export const loadCalendarOutfits = storage => loadStore(
+    CALENDAR_OUTFIT_STORAGE_KEY, normalizeOutfitStore, createEmptyOutfitStore, '穿搭数据', storage,
+);
+export const saveCalendarOutfits = (store, storage) => saveStore(
+    CALENDAR_OUTFIT_STORAGE_KEY, store, normalizeOutfitStore, '穿搭数据', storage,
 );

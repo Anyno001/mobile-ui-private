@@ -37,6 +37,7 @@ import {
 } from '../src/auto-poke-config.js';
 import { applyContextInjections } from '../src/phone-injection.js';
 import { normalizeCalendarStore } from '../src/calendar-model.js';
+import { normalizeOutfitStore } from '../src/calendar-outfit-model.js';
 import { normalizeRecipeStore } from '../src/calendar-recipe-model.js';
 import { deleteSceneDanmaku, deriveInteractiveActorId, normalizeInteractiveStore, updateSceneDanmaku } from '../src/interactive-scene-model.js';
 import { pmIDBKeys } from '../src/pm-idb.js';
@@ -4290,6 +4291,9 @@ const currentBackup = {
             breakfast: { text: '粿条汤', source: 'manual', updatedAt: 1 },
         } },
     } } },
+    calendarOutfits: { version: 1, scopes: { current: {
+        subjects: { 'role:Alice': { colorPreference: '', preference: '', generationRule: '', days: {} } },
+    } } },
     phoneUiState: {
         version: 1,
         scopes: { story: { pinnedSceneIds: [], lastPage: 'chat', lastSceneId: null, lastTab: 'feed' } },
@@ -4349,7 +4353,26 @@ assert.deepEqual(parseBackupData({ schemaVersion: 11, branchLineage: validBranch
     entries: { [worldBookKey]: false }, columns: { 纪要: { chat: false } },
 }));
 assert.throws(() => parseBackupData({ schemaVersion: 11, branchLineage: validBranchLineage }, currentBackup), /缺少 worldBookConfig/);
-assert.throws(() => parseBackupData({ schemaVersion: 12 }, currentBackup), /高于当前支持版本 11/);
+const importedOutfits = normalizeOutfitStore({ version: 1, scopes: { story: {
+    subjects: { 'role:Alice': {
+        colorPreference: '深色', preference: '通勤', generationRule: '优先复用既有衣物',
+        days: { '2032-03-15': { text: '黑色风衣与短靴', source: 'manual', updatedAt: 12 } },
+    } },
+} } });
+const parsedV12Backup = parseBackupData({
+    schemaVersion: 12, branchLineage: validBranchLineage, worldBookConfig: { entries: {}, columns: {} },
+    calendarOutfits: importedOutfits,
+}, currentBackup);
+assert.deepEqual(parsedV12Backup.calendarOutfits, importedOutfits, 'schema 12 必须读取规范穿搭 store');
+const restoredOutfit = parsedV12Backup.calendarOutfits.scopes.story.subjects['role:Alice'];
+assert.equal(restoredOutfit.colorPreference, '深色');
+assert.equal(restoredOutfit.preference, '通勤');
+assert.equal(restoredOutfit.generationRule, '优先复用既有衣物');
+assert.deepEqual(restoredOutfit.days['2032-03-15'], { text: '黑色风衣与短靴', source: 'manual', updatedAt: 12 });
+assert.deepEqual(parseBackupData({
+    schemaVersion: 11, branchLineage: validBranchLineage, worldBookConfig: { entries: {}, columns: {} }, calendarOutfits: importedOutfits,
+}, currentBackup).calendarOutfits, currentBackup.calendarOutfits, 'schema 11 不得解析尚未定义的 calendarOutfits 字段');
+assert.throws(() => parseBackupData({ schemaVersion: 13 }, currentBackup), /高于当前支持版本 12/);
 const parsedV4Backup = parseBackupData({
     schemaVersion: 4,
     theme: { darkMode: 'light', ambientStatusEnabled: true },

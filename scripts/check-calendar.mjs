@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { calendarGenerationErrorMessage, installCalendar, renderCalendarPageHtml } from '../src/calendar.js';
 import { fillCalendarEntryForm, readCalendarEntryForm, setCalendarEntryRepeat } from '../src/calendar-dom.js';
-import { occasionTypeLabel, renderCalendarEntryDialog, renderSelectedDateDetail } from '../src/calendar-view.js';
+import { occasionTypeLabel, renderCalendarEntryDialog, renderOutfitDialog, renderSelectedDateDetail } from '../src/calendar-view.js';
 import { renderCalendarContextInjection } from '../src/phone-injection.js';
 import { createCalendarCommitters } from '../src/calendar-commit.js';
 import { createCalendarRecipeController } from '../src/calendar-recipe-controller.js';
@@ -11,6 +11,10 @@ import {
     normalizeRecipeScope, normalizeRecipeStore, parseRecipeAiResponse, recipeDayFor, recipeScopeFor,
     renderRecipeInjection, replaceRecipeInWindow, setRecipeRegionPreference, upsertRecipeMeal,
 } from '../src/calendar-recipe-model.js';
+import {
+    buildOutfitPrompts, createEmptyOutfitStore, outfitForDate, outfitScopeFor, parseOutfitAiResponse,
+    renderOutfitInjection, replaceOutfitsInWindow, updateOutfitProfile, upsertOutfit,
+} from '../src/calendar-outfit-model.js';
 import {
     clearCycleScope, createEmptyCycleStore, cycleScopeFor, cycleSubjectKeys, normalizeCycleScope,
     predictCyclePhase, predictCycleRange, upsertCycleScope,
@@ -69,6 +73,35 @@ assert.equal(normalizeCalendarScope({ generationRule: 'A'.repeat(3001) }).genera
 
 const recipeStart = parseCalendarDate('2032-03-15');
 const recipeDates = calendarDateRangeKeys(recipeStart, 0, 6);
+const outfitEnvelope = (dates = recipeDates) => JSON.stringify({
+    version: 1,
+    kind: 'outfit_plan',
+    days: dates.map((date, index) => ({ date, text: `穿搭${index + 1}` })),
+});
+assert.deepEqual(createEmptyOutfitStore(), { version: 1, scopes: {} });
+const parsedOutfits = parseOutfitAiResponse(outfitEnvelope(), { start: recipeStart });
+assert.equal(parsedOutfits.days.length, 7);
+assert.equal(parsedOutfits.days[0].text, '穿搭1');
+assert.match(buildOutfitPrompts({ cardScenario: '雪天赴宴' }, {}, recipeStart, { subject: 'role:Alice' }).systemPrompt, /不得臆造购买、洗衣、换装经过/);
+const outfitStore = updateOutfitProfile(createEmptyOutfitStore(), 'storyA', 'role:Alice', profile => upsertOutfit(profile, {
+    date: recipeDates[0], text: '手动长风衣与短靴', source: 'manual',
+}, 10));
+const generatedOutfitScope = replaceOutfitsInWindow(outfitScopeFor(outfitStore, 'storyA', 'role:Alice'), parsedOutfits, {
+    start: recipeStart, now: 20,
+});
+assert.equal(outfitForDate(generatedOutfitScope, recipeDates[0]).text, '手动长风衣与短靴', 'AI 生成不得覆盖手动 OOTD');
+assert.equal(outfitForDate(generatedOutfitScope, recipeDates[1]).text, '穿搭2');
+const outfitInjectionScope = updateOutfitProfile(createEmptyOutfitStore(), 'storyA', 'role:Alice', profile => {
+    let next = upsertOutfit(profile, { date: '2032-03-14', text: '昨日外套', source: 'ai' }, 1);
+    next = upsertOutfit(next, { date: '2032-03-15', text: '今日衬衫', source: 'manual' }, 1);
+    return upsertOutfit(next, { date: '2032-03-16', text: '明日风衣', source: 'ai' }, 1);
+});
+const outfitInjection = renderOutfitInjection(outfitScopeFor(outfitInjectionScope, 'storyA', 'role:Alice'), {
+    start: recipeStart, subject: 'Alice',
+});
+assert.match(outfitInjection, /角色：Alice/);
+assert.match(outfitInjection, /昨日外套|今日衬衫|明日风衣/);
+assert.doesNotMatch(outfitInjection, /2032-03-13|2032-03-17/, '穿搭注入窗口必须严格为 -1...+1');
 const recipeEnvelope = (region, dates = recipeDates) => JSON.stringify({
     version: 1,
     kind: 'recipe_plan',
@@ -877,6 +910,18 @@ const renderedRecipe = renderCalendarPageHtml(
     renderedScope, { occasions: [] }, '<status>', holidayForToday, currentWeather, currentCycle, [],
     { ...renderedView, viewMode: 'recipe' }, renderedRecipeScope,
 );
+const renderedOutfitScope = upsertOutfit({
+    colorPreference: '紫色', preference: '不穿高跟鞋', generationRule: '穿搭 </textarea><img src=x onerror=alert(1)>', days: {}, lastGeneratedAt: 0,
+}, { date: currentDates[0], text: '薰衣草紫针织衫、白色长裙与短靴', source: 'manual' }, 40);
+const renderedOutfit = renderCalendarPageHtml(
+    renderedScope, { occasions: [] }, '<status>', holidayForToday, currentWeather, currentCycle, [],
+    { ...renderedView, viewMode: 'outfit', outfitSubject: 'role:Alice', outfitSubjects: [{ value: 'role:Alice', label: 'Alice' }] }, {}, renderedOutfitScope,
+);
+const renderedBusyOutfit = renderCalendarPageHtml(
+    renderedScope, { occasions: [] }, '', holidayForToday, currentWeather, currentCycle, [],
+    { ...renderedView, viewMode: 'outfit', outfitGenerating: true }, {}, renderedOutfitScope,
+);
+
 const renderedBusySchedule = renderCalendarPageHtml(
     renderedScope, { occasions: [] }, '', holidayForToday, currentWeather, currentCycle, [],
     { ...renderedView, generating: true },
@@ -904,8 +949,8 @@ assert.match(renderedSchedule, /data-calendar-view-mode="schedule"/);
 assert.match(renderedSchedule, /data-action="calendar-home"[^>]*title="返回桌面"/);
 assert.match(renderedSchedule, /class="pm-calendar-title-row">[\s\S]*?class="pm-calendar-title-control"[\s\S]*?data-action="calendar-month-panel"[^>]*aria-expanded="false"[\s\S]*?<b>[^<]+<\/b>[\s\S]*?class="pm-calendar-title-chevron[^\"]*"/);
 assert.match(renderedSchedule, /data-calendar-month-navigation tabindex="0"[^>]*使用左右方向键切换月份/);
-assert.match(renderedSchedule, /data-action="calendar-prev-month"[\s\S]*data-action="calendar-mode-schedule"[\s\S]*data-action="calendar-mode-weather"[\s\S]*data-action="calendar-mode-cycle"[\s\S]*data-action="calendar-mode-recipe"[\s\S]*data-action="calendar-next-month"/,
-    '翻月按钮必须位于四个信息分类按钮两端');
+assert.match(renderedSchedule, /data-action="calendar-prev-month"[\s\S]*data-action="calendar-mode-schedule"[\s\S]*data-action="calendar-mode-weather"[\s\S]*data-action="calendar-mode-cycle"[\s\S]*data-action="calendar-mode-recipe"[\s\S]*data-action="calendar-mode-outfit"[\s\S]*data-action="calendar-next-month"/,
+    '翻月按钮必须位于五个信息分类按钮两端');
 assert.match(renderedSchedule, /data-calendar-month-panel hidden[\s\S]*data-calendar-jump-year[\s\S]*data-calendar-jump-month/);
 assert.match(renderedSchedule, /当前故事日期[\s\S]*data-calendar-base-date[^>]*type="text"|type="text"[^>]*data-calendar-base-date/,
     '月份面板必须提供可直接键入的当前故事日期');
@@ -1158,6 +1203,29 @@ assert.doesNotMatch(renderedRecipe, /菜谱模式尚未启用|菜谱存储、生
 assert.doesNotMatch(renderedRecipe, /&lt;日程&gt;|&lt;备注&gt;/,
     '菜谱详情不得读取普通 calendar scope.events');
 assert.doesNotMatch(renderedRecipe, /data-action="calendar-generate"|data-action="calendar-weather-refresh"|&lt;日程&gt;|&lt;Holiday&gt;/);
+assert.match(renderedOutfit, /data-calendar-view-mode="outfit"/);
+assert.match(renderedOutfit, /data-action="calendar-mode-outfit"[^>]*aria-pressed="true"/);
+assert.match(renderedOutfit, /data-action="calendar-outfit-generate"[^>]*aria-label="AI 生成未来七日 OOTD"/);
+assert.match(renderedOutfit, /data-calendar-detail-mode="outfit"/);
+assert.match(renderedOutfit, /薰衣草紫针织衫、白色长裙与短靴/);
+assert.match(renderedOutfit, /data-calendar-management="outfit" open/);
+assert.match(renderedOutfit, /data-action="calendar-toggle-outfit-injection"/);
+assert.match(renderedOutfit, /data-action="calendar-outfit-worldbook-columns"/);
+assert.match(renderedOutfit, /data-action="calendar-outfit-subject"/);
+assert.match(renderedOutfit, /data-outfit-generation-rule[^>]*>穿搭 &lt;\/textarea&gt;&lt;img src=x onerror=alert\(1\)&gt;<\/textarea>/,
+    '穿搭规则 textarea 必须转义闭合标签和属性注入文本');
+assert.doesNotMatch(renderedOutfit, /data-outfit-generation-rule[^>]*>[\s\S]*?<img src=x/,
+    '穿搭规则 textarea 不得提前闭合并注入元素');
+assert.match(renderedBusyOutfit, /data-action="calendar-outfit-generate"[^>]*aria-busy="true"[^>]*disabled/);
+const renderedOutfitEditing = renderCalendarPageHtml(
+    renderedScope, { occasions: [] }, '', holidayForToday, currentWeather, currentCycle, [],
+    { ...renderedView, viewMode: 'outfit', detailEditing: true }, {}, renderedOutfitScope,
+);
+assert.match(renderedOutfitEditing, /data-action="calendar-outfit-edit"[\s\S]*data-action="calendar-outfit-delete"/,
+    '穿搭编辑态必须展示编辑与删除操作');
+assert.match(renderedOutfitEditing, /data-action="calendar-outfit-regenerate"[^>]*aria-label="重新生成当日 OOTD"/);
+assert.match(renderOutfitDialog(currentDates[0], { text: '<OOTD>' }), /data-outfit-entry-form[\s\S]*&lt;OOTD&gt;/,
+    'OOTD 编辑弹窗必须转义现有内容');
 assert.match(renderedSchedule, /class="pm-calendar-weekdays"/);
 assert.match(renderedSchedule, /class="pm-calendar-month-grid"/);
 assert.match(renderedSchedule, /class="pm-calendar-month-nav" data-action="calendar-prev-month"/);

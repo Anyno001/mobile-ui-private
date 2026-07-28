@@ -401,6 +401,7 @@ export function installPhoneFoundation(state, deps) {
             calendarWeather: getCalendarData('getCalendarWeatherStore'),
             calendarCycles: getCalendarData('getCalendarCycleStore'),
             calendarRecipes: getCalendarData('getCalendarRecipeStore'),
+            calendarOutfits: getCalendarData('getCalendarOutfitStore'),
         });
     }
 

@@ -260,7 +260,7 @@ export function parseBackupData(data, current) {
     if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error('备份根节点必须是对象');
     const version = data.schemaVersion === undefined ? 1 : data.schemaVersion;
     if (!Number.isInteger(version) || version < 1) throw new Error('备份版本无效');
-    if (version > 11) throw new Error(`备份版本 ${version} 高于当前支持版本 11`);
+    if (version > 12) throw new Error(`备份版本 ${version} 高于当前支持版本 12`);
     const result = clone(current);
     if (Object.hasOwn(data, 'histories')) result.histories = objectValue(data.histories, 'histories');
     if (Object.hasOwn(data, 'config')) result.config = objectValue(data.config, 'config');
@@ -310,7 +310,7 @@ export function parseBackupData(data, current) {
             ? normalizeAmbientStatus(objectValue(data.ambientStatus, 'ambientStatus')) : normalizeAmbientStatus();
         result.theme.ambientStatusEnabled = result.ambientStatus.enabled;
     }
-    if (version >= 5) applyCalendarBackupFields(data, result, objectValue, { includeRecipes: version >= 7 });
+    if (version >= 5) applyCalendarBackupFields(data, result, objectValue, { includeRecipes: version >= 7, includeOutfits: version >= 12 });
     if (version >= 10) {
         if (!Object.hasOwn(data, 'branchLineage')) throw new Error('备份版本 10 缺少 branchLineage');
         result.branchLineage = assertBranchLineage(data.branchLineage);

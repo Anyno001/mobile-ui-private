@@ -736,7 +736,7 @@ function analyzeBackupContract(code, sourceType = 'module') {
         if (child.callee?.type === 'Identifier' && child.callee.name === 'applyCalendarBackupFields'
             && child.arguments[0]?.name === 'data') {
           for (const field of [
-            'calendarStore', 'calendarOccasions', 'calendarHolidays', 'calendarWeather', 'calendarCycles', 'calendarRecipes',
+            'calendarStore', 'calendarOccasions', 'calendarHolidays', 'calendarWeather', 'calendarCycles', 'calendarRecipes', 'calendarOutfits',
           ]) result.importFields.add(field);
         }
       });
@@ -1460,18 +1460,18 @@ for (const expected of [
   'deriveInteractiveActorId(scopeId, actor.type, actor.bindingKey)',
 ]) requireText('settings-backup-validate.js', settingsBackupValidateCode, expected);
 for (const expected of [
-  'schemaVersion: 11', 'desktopBg: snapshot.desktopBg', 'injectionConfig: snapshot.injectionConfig',
+  'schemaVersion: 12', 'desktopBg: snapshot.desktopBg', 'injectionConfig: snapshot.injectionConfig',
   'calendarStore: snapshot.calendarStore', 'calendarCycles: snapshot.calendarCycles',
-  'calendarRecipes: snapshot.calendarRecipes', 'branchLineage: snapshot.branchLineage',
+  'calendarRecipes: snapshot.calendarRecipes', 'calendarOutfits: snapshot.calendarOutfits', 'branchLineage: snapshot.branchLineage',
 ]) requireText('settings-ui.js', settingsUiCodeForInteractive, expected);
-requireText('settings-backup-validate.js', settingsBackupValidateCode, 'applyCalendarBackupFields(data, result, objectValue, { includeRecipes: version >= 7 })');
+requireText('settings-backup-validate.js', settingsBackupValidateCode, 'applyCalendarBackupFields(data, result, objectValue, { includeRecipes: version >= 7, includeOutfits: version >= 12 })');
 for (const expected of [
   'phoneUiState: loadPhoneUiState(interactiveScenes)', 'ambientStatus: normalizeAmbientStatus',
   'normalizePhoneUiState(state.phoneUiState, interactiveScenes)', 'savePhoneUiState(phoneUiState, interactiveScenes)',
   "beforeApply('apply')", "beforeApply('rollback')", "persist(nextState, 'apply')", "persist(snapshot, 'rollback')", 'prepared = await prepare(snapshot)',
   "error.backupPhase = 'prepare'", "error.backupPhase = 'rolled-back'", "combined.backupPhase = 'rollback-failed'",
   'assertCanonicalCalendarField', 'assertCycleBackupInvariants',
-  'loadCalendarHolidays()', 'loadCalendarRecipes()', 'saveCalendarCycles(state.calendarCycles)', 'saveCalendarRecipes(state.calendarRecipes)',
+  'loadCalendarHolidays()', 'loadCalendarRecipes()', 'loadCalendarOutfits()', 'saveCalendarCycles(state.calendarCycles)', 'saveCalendarRecipes(state.calendarRecipes)', 'saveCalendarOutfits(state.calendarOutfits)',
   'loadBranchLineage()', 'saveBranchLineageForBackup(state.branchLineage || {})',
   'rollbackBranchLineageBackup(branchLineageInserted)', 'saveBranchLineage(state.branchLineage || {})',
 ]) requireText('settings-backup.js', settingsBackupCode, expected);
@@ -1494,7 +1494,7 @@ for (const expected of [
   'calendar-toggle-detail-edit', 'calendar-edit-entry', 'calendar-delete-entry', 'removeEntry',
   'weatherRefreshing: false', 'weatherRefreshTask: task', 'latestView.weatherRefreshTask === task',
   'managementOpenByMode', 'resetCache: true',
-  'statusTimerByStorage', 'createCalendarRecipeController', 'getCalendarRecipeStore',
+  'statusTimerByStorage', 'createCalendarRecipeController', 'getCalendarRecipeStore', 'createCalendarOutfitController', 'getCalendarOutfitStore',
   'setTimeoutImpl', 'clearTimeoutImpl', '{ persistent: true }', '{ duration: 10000 }',
 ]) requireText('calendar.js', calendarCode, expected);
 for (const expected of [
@@ -1507,7 +1507,7 @@ for (const expected of [
   "container?.querySelector?.('[data-calendar-management]')", 'managementOpen: view.managementOpenByMode?.[viewMode]',
   "viewMode === 'weather' ? view.weatherRefreshing === true",
   "const statusBusy = viewMode === 'recipe'",
-  "const headerIcon = viewMode === 'schedule' || viewMode === 'recipe' ? SPARKLES_ICON_SVG : REFRESH_ICON_SVG",
+  "const headerIcon = ['schedule', 'recipe', 'outfit'].includes(viewMode) ? SPARKLES_ICON_SVG : REFRESH_ICON_SVG",
   "const statusClass = statusBusy ? 'pm-calendar-status is-generating' : 'pm-calendar-status'",
 ]) requireText('calendar-page-view.js', calendarPageViewCode, expected);
 for (const expected of ['rawContent: removeProtectedBlocks(message.mes || \'\')', 'rawLatestChatText', 'mainChatText: mainChat.map(message => `${message.who}：${message.content}`).join(\'\\n\')']) requireText('host-context.js', hostContextCode, expected);
@@ -2031,9 +2031,10 @@ for (const expected of [
   '.pm-calendar-status-card-cycle[data-cycle-phase="period"] .pm-calendar-status-watermark{top:50%;right:-72px;left:auto;width:190px;height:150px;opacity:.18;transform:translateY(-50%)',
   '.pm-calendar-status-card-cycle[data-cycle-phase="period"] .pm-calendar-status-watermark{top:50%;right:-72px;left:auto;width:190px;height:150px;opacity:.18;transform:translateY(-50%);-webkit-mask-image:linear-gradient(90deg,transparent 0%,#000 44%);mask-image:linear-gradient(90deg,transparent 0%,#000 44%)}',
   '-webkit-mask-image:linear-gradient(90deg,transparent 0%,#000 44%)',
-  '.pm-calendar-shell[data-calendar-view-mode="recipe"]{--pm-calendar-accent:#c77a32}',
-  '.pm-calendar-day.has-recipe>span{color:var(--pm-calendar-accent)}',
-  '.pm-calendar-event.is-recipe b{color:var(--pm-calendar-accent)}',
+  '.pm-calendar-shell[data-calendar-view-mode="recipe"]{--pm-calendar-accent:#C77A32}',
+  '.pm-calendar-shell[data-calendar-view-mode="outfit"]{--pm-calendar-accent:#7563C6}',
+  '.pm-calendar-day.has-recipe>span,.pm-calendar-day.has-outfit>span{color:var(--pm-calendar-accent)}',
+  '.pm-calendar-event.is-recipe b,.pm-calendar-event.is-outfit b{color:var(--pm-calendar-accent)}',
   '.pm-navbar{position:relative;display:grid !important;grid-template-columns:34px minmax(0,1fr) 34px',
   '.pm-name-wrap{position:relative !important;display:flex;align-items:center;justify-content:center',
   '.pm-calendar-status.is-generating{color:var(--pm-color-danger)}',

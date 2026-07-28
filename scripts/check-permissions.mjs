@@ -12,6 +12,9 @@ import {
 import {
     normalizeRecipeStore, setRecipeRegionPreference, upsertRecipeMeal,
 } from '../src/calendar-recipe-model.js';
+import {
+    normalizeOutfitStore, updateOutfitProfile, upsertOutfit,
+} from '../src/calendar-outfit-model.js';
 import { allocateContextBudget, normalizeBudgetConfig, BUDGET_SOURCES, DEFAULT_BUDGET_CONFIG } from '../src/budget.js';
 
 function assertNoUnpairedSurrogates(value, label) {
@@ -567,8 +570,8 @@ const migratedTwoSourceBudget = normalizeBudgetConfig({
     sourceWeights: { phone: 3, community: 1 },
     sourcePriority: ['community', 'phone'],
 });
-assert.deepEqual(migratedTwoSourceBudget.sourceWeights, { phone: 3, community: 1, calendar: 0, recipe: 0 });
-assert.deepEqual(migratedTwoSourceBudget.sourcePriority, ['community', 'phone', 'calendar', 'recipe']);
+assert.deepEqual(migratedTwoSourceBudget.sourceWeights, { phone: 3, community: 1, calendar: 0, recipe: 0, outfit: 0 });
+assert.deepEqual(migratedTwoSourceBudget.sourcePriority, ['community', 'phone', 'calendar', 'recipe', 'outfit']);
 assert.equal(Object.hasOwn(migratedTwoSourceBudget, 'calendarEnabled'), false);
 assert.equal(Object.hasOwn(migratedTwoSourceBudget, 'calendarPosition'), false);
 assert.equal(Object.hasOwn(migratedTwoSourceBudget, 'calendarDepth'), false);
@@ -591,6 +594,7 @@ assert.deepEqual(legacyDisabledMigration.store.injectionDefaults, {
     injectionWeatherEnabled: false,
     injectionCycleEnabled: false,
     injectionRecipeEnabled: false,
+    injectionOutfitEnabled: true,
 });
 assert.deepEqual(calendarScopeFor(legacyDisabledMigration.store, 'inherited'), {
     ...calendarScopeFor(legacyDisabledMigration.store, 'inherited'),
@@ -598,6 +602,7 @@ assert.deepEqual(calendarScopeFor(legacyDisabledMigration.store, 'inherited'), {
     injectionWeatherEnabled: false,
     injectionCycleEnabled: false,
     injectionRecipeEnabled: false,
+    injectionOutfitEnabled: true,
 });
 assert.equal(calendarScopeFor(legacyDisabledMigration.store, 'explicit').injectionScheduleEnabled, true,
     '既有 scope 的显式日程开关不得被旧总开关覆盖');
@@ -944,3 +949,67 @@ const disabledRecipePlan = buildContextInjectionPrompts({
 });
 assert.equal(disabledRecipePlan.prompts.some(prompt => prompt.key.includes(':recipe:')), false);
 assert.equal(disabledRecipePlan.diagnostics.recipeEnabled, false);
+
+// === Outfit injection tests ===
+let outfitProfile = {};
+for (const [offset, text] of [
+    [-2, '窗口外前日穿搭'], [-1, '昨日风衣'], [0, '今日针织衫'], [1, '明日短靴'], [2, '窗口外后日穿搭'],
+]) {
+    outfitProfile = upsertOutfit(outfitProfile, {
+        date: calendarDateRangeKeys(new Date(`${storyDate}T12:00:00`), offset, offset)[0], text, source: 'manual',
+    }, 1);
+}
+const outfitStore = normalizeOutfitStore(updateOutfitProfile({ version: 1, scopes: {} }, 'story-a', 'role:Alice', () => outfitProfile));
+const outfitPlan = buildContextInjectionPrompts({
+    ...baseInjectionInput,
+    injectionConfig: { calendar: { position: 2, depth: 4 } },
+    budgetConfig: {
+        targetTokens: 2000,
+        sourceWeights: { phone: 0, community: 0, calendar: 0, recipe: 0, outfit: 1 },
+        sourcePriority: ['outfit', 'phone', 'community', 'calendar', 'recipe'], redistributeUnused: true,
+    },
+    calendarStore: { version: 1, scopes: { 'story-a': {
+        baseDate: storyDate, events: {},
+        injectionScheduleEnabled: false, injectionWeatherEnabled: false, injectionCycleEnabled: false,
+        injectionRecipeEnabled: false, injectionOutfitEnabled: true,
+    } } },
+    calendarOutfits: outfitStore,
+});
+const outfitPrompt = outfitPlan.prompts.find(prompt => prompt.key.includes(':outfit:'));
+assert.ok(outfitPrompt, '启用且有数据时必须生成独立穿搭 prompt');
+assert.equal(outfitPrompt.source, 'outfit', '穿搭 prompt 必须使用独立预算来源');
+assert.ok(outfitPlan.diagnostics.budget.demandBySource.outfit > 0, '穿搭内容必须计入独立预算需求');
+assert.ok(outfitPlan.diagnostics.budget.allocations.outfit > 0, '穿搭权重开启时必须获得独立预算');
+assert.equal(outfitPlan.diagnostics.budget.allocations.calendar, 0, '穿搭权重不得消费日历预算');
+assert.equal(outfitPrompt.key, 'PHONE_SMS_MEMORY:outfit:story-a');
+assert.equal(outfitPrompt.position, 2);
+assert.equal(outfitPrompt.depth, 4);
+assert.match(outfitPrompt.content, /\[角色穿搭\]/);
+assert.match(outfitPrompt.content, /昨日风衣|今日针织衫|明日短靴/);
+assert.doesNotMatch(outfitPrompt.content, /窗口外前日穿搭|窗口外后日穿搭/,
+    '穿搭注入必须严格限制 -1...+1');
+assert.equal(outfitPlan.diagnostics.outfitEnabled, true);
+const zeroOutfitBudgetPlan = buildContextInjectionPrompts({
+    ...baseInjectionInput,
+    injectionConfig: { calendar: { position: 2, depth: 4 } },
+    budgetConfig: {
+        targetTokens: 2000,
+        sourceWeights: { phone: 0, community: 0, calendar: 1, recipe: 0, outfit: 0 },
+        sourcePriority: ['calendar', 'phone', 'community', 'recipe', 'outfit'], redistributeUnused: false,
+    },
+    calendarStore: { version: 1, scopes: { 'story-a': {
+        baseDate: storyDate, events: {}, injectionOutfitEnabled: true,
+    } } },
+    calendarOutfits: outfitStore,
+});
+assert.equal(zeroOutfitBudgetPlan.prompts.some(prompt => prompt.key.includes(':outfit:')), false,
+    '日历预算不得替代被关闭的穿搭预算');
+assert.equal(zeroOutfitBudgetPlan.diagnostics.budget.allocations.outfit, 0);
+const disabledOutfitPlan = buildContextInjectionPrompts({
+    ...baseInjectionInput,
+    budgetConfig: { sourceWeights: { phone: 1, calendar: 0, recipe: 0 } },
+    calendarStore: { version: 1, scopes: { 'story-a': { baseDate: storyDate, events: {}, injectionOutfitEnabled: false } } },
+    calendarOutfits: outfitStore,
+});
+assert.equal(disabledOutfitPlan.prompts.some(prompt => prompt.key.includes(':outfit:')), false);
+assert.equal(disabledOutfitPlan.diagnostics.outfitEnabled, false);

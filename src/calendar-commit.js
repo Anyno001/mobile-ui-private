@@ -2,10 +2,11 @@ import { normalizeCycleStore } from './calendar-cycle-model.js';
 import { normalizeHolidayCache } from './calendar-holiday.js';
 import { calendarScopeFor, normalizeCalendarScope, normalizeCalendarStore } from './calendar-model.js';
 import { normalizeOccasionScope, normalizeOccasionStore } from './calendar-occasion-model.js';
+import { normalizeOutfitStore } from './calendar-outfit-model.js';
 import { normalizeRecipeScope, normalizeRecipeStore } from './calendar-recipe-model.js';
 import {
-    loadCalendar, loadCalendarCycles, loadCalendarOccasions, loadCalendarRecipes,
-    saveCalendar, saveCalendarCycles, saveCalendarHolidays, saveCalendarOccasions, saveCalendarRecipes, saveCalendarWeather,
+    loadCalendar, loadCalendarCycles, loadCalendarOccasions, loadCalendarOutfits, loadCalendarRecipes,
+    saveCalendar, saveCalendarCycles, saveCalendarHolidays, saveCalendarOccasions, saveCalendarOutfits, saveCalendarRecipes, saveCalendarWeather,
 } from './calendar-storage.js';
 import { enqueueDirectoryOperation } from './directory-save-coordinator.js';
 import { normalizeWeatherStore } from './calendar-weather.js';
@@ -142,6 +143,47 @@ export function createCalendarCommitters({
         });
     };
 
+    const commitOutfits = (storageId, mutate, task = null, { refreshInjection = true } = {}) => {
+        const generation = commitGeneration;
+        return enqueueDirectoryOperation('outfits', async () => {
+            if (generation !== commitGeneration || (task && !tasks.active(task))) return false;
+            const previousStore = clone(loadCalendarOutfits());
+            const candidate = clone(previousStore);
+            const next = normalizeOutfitStore(await mutate(candidate));
+            if (generation !== commitGeneration || (task && !tasks.active(task))) return false;
+            if (!saveCalendarOutfits(next)) throw new Error('穿搭保存失败：浏览器存储不可用');
+            runtime.outfitStore = next;
+            if (!refreshInjection) return next;
+            let injectionError = null;
+            try {
+                const result = await applyBidirectionalInjection?.();
+                injectionError = injectionFailure(result, '穿搭提交');
+            } catch (error) { injectionError = error; }
+            if (generation !== commitGeneration) {
+                if (injectionError) throw injectionError;
+                return false;
+            }
+            const cancelled = !!task && !tasks.active(task);
+            if (!injectionError && !cancelled) return next;
+            let rollbackError = null;
+            try {
+                if (!saveCalendarOutfits(previousStore)) throw new Error('穿搭回滚保存失败：浏览器存储不可用');
+                runtime.outfitStore = normalizeOutfitStore(previousStore);
+                const rollbackResult = await applyBidirectionalInjection?.();
+                const rollbackInjectionError = injectionFailure(rollbackResult, '穿搭补偿');
+                if (rollbackInjectionError) throw rollbackInjectionError;
+            } catch (error) { rollbackError = error; }
+            if (rollbackError) {
+                const original = injectionError || new Error('穿搭任务取消后的状态补偿失败');
+                const combined = new Error(`${original.message}；穿搭状态回滚失败：${rollbackError.message}`);
+                combined.cause = original; combined.rollbackError = rollbackError; combined.outfitRollbackError = true;
+                throw combined;
+            }
+            if (injectionError) throw injectionError;
+            return false;
+        });
+    };
+
     const commitOccasions = (storageId, mutate) => enqueueDirectoryOperation('schedule', async () => {
         const previousStore = clone(loadCalendarOccasions());
         const candidate = clone(previousStore);
@@ -262,5 +304,5 @@ export function createCalendarCommitters({
         return getCycles(storageId, getCycleSubject(storageId));
     });
 
-    return { commitScope, commitRecipe, commitOccasions, commitSchedule, commitHolidays, commitWeather, commitCycle, invalidateCommits };
+    return { commitScope, commitRecipe, commitOutfits, commitOccasions, commitSchedule, commitHolidays, commitWeather, commitCycle, invalidateCommits };
 }

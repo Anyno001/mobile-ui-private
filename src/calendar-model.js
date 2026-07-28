@@ -196,6 +196,7 @@ export function normalizeCalendarScope(value) {
         injectionWeatherEnabled: source.injectionWeatherEnabled !== false,
         injectionCycleEnabled: source.injectionCycleEnabled !== false,
         injectionRecipeEnabled: source.injectionRecipeEnabled !== false,
+        injectionOutfitEnabled: source.injectionOutfitEnabled !== false,
     };
     if (parseCalendarDate(source.storyInitialDate)) normalized.storyInitialDate = source.storyInitialDate;
     if (parseCalendarDate(source.baseDate)) normalized.baseDate = source.baseDate;
@@ -209,6 +210,7 @@ const normalizeInjectionDefaults = value => {
         injectionWeatherEnabled: source.injectionWeatherEnabled !== false,
         injectionCycleEnabled: source.injectionCycleEnabled !== false,
         injectionRecipeEnabled: source.injectionRecipeEnabled !== false,
+        injectionOutfitEnabled: source.injectionOutfitEnabled !== false,
     };
 };
 
@@ -246,6 +248,7 @@ export function migrateLegacyCalendarInjectionConfig(store, legacyConfig) {
         injectionWeatherEnabled: hasCalendar ? sourceConfig.calendarEnabled === true : true,
         injectionCycleEnabled: hasCalendar ? sourceConfig.calendarEnabled === true : true,
         injectionRecipeEnabled: hasRecipe ? sourceConfig.recipeEnabled === true : true,
+        injectionOutfitEnabled: true,
     });
     const scopes = {};
     for (const [storageId, scope] of Object.entries(normalized.scopes)) {
@@ -260,6 +263,8 @@ export function migrateLegacyCalendarInjectionConfig(store, legacyConfig) {
                 ? scope.injectionCycleEnabled : defaults.injectionCycleEnabled,
             injectionRecipeEnabled: Object.hasOwn(rawScope, 'injectionRecipeEnabled')
                 ? scope.injectionRecipeEnabled : defaults.injectionRecipeEnabled,
+            injectionOutfitEnabled: Object.hasOwn(rawScope, 'injectionOutfitEnabled')
+                ? scope.injectionOutfitEnabled : defaults.injectionOutfitEnabled,
         });
     }
     return {

@@ -2,12 +2,12 @@ import { createWorldBookEntryKey, getEnabledWorldBookNames, getTavernDbColumn, h
 import { loadWorldBookConfig, saveWorldBookConfig } from './storage.js';
 import { renderSettingsModal } from './settings-templates.js';
 import { escapeAttr, escapeHtml } from './ui.js';
-import { BOOK_ICON_SVG, CALENDAR_ICON_SVG, CHAT_ICON_SVG, COMMUNITY_ICON_SVG, EYE_ICON_SVG } from './icons.js';
+import { BOOK_ICON_SVG, CALENDAR_ICON_SVG, CHAT_ICON_SVG, COMMUNITY_ICON_SVG, EYE_ICON_SVG, OUTFIT_ICON_SVG } from './icons.js';
 
 const text = value => typeof value === 'string' ? value : '';
 const HIDDEN_ENTRY_TITLE = /(?:^|-)包裹-(?:上|下)$/;
-const MODULE_LABELS = Object.freeze({ chat: '会话', calendar: '日历', community: '社区' });
-const MODULE_ICONS = Object.freeze({ chat: CHAT_ICON_SVG, calendar: CALENDAR_ICON_SVG, community: COMMUNITY_ICON_SVG });
+const MODULE_LABELS = Object.freeze({ chat: '会话', calendar: '日历', outfit: '穿搭', community: '社区' });
+const MODULE_ICONS = Object.freeze({ chat: CHAT_ICON_SVG, calendar: CALENDAR_ICON_SVG, outfit: OUTFIT_ICON_SVG, community: COMMUNITY_ICON_SVG });
 const isCurrentRequest = (epoch, controller, currentEpoch) => epoch === currentEpoch() && !controller.signal.aborted;
 const DATABASE_ICON_SVG = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><ellipse cx="12" cy="5" rx="7" ry="3"/><path d="M5 5v7c0 1.7 3.1 3 7 3s7-1.3 7-3V5M5 12v7c0 1.7 3.1 3 7 3s7-1.3 7-3v-7"/></svg>';
 const shortTitle = value => value.length > 15 ? `${value.slice(0, 14)}…` : value;

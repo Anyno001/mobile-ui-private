@@ -57,7 +57,7 @@ export async function buildWorldBookContext(context, {
     module, config = globalThis.window?.__pmWorldBookConfig, signal, scope: requestedScope = null, memberIds = [],
 } = {}) {
     const current = normalizeWorldBookConfig(config);
-    if (!['chat', 'calendar', 'community'].includes(module)) return '';
+    if (!['chat', 'calendar', 'outfit', 'community'].includes(module)) return '';
     if (typeof context?.getWorldInfoNames !== 'function' || typeof context?.loadWorldInfo !== 'function') return '';
     throwIfAborted(signal);
     let names;

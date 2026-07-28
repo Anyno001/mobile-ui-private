@@ -36,6 +36,8 @@ export const FLOWER_BUD_ICON_SVG = icon('<path d="M12 20V11"/><path d="M12 11C9 
 export const MOON_ICON_SVG = icon('<path d="M20 15.2A8.5 8.5 0 0 1 8.8 4 8.5 8.5 0 1 0 20 15.2z"/>');
 export const CYCLE_PERIOD_ICON_SVG = icon('<circle cx="12" cy="7" r="3"/><circle cx="16.8" cy="10.5" r="3"/><circle cx="15" cy="16" r="3"/><circle cx="9" cy="16" r="3"/><circle cx="7.2" cy="10.5" r="3"/><circle cx="12" cy="12" r="2.2"/>');
 export const RECIPE_ICON_SVG = icon('<path d="M7 3v7M4 3v4a3 3 0 0 0 6 0V3M7 10v11"/><path d="M16 3v18M16 3c2.2 1.8 3.2 4.5 3 8h-3"/>');
+export const OUTFIT_ICON_SVG = icon('<path d="m9 4 3 2.5L15 4l4 3.5-2 3-2-1.5V20H9v-10L7 11.5l-2-3z"/>');
+
 export const CYCLE_FERTILE_ICON_SVG = icon('<circle cx="12" cy="12" r="3.2"/><path d="M8.6 7.5C7.4 5.8 5.4 5.2 4 6.3c-1.4 1.2-.8 3.4 1.1 4.4M15.4 7.5c1.2-1.7 3.2-2.3 4.6-1.2 1.4 1.2.8 3.4-1.1 4.4M8.6 16.5c-1.2 1.7-3.2 2.3-4.6 1.2-1.4-1.2-.8-3.4 1.1-4.4M15.4 16.5c1.2 1.7 3.2 2.3 4.6 1.2 1.4-1.2.8-3.4-1.1-4.4"/>');
 export const TIME_ORIGIN_ICON_SVG = icon('<circle cx="12" cy="12" r="8"/><path d="M12 7v5l3 2"/>');
 export const EDIT_ICON_SVG = icon('<path d="M4 20h4L19 9l-4-4L4 16v4z"/><path d="M13.5 6.5l4 4"/>');
