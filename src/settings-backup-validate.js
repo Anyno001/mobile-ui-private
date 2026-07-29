@@ -1,4 +1,5 @@
 import { normalizeInjectionConfig } from './behavior-config.js';
+import { normalizeBudgetConfig } from './budget.js';
 import {
     INTERACTIVE_ACTOR_TYPES, INTERACTIVE_LIMITS, INTERACTIVE_STORE_VERSION,
     deriveInteractiveActorId, normalizeAmbientStatus, normalizeInteractiveStore, normalizePhoneUiState,
@@ -260,7 +261,7 @@ export function parseBackupData(data, current) {
     if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error('备份根节点必须是对象');
     const version = data.schemaVersion === undefined ? 1 : data.schemaVersion;
     if (!Number.isInteger(version) || version < 1) throw new Error('备份版本无效');
-    if (version > 12) throw new Error(`备份版本 ${version} 高于当前支持版本 12`);
+    if (version > 13) throw new Error(`备份版本 ${version} 高于当前支持版本 13`);
     const result = clone(current);
     if (Object.hasOwn(data, 'histories')) result.histories = objectValue(data.histories, 'histories');
     if (Object.hasOwn(data, 'config')) result.config = objectValue(data.config, 'config');
@@ -277,6 +278,10 @@ export function parseBackupData(data, current) {
         const config = Object.hasOwn(data, 'injectionConfig') ? objectValue(data.injectionConfig, 'injectionConfig') : null;
         result.injectionConfig = version >= 9 ? normalizeInjectionConfig(config)
             : normalizeInjectionConfig(config, current.injectionConfig?.calendar);
+    }
+    if (version >= 13) {
+        if (!Object.hasOwn(data, 'budgetConfig')) throw new Error('备份版本 13 缺少 budgetConfig');
+        result.budgetConfig = normalizeBudgetConfig(objectValue(data.budgetConfig, 'budgetConfig'));
     }
     if (Object.hasOwn(data, 'emojis')) result.emojis = arrayValue(data.emojis, 'emojis');
     if (Object.hasOwn(data, 'characterBehavior')) result.characterBehavior = objectValue(data.characterBehavior, 'characterBehavior');

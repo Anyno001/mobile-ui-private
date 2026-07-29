@@ -1,4 +1,3 @@
-"use strict";
 (() => {
   // src/config.js
   var THEME_PRESETS = {
@@ -14596,6 +14595,15 @@ ${antiFluff}`;
       })
     };
   }
+  function getGroupMembers({ currentStorageId, currentConversationKey, groupsByStorage } = {}) {
+    if (!isValidContextStorageId(currentStorageId) || typeof currentConversationKey !== "string" || !currentConversationKey.startsWith("__group_")) return [];
+    const groupsEntry = ownData(groupsByStorage, currentStorageId);
+    if (groupsEntry.invalid || !groupsEntry.found || !plainRecord8(groupsEntry.value)) return [];
+    const groupEntry = ownData(groupsEntry.value, currentConversationKey);
+    if (groupEntry.invalid || !groupEntry.found) return [];
+    const group = snapshotGroup(groupEntry.value);
+    return group.valid ? group.value.members : [];
+  }
   function snapshotCommunitySelection(value, storageId, sceneId) {
     if (value === void 0 || value === null) {
       return { valid: true, value: Object.freeze({ mode: "all", postIds: Object.freeze([]) }) };
@@ -15127,14 +15135,19 @@ ${body}
     }
     const outfitItems = [];
     if (calendarScope?.injectionOutfitEnabled && calendarOutfits && currentStorageId) {
-      const subject = `role:${currentActorName || "\u5F53\u524D\u89D2\u8272"}`;
-      const body = renderOutfitInjection(outfitScopeFor(calendarOutfits, currentStorageId, subject), {
-        start: calendarReferenceDate(calendarScope),
-        subject: currentActorName
-      });
-      if (body) {
+      const groupMembers = getGroupMembers({ currentStorageId, currentConversationKey, groupsByStorage });
+      const names = [...new Set(groupMembers.map((name) => name.trim()).filter(Boolean))];
+      const isGroupConversation = typeof currentConversationKey === "string" && currentConversationKey.startsWith("__group_");
+      const subjects = isGroupConversation ? names : [currentActorName || "\u5F53\u524D\u89D2\u8272"];
+      for (const name of subjects) {
+        const subject = `role:${name}`;
+        const body = renderOutfitInjection(outfitScopeFor(calendarOutfits, currentStorageId, subject), {
+          start: calendarReferenceDate(calendarScope),
+          subject: name
+        });
+        if (!body) continue;
         outfitItems.push({
-          key: `${OUTFIT_KEY_PREFIX}${encodeURIComponent(currentStorageId)}`,
+          key: `${OUTFIT_KEY_PREFIX}${encodeURIComponent(`${currentStorageId}::${subject}`)}`,
           source: "outfit",
           content: `[\u89D2\u8272\u7A7F\u642D]
 ${body}
@@ -17993,6 +18006,7 @@ ${lines}`;
         pokeConfig: clone7(window.__pmPokeConfig || {}),
         bidirectional: clone7(window.__pmBidirectional || {}),
         injectionConfig: normalizeInjectionConfig(window.__pmInjectionConfig),
+        budgetConfig: normalizeBudgetConfig(window.__pmBudgetConfig),
         emojis: cloneEmojiLibrary(window.__pmEmojis),
         characterBehavior: clone7(window.__pmCharacterBehavior || {}),
         wordyLimit: !!window.__pmWordyLimit,
@@ -18026,6 +18040,7 @@ ${lines}`;
       window.__pmPokeConfig = clone7(state.pokeConfig || {});
       window.__pmBidirectional = clone7(state.bidirectional || {});
       window.__pmInjectionConfig = normalizeInjectionConfig(state.injectionConfig);
+      window.__pmBudgetConfig = normalizeBudgetConfig(state.budgetConfig);
       window.__pmEmojis = cloneEmojiLibrary(state.emojis);
       window.__pmCharacterBehavior = clone7(state.characterBehavior || {});
       window.__pmWordyLimit = !!state.wordyLimit;
@@ -18065,7 +18080,7 @@ ${lines}`;
       if (!saveTheme()) throw new Error("\u4E3B\u9898\u914D\u7F6E\u4FDD\u5B58\u5931\u8D25\uFF1A\u6D4F\u89C8\u5668\u5B58\u50A8\u4E0D\u53EF\u7528");
       if (!saveProfiles()) throw new Error("API \u6863\u6848\u4FDD\u5B58\u5931\u8D25\uFF1A\u6D4F\u89C8\u5668\u5B58\u50A8\u4E0D\u53EF\u7528");
       await saveGroupMeta();
-      if (!saveCharacterBehavior() || !savePokeConfig() || !saveBidirectional() || !saveInjectionConfig() || !saveWordyLimit() || !saveWorldBookConfig()) {
+      if (!saveCharacterBehavior() || !savePokeConfig() || !saveBidirectional() || !saveInjectionConfig() || !saveBudgetConfig(state.budgetConfig) || !saveWordyLimit() || !saveWorldBookConfig()) {
         throw new Error("\u63D2\u4EF6\u914D\u7F6E\u4FDD\u5B58\u5931\u8D25\uFF1A\u6D4F\u89C8\u5668\u5B58\u50A8\u4E0D\u53EF\u7528");
       }
       await saveEmojis();
@@ -18342,7 +18357,7 @@ ${lines}`;
     if (!data || typeof data !== "object" || Array.isArray(data)) throw new Error("\u5907\u4EFD\u6839\u8282\u70B9\u5FC5\u987B\u662F\u5BF9\u8C61");
     const version = data.schemaVersion === void 0 ? 1 : data.schemaVersion;
     if (!Number.isInteger(version) || version < 1) throw new Error("\u5907\u4EFD\u7248\u672C\u65E0\u6548");
-    if (version > 12) throw new Error(`\u5907\u4EFD\u7248\u672C ${version} \u9AD8\u4E8E\u5F53\u524D\u652F\u6301\u7248\u672C 12`);
+    if (version > 13) throw new Error(`\u5907\u4EFD\u7248\u672C ${version} \u9AD8\u4E8E\u5F53\u524D\u652F\u6301\u7248\u672C 13`);
     const result = clone8(current);
     if (Object.hasOwn(data, "histories")) result.histories = objectValue(data.histories, "histories");
     if (Object.hasOwn(data, "config")) result.config = objectValue(data.config, "config");
@@ -18357,6 +18372,10 @@ ${lines}`;
     if (version >= 8) {
       const config = Object.hasOwn(data, "injectionConfig") ? objectValue(data.injectionConfig, "injectionConfig") : null;
       result.injectionConfig = version >= 9 ? normalizeInjectionConfig(config) : normalizeInjectionConfig(config, current.injectionConfig?.calendar);
+    }
+    if (version >= 13) {
+      if (!Object.hasOwn(data, "budgetConfig")) throw new Error("\u5907\u4EFD\u7248\u672C 13 \u7F3A\u5C11 budgetConfig");
+      result.budgetConfig = normalizeBudgetConfig(objectValue(data.budgetConfig, "budgetConfig"));
     }
     if (Object.hasOwn(data, "emojis")) result.emojis = arrayValue(data.emojis, "emojis");
     if (Object.hasOwn(data, "characterBehavior")) result.characterBehavior = objectValue(data.characterBehavior, "characterBehavior");
@@ -18566,7 +18585,7 @@ ${error.message}`);
     window.__pmExportData = async () => {
       const snapshot = await captureBackupState();
       const data = {
-        schemaVersion: 12,
+        schemaVersion: 13,
         histories: snapshot.histories,
         config: snapshot.config,
         theme: legacyBackupTheme(snapshot.theme),
@@ -18575,6 +18594,7 @@ ${error.message}`);
         pokeConfig: snapshot.pokeConfig,
         bidirectional: snapshot.bidirectional,
         injectionConfig: snapshot.injectionConfig,
+        budgetConfig: snapshot.budgetConfig,
         emojis: snapshot.emojis,
         characterBehavior: snapshot.characterBehavior,
         worldBookConfig: snapshot.worldBookConfig,

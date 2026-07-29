@@ -4607,6 +4607,8 @@ const currentBackup = {
         phone: { position: 1, depth: 6, historyLimit: 14 },
         community: { position: 2, depth: 3 }, calendar: { position: 1, depth: 4 },
     }, emojis: [], characterBehavior: {}, worldBookConfig: normalizeWorldBookConfig(null), wordyLimit: false,
+    budgetConfig: { budgetVersion: 3, targetTokens: 900, sourceWeights: { phone: 1, community: 0, calendar: 0, recipe: 0, outfit: 2 },
+        sourcePriority: ['outfit', 'phone', 'community', 'calendar', 'recipe'], redistributeUnused: true, communitySceneIdsByStorage: {}, communitySelectionsByStorage: {} },
     desktopBg: 'https://example.test/current-desktop.png', bgGlobal: '', bgLocal: {}, interactiveScenes: { version: 1, scopes: {} },
     calendarStore: { version: 1, scopes: { current: { events: {} } } },
     calendarOccasions: { version: 1, scopes: {} },
@@ -4698,9 +4700,25 @@ assert.equal(restoredOutfit.preference, '通勤');
 assert.equal(restoredOutfit.generationRule, '优先复用既有衣物');
 assert.deepEqual(restoredOutfit.days['2032-03-15'], { text: '黑色风衣与短靴', source: 'manual', updatedAt: 12 });
 assert.deepEqual(parseBackupData({
+    schemaVersion: 12, branchLineage: validBranchLineage, worldBookConfig: { entries: {}, columns: {} }, calendarOutfits: importedOutfits,
+}, currentBackup).budgetConfig, currentBackup.budgetConfig, 'schema 12 不得伪造恢复尚未定义的预算配置');
+const importedBudgetConfig = {
+    budgetVersion: 3, targetTokens: 1200,
+    sourceWeights: { phone: 1, community: 0, calendar: 0, recipe: 0, outfit: 3 },
+    sourcePriority: ['outfit', 'phone', 'community', 'calendar', 'recipe'], redistributeUnused: false,
+    communitySceneIdsByStorage: {}, communitySelectionsByStorage: {},
+};
+assert.deepEqual(parseBackupData({
+    schemaVersion: 13, branchLineage: validBranchLineage, worldBookConfig: { entries: {}, columns: {} },
+    calendarOutfits: importedOutfits, budgetConfig: importedBudgetConfig,
+}, currentBackup).budgetConfig, importedBudgetConfig, 'schema 13 必须恢复包含 outfit 权重的预算配置');
+assert.throws(() => parseBackupData({
+    schemaVersion: 13, branchLineage: validBranchLineage, worldBookConfig: { entries: {}, columns: {} }, calendarOutfits: importedOutfits,
+}, currentBackup), /缺少 budgetConfig/);
+assert.deepEqual(parseBackupData({
     schemaVersion: 11, branchLineage: validBranchLineage, worldBookConfig: { entries: {}, columns: {} }, calendarOutfits: importedOutfits,
 }, currentBackup).calendarOutfits, currentBackup.calendarOutfits, 'schema 11 不得解析尚未定义的 calendarOutfits 字段');
-assert.throws(() => parseBackupData({ schemaVersion: 13 }, currentBackup), /高于当前支持版本 12/);
+assert.throws(() => parseBackupData({ schemaVersion: 14 }, currentBackup), /高于当前支持版本 13/);
 const parsedV4Backup = parseBackupData({
     schemaVersion: 4,
     theme: { darkMode: 'light', ambientStatusEnabled: true },

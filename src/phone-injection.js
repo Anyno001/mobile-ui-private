@@ -4,7 +4,7 @@ import { allocateContextBudget, estimateContextTokens, normalizeBudgetConfig, tr
 import { formatQuoteContext } from './chat-message-model.js';
 import { renderCommunitySource } from './community-injection.js';
 import { resolveEmojiText } from './messaging.js';
-import { resolveCommunitySources, resolvePhoneSources } from './permissions.js';
+import { getGroupMembers, resolveCommunitySources, resolvePhoneSources } from './permissions.js';
 import {
     calendarDateRangeKeys, calendarReferenceDate, calendarScopeFor, relativeCalendarLabel,
 } from './calendar-model.js';
@@ -294,13 +294,18 @@ export function buildContextInjectionPrompts({
     }
     const outfitItems = [];
     if (calendarScope?.injectionOutfitEnabled && calendarOutfits && currentStorageId) {
-        const subject = `role:${currentActorName || '当前角色'}`;
-        const body = renderOutfitInjection(outfitScopeFor(calendarOutfits, currentStorageId, subject), {
-            start: calendarReferenceDate(calendarScope), subject: currentActorName,
-        });
-        if (body) {
+        const groupMembers = getGroupMembers({ currentStorageId, currentConversationKey, groupsByStorage });
+        const names = [...new Set(groupMembers.map(name => name.trim()).filter(Boolean))];
+        const isGroupConversation = typeof currentConversationKey === 'string' && currentConversationKey.startsWith('__group_');
+        const subjects = isGroupConversation ? names : [currentActorName || '当前角色'];
+        for (const name of subjects) {
+            const subject = `role:${name}`;
+            const body = renderOutfitInjection(outfitScopeFor(calendarOutfits, currentStorageId, subject), {
+                start: calendarReferenceDate(calendarScope), subject: name,
+            });
+            if (!body) continue;
             outfitItems.push({
-                key: `${OUTFIT_KEY_PREFIX}${encodeURIComponent(currentStorageId)}`,
+                key: `${OUTFIT_KEY_PREFIX}${encodeURIComponent(`${currentStorageId}::${subject}`)}`,
                 source: 'outfit',
                 content: `[角色穿搭]\n${body}\n[结束]`,
                 position: injection.calendar.position,

@@ -12,6 +12,7 @@ import {
 } from './calendar-storage.js';
 import { createEmptyWeatherStore, normalizeWeatherStore } from './calendar-weather.js';
 import { cloneEmojiLibrary } from './emoji-media.js';
+import { normalizeBudgetConfig } from './budget.js';
 import { normalizeInjectionConfig } from './behavior-config.js';
 import { normalizeAmbientStatus, normalizeInteractiveStore, normalizePhoneUiState } from './interactive-scene-model.js';
 import { saveBgGlobal, saveBgLocal, saveDesktopBg } from './storage-background.js';
@@ -20,7 +21,7 @@ import {
     loadInteractiveScenes, loadPhoneUiState, saveBidirectional, saveInjectionConfig,
     saveCharacterBehavior, saveEmojis, saveGroupMeta, saveHistoriesStrict, saveInteractiveScenes,
     loadBranchLineage, rollbackBranchLineageBackup, saveBranchLineageForBackup, savePhoneUiState,
-    saveBranchLineage, savePokeConfig, saveProfiles, saveTheme, saveWordyLimit, saveWorldBookConfig,
+    saveBranchLineage, saveBudgetConfig, savePokeConfig, saveProfiles, saveTheme, saveWordyLimit, saveWorldBookConfig,
 } from './storage.js';
 
 const clone = value => JSON.parse(JSON.stringify(value));
@@ -134,6 +135,7 @@ export function createBackupStateHandlers(deps = {}) {
             theme: clone(window.__pmTheme || {}), profiles: clone(window.__pmProfiles || []),
             groupMeta: clone(window.__pmGroupMeta || {}), pokeConfig: clone(window.__pmPokeConfig || {}),
             bidirectional: clone(window.__pmBidirectional || {}), injectionConfig: normalizeInjectionConfig(window.__pmInjectionConfig),
+            budgetConfig: normalizeBudgetConfig(window.__pmBudgetConfig),
             emojis: cloneEmojiLibrary(window.__pmEmojis),
             characterBehavior: clone(window.__pmCharacterBehavior || {}), wordyLimit: !!window.__pmWordyLimit,
             worldBookConfig: normalizeWorldBookConfig(window.__pmWorldBookConfig),
@@ -155,6 +157,7 @@ export function createBackupStateHandlers(deps = {}) {
         window.__pmProfiles = clone(state.profiles || []); window.__pmGroupMeta = clone(state.groupMeta || {});
         window.__pmPokeConfig = clone(state.pokeConfig || {}); window.__pmBidirectional = clone(state.bidirectional || {});
         window.__pmInjectionConfig = normalizeInjectionConfig(state.injectionConfig);
+        window.__pmBudgetConfig = normalizeBudgetConfig(state.budgetConfig);
         window.__pmEmojis = cloneEmojiLibrary(state.emojis); window.__pmCharacterBehavior = clone(state.characterBehavior || {});
         window.__pmWordyLimit = !!state.wordyLimit; window.__pmDesktopBg = typeof state.desktopBg === 'string' ? state.desktopBg : '';
         window.__pmWorldBookConfig = normalizeWorldBookConfig(state.worldBookConfig);
@@ -185,7 +188,7 @@ export function createBackupStateHandlers(deps = {}) {
         if (!saveTheme()) throw new Error('主题配置保存失败：浏览器存储不可用');
         if (!saveProfiles()) throw new Error('API 档案保存失败：浏览器存储不可用');
         await saveGroupMeta();
-        if (!saveCharacterBehavior() || !savePokeConfig() || !saveBidirectional() || !saveInjectionConfig() || !saveWordyLimit() || !saveWorldBookConfig()) {
+        if (!saveCharacterBehavior() || !savePokeConfig() || !saveBidirectional() || !saveInjectionConfig() || !saveBudgetConfig(state.budgetConfig) || !saveWordyLimit() || !saveWorldBookConfig()) {
             throw new Error('插件配置保存失败：浏览器存储不可用');
         }
         await saveEmojis(); await saveDesktopBg(); await saveBgGlobal(); await saveBgLocal(); await saveInteractiveScenes(interactiveScenes);

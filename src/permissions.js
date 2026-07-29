@@ -53,6 +53,17 @@ function snapshotGroup(group) {
     };
 }
 
+export function getGroupMembers({ currentStorageId, currentConversationKey, groupsByStorage } = {}) {
+    if (!isValidContextStorageId(currentStorageId)
+        || typeof currentConversationKey !== 'string' || !currentConversationKey.startsWith('__group_')) return [];
+    const groupsEntry = ownData(groupsByStorage, currentStorageId);
+    if (groupsEntry.invalid || !groupsEntry.found || !plainRecord(groupsEntry.value)) return [];
+    const groupEntry = ownData(groupsEntry.value, currentConversationKey);
+    if (groupEntry.invalid || !groupEntry.found) return [];
+    const group = snapshotGroup(groupEntry.value);
+    return group.valid ? group.value.members : [];
+}
+
 function snapshotCommunitySelection(value, storageId, sceneId) {
     if (value === undefined || value === null) {
         return { valid: true, value: Object.freeze({ mode: 'all', postIds: Object.freeze([]) }) };

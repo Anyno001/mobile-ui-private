@@ -170,7 +170,7 @@ export function installSettingsUi(deps) {
     window.__pmExportData = async () => {
         const snapshot = await captureBackupState();
         const data = {
-            schemaVersion: 12,
+            schemaVersion: 13,
             histories: snapshot.histories,
             config: snapshot.config,
             theme: legacyBackupTheme(snapshot.theme),
@@ -179,6 +179,7 @@ export function installSettingsUi(deps) {
             pokeConfig: snapshot.pokeConfig,
             bidirectional: snapshot.bidirectional,
             injectionConfig: snapshot.injectionConfig,
+            budgetConfig: snapshot.budgetConfig,
             emojis: snapshot.emojis,
             characterBehavior: snapshot.characterBehavior,
             worldBookConfig: snapshot.worldBookConfig,

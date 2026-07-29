@@ -1460,11 +1460,14 @@ for (const expected of [
   'deriveInteractiveActorId(scopeId, actor.type, actor.bindingKey)',
 ]) requireText('settings-backup-validate.js', settingsBackupValidateCode, expected);
 for (const expected of [
-  'schemaVersion: 12', 'desktopBg: snapshot.desktopBg', 'injectionConfig: snapshot.injectionConfig',
+  'schemaVersion: 13', 'desktopBg: snapshot.desktopBg', 'injectionConfig: snapshot.injectionConfig', 'budgetConfig: snapshot.budgetConfig',
   'calendarStore: snapshot.calendarStore', 'calendarCycles: snapshot.calendarCycles',
   'calendarRecipes: snapshot.calendarRecipes', 'calendarOutfits: snapshot.calendarOutfits', 'branchLineage: snapshot.branchLineage',
 ]) requireText('settings-ui.js', settingsUiCodeForInteractive, expected);
 requireText('settings-backup-validate.js', settingsBackupValidateCode, 'applyCalendarBackupFields(data, result, objectValue, { includeRecipes: version >= 7, includeOutfits: version >= 12 })');
+for (const expected of [
+  'version > 13', '备份版本 13 缺少 budgetConfig', 'result.budgetConfig = normalizeBudgetConfig(objectValue(data.budgetConfig, \'budgetConfig\'))',
+]) requireText('settings-backup-validate.js', settingsBackupValidateCode, expected);
 for (const expected of [
   'phoneUiState: loadPhoneUiState(interactiveScenes)', 'ambientStatus: normalizeAmbientStatus',
   'normalizePhoneUiState(state.phoneUiState, interactiveScenes)', 'savePhoneUiState(phoneUiState, interactiveScenes)',
@@ -1472,6 +1475,7 @@ for (const expected of [
   "error.backupPhase = 'prepare'", "error.backupPhase = 'rolled-back'", "combined.backupPhase = 'rollback-failed'",
   'assertCanonicalCalendarField', 'assertCycleBackupInvariants',
   'loadCalendarHolidays()', 'loadCalendarRecipes()', 'loadCalendarOutfits()', 'saveCalendarCycles(state.calendarCycles)', 'saveCalendarRecipes(state.calendarRecipes)', 'saveCalendarOutfits(state.calendarOutfits)',
+  'normalizeBudgetConfig(window.__pmBudgetConfig)', 'window.__pmBudgetConfig = normalizeBudgetConfig(state.budgetConfig)', 'saveBudgetConfig(state.budgetConfig)',
   'loadBranchLineage()', 'saveBranchLineageForBackup(state.branchLineage || {})',
   'rollbackBranchLineageBackup(branchLineageInserted)', 'saveBranchLineage(state.branchLineage || {})',
 ]) requireText('settings-backup.js', settingsBackupCode, expected);
@@ -2816,7 +2820,7 @@ const backupMetadataFields = new Set(['schemaVersion']);
 const backupFields = [
   'histories', 'config', 'theme', 'profiles', 'groupMeta',
   'pokeConfig', 'bidirectional', 'emojis', 'characterBehavior',
-  'wordyLimit', 'desktopBg', 'bgGlobal', 'bgLocal', 'interactiveScenes', 'phoneUiState', 'ambientStatus',
+  'wordyLimit', 'desktopBg', 'bgGlobal', 'bgLocal', 'interactiveScenes', 'phoneUiState', 'ambientStatus', 'budgetConfig',
 ];
 for (const [label, contract] of [
   ['source backup modules', sourceBackupContract],
@@ -2832,8 +2836,6 @@ for (const [label, contract] of [
     .filter(field => !contract.exportFields.has(field)).sort();
   if (exportOnly.length) failures.push(`${label}: backup fields exported but not imported: ${exportOnly.join(', ')}`);
   if (importOnly.length) failures.push(`${label}: backup fields imported but not exported: ${importOnly.join(', ')}`);
-  if (contract.exportFields.has('budgetConfig')) failures.push(`${label}: budgetConfig must remain outside schemaVersion 4 backup export`);
-  if (contract.importFields.has('budgetConfig')) failures.push(`${label}: budgetConfig must remain outside schemaVersion 4 backup import`);
   if (contract.importReadsFileName) failures.push(`${label}: backup import must not depend on file.name`);
 }
 for (const expected of [
