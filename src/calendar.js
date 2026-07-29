@@ -275,7 +275,7 @@ export function installCalendar(state, deps) {
         const task = parentTask || tasks.begin(storageId, 'scan-context');
         if (!task || !tasks.active(task)) return false;
         try {
-            const context = await gatherContext(null, { module: 'calendar', signal: task.signal });
+            const context = await gatherContext(null, { module: 'calendar', signal: task.signal, includeWorldBook: false });
             if (!tasks.active(task)) return false;
             if (assistantOnly && context.latestChatIsUser) return false;
             const currentScope = scope(storageId);
@@ -339,7 +339,7 @@ export function installCalendar(state, deps) {
         const generationCopy = calendarGenerationCopy(start, mode, generationDays);
         status(storageId, generationCopy.pending, { persistent: true }); rerender(storageId);
         try {
-            const context = await gatherContext(null, { module: 'calendar', signal: task.signal });
+            const context = await gatherContext(null, { module: 'calendar', signal: task.signal, worldBookMaxChars: 12000 });
             if (!tasks.active(task)) return false;
             const current = scope(storageId);
             const requestedGenerationRule = current.generationRule;

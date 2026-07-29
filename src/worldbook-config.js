@@ -37,21 +37,80 @@ function activeBookNames(value, target) {
     }
 }
 
-export function getEnabledWorldBookNames(context) {
+function getCharacterWorldBookBindings(context) {
+    const character = context?.characters?.[context?.characterId];
+    const fallback = { primary: character?.data?.extensions?.world, additional: [] };
+    const candidates = [
+        [context, context?.getCharWorldbookNames],
+        [globalThis.TavernHelper, globalThis.TavernHelper?.getCharWorldbookNames],
+        [globalThis, globalThis.getCharWorldbookNames],
+    ];
+    for (const [owner, getBindings] of candidates) {
+        if (typeof getBindings !== 'function') continue;
+        try {
+            const bindings = plainObject(getBindings.call(owner, 'current'));
+            const validPrimary = typeof bindings.primary === 'string' || bindings.primary === null;
+            if (!validPrimary || !Array.isArray(bindings.additional)) continue;
+            return { primary: bindings.primary, additional: bindings.additional };
+        } catch (error) {
+            continue;
+        }
+    }
+    return fallback;
+}
+
+function appendWorldBookSource(result, byName, value, source) {
     const names = new Set();
+    activeBookNames(value, names);
+    for (const name of names) {
+        const existing = byName.get(name);
+        if (existing) {
+            if (!existing.sources.includes(source)) existing.sources.push(source);
+            continue;
+        }
+        const item = { name, sources: [source] };
+        byName.set(name, item);
+        result.push(item);
+    }
+}
+
+export function getCurrentChatWorldBooks(context) {
+    const result = [], byName = new Map();
     const globalSelector = globalThis.document?.getElementById?.('world_info');
     const metadata = plainObject(context?.chatMetadata || context?.chat_metadata);
-    const character = context?.characters?.[context?.characterId];
-    if (globalSelector?.selectedOptions) activeBookNames([...globalSelector.selectedOptions].map(option => option.textContent || option.label), names);
-    activeBookNames(metadata.world_info, names);
-    activeBookNames(character?.data?.extensions?.world, names);
+    const characterBooks = getCharacterWorldBookBindings(context);
+    if (globalSelector?.selectedOptions) {
+        appendWorldBookSource(result, byName, [...globalSelector.selectedOptions]
+            .map(option => option.textContent || option.label), 'global');
+    }
+    appendWorldBookSource(result, byName, metadata.world_info, 'chat');
+    appendWorldBookSource(result, byName, characterBooks.primary, 'character');
+    appendWorldBookSource(result, byName, characterBooks.additional, 'additional');
+    return result;
+}
+
+export function getEnabledWorldBookNames(context) {
+    return new Set(getCurrentChatWorldBooks(context).map(book => book.name));
+}
+
+export function getReadableWorldBookNames(context, config) {
+    const current = normalizeWorldBookConfig(config);
+    const names = [], seen = new Set();
+    for (const book of getCurrentChatWorldBooks(context)) {
+        if (current.books[book.name] === false || seen.has(book.name)) continue;
+        seen.add(book.name);
+        names.push(book.name);
+    }
+    for (const [name, enabled] of Object.entries(current.books)) {
+        if (enabled !== true || seen.has(name)) continue;
+        seen.add(name);
+        names.push(name);
+    }
     return names;
 }
 
 export function hasWorldBookSelectionSource(context) {
-    const character = context?.characters?.[context?.characterId];
-    const globalSelector = globalThis.document?.getElementById?.('world_info');
-    return Boolean(globalSelector?.selectedOptions || context?.chatMetadata?.world_info || context?.chat_metadata?.world_info || character?.data?.extensions?.world);
+    return getCurrentChatWorldBooks(context).length > 0;
 }
 
 function normalizeColumnModes(value) {

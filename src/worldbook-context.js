@@ -1,4 +1,4 @@
-import { getEnabledWorldBookNames, getTavernDbColumn, hasWorldBookSelectionSource, isMemberPrivateWorldBookEntryAllowed, isWorldBookEntryAllowed, normalizeWorldBookConfig } from './worldbook-config.js';
+import { getReadableWorldBookNames, getTavernDbColumn, isMemberPrivateWorldBookEntryAllowed, isWorldBookEntryAllowed, normalizeWorldBookConfig } from './worldbook-config.js';
 
 const text = value => typeof value === 'string' ? value : '';
 const visibleText = value => text(value)
@@ -54,21 +54,17 @@ function throwIfAborted(signal) {
 }
 
 export async function buildWorldBookContext(context, {
-    module, config = globalThis.window?.__pmWorldBookConfig, signal, scope: requestedScope = null, memberIds = [],
+    module, config = globalThis.window?.__pmWorldBookConfig, signal, scope: requestedScope = null, memberIds = [], maxChars,
 } = {}) {
     const current = normalizeWorldBookConfig(config);
     if (!['chat', 'calendar', 'outfit', 'community'].includes(module)) return '';
-    if (typeof context?.getWorldInfoNames !== 'function' || typeof context?.loadWorldInfo !== 'function') return '';
+    if (typeof context?.loadWorldInfo !== 'function') return '';
     throwIfAborted(signal);
-    let names;
-    try { names = await context.getWorldInfoNames(); } catch (error) {
-        if (signal?.aborted) throwIfAborted(signal);
-        if (isAbortError(error)) throw error;
-        return '';
-    }
-    if (!Array.isArray(names)) return '';
-    const enabledNames = getEnabledWorldBookNames(context);
-    const selectedNames = hasWorldBookSelectionSource(context) ? names.filter(name => enabledNames.has(text(name).trim())) : names;
+    const selectedNames = getReadableWorldBookNames(context, current);
+    if (!selectedNames.length) return '';
+    const requestedMaxChars = Number(maxChars);
+    const outputMaxChars = Number.isFinite(requestedMaxChars) && requestedMaxChars > 0
+        ? Math.min(current.maxChars, Math.trunc(requestedMaxChars)) : current.maxChars;
     const messages = (Array.isArray(context.chat) ? context.chat : [])
         .slice(-current.scanMessages).map(message => visibleText(message?.mes));
     const scope = requestedScope?.kind === 'group' || requestedScope?.kind === 'character'
@@ -76,8 +72,20 @@ export async function buildWorldBookContext(context, {
     const groupMemberIds = scope?.kind === 'group'
         ? [...new Set(memberIds.map(memberId => text(memberId).trim()).filter(Boolean))] : [];
     const privateMemberIds = current.groups[scope?.id]?.allowMemberPrivateMemory === true ? groupMemberIds : [];
-    const selected = [];
+    let length = 0;
+    const contents = [];
+    const appendContent = (entry, privateMemberId = '') => {
+        const content = privateMemberId
+            ? `【成员私有记忆：仅${privateMemberId}知晓，不得让其他成员知晓、转述或据此发言】\n${entry.content}`
+            : entry.content;
+        const nextLength = length + content.length + (contents.length ? 2 : 0);
+        if (nextLength > outputMaxChars) return false;
+        contents.push(content);
+        length = nextLength;
+        return true;
+    };
     for (const rawName of selectedNames) {
+        throwIfAborted(signal);
         const bookName = text(rawName).trim();
         if (!bookName) continue;
         let book;
@@ -88,6 +96,7 @@ export async function buildWorldBookContext(context, {
         }
         throwIfAborted(signal);
         for (const entry of normalizeBookEntries(bookName, book)) {
+            throwIfAborted(signal);
             if (!scanMatches(entry, messages)) continue;
             const memberPrivate = scope?.kind === 'group'
                 && groupMemberIds.some(memberId => isMemberPrivateWorldBookEntryAllowed(current, entry, memberId));
@@ -95,26 +104,15 @@ export async function buildWorldBookContext(context, {
                 && current.groups[scope.id]?.columns?.[entry.column]?.[module] === true;
             if (isWorldBookEntryAllowed(current, entry, { module, scope })
                 && (!memberPrivate || groupExplicitlyAllowsColumn)) {
-                selected.push({ ...entry, privateMemberId: '' });
+                appendContent(entry);
                 continue;
             }
             for (const memberId of privateMemberIds) {
                 if (isMemberPrivateWorldBookEntryAllowed(current, entry, memberId)) {
-                    selected.push({ ...entry, privateMemberId: memberId });
+                    appendContent(entry, memberId);
                 }
             }
         }
-    }
-    let length = 0;
-    const contents = [];
-    for (const entry of selected) {
-        const content = entry.privateMemberId
-            ? `【成员私有记忆：仅${entry.privateMemberId}知晓，不得让其他成员知晓、转述或据此发言】\n${entry.content}`
-            : entry.content;
-        const nextLength = length + content.length + (contents.length ? 2 : 0);
-        if (nextLength > current.maxChars) continue;
-        contents.push(content);
-        length = nextLength;
     }
     return contents.join('\n\n');
 }

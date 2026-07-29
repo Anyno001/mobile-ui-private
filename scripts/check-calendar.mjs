@@ -5,6 +5,7 @@ import { occasionTypeLabel, renderCalendarEntryDialog, renderOutfitDialog, rende
 import { renderCalendarContextInjection } from '../src/phone-injection.js';
 import { createCalendarCommitters } from '../src/calendar-commit.js';
 import { createCalendarRecipeController } from '../src/calendar-recipe-controller.js';
+import { createCalendarOutfitController } from '../src/calendar-outfit-controller.js';
 import { createTaskController } from '../src/calendar-task-controller.js';
 import {
     buildRecipePrompts, createEmptyRecipeScope, createEmptyRecipeStore, DEFAULT_RECIPE_GENERATION_RULE, deleteRecipeMeal, mergeGeneratedRecipe,
@@ -12,7 +13,7 @@ import {
     renderRecipeInjection, replaceRecipeInWindow, setRecipeRegionPreference, upsertRecipeMeal,
 } from '../src/calendar-recipe-model.js';
 import {
-    buildOutfitPrompts, createEmptyOutfitStore, outfitForDate, outfitScopeFor, parseOutfitAiResponse,
+    buildOutfitPrompts, createEmptyOutfitStore, normalizeOutfitStore, outfitForDate, outfitScopeFor, parseOutfitAiResponse,
     renderOutfitInjection, replaceOutfitsInWindow, updateOutfitProfile, upsertOutfit,
 } from '../src/calendar-outfit-model.js';
 import {
@@ -2105,7 +2106,10 @@ try {
     const recipeController = createCalendarRecipeController({
         tasks: controllerTasks,
         getStorageId: () => storageA,
-        gatherContext: async () => ({ cardScenario: '架空北境旅店', worldBookText: '当地以炖煮为主' }),
+        gatherContext: async (...args) => {
+            controllerRecipeGatherCalls.push(args);
+            return { cardScenario: '架空北境旅店', worldBookText: '当地以炖煮为主' };
+        },
         callAI: (...args) => controllerAiImpl(...args),
         makeOverlay: makeRecipeOverlay,
         closeOverlay: reason => controllerCloseReasons.push(reason),
@@ -2129,9 +2133,43 @@ try {
             return controllerConfirmResult;
         },
     });
+    const controllerRecipeGatherCalls = [];
     const controllerRecipeCommitOptions = [];
     const confirmCountBeforeEmptyRecipeGenerate = controllerConfirmMessages.length;
     assert.equal(await recipeController.generate(), true);
+    assert.equal(controllerRecipeGatherCalls.length, 1);
+    assert.equal(controllerRecipeGatherCalls[0][0], null);
+    assert.deepEqual({ ...controllerRecipeGatherCalls[0][1], signal: undefined }, { module: 'calendar', signal: undefined, worldBookMaxChars: 3500 },
+        '菜谱真实控制器必须以 calendar 模块和 3500 字符预算采集上下文');
+    let controllerOutfitStore = createEmptyOutfitStore();
+    let controllerOutfitView = { selectedDate: recipeDates[0], outfitSubject: 'role:Alice', outfitGenerating: false };
+    const controllerOutfitGatherCalls = [];
+    const outfitController = createCalendarOutfitController({
+        tasks: createTaskController(() => storageA),
+        getStorageId: () => storageA,
+        gatherContext: async (...args) => {
+            controllerOutfitGatherCalls.push(args);
+            return { cardScenario: '架空北境旅店', worldBookText: '冬季多雪' };
+        },
+        callAI: async () => outfitEnvelope(),
+        makeOverlay: makeRecipeOverlay,
+        closeOverlay: reason => controllerCloseReasons.push(reason),
+        commitOutfits: async (_storageId, mutate) => { controllerOutfitStore = normalizeOutfitStore(mutate(controllerOutfitStore)); return true; },
+        getOutfitStore: () => controllerOutfitStore,
+        getProfile: (storageId, subject) => outfitScopeFor(controllerOutfitStore, storageId, subject),
+        getReferenceDate: () => recipeStart,
+        getView: () => controllerOutfitView,
+        setView: (_storageId, next) => { controllerOutfitView = next; },
+        getStatus: () => '',
+        status: (_storageId, text, options) => controllerStatuses.push({ text, options }),
+        rerender: () => { controllerRenders += 1; },
+        confirmImpl: () => true,
+    });
+    assert.equal(await outfitController.generate(), true);
+    assert.equal(controllerOutfitGatherCalls.length, 1);
+    assert.equal(controllerOutfitGatherCalls[0][0], null);
+    assert.deepEqual({ ...controllerOutfitGatherCalls[0][1], signal: undefined }, { module: 'outfit', signal: undefined, worldBookMaxChars: 3500 },
+        '穿搭真实控制器必须以 outfit 模块和 3500 字符预算采集上下文');
     assert.equal(controllerConfirmMessages.length, confirmCountBeforeEmptyRecipeGenerate,
         '未来七日没有菜谱时，顶部生成必须静默执行');
     controllerRecipeScope = createEmptyRecipeScope();
@@ -2393,9 +2431,13 @@ try {
     let scheduleConfirmResult = true;
     let injectionCount = 0;
     let injectionImpl = async () => { injectionCount += 1; };
+    const calendarGatherCalls = [];
     const deps = {
         getStorageId: () => activeStorageId,
-        gatherContext: () => gatherImpl(),
+        gatherContext: (...args) => {
+            calendarGatherCalls.push(args);
+            return gatherImpl(...args);
+        },
         callAI: (...args) => aiImpl(...args),
         fetchImpl: (...args) => fetchImpl(...args),
         setTimeoutImpl,
@@ -2424,6 +2466,10 @@ try {
         latestChatIsUser: false, mainChatText: '', worldBookText: '',
     });
     await deps.handleCalendarAction(dateSyncButton, tagsApp);
+    assert.equal(calendarGatherCalls.at(-1)[0], null);
+    assert.deepEqual({ ...calendarGatherCalls.at(-1)[1], signal: undefined },
+        { module: 'calendar', signal: undefined, includeWorldBook: false },
+        '日期扫描必须通过真实日历控制器禁用世界书读取');
     assert.match(container.innerHTML, /data-action="calendar-toggle-detail-edit"[^>]*aria-pressed="false"/,
         '正文重识别改变日期后必须退出详情编辑态');
     assert.doesNotMatch(container.innerHTML, /data-action="calendar-edit-entry"|data-action="calendar-delete-entry"|\+ 新增一条/);
@@ -2593,6 +2639,10 @@ try {
     const confirmCountBeforeEmptyScheduleGenerate = scheduleConfirmMessages.length;
     const generatePromise = deps.handleCalendarAction({ dataset: { action: 'calendar-generate' } }, app);
     await aiStarted.promise;
+    assert.equal(calendarGatherCalls.at(-1)[0], null);
+    assert.deepEqual({ ...calendarGatherCalls.at(-1)[1], signal: undefined },
+        { module: 'calendar', signal: undefined, worldBookMaxChars: 12000 },
+        '日程生成必须通过真实日历控制器以 calendar 模块和 12000 字符预算采集上下文');
     assert.equal(scheduleConfirmMessages.length, confirmCountBeforeEmptyScheduleGenerate,
         '未来七日没有日程时，顶部生成必须静默执行');
     assert.equal(storageAStatusTimer.cancelled, true, '生成 pending 必须取消旧普通状态 timer');

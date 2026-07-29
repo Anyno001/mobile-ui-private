@@ -4,7 +4,7 @@ import {
     CALENDAR_STORAGE_KEY, CALENDAR_WEATHER_STORAGE_KEY, EXTENSION_PROMPT_POSITIONS, MAX_INJECTION_DEPTH,
 } from '../src/constants.js';
 import { THEME_PRESETS } from '../src/config.js';
-import { createWorldBookEntryKey, getEnabledWorldBookNames, getTavernDbColumn, isMemberPrivateWorldBookEntryAllowed, isWorldBookEntryAllowed, normalizeWorldBookConfig } from '../src/worldbook-config.js';
+import { createWorldBookEntryKey, getCurrentChatWorldBooks, getEnabledWorldBookNames, getReadableWorldBookNames, getTavernDbColumn, isMemberPrivateWorldBookEntryAllowed, isWorldBookEntryAllowed, normalizeWorldBookConfig } from '../src/worldbook-config.js';
 import { buildWorldBookContext } from '../src/worldbook-context.js';
 import {
     buildCharacterBehaviorPrompt, buildChatPreferencePrompt,
@@ -56,7 +56,7 @@ import {
     createBackupStateHandlers, installSettingsUi, parseBackupData, runBackgroundTransaction, runBackupTransaction,
 } from '../src/settings-ui.js';
 import { renderApiSettings } from '../src/settings-templates.js';
-import { loadWorldBookDirectory } from '../src/settings-worldbook.js';
+import { loadWorldBookDetails, loadWorldBookDirectory, loadWorldBookSettingsDirectory } from '../src/settings-worldbook.js';
 import {
     buildGroupAdditionalContext, buildGroupInjectedInstruction, buildGroupSystemPrompt, buildHistoryText,
     buildIndependentGroupUserPrompt, buildIndependentSingleUserPrompt,
@@ -570,7 +570,7 @@ assert.equal(getTavernDbColumn('TavernDB-ACU-ReadableDataTable'), 'ReadableDataT
 assert.equal(getTavernDbColumn('TavernDB-ACU-EnglishDataTable-2026'), 'EnglishDataTable', 'TavernDB-ACU 的第三段标记可变时也必须归入数据库条目');
 assert.equal(getTavernDbColumn('任意标题-纪要'), '', '不得从普通标题猜测 TavernDB 栏目');
 const databaseWrapperContext = {
-    chat: [], getWorldInfoNames() { return ['数据库包装测试']; },
+    chat: [], chatMetadata: { world_info: ['数据库包装测试'] }, getWorldInfoNames() { throw new Error('运行时不得读取全量目录'); },
     async loadWorldInfo() { return { entries: {
         top: { uid: 'top', content: '包装上正文', constant: true, disable: true, comment: 'TavernDB-ACU-CustomExport-纪要-包裹-上' },
         body: { uid: 'body', content: '系列正文', constant: true, disable: true, comment: 'TavernDB-ACU-CustomExport-纪要-3' },
@@ -587,7 +587,7 @@ assert.equal(await buildWorldBookContext(databaseWrapperContext, {
     module: 'chat', config: { columns: { 纪要: { chat: false } } },
 }), '角色表正文\n\n数据表正文', '关闭一个 CustomExport 栏目必须同时关闭该系列正文与包裹上下条目');
 const wrapperStartContext = {
-    chat: [], getWorldInfoNames() { return ['包装标记测试']; },
+    chat: [], chat_metadata: { world_info: ['包装标记测试'] }, getWorldInfoNames() { throw new Error('运行时不得读取全量目录'); },
     async loadWorldInfo() { return { entries: {
         wrapperStart: { uid: 'wrapper-start', content: '包装起点正文', constant: true, disable: true, comment: 'TavernDB-ACU-WrapperStart' },
     } }; },
@@ -598,7 +598,8 @@ assert.equal(await buildWorldBookContext(wrapperStartContext, {
     module: 'chat', config: { columns: { WrapperStart: { chat: false } } },
 }), '', '关闭第三段栏目必须阻止该系列进入上下文');
 const arrayWorldBookContext = {
-    chat: [], getWorldInfoNames() { return ['角色卡数组世界书']; },
+    chat: [], characters: [{ data: { extensions: { world: '角色卡数组世界书' } } }], characterId: 0,
+    getWorldInfoNames() { throw new Error('运行时不得读取全量目录'); },
     async loadWorldInfo() { return { entries: [
         { id: 11, content: '数组包装正文', constant: true, enabled: false, comment: 'TavernDB-ACU-CustomExport-纪要-包裹-上' },
         { id: 12, content: '数组角色表正文', constant: true, enabled: false, comment: 'TavernDB-ACU-CustomExport-重要角色表-1' },
@@ -633,71 +634,164 @@ assert.equal(isWorldBookEntryAllowed(normalizedWorldBook, { bookName: '其他', 
     module: 'community', scope: { kind: 'group', id: 'group' },
 }), false, '群聊栏目 override 必须只影响群聊自身的模块');
 assert.equal(isWorldBookEntryAllowed(normalizedWorldBook, { bookName: '', uid: 3 }, { module: 'chat' }), false, '缺少稳定条目键时必须拒绝授权');
-const worldBookDirectory = await loadWorldBookDirectory({
-    getWorldInfoNames() { return ['主世界', '故障书']; },
-    async loadWorldInfo(name) {
-        if (name === '故障书') throw new Error('读取失败');
-        return { entries: {
-            b: { uid: 20, content: '第二条', comment: 'TavernDB-ACU-CustomExport-纪要-2' },
-            a: { uid: 3, content: '第一条', comment: '普通条目' },
-            packageTop: { uid: 4, content: '包裹上层正文仍应默认读取', comment: '小明日记-包裹-上' },
-            packageBottom: { uid: 5, content: '包裹下层正文仍应默认读取', comment: '【变化内容】-包裹-下' },
-            databasePackageTop: { uid: 6, content: '数据库包裹上层正文', comment: 'TavernDB-ACU-CustomExport-纪要-包裹-上' },
-            databasePackageBottom: { uid: 7, content: '数据库包裹下层正文', comment: 'TavernDB-ACU-CustomExport-纪要-包裹-下' },
-            empty: { uid: 4, content: '' },
-        } };
-    },
-});
-assert.deepEqual(worldBookDirectory, [{ name: '主世界', entries: [
+const normalizedWorldBookDetails = await loadWorldBookDetails({
+    async loadWorldInfo() { return { entries: {
+        b: { uid: 20, content: '第二条', comment: 'TavernDB-ACU-CustomExport-纪要-2' },
+        a: { uid: 3, content: '第一条', comment: '普通条目' },
+        packageTop: { uid: 4, content: '包裹上层正文仍应默认读取', comment: '小明日记-包裹-上' },
+        packageBottom: { uid: 5, content: '包裹下层正文仍应默认读取', comment: '【变化内容】-包裹-下' },
+        databasePackageTop: { uid: 6, content: '数据库包裹上层正文', comment: 'TavernDB-ACU-CustomExport-纪要-包裹-上' },
+        databasePackageBottom: { uid: 7, content: '数据库包裹下层正文', comment: 'TavernDB-ACU-CustomExport-纪要-包裹-下' },
+        empty: { uid: 4, content: '' },
+    } }; },
+}, '主世界');
+assert.deepEqual(normalizedWorldBookDetails, { name: '主世界', entries: [
     { key: createWorldBookEntryKey('主世界', 3), uid: '3', title: '普通条目', column: '', disabled: false },
     { key: createWorldBookEntryKey('主世界', 6), uid: '6', title: 'TavernDB-ACU-CustomExport-纪要-包裹-上', column: '纪要', disabled: false },
     { key: createWorldBookEntryKey('主世界', 7), uid: '7', title: 'TavernDB-ACU-CustomExport-纪要-包裹-下', column: '纪要', disabled: false },
     { key: createWorldBookEntryKey('主世界', 20), uid: '20', title: 'TavernDB-ACU-CustomExport-纪要-2', column: '纪要', disabled: false },
-] }], '设置页目录必须隐藏原生包裹条目、保留数据库包裹条目的栏目归属并按 UID 稳定排序');
-assert.deepEqual(await loadWorldBookDirectory({
-    getWorldInfoNames() { return ['角色卡数组世界书']; },
+] }, '单本详情必须隐藏原生包裹条目、保留数据库包裹条目的栏目归属并按 UID 稳定排序');
+assert.deepEqual(await loadWorldBookDetails({
     async loadWorldInfo() { return { entries: [
         { id: 21, content: '数组栏目正文', comment: 'TavernDB-ACU-CustomExport-重要角色表-1', enabled: false },
         { id: 22, content: '数组普通正文', comment: '数组普通条目', enabled: true },
     ] }; },
-}), [{ name: '角色卡数组世界书', entries: [
+}, '角色卡数组世界书'), { name: '角色卡数组世界书', entries: [
     { key: createWorldBookEntryKey('角色卡数组世界书', 21), uid: '21', title: 'TavernDB-ACU-CustomExport-重要角色表-1', column: '重要角色表', disabled: true },
     { key: createWorldBookEntryKey('角色卡数组世界书', 22), uid: '22', title: '数组普通条目', column: '', disabled: false },
-] }], '设置页目录必须兼容角色卡 entries 数组，并使用数组条目的 id 生成稳定键');
+] }, '单本详情必须兼容角色卡 entries 数组，并使用数组条目的 id 生成稳定键');
 const enabledWorldBookContext = {
     chatMetadata: { world_info: ['会话书', '数据库书'] },
-    characters: [{ data: { extensions: { world: '角色书' } } }], characterId: 0,
+    chat_metadata: { world_info: ['数据库书', '兼容字段书'] },
+    characters: [{ data: { extensions: { world: ['角色书', '会话书'] } } }], characterId: 0,
+    getCharWorldbookNames() { return { primary: '角色书', additional: ['附加书', '会话书', '附加书'] }; },
 };
-assert.deepEqual([...getEnabledWorldBookNames(enabledWorldBookContext)].sort(), ['会话书', '数据库书', '角色书'],
-    '当前启用世界书必须合并会话与角色绑定来源');
-assert.deepEqual(await loadWorldBookDirectory({
-    ...enabledWorldBookContext,
-    getWorldInfoNames() { return ['会话书', '数据库书', '角色书', '未启用书']; },
-    async loadWorldInfo(name) { return { entries: {
-        1: { uid: 1, content: `${name}正文`, comment: name === '数据库书' ? 'TavernDB-ACU-CustomExport-纪要-1' : `${name}标题` },
-        ...(name === '会话书' ? { 2: { uid: 2, content: '已禁用条目正文', comment: '已禁用条目', disable: true } } : {}),
-    } }; },
+assert.deepEqual(getCurrentChatWorldBooks(enabledWorldBookContext), [
+    { name: '会话书', sources: ['chat', 'additional'] },
+    { name: '数据库书', sources: ['chat'] },
+    { name: '角色书', sources: ['character'] },
+    { name: '附加书', sources: ['additional'] },
+], '角色主世界书与附加世界书必须通过宿主绑定 API 合并，同名来源需稳定去重');
+assert.deepEqual([...getEnabledWorldBookNames(enabledWorldBookContext)], ['会话书', '数据库书', '角色书', '附加书']);
+assert.deepEqual(getReadableWorldBookNames(enabledWorldBookContext, { books: { 数据库书: false } }), ['会话书', '角色书', '附加书'],
+    '世界书总开关必须在读取详情前过滤');
+assert.deepEqual(getCurrentChatWorldBooks({
+    characters: [{ data: { extensions: { world: '旧版角色书' } } }], characterId: 0,
+}), [{ name: '旧版角色书', sources: ['character'] }], '宿主绑定 API 缺失时必须兼容旧版角色主世界书字段');
+assert.deepEqual(getCurrentChatWorldBooks({
+    characters: [{ data: { extensions: { world: '异常回退角色书' } } }], characterId: 0,
+    getCharWorldbookNames() { throw new Error('宿主绑定 API 失败'); },
+}), [{ name: '异常回退角色书', sources: ['character'] }], '宿主绑定 API 抛错时必须回退旧版角色主世界书字段');
+assert.deepEqual(getCurrentChatWorldBooks({
+    characters: [{ data: { extensions: { world: '不得恢复的旧主书' } } }], characterId: 0,
+    getCharWorldbookNames() { return { primary: null, additional: ['仅附加书'] }; },
+}), [{ name: '仅附加书', sources: ['additional'] }], '宿主明确返回 primary=null 时不得偷偷恢复旧版主世界书');
+assert.deepEqual(getCurrentChatWorldBooks({
+    chatMetadata: { world_info: ['同名书'] },
+    characters: [{ data: { extensions: { world: '旧主书' } } }], characterId: 0,
+    getCharWorldbookNames() { return { primary: '同名书', additional: ['同名书', '独立附加书'] }; },
 }), [
-    { name: '会话书', entries: [
-        { key: createWorldBookEntryKey('会话书', 1), uid: '1', title: '会话书标题', column: '', disabled: false },
-        { key: createWorldBookEntryKey('会话书', 2), uid: '2', title: '已禁用条目', column: '', disabled: true },
-    ] },
-    { name: '数据库书', entries: [{ key: createWorldBookEntryKey('数据库书', 1), uid: '1', title: 'TavernDB-ACU-CustomExport-纪要-1', column: '纪要', disabled: false }] },
-    { name: '角色书', entries: [{ key: createWorldBookEntryKey('角色书', 1), uid: '1', title: '角色书标题', column: '', disabled: false }] },
-], '设置页必须显示已启用世界书及其中的禁用条目，同时拒绝渲染未启用世界书');
-const cancelledDirectoryController = new AbortController();
-const cancelledDirectoryLoads = [];
+    { name: '同名书', sources: ['chat', 'character', 'additional'] },
+    { name: '独立附加书', sources: ['additional'] },
+], '聊天、角色主书和附加书同名时必须只保留一本并准确合并来源');
+const previousWorldBookTavernHelper = globalThis.TavernHelper;
+const previousGlobalWorldBookBindings = globalThis.getCharWorldbookNames;
+try {
+    const candidateCalls = [];
+    globalThis.TavernHelper = {
+        bindingOwner: '酒馆助手',
+        getCharWorldbookNames() {
+            candidateCalls.push('tavern-helper');
+            assert.equal(this.bindingOwner, '酒馆助手', '酒馆助手世界书 API 必须保留方法所属对象');
+            return { primary: '助手主书', additional: ['助手附加书一', '助手附加书二'] };
+        },
+    };
+    globalThis.getCharWorldbookNames = function () {
+        candidateCalls.push('global');
+        assert.equal(this, globalThis, '全局世界书 API 必须保留 globalThis 所属对象');
+        return { primary: '全局主书', additional: ['全局附加书'] };
+    };
+    assert.deepEqual(getCurrentChatWorldBooks({}), [
+        { name: '助手主书', sources: ['character'] },
+        { name: '助手附加书一', sources: ['additional'] },
+        { name: '助手附加书二', sources: ['additional'] },
+    ], '上下文未导出绑定 API 时必须从 window.TavernHelper 读取角色主书与附加书');
+    assert.deepEqual(candidateCalls, ['tavern-helper'], '酒馆助手返回合法绑定后不得继续调用全局候选');
+    candidateCalls.length = 0;
+    assert.deepEqual(getCurrentChatWorldBooks({
+        getCharWorldbookNames() { candidateCalls.push('context-throw'); throw new Error('上下文候选失败'); },
+    }), [
+        { name: '助手主书', sources: ['character'] },
+        { name: '助手附加书一', sources: ['additional'] },
+        { name: '助手附加书二', sources: ['additional'] },
+    ], '上下文候选抛错后必须继续降级到酒馆助手候选');
+    assert.deepEqual(candidateCalls, ['context-throw', 'tavern-helper']);
+    candidateCalls.length = 0;
+    globalThis.TavernHelper.getCharWorldbookNames = () => { candidateCalls.push('tavern-helper-invalid'); return { primary: '畸形主书', additional: '非数组' }; };
+    assert.deepEqual(getCurrentChatWorldBooks({
+        getCharWorldbookNames() { candidateCalls.push('context-invalid'); return null; },
+    }), [
+        { name: '全局主书', sources: ['character'] },
+        { name: '全局附加书', sources: ['additional'] },
+    ], '上下文与酒馆助手候选畸形时必须继续降级到全局候选');
+    assert.deepEqual(candidateCalls, ['context-invalid', 'tavern-helper-invalid', 'global']);
+    candidateCalls.length = 0;
+    const validContextOwner = {
+        bindingOwner: '上下文',
+        getCharWorldbookNames() {
+            candidateCalls.push('context-valid');
+            assert.equal(this, validContextOwner, '上下文世界书 API 必须保留 context 所属对象');
+            return { primary: '上下文主书', additional: [] };
+        },
+    };
+    assert.deepEqual(getCurrentChatWorldBooks(validContextOwner),
+        [{ name: '上下文主书', sources: ['character'] }], '上下文候选合法时必须立即采用，不得调用后续候选');
+    assert.deepEqual(candidateCalls, ['context-valid']);
+    globalThis.TavernHelper.getCharWorldbookNames = () => { throw new Error('酒馆助手候选失败'); };
+    globalThis.getCharWorldbookNames = () => ({ primary: false, additional: [] });
+    assert.deepEqual(getCurrentChatWorldBooks({
+        characters: [{ data: { extensions: { world: '最终旧版主书' } } }], characterId: 0,
+        getCharWorldbookNames() { return []; },
+    }), [{ name: '最终旧版主书', sources: ['character'] }], '全部候选无效后才允许回退旧版角色主世界书字段');
+} finally {
+    if (previousWorldBookTavernHelper === undefined) delete globalThis.TavernHelper; else globalThis.TavernHelper = previousWorldBookTavernHelper;
+    if (previousGlobalWorldBookBindings === undefined) delete globalThis.getCharWorldbookNames; else globalThis.getCharWorldbookNames = previousGlobalWorldBookBindings;
+}
+let settingsDirectoryNameCalls = 0, settingsDirectoryDetailCalls = 0;
+assert.deepEqual(await loadWorldBookSettingsDirectory({
+    ...enabledWorldBookContext,
+    getWorldInfoNames() { settingsDirectoryNameCalls += 1; return ['会话书', '数据库书', '角色书', '附加书', '未启用书', '未启用书']; },
+    async loadWorldInfo() { settingsDirectoryDetailCalls += 1; throw new Error('初次目录不得读取详情'); },
+}, { books: { 数据库书: false } }), {
+    current: [
+        { name: '会话书', sources: ['chat', 'additional'], enabled: true },
+        { name: '数据库书', sources: ['chat'], enabled: false },
+        { name: '角色书', sources: ['character'], enabled: true },
+        { name: '附加书', sources: ['additional'], enabled: true },
+    ],
+    others: [{ name: '未启用书', enabled: false }],
+}, '设置页目录必须纳入角色附加世界书，其他世界书默认关闭且不加载详情');
+assert.deepEqual((await loadWorldBookSettingsDirectory({
+    ...enabledWorldBookContext,
+    getWorldInfoNames() { return ['会话书', '数据库书', '角色书', '附加书', '显式开启书']; },
+}, { books: { 显式开启书: true } })).others, [
+    { name: '显式开启书', enabled: true },
+], '其他世界书只有显式保存为 true 时才能显示为开启');
+assert.equal(settingsDirectoryNameCalls, 1, '设置页初次目录只能调用 getWorldInfoNames 一次');
+assert.equal(settingsDirectoryDetailCalls, 0, '设置页初次目录不得调用 loadWorldInfo');
+const quickDirectoryLoads = [];
 assert.deepEqual(await loadWorldBookDirectory({
-    getWorldInfoNames() { return ['先读取', '不得继续读取']; },
+    chatMetadata: { world_info: ['先读取', '故障书', '最后读取'] },
     async loadWorldInfo(name) {
-        cancelledDirectoryLoads.push(name);
-        if (name === '先读取') cancelledDirectoryController.abort();
-        return { entries: { 1: { uid: 1, content: '已取消的目录' } } };
+        quickDirectoryLoads.push(name);
+        if (name === '故障书') throw new Error('读取失败');
+        return { entries: { 1: { uid: 1, content: `${name}正文`, comment: 'TavernDB-ACU-CustomExport-纪要-1' } } };
     },
-}, { signal: cancelledDirectoryController.signal }), [], '目录读取取消后不得提交部分结果');
-assert.deepEqual(cancelledDirectoryLoads, ['先读取'], '目录读取取消后不得继续请求剩余世界书');
-assert.deepEqual(await loadWorldBookDirectory({ getWorldInfoNames() { throw new Error('目录失败'); } }), [],
-    '设置页目录读取失败不得影响设置页其他配置');
+}), [
+    { name: '先读取', entries: [{ key: createWorldBookEntryKey('先读取', 1), uid: '1', title: 'TavernDB-ACU-CustomExport-纪要-1', column: '纪要', disabled: false }] },
+    { name: '最后读取', entries: [{ key: createWorldBookEntryKey('最后读取', 1), uid: '1', title: 'TavernDB-ACU-CustomExport-纪要-1', column: '纪要', disabled: false }] },
+], '旧目录 API 只为快捷栏目串行读取当前聊天关联书，并跳过单本失败');
+assert.deepEqual(quickDirectoryLoads, ['先读取', '故障书', '最后读取']);
 assert.deepEqual(normalizeCharacterBehavior({
     privateStylePrompt: '  冷淡一点  ',
     groupStylePrompt: 42,
@@ -1457,6 +1551,7 @@ globalThis.document = {
 const appliedThemes = [];
 const uiNotes = [];
 let settingsOverlayHtml = '';
+let settingsWorldBookDirectoryHtml = '';
 let importCloseCalls = 0;
 let importInjectionCalls = 0;
 let importInjectionImpl = async () => undefined;
@@ -1468,13 +1563,20 @@ let importReloadCalendarCalls = 0;
 let forbiddenWorldBookWriteCalls = 0;
 const forbiddenWorldBookHostCalls = { getWorldInfoPrompt: 0, saveWorldInfo: 0, updateWorldInfoList: 0, reloadWorldInfoEditor: 0 };
 const settingsRuntime = { modelList: ['model-alpha', 'model-beta'] };
+let settingsWorldBookNameCalls = 0;
+let settingsWorldBookDetailCalls = 0;
+const currentSettingsBooks = ['设置书 A', '设置书 B', '设置书 C', '设置书 D'];
+const otherSettingsBooks = Array.from({ length: 97 }, (_, index) => `其他设置书 ${String(index + 1).padStart(3, '0')}`);
 let worldBookContext = {
-    getWorldInfoNames() { return ['设置书']; },
+    chatMetadata: { world_info: ['设置书 A', '设置书 B'] },
+    characters: [{ data: { extensions: { world: ['设置书 C', '设置书 A'] } } }], characterId: 0,
+    getCharWorldbookNames() { return { primary: '设置书 C', additional: ['设置书 D', '设置书 A'] }; },
+    getWorldInfoNames() { settingsWorldBookNameCalls += 1; return [...currentSettingsBooks, ...otherSettingsBooks, '设置书 A']; },
     getWorldInfoPrompt() { forbiddenWorldBookHostCalls.getWorldInfoPrompt += 1; },
     saveWorldInfo() { forbiddenWorldBookWriteCalls += 1; forbiddenWorldBookHostCalls.saveWorldInfo += 1; },
     updateWorldInfoList() { forbiddenWorldBookHostCalls.updateWorldInfoList += 1; },
     reloadWorldInfoEditor() { forbiddenWorldBookHostCalls.reloadWorldInfoEditor += 1; },
-    async loadWorldInfo() { return { entries: {
+    async loadWorldInfo() { settingsWorldBookDetailCalls += 1; return { entries: {
         1: { uid: 1, content: '设置页正文', comment: '设置页条目标题' },
         2: { uid: 2, content: '数据库条目 1', comment: 'TavernDB-ACU-ReadableDataTable' },
         3: { uid: 3, content: '数据库条目 2', comment: 'TavernDB-ACU-CustomExport-纪要-1' },
@@ -1504,6 +1606,7 @@ installSettingsUi({
     makeOverlay: settingsMakeOverlay = (html, options = {}) => {
         closeSettingsOverlay('replace');
         settingsOverlayHtml = html;
+        settingsWorldBookDirectoryHtml = '';
         const overlay = {
             id: 'pm-overlay',
             removed: false,
@@ -1511,6 +1614,18 @@ installSettingsUi({
             setAttribute(name, value) { this[name] = String(value); },
             removeAttribute(name) { delete this[name]; },
             remove() { this.removed = true; },
+            querySelector(selector) {
+                if (selector === '[data-world-book-directory]') return {
+                    set innerHTML(value) {
+                        settingsWorldBookDirectoryHtml = String(value);
+                        settingsOverlayHtml = `${settingsOverlayHtml}\n${settingsWorldBookDirectoryHtml}`;
+                    },
+                };
+                if (selector === '.pm-worldbook-search input') return {
+                    value: '', focus() {}, setSelectionRange() {},
+                };
+                return null;
+            },
         };
         overlay.__pmOnClose = options.onClose || null;
         uiElements.set('pm-overlay', overlay);
@@ -1534,8 +1649,44 @@ installSettingsUi({
     getCtx: () => worldBookContext,
 });
 await window.__pmShowConfig('worldbook');
-assert.match(settingsOverlayHtml, /世界书读取|数据库条目一览|设置页条目标题/,
-    '设置首页必须能打开世界书读取页并展示原始条目标题与栏目');
+assert.match(settingsOverlayHtml, /世界书读取|当前聊天世界书|其他世界书/,
+    '设置首页必须展示当前聊天世界书与其他世界书收纳区');
+assert.deepEqual(currentSettingsBooks.filter(name => settingsOverlayHtml.includes(name)), currentSettingsBooks,
+    '当前聊天栏必须精确展示角色主世界书与附加世界书合并后的结果');
+assert.match(settingsOverlayHtml, /设置书 D<\/b><small>附加<\/small>/,
+    '附加世界书必须在当前聊天栏标记为附加来源');
+assert.match(settingsOverlayHtml, /class="pm-worldbook-column-toggle" aria-expanded="false" aria-controls="pm-worldbook-other-panel"/,
+    '其他世界书手风琴必须默认收起并声明受控面板');
+assert.match(settingsOverlayHtml, /id="pm-worldbook-other-panel" class="pm-worldbook-other-panel" hidden/,
+    '默认收起时其他世界书面板必须使用 hidden 隐藏');
+assert.doesNotMatch(settingsOverlayHtml, /搜索名称|其他设置书 001|pm-worldbook-load-more/,
+    '默认收起时不得渲染其他世界书列表、搜索框或加载更多按钮');
+assert.equal(window.__pmLoadMoreWorldBooks(), false, '其他世界书收起时加载更多不得修改分页状态');
+assert.equal(window.__pmSearchWorldBooks('其他设置书'), false, '其他世界书收起时搜索不得修改筛选状态');
+assert.equal(window.__pmToggleOtherWorldBooks(), true, '其他世界书手风琴必须可展开');
+assert.match(settingsWorldBookDirectoryHtml, /class="pm-worldbook-column-toggle" aria-expanded="true"[\s\S]*搜索名称/,
+    '展开后必须更新 aria-expanded 并渲染搜索入口');
+assert.match(settingsOverlayHtml, /data-world-book-name="其他设置书 001"[\s\S]*?aria-pressed="false" aria-label="其他设置书 001读取开关"/,
+    '未保存过配置的其他世界书读取开关必须默认关闭');
+assert.equal(otherSettingsBooks.filter(name => settingsOverlayHtml.includes(name)).length, 30,
+    '其他世界书展开后只能渲染首批 30 行');
+assert.doesNotMatch(settingsOverlayHtml, /其他设置书 031/, '首批不得提前渲染第 31 本其他书');
+assert.match(settingsOverlayHtml, /当前聊天世界书<\/b><small>4 本|其他世界书<\/b><small>97 本/,
+    '两组计数必须精确反映四本当前书与九十七本差集');
+assert.doesNotMatch(settingsOverlayHtml, /设置页条目标题|数据库栏目|原生条目/,
+    '设置首页初次渲染不得预加载条目或栏目');
+assert.equal(settingsWorldBookNameCalls, 1, '设置首页初次渲染只能读取一次目录名称');
+assert.equal(settingsWorldBookDetailCalls, 0, '设置首页初次渲染不得加载任何世界书内容');
+for (const expected of [60, 90, 97]) {
+    assert.equal(window.__pmLoadMoreWorldBooks(), true, '加载更多必须可在伪 DOM 中重绘目录');
+    assert.equal(otherSettingsBooks.filter(name => settingsWorldBookDirectoryHtml.includes(name)).length, expected,
+        `其他世界书加载批次必须精确增长到 ${expected} 行`);
+}
+assert.equal(window.__pmSearchWorldBooks('其他设置书'), true, '其他世界书搜索必须可在伪 DOM 中重绘目录');
+assert.equal(otherSettingsBooks.filter(name => settingsWorldBookDirectoryHtml.includes(name)).length, 30,
+    '搜索必须重置到匹配结果的首批 30 行，不能保留此前分页上限');
+assert.doesNotMatch(settingsWorldBookDirectoryHtml, /其他设置书 031/, '搜索重置后的当前重绘片段不得混入旧批次 HTML');
+assert.equal(settingsWorldBookDetailCalls, 0, '搜索只过滤其他书名，不得触发当前或其他书的详情加载');
 await window.__pmShowWorldBookColumns({ title: '数据来源', module: 'calendar' });
 assert.deepEqual([...settingsOverlayHtml.matchAll(/data-world-quick-column="([^"]+)"/g)].map(match => match[1]),
     ['ReadableDataTable', '纪要', '重要角色表', 'WrapperStart'],
@@ -1547,6 +1698,13 @@ assert.doesNotMatch(settingsOverlayHtml, /TavernDB-ACU-|包裹-(?:上|下)/,
 assert.equal((settingsOverlayHtml.match(/pm-worldbook-eye is-checked/g) || []).length, 4,
     '未配置的数据库系列必须默认全部启用');
 await window.__pmShowConfig('worldbook');
+assert.equal(settingsWorldBookDetailCalls, 4, '快捷栏目应串行读取四本当前聊天世界书（含附加书），设置页目录不得追加详情请求');
+assert.equal(await window.__pmToggleWorldBookDetails('设置书 A'), true, '显式展开世界书后必须加载单本详情');
+assert.equal(settingsWorldBookDetailCalls, 5, '显式展开只能新增一次单本详情请求');
+assert.match(settingsWorldBookDirectoryHtml, /data-world-book-name="设置书 A"[\s\S]*?aria-expanded="true" aria-controls="pm-worldbook-detail-%E8%AE%BE%E7%BD%AE%E4%B9%A6%20A"/,
+    '详情按钮展开后必须通过 aria-controls 精确关联详情面板');
+assert.match(settingsWorldBookDirectoryHtml, /id="pm-worldbook-detail-%E8%AE%BE%E7%BD%AE%E4%B9%A6%20A" class="pm-worldbook-book-detail"/,
+    '已加载详情必须保留与触发按钮一致的受控面板 ID');
 assert.match(settingsOverlayHtml, /<path d="M4 5\.5 12 3l8 2\.5v13L12 16l-8 2\.5z"/,
     '原生世界书条目标题必须使用书本图标');
 assert.doesNotMatch(settingsOverlayHtml, /设置页正文/,
@@ -1555,7 +1713,7 @@ assert.match(settingsOverlayHtml, /读取正文楼层数|世界书扫描深度|�
     '世界书设置页必须展示正文、扫描与字符数配置项');
 assert.doesNotMatch(settingsOverlayHtml, /主线正文用于提示词参考；扫描窗口仅决定哪些世界书条目会被触发。/,
     '世界书设置页不得保留已删除的顶部说明');
-assert.match(settingsOverlayHtml, /aria-label="设置书 条目读取开关"|aria-label="纪要：会话读取开关"/,
+assert.match(settingsOverlayHtml, /aria-label="设置书 A 条目读取开关"|aria-label="纪要：会话读取开关"/,
     '世界书条目与栏目矩阵必须提供带 SVG 图标的可访问读取开关');
 assert.match(settingsOverlayHtml, /pm-worldbook-matrix-header[\s\S]*会话[\s\S]*日历[\s\S]*社区/,
     '世界书栏目矩阵必须只在表头展示中文模块标签');
@@ -1564,22 +1722,25 @@ assert.doesNotMatch(settingsOverlayHtml, />\s*(?:chat|calendar|community)\s*</, 
 assert.equal((settingsOverlayHtml.match(/TavernDB 条目/g) || []).length, 0,
     'TavernDB 条目不得在原生条目区重复渲染');
 
-const worldBookEntryKey = createWorldBookEntryKey('设置书', 1);
+const worldBookEntryKey = createWorldBookEntryKey('设置书 A', 1);
 uiElements.set('pm-world-main-messages', { value: '9' });
 uiElements.set('pm-world-scan-messages', { value: '11' });
 uiElements.set('pm-world-max-chars', { value: '26000' });
 worldBookToggleControls = [
-    { dataset: { worldBook: '设置书' }, classList: makeClassList([]) },
+    { dataset: { worldBook: '设置书 A' }, classList: makeClassList([]) },
     { dataset: { worldEntry: worldBookEntryKey }, classList: makeClassList([]) },
     { dataset: { worldColumn: '纪要', worldModule: 'calendar' }, classList: makeClassList([]) },
 ];
+assert.equal(window.__pmSetWorldBookEnabled(worldBookToggleControls[0]), true, '世界书总开关必须先写入页面状态');
+assert.equal(window.__pmSetWorldBookEntry(worldBookToggleControls[1]), true, '条目开关必须先写入页面状态');
+assert.equal(window.__pmSetWorldBookColumn(worldBookToggleControls[2]), true, '栏目开关必须先写入页面状态');
 const savedWorldBookOverlay = uiElements.get('pm-overlay');
 assert.equal(window.__pmSaveWorldBookConfig(), true, '世界书设置保存必须报告成功');
 const savedWorldBookConfig = JSON.parse(localValues.get('ST_SMS_WORLD_BOOK_CONFIG_V1'));
 assert.equal(savedWorldBookConfig.mainChatMessages, 9, '保存必须写入主线正文条数');
 assert.equal(savedWorldBookConfig.scanMessages, 11, '保存必须写入扫描条数');
 assert.equal(savedWorldBookConfig.maxChars, 26000, '保存必须写入字符预算');
-assert.equal(savedWorldBookConfig.books.设置书, false, '保存必须写入世界书总开关');
+assert.equal(savedWorldBookConfig.books['设置书 A'], false, '保存必须写入世界书总开关');
 assert.equal(savedWorldBookConfig.entries[worldBookEntryKey], false, '保存必须写入原生条目开关');
 assert.equal(savedWorldBookConfig.columns.纪要.calendar, false, '保存必须写入栏目模块开关');
 assert.deepEqual(window.__pmWorldBookConfig, savedWorldBookConfig, '保存成功后内存配置必须与持久化配置一致');
@@ -1653,6 +1814,7 @@ assert.match(uiAlerts.at(-1), /世界书设置重置失败/, '世界书设置重
 const maliciousWorldBookName = '<img src=x onerror=alert(1)>';
 const maliciousColumn = '纪要&<>"';
 worldBookContext = {
+    chatMetadata: { world_info: [maliciousWorldBookName] },
     getWorldInfoNames() { return [maliciousWorldBookName]; },
     getWorldInfoPrompt() { forbiddenWorldBookHostCalls.getWorldInfoPrompt += 1; },
     saveWorldInfo() { forbiddenWorldBookWriteCalls += 1; forbiddenWorldBookHostCalls.saveWorldInfo += 1; },
@@ -1664,34 +1826,35 @@ worldBookContext = {
     } }; },
 };
 await window.__pmShowConfig('worldbook');
+assert.equal(await window.__pmToggleWorldBookDetails(maliciousWorldBookName), true, '安全转义测试必须显式加载恶意名称书的详情');
 assert.doesNotMatch(settingsOverlayHtml, /<img src=x onerror=alert\(1\)>/, '世界书设置页必须转义宿主返回的 HTML');
 assert.match(settingsOverlayHtml, /&lt;img src=x onerror=alert\(1\)&gt;/, '世界书设置页必须保留转义后的条目文本');
 assert.match(settingsOverlayHtml, /data-world-column="纪要&amp;&lt;&gt;&quot;"/, '世界书栏目属性必须转义特殊字符');
 assert.equal(forbiddenWorldBookWriteCalls, 0, '世界书设置页不得调用宿主 saveWorldInfo');
 assert.deepEqual(forbiddenWorldBookHostCalls, { getWorldInfoPrompt: 0, saveWorldInfo: 0, updateWorldInfoList: 0, reloadWorldInfoEditor: 0 }, '世界书设置页不得调用宿主聚合或写入 API');
 
-let resolveSlowWorldBook;
+let resolveSlowWorldBookDirectory;
 worldBookContext = {
-    getWorldInfoNames() { return ['慢速设置书']; },
-    loadWorldInfo() { return new Promise(resolve => { resolveSlowWorldBook = resolve; }); },
+    getWorldInfoNames() { return new Promise(resolve => { resolveSlowWorldBookDirectory = resolve; }); },
+    async loadWorldInfo() { throw new Error('目录阶段不得读取详情'); },
 };
 const slowWorldBookPage = window.__pmShowConfig('worldbook');
 await Promise.resolve();
 await window.__pmShowConfig('look');
 const lookOverlayHtml = settingsOverlayHtml;
-resolveSlowWorldBook({ entries: { 1: { uid: 1, content: '旧世界书页面不得覆盖主题页' } } });
+resolveSlowWorldBookDirectory(['旧世界书页面不得覆盖主题页']);
 await slowWorldBookPage;
 assert.equal(settingsOverlayHtml, lookOverlayHtml, '世界书目录延迟返回后不得覆盖用户已切换到的设置页');
-let resolveClosedWorldBook;
+let resolveClosedWorldBookDirectory;
 worldBookContext = {
-    getWorldInfoNames() { return ['关闭前的慢速设置书']; },
-    loadWorldInfo() { return new Promise(resolve => { resolveClosedWorldBook = resolve; }); },
+    getWorldInfoNames() { return new Promise(resolve => { resolveClosedWorldBookDirectory = resolve; }); },
+    async loadWorldInfo() { throw new Error('目录阶段不得读取详情'); },
 };
 const overlayBeforeClosedWorldBook = settingsOverlayHtml;
 const closedWorldBookPage = window.__pmShowConfig('worldbook');
 await Promise.resolve();
 assert.equal(closeSettingsOverlay('close'), true, '关闭竞态测试必须走真实 overlay 关闭路径');
-resolveClosedWorldBook({ entries: { 1: { uid: 1, content: '已关闭页面不得重新出现' } } });
+resolveClosedWorldBookDirectory(['已关闭页面不得重新出现']);
 await closedWorldBookPage;
 assert.equal(settingsOverlayHtml, overlayBeforeClosedWorldBook, '关闭世界书设置页后，迟到目录结果不得重新打开 overlay');
 const nativeAbortController = globalThis.AbortController;
@@ -1702,26 +1865,138 @@ globalThis.AbortController = class {
 };
 worldBookContext = {
     getWorldInfoNames() { return ['替换测试书']; },
-    async loadWorldInfo() { return { entries: { 1: { uid: 1, content: '替换不应取消当前请求' } } }; },
+    async loadWorldInfo() { throw new Error('目录阶段不得读取详情'); },
 };
 assert.equal(await window.__pmShowConfig('worldbook'), undefined, '世界书页面应完成自身 overlay 替换');
 assert.equal(trackedControllers.length, 1, '世界书页面渲染必须只创建一个请求控制器');
 assert.equal(trackedControllers[0].signal.aborted, false, '世界书页面自身替换旧 overlay 不得取消当前请求');
-let resolveExternallyReplacedWorldBook;
+let resolveExternallyReplacedWorldBookDirectory;
 worldBookContext = {
-    getWorldInfoNames() { return ['外部替换测试书']; },
-    loadWorldInfo() { return new Promise(resolve => { resolveExternallyReplacedWorldBook = resolve; }); },
+    getWorldInfoNames() { return new Promise(resolve => { resolveExternallyReplacedWorldBookDirectory = resolve; }); },
+    async loadWorldInfo() { throw new Error('目录阶段不得读取详情'); },
 };
 const externallyReplacedWorldBookPage = window.__pmShowConfig('worldbook');
 await Promise.resolve();
 settingsMakeOverlay('<div>外部页面</div>');
 assert.equal(trackedControllers.length, 2, '外部替换测试必须创建独立请求控制器');
-assert.equal(trackedControllers[1].signal.aborted, true, '外部 overlay 替换必须取消等待中的世界书请求');
-resolveExternallyReplacedWorldBook({ entries: { 1: { uid: 1, content: '外部替换后不得提交' } } });
+assert.equal(trackedControllers[1].signal.aborted, true, '外部 overlay 替换必须取消等待中的世界书目录请求');
+resolveExternallyReplacedWorldBookDirectory(['外部替换后不得提交']);
 await externallyReplacedWorldBookPage;
 assert.equal(settingsOverlayHtml, '<div>外部页面</div>', '外部 overlay 替换后迟到世界书结果不得覆盖当前页面');
 globalThis.AbortController = nativeAbortController;
 worldBookToggleControls = [];
+
+const makeDeferredWorldBook = () => {
+    let resolve, reject;
+    const promise = new Promise((resolvePromise, rejectPromise) => { resolve = resolvePromise; reject = rejectPromise; });
+    return { promise, resolve, reject };
+};
+const delayedDetails = new Map();
+const delayedStarts = new Map();
+const delayedLoadCalls = [];
+let activeWorldBookLoads = 0, maxActiveWorldBookLoads = 0;
+for (const name of ['A', 'B', 'C']) {
+    delayedDetails.set(name, makeDeferredWorldBook());
+    delayedStarts.set(name, makeDeferredWorldBook());
+}
+worldBookContext = {
+    chatMetadata: { world_info: ['A', 'B', 'C'] },
+    getWorldInfoNames() { return ['A', 'B', 'C']; },
+    async loadWorldInfo(name) {
+        delayedLoadCalls.push(name);
+        activeWorldBookLoads += 1;
+        maxActiveWorldBookLoads = Math.max(maxActiveWorldBookLoads, activeWorldBookLoads);
+        delayedStarts.get(name)?.resolve();
+        try { return await delayedDetails.get(name).promise; }
+        finally { activeWorldBookLoads -= 1; }
+    },
+};
+await window.__pmShowConfig('worldbook');
+const expandA = window.__pmToggleWorldBookDetails('A');
+await delayedStarts.get('A').promise;
+const expandB = window.__pmToggleWorldBookDetails('B');
+const expandC = window.__pmToggleWorldBookDetails('C');
+assert.deepEqual(delayedLoadCalls, ['A'], '串行详情队列中旧请求未释放前不得启动后续请求');
+delayedDetails.get('A').resolve({ entries: { 1: { uid: 1, content: 'A 正文', comment: 'A 旧结果' } } });
+await expandA;
+await Promise.resolve();
+assert.equal(delayedLoadCalls.filter(name => name === 'B').length, 0, '已被更新意图淘汰的 B 不得进入宿主详情读取');
+await delayedStarts.get('C').promise;
+assert.deepEqual(delayedLoadCalls, ['A', 'C'], '旧请求释放后只能启动最后一次展开意图 C');
+delayedDetails.get('C').resolve({ entries: { 1: { uid: 1, content: 'C 正文', comment: 'C 最终结果' } } });
+assert.equal(await expandB, false, '被最后意图替代的中间展开必须报告未提交');
+assert.equal(await expandC, true, '最后一次展开意图必须成功提交');
+assert.equal(maxActiveWorldBookLoads, 1, '世界书详情宿主读取最大并发必须为 1');
+assert.match(settingsWorldBookDirectoryHtml, /C 最终结果/, '最终页面只能提交最后一次展开意图');
+assert.doesNotMatch(settingsWorldBookDirectoryHtml, /A 旧结果|B 旧结果/, '迟到旧详情不得回填当前页面');
+
+const collapseDetail = makeDeferredWorldBook(), collapseStarted = makeDeferredWorldBook();
+worldBookContext.loadWorldInfo = async name => {
+    collapseStarted.resolve();
+    return collapseDetail.promise;
+};
+const pendingCollapse = window.__pmToggleWorldBookDetails('A');
+await collapseStarted.promise;
+assert.equal(await window.__pmToggleWorldBookDetails('A'), true, '再次点击加载中的同一本书必须折叠并取消提交');
+collapseDetail.resolve({ entries: { 1: { uid: 1, content: '折叠后旧正文', comment: '折叠后旧结果' } } });
+assert.equal(await pendingCollapse, false);
+assert.doesNotMatch(settingsWorldBookDirectoryHtml, /读取失败|折叠后旧结果/, '折叠取消不得显示普通错误或回填旧结果');
+
+const closeDetail = makeDeferredWorldBook(), closeStarted = makeDeferredWorldBook();
+worldBookContext.loadWorldInfo = async () => { closeStarted.resolve(); return closeDetail.promise; };
+const pendingCloseDetail = window.__pmToggleWorldBookDetails('B');
+await closeStarted.promise;
+assert.equal(closeSettingsOverlay('close'), true, '详情关闭取消必须走真实 overlay 关闭入口');
+closeDetail.resolve({ entries: { 1: { uid: 1, content: '关闭后旧正文', comment: '关闭后旧结果' } } });
+assert.equal(await pendingCloseDetail, false);
+assert.doesNotMatch(settingsOverlayHtml, /读取失败|关闭后旧结果/, '关闭页面取消详情后不得显示普通错误或重新提交');
+
+const hostDetailAbort = new Error('宿主主动取消详情');
+hostDetailAbort.name = 'AbortError';
+worldBookContext = {
+    chatMetadata: { world_info: ['Abort 书'] },
+    getWorldInfoNames() { return ['Abort 书']; },
+    async loadWorldInfo() { throw hostDetailAbort; },
+};
+await window.__pmShowConfig('worldbook');
+assert.equal(await window.__pmToggleWorldBookDetails('Abort 书'), false, '宿主 AbortError 必须作为取消返回');
+assert.doesNotMatch(settingsWorldBookDirectoryHtml, /读取失败|重试/, '宿主主动抛 AbortError 不得渲染普通读取错误');
+
+const parentCollapseDetail = makeDeferredWorldBook(), parentCollapseStarted = makeDeferredWorldBook();
+worldBookContext = {
+    chatMetadata: { world_info: [] },
+    getWorldInfoNames() { return ['其他父折叠书']; },
+    async loadWorldInfo() { parentCollapseStarted.resolve(); return parentCollapseDetail.promise; },
+};
+await window.__pmShowConfig('worldbook');
+assert.equal(window.__pmToggleOtherWorldBooks(), true);
+const pendingParentCollapse = window.__pmToggleWorldBookDetails('其他父折叠书');
+await parentCollapseStarted.promise;
+assert.match(settingsWorldBookDirectoryHtml, /data-world-book-name="其他父折叠书"[\s\S]*?aria-expanded="true" aria-controls="pm-worldbook-detail-%E5%85%B6%E4%BB%96%E7%88%B6%E6%8A%98%E5%8F%A0%E4%B9%A6"/,
+    '其他世界书加载中详情按钮必须声明展开状态并关联详情 ID');
+assert.match(settingsWorldBookDirectoryHtml, /id="pm-worldbook-detail-%E5%85%B6%E4%BB%96%E7%88%B6%E6%8A%98%E5%8F%A0%E4%B9%A6" class="pm-worldbook-detail-status" role="status"/,
+    '加载中详情必须使用与触发按钮一致的受控面板 ID');
+assert.equal(window.__pmToggleOtherWorldBooks(), true, '折叠其他世界书父级必须取消其加载中详情');
+assert.doesNotMatch(settingsWorldBookDirectoryHtml, /pm-worldbook-detail-%E5%85%B6%E4%BB%96%E7%88%B6%E6%8A%98%E5%8F%A0%E4%B9%A6/,
+    '折叠父级后必须立即移除其他世界书详情 DOM');
+parentCollapseDetail.resolve({ entries: { 1: { uid: 1, content: '父级折叠后正文', comment: '父级折叠后旧结果' } } });
+assert.equal(await pendingParentCollapse, false, '父级折叠取消的详情请求不得提交');
+assert.doesNotMatch(settingsWorldBookDirectoryHtml, /父级折叠后旧结果/,
+    '父级折叠后的迟到详情不得重新出现');
+assert.equal(window.__pmToggleOtherWorldBooks(), true);
+assert.doesNotMatch(settingsWorldBookDirectoryHtml, /id="pm-worldbook-detail-%E5%85%B6%E4%BB%96%E7%88%B6%E6%8A%98%E5%8F%A0%E4%B9%A6"|父级折叠后旧结果/,
+    '重新展开其他世界书时不得恢复已清理的旧详情状态');
+
+worldBookContext = {
+    chatMetadata: { world_info: ['错误详情书'] },
+    getWorldInfoNames() { return ['错误详情书']; },
+    async loadWorldInfo() { throw new Error('详情读取失败'); },
+};
+await window.__pmShowConfig('worldbook');
+assert.equal(await window.__pmToggleWorldBookDetails('错误详情书'), false);
+assert.match(settingsWorldBookDirectoryHtml, /aria-expanded="true" aria-controls="pm-worldbook-detail-%E9%94%99%E8%AF%AF%E8%AF%A6%E6%83%85%E4%B9%A6"[\s\S]*?id="pm-worldbook-detail-%E9%94%99%E8%AF%AF%E8%AF%A6%E6%83%85%E4%B9%A6" class="pm-worldbook-detail-status is-error" role="alert"/,
+    '错误详情必须保留按钮与告警面板之间的精确 ARIA 关联');
+
 window.__pmTheme = { preset: 'apple', customRight: '', customLeft: '', borderColor: '#1a1a1a', darkMode: 'dark', customTitle: '', qrLabel: '天音' };
 await window.__pmShowConfig('look');
 assert.deepEqual(Object.keys(THEME_PRESETS), ['default', 'dark', 'pink', 'mint', 'frost', 'apple'],
@@ -1898,8 +2173,8 @@ try {
             { is_user: false, name: '角色', mes: '最后一条有效正文 <date>2024-10-27</date>```不应保留的代码```<think>不应保留的思考</think>' },
             { is_user: true, mes: '<think>只有隐藏思考，不是正文</think>' },
         ],
-        characters: [{ avatar: 'alice.png' }], characterId: 0,
-        getWorldInfoNames() { return ['测试书']; },
+        chatMetadata: { world_info: ['测试书'] }, characters: [{ avatar: 'alice.png' }], characterId: 0,
+        getWorldInfoNames() { throw new Error('运行时不得读取全量目录'); },
         async loadWorldInfo() { return { entries: {
             1: { uid: 1, content: '允许的世界书内容', key: ['2024-10-27'], insertion_order: 1 },
             2: { uid: 2, content: '关闭条目不得出现', constant: true, insertion_order: 2 },
@@ -1931,7 +2206,7 @@ try {
     assert.equal(isMemberPrivateWorldBookEntryAllowed(privateMemberWorldBookConfig, privateMemberWorldBookEntry, '小红-avatar'), false,
         '没有角色级显式栏目授权的成员不得把全局栏目带入群聊');
     assert.equal(await buildWorldBookContext({
-        chat: [{ mes: '私有触发词' }], getWorldInfoNames() { return ['测试书']; },
+        chat: [{ mes: '私有触发词' }], chatMetadata: { world_info: ['测试书'] }, getWorldInfoNames() { throw new Error('不得调用'); },
         async loadWorldInfo() { return { entries: {
             private: { uid: 'private-member', content: '小明私有正文', key: ['私有触发词'], comment: 'TavernDB-ACU-CustomExport-小明日记-1' },
         } }; },
@@ -1945,7 +2220,7 @@ try {
         groups: { 'group-default-private': { allowMemberPrivateMemory: true } },
     };
     assert.equal(await buildWorldBookContext({
-        chat: [{ mes: '私有触发词' }], getWorldInfoNames() { return ['测试书']; },
+        chat: [{ mes: '私有触发词' }], chat_metadata: { world_info: ['测试书'] }, getWorldInfoNames() { throw new Error('不得调用'); },
         async loadWorldInfo() { return { entries: {
             private: { uid: 'private-member', content: '默认配置下不得公开的私人正文', key: ['私有触发词'], comment: 'TavernDB-ACU-CustomExport-小明日记-1' },
         } }; },
@@ -1954,7 +2229,7 @@ try {
         config: defaultPrivateMemberWorldBookConfig,
     }), '', '群聊默认允许栏目时也不得把成员显式私人栏目公开注入');
     assert.equal(await buildWorldBookContext({
-        chat: [{ mes: '私有触发词' }], getWorldInfoNames() { return ['测试书']; },
+        chat: [{ mes: '私有触发词' }], chatMetadata: { world_info: ['测试书'] }, getWorldInfoNames() { throw new Error('不得调用'); },
         async loadWorldInfo() { return { entries: {
             private: { uid: 'private-member', content: '默认配置下的私人正文', key: ['私有触发词'], comment: 'TavernDB-ACU-CustomExport-小明日记-1' },
         } }; },
@@ -1964,7 +2239,7 @@ try {
     }), '【成员私有记忆：仅小明-avatar知晓，不得让其他成员知晓、转述或据此发言】\n默认配置下的私人正文',
     '群聊开启成员私人记忆后不得因全局默认允许而丢失成员边界提示词');
     assert.equal(await buildWorldBookContext({
-        chat: [{ mes: '私有触发词' }], getWorldInfoNames() { return ['测试书']; },
+        chat: [{ mes: '私有触发词' }], chatMetadata: { world_info: ['测试书'] }, getWorldInfoNames() { throw new Error('不得调用'); },
         async loadWorldInfo() { return { entries: {
             private: { uid: 'private-member', content: '群聊明确公开的正文', key: ['私有触发词'], comment: 'TavernDB-ACU-CustomExport-小明日记-1' },
         } }; },
@@ -1973,7 +2248,7 @@ try {
         config: { ...defaultPrivateMemberWorldBookConfig, groups: { 'group-explicit-public': { columns: { 小明日记: { chat: true } } } } },
     }), '群聊明确公开的正文', '仅群聊自身显式开启栏目时，成员私人栏目才可作为公共群聊上下文读取');
     assert.equal(await buildWorldBookContext({
-        chat: [{ mes: '私有触发词' }], getWorldInfoNames() { return ['测试书']; },
+        chat: [{ mes: '私有触发词' }], chatMetadata: { world_info: ['测试书'] }, getWorldInfoNames() { throw new Error('不得调用'); },
         async loadWorldInfo() { return { entries: {
             private: { uid: 'private-member', content: '不得泄漏的私有正文', key: ['私有触发词'], comment: 'TavernDB-ACU-CustomExport-小明日记-1' },
         } }; },
@@ -1982,10 +2257,13 @@ try {
         config: privateMemberWorldBookConfig,
     }), '', '群聊未显式启用成员私有记忆时不得载入成员栏目');
 
+    let emptySourceLoads = 0, emptySourceNameCalls = 0;
     assert.equal(await buildWorldBookContext({
-        getWorldInfoNames() { throw new Error('目录读取失败'); },
-        async loadWorldInfo() { throw new Error('不得调用'); },
-    }, { module: 'chat', config: worldBookTestConfig }), '', '世界书目录读取失败必须只降级插件私有上下文');
+        getWorldInfoNames() { emptySourceNameCalls += 1; throw new Error('不得调用'); },
+        async loadWorldInfo() { emptySourceLoads += 1; throw new Error('不得调用'); },
+    }, { module: 'chat', config: worldBookTestConfig }), '', '三种显式关联来源都为空时必须返回空上下文');
+    assert.equal(emptySourceNameCalls, 0, '运行时不得调用 getWorldInfoNames');
+    assert.equal(emptySourceLoads, 0, '三种关联来源都为空时不得读取任何世界书');
     const abortedWorldBookRead = new AbortController();
     abortedWorldBookRead.abort('test-cancelled');
     await assert.rejects(
@@ -1995,19 +2273,10 @@ try {
         error => error?.name === 'AbortError',
         '世界书读取开始前已取消时不得继续读取宿主数据',
     );
-    const hostAbortError = new Error('宿主读取已取消');
-    hostAbortError.name = 'AbortError';
+    const hostAbortError = new Error('宿主读取已取消'); hostAbortError.name = 'AbortError';
     await assert.rejects(
         () => buildWorldBookContext({
-            getWorldInfoNames() { throw hostAbortError; },
-            async loadWorldInfo() { throw new Error('不得调用'); },
-        }, { module: 'chat', config: worldBookTestConfig }),
-        error => error === hostAbortError,
-        '宿主目录读取主动取消时不得被降级为空上下文',
-    );
-    await assert.rejects(
-        () => buildWorldBookContext({
-            getWorldInfoNames() { return ['测试书']; },
+            chatMetadata: { world_info: ['测试书'] }, getWorldInfoNames() { throw new Error('不得调用'); },
             async loadWorldInfo() { throw hostAbortError; },
         }, { module: 'chat', config: worldBookTestConfig }),
         error => error === hostAbortError,
@@ -2015,7 +2284,7 @@ try {
     );
     assert.equal(await buildWorldBookContext({
         chat: [{ mes: '<think>隐藏关键词</think>```代码关键词```<b>标签关键词</b>' }],
-        getWorldInfoNames() { return ['测试书']; },
+        chatMetadata: { world_info: ['测试书'] },
         async loadWorldInfo() { return { entries: {
             hidden: { uid: 'hidden', content: '隐藏内容不得触发', key: ['隐藏关键词'] },
             code: { uid: 'code', content: '代码内容不得触发', key: ['代码关键词'] },
@@ -2027,21 +2296,21 @@ try {
     '世界书扫描必须忽略隐藏思考与代码块，但保留可见标签正文');
     assert.equal(await buildWorldBookContext({
         chat: [{ mes: '可见正文<think data-hidden>未闭合思考关键词' }],
-        getWorldInfoNames() { return ['测试书']; },
+        chatMetadata: { world_info: ['测试书'] },
         async loadWorldInfo() { return { entries: {
             unclosedThink: { uid: 'unclosedThink', content: '未闭合思考不得触发', key: ['未闭合思考关键词'] },
         } }; },
     }, { module: 'chat', config: worldBookTestConfig }), '', '未闭合保护块必须清除到消息末尾，不能触发世界书');
     assert.equal(await buildWorldBookContext({
         chat: [{ mes: '可见正文```未闭合代码关键词' }],
-        getWorldInfoNames() { return ['测试书']; },
+        chatMetadata: { world_info: ['测试书'] },
         async loadWorldInfo() { return { entries: {
             unclosedCode: { uid: 'unclosedCode', content: '未闭合代码不得触发', key: ['未闭合代码关键词'] },
         } }; },
     }, { module: 'chat', config: worldBookTestConfig }), '', '未闭合代码围栏必须清除到消息末尾，不能触发世界书');
     const sharedWorldBookFixture = {
         chat: [{ mes: '触发词' }],
-        getWorldInfoNames() { return ['第一本', '故障书', '第二本']; },
+        chatMetadata: { world_info: ['第一本', '故障书', '第二本'] }, getWorldInfoNames() { throw new Error('不得调用'); },
         async loadWorldInfo(name) {
             if (name === '故障书') throw new Error('单本读取失败');
             return { entries: {
@@ -2057,13 +2326,72 @@ try {
         module: 'chat', config: { columns: { 纪要: { chat: false, calendar: true } } },
     }), '', '栏目矩阵必须只影响对应模块');
     assert.equal(await buildWorldBookContext({
-        chat: [{ mes: '触发词' }], getWorldInfoNames() { return ['预算书']; },
+        chat: [{ mes: '触发词' }], chatMetadata: { world_info: ['预算书'] },
         async loadWorldInfo() { return { entries: {
             first: { uid: 'first', content: '甲'.repeat(700), key: ['触发词'], insertion_order: 1 },
             second: { uid: 'second', content: '乙'.repeat(400), key: ['触发词'], insertion_order: 2 },
         } }; },
     }, { module: 'chat', config: { maxChars: 1000 } }), '甲'.repeat(700),
     '世界书预算必须在完整条目边界停止，不得输出第二条残片');
+    const maxCharsContext ={
+        chatMetadata: { world_info: ['上限书'] },
+        async loadWorldInfo() { return { entries: {
+            first: { uid: 'first', content: '甲'.repeat(700), constant: true, insertion_order: 1 },
+            second: { uid: 'second', content: '乙'.repeat(500), constant: true, insertion_order: 2 },
+        } }; },
+    };
+    assert.equal(await buildWorldBookContext(maxCharsContext, {
+        module: 'chat', config: { maxChars: 2000 }, maxChars: 1000,
+    }), '甲'.repeat(700), '调用参数 maxChars 较小时必须覆盖配置上限');
+    assert.equal(await buildWorldBookContext(maxCharsContext, {
+        module: 'chat', config: { maxChars: 1000 }, maxChars: 2000,
+    }), '甲'.repeat(700), '配置 maxChars 较小时不得被调用参数放宽');
+    let disabledBookLoads = 0;
+    assert.equal(await buildWorldBookContext({ chatMetadata: { world_info: ['关闭书'] }, async loadWorldInfo() { disabledBookLoads += 1; return {}; } },
+        { module: 'chat', config: { books: { 关闭书: false } } }), '', '关闭书必须输出空上下文');
+    assert.equal(disabledBookLoads, 0, 'config.books=false 必须在 loadWorldInfo 前排除');
+    const explicitBookLoads = [];
+    assert.equal(await buildWorldBookContext({
+        chat: [{ mes: '显式读取触发词' }], chatMetadata: { world_info: ['当前书'] },
+        getWorldInfoNames() { throw new Error('运行时不得读取全量目录'); },
+        async loadWorldInfo(name) {
+            explicitBookLoads.push(name);
+            return { entries: {
+                [name]: { uid: name, content: `${name}正文`, key: ['显式读取触发词'] },
+            } };
+        },
+    }, { module: 'chat', config: { books: { 当前书: true, 其他显式开启书: true, 其他关闭书: false } } }),
+    '当前书正文\n\n其他显式开启书正文', '其他世界书显式开启后必须真正进入运行时读取链路');
+    assert.deepEqual(explicitBookLoads, ['当前书', '其他显式开启书'],
+        '当前书与显式开启的其他书必须稳定去重，未配置或关闭的其他书不得读取');
+    assert.deepEqual(getReadableWorldBookNames({ chatMetadata: { world_info: ['当前书'] } }, {
+        books: { 未配置其他书: false, 其他显式开启书: true },
+    }), ['当前书', '其他显式开启书'], '可读名单必须先保留当前书，再追加显式开启的其他书');
+    const firstRuntimeBook = makeDeferredWorldBook();
+    let runtimeLoadCalls = 0, runtimeActiveLoads = 0, runtimeMaxActiveLoads = 0;
+    const runtimeAbortController = new AbortController();
+    const pendingRuntimeContext = buildWorldBookContext({
+        chat: [{ mes: '运行时触发词' }], chatMetadata: { world_info: ['受控第一本', '受控第二本'] },
+        async loadWorldInfo(name) {
+            runtimeLoadCalls += 1;
+            runtimeActiveLoads += 1;
+            runtimeMaxActiveLoads = Math.max(runtimeMaxActiveLoads, runtimeActiveLoads);
+            try {
+                if (name === '受控第一本') return await firstRuntimeBook.promise;
+                return { entries: { second: { uid: 'second', content: '第二本正文不得读取', constant: true } } };
+            } finally { runtimeActiveLoads -= 1; }
+        },
+    }, { module: 'chat', config: {}, signal: runtimeAbortController.signal });
+    await Promise.resolve();
+    runtimeAbortController.abort('acceptance-cancel');
+    firstRuntimeBook.resolve({ entries: {
+        first: { uid: 'first', content: '第一本部分正文不得返回', constant: true },
+    } });
+    await assert.rejects(pendingRuntimeContext, error => error?.name === 'AbortError',
+        '第一本 pending 时取消必须让整体读取以 AbortError 结束');
+    assert.equal(runtimeLoadCalls, 1, '取消后第二本必须保持 0 次读取');
+    assert.equal(runtimeMaxActiveLoads, 1, '运行时世界书读取最大并发必须为 1');
+    assert.equal(runtimeActiveLoads, 0, '受控读取释放后不得残留活动宿主请求');
     const previousWorldBookConfig = window.__pmWorldBookConfig;
     window.__pmWorldBookConfig = worldBookTestConfig;
     const firstGatheredContext = await gatherContext(() => worldBookContext, { module: 'chat' });
@@ -2079,7 +2407,7 @@ try {
     let hostMutationCalls = 0;
     const readOnlyHostContext = {
         chat: [{ mes: '任意正文' }],
-        getWorldInfoNames() { return ['只读宿主书']; },
+        characters: [{ data: { extensions: { world: '只读宿主书' } } }], characterId: 0,
         async loadWorldInfo() { return readOnlyHostBook; },
         saveWorldInfo() { hostMutationCalls += 1; },
         updateWorldInfoList() { hostMutationCalls += 1; },

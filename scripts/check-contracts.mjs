@@ -1660,7 +1660,7 @@ for (const expected of [
   'runControlMenuAction', 'controlActionLabel', 'CALENDAR_ICON_SVG', 'EDIT_ICON_SVG', 'EMOJI_ICON_SVG', 'TRASH_ICON_SVG',
   'window.__pmShowAutoPokeSettings', 'window.__pmReturnToControlCenter', 'CHARACTER_ICON_SVG', 'SETTINGS_ICON_SVG', 'CHAT_ICON_SVG',
   'data-action="character-settings"', 'data-action="group-settings"', 'window.__pmShowGroupMemberSettings?.(true)',
-  'window.__pmShowGroupRandomNpcSettings?.({ returnToControlCenter: true })',
+  'window.__pmEditGroup?.()',
 ]) requireText('phone-control-center.js', controlCenterCode, expected);
 for (const forbidden of [
   "action === 'contacts'", "action === 'session-behavior'", 'return window.__pmShowList()',
@@ -2033,6 +2033,7 @@ for (const expected of [
   '-webkit-mask-image:linear-gradient(90deg,transparent 0%,#000 44%)',
   '.pm-calendar-shell[data-calendar-view-mode="recipe"]{--pm-calendar-accent:#C77A32}',
   '.pm-calendar-shell[data-calendar-view-mode="outfit"]{--pm-calendar-accent:#7563C6}',
+  '#pm-iphone[data-theme="dark"] .pm-calendar-shell[data-calendar-view-mode="outfit"]{--pm-calendar-accent:#B8A8FF}',
   '.pm-calendar-day.has-recipe>span,.pm-calendar-day.has-outfit>span{color:var(--pm-calendar-accent)}',
   '.pm-calendar-event.is-recipe b,.pm-calendar-event.is-outfit b{color:var(--pm-calendar-accent)}',
   '.pm-navbar{position:relative;display:grid !important;grid-template-columns:34px minmax(0,1fr) 34px',
@@ -2049,7 +2050,8 @@ for (const expected of [
   '.pm-calendar-inline-actions button{display:grid;place-items:center;width:28px;height:28px;padding:5px;border:0;border-radius:0;background:transparent',
   '.pm-calendar-detail-edit-actions{display:flex;align-items:center;justify-content:center;gap:8px;margin-top:8px;flex-wrap:wrap}',
   '.pm-calendar-inline-add,.pm-calendar-inline-regenerate{display:inline-flex;align-items:center;justify-content:center;gap:5px;width:max-content;margin:0;padding:7px 12px;border:1px solid color-mix(in srgb,var(--pm-calendar-accent) 35%,transparent);border-radius:9px',
-  '.pm-calendar-management:is([data-calendar-management="schedule"],[data-calendar-management="recipe"],[data-calendar-management="cycle"]) .pm-calendar-editor-actions .is-primary{background:var(--pm-calendar-accent);border-color:var(--pm-calendar-accent)}',
+  '.pm-calendar-management:is([data-calendar-management="schedule"],[data-calendar-management="recipe"],[data-calendar-management="cycle"],[data-calendar-management="outfit"]) .pm-calendar-editor-actions .is-primary{background:var(--pm-calendar-accent);border-color:var(--pm-calendar-accent)}',
+  '#pm-iphone[data-theme="dark"] .pm-calendar-management[data-calendar-management="outfit"] .pm-calendar-editor-actions .is-primary{color:#1c1c1e}',
   '.pm-calendar-management .pm-calendar-data-tools h3{font-size:12px}',
   '.pm-calendar-injection-card .pm-calendar-auto-switch{padding:2px 0}',
   '.pm-calendar-data-row select,.pm-calendar-data-row input,.pm-calendar-data-row button,.pm-calendar-database-card>button',
@@ -2421,6 +2423,12 @@ requireCssDeclarations(cssRules, '.pm-color-pick', {
   'box-sizing': 'border-box', flex: '0 0 32px',
 });
 if (css.includes('.pm-theme-custom')) failures.push('style.css: obsolete theme-only color picker rule must not remain');
+const worldBookConfigCode = sourceModuleByName.get('worldbook-config.js')?.code || '';
+const worldBookModulesMatch = /WORLD_BOOK_MODULES\s*=\s*Object\.freeze\(\[([^\]]*)\]\)/.exec(worldBookConfigCode);
+const worldBookModuleCount = worldBookModulesMatch
+  ? [...worldBookModulesMatch[1].matchAll(/['"]([^'"]+)['"]/g)].length : 0;
+if (!worldBookModuleCount) failures.push('worldbook-config.js: WORLD_BOOK_MODULES must declare at least one module');
+const worldBookModuleColumns = `minmax(0,1fr) repeat(${worldBookModuleCount},minmax(24px,34px))`;
 const worldBookSettingsCode = sourceModuleByName.get('settings-worldbook.js')?.code || '';
 requireText('settings-worldbook.js native entries use dedicated book container', worldBookSettingsCode, 'class="pm-worldbook-native-book" data-world-book-section');
 requireText('settings-worldbook.js native entries use dedicated title row', worldBookSettingsCode, 'class="pm-li pm-worldbook-native-book-title"');
@@ -2433,6 +2441,12 @@ for (const [label, marker] of [
   ['save world-book settings', 'window.__pmSaveWorldBookConfig()'],
 ]) requireText(`settings-worldbook.js: ${label}`, buttonContaining(`settings-worldbook.js: ${label}`, worldBookSettingsCode, marker), 'class="pm-action-button is-accent"');
 requireCssDeclarations(cssRules, '.pm-worldbook-content', { padding: '0 10px 10px' });
+requireCssDeclarations(cssRules, '.pm-worldbook-matrix', {
+  display: 'grid', 'grid-template-columns': worldBookModuleColumns, gap: '6px 4px',
+});
+requireCssDeclarations(cssRules, '.pm-worldbook-matrix .pm-worldbook-eye', {
+  'box-sizing': 'border-box', width: '100%', 'min-width': '0',
+});
 requireCssDeclarations(cssRules, '.pm-worldbook-content.has-columns .pm-worldbook-native-list', { display: 'block', border: '0' });
 requireCssDeclarations(cssRules, '.pm-worldbook-native-book', { border: '0' });
 requireCssDeclarations(cssRules, '.pm-worldbook-native-book-title', { gap: '6px', padding: '7px 2px' });
