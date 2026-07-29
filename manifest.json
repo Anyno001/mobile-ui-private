@@ -3,7 +3,7 @@
     "display_name": "天音小笺",
     "version": "1.5.0",
     "description": "个人自用的手机聊天界面维护版。",
-    "author": "K20070831 (upstream), Anyno001 (maintainer), Xiaxiuqi (contributor)",
+    "author": "K20070831 (upstream), Anyno001 (maintainer), Xiaxiuqi (co-author)",
     "js": "index.js",
     "css": "style.css",
     "require_backend": false,
