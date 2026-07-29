@@ -192,7 +192,7 @@ export function installPhoneControlCenter(state, deps) {
         else if (action === 'settings') return window.__pmShowConversationSettings();
         else if (action === 'character-settings') return state.isGroupChat
             ? window.__pmShowGroupMemberSettings?.(true) : window.__pmShowConversationSettings();
-        else if (action === 'group-settings') return window.__pmShowGroupRandomNpcSettings?.({ returnToControlCenter: true });
+        else if (action === 'group-settings') return window.__pmEditGroup?.();
         else if (action === 'auto-poke') return window.__pmShowAutoPokeSettings();
         else if (action === 'emoji') window.__pmShowEmojiManager();
         else if (action === 'delete') window.__pmStartDeleteMode();

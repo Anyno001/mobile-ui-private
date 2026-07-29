@@ -78,3 +78,25 @@
 - `Calendar checks passed.` 与 `Static contracts verified.`：通过。
 - 日历检查中出现的存储失败堆栈来自故障注入异常路径测试，最终检查结果为通过，不是本轮回归。
 - `git diff --check`：通过，退出码 0，无空白错误输出。
+
+
+## 本次完成：恢复群聊固定成员编辑入口
+
+### 根因
+
+群成员编辑表单仍由 `showGroupForm('edit', ...)` 渲染，成员输入框 `#pm-group-input` 也未被删除；但控制中心的“群聊设置”动作错误地调用了 `__pmShowGroupRandomNpcSettings({ returnToControlCenter: true })`。该面板只管理路人群友、群聊性质和默认提示词，不包含固定成员增删输入框，因此用户从常用入口无法随时修改群成员。
+
+### 已实施修改
+
+- 将 `phone-control-center.js` 的群聊设置动作改为调用现有的 `window.__pmEditGroup?.()`。
+- 保留原有 `showGroupForm('edit', state.groupDisplayName, state.groupMembers)`、成员解析、颜色配置、表情包配置和保存事务逻辑，不重复实现编辑组件。
+- 更新 `check-contracts.mjs`，锁定控制中心群聊设置必须接入 `__pmEditGroup`。
+- 未修改路人群友设置面板；它仍作为群聊编辑表单中的独立功能入口存在。
+
+### 验证结果
+
+- 首次单独执行 `npm run check:contracts` 发现 `index.js` 与内存构建不一致；这是源码修改后构建产物尚未重生成，不是业务契约失败。
+- 随后执行 `npm run check`，由构建步骤重新生成 `index.js`，完整检查通过，退出码 0。
+- `Calendar checks passed.`、`Static contracts verified.`：通过。
+- 日历检查中的存储失败堆栈属于既有故障注入异常路径测试，最终断言通过。
+- `git diff --check`：通过。

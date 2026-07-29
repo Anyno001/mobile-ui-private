@@ -1660,7 +1660,7 @@ for (const expected of [
   'runControlMenuAction', 'controlActionLabel', 'CALENDAR_ICON_SVG', 'EDIT_ICON_SVG', 'EMOJI_ICON_SVG', 'TRASH_ICON_SVG',
   'window.__pmShowAutoPokeSettings', 'window.__pmReturnToControlCenter', 'CHARACTER_ICON_SVG', 'SETTINGS_ICON_SVG', 'CHAT_ICON_SVG',
   'data-action="character-settings"', 'data-action="group-settings"', 'window.__pmShowGroupMemberSettings?.(true)',
-  'window.__pmShowGroupRandomNpcSettings?.({ returnToControlCenter: true })',
+  'window.__pmEditGroup?.()',
 ]) requireText('phone-control-center.js', controlCenterCode, expected);
 for (const forbidden of [
   "action === 'contacts'", "action === 'session-behavior'", 'return window.__pmShowList()',
