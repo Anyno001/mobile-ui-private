@@ -1308,6 +1308,9 @@ const calendarCommitCode = sourceModuleByName.get('calendar-commit.js')?.code ||
 const calendarDomCode = sourceModuleByName.get('calendar-dom.js')?.code || '';
 const calendarRecipeControllerCode = sourceModuleByName.get('calendar-recipe-controller.js')?.code || '';
 const calendarRecipeModelCode = sourceModuleByName.get('calendar-recipe-model.js')?.code || '';
+const calendarOutfitControllerCode = sourceModuleByName.get('calendar-outfit-controller.js')?.code || '';
+const calendarOutfitModelCode = sourceModuleByName.get('calendar-outfit-model.js')?.code || '';
+const calendarOutfitRuntimeCode = sourceModuleByName.get('calendar-outfit-runtime.js')?.code || '';
 const storageBackgroundCode = sourceModuleByName.get('storage-background.js')?.code || '';
 const calendarModelCode = sourceModuleByName.get('calendar-model.js')?.code || '';
 const calendarHolidayCode = sourceModuleByName.get('calendar-holiday.js')?.code || '';
@@ -1514,7 +1517,14 @@ for (const expected of [
   "const headerIcon = ['schedule', 'recipe', 'outfit'].includes(viewMode) ? SPARKLES_ICON_SVG : REFRESH_ICON_SVG",
   "const statusClass = statusBusy ? 'pm-calendar-status is-generating' : 'pm-calendar-status'",
 ]) requireText('calendar-page-view.js', calendarPageViewCode, expected);
-for (const expected of ['rawContent: removeProtectedBlocks(message.mes || \'\')', 'rawLatestChatText', 'mainChatText: mainChat.map(message => `${message.who}：${message.content}`).join(\'\\n\')']) requireText('host-context.js', hostContextCode, expected);
+for (const expected of ['rawContent: removeProtectedBlocks(message.mes || \'\')', 'rawLatestChatText', 'mainChatText: mainChat.map(message => `${message.who}：${message.content}`).join(\'\\n\')', 'resolveOutfitTarget', 'outfitSubject = null', 'allowHostBindings: false']) requireText('host-context.js', hostContextCode, expected);
+for (const expected of ['OUTFIT_SELF_SUBJECT = \'__self__\'', 'outfitSubjectLabel', 'targetProfile', 'environmentContext']) requireText('calendar-outfit-model.js', calendarOutfitModelCode, expected);
+for (const expected of ['OUTFIT_SELF_SUBJECT', 'outfitSubjectLabel', 'button.value || OUTFIT_SELF_SUBJECT']) requireText('calendar-outfit-runtime.js', calendarOutfitRuntimeCode, expected);
+for (const expected of ['outfitSubject: OUTFIT_SELF_SUBJECT']) requireText('calendar.js', calendarCode, expected);
+for (const expected of [
+  "outfitSubject: subject", 'structuredClone(getProfile(storageId, subject))', 'buildOutfitPrompts(context, profileSnapshot',
+  '穿搭偏好或生成规则已在生成期间改变，请重新生成', '待覆盖穿搭已在生成期间改变，请重新确认后生成',
+]) requireText('calendar-outfit-controller.js', calendarOutfitControllerCode, expected);
 for (const expected of [
   "tasks.begin(storageId, 'recipe-generate'", 'isolated: true, signal: task.signal',
   'expectedRegion: requestedRegion, days: generationDays', 'replaceRecipeInWindow', 'commitRecipe',
@@ -1599,7 +1609,12 @@ for (const expected of [
   'calendar-generation-rule-save', 'calendar-recipe-generation-rule-save', 'escapeHtml(generationRule)',
   'name="repeat" data-calendar-repeat-select aria-label="日程重复规则"',
   'data-calendar-interval-days ${custom ? \'\' : \'hidden aria-hidden="true"\'}',
+  '<b>OOTD</b>',
 ]) requireText('calendar-view.js', calendarViewCode, expected);
+if (calendarViewCode.includes('${OUTFIT_ICON_SVG} OOTD')) failures.push('calendar-view.js: OOTD detail title must not render the outfit SVG');
+if (!calendarPageViewCode.includes('data-action="calendar-mode-outfit"') || !calendarPageViewCode.includes('${OUTFIT_ICON_SVG}</button>')) {
+  failures.push('calendar-page-view.js: outfit mode entry must retain the outfit SVG');
+}
 if (calendarViewCode.includes('<h3>上下文注入</h3>')) failures.push('calendar-view.js: calendar management cards must not repeat the context-injection heading');
 if (!/<h3>正文日期<\/h3>[\s\S]*<h3>节假日数据<\/h3>[\s\S]*<h3>生成规则<\/h3>/.test(calendarViewCode)) {
   failures.push('calendar-view.js: schedule generation rule card must remain last');
@@ -1707,7 +1722,7 @@ for (const expected of [
   'class="pm-control-menu pm-scene-menu" role="menu" aria-label="社区工具" hidden',
   'class="pm-scene-comment-actions" hidden', 'data-action="edit-comment"', 'aria-label="编辑评论"', 'data-action="delete-comment"', 'aria-label="删除评论"',
   'pm-scene-accent-options', 'data-action="scene-accent"', 'data-action="scene-accent-custom"', 'aria-pressed="${preset.accent === selectedAccent}"',
-  'placeholder="分享此刻……"', '<span class="pm-scene-post-time">刚刚</span>',
+  'placeholder="分享此刻……"',
   "const liveState = ['idle', 'starting', 'active', 'error'].includes(state.liveState) ? state.liveState : 'idle'", 'const warmupStarted = liveState === \'active\' && scene.live.warmupStarted === true',
   'data-action="start-warmup"', '${PLAY_ICON_SVG}', 'aria-label="发送弹幕"', '设置社区内容的表达风格与氛围。',
   "isSubpage || tab === 'context-inject' ? ''", 'pm-live-stage', 'pm-live-details', 'data-live-state=', 'pm-danmaku-float',
@@ -1721,6 +1736,12 @@ for (const forbidden of ['data-action="back"', 'pm-scene-back']) {
 }
 for (const forbidden of ['.pm-scene-title-tab:first-child{flex:', '.pm-scene-title-tab.is-active::after{']) {
   if (css.includes(forbidden)) failures.push(`style.css: stretched community title underline remains: ${forbidden}`);
+}
+if (!/renderPostTime\(post\.createdAt,\s*now\)/.test(interactiveViewsCode)) failures.push('interactive-scene-views.js: post time must be rendered from post.createdAt');
+if (!/<time class="pm-scene-post-time" datetime=/.test(interactiveViewsCode)) failures.push('interactive-scene-views.js: post time must expose a semantic time datetime attribute');
+if (!/datetime="\$\{escapeAttr\(time\.datetime\)\}" title="\$\{escapeAttr\(time\.title\)\}"/.test(interactiveViewsCode)) failures.push('interactive-scene-views.js: valid post time must expose escaped datetime and title attributes');
+if (/<(?:span|time) class="pm-scene-post-time"[^>]*>刚刚<\/(?:span|time)>/.test(interactiveViewsCode)) {
+  failures.push('interactive-scene-views.js: post time must not be hardcoded as 刚刚');
 }
 if (interactiveViewsCode.includes('刚刚 · ${escapeHtml(scene.title)}')) failures.push('interactive-scene-views.js: post metadata must not repeat the community title');
 if (interactiveViewsCode.includes('pm-scene-tabs')) failures.push('interactive-scene-views.js: obsolete wide community tab capsule remains');
@@ -1912,7 +1933,7 @@ for (const expected of [
   '#pm-iphone[data-theme="light"],', '#pm-overlay[data-theme="light"],', '#pm-overlay-sub[data-theme="light"],', '.pm-model-dropdown[data-theme="light"] {',
   '#pm-iphone[data-theme="dark"],', '#pm-overlay[data-theme="dark"],', '#pm-overlay-sub[data-theme="dark"],', '.pm-model-dropdown[data-theme="dark"] {',
   '--pm-color-text-primary:', '--pm-color-text-secondary:', '--pm-color-text-tertiary:', '--pm-color-text-placeholder:', '--pm-color-text-disabled:',
-  '--pm-color-surface-page:', '--pm-color-surface-card:', '--pm-color-surface-elevated:', '--pm-color-surface-input:', '--pm-color-surface-inverse:',
+  '--pm-color-surface-page:', '--pm-color-surface-card:', '--pm-color-surface-elevated:', '--pm-color-surface-control:', '--pm-color-surface-input:', '--pm-color-surface-inverse:',
   '--pm-color-border-subtle:', '--pm-color-border-default:', '--pm-color-border-strong:', '--pm-color-control-off:',
   '--pm-color-accent:', '--pm-color-focus-ring:', '--pm-color-success:', '--pm-color-warning:', '--pm-color-danger:', '--pm-color-on-success:', '--pm-color-on-warning:', '--pm-color-on-danger:', '--pm-color-overlay:', '--pm-color-on-dark:', '--pm-color-on-light:',
   '.pm-settings-home button{border:1px solid var(--pm-color-border-default);border-radius:14px;background:var(--pm-color-surface-card);color:var(--pm-color-text-primary)',
@@ -1938,8 +1959,19 @@ for (const expected of [
   '#pm-iphone .pm-scene-composer textarea{padding:8px 14px !important;resize:none !important;}',
   '#pm-iphone .pm-calendar-generation-rule{padding:9px 10px !important;resize:vertical !important;}',
   '#pm-iphone .pm-calendar-management :is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]):not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="hidden"]):not([type="image"]),select){padding:7px !important;}',
-  ':is(#pm-overlay,#pm-overlay-sub) .pm-cfg-input{padding:9px 12px !important;}',
-  '.pm-emoji-action,.pm-emoji-upload{border:1px solid var(--pm-color-accent,#007aff);border-radius:8px;background:color-mix(in srgb,var(--pm-color-accent,#007aff) 10%,var(--pm-color-surface-elevated));color:var(--pm-color-accent,#007aff);',
+  '--pm-space-1:4px;', '--pm-space-2:8px;', '--pm-space-3:12px;', '--pm-space-4:16px;', '--pm-size-control-default:44px;',
+  '.pm-settings-section{display:flex;flex-direction:column;gap:var(--pm-space-2);padding:var(--pm-space-3) var(--pm-space-4);}',
+  '.pm-settings-field{display:flex;flex-direction:column;gap:var(--pm-space-1);min-width:0;}',
+  '.pm-cfg-input{box-sizing:border-box;width:100%;min-height:var(--pm-size-control-default);',
+  'padding:0 var(--pm-space-3) !important;font-size:var(--pm-font-size-body) !important;',
+  '.pm-action-button{min-height:var(--pm-size-control-default);',
+  '.pm-contact-add-primary,.pm-contact-add-ai{border:0;border-radius:10px;background:var(--pm-color-accent,#007aff);color:var(--pm-color-on-dark);min-height:var(--pm-size-control-default);',
+  '.pm-cfg-label.pm-ambient-setting,.pm-cfg-label.pm-check-setting{flex-direction:row;gap:var(--pm-space-3);}',
+  '.pm-contact-settings-save{flex:0 1 210px;min-height:var(--pm-size-control-default);',
+  '.pm-calendar-entry-dialog form{padding:var(--pm-space-3) var(--pm-space-4) var(--pm-space-4);display:flex;flex-direction:column;gap:var(--pm-space-2)}',
+  '#pm-overlay .pm-calendar-entry-dialog textarea[name="note"]{box-sizing:border-box!important;width:100%!important;min-height:72px!important;border:1px solid var(--pm-color-border-default)!important;border-radius:var(--pm-radius-control)!important;background:var(--pm-color-surface-control)!important;',
+  '.pm-calendar-entry-actions button{min-height:var(--pm-size-control-default);border:0',
+  '.pm-emoji-action{border:1px solid var(--pm-color-accent,#007aff);border-radius:8px;background:color-mix(in srgb,var(--pm-color-accent,#007aff) 10%,var(--pm-color-surface-elevated));color:var(--pm-color-accent,#007aff);',
   '.pm-emoji-action:focus-visible,.pm-emoji-upload:focus-visible,.pm-emoji-image-delete:focus-visible{outline:1px solid var(--pm-color-focus-ring);outline-offset:2px;}',
   '.pm-model-opt{display:block;width:100%;padding:8px 12px;font:inherit;font-size:13px;text-align:left;background:var(--pm-color-surface-elevated);color:var(--pm-color-text-primary);',
   '.pm-model-empty{padding:14px;text-align:center;font-size:12px;color:var(--pm-color-text-tertiary);}',
@@ -2058,13 +2090,14 @@ for (const expected of [
   '#pm-iphone[data-theme="dark"] .pm-calendar-management[data-calendar-management="outfit"] .pm-calendar-editor-actions .is-primary{color:#1c1c1e}',
   '.pm-calendar-management .pm-calendar-data-tools h3{font-size:12px}',
   '.pm-calendar-injection-card .pm-calendar-auto-switch{padding:2px 0}',
+  '#pm-iphone[data-theme="dark"] .pm-calendar-management[data-calendar-management="schedule"] .pm-calendar-scan-card .pm-calendar-auto-switch small,#pm-iphone[data-theme="dark"] .pm-calendar-management[data-calendar-management="weather"] .pm-calendar-attribution,#pm-iphone[data-theme="dark"] .pm-calendar-management[data-calendar-management="cycle"] .pm-calendar-cycle-editor small,#pm-iphone[data-theme="dark"] .pm-calendar-management[data-calendar-management="recipe"] .pm-calendar-attribution{color:var(--pm-color-text-secondary)}',
   '.pm-calendar-data-row select,.pm-calendar-data-row input,.pm-calendar-data-row button,.pm-calendar-database-card>button',
   '.pm-calendar-auto-switch{display:flex;align-items:center;justify-content:space-between',
   '.pm-calendar-entry-dialog [data-calendar-occasion-fields][hidden]{display:none!important}',
   '.pm-calendar-entry-dialog{width:min(330px,calc(100vw - 28px))}',
-  '#pm-overlay .pm-calendar-entry-dialog textarea[name="note"]{box-sizing:border-box!important;width:100%!important;min-height:72px!important;border:1px solid var(--pm-color-border-default)!important;border-radius:10px!important;background:var(--pm-color-surface-input)!important;color:var(--pm-color-text-primary)!important;font:400 13px/1.45 -apple-system',
+  '#pm-overlay .pm-calendar-entry-dialog textarea[name="note"]{box-sizing:border-box!important;width:100%!important;min-height:72px!important;border:1px solid var(--pm-color-border-default)!important;border-radius:var(--pm-radius-control)!important;background:var(--pm-color-surface-control)!important;color:var(--pm-color-text-primary)!important;font:var(--pm-font-weight-regular) var(--pm-font-size-body)/var(--pm-line-height-body) -apple-system',
   '#pm-overlay .pm-calendar-entry-dialog textarea[name="note"]:focus-visible{outline:1px solid var(--pm-color-focus-ring)!important;outline-offset:1px!important}',
-  '.pm-calendar-entry-actions button{min-height:38px;border:0',
+  '.pm-calendar-entry-actions button{min-height:var(--pm-size-control-default);border:0',
   '.pm-calendar-view-switch button[aria-pressed="true"]{background:transparent;color:var(--pm-calendar-accent);box-shadow:inset 0 -2px 0 var(--pm-calendar-accent)',
   '@media (prefers-reduced-motion:reduce){.pm-calendar-header-action.is-loading svg{animation:none}}',
   '.pm-scene-preset>span{box-sizing:border-box;width:12px;height:12px;flex:0 0 12px;border-radius:50%',
@@ -2401,6 +2434,28 @@ requireCssDeclarations(cssRules, '.pm-quote-action', { right: 'calc(100% + 6px)'
 requireCssDeclarations(cssRules, '.pm-right>.pm-quote-action', {
   right: 'auto', left: 'calc(100% + 6px)',
 });
+requireCssDeclarations(cssRules, '.pm-bubble', {
+  'max-width': '74% !important', padding: '9px 13px',
+});
+requireCssDeclarations(cssRules, '.pm-pending-entry', {
+  position: 'relative', opacity: '.82',
+});
+for (const rule of cssRules) if (rule.selectors.some(selector => selector.includes('.pm-pending-entry')) && rule.declarations.has('padding-bottom')) {
+  failures.push(`style.css: pending-message selector ${rule.selectors.join(', ')} must not increase bubble height with padding-bottom`);
+}
+requireCssDeclarations(cssRules, '.pm-pending-entry.pm-right::after', {
+  content: "'待提交'", position: 'absolute', top: '50%',
+  right: 'calc(100% + var(--pm-space-2))', transform: 'translateY(-50%)',
+  color: 'var(--pm-color-text-tertiary)', 'font-size': 'var(--pm-font-size-helper)',
+  'line-height': 'var(--pm-line-height-tight)', 'white-space': 'nowrap',
+});
+requireCssDeclarations(cssRules, '.pm-pending-entry[data-pending-status="submitting"].pm-right::after', {
+  content: "'提交中'",
+});
+requireCssDeclarations(cssRules, '.pm-pending-entry[data-pending-status="failed"].pm-right::after', {
+  content: "'提交失败'", color: 'var(--pm-color-danger)',
+});
+if (css.includes('left:calc(100% + var(--pm-space-2))')) failures.push('style.css: pending-message status must remain outside the bubble on its left without changing bubble size');
 requireText('style.css title arrow isolation', css, '.pm-name-chevron{position:absolute;left:100%;top:50%');
 requireCssDeclarations(cssRules, '.pm-contact-switcher', { 'box-shadow': 'none' });
 requireCssDeclarations(cssRules, '.pm-contact-switcher-row', { 'grid-template-columns': '22px minmax(0,1fr) 40px 40px', 'column-gap': '4px' });
@@ -2633,7 +2688,7 @@ requireCssDeclarations(cssRules, '.pm-emoji-action', {
   border: '1px solid var(--pm-color-accent,#007aff)', background: 'color-mix(in srgb,var(--pm-color-accent,#007aff) 10%,var(--pm-color-surface-elevated))', color: 'var(--pm-color-accent,#007aff)',
 });
 requireCssDeclarations(cssRules, '.pm-emoji-upload', {
-  border: '1px solid var(--pm-color-accent,#007aff)', background: 'color-mix(in srgb,var(--pm-color-accent,#007aff) 10%,var(--pm-color-surface-elevated))', color: 'var(--pm-color-accent,#007aff)',
+  border: '1px solid var(--pm-color-accent,#007aff)', background: 'color-mix(in srgb,var(--pm-color-accent,#007aff) 10%,var(--pm-color-surface-elevated))', color: 'var(--pm-color-accent,#007aff)', 'min-height': 'var(--pm-size-control-default)',
 });
 requireCssDeclarations(cssRules, '.pm-emoji-action.is-full', { width: '100%', 'margin-top': '8px' });
 requireCssDeclarations(cssRules, '.pm-emoji-action.is-compact', { padding: '5px 10px', 'font-size': '11px' });

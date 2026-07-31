@@ -1,5 +1,6 @@
 import { buildWorldBookContext } from './worldbook-context.js';
 import { normalizeWorldBookConfig } from './worldbook-config.js';
+import { OUTFIT_SELF_SUBJECT, outfitRoleName } from './calendar-outfit-model.js';
 
 const warnedHostContextFailures = new Set();
 
@@ -77,11 +78,46 @@ export function getUserPersona(getCtx) {
     return { name, description };
 }
 
+const normalizedName = value => typeof value === 'string' ? value.trim().toLocaleLowerCase() : '';
+
+export function resolveOutfitTarget(context, subject, userPersona = { name: '用户', description: '' }) {
+    if (subject === OUTFIT_SELF_SUBJECT) {
+        return {
+            kind: 'user', name: userPersona.name || '用户', description: userPersona.description || '',
+            personality: '', scenario: '', stableId: '', character: null,
+        };
+    }
+    const roleName = outfitRoleName(subject);
+    if (!roleName) throw new Error('穿搭记录对象无效');
+    const matches = (Array.isArray(context?.characters) ? context.characters : []).map((character, index) => ({ character, index }))
+        .filter(({ character }) => normalizedName(character?.name) === normalizedName(roleName));
+    if (!matches.length) throw new Error(`无法定位“${roleName}”的角色资料，请切换到对应角色会话后重试`);
+    if (matches.length > 1) throw new Error(`“${roleName}”存在重名角色，无法唯一定位资料`);
+    const currentMatch = matches.find(({ index }) => index === context?.characterId);
+    const { character, index } = currentMatch || matches[0];
+    return {
+        kind: 'role', name: character.name.trim(), description: character.description ?? '', personality: character.personality ?? '',
+        scenario: character.scenario ?? '', stableId: character.avatar || `idx_${index}`, character,
+    };
+}
+
 export async function gatherContext(getCtx, {
-    module = 'chat', signal, includeWorldBook = true, worldBookMaxChars, worldBookScope = null, worldBookMemberNames = [],
+    module = 'chat', signal, includeWorldBook = true, worldBookMaxChars, worldBookScope = null, worldBookMemberNames = [], outfitSubject = null,
 } = {}) {
     const context = getCtx();
-    const character = context?.characters?.[context.characterId] || {};
+    const userPersona = getUserPersona(getCtx);
+    const outfitTarget = outfitSubject === null ? null : resolveOutfitTarget(context, outfitSubject, userPersona);
+    const character = outfitTarget?.kind === 'user' ? null : outfitTarget?.character || context?.characters?.[context.characterId] || {};
+    const effectiveWorldBookScope = outfitTarget?.kind === 'user'
+        ? { kind: 'public' }
+        : outfitTarget?.kind === 'role'
+            ? { kind: 'character', id: outfitTarget.stableId }
+            : worldBookScope;
+    const worldBookOptions = outfitTarget?.kind === 'user'
+        ? { includeCharacterBindings: false }
+        : outfitTarget?.kind === 'role' && outfitTarget.character !== context?.characters?.[context?.characterId]
+            ? { character: outfitTarget.character, allowHostBindings: false }
+            : {};
     const worldBookConfig = normalizeWorldBookConfig(globalThis.window?.__pmWorldBookConfig);
     const removeProtectedBlocks = value => (value || '')
         .replace(/```[\s\S]*?(?:```|$)/g, '')
@@ -106,17 +142,16 @@ export async function gatherContext(getCtx, {
     let worldBookText = '';
     if (includeWorldBook) {
         try {
-            const memberIds = worldBookScope?.kind === 'group'
+            const memberIds = effectiveWorldBookScope?.kind === 'group'
                 ? [...new Set(worldBookMemberNames.filter(name => typeof name === 'string').map(name => name.trim()).filter(Boolean))]
                 : [];
             worldBookText = await buildWorldBookContext(context, {
-                module, config: worldBookConfig, signal, scope: worldBookScope, memberIds, maxChars: worldBookMaxChars,
+                module, config: worldBookConfig, signal, scope: effectiveWorldBookScope, memberIds, maxChars: worldBookMaxChars, worldBookOptions,
             });
         } catch (error) {
             if (error?.name === 'AbortError') throw error;
             warnHostContextFailureOnce('world-book', '读取世界书上下文失败', error);
         }
     }
-    const userPersona = getUserPersona(getCtx);
-    return { cardDesc: character.description ?? '', cardPersonality: character.personality ?? '', cardScenario: character.scenario ?? '', cardFirstMes: character.first_mes ?? '', cardMesExample: character.mes_example ?? '', mainChatText: mainChat.map(message => `${message.who}：${message.content}`).join('\n'), latestChatText, rawLatestChatText, latestChatIsUser, worldBookText, userName: userPersona.name, userDesc: userPersona.description };
+    return { cardDesc: outfitTarget?.kind === 'user' ? outfitTarget.description : character.description ?? '', cardPersonality: outfitTarget?.kind === 'user' ? '' : character.personality ?? '', cardScenario: outfitTarget?.kind === 'user' ? '' : character.scenario ?? '', cardFirstMes: character?.first_mes ?? '', cardMesExample: character?.mes_example ?? '', mainChatText: mainChat.map(message => `${message.who}：${message.content}`).join('\n'), latestChatText, rawLatestChatText, latestChatIsUser, worldBookText, userName: userPersona.name, userDesc: userPersona.description, outfitTarget };
 }

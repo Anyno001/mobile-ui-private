@@ -54,20 +54,20 @@ function throwIfAborted(signal) {
 }
 
 export async function buildWorldBookContext(context, {
-    module, config = globalThis.window?.__pmWorldBookConfig, signal, scope: requestedScope = null, memberIds = [], maxChars,
+    module, config = globalThis.window?.__pmWorldBookConfig, signal, scope: requestedScope = null, memberIds = [], maxChars, worldBookOptions = {},
 } = {}) {
     const current = normalizeWorldBookConfig(config);
     if (!['chat', 'calendar', 'outfit', 'community'].includes(module)) return '';
     if (typeof context?.loadWorldInfo !== 'function') return '';
     throwIfAborted(signal);
-    const selectedNames = getReadableWorldBookNames(context, current);
+    const selectedNames = getReadableWorldBookNames(context, current, worldBookOptions);
     if (!selectedNames.length) return '';
     const requestedMaxChars = Number(maxChars);
     const outputMaxChars = Number.isFinite(requestedMaxChars) && requestedMaxChars > 0
         ? Math.min(current.maxChars, Math.trunc(requestedMaxChars)) : current.maxChars;
     const messages = (Array.isArray(context.chat) ? context.chat : [])
         .slice(-current.scanMessages).map(message => visibleText(message?.mes));
-    const scope = requestedScope?.kind === 'group' || requestedScope?.kind === 'character'
+    const scope = requestedScope?.kind === 'group' || requestedScope?.kind === 'character' || requestedScope?.kind === 'public'
         ? requestedScope : contextScope(context);
     const groupMemberIds = scope?.kind === 'group'
         ? [...new Set(memberIds.map(memberId => text(memberId).trim()).filter(Boolean))] : [];

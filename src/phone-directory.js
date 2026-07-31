@@ -381,54 +381,52 @@ export function installPhoneDirectory(state, deps) {
         }
 
         const emojiCheckHtml = mode === 'edit' && window.__pmEmojis.length ? `
-        <div style="padding-top:12px;border-top:1px solid var(--pm-color-border-subtle);">
-            <div class="pm-cfg-label" style="margin-bottom:8px;">允许 AI 使用的表情包套组</div>
-            <div style="display:flex;flex-direction:column;gap:10px;max-height:120px;overflow-y:auto;background:var(--pm-color-surface-elevated);border-radius:8px;padding:10px;border:1px solid var(--pm-color-border-subtle);">
+        <section class="pm-settings-stack pm-settings-separator">
+            <div class="pm-cfg-label">允许 AI 使用的表情包套组</div>
+            <div class="pm-settings-option-list">
                 ${window.__pmEmojis.map(set => `
-                    <div style="display:flex;align-items:center;gap:10px;cursor:pointer;"
-                         onclick="this.querySelector('.pm-emoji-assign-check').click()">
+                    <div class="pm-settings-option" onclick="this.querySelector('.pm-emoji-assign-check').click()">
                         <div class="pm-custom-check pm-bi-style pm-emoji-assign-check ${assignedEmojis.includes(set.id) ? 'is-checked' : ''}"
-                             data-id="${escapeAttr(set.id)}"
-                             role="checkbox" tabindex="0" aria-checked="${assignedEmojis.includes(set.id)}"
+                             data-id="${escapeAttr(set.id)}" role="checkbox" tabindex="0" aria-checked="${assignedEmojis.includes(set.id)}"
                              onclick="event.stopPropagation();this.classList.toggle('is-checked');this.setAttribute('aria-checked',String(this.classList.contains('is-checked')))"
-                             onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();this.click()}"
-                             style="width:20px;height:20px;min-width:20px;flex-shrink:0;margin-bottom:0;"></div>
-                        <span style="font-size:13px;color:var(--pm-color-text-primary);">${escapeHtml(set.name)}</span>
-                        <span style="color:var(--pm-color-text-tertiary);font-size:11px;margin-left:auto;">(${set.images.length}张)</span>
+                             onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();this.click()}"></div>
+                        <span>${escapeHtml(set.name)}</span>
+                        <span class="pm-settings-option-count">(${set.images.length}张)</span>
                     </div>
                 `).join('')}
             </div>
-        </div>` : '';
+        </section>` : '';
         const memberColorHtml = mode === 'edit' ? `
-        <div style="padding-top:12px;border-top:1px solid var(--pm-color-border-subtle);">
-          <div class="pm-cfg-label" style="margin-bottom:8px;">成员气泡颜色</div>
-          <div style="display:grid;grid-template-columns:1fr auto;gap:8px 12px;align-items:center;">
-            ${groupMeta.members.map((name, index) => `<label style="display:contents;"><span style="font-size:12px;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(name)}</span><input class="pm-group-member-color" data-member="${escapeAttr(name)}" type="color" value="${escapeAttr(groupMeta.memberColors[name] || GROUP_COLORS[index % GROUP_COLORS.length].bg)}"></label>`).join('')}
+        <section class="pm-settings-stack pm-settings-separator">
+          <div class="pm-cfg-label">成员气泡颜色</div>
+          <div class="pm-group-member-colors">
+            ${groupMeta.members.map((name, index) => `<label><span>${escapeHtml(name)}</span><input class="pm-group-member-color" data-member="${escapeAttr(name)}" type="color" value="${escapeAttr(groupMeta.memberColors[name] || GROUP_COLORS[index % GROUP_COLORS.length].bg)}"></label>`).join('')}
           </div>
-        </div>` : '';
+        </section>` : '';
+
         makeOverlay(`
     <div class="pm-modal pm-modal-wide">
     <div class="pm-modal-header"><button type="button" onclick="${closeAction}" class="pm-modal-close" title="返回列表" aria-label="返回列表">${BACK_ICON_SVG}</button><b>${title}</b><button type="button" onclick="${closeAction}" class="pm-modal-close" title="关闭" aria-label="关闭">${CLOSE_ICON_SVG}</button></div>
     <div class="pm-modal-scroll pm-group-settings-scroll">
-        <div class="pm-cfg-label">群聊名称</div>
-        <input id="pm-group-name-input" class="pm-cfg-input" placeholder="给群聊起个名字" value="${escapeAttr(initName)}" maxlength="30">
-        <div class="pm-cfg-label" style="margin-top:4px;">成员（用 / 分隔）</div>
-        <input id="pm-group-input" class="pm-cfg-input" placeholder="角色A / 角色B / 角色C" oninput="window.__pmGroupInputChanged()" value="${escapeAttr(initMembers)}">
-        <div id="pm-group-counter" class="pm-cfg-tip" style="text-align:left;font-weight:600;">0 个角色</div>
-        <div id="pm-group-preview" style="display:flex;flex-wrap:wrap;gap:4px;"></div>
+        <label class="pm-settings-field">群聊名称
+        <input id="pm-group-name-input" class="pm-cfg-input" placeholder="给群聊起个名字" value="${escapeAttr(initName)}" maxlength="30"></label>
+        <label class="pm-settings-field">成员（用 / 分隔）
+        <input id="pm-group-input" class="pm-cfg-input" placeholder="角色A / 角色B / 角色C" oninput="window.__pmGroupInputChanged()" value="${escapeAttr(initMembers)}"></label>
+        <div id="pm-group-counter" class="pm-cfg-tip">0 个角色</div>
+        <div id="pm-group-preview" class="pm-settings-preview"></div>
 
         ${mode === 'edit' ? `
         ${memberColorHtml}
         ${emojiCheckHtml}
-        <div style="padding-top:12px;border-top:1px solid var(--pm-color-border-subtle);">
-          <div class="pm-cfg-label" style="margin-bottom:8px;">群聊功能</div>
+        <section class="pm-settings-stack pm-settings-separator">
+          <div class="pm-cfg-label">群聊功能</div>
           <div class="pm-member-behavior-list">
             <button type="button" onclick="window.__pmShowGroupMemberSettings()"><b>群聊风格</b><span>按成员设置群聊发言风格</span></button>
             <button type="button" onclick="window.__pmShowWorldBookColumns({title:'${safeJS(groupMeta.name)}可读的数据库记忆',module:'chat',scope:{kind:'group',id:'${safeJS(state.currentGroupKey)}'}})"><b>数据库记忆</b><span>设置群聊公共可读栏目</span></button>
             <button type="button" onclick="window.__pmToggleGroupMemberPrivateMemory('${safeJS(state.currentGroupKey)}')"><b>成员私人记忆</b><span>${window.__pmWorldBookConfig?.groups?.[state.currentGroupKey]?.allowMemberPrivateMemory === true ? '已开启' : '关闭'}</span></button>
             <button type="button" onclick="window.__pmShowGroupRandomNpcSettings()"><b>路人群友</b><span>设置随机出现的临时群友</span></button>
           </div>
-        </div>
+        </section>
         ` : ''}
     </div>
     ${mode === 'create' ? `
@@ -510,15 +508,15 @@ export function installPhoneDirectory(state, deps) {
     <div class="pm-modal pm-modal-wide">
       <div class="pm-modal-header"><button type="button" onclick="${returnAction}" class="pm-modal-close" title="${returnLabel}" aria-label="${returnLabel}">${BACK_ICON_SVG}</button><b>群聊设置</b><button type="button" onclick="window.__pmCloseOverlay()" class="pm-modal-close" title="关闭" aria-label="关闭">${CLOSE_ICON_SVG}</button></div>
       <div class="pm-modal-scroll pm-group-settings-scroll">
-        <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
-          <div><div class="pm-cfg-label">允许路人群友随机出现</div><div class="pm-cfg-tip" style="text-align:left;">开启后，AI 可以生成不在固定成员名单中的临时群友。</div></div><div id="pm-group-random-npc" class="pm-custom-check pm-bi-style ${groupMeta.randomNpcEnabled ? 'is-checked' : ''}" role="checkbox" tabindex="0" aria-checked="${groupMeta.randomNpcEnabled}" onclick="this.classList.toggle('is-checked');this.setAttribute('aria-checked',String(this.classList.contains('is-checked')))" onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();this.click()}" style="cursor:pointer;width:22px;height:22px;min-width:22px;min-height:22px;flex-shrink:0;border-radius:50%;"></div>
+        <div class="pm-settings-inline-row">
+          <div class="pm-settings-stack"><div class="pm-cfg-label">允许路人群友随机出现</div><div class="pm-cfg-tip">开启后，AI 可以生成不在固定成员名单中的临时群友。</div></div><div id="pm-group-random-npc" class="pm-custom-check pm-bi-style ${groupMeta.randomNpcEnabled ? 'is-checked' : ''}" role="checkbox" tabindex="0" aria-checked="${groupMeta.randomNpcEnabled}" onclick="this.classList.toggle('is-checked');this.setAttribute('aria-checked',String(this.classList.contains('is-checked')))" onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();this.click()}"></div>
         </div>
-        <label class="pm-cfg-label" style="display:block;margin-top:12px;">群聊性质
+        <label class="pm-settings-field">群聊性质
           <textarea id="pm-group-nature" class="pm-cfg-input" maxlength="200" rows="3" placeholder="例如：这是一个气氛很好的同学群">${escapeHtml(groupMeta.groupNature)}</textarea></label>
-        <div class="pm-cfg-tip" style="text-align:left;">路人群友会参考这段描述决定身份、语气和互动方式。</div>
-        <label class="pm-cfg-label" style="display:block;margin-top:12px;">默认提示词
+        <div class="pm-cfg-tip">路人群友会参考这段描述决定身份、语气和互动方式。</div>
+        <label class="pm-settings-field">默认提示词
           <textarea id="pm-group-random-npc-prompt" class="pm-cfg-input" maxlength="2000" rows="5">${escapeHtml(groupMeta.randomNpcPrompt || DEFAULT_RANDOM_NPC_PROMPT)}</textarea></label>
-        <div class="pm-cfg-tip" style="text-align:left;">仅在开启路人群友时生效；临时角色名仍须使用“路人群友·名字”。</div></div>
+        <div class="pm-cfg-tip">仅在开启路人群友时生效；临时角色名仍须使用“路人群友·名字”。</div></div>
       <div class="pm-modal-add"><button type="button" class="pm-action-button is-accent" onclick="window.__pmSaveGroupRandomNpcSettings(${returnToControlCenter})" style="flex:1">保存群聊设置</button></div>
     </div>`);
     };
@@ -561,7 +559,7 @@ export function installPhoneDirectory(state, deps) {
         if (counter) { counter.textContent = `${names.length} 个角色`; counter.style.color = '#b87a00'; }
         preview.innerHTML = names.map((n, i) => {
             const gc = GROUP_COLORS[i % GROUP_COLORS.length];
-            return `<span style="background:${gc.bg};color:${gc.text};padding:3px 8px;border-radius:10px;font-size:11px;">${escapeHtml(n)}</span>`;
+            return `<span class="pm-group-preview-chip" style="background:${gc.bg};color:${gc.text};">${escapeHtml(n)}</span>`;
         }).join('');
     };
 

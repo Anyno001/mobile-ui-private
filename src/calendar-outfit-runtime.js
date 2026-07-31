@@ -1,16 +1,17 @@
-import { normalizeOutfitStore, outfitSubjectKeys } from './calendar-outfit-model.js';
+import { normalizeOutfitStore, OUTFIT_SELF_SUBJECT, outfitSubjectKeys, outfitSubjectLabel } from './calendar-outfit-model.js';
 import { loadCalendarOutfits } from './calendar-storage.js';
 
 export const loadOutfitStore = () => normalizeOutfitStore(loadCalendarOutfits());
 
 export function outfitSubjectOptions(state, store, storageId) {
     const names = state.isGroupChat ? state.groupMembers : [state.currentPersona];
-    const ids = [...names.filter(Boolean).map(name => `role:${name}`), ...outfitSubjectKeys(store, storageId)];
+    const ids = [OUTFIT_SELF_SUBJECT, ...names.filter(Boolean).map(name => `role:${name}`), ...outfitSubjectKeys(store, storageId)];
     const seen = new Set();
     return ids.flatMap(value => {
         if (!value || seen.has(value)) return [];
         seen.add(value);
-        return [{ value, label: value.startsWith('role:') ? value.slice(5) : value }];
+        const label = outfitSubjectLabel(value);
+        return label ? [{ value, label }] : [];
     });
 }
 
@@ -18,7 +19,7 @@ export function handleOutfitPageAction({ button, app, storageId, state, runtime,
     const action = button.dataset.action;
     if (action === 'calendar-outfit-subject') {
         const current = viewFor(storageId);
-        runtime.viewByStorage.set(storageId, { ...current, outfitSubject: button.value || `role:${state.currentPersona || '角色'}` });
+        runtime.viewByStorage.set(storageId, { ...current, outfitSubject: button.value || OUTFIT_SELF_SUBJECT });
         rerender(storageId);
         return true;
     }

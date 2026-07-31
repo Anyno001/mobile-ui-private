@@ -27,6 +27,33 @@ function stablePostMetric(post, salt, minimum, spread) {
     return minimum + (hash % spread);
 }
 
+const MIN_PLAUSIBLE_POST_TIMESTAMP = Date.UTC(2000, 0, 1);
+
+export function formatCommunityPostTime(createdAt, now = Date.now()) {
+    if (typeof createdAt !== 'number' || !Number.isFinite(createdAt) || createdAt < MIN_PLAUSIBLE_POST_TIMESTAMP) {
+        return { label: '时间未知', datetime: '', title: '' };
+    }
+    const date = new Date(createdAt);
+    if (Number.isNaN(date.getTime())) return { label: '时间未知', datetime: '', title: '' };
+    const referenceNow = typeof now === 'number' && Number.isFinite(now) && now >= createdAt ? now : createdAt;
+    const elapsed = referenceNow - createdAt;
+    let label;
+    if (elapsed < 60_000) label = '刚刚';
+    else if (elapsed < 3_600_000) label = `${Math.floor(elapsed / 60_000)}分钟前`;
+    else if (elapsed < 86_400_000) label = `${Math.floor(elapsed / 3_600_000)}小时前`;
+    else if (elapsed < 604_800_000) label = `${Math.floor(elapsed / 86_400_000)}天前`;
+    else if (date.getFullYear() === new Date(referenceNow).getFullYear()) label = `${date.getMonth() + 1}月${date.getDate()}日`;
+    else label = `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日`;
+    const title = `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日 ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+    return { label, datetime: date.toISOString(), title };
+}
+
+function renderPostTime(createdAt, now) {
+    const time = formatCommunityPostTime(createdAt, now);
+    if (!time.datetime) return `<time class="pm-scene-post-time">${escapeHtml(time.label)}</time>`;
+    return `<time class="pm-scene-post-time" datetime="${escapeAttr(time.datetime)}" title="${escapeAttr(time.title)}">${escapeHtml(time.label)}</time>`;
+}
+
 function renderPostMetric(iconSvg, value, label, className = '') {
     return `<span class="pm-scene-post-metric ${className}" aria-label="${escapeAttr(`${label} ${value}`)}">${iconSvg}<span>${value}</span></span>`;
 }
@@ -97,13 +124,13 @@ export function renderCommunityLauncher(scope, uiScope = { pinnedSceneIds: [] })
     </div>`;
 }
 
-function renderPosts(scene) {
+function renderPosts(scene, now) {
     if (!scene.posts.length) return '<div class="pm-scene-empty"><b>这里还很安静</b><span>发第一篇帖子，或者拍一拍让社区动起来。</span></div>';
     return scene.posts.slice().reverse().map(post => {
         const likes = stablePostMetric(post, 'likes', 8, 240) + (post.liked ? 1 : 0);
         const shares = stablePostMetric(post, 'shares', 1, 48) + post.shareCount;
         return `<article class="pm-scene-post">
-        <header><div class="pm-scene-avatar">${escapeHtml(post.authorNameSnapshot.slice(0, 1))}</div><div class="pm-scene-post-author"><b>${escapeHtml(post.authorNameSnapshot)}</b><span class="pm-scene-post-time">刚刚</span></div><div class="pm-scene-post-actions-wrap"><button type="button" class="pm-scene-post-more" data-action="post-actions" aria-label="帖子操作" title="帖子操作" aria-expanded="false">${MORE_ICON_SVG}</button><span class="pm-scene-post-actions" hidden><button type="button" data-action="comments" data-post-id="${escapeAttr(post.id)}" aria-label="拍一拍本帖，只生成本帖评论" title="拍一拍本帖">${POKE_ICON_SVG}</button><button type="button" data-action="edit-post" data-post-id="${escapeAttr(post.id)}" aria-label="编辑帖子" title="编辑帖子">${EDIT_ICON_SVG}</button><button type="button" class="pm-scene-danger" data-action="delete-post" data-post-id="${escapeAttr(post.id)}" aria-label="删除帖子" title="删除帖子">${TRASH_ICON_SVG}</button></span></div></header>
+        <header><div class="pm-scene-avatar">${escapeHtml(post.authorNameSnapshot.slice(0, 1))}</div><div class="pm-scene-post-author"><b>${escapeHtml(post.authorNameSnapshot)}</b>${renderPostTime(post.createdAt, now)}</div><div class="pm-scene-post-actions-wrap"><button type="button" class="pm-scene-post-more" data-action="post-actions" aria-label="帖子操作" title="帖子操作" aria-expanded="false">${MORE_ICON_SVG}</button><span class="pm-scene-post-actions" hidden><button type="button" data-action="comments" data-post-id="${escapeAttr(post.id)}" aria-label="拍一拍本帖，只生成本帖评论" title="拍一拍本帖">${POKE_ICON_SVG}</button><button type="button" data-action="edit-post" data-post-id="${escapeAttr(post.id)}" aria-label="编辑帖子" title="编辑帖子">${EDIT_ICON_SVG}</button><button type="button" class="pm-scene-danger" data-action="delete-post" data-post-id="${escapeAttr(post.id)}" aria-label="删除帖子" title="删除帖子">${TRASH_ICON_SVG}</button></span></div></header>
         <p>${escapeHtml(post.content).replace(/\n/g, '<br>')}</p>
         ${post.tags.length ? `<div class="pm-scene-tags">${post.tags.map(tag => `<span>#${escapeHtml(tag)}</span>`).join('')}</div>` : ''}
         <footer><button type="button" class="pm-scene-like ${post.liked ? 'is-liked' : ''}" data-action="like" data-post-id="${escapeAttr(post.id)}" aria-pressed="${post.liked}" aria-label="${post.liked ? '取消喜欢' : '喜欢'}">${renderPostMetric(HEART_ICON_SVG, likes, '喜欢', 'is-like')}</button><button type="button" class="pm-scene-share ${post.shared ? 'is-shared' : ''}" data-action="share" data-post-id="${escapeAttr(post.id)}" aria-pressed="${post.shared}" aria-label="${post.shared ? '已分享本帖' : '分享本帖'}">${renderPostMetric(SHARE_ICON_SVG, shares, '转发', 'is-share')}</button><button type="button" class="pm-scene-reply-toggle" data-action="toggle-reply" data-post-id="${escapeAttr(post.id)}" aria-label="回复本帖" aria-controls="pm-comment-composer-${escapeAttr(post.id)}" aria-expanded="false">${renderPostMetric(REPLY_ICON_SVG, post.comments.length, '回复', 'is-reply')}</button></footer>
@@ -155,6 +182,7 @@ function renderSceneMenu(scene, uiScope, autoActive, tab) {
 export function renderCommunityWorkspace(scene, tab = 'feed', uiScope = { pinnedSceneIds: [] }, state = {}) {
     const preset = getInteractivePresets()[scene.preset] || getInteractivePresets().custom;
     const autoActive = state.autoActive === true;
+    const renderedAt = typeof state.now === 'number' && Number.isFinite(state.now) ? state.now : Date.now();
     const accent = scene.themeAccent || preset.accent;
     const liveState = ['idle', 'starting', 'active', 'error'].includes(state.liveState) ? state.liveState : 'idle';
     const warmupStarted = liveState === 'active' && scene.live.warmupStarted === true;
@@ -171,7 +199,7 @@ export function renderCommunityWorkspace(scene, tab = 'feed', uiScope = { pinned
     const stageNote = liveStarting ? '<p class="pm-live-state-note">正在准备热场…</p>' : liveFailed ? '<p class="pm-live-state-note is-error">热场未能启动，请重试。</p>' : '';
     const liveContent = `<div class="pm-live-stage ${hasDanmaku ? 'has-danmaku' : ''}" data-live-state="${stageState}">${playControl}<div class="pm-danmaku-float">${floatingDanmaku}</div>${stageNote}</div><section class="pm-live-details" aria-label="热场内容"><div class="pm-danmaku-list">${renderDanmaku(scene)}</div></section>`;
     const composer = tab === 'feed' ? `<div class="pm-scene-composer"><textarea id="pm-scene-post-input" maxlength="4000" placeholder="分享此刻……"></textarea><button type="button" class="pm-scene-primary" data-action="publish" aria-label="发布" title="发布">${SEND_ICON_SVG}</button></div>` : tab === 'live' ? `<div class="pm-scene-composer pm-danmaku-input"><textarea id="pm-danmaku-input" rows="1" maxlength="200" placeholder="发个弹幕见证当下"></textarea><button type="button" class="pm-scene-primary" data-action="send-danmaku" aria-label="发送弹幕" title="发送弹幕">${SEND_ICON_SVG}</button></div>` : '';
-    const content = tab === 'feed' ? `<div class="pm-scene-feed"><div class="pm-scene-posts">${renderPosts(scene)}</div></div>`
+    const content = tab === 'feed' ? `<div class="pm-scene-feed"><div class="pm-scene-posts">${renderPosts(scene, renderedAt)}</div></div>`
         : tab === 'live' ? `<div class="pm-live-room">${liveContent}</div>`
         : tab === 'context-inject' ? renderContextInjectionSettings(scene, state)
             : `<div class="pm-scene-prompt"><label>社区名称<input id="pm-scene-title" maxlength="80" value="${escapeAttr(scene.title)}"></label><fieldset class="pm-scene-accent-field"><legend>社区主题色</legend><div class="pm-scene-accent-options">${renderSceneAccentOptions(accent)}<label class="pm-scene-accent-custom" aria-label="自定义社区主题色"><input id="pm-scene-accent" type="color" data-action="scene-accent-custom" value="${escapeAttr(accent)}"><span>自定义</span></label></div></fieldset><label>社区风格<textarea id="pm-scene-prompt" maxlength="6000">${escapeHtml(scene.generatedPrompt)}</textarea></label><p>设置社区内容的表达风格与氛围。</p><div class="pm-scene-prompt-actions"><button type="button" class="pm-scene-secondary" data-action="regenerate-prompt">重新生成</button><button type="button" class="pm-scene-primary" data-action="save-prompt">保存风格</button></div></div>`;

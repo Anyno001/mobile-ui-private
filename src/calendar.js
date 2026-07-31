@@ -13,7 +13,7 @@ import {
 } from './calendar-holiday.js';
 import { fetchWeatherForecast, normalizeWeatherStore, searchWeatherLocations } from './calendar-weather.js';
 import { CYCLE_SELF_SUBJECT, clearCycleScope, cycleScopeFor, cycleSubjectKeys, normalizeCycleStore, upsertCycleScope } from './calendar-cycle-model.js';
-import { normalizeOutfitStore, outfitScopeFor } from './calendar-outfit-model.js';
+import { normalizeOutfitStore, OUTFIT_SELF_SUBJECT, outfitScopeFor } from './calendar-outfit-model.js';
 import { normalizeRecipeStore, recipeScopeFor } from './calendar-recipe-model.js';
 import { createCalendarCommitters } from './calendar-commit.js';
 import { fillCalendarEntryForm, readCalendarEntryForm, setCalendarEntryRepeat } from './calendar-dom.js';
@@ -90,7 +90,7 @@ export function installCalendar(state, deps) {
         const view = {
             viewYear: reference.getFullYear(), viewMonth: reference.getMonth() + 1,
             selectedDate: formatCalendarDate(reference),
-            viewMode: 'schedule', editorKind: 'event', cycleSubject: CYCLE_SELF_SUBJECT, outfitSubject: `role:${state.currentPersona || '角色'}`,
+            viewMode: 'schedule', editorKind: 'event', cycleSubject: CYCLE_SELF_SUBJECT, outfitSubject: OUTFIT_SELF_SUBJECT,
             generating: false, recipeGenerating: false, weatherRefreshing: false, detailEditing: false,
             managementOpenByMode: {},
         };

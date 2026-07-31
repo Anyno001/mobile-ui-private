@@ -11,25 +11,32 @@ export function createCalendarOutfitController({ tasks, getStorageId, gatherCont
         if (!start) throw new Error('重新生成穿搭的选中日期无效');
         const days = replaceWindow ? 1 : 7, window = calendarWindowDescription(start, days), subject = getView(storageId).outfitSubject;
         if (replaceWindow && formatCalendarDate(start) < formatCalendarDate(reference)) { status(storageId, '不能重新生成故事今天之前的穿搭。'); rerender(storageId); return false; }
-        const profile = getProfile(storageId, subject);
-        const existing = window.dates.map(date => profile.days[date]).filter(Boolean);
+        const profileSnapshot = structuredClone(getProfile(storageId, subject));
+        const existing = window.dates.map(date => profileSnapshot.days[date]).filter(Boolean);
         const hasExistingAi = existing.some(outfit => outfit.source === 'ai');
         if (hasExistingAi && (typeof confirmImpl !== 'function'
             || !confirmImpl(`${window.label}已有 AI 生成的穿搭，重新生成将覆盖这些内容；手动记录会保留。是否继续？`))) return false;
-        const snapshot = JSON.stringify(window.dates.map(date => [date, profile.days[date] || null]));
+        const windowSnapshot = JSON.stringify(window.dates.map(date => [date, profileSnapshot.days[date] || null]));
+        const preferencesSnapshot = JSON.stringify({
+            colorPreference: profileSnapshot.colorPreference, preference: profileSnapshot.preference, generationRule: profileSnapshot.generationRule,
+        });
         const task = tasks.begin(storageId, 'outfit-generate', { replace: false, mode: replaceWindow ? 'outfit-regenerate' : 'outfit-generate' });
         if (!task) throw new Error('当前会话已有穿搭生成任务，或会话不可用');
         const previousStatus = getView(storageId).outfitGenerationTask ? getView(storageId).outfitGenerationPreviousStatus : getStatus(storageId);
         setBusy(storageId, task, previousStatus); status(storageId, `正在${replaceWindow ? '重新' : ''}生成${window.label} OOTD…`, { persistent: true }); rerender(storageId);
         let settled = false;
         try {
-            const context = await gatherContext(null, { module: 'outfit', signal: task.signal, worldBookMaxChars: 3500 });
+            const context = await gatherContext(null, { module: 'outfit', signal: task.signal, worldBookMaxChars: 3500, outfitSubject: subject });
             if (!tasks.active(task)) return false;
-            const requested = getProfile(storageId, subject), prompts = buildOutfitPrompts(context, requested, start, { days, subject });
+            const prompts = buildOutfitPrompts(context, profileSnapshot, start, { days, subject });
             const generated = parseOutfitAiResponse(await callAI(prompts.systemPrompt, prompts.userPrompt, { isolated: true, signal: task.signal }), { start, days });
             const committed = await commitOutfits(storageId, store => {
                 const current = outfitScopeFor(store, storageId, subject);
-                if (JSON.stringify(window.dates.map(date => [date, current.days[date] || null])) !== snapshot) throw new Error('待覆盖穿搭已在生成期间改变，请重新确认后生成');
+                const currentPreferences = JSON.stringify({
+                    colorPreference: current.colorPreference, preference: current.preference, generationRule: current.generationRule,
+                });
+                if (currentPreferences !== preferencesSnapshot) throw new Error('穿搭偏好或生成规则已在生成期间改变，请重新生成');
+                if (JSON.stringify(window.dates.map(date => [date, current.days[date] || null])) !== windowSnapshot) throw new Error('待覆盖穿搭已在生成期间改变，请重新确认后生成');
                 return updateOutfitProfile(store, storageId, subject, value => replaceOutfitsInWindow(value, generated, { start, now: Date.now(), days }));
             }, task);
             if (!committed || !tasks.active(task)) return false;

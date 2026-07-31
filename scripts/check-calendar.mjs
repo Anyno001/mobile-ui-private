@@ -13,9 +13,10 @@ import {
     renderRecipeInjection, replaceRecipeInWindow, setRecipeRegionPreference, upsertRecipeMeal,
 } from '../src/calendar-recipe-model.js';
 import {
-    buildOutfitPrompts, createEmptyOutfitStore, normalizeOutfitStore, outfitForDate, outfitScopeFor, parseOutfitAiResponse,
-    renderOutfitInjection, replaceOutfitsInWindow, updateOutfitProfile, upsertOutfit,
+    buildOutfitPrompts, createEmptyOutfitStore, normalizeOutfitStore, OUTFIT_SELF_SUBJECT, outfitForDate, outfitRoleName,
+    outfitScopeFor, outfitSubjectLabel, parseOutfitAiResponse, renderOutfitInjection, replaceOutfitsInWindow, updateOutfitProfile, upsertOutfit,
 } from '../src/calendar-outfit-model.js';
+import { outfitSubjectOptions } from '../src/calendar-outfit-runtime.js';
 import {
     clearCycleScope, createEmptyCycleStore, cycleScopeFor, cycleSubjectKeys, normalizeCycleScope,
     predictCyclePhase, predictCycleRange, upsertCycleScope,
@@ -80,6 +81,23 @@ const outfitEnvelope = (dates = recipeDates) => JSON.stringify({
     days: dates.map((date, index) => ({ date, text: `穿搭${index + 1}` })),
 });
 assert.deepEqual(createEmptyOutfitStore(), { version: 1, scopes: {} });
+assert.equal(OUTFIT_SELF_SUBJECT, '__self__');
+assert.equal(outfitSubjectLabel(OUTFIT_SELF_SUBJECT), '<user>');
+assert.equal(outfitSubjectLabel('role:Alice'), 'Alice');
+assert.equal(outfitRoleName('role:Alice'), 'Alice');
+assert.equal(outfitRoleName('__self__'), '');
+assert.deepEqual(outfitSubjectOptions({ isGroupChat: false, currentPersona: 'Alice' }, createEmptyOutfitStore(), 'storyA'), [
+    { value: '__self__', label: '<user>' }, { value: 'role:Alice', label: 'Alice' },
+], '穿搭主体列表必须以 <user> 开头并保留当前角色');
+const selfPreferenceStore = updateOutfitProfile(createEmptyOutfitStore(), 'storyA', OUTFIT_SELF_SUBJECT, profile => ({
+    ...profile, colorPreference: '蓝色', preference: '不穿高跟鞋', generationRule: '用户规则',
+}));
+const rolePreferenceStore = updateOutfitProfile(selfPreferenceStore, 'storyA', 'role:Alice', profile => ({
+    ...profile, colorPreference: '紫色', preference: '角色规则', generationRule: '角色生成规则',
+}));
+assert.equal(outfitScopeFor(rolePreferenceStore, 'storyA', OUTFIT_SELF_SUBJECT).colorPreference, '蓝色');
+assert.equal(outfitScopeFor(rolePreferenceStore, 'storyA', 'role:Alice').colorPreference, '紫色',
+    '<user> 与角色的穿搭偏好必须按主体隔离');
 const parsedOutfits = parseOutfitAiResponse(outfitEnvelope(), { start: recipeStart });
 assert.equal(parsedOutfits.days.length, 7);
 assert.equal(parsedOutfits.days[0].text, '穿搭1');
@@ -103,6 +121,10 @@ const outfitInjection = renderOutfitInjection(outfitScopeFor(outfitInjectionScop
 assert.match(outfitInjection, /角色：Alice/);
 assert.match(outfitInjection, /昨日外套|今日衬衫|明日风衣/);
 assert.doesNotMatch(outfitInjection, /2032-03-13|2032-03-17/, '穿搭注入窗口必须严格为 -1...+1');
+const selfInjection = renderOutfitInjection(outfitScopeFor(rolePreferenceStore, 'storyA', OUTFIT_SELF_SUBJECT), {
+    start: recipeStart, subject: OUTFIT_SELF_SUBJECT,
+});
+assert.equal(selfInjection, '', '无 OOTD 的 <user> 主体不得凭空注入内容');
 const recipeEnvelope = (region, dates = recipeDates) => JSON.stringify({
     version: 1,
     kind: 'recipe_plan',
@@ -916,7 +938,7 @@ const renderedOutfitScope = upsertOutfit({
 }, { date: currentDates[0], text: '薰衣草紫针织衫、白色长裙与短靴', source: 'manual' }, 40);
 const renderedOutfit = renderCalendarPageHtml(
     renderedScope, { occasions: [] }, '<status>', holidayForToday, currentWeather, currentCycle, [],
-    { ...renderedView, viewMode: 'outfit', outfitSubject: 'role:Alice', outfitSubjects: [{ value: 'role:Alice', label: 'Alice' }] }, {}, renderedOutfitScope,
+    { ...renderedView, viewMode: 'outfit', outfitSubject: '__self__', outfitSubjects: [{ value: '__self__', label: '<user>' }, { value: 'role:Alice', label: 'Alice' }] }, {}, renderedOutfitScope,
 );
 const renderedBusyOutfit = renderCalendarPageHtml(
     renderedScope, { occasions: [] }, '', holidayForToday, currentWeather, currentCycle, [],
@@ -1213,6 +1235,10 @@ assert.match(renderedOutfit, /data-calendar-management="outfit" open/);
 assert.match(renderedOutfit, /data-action="calendar-toggle-outfit-injection"/);
 assert.match(renderedOutfit, /data-action="calendar-outfit-worldbook-columns"/);
 assert.match(renderedOutfit, /data-action="calendar-outfit-subject"/);
+assert.match(renderedOutfit, /<option value="__self__" selected>&lt;user&gt;<\/option>/,
+    '穿搭默认主体必须是 <user>');
+assert.match(renderedOutfit, /data-action="calendar-mode-outfit"[^>]*><svg\b/,
+    '穿搭日历模式入口必须保留 SVG 图标');
 assert.match(renderedOutfit, /data-outfit-generation-rule[^>]*>穿搭 &lt;\/textarea&gt;&lt;img src=x onerror=alert\(1\)&gt;<\/textarea>/,
     '穿搭规则 textarea 必须转义闭合标签和属性注入文本');
 assert.doesNotMatch(renderedOutfit, /data-outfit-generation-rule[^>]*>[\s\S]*?<img src=x/,
@@ -1227,6 +1253,10 @@ assert.match(renderedOutfitEditing, /data-action="calendar-outfit-edit"[\s\S]*da
 assert.match(renderedOutfitEditing, /data-action="calendar-outfit-regenerate"[^>]*aria-label="重新生成当日 OOTD"/);
 assert.match(renderOutfitDialog(currentDates[0], { text: '<OOTD>' }), /data-outfit-entry-form[\s\S]*&lt;OOTD&gt;/,
     'OOTD 编辑弹窗必须转义现有内容');
+const outfitDetailWithoutIcon = renderSelectedDateDetail({}, {}, {}, {}, {}, currentDates[0], 'outfit', '今天', {}, false, false, renderedOutfitScope);
+assert.match(outfitDetailWithoutIcon, /<b>OOTD<\/b>/, 'OOTD 详情标题必须保留文本');
+assert.doesNotMatch(outfitDetailWithoutIcon, /<b><svg[\s\S]*?OOTD<\/b>/,
+    'OOTD 详情标题不得包含 SVG 图标');
 assert.match(renderedSchedule, /class="pm-calendar-weekdays"/);
 assert.match(renderedSchedule, /class="pm-calendar-month-grid"/);
 assert.match(renderedSchedule, /class="pm-calendar-month-nav" data-action="calendar-prev-month"/);
@@ -2168,8 +2198,102 @@ try {
     assert.equal(await outfitController.generate(), true);
     assert.equal(controllerOutfitGatherCalls.length, 1);
     assert.equal(controllerOutfitGatherCalls[0][0], null);
-    assert.deepEqual({ ...controllerOutfitGatherCalls[0][1], signal: undefined }, { module: 'outfit', signal: undefined, worldBookMaxChars: 3500 },
-        '穿搭真实控制器必须以 outfit 模块和 3500 字符预算采集上下文');
+    assert.deepEqual({ ...controllerOutfitGatherCalls[0][1], signal: undefined }, { module: 'outfit', signal: undefined, worldBookMaxChars: 3500, outfitSubject: 'role:Alice' },
+        '穿搭真实控制器必须快照主体并以 outfit 模块和 3500 字符预算采集上下文');
+    let deferredOutfitContext;
+    let deferredOutfitStore = createEmptyOutfitStore();
+    let deferredOutfitView = { selectedDate: recipeDates[0], outfitSubject: '__self__', outfitGenerating: false };
+    const deferredOutfitController = createCalendarOutfitController({
+        tasks: createTaskController(() => storageA), getStorageId: () => storageA,
+        gatherContext: async (_context, options) => new Promise(resolve => { deferredOutfitContext = { resolve, options }; }),
+        callAI: async () => outfitEnvelope(), makeOverlay: makeRecipeOverlay, closeOverlay: () => {},
+        commitOutfits: async (_storageId, mutate) => { deferredOutfitStore = normalizeOutfitStore(mutate(deferredOutfitStore)); return true; },
+        getOutfitStore: () => deferredOutfitStore,
+        getProfile: (storageId, subject) => outfitScopeFor(deferredOutfitStore, storageId, subject),
+        getReferenceDate: () => recipeStart, getView: () => deferredOutfitView,
+        setView: (_storageId, next) => { deferredOutfitView = next; }, getStatus: () => '', status: () => {}, rerender: () => {}, confirmImpl: () => true,
+    });
+    const deferredGeneration = deferredOutfitController.generate();
+    await new Promise(resolve => setTimeout(resolve, 0));
+    assert.equal(deferredOutfitContext.options.outfitSubject, '__self__');
+    deferredOutfitView = { ...deferredOutfitView, outfitSubject: 'role:Alice' };
+    deferredOutfitContext.resolve({
+        cardDesc: '用户人设', cardPersonality: '', cardScenario: '', userDesc: '用户人设',
+        outfitTarget: { kind: 'user', name: '用户', description: '用户人设' }, worldBookText: '', mainChatText: '',
+    });
+    assert.equal(await deferredGeneration, true);
+    assert.ok(outfitScopeFor(deferredOutfitStore, storageA, '__self__').days[recipeDates[0]],
+        '生成期间切换下拉框不得将结果写入新主体');
+    assert.equal(outfitScopeFor(deferredOutfitStore, storageA, 'role:Alice').days[recipeDates[0]], undefined,
+        '生成期间切换下拉框不得污染切换后的角色主体');
+    let preferenceContextResolve;
+    let capturedOutfitPrompt = '';
+    let preferenceOutfitStore = updateOutfitProfile(createEmptyOutfitStore(), storageA, '__self__', profile => ({
+        ...profile, colorPreference: '蓝色', preference: '旧偏好', generationRule: '旧规则',
+    }));
+    let preferenceOutfitView = { selectedDate: recipeDates[0], outfitSubject: '__self__', outfitGenerating: false };
+    const preferenceOutfitController = createCalendarOutfitController({
+        tasks: createTaskController(() => storageA), getStorageId: () => storageA,
+        gatherContext: async () => new Promise(resolve => { preferenceContextResolve = resolve; }),
+        callAI: async (_systemPrompt, userPrompt) => { capturedOutfitPrompt = userPrompt; return outfitEnvelope(); },
+        makeOverlay: makeRecipeOverlay, closeOverlay: () => {},
+        commitOutfits: async (_storageId, mutate) => { preferenceOutfitStore = normalizeOutfitStore(mutate(preferenceOutfitStore)); return true; },
+        getOutfitStore: () => preferenceOutfitStore,
+        getProfile: (storageId, subject) => outfitScopeFor(preferenceOutfitStore, storageId, subject),
+        getReferenceDate: () => recipeStart, getView: () => preferenceOutfitView,
+        setView: (_storageId, next) => { preferenceOutfitView = next; }, getStatus: () => '', status: () => {}, rerender: () => {}, confirmImpl: () => true,
+    });
+    const preferenceGeneration = preferenceOutfitController.generate();
+    await new Promise(resolve => setTimeout(resolve, 0));
+    preferenceOutfitStore = updateOutfitProfile(preferenceOutfitStore, storageA, '__self__', profile => ({
+        ...profile, colorPreference: '红色', preference: '新偏好', generationRule: '新规则',
+    }));
+    preferenceContextResolve({
+        cardDesc: '用户人设', cardPersonality: '', cardScenario: '', userDesc: '用户人设',
+        outfitTarget: { kind: 'user', name: '用户', description: '用户人设' }, worldBookText: '', mainChatText: '',
+    });
+    await assert.rejects(preferenceGeneration, /穿搭偏好或生成规则已在生成期间改变/,
+        '生成期间修改主体偏好或规则必须取消旧任务提交');
+    assert.match(capturedOutfitPrompt, /喜好颜色：蓝色[\s\S]*穿衣偏好与限制：旧偏好[\s\S]*用户保存的生成规则：旧规则/,
+        '穿搭 prompt 必须使用任务开始时的 profile 快照');
+    assert.doesNotMatch(capturedOutfitPrompt, /红色|新偏好|新规则/,
+        '生成期间修改的偏好或规则不得渗入已启动任务');
+    assert.equal(outfitScopeFor(preferenceOutfitStore, storageA, '__self__').days[recipeDates[0]], undefined,
+        '偏好或规则竞态发生后不得提交 AI OOTD');
+    const outfitWindowRaceResponse = deferred(), outfitWindowRaceStarted = deferred();
+    let outfitWindowRaceStore = createEmptyOutfitStore();
+    let outfitWindowRaceView = { selectedDate: recipeDates[0], outfitSubject: '__self__', outfitGenerating: false };
+    const outfitWindowRaceController = createCalendarOutfitController({
+        tasks: createTaskController(() => storageA), getStorageId: () => storageA,
+        gatherContext: async () => ({
+            cardDesc: '用户人设', cardPersonality: '', cardScenario: '', userDesc: '用户人设',
+            outfitTarget: { kind: 'user', name: '用户', description: '用户人设' }, worldBookText: '', mainChatText: '',
+        }),
+        callAI: async () => {
+            outfitWindowRaceStarted.resolve();
+            return outfitWindowRaceResponse.promise;
+        },
+        makeOverlay: makeRecipeOverlay, closeOverlay: () => {},
+        commitOutfits: async (_storageId, mutate) => { outfitWindowRaceStore = normalizeOutfitStore(mutate(outfitWindowRaceStore)); return true; },
+        getOutfitStore: () => outfitWindowRaceStore,
+        getProfile: (storageId, subject) => outfitScopeFor(outfitWindowRaceStore, storageId, subject),
+        getReferenceDate: () => recipeStart, getView: () => outfitWindowRaceView,
+        setView: (_storageId, next) => { outfitWindowRaceView = next; }, getStatus: () => '', status: () => {}, rerender: () => {}, confirmImpl: () => true,
+    });
+    const outfitWindowRaceGeneration = outfitWindowRaceController.generate();
+    await outfitWindowRaceStarted.promise;
+    outfitWindowRaceStore = updateOutfitProfile(outfitWindowRaceStore, storageA, '__self__', profile => upsertOutfit(profile, {
+        date: recipeDates[0], text: '生成期间新增手工 OOTD', source: 'manual',
+    }, 32));
+    outfitWindowRaceResponse.resolve(outfitEnvelope());
+    await assert.rejects(outfitWindowRaceGeneration, /待覆盖穿搭已在生成期间改变/,
+        '穿搭生成期间窗口内容变化后，旧确认不得授权覆盖新内容');
+    assert.equal(outfitForDate(outfitScopeFor(outfitWindowRaceStore, storageA, '__self__'), recipeDates[0]).text, '生成期间新增手工 OOTD',
+        '穿搭窗口竞态拒绝必须保留生成期间新增的手工记录');
+    assert.equal(outfitForDate(outfitScopeFor(outfitWindowRaceStore, storageA, '__self__'), recipeDates[1]), null,
+        '穿搭窗口竞态拒绝不得污染其他日期');
+    assert.equal(outfitWindowRaceView.outfitGenerating, false, '穿搭窗口竞态拒绝后必须释放 busy 状态');
+    assert.equal(outfitWindowRaceView.outfitGenerationTask, null, '穿搭窗口竞态拒绝后必须清理任务引用');
     assert.equal(controllerConfirmMessages.length, confirmCountBeforeEmptyRecipeGenerate,
         '未来七日没有菜谱时，顶部生成必须静默执行');
     controllerRecipeScope = createEmptyRecipeScope();

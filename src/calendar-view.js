@@ -7,7 +7,7 @@ import { weatherCodeLabel } from './calendar-weather.js';
 import { resolveWeatherForDate, weatherSourceLabel } from './calendar-weather-source.js';
 import {
     CLOSE_ICON_SVG, CYCLE_FERTILE_ICON_SVG, CYCLE_PERIOD_ICON_SVG, EDIT_ICON_SVG,
-    LOCATION_ICON_SVG, MORE_ICON_SVG, OUTFIT_ICON_SVG, REFRESH_ICON_SVG, TRASH_ICON_SVG, WEATHER_CLOUD_ICON_SVG,
+    LOCATION_ICON_SVG, MORE_ICON_SVG, REFRESH_ICON_SVG, TRASH_ICON_SVG, WEATHER_CLOUD_ICON_SVG,
     WEATHER_FOG_ICON_SVG, WEATHER_ICON_SVG, WEATHER_PARTLY_CLOUDY_ICON_SVG, WEATHER_SNOW_ICON_SVG,
     WEATHER_STORM_ICON_SVG, WEATHER_SUN_ICON_SVG,
 } from './icons.js';
@@ -114,7 +114,7 @@ function recipeRows(recipeScope, date, editing = false) {
 
 function outfitRow(outfit, editing = false) {
     if (!outfit?.text) return '';
-    return `<article class="pm-calendar-event is-outfit"><div><b>${OUTFIT_ICON_SVG} OOTD</b><span>${escapeHtml(outfit.text)}</span></div>${editing ? `<span class="pm-calendar-inline-actions"><button type="button" data-action="calendar-outfit-edit" aria-label="编辑 OOTD" title="编辑">${EDIT_ICON_SVG}</button><button type="button" class="is-danger" data-action="calendar-outfit-delete" aria-label="删除 OOTD" title="删除">${TRASH_ICON_SVG}</button></span>` : ''}</article>`;
+    return `<article class="pm-calendar-event is-outfit"><div><b>OOTD</b><span>${escapeHtml(outfit.text)}</span></div>${editing ? `<span class="pm-calendar-inline-actions"><button type="button" data-action="calendar-outfit-edit" aria-label="编辑 OOTD" title="编辑">${EDIT_ICON_SVG}</button><button type="button" class="is-danger" data-action="calendar-outfit-delete" aria-label="删除 OOTD" title="删除">${TRASH_ICON_SVG}</button></span>` : ''}</article>`;
 }
 
 function detailHeader(selectedDate, parsed, relativeLabel, actions = '') {
@@ -182,7 +182,7 @@ export function renderCalendarManagement({
 }) {
     const open = (managementOpen ?? ['recipe', 'cycle', 'outfit'].includes(viewMode)) ? ' open' : '';
     if (viewMode === 'outfit') {
-        const subjects = outfitSubjects.length ? outfitSubjects : [{ value: selectedOutfitSubject || 'role:角色', label: '角色' }];
+        const subjects = outfitSubjects.length ? outfitSubjects : [{ value: '__self__', label: '<user>' }];
         const colorPreference = outfitProfile?.colorPreference || '';
         const preference = outfitProfile?.preference || '';
         const generationRule = outfitProfile?.generationRule || DEFAULT_OUTFIT_GENERATION_RULE;

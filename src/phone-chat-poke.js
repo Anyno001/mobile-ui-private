@@ -202,25 +202,24 @@ export function installPhoneChatPoke(state, deps) {
         const assignedEmojis = config.emojis || [];
 
         const emojiCheckHtml = window.__pmEmojis.length ? `
-        <div style="margin-bottom:8px;border-bottom:1px solid var(--pm-color-border-subtle);padding-bottom:14px;">
-            <div class="pm-cfg-label" style="margin-bottom:8px;">允许 AI 使用的表情包套组</div>
-            <div style="display:flex;flex-direction:column;gap:10px;max-height:130px;overflow-y:auto;background:var(--pm-color-surface-elevated);border-radius:8px;padding:10px;border:1px solid var(--pm-color-border-subtle);">
+        <section class="pm-settings-stack pm-settings-separator">
+            <div class="pm-cfg-label">允许 AI 使用的表情包套组</div>
+            <div class="pm-settings-option-list">
                 ${window.__pmEmojis.map(set => `
-                    <div style="display:flex;align-items:center;gap:10px;cursor:pointer;"
+                    <div class="pm-settings-option"
                          onclick="this.querySelector('.pm-emoji-assign-check').click()">
-                        <div class="pm-custom-check pm-bi-style pm-emoji-assign-check ${assignedEmojis.includes(set.id)?'is-checked':''}"
+                        <div class="pm-custom-check pm-bi-style pm-emoji-assign-check ${assignedEmojis.includes(set.id) ? 'is-checked' : ''}"
                              data-id="${escapeAttr(set.id)}"
                              role="checkbox" tabindex="0" aria-checked="${assignedEmojis.includes(set.id)}"
                              onclick="event.stopPropagation();this.classList.toggle('is-checked');this.setAttribute('aria-checked',String(this.classList.contains('is-checked')))"
-                             onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();this.click()}"
-                             style="width:20px;height:20px;min-width:20px;flex-shrink:0;margin-bottom:0;"></div>
-                        <span style="font-size:13px;color:var(--pm-color-text-primary);">${escapeHtml(set.name)}</span>
-                        <span style="color:var(--pm-color-text-tertiary);font-size:11px;margin-left:auto;">(${set.images.length}张)</span>
+                             onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();this.click()}"></div>
+                        <span>${escapeHtml(set.name)}</span>
+                        <span class="pm-settings-option-count">(${set.images.length}张)</span>
                     </div>
                 `).join('')}
             </div>
-            <div style="font-size:11px;color:var(--pm-color-text-tertiary);margin-top:4px;">勾选后 AI 会知道如何使用这些表情</div>
-        </div>` : '';
+            <div class="pm-cfg-tip">勾选后 AI 会知道如何使用这些表情</div>
+        </section>` : '';
 
         makeOverlay(`
     <div class="pm-modal pm-modal-wide">
@@ -230,11 +229,11 @@ export function installPhoneChatPoke(state, deps) {
         <button type="button" onclick="window.__pmCloseOverlay()" class="pm-modal-close" title="关闭" aria-label="关闭">${CLOSE_ICON_SVG}</button>
     </div>
     <div class="pm-contact-settings-scroll">
-        <div class="pm-cfg-label">私聊线上风格</div>
-        <textarea id="pm-behavior-private" class="pm-cfg-input" rows="2" maxlength="2000" placeholder="例如：回复克制、少用语气词">${escapeHtml(behavior.privateStylePrompt)}</textarea>
-        <div class="pm-cfg-label">群聊发言风格</div>
-        <textarea id="pm-behavior-group" class="pm-cfg-input" rows="2" maxlength="2000" placeholder="例如：群里更简短，偶尔接话">${escapeHtml(behavior.groupStylePrompt)}</textarea>
-        <div class="pm-behavior-grid">
+        <label class="pm-settings-field">私聊线上风格
+        <textarea id="pm-behavior-private" class="pm-cfg-input" rows="2" maxlength="2000" placeholder="例如：回复克制、少用语气词">${escapeHtml(behavior.privateStylePrompt)}</textarea></label>
+        <label class="pm-settings-field">群聊发言风格
+        <textarea id="pm-behavior-group" class="pm-cfg-input" rows="2" maxlength="2000" placeholder="例如：群里更简短，偶尔接话">${escapeHtml(behavior.groupStylePrompt)}</textarea></label>
+        <div class="pm-behavior-grid pm-settings-separator">
           <label>消息长短
             <select id="pm-behavior-length" class="pm-cfg-input">
               <option value="persona" ${behavior.messageLength === 'persona' ? 'selected' : ''}>跟随人设</option>
