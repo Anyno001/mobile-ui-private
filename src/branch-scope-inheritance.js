@@ -7,6 +7,7 @@ import { normalizeOutfitStore } from './calendar-outfit-model.js';
 import { normalizeRecipeStore } from './calendar-recipe-model.js';
 import { deriveInteractiveActorId, normalizeInteractiveStore, normalizePhoneUiState } from './interactive-scene-model.js';
 import { getCurrentChatId, getStorageIdFor } from './host-context.js';
+import { copyTodayTrendScope, createEmptyTodayTrendStore, normalizeTodayTrendStore } from './today-trend-model.js';
 import {
     CALENDAR_CYCLE_STORAGE_KEY, CALENDAR_OCCASION_STORAGE_KEY, CALENDAR_OUTFIT_STORAGE_KEY, CALENDAR_RECIPE_STORAGE_KEY,
     CALENDAR_STORAGE_KEY, CHARACTER_BEHAVIOR_KEY, IDB_MARKER,
@@ -22,6 +23,7 @@ import { saveBgLocal } from './storage-background.js';
 import {
     saveCalendar, saveCalendarCycles, saveCalendarOccasions, saveCalendarOutfits, saveCalendarRecipes,
 } from './calendar-storage.js';
+import { loadTodayTrendStore, saveTodayTrendStore } from './today-trend-storage.js';
 
 const clone = value => structuredClone(value);
 const own = (value, key) => !!value && typeof value === 'object' && Object.hasOwn(value, key);
@@ -53,7 +55,7 @@ function hasContent(value) {
 
 function scopePresence(storageId, stores, contentOnly = false) {
     const flat = ['histories', 'groupMeta', 'pokeConfig', 'characterBehavior', 'bidirectional'];
-    const scoped = ['interactive', 'phoneUi', 'calendar', 'occasions', 'cycles', 'recipes', 'outfits'];
+    const scoped = ['interactive', 'phoneUi', 'calendar', 'occasions', 'cycles', 'recipes', 'outfits', 'todayTrend'];
     const presence = {};
     const included = value => !contentOnly || hasContent(value);
     for (const key of flat) {
@@ -124,6 +126,9 @@ function createCandidates(sourceId, targetId, stores) {
     for (const key of ['phoneUi', 'calendar', 'occasions', 'cycles', 'recipes', 'outfits']) {
         copyEntry(next[key].scopes, stores[key].scopes, sourceId, targetId);
     }
+    if (own(stores.todayTrend.scopes, sourceId)) {
+        next.todayTrend.scopes[targetId] = copyTodayTrendScope(stores.todayTrend.scopes[sourceId], targetId);
+    }
     copyEntry(next.budget.communitySceneIdsByStorage, stores.budget.communitySceneIdsByStorage, sourceId, targetId);
     copyEntry(next.budget.communitySelectionsByStorage, stores.budget.communitySelectionsByStorage, sourceId, targetId);
     next.groupMeta = normalizeGroupMetaStore(next.groupMeta);
@@ -136,6 +141,7 @@ function createCandidates(sourceId, targetId, stores) {
     next.recipes = normalizeRecipeStore(next.recipes);
     next.outfits = normalizeOutfitStore(next.outfits);
     next.budget = normalizeBudgetConfig(next.budget);
+    next.todayTrend = normalizeTodayTrendStore(next.todayTrend);
     return next;
 }
 
@@ -155,6 +161,7 @@ export function mergeBranchScope(current, desired, targetId) {
     for (const key of ['interactive', 'phoneUi', 'calendar', 'occasions', 'cycles', 'recipes', 'outfits']) {
         replaceEntry(next[key].scopes, source[key].scopes, targetId);
     }
+    replaceEntry(next.todayTrend.scopes, source.todayTrend.scopes, targetId);
     replaceEntry(next.budget.communitySceneIdsByStorage, source.budget.communitySceneIdsByStorage, targetId);
     replaceEntry(next.budget.communitySelectionsByStorage, source.budget.communitySelectionsByStorage, targetId);
     return normalizeStores(next);
@@ -168,6 +175,7 @@ function normalizeStores(stores) {
         calendar: stores.calendar || { version: 1, scopes: {} }, occasions: stores.occasions || { version: 1, scopes: {} },
         cycles: stores.cycles || { version: 1, scopes: {} }, recipes: stores.recipes || { version: 1, scopes: {} }, outfits: stores.outfits || { version: 1, scopes: {} },
         budget: stores.budget || normalizeBudgetConfig(),
+        todayTrend: normalizeTodayTrendStore(stores.todayTrend || createEmptyTodayTrendStore()),
     };
 }
 
@@ -433,6 +441,29 @@ async function commitDirectoryScope(store, desired, expected, targetId) {
     }
 }
 
+async function commitTodayTrendScope({ desired, expected, targetId }) {
+    const token = markDirectoryBranchScope('todayTrend', targetId);
+    try {
+        return await enqueueDirectoryOperation('todayTrend', async () => {
+            const current = normalizeTodayTrendStore(await loadTodayTrendStore());
+            const restoring = !own(desired.scopes, targetId);
+            if (!restoring && own(current.scopes, targetId)) {
+                throw new Error('分支继承保存失败：目标 scope 已被并发写入 (今日风向)');
+            }
+            if (restoring && own(current.scopes, targetId) && !same(current.scopes[targetId], expected.scopes[targetId])) {
+                throw new Error('分支继承补偿取消：目标 scope 已在事务后被更新 (今日风向)');
+            }
+            const merged = clone(current);
+            replaceEntry(merged.scopes, desired.scopes, targetId);
+            const normalized = normalizeTodayTrendStore(merged);
+            await saveTodayTrendStore(normalized);
+            return normalized;
+        });
+    } finally {
+        completeDirectoryBranchScope('todayTrend', token);
+    }
+}
+
 export async function inheritPhoneDataOnBranch({ context, loadStores, saveStores, loadLineage, saveLineage, commitLineage, now = Date.now, force = false }) {
     const branch = resolveBranchInheritance(context);
     if (!branch) return { status: 'skipped', reason: 'not-branch' };
@@ -501,6 +532,7 @@ async function loadProductionStores() {
         recipes: readCalendarForBranch(CALENDAR_RECIPE_STORAGE_KEY, normalizeRecipeStore, '菜谱数据'),
         outfits: readCalendarForBranch(CALENDAR_OUTFIT_STORAGE_KEY, normalizeOutfitStore, '穿搭数据'),
         budget: readBudgetForBranch(),
+        todayTrend: await loadTodayTrendStore(),
     });
 }
 
@@ -561,6 +593,7 @@ async function persistProductionStores(next, { branch } = {}) {
             await commitLocalScopeCoordinated('outfits', { key: CALENDAR_OUTFIT_STORAGE_KEY,
                 desired: desired.outfits, expected: expected.outfits, targetId,
                 normalize: normalizeOutfitStore, label: '穿搭数据' });
+            globalThis.window.__pmTodayTrend = await commitTodayTrendScope({ desired: desired.todayTrend, expected: expected.todayTrend, targetId });
         } else {
             globalThis.window.__pmBgLocal = desired.backgrounds;
             await saveBgLocal();
@@ -570,6 +603,8 @@ async function persistProductionStores(next, { branch } = {}) {
                 || !saveCalendarCycles(desired.cycles) || !saveCalendarRecipes(desired.recipes) || !saveCalendarOutfits(desired.outfits)) {
                 throw new Error('分支继承保存失败：日历 scope 不可用');
             }
+            globalThis.window.__pmTodayTrend = normalizeTodayTrendStore(desired.todayTrend);
+            await saveTodayTrendStore(globalThis.window.__pmTodayTrend);
         }
     };
     try {
@@ -587,10 +622,10 @@ async function persistProductionStores(next, { branch } = {}) {
     }
 }
 
-export function beginBranchInheritance(context, { getStorageId, invalidateInteractiveStore, reloadCalendarStore, force = false } = {}) {
+export function beginBranchInheritance(context, { getStorageId, invalidateInteractiveStore, reloadCalendarStore, reloadTodayTrendStore, force = false } = {}) {
     const branch = resolveBranchInheritance(context);
     const branchScopeTokens = branch
-        ? ['pokeConfig', 'characterBehavior', 'bidirectional', 'budget'].map(store => [store, markDirectoryBranchScope(store, branch.targetId)])
+        ? ['pokeConfig', 'characterBehavior', 'bidirectional', 'budget', 'todayTrend'].map(store => [store, markDirectoryBranchScope(store, branch.targetId)])
         : [];
     const operation = inheritPhoneDataOnBranch({
         context,
@@ -613,6 +648,11 @@ export function beginBranchInheritance(context, { getStorageId, invalidateIntera
                 reloadCalendarStore?.();
             } catch (error) {
                 console.warn('[phone-mode] 分支继承后的日历运行态刷新失败', error);
+            }
+            try {
+                reloadTodayTrendStore?.();
+            } catch (error) {
+                console.warn('[phone-mode] 分支继承后的今日风向运行态刷新失败', error);
             }
         }
         return result;

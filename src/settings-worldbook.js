@@ -2,13 +2,13 @@ import { createWorldBookEntryKey, getCurrentChatWorldBooks, getTavernDbColumn, n
 import { loadWorldBookConfig, saveWorldBookConfig } from './storage.js';
 import { renderSettingsModal } from './settings-templates.js';
 import { escapeAttr, escapeHtml } from './ui.js';
-import { BOOK_ICON_SVG, CALENDAR_ICON_SVG, CHAT_ICON_SVG, COMMUNITY_ICON_SVG, EYE_ICON_SVG, OUTFIT_ICON_SVG } from './icons.js';
+import { BOOK_ICON_SVG, CALENDAR_ICON_SVG, CHAT_ICON_SVG, COMMUNITY_ICON_SVG, EYE_ICON_SVG, FEED_ICON_SVG, OUTFIT_ICON_SVG } from './icons.js';
 
 const text = value => typeof value === 'string' ? value : '';
 const HIDDEN_ENTRY_TITLE = /(?:^|-)包裹-(?:上|下)$/;
 const WORLD_BOOK_BATCH_SIZE = 30;
-const MODULE_LABELS = Object.freeze({ chat: '会话', calendar: '日历', outfit: '穿搭', community: '社区' });
-const MODULE_ICONS = Object.freeze({ chat: CHAT_ICON_SVG, calendar: CALENDAR_ICON_SVG, outfit: OUTFIT_ICON_SVG, community: COMMUNITY_ICON_SVG });
+const MODULE_LABELS = Object.freeze({ chat: '会话', calendar: '日历', outfit: '穿搭', community: '社区', todayTrend: '今日风向' });
+const MODULE_ICONS = Object.freeze({ chat: CHAT_ICON_SVG, calendar: CALENDAR_ICON_SVG, outfit: OUTFIT_ICON_SVG, community: COMMUNITY_ICON_SVG, todayTrend: FEED_ICON_SVG });
 const SOURCE_LABELS = Object.freeze({ global: '全局', chat: '聊天', character: '角色', additional: '附加' });
 const DATABASE_ICON_SVG = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><ellipse cx="12" cy="5" rx="7" ry="3"/><path d="M5 5v7c0 1.7 3.1 3 7 3s7-1.3 7-3V5M5 12v7c0 1.7 3.1 3 7 3s7-1.3 7-3v-7"/></svg>';
 const shortTitle = value => value.length > 15 ? `${value.slice(0, 14)}…` : value;

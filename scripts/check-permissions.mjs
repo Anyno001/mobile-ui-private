@@ -15,7 +15,7 @@ import {
 import {
     normalizeOutfitStore, updateOutfitProfile, upsertOutfit,
 } from '../src/calendar-outfit-model.js';
-import { allocateContextBudget, normalizeBudgetConfig, BUDGET_SOURCES, DEFAULT_BUDGET_CONFIG } from '../src/budget.js';
+import { allocateContextBudget, estimateContextTokens, normalizeBudgetConfig, BUDGET_SOURCES, DEFAULT_BUDGET_CONFIG } from '../src/budget.js';
 
 function assertNoUnpairedSurrogates(value, label) {
     for (let index = 0; index < value.length; index += 1) {
@@ -570,8 +570,8 @@ const migratedTwoSourceBudget = normalizeBudgetConfig({
     sourceWeights: { phone: 3, community: 1 },
     sourcePriority: ['community', 'phone'],
 });
-assert.deepEqual(migratedTwoSourceBudget.sourceWeights, { phone: 3, community: 1, calendar: 0, recipe: 0, outfit: 0 });
-assert.deepEqual(migratedTwoSourceBudget.sourcePriority, ['community', 'phone', 'calendar', 'recipe', 'outfit']);
+assert.deepEqual(migratedTwoSourceBudget.sourceWeights, { phone: 3, community: 1, calendar: 0, recipe: 0, outfit: 0, todayTrend: 0 });
+assert.deepEqual(migratedTwoSourceBudget.sourcePriority, ['community', 'phone', 'calendar', 'recipe', 'outfit', 'todayTrend']);
 assert.equal(Object.hasOwn(migratedTwoSourceBudget, 'calendarEnabled'), false);
 assert.equal(Object.hasOwn(migratedTwoSourceBudget, 'calendarPosition'), false);
 assert.equal(Object.hasOwn(migratedTwoSourceBudget, 'calendarDepth'), false);
@@ -1064,3 +1064,66 @@ const disabledOutfitPlan = buildContextInjectionPrompts({
 });
 assert.equal(disabledOutfitPlan.prompts.some(prompt => prompt.key.includes(':outfit:')), false);
 assert.equal(disabledOutfitPlan.diagnostics.outfitEnabled, false);
+
+const todayTrendStore = {
+    version: 1,
+    presets: {},
+    scopes: {
+        'story-a': {
+            characterName: 'Alice', injection: { enabled: true },
+            world: { items: [{ name: '不得注入的世界态势', summary: '不得泄漏' }] },
+            reputation: { circles: [{ name: '评审团', status: 'like', evaluation: '认可发挥' }] },
+            factions: [{ name: '节目组', relation: { status: 'neutral', evaluation: '持续观察' } }],
+            dynamics: {
+                active: [{ title: '复赛筹备', stageLabel: '准备中', latestStage: '确认食材' }],
+                archived: [{ title: '不得注入的旧事件', stageLabel: '已结束', latestStage: '旧记录' }],
+            },
+        },
+        'story-b': { characterName: 'Bob', injection: { enabled: true }, reputation: { circles: [{ name: '泄漏圈层', status: 'hostile', evaluation: '不得出现' }] }, factions: [], dynamics: { active: [], archived: [] } },
+    },
+};
+const todayTrendPlan = buildContextInjectionPrompts({
+    ...baseInjectionInput,
+    todayTrendStore,
+    injectionConfig: { todayTrend: { position: 2, depth: 7 } },
+    budgetConfig: { targetTokens: 2000, sourceWeights: { phone: 0, community: 0, calendar: 0, recipe: 0, outfit: 0, todayTrend: 1 }, redistributeUnused: false },
+});
+const todayTrendPrompt = todayTrendPlan.prompts.find(prompt => prompt.source === 'todayTrend');
+assert.ok(todayTrendPrompt, '启用今日风向且分配预算时必须生成独立社会状态 prompt');
+assert.match(todayTrendPrompt.key, /^ST_SMS_TODAY_TREND_INJECTION_V1:story-a$/);
+assert.match(todayTrendPrompt.content, /评审团｜like｜认可发挥[\s\S]*节目组｜neutral｜持续观察[\s\S]*复赛筹备｜准备中｜确认食材/);
+assert.doesNotMatch(todayTrendPrompt.content, /不得注入的世界态势|不得注入的旧事件|泄漏圈层/);
+assert.equal(todayTrendPrompt.position, 2);
+assert.equal(todayTrendPrompt.depth, 7);
+assert.equal(todayTrendPlan.diagnostics.todayTrend.promptCount, 1);
+const todayTrendCalls = [];
+const todayTrendRuntime = { trackedExtensionPromptKeys: new Set() };
+applyContextInjections({ context: { setExtensionPrompt: (...args) => todayTrendCalls.push(args) }, runtime: todayTrendRuntime,
+    ...baseInjectionInput, todayTrendStore, injectionConfig: { todayTrend: { position: 2, depth: 7 } },
+    budgetConfig: { targetTokens: 2000, sourceWeights: { phone: 0, community: 0, calendar: 0, recipe: 0, outfit: 0, todayTrend: 1 }, redistributeUnused: false },
+});
+applyContextInjections({ context: { setExtensionPrompt: (...args) => todayTrendCalls.push(args) }, runtime: todayTrendRuntime,
+    ...baseInjectionInput, todayTrendStore: { ...todayTrendStore, scopes: { ...todayTrendStore.scopes, 'story-a': { ...todayTrendStore.scopes['story-a'], injection: { enabled: false } } } },
+    budgetConfig: { targetTokens: 2000, sourceWeights: { phone: 0, community: 0, calendar: 0, recipe: 0, outfit: 0, todayTrend: 1 }, redistributeUnused: false },
+});
+assert.ok(todayTrendCalls.some(call => call[0] === 'ST_SMS_TODAY_TREND_INJECTION_V1:story-a' && call[1] === ''), '关闭今日风向注入必须清理同一稳定 key，不能残重复 prompt');
+
+const longTodayTrendStore = structuredClone(todayTrendStore);
+longTodayTrendStore.scopes['story-a'].reputation.circles = [
+    { name: '短圈层', status: 'like', evaluation: '简短评价' },
+    { name: '截断标记', status: 'neutral', evaluation: '很长的评价'.repeat(30) },
+];
+const trimmedTodayTrendPlan = buildContextInjectionPrompts({
+    ...baseInjectionInput,
+    todayTrendStore: longTodayTrendStore,
+    injectionConfig: { todayTrend: { position: 2, depth: 7 } },
+    budgetConfig: { targetTokens: 45, sourceWeights: { phone: 0, community: 0, calendar: 0, recipe: 0, outfit: 0, todayTrend: 1 }, redistributeUnused: false },
+});
+const trimmedTodayTrendPrompt = trimmedTodayTrendPlan.prompts.find(prompt => prompt.source === 'todayTrend');
+assert.ok(trimmedTodayTrendPrompt, '小预算仍应保留至少一个完整的今日风向数据行');
+assert.match(trimmedTodayTrendPrompt.content, /短圈层｜like｜简短评价/, '小预算必须优先保留完整数据行');
+assert.doesNotMatch(trimmedTodayTrendPrompt.content, /截断标记|很长的评价/, '小预算不得保留被截断的数据行');
+assert.match(trimmedTodayTrendPrompt.content, /\n\[结束\]$/, '小预算裁剪后必须保留注入结束框架');
+assert.ok(estimateContextTokens(trimmedTodayTrendPrompt.content).estimatedTokens
+    <= trimmedTodayTrendPlan.diagnostics.budget.allocations.todayTrend, '今日风向裁剪结果不得超出分配预算');
+assert.equal(trimmedTodayTrendPlan.diagnostics.truncatedCount, 1, '今日风向完整行裁剪必须记录诊断');

@@ -1,8 +1,9 @@
-import { BIDIRECTIONAL_KEY } from './constants.js';
+import { BIDIRECTIONAL_KEY, TODAY_TREND_INJECTION_KEY_PREFIX } from './constants.js';
 import { normalizeInjectionConfig } from './behavior-config.js';
 import { allocateContextBudget, estimateContextTokens, normalizeBudgetConfig, trimToEstimatedTokens } from './budget.js';
 import { formatQuoteContext } from './chat-message-model.js';
 import { renderCommunitySource } from './community-injection.js';
+import { renderTodayTrendInjection } from './today-trend-injection.js';
 import { resolveEmojiText } from './messaging.js';
 import { getGroupMembers, resolveCommunitySources, resolvePhoneSources } from './permissions.js';
 import {
@@ -107,6 +108,22 @@ function phonePromptPosition(injectionConfig) {
     };
 }
 
+function trimCompleteLines(value, tokenLimit) {
+    const limit = Math.max(0, Number(tokenLimit) || 0);
+    const lines = String(value || '').split('\n');
+    const kept = [];
+    let used = 0;
+    for (const line of lines) {
+        const separator = kept.length ? '\n' : '';
+        const tokens = estimateContextTokens(separator + line).estimatedTokens;
+        if (used + tokens > limit) break;
+        kept.push(line);
+        used += tokens;
+    }
+    const text = kept.join('\n');
+    return { text, truncated: kept.length < lines.length };
+}
+
 function allocateRenderedPrompts(items, tokenLimit) {
     const prompts = [];
     let remaining = tokenLimit;
@@ -115,12 +132,20 @@ function allocateRenderedPrompts(items, tokenLimit) {
         if (remaining <= 0) break;
         const prefix = item.contentPrefix || '';
         const suffix = item.contentSuffix || '';
+        const fullDemand = renderedItemTokenDemand(item);
+        if (fullDemand <= remaining) {
+            const { contentPrefix: _contentPrefix, contentSuffix: _contentSuffix, completeLines: _completeLines, ...prompt } = item;
+            prompts.push({ ...prompt, content: `${prefix}${item.content}${suffix}` });
+            remaining -= fullDemand;
+            continue;
+        }
         const framingTokens = estimateContextTokens(prefix + suffix).estimatedTokens;
         const bodyLimit = Math.max(0, remaining - framingTokens);
-        const trimmed = trimToEstimatedTokens(item.content, bodyLimit);
+        const trimmed = item.completeLines === true
+            ? trimCompleteLines(item.content, bodyLimit) : trimToEstimatedTokens(item.content, bodyLimit);
         if (!trimmed.text) continue;
         const {
-            contentPrefix: _contentPrefix, contentSuffix: _contentSuffix, ...prompt
+            contentPrefix: _contentPrefix, contentSuffix: _contentSuffix, completeLines: _completeLines, ...prompt
         } = item;
         const content = `${prefix}${trimmed.text}${suffix}`;
         const used = estimateContextTokens(content).estimatedTokens;
@@ -236,7 +261,7 @@ export function renderCalendarContextInjection({
 export function buildContextInjectionPrompts({
     currentStorageId, currentActorName, currentConversationKey, selectedByStorage, historiesByStorage, groupsByStorage,
     injectionConfig, interactiveStore, budgetConfig, userName, emojis, safeMaxTokens, calendarStore,
-    calendarOccasions, calendarHolidays, calendarWeather, calendarCycles, calendarRecipes, calendarOutfits,
+    calendarOccasions, calendarHolidays, calendarWeather, calendarCycles, calendarRecipes, calendarOutfits, todayTrendStore,
 } = {}) {
     const config = normalizeBudgetConfig(budgetConfig);
     const phonePermission = resolvePhoneSources({
@@ -330,12 +355,28 @@ ${body}
             });
         }
     }
+    const todayTrendItems = [];
+    const todayTrendScope = todayTrendStore?.scopes?.[currentStorageId];
+    const todayTrendBody = renderTodayTrendInjection(todayTrendScope);
+    if (todayTrendBody && injection.todayTrend.position >= 0) {
+        todayTrendItems.push({
+            key: `${TODAY_TREND_INJECTION_KEY_PREFIX}${encodeURIComponent(currentStorageId)}`,
+            source: 'todayTrend',
+            content: todayTrendBody,
+            contentPrefix: '[今日风向·社会状态]\n',
+            contentSuffix: '\n[结束]',
+            completeLines: true,
+            position: injection.todayTrend.position,
+            depth: injection.todayTrend.depth,
+        });
+    }
     const demandBySource = {
         phone: phoneItems.reduce((sum, item) => sum + renderedItemTokenDemand(item), 0),
         community: communityItems.reduce((sum, item) => sum + renderedItemTokenDemand(item), 0),
         calendar: calendarItems.reduce((sum, item) => sum + renderedItemTokenDemand(item), 0),
         recipe: recipeItems.reduce((sum, item) => sum + renderedItemTokenDemand(item), 0),
         outfit: outfitItems.reduce((sum, item) => sum + renderedItemTokenDemand(item), 0),
+        todayTrend: todayTrendItems.reduce((sum, item) => sum + renderedItemTokenDemand(item), 0),
     };
     const budget = allocateContextBudget({ config, safeMaxTokens, demandBySource });
     const phone = allocateRenderedPrompts(phoneItems, budget.allocations.phone);
@@ -343,8 +384,9 @@ ${body}
     const calendar = allocateRenderedPrompts(calendarItems, budget.allocations.calendar);
     const recipe = allocateRenderedPrompts(recipeItems, budget.allocations.recipe);
     const outfit = allocateRenderedPrompts(outfitItems, budget.allocations.outfit);
+    const todayTrend = allocateRenderedPrompts(todayTrendItems, budget.allocations.todayTrend);
     return {
-        prompts: [...phone.prompts, ...community.prompts, ...calendar.prompts, ...recipe.prompts, ...outfit.prompts],
+        prompts: [...phone.prompts, ...community.prompts, ...calendar.prompts, ...recipe.prompts, ...outfit.prompts, ...todayTrend.prompts],
         diagnostics: {
             estimated: true,
             budget,
@@ -364,8 +406,9 @@ ${body}
             outfitEnabled: calendarScope?.injectionOutfitEnabled === true,
             recipeEnabled: calendarScope?.injectionRecipeEnabled === true,
             outfit: { demandTokens: demandBySource.outfit, allocatedTokens: budget.allocations.outfit, promptCount: outfit.prompts.length, usedTokens: outfit.usedTokens },
-            usedTokens: phone.usedTokens + community.usedTokens + calendar.usedTokens + recipe.usedTokens + outfit.usedTokens,
-            truncatedCount: phone.truncatedCount + community.truncatedCount + calendar.truncatedCount + recipe.truncatedCount + outfit.truncatedCount,
+            todayTrend: { enabled: todayTrendScope?.injection?.enabled === true, demandTokens: demandBySource.todayTrend, allocatedTokens: budget.allocations.todayTrend, promptCount: todayTrend.prompts.length, usedTokens: todayTrend.usedTokens },
+            usedTokens: phone.usedTokens + community.usedTokens + calendar.usedTokens + recipe.usedTokens + outfit.usedTokens + todayTrend.usedTokens,
+            truncatedCount: phone.truncatedCount + community.truncatedCount + calendar.truncatedCount + recipe.truncatedCount + outfit.truncatedCount + todayTrend.truncatedCount,
         },
     };
 }

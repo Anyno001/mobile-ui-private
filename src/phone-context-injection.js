@@ -170,6 +170,7 @@ export function installPhoneContextInjection(state, deps) {
         ${promptPlacementFields('phone', '聊天', config.phone, { includeHistoryLimit: true })}
         ${promptPlacementFields('community', '社区', config.community)}
         ${promptPlacementFields('calendar', '日历与菜谱', config.calendar)}
+        ${promptPlacementFields('today-trend', '今日风向', config.todayTrend)}
       </div>
       <div class="pm-modal-add pm-conversation-injection-actions"><button id="pm-conversation-injection-save" type="button" class="pm-action-button is-accent" onclick="window.__pmSaveConversationInjection()">保存并应用</button></div>
     </div>`);
@@ -199,6 +200,10 @@ export function installPhoneContextInjection(state, deps) {
                 position: document.getElementById('pm-conversation-injection-calendar-position')?.value,
                 depth: document.getElementById('pm-conversation-injection-calendar-depth')?.value,
             },
+            todayTrend: {
+                position: document.getElementById('pm-conversation-injection-today-trend-position')?.value,
+                depth: document.getElementById('pm-conversation-injection-today-trend-depth')?.value,
+            },
         });
         try {
             await commitConversationInjectionUpdate({
@@ -212,7 +217,7 @@ export function installPhoneContextInjection(state, deps) {
                 applyInjection: () => applyBidirectionalInjection(),
             });
             const config = normalizeInjectionConfig(window.__pmInjectionConfig);
-            window.__pmShowConversationInjection(`已应用：聊天 ${injectionPositionLabel(config.phone.position)}（深度 ${config.phone.depth}），社区 ${injectionPositionLabel(config.community.position)}（深度 ${config.community.depth}），日历 ${injectionPositionLabel(config.calendar.position)}（深度 ${config.calendar.depth}）`);
+            window.__pmShowConversationInjection(`已应用：聊天 ${injectionPositionLabel(config.phone.position)}（深度 ${config.phone.depth}），社区 ${injectionPositionLabel(config.community.position)}（深度 ${config.community.depth}），日历 ${injectionPositionLabel(config.calendar.position)}（深度 ${config.calendar.depth}），今日风向 ${injectionPositionLabel(config.todayTrend.position)}（深度 ${config.todayTrend.depth}）`);
             return true;
         } catch (error) {
             alert(error.message || '统一注入规则保存失败');

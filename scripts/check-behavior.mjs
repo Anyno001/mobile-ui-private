@@ -3,6 +3,7 @@ import {
     CALENDAR_CYCLE_STORAGE_KEY, CALENDAR_HOLIDAY_STORAGE_KEY, CALENDAR_OCCASION_STORAGE_KEY,
     CALENDAR_STORAGE_KEY, CALENDAR_WEATHER_STORAGE_KEY, EXTENSION_PROMPT_POSITIONS, MAX_INJECTION_DEPTH,
 } from '../src/constants.js';
+import { createEmptyTodayTrendStore } from '../src/today-trend-model.js';
 import { THEME_PRESETS } from '../src/config.js';
 import { createWorldBookEntryKey, getCurrentChatWorldBooks, getEnabledWorldBookNames, getReadableWorldBookNames, getTavernDbColumn, isMemberPrivateWorldBookEntryAllowed, isWorldBookEntryAllowed, normalizeWorldBookConfig } from '../src/worldbook-config.js';
 import { buildWorldBookContext } from '../src/worldbook-context.js';
@@ -472,6 +473,9 @@ const suspensionCalls = [];
 handlePhonePageSuspension({
     cancelCommunityGeneration: reason => suspensionCalls.push(['community', reason]),
     cancelCalendarTasks: reason => suspensionCalls.push(['calendar', reason]),
+    cancelTodayTrendInitialization: reason => suspensionCalls.push(['today-trend-initialization', reason]),
+    cancelTodayTrendRuleRegeneration: reason => suspensionCalls.push(['today-trend-rule', reason]),
+    cancelTodayTrendGeneration: (reason, reset) => suspensionCalls.push(['today-trend', reason, reset]),
 }, 'beforeunload', {
     save: () => suspensionCalls.push(['save', 'beforeunload']),
     disarm: reason => suspensionCalls.push(['disarm', reason]),
@@ -480,6 +484,9 @@ assert.deepEqual(suspensionCalls, [
     ['save', 'beforeunload'],
     ['community', 'beforeunload'],
     ['calendar', 'beforeunload'],
+    ['today-trend-initialization', 'beforeunload'],
+    ['today-trend-rule', 'beforeunload'],
+    ['today-trend', 'beforeunload', true],
     ['disarm', 'beforeunload'],
 ]);
 
@@ -491,6 +498,9 @@ assert.equal(handleHostChatChanged({
     chatLength: 4,
     cancelCommunityGeneration: reason => hostChangeCalls.push(['community', reason]),
     cancelCalendarTasks: reason => hostChangeCalls.push(['calendar', reason]),
+    cancelTodayTrendInitialization: reason => hostChangeCalls.push(['today-trend-initialization', reason]),
+    cancelTodayTrendRuleRegeneration: reason => hostChangeCalls.push(['today-trend-rule', reason]),
+    cancelTodayTrendGeneration: (reason, reset) => hostChangeCalls.push(['today-trend', reason, reset]),
     disarmAutoPoke: reason => hostChangeCalls.push(['disarm', reason]),
     endPhone: force => hostChangeCalls.push(['end', force]),
     invalidateGeneration: () => hostChangeCalls.push(['invalidate']),
@@ -499,6 +509,9 @@ assert.equal(hostChangeRuntime.lastChatLength, 4);
 assert.deepEqual(hostChangeCalls, [
     ['community', 'host-chat-changed'],
     ['calendar', 'host-chat-changed'],
+    ['today-trend-initialization', 'host-chat-changed'],
+    ['today-trend-rule', 'host-chat-changed'],
+    ['today-trend', 'host-chat-changed', true],
     ['disarm', 'host-chat-changed'],
     ['end', true],
 ], 'CHAT_CHANGED 必须强制关闭活动手机，且不得走普通关闭保存旧会话');
@@ -510,6 +523,9 @@ assert.equal(handleHostChatChanged({
     chatLength: -1,
     cancelCommunityGeneration: reason => hostChangeCalls.push(['community', reason]),
     cancelCalendarTasks: reason => hostChangeCalls.push(['calendar', reason]),
+    cancelTodayTrendInitialization: reason => hostChangeCalls.push(['today-trend-initialization', reason]),
+    cancelTodayTrendRuleRegeneration: reason => hostChangeCalls.push(['today-trend-rule', reason]),
+    cancelTodayTrendGeneration: (reason, reset) => hostChangeCalls.push(['today-trend', reason, reset]),
     disarmAutoPoke: reason => hostChangeCalls.push(['disarm', reason]),
     endPhone: force => hostChangeCalls.push(['end', force]),
     invalidateGeneration: () => hostChangeCalls.push(['invalidate']),
@@ -517,6 +533,7 @@ assert.equal(handleHostChatChanged({
 assert.equal(hostChangeRuntime.lastChatLength, 0, '非法宿主聊天长度必须归一为 0');
 assert.deepEqual(hostChangeCalls, [
     ['community', 'host-chat-changed'], ['calendar', 'host-chat-changed'],
+    ['today-trend-initialization', 'host-chat-changed'], ['today-trend-rule', 'host-chat-changed'], ['today-trend', 'host-chat-changed', true],
     ['disarm', 'host-chat-changed'], ['invalidate'],
 ]);
 
@@ -1227,18 +1244,20 @@ assert.deepEqual(normalizeInjectionConfig({ position: -1, depth: '7', historyLim
     phone: { position: 0, depth: 7, historyLimit: 9 },
     community: { position: 0, depth: 7 },
     calendar: { position: 0, depth: 0 },
+    todayTrend: { position: 0, depth: 0 },
 }, '统一注入规则不得把关闭位置混入全局配置');
 assert.deepEqual(normalizeInjectionConfig({ position: 2, depth: MAX_INJECTION_DEPTH + 1, historyLimit: 200 }), {
     phone: { position: 2, depth: MAX_INJECTION_DEPTH, historyLimit: 100 },
     community: { position: 2, depth: MAX_INJECTION_DEPTH },
     calendar: { position: 0, depth: 0 },
+    todayTrend: { position: 0, depth: 0 },
 });
 assert.deepEqual(normalizeInjectionConfig({
     phone: { position: 1, depth: 2, historyLimit: 8 },
-    community: { position: 2, depth: 3 }, calendar: { position: 0, depth: 4 },
+    community: { position: 2, depth: 3 }, calendar: { position: 0, depth: 4 }, todayTrend: { position: 1, depth: 5 },
 }), {
     phone: { position: 1, depth: 2, historyLimit: 8 },
-    community: { position: 2, depth: 3 }, calendar: { position: 0, depth: 4 },
+    community: { position: 2, depth: 3 }, calendar: { position: 0, depth: 4 }, todayTrend: { position: 1, depth: 5 },
 });
 
 const group = normalizeGroupMeta({
@@ -1380,19 +1399,19 @@ for (const { store, key, property, save, persisted, candidate } of activeScopeFa
 localValues.set('ST_SMS_INJECTION_CONFIG', JSON.stringify({ position: 2, depth: 7, historyLimit: 12 }));
 assert.deepEqual(loadInjectionConfig(), {
     phone: { position: 2, depth: 7, historyLimit: 12 },
-    community: { position: 2, depth: 7 }, calendar: { position: 0, depth: 0 },
+    community: { position: 2, depth: 7 }, calendar: { position: 0, depth: 0 }, todayTrend: { position: 0, depth: 0 },
 });
 window.__pmInjectionConfig = { position: -1, depth: MAX_INJECTION_DEPTH + 1, historyLimit: 0 };
 assert.equal(saveInjectionConfig(), true);
 assert.deepEqual(window.__pmInjectionConfig, {
     phone: { position: 0, depth: MAX_INJECTION_DEPTH, historyLimit: 1 },
-    community: { position: 0, depth: MAX_INJECTION_DEPTH }, calendar: { position: 0, depth: 0 },
+    community: { position: 0, depth: MAX_INJECTION_DEPTH }, calendar: { position: 0, depth: 0 }, todayTrend: { position: 0, depth: 0 },
 });
 assert.deepEqual(JSON.parse(localValues.get('ST_SMS_INJECTION_CONFIG')), window.__pmInjectionConfig);
 localValues.set('ST_SMS_INJECTION_CONFIG', '{broken');
 assert.deepEqual(loadInjectionConfig(), {
     phone: { position: 0, depth: 0, historyLimit: 20 },
-    community: { position: 0, depth: 0 }, calendar: { position: 0, depth: 0 },
+    community: { position: 0, depth: 0 }, calendar: { position: 0, depth: 0 }, todayTrend: { position: 0, depth: 0 },
 },
     '统一注入规则损坏时必须回退安全默认值');
 window.__pmInjectionConfig = { position: 1, depth: 3, historyLimit: 8 };
@@ -1400,7 +1419,7 @@ localStorageControl.failSet.add('ST_SMS_INJECTION_CONFIG');
 assert.equal(saveInjectionConfig(), false, '统一注入规则持久化失败必须显式返回 false');
 assert.deepEqual(window.__pmInjectionConfig, {
     phone: { position: 1, depth: 3, historyLimit: 8 },
-    community: { position: 1, depth: 3 }, calendar: { position: 0, depth: 0 },
+    community: { position: 1, depth: 3 }, calendar: { position: 0, depth: 0 }, todayTrend: { position: 0, depth: 0 },
 });
 
 localValues.set('ST_SMS_WORLD_BOOK_CONFIG_V1', JSON.stringify({
@@ -4648,10 +4667,10 @@ const currentBackup = {
     histories: {}, config: {}, theme: { darkMode: 'dark', ambientStatusEnabled: true }, profiles: [], groupMeta: {}, pokeConfig: {},
     bidirectional: {}, injectionConfig: {
         phone: { position: 1, depth: 6, historyLimit: 14 },
-        community: { position: 2, depth: 3 }, calendar: { position: 1, depth: 4 },
+        community: { position: 2, depth: 3 }, calendar: { position: 1, depth: 4 }, todayTrend: { position: 1, depth: 4 },
     }, emojis: [], characterBehavior: {}, worldBookConfig: normalizeWorldBookConfig(null), wordyLimit: false,
-    budgetConfig: { budgetVersion: 3, targetTokens: 900, sourceWeights: { phone: 1, community: 0, calendar: 0, recipe: 0, outfit: 2 },
-        sourcePriority: ['outfit', 'phone', 'community', 'calendar', 'recipe'], redistributeUnused: true, communitySceneIdsByStorage: {}, communitySelectionsByStorage: {} },
+    budgetConfig: { budgetVersion: 3, targetTokens: 900, sourceWeights: { phone: 1, community: 0, calendar: 0, recipe: 0, outfit: 2, todayTrend: 0 },
+        sourcePriority: ['outfit', 'phone', 'community', 'calendar', 'recipe', 'todayTrend'], redistributeUnused: true, communitySceneIdsByStorage: {}, communitySelectionsByStorage: {} },
     desktopBg: 'https://example.test/current-desktop.png', bgGlobal: '', bgLocal: {}, interactiveScenes: { version: 1, scopes: {} },
     calendarStore: { version: 1, scopes: { current: { events: {} } } },
     calendarOccasions: { version: 1, scopes: {} },
@@ -4702,16 +4721,16 @@ assert.deepEqual(parseBackupData({ schemaVersion: 7 }, currentBackup).calendarRe
 assert.deepEqual(parseBackupData({ schemaVersion: 7, injectionConfig: { position: 2, depth: 9, historyLimit: 3 } }, currentBackup).injectionConfig,
     currentBackup.injectionConfig, '旧版备份不得导入尚未定义的统一注入规则');
 assert.deepEqual(parseBackupData({ schemaVersion: 8, injectionConfig: { position: 2, depth: 9, historyLimit: 3 } }, currentBackup).injectionConfig,
-    { phone: { position: 2, depth: 9, historyLimit: 3 }, community: { position: 2, depth: 9 }, calendar: { position: 1, depth: 4 } });
+    { phone: { position: 2, depth: 9, historyLimit: 3 }, community: { position: 2, depth: 9 }, calendar: { position: 1, depth: 4 }, todayTrend: { position: 1, depth: 4 } });
 assert.deepEqual(parseBackupData({ schemaVersion: 8 }, currentBackup).injectionConfig, {
     phone: { position: 0, depth: 0, historyLimit: 20 },
-    community: { position: 0, depth: 0 }, calendar: { position: 1, depth: 4 },
+    community: { position: 0, depth: 0 }, calendar: { position: 1, depth: 4 }, todayTrend: { position: 1, depth: 4 },
 }, 'schema 8 缺少统一注入规则时必须保留现有日历放置规则');
 assert.throws(() => parseBackupData({ schemaVersion: 8, injectionConfig: [] }, currentBackup), /injectionConfig 必须是对象/);
 assert.deepEqual(parseBackupData({ schemaVersion: 9, injectionConfig: {
     phone: { position: 1, depth: 2, historyLimit: 8 }, community: { position: 2, depth: 3 }, calendar: { position: 0, depth: 4 },
 } }, currentBackup).injectionConfig, {
-    phone: { position: 1, depth: 2, historyLimit: 8 }, community: { position: 2, depth: 3 }, calendar: { position: 0, depth: 4 },
+    phone: { position: 1, depth: 2, historyLimit: 8 }, community: { position: 2, depth: 3 }, calendar: { position: 0, depth: 4 }, todayTrend: { position: 0, depth: 4 },
 });
 assert.deepEqual(parseBackupData({ schemaVersion: 10, branchLineage: validBranchLineage }, currentBackup).branchLineage,
     validBranchLineage, 'schema 10 必须导入经过校验的分支继承完成标记');
@@ -4747,8 +4766,8 @@ assert.deepEqual(parseBackupData({
 }, currentBackup).budgetConfig, currentBackup.budgetConfig, 'schema 12 不得伪造恢复尚未定义的预算配置');
 const importedBudgetConfig = {
     budgetVersion: 3, targetTokens: 1200,
-    sourceWeights: { phone: 1, community: 0, calendar: 0, recipe: 0, outfit: 3 },
-    sourcePriority: ['outfit', 'phone', 'community', 'calendar', 'recipe'], redistributeUnused: false,
+    sourceWeights: { phone: 1, community: 0, calendar: 0, recipe: 0, outfit: 3, todayTrend: 0 },
+    sourcePriority: ['outfit', 'phone', 'community', 'calendar', 'recipe', 'todayTrend'], redistributeUnused: false,
     communitySceneIdsByStorage: {}, communitySelectionsByStorage: {},
 };
 assert.deepEqual(parseBackupData({
@@ -4761,7 +4780,11 @@ assert.throws(() => parseBackupData({
 assert.deepEqual(parseBackupData({
     schemaVersion: 11, branchLineage: validBranchLineage, worldBookConfig: { entries: {}, columns: {} }, calendarOutfits: importedOutfits,
 }, currentBackup).calendarOutfits, currentBackup.calendarOutfits, 'schema 11 不得解析尚未定义的 calendarOutfits 字段');
-assert.throws(() => parseBackupData({ schemaVersion: 14 }, currentBackup), /高于当前支持版本 13/);
+assert.throws(() => parseBackupData({ schemaVersion: 14, branchLineage: validBranchLineage, worldBookConfig: { entries: {}, columns: {} },
+    calendarOutfits: importedOutfits, budgetConfig: importedBudgetConfig }, currentBackup), /缺少 todayTrend/);
+assert.deepEqual(parseBackupData({ schemaVersion: 14, branchLineage: validBranchLineage, worldBookConfig: { entries: {}, columns: {} },
+    calendarOutfits: importedOutfits, budgetConfig: importedBudgetConfig, todayTrend: createEmptyTodayTrendStore() }, currentBackup).todayTrend,
+createEmptyTodayTrendStore(), 'schema 14 必须恢复今日风向数据');
 const parsedV4Backup = parseBackupData({
     schemaVersion: 4,
     theme: { darkMode: 'light', ambientStatusEnabled: true },
@@ -5800,6 +5823,7 @@ const failedClearInjectionConfig = {
     phone: { position: 2, depth: 7, historyLimit: 13 },
     community: { position: 2, depth: 7 },
     calendar: { position: 0, depth: 0 },
+    todayTrend: { position: 0, depth: 0 },
 };
 window.__pmBidirectional = structuredClone(failedClearBidirectional);
 window.__pmInjectionConfig = structuredClone(failedClearInjectionConfig);
@@ -5888,7 +5912,7 @@ delete globalThis.indexedDB;
 delete globalThis.localStorage;
 delete globalThis.window;
 
-const pageSections = ['chat', 'desktop', 'community', 'calendar'].map(page => ({ dataset: { phonePage: page }, hidden: false }));
+const pageSections = ['chat', 'desktop', 'community', 'calendar', 'today-trend'].map(page => ({ dataset: { phonePage: page }, hidden: false }));
 const pageMain = {
     dataset: { page: 'chat' },
     querySelectorAll(selector) {
@@ -5912,18 +5936,20 @@ assert.equal(pageController.current(), 'chat');
 assert.equal(pageController.show('desktop'), true);
 assert.equal(pageController.current(), 'desktop');
 assert.deepEqual(pageSections.map(section => [section.dataset.phonePage, section.hidden]), [
-    ['chat', true], ['desktop', false], ['community', true], ['calendar', true],
+    ['chat', true], ['desktop', false], ['community', true], ['calendar', true], ['today-trend', true],
 ]);
 assert.equal(pageController.show('community'), true);
-assert.deepEqual(pageSections.map(section => section.hidden), [true, true, false, true]);
+assert.deepEqual(pageSections.map(section => section.hidden), [true, true, false, true, true]);
 assert.equal(pageController.show('calendar'), true);
-assert.deepEqual(pageSections.map(section => section.hidden), [true, true, true, false]);
+assert.deepEqual(pageSections.map(section => section.hidden), [true, true, true, false, true]);
+assert.equal(pageController.show('today-trend'), true);
+assert.deepEqual(pageSections.map(section => section.hidden), [true, true, true, true, false]);
 assert.equal(pageController.show('chat'), true);
-assert.deepEqual(pageSections.map(section => section.hidden), [false, true, true, true]);
+assert.deepEqual(pageSections.map(section => section.hidden), [false, true, true, true, true]);
 assert.equal(pageSections[0], chatSectionReference, '页面切换不得替换聊天 DOM 节点');
 assert.equal(pageController.show('invalid-page'), true);
 assert.equal(pageController.current(), 'desktop');
-assert.equal(transientCloseCount, 5);
+assert.equal(transientCloseCount, 6);
 phoneRoot = null;
 assert.equal(pageController.show('chat'), false);
 assert.equal(pageController.current(), null);
@@ -5933,11 +5959,11 @@ assert.ok(baseDesktopHtml.length > 0, '无有效会话时基础桌面不得为�
 assert.match(baseDesktopHtml, /<span>天音小笺<\/span>/, '旧主题或无主题时桌面标题必须回退为品牌名');
 assert.match(baseDesktopHtml, /class="pm-desktop-community-dock"/);
 assert.match(baseDesktopHtml, /data-action="desktop-community" aria-label="发布一条"/);
-for (const [app, label] of [['chat', '聊天'], ['directory', '联系人'], ['settings', '设置'], ['calendar', '日历']]) {
+for (const [app, label] of [['chat', '聊天'], ['directory', '联系人'], ['settings', '设置'], ['calendar', '日历'], ['today-trend', '今日风向']]) {
     assert.match(baseDesktopHtml, new RegExp(`data-app="${app}"[^>]*data-action="desktop-${app}"`));
     assert.match(baseDesktopHtml, new RegExp(`<span class="pm-desktop-app-label">${label}</span>`));
 }
-for (const action of ['desktop-chat', 'desktop-directory', 'desktop-settings', 'desktop-calendar', 'desktop-community', 'desktop-exit']) {
+for (const action of ['desktop-chat', 'desktop-directory', 'desktop-settings', 'desktop-calendar', 'desktop-today-trend', 'desktop-community', 'desktop-exit']) {
     assert.ok(baseDesktopHtml.includes(`data-action="${action}"`), `基础桌面缺少 ${action} 入口`);
 }
 globalThis.window = { __pmTheme: { customTitle: '雨夜 & 电台' } };
@@ -7388,6 +7414,26 @@ try {
         chatId: 'branch-chat', characterId: 0, characters: [{ avatar: 'alice.png' }],
         chatMetadata: { main_chat: 'parent-chat' },
     };
+    const todayTrendBranchStore = () => ({
+        version: 1,
+        presets: {
+            preset: {
+                id: 'preset', name: '分支世界', version: 1, revision: 1, createdAt: 1, updatedAt: 1,
+                source: { worldBookNames: ['分支世界书'], includeExistingChat: true, userRequirements: '' },
+                moduleRules: { world: '世界规则', reputation: '风评规则', faction: '势力规则', dynamics: '动态规则' },
+                moduleSchemas: { worldItems: '态势项目', reputationCircles: '风评圈层', factionGuidance: '势力资料' },
+                dynamicsRules: { general: '动态总规则', incident: '突发规则', rumor: '流言规则', underground: '地下规则' },
+            },
+        },
+        scopes: {
+            [branchIds.source]: {
+                storageId: branchIds.source, characterId: 'alice', characterName: 'Alice', presetId: 'preset',
+                operation: { enabled: true, mode: 'auto', intervalFloors: 2, lastSuccessfulAssistantCount: 7, lastSuccessfulRunAt: 8 },
+                injection: { enabled: false }, world: { items: [] }, reputation: { circles: [] }, factions: [], dynamics: { active: [], archived: [] },
+            },
+        },
+    });
+
     const branchIds = {
         source: getStorageIdFor('alice.png', 'parent-chat'),
         target: getStorageIdFor('alice.png', 'branch-chat'),
@@ -7552,6 +7598,25 @@ try {
     for (const store of [richStores.interactive, richStores.phoneUi, richStores.calendar, richStores.occasions, richStores.cycles, richStores.recipes]) {
         assert.ok(Object.hasOwn(store.scopes, richTargetId), '全部按 scope 隔离的模型 store 都必须继承');
     }
+    let todayTrendStores = emptyBranchStores();
+    todayTrendStores.todayTrend = todayTrendBranchStore();
+    const todayTrendResult = await inheritPhoneDataOnBranch({
+        context: { ...branchContext, chatId: 'today-trend-branch' },
+        loadStores: async () => structuredClone(todayTrendStores),
+        saveStores: async value => { todayTrendStores = structuredClone(value); },
+        loadLineage: async () => ({}), saveLineage: async () => {},
+    });
+    const todayTrendTargetId = getStorageIdFor('alice.png', 'today-trend-branch');
+    assert.equal(todayTrendResult.status, 'cloned', '今日风向 scope 必须参与分支继承');
+    assert.equal(todayTrendStores.todayTrend.scopes[todayTrendTargetId].presetId, 'preset', '分支 scope 必须继续复用全局预设');
+    assert.equal(todayTrendStores.todayTrend.scopes[todayTrendTargetId].operation.lastSuccessfulAssistantCount, 0,
+        '分支 scope 必须重置今日风向楼层 checkpoint');
+    assert.equal(todayTrendStores.todayTrend.scopes[todayTrendTargetId].operation.lastSuccessfulRunAt, 0,
+        '分支 scope 必须重置今日风向成功时间');
+    assert.deepEqual(Object.keys(todayTrendStores.todayTrend.presets), ['preset'],
+        '世界预设必须保留为全局共享记录，而不是复制为新的预设 ID');
+
+
     assert.deepEqual(richStores.budget.communitySceneIdsByStorage[richTargetId], ['scene']);
     richStores.calendar.scopes[branchIds.source].events.changed = true;
     assert.equal(richStores.calendar.scopes[richTargetId].events.changed, undefined,

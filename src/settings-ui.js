@@ -26,6 +26,7 @@ import {
 import {
     normalizeAmbientStatus, normalizeInteractiveStore, normalizePhoneUiState,
 } from './interactive-scene-model.js';
+import { createEmptyTodayTrendStore } from './today-trend-model.js';
 
 const clone = value => JSON.parse(JSON.stringify(value));
 export { createBackupStateHandlers, parseBackupData, runBackupTransaction };
@@ -170,7 +171,7 @@ export function installSettingsUi(deps) {
     window.__pmExportData = async () => {
         const snapshot = await captureBackupState();
         const data = {
-            schemaVersion: 13,
+            schemaVersion: 14,
             histories: snapshot.histories,
             config: snapshot.config,
             theme: legacyBackupTheme(snapshot.theme),
@@ -197,6 +198,7 @@ export function installSettingsUi(deps) {
             calendarCycles: snapshot.calendarCycles,
             calendarRecipes: snapshot.calendarRecipes,
             calendarOutfits: snapshot.calendarOutfits,
+            todayTrend: snapshot.todayTrend,
             branchLineage: snapshot.branchLineage,
         };
         const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
@@ -280,8 +282,10 @@ export function installSettingsUi(deps) {
                     worldBookConfig: null, wordyLimit: false, desktopBg: '', bgGlobal: '', bgLocal: {}, interactiveScenes: normalizeInteractiveStore(null),
                     phoneUiState: normalizePhoneUiState(null), ambientStatus: normalizeAmbientStatus(),
                     ...createEmptyCalendarBackupFields(),
+                    todayTrend: createEmptyTodayTrendStore(),
                 });
                 deps.reloadCalendarStore?.();
+                deps.reloadTodayTrendStore?.();
                 window.__pmBudgetConfig = normalizeBudgetConfig();
                 deps.invalidateInteractiveStore?.();
                 await requireInjectionSuccess(
@@ -298,6 +302,7 @@ export function installSettingsUi(deps) {
                 await applyBackupState(previous);
                 await persistBackupState(previous);
                 deps.reloadCalendarStore?.();
+                deps.reloadTodayTrendStore?.();
                 await requireInjectionSuccess(
                     () => applyBidirectionalInjection(), '恢复原数据后的注入刷新失败',
                 );
@@ -531,6 +536,7 @@ export function installSettingsUi(deps) {
         const calendarWeightInput = document.getElementById('pm-budget-calendar-weight');
         const recipeWeightInput = document.getElementById('pm-budget-recipe-weight');
         const outfitWeightInput = document.getElementById('pm-budget-outfit-weight');
+        const todayTrendWeightInput = document.getElementById('pm-budget-today-trend-weight');
         let sourceWeights;
         try {
             sourceWeights = resolveBudgetPercentageInput({
@@ -540,15 +546,17 @@ export function installSettingsUi(deps) {
                 calendar: calendarWeightInput?.value,
                 recipe: recipeWeightInput?.value,
                 outfit: outfitWeightInput?.value,
+                todayTrend: todayTrendWeightInput?.value,
                 initialPhone: phoneWeightInput?.dataset.initialValue,
                 initialCommunity: communityWeightInput?.dataset.initialValue,
                 initialCalendar: calendarWeightInput?.dataset.initialValue,
                 initialRecipe: recipeWeightInput?.dataset.initialValue,
                 initialOutfit: outfitWeightInput?.dataset.initialValue,
+                initialTodayTrend: todayTrendWeightInput?.dataset.initialValue,
             });
         } catch (error) { alert(error.message); return; }
         const prioritySource = document.getElementById('pm-budget-priority')?.value;
-        const priority = [prioritySource, 'phone', 'community', 'calendar', 'recipe', 'outfit'].filter((value, index, values) => value && values.indexOf(value) === index);
+        const priority = [prioritySource, 'phone', 'community', 'calendar', 'recipe', 'outfit', 'todayTrend'].filter((value, index, values) => value && values.indexOf(value) === index);
         const current = normalizeBudgetConfig(window.__pmBudgetConfig);
         const candidate = normalizeBudgetConfig({
             ...current,

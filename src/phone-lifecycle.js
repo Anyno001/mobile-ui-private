@@ -1,5 +1,6 @@
 import { POPOVER_SUPPORTED } from './constants.js';
 import { awaitPendingBranchInheritance } from './branch-scope-inheritance.js';
+import { PHONE_UI_PAGES } from './interactive-scene-model.js';
 import { escapeHtml } from './ui.js';
 import {
     CHEVRON_DOWN_ICON_SVG, CLOSE_ICON_SVG, CONTROL_ICON_SVG,
@@ -94,9 +95,8 @@ export function resetPhoneScaleForMinimize({
 
 
 export function createPhonePageController({ getRoot, closeTransientUi = () => {} }) {
-    const pages = new Set(['desktop', 'chat', 'community', 'calendar']);
     const show = page => {
-        const targetPage = pages.has(page) ? page : 'desktop';
+        const targetPage = PHONE_UI_PAGES.includes(page) ? page : 'desktop';
         const root = getRoot();
         const main = root?.querySelector('.pm-main-ui');
         if (!main) return false;
@@ -298,6 +298,10 @@ export function installPhoneLifecycle(state, deps) {
         clearBidirectionalInjection();
         deps.cancelCommunityGeneration?.('phone-closed');
         deps.cancelCalendarTasks?.('phone-closed');
+        deps.destroyTodayTrendPhoneUi?.();
+        deps.cancelTodayTrendInitialization?.('phone-closed');
+        deps.cancelTodayTrendRuleRegeneration?.('phone-closed');
+        deps.cancelTodayTrendGeneration?.('phone-closed', true);
         disarmAutoPoke('phone-closed');
         invalidateGeneration();
         ambientStatus.stop();
@@ -412,6 +416,7 @@ export function installPhoneLifecycle(state, deps) {
   <section class="pm-phone-page pm-desktop-page" data-phone-page="desktop" hidden></section>
   <section class="pm-phone-page pm-community-page" data-phone-page="community" hidden></section>
   <section class="pm-phone-page pm-calendar-page" data-phone-page="calendar" hidden></section>
+  <section class="pm-phone-page pm-today-trend-page" data-phone-page="today-trend" hidden></section>
 </div>
 </div>
 <div class="pm-phone-resize-handle" role="separator" aria-label="调整手机窗口大小" aria-orientation="horizontal" title="拖动调整手机大小"></div>`;
@@ -419,6 +424,7 @@ export function installPhoneLifecycle(state, deps) {
         applyPhoneScale(state.phoneWindow);
         window.__pmShowPhonePage = pageController.show;
         deps.bindPhonePageUi?.(state.phoneWindow);
+        deps.bindTodayTrendPhoneUi?.(state.phoneWindow);
         ambientStatus.sync();
         if (state.phoneWindow.showPopover) try { state.phoneWindow.showPopover(); } catch (e) {}
         state.phoneActive = true;

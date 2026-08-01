@@ -6,6 +6,7 @@ import {
 } from './interactive-scene-model.js';
 import { getStorageIdFor } from './host-context.js';
 import { applyCalendarBackupFields } from './settings-backup.js';
+import { createEmptyTodayTrendStore, normalizeTodayTrendStore } from './today-trend-model.js';
 import { normalizeWorldBookConfig } from './worldbook-config.js';
 
 const clone = value => JSON.parse(JSON.stringify(value));
@@ -257,11 +258,20 @@ const assertBranchLineage = value => {
     return lineage;
 };
 
+const assertTodayTrendBackupStore = value => {
+    const store = objectValue(value, 'todayTrend');
+    const normalized = normalizeTodayTrendStore(store);
+    if (JSON.stringify(store) !== JSON.stringify(normalized)) {
+        throw new Error('备份字段 todayTrend 内容无效或不是规范格式');
+    }
+    return normalized;
+};
+
 export function parseBackupData(data, current) {
     if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error('备份根节点必须是对象');
     const version = data.schemaVersion === undefined ? 1 : data.schemaVersion;
     if (!Number.isInteger(version) || version < 1) throw new Error('备份版本无效');
-    if (version > 13) throw new Error(`备份版本 ${version} 高于当前支持版本 13`);
+    if (version > 14) throw new Error(`备份版本 ${version} 高于当前支持版本 14`);
     const result = clone(current);
     if (Object.hasOwn(data, 'histories')) result.histories = objectValue(data.histories, 'histories');
     if (Object.hasOwn(data, 'config')) result.config = objectValue(data.config, 'config');
@@ -319,6 +329,12 @@ export function parseBackupData(data, current) {
     if (version >= 10) {
         if (!Object.hasOwn(data, 'branchLineage')) throw new Error('备份版本 10 缺少 branchLineage');
         result.branchLineage = assertBranchLineage(data.branchLineage);
+    }
+    if (version >= 14) {
+        if (!Object.hasOwn(data, 'todayTrend')) throw new Error('备份版本 14 缺少 todayTrend');
+        result.todayTrend = assertTodayTrendBackupStore(data.todayTrend);
+    } else {
+        result.todayTrend = createEmptyTodayTrendStore();
     }
     return result;
 }

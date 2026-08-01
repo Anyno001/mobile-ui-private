@@ -2,15 +2,15 @@ import { MAX_INJECTION_CHARS } from './constants.js';
 
 export const BUDGET_CONFIG_KEY = 'ST_SMS_BUDGET_CONFIG';
 export const BUDGET_VERSION = 3;
-export const BUDGET_SOURCES = Object.freeze(['phone', 'community', 'calendar', 'recipe', 'outfit']);
+export const BUDGET_SOURCES = Object.freeze(['phone', 'community', 'calendar', 'recipe', 'outfit', 'todayTrend']);
 export const DEFAULT_SAFE_INPUT_TOKENS = Math.floor(MAX_INJECTION_CHARS / 4);
 const MAX_TARGET_TOKENS = 12000;
 
 export const DEFAULT_BUDGET_CONFIG = Object.freeze({
     budgetVersion: BUDGET_VERSION,
     targetTokens: DEFAULT_SAFE_INPUT_TOKENS,
-    sourceWeights: Object.freeze({ phone: 1, community: 0, calendar: 0, recipe: 0, outfit: 0 }),
-    sourcePriority: Object.freeze(['phone', 'community', 'calendar', 'recipe', 'outfit']),
+    sourceWeights: Object.freeze({ phone: 1, community: 0, calendar: 0, recipe: 0, outfit: 0, todayTrend: 0 }),
+    sourcePriority: Object.freeze(['phone', 'community', 'calendar', 'recipe', 'outfit', 'todayTrend']),
     redistributeUnused: true,
     communitySceneIdsByStorage: Object.freeze({}),
     communitySelectionsByStorage: Object.freeze({}),

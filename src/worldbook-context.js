@@ -1,4 +1,4 @@
-import { getReadableWorldBookNames, getTavernDbColumn, isMemberPrivateWorldBookEntryAllowed, isWorldBookEntryAllowed, normalizeWorldBookConfig } from './worldbook-config.js';
+import { getReadableWorldBookNames, getTavernDbColumn, isMemberPrivateWorldBookEntryAllowed, isWorldBookEntryAllowed, normalizeWorldBookConfig, WORLD_BOOK_MODULES } from './worldbook-config.js';
 
 const text = value => typeof value === 'string' ? value : '';
 const visibleText = value => text(value)
@@ -54,13 +54,16 @@ function throwIfAborted(signal) {
 }
 
 export async function buildWorldBookContext(context, {
-    module, config = globalThis.window?.__pmWorldBookConfig, signal, scope: requestedScope = null, memberIds = [], maxChars, worldBookOptions = {},
+    module, config = globalThis.window?.__pmWorldBookConfig, signal, scope: requestedScope = null, memberIds = [], maxChars, worldBookOptions = {}, bookNames = null,
 } = {}) {
     const current = normalizeWorldBookConfig(config);
-    if (!['chat', 'calendar', 'outfit', 'community'].includes(module)) return '';
+    if (!WORLD_BOOK_MODULES.includes(module)) return '';
     if (typeof context?.loadWorldInfo !== 'function') return '';
     throwIfAborted(signal);
-    const selectedNames = getReadableWorldBookNames(context, current, worldBookOptions);
+    const requestedNames = Array.isArray(bookNames)
+        ? new Set(bookNames.map(name => text(name).trim()).filter(Boolean)) : null;
+    const selectedNames = getReadableWorldBookNames(context, current, worldBookOptions)
+        .filter(name => !requestedNames || requestedNames.has(name));
     if (!selectedNames.length) return '';
     const requestedMaxChars = Number(maxChars);
     const outputMaxChars = Number.isFinite(requestedMaxChars) && requestedMaxChars > 0

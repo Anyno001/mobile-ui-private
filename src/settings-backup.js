@@ -16,6 +16,8 @@ import { normalizeBudgetConfig } from './budget.js';
 import { normalizeInjectionConfig } from './behavior-config.js';
 import { normalizeAmbientStatus, normalizeInteractiveStore, normalizePhoneUiState } from './interactive-scene-model.js';
 import { saveBgGlobal, saveBgLocal, saveDesktopBg } from './storage-background.js';
+import { normalizeTodayTrendStore } from './today-trend-model.js';
+import { loadTodayTrendStore, saveTodayTrendStore } from './today-trend-storage.js';
 import { normalizeWorldBookConfig } from './worldbook-config.js';
 import {
     loadInteractiveScenes, loadPhoneUiState, saveBidirectional, saveInjectionConfig,
@@ -145,6 +147,7 @@ export function createBackupStateHandlers(deps = {}) {
             calendarStore: loadCalendar(), calendarOccasions: loadCalendarOccasions(),
             calendarHolidays: loadCalendarHolidays(), calendarWeather: loadCalendarWeather(),
             calendarCycles: loadCalendarCycles(), calendarRecipes: loadCalendarRecipes(), calendarOutfits: loadCalendarOutfits(),
+            todayTrend: normalizeTodayTrendStore(await loadTodayTrendStore()),
             branchLineage: clone(branchLineage),
         };
     };
@@ -163,6 +166,7 @@ export function createBackupStateHandlers(deps = {}) {
         window.__pmWorldBookConfig = normalizeWorldBookConfig(state.worldBookConfig);
         window.__pmBgGlobal = typeof state.bgGlobal === 'string' ? state.bgGlobal : '';
         window.__pmBgLocal = clone(state.bgLocal || {}); window.__pmPhoneUiState = phoneUiState;
+        window.__pmTodayTrend = normalizeTodayTrendStore(state.todayTrend);
         window.__pmBranchLineage = clone(state.branchLineage || {});
         return {
             ...state, interactiveScenes, phoneUiState, ambientStatus,
@@ -173,6 +177,7 @@ export function createBackupStateHandlers(deps = {}) {
             calendarCycles: normalizeCycleStore(state.calendarCycles),
             calendarRecipes: normalizeRecipeStore(state.calendarRecipes),
             calendarOutfits: normalizeOutfitStore(state.calendarOutfits),
+            todayTrend: normalizeTodayTrendStore(state.todayTrend),
             branchLineage: clone(state.branchLineage || {}),
         };
     };
@@ -198,6 +203,7 @@ export function createBackupStateHandlers(deps = {}) {
             || !saveCalendarCycles(state.calendarCycles) || !saveCalendarRecipes(state.calendarRecipes) || !saveCalendarOutfits(state.calendarOutfits)) {
             throw new Error('日历与菜谱数据保存失败：浏览器存储不可用');
         }
+        await saveTodayTrendStore(state.todayTrend);
         if (phase === 'rollback') {
             if (branchLineageApplied) await rollbackBranchLineageBackup(branchLineageInserted);
             else await saveBranchLineage(state.branchLineage || {});
@@ -208,6 +214,7 @@ export function createBackupStateHandlers(deps = {}) {
             branchLineageApplied = true;
         }
         deps.invalidateInteractiveStore?.(); deps.reloadCalendarStore?.();
+        deps.reloadTodayTrendStore?.();
     };
     return { capture, apply, persist };
 }

@@ -20,6 +20,8 @@ import { installPhoneLifecycle } from './phone-lifecycle.js';
 import { ensureInitialPhoneQuickReplyWithRetry } from './quick-reply.js';
 import { createRuntimeState } from './runtime.js';
 import { installSettingsUi } from './settings-ui.js';
+import { installTodayTrend } from './today-trend.js';
+import { installTodayTrendPhoneUi } from './today-trend-phone-ui.js';
 import { saveBudgetConfig, saveEmojis } from './storage.js';
 
 (async function bootstrapPhoneMode() {
@@ -82,6 +84,8 @@ import { saveBudgetConfig, saveEmojis } from './storage.js';
     installPhoneChatPoke(state, deps);
     installPhoneLifecycle(state, deps);
     installDiagnosticApi(deps);
+    installTodayTrend(state, deps);
+    installTodayTrendPhoneUi(state, deps);
     ensureInitialPhoneQuickReplyWithRetry().catch(error => {
         console.warn('[phone-mode] 首次创建手机入口失败，有限重试已结束', error);
     });

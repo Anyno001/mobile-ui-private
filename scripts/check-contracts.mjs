@@ -1098,7 +1098,7 @@ if (mainFile) {
     'installInteractiveScenes(state, deps)', 'installCalendar(state, deps)', 'installSettingsUi(deps)',
     'installPhoneChat(state, deps)', 'installPhoneContextInjection(state, deps)', 'installPhoneControlCenter(state, deps)', 'installPhoneDirectory(state, deps)',
     'installContactGenerator(state, deps)', 'installPhoneChatPoke(state, deps)',
-    'installPhoneLifecycle(state, deps)', 'installDiagnosticApi(deps)',
+    'installPhoneLifecycle(state, deps)', 'installDiagnosticApi(deps)', 'installTodayTrend(state, deps)', 'installTodayTrendPhoneUi(state, deps)',
   ];
   for (const installerCall of expectedInstallerCalls) requireText('main.js', mainFile.code, installerCall);
 
@@ -1112,7 +1112,7 @@ if (mainFile) {
   const expectedOrder = [
     'installPhoneFoundation', 'installConversation', 'installEmojiUi', 'installInteractiveScenes', 'installCalendar',
     'installSettingsUi', 'installPhoneChat', 'installPhoneContextInjection', 'installPhoneControlCenter', 'installPhoneDirectory', 'installContactGenerator',
-    'installPhoneChatPoke', 'installPhoneLifecycle', 'installDiagnosticApi',
+    'installPhoneChatPoke', 'installPhoneLifecycle', 'installDiagnosticApi', 'installTodayTrend', 'installTodayTrendPhoneUi',
   ];
   if (actualOrder.length !== expectedOrder.length
       || actualOrder.some((installer, index) => installer !== expectedOrder[index])) {
@@ -1280,6 +1280,8 @@ for (const expected of [
   'pm-conversation-injection-community-depth',
   'pm-conversation-injection-calendar-position',
   'pm-conversation-injection-calendar-depth',
+  'pm-conversation-injection-today-trend-position',
+  'pm-conversation-injection-today-trend-depth',
   '正文注入',
   "onclick=\"window.__pmShowConfig('home')\"", '${BACK_ICON_SVG}',
 ]) requireText('phone-context-injection.js', sourceModuleByName.get('phone-context-injection.js')?.code || '', expected);
@@ -1463,13 +1465,14 @@ for (const expected of [
   'deriveInteractiveActorId(scopeId, actor.type, actor.bindingKey)',
 ]) requireText('settings-backup-validate.js', settingsBackupValidateCode, expected);
 for (const expected of [
-  'schemaVersion: 13', 'desktopBg: snapshot.desktopBg', 'injectionConfig: snapshot.injectionConfig', 'budgetConfig: snapshot.budgetConfig',
+  'schemaVersion: 14', 'desktopBg: snapshot.desktopBg', 'injectionConfig: snapshot.injectionConfig', 'budgetConfig: snapshot.budgetConfig',
   'calendarStore: snapshot.calendarStore', 'calendarCycles: snapshot.calendarCycles',
-  'calendarRecipes: snapshot.calendarRecipes', 'calendarOutfits: snapshot.calendarOutfits', 'branchLineage: snapshot.branchLineage',
+  'calendarRecipes: snapshot.calendarRecipes', 'calendarOutfits: snapshot.calendarOutfits', 'todayTrend: snapshot.todayTrend', 'branchLineage: snapshot.branchLineage',
 ]) requireText('settings-ui.js', settingsUiCodeForInteractive, expected);
 requireText('settings-backup-validate.js', settingsBackupValidateCode, 'applyCalendarBackupFields(data, result, objectValue, { includeRecipes: version >= 7, includeOutfits: version >= 12 })');
 for (const expected of [
-  'version > 13', '备份版本 13 缺少 budgetConfig', 'result.budgetConfig = normalizeBudgetConfig(objectValue(data.budgetConfig, \'budgetConfig\'))',
+  'version > 14', '备份版本 13 缺少 budgetConfig', '备份版本 14 缺少 todayTrend',
+  'result.budgetConfig = normalizeBudgetConfig(objectValue(data.budgetConfig, \'budgetConfig\'))',
 ]) requireText('settings-backup-validate.js', settingsBackupValidateCode, expected);
 for (const expected of [
   'phoneUiState: loadPhoneUiState(interactiveScenes)', 'ambientStatus: normalizeAmbientStatus',
@@ -1792,6 +1795,7 @@ for (const expected of [
   'runtime.hostEventSource !== c.eventSource', 'runtime.hostEventRegistrations = new Set()',
   'runtime.eventHooked = results.every(Boolean)',
   'handleHostChatChanged({', "cancelCommunityGeneration?.('host-chat-changed')", "cancelCalendarTasks?.('host-chat-changed')",
+  "cancelTodayTrendInitialization?.('host-chat-changed')", "cancelTodayTrendRuleRegeneration?.('host-chat-changed')",
   "disarmAutoPoke?.('host-chat-changed')", 'endPhone(true)',
   'installPhonePageSuspensionListeners', 'updatePhonePageSuspensionHandler', '__pmPageSuspensionHandler',
   "__pmPageSuspensionHandler?.('beforeunload')", "__pmPageSuspensionHandler?.('document-hidden')",
@@ -1817,6 +1821,11 @@ for (const forbidden of [
 for (const expected of [
   "cancelCommunityGeneration?.('phone-closed')",
   "cancelCalendarTasks?.('phone-closed')",
+  "destroyTodayTrendPhoneUi?.()",
+  "cancelTodayTrendInitialization?.('phone-closed')",
+  "cancelTodayTrendRuleRegeneration?.('phone-closed')",
+  "cancelTodayTrendGeneration?.('phone-closed', true)",
+  'bindTodayTrendPhoneUi?.(state.phoneWindow)', 'data-phone-page="today-trend"',
 ]) {
   requireText('phone-lifecycle.js', sourceModuleByName.get('phone-lifecycle.js')?.code || '', expected);
 }
@@ -1827,7 +1836,7 @@ for (const forbidden of [
   failures.push(`phone-lifecycle.js: minimizing must not cancel active generation: ${forbidden}`);
 }
 for (const expected of [
-  'renderPhoneDesktop', 'desktop-chat', 'desktop-directory', 'desktop-settings', 'desktop-calendar', 'desktop-community',
+  'renderPhoneDesktop', 'desktop-chat', 'desktop-directory', 'desktop-settings', 'desktop-calendar', 'desktop-today-trend', 'desktop-community',
   'desktop-exit', "__pmOpenSettingsTab?.('home')",
   'toggle-scene-pin', 'unpin-scene', 'loadPhoneUiState', 'savePhoneUiState',
   "showPhonePage('community')", 'runDesktopPageTransition', 'showPhoneDesktopPage',
@@ -1838,7 +1847,7 @@ for (const expected of [
   'data-action="desktop"', 'data-action="exit"', 'class="pm-scene-card-actions"',
   'data-action="toggle-scene-pin"', 'data-action="delete-scene"', 'pm-desktop-app-icon',
   'class="pm-scene-pin-action"', 'aria-pressed="${pinned}"', 'aria-label="${pinLabel}"', 'aria-label="删除社区"', '${COMMUNITY_ICON_SVG}', '${TRASH_ICON_SVG}',
-  'pm-desktop-app-label', 'data-app="chat"', 'data-app="directory"', 'data-app="settings"', 'data-app="calendar"',
+  'pm-desktop-app-label', 'data-app="chat"', 'data-app="directory"', 'data-app="settings"', 'data-app="calendar"', 'data-app="today-trend"', '${TREND_ICON_SVG}',
 ]) {
   requireText('interactive-scene-views.js', interactiveViewsCode, expected);
 }
@@ -2109,6 +2118,15 @@ for (const expected of [
   '.pm-scene-comment-composer input{font-size:14px}',
   '.pm-scene-empty{font-size:12px;line-height:1.55}',
 ]) requireText('style.css', css, expected);
+for (const expected of [
+  '--pm-size-icon-sm:14px', '--pm-size-icon-md:18px', '--pm-size-icon-lg:24px', '--pm-z-base:0',
+  '.pm-today-trend-page{overflow:hidden;background:var(--pm-color-surface-page)}',
+  '.pm-today-trend-header{position:sticky;top:0;z-index:var(--pm-z-base)',
+  '.pm-today-trend-header button svg{width:var(--pm-size-icon-md);height:var(--pm-size-icon-md)}',
+]) requireText('style.css', css, expected);
+if (css.includes('--pm-letter-spacing-wide')) {
+  failures.push('style.css: today-trend must not consume an unregistered letter-spacing token');
+}
 requireCssDeclarations(cssRules, '.pm-calendar-status-relative', {
   color: 'var(--pm-calendar-accent)', 'font-size': '17px', 'line-height': '1.1', 'font-weight': '850',
 });
@@ -2875,7 +2893,7 @@ const backupMetadataFields = new Set(['schemaVersion']);
 const backupFields = [
   'histories', 'config', 'theme', 'profiles', 'groupMeta',
   'pokeConfig', 'bidirectional', 'emojis', 'characterBehavior',
-  'wordyLimit', 'desktopBg', 'bgGlobal', 'bgLocal', 'interactiveScenes', 'phoneUiState', 'ambientStatus', 'budgetConfig',
+  'wordyLimit', 'desktopBg', 'bgGlobal', 'bgLocal', 'interactiveScenes', 'phoneUiState', 'ambientStatus', 'budgetConfig', 'todayTrend',
 ];
 for (const [label, contract] of [
   ['source backup modules', sourceBackupContract],

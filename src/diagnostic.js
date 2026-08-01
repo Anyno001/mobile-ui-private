@@ -89,7 +89,7 @@ export function installDiagnosticApi(deps) {
         try {
             return recordResult(runtime, await beginBranchInheritance(context, {
                 getStorageId, invalidateInteractiveStore: deps.invalidateInteractiveStore,
-                reloadCalendarStore: deps.reloadCalendarStore, force: true,
+                reloadCalendarStore: deps.reloadCalendarStore, reloadTodayTrendStore: deps.reloadTodayTrendStore, force: true,
             }));
         } catch (error) {
             recordError(runtime, branch, error);

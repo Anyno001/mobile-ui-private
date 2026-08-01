@@ -1,5 +1,5 @@
 import { normalizeBudgetConfig } from './budget.js';
-import { deleteInteractiveScene } from './interactive-scene-model.js';
+import { deleteInteractiveScene, PHONE_UI_PAGES } from './interactive-scene-model.js';
 
 export async function runDesktopPageTransition({
     scopeId, loadStore, updatePhoneUi, refreshDesktop, showPhonePage, clearOpenScene,
@@ -167,7 +167,7 @@ export function persistCurrentPhoneUiSnapshot({
     runtime, storageId, page, phoneScope, updatePhoneUiScope, chatType = null, chatKey = null,
 }) {
     if (!runtime?.store || !storageId || storageId === 'sms_unknown__default'
-        || !['desktop', 'chat', 'community', 'calendar'].includes(page)) return false;
+        || !PHONE_UI_PAGES.includes(page)) return false;
     const scope = phoneScope(storageId, runtime.store);
     const normalizedChatType = chatType === 'contact' || chatType === 'group' ? chatType : null;
     const normalizedChatKey = normalizedChatType && typeof chatKey === 'string' && chatKey.trim()

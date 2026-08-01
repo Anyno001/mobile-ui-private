@@ -1,5 +1,5 @@
 export const WORLD_BOOK_CONFIG_VERSION = 1;
-export const WORLD_BOOK_MODULES = Object.freeze(['chat', 'calendar', 'outfit', 'community']);
+export const WORLD_BOOK_MODULES = Object.freeze(['chat', 'calendar', 'outfit', 'community', 'todayTrend']);
 
 const MAX_KEY_LENGTH = 240;
 const MAX_COLUMN_LENGTH = 120;

@@ -104,16 +104,22 @@ export function handlePhonePageSuspension(deps, reason, {
     save();
     deps.cancelCommunityGeneration?.(reason);
     deps.cancelCalendarTasks?.(reason);
+    deps.cancelTodayTrendInitialization?.(reason);
+    deps.cancelTodayTrendRuleRegeneration?.(reason);
+    deps.cancelTodayTrendGeneration?.(reason, true);
     disarm(reason);
 }
 
 export function handleHostChatChanged({
-    state, runtime, chatLength = 0, cancelCommunityGeneration, cancelCalendarTasks,
+    state, runtime, chatLength = 0, cancelCommunityGeneration, cancelCalendarTasks, cancelTodayTrendInitialization, cancelTodayTrendRuleRegeneration, cancelTodayTrendGeneration,
     disarmAutoPoke, endPhone = globalThis.window?.__pmEnd, invalidateGeneration,
 }) {
     runtime.lastChatLength = Number.isInteger(chatLength) && chatLength >= 0 ? chatLength : 0;
     cancelCommunityGeneration?.('host-chat-changed');
     cancelCalendarTasks?.('host-chat-changed');
+    cancelTodayTrendInitialization?.('host-chat-changed');
+    cancelTodayTrendRuleRegeneration?.('host-chat-changed');
+    cancelTodayTrendGeneration?.('host-chat-changed', true);
     disarmAutoPoke?.('host-chat-changed');
     if (state.phoneActive && typeof endPhone === 'function') {
         endPhone(true);
@@ -402,6 +408,7 @@ export function installPhoneFoundation(state, deps) {
             calendarCycles: getCalendarData('getCalendarCycleStore'),
             calendarRecipes: getCalendarData('getCalendarRecipeStore'),
             calendarOutfits: getCalendarData('getCalendarOutfitStore'),
+            todayTrendStore: runtime.todayTrend?.store,
         });
     }
 
@@ -450,6 +457,7 @@ export function installPhoneFoundation(state, deps) {
             results.push(registerOnce(`community:${eventName}`, eventName, () => {
                 const currentContext = getCtx();
                 try { deps.observeCommunityTurn?.(currentContext?.chat || []); } catch (error) {}
+                try { deps.observeTodayTrendTurn?.(currentContext?.chat || []); } catch (error) {}
                 Promise.resolve(deps.observeCalendarTurn?.()).catch(() => {});
             }));
         }
@@ -481,6 +489,7 @@ export function installPhoneFoundation(state, deps) {
                 getStorageId,
                 invalidateInteractiveStore: deps.invalidateInteractiveStore,
                 reloadCalendarStore: deps.reloadCalendarStore,
+                reloadTodayTrendStore: deps.reloadTodayTrendStore,
             }).then(result => {
                 runtime.lastBranchInheritance = {
                     status: result?.status || 'unknown', reason: result?.reason || null,
@@ -507,6 +516,9 @@ export function installPhoneFoundation(state, deps) {
                     state, runtime, chatLength: (currentContext?.chat || []).length,
                     cancelCommunityGeneration: deps.cancelCommunityGeneration,
                     cancelCalendarTasks: deps.cancelCalendarTasks,
+                    cancelTodayTrendInitialization: deps.cancelTodayTrendInitialization,
+                    cancelTodayTrendRuleRegeneration: deps.cancelTodayTrendRuleRegeneration,
+                    cancelTodayTrendGeneration: deps.cancelTodayTrendGeneration,
                     disarmAutoPoke,
                     endPhone: window.__pmEnd,
                     invalidateGeneration,

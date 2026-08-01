@@ -141,30 +141,32 @@ export function getBudgetPercentageView(sourceWeights) {
         calendar: Number(sourceWeights?.calendar) || 0,
         recipe: Number(sourceWeights?.recipe) || 0,
         outfit: Number(sourceWeights?.outfit) || 0,
+        todayTrend: Number(sourceWeights?.todayTrend) || 0,
     };
     const total = Object.values(weights).reduce((sum, value) => sum + value, 0);
-    if (total <= 0) return { phone: 100, community: 0, calendar: 0, recipe: 0, outfit: 0 };
+    if (total <= 0) return { phone: 100, community: 0, calendar: 0, recipe: 0, outfit: 0, todayTrend: 0 };
     const phone = Number((weights.phone * 100 / total).toFixed(4));
     const community = Number((weights.community * 100 / total).toFixed(4));
     const calendar = Number((weights.calendar * 100 / total).toFixed(4));
     const recipe = Number((weights.recipe * 100 / total).toFixed(4));
-    return { phone, community, calendar, recipe, outfit: Number((100 - phone - community - calendar - recipe).toFixed(4)) };
+    const outfit = Number((weights.outfit * 100 / total).toFixed(4));
+    return { phone, community, calendar, recipe, outfit, todayTrend: Number((100 - phone - community - calendar - recipe - outfit).toFixed(4)) };
 }
 
 export function resolveBudgetPercentageInput({
-    sourceWeights, phone, community, calendar, recipe, outfit,
-    initialPhone, initialCommunity, initialCalendar, initialRecipe, initialOutfit,
+    sourceWeights, phone, community, calendar, recipe, outfit, todayTrend,
+    initialPhone, initialCommunity, initialCalendar, initialRecipe, initialOutfit, initialTodayTrend,
 }) {
-    const next = { phone: Number(phone), community: Number(community), calendar: Number(calendar), recipe: Number(recipe), outfit: Number(outfit) };
-    const initial = { phone: Number(initialPhone), community: Number(initialCommunity), calendar: Number(initialCalendar), recipe: Number(initialRecipe), outfit: Number(initialOutfit) };
+    const next = { phone: Number(phone), community: Number(community), calendar: Number(calendar), recipe: Number(recipe), outfit: Number(outfit), todayTrend: Number(todayTrend) };
+    const initial = { phone: Number(initialPhone), community: Number(initialCommunity), calendar: Number(initialCalendar), recipe: Number(initialRecipe), outfit: Number(initialOutfit), todayTrend: Number(initialTodayTrend) };
     if (Object.keys(next).every(source => next[source] === initial[source])) {
-        return { phone: sourceWeights.phone, community: sourceWeights.community, calendar: sourceWeights.calendar || 0, recipe: sourceWeights.recipe || 0, outfit: sourceWeights.outfit || 0 };
+        return { phone: sourceWeights.phone, community: sourceWeights.community, calendar: sourceWeights.calendar || 0, recipe: sourceWeights.recipe || 0, outfit: sourceWeights.outfit || 0, todayTrend: sourceWeights.todayTrend || 0 };
     }
     if (!Object.values(next).every(value => Number.isFinite(value) && value >= 0 && value <= 100)) {
-        throw new Error('手机会话、互动社区、日历、菜谱和穿搭占比必须是 0 到 100 之间的数字');
+        throw new Error('各正文注入来源占比必须是 0 到 100 之间的数字');
     }
-    if (Math.abs(next.phone + next.community + next.calendar + next.recipe + next.outfit - 100) > 0.0001) {
-        throw new Error('手机会话、互动社区、日历、菜谱和穿搭占比合计必须为 100%');
+    if (Math.abs(Object.values(next).reduce((sum, value) => sum + value, 0) - 100) > 0.0001) {
+        throw new Error('所有正文注入来源占比合计必须为 100%');
     }
     return next;
 }
@@ -184,14 +186,16 @@ export function renderBudgetSettings({ config }) {
           <label class="pm-cfg-label">日历占比 (%)<input id="pm-budget-calendar-weight" class="pm-cfg-input" type="number" min="0" max="100" step="0.0001" value="${percentages.calendar}" data-initial-value="${percentages.calendar}"></label>
           <label class="pm-cfg-label">菜谱占比 (%)<input id="pm-budget-recipe-weight" class="pm-cfg-input" type="number" min="0" max="100" step="0.0001" value="${percentages.recipe}" data-initial-value="${percentages.recipe}"></label>
           <label class="pm-cfg-label">穿搭占比 (%)<input id="pm-budget-outfit-weight" class="pm-cfg-input" type="number" min="0" max="100" step="0.0001" value="${percentages.outfit}" data-initial-value="${percentages.outfit}"></label>
+          <label class="pm-cfg-label">今日风向占比 (%)<input id="pm-budget-today-trend-weight" class="pm-cfg-input" type="number" min="0" max="100" step="0.0001" value="${percentages.todayTrend}" data-initial-value="${percentages.todayTrend}"></label>
         </div>
-        <div class="pm-cfg-tip">五类内容占比合计必须为 100%。日历、菜谱和穿搭均默认关闭。</div>
+        <div class="pm-cfg-tip">六类内容占比合计必须为 100%。日历、菜谱、穿搭和今日风向均默认关闭。</div>
         <label class="pm-settings-field" for="pm-budget-priority"><span class="pm-cfg-label">剩余额度优先补给</span><select id="pm-budget-priority" class="pm-cfg-input">
           <option value="phone" ${priority === 'phone' ? 'selected' : ''}>手机会话优先</option>
           <option value="community" ${priority === 'community' ? 'selected' : ''}>互动社区优先</option>
           <option value="calendar" ${priority === 'calendar' ? 'selected' : ''}>日历优先</option>
           <option value="recipe" ${priority === 'recipe' ? 'selected' : ''}>菜谱优先</option>
           <option value="outfit" ${priority === 'outfit' ? 'selected' : ''}>穿搭优先</option>
+          <option value="todayTrend" ${priority === 'todayTrend' ? 'selected' : ''}>今日风向优先</option>
         </select></label>
         <label class="pm-cfg-label pm-check-setting">
           <span>把一方没用完的额度补给另一方</span>

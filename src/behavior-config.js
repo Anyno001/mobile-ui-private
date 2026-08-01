@@ -188,7 +188,9 @@ export function normalizeInjectionConfig(value, legacyCalendar = null) {
     });
     const calendar = Object.hasOwn(source, 'calendar')
         ? normalizePromptPlacement(source.calendar, calendarFallback) : calendarFallback;
-    return { phone, community, calendar };
+    const todayTrend = Object.hasOwn(source, 'todayTrend')
+        ? normalizePromptPlacement(source.todayTrend, calendar) : calendar;
+    return { phone, community, calendar, todayTrend };
 }
 
 export function normalizeGroupMeta(value) {

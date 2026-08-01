@@ -1,0 +1,25 @@
+import { HOME_ICON_SVG, PLAY_ICON_SVG, SETTINGS_ICON_SVG, SPARKLES_ICON_SVG } from './icons.js';
+import { renderTodayTrendDynamicsView } from './today-trend-dynamics-view.js';
+import { renderTodayTrendFactionView } from './today-trend-faction-view.js';
+import { renderTodayTrendReputationView } from './today-trend-reputation-view.js';
+import { renderTodayTrendSettingsView } from './today-trend-settings-view.js';
+import { renderTodayTrendWorldView } from './today-trend-world-view.js';
+import { escapeAttr, escapeHtml } from './ui.js';
+
+const moduleView = (view, props) => ({ world: renderTodayTrendWorldView, reputation: renderTodayTrendReputationView, faction: renderTodayTrendFactionView, dynamics: renderTodayTrendDynamicsView }[view.name] || renderTodayTrendWorldView)(props);
+
+function renderFirstUse({ presets, worldBooks, error, initializing, draft = {}, reinitializing = false }) {
+    const presetOptions = presets.map(item => `<option value="${escapeAttr(item.id)}">${escapeHtml(item.name)}</option>`).join('');
+    const selectedBooks = new Set(Array.isArray(draft.worldBookNames) ? draft.worldBookNames : worldBooks);
+    const books = worldBooks.map(name => `<label class="pm-today-trend"><input type="checkbox" name="worldBookNames" value="${escapeAttr(name)}" ${selectedBooks.has(name) ? 'checked' : ''}>${escapeHtml(name)}</label>`).join('');
+    return `<main class="pm-today-trend-content"><section class="pm-today-trend-first-use"><p class="pm-today-trend-kicker">WORLD SIGNAL</p><h3>${reinitializing ? '重新初始化当前今日风向' : '创建当前角色的今日风向'}</h3><p>选择世界书后，一次生成四个模块的规则与初始资料。</p>${presetOptions && !reinitializing ? `<form data-today-trend-form="bind-preset"><label>复用已有预设<select name="presetId">${presetOptions}</select></label><button type="submit">绑定并开始</button></form><p>或创建新的世界预设：</p>` : ''}<form data-today-trend-form="initialize"><label>预设名称（可选）<input name="presetName" maxlength="120" placeholder="自动推断" value="${escapeAttr(draft.presetName || '')}"></label><fieldset><legend>世界书（至少一本）</legend>${books || '<p>当前聊天没有可用世界书，无法初始化。</p>'}</fieldset><label class="pm-today-trend-toggle"><span>参考当前已有正文</span><input name="includeExistingChat" type="checkbox" ${draft.includeExistingChat !== false ? 'checked' : ''}></label><label>追加要求（可选）<textarea name="userRequirements" maxlength="600">${escapeHtml(draft.userRequirements || '')}</textarea></label><button type="submit" ${!books || initializing ? 'disabled' : ''} aria-busy="${initializing}">${SPARKLES_ICON_SVG}${initializing ? '正在初始化今日风向' : '生成'}</button>${reinitializing ? '<button type="button" data-action="today-trend-cancel-initialize">取消</button>' : ''}</form>${error ? `<p class="pm-today-trend-error" role="alert">${escapeHtml(error)}</p>` : ''}</section></main>`;
+}
+
+export function renderTodayTrendApp({ scope = null, presets = [], worldBooks = [], view = { name: 'world', mode: 'content' }, generation = {}, error = null, initializing = false, initializationDraft, initializationOpen = false, reinitializing = false } = {}) {
+    const title = scope?.characterName ? `今日风向 · ${scope.characterName}` : '今日风向';
+    const busy = ['queued', 'generating', 'parsing', 'committing'].includes(generation.phase);
+    const content = !scope || initializationOpen ? renderFirstUse({ presets, worldBooks, error, initializing, draft: initializationDraft, reinitializing }) : view.name === 'settings'
+        ? `<main class="pm-today-trend-content">${renderTodayTrendSettingsView({ scope, presets, generationBusy: busy })}</main>`
+        : `<main class="pm-today-trend-content"><nav class="pm-today-trend-tabs" aria-label="今日风向模块">${[['world','世界态势'],['reputation','个人风评'],['faction','相关势力'],['dynamics','相关动态']].map(([name,label]) => `<button type="button" data-action="today-trend-open-${name === 'faction' ? 'factions' : name}" aria-pressed="${view.name === name}">${label}</button>`).join('')}</nav>${moduleView(view, { scope, mode: view.mode, editingWorldItemId: view.editingWorldItemId, editingCircleId: view.editingCircleId, editingFactionId: view.editingFactionId, editingEventId: view.editingEventId, generationAvailable: !busy, generationBusy: busy })}</main>`;
+    return `<section id="pm-today-trend-app" class="pm-today-trend-shell" aria-labelledby="pm-today-trend-title"><header class="pm-today-trend-header"><button type="button" data-today-trend-ui-action="home" aria-label="返回桌面" title="返回桌面">${HOME_ICON_SVG}</button><h2 id="pm-today-trend-title">${escapeHtml(title)}</h2><span class="pm-today-trend-header-actions">${scope ? `<button type="button" data-action="today-trend-toggle-operation" ${busy ? 'disabled' : ''} aria-pressed="${scope.operation?.enabled === true}" aria-label="${scope.operation?.enabled ? '停止运作' : '开始运作'}" title="${scope.operation?.enabled ? '停止运作' : '开始运作'}">${PLAY_ICON_SVG || ''}</button><button type="button" data-action="today-trend-run-now" ${busy ? 'disabled aria-busy="true"' : ''} aria-label="本轮生成" title="本轮生成">${SPARKLES_ICON_SVG}</button><button type="button" data-action="today-trend-open-settings" aria-label="APP 总设置" title="APP 总设置">${SETTINGS_ICON_SVG}</button>` : ''}</span></header>${content}</section>`;
+}

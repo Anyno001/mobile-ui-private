@@ -7,12 +7,8 @@ import {
 import { loadInteractiveScenes, loadPhoneUiState, saveInteractiveScenes, savePhoneUiScope, savePhoneUiState } from './storage.js';
 import { bindPhonePageActions, dispatchCalendarAppAction, getCommunityInjectionState, handleCommunityInjectionUiAction, handleSceneAccentAction, persistCurrentPhoneUiSnapshot, resolvePhoneChatTarget, runCalendarPageTransition, runDeleteSceneAction, runDesktopPageTransition, selectScenePreset, toggleDanmakuActions, toggleSceneMenu, toggleScenePostActions, toggleSceneReplyComposer } from './interactive-scene-phone.js';
 import { createCommunityGenerationRunner, createCommunityTaskController, runLiveWarmup } from './interactive-scene-scheduler.js';
-import {
-    renderCommunityLauncher as renderCommunityLauncherView,
-    renderCommunityWorkspace as renderCommunityWorkspaceView, renderPhoneDesktop,
-} from './interactive-scene-views.js';
-export { renderPhoneDesktop } from './interactive-scene-views.js';
-export { resolvePhoneChatTarget, runDesktopPageTransition } from './interactive-scene-phone.js';
+import { renderCommunityLauncher as renderCommunityLauncherView, renderCommunityWorkspace as renderCommunityWorkspaceView, renderPhoneDesktop } from './interactive-scene-views.js';
+export { renderPhoneDesktop } from './interactive-scene-views.js'; export { resolvePhoneChatTarget, runDesktopPageTransition } from './interactive-scene-phone.js';
 const uid = prefix => `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
 const now = () => Date.now();
 const cloneStore = store => normalizeInteractiveStore(JSON.parse(JSON.stringify(store)));
@@ -524,6 +520,7 @@ export function installInteractiveScenes(_state, deps) {
         if (action === 'desktop-directory') { window.__pmShowList?.(); return; }
         if (action === 'desktop-settings') { window.__pmOpenSettingsTab?.('home'); return; }
         if (action === 'desktop-calendar') { await showPhoneCalendarPage(); return; }
+        if (action === 'desktop-today-trend') { await deps.showTodayTrendPage?.(); return; }
         if (action === 'desktop-community') { await window.__pmOpenForumMode(); return; }
         if (action === 'desktop-exit' || action === 'exit') { await window.__pmEnd?.(); return; }
         if (await handleCommunityInjectionUiAction(action, {
@@ -770,6 +767,7 @@ export function installInteractiveScenes(_state, deps) {
                 showPhonePage('calendar');
                 return;
             }
+            if (uiScope.lastPage === 'today-trend' && await deps.showTodayTrendPage?.(scopeId)) { runtime.openSceneId = null; return; }
             runtime.openSceneId = null;
             showPhonePage(uiScope.lastPage === 'chat' ? 'chat' : 'desktop');
         },
