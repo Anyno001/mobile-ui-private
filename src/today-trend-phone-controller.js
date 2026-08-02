@@ -20,7 +20,8 @@ export function createTodayTrendPhoneController({ state, deps, container }) {
         const id = deps.getStorageId();
         const scope = current?.scopes?.[id] || null;
         lastScope = scope; lastPresets = Object.values(current?.presets || {});
-        lastView = settings ? { name: 'settings' } : view || dispatcher?.state() || lastView;
+        const activeView = view || dispatcher?.state() || lastView;
+        lastView = settings ? { ...activeView, name: 'settings' } : activeView;
         container.innerHTML = renderTodayTrendApp({ scope, presets: Object.values(current?.presets || {}), worldBooks: worldBooks(),
             view: lastView,
             generation: deps.getTodayTrendGenerationState?.() || {}, error, initializing, initializationDraft, initializationOpen, reinitializing });
@@ -76,7 +77,6 @@ export function createTodayTrendPhoneController({ state, deps, container }) {
         if (!button || !container.contains(button) || button.disabled) return;
         if (button.dataset.action === 'today-trend-open-settings') { settings = true; rerender(); }
         if (button.dataset.action === 'today-trend-close-settings') { settings = false; rerender(); }
-        if (button.dataset.action === 'today-trend-run-now') generate();
         if (button.dataset.action === 'today-trend-toggle-operation') saveOperation(!lastScope?.operation?.enabled).then(() => rerender()).catch(report);
         if (button.dataset.action === 'today-trend-new-preset') openInitialization();
         if (button.dataset.action === 'today-trend-reinitialize') openInitialization({ replace: true });

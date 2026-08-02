@@ -46,7 +46,7 @@ export function createTodayTrendActionDispatcher({
     if (!container?.addEventListener || typeof getStorageId !== 'function' || typeof getStore !== 'function' || typeof committer?.commitScope !== 'function' || typeof render !== 'function') {
         throw new TypeError('今日风向动作分发依赖无效');
     }
-    const view = { name: 'world', mode: 'content', editingWorldItemId: null, editingCircleId: null, editingFactionId: null, editingEventId: null };
+    const view = { name: 'world', mode: 'content', editingWorldItemId: null, editingCircleId: null, editingFactionId: null, editingEventId: null, menuOpenId: null };
     const rerender = async () => render({ ...view, store: await getStore(), storageId: getStorageId() });
     const commit = async mutate => {
         const storageId = String(getStorageId() || '').trim();
@@ -57,11 +57,18 @@ export function createTodayTrendActionDispatcher({
         return result;
     };
     const run = promise => Promise.resolve(promise).catch(error => { onError(error); return false; });
-    const open = (name, mode = 'content') => { view.name = name; view.mode = mode; view.editingWorldItemId = null; view.editingCircleId = null; view.editingFactionId = null; view.editingEventId = null; return rerender(); };
+    const closeMenu = () => { view.menuOpenId = null; };
+    const open = (name, mode = 'content') => { view.name = name; view.mode = mode; view.editingWorldItemId = null; view.editingCircleId = null; view.editingFactionId = null; view.editingEventId = null; closeMenu(); return rerender(); };
     const click = event => {
         const button = event.target.closest?.('button[data-action]');
         if (!button || !container.contains(button) || button.disabled) return;
         const action = button.dataset.action;
+        if (action === 'today-trend-toggle-menu') {
+            const menuId = button.dataset.menuId || null;
+            view.menuOpenId = view.menuOpenId === menuId ? null : menuId;
+            return run(rerender());
+        }
+        closeMenu();
         if (action === 'today-trend-add-detail') {
             const list = button.closest('fieldset')?.querySelector('[data-today-trend-details]');
             if (!list || list.children.length >= 16) return;
@@ -116,14 +123,14 @@ export function createTodayTrendActionDispatcher({
         if (form.dataset.todayTrendForm === 'world-item') return run(commit(scope => {
             const item = readWorldItem(form); const items = scope.world.items.filter(current => current.id !== item.id);
             return { ...scope, world: { ...scope.world, items: [...items, item] } };
-        }).then(async () => { view.editingWorldItemId = null; await rerender(); onStatus('世界态势项目已保存。'); }));
+        }).then(async () => { view.editingWorldItemId = null; closeMenu(); await rerender(); onStatus('世界态势项目已保存。'); }));
         if (form.dataset.todayTrendForm === 'circle') return run(commit(scope => {
             const circle = readCircle(form); const existing = scope.reputation.circles.find(item => item.id === circle.id);
             return { ...scope, reputation: { ...scope.reputation, circles: replaceOrAppend(scope.reputation.circles, { ...circle, status: existing?.status || 'neutral', evaluation: existing?.evaluation || '尚待生成评价' }) } };
-        }).then(async () => { view.editingCircleId = null; await rerender(); onStatus('风评圈层已保存。'); }));
+        }).then(async () => { view.editingCircleId = null; closeMenu(); await rerender(); onStatus('风评圈层已保存。'); }));
         if (form.dataset.todayTrendForm === 'faction') return run(commit(scope => {
             const faction = readFaction(form); return { ...scope, factions: replaceOrAppend(scope.factions, faction) };
-        }).then(async () => { view.mode = 'content'; view.editingFactionId = null; await rerender(); onStatus('相关势力已保存。'); }));
+        }).then(async () => { view.mode = 'content'; view.editingFactionId = null; closeMenu(); await rerender(); onStatus('相关势力已保存。'); }));
         if (form.dataset.todayTrendForm === 'event') return run(commit(scope => {
             const existing = scope.dynamics.active.find(item => item.id === formValue(form, 'id'));
             const next = readEvent(form, existing);
@@ -137,19 +144,19 @@ export function createTodayTrendActionDispatcher({
                 return advanced;
             }
             return { ...scope, dynamics: { ...scope.dynamics, active: [...scope.dynamics.active, next] } };
-        }).then(async () => { view.editingEventId = null; await rerender(); onStatus('动态事件已保存。'); }));
+        }).then(async () => { view.editingEventId = null; closeMenu(); await rerender(); onStatus('动态事件已保存。'); }));
         if (form.dataset.todayTrendForm === 'event-promotion') return run(commit(scope => {
             const sourceEventId = formValue(form, 'sourceEventId');
             const incident = readEvent(form);
             incident.type = 'incident';
             return promoteTodayTrendUnderground(scope, sourceEventId, incident);
-        }).then(async () => { view.editingEventId = null; await rerender(); onStatus('地下线已升级为突发事件。'); }));
+        }).then(async () => { view.editingEventId = null; closeMenu(); await rerender(); onStatus('地下线已升级为突发事件。'); }));
         if (form.dataset.todayTrendForm === 'event-archive') return run(commit(scope => {
             const id = formValue(form, 'id');
             const result = { outcome: formValue(form, 'outcome'), finalResult: formValue(form, 'finalResult') };
             const target = scope.dynamics.active.find(item => item.id === id);
             return target?.type === 'rumor' ? settleTodayTrendRumor(scope, id, result) : archiveTodayTrendEvent(scope, id, result);
-        }).then(async () => { view.editingEventId = null; await rerender(); onStatus('动态事件已归档。'); }));
+        }).then(async () => { view.editingEventId = null; closeMenu(); await rerender(); onStatus('动态事件已归档。'); }));
         if (form.dataset.todayTrendForm === 'dynamics-settings') return run(commit(scope => {
             const data = new FormData(form);
             const checked = name => data.get(name) === 'on';
@@ -160,7 +167,7 @@ export function createTodayTrendActionDispatcher({
                 autoComplete: checked('autoComplete'), archiveCompleted: checked('archiveCompleted'),
                 incident: { enabled: checked('incidentEnabled'), probability }, rumor: { enabled: checked('rumorEnabled') }, underground: { enabled: checked('undergroundEnabled') },
             } };
-        }).then(async () => { view.mode = 'content'; await rerender(); onStatus('动态设置已保存。'); }));
+        }).then(async () => { view.mode = 'content'; closeMenu(); await rerender(); onStatus('动态设置已保存。'); }));
     };
     container.addEventListener('click', click);
     container.addEventListener('submit', submit);
