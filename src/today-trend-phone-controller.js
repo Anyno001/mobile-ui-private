@@ -81,6 +81,13 @@ export function createTodayTrendPhoneController({ state, deps, container }) {
         if (button.dataset.action === 'today-trend-toggle-operation') saveOperation(!lastScope?.operation?.enabled).then(() => rerender()).catch(report);
         if (button.dataset.action === 'today-trend-new-preset') openInitialization();
         if (button.dataset.action === 'today-trend-reinitialize') openInitialization({ replace: true });
+        if (button.dataset.action === 'today-trend-rename-preset') {
+            const presetId = button.closest?.('form')?.querySelector?.('[name="presetId"]')?.value;
+            const preset = lastPresets.find(item => item.id === presetId);
+            const name = globalThis.prompt?.('重命名世界预设', preset?.name || '');
+            if (name === null || name === undefined || !String(name).trim()) return;
+            Promise.resolve(deps.renameTodayTrendPreset?.(presetId, name)).then(() => rerender()).catch(report);
+        }
         if (button.dataset.action === 'today-trend-cancel-initialize') { initAbort?.abort('today-trend-initialization-canceled'); deps.cancelTodayTrendInitialization?.('today-trend-initialization-canceled'); initializing = false; initializationOpen = false; reinitializing = false; error = ''; rerender(); }
         if (button.dataset.action === 'today-trend-delete-preset') {
             const presetId = button.closest?.('form')?.querySelector?.('[name="presetId"]')?.value;
@@ -111,14 +118,14 @@ export function createTodayTrendPhoneController({ state, deps, container }) {
         }
         if (form.dataset.todayTrendForm === 'app-settings') {
             event.preventDefault(); const id = deps.getStorageId();
-            const enabled = data.get('enabled') === 'on', presetId = String(data.get('presetId') || '');
+            const presetId = String(data.get('presetId') || '');
             if (typeof deps.saveTodayTrendSettings !== 'function') return report(new Error('今日风向设置保存能力不可用'));
             store().then(current => {
                 const currentScope = current?.scopes?.[id];
                 if (presetId && presetId !== currentScope?.presetId) {
                     if (!globalThis.confirm?.('切换世界预设会清空当前角色的今日风向资料。确定继续吗？')) return false;
                 }
-                return deps.saveTodayTrendSettings({ presetId, operation: { enabled, mode: data.get('mode'), intervalFloors: Number(data.get('intervalFloors')) }, injection: { enabled: data.get('injectionEnabled') === 'on' } });
+                return deps.saveTodayTrendSettings({ presetId, operation: { ...currentScope?.operation, mode: data.get('mode'), intervalFloors: Number(data.get('intervalFloors')) }, injection: { enabled: data.get('injectionEnabled') === 'on' } });
             }).then(committed => {
                 if (!committed) return;
                 settings = false; return rerender();

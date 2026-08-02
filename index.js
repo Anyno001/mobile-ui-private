@@ -20646,6 +20646,20 @@ ${targetInstruction}`
       else scheduler.cancel("today-trend-stopped");
       return committed;
     };
+    const renamePreset = async (presetId, name) => {
+      const selected = String(presetId || "").trim(), nextName = String(name || "").trim();
+      if (!nextName) throw new Error("\u4E16\u754C\u9884\u8BBE\u540D\u79F0\u4E0D\u80FD\u4E3A\u7A7A");
+      const committed = await committer.commitStore((store) => {
+        const preset = store.presets[selected];
+        if (!preset) throw new Error("\u9009\u62E9\u7684\u4E16\u754C\u9884\u8BBE\u4E0D\u5B58\u5728");
+        preset.name = nextName;
+        preset.updatedAt = Date.now();
+        preset.revision += 1;
+        return store;
+      });
+      if (!committed) throw new Error("\u4E16\u754C\u9884\u8BBE\u91CD\u547D\u540D\u5DF2\u53D6\u6D88");
+      return committed;
+    };
     const deletePreset = async (presetId) => {
       const selected = String(presetId || "").trim();
       const committed = await committer.commitStore((store) => {
@@ -20674,6 +20688,7 @@ ${targetInstruction}`
       saveTodayTrendRule: saveRule,
       bindTodayTrendPreset: bindPreset,
       saveTodayTrendSettings: saveSettings,
+      renameTodayTrendPreset: renamePreset,
       deleteTodayTrendPreset: deletePreset,
       commitTodayTrendScope: (storageId, mutate, task, options2) => committer.commitScope(storageId, mutate, task, options2),
       commitTodayTrendStore: (mutate, task, options2) => committer.commitStore(mutate, task, options2)
@@ -21075,10 +21090,9 @@ ${targetInstruction}`
   // src/today-trend-settings-view.js
   function renderTodayTrendSettingsView({ scope = null, presets = [], generationBusy = false, menuOpenId = null } = {}) {
     if (!scope) return '<section class="pm-today-trend-settings"><h3>APP \u603B\u8BBE\u7F6E</h3><p class="pm-today-trend-empty">\u8BF7\u5148\u521B\u5EFA\u6216\u7ED1\u5B9A\u4E16\u754C\u9884\u8BBE\u3002</p></section>';
-    const operation = scope.operation || {};
     const options2 = presets.map((preset) => `<option value="${escapeAttr(preset.id)}" ${preset.id === scope.presetId ? "selected" : ""}>${escapeHtml(preset.name)}</option>`).join("");
     const rules = [["world", "\u4E16\u754C\u6001\u52BF\u89C4\u5219"], ["reputation", "\u4E2A\u4EBA\u98CE\u8BC4\u89C4\u5219"], ["faction", "\u76F8\u5173\u52BF\u529B\u89C4\u5219"], ["dynamics", "\u52A8\u6001\u603B\u89C4\u5219"], ["incident", "\u7A81\u53D1\u4E8B\u4EF6\u89C4\u5219"], ["rumor", "\u6D41\u8A00\u871A\u8BED\u89C4\u5219"], ["underground", "\u5730\u4E0B\u7EBF\u89C4\u5219"]].map(([name, label]) => `<div class="pm-today-trend-rule-row"><span>${label}</span>${trendActionMenu({ id: `app-rule:${name}`, open: menuOpenId === `app-rule:${name}`, label: `${label}\u64CD\u4F5C`, actions: [{ action: `today-trend-edit-${name}-rule`, icon: EDIT_ICON_SVG, label: `\u7F16\u8F91${label}` }, { action: `today-trend-regenerate-${name}-rule`, icon: REFRESH_ICON_SVG, label: `\u91CD\u65B0\u751F\u6210${label}` }] })}</div>`).join("");
-    return `<section class="pm-today-trend-settings">${trendModuleHead({ title: "APP \u603B\u8BBE\u7F6E", menuId: "app-settings", menuOpenId, actions: [{ action: "today-trend-close-settings", icon: BACK_ICON_SVG, label: "\u8FD4\u56DE\u4ECA\u65E5\u98CE\u5411" }] })}<form class="pm-today-trend-editor" data-today-trend-form="app-settings"><label class="pm-today-trend-field">\u5F53\u524D\u4E16\u754C\u9884\u8BBE<select class="pm-today-trend-input" name="presetId">${options2}</select></label><div class="pm-today-trend-form-actions"><button type="button" data-action="today-trend-new-preset">\u65B0\u5EFA\u9884\u8BBE</button><button type="button" data-action="today-trend-reinitialize">\u91CD\u65B0\u521D\u59CB\u5316</button><button type="button" data-action="today-trend-delete-preset">\u5220\u9664\u6240\u9009\u9884\u8BBE</button></div>${trendToggleField("enabled", "\u5F00\u59CB\u8FD0\u4F5C", operation.enabled)}<label class="pm-today-trend-field">\u8C03\u7528\u65B9\u5F0F<select class="pm-today-trend-input" name="mode"><option value="manual" ${operation.mode === "manual" ? "selected" : ""}>\u624B\u52A8</option><option value="auto" ${operation.mode === "auto" ? "selected" : ""}>\u81EA\u52A8</option></select></label><label class="pm-today-trend-field">\u81EA\u52A8\u8C03\u7528\uFF1A\u6BCF N \u697C\u6267\u884C\u4E00\u6B21<input class="pm-today-trend-input" name="intervalFloors" type="number" min="1" max="1000" required value="${escapeAttr(String(operation.intervalFloors || 1))}"></label>${trendToggleField("injectionEnabled", "\u6B63\u6587\u6CE8\u5165", scope.injection?.enabled)}<p>\u505C\u6B62\u8FD0\u4F5C\u4E0D\u4F1A\u5173\u95ED\u72EC\u7ACB\u7684\u6B63\u6587\u6CE8\u5165\u3002</p><div class="pm-today-trend-form-actions"><button type="submit">\u4FDD\u5B58\u8BBE\u7F6E</button></div></form><section class="pm-today-trend-rule"><h3>\u6A21\u5757 Prompt \u603B\u89C8</h3>${rules}</section><p class="pm-today-trend-setting-note">\u5F00\u59CB\u8FD0\u4F5C\u53EA\u4ECE\u540E\u7EED\u65B0\u6B63\u6587\u8BA1\u697C\u3002</p></section>`;
+    return `<section class="pm-today-trend-settings">${trendModuleHead({ title: "APP \u603B\u8BBE\u7F6E", menuId: "app-settings", menuOpenId, actions: [{ action: "today-trend-close-settings", icon: BACK_ICON_SVG, label: "\u8FD4\u56DE\u4ECA\u65E5\u98CE\u5411" }] })}<form class="pm-today-trend-editor" data-today-trend-form="app-settings"><label class="pm-today-trend-field">\u5F53\u524D\u4E16\u754C\u9884\u8BBE<select class="pm-today-trend-input" name="presetId">${options2}</select></label><div class="pm-today-trend-form-actions pm-today-trend-preset-actions"><button type="button" data-action="today-trend-new-preset">\u65B0\u5EFA</button><button type="button" data-action="today-trend-delete-preset">\u5220\u9664</button><button type="button" data-action="today-trend-reinitialize">\u91CD\u5EFA</button><button type="button" data-action="today-trend-rename-preset">\u91CD\u547D\u540D</button></div><label class="pm-today-trend-field">\u8C03\u7528\u65B9\u5F0F<select class="pm-today-trend-input" name="mode"><option value="manual" ${scope.operation?.mode === "manual" ? "selected" : ""}>\u624B\u52A8</option><option value="auto" ${scope.operation?.mode === "auto" ? "selected" : ""}>\u81EA\u52A8</option></select></label><label class="pm-today-trend-field">\u81EA\u52A8\u8C03\u7528\uFF1A\u6BCF N \u697C\u6267\u884C\u4E00\u6B21<input class="pm-today-trend-input" name="intervalFloors" type="number" min="1" max="1000" required value="${escapeAttr(String(scope.operation?.intervalFloors || 1))}"></label><label class="pm-today-trend-switch pm-today-trend-injection-switch"><span><b>\u6B63\u6587\u6CE8\u5165</b><small>\u5F00\u542F\u540E\uFF0C\u89D2\u8272\u56DE\u590D\u65F6\u4F1A\u53C2\u8003\u5F53\u524D\u4F1A\u8BDD\u4E2D\u7684\u4ECA\u65E5\u98CE\u5411\u3002</small></span><input name="injectionEnabled" type="checkbox" role="switch" aria-checked="${scope.injection?.enabled === true}"${scope.injection?.enabled ? " checked" : ""}><i aria-hidden="true"></i></label><div class="pm-today-trend-form-actions pm-today-trend-settings-save"><button type="submit">\u4FDD\u5B58\u8BBE\u7F6E</button></div></form><section class="pm-today-trend-rule"><h3>\u6A21\u5757 Prompt \u603B\u89C8</h3>${rules}</section></section>`;
   }
 
   // src/today-trend-world-view.js
@@ -21231,6 +21245,13 @@ ${targetInstruction}`
       if (button.dataset.action === "today-trend-toggle-operation") saveOperation(!lastScope?.operation?.enabled).then(() => rerender()).catch(report);
       if (button.dataset.action === "today-trend-new-preset") openInitialization();
       if (button.dataset.action === "today-trend-reinitialize") openInitialization({ replace: true });
+      if (button.dataset.action === "today-trend-rename-preset") {
+        const presetId = button.closest?.("form")?.querySelector?.('[name="presetId"]')?.value;
+        const preset = lastPresets.find((item) => item.id === presetId);
+        const name = globalThis.prompt?.("\u91CD\u547D\u540D\u4E16\u754C\u9884\u8BBE", preset?.name || "");
+        if (name === null || name === void 0 || !String(name).trim()) return;
+        Promise.resolve(deps.renameTodayTrendPreset?.(presetId, name)).then(() => rerender()).catch(report);
+      }
       if (button.dataset.action === "today-trend-cancel-initialize") {
         initAbort?.abort("today-trend-initialization-canceled");
         deps.cancelTodayTrendInitialization?.("today-trend-initialization-canceled");
@@ -21282,14 +21303,14 @@ ${targetInstruction}`
       if (form.dataset.todayTrendForm === "app-settings") {
         event.preventDefault();
         const id2 = deps.getStorageId();
-        const enabled = data.get("enabled") === "on", presetId = String(data.get("presetId") || "");
+        const presetId = String(data.get("presetId") || "");
         if (typeof deps.saveTodayTrendSettings !== "function") return report(new Error("\u4ECA\u65E5\u98CE\u5411\u8BBE\u7F6E\u4FDD\u5B58\u80FD\u529B\u4E0D\u53EF\u7528"));
         store().then((current) => {
           const currentScope = current?.scopes?.[id2];
           if (presetId && presetId !== currentScope?.presetId) {
             if (!globalThis.confirm?.("\u5207\u6362\u4E16\u754C\u9884\u8BBE\u4F1A\u6E05\u7A7A\u5F53\u524D\u89D2\u8272\u7684\u4ECA\u65E5\u98CE\u5411\u8D44\u6599\u3002\u786E\u5B9A\u7EE7\u7EED\u5417\uFF1F")) return false;
           }
-          return deps.saveTodayTrendSettings({ presetId, operation: { enabled, mode: data.get("mode"), intervalFloors: Number(data.get("intervalFloors")) }, injection: { enabled: data.get("injectionEnabled") === "on" } });
+          return deps.saveTodayTrendSettings({ presetId, operation: { ...currentScope?.operation, mode: data.get("mode"), intervalFloors: Number(data.get("intervalFloors")) }, injection: { enabled: data.get("injectionEnabled") === "on" } });
         }).then((committed) => {
           if (!committed) return;
           settings = false;

@@ -173,6 +173,20 @@ export function installTodayTrend(_state, deps = {}) {
         if (operation?.enabled) scheduler.arm(identity.storageId); else scheduler.cancel('today-trend-stopped');
         return committed;
     };
+    const renamePreset = async (presetId, name) => {
+        const selected = String(presetId || '').trim(), nextName = String(name || '').trim();
+        if (!nextName) throw new Error('世界预设名称不能为空');
+        const committed = await committer.commitStore(store => {
+            const preset = store.presets[selected];
+            if (!preset) throw new Error('选择的世界预设不存在');
+            preset.name = nextName;
+            preset.updatedAt = Date.now();
+            preset.revision += 1;
+            return store;
+        });
+        if (!committed) throw new Error('世界预设重命名已取消');
+        return committed;
+    };
     const deletePreset = async presetId => {
         const selected = String(presetId || '').trim();
         const committed = await committer.commitStore(store => {
@@ -201,6 +215,7 @@ export function installTodayTrend(_state, deps = {}) {
         saveTodayTrendRule: saveRule,
         bindTodayTrendPreset: bindPreset,
         saveTodayTrendSettings: saveSettings,
+        renameTodayTrendPreset: renamePreset,
         deleteTodayTrendPreset: deletePreset,
         commitTodayTrendScope: (storageId, mutate, task, options) => committer.commitScope(storageId, mutate, task, options),
         commitTodayTrendStore: (mutate, task, options) => committer.commitStore(mutate, task, options),
