@@ -22,7 +22,7 @@ export const COMMUNITY_ICON_SVG = icon('<path d="M4 19V8l8-4 8 4v11"/><path d="M
 export const FEED_ICON_SVG = icon('<path d="M5 5h14v14H5z"/><path d="M8 9h8M8 12h8M8 15h5"/>');
 export const LIVE_ICON_SVG = icon('<rect x="3" y="6" width="14" height="12" rx="2"/><path d="M17 10l4-2v8l-4-2z"/><circle cx="8" cy="12" r="1" fill="currentColor" stroke="none"/>');
 export const PLAY_ICON_SVG = icon('<path d="M8 5l11 7-11 7z"/>');
-export const STOP_ICON_SVG = icon('<rect x="7" y="7" width="10" height="10" rx="1"/>');
+export const PAUSE_ICON_SVG = icon('<path d="M9 5v14M15 5v14"/>');
 
 export const CALENDAR_ICON_SVG = icon('<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18M8 14h.01M12 14h.01M16 14h.01M8 18h.01M12 18h.01"/>');
 export const LOCATION_ICON_SVG = icon('<path d="M20 10c0 5-8 11-8 11S4 15 4 10a8 8 0 1 1 16 0z"/><circle cx="12" cy="10" r="2.5"/>');

@@ -38,6 +38,10 @@ export function installTodayTrendPhoneUi(state, deps = {}) {
         phoneWindow.addEventListener('click', event => {
             const trigger = event.target.closest?.('[data-today-trend-ui-action]');
             if (!trigger || !phoneWindow.contains(trigger)) return;
+            if (trigger.dataset.todayTrendUiAction === 'close') {
+                window.__pmEnd?.();
+                return;
+            }
             if (trigger.dataset.todayTrendUiAction === 'home') {
                 deps.showPhoneDesktopPage?.().catch?.(error => console.error('[phone-mode] 返回桌面失败', error));
             }
