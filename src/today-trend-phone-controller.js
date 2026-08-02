@@ -77,6 +77,7 @@ export function createTodayTrendPhoneController({ state, deps, container }) {
         if (!button || !container.contains(button) || button.disabled) return;
         if (button.dataset.action === 'today-trend-open-settings') { settings = true; rerender(); }
         if (button.dataset.action === 'today-trend-close-settings') { settings = false; rerender(); }
+        if (['today-trend-open-world', 'today-trend-open-reputation', 'today-trend-open-factions', 'today-trend-open-dynamics'].includes(button.dataset.action)) settings = false;
         if (button.dataset.action === 'today-trend-toggle-operation') saveOperation(!lastScope?.operation?.enabled).then(() => rerender()).catch(report);
         if (button.dataset.action === 'today-trend-new-preset') openInitialization();
         if (button.dataset.action === 'today-trend-reinitialize') openInitialization({ replace: true });
