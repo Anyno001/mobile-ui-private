@@ -54,8 +54,8 @@ export const SHARE_ICON_SVG = icon('<circle cx="18" cy="5" r="3"/><circle cx="6"
 export const REPLY_ICON_SVG = icon('<path d="M9 17l-5-5 5-5"/><path d="M4 12h9a7 7 0 0 1 7 7"/>');
 export const TREND_ICON_SVG = icon('<path d="M4 17l5-5 4 3 7-8"/><path d="M15 7h5v5"/>');
 export const TODAY_TREND_WORLD_ICON_SVG = icon('<circle cx="12" cy="12" r="8"/><path d="M4 12h16M12 4c2.2 2.2 3.3 4.9 3.3 8s-1.1 5.8-3.3 8c-2.2-2.2-3.3-4.9-3.3-8S9.8 6.2 12 4z"/>');
-export const TODAY_TREND_REPUTATION_ICON_SVG = icon('<path d="M4 5h16v12H9l-5 3V5z"/><path d="M8 12c0-2 1-3 3-3v3H8zm6 0c0-2 1-3 3-3v3h-3z"/>');
-export const TODAY_TREND_FACTION_ICON_SVG = icon('<path d="M5 21V4"/><path d="M5 5h12l-2.5 3L17 11H5"/>');
+export const TODAY_TREND_REPUTATION_ICON_SVG = icon('<path d="M9 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM3 20c0-4 2.5-6 6-6s6 2 6 6"/><path d="M16 5a3 3 0 0 1 0 6M17 14c2.5.5 4 2.5 4 6"/>');
+export const TODAY_TREND_FACTION_ICON_SVG = icon('<rect x="9" y="3" width="6" height="5" rx="1"/><rect x="3" y="16" width="6" height="5" rx="1"/><rect x="15" y="16" width="6" height="5" rx="1"/><path d="M12 8v4M6 16v-4h12v4"/>');
 export const TODAY_TREND_DYNAMICS_ICON_SVG = icon('<path d="M4 16h3l2.5-7 4 10 2.5-6H20"/><path d="M4 5h16"/>');
 
 export const REFRESH_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="display:block;transform-origin:center center;"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>';
