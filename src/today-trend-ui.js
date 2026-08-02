@@ -11,8 +11,8 @@ export function trendActionMenu({ id, open = false, label, actions = [] }) {
     return `<span class="pm-today-trend-menu-wrap">${trigger}${open ? `<span class="pm-today-trend-menu" role="menu" aria-label="${escapeAttr(label)}">${items}</span>` : ''}</span>`;
 }
 
-export function trendModuleHead({ title, menuId, menuOpenId, actions = [], meta = '' }) {
-    return `<header class="pm-today-trend-module-head"><div><h2>${escapeHtml(title)}</h2>${meta ? `<span>${escapeHtml(meta)}</span>` : ''}</div>${trendActionMenu({ id: menuId, open: menuOpenId === menuId, label: `${title}操作`, actions })}</header>`;
+export function trendModuleHead({ title, menuId, menuOpenId, actions = [], meta = '', adornment = '' }) {
+    return `<header class="pm-today-trend-module-head"><div><h2>${escapeHtml(title)}</h2>${meta ? `<span>${escapeHtml(meta)}</span>` : ''}${adornment}</div>${trendActionMenu({ id: menuId, open: menuOpenId === menuId, label: `${title}操作`, actions })}</header>`;
 }
 
 export function trendToggleField(name, label, checked) {
