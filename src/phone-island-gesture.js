@@ -15,7 +15,7 @@ export function bindIsland(el, handle, {
     };
     const onStart = e => {
         if (e.target.tagName === 'BUTTON') return;
-        secondTap = el.classList.contains('is-min') && tapTimer !== null;
+        secondTap = tapTimer !== null;
         if (secondTap) {
             clearTimer(tapTimer);
             tapTimer = null;
@@ -56,15 +56,18 @@ export function bindIsland(el, handle, {
         isDragging = false;
         el.style.transition = '.35s cubic-bezier(.18,.89,.32,1.2)';
         if (moved) return;
-        if (!el.classList.contains('is-min')) return window.__pmToggleMin();
         if (secondTap) {
             secondTap = false;
             window.__pmEnd();
             return;
         }
+        const wasMinimized = el.classList.contains('is-min');
         tapTimer = setTimer(() => {
             tapTimer = null;
-            if (active && el.classList.contains('is-min')) window.__pmToggleMin();
+            if (!active) return;
+            if (wasMinimized ? el.classList.contains('is-min') : !el.classList.contains('is-min')) {
+                window.__pmToggleMin();
+            }
         }, doubleTapDelay);
     };
     handle.addEventListener('mousedown', onStart);

@@ -3188,8 +3188,8 @@ ${userPrompt}` : userPrompt;
   var TREND_ICON_SVG = icon('<path d="M4 17l5-5 4 3 7-8"/><path d="M15 7h5v5"/>');
   var TODAY_TREND_WORLD_ICON_SVG = icon('<circle cx="12" cy="12" r="8"/><path d="M4 12h16M12 4c2.2 2.2 3.3 4.9 3.3 8s-1.1 5.8-3.3 8c-2.2-2.2-3.3-4.9-3.3-8S9.8 6.2 12 4z"/>');
   var TODAY_TREND_REPUTATION_ICON_SVG = icon('<path d="M9 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM3 20c0-4 2.5-6 6-6s6 2 6 6"/><path d="M16 5a3 3 0 0 1 0 6M17 14c2.5.5 4 2.5 4 6"/>');
-  var TODAY_TREND_FACTION_ICON_SVG = icon('<circle cx="12" cy="5" r="2.5"/><circle cx="5.5" cy="18" r="2.5"/><circle cx="18.5" cy="18" r="2.5"/><path d="m10.8 7.2-4 8M13.2 7.2l4 8"/>');
-  var TODAY_TREND_DYNAMICS_ICON_SVG = icon('<path d="M3 13h4l2.5-8 4.5 15 3-9H21"/>');
+  var TODAY_TREND_FACTION_ICON_SVG = icon('<path d="M10.85 6.99 6.65 14.27M13.15 6.99l4.2 7.28M7.8 16.26h8.4"/><circle cx="12" cy="5" r="2.3"/><circle cx="5.5" cy="16.26" r="2.3"/><circle cx="18.5" cy="16.26" r="2.3"/>');
+  var TODAY_TREND_DYNAMICS_ICON_SVG = icon('<circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/>');
   var REFRESH_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="display:block;transform-origin:center center;"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>';
 
   // src/ui.js
@@ -14082,8 +14082,25 @@ ${antiFluff}`;
     </label>` : ""}</fieldset>`;
   }
   function installPhoneContextInjection(state, deps) {
-    const { getStorageId: getStorageId2, makeOverlay, applyBidirectionalInjection } = deps;
+    const {
+      getStorageId: getStorageId2,
+      makeOverlay,
+      applyBidirectionalInjection,
+      clearBidirectionalInjection
+    } = deps;
     let injectionToggleQueue = Promise.resolve();
+    let injectionSettingsBusy = false;
+    const setInjectionSettingsBusy = (busy, action) => {
+      const clearButton = document.getElementById("pm-conversation-injection-clear");
+      const saveButton = document.getElementById("pm-conversation-injection-save");
+      for (const button of [clearButton, saveButton]) {
+        if (!button) continue;
+        button.disabled = busy;
+        button.setAttribute("aria-busy", String(busy));
+      }
+      if (clearButton) clearButton.textContent = busy && action === "clear" ? "\u6E05\u9664\u4E2D\u2026" : "\u6E05\u9664\u6CE8\u5165";
+      if (saveButton) saveButton.textContent = busy && action === "save" ? "\u4FDD\u5B58\u5E76\u5E94\u7528\u4E2D\u2026" : "\u4FDD\u5B58\u5E76\u5E94\u7528";
+    };
     const currentTarget = () => resolveConversationTarget(state, getStorageId2);
     const isEnabled = (target) => Boolean(target && (window.__pmBidirectional[target.storageId] || []).includes(target.targetKey));
     const explicitTarget = (storageId, targetKey, isGroup = false, { requireExisting = false } = {}) => {
@@ -14172,17 +14189,31 @@ ${antiFluff}`;
         ${promptPlacementFields("calendar", "\u65E5\u5386\u4E0E\u83DC\u8C31", config.calendar)}
         ${promptPlacementFields("today-trend", "\u4ECA\u65E5\u98CE\u5411", config.todayTrend)}
       </div>
-      <div class="pm-modal-add pm-conversation-injection-actions"><button id="pm-conversation-injection-save" type="button" class="pm-action-button is-accent" onclick="window.__pmSaveConversationInjection()">\u4FDD\u5B58\u5E76\u5E94\u7528</button></div>
+      <div class="pm-modal-add pm-conversation-injection-actions"><button id="pm-conversation-injection-clear" type="button" class="pm-action-button is-secondary" onclick="window.__pmClearConversationInjection()">\u6E05\u9664\u6CE8\u5165</button><button id="pm-conversation-injection-save" type="button" class="pm-action-button is-accent" onclick="window.__pmSaveConversationInjection()">\u4FDD\u5B58\u5E76\u5E94\u7528</button></div>
     </div>`);
       return true;
     };
-    window.__pmSaveConversationInjection = async () => {
-      const saveButton = document.getElementById("pm-conversation-injection-save");
-      if (saveButton?.disabled) return false;
-      if (saveButton) {
-        saveButton.disabled = true;
-        saveButton.textContent = "\u4FDD\u5B58\u5E76\u5E94\u7528\u4E2D\u2026";
+    window.__pmClearConversationInjection = async () => {
+      if (injectionSettingsBusy) return false;
+      injectionSettingsBusy = true;
+      setInjectionSettingsBusy(true, "clear");
+      try {
+        const error = injectionFailure2(await clearBidirectionalInjection(), "\u6E05\u9664");
+        if (error) throw error;
+        window.__pmShowConversationInjection("\u5DF2\u6E05\u9664\u5F53\u524D\u6B63\u6587\u6CE8\u5165\uFF1B\u4FDD\u5B58\u5E76\u5E94\u7528\u53EF\u6062\u590D\u3002");
+        return true;
+      } catch (error) {
+        alert(error.message || "\u5F53\u524D\u6B63\u6587\u6CE8\u5165\u6E05\u9664\u5931\u8D25");
+        return false;
+      } finally {
+        injectionSettingsBusy = false;
+        setInjectionSettingsBusy(false);
       }
+    };
+    window.__pmSaveConversationInjection = async () => {
+      if (injectionSettingsBusy) return false;
+      injectionSettingsBusy = true;
+      setInjectionSettingsBusy(true, "save");
       const snapshot = clone6(window.__pmInjectionConfig);
       window.__pmInjectionConfig = normalizeInjectionConfig({
         ...snapshot,
@@ -14224,10 +14255,8 @@ ${antiFluff}`;
         alert(error.message || "\u7EDF\u4E00\u6CE8\u5165\u89C4\u5219\u4FDD\u5B58\u5931\u8D25");
         return false;
       } finally {
-        if (saveButton?.isConnected) {
-          saveButton.disabled = false;
-          saveButton.textContent = "\u4FDD\u5B58\u5E76\u5E94\u7528";
-        }
+        injectionSettingsBusy = false;
+        setInjectionSettingsBusy(false);
       }
     };
   }
@@ -15884,7 +15913,7 @@ ${lines}`;
     };
     const onStart = (e) => {
       if (e.target.tagName === "BUTTON") return;
-      secondTap = el.classList.contains("is-min") && tapTimer !== null;
+      secondTap = tapTimer !== null;
       if (secondTap) {
         clearTimer(tapTimer);
         tapTimer = null;
@@ -15925,15 +15954,18 @@ ${lines}`;
       isDragging = false;
       el.style.transition = ".35s cubic-bezier(.18,.89,.32,1.2)";
       if (moved) return;
-      if (!el.classList.contains("is-min")) return window.__pmToggleMin();
       if (secondTap) {
         secondTap = false;
         window.__pmEnd();
         return;
       }
+      const wasMinimized = el.classList.contains("is-min");
       tapTimer = setTimer(() => {
         tapTimer = null;
-        if (active && el.classList.contains("is-min")) window.__pmToggleMin();
+        if (!active) return;
+        if (wasMinimized ? el.classList.contains("is-min") : !el.classList.contains("is-min")) {
+          window.__pmToggleMin();
+        }
       }, doubleTapDelay);
     };
     handle.addEventListener("mousedown", onStart);
@@ -21127,7 +21159,7 @@ ${targetInstruction}`
   function renderTodayTrendApp({ scope = null, presets = [], worldBooks = [], view = { name: "world", mode: "content" }, generation = {}, error = null, initializing = false, initializationDraft, initializationOpen = false, reinitializing = false } = {}) {
     const busy = ["queued", "generating", "parsing", "committing"].includes(generation.phase);
     const content = !scope || initializationOpen ? renderFirstUse({ presets, worldBooks, error, initializing, draft: initializationDraft, reinitializing }) : view.name === "settings" ? `<main class="pm-today-trend-content">${renderTodayTrendSettingsView({ scope, presets, generationBusy: busy, menuOpenId: view.menuOpenId })}</main>` : `<main class="pm-today-trend-content">${moduleView(view, { scope, mode: view.mode, editingWorldItemId: view.editingWorldItemId, editingCircleId: view.editingCircleId, editingFactionId: view.editingFactionId, editingEventId: view.editingEventId, menuOpenId: view.menuOpenId, generationAvailable: !busy, generationBusy: busy })}</main>`;
-    const navigation = scope && !initializationOpen ? `<nav class="pm-today-trend-tabs" aria-label="\u4ECA\u65E5\u98CE\u5411\u6A21\u5757">${[["world", "\u4E16\u754C\u6001\u52BF", TODAY_TREND_WORLD_ICON_SVG], ["reputation", "\u4E2A\u4EBA\u98CE\u8BC4", TODAY_TREND_REPUTATION_ICON_SVG], ["faction", "\u76F8\u5173\u52BF\u529B", TODAY_TREND_FACTION_ICON_SVG], ["dynamics", "\u76F8\u5173\u52A8\u6001", TODAY_TREND_DYNAMICS_ICON_SVG]].map(([name, label, icon3]) => `<button type="button" data-action="today-trend-open-${name === "faction" ? "factions" : name}" aria-label="${label}" aria-pressed="${view.name === name}">${icon3}</button>`).join("")}<button type="button" data-action="today-trend-open-settings" aria-label="APP \u603B\u8BBE\u7F6E" aria-pressed="${view.name === "settings"}">${SETTINGS_ICON_SVG}</button></nav>` : "";
+    const navigation = scope && !initializationOpen ? `<nav class="pm-today-trend-tabs${view.name === "world" ? " is-world" : ""}" aria-label="\u4ECA\u65E5\u98CE\u5411\u6A21\u5757">${[["world", "\u4E16\u754C\u6001\u52BF", TODAY_TREND_WORLD_ICON_SVG], ["reputation", "\u4E2A\u4EBA\u98CE\u8BC4", TODAY_TREND_REPUTATION_ICON_SVG], ["faction", "\u76F8\u5173\u52BF\u529B", TODAY_TREND_FACTION_ICON_SVG], ["dynamics", "\u76F8\u5173\u52A8\u6001", TODAY_TREND_DYNAMICS_ICON_SVG]].map(([name, label, icon3]) => `<button type="button" data-action="today-trend-open-${name === "faction" ? "factions" : name}" aria-label="${label}" aria-pressed="${view.name === name}">${icon3}</button>`).join("")}<button type="button" data-action="today-trend-open-settings" aria-label="APP \u603B\u8BBE\u7F6E" aria-pressed="${view.name === "settings"}">${MORE_ICON_SVG}</button></nav>` : "";
     return `<section id="pm-today-trend-app" class="pm-today-trend-shell" aria-labelledby="pm-today-trend-title"><header class="pm-today-trend-header"><button type="button" class="pm-today-trend-home" data-today-trend-ui-action="home" aria-label="\u8FD4\u56DE\u684C\u9762" title="\u8FD4\u56DE\u684C\u9762">${HOME_ICON_SVG}</button><h2 id="pm-today-trend-title">\u4ECA\u65E5\u98CE\u5411</h2><span class="pm-today-trend-header-actions"><button type="button" class="pm-today-trend-header-control" data-action="today-trend-toggle-operation" ${!scope || busy ? "disabled" : ""} aria-pressed="${scope?.operation?.enabled === true}" aria-label="${scope?.operation?.enabled ? "\u6682\u505C\u8FD0\u4F5C" : "\u5F00\u59CB\u8FD0\u4F5C"}">${scope?.operation?.enabled ? PAUSE_ICON_SVG : PLAY_ICON_SVG}</button><button type="button" class="pm-today-trend-close" data-today-trend-ui-action="close" aria-label="\u5173\u95ED\u624B\u673A" title="\u5173\u95ED\u624B\u673A">${CLOSE_ICON_SVG}</button></span></header>${content}${navigation}</section>`;
   }
 

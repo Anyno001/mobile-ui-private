@@ -73,8 +73,23 @@ function promptPlacementFields(prefix, label, config, { includeHistoryLimit = fa
 }
 
 export function installPhoneContextInjection(state, deps) {
-    const { getStorageId, makeOverlay, applyBidirectionalInjection } = deps;
+    const {
+        getStorageId, makeOverlay, applyBidirectionalInjection, clearBidirectionalInjection,
+    } = deps;
     let injectionToggleQueue = Promise.resolve();
+    let injectionSettingsBusy = false;
+
+    const setInjectionSettingsBusy = (busy, action) => {
+        const clearButton = document.getElementById('pm-conversation-injection-clear');
+        const saveButton = document.getElementById('pm-conversation-injection-save');
+        for (const button of [clearButton, saveButton]) {
+            if (!button) continue;
+            button.disabled = busy;
+            button.setAttribute('aria-busy', String(busy));
+        }
+        if (clearButton) clearButton.textContent = busy && action === 'clear' ? '清除中…' : '清除注入';
+        if (saveButton) saveButton.textContent = busy && action === 'save' ? '保存并应用中…' : '保存并应用';
+    };
 
     const currentTarget = () => resolveConversationTarget(state, getStorageId);
 
@@ -172,18 +187,33 @@ export function installPhoneContextInjection(state, deps) {
         ${promptPlacementFields('calendar', '日历与菜谱', config.calendar)}
         ${promptPlacementFields('today-trend', '今日风向', config.todayTrend)}
       </div>
-      <div class="pm-modal-add pm-conversation-injection-actions"><button id="pm-conversation-injection-save" type="button" class="pm-action-button is-accent" onclick="window.__pmSaveConversationInjection()">保存并应用</button></div>
+      <div class="pm-modal-add pm-conversation-injection-actions"><button id="pm-conversation-injection-clear" type="button" class="pm-action-button is-secondary" onclick="window.__pmClearConversationInjection()">清除注入</button><button id="pm-conversation-injection-save" type="button" class="pm-action-button is-accent" onclick="window.__pmSaveConversationInjection()">保存并应用</button></div>
     </div>`);
         return true;
     };
 
-    window.__pmSaveConversationInjection = async () => {
-        const saveButton = document.getElementById('pm-conversation-injection-save');
-        if (saveButton?.disabled) return false;
-        if (saveButton) {
-            saveButton.disabled = true;
-            saveButton.textContent = '保存并应用中…';
+    window.__pmClearConversationInjection = async () => {
+        if (injectionSettingsBusy) return false;
+        injectionSettingsBusy = true;
+        setInjectionSettingsBusy(true, 'clear');
+        try {
+            const error = injectionFailure(await clearBidirectionalInjection(), '清除');
+            if (error) throw error;
+            window.__pmShowConversationInjection('已清除当前正文注入；保存并应用可恢复。');
+            return true;
+        } catch (error) {
+            alert(error.message || '当前正文注入清除失败');
+            return false;
+        } finally {
+            injectionSettingsBusy = false;
+            setInjectionSettingsBusy(false);
         }
+    };
+
+    window.__pmSaveConversationInjection = async () => {
+        if (injectionSettingsBusy) return false;
+        injectionSettingsBusy = true;
+        setInjectionSettingsBusy(true, 'save');
         const snapshot = clone(window.__pmInjectionConfig);
         window.__pmInjectionConfig = normalizeInjectionConfig({
             ...snapshot,
@@ -223,10 +253,8 @@ export function installPhoneContextInjection(state, deps) {
             alert(error.message || '统一注入规则保存失败');
             return false;
         } finally {
-            if (saveButton?.isConnected) {
-                saveButton.disabled = false;
-                saveButton.textContent = '保存并应用';
-            }
+            injectionSettingsBusy = false;
+            setInjectionSettingsBusy(false);
         }
     };
 }

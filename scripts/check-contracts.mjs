@@ -1037,7 +1037,8 @@ const PHONE_ENTRY_OWNERS = {
   ],
   'phone-context-injection.js': [
     '__pmConversationInjectionSummary', '__pmCurrentConversationInjectionEnabled',
-    '__pmToggleCurrentConversationInjection', '__pmShowConversationInjection', '__pmSaveConversationInjection',
+    '__pmToggleCurrentConversationInjection', '__pmShowConversationInjection', '__pmClearConversationInjection',
+    '__pmSaveConversationInjection',
   ],
   'contact-generator.js': ['__pmConfirmAutoGen', '__pmAutoGenContacts'],
   'conversation.js': ['__pmSwitchContact', '__pmSwitch'],
@@ -1267,7 +1268,8 @@ for (const expected of [
 requireText('phone-chat-poke.js', sourceModuleByName.get('phone-chat-poke.js')?.code || '',
   'window.__pmShowGroupRandomNpcSettings?.({ returnToControlCenter: !returnToGroupSettings })');
 for (const expected of [
-  'commitConversationInjectionUpdate', '__pmShowConversationInjection', '__pmSaveConversationInjection',
+  'commitConversationInjectionUpdate', '__pmShowConversationInjection', '__pmClearConversationInjection',
+  '__pmSaveConversationInjection', 'clearBidirectionalInjection', 'injectionSettingsBusy',
   '__pmConversationInjectionSummary', '__pmToggleCurrentConversationInjection',
   '__pmConversationInjectionEnabled', '__pmToggleConversationInjection', 'explicitTarget', 'toggleTargetInjection',
   'enqueueToggle', 'injectionToggleQueue', '{ requireExisting: true }',
@@ -2122,7 +2124,7 @@ for (const expected of [
   '--pm-size-icon-sm:14px', '--pm-size-icon-md:18px', '--pm-size-icon-lg:24px', '--pm-z-base:0',
   '.pm-today-trend-page{overflow:hidden;background:var(--pm-color-surface-page)}',
   '.pm-today-trend-header{position:sticky;top:0;z-index:var(--pm-z-base)',
-  '.pm-today-trend-header button svg{width:var(--pm-size-icon-md);height:var(--pm-size-icon-md)}',
+  '.pm-today-trend-header button svg,.pm-today-trend-icon-button svg{width:var(--pm-size-icon-md);height:var(--pm-size-icon-md)',
 ]) requireText('style.css', css, expected);
 if (css.includes('--pm-letter-spacing-wide')) {
   failures.push('style.css: today-trend must not consume an unregistered letter-spacing token');
@@ -2552,6 +2554,14 @@ for (const [label, marker] of [
 ]) requireText(`phone-directory.js: ${label}`, buttonContaining(`phone-directory.js: ${label}`, directorySaveCode, marker), 'class="pm-action-button is-accent"');
 const injectionSaveCode = sourceModuleByName.get('phone-context-injection.js')?.code || '';
 requireText('phone-context-injection.js: save injection', buttonContaining('phone-context-injection.js: save injection', injectionSaveCode, 'window.__pmSaveConversationInjection()'), 'class="pm-action-button is-accent"');
+const injectionClearButton = buttonContaining('phone-context-injection.js: clear injection', injectionSaveCode, 'window.__pmClearConversationInjection()');
+requireText('phone-context-injection.js: clear injection stays secondary', injectionClearButton, 'class="pm-action-button is-secondary"');
+if (/\bis-(?:accent|danger)\b/.test(injectionClearButton)) {
+  failures.push('phone-context-injection.js: clear injection must remain a reversible secondary action');
+}
+if (injectionSaveCode.indexOf('window.__pmClearConversationInjection()') > injectionSaveCode.indexOf('window.__pmSaveConversationInjection()')) {
+  failures.push('phone-context-injection.js: clear injection button must precede save and apply');
+}
 requireCssDeclarations(cssRules, '.pm-contact-settings-save', { background: 'var(--pm-color-accent)!important', color: 'var(--pm-color-on-dark)!important', 'border-color': 'var(--pm-color-accent)!important' });
 requireText('phone-chat-poke.js: save character settings uses dedicated save action', phoneChatPokeCode, 'class="pm-contact-settings-save" onclick="window.__pmSaveContactConfig');
 for (const [label, marker] of [

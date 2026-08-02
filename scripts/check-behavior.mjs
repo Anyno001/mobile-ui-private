@@ -2846,7 +2846,10 @@ const successfulMinimizeWrites = localStorageControl.setCalls.get('ST_SMS_THEME'
 islandHandleListeners.get('mousedown')(makeIslandEvent(10, 10));
 islandWindowListeners.get('mousemove')(makeIslandEvent(14, 14));
 islandWindowListeners.get('mouseup')();
-assert.equal(foundationState.isMinimized, true, '不足 5px 的移动必须走真实点击收缩生命周期');
+assert.equal(foundationState.isMinimized, false, '展开态首次点击必须等待双击判定，不能提前最小化');
+assert.equal(islandTimers.size, 1, '展开态首次点击必须建立短暂的双击判定窗口');
+runIslandTimers();
+assert.equal(foundationState.isMinimized, true, '展开态单击判定结束后必须走真实点击收缩生命周期');
 assert.equal(foundationPhone.classList.contains('is-min'), true, '点击收缩必须同步 is-min class');
 assert.equal(window.__pmTheme.phoneScale, 1, '点击收缩必须通过真实生命周期复位 phoneScale');
 assert.equal(JSON.parse(localValues.get('ST_SMS_THEME')).phoneScale, 1, '点击收缩必须持久化默认比例');
@@ -2883,6 +2886,8 @@ localStorageControl.failSet.add('ST_SMS_THEME');
 const alertsBeforeFailedMinimize = uiAlerts.length;
 islandHandleListeners.get('mousedown')(makeIslandEvent(15, 10));
 islandWindowListeners.get('mouseup')();
+assert.equal(foundationState.isMinimized, false, '展开态首次点击在保存失败场景仍不得提前最小化');
+runIslandTimers();
 assert.equal(foundationState.isMinimized, true, '比例保存失败不得破坏最小化生命周期');
 assert.equal(foundationPhone.classList.contains('is-min'), true, '保存失败时 state 与 class 必须一致');
 assert.equal(window.__pmTheme.phoneScale, 1.35, '真实生命周期保存失败必须恢复原比例');
@@ -2906,12 +2911,26 @@ assert.equal(foundationState.isMinimized, true, '双击关闭不得先触发单�
 
 islandHandleListeners.get('mousedown')(makeIslandEvent(15, 10));
 islandWindowListeners.get('mouseup')();
+assert.equal(islandTimers.size, 1, '悬浮窗单击必须保留展开判定窗口');
+runIslandTimers();
+assert.equal(foundationState.isMinimized, false, '悬浮窗单击判定结束后必须展开手机');
+islandHandleListeners.get('mousedown')(makeIslandEvent(15, 10));
+islandWindowListeners.get('mouseup')();
+assert.equal(islandTimers.size, 1, '展开态首次点击必须保留关闭判定窗口');
+islandHandleListeners.get('mousedown')(makeIslandEvent(15, 10));
+islandWindowListeners.get('mouseup')();
+assert.equal(islandTimers.size, 0, '展开态第二次点击必须取消待执行的单击最小化');
+assert.equal(islandDoubleTapCloseCalls, 2, '展开态双击必须且只能调用一次手机关闭入口');
+assert.equal(foundationState.isMinimized, false, '展开态双击关闭不得先触发单击最小化');
+
+islandHandleListeners.get('mousedown')(makeIslandEvent(15, 10));
+islandWindowListeners.get('mouseup')();
 islandHandleListeners.get('mousedown')(makeIslandEvent(15, 10));
 islandWindowListeners.get('mousemove')(makeIslandEvent(20, 10));
 islandWindowListeners.get('mouseup')();
 assert.equal(islandTimers.size, 0, '第二次按下后拖拽必须取消待执行的单击展开');
-assert.equal(islandDoubleTapCloseCalls, 1, '第二次按下后拖拽不得误判为双击关闭');
-assert.equal(foundationState.isMinimized, true, '第二次按下后拖拽不得展开悬浮窗');
+assert.equal(islandDoubleTapCloseCalls, 2, '第二次按下后拖拽不得误判为双击关闭');
+assert.equal(foundationState.isMinimized, false, '展开态第二次按下后拖拽不得触发最小化');
 
 islandHandleListeners.get('touchstart')(makeIslandTouchEvent(20, 10));
 islandWindowListeners.get('touchend')();
@@ -2920,8 +2939,8 @@ islandHandleListeners.get('touchstart')(makeIslandTouchEvent(20, 10));
 islandWindowListeners.get('touchcancel')();
 islandWindowListeners.get('touchend')();
 assert.equal(islandTimers.size, 0, 'touchcancel 必须清理第二次触摸前取消的单击计时器');
-assert.equal(islandDoubleTapCloseCalls, 1, 'touchcancel 后的结束事件不得误触发双击关闭');
-assert.equal(foundationState.isMinimized, true, 'touchcancel 后的结束事件不得展开悬浮窗');
+assert.equal(islandDoubleTapCloseCalls, 2, 'touchcancel 后的结束事件不得误触发双击关闭');
+assert.equal(foundationState.isMinimized, false, 'touchcancel 后的结束事件不得触发最小化');
 
 islandHandleListeners.get('mousedown')(makeIslandEvent(20, 10));
 islandWindowListeners.get('mouseup')();
@@ -2930,8 +2949,8 @@ const pendingIslandCallback = [...islandTimers.values()][0];
 unbindIslandFixture();
 assert.equal(islandTimers.size, 0, '解绑必须取消待执行的单击展开计时器');
 pendingIslandCallback();
-assert.equal(foundationState.isMinimized, true, '即使旧计时器回调已被调度，解绑后也不得展开手机');
-assert.equal(islandDoubleTapCloseCalls, 1, '解绑后的旧计时器回调不得关闭手机');
+assert.equal(foundationState.isMinimized, false, '即使旧计时器回调已被调度，解绑后也不得触发最小化');
+assert.equal(islandDoubleTapCloseCalls, 2, '解绑后的旧计时器回调不得关闭手机');
 assert.equal(islandWindowListeners.has('mousemove'), false, '解绑必须移除灵动岛拖拽监听器');
 assert.equal(islandWindowListeners.has('touchcancel'), false, '解绑必须移除触摸取消监听器');
 assert.equal(islandWindowListeners.has('blur'), false, '解绑必须移除窗口失焦监听器');
@@ -7073,6 +7092,8 @@ const previousExplicitInjectionDocument = globalThis.document;
 try {
     const persistedBidirectional = [];
     const injectionResolvers = [];
+    const clearedInjectionResults = [];
+    const injectionOverlays = [];
     let injectionCall = 0;
     globalThis.localStorage = {
         setItem(key, value) {
@@ -7089,11 +7110,12 @@ try {
     globalThis.document = {
         visibilityState: 'visible',
         addEventListener() {},
+        getElementById() { return null; },
     };
     installPhoneContextInjection({
         activeStorageId: 'story', currentPersona: 'Alice', isGroupChat: false, currentGroupKey: '',
     }, {
-        getStorageId: () => 'story', makeOverlay: () => {},
+        getStorageId: () => 'story', makeOverlay: html => { injectionOverlays.push(html); },
         applyBidirectionalInjection: () => {
             injectionCall += 1;
             if (injectionCall === 1) {
@@ -7101,6 +7123,10 @@ try {
             }
             if (injectionCall === 2) return Promise.resolve({ written: 1, failedWrites: 0, failedKeys: [] });
             return Promise.resolve({ written: 1, failedWrites: 0, failedKeys: [] });
+        },
+        clearBidirectionalInjection: () => {
+            clearedInjectionResults.push(structuredClone(window.__pmInjectionConfig));
+            return { written: 0, failedWrites: 0, failedKeys: [] };
         },
     });
     const failedAliceToggle = window.__pmToggleConversationInjection('story', 'Alice', false);
@@ -7119,6 +7145,13 @@ try {
         '显式注入 API 必须拒绝不存在的联系人');
     assert.equal(await window.__pmToggleConversationInjection('story', 'Alice', true), false,
         '显式注入 API 必须拒绝伪造的群聊类型');
+    const injectionConfigBeforeClear = structuredClone(window.__pmInjectionConfig);
+    assert.equal(await window.__pmClearConversationInjection(), true);
+    assert.deepEqual(clearedInjectionResults, [injectionConfigBeforeClear],
+        '清除正文注入只能清理当前宿主提示词，不得改写已保存的注入规则');
+    assert.deepEqual(window.__pmInjectionConfig, injectionConfigBeforeClear);
+    assert.match(injectionOverlays.at(-1), /已清除当前正文注入；保存并应用可恢复。/,
+        '清除成功后必须明确提示保存可恢复原注入规则');
 
     const delegatedCalls = [];
     window.__pmToggleConversationInjection = (...args) => {
