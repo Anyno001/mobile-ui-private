@@ -125,6 +125,6 @@ export function createTodayTrendPhoneController({ state, deps, container }) {
             }).catch(report);
         }
     };
-    container.addEventListener('click', click); container.addEventListener('submit', submit);
-    return { destroy: () => { initAbort?.abort('today-trend-page-destroyed'); deps.cancelTodayTrendInitialization?.('today-trend-page-destroyed'); dispatcher.destroy(); container.removeEventListener('click', click); container.removeEventListener('submit', submit); }, render };
+    container.addEventListener('click', click, true); container.addEventListener('submit', submit);
+    return { destroy: () => { initAbort?.abort('today-trend-page-destroyed'); deps.cancelTodayTrendInitialization?.('today-trend-page-destroyed'); dispatcher.destroy(); container.removeEventListener('click', click, true); container.removeEventListener('submit', submit); }, render };
 }
