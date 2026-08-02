@@ -42,6 +42,12 @@ for (const variable of ['--pm-today-trend-report-gap', '--pm-today-trend-report-
     assert.match(todayTrendStyle, new RegExp(`${variable}:`), `今日风向重排必须声明 ${variable} 视觉变量`);
 }
 assert.match(todayTrendStyle, /@media\(max-width:320px\).*pm-today-trend-event-facts/s, '今日风向重排必须提供窄屏事实区适配');
+for (const selector of ['pm-today-trend-reputation-orbit', 'pm-today-trend-faction-constellation', 'pm-today-trend-dynamics-signal']) {
+    assert.match(todayTrendStyle, new RegExp(`\.${selector}[^}]*pointer-events:none`), `${selector} 背景装饰必须不拦截交互`);
+}
+assert.match(todayTrendStyle, /pm-today-trend-faction-card\[data-depth="0"\][^}]*border:2px solid color-mix/, '势力根节点必须改为空心主题节点，而非危险色实心点');
+assert.doesNotMatch(todayTrendStyle, /pm-today-trend-faction-card\[data-depth="0"\]>.pm-today-trend-faction-node\{background:var\(--pm-color-danger\)\}/, '势力根节点不得保留危险色实心点覆盖规则');
+assert.match(todayTrendStyle, /pm-today-trend-event-history\[open\][^}]*overflow:hidden/, '动态阶段记录展开态必须约束布局溢出');
 assert.ok(PHONE_UI_PAGES.includes('today-trend'), '手机页面白名单必须包含今日风向');
 const phoneUiDeps = { getStorageId: () => 'chat' };
 const phoneUi = installTodayTrendPhoneUi({}, phoneUiDeps);
@@ -61,15 +67,20 @@ const homeTrigger = {
     dataset: { todayTrendUiAction: 'home' },
     closest: selector => selector.includes('data-today-trend-ui-action') ? homeTrigger : null,
 };
+const closeTrigger = {
+    dataset: { todayTrendUiAction: 'close' },
+    closest: selector => selector.includes('data-today-trend-ui-action') ? closeTrigger : null,
+};
 const phoneWindow = {
     dataset: {},
     querySelector: selector => selector === '.pm-today-trend-page' ? pageContainer : null,
     addEventListener: (type, listener) => { if (type === 'click') phoneListeners.push(listener); },
-    contains: node => node === homeTrigger,
+    contains: node => node === homeTrigger || node === closeTrigger,
 };
 let shownPage = null;
 let desktopCalls = 0;
-globalThis.window = { __pmShowPhonePage: page => { shownPage = page; return true; } };
+let closeCalls = 0;
+globalThis.window = { __pmShowPhonePage: page => { shownPage = page; return true; }, __pmEnd: () => { closeCalls += 1; } };
 try {
     const mountedPhoneUi = installTodayTrendPhoneUi({ phoneWindow }, {
         getStorageId: () => 'chat',
@@ -84,6 +95,8 @@ try {
     phoneListeners[0]({ target: homeTrigger });
     await Promise.resolve();
     assert.equal(desktopCalls, 1, '首页按钮必须复用桌面页面切换');
+    phoneListeners[0]({ target: closeTrigger });
+    assert.equal(closeCalls, 1, '省略号动作组内的关闭按钮必须继续复用手机关闭行为');
 } finally {
     if (originalWindow === undefined) delete globalThis.window;
     else globalThis.window = originalWindow;
@@ -182,11 +195,14 @@ assert.doesNotThrow(() => renderTodayTrendSettingsView(), '总设置视图不得
 const closedMenuHtml = trendActionMenu({ id: 'world-module', label: '世界态势操作', actions: [{ action: 'test-action', icon: '<svg></svg>', label: '测试操作' }] });
 assert.match(closedMenuHtml, /aria-expanded="false"/, '关闭态动作条必须暴露收起状态');
 assert.doesNotMatch(closedMenuHtml, /is-open|test-action/, '关闭态不得渲染隐藏动作或打开样式');
+assert.doesNotMatch(closedMenuHtml, /data-today-trend-ui-action="close"/, '关闭态省略号不得渲染关闭手机按钮');
 const openMenuHtml = trendActionMenu({ id: 'world-module', open: true, label: '世界态势操作', actions: [{ action: 'test-action', icon: '<svg></svg>', label: '测试操作' }] });
 assert.match(openMenuHtml, /aria-expanded="true"/, '打开态动作条必须暴露展开状态');
 assert.match(openMenuHtml, /is-open/, '打开态动作条必须标识展开样式');
-assert.match(openMenuHtml, /aria-label="关闭世界态势操作"/, '打开态触发器必须替换为关闭语义');
+assert.match(openMenuHtml, /aria-label="收起世界态势操作"/, '打开态触发器必须保留收起菜单语义');
 assert.match(openMenuHtml, /test-action/, '打开态必须渲染横向动作');
+assert.match(openMenuHtml, /pm-today-trend-menu-close[^>]*data-today-trend-ui-action="close"/, '打开态动作组必须提供关闭手机按钮');
+assert.ok(openMenuHtml.indexOf('test-action') < openMenuHtml.indexOf('pm-today-trend-menu-close'), '关闭手机按钮必须位于展开动作组最右端');
 const closedInlineActionsHtml = trendInlineActions({ actions: [{ action: 'test-inline-action', icon: '<svg></svg>', label: '测试行内操作' }] });
 assert.equal(closedInlineActionsHtml, '', '顶级操作条关闭时必须隐藏下方行内动作');
 const openInlineActionsHtml = trendInlineActions({ visible: true, actions: [{ action: 'test-inline-action', icon: '<svg></svg>', label: '测试行内操作' }] });
@@ -221,6 +237,7 @@ assert.match(reputationHtml, /pm-today-trend-reputation-entry/, '个人风评内
 assert.match(reputationHtml, /PUBLIC OPINION/, '个人风评内容页必须提供报告识别语');
 assert.match(reputationHtml, /01/, '个人风评内容页必须从数据顺序派生观察编号');
 assert.match(reputationHtml, /data-status="neutral"/, '个人风评状态必须提供主题化样式钩子');
+assert.match(reputationHtml, /pm-today-trend-reputation-orbit[^>]*aria-hidden="true"/, '个人风评必须提供不可交互的观察轨道背景层');
 assert.match(reputationHtml, /today-trend-edit-reputation-rule/, '个人风评模块必须提供规则编辑动作');
 assert.doesNotMatch(reputationHtml, /today-trend-refresh-circle/, '个人风评内容区不得保留单项重新生成入口');
 const reputationSettingsHtml = renderTodayTrendReputationView({ scope: valid.scopes.chat, mode: 'settings' });
@@ -239,6 +256,7 @@ assert.match(factionHtml, /POWER MAP/, '势力内容页必须提供图谱识别�
 assert.match(factionHtml, /pm-today-trend-faction-tree" data-depth="0"/, '势力图谱必须标识根层级');
 assert.match(factionHtml, /pm-today-trend-faction-card"[^>]*data-depth="1"/, '势力图谱必须标识子层级');
 assert.match(factionHtml, /pm-today-trend-faction-node/, '势力图谱必须输出独立节点装饰');
+assert.match(factionHtml, /pm-today-trend-faction-constellation[^>]*aria-hidden="true"/, '相关势力必须提供不可交互的星群背景层');
 assert.match(factionHtml, /today-trend-edit-faction-rule/, '相关势力模块必须提供规则编辑动作');
 assert.doesNotMatch(factionHtml, /today-trend-refresh-faction/, '相关势力内容区不得保留单项重新生成入口');
 const busyFactionHtml = renderTodayTrendFactionView({ scope: valid.scopes.chat, generationAvailable: true, generationBusy: true, menuOpenId: 'faction-module' });
@@ -256,6 +274,7 @@ assert.doesNotMatch(busyDynamicsHtml, /today-trend-advance-event/, '动态内容
 assert.match(busyDynamicsHtml, /LIVE TRACKER/, '动态内容页必须提供追踪识别语');
 assert.match(busyDynamicsHtml, /pm-today-trend-event-facts/, '动态内容页必须提供结构化事件事实区');
 assert.match(busyDynamicsHtml, /pm-today-trend-event-history/, '动态内容页必须提供阶段时间线容器');
+assert.match(busyDynamicsHtml, /pm-today-trend-dynamics-signal[^>]*aria-hidden="true"/, '相关动态必须提供不可交互的追踪信号背景层');
 assert.match(busyDynamicsHtml, /正在生成…/, '忙碌时动态模块必须展示生成状态');
 assert.match(factionEditorHtml, /name="detailLabel"/, '势力编辑页必须提供动态关键资料编辑');
 assert.match(factionEditorHtml, /name="status"/, '势力编辑页必须提供固定五档关系选择');
