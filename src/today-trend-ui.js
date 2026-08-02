@@ -15,6 +15,11 @@ export function trendActionMenu({ id, open = false, label, actions = [] }) {
     return `<span class="pm-today-trend-menu-wrap${open ? ' is-open' : ''}">${open ? `<span class="pm-today-trend-menu" aria-label="${escapeAttr(label)}">${items}</span>` : ''}${trigger}</span>`;
 }
 
+export function trendInlineActions({ visible = false, actions = [] } = {}) {
+    if (!visible) return '';
+    return `<span class="pm-today-trend-inline-actions">${actions.map(action => trendIconButton({ ...action, className: `pm-today-trend-inline-action${action.className ? ` ${action.className}` : ''}` })).join('')}</span>`;
+}
+
 export function trendModuleHead({ title, menuId, menuOpenId, actions = [], meta = '', adornment = '' }) {
     return `<header class="pm-today-trend-module-head"><div><h2>${escapeHtml(title)}</h2>${meta ? `<span>${escapeHtml(meta)}</span>` : ''}${adornment}</div>${trendActionMenu({ id: menuId, open: menuOpenId === menuId, label: `${title}操作`, actions })}</header>`;
 }

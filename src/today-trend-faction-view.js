@@ -1,17 +1,18 @@
 import { BACK_ICON_SVG, BOOK_ICON_SVG, EDIT_ICON_SVG, REFRESH_ICON_SVG, SPARKLES_ICON_SVG, TRASH_ICON_SVG } from './icons.js';
 import { TODAY_TREND_LIMITS, TODAY_TREND_RELATION_STATUSES, todayTrendStatusLabel } from './today-trend-model.js';
 import { escapeAttr, escapeHtml } from './ui.js';
-import { trendActionMenu, trendModuleHead, trendRuleEditor } from './today-trend-ui.js';
+import { trendInlineActions, trendModuleHead, trendRuleEditor } from './today-trend-ui.js';
 
 const options = selected => TODAY_TREND_RELATION_STATUSES.map(status => `<option value="${status}" ${status === selected ? 'selected' : ''}>${todayTrendStatusLabel(status)}</option>`).join('');
-const relation = value => `<span class="pm-today-trend-status">${escapeHtml(todayTrendStatusLabel(value.status))}</span>`;
-const menu = (faction, menuOpenId) => trendActionMenu({ id: `faction:${faction.id}`, open: menuOpenId === `faction:${faction.id}`, label: `${faction.name}操作`, actions: [{ action: 'today-trend-edit-faction', icon: EDIT_ICON_SVG, label: `编辑${faction.name}`, attrs: `data-faction-id="${escapeAttr(faction.id)}"` }, { action: 'today-trend-delete-faction', icon: TRASH_ICON_SVG, label: `删除${faction.name}`, danger: true, attrs: `data-faction-id="${escapeAttr(faction.id)}"` }] });
-function card(faction, children, menuOpenId) {
-    return `<article class="pm-today-trend-faction-card" data-faction-id="${escapeAttr(faction.id)}"><header><div><b>${escapeHtml(faction.name)}</b>${relation(faction.relation)}</div>${menu(faction, menuOpenId)}</header><p>${escapeHtml(faction.summary)}</p><dl>${faction.details.map(detail => `<div><dt>${escapeHtml(detail.label)}</dt><dd>${escapeHtml(detail.value)}</dd></div>`).join('')}</dl><p>${escapeHtml(faction.relation.evaluation)}</p>${children}</article>`;
+const relation = value => `<span class="pm-today-trend-status" data-status="${escapeAttr(value.status)}">${escapeHtml(todayTrendStatusLabel(value.status))}</span>`;
+const menu = (faction, visible) => trendInlineActions({ visible, actions: [{ action: 'today-trend-edit-faction', icon: EDIT_ICON_SVG, label: `编辑${faction.name}`, attrs: `data-faction-id="${escapeAttr(faction.id)}"` }, { action: 'today-trend-delete-faction', icon: TRASH_ICON_SVG, label: `删除${faction.name}`, danger: true, attrs: `data-faction-id="${escapeAttr(faction.id)}"` }] });
+function card(faction, children, actionsVisible, depth) {
+    const details = faction.details.length ? `<dl>${faction.details.map(detail => `<div><dt>${escapeHtml(detail.label)}</dt><dd>${escapeHtml(detail.value)}</dd></div>`).join('')}</dl>` : '';
+    return `<article class="pm-today-trend-faction-card" data-faction-id="${escapeAttr(faction.id)}" data-depth="${depth}"><span class="pm-today-trend-faction-node" aria-hidden="true"></span><header><div><b>${escapeHtml(faction.name)}</b>${relation(faction.relation)}</div>${menu(faction, actionsVisible)}</header><p class="pm-today-trend-faction-summary">${escapeHtml(faction.summary)}</p>${details}<p class="pm-today-trend-faction-evaluation">${escapeHtml(faction.relation.evaluation)}</p>${children}</article>`;
 }
-function tree(factions, parentId, menuOpenId) {
+function tree(factions, parentId, actionsVisible, depth = 0) {
     const children = factions.filter(faction => faction.parentId === parentId);
-    return children.length ? `<div class="pm-today-trend-faction-tree">${children.map(faction => card(faction, tree(factions, faction.id, menuOpenId), menuOpenId)).join('')}</div>` : '';
+    return children.length ? `<div class="pm-today-trend-faction-tree" data-depth="${depth}">${children.map(faction => card(faction, tree(factions, faction.id, actionsVisible, depth + 1), actionsVisible, depth)).join('')}</div>` : '';
 }
 function editor(faction = {}, factions = []) {
     const parents = factions.filter(item => item.id !== faction.id), related = new Set(faction.relatedFactionIds || []), details = faction.details || [];
@@ -24,5 +25,9 @@ export function renderTodayTrendFactionView({ scope, preset = null, mode = 'cont
     const byId = new Map(factions.map(faction => [faction.id, faction]));
     const external = factions.flatMap(source => source.relatedFactionIds.map(id => ({ source, target: byId.get(id) }))).filter(({ target }) => target);
     const ruleEditor = editingRule === 'faction' ? trendRuleEditor({ rule: editingRule, value: ruleDraft ?? preset?.moduleRules?.faction ?? '' }) : '';
-    return `<section class="pm-today-trend-view pm-today-trend-factions">${trendModuleHead({ title: '相关势力', menuId: 'faction-module', menuOpenId, actions: [{ action: 'today-trend-generate-factions', icon: REFRESH_ICON_SVG, label: '重新生成相关势力', attrs }, { action: 'today-trend-edit-faction-rule', icon: BOOK_ICON_SVG, label: '编辑相关势力 Prompt' }] })}${ruleEditor}<h3>势力树</h3>${tree(factions, null, menuOpenId) || '<p class="pm-today-trend-empty">尚未记录相关势力。</p>'}<h3>外部关联</h3>${external.map(({ source, target }) => `<article class="pm-today-trend-external-relation"><p>${escapeHtml(source.name)} <span aria-hidden="true">→</span> ${escapeHtml(target.name)}</p>${card(target, '', menuOpenId)}</article>`).join('') || '<p class="pm-today-trend-empty">暂无外部关联。</p>'}${generationBusy ? '<span class="pm-today-trend-progress">正在生成…</span>' : ''}</section>`;
+    const actionsVisible = menuOpenId === 'faction-module';
+    const rootCount = factions.filter(faction => faction.parentId === null).length;
+    const mapMeta = factions.length ? `${factions.length} 个相关势力｜${rootCount} 个核心节点｜${external.length} 条外部关联` : '等待建立势力图谱';
+    const relations = external.map(({ source, target }) => `<article class="pm-today-trend-external-relation"><span class="pm-today-trend-relation-source">${escapeHtml(source.name)}</span><span class="pm-today-trend-relation-arrow" aria-hidden="true">→</span><span class="pm-today-trend-relation-target">${escapeHtml(target.name)}</span></article>`).join('');
+    return `<section class="pm-today-trend-view pm-today-trend-factions">${trendModuleHead({ title: '相关势力', menuId: 'faction-module', menuOpenId, actions: [{ action: 'today-trend-generate-factions', icon: REFRESH_ICON_SVG, label: '重新生成相关势力', attrs }, { action: 'today-trend-edit-faction-rule', icon: BOOK_ICON_SVG, label: '编辑相关势力 Prompt' }] })}<div class="pm-today-trend-report-intro"><p class="pm-today-trend-kicker">POWER MAP</p><p class="pm-today-trend-report-meta">${escapeHtml(mapMeta)}</p></div>${ruleEditor}<section class="pm-today-trend-faction-section" aria-labelledby="pm-today-trend-faction-tree-title"><h3 id="pm-today-trend-faction-tree-title">势力图谱</h3>${tree(factions, null, actionsVisible) || '<p class="pm-today-trend-empty">尚未记录相关势力。</p>'}</section><section class="pm-today-trend-faction-section" aria-labelledby="pm-today-trend-external-title"><h3 id="pm-today-trend-external-title">外部关联</h3><div class="pm-today-trend-external-list">${relations || '<p class="pm-today-trend-empty">暂无外部关联。</p>'}</div></section>${generationBusy ? '<span class="pm-today-trend-progress">正在生成…</span>' : ''}</section>`;
 }
