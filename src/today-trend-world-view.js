@@ -17,9 +17,9 @@ export function renderTodayTrendWorldView({ scope, mode = 'content', editingWorl
     const refreshVisible = menuOpenId === 'world-module';
     const refresh = item => refreshVisible ? trendIconButton({ action: 'today-trend-refresh-world-item', icon: REFRESH_ICON_SVG, label: `刷新${item.name}`, className: 'pm-today-trend-world-refresh', attrs: `data-world-item-id="${escapeAttr(item.id)}" ${generateAttrs}` }) : '';
     const rows = items.map((item, index) => {
-        if (index === 0) return `<article class="pm-today-trend-world-hero" data-world-item-id="${escapeAttr(item.id)}"><div><b>${escapeHtml(item.name)}</b><p>${escapeHtml(item.summary)}</p></div>${refresh(item)}</article>`;
+        if (index === 0) return `<article class="pm-today-trend-world-hero" data-world-item-id="${escapeAttr(item.id)}"><span class="pm-today-trend-world-dotfield is-hero" aria-hidden="true"></span><div><b>${escapeHtml(item.name)}</b><p>${escapeHtml(item.summary)}</p></div>${refresh(item)}</article>`;
         const side = index % 2 ? 'is-left' : 'is-right';
-        return `<article class="pm-today-trend-world-brief ${side}" data-world-item-id="${escapeAttr(item.id)}"><span class="pm-today-trend-world-ornament" aria-hidden="true"></span><div><b>${escapeHtml(item.name)}</b><p>${escapeHtml(item.summary)}</p></div>${refresh(item)}</article>`;
+        return `<article class="pm-today-trend-world-brief ${side}" data-world-item-id="${escapeAttr(item.id)}"><span class="pm-today-trend-world-ornament" aria-hidden="true"></span><span class="pm-today-trend-world-dotfield" aria-hidden="true"></span><div><b>${escapeHtml(item.name)}</b><p>${escapeHtml(item.summary)}</p></div>${refresh(item)}</article>`;
     }).join('');
     return `<section class="pm-today-trend-view pm-today-trend-world">${trendModuleHead({ title: '世界态势', menuId: 'world-module', menuOpenId, actions: [{ action: 'today-trend-generate-world', icon: SPARKLES_ICON_SVG, label: '生成世界态势', attrs: generateAttrs }, { action: 'today-trend-open-world-settings', icon: SETTINGS_ICON_SVG, label: '世界态势设置' }] })}${rows || '<p class="pm-today-trend-empty">尚未生成世界态势。</p>'}${generationBusy ? '<span class="pm-today-trend-progress">正在生成…</span>' : ''}</section>`;
 }
