@@ -487,8 +487,8 @@ const productionPhoneResult = applyContextInjections({
     injectionConfig: { phone: { position: 1, depth: 0, historyLimit: 20 } },
     budgetConfig: {
         targetTokens: 3000,
-        sourceWeights: { phone: 1, community: 0, calendar: 0, recipe: 0 },
-        sourcePriority: ['phone', 'community', 'calendar', 'recipe'],
+        sourceWeights: { phone: 1, community: 0, calendar: 0, todayTrend: 0 },
+        sourcePriority: ['phone', 'community', 'calendar', 'todayTrend'],
         redistributeUnused: true,
     },
     safeMaxTokens: 3000,
@@ -506,7 +506,7 @@ const zeroPhonePlan = buildContextInjectionPrompts({
     ...baseInjectionInput,
     budgetConfig: {
         targetTokens: 3000,
-        sourceWeights: { phone: 0, community: 1, calendar: 0, recipe: 0 },
+        sourceWeights: { phone: 0, community: 1, calendar: 0, todayTrend: 0 },
         redistributeUnused: false,
     },
 });
@@ -538,7 +538,7 @@ const productionCommunityResult = applyContextInjections({
     injectionConfig: { community: { position: 2, depth: 3 } },
     budgetConfig: {
         targetTokens: 3000,
-        sourceWeights: { phone: 0, community: 1, calendar: 0, recipe: 0 },
+        sourceWeights: { phone: 0, community: 1, calendar: 0, todayTrend: 0 },
         redistributeUnused: false,
         communitySceneIdsByStorage: { 'story-a': ['scene-a'] },
         communitySelectionsByStorage: { 'story-a': { 'scene-a': { mode: 'selected', postIds: ['post-a'] } } },
@@ -570,8 +570,8 @@ const migratedTwoSourceBudget = normalizeBudgetConfig({
     sourceWeights: { phone: 3, community: 1 },
     sourcePriority: ['community', 'phone'],
 });
-assert.deepEqual(migratedTwoSourceBudget.sourceWeights, { phone: 3, community: 1, calendar: 0, recipe: 0, outfit: 0, todayTrend: 0 });
-assert.deepEqual(migratedTwoSourceBudget.sourcePriority, ['community', 'phone', 'calendar', 'recipe', 'outfit', 'todayTrend']);
+assert.deepEqual(migratedTwoSourceBudget.sourceWeights, { phone: 3, community: 1, calendar: 0, todayTrend: 0 });
+assert.deepEqual(migratedTwoSourceBudget.sourcePriority, ['community', 'phone', 'calendar', 'todayTrend']);
 assert.equal(Object.hasOwn(migratedTwoSourceBudget, 'calendarEnabled'), false);
 assert.equal(Object.hasOwn(migratedTwoSourceBudget, 'calendarPosition'), false);
 assert.equal(Object.hasOwn(migratedTwoSourceBudget, 'calendarDepth'), false);
@@ -883,6 +883,7 @@ const zeroWeightPlan = buildContextInjectionPrompts({
     ...baseInjectionInput,
     injectionConfig: { calendar: { position: 0, depth: 0 } },
     budgetConfig: {
+        budgetVersion: 4,
         sourceWeights: { phone: 1, community: 0, calendar: 0 },
         redistributeUnused: false,
         targetTokens: 100,
@@ -910,8 +911,8 @@ const recipePlan = buildContextInjectionPrompts({
     injectionConfig: { calendar: { position: 2, depth: 4 } },
     budgetConfig: {
         targetTokens: 2000,
-        sourceWeights: { phone: 0, community: 0, calendar: 0, recipe: 1 },
-        sourcePriority: ['recipe', 'phone', 'community', 'calendar'], redistributeUnused: true,
+        sourceWeights: { phone: 0, community: 0, calendar: 1, todayTrend: 0 },
+        sourcePriority: ['calendar', 'phone', 'community', 'todayTrend'], redistributeUnused: true,
     },
     calendarStore: { version: 1, scopes: { 'story-a': {
         baseDate: storyDate,
@@ -939,7 +940,7 @@ assert.equal(recipePlan.prompts.some(prompt => prompt.key.includes(':calendar:')
 assert.equal(recipePlan.diagnostics.recipeEnabled, true);
 const disabledRecipePlan = buildContextInjectionPrompts({
     ...baseInjectionInput,
-    budgetConfig: { sourceWeights: { phone: 1, recipe: 0 } },
+    budgetConfig: { sourceWeights: { phone: 1, calendar: 0, todayTrend: 0 }, redistributeUnused: false },
     calendarStore: { version: 1, scopes: { 'story-a': {
         baseDate: storyDate,
         events: {},
@@ -965,8 +966,8 @@ const outfitPlan = buildContextInjectionPrompts({
     injectionConfig: { calendar: { position: 2, depth: 4 } },
     budgetConfig: {
         targetTokens: 2000,
-        sourceWeights: { phone: 0, community: 0, calendar: 0, recipe: 0, outfit: 1 },
-        sourcePriority: ['outfit', 'phone', 'community', 'calendar', 'recipe'], redistributeUnused: true,
+        sourceWeights: { phone: 0, community: 0, calendar: 1, todayTrend: 0 },
+        sourcePriority: ['calendar', 'phone', 'community', 'todayTrend'], redistributeUnused: true,
     },
     calendarStore: { version: 1, scopes: { 'story-a': {
         baseDate: storyDate, events: {},
@@ -977,10 +978,10 @@ const outfitPlan = buildContextInjectionPrompts({
 });
 const outfitPrompt = outfitPlan.prompts.find(prompt => prompt.key.includes(':outfit:'));
 assert.ok(outfitPrompt, '启用且有数据时必须生成独立穿搭 prompt');
-assert.equal(outfitPrompt.source, 'outfit', '穿搭 prompt 必须使用独立预算来源');
-assert.ok(outfitPlan.diagnostics.budget.demandBySource.outfit > 0, '穿搭内容必须计入独立预算需求');
-assert.ok(outfitPlan.diagnostics.budget.allocations.outfit > 0, '穿搭权重开启时必须获得独立预算');
-assert.equal(outfitPlan.diagnostics.budget.allocations.calendar, 0, '穿搭权重不得消费日历预算');
+assert.equal(outfitPrompt.source, 'outfit', '穿搭 prompt 必须保留独立来源标签');
+assert.ok(outfitPlan.diagnostics.calendarFamilyBudget.demandBySource.outfit > 0, '穿搭内容必须计入日历家族需求');
+assert.ok(outfitPlan.diagnostics.calendarFamilyBudget.allocations.outfit > 0, '日历预算必须分配给有效穿搭内容');
+assert.ok(outfitPlan.diagnostics.budget.allocations.calendar > 0, '穿搭必须消费日历预算');
 assert.equal(outfitPrompt.key, 'PHONE_SMS_MEMORY:outfit:story-a%3A%3Arole%3AAlice');
 assert.equal(outfitPrompt.position, 2);
 assert.equal(outfitPrompt.depth, 4);
@@ -1002,8 +1003,8 @@ const groupOutfitPlan = buildContextInjectionPrompts({
     injectionConfig: { calendar: { position: 2, depth: 4 } },
     budgetConfig: {
         targetTokens: 2000,
-        sourceWeights: { phone: 0, community: 0, calendar: 0, recipe: 0, outfit: 1 },
-        sourcePriority: ['outfit', 'phone', 'community', 'calendar', 'recipe'], redistributeUnused: true,
+        sourceWeights: { phone: 0, community: 0, calendar: 1, todayTrend: 0 },
+        sourcePriority: ['calendar', 'phone', 'community', 'todayTrend'], redistributeUnused: true,
     },
     calendarStore: { version: 1, scopes: { 'story-a': {
         baseDate: storyDate, events: {},
@@ -1030,8 +1031,8 @@ const invalidGroupOutfitPlan = buildContextInjectionPrompts({
     injectionConfig: { calendar: { position: 2, depth: 4 } },
     budgetConfig: {
         targetTokens: 2000,
-        sourceWeights: { phone: 0, community: 0, calendar: 0, recipe: 0, outfit: 1 },
-        sourcePriority: ['outfit', 'phone', 'community', 'calendar', 'recipe'], redistributeUnused: true,
+        sourceWeights: { phone: 0, community: 0, calendar: 1, todayTrend: 0 },
+        sourcePriority: ['calendar', 'phone', 'community', 'todayTrend'], redistributeUnused: true,
     },
     calendarStore: { version: 1, scopes: { 'story-a': {
         baseDate: storyDate, events: {}, injectionOutfitEnabled: true,
@@ -1040,25 +1041,49 @@ const invalidGroupOutfitPlan = buildContextInjectionPrompts({
 });
 assert.deepEqual(invalidGroupOutfitPlan.prompts.filter(prompt => prompt.source === 'outfit'), [],
     '群聊成员元数据缺失或非法时不得回退注入宿主角色穿搭');
-const zeroOutfitBudgetPlan = buildContextInjectionPrompts({
+const calendarBudgetOutfitPlan = buildContextInjectionPrompts({
     ...baseInjectionInput,
     injectionConfig: { calendar: { position: 2, depth: 4 } },
     budgetConfig: {
         targetTokens: 2000,
-        sourceWeights: { phone: 0, community: 0, calendar: 1, recipe: 0, outfit: 0 },
-        sourcePriority: ['calendar', 'phone', 'community', 'recipe', 'outfit'], redistributeUnused: false,
+        sourceWeights: { phone: 0, community: 0, calendar: 1, todayTrend: 0 },
+        sourcePriority: ['calendar', 'phone', 'community', 'todayTrend'], redistributeUnused: false,
     },
     calendarStore: { version: 1, scopes: { 'story-a': {
         baseDate: storyDate, events: {}, injectionOutfitEnabled: true,
     } } },
     calendarOutfits: outfitStore,
 });
-assert.equal(zeroOutfitBudgetPlan.prompts.some(prompt => prompt.key.includes(':outfit:')), false,
-    '日历预算不得替代被关闭的穿搭预算');
-assert.equal(zeroOutfitBudgetPlan.diagnostics.budget.allocations.outfit, 0);
+assert.equal(calendarBudgetOutfitPlan.prompts.some(prompt => prompt.key.includes(':outfit:')), true,
+    '日历预算必须供启用的穿搭使用');
+assert.ok(calendarBudgetOutfitPlan.diagnostics.calendarFamilyBudget.allocations.outfit > 0);
+const calendarFamilyPlan = buildContextInjectionPrompts({
+    ...baseInjectionInput,
+    injectionConfig: { calendar: { position: 2, depth: 4 } },
+    budgetConfig: {
+        budgetVersion: 4,
+        targetTokens: 60,
+        sourceWeights: { phone: 0, community: 0, calendar: 1, todayTrend: 0 },
+        sourcePriority: ['calendar', 'phone', 'community', 'todayTrend'], redistributeUnused: false,
+    },
+    calendarStore: { version: 1, scopes: { 'story-a': {
+        baseDate: storyDate,
+        events: { [storyDate]: [{ id: 'family-event', date: storyDate, title: '共享预算日程', note: '', source: 'manual', createdAt: 1, updatedAt: 1 }] },
+        injectionScheduleEnabled: true, injectionRecipeEnabled: true, injectionOutfitEnabled: true,
+    } } },
+    calendarRecipes: recipeStore,
+    calendarOutfits: outfitStore,
+});
+const calendarFamily = calendarFamilyPlan.diagnostics.calendarFamilyBudget;
+assert.equal(calendarFamilyPlan.diagnostics.budget.allocations.calendar, 60, '日历家族必须只获得一次顶层额度');
+assert.equal(calendarFamily.allocatedTokens, 60, '日历家族子分配总额不得超过顶层日历额度');
+assert.ok(calendarFamily.allocations.calendar > 0 && calendarFamily.allocations.recipe > 0 && calendarFamily.allocations.outfit > 0,
+    '三类有效日历内容必须各获得一份公平额度');
+assert.ok(calendarFamilyPlan.diagnostics.calendar.usedTokens + calendarFamilyPlan.diagnostics.recipe.usedTokens + calendarFamilyPlan.diagnostics.outfit.usedTokens
+    <= calendarFamilyPlan.diagnostics.budget.allocations.calendar, '日历家族实际使用量不得超出顶层日历额度');
 const disabledOutfitPlan = buildContextInjectionPrompts({
     ...baseInjectionInput,
-    budgetConfig: { sourceWeights: { phone: 1, calendar: 0, recipe: 0 } },
+    budgetConfig: { sourceWeights: { phone: 1, calendar: 0, todayTrend: 0 }, redistributeUnused: false },
     calendarStore: { version: 1, scopes: { 'story-a': { baseDate: storyDate, events: {}, injectionOutfitEnabled: false } } },
     calendarOutfits: outfitStore,
 });
@@ -1086,7 +1111,7 @@ const todayTrendPlan = buildContextInjectionPrompts({
     ...baseInjectionInput,
     todayTrendStore,
     injectionConfig: { todayTrend: { position: 2, depth: 7 } },
-    budgetConfig: { targetTokens: 2000, sourceWeights: { phone: 0, community: 0, calendar: 0, recipe: 0, outfit: 0, todayTrend: 1 }, redistributeUnused: false },
+    budgetConfig: { targetTokens: 2000, sourceWeights: { phone: 0, community: 0, calendar: 0, todayTrend: 1 }, redistributeUnused: false },
 });
 const todayTrendPrompt = todayTrendPlan.prompts.find(prompt => prompt.source === 'todayTrend');
 assert.ok(todayTrendPrompt, '启用今日风向且分配预算时必须生成独立社会状态 prompt');
@@ -1096,15 +1121,29 @@ assert.doesNotMatch(todayTrendPrompt.content, /不得注入的世界态势|不�
 assert.equal(todayTrendPrompt.position, 2);
 assert.equal(todayTrendPrompt.depth, 7);
 assert.equal(todayTrendPlan.diagnostics.todayTrend.promptCount, 1);
+const redistributedTodayTrendPlan = buildContextInjectionPrompts({
+    ...baseInjectionInput,
+    todayTrendStore,
+    injectionConfig: { todayTrend: { position: 2, depth: 7 } },
+    budgetConfig: {
+        budgetVersion: 4,
+        targetTokens: 2000,
+        sourceWeights: { phone: 0, community: 0, calendar: 1, todayTrend: 0 },
+        sourcePriority: ['calendar', 'todayTrend', 'phone', 'community'], redistributeUnused: true,
+    },
+});
+assert.ok(redistributedTodayTrendPlan.prompts.some(prompt => prompt.source === 'todayTrend'),
+    '风向权重为零但其他模块未消耗额度时必须获得再分配预算');
+assert.ok(redistributedTodayTrendPlan.diagnostics.budget.allocations.todayTrend > 0);
 const todayTrendCalls = [];
 const todayTrendRuntime = { trackedExtensionPromptKeys: new Set() };
 applyContextInjections({ context: { setExtensionPrompt: (...args) => todayTrendCalls.push(args) }, runtime: todayTrendRuntime,
     ...baseInjectionInput, todayTrendStore, injectionConfig: { todayTrend: { position: 2, depth: 7 } },
-    budgetConfig: { targetTokens: 2000, sourceWeights: { phone: 0, community: 0, calendar: 0, recipe: 0, outfit: 0, todayTrend: 1 }, redistributeUnused: false },
+    budgetConfig: { targetTokens: 2000, sourceWeights: { phone: 0, community: 0, calendar: 0, todayTrend: 1 }, redistributeUnused: false },
 });
 applyContextInjections({ context: { setExtensionPrompt: (...args) => todayTrendCalls.push(args) }, runtime: todayTrendRuntime,
     ...baseInjectionInput, todayTrendStore: { ...todayTrendStore, scopes: { ...todayTrendStore.scopes, 'story-a': { ...todayTrendStore.scopes['story-a'], injection: { enabled: false } } } },
-    budgetConfig: { targetTokens: 2000, sourceWeights: { phone: 0, community: 0, calendar: 0, recipe: 0, outfit: 0, todayTrend: 1 }, redistributeUnused: false },
+    budgetConfig: { targetTokens: 2000, sourceWeights: { phone: 0, community: 0, calendar: 0, todayTrend: 1 }, redistributeUnused: false },
 });
 assert.ok(todayTrendCalls.some(call => call[0] === 'ST_SMS_TODAY_TREND_INJECTION_V1:story-a' && call[1] === ''), '关闭今日风向注入必须清理同一稳定 key，不能残重复 prompt');
 
@@ -1117,7 +1156,7 @@ const trimmedTodayTrendPlan = buildContextInjectionPrompts({
     ...baseInjectionInput,
     todayTrendStore: longTodayTrendStore,
     injectionConfig: { todayTrend: { position: 2, depth: 7 } },
-    budgetConfig: { targetTokens: 45, sourceWeights: { phone: 0, community: 0, calendar: 0, recipe: 0, outfit: 0, todayTrend: 1 }, redistributeUnused: false },
+    budgetConfig: { targetTokens: 45, sourceWeights: { phone: 0, community: 0, calendar: 0, todayTrend: 1 }, redistributeUnused: false },
 });
 const trimmedTodayTrendPrompt = trimmedTodayTrendPlan.prompts.find(prompt => prompt.source === 'todayTrend');
 assert.ok(trimmedTodayTrendPrompt, '小预算仍应保留至少一个完整的今日风向数据行');

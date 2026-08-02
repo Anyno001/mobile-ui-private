@@ -1,16 +1,17 @@
 import { MAX_INJECTION_CHARS } from './constants.js';
 
 export const BUDGET_CONFIG_KEY = 'ST_SMS_BUDGET_CONFIG';
-export const BUDGET_VERSION = 3;
-export const BUDGET_SOURCES = Object.freeze(['phone', 'community', 'calendar', 'recipe', 'outfit', 'todayTrend']);
+export const BUDGET_VERSION = 4;
+export const BUDGET_SOURCES = Object.freeze(['phone', 'community', 'calendar', 'todayTrend']);
 export const DEFAULT_SAFE_INPUT_TOKENS = Math.floor(MAX_INJECTION_CHARS / 4);
 const MAX_TARGET_TOKENS = 12000;
+const CALENDAR_FAMILY_SOURCES = Object.freeze(['calendar', 'recipe', 'outfit']);
 
 export const DEFAULT_BUDGET_CONFIG = Object.freeze({
     budgetVersion: BUDGET_VERSION,
     targetTokens: DEFAULT_SAFE_INPUT_TOKENS,
-    sourceWeights: Object.freeze({ phone: 1, community: 0, calendar: 0, recipe: 0, outfit: 0, todayTrend: 0 }),
-    sourcePriority: Object.freeze(['phone', 'community', 'calendar', 'recipe', 'outfit', 'todayTrend']),
+    sourceWeights: Object.freeze({ phone: 1, community: 1, calendar: 1, todayTrend: 1 }),
+    sourcePriority: Object.freeze(['phone', 'community', 'calendar', 'todayTrend']),
     redistributeUnused: true,
     communitySceneIdsByStorage: Object.freeze({}),
     communitySelectionsByStorage: Object.freeze({}),
@@ -21,8 +22,32 @@ const finiteInteger = (value, min, max) => typeof value === 'number'
 const plainRecord = value => value && typeof value === 'object' && !Array.isArray(value)
     && (Object.getPrototypeOf(value) === Object.prototype || Object.getPrototypeOf(value) === null);
 
-function normalizeWeights(value) {
+const finiteWeight = value => typeof value === 'number' && Number.isFinite(value) && value >= 0;
+
+function normalizeWeights(value, sourceVersion) {
     if (!plainRecord(value)) return { ...DEFAULT_BUDGET_CONFIG.sourceWeights };
+    const legacy = sourceVersion < BUDGET_VERSION || Object.hasOwn(value, 'recipe') || Object.hasOwn(value, 'outfit');
+    if (legacy) {
+        const legacyWeights = {
+            phone: Object.hasOwn(value, 'phone') ? value.phone : 1,
+            community: Object.hasOwn(value, 'community') ? value.community : 0,
+            calendar: Object.hasOwn(value, 'calendar') ? value.calendar : 0,
+            recipe: Object.hasOwn(value, 'recipe') ? value.recipe : 0,
+            outfit: Object.hasOwn(value, 'outfit') ? value.outfit : 0,
+            todayTrend: Object.hasOwn(value, 'todayTrend') ? value.todayTrend : 0,
+        };
+        if (!Object.values(legacyWeights).every(finiteWeight)) return { ...DEFAULT_BUDGET_CONFIG.sourceWeights };
+        const isPreviousDefault = legacyWeights.phone === 1 && legacyWeights.community === 0
+            && legacyWeights.calendar === 0 && legacyWeights.recipe === 0
+            && legacyWeights.outfit === 0 && legacyWeights.todayTrend === 0;
+        if (isPreviousDefault) return { ...DEFAULT_BUDGET_CONFIG.sourceWeights };
+        return {
+            phone: legacyWeights.phone,
+            community: legacyWeights.community,
+            calendar: legacyWeights.calendar + legacyWeights.recipe + legacyWeights.outfit,
+            todayTrend: legacyWeights.todayTrend,
+        };
+    }
     const result = {};
     for (const source of BUDGET_SOURCES) {
         if (!Object.hasOwn(value, source)) {
@@ -30,7 +55,7 @@ function normalizeWeights(value) {
             continue;
         }
         const weight = value[source];
-        if (typeof weight !== 'number' || !Number.isFinite(weight) || weight < 0) {
+        if (!finiteWeight(weight)) {
             return { ...DEFAULT_BUDGET_CONFIG.sourceWeights };
         }
         result[source] = weight;
@@ -40,11 +65,12 @@ function normalizeWeights(value) {
         : { ...DEFAULT_BUDGET_CONFIG.sourceWeights };
 }
 
-function normalizePriority(value) {
+function normalizePriority(value, legacy) {
     const result = [];
     if (Array.isArray(value)) {
         for (const source of value) {
-            if (BUDGET_SOURCES.includes(source) && !result.includes(source)) result.push(source);
+            const normalized = legacy && CALENDAR_FAMILY_SOURCES.includes(source) ? 'calendar' : source;
+            if (BUDGET_SOURCES.includes(normalized) && !result.includes(normalized)) result.push(normalized);
         }
     }
     for (const source of BUDGET_SOURCES) if (!result.includes(source)) result.push(source);
@@ -95,14 +121,47 @@ function normalizeCommunitySelections(value) {
     return result;
 }
 
+export function allocateCalendarFamilyBudget({ tokenLimit = 0, demandBySource = {} } = {}) {
+    const limit = finiteInteger(tokenLimit, 0, MAX_TARGET_TOKENS) ? tokenLimit : 0;
+    const demand = Object.fromEntries(CALENDAR_FAMILY_SOURCES.map(source => {
+        const value = demandBySource[source];
+        return [source, finiteInteger(value, 0, MAX_TARGET_TOKENS) ? value : 0];
+    }));
+    const allocations = Object.fromEntries(CALENDAR_FAMILY_SOURCES.map(source => [source, 0]));
+    let remaining = Math.min(limit, Object.values(demand).reduce((sum, value) => sum + value, 0));
+    while (remaining > 0) {
+        const eligible = CALENDAR_FAMILY_SOURCES.filter(source => allocations[source] < demand[source]);
+        if (!eligible.length) break;
+        const share = Math.floor(remaining / eligible.length);
+        if (share > 0) {
+            let granted = 0;
+            for (const source of eligible) {
+                const amount = Math.min(share, demand[source] - allocations[source]);
+                allocations[source] += amount;
+                granted += amount;
+            }
+            remaining -= granted;
+            continue;
+        }
+        for (const source of eligible) {
+            if (remaining <= 0) break;
+            allocations[source] += 1;
+            remaining -= 1;
+        }
+    }
+    return { demandBySource: demand, allocations, allocatedTokens: Object.values(allocations).reduce((sum, value) => sum + value, 0) };
+}
+
 export function normalizeBudgetConfig(value) {
     const source = plainRecord(value) ? value : {};
+    const sourceVersion = finiteInteger(source.budgetVersion, 1, BUDGET_VERSION) ? source.budgetVersion : 3;
+    const legacy = sourceVersion < BUDGET_VERSION || Object.hasOwn(source.sourceWeights || {}, 'recipe') || Object.hasOwn(source.sourceWeights || {}, 'outfit');
     return {
         budgetVersion: BUDGET_VERSION,
         targetTokens: finiteInteger(source.targetTokens, 1, MAX_TARGET_TOKENS)
             ? source.targetTokens : DEFAULT_BUDGET_CONFIG.targetTokens,
-        sourceWeights: normalizeWeights(source.sourceWeights),
-        sourcePriority: normalizePriority(source.sourcePriority),
+        sourceWeights: normalizeWeights(source.sourceWeights, sourceVersion),
+        sourcePriority: normalizePriority(source.sourcePriority, legacy),
         redistributeUnused: typeof source.redistributeUnused === 'boolean'
             ? source.redistributeUnused : DEFAULT_BUDGET_CONFIG.redistributeUnused,
         communitySceneIdsByStorage: normalizeSceneIds(source.communitySceneIdsByStorage),

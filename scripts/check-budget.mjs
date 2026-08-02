@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { createAiClient } from '../src/ai.js';
 import {
-    DEFAULT_BUDGET_CONFIG, allocateContextBudget, estimateContextTokens,
+    DEFAULT_BUDGET_CONFIG, allocateCalendarFamilyBudget, allocateContextBudget, estimateContextTokens,
     normalizeBudgetConfig, trimToEstimatedTokens,
 } from '../src/budget.js';
 import { loadBudgetConfig, saveBudgetConfig } from '../src/storage.js';
@@ -25,10 +25,10 @@ const normalized = normalizeBudgetConfig({
         invalid: [],
     },
 });
-assert.equal(normalized.budgetVersion, 3);
+assert.equal(normalized.budgetVersion, 4);
 assert.equal(normalized.targetTokens, DEFAULT_BUDGET_CONFIG.targetTokens);
 assert.deepEqual(normalized.sourceWeights, DEFAULT_BUDGET_CONFIG.sourceWeights);
-assert.deepEqual(normalized.sourcePriority, ['phone', 'community', 'calendar', 'recipe', 'outfit', 'todayTrend']);
+assert.deepEqual(normalized.sourcePriority, ['phone', 'community', 'calendar', 'todayTrend']);
 for (const removedField of ['calendarEnabled', 'calendarPosition', 'calendarDepth', 'recipeEnabled', 'recipePosition', 'recipeDepth', 'communityEnabled', 'communityPosition', 'communityDepth']) {
     assert.equal(Object.hasOwn(normalized, removedField), false, `预算配置不得保留旧字段 ${removedField}`);
 }
@@ -41,27 +41,28 @@ assert.deepEqual(normalized.communitySelectionsByStorage, {
     },
 });
 
-const percentageView = getBudgetPercentageView({ phone: 2, community: 1, calendar: 1 });
-assert.deepEqual(percentageView, { phone: 50, community: 25, calendar: 25, recipe: 0, outfit: 0, todayTrend: 0 });
+assert.deepEqual(DEFAULT_BUDGET_CONFIG.sourceWeights, { phone: 1, community: 1, calendar: 1, todayTrend: 1 });
+const percentageView = getBudgetPercentageView({ phone: 2, community: 1, calendar: 1, todayTrend: 0 });
+assert.deepEqual(percentageView, { phone: 50, community: 25, calendar: 25, todayTrend: 0 });
 assert.deepEqual(resolveBudgetPercentageInput({
-    sourceWeights: { phone: 2, community: 1, calendar: 1 },
-    phone: '50', community: '25', calendar: '25', recipe: '0', outfit: '0', todayTrend: '0',
-    initialPhone: '50', initialCommunity: '25', initialCalendar: '25', initialRecipe: '0', initialOutfit: '0', initialTodayTrend: '0',
-}), { phone: 2, community: 1, calendar: 1, recipe: 0, outfit: 0, todayTrend: 0 }, '未编辑百分比时必须保留原始权重');
+    sourceWeights: { phone: 2, community: 1, calendar: 1, todayTrend: 0 },
+    phone: '50', community: '25', calendar: '25', todayTrend: '0',
+    initialPhone: '50', initialCommunity: '25', initialCalendar: '25', initialTodayTrend: '0',
+}), { phone: 2, community: 1, calendar: 1, todayTrend: 0 }, '未编辑百分比时必须保留原始权重');
 assert.deepEqual(resolveBudgetPercentageInput({
-    sourceWeights: { phone: 2, community: 1, calendar: 1 },
-    phone: '45', community: '30', calendar: '20', recipe: '4', outfit: '1', todayTrend: '0',
-    initialPhone: '50', initialCommunity: '25', initialCalendar: '25', initialRecipe: '0', initialOutfit: '0', initialTodayTrend: '0',
-}), { phone: 45, community: 30, calendar: 20, recipe: 4, outfit: 1, todayTrend: 0 });
+    sourceWeights: { phone: 2, community: 1, calendar: 1, todayTrend: 0 },
+    phone: '45', community: '30', calendar: '20', todayTrend: '5',
+    initialPhone: '50', initialCommunity: '25', initialCalendar: '25', initialTodayTrend: '0',
+}), { phone: 45, community: 30, calendar: 20, todayTrend: 5 });
 assert.throws(() => resolveBudgetPercentageInput({
-    sourceWeights: { phone: 2, community: 1, calendar: 1 },
-    phone: '60', community: '30', calendar: '20', recipe: '0', outfit: '0', todayTrend: '0',
-    initialPhone: '50', initialCommunity: '25', initialCalendar: '25', initialRecipe: '0', initialOutfit: '0', initialTodayTrend: '0',
+    sourceWeights: { phone: 2, community: 1, calendar: 1, todayTrend: 0 },
+    phone: '60', community: '30', calendar: '20', todayTrend: '0',
+    initialPhone: '50', initialCommunity: '25', initialCalendar: '25', initialTodayTrend: '0',
 }), /合计必须为 100%/);
 assert.throws(() => resolveBudgetPercentageInput({
-    sourceWeights: { phone: 2, community: 1, calendar: 1 },
-    phone: '-1', community: '81', calendar: '20', recipe: '0', outfit: '0', todayTrend: '0',
-    initialPhone: '50', initialCommunity: '25', initialCalendar: '25', initialRecipe: '0', initialOutfit: '0', initialTodayTrend: '0',
+    sourceWeights: { phone: 2, community: 1, calendar: 1, todayTrend: 0 },
+    phone: '-1', community: '81', calendar: '20', todayTrend: '0',
+    initialPhone: '50', initialCommunity: '25', initialCalendar: '25', initialTodayTrend: '0',
 }), /0 到 100/);
 
 assert.equal(estimateContextTokens('abcd').estimatedTokens, 1);
@@ -74,7 +75,7 @@ const fixed = allocateContextBudget({
     demandBySource: { phone: 100, community: 100 },
 });
 assert.equal(fixed.totalBudgetTokens, 100);
-assert.deepEqual(fixed.allocations, { phone: 75, community: 25, calendar: 0, recipe: 0, outfit: 0, todayTrend: 0 });
+assert.deepEqual(fixed.allocations, { phone: 75, community: 25, calendar: 0, todayTrend: 0 });
 
 const redistributed = allocateContextBudget({
     config: {
@@ -86,22 +87,36 @@ const redistributed = allocateContextBudget({
     safeMaxTokens: 100,
     demandBySource: { phone: 10, community: 100 },
 });
-assert.deepEqual(redistributed.allocations, { phone: 10, community: 90, calendar: 0, recipe: 0, outfit: 0, todayTrend: 0 });
+assert.deepEqual(redistributed.allocations, { phone: 10, community: 90, calendar: 0, todayTrend: 0 });
 assert.equal(redistributed.allocatedTokens, 100);
 
-const recipeAllocation = allocateContextBudget({
-    config: { targetTokens: 100, sourceWeights: { phone: 3, community: 0, calendar: 0, recipe: 1 }, redistributeUnused: false },
-    safeMaxTokens: 100,
-    demandBySource: { phone: 100, recipe: 100 },
+const previousDefault = normalizeBudgetConfig({
+    budgetVersion: 3,
+    sourceWeights: { phone: 1, community: 0, calendar: 0, recipe: 0, outfit: 0, todayTrend: 0 },
 });
-assert.deepEqual(recipeAllocation.allocations, { phone: 75, community: 0, calendar: 0, recipe: 25, outfit: 0, todayTrend: 0 });
+assert.deepEqual(previousDefault.sourceWeights, DEFAULT_BUDGET_CONFIG.sourceWeights);
+const migratedLegacy = normalizeBudgetConfig({
+    budgetVersion: 3,
+    sourceWeights: { phone: 2, community: 1, calendar: 3, recipe: 4, outfit: 5, todayTrend: 6 },
+    sourcePriority: ['outfit', 'phone', 'recipe', 'community'],
+});
+assert.deepEqual(migratedLegacy.sourceWeights, { phone: 2, community: 1, calendar: 12, todayTrend: 6 });
+assert.deepEqual(migratedLegacy.sourcePriority, ['calendar', 'phone', 'community', 'todayTrend']);
 
-const outfitAllocation = allocateContextBudget({
-    config: { targetTokens: 100, sourceWeights: { phone: 3, outfit: 1 }, redistributeUnused: false },
-    safeMaxTokens: 100,
-    demandBySource: { phone: 100, outfit: 100 },
+assert.deepEqual(allocateCalendarFamilyBudget({
+    tokenLimit: 90,
+    demandBySource: { calendar: 100, recipe: 100, outfit: 100 },
+}).allocations, { calendar: 30, recipe: 30, outfit: 30 });
+assert.deepEqual(allocateCalendarFamilyBudget({
+    tokenLimit: 10,
+    demandBySource: { calendar: 2, recipe: 100, outfit: 100 },
+}).allocations, { calendar: 2, recipe: 4, outfit: 4 });
+const tinyFamily = allocateCalendarFamilyBudget({
+    tokenLimit: 2,
+    demandBySource: { calendar: 1, recipe: 1, outfit: 1 },
 });
-assert.deepEqual(outfitAllocation.allocations, { phone: 75, community: 0, calendar: 0, recipe: 0, outfit: 25, todayTrend: 0 });
+assert.deepEqual(tinyFamily.allocations, { calendar: 1, recipe: 1, outfit: 0 });
+assert.equal(tinyFamily.allocatedTokens, 2);
 
 for (const requestedDemand of [11999, 12000, 12001, 24000]) {
     const saturated = allocateContextBudget({
@@ -140,9 +155,9 @@ storedValues.set('ST_SMS_BUDGET_CONFIG', JSON.stringify({
     },
 }));
 assert.equal(loadBudgetConfig().targetTokens, 321);
-assert.equal(window.__pmBudgetConfig.budgetVersion, 3);
-assert.deepEqual(window.__pmBudgetConfig.sourceWeights, { phone: 2, community: 1, calendar: 0, recipe: 0, outfit: 0, todayTrend: 0 });
-assert.deepEqual(window.__pmBudgetConfig.sourcePriority, ['phone', 'community', 'calendar', 'recipe', 'outfit', 'todayTrend']);
+assert.equal(window.__pmBudgetConfig.budgetVersion, 4);
+assert.deepEqual(window.__pmBudgetConfig.sourceWeights, { phone: 2, community: 1, calendar: 0, todayTrend: 0 });
+assert.deepEqual(window.__pmBudgetConfig.sourcePriority, ['phone', 'community', 'calendar', 'todayTrend']);
 assert.deepEqual(window.__pmBudgetConfig.communitySelectionsByStorage.story['scene-a'], {
     mode: 'selected', postIds: ['post-a'],
 });

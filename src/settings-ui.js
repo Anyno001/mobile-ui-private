@@ -534,8 +534,6 @@ export function installSettingsUi(deps) {
         const phoneWeightInput = document.getElementById('pm-budget-phone-weight');
         const communityWeightInput = document.getElementById('pm-budget-community-weight');
         const calendarWeightInput = document.getElementById('pm-budget-calendar-weight');
-        const recipeWeightInput = document.getElementById('pm-budget-recipe-weight');
-        const outfitWeightInput = document.getElementById('pm-budget-outfit-weight');
         const todayTrendWeightInput = document.getElementById('pm-budget-today-trend-weight');
         let sourceWeights;
         try {
@@ -544,19 +542,15 @@ export function installSettingsUi(deps) {
                 phone: phoneWeightInput?.value,
                 community: communityWeightInput?.value,
                 calendar: calendarWeightInput?.value,
-                recipe: recipeWeightInput?.value,
-                outfit: outfitWeightInput?.value,
                 todayTrend: todayTrendWeightInput?.value,
                 initialPhone: phoneWeightInput?.dataset.initialValue,
                 initialCommunity: communityWeightInput?.dataset.initialValue,
                 initialCalendar: calendarWeightInput?.dataset.initialValue,
-                initialRecipe: recipeWeightInput?.dataset.initialValue,
-                initialOutfit: outfitWeightInput?.dataset.initialValue,
                 initialTodayTrend: todayTrendWeightInput?.dataset.initialValue,
             });
         } catch (error) { alert(error.message); return; }
         const prioritySource = document.getElementById('pm-budget-priority')?.value;
-        const priority = [prioritySource, 'phone', 'community', 'calendar', 'recipe', 'outfit', 'todayTrend'].filter((value, index, values) => value && values.indexOf(value) === index);
+        const priority = [prioritySource, 'phone', 'community', 'calendar', 'todayTrend'].filter((value, index, values) => value && values.indexOf(value) === index);
         const current = normalizeBudgetConfig(window.__pmBudgetConfig);
         const candidate = normalizeBudgetConfig({
             ...current,

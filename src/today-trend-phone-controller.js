@@ -33,18 +33,16 @@ export function createTodayTrendPhoneController({ state, deps, container }) {
             error, initializing: false, initializationDraft, initializationOpen, reinitializing });
     };
     const rerender = view => render(view).catch(report);
-    const editRule = async rule => {
+    const saveRule = async (rule, text) => {
         const current = await store(), id = deps.getStorageId(), scope = current?.scopes?.[id], preset = current?.presets?.[scope?.presetId];
         const [group, key = ''] = String(rule).split('-');
         const rules = group === 'dynamics' && key ? preset?.dynamicsRules : preset?.moduleRules;
         const field = group === 'dynamics' && key ? key : group;
         if (!preset || !Object.hasOwn(rules || {}, field)) throw new Error('当前模块规则不可用');
-        const value = globalThis.prompt?.(`编辑${rule}规则`, rules[field]);
-        if (value === null || value === undefined) return false;
-        const text = String(value).trim();
-        if (!text) throw new Error('模块规则不能为空');
+        const normalized = String(text || '').trim();
+        if (!normalized) throw new Error('模块规则不能为空');
         if (typeof deps.saveTodayTrendRule !== 'function') throw new Error('模块规则保存能力不可用');
-        return deps.saveTodayTrendRule(rule, text, preset.id, preset.revision);
+        return deps.saveTodayTrendRule(rule, normalized, preset.id, preset.revision);
     };
     const regenerateRule = async rule => {
         if (typeof deps.regenerateTodayTrendRule !== 'function') throw new Error('模块规则重新生成能力不可用');
@@ -61,7 +59,7 @@ export function createTodayTrendPhoneController({ state, deps, container }) {
     dispatcher = createTodayTrendActionDispatcher({ container, getStorageId: deps.getStorageId, getStore: store,
         committer: { commitScope: (...args) => deps.commitTodayTrendScope?.(...args) }, render: rerender,
         onGenerate: module => generate(module), onRefresh: (module, itemId, options) => generate(module, itemId, options),
-        onEditRule: (rule, regenerate) => regenerate ? regenerateRule(rule) : editRule(rule).then(rerender), onError: report });
+        onSaveRule: saveRule, onRegenerateRule: regenerateRule, onError: report });
     const openInitialization = ({ replace = false } = {}) => {
         const preset = replace ? lastPresets.find(item => item.id === lastScope?.presetId) : null;
         initializationDraft = preset ? { presetName: preset.name, ...preset.source } : { includeExistingChat: true };

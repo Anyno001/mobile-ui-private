@@ -2285,7 +2285,7 @@ requireText('package.json', packageText, 'npm run check:emoji');
 requireText('package.json', packageText, '"check:calendar": "node scripts/check-calendar.mjs"');
 requireText('package.json', packageText, 'npm run check:calendar');
 requireText('settings-templates.js', sourceModuleByName.get('settings-templates.js')?.code || '', '仅显示设备本地时间。');
-for (const expected of ['手机会话占比 (%)', '互动社区占比 (%)', '日历占比 (%)', '菜谱占比 (%)', 'pm-custom-check', 'role="checkbox"', "event.key==='Enter'"]) {
+for (const expected of ['手机会话占比 (%)', '互动社区占比 (%)', '日历模块占比 (%)', '今日风向占比 (%)', '日历模块包含生活日历、菜谱和穿搭。', 'pm-custom-check', 'role="checkbox"', "event.key==='Enter'"]) {
   requireText('settings-templates.js', sourceModuleByName.get('settings-templates.js')?.code || '', expected);
 }
 for (const expected of ['extractAiResponseContent(j)', 'resolveBudgetPercentageInput']) {

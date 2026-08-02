@@ -2373,23 +2373,45 @@ ${userPrompt}` : userPrompt;
 
   // src/budget.js
   var BUDGET_CONFIG_KEY = "ST_SMS_BUDGET_CONFIG";
-  var BUDGET_VERSION = 3;
-  var BUDGET_SOURCES = Object.freeze(["phone", "community", "calendar", "recipe", "outfit", "todayTrend"]);
+  var BUDGET_VERSION = 4;
+  var BUDGET_SOURCES = Object.freeze(["phone", "community", "calendar", "todayTrend"]);
   var DEFAULT_SAFE_INPUT_TOKENS = Math.floor(MAX_INJECTION_CHARS / 4);
   var MAX_TARGET_TOKENS = 12e3;
+  var CALENDAR_FAMILY_SOURCES = Object.freeze(["calendar", "recipe", "outfit"]);
   var DEFAULT_BUDGET_CONFIG = Object.freeze({
     budgetVersion: BUDGET_VERSION,
     targetTokens: DEFAULT_SAFE_INPUT_TOKENS,
-    sourceWeights: Object.freeze({ phone: 1, community: 0, calendar: 0, recipe: 0, outfit: 0, todayTrend: 0 }),
-    sourcePriority: Object.freeze(["phone", "community", "calendar", "recipe", "outfit", "todayTrend"]),
+    sourceWeights: Object.freeze({ phone: 1, community: 1, calendar: 1, todayTrend: 1 }),
+    sourcePriority: Object.freeze(["phone", "community", "calendar", "todayTrend"]),
     redistributeUnused: true,
     communitySceneIdsByStorage: Object.freeze({}),
     communitySelectionsByStorage: Object.freeze({})
   });
   var finiteInteger = (value, min, max) => typeof value === "number" && Number.isFinite(value) && Number.isInteger(value) && value >= min && value <= max;
   var plainRecord7 = (value) => value && typeof value === "object" && !Array.isArray(value) && (Object.getPrototypeOf(value) === Object.prototype || Object.getPrototypeOf(value) === null);
-  function normalizeWeights(value) {
+  var finiteWeight = (value) => typeof value === "number" && Number.isFinite(value) && value >= 0;
+  function normalizeWeights(value, sourceVersion) {
     if (!plainRecord7(value)) return { ...DEFAULT_BUDGET_CONFIG.sourceWeights };
+    const legacy = sourceVersion < BUDGET_VERSION || Object.hasOwn(value, "recipe") || Object.hasOwn(value, "outfit");
+    if (legacy) {
+      const legacyWeights = {
+        phone: Object.hasOwn(value, "phone") ? value.phone : 1,
+        community: Object.hasOwn(value, "community") ? value.community : 0,
+        calendar: Object.hasOwn(value, "calendar") ? value.calendar : 0,
+        recipe: Object.hasOwn(value, "recipe") ? value.recipe : 0,
+        outfit: Object.hasOwn(value, "outfit") ? value.outfit : 0,
+        todayTrend: Object.hasOwn(value, "todayTrend") ? value.todayTrend : 0
+      };
+      if (!Object.values(legacyWeights).every(finiteWeight)) return { ...DEFAULT_BUDGET_CONFIG.sourceWeights };
+      const isPreviousDefault = legacyWeights.phone === 1 && legacyWeights.community === 0 && legacyWeights.calendar === 0 && legacyWeights.recipe === 0 && legacyWeights.outfit === 0 && legacyWeights.todayTrend === 0;
+      if (isPreviousDefault) return { ...DEFAULT_BUDGET_CONFIG.sourceWeights };
+      return {
+        phone: legacyWeights.phone,
+        community: legacyWeights.community,
+        calendar: legacyWeights.calendar + legacyWeights.recipe + legacyWeights.outfit,
+        todayTrend: legacyWeights.todayTrend
+      };
+    }
     const result = {};
     for (const source of BUDGET_SOURCES) {
       if (!Object.hasOwn(value, source)) {
@@ -2397,18 +2419,19 @@ ${userPrompt}` : userPrompt;
         continue;
       }
       const weight = value[source];
-      if (typeof weight !== "number" || !Number.isFinite(weight) || weight < 0) {
+      if (!finiteWeight(weight)) {
         return { ...DEFAULT_BUDGET_CONFIG.sourceWeights };
       }
       result[source] = weight;
     }
     return Object.values(result).some((weight) => weight > 0) ? result : { ...DEFAULT_BUDGET_CONFIG.sourceWeights };
   }
-  function normalizePriority(value) {
+  function normalizePriority(value, legacy) {
     const result = [];
     if (Array.isArray(value)) {
       for (const source of value) {
-        if (BUDGET_SOURCES.includes(source) && !result.includes(source)) result.push(source);
+        const normalized = legacy && CALENDAR_FAMILY_SOURCES.includes(source) ? "calendar" : source;
+        if (BUDGET_SOURCES.includes(normalized) && !result.includes(normalized)) result.push(normalized);
       }
     }
     for (const source of BUDGET_SOURCES) if (!result.includes(source)) result.push(source);
@@ -2456,13 +2479,45 @@ ${userPrompt}` : userPrompt;
     }
     return result;
   }
+  function allocateCalendarFamilyBudget({ tokenLimit = 0, demandBySource = {} } = {}) {
+    const limit = finiteInteger(tokenLimit, 0, MAX_TARGET_TOKENS) ? tokenLimit : 0;
+    const demand = Object.fromEntries(CALENDAR_FAMILY_SOURCES.map((source) => {
+      const value = demandBySource[source];
+      return [source, finiteInteger(value, 0, MAX_TARGET_TOKENS) ? value : 0];
+    }));
+    const allocations = Object.fromEntries(CALENDAR_FAMILY_SOURCES.map((source) => [source, 0]));
+    let remaining = Math.min(limit, Object.values(demand).reduce((sum, value) => sum + value, 0));
+    while (remaining > 0) {
+      const eligible = CALENDAR_FAMILY_SOURCES.filter((source) => allocations[source] < demand[source]);
+      if (!eligible.length) break;
+      const share = Math.floor(remaining / eligible.length);
+      if (share > 0) {
+        let granted = 0;
+        for (const source of eligible) {
+          const amount = Math.min(share, demand[source] - allocations[source]);
+          allocations[source] += amount;
+          granted += amount;
+        }
+        remaining -= granted;
+        continue;
+      }
+      for (const source of eligible) {
+        if (remaining <= 0) break;
+        allocations[source] += 1;
+        remaining -= 1;
+      }
+    }
+    return { demandBySource: demand, allocations, allocatedTokens: Object.values(allocations).reduce((sum, value) => sum + value, 0) };
+  }
   function normalizeBudgetConfig(value) {
     const source = plainRecord7(value) ? value : {};
+    const sourceVersion = finiteInteger(source.budgetVersion, 1, BUDGET_VERSION) ? source.budgetVersion : 3;
+    const legacy = sourceVersion < BUDGET_VERSION || Object.hasOwn(source.sourceWeights || {}, "recipe") || Object.hasOwn(source.sourceWeights || {}, "outfit");
     return {
       budgetVersion: BUDGET_VERSION,
       targetTokens: finiteInteger(source.targetTokens, 1, MAX_TARGET_TOKENS) ? source.targetTokens : DEFAULT_BUDGET_CONFIG.targetTokens,
-      sourceWeights: normalizeWeights(source.sourceWeights),
-      sourcePriority: normalizePriority(source.sourcePriority),
+      sourceWeights: normalizeWeights(source.sourceWeights, sourceVersion),
+      sourcePriority: normalizePriority(source.sourcePriority, legacy),
       redistributeUnused: typeof source.redistributeUnused === "boolean" ? source.redistributeUnused : DEFAULT_BUDGET_CONFIG.redistributeUnused,
       communitySceneIdsByStorage: normalizeSceneIds(source.communitySceneIdsByStorage),
       communitySelectionsByStorage: normalizeCommunitySelections(source.communitySelectionsByStorage)
@@ -15836,20 +15891,27 @@ ${body}
         depth: injection.todayTrend.depth
       });
     }
+    const calendarFamilyDemand = {
+      calendar: calendarItems.reduce((sum, item) => sum + renderedItemTokenDemand(item), 0),
+      recipe: recipeItems.reduce((sum, item) => sum + renderedItemTokenDemand(item), 0),
+      outfit: outfitItems.reduce((sum, item) => sum + renderedItemTokenDemand(item), 0)
+    };
     const demandBySource = {
       phone: phoneItems.reduce((sum, item) => sum + renderedItemTokenDemand(item), 0),
       community: communityItems.reduce((sum, item) => sum + renderedItemTokenDemand(item), 0),
-      calendar: calendarItems.reduce((sum, item) => sum + renderedItemTokenDemand(item), 0),
-      recipe: recipeItems.reduce((sum, item) => sum + renderedItemTokenDemand(item), 0),
-      outfit: outfitItems.reduce((sum, item) => sum + renderedItemTokenDemand(item), 0),
+      calendar: Object.values(calendarFamilyDemand).reduce((sum, value) => sum + value, 0),
       todayTrend: todayTrendItems.reduce((sum, item) => sum + renderedItemTokenDemand(item), 0)
     };
     const budget = allocateContextBudget({ config, safeMaxTokens, demandBySource });
+    const calendarFamilyBudget = allocateCalendarFamilyBudget({
+      tokenLimit: budget.allocations.calendar,
+      demandBySource: calendarFamilyDemand
+    });
     const phone = allocateRenderedPrompts(phoneItems, budget.allocations.phone);
     const community = allocateRenderedPrompts(communityItems, budget.allocations.community);
-    const calendar = allocateRenderedPrompts(calendarItems, budget.allocations.calendar);
-    const recipe = allocateRenderedPrompts(recipeItems, budget.allocations.recipe);
-    const outfit = allocateRenderedPrompts(outfitItems, budget.allocations.outfit);
+    const calendar = allocateRenderedPrompts(calendarItems, calendarFamilyBudget.allocations.calendar);
+    const recipe = allocateRenderedPrompts(recipeItems, calendarFamilyBudget.allocations.recipe);
+    const outfit = allocateRenderedPrompts(outfitItems, calendarFamilyBudget.allocations.outfit);
     const todayTrend = allocateRenderedPrompts(todayTrendItems, budget.allocations.todayTrend);
     return {
       prompts: [...phone.prompts, ...community.prompts, ...calendar.prompts, ...recipe.prompts, ...outfit.prompts, ...todayTrend.prompts],
@@ -15869,9 +15931,12 @@ ${body}
         },
         communityPermission: { allowed: communityPermission.allowed, reason: communityPermission.reason, sourceCount: communityPermission.sources.length },
         calendarEnabled: Boolean(calendarScope?.injectionScheduleEnabled || calendarScope?.injectionWeatherEnabled || calendarScope?.injectionCycleEnabled),
+        calendar: { demandTokens: calendarFamilyDemand.calendar, allocatedTokens: calendarFamilyBudget.allocations.calendar, promptCount: calendar.prompts.length, usedTokens: calendar.usedTokens },
         outfitEnabled: calendarScope?.injectionOutfitEnabled === true,
         recipeEnabled: calendarScope?.injectionRecipeEnabled === true,
-        outfit: { demandTokens: demandBySource.outfit, allocatedTokens: budget.allocations.outfit, promptCount: outfit.prompts.length, usedTokens: outfit.usedTokens },
+        recipe: { demandTokens: calendarFamilyDemand.recipe, allocatedTokens: calendarFamilyBudget.allocations.recipe, promptCount: recipe.prompts.length, usedTokens: recipe.usedTokens },
+        outfit: { demandTokens: calendarFamilyDemand.outfit, allocatedTokens: calendarFamilyBudget.allocations.outfit, promptCount: outfit.prompts.length, usedTokens: outfit.usedTokens },
+        calendarFamilyBudget,
         todayTrend: { enabled: todayTrendScope?.injection?.enabled === true, demandTokens: demandBySource.todayTrend, allocatedTokens: budget.allocations.todayTrend, promptCount: todayTrend.prompts.length, usedTokens: todayTrend.usedTokens },
         usedTokens: phone.usedTokens + community.usedTokens + calendar.usedTokens + recipe.usedTokens + outfit.usedTokens + todayTrend.usedTokens,
         truncatedCount: phone.truncatedCount + community.truncatedCount + calendar.truncatedCount + recipe.truncatedCount + outfit.truncatedCount + todayTrend.truncatedCount
@@ -18017,38 +18082,30 @@ ${lines}`;
       phone: Number(sourceWeights?.phone) || 0,
       community: Number(sourceWeights?.community) || 0,
       calendar: Number(sourceWeights?.calendar) || 0,
-      recipe: Number(sourceWeights?.recipe) || 0,
-      outfit: Number(sourceWeights?.outfit) || 0,
       todayTrend: Number(sourceWeights?.todayTrend) || 0
     };
     const total = Object.values(weights).reduce((sum, value) => sum + value, 0);
-    if (total <= 0) return { phone: 100, community: 0, calendar: 0, recipe: 0, outfit: 0, todayTrend: 0 };
+    if (total <= 0) return { phone: 25, community: 25, calendar: 25, todayTrend: 25 };
     const phone = Number((weights.phone * 100 / total).toFixed(4));
     const community = Number((weights.community * 100 / total).toFixed(4));
     const calendar = Number((weights.calendar * 100 / total).toFixed(4));
-    const recipe = Number((weights.recipe * 100 / total).toFixed(4));
-    const outfit = Number((weights.outfit * 100 / total).toFixed(4));
-    return { phone, community, calendar, recipe, outfit, todayTrend: Number((100 - phone - community - calendar - recipe - outfit).toFixed(4)) };
+    return { phone, community, calendar, todayTrend: Number((100 - phone - community - calendar).toFixed(4)) };
   }
   function resolveBudgetPercentageInput({
     sourceWeights,
     phone,
     community,
     calendar,
-    recipe,
-    outfit,
     todayTrend,
     initialPhone,
     initialCommunity,
     initialCalendar,
-    initialRecipe,
-    initialOutfit,
     initialTodayTrend
   }) {
-    const next = { phone: Number(phone), community: Number(community), calendar: Number(calendar), recipe: Number(recipe), outfit: Number(outfit), todayTrend: Number(todayTrend) };
-    const initial = { phone: Number(initialPhone), community: Number(initialCommunity), calendar: Number(initialCalendar), recipe: Number(initialRecipe), outfit: Number(initialOutfit), todayTrend: Number(initialTodayTrend) };
+    const next = { phone: Number(phone), community: Number(community), calendar: Number(calendar), todayTrend: Number(todayTrend) };
+    const initial = { phone: Number(initialPhone), community: Number(initialCommunity), calendar: Number(initialCalendar), todayTrend: Number(initialTodayTrend) };
     if (Object.keys(next).every((source) => next[source] === initial[source])) {
-      return { phone: sourceWeights.phone, community: sourceWeights.community, calendar: sourceWeights.calendar || 0, recipe: sourceWeights.recipe || 0, outfit: sourceWeights.outfit || 0, todayTrend: sourceWeights.todayTrend || 0 };
+      return { phone: sourceWeights.phone, community: sourceWeights.community, calendar: sourceWeights.calendar, todayTrend: sourceWeights.todayTrend };
     }
     if (!Object.values(next).every((value) => Number.isFinite(value) && value >= 0 && value <= 100)) {
       throw new Error("\u5404\u6B63\u6587\u6CE8\u5165\u6765\u6E90\u5360\u6BD4\u5FC5\u987B\u662F 0 \u5230 100 \u4E4B\u95F4\u7684\u6570\u5B57");
@@ -18070,22 +18127,18 @@ ${lines}`;
         <div class="pm-budget-weight-list">
           <label class="pm-cfg-label">\u624B\u673A\u4F1A\u8BDD\u5360\u6BD4 (%)<input id="pm-budget-phone-weight" class="pm-cfg-input" type="number" min="0" max="100" step="0.0001" value="${percentages.phone}" data-initial-value="${percentages.phone}"></label>
           <label class="pm-cfg-label">\u4E92\u52A8\u793E\u533A\u5360\u6BD4 (%)<input id="pm-budget-community-weight" class="pm-cfg-input" type="number" min="0" max="100" step="0.0001" value="${percentages.community}" data-initial-value="${percentages.community}"></label>
-          <label class="pm-cfg-label">\u65E5\u5386\u5360\u6BD4 (%)<input id="pm-budget-calendar-weight" class="pm-cfg-input" type="number" min="0" max="100" step="0.0001" value="${percentages.calendar}" data-initial-value="${percentages.calendar}"></label>
-          <label class="pm-cfg-label">\u83DC\u8C31\u5360\u6BD4 (%)<input id="pm-budget-recipe-weight" class="pm-cfg-input" type="number" min="0" max="100" step="0.0001" value="${percentages.recipe}" data-initial-value="${percentages.recipe}"></label>
-          <label class="pm-cfg-label">\u7A7F\u642D\u5360\u6BD4 (%)<input id="pm-budget-outfit-weight" class="pm-cfg-input" type="number" min="0" max="100" step="0.0001" value="${percentages.outfit}" data-initial-value="${percentages.outfit}"></label>
+          <label class="pm-cfg-label">\u65E5\u5386\u6A21\u5757\u5360\u6BD4 (%)<input id="pm-budget-calendar-weight" class="pm-cfg-input" type="number" min="0" max="100" step="0.0001" value="${percentages.calendar}" data-initial-value="${percentages.calendar}"></label>
           <label class="pm-cfg-label">\u4ECA\u65E5\u98CE\u5411\u5360\u6BD4 (%)<input id="pm-budget-today-trend-weight" class="pm-cfg-input" type="number" min="0" max="100" step="0.0001" value="${percentages.todayTrend}" data-initial-value="${percentages.todayTrend}"></label>
         </div>
-        <div class="pm-cfg-tip">\u516D\u7C7B\u5185\u5BB9\u5360\u6BD4\u5408\u8BA1\u5FC5\u987B\u4E3A 100%\u3002\u65E5\u5386\u3001\u83DC\u8C31\u3001\u7A7F\u642D\u548C\u4ECA\u65E5\u98CE\u5411\u5747\u9ED8\u8BA4\u5173\u95ED\u3002</div>
+        <div class="pm-cfg-tip">\u56DB\u7C7B\u5185\u5BB9\u5360\u6BD4\u5408\u8BA1\u5FC5\u987B\u4E3A 100%\u3002\u65E5\u5386\u6A21\u5757\u5305\u542B\u751F\u6D3B\u65E5\u5386\u3001\u83DC\u8C31\u548C\u7A7F\u642D\u3002</div>
         <label class="pm-settings-field" for="pm-budget-priority"><span class="pm-cfg-label">\u5269\u4F59\u989D\u5EA6\u4F18\u5148\u8865\u7ED9</span><select id="pm-budget-priority" class="pm-cfg-input">
           <option value="phone" ${priority === "phone" ? "selected" : ""}>\u624B\u673A\u4F1A\u8BDD\u4F18\u5148</option>
           <option value="community" ${priority === "community" ? "selected" : ""}>\u4E92\u52A8\u793E\u533A\u4F18\u5148</option>
-          <option value="calendar" ${priority === "calendar" ? "selected" : ""}>\u65E5\u5386\u4F18\u5148</option>
-          <option value="recipe" ${priority === "recipe" ? "selected" : ""}>\u83DC\u8C31\u4F18\u5148</option>
-          <option value="outfit" ${priority === "outfit" ? "selected" : ""}>\u7A7F\u642D\u4F18\u5148</option>
+          <option value="calendar" ${priority === "calendar" ? "selected" : ""}>\u65E5\u5386\u6A21\u5757\u4F18\u5148</option>
           <option value="todayTrend" ${priority === "todayTrend" ? "selected" : ""}>\u4ECA\u65E5\u98CE\u5411\u4F18\u5148</option>
         </select></label>
         <label class="pm-cfg-label pm-check-setting">
-          <span>\u628A\u4E00\u65B9\u6CA1\u7528\u5B8C\u7684\u989D\u5EA6\u8865\u7ED9\u53E6\u4E00\u65B9</span>
+          <span>\u81EA\u52A8\u5C06\u672A\u4F7F\u7528\u7684\u989D\u5EA6\u8865\u7ED9\u4ECD\u6709\u5185\u5BB9\u7684\u6A21\u5757</span>
           <div id="pm-budget-redistribute" class="pm-custom-check ${config.redistributeUnused ? "is-checked" : ""}" role="checkbox" tabindex="0" aria-checked="${config.redistributeUnused}" onclick="this.classList.toggle('is-checked');this.setAttribute('aria-checked',String(this.classList.contains('is-checked')))" onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();this.click()}"></div>
         </label>
       </div>
@@ -19690,8 +19743,6 @@ ${error.message}`);
       const phoneWeightInput = document.getElementById("pm-budget-phone-weight");
       const communityWeightInput = document.getElementById("pm-budget-community-weight");
       const calendarWeightInput = document.getElementById("pm-budget-calendar-weight");
-      const recipeWeightInput = document.getElementById("pm-budget-recipe-weight");
-      const outfitWeightInput = document.getElementById("pm-budget-outfit-weight");
       const todayTrendWeightInput = document.getElementById("pm-budget-today-trend-weight");
       let sourceWeights;
       try {
@@ -19700,14 +19751,10 @@ ${error.message}`);
           phone: phoneWeightInput?.value,
           community: communityWeightInput?.value,
           calendar: calendarWeightInput?.value,
-          recipe: recipeWeightInput?.value,
-          outfit: outfitWeightInput?.value,
           todayTrend: todayTrendWeightInput?.value,
           initialPhone: phoneWeightInput?.dataset.initialValue,
           initialCommunity: communityWeightInput?.dataset.initialValue,
           initialCalendar: calendarWeightInput?.dataset.initialValue,
-          initialRecipe: recipeWeightInput?.dataset.initialValue,
-          initialOutfit: outfitWeightInput?.dataset.initialValue,
           initialTodayTrend: todayTrendWeightInput?.dataset.initialValue
         });
       } catch (error) {
@@ -19715,7 +19762,7 @@ ${error.message}`);
         return;
       }
       const prioritySource = document.getElementById("pm-budget-priority")?.value;
-      const priority = [prioritySource, "phone", "community", "calendar", "recipe", "outfit", "todayTrend"].filter((value, index, values) => value && values.indexOf(value) === index);
+      const priority = [prioritySource, "phone", "community", "calendar", "todayTrend"].filter((value, index, values) => value && values.indexOf(value) === index);
       const current = normalizeBudgetConfig(window.__pmBudgetConfig);
       const candidate = normalizeBudgetConfig({
         ...current,
@@ -20782,7 +20829,8 @@ ${targetInstruction}`
     render,
     onGenerate,
     onRefresh,
-    onEditRule,
+    onSaveRule,
+    onRegenerateRule,
     onError = () => {
     },
     onStatus = () => {
@@ -20791,7 +20839,7 @@ ${targetInstruction}`
     if (!container?.addEventListener || typeof getStorageId2 !== "function" || typeof getStore !== "function" || typeof committer?.commitScope !== "function" || typeof render !== "function") {
       throw new TypeError("\u4ECA\u65E5\u98CE\u5411\u52A8\u4F5C\u5206\u53D1\u4F9D\u8D56\u65E0\u6548");
     }
-    const view = { name: "world", mode: "content", editingWorldItemId: null, editingCircleId: null, editingFactionId: null, editingEventId: null, menuOpenId: null };
+    const view = { name: "world", mode: "content", editingWorldItemId: null, editingCircleId: null, editingFactionId: null, editingEventId: null, editingRule: null, ruleDraft: null, menuOpenId: null };
     const rerender = async () => render({ ...view, store: await getStore(), storageId: getStorageId2() });
     const commit = async (mutate) => {
       const storageId = String(getStorageId2() || "").trim();
@@ -20815,6 +20863,8 @@ ${targetInstruction}`
       view.editingCircleId = null;
       view.editingFactionId = null;
       view.editingEventId = null;
+      view.editingRule = null;
+      view.ruleDraft = null;
       closeMenu();
       return rerender();
     };
@@ -20828,6 +20878,11 @@ ${targetInstruction}`
         return run(rerender());
       }
       closeMenu();
+      if (action === "today-trend-cancel-rule-editor") {
+        view.editingRule = null;
+        view.ruleDraft = null;
+        return run(rerender());
+      }
       if (action === "today-trend-add-detail") {
         const list2 = button.closest("fieldset")?.querySelector("[data-today-trend-details]");
         if (!list2 || list2.children.length >= 16) return;
@@ -20922,12 +20977,28 @@ ${targetInstruction}`
       const refresh = { "today-trend-refresh-world-item": ["world", button.dataset.worldItemId], "today-trend-refresh-circle": ["reputation", button.dataset.circleId], "today-trend-refresh-faction": ["faction", button.dataset.factionId] }[action];
       if (refresh) return run(onRefresh?.(...refresh) ?? Promise.reject(new Error("\u4ECA\u65E5\u98CE\u5411\u5355\u9879\u5237\u65B0\u80FD\u529B\u5C1A\u672A\u63A5\u5165")));
       const rule = { "today-trend-edit-world-rule": "world", "today-trend-regenerate-world-rule": "world", "today-trend-edit-reputation-rule": "reputation", "today-trend-regenerate-reputation-rule": "reputation", "today-trend-edit-faction-rule": "faction", "today-trend-regenerate-faction-rule": "faction", "today-trend-edit-dynamics-rule": "dynamics", "today-trend-regenerate-dynamics-rule": "dynamics", "today-trend-edit-incident-rule": "dynamics-incident", "today-trend-regenerate-incident-rule": "dynamics-incident", "today-trend-edit-rumor-rule": "dynamics-rumor", "today-trend-regenerate-rumor-rule": "dynamics-rumor", "today-trend-edit-underground-rule": "dynamics-underground", "today-trend-regenerate-underground-rule": "dynamics-underground" }[action];
-      if (rule) return run(onEditRule?.(rule, action.includes("regenerate")) ?? Promise.reject(new Error("\u4ECA\u65E5\u98CE\u5411\u89C4\u5219\u7F16\u8F91\u80FD\u529B\u5C1A\u672A\u63A5\u5165")));
+      if (rule && action.includes("regenerate")) return run(onRegenerateRule?.(rule) ?? Promise.reject(new Error("\u4ECA\u65E5\u98CE\u5411\u89C4\u5219\u91CD\u751F\u6210\u80FD\u529B\u5C1A\u672A\u63A5\u5165")));
+      if (rule) {
+        view.editingRule = rule;
+        view.ruleDraft = null;
+        return run(rerender());
+      }
     };
     const submit = (event) => {
       const form = event.target;
       if (!form?.matches?.("form[data-today-trend-form]") || !container.contains(form)) return;
       event.preventDefault();
+      if (form.dataset.todayTrendForm === "rule-editor") {
+        const rule = formValue(form, "rule"), text7 = formValue(form, "text");
+        if (!text7) return run(Promise.reject(new Error("\u6A21\u5757 Prompt \u4E0D\u80FD\u4E3A\u7A7A")));
+        view.ruleDraft = text7;
+        return run(Promise.resolve(onSaveRule?.(rule, text7)).then(async () => {
+          view.editingRule = null;
+          view.ruleDraft = null;
+          await rerender();
+          onStatus("\u6A21\u5757 Prompt \u5DF2\u4FDD\u5B58\u3002");
+        }));
+      }
       if (form.dataset.todayTrendForm === "world-item") return run(commit((scope) => {
         const item = readWorldItem(form);
         const items = scope.world.items.filter((current) => current.id !== item.id);
@@ -21034,12 +21105,21 @@ ${targetInstruction}`
     return `<button type="button" class="pm-today-trend-icon-button${danger ? " is-danger" : ""}${className ? ` ${className}` : ""}" data-action="${escapeAttr(action)}" aria-label="${escapeAttr(label)}" title="${escapeAttr(label)}" ${attrs}>${icon3}</button>`;
   }
   function trendActionMenu({ id: id2, open = false, label, actions = [] }) {
-    const trigger = trendIconButton({ action: "today-trend-toggle-menu", icon: MORE_ICON_SVG, label, attrs: `data-menu-id="${escapeAttr(id2)}" aria-expanded="${open}" aria-haspopup="menu"` });
+    const trigger = trendIconButton({
+      action: "today-trend-toggle-menu",
+      icon: open ? CLOSE_ICON_SVG : MORE_ICON_SVG,
+      label: open ? `\u5173\u95ED${label}` : label,
+      attrs: `data-menu-id="${escapeAttr(id2)}" aria-expanded="${open}"`
+    });
     const items = actions.map((action) => trendIconButton({ ...action, className: "pm-today-trend-menu-action" })).join("");
-    return `<span class="pm-today-trend-menu-wrap">${trigger}${open ? `<span class="pm-today-trend-menu" role="menu" aria-label="${escapeAttr(label)}">${items}</span>` : ""}</span>`;
+    return `<span class="pm-today-trend-menu-wrap${open ? " is-open" : ""}">${open ? `<span class="pm-today-trend-menu" aria-label="${escapeAttr(label)}">${items}</span>` : ""}${trigger}</span>`;
   }
   function trendModuleHead({ title, menuId, menuOpenId, actions = [], meta = "", adornment = "" }) {
     return `<header class="pm-today-trend-module-head"><div><h2>${escapeHtml(title)}</h2>${meta ? `<span>${escapeHtml(meta)}</span>` : ""}${adornment}</div>${trendActionMenu({ id: menuId, open: menuOpenId === menuId, label: `${title}\u64CD\u4F5C`, actions })}</header>`;
+  }
+  function trendRuleEditor({ rule, value = "" } = {}) {
+    if (!rule) return "";
+    return `<form class="pm-today-trend-editor pm-today-trend-rule-editor" data-today-trend-form="rule-editor"><input type="hidden" name="rule" value="${escapeAttr(rule)}"><label class="pm-today-trend-field">\u6A21\u5757 Prompt<textarea class="pm-today-trend-input" name="text" maxlength="12000" required>${escapeHtml(value)}</textarea></label><div class="pm-today-trend-form-actions"><button type="button" data-action="today-trend-cancel-rule-editor">\u53D6\u6D88</button><button type="submit">\u4FDD\u5B58 Prompt</button></div></form>`;
   }
   function trendToggleField(name, label, checked) {
     return `<label class="pm-today-trend-switch"><span>${escapeHtml(label)}</span><input name="${escapeAttr(name)}" type="checkbox" role="switch" aria-checked="${checked === true}"${checked ? " checked" : ""}><i aria-hidden="true"></i></label>`;
@@ -21055,19 +21135,18 @@ ${targetInstruction}`
     const fields = kind === "archive" ? `<label class="pm-today-trend-field">\u5B8C\u7ED3\u7ED3\u679C<select class="pm-today-trend-input" name="outcome">${outcomes(event.type === "rumor" ? "confirmed" : "resolved", event.type === "rumor")}</select></label><label class="pm-today-trend-field">\u6700\u7EC8\u7ED3\u679C<textarea class="pm-today-trend-input" name="finalResult" maxlength="600" required></textarea></label>` : `<label class="pm-today-trend-field">\u540D\u79F0<input class="pm-today-trend-input" name="title" maxlength="120" required value="${escapeAttr(event.title || "")}"></label><label class="pm-today-trend-field">\u7C7B\u578B<select class="pm-today-trend-input" name="type">${Object.entries(TYPES).map(([key, label]) => `<option value="${key}"${key === (event.type || "normal") ? " selected" : ""}>${label}</option>`).join("")}</select></label><label class="pm-today-trend-field">\u9636\u6BB5<input class="pm-today-trend-input" name="stageLabel" maxlength="8" required value="${escapeAttr(event.stageLabel || "\u51C6\u5907\u4E2D")}"></label><label class="pm-today-trend-field">\u8D77\u56E0<textarea class="pm-today-trend-input" name="origin" maxlength="600" required>${text6(event.origin || "")}</textarea></label><label class="pm-today-trend-field">\u6D89\u53CA\u4E3B\u4F53<input class="pm-today-trend-input" name="participants" maxlength="600" value="${escapeAttr((event.participants || []).join("\u3001"))}"></label><label class="pm-today-trend-field">\u6700\u65B0\u9636\u6BB5<textarea class="pm-today-trend-input" name="latestStage" maxlength="600" required>${text6(event.latestStage || "")}</textarea></label>`;
     return `<form class="pm-today-trend-editor" data-today-trend-form="${kind === "archive" ? "event-archive" : kind === "promotion" ? "event-promotion" : "event"}">${kind === "promotion" ? `<input type="hidden" name="sourceEventId" value="${escapeAttr(event.id || "")}">` : `<input type="hidden" name="id" value="${escapeAttr(event.id || "")}">`}${fields}<div class="pm-today-trend-form-actions"><button type="button" data-action="today-trend-cancel-event-editor">\u53D6\u6D88</button><button type="submit">${kind === "archive" ? "\u786E\u8BA4\u5F52\u6863" : kind === "promotion" ? "\u786E\u8BA4\u5347\u7EA7" : "\u4FDD\u5B58"}</button></div></form>`;
   }
-  function settingsForm(settings, menuOpenId) {
-    const ruleActions = [["dynamics", "\u52A8\u6001\u603B\u89C4\u5219"], ["incident", "\u7A81\u53D1\u4E8B\u4EF6\u89C4\u5219"], ["rumor", "\u6D41\u8A00\u871A\u8BED\u89C4\u5219"], ["underground", "\u5730\u4E0B\u7EBF\u89C4\u5219"]].map(([id2, label]) => `<div class="pm-today-trend-rule-row"><span>${label}</span>${trendActionMenu({ id: `rule:${id2}`, open: menuOpenId === `rule:${id2}`, label: `${label}\u64CD\u4F5C`, actions: [icon2(`today-trend-edit-${id2}-rule`, EDIT_ICON_SVG, `\u7F16\u8F91${label}`), icon2(`today-trend-regenerate-${id2}-rule`, REFRESH_ICON_SVG, `\u91CD\u65B0\u751F\u6210${label}`)] })}</div>`).join("");
-    return `<form class="pm-today-trend-editor" data-today-trend-form="dynamics-settings"><label class="pm-today-trend-field">\u540C\u65F6\u8FFD\u8E2A\u4E0A\u9650<input class="pm-today-trend-input" name="trackingLimit" type="number" min="1" max="80" required value="${settings.trackingLimit}"></label>${trendToggleField("appendOnlyOnActualProgress", "\u4EC5\u5B9E\u9645\u8FDB\u5C55\u65F6\u8FFD\u52A0\u9636\u6BB5", settings.appendOnlyOnActualProgress)}${trendToggleField("autoComplete", "\u81EA\u52A8\u5224\u65AD\u5B8C\u7ED3", settings.autoComplete)}${trendToggleField("archiveCompleted", "\u5B8C\u7ED3\u540E\u5F52\u6863", settings.archiveCompleted)}${trendToggleField("incidentEnabled", "\u542F\u7528\u7A81\u53D1\u4E8B\u4EF6", settings.incident.enabled)}<label class="pm-today-trend-field">\u7A81\u53D1\u6982\u7387\uFF080-100\uFF09<input class="pm-today-trend-input" name="incidentProbability" type="number" min="0" max="100" required value="${settings.incident.probability}"></label>${trendToggleField("rumorEnabled", "\u542F\u7528\u6D41\u8A00\u871A\u8BED", settings.rumor.enabled)}${trendToggleField("undergroundEnabled", "\u542F\u7528\u5730\u4E0B\u7EBF", settings.underground.enabled)}<section class="pm-today-trend-rule"><h3>\u52A8\u6001\u89C4\u5219</h3>${ruleActions}</section><div class="pm-today-trend-form-actions"><button type="button" data-action="today-trend-open-dynamics">\u53D6\u6D88</button><button type="submit">\u4FDD\u5B58\u8BBE\u7F6E</button></div></form>`;
+  function settingsForm(settings) {
+    return `<form class="pm-today-trend-editor" data-today-trend-form="dynamics-settings"><label class="pm-today-trend-field">\u540C\u65F6\u8FFD\u8E2A\u4E0A\u9650<input class="pm-today-trend-input" name="trackingLimit" type="number" min="1" max="80" required value="${settings.trackingLimit}"></label>${trendToggleField("appendOnlyOnActualProgress", "\u4EC5\u5B9E\u9645\u8FDB\u5C55\u65F6\u8FFD\u52A0\u9636\u6BB5", settings.appendOnlyOnActualProgress)}${trendToggleField("autoComplete", "\u81EA\u52A8\u5224\u65AD\u5B8C\u7ED3", settings.autoComplete)}${trendToggleField("archiveCompleted", "\u5B8C\u7ED3\u540E\u5F52\u6863", settings.archiveCompleted)}${trendToggleField("incidentEnabled", "\u542F\u7528\u7A81\u53D1\u4E8B\u4EF6", settings.incident.enabled)}<label class="pm-today-trend-field">\u7A81\u53D1\u6982\u7387\uFF080-100\uFF09<input class="pm-today-trend-input" name="incidentProbability" type="number" min="0" max="100" required value="${settings.incident.probability}"></label>${trendToggleField("rumorEnabled", "\u542F\u7528\u6D41\u8A00\u871A\u8BED", settings.rumor.enabled)}${trendToggleField("undergroundEnabled", "\u542F\u7528\u5730\u4E0B\u7EBF", settings.underground.enabled)}<div class="pm-today-trend-form-actions"><button type="button" data-action="today-trend-open-dynamics">\u53D6\u6D88</button><button type="submit">\u8BBE\u7F6E</button></div></form>`;
   }
   function eventCard(event, archived, attrs, menuOpenId) {
     const state = archived ? OUTCOMES[event.outcome] || event.outcome : event.stageLabel, id2 = `event:${event.id}`;
-    const actions = archived ? [icon2("today-trend-delete-event", TRASH_ICON_SVG, `\u5220\u9664${event.title}`, `data-event-id="${escapeAttr(event.id)}"`, true)] : [icon2("today-trend-advance-event", SPARKLES_ICON_SVG, `\u63A8\u8FDB${event.title}`, `data-event-id="${escapeAttr(event.id)}" ${attrs}`), icon2("today-trend-edit-event", EDIT_ICON_SVG, `\u7F16\u8F91${event.title}`, `data-event-id="${escapeAttr(event.id)}"`), ...event.type === "underground" ? [icon2("today-trend-promote-underground", SPARKLES_ICON_SVG, `\u5347\u7EA7${event.title}`, `data-event-id="${escapeAttr(event.id)}"`)] : [], icon2("today-trend-archive-event", TRASH_ICON_SVG, `\u5F52\u6863${event.title}`, `data-event-id="${escapeAttr(event.id)}"`)];
+    const actions = archived ? [icon2("today-trend-delete-event", TRASH_ICON_SVG, `\u5220\u9664${event.title}`, `data-event-id="${escapeAttr(event.id)}"`, true)] : [icon2("today-trend-edit-event", EDIT_ICON_SVG, `\u7F16\u8F91${event.title}`, `data-event-id="${escapeAttr(event.id)}"`), ...event.type === "underground" ? [icon2("today-trend-promote-underground", SPARKLES_ICON_SVG, `\u5347\u7EA7${event.title}`, `data-event-id="${escapeAttr(event.id)}"`)] : [], icon2("today-trend-archive-event", TRASH_ICON_SVG, `\u5F52\u6863${event.title}`, `data-event-id="${escapeAttr(event.id)}"`)];
     return `<article class="pm-today-trend-event-card"><header><div><b>${text6(event.title)}</b><span>${text6(TYPES[event.type] || event.type)}\uFF5C${text6(state)}</span></div>${trendActionMenu({ id: id2, open: menuOpenId === id2, label: `${event.title}\u64CD\u4F5C`, actions })}</header><p><strong>\u8D77\u56E0\uFF1A</strong>${text6(event.origin)}</p><p><strong>\u6D89\u53CA\u4E3B\u4F53\uFF1A</strong>${text6(event.participants.join("\u3001") || "\u672A\u8BB0\u5F55")}</p><details><summary>\u9636\u6BB5\u8BB0\u5F55\uFF08${event.stages.length}\uFF09</summary><ol>${event.stages.map((stage) => `<li>${text6(stage)}</li>`).join("")}</ol></details><p><strong>${archived ? "\u6700\u7EC8\u7ED3\u679C" : "\u6700\u65B0\u9636\u6BB5"}\uFF1A</strong>${text6(archived ? event.finalResult : event.latestStage)}</p></article>`;
   }
-  function renderTodayTrendDynamicsView({ scope, editingEventId = null, mode = "content", menuOpenId = null, generationAvailable = false, generationBusy = false } = {}) {
+  function renderTodayTrendDynamicsView({ scope, preset = null, editingEventId = null, editingRule = null, ruleDraft = null, mode = "content", menuOpenId = null, generationAvailable = false, generationBusy = false } = {}) {
     if (!scope) return '<p class="pm-today-trend-empty">\u5F53\u524D\u804A\u5929\u5C1A\u672A\u521D\u59CB\u5316\u4ECA\u65E5\u98CE\u5411\u3002</p>';
     const attrs = `${generationAvailable && !generationBusy ? "" : "disabled"} aria-busy="${generationBusy}"`;
-    if (mode === "settings") return `<section class="pm-today-trend-view">${trendModuleHead({ title: "\u52A8\u6001\u8BBE\u7F6E", menuId: "dynamics-settings", menuOpenId, actions: [icon2("today-trend-open-dynamics", BACK_ICON_SVG, "\u8FD4\u56DE\u76F8\u5173\u52A8\u6001")] })}${settingsForm(scope.dynamicsSettings, menuOpenId)}</section>`;
+    if (mode === "settings") return `<section class="pm-today-trend-view">${trendModuleHead({ title: "\u52A8\u6001\u8BBE\u7F6E", menuId: "dynamics-settings", menuOpenId, actions: [icon2("today-trend-open-dynamics", BACK_ICON_SVG, "\u8FD4\u56DE\u76F8\u5173\u52A8\u6001")] })}${settingsForm(scope.dynamicsSettings)}</section>`;
     const target = String(editingEventId || "").replace(/^(archive:|promote:)/, "");
     if (editingEventId) {
       const event = target === "__new__" ? {} : scope.dynamics.active.find((item) => item.id === target);
@@ -21076,31 +21155,33 @@ ${targetInstruction}`
     }
     const active = scope.dynamics.active.map((event) => eventCard(event, false, attrs, menuOpenId)).join("") || '<p class="pm-today-trend-empty">\u6682\u65E0\u6B63\u5728\u8FFD\u8E2A\u7684\u52A8\u6001\u3002</p>';
     const archived = scope.dynamics.archived.map((event) => eventCard(event, true, attrs, menuOpenId)).join("") || '<p class="pm-today-trend-empty">\u6682\u65E0\u5DF2\u5B8C\u7ED3\u52A8\u6001\u3002</p>';
-    return `<section class="pm-today-trend-view pm-today-trend-dynamics">${trendModuleHead({ title: "\u76F8\u5173\u52A8\u6001", meta: `\u8FFD\u8E2A\u4E0A\u9650 ${scope.dynamicsSettings.trackingLimit}`, menuId: "dynamics-module", menuOpenId, actions: [icon2("today-trend-advance-all-events", SPARKLES_ICON_SVG, "\u63A8\u8FDB\u5168\u90E8\u52A8\u6001", attrs), icon2("today-trend-create-event", EDIT_ICON_SVG, "\u624B\u52A8\u521B\u5EFA\u52A8\u6001"), icon2("today-trend-open-dynamics-settings", SETTINGS_ICON_SVG, "\u52A8\u6001\u8BBE\u7F6E")] })}<h3>\u6B63\u5728\u8FFD\u8E2A</h3>${active}<h3>\u5DF2\u5B8C\u7ED3</h3>${archived}${generationBusy ? '<span class="pm-today-trend-progress">\u6B63\u5728\u751F\u6210\u2026</span>' : ""}</section>`;
+    const editor2 = editingRule === "dynamics" ? trendRuleEditor({ rule: editingRule, value: ruleDraft ?? preset?.moduleRules?.dynamics ?? "" }) : "";
+    return `<section class="pm-today-trend-view pm-today-trend-dynamics">${trendModuleHead({ title: "\u76F8\u5173\u52A8\u6001", meta: `\u8FFD\u8E2A\u4E0A\u9650 ${scope.dynamicsSettings.trackingLimit}`, menuId: "dynamics-module", menuOpenId, actions: [icon2("today-trend-advance-all-events", REFRESH_ICON_SVG, "\u91CD\u65B0\u751F\u6210\u76F8\u5173\u52A8\u6001", attrs), icon2("today-trend-edit-dynamics-rule", BOOK_ICON_SVG, "\u7F16\u8F91\u76F8\u5173\u52A8\u6001 Prompt"), icon2("today-trend-open-dynamics-settings", SETTINGS_ICON_SVG, "\u52A8\u6001\u8BBE\u7F6E")] })}${editor2}<h3>\u6B63\u5728\u8FFD\u8E2A</h3>${active}<h3>\u5DF2\u5B8C\u7ED3</h3>${archived}${generationBusy ? '<span class="pm-today-trend-progress">\u6B63\u5728\u751F\u6210\u2026</span>' : ""}</section>`;
   }
 
   // src/today-trend-faction-view.js
   var options = (selected) => TODAY_TREND_RELATION_STATUSES.map((status) => `<option value="${status}" ${status === selected ? "selected" : ""}>${todayTrendStatusLabel(status)}</option>`).join("");
   var relation = (value) => `<span class="pm-today-trend-status">${escapeHtml(todayTrendStatusLabel(value.status))}</span>`;
-  var menu = (faction, attrs, menuOpenId) => trendActionMenu({ id: `faction:${faction.id}`, open: menuOpenId === `faction:${faction.id}`, label: `${faction.name}\u64CD\u4F5C`, actions: [{ action: "today-trend-refresh-faction", icon: REFRESH_ICON_SVG, label: `\u5237\u65B0${faction.name}`, attrs: `data-faction-id="${escapeAttr(faction.id)}" ${attrs}` }, { action: "today-trend-edit-faction", icon: EDIT_ICON_SVG, label: `\u7F16\u8F91${faction.name}`, attrs: `data-faction-id="${escapeAttr(faction.id)}"` }, { action: "today-trend-delete-faction", icon: TRASH_ICON_SVG, label: `\u5220\u9664${faction.name}`, danger: true, attrs: `data-faction-id="${escapeAttr(faction.id)}"` }] });
-  function card(faction, children, attrs, menuOpenId) {
-    return `<article class="pm-today-trend-faction-card" data-faction-id="${escapeAttr(faction.id)}"><header><div><b>${escapeHtml(faction.name)}</b>${relation(faction.relation)}</div>${menu(faction, attrs, menuOpenId)}</header><p>${escapeHtml(faction.summary)}</p><dl>${faction.details.map((detail) => `<div><dt>${escapeHtml(detail.label)}</dt><dd>${escapeHtml(detail.value)}</dd></div>`).join("")}</dl><p>${escapeHtml(faction.relation.evaluation)}</p>${children}</article>`;
+  var menu = (faction, menuOpenId) => trendActionMenu({ id: `faction:${faction.id}`, open: menuOpenId === `faction:${faction.id}`, label: `${faction.name}\u64CD\u4F5C`, actions: [{ action: "today-trend-edit-faction", icon: EDIT_ICON_SVG, label: `\u7F16\u8F91${faction.name}`, attrs: `data-faction-id="${escapeAttr(faction.id)}"` }, { action: "today-trend-delete-faction", icon: TRASH_ICON_SVG, label: `\u5220\u9664${faction.name}`, danger: true, attrs: `data-faction-id="${escapeAttr(faction.id)}"` }] });
+  function card(faction, children, menuOpenId) {
+    return `<article class="pm-today-trend-faction-card" data-faction-id="${escapeAttr(faction.id)}"><header><div><b>${escapeHtml(faction.name)}</b>${relation(faction.relation)}</div>${menu(faction, menuOpenId)}</header><p>${escapeHtml(faction.summary)}</p><dl>${faction.details.map((detail) => `<div><dt>${escapeHtml(detail.label)}</dt><dd>${escapeHtml(detail.value)}</dd></div>`).join("")}</dl><p>${escapeHtml(faction.relation.evaluation)}</p>${children}</article>`;
   }
-  function tree(factions, parentId, attrs, menuOpenId) {
+  function tree(factions, parentId, menuOpenId) {
     const children = factions.filter((faction) => faction.parentId === parentId);
-    return children.length ? `<div class="pm-today-trend-faction-tree">${children.map((faction) => card(faction, tree(factions, faction.id, attrs, menuOpenId), attrs, menuOpenId)).join("")}</div>` : "";
+    return children.length ? `<div class="pm-today-trend-faction-tree">${children.map((faction) => card(faction, tree(factions, faction.id, menuOpenId), menuOpenId)).join("")}</div>` : "";
   }
   function editor(faction = {}, factions = []) {
     const parents = factions.filter((item) => item.id !== faction.id), related = new Set(faction.relatedFactionIds || []), details = faction.details || [];
-    return `<form class="pm-today-trend-editor" data-today-trend-form="faction"><input type="hidden" name="id" value="${escapeAttr(faction.id || "")}"><label class="pm-today-trend-field">\u540D\u79F0<input class="pm-today-trend-input" name="name" maxlength="120" required value="${escapeAttr(faction.name || "")}"></label><label class="pm-today-trend-field">\u4E00\u53E5\u8BDD\u4ECB\u7ECD<textarea class="pm-today-trend-input" name="summary" maxlength="600" required>${escapeHtml(faction.summary || "")}</textarea></label><label class="pm-today-trend-field">\u7236\u52BF\u529B<select class="pm-today-trend-input" name="parentId"><option value="">\u65E0</option>${parents.map((item) => `<option value="${escapeAttr(item.id)}" ${item.id === faction.parentId ? "selected" : ""}>${escapeHtml(item.name)}</option>`).join("")}</select></label><fieldset><legend>\u5916\u90E8\u5173\u8054</legend>${parents.filter((item) => item.id !== faction.parentId && item.parentId !== faction.id).map((item) => `<label><input type="checkbox" name="relatedFactionIds" value="${escapeAttr(item.id)}" ${related.has(item.id) ? "checked" : ""}>${escapeHtml(item.name)}</label>`).join("") || "<p>\u6CA1\u6709\u53EF\u4F5C\u4E3A\u5916\u90E8\u5173\u8054\u7684\u52BF\u529B\u3002</p>"}</fieldset><fieldset><legend>\u5173\u952E\u8D44\u6599</legend><div data-today-trend-details>${details.map((detail) => `<div><input name="detailLabel" maxlength="120" required value="${escapeAttr(detail.label)}"><input name="detailValue" maxlength="600" required value="${escapeAttr(detail.value)}"><button type="button" data-action="today-trend-remove-detail">\u5220\u9664</button></div>`).join("")}</div><button type="button" data-action="today-trend-add-detail" ${details.length >= TODAY_TREND_LIMITS.factionDetails ? "disabled" : ""}>\u6DFB\u52A0\u8D44\u6599</button></fieldset><label class="pm-today-trend-field">\u5BF9\u5F53\u524D\u89D2\u8272\u72B6\u6001<select class="pm-today-trend-input" name="status">${options(faction.relation?.status || "neutral")}</select></label><label class="pm-today-trend-field">\u4E00\u53E5\u8BDD\u8BC4\u4EF7<textarea class="pm-today-trend-input" name="evaluation" maxlength="600" required>${escapeHtml(faction.relation?.evaluation || "")}</textarea></label><div class="pm-today-trend-form-actions"><button type="submit">\u4FDD\u5B58</button><button type="button" data-action="today-trend-cancel-editor">\u53D6\u6D88</button></div></form>`;
+    return `<form class="pm-today-trend-editor" data-today-trend-form="faction"><input type="hidden" name="id" value="${escapeAttr(faction.id || "")}"><label class="pm-today-trend-field">\u540D\u79F0<input class="pm-today-trend-input" name="name" maxlength="120" required value="${escapeAttr(faction.name || "")}"></label><label class="pm-today-trend-field">\u4E00\u53E5\u8BDD\u4ECB\u7ECD<textarea class="pm-today-trend-input" name="summary" maxlength="600" required>${escapeHtml(faction.summary || "")}</textarea></label><label class="pm-today-trend-field">\u7236\u52BF\u529B<select class="pm-today-trend-input" name="parentId"><option value="">\u65E0</option>${parents.map((item) => `<option value="${escapeAttr(item.id)}" ${item.id === faction.parentId ? "selected" : ""}>${escapeHtml(item.name)}</option>`).join("")}</select></label><fieldset><legend>\u5916\u90E8\u5173\u8054</legend>${parents.filter((item) => item.id !== faction.parentId && item.parent !== faction.id).map((item) => `<label><input type="checkbox" name="relatedFactionIds" value="${escapeAttr(item.id)}" ${related.has(item.id) ? "checked" : ""}>${escapeHtml(item.name)}</label>`).join("") || "<p>\u6CA1\u6709\u53EF\u4F5C\u4E3A\u5916\u90E8\u5173\u8054\u7684\u52BF\u529B\u3002</p>"}</fieldset><fieldset><legend>\u5173\u952E\u8D44\u6599</legend><div data-today-trend-details>${details.map((detail) => `<div><input name="detailLabel" maxlength="120" required value="${escapeAttr(detail.label)}"><input name="detailValue" maxlength="600" required value="${escapeAttr(detail.value)}"><button type="button" data-action="today-trend-remove-detail">\u5220\u9664</button></div>`).join("")}</div><button type="button" data-action="today-trend-add-detail" ${details.length >= TODAY_TREND_LIMITS.factionDetails ? "disabled" : ""}>\u6DFB\u52A0\u8D44\u6599</button></fieldset><label class="pm-today-trend-field">\u5BF9\u5F53\u524D\u89D2\u8272\u72B6\u6001<select class="pm-today-trend-input" name="status">${options(faction.relation?.status || "neutral")}</select></label><label class="pm-today-trend-field">\u4E00\u53E5\u8BDD\u8BC4\u4EF7<textarea class="pm-today-trend-input" name="evaluation" maxlength="600" required>${escapeHtml(faction.relation?.evaluation || "")}</textarea></label><div class="pm-today-trend-form-actions"><button type="submit">\u4FDD\u5B58</button><button type="button" data-action="today-trend-cancel-editor">\u53D6\u6D88</button></div></form>`;
   }
-  function renderTodayTrendFactionView({ scope, mode = "content", editingFactionId = null, menuOpenId = null, generationAvailable = false, generationBusy = false } = {}) {
+  function renderTodayTrendFactionView({ scope, preset = null, mode = "content", editingFactionId = null, editingRule = null, ruleDraft = null, menuOpenId = null, generationAvailable = false, generationBusy = false } = {}) {
     const factions = Array.isArray(scope?.factions) ? scope.factions : [], attrs = `${generationAvailable && !generationBusy ? "" : "disabled"} aria-busy="${generationBusy}"`;
     if (mode === "editor") return `<section class="pm-today-trend-view">${trendModuleHead({ title: "\u7F16\u8F91\u52BF\u529B", menuId: "faction-editor", menuOpenId, actions: [{ action: "today-trend-open-factions", icon: BACK_ICON_SVG, label: "\u8FD4\u56DE\u76F8\u5173\u52BF\u529B" }] })}${editor(factions.find((item) => item.id === editingFactionId), factions)}</section>`;
-    if (mode === "settings") return `<section class="pm-today-trend-view">${trendModuleHead({ title: "\u76F8\u5173\u52BF\u529B\u8BBE\u7F6E", menuId: "faction-settings", menuOpenId, actions: [{ action: "today-trend-open-factions", icon: BACK_ICON_SVG, label: "\u8FD4\u56DE\u76F8\u5173\u52BF\u529B" }, { action: "today-trend-edit-faction-rule", icon: EDIT_ICON_SVG, label: "\u7F16\u8F91\u6A21\u5757\u89C4\u5219" }, { action: "today-trend-regenerate-faction-rule", icon: REFRESH_ICON_SVG, label: "\u91CD\u65B0\u751F\u6210\u6A21\u5757\u89C4\u5219", attrs }] })}</section>`;
+    if (mode === "settings") return `<section class="pm-today-trend-view">${trendModuleHead({ title: "\u76F8\u5173\u52BF\u529B\u8BBE\u7F6E", menuId: "faction-settings", menuOpenId, actions: [{ action: "today-trend-open-factions", icon: BACK_ICON_SVG, label: "\u8FD4\u56DE\u76F8\u5173\u52BF\u529B" }] })}</section>`;
     const byId = new Map(factions.map((faction) => [faction.id, faction]));
     const external = factions.flatMap((source) => source.relatedFactionIds.map((id2) => ({ source, target: byId.get(id2) }))).filter(({ target }) => target);
-    return `<section class="pm-today-trend-view pm-today-trend-factions">${trendModuleHead({ title: "\u76F8\u5173\u52BF\u529B", menuId: "faction-module", menuOpenId, actions: [{ action: "today-trend-generate-factions", icon: SPARKLES_ICON_SVG, label: "\u751F\u6210\u76F8\u5173\u52BF\u529B", attrs }, { action: "today-trend-add-faction", icon: EDIT_ICON_SVG, label: "\u624B\u52A8\u6DFB\u52A0\u52BF\u529B" }, { action: "today-trend-open-faction-settings", icon: SETTINGS_ICON_SVG, label: "\u76F8\u5173\u52BF\u529B\u8BBE\u7F6E" }] })}<h3>\u52BF\u529B\u6811</h3>${tree(factions, null, attrs, menuOpenId) || '<p class="pm-today-trend-empty">\u5C1A\u672A\u8BB0\u5F55\u76F8\u5173\u52BF\u529B\u3002</p>'}<h3>\u5916\u90E8\u5173\u8054</h3>${external.map(({ source, target }) => `<article class="pm-today-trend-external-relation"><p>${escapeHtml(source.name)} <span aria-hidden="true">\u2192</span> ${escapeHtml(target.name)}</p>${card(target, "", attrs, menuOpenId)}</article>`).join("") || '<p class="pm-today-trend-empty">\u6682\u65E0\u5916\u90E8\u5173\u8054\u3002</p>'}${generationBusy ? '<span class="pm-today-trend-progress">\u6B63\u5728\u751F\u6210\u2026</span>' : ""}</section>`;
+    const ruleEditor = editingRule === "faction" ? trendRuleEditor({ rule: editingRule, value: ruleDraft ?? preset?.moduleRules?.faction ?? "" }) : "";
+    return `<section class="pm-today-trend-view pm-today-trend-factions">${trendModuleHead({ title: "\u76F8\u5173\u52BF\u529B", menuId: "faction-module", menuOpenId, actions: [{ action: "today-trend-generate-factions", icon: REFRESH_ICON_SVG, label: "\u91CD\u65B0\u751F\u6210\u76F8\u5173\u52BF\u529B", attrs }, { action: "today-trend-edit-faction-rule", icon: BOOK_ICON_SVG, label: "\u7F16\u8F91\u76F8\u5173\u52BF\u529B Prompt" }] })}${ruleEditor}<h3>\u52BF\u529B\u6811</h3>${tree(factions, null, menuOpenId) || '<p class="pm-today-trend-empty">\u5C1A\u672A\u8BB0\u5F55\u76F8\u5173\u52BF\u529B\u3002</p>'}<h3>\u5916\u90E8\u5173\u8054</h3>${external.map(({ source, target }) => `<article class="pm-today-trend-external-relation"><p>${escapeHtml(source.name)} <span aria-hidden="true">\u2192</span> ${escapeHtml(target.name)}</p>${card(target, "", menuOpenId)}</article>`).join("") || '<p class="pm-today-trend-empty">\u6682\u65E0\u5916\u90E8\u5173\u8054\u3002</p>'}${generationBusy ? '<span class="pm-today-trend-progress">\u6B63\u5728\u751F\u6210\u2026</span>' : ""}</section>`;
   }
 
   // src/today-trend-reputation-view.js
@@ -21108,15 +21189,16 @@ ${targetInstruction}`
   function circleEditor(circle = {}) {
     return `<form class="pm-today-trend-editor" data-today-trend-form="circle"><input type="hidden" name="id" value="${escapeAttr(circle.id || "")}"><label class="pm-today-trend-field">\u5708\u5C42\u540D\u79F0<input class="pm-today-trend-input" name="name" maxlength="120" required value="${escapeAttr(circle.name || "")}"></label><label class="pm-today-trend-field">\u8303\u56F4<textarea class="pm-today-trend-input" name="scope" maxlength="600" required>${escapeHtml(circle.scope || "")}</textarea></label><div class="pm-today-trend-form-actions"><button type="submit">\u4FDD\u5B58</button><button type="button" data-action="today-trend-cancel-editor">\u53D6\u6D88</button></div></form>`;
   }
-  function renderTodayTrendReputationView({ scope, mode = "content", editingCircleId = null, menuOpenId = null, generationAvailable = false, generationBusy = false } = {}) {
+  function renderTodayTrendReputationView({ scope, preset = null, mode = "content", editingCircleId = null, editingRule = null, ruleDraft = null, menuOpenId = null, generationAvailable = false, generationBusy = false } = {}) {
     const circles = Array.isArray(scope?.reputation?.circles) ? scope.reputation.circles : [];
     const generateAttrs = `${generationAvailable && !generationBusy ? "" : "disabled"} aria-busy="${generationBusy}"`;
     if (mode === "settings") {
       const rows2 = circles.map((circle) => `<article class="pm-today-trend-row" data-circle-id="${escapeAttr(circle.id)}">${editingCircleId === circle.id ? circleEditor(circle) : `<div><b>${escapeHtml(circle.name)}</b><p>${escapeHtml(circle.scope)}</p></div>${trendActionMenu({ id: `circle:${circle.id}`, open: menuOpenId === `circle:${circle.id}`, label: `${circle.name}\u64CD\u4F5C`, actions: [{ action: "today-trend-edit-circle", icon: EDIT_ICON_SVG, label: `\u7F16\u8F91${circle.name}`, attrs: `data-circle-id="${escapeAttr(circle.id)}"` }, { action: "today-trend-regenerate-circle-schema", icon: REFRESH_ICON_SVG, label: `\u91CD\u65B0\u751F\u6210${circle.name}`, attrs: `data-circle-id="${escapeAttr(circle.id)}" ${generateAttrs}` }, { action: "today-trend-delete-circle", icon: TRASH_ICON_SVG, label: `\u5220\u9664${circle.name}`, danger: true, attrs: `data-circle-id="${escapeAttr(circle.id)}"` }] })}`}</article>`).join("");
-      return `<section class="pm-today-trend-view">${trendModuleHead({ title: "\u4E2A\u4EBA\u98CE\u8BC4\u8BBE\u7F6E", menuId: "reputation-settings", menuOpenId, actions: [{ action: "today-trend-open-reputation", icon: BACK_ICON_SVG, label: "\u8FD4\u56DE\u4E2A\u4EBA\u98CE\u8BC4" }, { action: "today-trend-add-circle", icon: SPARKLES_ICON_SVG, label: "\u6DFB\u52A0\u5708\u5C42" }, { action: "today-trend-edit-reputation-rule", icon: EDIT_ICON_SVG, label: "\u7F16\u8F91\u6A21\u5757\u89C4\u5219" }, { action: "today-trend-regenerate-reputation-rule", icon: REFRESH_ICON_SVG, label: "\u91CD\u65B0\u751F\u6210\u6A21\u5757\u89C4\u5219", attrs: generateAttrs }] })}${rows2 || '<p class="pm-today-trend-empty">\u5C1A\u672A\u5EFA\u7ACB\u98CE\u8BC4\u5708\u5C42\u3002</p>'}${editingCircleId === "__new__" ? circleEditor() : ""}</section>`;
+      return `<section class="pm-today-trend-view">${trendModuleHead({ title: "\u4E2A\u4EBA\u98CE\u8BC4\u8BBE\u7F6E", menuId: "reputation-settings", menuOpenId, actions: [{ action: "today-trend-open-reputation", icon: BACK_ICON_SVG, label: "\u8FD4\u56DE\u4E2A\u4EBA\u98CE\u8BC4" }, { action: "today-trend-add-circle", icon: SPARKLES_ICON_SVG, label: "\u6DFB\u52A0\u5708\u5C42" }] })}${rows2 || '<p class="pm-today-trend-empty">\u5C1A\u672A\u5EFA\u7ACB\u98CE\u8BC4\u5708\u5C42\u3002</p>'}${editingCircleId === "__new__" ? circleEditor() : ""}</section>`;
     }
-    const rows = circles.map((circle) => `<article class="pm-today-trend-row" data-circle-id="${escapeAttr(circle.id)}"><div><b>${escapeHtml(circle.name)}</b>${statusBadge(circle.status)}<p>${escapeHtml(circle.evaluation)}</p></div>${trendActionMenu({ id: `circle:${circle.id}`, open: menuOpenId === `circle:${circle.id}`, label: `${circle.name}\u64CD\u4F5C`, actions: [{ action: "today-trend-refresh-circle", icon: REFRESH_ICON_SVG, label: `\u5237\u65B0${circle.name}`, attrs: `data-circle-id="${escapeAttr(circle.id)}" ${generateAttrs}` }] })}</article>`).join("");
-    return `<section class="pm-today-trend-view">${trendModuleHead({ title: "\u4E2A\u4EBA\u98CE\u8BC4", menuId: "reputation-module", menuOpenId, actions: [{ action: "today-trend-generate-reputation", icon: SPARKLES_ICON_SVG, label: "\u751F\u6210\u4E2A\u4EBA\u98CE\u8BC4", attrs: generateAttrs }, { action: "today-trend-open-reputation-settings", icon: SETTINGS_ICON_SVG, label: "\u4E2A\u4EBA\u98CE\u8BC4\u8BBE\u7F6E" }] })}${rows || '<p class="pm-today-trend-empty">\u5C1A\u672A\u751F\u6210\u4E2A\u4EBA\u98CE\u8BC4\u3002</p>'}${generationBusy ? '<span class="pm-today-trend-progress">\u6B63\u5728\u751F\u6210\u2026</span>' : ""}</section>`;
+    const rows = circles.map((circle) => `<article class="pm-today-trend-row" data-circle-id="${escapeAttr(circle.id)}"><div><b>${escapeHtml(circle.name)}</b>${statusBadge(circle.status)}<p>${escapeHtml(circle.evaluation)}</p></div></article>`).join("");
+    const editor2 = editingRule === "reputation" ? trendRuleEditor({ rule: editingRule, value: ruleDraft ?? preset?.moduleRules?.reputation ?? "" }) : "";
+    return `<section class="pm-today-trend-view">${trendModuleHead({ title: "\u4E2A\u4EBA\u98CE\u8BC4", menuId: "reputation-module", menuOpenId, actions: [{ action: "today-trend-generate-reputation", icon: REFRESH_ICON_SVG, label: "\u91CD\u65B0\u751F\u6210\u4E2A\u4EBA\u98CE\u8BC4", attrs: generateAttrs }, { action: "today-trend-edit-reputation-rule", icon: BOOK_ICON_SVG, label: "\u7F16\u8F91\u4E2A\u4EBA\u98CE\u8BC4 Prompt" }] })}${editor2}${rows || '<p class="pm-today-trend-empty">\u5C1A\u672A\u751F\u6210\u4E2A\u4EBA\u98CE\u8BC4\u3002</p>'}${generationBusy ? '<span class="pm-today-trend-progress">\u6B63\u5728\u751F\u6210\u2026</span>' : ""}</section>`;
   }
 
   // src/today-trend-settings-view.js
@@ -21131,21 +21213,28 @@ ${targetInstruction}`
   function itemEditor(item = {}) {
     return `<form class="pm-today-trend-editor" data-today-trend-form="world-item"><input type="hidden" name="id" value="${escapeAttr(item.id || "")}"><label class="pm-today-trend-field">\u9879\u76EE\u540D\u79F0<input class="pm-today-trend-input" name="name" maxlength="120" required value="${escapeAttr(item.name || "")}"></label><label class="pm-today-trend-field">\u4E00\u53E5\u8BDD\u6001\u52BF<textarea class="pm-today-trend-input" name="summary" maxlength="600" required>${escapeHtml(item.summary || "")}</textarea></label><div class="pm-today-trend-form-actions"><button type="submit">\u4FDD\u5B58</button><button type="button" data-action="today-trend-cancel-world-editor">\u53D6\u6D88</button></div></form>`;
   }
-  function renderTodayTrendWorldView({ scope, mode = "content", editingWorldItemId = null, menuOpenId = null, generationAvailable = false, generationBusy = false } = {}) {
+  function itemActions(item, attrs, menuOpenId) {
+    return trendActionMenu({ id: `world:${item.id}`, open: menuOpenId === `world:${item.id}`, label: `${item.name}\u64CD\u4F5C`, actions: [
+      { action: "today-trend-refresh-world-item", icon: REFRESH_ICON_SVG, label: `\u91CD\u65B0\u751F\u6210${item.name}`, attrs: `data-world-item-id="${escapeAttr(item.id)}" ${attrs}` },
+      { action: "today-trend-edit-world-item", icon: EDIT_ICON_SVG, label: `\u7F16\u8F91${item.name}`, attrs: `data-world-item-id="${escapeAttr(item.id)}"` },
+      { action: "today-trend-delete-world-item", icon: TRASH_ICON_SVG, label: `\u5220\u9664${item.name}`, danger: true, attrs: `data-world-item-id="${escapeAttr(item.id)}"` }
+    ] });
+  }
+  function renderTodayTrendWorldView({ scope, preset = null, mode = "content", editingWorldItemId = null, editingRule = null, ruleDraft = null, menuOpenId = null, generationAvailable = false, generationBusy = false } = {}) {
     const items = Array.isArray(scope?.world?.items) ? scope.world.items : [];
     const generateAttrs = `${generationAvailable && !generationBusy ? "" : "disabled"} aria-busy="${generationBusy}"`;
     if (mode === "settings") {
-      const rows2 = items.map((item) => `<article class="pm-today-trend-row" data-world-item-id="${escapeAttr(item.id)}">${editingWorldItemId === item.id ? itemEditor(item) : `<div><b>${escapeHtml(item.name)}</b><p>${escapeHtml(item.summary)}</p></div>${trendActionMenu({ id: `world:${item.id}`, open: menuOpenId === `world:${item.id}`, label: `${item.name}\u64CD\u4F5C`, actions: [{ action: "today-trend-edit-world-item", icon: EDIT_ICON_SVG, label: `\u7F16\u8F91${item.name}`, attrs: `data-world-item-id="${escapeAttr(item.id)}"` }, { action: "today-trend-delete-world-item", icon: TRASH_ICON_SVG, label: `\u5220\u9664${item.name}`, danger: true, attrs: `data-world-item-id="${escapeAttr(item.id)}"` }] })}`}</article>`).join("");
-      return `<section class="pm-today-trend-view">${trendModuleHead({ title: "\u4E16\u754C\u6001\u52BF\u8BBE\u7F6E", menuId: "world-settings", menuOpenId, actions: [{ action: "today-trend-open-world", icon: BACK_ICON_SVG, label: "\u8FD4\u56DE\u4E16\u754C\u6001\u52BF" }, { action: "today-trend-add-world-item", icon: SPARKLES_ICON_SVG, label: "\u6DFB\u52A0\u9879\u76EE", attrs: items.length >= TODAY_TREND_LIMITS.worldItems ? "disabled" : "" }, { action: "today-trend-edit-world-rule", icon: EDIT_ICON_SVG, label: "\u7F16\u8F91\u6A21\u5757\u89C4\u5219" }, { action: "today-trend-regenerate-world-rule", icon: REFRESH_ICON_SVG, label: "\u91CD\u65B0\u751F\u6210\u6A21\u5757\u89C4\u5219", attrs: generateAttrs }] })}${rows2 || '<p class="pm-today-trend-empty">\u5C1A\u672A\u5EFA\u7ACB\u4E16\u754C\u6001\u52BF\u9879\u76EE\u3002</p>'}${editingWorldItemId === "__new__" ? itemEditor() : ""}</section>`;
+      const rows2 = items.map((item) => `<article class="pm-today-trend-row" data-world-item-id="${escapeAttr(item.id)}">${editingWorldItemId === item.id ? itemEditor(item) : `<div><b>${escapeHtml(item.name)}</b><p>${escapeHtml(item.summary)}</p></div>${itemActions(item, generateAttrs, menuOpenId)}`}</article>`).join("");
+      return `<section class="pm-today-trend-view">${trendModuleHead({ title: "\u4E16\u754C\u6001\u52BF\u8BBE\u7F6E", menuId: "world-settings", menuOpenId, actions: [{ action: "today-trend-open-world", icon: BACK_ICON_SVG, label: "\u8FD4\u56DE\u4E16\u754C\u6001\u52BF" }, { action: "today-trend-add-world-item", icon: SPARKLES_ICON_SVG, label: "\u6DFB\u52A0\u9879\u76EE", attrs: items.length >= TODAY_TREND_LIMITS.worldItems ? "disabled" : "" }] })}${rows2 || '<p class="pm-today-trend-empty">\u5C1A\u672A\u5EFA\u7ACB\u4E16\u754C\u6001\u52BF\u9879\u76EE\u3002</p>'}${editingWorldItemId === "__new__" ? itemEditor() : ""}</section>`;
     }
-    const refreshVisible = menuOpenId === "world-module";
-    const refresh = (item) => refreshVisible ? trendIconButton({ action: "today-trend-refresh-world-item", icon: REFRESH_ICON_SVG, label: `\u5237\u65B0${item.name}`, className: "pm-today-trend-world-refresh", attrs: `data-world-item-id="${escapeAttr(item.id)}" ${generateAttrs}` }) : "";
     const rows = items.map((item, index) => {
-      if (index === 0) return `<article class="pm-today-trend-world-hero" data-world-item-id="${escapeAttr(item.id)}"><span class="pm-today-trend-world-dotfield is-hero" aria-hidden="true"></span><div><b>${escapeHtml(item.name)}</b><p>${escapeHtml(item.summary)}</p></div>${refresh(item)}</article>`;
+      const body = editingWorldItemId === item.id ? itemEditor(item) : `<p>${escapeHtml(item.summary)}</p>`;
+      if (index === 0) return `<article class="pm-today-trend-world-hero" data-world-item-id="${escapeAttr(item.id)}"><span class="pm-today-trend-world-dotfield is-hero" aria-hidden="true"></span><div><header class="pm-today-trend-world-item-head"><b>${escapeHtml(item.name)}</b>${itemActions(item, generateAttrs, menuOpenId)}</header>${body}</div></article>`;
       const side = index % 2 ? "is-left" : "is-right";
-      return `<article class="pm-today-trend-world-brief ${side}" data-world-item-id="${escapeAttr(item.id)}"><span class="pm-today-trend-world-ornament" aria-hidden="true"></span>${side === "is-right" ? '<span class="pm-today-trend-world-left-ornament" aria-hidden="true"></span><span class="pm-today-trend-world-terminal" aria-hidden="true"></span>' : ""}<span class="pm-today-trend-world-dotfield" aria-hidden="true"></span><div><b>${escapeHtml(item.name)}</b><p>${escapeHtml(item.summary)}</p></div>${refresh(item)}</article>`;
+      return `<article class="pm-today-trend-world-brief ${side}" data-world-item-id="${escapeAttr(item.id)}"><span class="pm-today-trend-world-ornament" aria-hidden="true"></span>${side === "is-right" ? '<span class="pm-today-trend-world-left-ornament" aria-hidden="true"></span><span class="pm-today-trend-world-terminal" aria-hidden="true"></span>' : ""}<span class="pm-today-trend-world-dotfield" aria-hidden="true"></span><div><header class="pm-today-trend-world-item-head"><b>${escapeHtml(item.name)}</b>${itemActions(item, generateAttrs, menuOpenId)}</header>${body}</div></article>`;
     }).join("");
-    return `<section class="pm-today-trend-view pm-today-trend-world">${trendModuleHead({ title: "\u4E16\u754C\u6001\u52BF", menuId: "world-module", menuOpenId, adornment: '<span class="pm-today-trend-world-title-dotfield" aria-hidden="true"></span>', actions: [{ action: "today-trend-generate-world", icon: SPARKLES_ICON_SVG, label: "\u751F\u6210\u4E16\u754C\u6001\u52BF", attrs: generateAttrs }, { action: "today-trend-open-world-settings", icon: SETTINGS_ICON_SVG, label: "\u4E16\u754C\u6001\u52BF\u8BBE\u7F6E" }] })}<span class="pm-today-trend-world-starfield" aria-hidden="true"></span>${rows || '<p class="pm-today-trend-empty">\u5C1A\u672A\u751F\u6210\u4E16\u754C\u6001\u52BF\u3002</p>'}${generationBusy ? '<span class="pm-today-trend-progress">\u6B63\u5728\u751F\u6210\u2026</span>' : ""}</section>`;
+    const editor2 = editingRule === "world" ? trendRuleEditor({ rule: editingRule, value: ruleDraft ?? preset?.moduleRules?.world ?? "" }) : "";
+    return `<section class="pm-today-trend-view pm-today-trend-world">${trendModuleHead({ title: "\u4E16\u754C\u6001\u52BF", menuId: "world-module", menuOpenId, adornment: '<span class="pm-today-trend-world-title-dotfield" aria-hidden="true"></span>', actions: [{ action: "today-trend-generate-world", icon: REFRESH_ICON_SVG, label: "\u91CD\u65B0\u751F\u6210\u4E16\u754C\u6001\u52BF", attrs: generateAttrs }, { action: "today-trend-edit-world-rule", icon: BOOK_ICON_SVG, label: "\u7F16\u8F91\u4E16\u754C\u6001\u52BF Prompt" }] })}${editor2}<span class="pm-today-trend-world-starfield" aria-hidden="true"></span>${rows || '<p class="pm-today-trend-empty">\u5C1A\u672A\u751F\u6210\u4E16\u754C\u6001\u52BF\u3002</p>'}${generationBusy ? '<span class="pm-today-trend-progress">\u6B63\u5728\u751F\u6210\u2026</span>' : ""}</section>`;
   }
 
   // src/today-trend-view.js
@@ -21158,7 +21247,8 @@ ${targetInstruction}`
   }
   function renderTodayTrendApp({ scope = null, presets = [], worldBooks = [], view = { name: "world", mode: "content" }, generation = {}, error = null, initializing = false, initializationDraft, initializationOpen = false, reinitializing = false } = {}) {
     const busy = ["queued", "generating", "parsing", "committing"].includes(generation.phase);
-    const content = !scope || initializationOpen ? renderFirstUse({ presets, worldBooks, error, initializing, draft: initializationDraft, reinitializing }) : view.name === "settings" ? `<main class="pm-today-trend-content">${renderTodayTrendSettingsView({ scope, presets, generationBusy: busy, menuOpenId: view.menuOpenId })}</main>` : `<main class="pm-today-trend-content${view.name === "world" && view.mode === "content" ? " is-world" : ""}">${moduleView(view, { scope, mode: view.mode, editingWorldItemId: view.editingWorldItemId, editingCircleId: view.editingCircleId, editingFactionId: view.editingFactionId, editingEventId: view.editingEventId, menuOpenId: view.menuOpenId, generationAvailable: !busy, generationBusy: busy })}</main>`;
+    const preset = presets.find((item) => item.id === scope?.presetId) || null;
+    const content = !scope || initializationOpen ? renderFirstUse({ presets, worldBooks, error, initializing, draft: initializationDraft, reinitializing }) : view.name === "settings" ? `<main class="pm-today-trend-content">${renderTodayTrendSettingsView({ scope, presets, generationBusy: busy, menuOpenId: view.menuOpenId })}</main>` : `<main class="pm-today-trend-content${view.name === "world" && view.mode === "content" ? " is-world" : ""}">${moduleView(view, { scope, preset, mode: view.mode, editingWorldItemId: view.editingWorldItemId, editingCircleId: view.editingCircleId, editingFactionId: view.editingFactionId, editingEventId: view.editingEventId, editingRule: view.editingRule, ruleDraft: view.ruleDraft, menuOpenId: view.menuOpenId, generationAvailable: !busy, generationBusy: busy })}</main>`;
     const navigation = scope && !initializationOpen ? `<nav class="pm-today-trend-tabs${view.name === "world" ? " is-world" : ""}" aria-label="\u4ECA\u65E5\u98CE\u5411\u6A21\u5757">${[["world", "\u4E16\u754C\u6001\u52BF", TODAY_TREND_WORLD_ICON_SVG], ["reputation", "\u4E2A\u4EBA\u98CE\u8BC4", TODAY_TREND_REPUTATION_ICON_SVG], ["faction", "\u76F8\u5173\u52BF\u529B", TODAY_TREND_FACTION_ICON_SVG], ["dynamics", "\u76F8\u5173\u52A8\u6001", TODAY_TREND_DYNAMICS_ICON_SVG]].map(([name, label, icon3]) => `<button type="button" data-action="today-trend-open-${name === "faction" ? "factions" : name}" aria-label="${label}" aria-pressed="${view.name === name}">${icon3}</button>`).join("")}<button type="button" data-action="today-trend-open-settings" aria-label="APP \u603B\u8BBE\u7F6E" aria-pressed="${view.name === "settings"}">${MORE_ICON_SVG}</button></nav>` : "";
     return `<section id="pm-today-trend-app" class="pm-today-trend-shell" aria-labelledby="pm-today-trend-title"><header class="pm-today-trend-header"><button type="button" class="pm-today-trend-home" data-today-trend-ui-action="home" aria-label="\u8FD4\u56DE\u684C\u9762" title="\u8FD4\u56DE\u684C\u9762">${HOME_ICON_SVG}</button><h2 id="pm-today-trend-title">\u4ECA\u65E5\u98CE\u5411</h2><span class="pm-today-trend-header-actions"><button type="button" class="pm-today-trend-header-control" data-action="today-trend-toggle-operation" ${!scope || busy ? "disabled" : ""} aria-pressed="${scope?.operation?.enabled === true}" aria-label="${scope?.operation?.enabled ? "\u6682\u505C\u8FD0\u4F5C" : "\u5F00\u59CB\u8FD0\u4F5C"}">${scope?.operation?.enabled ? PAUSE_ICON_SVG : PLAY_ICON_SVG}</button><button type="button" class="pm-today-trend-close" data-today-trend-ui-action="close" aria-label="\u5173\u95ED\u624B\u673A" title="\u5173\u95ED\u624B\u673A">${CLOSE_ICON_SVG}</button></span></header>${content}${navigation}</section>`;
   }
@@ -21212,18 +21302,16 @@ ${targetInstruction}`
       });
     };
     const rerender = (view) => render(view).catch(report);
-    const editRule = async (rule) => {
+    const saveRule = async (rule, text7) => {
       const current = await store(), id2 = deps.getStorageId(), scope = current?.scopes?.[id2], preset = current?.presets?.[scope?.presetId];
       const [group, key = ""] = String(rule).split("-");
       const rules = group === "dynamics" && key ? preset?.dynamicsRules : preset?.moduleRules;
       const field = group === "dynamics" && key ? key : group;
       if (!preset || !Object.hasOwn(rules || {}, field)) throw new Error("\u5F53\u524D\u6A21\u5757\u89C4\u5219\u4E0D\u53EF\u7528");
-      const value = globalThis.prompt?.(`\u7F16\u8F91${rule}\u89C4\u5219`, rules[field]);
-      if (value === null || value === void 0) return false;
-      const text7 = String(value).trim();
-      if (!text7) throw new Error("\u6A21\u5757\u89C4\u5219\u4E0D\u80FD\u4E3A\u7A7A");
+      const normalized = String(text7 || "").trim();
+      if (!normalized) throw new Error("\u6A21\u5757\u89C4\u5219\u4E0D\u80FD\u4E3A\u7A7A");
       if (typeof deps.saveTodayTrendRule !== "function") throw new Error("\u6A21\u5757\u89C4\u5219\u4FDD\u5B58\u80FD\u529B\u4E0D\u53EF\u7528");
-      return deps.saveTodayTrendRule(rule, text7, preset.id, preset.revision);
+      return deps.saveTodayTrendRule(rule, normalized, preset.id, preset.revision);
     };
     const regenerateRule = async (rule) => {
       if (typeof deps.regenerateTodayTrendRule !== "function") throw new Error("\u6A21\u5757\u89C4\u5219\u91CD\u65B0\u751F\u6210\u80FD\u529B\u4E0D\u53EF\u7528");
@@ -21251,7 +21339,8 @@ ${targetInstruction}`
       render: rerender,
       onGenerate: (module) => generate(module),
       onRefresh: (module, itemId, options2) => generate(module, itemId, options2),
-      onEditRule: (rule, regenerate) => regenerate ? regenerateRule(rule) : editRule(rule).then(rerender),
+      onSaveRule: saveRule,
+      onRegenerateRule: regenerateRule,
       onError: report
     });
     const openInitialization = ({ replace = false } = {}) => {

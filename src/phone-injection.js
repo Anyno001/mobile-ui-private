@@ -1,6 +1,6 @@
 import { BIDIRECTIONAL_KEY, TODAY_TREND_INJECTION_KEY_PREFIX } from './constants.js';
 import { normalizeInjectionConfig } from './behavior-config.js';
-import { allocateContextBudget, estimateContextTokens, normalizeBudgetConfig, trimToEstimatedTokens } from './budget.js';
+import { allocateCalendarFamilyBudget, allocateContextBudget, estimateContextTokens, normalizeBudgetConfig, trimToEstimatedTokens } from './budget.js';
 import { formatQuoteContext } from './chat-message-model.js';
 import { renderCommunitySource } from './community-injection.js';
 import { renderTodayTrendInjection } from './today-trend-injection.js';
@@ -370,20 +370,27 @@ ${body}
             depth: injection.todayTrend.depth,
         });
     }
-    const demandBySource = {
-        phone: phoneItems.reduce((sum, item) => sum + renderedItemTokenDemand(item), 0),
-        community: communityItems.reduce((sum, item) => sum + renderedItemTokenDemand(item), 0),
+    const calendarFamilyDemand = {
         calendar: calendarItems.reduce((sum, item) => sum + renderedItemTokenDemand(item), 0),
         recipe: recipeItems.reduce((sum, item) => sum + renderedItemTokenDemand(item), 0),
         outfit: outfitItems.reduce((sum, item) => sum + renderedItemTokenDemand(item), 0),
+    };
+    const demandBySource = {
+        phone: phoneItems.reduce((sum, item) => sum + renderedItemTokenDemand(item), 0),
+        community: communityItems.reduce((sum, item) => sum + renderedItemTokenDemand(item), 0),
+        calendar: Object.values(calendarFamilyDemand).reduce((sum, value) => sum + value, 0),
         todayTrend: todayTrendItems.reduce((sum, item) => sum + renderedItemTokenDemand(item), 0),
     };
     const budget = allocateContextBudget({ config, safeMaxTokens, demandBySource });
+    const calendarFamilyBudget = allocateCalendarFamilyBudget({
+        tokenLimit: budget.allocations.calendar,
+        demandBySource: calendarFamilyDemand,
+    });
     const phone = allocateRenderedPrompts(phoneItems, budget.allocations.phone);
     const community = allocateRenderedPrompts(communityItems, budget.allocations.community);
-    const calendar = allocateRenderedPrompts(calendarItems, budget.allocations.calendar);
-    const recipe = allocateRenderedPrompts(recipeItems, budget.allocations.recipe);
-    const outfit = allocateRenderedPrompts(outfitItems, budget.allocations.outfit);
+    const calendar = allocateRenderedPrompts(calendarItems, calendarFamilyBudget.allocations.calendar);
+    const recipe = allocateRenderedPrompts(recipeItems, calendarFamilyBudget.allocations.recipe);
+    const outfit = allocateRenderedPrompts(outfitItems, calendarFamilyBudget.allocations.outfit);
     const todayTrend = allocateRenderedPrompts(todayTrendItems, budget.allocations.todayTrend);
     return {
         prompts: [...phone.prompts, ...community.prompts, ...calendar.prompts, ...recipe.prompts, ...outfit.prompts, ...todayTrend.prompts],
@@ -403,9 +410,12 @@ ${body}
             },
             communityPermission: { allowed: communityPermission.allowed, reason: communityPermission.reason, sourceCount: communityPermission.sources.length },
             calendarEnabled: Boolean(calendarScope?.injectionScheduleEnabled || calendarScope?.injectionWeatherEnabled || calendarScope?.injectionCycleEnabled),
+            calendar: { demandTokens: calendarFamilyDemand.calendar, allocatedTokens: calendarFamilyBudget.allocations.calendar, promptCount: calendar.prompts.length, usedTokens: calendar.usedTokens },
             outfitEnabled: calendarScope?.injectionOutfitEnabled === true,
             recipeEnabled: calendarScope?.injectionRecipeEnabled === true,
-            outfit: { demandTokens: demandBySource.outfit, allocatedTokens: budget.allocations.outfit, promptCount: outfit.prompts.length, usedTokens: outfit.usedTokens },
+            recipe: { demandTokens: calendarFamilyDemand.recipe, allocatedTokens: calendarFamilyBudget.allocations.recipe, promptCount: recipe.prompts.length, usedTokens: recipe.usedTokens },
+            outfit: { demandTokens: calendarFamilyDemand.outfit, allocatedTokens: calendarFamilyBudget.allocations.outfit, promptCount: outfit.prompts.length, usedTokens: outfit.usedTokens },
+            calendarFamilyBudget,
             todayTrend: { enabled: todayTrendScope?.injection?.enabled === true, demandTokens: demandBySource.todayTrend, allocatedTokens: budget.allocations.todayTrend, promptCount: todayTrend.prompts.length, usedTokens: todayTrend.usedTokens },
             usedTokens: phone.usedTokens + community.usedTokens + calendar.usedTokens + recipe.usedTokens + outfit.usedTokens + todayTrend.usedTokens,
             truncatedCount: phone.truncatedCount + community.truncatedCount + calendar.truncatedCount + recipe.truncatedCount + outfit.truncatedCount + todayTrend.truncatedCount,

@@ -3429,7 +3429,7 @@ applyContextInjections({
     },
     budgetConfig: {
         targetTokens: 3000,
-        sourceWeights: { phone: 1, community: 0, calendar: 0, recipe: 0 },
+        sourceWeights: { phone: 1, community: 0, calendar: 0, todayTrend: 0 },
         redistributeUnused: true,
     },
     userName: '用户', emojis: [],
@@ -4688,8 +4688,8 @@ const currentBackup = {
         phone: { position: 1, depth: 6, historyLimit: 14 },
         community: { position: 2, depth: 3 }, calendar: { position: 1, depth: 4 }, todayTrend: { position: 1, depth: 4 },
     }, emojis: [], characterBehavior: {}, worldBookConfig: normalizeWorldBookConfig(null), wordyLimit: false,
-    budgetConfig: { budgetVersion: 3, targetTokens: 900, sourceWeights: { phone: 1, community: 0, calendar: 0, recipe: 0, outfit: 2, todayTrend: 0 },
-        sourcePriority: ['outfit', 'phone', 'community', 'calendar', 'recipe', 'todayTrend'], redistributeUnused: true, communitySceneIdsByStorage: {}, communitySelectionsByStorage: {} },
+    budgetConfig: { budgetVersion: 4, targetTokens: 900, sourceWeights: { phone: 1, community: 0, calendar: 2, todayTrend: 0 },
+        sourcePriority: ['calendar', 'phone', 'community', 'todayTrend'], redistributeUnused: true, communitySceneIdsByStorage: {}, communitySelectionsByStorage: {} },
     desktopBg: 'https://example.test/current-desktop.png', bgGlobal: '', bgLocal: {}, interactiveScenes: { version: 1, scopes: {} },
     calendarStore: { version: 1, scopes: { current: { events: {} } } },
     calendarOccasions: { version: 1, scopes: {} },
@@ -4792,7 +4792,7 @@ const importedBudgetConfig = {
 assert.deepEqual(parseBackupData({
     schemaVersion: 13, branchLineage: validBranchLineage, worldBookConfig: { entries: {}, columns: {} },
     calendarOutfits: importedOutfits, budgetConfig: importedBudgetConfig,
-}, currentBackup).budgetConfig, importedBudgetConfig, 'schema 13 必须恢复包含 outfit 权重的预算配置');
+}, currentBackup).budgetConfig, { ...importedBudgetConfig, budgetVersion: 4, sourceWeights: { phone: 1, community: 0, calendar: 3, todayTrend: 0 }, sourcePriority: ['calendar', 'phone', 'community', 'todayTrend'] }, 'schema 13 必须将旧 outfit 权重迁入日历预算');
 assert.throws(() => parseBackupData({
     schemaVersion: 13, branchLineage: validBranchLineage, worldBookConfig: { entries: {}, columns: {} }, calendarOutfits: importedOutfits,
 }, currentBackup), /缺少 budgetConfig/);
