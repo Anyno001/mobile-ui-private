@@ -61,7 +61,9 @@ assert.match(todayTrendStyle, /pm-today-trend-world>\*,\.pm-today-trend-reputati
 assert.match(todayTrendStyle, /pm-today-trend-world-grid\{[^}]*background:color-mix\(in srgb,var\(--pm-color-accent\) 38%,transparent\)/, '世界态势重复网格必须独立于星光并降低强度');
 assert.match(todayTrendStyle, /pm-today-trend-world-grid\{[^}]*linear-gradient\(45deg,transparent 0%,#000 29%,#000 71%,transparent 100%\)[^}]*mask-composite:intersect/, '世界态势重复网格必须在右上与左下淡出');
 assert.match(todayTrendStyle, /pm-today-trend-factions::after,\.pm-today-trend-dynamics::after\{[^}]*mask-image:var\(--pm-today-trend-bg-top\),var\(--pm-today-trend-bg-bottom\)/, '势力与事件追踪背景必须隐藏中段重复图形');
-assert.match(todayTrendStyle, /pm-today-trend-dynamics-target\{[^}]*width:var\(--pm-size-icon-lg\)[^}]*margin-left:var\(--pm-space-1\)/, '事件靶心必须按标题右侧紧凑图标定位');
+assert.match(todayTrendStyle, /pm-today-trend-dynamics-target\{[^}]*position:absolute[^}]*left:calc\(100% \+ var\(--pm-space-1\)\)[^}]*width:calc\(var\(--pm-space-5\) \+ var\(--pm-space-5\) \+ var\(--pm-space-5\)\)/, '事件靶心必须以原始大尺寸定位在标题右侧');
+assert.match(todayTrendStyle, /pm-today-trend-world\{padding-bottom:calc\(var\(--pm-space-5\) \+ var\(--pm-space-5\) \+ var\(--pm-space-5\)\)\}\.pm-today-trend-reputation,\.pm-today-trend-factions,\.pm-today-trend-dynamics\{padding-bottom:calc\(var\(--pm-space-5\) \+ var\(--pm-space-5\) \+ var\(--pm-space-5\)\)/, '四个模块必须为底部背景保留三档大间距');
+
 
 
 

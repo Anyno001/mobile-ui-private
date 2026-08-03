@@ -13,10 +13,6 @@
     <path d="M302 104A68 68 0 0 1 390 79"/>
     <path d="M319 111A51 51 0 0 1 390 91" opacity="0.55"/>
   </g>
-  <g id="guides" stroke="#000000" fill="none" stroke-width="0.5" opacity="0.14">
-    <path d="M238 0V87M286 0V126M342 64V154M390 45H238M390 111H270"/>
-    <path d="M257 136h24M329 169h31M369 126v19M300 146v12"/>
-  </g>
   <g id="stars" fill="#000000">
     <circle cx="318" cy="42" r="2.4" opacity="0.36"/><circle cx="351" cy="18" r="1.1" opacity="0.28"/><circle cx="287" cy="72" r="1" opacity="0.24"/><circle cx="373" cy="62" r="1.4" opacity="0.3"/><circle cx="244" cy="104" r="0.8" opacity="0.18"/><circle cx="332" cy="136" r="0.9" opacity="0.2"/><circle cx="382" cy="158" r="1" opacity="0.2"/>
   </g>
