@@ -1,7 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 390 220" preserveAspectRatio="xMidYMid meet">
   <defs>
-    <linearGradient id="fade" x1="0" y1="220" x2="265" y2="44" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#000000" stop-opacity="0.32"/>
+    <linearGradient id="fade" x1="0" y1="220" x2="210" y2="70" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#000000" stop-opacity="0.24"/>
       <stop offset="1" stop-color="#000000" stop-opacity="0"/>
     </linearGradient>
   </defs>

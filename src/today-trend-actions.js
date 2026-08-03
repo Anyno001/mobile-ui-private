@@ -12,7 +12,7 @@ function readWorldItem(form) {
 }
 
 function readCircle(form) {
-    return { id: formValue(form, 'id') || newId('circle'), name: formValue(form, 'name'), scope: formValue(form, 'scope') };
+    return { id: formValue(form, 'id') || newId('circle'), name: formValue(form, 'name'), scope: formValue(form, 'scope'), evaluation: formValue(form, 'evaluation') };
 }
 
 function readFaction(form) {
@@ -97,6 +97,7 @@ export function createTodayTrendActionDispatcher({
         if (action === 'today-trend-edit-circle') { view.editingCircleId = button.dataset.circleId || null; return run(rerender()); }
         if (action === 'today-trend-add-faction') { view.mode = 'editor'; view.editingFactionId = '__new__'; return run(rerender()); }
         if (action === 'today-trend-edit-faction') { view.mode = 'editor'; view.editingFactionId = button.dataset.factionId || null; return run(rerender()); }
+        if (action === 'today-trend-cancel-reputation-editor') { view.editingCircleId = null; return run(rerender()); }
         if (action === 'today-trend-cancel-editor') { view.editingCircleId = null; view.editingFactionId = null; view.mode = view.name === 'faction' ? 'content' : 'settings'; return run(rerender()); }
         if (action === 'today-trend-open-dynamics') return run(open('dynamics'));
         if (action === 'today-trend-open-dynamics-settings') return run(open('dynamics', 'settings'));
@@ -135,7 +136,7 @@ export function createTodayTrendActionDispatcher({
         }).then(async () => { view.editingWorldItemId = null; closeMenu(); await rerender(); onStatus('世界态势项目已保存。'); }));
         if (form.dataset.todayTrendForm === 'circle') return run(commit(scope => {
             const circle = readCircle(form); const existing = scope.reputation.circles.find(item => item.id === circle.id);
-            return { ...scope, reputation: { ...scope.reputation, circles: replaceOrAppend(scope.reputation.circles, { ...circle, status: existing?.status || 'neutral', evaluation: existing?.evaluation || '尚待生成评价' }) } };
+            return { ...scope, reputation: { ...scope.reputation, circles: replaceOrAppend(scope.reputation.circles, { ...circle, status: existing?.status || 'neutral', evaluation: circle.evaluation || existing?.evaluation || '尚待生成评价' }) } };
         }).then(async () => { view.editingCircleId = null; closeMenu(); await rerender(); onStatus('风评圈层已保存。'); }));
         if (form.dataset.todayTrendForm === 'faction') return run(commit(scope => {
             const faction = readFaction(form); return { ...scope, factions: replaceOrAppend(scope.factions, faction) };

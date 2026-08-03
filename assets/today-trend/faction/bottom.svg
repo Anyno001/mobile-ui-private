@@ -1,37 +1,22 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 390 220" preserveAspectRatio="xMidYMid meet">
   <defs>
-    <linearGradient id="depth" x1="195" y1="68" x2="195" y2="220" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#000000" stop-opacity="0"/>
-      <stop offset="1" stop-color="#000000" stop-opacity="0.13"/>
-    </linearGradient>
-    <linearGradient id="flow" x1="0" y1="96" x2="390" y2="96" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#000000" stop-opacity="0.11"/>
-      <stop offset="0.5" stop-color="#000000" stop-opacity="0.3"/>
-      <stop offset="1" stop-color="#000000" stop-opacity="0.11"/>
+    <linearGradient id="fade" x1="0" y1="220" x2="260" y2="170" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#000000" stop-opacity="0.24"/>
+      <stop offset="1" stop-color="#000000" stop-opacity="0"/>
     </linearGradient>
   </defs>
-  <g id="terrain" fill="#000000">
-    <path d="M0 104C44 107 65 145 113 137C152 131 166 155 195 165C227 176 245 137 285 134C326 131 354 159 390 152V220H0Z" opacity="0.035"/>
-    <path d="M0 139C50 135 71 172 119 166C158 161 171 184 195 190C224 198 251 165 294 166C335 167 360 192 390 189V220H0Z" opacity="0.05"/>
-    <path d="M0 181C48 183 93 207 141 200C166 196 179 203 195 211C215 201 231 196 256 200C306 208 347 185 390 190V220H0Z" opacity="0.07"/>
+  <g fill="none" stroke="url(#fade)" stroke-width="0.75">
+    <path d="M0 192C65 182 113 188 160 204C213 222 296 217 390 188"/>
+    <path d="M0 204C76 193 120 200 166 214C219 229 299 224 390 199"/>
+    <path d="M0 216C72 207 122 211 171 220M219 220C276 220 333 211 390 206" opacity="0.7"/>
+    <path d="M0 176C74 164 123 174 174 196C225 218 304 211 390 178" opacity="0.5"/>
   </g>
-  <g id="contours" fill="none" stroke="url(#depth)" stroke-width="0.75">
-    <path d="M0 84C50 84 92 117 132 113C160 110 173 137 195 145C219 136 231 110 259 113C299 117 340 84 390 84"/>
-    <path d="M0 101C51 101 90 133 132 129C159 126 176 151 195 160C216 151 231 126 258 129C300 133 339 101 390 101"/>
-    <path d="M0 124C49 123 91 154 132 149C161 146 177 170 195 179C215 170 230 146 258 149C299 154 341 123 390 124" opacity="0.75"/>
+  <g fill="#000000">
+    <circle cx="44" cy="188" r="1.3" opacity="0.2"/><circle cx="108" cy="198" r="1.1" opacity="0.16"/>
+    <circle cx="195" cy="210" r="2.2" opacity="0.28"/><circle cx="271" cy="204" r="1.2" opacity="0.18"/>
+    <circle cx="347" cy="191" r="1.4" opacity="0.2"/>
   </g>
-  <g id="convergence" fill="none" stroke="url(#flow)" stroke-width="0.75">
-    <path d="M0 29C71 30 128 45 178 99C185 107 190 114 195 121"/>
-    <path d="M0 47C68 47 127 59 176 107C184 115 190 121 195 128"/>
-    <path d="M390 29C319 30 262 45 212 99C205 107 200 114 195 121"/>
-    <path d="M390 47C322 47 263 59 214 107C206 115 200 121 195 128"/>
-  </g>
-  <g id="markers" fill="#000000">
-    <circle cx="36" cy="25" r="1.4" opacity="0.2"/><circle cx="54" cy="56" r="1.2" opacity="0.25"/><circle cx="74" cy="103" r="1.1" opacity="0.16"/><circle cx="95" cy="67" r="1.5" opacity="0.22"/>
-    <circle cx="146" cy="46" r="1.2" opacity="0.2"/><circle cx="181" cy="104" r="3.3" opacity="0.45"/><circle cx="209" cy="104" r="3.3" opacity="0.45"/><circle cx="249" cy="61" r="1.1" opacity="0.16"/>
-    <circle cx="290" cy="76" r="1.3" opacity="0.2"/><circle cx="335" cy="43" r="1.4" opacity="0.22"/><circle cx="361" cy="86" r="1" opacity="0.16"/>
-  </g>
-  <g id="signal" fill="none" stroke="#000000" stroke-width="1" opacity="0.26">
-    <path d="M189 117l6 6 6-6M189 130l6 6 6-6M189 143l6 6 6-6"/>
+  <g fill="none" stroke="#000000" stroke-width="0.6" opacity="0.18">
+    <path d="M195 198v22M184 209h22M64 205v12M58 211h12M327 203v14M320 210h14"/>
   </g>
 </svg>

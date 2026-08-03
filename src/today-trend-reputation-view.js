@@ -3,10 +3,16 @@ import { todayTrendStatusLabel } from './today-trend-model.js';
 import { escapeAttr, escapeHtml } from './ui.js';
 import { trendInlineActions, trendModuleHead, trendRuleEditor } from './today-trend-ui.js';
 
+const REPUTATION_LEVELS = Object.freeze(['hostile', 'dislike', 'neutral', 'like', 'trust']);
 const statusBadge = status => `<span class="pm-today-trend-status" data-status="${escapeAttr(status)}">${escapeHtml(todayTrendStatusLabel(status))}</span>`;
 const reportNumber = index => String(index + 1).padStart(2, '0');
-function circleEditor(circle = {}) {
-    return `<form class="pm-today-trend-editor" data-today-trend-form="circle"><input type="hidden" name="id" value="${escapeAttr(circle.id || '')}"><label class="pm-today-trend-field">圈层名称<input class="pm-today-trend-input" name="name" maxlength="120" required value="${escapeAttr(circle.name || '')}"></label><label class="pm-today-trend-field">范围<textarea class="pm-today-trend-input" name="scope" maxlength="600" required>${escapeHtml(circle.scope || '')}</textarea></label><div class="pm-today-trend-form-actions"><button type="submit">保存</button><button type="button" data-action="today-trend-cancel-editor">取消</button></div></form>`;
+function reputationMeter(status) {
+    const label = todayTrendStatusLabel(status);
+    const levels = REPUTATION_LEVELS.map(level => `<li class="${level === status ? 'is-active' : ''}" data-status="${level}" aria-hidden="true"><i></i><span>${escapeHtml(todayTrendStatusLabel(level))}</span></li>`).join('');
+    return `<ol class="pm-today-trend-reputation-meter" aria-label="当前好感度：${escapeAttr(label)}">${levels}</ol>`;
+}
+function circleEditor(circle = {}, cancelAction = 'today-trend-cancel-editor') {
+    return `<form class="pm-today-trend-editor" data-today-trend-form="circle"><input type="hidden" name="id" value="${escapeAttr(circle.id || '')}"><label class="pm-today-trend-field">圈层名称<input class="pm-today-trend-input" name="name" maxlength="120" required value="${escapeAttr(circle.name || '')}"></label><label class="pm-today-trend-field">范围<textarea class="pm-today-trend-input" name="scope" maxlength="600" required>${escapeHtml(circle.scope || '')}</textarea></label><label class="pm-today-trend-field">风评<textarea class="pm-today-trend-input" name="evaluation" maxlength="600" required>${escapeHtml(circle.evaluation || '')}</textarea></label><div class="pm-today-trend-form-actions"><button type="submit">保存</button><button type="button" data-action="${escapeAttr(cancelAction)}">取消</button></div></form>`;
 }
 
 function circleActions(circle, generateAttrs, visible) {
@@ -28,7 +34,8 @@ export function renderTodayTrendReputationView({ scope, preset = null, mode = 'c
     const favorableCount = circles.filter(circle => ['like', 'trust'].includes(circle.status)).length;
     const cautiousCount = circles.length - favorableCount;
     const reportMeta = circles.length ? `${circles.length} 个观察圈层｜${favorableCount} 个正向、${cautiousCount} 个谨慎或中性` : '等待建立观察圈层';
-    const rows = circles.map((circle, index) => `<article class="pm-today-trend-reputation-entry" data-circle-id="${escapeAttr(circle.id)}"><span class="pm-today-trend-reputation-index" aria-hidden="true">${reportNumber(index)}</span><div class="pm-today-trend-reputation-copy"><header><b>${escapeHtml(circle.name)}</b>${statusBadge(circle.status)}</header><p>${escapeHtml(circle.evaluation)}</p></div></article>`).join('');
+    const actionsVisible = menuOpenId === 'reputation-module';
+    const rows = circles.map((circle, index) => editingCircleId === circle.id ? `<article class="pm-today-trend-reputation-entry is-editing" data-circle-id="${escapeAttr(circle.id)}">${circleEditor(circle, 'today-trend-cancel-reputation-editor')}</article>` : `<article class="pm-today-trend-reputation-entry" data-circle-id="${escapeAttr(circle.id)}"><span class="pm-today-trend-reputation-index" aria-hidden="true">${reportNumber(index)}</span><div class="pm-today-trend-reputation-copy"><header><b>${escapeHtml(circle.name)}</b>${statusBadge(circle.status)}${trendInlineActions({ visible: actionsVisible, actions: [{ action: 'today-trend-edit-circle', icon: EDIT_ICON_SVG, label: `编辑${circle.name}`, attrs: `data-circle-id="${escapeAttr(circle.id)}"` }] })}</header><p>${escapeHtml(circle.evaluation)}</p></div>${reputationMeter(circle.status)}</article>`).join('');
     const editor = editingRule === 'reputation' ? trendRuleEditor({ rule: editingRule, value: ruleDraft ?? preset?.moduleRules?.reputation ?? '' }) : '';
     return `<section class="pm-today-trend-view pm-today-trend-reputation">${trendModuleHead({ title: '个人风评', menuId: 'reputation-module', menuOpenId, actions: [{ action: 'today-trend-generate-reputation', icon: REFRESH_ICON_SVG, label: '重新生成个人风评', attrs: generateAttrs }, { action: 'today-trend-edit-reputation-rule', icon: BOOK_ICON_SVG, label: '编辑个人风评 Prompt' }] })}<div class="pm-today-trend-report-intro"><p class="pm-today-trend-kicker">PUBLIC OPINION</p><p class="pm-today-trend-report-meta">${escapeHtml(reportMeta)}</p></div>${editor}<div class="pm-today-trend-reputation-list">${rows || '<p class="pm-today-trend-empty">尚未生成个人风评。</p>'}</div>${generationBusy ? '<span class="pm-today-trend-progress">正在生成…</span>' : ''}</section>`;
 }
