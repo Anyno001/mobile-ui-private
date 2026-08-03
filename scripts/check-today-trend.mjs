@@ -58,6 +58,12 @@ assert.match(todayTrendStyle, /mask-mode:alpha,alpha,alpha/, '背景图形必须
 assert.match(todayTrendStyle, /mask-repeat:no-repeat,repeat-y,no-repeat/, '背景中段必须仅沿纵向重复');
 assert.match(todayTrendStyle, /pm-today-trend-world::before[\s\S]*?pointer-events:none/, 'SVG 背景层不得拦截交互');
 assert.match(todayTrendStyle, /pm-today-trend-world>\*,\.pm-today-trend-reputation>\*[^}]*z-index:var\(--pm-z-base\)/, '模块内容必须位于 SVG 背景层之上');
+assert.match(todayTrendStyle, /pm-today-trend-world-grid\{[^}]*background:color-mix\(in srgb,var\(--pm-color-accent\) 38%,transparent\)/, '世界态势重复网格必须独立于星光并降低强度');
+assert.match(todayTrendStyle, /pm-today-trend-world-grid\{[^}]*linear-gradient\(45deg,transparent 0%,#000 29%,#000 71%,transparent 100%\)[^}]*mask-composite:intersect/, '世界态势重复网格必须在右上与左下淡出');
+assert.match(todayTrendStyle, /pm-today-trend-factions::after,\.pm-today-trend-dynamics::after\{[^}]*mask-image:var\(--pm-today-trend-bg-top\),var\(--pm-today-trend-bg-bottom\)/, '势力与事件追踪背景必须隐藏中段重复图形');
+assert.match(todayTrendStyle, /pm-today-trend-dynamics-target\{[^}]*width:var\(--pm-size-icon-lg\)[^}]*margin-left:var\(--pm-space-1\)/, '事件靶心必须按标题右侧紧凑图标定位');
+
+
 
 assert.match(todayTrendStyle, /@media\(max-width:320px\).*pm-today-trend-event-facts/s, '今日风向重排必须提供窄屏事实区适配');
 assert.doesNotMatch(todayTrendStyle, /pm-today-trend-content\.is-(?:reputation|faction|dynamics)::/, '旧内容容器背景伪元素必须清理');
@@ -295,6 +301,8 @@ assert.doesNotMatch(busyFactionSettingsHtml, /today-trend-regenerate-faction-rul
 const busyDynamicsHtml = renderTodayTrendDynamicsView({ scope: valid.scopes.chat, preset: valid.presets.preset, generationAvailable: true, generationBusy: true, menuOpenId: 'dynamics-module' });
 assert.match(busyDynamicsHtml, /today-trend-advance-all-events[\s\S]*?disabled aria-busy="true"/, '忙碌时动态模块生成必须禁用并暴露忙碌状态');
 assert.match(busyDynamicsHtml, /today-trend-edit-dynamics-rule/, '动态模块必须提供规则编辑动作');
+assert.match(busyDynamicsHtml, /事件追踪<span class="pm-today-trend-dynamics-target" aria-hidden="true">/, '事件靶心必须紧随事件追踪标题渲染');
+
 assert.match(busyDynamicsHtml, /today-trend-open-dynamics-settings/, '动态模块必须保留专属设置动作');
 assert.doesNotMatch(busyDynamicsHtml, /today-trend-advance-event/, '动态内容区不得保留单项推进入口');
 assert.match(busyDynamicsHtml, /LIVE TRACKER/, '动态内容页必须提供追踪识别语');

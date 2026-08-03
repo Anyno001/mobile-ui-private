@@ -22,7 +22,7 @@ export function trendInlineActions({ visible = false, actions = [] } = {}) {
 }
 
 export function trendModuleHead({ title, menuId, menuOpenId, actions = [], meta = '', adornment = '' }) {
-    return `<header class="pm-today-trend-module-head"><div><h2>${escapeHtml(title)}</h2>${meta ? `<span>${escapeHtml(meta)}</span>` : ''}${adornment}</div>${trendActionMenu({ id: menuId, open: menuOpenId === menuId, label: `${title}操作`, actions })}</header>`;
+    return `<header class="pm-today-trend-module-head"><div><h2>${escapeHtml(title)}${adornment}</h2>${meta ? `<span>${escapeHtml(meta)}</span>` : ''}</div>${trendActionMenu({ id: menuId, open: menuOpenId === menuId, label: `${title}操作`, actions })}</header>`;
 }
 
 export function trendRuleEditor({ rule, value = '' } = {}) {
