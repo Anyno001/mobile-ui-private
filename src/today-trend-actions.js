@@ -68,6 +68,7 @@ export function createTodayTrendActionDispatcher({
             view.menuOpenId = view.menuOpenId === menuId ? null : menuId;
             return run(rerender());
         }
+        if (action === 'today-trend-close-menu') { closeMenu(); return run(rerender()); }
         closeMenu();
         if (action === 'today-trend-cancel-rule-editor') { view.editingRule = null; view.ruleDraft = null; return run(rerender()); }
         if (action === 'today-trend-add-detail') {
@@ -108,7 +109,7 @@ export function createTodayTrendActionDispatcher({
         if (action === 'today-trend-promote-underground') { view.name = 'dynamics'; view.editingEventId = `promote:${button.dataset.eventId || ''}`; return run(rerender()); }
         if (action === 'today-trend-archive-event') { view.name = 'dynamics'; view.editingEventId = `archive:${button.dataset.eventId || ''}`; return run(rerender()); }
         if (action === 'today-trend-delete-circle') return run(commit(scope => ({ ...scope, reputation: { ...scope.reputation, circles: scope.reputation.circles.filter(item => item.id !== button.dataset.circleId) } })).then(() => onStatus('风评圈层已删除。')));
-        if (action === 'today-trend-delete-faction') return run(commit(scope => ({ ...scope, factions: scope.factions.filter(item => item.id !== button.dataset.factionId).map(item => ({ ...item, parentId: item.parentId === button.dataset.factionId ? null : item.parentId, relatedFactionIds: item.relatedFactionIds.filter(id => id !== button.dataset.factionId) })) })).then(() => onStatus('相关势力已删除。')));
+        if (action === 'today-trend-delete-faction') return run(commit(scope => ({ ...scope, factions: scope.factions.filter(item => item.id !== button.dataset.factionId).map(item => ({ ...item, parentId: item.parentId === button.dataset.factionId ? null : item.parentId, relatedFactionIds: item.relatedFactionIds.filter(id => id !== button.dataset.factionId) })) })).then(() => onStatus('势力图谱已删除。')));
         if (action === 'today-trend-regenerate-circle-schema') return run(onRefresh?.('reputation', button.dataset.circleId, { mode: 'schema' }) ?? Promise.reject(new Error('今日风向圈层结构重新生成能力尚未接入')));
         const generation = { 'today-trend-generate-world': ['world'], 'today-trend-generate-reputation': ['reputation'], 'today-trend-generate-factions': ['faction'] }[action];
         if (generation) return run(onGenerate?.(...generation) ?? Promise.reject(new Error('今日风向生成能力尚未接入')));
@@ -138,7 +139,7 @@ export function createTodayTrendActionDispatcher({
         }).then(async () => { view.editingCircleId = null; closeMenu(); await rerender(); onStatus('风评圈层已保存。'); }));
         if (form.dataset.todayTrendForm === 'faction') return run(commit(scope => {
             const faction = readFaction(form); return { ...scope, factions: replaceOrAppend(scope.factions, faction) };
-        }).then(async () => { view.mode = 'content'; view.editingFactionId = null; closeMenu(); await rerender(); onStatus('相关势力已保存。'); }));
+        }).then(async () => { view.mode = 'content'; view.editingFactionId = null; closeMenu(); await rerender(); onStatus('势力图谱已保存。'); }));
         if (form.dataset.todayTrendForm === 'event') return run(commit(scope => {
             const existing = scope.dynamics.active.find(item => item.id === formValue(form, 'id'));
             const next = readEvent(form, existing);

@@ -24,7 +24,7 @@ dynamics 必须仅含 active 与 archived。事件仅含 id,type,lifecycle,title
         block('world_book_data', context.worldBookText, 6000),
         block('main_chat_data', [context.mainChatText, context.latestChatText].filter(Boolean).join('\n'), 9000),
         block('initialization_requirements', context.source?.userRequirements, 600),
-        `目标角色：${context.characterName}\n目标聊天：${context.storageId}\n请基于资料一次生成四个模块规则、模块结构与初始世界态势、个人风评、相关势力和相关动态。`,
+        `目标角色：${context.characterName}\n目标聊天：${context.storageId}\n请基于资料一次生成四个模块规则、模块结构与初始世界态势、个人风评、势力图谱和事件追踪。`,
     ].filter(Boolean).join('\n\n');
     return { systemPrompt, userPrompt };
 }

@@ -28,9 +28,9 @@ const verifyFactions = value => arrayOf(value, faction => {
     keysOnly(faction, ['id', 'name', 'summary', 'parentId', 'relatedFactionIds', 'details', 'relation'], '势力');
     arrayOf(faction.details, detail => keysOnly(detail, ['label', 'value'], '势力资料'), '势力资料');
     verifyRelation(faction.relation);
-}, '相关势力');
+}, '势力图谱');
 const verifyDynamics = value => {
-    keysOnly(value, ['active', 'archived'], '相关动态');
+    keysOnly(value, ['active', 'archived'], '事件追踪');
     for (const bucket of ['active', 'archived']) arrayOf(value[bucket], event => keysOnly(event,
         ['id', 'type', 'lifecycle', 'title', 'stageLabel', 'origin', 'participants', 'stages', 'latestStage', 'outcome', 'finalResult', 'relatedEventIds', 'createdAt', 'updatedAt'], '动态事件'), '动态事件');
 };
@@ -102,15 +102,15 @@ const targetedDynamics = (previous, next, targetId) => {
     const current = previous.active.find(event => event.id === targetId);
     const updated = nextEvents.find(event => event.id === targetId);
     if (!previous.active.some(event => event.id === targetId) || nextEvents.filter(event => event.id === targetId).length !== 1) {
-        throw new Error('相关动态单项刷新缺少目标事件');
+        throw new Error('事件追踪单项刷新缺少目标事件');
     }
     if (previousEvents.length !== nextEvents.length
         || !sameJson(previous.active.filter(event => event.id !== targetId), next.active.filter(event => event.id !== targetId))
         || !sameJson(previous.archived.filter(event => event.id !== targetId), next.archived.filter(event => event.id !== targetId))) {
-        throw new Error('相关动态单项刷新不得新增、删除、重排或改写其他事件');
+        throw new Error('事件追踪单项刷新不得新增、删除、重排或改写其他事件');
     }
     if (!['id', 'type', 'title', 'origin', 'participants', 'relatedEventIds', 'createdAt'].every(key => sameJson(current[key], updated[key]))) {
-        throw new Error('相关动态单项推进不得改写事件基础资料');
+        throw new Error('事件追踪单项推进不得改写事件基础资料');
     }
 };
 
@@ -138,7 +138,7 @@ function assertTargetedGeneration(parsed, scope, target) {
         }
         return;
     }
-    if (module === 'faction') return targetedRecords(scope.factions, parsed.factions, target.itemId, '相关势力');
+    if (module === 'faction') return targetedRecords(scope.factions, parsed.factions, target.itemId, '势力图谱');
     if (module === 'dynamics') targetedDynamics(scope.dynamics, parsed.dynamics, target.itemId);
 }
 

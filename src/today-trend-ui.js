@@ -12,8 +12,8 @@ export function trendActionMenu({ id, open = false, label, actions = [] }) {
         attrs: `data-menu-id="${escapeAttr(id)}" aria-expanded="${open}"`,
     });
     const items = actions.map(action => trendIconButton({ ...action, className: 'pm-today-trend-menu-action' })).join('');
-    const close = `<button type="button" class="pm-today-trend-icon-button pm-today-trend-menu-close" data-today-trend-ui-action="close" aria-label="关闭手机" title="关闭手机">${CLOSE_ICON_SVG}</button>`;
-    return `<span class="pm-today-trend-menu-wrap${open ? ' is-open' : ''}">${trigger}${open ? `<span class="pm-today-trend-menu" aria-label="${escapeAttr(label)}">${items}${close}</span>` : ''}</span>`;
+    const close = trendIconButton({ action: 'today-trend-close-menu', icon: CLOSE_ICON_SVG, label: '关闭编辑模式', className: 'pm-today-trend-menu-close' });
+    return `<span class="pm-today-trend-menu-wrap${open ? ' is-open' : ''}">${open ? `<span class="pm-today-trend-menu" aria-label="${escapeAttr(label)}">${items}${close}</span>` : trigger}</span>`;
 }
 
 export function trendInlineActions({ visible = false, actions = [] } = {}) {

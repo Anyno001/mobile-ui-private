@@ -179,7 +179,7 @@ assert.match(failedInitializationHtml, /value="节目规则" checked/, '初始�
 assert.doesNotMatch(failedInitializationHtml, /name="includeExistingChat" type="checkbox" checked/, '初始化失败后必须保留正文开关');
 assert.match(failedInitializationHtml, /保留淘汰规则/, '初始化失败后必须保留追加要求');
 const appHtml = renderTodayTrendApp({ scope: valid.scopes.chat, presets: Object.values(valid.presets), generation: { phase: 'idle' } });
-for (const label of ['世界态势', '个人风评', '相关势力', '相关动态']) assert.match(appHtml, new RegExp(label), `主页面必须装配${label}`);
+for (const label of ['世界态势', '个人风评', '势力图谱', '事件追踪']) assert.match(appHtml, new RegExp(label), `主页面必须装配${label}`);
 assert.match(appHtml, /today-trend-open-settings/, '主页面必须提供 APP 总设置入口');
 assert.match(appHtml, /today-trend-toggle-operation[\s\S]*aria-pressed="true"/, '主页面必须提供当前运行状态的直接控制');
 const reinitializeHtml = renderTodayTrendApp({ scope: valid.scopes.chat, presets: Object.values(valid.presets), worldBooks: ['厨房设定'], initializationOpen: true, reinitializing: true });
@@ -195,14 +195,13 @@ assert.doesNotThrow(() => renderTodayTrendSettingsView(), '总设置视图不得
 const closedMenuHtml = trendActionMenu({ id: 'world-module', label: '世界态势操作', actions: [{ action: 'test-action', icon: '<svg></svg>', label: '测试操作' }] });
 assert.match(closedMenuHtml, /aria-expanded="false"/, '关闭态动作条必须暴露收起状态');
 assert.doesNotMatch(closedMenuHtml, /is-open|test-action/, '关闭态不得渲染隐藏动作或打开样式');
-assert.doesNotMatch(closedMenuHtml, /data-today-trend-ui-action="close"/, '关闭态省略号不得渲染关闭手机按钮');
+assert.match(closedMenuHtml, /today-trend-toggle-menu/, '关闭态必须提供展开操作的省略号按钮');
 const openMenuHtml = trendActionMenu({ id: 'world-module', open: true, label: '世界态势操作', actions: [{ action: 'test-action', icon: '<svg></svg>', label: '测试操作' }] });
-assert.match(openMenuHtml, /aria-expanded="true"/, '打开态动作条必须暴露展开状态');
 assert.match(openMenuHtml, /is-open/, '打开态动作条必须标识展开样式');
-assert.match(openMenuHtml, /aria-label="收起世界态势操作"/, '打开态触发器必须保留收起菜单语义');
+assert.doesNotMatch(openMenuHtml, /today-trend-toggle-menu|aria-expanded="true"/, '打开态不得保留重复的省略号按钮');
 assert.match(openMenuHtml, /test-action/, '打开态必须渲染横向动作');
-assert.match(openMenuHtml, /pm-today-trend-menu-close[^>]*data-today-trend-ui-action="close"/, '打开态动作组必须提供关闭手机按钮');
-assert.ok(openMenuHtml.indexOf('test-action') < openMenuHtml.indexOf('pm-today-trend-menu-close'), '关闭手机按钮必须位于展开动作组最右端');
+assert.match(openMenuHtml, /pm-today-trend-menu-close[^>]*data-action="today-trend-close-menu"[^>]*aria-label="关闭编辑模式"/, '打开态动作组必须提供关闭编辑模式按钮');
+assert.ok(openMenuHtml.indexOf('test-action') < openMenuHtml.indexOf('pm-today-trend-menu-close'), '关闭编辑模式按钮必须位于展开动作组最右端');
 const closedInlineActionsHtml = trendInlineActions({ actions: [{ action: 'test-inline-action', icon: '<svg></svg>', label: '测试行内操作' }] });
 assert.equal(closedInlineActionsHtml, '', '顶级操作条关闭时必须隐藏下方行内动作');
 const openInlineActionsHtml = trendInlineActions({ visible: true, actions: [{ action: 'test-inline-action', icon: '<svg></svg>', label: '测试行内操作' }] });
@@ -214,9 +213,19 @@ assert.match(ruleEditorHtml, /data-today-trend-form="rule-editor"/, '规则编�
 assert.match(ruleEditorHtml, /name="rule" value="world"/, '规则编辑必须携带规则标识');
 assert.match(ruleEditorHtml, /textarea[^>]*name="text"[^>]*required/, '规则编辑必须要求非空 Prompt');
 const worldHtml = renderTodayTrendWorldView({ scope: valid.scopes.chat, generationAvailable: true, menuOpenId: 'world-module' });
+const worldPanelsHtml = renderTodayTrendWorldView({ scope: { ...valid.scopes.chat, world: { items: [...valid.scopes.chat.world.items, { id: 'world-brief', name: '后勤消息', summary: '补给已抵达' }] } } });
 assert.match(worldHtml, /节目风向/, '世界态势页必须渲染初始化生成的世界观项目');
 assert.match(worldHtml, /data-world-item-id="world"[\s\S]*?today-trend-refresh-world-item/, '世界态势顶级操作打开时必须联动显示摘要操作');
 assert.doesNotMatch(renderTodayTrendWorldView({ scope: valid.scopes.chat, generationAvailable: true }), /today-trend-refresh-world-item/, '世界态势顶级操作关闭时必须隐藏摘要操作');
+assert.match(worldHtml, /pm-today-trend-world-hero[\s\S]*?pm-today-trend-world-panel/, '世界态势主摘要必须置于方角内容容器');
+assert.match(worldPanelsHtml, /pm-today-trend-world-brief[\s\S]*?pm-today-trend-world-panel[\s\S]*?pm-today-trend-world-ornament/, '世界态势摘要与装饰线必须位于同一内容容器');
+assert.match(todayTrendStyle, /pm-today-trend-world>\.pm-today-trend-module-head\{[^}]*border-radius:0/, '世界态势标题必须使用方角内容容器');
+assert.match(todayTrendStyle, /pm-today-trend-world\{background:/, '世界态势背景必须继续由父容器承载');
+assert.doesNotMatch(worldPanelsHtml, /pm-today-trend-world-terminal/, '世界态势摘要不得保留脱离点线定位的终端方块');
+assert.match(todayTrendStyle, /pm-today-trend-world-brief\.is-left .*world-ornament\{display:none/, '左摘要不得保留与方角边框重复的点线装饰');
+assert.match(todayTrendStyle, /pm-today-trend-world-brief\.is-right .*world-ornament::after\{display:block/, '右摘要终端方块必须跟随点线容器定位');
+assert.match(todayTrendStyle, /pm-today-trend-world-hero::before\{left:-46px/, '世界态势纯弧线必须向左偏移 20px');
+assert.match(todayTrendStyle, /pm-today-trend-world::after\{width:320px;height:320px/, '世界态势外层行星环必须缩小');
 assert.doesNotMatch(worldHtml, /data-menu-id="world:/, '世界摘要不得重复渲染独立省略号');
 assert.match(worldHtml, /today-trend-generate-world/, '世界态势页必须提供本模块生成动作');
 assert.match(worldHtml, /aria-busy="false"/, '世界态势生成按钮必须提供非忙碌 ARIA 状态');
@@ -256,16 +265,16 @@ assert.match(factionHtml, /POWER MAP/, '势力内容页必须提供图谱识别�
 assert.match(factionHtml, /pm-today-trend-faction-tree" data-depth="0"/, '势力图谱必须标识根层级');
 assert.match(factionHtml, /pm-today-trend-faction-card"[^>]*data-depth="1"/, '势力图谱必须标识子层级');
 assert.match(factionHtml, /pm-today-trend-faction-node/, '势力图谱必须输出独立节点装饰');
-assert.match(factionHtml, /pm-today-trend-faction-constellation[^>]*aria-hidden="true"/, '相关势力必须提供不可交互的星群背景层');
-assert.match(factionHtml, /today-trend-edit-faction-rule/, '相关势力模块必须提供规则编辑动作');
-assert.doesNotMatch(factionHtml, /today-trend-refresh-faction/, '相关势力内容区不得保留单项重新生成入口');
+assert.match(factionHtml, /pm-today-trend-faction-constellation[^>]*aria-hidden="true"/, '势力图谱必须提供不可交互的星群背景层');
+assert.match(factionHtml, /today-trend-edit-faction-rule/, '势力图谱模块必须提供规则编辑动作');
+assert.doesNotMatch(factionHtml, /today-trend-refresh-faction/, '势力图谱内容区不得保留单项重新生成入口');
 const busyFactionHtml = renderTodayTrendFactionView({ scope: valid.scopes.chat, generationAvailable: true, generationBusy: true, menuOpenId: 'faction-module' });
 assert.match(busyFactionHtml, /today-trend-generate-factions"[^>]*disabled aria-busy="true"/, '忙碌时势力模块生成必须禁用并暴露忙碌状态');
 assert.match(renderTodayTrendReputationView({ scope: valid.scopes.chat, mode: 'settings', menuOpenId: 'reputation-settings' }), /today-trend-regenerate-circle-schema/, '个人风评设置顶级操作打开后必须提供结构重新生成动作');
 const factionEditorHtml = renderTodayTrendFactionView({ scope: valid.scopes.chat, mode: 'editor', editingFactionId: 'red' });
 assert.match(factionEditorHtml, /name="parentId"/, '势力编辑页必须提供可空父势力选择');
 const busyFactionSettingsHtml = renderTodayTrendFactionView({ scope: valid.scopes.chat, mode: 'settings', generationAvailable: true, generationBusy: true });
-assert.doesNotMatch(busyFactionSettingsHtml, /today-trend-regenerate-faction-rule/, '相关势力设置不得重复提供模块规则动作');
+assert.doesNotMatch(busyFactionSettingsHtml, /today-trend-regenerate-faction-rule/, '势力图谱设置不得重复提供模块规则动作');
 const busyDynamicsHtml = renderTodayTrendDynamicsView({ scope: valid.scopes.chat, preset: valid.presets.preset, generationAvailable: true, generationBusy: true, menuOpenId: 'dynamics-module' });
 assert.match(busyDynamicsHtml, /today-trend-advance-all-events[\s\S]*?disabled aria-busy="true"/, '忙碌时动态模块生成必须禁用并暴露忙碌状态');
 assert.match(busyDynamicsHtml, /today-trend-edit-dynamics-rule/, '动态模块必须提供规则编辑动作');
@@ -274,7 +283,7 @@ assert.doesNotMatch(busyDynamicsHtml, /today-trend-advance-event/, '动态内容
 assert.match(busyDynamicsHtml, /LIVE TRACKER/, '动态内容页必须提供追踪识别语');
 assert.match(busyDynamicsHtml, /pm-today-trend-event-facts/, '动态内容页必须提供结构化事件事实区');
 assert.match(busyDynamicsHtml, /pm-today-trend-event-history/, '动态内容页必须提供阶段时间线容器');
-assert.match(busyDynamicsHtml, /pm-today-trend-dynamics-signal[^>]*aria-hidden="true"/, '相关动态必须提供不可交互的追踪信号背景层');
+assert.match(busyDynamicsHtml, /pm-today-trend-dynamics-signal[^>]*aria-hidden="true"/, '事件追踪必须提供不可交互的追踪信号背景层');
 assert.match(busyDynamicsHtml, /正在生成…/, '忙碌时动态模块必须展示生成状态');
 assert.match(factionEditorHtml, /name="detailLabel"/, '势力编辑页必须提供动态关键资料编辑');
 assert.match(factionEditorHtml, /name="status"/, '势力编辑页必须提供固定五档关系选择');
@@ -598,7 +607,7 @@ await assert.rejects(() => createTodayTrendGenerationController({ getCtx: () => 
         active: [{ ...multiDynamicsScope.dynamics.active[0], stageLabel: '服务中', latestStage: '开始出餐', stages: [...multiDynamicsScope.dynamics.active[0].stages, '开始出餐'] }, { ...multiDynamicsScope.dynamics.active[1], stageLabel: '协调中', latestStage: '临时换岗', stages: [...multiDynamicsScope.dynamics.active[1].stages, '临时换岗'] }],
         archived: multiDynamicsScope.dynamics.archived,
     } }),
-}).generate({ scope: multiDynamicsScope, preset: valid.presets.preset, target: { module: 'dynamics', itemId: 'service' } }), /相关动态单项刷新不得新增、删除、重排或改写其他事件/, '单事件推进不得改写其他动态');
+}).generate({ scope: multiDynamicsScope, preset: valid.presets.preset, target: { module: 'dynamics', itemId: 'service' } }), /事件追踪单项刷新不得新增、删除、重排或改写其他事件/, '单事件推进不得改写其他动态');
 const generatedRepeatedStageScope = structuredClone(valid.scopes.chat);
 generatedRepeatedStageScope.dynamicsSettings.appendOnlyOnActualProgress = false;
 const repeatedStageGeneration = await createTodayTrendGenerationController({ getCtx: () => ({}), gather: async () => collectedContext,

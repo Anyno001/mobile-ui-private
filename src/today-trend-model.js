@@ -226,9 +226,9 @@ export function normalizeTodayTrendScope(value, presetIds) {
     const injection = plainRecord(value.injection) ? value.injection : fail('TT_SCOPE', '正文注入设置无效'); scope.injection = { enabled: requiredBoolean(injection.enabled, 'TT_SCOPE', '正文注入开关') };
     const world = plainRecord(value.world) ? value.world : fail('TT_SCOPE', '世界态势无效'); if (!Array.isArray(world.items) || world.items.length > TODAY_TREND_LIMITS.worldItems) fail('TT_SCOPE', '世界态势项目无效'); scope.world.items = world.items.map(normalizeWorldItem); assertUnique(scope.world.items, '世界态势项目');
     const reputation = plainRecord(value.reputation) ? value.reputation : fail('TT_SCOPE', '个人风评无效'); if (!Array.isArray(reputation.circles) || reputation.circles.length > TODAY_TREND_LIMITS.circles) fail('TT_SCOPE', '个人风评圈层无效'); scope.reputation.circles = reputation.circles.map(normalizeCircle); assertUnique(scope.reputation.circles, '个人风评圈层');
-    if (!Array.isArray(value.factions) || value.factions.length > TODAY_TREND_LIMITS.factions) fail('TT_SCOPE', '相关势力无效'); scope.factions = value.factions.map(normalizeFaction); assertUnique(scope.factions, '相关势力'); validateFactions(scope.factions);
+    if (!Array.isArray(value.factions) || value.factions.length > TODAY_TREND_LIMITS.factions) fail('TT_SCOPE', '势力图谱无效'); scope.factions = value.factions.map(normalizeFaction); assertUnique(scope.factions, '势力图谱'); validateFactions(scope.factions);
     scope.dynamicsSettings = normalizeDynamicsSettings(value.dynamicsSettings);
-    const dynamics = plainRecord(value.dynamics) ? value.dynamics : fail('TT_SCOPE', '相关动态无效');
+    const dynamics = plainRecord(value.dynamics) ? value.dynamics : fail('TT_SCOPE', '事件追踪无效');
     for (const lifecycle of TODAY_TREND_EVENT_LIFECYCLES) { const events = dynamics[lifecycle]; if (!Array.isArray(events) || events.length > TODAY_TREND_LIMITS.events) fail('TT_SCOPE', '动态事件无效'); scope.dynamics[lifecycle] = events.map(event => normalizeEvent(event, lifecycle)); }
     const allEvents = [...scope.dynamics.active, ...scope.dynamics.archived]; assertUnique(allEvents, '动态事件'); const eventIds = new Set(allEvents.map(event => event.id));
     for (const event of allEvents) if (event.relatedEventIds.includes(event.id) || event.relatedEventIds.some(id => !eventIds.has(id))) fail('TT_EVENT_RELATED', '关联事件无效');
