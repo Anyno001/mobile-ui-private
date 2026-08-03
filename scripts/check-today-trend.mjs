@@ -41,7 +41,10 @@ const todayTrendStyle = await readFile(new URL('../style.css', import.meta.url),
 for (const variable of ['--pm-today-trend-report-gap', '--pm-today-trend-report-rule', '--pm-today-trend-track-width', '--pm-today-trend-node-size']) {
     assert.match(todayTrendStyle, new RegExp(`${variable}:`), `今日风向重排必须声明 ${variable} 视觉变量`);
 }
-const todayTrendAssetPaths = ['world', 'reputation', 'faction', 'dynamics'].flatMap(module => ['top.svg', 'top-glow.svg', 'middle-repeat.svg', 'bottom.svg'].map(name => `../assets/today-trend/${module}/${name}`));
+const todayTrendAssetPaths = [
+    ...['world', 'reputation', 'faction', 'dynamics'].flatMap(module => ['top.svg', 'top-glow.svg', 'middle-repeat.svg', 'bottom.svg'].map(name => `../assets/today-trend/${module}/${name}`)),
+    '../assets/today-trend/world/starlight.svg', '../assets/today-trend/world/starlight-fine.svg',
+];
 const todayTrendAssets = await Promise.all(todayTrendAssetPaths.map(assetPath => readFile(new URL(assetPath, import.meta.url), 'utf8')));
 for (const svg of todayTrendAssets) {
     assert.match(svg, /<svg\b[^>]*\bviewBox="0 0 390 (?:220|240)"/, '今日风向背景资源必须使用约定 viewBox');
@@ -233,7 +236,13 @@ assert.doesNotMatch(renderTodayTrendWorldView({ scope: valid.scopes.chat, genera
 assert.doesNotMatch(worldPanelsHtml, /pm-today-trend-world-panel/, '世界态势摘要不得套用方角内容容器');
 assert.doesNotMatch(worldPanelsHtml, /pm-today-trend-world-(?:ornament|left-ornament|terminal|dotfield)/, '世界态势摘要不得保留旧装饰节点');
 assert.doesNotMatch(worldHtml, /WORLD SITUATION|pm-today-trend-world-(?:title-rail|title-dotfield|kicker|starfield)/, '世界态势不得保留旧标题轨或星图装饰');
-assert.doesNotMatch(todayTrendStyle, /pm-today-trend-world-hero::before/, '世界态势主摘要不得保留旧 CSS 弧线');
+assert.match(worldPanelsHtml, /pm-today-trend-world-hero has-signals/, '世界态势主摘要必须标记后续信号流');
+assert.match(worldPanelsHtml, /pm-today-trend-world-signals/, '世界态势次级摘要必须位于信号流容器');
+assert.match(worldPanelsHtml, /pm-today-trend-world-signal-marker[^>]*aria-hidden="true"><i><\/i><\/span>/, '世界态势信号必须包含外环与实心内芯');
+assert.match(todayTrendStyle, /pm-today-trend-world-signals::before[^}]*border-left:1px dashed/, '世界态势左侧信号必须使用连续主干');
+assert.match(todayTrendStyle, /pm-today-trend-world-brief\.is-right::after[^}]*bottom:var\(--pm-space-3\)/, '右侧信号线必须延伸至摘要说明底部');
+assert.match(todayTrendStyle, /pm-today-trend-world-signal-marker::after[^}]*width:var\(--pm-space-4\)/, '世界态势信号必须包含有限横向引线');
+assert.doesNotMatch(todayTrendStyle, /pm-today-trend-world-hero::before/, '世界态势不得恢复旧主摘要伪元素装饰');
 assert.doesNotMatch(worldHtml, /data-menu-id="world:/, '世界摘要不得重复渲染独立省略号');
 assert.match(worldHtml, /today-trend-generate-world/, '世界态势页必须提供本模块生成动作');
 assert.match(worldHtml, /aria-busy="false"/, '世界态势生成按钮必须提供非忙碌 ARIA 状态');

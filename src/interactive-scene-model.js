@@ -194,6 +194,13 @@ export function createEmptyPhoneUiState() {
     return { version: PHONE_UI_STATE_VERSION, scopes: {} };
 }
 
+const normalizeSharedScenes = (value, interactiveStore) => [...new Set((Array.isArray(value) ? value : []).flatMap(item => {
+    const storageId = typeof item?.storageId === 'string' ? item.storageId.trim() : '';
+    const sceneId = typeof item?.sceneId === 'string' ? item.sceneId.trim() : '';
+    return storageId && sceneId && storageId.length <= 160 && sceneId.length <= 80 && !isUnsafeDictionaryKey(storageId)
+        && Object.hasOwn(interactiveStore?.scopes?.[storageId]?.scenes || {}, sceneId) ? [`${storageId}\u0000${sceneId}`] : [];
+}))].map(key => { const [storageId, sceneId] = key.split('\u0000'); return { storageId, sceneId }; });
+
 export function normalizeAmbientStatus(value) {
     return { enabled: value?.enabled === true };
 }
@@ -241,6 +248,8 @@ export function normalizePhoneUiState(raw, interactiveStore = createEmptyInterac
             lastChatKey,
         };
     }
+    const sharedScenes = normalizeSharedScenes(raw.sharedScenes, interactiveStore);
+    if (sharedScenes.length) result.sharedScenes = sharedScenes;
     return result;
 }
 
@@ -283,6 +292,23 @@ export function toggleScenePin(phoneUiState, storageId, sceneId, interactiveStor
         ? scope.pinnedSceneIds.filter(idValue => idValue !== sceneId)
         : [...scope.pinnedSceneIds, sceneId];
     return patchPhoneUiScope(normalized, storageId, { pinnedSceneIds }, interactiveStore);
+}
+
+export function toggleSharedScene(phoneUiState, storageId, sceneId, interactiveStore) {
+    assertPhoneUiStorageId(storageId);
+    if (typeof sceneId !== 'string' || !sceneId || sceneId !== sceneId.trim() || sceneId.length > 80) {
+        throw new Error('互动场景标识格式无效');
+    }
+    if (!Object.hasOwn(interactiveStore?.scopes?.[storageId]?.scenes || {}, sceneId)) throw new Error('互动场景不存在');
+    const normalized = normalizePhoneUiState(phoneUiState, interactiveStore);
+    const sharedScenes = normalized.sharedScenes || [];
+    const shared = sharedScenes.some(item => item.storageId === storageId && item.sceneId === sceneId);
+    return normalizePhoneUiState({
+        ...normalized,
+        sharedScenes: shared
+            ? sharedScenes.filter(item => item.storageId !== storageId || item.sceneId !== sceneId)
+            : [...sharedScenes, { storageId, sceneId }],
+    }, interactiveStore);
 }
 
 function normalizeActor(raw, actorId) {

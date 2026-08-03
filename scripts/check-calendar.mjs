@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { calendarGenerationErrorMessage, installCalendar, renderCalendarPageHtml } from '../src/calendar.js';
 import { fillCalendarEntryForm, readCalendarEntryForm, setCalendarEntryRepeat } from '../src/calendar-dom.js';
-import { occasionTypeLabel, renderCalendarEntryDialog, renderOutfitDialog, renderSelectedDateDetail } from '../src/calendar-view.js';
+import { occasionTypeLabel, renderCalendarEntryDialog, renderCalendarRepeatDeleteDialog, renderOutfitDialog, renderSelectedDateDetail } from '../src/calendar-view.js';
 import { renderCalendarContextInjection } from '../src/phone-injection.js';
 import { createCalendarCommitters } from '../src/calendar-commit.js';
 import { createCalendarRecipeController } from '../src/calendar-recipe-controller.js';
@@ -42,7 +42,7 @@ import {
     relativeCalendarLabel, replaceCalendarEventsInWindow, shiftCalendarMonth,
 } from '../src/calendar-model.js';
 import {
-    deleteOccasion, expandOccasions, findOccasion, normalizeOccasion, normalizeOccasionStore,
+    deleteOccasion, excludeOccasionDate, expandOccasions, findOccasion, normalizeOccasion, normalizeOccasionStore,
     occasionDateForYear, upsertOccasion,
 } from '../src/calendar-occasion-model.js';
 import {
@@ -429,6 +429,17 @@ assert.deepEqual(
     ['2027-02-28'],
     '每月重复在目标月份没有锚点日时必须落在月末',
 );
+const dailyId = normalizeOccasion(repeatScope.occasions[0]).id;
+const excludedDailyScope = excludeOccasionDate({ occasions: [{ ...repeatScope.occasions[0], id: dailyId }] }, dailyId, '2027-02-27', 400);
+assert.deepEqual(excludedDailyScope.occasions[0].excludedDates, ['2027-02-27'], '单日清理必须持久化为规范化日期例外');
+assert.deepEqual(
+    expandOccasions(excludedDailyScope, { start: new Date(2027, 1, 26, 12), days: 4 }).map(item => item.date),
+    ['2027-02-26', '2027-02-28', '2027-03-01'],
+    '单日清理不得删除整条重复规则',
+);
+assert.throws(() => excludeOccasionDate(excludedDailyScope, dailyId, '2027-01-01'), /没有可清理/, '非 occurrence 不得写入例外');
+assert.match(renderCalendarRepeatDeleteDialog('<每日>', '2027-02-27'), /仅清理当天[\s\S]*清理全部重复/,
+    '重复日程删除必须提供当天和全部两种明确操作');
 const removed = deleteOccasion(scope, birthdayId);
 assert.equal(removed.removed, true);
 assert.equal(removed.scope.occasions.length, 1);
@@ -1418,7 +1429,14 @@ try {
         async click() { return this.listeners.get('click')?.(); },
     });
     const makeCalendarOverlay = html => {
+        const isRepeatDelete = html.includes('data-calendar-repeat-delete=');
         const close = interactiveNode(), error = { textContent: '' };
+        const deleteDay = interactiveNode(), deleteAll = interactiveNode();
+        if (isRepeatDelete) {
+            const overlay = { kind: 'repeat-delete', html, close, deleteDay, deleteAll, querySelector(selector) {
+                return selector === '[data-calendar-repeat-delete-cancel]' ? close : selector === '[data-calendar-repeat-delete="day"]' ? deleteDay : selector === '[data-calendar-repeat-delete="all"]' ? deleteAll : null;
+            } }; overlayHistory.push(overlay); return overlay;
+        }
         const repeatSelect = interactiveNode();
         repeatSelect.value = 'none';
         const intervalInput = { value: '1', disabled: true };
@@ -1503,22 +1521,34 @@ try {
     await deps.handleCalendarAction({
         dataset: { action: 'calendar-delete-entry', entryKind: 'occasion', entryId: sharedEntryId },
     }, { querySelector: () => null });
-    assert.equal(deps.getCalendarOccasionStore().scopes[storageA].occasions.length, 0, '行内删除必须只删除指定 occasion');
+    const repeatDelete = overlayHistory.at(-1);
+    assert.equal(repeatDelete.kind, 'repeat-delete', '重复日程删除必须先展示范围选择');
+    await repeatDelete.deleteDay.click();
+    const excludedOccasion = deps.getCalendarOccasionStore().scopes[storageA].occasions.find(item => item.id === sharedEntryId);
+    assert.deepEqual(excludedOccasion.excludedDates, [currentDates[0]], '仅清理当天必须保留规则并写入选中日期例外');
     assert.equal(
-        JSON.parse(memory.get(CALENDAR_OCCASION_STORAGE_KEY)).scopes[storageA].occasions.length,
-        0,
-        '行内删除 occasion 必须同步持久化，不能在刷新后复活',
+        JSON.parse(memory.get(CALENDAR_OCCASION_STORAGE_KEY)).scopes[storageA].occasions.find(item => item.id === sharedEntryId).excludedDates[0],
+        currentDates[0],
+        '单日例外必须同步持久化，不能在刷新后复活',
     );
     assert.equal(deps.getCalendarStore().scopes[storageA].events[currentDates[0]][0].id, editorEvent.id,
         '删除 occasion 不得误删同日 event');
     assert.match(container.innerHTML, /data-action="calendar-toggle-detail-edit"[^>]*aria-pressed="true"/,
         '删除后必须保留详情编辑态以支持连续操作');
     await deps.handleCalendarAction({
+        dataset: { action: 'calendar-edit-entry', entryKind: 'occasion', entryId: sharedEntryId },
+    }, { querySelector: () => null });
+    const excludedOccasionEditor = overlayHistory.at(-1);
+    excludedOccasionEditor.form.elements.title.value = '编辑后仍排除当天';
+    await excludedOccasionEditor.form.submit();
+    assert.deepEqual(deps.getCalendarOccasionStore().scopes[storageA].occasions.find(item => item.id === sharedEntryId).excludedDates, [currentDates[0]],
+        '编辑重复日程不得让已清理的单日 occurrence 复活');
+    await deps.handleCalendarAction({
         dataset: { action: 'calendar-edit-entry', entryKind: 'event', entryId: sharedEntryId },
     }, { querySelector: () => null });
     const eventEditor = overlayHistory.at(-1);
     assert.equal(eventEditor.kind, 'editor');
-    assert.equal(entryFocusCount, 1, '选择具体条目后必须且只能聚焦一次');
+    assert.equal(entryFocusCount, 2, '每次选择具体条目都必须且只能聚焦一次');
     assert.equal(eventEditor.form.elements.title.value, editorEvent.title, '编辑器必须读取目标 event，而非依赖标题匹配');
     eventEditor.form.elements.title.value = '已更新日程';
     await eventEditor.form.submit();
@@ -1529,12 +1559,12 @@ try {
     const persistedEditedEvents = JSON.parse(memory.get(CALENDAR_STORAGE_KEY)).scopes[storageA].events[currentDates[0]];
     assert.equal(persistedEditedEvents.length, 1);
     assert.equal(persistedEditedEvents.find(item => item.id === editorEvent.id)?.title, '已更新日程', 'event 编辑必须同步持久化');
-    assert.equal(entryFocusCount, 1, 'event 编辑完整提交路径只能聚焦一次');
+    assert.equal(entryFocusCount, 2, 'event 编辑完整提交路径不得重复聚焦');
     const occasionStoreBeforeAdd = structuredClone(deps.getCalendarOccasionStore());
     await deps.handleCalendarAction({ dataset: { action: 'calendar-add-date' } }, { querySelector: () => null });
     const addEditor = overlayHistory.at(-1);
     assert.equal(addEditor.kind, 'editor');
-    assert.equal(entryFocusCount, 2, '主动新增应聚焦一次且不经过管理态');
+    assert.equal(entryFocusCount, 3, '主动新增应聚焦一次且不经过管理态');
     addEditor.form.elements.title.value = '新增日程';
     addEditor.form.elements.note.value = '新增备注';
     await addEditor.form.submit();
@@ -1546,8 +1576,8 @@ try {
     const persistedEventsAfterAdd = JSON.parse(memory.get(CALENDAR_STORAGE_KEY)).scopes[storageA].events[currentDates[0]];
     assert.equal(persistedEventsAfterAdd.length, 2, '新增 event 必须同步持久化');
     assert.ok(persistedEventsAfterAdd.some(entry => entry.title === '新增日程' && entry.note === '新增备注'));
-    assert.equal(JSON.parse(memory.get(CALENDAR_OCCASION_STORAGE_KEY)).scopes[storageA].occasions.length, 0,
-        '新增 event 不得写入 occasion store');
+    assert.deepEqual(JSON.parse(memory.get(CALENDAR_OCCASION_STORAGE_KEY)).scopes[storageA].occasions, occasionStoreBeforeAdd.scopes[storageA].occasions,
+        '新增 event 不得改写已有的 occasion store');
     await deps.handleCalendarAction({ dataset: { action: 'calendar-add-date' } }, { querySelector: () => null });
     const occasionEditor = overlayHistory.at(-1);
     occasionEditor.repeatSelect.value = 'yearly';
@@ -1612,7 +1642,7 @@ try {
         '运行时 store 必须保真旧字段以支持无损持久化');
     assert.doesNotMatch(container.innerHTML, /故事初始日期|calendar-story-initial|data-calendar-story-initial-date/,
         '保真旧字段不得使废弃入口重新出现在 UI');
-    assert.equal(entryFocusCount, 4, '每次新增或编辑具体条目只能聚焦一次');
+    assert.equal(entryFocusCount, 5, '每次新增或编辑具体条目只能聚焦一次');
     const initialSelectedDate = detailDate();
     const currentMonthPrefix = initialSelectedDate.slice(0, 7);
     const alternateDate = calendarMonthKeys(Number(currentMonthPrefix.slice(0, 4)), Number(currentMonthPrefix.slice(5, 7)))

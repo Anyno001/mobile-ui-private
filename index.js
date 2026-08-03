@@ -885,13 +885,18 @@ ${userPrompt}` : userPrompt;
   var OCCASION_TYPES = Object.freeze(["birthday", "anniversary"]);
   var OCCASION_LEAP_DAY_RULES = Object.freeze(["feb28", "mar1", "skip"]);
   var OCCASION_REPEAT_RULES = Object.freeze(["daily", "weekly", "biweekly", "monthly", "custom", "yearly"]);
-  var OCCASION_LIMITS = Object.freeze({ scopes: 80, occasions: 80, title: 120, note: 1e3, intervalDays: 9999 });
+  var OCCASION_LIMITS = Object.freeze({ scopes: 80, occasions: 80, title: 120, note: 1e3, intervalDays: 9999, excludedDates: 9999 });
   var plainRecord2 = (value) => value && typeof value === "object" && !Array.isArray(value) && (Object.getPrototypeOf(value) === Object.prototype || Object.getPrototypeOf(value) === null);
   var cleanText2 = (value, max) => String(value ?? "").trim().slice(0, max);
   var unsafeKey2 = (value) => value === "prototype" || Object.hasOwn(Object.prototype, value);
   var timestamp = (value, fallback = 0) => Number.isFinite(value) && value >= 0 ? Math.floor(value) : fallback;
   var uid2 = () => `occasion_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 9)}`;
   var pad2 = (value) => String(value).padStart(2, "0");
+  var dateKey = (value) => {
+    const date = parseCalendarDate(value);
+    return date ? `${date.getFullYear().toString().padStart(4, "0")}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}` : "";
+  };
+  var normalizedExcludedDates = (value) => [...new Set((Array.isArray(value) ? value : []).map(dateKey).filter(Boolean))].sort().slice(0, OCCASION_LIMITS.excludedDates);
   function isLeapYear(year) {
     return Number.isInteger(year) && year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
   }
@@ -948,6 +953,7 @@ ${userPrompt}` : userPrompt;
       ...repeat ? { repeat } : {},
       ...repeat === "custom" ? { intervalDays: normalizedIntervalDays(value.intervalDays) } : {},
       ...hasDate ? { date: `${date.getFullYear().toString().padStart(4, "0")}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}` } : {},
+      ...normalizedExcludedDates(value.excludedDates).length ? { excludedDates: normalizedExcludedDates(value.excludedDates) } : {},
       createdAt,
       updatedAt: Math.max(createdAt, timestamp(value.updatedAt, createdAt))
     };
@@ -1004,6 +1010,23 @@ ${userPrompt}` : userPrompt;
     const occasions = next.occasions.filter((item) => item.id !== occasionId);
     return { scope: { occasions }, removed: occasions.length !== next.occasions.length };
   }
+  function excludeOccasionDate(scope, occasionId, occurrenceDate, now2 = Date.now()) {
+    const date = dateKey(occurrenceDate);
+    if (!date) throw new Error("\u8981\u6E05\u7406\u7684\u65E5\u7A0B\u65E5\u671F\u65E0\u6548");
+    const next = normalizeOccasionScope(scope);
+    const occasion = findOccasion(next, occasionId);
+    if (!occasion) throw new Error("\u91CD\u590D\u65E5\u7A0B\u4E0D\u5B58\u5728");
+    const occursOnDate = expandOccasions({ occasions: [occasion] }, {
+      start: parseCalendarDate(date),
+      days: 1
+    }).some((item) => item.id === occasionId && item.date === date);
+    if (!occursOnDate) throw new Error("\u8BE5\u65E5\u671F\u6CA1\u6709\u53EF\u6E05\u7406\u7684\u91CD\u590D\u65E5\u7A0B");
+    return upsertOccasion(next, {
+      ...occasion,
+      excludedDates: [...occasion.excludedDates || [], date],
+      updatedAt: now2
+    }, now2);
+  }
   function occasionDateForYear(occasionValue, year) {
     const occasion = normalizeOccasion(occasionValue, 0);
     const numericYear = Number(year);
@@ -1028,10 +1051,11 @@ ${userPrompt}` : userPrompt;
     const result = [];
     for (const occasion of normalizeOccasionScope(scope).occasions) {
       const repeat = occasion.repeat || "yearly";
+      const excludedDates = new Set(occasion.excludedDates || []);
       if (repeat === "yearly") {
         for (const year of years) {
           const occurrence = occasionDateForYear(occasion, year);
-          if (occurrence && dates.has(occurrence.date)) result.push({ ...occasion, ...occurrence });
+          if (occurrence && dates.has(occurrence.date) && !excludedDates.has(occurrence.date)) result.push({ ...occasion, ...occurrence });
         }
         continue;
       }
@@ -1044,6 +1068,7 @@ ${userPrompt}` : userPrompt;
         const elapsedDays = Math.round((parsed.getTime() - anchor.getTime()) / 864e5);
         const sameMonthDay = parsed.getDate() === anchor.getDate();
         const lastDayOfMonth = !calendarDateFromParts(parsed.getFullYear(), parsed.getMonth() + 1, anchor.getDate()) && parsed.getDate() === daysInCalendarMonth(parsed.getFullYear(), parsed.getMonth() + 1);
+        if (excludedDates.has(date)) continue;
         if (repeat === "daily" || repeat === "weekly" && sameWeekday || repeat === "biweekly" && sameWeekday && elapsedDays % 14 === 0 || repeat === "monthly" && (sameMonthDay || lastDayOfMonth)) {
           result.push({ ...occasion, date, leapAdjusted: false });
         } else if (repeat === "custom" && elapsedDays % normalizedIntervalDays(occasion.intervalDays) === 0) {
@@ -1074,7 +1099,7 @@ ${userPrompt}` : userPrompt;
   var CHINESE_DAYS_YEAR_URL = (year) => `https://cdn.jsdelivr.net/npm/chinese-days/dist/years/${year}.json`;
   var plainRecord3 = (value) => value && typeof value === "object" && !Array.isArray(value);
   var pad3 = (value) => String(value).padStart(2, "0");
-  var dateKey = (date) => `${date.getFullYear()}-${pad3(date.getMonth() + 1)}-${pad3(date.getDate())}`;
+  var dateKey2 = (date) => `${date.getFullYear()}-${pad3(date.getMonth() + 1)}-${pad3(date.getDate())}`;
   function holidayYearRange(country) {
     return HOLIDAY_COUNTRY_YEAR_RANGES[country] || null;
   }
@@ -1122,7 +1147,7 @@ ${userPrompt}` : userPrompt;
         const parts = formatter.formatToParts(date);
         const month = parts.find((part) => part.type === "month")?.value;
         const day = Number(parts.find((part) => part.type === "day")?.value);
-        if (month === "\u4E03\u6708" && day === 7) return dateKey(date);
+        if (month === "\u4E03\u6708" && day === 7) return dateKey2(date);
       } catch (error) {
         return null;
       }
@@ -1188,18 +1213,18 @@ ${userPrompt}` : userPrompt;
   function nthWeekday(year, month, weekday, nth) {
     const date = new Date(year, month - 1, 1, 12);
     date.setDate(1 + (7 + weekday - date.getDay()) % 7 + (nth - 1) * 7);
-    return dateKey(date);
+    return dateKey2(date);
   }
   function lastWeekday(year, month, weekday) {
     const date = new Date(year, month, 0, 12);
     date.setDate(date.getDate() - (7 + date.getDay() - weekday) % 7);
-    return dateKey(date);
+    return dateKey2(date);
   }
   function observedDate(date) {
     const parsed = parseCalendarDate(date);
     if (parsed.getDay() === 6) parsed.setDate(parsed.getDate() - 1);
     else if (parsed.getDay() === 0) parsed.setDate(parsed.getDate() + 1);
-    return dateKey(parsed);
+    return dateKey2(parsed);
   }
   function createEmptyHolidayCache() {
     return { version: HOLIDAY_CACHE_VERSION, selectedCountry: "CN", years: {} };
@@ -1299,8 +1324,8 @@ ${userPrompt}` : userPrompt;
       if (date.getDay() !== 0) continue;
       do {
         date.setDate(date.getDate() + 1);
-      } while (occupied.has(dateKey(date)));
-      const substitute = dateKey(date);
+      } while (occupied.has(dateKey2(date)));
+      const substitute = dateKey2(date);
       occupied.add(substitute);
       rows.push(entry(substitute, `${holiday.name} \u632F\u66FF\u4F11\u65E5`, "observed"));
     }
@@ -1311,9 +1336,9 @@ ${userPrompt}` : userPrompt;
         const probe = parseCalendarDate(date);
         if (probe.getDay() === 0 || occupied.has(date)) continue;
         probe.setDate(probe.getDate() - 1);
-        const before = dateKey(probe);
+        const before = dateKey2(probe);
         probe.setDate(probe.getDate() + 2);
-        const after = dateKey(probe);
+        const after = dateKey2(probe);
         if (occupied.has(before) && occupied.has(after)) {
           occupied.add(date);
           rows.push(entry(date, "\u56FD\u6C11\u306E\u4F11\u65E5", "observed"));
@@ -3236,6 +3261,7 @@ ${userPrompt}` : userPrompt;
   var REMOVE_ICON_SVG = icon('<circle cx="12" cy="12" r="9"/><path d="M8 12h8"/>');
   var UNLINK_ICON_SVG = icon('<path d="M10 13a4 4 0 0 0 5.7.1l2-2a4 4 0 0 0-5.7-5.7l-1.1 1.1"/><path d="M14 11a4 4 0 0 0-5.7-.1l-2 2A4 4 0 0 0 12 18.6l1.1-1.1"/><path d="M4 4l16 16"/>');
   var SPARKLES_ICON_SVG = icon('<path d="M12 3l1.2 3.8L17 8l-3.8 1.2L12 13l-1.2-3.8L7 8l3.8-1.2L12 3zM19 14l.7 2.3L22 17l-2.3.7L19 20l-.7-2.3L16 17l2.3-.7L19 14zM5 13l.8 2.2L8 16l-2.2.8L5 19l-.8-2.2L2 16l2.2-.8L5 13z"/>');
+  var SHARE_WINDOW_ICON_SVG = icon('<rect x="4" y="4" width="11" height="11" rx="2"/><path d="M9 20h9a2 2 0 0 0 2-2V9M12 12h8M16 8l4 4-4 4"/>');
   var CHEVRON_DOWN_ICON_SVG = icon('<path d="M7 10l5 5 5-5"/>');
   var HEART_ICON_SVG = icon('<path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1.1-1.1a5.5 5.5 0 0 0-7.8 7.8l1.1 1.1L12 21l7.8-7.5 1.1-1.1a5.5 5.5 0 0 0-.1-7.8z"/>');
   var SHARE_ICON_SVG = icon('<circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 10.5l6.8-4M8.6 13.5l6.8 4"/>');
@@ -3490,6 +3516,9 @@ ${userPrompt}` : userPrompt;
     const yearly = repeat === "yearly";
     const custom = repeat === "custom";
     return `<div class="pm-modal pm-calendar-entry-dialog"><div class="pm-modal-header"><span></span><b>\u65E5\u7A0B</b><button type="button" class="pm-modal-close" data-calendar-entry-close aria-label="\u5173\u95ED">${CLOSE_ICON_SVG}</button></div><form data-calendar-entry-form><label>\u91CD\u590D<select name="repeat" data-calendar-repeat-select aria-label="\u65E5\u7A0B\u91CD\u590D\u89C4\u5219"><option value="none" ${repeat === "none" ? "selected" : ""}>\u4E0D\u91CD\u590D</option><option value="daily" ${repeat === "daily" ? "selected" : ""}>\u6BCF\u65E5\u91CD\u590D</option><option value="weekly" ${repeat === "weekly" ? "selected" : ""}>\u6BCF\u5468\uFF08\u540C\u661F\u671F\uFF09</option><option value="biweekly" ${repeat === "biweekly" ? "selected" : ""}>\u6BCF\u4E24\u5468\uFF08\u540C\u661F\u671F\uFF09</option><option value="monthly" ${repeat === "monthly" ? "selected" : ""}>\u6BCF\u6708\uFF08\u540C\u65E5\uFF09</option><option value="yearly" ${yearly ? "selected" : ""}>\u6BCF\u5E74\u91CD\u590D</option><option value="custom" ${custom ? "selected" : ""}>\u81EA\u5B9A\u4E49</option></select></label><label class="pm-calendar-repeat-interval" data-calendar-interval-days ${custom ? "" : 'hidden aria-hidden="true"'}>\u6BCF<input name="intervalDays" type="number" min="1" max="9999" step="1" inputmode="numeric" value="${custom ? Number(entry2?.intervalDays) || 1 : 1}" ${custom ? "" : "disabled"} aria-label="\u6BCF\u51E0\u5929\u91CD\u590D\u4E00\u6B21">\u5929\u91CD\u590D\u4E00\u6B21</label><input name="title" maxlength="120" placeholder="\u540D\u79F0" aria-label="\u5B89\u6392\u540D\u79F0"><textarea name="note" maxlength="1000" placeholder="\u5907\u6CE8\uFF08\u53EF\u9009\uFF09" aria-label="\u5B89\u6392\u5907\u6CE8"></textarea><div data-calendar-occasion-fields ${yearly ? "" : 'hidden aria-hidden="true"'}><label>\u957F\u671F\u7C7B\u578B<select name="occasionType" ${yearly ? "" : "disabled"}><option value="anniversary">\u7EAA\u5FF5\u65E5</option><option value="birthday">\u751F\u65E5</option></select></label><label>2 \u6708 29 \u65E5\u5728\u975E\u95F0\u5E74<select name="leapDayRule" ${yearly ? "" : "disabled"}><option value="feb28">\u6309 2 \u6708 28 \u65E5\u663E\u793A</option><option value="mar1">\u6309 3 \u6708 1 \u65E5\u663E\u793A</option><option value="skip">\u8BE5\u5E74\u4E0D\u663E\u793A</option></select></label></div><p class="pm-calendar-entry-error" data-calendar-entry-error role="status" aria-live="polite"></p><div class="pm-calendar-entry-actions"><button type="submit" class="is-primary">\u4FDD\u5B58</button></div></form></div>`;
+  }
+  function renderCalendarRepeatDeleteDialog(title, date) {
+    return `<div class="pm-modal pm-calendar-entry-dialog"><div class="pm-modal-header"><span></span><b>\u6E05\u7406\u91CD\u590D\u65E5\u7A0B</b><button type="button" class="pm-modal-close" data-calendar-repeat-delete-cancel aria-label="\u5173\u95ED">${CLOSE_ICON_SVG}</button></div><p>\u201C${escapeHtml(title)}\u201D\u662F\u91CD\u590D\u65E5\u7A0B\u3002\u8BF7\u9009\u62E9\u6E05\u7406\u8303\u56F4\u3002</p><p class="pm-cfg-tip">\u5F53\u5929\uFF1A\u4EC5\u79FB\u9664 ${escapeHtml(date)} \u7684\u8FD9\u4E00\u9879\uFF1B\u5168\u90E8\uFF1A\u5220\u9664\u6574\u6761\u91CD\u590D\u65E5\u7A0B\u3002</p><div class="pm-calendar-entry-actions"><button type="button" data-calendar-repeat-delete="day">\u4EC5\u6E05\u7406\u5F53\u5929</button><button type="button" class="is-danger" data-calendar-repeat-delete="all">\u6E05\u7406\u5168\u90E8\u91CD\u590D</button></div></div>`;
   }
   function renderRecipeMealDialog(selectedDate, mealType = "breakfast", meal = null) {
     const normalizedType = RECIPE_MEAL_TYPES.includes(mealType) ? mealType : "breakfast";
@@ -4606,8 +4635,7 @@ ${userPrompt}` : userPrompt;
       rerender(storageId);
     }
     function selectedDateEntries(storageId) {
-      const date = viewFor(storageId).selectedDate;
-      const parsed = parseCalendarDate(date);
+      const date = viewFor(storageId).selectedDate, parsed = parseCalendarDate(date);
       return {
         date,
         events: scope(storageId).events[date] || [],
@@ -4621,16 +4649,39 @@ ${userPrompt}` : userPrompt;
     }
     async function removeEntry(storageId, kind, id2) {
       const entry2 = resolveEntry(storageId, kind, id2);
-      if (!entry2 || !confirm(`\u5220\u9664\u201C${entry2.title}\u201D\uFF1F`)) return false;
+      if (!entry2) return false;
       if (kind === "event") {
+        if (!confirm(`\u5220\u9664\u201C${entry2.title}\u201D\uFF1F`)) return false;
         await commitScope(storageId, (current) => deleteCalendarEvent(current, entry2.id).scope);
         status(storageId, "\u65E5\u7A0B\u5DF2\u5220\u9664\u3002");
       } else if (kind === "occasion") {
-        await commitOccasions(storageId, (current) => deleteOccasion(current, entry2.id).scope);
-        status(storageId, `${occasionTypeLabel(entry2.type)}\u5DF2\u5220\u9664\u3002`);
-      } else {
-        return false;
-      }
+        const date = viewFor(storageId).selectedDate;
+        if (typeof makeOverlay !== "function") throw new Error("\u91CD\u590D\u65E5\u7A0B\u5220\u9664\u786E\u8BA4\u4E0D\u53EF\u7528");
+        const overlay = makeOverlay(renderCalendarRepeatDeleteDialog(entry2.title, date));
+        const close = (reason) => closeOverlay?.(reason);
+        overlay.querySelector("[data-calendar-repeat-delete-cancel]")?.addEventListener("click", () => close("cancel"));
+        overlay.querySelector('[data-calendar-repeat-delete="day"]')?.addEventListener("click", async () => {
+          try {
+            await commitOccasions(storageId, (current) => excludeOccasionDate(current, entry2.id, date));
+            status(storageId, "\u5F53\u5929\u91CD\u590D\u65E5\u7A0B\u5DF2\u6E05\u7406\u3002");
+            close("saved");
+            rerender(storageId);
+          } catch (error) {
+            status(storageId, error?.message || "\u6E05\u7406\u91CD\u590D\u65E5\u7A0B\u5931\u8D25\u3002");
+          }
+        });
+        overlay.querySelector('[data-calendar-repeat-delete="all"]')?.addEventListener("click", async () => {
+          try {
+            await commitOccasions(storageId, (current) => deleteOccasion(current, entry2.id).scope);
+            status(storageId, "\u5168\u90E8\u91CD\u590D\u65E5\u7A0B\u5DF2\u6E05\u7406\u3002");
+            close("saved");
+            rerender(storageId);
+          } catch (error) {
+            status(storageId, error?.message || "\u6E05\u7406\u91CD\u590D\u65E5\u7A0B\u5931\u8D25\u3002");
+          }
+        });
+        return true;
+      } else return false;
       rerender(storageId);
       return true;
     }
@@ -4641,15 +4692,12 @@ ${userPrompt}` : userPrompt;
       const existingEntry = id2 ? resolveEntry(storageId, normalizedKind, id2) : null;
       if (id2 && !existingEntry) throw new Error("\u8981\u7F16\u8F91\u7684\u5B89\u6392\u4E0D\u5B58\u5728\u6216\u5DF2\u88AB\u79FB\u9664");
       const overlay = makeOverlay(renderCalendarEntryDialog(entries.date, existingEntry, normalizedKind));
-      const form = overlay.querySelector("[data-calendar-entry-form]");
-      const errorNode = overlay.querySelector("[data-calendar-entry-error]");
+      const form = overlay.querySelector("[data-calendar-entry-form]"), errorNode = overlay.querySelector("[data-calendar-entry-error]");
       const showError = (error) => {
         if (errorNode) errorNode.textContent = error?.message || "\u5B89\u6392\u66F4\u65B0\u5931\u8D25";
       };
       overlay.querySelector("[data-calendar-entry-close]")?.addEventListener("click", () => closeOverlay?.("close"));
-      overlay.querySelector("[data-calendar-repeat-select]")?.addEventListener("change", (event) => {
-        setCalendarEntryRepeat(overlay, event.currentTarget.value);
-      });
+      overlay.querySelector("[data-calendar-repeat-select]")?.addEventListener("change", (event) => setCalendarEntryRepeat(overlay, event.currentTarget.value));
       form?.addEventListener("submit", async (event) => {
         event.preventDefault();
         try {
@@ -4679,6 +4727,7 @@ ${userPrompt}` : userPrompt;
                 date: normalizedKind === "occasion" ? existingEntry?.date || entries.date : entries.date,
                 month: normalizedKind === "occasion" ? existingEntry?.month || parsed.getMonth() + 1 : parsed.getMonth() + 1,
                 day: normalizedKind === "occasion" ? existingEntry?.day || parsed.getDate() : parsed.getDate(),
+                ...normalizedKind === "occasion" && existingEntry?.excludedDates ? { excludedDates: existingEntry.excludedDates } : {},
                 repeat: value.repeat,
                 title: value.title,
                 note: value.note,
@@ -5357,6 +5406,14 @@ ${lines.join("\n")}
   function createEmptyPhoneUiState() {
     return { version: PHONE_UI_STATE_VERSION, scopes: {} };
   }
+  var normalizeSharedScenes = (value, interactiveStore) => [...new Set((Array.isArray(value) ? value : []).flatMap((item) => {
+    const storageId = typeof item?.storageId === "string" ? item.storageId.trim() : "";
+    const sceneId = typeof item?.sceneId === "string" ? item.sceneId.trim() : "";
+    return storageId && sceneId && storageId.length <= 160 && sceneId.length <= 80 && !isUnsafeDictionaryKey(storageId) && Object.hasOwn(interactiveStore?.scopes?.[storageId]?.scenes || {}, sceneId) ? [`${storageId}\0${sceneId}`] : [];
+  }))].map((key) => {
+    const [storageId, sceneId] = key.split("\0");
+    return { storageId, sceneId };
+  });
   function normalizeAmbientStatus(value) {
     return { enabled: value?.enabled === true };
   }
@@ -5393,6 +5450,8 @@ ${lines.join("\n")}
         lastChatKey
       };
     }
+    const sharedScenes = normalizeSharedScenes(raw.sharedScenes, interactiveStore);
+    if (sharedScenes.length) result.sharedScenes = sharedScenes;
     return result;
   }
   var assertPhoneUiStorageId = (storageId) => {
@@ -5428,6 +5487,20 @@ ${lines.join("\n")}
     const scope = normalized.scopes[storageId] || createDefaultPhoneUiScope();
     const pinnedSceneIds = scope.pinnedSceneIds.includes(sceneId) ? scope.pinnedSceneIds.filter((idValue) => idValue !== sceneId) : [...scope.pinnedSceneIds, sceneId];
     return patchPhoneUiScope(normalized, storageId, { pinnedSceneIds }, interactiveStore);
+  }
+  function toggleSharedScene(phoneUiState, storageId, sceneId, interactiveStore) {
+    assertPhoneUiStorageId(storageId);
+    if (typeof sceneId !== "string" || !sceneId || sceneId !== sceneId.trim() || sceneId.length > 80) {
+      throw new Error("\u4E92\u52A8\u573A\u666F\u6807\u8BC6\u683C\u5F0F\u65E0\u6548");
+    }
+    if (!Object.hasOwn(interactiveStore?.scopes?.[storageId]?.scenes || {}, sceneId)) throw new Error("\u4E92\u52A8\u573A\u666F\u4E0D\u5B58\u5728");
+    const normalized = normalizePhoneUiState(phoneUiState, interactiveStore);
+    const sharedScenes = normalized.sharedScenes || [];
+    const shared = sharedScenes.some((item) => item.storageId === storageId && item.sceneId === sceneId);
+    return normalizePhoneUiState({
+      ...normalized,
+      sharedScenes: shared ? sharedScenes.filter((item) => item.storageId !== storageId || item.sceneId !== sceneId) : [...sharedScenes, { storageId, sceneId }]
+    }, interactiveStore);
   }
   function normalizeActor(raw, actorId) {
     const type = INTERACTIVE_ACTOR_TYPES.includes(raw?.type) ? raw.type : "legacy";
@@ -6837,6 +6910,8 @@ ${lines.join("\n")}
       const current = loadPhoneUiState(interactiveStore);
       if (Object.hasOwn(normalized.scopes, storageId)) current.scopes[storageId] = structuredClone(normalized.scopes[storageId]);
       else delete current.scopes[storageId];
+      if (Object.hasOwn(normalized, "sharedScenes")) current.sharedScenes = structuredClone(normalized.sharedScenes);
+      else delete current.sharedScenes;
       const merged = normalizePhoneUiState(current, interactiveStore);
       localStorage.setItem(PHONE_UI_STATE_KEY, JSON.stringify(merged));
       return merged;
@@ -9985,6 +10060,7 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
     chatKey = null
   }) {
     if (!runtime?.store || !storageId || storageId === "sms_unknown__default" || !PHONE_UI_PAGES.includes(page)) return false;
+    if (page === "community" && runtime.openSceneReadOnly === true && runtime.openSceneStorageId && runtime.openSceneStorageId !== storageId) return true;
     const scope = phoneScope(storageId, runtime.store);
     const normalizedChatType = chatType === "contact" || chatType === "group" ? chatType : null;
     const normalizedChatKey = normalizedChatType && typeof chatKey === "string" && chatKey.trim() ? chatKey.trim() : null;
@@ -10618,13 +10694,14 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
       offset: (hash >>> 15) % 17 - 8
     };
   }
-  function renderPhoneDesktop(scope = { scenes: {} }, uiScope = { pinnedSceneIds: [] }) {
+  function renderPhoneDesktop(scope = { scenes: {} }, uiScope = { pinnedSceneIds: [] }, sharedScenes = []) {
     const title = String(globalThis.window?.__pmTheme?.customTitle || "").trim() || DEFAULT_DESKTOP_TITLE;
     const pins = (uiScope.pinnedSceneIds || []).flatMap((sceneId) => {
       const scene = scope.scenes?.[sceneId];
       if (!scene) return [];
       return [`<article class="pm-desktop-pin"><button type="button" data-action="desktop-open-scene" data-scene-id="${escapeAttr(scene.id)}"><b>${escapeHtml(scene.title)}</b></button><button type="button" data-action="unpin-scene" data-scene-id="${escapeAttr(scene.id)}" aria-label="\u79FB\u9664 ${escapeAttr(scene.title)} \u5FEB\u6377\u65B9\u5F0F">\u79FB\u9664</button></article>`];
     }).join("");
+    const shared = sharedScenes.map((item) => `<article class="pm-desktop-pin is-shared"><button type="button" data-action="desktop-open-shared-scene" data-source-storage-id="${escapeAttr(item.storageId)}" data-scene-id="${escapeAttr(item.scene.id)}"><b>${escapeHtml(item.scene.title)}</b><span>\u5171\u4EAB\u793E\u533A</span></button></article>`).join("");
     return `<div class="pm-desktop-toolbar"><span>${escapeHtml(title)}</span><button type="button" data-action="desktop-exit" aria-label="\u9000\u51FA\u624B\u673A" title="\u9000\u51FA\u624B\u673A">${CLOSE_ICON_SVG}</button></div>
         <div class="pm-desktop-grid" aria-label="\u5E94\u7528">
             <button type="button" class="pm-desktop-app" data-app="chat" data-action="desktop-chat" aria-label="\u804A\u5929" title="\u804A\u5929"><span class="pm-desktop-app-icon">${CHAT_ICON_SVG}</span><span class="pm-desktop-app-label">\u804A\u5929</span></button>
@@ -10633,7 +10710,7 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
             <button type="button" class="pm-desktop-app" data-app="calendar" data-action="desktop-calendar" aria-label="\u65E5\u5386" title="\u65E5\u5386"><span class="pm-desktop-app-icon">${CALENDAR_ICON_SVG}</span><span class="pm-desktop-app-label">\u65E5\u5386</span></button>
             <button type="button" class="pm-desktop-app" data-app="today-trend" data-action="desktop-today-trend" aria-label="\u4ECA\u65E5\u98CE\u5411" title="\u4ECA\u65E5\u98CE\u5411"><span class="pm-desktop-app-icon">${TREND_ICON_SVG}</span><span class="pm-desktop-app-label">\u4ECA\u65E5\u98CE\u5411</span></button>
         </div>
-        <section class="pm-desktop-pins"><h3>\u56FA\u5B9A\u793E\u533A</h3>${pins || "<p>\u5728\u793E\u533A\u4E2D\u56FA\u5B9A\u573A\u666F\u540E\uFF0C\u4F1A\u663E\u793A\u5728\u8FD9\u91CC\u3002</p>"}</section>
+        <section class="pm-desktop-pins"><h3>\u56FA\u5B9A\u793E\u533A</h3>${pins || "<p>\u5728\u793E\u533A\u4E2D\u56FA\u5B9A\u573A\u666F\u540E\uFF0C\u4F1A\u663E\u793A\u5728\u8FD9\u91CC\u3002</p>"}${shared}</section>
         <div class="pm-desktop-community-dock"><button type="button" data-action="desktop-community" aria-label="\u53D1\u5E03\u4E00\u6761">${COMMUNITY_ICON_SVG}<span>\u53D1\u5E03\u4E00\u6761</span></button></div>`;
   }
   function renderPresetOptions(selected) {
@@ -10657,7 +10734,9 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
       const scene = scope.scenes[sceneId];
       const pinned = uiScope.pinnedSceneIds.includes(scene.id);
       const pinLabel = pinned ? "\u53D6\u6D88\u56FA\u5B9A\u793E\u533A" : "\u56FA\u5B9A\u793E\u533A";
-      return `<article class="pm-scene-card"><button type="button" class="pm-scene-card-open" data-action="open-scene" data-scene-id="${escapeAttr(scene.id)}"><b>${escapeHtml(scene.title)}</b><span>${escapeHtml(presets[scene.preset]?.label || "\u81EA\u5B9A\u4E49")} \xB7 ${scene.posts.length} \u7BC7\u5E16\u5B50</span></button><div class="pm-scene-card-actions"><button type="button" class="pm-scene-pin-action" data-action="toggle-scene-pin" data-scene-id="${escapeAttr(scene.id)}" aria-pressed="${pinned}" aria-label="${pinLabel}" title="${pinLabel}">${COMMUNITY_ICON_SVG}</button><button type="button" class="pm-scene-danger" data-action="delete-scene" data-scene-id="${escapeAttr(scene.id)}" aria-label="\u5220\u9664\u793E\u533A" title="\u5220\u9664\u793E\u533A">${TRASH_ICON_SVG}</button></div></article>`;
+      const shared = (uiScope.sharedScenes || []).some((item) => item.storageId === uiScope.storageId && item.sceneId === scene.id);
+      const sharedLabel = shared ? "\u53D6\u6D88\u8DE8\u7A97\u53E3\u5171\u4EAB" : "\u8DE8\u7A97\u53E3\u5171\u4EAB";
+      return `<article class="pm-scene-card"><button type="button" class="pm-scene-card-open" data-action="open-scene" data-scene-id="${escapeAttr(scene.id)}"><b>${escapeHtml(scene.title)}</b><span>${escapeHtml(presets[scene.preset]?.label || "\u81EA\u5B9A\u4E49")} \xB7 ${scene.posts.length} \u7BC7\u5E16\u5B50</span></button><div class="pm-scene-card-actions"><button type="button" class="pm-scene-share-action" data-action="toggle-scene-share" data-scene-id="${escapeAttr(scene.id)}" aria-pressed="${shared}" aria-label="${sharedLabel}" title="${sharedLabel}">${SHARE_WINDOW_ICON_SVG}</button><button type="button" class="pm-scene-pin-action" data-action="toggle-scene-pin" data-scene-id="${escapeAttr(scene.id)}" aria-pressed="${pinned}" aria-label="${pinLabel}" title="${pinLabel}">${COMMUNITY_ICON_SVG}</button><button type="button" class="pm-scene-danger" data-action="delete-scene" data-scene-id="${escapeAttr(scene.id)}" aria-label="\u5220\u9664\u793E\u533A" title="\u5220\u9664\u793E\u533A">${TRASH_ICON_SVG}</button></div></article>`;
     }).join("");
     return `<div id="pm-scene-app" class="pm-modal pm-scene-shell" style="--scene-accent:${escapeAttr(defaultAccent)}">
         <div class="pm-scene-header"><button type="button" class="pm-scene-home" data-action="desktop" aria-label="\u8FD4\u56DE\u684C\u9762" title="\u8FD4\u56DE\u684C\u9762">${HOME_ICON_SVG}</button><b>\u793E\u533A</b><button type="button" data-action="exit" aria-label="\u9000\u51FA\u624B\u673A" title="\u9000\u51FA\u624B\u673A">${CLOSE_ICON_SVG}</button></div>
@@ -10732,18 +10811,19 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
       return `<span class="is-${stableDanmakuTone(item)}" style="--lane:${motion.lane};--delay:${motion.delay}s;--duration:${motion.duration}s;--offset:${motion.offset}px">${escapeHtml(item.content)}</span>`;
     }).join("");
     const stageState = warmupStarted ? "active" : liveFailed ? "error" : liveStarting ? "starting" : "idle";
-    const playControl = !warmupStarted && !liveStarting ? `<button type="button" class="pm-live-play-btn" data-action="start-warmup" aria-label="${liveFailed ? "\u91CD\u65B0\u5F00\u59CB\u70ED\u573A" : "\u5F00\u59CB\u70ED\u573A"}" title="${liveFailed ? "\u91CD\u65B0\u5F00\u59CB\u70ED\u573A" : "\u5F00\u59CB\u70ED\u573A"}">${PLAY_ICON_SVG}</button>` : "";
+    const readOnly = state.readOnly === true;
+    const playControl = !readOnly && !warmupStarted && !liveStarting ? `<button type="button" class="pm-live-play-btn" data-action="start-warmup" aria-label="${liveFailed ? "\u91CD\u65B0\u5F00\u59CB\u70ED\u573A" : "\u5F00\u59CB\u70ED\u573A"}" title="${liveFailed ? "\u91CD\u65B0\u5F00\u59CB\u70ED\u573A" : "\u5F00\u59CB\u70ED\u573A"}">${PLAY_ICON_SVG}</button>` : "";
     const stageNote = liveStarting ? '<p class="pm-live-state-note">\u6B63\u5728\u51C6\u5907\u70ED\u573A\u2026</p>' : liveFailed ? '<p class="pm-live-state-note is-error">\u70ED\u573A\u672A\u80FD\u542F\u52A8\uFF0C\u8BF7\u91CD\u8BD5\u3002</p>' : "";
     const liveContent = `<div class="pm-live-stage ${hasDanmaku ? "has-danmaku" : ""}" data-live-state="${stageState}">${playControl}<div class="pm-danmaku-float">${floatingDanmaku}</div>${stageNote}</div><section class="pm-live-details" aria-label="\u70ED\u573A\u5185\u5BB9"><div class="pm-danmaku-list">${renderDanmaku(scene)}</div></section>`;
-    const composer = tab === "feed" ? `<div class="pm-scene-composer"><textarea id="pm-scene-post-input" maxlength="4000" placeholder="\u5206\u4EAB\u6B64\u523B\u2026\u2026"></textarea><button type="button" class="pm-scene-primary" data-action="publish" aria-label="\u53D1\u5E03" title="\u53D1\u5E03">${SEND_ICON_SVG}</button></div>` : tab === "live" ? `<div class="pm-scene-composer pm-danmaku-input"><textarea id="pm-danmaku-input" rows="1" maxlength="200" placeholder="\u53D1\u4E2A\u5F39\u5E55\u89C1\u8BC1\u5F53\u4E0B"></textarea><button type="button" class="pm-scene-primary" data-action="send-danmaku" aria-label="\u53D1\u9001\u5F39\u5E55" title="\u53D1\u9001\u5F39\u5E55">${SEND_ICON_SVG}</button></div>` : "";
+    const composer = readOnly ? "" : tab === "feed" ? `<div class="pm-scene-composer"><textarea id="pm-scene-post-input" maxlength="4000" placeholder="\u5206\u4EAB\u6B64\u523B\u2026\u2026"></textarea><button type="button" class="pm-scene-primary" data-action="publish" aria-label="\u53D1\u5E03" title="\u53D1\u5E03">${SEND_ICON_SVG}</button></div>` : tab === "live" ? `<div class="pm-scene-composer pm-danmaku-input"><textarea id="pm-danmaku-input" rows="1" maxlength="200" placeholder="\u53D1\u4E2A\u5F39\u5E55\u89C1\u8BC1\u5F53\u4E0B"></textarea><button type="button" class="pm-scene-primary" data-action="send-danmaku" aria-label="\u53D1\u9001\u5F39\u5E55" title="\u53D1\u9001\u5F39\u5E55">${SEND_ICON_SVG}</button></div>` : "";
     const content = tab === "feed" ? `<div class="pm-scene-feed"><div class="pm-scene-posts">${renderPosts(scene, renderedAt)}</div></div>` : tab === "live" ? `<div class="pm-live-room">${liveContent}</div>` : tab === "context-inject" ? renderContextInjectionSettings(scene, state) : `<div class="pm-scene-prompt"><label>\u793E\u533A\u540D\u79F0<input id="pm-scene-title" maxlength="80" value="${escapeAttr(scene.title)}"></label><fieldset class="pm-scene-accent-field"><legend>\u793E\u533A\u4E3B\u9898\u8272</legend><div class="pm-scene-accent-options">${renderSceneAccentOptions(accent)}<label class="pm-scene-accent-custom" aria-label="\u81EA\u5B9A\u4E49\u793E\u533A\u4E3B\u9898\u8272"><input id="pm-scene-accent" type="color" data-action="scene-accent-custom" value="${escapeAttr(accent)}"><span>\u81EA\u5B9A\u4E49</span></label></div></fieldset><label>\u793E\u533A\u98CE\u683C<textarea id="pm-scene-prompt" maxlength="6000">${escapeHtml(scene.generatedPrompt)}</textarea></label><p>\u8BBE\u7F6E\u793E\u533A\u5185\u5BB9\u7684\u8868\u8FBE\u98CE\u683C\u4E0E\u6C1B\u56F4\u3002</p><div class="pm-scene-prompt-actions"><button type="button" class="pm-scene-secondary" data-action="regenerate-prompt">\u91CD\u65B0\u751F\u6210</button><button type="button" class="pm-scene-primary" data-action="save-prompt">\u4FDD\u5B58\u98CE\u683C</button></div></div>`;
     const isPrompt = tab === "prompt";
     const isSubpage = isPrompt || tab === "context-inject";
     const returnTab = ["feed", "live"].includes(uiScope.lastTab) ? uiScope.lastTab : "feed";
     const leadingAction = isSubpage ? `data-action="tab" data-tab="${returnTab}" aria-label="\u8FD4\u56DE\u5B50\u793E\u533A" title="\u8FD4\u56DE\u5B50\u793E\u533A"` : 'data-action="desktop" aria-label="\u8FD4\u56DE\u684C\u9762" title="\u8FD4\u56DE\u684C\u9762"';
     return `<div id="pm-scene-app" class="pm-modal pm-scene-shell" style="--scene-accent:${escapeAttr(accent)}">
-        <div class="pm-scene-topbar"><div class="pm-scene-nav-actions"><button type="button" class="pm-scene-home" ${leadingAction}>${isSubpage ? BACK_ICON_SVG : HOME_ICON_SVG}</button></div><nav class="pm-scene-title" aria-label="\u5B50\u793E\u533A\u89C6\u56FE"><button type="button" class="pm-scene-title-tab ${tab === "feed" ? "is-active" : ""}" data-action="tab" data-tab="feed" aria-current="${tab === "feed" ? "page" : "false"}"><span>${escapeHtml(scene.title)}</span></button><button type="button" class="pm-scene-title-tab ${tab === "live" ? "is-active" : ""}" data-action="tab" data-tab="live" aria-current="${tab === "live" ? "page" : "false"}"><span>\u76F4\u64AD</span></button></nav><div class="pm-scene-view-actions"><button type="button" class="pm-header-icon-button pm-scene-title-poke" data-action="poke-scene" aria-label="\u62CD\u4E00\u62CD\u793E\u533A" title="\u62CD\u4E00\u62CD\u793E\u533A">${POKE_ICON_SVG}</button><button type="button" class="pm-header-icon-button pm-scene-exit" data-action="exit" aria-label="\u9000\u51FA\u624B\u673A" title="\u9000\u51FA\u624B\u673A">${CLOSE_ICON_SVG}</button></div></div><div class="pm-scene-status" aria-live="polite" hidden></div>
-        ${content}${isSubpage || tab === "context-inject" ? "" : `<div class="pm-scene-bottom-bar">${renderSceneMenu(scene, uiScope, autoActive, tab)}${composer}</div>`}
+        <div class="pm-scene-topbar"><div class="pm-scene-nav-actions"><button type="button" class="pm-scene-home" ${leadingAction}>${isSubpage ? BACK_ICON_SVG : HOME_ICON_SVG}</button></div><nav class="pm-scene-title" aria-label="\u5B50\u793E\u533A\u89C6\u56FE"><button type="button" class="pm-scene-title-tab ${tab === "feed" ? "is-active" : ""}" data-action="tab" data-tab="feed" aria-current="${tab === "feed" ? "page" : "false"}"><span>${escapeHtml(scene.title)}</span></button><button type="button" class="pm-scene-title-tab ${tab === "live" ? "is-active" : ""}" data-action="tab" data-tab="live" aria-current="${tab === "live" ? "page" : "false"}"><span>\u76F4\u64AD</span></button></nav><div class="pm-scene-view-actions">${readOnly ? '<span class="pm-scene-read-only">\u5171\u4EAB\u67E5\u770B</span>' : `<button type="button" class="pm-header-icon-button pm-scene-title-poke" data-action="poke-scene" aria-label="\u62CD\u4E00\u62CD\u793E\u533A" title="\u62CD\u4E00\u62CD\u793E\u533A">${POKE_ICON_SVG}</button>`}<button type="button" class="pm-header-icon-button pm-scene-exit" data-action="exit" aria-label="\u9000\u51FA\u624B\u673A" title="\u9000\u51FA\u624B\u673A">${CLOSE_ICON_SVG}</button></div></div><div class="pm-scene-status" aria-live="polite" hidden></div>
+        ${content}${isSubpage || tab === "context-inject" ? "" : `<div class="pm-scene-bottom-bar">${readOnly ? "" : renderSceneMenu(scene, uiScope, autoActive, tab)}${composer}</div>`}
     </div>`;
   }
 
@@ -10870,6 +10950,8 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
       contextEpoch: 0,
       loadGeneration: 0,
       openSceneId: null,
+      openSceneStorageId: null,
+      openSceneReadOnly: false,
       busy: false,
       creating: false,
       phoneUiState: null,
@@ -10897,29 +10979,29 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
           bindingKey: `character:${characterBinding}`,
           profile: [character.description, character.personality].filter(Boolean).join("\n").slice(0, 1e3)
         },
-        user: {
-          type: "user",
-          displayName: persona?.name || "\u6211",
-          bindingKey: `persona:${userBinding}`,
-          profile: String(persona?.description || "").slice(0, 1e3)
-        }
+        user: { type: "user", displayName: persona?.name || "\u6211", bindingKey: `persona:${userBinding}`, profile: String(persona?.description || "").slice(0, 1e3) }
       };
     };
     const current = () => {
-      const scopeId = getStorageId2();
+      const scopeId = runtime.openSceneStorageId || getStorageId2();
       const scope = runtime.store?.scopes?.[scopeId];
       return { scopeId, scope, scene: scope?.scenes?.[runtime.openSceneId || scope.activeSceneId] || null };
+    };
+    const clearOpenScene = () => {
+      runtime.openSceneId = null;
+      runtime.openSceneStorageId = null;
+      runtime.openSceneReadOnly = false;
     };
     const resolveTarget = (target) => {
       const scope = runtime.store?.scopes?.[target?.storageId];
       return { scopeId: target?.storageId, scope, scene: scope?.scenes?.[target?.sceneId] || null };
     };
     const getCommunityTarget = () => {
-      const scopeId = getStorageId2();
+      const scopeId = runtime.openSceneStorageId || getStorageId2();
       const scene = runtime.store?.scopes?.[scopeId]?.scenes?.[runtime.openSceneId];
       return runtime.openSceneId && scene ? { storageId: scopeId, sceneId: scene.id } : null;
     };
-    const isTargetActive = (target) => getStorageId2() === target?.storageId && runtime.openSceneId === target?.sceneId && !!resolveTarget(target).scene && document.querySelector("#pm-iphone .pm-main-ui")?.dataset.page === "community";
+    const isTargetActive = (target) => (runtime.openSceneStorageId || getStorageId2()) === target?.storageId && runtime.openSceneId === target?.sceneId && !!resolveTarget(target).scene && document.querySelector("#pm-iphone .pm-main-ui")?.dataset.page === "community";
     const operationGuard = (storageId, sceneId = () => runtime.openSceneId) => createInteractiveOperationGuard({
       getEpoch: () => runtime.contextEpoch,
       getStorageId: getStorageId2,
@@ -10952,9 +11034,10 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
     };
     const setStatus = (text7) => {
       const el = document.querySelector(".pm-scene-status");
-      if (!el) return;
-      el.textContent = text7 || "";
-      el.hidden = !text7;
+      if (el) {
+        el.textContent = text7 || "";
+        el.hidden = !text7;
+      }
     };
     const confirmDelete = (message) => window.confirm(message);
     const getPhoneUiState = (store) => {
@@ -10964,18 +11047,19 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
       return normalizePhoneUiState(runtime.phoneUiState, store);
     };
     const persistPhoneUiState = (storageId, nextState, store = runtime.store) => {
-      const normalized = normalizePhoneUiState(nextState, store);
-      const merged = savePhoneUiScope(storageId, normalized, store);
+      const merged = savePhoneUiScope(storageId, normalizePhoneUiState(nextState, store), store);
       if (!merged) throw new Error("\u624B\u673A\u9875\u9762\u72B6\u6001\u4FDD\u5B58\u5931\u8D25\uFF1A\u6D4F\u89C8\u5668\u5B58\u50A8\u4E0D\u53EF\u7528");
       runtime.phoneUiState = merged;
       return merged;
     };
-    const updatePhoneUiScope = (storageId, patch, store = runtime.store) => persistPhoneUiState(
-      storageId,
-      patchPhoneUiScope(getPhoneUiState(store), storageId, patch, store),
-      store
-    );
+    const updatePhoneUiScope = (storageId, patch, store = runtime.store) => persistPhoneUiState(storageId, patchPhoneUiScope(getPhoneUiState(store), storageId, patch, store), store);
     const phoneScope = (storageId, store = runtime.store) => getPhoneUiState(store).scopes[storageId] || createDefaultPhoneUiScope();
+    const communityUiScope = (storageId, store = runtime.store) => ({ ...phoneScope(storageId, store), storageId, sharedScenes: getPhoneUiState(store).sharedScenes || [] });
+    const sharedScenesFor = (storageId, store = runtime.store) => (getPhoneUiState(store).sharedScenes || []).flatMap((item) => {
+      if (item.storageId === storageId) return [];
+      const scene = store?.scopes?.[item.storageId]?.scenes?.[item.sceneId];
+      return scene ? [{ ...item, scene }] : [];
+    });
     const renderInto = (selector, html) => {
       const container = document.querySelector(selector);
       if (!container) return false;
@@ -10991,12 +11075,11 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
     function refreshDesktop(scopeId = getStorageId2(), store = runtime.store) {
       const validScope = !!store && !!scopeId && scopeId !== "sms_unknown__default";
       const scope = validScope ? getScope(store, scopeId) : { scenes: {} };
-      const uiScope = validScope ? phoneScope(scopeId, store) : { pinnedSceneIds: [], lastPage: "desktop", lastSceneId: null, lastTab: "feed" };
-      return renderInto(".pm-desktop-page", renderPhoneDesktop(scope, uiScope));
+      const uiScope = validScope ? communityUiScope(scopeId, store) : { pinnedSceneIds: [], lastPage: "desktop", lastSceneId: null, lastTab: "feed" };
+      return renderInto(".pm-desktop-page", renderPhoneDesktop(scope, uiScope, sharedScenesFor(scopeId, store)));
     }
     const showPhoneDesktopPage = () => {
-      const scopeId = getStorageId2();
-      const phoneWindow = _state.phoneWindow;
+      const scopeId = getStorageId2(), phoneWindow = _state.phoneWindow;
       return runDesktopPageTransition({
         scopeId,
         loadStore: loadStore2,
@@ -11005,7 +11088,7 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
         showPhonePage,
         clearOpenScene: () => {
           invalidate();
-          runtime.openSceneId = null;
+          clearOpenScene();
         },
         isCurrent: () => _state.phoneActive && _state.phoneWindow === phoneWindow && getStorageId2() === scopeId,
         getCurrentPage: () => phoneWindow?.querySelector(".pm-main-ui")?.dataset.page || null
@@ -11023,7 +11106,7 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
         showPhonePage,
         clearOpenScene: () => {
           invalidate();
-          runtime.openSceneId = null;
+          clearOpenScene();
         },
         isCurrent: () => _state.phoneActive && _state.phoneWindow === phoneWindow && getStorageId2() === scopeId,
         getCurrentPage: () => phoneWindow?.querySelector(".pm-main-ui")?.dataset.page || "desktop"
@@ -11031,8 +11114,8 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
     };
     function renderCommunityLauncher2(scopeId, store = runtime.store) {
       const scope = getScope(store, scopeId);
-      runtime.openSceneId = null;
-      return renderInto(".pm-community-page", renderCommunityLauncher(scope, phoneScope(scopeId, store)));
+      clearOpenScene();
+      return renderInto(".pm-community-page", renderCommunityLauncher(scope, communityUiScope(scopeId, store)));
     }
     const isLiveWarmupActive = (scopeId, sceneId) => communityTasks.state().task?.kind === "live-warmup" && communityTasks.state().task.storageId === scopeId && communityTasks.state().task.sceneId === sceneId;
     const getLiveWarmupState = (scopeId, sceneId, scene) => isLiveWarmupActive(scopeId, sceneId) ? "starting" : scene?.live?.warmupStarted === true ? "active" : runtime.liveWarmupError?.storageId === scopeId && runtime.liveWarmupError.sceneId === sceneId ? "error" : "idle";
@@ -11041,14 +11124,16 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
       const scene = scope.scenes[sceneId];
       if (!scene) return false;
       runtime.openSceneId = sceneId;
+      runtime.openSceneStorageId = scopeId;
       return renderInto(".pm-community-page", renderCommunityWorkspace(scene, tab, phoneScope(scopeId, store), {
         autoActive: communityTasks.state().mode === "auto",
         liveState: getLiveWarmupState(scopeId, sceneId, scene),
+        readOnly: runtime.openSceneReadOnly,
         ...getCommunityInjectionState(window.__pmBudgetConfig, scopeId, sceneId)
       }));
     }
     window.__pmReturnToCommunityDataSource = async () => {
-      const scopeId = getStorageId2();
+      const scopeId = runtime.openSceneStorageId || getStorageId2();
       const sceneId = runtime.openSceneId;
       const tab = phoneScope(scopeId).lastTab;
       document.getElementById("pm-overlay")?.remove();
@@ -11108,21 +11193,27 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
       replaceApp(renderCommunityWorkspace(scene, tab, phoneScope(scopeId), {
         autoActive: communityTasks.state().mode === "auto",
         liveState: getLiveWarmupState(scopeId, scene.id, scene),
+        readOnly: runtime.openSceneReadOnly,
         ...getCommunityInjectionState(window.__pmBudgetConfig, scopeId, scene.id)
       }), { feedScrollTop });
     }
-    async function openScene(sceneId, tab = "feed") {
+    async function openScene(sceneId, tab = "feed", sourceStorageId = getStorageId2()) {
       invalidate();
       const scopeId = getStorageId2();
+      const shared = sourceStorageId !== scopeId;
       await loadStore2();
-      await commit(() => {
-        const scope = getScope(runtime.store, scopeId);
-        if (!scope.scenes?.[sceneId]) throw new Error("\u4E92\u52A8\u573A\u666F\u4E0D\u5B58\u5728");
-        scope.activeSceneId = sceneId;
-      });
+      const sourceScope = runtime.store?.scopes?.[sourceStorageId];
+      if (!sourceScope?.scenes?.[sceneId]) throw new Error("\u4E92\u52A8\u573A\u666F\u4E0D\u5B58\u5728");
+      if (!shared) {
+        await commit(() => {
+          getScope(runtime.store, scopeId).activeSceneId = sceneId;
+        });
+      }
       runtime.openSceneId = sceneId;
-      updatePhoneUiScope(scopeId, { lastPage: "community", lastSceneId: sceneId, lastTab: tab });
-      renderCommunityWorkspace2(scopeId, sceneId, tab);
+      runtime.openSceneStorageId = sourceStorageId;
+      runtime.openSceneReadOnly = shared;
+      if (!shared) updatePhoneUiScope(scopeId, { lastPage: "community", lastSceneId: sceneId, lastTab: tab });
+      renderCommunityWorkspace2(sourceStorageId, sceneId, tab);
       showPhonePage("community");
     }
     function appendPosts(scopeId, scope, scene, items) {
@@ -11260,6 +11351,14 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
         await calendarAction;
         return;
       }
+      if (runtime.openSceneReadOnly && ![
+        "desktop",
+        "desktop-exit",
+        "exit",
+        "tab"
+      ].includes(action)) {
+        throw new Error("\u5171\u4EAB\u793E\u533A\u4EC5\u652F\u6301\u67E5\u770B");
+      }
       if (action === "more") {
         toggleSceneMenu(button);
         return;
@@ -11328,6 +11427,10 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
         await openScene(button.dataset.sceneId, phoneScope(getStorageId2()).lastTab);
         return;
       }
+      if (action === "desktop-open-shared-scene") {
+        await openScene(button.dataset.sceneId, "feed", button.dataset.sourceStorageId);
+        return;
+      }
       if (action === "desktop") {
         await showPhoneDesktopPage();
         return;
@@ -11360,6 +11463,18 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
         }
         return;
       }
+      if (action === "toggle-scene-share") {
+        const scopeId = getStorageId2();
+        const nextState = toggleSharedScene(getPhoneUiState(runtime.store), scopeId, button.dataset.sceneId, runtime.store);
+        persistPhoneUiState(scopeId, nextState);
+        refreshDesktop(scopeId);
+        const shared = (nextState.sharedScenes || []).some((item) => item.storageId === scopeId && item.sceneId === button.dataset.sceneId);
+        const label = shared ? "\u53D6\u6D88\u8DE8\u7A97\u53E3\u5171\u4EAB" : "\u8DE8\u7A97\u53E3\u5171\u4EAB";
+        button.setAttribute("aria-pressed", String(shared));
+        button.setAttribute("aria-label", label);
+        button.title = label;
+        return;
+      }
       if (action === "delete-scene") {
         const sceneId = button.dataset.sceneId;
         const { scopeId, scope } = current();
@@ -11372,9 +11487,7 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
           refreshDesktop,
           getBudgetConfig: () => window.__pmBudgetConfig,
           saveBudgetConfig: deps.saveBudgetConfig,
-          clearOpenScene: () => {
-            runtime.openSceneId = null;
-          },
+          clearOpenScene,
           renderLauncher: renderCommunityLauncher2
         });
         return;
@@ -11383,7 +11496,7 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
         invalidate();
         const { scopeId, scene } = current();
         const nextTab = button.dataset.tab;
-        if (["feed", "live"].includes(nextTab)) {
+        if (!runtime.openSceneReadOnly && ["feed", "live"].includes(nextTab)) {
           updatePhoneUiScope(scopeId, { lastPage: "community", lastSceneId: scene?.id || null, lastTab: nextTab });
         }
         rerender(nextTab);
@@ -21256,18 +21369,21 @@ ${targetInstruction}`
     const generateAttrs = `${generationAvailable && !generationBusy ? "" : "disabled"} aria-busy="${generationBusy}"`;
     if (mode === "settings") {
       const actionsVisible2 = menuOpenId === "world-settings";
-      const rows2 = items.map((item) => `<article class="pm-today-trend-row" data-world-item-id="${escapeAttr(item.id)}">${editingWorldItemId === item.id ? itemEditor(item) : `<div><b>${escapeHtml(item.name)}</b><p>${escapeHtml(item.summary)}</p></div>${itemActions(item, generateAttrs, actionsVisible2)}`}</article>`).join("");
-      return `<section class="pm-today-trend-view">${trendModuleHead({ title: "\u4E16\u754C\u6001\u52BF\u8BBE\u7F6E", menuId: "world-settings", menuOpenId, actions: [{ action: "today-trend-open-world", icon: BACK_ICON_SVG, label: "\u8FD4\u56DE\u4E16\u754C\u6001\u52BF" }, { action: "today-trend-add-world-item", icon: SPARKLES_ICON_SVG, label: "\u6DFB\u52A0\u9879\u76EE", attrs: items.length >= TODAY_TREND_LIMITS.worldItems ? "disabled" : "" }] })}${rows2 || '<p class="pm-today-trend-empty">\u5C1A\u672A\u5EFA\u7ACB\u4E16\u754C\u6001\u52BF\u9879\u76EE\u3002</p>'}${editingWorldItemId === "__new__" ? itemEditor() : ""}</section>`;
+      const rows = items.map((item) => `<article class="pm-today-trend-row" data-world-item-id="${escapeAttr(item.id)}">${editingWorldItemId === item.id ? itemEditor(item) : `<div><b>${escapeHtml(item.name)}</b><p>${escapeHtml(item.summary)}</p></div>${itemActions(item, generateAttrs, actionsVisible2)}`}</article>`).join("");
+      return `<section class="pm-today-trend-view">${trendModuleHead({ title: "\u4E16\u754C\u6001\u52BF\u8BBE\u7F6E", menuId: "world-settings", menuOpenId, actions: [{ action: "today-trend-open-world", icon: BACK_ICON_SVG, label: "\u8FD4\u56DE\u4E16\u754C\u6001\u52BF" }, { action: "today-trend-add-world-item", icon: SPARKLES_ICON_SVG, label: "\u6DFB\u52A0\u9879\u76EE", attrs: items.length >= TODAY_TREND_LIMITS.worldItems ? "disabled" : "" }] })}${rows || '<p class="pm-today-trend-empty">\u5C1A\u672A\u5EFA\u7ACB\u4E16\u754C\u6001\u52BF\u9879\u76EE\u3002</p>'}${editingWorldItemId === "__new__" ? itemEditor() : ""}</section>`;
     }
     const actionsVisible = menuOpenId === "world-module";
-    const rows = items.map((item, index) => {
+    const signalMarker = '<span class="pm-today-trend-world-signal-marker" aria-hidden="true"><i></i></span>';
+    const hero = items[0];
+    const heroBody = hero ? editingWorldItemId === hero.id ? itemEditor(hero) : `<p>${escapeHtml(hero.summary)}</p>` : "";
+    const signals = items.slice(1).map((item, index) => {
       const body = editingWorldItemId === item.id ? itemEditor(item) : `<p>${escapeHtml(item.summary)}</p>`;
-      if (index === 0) return `<article class="pm-today-trend-world-hero" data-world-item-id="${escapeAttr(item.id)}"><div><header class="pm-today-trend-world-item-head"><b>${escapeHtml(item.name)}</b>${itemActions(item, generateAttrs, actionsVisible)}</header>${body}</div></article>`;
-      const side = index % 2 ? "is-left" : "is-right";
-      return `<article class="pm-today-trend-world-brief ${side}" data-world-item-id="${escapeAttr(item.id)}"><div><header class="pm-today-trend-world-item-head"><b>${escapeHtml(item.name)}</b>${itemActions(item, generateAttrs, actionsVisible)}</header>${body}</div></article>`;
+      const side = index % 2 ? "is-right" : "is-left";
+      return `<article class="pm-today-trend-world-brief ${side}" data-world-item-id="${escapeAttr(item.id)}">${signalMarker}<div><header class="pm-today-trend-world-item-head"><b>${escapeHtml(item.name)}</b>${itemActions(item, generateAttrs, actionsVisible)}</header>${body}</div></article>`;
     }).join("");
     const editor2 = editingRule === "world" ? trendRuleEditor({ rule: editingRule, value: ruleDraft ?? preset?.moduleRules?.world ?? "" }) : "";
-    return `<section class="pm-today-trend-view pm-today-trend-world">${trendModuleHead({ title: "\u4E16\u754C\u6001\u52BF", menuId: "world-module", menuOpenId, actions: [{ action: "today-trend-generate-world", icon: REFRESH_ICON_SVG, label: "\u91CD\u65B0\u751F\u6210\u4E16\u754C\u6001\u52BF", attrs: generateAttrs }, { action: "today-trend-edit-world-rule", icon: BOOK_ICON_SVG, label: "\u7F16\u8F91\u4E16\u754C\u6001\u52BF Prompt" }] })}${editor2}${rows || '<p class="pm-today-trend-empty">\u5C1A\u672A\u751F\u6210\u4E16\u754C\u6001\u52BF\u3002</p>'}${generationBusy ? '<span class="pm-today-trend-progress">\u6B63\u5728\u751F\u6210\u2026</span>' : ""}</section>`;
+    const content = hero ? `<article class="pm-today-trend-world-hero${signals ? " has-signals" : ""}" data-world-item-id="${escapeAttr(hero.id)}">${signalMarker}<div><header class="pm-today-trend-world-item-head"><b>${escapeHtml(hero.name)}</b>${itemActions(hero, generateAttrs, actionsVisible)}</header>${heroBody}</div></article>${signals ? `<div class="pm-today-trend-world-signals">${signals}</div>` : ""}` : '<p class="pm-today-trend-empty">\u5C1A\u672A\u751F\u6210\u4E16\u754C\u6001\u52BF\u3002</p>';
+    return `<section class="pm-today-trend-view pm-today-trend-world">${trendModuleHead({ title: "\u4E16\u754C\u6001\u52BF", menuId: "world-module", menuOpenId, actions: [{ action: "today-trend-generate-world", icon: REFRESH_ICON_SVG, label: "\u91CD\u65B0\u751F\u6210\u4E16\u754C\u6001\u52BF", attrs: generateAttrs }, { action: "today-trend-edit-world-rule", icon: BOOK_ICON_SVG, label: "\u7F16\u8F91\u4E16\u754C\u6001\u52BF Prompt" }] })}${editor2}${content}${generationBusy ? '<span class="pm-today-trend-progress">\u6B63\u5728\u751F\u6210\u2026</span>' : ""}</section>`;
   }
 
   // src/today-trend-view.js

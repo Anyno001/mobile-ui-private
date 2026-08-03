@@ -5987,6 +5987,12 @@ for (const action of ['desktop-chat', 'desktop-directory', 'desktop-settings', '
 }
 globalThis.window = { __pmTheme: { customTitle: '雨夜 & 电台' } };
 assert.match(renderPhoneDesktop({ scenes: {} }, { pinnedSceneIds: [] }), /<span>雨夜 &amp; 电台<\/span>/, '桌面必须渲染并转义自定义标题');
+const sharedDesktopHtml = renderPhoneDesktop({ scenes: {} }, { pinnedSceneIds: [] }, [{
+    storageId: 'source-story', scene: { id: 'scene-shared', title: '共享 < 社区' },
+}]);
+assert.match(sharedDesktopHtml, /data-action="desktop-open-shared-scene"[^>]*data-source-storage-id="source-story"[^>]*data-scene-id="scene-shared"/,
+    '其他窗口桌面必须提供指向源社区的共享入口');
+assert.match(sharedDesktopHtml, /共享 &lt; 社区/, '共享社区标题必须按普通卡片规则转义');
 delete globalThis.window;
 
 assert.deepEqual(
@@ -6242,12 +6248,16 @@ assert.match(unpinnedLauncherHtml, /data-action="preset"[^>]*data-preset="douban
 assert.match(unpinnedLauncherHtml, /class="pm-scene-card-actions"/);
 assert.match(unpinnedLauncherHtml, /class="pm-scene-pin-action"[^>]*aria-pressed="false"[^>]*aria-label="固定社区"[^>]*>[\s\S]*?<path d="M4 19V8l8-4 8 4v11"/,
     '未固定按钮必须使用与桌面发布入口一致的社区图标');
+assert.match(unpinnedLauncherHtml, /class="pm-scene-share-action"[^>]*data-action="toggle-scene-share"[^>]*aria-pressed="false"[^>]*aria-label="跨窗口共享"[^>]*>[\s\S]*?<svg/,
+    '社区卡片必须在固定和删除按钮左侧提供 SVG 跨窗口共享开关');
 assert.doesNotMatch(unpinnedLauncherHtml, /--scene-pin-accent/, '固定按钮不得保留与当前预设脱节的卡片级颜色变量');
 assert.match(unpinnedLauncherHtml, /data-action="delete-scene"[^>]*aria-label="删除社区"[^>]*>[\s\S]*?<svg/);
 assert.doesNotMatch(unpinnedLauncherHtml, />固定<\/button>|>删除<\/button>/, '场景卡片操作必须使用 SVG 且保留可访问名称');
 assert.match(unpinnedLauncherHtml, /class="pm-scene-card-open"[^>]*>[\s\S]*?<\/button><div class="pm-scene-card-actions">/, '场景卡片操作必须位于打开场景按钮之外');
-const pinnedLauncherHtml = renderCommunityLauncher(launcherScope, { pinnedSceneIds: ['scene-card'] });
+const pinnedLauncherHtml = renderCommunityLauncher(launcherScope, { pinnedSceneIds: ['scene-card'], storageId: 'story', sharedScenes: [{ storageId: 'story', sceneId: 'scene-card' }] });
 assert.match(pinnedLauncherHtml, /class="pm-scene-pin-action"[^>]*aria-pressed="true"[^>]*aria-label="取消固定社区"[^>]*>[\s\S]*?<path d="M4 19V8l8-4 8 4v11"/);
+assert.match(pinnedLauncherHtml, /class="pm-scene-share-action"[^>]*aria-pressed="true"[^>]*aria-label="取消跨窗口共享"/,
+    '共享中的社区必须提供可访问的取消共享状态');
 
 const desktopTransitionCalls = [];
 const desktopStore = { scopes: { story: { activeSceneId: null, sceneOrder: [], scenes: {}, actors: {} } } };

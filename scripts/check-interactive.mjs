@@ -7,7 +7,7 @@ import {
     createDefaultPhoneUiScope, createEmptyPhoneUiState, deleteInteractiveScene, deleteSceneComment, deleteScenePost,
     deriveInteractiveActorId, enforceInteractiveSceneLimit, ensureInteractiveActor, incrementScenePostShare,
     normalizeAmbientStatus, normalizeInteractiveStore, normalizePhoneUiState, normalizeScene, patchPhoneUiScope,
-    resolveInteractiveAuthor, toggleScenePin, toggleScenePostLike, updateSceneComment, updateScenePost,
+    resolveInteractiveAuthor, toggleScenePin, toggleScenePostLike, toggleSharedScene, updateSceneComment, updateScenePost,
 } from '../src/interactive-scene-model.js';
 import {
     INTERACTIVE_STORAGE_KEYS, PHONE_UI_STORAGE_KEY, loadInteractiveScenes, loadPhoneUiState,
@@ -277,6 +277,25 @@ assert.throws(() => toggleScenePin(phoneUiInput, 'story', 'missing', phoneIntera
 assert.throws(() => toggleScenePin(phoneUiInput, 'story', ' scene-a ', phoneInteractiveStore), /场景标识格式无效/);
 assert.throws(() => toggleScenePin(phoneUiInput, 'other', 'scene-a', phoneInteractiveStore), /互动场景不存在/);
 
+const sharedPhoneUiState = normalizePhoneUiState({
+    version: 1,
+    scopes: { story: phoneUiInput.scopes.story },
+    sharedScenes: [
+        { storageId: 'story', sceneId: 'scene-a' },
+        { storageId: 'story', sceneId: 'scene-a' },
+        { storageId: 'story', sceneId: 'missing' },
+        { storageId: ' other ', sceneId: 'scene-a' },
+    ],
+}, phoneInteractiveStore);
+assert.deepEqual(sharedPhoneUiState.sharedScenes, [{ storageId: 'story', sceneId: 'scene-a' }], '共享引用必须去重并过滤不存在或非法的源场景');
+const toggledSharedPhoneUiState = toggleSharedScene(sharedPhoneUiState, 'story', 'scene-b', phoneInteractiveStore);
+assert.deepEqual(toggledSharedPhoneUiState.sharedScenes, [
+    { storageId: 'story', sceneId: 'scene-a' }, { storageId: 'story', sceneId: 'scene-b' },
+], '共享开关必须以源 scope 和场景 ID 保存引用，而非复制场景实体');
+assert.deepEqual(toggleSharedScene(toggledSharedPhoneUiState, 'story', 'scene-a', phoneInteractiveStore).sharedScenes,
+    [{ storageId: 'story', sceneId: 'scene-b' }], '再次切换必须仅取消对应共享引用');
+assert.throws(() => toggleSharedScene(phoneUiInput, 'story', 'missing', phoneInteractiveStore), /互动场景不存在/);
+
 const prunedStore = structuredClone(phoneInteractiveStore);
 delete prunedStore.scopes.story.scenes['scene-a'];
 prunedStore.scopes.story.sceneOrder = ['scene-b'];
@@ -285,6 +304,8 @@ assert.deepEqual(normalizePhoneUiState(phoneUiInput, prunedStore).scopes.story, 
     pinnedSceneIds: [], lastPage: 'desktop', lastSceneId: null, lastTab: 'feed',
     lastChatType: 'contact', lastChatKey: 'Alice',
 });
+assert.equal(normalizePhoneUiState(toggledSharedPhoneUiState, prunedStore).sharedScenes?.some(item => item.sceneId === 'scene-a'), false,
+    '删除源场景后归一化必须级联清理所有跨窗口共享引用');
 
 assert.deepEqual(resolvePhoneChatTarget(
     { lastChatType: 'group', lastChatKey: '__group_saved' }, {}, { __group_saved: { name: '群聊' } }, 'Default',
@@ -337,6 +358,25 @@ assert.notEqual(storedContactSnapshot.lastChatKey, storedGroupSnapshot.lastChatK
 assert.deepEqual(resolvePhoneChatTarget(
     storedGroupSnapshot, { Default: [] }, {}, 'Default',
 ), { type: 'contact', key: 'Default' }, 'snapshot 指向已删除群聊时必须回退默认联系人');
+snapshotPhoneUiState = patchPhoneUiScope(snapshotPhoneUiState, 'other', {
+    lastPage: 'chat', lastSceneId: null, lastTab: 'live',
+}, snapshotRuntime.store);
+const sharedSnapshotBefore = structuredClone(snapshotPhoneUiState.scopes.other);
+snapshotRuntime.openSceneId = 'scene-a';
+snapshotRuntime.openSceneStorageId = 'story';
+snapshotRuntime.openSceneReadOnly = true;
+assert.equal(persistCurrentPhoneUiSnapshot({
+    runtime: snapshotRuntime,
+    storageId: 'other',
+    page: 'community',
+    phoneScope: snapshotPhoneScope,
+    updatePhoneUiScope: updateSnapshotPhoneUiScope,
+}), true);
+assert.deepEqual(snapshotPhoneUiState.scopes.other, sharedSnapshotBefore,
+    '浏览共享社区的快照不得把源场景 ID 写入目标 scope 或覆盖其恢复位置');
+snapshotRuntime.openSceneId = null;
+snapshotRuntime.openSceneStorageId = null;
+snapshotRuntime.openSceneReadOnly = false;
 assert.equal(persistCurrentPhoneUiSnapshot({
     runtime: snapshotRuntime,
     storageId: 'sms_unknown__default',
@@ -1832,6 +1872,37 @@ try {
     assert.equal(pinButton.title, '固定社区');
     assert.equal(communityPage.innerHTML, launcherHtmlBeforePin, '启动页取消固定不得重绘整个社区页面');
     assert.equal(launcher.scrollTop, 684, '启动页取消固定不得改变滚动位置');
+
+    const sharedNavigationStore = await deps.getInteractiveStore();
+    const sharedSourceId = 'shared-source-scope';
+    const sharedSourceScene = {
+        ...structuredClone(savedScene), id: 'shared-source-scene', title: '跨窗口源社区',
+    };
+    sharedNavigationStore.scopes[sharedSourceId] = {
+        activeSceneId: sharedSourceScene.id,
+        sceneOrder: [sharedSourceScene.id],
+        scenes: { [sharedSourceScene.id]: sharedSourceScene },
+        actors: {},
+    };
+    const openSharedSceneButton = {
+        tagName: 'BUTTON', dataset: {
+            action: 'desktop-open-shared-scene', sourceStorageId: sharedSourceId, sceneId: sharedSourceScene.id,
+        },
+        closest(selector) {
+            if (selector === '[data-action]') return this;
+            if (selector === '.pm-desktop-page') return desktopPage;
+            return null;
+        },
+    };
+    listeners.get('click')({ target: openSharedSceneButton });
+    await new Promise(resolve => setTimeout(resolve, 0));
+    assert.match(communityPage.innerHTML, /跨窗口源社区/, '共享桌面入口必须从源 scope 打开场景，而非复制到目标 scope');
+    assert.equal(mainUi.dataset.page, 'community');
+    assert.equal(await globalThis.window.__pmReturnToCommunityDataSource(), true);
+    assert.match(communityPage.innerHTML, /跨窗口源社区/,
+        '从数据来源返回时必须回到源 scope 的共享社区，而非目标 scope 启动页');
+    await globalThis.window.__pmOpenForumMode();
+    assert.doesNotMatch(communityPage.innerHTML, /跨窗口源社区/, '离开共享视图后必须清理只读运行态');
 
     sceneAccentInput.value = '#xyzxyz';
     status.textContent = '';

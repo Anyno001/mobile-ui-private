@@ -48,6 +48,8 @@ export const TRASH_ICON_SVG = icon('<path d="M4 7h16M9 7V4h6v3M7 7l1 13h8l1-13M1
 export const REMOVE_ICON_SVG = icon('<circle cx="12" cy="12" r="9"/><path d="M8 12h8"/>');
 export const UNLINK_ICON_SVG = icon('<path d="M10 13a4 4 0 0 0 5.7.1l2-2a4 4 0 0 0-5.7-5.7l-1.1 1.1"/><path d="M14 11a4 4 0 0 0-5.7-.1l-2 2A4 4 0 0 0 12 18.6l1.1-1.1"/><path d="M4 4l16 16"/>');
 export const SPARKLES_ICON_SVG = icon('<path d="M12 3l1.2 3.8L17 8l-3.8 1.2L12 13l-1.2-3.8L7 8l3.8-1.2L12 3zM19 14l.7 2.3L22 17l-2.3.7L19 20l-.7-2.3L16 17l2.3-.7L19 14zM5 13l.8 2.2L8 16l-2.2.8L5 19l-.8-2.2L2 16l2.2-.8L5 13z"/>');
+export const SHARE_WINDOW_ICON_SVG = icon('<rect x="4" y="4" width="11" height="11" rx="2"/><path d="M9 20h9a2 2 0 0 0 2-2V9M12 12h8M16 8l4 4-4 4"/>');
+
 export const CHEVRON_DOWN_ICON_SVG = icon('<path d="M7 10l5 5 5-5"/>');
 export const HEART_ICON_SVG = icon('<path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1.1-1.1a5.5 5.5 0 0 0-7.8 7.8l1.1 1.1L12 21l7.8-7.5 1.1-1.1a5.5 5.5 0 0 0-.1-7.8z"/>');
 export const SHARE_ICON_SVG = icon('<circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 10.5l6.8-4M8.6 13.5l6.8 4"/>');

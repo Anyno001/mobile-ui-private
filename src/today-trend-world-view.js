@@ -24,12 +24,15 @@ export function renderTodayTrendWorldView({ scope, preset = null, mode = 'conten
         return `<section class="pm-today-trend-view">${trendModuleHead({ title: '世界态势设置', menuId: 'world-settings', menuOpenId, actions: [{ action: 'today-trend-open-world', icon: BACK_ICON_SVG, label: '返回世界态势' }, { action: 'today-trend-add-world-item', icon: SPARKLES_ICON_SVG, label: '添加项目', attrs: items.length >= TODAY_TREND_LIMITS.worldItems ? 'disabled' : '' }] })}${rows || '<p class="pm-today-trend-empty">尚未建立世界态势项目。</p>'}${editingWorldItemId === '__new__' ? itemEditor() : ''}</section>`;
     }
     const actionsVisible = menuOpenId === 'world-module';
-    const rows = items.map((item, index) => {
+    const signalMarker = '<span class="pm-today-trend-world-signal-marker" aria-hidden="true"><i></i></span>';
+    const hero = items[0];
+    const heroBody = hero ? (editingWorldItemId === hero.id ? itemEditor(hero) : `<p>${escapeHtml(hero.summary)}</p>`) : '';
+    const signals = items.slice(1).map((item, index) => {
         const body = editingWorldItemId === item.id ? itemEditor(item) : `<p>${escapeHtml(item.summary)}</p>`;
-        if (index === 0) return `<article class="pm-today-trend-world-hero" data-world-item-id="${escapeAttr(item.id)}"><div><header class="pm-today-trend-world-item-head"><b>${escapeHtml(item.name)}</b>${itemActions(item, generateAttrs, actionsVisible)}</header>${body}</div></article>`;
-        const side = index % 2 ? 'is-left' : 'is-right';
-        return `<article class="pm-today-trend-world-brief ${side}" data-world-item-id="${escapeAttr(item.id)}"><div><header class="pm-today-trend-world-item-head"><b>${escapeHtml(item.name)}</b>${itemActions(item, generateAttrs, actionsVisible)}</header>${body}</div></article>`;
+        const side = index % 2 ? 'is-right' : 'is-left';
+        return `<article class="pm-today-trend-world-brief ${side}" data-world-item-id="${escapeAttr(item.id)}">${signalMarker}<div><header class="pm-today-trend-world-item-head"><b>${escapeHtml(item.name)}</b>${itemActions(item, generateAttrs, actionsVisible)}</header>${body}</div></article>`;
     }).join('');
     const editor = editingRule === 'world' ? trendRuleEditor({ rule: editingRule, value: ruleDraft ?? preset?.moduleRules?.world ?? '' }) : '';
-    return `<section class="pm-today-trend-view pm-today-trend-world">${trendModuleHead({ title: '世界态势', menuId: 'world-module', menuOpenId, actions: [{ action: 'today-trend-generate-world', icon: REFRESH_ICON_SVG, label: '重新生成世界态势', attrs: generateAttrs }, { action: 'today-trend-edit-world-rule', icon: BOOK_ICON_SVG, label: '编辑世界态势 Prompt' }] })}${editor}${rows || '<p class="pm-today-trend-empty">尚未生成世界态势。</p>'}${generationBusy ? '<span class="pm-today-trend-progress">正在生成…</span>' : ''}</section>`;
+    const content = hero ? `<article class="pm-today-trend-world-hero${signals ? ' has-signals' : ''}" data-world-item-id="${escapeAttr(hero.id)}">${signalMarker}<div><header class="pm-today-trend-world-item-head"><b>${escapeHtml(hero.name)}</b>${itemActions(hero, generateAttrs, actionsVisible)}</header>${heroBody}</div></article>${signals ? `<div class="pm-today-trend-world-signals">${signals}</div>` : ''}` : '<p class="pm-today-trend-empty">尚未生成世界态势。</p>';
+    return `<section class="pm-today-trend-view pm-today-trend-world">${trendModuleHead({ title: '世界态势', menuId: 'world-module', menuOpenId, actions: [{ action: 'today-trend-generate-world', icon: REFRESH_ICON_SVG, label: '重新生成世界态势', attrs: generateAttrs }, { action: 'today-trend-edit-world-rule', icon: BOOK_ICON_SVG, label: '编辑世界态势 Prompt' }] })}${editor}${content}${generationBusy ? '<span class="pm-today-trend-progress">正在生成…</span>' : ''}</section>`;
 }

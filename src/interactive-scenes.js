@@ -2,7 +2,7 @@ import { generationErrorMessage } from './ai.js';
 import { buildInteractiveRequest, buildStylePrompt, getInteractivePresets, parseInteractiveResponse } from './interactive-scene-ai.js';
 import {
     INTERACTIVE_LIMITS, addSceneComment, appendScenePosts, deleteSceneComment, deleteSceneDanmaku, deleteScenePost, enforceInteractiveSceneLimit, ensureInteractiveActor, normalizeInteractiveStore, normalizeScene,
-    createDefaultPhoneUiScope, incrementScenePostShare, normalizePhoneUiState, patchPhoneUiScope, resolveInteractiveAuthor, stripPersistedV2ContentRating, toggleScenePin, toggleScenePostLike, updateSceneComment, updateSceneDanmaku, updateScenePost,
+    createDefaultPhoneUiScope, incrementScenePostShare, normalizePhoneUiState, patchPhoneUiScope, resolveInteractiveAuthor, stripPersistedV2ContentRating, toggleScenePin, toggleScenePostLike, toggleSharedScene, updateSceneComment, updateSceneDanmaku, updateScenePost,
 } from './interactive-scene-model.js';
 import { loadInteractiveScenes, loadPhoneUiState, saveInteractiveScenes, savePhoneUiScope, savePhoneUiState } from './storage.js';
 import { bindPhonePageActions, dispatchCalendarAppAction, getCommunityInjectionState, handleCommunityInjectionUiAction, handleSceneAccentAction, persistCurrentPhoneUiSnapshot, resolvePhoneChatTarget, runCalendarPageTransition, runDeleteSceneAction, runDesktopPageTransition, selectScenePreset, toggleDanmakuActions, toggleSceneMenu, toggleScenePostActions, toggleSceneReplyComposer } from './interactive-scene-phone.js';
@@ -127,17 +127,12 @@ export function installInteractiveScenes(_state, deps) {
     const { getCtx, getStorageId, getUserPersona, gatherContext, callAI } = deps;
     const runtime = {
         store: null, loadPromise: null, mutationPromise: Promise.resolve(), requestId: 0, contextEpoch: 0,
-        loadGeneration: 0, openSceneId: null, busy: false, creating: false, phoneUiState: null, requestController: null,
-        liveWarmupError: null,
+        loadGeneration: 0, openSceneId: null, openSceneStorageId: null, openSceneReadOnly: false, busy: false, creating: false, phoneUiState: null, requestController: null, liveWarmupError: null,
     };
-    const storeLoader = createInteractiveStoreLoader({
-        runtime,
-        load: loadInteractiveScenes,
-        migrate: raw => migrateInteractiveStore(raw, saveInteractiveScenes),
-    });
+    const storeLoader = createInteractiveStoreLoader({ runtime, load: loadInteractiveScenes,
+        migrate: raw => migrateInteractiveStore(raw, saveInteractiveScenes) });
     const { loadStore } = storeLoader;
-    const getScope = (store, scopeId) => store.scopes[scopeId]
-        || (store.scopes[scopeId] = { activeSceneId: null, sceneOrder: [], scenes: {}, actors: {} });
+    const getScope = (store, scopeId) => store.scopes[scopeId] || (store.scopes[scopeId] = { activeSceneId: null, sceneOrder: [], scenes: {}, actors: {} });
     const actorSeeds = scopeId => {
         const context = getCtx();
         const character = context?.characters?.[context.characterId] || {};
@@ -145,40 +140,28 @@ export function installInteractiveScenes(_state, deps) {
         const settings = context?.powerUserSettings || context?.power_user || window.power_user || {};
         const persona = getUserPersona();
         const userBinding = context?.userAvatar || settings.user_avatar || settings.default_persona || `${scopeId}:default-user`;
-        return {
-            story: {
-                type: 'story', displayName: character.name || 'AI',
-                bindingKey: `character:${characterBinding}`,
-                profile: [character.description, character.personality].filter(Boolean).join('\n').slice(0, 1000),
-            },
-            user: {
-                type: 'user', displayName: persona?.name || '我',
-                bindingKey: `persona:${userBinding}`,
-                profile: String(persona?.description || '').slice(0, 1000),
-            },
-        };
+        return { story: { type: 'story', displayName: character.name || 'AI', bindingKey: `character:${characterBinding}`,
+            profile: [character.description, character.personality].filter(Boolean).join('\n').slice(0, 1000) },
+        user: { type: 'user', displayName: persona?.name || '我', bindingKey: `persona:${userBinding}`, profile: String(persona?.description || '').slice(0, 1000) } };
     };
     const current = () => {
-        const scopeId = getStorageId();
+        const scopeId = runtime.openSceneStorageId || getStorageId();
         const scope = runtime.store?.scopes?.[scopeId];
         return { scopeId, scope, scene: scope?.scenes?.[runtime.openSceneId || scope.activeSceneId] || null };
     };
+    const clearOpenScene = () => { runtime.openSceneId = null; runtime.openSceneStorageId = null; runtime.openSceneReadOnly = false; };
     const resolveTarget = target => {
         const scope = runtime.store?.scopes?.[target?.storageId];
-        return { scopeId: target?.storageId, scope, scene: scope?.scenes?.[target?.sceneId] || null };
-    };
+        return { scopeId: target?.storageId, scope, scene: scope?.scenes?.[target?.sceneId] || null }; };
     const getCommunityTarget = () => {
-        const scopeId = getStorageId();
+        const scopeId = runtime.openSceneStorageId || getStorageId();
         const scene = runtime.store?.scopes?.[scopeId]?.scenes?.[runtime.openSceneId];
         return runtime.openSceneId && scene ? { storageId: scopeId, sceneId: scene.id } : null;
     };
-    const isTargetActive = target => getStorageId() === target?.storageId
+    const isTargetActive = target => (runtime.openSceneStorageId || getStorageId()) === target?.storageId
         && runtime.openSceneId === target?.sceneId
-        && !!resolveTarget(target).scene
-        && document.querySelector('#pm-iphone .pm-main-ui')?.dataset.page === 'community';
-    const operationGuard = (storageId, sceneId = () => runtime.openSceneId) => createInteractiveOperationGuard({
-        getEpoch: () => runtime.contextEpoch,
-        getStorageId,
+        && !!resolveTarget(target).scene && document.querySelector('#pm-iphone .pm-main-ui')?.dataset.page === 'community';
+    const operationGuard = (storageId, sceneId = () => runtime.openSceneId) => createInteractiveOperationGuard({ getEpoch: () => runtime.contextEpoch, getStorageId,
         getOpenSceneId: () => runtime.openSceneId,
         isMounted: () => !!document.getElementById('pm-scene-app'),
     }, { epoch: runtime.contextEpoch, storageId, sceneId });
@@ -186,15 +169,13 @@ export function installInteractiveScenes(_state, deps) {
         runtime,
         isTargetActive,
         isAllowed: target => _state.phoneActive && !_state.isMinimized && document.visibilityState !== 'hidden'
-            && !runtime.busy && isTargetActive(target),
-    });
+            && !runtime.busy && isTargetActive(target) });
     let communityRunner = null;
     const queuedCommit = createInteractiveCommitQueue({
         getStore: () => runtime.store,
         setStore: store => { runtime.store = store; },
         saveStore: saveInteractiveScenes,
-        syncStore: () => deps.applyBidirectionalInjection?.(),
-    });
+        syncStore: () => deps.applyBidirectionalInjection?.() });
     const commit = queuedCommit;
     const invalidate = (reason = 'community-context-invalidated') => {
         runtime.contextEpoch += 1;
@@ -205,10 +186,7 @@ export function installInteractiveScenes(_state, deps) {
         runtime.busy = false; setStatus('');
     };
     const setStatus = text => {
-        const el = document.querySelector('.pm-scene-status');
-        if (!el) return;
-        el.textContent = text || '';
-        el.hidden = !text;
+        const el = document.querySelector('.pm-scene-status'); if (el) { el.textContent = text || ''; el.hidden = !text; }
     };
     const confirmDelete = message => window.confirm(message);
     const getPhoneUiState = store => {
@@ -218,16 +196,18 @@ export function installInteractiveScenes(_state, deps) {
         return normalizePhoneUiState(runtime.phoneUiState, store);
     };
     const persistPhoneUiState = (storageId, nextState, store = runtime.store) => {
-        const normalized = normalizePhoneUiState(nextState, store);
-        const merged = savePhoneUiScope(storageId, normalized, store);
+        const merged = savePhoneUiScope(storageId, normalizePhoneUiState(nextState, store), store);
         if (!merged) throw new Error('手机页面状态保存失败：浏览器存储不可用');
         runtime.phoneUiState = merged;
         return merged;
     };
-    const updatePhoneUiScope = (storageId, patch, store = runtime.store) => persistPhoneUiState(
-        storageId, patchPhoneUiScope(getPhoneUiState(store), storageId, patch, store), store,
-    );
+    const updatePhoneUiScope = (storageId, patch, store = runtime.store) => persistPhoneUiState(storageId, patchPhoneUiScope(getPhoneUiState(store), storageId, patch, store), store);
     const phoneScope = (storageId, store = runtime.store) => getPhoneUiState(store).scopes[storageId] || createDefaultPhoneUiScope();
+    const communityUiScope = (storageId, store = runtime.store) => ({ ...phoneScope(storageId, store), storageId, sharedScenes: getPhoneUiState(store).sharedScenes || [] });
+    const sharedScenesFor = (storageId, store = runtime.store) => (getPhoneUiState(store).sharedScenes || []).flatMap(item => {
+        if (item.storageId === storageId) return [];
+        const scene = store?.scopes?.[item.storageId]?.scenes?.[item.sceneId];
+        return scene ? [{ ...item, scene }] : []; });
     const renderInto = (selector, html) => {
         const container = document.querySelector(selector);
         if (!container) return false;
@@ -238,30 +218,24 @@ export function installInteractiveScenes(_state, deps) {
     const reportPhoneUiError = error => {
         const message = error ? generationErrorMessage(error) : '手机页面操作失败';
         setStatus(message);
-        if (!document.querySelector('.pm-scene-status')) alert(message);
-    };
+        if (!document.querySelector('.pm-scene-status')) alert(message); };
     function refreshDesktop(scopeId = getStorageId(), store = runtime.store) {
         const validScope = !!store && !!scopeId && scopeId !== 'sms_unknown__default';
         const scope = validScope ? getScope(store, scopeId) : { scenes: {} };
-        const uiScope = validScope ? phoneScope(scopeId, store)
+        const uiScope = validScope ? communityUiScope(scopeId, store)
             : { pinnedSceneIds: [], lastPage: 'desktop', lastSceneId: null, lastTab: 'feed' };
-        return renderInto('.pm-desktop-page', renderPhoneDesktop(scope, uiScope));
+        return renderInto('.pm-desktop-page', renderPhoneDesktop(scope, uiScope, sharedScenesFor(scopeId, store)));
     }
-    const showPhoneDesktopPage = () => {
-        const scopeId = getStorageId();
-        const phoneWindow = _state.phoneWindow;
-        return runDesktopPageTransition({
+    const showPhoneDesktopPage = () => { const scopeId = getStorageId(), phoneWindow = _state.phoneWindow; return runDesktopPageTransition({
         scopeId,
         loadStore,
         updatePhoneUi: (scopeId, store) => updatePhoneUiScope(scopeId, { lastPage: 'desktop', lastSceneId: null }, store),
         refreshDesktop,
         showPhonePage,
-        clearOpenScene: () => { invalidate(); runtime.openSceneId = null; },
+        clearOpenScene: () => { invalidate(); clearOpenScene(); },
         isCurrent: () => _state.phoneActive && _state.phoneWindow === phoneWindow && getStorageId() === scopeId,
         getCurrentPage: () => phoneWindow?.querySelector('.pm-main-ui')?.dataset.page || null,
-    });
-    };
-
+    }); };
     const showPhoneCalendarPage = () => {
         const scopeId = getStorageId();
         const phoneWindow = _state.phoneWindow;
@@ -269,15 +243,15 @@ export function installInteractiveScenes(_state, deps) {
             scopeId, loadStore, renderCalendar: id => deps.renderCalendar?.(id) === true,
             updatePhoneUi: (id, store) => updatePhoneUiScope(id, { lastPage: 'calendar', lastSceneId: null }, store),
             refreshDesktop, showPhonePage,
-            clearOpenScene: () => { invalidate(); runtime.openSceneId = null; },
+            clearOpenScene: () => { invalidate(); clearOpenScene(); },
             isCurrent: () => _state.phoneActive && _state.phoneWindow === phoneWindow && getStorageId() === scopeId,
             getCurrentPage: () => phoneWindow?.querySelector('.pm-main-ui')?.dataset.page || 'desktop',
         });
     };
     function renderCommunityLauncher(scopeId, store = runtime.store) {
         const scope = getScope(store, scopeId);
-        runtime.openSceneId = null;
-        return renderInto('.pm-community-page', renderCommunityLauncherView(scope, phoneScope(scopeId, store)));
+        clearOpenScene();
+        return renderInto('.pm-community-page', renderCommunityLauncherView(scope, communityUiScope(scopeId, store)));
     }
 
     const isLiveWarmupActive = (scopeId, sceneId) => communityTasks.state().task?.kind === 'live-warmup'
@@ -291,15 +265,17 @@ export function installInteractiveScenes(_state, deps) {
         const scene = scope.scenes[sceneId];
         if (!scene) return false;
         runtime.openSceneId = sceneId;
+        runtime.openSceneStorageId = scopeId;
         return renderInto('.pm-community-page', renderCommunityWorkspaceView(scene, tab, phoneScope(scopeId, store), {
             autoActive: communityTasks.state().mode === 'auto',
             liveState: getLiveWarmupState(scopeId, sceneId, scene),
+            readOnly: runtime.openSceneReadOnly,
             ...getCommunityInjectionState(window.__pmBudgetConfig, scopeId, sceneId),
         }));
     }
 
     window.__pmReturnToCommunityDataSource = async () => {
-        const scopeId = getStorageId();
+        const scopeId = runtime.openSceneStorageId || getStorageId();
         const sceneId = runtime.openSceneId;
         const tab = phoneScope(scopeId).lastTab;
         document.getElementById('pm-overlay')?.remove();
@@ -364,22 +340,28 @@ export function installInteractiveScenes(_state, deps) {
         replaceApp(renderCommunityWorkspaceView(scene, tab, phoneScope(scopeId), {
             autoActive: communityTasks.state().mode === 'auto',
             liveState: getLiveWarmupState(scopeId, scene.id, scene),
+            readOnly: runtime.openSceneReadOnly,
             ...getCommunityInjectionState(window.__pmBudgetConfig, scopeId, scene.id),
         }), { feedScrollTop });
     }
 
-    async function openScene(sceneId, tab = 'feed') {
+    async function openScene(sceneId, tab = 'feed', sourceStorageId = getStorageId()) {
         invalidate();
         const scopeId = getStorageId();
+        const shared = sourceStorageId !== scopeId;
         await loadStore();
-        await commit(() => {
-            const scope = getScope(runtime.store, scopeId);
-            if (!scope.scenes?.[sceneId]) throw new Error('互动场景不存在');
-            scope.activeSceneId = sceneId;
-        });
+        const sourceScope = runtime.store?.scopes?.[sourceStorageId];
+        if (!sourceScope?.scenes?.[sceneId]) throw new Error('互动场景不存在');
+        if (!shared) {
+            await commit(() => {
+                getScope(runtime.store, scopeId).activeSceneId = sceneId;
+            });
+        }
         runtime.openSceneId = sceneId;
-        updatePhoneUiScope(scopeId, { lastPage: 'community', lastSceneId: sceneId, lastTab: tab });
-        renderCommunityWorkspace(scopeId, sceneId, tab);
+        runtime.openSceneStorageId = sourceStorageId;
+        runtime.openSceneReadOnly = shared;
+        if (!shared) updatePhoneUiScope(scopeId, { lastPage: 'community', lastSceneId: sceneId, lastTab: tab });
+        renderCommunityWorkspace(sourceStorageId, sceneId, tab);
         showPhonePage('community');
     }
 
@@ -506,6 +488,11 @@ export function installInteractiveScenes(_state, deps) {
     async function handleAction(button, app) {
         const action = button.dataset.action;
         const calendarAction = dispatchCalendarAppAction(button, app, { showPhoneDesktopPage, handleCalendarAction: deps.handleCalendarAction }); if (calendarAction) { await calendarAction; return; }
+        if (runtime.openSceneReadOnly && ![
+            'desktop', 'desktop-exit', 'exit', 'tab',
+        ].includes(action)) {
+            throw new Error('共享社区仅支持查看');
+        }
         if (action === 'more') { toggleSceneMenu(button); return; } if (action === 'post-actions') { toggleScenePostActions(button); return; }
         if (action === 'toggle-danmaku-actions') { toggleDanmakuActions(button, app); return; }
         if (action === 'toggle-reply') { toggleSceneReplyComposer(button, app); return; }
@@ -535,6 +522,10 @@ export function installInteractiveScenes(_state, deps) {
             await openScene(button.dataset.sceneId, phoneScope(getStorageId()).lastTab);
             return;
         }
+        if (action === 'desktop-open-shared-scene') {
+            await openScene(button.dataset.sceneId, 'feed', button.dataset.sourceStorageId);
+            return;
+        }
         if (action === 'desktop') {
             await showPhoneDesktopPage();
             return;
@@ -558,6 +549,16 @@ export function installInteractiveScenes(_state, deps) {
             }
             return;
         }
+        if (action === 'toggle-scene-share') {
+            const scopeId = getStorageId();
+            const nextState = toggleSharedScene(getPhoneUiState(runtime.store), scopeId, button.dataset.sceneId, runtime.store);
+            persistPhoneUiState(scopeId, nextState);
+            refreshDesktop(scopeId);
+            const shared = (nextState.sharedScenes || []).some(item => item.storageId === scopeId && item.sceneId === button.dataset.sceneId);
+            const label = shared ? '取消跨窗口共享' : '跨窗口共享';
+            button.setAttribute('aria-pressed', String(shared)); button.setAttribute('aria-label', label); button.title = label;
+            return;
+        }
         if (action === 'delete-scene') {
             const sceneId = button.dataset.sceneId;
             const { scopeId, scope } = current();
@@ -570,7 +571,7 @@ export function installInteractiveScenes(_state, deps) {
                 refreshDesktop,
                 getBudgetConfig: () => window.__pmBudgetConfig,
                 saveBudgetConfig: deps.saveBudgetConfig,
-                clearOpenScene: () => { runtime.openSceneId = null; },
+                clearOpenScene,
                 renderLauncher: renderCommunityLauncher,
             });
             return;
@@ -579,7 +580,7 @@ export function installInteractiveScenes(_state, deps) {
             invalidate();
             const { scopeId, scene } = current();
             const nextTab = button.dataset.tab;
-            if (['feed', 'live'].includes(nextTab)) {
+            if (!runtime.openSceneReadOnly && ['feed', 'live'].includes(nextTab)) {
                 updatePhoneUiScope(scopeId, { lastPage: 'community', lastSceneId: scene?.id || null, lastTab: nextTab });
             }
             rerender(nextTab);

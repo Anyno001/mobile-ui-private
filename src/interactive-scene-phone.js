@@ -168,6 +168,8 @@ export function persistCurrentPhoneUiSnapshot({
 }) {
     if (!runtime?.store || !storageId || storageId === 'sms_unknown__default'
         || !PHONE_UI_PAGES.includes(page)) return false;
+    if (page === 'community' && runtime.openSceneReadOnly === true
+        && runtime.openSceneStorageId && runtime.openSceneStorageId !== storageId) return true;
     const scope = phoneScope(storageId, runtime.store);
     const normalizedChatType = chatType === 'contact' || chatType === 'group' ? chatType : null;
     const normalizedChatKey = normalizedChatType && typeof chatKey === 'string' && chatKey.trim()

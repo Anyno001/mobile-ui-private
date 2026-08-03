@@ -6,7 +6,7 @@ import {
     normalizeCalendarDateTags, normalizeCalendarStore, parseCalendarAiResponse, parseCalendarDate, shiftCalendarMonth,
     upsertCalendarEvent,
 } from './calendar-model.js';
-import { deleteOccasion, expandOccasions, findOccasion, normalizeOccasionStore, occasionScopeFor, upsertOccasion } from './calendar-occasion-model.js';
+import { deleteOccasion, excludeOccasionDate, expandOccasions, findOccasion, normalizeOccasionStore, occasionScopeFor, upsertOccasion } from './calendar-occasion-model.js';
 import {
     buildCulturalFestivals, extractContextFestivals, HOLIDAY_YEAR_RANGE, holidayYearFromCache, holidayYearRange,
     isHolidayYearSupported, mergeCalendarDateFacts, normalizeHolidayCache, resolveHolidayYear, selectHolidayCountry,
@@ -18,7 +18,7 @@ import { normalizeRecipeStore, recipeScopeFor } from './calendar-recipe-model.js
 import { createCalendarCommitters } from './calendar-commit.js';
 import { fillCalendarEntryForm, readCalendarEntryForm, setCalendarEntryRepeat } from './calendar-dom.js';
 import { loadCalendar, loadCalendarCycles, loadCalendarHolidays, loadCalendarOccasions, loadCalendarRecipes, loadCalendarWeather, loadCalendarWithLegacyInjectionMigration } from './calendar-storage.js';
-import { occasionTypeLabel, renderCalendarEntryDialog } from './calendar-view.js';
+import { occasionTypeLabel, renderCalendarEntryDialog, renderCalendarRepeatDeleteDialog } from './calendar-view.js';
 import { preserveCalendarManagementState, renderCalendarPageHtml } from './calendar-page-view.js';
 import { createCalendarOutfitController } from './calendar-outfit-controller.js';
 import { handleOutfitPageAction, loadOutfitStore, outfitSubjectOptions } from './calendar-outfit-runtime.js';
@@ -231,7 +231,6 @@ export function installCalendar(state, deps) {
             tasks.finish(task);
         }
     }
-
     async function refreshWeather(storageId) {
         if (!runtime.weatherStore.location) {
             const error = new Error('请先搜索并选择天气位置');
@@ -270,7 +269,6 @@ export function installCalendar(state, deps) {
             }
         }
     }
-
     async function scanContext(storageId = getStorageId(), { silent = false, assistantOnly = false, task: parentTask = null } = {}) {
         const task = parentTask || tasks.begin(storageId, 'scan-context');
         if (!task || !tasks.active(task)) return false;
@@ -304,7 +302,6 @@ export function installCalendar(state, deps) {
             if (!parentTask) tasks.finish(task);
         }
     }
-
     async function generate(storageId = getStorageId(), mode = 'generate', { parentSignal } = {}) {
         const referenceDate = calendarReferenceDate(scope(storageId));
         const selectedDate = mode === 'regenerate' ? viewFor(storageId).selectedDate : '';
@@ -404,7 +401,6 @@ export function installCalendar(state, deps) {
             }
         }
     }
-
     async function ensureWeek(storageId = getStorageId()) {
         const task = tasks.begin(storageId, 'scan-context', { mode: 'ensure-week' });
         if (!task) return false;
@@ -419,7 +415,6 @@ export function installCalendar(state, deps) {
             tasks.finish(task);
         }
     }
-
     async function saveBaseDate(storageId, value) {
         const directDate = parseCalendarDate(value);
         const extractedDate = directDate ? null : extractCalendarBaseDate(value);
@@ -437,7 +432,6 @@ export function installCalendar(state, deps) {
         status(storageId, `当前故事日期已设为 ${normalizedDate}，相对日期与${generationWindow.label}生成将以此为准。`);
         rerender(storageId);
     }
-
     async function clearBaseDate(storageId) {
         await commitScope(storageId, current => { const next = { ...current }; delete next.baseDate; return next; });
         const today = calendarReferenceDate(scope(storageId));
@@ -450,7 +444,6 @@ export function installCalendar(state, deps) {
         status(storageId, '已使用设备日期作为当前故事日期。');
         rerender(storageId);
     }
-
     function goToReferenceDate(storageId) {
         const reference = calendarReferenceDate(scope(storageId));
         const current = viewFor(storageId);
@@ -494,39 +487,50 @@ export function installCalendar(state, deps) {
         });
         rerender(storageId);
     }
-
     function selectedDateEntries(storageId) {
-        const date = viewFor(storageId).selectedDate;
-        const parsed = parseCalendarDate(date);
+        const date = viewFor(storageId).selectedDate, parsed = parseCalendarDate(date);
         return {
             date,
             events: scope(storageId).events[date] || [],
             occasions: parsed ? expandOccasions(occasions(storageId), { start: parsed, days: 1 }) : [],
         };
     }
-
     function resolveEntry(storageId, kind, id) {
         if (kind === 'event') return findCalendarEvent(scope(storageId), id);
         if (kind === 'occasion') return findOccasion(occasions(storageId), id);
         return null;
     }
-
     async function removeEntry(storageId, kind, id) {
         const entry = resolveEntry(storageId, kind, id);
-        if (!entry || !confirm(`删除“${entry.title}”？`)) return false;
+        if (!entry) return false;
         if (kind === 'event') {
+            if (!confirm(`删除“${entry.title}”？`)) return false;
             await commitScope(storageId, current => deleteCalendarEvent(current, entry.id).scope);
             status(storageId, '日程已删除。');
         } else if (kind === 'occasion') {
-            await commitOccasions(storageId, current => deleteOccasion(current, entry.id).scope);
-            status(storageId, `${occasionTypeLabel(entry.type)}已删除。`);
-        } else {
-            return false;
-        }
+            const date = viewFor(storageId).selectedDate;
+            if (typeof makeOverlay !== 'function') throw new Error('重复日程删除确认不可用');
+            const overlay = makeOverlay(renderCalendarRepeatDeleteDialog(entry.title, date));
+            const close = reason => closeOverlay?.(reason); overlay.querySelector('[data-calendar-repeat-delete-cancel]')?.addEventListener('click', () => close('cancel'));
+            overlay.querySelector('[data-calendar-repeat-delete="day"]')?.addEventListener('click', async () => {
+                try {
+                    await commitOccasions(storageId, current => excludeOccasionDate(current, entry.id, date));
+                    status(storageId, '当天重复日程已清理。');
+                    close('saved'); rerender(storageId);
+                } catch (error) { status(storageId, error?.message || '清理重复日程失败。'); }
+            });
+            overlay.querySelector('[data-calendar-repeat-delete="all"]')?.addEventListener('click', async () => {
+                try {
+                    await commitOccasions(storageId, current => deleteOccasion(current, entry.id).scope);
+                    status(storageId, '全部重复日程已清理。');
+                    close('saved'); rerender(storageId);
+                } catch (error) { status(storageId, error?.message || '清理重复日程失败。'); }
+            });
+            return true;
+        } else return false;
         rerender(storageId);
         return true;
     }
-
     function showEntryEditor(storageId, kind = 'event', id = '') {
         if (typeof makeOverlay !== 'function') throw new Error('安排编辑器不可用');
         const entries = selectedDateEntries(storageId);
@@ -534,13 +538,10 @@ export function installCalendar(state, deps) {
         const existingEntry = id ? resolveEntry(storageId, normalizedKind, id) : null;
         if (id && !existingEntry) throw new Error('要编辑的安排不存在或已被移除');
         const overlay = makeOverlay(renderCalendarEntryDialog(entries.date, existingEntry, normalizedKind));
-        const form = overlay.querySelector('[data-calendar-entry-form]');
-        const errorNode = overlay.querySelector('[data-calendar-entry-error]');
+        const form = overlay.querySelector('[data-calendar-entry-form]'), errorNode = overlay.querySelector('[data-calendar-entry-error]');
         const showError = error => { if (errorNode) errorNode.textContent = error?.message || '安排更新失败'; };
         overlay.querySelector('[data-calendar-entry-close]')?.addEventListener('click', () => closeOverlay?.('close'));
-        overlay.querySelector('[data-calendar-repeat-select]')?.addEventListener('change', event => {
-            setCalendarEntryRepeat(overlay, event.currentTarget.value);
-        });
+        overlay.querySelector('[data-calendar-repeat-select]')?.addEventListener('change', event => setCalendarEntryRepeat(overlay, event.currentTarget.value));
         form?.addEventListener('submit', async event => {
             event.preventDefault();
             try {
@@ -568,6 +569,7 @@ export function installCalendar(state, deps) {
                         date: normalizedKind === 'occasion' ? existingEntry?.date || entries.date : entries.date,
                         month: normalizedKind === 'occasion' ? existingEntry?.month || parsed.getMonth() + 1 : parsed.getMonth() + 1,
                         day: normalizedKind === 'occasion' ? existingEntry?.day || parsed.getDate() : parsed.getDate(),
+                        ...(normalizedKind === 'occasion' && existingEntry?.excludedDates ? { excludedDates: existingEntry.excludedDates } : {}),
                         repeat: value.repeat, title: value.title, note: value.note, leapDayRule: value.leapDayRule,
                         ...(value.intervalDays === undefined ? {} : { intervalDays: value.intervalDays }),
                         createdAt: normalizedKind === 'occasion' ? existingEntry?.createdAt : undefined, updatedAt: Date.now(),
@@ -782,12 +784,9 @@ export function installCalendar(state, deps) {
         if (transfersCalendarStateOwnership(reason)) invalidateCommits();
         return tasks.cancel(reason);
     };
-    Object.assign(deps, {
-        cancelCalendarTasks, ensureCalendarWeek: ensureWeek,
-        getCalendarCycleStore: () => normalizeCycleStore(runtime.cycleStore), getCalendarHolidayStore: () => normalizeHolidayCache(runtime.holidayStore),
-        getCalendarRecipeStore: () => normalizeRecipeStore(runtime.recipeStore), getCalendarOutfitStore: () => normalizeOutfitStore(runtime.outfitStore),
-        getCalendarStore: () => normalizeCalendarStore(runtime.store), getCalendarOccasionStore: () => normalizeOccasionStore(runtime.occasionStore),
-        getCalendarWeatherStore: () => normalizeWeatherStore(runtime.weatherStore), handleCalendarAction: handleAction, observeCalendarTurn: observeTurn,
+    Object.assign(deps, { cancelCalendarTasks, ensureCalendarWeek: ensureWeek,
+        getCalendarCycleStore: () => normalizeCycleStore(runtime.cycleStore), getCalendarHolidayStore: () => normalizeHolidayCache(runtime.holidayStore), getCalendarRecipeStore: () => normalizeRecipeStore(runtime.recipeStore), getCalendarOutfitStore: () => normalizeOutfitStore(runtime.outfitStore),
+        getCalendarStore: () => normalizeCalendarStore(runtime.store), getCalendarOccasionStore: () => normalizeOccasionStore(runtime.occasionStore), getCalendarWeatherStore: () => normalizeWeatherStore(runtime.weatherStore), handleCalendarAction: handleAction, observeCalendarTurn: observeTurn,
         reloadCalendarStore() {
             runtime.store = normalizeCalendarStore(loadCalendar()); runtime.viewByStorage.clear();
             runtime.occasionStore = normalizeOccasionStore(loadCalendarOccasions()); runtime.holidayStore = normalizeHolidayCache(loadCalendarHolidays());
