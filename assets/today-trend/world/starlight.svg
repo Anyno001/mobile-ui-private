@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 390 220" preserveAspectRatio="xMidYMid meet">
+  <g id="pinpoints" fill="#000000">
+    <circle cx="18" cy="31" r="0.7" opacity="0.18"/><circle cx="47" cy="89" r="1.1" opacity="0.24"/><circle cx="81" cy="18" r="0.6" opacity="0.15"/><circle cx="116" cy="134" r="0.8" opacity="0.2"/><circle cx="154" cy="59" r="1.3" opacity="0.27"/><circle cx="188" cy="188" r="0.6" opacity="0.16"/><circle cx="221" cy="104" r="0.9" opacity="0.22"/><circle cx="257" cy="27" r="0.7" opacity="0.18"/><circle cx="289" cy="151" r="1.1" opacity="0.25"/><circle cx="326" cy="74" r="0.6" opacity="0.14"/><circle cx="368" cy="39" r="0.9" opacity="0.21"/><circle cx="377" cy="194" r="0.7" opacity="0.17"/>
+  </g>
+  <g id="four-point-stars" fill="#000000">
+    <path d="M67 51l1.7 5.3L74 58l-5.3 1.7L67 65l-1.7-5.3L60 58l5.3-1.7z" opacity="0.32"/>
+    <path d="M205 35l1.2 3.8L210 40l-3.8 1.2L205 45l-1.2-3.8L200 40l3.8-1.2z" opacity="0.27"/>
+    <path d="M337 121l2 6 6 2-6 2-2 6-2-6-6-2 6-2z" opacity="0.35"/>
+    <path d="M139 201l1.2 3.8 3.8 1.2-3.8 1.2-1.2 3.8-1.2-3.8-3.8-1.2 3.8-1.2z" opacity="0.24"/>
+  </g>
+  <g id="cross-stars" fill="none" stroke="#000000" stroke-width="0.75" opacity="0.24">
+    <path d="M31 164v12M25 170h12M276 84v9M271.5 88.5h9M358 167v14M351 174h14"/>
+  </g>
+  <g id="diamonds" fill="#000000">
+    <path d="M100 93l3 4-3 4-3-4z" opacity="0.23"/><path d="M242 177l2.5 3.5-2.5 3.5-2.5-3.5z" opacity="0.2"/>
+  </g>
+</svg>

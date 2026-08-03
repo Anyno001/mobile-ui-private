@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 390 220" preserveAspectRatio="xMidYMid meet">
+  <g id="quiet-stars" fill="#000000">
+    <circle cx="34" cy="46" r="0.7" opacity="0.14"/><circle cx="92" cy="177" r="0.9" opacity="0.18"/><circle cx="148" cy="83" r="0.6" opacity="0.13"/><circle cx="282" cy="38" r="1" opacity="0.2"/><circle cx="361" cy="147" r="0.7" opacity="0.15"/>
+    <path d="M320 89l1.5 4.5 4.5 1.5-4.5 1.5-1.5 4.5-1.5-4.5-4.5-1.5 4.5-1.5z" opacity="0.25"/>
+    <path d="M65 113l1 3 3 1-3 1-1 3-1-3-3-1 3-1z" opacity="0.2"/>
+  </g>
+  <g id="registration-crosses" fill="none" stroke="#000000" stroke-width="0.5" opacity="0.17">
+    <path d="M178 28v8M174 32h8M371 61v10M366 66h10"/>
+  </g>
+  <g id="lozenges" fill="#000000" opacity="0.17">
+    <path d="M112 27l2.5 3.5-2.5 3.5-2.5-3.5zM254 119l3 4-3 4-3-4z"/>
+  </g>
+</svg>
