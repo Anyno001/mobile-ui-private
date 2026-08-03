@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 390 220" preserveAspectRatio="xMidYMid meet">
+  <defs>
+    <linearGradient id="down" x1="195" y1="53" x2="195" y2="220" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#000000" stop-opacity="0"/>
+      <stop offset="1" stop-color="#000000" stop-opacity="0.22"/>
+    </linearGradient>
+  </defs>
+  <g id="ranges" fill="#000000">
+    <path d="M0 146C73 160 111 198 181 190C220 186 240 164 284 158C326 152 356 161 390 174V220H0Z" opacity="0.045"/>
+    <path d="M0 181C72 201 122 215 185 206C239 198 268 178 320 183C347 185 369 194 390 202V220H0Z" opacity="0.065"/>
+  </g>
+  <g id="convergence" fill="none" stroke="url(#down)" stroke-width="0.75">
+    <path d="M0 92C82 105 139 118 181 174C187 182 191 191 195 205"/>
+    <path d="M0 126C76 133 135 145 177 184C185 192 190 200 195 211"/>
+    <path d="M390 86C311 101 252 119 210 173C203 182 199 192 195 205"/>
+    <path d="M390 123C318 131 258 144 214 184C205 192 200 201 195 211"/>
+    <path d="M72 220V163M121 220v-42M269 220v-44M327 220v-60" opacity="0.55"/>
+  </g>
+  <g id="nodes" fill="#000000">
+    <circle cx="72" cy="163" r="1.5" opacity="0.16"/><circle cx="121" cy="178" r="2" opacity="0.2"/><circle cx="195" cy="205" r="3" opacity="0.28"/><circle cx="269" cy="176" r="1.7" opacity="0.18"/><circle cx="327" cy="160" r="1.3" opacity="0.15"/>
+  </g>
+</svg>

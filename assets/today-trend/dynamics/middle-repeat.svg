@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 390 240" preserveAspectRatio="xMidYMid meet">
+  <defs>
+    <pattern id="trace-grid" width="60" height="48" patternUnits="userSpaceOnUse">
+      <path d="M60 0H0V48" fill="none" stroke="#000000" stroke-width="0.5" opacity="0.045"/>
+      <circle cx="18" cy="24" r="0.55" fill="#000000" opacity="0.08"/>
+    </pattern>
+  </defs>
+  <rect width="390" height="240" fill="url(#trace-grid)"/>
+  <g id="tracks" fill="none" stroke="#000000" stroke-width="0.5" opacity="0.13">
+    <path d="M31 0V240M82 0V240M309 0V240M358 0V240" stroke-dasharray="26 22"/>
+    <path d="M49 0v18M49 222v18M337 0v12M337 228v12"/>
+    <path d="M24 38h14M75 91h16M302 134h15M350 191h17M116 216h22M241 57h19"/>
+  </g>
+  <g id="ticks" stroke="#000000" stroke-width="0.75" opacity="0.15">
+    <path d="M28 69h7M28 75h4M79 153h7M79 159h4M306 33h7M306 39h4M355 111h7M355 117h4"/>
+  </g>
+  <g id="marks" fill="#000000" opacity="0.13">
+    <circle cx="31" cy="102" r="1"/><circle cx="82" cy="28" r="0.8"/><circle cx="309" cy="181" r="1.1"/><circle cx="358" cy="63" r="0.9"/><circle cx="183" cy="127" r="0.7"/><circle cx="262" cy="222" r="0.7"/>
+  </g>
+</svg>

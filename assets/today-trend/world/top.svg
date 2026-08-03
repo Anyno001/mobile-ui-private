@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 390 220" preserveAspectRatio="xMidYMid meet">
+  <defs>
+    <linearGradient id="fade" x1="390" y1="0" x2="120" y2="210" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#000000" stop-opacity="0.34"/>
+      <stop offset="1" stop-color="#000000" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+  <g id="orbit" fill="none" stroke="url(#fade)" stroke-width="0.75">
+    <ellipse cx="326" cy="48" rx="104" ry="28" transform="rotate(-13 326 48)"/>
+    <ellipse cx="326" cy="48" rx="78" ry="20" transform="rotate(-13 326 48)" opacity="0.7"/>
+    <path d="M244 89C281 49 348 26 390 25"/>
+    <path d="M282 0C309 23 348 31 390 28" opacity="0.5"/>
+    <path d="M302 104A68 68 0 0 1 390 79"/>
+    <path d="M319 111A51 51 0 0 1 390 91" opacity="0.55"/>
+  </g>
+  <g id="guides" stroke="#000000" fill="none" stroke-width="0.5" opacity="0.14">
+    <path d="M238 0V87M286 0V126M342 64V154M390 45H238M390 111H270"/>
+    <path d="M257 136h24M329 169h31M369 126v19M300 146v12"/>
+  </g>
+  <g id="stars" fill="#000000">
+    <circle cx="318" cy="42" r="2.4" opacity="0.36"/><circle cx="351" cy="18" r="1.1" opacity="0.28"/><circle cx="287" cy="72" r="1" opacity="0.24"/><circle cx="373" cy="62" r="1.4" opacity="0.3"/><circle cx="244" cy="104" r="0.8" opacity="0.18"/><circle cx="332" cy="136" r="0.9" opacity="0.2"/><circle cx="382" cy="158" r="1" opacity="0.2"/>
+  </g>
+  <g id="crosshairs" stroke="#000000" stroke-width="0.75" opacity="0.24">
+    <path d="M260 31v12M254 37h12M356 84v16M348 92h16M291 118v10M286 123h10M375 13v10M370 18h10"/>
+  </g>
+</svg>

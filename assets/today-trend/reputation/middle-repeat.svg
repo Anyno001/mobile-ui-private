@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 390 240" preserveAspectRatio="xMidYMid meet">
+  <defs>
+    <pattern id="paper-grid" width="30" height="30" patternUnits="userSpaceOnUse">
+      <path d="M30 0H0V30" fill="none" stroke="#000000" stroke-width="0.5" opacity="0.055"/>
+      <circle cx="15" cy="15" r="0.55" fill="#000000" opacity="0.08"/>
+    </pattern>
+  </defs>
+  <rect width="390" height="240" fill="url(#paper-grid)"/>
+  <g id="rules" fill="none" stroke="#000000" stroke-width="0.5" opacity="0.12">
+    <path d="M22 0V240M112 0V240M318 0V240M368 0V240"/>
+    <path d="M46 54h42M145 101h72M274 166h52M55 218h31"/>
+    <path d="M76 0v12M76 228v12M252 0v9M252 231v9" stroke-dasharray="3 3"/>
+  </g>
+  <g id="crop-marks" fill="none" stroke="#000000" stroke-width="0.75" opacity="0.15">
+    <path d="M44 35h10M44 35v10M337 71h9M346 71v9M169 154h9M169 154v9M28 195h8M28 195v8"/>
+  </g>
+  <g id="records" fill="#000000" opacity="0.11">
+    <circle cx="94" cy="82" r="0.8"/><circle cx="232" cy="37" r="0.7"/><circle cx="351" cy="125" r="0.9"/><circle cx="137" cy="203" r="0.7"/><circle cx="293" cy="221" r="0.6"/>
+  </g>
+</svg>

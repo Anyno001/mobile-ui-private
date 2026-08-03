@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 390 240" preserveAspectRatio="xMidYMid meet">
+  <defs>
+    <pattern id="field" width="65" height="60" patternUnits="userSpaceOnUse">
+      <circle cx="13" cy="17" r="0.8" fill="#000000" opacity="0.11"/>
+      <circle cx="48" cy="43" r="0.55" fill="#000000" opacity="0.08"/>
+      <path d="M0 0V60" stroke="#000000" stroke-width="0.5" opacity="0.045"/>
+    </pattern>
+  </defs>
+  <rect width="390" height="240" fill="url(#field)"/>
+  <g id="ranges" fill="#000000" opacity="0.035">
+    <path d="M0 41C67 18 116 67 183 44S314 18 390 53V89C317 63 260 91 189 78S66 105 0 74Z"/>
+    <path d="M0 168C72 138 121 192 197 166S318 148 390 181V215C319 190 258 214 191 199S64 220 0 202Z"/>
+  </g>
+  <g id="links" fill="none" stroke="#000000" stroke-width="0.5" opacity="0.12">
+    <path d="M18 0C30 39 29 81 18 120S6 201 18 240"/>
+    <path d="M151 0C166 35 163 79 151 120S137 201 151 240"/>
+    <path d="M333 0C346 38 345 80 333 120S320 202 333 240"/>
+    <path d="M63 58C104 31 128 35 167 62M224 143C261 119 291 121 320 149M79 207C111 189 134 191 166 213"/>
+  </g>
+  <g id="nodes" fill="#000000" opacity="0.14">
+    <circle cx="68" cy="58" r="1.3"/><circle cx="166" cy="62" r="1"/><circle cx="224" cy="143" r="1.1"/><circle cx="320" cy="149" r="1.4"/><circle cx="79" cy="207" r="0.9"/><circle cx="166" cy="213" r="1.1"/>
+  </g>
+</svg>

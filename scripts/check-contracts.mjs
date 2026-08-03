@@ -2125,6 +2125,11 @@ for (const expected of [
   '.pm-today-trend-page{overflow:hidden;background:var(--pm-color-surface-page)}',
   '.pm-today-trend-header{position:sticky;top:0;z-index:var(--pm-z-base)',
   '.pm-today-trend-header button svg,.pm-today-trend-icon-button svg{width:var(--pm-size-icon-md);height:var(--pm-size-icon-md)',
+  '--pm-today-trend-bg-top-glow:url("./assets/today-trend/world/top-glow.svg")',
+  '--pm-today-trend-bg-top-glow:url("./assets/today-trend/reputation/top-glow.svg")',
+  '--pm-today-trend-bg-top-glow:url("./assets/today-trend/faction/top-glow.svg")',
+  '--pm-today-trend-bg-top-glow:url("./assets/today-trend/dynamics/top-glow.svg")',
+  'mask-repeat:no-repeat,repeat-y,no-repeat',
 ]) requireText('style.css', css, expected);
 if (css.includes('--pm-letter-spacing-wide')) {
   failures.push('style.css: today-trend must not consume an unregistered letter-spacing token');

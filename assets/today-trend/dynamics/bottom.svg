@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 390 220" preserveAspectRatio="xMidYMid meet">
+  <defs>
+    <linearGradient id="floor-fade" x1="195" y1="55" x2="195" y2="220" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#000000" stop-opacity="0"/>
+      <stop offset="1" stop-color="#000000" stop-opacity="0.24"/>
+    </linearGradient>
+  </defs>
+  <g id="archive-guides" fill="none" stroke="url(#floor-fade)" stroke-width="0.75">
+    <path d="M31 75V220M75 104V220M315 102V220M359 72V220"/>
+    <path d="M31 154C88 154 137 161 180 187M359 154C302 154 253 161 210 187"/>
+    <path d="M0 220L195 157L390 220M0 196H390M0 177H390" opacity="0.75"/>
+    <path d="M40 220L195 157L350 220M91 220L195 157L299 220M143 220L195 157L247 220" opacity="0.6"/>
+  </g>
+  <g id="locator" transform="translate(195 168)" fill="none" stroke="#000000">
+    <circle r="17" stroke-width="0.75" opacity="0.18"/><circle r="9" stroke-width="0.75" opacity="0.24"/><circle r="2.5" fill="#000000" stroke="none" opacity="0.28"/>
+    <path d="M0-24v7M0 17v7M-24 0h7M17 0h7" stroke-width="0.5" opacity="0.16"/>
+  </g>
+  <g id="marks" fill="#000000">
+    <circle cx="31" cy="154" r="1.2" opacity="0.16"/><circle cx="75" cy="121" r="0.9" opacity="0.13"/><circle cx="315" cy="121" r="0.9" opacity="0.13"/><circle cx="359" cy="154" r="1.2" opacity="0.16"/>
+  </g>
+</svg>

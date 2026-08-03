@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 390 220" preserveAspectRatio="xMidYMid meet">
+  <defs>
+    <radialGradient id="soft" cx="50%" cy="50%" r="50%">
+      <stop stop-color="#000000" stop-opacity="0.16"/>
+      <stop offset="1" stop-color="#000000" stop-opacity="0.03"/>
+    </radialGradient>
+  </defs>
+  <g id="archive" transform="translate(299 92)">
+    <circle r="64" fill="none" stroke="#000000" stroke-width="0.75" opacity="0.15"/>
+    <circle r="48" fill="none" stroke="#000000" stroke-width="1" opacity="0.24"/>
+    <circle r="57" fill="none" stroke="#000000" stroke-width="0.75" stroke-dasharray="1 4" opacity="0.18"/>
+    <path d="M0-72v15M0 57v15M-72 0h15M57 0h15" stroke="#000000" stroke-width="0.75" opacity="0.2"/>
+    <path d="M-13-37c12-9 31-5 36 8 2 6 0 12 5 18l-8 3c-2 10-7 17-16 20l2 10c14 5 25 12 32 26h-75c5-14 16-22 30-27l1-15c-7-8-10-17-8-28 0-6-3-10 1-15z" fill="url(#soft)"/>
+  </g>
+  <g id="corners" fill="none" stroke="#000000" stroke-width="0.75" opacity="0.2">
+    <path d="M224 27h13M224 27v13M374 27h-13M374 27v13M224 157h13M224 157v-13M374 157h-13M374 157v-13"/>
+    <path d="M243 178h28M353 178h20M246 188h14" opacity="0.7"/>
+  </g>
+  <g id="dots" fill="#000000" opacity="0.18">
+    <circle cx="247" cy="53" r="0.8"/><circle cx="266" cy="33" r="0.7"/><circle cx="351" cy="55" r="1"/><circle cx="365" cy="112" r="0.7"/><circle cx="239" cy="125" r="0.8"/>
+  </g>
+  <g stroke="#000000" stroke-width="0.75" opacity="0.18"><path d="M233 73v10M228 78h10M359 43v12M353 49h12M238 169v10M233 174h10"/></g>
+</svg>

@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 390 220" preserveAspectRatio="xMidYMid meet">
+  <defs>
+    <radialGradient id="network-glow-a" cx="62%" cy="42%" r="64%">
+      <stop offset="0" stop-color="#000000" stop-opacity="0.18"/>
+      <stop offset="0.52" stop-color="#000000" stop-opacity="0.075"/>
+      <stop offset="1" stop-color="#000000" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="network-glow-b" cx="58%" cy="50%" r="62%">
+      <stop offset="0" stop-color="#000000" stop-opacity="0.11"/>
+      <stop offset="0.58" stop-color="#000000" stop-opacity="0.04"/>
+      <stop offset="1" stop-color="#000000" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <ellipse cx="310" cy="54" rx="145" ry="54" fill="url(#network-glow-a)"/>
+  <ellipse cx="334" cy="101" rx="112" ry="43" fill="url(#network-glow-b)"/>
+</svg>
