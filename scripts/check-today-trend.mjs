@@ -15,7 +15,16 @@ import {
 import { createTodayTrendStorage } from '../src/today-trend-storage.js';
 import { createTodayTrendCommitter } from '../src/today-trend-commit.js';
 import { gatherTodayTrendContext } from '../src/today-trend-context.js';
-import { buildTodayTrendGenerationEnvelope, buildTodayTrendInitializationEnvelope } from '../src/today-trend-prompts.js';
+import {
+    buildTodayTrendGenerationEnvelope,
+    buildTodayTrendInitializationEnvelope,
+    buildTodayTrendRuleRegenerationEnvelope,
+} from '../src/today-trend-prompts.js';
+import {
+    buildTodayTrendGenerationEnvelope as buildCanonicalTodayTrendGenerationEnvelope,
+    buildTodayTrendInitializationEnvelope as buildCanonicalTodayTrendInitializationEnvelope,
+    buildTodayTrendRuleRegenerationEnvelope as buildCanonicalTodayTrendRuleRegenerationEnvelope,
+} from '../src/prompts/today-trend/envelopes.js';
 import { createTodayTrendGenerationController } from '../src/today-trend-generation.js';
 import { createTodayTrendScheduler } from '../src/today-trend-scheduler.js';
 import { renderTodayTrendInjection } from '../src/today-trend-injection.js';
@@ -250,7 +259,7 @@ assert.match(worldPanelsHtml, /pm-today-trend-world-signal-marker[^>]*aria-hidde
 assert.match(todayTrendStyle, /pm-today-trend-world-signals::before[^}]*border-left:1px dashed/, '世界态势左侧信号必须使用连续主干');
 assert.match(todayTrendStyle, /pm-today-trend-world-brief\.is-right::after[^}]*bottom:var\(--pm-space-3\)/, '右侧信号线必须延伸至摘要说明底部');
 assert.match(todayTrendStyle, /pm-today-trend-world-brief\.is-left \.pm-today-trend-world-signal-marker\{top:calc\(var\(--pm-space-4\) \* -1\)\}/, '左侧摘要信号标记必须上移，明确与前一摘要的收束关系');
-assert.match(todayTrendStyle, /pm-today-trend-world-brief\.is-right\{margin-right:0;margin-bottom:calc\(var\(--pm-space-2\) \* -1\);margin-left:calc\(24% - var\(--pm-space-4\)\)\}/, '右侧摘要必须按节点基准左移并与正文保持稳定间距');
+assert.match(todayTrendStyle, /pm-today-trend-world-brief\.is-right\{margin-top:calc\(\(var\(--pm-space-4\) \+ var\(--pm-space-2\)\) \* -1\);margin-right:0;margin-bottom:var\(--pm-space-2\);margin-left:calc\(24% - var\(--pm-space-4\)\)\}/, '右侧摘要必须在保留正文安全间距和后续呼吸的前提下上移并按节点基准左移');
 assert.match(todayTrendStyle, /pm-today-trend-world-signal-marker::after[^}]*width:var\(--pm-space-4\)/, '世界态势信号必须包含有限横向引线');
 assert.doesNotMatch(todayTrendStyle, /pm-today-trend-world-hero::before/, '世界态势不得恢复旧主摘要伪元素装饰');
 assert.doesNotMatch(worldHtml, /data-menu-id="world:/, '世界摘要不得重复渲染独立省略号');
@@ -272,6 +281,9 @@ assert.match(reputationHtml, /主厨评审/, '个人风评页必须渲染世界�
 assert.match(reputationHtml, /中立/, '个人风评页必须渲染固定五档状态的中文标签');
 assert.match(reputationHtml, /pm-today-trend-reputation-entry/, '个人风评内容页必须使用观察报告条目结构');
 assert.match(reputationHtml, /PUBLIC OPINION/, '个人风评内容页必须提供报告识别语');
+assert.doesNotMatch(reputationHtml, /观察圈层｜|个正向、|个谨慎或中性|等待建立观察圈层/, '个人风评报告头不得展示冗余统计或伪造时间');
+assert.match(reputationHtml, /pm-today-trend-reputation-index" aria-hidden="true"><span>01<\/span><i><\/i><\/span>/, '个人风评编号必须保留动态数字并提供框角装饰钩子');
+
 assert.match(reputationHtml, /01/, '个人风评内容页必须从数据顺序派生观察编号');
 assert.match(reputationHtml, /data-status="neutral"/, '个人风评状态必须提供主题化样式钩子');
 assert.doesNotMatch(reputationHtml, /pm-today-trend-reputation-orbit/, '个人风评背景不得局限在模块子容器内');
@@ -298,6 +310,10 @@ assert.match(busyReputationSettingsHtml, /today-trend-regenerate-circle-schema"[
 assert.doesNotMatch(busyReputationSettingsHtml, /data-menu-id="circle:/, '风评设置不得重复渲染圈层省略号');
 assert.doesNotMatch(busyReputationSettingsHtml, /today-trend-regenerate-reputation-rule/, '个人风评设置不得重复提供模块规则动作');
 assert.match(todayTrendStyle, /pm-today-trend-reputation::after,\.pm-today-trend-factions::after,\.pm-today-trend-dynamics::after\{[^}]*mask-image:var\(--pm-today-trend-bg-top\),var\(--pm-today-trend-bg-bottom\)/, '个人风评背景必须临时隐藏中段重复图形');
+assert.match(todayTrendStyle, /pm-today-trend-reputation-index\{[^}]*font-weight:var\(--pm-font-weight-semibold\)/, '个人风评编号必须使用加粗文字而非圆形外框');
+assert.match(todayTrendStyle, /pm-today-trend-reputation-index>i\{[^}]*border-top:1px solid[^}]*border-right:1px solid/, '个人风评编号必须提供右侧框角装饰');
+assert.match(todayTrendStyle, /pm-today-trend-reputation-entry\{[^}]*grid-template-columns:var\(--pm-today-trend-track-width\) minmax\(0,1fr\) var\(--pm-today-trend-reputation-meter-width\)/, '个人风评条目必须保持轨道、正文和量表三列流式布局');
+assert.match(todayTrendStyle, /pm-today-trend-reputation-meter\{[^}]*border-right:1px solid[^}]*border-left:1px solid/, '个人风评量表必须保留右侧刻度框体');
 assert.match(todayTrendStyle, /pm-today-trend-reputation-meter button:focus-visible/, '个人风评状态按钮必须提供键盘焦点样式');
 assert.match(todayTrendStyle, /pm-today-trend-reputation-meter button:disabled/, '个人风评状态按钮必须提供禁用样式');
 const factionHtml = renderTodayTrendFactionView({ scope: valid.scopes.chat, preset: valid.presets.preset, generationAvailable: true, menuOpenId: 'faction-module' });
@@ -556,6 +572,8 @@ const initializationPrompts = buildTodayTrendInitializationEnvelope({ context: c
 assert.match(initializationPrompts.systemPrompt, /顶层只能有 preset 和 scope/, '初始化提示词必须锁定单一返回协议');
 assert.match(initializationPrompts.userPrompt, /world_book_data/, '初始化提示词必须传递世界书内容');
 assert.match(initializationPrompts.userPrompt, /main_chat_data/, '初始化提示词必须传递已有正文');
+assert.deepEqual(initializationPrompts, buildCanonicalTodayTrendInitializationEnvelope({ context: collectedContext }),
+    '兼容 facade 必须逐字符委托今日风向初始化提示词实现');
 
 const generatedInitialization = fixture();
 generatedInitialization.presets.preset.id = 'ai-preset';
@@ -563,17 +581,28 @@ generatedInitialization.scopes.chat.storageId = 'ai-chat';
 generatedInitialization.scopes.chat.characterId = 'ai-role';
 generatedInitialization.scopes.chat.characterName = 'AI 角色';
 generatedInitialization.scopes.chat.presetId = 'ai-preset';
+const initializationSignal = new AbortController().signal;
+const ruleRegenerationSignal = new AbortController().signal;
 let initializationCalls = 0;
 const controller = createTodayTrendGenerationController({
     getCtx: () => ({}), now: () => 100,
     gather: async input => ({ ...collectedContext, storageId: input.storageId, characterId: input.characterId, characterName: input.characterName }),
-    callAI: async systemPrompt => {
-        if (systemPrompt.includes('重写虚构角色扮演世界的单个')) return JSON.stringify({ rule: '规则重写' });
+    callAI: async (systemPrompt, userPrompt, options) => {
+        if (systemPrompt.includes('重写虚构角色扮演世界的单个')) {
+            assert.deepEqual({ systemPrompt, userPrompt }, buildCanonicalTodayTrendRuleRegenerationEnvelope({
+                context: collectedContext, rule: 'dynamics-rumor', currentRule: valid.presets.preset.dynamicsRules.rumor,
+            }), '规则重生成必须委托今日风向 prompt domain');
+            assert.equal(options.isolated, true, '规则重生成必须维持独立 AI transport');
+            assert.equal(options.signal, ruleRegenerationSignal, '规则重生成必须传递调用方取消信号');
+            return JSON.stringify({ rule: '规则重写' });
+        }
         initializationCalls += 1;
+        assert.equal(options.isolated, true, '初始化必须维持独立 AI transport');
+        assert.equal(options.signal, initializationSignal, '初始化必须传递调用方取消信号');
         return JSON.stringify({ preset: generatedInitialization.presets.preset, scope: generatedInitialization.scopes.chat });
     },
 });
-const initialized = await controller.initialize({ storageId: 'init-chat', characterId: 'role-1', characterName: '小明' });
+const initialized = await controller.initialize({ storageId: 'init-chat', characterId: 'role-1', characterName: '小明', signal: initializationSignal });
 assert.equal(initializationCalls, 1, '一次初始化必须只调用一次 AI');
 assert.equal(initialized.store.scopes['init-chat'].presetId, 'init-chat:preset', '初始化必须固定 scope 到受控预设 ID');
 assert.equal(initialized.store.presets['init-chat:preset'].source.userRequirements, '保持综艺竞赛氛围', '初始化必须保留用户补充要求');
@@ -586,7 +615,13 @@ await assert.rejects(() => createTodayTrendGenerationController({ getCtx: () => 
 const generationPrompts = buildTodayTrendGenerationEnvelope({
     context: collectedContext, preset: valid.presets.preset, scope: valid.scopes.chat, assistantCount: 8,
 });
-const regeneratedRule = await controller.regenerateRule({ scope: valid.scopes.chat, preset: valid.presets.preset, rule: 'dynamics-rumor' });
+assert.deepEqual(generationPrompts, buildCanonicalTodayTrendGenerationEnvelope({
+    context: collectedContext, preset: valid.presets.preset, scope: valid.scopes.chat, assistantCount: 8,
+}), '兼容 facade 必须逐字符委托今日风向增量提示词实现');
+assert.deepEqual(buildTodayTrendRuleRegenerationEnvelope({ context: collectedContext, rule: 'dynamics-rumor', currentRule: valid.presets.preset.dynamicsRules.rumor }),
+    buildCanonicalTodayTrendRuleRegenerationEnvelope({ context: collectedContext, rule: 'dynamics-rumor', currentRule: valid.presets.preset.dynamicsRules.rumor }),
+    '兼容 facade 必须逐字符委托今日风向规则重生成提示词实现');
+const regeneratedRule = await controller.regenerateRule({ scope: valid.scopes.chat, preset: valid.presets.preset, rule: 'dynamics-rumor', signal: ruleRegenerationSignal });
 assert.equal(regeneratedRule, '规则重写', '规则重生成必须只返回校验后的规则文本');
 await assert.rejects(() => createTodayTrendGenerationController({ getCtx: () => ({}), gather: async () => collectedContext,
     callAI: async () => JSON.stringify({ rule: '规则重写', extra: true }),
@@ -601,14 +636,24 @@ const targetedPrompts = buildTodayTrendGenerationEnvelope({
 });
 assert.match(targetedPrompts.userPrompt, /本次仅更新 world 模块/, '单模块生成提示词必须限制模块边界');
 assert.match(targetedPrompts.userPrompt, /不得新增、删除、重排或改写同模块其他项目/, '单项刷新提示词必须限制项目副作用');
+const schemaPrompts = buildTodayTrendGenerationEnvelope({
+    context: collectedContext, preset: valid.presets.preset, scope: valid.scopes.chat,
+    target: { module: 'reputation', itemId: 'judge', mode: 'schema' },
+});
+assert.match(schemaPrompts.userPrompt, /保留其 status 与 evaluation/, '圈层结构刷新提示词必须锁定不可改写的关系字段');
 
+const generationSignal = new AbortController().signal;
 const updateController = createTodayTrendGenerationController({
     getCtx: () => ({}), gather: async () => collectedContext,
-    callAI: async () => JSON.stringify({ world: { items: [{ id: 'world', name: '节目风向', summary: '晚餐服务已经开始' }] }, reputation: null, factions: null, dynamics: null }),
+    callAI: async (_systemPrompt, _userPrompt, options) => {
+        assert.equal(options.isolated, true, '普通增量必须维持独立 AI transport');
+        assert.equal(options.signal, generationSignal, '普通增量必须传递调用方取消信号');
+        return JSON.stringify({ world: { items: [{ id: 'world', name: '节目风向', summary: '晚餐服务已经开始' }] }, reputation: null, factions: null, dynamics: null });
+    },
 });
 const generationPhases = [];
 const updated = await updateController.generate({ scope: valid.scopes.chat, preset: valid.presets.preset, assistantCount: 8,
-    onPhase: phase => generationPhases.push(phase) });
+    onPhase: phase => generationPhases.push(phase), signal: generationSignal });
 assert.equal(updated.scope.world.items[0].summary, '晚餐服务已经开始', '后续生成必须只替换发生变化的模块');
 assert.deepEqual(generationPhases, ['generating', 'parsing'], '生成控制器必须暴露生成与解析阶段');
 await assert.rejects(() => createTodayTrendGenerationController({
@@ -777,13 +822,18 @@ failedStatusDispatcher.destroy();
 
 const multiWorldScope = structuredClone(valid.scopes.chat);
 multiWorldScope.world.items.push({ id: 'audience', name: '观众情绪', summary: '仍在期待决赛' });
+const targetedSignal = new AbortController().signal;
 const targetedUpdate = await createTodayTrendGenerationController({
     getCtx: () => ({}), gather: async () => collectedContext,
-    callAI: async () => JSON.stringify({ world: { items: [
-        { id: 'world', name: '节目风向', summary: '晚餐服务进入收尾' },
-        { id: 'audience', name: '观众情绪', summary: '仍在期待决赛' },
-    ] }, reputation: null, factions: null, dynamics: null }),
-}).generate({ scope: multiWorldScope, preset: valid.presets.preset, target: { module: 'world', itemId: 'world' } });
+    callAI: async (_systemPrompt, _userPrompt, options) => {
+        assert.equal(options.isolated, true, '单项刷新必须维持独立 AI transport');
+        assert.equal(options.signal, targetedSignal, '单项刷新必须传递调用方取消信号');
+        return JSON.stringify({ world: { items: [
+            { id: 'world', name: '节目风向', summary: '晚餐服务进入收尾' },
+            { id: 'audience', name: '观众情绪', summary: '仍在期待决赛' },
+        ] }, reputation: null, factions: null, dynamics: null });
+    },
+}).generate({ scope: multiWorldScope, preset: valid.presets.preset, target: { module: 'world', itemId: 'world' }, signal: targetedSignal });
 assert.equal(targetedUpdate.scope.world.items.find(item => item.id === 'world').summary, '晚餐服务进入收尾', '世界态势单项刷新必须目标项目');
 assert.equal(targetedUpdate.scope.world.items.find(item => item.id === 'audience').summary, '仍在期待决赛', '世界态势单项刷新不得覆盖其他项目');
 await assert.rejects(() => createTodayTrendGenerationController({ getCtx: () => ({}), gather: async () => collectedContext,
