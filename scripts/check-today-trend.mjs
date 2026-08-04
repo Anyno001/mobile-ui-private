@@ -250,7 +250,7 @@ assert.match(worldPanelsHtml, /pm-today-trend-world-signal-marker[^>]*aria-hidde
 assert.match(todayTrendStyle, /pm-today-trend-world-signals::before[^}]*border-left:1px dashed/, '世界态势左侧信号必须使用连续主干');
 assert.match(todayTrendStyle, /pm-today-trend-world-brief\.is-right::after[^}]*bottom:var\(--pm-space-3\)/, '右侧信号线必须延伸至摘要说明底部');
 assert.match(todayTrendStyle, /pm-today-trend-world-brief\.is-left \.pm-today-trend-world-signal-marker\{top:calc\(var\(--pm-space-4\) \* -1\)\}/, '左侧摘要信号标记必须上移，明确与前一摘要的收束关系');
-assert.match(todayTrendStyle, /pm-today-trend-world-brief\.is-right\{margin-bottom:calc\(var\(--pm-space-2\) \* -1\);margin-left:auto;transform:translateY\(calc\(\(var\(--pm-space-5\) \+ var\(--pm-space-2\)\) \* -1\)\)\}/, '右侧摘要必须连同信号线整体上移，并补偿后续节奏');
+assert.match(todayTrendStyle, /pm-today-trend-world-brief\.is-right\{margin-right:0;margin-bottom:calc\(var\(--pm-space-2\) \* -1\);margin-left:calc\(24% - var\(--pm-space-4\)\)\}/, '右侧摘要必须按节点基准左移并与正文保持稳定间距');
 assert.match(todayTrendStyle, /pm-today-trend-world-signal-marker::after[^}]*width:var\(--pm-space-4\)/, '世界态势信号必须包含有限横向引线');
 assert.doesNotMatch(todayTrendStyle, /pm-today-trend-world-hero::before/, '世界态势不得恢复旧主摘要伪元素装饰');
 assert.doesNotMatch(worldHtml, /data-menu-id="world:/, '世界摘要不得重复渲染独立省略号');
@@ -277,8 +277,12 @@ assert.match(reputationHtml, /data-status="neutral"/, '个人风评状态必须�
 assert.doesNotMatch(reputationHtml, /pm-today-trend-reputation-orbit/, '个人风评背景不得局限在模块子容器内');
 assert.match(reputationMenuHtml, /today-trend-edit-reputation-rule/, '展开个人风评模块操作后必须提供规则编辑动作');
 assert.doesNotMatch(reputationHtml, /today-trend-edit-circle/, '个人风评收起模块操作时不得显示单条编辑入口');
-assert.match(reputationHtml, /pm-today-trend-reputation-meter[^>]*aria-label="当前好感度：中立"/, '个人风评必须为每条记录输出可访问的当前好感度');
-for (const label of ['敌对', '厌恶', '中立', '喜欢', '信任']) assert.match(reputationHtml, new RegExp(`>${label}<`), `个人风评必须显式显示五档好感度：${label}`);
+assert.match(reputationHtml, /pm-today-trend-reputation-meter" role="radiogroup" aria-label="修改主厨评审的好感度，当前：中立"/, '个人风评必须为每条记录输出可访问的好感度单选组');
+assert.equal((reputationHtml.match(/data-action="today-trend-set-circle-status"/g) || []).length, valid.scopes.chat.reputation.circles.length * 5, '个人风评每条记录必须输出五个实时状态按钮');
+assert.match(reputationHtml, /data-circle-id="judge" data-status="neutral" aria-checked="true" role="radio"/, '当前好感度按钮必须暴露选中语义');
+assert.match(reputationHtml, /data-circle-id="judge" data-status="like" aria-checked="false" role="radio"/, '非当前好感度按钮必须暴露未选中语义');
+assert.doesNotMatch(reputationHtml, /aria-hidden="true"><i><\/i><span>/, '个人风评五档不得再渲染为隐藏的静态条目');
+for (const label of ['敌对', '厌恶', '中立', '喜爱', '信任']) assert.match(reputationHtml, new RegExp(`>${label}<`), `个人风评必须显式显示五档好感度：${label}`);
 assert.doesNotMatch(reputationHtml, /today-trend-refresh-circle/, '个人风评内容区不得保留单项重新生成入口');
 assert.match(reputationMenuHtml, /today-trend-edit-circle[^>]*data-circle-id="judge"/, '展开个人风评模块操作后，每条风评必须出现编辑铅笔');
 const reputationEditorHtml = renderTodayTrendReputationView({ scope: valid.scopes.chat, editingCircleId: 'judge' });
@@ -288,10 +292,14 @@ const reputationSettingsHtml = renderTodayTrendReputationView({ scope: valid.sco
 assert.doesNotMatch(reputationSettingsHtml, /name="status"/, '个人风评设置不得暴露状态修改入口');
 const busyReputationHtml = renderTodayTrendReputationView({ scope: valid.scopes.chat, generationAvailable: true, generationBusy: true, menuOpenId: 'reputation-module' });
 assert.match(busyReputationHtml, /today-trend-generate-reputation"[^>]*disabled aria-busy="true"/, '忙碌时个人风评模块生成必须禁用并暴露忙碌状态');
+assert.match(busyReputationHtml, /today-trend-set-circle-status"[^>]*disabled/, '生成忙碌时个人风评状态按钮必须禁用');
 const busyReputationSettingsHtml = renderTodayTrendReputationView({ scope: valid.scopes.chat, mode: 'settings', generationAvailable: true, generationBusy: true, menuOpenId: 'reputation-settings' });
 assert.match(busyReputationSettingsHtml, /today-trend-regenerate-circle-schema"[^>]*disabled aria-busy="true"/, '忙碌时圈层结构重新生成必须禁用并暴露忙碌状态');
 assert.doesNotMatch(busyReputationSettingsHtml, /data-menu-id="circle:/, '风评设置不得重复渲染圈层省略号');
 assert.doesNotMatch(busyReputationSettingsHtml, /today-trend-regenerate-reputation-rule/, '个人风评设置不得重复提供模块规则动作');
+assert.match(todayTrendStyle, /pm-today-trend-reputation::after,\.pm-today-trend-factions::after,\.pm-today-trend-dynamics::after\{[^}]*mask-image:var\(--pm-today-trend-bg-top\),var\(--pm-today-trend-bg-bottom\)/, '个人风评背景必须临时隐藏中段重复图形');
+assert.match(todayTrendStyle, /pm-today-trend-reputation-meter button:focus-visible/, '个人风评状态按钮必须提供键盘焦点样式');
+assert.match(todayTrendStyle, /pm-today-trend-reputation-meter button:disabled/, '个人风评状态按钮必须提供禁用样式');
 const factionHtml = renderTodayTrendFactionView({ scope: valid.scopes.chat, preset: valid.presets.preset, generationAvailable: true, menuOpenId: 'faction-module' });
 assert.match(factionHtml, /红队/, '势力页必须渲染根势力');
 assert.match(factionHtml, /节目组/, '势力页必须递归渲染子势力');
@@ -720,6 +728,51 @@ assert.equal(dispatcher.state().editingRule, null, '取消规则编辑必须清�
 assert.ok(dispatcherRenders.length > 0, '规则动作必须触发重新渲染');
 assert.deepEqual(savedRules, [], '规则编辑打开前不得错误提交 Prompt');
 dispatcher.destroy();
+
+let statusStore = structuredClone(valid);
+let statusCommitCount = 0;
+const statusMessages = [];
+const statusErrors = [];
+const statusListeners = {};
+const statusDispatcher = createTodayTrendActionDispatcher({
+    container: { addEventListener: (type, listener) => { statusListeners[type] = listener; }, removeEventListener: () => {}, contains: () => true },
+    getStorageId: () => 'chat', getStore: async () => statusStore,
+    committer: { commitScope: async (storageId, mutate) => {
+        statusCommitCount += 1;
+        const scope = await mutate(structuredClone(statusStore.scopes[storageId]));
+        statusStore = { ...statusStore, scopes: { ...statusStore.scopes, [storageId]: scope } };
+        return statusStore;
+    } },
+    render: async () => {}, onStatus: message => statusMessages.push(message), onError: error => statusErrors.push(error),
+});
+const statusButton = dataset => { const button = { disabled: false, dataset: { action: 'today-trend-set-circle-status', ...dataset } }; button.closest = () => button; return button; };
+statusListeners.click({ target: statusButton({ circleId: 'judge', status: 'like' }) });
+await new Promise(resolve => setImmediate(resolve));
+assert.equal(statusStore.scopes.chat.reputation.circles.find(circle => circle.id === 'judge').status, 'like', '点击好感度按钮必须仅更新目标圈层状态');
+assert.equal(statusCommitCount, 1, '修改好感度必须走正式提交链');
+assert.deepEqual(statusMessages, ['个人风评好感度已更新。'], '好感度提交成功后必须报告状态');
+statusListeners.click({ target: statusButton({ circleId: 'judge', status: 'like' }) });
+await new Promise(resolve => setImmediate(resolve));
+assert.equal(statusCommitCount, 1, '点击当前好感度不得产生无意义提交');
+statusListeners.click({ target: statusButton({ circleId: 'judge', status: 'invalid' }) });
+statusListeners.click({ target: statusButton({ circleId: 'missing', status: 'trust' }) });
+await new Promise(resolve => setImmediate(resolve));
+assert.equal(statusErrors.length, 2, '非法状态或缺失圈层必须进入错误路径');
+statusDispatcher.destroy();
+const failedStatusErrors = [];
+const failedStatusMessages = [];
+const failedStatusListeners = {};
+const failedStatusDispatcher = createTodayTrendActionDispatcher({
+    container: { addEventListener: (type, listener) => { failedStatusListeners[type] = listener; }, removeEventListener: () => {}, contains: () => true },
+    getStorageId: () => 'chat', getStore: async () => valid,
+    committer: { commitScope: async () => { throw new Error('status write blocked'); } }, render: async () => {},
+    onStatus: message => failedStatusMessages.push(message), onError: error => failedStatusErrors.push(error),
+});
+failedStatusListeners.click({ target: statusButton({ circleId: 'judge', status: 'like' }) });
+await new Promise(resolve => setImmediate(resolve));
+assert.equal(failedStatusMessages.length, 0, '好感度保存失败不得报告成功');
+assert.match(failedStatusErrors[0]?.message || '', /status write blocked/, '好感度保存失败必须进入错误路径');
+failedStatusDispatcher.destroy();
 
 
 const multiWorldScope = structuredClone(valid.scopes.chat);

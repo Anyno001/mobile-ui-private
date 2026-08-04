@@ -21092,6 +21092,23 @@ ${targetInstruction}`
       }
       if (action === "today-trend-delete-circle") return run(commit((scope) => ({ ...scope, reputation: { ...scope.reputation, circles: scope.reputation.circles.filter((item) => item.id !== button.dataset.circleId) } })).then(() => onStatus("\u98CE\u8BC4\u5708\u5C42\u5DF2\u5220\u9664\u3002")));
       if (action === "today-trend-delete-faction") return run(commit((scope) => ({ ...scope, factions: scope.factions.filter((item) => item.id !== button.dataset.factionId).map((item) => ({ ...item, parentId: item.parentId === button.dataset.factionId ? null : item.parentId, relatedFactionIds: item.relatedFactionIds.filter((id2) => id2 !== button.dataset.factionId) })) })).then(() => onStatus("\u52BF\u529B\u56FE\u8C31\u5DF2\u5220\u9664\u3002")));
+      if (action === "today-trend-set-circle-status") {
+        const circleId = String(button.dataset.circleId || "");
+        const status = String(button.dataset.status || "");
+        if (!TODAY_TREND_RELATION_STATUSES.includes(status)) return run(Promise.reject(new Error("\u4E2A\u4EBA\u98CE\u8BC4\u72B6\u6001\u65E0\u6548")));
+        return run((async () => {
+          const storageId = String(getStorageId2() || "").trim();
+          const current = await getStore();
+          const circle = current?.scopes?.[storageId]?.reputation?.circles?.find((item) => item.id === circleId);
+          if (!circle) throw new Error("\u4E2A\u4EBA\u98CE\u8BC4\u5708\u5C42\u4E0D\u5B58\u5728");
+          if (circle.status === status) return;
+          await commit((scope) => ({
+            ...scope,
+            reputation: { ...scope.reputation, circles: scope.reputation.circles.map((item) => item.id === circleId ? { ...item, status } : item) }
+          }));
+          onStatus("\u4E2A\u4EBA\u98CE\u8BC4\u597D\u611F\u5EA6\u5DF2\u66F4\u65B0\u3002");
+        })());
+      }
       if (action === "today-trend-regenerate-circle-schema") return run(onRefresh?.("reputation", button.dataset.circleId, { mode: "schema" }) ?? Promise.reject(new Error("\u4ECA\u65E5\u98CE\u5411\u5708\u5C42\u7ED3\u6784\u91CD\u65B0\u751F\u6210\u80FD\u529B\u5C1A\u672A\u63A5\u5165")));
       const generation = { "today-trend-generate-world": ["world"], "today-trend-generate-reputation": ["reputation"], "today-trend-generate-factions": ["faction"] }[action];
       if (generation) return run(onGenerate?.(...generation) ?? Promise.reject(new Error("\u4ECA\u65E5\u98CE\u5411\u751F\u6210\u80FD\u529B\u5C1A\u672A\u63A5\u5165")));
@@ -21325,12 +21342,13 @@ ${targetInstruction}`
 
   // src/today-trend-reputation-view.js
   var REPUTATION_LEVELS = Object.freeze(["hostile", "dislike", "neutral", "like", "trust"]);
-  var statusBadge = (status) => `<span class="pm-today-trend-status" data-status="${escapeAttr(status)}">${escapeHtml(todayTrendStatusLabel(status))}</span>`;
+  var reputationStatusLabel = (status) => status === "like" ? "\u559C\u7231" : todayTrendStatusLabel(status);
+  var statusBadge = (status) => `<span class="pm-today-trend-status" data-status="${escapeAttr(status)}">${escapeHtml(reputationStatusLabel(status))}</span>`;
   var reportNumber = (index) => String(index + 1).padStart(2, "0");
-  function reputationMeter(status) {
-    const label = todayTrendStatusLabel(status);
-    const levels = REPUTATION_LEVELS.map((level) => `<li class="${level === status ? "is-active" : ""}" data-status="${level}" aria-hidden="true"><i></i><span>${escapeHtml(todayTrendStatusLabel(level))}</span></li>`).join("");
-    return `<ol class="pm-today-trend-reputation-meter" aria-label="\u5F53\u524D\u597D\u611F\u5EA6\uFF1A${escapeAttr(label)}">${levels}</ol>`;
+  function reputationMeter(circle, disabled) {
+    const label = reputationStatusLabel(circle.status);
+    const levels = REPUTATION_LEVELS.map((level) => `<button type="button" class="${level === circle.status ? "is-active" : ""}" data-action="today-trend-set-circle-status" data-circle-id="${escapeAttr(circle.id)}" data-status="${level}" aria-checked="${level === circle.status}" role="radio"${disabled ? " disabled" : ""}><i aria-hidden="true"></i><span>${escapeHtml(reputationStatusLabel(level))}</span></button>`).join("");
+    return `<div class="pm-today-trend-reputation-meter" role="radiogroup" aria-label="\u4FEE\u6539${escapeAttr(circle.name)}\u7684\u597D\u611F\u5EA6\uFF0C\u5F53\u524D\uFF1A${escapeAttr(label)}">${levels}</div>`;
   }
   function circleEditor(circle = {}, cancelAction = "today-trend-cancel-editor") {
     return `<form class="pm-today-trend-editor" data-today-trend-form="circle"><input type="hidden" name="id" value="${escapeAttr(circle.id || "")}"><label class="pm-today-trend-field">\u5708\u5C42\u540D\u79F0<input class="pm-today-trend-input" name="name" maxlength="120" required value="${escapeAttr(circle.name || "")}"></label><label class="pm-today-trend-field">\u8303\u56F4<textarea class="pm-today-trend-input" name="scope" maxlength="600" required>${escapeHtml(circle.scope || "")}</textarea></label><label class="pm-today-trend-field">\u98CE\u8BC4<textarea class="pm-today-trend-input" name="evaluation" maxlength="600" required>${escapeHtml(circle.evaluation || "")}</textarea></label><div class="pm-today-trend-form-actions"><button type="submit">\u4FDD\u5B58</button><button type="button" data-action="${escapeAttr(cancelAction)}">\u53D6\u6D88</button></div></form>`;
@@ -21354,7 +21372,7 @@ ${targetInstruction}`
     const cautiousCount = circles.length - favorableCount;
     const reportMeta = circles.length ? `${circles.length} \u4E2A\u89C2\u5BDF\u5708\u5C42\uFF5C${favorableCount} \u4E2A\u6B63\u5411\u3001${cautiousCount} \u4E2A\u8C28\u614E\u6216\u4E2D\u6027` : "\u7B49\u5F85\u5EFA\u7ACB\u89C2\u5BDF\u5708\u5C42";
     const actionsVisible = menuOpenId === "reputation-module";
-    const rows = circles.map((circle, index) => editingCircleId === circle.id ? `<article class="pm-today-trend-reputation-entry is-editing" data-circle-id="${escapeAttr(circle.id)}">${circleEditor(circle, "today-trend-cancel-reputation-editor")}</article>` : `<article class="pm-today-trend-reputation-entry" data-circle-id="${escapeAttr(circle.id)}"><span class="pm-today-trend-reputation-index" aria-hidden="true">${reportNumber(index)}</span><div class="pm-today-trend-reputation-copy"><header><b>${escapeHtml(circle.name)}</b>${statusBadge(circle.status)}${trendInlineActions({ visible: actionsVisible, actions: [{ action: "today-trend-edit-circle", icon: EDIT_ICON_SVG, label: `\u7F16\u8F91${circle.name}`, attrs: `data-circle-id="${escapeAttr(circle.id)}"` }] })}</header><p>${escapeHtml(circle.evaluation)}</p></div>${reputationMeter(circle.status)}</article>`).join("");
+    const rows = circles.map((circle, index) => editingCircleId === circle.id ? `<article class="pm-today-trend-reputation-entry is-editing" data-circle-id="${escapeAttr(circle.id)}">${circleEditor(circle, "today-trend-cancel-reputation-editor")}</article>` : `<article class="pm-today-trend-reputation-entry" data-circle-id="${escapeAttr(circle.id)}"><span class="pm-today-trend-reputation-index" aria-hidden="true">${reportNumber(index)}</span><div class="pm-today-trend-reputation-copy"><header><b>${escapeHtml(circle.name)}</b>${statusBadge(circle.status)}${trendInlineActions({ visible: actionsVisible, actions: [{ action: "today-trend-edit-circle", icon: EDIT_ICON_SVG, label: `\u7F16\u8F91${circle.name}`, attrs: `data-circle-id="${escapeAttr(circle.id)}"` }] })}</header><p>${escapeHtml(circle.evaluation)}</p></div>${reputationMeter(circle, generationBusy)}</article>`).join("");
     const editor2 = editingRule === "reputation" ? trendRuleEditor({ rule: editingRule, value: ruleDraft ?? preset?.moduleRules?.reputation ?? "" }) : "";
     return `<section class="pm-today-trend-view pm-today-trend-reputation">${trendModuleHead({ title: "\u4E2A\u4EBA\u98CE\u8BC4", menuId: "reputation-module", menuOpenId, actions: [{ action: "today-trend-generate-reputation", icon: REFRESH_ICON_SVG, label: "\u91CD\u65B0\u751F\u6210\u4E2A\u4EBA\u98CE\u8BC4", attrs: generateAttrs }, { action: "today-trend-edit-reputation-rule", icon: BOOK_ICON_SVG, label: "\u7F16\u8F91\u4E2A\u4EBA\u98CE\u8BC4 Prompt" }] })}<div class="pm-today-trend-report-intro"><p class="pm-today-trend-kicker">PUBLIC OPINION</p><p class="pm-today-trend-report-meta">${escapeHtml(reportMeta)}</p></div>${editor2}<div class="pm-today-trend-reputation-list">${rows || '<p class="pm-today-trend-empty">\u5C1A\u672A\u751F\u6210\u4E2A\u4EBA\u98CE\u8BC4\u3002</p>'}</div>${generationBusy ? '<span class="pm-today-trend-progress">\u6B63\u5728\u751F\u6210\u2026</span>' : ""}</section>`;
   }

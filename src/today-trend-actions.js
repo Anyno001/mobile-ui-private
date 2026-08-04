@@ -1,4 +1,4 @@
-import { advanceTodayTrendEvent, archiveTodayTrendEvent, promoteTodayTrendUnderground, settleTodayTrendRumor } from './today-trend-model.js';
+import { advanceTodayTrendEvent, archiveTodayTrendEvent, promoteTodayTrendUnderground, settleTodayTrendRumor, TODAY_TREND_RELATION_STATUSES } from './today-trend-model.js';
 
 const newId = prefix => `${prefix}-${globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`}`;
 const replaceOrAppend = (records, record) => records.some(item => item.id === record.id) ? records.map(item => item.id === record.id ? record : item) : [...records, record];
@@ -111,6 +111,23 @@ export function createTodayTrendActionDispatcher({
         if (action === 'today-trend-archive-event') { view.name = 'dynamics'; view.editingEventId = `archive:${button.dataset.eventId || ''}`; return run(rerender()); }
         if (action === 'today-trend-delete-circle') return run(commit(scope => ({ ...scope, reputation: { ...scope.reputation, circles: scope.reputation.circles.filter(item => item.id !== button.dataset.circleId) } })).then(() => onStatus('风评圈层已删除。')));
         if (action === 'today-trend-delete-faction') return run(commit(scope => ({ ...scope, factions: scope.factions.filter(item => item.id !== button.dataset.factionId).map(item => ({ ...item, parentId: item.parentId === button.dataset.factionId ? null : item.parentId, relatedFactionIds: item.relatedFactionIds.filter(id => id !== button.dataset.factionId) })) })).then(() => onStatus('势力图谱已删除。')));
+        if (action === 'today-trend-set-circle-status') {
+            const circleId = String(button.dataset.circleId || '');
+            const status = String(button.dataset.status || '');
+            if (!TODAY_TREND_RELATION_STATUSES.includes(status)) return run(Promise.reject(new Error('个人风评状态无效')));
+            return run((async () => {
+                const storageId = String(getStorageId() || '').trim();
+                const current = await getStore();
+                const circle = current?.scopes?.[storageId]?.reputation?.circles?.find(item => item.id === circleId);
+                if (!circle) throw new Error('个人风评圈层不存在');
+                if (circle.status === status) return;
+                await commit(scope => ({
+                    ...scope,
+                    reputation: { ...scope.reputation, circles: scope.reputation.circles.map(item => item.id === circleId ? { ...item, status } : item) },
+                }));
+                onStatus('个人风评好感度已更新。');
+            })());
+        }
         if (action === 'today-trend-regenerate-circle-schema') return run(onRefresh?.('reputation', button.dataset.circleId, { mode: 'schema' }) ?? Promise.reject(new Error('今日风向圈层结构重新生成能力尚未接入')));
         const generation = { 'today-trend-generate-world': ['world'], 'today-trend-generate-reputation': ['reputation'], 'today-trend-generate-factions': ['faction'] }[action];
         if (generation) return run(onGenerate?.(...generation) ?? Promise.reject(new Error('今日风向生成能力尚未接入')));
