@@ -211,15 +211,31 @@ phoneController.destroy();
 assert.equal(controllerCancelReason, 'today-trend-page-destroyed', '销毁控制器必须取消初始化任务');
 assert.equal(controllerListeners.length, 0, '销毁控制器必须解绑所有事件代理');
 const firstUseHtml = renderTodayTrendApp({ presets: [{ id: 'preset', name: '综艺世界' }], worldBooks: ['厨房设定'] });
+assert.match(firstUseHtml, /class="pm-today-trend-init-intro"[^>]*>[\s\S]*?<h3 id="pm-today-trend-init-title" class="pm-today-trend-init-title">创建当前角色的今日风向<\/h3>/, '首次使用必须提供明确的介绍区与三级页面标题');
+assert.match(firstUseHtml, /aria-labelledby="pm-today-trend-init-title"/, '初始化页面必须关联可访问标题');
+assert.match(firstUseHtml, /class="pm-today-trend-init-section pm-today-trend-bind-section"/, '已有预设必须形成独立快捷绑定分区');
+assert.match(firstUseHtml, /<h4 id="pm-today-trend-bind-title"[^>]*>复用已有预设<\/h4>/, '快捷绑定分区必须提供四级标题');
 assert.match(firstUseHtml, /data-today-trend-form="initialize"/, '首次使用必须提供初始化表单');
-assert.match(firstUseHtml, /name="worldBookNames"/, '初始化必须要求选择世界书');
 assert.match(firstUseHtml, /data-today-trend-form="bind-preset"/, '已有预设必须可直接绑定当前聊天');
+assert.match(firstUseHtml, /<button class="pm-today-trend-primary-action" type="submit">绑定并开始<\/button>/, '已有预设快捷区必须保留绑定并开始按钮');
+for (const name of ['presetId', 'presetName', 'worldBookNames', 'includeExistingChat', 'userRequirements']) {
+    assert.match(firstUseHtml, new RegExp(`name="${name}"`), `初始化页面必须保留 ${name} 字段`);
+}
+const emptyWorldBooksHtml = renderTodayTrendApp({ worldBooks: [] });
+assert.match(emptyWorldBooksHtml, /class="pm-today-trend-empty-state" role="status">当前聊天没有可用世界书，无法初始化。<\/p>/, '无世界书时必须显示明确空状态');
+assert.match(emptyWorldBooksHtml, /class="pm-today-trend-primary-action" type="submit" disabled aria-busy="false">生成<\/button>/, '无世界书时生成按钮必须保持禁用');
+const initializingHtml = renderTodayTrendApp({ worldBooks: ['厨房设定'], initializing: true,
+    initializationDraft: { presetName: '处理中', worldBookNames: ['厨房设定'], includeExistingChat: true, userRequirements: '保留草稿' } });
+assert.match(initializingHtml, /class="pm-today-trend-primary-action" type="submit" disabled aria-busy="true">正在初始化今日风向<\/button>/, '初始化中按钮必须禁用并暴露忙碌状态');
+assert.match(initializingHtml, /value="处理中"/, '初始化中必须保持表单草稿可见');
+assert.match(initializingHtml, /class="pm-today-trend-init-feedback pm-today-trend-loading" role="status" aria-live="polite">正在初始化今日风向/, '初始化中必须提供稳定的状态反馈');
 const failedInitializationHtml = renderTodayTrendApp({ presets: [{ id: 'preset', name: '综艺世界' }], worldBooks: ['厨房设定', '节目规则'], error: '初始化失败',
     initializationDraft: { presetName: '晚间赛制', worldBookNames: ['节目规则'], includeExistingChat: false, userRequirements: '保留淘汰规则' } });
 assert.match(failedInitializationHtml, /value="晚间赛制"/, '初始化失败后必须保留预设名称草稿');
 assert.match(failedInitializationHtml, /value="节目规则" checked/, '初始化失败后必须保留世界书选择');
 assert.doesNotMatch(failedInitializationHtml, /name="includeExistingChat" type="checkbox" checked/, '初始化失败后必须保留正文开关');
 assert.match(failedInitializationHtml, /保留淘汰规则/, '初始化失败后必须保留追加要求');
+assert.match(failedInitializationHtml, /class="pm-today-trend-init-feedback pm-today-trend-error" role="alert">初始化失败<\/p>/, '初始化错误必须保留 alert 语义并位于反馈区');
 const appHtml = renderTodayTrendApp({ scope: valid.scopes.chat, presets: Object.values(valid.presets), generation: { phase: 'idle' } });
 for (const label of ['世界态势', '个人风评', '势力图谱', '事件追踪']) assert.match(appHtml, new RegExp(label), `主页面必须装配${label}`);
 assert.match(appHtml, /today-trend-open-settings/, '主页面必须提供 APP 总设置入口');
@@ -227,6 +243,16 @@ assert.match(appHtml, /today-trend-toggle-operation[\s\S]*aria-pressed="true"/, 
 const reinitializeHtml = renderTodayTrendApp({ scope: valid.scopes.chat, presets: Object.values(valid.presets), worldBooks: ['厨房设定'], initializationOpen: true, reinitializing: true });
 assert.match(reinitializeHtml, /重新初始化当前今日风向/, '重新初始化必须复用两步初始化表单');
 assert.match(reinitializeHtml, /today-trend-cancel-initialize/, '重新初始化必须允许安全取消');
+assert.doesNotMatch(reinitializeHtml, /data-today-trend-form="bind-preset"/, '重新初始化不得混入快捷绑定表单');
+assert.match(reinitializeHtml, /class="pm-today-trend-secondary-action" type="button" data-action="today-trend-cancel-initialize">取消<\/button>/, '重新初始化取消必须保持次操作语义');
+assert.match(todayTrendStyle, /pm-today-trend-first-use \.pm-today-trend-init-actions button,\.pm-today-trend-first-use \.pm-today-trend-bind-form>button\{[^}]*width:100%[^}]*min-height:var\(--pm-size-control-default\)[^}]*place-items:center[^}]*text-align:center/, '初始化页主按钮必须全宽、使用默认控件高度并居中文本');
+assert.match(todayTrendStyle, /pm-today-trend-first-use \.pm-today-trend-primary-action\{[^}]*background:var\(--pm-color-accent\)[^}]*color:var\(--pm-color-on-accent\)/, '初始化页主按钮必须使用 accent 与 on-accent 语义色');
+assert.match(todayTrendStyle, /pm-today-trend-first-use \.pm-today-trend-secondary-action\{[^}]*background:var\(--pm-color-surface-control\)[^}]*color:var\(--pm-color-text-primary\)/, '重新初始化取消按钮不得获得主操作视觉权重');
+assert.match(todayTrendStyle, /pm-today-trend-first-use \.pm-today-trend-init-actions\{flex-direction:column;flex-wrap:nowrap\}/, '初始化操作区必须上下排列按钮');
+const initializationActionRule = todayTrendStyle.match(/\.pm-today-trend-first-use \.pm-today-trend-init-actions\{[^}]*\}/)?.[0] || '';
+assert.doesNotMatch(initializationActionRule, /position:(?:absolute|fixed)|bottom:/, '初始化操作区必须保持正常文档流');
+assert.match(todayTrendStyle, /pm-today-trend-first-use \.pm-today-trend-book-option span\{[^}]*overflow-wrap:anywhere/, '长世界书名称必须安全换行');
+assert.match(todayTrendStyle, /@media\(max-width:320px\)\{\.pm-today-trend-first-use/, '初始化页面必须提供 320px 窄屏规则');
 const appSettingsHtml = renderTodayTrendSettingsView({ scope: valid.scopes.chat, presets: Object.values(valid.presets) });
 for (const name of ['presetId', 'mode', 'intervalFloors', 'injectionEnabled']) assert.match(appSettingsHtml, new RegExp(`name="${name}"`), `APP 总设置必须提供 ${name}`);
 for (const action of ['today-trend-new-preset', 'today-trend-reinitialize', 'today-trend-delete-preset']) assert.match(appSettingsHtml, new RegExp(action), `APP 总设置必须提供 ${action}`);
