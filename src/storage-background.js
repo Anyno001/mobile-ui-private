@@ -1,5 +1,5 @@
 import { IDB_MARKER } from './constants.js';
-import { DESKTOP_BG_KEY, isBigData, pmIDBDel, pmIDBGet, pmIDBSet } from './storage.js';
+import { DESKTOP_BG_KEY, isBigData, pmIDBDel, pmIDBGet, pmIDBSet } from './storage-primitives.js';
 import { enqueueDirectorySave } from './directory-save-coordinator.js';
 
 const GLOBAL_BG_KEY = 'ST_SMS_BG_GLOBAL';

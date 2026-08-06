@@ -108,9 +108,9 @@ export function renderLookSettings({ theme, presetButtons, desktopBackgroundButt
       <div class="pm-settings-section">
         <div class="pm-cfg-label">气泡颜色</div>
         <div class="pm-settings-inline-row">
-          <label class="pm-cfg-label" style="margin:0;">自定义右</label>
+          <label class="pm-cfg-label pm-inline-label">自定义右</label>
           <input id="pm-custom-right" type="color" value="${rightColor}" onchange="window.__pmSetCustomColor()" class="pm-color-pick">
-          <label class="pm-cfg-label" style="margin:0;">自定义左</label>
+          <label class="pm-cfg-label pm-inline-label">自定义左</label>
           <input id="pm-custom-left" type="color" value="${leftColor}" onchange="window.__pmSetCustomColor()" class="pm-color-pick">
           <button type="button" onclick="window.__pmClearCustomColor()" class="pm-color-clear">重置</button>
         </div>
@@ -215,7 +215,7 @@ export function renderBackupSettings() {
       <div class="pm-settings-section">
         <div class="pm-cfg-label is-danger">应用内安全清理</div>
         <div class="pm-cfg-tip">仅删除天音小笺拥有的数据，不触碰宿主或其他扩展。建议先导出备份。</div>
-        <button type="button" class="pm-action-button is-danger" onclick="window.__pmClearAllData()" style="width:100%">清理全部天音小笺数据</button>
+        <button type="button" class="pm-action-button is-danger is-full" onclick="window.__pmClearAllData()">清理全部天音小笺数据</button>
       </div>
       <div class="pm-settings-tail"></div>
     </div>`;
@@ -223,7 +223,7 @@ export function renderBackupSettings() {
 
 export function renderSettingsModal({ title, content, footer = '', showBack = true, backAction = "window.__pmShowConfig('home')", backLabel = '返回设置' }) {
     return `
-<div class="pm-modal pm-modal-wide" style="height: 560px;">
+<div class="pm-modal pm-modal-wide pm-settings-modal">
   <div class="pm-modal-header"><span>${showBack ? `<button type="button" onclick="${escapeAttr(backAction)}" class="pm-modal-close" title="${escapeAttr(backLabel)}" aria-label="${escapeAttr(backLabel)}">${BACK_ICON_SVG}</button>` : ''}</span><b>${title}</b><button type="button" onclick="window.__pmCloseOverlay()" class="pm-modal-close" title="关闭" aria-label="关闭">${CLOSE_ICON_SVG}</button></div>
   <div class="pm-modal-scroll">${content}</div>
   ${footer}

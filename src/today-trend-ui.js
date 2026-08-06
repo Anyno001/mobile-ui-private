@@ -21,8 +21,8 @@ export function trendInlineActions({ visible = false, actions = [] } = {}) {
     return `<span class="pm-today-trend-inline-actions">${actions.map(action => trendIconButton({ ...action, className: `pm-today-trend-inline-action${action.className ? ` ${action.className}` : ''}` })).join('')}</span>`;
 }
 
-export function trendModuleHead({ title, menuId, menuOpenId, actions = [], meta = '', adornment = '' }) {
-    return `<header class="pm-today-trend-module-head"><div><h2>${escapeHtml(title)}${adornment}</h2>${meta ? `<span>${escapeHtml(meta)}</span>` : ''}</div>${trendActionMenu({ id: menuId, open: menuOpenId === menuId, label: `${title}操作`, actions })}</header>`;
+export function trendModuleHead({ title, menuId, menuOpenId, actions = [], meta = '', eyebrow = '', adornment = '' }) {
+    return `<header class="pm-today-trend-module-head${eyebrow ? ' is-decorative' : ''}"><div>${eyebrow ? `<p class="pm-today-trend-module-eyebrow">${escapeHtml(eyebrow)}</p>` : ''}<h2>${escapeHtml(title)}${adornment}</h2>${meta ? `<span>${escapeHtml(meta)}</span>` : ''}</div>${trendActionMenu({ id: menuId, open: menuOpenId === menuId, label: `${title}操作`, actions })}</header>`;
 }
 
 export function trendRuleEditor({ rule, value = '' } = {}) {

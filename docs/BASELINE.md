@@ -12,6 +12,19 @@
 - 全局入口：`window.__pmOpen`
 - 启动日志包含：`[phone-mode] v9.5.7`
 
+## 安装顺序与全局桥
+
+- 安装顺序固定为：`installPhoneFoundation → installConversation → installEmojiUi → installInteractiveScenes → installCalendar → installSettingsUi → installPhoneChat → installPhoneContextInjection → installPhoneControlCenter → installPhoneDirectory → installContactGenerator → installPhoneChatPoke → installPhoneLifecycle → installDiagnosticApi → installTodayTrend → installTodayTrendPhoneUi`
+- `main.js` 只能作为组合根，不得定义 `window.__pm*`。
+- `window.__pmHistories`、`window.__pmConfig`、`window.__pmTheme`、`window.__pmInjectionConfig`、`window.__pmBudgetConfig` 在 foundation 安装时初始化；初始化必须保留既有运行时值，并由各自存储边界随后加载或规范化。
+- `window.__pmBeforeUnloadRegistered` 与 `window.__pmPageSuspensionHandler` 归 foundation 的页面挂起监听管理；前者保证监听器只注册一次，后者允许热重载时替换为当前依赖。
+- 模板直接调用的 `window.__pm*` API 必须有单一源码 owner，并由 `check:contracts` 校验其存在性和归属。
+
+## 构建体积基线
+
+- 基线 bundle：`index.js` 为 `1240219` bytes；静态合同允许的上限为 `1488263` bytes（基线的 120%，向下取整）。
+- 此上限只用于阻止无审查的体积跃升，不替代真实宿主中的首开、首渲染和交互性能测量。调整上限必须同时说明增长来源、宿主回归结果和新的基线值。
+
 ## 持久化契约
 
 - IndexedDB 数据库：`PhoneModeDB`

@@ -12,18 +12,18 @@ import { cleanResponse, splitToSentences } from './prompts.js';
 import { escapeAttr, escapeHtml, safeJS } from './ui.js';
 import { getAutoPokeConfig, resetAutoPokeCounter } from './auto-poke-config.js';
 import { BACK_ICON_SVG, CLOSE_ICON_SVG } from './icons.js';
-import {
-    getEmojiPrompt, getWordyPrompt, parseGroupResponse,
-} from './messaging.js';
+import { parseGroupResponse } from './messaging-group-parser.js';
+import { getEmojiPrompt, getWordyPrompt } from './messaging.js';
 import {
     saveCharacterBehavior, saveHistories, saveHistoriesStrict, savePokeConfig,
 } from './storage.js';
 import { commitAutomaticResult } from './runtime.js';
 import {
-    buildUserBlock, buildHistoryText, buildPokeSystemPrompt,
-    buildPokeGroupPrompt, buildPokeSinglePrompt,
-    buildPokeGroupActivePrompt,
+    buildHistoryText, buildPokeRequest,
 } from './chat-prompts.js';
+import {
+    replaceConversationHistory, restoreConversationHistory,
+} from './conversation-persistence.js';
 
 export function installPhoneChatPoke(state, deps) {
     const {
@@ -69,25 +69,10 @@ export function installPhoneChatPoke(state, deps) {
         });
         if (!isAutomaticRequestActive()) return false;
         const { cardDesc, cardPersonality, cardScenario, cardMesExample, mainChatText, worldBookText, userName, userDesc } = ctxData;
-        const userBlock = buildUserBlock(userName, userDesc);
 
         let targetHistory = (window.__pmHistories[id]?.[contactName] || []).slice();
         const smsHistoryText = buildHistoryText(targetHistory, CONTEXT_LIMIT, userName, isGroup ? null : contactName);
-
-        const systemPrompt = buildPokeSystemPrompt(isGroup, contactName, userName);
-        const basePrompt = isGroup
-            ? buildPokeGroupPrompt({
-                groupName: groupMeta.name,
-                memberList: groupMembers.join('、'),
-                userName, userBlock, cardDesc, cardPersonality,
-                cardScenario, worldBookText, mainChatText, smsHistoryText,
-                randomNpcEnabled: groupMeta.randomNpcEnabled, groupNature: groupMeta.groupNature, randomNpcPrompt: groupMeta.randomNpcPrompt,
-              })
-            : buildPokeSinglePrompt({
-                contactName, userName, userBlock, cardDesc, cardPersonality,
-                cardScenario, cardMesExample, worldBookText, mainChatText, smsHistoryText,
-              });
-        const userPrompt = basePrompt + buildChatPreferencePrompt({
+        const preferencePrompt = buildChatPreferencePrompt({
             store: window.__pmCharacterBehavior,
             storageId: id,
             names: isGroup ? groupMembers : contactName,
@@ -96,7 +81,14 @@ export function installPhoneChatPoke(state, deps) {
             wordyPrompt: getWordyPrompt(window.__pmWordyLimit),
         });
 
-            const raw = await callAI(systemPrompt, userPrompt, { signal: task.signal });
+            const aiRequest = buildPokeRequest({
+                isGroup, contactName, groupName: groupMeta?.name, groupMembers,
+                groupRandomNpcEnabled: groupMeta?.randomNpcEnabled, groupNature: groupMeta?.groupNature,
+                groupRandomNpcPrompt: groupMeta?.randomNpcPrompt, userName, userDesc, cardDesc,
+                cardPersonality, cardScenario, cardMesExample, worldBookText, mainChatText, smsHistoryText,
+                preferencePrompt, signal: task.signal,
+            });
+            const raw = await callAI(aiRequest.systemPrompt, aiRequest.userPrompt, aiRequest.options);
             if (!isAutomaticRequestActive()) return false;
             let renderBlocks = [];
             let renderSentences = [];
@@ -131,12 +123,10 @@ export function installPhoneChatPoke(state, deps) {
             const committed = await commitAutomaticResult({
                 isActive: isAutomaticRequestActive,
                 applyHistory: () => {
-                    if (!window.__pmHistories[id]) window.__pmHistories[id] = {};
-                    window.__pmHistories[id][contactName] = historyWindow.history;
+                    replaceConversationHistory(id, contactName, historyWindow.history);
                 },
                 restoreHistory: () => {
-                    if (previousHistory === undefined) delete window.__pmHistories[id][contactName];
-                    else window.__pmHistories[id][contactName] = previousHistory;
+                    restoreConversationHistory(id, contactName, previousHistory);
                 },
                 persistHistory: () => saveHistoriesStrict(),
                 applyCounter: () => { autoPoke.counter = 0; },
@@ -377,24 +367,9 @@ export function installPhoneChatPoke(state, deps) {
         if (!isGenerationTaskActive(task)) return;
         const { cardDesc, cardPersonality, cardScenario, cardMesExample, mainChatText, worldBookText, userName, userDesc } = ctxData;
 
-        const userBlock = buildUserBlock(userName, userDesc);
         const smsHistoryText = buildHistoryText(targetHistory, CONTEXT_LIMIT, userName, isGroup ? null : contactName);
-
-        const systemPrompt = buildPokeSystemPrompt(isGroup, contactName, userName);
-
         const targetContactKey = saveKey;
-        const basePrompt = isGroup
-            ? buildPokeGroupPrompt({
-                groupName: groupDisplayName || '群聊', memberList: groupMembers.join('、'),
-                userName, userBlock, cardDesc, cardPersonality, cardScenario,
-                worldBookText, mainChatText, smsHistoryText,
-                randomNpcEnabled: groupRandomNpcEnabled, groupNature, randomNpcPrompt: groupRandomNpcPrompt,
-              })
-            : buildPokeSinglePrompt({
-                contactName, userName, userBlock, cardDesc, cardPersonality,
-                cardScenario, cardMesExample, worldBookText, mainChatText, smsHistoryText,
-              });
-        const userPrompt = basePrompt + buildChatPreferencePrompt({
+        const preferencePrompt = buildChatPreferencePrompt({
             store: window.__pmCharacterBehavior,
             storageId,
             names: isGroup ? groupMembers : contactName,
@@ -403,7 +378,13 @@ export function installPhoneChatPoke(state, deps) {
             wordyPrompt: getWordyPrompt(window.__pmWordyLimit),
         });
 
-            const raw = await callAI(systemPrompt, userPrompt, { signal: task.signal });
+            const aiRequest = buildPokeRequest({
+                isGroup, contactName, groupName: groupDisplayName || '群聊', groupMembers,
+                groupRandomNpcEnabled, groupNature, groupRandomNpcPrompt, userName, userDesc, cardDesc,
+                cardPersonality, cardScenario, cardMesExample, worldBookText, mainChatText, smsHistoryText,
+                preferencePrompt, signal: task.signal,
+            });
+            const raw = await callAI(aiRequest.systemPrompt, aiRequest.userPrompt, aiRequest.options);
             if (!isGenerationTaskActive(task)) return;
             let historyUpdated = false;
 
@@ -469,9 +450,9 @@ export function installPhoneChatPoke(state, deps) {
             }
 
             if (historyUpdated) {
-                if (!window.__pmHistories[storageId]) window.__pmHistories[storageId] = {};
-                window.__pmHistories[storageId][saveKey] = createHistoryWindow(targetHistory, SAVE_LIMIT).history;
-                if (isStillTarget()) state.conversationHistory = window.__pmHistories[storageId][saveKey];
+                const historyWindow = createHistoryWindow(targetHistory, SAVE_LIMIT);
+                const committedHistory = replaceConversationHistory(storageId, saveKey, historyWindow.history);
+                if (isStillTarget() && committedHistory) state.conversationHistory = committedHistory.history;
                 saveHistories();
                 if (isGenerationTaskActive(task)) applyBidirectionalInjection();
             }
@@ -535,26 +516,23 @@ export function installPhoneChatPoke(state, deps) {
         if (!isGenerationTaskActive(task)) return;
         const { cardDesc, cardPersonality, cardScenario, mainChatText, worldBookText, userName, userDesc } = ctxData;
 
-        const userBlock = buildUserBlock(userName, userDesc);
         const smsHistoryText = buildHistoryText(targetHistory, CONTEXT_LIMIT, userName, null);
+        const preferencePrompt = buildChatPreferencePrompt({
+            store: window.__pmCharacterBehavior,
+            storageId,
+            names: groupMembers,
+            isGroup: true,
+            emojiPrompt: getEmojiPrompt(saveKey, storageId, window.__pmPokeConfig, window.__pmEmojis),
+            wordyPrompt: getWordyPrompt(window.__pmWordyLimit),
+        });
 
-        const systemPrompt = buildPokeSystemPrompt(true, saveKey, userName);
-        const userPrompt = buildPokeGroupActivePrompt({
-            groupDisplayName, memberList: groupMembers.join('、'),
-            userName, userBlock, cardDesc, cardPersonality, cardScenario,
-            worldBookText, mainChatText, smsHistoryText,
-            randomNpcEnabled: groupRandomNpcEnabled, groupNature, randomNpcPrompt: groupRandomNpcPrompt,
-        })
-            + buildChatPreferencePrompt({
-                store: window.__pmCharacterBehavior,
-                storageId,
-                names: groupMembers,
-                isGroup: true,
-                emojiPrompt: getEmojiPrompt(saveKey, storageId, window.__pmPokeConfig, window.__pmEmojis),
-                wordyPrompt: getWordyPrompt(window.__pmWordyLimit),
+            const aiRequest = buildPokeRequest({
+                activeGroup: true, isGroup: true, contactName: saveKey, groupDisplayName, groupMembers,
+                groupRandomNpcEnabled, groupNature, groupRandomNpcPrompt, userName, userDesc, cardDesc,
+                cardPersonality, cardScenario, worldBookText, mainChatText, smsHistoryText,
+                preferencePrompt, signal: task.signal,
             });
-
-            const raw = await callAI(systemPrompt, userPrompt, { signal: task.signal });
+            const raw = await callAI(aiRequest.systemPrompt, aiRequest.userPrompt, aiRequest.options);
             if (!isGenerationTaskActive(task)) return;
             if (isStillTarget()) hideTyping();
 
@@ -576,9 +554,8 @@ export function installPhoneChatPoke(state, deps) {
                     const newlyTrimmed = historyWindow.trimmedCount - renderedTrimmedCount;
                     if (isStillTarget()) rebaseRenderedHistory(newlyTrimmed);
                     renderedTrimmedCount = historyWindow.trimmedCount;
-                    if (!window.__pmHistories[storageId]) window.__pmHistories[storageId] = {};
-                    window.__pmHistories[storageId][saveKey] = historyWindow.history;
-                    if (isStillTarget()) state.conversationHistory = historyWindow.history;
+                    const committedHistory = replaceConversationHistory(storageId, saveKey, historyWindow.history);
+                    if (isStillTarget() && committedHistory) state.conversationHistory = committedHistory.history;
                     saveHistories();
                     const bubbles = describeMessageEntry(assistantEntry);
                     if (historyIndex !== null) {

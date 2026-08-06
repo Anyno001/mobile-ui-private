@@ -13,7 +13,7 @@ export function showModelPicker(runtime) {
         const status = document.getElementById('pm-api-status');
         if (status) {
             status.textContent = '请先拉取模型';
-            status.style.color = '#ff9500';
+            status.dataset.state = 'warning';
         }
         return;
     }

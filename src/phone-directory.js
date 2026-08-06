@@ -412,7 +412,7 @@ export function installPhoneDirectory(state, deps) {
         <input id="pm-group-name-input" class="pm-cfg-input" placeholder="给群聊起个名字" value="${escapeAttr(initName)}" maxlength="30"></label>
         <label class="pm-settings-field">成员（用 / 分隔）
         <input id="pm-group-input" class="pm-cfg-input" placeholder="角色A / 角色B / 角色C" oninput="window.__pmGroupInputChanged()" value="${escapeAttr(initMembers)}"></label>
-        <div id="pm-group-counter" class="pm-cfg-tip">0 个角色</div>
+        <div id="pm-group-counter" class="pm-cfg-tip pm-group-counter">0 个角色</div>
         <div id="pm-group-preview" class="pm-settings-preview"></div>
 
         ${mode === 'edit' ? `
@@ -431,8 +431,8 @@ export function installPhoneDirectory(state, deps) {
     </div>
     ${mode === 'create' ? `
     <div class="pm-modal-add">
-        <button class="pm-action-button is-accent" onclick="window.__pmConfirmGroup('${safeJS(mode)}')" style="flex:1">创建</button>
-    </div>` : `<div class="pm-modal-add"><button class="pm-action-button is-accent" onclick="window.__pmSaveAndCloseGroupEdit()" style="flex:1">保存群聊设置</button></div>`}
+        <button class="pm-action-button is-accent is-flex-1" onclick="window.__pmConfirmGroup('${safeJS(mode)}')">创建</button>
+    </div>` : `<div class="pm-modal-add"><button class="pm-action-button is-accent is-flex-1" onclick="window.__pmSaveAndCloseGroupEdit()">保存群聊设置</button></div>`}
     </div>`);
         setTimeout(() => window.__pmGroupInputChanged(), 0);
     }
@@ -517,7 +517,7 @@ export function installPhoneDirectory(state, deps) {
         <label class="pm-settings-field">默认提示词
           <textarea id="pm-group-random-npc-prompt" class="pm-cfg-input" maxlength="2000" rows="5">${escapeHtml(groupMeta.randomNpcPrompt || DEFAULT_RANDOM_NPC_PROMPT)}</textarea></label>
         <div class="pm-cfg-tip">仅在开启路人群友时生效；临时角色名仍须使用“路人群友·名字”。</div></div>
-      <div class="pm-modal-add"><button type="button" class="pm-action-button is-accent" onclick="window.__pmSaveGroupRandomNpcSettings(${returnToControlCenter})" style="flex:1">保存群聊设置</button></div>
+      <div class="pm-modal-add"><button type="button" class="pm-action-button is-accent is-flex-1" onclick="window.__pmSaveGroupRandomNpcSettings(${returnToControlCenter})">保存群聊设置</button></div>
     </div>`);
     };
     window.__pmSaveGroupRandomNpcSettings = async (returnToControlCenter = false) => {
@@ -556,7 +556,7 @@ export function installPhoneDirectory(state, deps) {
         const preview = document.getElementById('pm-group-preview');
         if (!input) return;
         const names = parseGroupMembers(input.value);
-        if (counter) { counter.textContent = `${names.length} 个角色`; counter.style.color = '#b87a00'; }
+        if (counter) { counter.textContent = `${names.length} 个角色`; counter.classList.toggle('has-members', names.length > 0); }
         preview.innerHTML = names.map((n, i) => {
             const gc = GROUP_COLORS[i % GROUP_COLORS.length];
             return `<span class="pm-group-preview-chip" style="background:${gc.bg};color:${gc.text};">${escapeHtml(n)}</span>`;
@@ -630,7 +630,7 @@ export function installPhoneDirectory(state, deps) {
       <button type="button" onclick="window.__pmCloseOverlay()" class="pm-modal-close" title="关闭" aria-label="关闭">${CLOSE_ICON_SVG}</button>
     </div>
     <div class="pm-modal-list">
-        ${empty ? '<div style="text-align:center;color:var(--pm-color-text-tertiary);padding:20px;font-size:13px;">暂无联系人</div>' : (renderGroups + renderSingle)}
+        ${empty ? '<div class="pm-modal-list-empty">暂无联系人</div>' : (renderGroups + renderSingle)}
     </div>
     <div class="pm-modal-add">
         <button onclick="window.__pmShowGroupCreate()" class="pm-btn-group">新建群聊</button>

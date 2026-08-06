@@ -51,7 +51,8 @@ for (const variable of ['--pm-today-trend-report-gap', '--pm-today-trend-report-
     assert.match(todayTrendStyle, new RegExp(`${variable}:`), `今日风向重排必须声明 ${variable} 视觉变量`);
 }
 const todayTrendAssetPaths = [
-    ...['world', 'reputation', 'faction', 'dynamics'].flatMap(module => ['top.svg', 'top-glow.svg', 'middle-repeat.svg', 'bottom.svg'].map(name => `../assets/today-trend/${module}/${name}`)),
+    ...['world'].flatMap(module => ['top.svg', 'middle-repeat.svg', 'bottom.svg'].map(name => `../assets/today-trend/${module}/${name}`)),
+    ...['reputation', 'faction', 'dynamics'].flatMap(module => ['top.svg', 'top-glow.svg', 'middle-repeat.svg', 'bottom.svg'].map(name => `../assets/today-trend/${module}/${name}`)),
     '../assets/today-trend/world/starlight.svg', '../assets/today-trend/world/starlight-fine.svg',
 ];
 const todayTrendAssets = await Promise.all(todayTrendAssetPaths.map(assetPath => readFile(new URL(assetPath, import.meta.url), 'utf8')));
@@ -60,7 +61,6 @@ for (const svg of todayTrendAssets) {
     assert.ok((svg.match(/=(?:"|')#[0-9a-fA-F]{3,8}(?:"|')/g) || []).every(attribute => /=["']#000000["']/.test(attribute)), '今日风向背景资源只能使用黑色 alpha mask');
     assert.doesNotMatch(svg, /<(?:image|script|foreignObject)\b|(?:href|xlink:href)=(?:"|')https?:\/\//, '今日风向背景资源不得包含外部内容或位图');
 }
-assert.match(todayTrendStyle, /pm-today-trend-world\{--pm-today-trend-bg-top-glow:url\("\.\/assets\/today-trend\/world\/top-glow\.svg"\)/, '世界态势必须声明 SVG 资源路径');
 assert.match(todayTrendStyle, /pm-today-trend-dynamics\{--pm-today-trend-bg-top-glow:url\("\.\/assets\/today-trend\/dynamics\/top-glow\.svg"\)/, '事件追踪必须声明 SVG 资源路径');
 assert.match(todayTrendStyle, /-webkit-mask-image:var\(--pm-today-trend-bg-top\),var\(--pm-today-trend-bg-middle\),var\(--pm-today-trend-bg-bottom\)/, '背景图形必须使用 WebKit 多层 mask');
 assert.match(todayTrendStyle, /mask-mode:alpha,alpha,alpha/, '背景图形必须显式使用 alpha mask');
@@ -77,6 +77,10 @@ assert.match(todayTrendStyle, /pm-today-trend-world\{padding-bottom:calc\(var\(-
 
 
 assert.match(todayTrendStyle, /@media\(max-width:320px\).*pm-today-trend-event-facts/s, '今日风向重排必须提供窄屏事实区适配');
+assert.match(todayTrendStyle, /pm-today-trend-icon-button\[data-action\^="today-trend-refresh"\][\s\S]*?width:var\(--pm-size-control-compact\)[\s\S]*?min-height:var\(--pm-size-control-compact\)/, '生成与刷新图标按钮必须保留 36px 紧凑触控区');
+assert.match(todayTrendStyle, /pm-today-trend-reputation-copy \.pm-today-trend-inline-action\{width:var\(--pm-size-control-compact\);min-height:var\(--pm-size-control-compact\)/, '个人风评行内编辑按钮必须保留 36px 紧凑触控区');
+assert.match(todayTrendStyle, /\.pm-today-trend-menu-action,\.pm-today-trend-menu-close\{flex-basis:var\(--pm-size-control-compact\);width:var\(--pm-size-control-compact\);min-height:var\(--pm-size-control-compact\)/, '320px 菜单按钮不得缩回 28px 命中区');
+assert.doesNotMatch(todayTrendStyle, /pm-today-trend-(?:icon-button\[data-action\^="today-trend-(?:refresh|generate)"\]|reputation-copy \.pm-today-trend-inline-action)\{width:28px/, '今日风向真实操作按钮不得使用 28px 命中区');
 assert.doesNotMatch(todayTrendStyle, /pm-today-trend-content\.is-(?:reputation|faction|dynamics)::/, '旧内容容器背景伪元素必须清理');
 assert.match(todayTrendStyle, /pm-today-trend-faction-card\[data-depth="0"\][^}]*border:2px solid color-mix/, '势力根节点必须改为空心主题节点，而非危险色实心点');
 assert.doesNotMatch(todayTrendStyle, /pm-today-trend-faction-card\[data-depth="0"\]>.pm-today-trend-faction-node\{background:var\(--pm-color-danger\)\}/, '势力根节点不得保留危险色实心点覆盖规则');
@@ -181,11 +185,16 @@ const fixture = () => ({
 });
 const assertCode = (mutate, code) => assert.throws(() => normalizeTodayTrendStore(mutate()), error => error?.code === code);
 const valid = normalizeTodayTrendStore(fixture());
-const controllerListeners = new Map();
+const controllerListeners = [];
+const controllerListenerKey = (type, capture = false) => `${type}:${capture ? 'capture' : 'bubble'}`;
 const controllerContainer = {
     innerHTML: '',
-    addEventListener: (type, listener) => controllerListeners.set(type, listener),
-    removeEventListener: type => controllerListeners.delete(type),
+    addEventListener: (type, listener, capture = false) => controllerListeners.push({ type, listener, capture }),
+    removeEventListener: (type, listener, capture = false) => {
+        const index = controllerListeners.findIndex(item => item.type === type && item.listener === listener && item.capture === capture);
+        assert.notEqual(index, -1, `控制器必须使用原监听器解绑 ${controllerListenerKey(type, capture)}`);
+        controllerListeners.splice(index, 1);
+    },
     contains: () => true,
 };
 const controllerState = { phoneWindow: { querySelector: selector => selector === '.pm-today-trend-page' ? controllerContainer : null } };
@@ -197,10 +206,10 @@ const phoneController = createTodayTrendPhoneController({ state: controllerState
 } });
 assert.equal(await phoneController.render(), true, '控制器必须渲染当前聊天的今日风向页面');
 assert.match(controllerContainer.innerHTML, /id="pm-today-trend-app"/, '控制器必须渲染今日风向页面壳');
-assert.equal(controllerListeners.size, 2, '控制器必须注册 click 与 submit 代理事件');
+assert.deepEqual(controllerListeners.map(item => controllerListenerKey(item.type, item.capture)).sort(), ['click:bubble', 'click:capture', 'keydown:bubble', 'submit:bubble', 'submit:bubble'], '控制器必须恰好注册并区分自身与动作分发器的 click、submit 与 keydown 代理事件');
 phoneController.destroy();
 assert.equal(controllerCancelReason, 'today-trend-page-destroyed', '销毁控制器必须取消初始化任务');
-assert.equal(controllerListeners.size, 0, '销毁控制器必须解绑所有事件代理');
+assert.equal(controllerListeners.length, 0, '销毁控制器必须解绑所有事件代理');
 const firstUseHtml = renderTodayTrendApp({ presets: [{ id: 'preset', name: '综艺世界' }], worldBooks: ['厨房设定'] });
 assert.match(firstUseHtml, /data-today-trend-form="initialize"/, '首次使用必须提供初始化表单');
 assert.match(firstUseHtml, /name="worldBookNames"/, '初始化必须要求选择世界书');
@@ -309,11 +318,12 @@ const busyReputationSettingsHtml = renderTodayTrendReputationView({ scope: valid
 assert.match(busyReputationSettingsHtml, /today-trend-regenerate-circle-schema"[^>]*disabled aria-busy="true"/, '忙碌时圈层结构重新生成必须禁用并暴露忙碌状态');
 assert.doesNotMatch(busyReputationSettingsHtml, /data-menu-id="circle:/, '风评设置不得重复渲染圈层省略号');
 assert.doesNotMatch(busyReputationSettingsHtml, /today-trend-regenerate-reputation-rule/, '个人风评设置不得重复提供模块规则动作');
-assert.match(todayTrendStyle, /pm-today-trend-reputation::after,\.pm-today-trend-factions::after,\.pm-today-trend-dynamics::after\{[^}]*mask-image:var\(--pm-today-trend-bg-top\),var\(--pm-today-trend-bg-bottom\)/, '个人风评背景必须临时隐藏中段重复图形');
+assert.match(todayTrendStyle, /pm-today-trend-reputation::after,\.pm-today-trend-factions::after,\.pm-today-trend-dynamics::after\{[^}]*mask-image:var\(--pm-today-trend-bg-top\),var\(--pm-today-trend-bg-bottom\)/, '个人风评、势力和事件背景必须保留顶部与底部图形并隐藏中段重复图形');
 assert.match(todayTrendStyle, /pm-today-trend-reputation-index\{[^}]*font-weight:var\(--pm-font-weight-semibold\)/, '个人风评编号必须使用加粗文字而非圆形外框');
 assert.match(todayTrendStyle, /pm-today-trend-reputation-index>i\{[^}]*border-top:1px solid[^}]*border-right:1px solid/, '个人风评编号必须提供右侧框角装饰');
 assert.match(todayTrendStyle, /pm-today-trend-reputation-entry\{[^}]*grid-template-columns:var\(--pm-today-trend-track-width\) minmax\(0,1fr\) var\(--pm-today-trend-reputation-meter-width\)/, '个人风评条目必须保持轨道、正文和量表三列流式布局');
-assert.match(todayTrendStyle, /pm-today-trend-reputation-meter\{[^}]*border-right:1px solid[^}]*border-left:1px solid/, '个人风评量表必须保留右侧刻度框体');
+assert.match(todayTrendStyle, /pm-today-trend-reputation-entry::before\{[^}]*border-left:var\(--pm-today-trend-report-rule\) solid var\(--pm-today-trend-reputation-rail-color\)/, '个人风评条目必须保留竖线引导线');
+assert.match(todayTrendStyle, /pm-today-trend-reputation-meter\{[^}]*border-right:1px solid var\(--pm-today-trend-reputation-rail-color\)[^}]*border-left:1px solid var\(--pm-today-trend-reputation-rail-color\)/, '个人风评量表必须保留左右刻度框体');
 assert.match(todayTrendStyle, /pm-today-trend-reputation-meter button:focus-visible/, '个人风评状态按钮必须提供键盘焦点样式');
 assert.match(todayTrendStyle, /pm-today-trend-reputation-meter button:disabled/, '个人风评状态按钮必须提供禁用样式');
 const factionHtml = renderTodayTrendFactionView({ scope: valid.scopes.chat, preset: valid.presets.preset, generationAvailable: true, menuOpenId: 'faction-module' });
@@ -342,7 +352,7 @@ assert.match(busyDynamicsHtml, /事件追踪<span class="pm-today-trend-dynamics
 
 assert.match(busyDynamicsHtml, /today-trend-open-dynamics-settings/, '动态模块必须保留专属设置动作');
 assert.doesNotMatch(busyDynamicsHtml, /today-trend-advance-event/, '动态内容区不得保留单项推进入口');
-assert.match(busyDynamicsHtml, /LIVE TRACKER/, '动态内容页必须提供追踪识别语');
+assert.match(busyDynamicsHtml, /EVENT TRACKER/, '动态内容页必须提供追踪识别语');
 assert.match(busyDynamicsHtml, /pm-today-trend-event-facts/, '动态内容页必须提供结构化事件事实区');
 assert.match(busyDynamicsHtml, /pm-today-trend-event-history/, '动态内容页必须提供阶段时间线容器');
 assert.match(busyDynamicsHtml, /pm-today-trend-event-marker" aria-hidden="true"/, '事件追踪卡片必须包含左侧节点');
@@ -449,7 +459,9 @@ assert.equal(promotedScope.dynamics.archived.find(event => event.id === 'undergr
 assert.equal(promotedScope.dynamics.active.find(event => event.id === 'incident').type, 'incident', '地下线升级必须新建突发事件，不能改写历史类型');
 const injectionScope = { ...valid.scopes.chat, injection: { enabled: true } };
 const injection = renderTodayTrendInjection(injectionScope);
-assert.match(injection, /主厨评审｜neutral｜仍在观察/, '注入必须包含完整圈层评价且使用全角竖线');
+assert.match(injection, /主厨评审｜中立｜仍在观察/, '注入必须使用中文关系状态并包含完整圈层评价');
+assert.match(injection, /红队｜喜欢｜认可配合能力/, '势力关系注入必须将内部英文状态转换为中文');
+assert.doesNotMatch(injection, /｜(?:hostile|dislike|neutral|like|trust)｜/, '正文注入不得泄漏内部英文关系枚举');
 assert.match(injection, /晚餐服务｜准备中｜检查食材/, '注入必须只包含 active 事件的最新阶段');
 assert.doesNotMatch(injection, /换队传闻/, '已归档事件不得注入正文');
 assert.equal(renderTodayTrendInjection(injectionScope, { maxLines: 1 }).split('\n').length, 2, '注入裁剪必须保持完整行和区块标题');
@@ -804,6 +816,101 @@ statusListeners.click({ target: statusButton({ circleId: 'missing', status: 'tru
 await new Promise(resolve => setImmediate(resolve));
 assert.equal(statusErrors.length, 2, '非法状态或缺失圈层必须进入错误路径');
 statusDispatcher.destroy();
+let keyboardStore = structuredClone(valid);
+let keyboardOptions = [];
+const keyboardListeners = {};
+const keyboardContainer = {
+    addEventListener: (type, listener) => { keyboardListeners[type] = listener; },
+    removeEventListener: (type, listener) => {
+        assert.equal(keyboardListeners[type], listener, `动作分发器必须使用原监听器解绑 ${type}`);
+        delete keyboardListeners[type];
+    },
+    contains: () => true,
+    querySelectorAll: () => keyboardOptions,
+};
+const keyboardGroup = { querySelectorAll: () => keyboardOptions };
+const createKeyboardOption = status => {
+    const option = { disabled: false, dataset: { action: 'today-trend-set-circle-status', circleId: 'judge', status }, focusCount: 0 };
+    option.closest = selector => selector === 'button[data-action]' || selector === 'button[data-action="today-trend-set-circle-status"]' ? option : selector === '[role="radiogroup"]' ? keyboardGroup : null;
+    option.focus = () => { option.focusCount += 1; };
+    return option;
+};
+const refreshKeyboardOptions = () => { keyboardOptions = ['hostile', 'dislike', 'neutral', 'like', 'trust'].map(createKeyboardOption); };
+refreshKeyboardOptions();
+let keyboardCommitCount = 0;
+const keyboardDispatcher = createTodayTrendActionDispatcher({
+    container: keyboardContainer, getStorageId: () => 'chat', getStore: async () => keyboardStore,
+    committer: { commitScope: async (storageId, mutate) => {
+        keyboardCommitCount += 1;
+        const scope = await mutate(structuredClone(keyboardStore.scopes[storageId]));
+        keyboardStore = { ...keyboardStore, scopes: { ...keyboardStore.scopes, [storageId]: scope } };
+        return keyboardStore;
+    } },
+    render: async () => { refreshKeyboardOptions(); },
+});
+assert.deepEqual(Object.keys(keyboardListeners).sort(), ['click', 'keydown', 'submit'], '动作分发器必须注册完整的事件代理集合');
+let keyboardPrevented = false;
+keyboardListeners.keydown({ target: keyboardOptions[2], key: 'ArrowRight', preventDefault: () => { keyboardPrevented = true; } });
+await new Promise(resolve => setImmediate(resolve));
+assert.equal(keyboardPrevented, true, '风评方向键必须阻止默认滚动行为');
+assert.equal(keyboardStore.scopes.chat.reputation.circles.find(circle => circle.id === 'judge').status, 'like', '风评方向键必须提交相邻状态');
+assert.equal(keyboardCommitCount, 1, '风评方向键必须复用正式提交链');
+assert.equal(keyboardOptions.find(option => option.dataset.status === 'like')?.focusCount, 1, '风评提交重绘后必须恢复目标单选按钮焦点');
+keyboardListeners.keydown({ target: keyboardOptions.find(option => option.dataset.status === 'like'), key: 'End', preventDefault: () => {} });
+await new Promise(resolve => setImmediate(resolve));
+assert.equal(keyboardStore.scopes.chat.reputation.circles.find(circle => circle.id === 'judge').status, 'trust', '风评 End 键必须跳至末项并保持可继续导航');
+assert.equal(keyboardOptions.find(option => option.dataset.status === 'trust')?.focusCount, 1, '风评连续键盘操作后的重绘必须继续恢复焦点');
+keyboardDispatcher.destroy();
+assert.deepEqual(Object.keys(keyboardListeners), [], '销毁动作分发器必须解绑 keydown 代理事件');
+let concurrentStore = structuredClone(valid);
+let concurrentOptions = [];
+const concurrentListeners = {};
+const concurrentContainer = {
+    addEventListener: (type, listener) => { concurrentListeners[type] = listener; },
+    removeEventListener: (type, listener) => {
+        assert.equal(concurrentListeners[type], listener, `并发测试必须使用原监听器解绑 ${type}`);
+        delete concurrentListeners[type];
+    },
+    contains: () => true,
+    querySelectorAll: () => concurrentOptions,
+};
+const concurrentGroup = { querySelectorAll: () => concurrentOptions };
+const createConcurrentOption = status => {
+    const option = { disabled: false, dataset: { action: 'today-trend-set-circle-status', circleId: 'judge', status }, focusCount: 0 };
+    option.closest = selector => selector === 'button[data-action]' || selector === 'button[data-action="today-trend-set-circle-status"]' ? option : selector === '[role="radiogroup"]' ? concurrentGroup : null;
+    option.focus = () => { option.focusCount += 1; };
+    return option;
+};
+const refreshConcurrentOptions = () => { concurrentOptions = ['hostile', 'dislike', 'neutral', 'like', 'trust'].map(createConcurrentOption); };
+refreshConcurrentOptions();
+let resolveStaleRender;
+let concurrentRenderCalls = 0;
+const concurrentDispatcher = createTodayTrendActionDispatcher({
+    container: concurrentContainer, getStorageId: () => 'chat', getStore: async () => concurrentStore,
+    committer: { commitScope: async (storageId, mutate) => {
+        const scope = await mutate(structuredClone(concurrentStore.scopes[storageId]));
+        concurrentStore = { ...concurrentStore, scopes: { ...concurrentStore.scopes, [storageId]: scope } };
+        return concurrentStore;
+    } },
+    render: async () => {
+        concurrentRenderCalls += 1;
+        if (concurrentRenderCalls === 1) return new Promise(resolve => { resolveStaleRender = () => resolve(true); });
+        refreshConcurrentOptions();
+        return true;
+    },
+});
+concurrentListeners.keydown({ target: concurrentOptions[2], key: 'ArrowRight', preventDefault: () => {} });
+await new Promise(resolve => setImmediate(resolve));
+assert.equal(concurrentRenderCalls, 1, '首次键盘提交必须进入可被淘汰的异步重绘');
+concurrentListeners.keydown({ target: concurrentOptions[3], key: 'End', preventDefault: () => {} });
+await new Promise(resolve => setImmediate(resolve));
+assert.equal(concurrentStore.scopes.chat.reputation.circles.find(circle => circle.id === 'judge').status, 'trust', '连续键盘提交必须以最后一次状态为准');
+assert.equal(concurrentOptions.find(option => option.dataset.status === 'trust')?.focusCount, 1, '最新重绘必须聚焦最后一次键盘目标');
+resolveStaleRender();
+await new Promise(resolve => setImmediate(resolve));
+assert.equal(concurrentOptions.find(option => option.dataset.status === 'like')?.focusCount, 0, '过期重绘不得抢回旧键盘目标焦点');
+concurrentDispatcher.destroy();
+assert.deepEqual(Object.keys(concurrentListeners), [], '并发测试销毁后必须解绑全部监听器');
 const failedStatusErrors = [];
 const failedStatusMessages = [];
 const failedStatusListeners = {};

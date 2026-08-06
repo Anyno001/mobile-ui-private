@@ -220,6 +220,8 @@ const previousIntegrationDocument = globalThis.document;
 const previousIntegrationLocalStorage = globalThis.localStorage;
 const previousAnimationFrame = globalThis.requestAnimationFrame;
 const previousMatchMedia = globalThis.matchMedia;
+const previousIntegrationSetTimeout = globalThis.setTimeout;
+const previousIntegrationClearTimeout = globalThis.clearTimeout;
 try {
     const messageList = new BubbleElement();
     messageList.scrollHeight = 0;
@@ -281,6 +283,14 @@ try {
     };
     globalThis.requestAnimationFrame = callback => callback();
     globalThis.matchMedia = () => ({ matches: false });
+    let nextTimerId = 0;
+    const pendingTimers = new Map();
+    globalThis.setTimeout = callback => {
+        const timerId = ++nextTimerId;
+        pendingTimers.set(timerId, callback);
+        return timerId;
+    };
+    globalThis.clearTimeout = timerId => pendingTimers.delete(timerId);
 
     const state = {
         phoneWindow,
@@ -390,6 +400,10 @@ try {
     assert.deepEqual(targetWithScroll.scrollCalls.at(-1), { behavior: 'auto', block: 'center' },
         '减少动态效果时引用定位不得强制平滑滚动');
     globalThis.matchMedia = () => ({ matches: false });
+    assert.equal(pendingTimers.size, 1, '重复定位必须取消旧的引用高亮定时器');
+    deps.clearQuoteHighlight();
+    assert.equal(pendingTimers.size, 0, '关闭路径使用的引用高亮清理必须取消定时器');
+    assert.equal(targetWithScroll.classList.contains('pm-quote-target'), false, '清理必须移除引用高亮样式');
     deps.rebaseRenderedHistory(1);
     assert.equal(replyCard.disabled, true, '被引用目标裁剪后，现存引用卡片必须立即禁用定位');
     assert.equal(replyCard.classList.contains('is-missing'), true);
@@ -468,6 +482,8 @@ try {
     if (previousIntegrationLocalStorage === undefined) delete globalThis.localStorage; else globalThis.localStorage = previousIntegrationLocalStorage;
     if (previousAnimationFrame === undefined) delete globalThis.requestAnimationFrame; else globalThis.requestAnimationFrame = previousAnimationFrame;
     if (previousMatchMedia === undefined) delete globalThis.matchMedia; else globalThis.matchMedia = previousMatchMedia;
+    if (previousIntegrationSetTimeout === undefined) delete globalThis.setTimeout; else globalThis.setTimeout = previousIntegrationSetTimeout;
+    if (previousIntegrationClearTimeout === undefined) delete globalThis.clearTimeout; else globalThis.clearTimeout = previousIntegrationClearTimeout;
 }
 
 const previousWindow = globalThis.window;
@@ -482,9 +498,18 @@ try {
     const elements = new Map([
         ['pm-emo-url', { value: '' }],
         ['pm-emo-desc', { value: '测试表情' }],
-        ['pm-emo-preview', { style: { display: 'none' } }],
+        ['pm-emo-preview', {
+            className: '',
+            classList: {
+                add(name) {
+                    this.owner.className = `${this.owner.className} ${name}`.trim();
+                },
+                owner: null,
+            },
+        }],
         ['pm-emo-preview-img', { src: '' }],
     ]);
+    elements.get('pm-emo-preview').classList.owner = elements.get('pm-emo-preview');
     globalThis.window = { __pmEmojis: [{ id: 'set', name: '测试', images: [] }] };
     globalThis.document = {
         getElementById: id => elements.get(id) || null,
@@ -492,8 +517,11 @@ try {
     };
     globalThis.alert = message => alerts.push(String(message));
     globalThis.FileReader = class FakeFileReader {
-        constructor() { fileReaderConstructed += 1; }
-        readAsDataURL() { fileReads += 1; }
+        constructor() { fileReaderConstructed += 1; this.onload = null; }
+        readAsDataURL() {
+            fileReads += 1;
+            this.onload?.({ target: { result: exactLimit } });
+        }
     };
     installEmojiUi({ makeOverlay: () => {}, saveEmojis: async () => { saves += 1; } });
 
@@ -508,6 +536,7 @@ try {
     window.__pmEmoFileRead(0, acceptedInput);
     assert.equal(fileReaderConstructed, 1);
     assert.equal(fileReads, 1);
+    assert.equal(elements.get('pm-emo-preview').className, 'is-visible', '文件预览必须由 CSS class 显示，不能写入稳定 inline display');
 
     elements.get('pm-emo-url').value = overLimit;
     await window.__pmConfirmAddEmojiImage(0);
@@ -524,5 +553,4 @@ try {
     if (previousAlert === undefined) delete globalThis.alert; else globalThis.alert = previousAlert;
     if (previousFileReader === undefined) delete globalThis.FileReader; else globalThis.FileReader = previousFileReader;
 }
-
 console.log('Emoji media safety verified.');

@@ -22,8 +22,8 @@ import { normalizeWorldBookConfig } from './worldbook-config.js';
 import {
     loadInteractiveScenes, loadPhoneUiState, saveBidirectional, saveInjectionConfig,
     saveCharacterBehavior, saveEmojis, saveGroupMeta, saveHistoriesStrict, saveInteractiveScenes,
-    loadBranchLineage, rollbackBranchLineageBackup, saveBranchLineageForBackup, savePhoneUiState,
-    saveBranchLineage, saveBudgetConfig, savePokeConfig, saveProfiles, saveTheme, saveWordyLimit, saveWorldBookConfig,
+    completeBranchLineageBackup, loadBranchLineage, rollbackBranchLineageBackup, saveBranchLineageForBackup,
+    savePhoneUiState, saveBranchLineage, saveBudgetConfig, savePokeConfig, saveProfiles, saveTheme, saveWordyLimit, saveWorldBookConfig,
 } from './storage.js';
 
 const clone = value => JSON.parse(JSON.stringify(value));
@@ -92,7 +92,7 @@ export function createEmptyCalendarBackupFields() {
 }
 
 export async function runBackupTransaction({
-    capture, prepare = async snapshot => snapshot, apply, persist, beforeApply = async () => {}, afterPersist = async () => {},
+    capture, prepare = async snapshot => snapshot, apply, persist, beforeApply = async () => {}, afterPersist = async () => {}, complete = async () => {},
 }) {
     const snapshot = await capture();
     let prepared;
@@ -102,17 +102,19 @@ export async function runBackupTransaction({
         error.backupPhase = 'prepare';
         throw error;
     }
+    let applied;
     try {
         await beforeApply('apply');
         const nextState = await apply(undefined, prepared);
-        await persist(nextState, 'apply');
+        applied = await persist(nextState, 'apply');
         await afterPersist('apply', nextState);
+        await complete(nextState, applied);
     } catch (error) {
         let rollbackState;
         try {
             await beforeApply('rollback');
             rollbackState = await apply(snapshot);
-            await persist(snapshot, 'rollback');
+            await persist(snapshot, 'rollback', applied);
             await afterPersist('rollback', rollbackState);
         } catch (rollbackError) {
             const combined = new Error(`${error.message}；原数据回滚失败：${rollbackError.message}`);
@@ -181,10 +183,7 @@ export function createBackupStateHandlers(deps = {}) {
             branchLineage: clone(state.branchLineage || {}),
         };
     };
-    let branchLineageInserted = null;
-    let branchLineageApplied = false;
-    const persist = async (state, phase = 'apply') => {
-        if (phase === 'apply') branchLineageApplied = false;
+    const persist = async (state, phase = 'apply', applied = null) => {
         const interactiveScenes = normalizeInteractiveStore(state.interactiveScenes);
         const phoneUiState = normalizePhoneUiState(state.phoneUiState, interactiveScenes);
         await saveHistoriesStrict();
@@ -205,16 +204,19 @@ export function createBackupStateHandlers(deps = {}) {
         }
         await saveTodayTrendStore(state.todayTrend);
         if (phase === 'rollback') {
-            if (branchLineageApplied) await rollbackBranchLineageBackup(branchLineageInserted);
+            if (applied?.branchLineageInserted) await rollbackBranchLineageBackup(applied.branchLineageInserted);
             else await saveBranchLineage(state.branchLineage || {});
-            branchLineageInserted = null;
-            branchLineageApplied = false;
         } else {
-            branchLineageInserted = await saveBranchLineageForBackup(state.branchLineage || {});
-            branchLineageApplied = true;
+            const branchLineageInserted = await saveBranchLineageForBackup(state.branchLineage || {});
+            deps.invalidateInteractiveStore?.(); deps.reloadCalendarStore?.();
+            deps.reloadTodayTrendStore?.();
+            return { branchLineageInserted };
         }
         deps.invalidateInteractiveStore?.(); deps.reloadCalendarStore?.();
         deps.reloadTodayTrendStore?.();
     };
-    return { capture, apply, persist };
+    const complete = async (_state, applied) => {
+        if (applied?.branchLineageInserted) await completeBranchLineageBackup(applied.branchLineageInserted);
+    };
+    return { capture, apply, persist, complete };
 }

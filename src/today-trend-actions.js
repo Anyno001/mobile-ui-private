@@ -47,18 +47,46 @@ export function createTodayTrendActionDispatcher({
         throw new TypeError('今日风向动作分发依赖无效');
     }
     const view = { name: 'world', mode: 'content', editingWorldItemId: null, editingCircleId: null, editingFactionId: null, editingEventId: null, editingRule: null, ruleDraft: null, menuOpenId: null };
-    const rerender = async () => render({ ...view, store: await getStore(), storageId: getStorageId() });
-    const commit = async mutate => {
+    let rerenderEpoch = 0;
+    const rerender = async (focus = null) => {
+        const epoch = ++rerenderEpoch;
+        const result = await render({ ...view, store: await getStore(), storageId: getStorageId() });
+        if (result !== false && focus && epoch === rerenderEpoch) {
+            const target = [...(container.querySelectorAll?.('button[data-action="today-trend-set-circle-status"]') || [])]
+                .find(option => option.dataset.circleId === focus.circleId && option.dataset.status === focus.status);
+            target?.focus?.();
+        }
+        return result;
+    };
+    const commit = async (mutate, focus = null) => {
         const storageId = String(getStorageId() || '').trim();
-        if (!storageId) throw new Error('当前聊天缺少有效资料 ID');
+        if (!storageId) throw new Error('当前聊天缺少有效资料ID');
         const result = await committer.commitScope(storageId, mutate);
         if (!result) throw new Error('今日风向资料未提交');
-        await rerender();
+        await rerender(focus);
         return result;
     };
     const run = promise => Promise.resolve(promise).catch(error => { onError(error); return false; });
     const closeMenu = () => { view.menuOpenId = null; };
     const open = (name, mode = 'content') => { view.name = name; view.mode = mode; view.editingWorldItemId = null; view.editingCircleId = null; view.editingFactionId = null; view.editingEventId = null; view.editingRule = null; view.ruleDraft = null; closeMenu(); return rerender(); };
+    const keydown = event => {
+        const button = event.target?.closest?.('button[data-action="today-trend-set-circle-status"]');
+        if (!button || !container.contains(button) || button.disabled) return;
+        const group = button.closest?.('[role="radiogroup"]');
+        const options = [...(group?.querySelectorAll?.('button[role="radio"]') || [])]
+            .filter(option => !option.disabled);
+        const currentIndex = options.indexOf(button);
+        if (currentIndex < 0) return;
+        let nextIndex = currentIndex;
+        if (event.key === 'ArrowUp' || event.key === 'ArrowLeft') nextIndex = (currentIndex - 1 + options.length) % options.length;
+        else if (event.key === 'ArrowDown' || event.key === 'ArrowRight') nextIndex = (currentIndex + 1) % options.length;
+        else if (event.key === 'Home') nextIndex = 0;
+        else if (event.key === 'End') nextIndex = options.length - 1;
+        else return;
+        event.preventDefault();
+        const next = options[nextIndex];
+        click({ target: next, circleStatusFocus: { circleId: String(next.dataset.circleId || ''), status: String(next.dataset.status || '') } });
+    };
     const click = event => {
         const button = event.target.closest?.('button[data-action]');
         if (!button || !container.contains(button) || button.disabled) return;
@@ -124,7 +152,7 @@ export function createTodayTrendActionDispatcher({
                 await commit(scope => ({
                     ...scope,
                     reputation: { ...scope.reputation, circles: scope.reputation.circles.map(item => item.id === circleId ? { ...item, status } : item) },
-                }));
+                }), event.circleStatusFocus || null);
                 onStatus('个人风评好感度已更新。');
             })());
         }
@@ -198,5 +226,6 @@ export function createTodayTrendActionDispatcher({
     };
     container.addEventListener('click', click);
     container.addEventListener('submit', submit);
-    return Object.freeze({ render: rerender, open, state: () => Object.freeze({ ...view }), destroy: () => { container.removeEventListener('click', click); container.removeEventListener('submit', submit); } });
+    container.addEventListener('keydown', keydown);
+    return Object.freeze({ render: rerender, open, state: () => Object.freeze({ ...view }), destroy: () => { container.removeEventListener('click', click); container.removeEventListener('submit', submit); container.removeEventListener('keydown', keydown); } });
 }

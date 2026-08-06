@@ -4,7 +4,7 @@ import { calendarDateRangeKeys, calendarWindowDescription, parseCalendarDate } f
 export const OUTFIT_STORE_VERSION = 1;
 export const OUTFIT_SELF_SUBJECT = '__self__';
 export const OUTFIT_LIMITS = Object.freeze({ scopes: 80, subjects: 40, dates: 366, text: 600, color: 120, preference: 800 });
-export const DEFAULT_OUTFIT_GENERATION_RULE = '依据角色身份、时代、世界观、既有服饰设定、当前处境、当天日程、天气和近期剧情，记录角色实际会穿着的每日 OOTD。优先遵守既有服饰事实、身份制服、世界观限制和用户填写的偏好；每套造型包含足以支持自然叙事的关键服饰、鞋履及必要配饰，并保持相邻日期的合理连续性。不得臆造购买、洗衣、换装经过、外出活动或角色感受。';
+export const DEFAULT_OUTFIT_GENERATION_RULE = '依据角色身份、时代、世界观、既有服饰设定、当前处境、当天日程、天气和近期剧情，记录角色每日实际穿着的OOTD。优先遵守既有服饰事实、身份制服、世界观设定和用户偏好。以简洁、客观的方式写明关键服饰、鞋履和必要配饰，可包含颜色、材质与版型，并保持相邻日期的合理连续性。聚焦穿着结果，不展开角色情绪、氛围渲染或行动过程。';
 
 export function outfitRoleName(subject) {
     return typeof subject === 'string' && subject.startsWith('role:') ? subject.slice(5).trim() : '';

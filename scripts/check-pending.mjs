@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import {
   addPendingMessage, clearPendingMessages, clearPendingStorage,
   combinePendingMessages, getPendingMessage, getPendingMessages,
-  removePendingBatch, removePendingMessage, setPendingBatchStatus,
+  PENDING_MESSAGE_LIMIT, removePendingBatch, removePendingMessage, setPendingBatchStatus,
   setPendingStatus, updatePendingMessage,
 } from '../src/pending-messages.js';
 import { createHistoryWindow } from '../src/history-window.js';
@@ -114,6 +114,16 @@ assert.equal(runtime.pendingMessages.has('story'), false);
 addPendingMessage(runtime, 'other', 'Alice', { plainText: 'x', bubbleParts: ['x'] });
 assert.equal(clearPendingStorage(runtime, 'other'), true);
 assert.equal(clearPendingStorage(runtime, 'other'), false);
+
+const cappedRuntime = { pendingMessages: new Map(), pendingSequence: 0 };
+for (let index = 0; index < PENDING_MESSAGE_LIMIT; index += 1) {
+  assert.ok(addPendingMessage(cappedRuntime, 'story', 'Alice', { plainText: `暂存 ${index}`, bubbleParts: [] }),
+    '暂存数量未达上限时必须允许继续加入');
+}
+assert.equal(addPendingMessage(cappedRuntime, 'story', 'Alice', { plainText: '超限暂存', bubbleParts: [] }), null,
+  '单会话暂存达到上限后必须拒绝继续累积');
+assert.equal(getPendingMessages(cappedRuntime, 'story', 'Alice').length, PENDING_MESSAGE_LIMIT,
+  '拒绝超限暂存不得污染已有暂存队列');
 
 const source = Array.from({ length: 62 }, (_, index) => ({ index }));
 const windowed = createHistoryWindow(source, 60);

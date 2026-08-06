@@ -15,6 +15,32 @@ import {
     loadPokeConfig, loadProfiles, loadTheme, loadWordyLimit, loadWorldBookConfig, saveTheme,
 } from './storage.js';
 
+const PHONE_COMMAND_SHORTCUT_LISTENER_KEY = Symbol.for('phone-mode.command-shortcut-listeners');
+
+export function installPhoneCommandShortcutListeners(windowRef = window, documentRef = document) {
+    if (windowRef[PHONE_COMMAND_SHORTCUT_LISTENER_KEY]) return false;
+    documentRef.addEventListener('keydown', event => {
+        if (event.key !== 'Enter' || event.shiftKey) return;
+        const textarea = documentRef.getElementById('send_textarea');
+        if (!textarea || documentRef.activeElement !== textarea || textarea.value.trim() !== '/phone') return;
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        textarea.value = '';
+        windowRef.__pmOpen?.();
+    }, true);
+    documentRef.addEventListener('click', event => {
+        const button = event.target.closest?.('#send_but');
+        const textarea = documentRef.getElementById('send_textarea');
+        if (!button || !textarea || textarea.value.trim() !== '/phone') return;
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        textarea.value = '';
+        windowRef.__pmOpen?.();
+    }, true);
+    windowRef[PHONE_COMMAND_SHORTCUT_LISTENER_KEY] = true;
+    return true;
+}
+
 export function createAmbientStatusController({
     getTheme,
     persistTheme,
@@ -174,7 +200,7 @@ export function deleteSelectedMessages({
     state.isSelectMode = false;
     list.classList.remove('is-selecting');
     const confirmBar = state.phoneWindow?.querySelector('.pm-confirm-bar');
-    if (confirmBar) confirmBar.style.display = 'none';
+    if (confirmBar) confirmBar.classList.remove('is-active');
     return toRemoveIndices.size;
 }
 
@@ -222,7 +248,7 @@ export function installPhoneLifecycle(state, deps) {
         if (!list) return;
         if (state.isSelectMode) {
             list.classList.add('is-selecting');
-            if (confirmBar) confirmBar.style.display = 'flex';
+            if (confirmBar) confirmBar.classList.add('is-active');
             // 气泡上已在渲染时打好 data-history-index，直接读取，无需事后映射
             list.querySelectorAll('.pm-bubble, .pm-group-bubble-wrap, .pm-director')
                 .forEach(b => {
@@ -230,12 +256,11 @@ export function installPhoneLifecycle(state, deps) {
                 const isDirector = b.classList.contains('pm-director');
                 const wrap = document.createElement('div'); wrap.className = 'pm-select-wrap';
                 const side = isDirector ? 'center' : (b.dataset.side || 'left');
-                wrap.style.cssText = 'display:flex;align-items:center;gap:8px;align-self:' + (side === 'right' ? 'flex-end' : side === 'center' ? 'center' : 'flex-start') + ';';
+                wrap.dataset.align = side === 'right' ? 'right' : side === 'center' ? 'center' : 'left';
                 const cb = document.createElement('div'); cb.className = 'pm-message-select-check'; cb.dataset.checked = '0';
                 cb.setAttribute('role', 'checkbox');
                 cb.setAttribute('aria-checked', 'false');
                 cb.tabIndex = 0;
-                cb.style.cssText = 'width:22px;height:22px;min-width:22px;min-height:22px;flex-shrink:0;cursor:pointer;';
                 cb.onclick = () => toggleMessageSelection({ checkbox: cb, wrap, list });
                 cb.onkeydown = event => handleMessageSelectionKey(event, cb);
                 b.parentNode.insertBefore(wrap, b);
@@ -248,7 +273,7 @@ export function installPhoneLifecycle(state, deps) {
             });
         } else {
             list.classList.remove('is-selecting');
-            if (confirmBar) confirmBar.style.display = 'none';
+            if (confirmBar) confirmBar.classList.remove('is-active');
             list.querySelectorAll('.pm-select-wrap').forEach(wrap => {
                 const b = wrap.querySelector('.pm-bubble, .pm-group-bubble-wrap, .pm-director');
                 if (b) wrap.parentNode.insertBefore(b, wrap); wrap.remove();
@@ -275,6 +300,7 @@ export function installPhoneLifecycle(state, deps) {
                 notify: message => alert(message),
             });
             disarmAutoPoke('phone-minimized');
+            deps.clearCalendarRuntime?.();
         }
         state.phoneWindow.classList.toggle('is-min', state.isMinimized);
         state.phoneWindow.style.removeProperty('transform');
@@ -314,6 +340,7 @@ export function installPhoneLifecycle(state, deps) {
         deps.closeContactSwitcher?.('phone-close');
         closeControlCenter?.();
         closeOverlay('phone-close');
+        deps.clearQuoteHighlight?.();
         deps.clearActiveQuote?.();
         if (state.phoneWindow) { try { state.phoneWindow.hidePopover?.(); } catch (e) {} state.phoneWindow.remove(); }
         state.phoneWindow = null; state.phoneActive = false; state.isMinimized = false; state.isSelectMode = false;
@@ -393,7 +420,7 @@ export function installPhoneLifecycle(state, deps) {
         <button onclick="window.__pmEnd()" class="pm-header-icon-button pm-nav-btn pm-close-btn" title="退出手机" aria-label="退出手机">${CLOSE_ICON_SVG}</button>
       </div>
     </div>
-    <div class="pm-confirm-bar" style="display:none;">
+    <div class="pm-confirm-bar">
       <span class="pm-confirm-tip">选择要删除的消息</span>
       <button onclick="window.__pmDeleteSelected()" class="pm-confirm-btn">删除所选</button>
       <button onclick="window.__pmToggleSelect()" class="pm-cancel-btn">取消</button>
@@ -468,7 +495,7 @@ export function installPhoneLifecycle(state, deps) {
             // ❄️ 冷启动：第一次打开，先占位，等外部的 IDB 把最新数据拉进内存再渲染
             runtime.firstOpen = false; // 翻转标记，此后不刷新就不会再走这里
             const list = state.phoneWindow?.querySelector('.pm-msg-list');
-            if (list) { list.innerHTML = '<div style="text-align:center;color:var(--pm-color-text-tertiary);padding:20px;font-size:13px;">正在加载历史记录…</div>'; }
+            if (list) { list.innerHTML = '<div class="pm-msg-list-empty">正在加载历史记录…</div>'; }
 
             // 冷启动：历史记录需要从 IDB 加载完才能正确渲染。
             const historyLoad = loadHistoriesOnce();
@@ -503,17 +530,7 @@ export function installPhoneLifecycle(state, deps) {
     }
     if (!registerPhoneCommand()) { let t = 0; const i = setInterval(() => { t++; if (registerPhoneCommand() || t >= 30) clearInterval(i); }, 500); }
 
-    document.addEventListener('keydown', e => {
-        if (e.key !== 'Enter' || e.shiftKey) return;
-        const ta = document.getElementById('send_textarea');
-        if (!ta || document.activeElement !== ta) return;
-        if (ta.value.trim() === '/phone') { e.preventDefault(); e.stopImmediatePropagation(); ta.value = ''; window.__pmOpen(); }
-    }, true);
-    document.addEventListener('click', e => {
-        const btn = e.target.closest?.('#send_but'); if (!btn) return;
-        const ta = document.getElementById('send_textarea'); if (!ta) return;
-        if (ta.value.trim() === '/phone') { e.preventDefault(); e.stopImmediatePropagation(); ta.value = ''; window.__pmOpen(); }
-    }, true);
+    installPhoneCommandShortcutListeners();
 
     // 宿主分支在切换聊天后立即发出 CHAT_CHANGED；事件监听不能被本地存储恢复阻塞。
     hookGenerationEvent();

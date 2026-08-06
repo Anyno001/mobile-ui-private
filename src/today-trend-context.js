@@ -8,7 +8,7 @@ export async function gatherTodayTrendContext({
     includeExistingChat = true, userRequirements = '', worldBookMaxChars = 6000,
     collectContext = gatherContext,
 } = {}) {
-    if (typeof getCtx !== 'function') throw new TypeError('今日风向上下文缺少宿主上下文读取器');
+    if (typeof getCtx !== 'function') throw new TypeError('今日风向上下文缺少上下文读取器');
     const id = text(storageId, 120);
     const roleId = text(characterId, 120);
     const roleName = text(characterName, 120);

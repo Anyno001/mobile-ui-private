@@ -197,7 +197,7 @@ export function renderCalendarContextInjection({
         for (const date of weatherDates) {
             const weather = resolveWeatherForDate(weatherStore, date);
             if (weather.status === 'available') {
-                addFact(date, `天气（${weather.sourceLabel}）：${weatherCodeLabel(weather.day.weatherCode)}，${weather.day.tempMin}°/${weather.day.tempMax}°C`);
+                addFact(date, `天气：${weatherCodeLabel(weather.day.weatherCode)}，${weather.day.tempMin}°/${weather.day.tempMax}°C`);
             }
         }
     }
@@ -239,7 +239,7 @@ export function renderCalendarContextInjection({
     if (calendarScope.injectionCycleEnabled) for (const subject of cycleSubjectKeys(cycleStore, currentStorageId)) {
         const profile = cycleScopeFor(cycleStore, currentStorageId, subject);
         if (!profile.enabled) continue;
-        const rawSubjectLabel = subject === CYCLE_SELF_SUBJECT ? '我'
+        const rawSubjectLabel = subject === CYCLE_SELF_SUBJECT ? '<user>'
             : subject.startsWith('role:') ? subject.slice(5) : subject || currentActorName || '当前角色';
         const subjectLabel = String(rawSubjectLabel).replace(/\s+/g, ' ').trim().slice(0, 120) || '当前角色';
         for (const prediction of predictCycleRange(profile, calendarDateRangeKeys(windowStart, -1, -1)[0], 5).predictions) {
@@ -363,7 +363,7 @@ ${body}
             key: `${TODAY_TREND_INJECTION_KEY_PREFIX}${encodeURIComponent(currentStorageId)}`,
             source: 'todayTrend',
             content: todayTrendBody,
-            contentPrefix: '[今日风向·社会状态]\n',
+            contentPrefix: '[社会动态]\n',
             contentSuffix: '\n[结束]',
             completeLines: true,
             position: injection.todayTrend.position,
@@ -429,16 +429,28 @@ export function applyContextInjections({ context, runtime, ...input }) {
 }
 
 function renderConversation(name, history, meta, userName, emojis) {
-    const lines = history.map(message => {
+    const messages = history.map(message => {
         const text = resolveEmojiText((message.content || '').replace(/\s*\/\s*/g, '。').replace(/\n/g, '；'), emojis);
         const quote = formatQuoteContext(message.quote);
         const body = [quote ? `【${quote}】` : '', text].filter(Boolean).join(' ');
         const director = message.directorNote ? `【剧情引导：${message.directorNote}】` : '';
-        if (message.role === 'user') return [body ? `${userName}：${body}` : '', director].filter(Boolean).join(' ');
-        return meta ? body : `${name}：${body}`;
-    }).filter(Boolean).join('\n');
-    if (!lines) return '';
-    return meta
-        ? `【群聊"${meta.name}"（成员：${meta.members.join('、')}）的最近聊天 — 仅参与者与 ${userName} 知晓，其他角色不应知情】\n${lines}`
-        : `【与 ${name} 的短信 — 仅 ${name} 与 ${userName} 知晓】\n${lines}`;
+        const content = message.role === 'user'
+            ? [body, director].filter(Boolean).join(' ') : body;
+        return content ? { role: message.role, content } : null;
+    }).filter(Boolean);
+    if (!messages.length) return '';
+    if (meta) {
+        const lines = messages.map(message => message.role === 'user'
+            ? `${userName}：${message.content}` : message.content).join('\n');
+        return `【群聊"${meta.name}"（成员：${meta.members.join('、')}）的最近聊天 — 仅参与者与 ${userName} 知晓，其他角色不应知情】\n${lines}`;
+    }
+    const groups = [];
+    for (const message of messages) {
+        const speaker = message.role === 'user' ? userName : name;
+        const previous = groups.at(-1);
+        if (previous?.speaker === speaker) previous.contents.push(message.content);
+        else groups.push({ speaker, contents: [message.content] });
+    }
+    const lines = groups.map(group => `${group.speaker}：${group.contents.join('｜')}`).join('\n');
+    return `【与 ${name} 的短信 — 仅 ${name} 与 ${userName} 知晓】\n${lines}`;
 }

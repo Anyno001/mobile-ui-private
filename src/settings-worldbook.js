@@ -138,8 +138,8 @@ function renderColumnSelector({ title, module, scope, config, books, backAction 
         const checked = override?.columns?.[name]?.[module] ?? config.columns[name]?.[module] !== false;
         return `<div class="pm-li"><span><b>${escapeHtml(name)}</b></span>${eyeToggle(checked, `data-world-quick-column="${escapeAttr(name)}"`, `${title}：${name}读取开关`)}</div>`;
     }).join('') : '<div class="pm-prof-empty">未发现符合 TavernDB-ACU 协议的栏目。</div>';
-    const reset = scope ? '<button class="pm-action-button is-secondary" onclick="window.__pmResetWorldBookColumnOverride()" style="flex:1">恢复跟随全局</button>' : '';
-    return renderSettingsModal({ title, content: `<div class="pm-settings-page"><div class="pm-settings-note pm-cfg-tip">控制当前模块可读取的数据库条目。</div><div class="pm-settings-list">${rows}</div></div>`, footer: `<div class="pm-modal-add">${reset}<button class="pm-action-button is-accent" onclick="window.__pmSaveWorldBookColumns()" style="flex:2">完成</button></div>`, backAction, backLabel });
+    const reset = scope ? '<button class="pm-action-button is-secondary" onclick="window.__pmResetWorldBookColumnOverride()">恢复跟随全局</button>' : '';
+    return renderSettingsModal({ title, content: `<div class="pm-settings-page"><div class="pm-settings-note pm-cfg-tip">控制当前模块可读取的数据库条目。</div><div class="pm-settings-list">${rows}</div></div>`, footer: `<div class="pm-modal-add pm-worldbook-actions">${reset}<button class="pm-action-button is-accent" onclick="window.__pmSaveWorldBookColumns()">完成</button></div>`, backAction, backLabel });
 }
 
 export function installWorldBookSettings({ makeOverlay, addNote, getCtx }) {
@@ -200,7 +200,7 @@ export function installWorldBookSettings({ makeOverlay, addNote, getCtx }) {
         const directory = await loadWorldBookSettingsDirectory(getCtx(), config, { signal: controller.signal });
         if (epoch !== requestEpoch || controller.signal.aborted) return false;
         const state = { config, directory, search: '', otherLimit: WORLD_BOOK_BATCH_SIZE, otherExpanded: false, detail: null, overlay: null };
-        const footer = '<div class="pm-modal-add"><button class="pm-action-button is-secondary" onclick="window.__pmResetWorldBookConfig()" style="flex:1">恢复默认</button><button class="pm-action-button is-accent" onclick="window.__pmSaveWorldBookConfig()" style="flex:2">保存世界书设置</button></div>';
+        const footer = '<div class="pm-modal-add pm-worldbook-actions"><button class="pm-action-button is-secondary" onclick="window.__pmResetWorldBookConfig()">恢复默认</button><button class="pm-action-button is-accent" onclick="window.__pmSaveWorldBookConfig()">保存世界书设置</button></div>';
         committingOverlay = true;
         try {
             state.overlay = makeOverlay(renderSettingsModal({ title: '世界书读取', content: renderPage(state), footer }), {

@@ -479,6 +479,36 @@ assert.ok(defaultPhonePrompts.every(prompt => !/其他角色卡短信|帖子正�
 assert.equal(defaultPlan.diagnostics.communityPermission.reason, 'no-selection');
 assert.equal(defaultPlan.diagnostics.phone.promptCount, 2);
 
+const groupedBubblePlan = buildContextInjectionPrompts({
+    currentStorageId: 'story-a', currentActorName: 'Alice', userName: 'User', emojis: [],
+    selectedByStorage: { 'story-a': ['Alice'] },
+    historiesByStorage: { 'story-a': { Alice: [
+        { role: 'assistant', content: '第一条' },
+        { role: 'assistant', content: '第二条' },
+        { role: 'assistant', content: '第三条' },
+        { role: 'user', content: '回复一' },
+        { role: 'user', content: '回复二' },
+        { role: 'assistant', content: '第四条' },
+    ] } },
+    groupsByStorage: {}, interactiveStore: store,
+});
+const groupedBubblePrompt = groupedBubblePlan.prompts.find(prompt => prompt.source === 'phone');
+assert.match(groupedBubblePrompt.content, /Alice：第一条｜第二条｜第三条\nUser：回复一｜回复二\nAlice：第四条/,
+    '单聊正文注入必须合并连续同发送者气泡，并在发送者切换时换行');
+
+const groupBubblePlan = buildContextInjectionPrompts({
+    currentStorageId: 'story-a', currentActorName: 'Alice', userName: 'User', emojis: [],
+    selectedByStorage: { 'story-a': ['__group_team'] },
+    historiesByStorage: { 'story-a': { __group_team: [
+        { role: 'assistant', content: '群消息一' }, { role: 'assistant', content: '群消息二' },
+    ] } },
+    groupsByStorage: { 'story-a': { __group_team: { name: '测试群', members: ['Alice', 'Bob'] } } },
+    interactiveStore: store,
+});
+const groupBubblePrompt = groupBubblePlan.prompts.find(prompt => prompt.source === 'phone');
+assert.match(groupBubblePrompt.content, /群消息一\n群消息二/,
+    '群聊正文注入必须维持逐气泡换行，不受单聊合并规则影响');
+
 const productionPhoneCalls = [];
 const productionPhoneResult = applyContextInjections({
     context: { setExtensionPrompt: (...args) => productionPhoneCalls.push(args) },
@@ -710,7 +740,7 @@ assert.match(fullCalendarBody, new RegExp(`六天后 ${sixDaysLater}｜[^\\n]*�
 assert.match(fullCalendarBody, /生日：角色生日/);
 assert.match(fullCalendarBody, new RegExp(`${fiftyNineDaysLater}｜纪念日：五十九日纪念`), '生日与纪念日必须覆盖未来 60 天');
 assert.match(fullCalendarBody, /节假日：生活节/);
-assert.match(fullCalendarBody, /生理周期（我）：经期/);
+assert.match(fullCalendarBody, /生理周期（<user>）：经期/);
 assert.match(fullCalendarBody, /生理周期（角色乙）：经期/);
 assert.doesNotMatch(fullCalendarBody, /生理周期规则：/, '逐日周期标签不得保留默认安全期推断规则');
 const recurrenceWindowBody = renderCalendarContextInjection({
@@ -748,10 +778,10 @@ const relativeSafeWindow = renderCalendarContextInjection({
     start: now,
 });
 for (const date of [yesterday, today, calendarDateRangeKeys(now, 1, 1)[0]]) {
-    assert.match(relativeSafeWindow, new RegExp(`${date}｜[^\n]*生理周期（我）：相对安全期`));
+    assert.match(relativeSafeWindow, new RegExp(`${date}｜[^\n]*生理周期（<user>）：相对安全期`));
 }
 for (const date of [calendarDateRangeKeys(now, 2, 2)[0], calendarDateRangeKeys(now, 3, 3)[0]]) {
-    assert.match(relativeSafeWindow, new RegExp(`${date}｜[^\n]*生理周期（我）：易孕期`));
+    assert.match(relativeSafeWindow, new RegExp(`${date}｜[^\n]*生理周期（<user>）：易孕期`));
 }
 const safeWindow = renderCalendarContextInjection({
     currentStorageId: 'safe-window',
@@ -762,14 +792,15 @@ const safeWindow = renderCalendarContextInjection({
     start: now,
 });
 for (const date of [yesterday, today, calendarDateRangeKeys(now, 1, 1)[0], calendarDateRangeKeys(now, 2, 2)[0], calendarDateRangeKeys(now, 3, 3)[0]]) {
-    assert.match(safeWindow, new RegExp(`${date}｜[^\n]*生理周期（我）：安全期`));
+    assert.match(safeWindow, new RegExp(`${date}｜[^\n]*生理周期（<user>）：安全期`));
 }
 for (const body of [relativeSafeWindow, safeWindow]) {
     assert.doesNotMatch(body, new RegExp(`${twoDaysAgo}｜[^\n]*生理周期（`), '周期事实不得超出动态五日窗口的昨天边界');
     assert.doesNotMatch(body, new RegExp(`${calendarDateRangeKeys(now, 4, 4)[0]}｜[^\n]*生理周期（`), '周期事实不得超出动态五日窗口的大后天边界');
 }
-assert.match(fullCalendarBody, /今天 [^｜]+｜天气（真实预报）：少云，20°\/30°C/);
-assert.match(fullCalendarBody, /天气（气候推演）：/);
+assert.match(fullCalendarBody, /今天 [^｜]+｜天气：少云，20°\/30°C/);
+assert.doesNotMatch(fullCalendarBody, /天气（(?:真实预报|缓存预报|气候推演)）：/,
+    '日历上下文不得泄露天气数据来源标签');
 assert.equal((fullCalendarBody.match(new RegExp(`${today}｜`, 'g')) || []).length, 1, '同一天必须只输出一个日期标题');
 const otherStorageBody = renderCalendarContextInjection({
     currentStorageId: 'story-b', calendarStore: calendarStoreWithEvents,
@@ -793,7 +824,7 @@ const maximumCycleBody = renderCalendarContextInjection({
     } } },
     start: now,
 });
-assert.match(maximumCycleBody.split('\n')[0], new RegExp(`${today}｜.*生理周期（我）：经期`),
+assert.match(maximumCycleBody.split('\n')[0], new RegExp(`${today}｜.*生理周期（<user>）：经期`),
     '动态五日的首个周期事实不得在字符上限处被截断');
 for (const subject of Object.keys(maximumCycleSubjects)) {
     assert.match(maximumCycleBody, new RegExp(`生理周期（${subject.slice(5)}）：经期`),
@@ -834,8 +865,9 @@ const storyCalendarPlan = buildContextInjectionPrompts({
 const storyCalendarPrompt = storyCalendarPlan.prompts.find(prompt => prompt.key.includes(':calendar:'));
 assert.ok(storyCalendarPrompt, '配置时间起点时应生成日历 prompt');
 assert.doesNotMatch(storyCalendarPrompt.content, /生理周期规则：/, '故事日期窗口不得保留默认安全期推断规则');
-assert.match(storyCalendarPrompt.content, /今天 2032-03-15｜天气（真实预报）：少云，10°\/20°C；日程：架空纪元会议；纪念日：架空纪念日；节假日：架空节；生理周期（我）：经期/);
-assert.match(storyCalendarPrompt.content, /天气（气候推演）：/, '故事日期窗口中预报外日期必须使用气候推演');
+assert.match(storyCalendarPrompt.content, /今天 2032-03-15｜天气：少云，10°\/20°C；日程：架空纪元会议；纪念日：架空纪念日；节假日：架空节；生理周期（<user>）：经期/);
+assert.doesNotMatch(storyCalendarPrompt.content, /天气（(?:真实预报|缓存预报|气候推演)）：/,
+    '故事日期窗口只注入天气事实，不暴露数据来源');
 assert.equal((storyCalendarPrompt.content.match(/2032-03-15｜/g) || []).length, 1, '同日事实必须合并为单个日期标题');
 assert.doesNotMatch(storyCalendarPrompt.content, /设备日期诱饵/,
     '最终日历 prompt 必须使用 scope.baseDate窗口，不得泄漏设备日期诱饵');
@@ -1116,7 +1148,7 @@ const todayTrendPlan = buildContextInjectionPrompts({
 const todayTrendPrompt = todayTrendPlan.prompts.find(prompt => prompt.source === 'todayTrend');
 assert.ok(todayTrendPrompt, '启用今日风向且分配预算时必须生成独立社会状态 prompt');
 assert.match(todayTrendPrompt.key, /^ST_SMS_TODAY_TREND_INJECTION_V1:story-a$/);
-assert.match(todayTrendPrompt.content, /评审团｜like｜认可发挥[\s\S]*节目组｜neutral｜持续观察[\s\S]*复赛筹备｜准备中｜确认食材/);
+assert.match(todayTrendPrompt.content, /评审团｜喜欢｜认可发挥[\s\S]*节目组｜中立｜持续观察[\s\S]*复赛筹备｜准备中｜确认食材/);
 assert.doesNotMatch(todayTrendPrompt.content, /不得注入的世界态势|不得注入的旧事件|泄漏圈层/);
 assert.equal(todayTrendPrompt.position, 2);
 assert.equal(todayTrendPrompt.depth, 7);
@@ -1160,7 +1192,7 @@ const trimmedTodayTrendPlan = buildContextInjectionPrompts({
 });
 const trimmedTodayTrendPrompt = trimmedTodayTrendPlan.prompts.find(prompt => prompt.source === 'todayTrend');
 assert.ok(trimmedTodayTrendPrompt, '小预算仍应保留至少一个完整的今日风向数据行');
-assert.match(trimmedTodayTrendPrompt.content, /短圈层｜like｜简短评价/, '小预算必须优先保留完整数据行');
+assert.match(trimmedTodayTrendPrompt.content, /短圈层｜喜欢｜简短评价/, '小预算必须优先保留完整数据行');
 assert.doesNotMatch(trimmedTodayTrendPrompt.content, /截断标记|很长的评价/, '小预算不得保留被截断的数据行');
 assert.match(trimmedTodayTrendPrompt.content, /\n\[结束\]$/, '小预算裁剪后必须保留注入结束框架');
 assert.ok(estimateContextTokens(trimmedTodayTrendPrompt.content).estimatedTokens

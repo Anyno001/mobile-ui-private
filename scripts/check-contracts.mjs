@@ -2,11 +2,12 @@ import { readFile, readdir } from 'node:fs/promises';
 import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 import { parse } from 'acorn';
+import postcss from 'postcss';
 import { build } from 'esbuild';
 
 const root = process.cwd();
 const srcRoot = path.join(root, 'src');
-const [srcEntries, bundle, css, manifestText, packageText, lockText, readme] = await Promise.all([
+const [srcEntries, bundle, css, manifestText, packageText, lockText, readme, baselineText, cssTokensText, lifecycleResourcesText, governanceRegistryText] = await Promise.all([
   readdir(srcRoot, { recursive: true }),
   readFile(path.join(root, 'index.js'), 'utf8'),
   readFile(path.join(root, 'style.css'), 'utf8'),
@@ -14,6 +15,10 @@ const [srcEntries, bundle, css, manifestText, packageText, lockText, readme] = a
   readFile(path.join(root, 'package.json'), 'utf8'),
   readFile(path.join(root, 'package-lock.json'), 'utf8'),
   readFile(path.join(root, 'README.md'), 'utf8'),
+  readFile(path.join(root, 'docs', 'BASELINE.md'), 'utf8'),
+  readFile(path.join(root, 'docs', 'CSS-TOKENS.md'), 'utf8'),
+  readFile(path.join(root, 'docs', 'LIFECYCLE-RESOURCES.md'), 'utf8'),
+  readFile(path.join(root, 'scripts', 'css-governance-registry.json'), 'utf8'),
 ]);
 const sourceFiles = srcEntries
   .filter(entry => entry.endsWith('.js'))
@@ -23,12 +28,22 @@ const sourceModules = await Promise.all(sourceFiles.map(async file => ({
   file,
   code: await readFile(file, 'utf8'),
 })));
-const sourceModuleByName = new Map(sourceModules.map(module => [path.basename(module.file), module]));
+const failures = [];
+const sourceModuleByName = new Map();
+const sourceModuleByRelativePath = new Map();
+for (const module of sourceModules) {
+  const name = path.basename(module.file);
+  const relativePath = `src/${path.relative(srcRoot, module.file).replaceAll(path.sep, '/')}`;
+  if (sourceModuleByName.has(name)) {
+    failures.push(`src: duplicate module basename prevents unambiguous contract lookup: ${name}`);
+  }
+  sourceModuleByName.set(name, module);
+  sourceModuleByRelativePath.set(relativePath, module);
+}
 const source = sourceModules.map(({ code }) => code).join('\n');
 const manifest = JSON.parse(manifestText);
 const packageJson = JSON.parse(packageText);
 const packageLock = JSON.parse(lockText);
-const failures = [];
 const rebuiltBundle = await build({
   absWorkingDir: root,
   entryPoints: ['src/main.js'],
@@ -42,9 +57,17 @@ const rebuiltBundle = await build({
 });
 const rebuiltBundleText = rebuiltBundle.outputFiles[0]?.text || '';
 if (bundle !== rebuiltBundleText) failures.push('index.js: bundle does not exactly match an in-memory esbuild rebuild');
+const BUNDLE_BASELINE_BYTES = 1240219;
+const BUNDLE_MAX_BYTES = 1488263;
+if (Buffer.byteLength(bundle, 'utf8') > BUNDLE_MAX_BYTES) {
+  failures.push(
+    `index.js: ${Buffer.byteLength(bundle, 'utf8')} bytes exceeds the ${BUNDLE_MAX_BYTES}-byte baseline limit (${BUNDLE_BASELINE_BYTES} * 120%)`,
+  );
+}
 for (const modulePath of [
   'src/calendar-weather-source.js', 'src/calendar-page-view.js',
   'src/calendar-recipe-controller.js', 'src/calendar-recipe-model.js',
+  'src/phone-quote.js',
 ]) {
   try {
     execFileSync('git', ['ls-files', '--error-unmatch', modulePath], {
@@ -56,6 +79,7 @@ for (const modulePath of [
 }
 
 const normalizeLineEndings = value => String(value).replace(/\r\n?/g, '\n');
+const normalizeCssValue = value => String(value).replace(/\s*!important\b/g, ' !important').trim();
 function requireText(label, text, expected) {
   if (!normalizeLineEndings(text).includes(normalizeLineEndings(expected))) failures.push(`${label}: missing ${expected}`);
 }
@@ -76,20 +100,44 @@ function buttonContaining(label, text, marker) {
 }
 
 function parseCssRules(cssText) {
+  const ast = postcss.parse(normalizeLineEndings(cssText), { from: 'style.css' });
   const rules = [];
-  for (const match of normalizeLineEndings(cssText).matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
-    const selectors = match[1].split(',').map(selector => selector.trim()).filter(Boolean);
+  ast.walkRules(rule => {
+    const selectors = rule.selectors?.map(selector => selector.trim()).filter(Boolean) || [];
+    if (!selectors.length) return;
     const declarations = new Map();
-    for (const declaration of match[2].split(';')) {
-      const separator = declaration.indexOf(':');
-      if (separator < 0) continue;
-      const property = declaration.slice(0, separator).trim();
-      const value = declaration.slice(separator + 1).trim();
-      if (property) declarations.set(property, value);
-    }
-    rules.push({ selectors, declarations });
-  }
+    rule.each(node => {
+      if (node.type === 'decl') declarations.set(node.prop, `${node.value}${node.important ? ' !important' : ''}`);
+    });
+    rules.push({
+      selectors,
+      declarations,
+      line: rule.source?.start?.line || 0,
+      parent: rule.parent?.type === 'atrule' ? `@${rule.parent.name} ${rule.parent.params}`.trim() : 'root',
+    });
+  });
   return rules;
+}
+
+const LEGACY_VALUE_PROPERTIES = {
+  color: property => property === 'color' || property.endsWith('color') || property === 'background' || property === 'background-image',
+  fontSize: property => property === 'font-size',
+  spacing: property => /^(?:padding|margin|gap|row-gap|column-gap|inset|top|right|bottom|left)$/.test(property),
+  radius: property => property === 'border-radius',
+  zIndex: property => property === 'z-index',
+  transition: property => property === 'transition' || property === 'transition-duration',
+};
+
+function compareLegacyCssValues(rules, legacyValues) {
+  for (const category of Object.keys(LEGACY_VALUE_PROPERTIES)) {
+    const approved = new Set(legacyValues[category] || []);
+    for (const rule of rules) for (const [property, value] of rule.declarations) {
+      if (!LEGACY_VALUE_PROPERTIES[category](property)) continue;
+      const normalizedValue = normalizeCssValue(value);
+      if (normalizedValue.includes('var(') || normalizedValue === 'initial' || normalizedValue === 'inherit' || normalizedValue === 'unset' || approved.has(normalizedValue)) continue;
+      failures.push(`style.css:${rule.line}: ${rule.selectors.join(', ')} adds unapproved legacy ${category} value ${property}:${normalizedValue}`);
+    }
+  }
 }
 
 function requireCssDeclarations(rules, selector, expected) {
@@ -100,11 +148,141 @@ function requireCssDeclarations(rules, selector, expected) {
   }
   for (const [property, value] of Object.entries(expected)) {
     const actual = rule.declarations.get(property);
-    if (actual !== value) failures.push(`style.css: ${selector} expected ${property}:${value}, received ${actual ?? '<missing>'}`);
+    if (normalizeCssValue(actual) !== normalizeCssValue(value)) failures.push(`style.css:${rule.line}: ${selector} expected ${property}:${value}, received ${actual ?? '<missing>'}`);
   }
 }
 
 const cssRules = parseCssRules(css);
+
+const governanceRegistry = JSON.parse(governanceRegistryText);
+{
+  const registryFailures = [];
+  if (governanceRegistry.version !== 2) registryFailures.push('css-governance-registry.json: version must be 2');
+  const requireStringArray = (value, label) => {
+    if (!Array.isArray(value) || value.some(item => typeof item !== 'string' || !item)) {
+      registryFailures.push(`css-governance-registry.json: ${label} must be a non-empty string array`);
+      return [];
+    }
+    return value;
+  };
+  const tokensSection = governanceRegistry?.tokens;
+  if (!tokensSection || typeof tokensSection !== 'object') {
+    registryFailures.push('css-governance-registry.json: tokens section must be an object');
+  }
+  const publicPrefixes = requireStringArray(tokensSection?.public, 'tokens.public');
+  const privatePrefixes = requireStringArray(tokensSection?.private, 'tokens.private');
+  const compatTokens = requireStringArray(tokensSection?.compat, 'tokens.compat');
+  const runtimeTokens = requireStringArray(tokensSection?.runtime, 'tokens.runtime');
+  const allTokenNames = [...publicPrefixes, ...privatePrefixes, ...compatTokens, ...runtimeTokens];
+  const seenTokens = new Set();
+  for (const token of allTokenNames) {
+    if (seenTokens.has(token)) registryFailures.push(`css-governance-registry.json: token ${token} is duplicated across categories`);
+    seenTokens.add(token);
+  }
+  const allKnownPrefixes = [...publicPrefixes, ...privatePrefixes, ...compatTokens, ...runtimeTokens];
+  for (const rule of cssRules) {
+    for (const [property] of rule.declarations) {
+      if (!property.startsWith('--pm-') && !property.startsWith('--scene-')) continue;
+      if (allKnownPrefixes.some(prefix => prefix.endsWith('*')
+        ? property.startsWith(prefix.slice(0, -1))
+        : property === prefix)) continue;
+      registryFailures.push(`style.css: ${rule.selectors.join(', ')} declares unregistered token ${property}`);
+    }
+  }
+  const exceptions = governanceRegistry?.exceptions;
+  if (!Array.isArray(exceptions)) registryFailures.push('css-governance-registry.json: exceptions must be an array');
+  const seenExceptionIds = new Set();
+  for (const exception of exceptions || []) {
+    if (!exception?.id || !exception?.path || !exception?.selector || !exception?.owner || !exception?.removeWhen
+        || !Array.isArray(exception?.properties) || !exception?.properties.length || !exception?.reason) {
+      registryFailures.push(`css-governance-registry.json: exception ${exception?.id || '<missing id>'} must declare id/path/selector/properties/reason/owner/removeWhen`);
+    }
+    if (exception?.id && seenExceptionIds.has(exception.id)) registryFailures.push(`css-governance-registry.json: duplicate exception id ${exception.id}`);
+    if (exception?.id) seenExceptionIds.add(exception.id);
+    if (exception?.path?.startsWith('src/') && !sourceModuleByRelativePath.has(exception.path)) {
+      registryFailures.push(`css-governance-registry.json: exception ${exception.id} references missing module ${exception.path}`);
+    }
+  }
+  const stableFiles = governanceRegistry?.inline?.stableFiles;
+  if (!Array.isArray(stableFiles)) registryFailures.push('css-governance-registry.json: inline.stableFiles must be an array');
+  for (const file of stableFiles || []) {
+    if (typeof file !== 'string' || !file.startsWith('src/') || !sourceModuleByRelativePath.has(file)) {
+      registryFailures.push(`css-governance-registry.json: stableFiles entry must be a src/ path to an existing module: ${String(file)}`);
+    }
+  }
+  const dataDriven = governanceRegistry?.inline?.dataDrivenStyle;
+  if (!Array.isArray(dataDriven)) registryFailures.push('css-governance-registry.json: inline.dataDrivenStyle must be an array');
+  for (const entry of dataDriven || []) {
+    if (typeof entry?.file !== 'string' || !entry.file.startsWith('src/') || !sourceModuleByRelativePath.has(entry.file)
+        || !entry?.scope || !Array.isArray(entry?.properties) || !entry?.properties.length || !entry?.reason) {
+      registryFailures.push('css-governance-registry.json: dataDrivenStyle entry must declare file/scope/properties/reason');
+    }
+  }
+  const tokenContracts = governanceRegistry?.tokenContracts;
+  if (!Array.isArray(tokenContracts) || !tokenContracts.length) {
+    registryFailures.push('css-governance-registry.json: tokenContracts must declare every private token prefix');
+  }
+  const componentRoots = governanceRegistry?.componentRoots;
+  if (!componentRoots || typeof componentRoots !== 'object' || Array.isArray(componentRoots)) {
+    registryFailures.push('css-governance-registry.json: componentRoots must be an object');
+  } else {
+    const seenRoots = new Set();
+    for (const [owner, roots] of Object.entries(componentRoots)) {
+      if (!owner || !Array.isArray(roots) || !roots.length || roots.some(root => typeof root !== 'string' || !root)) {
+        registryFailures.push(`css-governance-registry.json: componentRoots.${owner} must be a non-empty string array`);
+        continue;
+      }
+      for (const root of roots) {
+        if (seenRoots.has(root)) registryFailures.push(`css-governance-registry.json: component root ${root} is registered more than once`);
+        seenRoots.add(root);
+        if (!cssRules.some(rule => rule.selectors.some(selector => selector.includes(root)))) {
+          registryFailures.push(`css-governance-registry.json: component root ${root} has no style.css rule`);
+        }
+      }
+    }
+  }
+  const privateTokenPrefixes = privatePrefixes.map(prefix => prefix.endsWith('*') ? prefix.slice(0, -1) : prefix);
+  const seenContractPrefixes = new Set();
+  for (const contract of tokenContracts || []) {
+    if (seenContractPrefixes.has(contract?.prefix)) registryFailures.push(`css-governance-registry.json: duplicate private token contract ${contract?.prefix || '<missing prefix>'}`);
+    if (contract?.prefix) seenContractPrefixes.add(contract.prefix);
+  }
+  for (const prefix of privateTokenPrefixes) {
+    const contract = (tokenContracts || []).find(entry => entry?.prefix === prefix);
+    if (!contract || !Array.isArray(contract.rootSelectors) || !contract.rootSelectors.length
+        || typeof contract.owner !== 'string' || typeof contract.themeStrategy !== 'string') {
+      registryFailures.push(`css-governance-registry.json: private token prefix ${prefix} must declare owner/rootSelectors/themeStrategy`);
+      continue;
+    }
+    for (const rule of cssRules) {
+      const privateDeclarations = [...rule.declarations.keys()].filter(property => property.startsWith(prefix));
+      const privateConsumers = [...rule.declarations.entries()]
+        .filter(([, value]) => value.includes(`var(${prefix}`))
+        .map(([property]) => property);
+      if (!privateDeclarations.length && !privateConsumers.length) continue;
+      if (!rule.selectors.some(selector => contract.rootSelectors.some(rootSelector => selector.includes(rootSelector)))) {
+        const operations = [
+          privateDeclarations.length ? `declares ${privateDeclarations.join(', ')}` : '',
+          privateConsumers.length ? `consumes ${privateConsumers.join(', ')}` : '',
+        ].filter(Boolean).join(' and ');
+        registryFailures.push(`style.css:${rule.line}: ${rule.selectors.join(', ')} ${operations} outside ${prefix}'s registered component root`);
+      }
+    }
+  }
+  const legacyValues = governanceRegistry?.legacyValues;
+  if (!legacyValues || typeof legacyValues !== 'object' || Array.isArray(legacyValues)) {
+    registryFailures.push('css-governance-registry.json: legacyValues must be an object');
+  } else {
+    for (const category of Object.keys(LEGACY_VALUE_PROPERTIES)) {
+      const values = legacyValues[category];
+      if (!Array.isArray(values) || !values.length || values.some(value => typeof value !== 'string' || !value)) {
+        registryFailures.push(`css-governance-registry.json: legacyValues.${category} must be a non-empty string array`);
+      }
+    }
+  }
+  if (registryFailures.length) failures.push(...registryFailures);
+}
+compareLegacyCssValues(cssRules, governanceRegistry.legacyValues || {});
 
 function parseJavaScript(code, sourceType = 'script') {
   return parse(code, {
@@ -208,6 +386,102 @@ function staticStringFragments(node) {
     return [...staticStringFragments(node.left), ...staticStringFragments(node.right)];
   }
   return [];
+}
+
+function cssPropertyName(name) {
+  return name.startsWith('--') ? name : name.replace(/[A-Z]/g, letter => `-${letter.toLowerCase()}`);
+}
+
+function uiTokenAssignmentIdentifiers(ast) {
+  const identifiers = new Set();
+  walk(ast, node => {
+    if (node.type !== 'ForOfStatement' || node.right?.type !== 'CallExpression') return;
+    const calleeName = memberName(node.right.callee);
+    const sourceArg = node.right.arguments[0];
+    const sourceName = sourceArg?.type === 'Identifier' ? sourceArg.name : null;
+    const isUiTokens = calleeName === 'entries' && sourceName === 'uiTokens';
+    const isSkinTokens = calleeName === 'keys' && sourceName === 'skinTokens';
+    if (!isUiTokens && !isSkinTokens) return;
+    const entry = node.left?.type === 'VariableDeclaration' ? node.left.declarations[0]?.id : node.left;
+    if (entry?.type === 'ArrayPattern' && entry.elements[0]?.type === 'Identifier') identifiers.add(entry.elements[0].name);
+    if (entry?.type === 'Identifier') identifiers.add(entry.name);
+  });
+  return identifiers;
+}
+
+function styleWriteProperty(node) {
+  if (node?.type !== 'MemberExpression' || memberName(node.object) !== 'style') return null;
+  return cssPropertyName(memberName(node) || '<dynamic-property>');
+}
+
+function collectDirectStyleWrites(code) {
+  const writes = new Set();
+  const ast = parseJavaScript(code, 'module');
+  const themeTokenIdentifiers = uiTokenAssignmentIdentifiers(ast);
+  walk(ast, node => {
+    if (node.type === 'AssignmentExpression') {
+      const property = styleWriteProperty(node.left);
+      if (property) writes.add(property);
+    }
+    if (node.type === 'CallExpression' && memberName(node.callee) === 'setAttribute' && isString(node.arguments[0], 'style')) {
+      writes.add('<style-attribute>');
+    }
+    if (node.type === 'AssignmentExpression' && memberName(node.left) === 'cssText'
+        && node.left?.object?.type === 'MemberExpression' && memberName(node.left.object) === 'style') {
+      writes.add('<css-text>');
+    }
+    if (node.type === 'CallExpression' && memberName(node.callee) === 'setProperty') {
+      const styleObject = node.callee.object;
+      if (styleObject?.type === 'MemberExpression' && memberName(styleObject) === 'style') {
+        const token = staticString(node.arguments[0]);
+        if (token) writes.add(token);
+        else if (node.arguments[0]?.type === 'Identifier' && themeTokenIdentifiers.has(node.arguments[0].name)) writes.add('<theme-preset-token>');
+        else writes.add('<dynamic-token>');
+      }
+    }
+    if (node.type === 'CallExpression' && memberName(node.callee) === 'removeProperty') {
+      const styleObject = node.callee.object;
+      if (styleObject?.type === 'MemberExpression' && memberName(styleObject) === 'style') {
+        const token = staticString(node.arguments[0]);
+        if (token) writes.add(token);
+        else if (node.arguments[0]?.type === 'Identifier' && themeTokenIdentifiers.has(node.arguments[0].name)) writes.add('<theme-preset-token>');
+        else writes.add('<dynamic-token>');
+      }
+    }
+  });
+  for (const match of code.matchAll(/\bstyle\s*=\s*["']([^"']*)["']/g)) {
+    const declarations = match[1].split(';').map(value => value.trim()).filter(Boolean);
+    if (!declarations.length) writes.add('<dynamic-style-attribute>');
+    for (const declaration of declarations) {
+      const separator = declaration.indexOf(':');
+      if (separator < 1) writes.add('<dynamic-style-attribute>');
+      else writes.add(declaration.slice(0, separator).trim());
+    }
+  }
+  return writes;
+}
+
+{
+  const allowedWrites = governanceRegistry?.inline?.allowedWrites;
+  if (!Array.isArray(allowedWrites)) {
+    failures.push('css-governance-registry.json: inline.allowedWrites must be an array');
+  } else {
+    const allowedByFile = new Map();
+    for (const entry of allowedWrites) {
+      if (typeof entry?.file !== 'string' || !sourceModuleByRelativePath.has(entry.file)
+          || !Array.isArray(entry.properties) || !entry.properties.length || !entry.reason) {
+        failures.push('css-governance-registry.json: inline.allowedWrites entries must declare an existing file, non-empty properties and reason');
+        continue;
+      }
+      allowedByFile.set(entry.file, new Set(entry.properties));
+    }
+    for (const [relativePath, module] of sourceModuleByRelativePath) {
+      const allowed = allowedByFile.get(relativePath) || new Set();
+      for (const property of collectDirectStyleWrites(module.code)) {
+        if (!allowed.has(property)) failures.push(`${relativePath}: unregistered direct style write ${property}`);
+      }
+    }
+  }
 }
 
 function isString(node, expected) {
@@ -447,6 +721,217 @@ function memberPath(node) {
   if (node?.type !== 'MemberExpression' || node.computed || node.property?.type !== 'Identifier') return null;
   const owner = memberPath(node.object);
   return owner ? `${owner}.${node.property.name}` : null;
+}
+
+function unwrapChainExpression(node) {
+  return node?.type === 'ChainExpression' ? node.expression : node;
+}
+
+function isWindowDescendantMember(node, rootName) {
+  let current = unwrapChainExpression(node);
+  let hasDescendant = false;
+  while (current?.type === 'MemberExpression') {
+    if (current.object?.type === 'Identifier' && current.object.name === 'window'
+        && memberName(current) === rootName) return hasDescendant;
+    hasDescendant = true;
+    current = unwrapChainExpression(current.object);
+  }
+  return false;
+}
+
+function findWindowDescendantWrites(code, rootName) {
+  const writes = [];
+  walk(parseJavaScript(code, 'module'), node => {
+    if (node.type === 'AssignmentExpression' && isWindowDescendantMember(node.left, rootName)) writes.push(node);
+    if (node.type === 'UpdateExpression' && isWindowDescendantMember(node.argument, rootName)) writes.push(node);
+    if (node.type === 'UnaryExpression' && node.operator === 'delete'
+        && isWindowDescendantMember(node.argument, rootName)) writes.push(node);
+    if (node.type === 'CallExpression') {
+      const method = memberName(node.callee);
+      if (['copyWithin', 'fill', 'pop', 'push', 'reverse', 'shift', 'sort', 'splice', 'unshift'].includes(method)
+          && isWindowDescendantMember(node.callee.object, rootName)) writes.push(node);
+      if (node.callee?.type === 'MemberExpression' && node.callee.object?.type === 'Identifier'
+          && node.callee.object.name === 'Object' && ['assign', 'defineProperty', 'defineProperties', 'setPrototypeOf'].includes(memberName(node.callee))
+          && isWindowDescendantMember(node.arguments[0], rootName)) writes.push(node);
+    }
+  });
+  return writes;
+}
+
+function findDirectStatePropertyWrites(code, property) {
+  const writes = [];
+  walk(parseJavaScript(code, 'module'), node => {
+    const isStateProperty = target => target?.type === 'MemberExpression'
+      && target.object?.type === 'Identifier' && target.object.name === 'state'
+      && memberName(target) === property;
+    if (node.type === 'AssignmentExpression' && isStateProperty(node.left)) writes.push(node);
+    if (node.type === 'UpdateExpression' && isStateProperty(node.argument)) writes.push(node);
+    if (node.type === 'UnaryExpression' && node.operator === 'delete' && isStateProperty(node.argument)) writes.push(node);
+    if (node.type === 'CallExpression') {
+      const method = memberName(node.callee);
+      if (['copyWithin', 'fill', 'pop', 'push', 'reverse', 'shift', 'sort', 'splice', 'unshift'].includes(method)
+          && isStateProperty(node.callee.object)) writes.push(node);
+    }
+  });
+  return writes;
+}
+
+function isIdentifierCall(node, name, args = []) {
+  return node?.type === 'CallExpression' && node.callee?.type === 'Identifier'
+    && node.callee.name === name && args.every((expected, index) => expected(node.arguments[index]));
+}
+
+const isNamedIdentifier = name => node => node?.type === 'Identifier' && node.name === name;
+
+function objectPropertyValue(node, name) {
+  if (node?.type !== 'ObjectExpression') return null;
+  return node.properties.find(property => propertyName(property) === name)?.value || null;
+}
+
+function findDirectIdentifierCalls(node, name, args = []) {
+  return collectDirectExecutionNodes(node, candidate => isIdentifierCall(candidate, name, args));
+}
+
+function hasExactHistoryCommit(node, storageId, saveKey) {
+  return findDirectIdentifierCalls(node, 'replaceConversationHistory', [
+    isNamedIdentifier(storageId), isNamedIdentifier(saveKey), candidate => memberPath(candidate) === 'historyWindow.history',
+  ]).length === 1;
+}
+
+function findWindowEntryWrites(code, name) {
+  const aliases = new Set(['window']);
+  const writes = [];
+  const ast = parseJavaScript(code, 'module');
+  const isWindowTarget = node => (node?.type === 'Identifier' && aliases.has(node.name))
+    || memberPath(node) === 'globalThis.window';
+  walk(ast, node => {
+    if (node.type === 'VariableDeclarator' && node.id?.type === 'Identifier'
+        && isWindowTarget(node.init)) aliases.add(node.id.name);
+    if (node.type === 'AssignmentExpression' && node.left?.type === 'MemberExpression'
+        && isWindowTarget(node.left.object)
+        && memberName(node.left) === name) writes.push(node);
+    if (node.type === 'CallExpression' && node.callee?.type === 'MemberExpression'
+        && node.callee.object?.type === 'Identifier' && node.callee.object.name === 'Object'
+        && ['assign', 'defineProperty'].includes(memberName(node.callee))
+        && isWindowTarget(node.arguments[0])) {
+      if (memberName(node.callee) === 'defineProperty' && staticString(node.arguments[1]) === name) writes.push(node);
+      if (memberName(node.callee) === 'assign'
+          && node.arguments.slice(1).some(argument => objectPropertyValue(argument, name))) writes.push(node);
+    }
+  });
+  return writes;
+}
+
+function expectWindowFunctionSignature(label, analysis, name, { async, params }) {
+  const source = analysis.windowAssignmentSource.get(name) || '';
+  const node = functionNodeFromSource(source);
+  if (!node) {
+    failures.push(`${label}: window.${name} must be assigned a function`);
+    return null;
+  }
+  if (Boolean(node.async) !== async) failures.push(`${label}: window.${name} async signature changed`);
+  if (node.params.length !== params.length) {
+    failures.push(`${label}: window.${name} parameter count changed`);
+    return node;
+  }
+  for (let index = 0; index < params.length; index += 1) {
+    const expected = params[index];
+    const actual = node.params[index];
+    if (typeof expected === 'string') {
+      if (actual?.type !== 'Identifier' || actual.name !== expected) {
+        failures.push(`${label}: window.${name} parameter ${index + 1} must be ${expected}`);
+      }
+      continue;
+    }
+    const defaultIsLiteral = Object.hasOwn(expected, 'default');
+    if (actual?.type !== 'AssignmentPattern' || actual.left?.type !== 'Identifier'
+        || actual.left.name !== expected.name
+        || (defaultIsLiteral && (actual.right?.type !== 'Literal' || actual.right.value !== expected.default))
+        || (!defaultIsLiteral && actual.right?.type !== 'ObjectExpression')) {
+      const defaultValue = defaultIsLiteral ? JSON.stringify(expected.default) : '{}';
+      failures.push(`${label}: window.${name} parameter ${index + 1} must be ${expected.name} = ${defaultValue}`);
+    }
+  }
+  return node;
+}
+
+function expectThinWindowDelegate(label, analysis, name, { params, callee }) {
+  const handler = expectWindowFunctionSignature(label, analysis, name, { async: false, params });
+  if ((analysis.windowAssignmentCounts.get(name) || 0) !== 1) {
+    failures.push(`${label}: window.${name} must be assigned exactly once`);
+  }
+  if (!handler) return;
+  const expression = handler.body?.type === 'CallExpression'
+    ? handler.body
+    : handler.body?.type === 'BlockStatement' && handler.body.body.length === 1
+      && handler.body.body[0]?.type === 'ReturnStatement' ? handler.body.body[0].argument : null;
+  if (expression?.type !== 'CallExpression' || memberPath(expression.callee) !== callee) {
+    failures.push(`${label}: window.${name} must transparently return ${callee}(...)`);
+    return;
+  }
+  const expectedArguments = params.filter(param => typeof param === 'string');
+  if (expression.arguments.length !== expectedArguments.length
+      || expression.arguments.some((argument, index) => argument?.type !== 'Identifier' || argument.name !== expectedArguments[index])) {
+    failures.push(`${label}: window.${name} must transparently forward its parameters to ${callee}`);
+  }
+}
+
+function controllerExposesMethod(code, method) {
+  let exposed = false;
+  walk(parseJavaScript(code, 'module'), node => {
+    if (node.type !== 'ReturnStatement' || node.argument?.type !== 'ObjectExpression') return;
+    if (node.argument.properties.some(property => propertyName(property) === method)) exposed = true;
+  });
+  return exposed;
+}
+
+function assertSettingsDelegate(analysis, name, params, callee, controllerCode, method) {
+  expectThinWindowDelegate('settings-ui.js', analysis, name, { params, callee });
+  if (!controllerExposesMethod(controllerCode, method)) {
+    failures.push(`settings controller: ${callee} must be exposed by its owning controller`);
+  }
+}
+
+function assertPokeHistoryAdapter(analysis) {
+  const getHandler = name => expectWindowFunctionSignature('phone-chat-poke.js', analysis, name, {
+    async: true, params: name === '__pmPokeGroup' ? [] : ['contactName'],
+  });
+  const autoPoke = getHandler('__pmAutoPoke');
+  const poke = getHandler('__pmPoke');
+  const pokeGroup = getHandler('__pmPokeGroup');
+  for (const [name, handler] of [['__pmAutoPoke', autoPoke], ['__pmPoke', poke], ['__pmPokeGroup', pokeGroup]]) {
+    if ((analysis.windowAssignmentCounts.get(name) || 0) !== 1) {
+      failures.push(`phone-chat-poke.js: window.${name} must be assigned exactly once`);
+    }
+    if (!handler) continue;
+  }
+  if (!autoPoke || !poke || !pokeGroup) return;
+
+  const automaticCommit = findDirectIdentifierCalls(autoPoke.body, 'commitAutomaticResult').find(({ node }) =>
+    node.arguments[0]?.type === 'ObjectExpression')?.node;
+  const applyHistory = objectPropertyValue(automaticCommit?.arguments[0], 'applyHistory');
+  const restoreHistory = objectPropertyValue(automaticCommit?.arguments[0], 'restoreHistory');
+  const persistHistory = objectPropertyValue(automaticCommit?.arguments[0], 'persistHistory');
+  const hasAutoReplace = hasExactHistoryCommit(applyHistory?.body, 'id', 'contactName');
+  const hasAutoRestore = findDirectIdentifierCalls(restoreHistory?.body, 'restoreConversationHistory', [
+    isNamedIdentifier('id'), isNamedIdentifier('contactName'), isNamedIdentifier('previousHistory'),
+  ]).length === 1;
+  const hasStrictPersist = findDirectIdentifierCalls(persistHistory?.body, 'saveHistoriesStrict').length === 1;
+  const previousHistoryCaptured = collectNodesWithAncestors(autoPoke.body, node => node.type === 'VariableDeclarator'
+    && node.id?.type === 'Identifier' && node.id.name === 'previousHistory'
+    && isWindowDescendantMember(node.init, '__pmHistories')).length === 1;
+  if (!automaticCommit || !hasAutoReplace || !hasAutoRestore || !hasStrictPersist || !previousHistoryCaptured) {
+    failures.push('phone-chat-poke.js __pmAutoPoke: commitAutomaticResult must bind adapter apply/restore and strict history persistence to captured previousHistory');
+  }
+
+  if (!hasExactHistoryCommit(poke.body, 'storageId', 'saveKey')) {
+    failures.push('phone-chat-poke.js __pmPoke: direct execution must commit historyWindow.history through replaceConversationHistory(storageId, saveKey, ...)');
+  }
+
+  const groupLoops = collectDirectExecutionNodes(pokeGroup.body, node => node.type === 'ForOfStatement');
+  if (!groupLoops.some(({ node }) => hasExactHistoryCommit(node.body, 'storageId', 'saveKey'))) {
+    failures.push('phone-chat-poke.js __pmPokeGroup: direct execution inside the streamed block loop must commit historyWindow.history through the persistence adapter');
+  }
 }
 
 function literalValue(expected) {
@@ -709,15 +1194,6 @@ function analyzeBackupContract(code, sourceType = 'module') {
   walk(parseJavaScript(code, sourceType), node => {
     if (node.type === 'AssignmentExpression' && node.operator === '=') {
       const entry = memberName(node.left);
-      if (node.left?.object?.name === 'window' && entry === '__pmExportData') {
-        walk(node.right, child => {
-          if (child.type !== 'VariableDeclarator' || child.id?.name !== 'data' || child.init?.type !== 'ObjectExpression') return;
-          for (const property of child.init.properties) {
-            const name = propertyName(property);
-            if (name) result.exportFields.add(name);
-          }
-        });
-      }
       if (node.left?.object?.name === 'window' && entry === '__pmImportData') {
         walk(node.right, child => {
           if (child.type === 'MemberExpression' && child.object?.name === 'file' && memberName(child) === 'name') {
@@ -726,6 +1202,13 @@ function analyzeBackupContract(code, sourceType = 'module') {
         });
       }
     }
+    if (node.type === 'VariableDeclarator' && node.id?.name === 'data' && node.init?.type === 'ObjectExpression') {
+      for (const property of node.init.properties) {
+        const name = propertyName(property);
+        if (name) result.exportFields.add(name);
+      }
+    }
+    if (node.type === 'MemberExpression' && node.object?.name === 'file' && memberName(node) === 'name') result.importReadsFileName = true;
     if (node.type === 'FunctionDeclaration' && node.id?.name === 'parseBackupData') {
       walk(node.body, child => {
         if (child.type !== 'CallExpression') return;
@@ -745,7 +1228,7 @@ function analyzeBackupContract(code, sourceType = 'module') {
   return result;
 }
 
-function analyzeBackupModuleBinding(settingsUiCode, validatorCode) {
+function analyzeBackupModuleBinding(settingsUiCode, backupControllerCode, validatorCode) {
   const result = {
     importsValidatorParser: false,
     reexportsValidatorParser: false,
@@ -771,7 +1254,16 @@ function analyzeBackupModuleBinding(settingsUiCode, validatorCode) {
         result.reexportsValidatorParser = true;
       }
     }
+    const controllerAst = parseJavaScript(backupControllerCode, 'module');
+    let passesParser = false;
     walk(settingsAst, node => {
+      if (node.type !== 'CallExpression' || node.callee?.type !== 'Identifier' || node.callee.name !== 'createBackupController') return;
+      const options = node.arguments[0];
+      if (options?.type !== 'ObjectExpression') return;
+      const parser = options.properties.find(property => propertyName(property) === 'parseBackupData');
+      if (parser?.value?.type === 'Identifier' && parser.value.name === parserLocalName) passesParser = true;
+    });
+    walk(controllerAst, node => {
       if (result.prepareCallsValidatorParser || node.type !== 'CallExpression'
           || node.callee?.type !== 'Identifier' || node.callee.name !== 'runBackupTransaction') return;
       const options = node.arguments[0];
@@ -788,7 +1280,7 @@ function analyzeBackupModuleBinding(settingsUiCode, validatorCode) {
         if (child.type === 'CallExpression' && child.callee?.type === 'Identifier'
             && child.callee.name === parserLocalName) callsParser = true;
       });
-      if (callsParser && !shadowsParser) result.prepareCallsValidatorParser = true;
+      if (callsParser && !shadowsParser && passesParser) result.prepareCallsValidatorParser = true;
     });
   }
 
@@ -806,27 +1298,32 @@ function backupModuleBindingIsComplete(result) {
 
 function verifyBackupModuleBindingDetector() {
   const validator = `export function parseBackupData(data, current) { return current; }`;
-  const valid = `
+  const controller = `
+    export function createBackupController({ parseBackupData, runBackupTransaction }) {
+      runBackupTransaction({ prepare: current => parseBackupData(data, current) });
+    }
+  `;
+  const validSettings = `
     import { parseBackupData } from './settings-backup-validate.js';
     export { parseBackupData };
-    runBackupTransaction({ prepare: current => parseBackupData(data, current) });
+    createBackupController({ parseBackupData });
   `;
-  if (!backupModuleBindingIsComplete(analyzeBackupModuleBinding(valid, validator))) {
+  if (!backupModuleBindingIsComplete(analyzeBackupModuleBinding(validSettings, controller, validator))) {
     failures.push('self-test: backup module binding detector rejected valid wiring');
   }
   const invalidSettingsSamples = [
-    `import { parseBackupData } from './wrong.js'; export { parseBackupData }; runBackupTransaction({ prepare: current => parseBackupData(data, current) });`,
-    `import { parseBackupData } from './settings-backup-validate.js'; runBackupTransaction({ prepare: current => parseBackupData(data, current) });`,
-    `import { parseBackupData } from './settings-backup-validate.js'; export { parseBackupData }; runBackupTransaction({ prepare: current => otherParser(data, current) });`,
-    `import { parseBackupData } from './settings-backup-validate.js'; export { parseBackupData }; runBackupTransaction({ prepare: parseBackupData => parseBackupData(data) });`,
+    `import { parseBackupData } from './wrong.js'; export { parseBackupData }; createBackupController({ parseBackupData });`,
+    `import { parseBackupData } from './settings-backup-validate.js'; createBackupController({ parseBackupData });`,
+    `import { parseBackupData } from './settings-backup-validate.js'; export { parseBackupData }; createBackupController({ otherParser });`,
+    `import { parseBackupData } from './settings-backup-validate.js'; export { parseBackupData }; createBackupController({ parseBackupData: otherParser });`,
   ];
   for (const sample of invalidSettingsSamples) {
-    if (backupModuleBindingIsComplete(analyzeBackupModuleBinding(sample, validator))) {
+    if (backupModuleBindingIsComplete(analyzeBackupModuleBinding(sample, controller, validator))) {
       failures.push('self-test: backup module binding detector accepted invalid settings wiring');
     }
   }
   const invalidValidator = `export const parseBackupData = (data, current) => current;`;
-  if (backupModuleBindingIsComplete(analyzeBackupModuleBinding(valid, invalidValidator))) {
+  if (backupModuleBindingIsComplete(analyzeBackupModuleBinding(validSettings, controller, invalidValidator))) {
     failures.push('self-test: backup module binding detector accepted non-function-declaration validator export');
   }
 }
@@ -853,6 +1350,45 @@ function verifyWindowAssignmentDetector() {
   }
   for (const sample of negatives) {
     if (analyze(sample).windowAssignments.has('__pmShowConfig')) failures.push('self-test: window assignment detector accepted invalid sample');
+  }
+}
+
+function verifyWindowWriteDetectors() {
+  const allowedHistoryRead = `window.__pmHistories[id]?.[key];`;
+  if (findWindowDescendantWrites(allowedHistoryRead, '__pmHistories').length) {
+    failures.push('self-test: history write detector rejected a read');
+  }
+  for (const forbidden of [
+    `window.__pmHistories[id][key] = value;`,
+    `window.__pmHistories[id][key] ||= [];`,
+    `window.__pmHistories[id][key]++;`,
+    `window.__pmHistories[id][key].push(value);`,
+    `Object.assign(window.__pmHistories[id], { [key]: value });`,
+    `Object.defineProperty(window.__pmHistories[id], key, { value });`,
+  ]) {
+    if (!findWindowDescendantWrites(forbidden, '__pmHistories').length) {
+      failures.push(`self-test: history write detector accepted ${forbidden}`);
+    }
+  }
+  for (const source of [
+    `window.__pmSwitch = replacement;`,
+    `const host = window; host.__pmSwitch = replacement;`,
+    `Object.assign(window, { __pmSwitch: replacement });`,
+    `const host = window; Object.assign(host, { __pmSwitch: replacement });`,
+    `Object.defineProperty(window, '__pmSwitch', { value: replacement });`,
+    `const host = window; Object.defineProperty(host, '__pmSwitch', { value: replacement });`,
+    `Object.defineProperty(globalThis.window, '__pmSwitch', { value: replacement });`,
+  ]) {
+    if (findWindowEntryWrites(source, '__pmSwitch').length !== 1) {
+      failures.push(`self-test: window entry write detector rejected ${source}`);
+    }
+  }
+  for (const read of [
+    `const host = window; host.__pmSwitch;`, `host.__pmSwitch();`,
+    `Object.assign({}, { __pmSwitch: replacement });`,
+    `Object.defineProperty({}, '__pmSwitch', { value: replacement });`,
+  ]) if (findWindowEntryWrites(read, '__pmSwitch').length) {
+    failures.push(`self-test: window entry write detector rejected read ${read}`);
   }
 }
 
@@ -920,6 +1456,7 @@ verifyDetector('style element', 'styleElement', [
   `document.createElement('div')`,
 ]);
 verifyWindowAssignmentDetector();
+verifyWindowWriteDetectors();
 verifyBackupModuleBindingDetector();
 verifyGuardedRequestOrderDetector();
 verifyCallAiOptionsDetector();
@@ -974,7 +1511,7 @@ for (const [label, , result] of analyzedFiles) {
 const SETTING_ENTRIES = [
   '__pmDeleteProfile', '__pmPickProfile', '__pmSetMode', '__pmToggleWordyLimit',
   '__pmSetDarkMode', '__pmExportData', '__pmImportData', '__pmShowConfig',
-  '__pmSetPreset', '__pmSetCustomColor', '__pmClearCustomColor',
+  '__pmSetPreset', '__pmSetCustomAccent', '__pmSetCustomColor', '__pmClearCustomColor',
   '__pmSetBorderColor', '__pmSetCustomTitle', '__pmUploadBg', '__pmBgUrl',
   '__pmClearBg', '__pmTestApi', '__pmTestModel', '__pmSaveConfig', '__pmShowModelPicker',
   '__pmSaveBudgetConfig', '__pmResetBudgetConfig', '__pmClearAllData',
@@ -995,6 +1532,20 @@ if (!settingsFile) {
   const assignments = analyze(settingsFile.code, 'module').windowAssignments;
   for (const entry of SETTING_ENTRIES) {
     if (!assignments.has(entry)) failures.push(`settings-ui.js: missing window.${entry} assignment`);
+  }
+}
+for (const entry of SETTING_ENTRIES) {
+  let writeCount = 0;
+  for (const { file, code } of sourceModules) {
+    const fileName = path.basename(file);
+    const writes = findWindowEntryWrites(code, entry).length;
+    writeCount += writes;
+    if (fileName !== 'settings-ui.js' && writes) {
+      failures.push(`${fileName}: must not define window.${entry}; owner is settings-ui.js`);
+    }
+  }
+  if (writeCount !== 1) {
+    failures.push(`settings-ui.js: window.${entry} must have exactly one direct window assignment across source modules`);
   }
 }
 
@@ -1025,37 +1576,49 @@ const PHONE_ENTRY_OWNERS = {
   'phone-foundation.js': ['__pmToggleBidirectional', '__pmCloseOverlay'],
   'phone-chat.js': ['__pmSend', '__pmSubmitPending', '__pmIncrementCounters'],
   'phone-control-center.js': [
-    '__pmShowControlCenter', '__pmOpenSettingsTab',
-    '__pmStartDeleteMode', '__pmRefreshControlCenter',
+    '__pmRefreshControlCenter', '__pmReturnToControlCenter', '__pmShowAutoPokeSettings',
+    '__pmToggleCurrentAutoPoke', '__pmSaveCurrentAutoPokeProbability', '__pmShowControlCenter', '__pmOpenSettingsTab',
+    '__pmStartDeleteMode',
     '__pmEditPending', '__pmSavePendingEdit', '__pmCancelPendingEdit',
     '__pmDeletePending', '__pmClearPending', '__pmResetPendingEditor',
   ],
-  'interactive-scenes.js': ['__pmOpenForumMode'],
+  'interactive-scenes.js': ['__pmReturnToCommunityDataSource', '__pmOpenForumMode'],
+  'calendar.js': ['__pmReturnToCalendarDataSource'],
   'phone-directory.js': [
-    '__pmSaveAndCloseGroupEdit', '__pmShowGroupCreate', '__pmGroupInputChanged',
+    '__pmToggleContactSwitcher', '__pmSaveAndCloseGroupEdit',
+    '__pmShowGroupRandomNpcSettings', '__pmSaveGroupRandomNpcSettings',
+    '__pmShowGroupCreate', '__pmGroupInputChanged',
     '__pmConfirmGroup', '__pmShowList', '__pmShowAddContact', '__pmDelGroup', '__pmDel',
   ],
   'phone-context-injection.js': [
     '__pmConversationInjectionSummary', '__pmCurrentConversationInjectionEnabled',
+    '__pmConversationInjectionEnabled', '__pmToggleConversationInjection',
     '__pmToggleCurrentConversationInjection', '__pmShowConversationInjection', '__pmClearConversationInjection',
     '__pmSaveConversationInjection',
   ],
   'contact-generator.js': ['__pmConfirmAutoGen', '__pmAutoGenContacts'],
   'conversation.js': ['__pmSwitchContact', '__pmSwitch'],
   'phone-chat-poke.js': [
-    '__pmAutoPoke', '__pmSaveAndCloseContactConfig',
-    '__pmPoke', '__pmEditGroup', '__pmPokeGroup',
+    '__pmAutoPoke', '__pmArmAutoPoke', '__pmSaveContactConfig', '__pmSaveAndCloseContactConfig',
+    '__pmPoke', '__pmEditGroup', '__pmPokeCurrent', '__pmPokeGroup',
     '__pmShowCharacterBehavior', '__pmShowGroupMemberSettings', '__pmShowConversationSettings',
   ],
   'phone-lifecycle.js': [
-    '__pmSetAmbientStatus', '__pmToggleSelect', '__pmDeleteSelected', '__pmToggleMin', '__pmEnd', '__pmOpen',
+    '__pmReturnToDesktop', '__pmSetAmbientStatus', '__pmToggleSelect', '__pmDeleteSelected', '__pmToggleMin', '__pmEnd', '__pmOpen',
+    '__pmShowPhonePage', '__pmCancelGeneration',
   ],
   'emoji-ui.js': [
-    '__pmRenderEmojiSetList', '__pmAddEmojiSet', '__pmConfirmAddEmojiSet', '__pmDeleteEmojiSet',
+    '__pmShowEmojiManager', '__pmRenderEmojiSetList', '__pmAddEmojiSet', '__pmConfirmAddEmojiSet', '__pmDeleteEmojiSet',
     '__pmAddEmojiImage', '__pmEmoFileRead', '__pmConfirmAddEmojiImage', '__pmDeleteEmojiImage',
     '__pmShowEmojiPicker', '__pmEmojiSetDot', '__pmInsertEmoji', '__pmTempText',
   ],
 };
+
+// 这些入口承载运行期可变状态，不是一次性安装的函数桥；owner 仍唯一，
+// 但 owner 内允许多次更新值。
+const PHONE_STATE_SLOTS = new Set([
+  '__pmConversationInjectionEnabled', '__pmCurrentConversationInjectionEnabled', '__pmTempText',
+]);
 
 const phoneEntryOwnerByName = new Map();
 for (const [ownerFile, entries] of Object.entries(PHONE_ENTRY_OWNERS)) {
@@ -1074,10 +1637,15 @@ for (const [ownerFile, entries] of Object.entries(PHONE_ENTRY_OWNERS)) {
 for (const { file, code } of sourceModules) {
   const fileName = path.basename(file);
   const assignments = analyze(code, 'module').windowAssignments;
-  for (const entry of assignments) {
-    const expectedOwner = phoneEntryOwnerByName.get(entry);
-    if (expectedOwner && expectedOwner !== fileName) {
+  for (const [entry, expectedOwner] of phoneEntryOwnerByName) {
+    const directAssignment = assignments.has(entry);
+    const alternateWrites = findWindowEntryWrites(code, entry);
+    const writeCount = alternateWrites.length;
+    if (expectedOwner !== fileName && (directAssignment || writeCount)) {
       failures.push(`${fileName}: must not define window.${entry}; owner is ${expectedOwner}`);
+    }
+    if (expectedOwner === fileName && !PHONE_STATE_SLOTS.has(entry) && writeCount !== 1) {
+      failures.push(`${fileName}: window.${entry} must have exactly one direct window assignment`);
     }
   }
 }
@@ -1125,6 +1693,38 @@ if (mainFile) {
 
 requireText('source', source, "import { installSettingsUi } from './settings-ui.js'");
 requireText('main.js', mainFile?.code || '', 'installSettingsUi(deps)');
+for (const expected of [
+  'window.__pmHistories = window.__pmHistories || {};',
+  "window.__pmConfig = window.__pmConfig || { apiUrl: '', apiKey: '', model: '', temperature: 1.2, useIndependent: false };",
+  "preset: 'default'", "qrLabel: '天音'", 'phoneScale: 1',
+  'window.__pmBudgetConfig = normalizeBudgetConfig(window.__pmBudgetConfig);',
+  'window.__pmInjectionConfig = normalizeInjectionConfig(window.__pmInjectionConfig);',
+]) requireText('phone-foundation.js', sourceModuleByName.get('phone-foundation.js')?.code || '', expected);
+for (const expected of [
+  'if (windowRef.__pmBeforeUnloadRegistered) return false;',
+  "windowRef.__pmBeforeUnloadRegistered = true;",
+  'windowRef.__pmPageSuspensionHandler = reason => handlePhonePageSuspension(',
+]) requireText('phone-foundation.js', sourceModuleByName.get('phone-foundation.js')?.code || '', expected);
+for (const expected of [
+  '## 安装顺序与全局桥',
+  '## 构建体积基线',
+  'installPhoneFoundation → installConversation → installEmojiUi → installInteractiveScenes → installCalendar → installSettingsUi → installPhoneChat → installPhoneContextInjection → installPhoneControlCenter → installPhoneDirectory → installContactGenerator → installPhoneChatPoke → installPhoneLifecycle → installDiagnosticApi → installTodayTrend → installTodayTrendPhoneUi',
+  '`window.__pmHistories`、`window.__pmConfig`、`window.__pmTheme`、`window.__pmInjectionConfig`、`window.__pmBudgetConfig`',
+  '`window.__pmBeforeUnloadRegistered` 与 `window.__pmPageSuspensionHandler`',
+  '`1240219` bytes', '`1488263` bytes',
+]) requireText('docs/BASELINE.md', baselineText, expected);
+for (const expected of [
+  '`--pm-color-surface-elevated`', '`--pm-color-border-strong`',
+]) requireText('docs/CSS-TOKENS.md', cssTokensText, expected);
+for (const expected of [
+  '## 页面级常驻监听', '## 窗口级资源',
+  'installPhonePageSuspensionListeners', 'installPhoneCommandShortcutListeners',
+  'runtime.hostEventRegistrations', 'runtime.visibilityTimer', 'createAmbientStatusController',
+  'quoteHighlightTimer', 'state.generationTask', 'runtime.automaticTasks', 'runtime.historyLoadPromise',
+  '## 缓存边界', 'runtime.pendingMessages', 'PENDING_MESSAGE_LIMIT = 50',
+  'SAVE_LIMIT = 60', 'runtime.trackedExtensionPromptKeys',
+  '真正关闭阶段 A 前仍须在 SillyTavern 验证',
+]) requireText('docs/LIFECYCLE-RESOURCES.md', lifecycleResourcesText, expected);
 requireText('behavior-config.js', sourceModuleByName.get('behavior-config.js')?.code || '', 'normalizeCharacterBehaviorStore');
 for (const expected of [
   'normalizeGroupMetaStore', 'randomNpcEnabled: Boolean(source.randomNpcEnabled)',
@@ -1172,34 +1772,44 @@ for (const expected of [
   'createMessageEntry({', 'quote: combined.quote', 'formatQuoteContext(request.userHistoryEntry?.quote)',
   'messageId: assistantEntry.messageId', 'bubbleId: bubble?.bubbleId', 'if (combined.quoteConflict)',
 ]) requireText('phone-chat.js', sourceModuleByName.get('phone-chat.js')?.code || '', expected);
+const chatPromptsCode = sourceModuleByName.get('chat-prompts.js')?.code || '';
+const chatBlocksPromptCode = sourceModuleByName.get('blocks.js')?.code || '';
+const chatGroupPromptCode = sourceModuleByName.get('group.js')?.code || '';
+const chatSinglePromptCode = sourceModuleByName.get('single.js')?.code || '';
+const groupContextPromptCode = sourceModuleByName.get('group-context.js')?.code || '';
 for (const expected of [
   'formatQuoteContext', '【本轮回复关系】', 'buildGroupAdditionalContext',
   '群聊性质：${nature}', '允许不在固定成员名单上的路人群友',
-]) requireText('chat-prompts.js', sourceModuleByName.get('chat-prompts.js')?.code || '', expected);
+]) requireText('chat prompts', `${chatPromptsCode}\n${chatBlocksPromptCode}\n${chatGroupPromptCode}\n${chatSinglePromptCode}\n${groupContextPromptCode}`, expected);
 for (const expected of [
   'groupRandomNpcEnabled', 'groupNature',
   'allowUnknownSpeakers: groupRandomNpcEnabled === true',
 ]) requireText('phone-chat.js', sourceModuleByName.get('phone-chat.js')?.code || '', expected);
 for (const expected of [
-  'randomNpcEnabled: groupMeta.randomNpcEnabled', 'groupNature: groupMeta.groupNature',
+  'groupRandomNpcEnabled: groupMeta?.randomNpcEnabled', 'groupNature: groupMeta?.groupNature',
   'allowUnknownSpeakers: groupMeta.randomNpcEnabled === true',
   'allowUnknownSpeakers: groupRandomNpcEnabled === true',
 ]) requireText('phone-chat-poke.js', sourceModuleByName.get('phone-chat-poke.js')?.code || '', expected);
+const messagingGroupParserCode = sourceModuleByName.get('messaging-group-parser.js')?.code || '';
 for (const expected of ['allowUnknownSpeakers = false', 'resolveSpeaker', "if (!allowUnknownSpeakers || !normalized) return ''"]) {
-  requireText('messaging.js', sourceModuleByName.get('messaging.js')?.code || '', expected);
+  requireText('messaging-group-parser.js', messagingGroupParserCode, expected);
 }
 requireText('phone-injection.js', sourceModuleByName.get('phone-injection.js')?.code || '', 'formatQuoteContext(message.quote)');
 for (const expected of [
   'dataset.messageId', 'dataset.bubbleId', 'pm-reply-card', 'locateQuotedBubble', 'setActiveQuote',
   'syncReplyCardAvailability', 'refreshReplyCardAvailability',
   "matchMedia?.('(prefers-reduced-motion: reduce)')", "reduceMotion ? 'auto' : 'smooth'",
-]) requireText('phone-foundation.js', sourceModuleByName.get('phone-foundation.js')?.code || '', expected);
+]) requireText('phone quote controller', sourceModuleByName.get('phone-quote.js')?.code || '', expected);
 for (const expected of [
   'pm-quote-preview', 'deleteSelectedMessages', 'refreshReplyCardAvailability?.()',
   'if (runtime.visibilityTimer !== null) { clearInterval(runtime.visibilityTimer); runtime.visibilityTimer = null; }',
   'if (runtime.visibilityTimer === null && state.phoneActive && state.phoneWindow) runtime.visibilityTimer = setInterval(ensureVisibility, 2000);',
 ]) requireText('phone-lifecycle.js', sourceModuleByName.get('phone-lifecycle.js')?.code || '', expected);
 const lifecycleTimerCode = sourceModuleByName.get('phone-lifecycle.js')?.code || '';
+for (const expected of [
+  "Symbol.for('phone-mode.command-shortcut-listeners')", 'installPhoneCommandShortcutListeners',
+  'if (windowRef[PHONE_COMMAND_SHORTCUT_LISTENER_KEY]) return false;', 'installPhoneCommandShortcutListeners();',
+]) requireText('phone-lifecycle.js', lifecycleTimerCode, expected);
 const visibilityTimerStart = lifecycleTimerCode.indexOf('runtime.visibilityTimer = setInterval(ensureVisibility, 2000)');
 const phoneOpenStart = lifecycleTimerCode.indexOf('window.__pmOpen = async () => {');
 const phoneActiveStart = lifecycleTimerCode.indexOf('state.phoneActive = true;', phoneOpenStart);
@@ -1306,6 +1916,13 @@ const interactiveViewsCode = sourceModuleByName.get('interactive-scene-views.js'
 const interactivePhoneCode = sourceModuleByName.get('interactive-scene-phone.js')?.code || '';
 const interactiveSchedulerCode = sourceModuleByName.get('interactive-scene-scheduler.js')?.code || '';
 const foundationCode = sourceModuleByName.get('phone-foundation.js')?.code || '';
+const phoneGenerationCode = sourceModuleByName.get('phone-generation.js')?.code || '';
+const phoneHostEventsCode = sourceModuleByName.get('phone-host-events.js')?.code || '';
+const phoneInjectionControllerCode = sourceModuleByName.get('phone-injection-controller.js')?.code || '';
+const phoneMessageRenderingCode = sourceModuleByName.get('phone-message-rendering.js')?.code || '';
+const phoneOverlayCode = sourceModuleByName.get('phone-overlay.js')?.code || '';
+const phoneThemeCode = sourceModuleByName.get('phone-theme.js')?.code || '';
+const phoneQuoteCode = sourceModuleByName.get('phone-quote.js')?.code || '';
 const calendarCode = sourceModuleByName.get('calendar.js')?.code || '';
 const calendarPageViewCode = sourceModuleByName.get('calendar-page-view.js')?.code || '';
 const calendarCommitCode = sourceModuleByName.get('calendar-commit.js')?.code || '';
@@ -1316,6 +1933,10 @@ const calendarOutfitControllerCode = sourceModuleByName.get('calendar-outfit-con
 const calendarOutfitModelCode = sourceModuleByName.get('calendar-outfit-model.js')?.code || '';
 const calendarOutfitRuntimeCode = sourceModuleByName.get('calendar-outfit-runtime.js')?.code || '';
 const storageBackgroundCode = sourceModuleByName.get('storage-background.js')?.code || '';
+const storagePrimitivesCode = sourceModuleByName.get('storage-primitives.js')?.code || '';
+const storagePreferencesCode = sourceModuleByName.get('storage-preferences.js')?.code || '';
+const storageHistoryCode = sourceModuleByName.get('storage-history.js')?.code || '';
+const storageGroupMetaCode = sourceModuleByName.get('storage-group-meta.js')?.code || '';
 const calendarModelCode = sourceModuleByName.get('calendar-model.js')?.code || '';
 const calendarHolidayCode = sourceModuleByName.get('calendar-holiday.js')?.code || '';
 const calendarViewCode = sourceModuleByName.get('calendar-view.js')?.code || '';
@@ -1325,7 +1946,10 @@ const aiCode = sourceModuleByName.get('ai.js')?.code || '';
 const phoneChatPokeCodeForChecks = sourceModuleByName.get('phone-chat-poke.js')?.code || '';
 const interactiveModelCode = sourceModuleByName.get('interactive-scene-model.js')?.code || '';
 const interactiveAiCode = sourceModuleByName.get('interactive-scene-ai.js')?.code || '';
+const interactivePromptCode = sourceModuleByName.get('interactive.js')?.code || '';
 const settingsUiCodeForInteractive = sourceModuleByName.get('settings-ui.js')?.code || '';
+const settingsWordyControllerCode = sourceModuleByName.get('settings-wordy-controller.js')?.code || '';
+const settingsBackupControllerCode = sourceModuleByName.get('settings-backup-controller.js')?.code || '';
 const settingsBackupValidateCode = sourceModuleByName.get('settings-backup-validate.js')?.code || '';
 const settingsBackupCode = sourceModuleByName.get('settings-backup.js')?.code || '';
 const contactAnalysis = analyze(contactCode, 'module');
@@ -1336,6 +1960,10 @@ const calendarCommitInspection = inspectModule(calendarCommitCode);
 const calendarDomInspection = inspectModule(calendarDomCode);
 const storageInspection = inspectModule(sourceModuleByName.get('storage.js')?.code || '');
 const storageBackgroundInspection = inspectModule(storageBackgroundCode);
+const storagePrimitivesInspection = inspectModule(storagePrimitivesCode);
+const storagePreferencesInspection = inspectModule(storagePreferencesCode);
+const storageHistoryInspection = inspectModule(storageHistoryCode);
+const storageGroupMetaInspection = inspectModule(storageGroupMetaCode);
 requireNamedImports('calendar.js', calendarInspection, './calendar-commit.js', ['createCalendarCommitters']);
 requireNamedImports('calendar.js', calendarInspection, './calendar-dom.js', [
   'fillCalendarEntryForm', 'readCalendarEntryForm', 'setCalendarEntryRepeat',
@@ -1355,9 +1983,37 @@ for (const name of ['loadBgSettings', 'saveBgGlobal', 'saveBgLocal', 'saveDeskto
   if (!storageBackgroundInspection.exports.has(name)) failures.push(`storage-background.js: missing exported ${name}`);
   if (storageInspection.exports.has(name) || storageInspection.declarations.has(name)) failures.push(`storage.js: ${name} must remain owned by storage-background.js`);
 }
-requireNamedImports('storage-background.js', storageBackgroundInspection, './storage.js', [
+for (const name of ['DESKTOP_BG_KEY', 'isBigData', 'pmIDBDel', 'pmIDBGet', 'pmIDBSet']) {
+  if (!storagePrimitivesInspection.exports.has(name)) failures.push(`storage-primitives.js: missing exported ${name}`);
+}
+requireNamedImports('storage-background.js', storageBackgroundInspection, './storage-primitives.js', [
   'DESKTOP_BG_KEY', 'isBigData', 'pmIDBDel', 'pmIDBGet', 'pmIDBSet',
 ]);
+requireNamedImports('storage.js', storageInspection, './storage-primitives.js', [
+  'DESKTOP_BG_KEY', 'isBigData', 'pmIDBDel', 'pmIDBGet', 'pmIDBKeys', 'pmIDBReadEntry', 'pmIDBSet', 'pmOpenIDB',
+]);
+requireNamedImports('storage.js', storageInspection, './storage-preferences.js', [
+  'addOrUpdateProfile', 'loadInjectionConfig', 'loadProfiles', 'loadTheme', 'loadWordyLimit',
+  'loadWorldBookConfig', 'saveInjectionConfig', 'saveProfiles', 'saveTheme', 'saveWordyLimit', 'saveWorldBookConfig',
+]);
+for (const name of ['addOrUpdateProfile', 'loadInjectionConfig', 'loadProfiles', 'loadTheme', 'loadWordyLimit', 'loadWorldBookConfig', 'saveInjectionConfig', 'saveProfiles', 'saveTheme', 'saveWordyLimit', 'saveWorldBookConfig']) {
+  if (!storagePreferencesInspection.exports.has(name)) failures.push(`storage-preferences.js: missing exported ${name}`);
+}
+requireNamedImports('storage.js', storageInspection, './storage-history.js', [
+  'loadHistoriesFromIDB', 'saveHistories', 'saveHistoriesBeforeUnload', 'saveHistoriesStrict',
+]);
+for (const name of ['loadHistoriesFromIDB', 'saveHistories', 'saveHistoriesBeforeUnload', 'saveHistoriesStrict']) {
+  if (!storageHistoryInspection.exports.has(name)) failures.push(`storage-history.js: missing exported ${name}`);
+}
+requireNamedImports('storage.js', storageInspection, './storage-group-meta.js', ['loadGroupMeta', 'saveGroupMeta']);
+for (const name of ['loadGroupMeta', 'saveGroupMeta']) {
+  if (!storageGroupMetaInspection.exports.has(name)) failures.push(`storage-group-meta.js: missing exported ${name}`);
+}
+if (storageBackgroundInspection.imports.has('./storage.js')) failures.push('storage-background.js: must not import the compatibility facade');
+if (storagePrimitivesInspection.imports.has('./storage.js')) failures.push('storage-primitives.js: must not import the compatibility facade');
+if (storagePreferencesInspection.imports.has('./storage.js')) failures.push('storage-preferences.js: must not import the compatibility facade');
+if (storageHistoryInspection.imports.has('./storage.js')) failures.push('storage-history.js: must not import the compatibility facade');
+if (storageGroupMetaInspection.imports.has('./storage.js')) failures.push('storage-group-meta.js: must not import the compatibility facade');
 if (storageInspection.imports.has('./storage-background.js')) failures.push('storage.js: must not import storage-background.js');
 const backgroundConsumerImports = new Map([
   ['settings-ui.js', ['loadBgSettings', 'saveBgGlobal', 'saveBgLocal', 'saveDesktopBg']],
@@ -1441,7 +2097,7 @@ if ((source.match(/ST_SMS_PHONE_UI_STATE/g) || []).length !== 1) failures.push('
 for (const expected of [
   "['author', 'content', 'tags', 'comments']", 'cleanFeedComments',
   '不得返回 actorId、authorId 或任何内部标识', 'known_actor_names_data',
-]) requireText('interactive-scene-ai.js', interactiveAiCode, expected);
+]) requireText('interactive scene AI', `${interactiveAiCode}\n${interactivePromptCode}`, expected);
 for (const expected of [
   'parseFirstJsonObject', 'generationErrorMessage', 'getting extension version failed',
   '扩展仓库配置、GitHub 认证与网络',
@@ -1458,7 +2114,7 @@ for (const expected of [
 if ((sourceModuleByName.get('contact-generator.js')?.code || '').includes('saveHistories()')) {
   failures.push('contact-generator.js: generated directory transaction must not use the error-swallowing saveHistories wrapper');
 }
-requireText('storage.js', sourceModuleByName.get('storage.js')?.code || '', 'export async function saveGroupMeta(data)');
+requireText('storage-group-meta.js', storageGroupMetaCode, 'export async function saveGroupMeta(data)');
 for (const expected of ['enqueueDirectorySave', 'getDirectorySaveRevision', 'marksGlobalSave']) {
   requireText('directory-save-coordinator.js', sourceModuleByName.get('directory-save-coordinator.js')?.code || '', expected);
 }
@@ -1470,7 +2126,7 @@ for (const expected of [
   'schemaVersion: 14', 'desktopBg: snapshot.desktopBg', 'injectionConfig: snapshot.injectionConfig', 'budgetConfig: snapshot.budgetConfig',
   'calendarStore: snapshot.calendarStore', 'calendarCycles: snapshot.calendarCycles',
   'calendarRecipes: snapshot.calendarRecipes', 'calendarOutfits: snapshot.calendarOutfits', 'todayTrend: snapshot.todayTrend', 'branchLineage: snapshot.branchLineage',
-]) requireText('settings-ui.js', settingsUiCodeForInteractive, expected);
+]) requireText('settings-backup-controller.js', settingsBackupControllerCode, expected);
 requireText('settings-backup-validate.js', settingsBackupValidateCode, 'applyCalendarBackupFields(data, result, objectValue, { includeRecipes: version >= 7, includeOutfits: version >= 12 })');
 for (const expected of [
   'version > 14', '备份版本 13 缺少 budgetConfig', '备份版本 14 缺少 todayTrend',
@@ -1479,24 +2135,24 @@ for (const expected of [
 for (const expected of [
   'phoneUiState: loadPhoneUiState(interactiveScenes)', 'ambientStatus: normalizeAmbientStatus',
   'normalizePhoneUiState(state.phoneUiState, interactiveScenes)', 'savePhoneUiState(phoneUiState, interactiveScenes)',
-  "beforeApply('apply')", "beforeApply('rollback')", "persist(nextState, 'apply')", "persist(snapshot, 'rollback')", 'prepared = await prepare(snapshot)',
+  "beforeApply('apply')", "beforeApply('rollback')", "applied = await persist(nextState, 'apply')", "persist(snapshot, 'rollback', applied)", 'prepared = await prepare(snapshot)',
   "error.backupPhase = 'prepare'", "error.backupPhase = 'rolled-back'", "combined.backupPhase = 'rollback-failed'",
   'assertCanonicalCalendarField', 'assertCycleBackupInvariants',
   'loadCalendarHolidays()', 'loadCalendarRecipes()', 'loadCalendarOutfits()', 'saveCalendarCycles(state.calendarCycles)', 'saveCalendarRecipes(state.calendarRecipes)', 'saveCalendarOutfits(state.calendarOutfits)',
   'normalizeBudgetConfig(window.__pmBudgetConfig)', 'window.__pmBudgetConfig = normalizeBudgetConfig(state.budgetConfig)', 'saveBudgetConfig(state.budgetConfig)',
   'loadBranchLineage()', 'saveBranchLineageForBackup(state.branchLineage || {})',
-  'rollbackBranchLineageBackup(branchLineageInserted)', 'saveBranchLineage(state.branchLineage || {})',
+  'rollbackBranchLineageBackup(applied.branchLineageInserted)', 'completeBranchLineageBackup(applied.branchLineageInserted)', 'saveBranchLineage(state.branchLineage || {})',
 ]) requireText('settings-backup.js', settingsBackupCode, expected);
 requireText('settings-backup-validate.js', settingsBackupValidateCode, 'const assertBranchLineage = value =>');
 for (const expected of [
   'prepare: current => parseBackupData(data, current)', 'apply: async (snapshot, imported)',
-  'deps.reloadCalendarStore?.()', 'afterPersist: async reason => requireInjectionSuccess(',
+  'reloadCalendarStore?.()', 'afterPersist: async reason => requireInjectionSuccess(',
   "reason === 'apply' ? '导入后的注入刷新失败' : '恢复原数据后的注入刷新失败'",
-  "err.backupPhase === 'rolled-back'", "err.backupPhase === 'rollback-failed'", '导入失败，未修改现有数据',
+  "error.backupPhase === 'rolled-back'", "error.backupPhase === 'rollback-failed'", '导入失败，未修改现有数据',
   '数据导入成功，请重新打开界面生效',
-  "deps.cancelCalendarTasks?.(`backup-${reason}`)",
-  "deps.cancelCalendarTasks?.('plugin-data-clear')",
-]) requireText('settings-ui.js', settingsUiCodeForInteractive, expected);
+  'cancelCalendarTasks?.(`backup-${reason}`)',
+  "cancelCalendarTasks?.('plugin-data-clear')",
+]) requireText('settings-backup-controller.js', settingsBackupControllerCode, expected);
 for (const expected of [
   "tasks.begin(storageId, 'scan-context'", 'parentSignal', 'signal: task.signal',
   'isHolidayYearSupported', 'holidayYearRange', 'calendarGenerationCopy', 'calendar-holiday-country',
@@ -1647,8 +2303,9 @@ for (const expected of [
   'temperature: normalizeIndependentApiTemperature(cfg.temperature)',
   'const signal = options.signal', 'signal,', 'throwIfAborted(signal)', 'readApiError(response, signal)',
 ]) requireText('ai.js', aiCode, expected);
-for (const expected of ['pm-cfg-temperature', 'normalizeIndependentApiTemperature(p.temperature)', 'addOrUpdateProfile({ apiUrl, apiKey, model, temperature })']) requireText('settings-ui.js', settingsUiCodeForInteractive, expected);
-for (const expected of ['beforeApply', 'closePhone(true)', '__pmClearAllData', 'clearPluginData']) requireText('settings-ui.js', settingsUiCodeForInteractive, expected);
+for (const expected of ['pm-cfg-temperature', 'normalizeIndependentApiTemperature(profile.temperature)', 'addOrUpdateProfile({ apiUrl, apiKey, model, temperature })']) requireText('settings-api-controller.js', sourceModuleByName.get('settings-api-controller.js')?.code || '', expected);
+for (const expected of ['beforeApply', 'closePhone(true)', 'clearPluginData']) requireText('settings-backup-controller.js', settingsBackupControllerCode, expected);
+requireText('settings-ui.js', settingsUiCodeForInteractive, '__pmClearAllData');
 for (const expected of ['if (!force)', 'persistCurrentHistory()', 'persistPhoneUiSnapshot?.()']) {
   requireText('phone-lifecycle.js', sourceModuleByName.get('phone-lifecycle.js')?.code || '', expected);
 }
@@ -1791,14 +2448,18 @@ for (const stateField of [
   }
 }
 for (const expected of [
-  'resolveCommunityMessageEvents(et)', 'deps.observeCommunityTurn?.(currentContext?.chat || [])',
-  "resolveHostEvent(et, 'MESSAGE_RECEIVED')", "resolveHostEvent(et, 'CHAT_CHANGED')",
+  'resolveCommunityMessageEvents(eventTypes)', 'deps.observeCommunityTurn?.(currentContext?.chat || [])',
+  "resolveHostEvent(eventTypes, 'MESSAGE_RECEIVED')", "resolveHostEvent(eventTypes, 'CHAT_CHANGED')",
   "registerOnce('resolved:MESSAGE_RECEIVED'", "registerOnce('resolved:CHAT_CHANGED'",
-  'runtime.hostEventSource !== c.eventSource', 'runtime.hostEventRegistrations = new Set()',
+  'runtime.hostEventSource !== context.eventSource', 'runtime.hostEventRegistrations = new Set()',
   'runtime.eventHooked = results.every(Boolean)',
+]) requireText('phone-host-events.js', phoneHostEventsCode, expected);
+for (const expected of [
   'handleHostChatChanged({', "cancelCommunityGeneration?.('host-chat-changed')", "cancelCalendarTasks?.('host-chat-changed')",
   "cancelTodayTrendInitialization?.('host-chat-changed')", "cancelTodayTrendRuleRegeneration?.('host-chat-changed')",
   "disarmAutoPoke?.('host-chat-changed')", 'endPhone(true)',
+]) requireText('phone-foundation.js', foundationCode, expected);
+for (const expected of [
   'installPhonePageSuspensionListeners', 'updatePhonePageSuspensionHandler', '__pmPageSuspensionHandler',
   "__pmPageSuspensionHandler?.('beforeunload')", "__pmPageSuspensionHandler?.('document-hidden')",
 ]) requireText('phone-foundation.js', sourceModuleByName.get('phone-foundation.js')?.code || '', expected);
@@ -1870,6 +2531,16 @@ const conversationCodeForNavigation = sourceModuleByName.get('conversation.js')?
 for (const expected of ['options = {}', 'options.preservePage !== true', 'deps.showPhoneChatPage?.(id)']) {
   requireText('conversation.js', conversationCodeForNavigation, expected);
 }
+const conversationNavigationAnalysis = analyze(conversationCodeForNavigation, 'module');
+for (const [name, signature] of [
+  ['__pmSwitchContact', { async: true, params: ['key', { name: 'options' }] }],
+  ['__pmSwitch', { async: false, params: ['name', '_prevSaveKey', '_prevStorageId', { name: 'options' }] }],
+]) {
+  expectWindowFunctionSignature('conversation.js', conversationNavigationAnalysis, name, signature);
+  if ((conversationNavigationAnalysis.windowAssignmentCounts.get(name) || 0) !== 1) {
+    failures.push(`conversation.js: window.${name} must be assigned exactly once`);
+  }
+}
 for (const expected of [
   "makeOverlay(`\n<div class=\"pm-modal pm-pending-manager\">",
   'const maxLeft = Math.max(8, phone.clientWidth - menu.offsetWidth - 8)',
@@ -1887,35 +2558,75 @@ const forumHandlerAssignments = sourceModules.reduce((count, module) => {
 }, 0);
 if (forumHandlerAssignments !== 1) failures.push(`source: expected exactly one __pmOpenForumMode assignment, got ${forumHandlerAssignments}`);
 const settingsCode = sourceModuleByName.get('settings-ui.js')?.code || '';
+const settingsApiControllerCodeForOwners = sourceModuleByName.get('settings-api-controller.js')?.code || '';
+const settingsAppearanceControllerCode = sourceModuleByName.get('settings-appearance-controller.js')?.code || '';
+const settingsBudgetControllerCodeForOwners = sourceModuleByName.get('settings-budget-controller.js')?.code || '';
 const modelPickerCode = sourceModuleByName.get('settings-model-picker.js')?.code || '';
 const foundationAnalysis = analyze(foundationCode, 'module');
 const settingsAnalysis = analyze(settingsCode, 'module');
 const modelPickerAnalysis = analyze(modelPickerCode, 'module');
-const makeOverlaySource = foundationAnalysis.functionSource.get('makeOverlay') || '';
-const applyThemeSource = foundationAnalysis.functionSource.get('applyTheme') || '';
+const makeOverlaySource = analyze(phoneOverlayCode, 'module').functionSource.get('makeOverlay') || '';
+const applyThemeSource = analyze(phoneThemeCode, 'module').functionSource.get('applyTheme') || '';
 const setDarkModeSource = settingsAnalysis.windowAssignmentSource.get('__pmSetDarkMode') || '';
 const showModelPickerSource = settingsAnalysis.windowAssignmentSource.get('__pmShowModelPicker') || '';
 const modelPickerImplementation = modelPickerAnalysis.functionSource.get('showModelPicker') || '';
-const persistThemeMutationSource = settingsCode.match(/const persistThemeMutation\s*=\s*[\s\S]*?\n\s*};/)?.[0] || '';
+
 const overlayThemeDirectSyncPattern = /getElementById\(['"]pm-overlay['"]\)[\s\S]*?setAttribute\(['"]data-theme['"]/;
 const overlayThemeHelperSyncPattern = /const\s+applyProperties\s*=\s*element\s*=>[\s\S]*?element\.setAttribute\(['"]data-theme['"][\s\S]*?applyProperties\(document\.getElementById\(['"]pm-overlay['"]\)\)/;
 if (!/createElement\(['"]div['"]\)/.test(makeOverlaySource)
     || !/\.id\s*=\s*['"]pm-overlay['"]/.test(makeOverlaySource)
     || !/\.dataset\.theme\s*=/.test(makeOverlaySource)) {
-  failures.push('phone-foundation.js: makeOverlay must initialize data-theme on the real pm-overlay root');
+  failures.push('phone-overlay.js: makeOverlay must initialize data-theme on the real pm-overlay root');
 }
 if (!overlayThemeDirectSyncPattern.test(applyThemeSource)
     && !overlayThemeHelperSyncPattern.test(applyThemeSource)) {
-  failures.push('phone-foundation.js: applyTheme must synchronize data-theme to an existing pm-overlay');
+  failures.push('phone-theme.js: applyTheme must synchronize data-theme to an existing pm-overlay');
 }
-if (!setDarkModeSource.includes('persistThemeMutation') || !persistThemeMutationSource.includes('applyTheme()')) {
-  failures.push('settings-ui.js: __pmSetDarkMode must persist the mutation and apply the synchronized theme');
+if (!setDarkModeSource.includes('appearanceSettings.setDarkMode(mode)')
+    || !settingsAppearanceControllerCode.includes('if (saveTheme()) { applyTheme(); syncControls(); return true; }')) {
+  failures.push('settings appearance: __pmSetDarkMode must transparently delegate to appearance persistence and synchronized theme application');
 }
 if (!applyThemeSource.includes("applyProperties(document.getElementById('pm-model-dropdown'))")) {
-  failures.push('phone-foundation.js: applyTheme must synchronize data-theme to an existing body-level model dropdown');
+  failures.push('phone-theme.js: applyTheme must synchronize data-theme to an existing body-level model dropdown');
 }
-if (!showModelPickerSource.includes('showModelPicker(runtime)')) {
-  failures.push('settings-ui.js: __pmShowModelPicker must delegate to the settings model picker with runtime state');
+if (!showModelPickerSource.includes('apiSettings.showModelPicker()')
+    || !settingsApiControllerCodeForOwners.includes('showModelPicker: () => showModelPicker(runtime)')) {
+  failures.push('settings API: __pmShowModelPicker must transparently delegate to the controller model picker with runtime state');
+}
+for (const [name, params, callee, controllerCode, method] of [
+  ['__pmDeleteProfile', ['idx'], 'apiSettings.deleteProfile', settingsApiControllerCodeForOwners, 'deleteProfile'],
+  ['__pmPickProfile', ['idx'], 'apiSettings.pickProfile', settingsApiControllerCodeForOwners, 'pickProfile'],
+  ['__pmSetMode', ['value'], 'apiSettings.setMode', settingsApiControllerCodeForOwners, 'setMode'],
+  ['__pmSaveConfig', [], 'apiSettings.saveConfig', settingsApiControllerCodeForOwners, 'saveConfig'],
+  ['__pmTestApi', ['button'], 'apiSettings.testApi', settingsApiControllerCodeForOwners, 'testApi'],
+  ['__pmTestModel', ['button'], 'apiSettings.testModel', settingsApiControllerCodeForOwners, 'testModel'],
+  ['__pmShowModelPicker', [], 'apiSettings.showModelPicker', settingsApiControllerCodeForOwners, 'showModelPicker'],
+  ['__pmSetDarkMode', ['mode'], 'appearanceSettings.setDarkMode', settingsAppearanceControllerCode, 'setDarkMode'],
+  ['__pmSetPreset', ['preset'], 'appearanceSettings.setPreset', settingsAppearanceControllerCode, 'setPreset'],
+  ['__pmSetCustomAccent', [], 'appearanceSettings.setCustomAccent', settingsAppearanceControllerCode, 'setCustomAccent'],
+  ['__pmSetCustomColor', [], 'appearanceSettings.setCustomColor', settingsAppearanceControllerCode, 'setCustomColor'],
+  ['__pmClearCustomColor', [], 'appearanceSettings.clearCustomColor', settingsAppearanceControllerCode, 'clearCustomColor'],
+  ['__pmSetBorderColor', [], 'appearanceSettings.setBorderColor', settingsAppearanceControllerCode, 'setBorderColor'],
+  ['__pmSetCustomTitle', [], 'appearanceSettings.setCustomTitle', settingsAppearanceControllerCode, 'setCustomTitle'],
+  ['__pmUploadBg', ['input', 'scope'], 'appearanceSettings.uploadBackground', settingsAppearanceControllerCode, 'uploadBackground'],
+  ['__pmBgUrl', ['scope'], 'appearanceSettings.setBackgroundUrl', settingsAppearanceControllerCode, 'setBackgroundUrl'],
+  ['__pmClearBg', ['scope'], 'appearanceSettings.clearBackground', settingsAppearanceControllerCode, 'clearBackground'],
+  ['__pmExportData', [], 'backupSettings.exportData', settingsBackupControllerCode, 'exportData'],
+  ['__pmImportData', ['input'], 'backupSettings.importData', settingsBackupControllerCode, 'importData'],
+  ['__pmClearAllData', [], 'backupSettings.clearAllData', settingsBackupControllerCode, 'clearAllData'],
+  ['__pmSaveBudgetConfig', [], 'budgetSettings.save', settingsBudgetControllerCodeForOwners, 'save'],
+  ['__pmResetBudgetConfig', [], 'budgetSettings.reset', settingsBudgetControllerCodeForOwners, 'reset'],
+  ['__pmToggleWordyLimit', [], 'wordySettings.toggle', settingsWordyControllerCode, 'toggle'],
+]) assertSettingsDelegate(settingsAnalysis, name, params, callee, controllerCode, method);
+expectWindowFunctionSignature('settings-ui.js', settingsAnalysis, '__pmShowConfig', {
+  async: true, params: [{ name: 'page', default: 'home' }],
+});
+if ((settingsAnalysis.windowAssignmentCounts.get('__pmShowConfig') || 0) !== 1) {
+  failures.push('settings-ui.js: window.__pmShowConfig must be assigned exactly once');
+}
+const openSettingsTabSource = analyze(controlCenterCode, 'module').windowAssignmentSource.get('__pmOpenSettingsTab') || '';
+if (openSettingsTabSource !== 'tab => window.__pmShowConfig(tab)') {
+  failures.push('phone-control-center.js: __pmOpenSettingsTab must directly proxy __pmShowConfig(tab)');
 }
 for (const expected of [
   "const interfaceMode = theme.preset === 'apple' ? 'light' : theme.darkMode || 'light'",
@@ -1934,12 +2645,12 @@ for (const expected of [
 ]) requireText('settings-model-picker.js showModelPicker', modelPickerImplementation, expected);
 for (const expected of [
   '<button type="button" class="pm-theme-chip',
-  'aria-label="使用${escapeAttr(v.label)}界面主题"',
-  'aria-pressed="${t.preset === k}"',
-  "el.setAttribute('aria-pressed', String(active))",
+  'aria-label="使用${escapeAttr(preset.label)}界面主题"',
+  'aria-pressed="${theme.preset === name}"',
+  "element.setAttribute('aria-pressed', String(active))",
   "window.__pmTheme.preset = 'custom'", 'window.__pmTheme.customAccent = accent',
   "if (window.__pmTheme.preset === 'apple') return false;",
-]) requireText('settings-ui.js', settingsCode, expected);
+]) requireText('settings-appearance-controller.js', settingsAppearanceControllerCode, expected);
 for (const expected of [
   '#pm-iphone[data-theme="light"],', '#pm-overlay[data-theme="light"],', '#pm-overlay-sub[data-theme="light"],', '.pm-model-dropdown[data-theme="light"] {',
   '#pm-iphone[data-theme="dark"],', '#pm-overlay[data-theme="dark"],', '#pm-overlay-sub[data-theme="dark"],', '.pm-model-dropdown[data-theme="dark"] {',
@@ -1957,14 +2668,14 @@ for (const expected of [
   '.pm-theme-chip:focus-visible{outline:2px solid var(--pm-color-focus-ring);outline-offset:2px;}',
   '#pm-model-arrow:focus-visible{outline:2px solid var(--pm-color-focus-ring);outline-offset:2px;}',
   '.pm-model-opt:focus-visible{position:relative;z-index:1;outline:2px solid var(--pm-color-focus-ring);outline-offset:-2px;}',
-  '.pm-model-dropdown{position:fixed;z-index:2147483647;background:var(--pm-color-surface-elevated) !important;border:1px solid var(--pm-color-border-default) !important;',
+  '.pm-model-dropdown{position:fixed;z-index:var(--pm-z-host);background:var(--pm-color-surface-elevated) !important;border:1px solid var(--pm-color-border-default) !important;',
   '.pm-model-search{border:none !important;border-bottom:1px solid var(--pm-color-border-subtle) !important;',
   ':is(#pm-iphone,#pm-overlay,#pm-overlay-sub,#pm-model-dropdown) :where(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]):not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="hidden"]):not([type="image"]),textarea,select,[contenteditable="true"]){min-width:0;max-width:100%;border:1px solid var(--pm-color-border-default) !important;',
   ':is(#pm-iphone,#pm-overlay,#pm-overlay-sub,#pm-model-dropdown) :where(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]):not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="hidden"]):not([type="image"]),textarea,select,[contenteditable="true"]):focus{border-color:var(--pm-color-border-default) !important;outline:none !important;box-shadow:none !important;}',
-  ':is(#pm-iphone,#pm-overlay,#pm-overlay-sub,#pm-model-dropdown) :where(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]):not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="hidden"]):not([type="image"]),textarea,select,[contenteditable="true"]):focus-visible{border-color:var(--pm-color-border-default) !important;outline:1px solid var(--pm-color-focus-ring) !important;outline-offset:1px !important;box-shadow:none !important;}',
+  ':is(#pm-iphone,#pm-overlay,#pm-overlay-sub,#pm-model-dropdown) :where(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]):not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="hidden"]):not([type="image"]),textarea,select,[contenteditable="true"]):focus-visible{border-color:var(--pm-color-border-default) !important;outline:2px solid var(--pm-color-focus-ring) !important;outline-offset:2px !important;box-shadow:none !important;}',
   ':is(#pm-iphone,#pm-overlay,#pm-overlay-sub,#pm-model-dropdown) :where(.pm-input,.pm-scene-composer textarea){border:0 !important;}',
   ':is(#pm-iphone,#pm-overlay,#pm-overlay-sub,#pm-model-dropdown) .pm-model-search{border:0 !important;border-bottom:1px solid var(--pm-color-border-subtle) !important;border-radius:0;}',
-  ':is(#pm-iphone,#pm-overlay,#pm-overlay-sub,#pm-model-dropdown) :where(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]):not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="hidden"]):not([type="image"]),textarea,select,[contenteditable="true"]):disabled{opacity:.55 !important;cursor:not-allowed;}',
+  ':is(#pm-iphone,#pm-overlay,#pm-overlay-sub,#pm-model-dropdown) :where(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]):not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="hidden"]):not([type="image"]),textarea,select,[contenteditable="true"]):disabled{opacity:var(--pm-opacity-disabled) !important;cursor:not-allowed;}',
   ':-webkit-autofill{box-shadow:0 0 0 1000px var(--pm-color-surface-input) inset !important;',
   '#pm-iphone :is(.pm-scene-label textarea,.pm-scene-prompt :is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]):not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="hidden"]):not([type="image"]),textarea),.pm-scene-composer textarea,.pm-calendar-management :is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]):not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="hidden"]):not([type="image"]),textarea,select),.pm-calendar-entry-dialog :is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]):not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="hidden"]):not([type="image"]),textarea,select),.pm-recipe-meal-dialog :is(textarea,select),.pm-scene-comment-composer input),:is(#pm-overlay,#pm-overlay-sub) .pm-cfg-input{box-sizing:border-box !important;border:1px solid var(--pm-color-border-default) !important;border-radius:10px !important;background-color:var(--pm-color-surface-input) !important;',
   '#pm-iphone .pm-scene-composer textarea{padding:8px 14px !important;resize:none !important;}',
@@ -1982,10 +2693,10 @@ for (const expected of [
   '.pm-calendar-entry-dialog form{padding:var(--pm-space-3) var(--pm-space-4) var(--pm-space-4);display:flex;flex-direction:column;gap:var(--pm-space-2)}',
   '#pm-overlay .pm-calendar-entry-dialog textarea[name="note"]{box-sizing:border-box!important;width:100%!important;min-height:72px!important;border:1px solid var(--pm-color-border-default)!important;border-radius:var(--pm-radius-control)!important;background:var(--pm-color-surface-control)!important;',
   '.pm-calendar-entry-actions button{min-height:var(--pm-size-control-default);border:0',
-  '.pm-emoji-action{border:1px solid var(--pm-color-accent,#007aff);border-radius:8px;background:color-mix(in srgb,var(--pm-color-accent,#007aff) 10%,var(--pm-color-surface-elevated));color:var(--pm-color-accent,#007aff);',
-  '.pm-emoji-action:focus-visible,.pm-emoji-upload:focus-visible,.pm-emoji-image-delete:focus-visible{outline:1px solid var(--pm-color-focus-ring);outline-offset:2px;}',
-  '.pm-model-opt{display:block;width:100%;padding:8px 12px;font:inherit;font-size:13px;text-align:left;background:var(--pm-color-surface-elevated);color:var(--pm-color-text-primary);',
-  '.pm-model-empty{padding:14px;text-align:center;font-size:12px;color:var(--pm-color-text-tertiary);}',
+  '.pm-emoji-action{border:1px solid var(--pm-color-accent);border-radius:var(--pm-radius-control);background:color-mix(in srgb,var(--pm-color-accent) 10%,var(--pm-color-surface-elevated));color:var(--pm-color-accent);',
+  '.pm-emoji-action:focus-visible,.pm-emoji-upload:focus-visible,.pm-emoji-image-delete:focus-visible{outline:2px solid var(--pm-color-focus-ring);outline-offset:2px;}',
+  '.pm-model-opt{display:block;width:100%;padding:var(--pm-space-2) var(--pm-space-3);font:inherit;font-size:13px;text-align:left;background:var(--pm-color-surface-elevated);color:var(--pm-color-text-primary);',
+  '.pm-model-empty{padding:14px;text-align:center;font-size:var(--pm-font-size-label);color:var(--pm-color-text-tertiary);}',
 ]) requireText('style.css', css, expected);
 for (const forbidden of [
   '#pm-overlay[data-theme="dark"] .pm-settings-home button',
@@ -1997,7 +2708,7 @@ for (const forbidden of [
 if (css.includes('pm-forum-entry')) failures.push('style.css: removed directory community entry styles must not remain');
 requireText('style.css', css, 'top:calc(18px + var(--lane)*31px + var(--offset))');
 if (css.includes('translateY(var(--offset))')) failures.push('style.css: danmaku offset must not be applied twice');
-requireText('style.css', css, '.pm-control-menu{position:absolute;');
+requireText('style.css', css, '.pm-control-menu{position:absolute;left:var(--pm-space-3);');
 requireText('style.css', css, '.pm-pending-manager{min-height:180px;}');
 for (const expected of [
   '.pm-calendar-shell[data-calendar-view-mode="weather"] .pm-calendar-header-action.is-loading svg{animation:pm-spin .8s linear infinite}',
@@ -2016,11 +2727,11 @@ for (const expected of [
   'width:24px;height:24px;border-radius:50%;background:transparent',
   '@media(max-width:320px){.pm-scene-topbar{padding-inline:5px}',
   '.pm-scene-view-actions{display:flex;align-items:center;justify-content:flex-end;gap:2px;margin-left:auto',
-  '.pm-scene-bottom-bar{position:relative;z-index:20',
-  '.pm-contact-switcher{position:absolute;left:50%;z-index:30;width:min(300px,calc(100% - 20px));max-height:min(304px,calc(100% - 72px));display:flex',
+  '.pm-scene-bottom-bar{position:relative;z-index:var(--pm-z-menu)',
+  '.pm-contact-switcher{position:absolute;left:50%;z-index:var(--pm-z-popover);width:min(300px,calc(100% - 20px));max-height:min(304px,calc(100% - 72px));display:flex',
   'transform:translateX(-50%)',
   '.pm-contact-switcher-row{display:grid;grid-template-columns:22px minmax(0,1fr) 40px 40px;align-items:center;column-gap:4px',
-  '.pm-control-menu.pm-scene-menu{left:0;right:auto;top:auto;bottom:46px;z-index:20;width:148px;max-height:none;overflow-y:visible',
+  '.pm-control-menu.pm-scene-menu{left:0;right:auto;top:auto;bottom:46px;z-index:var(--pm-z-menu);width:148px;max-height:none;overflow-y:visible',
   '.pm-control-menu.pm-scene-menu[hidden]{display:none}',
   '.pm-scene-composer textarea{height:36px;min-height:36px;max-height:88px;box-shadow:none !important;appearance:none}',
   '.pm-scene-title-poke:active{background:transparent !important;color:var(--pm-color-on-dark) !important}',
@@ -2049,6 +2760,7 @@ for (const expected of [
   '.pm-quote-target{animation:pm-quote-highlight',
   '@media(pointer:coarse){.pm-quote-action{min-width:42px;min-height:42px',
   '@media(prefers-reduced-motion:reduce){.pm-quote-target{animation:none',
+  '@media(prefers-reduced-motion:reduce){.pm-quote-target{animation:none;box-shadow:0 0 0 3px color-mix(in srgb,var(--pm-color-accent,#007aff) 45%,transparent)}.pm-quote-action{transition:none}.pm-bubble{animation:none}.pm-typing-bubble span{animation:none}.pm-voice-wave i{animation:none}',
   '.pm-calendar-view-switch{display:flex;align-items:center;justify-content:space-between;gap:6px;width:auto;margin:0 12px 5px',
   '.pm-calendar-tools{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;padding:10px 12px}',
   '.pm-calendar-header .pm-calendar-header-action{width:28px;height:28px;padding:5px;background:transparent}',
@@ -2125,7 +2837,6 @@ for (const expected of [
   '.pm-today-trend-page{overflow:hidden;background:var(--pm-color-surface-page)}',
   '.pm-today-trend-header{position:sticky;top:0;z-index:var(--pm-z-base)',
   '.pm-today-trend-header button svg,.pm-today-trend-icon-button svg{width:var(--pm-size-icon-md);height:var(--pm-size-icon-md)',
-  '--pm-today-trend-bg-top-glow:url("./assets/today-trend/world/top-glow.svg")',
   '--pm-today-trend-bg-top-glow:url("./assets/today-trend/reputation/top-glow.svg")',
   '--pm-today-trend-bg-top-glow:url("./assets/today-trend/faction/top-glow.svg")',
   '--pm-today-trend-bg-top-glow:url("./assets/today-trend/dynamics/top-glow.svg")',
@@ -2176,10 +2887,10 @@ if (css.includes('.pm-calendar-shell[data-calendar-view-mode="cycle"] .pm-calend
 
 requireCssDeclarations(cssRules, '.pm-name-edit', {
   background: 'transparent !important', color: 'var(--pm-color-text-tertiary) !important',
-  width: '34px', height: '34px', 'border-radius': '50% !important',
+  width: '34px', height: '34px', padding: 'var(--pm-space-2) !important', 'border-radius': '50% !important', 'line-height': 'var(--pm-line-height-tight)',
 });
 requireCssDeclarations(cssRules, '.pm-name-edit:hover', {
-  background: 'transparent !important', color: 'var(--pm-color-accent,#007aff) !important',
+  background: 'transparent !important', color: 'var(--pm-color-accent) !important',
 });
 requireCssDeclarations(cssRules, '.pm-name-edit:active', {
   background: 'transparent !important', color: 'var(--pm-color-on-dark) !important',
@@ -2188,9 +2899,9 @@ requireCssDeclarations(cssRules, '.pm-name-edit:active svg', {
   color: 'var(--pm-color-on-dark) !important', stroke: 'currentColor',
 });
 requireCssDeclarations(cssRules, '.pm-name-edit::before', {
-  width: '24px', height: '24px', 'border-radius': '50%', background: 'transparent',
+  width: 'var(--pm-size-icon-lg)', height: 'var(--pm-size-icon-lg)', 'border-radius': '50%', background: 'transparent',
 });
-requireCssDeclarations(cssRules, '.pm-name-edit:active::before', { background: 'var(--pm-color-accent,#007aff)' });
+requireCssDeclarations(cssRules, '.pm-name-edit:active::before', { background: 'var(--pm-color-accent)' });
 requireCssDeclarations(cssRules, '.pm-name', {
   'max-width': '100%',
   'white-space': 'nowrap',
@@ -2199,33 +2910,33 @@ requireCssDeclarations(cssRules, '.pm-name', {
   'text-align': 'center',
 });
 requireCssDeclarations(cssRules, '.pm-nav-btn', {
-  background: 'none !important', color: 'var(--pm-color-accent,#007aff) !important',
+  background: 'none !important', color: 'var(--pm-color-accent) !important', padding: 'var(--pm-space-2) !important', 'line-height': 'var(--pm-line-height-tight)',
 });
 requireCssDeclarations(cssRules, '.pm-nav-btn.pm-nav-left-btn', {
   color: 'var(--pm-color-text-tertiary) !important',
 });
 requireCssDeclarations(cssRules, '.pm-up-btn', {
   width: '32px !important', height: '32px !important',
-  background: 'var(--pm-color-accent,#007aff) !important', color: 'var(--pm-color-on-dark) !important',
+  background: 'var(--pm-color-accent) !important', color: 'var(--pm-color-on-dark) !important',
 });
 requireCssDeclarations(cssRules, '.pm-expand-btn:hover', {
-  color: 'var(--pm-color-accent,#007aff) !important',
+  color: 'var(--pm-color-accent) !important',
 });
 requireCssDeclarations(cssRules, '.pm-expand-btn[aria-expanded="true"]', {
-  color: 'var(--pm-color-accent,#007aff) !important',
+  color: 'var(--pm-color-accent) !important',
 });
 requireCssDeclarations(cssRules, '.pm-message-select-check', {
   width: '22px', height: '22px', 'min-width': '22px', 'min-height': '22px',
   'border-radius': '50%', background: 'transparent', color: 'var(--pm-color-on-dark)',
   border: '1.5px solid var(--pm-color-border-strong)',
+  transition: 'background var(--pm-motion-fast) var(--pm-motion-ease),border-color var(--pm-motion-fast) var(--pm-motion-ease)',
 });
 requireCssDeclarations(cssRules, '.pm-message-select-check[data-checked="1"]', {
   'background-color': 'var(--pm-color-accent)',
-  'background-image': 'linear-gradient(var(--pm-color-accent,#007aff),var(--pm-color-accent,#007aff))',
-  'border-color': 'var(--pm-color-accent,#007aff)',
+  'border-color': 'var(--pm-color-accent)',
 });
 requireCssDeclarations(cssRules, '.pm-message-select-check[data-checked="1"]::after', {
-  content: "'✓'", 'font-size': '15px', 'font-weight': '800',
+  content: "'✓'", 'font-size': 'var(--pm-font-size-body)', 'font-weight': 'var(--pm-font-weight-semibold)', 'line-height': 'var(--pm-line-height-tight)',
 });
 requireCssDeclarations(cssRules, '.pm-message-select-check:focus-visible', {
   outline: '2px solid var(--pm-color-focus-ring)', 'outline-offset': '2px',
@@ -2233,16 +2944,25 @@ requireCssDeclarations(cssRules, '.pm-message-select-check:focus-visible', {
 requireCssDeclarations(cssRules, '.pm-custom-check', {
   width: '38px !important', height: '22px !important',
   'min-width': '38px !important', 'min-height': '22px !important',
-  'border-radius': '999px !important',
+  'border-radius': 'var(--pm-radius-pill) !important',
+  transition: 'background var(--pm-motion-normal) var(--pm-motion-ease)',
 });
 requireCssDeclarations(cssRules, '.pm-custom-check::after', {
   width: '18px', height: '18px', left: '2px', top: '2px', 'border-radius': '50%',
+  transition: 'transform var(--pm-motion-normal) var(--pm-motion-ease)',
 });
 requireCssDeclarations(cssRules, '.pm-custom-check[data-checked="1"]::after', {
   transform: 'translateX(16px)',
 });
 requireCssDeclarations(cssRules, '.pm-custom-check.is-checked::after', {
   transform: 'translateX(16px)',
+});
+requireCssDeclarations(cssRules, '.pm-control-toggle', {
+  width: '28px', height: '16px', 'border-radius': 'var(--pm-radius-pill)',
+});
+requireCssDeclarations(cssRules, '.pm-control-toggle::after', {
+  width: '12px', height: '12px', left: '2px', top: '2px', 'border-radius': '50%',
+  transition: 'transform var(--pm-motion-normal) var(--pm-motion-ease)',
 });
 requireCssDeclarations(cssRules, '#pm-iphone', {
   overflow: 'visible !important',
@@ -2293,7 +3013,17 @@ requireText('settings-templates.js', sourceModuleByName.get('settings-templates.
 for (const expected of ['手机会话占比 (%)', '互动社区占比 (%)', '日历模块占比 (%)', '今日风向占比 (%)', '日历模块包含生活日历、菜谱和穿搭。', 'pm-custom-check', 'role="checkbox"', "event.key==='Enter'"]) {
   requireText('settings-templates.js', sourceModuleByName.get('settings-templates.js')?.code || '', expected);
 }
-for (const expected of ['extractAiResponseContent(j)', 'resolveBudgetPercentageInput']) {
+const settingsApiControllerCode = sourceModuleByName.get('settings-api-controller.js')?.code || '';
+const settingsBudgetControllerCode = sourceModuleByName.get('settings-budget-controller.js')?.code || '';
+requireText('settings-api-controller.js', settingsApiControllerCode, 'extractAiResponseContent(await response.json())');
+requireText('settings-budget-controller.js', settingsBudgetControllerCode, 'resolveBudgetPercentageInput');
+for (const expected of [
+  'createApiRequestController', 'createAppearanceController', 'createBackupController', 'createBudgetController',
+  'window.__pmTestApi = button => apiSettings.testApi(button)', 'window.__pmTestModel = button => apiSettings.testModel(button)',
+  'window.__pmSaveConfig = () => apiSettings.saveConfig()', 'window.__pmShowModelPicker = () => apiSettings.showModelPicker()',
+  'window.__pmSetCustomAccent = () => appearanceSettings.setCustomAccent()',
+  'window.__pmSaveBudgetConfig = () => budgetSettings.save()', 'window.__pmResetBudgetConfig = () => budgetSettings.reset()',
+]) {
   requireText('settings-ui.js', settingsCode, expected);
 }
 for (const [owner, code, expected] of [
@@ -2308,12 +3038,11 @@ for (const [owner, code, expected] of [
     'window.__pmToggleBidirectional = name => {', 'const targetKey = String(name || \'\').trim();',
     'Object.hasOwn(window.__pmGroupMeta?.[id] || {}, targetKey)',
     'window.__pmToggleConversationInjection?.(id, targetKey, isGroup) || Promise.resolve(false)',
-    "handle.addEventListener('lostpointercapture', finish)", "window.addEventListener('blur', finish)",
-    "handle.removeEventListener('lostpointercapture', finish)", "window.removeEventListener('blur', finish)", 'finish();',
-    'export function phoneSizeForViewport(', 'const visualViewport = window.visualViewport;',
-    "visualViewport?.addEventListener('resize', onViewportResize)", "visualViewport?.removeEventListener('resize', onViewportResize)",
   ]],
-  ['settings-ui.js', settingsCode, ['const previous = window.__pmWordyLimit === true', 'if (!saveWordyLimit())', "el.setAttribute('aria-checked'"]],
+  ['phone-scale.js', sourceModuleByName.get('phone-scale.js')?.code || '', [
+    'export function phoneSizeForViewport(',
+  ]],
+  ['settings-wordy-controller.js', settingsWordyControllerCode, ['const previous = window.__pmWordyLimit === true', 'if (!saveWordyLimit())', "element.setAttribute('aria-checked'"]],
 ]) {
   for (const value of expected) requireText(owner, code, value);
 }
@@ -2329,7 +3058,7 @@ if (settingsCode.includes('stripPersistedV2ContentRating')) {
 if (settingsBackupValidateCode.includes('stripPersistedV2ContentRating')) {
   failures.push('settings-backup-validate.js: untrusted backup import must not use persisted V2 contentRating compatibility cleanup');
 }
-requireText('settings-ui.js', settingsCode, 'legacyBackupTheme(snapshot.theme)');
+requireText('settings-backup-controller.js', settingsBackupControllerCode, 'legacyBackupTheme(snapshot.theme)');
 for (const expected of ['delete theme.ambientStatusEnabled', 'current.theme?.ambientStatusEnabled === true']) {
   requireText('settings-backup-validate.js', settingsBackupValidateCode, expected);
 }
@@ -2359,8 +3088,13 @@ for (const expected of [
   'if (isShortPress) onPress?.()', 'Number(event?.detail) === 0', 'removeEventListener',
 ]) requireText('press-gesture.js', pressGestureCode, expected);
 const conversationCode = sourceModuleByName.get('conversation.js')?.code || '';
+const conversationStateCode = sourceModuleByName.get('conversation-state.js')?.code || '';
+const conversationRenderingCode = sourceModuleByName.get('conversation-rendering.js')?.code || '';
 requireText('conversation.js', conversationCode, 'deps.closeControlCenter?.()');
 for (const expected of ['state.groupRandomNpcEnabled = groupMeta.randomNpcEnabled === true', 'state.groupNature = typeof groupMeta.groupNature']) {
+  requireText('conversation-state.js', conversationStateCode, expected);
+}
+for (const expected of ['renderConversationHistory', 'snapshotConversationContext', 'applyConversationTarget']) {
   requireText('conversation.js', conversationCode, expected);
 }
 requireText('bundle', bundle, 'pm-settings-home');
@@ -2378,7 +3112,7 @@ const phoneChatPokeCode = sourceModuleByName.get('phone-chat-poke.js')?.code || 
 const phoneChatPokeAnalysis = analyze(phoneChatPokeCode, 'module');
 const showContactConfigSource = phoneChatPokeAnalysis.functionSource.get('showContactConfig') || '';
 const saveContactConfigSource = phoneChatPokeAnalysis.windowAssignmentSource.get('__pmSaveContactConfig') || '';
-const foundationInjectionSource = foundationAnalysis.functionSource.get('applyBidirectionalInjection') || '';
+const foundationInjectionSource = analyze(phoneInjectionControllerCode, 'module').functionSource.get('applyBidirectionalInjection') || '';
 const preferenceCallCount = (phoneChatCode.match(/buildChatPreferencePrompt\s*\(/g) || []).length
   + (phoneChatPokeCode.match(/buildChatPreferencePrompt\s*\(/g) || []).length;
 if (preferenceCallCount !== 4) {
@@ -2445,8 +3179,8 @@ requireCssDeclarations(cssRules, '.pm-contact-switcher', {
   'border-top-left-radius': '0', 'border-top-right-radius': '0',
   'border-bottom-left-radius': '14px', 'border-bottom-right-radius': '14px',
 });
-requireCssDeclarations(cssRules, '.pm-name-trigger', { 'z-index': '31' });
-requireCssDeclarations(cssRules, '.pm-contact-switcher', { 'z-index': '30' });
+requireCssDeclarations(cssRules, '.pm-name-trigger', { 'z-index': 'calc(var(--pm-z-popover) + 1)' });
+requireCssDeclarations(cssRules, '.pm-contact-switcher', { 'z-index': 'var(--pm-z-popover)' });
 requireCssDeclarations(cssRules, '.pm-contact-switcher', { left: '50%', transform: 'translateX(-50%)', 'max-height': 'min(304px,calc(100% - 72px))' });
 requireText('phone-directory.js contact switcher positioning', directoryCode,
   'switcher.style.top = `${Math.max(0, triggerRect.bottom - phoneRect.top - 2)}px`;');
@@ -2542,7 +3276,7 @@ const settingsUiSaveCode = sourceModuleByName.get('settings-ui.js')?.code || '';
 for (const [label, marker] of [
   ['save budget', 'window.__pmSaveBudgetConfig()'],
   ['save API settings', 'window.__pmSaveConfig()'],
-]) requireText(`settings-ui.js: ${label}`, buttonContaining(`settings-ui.js: ${label}`, settingsUiSaveCode, marker), 'class="pm-action-button is-accent"');
+]) requireText(`settings-ui.js: ${label}`, buttonContaining(`settings-ui.js: ${label}`, settingsUiSaveCode, marker), 'pm-action-button is-accent');
 if (buttonContaining('settings-ui.js restore budget defaults', settingsUiSaveCode, 'window.__pmResetBudgetConfig()').includes('is-accent')) {
   failures.push('settings-ui.js: restore budget defaults must remain secondary, not accent');
 }
@@ -2556,7 +3290,7 @@ for (const [label, marker] of [
   ['create group', 'window.__pmConfirmGroup('],
   ['save group', 'window.__pmSaveAndCloseGroupEdit()'],
   ['save random group members', 'window.__pmSaveGroupRandomNpcSettings('],
-]) requireText(`phone-directory.js: ${label}`, buttonContaining(`phone-directory.js: ${label}`, directorySaveCode, marker), 'class="pm-action-button is-accent"');
+]) requireText(`phone-directory.js: ${label}`, buttonContaining(`phone-directory.js: ${label}`, directorySaveCode, marker), 'pm-action-button is-accent');
 const injectionSaveCode = sourceModuleByName.get('phone-context-injection.js')?.code || '';
 requireText('phone-context-injection.js: save injection', buttonContaining('phone-context-injection.js: save injection', injectionSaveCode, 'window.__pmSaveConversationInjection()'), 'class="pm-action-button is-accent"');
 const injectionClearButton = buttonContaining('phone-context-injection.js: clear injection', injectionSaveCode, 'window.__pmClearConversationInjection()');
@@ -2595,7 +3329,7 @@ requireCssDeclarations(cssRules, '#pm-overlay .pm-group-settings-scroll textarea
   'box-shadow': 'none !important', appearance: 'none !important',
 });
 for (const expected of [
-  '.pm-action-button{', 'font-size:13px',
+  '.pm-action-button{', 'font-size:var(--pm-font-size-body)',
   '.pm-header-icon-button{box-sizing:border-box;width:34px;height:34px;min-width:34px;min-height:34px',
   '.pm-action-button.is-success{background:var(--pm-color-success);color:var(--pm-color-on-success);border-color:var(--pm-color-success)}',
   '.pm-action-button.is-danger{background:var(--pm-color-danger);color:var(--pm-color-on-danger);border-color:var(--pm-color-danger)}',
@@ -2626,9 +3360,9 @@ for (const expected of [
   'title="返回列表" aria-label="返回列表">${BACK_ICON_SVG}</button>',
   'onclick="window.__pmShowGroupMemberSettings()"',
 ]) requireText('phone-directory.js group settings back action', directoryCode, expected);
-requireText('conversation.js quote sender attribution', sourceModuleByName.get('conversation.js')?.code || '',
-  "sender: bubble.sender || (m.role === 'user' ? '我' : state.currentPersona)");
-requireText('phone-foundation.js quote sender snapshot', foundationCode,
+requireText('conversation-rendering.js quote sender attribution', sourceModuleByName.get('conversation-rendering.js')?.code || '',
+  "sender: bubble.sender || (message.role === 'user' ? '我' : state.currentPersona)");
+requireText('phone-message-rendering.js quote sender snapshot', phoneMessageRenderingCode,
   "sender: String(senderName || metadata.sender || '我')");
 if (!/pm-contact-settings-scroll[\s\S]*pm-modal-add pm-contact-settings-actions[\s\S]*保存角色设置[\s\S]*<\/div>\s*<\/div>\s*<\/div>`/.test(showContactConfigSource)) {
   failures.push('phone-chat-poke.js: character settings save action must remain inside the scroll content');
@@ -2646,7 +3380,7 @@ if (!showContactConfigSource || !saveContactConfigSource) {
 for (const expected of [
   'calendarWeather', "getCalendarData('getCalendarWeatherStore')",
   'calendarCycles', "getCalendarData('getCalendarCycleStore')",
-]) requireText('phone-foundation.js', foundationInjectionSource, expected);
+]) requireText('phone-injection-controller.js', foundationInjectionSource, expected);
 for (const expected of [
   'class="pm-calendar-cycle-input" name="enabled" type="checkbox"',
   'class="pm-custom-check" aria-hidden="true"', 'pm-calendar-status-card', 'pm-calendar-status-watermark',
@@ -2663,7 +3397,7 @@ const renderCalendarInjectionSource = phoneInjectionAnalysis.functionSource.get(
 const buildContextInjectionSource = phoneInjectionAnalysis.functionSource.get('buildContextInjectionPrompts') || '';
 if (!renderCalendarInjectionSource) failures.push('phone-injection.js: missing renderCalendarContextInjection');
 if (!buildContextInjectionSource) failures.push('phone-injection.js: missing buildContextInjectionPrompts');
-for (const expected of ['weatherStore', 'resolveWeatherForDate(weatherStore, date)', '天气（${weather.sourceLabel}）']) requireText('phone-injection.js', renderCalendarInjectionSource, expected);
+for (const expected of ['weatherStore', 'resolveWeatherForDate(weatherStore, date)', '天气：${weatherCodeLabel(weather.day.weatherCode)}']) requireText('phone-injection.js', renderCalendarInjectionSource, expected);
 for (const expected of ['calendarWeather', 'weatherStore: calendarWeather']) requireText('phone-injection.js', buildContextInjectionSource, expected);
 for (const expected of [
   'calendarDateRangeKeys(windowStart, -3, 6)', 'days: 60', 'calendarCycles',
@@ -2718,43 +3452,48 @@ requireText(
   'aria-label="删除图片 ${escapeAttr(image.desc)}"',
 );
 requireCssDeclarations(cssRules, '.pm-emoji-action', {
-  border: '1px solid var(--pm-color-accent,#007aff)', background: 'color-mix(in srgb,var(--pm-color-accent,#007aff) 10%,var(--pm-color-surface-elevated))', color: 'var(--pm-color-accent,#007aff)',
+  border: '1px solid var(--pm-color-accent)', background: 'color-mix(in srgb,var(--pm-color-accent) 10%,var(--pm-color-surface-elevated))', color: 'var(--pm-color-accent)',
 });
 requireCssDeclarations(cssRules, '.pm-emoji-upload', {
-  border: '1px solid var(--pm-color-accent,#007aff)', background: 'color-mix(in srgb,var(--pm-color-accent,#007aff) 10%,var(--pm-color-surface-elevated))', color: 'var(--pm-color-accent,#007aff)', 'min-height': 'var(--pm-size-control-default)',
+  border: '1px solid var(--pm-color-accent)', background: 'color-mix(in srgb,var(--pm-color-accent) 10%,var(--pm-color-surface-elevated))', color: 'var(--pm-color-accent)', 'min-height': 'var(--pm-size-control-default)',
 });
-requireCssDeclarations(cssRules, '.pm-emoji-action.is-full', { width: '100%', 'margin-top': '8px' });
-requireCssDeclarations(cssRules, '.pm-emoji-action.is-compact', { padding: '5px 10px', 'font-size': '11px' });
+requireCssDeclarations(cssRules, '.pm-emoji-action.is-full', { width: '100%', 'margin-top': 'var(--pm-space-2)' });
+requireCssDeclarations(cssRules, '.pm-emoji-action.is-compact', { padding: 'var(--pm-space-1) var(--pm-space-3)', 'font-size': 'var(--pm-font-size-helper)' });
 requireCssDeclarations(cssRules, '.pm-emoji-action.is-danger', {
   'border-color': 'var(--pm-color-danger)', background: 'color-mix(in srgb,var(--pm-color-danger) 10%,var(--pm-color-surface-elevated))', color: 'var(--pm-color-danger)',
 });
 requireCssDeclarations(cssRules, '.pm-emoji-image-delete', { background: 'var(--pm-color-danger)', color: 'var(--pm-color-on-danger)' });
-requireCssDeclarations(cssRules, '.pm-emoji-action:focus-visible', { outline: '1px solid var(--pm-color-focus-ring)', 'outline-offset': '2px' });
-requireCssDeclarations(cssRules, '.pm-emoji-upload:focus-visible', { outline: '1px solid var(--pm-color-focus-ring)', 'outline-offset': '2px' });
-requireCssDeclarations(cssRules, '.pm-emoji-image-delete:focus-visible', { outline: '1px solid var(--pm-color-focus-ring)', 'outline-offset': '2px' });
-requireCssDeclarations(cssRules, '.pm-action-button', { border: '1px solid var(--pm-color-border-default)', 'border-radius': '10px', background: 'var(--pm-color-surface-elevated)', color: 'var(--pm-color-text-primary)' });
+requireCssDeclarations(cssRules, '.pm-emoji-action:focus-visible', { outline: '2px solid var(--pm-color-focus-ring)', 'outline-offset': '2px' });
+requireCssDeclarations(cssRules, '.pm-emoji-upload:focus-visible', { outline: '2px solid var(--pm-color-focus-ring)', 'outline-offset': '2px' });
+requireCssDeclarations(cssRules, '.pm-emoji-image-delete:focus-visible', { outline: '2px solid var(--pm-color-focus-ring)', 'outline-offset': '2px' });
+requireCssDeclarations(cssRules, '.pm-action-button', { border: '1px solid var(--pm-color-border-default)', 'border-radius': 'var(--pm-radius-control)', background: 'var(--pm-color-surface-elevated)', color: 'var(--pm-color-text-primary)', padding: 'var(--pm-space-2) var(--pm-space-3)', 'font-size': 'var(--pm-font-size-body)', 'font-weight': 'var(--pm-font-weight-semibold)', 'line-height': 'var(--pm-line-height-tight)' });
+requireCssDeclarations(cssRules, '.pm-action-button:focus-visible', { outline: '2px solid var(--pm-color-focus-ring)', 'outline-offset': '2px' });
+requireCssDeclarations(cssRules, '.pm-action-button:disabled', { cursor: 'not-allowed', opacity: 'var(--pm-opacity-disabled)' });
 requireCssDeclarations(cssRules, '.pm-action-button.is-secondary', { background: 'var(--pm-color-surface-elevated)', color: 'var(--pm-color-text-primary)', 'border-color': 'var(--pm-color-border-default)' });
 requireCssDeclarations(cssRules, '.pm-action-button.is-success', { background: 'var(--pm-color-success)', color: 'var(--pm-color-on-success)', 'border-color': 'var(--pm-color-success)' });
 requireCssDeclarations(cssRules, '.pm-action-button.is-accent', { background: 'var(--pm-color-accent)', color: 'var(--pm-color-on-dark)', 'border-color': 'var(--pm-color-accent)' });
 requireCssDeclarations(cssRules, '.pm-action-button.is-danger', { background: 'var(--pm-color-danger)', color: 'var(--pm-color-on-danger)', 'border-color': 'var(--pm-color-danger)' });
-requireCssDeclarations(cssRules, '.pm-modal-add button', { border: '1px solid var(--pm-color-border-default)', 'border-radius': '10px', background: 'var(--pm-color-surface-elevated) !important', color: 'var(--pm-color-text-primary) !important' });
+requireCssDeclarations(cssRules, '.pm-modal-add button', { border: '1px solid var(--pm-color-border-default)', 'border-radius': 'var(--pm-radius-control)', background: 'var(--pm-color-surface-elevated) !important', color: 'var(--pm-color-text-primary) !important' });
 requireCssDeclarations(cssRules, '.pm-modal-add .pm-action-button.is-success', { background: 'var(--pm-color-success) !important', color: 'var(--pm-color-on-success) !important', 'border-color': 'var(--pm-color-success) !important' });
 requireCssDeclarations(cssRules, '.pm-modal-add .pm-action-button.is-accent', { background: 'var(--pm-color-accent) !important', color: 'var(--pm-color-on-dark) !important', 'border-color': 'var(--pm-color-accent) !important' });
 requireCssDeclarations(cssRules, '.pm-modal-add .pm-action-button.is-danger', { background: 'var(--pm-color-danger) !important', color: 'var(--pm-color-on-danger) !important', 'border-color': 'var(--pm-color-danger) !important' });
-requireCssDeclarations(cssRules, '.pm-btn-group', { border: '1px solid var(--pm-color-border-default) !important', 'border-radius': '10px !important', background: 'var(--pm-color-surface-elevated) !important', color: 'var(--pm-color-text-primary) !important' });
-requireCssDeclarations(cssRules, '.pm-btn-add', { border: '1px solid var(--pm-color-border-default) !important', 'border-radius': '10px !important', background: 'var(--pm-color-surface-elevated) !important', color: 'var(--pm-color-text-primary) !important' });
-for (const expected of ['isRenderableEmojiSource(url)', "typeof emojiBudget === 'function'", '!emojiBudget(url)', 'loading="lazy"', 'decoding="async"', 'object-fit:contain']) {
+requireCssDeclarations(cssRules, '.pm-btn-group', { border: '1px solid var(--pm-color-border-default) !important', 'border-radius': 'var(--pm-radius-control) !important', background: 'var(--pm-color-surface-elevated) !important', color: 'var(--pm-color-text-primary) !important' });
+requireCssDeclarations(cssRules, '.pm-btn-add', { border: '1px solid var(--pm-color-border-default) !important', 'border-radius': 'var(--pm-radius-control) !important', background: 'var(--pm-color-surface-elevated) !important', color: 'var(--pm-color-text-primary) !important' });
+for (const [state, token] of [['error', '--pm-color-danger'], ['warning', '--pm-color-warning'], ['success', '--pm-color-success'], ['info', '--pm-color-accent']]) {
+  requireCssDeclarations(cssRules, `.pm-api-status[data-state="${state}"]`, { color: `var(${token})` });
+}
+for (const expected of ['isRenderableEmojiSource(url)', "typeof emojiBudget === 'function'", '!emojiBudget(url)', 'loading="lazy"', 'decoding="async"', 'class="pm-emoji-image"']) {
   requireText('messaging.js', messagingCode, expected);
 }
 for (const expected of ['createEmojiRenderBudget()', 'emojiBudget: emojiRenderBudget', 'resetEmojiRenderBudget']) {
-  requireText('phone-foundation.js', foundationCode, expected);
+  requireText('phone-message-rendering.js', phoneMessageRenderingCode, expected);
 }
 for (const expected of ['resetEmojiRenderBudget()', "list.innerHTML = ''"]) {
-  requireText('conversation.js', conversationCode, expected);
+  requireText('conversation-rendering.js', conversationRenderingCode, expected);
 }
-requireText('conversation.js', conversationCode, 'nameEl.textContent = state.isGroupChat ? state.groupDisplayName || name : name');
+requireText('conversation-rendering.js', conversationRenderingCode, 'nameEl.textContent = state.isGroupChat ? state.groupDisplayName || name : name');
 for (const forbidden of ['arr.length > 5', "arr.slice(0, 5).join('') + '...'"]) {
-  if (conversationCode.includes(forbidden)) failures.push(`conversation.js: chat title must preserve full text: ${forbidden}`);
+  if (conversationRenderingCode.includes(forbidden)) failures.push(`conversation-rendering.js: chat title must preserve full text: ${forbidden}`);
 }
 
 const runtimeCode = sourceModuleByName.get('runtime.js')?.code || '';
@@ -2765,10 +3504,16 @@ for (const expected of [
   'runAutoPokeCounterCycle', 'await run(contactName)', 'commitAutomaticResult', 'await persistHistory()', 'persistCounter()',
 ]) requireText('runtime.js', runtimeCode, expected);
 for (const expected of [
-  'updatePhonePageSuspensionHandler(window, deps, disarmAutoPoke)', "disarmAutoPoke?.('host-chat-changed')",
+  'PENDING_MESSAGE_LIMIT = 50', 'isPendingMessageLimitReached',
+  'if (isPendingMessageLimitReached(runtime, storageId, saveKey)) return null;',
+]) requireText('pending-messages.js', sourceModuleByName.get('pending-messages.js')?.code || '', expected);
+requireText('phone-chat.js', phoneChatCode, '当前会话暂存最多保留 ${PENDING_MESSAGE_LIMIT} 条');
+for (const expected of [
   'hasCompletedAssistantMessage && isAutoPokeAllowed()',
-  'createAutomaticTaskController', 'automaticTasks.begin', 'automaticTasks.isActive', 'automaticTasks.finish',
-]) requireText('phone-foundation.js', foundationCode, expected);
+]) requireText('phone-host-events.js', phoneHostEventsCode, expected);
+for (const expected of ["disarmAutoPoke?.('host-chat-changed')", 'updatePhonePageSuspensionHandler(window, deps, disarmAutoPoke)', 'createAutomaticTaskController', 'automaticTasks.begin', 'automaticTasks.isActive', 'automaticTasks.finish']) {
+  requireText('phone-foundation.js', foundationCode, expected);
+}
 for (const expected of [
   "disarmAutoPoke('phone-minimized')", "disarmAutoPoke('phone-closed')",
 ]) requireText('phone-lifecycle.js', lifecycleCode, expected);
@@ -2791,6 +3536,13 @@ for (const expected of [
   'resetAutoPokeCounter(id, contactName)',
   'resetAutoPokeCounter(storageId, saveKey)',
 ]) requireText('phone-chat-poke.js', phoneChatPokeCode, expected);
+for (const expected of [
+  'replaceConversationHistory', 'restoreConversationHistory',
+]) requireText('phone-chat-poke.js history adapter', phoneChatPokeCode, expected);
+assertPokeHistoryAdapter(phoneChatPokeAnalysis);
+for (const write of findWindowDescendantWrites(phoneChatPokeCode, '__pmHistories')) {
+  failures.push(`phone-chat-poke.js: history write must use conversation persistence adapter: ${phoneChatPokeCode.slice(write.start, write.end)}`);
+}
 for (const expected of [
   'export function resetAutoPokeCounter', 'probability: 30', 'migrateIntervalToProbability',
   "if (nextAutoPoke.enabled && patch?.enabled === true) nextAutoPoke.counter = 0",
@@ -2833,7 +3585,54 @@ for (const expected of [
 ]) {
   requireText('css', css, expected);
 }
+const cssTokenContract = {
+  '--pm-radius-pill': '999px',
+  '--pm-shadow-floating': '0 8px 24px rgba(0,0,0,.14)',
+  '--pm-shadow-modal': '0 16px 48px rgba(0,0,0,.18)',
+  '--pm-z-base': '0',
+  '--pm-z-menu': '20',
+  '--pm-z-popover': '30',
+  '--pm-z-modal': '40',
+  '--pm-z-host': '2147483647',
+  '--pm-opacity-disabled': '.45',
+  '--pm-opacity-muted': '.62',
+  '--pm-motion-fast': '120ms',
+  '--pm-motion-normal': '180ms',
+  '--pm-motion-ease': 'cubic-bezier(.2,.8,.2,1)',
+};
+requireCssDeclarations(cssRules, ':root', cssTokenContract);
+for (const [token, value] of Object.entries(cssTokenContract)) {
+  requireText('docs/CSS-TOKENS.md', cssTokensText, `\`${token}:${value}\``);
+}
+for (const expected of [
+  'export function createPhoneQuoteController(state)', 'function clearQuoteHighlight()', 'clearTimeout(quoteHighlightTimer)',
+  'quoteHighlightTimer = null;', 'quoteHighlightTarget = null;',
+]) requireText('phone-quote.js', phoneQuoteCode, expected);
+for (const expected of [
+  "import { createPhoneQuoteController } from './phone-quote.js';",
+  'const quote = createPhoneQuoteController(state);',
+  'refreshReplyCardAvailability, clearQuoteHighlight',
+]) requireText('phone-foundation.js', foundationCode, expected);
+for (const forbidden of [
+  'let quoteHighlightTimer', 'let quoteHighlightTarget',
+  'function renderActiveQuote()', 'function clearActiveQuote()', 'function setActiveQuote(quote)',
+  'function findQuotedBubble(quote)', 'function syncReplyCardAvailability(card)',
+  'function refreshReplyCardAvailability()', 'function locateQuotedBubble(quote)',
+]) {
+  if (foundationCode.includes(forbidden)) failures.push(`phone-foundation.js: quote controller responsibility must stay in phone-quote.js (${forbidden})`);
+}
+if (findDirectStatePropertyWrites(foundationCode, 'activeQuote').length) {
+  failures.push('phone-foundation.js: activeQuote mutations must stay in phone-quote.js');
+}
+const phoneEndStart = lifecycleCode.indexOf('window.__pmEnd = (force = false) => {');
+const phoneWindowRemoval = lifecycleCode.indexOf('state.phoneWindow.remove()', phoneEndStart);
+const quoteHighlightCleanup = lifecycleCode.indexOf('deps.clearQuoteHighlight?.();', phoneEndStart);
+if (quoteHighlightCleanup < 0 || quoteHighlightCleanup > phoneWindowRemoval) {
+  failures.push('phone-lifecycle.js: quote highlight must be cleared before the phone window is removed');
+}
 if (css.includes('prefers-color-scheme')) failures.push('css: theme selection must remain explicit and must not use prefers-color-scheme');
+if (/\btransition\s*:\s*all\b/i.test(css)) failures.push('css: transition:all is forbidden; list the properties that actually animate');
+if (/\b(?:transition|transitionProperty)\s*(?:=|:)\s*['\"]all\b/i.test(source)) failures.push('source: inline transition:all is forbidden; list the properties that actually animate');
 if (source.includes('pm-css')) failures.push('source: inline CSS injector id still present');
 if (css.includes('${')) failures.push('css: JavaScript template expression remains');
 if (manifest.name !== 'phone_mode') failures.push('manifest: internal extension id must remain phone_mode');
@@ -2888,7 +3687,8 @@ for (const forbidden of [
 }
 
 const settingsUiCode = sourceModuleByName.get('settings-ui.js')?.code || '';
-const backupModuleBinding = analyzeBackupModuleBinding(settingsUiCode, settingsBackupValidateCode);
+const settingsBackupControllerForContract = sourceModuleByName.get('settings-backup-controller.js')?.code || '';
+const backupModuleBinding = analyzeBackupModuleBinding(settingsUiCode, settingsBackupControllerForContract, settingsBackupValidateCode);
 for (const [field, message] of Object.entries({
   importsValidatorParser: 'settings-ui.js: must import parseBackupData from ./settings-backup-validate.js',
   reexportsValidatorParser: 'settings-ui.js: must re-export the imported parseBackupData binding',
@@ -2898,11 +3698,12 @@ for (const [field, message] of Object.entries({
   if (!backupModuleBinding[field]) failures.push(message);
 }
 const settingsUiBackupContract = analyzeBackupContract(settingsUiCode);
+const settingsBackupControllerContract = analyzeBackupContract(settingsBackupControllerForContract);
 const settingsBackupValidateContract = analyzeBackupContract(settingsBackupValidateCode);
 const sourceBackupContract = {
-  exportFields: new Set([...settingsUiBackupContract.exportFields, ...settingsBackupValidateContract.exportFields]),
+  exportFields: new Set([...settingsUiBackupContract.exportFields, ...settingsBackupControllerContract.exportFields, ...settingsBackupValidateContract.exportFields]),
   importFields: new Set([...settingsUiBackupContract.importFields, ...settingsBackupValidateContract.importFields]),
-  importReadsFileName: settingsUiBackupContract.importReadsFileName || settingsBackupValidateContract.importReadsFileName,
+  importReadsFileName: settingsUiBackupContract.importReadsFileName || settingsBackupControllerContract.importReadsFileName || settingsBackupValidateContract.importReadsFileName,
 };
 const backupMetadataFields = new Set(['schemaVersion']);
 const backupFields = [
@@ -2928,13 +3729,24 @@ for (const [label, contract] of [
 }
 for (const expected of [
   'PLUGIN_LOCAL_STORAGE_KEYS', 'PLUGIN_IDB_STATIC_KEYS', 'PLUGIN_IDB_DYNAMIC_PREFIXES',
-  'clearPluginData', 'pmIDBKeys', "Object.freeze(['ST_SMS_BG_LOCAL_'])", "DESKTOP_BG_KEY = 'ST_SMS_BG_DESKTOP'",
+  'clearPluginData', 'pmIDBKeys', "Object.freeze(['ST_SMS_BG_LOCAL_'])",
 ]) requireText('storage.js', sourceModuleByName.get('storage.js')?.code || '', expected);
+requireText('storage-primitives.js', storagePrimitivesCode, "DESKTOP_BG_KEY = 'ST_SMS_BG_DESKTOP'");
+const storageCodeForCleanup = sourceModuleByName.get('storage.js')?.code || '';
+for (const expected of ['CALENDAR_OUTFIT_STORAGE_KEY', 'ST_SMS_PHONE_QR_INITIALIZED']) {
+  requireText('storage.js', storageCodeForCleanup, expected);
+}
+if (!storageCodeForCleanup.includes('CALENDAR_RECIPE_STORAGE_KEY, CALENDAR_OUTFIT_STORAGE_KEY')) {
+  failures.push('storage.js: plugin localStorage cleanup ledger must include calendar outfits after recipes');
+}
+if (storageCodeForCleanup.includes("'ST_SMS_MIGRATED_V3'")) {
+  failures.push('storage.js: migration sentinel must remain outside the plugin cleanup ledger');
+}
 for (const expected of [
   'loadBgSettings', 'saveBgGlobal', 'saveBgLocal', 'saveDesktopBg', "label: '桌面背景'",
   'restoreBackgroundMutations', 'combinedBackgroundError', "LOCAL_BG_PREFIX = 'ST_SMS_BG_LOCAL_'",
 ]) requireText('storage-background.js', storageBackgroundCode, expected);
-if ((sourceModuleByName.get('storage.js')?.code || '').includes("PLUGIN_LOCAL_STORAGE_KEYS = Object.freeze(['ST_SMS_MIGRATED_V3'")) {
+if (storageCodeForCleanup.includes("PLUGIN_LOCAL_STORAGE_KEYS = Object.freeze(['ST_SMS_MIGRATED_V3'")) {
   failures.push('storage.js: migration marker must not be cleared or legacy host histories can be reimported');
 }
 

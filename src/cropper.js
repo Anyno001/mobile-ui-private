@@ -4,40 +4,35 @@ import { CLOSE_ICON_SVG } from './icons.js';
 
 export function openCropper(imgDataUrl, { onCancel, onConfirm }) {
     const ratio = 330 / 450;
-    document.getElementById('pm-overlay')?.remove();
+    const previousOverlay = document.getElementById('pm-overlay');
+    if (typeof previousOverlay?.__pmCropperDispose === 'function') previousOverlay.__pmCropperDispose();
+    else previousOverlay?.remove();
     const overlay = document.createElement('div');
     overlay.id = 'pm-overlay';
     if (POPOVER_SUPPORTED) overlay.setAttribute('popover', 'manual');
     overlay.innerHTML = `
 <div class="pm-modal pm-modal-wide">
   <div class="pm-modal-header"><span></span><b>裁剪图片</b><button type="button" id="pm-crop-close" class="pm-modal-close" title="关闭" aria-label="关闭">${CLOSE_ICON_SVG}</button></div>
-  <div style="padding:12px 14px;">
+  <div class="pm-crop-body">
     <div class="pm-crop-tip">拖动图片调整位置，滚轮/捏合缩放</div>
     <div class="pm-crop-frame" id="pm-crop-frame">
       <img id="pm-crop-img" src="${escapeAttr(imgDataUrl)}" alt="">
       <div class="pm-crop-mask"></div>
     </div>
     <div class="pm-crop-zoom">
-      <span style="font-size:11px;color:var(--pm-color-text-tertiary);">缩放</span>
+      <span class="pm-crop-zoom-label">缩放</span>
       <input type="range" id="pm-crop-zoom" min="100" max="400" value="100">
     </div>
   </div>
-  <div class="pm-modal-add" style="display:flex;gap:8px;">
-    <button id="pm-crop-cancel" style="flex:1;background:var(--pm-color-surface-elevated);color:var(--pm-color-text-primary);border:none;border-radius:10px;padding:10px;font-size:13px;cursor:pointer;">取消</button>
-    <button id="pm-crop-confirm" style="flex:1;background:var(--pm-color-accent);color:var(--pm-color-on-dark);border:none;border-radius:10px;padding:10px;font-size:13px;cursor:pointer;font-weight:600;">确认裁剪</button>
+  <div class="pm-modal-add pm-crop-actions">
+    <button id="pm-crop-cancel" class="pm-action-button is-secondary is-flex-1">取消</button>
+    <button id="pm-crop-confirm" class="pm-action-button is-accent is-flex-1">确认裁剪</button>
   </div>
 </div>`;
 
     const cancel = () => {
-        overlay.remove();
-        onCancel?.();
+        if (dispose()) onCancel?.();
     };
-    overlay.querySelector('#pm-crop-close').addEventListener('click', cancel);
-    overlay.querySelector('#pm-crop-cancel').addEventListener('click', cancel);
-    overlay.addEventListener('click', event => { if (event.target === overlay) cancel(); });
-    document.body.appendChild(overlay);
-    if (overlay.showPopover) try { overlay.showPopover(); } catch (error) {}
-
     const frame = overlay.querySelector('#pm-crop-frame');
     const image = overlay.querySelector('#pm-crop-img');
     const zoomSlider = overlay.querySelector('#pm-crop-zoom');
@@ -101,6 +96,25 @@ export function openCropper(imgDataUrl, { onCancel, onConfirm }) {
     window.addEventListener('touchmove', onDragMove, { passive: false });
     window.addEventListener('touchend', onDragEnd);
 
+    let disposed = false;
+    function dispose() {
+        if (disposed) return false;
+        disposed = true;
+        window.removeEventListener('mousemove', onDragMove);
+        window.removeEventListener('mouseup', onDragEnd);
+        window.removeEventListener('touchmove', onDragMove);
+        window.removeEventListener('touchend', onDragEnd);
+        overlay.remove();
+        return true;
+    }
+    overlay.__pmCropperDispose = dispose;
+    overlay.__pmOnClose = dispose;
+    overlay.querySelector('#pm-crop-close').addEventListener('click', cancel);
+    overlay.querySelector('#pm-crop-cancel').addEventListener('click', cancel);
+    overlay.addEventListener('click', event => { if (event.target === overlay) cancel(); });
+    document.body.appendChild(overlay);
+    if (overlay.showPopover) try { overlay.showPopover(); } catch (error) {}
+
     let pinchDistance = 0, pinchScale = 1;
     frame.addEventListener('touchstart', event => {
         if (event.touches.length !== 2) return;
@@ -153,7 +167,6 @@ export function openCropper(imgDataUrl, { onCancel, onConfirm }) {
             quality -= 0.1;
             output = canvas.toDataURL('image/jpeg', quality);
         }
-        overlay.remove();
-        onConfirm(output);
+        if (dispose()) onConfirm(output);
     });
 }

@@ -5,8 +5,6 @@ import {
     cloneEmojiLibrary, createEmojiRenderBudget, emojiFileError, emojiSourceError,
 } from './emoji-media.js';
 
-const SUB_OVERLAY_STYLE = 'position:fixed !important; inset:0 !important; margin:0 !important; padding:0 !important; border:none !important; width:100vw !important; height:100vh !important; max-width:none !important; max-height:none !important; background:var(--pm-color-overlay) !important; z-index:2147483648 !important; display:flex !important; align-items:center !important; justify-content:center !important;';
-
 function applySubOverlayTheme(overlay) {
     const theme = window.__pmTheme || {};
     const preset = THEME_PRESETS[theme.preset] || THEME_PRESETS.default;
@@ -37,11 +35,11 @@ function createSubOverlay(html) {
     document.getElementById('pm-overlay-sub')?.remove();
     const overlay = document.createElement('div');
     overlay.id = 'pm-overlay-sub';
+    overlay.className = 'pm-sub-overlay';
     overlay.dataset.theme = window.__pmTheme?.darkMode || 'light';
     if (typeof HTMLElement !== 'undefined' && HTMLElement.prototype.hasOwnProperty('popover')) {
         overlay.setAttribute('popover', 'manual');
     }
-    overlay.style.cssText = SUB_OVERLAY_STYLE;
     applySubOverlayTheme(overlay);
     overlay.innerHTML = html;
     overlay.addEventListener('click', event => { if (event.target === overlay) overlay.remove(); });
@@ -51,10 +49,11 @@ function createSubOverlay(html) {
 }
 
 function renderEmojiThumbnail(image, width, height, canRender) {
+    const sizeClass = `is-${width}x${height}`;
     if (!canRender(image.url)) {
-        return `<div class="pm-emoji-thumbnail is-placeholder" style="width:${width}px;height:${height}px;">图片暂不加载</div>`;
+        return `<div class="pm-emoji-thumbnail is-placeholder ${sizeClass}">图片暂不加载</div>`;
     }
-    return `<img class="pm-emoji-thumbnail" src="${escapeAttr(image.url)}" loading="lazy" decoding="async" width="${width}" height="${height}" style="width:${width}px;height:${height}px;">`;
+    return `<img class="pm-emoji-thumbnail ${sizeClass}" src="${escapeAttr(image.url)}" loading="lazy" decoding="async" width="${width}" height="${height}">`;
 }
 
 function renderPickerImages(set, canRender = createEmojiRenderBudget()) {
@@ -85,7 +84,7 @@ export function installEmojiUi({ makeOverlay, saveEmojis }) {
 
     window.__pmShowEmojiManager = () => {
         makeOverlay(`
-<div class="pm-modal pm-modal-wide" style="height:560px;">
+<div class="pm-modal pm-modal-wide pm-emoji-manager-modal">
   <div class="pm-modal-header"><span></span><b>表情包管理</b><button type="button" onclick="window.__pmCloseOverlay()" class="pm-modal-close" title="关闭" aria-label="关闭">${CLOSE_ICON_SVG}</button></div>
   <div class="pm-modal-scroll pm-emoji-manager-body">
     <div id="pm-emoji-set-list"></div>
@@ -136,7 +135,7 @@ export function installEmojiUi({ makeOverlay, saveEmojis }) {
   <div class="pm-emoji-form">
     <input id="pm-new-set-name" class="pm-cfg-input" placeholder="套组名称（如：开心、日常、可爱）">
   </div>
-  <div class="pm-modal-add"><button type="button" class="pm-action-button is-accent" onclick="window.__pmConfirmAddEmojiSet()" style="width:100%;">确认</button></div>
+  <div class="pm-modal-add"><button type="button" class="pm-action-button is-accent" data-layout="full" onclick="window.__pmConfirmAddEmojiSet()">确认</button></div>
 </div>`);
         setTimeout(() => document.getElementById('pm-new-set-name')?.focus(), 10);
     };
@@ -182,7 +181,7 @@ export function installEmojiUi({ makeOverlay, saveEmojis }) {
     <input id="pm-emo-desc" class="pm-cfg-input" placeholder="图片描述（必填，如：猫猫开心）">
     <div class="pm-cfg-tip">描述将告诉 AI 这张图在什么情形下使用</div>
   </div>
-  <div class="pm-modal-add"><button type="button" class="pm-action-button is-accent" onclick="window.__pmConfirmAddEmojiImage(${setIndex})" style="width:100%;">确认添加</button></div>
+  <div class="pm-modal-add"><button type="button" class="pm-action-button is-accent" data-layout="full" onclick="window.__pmConfirmAddEmojiImage(${setIndex})">确认添加</button></div>
 </div>`);
         setTimeout(() => document.getElementById('pm-emo-url')?.focus(), 10);
     };
@@ -205,7 +204,7 @@ export function installEmojiUi({ makeOverlay, saveEmojis }) {
             if (urlInput) urlInput.value = url;
             if (preview && previewImage) {
                 previewImage.src = url;
-                preview.style.display = 'block';
+                preview.classList.add('is-visible');
             }
         };
         reader.readAsDataURL(file);

@@ -1,5 +1,5 @@
 import { escapeAttr, escapeHtml } from './ui.js';
-import { resolveConversationTarget } from './conversation.js';
+import { resolveConversationTarget } from './conversation-state.js';
 import {
     BACK_ICON_SVG, CALENDAR_ICON_SVG, CHARACTER_ICON_SVG, CHAT_ICON_SVG, CLOSE_ICON_SVG,
     EDIT_ICON_SVG, EMOJI_ICON_SVG, SETTINGS_ICON_SVG, TRASH_ICON_SVG,

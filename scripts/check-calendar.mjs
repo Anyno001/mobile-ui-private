@@ -703,7 +703,9 @@ assert.doesNotMatch(climateDetail, /pm-calendar-status-date-separator/);
 assert.match(climateDetail, /<svg/);
 assert.doesNotMatch(climateDetail, /气候推演|缓存预报|真实预报|体感|湿度/);
 assert.match(climateInjection, new RegExp(sharedWeatherText.replace('/', '\\/')));
-assert.match(climateInjection, /天气（气候推演）：/);
+assert.match(climateInjection, /天气：/);
+assert.doesNotMatch(climateInjection, /天气（(?:气候推演|缓存预报|真实预报)）：/,
+    '日历注入只提供天气事实，不暴露内部数据来源标签');
 assert.match(climateDetail, new RegExp(weatherCodeLabel(climateResolved.day.weatherCode)));
 assert.match(climateInjection, new RegExp(weatherCodeLabel(climateResolved.day.weatherCode)));
 const staleWeather = await fetchWeatherForecast(shanghai, freshWeather.store, {
@@ -808,7 +810,7 @@ for (const { date, phase, label } of cycleLabelCases) {
         assert.doesNotMatch(page, new RegExp(`data-calendar-date="${date}"[^>]*>(?:(?!</button>)[\\s\\S])*?<span>(?:安全期|易孕期|经期)</span>`),
             '空白周期阶段不得在月格显示周期标签');
         const promptLabel = phase === 'follicular' ? '相对安全期' : '安全期';
-        assert.match(injection, new RegExp(`${date}｜[^\\n]*生理周期（我）：${promptLabel}`),
+        assert.match(injection, new RegExp(`${date}｜[^\\n]*生理周期（<user>）：${promptLabel}`),
             '空白周期阶段必须只在后台上下文使用明确中文标签');
         assert.doesNotMatch(injection, /生理周期规则：/, '周期上下文不得保留默认安全期推断规则');
     } else {
@@ -820,7 +822,7 @@ for (const { date, phase, label } of cycleLabelCases) {
         }
         assert.match(page, new RegExp(`data-calendar-date="${date}"[^>]*>(?:(?!</button>)[\\s\\S])*?<span>${label}</span>`),
             `周期月格必须将 ${phase} 渲染为${label}`);
-        assert.match(injection, new RegExp(`${date}｜[^\\n]*生理周期（我）：${label}`),
+        assert.match(injection, new RegExp(`${date}｜[^\\n]*生理周期（<user>）：${label}`),
             `周期上下文注入必须将 ${phase} 渲染为${label}`);
     }
 }
@@ -1802,6 +1804,15 @@ try {
     const replacementStatusTimer = statusTimers.at(-1);
     replacementStatusTimer.callback();
     assert.equal(statusNode.textContent, '', '普通状态到期后必须自动消退');
+    await deps.handleCalendarAction({ dataset: { action: 'calendar-cycle-save' } }, app);
+    const closingStatusTimer = statusTimers.at(-1);
+    deps.clearCalendarRuntime();
+    assert.equal(closingStatusTimer.cancelled, true, '日历运行态释放必须取消尚未到期的状态定时器');
+    assert.equal(statusNode.textContent, '生理期提示已保存。', '运行态释放不得同步改写已渲染 DOM');
+    closingStatusTimer.callback();
+    assert.equal(statusNode.textContent, '生理期提示已保存。', '已释放的日历状态定时器迟到执行不得改写 DOM');
+    assert.equal(deps.renderCalendar(storageA), true, '运行态释放后日历必须能够按持久化状态重建页面');
+    assert.doesNotMatch(container.innerHTML, /生理期提示已保存。/, '重建页面不得复活关闭前的瞬态状态文本');
     assert.equal(Object.hasOwn(deps.getCalendarStore().scopes[storageA], 'baseDate'), false);
     assert.equal(Object.hasOwn(JSON.parse(memory.get('ST_SMS_CALENDAR_V1')).scopes[storageA], 'baseDate'), false, '清除时间起点必须同步持久化');
     assert.match(container.innerHTML, /data-action="calendar-base-clear" disabled[\s\S]*data-action="calendar-today"/, '使用设备日期后月份面板动作仍需保留且清除按钮禁用');

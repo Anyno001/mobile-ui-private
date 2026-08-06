@@ -1,6 +1,6 @@
 import { EXTENSION_PROMPT_POSITIONS } from './constants.js';
 import { normalizeInjectionConfig } from './behavior-config.js';
-import { resolveConversationTarget } from './conversation.js';
+import { resolveConversationTarget } from './conversation-state.js';
 import { BACK_ICON_SVG, CLOSE_ICON_SVG } from './icons.js';
 import { loadInjectionConfig, saveBidirectional, saveInjectionConfig } from './storage.js';
 import { escapeHtml } from './ui.js';

@@ -49,12 +49,14 @@
 | --- | --- | --- |
 | `--pm-color-surface-page` | `#ffffff` | `#1c1c1e` |
 | `--pm-color-surface-card` | `#f8f8fa` | `#242429` |
+| `--pm-color-surface-elevated` | `#f2f2f7` | `#252527` |
 | `--pm-color-surface-control` | `#f2f2f7` | `#2c2c2e` |
-| `--pm-color-text-primary` | `#1c1c1e` | `#f2f2f7` |
+| `--pm-color-text-primary` | `#1c1c1e` | `#eeeeef` |
 | `--pm-color-text-secondary` | `#55545c` | `#d1d1d6` |
 | `--pm-color-text-tertiary` | `#7a7a82` | `#a9a9b0` |
 | `--pm-color-border-subtle` | `#f0f0f2` | `#38383a` |
-| `--pm-color-border-default` | `#dedfe6` | `#48484a` |
+| `--pm-color-border-default` | `#dedfe6` | `#414149` |
+| `--pm-color-border-strong` | `#b7b7bd` | `#48484a` |
 | `--pm-color-accent` | `#1677d2` | `#0a84ff` |
 | `--pm-color-success` | `#34c759` | `#34c759` |
 | `--pm-color-warning` | `#ff9500` | `#ff9500` |
@@ -69,7 +71,7 @@
 | `--pm-color-text-placeholder` | `#9a9aa1` | `#8e8e93` |
 | `--pm-color-text-disabled` | `#b8b8bf` | `#636366` |
 | `--pm-color-control-off` | `#d1d1d6` | `#48484a` |
-| `--pm-color-on-accent` | `#ffffff` | `#000000` |
+| `--pm-color-on-accent` | `#ffffff` | 同左 |
 | `--pm-color-on-dark` | `#ffffff` | 同左 |
 | `--pm-color-on-light` / `--pm-color-on-success` / `--pm-color-on-warning` | `#000000` | 同左 |
 | `--pm-color-on-danger` | `#000000` | 同左 |
@@ -119,7 +121,7 @@ MUST 从表中选择。控件与正文统一使用 14px，避免为了紧凑牺�
 
 只保留两种轻阴影：`--pm-shadow-floating:0 8px 24px rgba(0,0,0,.14)` 用于菜单/下拉；`--pm-shadow-modal:0 16px 48px rgba(0,0,0,.18)` 用于模态。普通卡片不使用阴影；手机宿主壳阴影属于兼容例外。
 
-层级只保留：`--pm-z-base:0`、`--pm-z-menu:20`、`--pm-z-popover:30`、`--pm-z-modal:40`、`--pm-z-host:2147483647`。模态遮罩与面板处于同一 modal 层级容器，面板通过 DOM 顺序覆盖遮罩。不得为解决遮挡创建 21、31、9999 等临时值；先检查 stacking context。
+层级只保留：`--pm-z-base:0`、`--pm-z-menu:20`、`--pm-z-popover:30`、`--pm-z-modal:40`、`--pm-z-host:2147483647`。组件消费规则必须引用对应的 `--pm-z-*` token，不得重复写入其数值。模态遮罩与面板处于同一 modal 层级容器，面板通过 DOM 顺序覆盖遮罩。不得为解决遮挡创建 21、31、9999 等临时值；先检查 stacking context。
 
 动效只保留：`--pm-motion-fast:120ms`、`--pm-motion-normal:180ms` 和 `--pm-motion-ease:cubic-bezier(.2,.8,.2,1)`。界面动效应轻微、短促，不使用弹跳、持续闪烁、夸张缩放或 `transition:all`。新增动画 MUST 在 `prefers-reduced-motion:reduce` 下由组件自身规则取消非必要动画和过渡；状态变化直接呈现，不新增 reduced-motion 时长 token，也不得通过全局 `*` 规则覆盖宿主。
 
@@ -198,9 +200,29 @@ MUST 优先使用 flex/grid。absolute 只用于角标、锚定菜单和装饰�
 
 ## 13. 机器约束与迁移
 
-`scripts/check-contracts.mjs` MUST 检查：目标 token 存在；亮暗主题成对；已迁移组件引用规定 token；状态背景/文字/边框成套；组件消费规则不存在新增裸色值、未登记 z-index 或 `transition:all`；宿主契约仍有效。全局 token 与已登记组件私有 token 声明中的原始值不属于违规硬编码，私有 token 的消费规则不得直接使用原始值。
+`scripts/check-contracts.mjs` MUST 检查：目标 token 存在；亮暗主题成对；已迁移组件引用规定 token；状态背景/文字/边框成套；已登记 component root 确有 CSS owner；私有 token 的声明与消费均处于登记 root；稳定 JS 内联写入逐文件逐属性匹配 `inline.allowedWrites`；组件消费规则不存在未登记的裸色值、字号、间距、圆角、z-index、transition 或 `transition:all`；宿主契约仍有效。`legacyValues` 只冻结当前存量债务并按类别 fail-fast，新增裸值必须显式审查并更新登记；全局 token 与已登记组件私有 token 声明中的原始值不属于违规硬编码，私有 token 的消费规则不得直接使用原始值。
 
 迁移按组件族分批进行：全局 token → 基础控件 → 卡片/模态/菜单 → 列表/导航 → 聊天 → 社区 → 日历。每批独立构建和回归。旧视觉断言应替换为新标准断言，行为和宿主契约继续保留。
+
+## 13.1 CSS 治理登记
+
+以下 class 由 CSS 治理引入，替代稳定内联视觉，语义与既有组件配方一致：
+
+| class | 语义 | 对应原内联 |
+| --- | --- | --- |
+| `.pm-confirm-bar`（默认隐藏 + `.is-active` 显示） | 删除确认栏初始隐藏、选中模式显示 | `style="display:none"` / `style.display` 切换 |
+| `.pm-select-wrap[data-align]` | 选择包装器按 side 对齐（left/center/right） | `wrap.style.cssText` 中的 `align-self` |
+| `.pm-msg-list-empty` / `.pm-modal-list-empty` | 消息/联系人空态 | 空态内联文本样式 |
+| `.pm-emoji-placeholder` | 聊天表情缺失/不可加载占位 | 占位内联字号与文字色 |
+| `.pm-emoji-image` | 聊天表情图片固定规格 | emoji `<img>` 内联尺寸/圆角/阴影 |
+| `.pm-bubble.is-image-only` | 图片独占气泡去泡化 | `element.style.background/boxShadow/padding` 清空 |
+| `.pm-voice-text[hidden]` | 语音文字默认隐藏 | `style="display:none"` |
+| `.pm-action-button.is-full` / `.is-flex-1` / `.is-flex-2` | 模态底部按钮整宽或 flex 权重 | footer 内联 `width:100%` / `flex:1` / `flex:2` |
+| `.pm-settings-modal` | 设置模态固定高度 | `style="height:560px"` |
+| `.pm-inline-label` | 设置行内标签去除默认 margin | `style="margin:0"` |
+| `.pm-group-counter.has-members` | 群聊成员计数状态色 | `counter.style.color` |
+
+这些 class 的 CSS 定义位于 `style.css` 对应组件区，且纳入 `scripts/css-governance-registry.json` 的例外与组件根登记。群聊成员动态色、语音长度宽度、锚定坐标、主题变量注入仍属于运行时数据通道，不迁移。
 
 ## 14. 最终验收
 

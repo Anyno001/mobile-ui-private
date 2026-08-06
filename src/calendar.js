@@ -27,9 +27,7 @@ import { createTaskController } from './calendar-task-controller.js';
 export const calendarGenerationErrorMessage = generationErrorMessage; export { renderCalendarPageHtml };
 export function installCalendar(state, deps) {
     const { getStorageId, gatherContext, callAI, fetchImpl, makeOverlay, closeOverlay } = deps;
-    if (typeof window !== 'undefined') window.__pmReturnToCalendarDataSource = () => {
-        closeOverlay?.('replace'); return deps.showPhoneCalendarPage?.();
-    };
+    if (typeof window !== 'undefined') window.__pmReturnToCalendarDataSource = () => { closeOverlay?.('replace'); return deps.showPhoneCalendarPage?.(); };
     const runtime = {
         store: normalizeCalendarStore(loadCalendarWithLegacyInjectionMigration()),
         occasionStore: normalizeOccasionStore(loadCalendarOccasions()),
@@ -97,13 +95,7 @@ export function installCalendar(state, deps) {
         runtime.viewByStorage.set(storageId, view);
         return view;
     };
-    const { commitScope, commitRecipe, commitOutfits, commitOccasions, commitSchedule, commitHolidays, commitWeather, commitCycle, invalidateCommits } = createCalendarCommitters({
-        runtime,
-        tasks,
-        applyBidirectionalInjection: deps.applyBidirectionalInjection,
-        getCycles: cycles,
-        getCycleSubject: storageId => viewFor(storageId).cycleSubject,
-    });
+    const { commitScope, commitRecipe, commitOutfits, commitOccasions, commitSchedule, commitHolidays, commitWeather, commitCycle, invalidateCommits } = createCalendarCommitters({ runtime, tasks, applyBidirectionalInjection: deps.applyBidirectionalInjection, getCycles: cycles, getCycleSubject: storageId => viewFor(storageId).cycleSubject });
     const render = (storageId = getStorageId()) => {
         const container = state.phoneWindow?.querySelector('.pm-calendar-page');
         if (!container) return false;
@@ -780,18 +772,25 @@ export function installCalendar(state, deps) {
         catch (error) { console.warn('[phone-mode] 日历自动识别失败', error); return false; }
     }
     const transfersCalendarStateOwnership = reason => reason === 'plugin-data-clear' || reason === 'backup-apply' || reason === 'backup-rollback';
+    const releasesCalendarRuntime = reason => reason === 'phone-closed' || reason === 'host-chat-changed' || reason === 'beforeunload' || reason === 'document-hidden' || transfersCalendarStateOwnership(reason);
+    const clearCalendarRuntime = () => {
+        for (const token of runtime.statusTimerByStorage.values()) cancelTimeout(token.timer);
+        runtime.statusTimerByStorage.clear(); runtime.statusByStorage.clear(); runtime.viewByStorage.clear(); runtime.weatherSearchResults = [];
+    };
     const cancelCalendarTasks = reason => {
         if (transfersCalendarStateOwnership(reason)) invalidateCommits();
+        if (releasesCalendarRuntime(reason)) clearCalendarRuntime();
         return tasks.cancel(reason);
     };
-    Object.assign(deps, { cancelCalendarTasks, ensureCalendarWeek: ensureWeek,
+    Object.assign(deps, { cancelCalendarTasks, clearCalendarRuntime, ensureCalendarWeek: ensureWeek,
         getCalendarCycleStore: () => normalizeCycleStore(runtime.cycleStore), getCalendarHolidayStore: () => normalizeHolidayCache(runtime.holidayStore), getCalendarRecipeStore: () => normalizeRecipeStore(runtime.recipeStore), getCalendarOutfitStore: () => normalizeOutfitStore(runtime.outfitStore),
         getCalendarStore: () => normalizeCalendarStore(runtime.store), getCalendarOccasionStore: () => normalizeOccasionStore(runtime.occasionStore), getCalendarWeatherStore: () => normalizeWeatherStore(runtime.weatherStore), handleCalendarAction: handleAction, observeCalendarTurn: observeTurn,
         reloadCalendarStore() {
-            runtime.store = normalizeCalendarStore(loadCalendar()); runtime.viewByStorage.clear();
+            clearCalendarRuntime();
+            runtime.store = normalizeCalendarStore(loadCalendar());
             runtime.occasionStore = normalizeOccasionStore(loadCalendarOccasions()); runtime.holidayStore = normalizeHolidayCache(loadCalendarHolidays());
             runtime.weatherStore = normalizeWeatherStore(loadCalendarWeather()); runtime.cycleStore = normalizeCycleStore(loadCalendarCycles());
-            runtime.recipeStore = normalizeRecipeStore(loadCalendarRecipes()); runtime.outfitStore = loadOutfitStore(); runtime.weatherSearchResults = [];
+            runtime.recipeStore = normalizeRecipeStore(loadCalendarRecipes()); runtime.outfitStore = loadOutfitStore();
         },
         renderCalendar: render,
     });

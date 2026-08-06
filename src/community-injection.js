@@ -21,7 +21,7 @@ export function renderCommunitySource(source) {
         lines.push(`${renderAuthor(post, actors)}：${content}`);
         for (const comment of Array.isArray(post.comments) ? post.comments : []) {
             const commentText = cleanText(comment?.content, 1000);
-            if (commentText) lines.push(`  评论 · ${renderAuthor(comment, actors)}：${commentText}`);
+            if (commentText) lines.push(`  评论ID·${renderAuthor(comment, actors)}：${commentText}`);
         }
     }
     const danmaku = Array.isArray(scene.live?.danmaku) ? scene.live.danmaku : [];

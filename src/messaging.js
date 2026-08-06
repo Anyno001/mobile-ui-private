@@ -1,4 +1,3 @@
-import { cleanResponse, splitToSentences } from './prompts.js';
 import { VOICE_MAX_SEC } from './constants.js';
 import { GROUP_COLORS } from './groups.js';
 import { isRenderableEmojiSource } from './emoji-media.js';
@@ -53,71 +52,6 @@ export function getEmojiPrompt(contactKey, storageId, pokeConfig, emojis) {
     if (!sets.length) return '';
     const lines = sets.map(set => set.images.map((image, index) => `[emo:${set.name}:${index + 1}] - ${image.desc}`).join('\n')).join('\n');
     return `\n\n[表情包权限]\n你可以在合适时机使用以下表情包，使用格式 [emo:套组名:序号] 独行发送：\n${lines}\n请在自然语境下适当使用，严禁自生新格式。`;
-}
-
-
-export function parseGroupResponse(raw, groupMembers, { allowUnknownSpeakers = false } = {}) {
-    const cleaned = cleanResponse(raw);
-    const lines = cleaned.split('\n').map(line => line.trim()).filter(Boolean);
-    const result = [];
-    const normalizeName = value => (value || '')
-        .trim()
-        .replace(/^[【\[\(（*「『"'\s]+|[】\]\)）*「』」"'\s]+$/g, '')
-        .trim()
-        .toLowerCase();
-    const memberMap = new Map();
-    groupMembers.forEach(name => memberMap.set(normalizeName(name), name));
-    const speakerPattern = /^[\s\*【\[「『"'（\(]*(.{1,20}?)[\s\*】\]」』"'）\)]*\s*[：:]\s*([\s\S]+)$/;
-    const randomNpcPrefix = '路人群友·';
-    const reservedNpcNames = new Set([
-        '系统', '用户', '旁白', '提示', '时间', '备注', '网址', '比例',
-        '图片', '语音', '转账', '收款', '退还',
-    ]);
-    const resolveSpeaker = value => {
-        const normalized = normalizeName(value);
-        if (memberMap.has(normalized)) return memberMap.get(normalized);
-        if (!allowUnknownSpeakers || !normalized) return '';
-        const candidate = String(value || '').trim()
-            .replace(/^[【\[\(（*「『"'\s]+|[】\]\)）*「』」"'\s]+$/g, '').trim();
-        if (!candidate.startsWith(randomNpcPrefix)) return '';
-        const name = candidate.slice(randomNpcPrefix.length).trim();
-        if (!name || name.length > 12 || reservedNpcNames.has(name)) return '';
-        if (/[：:\/\\\[\]【】()（）<>]/.test(name) || /^\d+(?:\.\d+)?%?$/.test(name)) return '';
-        return `${randomNpcPrefix}${name}`;
-    };
-
-    const stripSpeakerPrefix = value => {
-        let text = (value || '').trim();
-        const outer = text.match(/^[\(（]\s*(.{1,20}?)\s*[：:]\s*([\s\S]+?)\s*[\)）]\s*$/);
-        if (outer && resolveSpeaker(outer[1])) {
-            return outer[2].trim();
-        }
-        for (let index = 0; index < 3; index++) {
-            const match = text.match(speakerPattern);
-            if (!match || !resolveSpeaker(match[1])) break;
-            text = match[2].trim();
-        }
-        return text;
-    };
-    const splitGroupSentences = value => splitToSentences(
-        String(value || '').replace(/https?:\/\/\S+/gi, url => url.replace(/\//g, '\u0002')),
-        stripSpeakerPrefix,
-    ).map(text => text.replace(/\u0002/g, '/'));
-
-    for (const line of lines) {
-        const match = line.match(speakerPattern);
-        const speaker = match ? resolveSpeaker(match[1]) : '';
-        if (match && speaker) {
-            const sentences = splitGroupSentences(match[2]);
-            if (sentences.length) result.push({ name: speaker, sentences });
-            continue;
-        }
-        const sentences = splitGroupSentences(line);
-        if (!sentences.length) continue;
-        if (result.length > 0) result[result.length - 1].sentences.push(...sentences);
-        else result.push({ name: groupMembers[0] || '???', sentences });
-    }
-    return result;
 }
 
 export function resolveGroupColor(name, groupColorMap, groupMembers) {
@@ -206,7 +140,7 @@ export function createBubbles(text, side, senderName, { groupColorMap, groupMemb
                 voiceStyle = `width:${width}px;background:${groupColor.bg} !important;color:${groupColor.text} !important;`;
                 voiceClass = 'pm-voice-card pm-voice-left pm-voice-group';
             }
-            bubble.innerHTML = `<div class="pm-voice-wrap"><div class="${voiceClass}" style="${voiceStyle}" onclick="window.__pmToggleVoice(this)"><span class="pm-voice-icon">🎤</span><span class="pm-voice-wave"><i></i><i></i><i></i></span><span class="pm-voice-dur">${duration}"</span></div><div class="pm-voice-text" style="display:none;">${escapeHtml(voiceText)}</div></div>`;
+            bubble.innerHTML = `<div class="pm-voice-wrap"><div class="${voiceClass}" style="${voiceStyle}" onclick="window.__pmToggleVoice(this)"><span class="pm-voice-icon">🎤</span><span class="pm-voice-wave"><i></i><i></i><i></i></span><span class="pm-voice-dur">${duration}"</span></div><div class="pm-voice-text" hidden>${escapeHtml(voiceText)}</div></div>`;
         }
         if (container) { container.appendChild(bubble); results.push(container); }
         else results.push(bubble);
@@ -244,19 +178,17 @@ export function createBubbles(text, side, senderName, { groupColorMap, groupMemb
             if (!element.innerHTML.includes('[emo:')) continue;
             element.innerHTML = element.innerHTML.replace(/\[emo:([^\]:]+):(\d+)\]/g, (raw, setName, index) => {
                 const url = findEmojiUrl(setName, parseInt(index, 10), emojis);
-                if (!url) return `<span style="font-size:12px;color:var(--pm-color-text-tertiary);">🤔[${setName}:${index}]</span>`;
+                if (!url) return '<span class="pm-emoji-placeholder">🤔[' + escapeHtml(setName) + ':' + index + ']</span>';
                 if (!isRenderableEmojiSource(url)) {
-                    return '<span style="font-size:12px;color:var(--pm-color-text-tertiary);">表情图片暂不加载</span>';
+                    return '<span class="pm-emoji-placeholder">表情图片暂不加载</span>';
                 }
                 if (typeof emojiBudget === 'function' && !emojiBudget(url)) {
-                    return '<span style="font-size:12px;color:var(--pm-color-text-tertiary);">表情图片暂不加载</span>';
+                    return '<span class="pm-emoji-placeholder">表情图片暂不加载</span>';
                 }
-                return `<img src="${escapeAttr(url)}" loading="lazy" decoding="async" width="98" height="98" style="width:98px;height:98px;object-fit:contain;border-radius:8px;display:block;box-shadow:0 2px 8px rgba(0,0,0,0.15);vertical-align:middle;">`;
+                return `<img src="${escapeAttr(url)}" loading="lazy" decoding="async" width="98" height="98" class="pm-emoji-image">`;
             });
             const imageOnly = element.querySelector('img') && element.childNodes.length === 1;
-            element.style.background = imageOnly ? 'transparent' : '';
-            element.style.boxShadow = imageOnly ? 'none' : '';
-            element.style.padding = imageOnly ? '0' : '';
+            element.classList.toggle('is-image-only', imageOnly);
         }
     }
     return results;

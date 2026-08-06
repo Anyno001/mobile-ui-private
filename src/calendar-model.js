@@ -3,7 +3,7 @@ export const CALENDAR_LIMITS = Object.freeze({ scopes: 80, dates: 366, eventsPer
 export const CALENDAR_SOURCES = Object.freeze(['manual', 'context', 'ai']);
 export const CALENDAR_YEAR_RANGE = Object.freeze({ min: 1, max: 9999 });
 export const DEFAULT_CALENDAR_DATE_TAGS = Object.freeze(['date']);
-export const DEFAULT_CALENDAR_GENERATION_RULE = '依据角色身份、时代、职责、关系、习惯和已发生事件，生成角色本人真实会执行的生活安排。优先采纳明确日期事实与上下文中的特色节庆；证据不足时保持克制，不要为了填满日期而编造安排。';
+export const DEFAULT_CALENDAR_GENERATION_RULE = '依据角色身份、职业或学业、时代、作息习惯、当前处境和近期剧情，生成角色实际会执行的生活日程。先推导角色在当前时期的稳定日常结构，例如上课、工作、训练、值班、通勤、用餐、休息及固定职责，再结合具体日期、节假日和剧情变化安排当日事项。常规日程可以合理延续，特殊事件应覆盖或调整原有安排。每天记录具有时间占用或叙事价值的主要事项，数量随角色生活节奏自然变化。';
 const CALENDAR_DATE_TAG_LIMITS = Object.freeze({ count: 8, length: 32 });
 
 const plainRecord = value => value && typeof value === 'object' && !Array.isArray(value)

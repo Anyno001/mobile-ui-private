@@ -6,19 +6,15 @@ import {
 import { createHistoryWindow } from './history-window.js';
 import { cleanResponse, splitToSentences } from './prompts.js';
 import {
-    addPendingMessage, combinePendingMessages, getPendingMessages,
-    removePendingBatch, setPendingBatchStatus,
+    addPendingMessage, combinePendingMessages, getPendingMessages, isPendingMessageLimitReached,
+    PENDING_MESSAGE_LIMIT, removePendingBatch, setPendingBatchStatus,
 } from './pending-messages.js';
-import {
-    getEmojiPrompt, getWordyPrompt, parseGroupResponse,
-} from './messaging.js';
+import { parseGroupResponse } from './messaging-group-parser.js';
+import { getEmojiPrompt, getWordyPrompt } from './messaging.js';
 import { savePokeConfig } from './storage.js';
 import { runAutoPokeCounterCycle } from './runtime.js';
 import {
-    buildUserBlock, buildHistoryText, buildAntiFluff,
-    buildSingleInjectedInstruction, buildSingleSystemPrompt,
-    buildGroupInjectedInstruction, buildGroupSystemPrompt,
-    buildIndependentSingleUserPrompt, buildIndependentGroupUserPrompt,
+    buildChatRequest, buildHistoryText,
 } from './chat-prompts.js';
 
 export function installPhoneChat(state, deps) {
@@ -54,42 +50,8 @@ export function installPhoneChat(state, deps) {
         }
         const { cardDesc, cardPersonality, cardScenario, cardFirstMes, cardMesExample, mainChatText, worldBookText, userName, userDesc } = ctxData;
 
-        const userBlock = buildUserBlock(userName, userDesc);
         const smsHistoryText = buildHistoryText(targetHistory, CONTEXT_LIMIT, userName, isGroup ? null : currentPersona);
         const currentQuoteText = formatQuoteContext(request.userHistoryEntry?.quote);
-
-        let injectedInstruction, systemPrompt;
-
-        if (isGroup) {
-            const memberList = groupMembers.join('、');
-            const groupName = groupDisplayName || `群聊：${memberList}`;
-            injectedInstruction = buildGroupInjectedInstruction({
-                groupName, memberList, userName, userBlock,
-                cardScenario, worldBookText, mainChatText, smsHistoryText, currentQuoteText, directorNote,
-                userMsgClean, userMsg, randomNpcEnabled: groupRandomNpcEnabled, groupNature, randomNpcPrompt: groupRandomNpcPrompt,
-            });
-            systemPrompt = buildGroupSystemPrompt({
-                memberList, groupName, userName, userBlock,
-                cardDesc, cardPersonality, cardScenario, worldBookText, mainChatText,
-                randomNpcEnabled: groupRandomNpcEnabled, groupNature, randomNpcPrompt: groupRandomNpcPrompt,
-            });
-        } else {
-            const contextBlockMain = [
-                cardScenario ? `【场景参考】\n${cardScenario}` : '',
-                cardMesExample ? `【对话示例】\n${cardMesExample}` : '',
-            ].filter(Boolean).join('\n\n');
-            injectedInstruction = buildSingleInjectedInstruction({
-                currentPersona, userName, userBlock,
-                contextBlockMain, mainChatText, smsHistoryText, currentQuoteText, directorNote, userMsgClean, userMsg,
-            });
-            systemPrompt = buildSingleSystemPrompt({
-                currentPersona, userName, userBlock,
-                cardDesc, cardPersonality, cardScenario, cardFirstMes, cardMesExample,
-                worldBookText, mainChatText,
-            });
-        }
-
-        const antiFluff = buildAntiFluff();
         const preferencePrompt = buildChatPreferencePrompt({
             store: window.__pmCharacterBehavior,
             storageId,
@@ -98,28 +60,17 @@ export function installPhoneChat(state, deps) {
             emojiPrompt: getEmojiPrompt(saveKey, storageId, window.__pmPokeConfig, window.__pmEmojis),
             wordyPrompt: getWordyPrompt(window.__pmWordyLimit),
         });
-        if (preferencePrompt) { systemPrompt += preferencePrompt; injectedInstruction += preferencePrompt; }
-        systemPrompt += `\n\n${antiFluff}`;
-        injectedInstruction += `\n\n${antiFluff}`;
 
         try {
             const cfg = window.__pmConfig;
             const useIndep = cfg.useIndependent && cfg.apiUrl && cfg.apiKey;
-            let raw = '';
-
-            if (useIndep) {
-                const indepUserPrompt = isGroup
-                    ? buildIndependentGroupUserPrompt({
-                        smsHistoryText, currentQuoteText, directorNote, userMsgClean, userMsg, userName,
-                    })
-                    : buildIndependentSingleUserPrompt({
-                        smsHistoryText, currentQuoteText, directorNote, userMsgClean, userMsg, userName,
-                        currentPersona,
-                    });
-                raw = await callAI(systemPrompt, indepUserPrompt, { signal: task.signal });
-            } else {
-                raw = await callAI('', injectedInstruction, { signal: task.signal });
-            }
+            const aiRequest = buildChatRequest({
+                isGroup, currentPersona, groupMembers, groupDisplayName, groupRandomNpcEnabled, groupNature,
+                groupRandomNpcPrompt, userName, userDesc, cardDesc, cardPersonality, cardScenario,
+                cardFirstMes, cardMesExample, worldBookText, mainChatText, smsHistoryText, currentQuoteText,
+                directorNote, userMsgClean, userMsg, preferencePrompt, useIndependent: useIndep, signal: task.signal,
+            });
+            const raw = await callAI(aiRequest.systemPrompt, aiRequest.userPrompt, aiRequest.options);
             if (!isGenerationTaskActive(task)) return null;
 
             if (request.userHistoryEntry) {
@@ -255,6 +206,7 @@ export function installPhoneChat(state, deps) {
         const target = getPendingTarget();
         const parsed = parsePendingInput(value);
         if (!target || !parsed) return null;
+        if (isPendingMessageLimitReached(runtime, target.storageId, target.saveKey)) return 'limit-reached';
         if (state.activeQuote) parsed.quote = state.activeQuote;
         const item = addPendingMessage(runtime, target.storageId, target.saveKey, parsed);
         if (!item) return null;
@@ -265,7 +217,13 @@ export function installPhoneChat(state, deps) {
 
     window.__pmSend = () => {
         const input = state.phoneWindow?.querySelector('.pm-input');
-        if (!input || !queuePendingText(input.value)) return;
+        if (!input) return;
+        const queued = queuePendingText(input.value);
+        if (queued === 'limit-reached') {
+            alert(`当前会话暂存最多保留 ${PENDING_MESSAGE_LIMIT} 条，请先提交、编辑或清理。`);
+            return;
+        }
+        if (!queued) return;
         input.value = '';
         window.__pmRefreshControlCenter?.();
         input.focus();

@@ -1,5 +1,7 @@
 import { normalizeQuoteSnapshot } from './chat-message-model.js';
 
+export const PENDING_MESSAGE_LIMIT = 50;
+
 function getStorageBucket(runtime, storageId, create = false) {
     if (!(runtime.pendingMessages instanceof Map) || !storageId) return null;
     let bucket = runtime.pendingMessages.get(storageId);
@@ -15,6 +17,8 @@ export function getPendingMessages(runtime, storageId, saveKey) {
     return Array.isArray(items) ? items : [];
 }
 
+export const isPendingMessageLimitReached = (runtime, storageId, saveKey) => getPendingMessages(runtime, storageId, saveKey).length >= PENDING_MESSAGE_LIMIT;
+
 export function getPendingMessage(runtime, storageId, saveKey, itemId) {
     return getPendingMessages(runtime, storageId, saveKey).find(item => item.id === itemId) || null;
 }
@@ -29,6 +33,7 @@ export function addPendingMessage(runtime, storageId, saveKey, value) {
     if (!plainText && !directorNote) return null;
     const bucket = getStorageBucket(runtime, storageId, true);
     let items = bucket.get(saveKey);
+    if (isPendingMessageLimitReached(runtime, storageId, saveKey)) return null;
     if (!Array.isArray(items)) {
         items = [];
         bucket.set(saveKey, items);
