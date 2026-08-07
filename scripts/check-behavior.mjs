@@ -46,7 +46,7 @@ import { applyContextInjections } from '../src/phone-injection.js';
 import { normalizeCalendarStore } from '../src/calendar-model.js';
 import { normalizeOutfitStore } from '../src/calendar-outfit-model.js';
 import { normalizeRecipeStore } from '../src/calendar-recipe-model.js';
-import { deleteSceneDanmaku, deriveInteractiveActorId, normalizeInteractiveStore, updateSceneDanmaku } from '../src/interactive-scene-model.js';
+import { createCommunityTemplate, deleteSceneDanmaku, deriveInteractiveActorId, normalizeInteractiveStore, updateSceneDanmaku } from '../src/interactive-scene-model.js';
 import { pmIDBKeys } from '../src/pm-idb.js';
 import { renderPhoneDesktop, runDesktopPageTransition } from '../src/interactive-scenes.js';
 import { getCommunityInjectionState, runCommunityInjectionAction } from '../src/interactive-scene-phone.js';
@@ -379,6 +379,17 @@ const keyboardClosedSize = phoneSizeForViewport(1, 390, 844);
 const keyboardOpenSize = phoneSizeForViewport(1, 390, 400);
 assert.equal(keyboardOpenSize.width, keyboardClosedSize.width, '软键盘打开不得缩窄手机窗口');
 assert.ok(keyboardOpenSize.height < keyboardClosedSize.height, '软键盘打开必须只压缩手机窗口高度');
+assert.deepEqual(phoneSizeForViewport(1, 390, 0), { scale: 1, width: 330, height: 0 },
+    '零高度 VisualViewport 不得保留会越出屏幕的手机高度');
+const constrainedKeyboardSize = phoneSizeForViewport(1, 390, 60);
+assert.equal(constrainedKeyboardSize.height, 49,
+    '极矮软键盘视口必须按可用高度压缩手机，不能保留会越出屏幕的最小高度');
+assert.deepEqual(phoneSizeForViewport(1, 0, 400), { scale: 0, width: 0, height: 0 },
+    '零宽度视口不得生成横向溢出的手机壳');
+assert.deepEqual(phoneSizeForViewport(1, Number.NaN, Number.NaN), { scale: 1, width: 330, height: 580 },
+    '非有限视口尺寸必须回退到稳定默认值，不能写入 NaNpx');
+assert.deepEqual(phoneSizeForViewport(1.5, 1920, 1200), { scale: 1.5, width: 495, height: 870 },
+    '高桌面视口必须保留既有最大比例和自然高度');
 assert.deepEqual(phoneSizeForViewport(1, 390, 844), keyboardClosedSize, '软键盘收起后必须恢复原高度和宽度');
 assert.deepEqual(phoneSizeForScale(1), { width: 330, height: 580 });
 assert.deepEqual(phoneSizeForScale(0.6), { width: 198, height: 348 });
@@ -6357,11 +6368,13 @@ for (const action of ['desktop-chat', 'desktop-directory', 'desktop-settings', '
 globalThis.window = { __pmTheme: { customTitle: '雨夜 & 电台' } };
 assert.match(renderPhoneDesktop({ scenes: {} }, { pinnedSceneIds: [] }), /<span>雨夜 &amp; 电台<\/span>/, '桌面必须渲染并转义自定义标题');
 const sharedDesktopHtml = renderPhoneDesktop({ scenes: {} }, { pinnedSceneIds: [] }, [{
-    storageId: 'source-story', scene: { id: 'scene-shared', title: '共享 < 社区' },
+    id: 'template-shared', sourceStorageId: 'source-story', sourceSceneId: 'scene-shared', title: '共享 < 社区',
+    preset: 'weibo', styleInput: '', generatedPrompt: '', themeAccent: '#123abc', sharedAt: 1,
 }]);
-assert.match(sharedDesktopHtml, /data-action="desktop-open-shared-scene"[^>]*data-source-storage-id="source-story"[^>]*data-scene-id="scene-shared"/,
-    '其他窗口桌面必须提供指向源社区的共享入口');
-assert.match(sharedDesktopHtml, /共享 &lt; 社区/, '共享社区标题必须按普通卡片规则转义');
+assert.match(sharedDesktopHtml, /data-action="desktop-import-community-template"[^>]*data-template-id="template-shared"/,
+    '其他窗口桌面必须提供导入配置模板的入口');
+assert.match(sharedDesktopHtml, /共享 &lt; 社区/, '共享模板标题必须按普通卡片规则转义');
+assert.match(sharedDesktopHtml, /style="--scene-accent:#123abc"/, '模板入口必须透传模板的场景主题色');
 delete globalThis.window;
 
 assert.deepEqual(
@@ -6617,16 +6630,25 @@ assert.match(unpinnedLauncherHtml, /data-action="preset"[^>]*data-preset="douban
 assert.match(unpinnedLauncherHtml, /class="pm-scene-card-actions"/);
 assert.match(unpinnedLauncherHtml, /class="pm-scene-pin-action"[^>]*aria-pressed="false"[^>]*aria-label="固定社区"[^>]*>[\s\S]*?<path d="M4 19V8l8-4 8 4v11"/,
     '未固定按钮必须使用与桌面发布入口一致的社区图标');
-assert.match(unpinnedLauncherHtml, /class="pm-scene-share-action"[^>]*data-action="toggle-scene-share"[^>]*aria-pressed="false"[^>]*aria-label="跨窗口共享"[^>]*>[\s\S]*?<svg/,
-    '社区卡片必须在固定和删除按钮左侧提供 SVG 跨窗口共享开关');
+assert.match(unpinnedLauncherHtml, /class="pm-scene-template-action"[^>]*data-action="publish-community-template"[^>]*aria-label="发布共享模板"[^>]*>[\s\S]*?<svg/,
+    '未发布社区必须在固定和删除按钮左侧提供明确的 SVG 模板发布动作');
+assert.doesNotMatch(unpinnedLauncherHtml, /toggle-community-template|aria-pressed="false"[^>]*aria-label="发布共享模板"/,
+    '发布模板不是二元开关，不得遗留会误导重复发布语义的 pressed 状态');
+assert.match(unpinnedLauncherHtml, /class="pm-scene-card"[^>]*style="--scene-accent:#123abc"/,
+    '启动器卡片必须透传场景主题色');
 assert.doesNotMatch(unpinnedLauncherHtml, /--scene-pin-accent/, '固定按钮不得保留与当前预设脱节的卡片级颜色变量');
 assert.match(unpinnedLauncherHtml, /data-action="delete-scene"[^>]*aria-label="删除社区"[^>]*>[\s\S]*?<svg/);
 assert.doesNotMatch(unpinnedLauncherHtml, />固定<\/button>|>删除<\/button>/, '场景卡片操作必须使用 SVG 且保留可访问名称');
 assert.match(unpinnedLauncherHtml, /class="pm-scene-card-open"[^>]*>[\s\S]*?<\/button><div class="pm-scene-card-actions">/, '场景卡片操作必须位于打开场景按钮之外');
-const pinnedLauncherHtml = renderCommunityLauncher(launcherScope, { pinnedSceneIds: ['scene-card'], storageId: 'story', sharedScenes: [{ storageId: 'story', sceneId: 'scene-card' }] });
+const publishedLauncherTemplate = createCommunityTemplate(launcherScope.scenes['scene-card'], 'story', 1);
+const pinnedLauncherHtml = renderCommunityLauncher(launcherScope, {
+    pinnedSceneIds: ['scene-card'], storageId: 'story', sharedCommunityTemplates: [publishedLauncherTemplate],
+});
 assert.match(pinnedLauncherHtml, /class="pm-scene-pin-action"[^>]*aria-pressed="true"[^>]*aria-label="取消固定社区"[^>]*>[\s\S]*?<path d="M4 19V8l8-4 8 4v11"/);
-assert.match(pinnedLauncherHtml, /class="pm-scene-share-action"[^>]*aria-pressed="true"[^>]*aria-label="取消跨窗口共享"/,
-    '共享中的社区必须提供可访问的取消共享状态');
+assert.match(pinnedLauncherHtml, /class="pm-scene-template-action"[^>]*data-action="publish-community-template"[^>]*aria-label="更新共享模板"/,
+    '已发布社区必须保留显式更新模板入口');
+assert.match(pinnedLauncherHtml, /class="pm-scene-template-action pm-scene-template-unpublish"[^>]*data-action="unpublish-community-template"[^>]*aria-label="取消发布共享模板"/,
+    '已发布社区必须提供与更新分离的可访问取消发布动作');
 
 const desktopTransitionCalls = [];
 const desktopStore = { scopes: { story: { activeSceneId: null, sceneOrder: [], scenes: {}, actors: {} } } };

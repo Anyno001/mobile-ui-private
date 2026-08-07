@@ -54,11 +54,7 @@ export function createCalendarCommitters({
             } catch (error) {
                 injectionError = error;
             }
-            if (generation !== commitGeneration) {
-                if (injectionError) throw injectionError;
-                return false;
-            }
-            const cancelled = !!task && !tasks.active(task);
+            const cancelled = generation !== commitGeneration || (!!task && !tasks.active(task));
             if (!injectionError && !cancelled) return next;
 
             let rollbackError = null;
@@ -75,6 +71,50 @@ export function createCalendarCommitters({
                 rollbackError = error;
             }
 
+            if (rollbackError) {
+                const original = injectionError || new Error('日历任务取消后的状态补偿失败');
+                const combined = new Error(`${original.message}；日历状态回滚失败：${rollbackError.message}`);
+                combined.cause = original;
+                combined.rollbackError = rollbackError;
+                combined.calendarRollbackError = true;
+                throw combined;
+            }
+            if (injectionError) throw injectionError;
+            return false;
+        });
+    };
+
+    const commitStore = (mutate, task = null, { refreshInjection = true } = {}) => {
+        const generation = commitGeneration;
+        return enqueueDirectoryOperation('schedule', async () => {
+            if (generation !== commitGeneration || (task && !tasks.active(task))) return false;
+            const previousStore = clone(loadCalendar());
+            const normalized = normalizeCalendarStore(await mutate(clone(previousStore)));
+            if (generation !== commitGeneration || (task && !tasks.active(task))) return false;
+            if (!saveCalendar(normalized)) throw new Error('日历保存失败：浏览器存储不可用');
+            runtime.store = normalized;
+            if (!refreshInjection) return normalized;
+
+            let injectionError = null;
+            try {
+                const result = await applyBidirectionalInjection?.();
+                injectionError = injectionFailure(result, '提交');
+            } catch (error) {
+                injectionError = error;
+            }
+            const cancelled = generation !== commitGeneration || (!!task && !tasks.active(task));
+            if (!injectionError && !cancelled) return normalized;
+
+            let rollbackError = null;
+            try {
+                if (!saveCalendar(previousStore)) throw new Error('日历回滚保存失败：浏览器存储不可用');
+                runtime.store = normalizeCalendarStore(previousStore);
+                const rollbackResult = await applyBidirectionalInjection?.();
+                const rollbackInjectionError = injectionFailure(rollbackResult, '补偿');
+                if (rollbackInjectionError) throw rollbackInjectionError;
+            } catch (error) {
+                rollbackError = error;
+            }
             if (rollbackError) {
                 const original = injectionError || new Error('日历任务取消后的状态补偿失败');
                 const combined = new Error(`${original.message}；日历状态回滚失败：${rollbackError.message}`);
@@ -304,5 +344,5 @@ export function createCalendarCommitters({
         return getCycles(storageId, getCycleSubject(storageId));
     });
 
-    return { commitScope, commitRecipe, commitOutfits, commitOccasions, commitSchedule, commitHolidays, commitWeather, commitCycle, invalidateCommits };
+    return { commitScope, commitStore, commitRecipe, commitOutfits, commitOccasions, commitSchedule, commitHolidays, commitWeather, commitCycle, invalidateCommits };
 }

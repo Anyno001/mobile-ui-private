@@ -7,9 +7,10 @@ export function normalizePhoneScale(
     value,
     viewportWidth = globalThis.window?.innerWidth ?? 1200,
 ) {
-    const width = Number(viewportWidth);
+    const rawWidth = Number(viewportWidth);
+    const width = Number.isFinite(rawWidth) ? Math.max(0, rawWidth) : 1200;
     const compact = width <= 500;
-    const widthLimit = Math.max(0.1, (compact ? width * 0.92 : width - 24) / PHONE_BASE_WIDTH);
+    const widthLimit = (compact ? width * 0.92 : width - 24) / PHONE_BASE_WIDTH;
     const maximum = Math.max(Math.min(PHONE_MAX_SCALE, widthLimit), Math.min(PHONE_MIN_SCALE, widthLimit));
     const minimum = Math.min(PHONE_MIN_SCALE, maximum);
     const numeric = Number(value);
@@ -32,12 +33,14 @@ export function phoneSizeForViewport(
 ) {
     const normalized = normalizePhoneScale(scale, viewportWidth);
     const naturalSize = phoneSizeForScale(normalized);
+    const rawWidth = Number(viewportWidth);
+    const width = Number.isFinite(rawWidth) ? Math.max(0, rawWidth) : 1200;
     const height = Number(viewportHeight);
-    const compact = Number(viewportWidth) <= 500 || height <= 700;
-    const heightBudget = Math.max(
-        Math.round(PHONE_BASE_HEIGHT * 0.1),
-        Math.round(compact ? height * 0.82 : height - 24),
-    );
+    const compact = width <= 500 || height <= 700;
+    const availableHeight = Number.isFinite(height) ? Math.max(0, height) : 1000;
+    const heightBudget = Math.max(0, Math.round(
+        compact ? availableHeight * 0.82 : availableHeight - 24,
+    ));
     return { scale: normalized, width: naturalSize.width, height: Math.min(naturalSize.height, heightBudget) };
 }
 

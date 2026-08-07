@@ -27,6 +27,7 @@ import {
 } from '../src/prompts/today-trend/envelopes.js';
 import { createTodayTrendGenerationController } from '../src/today-trend-generation.js';
 import { createTodayTrendScheduler } from '../src/today-trend-scheduler.js';
+import { createPhoneHostEventController } from '../src/phone-host-events.js';
 import { renderTodayTrendInjection } from '../src/today-trend-injection.js';
 import { renderTodayTrendApp } from '../src/today-trend-view.js';
 import { renderTodayTrendWorldView } from '../src/today-trend-world-view.js';
@@ -46,7 +47,61 @@ for (const contract of [
     renderTodayTrendFactionView, renderTodayTrendDynamicsView, renderTodayTrendSettingsView,
     createTodayTrendActionDispatcher, installTodayTrendPhoneUi, renderPhoneDesktop,
 ]) assert.equal(typeof contract, 'function');
-const todayTrendStyle = await readFile(new URL('../style.css', import.meta.url), 'utf8');
+
+const hostCallbacks = new Map();
+let hostChat = [{ mes: '旧助手回复' }];
+const hostContext = {
+    eventSource: { on: (event, callback) => hostCallbacks.set(event, [...(hostCallbacks.get(event) || []), callback]) },
+    eventTypes: { MESSAGE_RECEIVED: 'message-received' }, chat: hostChat,
+};
+let activeHostContext = hostContext;
+let activeHostStorageId = 'chat-a';
+const observedHostChats = [];
+const hostEventController = createPhoneHostEventController({
+    state: {}, runtime: {},
+    deps: { observeTodayTrendTurn: chat => observedHostChats.push(chat.map(message => message.mes)) },
+    getCtx: () => activeHostContext, getStorageId: () => activeHostStorageId, isAutoPokeAllowed: () => false,
+    disarmAutoPoke: () => {}, invalidateGeneration: () => {}, applyBidirectionalInjection: async () => {},
+    handleHostChatChanged: () => {},
+});
+hostEventController.hookGenerationEvent();
+hostCallbacks.get('message-received').forEach(callback => callback());
+hostChat = [{ mes: '旧助手回复' }, { mes: '本轮助手回复' }];
+hostContext.chat = hostChat;
+await Promise.resolve();
+assert.deepEqual(observedHostChats, [['旧助手回复', '本轮助手回复']],
+    '宿主事件先于聊天数组写入完成时，今日风向必须在微任务中读取本轮完整助手正文');
+observedHostChats.length = 0;
+hostCallbacks.get('message-received').forEach(callback => callback());
+hostContext.chat = [{ mes: '旧助手回复' }, { mes: '本轮助手回复' }, { mes: '会话 A 的新助手回复' }];
+activeHostContext = { chat: [{ mes: '会话 B 的助手回复' }] };
+activeHostStorageId = 'chat-b';
+await Promise.resolve();
+assert.deepEqual(observedHostChats, [],
+    '事件派发后若已切换聊天，延迟观察不得将旧会话正文写入当前会话 scope');
+activeHostContext = hostContext;
+activeHostStorageId = 'chat-a';
+
+const originalConsoleWarn = console.warn;
+let observationWarning = null;
+console.warn = (...args) => { observationWarning = args; };
+const rejectedHostCallbacks = new Map();
+const rejectedHostContext = {
+    eventSource: { on: (event, callback) => rejectedHostCallbacks.set(event, [...(rejectedHostCallbacks.get(event) || []), callback]) },
+    eventTypes: { MESSAGE_RECEIVED: 'message-received' }, chat: [{ mes: '失败观察回复' }],
+};
+createPhoneHostEventController({
+    state: {}, runtime: {}, deps: { observeTodayTrendTurn: () => Promise.reject(new Error('test rejection')) },
+    getCtx: () => rejectedHostContext, getStorageId: () => 'chat-rejected', isAutoPokeAllowed: () => false,
+    disarmAutoPoke: () => {}, invalidateGeneration: () => {}, applyBidirectionalInjection: async () => {}, handleHostChatChanged: () => {},
+}).hookGenerationEvent();
+rejectedHostCallbacks.get('message-received').forEach(callback => callback());
+await new Promise(resolve => setTimeout(resolve, 0));
+console.warn = originalConsoleWarn;
+assert.match(String(observationWarning?.[0] || ''), /今日风向自动推演观察失败/,
+    '今日风向观察 rejection 必须被消费并输出诊断，而非形成未处理 rejection');
+
+const todayTrendStyle = (await readFile(new URL('../styles/today-trend.css', import.meta.url), 'utf8')).replace(/;\}/g, '}').replaceAll('../assets/', './assets/');
 for (const variable of ['--pm-today-trend-report-gap', '--pm-today-trend-report-rule', '--pm-today-trend-track-width', '--pm-today-trend-node-size']) {
     assert.match(todayTrendStyle, new RegExp(`${variable}:`), `今日风向重排必须声明 ${variable} 视觉变量`);
 }
@@ -71,7 +126,7 @@ assert.match(todayTrendStyle, /pm-today-trend-world-grid\{[^}]*background:color-
 assert.match(todayTrendStyle, /pm-today-trend-world-grid\{[^}]*linear-gradient\(45deg,transparent 0%,#000 29%,#000 71%,transparent 100%\)[^}]*mask-composite:intersect/, '世界态势重复网格必须在右上与左下淡出');
 assert.match(todayTrendStyle, /pm-today-trend-factions::after,\.pm-today-trend-dynamics::after\{[^}]*mask-image:var\(--pm-today-trend-bg-top\),var\(--pm-today-trend-bg-bottom\)/, '势力与事件追踪背景必须隐藏中段重复图形');
 assert.match(todayTrendStyle, /pm-today-trend-dynamics-target\{[^}]*position:absolute[^}]*left:calc\(100% \+ var\(--pm-space-1\)\)[^}]*width:calc\(var\(--pm-space-5\) \+ var\(--pm-space-5\) \+ var\(--pm-space-5\)\)/, '事件靶心必须以原始大尺寸定位在标题右侧');
-assert.match(todayTrendStyle, /pm-today-trend-world\{padding-bottom:calc\(var\(--pm-space-5\) \+ var\(--pm-space-5\) \+ var\(--pm-space-5\)\)\}\.pm-today-trend-reputation,\.pm-today-trend-factions,\.pm-today-trend-dynamics\{padding-bottom:calc\(var\(--pm-space-5\) \+ var\(--pm-space-5\) \+ var\(--pm-space-5\)\)/, '四个模块必须为底部背景保留三档大间距');
+assert.match(todayTrendStyle, /pm-today-trend-world\{padding-bottom:calc\(var\(--pm-space-5\) \+ var\(--pm-space-5\) \+ var\(--pm-space-5\)\);?\}\s*\.pm-today-trend-reputation,\.pm-today-trend-factions,\.pm-today-trend-dynamics\{padding-bottom:calc\(var\(--pm-space-5\) \+ var\(--pm-space-5\) \+ var\(--pm-space-5\)\)/, '四个模块必须为底部背景保留三档大间距');
 
 
 
@@ -248,7 +303,7 @@ assert.match(reinitializeHtml, /class="pm-today-trend-secondary-action" type="bu
 assert.match(todayTrendStyle, /pm-today-trend-first-use \.pm-today-trend-init-actions button,\.pm-today-trend-first-use \.pm-today-trend-bind-form>button\{[^}]*width:100%[^}]*min-height:var\(--pm-size-control-default\)[^}]*place-items:center[^}]*text-align:center/, '初始化页主按钮必须全宽、使用默认控件高度并居中文本');
 assert.match(todayTrendStyle, /pm-today-trend-first-use \.pm-today-trend-primary-action\{[^}]*background:var\(--pm-color-accent\)[^}]*color:var\(--pm-color-on-accent\)/, '初始化页主按钮必须使用 accent 与 on-accent 语义色');
 assert.match(todayTrendStyle, /pm-today-trend-first-use \.pm-today-trend-secondary-action\{[^}]*background:var\(--pm-color-surface-control\)[^}]*color:var\(--pm-color-text-primary\)/, '重新初始化取消按钮不得获得主操作视觉权重');
-assert.match(todayTrendStyle, /pm-today-trend-first-use \.pm-today-trend-init-actions\{flex-direction:column;flex-wrap:nowrap\}/, '初始化操作区必须上下排列按钮');
+assert.match(todayTrendStyle, /pm-today-trend-first-use \.pm-today-trend-init-actions\{flex-direction:column;flex-wrap:nowrap;?\}/, '初始化操作区必须上下排列按钮');
 const initializationActionRule = todayTrendStyle.match(/\.pm-today-trend-first-use \.pm-today-trend-init-actions\{[^}]*\}/)?.[0] || '';
 assert.doesNotMatch(initializationActionRule, /position:(?:absolute|fixed)|bottom:/, '初始化操作区必须保持正常文档流');
 assert.match(todayTrendStyle, /pm-today-trend-first-use \.pm-today-trend-book-option span\{[^}]*overflow-wrap:anywhere/, '长世界书名称必须安全换行');
@@ -294,7 +349,7 @@ assert.match(worldPanelsHtml, /pm-today-trend-world-signal-marker[^>]*aria-hidde
 assert.match(todayTrendStyle, /pm-today-trend-world-signals::before[^}]*border-left:1px dashed/, '世界态势左侧信号必须使用连续主干');
 assert.match(todayTrendStyle, /pm-today-trend-world-brief\.is-right::after[^}]*bottom:var\(--pm-space-3\)/, '右侧信号线必须延伸至摘要说明底部');
 assert.match(todayTrendStyle, /pm-today-trend-world-brief\.is-left \.pm-today-trend-world-signal-marker\{top:calc\(var\(--pm-space-4\) \* -1\)\}/, '左侧摘要信号标记必须上移，明确与前一摘要的收束关系');
-assert.match(todayTrendStyle, /pm-today-trend-world-brief\.is-right\{margin-top:calc\(\(var\(--pm-space-4\) \+ var\(--pm-space-2\)\) \* -1\);margin-right:0;margin-bottom:var\(--pm-space-2\);margin-left:calc\(24% - var\(--pm-space-4\)\)\}/, '右侧摘要必须在保留正文安全间距和后续呼吸的前提下上移并按节点基准左移');
+assert.match(todayTrendStyle, /pm-today-trend-world-brief\.is-right\{margin-top:calc\(\(var\(--pm-space-4\) \+ var\(--pm-space-2\)\) \* -1\);margin-right:var\(--pm-space-0\);margin-bottom:var\(--pm-space-2\);margin-left:calc\(24% - var\(--pm-space-4\)\)\}/, '右侧摘要必须在保留正文安全间距和后续呼吸的前提下上移并按节点基准左移');
 assert.match(todayTrendStyle, /pm-today-trend-world-signal-marker::after[^}]*width:var\(--pm-space-4\)/, '世界态势信号必须包含有限横向引线');
 assert.doesNotMatch(todayTrendStyle, /pm-today-trend-world-hero::before/, '世界态势不得恢复旧主摘要伪元素装饰');
 assert.doesNotMatch(worldHtml, /data-menu-id="world:/, '世界摘要不得重复渲染独立省略号');

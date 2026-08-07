@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>事件追踪 · HTML 原型</title>
+<link rel="stylesheet" href="signal-shared.css">
+<style>
+.radar{position:relative;height:12rem;margin:.5rem 0 0;color:var(--accent-soft);opacity:.85}
+.radar svg{width:100%;height:100%}
+.hero{padding-top:.5rem;padding-bottom:1rem}
+.timeline{position:relative;padding:0 var(--pad)}
+.evt{position:relative;display:grid;grid-template-columns:3.25rem minmax(0,1fr);gap:.875rem;padding:1.25rem 0;border-top:1px dashed var(--line)}
+.evt:first-child{border-top:0}
+.rail{position:relative;display:grid;justify-items:center}
+.rail::before{content:"";position:absolute;top:-1.25rem;bottom:-1.25rem;left:1.375rem;border-left:1px solid #b9cbc9}
+.evt:first-child .rail::before{top:1.5rem}
+.evt:last-child .rail::before{bottom:calc(100% - 1.5rem)}
+.evt .disc{position:absolute;left:-.75rem;top:.35rem;width:.375rem;height:.375rem;border-radius:50%;background:#9fb3b1}
+.evt-ic{width:2.75rem;height:2.75rem;display:grid;place-items:center;border-radius:50%;background:var(--accent);color:#fff;z-index:1}
+.evt-ic svg{width:1.5rem;height:1.5rem}
+.evt-ic.archived{background:var(--card);border:1px solid #a9c2c0;color:var(--accent)}
+.body{min-width:0}
+.body .head{display:flex;align-items:center;gap:.5rem;flex-wrap:wrap}
+.body h3{margin:0;font-size:1.375rem;font-weight:700}
+.status{padding:.1875rem .5rem;border:1px solid #b9c2c0;border-radius:.375rem;color:var(--sub);font-size:.75rem;white-space:nowrap}
+.status.live{border-color:var(--accent);color:var(--accent)}
+.when{display:inline-flex;align-items:center;gap:.375rem;margin-left:auto;color:var(--muted);font-size:.8125rem;white-space:nowrap}
+.when i{width:.4375rem;height:.4375rem;border-radius:50%;background:var(--accent)}
+.body p{margin:.5rem 0 0;color:#39444f;font-size:.9375rem;line-height:1.6}
+.funnel{position:relative;height:9rem;margin-top:.5rem;color:var(--accent-soft);opacity:.6}
+.funnel svg{width:100%;height:100%}
+@media(max-width:340px){.when span{display:none}}
+</style>
+</head>
+<body>
+<main class="phone"><div class="screen">
+
+<header class="topbar">
+  <button class="iconbtn" type="button" aria-label="返回"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg></button>
+  <h1>事件追踪</h1>
+  <div class="tools">
+    <button class="iconbtn" type="button" aria-label="暂停更新"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M9 6v12M15 6v12"/></svg></button>
+    <button class="iconbtn" type="button" aria-label="关闭页面"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+  </div>
+</header>
+
+<div class="radar" aria-hidden="true"><svg viewBox="0 0 390 192" fill="none" stroke="currentColor" stroke-width="1">
+  <circle cx="120" cy="96" r="84" opacity=".35"/>
+  <circle cx="120" cy="96" r="58" opacity=".5"/>
+  <circle cx="120" cy="96" r="32" opacity=".7"/>
+  <path d="M120 8v176M32 96h176" opacity=".28" stroke-dasharray="2 5"/>
+  <circle cx="120" cy="96" r="7" fill="currentColor" stroke="none"/>
+  <path d="M250 40v40M270 60h40M300 120v50M330 30v80" opacity=".3" stroke-dasharray="2 4"/>
+  <path d="M60 60l6 3-6 3z" fill="currentColor" stroke="none" opacity=".6"/>
+  <path d="M180 140l6 3-6 3z" fill="currentColor" stroke="none" opacity=".6"/>
+</svg></div>
+
+<section class="hero" aria-label="事件追踪概览">
+  <p class="eyebrow">EVENT LOG</p>
+  <h2>事件追踪</h2>
+  <div class="rule" aria-hidden="true"></div>
+  <p class="updated"><span class="dot" aria-hidden="true"></span>数据更新于 今日 09:40</p>
+</section>
+
+<section class="timeline" aria-label="事件时间线">
+  <article class="evt">
+    <div class="rail" aria-hidden="true"><span class="disc"></span><div class="evt-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12l16-7-7 16-2.5-6.5z"/></svg></div></div>
+    <div class="body">
+      <div class="head"><h3>北部航线例行调整</h3><span class="status live">进行中</span><span class="when"><i aria-hidden="true"></i><span>今日 09:40</span></span></div>
+      <p>北部航线部分航道因气象变化进行例行调整，相关航行建议已同步各方。</p>
+    </div>
+  </article>
+  <article class="evt">
+    <div class="rail" aria-hidden="true"><span class="disc"></span><div class="evt-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M5 9a10 10 0 0 1 14 0M8 12a6 6 0 0 1 8 0"/><circle cx="12" cy="15" r="1.4" fill="currentColor" stroke="none"/><path d="M12 16.5V21"/></svg></div></div>
+    <div class="body">
+      <div class="head"><h3>雾港联络窗口开启</h3><span class="status live">进行中</span><span class="when"><i aria-hidden="true"></i><span>今日 08:25</span></span></div>
+      <p>雾港临时联络窗口已开启，接收范围内的请求将获得优先处理。</p>
+    </div>
+  </article>
+  <article class="evt">
+    <div class="rail" aria-hidden="true"><span class="disc"></span><div class="evt-ic archived"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h9l3 3v15H6z"/><path d="M9 12l2 2 4-4.5"/></svg></div></div>
+    <div class="body">
+      <div class="head"><h3>旧城区传闻完成核验</h3><span class="status">已归档</span><span class="when"><i aria-hidden="true"></i><span>今日 07:10</span></span></div>
+      <p>关于旧城区的传闻已完成多方交叉核验，结论已归档存储。</p>
+    </div>
+  </article>
+  <article class="evt">
+    <div class="rail" aria-hidden="true"><span class="disc"></span><div class="evt-ic archived"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v5c0 4.4-3 7.8-7 9-4-1.2-7-4.6-7-9V6z"/><path d="M12 8v5M12 16h.01"/></svg></div></div>
+    <div class="body">
+      <div class="head"><h3>联合公告等待确认</h3><span class="status">已归档</span><span class="when"><i aria-hidden="true"></i><span>今日 06:05</span></span></div>
+      <p>多方联合公告草案已提交，当前等待关键成员的最终确认。</p>
+    </div>
+  </article>
+</section>
+
+<div class="funnel" aria-hidden="true"><svg viewBox="0 0 390 144" fill="none" stroke="currentColor" stroke-width="1">
+  <path d="M70 20C130 90 260 90 320 20" opacity=".45"/>
+  <circle cx="195" cy="78" r="10" opacity=".6"/>
+  <circle cx="195" cy="78" r="3" fill="currentColor" stroke="none"/>
+  <path d="M175 120h40v18h-40z" opacity=".55"/>
+  <path d="M175 120l20-8 20 8" opacity=".55"/>
+  <path d="M60 40v50M100 60v40M290 60v40M330 40v50" opacity=".22" stroke-dasharray="2 5"/>
+</svg></div>
+
+<nav class="tabs" aria-label="主导航">
+  <a class="tab" href="#world"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.5 3.7 5.6 3.7 9S14.5 18.5 12 21c-2.5-2.5-3.7-5.6-3.7-9S9.5 5.5 12 3z"/></svg><span>世界态势</span></a>
+  <a class="tab" href="#profile"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="8" r="3.4"/><path d="M5.5 20c0-4 2.9-6.5 6.5-6.5S18.5 16 18.5 20" stroke-linecap="round"/></svg><span>个人风评</span></a>
+  <a class="tab" href="#factions"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><circle cx="12" cy="5" r="2.2"/><circle cx="5" cy="18" r="2.2"/><circle cx="19" cy="18" r="2.2"/><path d="M10.4 6.5L6.2 15.8M13.6 6.5l4.2 9.3M7 18h10"/></svg><span>势力图谱</span></a>
+  <a class="tab on" href="#events" aria-current="page"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="2.6"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3" stroke-linecap="round"/></svg><span>事件追踪</span></a>
+  <a class="tab" href="#settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 0 0-.1-1.2l2-1.5-2-3.4-2.3 1a7 7 0 0 0-2-1.2l-.3-2.5H10.7l-.3 2.5a7 7 0 0 0-2 1.2l-2.3-1-2 3.4 2 1.5A7 7 0 0 0 5 12a7 7 0 0 0 .1 1.2l-2 1.5 2 3.4 2.3-1a7 7 0 0 0 2 1.2l.3 2.5h2.6l.3-2.5a7 7 0 0 0 2-1.2l2.3 1 2-3.4-2-1.5A7 7 0 0 0 19 12z"/></svg><span>设置</span></a>
+</nav>
+
+</div></main>
+</body>
+</html>

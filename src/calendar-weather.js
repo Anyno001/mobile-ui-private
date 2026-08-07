@@ -1,7 +1,9 @@
 import {
     isStoredWeatherSource, isValidWeatherDate, WEATHER_SOURCE_CACHED_FORECAST, WEATHER_SOURCE_CLIMATE_ESTIMATE,
-    WEATHER_SOURCE_FORECAST,
+    WEATHER_SOURCE_FORECAST, weatherLocationKey,
 } from './calendar-weather-source.js';
+
+export { weatherLocationKey } from './calendar-weather-source.js';
 
 export const WEATHER_ATTRIBUTION = 'Weather data © Open-Meteo (CC BY 4.0)';
 export const WEATHER_STORE_VERSION = 1;
@@ -48,11 +50,6 @@ export function normalizeWeatherLocation(value) {
     out.admin1 = String(src.admin1 ?? '').trim().slice(0, 100);
     out.timezone = String(src.timezone ?? '').trim().slice(0, 80);
     return Object.freeze(out);
-}
-
-export function weatherLocationKey(location) {
-    const loc = normalizeWeatherLocation(location);
-    return `${loc.latitude},${loc.longitude}|${loc.name}`;
 }
 
 

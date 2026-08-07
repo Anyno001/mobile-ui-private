@@ -41,7 +41,7 @@
 | `--pm-opacity-*` | 受控透明度 |
 | `--pm-<feature>-*` | 已登记的组件私有 token |
 
-全局 token 只能定义在 `style.css` 的统一 token 区，并在本文档登记语义、亮暗值和适用组件族。组件私有 token 只用于组件内部重复出现、含义稳定且无法直接复用公共 token 的值；必须定义在组件根选择器作用域内，以稳定 feature 名命名，并在定义旁登记用途、新增理由和适用主题。已登记私有 token 的声明值可使用必要原始值，主题相关值必须亮暗成对；该豁免只适用于变量声明，消费规则仍必须引用 token。不得把私有 token 放入全局区伪装成公共能力，也不得为每条声明机械创建变量。变量名描述用途，不描述当前数值。
+`style.css` 是唯一加载入口，按固定顺序导入 `styles/core.css`、`styles/modal-settings.css`、`styles/community.css`、`styles/calendar.css`、`styles/today-trend.css` 和 `styles/overrides.css`。全局 token 只能定义在 `styles/core.css` 的统一 token 区，并在本文档登记语义、亮暗值和适用组件族。组件私有 token 只用于组件内部重复出现、含义稳定且无法直接复用公共 token 的值；必须定义在组件根选择器作用域内，以稳定 feature 名命名，并在定义旁登记用途、新增理由和适用主题。已登记私有 token 的声明值可使用必要原始值，主题相关值必须亮暗成对；该豁免只适用于变量声明，消费规则仍必须引用 token。不得把私有 token 放入全局区伪装成公共能力，也不得为每条声明机械创建变量。变量名描述用途，不描述当前数值。
 
 ## 4. 颜色与表面
 
@@ -89,14 +89,19 @@ hover 与 active 优先通过现有表面色、文字色和描边变化表达，
 
 ## 5. 排版
 
-只保留 4 档字号、3 档字重和 3 档行高：
+公共字号以 9/10/11/12/13/14/15/16/18/20px 为受控尺度；组件展示型字号使用私有 token：
 
 | Token | 值 | 用途 |
 | --- | ---: | --- |
+| `--pm-font-size-micro` | `9px` | 极小装饰或空间极窄的非关键元信息 |
+| `--pm-font-size-caption` | `10px` | 图标标签、紧凑次要元信息；不得承载关键内容 |
 | `--pm-font-size-helper` | `11px` | 时间、辅助说明；不得承载关键内容 |
 | `--pm-font-size-label` | `12px` | 表单标签、次级说明 |
+| `--pm-font-size-compact` | `13px` | 紧凑列表、次级控件文案 |
 | `--pm-font-size-body` | `14px` | 正文、按钮、输入、列表控件、聊天内容 |
+| `--pm-font-size-subtitle` | `15px` | 紧凑标题与重点数据；原 17px 收敛至此 token |
 | `--pm-font-size-title` | `16px` | 页面与模态标题 |
+| `--pm-font-size-icon` / `--pm-font-size-icon-lg` | `18px` / `20px` | 字符图标字形；不得替代尺寸 token |
 | `--pm-font-weight-regular` | `400` | 正文 |
 | `--pm-font-weight-medium` | `500` | 次级强调 |
 | `--pm-font-weight-semibold` | `600` | 控件和标题 |
@@ -110,10 +115,10 @@ MUST 从表中选择。控件与正文统一使用 14px，避免为了紧凑牺�
 
 | 类别 | 标准 |
 | --- | --- |
-| 间距 | `--pm-space-1:4px`、`--pm-space-2:8px`、`--pm-space-3:12px`、`--pm-space-4:16px`、`--pm-space-5:24px` |
+| 间距 | 基础尺度：`--pm-space-0:0`、`--pm-space-0-5:2px`（极小间隙）、`--pm-space-1:4px`、`--pm-space-1-5:6px`（半档）、`--pm-space-2:8px`、`--pm-space-3:12px`、`--pm-space-4:16px`、`--pm-space-5:24px`；布局关键字：`--pm-space-auto:auto`、`--pm-space-full:100%`；遗留像素级对齐：`--pm-space-px-*` 与 `--pm-space-neg-4`，仅用于迁移中已存在的非标准值，不得为新组件扩张。 |
 | 控件高度 | `--pm-size-control-compact:36px`、`--pm-size-control-default:44px` |
 | 图标 | `--pm-size-icon-sm:14px`、`--pm-size-icon-md:18px`、`--pm-size-icon-lg:24px` |
-| 圆角 | `--pm-radius-control:10px`、`--pm-radius-card:14px`、`--pm-radius-modal:20px`、`--pm-radius-pill:999px` |
+| 圆角 | 容器尺度：`--pm-radius-compact:8px`、`--pm-radius-panel:12px`、`--pm-radius-card:14px`、`--pm-radius-large:16px`、`--pm-radius-round` / `--pm-radius-modal:20px`；控件使用 `--pm-radius-control:10px`；结构性零值、圆形、胶囊使用 `--pm-radius-none:0`、`--pm-radius-circle:50%`、`--pm-radius-pill:999px`。气泡/语音卡仅使用 `--pm-radius-bubble:18px` 与 `--pm-radius-bubble-tail:4px`；宿主手机外壳仅使用随断点覆盖的兼容 token `--pm-phone-outer-radius`。 |
 
 组件内部默认 gap 为 8px，内容区内边距优先 12px 或 16px。MUST 保留留白，不得靠缩小字体、行高或控件高度塞入更多内容。普通按钮、输入和主要触控目标使用 44px；仅顶部工具栏、图标操作组等明确紧凑区域 MAY 使用 36px。圆角只表达容器层级，不得每个子元素都套卡片和描边。
 
@@ -192,7 +197,7 @@ MUST 优先使用 flex/grid。absolute 只用于角标、锚定菜单和装饰�
 1. 读取本文档与 `docs/BASELINE.md`。
 2. 搜索目标组件的选择器、覆盖规则、内联样式、运行时 style 写入和调用方。
 3. 选择本文档已有 token；缺失时先判断能否用现有语义解决，不能则说明新增必要性。
-4. 若 token 尚未落入 `style.css`，在同一变更中定义、使用并补充契约检查。
+4. 若 token 尚未落入所属 `styles/*.css` 模块，在同一变更中定义、使用并补充契约检查。
 5. 同时实现亮暗主题和适用的全部交互、移动状态。
 6. 搜索本组件族残留的旧硬编码；在同一安全范围内一并迁移。
 7. 运行构建、语法检查、契约检查和 `git diff --check`。
@@ -222,7 +227,7 @@ MUST 优先使用 flex/grid。absolute 只用于角标、锚定菜单和装饰�
 | `.pm-inline-label` | 设置行内标签去除默认 margin | `style="margin:0"` |
 | `.pm-group-counter.has-members` | 群聊成员计数状态色 | `counter.style.color` |
 
-这些 class 的 CSS 定义位于 `style.css` 对应组件区，且纳入 `scripts/css-governance-registry.json` 的例外与组件根登记。群聊成员动态色、语音长度宽度、锚定坐标、主题变量注入仍属于运行时数据通道，不迁移。
+这些 class 的 CSS 定义位于对应 `styles/*.css` 组件模块，且纳入 `scripts/css-governance-registry.json` 的例外与组件根登记。群聊成员动态色、语音长度宽度、锚定坐标、主题变量注入仍属于运行时数据通道，不迁移。
 
 ## 14. 最终验收
 

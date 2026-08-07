@@ -1,9 +1,16 @@
-export const INTERACTIVE_LIMITS = Object.freeze({ scenes: 12, posts: 80, comments: 40, danmaku: 240 });
+import {
+    INTERACTIVE_ACTOR_TYPES, INTERACTIVE_LIMITS, PHONE_UI_PAGES, PHONE_UI_TABS,
+} from './interactive-scene-constants.js';
+import { stripPersistedV2ContentRating as stripPersistedV2ContentRatingImpl } from './interactive-scene-store-migration.js';
+import {
+    createCommunityTemplate, createSceneFromCommunityTemplate as createSceneFromCommunityTemplateSnapshot, normalizeImportedTemplateSceneIds,
+    normalizeSharedCommunityTemplates, validPhoneUiId,
+} from './interactive-scene-community-template.js';
+
 export const INTERACTIVE_STORE_VERSION = 2;
-export const INTERACTIVE_ACTOR_TYPES = Object.freeze(['user', 'story', 'passerby', 'legacy']);
 export const PHONE_UI_STATE_VERSION = 1;
-export const PHONE_UI_PAGES = Object.freeze(['desktop', 'chat', 'community', 'calendar', 'today-trend']);
-export const PHONE_UI_TABS = Object.freeze(['feed', 'live']);
+export { INTERACTIVE_ACTOR_TYPES, INTERACTIVE_LIMITS, PHONE_UI_PAGES, PHONE_UI_TABS };
+export { createCommunityTemplate, createSceneFromCommunityTemplateSnapshot as createSceneFromCommunityTemplate };
 
 const text = (value, max) => String(value ?? '').trim().slice(0, max);
 const list = value => Array.isArray(value) ? value : [];
@@ -154,29 +161,7 @@ export function createEmptyInteractiveStore() {
 }
 
 export function stripPersistedV2ContentRating(rawStore) {
-    if (rawStore === null || rawStore === undefined || typeof rawStore !== 'object' || Array.isArray(rawStore)) return { store: rawStore, changed: false };
-    assertDataObject(rawStore, '互动场景持久化 store');
-    if (rawStore.version !== INTERACTIVE_STORE_VERSION) return { store: rawStore, changed: false };
-    assertDataObject(rawStore.scopes, '互动场景持久化 scopes');
-    let changed = false;
-    const scopes = { ...rawStore.scopes };
-    for (const [scopeId, rawScope] of Object.entries(rawStore.scopes)) {
-        assertDataObject(rawScope, `互动场景持久化 scope ${scopeId}`);
-        assertDataObject(rawScope.scenes, `互动场景持久化 scope ${scopeId}.scenes`);
-        let scenes = rawScope.scenes;
-        for (const [sceneId, rawScene] of Object.entries(rawScope.scenes)) {
-            assertDataObject(rawScene, `互动场景持久化 scope ${scopeId}.scene ${sceneId}`);
-            const ratingDescriptor = Object.getOwnPropertyDescriptor(rawScene, 'contentRating');
-            if (!ratingDescriptor || ratingDescriptor.enumerable !== true || typeof ratingDescriptor.value !== 'string') continue;
-            if (scenes === rawScope.scenes) scenes = { ...rawScope.scenes };
-            const scene = { ...rawScene };
-            delete scene.contentRating;
-            scenes[sceneId] = scene;
-            changed = true;
-        }
-        if (scenes !== rawScope.scenes) scopes[scopeId] = { ...rawScope, scenes };
-    }
-    return { store: changed ? { ...rawStore, scopes } : rawStore, changed };
+    return stripPersistedV2ContentRatingImpl(rawStore, INTERACTIVE_STORE_VERSION);
 }
 
 export function createDefaultPhoneUiScope() {
@@ -193,13 +178,6 @@ export function createDefaultPhoneUiScope() {
 export function createEmptyPhoneUiState() {
     return { version: PHONE_UI_STATE_VERSION, scopes: {} };
 }
-
-const normalizeSharedScenes = (value, interactiveStore) => [...new Set((Array.isArray(value) ? value : []).flatMap(item => {
-    const storageId = typeof item?.storageId === 'string' ? item.storageId.trim() : '';
-    const sceneId = typeof item?.sceneId === 'string' ? item.sceneId.trim() : '';
-    return storageId && sceneId && storageId.length <= 160 && sceneId.length <= 80 && !isUnsafeDictionaryKey(storageId)
-        && Object.hasOwn(interactiveStore?.scopes?.[storageId]?.scenes || {}, sceneId) ? [`${storageId}\u0000${sceneId}`] : [];
-}))].map(key => { const [storageId, sceneId] = key.split('\u0000'); return { storageId, sceneId }; });
 
 export function normalizeAmbientStatus(value) {
     return { enabled: value?.enabled === true };
@@ -239,8 +217,10 @@ export function normalizePhoneUiState(raw, interactiveStore = createEmptyInterac
         const lastChatKey = lastChatType && typeof value.lastChatKey === 'string'
             && value.lastChatKey && value.lastChatKey === value.lastChatKey.trim() && value.lastChatKey.length <= 160
             ? value.lastChatKey : null;
+        const importedTemplateSceneIds = normalizeImportedTemplateSceneIds(value.importedTemplateSceneIds, scenes);
         result.scopes[storageId] = {
             pinnedSceneIds,
+            ...(Object.keys(importedTemplateSceneIds).length ? { importedTemplateSceneIds } : {}),
             lastPage,
             lastSceneId,
             lastTab: PHONE_UI_TABS.includes(value.lastTab) ? value.lastTab : 'feed',
@@ -248,8 +228,8 @@ export function normalizePhoneUiState(raw, interactiveStore = createEmptyInterac
             lastChatKey,
         };
     }
-    const sharedScenes = normalizeSharedScenes(raw.sharedScenes, interactiveStore);
-    if (sharedScenes.length) result.sharedScenes = sharedScenes;
+    const sharedCommunityTemplates = normalizeSharedCommunityTemplates(raw.sharedCommunityTemplates);
+    if (sharedCommunityTemplates.length) result.sharedCommunityTemplates = sharedCommunityTemplates;
     return result;
 }
 
@@ -274,6 +254,8 @@ export function patchPhoneUiScope(phoneUiState, storageId, patch, interactiveSto
                 pinnedSceneIds: Object.hasOwn(patch, 'pinnedSceneIds')
                     ? [...(Array.isArray(patch.pinnedSceneIds) ? patch.pinnedSceneIds : [])]
                     : [...currentScope.pinnedSceneIds],
+                importedTemplateSceneIds: Object.hasOwn(patch, 'importedTemplateSceneIds')
+                    ? { ...(patch.importedTemplateSceneIds || {}) } : { ...currentScope.importedTemplateSceneIds },
             },
         },
     }, interactiveStore);
@@ -294,20 +276,47 @@ export function toggleScenePin(phoneUiState, storageId, sceneId, interactiveStor
     return patchPhoneUiScope(normalized, storageId, { pinnedSceneIds }, interactiveStore);
 }
 
-export function toggleSharedScene(phoneUiState, storageId, sceneId, interactiveStore) {
+function assertCommunityTemplateSource(storageId, sceneId, interactiveStore) {
     assertPhoneUiStorageId(storageId);
     if (typeof sceneId !== 'string' || !sceneId || sceneId !== sceneId.trim() || sceneId.length > 80) {
         throw new Error('互动场景标识格式无效');
     }
-    if (!Object.hasOwn(interactiveStore?.scopes?.[storageId]?.scenes || {}, sceneId)) throw new Error('互动场景不存在');
+    const scene = interactiveStore?.scopes?.[storageId]?.scenes?.[sceneId];
+    if (!scene) throw new Error('互动场景不存在');
+    return scene;
+}
+
+export function publishCommunityTemplate(phoneUiState, storageId, sceneId, interactiveStore, sharedAt = Date.now()) {
+    const scene = assertCommunityTemplateSource(storageId, sceneId, interactiveStore);
     const normalized = normalizePhoneUiState(phoneUiState, interactiveStore);
-    const sharedScenes = normalized.sharedScenes || [];
-    const shared = sharedScenes.some(item => item.storageId === storageId && item.sceneId === sceneId);
+    const template = createCommunityTemplate(scene, storageId, sharedAt);
+    const templates = normalized.sharedCommunityTemplates || [];
     return normalizePhoneUiState({
         ...normalized,
-        sharedScenes: shared
-            ? sharedScenes.filter(item => item.storageId !== storageId || item.sceneId !== sceneId)
-            : [...sharedScenes, { storageId, sceneId }],
+        sharedCommunityTemplates: [...templates.filter(item => item.id !== template.id), template],
+    }, interactiveStore);
+}
+
+export function unpublishCommunityTemplate(phoneUiState, storageId, sceneId, interactiveStore) {
+    const scene = assertCommunityTemplateSource(storageId, sceneId, interactiveStore);
+    const normalized = normalizePhoneUiState(phoneUiState, interactiveStore);
+    const templateId = createCommunityTemplate(scene, storageId, 1).id;
+    return normalizePhoneUiState({
+        ...normalized,
+        sharedCommunityTemplates: (normalized.sharedCommunityTemplates || []).filter(template => template.id !== templateId),
+    }, interactiveStore);
+}
+
+export function removeCommunityTemplatesForSourceScene(phoneUiState, storageId, sceneId, interactiveStore) {
+    assertPhoneUiStorageId(storageId);
+    if (!validPhoneUiId(sceneId, 80)) throw new Error('互动场景标识格式无效');
+    const normalized = normalizePhoneUiState(phoneUiState, interactiveStore);
+    const templates = normalized.sharedCommunityTemplates || [];
+    const remaining = templates.filter(template => template.sourceStorageId !== storageId || template.sourceSceneId !== sceneId);
+    if (remaining.length === templates.length) return normalized;
+    return normalizePhoneUiState({
+        ...normalized,
+        sharedCommunityTemplates: remaining,
     }, interactiveStore);
 }
 

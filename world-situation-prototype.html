@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>世界态势 · HTML 原型</title>
+<link rel="stylesheet" href="signal-shared.css">
+<style>
+.hero{padding-bottom:1rem}
+.hero-art{right:0;top:2rem;width:min(52%,15rem);aspect-ratio:1;color:var(--accent-soft);opacity:.6}
+.signals{position:relative;padding:1rem var(--pad) 0}
+.signals::before{content:"";position:absolute;top:0;bottom:2rem;left:calc(var(--pad) + .5rem);border-left:1px dashed #b9cbc9}
+.sig{position:relative;margin-bottom:2.25rem;padding-left:2rem}
+.sig.right{padding-left:0;padding-right:2rem;text-align:right}
+.sig .knot{position:absolute;top:.25rem;left:0;width:1.125rem;height:1.125rem;display:grid;place-items:center;border:1px solid var(--accent);border-radius:50%;background:var(--paper)}
+.sig.right .knot{left:auto;right:0}
+.sig .knot i{width:.4375rem;height:.4375rem;border-radius:50%;background:var(--accent)}
+.sig h3{margin:0;font-size:1.375rem;font-weight:700;letter-spacing:.02em}
+.sig .flag{display:inline-flex;align-items:center;gap:.375rem;margin:.625rem 0 .5rem;color:var(--accent);font-size:.875rem;font-weight:600}
+.sig.right .flag{flex-direction:row-reverse}
+.sig .flag i{width:.5rem;height:.5rem;border-radius:50%;background:var(--accent)}
+.sig p{margin:0;color:#39444f;font-size:.9375rem;line-height:1.6}
+.sig .tail{display:inline-block;width:4rem;margin-top:.75rem;border-top:1px dotted var(--accent-soft)}
+.footer-art{position:relative;height:9rem;margin-top:-1rem;color:var(--accent-soft);opacity:.55}
+.footer-art svg{width:100%;height:100%}
+</style>
+</head>
+<body>
+<main class="phone"><div class="screen">
+
+<header class="topbar">
+  <button class="iconbtn" type="button" aria-label="返回"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg></button>
+  <h1>今日风向</h1>
+  <div class="tools">
+    <button class="iconbtn" type="button" aria-label="暂停更新"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M9 6v12M15 6v12"/></svg></button>
+    <button class="iconbtn" type="button" aria-label="关闭页面"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+  </div>
+</header>
+
+<section class="hero" aria-label="世界态势概览">
+  <div class="hero-art" aria-hidden="true"><svg viewBox="0 0 200 200" fill="none" stroke="currentColor" stroke-width="1">
+    <ellipse cx="128" cy="70" rx="70" ry="30" transform="rotate(-18 128 70)" opacity=".5"/>
+    <ellipse cx="128" cy="70" rx="48" ry="20" transform="rotate(-18 128 70)" opacity=".6"/>
+    <ellipse cx="128" cy="70" rx="26" ry="11" transform="rotate(-18 128 70)" opacity=".8"/>
+    <circle cx="128" cy="70" r="5" fill="currentColor" stroke="none"/>
+    <path d="M10 150c40 4 70-6 96-30" opacity=".4"/>
+    <circle cx="40" cy="120" r="2" fill="currentColor" stroke="none" opacity=".6"/>
+    <circle cx="170" cy="110" r="2" fill="currentColor" stroke="none" opacity=".6"/>
+  </svg></div>
+  <p class="eyebrow">TODAY'S SIGNAL</p>
+  <h2>世界态势</h2>
+  <div class="rule" aria-hidden="true"></div>
+  <p class="updated"><span class="dot" aria-hidden="true"></span>数据更新于 今日 09:30</p>
+</section>
+
+<section class="signals" aria-label="区域信号">
+  <article class="sig">
+    <span class="knot" aria-hidden="true"><i></i></span>
+    <h3>区域信号保持平稳</h3>
+    <p class="flag"><i aria-hidden="true"></i>稳定</p>
+    <p>主要区域运行节奏保持一致，未观测到显著偏离或异常聚集。</p>
+    <span class="tail" aria-hidden="true"></span>
+  </article>
+  <article class="sig right">
+    <span class="knot" aria-hidden="true"><i></i></span>
+    <h3>海上航线出现低频扰动</h3>
+    <p class="flag"><i aria-hidden="true"></i>低频波动</p>
+    <p>部分航线出现间歇性信号波动，影响范围有限，持续关注中。</p>
+    <span class="tail" aria-hidden="true"></span>
+  </article>
+  <article class="sig">
+    <span class="knot" aria-hidden="true"><i></i></span>
+    <h3>公共议题热度缓慢回落</h3>
+    <p class="flag"><i aria-hidden="true"></i>观察中</p>
+    <p>整体讨论热度温和下降，核心议题仍在低位延续。</p>
+    <span class="tail" aria-hidden="true"></span>
+  </article>
+  <article class="sig right">
+    <span class="knot" aria-hidden="true"><i></i></span>
+    <h3>跨境协作进入观察窗口</h3>
+    <p class="flag"><i aria-hidden="true"></i>观察中</p>
+    <p>多方沟通频率小幅提升，合作意向处于初步探索阶段。</p>
+    <span class="tail" aria-hidden="true"></span>
+  </article>
+</section>
+
+<div class="footer-art" aria-hidden="true"><svg viewBox="0 0 390 144" fill="none" stroke="currentColor" stroke-width="1">
+  <path d="M20 60l40 30 30-40 36 50 26-30" opacity=".45"/>
+  <path d="M20 60a120 120 0 0 0 130 60" opacity=".3"/>
+  <path d="M60 90a90 90 0 0 0 90 40" opacity=".25"/>
+  <circle cx="60" cy="90" r="2.5" fill="currentColor" stroke="none"/>
+  <circle cx="90" cy="50" r="3" fill="currentColor" stroke="none"/>
+  <circle cx="126" cy="100" r="2.5" fill="currentColor" stroke="none"/>
+  <circle cx="152" cy="70" r="2" fill="currentColor" stroke="none" opacity=".7"/>
+</svg></div>
+
+<nav class="tabs" aria-label="主导航">
+  <a class="tab on" href="#world" aria-current="page"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.5 3.7 5.6 3.7 9S14.5 18.5 12 21c-2.5-2.5-3.7-5.6-3.7-9S9.5 5.5 12 3z"/></svg><span>世界态势</span></a>
+  <a class="tab" href="#profile"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="8" r="3.4"/><path d="M5.5 20c0-4 2.9-6.5 6.5-6.5S18.5 16 18.5 20" stroke-linecap="round"/></svg><span>个人风评</span></a>
+  <a class="tab" href="#factions"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><circle cx="12" cy="5" r="2.2"/><circle cx="5" cy="18" r="2.2"/><circle cx="19" cy="18" r="2.2"/><path d="M10.4 6.5L6.2 15.8M13.6 6.5l4.2 9.3M7 18h10"/></svg><span>势力图谱</span></a>
+  <a class="tab" href="#events"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="2.6"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3" stroke-linecap="round"/></svg><span>事件追踪</span></a>
+  <a class="tab" href="#settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 0 0-.1-1.2l2-1.5-2-3.4-2.3 1a7 7 0 0 0-2-1.2l-.3-2.5H10.7l-.3 2.5a7 7 0 0 0-2 1.2l-2.3-1-2 3.4 2 1.5A7 7 0 0 0 5 12a7 7 0 0 0 .1 1.2l-2 1.5 2 3.4 2.3-1a7 7 0 0 0 2 1.2l.3 2.5h2.6l.3-2.5a7 7 0 0 0 2-1.2l2.3 1 2-3.4-2-1.5A7 7 0 0 0 19 12z"/></svg><span>设置</span></a>
+</nav>
+
+</div></main>
+</body>
+</html>

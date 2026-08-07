@@ -9,6 +9,20 @@ function warnRegistrationFailureOnce(key, eventName, error) {
     console.warn(`[phone-mode] 宿主事件 ${eventName} 注册失败，该集成功能可能不可用。`, errorType);
 }
 
+function reportTodayTrendObservationFailure(error) {
+    const errorType = typeof error?.name === 'string' && error.name ? error.name : 'Error';
+    console.warn('[phone-mode] 今日风向自动推演观察失败，本轮不会自动推演。', errorType);
+}
+
+function observeTodayTrendAfterHostEvent(deps, context, storageId, getStorageId) {
+    // 宿主事件可能在 chat 数组写入完成前同步派发；推迟到微任务读取最终快照，避免漏记本轮助手正文。
+    Promise.resolve().then(() => {
+        if (!storageId || getStorageId() !== storageId) return null;
+        return deps.observeTodayTrendTurn?.(context?.chat || []);
+    })
+        .catch(reportTodayTrendObservationFailure);
+}
+
 export function createPhoneHostEventController({ state, runtime, deps, getCtx, getStorageId, isAutoPokeAllowed, disarmAutoPoke, invalidateGeneration, applyBidirectionalInjection, handleHostChatChanged }) {
     function hookGenerationEvent() {
         const context = getCtx();
@@ -39,9 +53,10 @@ export function createPhoneHostEventController({ state, runtime, deps, getCtx, g
         for (const eventName of resolveCommunityMessageEvents(eventTypes)) {
             results.push(registerOnce(`community:${eventName}`, eventName, () => {
                 const currentContext = getCtx();
+                const storageId = getStorageId();
                 try { deps.observeCommunityTurn?.(currentContext?.chat || []); } catch (error) {}
-                try { deps.observeTodayTrendTurn?.(currentContext?.chat || []); } catch (error) {}
                 Promise.resolve(deps.observeCalendarTurn?.()).catch(() => {});
+                observeTodayTrendAfterHostEvent(deps, currentContext, storageId, getStorageId);
             }));
         }
         const received = resolveHostEvent(eventTypes, 'MESSAGE_RECEIVED');

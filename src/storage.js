@@ -295,8 +295,8 @@ export function savePhoneUiScope(storageId, state, interactiveStore) {
         const current = loadPhoneUiState(interactiveStore);
         if (Object.hasOwn(normalized.scopes, storageId)) current.scopes[storageId] = structuredClone(normalized.scopes[storageId]);
         else delete current.scopes[storageId];
-        if (Object.hasOwn(normalized, 'sharedScenes')) current.sharedScenes = structuredClone(normalized.sharedScenes);
-        else delete current.sharedScenes;
+        if (Object.hasOwn(normalized, 'sharedCommunityTemplates')) current.sharedCommunityTemplates = structuredClone(normalized.sharedCommunityTemplates);
+        else delete current.sharedCommunityTemplates;
         const merged = normalizePhoneUiState(current, interactiveStore);
         localStorage.setItem(PHONE_UI_STATE_KEY, JSON.stringify(merged));
         return merged;

@@ -187,9 +187,9 @@
       json?.content
     ];
     const responseOutput = json?.output;
-    if (Array.isArray(responseOutput)) candidates.push(responseOutput.flatMap((item) => Array.isArray(item?.content) ? item.content : []).map((part) => part?.text).filter((text7) => typeof text7 === "string").join(""));
+    if (Array.isArray(responseOutput)) candidates.push(responseOutput.flatMap((item) => Array.isArray(item?.content) ? item.content : []).map((part) => part?.text).filter((text8) => typeof text8 === "string").join(""));
     const geminiParts = json?.candidates?.[0]?.content?.parts;
-    if (Array.isArray(geminiParts)) candidates.push(geminiParts.filter((part) => part?.thought !== true).map((part) => part?.text).filter((text7) => typeof text7 === "string").join(""));
+    if (Array.isArray(geminiParts)) candidates.push(geminiParts.filter((part) => part?.thought !== true).map((part) => part?.text).filter((text8) => typeof text8 === "string").join(""));
     const content = candidates.find((value) => typeof value === "string" && value.trim());
     return content?.trim() || "";
   }
@@ -333,6 +333,217 @@ ${userPrompt}` : userPrompt;
       const result = await raceAbort(context.generateQuietPrompt({ quietPrompt: fullPrompt }), signal);
       throwIfAborted2(signal);
       return result;
+    };
+  }
+
+  // src/calendar-weather-source.js
+  var WEATHER_SOURCE_FORECAST = "forecast";
+  var WEATHER_SOURCE_CACHED_FORECAST = "cached_forecast";
+  var WEATHER_SOURCE_CLIMATE_ESTIMATE = "climate_estimate";
+  var WEATHER_SOURCE_STORY_EVENT = "story_weather_event";
+  var STORY_WEATHER_EVENT_TYPES = Object.freeze({
+    clear_spell: { label: "\u77ED\u6682\u653E\u6674", codes: [0, 1] },
+    rainy_spell: { label: "\u9634\u96E8\u8FC7\u7A0B", codes: [3, 61, 80] },
+    thunderstorm: { label: "\u5F3A\u5BF9\u6D41", codes: [80, 95] },
+    tropical_storm: { label: "\u70ED\u5E26\u98CE\u66B4\u5F71\u54CD", codes: [80, 95] }
+  });
+  var SOURCE_LABELS = Object.freeze({
+    [WEATHER_SOURCE_FORECAST]: "\u771F\u5B9E\u9884\u62A5",
+    [WEATHER_SOURCE_CACHED_FORECAST]: "\u7F13\u5B58\u9884\u62A5",
+    [WEATHER_SOURCE_CLIMATE_ESTIMATE]: "\u6C14\u5019\u63A8\u6F14",
+    [WEATHER_SOURCE_STORY_EVENT]: "\u5267\u60C5\u5929\u6C14\u4E8B\u4EF6\u8986\u76D6"
+  });
+  var weatherSourceLabel = (source) => SOURCE_LABELS[source] || "\u65E0\u6CD5\u63A8\u6F14";
+  var isStoredWeatherSource = (source) => source === WEATHER_SOURCE_FORECAST || source === WEATHER_SOURCE_CACHED_FORECAST;
+  function dateParts(value) {
+    const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(value || ""));
+    if (!match) return null;
+    const year = Number(match[1]), month = Number(match[2]), day = Number(match[3]);
+    if (year < 1 || year > 9999 || month < 1 || month > 12) return null;
+    const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+    const days = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+    return day >= 1 && day <= days[month - 1] ? { year, month, day, daysInMonth: days[month - 1] } : null;
+  }
+  var isValidWeatherDate = (value) => dateParts(value) !== null;
+  var storyWeatherEventLabel = (type) => STORY_WEATHER_EVENT_TYPES[type]?.label || "\u672A\u77E5\u5929\u6C14\u4E8B\u4EF6";
+  function shiftWeatherDate(date, offset) {
+    const parts = dateParts(date);
+    if (!parts || !Number.isInteger(offset)) return null;
+    const value = new Date(2e3, parts.month - 1, parts.day, 12);
+    value.setFullYear(parts.year);
+    value.setDate(value.getDate() + offset);
+    const year = value.getFullYear();
+    if (year < 1 || year > 9999) return null;
+    return `${String(year).padStart(4, "0")}-${String(value.getMonth() + 1).padStart(2, "0")}-${String(value.getDate()).padStart(2, "0")}`;
+  }
+  function weatherLocationKey(location) {
+    const latitude = Number(location?.latitude), longitude = Number(location?.longitude);
+    const name = typeof location?.name === "string" ? location.name.trim() : "";
+    if (!Number.isFinite(latitude) || latitude < -90 || latitude > 90 || !Number.isFinite(longitude) || longitude < -180 || longitude > 180 || !name) return "";
+    return `${latitude},${longitude}|${name}`;
+  }
+  function normalizeStoryWeatherEvent(value) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+    const type = typeof value.type === "string" && Object.hasOwn(STORY_WEATHER_EVENT_TYPES, value.type) ? value.type : "";
+    const startDate = isValidWeatherDate(value.startDate) ? String(value.startDate) : "";
+    const locationKey = typeof value.locationKey === "string" ? value.locationKey.trim().slice(0, 500) : "";
+    const rawDays = Array.isArray(value.days) ? value.days : [];
+    if (!type || !startDate || !locationKey || rawDays.length < 1 || rawDays.length > 3) return null;
+    const days = rawDays.map((item) => {
+      if (!item || typeof item !== "object" || Array.isArray(item) || !isValidWeatherDate(item.date)) return null;
+      const weatherCode = Number(item.weatherCode), tempMin = Number(item.tempMin), tempMax = Number(item.tempMax);
+      if (!Number.isInteger(weatherCode) || weatherCode < 0 || weatherCode > 99 || !STORY_WEATHER_EVENT_TYPES[type].codes.includes(weatherCode) || !Number.isFinite(tempMin) || !Number.isFinite(tempMax) || tempMin > tempMax) return null;
+      return { date: String(item.date), weatherCode, tempMin: Math.round(tempMin), tempMax: Math.round(tempMax) };
+    });
+    if (days.includes(null) || days[0].date !== startDate) return null;
+    for (let index = 1; index < days.length; index++) {
+      if (days[index].date !== shiftWeatherDate(startDate, index)) return null;
+    }
+    return Object.freeze({
+      id: typeof value.id === "string" && value.id.trim() ? value.id.trim().slice(0, 80) : `weather_${startDate}`,
+      type,
+      startDate,
+      endDate: days.at(-1).date,
+      locationKey,
+      days: Object.freeze(days)
+    });
+  }
+  function storyWeatherEventForDate(event, date) {
+    const normalized = normalizeStoryWeatherEvent(event);
+    if (!normalized || !isValidWeatherDate(date)) return null;
+    const day = normalized.days.find((item) => item.date === date);
+    return day ? { event: normalized, day } : null;
+  }
+  function createStoryWeatherEvent(weatherStore, referenceDate, storageId = "") {
+    const startDate = shiftWeatherDate(referenceDate, 1);
+    const location = weatherStore?.location;
+    if (!startDate || !location || !String(storageId).trim()) return null;
+    const locationKey = weatherLocationKey(location);
+    if (!locationKey) return null;
+    const seed = `${String(storageId).trim()}|${location.latitude},${location.longitude}|${location.name}|${startDate}`;
+    const typeKeys = Object.keys(STORY_WEATHER_EVENT_TYPES);
+    const type = typeKeys[stableHash(`${seed}|type`) % typeKeys.length];
+    const length = 1 + stableHash(`${seed}|length`) % 3;
+    const days = [];
+    for (let index = 0; index < length; index++) {
+      const date = shiftWeatherDate(startDate, index);
+      if (!date) break;
+      const base = resolveWeatherForDate(weatherStore, date);
+      if (base.status !== "available") return null;
+      const codes = STORY_WEATHER_EVENT_TYPES[type].codes;
+      const weatherCode = codes[stableHash(`${seed}|code|${index}`) % codes.length];
+      const cooling = type === "clear_spell" ? 0 : type === "tropical_storm" ? 4 : 2;
+      const tempMin = Math.max(-80, base.day.tempMin - cooling);
+      const tempMax = Math.max(tempMin + 1, Math.min(55, base.day.tempMax - cooling));
+      days.push({ date, weatherCode, tempMin, tempMax });
+    }
+    return normalizeStoryWeatherEvent({ id: `weather_${stableHash(seed).toString(36)}`, type, startDate, locationKey, days });
+  }
+  function stableHash(value) {
+    let hash = 2166136261;
+    for (const char of String(value)) {
+      hash ^= char.codePointAt(0);
+      hash = Math.imul(hash, 16777619);
+    }
+    hash ^= hash >>> 16;
+    hash = Math.imul(hash, 2146121005);
+    hash ^= hash >>> 15;
+    hash = Math.imul(hash, 2221713035);
+    hash ^= hash >>> 16;
+    return hash >>> 0;
+  }
+  function subtropicalRainCode(locationKey, revision, parts, chance) {
+    const monthKey = `${locationKey}|${parts.year}-${String(parts.month).padStart(2, "0")}|${revision}`;
+    const rainyDayCount = 2 + stableHash(`${monthKey}|rainy-day-count`) % 4;
+    for (let slot = 0; slot < rainyDayCount; slot++) {
+      const start = Math.floor(slot * parts.daysInMonth / rainyDayCount) + 1;
+      const end = Math.floor((slot + 1) * parts.daysInMonth / rainyDayCount);
+      const selectedDay = start + stableHash(`${monthKey}|rainy-day-${slot}`) % (end - start + 1);
+      if (parts.day === selectedDay) {
+        return chance < 0.55 ? 51 : chance < 0.9 ? 61 : 80;
+      }
+    }
+    return null;
+  }
+  function climateEstimate(location, date, parts) {
+    const latitude = Number(location?.latitude), longitude = Number(location?.longitude);
+    const name = typeof location?.name === "string" ? location.name.trim() : "";
+    if (!name || !Number.isFinite(latitude) || latitude < -90 || latitude > 90 || !Number.isFinite(longitude) || longitude < -180 || longitude > 180) return null;
+    const revision = Number.isSafeInteger(location?.climateRevision) && location.climateRevision >= 0 ? location.climateRevision : 0;
+    const baseKey = `${latitude.toFixed(4)},${longitude.toFixed(4)}|${name}|${date}`;
+    const key = revision ? `${baseKey}|${revision}` : baseKey;
+    const hash = stableHash(key);
+    const random = (offset) => (hash >>> offset & 255) / 255;
+    const absoluteLatitude = Math.abs(latitude);
+    const monthPosition = parts.month - 1 + (parts.day - 1) / parts.daysInMonth;
+    const summerPeak = latitude < 0 ? 0 : 6;
+    const seasonal = Math.cos((monthPosition - summerPeak) / 12 * Math.PI * 2);
+    let annualMean, amplitude;
+    if (absoluteLatitude <= 23.5) {
+      annualMean = 27 - absoluteLatitude * 0.15;
+      amplitude = 2 + absoluteLatitude * 0.04;
+    } else if (absoluteLatitude <= 45) {
+      annualMean = 23.5 - (absoluteLatitude - 23.5) * 0.35;
+      amplitude = 3 + (absoluteLatitude - 23.5) * 0.16;
+    } else if (absoluteLatitude <= 66.5) {
+      annualMean = 16 - (absoluteLatitude - 45) * 0.45;
+      amplitude = 6.5 + (absoluteLatitude - 45) * 0.24;
+    } else {
+      annualMean = 6.3 - (absoluteLatitude - 66.5) * 0.62;
+      amplitude = 11.7 + (absoluteLatitude - 66.5) * 0.12;
+    }
+    if (latitude < -60) annualMean -= (absoluteLatitude - 60) * 0.4;
+    const mean = annualMean + seasonal * amplitude + (random(0) - 0.5) * 6;
+    const span = 5 + Math.min(absoluteLatitude, 75) / 25 + random(8) * 3;
+    let tempMin = Math.round(mean - span / 2);
+    let tempMax = Math.round(mean + span / 2);
+    if (absoluteLatitude >= 85) tempMax = Math.min(tempMax, latitude < 0 ? 0 : 5);
+    else if (absoluteLatitude >= 75) tempMax = Math.min(tempMax, latitude < 0 ? 5 : 12);
+    tempMin = Math.max(-80, tempMin);
+    tempMax = Math.min(55, tempMax);
+    if (tempMax <= tempMin) tempMax = tempMin + 1;
+    const chance = random(16);
+    const locationKey = `${latitude.toFixed(4)},${longitude.toFixed(4)}|${name}`;
+    let weatherCode;
+    if (tempMax <= 2) weatherCode = chance < 0.24 ? 0 : chance < 0.52 ? 2 : chance < 0.7 ? 3 : chance < 0.8 ? 45 : chance < 0.94 ? 71 : 73;
+    else if (absoluteLatitude >= 70) weatherCode = chance < 0.18 ? 0 : chance < 0.38 ? 2 : chance < 0.62 ? 3 : chance < 0.74 ? 45 : chance < 0.92 ? 71 : chance < 0.97 ? 61 : 80;
+    else if (absoluteLatitude <= 15) weatherCode = chance < 0.3 ? 0 : chance < 0.52 ? 1 : chance < 0.7 ? 2 : chance < 0.82 ? 3 : chance < 0.87 ? 45 : chance < 0.92 ? 51 : chance < 0.97 ? 61 : 80;
+    else if (absoluteLatitude <= 35) {
+      const rainCode = subtropicalRainCode(locationKey, revision, parts, chance);
+      weatherCode = rainCode ?? (chance < 0.35 ? 0 : chance < 0.58 ? 1 : chance < 0.78 ? 2 : chance < 0.9 ? 3 : 45);
+    } else weatherCode = chance < 0.26 ? 0 : chance < 0.46 ? 1 : chance < 0.68 ? 2 : chance < 0.84 ? 3 : chance < 0.92 ? 45 : chance < 0.97 ? 61 : 80;
+    return { date, weatherCode, tempMin, tempMax };
+  }
+  function resolveWeatherForDate(weatherStore, date, { storyWeatherEvent, storyWeatherEventEnabled = false } = {}) {
+    const parts = dateParts(date);
+    if (!parts) return { status: "unavailable", source: null, sourceLabel: "\u65E0\u6CD5\u63A8\u6F14", unavailableReason: "\u65E5\u671F\u65E0\u6548" };
+    if (storyWeatherEventEnabled === true) {
+      const override = storyWeatherEventForDate(storyWeatherEvent, date);
+      const locationKey = weatherLocationKey(weatherStore?.location);
+      if (override && override.event.locationKey === locationKey) {
+        return {
+          status: "available",
+          source: WEATHER_SOURCE_STORY_EVENT,
+          sourceLabel: weatherSourceLabel(WEATHER_SOURCE_STORY_EVENT),
+          event: override.event,
+          day: override.day
+        };
+      }
+    }
+    const persisted = weatherStore?.lastSuccess?.forecast?.days?.find((item) => item.date === date);
+    if (persisted) {
+      const source = isStoredWeatherSource(weatherStore?.lastSuccess?.source) ? weatherStore.lastSuccess.source : WEATHER_SOURCE_FORECAST;
+      const tempMin = Math.round(Math.min(persisted.tempMin, persisted.tempMax));
+      const tempMax = Math.round(Math.max(persisted.tempMin, persisted.tempMax));
+      return { status: "available", source, sourceLabel: weatherSourceLabel(source), day: { ...persisted, tempMin, tempMax } };
+    }
+    const day = climateEstimate(weatherStore?.location ? { ...weatherStore.location, climateRevision: weatherStore.climateRevision } : null, date, parts);
+    if (!day) return { status: "unavailable", source: null, sourceLabel: "\u65E0\u6CD5\u63A8\u6F14", unavailableReason: "\u5C1A\u672A\u8BBE\u7F6E\u6709\u6548\u5929\u6C14\u4F4D\u7F6E" };
+    return {
+      status: "available",
+      source: WEATHER_SOURCE_CLIMATE_ESTIMATE,
+      sourceLabel: weatherSourceLabel(WEATHER_SOURCE_CLIMATE_ESTIMATE),
+      day
     };
   }
 
@@ -501,10 +712,13 @@ ${userPrompt}` : userPrompt;
       generationRule: typeof source.generationRule === "string" && source.generationRule.trim() ? source.generationRule.trim().slice(0, 3e3) : "",
       injectionScheduleEnabled: source.injectionScheduleEnabled !== false,
       injectionWeatherEnabled: source.injectionWeatherEnabled !== false,
+      weatherEventEnabled: source.weatherEventEnabled === true,
       injectionCycleEnabled: source.injectionCycleEnabled !== false,
       injectionRecipeEnabled: source.injectionRecipeEnabled !== false,
       injectionOutfitEnabled: source.injectionOutfitEnabled !== false
     };
+    const weatherEvent = normalizeStoryWeatherEvent(source.weatherEvent);
+    if (weatherEvent) normalized.weatherEvent = weatherEvent;
     if (parseCalendarDate(source.storyInitialDate)) normalized.storyInitialDate = source.storyInitialDate;
     if (parseCalendarDate(source.baseDate)) normalized.baseDate = source.baseDate;
     return normalized;
@@ -514,6 +728,7 @@ ${userPrompt}` : userPrompt;
     return {
       injectionScheduleEnabled: source.injectionScheduleEnabled !== false,
       injectionWeatherEnabled: source.injectionWeatherEnabled !== false,
+      weatherEventEnabled: source.weatherEventEnabled === true,
       injectionCycleEnabled: source.injectionCycleEnabled !== false,
       injectionRecipeEnabled: source.injectionRecipeEnabled !== false,
       injectionOutfitEnabled: source.injectionOutfitEnabled !== false
@@ -549,6 +764,7 @@ ${userPrompt}` : userPrompt;
     const defaults = normalizeInjectionDefaults({
       injectionScheduleEnabled: hasCalendar ? sourceConfig.calendarEnabled === true : true,
       injectionWeatherEnabled: hasCalendar ? sourceConfig.calendarEnabled === true : true,
+      weatherEventEnabled: false,
       injectionCycleEnabled: hasCalendar ? sourceConfig.calendarEnabled === true : true,
       injectionRecipeEnabled: hasRecipe ? sourceConfig.recipeEnabled === true : true,
       injectionOutfitEnabled: true
@@ -560,6 +776,7 @@ ${userPrompt}` : userPrompt;
         ...scope,
         injectionScheduleEnabled: Object.hasOwn(rawScope, "injectionScheduleEnabled") ? scope.injectionScheduleEnabled : defaults.injectionScheduleEnabled,
         injectionWeatherEnabled: Object.hasOwn(rawScope, "injectionWeatherEnabled") ? scope.injectionWeatherEnabled : defaults.injectionWeatherEnabled,
+        weatherEventEnabled: Object.hasOwn(rawScope, "weatherEventEnabled") ? scope.weatherEventEnabled : defaults.weatherEventEnabled,
         injectionCycleEnabled: Object.hasOwn(rawScope, "injectionCycleEnabled") ? scope.injectionCycleEnabled : defaults.injectionCycleEnabled,
         injectionRecipeEnabled: Object.hasOwn(rawScope, "injectionRecipeEnabled") ? scope.injectionRecipeEnabled : defaults.injectionRecipeEnabled,
         injectionOutfitEnabled: Object.hasOwn(rawScope, "injectionOutfitEnabled") ? scope.injectionOutfitEnabled : defaults.injectionOutfitEnabled
@@ -646,10 +863,10 @@ ${userPrompt}` : userPrompt;
     }
     return tags.length ? tags : [...DEFAULT_CALENDAR_DATE_TAGS];
   }
-  function extractCalendarDateTagContents(text7, dateTags = DEFAULT_CALENDAR_DATE_TAGS) {
+  function extractCalendarDateTagContents(text8, dateTags = DEFAULT_CALENDAR_DATE_TAGS) {
     const allowed = new Set(normalizeCalendarDateTags(dateTags));
     const result = [];
-    for (const match of String(text7 ?? "").matchAll(taggedDatePattern)) {
+    for (const match of String(text8 ?? "").matchAll(taggedDatePattern)) {
       const opening = match[1].toLowerCase(), closing = match[3].toLowerCase();
       if (opening === closing && allowed.has(opening)) result.push(match[2].trim());
     }
@@ -687,8 +904,8 @@ ${userPrompt}` : userPrompt;
     return date.getFullYear() < CALENDAR_YEAR_RANGE.min || date.getFullYear() > CALENDAR_YEAR_RANGE.max ? null : formatCalendarDate(date);
   }
   var hasExplicitCalendarYear = (value) => /(?:\d{4}|[零〇一二三四五六七八九]{4})\s*年/.test(value) || /(?:^|\D)\d{4}[\s./-]+\d{1,2}[\s./-]+\d{1,2}(?:\D|$)/.test(value);
-  function extractCalendarBaseDate(text7, dateTags = DEFAULT_CALENDAR_DATE_TAGS) {
-    const source = String(text7 ?? "").trim();
+  function extractCalendarBaseDate(text8, dateTags = DEFAULT_CALENDAR_DATE_TAGS) {
+    const source = String(text8 ?? "").trim();
     if (!source) return null;
     const reference = /* @__PURE__ */ new Date();
     for (const content of extractCalendarDateTagContents(source, dateTags).reverse()) {
@@ -700,8 +917,8 @@ ${userPrompt}` : userPrompt;
     if (legacyTag) return calendarDateFromParts(Number(legacyTag[1]), Number(legacyTag[2]), Number(legacyTag[3]));
     return hasExplicitCalendarYear(source) ? dateFromNaturalText(source, reference) : null;
   }
-  function extractCalendarDate(text7, now2 = /* @__PURE__ */ new Date(), dateTags = DEFAULT_CALENDAR_DATE_TAGS) {
-    const source = String(text7 ?? "").trim();
+  function extractCalendarDate(text8, now2 = /* @__PURE__ */ new Date(), dateTags = DEFAULT_CALENDAR_DATE_TAGS) {
+    const source = String(text8 ?? "").trim();
     const reference = now2 instanceof Date && Number.isFinite(now2.getTime()) ? now2 : /* @__PURE__ */ new Date();
     for (const content of extractCalendarDateTagContents(source, dateTags)) {
       const taggedDate = dateFromNaturalText(content, reference);
@@ -729,8 +946,8 @@ ${userPrompt}` : userPrompt;
     const offset = Math.round((target.getTime() - start.getTime()) / 864e5);
     return relativeLabels[offset] || null;
   }
-  function extractContextCalendarEvents(text7, now2 = /* @__PURE__ */ new Date(), dateTags = DEFAULT_CALENDAR_DATE_TAGS) {
-    const lines = String(text7 ?? "").split(/\r?\n|[。！？]/).map((line2) => line2.trim()).filter(Boolean);
+  function extractContextCalendarEvents(text8, now2 = /* @__PURE__ */ new Date(), dateTags = DEFAULT_CALENDAR_DATE_TAGS) {
+    const lines = String(text8 ?? "").split(/\r?\n|[。！？]/).map((line2) => line2.trim()).filter(Boolean);
     const seen = /* @__PURE__ */ new Set();
     const events = [];
     for (const line2 of lines.slice(-80)) {
@@ -750,10 +967,10 @@ ${userPrompt}` : userPrompt;
     currentEvents = [],
     dateFacts = []
   } = {}) {
-    const text7 = [context.mainChatText, context.worldBookText].filter(Boolean).join("\n");
+    const text8 = [context.mainChatText, context.worldBookText].filter(Boolean).join("\n");
     return {
       today: formatCalendarDate(now2),
-      candidateEvents: extractContextCalendarEvents(text7, now2, dateTags).map(({ date, title, note }) => ({ date, title, note })),
+      candidateEvents: extractContextCalendarEvents(text8, now2, dateTags).map(({ date, title, note }) => ({ date, title, note })),
       historicalEvents: Array.isArray(historicalEvents) ? historicalEvents : [],
       currentEvents: Array.isArray(currentEvents) ? currentEvents : [],
       dateFacts: Array.isArray(dateFacts) ? dateFacts : [],
@@ -1445,106 +1662,6 @@ ${userPrompt}` : userPrompt;
     }
   }
 
-  // src/calendar-weather-source.js
-  var WEATHER_SOURCE_FORECAST = "forecast";
-  var WEATHER_SOURCE_CACHED_FORECAST = "cached_forecast";
-  var WEATHER_SOURCE_CLIMATE_ESTIMATE = "climate_estimate";
-  var SOURCE_LABELS = Object.freeze({
-    [WEATHER_SOURCE_FORECAST]: "\u771F\u5B9E\u9884\u62A5",
-    [WEATHER_SOURCE_CACHED_FORECAST]: "\u7F13\u5B58\u9884\u62A5",
-    [WEATHER_SOURCE_CLIMATE_ESTIMATE]: "\u6C14\u5019\u63A8\u6F14"
-  });
-  var weatherSourceLabel = (source) => SOURCE_LABELS[source] || "\u65E0\u6CD5\u63A8\u6F14";
-  var isStoredWeatherSource = (source) => source === WEATHER_SOURCE_FORECAST || source === WEATHER_SOURCE_CACHED_FORECAST;
-  function dateParts(value) {
-    const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(value || ""));
-    if (!match) return null;
-    const year = Number(match[1]), month = Number(match[2]), day = Number(match[3]);
-    if (year < 1 || year > 9999 || month < 1 || month > 12) return null;
-    const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
-    const days = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
-    return day >= 1 && day <= days[month - 1] ? { year, month, day, daysInMonth: days[month - 1] } : null;
-  }
-  var isValidWeatherDate = (value) => dateParts(value) !== null;
-  function stableHash(value) {
-    let hash = 2166136261;
-    for (const char of String(value)) {
-      hash ^= char.codePointAt(0);
-      hash = Math.imul(hash, 16777619);
-    }
-    hash ^= hash >>> 16;
-    hash = Math.imul(hash, 2146121005);
-    hash ^= hash >>> 15;
-    hash = Math.imul(hash, 2221713035);
-    hash ^= hash >>> 16;
-    return hash >>> 0;
-  }
-  function climateEstimate(location, date, parts) {
-    const latitude = Number(location?.latitude), longitude = Number(location?.longitude);
-    const name = typeof location?.name === "string" ? location.name.trim() : "";
-    if (!name || !Number.isFinite(latitude) || latitude < -90 || latitude > 90 || !Number.isFinite(longitude) || longitude < -180 || longitude > 180) return null;
-    const revision = Number.isSafeInteger(location?.climateRevision) && location.climateRevision >= 0 ? location.climateRevision : 0;
-    const baseKey = `${latitude.toFixed(4)},${longitude.toFixed(4)}|${name}|${date}`;
-    const key = revision ? `${baseKey}|${revision}` : baseKey;
-    const hash = stableHash(key);
-    const random = (offset) => (hash >>> offset & 255) / 255;
-    const absoluteLatitude = Math.abs(latitude);
-    const monthPosition = parts.month - 1 + (parts.day - 1) / parts.daysInMonth;
-    const summerPeak = latitude < 0 ? 0 : 6;
-    const seasonal = Math.cos((monthPosition - summerPeak) / 12 * Math.PI * 2);
-    let annualMean, amplitude;
-    if (absoluteLatitude <= 23.5) {
-      annualMean = 27 - absoluteLatitude * 0.15;
-      amplitude = 2 + absoluteLatitude * 0.04;
-    } else if (absoluteLatitude <= 45) {
-      annualMean = 23.5 - (absoluteLatitude - 23.5) * 0.35;
-      amplitude = 3 + (absoluteLatitude - 23.5) * 0.16;
-    } else if (absoluteLatitude <= 66.5) {
-      annualMean = 16 - (absoluteLatitude - 45) * 0.45;
-      amplitude = 6.5 + (absoluteLatitude - 45) * 0.24;
-    } else {
-      annualMean = 6.3 - (absoluteLatitude - 66.5) * 0.62;
-      amplitude = 11.7 + (absoluteLatitude - 66.5) * 0.12;
-    }
-    if (latitude < -60) annualMean -= (absoluteLatitude - 60) * 0.4;
-    const mean = annualMean + seasonal * amplitude + (random(0) - 0.5) * 6;
-    const span = 5 + Math.min(absoluteLatitude, 75) / 25 + random(8) * 3;
-    let tempMin = Math.round(mean - span / 2);
-    let tempMax = Math.round(mean + span / 2);
-    if (absoluteLatitude >= 85) tempMax = Math.min(tempMax, latitude < 0 ? 0 : 5);
-    else if (absoluteLatitude >= 75) tempMax = Math.min(tempMax, latitude < 0 ? 5 : 12);
-    tempMin = Math.max(-80, tempMin);
-    tempMax = Math.min(55, tempMax);
-    if (tempMax <= tempMin) tempMax = tempMin + 1;
-    const chance = random(16);
-    let weatherCode;
-    if (tempMax <= 2) weatherCode = chance < 0.24 ? 0 : chance < 0.52 ? 2 : chance < 0.7 ? 3 : chance < 0.8 ? 45 : chance < 0.94 ? 71 : 73;
-    else if (absoluteLatitude >= 70) weatherCode = chance < 0.22 ? 0 : chance < 0.52 ? 2 : chance < 0.72 ? 3 : chance < 0.82 ? 45 : chance < 0.94 ? 61 : 80;
-    else if (absoluteLatitude <= 15) weatherCode = chance < 0.16 ? 0 : chance < 0.38 ? 1 : chance < 0.56 ? 2 : chance < 0.66 ? 3 : chance < 0.76 ? 51 : chance < 0.92 ? 61 : 80;
-    else if (absoluteLatitude <= 35) weatherCode = chance < 0.26 ? 0 : chance < 0.54 ? 1 : chance < 0.72 ? 2 : chance < 0.8 ? 3 : chance < 0.86 ? 45 : chance < 0.95 ? 61 : 80;
-    else weatherCode = chance < 0.18 ? 0 : chance < 0.4 ? 1 : chance < 0.6 ? 2 : chance < 0.7 ? 3 : chance < 0.78 ? 45 : chance < 0.86 ? 51 : chance < 0.95 ? 61 : 80;
-    return { date, weatherCode, tempMin, tempMax };
-  }
-  function resolveWeatherForDate(weatherStore, date) {
-    const parts = dateParts(date);
-    if (!parts) return { status: "unavailable", source: null, sourceLabel: "\u65E0\u6CD5\u63A8\u6F14", unavailableReason: "\u65E5\u671F\u65E0\u6548" };
-    const persisted = weatherStore?.lastSuccess?.forecast?.days?.find((item) => item.date === date);
-    if (persisted) {
-      const source = isStoredWeatherSource(weatherStore?.lastSuccess?.source) ? weatherStore.lastSuccess.source : WEATHER_SOURCE_FORECAST;
-      const tempMin = Math.round(Math.min(persisted.tempMin, persisted.tempMax));
-      const tempMax = Math.round(Math.max(persisted.tempMin, persisted.tempMax));
-      return { status: "available", source, sourceLabel: weatherSourceLabel(source), day: { ...persisted, tempMin, tempMax } };
-    }
-    const day = climateEstimate(weatherStore?.location ? { ...weatherStore.location, climateRevision: weatherStore.climateRevision } : null, date, parts);
-    if (!day) return { status: "unavailable", source: null, sourceLabel: "\u65E0\u6CD5\u63A8\u6F14", unavailableReason: "\u5C1A\u672A\u8BBE\u7F6E\u6709\u6548\u5929\u6C14\u4F4D\u7F6E" };
-    return {
-      status: "available",
-      source: WEATHER_SOURCE_CLIMATE_ESTIMATE,
-      sourceLabel: weatherSourceLabel(WEATHER_SOURCE_CLIMATE_ESTIMATE),
-      day
-    };
-  }
-
   // src/calendar-weather.js
   var WEATHER_ATTRIBUTION = "Weather data \xA9 Open-Meteo (CC BY 4.0)";
   var WEATHER_STORE_VERSION = 1;
@@ -1579,10 +1696,6 @@ ${userPrompt}` : userPrompt;
     out.admin1 = String(src.admin1 ?? "").trim().slice(0, 100);
     out.timezone = String(src.timezone ?? "").trim().slice(0, 80);
     return Object.freeze(out);
-  }
-  function weatherLocationKey(location) {
-    const loc = normalizeWeatherLocation(location);
-    return `${loc.latitude},${loc.longitude}|${loc.name}`;
   }
   function normalizeWeatherForecast(value) {
     const src = isRecord(value) ? value : {};
@@ -1816,6 +1929,148 @@ ${userPrompt}` : userPrompt;
     return { stale: false, source: WEATHER_SOURCE_FORECAST, data: forecast, locationKey: key, store: nextStore };
   }
 
+  // src/calendar-weather-controller.js
+  function createCalendarWeatherController({
+    tasks,
+    runtime,
+    getScope,
+    getReferenceDate,
+    getView,
+    setView,
+    commitWeather,
+    commitScope,
+    commitStore,
+    fetchImpl,
+    applyBidirectionalInjection,
+    status,
+    errorStatus,
+    rerender
+  }) {
+    const currentLocationKey = () => runtime.weatherStore.location ? weatherLocationKey(runtime.weatherStore.location) : "";
+    const hasCurrentEvent = (scope, referenceDate) => scope?.weatherEvent?.endDate >= referenceDate && scope.weatherEvent.locationKey === currentLocationKey();
+    async function ensureStoryWeatherEvent(storageId, { refreshInjection = true } = {}) {
+      const current = getScope(storageId);
+      if (!current.weatherEventEnabled || !runtime.weatherStore.location) return false;
+      const referenceDate = getReferenceDate(current);
+      if (hasCurrentEvent(current, referenceDate)) return false;
+      const event = createStoryWeatherEvent(runtime.weatherStore, referenceDate, storageId);
+      if (!event) return false;
+      await commitScope(storageId, (value) => {
+        if (!value.weatherEventEnabled || hasCurrentEvent(value, referenceDate)) return value;
+        return { ...value, weatherEvent: event };
+      }, null, { refreshInjection });
+      return true;
+    }
+    function storyWeatherEventForScope(storageId, scope, referenceDate) {
+      if (!scope?.weatherEventEnabled || hasCurrentEvent(scope, referenceDate) || !runtime.weatherStore.location) {
+        return null;
+      }
+      return createStoryWeatherEvent(runtime.weatherStore, referenceDate, storageId);
+    }
+    async function restoreLocationChange(previousStore, previousWeatherStore, originalError) {
+      let rollbackError = null;
+      try {
+        await commitStore(() => previousStore, null, { refreshInjection: false });
+        commitWeather(previousWeatherStore);
+        await applyBidirectionalInjection?.();
+      } catch (error) {
+        rollbackError = error;
+      }
+      if (!rollbackError) throw originalError;
+      const combined = new Error(`${originalError.message}\uFF1B\u5929\u6C14\u5730\u70B9\u5207\u6362\u56DE\u6EDA\u5931\u8D25\uFF1A${rollbackError.message}`);
+      combined.cause = originalError;
+      combined.rollbackError = rollbackError;
+      combined.weatherLocationRollbackError = true;
+      throw combined;
+    }
+    async function selectWeatherLocation(storageId, index) {
+      const location = runtime.weatherSearchResults[index];
+      if (!location) {
+        const error = new Error("\u5929\u6C14\u4F4D\u7F6E\u4E0D\u5B58\u5728\uFF0C\u8BF7\u91CD\u65B0\u641C\u7D22");
+        errorStatus(storageId, error);
+        throw error;
+      }
+      const task = tasks.begin(storageId, "weather-forecast");
+      if (!task) return false;
+      try {
+        const result = await fetchWeatherForecast(location, runtime.weatherStore, {
+          fetchImpl,
+          signal: task.signal
+        });
+        if (!tasks.active(task)) return false;
+        const locationChanged = result.locationKey !== currentLocationKey();
+        if (!locationChanged) {
+          commitWeather(result.store);
+          runtime.weatherSearchResults = [];
+          await ensureStoryWeatherEvent(storageId, { refreshInjection: false });
+          await applyBidirectionalInjection?.();
+        } else {
+          const previousStore = structuredClone(runtime.store);
+          const previousWeatherStore = structuredClone(runtime.weatherStore);
+          try {
+            await commitStore((store) => ({ ...store, scopes: Object.fromEntries(
+              Object.entries(store.scopes).map(([id2, scope]) => [id2, { ...scope, weatherEvent: void 0 }])
+            ) }), null, { refreshInjection: false });
+            commitWeather(result.store);
+            runtime.weatherSearchResults = [];
+            await ensureStoryWeatherEvent(storageId, { refreshInjection: false });
+            await applyBidirectionalInjection?.();
+          } catch (error) {
+            await restoreLocationChange(previousStore, previousWeatherStore, error);
+          }
+        }
+        const degraded = result.source !== "forecast";
+        status(
+          storageId,
+          result.source === "cached_forecast" ? "\u5929\u6C14\u670D\u52A1\u4E0D\u53EF\u7528\uFF0C\u5DF2\u663E\u793A\u8BE5\u4F4D\u7F6E\u7684\u7F13\u5B58\u9884\u62A5\u3002" : result.source === "climate_estimate" ? "\u5929\u6C14\u670D\u52A1\u4E0D\u53EF\u7528\uFF0C\u5DF2\u4FDD\u5B58\u4F4D\u7F6E\u5E76\u4F7F\u7528\u6C14\u5019\u63A8\u6F14\u3002" : "\u5929\u6C14\u4F4D\u7F6E\u4E0E\u9884\u62A5\u5DF2\u66F4\u65B0\u3002",
+          degraded ? { duration: 1e4 } : void 0
+        );
+        rerender(storageId);
+        return true;
+      } catch (error) {
+        if (!tasks.active(task)) return false;
+        errorStatus(storageId, error);
+        throw error;
+      } finally {
+        tasks.finish(task);
+      }
+    }
+    async function refreshWeather(storageId) {
+      if (!runtime.weatherStore.location) {
+        const error = new Error("\u8BF7\u5148\u641C\u7D22\u5E76\u9009\u62E9\u5929\u6C14\u4F4D\u7F6E");
+        errorStatus(storageId, error);
+        throw error;
+      }
+      const task = tasks.begin(storageId, "weather-forecast");
+      if (!task) return false;
+      const currentView = getView(storageId);
+      setView(storageId, { ...currentView, weatherRefreshing: true, weatherRefreshTask: task });
+      rerender(storageId);
+      try {
+        const result = await fetchWeatherForecast(runtime.weatherStore.location, runtime.weatherStore, { resetCache: true, fetchImpl, signal: task.signal });
+        if (!tasks.active(task)) return false;
+        commitWeather(result.store);
+        await applyBidirectionalInjection?.();
+        const degraded = result.source !== "forecast";
+        status(storageId, result.source === "cached_forecast" ? "\u5929\u6C14\u670D\u52A1\u4E0D\u53EF\u7528\uFF0C\u5DF2\u663E\u793A\u7F13\u5B58\u9884\u62A5\u3002" : result.source === "climate_estimate" ? "\u5929\u6C14\u670D\u52A1\u4E0D\u53EF\u7528\uFF0C\u7EE7\u7EED\u4F7F\u7528\u6C14\u5019\u63A8\u6F14\u3002" : "\u5929\u6C14\u9884\u62A5\u5DF2\u66F4\u65B0\u3002", degraded ? { duration: 1e4 } : void 0);
+        rerender(storageId);
+        return true;
+      } catch (error) {
+        if (!tasks.active(task)) return false;
+        errorStatus(storageId, error);
+        throw error;
+      } finally {
+        tasks.finish(task);
+        const latestView = getView(storageId);
+        if (latestView.weatherRefreshTask === task) {
+          setView(storageId, { ...latestView, weatherRefreshing: false, weatherRefreshTask: null });
+          rerender(storageId);
+        }
+      }
+    }
+    return { ensureStoryWeatherEvent, storyWeatherEventForScope, selectWeatherLocation, refreshWeather };
+  }
+
   // src/calendar-cycle-model.js
   var CYCLE_STORE_VERSION = 1;
   var CYCLE_LIMITS = Object.freeze({
@@ -2024,8 +2279,8 @@ ${userPrompt}` : userPrompt;
   var validSubject2 = (value) => typeof value === "string" && value === value.trim() && value.length > 0 && value.length <= 120 && !unsafeKey4(value);
   function normalizeOutfit(value) {
     const source = plainRecord5(value) ? value : {};
-    const text7 = cleanText3(source.text, OUTFIT_LIMITS.text);
-    return text7 ? { text: text7, source: source.source === "ai" ? "ai" : "manual", updatedAt: timestamp2(source.updatedAt) } : null;
+    const text8 = cleanText3(source.text, OUTFIT_LIMITS.text);
+    return text8 ? { text: text8, source: source.source === "ai" ? "ai" : "manual", updatedAt: timestamp2(source.updatedAt) } : null;
   }
   function normalizeProfile(value) {
     const source = plainRecord5(value) ? value : {};
@@ -2085,9 +2340,9 @@ ${userPrompt}` : userPrompt;
   function outfitForDate(profile, date) {
     return parseCalendarDate(date) ? normalizeProfile(profile).days[date] || null : null;
   }
-  function upsertOutfit(profile, { date, text: text7, source = "manual" } = {}, now2 = Date.now()) {
+  function upsertOutfit(profile, { date, text: text8, source = "manual" } = {}, now2 = Date.now()) {
     if (!parseCalendarDate(date)) throw new Error("\u7A7F\u642D\u65E5\u671F\u65E0\u6548");
-    const clean2 = cleanText3(text7, OUTFIT_LIMITS.text);
+    const clean2 = cleanText3(text8, OUTFIT_LIMITS.text);
     if (!clean2) throw new Error("OOTD \u5185\u5BB9\u4E0D\u80FD\u4E3A\u7A7A");
     const next = normalizeProfile(profile);
     next.days[date] = { text: clean2, source: source === "ai" ? "ai" : "manual", updatedAt: timestamp2(now2) };
@@ -2104,10 +2359,10 @@ ${userPrompt}` : userPrompt;
     const dates = calendarDateRangeKeys(start, 0, days - 1);
     const incoming = new Map(generated.days.map((day) => [day.date, day.text]));
     for (const date of dates) {
-      const text7 = incoming.get(date);
-      if (!text7) throw new Error("AI \u7A7F\u642D\u672A\u5B8C\u6574\u8986\u76D6\u91CD\u65B0\u751F\u6210\u7A97\u53E3");
+      const text8 = incoming.get(date);
+      if (!text8) throw new Error("AI \u7A7F\u642D\u672A\u5B8C\u6574\u8986\u76D6\u91CD\u65B0\u751F\u6210\u7A97\u53E3");
       if (next.days[date]?.source === "manual") continue;
-      next.days[date] = { text: text7, source: "ai", updatedAt: timestamp2(now2) };
+      next.days[date] = { text: text8, source: "ai", updatedAt: timestamp2(now2) };
     }
     next.lastGeneratedAt = timestamp2(now2);
     return next;
@@ -2127,10 +2382,10 @@ ${userPrompt}` : userPrompt;
       if (!plainRecord5(day) || !exactKeys(day, ["date", "text"]) || !expectedDates.includes(day.date) || seen.has(day.date)) {
         throw new Error("AI \u7A7F\u642D\u65E5\u671F\u6216\u5B57\u6BB5\u65E0\u6548");
       }
-      const text7 = cleanText3(day.text, OUTFIT_LIMITS.text);
-      if (!text7 || text7 !== String(day.text).trim().replace(/\s+/g, " ")) throw new Error("AI OOTD \u5185\u5BB9\u65E0\u6548");
+      const text8 = cleanText3(day.text, OUTFIT_LIMITS.text);
+      if (!text8 || text8 !== String(day.text).trim().replace(/\s+/g, " ")) throw new Error("AI OOTD \u5185\u5BB9\u65E0\u6548");
       seen.add(day.date);
-      return { date: day.date, text: text7 };
+      return { date: day.date, text: text8 };
     });
     if (expectedDates.some((date) => !seen.has(date))) throw new Error("AI \u7A7F\u642D\u672A\u5B8C\u6574\u8986\u76D6\u751F\u6210\u7A97\u53E3");
     return { days: parsedDays.sort((left, right) => left.date.localeCompare(right.date)) };
@@ -2174,10 +2429,10 @@ ${userPrompt}` : userPrompt;
   var timestamp3 = (value) => Number.isFinite(value) && value >= 0 ? Math.floor(value) : 0;
   function normalizeMeal(value) {
     const source = plainRecord6(value) ? value : {};
-    const text7 = cleanText4(source.text, RECIPE_LIMITS.meal);
-    if (!text7) return null;
+    const text8 = cleanText4(source.text, RECIPE_LIMITS.meal);
+    if (!text8) return null;
     return {
-      text: text7,
+      text: text8,
       source: source.source === "ai" ? "ai" : "manual",
       updatedAt: timestamp3(source.updatedAt)
     };
@@ -2233,10 +2488,10 @@ ${userPrompt}` : userPrompt;
     if (!parseCalendarDate(date)) return {};
     return normalizeRecipeScope(scope).days[date] || {};
   }
-  function upsertRecipeMeal(scope, { date, mealType, text: text7, source = "manual" } = {}, now2 = Date.now()) {
+  function upsertRecipeMeal(scope, { date, mealType, text: text8, source = "manual" } = {}, now2 = Date.now()) {
     if (!parseCalendarDate(date)) throw new Error("\u83DC\u8C31\u65E5\u671F\u65E0\u6548");
     if (!RECIPE_MEAL_TYPES.includes(mealType)) throw new Error("\u83DC\u8C31\u9910\u6B21\u65E0\u6548");
-    const normalizedText = cleanText4(text7, RECIPE_LIMITS.meal);
+    const normalizedText = cleanText4(text8, RECIPE_LIMITS.meal);
     if (!normalizedText) throw new Error("\u83DC\u8C31\u5185\u5BB9\u4E0D\u80FD\u4E3A\u7A7A");
     const next = normalizeRecipeScope(scope);
     next.days[date] = {
@@ -2297,11 +2552,11 @@ ${userPrompt}` : userPrompt;
       seen.add(rawDay.date);
       const day = { date: rawDay.date };
       for (const mealType of RECIPE_MEAL_TYPES) {
-        const text7 = cleanText4(rawDay[mealType], RECIPE_LIMITS.meal);
-        if (!text7 || text7 !== String(rawDay[mealType]).trim().replace(/\s+/g, " ")) {
+        const text8 = cleanText4(rawDay[mealType], RECIPE_LIMITS.meal);
+        if (!text8 || text8 !== String(rawDay[mealType]).trim().replace(/\s+/g, " ")) {
           throw new Error(`AI \u83DC\u8C31${RECIPE_MEAL_LABELS[mealType]}\u5185\u5BB9\u65E0\u6548`);
         }
-        day[mealType] = text7;
+        day[mealType] = text8;
       }
       return day;
     });
@@ -2549,28 +2804,28 @@ ${userPrompt}` : userPrompt;
     };
   }
   function estimateContextTokens(value) {
-    const text7 = typeof value === "string" ? value : String(value ?? "");
+    const text8 = typeof value === "string" ? value : String(value ?? "");
     let asciiCharacters = 0;
     let nonAsciiCharacters = 0;
-    for (const character of text7) {
+    for (const character of text8) {
       if (character.codePointAt(0) <= 127) asciiCharacters += 1;
       else nonAsciiCharacters += 1;
     }
     return {
       estimated: true,
-      characters: text7.length,
+      characters: text8.length,
       estimatedTokens: Math.ceil(asciiCharacters / 4) + nonAsciiCharacters
     };
   }
   function trimToEstimatedTokens(value, tokenLimit, marker = "\u3010\u8F83\u65E9\u5185\u5BB9\u56E0\u8D44\u6E90\u9884\u7B97\u5DF2\u7701\u7565\u3011\n") {
-    const text7 = typeof value === "string" ? value : String(value ?? "");
+    const text8 = typeof value === "string" ? value : String(value ?? "");
     const limit = finiteInteger(tokenLimit, 0, MAX_TARGET_TOKENS) ? tokenLimit : 0;
-    const originalTokens = estimateContextTokens(text7).estimatedTokens;
-    if (originalTokens <= limit) return { text: text7, truncated: false, originalTokens, estimatedTokens: originalTokens };
+    const originalTokens = estimateContextTokens(text8).estimatedTokens;
+    if (originalTokens <= limit) return { text: text8, truncated: false, originalTokens, estimatedTokens: originalTokens };
     if (limit === 0) return { text: "", truncated: true, originalTokens, estimatedTokens: 0 };
     let prefix = marker;
     if (estimateContextTokens(prefix).estimatedTokens > limit) prefix = "";
-    const characters = Array.from(text7);
+    const characters = Array.from(text8);
     let low = 0;
     let high = characters.length;
     while (low < high) {
@@ -2907,11 +3162,7 @@ ${userPrompt}` : userPrompt;
         } catch (error) {
           injectionError = error;
         }
-        if (generation !== commitGeneration) {
-          if (injectionError) throw injectionError;
-          return false;
-        }
-        const cancelled2 = !!task && !tasks.active(task);
+        const cancelled2 = generation !== commitGeneration || !!task && !tasks.active(task);
         if (!injectionError && !cancelled2) return next;
         let rollbackError = null;
         try {
@@ -2920,6 +3171,47 @@ ${userPrompt}` : userPrompt;
           else delete rollbackStore.scopes[storageId];
           if (!saveCalendar(rollbackStore)) throw new Error("\u65E5\u5386\u56DE\u6EDA\u4FDD\u5B58\u5931\u8D25\uFF1A\u6D4F\u89C8\u5668\u5B58\u50A8\u4E0D\u53EF\u7528");
           runtime.store = normalizeCalendarStore(rollbackStore);
+          const rollbackResult = await applyBidirectionalInjection?.();
+          const rollbackInjectionError = injectionFailure(rollbackResult, "\u8865\u507F");
+          if (rollbackInjectionError) throw rollbackInjectionError;
+        } catch (error) {
+          rollbackError = error;
+        }
+        if (rollbackError) {
+          const original = injectionError || new Error("\u65E5\u5386\u4EFB\u52A1\u53D6\u6D88\u540E\u7684\u72B6\u6001\u8865\u507F\u5931\u8D25");
+          const combined = new Error(`${original.message}\uFF1B\u65E5\u5386\u72B6\u6001\u56DE\u6EDA\u5931\u8D25\uFF1A${rollbackError.message}`);
+          combined.cause = original;
+          combined.rollbackError = rollbackError;
+          combined.calendarRollbackError = true;
+          throw combined;
+        }
+        if (injectionError) throw injectionError;
+        return false;
+      });
+    };
+    const commitStore = (mutate, task = null, { refreshInjection = true } = {}) => {
+      const generation = commitGeneration;
+      return enqueueDirectoryOperation("schedule", async () => {
+        if (generation !== commitGeneration || task && !tasks.active(task)) return false;
+        const previousStore = clone(loadCalendar());
+        const normalized = normalizeCalendarStore(await mutate(clone(previousStore)));
+        if (generation !== commitGeneration || task && !tasks.active(task)) return false;
+        if (!saveCalendar(normalized)) throw new Error("\u65E5\u5386\u4FDD\u5B58\u5931\u8D25\uFF1A\u6D4F\u89C8\u5668\u5B58\u50A8\u4E0D\u53EF\u7528");
+        runtime.store = normalized;
+        if (!refreshInjection) return normalized;
+        let injectionError = null;
+        try {
+          const result = await applyBidirectionalInjection?.();
+          injectionError = injectionFailure(result, "\u63D0\u4EA4");
+        } catch (error) {
+          injectionError = error;
+        }
+        const cancelled2 = generation !== commitGeneration || !!task && !tasks.active(task);
+        if (!injectionError && !cancelled2) return normalized;
+        let rollbackError = null;
+        try {
+          if (!saveCalendar(previousStore)) throw new Error("\u65E5\u5386\u56DE\u6EDA\u4FDD\u5B58\u5931\u8D25\uFF1A\u6D4F\u89C8\u5668\u5B58\u50A8\u4E0D\u53EF\u7528");
+          runtime.store = normalizeCalendarStore(previousStore);
           const rollbackResult = await applyBidirectionalInjection?.();
           const rollbackInjectionError = injectionFailure(rollbackResult, "\u8865\u507F");
           if (rollbackInjectionError) throw rollbackInjectionError;
@@ -3151,7 +3443,7 @@ ${userPrompt}` : userPrompt;
       runtime.cycleStore = normalized;
       return getCycles(storageId, getCycleSubject(storageId));
     });
-    return { commitScope, commitRecipe, commitOutfits, commitOccasions, commitSchedule, commitHolidays, commitWeather, commitCycle, invalidateCommits };
+    return { commitScope, commitStore, commitRecipe, commitOutfits, commitOccasions, commitSchedule, commitHolidays, commitWeather, commitCycle, invalidateCommits };
   }
 
   // src/calendar-dom.js
@@ -3261,7 +3553,7 @@ ${userPrompt}` : userPrompt;
   var REMOVE_ICON_SVG = icon('<circle cx="12" cy="12" r="9"/><path d="M8 12h8"/>');
   var UNLINK_ICON_SVG = icon('<path d="M10 13a4 4 0 0 0 5.7.1l2-2a4 4 0 0 0-5.7-5.7l-1.1 1.1"/><path d="M14 11a4 4 0 0 0-5.7-.1l-2 2A4 4 0 0 0 12 18.6l1.1-1.1"/><path d="M4 4l16 16"/>');
   var SPARKLES_ICON_SVG = icon('<path d="M12 3l1.2 3.8L17 8l-3.8 1.2L12 13l-1.2-3.8L7 8l3.8-1.2L12 3zM19 14l.7 2.3L22 17l-2.3.7L19 20l-.7-2.3L16 17l2.3-.7L19 14zM5 13l.8 2.2L8 16l-2.2.8L5 19l-.8-2.2L2 16l2.2-.8L5 13z"/>');
-  var SHARE_WINDOW_ICON_SVG = icon('<rect x="4" y="4" width="11" height="11" rx="2"/><path d="M9 20h9a2 2 0 0 0 2-2V9M12 12h8M16 8l4 4-4 4"/>');
+  var COMMUNITY_TEMPLATE_ICON_SVG = icon('<rect x="4" y="4" width="11" height="13" rx="2"/><path d="M9 20h9a2 2 0 0 0 2-2V9M12 9h5M14.5 6.5v5"/>');
   var CHEVRON_DOWN_ICON_SVG = icon('<path d="M7 10l5 5 5-5"/>');
   var HEART_ICON_SVG = icon('<path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1.1-1.1a5.5 5.5 0 0 0-7.8 7.8l1.1 1.1L12 21l7.8-7.5 1.1-1.1a5.5 5.5 0 0 0-.1-7.8z"/>');
   var SHARE_ICON_SVG = icon('<circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 10.5l6.8-4M8.6 13.5l6.8 4"/>');
@@ -3358,20 +3650,24 @@ ${userPrompt}` : userPrompt;
         </div>
     </div>`;
   }
-  function weatherStatusCard(weatherStore, date, parsed, relativeLabel) {
-    const resolved = resolveWeatherForDate(weatherStore, date);
+  function weatherStatusCard(scope, weatherStore, date, parsed, relativeLabel) {
+    const resolved = resolveWeatherForDate(weatherStore, date, {
+      storyWeatherEvent: scope.weatherEvent,
+      storyWeatherEventEnabled: scope.weatherEventEnabled
+    });
     if (resolved.status !== "available") {
       return { content: `<p class="pm-calendar-empty-day">\u65E0\u6CD5\u63A8\u6F14 \xB7 ${escapeHtml(resolved.unavailableReason)}</p>`, isCard: false };
     }
     const condition = weatherCodeLabel(resolved.day.weatherCode);
     const location = weatherStore?.location?.country || weatherStore?.location?.name || "\u5929\u6C14\u8BB0\u5F55";
+    const eventLabel = resolved.source === "story_weather_event" ? ` \xB7 ${storyWeatherEventLabel(resolved.event?.type)}\uFF08\u5267\u60C5\u5929\u6C14\u4E8B\u4EF6\u8986\u76D6\uFF09` : "";
     return { content: statusCard({
       kind: "weather",
       parsed,
       date,
       icon: weatherStatusIcon(resolved.day.weatherCode),
       relativeLabel,
-      context: `<span class="pm-calendar-status-weather-context">${escapeHtml(condition)} \xB7 ${escapeHtml(location)}</span><span class="pm-calendar-status-location" aria-hidden="true">${LOCATION_ICON_SVG}</span>`,
+      context: `<span class="pm-calendar-status-weather-context">${escapeHtml(condition)} \xB7 ${escapeHtml(location)}${escapeHtml(eventLabel)}</span><span class="pm-calendar-status-location" aria-hidden="true">${LOCATION_ICON_SVG}</span>`,
       value: `${resolved.day.tempMin}\xB0\u2013${resolved.day.tempMax}\xB0`
     }), isCard: true };
   }
@@ -3424,7 +3720,7 @@ ${userPrompt}` : userPrompt;
           <div class="pm-calendar-selected-content">${content2 || '<p class="pm-calendar-empty-day">\u8FD9\u4E00\u5929\u8FD8\u6CA1\u6709\u83DC\u8C31\u3002</p>'}${editActions}</div>
         </section>`;
     }
-    const statusDetail = viewMode === "weather" ? weatherStatusCard(weatherStore, selectedDate, parsed, relativeLabel) : viewMode === "cycle" ? cycleStatusCard(cycleScope, selectedDate, parsed, relativeLabel) : null;
+    const statusDetail = viewMode === "weather" ? weatherStatusCard(scope, weatherStore, selectedDate, parsed, relativeLabel) : viewMode === "cycle" ? cycleStatusCard(cycleScope, selectedDate, parsed, relativeLabel) : null;
     const content = statusDetail?.content ?? `${holidayRows(holidayCache, selectedDate)}${eventRows(scope, occasionsByDate, selectedDate, detailEditing)}`;
     const isStatusCard = statusDetail?.isCard === true;
     const emptyLabel = viewMode === "weather" ? "\u8FD9\u4E00\u5929\u6CA1\u6709\u5929\u6C14\u6570\u636E" : viewMode === "cycle" ? "\u8FD9\u4E00\u5929\u6CA1\u6709\u751F\u7406\u63D0\u793A\uFF0C\u8BF4\u4E0D\u5B9A\u662F\u4E2A\u5E73\u5B89\u65E5~" : "\u8FD9\u4E00\u5929\u8FD8\u6CA1\u6709\u5B89\u6392";
@@ -3481,7 +3777,9 @@ ${userPrompt}` : userPrompt;
     if (viewMode === "weather") {
       const storedSource = weatherStore?.lastSuccess?.source || (weatherStore?.lastSuccess ? "forecast" : null);
       const currentSource = storedSource ? weatherSourceLabel(storedSource) : "\u4EC5\u6C14\u5019\u63A8\u6F14";
-      return `<details class="pm-calendar-management" data-calendar-management="weather"${open}><summary>\u5929\u6C14\u8BBE\u7F6E</summary><div class="pm-calendar-management-content"><section class="pm-calendar-data-tools pm-calendar-injection-card">${injectionToggle("calendar-toggle-weather-injection", "\u5929\u6C14\u6CE8\u5165", scope.injectionWeatherEnabled)}</section><section class="pm-calendar-data-tools"><h3>\u5929\u6C14\u4F4D\u7F6E</h3><div class="pm-calendar-data-row"><input data-weather-query placeholder="\u641C\u7D22\u57CE\u5E02\u6216\u5730\u533A" maxlength="100" aria-label="\u641C\u7D22\u5929\u6C14\u4F4D\u7F6E"><button type="button" data-action="calendar-weather-search">\u641C\u7D22</button><button type="button" data-action="calendar-weather-refresh">\u5237\u65B0</button></div>${weatherSearchResults(weatherResults)}<small class="pm-calendar-attribution">${weatherStore.location ? `${escapeHtml(weatherStore.location.name)} \xB7 \u5F53\u524D\u6570\u636E ${escapeHtml(currentSource)} \xB7 \u9884\u62A5\u5916\u65E5\u671F\u4F7F\u7528\u6C14\u5019\u63A8\u6F14` : "\u5C1A\u672A\u8BBE\u7F6E\u5929\u6C14\u4F4D\u7F6E \xB7 \u65E0\u6CD5\u63A8\u6F14"}</small></section></div></details>`;
+      const event = scope.weatherEvent;
+      const eventStatus = !scope.weatherEventEnabled ? "\u5DF2\u5173\u95ED\uFF1B\u4E0D\u4F1A\u8986\u76D6\u5929\u6C14\u3002" : event ? `\u5F53\u524D\u4E8B\u4EF6\uFF1A${storyWeatherEventLabel(event.type)} \xB7 ${event.startDate} \u81F3 ${event.endDate} \xB7 \u5267\u60C5\u5929\u6C14\u4E8B\u4EF6\u8986\u76D6` : weatherStore.location ? "\u5DF2\u5F00\u542F\uFF1B\u5C06\u5728\u540E\u7EED\u5267\u60C5\u65E5\u671F\u751F\u6210\u77ED\u671F\u5929\u6C14\u4E8B\u4EF6\u3002" : "\u5DF2\u5F00\u542F\uFF1B\u8BF7\u5148\u8BBE\u7F6E\u5929\u6C14\u4F4D\u7F6E\u3002";
+      return `<details class="pm-calendar-management" data-calendar-management="weather"${open}><summary>\u5929\u6C14\u8BBE\u7F6E</summary><div class="pm-calendar-management-content"><section class="pm-calendar-data-tools pm-calendar-injection-card">${injectionToggle("calendar-toggle-weather-injection", "\u5929\u6C14\u6CE8\u5165", scope.injectionWeatherEnabled)}</section><section class="pm-calendar-data-tools pm-calendar-injection-card">${injectionToggle("calendar-toggle-weather-event", "\u5267\u60C5\u5929\u6C14\u4E8B\u4EF6", scope.weatherEventEnabled)}<small class="pm-calendar-attribution">${escapeHtml(eventStatus)}</small></section><section class="pm-calendar-data-tools"><h3>\u5929\u6C14\u4F4D\u7F6E</h3><div class="pm-calendar-data-row"><input data-weather-query placeholder="\u641C\u7D22\u57CE\u5E02\u6216\u5730\u533A" maxlength="100" aria-label="\u641C\u7D22\u5929\u6C14\u4F4D\u7F6E"><button type="button" data-action="calendar-weather-search">\u641C\u7D22</button><button type="button" data-action="calendar-weather-refresh">\u5237\u65B0</button></div>${weatherSearchResults(weatherResults)}<small class="pm-calendar-attribution">${weatherStore.location ? `${escapeHtml(weatherStore.location.name)} \xB7 \u5F53\u524D\u6570\u636E ${escapeHtml(currentSource)} \xB7 \u9884\u62A5\u5916\u65E5\u671F\u4F7F\u7528\u6C14\u5019\u63A8\u6F14` : "\u5C1A\u672A\u8BBE\u7F6E\u5929\u6C14\u4F4D\u7F6E \xB7 \u65E0\u6CD5\u63A8\u6F14"}</small></section></div></details>`;
     }
     if (viewMode === "cycle") {
       const startDay = cycleScope.lastPeriodStart ? Number(cycleScope.lastPeriodStart.slice(8, 10)) : 1;
@@ -3564,7 +3862,7 @@ ${userPrompt}` : userPrompt;
     const occasions = occasionsByDate.get(date) || [];
     const holidayYear = holidayYearFromCache(holidayCache, holidayCache?.selectedCountry, parsed.getFullYear());
     const holidays = (holidayYear?.entries || []).filter((item) => item.date === date);
-    const weather = resolveWeatherForDate(weatherStore, date);
+    const weather = resolveWeatherForDate(weatherStore, date, { storyWeatherEvent: scope.weatherEvent, storyWeatherEventEnabled: scope.weatherEventEnabled });
     const cycle = predictCyclePhase(cycleScope, date);
     const recipe = recipeDayFor(recipeScope, date);
     const firstMeal = RECIPE_MEAL_TYPES.find((type) => recipe[type]?.text);
@@ -3984,7 +4282,7 @@ ${userPrompt}` : userPrompt;
         event.preventDefault();
         try {
           const nextType = form.elements.mealType?.value || "breakfast";
-          const text7 = form.elements.text?.value || "";
+          const text8 = form.elements.text?.value || "";
           await commitRecipe(storageId, (current) => {
             let next = current;
             const currentDay = recipeDayFor(current, date);
@@ -3992,7 +4290,7 @@ ${userPrompt}` : userPrompt;
               throw new Error("\u76EE\u6807\u9910\u6B21\u5DF2\u6709\u5185\u5BB9\uFF0C\u8BF7\u5148\u7F16\u8F91\u6216\u79FB\u9664\u539F\u9910\u98DF");
             }
             if (existing && nextType !== selectedType) next = deleteRecipeMeal(next, date, selectedType).scope;
-            return upsertRecipeMeal(next, { date, mealType: nextType, text: text7, source: "manual" });
+            return upsertRecipeMeal(next, { date, mealType: nextType, text: text8, source: "manual" });
           });
           status(storageId, existing ? "\u9910\u98DF\u5DF2\u66F4\u65B0\u3002" : "\u9910\u98DF\u5DF2\u6DFB\u52A0\u3002");
           closeOverlay?.("saved");
@@ -4128,11 +4426,11 @@ ${userPrompt}` : userPrompt;
     const tasks = createTaskController(getStorageId2);
     const scheduleTimeout = deps.setTimeoutImpl || globalThis.setTimeout;
     const cancelTimeout = deps.clearTimeoutImpl || globalThis.clearTimeout;
-    const status = (storageId, text7, { duration = 4e3, persistent = false } = {}) => {
+    const status = (storageId, text8, { duration = 4e3, persistent = false } = {}) => {
       const previousToken = runtime.statusTimerByStorage.get(storageId);
       if (previousToken) cancelTimeout(previousToken.timer);
       runtime.statusTimerByStorage.delete(storageId);
-      const nextText = text7 || "";
+      const nextText = text8 || "";
       runtime.statusByStorage.set(storageId, nextText);
       const element = state.phoneWindow?.querySelector(".pm-calendar-status");
       if (element && getStorageId2() === storageId) element.textContent = nextText;
@@ -4186,7 +4484,7 @@ ${userPrompt}` : userPrompt;
       runtime.viewByStorage.set(storageId, view);
       return view;
     };
-    const { commitScope, commitRecipe, commitOutfits, commitOccasions, commitSchedule, commitHolidays, commitWeather, commitCycle, invalidateCommits } = createCalendarCommitters({ runtime, tasks, applyBidirectionalInjection: deps.applyBidirectionalInjection, getCycles: cycles, getCycleSubject: (storageId) => viewFor(storageId).cycleSubject });
+    const { commitScope, commitStore, commitRecipe, commitOutfits, commitOccasions, commitSchedule, commitHolidays, commitWeather, commitCycle, invalidateCommits } = createCalendarCommitters({ runtime, tasks, applyBidirectionalInjection: deps.applyBidirectionalInjection, getCycles: cycles, getCycleSubject: (storageId) => viewFor(storageId).cycleSubject });
     const render = (storageId = getStorageId2()) => {
       const container = state.phoneWindow?.querySelector(".pm-calendar-page");
       if (!container) return false;
@@ -4217,6 +4515,23 @@ ${userPrompt}` : userPrompt;
     const rerender = (storageId) => {
       if (getStorageId2() === storageId) render(storageId);
     };
+    const weatherController = createCalendarWeatherController({
+      tasks,
+      runtime,
+      getScope: scope,
+      getReferenceDate: (current) => formatCalendarDate(calendarReferenceDate(current)),
+      getView: viewFor,
+      setView: (storageId, view) => runtime.viewByStorage.set(storageId, view),
+      commitWeather,
+      commitScope,
+      commitStore,
+      fetchImpl: fetchImpl || globalThis.fetch,
+      applyBidirectionalInjection: deps.applyBidirectionalInjection,
+      status,
+      errorStatus,
+      rerender
+    });
+    const { ensureStoryWeatherEvent, storyWeatherEventForScope, selectWeatherLocation, refreshWeather } = weatherController;
     const recipeController = createCalendarRecipeController({
       tasks,
       getStorageId: getStorageId2,
@@ -4312,81 +4627,6 @@ ${userPrompt}` : userPrompt;
         tasks.finish(task);
       }
     }
-    async function selectWeatherLocation(storageId, index) {
-      const location = runtime.weatherSearchResults[index];
-      if (!location) {
-        const error = new Error("\u5929\u6C14\u4F4D\u7F6E\u4E0D\u5B58\u5728\uFF0C\u8BF7\u91CD\u65B0\u641C\u7D22");
-        errorStatus(storageId, error);
-        throw error;
-      }
-      const task = tasks.begin(storageId, "weather-forecast");
-      if (!task) return false;
-      try {
-        const result = await fetchWeatherForecast(location, runtime.weatherStore, {
-          fetchImpl: fetchImpl || globalThis.fetch,
-          signal: task.signal
-        });
-        if (!tasks.active(task)) return false;
-        commitWeather(result.store);
-        await deps.applyBidirectionalInjection?.();
-        runtime.weatherSearchResults = [];
-        const degraded = result.source !== "forecast";
-        status(
-          storageId,
-          result.source === "cached_forecast" ? "\u5929\u6C14\u670D\u52A1\u4E0D\u53EF\u7528\uFF0C\u5DF2\u663E\u793A\u8BE5\u4F4D\u7F6E\u7684\u7F13\u5B58\u9884\u62A5\u3002" : result.source === "climate_estimate" ? "\u5929\u6C14\u670D\u52A1\u4E0D\u53EF\u7528\uFF0C\u5DF2\u4FDD\u5B58\u4F4D\u7F6E\u5E76\u4F7F\u7528\u6C14\u5019\u63A8\u6F14\u3002" : "\u5929\u6C14\u4F4D\u7F6E\u4E0E\u9884\u62A5\u5DF2\u66F4\u65B0\u3002",
-          degraded ? { duration: 1e4 } : void 0
-        );
-        rerender(storageId);
-        return true;
-      } catch (error) {
-        if (!tasks.active(task)) return false;
-        errorStatus(storageId, error);
-        throw error;
-      } finally {
-        tasks.finish(task);
-      }
-    }
-    async function refreshWeather(storageId) {
-      if (!runtime.weatherStore.location) {
-        const error = new Error("\u8BF7\u5148\u641C\u7D22\u5E76\u9009\u62E9\u5929\u6C14\u4F4D\u7F6E");
-        errorStatus(storageId, error);
-        throw error;
-      }
-      const task = tasks.begin(storageId, "weather-forecast");
-      if (!task) return false;
-      const currentView = viewFor(storageId);
-      runtime.viewByStorage.set(storageId, { ...currentView, weatherRefreshing: true, weatherRefreshTask: task });
-      rerender(storageId);
-      try {
-        const result = await fetchWeatherForecast(runtime.weatherStore.location, runtime.weatherStore, {
-          resetCache: true,
-          fetchImpl: fetchImpl || globalThis.fetch,
-          signal: task.signal
-        });
-        if (!tasks.active(task)) return false;
-        commitWeather(result.store);
-        await deps.applyBidirectionalInjection?.();
-        const degraded = result.source !== "forecast";
-        status(
-          storageId,
-          result.source === "cached_forecast" ? "\u5929\u6C14\u670D\u52A1\u4E0D\u53EF\u7528\uFF0C\u5DF2\u663E\u793A\u7F13\u5B58\u9884\u62A5\u3002" : result.source === "climate_estimate" ? "\u5929\u6C14\u670D\u52A1\u4E0D\u53EF\u7528\uFF0C\u7EE7\u7EED\u4F7F\u7528\u6C14\u5019\u63A8\u6F14\u3002" : "\u5929\u6C14\u9884\u62A5\u5DF2\u66F4\u65B0\u3002",
-          degraded ? { duration: 1e4 } : void 0
-        );
-        rerender(storageId);
-        return true;
-      } catch (error) {
-        if (!tasks.active(task)) return false;
-        errorStatus(storageId, error);
-        throw error;
-      } finally {
-        tasks.finish(task);
-        const latestView = viewFor(storageId);
-        if (latestView.weatherRefreshTask === task) {
-          runtime.viewByStorage.set(storageId, { ...latestView, weatherRefreshing: false, weatherRefreshTask: null });
-          rerender(storageId);
-        }
-      }
-    }
     async function scanContext(storageId = getStorageId2(), { silent = false, assistantOnly = false, task: parentTask = null } = {}) {
       const task = parentTask || tasks.begin(storageId, "scan-context");
       if (!task || !tasks.active(task)) return false;
@@ -4405,7 +4645,12 @@ ${userPrompt}` : userPrompt;
           return true;
         }
         if (!tasks.active(task)) return false;
-        const committed = await commitScope(storageId, (current) => ({ ...current, baseDate, lastAdjustedAt: Date.now() }), task);
+        const committed = await commitScope(storageId, (current) => {
+          const next = { ...current, baseDate, lastAdjustedAt: Date.now() };
+          const event = storyWeatherEventForScope(storageId, next, baseDate);
+          if (event) next.weatherEvent = event;
+          return next;
+        }, task);
         if (!committed) return false;
         if (!tasks.active(task)) return false;
         const parsed = parseCalendarDate(baseDate), currentView = viewFor(storageId);
@@ -4545,7 +4790,9 @@ ${userPrompt}` : userPrompt;
       const parsed = directDate || parseCalendarDate(extractedDate);
       if (!parsed) throw new Error("\u5F53\u524D\u6545\u4E8B\u65E5\u671F\u65E0\u6548\uFF0C\u8BF7\u8F93\u5165 YYYY-MM-DD\u3001YYYY/MM/DD \u6216\u201CYYYY\u5E74M\u6708D\u65E5\u201D");
       const normalizedDate = formatCalendarDate(parsed);
-      await commitScope(storageId, (current2) => ({ ...current2, baseDate: normalizedDate }));
+      await commitScope(storageId, (current2) => ({ ...current2, baseDate: normalizedDate }), null, { refreshInjection: false });
+      await ensureStoryWeatherEvent(storageId, { refreshInjection: false });
+      await deps.applyBidirectionalInjection?.();
       const current = viewFor(storageId);
       runtime.viewByStorage.set(storageId, {
         ...current,
@@ -4564,7 +4811,9 @@ ${userPrompt}` : userPrompt;
         const next = { ...current2 };
         delete next.baseDate;
         return next;
-      });
+      }, null, { refreshInjection: false });
+      await ensureStoryWeatherEvent(storageId, { refreshInjection: false });
+      await deps.applyBidirectionalInjection?.();
       const today = calendarReferenceDate(scope(storageId));
       const current = viewFor(storageId);
       runtime.viewByStorage.set(storageId, {
@@ -4928,12 +5177,21 @@ ${userPrompt}` : userPrompt;
       const injectionToggleFields = {
         "calendar-toggle-schedule-injection": "injectionScheduleEnabled",
         "calendar-toggle-weather-injection": "injectionWeatherEnabled",
+        "calendar-toggle-weather-event": "weatherEventEnabled",
         "calendar-toggle-cycle-injection": "injectionCycleEnabled",
         "calendar-toggle-recipe-injection": "injectionRecipeEnabled",
         "calendar-toggle-outfit-injection": "injectionOutfitEnabled"
       };
       if (injectionToggleFields[action]) {
         const field = injectionToggleFields[action];
+        if (field === "weatherEventEnabled") {
+          const enabling = scope(storageId)[field] !== true;
+          await commitScope(storageId, (current) => enabling ? { ...current, weatherEventEnabled: true } : { ...current, weatherEventEnabled: false, weatherEvent: void 0 }, null, { refreshInjection: !enabling });
+          if (enabling) await ensureStoryWeatherEvent(storageId);
+          status(storageId, scope(storageId).weatherEventEnabled ? scope(storageId).weatherEvent ? "\u5267\u60C5\u5929\u6C14\u4E8B\u4EF6\u5DF2\u5F00\u542F\uFF0C\u672A\u6765\u5929\u6C14\u5C06\u6309\u4E8B\u4EF6\u8986\u76D6\u3002" : "\u5267\u60C5\u5929\u6C14\u4E8B\u4EF6\u5DF2\u5F00\u542F\uFF1B\u8BF7\u5148\u8BBE\u7F6E\u5929\u6C14\u4F4D\u7F6E\u3002" : "\u5267\u60C5\u5929\u6C14\u4E8B\u4EF6\u5DF2\u5173\u95ED\uFF0C\u5DF2\u6062\u590D\u5E38\u89C4\u5929\u6C14\u3002");
+          rerender(storageId);
+          return;
+        }
         await commitScope(storageId, (current) => ({ ...current, [field]: current[field] !== true }));
         status(storageId, scope(storageId)[field] ? "\u5F53\u524D\u6A21\u5757\u4E0A\u4E0B\u6587\u6CE8\u5165\u5DF2\u5F00\u542F\u3002" : "\u5F53\u524D\u6A21\u5757\u4E0A\u4E0B\u6587\u6CE8\u5165\u5DF2\u5173\u95ED\u3002");
         rerender(storageId);
@@ -5473,21 +5731,121 @@ ${lines.join("\n")}
     return enqueueDirectorySave("groupMeta", snapshot, (frozen, protectedScopes) => persist(frozen, protectedScopes), updatesGlobalState);
   }
 
-  // src/interactive-scene-model.js
+  // src/interactive-scene-constants.js
   var INTERACTIVE_LIMITS = Object.freeze({ scenes: 12, posts: 80, comments: 40, danmaku: 240 });
-  var INTERACTIVE_STORE_VERSION = 2;
   var INTERACTIVE_ACTOR_TYPES = Object.freeze(["user", "story", "passerby", "legacy"]);
-  var PHONE_UI_STATE_VERSION = 1;
   var PHONE_UI_PAGES = Object.freeze(["desktop", "chat", "community", "calendar", "today-trend"]);
   var PHONE_UI_TABS = Object.freeze(["feed", "live"]);
+
+  // src/interactive-scene-store-migration.js
+  var assertDataObject = (value, label) => {
+    if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error(`${label} \u5FC5\u987B\u662F\u5BF9\u8C61`);
+    const prototype = Object.getPrototypeOf(value);
+    if (prototype !== Object.prototype && prototype !== null) throw new Error(`${label} \u5FC5\u987B\u662F\u7EAF\u6570\u636E\u5BF9\u8C61`);
+    if (Object.getOwnPropertySymbols(value).length) throw new Error(`${label} \u4E0D\u80FD\u5305\u542B symbol \u5B57\u6BB5`);
+    const descriptors = Object.getOwnPropertyDescriptors(value);
+    const accessor = Object.entries(descriptors).find(([, descriptor]) => !Object.hasOwn(descriptor, "value"));
+    if (accessor) throw new Error(`${label}.${accessor[0]} \u4E0D\u80FD\u662F\u8BBF\u95EE\u5668\u5C5E\u6027`);
+    const hidden = Object.entries(descriptors).find(([, descriptor]) => descriptor.enumerable !== true);
+    if (hidden) throw new Error(`${label}.${hidden[0]} \u5FC5\u987B\u662F\u53EF\u679A\u4E3E\u5C5E\u6027`);
+  };
+  function stripPersistedV2ContentRating(rawStore, storeVersion) {
+    if (rawStore === null || rawStore === void 0 || typeof rawStore !== "object" || Array.isArray(rawStore)) return { store: rawStore, changed: false };
+    assertDataObject(rawStore, "\u4E92\u52A8\u573A\u666F\u6301\u4E45\u5316 store");
+    if (rawStore.version !== storeVersion) return { store: rawStore, changed: false };
+    assertDataObject(rawStore.scopes, "\u4E92\u52A8\u573A\u666F\u6301\u4E45\u5316 scopes");
+    let changed = false;
+    const scopes = { ...rawStore.scopes };
+    for (const [scopeId, rawScope] of Object.entries(rawStore.scopes)) {
+      assertDataObject(rawScope, `\u4E92\u52A8\u573A\u666F\u6301\u4E45\u5316 scope ${scopeId}`);
+      assertDataObject(rawScope.scenes, `\u4E92\u52A8\u573A\u666F\u6301\u4E45\u5316 scope ${scopeId}.scenes`);
+      let scenes = rawScope.scenes;
+      for (const [sceneId, rawScene] of Object.entries(rawScope.scenes)) {
+        assertDataObject(rawScene, `\u4E92\u52A8\u573A\u666F\u6301\u4E45\u5316 scope ${scopeId}.scene ${sceneId}`);
+        const ratingDescriptor = Object.getOwnPropertyDescriptor(rawScene, "contentRating");
+        if (!ratingDescriptor || ratingDescriptor.enumerable !== true || typeof ratingDescriptor.value !== "string") continue;
+        if (scenes === rawScope.scenes) scenes = { ...rawScope.scenes };
+        const scene = { ...rawScene };
+        delete scene.contentRating;
+        scenes[sceneId] = scene;
+        changed = true;
+      }
+      if (scenes !== rawScope.scenes) scopes[scopeId] = { ...rawScope, scenes };
+    }
+    return { store: changed ? { ...rawStore, scopes } : rawStore, changed };
+  }
+
+  // src/interactive-scene-community-template.js
   var text2 = (value, max) => String(value ?? "").trim().slice(0, max);
-  var list = (value) => Array.isArray(value) ? value : [];
-  var id = (prefix) => `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
   var finitePositiveNumber = (value) => {
     const number = Number(value);
     return Number.isFinite(number) && number > 0 ? number : null;
   };
-  var assertDataObject = (value, label) => {
+  var isUnsafeDictionaryKey = (value) => value === "prototype" || Object.hasOwn(Object.prototype, value);
+  var validPhoneUiId = (value, max) => typeof value === "string" && value && value === value.trim() && value.length <= max && !isUnsafeDictionaryKey(value);
+  var normalizeThemeAccent = (value) => {
+    const accent = String(value ?? "").trim();
+    return /^#[0-9a-fA-F]{6}$/.test(accent) ? accent.toLowerCase() : "";
+  };
+  var stableHash2 = (value) => {
+    let hash = 2166136261;
+    for (const character of String(value)) {
+      hash ^= character.codePointAt(0);
+      hash = Math.imul(hash, 16777619);
+    }
+    return (hash >>> 0).toString(36);
+  };
+  var normalizeCommunityTemplate = (value) => {
+    const sourceStorageId = value?.sourceStorageId;
+    const sourceSceneId = value?.sourceSceneId;
+    const templateId = value?.id;
+    const title = text2(value?.title, 80);
+    const preset = text2(value?.preset, 30);
+    if (!validPhoneUiId(templateId, 120) || !validPhoneUiId(sourceStorageId, 160) || !validPhoneUiId(sourceSceneId, 80) || !title || !preset) return null;
+    const sharedAt = finitePositiveNumber(value?.sharedAt);
+    if (!sharedAt) return null;
+    return { id: templateId, sourceStorageId, sourceSceneId, title, preset, styleInput: text2(value?.styleInput, 2e3), generatedPrompt: text2(value?.generatedPrompt, 6e3), themeAccent: normalizeThemeAccent(value?.themeAccent), sharedAt };
+  };
+  var normalizeSharedCommunityTemplates = (value) => {
+    const templates = /* @__PURE__ */ new Map();
+    for (const raw of Array.isArray(value) ? value : []) {
+      const template = normalizeCommunityTemplate(raw);
+      if (template) templates.set(template.id, template);
+    }
+    return [...templates.values()];
+  };
+  var normalizeImportedTemplateSceneIds = (value, scenes) => {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+    const result = {};
+    for (const [templateId, sceneId] of Object.entries(value)) {
+      if (validPhoneUiId(templateId, 120) && validPhoneUiId(sceneId, 80) && Object.hasOwn(scenes || {}, sceneId)) result[templateId] = sceneId;
+    }
+    return result;
+  };
+  function createCommunityTemplate(scene, sourceStorageId, sharedAt = Date.now()) {
+    if (!scene || !validPhoneUiId(sourceStorageId, 160) || !validPhoneUiId(scene.id, 80)) throw new Error("\u793E\u533A\u6A21\u677F\u6765\u6E90\u65E0\u6548");
+    const timestamp5 = finitePositiveNumber(sharedAt);
+    if (!timestamp5) throw new Error("\u793E\u533A\u6A21\u677F\u65F6\u95F4\u65E0\u6548");
+    return { id: `template_${stableHash2(`${sourceStorageId}\0${scene.id}`)}`, sourceStorageId, sourceSceneId: scene.id, title: text2(scene.title, 80) || "\u672A\u547D\u540D\u4E92\u52A8\u573A\u666F", preset: text2(scene.preset, 30) || "weibo", styleInput: text2(scene.styleInput, 2e3), generatedPrompt: text2(scene.generatedPrompt, 6e3), themeAccent: normalizeThemeAccent(scene.themeAccent), sharedAt: timestamp5 };
+  }
+  function createSceneFromCommunityTemplate(template, sceneId, createdAt = Date.now()) {
+    const normalized = normalizeCommunityTemplate(template);
+    const timestamp5 = finitePositiveNumber(createdAt);
+    if (!normalized || !validPhoneUiId(sceneId, 80) || !timestamp5) throw new Error("\u793E\u533A\u6A21\u677F\u65E0\u6548");
+    return { id: sceneId, title: normalized.title, preset: normalized.preset, styleInput: normalized.styleInput, generatedPrompt: normalized.generatedPrompt, themeAccent: normalized.themeAccent, createdAt: timestamp5, updatedAt: timestamp5, posts: [], live: { title: "", status: "idle", warmupStarted: false, danmaku: [] } };
+  }
+
+  // src/interactive-scene-model.js
+  var INTERACTIVE_STORE_VERSION = 2;
+  var PHONE_UI_STATE_VERSION = 1;
+  var text3 = (value, max) => String(value ?? "").trim().slice(0, max);
+  var list = (value) => Array.isArray(value) ? value : [];
+  var id = (prefix) => `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+  var finitePositiveNumber2 = (value) => {
+    const number = Number(value);
+    return Number.isFinite(number) && number > 0 ? number : null;
+  };
+  var assertDataObject2 = (value, label) => {
     if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error(`${label} \u5FC5\u987B\u662F\u5BF9\u8C61`);
     const prototype = Object.getPrototypeOf(value);
     if (prototype !== Object.prototype && prototype !== null) throw new Error(`${label} \u5FC5\u987B\u662F\u7EAF\u6570\u636E\u5BF9\u8C61`);
@@ -5512,7 +5870,7 @@ ${lines.join("\n")}
     }
   };
   var assertV2Keys = (raw, allowedKeys, label) => {
-    assertDataObject(raw, `\u4E92\u52A8\u573A\u666F v2 ${label}`);
+    assertDataObject2(raw, `\u4E92\u52A8\u573A\u666F v2 ${label}`);
     const allowed = new Set(allowedKeys);
     const unsupported = Object.keys(raw).find((key) => !allowed.has(key));
     if (unsupported) throw new Error(`\u4E92\u52A8\u573A\u666F v2 ${label} \u5305\u542B\u989D\u5916\u5B57\u6BB5\uFF1A${unsupported}`);
@@ -5534,7 +5892,7 @@ ${lines.join("\n")}
     assertDataArray(value, `\u4E92\u52A8\u573A\u666F v2 ${label}`);
   };
   var assertV1Object = (value, label) => {
-    assertDataObject(value, `\u4E92\u52A8\u573A\u666F v1 ${label}`);
+    assertDataObject2(value, `\u4E92\u52A8\u573A\u666F v1 ${label}`);
   };
   var assertV1Keys = (raw, allowedKeys, label) => {
     assertV1Object(raw, label);
@@ -5593,9 +5951,9 @@ ${lines.join("\n")}
     const danmaku = assertV1OptionalArray(live, "danmaku", liveLabel, INTERACTIVE_LIMITS.danmaku);
     danmaku.forEach((item, index) => assertV1Item(item, "danmaku", `${liveLabel}.danmaku.${index}`));
   };
-  var isUnsafeDictionaryKey = (value) => value === "prototype" || Object.hasOwn(Object.prototype, value);
+  var isUnsafeDictionaryKey2 = (value) => value === "prototype" || Object.hasOwn(Object.prototype, value);
   var assertSafeDictionaryKey = (value, label) => {
-    if (isUnsafeDictionaryKey(value)) throw new Error(`\u4E92\u52A8\u573A\u666F ${label} \u5305\u542B\u5371\u9669\u952E\uFF1A${value}`);
+    if (isUnsafeDictionaryKey2(value)) throw new Error(`\u4E92\u52A8\u573A\u666F ${label} \u5305\u542B\u5371\u9669\u952E\uFF1A${value}`);
     return value;
   };
   var assertV2DictionaryKey = (value, max, label) => {
@@ -5603,11 +5961,11 @@ ${lines.join("\n")}
     return assertSafeDictionaryKey(value, `v2 ${label}`);
   };
   var normalizeV1DictionaryKey = (value, max, label) => {
-    const normalized = text2(value, max);
+    const normalized = text3(value, max);
     return normalized ? assertSafeDictionaryKey(normalized, `v1 ${label}`) : "";
   };
-  var canonicalName = (value) => text2(value, 80).toLocaleLowerCase();
-  var stableHash2 = (value) => {
+  var canonicalName = (value) => text3(value, 80).toLocaleLowerCase();
+  var stableHash3 = (value) => {
     let hash = 2166136261;
     for (const character of String(value)) {
       hash ^= character.codePointAt(0);
@@ -5617,36 +5975,14 @@ ${lines.join("\n")}
   };
   function deriveInteractiveActorId(scopeId, type, bindingKey) {
     const safeType = INTERACTIVE_ACTOR_TYPES.includes(type) ? type : "legacy";
-    const key = text2(bindingKey, 240) || "unknown";
-    return `actor_${safeType}_${stableHash2(`${scopeId}\0${safeType}\0${key}`)}`;
+    const key = text3(bindingKey, 240) || "unknown";
+    return `actor_${safeType}_${stableHash3(`${scopeId}\0${safeType}\0${key}`)}`;
   }
   function createEmptyInteractiveStore() {
     return { version: INTERACTIVE_STORE_VERSION, scopes: {} };
   }
-  function stripPersistedV2ContentRating(rawStore) {
-    if (rawStore === null || rawStore === void 0 || typeof rawStore !== "object" || Array.isArray(rawStore)) return { store: rawStore, changed: false };
-    assertDataObject(rawStore, "\u4E92\u52A8\u573A\u666F\u6301\u4E45\u5316 store");
-    if (rawStore.version !== INTERACTIVE_STORE_VERSION) return { store: rawStore, changed: false };
-    assertDataObject(rawStore.scopes, "\u4E92\u52A8\u573A\u666F\u6301\u4E45\u5316 scopes");
-    let changed = false;
-    const scopes = { ...rawStore.scopes };
-    for (const [scopeId, rawScope] of Object.entries(rawStore.scopes)) {
-      assertDataObject(rawScope, `\u4E92\u52A8\u573A\u666F\u6301\u4E45\u5316 scope ${scopeId}`);
-      assertDataObject(rawScope.scenes, `\u4E92\u52A8\u573A\u666F\u6301\u4E45\u5316 scope ${scopeId}.scenes`);
-      let scenes = rawScope.scenes;
-      for (const [sceneId, rawScene] of Object.entries(rawScope.scenes)) {
-        assertDataObject(rawScene, `\u4E92\u52A8\u573A\u666F\u6301\u4E45\u5316 scope ${scopeId}.scene ${sceneId}`);
-        const ratingDescriptor = Object.getOwnPropertyDescriptor(rawScene, "contentRating");
-        if (!ratingDescriptor || ratingDescriptor.enumerable !== true || typeof ratingDescriptor.value !== "string") continue;
-        if (scenes === rawScope.scenes) scenes = { ...rawScope.scenes };
-        const scene = { ...rawScene };
-        delete scene.contentRating;
-        scenes[sceneId] = scene;
-        changed = true;
-      }
-      if (scenes !== rawScope.scenes) scopes[scopeId] = { ...rawScope, scenes };
-    }
-    return { store: changed ? { ...rawStore, scopes } : rawStore, changed };
+  function stripPersistedV2ContentRating2(rawStore) {
+    return stripPersistedV2ContentRating(rawStore, INTERACTIVE_STORE_VERSION);
   }
   function createDefaultPhoneUiScope() {
     return {
@@ -5661,14 +5997,6 @@ ${lines.join("\n")}
   function createEmptyPhoneUiState() {
     return { version: PHONE_UI_STATE_VERSION, scopes: {} };
   }
-  var normalizeSharedScenes = (value, interactiveStore) => [...new Set((Array.isArray(value) ? value : []).flatMap((item) => {
-    const storageId = typeof item?.storageId === "string" ? item.storageId.trim() : "";
-    const sceneId = typeof item?.sceneId === "string" ? item.sceneId.trim() : "";
-    return storageId && sceneId && storageId.length <= 160 && sceneId.length <= 80 && !isUnsafeDictionaryKey(storageId) && Object.hasOwn(interactiveStore?.scopes?.[storageId]?.scenes || {}, sceneId) ? [`${storageId}\0${sceneId}`] : [];
-  }))].map((key) => {
-    const [storageId, sceneId] = key.split("\0");
-    return { storageId, sceneId };
-  });
   function normalizeAmbientStatus(value) {
     return { enabled: value?.enabled === true };
   }
@@ -5678,7 +6006,7 @@ ${lines.join("\n")}
     if (raw.version !== PHONE_UI_STATE_VERSION || !raw.scopes || typeof raw.scopes !== "object" || Array.isArray(raw.scopes)) return result;
     const interactiveScopes = interactiveStore?.scopes && typeof interactiveStore.scopes === "object" ? interactiveStore.scopes : {};
     for (const [storageId, value] of Object.entries(raw.scopes)) {
-      if (!storageId || storageId !== storageId.trim() || storageId.length > 160 || isUnsafeDictionaryKey(storageId)) continue;
+      if (!storageId || storageId !== storageId.trim() || storageId.length > 160 || isUnsafeDictionaryKey2(storageId)) continue;
       if (!value || typeof value !== "object" || Array.isArray(value)) continue;
       const scenes = interactiveScopes[storageId]?.scenes;
       const availableSceneIds = new Set(scenes && typeof scenes === "object" ? Object.keys(scenes) : []);
@@ -5696,8 +6024,10 @@ ${lines.join("\n")}
       if (lastPage === "community" && !lastSceneId) lastPage = "desktop";
       const lastChatType = value.lastChatType === "contact" || value.lastChatType === "group" ? value.lastChatType : null;
       const lastChatKey = lastChatType && typeof value.lastChatKey === "string" && value.lastChatKey && value.lastChatKey === value.lastChatKey.trim() && value.lastChatKey.length <= 160 ? value.lastChatKey : null;
+      const importedTemplateSceneIds = normalizeImportedTemplateSceneIds(value.importedTemplateSceneIds, scenes);
       result.scopes[storageId] = {
         pinnedSceneIds,
+        ...Object.keys(importedTemplateSceneIds).length ? { importedTemplateSceneIds } : {},
         lastPage,
         lastSceneId,
         lastTab: PHONE_UI_TABS.includes(value.lastTab) ? value.lastTab : "feed",
@@ -5705,12 +6035,12 @@ ${lines.join("\n")}
         lastChatKey
       };
     }
-    const sharedScenes = normalizeSharedScenes(raw.sharedScenes, interactiveStore);
-    if (sharedScenes.length) result.sharedScenes = sharedScenes;
+    const sharedCommunityTemplates = normalizeSharedCommunityTemplates(raw.sharedCommunityTemplates);
+    if (sharedCommunityTemplates.length) result.sharedCommunityTemplates = sharedCommunityTemplates;
     return result;
   }
   var assertPhoneUiStorageId = (storageId) => {
-    if (typeof storageId !== "string" || !storageId || storageId !== storageId.trim() || storageId.length > 160 || isUnsafeDictionaryKey(storageId)) {
+    if (typeof storageId !== "string" || !storageId || storageId !== storageId.trim() || storageId.length > 160 || isUnsafeDictionaryKey2(storageId)) {
       throw new Error("\u624B\u673A\u9875\u9762 storageId \u683C\u5F0F\u65E0\u6548");
     }
   };
@@ -5726,7 +6056,8 @@ ${lines.join("\n")}
         [storageId]: {
           ...currentScope,
           ...patch,
-          pinnedSceneIds: Object.hasOwn(patch, "pinnedSceneIds") ? [...Array.isArray(patch.pinnedSceneIds) ? patch.pinnedSceneIds : []] : [...currentScope.pinnedSceneIds]
+          pinnedSceneIds: Object.hasOwn(patch, "pinnedSceneIds") ? [...Array.isArray(patch.pinnedSceneIds) ? patch.pinnedSceneIds : []] : [...currentScope.pinnedSceneIds],
+          importedTemplateSceneIds: Object.hasOwn(patch, "importedTemplateSceneIds") ? { ...patch.importedTemplateSceneIds || {} } : { ...currentScope.importedTemplateSceneIds }
         }
       }
     }, interactiveStore);
@@ -5743,30 +6074,56 @@ ${lines.join("\n")}
     const pinnedSceneIds = scope.pinnedSceneIds.includes(sceneId) ? scope.pinnedSceneIds.filter((idValue) => idValue !== sceneId) : [...scope.pinnedSceneIds, sceneId];
     return patchPhoneUiScope(normalized, storageId, { pinnedSceneIds }, interactiveStore);
   }
-  function toggleSharedScene(phoneUiState, storageId, sceneId, interactiveStore) {
+  function assertCommunityTemplateSource(storageId, sceneId, interactiveStore) {
     assertPhoneUiStorageId(storageId);
     if (typeof sceneId !== "string" || !sceneId || sceneId !== sceneId.trim() || sceneId.length > 80) {
       throw new Error("\u4E92\u52A8\u573A\u666F\u6807\u8BC6\u683C\u5F0F\u65E0\u6548");
     }
-    if (!Object.hasOwn(interactiveStore?.scopes?.[storageId]?.scenes || {}, sceneId)) throw new Error("\u4E92\u52A8\u573A\u666F\u4E0D\u5B58\u5728");
+    const scene = interactiveStore?.scopes?.[storageId]?.scenes?.[sceneId];
+    if (!scene) throw new Error("\u4E92\u52A8\u573A\u666F\u4E0D\u5B58\u5728");
+    return scene;
+  }
+  function publishCommunityTemplate(phoneUiState, storageId, sceneId, interactiveStore, sharedAt = Date.now()) {
+    const scene = assertCommunityTemplateSource(storageId, sceneId, interactiveStore);
     const normalized = normalizePhoneUiState(phoneUiState, interactiveStore);
-    const sharedScenes = normalized.sharedScenes || [];
-    const shared = sharedScenes.some((item) => item.storageId === storageId && item.sceneId === sceneId);
+    const template = createCommunityTemplate(scene, storageId, sharedAt);
+    const templates = normalized.sharedCommunityTemplates || [];
     return normalizePhoneUiState({
       ...normalized,
-      sharedScenes: shared ? sharedScenes.filter((item) => item.storageId !== storageId || item.sceneId !== sceneId) : [...sharedScenes, { storageId, sceneId }]
+      sharedCommunityTemplates: [...templates.filter((item) => item.id !== template.id), template]
+    }, interactiveStore);
+  }
+  function unpublishCommunityTemplate(phoneUiState, storageId, sceneId, interactiveStore) {
+    const scene = assertCommunityTemplateSource(storageId, sceneId, interactiveStore);
+    const normalized = normalizePhoneUiState(phoneUiState, interactiveStore);
+    const templateId = createCommunityTemplate(scene, storageId, 1).id;
+    return normalizePhoneUiState({
+      ...normalized,
+      sharedCommunityTemplates: (normalized.sharedCommunityTemplates || []).filter((template) => template.id !== templateId)
+    }, interactiveStore);
+  }
+  function removeCommunityTemplatesForSourceScene(phoneUiState, storageId, sceneId, interactiveStore) {
+    assertPhoneUiStorageId(storageId);
+    if (!validPhoneUiId(sceneId, 80)) throw new Error("\u4E92\u52A8\u573A\u666F\u6807\u8BC6\u683C\u5F0F\u65E0\u6548");
+    const normalized = normalizePhoneUiState(phoneUiState, interactiveStore);
+    const templates = normalized.sharedCommunityTemplates || [];
+    const remaining = templates.filter((template) => template.sourceStorageId !== storageId || template.sourceSceneId !== sceneId);
+    if (remaining.length === templates.length) return normalized;
+    return normalizePhoneUiState({
+      ...normalized,
+      sharedCommunityTemplates: remaining
     }, interactiveStore);
   }
   function normalizeActor(raw, actorId) {
     const type = INTERACTIVE_ACTOR_TYPES.includes(raw?.type) ? raw.type : "legacy";
-    const displayName = text2(raw?.displayName, 80) || (type === "user" ? "\u6211" : type === "passerby" ? "\u8DEF\u4EBA" : "\u533F\u540D\u7528\u6237");
+    const displayName = text3(raw?.displayName, 80) || (type === "user" ? "\u6211" : type === "passerby" ? "\u8DEF\u4EBA" : "\u533F\u540D\u7528\u6237");
     return {
-      actorId: text2(actorId || raw?.actorId, 80),
+      actorId: text3(actorId || raw?.actorId, 80),
       type,
       displayName,
-      bindingKey: text2(raw?.bindingKey, 240),
-      profile: text2(raw?.profile, 1e3),
-      createdAt: finitePositiveNumber(raw?.createdAt) || 1
+      bindingKey: text3(raw?.bindingKey, 240),
+      profile: text3(raw?.profile, 1e3),
+      createdAt: finitePositiveNumber2(raw?.createdAt) || 1
     };
   }
   function assertV2Actor(raw, actorId, scopeId) {
@@ -5783,8 +6140,8 @@ ${lines.join("\n")}
   function ensureInteractiveActor(scope, scopeId, seed) {
     if (!scope.actors || typeof scope.actors !== "object" || Array.isArray(scope.actors)) scope.actors = {};
     const type = INTERACTIVE_ACTOR_TYPES.includes(seed?.type) ? seed.type : "legacy";
-    const displayName = text2(seed?.displayName, 80) || (type === "user" ? "\u6211" : "\u533F\u540D\u7528\u6237");
-    const bindingKey = text2(seed?.bindingKey, 240) || `${type}:${canonicalName(displayName) || "anonymous"}`;
+    const displayName = text3(seed?.displayName, 80) || (type === "user" ? "\u6211" : "\u533F\u540D\u7528\u6237");
+    const bindingKey = text3(seed?.bindingKey, 240) || `${type}:${canonicalName(displayName) || "anonymous"}`;
     const actorId = deriveInteractiveActorId(scopeId, type, bindingKey);
     const previous = Object.hasOwn(scope.actors, actorId) ? scope.actors[actorId] : null;
     scope.actors[actorId] = normalizeActor({
@@ -5793,23 +6150,23 @@ ${lines.join("\n")}
       type,
       displayName,
       bindingKey,
-      createdAt: finitePositiveNumber(previous?.createdAt) || finitePositiveNumber(seed?.createdAt) || Date.now()
+      createdAt: finitePositiveNumber2(previous?.createdAt) || finitePositiveNumber2(seed?.createdAt) || Date.now()
     }, actorId);
     return scope.actors[actorId];
   }
   function ensureLegacyActor(scope, scopeId, displayName, createdAt) {
-    const name = text2(displayName, 80) || "\u533F\u540D\u7528\u6237";
+    const name = text3(displayName, 80) || "\u533F\u540D\u7528\u6237";
     return ensureInteractiveActor(scope, scopeId, {
       type: "legacy",
       displayName: name,
       bindingKey: `legacy:${canonicalName(name) || "anonymous"}`,
-      createdAt: finitePositiveNumber(createdAt) || 1
+      createdAt: finitePositiveNumber2(createdAt) || 1
     });
   }
   function actorReference(actor, snapshot) {
     return {
       authorId: actor.actorId,
-      authorNameSnapshot: text2(snapshot, 80) || actor.displayName
+      authorNameSnapshot: text3(snapshot, 80) || actor.displayName
     };
   }
   function resolveInteractiveAuthor(scope, scopeId, displayName, seed = null) {
@@ -5817,7 +6174,7 @@ ${lines.join("\n")}
       const actor2 = ensureInteractiveActor(scope, scopeId, seed);
       return actorReference(actor2, seed.displayName);
     }
-    const name = text2(displayName, 80) || "\u533F\u540D\u7528\u6237";
+    const name = text3(displayName, 80) || "\u533F\u540D\u7528\u6237";
     const matches = Object.values(scope.actors || {}).filter((actor2) => actor2.type === "story" && canonicalName(actor2.displayName) === canonicalName(name));
     if (matches.length === 1) return actorReference(matches[0], name);
     const actor = ensureInteractiveActor(scope, scopeId, {
@@ -5828,10 +6185,10 @@ ${lines.join("\n")}
     return actorReference(actor, name);
   }
   function deterministicItemId(prefix, scopeId, path, content) {
-    return `${prefix}_${stableHash2(`${scopeId}\0${path}\0${content}`)}`;
+    return `${prefix}_${stableHash3(`${scopeId}\0${path}\0${content}`)}`;
   }
   function normalizeAuthor(raw, scope, scopeId, sourceVersion, createdAt) {
-    const snapshot = text2(raw?.authorNameSnapshot ?? raw?.author, 80) || "\u533F\u540D\u7528\u6237";
+    const snapshot = text3(raw?.authorNameSnapshot ?? raw?.author, 80) || "\u533F\u540D\u7528\u6237";
     if (sourceVersion === INTERACTIVE_STORE_VERSION) {
       const actorId = assertV2DictionaryKey(raw?.authorId, 80, "\u5185\u5BB9 authorId");
       if (!Object.hasOwn(scope.actors || {}, actorId)) throw new Error(`\u4E92\u52A8\u573A\u666F v2 \u5185\u5BB9\u5F15\u7528\u4E86\u4E0D\u5B58\u5728\u7684 actor\uFF1A${actorId}`);
@@ -5849,11 +6206,11 @@ ${lines.join("\n")}
     } else if (context.strictLegacy) {
       assertV1Item(raw, "comment", context.path);
     }
-    const content = text2(raw?.content, 1e3);
+    const content = text3(raw?.content, 1e3);
     if (!content) return null;
-    const createdAt = finitePositiveNumber(raw?.createdAt) || 1;
+    const createdAt = finitePositiveNumber2(raw?.createdAt) || 1;
     return {
-      id: text2(raw?.id, 80) || deterministicItemId("comment", context.scopeId, context.path, content),
+      id: text3(raw?.id, 80) || deterministicItemId("comment", context.scopeId, context.path, content),
       ...normalizeAuthor(raw, context.scope, context.scopeId, context.sourceVersion, createdAt),
       content,
       createdAt
@@ -5879,15 +6236,15 @@ ${lines.join("\n")}
     } else if (context.strictLegacy) {
       assertV1Item(raw, "post", context.path);
     }
-    const content = text2(raw?.content, 4e3);
+    const content = text3(raw?.content, 4e3);
     if (!content) return null;
-    const createdAt = finitePositiveNumber(raw?.createdAt) || 1;
-    const postId = text2(raw?.id, 80) || deterministicItemId("post", context.scopeId, context.path, content);
+    const createdAt = finitePositiveNumber2(raw?.createdAt) || 1;
+    const postId = text3(raw?.id, 80) || deterministicItemId("post", context.scopeId, context.path, content);
     return {
       id: postId,
       ...normalizeAuthor(raw, context.scope, context.scopeId, context.sourceVersion, createdAt),
       content,
-      tags: list(raw?.tags).map((tag) => text2(tag, 30)).filter(Boolean).slice(0, 5),
+      tags: list(raw?.tags).map((tag) => text3(tag, 30)).filter(Boolean).slice(0, 5),
       createdAt,
       comments: list(raw?.comments).map((comment, index) => normalizeComment(comment, {
         ...context,
@@ -5908,23 +6265,23 @@ ${lines.join("\n")}
     } else if (context.strictLegacy) {
       assertV1Item(raw, "danmaku", context.path);
     }
-    const content = text2(raw?.content, 200);
+    const content = text3(raw?.content, 200);
     if (!content) return null;
-    const createdAt = finitePositiveNumber(raw?.createdAt) || 1;
+    const createdAt = finitePositiveNumber2(raw?.createdAt) || 1;
     return {
-      id: text2(raw?.id, 80) || deterministicItemId("danmaku", context.scopeId, context.path, content),
+      id: text3(raw?.id, 80) || deterministicItemId("danmaku", context.scopeId, context.path, content),
       ...normalizeAuthor(raw, context.scope, context.scopeId, context.sourceVersion, createdAt),
       content,
       createdAt
     };
   }
-  function normalizeThemeAccent(value) {
+  function normalizeThemeAccent2(value) {
     const accent = String(value ?? "").trim();
     return /^#[0-9a-fA-F]{6}$/.test(accent) ? accent.toLowerCase() : "";
   }
   function normalizeScene(raw, options2 = {}) {
     const scope = options2.scope || { actors: {} };
-    const scopeId = text2(options2.scopeId, 160) || "__standalone__";
+    const scopeId = text3(options2.scopeId, 160) || "__standalone__";
     const sourceVersion = options2.sourceVersion === INTERACTIVE_STORE_VERSION ? INTERACTIVE_STORE_VERSION : 1;
     const strictLegacy = sourceVersion === 1 && options2.strictLegacy === true;
     if (sourceVersion === INTERACTIVE_STORE_VERSION) {
@@ -5937,7 +6294,7 @@ ${lines.join("\n")}
       assertV2Text(raw.generatedPrompt, 6e3, "scene.generatedPrompt", { allowEmpty: true });
       if (raw.themeAccent !== void 0) {
         assertV2Text(raw.themeAccent, 7, "scene.themeAccent", { allowEmpty: true });
-        if (raw.themeAccent && normalizeThemeAccent(raw.themeAccent) !== raw.themeAccent) {
+        if (raw.themeAccent && normalizeThemeAccent2(raw.themeAccent) !== raw.themeAccent) {
           throw new Error("\u4E92\u52A8\u573A\u666F v2 scene.themeAccent \u5FC5\u987B\u662F\u5C0F\u5199\u516D\u4F4D\u5341\u516D\u8FDB\u5236\u989C\u8272");
         }
       }
@@ -5953,17 +6310,17 @@ ${lines.join("\n")}
     } else if (strictLegacy) {
       assertV1Scene(raw, `scope ${scopeId}.scene ${raw?.id || "(\u7A7A)"}`);
     }
-    const sceneId = text2(raw?.id, 80) || id("scene");
-    const createdAt = finitePositiveNumber(raw?.createdAt) || 1;
+    const sceneId = text3(raw?.id, 80) || id("scene");
+    const createdAt = finitePositiveNumber2(raw?.createdAt) || 1;
     return {
       id: sceneId,
-      title: text2(raw?.title, 80) || "\u672A\u547D\u540D\u4E92\u52A8\u573A\u666F",
-      preset: text2(raw?.preset, 30) || "weibo",
-      styleInput: text2(raw?.styleInput, 2e3),
-      generatedPrompt: text2(raw?.generatedPrompt, 6e3),
-      themeAccent: normalizeThemeAccent(raw?.themeAccent),
+      title: text3(raw?.title, 80) || "\u672A\u547D\u540D\u4E92\u52A8\u573A\u666F",
+      preset: text3(raw?.preset, 30) || "weibo",
+      styleInput: text3(raw?.styleInput, 2e3),
+      generatedPrompt: text3(raw?.generatedPrompt, 6e3),
+      themeAccent: normalizeThemeAccent2(raw?.themeAccent),
       createdAt,
-      updatedAt: finitePositiveNumber(raw?.updatedAt) || createdAt,
+      updatedAt: finitePositiveNumber2(raw?.updatedAt) || createdAt,
       posts: list(raw?.posts).map((post, index) => normalizePost(post, {
         scope,
         scopeId,
@@ -5972,7 +6329,7 @@ ${lines.join("\n")}
         path: `scenes.${sceneId}.posts.${index}`
       })).filter(Boolean).slice(-INTERACTIVE_LIMITS.posts),
       live: {
-        title: text2(raw?.live?.title, 100),
+        title: text3(raw?.live?.title, 100),
         status: "idle",
         warmupStarted: raw?.live?.warmupStarted === true,
         danmaku: list(raw?.live?.danmaku).map((item, index) => normalizeDanmaku(item, {
@@ -5987,7 +6344,7 @@ ${lines.join("\n")}
   }
   function addSceneComment(scope, scopeId, scene, postId, authorSeed, content) {
     const post = scene?.posts?.find((item) => item.id === postId);
-    const normalizedContent = text2(content, 1e3);
+    const normalizedContent = text3(content, 1e3);
     if (!post) throw new Error("\u5E16\u5B50\u4E0D\u5B58\u5728");
     if (!normalizedContent) throw new Error("\u8BC4\u8BBA\u5185\u5BB9\u4E0D\u80FD\u4E3A\u7A7A");
     const author = resolveInteractiveAuthor(scope, scopeId, authorSeed?.displayName, authorSeed);
@@ -6004,17 +6361,17 @@ ${lines.join("\n")}
   function appendScenePosts(scope, scopeId, scene, items, actorSeeds = []) {
     if (!scope || !scene) throw new Error("\u4E92\u52A8\u573A\u666F\u4E0D\u5B58\u5728");
     const prepared = list(items).flatMap((item) => {
-      const content = text2(item?.content, 4e3);
+      const content = text3(item?.content, 4e3);
       if (!content) return [];
       const comments = list(item?.comments).flatMap((comment) => {
-        const commentContent = text2(comment?.content, 1e3);
+        const commentContent = text3(comment?.content, 1e3);
         return commentContent ? [{ author: comment?.author, content: commentContent }] : [];
       }).slice(0, INTERACTIVE_LIMITS.comments);
       return [{
         author: item?.author,
         authorSeed: item?.authorSeed || null,
         content,
-        tags: list(item?.tags).map((tag) => text2(tag, 30)).filter(Boolean).slice(0, 5),
+        tags: list(item?.tags).map((tag) => text3(tag, 30)).filter(Boolean).slice(0, 5),
         comments
       }];
     });
@@ -6051,7 +6408,7 @@ ${lines.join("\n")}
   }
   function updateScenePost(scene, postId, content) {
     const post = scene?.posts?.find((item) => item.id === postId);
-    const normalizedContent = text2(content, 4e3);
+    const normalizedContent = text3(content, 4e3);
     if (!post) throw new Error("\u5E16\u5B50\u4E0D\u5B58\u5728");
     if (!normalizedContent) throw new Error("\u5E16\u5B50\u5185\u5BB9\u4E0D\u80FD\u4E3A\u7A7A");
     post.content = normalizedContent;
@@ -6059,7 +6416,7 @@ ${lines.join("\n")}
   }
   function updateSceneDanmaku(scene, danmakuId, content) {
     const danmaku = scene?.live?.danmaku?.find((item) => item.id === danmakuId);
-    const normalizedContent = text2(content, 200);
+    const normalizedContent = text3(content, 200);
     if (!danmaku) throw new Error("\u5F39\u5E55\u4E0D\u5B58\u5728");
     if (!normalizedContent) throw new Error("\u5F39\u5E55\u5185\u5BB9\u4E0D\u80FD\u4E3A\u7A7A");
     danmaku.content = normalizedContent;
@@ -6068,7 +6425,7 @@ ${lines.join("\n")}
   function updateSceneComment(scene, postId, commentId, content) {
     const post = scene?.posts?.find((item) => item.id === postId);
     const comment = post?.comments?.find((item) => item.id === commentId);
-    const normalizedContent = text2(content, 1e3);
+    const normalizedContent = text3(content, 1e3);
     if (!post || !comment) throw new Error("\u8BC4\u8BBA\u4E0D\u5B58\u5728");
     if (!normalizedContent) throw new Error("\u8BC4\u8BBA\u5185\u5BB9\u4E0D\u80FD\u4E3A\u7A7A");
     comment.content = normalizedContent;
@@ -6121,14 +6478,14 @@ ${lines.join("\n")}
   function normalizeInteractiveStore(raw) {
     const result = createEmptyInteractiveStore();
     if (raw === null || raw === void 0) return result;
-    assertDataObject(raw, "\u4E92\u52A8\u573A\u666F store");
+    assertDataObject2(raw, "\u4E92\u52A8\u573A\u666F store");
     const hasVersion = Object.hasOwn(raw, "version");
     if (hasVersion && ![1, INTERACTIVE_STORE_VERSION].includes(raw.version)) throw new Error(`\u4E92\u52A8\u573A\u666F\u7248\u672C ${raw.version} \u4E0D\u53D7\u652F\u6301`);
     const sourceVersion = hasVersion && raw.version === INTERACTIVE_STORE_VERSION ? INTERACTIVE_STORE_VERSION : 1;
     if (sourceVersion === INTERACTIVE_STORE_VERSION) {
       assertV2Keys(raw, ["version", "scopes"], "store");
       if (!Object.hasOwn(raw, "scopes")) throw new Error("\u4E92\u52A8\u573A\u666F v2 scopes \u7F3A\u5931");
-      assertDataObject(raw.scopes, "\u4E92\u52A8\u573A\u666F v2 scopes");
+      assertDataObject2(raw.scopes, "\u4E92\u52A8\u573A\u666F v2 scopes");
     } else {
       assertV1Keys(raw, ["version", "scopes"], "store");
       if (!Object.hasOwn(raw, "scopes")) throw new Error("\u4E92\u52A8\u573A\u666F v1 store.scopes \u7F3A\u5931");
@@ -6150,7 +6507,7 @@ ${lines.join("\n")}
         assertV2List(value.sceneOrder, `scope ${scopeId}.sceneOrder`);
         if (value.sceneOrder.length > INTERACTIVE_LIMITS.scenes) throw new Error(`\u4E92\u52A8\u573A\u666F v2 scope ${scopeId}.sceneOrder \u4E0D\u80FD\u8D85\u8FC7 ${INTERACTIVE_LIMITS.scenes} \u9879`);
         value.sceneOrder.forEach((sceneId, index) => assertV2Text(sceneId, 80, `scope ${scopeId}.sceneOrder.${index}`));
-        assertDataObject(value.scenes, `\u4E92\u52A8\u573A\u666F v2 scope ${scopeId}.scenes`);
+        assertDataObject2(value.scenes, `\u4E92\u52A8\u573A\u666F v2 scope ${scopeId}.scenes`);
       } else {
         assertV1Keys(value, ["activeSceneId", "sceneOrder", "scenes"], `scope ${scopeId}`);
         if (Object.hasOwn(value, "activeSceneId") && value.activeSceneId !== null && typeof value.activeSceneId !== "string") throw new Error(`\u4E92\u52A8\u573A\u666F v1 scope ${scopeId}.activeSceneId \u5FC5\u987B\u662F\u5B57\u7B26\u4E32\u6216 null`);
@@ -6925,8 +7282,8 @@ ${lines.join("\n")}
       const current = loadPhoneUiState(interactiveStore);
       if (Object.hasOwn(normalized.scopes, storageId)) current.scopes[storageId] = structuredClone(normalized.scopes[storageId]);
       else delete current.scopes[storageId];
-      if (Object.hasOwn(normalized, "sharedScenes")) current.sharedScenes = structuredClone(normalized.sharedScenes);
-      else delete current.sharedScenes;
+      if (Object.hasOwn(normalized, "sharedCommunityTemplates")) current.sharedCommunityTemplates = structuredClone(normalized.sharedCommunityTemplates);
+      else delete current.sharedCommunityTemplates;
       const merged = normalizePhoneUiState(current, interactiveStore);
       localStorage.setItem(PHONE_UI_STATE_KEY, JSON.stringify(merged));
       return merged;
@@ -7139,10 +7496,10 @@ ${lines.join("\n")}
     }
   }
   function parseGeneratedDirectory(raw) {
-    const text7 = String(raw ?? "").trim();
-    if (!text7) throw new Error("AI \u8FD4\u56DE\u4E86\u7A7A\u5185\u5BB9");
+    const text8 = String(raw ?? "").trim();
+    if (!text8) throw new Error("AI \u8FD4\u56DE\u4E86\u7A7A\u5185\u5BB9");
     const parsed = parseFirstJsonObject(
-      text7,
+      text8,
       "AI \u8FD4\u56DE\u683C\u5F0F\u65E0\u6CD5\u89E3\u6790\uFF0C\u672A\u627E\u5230\u6709\u6548\u7684\u8054\u7CFB\u4EBA JSON",
       (value) => !!value && typeof value === "object" && !Array.isArray(value) && Object.keys(value).some((key) => key === "contacts" || key === "groups")
     );
@@ -7350,28 +7707,28 @@ ${lines.join("\n")}
   function splitToSentences(str, stripFn = null) {
     const protectedText = (str || "").replace(/[\(（][^)）]*[\)）]/g, (match) => match.replace(/\//g, ""));
     return protectedText.split(/\s*\/\s*/).map((part) => {
-      let text7 = part.replace(/\u0001/g, "/").trim();
-      if (stripFn) text7 = stripFn(text7);
-      if (!text7 || text7 === ")" || text7 === "\uFF09" || text7 === "(" || text7 === "\uFF08") return "";
-      const opens = (text7.match(/[（(]/g) || []).length;
-      const closes = (text7.match(/[）)]/g) || []).length;
-      if (opens > closes) text7 += "\uFF09".repeat(opens - closes);
-      else if (closes > opens && opens === 0) text7 = text7.replace(/^[)）]+\s*/, "").replace(/\s*[)）]+$/, "");
-      return text7;
-    }).filter(Boolean).flatMap((text7) => {
+      let text8 = part.replace(/\u0001/g, "/").trim();
+      if (stripFn) text8 = stripFn(text8);
+      if (!text8 || text8 === ")" || text8 === "\uFF09" || text8 === "(" || text8 === "\uFF08") return "";
+      const opens = (text8.match(/[（(]/g) || []).length;
+      const closes = (text8.match(/[）)]/g) || []).length;
+      if (opens > closes) text8 += "\uFF09".repeat(opens - closes);
+      else if (closes > opens && opens === 0) text8 = text8.replace(/^[)）]+\s*/, "").replace(/\s*[)）]+$/, "");
+      return text8;
+    }).filter(Boolean).flatMap((text8) => {
       const parts = [];
       let lastIndex = 0;
       let match;
       const emojiPattern = /\[emo:[^\]]+\]/g;
-      while ((match = emojiPattern.exec(text7)) !== null) {
-        const before = text7.slice(lastIndex, match.index).trim();
+      while ((match = emojiPattern.exec(text8)) !== null) {
+        const before = text8.slice(lastIndex, match.index).trim();
         if (before) parts.push(before);
         parts.push(match[0]);
         lastIndex = match.index + match[0].length;
       }
-      const after = text7.slice(lastIndex).trim();
+      const after = text8.slice(lastIndex).trim();
       if (after) parts.push(after);
-      return parts.length ? parts : [text7];
+      return parts.length ? parts : [text8];
     }).filter(Boolean).slice(0, 15);
   }
 
@@ -7399,21 +7756,21 @@ ${lines.join("\n")}
     if (!value || typeof value !== "object") return null;
     const messageId = cleanId(value.messageId);
     const bubbleId = cleanId(value.bubbleId);
-    const text7 = [...String(value.text || "").trim()].slice(0, SNAPSHOT_LIMIT).join("");
-    if (!messageId || !bubbleId || !text7) return null;
+    const text8 = [...String(value.text || "").trim()].slice(0, SNAPSHOT_LIMIT).join("");
+    if (!messageId || !bubbleId || !text8) return null;
     return {
       messageId,
       bubbleId,
       sender: [...String(value.sender || "").trim()].slice(0, 24).join(""),
-      text: text7
+      text: text8
     };
   }
   function formatQuoteContext(value) {
     const quote = normalizeQuoteSnapshot(value);
     if (!quote) return "";
     const sender = quote.sender || "\u672A\u77E5\u53D1\u9001\u8005";
-    const text7 = quote.text.replace(/\s+/g, " ").trim();
-    return `\u5F15\u7528 ${sender} \u7684\u6D88\u606F\uFF1A\u201C${text7}\u201D`;
+    const text8 = quote.text.replace(/\s+/g, " ").trim();
+    return `\u5F15\u7528 ${sender} \u7684\u6D88\u606F\uFF1A\u201C${text8}\u201D`;
   }
   function describeMessageEntry(entry2, { isGroup = false, groupMembers = [] } = {}) {
     if (Array.isArray(entry2?.bubbles) && entry2.bubbles.length) {
@@ -7429,11 +7786,11 @@ ${lines.join("\n")}
       return content.split("\n").flatMap((line2) => {
         const match = line2.match(/^(.{1,20})[：:]\s*(.+)$/);
         const sender = match ? memberMap.get(match[1].trim().toLowerCase()) : "";
-        const text7 = sender ? match[2] : line2;
-        return splitToSentences(text7).map((part) => ({ text: part, sender }));
+        const text8 = sender ? match[2] : line2;
+        return splitToSentences(text8).map((part) => ({ text: part, sender }));
       });
     }
-    return splitToSentences(content).map((text7) => ({ text: text7, sender: "" }));
+    return splitToSentences(content).map((text8) => ({ text: text8, sender: "" }));
   }
   function ensureMessageEntry(entry2, options2 = {}) {
     if (!entry2 || typeof entry2 !== "object") return { entry: entry2, changed: false };
@@ -7771,8 +8128,8 @@ ${lines.join("\n")}
   }
 
   // src/worldbook-context.js
-  var text3 = (value) => typeof value === "string" ? value : "";
-  var visibleText = (value) => text3(value).replace(/```[\s\S]*?(?:```|$)/g, "").replace(/<think\b[^>]*>[\s\S]*?(?:<\/think\s*>|$)/gi, "").replace(/<[^>]+>/g, "").trim();
+  var text4 = (value) => typeof value === "string" ? value : "";
+  var visibleText = (value) => text4(value).replace(/```[\s\S]*?(?:```|$)/g, "").replace(/<think\b[^>]*>[\s\S]*?(?:<\/think\s*>|$)/gi, "").replace(/<[^>]+>/g, "").trim();
   var isAbortError = (error) => error?.name === "AbortError";
   var entryOrder = (entry2) => {
     const value = entry2.displayIndex ?? entry2.extensions?.display_index ?? entry2.order ?? entry2.insertion_order ?? entry2.uid;
@@ -7783,7 +8140,7 @@ ${lines.join("\n")}
     const keys = Array.isArray(entry2.key) ? entry2.key : Array.isArray(entry2.keys) ? entry2.keys : [];
     if (!keys.length) return false;
     const haystack = messages.join("\n").toLocaleLowerCase();
-    return keys.some((key) => text3(key).trim() && haystack.includes(text3(key).trim().toLocaleLowerCase()));
+    return keys.some((key) => text4(key).trim() && haystack.includes(text4(key).trim().toLocaleLowerCase()));
   }
   function normalizeBookEntries(bookName, book) {
     const entries = book && typeof book === "object" && !Array.isArray(book) ? book.entries : null;
@@ -7791,8 +8148,8 @@ ${lines.join("\n")}
     return pairs.flatMap(([fallbackUid, value]) => {
       if (!value || typeof value !== "object" || Array.isArray(value)) return [];
       const uid5 = value.uid ?? value.id ?? fallbackUid;
-      const content = text3(value.content);
-      const comment = text3(value.comment);
+      const content = text4(value.content);
+      const comment = text4(value.comment);
       const column = getTavernDbColumn(comment);
       const hostDisabled = value.disable === true || value.enabled === false;
       if (typeof uid5 !== "number" && typeof uid5 !== "string" || !String(uid5).trim() || !content || hostDisabled && !column) return [];
@@ -7812,7 +8169,7 @@ ${lines.join("\n")}
     const groupId = String(context?.groupId ?? "").trim();
     if (groupId) return { kind: "group", id: groupId };
     const character = context?.characters?.[context?.characterId];
-    const characterId = text3(character?.avatar) || String(context?.characterId ?? "").trim();
+    const characterId = text4(character?.avatar) || String(context?.characterId ?? "").trim();
     return characterId ? { kind: "character", id: characterId } : null;
   }
   function throwIfAborted(signal) {
@@ -7835,14 +8192,14 @@ ${lines.join("\n")}
     if (!WORLD_BOOK_MODULES.includes(module)) return "";
     if (typeof context?.loadWorldInfo !== "function") return "";
     throwIfAborted(signal);
-    const requestedNames = Array.isArray(bookNames) ? new Set(bookNames.map((name) => text3(name).trim()).filter(Boolean)) : null;
+    const requestedNames = Array.isArray(bookNames) ? new Set(bookNames.map((name) => text4(name).trim()).filter(Boolean)) : null;
     const selectedNames = getReadableWorldBookNames(context, current, worldBookOptions).filter((name) => !requestedNames || requestedNames.has(name));
     if (!selectedNames.length) return "";
     const requestedMaxChars = Number(maxChars);
     const outputMaxChars = Number.isFinite(requestedMaxChars) && requestedMaxChars > 0 ? Math.min(current.maxChars, Math.trunc(requestedMaxChars)) : current.maxChars;
     const messages = (Array.isArray(context.chat) ? context.chat : []).slice(-current.scanMessages).map((message) => visibleText(message?.mes));
     const scope = requestedScope?.kind === "group" || requestedScope?.kind === "character" || requestedScope?.kind === "public" ? requestedScope : contextScope(context);
-    const groupMemberIds = scope?.kind === "group" ? [...new Set(memberIds.map((memberId) => text3(memberId).trim()).filter(Boolean))] : [];
+    const groupMemberIds = scope?.kind === "group" ? [...new Set(memberIds.map((memberId) => text4(memberId).trim()).filter(Boolean))] : [];
     const privateMemberIds = current.groups[scope?.id]?.allowMemberPrivateMemory === true ? groupMemberIds : [];
     let length = 0;
     const contents = [];
@@ -7857,7 +8214,7 @@ ${entry2.content}` : entry2.content;
     };
     for (const rawName of selectedNames) {
       throwIfAborted(signal);
-      const bookName = text3(rawName).trim();
+      const bookName = text4(rawName).trim();
       if (!bookName) continue;
       let book;
       try {
@@ -8089,8 +8446,8 @@ ${entry2.content}` : entry2.content;
     };
   }
   function requiredText(value, max, code, label) {
-    const text7 = cleanText6(value, max);
-    return text7 || fail(code, `${label}\u4E0D\u80FD\u4E3A\u7A7A`);
+    const text8 = cleanText6(value, max);
+    return text8 || fail(code, `${label}\u4E0D\u80FD\u4E3A\u7A7A`);
   }
   function normalizeStringArray(value, max, itemMax, code, label, { unique = true } = {}) {
     if (!Array.isArray(value)) fail(code, `${label}\u5FC5\u987B\u662F\u6570\u7EC4`);
@@ -9787,11 +10144,11 @@ ${entry2.content}` : entry2.content;
       }, { passive: true });
     };
     window.__pmInsertEmoji = (code) => {
-      const text7 = window.__pmTempText || "";
+      const text8 = window.__pmTempText || "";
       document.getElementById("pm-overlay")?.remove();
       const input = document.querySelector(".pm-input");
       if (!input) return;
-      input.value = text7 + code + " ";
+      input.value = text8 + code + " ";
       window.__pmTempText = input.value;
       input.focus();
       input.selectionStart = input.selectionEnd = input.value.length;
@@ -10096,7 +10453,6 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
     chatKey = null
   }) {
     if (!runtime?.store || !storageId || storageId === "sms_unknown__default" || !PHONE_UI_PAGES.includes(page)) return false;
-    if (page === "community" && runtime.openSceneReadOnly === true && runtime.openSceneStorageId && runtime.openSceneStorageId !== storageId) return true;
     const scope = phoneScope(storageId, runtime.store);
     const normalizedChatType = chatType === "contact" || chatType === "group" ? chatType : null;
     const normalizedChatKey = normalizedChatType && typeof chatKey === "string" && chatKey.trim() ? chatKey.trim() : null;
@@ -10148,6 +10504,7 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
     confirm: confirm2,
     invalidate,
     commit,
+    commitDelete = null,
     persistPhoneUi,
     refreshDesktop,
     getBudgetConfig,
@@ -10160,6 +10517,7 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
       confirm: confirm2,
       invalidate,
       commit,
+      commitDelete,
       deleteScene: deleteInteractiveScene,
       persistPhoneUi,
       refreshDesktop,
@@ -10181,6 +10539,7 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
     confirm: confirm2,
     invalidate,
     commit,
+    commitDelete = null,
     deleteScene,
     finalize = finalizeDeletedScene,
     persistPhoneUi,
@@ -10193,7 +10552,7 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
     if (!scene) throw new Error("\u4E92\u52A8\u573A\u666F\u4E0D\u5B58\u5728");
     if (!confirm2(`\u786E\u5B9A\u5220\u9664\u4E92\u52A8\u573A\u666F\u201C${scene.title}\u201D\u5417\uFF1F\u5E16\u5B50\u3001\u8BC4\u8BBA\u548C\u5F39\u5E55\u90FD\u4F1A\u4E00\u5E76\u5220\u9664\u3002`)) return false;
     invalidate();
-    await commit(() => deleteScene(scope, sceneId));
+    await (commitDelete || commit)(() => deleteScene(scope, sceneId));
     finalize({
       persistPhoneUi,
       refreshDesktop: () => refreshDesktop(scopeId),
@@ -10676,6 +11035,81 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
     return { cancel, generateFeed, generateDanmaku, observe };
   }
 
+  // src/interactive-scene-phone-transaction.js
+  function createCommitWithPhoneUi({ getPhoneUiState, persistPhoneUiState, getStore, commit }) {
+    if (![getPhoneUiState, persistPhoneUiState, getStore, commit].every((value) => typeof value === "function")) {
+      throw new TypeError("\u624B\u673A\u9875\u9762\u4E8B\u52A1\u4F9D\u8D56\u65E0\u6548");
+    }
+    return async (scopeId, mutateStore, createPhoneUiState, context) => {
+      const phoneUiSnapshot = structuredClone(getPhoneUiState(getStore()));
+      try {
+        return await commit(() => {
+          mutateStore();
+          persistPhoneUiState(scopeId, createPhoneUiState(), getStore());
+        }, null, context);
+      } catch (error) {
+        try {
+          persistPhoneUiState(scopeId, phoneUiSnapshot, getStore());
+        } catch (rollbackError) {
+          const combined = new Error(`${error.message}\uFF1B\u624B\u673A\u9875\u9762\u72B6\u6001\u8865\u507F\u4E5F\u5931\u8D25\uFF1A${rollbackError.message}`);
+          combined.cause = error;
+          combined.rollbackError = rollbackError;
+          throw combined;
+        }
+        throw error;
+      }
+    };
+  }
+
+  // src/interactive-scene-template-import.js
+  function createCommunityTemplateImportAction({
+    getStorageId: getStorageId2,
+    loadStore: loadStore2,
+    getInteractiveStore,
+    getPhoneUiState,
+    getScope,
+    phoneScope,
+    commitWithPhoneUi,
+    patchPhoneUiScope: patchPhoneUiScope2,
+    refreshDesktop,
+    openScene,
+    createSceneFromCommunityTemplate: createSceneFromCommunityTemplate2,
+    createSceneId,
+    sceneLimit
+  }) {
+    return async (templateId) => {
+      const scopeId = getStorageId2();
+      if (!scopeId || scopeId === "sms_unknown__default") throw new Error("\u8BF7\u5148\u6253\u5F00\u6709\u6548\u7684\u89D2\u8272\u804A\u5929");
+      await loadStore2();
+      let importedSceneId = null;
+      let nextPhoneUiState = null;
+      await commitWithPhoneUi(scopeId, () => {
+        const state = getPhoneUiState();
+        const template = (state.sharedCommunityTemplates || []).find((item) => item.id === templateId);
+        if (!template) throw new Error("\u5171\u4EAB\u793E\u533A\u6A21\u677F\u4E0D\u5B58\u5728\u6216\u5DF2\u53D6\u6D88\u53D1\u5E03");
+        const scope = getScope(scopeId);
+        const mappedSceneId = state.scopes[scopeId]?.importedTemplateSceneIds?.[template.id];
+        if (mappedSceneId && scope.scenes[mappedSceneId]) {
+          importedSceneId = mappedSceneId;
+          nextPhoneUiState = state;
+          return;
+        }
+        if (scope.sceneOrder.length >= sceneLimit) throw new Error(`\u793E\u533A\u6570\u91CF\u5DF2\u8FBE\u4E0A\u9650\uFF08${sceneLimit}\uFF09\uFF0C\u8BF7\u5148\u5220\u9664\u4E0D\u9700\u8981\u7684\u793E\u533A`);
+        const scene = createSceneFromCommunityTemplate2(template, createSceneId());
+        scope.scenes[scene.id] = scene;
+        scope.sceneOrder.push(scene.id);
+        scope.activeSceneId = scene.id;
+        importedSceneId = scene.id;
+        const phoneUiScope = phoneScope(scopeId);
+        nextPhoneUiState = patchPhoneUiScope2(state, scopeId, {
+          importedTemplateSceneIds: { ...phoneUiScope.importedTemplateSceneIds, [template.id]: scene.id }
+        }, getInteractiveStore());
+      }, () => nextPhoneUiState, "\u5BFC\u5165\u793E\u533A\u6A21\u677F");
+      refreshDesktop(scopeId);
+      await openScene(importedSceneId, "feed");
+    };
+  }
+
   // src/interactive-scene-views.js
   var DEFAULT_DESKTOP_TITLE = "\u5929\u97F3\u5C0F\u7B3A";
   var DANMAKU_TONES = ["blue", "pink", "cyan", "gold"];
@@ -10730,14 +11164,17 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
       offset: (hash >>> 15) % 17 - 8
     };
   }
-  function renderPhoneDesktop(scope = { scenes: {} }, uiScope = { pinnedSceneIds: [] }, sharedScenes = []) {
+  function sceneAccent(scene) {
+    return scene?.themeAccent || getInteractivePresets()[scene?.preset]?.accent || getInteractivePresets().custom.accent;
+  }
+  function renderPhoneDesktop(scope = { scenes: {} }, uiScope = { pinnedSceneIds: [] }, sharedCommunityTemplates = []) {
     const title = String(globalThis.window?.__pmTheme?.customTitle || "").trim() || DEFAULT_DESKTOP_TITLE;
     const pins = (uiScope.pinnedSceneIds || []).flatMap((sceneId) => {
       const scene = scope.scenes?.[sceneId];
       if (!scene) return [];
-      return [`<article class="pm-desktop-pin"><button type="button" data-action="desktop-open-scene" data-scene-id="${escapeAttr(scene.id)}"><b>${escapeHtml(scene.title)}</b></button><button type="button" data-action="unpin-scene" data-scene-id="${escapeAttr(scene.id)}" aria-label="\u79FB\u9664 ${escapeAttr(scene.title)} \u5FEB\u6377\u65B9\u5F0F">\u79FB\u9664</button></article>`];
+      return [`<article class="pm-desktop-pin" style="--scene-accent:${escapeAttr(sceneAccent(scene))}"><button type="button" data-action="desktop-open-scene" data-scene-id="${escapeAttr(scene.id)}"><b>${escapeHtml(scene.title)}</b></button><button type="button" data-action="unpin-scene" data-scene-id="${escapeAttr(scene.id)}" aria-label="\u79FB\u9664 ${escapeAttr(scene.title)} \u5FEB\u6377\u65B9\u5F0F">\u79FB\u9664</button></article>`];
     }).join("");
-    const shared = sharedScenes.map((item) => `<article class="pm-desktop-pin is-shared"><button type="button" data-action="desktop-open-shared-scene" data-source-storage-id="${escapeAttr(item.storageId)}" data-scene-id="${escapeAttr(item.scene.id)}"><b>${escapeHtml(item.scene.title)}</b><span>\u5171\u4EAB\u793E\u533A</span></button></article>`).join("");
+    const templates = sharedCommunityTemplates.map((template) => `<article class="pm-desktop-pin pm-desktop-template" style="--scene-accent:${escapeAttr(sceneAccent(template))}"><button type="button" data-action="desktop-import-community-template" data-template-id="${escapeAttr(template.id)}" aria-label="\u5BFC\u5165\u793E\u533A\u6A21\u677F\uFF1A${escapeAttr(template.title)}"><span class="pm-desktop-template-icon">${COMMUNITY_TEMPLATE_ICON_SVG}</span><span><b>${escapeHtml(template.title)}</b><small>\u5BFC\u5165\u793E\u533A\u6A21\u677F</small></span></button></article>`).join("");
     return `<div class="pm-desktop-toolbar"><span>${escapeHtml(title)}</span><button type="button" data-action="desktop-exit" aria-label="\u9000\u51FA\u624B\u673A" title="\u9000\u51FA\u624B\u673A">${CLOSE_ICON_SVG}</button></div>
         <div class="pm-desktop-grid" aria-label="\u5E94\u7528">
             <button type="button" class="pm-desktop-app" data-app="chat" data-action="desktop-chat" aria-label="\u804A\u5929" title="\u804A\u5929"><span class="pm-desktop-app-icon">${CHAT_ICON_SVG}</span><span class="pm-desktop-app-label">\u804A\u5929</span></button>
@@ -10746,7 +11183,7 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
             <button type="button" class="pm-desktop-app" data-app="calendar" data-action="desktop-calendar" aria-label="\u65E5\u5386" title="\u65E5\u5386"><span class="pm-desktop-app-icon">${CALENDAR_ICON_SVG}</span><span class="pm-desktop-app-label">\u65E5\u5386</span></button>
             <button type="button" class="pm-desktop-app" data-app="today-trend" data-action="desktop-today-trend" aria-label="\u4ECA\u65E5\u98CE\u5411" title="\u4ECA\u65E5\u98CE\u5411"><span class="pm-desktop-app-icon">${TREND_ICON_SVG}</span><span class="pm-desktop-app-label">\u4ECA\u65E5\u98CE\u5411</span></button>
         </div>
-        <section class="pm-desktop-pins"><h3>\u56FA\u5B9A\u793E\u533A</h3>${pins || "<p>\u5728\u793E\u533A\u4E2D\u56FA\u5B9A\u573A\u666F\u540E\uFF0C\u4F1A\u663E\u793A\u5728\u8FD9\u91CC\u3002</p>"}${shared}</section>
+        <section class="pm-desktop-pins"><h3>\u56FA\u5B9A\u793E\u533A</h3>${pins || "<p>\u5728\u793E\u533A\u4E2D\u56FA\u5B9A\u573A\u666F\u540E\uFF0C\u4F1A\u663E\u793A\u5728\u8FD9\u91CC\u3002</p>"}${templates}</section>
         <div class="pm-desktop-community-dock"><button type="button" data-action="desktop-community" aria-label="\u53D1\u5E03\u4E00\u6761">${COMMUNITY_ICON_SVG}<span>\u53D1\u5E03\u4E00\u6761</span></button></div>`;
   }
   function renderPresetOptions(selected) {
@@ -10768,11 +11205,13 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
     const defaultAccent = presets.weibo.accent;
     const sceneCards = scope.sceneOrder.slice().reverse().map((sceneId) => {
       const scene = scope.scenes[sceneId];
+      const accent = sceneAccent(scene);
       const pinned = uiScope.pinnedSceneIds.includes(scene.id);
       const pinLabel = pinned ? "\u53D6\u6D88\u56FA\u5B9A\u793E\u533A" : "\u56FA\u5B9A\u793E\u533A";
-      const shared = (uiScope.sharedScenes || []).some((item) => item.storageId === uiScope.storageId && item.sceneId === scene.id);
-      const sharedLabel = shared ? "\u53D6\u6D88\u8DE8\u7A97\u53E3\u5171\u4EAB" : "\u8DE8\u7A97\u53E3\u5171\u4EAB";
-      return `<article class="pm-scene-card"><button type="button" class="pm-scene-card-open" data-action="open-scene" data-scene-id="${escapeAttr(scene.id)}"><b>${escapeHtml(scene.title)}</b><span>${escapeHtml(presets[scene.preset]?.label || "\u81EA\u5B9A\u4E49")} \xB7 ${scene.posts.length} \u7BC7\u5E16\u5B50</span></button><div class="pm-scene-card-actions"><button type="button" class="pm-scene-share-action" data-action="toggle-scene-share" data-scene-id="${escapeAttr(scene.id)}" aria-pressed="${shared}" aria-label="${sharedLabel}" title="${sharedLabel}">${SHARE_WINDOW_ICON_SVG}</button><button type="button" class="pm-scene-pin-action" data-action="toggle-scene-pin" data-scene-id="${escapeAttr(scene.id)}" aria-pressed="${pinned}" aria-label="${pinLabel}" title="${pinLabel}">${COMMUNITY_ICON_SVG}</button><button type="button" class="pm-scene-danger" data-action="delete-scene" data-scene-id="${escapeAttr(scene.id)}" aria-label="\u5220\u9664\u793E\u533A" title="\u5220\u9664\u793E\u533A">${TRASH_ICON_SVG}</button></div></article>`;
+      const templateId = createCommunityTemplate(scene, uiScope.storageId || "__invalid__", 1).id;
+      const shared = (uiScope.sharedCommunityTemplates || []).some((item) => item.id === templateId);
+      const templateActions = shared ? `<button type="button" class="pm-scene-template-action" data-action="publish-community-template" data-scene-id="${escapeAttr(scene.id)}" aria-label="\u66F4\u65B0\u5171\u4EAB\u6A21\u677F" title="\u66F4\u65B0\u5171\u4EAB\u6A21\u677F">${COMMUNITY_TEMPLATE_ICON_SVG}</button><button type="button" class="pm-scene-template-action pm-scene-template-unpublish" data-action="unpublish-community-template" data-scene-id="${escapeAttr(scene.id)}" aria-label="\u53D6\u6D88\u53D1\u5E03\u5171\u4EAB\u6A21\u677F" title="\u53D6\u6D88\u53D1\u5E03\u5171\u4EAB\u6A21\u677F">${COMMUNITY_TEMPLATE_ICON_SVG}</button>` : `<button type="button" class="pm-scene-template-action" data-action="publish-community-template" data-scene-id="${escapeAttr(scene.id)}" aria-label="\u53D1\u5E03\u5171\u4EAB\u6A21\u677F" title="\u53D1\u5E03\u5171\u4EAB\u6A21\u677F">${COMMUNITY_TEMPLATE_ICON_SVG}</button>`;
+      return `<article class="pm-scene-card" style="--scene-accent:${escapeAttr(accent)}"><button type="button" class="pm-scene-card-open" data-action="open-scene" data-scene-id="${escapeAttr(scene.id)}"><b>${escapeHtml(scene.title)}</b><span>${escapeHtml(presets[scene.preset]?.label || "\u81EA\u5B9A\u4E49")} \xB7 ${scene.posts.length} \u7BC7\u5E16\u5B50</span></button><div class="pm-scene-card-actions">${templateActions}<button type="button" class="pm-scene-pin-action" data-action="toggle-scene-pin" data-scene-id="${escapeAttr(scene.id)}" aria-pressed="${pinned}" aria-label="${pinLabel}" title="${pinLabel}">${COMMUNITY_ICON_SVG}</button><button type="button" class="pm-scene-danger" data-action="delete-scene" data-scene-id="${escapeAttr(scene.id)}" aria-label="\u5220\u9664\u793E\u533A" title="\u5220\u9664\u793E\u533A">${TRASH_ICON_SVG}</button></div></article>`;
     }).join("");
     return `<div id="pm-scene-app" class="pm-modal pm-scene-shell" style="--scene-accent:${escapeAttr(defaultAccent)}">
         <div class="pm-scene-header"><button type="button" class="pm-scene-home" data-action="desktop" aria-label="\u8FD4\u56DE\u684C\u9762" title="\u8FD4\u56DE\u684C\u9762">${HOME_ICON_SVG}</button><b>\u793E\u533A</b><button type="button" data-action="exit" aria-label="\u9000\u51FA\u624B\u673A" title="\u9000\u51FA\u624B\u673A">${CLOSE_ICON_SVG}</button></div>
@@ -10836,7 +11275,7 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
     const preset = getInteractivePresets()[scene.preset] || getInteractivePresets().custom;
     const autoActive = state.autoActive === true;
     const renderedAt = typeof state.now === "number" && Number.isFinite(state.now) ? state.now : Date.now();
-    const accent = scene.themeAccent || preset.accent;
+    const accent = sceneAccent(scene);
     const liveState = ["idle", "starting", "active", "error"].includes(state.liveState) ? state.liveState : "idle";
     const warmupStarted = liveState === "active" && scene.live.warmupStarted === true;
     const liveStarting = liveState === "starting";
@@ -10847,19 +11286,18 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
       return `<span class="is-${stableDanmakuTone(item)}" style="--lane:${motion.lane};--delay:${motion.delay}s;--duration:${motion.duration}s;--offset:${motion.offset}px">${escapeHtml(item.content)}</span>`;
     }).join("");
     const stageState = warmupStarted ? "active" : liveFailed ? "error" : liveStarting ? "starting" : "idle";
-    const readOnly = state.readOnly === true;
-    const playControl = !readOnly && !warmupStarted && !liveStarting ? `<button type="button" class="pm-live-play-btn" data-action="start-warmup" aria-label="${liveFailed ? "\u91CD\u65B0\u5F00\u59CB\u70ED\u573A" : "\u5F00\u59CB\u70ED\u573A"}" title="${liveFailed ? "\u91CD\u65B0\u5F00\u59CB\u70ED\u573A" : "\u5F00\u59CB\u70ED\u573A"}">${PLAY_ICON_SVG}</button>` : "";
+    const playControl = !warmupStarted && !liveStarting ? `<button type="button" class="pm-live-play-btn" data-action="start-warmup" aria-label="${liveFailed ? "\u91CD\u65B0\u5F00\u59CB\u70ED\u573A" : "\u5F00\u59CB\u70ED\u573A"}" title="${liveFailed ? "\u91CD\u65B0\u5F00\u59CB\u70ED\u573A" : "\u5F00\u59CB\u70ED\u573A"}">${PLAY_ICON_SVG}</button>` : "";
     const stageNote = liveStarting ? '<p class="pm-live-state-note">\u6B63\u5728\u51C6\u5907\u70ED\u573A\u2026</p>' : liveFailed ? '<p class="pm-live-state-note is-error">\u70ED\u573A\u672A\u80FD\u542F\u52A8\uFF0C\u8BF7\u91CD\u8BD5\u3002</p>' : "";
     const liveContent = `<div class="pm-live-stage ${hasDanmaku ? "has-danmaku" : ""}" data-live-state="${stageState}">${playControl}<div class="pm-danmaku-float">${floatingDanmaku}</div>${stageNote}</div><section class="pm-live-details" aria-label="\u70ED\u573A\u5185\u5BB9"><div class="pm-danmaku-list">${renderDanmaku(scene)}</div></section>`;
-    const composer = readOnly ? "" : tab === "feed" ? `<div class="pm-scene-composer"><textarea id="pm-scene-post-input" maxlength="4000" placeholder="\u5206\u4EAB\u6B64\u523B\u2026\u2026"></textarea><button type="button" class="pm-scene-primary" data-action="publish" aria-label="\u53D1\u5E03" title="\u53D1\u5E03">${SEND_ICON_SVG}</button></div>` : tab === "live" ? `<div class="pm-scene-composer pm-danmaku-input"><textarea id="pm-danmaku-input" rows="1" maxlength="200" placeholder="\u53D1\u4E2A\u5F39\u5E55\u89C1\u8BC1\u5F53\u4E0B"></textarea><button type="button" class="pm-scene-primary" data-action="send-danmaku" aria-label="\u53D1\u9001\u5F39\u5E55" title="\u53D1\u9001\u5F39\u5E55">${SEND_ICON_SVG}</button></div>` : "";
+    const composer = tab === "feed" ? `<div class="pm-scene-composer"><textarea id="pm-scene-post-input" maxlength="4000" placeholder="\u5206\u4EAB\u6B64\u523B\u2026\u2026"></textarea><button type="button" class="pm-scene-primary" data-action="publish" aria-label="\u53D1\u5E03" title="\u53D1\u5E03">${SEND_ICON_SVG}</button></div>` : tab === "live" ? `<div class="pm-scene-composer pm-danmaku-input"><textarea id="pm-danmaku-input" rows="1" maxlength="200" placeholder="\u53D1\u4E2A\u5F39\u5E55\u89C1\u8BC1\u5F53\u4E0B"></textarea><button type="button" class="pm-scene-primary" data-action="send-danmaku" aria-label="\u53D1\u9001\u5F39\u5E55" title="\u53D1\u9001\u5F39\u5E55">${SEND_ICON_SVG}</button></div>` : "";
     const content = tab === "feed" ? `<div class="pm-scene-feed"><div class="pm-scene-posts">${renderPosts(scene, renderedAt)}</div></div>` : tab === "live" ? `<div class="pm-live-room">${liveContent}</div>` : tab === "context-inject" ? renderContextInjectionSettings(scene, state) : `<div class="pm-scene-prompt"><label>\u793E\u533A\u540D\u79F0<input id="pm-scene-title" maxlength="80" value="${escapeAttr(scene.title)}"></label><fieldset class="pm-scene-accent-field"><legend>\u793E\u533A\u4E3B\u9898\u8272</legend><div class="pm-scene-accent-options">${renderSceneAccentOptions(accent)}<label class="pm-scene-accent-custom" aria-label="\u81EA\u5B9A\u4E49\u793E\u533A\u4E3B\u9898\u8272"><input id="pm-scene-accent" type="color" data-action="scene-accent-custom" value="${escapeAttr(accent)}"><span>\u81EA\u5B9A\u4E49</span></label></div></fieldset><label>\u793E\u533A\u98CE\u683C<textarea id="pm-scene-prompt" maxlength="6000">${escapeHtml(scene.generatedPrompt)}</textarea></label><p>\u8BBE\u7F6E\u793E\u533A\u5185\u5BB9\u7684\u8868\u8FBE\u98CE\u683C\u4E0E\u6C1B\u56F4\u3002</p><div class="pm-scene-prompt-actions"><button type="button" class="pm-scene-secondary" data-action="regenerate-prompt">\u91CD\u65B0\u751F\u6210</button><button type="button" class="pm-scene-primary" data-action="save-prompt">\u4FDD\u5B58\u98CE\u683C</button></div></div>`;
     const isPrompt = tab === "prompt";
     const isSubpage = isPrompt || tab === "context-inject";
     const returnTab = ["feed", "live"].includes(uiScope.lastTab) ? uiScope.lastTab : "feed";
     const leadingAction = isSubpage ? `data-action="tab" data-tab="${returnTab}" aria-label="\u8FD4\u56DE\u5B50\u793E\u533A" title="\u8FD4\u56DE\u5B50\u793E\u533A"` : 'data-action="desktop" aria-label="\u8FD4\u56DE\u684C\u9762" title="\u8FD4\u56DE\u684C\u9762"';
     return `<div id="pm-scene-app" class="pm-modal pm-scene-shell" style="--scene-accent:${escapeAttr(accent)}">
-        <div class="pm-scene-topbar"><div class="pm-scene-nav-actions"><button type="button" class="pm-scene-home" ${leadingAction}>${isSubpage ? BACK_ICON_SVG : HOME_ICON_SVG}</button></div><nav class="pm-scene-title" aria-label="\u5B50\u793E\u533A\u89C6\u56FE"><button type="button" class="pm-scene-title-tab ${tab === "feed" ? "is-active" : ""}" data-action="tab" data-tab="feed" aria-current="${tab === "feed" ? "page" : "false"}"><span>${escapeHtml(scene.title)}</span></button><button type="button" class="pm-scene-title-tab ${tab === "live" ? "is-active" : ""}" data-action="tab" data-tab="live" aria-current="${tab === "live" ? "page" : "false"}"><span>\u76F4\u64AD</span></button></nav><div class="pm-scene-view-actions">${readOnly ? '<span class="pm-scene-read-only">\u5171\u4EAB\u67E5\u770B</span>' : `<button type="button" class="pm-header-icon-button pm-scene-title-poke" data-action="poke-scene" aria-label="\u62CD\u4E00\u62CD\u793E\u533A" title="\u62CD\u4E00\u62CD\u793E\u533A">${POKE_ICON_SVG}</button>`}<button type="button" class="pm-header-icon-button pm-scene-exit" data-action="exit" aria-label="\u9000\u51FA\u624B\u673A" title="\u9000\u51FA\u624B\u673A">${CLOSE_ICON_SVG}</button></div></div><div class="pm-scene-status" aria-live="polite" hidden></div>
-        ${content}${isSubpage || tab === "context-inject" ? "" : `<div class="pm-scene-bottom-bar">${readOnly ? "" : renderSceneMenu(scene, uiScope, autoActive, tab)}${composer}</div>`}
+        <div class="pm-scene-topbar"><div class="pm-scene-nav-actions"><button type="button" class="pm-scene-home" ${leadingAction}>${isSubpage ? BACK_ICON_SVG : HOME_ICON_SVG}</button></div><nav class="pm-scene-title" aria-label="\u5B50\u793E\u533A\u89C6\u56FE"><button type="button" class="pm-scene-title-tab ${tab === "feed" ? "is-active" : ""}" data-action="tab" data-tab="feed" aria-current="${tab === "feed" ? "page" : "false"}"><span>${escapeHtml(scene.title)}</span></button><button type="button" class="pm-scene-title-tab ${tab === "live" ? "is-active" : ""}" data-action="tab" data-tab="live" aria-current="${tab === "live" ? "page" : "false"}"><span>\u76F4\u64AD</span></button></nav><div class="pm-scene-view-actions"><button type="button" class="pm-header-icon-button pm-scene-title-poke" data-action="poke-scene" aria-label="\u62CD\u4E00\u62CD\u793E\u533A" title="\u62CD\u4E00\u62CD\u793E\u533A">${POKE_ICON_SVG}</button><button type="button" class="pm-header-icon-button pm-scene-exit" data-action="exit" aria-label="\u9000\u51FA\u624B\u673A" title="\u9000\u51FA\u624B\u673A">${CLOSE_ICON_SVG}</button></div></div><div class="pm-scene-status" aria-live="polite" hidden></div>
+        ${content}${isSubpage || tab === "context-inject" ? "" : `<div class="pm-scene-bottom-bar">${renderSceneMenu(scene, uiScope, autoActive, tab)}${composer}</div>`}
     </div>`;
   }
 
@@ -10868,7 +11306,7 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
   var now = () => Date.now();
   var cloneStore = (store) => normalizeInteractiveStore(JSON.parse(JSON.stringify(store)));
   async function migrateInteractiveStore(rawStore, saveStore2) {
-    const persistedCompatibility = stripPersistedV2ContentRating(rawStore);
+    const persistedCompatibility = stripPersistedV2ContentRating2(rawStore);
     const normalized = normalizeInteractiveStore(persistedCompatibility.store);
     const needsSave = !!rawStore && (rawStore.version !== normalized.version || persistedCompatibility.changed);
     if (!needsSave) return normalized;
@@ -10987,7 +11425,6 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
       loadGeneration: 0,
       openSceneId: null,
       openSceneStorageId: null,
-      openSceneReadOnly: false,
       busy: false,
       creating: false,
       phoneUiState: null,
@@ -11026,7 +11463,6 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
     const clearOpenScene = () => {
       runtime.openSceneId = null;
       runtime.openSceneStorageId = null;
-      runtime.openSceneReadOnly = false;
     };
     const resolveTarget = (target) => {
       const scope = runtime.store?.scopes?.[target?.storageId];
@@ -11068,11 +11504,11 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
       runtime.busy = false;
       setStatus("");
     };
-    const setStatus = (text7) => {
+    const setStatus = (text8) => {
       const el = document.querySelector(".pm-scene-status");
       if (el) {
-        el.textContent = text7 || "";
-        el.hidden = !text7;
+        el.textContent = text8 || "";
+        el.hidden = !text8;
       }
     };
     const confirmDelete = (message) => window.confirm(message);
@@ -11090,12 +11526,13 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
     };
     const updatePhoneUiScope = (storageId, patch, store = runtime.store) => persistPhoneUiState(storageId, patchPhoneUiScope(getPhoneUiState(store), storageId, patch, store), store);
     const phoneScope = (storageId, store = runtime.store) => getPhoneUiState(store).scopes[storageId] || createDefaultPhoneUiScope();
-    const communityUiScope = (storageId, store = runtime.store) => ({ ...phoneScope(storageId, store), storageId, sharedScenes: getPhoneUiState(store).sharedScenes || [] });
-    const sharedScenesFor = (storageId, store = runtime.store) => (getPhoneUiState(store).sharedScenes || []).flatMap((item) => {
-      if (item.storageId === storageId) return [];
-      const scene = store?.scopes?.[item.storageId]?.scenes?.[item.sceneId];
-      return scene ? [{ ...item, scene }] : [];
+    const commitWithPhoneUi = createCommitWithPhoneUi({ getPhoneUiState, persistPhoneUiState, getStore: () => runtime.store, commit });
+    const communityUiScope = (storageId, store = runtime.store) => ({
+      ...phoneScope(storageId, store),
+      storageId,
+      sharedCommunityTemplates: getPhoneUiState(store).sharedCommunityTemplates || []
     });
+    const sharedTemplatesFor = (storageId, store = runtime.store) => (getPhoneUiState(store).sharedCommunityTemplates || []).filter((template) => template.sourceStorageId !== storageId);
     const renderInto = (selector, html) => {
       const container = document.querySelector(selector);
       if (!container) return false;
@@ -11112,7 +11549,7 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
       const validScope = !!store && !!scopeId && scopeId !== "sms_unknown__default";
       const scope = validScope ? getScope(store, scopeId) : { scenes: {} };
       const uiScope = validScope ? communityUiScope(scopeId, store) : { pinnedSceneIds: [], lastPage: "desktop", lastSceneId: null, lastTab: "feed" };
-      return renderInto(".pm-desktop-page", renderPhoneDesktop(scope, uiScope, sharedScenesFor(scopeId, store)));
+      return renderInto(".pm-desktop-page", renderPhoneDesktop(scope, uiScope, sharedTemplatesFor(scopeId, store)));
     }
     const showPhoneDesktopPage = () => {
       const scopeId = getStorageId2(), phoneWindow = _state.phoneWindow;
@@ -11164,7 +11601,6 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
       return renderInto(".pm-community-page", renderCommunityWorkspace(scene, tab, phoneScope(scopeId, store), {
         autoActive: communityTasks.state().mode === "auto",
         liveState: getLiveWarmupState(scopeId, sceneId, scene),
-        readOnly: runtime.openSceneReadOnly,
         ...getCommunityInjectionState(window.__pmBudgetConfig, scopeId, sceneId)
       }));
     }
@@ -11229,28 +11665,26 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
       replaceApp(renderCommunityWorkspace(scene, tab, phoneScope(scopeId), {
         autoActive: communityTasks.state().mode === "auto",
         liveState: getLiveWarmupState(scopeId, scene.id, scene),
-        readOnly: runtime.openSceneReadOnly,
         ...getCommunityInjectionState(window.__pmBudgetConfig, scopeId, scene.id)
       }), { feedScrollTop });
     }
-    async function openScene(sceneId, tab = "feed", sourceStorageId = getStorageId2()) {
+    async function openScene(sceneId, tab = "feed") {
       invalidate();
       const scopeId = getStorageId2();
-      const shared = sourceStorageId !== scopeId;
       await loadStore2();
-      const sourceScope = runtime.store?.scopes?.[sourceStorageId];
-      if (!sourceScope?.scenes?.[sceneId]) throw new Error("\u4E92\u52A8\u573A\u666F\u4E0D\u5B58\u5728");
-      if (!shared) {
-        await commit(() => {
-          getScope(runtime.store, scopeId).activeSceneId = sceneId;
-        });
-      }
+      const scope = getScope(runtime.store, scopeId);
+      if (!scope.scenes?.[sceneId]) throw new Error("\u4E92\u52A8\u573A\u666F\u4E0D\u5B58\u5728");
+      await commit(() => {
+        getScope(runtime.store, scopeId).activeSceneId = sceneId;
+      });
       runtime.openSceneId = sceneId;
-      runtime.openSceneStorageId = sourceStorageId;
-      runtime.openSceneReadOnly = shared;
-      if (!shared) updatePhoneUiScope(scopeId, { lastPage: "community", lastSceneId: sceneId, lastTab: tab });
-      renderCommunityWorkspace2(sourceStorageId, sceneId, tab);
+      runtime.openSceneStorageId = scopeId;
+      updatePhoneUiScope(scopeId, { lastPage: "community", lastSceneId: sceneId, lastTab: tab });
+      renderCommunityWorkspace2(scopeId, sceneId, tab);
       showPhonePage("community");
+    }
+    async function importCommunityTemplate(templateId) {
+      return createCommunityTemplateImportAction({ getStorageId: getStorageId2, loadStore: loadStore2, getInteractiveStore: () => runtime.store, getPhoneUiState: () => getPhoneUiState(runtime.store), getScope: (scopeId) => getScope(runtime.store, scopeId), phoneScope: (scopeId) => phoneScope(scopeId, runtime.store), commitWithPhoneUi, patchPhoneUiScope, refreshDesktop, openScene, createSceneFromCommunityTemplate, createSceneId: () => uid4("scene"), sceneLimit: INTERACTIVE_LIMITS.scenes })(templateId);
     }
     function appendPosts(scopeId, scope, scene, items) {
       const seeds = actorSeeds(scopeId);
@@ -11387,14 +11821,6 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
         await calendarAction;
         return;
       }
-      if (runtime.openSceneReadOnly && ![
-        "desktop",
-        "desktop-exit",
-        "exit",
-        "tab"
-      ].includes(action)) {
-        throw new Error("\u5171\u4EAB\u793E\u533A\u4EC5\u652F\u6301\u67E5\u770B");
-      }
       if (action === "more") {
         toggleSceneMenu(button);
         return;
@@ -11463,8 +11889,8 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
         await openScene(button.dataset.sceneId, phoneScope(getStorageId2()).lastTab);
         return;
       }
-      if (action === "desktop-open-shared-scene") {
-        await openScene(button.dataset.sceneId, "feed", button.dataset.sourceStorageId);
+      if (action === "desktop-import-community-template") {
+        await importCommunityTemplate(button.dataset.templateId);
         return;
       }
       if (action === "desktop") {
@@ -11499,16 +11925,12 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
         }
         return;
       }
-      if (action === "toggle-scene-share") {
+      if (action === "publish-community-template" || action === "unpublish-community-template") {
         const scopeId = getStorageId2();
-        const nextState = toggleSharedScene(getPhoneUiState(runtime.store), scopeId, button.dataset.sceneId, runtime.store);
+        const nextState = action === "publish-community-template" ? publishCommunityTemplate(getPhoneUiState(runtime.store), scopeId, button.dataset.sceneId, runtime.store) : unpublishCommunityTemplate(getPhoneUiState(runtime.store), scopeId, button.dataset.sceneId, runtime.store);
         persistPhoneUiState(scopeId, nextState);
         refreshDesktop(scopeId);
-        const shared = (nextState.sharedScenes || []).some((item) => item.storageId === scopeId && item.sceneId === button.dataset.sceneId);
-        const label = shared ? "\u53D6\u6D88\u8DE8\u7A97\u53E3\u5171\u4EAB" : "\u8DE8\u7A97\u53E3\u5171\u4EAB";
-        button.setAttribute("aria-pressed", String(shared));
-        button.setAttribute("aria-label", label);
-        button.title = label;
+        renderCommunityLauncher2(scopeId);
         return;
       }
       if (action === "delete-scene") {
@@ -11519,7 +11941,14 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
           confirm: confirmDelete,
           invalidate,
           commit,
-          persistPhoneUi: () => persistPhoneUiState(scopeId, getPhoneUiState(runtime.store), runtime.store),
+          commitDelete: (mutator) => commitWithPhoneUi(scopeId, mutator, () => removeCommunityTemplatesForSourceScene(
+            getPhoneUiState(runtime.store),
+            scopeId,
+            sceneId,
+            runtime.store
+          ), "\u5220\u9664\u4E92\u52A8\u573A\u666F"),
+          persistPhoneUi: () => {
+          },
           refreshDesktop,
           getBudgetConfig: () => window.__pmBudgetConfig,
           saveBudgetConfig: deps.saveBudgetConfig,
@@ -11532,9 +11961,7 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
         invalidate();
         const { scopeId, scene } = current();
         const nextTab = button.dataset.tab;
-        if (!runtime.openSceneReadOnly && ["feed", "live"].includes(nextTab)) {
-          updatePhoneUiScope(scopeId, { lastPage: "community", lastSceneId: scene?.id || null, lastTab: nextTab });
-        }
+        if (["feed", "live"].includes(nextTab)) updatePhoneUiScope(scopeId, { lastPage: "community", lastSceneId: scene?.id || null, lastTab: nextTab });
         rerender(nextTab);
         return;
       }
@@ -11975,20 +12402,20 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
       return `${randomNpcPrefix}${name}`;
     };
     const stripSpeakerPrefix = (value) => {
-      let text7 = (value || "").trim();
-      const outer = text7.match(/^[\(（]\s*(.{1,20}?)\s*[：:]\s*([\s\S]+?)\s*[\)）]\s*$/);
+      let text8 = (value || "").trim();
+      const outer = text8.match(/^[\(（]\s*(.{1,20}?)\s*[：:]\s*([\s\S]+?)\s*[\)）]\s*$/);
       if (outer && resolveSpeaker(outer[1])) return outer[2].trim();
       for (let index = 0; index < 3; index++) {
-        const match = text7.match(speakerPattern);
+        const match = text8.match(speakerPattern);
         if (!match || !resolveSpeaker(match[1])) break;
-        text7 = match[2].trim();
+        text8 = match[2].trim();
       }
-      return text7;
+      return text8;
     };
     const splitGroupSentences = (value) => splitToSentences(
       String(value || "").replace(/https?:\/\/\S+/gi, (url) => url.replace(/\//g, "")),
       stripSpeakerPrefix
-    ).map((text7) => text7.replace(/\u0002/g, "/"));
+    ).map((text8) => text8.replace(/\u0002/g, "/"));
     for (const line2 of lines) {
       const match = line2.match(speakerPattern);
       const speaker = match ? resolveSpeaker(match[1]) : "";
@@ -12059,8 +12486,8 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
     const image = set?.images[index - 1];
     return image?.url || null;
   }
-  function resolveEmojiText(text7, emojis) {
-    return (text7 || "").replace(/\[emo:([^\]:]+):(\d+)\]/g, (match, setName, index) => {
+  function resolveEmojiText(text8, emojis) {
+    return (text8 || "").replace(/\[emo:([^\]:]+):(\d+)\]/g, (match, setName, index) => {
       const set = emojis.find((item) => item.name === setName);
       const image = set?.images[parseInt(index, 10) - 1];
       return image ? `(\u8868\u60C5:${image.desc})` : "";
@@ -12094,7 +12521,7 @@ ${lines}
     const index = groupMembers.findIndex((memberName) => memberName.toLowerCase() === normalizedName2);
     return index >= 0 ? GROUP_COLORS[index % GROUP_COLORS.length] : null;
   }
-  function createBubbles(text7, side, senderName, { groupColorMap, groupMembers, emojis, emojiBudget }) {
+  function createBubbles(text8, side, senderName, { groupColorMap, groupMembers, emojis, emojiBudget }) {
     const results = [];
     const specialPattern = new RegExp(SPECIAL_RE.source, "gi");
     let lastIndex = 0;
@@ -12166,18 +12593,18 @@ ${lines}
         results.push(container);
       } else results.push(bubble);
     };
-    const standaloneSpecial = text7.match(STANDALONE_SPECIAL_RE);
+    const standaloneSpecial = text8.match(STANDALONE_SPECIAL_RE);
     if (standaloneSpecial) {
       const kind = normalizeKeyword(standaloneSpecial[1]);
       const content = standaloneSpecial[2];
       if (isValidSpecialContent(kind, content)) {
         pushSpecial(kind, content);
       } else {
-        pushPlain(text7);
+        pushPlain(text8);
       }
     } else {
-      while ((match = specialPattern.exec(text7)) !== null) {
-        if (match.index > lastIndex) pushPlain(text7.slice(lastIndex, match.index));
+      while ((match = specialPattern.exec(text8)) !== null) {
+        if (match.index > lastIndex) pushPlain(text8.slice(lastIndex, match.index));
         const kind = normalizeKeyword(match[1]);
         if (isValidSpecialContent(kind, match[2])) {
           pushSpecial(kind, match[2]);
@@ -12186,9 +12613,9 @@ ${lines}
         }
         lastIndex = match.index + match[0].length;
       }
-      if (lastIndex < text7.length) pushPlain(text7.slice(lastIndex));
+      if (lastIndex < text8.length) pushPlain(text8.slice(lastIndex));
     }
-    if (!results.length) pushPlain(text7);
+    if (!results.length) pushPlain(text8);
     for (const bubble of results) {
       const elements = bubble.classList?.contains("pm-group-bubble-wrap") ? bubble.querySelectorAll(".pm-bubble") : bubble.classList?.contains("pm-bubble") ? [bubble] : [];
       for (const element of elements) {
@@ -13080,7 +13507,7 @@ ${antiFluff}`;
             const assistantEntry = createMessageEntry({
               role: "assistant",
               content: contentParts.join("\n"),
-              descriptors: parsed.flatMap((block2) => block2.sentences.map((text7) => ({ text: text7, sender: block2.name })))
+              descriptors: parsed.flatMap((block2) => block2.sentences.map((text8) => ({ text: text8, sender: block2.name })))
             });
             targetHistory.push(assistantEntry);
             resultData = { type: "group", data: parsed };
@@ -13525,7 +13952,7 @@ ${antiFluff}`;
           targetHistory.push(createMessageEntry({
             role: "assistant",
             content: contentParts.join("\n"),
-            descriptors: renderBlocks.flatMap((block2) => block2.sentences.map((text7) => ({ text: text7, sender: block2.name })))
+            descriptors: renderBlocks.flatMap((block2) => block2.sentences.map((text8) => ({ text: text8, sender: block2.name })))
           }));
         } else {
           const clean2 = cleanResponse(raw);
@@ -13827,7 +14254,7 @@ ${antiFluff}`;
             const assistantEntry = createMessageEntry({
               role: "assistant",
               content: contentParts.join("\n"),
-              descriptors: blocks.flatMap((block2) => block2.sentences.map((text7) => ({ text: text7, sender: block2.name })))
+              descriptors: blocks.flatMap((block2) => block2.sentences.map((text8) => ({ text: text8, sender: block2.name })))
             });
             targetHistory.push(assistantEntry);
             historyUpdated = true;
@@ -13985,7 +14412,7 @@ ${antiFluff}`;
             const assistantEntry = createMessageEntry({
               role: "assistant",
               content: `${block2.name}\uFF1A${block2.sentences.join(" / ")}`,
-              descriptors: block2.sentences.map((text7) => ({ text: text7, sender: block2.name }))
+              descriptors: block2.sentences.map((text8) => ({ text: text8, sender: block2.name }))
             });
             targetHistory.push(assistantEntry);
             const historyWindow = createHistoryWindow(targetHistory, SAVE_LIMIT);
@@ -14380,7 +14807,7 @@ ${antiFluff}`;
       [EXTENSION_PROMPT_POSITIONS.IN_PROMPT, "\u4E3B\u63D0\u793A\u8BCD\u5185"],
       [EXTENSION_PROMPT_POSITIONS.IN_CHAT, "\u804A\u5929\u8BB0\u5F55\u5185"],
       [EXTENSION_PROMPT_POSITIONS.BEFORE_PROMPT, "\u4E3B\u63D0\u793A\u8BCD\u524D"]
-    ].map(([value, text7]) => `<option value="${value}" ${config.position === value ? "selected" : ""}>${text7}</option>`).join("");
+    ].map(([value, text8]) => `<option value="${value}" ${config.position === value ? "selected" : ""}>${text8}</option>`).join("");
     return `<fieldset class="pm-conversation-injection-group"><legend>${label}</legend><label class="pm-conversation-injection-field">\u6CE8\u5165\u4F4D\u7F6E
       <select id="pm-conversation-injection-${prefix}-position" class="pm-cfg-input pm-conversation-injection-config">${options2}</select>
     </label><label class="pm-conversation-injection-field">\u6CE8\u5165\u6DF1\u5EA6
@@ -15492,6 +15919,16 @@ ${antiFluff}`;
     const errorType = typeof error?.name === "string" && error.name ? error.name : "Error";
     console.warn(`[phone-mode] \u5BBF\u4E3B\u4E8B\u4EF6 ${eventName} \u6CE8\u518C\u5931\u8D25\uFF0C\u8BE5\u96C6\u6210\u529F\u80FD\u53EF\u80FD\u4E0D\u53EF\u7528\u3002`, errorType);
   }
+  function reportTodayTrendObservationFailure(error) {
+    const errorType = typeof error?.name === "string" && error.name ? error.name : "Error";
+    console.warn("[phone-mode] \u4ECA\u65E5\u98CE\u5411\u81EA\u52A8\u63A8\u6F14\u89C2\u5BDF\u5931\u8D25\uFF0C\u672C\u8F6E\u4E0D\u4F1A\u81EA\u52A8\u63A8\u6F14\u3002", errorType);
+  }
+  function observeTodayTrendAfterHostEvent(deps, context, storageId, getStorageId2) {
+    Promise.resolve().then(() => {
+      if (!storageId || getStorageId2() !== storageId) return null;
+      return deps.observeTodayTrendTurn?.(context?.chat || []);
+    }).catch(reportTodayTrendObservationFailure);
+  }
   function createPhoneHostEventController({ state, runtime, deps, getCtx, getStorageId: getStorageId2, isAutoPokeAllowed, disarmAutoPoke, invalidateGeneration, applyBidirectionalInjection, handleHostChatChanged: handleHostChatChanged2 }) {
     function hookGenerationEvent() {
       const context = getCtx();
@@ -15531,16 +15968,14 @@ ${antiFluff}`;
       for (const eventName of resolveCommunityMessageEvents(eventTypes)) {
         results.push(registerOnce(`community:${eventName}`, eventName, () => {
           const currentContext = getCtx();
+          const storageId = getStorageId2();
           try {
             deps.observeCommunityTurn?.(currentContext?.chat || []);
           } catch (error) {
           }
-          try {
-            deps.observeTodayTrendTurn?.(currentContext?.chat || []);
-          } catch (error) {
-          }
           Promise.resolve(deps.observeCalendarTurn?.()).catch(() => {
           });
+          observeTodayTrendAfterHostEvent(deps, currentContext, storageId, getStorageId2);
         }));
       }
       const received = resolveHostEvent(eventTypes, "MESSAGE_RECEIVED");
@@ -15748,11 +16183,11 @@ ${kept.join("\n")}`;
     const messageId = optionalData(value, "messageId");
     const bubbleId = optionalData(value, "bubbleId");
     const sender = optionalData(value, "sender");
-    const text7 = optionalData(value, "text");
-    if (!messageId.valid || !bubbleId.valid || !sender.valid || !text7.valid) {
+    const text8 = optionalData(value, "text");
+    if (!messageId.valid || !bubbleId.valid || !sender.valid || !text8.valid) {
       return { valid: false, value: void 0 };
     }
-    for (const field of [messageId.value, bubbleId.value, sender.value, text7.value]) {
+    for (const field of [messageId.value, bubbleId.value, sender.value, text8.value]) {
       if (field !== void 0 && typeof field !== "string") return { valid: false, value: void 0 };
     }
     return {
@@ -15761,7 +16196,7 @@ ${kept.join("\n")}`;
         messageId: messageId.value || "",
         bubbleId: bubbleId.value || "",
         sender: sender.value || "",
-        text: text7.value || ""
+        text: text8.value || ""
       })
     };
   }
@@ -16028,8 +16463,8 @@ ${kept.join("\n")}`;
       kept.push(line2);
       used += tokens;
     }
-    const text7 = kept.join("\n");
-    return { text: text7, truncated: kept.length < lines.length };
+    const text8 = kept.join("\n");
+    return { text: text8, truncated: kept.length < lines.length };
   }
   function allocateRenderedPrompts(items, tokenLimit) {
     const prompts = [];
@@ -16110,9 +16545,13 @@ ${kept.join("\n")}`;
     const cycleDates = new Set(calendarDateRangeKeys(windowStart, -1, 3));
     if (calendarScope.injectionWeatherEnabled && weatherStore?.location) {
       for (const date of weatherDates) {
-        const weather = resolveWeatherForDate(weatherStore, date);
+        const weather = resolveWeatherForDate(weatherStore, date, {
+          storyWeatherEvent: calendarScope.weatherEvent,
+          storyWeatherEventEnabled: calendarScope.weatherEventEnabled
+        });
         if (weather.status === "available") {
-          addFact(date, `\u5929\u6C14\uFF1A${weatherCodeLabel(weather.day.weatherCode)}\uFF0C${weather.day.tempMin}\xB0/${weather.day.tempMax}\xB0C`);
+          const eventNote = weather.source === "story_weather_event" ? `\uFF08${weather.sourceLabel}\uFF09` : "";
+          addFact(date, `\u5929\u6C14\uFF1A${weatherCodeLabel(weather.day.weatherCode)}\uFF0C${weather.day.tempMin}\xB0/${weather.day.tempMax}\xB0C${eventNote}`);
         }
       }
     }
@@ -16373,9 +16812,9 @@ ${body}
   }
   function renderConversation(name, history, meta, userName, emojis) {
     const messages = history.map((message) => {
-      const text7 = resolveEmojiText((message.content || "").replace(/\s*\/\s*/g, "\u3002").replace(/\n/g, "\uFF1B"), emojis);
+      const text8 = resolveEmojiText((message.content || "").replace(/\s*\/\s*/g, "\u3002").replace(/\n/g, "\uFF1B"), emojis);
       const quote = formatQuoteContext(message.quote);
-      const body = [quote ? `\u3010${quote}\u3011` : "", text7].filter(Boolean).join(" ");
+      const body = [quote ? `\u3010${quote}\u3011` : "", text8].filter(Boolean).join(" ");
       const director = message.directorNote ? `\u3010\u5267\u60C5\u5F15\u5BFC\uFF1A${message.directorNote}\u3011` : "";
       const content = message.role === "user" ? [body, director].filter(Boolean).join(" ") : body;
       return content ? { role: message.role, content } : null;
@@ -16564,7 +17003,7 @@ ${lines}`;
       if (metadata.pendingStatus) node.dataset.pendingStatus = metadata.pendingStatus;
       if (metadata.pendingId !== void 0) node.classList.add("pm-pending-entry");
     }
-    function attachQuoteUi(root, bubble, text7, senderName, metadata) {
+    function attachQuoteUi(root, bubble, text8, senderName, metadata) {
       if (metadata?.quote && !bubble.querySelector(".pm-reply-card")) {
         const card2 = document.createElement("button");
         card2.type = "button";
@@ -16600,15 +17039,15 @@ ${lines}`;
           messageId: String(metadata.messageId),
           bubbleId: String(metadata.bubbleId),
           sender: String(senderName || metadata.sender || "\u6211"),
-          text: String(text7 || "")
+          text: String(text8 || "")
         });
       });
       root.appendChild(action);
     }
-    function addBubble(text7, side, senderName, historyIndex, metadata) {
+    function addBubble(text8, side, senderName, historyIndex, metadata) {
       const list2 = state.phoneWindow?.querySelector(".pm-msg-list");
       if (!list2) return [];
-      const nodes = createBubbles(text7, side, senderName, {
+      const nodes = createBubbles(text8, side, senderName, {
         groupColorMap: state.groupColorMap,
         groupMembers: state.groupMembers,
         emojis: window.__pmEmojis,
@@ -16618,20 +17057,20 @@ ${lines}`;
         applyBubbleMetadata(node, metadata);
         if (node.classList?.contains("pm-bubble")) {
           node.dataset.side = side;
-          node.dataset.text = text7;
+          node.dataset.text = text8;
           if (historyIndex !== void 0) node.dataset.historyIndex = historyIndex;
-          attachQuoteUi(node, node, text7, senderName, metadata);
+          attachQuoteUi(node, node, text8, senderName, metadata);
         } else if (node.classList?.contains("pm-group-bubble-wrap")) {
           node.dataset.side = side;
-          node.dataset.text = text7;
+          node.dataset.text = text8;
           if (historyIndex !== void 0) node.dataset.historyIndex = historyIndex;
           const bubble = node.querySelector(".pm-bubble");
           if (bubble) {
             applyBubbleMetadata(bubble, metadata);
             bubble.dataset.side = side;
-            bubble.dataset.text = text7;
+            bubble.dataset.text = text8;
             if (historyIndex !== void 0) bubble.dataset.historyIndex = historyIndex;
-            attachQuoteUi(node, bubble, text7, senderName, metadata);
+            attachQuoteUi(node, bubble, text8, senderName, metadata);
           }
         }
         list2.appendChild(node);
@@ -16660,22 +17099,22 @@ ${lines}`;
       }
       quote.refreshReplyCardAvailability();
     }
-    function addNote(text7) {
+    function addNote(text8) {
       const list2 = state.phoneWindow?.querySelector(".pm-msg-list");
       if (!list2) return;
       const node = document.createElement("div");
       node.className = "pm-note";
-      node.textContent = text7;
+      node.textContent = text8;
       list2.appendChild(node);
       list2.scrollTop = list2.scrollHeight;
     }
-    function addDirector(text7, metadata) {
+    function addDirector(text8, metadata) {
       const list2 = state.phoneWindow?.querySelector(".pm-msg-list");
       if (!list2) return null;
       const node = document.createElement("div");
       node.className = "pm-director";
       applyBubbleMetadata(node, metadata);
-      node.innerHTML = `<span class="pm-director-icon">\u{1F3AC}</span><span class="pm-director-text">${escapeHtml(text7)}</span>`;
+      node.innerHTML = `<span class="pm-director-icon">\u{1F3AC}</span><span class="pm-director-text">${escapeHtml(text8)}</span>`;
       list2.appendChild(node);
       list2.scrollTop = list2.scrollHeight;
       return node;
@@ -16869,9 +17308,10 @@ ${lines}`;
   var PHONE_MIN_SCALE = 0.6;
   var PHONE_MAX_SCALE = 1.5;
   function normalizePhoneScale(value, viewportWidth = globalThis.window?.innerWidth ?? 1200) {
-    const width = Number(viewportWidth);
+    const rawWidth = Number(viewportWidth);
+    const width = Number.isFinite(rawWidth) ? Math.max(0, rawWidth) : 1200;
     const compact = width <= 500;
-    const widthLimit = Math.max(0.1, (compact ? width * 0.92 : width - 24) / PHONE_BASE_WIDTH);
+    const widthLimit = (compact ? width * 0.92 : width - 24) / PHONE_BASE_WIDTH;
     const maximum = Math.max(Math.min(PHONE_MAX_SCALE, widthLimit), Math.min(PHONE_MIN_SCALE, widthLimit));
     const minimum = Math.min(PHONE_MIN_SCALE, maximum);
     const numeric = Number(value);
@@ -16888,12 +17328,14 @@ ${lines}`;
   function phoneSizeForViewport(scale, viewportWidth = globalThis.window?.innerWidth ?? 1200, viewportHeight = globalThis.window?.visualViewport?.height ?? globalThis.window?.innerHeight ?? 1e3) {
     const normalized = normalizePhoneScale(scale, viewportWidth);
     const naturalSize = phoneSizeForScale(normalized);
+    const rawWidth = Number(viewportWidth);
+    const width = Number.isFinite(rawWidth) ? Math.max(0, rawWidth) : 1200;
     const height = Number(viewportHeight);
-    const compact = Number(viewportWidth) <= 500 || height <= 700;
-    const heightBudget = Math.max(
-      Math.round(PHONE_BASE_HEIGHT * 0.1),
-      Math.round(compact ? height * 0.82 : height - 24)
-    );
+    const compact = width <= 500 || height <= 700;
+    const availableHeight = Number.isFinite(height) ? Math.max(0, height) : 1e3;
+    const heightBudget = Math.max(0, Math.round(
+      compact ? availableHeight * 0.82 : availableHeight - 24
+    ));
     return { scale: normalized, width: naturalSize.width, height: Math.min(naturalSize.height, heightBudget) };
   }
   function applyPhoneScale(element, scale = globalThis.window?.__pmTheme?.phoneScale) {
@@ -19213,7 +19655,7 @@ ${error.message}`);
   }
 
   // src/settings-worldbook.js
-  var text4 = (value) => typeof value === "string" ? value : "";
+  var text5 = (value) => typeof value === "string" ? value : "";
   var HIDDEN_ENTRY_TITLE = /(?:^|-)包裹-(?:上|下)$/;
   var WORLD_BOOK_BATCH_SIZE = 30;
   var MODULE_LABELS = Object.freeze({ chat: "\u4F1A\u8BDD", calendar: "\u65E5\u5386", outfit: "\u7A7F\u642D", community: "\u793E\u533A", todayTrend: "\u4ECA\u65E5\u98CE\u5411" });
@@ -19233,16 +19675,16 @@ ${error.message}`);
       if (!value || typeof value !== "object" || Array.isArray(value)) return [];
       const uid5 = value.uid ?? value.id ?? fallbackUid;
       const key = createWorldBookEntryKey(name, uid5);
-      const content = text4(value.content).trim();
+      const content = text5(value.content).trim();
       if (!key || !content) return [];
-      const title = text4(value.comment).trim() || `\u6761\u76EE ${uid5}`;
+      const title = text5(value.comment).trim() || `\u6761\u76EE ${uid5}`;
       const column = getTavernDbColumn(value.comment);
       if (HIDDEN_ENTRY_TITLE.test(title) && !column) return [];
       return [{ key, uid: String(uid5), title, column, disabled: value.disable === true || value.enabled === false }];
     }).sort((left, right) => left.uid.localeCompare(right.uid, void 0, { numeric: true }));
   }
   async function loadWorldBookDetails(context, rawName, { signal } = {}) {
-    const name = text4(rawName).trim();
+    const name = text5(rawName).trim();
     if (!name || typeof context?.loadWorldInfo !== "function") return null;
     if (signal?.aborted) throw abortError();
     let book;
@@ -19268,7 +19710,7 @@ ${error.message}`);
     const currentConfig = normalizeWorldBookConfig(config);
     const current = getCurrentChatWorldBooks(context).map((book) => ({ ...book, enabled: currentConfig.books[book.name] !== false }));
     const currentNames = new Set(current.map((book) => book.name));
-    const others = [...new Set(names2.map((name) => text4(name).trim()).filter(Boolean))].filter((name) => !currentNames.has(name)).map((name) => ({ name, enabled: currentConfig.books[name] === true }));
+    const others = [...new Set(names2.map((name) => text5(name).trim()).filter(Boolean))].filter((name) => !currentNames.has(name)).map((name) => ({ name, enabled: currentConfig.books[name] === true }));
     return { current, others };
   }
   async function loadWorldBookDirectory(context, { signal } = {}) {
@@ -19277,7 +19719,7 @@ ${error.message}`);
     const books = [];
     for (const rawName of selectedNames) {
       if (signal?.aborted) return [];
-      const name = text4(rawName).trim();
+      const name = text5(rawName).trim();
       if (!name) continue;
       const details = await loadWorldBookDetails(context, name, { signal });
       if (signal?.aborted) return [];
@@ -19444,7 +19886,7 @@ ${error.message}`);
     window.__pmSearchWorldBooks = (value) => {
       if (!pageState || !pageState.otherExpanded) return false;
       cancelDetail();
-      pageState.search = text4(value);
+      pageState.search = text5(value);
       pageState.otherLimit = WORLD_BOOK_BATCH_SIZE;
       const updated = rerenderLists(pageState);
       const input = pageState?.overlay?.querySelector(".pm-worldbook-search input");
@@ -19459,7 +19901,7 @@ ${error.message}`);
     };
     window.__pmToggleWorldBookDetails = async (rawName, retry = false) => {
       const state = pageState;
-      const name = text4(rawName).trim();
+      const name = text5(rawName).trim();
       if (!state || !name || !isActivePage(state)) return false;
       if (!retry && state.detail?.name === name) {
         cancelDetail();
@@ -19503,7 +19945,7 @@ ${error.message}`);
       if (controller.signal.aborted || quickController !== controller) return false;
       quickController = null;
       const config = loadWorldBookConfig();
-      quickSelector = { title: text4(title).trim() || `${MODULE_LABELS[module]}\u53EF\u8BFB\u7684\u6570\u636E\u5E93\u8BB0\u5FC6`, module, scope, books, backAction, backLabel };
+      quickSelector = { title: text5(title).trim() || `${MODULE_LABELS[module]}\u53EF\u8BFB\u7684\u6570\u636E\u5E93\u8BB0\u5FC6`, module, scope, books, backAction, backLabel };
       showQuickSelector(config);
       return true;
     };
@@ -19513,7 +19955,7 @@ ${error.message}`);
       const candidate = cloneConfig(current);
       const { module, scope } = quickSelector;
       const target = scope?.kind === "group" ? candidate.groups : scope?.kind === "character" ? candidate.characters : null;
-      const id2 = text4(scope?.id).trim();
+      const id2 = text5(scope?.id).trim();
       if (target && !id2) return false;
       const override = target ? target[id2] = { ...target[id2] || {}, entries: { ...target[id2]?.entries || {} }, columns: { ...target[id2]?.columns || {} } } : candidate;
       document.querySelectorAll("[data-world-quick-column]").forEach((control) => {
@@ -19534,7 +19976,7 @@ ${error.message}`);
       const current = normalizeWorldBookConfig(window.__pmWorldBookConfig);
       const candidate = cloneConfig(current);
       const target = quickSelector.scope.kind === "group" ? candidate.groups : candidate.characters;
-      const id2 = text4(quickSelector.scope.id).trim();
+      const id2 = text5(quickSelector.scope.id).trim();
       if (!id2) return false;
       const existing = target[id2];
       if (existing) {
@@ -19557,7 +19999,7 @@ ${error.message}`);
       return true;
     };
     window.__pmSetGroupMemberPrivateMemory = (groupId, enabled) => {
-      const id2 = text4(groupId).trim();
+      const id2 = text5(groupId).trim();
       if (!id2) return false;
       const candidate = cloneConfig(window.__pmWorldBookConfig);
       candidate.groups[id2] = { ...candidate.groups[id2] || {}, entries: { ...candidate.groups[id2]?.entries || {} }, columns: { ...candidate.groups[id2]?.columns || {} }, allowMemberPrivateMemory: enabled === true };
@@ -19568,7 +20010,7 @@ ${error.message}`);
       return true;
     };
     window.__pmToggleGroupMemberPrivateMemory = (groupId) => {
-      const id2 = text4(groupId).trim();
+      const id2 = text5(groupId).trim();
       if (!id2) return false;
       const enabled = window.__pmWorldBookConfig?.groups?.[id2]?.allowMemberPrivateMemory === true;
       if (!enabled && !confirm("\u5F00\u542F\u540E\uFF0C\u7FA4\u804A\u4F1A\u8F7D\u5165\u6210\u5458\u5728\u79C1\u4EBA\u7A97\u53E3\u4E2D\u542F\u7528\u7684\u6570\u636E\u5E93\u680F\u76EE\u3002\u7FA4\u804A\u4F7F\u7528\u5171\u4EAB\u6A21\u578B\u4E0A\u4E0B\u6587\uFF0C\u89D2\u8272\u95F4\u9694\u79BB\u4F9D\u8D56\u63D0\u793A\u8BCD\u7EA6\u675F\uFF0C\u5E76\u975E\u4E25\u683C\u6570\u636E\u9694\u79BB\u3002")) return false;
@@ -19841,9 +20283,9 @@ ${error.message}`);
     delete theme.ambientStatusEnabled;
     return theme;
   };
-  var isUnsafeDictionaryKey2 = (value) => value === "prototype" || Object.hasOwn(Object.prototype, value);
+  var isUnsafeDictionaryKey3 = (value) => value === "prototype" || Object.hasOwn(Object.prototype, value);
   var assertSafeDictionaryKey2 = (value, field) => {
-    if (isUnsafeDictionaryKey2(value)) throw new Error(`\u5907\u4EFD\u5B57\u6BB5 ${field} \u5305\u542B\u5371\u9669\u952E ${value}`);
+    if (isUnsafeDictionaryKey3(value)) throw new Error(`\u5907\u4EFD\u5B57\u6BB5 ${field} \u5305\u542B\u5371\u9669\u952E ${value}`);
     return value;
   };
   var assertNormalizedDictionaryKey = (value, field, max) => {
@@ -20377,8 +20819,8 @@ ${error.message}`);
   }
 
   // src/today-trend-context.js
-  var text5 = (value, max = 600) => typeof value === "string" ? value.trim().slice(0, max) : "";
-  var names = (value) => Array.isArray(value) ? [...new Set(value.map((item) => text5(item, 120)).filter(Boolean))] : [];
+  var text6 = (value, max = 600) => typeof value === "string" ? value.trim().slice(0, max) : "";
+  var names = (value) => Array.isArray(value) ? [...new Set(value.map((item) => text6(item, 120)).filter(Boolean))] : [];
   async function gatherTodayTrendContext({
     getCtx,
     signal,
@@ -20392,9 +20834,9 @@ ${error.message}`);
     collectContext = gatherContext
   } = {}) {
     if (typeof getCtx !== "function") throw new TypeError("\u4ECA\u65E5\u98CE\u5411\u4E0A\u4E0B\u6587\u7F3A\u5C11\u4E0A\u4E0B\u6587\u8BFB\u53D6\u5668");
-    const id2 = text5(storageId, 120);
-    const roleId = text5(characterId, 120);
-    const roleName = text5(characterName, 120);
+    const id2 = text6(storageId, 120);
+    const roleId = text6(characterId, 120);
+    const roleName = text6(characterName, 120);
     const selectedBooks = names(worldBookNames);
     if (!id2 || !roleId || !roleName) throw new Error("\u4ECA\u65E5\u98CE\u5411\u521D\u59CB\u5316\u7F3A\u5C11\u89D2\u8272\u6216\u804A\u5929\u6807\u8BC6");
     if (!selectedBooks.length) throw new Error("\u4ECA\u65E5\u98CE\u5411\u521D\u59CB\u5316\u81F3\u5C11\u9700\u8981\u9009\u62E9\u4E00\u672C\u4E16\u754C\u4E66");
@@ -20419,26 +20861,26 @@ ${error.message}`);
       storageId: id2,
       characterId: roleId,
       characterName: roleName,
-      source: { worldBookNames: selectedBooks, includeExistingChat: includeExistingChat === true, userRequirements: text5(userRequirements) },
-      user: { name: text5(host?.userName, 120), description: text5(host?.userDesc) },
+      source: { worldBookNames: selectedBooks, includeExistingChat: includeExistingChat === true, userRequirements: text6(userRequirements) },
+      user: { name: text6(host?.userName, 120), description: text6(host?.userDesc) },
       character: {
-        description: text5(host?.cardDesc),
-        personality: text5(host?.cardPersonality),
-        scenario: text5(host?.cardScenario),
-        firstMessage: text5(host?.cardFirstMes),
-        exampleMessages: text5(host?.cardMesExample)
+        description: text6(host?.cardDesc),
+        personality: text6(host?.cardPersonality),
+        scenario: text6(host?.cardScenario),
+        firstMessage: text6(host?.cardFirstMes),
+        exampleMessages: text6(host?.cardMesExample)
       },
-      worldBookText: text5(host?.worldBookText, worldBookMaxChars),
-      mainChatText: includeExistingChat === true ? text5(host?.mainChatText, 8e3) : "",
-      latestChatText: includeExistingChat === true ? text5(host?.latestChatText, 1600) : ""
+      worldBookText: text6(host?.worldBookText, worldBookMaxChars),
+      mainChatText: includeExistingChat === true ? text6(host?.mainChatText, 8e3) : "",
+      latestChatText: includeExistingChat === true ? text6(host?.latestChatText, 1600) : ""
     };
   }
 
   // src/prompts/today-trend/envelopes.js
   var block = (name, value, max) => {
-    const text7 = String(value || "").trim().slice(0, max);
-    if (!text7) return "";
-    const encoded = JSON.stringify(text7).replace(/[<>&]/g, (char) => `\\u${char.charCodeAt(0).toString(16).padStart(4, "0")}`);
+    const text8 = String(value || "").trim().slice(0, max);
+    if (!text8) return "";
+    const encoded = JSON.stringify(text8).replace(/[<>&]/g, (char) => `\\u${char.charCodeAt(0).toString(16).padStart(4, "0")}`);
     return `<${name} encoding="json-string">
 ${encoded}
 </${name}>`;
@@ -21141,7 +21583,7 @@ ${targetInstruction}`
       const abortController = new AbortController();
       ruleRegeneration = abortController;
       const active = () => ruleRegeneration === abortController && !abortController.signal.aborted && getStorageId2() === identity.storageId;
-      const text7 = await controller.regenerateRule({ scope, preset, rule, signal: abortController.signal });
+      const text8 = await controller.regenerateRule({ scope, preset, rule, signal: abortController.signal });
       if (!active()) throw Object.assign(new Error("\u4ECA\u65E5\u98CE\u5411\u89C4\u5219\u91CD\u751F\u6210\u5DF2\u53D6\u6D88"), { name: "AbortError" });
       const committed = await committer.commitStore((store) => {
         const current = store.scopes[identity.storageId], currentPreset = store.presets[current?.presetId];
@@ -21150,7 +21592,7 @@ ${targetInstruction}`
         const field = group === "dynamics" && key ? key : group;
         const rules = group === "dynamics" && key ? "dynamicsRules" : "moduleRules";
         if (!Object.hasOwn(currentPreset[rules], field)) throw new Error("\u4ECA\u65E5\u98CE\u5411\u89C4\u5219\u91CD\u751F\u6210\u76EE\u6807\u65E0\u6548");
-        currentPreset[rules][field] = text7;
+        currentPreset[rules][field] = text8;
         currentPreset.revision += 1;
         currentPreset.updatedAt = Date.now();
         return store;
@@ -21159,9 +21601,9 @@ ${targetInstruction}`
       if (ruleRegeneration === abortController) ruleRegeneration = null;
       return committed;
     };
-    const saveRule = async (rule, text7, expectedPresetId, expectedRevision) => {
+    const saveRule = async (rule, text8, expectedPresetId, expectedRevision) => {
       const identity = currentIdentity(getStorageId2());
-      const value = String(text7 || "").trim();
+      const value = String(text8 || "").trim();
       const presetId = String(expectedPresetId || "").trim();
       const revision = Number(expectedRevision);
       if (!value) throw new Error("\u6A21\u5757\u89C4\u5219\u4E0D\u80FD\u4E3A\u7A7A");
@@ -21532,10 +21974,10 @@ ${targetInstruction}`
       if (!form?.matches?.("form[data-today-trend-form]") || !container.contains(form)) return;
       event.preventDefault();
       if (form.dataset.todayTrendForm === "rule-editor") {
-        const rule = formValue(form, "rule"), text7 = formValue(form, "text");
-        if (!text7) return run(Promise.reject(new Error("\u6A21\u5757 Prompt \u4E0D\u80FD\u4E3A\u7A7A")));
-        view.ruleDraft = text7;
-        return run(Promise.resolve(onSaveRule?.(rule, text7)).then(async () => {
+        const rule = formValue(form, "rule"), text8 = formValue(form, "text");
+        if (!text8) return run(Promise.reject(new Error("\u6A21\u5757 Prompt \u4E0D\u80FD\u4E3A\u7A7A")));
+        view.ruleDraft = text8;
+        return run(Promise.resolve(onSaveRule?.(rule, text8)).then(async () => {
           view.editingRule = null;
           view.ruleDraft = null;
           await rerender();
@@ -21678,11 +22120,11 @@ ${targetInstruction}`
   // src/today-trend-dynamics-view.js
   var TYPES = Object.freeze({ normal: "\u5E38\u89C4\u52A8\u6001", incident: "\u7A81\u53D1\u4E8B\u4EF6", rumor: "\u6D41\u8A00\u871A\u8BED", underground: "\u5730\u4E0B\u7EBF" });
   var OUTCOMES = Object.freeze({ resolved: "\u5DF2\u89E3\u51B3", failed: "\u5DF2\u5931\u8D25", terminated: "\u5DF2\u7EC8\u6B62", inconclusive: "\u65E0\u5B9A\u8BBA", confirmed: "\u5DF2\u8BC1\u5B9E", debunked: "\u5DF2\u8BC1\u4F2A", absorbed: "\u5DF2\u627F\u63A5" });
-  var text6 = (value) => escapeHtml(String(value || ""));
+  var text7 = (value) => escapeHtml(String(value || ""));
   var icon2 = (action, glyph, label, attrs = "", danger = false) => ({ action, icon: glyph, label, attrs, danger });
   var outcomes = (selected, rumor) => Object.entries(OUTCOMES).filter(([key]) => rumor ? ["confirmed", "debunked"].includes(key) : ["resolved", "failed", "terminated", "inconclusive"].includes(key)).map(([key, label]) => `<option value="${key}"${key === selected ? " selected" : ""}>${label}</option>`).join("");
   function eventForm(event = {}, kind = "event") {
-    const fields = kind === "archive" ? `<label class="pm-today-trend-field">\u5B8C\u7ED3\u7ED3\u679C<select class="pm-today-trend-input" name="outcome">${outcomes(event.type === "rumor" ? "confirmed" : "resolved", event.type === "rumor")}</select></label><label class="pm-today-trend-field">\u6700\u7EC8\u7ED3\u679C<textarea class="pm-today-trend-input" name="finalResult" maxlength="600" required></textarea></label>` : `<label class="pm-today-trend-field">\u540D\u79F0<input class="pm-today-trend-input" name="title" maxlength="120" required value="${escapeAttr(event.title || "")}"></label><label class="pm-today-trend-field">\u7C7B\u578B<select class="pm-today-trend-input" name="type">${Object.entries(TYPES).map(([key, label]) => `<option value="${key}"${key === (event.type || "normal") ? " selected" : ""}>${label}</option>`).join("")}</select></label><label class="pm-today-trend-field">\u9636\u6BB5<input class="pm-today-trend-input" name="stageLabel" maxlength="8" required value="${escapeAttr(event.stageLabel || "\u51C6\u5907\u4E2D")}"></label><label class="pm-today-trend-field">\u8D77\u56E0<textarea class="pm-today-trend-input" name="origin" maxlength="600" required>${text6(event.origin || "")}</textarea></label><label class="pm-today-trend-field">\u6D89\u53CA\u4E3B\u4F53<input class="pm-today-trend-input" name="participants" maxlength="600" value="${escapeAttr((event.participants || []).join("\u3001"))}"></label><label class="pm-today-trend-field">\u6700\u65B0\u9636\u6BB5<textarea class="pm-today-trend-input" name="latestStage" maxlength="600" required>${text6(event.latestStage || "")}</textarea></label>`;
+    const fields = kind === "archive" ? `<label class="pm-today-trend-field">\u5B8C\u7ED3\u7ED3\u679C<select class="pm-today-trend-input" name="outcome">${outcomes(event.type === "rumor" ? "confirmed" : "resolved", event.type === "rumor")}</select></label><label class="pm-today-trend-field">\u6700\u7EC8\u7ED3\u679C<textarea class="pm-today-trend-input" name="finalResult" maxlength="600" required></textarea></label>` : `<label class="pm-today-trend-field">\u540D\u79F0<input class="pm-today-trend-input" name="title" maxlength="120" required value="${escapeAttr(event.title || "")}"></label><label class="pm-today-trend-field">\u7C7B\u578B<select class="pm-today-trend-input" name="type">${Object.entries(TYPES).map(([key, label]) => `<option value="${key}"${key === (event.type || "normal") ? " selected" : ""}>${label}</option>`).join("")}</select></label><label class="pm-today-trend-field">\u9636\u6BB5<input class="pm-today-trend-input" name="stageLabel" maxlength="8" required value="${escapeAttr(event.stageLabel || "\u51C6\u5907\u4E2D")}"></label><label class="pm-today-trend-field">\u8D77\u56E0<textarea class="pm-today-trend-input" name="origin" maxlength="600" required>${text7(event.origin || "")}</textarea></label><label class="pm-today-trend-field">\u6D89\u53CA\u4E3B\u4F53<input class="pm-today-trend-input" name="participants" maxlength="600" value="${escapeAttr((event.participants || []).join("\u3001"))}"></label><label class="pm-today-trend-field">\u6700\u65B0\u9636\u6BB5<textarea class="pm-today-trend-input" name="latestStage" maxlength="600" required>${text7(event.latestStage || "")}</textarea></label>`;
     return `<form class="pm-today-trend-editor" data-today-trend-form="${kind === "archive" ? "event-archive" : kind === "promotion" ? "event-promotion" : "event"}">${kind === "promotion" ? `<input type="hidden" name="sourceEventId" value="${escapeAttr(event.id || "")}">` : `<input type="hidden" name="id" value="${escapeAttr(event.id || "")}">`}${fields}<div class="pm-today-trend-form-actions"><button type="button" data-action="today-trend-cancel-event-editor">\u53D6\u6D88</button><button type="submit">${kind === "archive" ? "\u786E\u8BA4\u5F52\u6863" : kind === "promotion" ? "\u786E\u8BA4\u5347\u7EA7" : "\u4FDD\u5B58"}</button></div></form>`;
   }
   function settingsForm(settings) {
@@ -21692,7 +22134,7 @@ ${targetInstruction}`
     const state = archived ? OUTCOMES[event.outcome] || event.outcome : event.stageLabel;
     const actions = archived ? [icon2("today-trend-delete-event", TRASH_ICON_SVG, `\u5220\u9664${event.title}`, `data-event-id="${escapeAttr(event.id)}"`, true)] : [icon2("today-trend-edit-event", EDIT_ICON_SVG, `\u7F16\u8F91${event.title}`, `data-event-id="${escapeAttr(event.id)}"`), ...event.type === "underground" ? [icon2("today-trend-promote-underground", SPARKLES_ICON_SVG, `\u5347\u7EA7${event.title}`, `data-event-id="${escapeAttr(event.id)}"`)] : [], icon2("today-trend-archive-event", TRASH_ICON_SVG, `\u5F52\u6863${event.title}`, `data-event-id="${escapeAttr(event.id)}"`)];
     const stages = Array.isArray(event.stages) ? event.stages : [];
-    return `<article class="pm-today-trend-event-card${archived ? " is-archived" : ""}" data-event-type="${escapeAttr(event.type)}"><span class="pm-today-trend-event-marker" aria-hidden="true"></span><div class="pm-today-trend-event-body"><header><div><b>${text6(event.title)}</b><span>${text6(TYPES[event.type] || event.type)}\uFF5C${text6(state)}</span></div>${trendInlineActions({ visible: actionsVisible, actions })}</header><dl class="pm-today-trend-event-facts"><div><dt>\u8D77\u56E0</dt><dd>${text6(event.origin)}</dd></div><div><dt>\u6D89\u53CA\u4E3B\u4F53</dt><dd>${text6(event.participants.join("\u3001") || "\u672A\u8BB0\u5F55")}</dd></div></dl><details class="pm-today-trend-event-history"><summary>\u9636\u6BB5\u8BB0\u5F55\uFF08${stages.length}\uFF09</summary><ol>${stages.map((stage) => `<li>${text6(stage)}</li>`).join("")}</ol></details><p class="pm-today-trend-event-latest"><strong>${archived ? "\u6700\u7EC8\u7ED3\u679C" : "\u6700\u65B0\u9636\u6BB5"}</strong><span>${text6(archived ? event.finalResult : event.latestStage)}</span></p></div></article>`;
+    return `<article class="pm-today-trend-event-card${archived ? " is-archived" : ""}" data-event-type="${escapeAttr(event.type)}"><span class="pm-today-trend-event-marker" aria-hidden="true"></span><div class="pm-today-trend-event-body"><header><div><b>${text7(event.title)}</b><span>${text7(TYPES[event.type] || event.type)}\uFF5C${text7(state)}</span></div>${trendInlineActions({ visible: actionsVisible, actions })}</header><dl class="pm-today-trend-event-facts"><div><dt>\u8D77\u56E0</dt><dd>${text7(event.origin)}</dd></div><div><dt>\u6D89\u53CA\u4E3B\u4F53</dt><dd>${text7(event.participants.join("\u3001") || "\u672A\u8BB0\u5F55")}</dd></div></dl><details class="pm-today-trend-event-history"><summary>\u9636\u6BB5\u8BB0\u5F55\uFF08${stages.length}\uFF09</summary><ol>${stages.map((stage) => `<li>${text7(stage)}</li>`).join("")}</ol></details><p class="pm-today-trend-event-latest"><strong>${archived ? "\u6700\u7EC8\u7ED3\u679C" : "\u6700\u65B0\u9636\u6BB5"}</strong><span>${text7(archived ? event.finalResult : event.latestStage)}</span></p></div></article>`;
   }
   function renderTodayTrendDynamicsView({ scope, preset = null, editingEventId = null, editingRule = null, ruleDraft = null, mode = "content", menuOpenId = null, generationAvailable = false, generationBusy = false } = {}) {
     if (!scope) return '<p class="pm-today-trend-empty">\u5F53\u524D\u804A\u5929\u5C1A\u672A\u521D\u59CB\u5316\u4ECA\u65E5\u98CE\u5411\u3002</p>';
@@ -21904,13 +22346,13 @@ ${targetInstruction}`
       });
     };
     const rerender = (view) => render(view).catch(report);
-    const saveRule = async (rule, text7) => {
+    const saveRule = async (rule, text8) => {
       const current = await store(), id2 = deps.getStorageId(), scope = current?.scopes?.[id2], preset = current?.presets?.[scope?.presetId];
       const [group, key = ""] = String(rule).split("-");
       const rules = group === "dynamics" && key ? preset?.dynamicsRules : preset?.moduleRules;
       const field = group === "dynamics" && key ? key : group;
       if (!preset || !Object.hasOwn(rules || {}, field)) throw new Error("\u5F53\u524D\u6A21\u5757\u89C4\u5219\u4E0D\u53EF\u7528");
-      const normalized = String(text7 || "").trim();
+      const normalized = String(text8 || "").trim();
       if (!normalized) throw new Error("\u6A21\u5757\u89C4\u5219\u4E0D\u80FD\u4E3A\u7A7A");
       if (typeof deps.saveTodayTrendRule !== "function") throw new Error("\u6A21\u5757\u89C4\u5219\u4FDD\u5B58\u80FD\u529B\u4E0D\u53EF\u7528");
       return deps.saveTodayTrendRule(rule, normalized, preset.id, preset.revision);

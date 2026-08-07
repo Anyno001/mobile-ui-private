@@ -1,8 +1,9 @@
 import { getInteractivePresets } from './interactive-scene-ai.js';
+import { createCommunityTemplate } from './interactive-scene-model.js';
 import {
     BACK_ICON_SVG, CALENDAR_ICON_SVG, CHAT_ICON_SVG, CLOSE_ICON_SVG, COMMUNITY_ICON_SVG,
     BOOK_ICON_SVG, CONTACTS_ICON_SVG, CONTROL_ICON_SVG, EDIT_ICON_SVG, HEART_ICON_SVG, HOME_ICON_SVG,
-    EYE_ICON_SVG, INJECTION_ICON_SVG, MORE_ICON_SVG, PLAY_ICON_SVG, POKE_ICON_SVG, REPLY_ICON_SVG, SEND_ICON_SVG, SETTINGS_ICON_SVG, SHARE_ICON_SVG, SHARE_WINDOW_ICON_SVG, TRASH_ICON_SVG, TREND_ICON_SVG,
+    COMMUNITY_TEMPLATE_ICON_SVG, EYE_ICON_SVG, INJECTION_ICON_SVG, MORE_ICON_SVG, PLAY_ICON_SVG, POKE_ICON_SVG, REPLY_ICON_SVG, SEND_ICON_SVG, SETTINGS_ICON_SVG, SHARE_ICON_SVG, TRASH_ICON_SVG, TREND_ICON_SVG,
 } from './icons.js';
 import { escapeAttr, escapeHtml } from './ui.js';
 
@@ -68,14 +69,18 @@ export function getDanmakuMotion(item) {
     };
 }
 
-export function renderPhoneDesktop(scope = { scenes: {} }, uiScope = { pinnedSceneIds: [] }, sharedScenes = []) {
+function sceneAccent(scene) {
+    return scene?.themeAccent || getInteractivePresets()[scene?.preset]?.accent || getInteractivePresets().custom.accent;
+}
+
+export function renderPhoneDesktop(scope = { scenes: {} }, uiScope = { pinnedSceneIds: [] }, sharedCommunityTemplates = []) {
     const title = String(globalThis.window?.__pmTheme?.customTitle || '').trim() || DEFAULT_DESKTOP_TITLE;
     const pins = (uiScope.pinnedSceneIds || []).flatMap(sceneId => {
         const scene = scope.scenes?.[sceneId];
         if (!scene) return [];
-        return [`<article class="pm-desktop-pin"><button type="button" data-action="desktop-open-scene" data-scene-id="${escapeAttr(scene.id)}"><b>${escapeHtml(scene.title)}</b></button><button type="button" data-action="unpin-scene" data-scene-id="${escapeAttr(scene.id)}" aria-label="移除 ${escapeAttr(scene.title)} 快捷方式">移除</button></article>`];
+        return [`<article class="pm-desktop-pin" style="--scene-accent:${escapeAttr(sceneAccent(scene))}"><button type="button" data-action="desktop-open-scene" data-scene-id="${escapeAttr(scene.id)}"><b>${escapeHtml(scene.title)}</b></button><button type="button" data-action="unpin-scene" data-scene-id="${escapeAttr(scene.id)}" aria-label="移除 ${escapeAttr(scene.title)} 快捷方式">移除</button></article>`];
     }).join('');
-    const shared = sharedScenes.map(item => `<article class="pm-desktop-pin is-shared"><button type="button" data-action="desktop-open-shared-scene" data-source-storage-id="${escapeAttr(item.storageId)}" data-scene-id="${escapeAttr(item.scene.id)}"><b>${escapeHtml(item.scene.title)}</b><span>共享社区</span></button></article>`).join('');
+    const templates = sharedCommunityTemplates.map(template => `<article class="pm-desktop-pin pm-desktop-template" style="--scene-accent:${escapeAttr(sceneAccent(template))}"><button type="button" data-action="desktop-import-community-template" data-template-id="${escapeAttr(template.id)}" aria-label="导入社区模板：${escapeAttr(template.title)}"><span class="pm-desktop-template-icon">${COMMUNITY_TEMPLATE_ICON_SVG}</span><span><b>${escapeHtml(template.title)}</b><small>导入社区模板</small></span></button></article>`).join('');
     return `<div class="pm-desktop-toolbar"><span>${escapeHtml(title)}</span><button type="button" data-action="desktop-exit" aria-label="退出手机" title="退出手机">${CLOSE_ICON_SVG}</button></div>
         <div class="pm-desktop-grid" aria-label="应用">
             <button type="button" class="pm-desktop-app" data-app="chat" data-action="desktop-chat" aria-label="聊天" title="聊天"><span class="pm-desktop-app-icon">${CHAT_ICON_SVG}</span><span class="pm-desktop-app-label">聊天</span></button>
@@ -84,7 +89,7 @@ export function renderPhoneDesktop(scope = { scenes: {} }, uiScope = { pinnedSce
             <button type="button" class="pm-desktop-app" data-app="calendar" data-action="desktop-calendar" aria-label="日历" title="日历"><span class="pm-desktop-app-icon">${CALENDAR_ICON_SVG}</span><span class="pm-desktop-app-label">日历</span></button>
             <button type="button" class="pm-desktop-app" data-app="today-trend" data-action="desktop-today-trend" aria-label="今日风向" title="今日风向"><span class="pm-desktop-app-icon">${TREND_ICON_SVG}</span><span class="pm-desktop-app-label">今日风向</span></button>
         </div>
-        <section class="pm-desktop-pins"><h3>固定社区</h3>${pins || '<p>在社区中固定场景后，会显示在这里。</p>'}${shared}</section>
+        <section class="pm-desktop-pins"><h3>固定社区</h3>${pins || '<p>在社区中固定场景后，会显示在这里。</p>'}${templates}</section>
         <div class="pm-desktop-community-dock"><button type="button" data-action="desktop-community" aria-label="发布一条">${COMMUNITY_ICON_SVG}<span>发布一条</span></button></div>`;
 }
 
@@ -109,11 +114,15 @@ export function renderCommunityLauncher(scope, uiScope = { pinnedSceneIds: [] })
     const defaultAccent = presets.weibo.accent;
     const sceneCards = scope.sceneOrder.slice().reverse().map(sceneId => {
         const scene = scope.scenes[sceneId];
+        const accent = sceneAccent(scene);
         const pinned = uiScope.pinnedSceneIds.includes(scene.id);
         const pinLabel = pinned ? '取消固定社区' : '固定社区';
-        const shared = (uiScope.sharedScenes || []).some(item => item.storageId === uiScope.storageId && item.sceneId === scene.id);
-        const sharedLabel = shared ? '取消跨窗口共享' : '跨窗口共享';
-        return `<article class="pm-scene-card"><button type="button" class="pm-scene-card-open" data-action="open-scene" data-scene-id="${escapeAttr(scene.id)}"><b>${escapeHtml(scene.title)}</b><span>${escapeHtml(presets[scene.preset]?.label || '自定义')} · ${scene.posts.length} 篇帖子</span></button><div class="pm-scene-card-actions"><button type="button" class="pm-scene-share-action" data-action="toggle-scene-share" data-scene-id="${escapeAttr(scene.id)}" aria-pressed="${shared}" aria-label="${sharedLabel}" title="${sharedLabel}">${SHARE_WINDOW_ICON_SVG}</button><button type="button" class="pm-scene-pin-action" data-action="toggle-scene-pin" data-scene-id="${escapeAttr(scene.id)}" aria-pressed="${pinned}" aria-label="${pinLabel}" title="${pinLabel}">${COMMUNITY_ICON_SVG}</button><button type="button" class="pm-scene-danger" data-action="delete-scene" data-scene-id="${escapeAttr(scene.id)}" aria-label="删除社区" title="删除社区">${TRASH_ICON_SVG}</button></div></article>`;
+        const templateId = createCommunityTemplate(scene, uiScope.storageId || '__invalid__', 1).id;
+        const shared = (uiScope.sharedCommunityTemplates || []).some(item => item.id === templateId);
+        const templateActions = shared
+            ? `<button type="button" class="pm-scene-template-action" data-action="publish-community-template" data-scene-id="${escapeAttr(scene.id)}" aria-label="更新共享模板" title="更新共享模板">${COMMUNITY_TEMPLATE_ICON_SVG}</button><button type="button" class="pm-scene-template-action pm-scene-template-unpublish" data-action="unpublish-community-template" data-scene-id="${escapeAttr(scene.id)}" aria-label="取消发布共享模板" title="取消发布共享模板">${COMMUNITY_TEMPLATE_ICON_SVG}</button>`
+            : `<button type="button" class="pm-scene-template-action" data-action="publish-community-template" data-scene-id="${escapeAttr(scene.id)}" aria-label="发布共享模板" title="发布共享模板">${COMMUNITY_TEMPLATE_ICON_SVG}</button>`;
+        return `<article class="pm-scene-card" style="--scene-accent:${escapeAttr(accent)}"><button type="button" class="pm-scene-card-open" data-action="open-scene" data-scene-id="${escapeAttr(scene.id)}"><b>${escapeHtml(scene.title)}</b><span>${escapeHtml(presets[scene.preset]?.label || '自定义')} · ${scene.posts.length} 篇帖子</span></button><div class="pm-scene-card-actions">${templateActions}<button type="button" class="pm-scene-pin-action" data-action="toggle-scene-pin" data-scene-id="${escapeAttr(scene.id)}" aria-pressed="${pinned}" aria-label="${pinLabel}" title="${pinLabel}">${COMMUNITY_ICON_SVG}</button><button type="button" class="pm-scene-danger" data-action="delete-scene" data-scene-id="${escapeAttr(scene.id)}" aria-label="删除社区" title="删除社区">${TRASH_ICON_SVG}</button></div></article>`;
     }).join('');
     return `<div id="pm-scene-app" class="pm-modal pm-scene-shell" style="--scene-accent:${escapeAttr(defaultAccent)}">
         <div class="pm-scene-header"><button type="button" class="pm-scene-home" data-action="desktop" aria-label="返回桌面" title="返回桌面">${HOME_ICON_SVG}</button><b>社区</b><button type="button" data-action="exit" aria-label="退出手机" title="退出手机">${CLOSE_ICON_SVG}</button></div>
@@ -187,7 +196,7 @@ export function renderCommunityWorkspace(scene, tab = 'feed', uiScope = { pinned
     const preset = getInteractivePresets()[scene.preset] || getInteractivePresets().custom;
     const autoActive = state.autoActive === true;
     const renderedAt = typeof state.now === 'number' && Number.isFinite(state.now) ? state.now : Date.now();
-    const accent = scene.themeAccent || preset.accent;
+    const accent = sceneAccent(scene);
     const liveState = ['idle', 'starting', 'active', 'error'].includes(state.liveState) ? state.liveState : 'idle';
     const warmupStarted = liveState === 'active' && scene.live.warmupStarted === true;
     const liveStarting = liveState === 'starting';
@@ -198,12 +207,11 @@ export function renderCommunityWorkspace(scene, tab = 'feed', uiScope = { pinned
         return `<span class="is-${stableDanmakuTone(item)}" style="--lane:${motion.lane};--delay:${motion.delay}s;--duration:${motion.duration}s;--offset:${motion.offset}px">${escapeHtml(item.content)}</span>`;
     }).join('');
     const stageState = warmupStarted ? 'active' : liveFailed ? 'error' : liveStarting ? 'starting' : 'idle';
-    const readOnly = state.readOnly === true;
-    const playControl = !readOnly && !warmupStarted && !liveStarting
+    const playControl = !warmupStarted && !liveStarting
         ? `<button type="button" class="pm-live-play-btn" data-action="start-warmup" aria-label="${liveFailed ? '重新开始热场' : '开始热场'}" title="${liveFailed ? '重新开始热场' : '开始热场'}">${PLAY_ICON_SVG}</button>` : '';
     const stageNote = liveStarting ? '<p class="pm-live-state-note">正在准备热场…</p>' : liveFailed ? '<p class="pm-live-state-note is-error">热场未能启动，请重试。</p>' : '';
     const liveContent = `<div class="pm-live-stage ${hasDanmaku ? 'has-danmaku' : ''}" data-live-state="${stageState}">${playControl}<div class="pm-danmaku-float">${floatingDanmaku}</div>${stageNote}</div><section class="pm-live-details" aria-label="热场内容"><div class="pm-danmaku-list">${renderDanmaku(scene)}</div></section>`;
-    const composer = readOnly ? '' : tab === 'feed' ? `<div class="pm-scene-composer"><textarea id="pm-scene-post-input" maxlength="4000" placeholder="分享此刻……"></textarea><button type="button" class="pm-scene-primary" data-action="publish" aria-label="发布" title="发布">${SEND_ICON_SVG}</button></div>` : tab === 'live' ? `<div class="pm-scene-composer pm-danmaku-input"><textarea id="pm-danmaku-input" rows="1" maxlength="200" placeholder="发个弹幕见证当下"></textarea><button type="button" class="pm-scene-primary" data-action="send-danmaku" aria-label="发送弹幕" title="发送弹幕">${SEND_ICON_SVG}</button></div>` : '';
+    const composer = tab === 'feed' ? `<div class="pm-scene-composer"><textarea id="pm-scene-post-input" maxlength="4000" placeholder="分享此刻……"></textarea><button type="button" class="pm-scene-primary" data-action="publish" aria-label="发布" title="发布">${SEND_ICON_SVG}</button></div>` : tab === 'live' ? `<div class="pm-scene-composer pm-danmaku-input"><textarea id="pm-danmaku-input" rows="1" maxlength="200" placeholder="发个弹幕见证当下"></textarea><button type="button" class="pm-scene-primary" data-action="send-danmaku" aria-label="发送弹幕" title="发送弹幕">${SEND_ICON_SVG}</button></div>` : '';
     const content = tab === 'feed' ? `<div class="pm-scene-feed"><div class="pm-scene-posts">${renderPosts(scene, renderedAt)}</div></div>`
         : tab === 'live' ? `<div class="pm-live-room">${liveContent}</div>`
         : tab === 'context-inject' ? renderContextInjectionSettings(scene, state)
@@ -215,7 +223,7 @@ export function renderCommunityWorkspace(scene, tab = 'feed', uiScope = { pinned
         ? `data-action="tab" data-tab="${returnTab}" aria-label="返回子社区" title="返回子社区"`
         : 'data-action="desktop" aria-label="返回桌面" title="返回桌面"';
     return `<div id="pm-scene-app" class="pm-modal pm-scene-shell" style="--scene-accent:${escapeAttr(accent)}">
-        <div class="pm-scene-topbar"><div class="pm-scene-nav-actions"><button type="button" class="pm-scene-home" ${leadingAction}>${isSubpage ? BACK_ICON_SVG : HOME_ICON_SVG}</button></div><nav class="pm-scene-title" aria-label="子社区视图"><button type="button" class="pm-scene-title-tab ${tab === 'feed' ? 'is-active' : ''}" data-action="tab" data-tab="feed" aria-current="${tab === 'feed' ? 'page' : 'false'}"><span>${escapeHtml(scene.title)}</span></button><button type="button" class="pm-scene-title-tab ${tab === 'live' ? 'is-active' : ''}" data-action="tab" data-tab="live" aria-current="${tab === 'live' ? 'page' : 'false'}"><span>直播</span></button></nav><div class="pm-scene-view-actions">${readOnly ? '<span class="pm-scene-read-only">共享查看</span>' : `<button type="button" class="pm-header-icon-button pm-scene-title-poke" data-action="poke-scene" aria-label="拍一拍社区" title="拍一拍社区">${POKE_ICON_SVG}</button>`}<button type="button" class="pm-header-icon-button pm-scene-exit" data-action="exit" aria-label="退出手机" title="退出手机">${CLOSE_ICON_SVG}</button></div></div><div class="pm-scene-status" aria-live="polite" hidden></div>
-        ${content}${isSubpage || tab === 'context-inject' ? '' : `<div class="pm-scene-bottom-bar">${readOnly ? '' : renderSceneMenu(scene, uiScope, autoActive, tab)}${composer}</div>`}
+        <div class="pm-scene-topbar"><div class="pm-scene-nav-actions"><button type="button" class="pm-scene-home" ${leadingAction}>${isSubpage ? BACK_ICON_SVG : HOME_ICON_SVG}</button></div><nav class="pm-scene-title" aria-label="子社区视图"><button type="button" class="pm-scene-title-tab ${tab === 'feed' ? 'is-active' : ''}" data-action="tab" data-tab="feed" aria-current="${tab === 'feed' ? 'page' : 'false'}"><span>${escapeHtml(scene.title)}</span></button><button type="button" class="pm-scene-title-tab ${tab === 'live' ? 'is-active' : ''}" data-action="tab" data-tab="live" aria-current="${tab === 'live' ? 'page' : 'false'}"><span>直播</span></button></nav><div class="pm-scene-view-actions"><button type="button" class="pm-header-icon-button pm-scene-title-poke" data-action="poke-scene" aria-label="拍一拍社区" title="拍一拍社区">${POKE_ICON_SVG}</button><button type="button" class="pm-header-icon-button pm-scene-exit" data-action="exit" aria-label="退出手机" title="退出手机">${CLOSE_ICON_SVG}</button></div></div><div class="pm-scene-status" aria-live="polite" hidden></div>
+        ${content}${isSubpage || tab === 'context-inject' ? '' : `<div class="pm-scene-bottom-bar">${renderSceneMenu(scene, uiScope, autoActive, tab)}${composer}</div>`}
     </div>`;
 }

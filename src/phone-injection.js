@@ -195,9 +195,12 @@ export function renderCalendarContextInjection({
     const cycleDates = new Set(calendarDateRangeKeys(windowStart, -1, 3));
     if (calendarScope.injectionWeatherEnabled && weatherStore?.location) {
         for (const date of weatherDates) {
-            const weather = resolveWeatherForDate(weatherStore, date);
+            const weather = resolveWeatherForDate(weatherStore, date, {
+                storyWeatherEvent: calendarScope.weatherEvent, storyWeatherEventEnabled: calendarScope.weatherEventEnabled,
+            });
             if (weather.status === 'available') {
-                addFact(date, `天气：${weatherCodeLabel(weather.day.weatherCode)}，${weather.day.tempMin}°/${weather.day.tempMax}°C`);
+                const eventNote = weather.source === 'story_weather_event' ? `（${weather.sourceLabel}）` : '';
+                addFact(date, `天气：${weatherCodeLabel(weather.day.weatherCode)}，${weather.day.tempMin}°/${weather.day.tempMax}°C${eventNote}`);
             }
         }
     }

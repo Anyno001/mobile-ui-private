@@ -5,9 +5,9 @@ import {
 import {
     INTERACTIVE_LIMITS, addSceneComment, appendScenePosts, createEmptyInteractiveStore,
     createDefaultPhoneUiScope, createEmptyPhoneUiState, deleteInteractiveScene, deleteSceneComment, deleteScenePost,
-    deriveInteractiveActorId, enforceInteractiveSceneLimit, ensureInteractiveActor, incrementScenePostShare,
+    createCommunityTemplate, createSceneFromCommunityTemplate, deriveInteractiveActorId, enforceInteractiveSceneLimit, ensureInteractiveActor, incrementScenePostShare,
     normalizeAmbientStatus, normalizeInteractiveStore, normalizePhoneUiState, normalizeScene, patchPhoneUiScope,
-    resolveInteractiveAuthor, toggleScenePin, toggleScenePostLike, toggleSharedScene, updateSceneComment, updateScenePost,
+    publishCommunityTemplate, removeCommunityTemplatesForSourceScene, resolveInteractiveAuthor, toggleScenePin, toggleScenePostLike, unpublishCommunityTemplate, updateSceneComment, updateScenePost,
 } from '../src/interactive-scene-model.js';
 import {
     INTERACTIVE_STORAGE_KEYS, PHONE_UI_STORAGE_KEY, loadInteractiveScenes, loadPhoneUiState,
@@ -20,8 +20,10 @@ import {
     createInteractiveCommitQueue, createInteractiveOperationGuard, createInteractiveStoreLoader,
     installInteractiveScenes, migrateInteractiveStore, resolvePhoneChatTarget,
 } from '../src/interactive-scenes.js';
+import { createCommunityTemplateImportAction } from '../src/interactive-scene-template-import.js';
+import { createCommitWithPhoneUi } from '../src/interactive-scene-phone-transaction.js';
 import {
-    persistCurrentPhoneUiSnapshot, persistSceneBudgetRemoval, selectScenePreset,
+    deleteSceneAndFinalize, persistCurrentPhoneUiSnapshot, persistSceneBudgetRemoval, selectScenePreset,
 } from '../src/interactive-scene-phone.js';
 import {
     COMMUNITY_TASK_PHASES, createCommunityGenerationRunner, createCommunityTaskController,
@@ -277,24 +279,236 @@ assert.throws(() => toggleScenePin(phoneUiInput, 'story', 'missing', phoneIntera
 assert.throws(() => toggleScenePin(phoneUiInput, 'story', ' scene-a ', phoneInteractiveStore), /场景标识格式无效/);
 assert.throws(() => toggleScenePin(phoneUiInput, 'other', 'scene-a', phoneInteractiveStore), /互动场景不存在/);
 
-const sharedPhoneUiState = normalizePhoneUiState({
+const templatePhoneUiState = normalizePhoneUiState({
     version: 1,
-    scopes: { story: phoneUiInput.scopes.story },
-    sharedScenes: [
-        { storageId: 'story', sceneId: 'scene-a' },
-        { storageId: 'story', sceneId: 'scene-a' },
-        { storageId: 'story', sceneId: 'missing' },
-        { storageId: ' other ', sceneId: 'scene-a' },
+    scopes: { story: phoneUiInput.scopes.story, other: phoneUiInput.scopes.other },
+    sharedScenes: [{ storageId: 'story', sceneId: 'scene-a' }],
+    sharedCommunityTemplates: [
+        { id: 'template_story_scene-a', sourceStorageId: 'story', sourceSceneId: 'scene-a', title: '模板社区', preset: 'weibo', styleInput: '冷静', generatedPrompt: '保留配置', themeAccent: '#123abc', sharedAt: 1, posts: [{ content: '不得泄漏' }] },
+        { id: 'template_story_scene-a', sourceStorageId: 'story', sourceSceneId: 'scene-a', title: '更新后的模板', preset: 'weibo', styleInput: '', generatedPrompt: '', themeAccent: '#123abc', sharedAt: 2 },
+        { id: ' bad ', sourceStorageId: 'story', sourceSceneId: 'scene-a', title: '非法', preset: 'weibo', sharedAt: 1 },
     ],
 }, phoneInteractiveStore);
-assert.deepEqual(sharedPhoneUiState.sharedScenes, [{ storageId: 'story', sceneId: 'scene-a' }], '共享引用必须去重并过滤不存在或非法的源场景');
-const toggledSharedPhoneUiState = toggleSharedScene(sharedPhoneUiState, 'story', 'scene-b', phoneInteractiveStore);
-assert.deepEqual(toggledSharedPhoneUiState.sharedScenes, [
-    { storageId: 'story', sceneId: 'scene-a' }, { storageId: 'story', sceneId: 'scene-b' },
-], '共享开关必须以源 scope 和场景 ID 保存引用，而非复制场景实体');
-assert.deepEqual(toggleSharedScene(toggledSharedPhoneUiState, 'story', 'scene-a', phoneInteractiveStore).sharedScenes,
-    [{ storageId: 'story', sceneId: 'scene-b' }], '再次切换必须仅取消对应共享引用');
-assert.throws(() => toggleSharedScene(phoneUiInput, 'story', 'missing', phoneInteractiveStore), /互动场景不存在/);
+assert.equal(Object.hasOwn(templatePhoneUiState, 'sharedScenes'), false, '旧共享引用必须在迁移时安全丢弃');
+assert.deepEqual(templatePhoneUiState.sharedCommunityTemplates, [{
+    id: 'template_story_scene-a', sourceStorageId: 'story', sourceSceneId: 'scene-a', title: '更新后的模板', preset: 'weibo',
+    styleInput: '', generatedPrompt: '', themeAccent: '#123abc', sharedAt: 2,
+}], '模板只允许白名单配置字段，并按模板 ID 覆盖更新');
+const publishedTemplateState = publishCommunityTemplate(phoneUiInput, 'story', 'scene-a', phoneInteractiveStore, 100);
+const publishedTemplate = publishedTemplateState.sharedCommunityTemplates[0];
+assert.equal(publishedTemplate.sourceStorageId, 'story');
+assert.equal(publishedTemplate.sourceSceneId, 'scene-a');
+assert.equal(Object.hasOwn(publishedTemplate, 'posts'), false, '模板不得保存运行内容');
+assert.equal(Object.hasOwn(publishedTemplate, 'live'), false, '模板不得保存直播运行态');
+const republishedTemplateState = publishCommunityTemplate(publishedTemplateState, 'story', 'scene-a', phoneInteractiveStore, 101);
+assert.equal(republishedTemplateState.sharedCommunityTemplates.length, 1, '重复发布只能覆盖同一模板，不能意外取消发布');
+assert.equal(republishedTemplateState.sharedCommunityTemplates[0].sharedAt, 101, '重复发布必须刷新模板快照时间');
+const unpublishedTemplateState = unpublishCommunityTemplate(republishedTemplateState, 'story', 'scene-a', phoneInteractiveStore);
+assert.equal(unpublishedTemplateState.sharedCommunityTemplates, undefined, '只有明确取消发布才允许撤下模板');
+assert.throws(() => publishCommunityTemplate(phoneUiInput, 'story', 'missing', phoneInteractiveStore), /互动场景不存在/);
+assert.throws(() => unpublishCommunityTemplate(phoneUiInput, 'story', 'missing', phoneInteractiveStore), /互动场景不存在/);
+const removedSourceTemplateState = removeCommunityTemplatesForSourceScene(publishedTemplateState, 'story', 'scene-a', phoneInteractiveStore);
+assert.equal(removedSourceTemplateState.sharedCommunityTemplates, undefined, '删除源场景必须撤下对应模板');
+const unaffectedTemplateState = removeCommunityTemplatesForSourceScene(normalizePhoneUiState({
+    ...publishedTemplateState,
+    sharedCommunityTemplates: [...publishedTemplateState.sharedCommunityTemplates, {
+        ...publishedTemplate, id: 'template_other_scene', sourceStorageId: 'other', sourceSceneId: 'scene-a', sharedAt: 102,
+    }],
+}, phoneInteractiveStore), 'story', 'scene-a', phoneInteractiveStore);
+assert.deepEqual(unaffectedTemplateState.sharedCommunityTemplates.map(template => template.id), ['template_other_scene'],
+    '撤下源模板不得误删其他窗口的同名场景模板');
+const importedScene = createSceneFromCommunityTemplate({
+    ...publishedTemplate, posts: [{ content: '不得复制' }], live: { danmaku: [{ content: '不得复制' }] }, actors: { leak: true },
+}, 'scene-imported', 200);
+assert.deepEqual({
+    id: importedScene.id, title: importedScene.title, preset: importedScene.preset, styleInput: importedScene.styleInput,
+    generatedPrompt: importedScene.generatedPrompt, themeAccent: importedScene.themeAccent, posts: importedScene.posts, live: importedScene.live,
+}, {
+    id: 'scene-imported', title: publishedTemplate.title, preset: publishedTemplate.preset, styleInput: publishedTemplate.styleInput,
+    generatedPrompt: publishedTemplate.generatedPrompt, themeAccent: publishedTemplate.themeAccent, posts: [],
+    live: { title: '', status: 'idle', warmupStarted: false, danmaku: [] },
+}, '导入只能复制配置，必须创建空白独立场景');
+const importedTemplateState = patchPhoneUiScope(publishedTemplateState, 'other', {
+    importedTemplateSceneIds: { [publishedTemplate.id]: 'scene-imported' },
+}, normalizeInteractiveStore({ version: 2, scopes: {
+    story: phoneInteractiveStore.scopes.story,
+    other: {
+        activeSceneId: 'scene-imported', sceneOrder: ['scene-imported'], scenes: { 'scene-imported': importedScene }, actors: {},
+    },
+} }));
+assert.equal(importedTemplateState.scopes.other.importedTemplateSceneIds[publishedTemplate.id], 'scene-imported', '目标窗口必须记录模板导入映射以保证幂等打开');
+
+const concurrentImportStore = normalizeInteractiveStore({ version: 2, scopes: {
+    target: { activeSceneId: null, sceneOrder: [], scenes: {}, actors: {} },
+} });
+let concurrentImportPhoneUi = normalizePhoneUiState({
+    version: 1, scopes: {}, sharedCommunityTemplates: [publishedTemplate],
+}, concurrentImportStore);
+let concurrentImportQueue = Promise.resolve();
+const openedImportedScenes = [];
+const importTemplate = createCommunityTemplateImportAction({
+    getStorageId: () => 'target',
+    loadStore: async () => concurrentImportStore,
+    getInteractiveStore: () => concurrentImportStore,
+    getPhoneUiState: () => concurrentImportPhoneUi,
+    getScope: scopeId => concurrentImportStore.scopes[scopeId],
+    phoneScope: scopeId => concurrentImportPhoneUi.scopes[scopeId] || createDefaultPhoneUiScope(),
+    commitWithPhoneUi: (scopeId, mutateStore, createPhoneUiState) => {
+        const operation = concurrentImportQueue.then(() => {
+            mutateStore();
+            concurrentImportPhoneUi = createPhoneUiState();
+        });
+        concurrentImportQueue = operation.catch(() => {});
+        return operation;
+    },
+    patchPhoneUiScope,
+    refreshDesktop: () => {},
+    openScene: async sceneId => { openedImportedScenes.push(sceneId); },
+    createSceneFromCommunityTemplate,
+    createSceneId: (() => { let index = 0; return () => `scene-concurrent-${++index}`; })(),
+    sceneLimit: INTERACTIVE_LIMITS.scenes,
+});
+await Promise.all([importTemplate(publishedTemplate.id), importTemplate(publishedTemplate.id)]);
+const concurrentImportScope = concurrentImportStore.scopes.target;
+assert.deepEqual(concurrentImportScope.sceneOrder, ['scene-concurrent-1'], '同模板并发导入只能创建一个本地场景');
+assert.equal(concurrentImportPhoneUi.scopes.target.importedTemplateSceneIds[publishedTemplate.id], 'scene-concurrent-1',
+    '并发导入必须保留唯一且稳定的模板映射');
+assert.deepEqual(openedImportedScenes, ['scene-concurrent-1', 'scene-concurrent-1'],
+    '重复导入必须打开既有实例而不是创建孤儿场景');
+const rollbackImportStore = normalizeInteractiveStore({ version: 2, scopes: {
+    target: { activeSceneId: null, sceneOrder: [], scenes: {}, actors: {} },
+} });
+let rollbackTransactionStore = rollbackImportStore;
+let rollbackImportPhoneUi = normalizePhoneUiState({
+    version: 1, scopes: {}, sharedCommunityTemplates: [publishedTemplate],
+}, rollbackTransactionStore);
+const rollbackStoreSnapshot = structuredClone(rollbackImportStore);
+const rollbackPhoneUiSnapshot = structuredClone(rollbackImportPhoneUi);
+const persistedInteractiveStores = [];
+const commitRollbackImport = createInteractiveCommitQueue({
+    getStore: () => rollbackTransactionStore,
+    setStore: store => { rollbackTransactionStore = store; },
+    saveStore: async store => { persistedInteractiveStores.push(structuredClone(store)); },
+});
+const persistedPhoneUiStates = [];
+let phoneUiWriteAttempts = 0;
+const commitRollbackPhoneUi = createCommitWithPhoneUi({
+    getPhoneUiState: () => rollbackImportPhoneUi,
+    getStore: () => rollbackTransactionStore,
+    commit: commitRollbackImport,
+    persistPhoneUiState: (_scopeId, state) => {
+        phoneUiWriteAttempts += 1;
+        if (phoneUiWriteAttempts === 1) throw new Error('injected phone UI persistence failure');
+        rollbackImportPhoneUi = structuredClone(state);
+        persistedPhoneUiStates.push(structuredClone(state));
+    },
+});
+const rollbackImportAction = createCommunityTemplateImportAction({
+    getStorageId: () => 'target', loadStore: async () => rollbackTransactionStore,
+    getInteractiveStore: () => rollbackTransactionStore, getPhoneUiState: () => rollbackImportPhoneUi,
+    getScope: scopeId => rollbackTransactionStore.scopes[scopeId],
+    phoneScope: scopeId => rollbackImportPhoneUi.scopes[scopeId] || createDefaultPhoneUiScope(),
+    commitWithPhoneUi: commitRollbackPhoneUi,
+    patchPhoneUiScope, refreshDesktop: () => { throw new Error('失败事务不得刷新桌面'); }, openScene: async () => {},
+    createSceneFromCommunityTemplate, createSceneId: () => 'scene-rolled-back', sceneLimit: INTERACTIVE_LIMITS.scenes,
+});
+await assert.rejects(() => rollbackImportAction(publishedTemplate.id), /injected phone UI persistence failure/);
+assert.deepEqual(rollbackTransactionStore, rollbackStoreSnapshot,
+    '模板映射持久化失败时必须补偿互动场景、顺序与活动场景');
+assert.deepEqual(rollbackImportPhoneUi, rollbackPhoneUiSnapshot,
+    '模板映射持久化失败时必须补偿 Phone UI 映射状态');
+assert.deepEqual(persistedInteractiveStores, [], 'Phone UI 首次写入失败时不得持久化导入后的互动场景');
+assert.deepEqual(persistedPhoneUiStates, [rollbackPhoneUiSnapshot], '失败后必须由生产事务写回 Phone UI 原始快照');
+const deleteTemplateStore = normalizeInteractiveStore({ version: 2, scopes: {
+    story: structuredClone(phoneInteractiveStore.scopes.story),
+    other: {
+        activeSceneId: 'scene-imported', sceneOrder: ['scene-imported'],
+        scenes: { 'scene-imported': structuredClone(importedScene) }, actors: {},
+    },
+} });
+let deleteTransactionStore = deleteTemplateStore;
+let deleteTemplatePhoneUi = normalizePhoneUiState({
+    version: 1,
+    scopes: { other: { importedTemplateSceneIds: { [publishedTemplate.id]: 'scene-imported' } } },
+    sharedCommunityTemplates: [publishedTemplate],
+}, deleteTransactionStore);
+const deleteTransaction = createInteractiveCommitQueue({
+    getStore: () => deleteTransactionStore,
+    setStore: store => { deleteTransactionStore = store; },
+    saveStore: async () => {},
+});
+const deleteWithPhoneUi = createCommitWithPhoneUi({
+    getPhoneUiState: () => deleteTemplatePhoneUi,
+    getStore: () => deleteTransactionStore,
+    commit: deleteTransaction,
+    persistPhoneUiState: (_scopeId, state) => { deleteTemplatePhoneUi = structuredClone(state); },
+});
+const deleteFinalizers = [];
+assert.equal(await deleteSceneAndFinalize('story', 'scene-a', {
+    scope: deleteTransactionStore.scopes.story, confirm: () => true, invalidate: () => deleteFinalizers.push('invalidate'),
+    commit: deleteTransaction,
+    commitDelete: mutator => deleteWithPhoneUi('story', mutator, () => removeCommunityTemplatesForSourceScene(
+        deleteTemplatePhoneUi, 'story', 'scene-a', deleteTransactionStore,
+    ), '删除互动场景'),
+    deleteScene: deleteInteractiveScene, persistPhoneUi: () => {}, refreshDesktop: () => deleteFinalizers.push('desktop'),
+    persistBudget: () => deleteFinalizers.push('budget'), clearOpenScene: () => deleteFinalizers.push('runtime'), renderLauncher: () => deleteFinalizers.push('launcher'),
+}), true);
+assert.equal(deleteTransactionStore.scopes.story.scenes['scene-a'], undefined, '删除 A 源场景必须删除源实例');
+assert.equal(deleteTemplatePhoneUi.sharedCommunityTemplates, undefined, '删除 A 源场景必须撤下对应模板');
+assert.ok(deleteTransactionStore.scopes.other.scenes['scene-imported'], '撤下 A 模板不得删除 B 已导入实例');
+assert.equal(deleteTemplatePhoneUi.scopes.other.importedTemplateSceneIds[publishedTemplate.id], 'scene-imported',
+    '撤下 A 模板不得清理 B 的既有导入映射');
+assert.deepEqual(deleteFinalizers, ['invalidate', 'desktop', 'budget', 'runtime', 'launcher'], '删除成功后才允许执行收尾动作');
+const failedDeleteStore = normalizeInteractiveStore({ version: 2, scopes: {
+    story: structuredClone(phoneInteractiveStore.scopes.story),
+} });
+let failedDeleteTransactionStore = failedDeleteStore;
+let failedDeletePhoneUi = normalizePhoneUiState({ version: 1, scopes: {}, sharedCommunityTemplates: [publishedTemplate] }, failedDeleteTransactionStore);
+const failedDeleteStoreSnapshot = structuredClone(failedDeleteStore);
+const failedDeletePhoneUiSnapshot = structuredClone(failedDeletePhoneUi);
+const failedDeleteCommit = createInteractiveCommitQueue({
+    getStore: () => failedDeleteTransactionStore,
+    setStore: store => { failedDeleteTransactionStore = store; },
+    saveStore: async () => {},
+});
+let failedDeletePhoneWrites = 0;
+const failedDeleteWithPhoneUi = createCommitWithPhoneUi({
+    getPhoneUiState: () => failedDeletePhoneUi,
+    getStore: () => failedDeleteTransactionStore,
+    commit: failedDeleteCommit,
+    persistPhoneUiState: (_scopeId, state) => {
+        failedDeletePhoneWrites += 1;
+        if (failedDeletePhoneWrites === 1) throw new Error('injected delete phone UI failure');
+        failedDeletePhoneUi = structuredClone(state);
+    },
+});
+const failedDeleteFinalizers = [];
+await assert.rejects(() => deleteSceneAndFinalize('story', 'scene-a', {
+    scope: failedDeleteTransactionStore.scopes.story, confirm: () => true, invalidate: () => failedDeleteFinalizers.push('invalidate'),
+    commit: failedDeleteCommit,
+    commitDelete: mutator => failedDeleteWithPhoneUi('story', mutator, () => removeCommunityTemplatesForSourceScene(
+        failedDeletePhoneUi, 'story', 'scene-a', failedDeleteTransactionStore,
+    ), '删除互动场景'),
+    deleteScene: deleteInteractiveScene, persistPhoneUi: () => {}, refreshDesktop: () => failedDeleteFinalizers.push('desktop'),
+    persistBudget: () => failedDeleteFinalizers.push('budget'), clearOpenScene: () => failedDeleteFinalizers.push('runtime'), renderLauncher: () => failedDeleteFinalizers.push('launcher'),
+}), /injected delete phone UI failure/);
+assert.deepEqual(failedDeleteTransactionStore, failedDeleteStoreSnapshot, '删除时 Phone UI 保存失败必须恢复源场景');
+assert.deepEqual(failedDeletePhoneUi, failedDeletePhoneUiSnapshot, '删除时 Phone UI 保存失败必须恢复模板状态');
+assert.deepEqual(failedDeleteFinalizers, ['invalidate'], '删除事务失败不得执行成功收尾动作');
+const fullImportStore = normalizeInteractiveStore({ version: 2, scopes: {
+    target: { activeSceneId: 'scene-full', sceneOrder: ['scene-full'], scenes: { 'scene-full': normalizeScene({ id: 'scene-full', title: '既有社区' }) }, actors: {} },
+} });
+const fullImportAction = createCommunityTemplateImportAction({
+    getStorageId: () => 'target', loadStore: async () => fullImportStore,
+    getInteractiveStore: () => fullImportStore,
+    getPhoneUiState: () => normalizePhoneUiState({ version: 1, scopes: {}, sharedCommunityTemplates: [publishedTemplate] }, fullImportStore),
+    getScope: scopeId => fullImportStore.scopes[scopeId], phoneScope: () => createDefaultPhoneUiScope(),
+    commitWithPhoneUi: async (_scopeId, mutateStore, createPhoneUiState) => { mutateStore(); createPhoneUiState(); },
+    patchPhoneUiScope, refreshDesktop: () => { throw new Error('满容量导入不得刷新桌面'); }, openScene: async () => {},
+    createSceneFromCommunityTemplate, createSceneId: () => 'scene-overflow', sceneLimit: 1,
+});
+await assert.rejects(() => fullImportAction(publishedTemplate.id), /社区数量已达上限/);
+assert.deepEqual(fullImportStore.scopes.target.sceneOrder, ['scene-full'], '满容量导入不得删除或新增场景');
 
 const prunedStore = structuredClone(phoneInteractiveStore);
 delete prunedStore.scopes.story.scenes['scene-a'];
@@ -304,8 +518,6 @@ assert.deepEqual(normalizePhoneUiState(phoneUiInput, prunedStore).scopes.story, 
     pinnedSceneIds: [], lastPage: 'desktop', lastSceneId: null, lastTab: 'feed',
     lastChatType: 'contact', lastChatKey: 'Alice',
 });
-assert.equal(normalizePhoneUiState(toggledSharedPhoneUiState, prunedStore).sharedScenes?.some(item => item.sceneId === 'scene-a'), false,
-    '删除源场景后归一化必须级联清理所有跨窗口共享引用');
 
 assert.deepEqual(resolvePhoneChatTarget(
     { lastChatType: 'group', lastChatKey: '__group_saved' }, {}, { __group_saved: { name: '群聊' } }, 'Default',
@@ -358,25 +570,6 @@ assert.notEqual(storedContactSnapshot.lastChatKey, storedGroupSnapshot.lastChatK
 assert.deepEqual(resolvePhoneChatTarget(
     storedGroupSnapshot, { Default: [] }, {}, 'Default',
 ), { type: 'contact', key: 'Default' }, 'snapshot 指向已删除群聊时必须回退默认联系人');
-snapshotPhoneUiState = patchPhoneUiScope(snapshotPhoneUiState, 'other', {
-    lastPage: 'chat', lastSceneId: null, lastTab: 'live',
-}, snapshotRuntime.store);
-const sharedSnapshotBefore = structuredClone(snapshotPhoneUiState.scopes.other);
-snapshotRuntime.openSceneId = 'scene-a';
-snapshotRuntime.openSceneStorageId = 'story';
-snapshotRuntime.openSceneReadOnly = true;
-assert.equal(persistCurrentPhoneUiSnapshot({
-    runtime: snapshotRuntime,
-    storageId: 'other',
-    page: 'community',
-    phoneScope: snapshotPhoneScope,
-    updatePhoneUiScope: updateSnapshotPhoneUiScope,
-}), true);
-assert.deepEqual(snapshotPhoneUiState.scopes.other, sharedSnapshotBefore,
-    '浏览共享社区的快照不得把源场景 ID 写入目标 scope 或覆盖其恢复位置');
-snapshotRuntime.openSceneId = null;
-snapshotRuntime.openSceneStorageId = null;
-snapshotRuntime.openSceneReadOnly = false;
 assert.equal(persistCurrentPhoneUiSnapshot({
     runtime: snapshotRuntime,
     storageId: 'sms_unknown__default',
@@ -1873,36 +2066,6 @@ try {
     assert.equal(communityPage.innerHTML, launcherHtmlBeforePin, '启动页取消固定不得重绘整个社区页面');
     assert.equal(launcher.scrollTop, 684, '启动页取消固定不得改变滚动位置');
 
-    const sharedNavigationStore = await deps.getInteractiveStore();
-    const sharedSourceId = 'shared-source-scope';
-    const sharedSourceScene = {
-        ...structuredClone(savedScene), id: 'shared-source-scene', title: '跨窗口源社区',
-    };
-    sharedNavigationStore.scopes[sharedSourceId] = {
-        activeSceneId: sharedSourceScene.id,
-        sceneOrder: [sharedSourceScene.id],
-        scenes: { [sharedSourceScene.id]: sharedSourceScene },
-        actors: {},
-    };
-    const openSharedSceneButton = {
-        tagName: 'BUTTON', dataset: {
-            action: 'desktop-open-shared-scene', sourceStorageId: sharedSourceId, sceneId: sharedSourceScene.id,
-        },
-        closest(selector) {
-            if (selector === '[data-action]') return this;
-            if (selector === '.pm-desktop-page') return desktopPage;
-            return null;
-        },
-    };
-    listeners.get('click')({ target: openSharedSceneButton });
-    await new Promise(resolve => setTimeout(resolve, 0));
-    assert.match(communityPage.innerHTML, /跨窗口源社区/, '共享桌面入口必须从源 scope 打开场景，而非复制到目标 scope');
-    assert.equal(mainUi.dataset.page, 'community');
-    assert.equal(await globalThis.window.__pmReturnToCommunityDataSource(), true);
-    assert.match(communityPage.innerHTML, /跨窗口源社区/,
-        '从数据来源返回时必须回到源 scope 的共享社区，而非目标 scope 启动页');
-    await globalThis.window.__pmOpenForumMode();
-    assert.doesNotMatch(communityPage.innerHTML, /跨窗口源社区/, '离开共享视图后必须清理只读运行态');
 
     sceneAccentInput.value = '#xyzxyz';
     status.textContent = '';

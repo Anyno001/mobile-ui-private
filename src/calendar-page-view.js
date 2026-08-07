@@ -53,7 +53,7 @@ function dateMeta(scope, occasionsByDate, holidayCache, weatherStore, cycleScope
     const occasions = occasionsByDate.get(date) || [];
     const holidayYear = holidayYearFromCache(holidayCache, holidayCache?.selectedCountry, parsed.getFullYear());
     const holidays = (holidayYear?.entries || []).filter(item => item.date === date);
-    const weather = resolveWeatherForDate(weatherStore, date);
+    const weather = resolveWeatherForDate(weatherStore, date, { storyWeatherEvent: scope.weatherEvent, storyWeatherEventEnabled: scope.weatherEventEnabled });
     const cycle = predictCyclePhase(cycleScope, date);
     const recipe = recipeDayFor(recipeScope, date);
     const firstMeal = RECIPE_MEAL_TYPES.find(type => recipe[type]?.text);

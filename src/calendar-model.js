@@ -1,3 +1,5 @@
+import { normalizeStoryWeatherEvent } from './calendar-weather-source.js';
+
 export const CALENDAR_STORE_VERSION = 1;
 export const CALENDAR_LIMITS = Object.freeze({ scopes: 80, dates: 366, eventsPerDate: 40, title: 120, note: 1000 });
 export const CALENDAR_SOURCES = Object.freeze(['manual', 'context', 'ai']);
@@ -194,10 +196,13 @@ export function normalizeCalendarScope(value) {
             ? source.generationRule.trim().slice(0, 3000) : '',
         injectionScheduleEnabled: source.injectionScheduleEnabled !== false,
         injectionWeatherEnabled: source.injectionWeatherEnabled !== false,
+        weatherEventEnabled: source.weatherEventEnabled === true,
         injectionCycleEnabled: source.injectionCycleEnabled !== false,
         injectionRecipeEnabled: source.injectionRecipeEnabled !== false,
         injectionOutfitEnabled: source.injectionOutfitEnabled !== false,
     };
+    const weatherEvent = normalizeStoryWeatherEvent(source.weatherEvent);
+    if (weatherEvent) normalized.weatherEvent = weatherEvent;
     if (parseCalendarDate(source.storyInitialDate)) normalized.storyInitialDate = source.storyInitialDate;
     if (parseCalendarDate(source.baseDate)) normalized.baseDate = source.baseDate;
     return normalized;
@@ -208,6 +213,7 @@ const normalizeInjectionDefaults = value => {
     return {
         injectionScheduleEnabled: source.injectionScheduleEnabled !== false,
         injectionWeatherEnabled: source.injectionWeatherEnabled !== false,
+        weatherEventEnabled: source.weatherEventEnabled === true,
         injectionCycleEnabled: source.injectionCycleEnabled !== false,
         injectionRecipeEnabled: source.injectionRecipeEnabled !== false,
         injectionOutfitEnabled: source.injectionOutfitEnabled !== false,
@@ -246,6 +252,7 @@ export function migrateLegacyCalendarInjectionConfig(store, legacyConfig) {
     const defaults = normalizeInjectionDefaults({
         injectionScheduleEnabled: hasCalendar ? sourceConfig.calendarEnabled === true : true,
         injectionWeatherEnabled: hasCalendar ? sourceConfig.calendarEnabled === true : true,
+        weatherEventEnabled: false,
         injectionCycleEnabled: hasCalendar ? sourceConfig.calendarEnabled === true : true,
         injectionRecipeEnabled: hasRecipe ? sourceConfig.recipeEnabled === true : true,
         injectionOutfitEnabled: true,
@@ -259,6 +266,8 @@ export function migrateLegacyCalendarInjectionConfig(store, legacyConfig) {
                 ? scope.injectionScheduleEnabled : defaults.injectionScheduleEnabled,
             injectionWeatherEnabled: Object.hasOwn(rawScope, 'injectionWeatherEnabled')
                 ? scope.injectionWeatherEnabled : defaults.injectionWeatherEnabled,
+            weatherEventEnabled: Object.hasOwn(rawScope, 'weatherEventEnabled')
+                ? scope.weatherEventEnabled : defaults.weatherEventEnabled,
             injectionCycleEnabled: Object.hasOwn(rawScope, 'injectionCycleEnabled')
                 ? scope.injectionCycleEnabled : defaults.injectionCycleEnabled,
             injectionRecipeEnabled: Object.hasOwn(rawScope, 'injectionRecipeEnabled')

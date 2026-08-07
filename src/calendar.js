@@ -11,7 +11,8 @@ import {
     buildCulturalFestivals, extractContextFestivals, HOLIDAY_YEAR_RANGE, holidayYearFromCache, holidayYearRange,
     isHolidayYearSupported, mergeCalendarDateFacts, normalizeHolidayCache, resolveHolidayYear, selectHolidayCountry,
 } from './calendar-holiday.js';
-import { fetchWeatherForecast, normalizeWeatherStore, searchWeatherLocations } from './calendar-weather.js';
+import { normalizeWeatherStore, searchWeatherLocations } from './calendar-weather.js';
+import { createCalendarWeatherController } from './calendar-weather-controller.js';
 import { CYCLE_SELF_SUBJECT, clearCycleScope, cycleScopeFor, cycleSubjectKeys, normalizeCycleStore, upsertCycleScope } from './calendar-cycle-model.js';
 import { normalizeOutfitStore, OUTFIT_SELF_SUBJECT, outfitScopeFor } from './calendar-outfit-model.js';
 import { normalizeRecipeStore, recipeScopeFor } from './calendar-recipe-model.js';
@@ -95,7 +96,7 @@ export function installCalendar(state, deps) {
         runtime.viewByStorage.set(storageId, view);
         return view;
     };
-    const { commitScope, commitRecipe, commitOutfits, commitOccasions, commitSchedule, commitHolidays, commitWeather, commitCycle, invalidateCommits } = createCalendarCommitters({ runtime, tasks, applyBidirectionalInjection: deps.applyBidirectionalInjection, getCycles: cycles, getCycleSubject: storageId => viewFor(storageId).cycleSubject });
+    const { commitScope, commitStore, commitRecipe, commitOutfits, commitOccasions, commitSchedule, commitHolidays, commitWeather, commitCycle, invalidateCommits } = createCalendarCommitters({ runtime, tasks, applyBidirectionalInjection: deps.applyBidirectionalInjection, getCycles: cycles, getCycleSubject: storageId => viewFor(storageId).cycleSubject });
     const render = (storageId = getStorageId()) => {
         const container = state.phoneWindow?.querySelector('.pm-calendar-page');
         if (!container) return false;
@@ -120,6 +121,13 @@ export function installCalendar(state, deps) {
         return true;
     };
     const rerender = storageId => { if (getStorageId() === storageId) render(storageId); };
+    const weatherController = createCalendarWeatherController({
+        tasks, runtime, getScope: scope, getReferenceDate: current => formatCalendarDate(calendarReferenceDate(current)),
+        getView: viewFor, setView: (storageId, view) => runtime.viewByStorage.set(storageId, view),
+        commitWeather, commitScope, commitStore, fetchImpl: fetchImpl || globalThis.fetch,
+        applyBidirectionalInjection: deps.applyBidirectionalInjection, status, errorStatus, rerender,
+    });
+    const { ensureStoryWeatherEvent, storyWeatherEventForScope, selectWeatherLocation, refreshWeather } = weatherController;
     const recipeController = createCalendarRecipeController({
         tasks, getStorageId, gatherContext, callAI, makeOverlay, closeOverlay, commitRecipe,
         getRecipeScope: storageId => recipeScopeFor(runtime.recipeStore, storageId),
@@ -192,75 +200,6 @@ export function installCalendar(state, deps) {
             tasks.finish(task);
         }
     }
-    async function selectWeatherLocation(storageId, index) {
-        const location = runtime.weatherSearchResults[index];
-        if (!location) {
-            const error = new Error('天气位置不存在，请重新搜索');
-            errorStatus(storageId, error);
-            throw error;
-        }
-        const task = tasks.begin(storageId, 'weather-forecast');
-        if (!task) return false;
-        try {
-            const result = await fetchWeatherForecast(location, runtime.weatherStore, {
-                fetchImpl: fetchImpl || globalThis.fetch, signal: task.signal,
-            });
-            if (!tasks.active(task)) return false;
-            commitWeather(result.store);
-            await deps.applyBidirectionalInjection?.();
-            runtime.weatherSearchResults = [];
-            const degraded = result.source !== 'forecast';
-            status(storageId, result.source === 'cached_forecast' ? '天气服务不可用，已显示该位置的缓存预报。'
-                : result.source === 'climate_estimate' ? '天气服务不可用，已保存位置并使用气候推演。' : '天气位置与预报已更新。',
-            degraded ? { duration: 10000 } : undefined);
-            rerender(storageId);
-            return true;
-        } catch (error) {
-            if (!tasks.active(task)) return false;
-            errorStatus(storageId, error);
-            throw error;
-        } finally {
-            tasks.finish(task);
-        }
-    }
-    async function refreshWeather(storageId) {
-        if (!runtime.weatherStore.location) {
-            const error = new Error('请先搜索并选择天气位置');
-            errorStatus(storageId, error);
-            throw error;
-        }
-        const task = tasks.begin(storageId, 'weather-forecast');
-        if (!task) return false;
-        const currentView = viewFor(storageId);
-        runtime.viewByStorage.set(storageId, { ...currentView, weatherRefreshing: true, weatherRefreshTask: task });
-        rerender(storageId);
-        try {
-            const result = await fetchWeatherForecast(runtime.weatherStore.location, runtime.weatherStore, {
-                resetCache: true,
-                fetchImpl: fetchImpl || globalThis.fetch, signal: task.signal,
-            });
-            if (!tasks.active(task)) return false;
-            commitWeather(result.store);
-            await deps.applyBidirectionalInjection?.();
-            const degraded = result.source !== 'forecast';
-            status(storageId, result.source === 'cached_forecast' ? '天气服务不可用，已显示缓存预报。'
-                : result.source === 'climate_estimate' ? '天气服务不可用，继续使用气候推演。' : '天气预报已更新。',
-            degraded ? { duration: 10000 } : undefined);
-            rerender(storageId);
-            return true;
-        } catch (error) {
-            if (!tasks.active(task)) return false;
-            errorStatus(storageId, error);
-            throw error;
-        } finally {
-            tasks.finish(task);
-            const latestView = viewFor(storageId);
-            if (latestView.weatherRefreshTask === task) {
-                runtime.viewByStorage.set(storageId, { ...latestView, weatherRefreshing: false, weatherRefreshTask: null });
-                rerender(storageId);
-            }
-        }
-    }
     async function scanContext(storageId = getStorageId(), { silent = false, assistantOnly = false, task: parentTask = null } = {}) {
         const task = parentTask || tasks.begin(storageId, 'scan-context');
         if (!task || !tasks.active(task)) return false;
@@ -279,7 +218,12 @@ export function installCalendar(state, deps) {
                 return true;
             }
             if (!tasks.active(task)) return false;
-            const committed = await commitScope(storageId, current => ({ ...current, baseDate, lastAdjustedAt: Date.now() }), task);
+            const committed = await commitScope(storageId, current => {
+                const next = { ...current, baseDate, lastAdjustedAt: Date.now() };
+                const event = storyWeatherEventForScope(storageId, next, baseDate);
+                if (event) next.weatherEvent = event;
+                return next;
+            }, task);
             if (!committed) return false;
             if (!tasks.active(task)) return false;
             const parsed = parseCalendarDate(baseDate), currentView = viewFor(storageId);
@@ -413,7 +357,9 @@ export function installCalendar(state, deps) {
         const parsed = directDate || parseCalendarDate(extractedDate);
         if (!parsed) throw new Error('当前故事日期无效，请输入 YYYY-MM-DD、YYYY/MM/DD 或“YYYY年M月D日”');
         const normalizedDate = formatCalendarDate(parsed);
-        await commitScope(storageId, current => ({ ...current, baseDate: normalizedDate }));
+        await commitScope(storageId, current => ({ ...current, baseDate: normalizedDate }), null, { refreshInjection: false });
+        await ensureStoryWeatherEvent(storageId, { refreshInjection: false });
+        await deps.applyBidirectionalInjection?.();
         const current = viewFor(storageId);
         runtime.viewByStorage.set(storageId, {
             ...current,
@@ -425,7 +371,9 @@ export function installCalendar(state, deps) {
         rerender(storageId);
     }
     async function clearBaseDate(storageId) {
-        await commitScope(storageId, current => { const next = { ...current }; delete next.baseDate; return next; });
+        await commitScope(storageId, current => { const next = { ...current }; delete next.baseDate; return next; }, null, { refreshInjection: false });
+        await ensureStoryWeatherEvent(storageId, { refreshInjection: false });
+        await deps.applyBidirectionalInjection?.();
         const today = calendarReferenceDate(scope(storageId));
         const current = viewFor(storageId);
         runtime.viewByStorage.set(storageId, {
@@ -749,12 +697,24 @@ export function installCalendar(state, deps) {
         const injectionToggleFields = {
             'calendar-toggle-schedule-injection': 'injectionScheduleEnabled',
             'calendar-toggle-weather-injection': 'injectionWeatherEnabled',
+            'calendar-toggle-weather-event': 'weatherEventEnabled',
             'calendar-toggle-cycle-injection': 'injectionCycleEnabled',
             'calendar-toggle-recipe-injection': 'injectionRecipeEnabled',
             'calendar-toggle-outfit-injection': 'injectionOutfitEnabled',
         };
         if (injectionToggleFields[action]) {
             const field = injectionToggleFields[action];
+            if (field === 'weatherEventEnabled') {
+                const enabling = scope(storageId)[field] !== true;
+                await commitScope(storageId, current => enabling
+                    ? { ...current, weatherEventEnabled: true }
+                    : { ...current, weatherEventEnabled: false, weatherEvent: undefined }, null, { refreshInjection: !enabling });
+                if (enabling) await ensureStoryWeatherEvent(storageId);
+                status(storageId, scope(storageId).weatherEventEnabled
+                    ? scope(storageId).weatherEvent ? '剧情天气事件已开启，未来天气将按事件覆盖。' : '剧情天气事件已开启；请先设置天气位置。'
+                    : '剧情天气事件已关闭，已恢复常规天气。');
+                rerender(storageId); return;
+            }
             await commitScope(storageId, current => ({ ...current, [field]: current[field] !== true }));
             status(storageId, scope(storageId)[field] ? '当前模块上下文注入已开启。' : '当前模块上下文注入已关闭。');
             rerender(storageId); return;

@@ -5,6 +5,7 @@ import { occasionTypeLabel, renderCalendarEntryDialog, renderCalendarRepeatDelet
 import { renderCalendarContextInjection } from '../src/phone-injection.js';
 import { createCalendarCommitters } from '../src/calendar-commit.js';
 import { createCalendarRecipeController } from '../src/calendar-recipe-controller.js';
+import { createCalendarWeatherController } from '../src/calendar-weather-controller.js';
 import { createCalendarOutfitController } from '../src/calendar-outfit-controller.js';
 import { createTaskController } from '../src/calendar-task-controller.js';
 import {
@@ -27,12 +28,13 @@ import {
     putHolidayYear, mergeCalendarDateFacts, resolveHolidayYear, selectHolidayCountry,
 } from '../src/calendar-holiday.js';
 import {
-    fetchWeatherForecast, normalizeWeatherForecast, normalizeWeatherLocation, weatherCodeLabel,
+    fetchWeatherForecast, normalizeWeatherForecast, normalizeWeatherLocation, weatherCodeLabel, weatherLocationKey,
     normalizeWeatherStore, searchWeatherLocations, WEATHER_ATTRIBUTION,
 } from '../src/calendar-weather.js';
 import {
-    resolveWeatherForDate, WEATHER_SOURCE_CACHED_FORECAST, WEATHER_SOURCE_CLIMATE_ESTIMATE,
-    WEATHER_SOURCE_FORECAST,
+    createStoryWeatherEvent, normalizeStoryWeatherEvent, resolveWeatherForDate, storyWeatherEventForDate,
+    WEATHER_SOURCE_CACHED_FORECAST, WEATHER_SOURCE_CLIMATE_ESTIMATE, WEATHER_SOURCE_FORECAST,
+    WEATHER_SOURCE_STORY_EVENT,
 } from '../src/calendar-weather-source.js';
 import {
     buildCalendarPrompts, calendarDateFromParts, calendarDateRangeKeys, calendarGenerationCopy, calendarMonthCells, calendarMonthKeys, DEFAULT_CALENDAR_GENERATION_RULE,
@@ -618,6 +620,34 @@ assert.notDeepEqual(climateDay.day, resolveWeatherForDate(freshWeather.store, '2
 const climateStore = (name, latitude, longitude = 0) => ({
     version: 1, location: { name, latitude, longitude, country: '', admin1: '', timezone: 'UTC' }, lastSuccess: null,
 });
+const climateRainCodes = new Set([51, 53, 55, 56, 57, 61, 63, 65, 66, 67, 80, 81, 82, 95, 96, 99]);
+for (const latitude of [20, 25, 30, 35]) {
+    for (const longitude of [-120, 0, 120]) {
+        for (const name of ['沿海城市', '内陆城市', '山麓城市']) {
+            for (const year of [2028, 2032, 2036, 2040]) {
+                const store = climateStore(name, latitude, longitude);
+                for (let month = 1; month <= 12; month++) {
+                    const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
+                    let rainyDays = 0;
+                    let consecutiveRainyDays = 0;
+                    for (let day = 1; day <= daysInMonth; day++) {
+                        const date = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                        const estimate = resolveWeatherForDate(store, date);
+                        if (climateRainCodes.has(estimate.day.weatherCode)) {
+                            rainyDays++;
+                            consecutiveRainyDays++;
+                        } else consecutiveRainyDays = 0;
+                        assert.ok(consecutiveRainyDays <= 2,
+                            `普通亚热带${latitude}°不得出现超过 2 天的连续气候推演降雨`);
+                    }
+                    assert.ok(rainyDays <= 5,
+                        `普通亚热带${latitude}°${month}月的气候推演雨天不得超过 5 天，避免常年长期显示降雨`);
+                }
+            }
+        }
+    }
+}
+
 const midpoint = result => (result.day.tempMin + result.day.tempMax) / 2;
 const north45January = resolveWeatherForDate(climateStore('北纬45', 45), '2032-01-15');
 const north45July = resolveWeatherForDate(climateStore('北纬45', 45), '2032-07-15');
@@ -665,6 +695,79 @@ for (let year = 2000; year < 2025; year += 1) {
 }
 assert.equal(sampledCodes.size >= 6, true, '一万条样本必须覆盖足够多的天气类型');
 assert.equal(resolveWeatherForDate({}, '2032-03-15').status, 'unavailable');
+const storyEventForecast = normalizeWeatherForecast({ days: [
+    { date: '2026-07-17', weatherCode: 1, tempMin: 27, tempMax: 34 },
+    { date: '2026-07-18', weatherCode: 2, tempMin: 26, tempMax: 32 },
+    { date: '2026-07-19', weatherCode: 3, tempMin: 25, tempMax: 31 },
+    { date: '2026-07-20', weatherCode: 61, tempMin: 24, tempMax: 30 },
+    { date: '2026-07-21', weatherCode: 0, tempMin: 25, tempMax: 33 },
+] });
+const storyEventSeedStore = {
+    location: shanghai,
+    lastSuccess: { locationKey: weatherLocationKey(shanghai), source: WEATHER_SOURCE_FORECAST, forecast: storyEventForecast, fetchedAt: 1 },
+    climateRevision: 0,
+};
+const storyEvent = createStoryWeatherEvent(storyEventSeedStore, '2026-07-16', 'story-weather-a');
+assert.ok(storyEvent, '设置天气位置后必须能生成剧情天气事件');
+assert.deepEqual(storyEvent, createStoryWeatherEvent(storyEventSeedStore, '2026-07-16', 'story-weather-a'),
+    '同会话、位置与故事日期的剧情天气事件必须稳定');
+assert.notEqual(storyEvent.id, createStoryWeatherEvent(storyEventSeedStore, '2026-07-16', 'story-weather-b').id,
+    '不同会话不得复用同一剧情天气事件');
+assert.equal(normalizeStoryWeatherEvent({ ...storyEvent, days: [{ ...storyEvent.days[0], weatherCode: 120 }] }), null,
+    '非法剧情天气码必须被丢弃');
+assert.equal(normalizeStoryWeatherEvent({ ...storyEvent, days: [{ ...storyEvent.days[0], weatherCode: 0 }] }), null,
+    '事件类型不允许的天气码必须被丢弃');
+assert.equal(normalizeStoryWeatherEvent({ ...storyEvent, days: [storyEvent.days[0], { ...storyEvent.days[0], date: '2026-07-20' }] }), null,
+    '剧情天气事件日期必须连续');
+const storyOverrideDate = storyEvent.days[0].date;
+const storyOverride = resolveWeatherForDate(storyEventSeedStore, storyOverrideDate, {
+    storyWeatherEvent: storyEvent, storyWeatherEventEnabled: true,
+});
+assert.equal(storyOverride.source, WEATHER_SOURCE_STORY_EVENT,
+    '剧情天气事件必须优先于同日期真实预报');
+assert.deepEqual(storyOverride.day, storyWeatherEventForDate(storyEvent, storyOverrideDate).day);
+assert.equal(resolveWeatherForDate(storyEventSeedStore, storyOverrideDate, {
+    storyWeatherEvent: storyEvent, storyWeatherEventEnabled: false,
+}).source, WEATHER_SOURCE_FORECAST, '关闭剧情天气事件后必须恢复真实预报');
+assert.equal(resolveWeatherForDate({
+    ...storyEventSeedStore,
+    location: { ...shanghai, name: '东京', latitude: 35.68, longitude: 139.76 },
+    lastSuccess: { ...storyEventSeedStore.lastSuccess, locationKey: '35.68,139.76|东京' },
+}, storyOverrideDate, {
+    storyWeatherEvent: storyEvent, storyWeatherEventEnabled: true,
+}).source, WEATHER_SOURCE_FORECAST, '地点变化后旧剧情事件不得覆盖新地点天气');
+assert.equal(resolveWeatherForDate(storyEventSeedStore, '2026-07-21', {
+    storyWeatherEvent: storyEvent, storyWeatherEventEnabled: true,
+}).source, WEATHER_SOURCE_FORECAST, '事件只能覆盖定义日期');
+assert.equal(normalizeCalendarScope({ weatherEventEnabled: true, weatherEvent: storyEvent }).weatherEvent.id, storyEvent.id,
+    '会话 scope 必须持久化有效剧情天气事件');
+assert.equal(normalizeCalendarScope({ weatherEventEnabled: true, weatherEvent: { type: 'bad' } }).weatherEvent, undefined,
+    '损坏剧情天气事件不得进入会话 scope');
+assert.equal(createEmptyCalendarScope().weatherEventEnabled, false, '剧情天气事件必须默认关闭');
+
+const storyEventScope = normalizeCalendarScope({
+    baseDate: '2026-07-16', weatherEventEnabled: true, weatherEvent: storyEvent,
+});
+const storyEventDetail = renderSelectedDateDetail(
+    storyEventScope, new Map(), {}, storyEventSeedStore, {}, storyOverrideDate, 'weather', '明天',
+);
+assert.match(storyEventDetail, /剧情天气事件覆盖/, '天气详情必须明确事件覆盖来源');
+assert.match(storyEventDetail, new RegExp(storyWeatherEventForDate(storyEvent, storyOverrideDate).event.type === 'tropical_storm' ? '热带风暴影响' : '短暂放晴|阴雨过程|强对流'),
+    '天气详情必须显示可信的剧情事件标签');
+const storyEventInjection = renderCalendarContextInjection({
+    currentStorageId: 'story-weather-event',
+    calendarStore: { version: 1, scopes: { 'story-weather-event': { ...storyEventScope, injectionWeatherEnabled: true } } },
+    weatherStore: storyEventSeedStore,
+    start: new Date('2026-07-16T12:00:00'),
+});
+assert.match(storyEventInjection, /剧情天气事件覆盖/, '天气注入必须明确事件覆盖来源');
+const storyEventPage = renderCalendarPageHtml(
+    storyEventScope, { occasions: [] }, '', {}, storyEventSeedStore, {}, [],
+    { viewYear: 2026, viewMonth: 7, selectedDate: storyOverrideDate, viewMode: 'weather' },
+);
+assert.match(storyEventPage, /data-action="calendar-toggle-weather-event"/, '天气设置必须提供剧情天气事件开关');
+assert.match(storyEventPage, /当前事件：/, '天气设置必须显示当前剧情天气事件状态');
+
 assert.equal(resolveWeatherForDate({}, '2032-02-30').unavailableReason, '日期无效');
 const oldWeatherStore = normalizeWeatherStore({
     location: shanghai,
@@ -689,7 +792,7 @@ assert.match(climateDetail, new RegExp(`${climateResolved.day.tempMin}°–${cli
 assert.doesNotMatch(climateDetail, /\d+ - \d+ ℃/, '状态卡天气温度不得回退为连字符加摄氏符号格式');
 assert.match(climateDetail, /class="pm-calendar-status-card pm-calendar-status-card-weather"/);
 assert.match(climateDetail, /class="pm-calendar-status-heading"><strong class="pm-calendar-status-relative">今天<\/strong><span class="pm-calendar-status-date"><time datetime="2032-03-15">3月15日<\/time><em>星期一<\/em><\/span><\/div>/);
-assert.match(climateDetail, /class="pm-calendar-status-context"><span class="pm-calendar-status-weather-context">小雨 · 中国<\/span><span class="pm-calendar-status-location"[^>]*><svg/);
+assert.match(climateDetail, new RegExp(`class="pm-calendar-status-context"><span class="pm-calendar-status-weather-context">${weatherCodeLabel(climateResolved.day.weatherCode)} · 中国<\\/span><span class="pm-calendar-status-location"[^>]*><svg`));
 const longLocation = '北大西洋群岛特别行政区极北海岸天气观测站';
 const longLocationDetail = renderSelectedDateDetail(
     createEmptyCalendarScope(), new Map(), {}, {
@@ -764,6 +867,151 @@ assert.equal(normalizeWeatherStore({
     location: shanghai,
     lastSuccess: { locationKey: '35,139|东京', fetchedAt: 1, forecast: weatherPayload },
 }).lastSuccess, null, '位置键不一致的缓存不得展示');
+
+{
+    let controllerStorageId = 'story-weather-controller-a';
+    let controllerStore = {
+        version: 1,
+        scopes: {
+            'story-weather-controller-a': { weatherEventEnabled: true, weatherEvent: storyEvent },
+            'story-weather-controller-b': {
+                weatherEventEnabled: true,
+                weatherEvent: createStoryWeatherEvent(storyEventSeedStore, '2026-07-16', 'story-weather-controller-b'),
+            },
+        },
+    };
+    const controllerRuntime = {
+        weatherStore: storyEventSeedStore,
+        weatherSearchResults: [{ name: '东京', latitude: 35.68, longitude: 139.76, country: '日本', admin1: '东京', timezone: 'Asia/Tokyo' }],
+    };
+    let controllerInjectionCount = 0;
+    const weatherController = createCalendarWeatherController({
+        tasks: createTaskController(() => controllerStorageId), runtime: controllerRuntime,
+        getScope: storageId => controllerStore.scopes[storageId], getReferenceDate: () => '2026-07-16',
+        getView: () => ({}), setView: () => {},
+        commitWeather: store => { controllerRuntime.weatherStore = store; return store; },
+        commitScope: async (storageId, mutate) => {
+            controllerStore.scopes[storageId] = await mutate(controllerStore.scopes[storageId]);
+            return controllerStore.scopes[storageId];
+        },
+        commitStore: async mutate => {
+            controllerStore = await mutate(controllerStore);
+            return controllerStore;
+        },
+        fetchImpl: async () => ({ ok: true, json: async () => weatherPayload }),
+        applyBidirectionalInjection: async () => { controllerInjectionCount += 1; },
+        status: () => {}, errorStatus: () => {}, rerender: () => {},
+    });
+    assert.equal(await weatherController.ensureStoryWeatherEvent(controllerStorageId), false,
+        '有效且同地点的剧情事件不得因重复确保而重掷');
+    await weatherController.selectWeatherLocation(controllerStorageId, 0);
+    assert.equal(controllerStore.scopes['story-weather-controller-b'].weatherEvent, undefined,
+        '全局天气地点切换必须清除非活动会话的旧剧情事件');
+    assert.equal(controllerStore.scopes[controllerStorageId].weatherEvent.locationKey, '35.68,139.76|东京',
+        '地点切换后仅当前已启用会话应按新地点生成事件');
+    assert.equal(controllerInjectionCount, 1, '地点切换后的批量失效和当前会话重建只能刷新一次注入');
+
+    let failedStore = structuredClone({
+        version: 1,
+        scopes: {
+            'story-weather-controller-a': { weatherEventEnabled: true, weatherEvent: storyEvent },
+            'story-weather-controller-b': { weatherEventEnabled: true, weatherEvent: createStoryWeatherEvent(storyEventSeedStore, '2026-07-16', 'story-weather-controller-b') },
+        },
+    });
+    const failedRuntime = {
+        store: failedStore,
+        weatherStore: structuredClone(storyEventSeedStore),
+        weatherSearchResults: [{
+            name: '东京', latitude: 35.68, longitude: 139.76, country: '日本', admin1: '东京', timezone: 'Asia/Tokyo',
+        }],
+    };
+    const failedStoreSnapshot = structuredClone(failedStore);
+    const failedWeatherSnapshot = structuredClone(failedRuntime.weatherStore);
+    const failingWeatherController = createCalendarWeatherController({
+        tasks: createTaskController(() => controllerStorageId), runtime: failedRuntime,
+        getScope: storageId => failedStore.scopes[storageId], getReferenceDate: () => '2026-07-16',
+        getView: () => ({}), setView: () => {},
+        commitWeather: store => { failedRuntime.weatherStore = store; return store; },
+        commitScope: async () => { throw new Error('story event write blocked'); },
+        commitStore: async mutate => { failedStore = await mutate(failedStore); failedRuntime.store = failedStore; return failedStore; },
+        fetchImpl: async () => ({ ok: true, json: async () => weatherPayload }),
+        applyBidirectionalInjection: async () => {}, status: () => {}, errorStatus: () => {}, rerender: () => {},
+    });
+    await assert.rejects(failingWeatherController.selectWeatherLocation(controllerStorageId, 0), /story event write blocked/);
+    assert.deepEqual(failedStore, failedStoreSnapshot,
+        '地点切换后当前会话事件写入失败必须回滚所有会话的剧情天气事件');
+    assert.deepEqual(failedRuntime.weatherStore, failedWeatherSnapshot,
+        '地点切换后当前会话事件写入失败必须回滚全局天气位置');
+
+    let injectionFailedStore = structuredClone(failedStoreSnapshot);
+    const injectionFailedRuntime = {
+        store: injectionFailedStore,
+        weatherStore: structuredClone(failedWeatherSnapshot),
+        weatherSearchResults: [{
+            name: '东京', latitude: 35.68, longitude: 139.76, country: '日本', admin1: '东京', timezone: 'Asia/Tokyo',
+        }],
+    };
+    const injectionFailedController = createCalendarWeatherController({
+        tasks: createTaskController(() => controllerStorageId), runtime: injectionFailedRuntime,
+        getScope: storageId => injectionFailedStore.scopes[storageId], getReferenceDate: () => '2026-07-16',
+        getView: () => ({}), setView: () => {},
+        commitWeather: store => { injectionFailedRuntime.weatherStore = store; return store; },
+        commitScope: async (storageId, mutate) => {
+            injectionFailedStore.scopes[storageId] = await mutate(injectionFailedStore.scopes[storageId]);
+            injectionFailedRuntime.store = injectionFailedStore;
+            return injectionFailedStore.scopes[storageId];
+        },
+        commitStore: async mutate => {
+            injectionFailedStore = await mutate(injectionFailedStore);
+            injectionFailedRuntime.store = injectionFailedStore;
+            return injectionFailedStore;
+        },
+        fetchImpl: async () => ({ ok: true, json: async () => weatherPayload }),
+        applyBidirectionalInjection: async () => { throw new Error('weather injection blocked'); },
+        status: () => {}, errorStatus: () => {}, rerender: () => {},
+    });
+    await assert.rejects(injectionFailedController.selectWeatherLocation(controllerStorageId, 0), /weather injection blocked/);
+    assert.deepEqual(injectionFailedStore, failedStoreSnapshot,
+        '地点切换后的注入失败必须回滚所有会话的剧情天气事件');
+    assert.deepEqual(injectionFailedRuntime.weatherStore, failedWeatherSnapshot,
+        '地点切换后的注入失败必须回滚全局天气位置');
+
+    let weatherWriteFailedStore = structuredClone(failedStoreSnapshot);
+    const weatherWriteFailedRuntime = {
+        store: weatherWriteFailedStore,
+        weatherStore: structuredClone(failedWeatherSnapshot),
+        weatherSearchResults: [{
+            name: '东京', latitude: 35.68, longitude: 139.76, country: '日本', admin1: '东京', timezone: 'Asia/Tokyo',
+        }],
+    };
+    const weatherWriteFailedController = createCalendarWeatherController({
+        tasks: createTaskController(() => controllerStorageId), runtime: weatherWriteFailedRuntime,
+        getScope: storageId => weatherWriteFailedStore.scopes[storageId], getReferenceDate: () => '2026-07-16',
+        getView: () => ({}), setView: () => {},
+        commitWeather: store => {
+            if (store.location?.name === '东京') throw new Error('weather write blocked');
+            weatherWriteFailedRuntime.weatherStore = store;
+            return store;
+        },
+        commitScope: async (storageId, mutate) => {
+            weatherWriteFailedStore.scopes[storageId] = await mutate(weatherWriteFailedStore.scopes[storageId]);
+            weatherWriteFailedRuntime.store = weatherWriteFailedStore;
+            return weatherWriteFailedStore.scopes[storageId];
+        },
+        commitStore: async mutate => {
+            weatherWriteFailedStore = await mutate(weatherWriteFailedStore);
+            weatherWriteFailedRuntime.store = weatherWriteFailedStore;
+            return weatherWriteFailedStore;
+        },
+        fetchImpl: async () => ({ ok: true, json: async () => weatherPayload }),
+        applyBidirectionalInjection: async () => {}, status: () => {}, errorStatus: () => {}, rerender: () => {},
+    });
+    await assert.rejects(weatherWriteFailedController.selectWeatherLocation(controllerStorageId, 0), /weather write blocked/);
+    assert.deepEqual(weatherWriteFailedStore, failedStoreSnapshot,
+        '天气底座写入失败必须回滚所有会话的剧情天气事件');
+    assert.deepEqual(weatherWriteFailedRuntime.weatherStore, failedWeatherSnapshot,
+        '天气底座写入失败不得改变全局天气位置');
+}
 
 const storageA = 'sms_a__chat', storageB = 'sms_b__chat';
 let cycleStore = createEmptyCycleStore();

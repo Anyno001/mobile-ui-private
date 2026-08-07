@@ -4,7 +4,7 @@ import { holidayYearFromCache } from './calendar-holiday.js';
 import { DEFAULT_OUTFIT_GENERATION_RULE, outfitForDate } from './calendar-outfit-model.js';
 import { DEFAULT_RECIPE_GENERATION_RULE, RECIPE_MEAL_LABELS, RECIPE_MEAL_TYPES, recipeDayFor } from './calendar-recipe-model.js';
 import { weatherCodeLabel } from './calendar-weather.js';
-import { resolveWeatherForDate, weatherSourceLabel } from './calendar-weather-source.js';
+import { resolveWeatherForDate, storyWeatherEventLabel, weatherSourceLabel } from './calendar-weather-source.js';
 import {
     CLOSE_ICON_SVG, CYCLE_FERTILE_ICON_SVG, CYCLE_PERIOD_ICON_SVG, EDIT_ICON_SVG,
     LOCATION_ICON_SVG, MORE_ICON_SVG, REFRESH_ICON_SVG, TRASH_ICON_SVG, WEATHER_CLOUD_ICON_SVG,
@@ -77,17 +77,20 @@ function statusCard({ relativeLabel, context, value, icon, parsed, date, kind, p
     </div>`;
 }
 
-function weatherStatusCard(weatherStore, date, parsed, relativeLabel) {
-    const resolved = resolveWeatherForDate(weatherStore, date);
+function weatherStatusCard(scope, weatherStore, date, parsed, relativeLabel) {
+    const resolved = resolveWeatherForDate(weatherStore, date, {
+        storyWeatherEvent: scope.weatherEvent, storyWeatherEventEnabled: scope.weatherEventEnabled,
+    });
     if (resolved.status !== 'available') {
         return { content: `<p class="pm-calendar-empty-day">无法推演 · ${escapeHtml(resolved.unavailableReason)}</p>`, isCard: false };
     }
     const condition = weatherCodeLabel(resolved.day.weatherCode);
     const location = weatherStore?.location?.country || weatherStore?.location?.name || '天气记录';
+    const eventLabel = resolved.source === 'story_weather_event' ? ` · ${storyWeatherEventLabel(resolved.event?.type)}（剧情天气事件覆盖）` : '';
     return { content: statusCard({
         kind: 'weather', parsed, date, icon: weatherStatusIcon(resolved.day.weatherCode),
         relativeLabel,
-        context: `<span class="pm-calendar-status-weather-context">${escapeHtml(condition)} · ${escapeHtml(location)}</span><span class="pm-calendar-status-location" aria-hidden="true">${LOCATION_ICON_SVG}</span>`,
+        context: `<span class="pm-calendar-status-weather-context">${escapeHtml(condition)} · ${escapeHtml(location)}${escapeHtml(eventLabel)}</span><span class="pm-calendar-status-location" aria-hidden="true">${LOCATION_ICON_SVG}</span>`,
         value: `${resolved.day.tempMin}°–${resolved.day.tempMax}°`,
     }), isCard: true };
 }
@@ -145,7 +148,7 @@ export function renderSelectedDateDetail(
         </section>`;
     }
     const statusDetail = viewMode === 'weather'
-        ? weatherStatusCard(weatherStore, selectedDate, parsed, relativeLabel)
+        ? weatherStatusCard(scope, weatherStore, selectedDate, parsed, relativeLabel)
         : viewMode === 'cycle'
             ? cycleStatusCard(cycleScope, selectedDate, parsed, relativeLabel)
             : null;
@@ -197,7 +200,11 @@ export function renderCalendarManagement({
     if (viewMode === 'weather') {
         const storedSource = weatherStore?.lastSuccess?.source || (weatherStore?.lastSuccess ? 'forecast' : null);
         const currentSource = storedSource ? weatherSourceLabel(storedSource) : '仅气候推演';
-        return `<details class="pm-calendar-management" data-calendar-management="weather"${open}><summary>天气设置</summary><div class="pm-calendar-management-content"><section class="pm-calendar-data-tools pm-calendar-injection-card">${injectionToggle('calendar-toggle-weather-injection', '天气注入', scope.injectionWeatherEnabled)}</section><section class="pm-calendar-data-tools"><h3>天气位置</h3><div class="pm-calendar-data-row"><input data-weather-query placeholder="搜索城市或地区" maxlength="100" aria-label="搜索天气位置"><button type="button" data-action="calendar-weather-search">搜索</button><button type="button" data-action="calendar-weather-refresh">刷新</button></div>${weatherSearchResults(weatherResults)}<small class="pm-calendar-attribution">${weatherStore.location ? `${escapeHtml(weatherStore.location.name)} · 当前数据 ${escapeHtml(currentSource)} · 预报外日期使用气候推演` : '尚未设置天气位置 · 无法推演'}</small></section></div></details>`;
+        const event = scope.weatherEvent;
+        const eventStatus = !scope.weatherEventEnabled ? '已关闭；不会覆盖天气。'
+            : event ? `当前事件：${storyWeatherEventLabel(event.type)} · ${event.startDate} 至 ${event.endDate} · 剧情天气事件覆盖`
+                : weatherStore.location ? '已开启；将在后续剧情日期生成短期天气事件。' : '已开启；请先设置天气位置。';
+        return `<details class="pm-calendar-management" data-calendar-management="weather"${open}><summary>天气设置</summary><div class="pm-calendar-management-content"><section class="pm-calendar-data-tools pm-calendar-injection-card">${injectionToggle('calendar-toggle-weather-injection', '天气注入', scope.injectionWeatherEnabled)}</section><section class="pm-calendar-data-tools pm-calendar-injection-card">${injectionToggle('calendar-toggle-weather-event', '剧情天气事件', scope.weatherEventEnabled)}<small class="pm-calendar-attribution">${escapeHtml(eventStatus)}</small></section><section class="pm-calendar-data-tools"><h3>天气位置</h3><div class="pm-calendar-data-row"><input data-weather-query placeholder="搜索城市或地区" maxlength="100" aria-label="搜索天气位置"><button type="button" data-action="calendar-weather-search">搜索</button><button type="button" data-action="calendar-weather-refresh">刷新</button></div>${weatherSearchResults(weatherResults)}<small class="pm-calendar-attribution">${weatherStore.location ? `${escapeHtml(weatherStore.location.name)} · 当前数据 ${escapeHtml(currentSource)} · 预报外日期使用气候推演` : '尚未设置天气位置 · 无法推演'}</small></section></div></details>`;
     }
     if (viewMode === 'cycle') {
         const startDay = cycleScope.lastPeriodStart ? Number(cycleScope.lastPeriodStart.slice(8, 10)) : 1;

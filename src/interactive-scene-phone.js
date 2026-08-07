@@ -168,8 +168,6 @@ export function persistCurrentPhoneUiSnapshot({
 }) {
     if (!runtime?.store || !storageId || storageId === 'sms_unknown__default'
         || !PHONE_UI_PAGES.includes(page)) return false;
-    if (page === 'community' && runtime.openSceneReadOnly === true
-        && runtime.openSceneStorageId && runtime.openSceneStorageId !== storageId) return true;
     const scope = phoneScope(storageId, runtime.store);
     const normalizedChatType = chatType === 'contact' || chatType === 'group' ? chatType : null;
     const normalizedChatKey = normalizedChatType && typeof chatKey === 'string' && chatKey.trim()
@@ -221,11 +219,11 @@ export function persistSceneBudgetRemoval({ config, storageId, sceneId, saveConf
 }
 
 export async function runDeleteSceneAction(scopeId, sceneId, {
-    scope, confirm, invalidate, commit, persistPhoneUi, refreshDesktop,
+    scope, confirm, invalidate, commit, commitDelete = null, persistPhoneUi, refreshDesktop,
     getBudgetConfig, saveBudgetConfig, clearOpenScene, renderLauncher,
 }) {
     return deleteSceneAndFinalize(scopeId, sceneId, {
-        scope, confirm, invalidate, commit, deleteScene: deleteInteractiveScene, persistPhoneUi, refreshDesktop,
+        scope, confirm, invalidate, commit, commitDelete, deleteScene: deleteInteractiveScene, persistPhoneUi, refreshDesktop,
         persistBudget: (storageId, removedSceneId) => {
             const result = persistSceneBudgetRemoval({
                 config: getBudgetConfig(), storageId, sceneId: removedSceneId, saveConfig: saveBudgetConfig,
@@ -238,14 +236,14 @@ export async function runDeleteSceneAction(scopeId, sceneId, {
 }
 
 export async function deleteSceneAndFinalize(scopeId, sceneId, {
-    scope, confirm, invalidate, commit, deleteScene, finalize = finalizeDeletedScene,
+    scope, confirm, invalidate, commit, commitDelete = null, deleteScene, finalize = finalizeDeletedScene,
     persistPhoneUi, refreshDesktop, persistBudget, clearOpenScene, renderLauncher,
 }) {
     const scene = scope?.scenes?.[sceneId];
     if (!scene) throw new Error('互动场景不存在');
     if (!confirm(`确定删除互动场景“${scene.title}”吗？帖子、评论和弹幕都会一并删除。`)) return false;
     invalidate();
-    await commit(() => deleteScene(scope, sceneId));
+    await (commitDelete || commit)(() => deleteScene(scope, sceneId));
     finalize({
         persistPhoneUi,
         refreshDesktop: () => refreshDesktop(scopeId),

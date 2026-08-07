@@ -1,0 +1,33 @@
+#pm-iphone[data-theme="dark"] .pm-calendar-management[data-calendar-management="schedule"] .pm-calendar-scan-card .pm-calendar-auto-switch small,#pm-iphone[data-theme="dark"] .pm-calendar-management[data-calendar-management="weather"] .pm-calendar-attribution,#pm-iphone[data-theme="dark"] .pm-calendar-management[data-calendar-management="cycle"] .pm-calendar-cycle-editor small,#pm-iphone[data-theme="dark"] .pm-calendar-management[data-calendar-management="recipe"] .pm-calendar-attribution{color:var(--pm-color-text-secondary);}
+.pm-calendar-month-panel input.pm-calendar-base-date-input{box-sizing:border-box!important;width:100%!important;min-height:42px!important;border:1px solid color-mix(in srgb,var(--pm-calendar-accent) 28%,var(--pm-color-border-default))!important;border-radius:var(--pm-radius-panel)!important;background:color-mix(in srgb,var(--pm-calendar-accent) 6%,var(--pm-color-surface-input))!important;color:var(--pm-color-text-primary)!important;padding:var(--pm-space-2) var(--pm-space-3)!important;font:650 var(--pm-font-size-body)/1.2 -apple-system,BlinkMacSystemFont,'PingFang SC','Microsoft YaHei',sans-serif!important;letter-spacing:.02em;box-shadow:none!important;outline:none!important;appearance:none!important;}
+.pm-calendar-month-panel input.pm-calendar-base-date-input:focus-visible{outline:2px solid var(--pm-calendar-accent)!important;outline-offset:1px!important;}
+.pm-calendar-month-panel-actions{grid-template-columns:.82fr 1fr 1fr;gap:var(--pm-space-1-5);}
+.pm-calendar-month-panel-actions button{min-height:var(--pm-size-control-compact);padding-inline:var(--pm-space-1);font-size:var(--pm-font-size-helper);white-space:nowrap;}
+.pm-sub-overlay{position:fixed!important;inset:0!important;z-index:var(--pm-z-host)!important;display:flex!important;align-items:center!important;justify-content:center!important;width:100vw!important;height:100vh!important;max-width:none!important;max-height:none!important;margin:var(--pm-space-0)!important;padding:var(--pm-space-0)!important;border:0!important;background:var(--pm-color-overlay)!important;}
+.pm-emoji-manager-modal{height:560px;}
+.pm-modal-add .pm-action-button[data-layout="full"]{width:100%;}
+.pm-worldbook-actions .pm-action-button.is-secondary{flex:1;}
+.pm-worldbook-actions .pm-action-button.is-accent{flex:2;}
+.pm-emoji-thumbnail.is-50x50{width:50px;height:50px;}
+.pm-emoji-thumbnail.is-52x52{width:52px;height:52px;}
+@media(max-width:320px){#pm-iphone{--pm-phone-border-width:6px;--pm-phone-inner-radius:30px;--pm-phone-outer-radius:36px;border-width:6px!important;}.pm-desktop-page{padding:var(--pm-space-4) var(--pm-space-3);}.pm-desktop-grid{gap:var(--pm-space-1-5);}.pm-desktop-app{padding-inline:var(--pm-space-0);}.pm-desktop-app-icon{width:42px;height:42px;border-radius:var(--pm-radius-card);}.pm-desktop-app svg{width:21px;height:21px;}.pm-desktop-app-label{font-size:var(--pm-font-size-micro);}}
+@media(pointer:coarse) and (max-height:500px){.pm-island{height:20px;margin-top:var(--pm-space-1);}.pm-status-bar{display:none;}.pm-input-bar{padding-top:var(--pm-space-px-5);padding-bottom:var(--pm-space-px-5);}#pm-iphone .pm-scene-launcher,#pm-iphone .pm-scene-feed,#pm-iphone .pm-live-room,#pm-iphone .pm-scene-prompt{padding-bottom:var(--pm-space-1-5);}}
+/*档案风评只影响个人风评视图；其余今日风向模块沿用各自的信息层级。*/
+.pm-today-trend-reputation>.pm-today-trend-module-head.is-decorative{align-items:flex-start;min-height:calc(var(--pm-size-control-default) + var(--pm-space-2));padding-bottom:var(--pm-space-3);}
+.pm-today-trend-reputation>.pm-today-trend-module-head.is-decorative>div{gap:var(--pm-space-1);}
+.pm-today-trend-reputation>.pm-today-trend-module-head.is-decorative h2{font-size:var(--pm-today-trend-display-size);font-weight:var(--pm-font-weight-semibold);letter-spacing:var(--pm-space-1);line-height:var(--pm-line-height-tight);}
+.pm-today-trend-reputation>.pm-today-trend-module-head.is-decorative>div::after{display:block;width:var(--pm-space-5);margin-top:var(--pm-space-1);border-top:var(--pm-today-trend-report-rule) solid var(--pm-color-accent);content:'';}
+.pm-today-trend-reputation .pm-today-trend-module-eyebrow{color:var(--pm-color-text-secondary)!important;font-size:var(--pm-font-size-helper)!important;font-weight:var(--pm-font-weight-semibold);letter-spacing:var(--pm-space-2);line-height:var(--pm-line-height-control);}
+.pm-today-trend-reputation::before{display:none;}
+/*社区模板与桌面入口：场景身份色必须随场景/模板快照传递，不继承全局手机强调色。*/
+.pm-scene-template-action{color:var(--pm-color-text-tertiary);}
+.pm-scene-template-action[data-action="publish-community-template"],.pm-scene-template-action:hover,.pm-scene-template-action:focus-visible{background:transparent;color:var(--scene-accent);}
+.pm-scene-template-action svg{width:17px;height:17px;}
+.pm-desktop-pin{border-color:color-mix(in srgb,var(--scene-accent,#6d4aff) 36%,var(--pm-color-border-default));}
+.pm-desktop-pin>button:first-child:focus-visible{outline:2px solid var(--scene-accent,#6d4aff);outline-offset:-2px;}
+.pm-desktop-template{background:color-mix(in srgb,var(--scene-accent,#6d4aff) 10%,var(--pm-color-surface-card));}
+.pm-desktop-template>button:first-child{display:flex;align-items:center;gap:var(--pm-space-2);color:var(--scene-accent,#6d4aff);}
+.pm-desktop-template-icon{display:grid;place-items:center;width:25px;height:25px;flex:0 0 25px;border-radius:var(--pm-radius-compact);background:color-mix(in srgb,var(--scene-accent,#6d4aff) 16%,transparent);}
+.pm-desktop-template-icon svg{width:16px;height:16px;}
+.pm-desktop-template b{color:var(--pm-color-text-primary);}
+.pm-desktop-template small{display:block;margin-top:var(--pm-space-0-5);font-size:var(--pm-font-size-caption);color:var(--scene-accent,#6d4aff);}

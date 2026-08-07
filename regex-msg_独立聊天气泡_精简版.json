@@ -1,0 +1,18 @@
+{
+    "id": "06ade90f-377e-49c4-8975-b0671f3e1659",
+    "scriptName": "MSG 独立聊天气泡 精简版",
+    "findRegex": "/<msg\\s+side\\s*=\\s*[\"'](left|right)[\"']\\s*>\\s*([\\p{L}\\p{N}_. {}-]{1,64})(?:\\s*\\(([\\p{L}\\p{N}_. {}-]{1,64})\\))?\\s*\\|\\s*([\\s\\S]*?)\\s*<\\/msg>/giu",
+    "replaceString": "<style>.nl-msg-s{--nl-body:var(--SmartThemeBodyColor,#1c1c1e);--nl-muted:var(--SmartThemeQuoteColor,#6e6e73);--nl-border:rgba(90,90,100,.33);--nl-shadow:rgba(60,60,70,.055);--nl-surface:var(--SmartThemeBlurTintColor,rgba(242,242,247,.88));box-sizing:border-box;display:flex;flex-direction:column;align-items:flex-start;width:100%;margin:1.7rem 0 2rem;font-family:-apple-system,BlinkMacSystemFont,\"Segoe UI\",\"PingFang SC\",sans-serif}@supports (color:color-mix(in srgb,black,transparent)){.nl-msg-s{--nl-border:color-mix(in srgb,var(--SmartThemeBorderColor,rgba(60,60,67,.22)) 42%,transparent);--nl-shadow:color-mix(in srgb,var(--SmartThemeQuoteColor,#6e6e73) 11%,transparent)}}.nl-msg-s + style + .nl-msg-s{margin-top:.9rem}.nl-msg-s:has(+ style + .nl-msg-s){margin-bottom:.5rem}.nl-msg-s[data-side=\"left\"] + style + .nl-msg-s[data-side=\"right\"],.nl-msg-s[data-side=\"right\"] + style + .nl-msg-s[data-side=\"left\"]{margin-top:1.2rem}.nl-msg-s[data-side=\"right\"]{align-items:flex-end}.nl-msg-s[data-side=\"right\"] .nl-msg-s__row{flex-direction:row-reverse}.nl-msg-s__who{box-sizing:border-box;max-width:min(82%,36rem);padding:0 .42rem .2rem;color:var(--nl-muted);font-size:.7rem;font-weight:600;line-height:1.2;overflow-wrap:anywhere}.nl-msg-s__name:not(:empty)~.nl-msg-s__id{display:none}.nl-msg-s__name:empty{display:none}.nl-msg-s__row{box-sizing:border-box;display:flex;flex-direction:row;align-items:flex-end;gap:.28rem;width:fit-content;max-width:min(82%,36rem)}.nl-msg-s__bbl{box-sizing:border-box;flex:0 1 auto;min-width:0;width:fit-content;max-width:100%;padding:.52rem .72rem;border:1px solid var(--nl-border);border-radius:.24rem .88rem .88rem .88rem;background:var(--nl-surface);color:var(--nl-body);box-shadow:0 1px 4px var(--nl-shadow),inset 0 0 4px rgba(255,255,255,.025);font-size:.9rem;line-height:1.45;overflow-wrap:anywhere;word-break:break-word}.nl-msg-s[data-side=\"right\"] .nl-msg-s__bbl{border-radius:.88rem .24rem .88rem .88rem;background:color-mix(in srgb,var(--nl-muted) 24%,var(--nl-surface))}.nl-msg-s__txt{display:block;white-space:pre-wrap}@media (max-width:420px){.nl-msg-s__who,.nl-msg-s__row{max-width:90%}}</style><section class=\"nl-msg-s\" data-side=\"$1\"><div class=\"nl-msg-s__who\"><span class=\"nl-msg-s__name\">$2</span><span class=\"nl-msg-s__id\">$3</span></div><div class=\"nl-msg-s__row\"><div class=\"nl-msg-s__bbl\"><span class=\"nl-msg-s__txt\">$4</span></div></div></section>",
+    "trimStrings": [],
+    "placement": [
+        1,
+        2
+    ],
+    "disabled": false,
+    "markdownOnly": true,
+    "promptOnly": false,
+    "runOnEdit": true,
+    "substituteRegex": 0,
+    "minDepth": null,
+    "maxDepth": null
+}

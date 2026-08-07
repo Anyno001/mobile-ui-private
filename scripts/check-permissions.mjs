@@ -622,6 +622,7 @@ assert.equal(legacyDisabledMigration.store.legacyInjectionMigrated, true);
 assert.deepEqual(legacyDisabledMigration.store.injectionDefaults, {
     injectionScheduleEnabled: false,
     injectionWeatherEnabled: false,
+    weatherEventEnabled: false,
     injectionCycleEnabled: false,
     injectionRecipeEnabled: false,
     injectionOutfitEnabled: true,
@@ -630,6 +631,7 @@ assert.deepEqual(calendarScopeFor(legacyDisabledMigration.store, 'inherited'), {
     ...calendarScopeFor(legacyDisabledMigration.store, 'inherited'),
     injectionScheduleEnabled: false,
     injectionWeatherEnabled: false,
+    weatherEventEnabled: false,
     injectionCycleEnabled: false,
     injectionRecipeEnabled: false,
     injectionOutfitEnabled: true,

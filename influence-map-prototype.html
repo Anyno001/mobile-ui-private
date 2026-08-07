@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>势力图谱 · HTML 原型</title>
+<link rel="stylesheet" href="signal-shared.css">
+<style>
+.hero{padding-bottom:1rem}
+.hero-art{right:0;top:2.25rem;width:min(58%,17rem);aspect-ratio:2/1;color:var(--accent-soft);opacity:.7}
+.map{padding:0 var(--pad)}
+.node{position:relative;display:grid;grid-template-columns:3.5rem minmax(0,1fr) auto;gap:.75rem;padding:1.25rem 0;border-top:1px dashed var(--line)}
+.node:first-child{border-top:0}
+.rail{position:relative;display:grid;justify-items:center}
+.rail::before{content:"";position:absolute;top:-1.25rem;bottom:-1.25rem;left:.5rem;border-left:1px solid #b9cbc9}
+.node:first-child .rail::before{top:1.5rem}
+.node:last-child .rail::before{bottom:calc(100% - 1.5rem)}
+.dotnode{width:1.125rem;height:1.125rem;margin-top:.125rem;border:1px solid #9fb3b1;border-radius:50%;background:var(--paper);z-index:1}
+.badge-ic{width:2.75rem;height:2.75rem;display:grid;place-items:center;margin-left:.375rem;border:1px solid #a9c2c0;border-radius:50%;background:var(--card);color:var(--accent)}
+.badge-ic svg{width:1.5rem;height:1.5rem}
+.body{min-width:0}
+.body .head{display:flex;align-items:center;gap:.5rem;flex-wrap:wrap}
+.body h3{margin:0;font-size:1.4375rem;font-weight:600}
+.role{padding:.125rem .5rem;border:1px solid var(--accent);border-radius:.375rem;color:var(--accent);font-size:.75rem;white-space:nowrap}
+.summary{margin:.5rem 0 .75rem;color:#39444f;font-size:.9375rem;line-height:1.6}
+.rel{display:grid;grid-template-columns:auto 1fr;gap:.375rem .75rem;position:relative;padding-left:1.25rem}
+.rel::before{content:"";position:absolute;left:.125rem;top:.35rem;bottom:.35rem;border-left:1px solid #c2d2d0}
+.rel dt{margin:0;color:var(--muted);font-size:.8125rem;white-space:nowrap}
+.rel dd{margin:0;min-width:0;color:var(--sub);font-size:.8125rem;line-height:1.5}
+.state{display:flex;align-items:flex-start;gap:.375rem;white-space:nowrap;color:var(--sub);font-size:.8125rem}
+.state .dot{width:.5rem;height:.5rem;margin-top:.35rem;border-radius:50%;background:var(--accent)}
+.state .chev{width:1rem;height:1rem;color:var(--muted)}
+.footer-art{position:relative;height:6rem;margin-top:.5rem;color:var(--accent-soft);opacity:.5}
+.footer-art svg{width:100%;height:100%}
+@media(max-width:340px){.state span:not(.dot){display:none}}
+</style>
+</head>
+<body>
+<main class="phone"><div class="screen">
+
+<header class="topbar">
+  <button class="iconbtn" type="button" aria-label="返回"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg></button>
+  <h1>势力图谱</h1>
+  <div class="tools">
+    <button class="iconbtn" type="button" aria-label="暂停更新"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M9 6v12M15 6v12"/></svg></button>
+    <button class="iconbtn" type="button" aria-label="关闭页面"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+  </div>
+</header>
+
+<section class="hero" aria-label="势力图谱概览">
+  <div class="hero-art" aria-hidden="true"><svg viewBox="0 0 260 130" fill="none" stroke="currentColor" stroke-width="1">
+    <path d="M20 90C60 50 110 40 150 55S220 90 250 60" opacity=".5"/>
+    <path d="M30 60C80 80 130 100 200 70S240 30 255 40" opacity=".35"/>
+    <circle cx="150" cy="48" r="6" fill="currentColor" stroke="none"/>
+    <circle cx="205" cy="52" r="4" fill="currentColor" stroke="none" opacity=".7"/>
+    <circle cx="92" cy="78" r="5" fill="currentColor" stroke="none" opacity=".85"/>
+    <circle cx="243" cy="44" r="2.5" fill="currentColor" stroke="none" opacity=".6"/>
+    <circle cx="52" cy="96" r="2.5" fill="currentColor" stroke="none" opacity=".5"/>
+  </svg></div>
+  <p class="eyebrow">INFLUENCE MAP</p>
+  <h2>势力图谱</h2>
+  <div class="rule" aria-hidden="true"></div>
+  <p class="updated"><span class="dot" aria-hidden="true"></span>数据更新于 今日 09:40</p>
+</section>
+
+<section class="map" aria-label="势力节点">
+  <article class="node">
+    <div class="rail" aria-hidden="true"><span class="dotnode"></span></div>
+    <div class="body">
+      <div class="badge-ic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M12 3l2.2 6.8H21l-5.4 4 2 6.7L12 16.6 6.4 20.5l2-6.7L3 9.8h6.8z"/></svg></div>
+      <div class="head"><h3>北岸议会</h3><span class="role">核心</span></div>
+      <p class="summary">北岸主要治理与规则制定机构，影响政策与资源分配。</p>
+      <dl class="rel"><dt>外部关联</dt><dd>与航线协调局保持合作与制衡</dd><dt>观察对象</dt><dd>雾港同盟、独立观察站</dd></dl>
+    </div>
+    <div class="state"><span class="dot" aria-hidden="true"></span><span>边界稳定</span><svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></div>
+  </article>
+  <article class="node">
+    <div class="rail" aria-hidden="true"><span class="dotnode"></span></div>
+    <div class="body">
+      <div class="badge-ic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="5" r="2"/><path d="M12 7v12M5 12a7 7 0 0 0 14 0M4 12h2M18 12h2"/></svg></div>
+      <div class="head"><h3>航线协调局</h3><span class="role">核心</span></div>
+      <p class="summary">负责航道安全与调度，掌控主要航线资源。</p>
+      <dl class="rel"><dt>外部关联</dt><dd>受北岸议会授权，监管雾港航线</dd><dt>观察对象</dt><dd>雾港同盟、独立观察站</dd></dl>
+    </div>
+    <div class="state"><span class="dot" aria-hidden="true"></span><span>边界稳定</span><svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></div>
+  </article>
+  <article class="node">
+    <div class="rail" aria-hidden="true"><span class="dotnode"></span></div>
+    <div class="body">
+      <div class="badge-ic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v16M12 20l7-3-7-9-7 9z"/></svg></div>
+      <div class="head"><h3>雾港同盟</h3><span class="role">外部关联</span></div>
+      <p class="summary">雾港地区多方势力联盟，寻求更大自主空间。</p>
+      <dl class="rel"><dt>外部关联</dt><dd>与航线协调局存在摩擦</dd><dt>观察对象</dt><dd>北岸议会、独立观察站</dd></dl>
+    </div>
+    <div class="state"><span class="dot" aria-hidden="true"></span><span>边界稳定</span><svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></div>
+  </article>
+  <article class="node">
+    <div class="rail" aria-hidden="true"><span class="dotnode"></span></div>
+    <div class="body">
+      <div class="badge-ic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="13" r="3.4"/><circle cx="16" cy="13" r="3.4"/><path d="M6 9l2-3M18 9l-2-3M11.4 13h1.2"/></svg></div>
+      <div class="head"><h3>独立观察站</h3><span class="role">观察对象</span></div>
+      <p class="summary">中立的情报与态势观察组织，保持独立立场。</p>
+      <dl class="rel"><dt>外部关联</dt><dd>与各方保持信息往来</dd><dt>观察对象</dt><dd>北岸议会、航线协调局、雾港同盟</dd></dl>
+    </div>
+    <div class="state"><span class="dot" aria-hidden="true"></span><span>边界稳定</span><svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></div>
+  </article>
+</section>
+
+<div class="footer-art" aria-hidden="true"><svg viewBox="0 0 390 96" fill="none" stroke="currentColor" stroke-width="1">
+  <path d="M40 20C120 90 270 90 350 20" opacity=".5"/>
+  <path d="M70 10C140 70 250 70 320 10" opacity=".35"/>
+  <path d="M180 60l15 16 15-16" stroke-width="1.4"/>
+  <circle cx="120" cy="66" r="3" fill="currentColor" stroke="none"/>
+  <circle cx="270" cy="66" r="3" fill="currentColor" stroke="none"/>
+</svg></div>
+
+<nav class="tabs" aria-label="主导航">
+  <a class="tab" href="#world"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.5 3.7 5.6 3.7 9S14.5 18.5 12 21c-2.5-2.5-3.7-5.6-3.7-9S9.5 5.5 12 3z"/></svg><span>世界态势</span></a>
+  <a class="tab" href="#profile"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="8" r="3.4"/><path d="M5.5 20c0-4 2.9-6.5 6.5-6.5S18.5 16 18.5 20" stroke-linecap="round"/></svg><span>个人风评</span></a>
+  <a class="tab on" href="#factions" aria-current="page"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><circle cx="12" cy="5" r="2.2"/><circle cx="5" cy="18" r="2.2"/><circle cx="19" cy="18" r="2.2"/><path d="M10.4 6.5L6.2 15.8M13.6 6.5l4.2 9.3M7 18h10"/></svg><span>势力图谱</span></a>
+  <a class="tab" href="#events"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="2.6"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3" stroke-linecap="round"/></svg><span>事件追踪</span></a>
+  <a class="tab" href="#settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 0 0-.1-1.2l2-1.5-2-3.4-2.3 1a7 7 0 0 0-2-1.2l-.3-2.5H10.7l-.3 2.5a7 7 0 0 0-2 1.2l-2.3-1-2 3.4 2 1.5A7 7 0 0 0 5 12a7 7 0 0 0 .1 1.2l-2 1.5 2 3.4 2.3-1a7 7 0 0 0 2 1.2l.3 2.5h2.6l.3-2.5a7 7 0 0 0 2-1.2l2.3 1 2-3.4-2-1.5A7 7 0 0 0 19 12z"/></svg><span>设置</span></a>
+</nav>
+
+</div></main>
+</body>
+</html>

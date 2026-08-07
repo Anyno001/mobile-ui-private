@@ -2,11 +2,13 @@ import { generationErrorMessage } from './ai.js';
 import { buildInteractiveRequest, buildStylePrompt, getInteractivePresets, parseInteractiveResponse } from './interactive-scene-ai.js';
 import {
     INTERACTIVE_LIMITS, addSceneComment, appendScenePosts, deleteSceneComment, deleteSceneDanmaku, deleteScenePost, enforceInteractiveSceneLimit, ensureInteractiveActor, normalizeInteractiveStore, normalizeScene,
-    createDefaultPhoneUiScope, incrementScenePostShare, normalizePhoneUiState, patchPhoneUiScope, resolveInteractiveAuthor, stripPersistedV2ContentRating, toggleScenePin, toggleScenePostLike, toggleSharedScene, updateSceneComment, updateSceneDanmaku, updateScenePost,
+    createDefaultPhoneUiScope, createSceneFromCommunityTemplate, incrementScenePostShare, normalizePhoneUiState, patchPhoneUiScope, publishCommunityTemplate, removeCommunityTemplatesForSourceScene, resolveInteractiveAuthor, stripPersistedV2ContentRating, toggleScenePin, toggleScenePostLike, unpublishCommunityTemplate, updateSceneComment, updateSceneDanmaku, updateScenePost,
 } from './interactive-scene-model.js';
 import { loadInteractiveScenes, loadPhoneUiState, saveInteractiveScenes, savePhoneUiScope, savePhoneUiState } from './storage.js';
 import { bindPhonePageActions, dispatchCalendarAppAction, getCommunityInjectionState, handleCommunityInjectionUiAction, handleSceneAccentAction, persistCurrentPhoneUiSnapshot, resolvePhoneChatTarget, runCalendarPageTransition, runDeleteSceneAction, runDesktopPageTransition, selectScenePreset, toggleDanmakuActions, toggleSceneMenu, toggleScenePostActions, toggleSceneReplyComposer } from './interactive-scene-phone.js';
 import { createCommunityGenerationRunner, createCommunityTaskController, runLiveWarmup } from './interactive-scene-scheduler.js';
+import { createCommitWithPhoneUi } from './interactive-scene-phone-transaction.js';
+import { createCommunityTemplateImportAction } from './interactive-scene-template-import.js';
 import { renderCommunityLauncher as renderCommunityLauncherView, renderCommunityWorkspace as renderCommunityWorkspaceView, renderPhoneDesktop } from './interactive-scene-views.js';
 export { renderPhoneDesktop } from './interactive-scene-views.js'; export { resolvePhoneChatTarget, runDesktopPageTransition } from './interactive-scene-phone.js';
 const uid = prefix => `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
@@ -127,7 +129,7 @@ export function installInteractiveScenes(_state, deps) {
     const { getCtx, getStorageId, getUserPersona, gatherContext, callAI } = deps;
     const runtime = {
         store: null, loadPromise: null, mutationPromise: Promise.resolve(), requestId: 0, contextEpoch: 0,
-        loadGeneration: 0, openSceneId: null, openSceneStorageId: null, openSceneReadOnly: false, busy: false, creating: false, phoneUiState: null, requestController: null, liveWarmupError: null,
+        loadGeneration: 0, openSceneId: null, openSceneStorageId: null, busy: false, creating: false, phoneUiState: null, requestController: null, liveWarmupError: null,
     };
     const storeLoader = createInteractiveStoreLoader({ runtime, load: loadInteractiveScenes,
         migrate: raw => migrateInteractiveStore(raw, saveInteractiveScenes) });
@@ -149,7 +151,7 @@ export function installInteractiveScenes(_state, deps) {
         const scope = runtime.store?.scopes?.[scopeId];
         return { scopeId, scope, scene: scope?.scenes?.[runtime.openSceneId || scope.activeSceneId] || null };
     };
-    const clearOpenScene = () => { runtime.openSceneId = null; runtime.openSceneStorageId = null; runtime.openSceneReadOnly = false; };
+    const clearOpenScene = () => { runtime.openSceneId = null; runtime.openSceneStorageId = null; };
     const resolveTarget = target => {
         const scope = runtime.store?.scopes?.[target?.storageId];
         return { scopeId: target?.storageId, scope, scene: scope?.scenes?.[target?.sceneId] || null }; };
@@ -203,11 +205,11 @@ export function installInteractiveScenes(_state, deps) {
     };
     const updatePhoneUiScope = (storageId, patch, store = runtime.store) => persistPhoneUiState(storageId, patchPhoneUiScope(getPhoneUiState(store), storageId, patch, store), store);
     const phoneScope = (storageId, store = runtime.store) => getPhoneUiState(store).scopes[storageId] || createDefaultPhoneUiScope();
-    const communityUiScope = (storageId, store = runtime.store) => ({ ...phoneScope(storageId, store), storageId, sharedScenes: getPhoneUiState(store).sharedScenes || [] });
-    const sharedScenesFor = (storageId, store = runtime.store) => (getPhoneUiState(store).sharedScenes || []).flatMap(item => {
-        if (item.storageId === storageId) return [];
-        const scene = store?.scopes?.[item.storageId]?.scenes?.[item.sceneId];
-        return scene ? [{ ...item, scene }] : []; });
+    const commitWithPhoneUi = createCommitWithPhoneUi({ getPhoneUiState, persistPhoneUiState, getStore: () => runtime.store, commit });
+    const communityUiScope = (storageId, store = runtime.store) => ({ ...phoneScope(storageId, store), storageId,
+        sharedCommunityTemplates: getPhoneUiState(store).sharedCommunityTemplates || [] });
+    const sharedTemplatesFor = (storageId, store = runtime.store) => (getPhoneUiState(store).sharedCommunityTemplates || [])
+        .filter(template => template.sourceStorageId !== storageId);
     const renderInto = (selector, html) => {
         const container = document.querySelector(selector);
         if (!container) return false;
@@ -224,7 +226,7 @@ export function installInteractiveScenes(_state, deps) {
         const scope = validScope ? getScope(store, scopeId) : { scenes: {} };
         const uiScope = validScope ? communityUiScope(scopeId, store)
             : { pinnedSceneIds: [], lastPage: 'desktop', lastSceneId: null, lastTab: 'feed' };
-        return renderInto('.pm-desktop-page', renderPhoneDesktop(scope, uiScope, sharedScenesFor(scopeId, store)));
+        return renderInto('.pm-desktop-page', renderPhoneDesktop(scope, uiScope, sharedTemplatesFor(scopeId, store)));
     }
     const showPhoneDesktopPage = () => { const scopeId = getStorageId(), phoneWindow = _state.phoneWindow; return runDesktopPageTransition({
         scopeId,
@@ -253,13 +255,11 @@ export function installInteractiveScenes(_state, deps) {
         clearOpenScene();
         return renderInto('.pm-community-page', renderCommunityLauncherView(scope, communityUiScope(scopeId, store)));
     }
-
     const isLiveWarmupActive = (scopeId, sceneId) => communityTasks.state().task?.kind === 'live-warmup'
         && communityTasks.state().task.storageId === scopeId && communityTasks.state().task.sceneId === sceneId;
     const getLiveWarmupState = (scopeId, sceneId, scene) => isLiveWarmupActive(scopeId, sceneId) ? 'starting'
         : scene?.live?.warmupStarted === true ? 'active'
             : runtime.liveWarmupError?.storageId === scopeId && runtime.liveWarmupError.sceneId === sceneId ? 'error' : 'idle';
-
     function renderCommunityWorkspace(scopeId, sceneId, tab, store = runtime.store) {
         const scope = getScope(store, scopeId);
         const scene = scope.scenes[sceneId];
@@ -269,11 +269,9 @@ export function installInteractiveScenes(_state, deps) {
         return renderInto('.pm-community-page', renderCommunityWorkspaceView(scene, tab, phoneScope(scopeId, store), {
             autoActive: communityTasks.state().mode === 'auto',
             liveState: getLiveWarmupState(scopeId, sceneId, scene),
-            readOnly: runtime.openSceneReadOnly,
             ...getCommunityInjectionState(window.__pmBudgetConfig, scopeId, sceneId),
         }));
     }
-
     window.__pmReturnToCommunityDataSource = async () => {
         const scopeId = runtime.openSceneStorageId || getStorageId();
         const sceneId = runtime.openSceneId;
@@ -285,14 +283,12 @@ export function installInteractiveScenes(_state, deps) {
         }
         return window.__pmOpenForumMode?.() || false;
     };
-
     async function contextText(signal) {
         const ctx = await gatherContext(null, { module: 'community', signal });
         const context = [ctx.cardDesc, ctx.cardPersonality, ctx.cardScenario, ctx.mainChatText]
             .filter(Boolean).join('\n').slice(0, 9000);
         return { context, worldBookText: ctx.worldBookText };
     }
-
     async function request(kind, extra = {}, target = null) {
         if (runtime.busy) throw new Error('已有生成任务正在进行');
         const { scopeId, scene } = target ? resolveTarget(target) : current();
@@ -340,36 +336,29 @@ export function installInteractiveScenes(_state, deps) {
         replaceApp(renderCommunityWorkspaceView(scene, tab, phoneScope(scopeId), {
             autoActive: communityTasks.state().mode === 'auto',
             liveState: getLiveWarmupState(scopeId, scene.id, scene),
-            readOnly: runtime.openSceneReadOnly,
             ...getCommunityInjectionState(window.__pmBudgetConfig, scopeId, scene.id),
         }), { feedScrollTop });
     }
-
-    async function openScene(sceneId, tab = 'feed', sourceStorageId = getStorageId()) {
+    async function openScene(sceneId, tab = 'feed') {
         invalidate();
         const scopeId = getStorageId();
-        const shared = sourceStorageId !== scopeId;
         await loadStore();
-        const sourceScope = runtime.store?.scopes?.[sourceStorageId];
-        if (!sourceScope?.scenes?.[sceneId]) throw new Error('互动场景不存在');
-        if (!shared) {
-            await commit(() => {
-                getScope(runtime.store, scopeId).activeSceneId = sceneId;
-            });
-        }
+        const scope = getScope(runtime.store, scopeId);
+        if (!scope.scenes?.[sceneId]) throw new Error('互动场景不存在');
+        await commit(() => { getScope(runtime.store, scopeId).activeSceneId = sceneId; });
         runtime.openSceneId = sceneId;
-        runtime.openSceneStorageId = sourceStorageId;
-        runtime.openSceneReadOnly = shared;
-        if (!shared) updatePhoneUiScope(scopeId, { lastPage: 'community', lastSceneId: sceneId, lastTab: tab });
-        renderCommunityWorkspace(sourceStorageId, sceneId, tab);
+        runtime.openSceneStorageId = scopeId;
+        updatePhoneUiScope(scopeId, { lastPage: 'community', lastSceneId: sceneId, lastTab: tab });
+        renderCommunityWorkspace(scopeId, sceneId, tab);
         showPhonePage('community');
     }
-
+    async function importCommunityTemplate(templateId) {
+        return createCommunityTemplateImportAction({ getStorageId, loadStore, getInteractiveStore: () => runtime.store, getPhoneUiState: () => getPhoneUiState(runtime.store), getScope: scopeId => getScope(runtime.store, scopeId), phoneScope: scopeId => phoneScope(scopeId, runtime.store), commitWithPhoneUi, patchPhoneUiScope, refreshDesktop, openScene, createSceneFromCommunityTemplate, createSceneId: () => uid('scene'), sceneLimit: INTERACTIVE_LIMITS.scenes })(templateId);
+    }
     function appendPosts(scopeId, scope, scene, items) {
         const seeds = actorSeeds(scopeId);
         appendScenePosts(scope, scopeId, scene, items, [seeds.story, seeds.user]);
     }
-
     function appendDanmaku(scopeId, scope, scene, items) {
         const seeds = actorSeeds(scopeId);
         ensureInteractiveActor(scope, scopeId, seeds.story);
@@ -488,11 +477,6 @@ export function installInteractiveScenes(_state, deps) {
     async function handleAction(button, app) {
         const action = button.dataset.action;
         const calendarAction = dispatchCalendarAppAction(button, app, { showPhoneDesktopPage, handleCalendarAction: deps.handleCalendarAction }); if (calendarAction) { await calendarAction; return; }
-        if (runtime.openSceneReadOnly && ![
-            'desktop', 'desktop-exit', 'exit', 'tab',
-        ].includes(action)) {
-            throw new Error('共享社区仅支持查看');
-        }
         if (action === 'more') { toggleSceneMenu(button); return; } if (action === 'post-actions') { toggleScenePostActions(button); return; }
         if (action === 'toggle-danmaku-actions') { toggleDanmakuActions(button, app); return; }
         if (action === 'toggle-reply') { toggleSceneReplyComposer(button, app); return; }
@@ -522,8 +506,8 @@ export function installInteractiveScenes(_state, deps) {
             await openScene(button.dataset.sceneId, phoneScope(getStorageId()).lastTab);
             return;
         }
-        if (action === 'desktop-open-shared-scene') {
-            await openScene(button.dataset.sceneId, 'feed', button.dataset.sourceStorageId);
+        if (action === 'desktop-import-community-template') {
+            await importCommunityTemplate(button.dataset.templateId);
             return;
         }
         if (action === 'desktop') {
@@ -549,14 +533,14 @@ export function installInteractiveScenes(_state, deps) {
             }
             return;
         }
-        if (action === 'toggle-scene-share') {
+        if (action === 'publish-community-template' || action === 'unpublish-community-template') {
             const scopeId = getStorageId();
-            const nextState = toggleSharedScene(getPhoneUiState(runtime.store), scopeId, button.dataset.sceneId, runtime.store);
+            const nextState = action === 'publish-community-template'
+                ? publishCommunityTemplate(getPhoneUiState(runtime.store), scopeId, button.dataset.sceneId, runtime.store)
+                : unpublishCommunityTemplate(getPhoneUiState(runtime.store), scopeId, button.dataset.sceneId, runtime.store);
             persistPhoneUiState(scopeId, nextState);
             refreshDesktop(scopeId);
-            const shared = (nextState.sharedScenes || []).some(item => item.storageId === scopeId && item.sceneId === button.dataset.sceneId);
-            const label = shared ? '取消跨窗口共享' : '跨窗口共享';
-            button.setAttribute('aria-pressed', String(shared)); button.setAttribute('aria-label', label); button.title = label;
+            renderCommunityLauncher(scopeId);
             return;
         }
         if (action === 'delete-scene') {
@@ -567,7 +551,10 @@ export function installInteractiveScenes(_state, deps) {
                 confirm: confirmDelete,
                 invalidate,
                 commit,
-                persistPhoneUi: () => persistPhoneUiState(scopeId, getPhoneUiState(runtime.store), runtime.store),
+                commitDelete: mutator => commitWithPhoneUi(scopeId, mutator, () => removeCommunityTemplatesForSourceScene(
+                    getPhoneUiState(runtime.store), scopeId, sceneId, runtime.store,
+                ), '删除互动场景'),
+                persistPhoneUi: () => {},
                 refreshDesktop,
                 getBudgetConfig: () => window.__pmBudgetConfig,
                 saveBudgetConfig: deps.saveBudgetConfig,
@@ -580,9 +567,7 @@ export function installInteractiveScenes(_state, deps) {
             invalidate();
             const { scopeId, scene } = current();
             const nextTab = button.dataset.tab;
-            if (!runtime.openSceneReadOnly && ['feed', 'live'].includes(nextTab)) {
-                updatePhoneUiScope(scopeId, { lastPage: 'community', lastSceneId: scene?.id || null, lastTab: nextTab });
-            }
+            if (['feed', 'live'].includes(nextTab)) updatePhoneUiScope(scopeId, { lastPage: 'community', lastSceneId: scene?.id || null, lastTab: nextTab });
             rerender(nextTab);
             return;
         }
@@ -706,11 +691,9 @@ export function installInteractiveScenes(_state, deps) {
         if (action === 'edit-danmaku') { const item = current().scene?.live?.danmaku?.find(value => value.id === button.dataset.danmakuId); if (!item) throw new Error('弹幕不存在'); const content = window.prompt('编辑弹幕内容', item.content); if (content === null) return; await commit(() => updateSceneDanmaku(current().scene, button.dataset.danmakuId, content)); rerender('live'); return; }
         if (action === 'delete-danmaku') { if (!confirmDelete('确定删除这条弹幕吗？')) return; await commit(() => deleteSceneDanmaku(current().scene, button.dataset.danmakuId)); rerender('live'); return; }
     }
-
     const bindPhonePageUi = phoneWindow => bindPhonePageActions(
         phoneWindow, handleAction, reportPhoneUiError,
     );
-
     window.__pmOpenForumMode = async () => {
         invalidate();
         const scopeId = getStorageId();
