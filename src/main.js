@@ -59,7 +59,7 @@ import { saveBudgetConfig, saveEmojis } from './storage.js';
         context ? () => context : getCtx,
         options,
     );
-    const deps = { runtime, getCtx, getStorageId, getUserPersona, gatherContext, saveBudgetConfig };
+    const deps = { runtime, getCtx, getStorageId, getUserPersona, gatherContext, saveBudgetConfig, reloadCurrentChat: context => context?.reloadCurrentChat?.() };
     deps.callAI = createAiClient({
         getConfig: () => window.__pmConfig,
         getContext: getCtx,

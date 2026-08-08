@@ -1,159 +1,170 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang='zh-CN'>
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta charset='utf-8'>
+<meta name='viewport' content='width=device-width,initial-scale=1'>
 <title>个人风评 · HTML 原型</title>
+<link rel='stylesheet' href='signal-shared.css'>
 <style>
-/* ===== 设计变量 =====
-   等比缩放：以 390px 为设计基准宽度，根字号随视口宽度线性变化，
-   到 390px 及以上锁定 16px，向下按比例缩小（下限 12.5px 保证可读）。
-   全部尺寸使用 rem，因此整机随根字号整体等比缩放，而非逐项重排。 */
-:root{
-  --ink:#1b2733;--sub:#5d6975;--muted:#94a0a6;--line:#d5ddda;
-  --paper:#f6f7f3;--card:#fbfcf9;--accent:#2f6d72;--accent-soft:#7fa7a8;
-  --pad:2.25rem;--grid:#2f6d720f;
-  font-size:clamp(12.5px,4.1026vw,16px);
-}
-*{box-sizing:border-box}
-body{margin:0;background:#e4e7e4;color:var(--ink);font-family:"PingFang SC","Microsoft YaHei",system-ui,sans-serif;-webkit-font-smoothing:antialiased}
-svg{display:block}
+/* 本页局部关掉共享网格底纹（真实版用低透 SVG 纹理，不是死格子）。 */
+.screen{background-image:none;padding-bottom:2rem}
 
-/* ===== 外壳 ===== */
-.phone{width:min(100%,27rem);margin:auto;background:var(--paper);box-shadow:0 0 0 1px #d0d6d3,0 24px 70px #16201e33;overflow:hidden}
-.screen{position:relative;min-height:100dvh;padding-bottom:calc(5rem + env(safe-area-inset-bottom));background-image:linear-gradient(var(--grid) 1px,transparent 1px),linear-gradient(90deg,var(--grid) 1px,transparent 1px);background-size:1.25rem 1.25rem}
+/* 模块头：与世界态势一致的配方（eyebrow → 标题 → 收尾线）。 */
+.head{position:relative;padding:3.25rem var(--pad) 1.25rem;overflow:hidden}
+.head .eyebrow{margin:0 0 .375rem;color:var(--accent);font-family:'Helvetica Neue',Arial,'PingFang SC',system-ui,sans-serif;font-weight:800;font-size:.6875rem;letter-spacing:.22em}
+.head h2{margin:0;font-size:2rem;font-weight:700;letter-spacing:.06em;line-height:1.12}
+/* meta 仪表盘三层：英文标签 .k + 数字 .v + × 装饰分隔（参考事件追踪，删原收尾横线，补一条统计 meta）。 */
+.head .meta{display:flex;flex-wrap:wrap;align-items:center;gap:.5rem;margin:.75rem 0 0;color:var(--muted);font-size:.75rem;font-weight:400;letter-spacing:.04em}
+.head .meta .k{font-size:.625rem;font-weight:700;letter-spacing:.14em;opacity:.72}
+.head .meta .v{margin-left:.25rem;font-size:.6875rem;color:var(--sub)}
+.head .meta .x{margin:0 .0625rem;font-size:.625rem;opacity:.4;vertical-align:.12em}
+.head .meta svg{width:.875rem;height:.875rem;flex:0 0 auto}
 
-/* ===== 顶栏 ===== */
-.topbar{position:relative;z-index:2;height:4.125rem;display:grid;grid-template-columns:3.25rem 1fr auto;align-items:center;padding:0 .875rem;border-bottom:1px solid #c3ccca;background:#ffffffcc;backdrop-filter:blur(10px)}
-.topbar h1{margin:0;text-align:center;font-size:1.3125rem;font-weight:600;letter-spacing:.14em}
-.iconbtn{width:2.5rem;height:2.5rem;display:grid;place-items:center;border:0;background:transparent;color:var(--ink);cursor:pointer}
-.iconbtn svg{width:1.5rem;height:1.5rem}
-.tools{display:flex;gap:.375rem;justify-self:end}
-.tools .iconbtn{width:2.375rem;height:2.375rem;border:1px solid #c2cbc9;border-radius:50%;color:var(--sub)}
-.tools .iconbtn svg{width:1.125rem;height:1.125rem}
-:where(.iconbtn,.tab):focus-visible{outline:2px solid var(--accent);outline-offset:-2px;border-radius:.5rem}
+/* 右上角装饰：雷达头像盘 + 竖排档案号（纯装饰，不绑数据）。
+   档案号用直角引号「」包裹、竖排贴右边缘，雷达盘左移让出其宽度，二者左右并置。 */
+.head-art{position:absolute;right:2rem;top:3.25rem;width:min(23%,5.75rem);aspect-ratio:1;opacity:.5;pointer-events:none}
+.head-art svg{width:100%;height:100%}
+.file-no{position:absolute;right:1rem;top:3.25rem;margin:0;color:var(--muted);font:500 .625rem/1.1 ui-monospace,monospace;letter-spacing:.1em;writing-mode:vertical-rl;text-orientation:upright}
 
-/* ===== Hero（统一标题簇配方：eyebrow → 标题 → 实心收尾线 → 元数据） ===== */
-.hero{position:relative;padding:2.5rem var(--pad) 1.5rem;overflow:hidden}
-.eyebrow{margin:0 0 .5rem;color:var(--accent);font:500 .75rem/1 ui-monospace,"SFMono-Regular",monospace;letter-spacing:.32em}
-.hero h2{margin:0;font-size:2.75rem;font-weight:700;letter-spacing:.08em;line-height:1.05}
-.hero .rule{width:3.25rem;margin:.75rem 0 0;border:0;border-top:2px solid var(--accent)}
-.updated{display:flex;align-items:center;gap:.5rem;margin:1.5rem 0 0;color:var(--muted);font-size:.875rem}
-.updated .dot{width:.5rem;height:.5rem;border-radius:50%;background:var(--accent);flex:0 0 auto}
-.disc{position:absolute;right:calc(-1 * var(--pad));top:.5rem;width:13.375rem;aspect-ratio:1;color:var(--accent-soft);opacity:.85;pointer-events:none}
-.disc svg{width:100%;height:100%}
-.file-no{position:absolute;right:.375rem;top:4.375rem;color:var(--muted);font:500 .75rem/1 ui-monospace,monospace;letter-spacing:.18em;writing-mode:vertical-rl}
-
-/* ===== 风评列表 ===== */
+/* 风评列表：对齐真实 reputation-entry 三列（编号 | 文案 | 5档尺子）。 */
 .reviews{padding:0 var(--pad)}
-.review{display:grid;grid-template-columns:6rem minmax(0,1fr) 4.125rem;gap:1rem;align-items:center;min-height:9.375rem;padding:1.375rem 0;border-top:1px dashed var(--line)}
+.review{position:relative;display:grid;grid-template-columns:2.25rem minmax(0,1fr) 5.75rem;column-gap:1rem;align-items:start;padding:1.5rem 0;border-top:1px dashed color-mix(in srgb,var(--line) 70%,transparent)}
 .review:first-child{border-top:0}
-.mark{position:relative;width:5.25rem;height:5.25rem;display:grid;place-items:center;color:var(--accent)}
-.mark>svg{width:2.375rem;height:2.375rem}
-.mark::before,.mark::after{content:"";position:absolute;width:.875rem;height:.875rem;border:1px solid #8b9997}
+
+/* 左侧图标框：L 角标 + 线性图标（纯装饰，对应真实编号位）。整体收小，弱化左列存在感。 */
+.mark{position:relative;width:2.25rem;height:2.25rem;display:grid;place-items:center;color:var(--accent)}
+.mark svg{width:1.125rem;height:1.125rem}
+.mark::before,.mark::after{content:'';position:absolute;width:.5rem;height:.5rem;border:1px solid color-mix(in srgb,var(--accent) 45%,transparent)}
 .mark::before{left:0;top:0;border-right:0;border-bottom:0}
 .mark::after{right:0;bottom:0;border-left:0;border-top:0}
-.copy{min-width:0;padding-left:1.125rem;border-left:1px solid #90b6b4}
-.copy h3{margin:0 0 .6875rem;font-size:1.625rem;font-weight:600;letter-spacing:.03em}
-.copy p{margin:0;color:#39444f;font-size:.9375rem;line-height:1.66}
-.meter{display:grid;justify-items:end;gap:.5rem}
-.tag{display:inline-flex;align-items:center;justify-content:center;min-height:2.125rem;margin-bottom:.75rem;padding:0 .75rem;border:1px solid var(--accent);border-radius:99px;color:var(--accent);font-size:.8125rem;white-space:nowrap}
-.scale{display:grid;gap:.375rem;color:var(--muted);font-size:.75rem}
-.scale span{display:grid;grid-template-columns:1.125rem auto;align-items:center;gap:.375rem;justify-items:end}
-.scale i{width:.875rem;height:1px;background:#9aa4a3}
-.scale .on{color:var(--accent)}
-.scale .on i{width:.5625rem;height:.5625rem;border-radius:50%;background:var(--accent)}
-/* ===== 封存区 ===== */
-.archive{position:relative;margin-top:1rem;padding:3.625rem var(--pad) 2.25rem;padding-right:9.5rem;border-top:1px solid var(--line);text-align:center;background:linear-gradient(160deg,transparent 0 16%,#eaeee9 16.4% 17%,var(--card) 17.4%)}
-.archive::before{content:"";position:absolute;left:0;right:0;top:.75rem;border-top:1px dashed var(--line)}
-.archive p{margin:0;color:#6a7883;font-size:.875rem;letter-spacing:.2em}
-.stamp{position:absolute;right:1.75rem;top:3.75rem;width:7.375rem;height:7.375rem;color:#3b7276;transform:rotate(-11deg)}
-.stamp svg{width:100%;height:100%}
 
-/* ===== 底部导航 ===== */
-.tabs{position:absolute;right:0;bottom:0;left:0;z-index:2;display:grid;grid-template-columns:repeat(5,1fr);height:calc(4.875rem + env(safe-area-inset-bottom));padding-bottom:env(safe-area-inset-bottom);border-top:1px solid #b9c2c0;background:#fbfcf9ee}
-.tab{display:grid;place-content:center;justify-items:center;gap:.3125rem;border:0;background:transparent;color:#4a5964;font-size:.6875rem;text-decoration:none;cursor:pointer}
-.tab svg{width:1.4375rem;height:1.4375rem}
-.tab.on{color:var(--accent)}
-.tab.on::after{content:"";width:1.625rem;margin-top:1px;border-bottom:.1875rem solid var(--accent);border-radius:2px}
+/* 文案列：左侧一条细竖线（对齐真实 entry 的分隔感）。 */
+.copy{min-width:0;padding-left:1rem;border-left:1px solid color-mix(in srgb,var(--accent) 34%,transparent)}
 
+.copy header{display:flex;align-items:center;gap:.5rem;flex-wrap:wrap}
+.copy h3{margin:0;font-size:1rem;font-weight:600;letter-spacing:.01em}
+.copy p{margin:.5rem 0 0;color:var(--sub);font-size:.875rem;line-height:1.65}
+/* 状态徽章：对齐真实 statusBadge（固定 5 值之一）。移到右列 meter 正上方，与刻度同列成一组。 */
+.badge{display:inline-flex;align-items:center;min-height:1.25rem;padding:.0625rem .5rem;border:1px solid color-mix(in srgb,var(--accent) 52%,transparent);border-radius:99px;color:var(--accent);font-size:.6875rem;white-space:nowrap}
+
+/* 右列评级组：badge（文字等级）在左 + meter（刻度等级）在右，同一行水平排列，badge 顶对齐。
+   撑满卡片高度，让内部 meter 有高度可铺满，避免 dots 被压扁。 */
+.rating{align-self:stretch;display:flex;flex-direction:row;align-items:flex-start;justify-content:flex-end;gap:.625rem}
+
+/* 尺子 meter：纯视觉刻度，零文字。左→右两列 = 刻度短横 | 圆点游标，5 行等分跟随卡片高度。
+   刻度一律为纯装饰淡灰、不上主题色；等级只靠圆点游标表达（当前档 = 实心 accent 圆点 + 光晕，
+   其余档 = 空心淡灰小点）+ 竖向位置（上=最高档信任，下=最低档敌对）。文字等级交给左侧 badge。 */
+.meter{display:grid;grid-template-rows:repeat(5,1fr);height:6.5rem}
+.meter span{display:grid;grid-template-columns:1.25rem .5rem;align-items:center;column-gap:.625rem;justify-content:end}
+/* 刻度：短横线，右对齐成一条竖直刻度边，纯装饰同色。显式钉在 row1，避免与圆点分行错位 */
+.meter i{grid-column:1;grid-row:1;justify-self:end;width:.875rem;height:1px;background:var(--meter-muted)}
+/* 圆点游标：默认空心淡灰小点，与刻度同在 row1 居中对齐 */
+.meter span::before{content:'';grid-column:2;grid-row:1;justify-self:center;width:.4375rem;height:.4375rem;border-radius:50%;box-sizing:border-box;border:1px solid var(--meter-muted);background:var(--card)}
+/* 当前档：仅圆点变实心 accent + 光晕，刻度不变色 */
+.meter .on::before{width:.5rem;height:.5rem;border-color:var(--accent);background:var(--accent);box-shadow:0 0 0 .1875rem color-mix(in srgb,var(--accent) 16%,transparent)}
+
+
+/* 底部收尾：极简档案封存标记。中央一枚细线同心圆章（内「封存」二字 + 环上小星，呼应头部雷达盘），
+   两侧对称破折线牵引，下方「报告至此」小字。克制、对称、与全页线条语言同源。 */
+.foot-art{position:relative;height:8rem;margin-top:1.75rem;overflow:hidden;pointer-events:none;color:var(--accent-soft)}
+.foot-art svg{width:100%;height:100%}
 </style>
 </head>
 <body>
-<main class="phone">
-<div class="screen">
+<main class='phone'><div class='screen'>
 
-<header class="topbar">
-  <button class="iconbtn" type="button" aria-label="返回"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg></button>
-  <h1>个人风评</h1>
-  <div class="tools">
-    <button class="iconbtn" type="button" aria-label="暂停更新"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M9 6v12M15 6v12"/></svg></button>
-    <button class="iconbtn" type="button" aria-label="关闭页面"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
-  </div>
-</header>
-
-<section class="hero" aria-label="个人风评概览">
-  <div class="disc" aria-hidden="true"><svg viewBox="0 0 200 200" fill="none">
-    <circle cx="100" cy="100" r="96" stroke="currentColor" stroke-width="1" stroke-dasharray="1 5"/>
-    <circle cx="100" cy="100" r="80" stroke="currentColor" stroke-width="1" stroke-dasharray="2 4" opacity=".7"/>
-    <circle cx="100" cy="100" r="62" stroke="currentColor" stroke-width="1.2"/>
-    <path d="M100 26v14M100 160v14M26 100h14M160 100h14" stroke="currentColor" stroke-width="1.2"/>
-    <path d="M100 52c17 10 26 27 26 48s-9 38-26 48c-17-10-26-27-26-48s9-38 26-48z" fill="currentColor" opacity=".28"/>
-    <circle cx="100" cy="88" r="16" fill="currentColor" opacity=".55"/>
-    <path d="M74 132c4-15 13-22 26-22s22 7 26 22" fill="currentColor" opacity=".55"/>
+<section class='head' aria-label='个人风评概览'>
+  <div class='head-art' aria-hidden='true'><svg viewBox='0 0 120 120' fill='none' stroke='currentColor' stroke-width='1' vector-effect='non-scaling-stroke'>
+    <circle cx='60' cy='60' r='57' stroke-dasharray='1 4' opacity='.6'/>
+    <circle cx='60' cy='60' r='44' stroke-dasharray='2 3' opacity='.5'/>
+    <circle cx='60' cy='60' r='30'/>
+    <path d='M60 18v8M60 94v8M18 60h8M94 60h8'/>
+    <circle cx='60' cy='52' r='9' fill='currentColor' stroke='none' opacity='.5'/>
+    <path d='M44 78c3-9 8-13 16-13s13 4 16 13' fill='currentColor' stroke='none' opacity='.5'/>
   </svg></div>
-  <p class="file-no" aria-hidden="true">PRS-240502</p>
-  <p class="eyebrow">PROFILE REVIEW</p>
+  <p class='file-no' aria-hidden='true'>「PRS-240502」</p>
+  <p class='eyebrow'>PUBLIC OPINION</p>
   <h2>个人风评</h2>
-  <div class="rule" aria-hidden="true"></div>
-  <p class="updated"><span class="dot" aria-hidden="true"></span>数据更新于 今日 08:30</p>
+  <p class='meta'><svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round' aria-hidden='true'><circle cx='12' cy='12' r='9'/><path d='M12 7v5l3.5 2'/></svg><span class='k'>PEOPLE</span><span class='v'>4</span><span class='x'>&times;</span><span class='k'>GOOD</span><span class='v'>2</span><span class='x'>&times;</span><span class='k'>BAD</span><span class='v'>1</span></p>
 </section>
 
-<section class="reviews" aria-label="风评报告">
-  <article class="review">
-    <div class="mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17L17 7M9 7h8v8"/></svg></div>
-    <div class="copy"><h3>北川</h3><p>近期多次协助其完成情报核查，彼此间信任度持续提升。对你的判断与行动给予积极评价。</p></div>
-    <div class="meter"><span class="tag">信任上升</span><div class="scale" role="img" aria-label="关系强度：高"><span class="on"><i></i>高</span><span><i></i>中</span><span><i></i>低</span></div></div>
+<section class='reviews' aria-label='风评报告'>
+  <article class='review'>
+    <div class='mark' aria-hidden='true'><svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'><path d='M7 17L17 7M9 7h8v8'/></svg></div>
+    <div class='copy'>
+      <header><h3>北川</h3></header>
+      <p>近期多次协助其完成情报核查，彼此间信任度持续提升。对你的判断与行动给予积极评价。</p>
+    </div>
+    <div class='rating'>
+      <span class='badge'>信任</span>
+      <div class='meter' role='img' aria-label='好感度：信任（最高档）'>
+        <span class='on'><i></i></span><span><i></i></span><span><i></i></span><span><i></i></span><span><i></i></span>
+      </div>
+    </div>
   </article>
-  <article class="review">
-    <div class="mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="2.6"/><circle cx="16" cy="8" r="2.6"/><path d="M4 19c0-3 1.8-5 4-5s4 2 4 5M12 19c0-3 1.8-5 4-5s4 2 4 5"/></svg></div>
-    <div class="copy"><h3>巡航组</h3><p>对你的行动仍保持观察，尚未完全放下戒心。合作以任务为导向，私人层面接触有限。</p></div>
-    <div class="meter"><span class="tag">保持距离</span><div class="scale" role="img" aria-label="关系强度：中"><span><i></i>高</span><span class="on"><i></i>中</span><span><i></i>低</span></div></div>
+  <article class='review'>
+    <div class='mark' aria-hidden='true'><svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'><circle cx='8' cy='8' r='2.6'/><circle cx='16' cy='8' r='2.6'/><path d='M4 19c0-3 1.8-5 4-5s4 2 4 5M12 19c0-3 1.8-5 4-5s4 2 4 5'/></svg></div>
+    <div class='copy'>
+      <header><h3>巡航组</h3></header>
+      <p>对你的行动仍保持观察，尚未完全放下戒心。合作以任务为导向，私人层面接触有限。</p>
+    </div>
+    <div class='rating'>
+      <span class='badge'>中立</span>
+      <div class='meter' role='img' aria-label='好感度：中立（居中档）'>
+        <span><i></i></span><span><i></i></span><span class='on'><i></i></span><span><i></i></span><span><i></i></span>
+      </div>
+    </div>
   </article>
-  <article class="review">
-    <div class="mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="2.6"/></svg></div>
-    <div class="copy"><h3>雾港联络人</h3><p>对你的真实目的仍有疑虑，沟通时态度谨慎。建议保持信息透明，逐步建立可靠印象。</p></div>
-    <div class="meter"><span class="tag">态度谨慎</span><div class="scale" role="img" aria-label="关系强度：低"><span><i></i>高</span><span><i></i>中</span><span class="on"><i></i>低</span></div></div>
+  <article class='review'>
+    <div class='mark' aria-hidden='true'><svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'><path d='M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z'/><circle cx='12' cy='12' r='2.6'/></svg></div>
+    <div class='copy'>
+      <header><h3>雾港联络人</h3></header>
+      <p>对你的真实目的仍有疑虑，沟通时态度谨慎。建议保持信息透明，逐步建立可靠印象。</p>
+    </div>
+    <div class='rating'>
+      <span class='badge'>厌恶</span>
+      <div class='meter' role='img' aria-label='好感度：厌恶（偏低档）'>
+        <span><i></i></span><span><i></i></span><span><i></i></span><span class='on'><i></i></span><span><i></i></span>
+      </div>
+    </div>
   </article>
-  <article class="review">
-    <div class="mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v5c0 4.4-3 7.8-7 9-4-1.2-7-4.6-7-9V6z"/><path d="M9 12l2 2 4-4.5"/></svg></div>
-    <div class="copy"><h3>旧城区居民</h3><p>日常接触友善，未出现明显负面反馈。你在社区中的声望维持在稳定水平。</p></div>
-    <div class="meter"><span class="tag">关系稳定</span><div class="scale" role="img" aria-label="关系强度：中"><span><i></i>高</span><span class="on"><i></i>中</span><span><i></i>低</span></div></div>
+  <article class='review'>
+    <div class='mark' aria-hidden='true'><svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'><path d='M12 3l7 3v5c0 4.4-3 7.8-7 9-4-1.2-7-4.6-7-9V6z'/><path d='M9 12l2 2 4-4.5'/></svg></div>
+    <div class='copy'>
+      <header><h3>旧城区居民</h3></header>
+      <p>日常接触友善，未出现明显负面反馈。你在社区中的声望维持在稳定水平。</p>
+    </div>
+    <div class='rating'>
+      <span class='badge'>喜爱</span>
+      <div class='meter' role='img' aria-label='好感度：喜爱（偏高档）'>
+        <span><i></i></span><span class='on'><i></i></span><span><i></i></span><span><i></i></span><span><i></i></span>
+      </div>
+    </div>
   </article>
 </section>
 
-<section class="archive" aria-label="档案封存">
-  <p>—— 报告至此 · 档案封存 ——</p>
-  <div class="stamp" aria-hidden="true"><svg viewBox="0 0 120 120" fill="none">
-    <circle cx="60" cy="60" r="54" stroke="currentColor" stroke-width="2"/>
-    <circle cx="60" cy="60" r="47" stroke="currentColor" stroke-width="1"/>
-    <path id="pt" d="M60 22a38 38 0 0 1 0 76" fill="none"/>
-    <text font-size="9" letter-spacing="2" fill="currentColor"><textPath href="#pt" startOffset="4%">今日风向档案部</textPath></text>
-    <text x="60" y="58" text-anchor="middle" font-size="21" font-weight="700" fill="currentColor" letter-spacing="1">已存档</text>
-    <text x="60" y="76" text-anchor="middle" font-size="7" letter-spacing="2" fill="currentColor">TODAY'S SIGNAL</text>
-    <path d="M45 84l4-6 4 6 4-6 4 6" stroke="currentColor" stroke-width="1.2" fill="none" stroke-linejoin="round"/>
-  </svg></div>
-</section>
+<div class='foot-art' aria-hidden='true'><svg viewBox='0 0 390 128' fill='none' stroke='currentColor' preserveAspectRatio='xMidYMid meet' vector-effect='non-scaling-stroke'>
+  <!-- 两侧对称破折线：向中央准星牵引，端点小圆渐隐（端点内移贴近缩小后的准星） -->
+  <g stroke-width='.9'>
+    <path d='M70 64H166' opacity='.4'/>
+    <path d='M224 64H320' opacity='.4'/>
+    <circle cx='70' cy='64' r='1.4' fill='currentColor' stroke='none' opacity='.32'/>
+    <circle cx='320' cy='64' r='1.4' fill='currentColor' stroke='none' opacity='.32'/>
+  </g>
+  <!-- 瞄准镜准星（整体缩小 1/2）：实线双环，干净利落，无虚线毛边 -->
+  <circle cx='195' cy='64' r='16.5' stroke-width='.9' opacity='.5'/>
+  <circle cx='195' cy='64' r='10' stroke-width='1' opacity='.6'/>
+  <!-- 十字准星：竖横两线贯穿内外环，中心留空断口，四端探出外环成瞄准刻度 -->
+  <g stroke-width='1' stroke-linecap='round' opacity='.6'>
+    <path d='M195 43V57M195 71V85'/>
+    <path d='M174 64H188M202 64H216'/>
+  </g>
+  <!-- 中心靶点 -->
+  <circle cx='195' cy='64' r='1.3' fill='currentColor' stroke='none' opacity='.75'/>
+  <!-- 下方「报告至此」小字 -->
+  <text x='195' y='112' text-anchor='middle' fill='currentColor' stroke='none' font-family='ui-monospace,monospace' font-size='8' letter-spacing='4' opacity='.5'>报 告 至 此</text>
+</svg></div>
 
-<nav class="tabs" aria-label="主导航">
-  <a class="tab" href="#world"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.5 3.7 5.6 3.7 9S14.5 18.5 12 21c-2.5-2.5-3.7-5.6-3.7-9S9.5 5.5 12 3z"/></svg><span>世界态势</span></a>
-  <a class="tab on" href="#profile" aria-current="page"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="8" r="3.4"/><path d="M5.5 20c0-4 2.9-6.5 6.5-6.5S18.5 16 18.5 20" stroke-linecap="round"/></svg><span>个人风评</span></a>
-  <a class="tab" href="#factions"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 3l9 9-9 9-9-9z"/><circle cx="12" cy="12" r="2.4"/></svg><span>势力图谱</span></a>
-  <a class="tab" href="#events"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M8 9h8M8 13h8M8 17h5" stroke-linecap="round"/></svg><span>事件追踪</span></a>
-  <a class="tab" href="#settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><circle cx="12" cy="12" r="3"/></svg><span>设置</span></a>
-</nav>
-
-</div>
-</main>
+</div></main>
 </body>
 </html>

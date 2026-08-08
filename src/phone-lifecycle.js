@@ -209,6 +209,7 @@ export function installPhoneLifecycle(state, deps) {
     const {
         runtime, getCtx, getStorageId, applyBidirectionalInjection, persistCurrentHistory,
         clearBidirectionalInjection,
+        reloadCurrentChat,
         applyBackground, applyTheme, applyPhoneScale, bindIsland, bindPhoneResize,
         migrateOldHistory, hookGenerationEvent,
         cancelGeneration, invalidateGeneration, disarmAutoPoke, syncGenerationControls, closeOverlay, closeControlCenter,
@@ -323,6 +324,16 @@ export function installPhoneLifecycle(state, deps) {
             }
         }
         clearBidirectionalInjection();
+        if (runtime.galBubbleReconcileTimer !== null) {
+            clearTimeout(runtime.galBubbleReconcileTimer);
+            runtime.galBubbleReconcileTimer = null;
+        }
+        if (runtime.galBubbleInitialTimer !== null) {
+            clearTimeout(runtime.galBubbleInitialTimer);
+            runtime.galBubbleInitialTimer = null;
+        }
+        runtime.galBubbleReconcilePending = false;
+        runtime.galBubbleReconcileAttempt = 0;
         deps.cancelCommunityGeneration?.('phone-closed');
         deps.cancelCalendarTasks?.('phone-closed');
         deps.destroyTodayTrendPhoneUi?.();
@@ -538,15 +549,55 @@ export function installPhoneLifecycle(state, deps) {
     try { window.__pmHistories = window.__pmHistories || {}; } catch (e) {}
     loadBidirectional(); loadInjectionConfig(); loadPokeConfig(); loadCharacterBehavior(); loadWordyLimit(); loadGalBubbleEnabled();
     loadBudgetConfig(); loadWorldBookConfig();
-    try {
-        reconcileGalBubble(getCtx(), window.__pmGalBubbleEnabled === true);
-    } catch (error) {
-        console.warn('[phone-mode] GAL 气泡正则同步失败', error);
-    }
+    const reconcileGal = () => {
+        if (runtime.galBubbleReconcileTimer !== null || runtime.galBubbleReconcilePending !== true) {
+            if (runtime.galBubbleReconcilePending !== true) return;
+        }
+        runtime.galBubbleReconcilePending = false;
+        const attempt = async () => {
+            runtime.galBubbleReconcileAttempt += 1;
+            try {
+                const result = await reconcileGalBubble(getCtx(), window.__pmGalBubbleEnabled === true);
+                window.__pmGalBubbleOperational = window.__pmGalBubbleEnabled === true;
+                if (result?.changed === true && typeof reloadCurrentChat === 'function') {
+                    try { await reloadCurrentChat(getCtx()); }
+                    catch (error) { console.warn('[phone-mode] GAL 气泡已更新，但当前聊天刷新失败', error?.message || error); }
+                }
+                runtime.galBubbleReconcileTimer = null;
+                runtime.galBubbleReconcilePending = false;
+                runtime.galBubbleReconcileAttempt = 0;
+                return;
+            } catch (error) {
+                window.__pmGalBubbleOperational = false;
+                const retryable = error?.code === 'host-unavailable' || error?.code === 'regex-not-ready';
+                if (!retryable || runtime.galBubbleReconcileAttempt >= 10) {
+                    runtime.galBubbleReconcileTimer = null;
+                    runtime.galBubbleReconcilePending = false;
+                    console.warn('[phone-mode] GAL 气泡正则同步失败', error?.code || error?.name || 'Error', error?.message || '');
+                    return;
+                }
+                // 首次失败复用生命周期已有的 1500ms 延迟回调，避免启动时创建两个并行计时器。
+                if (runtime.galBubbleReconcileAttempt === 1) {
+                    runtime.galBubbleReconcilePending = true;
+                    return;
+                }
+            }
+            runtime.galBubbleReconcilePending = true;
+            runtime.galBubbleReconcileTimer = setTimeout(() => {
+                runtime.galBubbleReconcileTimer = null;
+                void attempt();
+            }, 500);
+        };
+        void attempt();
+    };
+    runtime.galBubbleReconcilePending = true;
+    reconcileGal();
     const initialGroupMetaLoad = (deps.loadGroupMeta || loadGroupMeta)();
     loadHistoriesOnce(); // 首次打开复用同一个恢复任务，避免并发读取用旧快照覆盖内存
     // 宿主事件重试不能依赖本地数据恢复成功；否则 IDB 故障会永久漏掉 CHAT_CHANGED。
-    setTimeout(() => {
+    runtime.galBubbleInitialTimer = setTimeout(() => {
+        runtime.galBubbleInitialTimer = null;
+        if (runtime.galBubbleReconcilePending === true) reconcileGal();
         hookGenerationEvent();
         initialGroupMetaLoad.then(() => {
             migrateOldHistory();

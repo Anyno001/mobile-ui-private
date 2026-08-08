@@ -18,7 +18,7 @@ import {
 } from '../src/directory-save-coordinator.js';
 import {
     createInteractiveCommitQueue, createInteractiveOperationGuard, createInteractiveStoreLoader,
-    installInteractiveScenes, migrateInteractiveStore, resolvePhoneChatTarget,
+    installInteractiveScenes, migrateInteractiveStore, parseCommunityPostInput, resolvePhoneChatTarget,
 } from '../src/interactive-scenes.js';
 import { createCommunityTemplateImportAction } from '../src/interactive-scene-template-import.js';
 import { createCommitWithPhoneUi } from '../src/interactive-scene-phone-transaction.js';
@@ -799,6 +799,32 @@ assert.equal(resolveInteractiveAuthor(identityScope, 'scope', '同名').authorId
 const renamed = ensureInteractiveActor(identityScope, 'scope', { type: 'story', displayName: '新名字', bindingKey: 'character:a', profile: '', createdAt: 99 });
 assert.equal(renamed.actorId, firstStory.actorId);
 assert.equal(renamed.createdAt, 10);
+
+const selectedActor = ensureInteractiveActor(identityScope, 'scope', {
+    type: 'passerby', displayName: '路人甲', bindingKey: 'passerby:路人甲', profile: '测试身份', createdAt: 12,
+});
+const defaultPostAuthor = { type: 'user', displayName: '我', bindingKey: 'persona:me', profile: '', createdAt: 1 };
+assert.deepEqual(parseCommunityPostInput('默认正文', identityScope.actors, defaultPostAuthor), {
+    authorSeed: defaultPostAuthor, content: '默认正文',
+}, '无身份前缀必须保持 user 身份与原始正文');
+const selectedPostInput = parseCommunityPostInput(`【 ${selectedActor.actorId} 】 指定正文 `, identityScope.actors, defaultPostAuthor);
+assert.equal(selectedPostInput.content, '指定正文', '身份前缀不得进入帖子正文');
+assert.deepEqual(selectedPostInput.authorSeed, {
+    type: selectedActor.type, displayName: selectedActor.displayName, bindingKey: selectedActor.bindingKey,
+    profile: selectedActor.profile, createdAt: selectedActor.createdAt,
+}, '有效 actor ID 必须解析为对应身份种子');
+assert.notEqual(selectedPostInput.authorSeed, selectedActor, '发布输入不得将 store actor 对象直接交给下游修改');
+assert.throws(() => parseCommunityPostInput('【missing】正文', identityScope.actors, defaultPostAuthor), /未找到 ID 为 missing 的发帖身份/);
+assert.throws(() => parseCommunityPostInput(`【${selectedActor.actorId}】`, identityScope.actors, defaultPostAuthor), /帖子内容不能为空/);
+assert.deepEqual(parseCommunityPostInput('【】正文', identityScope.actors, defaultPostAuthor), {
+    authorSeed: defaultPostAuthor, content: '【】正文',
+}, '空方括号不是有效身份指令，必须作为普通正文保留');
+assert.throws(() => parseCommunityPostInput('x'.repeat(4001), identityScope.actors, defaultPostAuthor), /帖子内容不能超过 4000 字/);
+assert.equal(
+    parseCommunityPostInput(`【${selectedActor.actorId}】${'x'.repeat(4000)}`, identityScope.actors, defaultPostAuthor).content.length,
+    4000,
+    '身份前缀不应挤占 4000 字正文额度',
+);
 
 const generatedScene = normalizeScene({ id: 'generated', title: '同批评论' });
 const generatedScope = { activeSceneId: 'generated', sceneOrder: ['generated'], scenes: { generated: generatedScene }, actors: {} };

@@ -3828,16 +3828,16 @@ ${userPrompt}` : userPrompt;
       const currentSource = storedSource ? weatherSourceLabel(storedSource) : "\u4EC5\u6C14\u5019\u63A8\u6F14";
       const event = scope.weatherEvent;
       const eventStatus = !scope.weatherEventEnabled ? "\u5DF2\u5173\u95ED\uFF1B\u4E0D\u4F1A\u8986\u76D6\u5929\u6C14\u3002" : event ? `\u5F53\u524D\u4E8B\u4EF6\uFF1A${storyWeatherEventLabel(event.type)} \xB7 ${event.startDate} \u81F3 ${event.endDate} \xB7 \u5267\u60C5\u5929\u6C14\u4E8B\u4EF6\u8986\u76D6` : weatherStore.location ? "\u5DF2\u5F00\u542F\uFF1B\u5C06\u5728\u540E\u7EED\u5267\u60C5\u65E5\u671F\u751F\u6210\u77ED\u671F\u5929\u6C14\u4E8B\u4EF6\u3002" : "\u5DF2\u5F00\u542F\uFF1B\u8BF7\u5148\u8BBE\u7F6E\u5929\u6C14\u4F4D\u7F6E\u3002";
-      const weatherEventControls = scope.weatherEventEnabled && weatherStore.location ? `<section class="pm-calendar-data-tools"><h3>\u5929\u6C14\u4E8B\u4EF6\u751F\u6210</h3>
+      const weatherEventConfig = scope.weatherEventEnabled && weatherStore.location ? `<div class="pm-calendar-weather-event-config">
             <div class="pm-calendar-data-row pm-calendar-weather-event-row">
                 <select data-action="calendar-weather-event-type" aria-label="\u5929\u6C14\u4E8B\u4EF6\u7C7B\u578B"><option value="" ${!scope.weatherEventType ? "selected" : ""}>\u968F\u673A\u7C7B\u578B</option><option value="clear_spell" ${scope.weatherEventType === "clear_spell" ? "selected" : ""}>\u653E\u6674</option><option value="rainy_spell" ${scope.weatherEventType === "rainy_spell" ? "selected" : ""}>\u9634\u96E8</option><option value="thunderstorm" ${scope.weatherEventType === "thunderstorm" ? "selected" : ""}>\u5F3A\u5BF9\u6D41</option><option value="tropical_storm" ${scope.weatherEventType === "tropical_storm" ? "selected" : ""}>\u70ED\u5E26\u98CE\u66B4</option></select>
                 <select data-action="calendar-weather-event-intensity" aria-label="\u5929\u6C14\u4E8B\u4EF6\u5F3A\u5EA6"><option value="" ${!scope.weatherEventIntensity ? "selected" : ""}>\u968F\u673A\u5F3A\u5EA6</option><option value="mild" ${scope.weatherEventIntensity === "mild" ? "selected" : ""}>\u6E29\u548C</option><option value="normal" ${scope.weatherEventIntensity === "normal" ? "selected" : ""}>\u6807\u51C6</option><option value="severe" ${scope.weatherEventIntensity === "severe" ? "selected" : ""}>\u5F3A\u70C8</option></select>
                 <select data-action="calendar-weather-event-days" aria-label="\u5929\u6C14\u4E8B\u4EF6\u6301\u7EED\u5929\u6570"><option value="0" ${!scope.weatherEventDays ? "selected" : ""}>\u968F\u673A\u5929\u6570</option>${Array.from({ length: 7 }, (_, index) => index + 1).map((days) => `<option value="${days}" ${scope.weatherEventDays === days ? "selected" : ""}>${days} \u5929</option>`).join("")}</select>
             </div>
-            <div class="pm-calendar-detail-edit-actions"><button type="button" class="pm-calendar-inline-regenerate" data-action="calendar-weather-event-regenerate" aria-label="\u91CD\u65B0\u751F\u6210\u5929\u6C14\u4E8B\u4EF6" title="\u91CD\u65B0\u751F\u6210\u5929\u6C14\u4E8B\u4EF6" aria-busy="false">${REFRESH_ICON_SVG}<span>\u91CD\u65B0\u751F\u6210</span></button></div>
+            <div class="pm-calendar-weather-event-actions"><button type="button" class="pm-calendar-inline-regenerate" data-action="calendar-weather-event-regenerate" aria-label="\u91CD\u65B0\u751F\u6210\u5929\u6C14\u4E8B\u4EF6" title="\u91CD\u65B0\u751F\u6210\u5929\u6C14\u4E8B\u4EF6">${REFRESH_ICON_SVG}<span>\u91CD\u65B0\u751F\u6210</span></button></div>
             <small class="pm-calendar-attribution">\u6309\u6240\u9009\u7C7B\u578B\u3001\u5F3A\u5EA6\u4E0E\u5929\u6570\u751F\u6210\u672A\u6765\u5929\u6C14\u4E8B\u4EF6\uFF1B\u9009\u62E9\u201C\u968F\u673A\u201D\u4FDD\u7559\u53D8\u5316\u3002</small>
-        </section>` : "";
-      return `<details class="pm-calendar-management" data-calendar-management="weather"${open}><summary>\u5929\u6C14\u8BBE\u7F6E</summary><div class="pm-calendar-management-content"><section class="pm-calendar-data-tools pm-calendar-injection-card">${injectionToggle("calendar-toggle-weather-injection", "\u5929\u6C14\u6CE8\u5165", scope.injectionWeatherEnabled)}</section><section class="pm-calendar-data-tools pm-calendar-injection-card">${injectionToggle("calendar-toggle-weather-event", "\u5267\u60C5\u5929\u6C14\u4E8B\u4EF6", scope.weatherEventEnabled, "\u5F00\u542F\u540E\u4F1A\u4E3A\u672A\u6765\u65E5\u671F\u751F\u6210\u968F\u673A\u5929\u6C14\u4E8B\u4EF6\uFF0C\u8986\u76D6\u65E5\u5386\u663E\u793A\u3002")}<small class="pm-calendar-attribution">${escapeHtml(eventStatus)}</small></section>${weatherEventControls}<section class="pm-calendar-data-tools"><h3>\u5929\u6C14\u4F4D\u7F6E</h3><div class="pm-calendar-data-row"><input data-weather-query placeholder="\u641C\u7D22\u57CE\u5E02\u6216\u5730\u533A" maxlength="100" aria-label="\u641C\u7D22\u5929\u6C14\u4F4D\u7F6E"><button type="button" data-action="calendar-weather-search">\u641C\u7D22</button><button type="button" data-action="calendar-weather-refresh">\u5237\u65B0</button></div>${weatherSearchResults(weatherResults)}<small class="pm-calendar-attribution">${weatherStore.location ? `${escapeHtml(weatherStore.location.name)} \xB7 \u5F53\u524D\u6570\u636E ${escapeHtml(currentSource)} \xB7 \u9884\u62A5\u5916\u65E5\u671F\u4F7F\u7528\u6C14\u5019\u63A8\u6F14` : "\u5C1A\u672A\u8BBE\u7F6E\u5929\u6C14\u4F4D\u7F6E \xB7 \u65E0\u6CD5\u63A8\u6F14"}</small></section></div></details>`;
+        </div>` : "";
+      return `<details class="pm-calendar-management" data-calendar-management="weather"${open}><summary>\u5929\u6C14\u8BBE\u7F6E</summary><div class="pm-calendar-management-content"><section class="pm-calendar-data-tools pm-calendar-injection-card">${injectionToggle("calendar-toggle-weather-injection", "\u5929\u6C14\u6CE8\u5165", scope.injectionWeatherEnabled)}</section><section class="pm-calendar-data-tools pm-calendar-injection-card pm-calendar-weather-event-card">${injectionToggle("calendar-toggle-weather-event", "\u5267\u60C5\u5929\u6C14\u4E8B\u4EF6", scope.weatherEventEnabled, "\u5F00\u542F\u540E\u4F1A\u4E3A\u672A\u6765\u65E5\u671F\u751F\u6210\u968F\u673A\u5929\u6C14\u4E8B\u4EF6\uFF0C\u8986\u76D6\u65E5\u5386\u663E\u793A\u3002")}<small class="pm-calendar-attribution">${escapeHtml(eventStatus)}</small>${weatherEventConfig}</section><section class="pm-calendar-data-tools"><h3>\u5929\u6C14\u4F4D\u7F6E</h3><div class="pm-calendar-data-row"><input data-weather-query placeholder="\u641C\u7D22\u57CE\u5E02\u6216\u5730\u533A" maxlength="100" aria-label="\u641C\u7D22\u5929\u6C14\u4F4D\u7F6E"><button type="button" data-action="calendar-weather-search">\u641C\u7D22</button><button type="button" data-action="calendar-weather-refresh">\u5237\u65B0</button></div>${weatherSearchResults(weatherResults)}<small class="pm-calendar-attribution">${weatherStore.location ? `${escapeHtml(weatherStore.location.name)} \xB7 \u5F53\u524D\u6570\u636E ${escapeHtml(currentSource)} \xB7 \u9884\u62A5\u5916\u65E5\u671F\u4F7F\u7528\u6C14\u5019\u63A8\u6F14` : "\u5C1A\u672A\u8BBE\u7F6E\u5929\u6C14\u4F4D\u7F6E \xB7 \u65E0\u6CD5\u63A8\u6F14"}</small></section></div></details>`;
     }
     if (viewMode === "cycle") {
       const startDay = cycleScope.lastPeriodStart ? Number(cycleScope.lastPeriodStart.slice(8, 10)) : 1;
@@ -11327,7 +11327,7 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
         <p>${escapeHtml(post.content).replace(/\n/g, "<br>")}</p>
         ${post.tags.length ? `<div class="pm-scene-tags">${post.tags.map((tag) => `<span>#${escapeHtml(tag)}</span>`).join("")}</div>` : ""}
         <footer><button type="button" class="pm-scene-like ${post.liked ? "is-liked" : ""}" data-action="like" data-post-id="${escapeAttr(post.id)}" aria-pressed="${post.liked}" aria-label="${post.liked ? "\u53D6\u6D88\u559C\u6B22" : "\u559C\u6B22"}">${renderPostMetric(HEART_ICON_SVG, likes, "\u559C\u6B22", "is-like")}</button><button type="button" class="pm-scene-share ${post.shared ? "is-shared" : ""}" data-action="share" data-post-id="${escapeAttr(post.id)}" aria-pressed="${post.shared}" aria-label="${post.shared ? "\u5DF2\u5206\u4EAB\u672C\u5E16" : "\u5206\u4EAB\u672C\u5E16"}">${renderPostMetric(SHARE_ICON_SVG, shares, "\u8F6C\u53D1", "is-share")}</button><button type="button" class="pm-scene-reply-toggle" data-action="toggle-reply" data-post-id="${escapeAttr(post.id)}" aria-label="\u56DE\u590D\u672C\u5E16" aria-controls="pm-comment-composer-${escapeAttr(post.id)}" aria-expanded="false">${renderPostMetric(REPLY_ICON_SVG, post.comments.length, "\u56DE\u590D", "is-reply")}</button></footer>
-        ${post.comments.length ? `<div class="pm-scene-comments">${post.comments.map((comment) => `<div class="pm-scene-comment"><span><b>${escapeHtml(comment.authorNameSnapshot)}</b> ${escapeHtml(comment.content)}</span><span class="pm-scene-comment-actions" hidden><button type="button" data-action="edit-comment" data-post-id="${escapeAttr(post.id)}" data-comment-id="${escapeAttr(comment.id)}" aria-label="\u7F16\u8F91\u8BC4\u8BBA" title="\u7F16\u8F91\u8BC4\u8BBA">${EDIT_ICON_SVG}</button><button type="button" class="pm-scene-danger" data-action="delete-comment" data-post-id="${escapeAttr(post.id)}" data-comment-id="${escapeAttr(comment.id)}" aria-label="\u5220\u9664\u8BC4\u8BBA" title="\u5220\u9664\u8BC4\u8BBA">${TRASH_ICON_SVG}</button></span></div>`).join("")}</div>` : ""}
+        ${post.comments.length ? `<div class="pm-scene-comments">${post.comments.map((comment) => `<div class="pm-scene-comment"><span><b>${escapeHtml(comment.authorNameSnapshot)}</b> <span class="pm-scene-comment-content">${escapeHtml(comment.content)}</span></span><span class="pm-scene-comment-actions" hidden><button type="button" data-action="edit-comment" data-post-id="${escapeAttr(post.id)}" data-comment-id="${escapeAttr(comment.id)}" aria-label="\u7F16\u8F91\u8BC4\u8BBA" title="\u7F16\u8F91\u8BC4\u8BBA">${EDIT_ICON_SVG}</button><button type="button" class="pm-scene-danger" data-action="delete-comment" data-post-id="${escapeAttr(post.id)}" data-comment-id="${escapeAttr(comment.id)}" aria-label="\u5220\u9664\u8BC4\u8BBA" title="\u5220\u9664\u8BC4\u8BBA">${TRASH_ICON_SVG}</button></span></div>`).join("")}</div>` : ""}
         <div id="pm-comment-composer-${escapeAttr(post.id)}" class="pm-scene-comment-composer" hidden><input id="pm-comment-input-${escapeAttr(post.id)}" maxlength="1000" placeholder="\u53D1\u8868\u4F60\u7684\u60F3\u6CD5\u5427"><button type="button" data-action="post-comment" data-post-id="${escapeAttr(post.id)}" aria-label="\u53D1\u9001\u56DE\u590D" title="\u53D1\u9001\u56DE\u590D">${SEND_ICON_SVG}</button></div>
     </article>`;
     }).join("");
@@ -11381,7 +11381,7 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
     const playControl = !warmupStarted && !liveStarting ? `<button type="button" class="pm-live-play-btn" data-action="start-warmup" aria-label="${liveFailed ? "\u91CD\u65B0\u5F00\u59CB\u70ED\u573A" : "\u5F00\u59CB\u70ED\u573A"}" title="${liveFailed ? "\u91CD\u65B0\u5F00\u59CB\u70ED\u573A" : "\u5F00\u59CB\u70ED\u573A"}">${PLAY_ICON_SVG}</button>` : "";
     const stageNote = liveStarting ? '<p class="pm-live-state-note">\u6B63\u5728\u51C6\u5907\u70ED\u573A\u2026</p>' : liveFailed ? '<p class="pm-live-state-note is-error">\u70ED\u573A\u672A\u80FD\u542F\u52A8\uFF0C\u8BF7\u91CD\u8BD5\u3002</p>' : "";
     const liveContent = `<div class="pm-live-stage ${hasDanmaku ? "has-danmaku" : ""}" data-live-state="${stageState}">${playControl}<div class="pm-danmaku-float">${floatingDanmaku}</div>${stageNote}</div><section class="pm-live-details" aria-label="\u70ED\u573A\u5185\u5BB9"><div class="pm-danmaku-list">${renderDanmaku(scene)}</div></section>`;
-    const composer = tab === "feed" ? `<div class="pm-scene-composer"><textarea id="pm-scene-post-input" maxlength="4000" placeholder="\u5206\u4EAB\u6B64\u523B\u2026\u2026"></textarea><button type="button" class="pm-scene-primary" data-action="publish" aria-label="\u53D1\u5E03" title="\u53D1\u5E03">${SEND_ICON_SVG}</button></div>` : tab === "live" ? `<div class="pm-scene-composer pm-danmaku-input"><textarea id="pm-danmaku-input" rows="1" maxlength="200" placeholder="\u53D1\u4E2A\u5F39\u5E55\u89C1\u8BC1\u5F53\u4E0B"></textarea><button type="button" class="pm-scene-primary" data-action="send-danmaku" aria-label="\u53D1\u9001\u5F39\u5E55" title="\u53D1\u9001\u5F39\u5E55">${SEND_ICON_SVG}</button></div>` : "";
+    const composer = tab === "feed" ? `<div class="pm-scene-composer"><textarea id="pm-scene-post-input" maxlength="4082" placeholder="\u5206\u4EAB\u6B64\u523B\u2026\u2026"></textarea><button type="button" class="pm-scene-primary" data-action="publish" aria-label="\u53D1\u5E03" title="\u53D1\u5E03">${SEND_ICON_SVG}</button></div>` : tab === "live" ? `<div class="pm-scene-composer pm-danmaku-input"><textarea id="pm-danmaku-input" rows="1" maxlength="200" placeholder="\u53D1\u4E2A\u5F39\u5E55\u89C1\u8BC1\u5F53\u4E0B"></textarea><button type="button" class="pm-scene-primary" data-action="send-danmaku" aria-label="\u53D1\u9001\u5F39\u5E55" title="\u53D1\u9001\u5F39\u5E55">${SEND_ICON_SVG}</button></div>` : "";
     const content = tab === "feed" ? `<div class="pm-scene-feed"><div class="pm-scene-posts">${renderPosts(scene, renderedAt)}</div></div>` : tab === "live" ? `<div class="pm-live-room">${liveContent}</div>` : tab === "context-inject" ? renderContextInjectionSettings(scene, state) : `<div class="pm-scene-prompt"><label>\u793E\u533A\u540D\u79F0<input id="pm-scene-title" maxlength="80" value="${escapeAttr(scene.title)}"></label><fieldset class="pm-scene-accent-field"><legend>\u793E\u533A\u4E3B\u9898\u8272</legend><div class="pm-scene-accent-options">${renderSceneAccentOptions(accent)}<label class="pm-scene-accent-custom" aria-label="\u81EA\u5B9A\u4E49\u793E\u533A\u4E3B\u9898\u8272"><input id="pm-scene-accent" type="color" data-action="scene-accent-custom" value="${escapeAttr(accent)}"><span>\u81EA\u5B9A\u4E49</span></label></div></fieldset><label>\u793E\u533A\u98CE\u683C<textarea id="pm-scene-prompt" maxlength="6000">${escapeHtml(scene.generatedPrompt)}</textarea></label><p>\u8BBE\u7F6E\u793E\u533A\u5185\u5BB9\u7684\u8868\u8FBE\u98CE\u683C\u4E0E\u6C1B\u56F4\u3002</p><div class="pm-scene-prompt-actions"><button type="button" class="pm-scene-secondary" data-action="regenerate-prompt">\u91CD\u65B0\u751F\u6210</button><button type="button" class="pm-scene-primary" data-action="save-prompt">\u4FDD\u5B58\u98CE\u683C</button></div></div>`;
     const isPrompt = tab === "prompt";
     const isSubpage = isPrompt || tab === "context-inject";
@@ -11393,10 +11393,30 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
     </div>`;
   }
 
-  // src/interactive-scenes.js
+  // src/interactive-scenes-utils.js
   var uid4 = (prefix) => `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
   var now = () => Date.now();
   var cloneStore = (store) => normalizeInteractiveStore(JSON.parse(JSON.stringify(store)));
+  function parseCommunityPostInput(rawContent, actors, defaultAuthorSeed) {
+    const identityMatch = String(rawContent || "").match(/^【([^】]+)】/);
+    const identityId = identityMatch?.[1].trim();
+    const content = (identityMatch ? String(rawContent).slice(identityMatch[0].length) : String(rawContent || "")).trim();
+    if (!content) throw new Error("\u5E16\u5B50\u5185\u5BB9\u4E0D\u80FD\u4E3A\u7A7A");
+    if (content.length > 4e3) throw new Error("\u5E16\u5B50\u5185\u5BB9\u4E0D\u80FD\u8D85\u8FC7 4000 \u5B57");
+    if (!identityId) return { authorSeed: defaultAuthorSeed, content };
+    if (!Object.hasOwn(actors || {}, identityId)) throw new Error(`\u672A\u627E\u5230 ID \u4E3A ${identityId} \u7684\u53D1\u5E16\u8EAB\u4EFD`);
+    const actor = actors[identityId];
+    return {
+      authorSeed: {
+        type: actor.type,
+        displayName: actor.displayName,
+        bindingKey: actor.bindingKey,
+        profile: actor.profile,
+        createdAt: actor.createdAt
+      },
+      content
+    };
+  }
   async function migrateInteractiveStore(rawStore, saveStore2) {
     const persistedCompatibility = stripPersistedV2ContentRating2(rawStore);
     const normalized = normalizeInteractiveStore(persistedCompatibility.store);
@@ -11506,6 +11526,8 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
     };
     return { loadStore: loadStore2, invalidateStore };
   }
+
+  // src/interactive-scenes.js
   function installInteractiveScenes(_state, deps) {
     const { getCtx, getStorageId: getStorageId2, getUserPersona: getUserPersona2, gatherContext: gatherContext2, callAI } = deps;
     const runtime = {
@@ -12059,13 +12081,22 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
       }
       if (action === "publish") {
         const input = document.getElementById("pm-scene-post-input");
-        const content = input?.value.trim() || "";
-        if (!content) throw new Error("\u5E16\u5B50\u5185\u5BB9\u4E0D\u80FD\u4E3A\u7A7A");
+        const rawContent = input?.value || "";
+        const { scopeId, scope, scene } = current();
+        if (!scope || !scene) throw new Error("\u4E92\u52A8\u573A\u666F\u4E0D\u5B58\u5728");
+        const target = { storageId: scopeId, sceneId: scene.id };
+        const { authorSeed, content } = parseCommunityPostInput(rawContent, scope.actors, actorSeeds(scopeId).user);
+        const isValid = operationGuard(scopeId, scene.id);
         await commit(() => {
-          const { scopeId, scope, scene } = current();
-          const userSeed = actorSeeds(scopeId).user;
-          appendPosts(scopeId, scope, scene, [{ author: userSeed.displayName, authorSeed: userSeed, content, tags: [] }]);
-        });
+          const currentTarget = resolveTarget(target);
+          if (!currentTarget.scope || !currentTarget.scene) throw new Error("\u4E92\u52A8\u573A\u666F\u4E0D\u5B58\u5728");
+          appendPosts(currentTarget.scopeId, currentTarget.scope, currentTarget.scene, [{
+            author: authorSeed.displayName,
+            authorSeed,
+            content,
+            tags: []
+          }]);
+        }, isValid, "\u53D1\u5E03\u5E16\u5B50");
         rerender("feed");
         return;
       }
@@ -12460,7 +12491,7 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
   // src/gal-bubble.js
   var GAL_BUBBLE_SCRIPT_ID = "de4bc2f3-3bcf-44ae-8f50-d751ee0794b6";
   var GAL_BUBBLE_SCRIPT_NAME = "\u5929\u97F3\u5C0F\u7B3A-GAL\u6C14\u6CE1";
-  var GAL_BUBBLE_FIND_REGEX = `/<msg\\s+side\\s*=\\s*["'](left|right)["']\\s*>\\s*([^\\n(\uFF08|]{1,64}?)(?:\\s*[(\uFF08]\\s*([^\\n)\uFF09|]{1,64}?)\\s*[)\uFF09])?\\s*\\|\\s*([\\s\\S]*?)\\s*<\\/msg>/giu`;
+  var GAL_BUBBLE_FIND_REGEX = `/<msg\\s+side\\s*=\\s*["'](left|right)["']\\s*>\\s*([^\\n(\uFF08|<>]{1,64}?)(?:\\s*[(\uFF08]\\s*([^\\n)\uFF09|<>]{1,64}?)\\s*[)\uFF09])?\\s*\\|\\s*([^<>]*?)\\s*<\\/msg>/giu`;
   var GAL_BUBBLE_REPLACE_STRING = '<style>.nl-gal{--nl-body:var(--SmartThemeBodyColor,#1c1c1e);--nl-muted:var(--SmartThemeQuoteColor,#6e6e73);--nl-border:rgba(90,90,100,.3);--nl-shadow:rgba(60,60,70,.06);--nl-surface:var(--SmartThemeBlurTintColor,rgba(242,242,247,.9));box-sizing:border-box;display:block;width:100%;margin:1.4rem 0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC",sans-serif}@supports (color:color-mix(in srgb,black,transparent)){.nl-gal{--nl-border:color-mix(in srgb,var(--SmartThemeBorderColor,rgba(60,60,67,.22)) 45%,transparent);--nl-shadow:color-mix(in srgb,var(--SmartThemeQuoteColor,#6e6e73) 12%,transparent)}}.nl-gal + style + .nl-gal{margin-top:.7rem}.nl-gal__name{box-sizing:border-box;display:flex;align-items:center;gap:.6rem;width:100%;padding:0 .3rem .3rem;line-height:1.3;color:var(--nl-muted);opacity:.55;overflow-wrap:anywhere}.nl-gal__name::before,.nl-gal__name::after{content:"";flex:1 1 auto;height:1px;background:linear-gradient(to right,transparent,var(--nl-muted),transparent);opacity:.5}.nl-gal__label{flex:0 0 auto;display:inline-flex;align-items:baseline;gap:.15rem;max-width:80%;overflow-wrap:anywhere}.nl-gal__nm{font-size:.74rem;font-weight:600;letter-spacing:.04em}.nl-gal__id:empty{display:none}.nl-gal__id:not(:empty){font-size:.62rem;font-weight:400;opacity:.8}.nl-gal__id:not(:empty)::before{content:"\uFF08"}.nl-gal__id:not(:empty)::after{content:"\uFF09"}.nl-gal__box{box-sizing:border-box;width:100%;padding:.7rem .95rem;border:1px solid var(--nl-border);border-radius:.5rem;background:var(--nl-surface);color:var(--nl-body);box-shadow:0 1px 5px var(--nl-shadow),inset 0 0 5px rgba(255,255,255,.02);font-size:.84rem;line-height:1.85;overflow-wrap:anywhere;word-break:break-word}.nl-gal[data-side="right"] .nl-gal__box{background:color-mix(in srgb,var(--nl-muted) 24%,var(--nl-surface))}.nl-gal__txt{display:block;white-space:pre-wrap;text-indent:1rem}@media (max-width:420px){.nl-gal__name{gap:.4rem}.nl-gal__label{max-width:90%}}</style><section class="nl-gal" data-side="$1"><div class="nl-gal__name"><span class="nl-gal__label"><span class="nl-gal__nm">$2</span><span class="nl-gal__id">$3</span></span></div><div class="nl-gal__box"><span class="nl-gal__txt">$4</span></div></section>';
   var GAL_BUBBLE_PROMPT = `# \u53F0\u8BCD\u683C\u5F0F
 
@@ -12469,16 +12500,16 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
 <msg side="left">\u540D\u5B57\uFF08\u522B\u540D\uFF09|\u53F0\u8BCD\u6B63\u6587</msg>
 
 ## \u89C4\u5219
-- side \u53EA\u80FD left \u6216 right\u3002\u4EC5<user>\u672C\u4EBA\u53D1\u9001\u7528 right\uFF0C\u5176\u4F59\u89D2\u8272\u4E00\u5F8B left\uFF0C\u4E0D\u786E\u5B9A\u65F6\u7528 left\u3002
+- side \u53EA\u80FD left \u6216 right\u3002\u4EC5\u7528\u6237\u672C\u4EBA\u53D1\u9001\u7528 right\uFF0C\u5176\u4F59\u89D2\u8272\u4E00\u5F8B left\uFF0C\u4E0D\u786E\u5B9A\u65F6\u7528 left\u3002
 - \u7ED3\u6784\uFF1A\u540D\u5B57 +\uFF08\u53EF\u9009\u522B\u540D\uFF0C\u4E2D\u6587\u5168\u89D2\u62EC\u53F7\uFF09+ \u534A\u89D2\u7AD6\u7EBF \`|\` + \u6B63\u6587\u3002
-- \u540D\u5B57/\u522B\u540D\u53EF\u7528\u4E2D\u6587\u3001\u5B57\u6BCD\u3001\u6570\u5B57\u3001\u4E0B\u5212\u7EBF\u3001\u70B9\u3001\u7A7A\u683C\u6216\u8FDE\u5B57\u3002
+- \u540D\u5B57\u5FC5\u987B\u4F7F\u7528\u5B9E\u9645\u663E\u793A\u540D\uFF1B\u540D\u5B57/\u522B\u540D\u53EF\u7528\u4E2D\u6587\u3001\u5B57\u6BCD\u3001\u6570\u5B57\u3001\u4E0B\u5212\u7EBF\u3001\u70B9\u3001\u7A7A\u683C\u6216\u8FDE\u5B57\uFF0C\u4E0D\u5F97\u5305\u542B\u5C16\u62EC\u53F7\u3002
 - \u6B63\u6587\u4E3A\u7EAF\u6587\u672C\uFF0C\u4E0D\u52A0\u4EFB\u4F55\u5F15\u53F7\uFF1B\u5F15\u8FF0\u4ED6\u4EBA\u65F6\u5F15\u53F7\u4F5C\u6B63\u6587\u81EA\u7136\u51FA\u73B0\u3002\u6B63\u6587\u9700\u7AD6\u7EBF\u7528\u5168\u89D2 \`\uFF5C\`\uFF0C\u9700\u5C16\u62EC\u53F7\u7528 \`&lt;\` \`&gt;\`\u3002
 - \u6BCF\u6761\u72EC\u7ACB\u6210\u5BF9\uFF0C\u6807\u7B7E\u5B8C\u6574\u4E0D\u5D4C\u5957\uFF1B\u540C\u89D2\u8272\u8FDE\u53D1\u62C6\u6210\u591A\u6761\uFF0C\u540D\u5B57\u4FDD\u6301\u4E00\u81F4\u3002
 - \u53EF\u4EE5\u4E0D\u540C\u89D2\u8272\u8FDE\u53D1\u591A\u6761\u3002
 
 
 ## \u7981\u6B62
-\u975E<user>\u7528 right\u3001\u7701\u7565 side \u6216\u7ED3\u675F\u6807\u7B7E\u3001\u88F8\u53D9\u8FF0\u3001\u6B63\u6587\u52A0\u5F15\u53F7\u3001\u7528\u4EE3\u7801\u5757/\u5217\u8868/\u8868\u683C\u5305\u88F9\u6D88\u606F\u3001\u89E3\u91CA\u89C4\u5219\u3002
+\u975E\u7528\u6237\u672C\u4EBA\u7528 right\u3001\u7701\u7565 side \u6216\u7ED3\u675F\u6807\u7B7E\u3001\u88F8\u53D9\u8FF0\u3001\u6B63\u6587\u52A0\u5F15\u53F7\u3001\u7528\u4EE3\u7801\u5757/\u5217\u8868/\u8868\u683C\u5305\u88F9\u6D88\u606F\u3001\u89E3\u91CA\u89C4\u5219\u3002
 
 ## \u793A\u4F8B
 <msg side="left">\u6797\u590F\uFF08\u590F\u590F\uFF09|\u4F60\u771F\u7684\u6253\u7B97\u5C31\u8FD9\u4E48\u8D70\u4E86\uFF1F</msg>
@@ -12486,19 +12517,36 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
   var getGalBubblePrompt = (enabled) => enabled === true ? `
 
 ${GAL_BUBBLE_PROMPT}` : "";
-  var GAL_BUBBLE_MESSAGE_PATTERN = /<msg\s+side\s*=\s*["'](left|right)["']\s*>\s*([^\n(（|]{1,64}?)(?:\s*[(（]\s*([^\n)）|]{1,64}?)\s*[)）])?\s*\|\s*([\s\S]*?)\s*<\/msg>/giu;
-  function parseGalBubbleMessages(raw) {
-    const source = typeof raw === "string" ? raw : "";
+  var GAL_BUBBLE_MESSAGE_PATTERN = /<msg\s+side\s*=\s*["'](left|right)["']\s*>\s*([^\n(（|<>]{1,64}?)(?:\s*[(（]\s*([^\n)）|<>]{1,64}?)\s*[)）])?\s*\|\s*([^<>]*?)\s*<\/msg>/giu;
+  var stripGalIgnorableBlocks = (value) => String(value || "").replace(/<(?:think|thinking|reasoning|reflection|inner_thought)>[\s\S]*?<\/(?:think|thinking|reasoning|reflection|inner_thought)>/gi, "");
+  function parseGalBubbleMessages2(raw) {
+    const source = stripGalIgnorableBlocks(typeof raw === "string" ? raw : "");
     const messages = [];
+    let consumedUntil = 0;
+    let residual = "";
+    let invalidMatch = false;
     let match;
     while ((match = GAL_BUBBLE_MESSAGE_PATTERN.exec(source)) !== null) {
+      residual += source.slice(consumedUntil, match.index);
+      consumedUntil = GAL_BUBBLE_MESSAGE_PATTERN.lastIndex;
       const name = match[2].trim();
       const text8 = cleanResponse(match[4]);
-      if (name && text8) messages.push({ side: match[1].toLowerCase(), name, text: text8 });
+      if (!name || !text8) {
+        invalidMatch = true;
+        continue;
+      }
+      messages.push({ side: match[1].toLowerCase(), name, text: text8 });
     }
+    residual += source.slice(consumedUntil);
+    if (invalidMatch || residual.trim()) return null;
     return messages.length ? messages : null;
   }
-  function desiredScript() {
+  function getGalBubbleAssistantText(raw) {
+    const messages = parseGalBubbleMessages2(raw);
+    if (!messages) return null;
+    return messages.filter((message) => message.side === "left").map((message) => message.text).join("\n");
+  }
+  function getGalBubbleScriptDefinition() {
     return {
       id: GAL_BUBBLE_SCRIPT_ID,
       scriptName: GAL_BUBBLE_SCRIPT_NAME,
@@ -12515,68 +12563,99 @@ ${GAL_BUBBLE_PROMPT}` : "";
       maxDepth: null
     };
   }
+  function structurallyEqual(left, right) {
+    if (Object.is(left, right)) return true;
+    if (Array.isArray(left) || Array.isArray(right)) {
+      return Array.isArray(left) && Array.isArray(right) && left.length === right.length && left.every((value, index) => structurallyEqual(value, right[index]));
+    }
+    if (!left || !right || typeof left !== "object" || typeof right !== "object") return false;
+    const leftKeys = Object.keys(left).sort();
+    const rightKeys = Object.keys(right).sort();
+    return leftKeys.length === rightKeys.length && leftKeys.every((key, index) => key === rightKeys[index] && structurallyEqual(left[key], right[key]));
+  }
+  function hasSameDefinition(script, desired) {
+    return Object.keys(desired).every((key) => structurallyEqual(script[key], desired[key]));
+  }
   function isOwnedScript(script) {
     return Boolean(script) && script.id === GAL_BUBBLE_SCRIPT_ID;
   }
   function getRegexList(context) {
     const settings = context?.extensionSettings;
-    if (!settings || !Array.isArray(settings.regex)) throw new Error("\u5F53\u524D\u9152\u9986\u672A\u63D0\u4F9B\u53EF\u5199\u7684\u5168\u5C40\u6B63\u5219\u5217\u8868");
+    if (!settings) throw Object.assign(new Error("\u5F53\u524D\u9152\u9986\u4E0A\u4E0B\u6587\u4E0D\u53EF\u7528\uFF0C\u65E0\u6CD5\u8BBF\u95EE\u5168\u5C40\u6B63\u5219\u5217\u8868"), { code: "host-unavailable" });
+    if (!Array.isArray(settings.regex)) throw Object.assign(new Error("\u9152\u9986\u6B63\u5219\u6A21\u5757\u5C1A\u672A\u5C31\u7EEA\uFF0C\u8BF7\u7A0D\u540E\u91CD\u8BD5"), { code: "regex-not-ready" });
+    if (Array.isArray(settings.disabledExtensions) && settings.disabledExtensions.includes("regex")) {
+      throw Object.assign(new Error("\u9152\u9986\u6B63\u5219\u6269\u5C55\u5DF2\u7981\u7528\uFF0C\u8BF7\u5148\u542F\u7528 Regex \u6269\u5C55"), { code: "regex-disabled" });
+    }
     return settings.regex;
   }
-  function requireSave(context) {
-    if (typeof context.saveSettingsDebounced !== "function") throw new Error("\u5F53\u524D\u9152\u9986\u672A\u63D0\u4F9B\u8BBE\u7F6E\u4FDD\u5B58\u63A5\u53E3");
-    context.saveSettingsDebounced();
+  async function requireSave(context) {
+    if (typeof context.saveSettingsDebounced !== "function") throw Object.assign(new Error("\u5F53\u524D\u9152\u9986\u672A\u63D0\u4F9B\u8BBE\u7F6E\u4FDD\u5B58\u63A5\u53E3"), { code: "save-unavailable" });
+    const result = context.saveSettingsDebounced();
+    if (result && typeof result.then === "function") await result;
+    if (result === false) throw Object.assign(new Error("\u5F53\u524D\u9152\u9986\u8BBE\u7F6E\u4FDD\u5B58\u63A5\u53E3\u8C03\u7528\u5931\u8D25"), { code: "save-failed" });
+  }
+  var galBubbleMutationQueue = Promise.resolve();
+  async function reconcileGalBubbleNow(context, enabled) {
+    const matches = getRegexList(context).filter(isOwnedScript);
+    if (matches.length > 1) throw Object.assign(new Error("\u53D1\u73B0\u591A\u6761\u540C ID \u7684\u5929\u97F3\u5C0F\u7B3A\u6B63\u5219\uFF0C\u5DF2\u505C\u6B62\u4FEE\u6539\uFF0C\u8BF7\u5148\u5728\u9152\u9986\u6B63\u5219\u9762\u677F\u6E05\u7406\u91CD\u590D\u9879"), { code: "duplicate-script" });
+    if (enabled === true) return installGalBubble(context);
+    if (enabled !== true && matches.length) return uninstallGalBubble(context);
+    return { changed: false, action: "noop" };
   }
   function reconcileGalBubble(context, enabled) {
-    const matches = getRegexList(context).filter(isOwnedScript);
-    if (matches.length > 1) throw new Error("\u53D1\u73B0\u591A\u6761\u540C ID \u7684\u5929\u97F3\u5C0F\u7B3A\u6B63\u5219\uFF0C\u5DF2\u505C\u6B62\u4FEE\u6539\uFF0C\u8BF7\u5148\u5728\u9152\u9986\u6B63\u5219\u9762\u677F\u6E05\u7406\u91CD\u590D\u9879");
-    if (enabled === true && !matches.length) installGalBubble(context);
-    if (enabled !== true && matches.length) uninstallGalBubble(context);
+    const transaction = galBubbleMutationQueue.then(() => reconcileGalBubbleNow(context, enabled));
+    galBubbleMutationQueue = transaction.catch(() => {
+    });
+    return transaction;
   }
-  function installGalBubble(context) {
+  async function installGalBubble(context) {
     const list2 = getRegexList(context);
     const matches = list2.filter(isOwnedScript);
-    if (matches.length > 1) throw new Error("\u53D1\u73B0\u591A\u6761\u540C ID \u7684\u5929\u97F3\u5C0F\u7B3A\u6B63\u5219\uFF0C\u5DF2\u505C\u6B62\u4FEE\u6539\uFF0C\u8BF7\u5148\u5728\u9152\u9986\u6B63\u5219\u9762\u677F\u6E05\u7406\u91CD\u590D\u9879");
+    if (matches.length > 1) throw Object.assign(new Error("\u53D1\u73B0\u591A\u6761\u540C ID \u7684\u5929\u97F3\u5C0F\u7B3A\u6B63\u5219\uFF0C\u5DF2\u505C\u6B62\u4FEE\u6539\uFF0C\u8BF7\u5148\u5728\u9152\u9986\u6B63\u5219\u9762\u677F\u6E05\u7406\u91CD\u590D\u9879"), { code: "duplicate-script" });
     if (!matches.length) {
-      const script2 = desiredScript();
+      const script2 = getGalBubbleScriptDefinition();
       list2.push(script2);
       try {
-        requireSave(context);
+        await requireSave(context);
       } catch (error) {
         list2.splice(list2.indexOf(script2), 1);
         throw error;
       }
-      return;
+      return { changed: true, action: "installed" };
     }
     const script = matches[0];
+    const desired = getGalBubbleScriptDefinition();
+    if (hasSameDefinition(script, desired)) return { changed: false, action: "noop" };
     const previous = { ...script };
-    Object.assign(script, desiredScript());
+    Object.assign(script, desired);
     try {
-      requireSave(context);
+      await requireSave(context);
     } catch (error) {
       for (const key of Object.keys(script)) if (!Object.hasOwn(previous, key)) delete script[key];
       Object.assign(script, previous);
       throw error;
     }
+    return { changed: true, action: "updated" };
   }
-  function uninstallGalBubble(context) {
+  async function uninstallGalBubble(context) {
     const list2 = getRegexList(context);
     const matches = list2.filter(isOwnedScript);
-    if (matches.length > 1) throw new Error("\u53D1\u73B0\u591A\u6761\u540C ID \u7684\u5929\u97F3\u5C0F\u7B3A\u6B63\u5219\uFF0C\u5DF2\u505C\u6B62\u4FEE\u6539\uFF0C\u8BF7\u5148\u5728\u9152\u9986\u6B63\u5219\u9762\u677F\u6E05\u7406\u91CD\u590D\u9879");
-    if (!matches.length) return;
+    if (matches.length > 1) throw Object.assign(new Error("\u53D1\u73B0\u591A\u6761\u540C ID \u7684\u5929\u97F3\u5C0F\u7B3A\u6B63\u5219\uFF0C\u5DF2\u505C\u6B62\u4FEE\u6539\uFF0C\u8BF7\u5148\u5728\u9152\u9986\u6B63\u5219\u9762\u677F\u6E05\u7406\u91CD\u590D\u9879"), { code: "duplicate-script" });
+    if (!matches.length) return { changed: false, action: "noop" };
     const index = list2.indexOf(matches[0]);
     const [script] = list2.splice(index, 1);
     try {
-      requireSave(context);
+      await requireSave(context);
     } catch (error) {
       list2.splice(index, 0, script);
       throw error;
     }
+    return { changed: true, action: "uninstalled" };
   }
 
   // src/messaging-group-parser.js
   function parseGroupResponse(raw, groupMembers, { allowUnknownSpeakers = false, galBubbleEnabled = false } = {}) {
-    const galMessages = galBubbleEnabled ? parseGalBubbleMessages(raw) : null;
+    const galMessages = galBubbleEnabled ? parseGalBubbleMessages2(raw) : null;
     const result = [];
     const normalizeName = (value) => (value || "").trim().replace(/^[【\[\(（*「『"'\s]+|[】\]\)）*「』」"'\s]+$/g, "").trim().toLowerCase();
     const memberMap = /* @__PURE__ */ new Map();
@@ -12886,7 +12965,12 @@ ${lines}
       pendingSequence: 0,
       overlayOpener: null,
       trackedExtensionPromptKeys: /* @__PURE__ */ new Set(),
-      injectionEpoch: 0
+      injectionEpoch: 0,
+      galBubbleReconcileTimer: null,
+      galBubbleInitialTimer: null,
+      galBubbleReconcileAttempt: 0,
+      galBubbleReconcilePending: false,
+      galBubbleOperational: false
     };
   }
   function createAutomaticTaskController({ runtime, state, getStorageId: getStorageId2, isDocumentVisible }) {
@@ -13689,7 +13773,7 @@ ${antiFluff}`;
         isGroup,
         emojiPrompt: getEmojiPrompt(saveKey, storageId, window.__pmPokeConfig, window.__pmEmojis),
         wordyPrompt: getWordyPrompt(window.__pmWordyLimit),
-        galBubblePrompt: getGalBubblePrompt(window.__pmGalBubbleEnabled)
+        galBubblePrompt: getGalBubblePrompt(window.__pmGalBubbleOperational)
       });
       try {
         const cfg = window.__pmConfig;
@@ -13729,7 +13813,7 @@ ${antiFluff}`;
         if (isGroup) {
           const parsed = parseGroupResponse(raw, groupMembers, {
             allowUnknownSpeakers: groupRandomNpcEnabled === true,
-            galBubbleEnabled: window.__pmGalBubbleEnabled === true
+            galBubbleEnabled: window.__pmGalBubbleOperational === true
           });
           if (parsed.length) {
             const contentParts = parsed.map((p) => `${p.name}\uFF1A${p.sentences.join(" / ")}`);
@@ -13758,10 +13842,12 @@ ${antiFluff}`;
             };
           }
         } else {
-          const galMessages = window.__pmGalBubbleEnabled === true ? parseGalBubbleMessages(raw) : null;
-          const clean2 = galMessages ? galMessages.map((message) => message.text).join("\n") : cleanResponse(raw);
+          const galText = window.__pmGalBubbleOperational === true ? getGalBubbleAssistantText(raw) : null;
+          const clean2 = galText !== null ? galText : cleanResponse(raw);
           let sentences = splitToSentences(clean2);
-          if (!sentences.length && raw?.trim()) sentences = splitToSentences(raw.replace(/<think>[\s\S]*?<\/think>/gi, "").replace(/<[^>]+>/g, ""));
+          if (!sentences.length && galText === null && raw?.trim()) {
+            sentences = splitToSentences(raw.replace(/<think>[\s\S]*?<\/think>/gi, "").replace(/<[^>]+>/g, ""));
+          }
           if (!sentences.length) sentences = !raw?.trim() ? ["\uFF08\u7A7A\u54CD\u5E94\uFF09"] : ["\uFF08\u683C\u5F0F\u65E0\u6CD5\u89E3\u6790\uFF09"];
           targetHistory.push(createMessageEntry({
             role: "assistant",
@@ -14147,7 +14233,7 @@ ${antiFluff}`;
           isGroup,
           emojiPrompt: getEmojiPrompt(contactName, id2, window.__pmPokeConfig, window.__pmEmojis),
           wordyPrompt: getWordyPrompt(window.__pmWordyLimit),
-          galBubblePrompt: getGalBubblePrompt(window.__pmGalBubbleEnabled)
+          galBubblePrompt: getGalBubblePrompt(window.__pmGalBubbleOperational)
         });
         const aiRequest = buildPokeRequest({
           isGroup,
@@ -14176,7 +14262,7 @@ ${antiFluff}`;
         if (isGroup) {
           const parsed = parseGroupResponse(raw, groupMembers, {
             allowUnknownSpeakers: groupMeta.randomNpcEnabled === true,
-            galBubbleEnabled: window.__pmGalBubbleEnabled === true
+            galBubbleEnabled: window.__pmGalBubbleOperational === true
           });
           renderBlocks = parsed.filter((block2) => block2.sentences.length > 0);
           const contentParts = renderBlocks.map((block2) => `${block2.name}\uFF1A${block2.sentences.join(" / ")}`);
@@ -14187,8 +14273,8 @@ ${antiFluff}`;
             descriptors: renderBlocks.flatMap((block2) => block2.sentences.map((text8) => ({ text: text8, sender: block2.name })))
           }));
         } else {
-          const galMessages = window.__pmGalBubbleEnabled === true ? parseGalBubbleMessages(raw) : null;
-          const clean2 = galMessages ? galMessages.map((message) => message.text).join("\n") : cleanResponse(raw);
+          const galText = window.__pmGalBubbleOperational === true ? getGalBubbleAssistantText(raw) : null;
+          const clean2 = galText !== null ? galText : cleanResponse(raw);
           renderSentences = splitToSentences(clean2);
           if (!renderSentences.length) return false;
           targetHistory.push(createMessageEntry({
@@ -14452,7 +14538,7 @@ ${antiFluff}`;
           isGroup,
           emojiPrompt: getEmojiPrompt(targetContactKey, storageId, window.__pmPokeConfig, window.__pmEmojis),
           wordyPrompt: getWordyPrompt(window.__pmWordyLimit),
-          galBubblePrompt: getGalBubblePrompt(window.__pmGalBubbleEnabled)
+          galBubblePrompt: getGalBubblePrompt(window.__pmGalBubbleOperational)
         });
         const aiRequest = buildPokeRequest({
           isGroup,
@@ -14481,7 +14567,7 @@ ${antiFluff}`;
         if (isGroup) {
           const parsed = parseGroupResponse(raw, groupMembers, {
             allowUnknownSpeakers: groupRandomNpcEnabled === true,
-            galBubbleEnabled: window.__pmGalBubbleEnabled === true
+            galBubbleEnabled: window.__pmGalBubbleOperational === true
           });
           const blocks = parsed.filter((block2) => block2.sentences.length > 0);
           const contentParts = blocks.map((block2) => `${block2.name}\uFF1A${block2.sentences.join(" / ")}`);
@@ -14515,7 +14601,7 @@ ${antiFluff}`;
             }
           }
         } else {
-          const galMessages = window.__pmGalBubbleEnabled === true ? parseGalBubbleMessages(raw) : null;
+          const galMessages = window.__pmGalBubbleOperational === true ? parseGalBubbleMessages(raw) : null;
           const clean2 = galMessages ? galMessages.map((message) => message.text).join("\n") : cleanResponse(raw);
           const sentences = splitToSentences(clean2);
           if (sentences.length > 0) {
@@ -14615,7 +14701,7 @@ ${antiFluff}`;
           isGroup: true,
           emojiPrompt: getEmojiPrompt(saveKey, storageId, window.__pmPokeConfig, window.__pmEmojis),
           wordyPrompt: getWordyPrompt(window.__pmWordyLimit),
-          galBubblePrompt: getGalBubblePrompt(window.__pmGalBubbleEnabled)
+          galBubblePrompt: getGalBubblePrompt(window.__pmGalBubbleOperational)
         });
         const aiRequest = buildPokeRequest({
           activeGroup: true,
@@ -14642,7 +14728,7 @@ ${antiFluff}`;
         if (isStillTarget()) hideTyping();
         const parsed = parseGroupResponse(raw, groupMembers, {
           allowUnknownSpeakers: groupRandomNpcEnabled === true,
-          galBubbleEnabled: window.__pmGalBubbleEnabled === true
+          galBubbleEnabled: window.__pmGalBubbleOperational === true
         });
         let renderedTrimmedCount = 0;
         for (const block2 of parsed) {
@@ -17696,6 +17782,7 @@ ${lines}`;
     window.__pmCharacterBehavior = window.__pmCharacterBehavior || {};
     window.__pmWordyLimit = window.__pmWordyLimit || false;
     window.__pmGalBubbleEnabled = window.__pmGalBubbleEnabled || false;
+    window.__pmGalBubbleOperational = false;
     window.__pmBudgetConfig = normalizeBudgetConfig(window.__pmBudgetConfig);
     window.__pmEmojis = window.__pmEmojis || [];
     const { applyBackground, fitNameFont, migrateOldHistory } = createPhoneAppearance(state, deps);
@@ -18133,6 +18220,7 @@ ${lines}`;
       applyBidirectionalInjection,
       persistCurrentHistory: persistCurrentHistory2,
       clearBidirectionalInjection,
+      reloadCurrentChat,
       applyBackground,
       applyTheme,
       applyPhoneScale: applyPhoneScale2,
@@ -18259,6 +18347,16 @@ ${lines}`;
         }
       }
       clearBidirectionalInjection();
+      if (runtime.galBubbleReconcileTimer !== null) {
+        clearTimeout(runtime.galBubbleReconcileTimer);
+        runtime.galBubbleReconcileTimer = null;
+      }
+      if (runtime.galBubbleInitialTimer !== null) {
+        clearTimeout(runtime.galBubbleInitialTimer);
+        runtime.galBubbleInitialTimer = null;
+      }
+      runtime.galBubbleReconcilePending = false;
+      runtime.galBubbleReconcileAttempt = 0;
       deps.cancelCommunityGeneration?.("phone-closed");
       deps.cancelCalendarTasks?.("phone-closed");
       deps.destroyTodayTrendPhoneUi?.();
@@ -18549,14 +18647,56 @@ ${lines}`;
     loadGalBubbleEnabled();
     loadBudgetConfig();
     loadWorldBookConfig();
-    try {
-      reconcileGalBubble(getCtx(), window.__pmGalBubbleEnabled === true);
-    } catch (error) {
-      console.warn("[phone-mode] GAL \u6C14\u6CE1\u6B63\u5219\u540C\u6B65\u5931\u8D25", error);
-    }
+    const reconcileGal = () => {
+      if (runtime.galBubbleReconcileTimer !== null || runtime.galBubbleReconcilePending !== true) {
+        if (runtime.galBubbleReconcilePending !== true) return;
+      }
+      runtime.galBubbleReconcilePending = false;
+      const attempt = async () => {
+        runtime.galBubbleReconcileAttempt += 1;
+        try {
+          const result = await reconcileGalBubble(getCtx(), window.__pmGalBubbleEnabled === true);
+          window.__pmGalBubbleOperational = window.__pmGalBubbleEnabled === true;
+          if (result?.changed === true && typeof reloadCurrentChat === "function") {
+            try {
+              await reloadCurrentChat(getCtx());
+            } catch (error) {
+              console.warn("[phone-mode] GAL \u6C14\u6CE1\u5DF2\u66F4\u65B0\uFF0C\u4F46\u5F53\u524D\u804A\u5929\u5237\u65B0\u5931\u8D25", error?.message || error);
+            }
+          }
+          runtime.galBubbleReconcileTimer = null;
+          runtime.galBubbleReconcilePending = false;
+          runtime.galBubbleReconcileAttempt = 0;
+          return;
+        } catch (error) {
+          window.__pmGalBubbleOperational = false;
+          const retryable = error?.code === "host-unavailable" || error?.code === "regex-not-ready";
+          if (!retryable || runtime.galBubbleReconcileAttempt >= 10) {
+            runtime.galBubbleReconcileTimer = null;
+            runtime.galBubbleReconcilePending = false;
+            console.warn("[phone-mode] GAL \u6C14\u6CE1\u6B63\u5219\u540C\u6B65\u5931\u8D25", error?.code || error?.name || "Error", error?.message || "");
+            return;
+          }
+          if (runtime.galBubbleReconcileAttempt === 1) {
+            runtime.galBubbleReconcilePending = true;
+            return;
+          }
+        }
+        runtime.galBubbleReconcilePending = true;
+        runtime.galBubbleReconcileTimer = setTimeout(() => {
+          runtime.galBubbleReconcileTimer = null;
+          void attempt();
+        }, 500);
+      };
+      void attempt();
+    };
+    runtime.galBubbleReconcilePending = true;
+    reconcileGal();
     const initialGroupMetaLoad = (deps.loadGroupMeta || loadGroupMeta)();
     loadHistoriesOnce();
-    setTimeout(() => {
+    runtime.galBubbleInitialTimer = setTimeout(() => {
+      runtime.galBubbleInitialTimer = null;
+      if (runtime.galBubbleReconcilePending === true) reconcileGal();
       hookGenerationEvent();
       initialGroupMetaLoad.then(() => {
         migrateOldHistory();
@@ -19184,9 +19324,22 @@ ${lines}`;
   }
 
   // src/settings-backup-controller.js
-  function requireGalBubbleSync(syncGalBubble, enabled) {
+  async function requireGalBubbleSync(syncGalBubble, enabled) {
     if (typeof syncGalBubble !== "function") throw new Error("GAL \u6C14\u6CE1\u6B63\u5219\u540C\u6B65\u63A5\u53E3\u4E0D\u53EF\u7528");
-    if (syncGalBubble(enabled) !== true) throw new Error("GAL \u6C14\u6CE1\u6B63\u5219\u540C\u6B65\u5931\u8D25");
+    const transaction = await syncGalBubble(enabled);
+    if (!transaction || transaction.ok !== true) throw new Error("GAL \u6C14\u6CE1\u6B63\u5219\u540C\u6B65\u5931\u8D25");
+    return transaction;
+  }
+  async function reloadGalBubbleChat(reloadCurrentChat, transaction) {
+    if (transaction?.changed !== true) return true;
+    if (typeof reloadCurrentChat !== "function") return false;
+    try {
+      await reloadCurrentChat(transaction.context);
+      return true;
+    } catch (error) {
+      console.warn("[phone-mode] GAL \u6C14\u6CE1\u5DF2\u66F4\u65B0\uFF0C\u4F46\u5F53\u524D\u804A\u5929\u5237\u65B0\u5931\u8D25", error?.message || error);
+      return false;
+    }
   }
   function createBackupController({
     capture,
@@ -19204,6 +19357,7 @@ ${lines}`;
     cancelCalendarTasks,
     reloadCalendarStore,
     syncGalBubble,
+    reloadCurrentChat,
     reloadTodayTrendStore,
     invalidateInteractiveStore,
     closePhone,
@@ -19258,6 +19412,7 @@ ${lines}`;
       const reader = new FileReader();
       reader.onload = async (event) => {
         let transactionError = null;
+        let galRefreshFailed = false;
         try {
           const data = JSON.parse(event.target.result);
           if (!data || typeof data !== "object" || Array.isArray(data)) throw new Error("\u5907\u4EFD\u6839\u8282\u70B9\u5FC5\u987B\u662F\u5BF9\u8C61");
@@ -19272,7 +19427,8 @@ ${lines}`;
             apply: async (snapshot, imported) => {
               const nextState = snapshot || imported;
               const applied = await apply(nextState);
-              requireGalBubbleSync(syncGalBubble, applied.galBubbleEnabled === true);
+              const transaction = await requireGalBubbleSync(syncGalBubble, applied.galBubbleEnabled === true);
+              if (!await reloadGalBubbleChat(reloadCurrentChat, transaction)) galRefreshFailed = true;
               return applied;
             },
             persist,
@@ -19286,13 +19442,13 @@ ${lines}`;
           const error = transactionError;
           if (error.backupPhase === "rollback-failed") alert(`\u5BFC\u5165\u5931\u8D25\uFF0C\u539F\u6570\u636E\u56DE\u6EDA\u4E5F\u5931\u8D25\u3002\u8BF7\u52FF\u5237\u65B0\uFF0C\u5E76\u7ACB\u5373\u5BFC\u51FA\u5F53\u524D\u5185\u5B58\u5907\u4EFD\u3002
 ${error.message}`);
-          else if (error.backupPhase === "rolled-back") alert(`\u5BFC\u5165\u5931\u8D25\uFF0C\u539F\u6570\u636E\u5DF2\u6062\u590D\u3002
+          else if (error.backupPhase === "rolled-back") alert(`\u5BFC\u5165\u5931\u8D25\uFF0C\u539F\u6570\u636E\u5DF2\u6062\u590D${galRefreshFailed ? "\uFF0C\u4F46 GAL \u6C14\u6CE1\u5F53\u524D\u804A\u5929\u5237\u65B0\u5931\u8D25\uFF0C\u8BF7\u624B\u52A8\u5237\u65B0\u5F53\u524D\u804A\u5929" : ""}\u3002
 ${error.message}`);
           else alert(`\u5BFC\u5165\u5931\u8D25\uFF0C\u672A\u4FEE\u6539\u73B0\u6709\u6570\u636E\u3002
 ${error.message}`);
           return;
         }
-        alert("\u6570\u636E\u5BFC\u5165\u6210\u529F\uFF0C\u8BF7\u91CD\u65B0\u6253\u5F00\u754C\u9762\u751F\u6548\u3002");
+        alert(galRefreshFailed ? "\u6570\u636E\u5BFC\u5165\u6210\u529F\uFF0C\u4F46 GAL \u6C14\u6CE1\u5F53\u524D\u804A\u5929\u5237\u65B0\u5931\u8D25\uFF0C\u8BF7\u624B\u52A8\u5237\u65B0\u5F53\u524D\u804A\u5929\u3002" : "\u6570\u636E\u5BFC\u5165\u6210\u529F\uFF0C\u8BF7\u91CD\u65B0\u6253\u5F00\u754C\u9762\u751F\u6548\u3002");
         document.getElementById("pm-overlay")?.remove();
         closePhone(true);
       };
@@ -19305,18 +19461,20 @@ ${error.message}`);
       const previous = await capture();
       cancelCommunityGeneration?.("plugin-data-clear");
       cancelCalendarTasks?.("plugin-data-clear");
+      let galRefreshFailed = false;
       try {
         await requireInjectionSuccess(() => clearBidirectionalInjection(), "\u6E05\u7406\u6570\u636E\u524D\u79FB\u9664\u65E7\u6CE8\u5165\u5931\u8D25");
         await clearPluginData2({ afterClear: async () => {
           const emptyState = await apply(createEmptyState());
           afterApplyEmpty?.();
-          requireGalBubbleSync(syncGalBubble, emptyState.galBubbleEnabled === true);
+          const transaction = await requireGalBubbleSync(syncGalBubble, emptyState.galBubbleEnabled === true);
+          if (!await reloadGalBubbleChat(reloadCurrentChat, transaction)) galRefreshFailed = true;
           reloadCalendarStore?.();
           reloadTodayTrendStore?.();
           invalidateInteractiveStore?.();
           await requireInjectionSuccess(() => clearBidirectionalInjection(), "\u5E94\u7528\u7A7A\u72B6\u6001\u540E\u6E05\u7406\u6CE8\u5165\u5931\u8D25");
         } });
-        alert("\u5929\u97F3\u5C0F\u7B3A\u6570\u636E\u5DF2\u6E05\u7406\u3002");
+        alert(galRefreshFailed ? "\u5929\u97F3\u5C0F\u7B3A\u6570\u636E\u5DF2\u6E05\u7406\uFF0C\u4F46 GAL \u6C14\u6CE1\u5F53\u524D\u804A\u5929\u5237\u65B0\u5931\u8D25\uFF0C\u8BF7\u624B\u52A8\u5237\u65B0\u5F53\u524D\u804A\u5929\u3002" : "\u5929\u97F3\u5C0F\u7B3A\u6570\u636E\u5DF2\u6E05\u7406\u3002");
         document.getElementById("pm-overlay")?.remove();
         closePhone(true);
         return true;
@@ -19324,7 +19482,8 @@ ${error.message}`);
         let rollbackError = error.rollbackError || null;
         try {
           const restored = await apply(previous);
-          requireGalBubbleSync(syncGalBubble, restored.galBubbleEnabled === true);
+          const transaction = await requireGalBubbleSync(syncGalBubble, restored.galBubbleEnabled === true);
+          if (!await reloadGalBubbleChat(reloadCurrentChat, transaction)) galRefreshFailed = true;
           await persist(previous);
           reloadCalendarStore?.();
           reloadTodayTrendStore?.();
@@ -19334,7 +19493,7 @@ ${error.message}`);
         }
         if (rollbackError) alert(`\u6E05\u7406\u5931\u8D25\uFF0C\u539F\u6570\u636E\u56DE\u6EDA\u4E5F\u5931\u8D25\u3002\u8BF7\u52FF\u5237\u65B0\uFF0C\u5E76\u7ACB\u5373\u5BFC\u51FA\u5F53\u524D\u5185\u5B58\u5907\u4EFD\u3002
 ${error.message}\uFF1B${rollbackError.message}`);
-        else alert(`\u6E05\u7406\u5931\u8D25\uFF0C\u539F\u6570\u636E\u5DF2\u6062\u590D\u3002
+        else alert(`\u6E05\u7406\u5931\u8D25\uFF0C\u539F\u6570\u636E\u5DF2\u6062\u590D${galRefreshFailed ? "\uFF0C\u4F46 GAL \u6C14\u6CE1\u5F53\u524D\u804A\u5929\u5237\u65B0\u5931\u8D25\uFF0C\u8BF7\u624B\u52A8\u5237\u65B0\u5F53\u524D\u804A\u5929" : ""}\u3002
 ${error.message}`);
         return false;
       }
@@ -19525,41 +19684,84 @@ ${error.message}`);
   }
 
   // src/settings-gal-bubble-controller.js
-  function createGalBubbleController({ getContext, reconcile, saveEnabled }) {
-    const sync = (enabled) => {
+  function createGalBubbleController({ getContext, reconcile, saveEnabled, reloadCurrentChat }) {
+    let pendingToggle = null;
+    const requireHostSave = async (context) => {
+      if (typeof context?.saveSettingsDebounced !== "function") throw new Error("\u5F53\u524D\u9152\u9986\u672A\u63D0\u4F9B\u8BBE\u7F6E\u4FDD\u5B58\u63A5\u53E3");
+      const result = context.saveSettingsDebounced();
+      if (result && typeof result.then === "function") await result;
+      if (result === false) throw new Error("\u5F53\u524D\u9152\u9986\u8BBE\u7F6E\u4FDD\u5B58\u63A5\u53E3\u8C03\u7528\u5931\u8D25");
+    };
+    const captureHostRegexState = (context) => {
+      const list2 = context?.extensionSettings?.regex;
+      if (!Array.isArray(list2)) return null;
+      return list2.map((script) => ({ script, snapshot: { ...script } }));
+    };
+    const restoreHostRegexState = async (context, captured) => {
+      const list2 = context?.extensionSettings?.regex;
+      if (!Array.isArray(list2) || !captured) return;
+      list2.splice(0, list2.length, ...captured.map((entry2) => entry2.script));
+      for (const { script, snapshot } of captured) {
+        for (const key of Object.keys(script)) if (!Object.hasOwn(snapshot, key)) delete script[key];
+        Object.assign(script, snapshot);
+      }
+      await requireHostSave(context);
+    };
+    const sync = async (enabled) => {
       const context = getContext?.();
       if (!context) throw new Error("\u5F53\u524D\u9152\u9986\u4E0A\u4E0B\u6587\u4E0D\u53EF\u7528\uFF0C\u65E0\u6CD5\u4FEE\u6539 GAL \u6C14\u6CE1\u6B63\u5219");
-      reconcile(context, enabled);
+      const result = await reconcile(context, enabled);
+      window.__pmGalBubbleOperational = enabled === true;
+      return { context, result };
     };
-    const toggle = () => {
-      const previous = window.__pmGalBubbleEnabled === true;
-      const next = !previous;
-      try {
-        sync(next);
-      } catch (error) {
-        alert(error.message);
-        return false;
-      }
-      window.__pmGalBubbleEnabled = next;
-      try {
-        if (!saveEnabled()) throw new Error("GAL \u6C14\u6CE1\u5F00\u5173\u4FDD\u5B58\u5931\u8D25\uFF1A\u6D4F\u89C8\u5668\u5B58\u50A8\u4E0D\u53EF\u7528\u3002");
-      } catch (error) {
-        window.__pmGalBubbleEnabled = previous;
+    const toggle = async () => {
+      if (pendingToggle) return pendingToggle;
+      pendingToggle = (async () => {
+        const previous = window.__pmGalBubbleEnabled === true;
+        const next = !previous;
+        const hostSnapshot = captureHostRegexState(getContext?.());
+        let transaction;
         try {
-          sync(previous);
-        } catch (rollbackError) {
-          alert(`${error.message}\uFF1B\u6B63\u5219\u72B6\u6001\u56DE\u6EDA\u5931\u8D25\uFF1A${rollbackError.message}`);
+          transaction = await sync(next);
+        } catch (error) {
+          alert(error.message);
           return false;
         }
-        alert(error.message);
-        return false;
+        window.__pmGalBubbleEnabled = next;
+        try {
+          if (!saveEnabled()) throw new Error("GAL \u6C14\u6CE1\u5F00\u5173\u4FDD\u5B58\u5931\u8D25\uFF1A\u6D4F\u89C8\u5668\u5B58\u50A8\u4E0D\u53EF\u7528\u3002");
+        } catch (error) {
+          window.__pmGalBubbleEnabled = previous;
+          window.__pmGalBubbleOperational = previous;
+          try {
+            await restoreHostRegexState(getContext?.(), hostSnapshot);
+          } catch (rollbackError) {
+            alert(`${error.message}\uFF1B\u6B63\u5219\u72B6\u6001\u56DE\u6EDA\u5931\u8D25\uFF1A${rollbackError.message}`);
+            return false;
+          }
+          alert(error.message);
+          return false;
+        }
+        if (transaction.result?.changed && typeof reloadCurrentChat === "function") {
+          try {
+            await reloadCurrentChat(transaction.context);
+          } catch (error) {
+            console.warn("[phone-mode] GAL \u6C14\u6CE1\u5DF2\u66F4\u65B0\uFF0C\u4F46\u5F53\u524D\u804A\u5929\u5237\u65B0\u5931\u8D25", error?.name || "Error");
+            alert("GAL \u6C14\u6CE1\u5DF2\u66F4\u65B0\uFF0C\u4F46\u5F53\u524D\u804A\u5929\u5237\u65B0\u5931\u8D25\uFF0C\u8BF7\u624B\u52A8\u5237\u65B0\u5F53\u524D\u804A\u5929\u3002");
+          }
+        }
+        const element = document.getElementById("pm-gal-bubble-check");
+        if (element) {
+          element.classList.toggle("is-checked", next);
+          element.setAttribute("aria-checked", String(next));
+        }
+        return true;
+      })();
+      try {
+        return await pendingToggle;
+      } finally {
+        pendingToggle = null;
       }
-      const element = document.getElementById("pm-gal-bubble-check");
-      if (element) {
-        element.classList.toggle("is-checked", next);
-        element.setAttribute("aria-checked", String(next));
-      }
-      return true;
     };
     return { toggle, sync };
   }
@@ -19683,8 +19885,8 @@ ${error.message}`);
       <div class="pm-global-setting" role="group" aria-labelledby="pm-gal-bubble-label">
         <span><b id="pm-gal-bubble-label">GAL \u6C14\u6CE1\u6B63\u5219</b><span class="pm-settings-home-hint">\u5199\u5165\u9152\u9986\u5168\u5C40\u6B63\u5219\uFF0C\u5E76\u8981\u6C42\u624B\u673A\u56DE\u590D\u4F7F\u7528 GAL \u53F0\u8BCD\u683C\u5F0F</span></span>
         <div id="pm-gal-bubble-check" onclick="window.__pmToggleGalBubble()"
-          class="pm-custom-check ${window.__pmGalBubbleEnabled === true ? "is-checked" : ""}" role="checkbox" tabindex="0"
-          aria-checked="${window.__pmGalBubbleEnabled === true}"
+          class="pm-custom-check ${window.__pmGalBubbleOperational === true ? "is-checked" : ""}" role="checkbox" tabindex="0"
+          aria-checked="${window.__pmGalBubbleOperational === true}"
           onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();this.click()}"></div>
       </div>
     </div>`;
@@ -20352,20 +20554,20 @@ ${error.message}`);
 
   // src/settings-backup.js
   var clone8 = (value) => JSON.parse(JSON.stringify(value));
-  function structurallyEqual(left, right) {
+  function structurallyEqual2(left, right) {
     if (Object.is(left, right)) return true;
     if (Array.isArray(left) || Array.isArray(right)) {
       if (!Array.isArray(left) || !Array.isArray(right) || left.length !== right.length) return false;
-      return left.every((value, index) => structurallyEqual(value, right[index]));
+      return left.every((value, index) => structurallyEqual2(value, right[index]));
     }
     if (!left || !right || typeof left !== "object" || typeof right !== "object") return false;
     const leftKeys = Object.keys(left).sort();
     const rightKeys = Object.keys(right).sort();
     if (leftKeys.length !== rightKeys.length || leftKeys.some((key, index) => key !== rightKeys[index])) return false;
-    return leftKeys.every((key) => structurallyEqual(left[key], right[key]));
+    return leftKeys.every((key) => structurallyEqual2(left[key], right[key]));
   }
   function assertCanonicalCalendarField(value, normalized, field) {
-    if (!structurallyEqual(value, normalized)) {
+    if (!structurallyEqual2(value, normalized)) {
       throw new Error(`\u5907\u4EFD\u5B57\u6BB5 ${field} \u5185\u5BB9\u65E0\u6548\u6216\u4E0D\u662F\u89C4\u8303\u683C\u5F0F`);
     }
     return normalized;
@@ -20915,7 +21117,11 @@ ${error.message}`);
     const galBubbleSettings = createGalBubbleController({
       getContext: deps.getCtx,
       reconcile: reconcileGalBubble,
-      saveEnabled: saveGalBubbleEnabled
+      saveEnabled: saveGalBubbleEnabled,
+      reloadCurrentChat: (context) => {
+        if (typeof context?.reloadCurrentChat !== "function") throw Object.assign(new Error("\u5F53\u524D\u9152\u9986\u4E0D\u652F\u6301\u81EA\u52A8\u5237\u65B0\u804A\u5929\uFF0C\u8BF7\u624B\u52A8\u5237\u65B0\u5F53\u524D\u804A\u5929"), { code: "reload-unavailable" });
+        return context.reloadCurrentChat();
+      }
     });
     const apiSettings = createApiRequestController({
       runtime,
@@ -20969,13 +21175,17 @@ ${error.message}`);
       cancelCommunityGeneration: deps.cancelCommunityGeneration,
       cancelCalendarTasks: deps.cancelCalendarTasks,
       reloadCalendarStore: deps.reloadCalendarStore,
-      syncGalBubble: (enabled) => {
+      reloadCurrentChat: (context) => {
+        if (typeof context?.reloadCurrentChat !== "function") throw Object.assign(new Error("\u5F53\u524D\u9152\u9986\u4E0D\u652F\u6301\u81EA\u52A8\u5237\u65B0\u804A\u5929\uFF0C\u8BF7\u624B\u52A8\u5237\u65B0\u5F53\u524D\u804A\u5929"), { code: "reload-unavailable" });
+        return context.reloadCurrentChat();
+      },
+      syncGalBubble: async (enabled) => {
         const context = deps.getCtx?.();
         if (!Array.isArray(context?.extensionSettings?.regex) || typeof context.saveSettingsDebounced !== "function") {
           throw new Error("\u5F53\u524D\u9152\u9986\u672A\u63D0\u4F9B\u53EF\u5199\u7684\u5168\u5C40\u6B63\u5219\u5217\u8868\u6216\u8BBE\u7F6E\u4FDD\u5B58\u63A5\u53E3");
         }
-        galBubbleSettings.sync(enabled);
-        return true;
+        const transaction = await galBubbleSettings.sync(enabled);
+        return { ok: true, changed: transaction.result?.changed === true, action: transaction.result?.action, context: transaction.context };
       },
       reloadTodayTrendStore: deps.reloadTodayTrendStore,
       invalidateInteractiveStore: deps.invalidateInteractiveStore,
@@ -22102,14 +22312,15 @@ ${targetInstruction}`
     if (!container?.addEventListener || typeof getStorageId2 !== "function" || typeof getStore !== "function" || typeof committer?.commitScope !== "function" || typeof render !== "function") {
       throw new TypeError("\u4ECA\u65E5\u98CE\u5411\u52A8\u4F5C\u5206\u53D1\u4F9D\u8D56\u65E0\u6548");
     }
-    const view = { name: "world", mode: "content", editingWorldItemId: null, editingCircleId: null, editingFactionId: null, editingEventId: null, editingRule: null, ruleDraft: null, menuOpenId: null };
+    const view = { name: "world", mode: "content", dynamicsTab: "active", editingWorldItemId: null, editingCircleId: null, editingFactionId: null, editingEventId: null, editingRule: null, ruleDraft: null, menuOpenId: null };
     let rerenderEpoch = 0;
     const rerender = async (focus = null) => {
       const epoch = ++rerenderEpoch;
       const result = await render({ ...view, store: await getStore(), storageId: getStorageId2() });
       if (result !== false && focus && epoch === rerenderEpoch) {
         const target = [...container.querySelectorAll?.('button[data-action="today-trend-set-circle-status"]') || []].find((option) => option.dataset.circleId === focus.circleId && option.dataset.status === focus.status);
-        target?.focus?.();
+        const tabTarget = focus.dynamicsTab ? container.querySelector?.(`button[data-action="today-trend-set-dynamics-tab"][data-tab="${focus.dynamicsTab}"]`) : null;
+        (tabTarget || target)?.focus?.();
       }
       return result;
     };
@@ -22131,6 +22342,7 @@ ${targetInstruction}`
     const open = (name, mode = "content") => {
       view.name = name;
       view.mode = mode;
+      view.dynamicsTab = name === "dynamics" ? "active" : view.dynamicsTab;
       view.editingWorldItemId = null;
       view.editingCircleId = null;
       view.editingFactionId = null;
@@ -22141,6 +22353,16 @@ ${targetInstruction}`
       return rerender();
     };
     const keydown = (event) => {
+      const tab = event.target?.closest?.('button[data-action="today-trend-set-dynamics-tab"]');
+      if (tab && container.contains(tab) && !tab.disabled && ["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) {
+        const tabs = [...container.querySelectorAll?.('button[data-action="today-trend-set-dynamics-tab"]') || []];
+        const current = tabs.indexOf(tab);
+        const nextIndex2 = event.key === "Home" ? 0 : event.key === "End" ? tabs.length - 1 : (current + (event.key === "ArrowRight" ? 1 : -1) + tabs.length) % tabs.length;
+        const next2 = tabs[nextIndex2];
+        if (!next2) return;
+        event.preventDefault();
+        return click({ target: next2, dynamicsTabFocus: next2.dataset.tab });
+      }
       const button = event.target?.closest?.('button[data-action="today-trend-set-circle-status"]');
       if (!button || !container.contains(button) || button.disabled) return;
       const group = button.closest?.('[role="radiogroup"]');
@@ -22238,6 +22460,12 @@ ${targetInstruction}`
         return run(rerender());
       }
       if (action === "today-trend-open-dynamics") return run(open("dynamics"));
+      if (action === "today-trend-set-dynamics-tab") {
+        const tab = button.dataset.tab;
+        if (tab !== "active" && tab !== "archived") return;
+        view.dynamicsTab = tab;
+        return run(rerender({ dynamicsTab: event.dynamicsTabFocus || tab }));
+      }
       if (action === "today-trend-open-dynamics-settings") return run(open("dynamics", "settings"));
       if (action === "today-trend-create-event") {
         view.name = "dynamics";
@@ -22315,8 +22543,9 @@ ${targetInstruction}`
       }
       if (form.dataset.todayTrendForm === "world-item") return run(commit((scope) => {
         const item = readWorldItem(form);
-        const items = scope.world.items.filter((current) => current.id !== item.id);
-        return { ...scope, world: { ...scope.world, items: [...items, item] } };
+        const existingIndex = scope.world.items.findIndex((current) => current.id === item.id);
+        const items = existingIndex < 0 ? [...scope.world.items, item] : scope.world.items.map((current, index) => index === existingIndex ? item : current);
+        return { ...scope, world: { ...scope.world, items } };
       }).then(async () => {
         view.editingWorldItemId = null;
         closeMenu();
@@ -22347,10 +22576,10 @@ ${targetInstruction}`
         const existing = scope.dynamics.active.find((item) => item.id === formValue(form, "id"));
         const next = readEvent(form, existing);
         if (existing) {
-          const metadata = { ...existing, title: next.title, origin: next.origin, participants: next.participants };
+          const metadata = { ...existing, title: next.title, origin: next.origin, participants: next.participants, updatedAt: next.updatedAt };
           if (next.type !== existing.type) throw new Error("\u65E2\u6709\u4E8B\u4EF6\u7C7B\u578B\u4E0D\u80FD\u6539\u5199");
-          if (next.latestStage === existing.latestStage && next.stageLabel === existing.stageLabel) {
-            return { ...scope, dynamics: { ...scope.dynamics, active: scope.dynamics.active.map((item) => item.id === existing.id ? metadata : item) } };
+          if (next.latestStage === existing.latestStage) {
+            return { ...scope, dynamics: { ...scope.dynamics, active: scope.dynamics.active.map((item) => item.id === existing.id ? { ...metadata, stageLabel: next.stageLabel } : item) } };
           }
           const advanced = advanceTodayTrendEvent({ ...scope, dynamics: { ...scope.dynamics, active: scope.dynamics.active.map((item) => item.id === existing.id ? metadata : item) } }, existing.id, { stageLabel: next.stageLabel, latestStage: next.latestStage });
           return advanced;
@@ -22417,6 +22646,11 @@ ${targetInstruction}`
   }
 
   // src/today-trend-ui.js
+  var TREND_METER_CLOCK_ICON_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg>';
+  function trendMeter(segments = []) {
+    const body = segments.filter((segment) => segment && segment.label != null && segment.value != null).map(({ label, value }, index) => `${index ? '<span class="pm-today-trend-meter-x" aria-hidden="true">&times;</span>' : ""}<span class="pm-today-trend-meter-k">${escapeHtml(String(label))}</span><span class="pm-today-trend-meter-v">${escapeHtml(String(value))}</span>`).join("");
+    return body ? `<span class="pm-today-trend-meter">${TREND_METER_CLOCK_ICON_SVG}${body}</span>` : "";
+  }
   function trendIconButton({ action, icon: icon3, label, attrs = "", danger = false, className = "" }) {
     return `<button type="button" class="pm-today-trend-icon-button${danger ? " is-danger" : ""}${className ? ` ${className}` : ""}" data-action="${escapeAttr(action)}" aria-label="${escapeAttr(label)}" title="${escapeAttr(label)}" ${attrs}>${icon3}</button>`;
   }
@@ -22435,8 +22669,9 @@ ${targetInstruction}`
     if (!visible) return "";
     return `<span class="pm-today-trend-inline-actions">${actions.map((action) => trendIconButton({ ...action, className: `pm-today-trend-inline-action${action.className ? ` ${action.className}` : ""}` })).join("")}</span>`;
   }
-  function trendModuleHead({ title, menuId, menuOpenId, actions = [], meta = "", eyebrow = "", adornment = "" }) {
-    return `<header class="pm-today-trend-module-head${eyebrow ? " is-decorative" : ""}"><div>${eyebrow ? `<p class="pm-today-trend-module-eyebrow">${escapeHtml(eyebrow)}</p>` : ""}<h2>${escapeHtml(title)}${adornment}</h2>${meta ? `<span>${escapeHtml(meta)}</span>` : ""}</div>${trendActionMenu({ id: menuId, open: menuOpenId === menuId, label: `${title}\u64CD\u4F5C`, actions })}</header>`;
+  function trendModuleHead({ title, menuId, menuOpenId, actions = [], meta = "", metaHtml = "", eyebrow = "", adornment = "" }) {
+    const renderedMeta = metaHtml || (meta ? `<span>${escapeHtml(meta)}</span>` : "");
+    return `<header class="pm-today-trend-module-head${eyebrow ? " is-decorative" : ""}"><div>${eyebrow ? `<p class="pm-today-trend-module-eyebrow">${escapeHtml(eyebrow)}</p>` : ""}<h2>${escapeHtml(title)}${adornment}</h2>${renderedMeta}</div>${trendActionMenu({ id: menuId, open: menuOpenId === menuId, label: `${title}\u64CD\u4F5C`, actions })}</header>`;
   }
   function trendRuleEditor({ rule, value = "" } = {}) {
     if (!rule) return "";
@@ -22452,6 +22687,31 @@ ${targetInstruction}`
   var text7 = (value) => escapeHtml(String(value || ""));
   var icon2 = (action, glyph, label, attrs = "", danger = false) => ({ action, icon: glyph, label, attrs, danger });
   var outcomes = (selected, rumor) => Object.entries(OUTCOMES).filter(([key]) => rumor ? ["confirmed", "debunked"].includes(key) : ["resolved", "failed", "terminated", "inconclusive"].includes(key)).map(([key, label]) => `<option value="${key}"${key === selected ? " selected" : ""}>${label}</option>`).join("");
+  var SVG = (body, className = "") => `<svg class="${className}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${body}</svg>`;
+  var EVENT_ICONS = Object.freeze({
+    location: SVG('<path d="M20 10c0 5-8 11-8 11S4 15 4 10a8 8 0 1 1 16 0z"/><circle cx="12" cy="10" r="2.5"/>'),
+    signal: SVG('<path d="M5 9.5a10 10 0 0 1 14 0M8 13a6 6 0 0 1 8 0M11 16.5a2 2 0 0 1 2 0"/><circle cx="12" cy="19" r="1" fill="currentColor" stroke="none"/>'),
+    rumor: SVG('<path d="M4 5h16v11H8l-4 4z"/><path d="M8 9h8M8 12h5"/>'),
+    document: SVG('<path d="M5 5h14v14H5z"/><path d="M8 9h8M8 12h8M8 15h5"/>'),
+    incident: SVG('<path d="m13 2-8 12h6l-1 8 8-12h-6z"/>'),
+    normal: SVG('<circle cx="12" cy="12" r="8"/><path d="M8 12h8M12 8v8"/>'),
+    underground: SVG('<path d="M4 7h16M6 7v10h12V7M9 17v3h6v-3"/><path d="M9 11h6"/>')
+  });
+  function eventIcon(event) {
+    const title = String(event.title || "");
+    if (/航线|区域|地点|港|城/.test(title)) return EVENT_ICONS.location;
+    if (/联络|窗口|信号|协作/.test(title)) return EVENT_ICONS.signal;
+    if (/传闻|流言/.test(title)) return EVENT_ICONS.rumor;
+    if (/公告|签署/.test(title)) return EVENT_ICONS.document;
+    return EVENT_ICONS[event.type] || EVENT_ICONS.normal;
+  }
+  function badge(event) {
+    const labels = { incident: "\u7A81\u53D1", rumor: "\u6D41\u8A00", underground: "\u5730\u4E0B\u7EBF" };
+    return labels[event.type] ? `<span class="pm-today-trend-event-badge">${labels[event.type]}</span>` : "";
+  }
+  function pill(event, archived, state) {
+    return `<span class="pm-today-trend-event-pill${archived ? "" : " is-live"}">${!archived ? '<i aria-hidden="true"></i>' : ""}${text7(state)}</span>`;
+  }
   function eventForm(event = {}, kind = "event") {
     const fields = kind === "archive" ? `<label class="pm-today-trend-field">\u5B8C\u7ED3\u7ED3\u679C<select class="pm-today-trend-input" name="outcome">${outcomes(event.type === "rumor" ? "confirmed" : "resolved", event.type === "rumor")}</select></label><label class="pm-today-trend-field">\u6700\u7EC8\u7ED3\u679C<textarea class="pm-today-trend-input" name="finalResult" maxlength="600" required></textarea></label>` : `<label class="pm-today-trend-field">\u540D\u79F0<input class="pm-today-trend-input" name="title" maxlength="120" required value="${escapeAttr(event.title || "")}"></label><label class="pm-today-trend-field">\u7C7B\u578B<select class="pm-today-trend-input" name="type">${Object.entries(TYPES).map(([key, label]) => `<option value="${key}"${key === (event.type || "normal") ? " selected" : ""}>${label}</option>`).join("")}</select></label><label class="pm-today-trend-field">\u9636\u6BB5<input class="pm-today-trend-input" name="stageLabel" maxlength="8" required value="${escapeAttr(event.stageLabel || "\u51C6\u5907\u4E2D")}"></label><label class="pm-today-trend-field">\u8D77\u56E0<textarea class="pm-today-trend-input" name="origin" maxlength="600" required>${text7(event.origin || "")}</textarea></label><label class="pm-today-trend-field">\u6D89\u53CA\u4E3B\u4F53<input class="pm-today-trend-input" name="participants" maxlength="600" value="${escapeAttr((event.participants || []).join("\u3001"))}"></label><label class="pm-today-trend-field">\u6700\u65B0\u9636\u6BB5<textarea class="pm-today-trend-input" name="latestStage" maxlength="600" required>${text7(event.latestStage || "")}</textarea></label>`;
     return `<form class="pm-today-trend-editor" data-today-trend-form="${kind === "archive" ? "event-archive" : kind === "promotion" ? "event-promotion" : "event"}">${kind === "promotion" ? `<input type="hidden" name="sourceEventId" value="${escapeAttr(event.id || "")}">` : `<input type="hidden" name="id" value="${escapeAttr(event.id || "")}">`}${fields}<div class="pm-today-trend-form-actions"><button type="button" data-action="today-trend-cancel-event-editor">\u53D6\u6D88</button><button type="submit">${kind === "archive" ? "\u786E\u8BA4\u5F52\u6863" : kind === "promotion" ? "\u786E\u8BA4\u5347\u7EA7" : "\u4FDD\u5B58"}</button></div></form>`;
@@ -22463,9 +22723,11 @@ ${targetInstruction}`
     const state = archived ? OUTCOMES[event.outcome] || event.outcome : event.stageLabel;
     const actions = archived ? [icon2("today-trend-delete-event", TRASH_ICON_SVG, `\u5220\u9664${event.title}`, `data-event-id="${escapeAttr(event.id)}"`, true)] : [icon2("today-trend-edit-event", EDIT_ICON_SVG, `\u7F16\u8F91${event.title}`, `data-event-id="${escapeAttr(event.id)}"`), ...event.type === "underground" ? [icon2("today-trend-promote-underground", SPARKLES_ICON_SVG, `\u5347\u7EA7${event.title}`, `data-event-id="${escapeAttr(event.id)}"`)] : [], icon2("today-trend-archive-event", TRASH_ICON_SVG, `\u5F52\u6863${event.title}`, `data-event-id="${escapeAttr(event.id)}"`)];
     const stages = Array.isArray(event.stages) ? event.stages : [];
-    return `<article class="pm-today-trend-event-card${archived ? " is-archived" : ""}" data-event-type="${escapeAttr(event.type)}"><span class="pm-today-trend-event-marker" aria-hidden="true"></span><div class="pm-today-trend-event-body"><header><div><b>${text7(event.title)}</b><span>${text7(TYPES[event.type] || event.type)}\uFF5C${text7(state)}</span></div>${trendInlineActions({ visible: actionsVisible, actions })}</header><dl class="pm-today-trend-event-facts"><div><dt>\u8D77\u56E0</dt><dd>${text7(event.origin)}</dd></div><div><dt>\u6D89\u53CA\u4E3B\u4F53</dt><dd>${text7(event.participants.join("\u3001") || "\u672A\u8BB0\u5F55")}</dd></div></dl><details class="pm-today-trend-event-history"><summary>\u9636\u6BB5\u8BB0\u5F55\uFF08${stages.length}\uFF09</summary><ol>${stages.map((stage) => `<li>${text7(stage)}</li>`).join("")}</ol></details><p class="pm-today-trend-event-latest"><strong>${archived ? "\u6700\u7EC8\u7ED3\u679C" : "\u6700\u65B0\u9636\u6BB5"}</strong><span>${text7(archived ? event.finalResult : event.latestStage)}</span></p></div></article>`;
+    const stageList = stages.map((stage, index) => `<li${!archived && index === stages.length - 1 ? ' class="is-current"' : ""}><span class="pm-today-trend-stage-tag">${!archived && index === stages.length - 1 ? "\u6700\u65B0\u9636\u6BB5" : `\u9636\u6BB5 ${String(index + 1).padStart(2, "0")}`}</span>${text7(stage)}</li>`).join("");
+    const history = archived ? `<details class="pm-today-trend-event-history"><summary>\u9636\u6BB5\u8BB0\u5F55\uFF08${stages.length}\uFF09</summary><ol>${stageList}</ol></details>` : `<ol class="pm-today-trend-event-history is-live">${stageList}</ol>`;
+    return `<article class="pm-today-trend-event-card${archived ? " is-archived" : ""}" data-event-type="${escapeAttr(event.type)}"><span class="pm-today-trend-event-marker" aria-hidden="true">${eventIcon(event)}</span><div class="pm-today-trend-event-body"><header><div class="pm-today-trend-event-heading"><b>${text7(event.title)}</b><span class="pm-today-trend-event-tags">${badge(event)}${pill(event, archived, state)}</span></div>${trendInlineActions({ visible: actionsVisible, actions })}</header><dl class="pm-today-trend-event-facts"><div><dt>\u8D77\u56E0</dt><dd>${text7(event.origin)}</dd></div><div><dt>\u4E3B\u4F53</dt><dd>${text7(event.participants.join("\u3001") || "\u672A\u8BB0\u5F55")}</dd></div></dl>${history}${archived ? `<div class="pm-today-trend-event-latest"><strong>\u6700\u7EC8\u7ED3\u679C</strong><span>${text7(event.finalResult)}</span></div>` : ""}</div></article>`;
   }
-  function renderTodayTrendDynamicsView({ scope, preset = null, editingEventId = null, editingRule = null, ruleDraft = null, mode = "content", menuOpenId = null, generationAvailable = false, generationBusy = false } = {}) {
+  function renderTodayTrendDynamicsView({ scope, preset = null, editingEventId = null, editingRule = null, ruleDraft = null, mode = "content", dynamicsTab = "active", menuOpenId = null, generationAvailable = false, generationBusy = false } = {}) {
     if (!scope) return '<p class="pm-today-trend-empty">\u5F53\u524D\u804A\u5929\u5C1A\u672A\u521D\u59CB\u5316\u4ECA\u65E5\u98CE\u5411\u3002</p>';
     const attrs = `${generationAvailable && !generationBusy ? "" : "disabled"} aria-busy="${generationBusy}"`;
     if (mode === "settings") return `<section class="pm-today-trend-view">${trendModuleHead({ title: "\u4E8B\u4EF6\u8FFD\u8E2A\u8BBE\u7F6E", menuId: "dynamics-settings", menuOpenId, actions: [icon2("today-trend-open-dynamics", BACK_ICON_SVG, "\u8FD4\u56DE\u4E8B\u4EF6\u8FFD\u8E2A")] })}${settingsForm(scope.dynamicsSettings)}</section>`;
@@ -22481,8 +22743,13 @@ ${targetInstruction}`
     const editor2 = editingRule === "dynamics" ? trendRuleEditor({ rule: editingRule, value: ruleDraft ?? preset?.moduleRules?.dynamics ?? "" }) : "";
     const activeCount = scope.dynamics.active.length;
     const archivedCount = scope.dynamics.archived.length;
-    const trackerMeta = `${activeCount} \u6761\u6B63\u5728\u8FFD\u8E2A\uFF5C\u4E0A\u9650 ${scope.dynamicsSettings.trackingLimit}${archivedCount ? `\uFF5C${archivedCount} \u6761\u5DF2\u5B8C\u7ED3` : ""}`;
-    return `<section class="pm-today-trend-view pm-today-trend-dynamics">${trendModuleHead({ title: "\u4E8B\u4EF6\u8FFD\u8E2A", eyebrow: "EVENT TRACKER", meta: trackerMeta, menuId: "dynamics-module", menuOpenId, actions: [icon2("today-trend-advance-all-events", REFRESH_ICON_SVG, "\u91CD\u65B0\u751F\u6210\u4E8B\u4EF6\u8FFD\u8E2A", attrs), icon2("today-trend-edit-dynamics-rule", BOOK_ICON_SVG, "\u7F16\u8F91\u4E8B\u4EF6\u8FFD\u8E2A Prompt"), icon2("today-trend-open-dynamics-settings", SETTINGS_ICON_SVG, "\u4E8B\u4EF6\u8FFD\u8E2A\u8BBE\u7F6E")], adornment: '<span class="pm-today-trend-dynamics-target" aria-hidden="true"><svg viewBox="-58 -58 116 116" fill="none" stroke="currentColor"><defs><radialGradient id="pm-today-trend-dynamics-target-glow"><stop stop-color="currentColor" stop-opacity=".22"/><stop offset=".46" stop-color="currentColor" stop-opacity=".11"/><stop offset=".8" stop-color="currentColor" stop-opacity=".025"/><stop offset="1" stop-color="currentColor" stop-opacity="0"/></radialGradient></defs><circle r="58" fill="url(#pm-today-trend-dynamics-target-glow)" stroke="none"/><circle r="48" stroke-width=".5" stroke-dasharray="2 3" opacity=".16"/><circle r="34" stroke-width=".5" stroke-dasharray="12 4" opacity=".14"/><circle r="20" stroke-width=".75" opacity=".2"/><path d="M-58 0H58M0-58V58" stroke-width=".5" opacity=".12"/><path d="M-14-43A45 45 0 0 1 32-31M42 14A45 45 0 0 1 13 43M-38 24A45 45 0 0 1-43-12" stroke-width="1" opacity=".21"/><circle r="3" fill="currentColor" stroke="none" opacity=".28"/></svg></span>' })}${editor2}<section class="pm-today-trend-dynamics-section" aria-labelledby="pm-today-trend-active-title"><h3 id="pm-today-trend-active-title">\u6B63\u5728\u8FFD\u8E2A</h3><div class="pm-today-trend-event-list${activeCount ? " has-events" : ""}">${active}</div></section><section class="pm-today-trend-dynamics-section" aria-labelledby="pm-today-trend-archived-title"><h3 id="pm-today-trend-archived-title">\u5DF2\u5B8C\u7ED3</h3><div class="pm-today-trend-event-list is-archived${archivedCount ? " has-events" : ""}">${archived}</div></section>${generationBusy ? '<span class="pm-today-trend-progress">\u6B63\u5728\u751F\u6210\u2026</span>' : ""}</section>`;
+    const tab = dynamicsTab === "archived" ? "archived" : "active";
+    const title = tab === "archived" ? "\u4E8B\u4EF6\u5F52\u6863" : "\u4E8B\u4EF6\u8FFD\u8E2A";
+    const trackerMeta = trendMeter(tab === "archived" ? [{ label: "DONE", value: archivedCount }, { label: "TOTAL", value: activeCount + archivedCount }] : [{ label: "LIVE", value: activeCount }, { label: "MAX", value: scope.dynamicsSettings.trackingLimit }]);
+    const tabSwitch = `<div class="pm-today-trend-dynamics-tabs" role="tablist" aria-label="\u4E8B\u4EF6\u8FFD\u8E2A\u72B6\u6001"><button id="pm-today-trend-active-tab" type="button" role="tab" data-action="today-trend-set-dynamics-tab" data-tab="active" aria-selected="${tab === "active"}" aria-controls="pm-today-trend-active-panel" tabindex="${tab === "active" ? "0" : "-1"}">\u6B63\u5728\u8FFD\u8E2A</button><button id="pm-today-trend-archived-tab" type="button" role="tab" data-action="today-trend-set-dynamics-tab" data-tab="archived" aria-selected="${tab === "archived"}" aria-controls="pm-today-trend-archived-panel" tabindex="${tab === "archived" ? "0" : "-1"}">\u5DF2\u5B8C\u7ED3</button></div>`;
+    const activePanel = `<section id="pm-today-trend-active-panel" class="pm-today-trend-dynamics-section${tab === "active" ? "" : " is-hidden"}" role="tabpanel" aria-labelledby="pm-today-trend-active-tab"${tab === "active" ? "" : " hidden"}><h3 id="pm-today-trend-active-title">\u6B63\u5728\u8FFD\u8E2A</h3><div class="pm-today-trend-event-list${activeCount ? " has-events" : ""}">${active}</div></section>`;
+    const archivedPanel = `<section id="pm-today-trend-archived-panel" class="pm-today-trend-dynamics-section${tab === "archived" ? "" : " is-hidden"}" role="tabpanel" aria-labelledby="pm-today-trend-archived-tab"${tab === "archived" ? "" : " hidden"}><h3 id="pm-today-trend-archived-title">\u5DF2\u5B8C\u7ED3</h3><div class="pm-today-trend-event-list is-archived${archivedCount ? " has-events" : ""}">${archived}</div></section>`;
+    return `<section class="pm-today-trend-view pm-today-trend-dynamics">${trendModuleHead({ title, eyebrow: "EVENT TRACKER", metaHtml: trackerMeta, menuId: "dynamics-module", menuOpenId, actions: [icon2("today-trend-advance-all-events", REFRESH_ICON_SVG, "\u91CD\u65B0\u751F\u6210\u4E8B\u4EF6\u8FFD\u8E2A", attrs), icon2("today-trend-edit-dynamics-rule", BOOK_ICON_SVG, "\u7F16\u8F91\u4E8B\u4EF6\u8FFD\u8E2A Prompt"), icon2("today-trend-open-dynamics-settings", SETTINGS_ICON_SVG, "\u4E8B\u4EF6\u8FFD\u8E2A\u8BBE\u7F6E")], adornment: '<span class="pm-today-trend-dynamics-target" aria-hidden="true"><svg viewBox="-58 -58 116 116" fill="none" stroke="currentColor"><defs><radialGradient id="pm-today-trend-dynamics-target-glow"><stop stop-color="currentColor" stop-opacity=".22"/><stop offset=".46" stop-color="currentColor" stop-opacity=".11"/><stop offset=".8" stop-color="currentColor" stop-opacity=".025"/><stop offset="1" stop-color="currentColor" stop-opacity="0"/></radialGradient></defs><circle r="58" fill="url(#pm-today-trend-dynamics-target-glow)" stroke="none"/><circle r="48" stroke-width=".5" stroke-dasharray="2 3" opacity=".16"/><circle r="34" stroke-width=".5" stroke-dasharray="12 4" opacity=".14"/><circle r="20" stroke-width=".75" opacity=".2"/><path d="M-58 0H58M0-58V58" stroke-width=".5" opacity=".12"/><path d="M-14-43A45 45 0 0 1 32-31M42 14A45 45 0 0 1 13 43M-38 24A45 45 0 0 1-43-12" stroke-width="1" opacity=".21"/><circle r="3" fill="currentColor" stroke="none" opacity=".28"/></svg></span>' })}${editor2}${tabSwitch}${activePanel}${archivedPanel}${generationBusy ? '<span class="pm-today-trend-progress">\u6B63\u5728\u751F\u6210\u2026</span>' : ""}</section>`;
   }
 
   // src/today-trend-faction-view.js
@@ -22519,13 +22786,24 @@ ${targetInstruction}`
   }
 
   // src/today-trend-reputation-view.js
-  var REPUTATION_LEVELS = Object.freeze(["hostile", "dislike", "neutral", "like", "trust"]);
+  var REPUTATION_LEVELS = Object.freeze(["trust", "like", "neutral", "dislike", "hostile"]);
   var reputationStatusLabel = (status) => status === "like" ? "\u559C\u7231" : todayTrendStatusLabel(status);
+  var GOOD_STATUSES = /* @__PURE__ */ new Set(["like", "trust"]);
+  var BAD_STATUSES = /* @__PURE__ */ new Set(["hostile", "dislike"]);
+  var REPUTATION_ICONS = Object.freeze({
+    hostile: '<path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><path d="m5 5 14 14"/>',
+    dislike: '<path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="2.6"/>',
+    neutral: '<circle cx="8" cy="8" r="2.6"/><circle cx="16" cy="8" r="2.6"/><path d="M4 19c0-3 1.8-5 4-5s4 2 4 5M12 19c0-3 1.8-5 4-5s4 2 4 5"/>',
+    like: '<path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="2.6"/>',
+    trust: '<path d="M12 3l7 3v5c0 4.4-3 7.8-7 9-4-1.2-7-4.6-7-9V6z"/><path d="m9 12 2 2 4-4.5"/>'
+  });
   var statusBadge = (status) => `<span class="pm-today-trend-status" data-status="${escapeAttr(status)}">${escapeHtml(reputationStatusLabel(status))}</span>`;
-  var reportNumber = (index) => String(index + 1).padStart(2, "0");
+  var reputationMark = (status) => `<span class="pm-today-trend-reputation-mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">${REPUTATION_ICONS[status] || REPUTATION_ICONS.neutral}</svg></span>`;
+  var reputationHeadArt = '<span class="pm-today-trend-reputation-head-art" aria-hidden="true"><svg viewBox="0 0 120 120" fill="none" stroke="currentColor" stroke-width="1" vector-effect="non-scaling-stroke"><circle cx="60" cy="60" r="57" stroke-dasharray="1 4" opacity=".6"/><circle cx="60" cy="60" r="44" stroke-dasharray="2 3" opacity=".5"/><circle cx="60" cy="60" r="30"/><path d="M60 18v8M60 94v8M18 60h8M94 60h8"/><circle cx="60" cy="52" r="9" fill="currentColor" stroke="none" opacity=".5"/><path d="M44 78c3-9 8-13 16-13s13 4 16 13" fill="currentColor" stroke="none" opacity=".5"/></svg></span>';
+  var reputationFootArt = '<div class="pm-today-trend-reputation-foot-art" aria-hidden="true"><svg viewBox="0 0 390 128" fill="none" stroke="currentColor" preserveAspectRatio="xMidYMid meet" vector-effect="non-scaling-stroke"><g stroke-width=".9"><path d="M70 64H166" opacity=".4"/><path d="M224 64H320" opacity=".4"/><circle cx="70" cy="64" r="1.4" fill="currentColor" stroke="none" opacity=".32"/><circle cx="320" cy="64" r="1.4" fill="currentColor" stroke="none" opacity=".32"/></g><circle cx="195" cy="64" r="16.5" stroke-width=".9" opacity=".5"/><circle cx="195" cy="64" r="10" stroke-width="1" opacity=".6"/><g stroke-width="1" stroke-linecap="round" opacity=".6"><path d="M195 43V57M195 71V85"/><path d="M174 64H188M202 64H216"/></g><circle cx="195" cy="64" r="1.3" fill="currentColor" stroke="none" opacity=".75"/><text x="195" y="112" text-anchor="middle" fill="currentColor" stroke="none" font-family="ui-monospace,monospace" font-size="8" letter-spacing="4" opacity=".5">\u62A5 \u544A \u81F3 \u6B64</text></svg></div>';
   function reputationMeter(circle, disabled) {
     const label = reputationStatusLabel(circle.status);
-    const levels = REPUTATION_LEVELS.map((level) => `<button type="button" class="${level === circle.status ? "is-active" : ""}" data-action="today-trend-set-circle-status" data-circle-id="${escapeAttr(circle.id)}" data-status="${level}" aria-checked="${level === circle.status}" role="radio" tabindex="${level === circle.status ? "0" : "-1"}"${disabled ? " disabled" : ""}><i aria-hidden="true"></i><span>${escapeHtml(reputationStatusLabel(level))}</span></button>`).join("");
+    const levels = REPUTATION_LEVELS.map((level) => `<button type="button" class="${level === circle.status ? "is-active" : ""}" data-action="today-trend-set-circle-status" data-circle-id="${escapeAttr(circle.id)}" data-status="${level}" aria-checked="${level === circle.status}" role="radio" tabindex="${level === circle.status ? "0" : "-1"}" aria-label="${escapeAttr(reputationStatusLabel(level))}"${disabled ? " disabled" : ""}><i aria-hidden="true"></i></button>`).join("");
     return `<div class="pm-today-trend-reputation-meter" role="radiogroup" aria-label="\u4FEE\u6539${escapeAttr(circle.name)}\u7684\u597D\u611F\u5EA6\uFF0C\u5F53\u524D\uFF1A${escapeAttr(label)}">${levels}</div>`;
   }
   function circleEditor(circle = {}, cancelAction = "today-trend-cancel-editor") {
@@ -22547,9 +22825,12 @@ ${targetInstruction}`
       return `<section class="pm-today-trend-view">${trendModuleHead({ title: "\u4E2A\u4EBA\u98CE\u8BC4\u8BBE\u7F6E", menuId: "reputation-settings", menuOpenId, actions: [{ action: "today-trend-open-reputation", icon: BACK_ICON_SVG, label: "\u8FD4\u56DE\u4E2A\u4EBA\u98CE\u8BC4" }, { action: "today-trend-add-circle", icon: SPARKLES_ICON_SVG, label: "\u6DFB\u52A0\u5708\u5C42" }] })}${rows2 || '<p class="pm-today-trend-empty">\u5C1A\u672A\u5EFA\u7ACB\u98CE\u8BC4\u5708\u5C42\u3002</p>'}${editingCircleId === "__new__" ? circleEditor() : ""}</section>`;
     }
     const actionsVisible = menuOpenId === "reputation-module";
-    const rows = circles.map((circle, index) => editingCircleId === circle.id ? `<article class="pm-today-trend-reputation-entry is-editing" data-circle-id="${escapeAttr(circle.id)}">${circleEditor(circle, "today-trend-cancel-reputation-editor")}</article>` : `<article class="pm-today-trend-reputation-entry" data-circle-id="${escapeAttr(circle.id)}"><span class="pm-today-trend-reputation-index" aria-hidden="true"><span>${reportNumber(index)}</span><i></i></span><div class="pm-today-trend-reputation-copy"><header><b>${escapeHtml(circle.name)}</b>${statusBadge(circle.status)}${trendInlineActions({ visible: actionsVisible, actions: [{ action: "today-trend-edit-circle", icon: EDIT_ICON_SVG, label: `\u7F16\u8F91${circle.name}`, attrs: `data-circle-id="${escapeAttr(circle.id)}"` }] })}</header><p>${escapeHtml(circle.evaluation)}</p></div>${reputationMeter(circle, generationBusy)}</article>`).join("");
+    const goodCount = circles.filter((circle) => GOOD_STATUSES.has(circle.status)).length;
+    const badCount = circles.filter((circle) => BAD_STATUSES.has(circle.status)).length;
+    const metaHtml = trendMeter([{ label: "PEOPLE", value: circles.length }, { label: "GOOD", value: goodCount }, { label: "BAD", value: badCount }]);
+    const rows = circles.map((circle) => editingCircleId === circle.id ? `<article class="pm-today-trend-reputation-entry is-editing" data-circle-id="${escapeAttr(circle.id)}">${circleEditor(circle, "today-trend-cancel-reputation-editor")}</article>` : `<article class="pm-today-trend-reputation-entry" data-circle-id="${escapeAttr(circle.id)}">${reputationMark(circle.status)}<div class="pm-today-trend-reputation-copy"><header><b>${escapeHtml(circle.name)}</b>${trendInlineActions({ visible: actionsVisible, actions: [{ action: "today-trend-edit-circle", icon: EDIT_ICON_SVG, label: `\u7F16\u8F91${circle.name}`, attrs: `data-circle-id="${escapeAttr(circle.id)}"` }] })}</header><p>${escapeHtml(circle.evaluation)}</p></div><div class="pm-today-trend-reputation-rating">${statusBadge(circle.status)}${reputationMeter(circle, generationBusy)}</div></article>`).join("");
     const editor2 = editingRule === "reputation" ? trendRuleEditor({ rule: editingRule, value: ruleDraft ?? preset?.moduleRules?.reputation ?? "" }) : "";
-    return `<section class="pm-today-trend-view pm-today-trend-reputation">${trendModuleHead({ title: "\u4E2A\u4EBA\u98CE\u8BC4", eyebrow: "PUBLIC OPINION", menuId: "reputation-module", menuOpenId, actions: [{ action: "today-trend-generate-reputation", icon: REFRESH_ICON_SVG, label: "\u91CD\u65B0\u751F\u6210\u4E2A\u4EBA\u98CE\u8BC4", attrs: generateAttrs }, { action: "today-trend-edit-reputation-rule", icon: BOOK_ICON_SVG, label: "\u7F16\u8F91\u4E2A\u4EBA\u98CE\u8BC4 Prompt" }] })}${editor2}<div class="pm-today-trend-reputation-list">${rows || '<p class="pm-today-trend-empty">\u5C1A\u672A\u751F\u6210\u4E2A\u4EBA\u98CE\u8BC4\u3002</p>'}</div>${generationBusy ? '<span class="pm-today-trend-progress">\u6B63\u5728\u751F\u6210\u2026</span>' : ""}</section>`;
+    return `<section class="pm-today-trend-view pm-today-trend-reputation">${trendModuleHead({ title: "\u4E2A\u4EBA\u98CE\u8BC4", eyebrow: "PUBLIC OPINION", metaHtml, menuId: "reputation-module", menuOpenId, actions: [{ action: "today-trend-generate-reputation", icon: REFRESH_ICON_SVG, label: "\u91CD\u65B0\u751F\u6210\u4E2A\u4EBA\u98CE\u8BC4", attrs: generateAttrs }, { action: "today-trend-edit-reputation-rule", icon: BOOK_ICON_SVG, label: "\u7F16\u8F91\u4E2A\u4EBA\u98CE\u8BC4 Prompt" }] })}${reputationHeadArt}<span class="pm-today-trend-reputation-file-no" aria-hidden="true">\u300CPRS-240502\u300D</span>${editor2}<div class="pm-today-trend-reputation-list">${rows || '<p class="pm-today-trend-empty">\u5C1A\u672A\u751F\u6210\u4E2A\u4EBA\u98CE\u8BC4\u3002</p>'}</div>${reputationFootArt}${generationBusy ? '<span class="pm-today-trend-progress">\u6B63\u5728\u751F\u6210\u2026</span>' : ""}</section>`;
   }
 
   // src/today-trend-settings-view.js
@@ -22589,9 +22870,9 @@ ${targetInstruction}`
       return `<article class="pm-today-trend-world-brief ${side}" data-world-item-id="${escapeAttr(item.id)}">${signalMarker}<div><header class="pm-today-trend-world-item-head"><b>${escapeHtml(item.name)}</b>${itemActions(item, generateAttrs, actionsVisible)}</header>${body}</div></article>`;
     }).join("");
     const editor2 = editingRule === "world" ? trendRuleEditor({ rule: editingRule, value: ruleDraft ?? preset?.moduleRules?.world ?? "" }) : "";
-    const worldMeta = items.length ? `${items.length} \u9879\u6001\u52BF\uFF5C${Math.max(items.length - 1, 0)} \u6761\u6458\u8981\u4FE1\u53F7` : "\u7B49\u5F85\u751F\u6210\u4E16\u754C\u6001\u52BF";
+    const worldMeta = trendMeter([{ label: "SIGNALS", value: items.length }, { label: "BRIEFS", value: Math.max(items.length - 1, 0) }]);
     const content = hero ? `<article class="pm-today-trend-world-hero${signals ? " has-signals" : ""}" data-world-item-id="${escapeAttr(hero.id)}">${signalMarker}<div><header class="pm-today-trend-world-item-head"><b>${escapeHtml(hero.name)}</b>${itemActions(hero, generateAttrs, actionsVisible)}</header>${heroBody}</div></article>${signals ? `<div class="pm-today-trend-world-signals">${signals}</div>` : ""}` : '<p class="pm-today-trend-empty">\u5C1A\u672A\u751F\u6210\u4E16\u754C\u6001\u52BF\u3002</p>';
-    return `<section class="pm-today-trend-view pm-today-trend-world"><span class="pm-today-trend-world-grid" aria-hidden="true"></span>${trendModuleHead({ title: "\u4E16\u754C\u6001\u52BF", eyebrow: "TODAY\u2019S SIGNAL", meta: worldMeta, menuId: "world-module", menuOpenId, actions: [{ action: "today-trend-generate-world", icon: REFRESH_ICON_SVG, label: "\u91CD\u65B0\u751F\u6210\u4E16\u754C\u6001\u52BF", attrs: generateAttrs }, { action: "today-trend-edit-world-rule", icon: BOOK_ICON_SVG, label: "\u7F16\u8F91\u4E16\u754C\u6001\u52BF Prompt" }] })}${editor2}${content}${generationBusy ? '<span class="pm-today-trend-progress">\u6B63\u5728\u751F\u6210\u2026</span>' : ""}</section>`;
+    return `<section class="pm-today-trend-view pm-today-trend-world"><span class="pm-today-trend-world-grid" aria-hidden="true"></span>${trendModuleHead({ title: "\u4E16\u754C\u6001\u52BF", eyebrow: "TODAY\u2019S SIGNAL", metaHtml: worldMeta, menuId: "world-module", menuOpenId, actions: [{ action: "today-trend-generate-world", icon: REFRESH_ICON_SVG, label: "\u91CD\u65B0\u751F\u6210\u4E16\u754C\u6001\u52BF", attrs: generateAttrs }, { action: "today-trend-edit-world-rule", icon: BOOK_ICON_SVG, label: "\u7F16\u8F91\u4E16\u754C\u6001\u52BF Prompt" }] })}${editor2}${content}${generationBusy ? '<span class="pm-today-trend-progress">\u6B63\u5728\u751F\u6210\u2026</span>' : ""}</section>`;
   }
 
   // src/today-trend-view.js
@@ -22621,7 +22902,7 @@ ${targetInstruction}`
   function renderTodayTrendApp({ scope = null, presets = [], worldBooks = [], view = { name: "world", mode: "content" }, generation = {}, error = null, initializing = false, initializationDraft, initializationOpen = false, reinitializing = false } = {}) {
     const busy = ["queued", "generating", "parsing", "committing"].includes(generation.phase);
     const preset = presets.find((item) => item.id === scope?.presetId) || null;
-    const content = !scope || initializationOpen ? renderFirstUse({ presets, worldBooks, error, initializing, draft: initializationDraft, reinitializing }) : view.name === "settings" ? `<main class="pm-today-trend-content">${renderTodayTrendSettingsView({ scope, presets, generationBusy: busy, menuOpenId: view.menuOpenId })}</main>` : `<main class="pm-today-trend-content${view.mode === "content" ? ` is-${view.name}` : ""}">${moduleView(view, { scope, preset, mode: view.mode, editingWorldItemId: view.editingWorldItemId, editingCircleId: view.editingCircleId, editingFactionId: view.editingFactionId, editingEventId: view.editingEventId, editingRule: view.editingRule, ruleDraft: view.ruleDraft, menuOpenId: view.menuOpenId, generationAvailable: !busy, generationBusy: busy })}</main>`;
+    const content = !scope || initializationOpen ? renderFirstUse({ presets, worldBooks, error, initializing, draft: initializationDraft, reinitializing }) : view.name === "settings" ? `<main class="pm-today-trend-content">${renderTodayTrendSettingsView({ scope, presets, generationBusy: busy, menuOpenId: view.menuOpenId })}</main>` : `<main class="pm-today-trend-content${view.mode === "content" ? ` is-${view.name}` : ""}">${moduleView(view, { scope, preset, mode: view.mode, dynamicsTab: view.dynamicsTab, editingWorldItemId: view.editingWorldItemId, editingCircleId: view.editingCircleId, editingFactionId: view.editingFactionId, editingEventId: view.editingEventId, editingRule: view.editingRule, ruleDraft: view.ruleDraft, menuOpenId: view.menuOpenId, generationAvailable: !busy, generationBusy: busy })}</main>`;
     const navigation = scope && !initializationOpen ? `<nav class="pm-today-trend-tabs${view.name === "world" ? " is-world" : ""}" aria-label="\u4ECA\u65E5\u98CE\u5411\u6A21\u5757">${[["world", "\u4E16\u754C\u6001\u52BF", TODAY_TREND_WORLD_ICON_SVG], ["reputation", "\u4E2A\u4EBA\u98CE\u8BC4", TODAY_TREND_REPUTATION_ICON_SVG], ["faction", "\u52BF\u529B\u56FE\u8C31", TODAY_TREND_FACTION_ICON_SVG], ["dynamics", "\u4E8B\u4EF6\u8FFD\u8E2A", TODAY_TREND_DYNAMICS_ICON_SVG]].map(([name, label, icon3]) => `<button type="button" data-action="today-trend-open-${name === "faction" ? "factions" : name}" aria-label="${label}" aria-pressed="${view.name === name}">${icon3}</button>`).join("")}<button type="button" data-action="today-trend-open-settings" aria-label="APP \u603B\u8BBE\u7F6E" aria-pressed="${view.name === "settings"}">${MORE_ICON_SVG}</button></nav>` : "";
     return `<section id="pm-today-trend-app" class="pm-today-trend-shell" aria-labelledby="pm-today-trend-title"><header class="pm-today-trend-header"><button type="button" class="pm-today-trend-home" data-today-trend-ui-action="home" aria-label="\u8FD4\u56DE\u684C\u9762" title="\u8FD4\u56DE\u684C\u9762">${HOME_ICON_SVG}</button><h2 id="pm-today-trend-title">\u4ECA\u65E5\u98CE\u5411</h2><span class="pm-today-trend-header-actions"><button type="button" class="pm-today-trend-header-control" data-action="today-trend-toggle-operation" ${!scope || busy ? "disabled" : ""} aria-pressed="${scope?.operation?.enabled === true}" aria-label="${scope?.operation?.enabled ? "\u6682\u505C\u8FD0\u4F5C" : "\u5F00\u59CB\u8FD0\u4F5C"}">${scope?.operation?.enabled ? PAUSE_ICON_SVG : PLAY_ICON_SVG}</button><button type="button" class="pm-today-trend-close" data-today-trend-ui-action="close" aria-label="\u5173\u95ED\u624B\u673A" title="\u5173\u95ED\u624B\u673A">${CLOSE_ICON_SVG}</button></span></header>${content}${navigation}</section>`;
   }
@@ -22920,7 +23201,7 @@ ${targetInstruction}`
       context ? () => context : getCtx,
       options2
     );
-    const deps = { runtime, getCtx, getStorageId: getStorageId2, getUserPersona: getUserPersona2, gatherContext: gatherContext2, saveBudgetConfig };
+    const deps = { runtime, getCtx, getStorageId: getStorageId2, getUserPersona: getUserPersona2, gatherContext: gatherContext2, saveBudgetConfig, reloadCurrentChat: (context) => context?.reloadCurrentChat?.() };
     deps.callAI = createAiClient({
       getConfig: () => window.__pmConfig,
       getContext: getCtx

@@ -1,8 +1,8 @@
 import { generationErrorMessage } from './ai.js';
 import { buildInteractiveRequest, buildStylePrompt, getInteractivePresets, parseInteractiveResponse } from './interactive-scene-ai.js';
 import {
-    INTERACTIVE_LIMITS, addSceneComment, appendScenePosts, deleteSceneComment, deleteSceneDanmaku, deleteScenePost, enforceInteractiveSceneLimit, ensureInteractiveActor, normalizeInteractiveStore, normalizeScene,
-    createDefaultPhoneUiScope, createSceneFromCommunityTemplate, incrementScenePostShare, normalizePhoneUiState, patchPhoneUiScope, publishCommunityTemplate, removeCommunityTemplatesForSourceScene, resolveInteractiveAuthor, stripPersistedV2ContentRating, toggleScenePin, toggleScenePostLike, unpublishCommunityTemplate, updateSceneComment, updateSceneDanmaku, updateScenePost,
+    INTERACTIVE_LIMITS, addSceneComment, appendScenePosts, deleteSceneComment, deleteSceneDanmaku, deleteScenePost, enforceInteractiveSceneLimit, ensureInteractiveActor, normalizeScene,
+    createDefaultPhoneUiScope, createSceneFromCommunityTemplate, incrementScenePostShare, normalizePhoneUiState, patchPhoneUiScope, publishCommunityTemplate, removeCommunityTemplatesForSourceScene, resolveInteractiveAuthor, toggleScenePin, toggleScenePostLike, unpublishCommunityTemplate, updateSceneComment, updateSceneDanmaku, updateScenePost,
 } from './interactive-scene-model.js';
 import { loadInteractiveScenes, loadPhoneUiState, saveInteractiveScenes, savePhoneUiScope, savePhoneUiState } from './storage.js';
 import { bindPhonePageActions, dispatchCalendarAppAction, getCommunityInjectionState, handleCommunityInjectionUiAction, handleSceneAccentAction, persistCurrentPhoneUiSnapshot, resolvePhoneChatTarget, runCalendarPageTransition, runDeleteSceneAction, runDesktopPageTransition, selectScenePreset, toggleDanmakuActions, toggleSceneMenu, toggleScenePostActions, toggleSceneReplyComposer } from './interactive-scene-phone.js';
@@ -10,121 +10,9 @@ import { createCommunityGenerationRunner, createCommunityTaskController, runLive
 import { createCommitWithPhoneUi } from './interactive-scene-phone-transaction.js';
 import { createCommunityTemplateImportAction } from './interactive-scene-template-import.js';
 import { renderCommunityLauncher as renderCommunityLauncherView, renderCommunityWorkspace as renderCommunityWorkspaceView, renderPhoneDesktop } from './interactive-scene-views.js';
+import { createInteractiveCommitQueue, createInteractiveOperationGuard, createInteractiveStoreLoader, migrateInteractiveStore, now, parseCommunityPostInput, uid } from './interactive-scenes-utils.js';
 export { renderPhoneDesktop } from './interactive-scene-views.js'; export { resolvePhoneChatTarget, runDesktopPageTransition } from './interactive-scene-phone.js';
-const uid = prefix => `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
-const now = () => Date.now();
-const cloneStore = store => normalizeInteractiveStore(JSON.parse(JSON.stringify(store)));
-export async function migrateInteractiveStore(rawStore, saveStore) {
-    const persistedCompatibility = stripPersistedV2ContentRating(rawStore);
-    const normalized = normalizeInteractiveStore(persistedCompatibility.store);
-    const needsSave = !!rawStore && (rawStore.version !== normalized.version || persistedCompatibility.changed);
-    if (!needsSave) return normalized;
-    const snapshot = JSON.parse(JSON.stringify(rawStore));
-    try {
-        await saveStore(normalized);
-    } catch (error) {
-        try {
-            await saveStore(snapshot);
-        } catch (rollbackError) {
-            const combined = new Error(`${error.message}；互动场景迁移回滚也失败：${rollbackError.message}`);
-            combined.cause = error;
-            combined.rollbackError = rollbackError;
-            throw combined;
-        }
-        throw error;
-    }
-    return normalized;
-}
-export function createInteractiveOperationGuard({ getEpoch, getStorageId, getOpenSceneId, isMounted }, { epoch, storageId, sceneId }) {
-    if (![getEpoch, getStorageId, getOpenSceneId, isMounted].every(value => typeof value === 'function')) {
-        throw new TypeError('社区操作有效性依赖无效');
-    }
-    return () => {
-        const expectedSceneId = typeof sceneId === 'function' ? sceneId() : sceneId;
-        return getEpoch() === epoch
-            && getStorageId() === storageId
-            && (!expectedSceneId || getOpenSceneId() === expectedSceneId)
-            && isMounted();
-    };
-}
-export function createInteractiveCommitQueue({ getStore, setStore, saveStore, syncStore = null }) {
-    if (syncStore !== null && typeof syncStore !== 'function') throw new TypeError('互动场景同步依赖无效');
-    let queue = Promise.resolve();
-    const commit = (mutator, isValid = null, context = '操作') => {
-        const operation = queue.catch(() => {}).then(async () => {
-            const snapshot = cloneStore(getStore());
-            const cancelled = () => new Error(context === '操作' ? '文字直播已停止' : `${context}已取消`);
-            if (isValid && !isValid()) throw cancelled();
-            let result;
-            try {
-                result = await mutator();
-            } catch (error) {
-                setStore(snapshot);
-                throw error;
-            }
-            let failure = null;
-            try {
-                await saveStore(normalizeInteractiveStore(getStore()));
-                await syncStore?.();
-                if (isValid && !isValid()) throw cancelled();
-                return result;
-            } catch (error) {
-                failure = error;
-            }
-            setStore(snapshot);
-            try {
-                await saveStore(snapshot);
-                await syncStore?.();
-            } catch (compensationError) {
-                const combined = new Error(`${failure.message}；补偿持久化或同步也失败：${compensationError.message}`);
-                combined.cause = failure;
-                combined.rollbackError = compensationError;
-                throw combined;
-            }
-            throw failure;
-        });
-        queue = operation;
-        return operation;
-    };
-    return commit;
-}
-export function createInteractiveStoreLoader({ runtime, load, migrate }) {
-    if (!runtime || typeof load !== 'function' || typeof migrate !== 'function') {
-        throw new TypeError('互动场景加载器依赖无效');
-    }
-    if (!Number.isInteger(runtime.loadGeneration)) runtime.loadGeneration = 0;
-    const loadStore = async () => {
-        if (runtime.store) return runtime.store;
-        if (!runtime.loadPromise) {
-            const generation = runtime.loadGeneration;
-            runtime.loadPromise = {
-                generation,
-                promise: Promise.resolve().then(load).then(migrate),
-            };
-        }
-        const pending = runtime.loadPromise;
-        try {
-            let loaded;
-            try {
-                loaded = await pending.promise;
-            } catch (error) {
-                if (pending.generation !== runtime.loadGeneration) return loadStore();
-                throw error;
-            }
-            if (pending.generation !== runtime.loadGeneration) return loadStore();
-            runtime.store = loaded;
-            return loaded;
-        } finally {
-            if (runtime.loadPromise === pending) runtime.loadPromise = null;
-        }
-    };
-    const invalidateStore = () => {
-        runtime.loadGeneration += 1;
-        runtime.store = null;
-        runtime.loadPromise = null;
-    };
-    return { loadStore, invalidateStore };
-}
+export { createInteractiveCommitQueue, createInteractiveOperationGuard, createInteractiveStoreLoader, migrateInteractiveStore, parseCommunityPostInput } from './interactive-scenes-utils.js';
 export function installInteractiveScenes(_state, deps) {
     const { getCtx, getStorageId, getUserPersona, gatherContext, callAI } = deps;
     const runtime = {
@@ -573,13 +461,19 @@ export function installInteractiveScenes(_state, deps) {
         }
         if (action === 'publish') {
             const input = document.getElementById('pm-scene-post-input');
-            const content = input?.value.trim() || '';
-            if (!content) throw new Error('帖子内容不能为空');
+            const rawContent = input?.value || '';
+            const { scopeId, scope, scene } = current();
+            if (!scope || !scene) throw new Error('互动场景不存在');
+            const target = { storageId: scopeId, sceneId: scene.id };
+            const { authorSeed, content } = parseCommunityPostInput(rawContent, scope.actors, actorSeeds(scopeId).user);
+            const isValid = operationGuard(scopeId, scene.id);
             await commit(() => {
-                const { scopeId, scope, scene } = current();
-                const userSeed = actorSeeds(scopeId).user;
-                appendPosts(scopeId, scope, scene, [{ author: userSeed.displayName, authorSeed: userSeed, content, tags: [] }]);
-            });
+                const currentTarget = resolveTarget(target);
+                if (!currentTarget.scope || !currentTarget.scene) throw new Error('互动场景不存在');
+                appendPosts(currentTarget.scopeId, currentTarget.scope, currentTarget.scene, [{
+                    author: authorSeed.displayName, authorSeed, content, tags: [],
+                }]);
+            }, isValid, '发布帖子');
             rerender('feed'); return;
         }
         if (action === 'poke-scene') {

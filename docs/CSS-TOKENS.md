@@ -46,6 +46,7 @@
 | 私有 token | 根选择器 | 语义与适用范围 |
 | --- | --- | --- |
 | `--pm-scene-topbar-height` | `.pm-scene-shell` | 场景顶栏的稳定结构高度；同时锚定顶栏菜单的 `top`，避免两个 `38px` 声明漂移。仅社区场景使用，不随主题改变。 |
+| `--pm-scene-body-letter-spacing` | `.pm-scene-shell` | 社区帖子与评论正文共用的轻度字距，改善小字号中文阅读的视觉呼吸感；仅社区正文消费，不随主题改变。 |
 | `--pm-calendar-status-value-offset` | `.pm-calendar-status-card` | 日历状态卡大号数值在 SF/Segoe UI 回退栈中的光学校正位移；仅供 `translateY()` 消费，不改变卡片布局或主题值。 |
 
 ## 4. 颜色与表面

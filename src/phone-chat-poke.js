@@ -13,7 +13,7 @@ import { escapeAttr, escapeHtml, safeJS } from './ui.js';
 import { getAutoPokeConfig, resetAutoPokeCounter } from './auto-poke-config.js';
 import { BACK_ICON_SVG, CLOSE_ICON_SVG } from './icons.js';
 import { parseGroupResponse } from './messaging-group-parser.js';
-import { getGalBubblePrompt, parseGalBubbleMessages } from './gal-bubble.js';
+import { getGalBubbleAssistantText, getGalBubblePrompt } from './gal-bubble.js';
 import { getEmojiPrompt, getWordyPrompt } from './messaging.js';
 import {
     saveCharacterBehavior, saveHistories, saveHistoriesStrict, savePokeConfig,
@@ -80,7 +80,7 @@ export function installPhoneChatPoke(state, deps) {
             isGroup,
             emojiPrompt: getEmojiPrompt(contactName, id, window.__pmPokeConfig, window.__pmEmojis),
             wordyPrompt: getWordyPrompt(window.__pmWordyLimit),
-            galBubblePrompt: getGalBubblePrompt(window.__pmGalBubbleEnabled),
+            galBubblePrompt: getGalBubblePrompt(window.__pmGalBubbleOperational),
         });
 
             const aiRequest = buildPokeRequest({
@@ -97,7 +97,7 @@ export function installPhoneChatPoke(state, deps) {
             if (isGroup) {
                 const parsed = parseGroupResponse(raw, groupMembers, {
                     allowUnknownSpeakers: groupMeta.randomNpcEnabled === true,
-                    galBubbleEnabled: window.__pmGalBubbleEnabled === true,
+                    galBubbleEnabled: window.__pmGalBubbleOperational === true,
                 });
                 renderBlocks = parsed.filter(block => block.sentences.length > 0);
                 const contentParts = renderBlocks.map(block => `${block.name}：${block.sentences.join(' / ')}`);
@@ -108,8 +108,8 @@ export function installPhoneChatPoke(state, deps) {
                     descriptors: renderBlocks.flatMap(block => block.sentences.map(text => ({ text, sender: block.name }))),
                 }));
             } else {
-                const galMessages = window.__pmGalBubbleEnabled === true ? parseGalBubbleMessages(raw) : null;
-                const clean = galMessages ? galMessages.map(message => message.text).join('\n') : cleanResponse(raw);
+                const galText = window.__pmGalBubbleOperational === true ? getGalBubbleAssistantText(raw) : null;
+                const clean = galText !== null ? galText : cleanResponse(raw);
                 renderSentences = splitToSentences(clean);
                 if (!renderSentences.length) return false;
                 targetHistory.push(createMessageEntry({
@@ -380,7 +380,7 @@ export function installPhoneChatPoke(state, deps) {
             isGroup,
             emojiPrompt: getEmojiPrompt(targetContactKey, storageId, window.__pmPokeConfig, window.__pmEmojis),
             wordyPrompt: getWordyPrompt(window.__pmWordyLimit),
-            galBubblePrompt: getGalBubblePrompt(window.__pmGalBubbleEnabled),
+            galBubblePrompt: getGalBubblePrompt(window.__pmGalBubbleOperational),
         });
 
             const aiRequest = buildPokeRequest({
@@ -398,7 +398,7 @@ export function installPhoneChatPoke(state, deps) {
             if (isGroup) {
                 const parsed = parseGroupResponse(raw, groupMembers, {
                     allowUnknownSpeakers: groupRandomNpcEnabled === true,
-                    galBubbleEnabled: window.__pmGalBubbleEnabled === true,
+                    galBubbleEnabled: window.__pmGalBubbleOperational === true,
                 });
                 const blocks = parsed.filter(block => block.sentences.length > 0);
                 const contentParts = blocks.map(block => `${block.name}：${block.sentences.join(' / ')}`);
@@ -429,7 +429,7 @@ export function installPhoneChatPoke(state, deps) {
                     }
                 }
             } else {
-                const galMessages = window.__pmGalBubbleEnabled === true ? parseGalBubbleMessages(raw) : null;
+                const galMessages = window.__pmGalBubbleOperational === true ? parseGalBubbleMessages(raw) : null;
                 const clean = galMessages ? galMessages.map(message => message.text).join('\n') : cleanResponse(raw);
                 const sentences = splitToSentences(clean);
                 if (sentences.length > 0) {
@@ -531,7 +531,7 @@ export function installPhoneChatPoke(state, deps) {
             isGroup: true,
             emojiPrompt: getEmojiPrompt(saveKey, storageId, window.__pmPokeConfig, window.__pmEmojis),
             wordyPrompt: getWordyPrompt(window.__pmWordyLimit),
-            galBubblePrompt: getGalBubblePrompt(window.__pmGalBubbleEnabled),
+            galBubblePrompt: getGalBubblePrompt(window.__pmGalBubbleOperational),
         });
 
             const aiRequest = buildPokeRequest({
@@ -546,7 +546,7 @@ export function installPhoneChatPoke(state, deps) {
 
             const parsed = parseGroupResponse(raw, groupMembers, {
                 allowUnknownSpeakers: groupRandomNpcEnabled === true,
-                galBubbleEnabled: window.__pmGalBubbleEnabled === true,
+                galBubbleEnabled: window.__pmGalBubbleOperational === true,
             });
             let renderedTrimmedCount = 0;
             for (const block of parsed) {

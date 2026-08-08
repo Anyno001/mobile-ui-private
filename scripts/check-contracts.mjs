@@ -93,7 +93,7 @@ for (const cssModulePath of CSS_MODULE_FILES) {
 for (const modulePath of [
   'src/calendar-weather-source.js', 'src/calendar-page-view.js',
   'src/calendar-recipe-controller.js', 'src/calendar-recipe-model.js',
-  'src/phone-quote.js',
+  'src/phone-quote.js', 'src/interactive-scenes-utils.js',
 ]) {
   try {
     execFileSync('git', ['ls-files', '--error-unmatch', modulePath], {
@@ -162,6 +162,14 @@ function buttonContaining(label, text, marker) {
 function parseCssRules(cssText, sourcePath = 'style.css') {
   const ast = postcss.parse(normalizeLineEndings(cssText), { from: sourcePath });
   const rules = [];
+  const atRuleContext = rule => {
+    const ancestors = [];
+    for (let node = rule.parent; node; node = node.parent) {
+      if (node.type === 'atrule') ancestors.unshift(`@${node.name} ${node.params}`.trim());
+    }
+    return ancestors.join(' > ') || 'root';
+  };
+
   ast.walkRules(rule => {
     const selectors = rule.selectors?.map(selector => selector.trim()).filter(Boolean) || [];
     if (!selectors.length) return;
@@ -174,7 +182,7 @@ function parseCssRules(cssText, sourcePath = 'style.css') {
       declarations,
       path: sourcePath,
       line: rule.source?.start?.line || 0,
-      parent: rule.parent?.type === 'atrule' ? `@${rule.parent.name} ${rule.parent.params}`.trim() : 'root',
+      parent: atRuleContext(rule),
     });
   });
   return rules;
@@ -199,6 +207,47 @@ const LEGACY_VALUE_PROPERTIES = {
 
 const INTRINSIC_SPACING_VALUES = new Set(['0', '0 !important', 'auto', '100%', '50%']);
 
+function hasRawColorLiteral(value) {
+  return /#[0-9a-f]{3,8}(?![0-9a-f])|\b(?:rgba?|hsla?)\s*\(/i.test(value);
+}
+
+function hasRawColorVarFallback(value) {
+  const source = String(value);
+  for (let start = source.toLowerCase().indexOf('var('); start >= 0; start = source.toLowerCase().indexOf('var(', start + 4)) {
+    let depth = 1;
+    let comma = -1;
+    let end = start + 4;
+    for (; end < source.length && depth > 0; end += 1) {
+      const character = source[end];
+      if (character === '(') depth += 1;
+      else if (character === ')') depth -= 1;
+      else if (character === ',' && depth === 1 && comma < 0) comma = end;
+    }
+    if (depth !== 0 || comma < 0) continue;
+    if (hasRawColorLiteral(source.slice(comma + 1, end - 1))) return true;
+  }
+  return false;
+}
+
+function collectNewImportantFingerprints(baseline, current) {
+  return [...current].filter(fingerprint => !baseline.has(fingerprint));
+}
+
+function collectRawPrototypeCssIssues(file, cssText) {
+  const issues = [];
+  let ast;
+  try { ast = postcss.parse(cssText, { from: file }); } catch (error) {
+    return [`prototype:${file}: invalid CSS: ${error.message}`];
+  }
+  ast.walkDecls(decl => {
+    if (decl.prop.startsWith('--') || !hasRawColorLiteral(decl.value)) return;
+    const parent = decl.parent?.type === 'rule' ? decl.parent.selector.trim() : '';
+    if (parent === ':root') return;
+    issues.push(`prototype:${file}:${decl.source?.start?.line || 0}: raw visual color in ${parent || '<at-rule>'} ${decl.prop}:${decl.value}`);
+  });
+  return issues;
+}
+
 function compareLegacyCssValues(rules, legacyValues, animationExceptions = []) {
   for (const category of Object.keys(LEGACY_VALUE_PROPERTIES)) {
     if (category === 'lineHeight') continue;
@@ -214,6 +263,11 @@ function compareLegacyCssValues(rules, legacyValues, animationExceptions = []) {
         ? entries.find(entry => entry.path === rule.path && entry.selector === rule.selectors.join(', ') && entry.property === property && entry.value === normalizedValue)
         : approved.has(normalizedValue);
       if (matchingEntry) consumed.add(category === 'spacing' || category === 'animation' ? matchingEntry : normalizedValue);
+      const isTokenDeclaration = property.startsWith('--');
+      if (category === 'color' && !isTokenDeclaration && hasRawColorVarFallback(normalizedValue)) {
+        failures.push(`${rule.path}:${rule.line}: ${rule.selectors.join(', ')} adds raw color fallback in ${property}:${normalizedValue}`);
+        continue;
+      }
       if (normalizedValue.includes('var(') || normalizedValue === 'none' || normalizedValue === 'none !important' || normalizedValue === 'initial' || normalizedValue === 'inherit' || normalizedValue === 'unset' || (category === 'spacing' && INTRINSIC_SPACING_VALUES.has(normalizedValue)) || matchingEntry) continue;
       failures.push(`${rule.path}:${rule.line}: ${rule.selectors.join(', ')} adds unapproved legacy ${category} value ${property}:${normalizedValue}`);
     }
@@ -248,8 +302,122 @@ function requireCssDeclarations(rules, selector, expected) {
 }
 
 const cssRules = CSS_MODULE_FILES.flatMap((file, index) => parseCssRules(cssModules[index], file));
-
 const governanceRegistry = JSON.parse(governanceRegistryText);
+const workspaceEntries = await readdir(root, { recursive: true });
+const discoveredPrototypeFiles = workspaceEntries.map(entry => entry.replaceAll('\\', '/'))
+  .filter(entry => /(^|\/)\*-prototype\.html$/.test(entry) || /(^|\/)[^/]+-prototype\.html$/.test(entry))
+  .map(entry => entry.replace(/^.*?mobile-ui-private\//, ''))
+const PROTOTYPE_FILES = ['signal-shared.css', ...new Set(discoveredPrototypeFiles)].sort();
+const prototypeTexts = new Map(await Promise.all(PROTOTYPE_FILES.map(async file => [
+  file,
+  await readFile(path.join(root, file), 'utf8'),
+])));
+const productionSvgFiles = workspaceEntries.map(entry => entry.replaceAll('\\', '/'))
+  .filter(entry => /^assets\/.+\.svg$/i.test(entry)).sort();
+const productionSvgTexts = new Map(await Promise.all(productionSvgFiles.map(async file => [
+  file,
+  await readFile(path.join(root, file), 'utf8'),
+])));
+
+function collectPrototypeBoundaryIssues(texts, prototypeRegistry) {
+  const issues = [];
+  const assets = prototypeRegistry?.assets;
+  if (!Array.isArray(assets)) return ['css-governance-registry.json: prototype.assets must be an array'];
+  const registered = new Map();
+  for (const asset of assets) {
+    if (!asset?.file || !PROTOTYPE_FILES.includes(asset.file) || !asset.kind || !asset.owner
+        || typeof asset.published !== 'boolean' || !asset.removeWhen) {
+      issues.push('css-governance-registry.json: prototype assets must declare file/kind/owner/published/removeWhen');
+      continue;
+    }
+    if (registered.has(asset.file)) issues.push(`css-governance-registry.json: duplicate prototype asset ${asset.file}`);
+    registered.set(asset.file, asset);
+  }
+  for (const file of PROTOTYPE_FILES) {
+    if (!registered.has(file)) issues.push(`css-governance-registry.json: prototype asset is not registered: ${file}`);
+    if (!texts.has(file)) issues.push(`prototype: registered asset is missing: ${file}`);
+  }
+  const allowedStyleProperties = new Set(prototypeRegistry.allowedStyleProperties || []);
+  const allowedSvgPaints = new Set(prototypeRegistry.allowedSvgPaints || ['none', 'currentColor']);
+  issues.push(...collectRawPrototypeCssIssues('signal-shared.css', texts.get('signal-shared.css') || ''));
+  if (!allowedSvgPaints.has('none') || !allowedSvgPaints.has('currentColor')) {
+    issues.push('css-governance-registry.json: prototype.allowedSvgPaints must allow none and currentColor');
+  }
+  for (const [file, text] of texts) {
+    if (file.endsWith('.html')) {
+      for (const block of text.matchAll(/<style\b[^>]*>([\s\S]*?)<\/style>/gi)) issues.push(...collectRawPrototypeCssIssues(file, block[1]));
+    }
+    for (const match of text.matchAll(/\bstyle\s*=\s*["']([^"']*)["']/gi)) {
+      const properties = match[1].split(';').map(item => item.trim()).filter(Boolean)
+        .map(item => item.slice(0, item.indexOf(':')).trim());
+      for (const property of properties) {
+        if (!allowedStyleProperties.has(property)) issues.push(`prototype:${file}: unregistered inline style property ${property}`);
+      }
+    }
+    for (const match of text.matchAll(/\b(?:fill|stroke)\s*=\s*(["'])([^"']+)\1/gi)) {
+      const paint = match[2].trim();
+      if (!allowedSvgPaints.has(paint) && !/^url\(#[\w.-]+\)$/.test(paint)) {
+        issues.push(`prototype:${file}: unregistered SVG paint ${paint}`);
+      }
+    }
+  }
+  if (cssEntry.includes('prototype.html') || cssEntry.includes('signal-shared.css')) {
+    issues.push('style.css: production entry must not import prototype assets');
+  }
+  if (source.includes('prototype.html') || source.includes('signal-shared.css')) {
+    issues.push('src: production JavaScript must not read prototype assets');
+  }
+  return issues;
+}
+for (const issue of collectPrototypeBoundaryIssues(prototypeTexts, governanceRegistry.prototype)) failures.push(issue);
+
+function collectImportantFingerprints(rules) {
+  const fingerprints = new Set();
+  for (const rule of rules) for (const [property, value] of rule.declarations) {
+    if (/\s!important$/i.test(normalizeCssValue(value))) {
+      fingerprints.add(`${rule.path}::${rule.parent}::${rule.selectors.join(', ')}::${property}::${normalizeCssValue(value)}`);
+    }
+  }
+  return fingerprints;
+}
+
+function collectProductionSvgIssues(texts) {
+  const issues = [];
+  for (const [file, svg] of texts) {
+    if (!/<svg\b/i.test(svg)) issues.push(`${file}: production SVG must contain an svg root`);
+    if (/<(?:image|script|foreignObject)\b/i.test(svg) || /(?:href|xlink:href)\s*=\s*["'](?:https?:|data:)/i.test(svg)) {
+      issues.push(`${file}: production SVG must not embed executable, remote, or bitmap content`);
+    }
+    if (/<style\b/i.test(svg) || /\bstyle\s*=/i.test(svg)) issues.push(`${file}: production SVG must not contain inline CSS`);
+    for (const match of svg.matchAll(/\b(?:fill|stroke|stop-color|flood-color|lighting-color)\s*=\s*(["'])([^"']+)\1/gi)) {
+      const paint = match[2].trim().toLowerCase();
+      if (paint !== '#000000' && paint !== 'none' && !/^url\(#[\w.-]+\)$/.test(paint)) {
+        issues.push(`${file}: production SVG paint must be #000000, none, or a local paint server, received ${match[2].trim()}`);
+      }
+    }
+  }
+  return issues;
+}
+for (const issue of collectProductionSvgIssues(productionSvgTexts)) failures.push(issue);
+
+const baselineImportantFingerprints = new Set(governanceRegistry.importantBaseline || []);
+if (!Array.isArray(governanceRegistry.importantBaseline) || !baselineImportantFingerprints.size
+    || baselineImportantFingerprints.size !== governanceRegistry.importantBaseline.length) {
+  failures.push('css-governance-registry.json: importantBaseline must be a non-empty unique fingerprint array');
+}
+const currentImportantFingerprints = collectImportantFingerprints(cssRules);
+for (const fingerprint of collectNewImportantFingerprints(baselineImportantFingerprints, currentImportantFingerprints)) failures.push(`css: unregistered !important addition ${fingerprint}`);
+for (const fingerprint of collectNewImportantFingerprints(currentImportantFingerprints, baselineImportantFingerprints)) {
+  failures.push(`css-governance-registry.json: stale important baseline ${fingerprint}`);
+}
+const importantSelfTestRules = parseCssRules('.a{color:var(--pm-color-accent)!important}\n.b{display:block}');
+if (collectImportantFingerprints(importantSelfTestRules).size !== 1) {
+  failures.push('self-test: !important counter did not detect a declaration');
+}
+if (!collectNewImportantFingerprints(collectImportantFingerprints(parseCssRules('.a{color:red!important}')), collectImportantFingerprints(parseCssRules('.b{color:red!important}'))).length) {
+  failures.push('self-test: !important addition detector did not reject a new fingerprint');
+}
+
 {
   const registryFailures = [];
   if (governanceRegistry.version !== 3) registryFailures.push('css-governance-registry.json: version must be 3');
@@ -652,6 +820,16 @@ for (const issue of collectVarTokenIssues(cssRules, registeredTokenCategories, d
   const invalidVarRules = parseCssRules('.a{z-index:var(--pm-z-missing)}\n.b{z-index:var(--whatever)}');
   if (collectVarTokenIssues(validVarRules, ['--pm-z-*'], new Set(['--pm-z-menu']), new Set()).length) failures.push('self-test: var token detector rejected a declared z-index token');
   if (collectVarTokenIssues(invalidVarRules, ['--pm-z-*'], new Set(), new Set()).length !== 4) failures.push('self-test: var token detector did not flag undefined and unregistered z-index tokens');
+  const fallbackRules = parseCssRules('.a{color:var(--pm-color-accent,#fff)}\n.b{background:color-mix(in srgb,var(--pm-color-accent,rgba(0,0,0,.2)) 10%,transparent)}\n.c{color:var(--pm-color-accent)}\n.d{mask:linear-gradient(#000,var(--pm-mask))}');
+  if (!hasRawColorVarFallback(fallbackRules[0].declarations.get('color')) || !hasRawColorVarFallback(fallbackRules[1].declarations.get('background'))) {
+    failures.push('self-test: raw color var fallback detector did not recognize nested hex/rgb/hsl fallbacks');
+  }
+  if (hasRawColorVarFallback(fallbackRules[2].declarations.get('color')) || hasRawColorVarFallback(fallbackRules[3].declarations.get('mask'))) {
+    failures.push('self-test: raw color var fallback detector rejected a value without a raw fallback');
+  }
+  if (!collectRawPrototypeCssIssues('self-prototype.html', ':root{--x:#fff}.a{fill:#fff}').length) {
+    failures.push('self-test: prototype raw color detector accepted a consumer declaration');
+  }
   const spacingEntries = [{ path: 'self.css', selector: '.a', property: 'top', value: '2px', owner: 'self', reason: 'fixed geometry', removeWhen: 'layout migration' }];
   const matchingSpacingRules = parseCssRules('.a{top:2px}', 'self.css');
   const mismatchedSpacingRules = parseCssRules('.b{top:2px}\n.a{left:2px}', 'self.css');
@@ -816,7 +994,9 @@ function collectDirectStyleWrites(code) {
       const styleObject = node.callee.object;
       if (styleObject?.type === 'MemberExpression' && memberName(styleObject) === 'style') {
         const token = staticString(node.arguments[0]);
-        if (token) writes.add(token);
+        if (token) {
+          writes.add(token.startsWith('--') && !isRegisteredThemeToken(token) ? '<unregistered-theme-token>' : token);
+        }
         else if (node.arguments[0]?.type === 'Identifier' && themeTokenIdentifiers.has(node.arguments[0].name)) writes.add('<theme-preset-token>');
         else writes.add('<dynamic-token>');
       }
@@ -825,22 +1005,76 @@ function collectDirectStyleWrites(code) {
       const styleObject = node.callee.object;
       if (styleObject?.type === 'MemberExpression' && memberName(styleObject) === 'style') {
         const token = staticString(node.arguments[0]);
-        if (token) writes.add(token);
+        if (token) {
+          writes.add(token.startsWith('--') && !isRegisteredThemeToken(token) ? '<unregistered-theme-token>' : token);
+        }
         else if (node.arguments[0]?.type === 'Identifier' && themeTokenIdentifiers.has(node.arguments[0].name)) writes.add('<theme-preset-token>');
         else writes.add('<dynamic-token>');
       }
     }
   });
-  for (const match of code.matchAll(/\bstyle\s*=\s*["']([^"']*)["']/g)) {
-    const declarations = match[1].split(';').map(value => value.trim()).filter(Boolean);
+  for (const match of code.matchAll(/\bstyle\s*=\s*\\?["']([^"']*)\\?["']/g)) {
+    const declarations = match[1].replaceAll('\\"', '"').replaceAll("\\'", "'")
+      .split(';').map(value => value.trim()).filter(Boolean);
     if (!declarations.length) writes.add('<dynamic-style-attribute>');
     for (const declaration of declarations) {
       const separator = declaration.indexOf(':');
       if (separator < 1) writes.add('<dynamic-style-attribute>');
-      else writes.add(declaration.slice(0, separator).trim());
+      else {
+        writes.add(declaration.slice(0, separator).trim());
+        if (!declaration.slice(separator + 1).includes('${')) writes.add('<static-style-attribute>');
+      }
     }
   }
   return writes;
+}
+
+function collectDeclaredThemeTokens(code) {
+  const tokens = new Set();
+  for (const match of code.matchAll(/['"](--[\w-]+)['"]\s*:/g)) tokens.add(match[1]);
+  return tokens;
+}
+
+const configCode = sourceModuleByRelativePath.get('src/config.js')?.code || '';
+const registeredThemeTokenPrefixes = [
+  ...(governanceRegistry.tokens?.public || []),
+  ...(governanceRegistry.tokens?.private || []),
+  ...(governanceRegistry.tokens?.compat || []),
+  ...(governanceRegistry.tokens?.runtime || []),
+];
+const declaredDynamicThemeTokens = new Set([
+  ...cssRules.flatMap(rule => [...rule.declarations.keys()]),
+  ...collectDeclaredThemeTokens(configCode),
+  ...(governanceRegistry.tokens?.runtime || []).filter(token => !token.endsWith('*')),
+  ...(governanceRegistry.externallyDefinedTokens || []),
+]);
+for (const token of collectDeclaredThemeTokens(configCode)) {
+  const registered = registeredThemeTokenPrefixes.some(prefix => prefix.endsWith('*')
+    ? token.startsWith(prefix.slice(0, -1))
+    : token === prefix);
+  if (!registered) failures.push(`src/config.js: theme token is not registered: ${token}`);
+}
+
+function isRegisteredThemeToken(token) {
+  return declaredDynamicThemeTokens.has(token);
+}
+const unregisteredThemeTokenSelfTest = collectDirectStyleWrites(`
+  const element = { style: { setProperty() {} } };
+  element.style.setProperty('--pm-color-not-declared', 'value');
+`);
+if (!unregisteredThemeTokenSelfTest.has('<unregistered-theme-token>')) {
+  failures.push('self-test: inline theme token detector accepted an unregistered token');
+}
+const inlineStyleSelfTest = collectDirectStyleWrites('const html = `<i style=\\"color:red;--pm-color-accent:${accent}\\"></i>`;');
+if (!inlineStyleSelfTest.has('color') || !inlineStyleSelfTest.has('--pm-color-accent')
+    || !inlineStyleSelfTest.has('<static-style-attribute>')) {
+  failures.push('self-test: inline style attribute detector did not preserve escaped property and static-value evidence');
+}
+const prototypeSvgSelfTest = collectPrototypeBoundaryIssues(new Map([['signal-shared.css', ':root{--x:#fff}'], ['self-prototype.html', '<svg fill="#fff"></svg>']]), {
+  assets: [{ file: 'signal-shared.css', kind: 'shared-css', owner: 'self', published: false, removeWhen: 'self-test' }, { file: 'self-prototype.html', kind: 'html-prototype', owner: 'self', published: false, removeWhen: 'self-test' }], allowedStyleProperties: [],
+});
+if (!prototypeSvgSelfTest.some(issue => issue.includes('unregistered SVG paint #fff'))) {
+  failures.push('self-test: prototype SVG paint detector accepted a raw color');
 }
 
 {
@@ -859,8 +1093,12 @@ function collectDirectStyleWrites(code) {
     }
     for (const [relativePath, module] of sourceModuleByRelativePath) {
       const allowed = allowedByFile.get(relativePath) || new Set();
-      for (const property of collectDirectStyleWrites(module.code)) {
+      const actualWrites = collectDirectStyleWrites(module.code);
+      for (const property of actualWrites) {
         if (!allowed.has(property)) failures.push(`${relativePath}: unregistered direct style write ${property}`);
+      }
+      for (const property of allowed) {
+        if (!actualWrites.has(property)) failures.push(`css-governance-registry.json: stale inline permission ${relativePath}:${property}`);
       }
     }
   }
@@ -2222,11 +2460,17 @@ const initialGroupMetaIndex = lifecycleInstallStatements.findIndex(statement => 
 if (directHostHookIndex < 0 || initialGroupMetaIndex < 0 || directHostHookIndex > initialGroupMetaIndex) {
   failures.push('phone-lifecycle.js: host events must be hooked before initial local metadata recovery starts');
 }
-const delayedRetryStatement = lifecycleInstallStatements.find(statement => statement.type === 'ExpressionStatement'
-  && statement.expression?.type === 'CallExpression'
-  && statement.expression.callee?.type === 'Identifier'
-  && statement.expression.callee.name === 'setTimeout');
-const delayedRetryCallback = delayedRetryStatement?.expression?.arguments?.[0];
+let delayedRetryCallback = null;
+for (const statement of lifecycleInstallStatements) {
+  walk(statement, node => {
+    if (delayedRetryCallback || node.type !== 'CallExpression' || node.callee?.type !== 'Identifier' || node.callee.name !== 'setTimeout') return;
+    const callback = node.arguments?.[0];
+    if (callback?.type === 'ArrowFunctionExpression' && callback.body?.type === 'BlockStatement'
+        && callback.body.body.some(candidate => isDirectCall(candidate, 'hookGenerationEvent'))) {
+      delayedRetryCallback = callback;
+    }
+  });
+}
 const delayedRetryStatements = delayedRetryCallback?.type === 'ArrowFunctionExpression'
   && delayedRetryCallback.body?.type === 'BlockStatement'
   ? delayedRetryCallback.body.body : [];
@@ -2299,6 +2543,7 @@ for (const forbidden of ['pm-group-injection-position', 'pm-group-injection-dept
 }
 const contactCode = sourceModuleByName.get('contact-generator.js')?.code || '';
 const interactiveCode = sourceModuleByName.get('interactive-scenes.js')?.code || '';
+const interactiveUtilsCode = sourceModuleByName.get('interactive-scenes-utils.js')?.code || '';
 const interactiveViewsCode = sourceModuleByName.get('interactive-scene-views.js')?.code || '';
 const interactivePhoneCode = sourceModuleByName.get('interactive-scene-phone.js')?.code || '';
 const interactiveSchedulerCode = sourceModuleByName.get('interactive-scene-scheduler.js')?.code || '';
@@ -2343,6 +2588,8 @@ const settingsBackupCode = sourceModuleByName.get('settings-backup.js')?.code ||
 const contactAnalysis = analyze(contactCode, 'module');
 const calendarAnalysis = analyze(calendarCode, 'module');
 const interactiveAnalysis = analyze(interactiveCode, 'module');
+const interactiveInspection = inspectModule(interactiveCode);
+const interactiveUtilsInspection = inspectModule(interactiveUtilsCode);
 const calendarInspection = inspectModule(calendarCode);
 const calendarCommitInspection = inspectModule(calendarCommitCode);
 const calendarDomInspection = inspectModule(calendarDomCode);
@@ -2352,6 +2599,18 @@ const storagePrimitivesInspection = inspectModule(storagePrimitivesCode);
 const storagePreferencesInspection = inspectModule(storagePreferencesCode);
 const storageHistoryInspection = inspectModule(storageHistoryCode);
 const storageGroupMetaInspection = inspectModule(storageGroupMetaCode);
+const INTERACTIVE_SCENE_UTIL_EXPORTS = [
+  'createInteractiveCommitQueue', 'createInteractiveOperationGuard', 'createInteractiveStoreLoader',
+  'migrateInteractiveStore', 'parseCommunityPostInput',
+];
+for (const name of INTERACTIVE_SCENE_UTIL_EXPORTS) {
+  if (!interactiveUtilsInspection.exports.has(name)) failures.push(`interactive-scenes-utils.js: missing exported ${name}`);
+  if (!interactiveInspection.exports.has(name)) failures.push(`interactive-scenes.js: must re-export ${name} for compatibility`);
+  if (interactiveInspection.declarations.has(name)) failures.push(`interactive-scenes.js: ${name} implementation must remain owned by interactive-scenes-utils.js`);
+}
+requireNamedImports('interactive-scenes.js', interactiveInspection, './interactive-scenes-utils.js', [
+  ...INTERACTIVE_SCENE_UTIL_EXPORTS, 'now', 'uid',
+]);
 requireNamedImports('calendar.js', calendarInspection, './calendar-commit.js', ['createCalendarCommitters']);
 requireNamedImports('calendar.js', calendarInspection, './calendar-dom.js', [
   'fillCalendarEntryForm', 'readCalendarEntryForm', 'setCalendarEntryRepeat',
@@ -2468,8 +2727,11 @@ verifyGuardedRequestOrder('interactive-scenes.js: regeneratePrompt', regenerateP
 for (const expected of ['contextEpoch: 0', 'runtime.contextEpoch += 1', 'createInteractiveOperationGuard']) {
   requireText('interactive-scenes.js', interactiveCode, expected);
 }
-for (const expected of ['syncStore = null', 'await syncStore?.()', '补偿持久化或同步也失败', 'syncStore: () => deps.applyBidirectionalInjection?.()']) {
+for (const expected of ['syncStore: () => deps.applyBidirectionalInjection?.()']) {
   requireText('interactive-scenes.js', interactiveCode, expected);
+}
+for (const expected of ['syncStore = null', 'await syncStore?.()', '补偿持久化或同步也失败', '文字直播']) {
+  requireText('interactive-scenes-utils.js', interactiveUtilsCode, expected);
 }
 for (const expected of [
   'INTERACTIVE_STORE_VERSION = 2', 'authorId', 'authorNameSnapshot', 'shareCount', 'shared',
@@ -2759,7 +3021,7 @@ for (const title of ['API 设置', '主题颜色', '数据备份', '互动场景
   if (controlCenterTemplate.includes(title)) failures.push(`phone-control-center.js: compact control menu must not contain removed shortcut ${title}`);
 }
 for (const expected of [
-  'post-comment', 'delete-scene', 'delete-post', 'delete-comment', "action === 'post-actions'", "action === 'toggle-reply'", "action === 'share'", 'incrementScenePostShare(current().scene, button.dataset.postId)', '文字直播',
+  'post-comment', 'delete-scene', 'delete-post', 'delete-comment', "action === 'post-actions'", "action === 'toggle-reply'", "action === 'share'", 'incrementScenePostShare(current().scene, button.dataset.postId)',
   "button.closest?.('.pm-scene-comment-composer')", "composer?.querySelector?.('input')", 'preserveFeedScroll',
   "document.querySelector('#pm-scene-app .pm-scene-feed')?.scrollTop", "rerender('feed', { preserveFeedScroll: true })",
 ]) {
@@ -2774,7 +3036,7 @@ for (const expected of [
   'data-action="tab" data-tab="prompt"', '风格提示词', 'data-action="context-inject"', '上下文注入', 'pm-scene-post-more', 'data-action="post-actions"',
   'aria-label="拍一拍本帖，只生成本帖评论"', "class=\"pm-scene-share ${post.shared ? 'is-shared' : ''}\"", 'aria-pressed="${post.shared}"', "post.shared ? '已分享本帖' : '分享本帖'", "renderPostMetric(SHARE_ICON_SVG, shares, '转发', 'is-share')",
   'pm-scene-reply-toggle', 'data-action="toggle-reply"', 'aria-controls="pm-comment-composer-${escapeAttr(post.id)}"', 'aria-expanded="false"',
-  "renderPostMetric(REPLY_ICON_SVG, post.comments.length, '回复', 'is-reply')", 'class="pm-scene-comment-composer" hidden', 'placeholder="发表你的想法吧"',
+  "renderPostMetric(REPLY_ICON_SVG, post.comments.length, '回复', 'is-reply')", 'class="pm-scene-comment-content"', 'class="pm-scene-comment-composer" hidden', 'placeholder="发表你的想法吧"',
   'class="pm-control-menu pm-scene-menu" role="menu" aria-label="社区工具" hidden',
   'class="pm-scene-comment-actions" hidden', 'data-action="edit-comment"', 'aria-label="编辑评论"', 'data-action="delete-comment"', 'aria-label="删除评论"',
   'pm-scene-accent-options', 'data-action="scene-accent"', 'data-action="scene-accent-custom"', 'aria-pressed="${preset.accent === selectedAccent}"',
@@ -2784,7 +3046,7 @@ for (const expected of [
   "isSubpage || tab === 'context-inject' ? ''", 'pm-live-stage', 'pm-live-details', 'data-live-state=', 'pm-danmaku-float',
   'data-action="toggle-danmaku-actions"', 'aria-pressed="false"', 'aria-label="修改弹幕"', '修改弹幕', 'data-action="edit-danmaku"', 'data-action="delete-danmaku"', 'placeholder="发个弹幕见证当下"',
 ]) requireText('interactive-scene-views.js', interactiveViewsCode, expected);
-for (const expected of ['.pm-live-room{display:flex;flex-direction:column;gap:var(--pm-space-5)}', '.pm-live-play-btn{width:48px', '.pm-live-details{display:flex;flex-direction:column;gap:var(--pm-space-3)}', '.pm-danmaku-list{height:210px;overflow-y:auto;background:transparent;border:0', '.pm-danmaku-row{--pm-scene-danmaku-row-blue:#268bdc;--pm-scene-danmaku-row-pink:#d95791;--pm-scene-danmaku-row-cyan:#168f91;--pm-scene-danmaku-row-gold:#ad7800;padding:var(--pm-space-3) var(--pm-space-1-5);border-bottom:1px solid var(--pm-color-border-subtle);font-size:11px;line-height:var(--pm-line-height-body)}', '.pm-danmaku-row .pm-scene-comment-actions[hidden]{display:none}']) {
+for (const expected of ['.pm-live-room{display:flex;flex-direction:column;gap:var(--pm-space-5)}', '.pm-live-play-btn{width:48px', '.pm-live-details{display:flex;flex-direction:column;gap:var(--pm-space-3)}', '.pm-danmaku-list{height:210px;overflow-y:auto;background:transparent;border:0', '.pm-danmaku-row{--pm-scene-danmaku-row-blue:#1769aa;--pm-scene-danmaku-row-pink:#a6265e;--pm-scene-danmaku-row-cyan:#0b6b6b;--pm-scene-danmaku-row-gold:#8a5a00;padding:var(--pm-space-3) var(--pm-space-1-5);border-bottom:1px solid var(--pm-color-border-subtle);font-size:11px;line-height:var(--pm-line-height-body)}', '.pm-danmaku-row .pm-scene-comment-actions[hidden]{display:none}']) {
   requireText('style.css', css, expected);
 }
 for (const forbidden of ['data-action="back"', 'pm-scene-back']) {
@@ -3081,7 +3343,7 @@ for (const expected of [
   '--pm-color-surface-page:', '--pm-color-surface-card:', '--pm-color-surface-elevated:', '--pm-color-surface-control:', '--pm-color-surface-input:', '--pm-color-surface-inverse:',
   '--pm-color-border-subtle:', '--pm-color-border-default:', '--pm-color-border-strong:', '--pm-color-control-off:',
   '--pm-color-accent:', '--pm-color-focus-ring:', '--pm-color-success:', '--pm-color-warning:', '--pm-color-danger:', '--pm-color-on-success:', '--pm-color-on-warning:', '--pm-color-on-danger:', '--pm-color-overlay:', '--pm-color-on-dark:', '--pm-color-on-light:',
-  '.pm-settings-home button{border:1px solid var(--pm-color-border-default);border-radius:14px;background:var(--pm-color-surface-card);color:var(--pm-color-text-primary)',
+  '.pm-settings-home button{min-height:var(--pm-size-control-default);border:1px solid var(--pm-color-border-default);border-radius:var(--pm-radius-card);background:var(--pm-color-surface-card);color:var(--pm-color-text-primary)',
   '.pm-global-setting{border:1px solid var(--pm-color-border-default);border-radius:14px;background:var(--pm-color-surface-card);color:var(--pm-color-text-primary)',
   '.pm-settings-home-hint{font-size:11px;line-height:var(--pm-line-height-body);color:var(--pm-color-text-tertiary)}',
   '.pm-settings-home button .pm-settings-home-hint{font-size:11px;line-height:var(--pm-line-height-body);color:var(--pm-color-text-tertiary)}',
@@ -3110,7 +3372,7 @@ for (const expected of [
   '.pm-cfg-input{box-sizing:border-box;width:100%;min-height:var(--pm-size-control-default);',
   'padding:var(--pm-space-0) var(--pm-space-3) !important;font-size:var(--pm-font-size-body) !important;',
   '.pm-action-button{min-height:var(--pm-size-control-default);',
-  '.pm-contact-add-primary,.pm-contact-add-ai{border:0;border-radius:10px;background:var(--pm-color-accent,#007aff);color:var(--pm-color-on-dark);min-height:var(--pm-size-control-default);',
+  '.pm-contact-add-primary,.pm-contact-add-ai{border:0;border-radius:10px;background:var(--pm-color-accent);color:var(--pm-color-on-dark);min-height:var(--pm-size-control-default);',
   '.pm-cfg-label.pm-ambient-setting,.pm-cfg-label.pm-check-setting{flex-direction:row;gap:var(--pm-space-3);}',
   '.pm-contact-settings-save{flex:0 1 210px;min-height:var(--pm-size-control-default);',
   '.pm-calendar-entry-dialog form{padding:var(--pm-space-3) var(--pm-space-4) var(--pm-space-4);display:flex;flex-direction:column;gap:var(--pm-space-2)}',
@@ -3137,7 +3399,7 @@ for (const expected of [
   '.pm-calendar-shell[data-calendar-view-mode="weather"] .pm-calendar-header-action.is-loading svg{animation:pm-spin var(--pm-motion-normal) var(--pm-motion-ease) infinite}',
   '.pm-calendar-shell[data-calendar-view-mode="schedule"] .pm-calendar-header-action.is-loading svg,.pm-calendar-shell[data-calendar-view-mode="recipe"] .pm-calendar-header-action.is-loading svg{animation:pm-calendar-sparkle-pulse var(--pm-motion-normal) var(--pm-motion-ease) infinite}',
   '@keyframes pm-calendar-sparkle-pulse{50%{opacity:.45}}',
-  '.pm-calendar-cycle-input:checked+.pm-custom-check{background:var(--pm-color-success) !important}',
+  '.pm-calendar-cycle-input:checked+.pm-custom-check{background:var(--pm-color-success)}',
   '.pm-calendar-cycle-input:focus-visible+.pm-custom-check{outline:2px solid var(--pm-color-focus-ring);outline-offset:2px}',
   '.pm-scene-topbar{position:relative;display:flex;align-items:center;gap:var(--pm-space-1);padding:var(--pm-space-1-5) var(--pm-space-px-9)}',
   '.pm-scene-home{color:var(--pm-color-text-tertiary) !important}',
@@ -3145,7 +3407,7 @@ for (const expected of [
   '.pm-scene-pin-action[aria-pressed="true"],.pm-scene-pin-action[aria-pressed="true"]:hover,.pm-scene-pin-action[aria-pressed="true"]:focus-visible{background:transparent;color:var(--scene-accent)}',
   '.pm-scene-title{position:absolute;left:50%;top:6px;bottom:6px;transform:translateX(-50%);display:flex',
   '.pm-scene-title-tab.is-active span::after{content:',
-  '.pm-scene-title-poke{position:relative;width:34px !important;height:34px !important;padding:var(--pm-space-2) !important',
+  '.pm-scene-title-poke{position:relative;width:var(--pm-size-control-compact) !important;height:var(--pm-size-control-compact) !important;padding:var(--pm-space-2) !important',
   '.pm-scene-title-poke::before{content:',
   'width:var(--pm-size-icon-lg);height:var(--pm-size-icon-lg);border-radius:50%;background:transparent',
   '@media(max-width:320px){.pm-scene-topbar{padding-inline:var(--pm-space-px-5)}',
@@ -3170,7 +3432,10 @@ for (const expected of [
   '.pm-scene-post-author{min-width:0;flex:1;gap:var(--pm-space-0-5);padding-top:var(--pm-space-px-1)}',
   '.pm-scene-post footer{align-items:center;justify-content:center;gap:0;flex-wrap:nowrap}',
   '.pm-scene-post footer>*{flex:1 1 0;min-width:0;justify-content:center}',
+  '.pm-scene-shell{--pm-scene-hero-title-size:25px;--pm-scene-topbar-height:38px;--pm-scene-body-letter-spacing:.01em',
+  '.pm-scene-post p{font-size:var(--pm-font-size-label);line-height:var(--pm-line-height-body);letter-spacing:var(--pm-scene-body-letter-spacing)',
   '.pm-scene-comment>span:first-child{flex:1;min-width:0;word-break:break-word}',
+  '.pm-scene-comment-content{letter-spacing:var(--pm-scene-body-letter-spacing)}',
   '.pm-scene-comment-actions[hidden]{display:none}',
   '.pm-scene-comment-actions button{width:22px;height:22px;padding:var(--pm-space-1);display:grid;place-items:center;border-radius:50%}',
   '.pm-scene-comment-actions button svg{width:var(--pm-size-icon-sm);height:var(--pm-size-icon-sm)}',
@@ -3183,14 +3448,14 @@ for (const expected of [
   '.pm-quote-target{animation:pm-quote-highlight',
   '@media(pointer:coarse){.pm-quote-action{min-width:42px;min-height:42px',
   '@media(prefers-reduced-motion:reduce){.pm-quote-target{animation:none',
-  '@media(prefers-reduced-motion:reduce){.pm-quote-target{animation:none;outline:3px solid color-mix(in srgb,var(--pm-color-accent,#007aff) 45%,transparent);outline-offset:0}.pm-quote-action{transition:none}.pm-bubble{animation:none}}',
+  '@media(prefers-reduced-motion:reduce){.pm-quote-target{animation:none;outline:3px solid color-mix(in srgb,var(--pm-color-accent) 45%,transparent);outline-offset:0}.pm-quote-action{transition:none}.pm-bubble{animation:none}}',
   '@media(prefers-reduced-motion:reduce){.pm-name-trigger{transition:none}}',
   '@media(prefers-reduced-motion:reduce){.pm-typing-bubble span{animation:none}.pm-voice-wave i{animation:none}}',
   '@media(prefers-reduced-motion:reduce){.pm-director{animation:none}.pm-voice-card{transition:none}.pm-contact-switcher-icon{transition:none}}',
   '.pm-calendar-view-switch{display:flex;align-items:center;justify-content:space-between;gap:var(--pm-space-1-5);width:auto;margin:var(--pm-space-0) var(--pm-space-3) var(--pm-space-px-5)',
   '.pm-calendar-tools{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--pm-space-2);padding:var(--pm-space-3) var(--pm-space-3)}',
   '.pm-calendar-header .pm-calendar-header-action{width:28px;height:28px;padding:var(--pm-space-1-5);background:transparent}',
-  '.pm-calendar-header button[data-action="calendar-home"]{color:var(--pm-color-text-tertiary)!important}',
+  '.pm-calendar-header button[data-action="calendar-home"]{color:var(--pm-color-text-tertiary)}',
   '.pm-calendar-header-action svg{width:15px;height:15px}',
   '.pm-calendar-title-row{display:flex;align-items:center;justify-content:center;min-width:0',
   '.pm-calendar-title-control{position:relative;display:flex;min-width:0;justify-content:center}',
@@ -3221,7 +3486,7 @@ for (const expected of [
   '#pm-iphone[data-theme="dark"] .pm-calendar-shell[data-calendar-view-mode="outfit"]{--pm-calendar-accent:#B8A8FF}',
   '.pm-calendar-day.has-recipe>span,.pm-calendar-day.has-outfit>span{color:var(--pm-calendar-accent)}',
   '.pm-calendar-event.is-recipe b,.pm-calendar-event.is-outfit b{color:var(--pm-calendar-accent)}',
-  '.pm-navbar{position:relative;display:grid !important;grid-template-columns:34px minmax(0,1fr) 34px',
+  '.pm-navbar{position:relative;display:grid !important;grid-template-columns:var(--pm-size-control-compact) minmax(0,1fr) var(--pm-size-control-compact)',
   '.pm-name-wrap{position:relative !important;display:flex;align-items:center;justify-content:center',
   '.pm-calendar-status.is-generating{color:var(--pm-color-danger)}',
   '.pm-calendar-date-tags-row{grid-template-columns:minmax(0,1fr) auto}',
@@ -3271,6 +3536,10 @@ for (const expected of [
 if (css.includes('--pm-letter-spacing-wide')) {
   failures.push('style.css: today-trend must not consume an unregistered letter-spacing token');
 }
+requireCssDeclarations(cssRules, '.pm-scene-post p', {
+  'font-size': 'var(--pm-font-size-label)', 'line-height': 'var(--pm-line-height-body)', 'letter-spacing': 'var(--pm-scene-body-letter-spacing)',
+});
+requireCssDeclarations(cssRules, '.pm-scene-comment-content', { 'letter-spacing': 'var(--pm-scene-body-letter-spacing)' });
 requireCssDeclarations(cssRules, '.pm-calendar-status-relative', {
   color: 'var(--pm-calendar-accent)', 'font-size': 'var(--pm-font-size-subtitle)', 'line-height': 'var(--pm-line-height-tight)', 'font-weight': 'var(--pm-font-weight-semibold)',
 });
@@ -3313,7 +3582,7 @@ if (css.includes('.pm-calendar-shell[data-calendar-view-mode="cycle"] .pm-calend
 
 requireCssDeclarations(cssRules, '.pm-name-edit', {
   background: 'transparent !important', color: 'var(--pm-color-text-tertiary) !important',
-  width: '34px', height: '34px', padding: 'var(--pm-space-2) !important', 'border-radius': 'var(--pm-radius-circle) !important', 'line-height': 'var(--pm-line-height-tight)',
+  width: 'var(--pm-size-control-compact)', height: 'var(--pm-size-control-compact)', padding: 'var(--pm-space-2) !important', 'border-radius': 'var(--pm-radius-circle) !important', 'line-height': 'var(--pm-line-height-tight)',
 });
 requireCssDeclarations(cssRules, '.pm-name-edit:hover', {
   background: 'transparent !important', color: 'var(--pm-color-accent) !important',
@@ -3342,7 +3611,7 @@ requireCssDeclarations(cssRules, '.pm-nav-btn.pm-nav-left-btn', {
   color: 'var(--pm-color-text-tertiary) !important',
 });
 requireCssDeclarations(cssRules, '.pm-up-btn', {
-  width: '32px !important', height: '32px !important',
+  width: 'var(--pm-size-control-compact) !important', height: 'var(--pm-size-control-compact) !important',
   background: 'var(--pm-color-accent) !important', color: 'var(--pm-color-on-dark) !important',
 });
 requireCssDeclarations(cssRules, '.pm-expand-btn:hover', {
@@ -3477,7 +3746,7 @@ if (/assertV2Keys\s*\(\s*raw\s*,\s*\[[^\]]*contentRating/.test(interactiveModelC
 }
 requireText('interactive-scene-model.js', interactiveModelCode, "assertV1Keys(raw, ['id', 'title', 'preset', 'styleInput', 'generatedPrompt', 'themeAccent', 'contentRating'");
 requireText('interactive-scene-model.js', interactiveModelCode, 'export function stripPersistedV2ContentRating(rawStore)');
-requireText('interactive-scenes.js', interactiveCode, 'stripPersistedV2ContentRating(rawStore)');
+requireText('interactive-scenes-utils.js', interactiveUtilsCode, 'stripPersistedV2ContentRating(rawStore)');
 if (settingsCode.includes('stripPersistedV2ContentRating')) {
   failures.push('settings-ui.js: untrusted backup import must not use persisted V2 contentRating compatibility cleanup');
 }
@@ -3695,8 +3964,8 @@ requireCssDeclarations(cssRules, '.pm-worldbook-content.has-columns .pm-worldboo
 requireCssDeclarations(cssRules, '.pm-worldbook-native-book', { border: '0' });
 requireCssDeclarations(cssRules, '.pm-worldbook-native-book-title', { gap: 'var(--pm-space-1-5)', padding: 'var(--pm-space-2) var(--pm-space-0-5)' });
 requireCssDeclarations(cssRules, '.pm-worldbook-native-entry', { gap: 'var(--pm-space-1-5)', padding: 'var(--pm-space-2) var(--pm-space-0-5)' });
-requireCssDeclarations(cssRules, '.pm-worldbook-native-book-title>span', { 'font-size': 'var(--pm-font-size-compact) !important' });
-requireCssDeclarations(cssRules, '.pm-worldbook-native-entry>span', { 'font-size': 'var(--pm-font-size-label) !important' });
+requireCssDeclarations(cssRules, '.pm-worldbook-native-book-title>span', { 'font-size': 'var(--pm-font-size-compact)' });
+requireCssDeclarations(cssRules, '.pm-worldbook-native-entry>span', { 'font-size': 'var(--pm-font-size-label)' });
 requireCssDeclarations(cssRules, '.pm-worldbook-native-book .pm-worldbook-eye', { width: '34px', height: '30px', 'flex-basis': '34px' });
 const settingsUiSaveCode = sourceModuleByName.get('settings-ui.js')?.code || '';
 for (const [label, marker] of [
@@ -3740,7 +4009,7 @@ for (const marker of ['calendar-weather-search', 'calendar-weather-refresh', 'ca
 }
 requireCssDeclarations(cssRules, '.pm-calendar-data-row .is-primary', { background: 'var(--pm-calendar-accent)!important', color: 'var(--pm-color-on-dark)!important', 'border-color': 'var(--pm-calendar-accent)!important' });
 requireCssDeclarations(cssRules, '.pm-calendar-setting-hint', {
-  color: 'var(--pm-color-text-tertiary)!important', 'font-size': 'var(--pm-font-size-helper)', 'line-height': 'var(--pm-line-height-body)',
+  color: 'var(--pm-color-text-tertiary)', 'font-size': 'var(--pm-font-size-helper)', 'line-height': 'var(--pm-line-height-body)',
 });
 requireText('calendar-weather.js refreshes climate estimates', sourceModuleByName.get('calendar-weather.js')?.code || '', 'current.climateRevision + (resetCache ? 1 : 0)');
 requireText('calendar.js preserves calendar scroll position on rerender', sourceModuleByName.get('calendar.js')?.code || '', "const previousShell = container.querySelector?.('.pm-calendar-shell');");
@@ -3756,7 +4025,7 @@ requireCssDeclarations(cssRules, '#pm-overlay .pm-group-settings-scroll textarea
 });
 for (const expected of [
   '.pm-action-button{', 'font-size:var(--pm-font-size-body)',
-  '.pm-header-icon-button{box-sizing:border-box;width:34px;height:34px;min-width:34px;min-height:34px',
+  '.pm-header-icon-button{box-sizing:border-box;width:var(--pm-size-control-compact);height:var(--pm-size-control-compact);min-width:var(--pm-size-control-compact);min-height:var(--pm-size-control-compact)',
   '.pm-action-button.is-success{background:var(--pm-color-success);color:var(--pm-color-on-success);border-color:var(--pm-color-success)}',
   '.pm-action-button.is-danger{background:var(--pm-color-danger);color:var(--pm-color-on-danger);border-color:var(--pm-color-danger)}',
   '.pm-confirm-btn{background:var(--pm-color-danger) !important;color:var(--pm-color-on-danger) !important',

@@ -120,6 +120,7 @@ export function installPhoneFoundation(state, deps) {
     window.__pmCharacterBehavior = window.__pmCharacterBehavior || {};
     window.__pmWordyLimit = window.__pmWordyLimit || false;
     window.__pmGalBubbleEnabled = window.__pmGalBubbleEnabled || false;
+    window.__pmGalBubbleOperational = false;
     window.__pmBudgetConfig = normalizeBudgetConfig(window.__pmBudgetConfig);
     window.__pmEmojis = window.__pmEmojis || []; // [{id, name, images:[{url,desc},...]}]
 

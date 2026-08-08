@@ -12,22 +12,16 @@
 .pm-emoji-thumbnail.is-52x52{width:52px;height:52px;}
 @media(max-width:320px){#pm-iphone{--pm-phone-border-width:6px;--pm-phone-inner-radius:30px;--pm-phone-outer-radius:36px;border-width:6px!important;}.pm-desktop-page{padding:var(--pm-space-4) var(--pm-space-3);}.pm-desktop-grid{gap:var(--pm-space-1-5);}.pm-desktop-app{padding-inline:var(--pm-space-0);}.pm-desktop-app-icon{width:42px;height:42px;border-radius:var(--pm-radius-card);}.pm-desktop-app svg{width:21px;height:21px;}.pm-desktop-app-label{font-size:var(--pm-font-size-micro);}}
 @media(pointer:coarse) and (max-height:500px){.pm-island{height:20px;margin-top:var(--pm-space-1);}.pm-status-bar{display:none;}.pm-input-bar{padding-top:var(--pm-space-px-5);padding-bottom:var(--pm-space-px-5);}#pm-iphone .pm-scene-launcher,#pm-iphone .pm-scene-feed,#pm-iphone .pm-live-room,#pm-iphone .pm-scene-prompt{padding-bottom:var(--pm-space-1-5);}}
-/*档案风评只影响个人风评视图；其余今日风向模块沿用各自的信息层级。*/
-.pm-today-trend-reputation>.pm-today-trend-module-head.is-decorative{align-items:flex-start;min-height:calc(var(--pm-size-control-default) + var(--pm-space-2));padding-bottom:var(--pm-space-3);}
-.pm-today-trend-reputation>.pm-today-trend-module-head.is-decorative>div{gap:var(--pm-space-1);}
-.pm-today-trend-reputation>.pm-today-trend-module-head.is-decorative h2{font-size:var(--pm-today-trend-display-size);font-weight:var(--pm-font-weight-semibold);letter-spacing:var(--pm-space-1);line-height:var(--pm-line-height-tight);}
-.pm-today-trend-reputation>.pm-today-trend-module-head.is-decorative>div::after{display:block;width:var(--pm-space-5);margin-top:var(--pm-space-1);border-top:var(--pm-today-trend-report-rule) solid var(--pm-color-accent);content:'';}
-.pm-today-trend-reputation .pm-today-trend-module-eyebrow{color:var(--pm-color-text-secondary)!important;font-size:var(--pm-font-size-helper)!important;font-weight:var(--pm-font-weight-semibold);letter-spacing:var(--pm-space-2);line-height:var(--pm-line-height-control);}
 .pm-today-trend-reputation::before{display:none;}
 /*社区模板与桌面入口：场景身份色必须随场景/模板快照传递，不继承全局手机强调色。*/
 .pm-scene-template-action{color:var(--pm-color-text-tertiary);}
 .pm-scene-template-action[data-action="publish-community-template"],.pm-scene-template-action:hover,.pm-scene-template-action:focus-visible{background:transparent;color:var(--scene-accent);}
 .pm-scene-template-action svg{width:17px;height:17px;}
-.pm-desktop-pin{border-color:color-mix(in srgb,var(--scene-accent,#6d4aff) 36%,var(--pm-color-border-default));}
-.pm-desktop-pin>button:first-child:focus-visible{outline:2px solid var(--scene-accent,#6d4aff);outline-offset:-2px;}
-.pm-desktop-template{background:color-mix(in srgb,var(--scene-accent,#6d4aff) 10%,var(--pm-color-surface-card));}
-.pm-desktop-template>button:first-child{display:flex;align-items:center;gap:var(--pm-space-2);color:var(--scene-accent,#6d4aff);}
-.pm-desktop-template-icon{display:grid;place-items:center;width:25px;height:25px;flex:0 0 25px;border-radius:var(--pm-radius-compact);background:color-mix(in srgb,var(--scene-accent,#6d4aff) 16%,transparent);}
+.pm-desktop-pin{border-color:color-mix(in srgb,var(--scene-accent) 36%,var(--pm-color-border-default));}
+.pm-desktop-pin>button:first-child:focus-visible{outline:2px solid var(--scene-accent);outline-offset:-2px;}
+.pm-desktop-template{background:color-mix(in srgb,var(--scene-accent) 10%,var(--pm-color-surface-card));}
+.pm-desktop-template>button:first-child{display:flex;align-items:center;gap:var(--pm-space-2);color:var(--scene-accent);}
+.pm-desktop-template-icon{display:grid;place-items:center;width:25px;height:25px;flex:0 0 25px;border-radius:var(--pm-radius-compact);background:color-mix(in srgb,var(--scene-accent) 16%,transparent);}
 .pm-desktop-template-icon svg{width:16px;height:16px;}
 .pm-desktop-template b{color:var(--pm-color-text-primary);}
-.pm-desktop-template small{display:block;margin-top:var(--pm-space-0-5);font-size:var(--pm-font-size-caption);color:var(--scene-accent,#6d4aff);}
+.pm-desktop-template small{display:block;margin-top:var(--pm-space-0-5);font-size:var(--pm-font-size-caption);color:var(--scene-accent);}

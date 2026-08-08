@@ -133,7 +133,7 @@ assert.match(todayTrendStyle, /pm-today-trend-world\{padding-bottom:calc\(var\(-
 
 assert.match(todayTrendStyle, /@media\(max-width:320px\).*pm-today-trend-event-facts/s, '今日风向重排必须提供窄屏事实区适配');
 assert.match(todayTrendStyle, /pm-today-trend-icon-button\[data-action\^="today-trend-refresh"\][\s\S]*?width:var\(--pm-size-control-compact\)[\s\S]*?min-height:var\(--pm-size-control-compact\)/, '生成与刷新图标按钮必须保留 36px 紧凑触控区');
-assert.match(todayTrendStyle, /pm-today-trend-reputation-copy \.pm-today-trend-inline-action\{width:var\(--pm-size-control-compact\);min-height:var\(--pm-size-control-compact\)/, '个人风评行内编辑按钮必须保留 36px 紧凑触控区');
+assert.match(todayTrendStyle, /\.pm-today-trend-inline-action\{width:var\(--pm-size-control-compact\);min-height:var\(--pm-size-control-compact\)/, '个人风评行内编辑按钮必须保留 36px 紧凑触控区');
 assert.match(todayTrendStyle, /\.pm-today-trend-menu-action,\.pm-today-trend-menu-close\{flex-basis:var\(--pm-size-control-compact\);width:var\(--pm-size-control-compact\);min-height:var\(--pm-size-control-compact\)/, '320px 菜单按钮不得缩回 28px 命中区');
 assert.doesNotMatch(todayTrendStyle, /pm-today-trend-(?:icon-button\[data-action\^="today-trend-(?:refresh|generate)"\]|reputation-copy \.pm-today-trend-inline-action)\{width:28px/, '今日风向真实操作按钮不得使用 28px 命中区');
 assert.doesNotMatch(todayTrendStyle, /pm-today-trend-content\.is-(?:reputation|faction|dynamics)::/, '旧内容容器背景伪元素必须清理');
@@ -346,11 +346,12 @@ assert.doesNotMatch(worldHtml, /WORLD SITUATION|pm-today-trend-world-(?:title-ra
 assert.match(worldPanelsHtml, /pm-today-trend-world-hero has-signals/, '世界态势主摘要必须标记后续信号流');
 assert.match(worldPanelsHtml, /pm-today-trend-world-signals/, '世界态势次级摘要必须位于信号流容器');
 assert.match(worldPanelsHtml, /pm-today-trend-world-signal-marker[^>]*aria-hidden="true"><i><\/i><\/span>/, '世界态势信号必须包含外环与实心内芯');
+assert.match(worldHtml, /pm-today-trend-meter[\s\S]*?SIGNALS[\s\S]*?BRIEFS/, '世界态势 meta 必须用英文装饰标签映射真实项目与摘要数量');
 assert.match(todayTrendStyle, /pm-today-trend-world-signals::before[^}]*border-left:1px dashed/, '世界态势左侧信号必须使用连续主干');
-assert.match(todayTrendStyle, /pm-today-trend-world-brief\.is-right::after[^}]*bottom:var\(--pm-space-3\)/, '右侧信号线必须延伸至摘要说明底部');
-assert.match(todayTrendStyle, /pm-today-trend-world-brief\.is-left \.pm-today-trend-world-signal-marker\{top:calc\(var\(--pm-space-4\) \* -1\)\}/, '左侧摘要信号标记必须上移，明确与前一摘要的收束关系');
-assert.match(todayTrendStyle, /pm-today-trend-world-brief\.is-right\{margin-top:calc\(\(var\(--pm-space-4\) \+ var\(--pm-space-2\)\) \* -1\);margin-right:var\(--pm-space-0\);margin-bottom:var\(--pm-space-2\);margin-left:calc\(24% - var\(--pm-space-4\)\)\}/, '右侧摘要必须在保留正文安全间距和后续呼吸的前提下上移并按节点基准左移');
-assert.match(todayTrendStyle, /pm-today-trend-world-signal-marker::after[^}]*width:var\(--pm-space-4\)/, '世界态势信号必须包含有限横向引线');
+assert.match(todayTrendStyle, /pm-today-trend-world-rail:var\(--pm-space-4\)/, '世界态势轨道必须由集中 token 控制');
+assert.match(todayTrendStyle, /pm-today-trend-world-brief\.is-right\{width:calc\(100% - var\(--pm-space-5\)\);margin-left:var\(--pm-space-5\)/, '右侧世界摘要必须通过互补宽度避免横向溢出');
+assert.match(todayTrendStyle, /pm-today-trend-world-signal-marker::after\{display:none/, '世界态势节点不得保留原型以外的横向引线');
+assert.match(todayTrendStyle, /pm-today-trend-world-hero b\{[^}]*font-size:calc\(var\(--pm-font-size-title\) \+ var\(--pm-font-size-title\) \+ var\(--pm-space-0-5\)\)/, '世界态势 hero 必须按原型 34px 比例由 token 组合得到');
 assert.doesNotMatch(todayTrendStyle, /pm-today-trend-world-hero::before/, '世界态势不得恢复旧主摘要伪元素装饰');
 assert.doesNotMatch(worldHtml, /data-menu-id="world:/, '世界摘要不得重复渲染独立省略号');
 assert.match(worldHtml, /today-trend-generate-world/, '世界态势页必须提供本模块生成动作');
@@ -371,10 +372,12 @@ assert.match(reputationHtml, /主厨评审/, '个人风评页必须渲染世界�
 assert.match(reputationHtml, /中立/, '个人风评页必须渲染固定五档状态的中文标签');
 assert.match(reputationHtml, /pm-today-trend-reputation-entry/, '个人风评内容页必须使用观察报告条目结构');
 assert.match(reputationHtml, /PUBLIC OPINION/, '个人风评内容页必须提供报告识别语');
-assert.doesNotMatch(reputationHtml, /观察圈层｜|个正向、|个谨慎或中性|等待建立观察圈层/, '个人风评报告头不得展示冗余统计或伪造时间');
-assert.match(reputationHtml, /pm-today-trend-reputation-index" aria-hidden="true"><span>01<\/span><i><\/i><\/span>/, '个人风评编号必须保留动态数字并提供框角装饰钩子');
-
-assert.match(reputationHtml, /01/, '个人风评内容页必须从数据顺序派生观察编号');
+assert.match(reputationHtml, /pm-today-trend-meter-k">PEOPLE<\/span><span class="pm-today-trend-meter-v">1<\/span>/, '个人风评头部必须展示真实 PEOPLE 统计');
+assert.match(reputationHtml, /pm-today-trend-meter-k">GOOD<\/span><span class="pm-today-trend-meter-v">0<\/span>/, '个人风评头部必须展示真实 GOOD 统计');
+assert.match(reputationHtml, /pm-today-trend-meter-k">BAD<\/span><span class="pm-today-trend-meter-v">0<\/span>/, '个人风评头部必须展示真实 BAD 统计');
+assert.match(reputationHtml, /pm-today-trend-reputation-head-art/, '个人风评标题必须提供雷达头像装饰');
+assert.match(reputationHtml, /pm-today-trend-reputation-file-no[^>]*>「PRS-240502」<\/span>/, '个人风评标题必须提供档案号装饰');
+assert.match(reputationHtml, /pm-today-trend-reputation-mark/, '个人风评条目必须提供图标标记');
 assert.match(reputationHtml, /data-status="neutral"/, '个人风评状态必须提供主题化样式钩子');
 assert.doesNotMatch(reputationHtml, /pm-today-trend-reputation-orbit/, '个人风评背景不得局限在模块子容器内');
 assert.match(reputationMenuHtml, /today-trend-edit-reputation-rule/, '展开个人风评模块操作后必须提供规则编辑动作');
@@ -383,9 +386,21 @@ assert.match(reputationHtml, /pm-today-trend-reputation-meter" role="radiogroup"
 assert.equal((reputationHtml.match(/data-action="today-trend-set-circle-status"/g) || []).length, valid.scopes.chat.reputation.circles.length * 5, '个人风评每条记录必须输出五个实时状态按钮');
 assert.match(reputationHtml, /data-circle-id="judge" data-status="neutral" aria-checked="true" role="radio"/, '当前好感度按钮必须暴露选中语义');
 assert.match(reputationHtml, /data-circle-id="judge" data-status="like" aria-checked="false" role="radio"/, '非当前好感度按钮必须暴露未选中语义');
-assert.doesNotMatch(reputationHtml, /aria-hidden="true"><i><\/i><span>/, '个人风评五档不得再渲染为隐藏的静态条目');
-for (const label of ['敌对', '厌恶', '中立', '喜爱', '信任']) assert.match(reputationHtml, new RegExp(`>${label}<`), `个人风评必须显式显示五档好感度：${label}`);
+assert.deepEqual([...reputationHtml.matchAll(/data-circle-id="judge" data-status="([^"]+)"/g)].map(match => match[1]), ['trust', 'like', 'neutral', 'dislike', 'hostile'], '个人风评量表必须从上到下按信任至敌对排列');
+for (const label of ['敌对', '厌恶', '中立', '喜爱', '信任']) assert.match(reputationHtml, new RegExp(`aria-label="${label}"`), `个人风评必须以可访问名称提供五档好感度：${label}`);
 assert.doesNotMatch(reputationHtml, /today-trend-refresh-circle/, '个人风评内容区不得保留单项重新生成入口');
+const mixedReputationScope = structuredClone(valid.scopes.chat);
+mixedReputationScope.reputation.circles = [
+    { id: 'trust', name: '信任样本', status: 'trust', evaluation: '可靠' },
+    { id: 'like', name: '喜爱样本', status: 'like', evaluation: '积极' },
+    { id: 'neutral', name: '中立样本', status: 'neutral', evaluation: '观察' },
+    { id: 'dislike', name: '厌恶样本', status: 'dislike', evaluation: '谨慎' },
+    { id: 'hostile', name: '敌对样本', status: 'hostile', evaluation: '冲突' },
+];
+const mixedReputationHtml = renderTodayTrendReputationView({ scope: mixedReputationScope });
+assert.match(mixedReputationHtml, /pm-today-trend-meter-k">PEOPLE<\/span><span class="pm-today-trend-meter-v">5<\/span>/, '个人风评 PEOPLE 必须覆盖混合圈层样本');
+assert.match(mixedReputationHtml, /pm-today-trend-meter-k">GOOD<\/span><span class="pm-today-trend-meter-v">2<\/span>/, '个人风评 GOOD 必须只统计 like/trust');
+assert.match(mixedReputationHtml, /pm-today-trend-meter-k">BAD<\/span><span class="pm-today-trend-meter-v">2<\/span>/, '个人风评 BAD 必须只统计 hostile/dislike');
 assert.match(reputationMenuHtml, /today-trend-edit-circle[^>]*data-circle-id="judge"/, '展开个人风评模块操作后，每条风评必须出现编辑铅笔');
 const reputationEditorHtml = renderTodayTrendReputationView({ scope: valid.scopes.chat, editingCircleId: 'judge' });
 assert.match(reputationEditorHtml, /pm-today-trend-reputation-entry is-editing[\s\S]*?data-today-trend-form="circle"/, '个人风评内容区的编辑铅笔必须打开该条目的内联编辑表单');
@@ -400,13 +415,15 @@ assert.match(busyReputationSettingsHtml, /today-trend-regenerate-circle-schema"[
 assert.doesNotMatch(busyReputationSettingsHtml, /data-menu-id="circle:/, '风评设置不得重复渲染圈层省略号');
 assert.doesNotMatch(busyReputationSettingsHtml, /today-trend-regenerate-reputation-rule/, '个人风评设置不得重复提供模块规则动作');
 assert.match(todayTrendStyle, /pm-today-trend-reputation::after,\.pm-today-trend-factions::after,\.pm-today-trend-dynamics::after\{[^}]*mask-image:var\(--pm-today-trend-bg-top\),var\(--pm-today-trend-bg-bottom\)/, '个人风评、势力和事件背景必须保留顶部与底部图形并隐藏中段重复图形');
-assert.match(todayTrendStyle, /pm-today-trend-reputation-index\{[^}]*font-weight:var\(--pm-font-weight-semibold\)/, '个人风评编号必须使用加粗文字而非圆形外框');
-assert.match(todayTrendStyle, /pm-today-trend-reputation-index>i\{[^}]*border-top:1px solid[^}]*border-right:1px solid/, '个人风评编号必须提供右侧框角装饰');
-assert.match(todayTrendStyle, /pm-today-trend-reputation-entry\{[^}]*grid-template-columns:var\(--pm-today-trend-track-width\) minmax\(0,1fr\) var\(--pm-today-trend-reputation-meter-width\)/, '个人风评条目必须保持轨道、正文和量表三列流式布局');
-assert.match(todayTrendStyle, /pm-today-trend-reputation-entry::before\{[^}]*border-left:var\(--pm-today-trend-report-rule\) solid var\(--pm-today-trend-reputation-rail-color\)/, '个人风评条目必须保留竖线引导线');
-assert.match(todayTrendStyle, /pm-today-trend-reputation-meter\{[^}]*border-right:1px solid var\(--pm-today-trend-reputation-rail-color\)[^}]*border-left:1px solid var\(--pm-today-trend-reputation-rail-color\)/, '个人风评量表必须保留左右刻度框体');
+assert.match(todayTrendStyle, /pm-today-trend-reputation\{[^}]*--pm-today-trend-reputation-mark-size/, '个人风评必须在根选择器集中声明局部尺寸 token');
+assert.match(todayTrendStyle, /pm-today-trend-reputation-mark::before[^}]*border-right:0[^}]*border-bottom:0/, '个人风评图标必须提供左上框角');
+assert.match(todayTrendStyle, /pm-today-trend-reputation-copy\{[^}]*border-left:1px solid/, '个人风评正文必须提供左侧分隔线');
+assert.match(todayTrendStyle, /pm-today-trend-reputation-entry\{[^}]*grid-template-columns:var\(--pm-today-trend-reputation-mark-size\) minmax\(0,1fr\) var\(--pm-today-trend-reputation-rating-width\)/, '个人风评条目必须保持图标、正文和评级三列流式布局');
+assert.match(todayTrendStyle, /pm-today-trend-reputation-meter button::before/, '个人风评量表必须提供横向刻度');
+assert.match(todayTrendStyle, /pm-today-trend-reputation-meter button\.is-active::after/, '个人风评量表必须提供当前档圆点与光晕');
 assert.match(todayTrendStyle, /pm-today-trend-reputation-meter button:focus-visible/, '个人风评状态按钮必须提供键盘焦点样式');
 assert.match(todayTrendStyle, /pm-today-trend-reputation-meter button:disabled/, '个人风评状态按钮必须提供禁用样式');
+assert.match(reputationHtml, /pm-today-trend-reputation-foot-art/, '个人风评内容页必须提供底部收尾装饰');
 const factionHtml = renderTodayTrendFactionView({ scope: valid.scopes.chat, preset: valid.presets.preset, generationAvailable: true, menuOpenId: 'faction-module' });
 assert.match(factionHtml, /红队/, '势力页必须渲染根势力');
 assert.match(factionHtml, /节目组/, '势力页必须递归渲染子势力');
@@ -438,6 +455,13 @@ assert.match(busyDynamicsHtml, /pm-today-trend-event-facts/, '动态内容页必
 assert.match(busyDynamicsHtml, /pm-today-trend-event-history/, '动态内容页必须提供阶段时间线容器');
 assert.match(busyDynamicsHtml, /pm-today-trend-event-marker" aria-hidden="true"/, '事件追踪卡片必须包含左侧节点');
 assert.match(busyDynamicsHtml, /pm-today-trend-event-body/, '事件追踪卡片必须将内容与左侧节点分层');
+assert.match(busyDynamicsHtml, /role="tablist"[^>]*aria-label="事件追踪状态"/, '事件追踪必须提供可访问的状态 tab 容器');
+assert.match(busyDynamicsHtml, /data-action="today-trend-set-dynamics-tab"[^>]*data-tab="active"[^>]*aria-selected="true"/, '事件追踪默认必须选中正在追踪 tab');
+assert.match(busyDynamicsHtml, /data-tab="active"[^>]*aria-selected="true"[^>]*aria-controls="pm-today-trend-active-panel"[^>]*tabindex="0"/, '当前事件 tab 必须进入键盘焦点序列');
+assert.match(busyDynamicsHtml, /data-tab="archived"[^>]*aria-selected="false"[^>]*aria-controls="pm-today-trend-archived-panel"[^>]*tabindex="-1"/, '非当前事件 tab 必须退出键盘焦点序列');
+assert.match(busyDynamicsHtml, /pm-today-trend-active-panel"[^>]*role="tabpanel"[^>]*aria-labelledby="pm-today-trend-active-tab"[^>]*><|pm-today-trend-archived-panel"[^>]*hidden/, '事件 tab 面板必须有可访问关联并对非当前面板使用 hidden');
+assert.match(busyDynamicsHtml, /pm-today-trend-event-pill is-live/, '活跃事件必须提供带状态点的 pill');
+assert.match(busyDynamicsHtml, /pm-today-trend-stage-tag">最新阶段/, '活跃事件的最后阶段必须标记为最新阶段');
 assert.match(todayTrendStyle, /pm-today-trend-event-list::before\{[^}]*border-left/, '事件追踪列表必须使用左侧连续轨道');
 assert.match(todayTrendStyle, /pm-today-trend-event-card\{[^}]*grid-template-columns:var\(--pm-today-trend-dynamics-rail\) minmax\(0,1fr\)/, '事件追踪卡片必须使用节点与正文双列网格');
 assert.doesNotMatch(busyDynamicsHtml, /pm-today-trend-dynamics-signal|pm-today-trend-dynamics-arc/, '事件背景不得局限在模块子容器内或保留灰色弧线');
@@ -518,8 +542,13 @@ undergroundScope.dynamics.active[0] = { ...undergroundScope.dynamics.active[0], 
 undergroundScope.dynamics.archived[0].relatedEventIds = ['underground'];
 
 const dynamicsHtml = renderTodayTrendDynamicsView({ scope: valid.scopes.chat, preset: valid.presets.preset, menuOpenId: 'dynamics-module' });
+const archivedDynamicsHtml = renderTodayTrendDynamicsView({ scope: valid.scopes.chat, preset: valid.presets.preset, dynamicsTab: 'archived' });
 assert.match(dynamicsHtml, /正在追踪/, '动态页必须区分正在追踪事件');
 assert.match(dynamicsHtml, /已完结/, '动态页必须区分归档事件');
+assert.match(archivedDynamicsHtml, /事件归档/, '归档 tab 必须联动模块标题');
+assert.match(archivedDynamicsHtml, /DONE[\s\S]*?TOTAL/, '归档 tab meta 必须由归档和总事件数映射');
+assert.match(archivedDynamicsHtml, /data-tab="archived"[^>]*aria-selected="true"/, '归档 tab 必须暴露选中状态');
+assert.match(archivedDynamicsHtml, /pm-today-trend-event-latest[\s\S]*?最终结果/, '归档事件必须始终外置最终结果');
 assert.match(dynamicsHtml, /data-event-type="normal"/, '动态事件必须暴露类型样式钩子');
 assert.match(dynamicsHtml, /today-trend-open-dynamics-settings/, '动态页必须提供设置入口');
 assert.match(dynamicsHtml, /today-trend-edit-dynamics-rule/, '动态页必须提供模块 Prompt 编辑入口');
@@ -865,6 +894,21 @@ await Promise.resolve();
 assert.equal(dispatcher.state().editingRule, null, '取消规则编辑必须清空编辑状态');
 assert.ok(dispatcherRenders.length > 0, '规则动作必须触发重新渲染');
 assert.deepEqual(savedRules, [], '规则编辑打开前不得错误提交 Prompt');
+const archivedTabButton = { disabled: false, dataset: { action: 'today-trend-set-dynamics-tab', tab: 'archived' }, closest: () => archivedTabButton };
+dispatcherListeners.click({ target: archivedTabButton });
+await Promise.resolve();
+assert.equal(dispatcher.state().dynamicsTab, 'archived', '事件追踪 tab 切换必须保存在内存视图态');
+await dispatcher.open('world');
+await dispatcher.open('dynamics');
+assert.equal(dispatcher.state().dynamicsTab, 'active', '从其他模块重新进入事件追踪必须恢复默认 active tab');
+const tabButtons = {
+    active: { disabled: false, dataset: { action: 'today-trend-set-dynamics-tab', tab: 'active' }, closest: () => tabButtons.active },
+    archived: { disabled: false, dataset: { action: 'today-trend-set-dynamics-tab', tab: 'archived' }, closest: () => tabButtons.archived },
+};
+dispatcherContainer.querySelectorAll = selector => selector.includes('set-dynamics-tab') ? [tabButtons.active, tabButtons.archived] : [];
+dispatcherListeners.keydown({ target: tabButtons.active, key: 'ArrowRight', preventDefault() {} });
+await Promise.resolve();
+assert.equal(dispatcher.state().dynamicsTab, 'archived', '事件 tab 必须支持 ArrowRight 键盘切换');
 dispatcher.destroy();
 
 let statusStore = structuredClone(valid);

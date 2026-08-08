@@ -51,6 +51,10 @@ export function installSettingsUi(deps) {
         getContext: deps.getCtx,
         reconcile: reconcileGalBubble,
         saveEnabled: saveGalBubbleEnabled,
+        reloadCurrentChat: context => {
+            if (typeof context?.reloadCurrentChat !== 'function') throw Object.assign(new Error('当前酒馆不支持自动刷新聊天，请手动刷新当前聊天'), { code: 'reload-unavailable' });
+            return context.reloadCurrentChat();
+        },
     });
     const apiSettings = createApiRequestController({
         runtime, normalizeApiUrls, extractAiResponseContent, normalizeIndependentApiTemperature,
@@ -71,13 +75,17 @@ export function installSettingsUi(deps) {
         parseBackupData, runBackupTransaction, legacyBackupTheme, clearPluginData, requireInjectionSuccess,
         clearBidirectionalInjection, applyBidirectionalInjection, cancelCommunityGeneration: deps.cancelCommunityGeneration,
         cancelCalendarTasks: deps.cancelCalendarTasks, reloadCalendarStore: deps.reloadCalendarStore,
-        syncGalBubble: enabled => {
+        reloadCurrentChat: context => {
+            if (typeof context?.reloadCurrentChat !== 'function') throw Object.assign(new Error('当前酒馆不支持自动刷新聊天，请手动刷新当前聊天'), { code: 'reload-unavailable' });
+            return context.reloadCurrentChat();
+        },
+        syncGalBubble: async enabled => {
             const context = deps.getCtx?.();
             if (!Array.isArray(context?.extensionSettings?.regex) || typeof context.saveSettingsDebounced !== 'function') {
                 throw new Error('当前酒馆未提供可写的全局正则列表或设置保存接口');
             }
-            galBubbleSettings.sync(enabled);
-            return true;
+            const transaction = await galBubbleSettings.sync(enabled);
+            return { ok: true, changed: transaction.result?.changed === true, action: transaction.result?.action, context: transaction.context };
         },
         reloadTodayTrendStore: deps.reloadTodayTrendStore, invalidateInteractiveStore: deps.invalidateInteractiveStore, closePhone,
         createEmptyState: () => ({

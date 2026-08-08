@@ -19,6 +19,11 @@ export function createRuntimeState() {
         overlayOpener: null,
         trackedExtensionPromptKeys: new Set(),
         injectionEpoch: 0,
+        galBubbleReconcileTimer: null,
+        galBubbleInitialTimer: null,
+        galBubbleReconcileAttempt: 0,
+        galBubbleReconcilePending: false,
+        galBubbleOperational: false,
     };
 }
 

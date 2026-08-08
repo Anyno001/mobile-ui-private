@@ -6,110 +6,262 @@
 <title>事件追踪 · HTML 原型</title>
 <link rel="stylesheet" href="signal-shared.css">
 <style>
-.radar{position:relative;height:12rem;margin:.5rem 0 0;color:var(--accent-soft);opacity:.85}
-.radar svg{width:100%;height:100%}
-.hero{padding-top:.5rem;padding-bottom:1rem}
-.timeline{position:relative;padding:0 var(--pad)}
-.evt{position:relative;display:grid;grid-template-columns:3.25rem minmax(0,1fr);gap:.875rem;padding:1.25rem 0;border-top:1px dashed var(--line)}
-.evt:first-child{border-top:0}
-.rail{position:relative;display:grid;justify-items:center}
-.rail::before{content:"";position:absolute;top:-1.25rem;bottom:-1.25rem;left:1.375rem;border-left:1px solid #b9cbc9}
-.evt:first-child .rail::before{top:1.5rem}
-.evt:last-child .rail::before{bottom:calc(100% - 1.5rem)}
-.evt .disc{position:absolute;left:-.75rem;top:.35rem;width:.375rem;height:.375rem;border-radius:50%;background:#9fb3b1}
-.evt-ic{width:2.75rem;height:2.75rem;display:grid;place-items:center;border-radius:50%;background:var(--accent);color:#fff;z-index:1}
-.evt-ic svg{width:1.5rem;height:1.5rem}
-.evt-ic.archived{background:var(--card);border:1px solid #a9c2c0;color:var(--accent)}
-.body{min-width:0}
-.body .head{display:flex;align-items:center;gap:.5rem;flex-wrap:wrap}
-.body h3{margin:0;font-size:1.375rem;font-weight:700}
-.status{padding:.1875rem .5rem;border:1px solid #b9c2c0;border-radius:.375rem;color:var(--sub);font-size:.75rem;white-space:nowrap}
-.status.live{border-color:var(--accent);color:var(--accent)}
-.when{display:inline-flex;align-items:center;gap:.375rem;margin-left:auto;color:var(--muted);font-size:.8125rem;white-space:nowrap}
-.when i{width:.4375rem;height:.4375rem;border-radius:50%;background:var(--accent)}
-.body p{margin:.5rem 0 0;color:#39444f;font-size:.9375rem;line-height:1.6}
-.funnel{position:relative;height:9rem;margin-top:.5rem;color:var(--accent-soft);opacity:.6}
-.funnel svg{width:100%;height:100%}
-@media(max-width:340px){.when span{display:none}}
+/* 关掉共享满屏网格底纹；无底部导航，去掉预留空间。--rail 预留给未来对齐。 */
+.screen{background-image:none;padding-bottom:2.5rem}
+
+/* 头部：沿用世界态势排版语言 eyebrow→标题→收尾线→meta。meta 对应 trackerMeta（活跃数｜上限｜已完结数）。 */
+.head{position:relative;padding:3.25rem var(--pad) 1.25rem;overflow:hidden}
+.head-art{position:absolute;right:calc(var(--pad) - 1.25rem);top:2.75rem;width:min(38%,9.25rem);aspect-ratio:1;color:var(--accent-soft);opacity:.5;pointer-events:none}
+.head-art svg{width:100%;height:100%}
+.head .eyebrow{margin:0 0 .375rem;font-family:"Helvetica Neue",Arial,"PingFang SC",system-ui,sans-serif;font-weight:800;font-size:.6875rem;letter-spacing:.22em}
+.head h2{margin:0;font-size:2rem;font-weight:700;letter-spacing:.06em;line-height:1.12}
+.head .meta{align-items:center;gap:.5rem;margin:.75rem 0 0;color:var(--muted);font-size:.75rem;font-weight:400;letter-spacing:.04em}
+/* 仪表盘三层：英文标签 .k(装饰性小标签) + 数字 .v(主角) + × 分隔 .x(上标式装饰，非运算符)。 */
+.head .meta .k{font-size:.625rem;font-weight:700;letter-spacing:.14em;opacity:.72}
+/* 数字与标签字号接近(.6875rem)，基线更齐，不再明显大出一截造成突兀。 */
+.head .meta .v{margin-left:.25rem;font-size:.6875rem;color:var(--sub)}
+.head .meta .x{margin:0 .0625rem;font-size:.625rem;opacity:.4;vertical-align:.12em}
+/* meta 前导小时钟：灰色装饰，弱化存在但点出「时间维度」语义。 */
+.head .meta svg{width:.9375rem;height:.9375rem;flex:0 0 auto;opacity:.8}
+/* meta 双态：跟随选中 tab 切换文案，与标题联动。 */
+.meta{display:none}
+#tab-active:checked ~ .head .meta-active,
+#tab-archived:checked ~ .head .meta-archived{display:flex}
+
+/* 标题旁切换：radio 置于 .head/.group 之前，~ 可控其后所有兄弟。切换仅改显隐，不旋转。 */
+.tab-state{position:absolute;width:1px;height:1px;margin:-1px;opacity:0;pointer-events:none}
+.head h2{display:inline-flex;align-items:center;gap:.625rem;flex-wrap:wrap}
+/* 标题双态：按选中 tab 显示「事件追踪」或「事件归档」其一。 */
+.title{display:none}
+#tab-active:checked ~ .head .title-active,
+#tab-archived:checked ~ .head .title-archived{display:inline}
+/* 切换钮降级为灰色纯图标按钮（无描边）：计数信息交由标题下 meta 承担。 */
+.switch label{display:none;align-items:center;justify-content:center;width:1.75rem;height:1.75rem;border:0;background:transparent;color:var(--muted);cursor:pointer;user-select:none}
+.switch label svg{width:1rem;height:1rem}
+/* 仅显示“切到另一组”的那个 label，点击即 toggle。 */
+#tab-active:checked ~ .head .switch label[for="tab-archived"],
+#tab-archived:checked ~ .head .switch label[for="tab-active"]{display:inline-flex}
+#tab-active:focus-visible ~ .head .switch label[for="tab-archived"],
+#tab-archived:focus-visible ~ .head .switch label[for="tab-active"]{outline:2px solid var(--accent);outline-offset:2px}
+/* 分组：按选中 tab 显示其一，另一组隐藏。对应 dynamics.active / dynamics.archived。 */
+.group{padding:.5rem var(--pad) 0}
+#tab-active:checked ~ .group[data-tab="archived"],
+#tab-archived:checked ~ .group[data-tab="active"]{display:none}
+
+/* 事件卡：图标圆 + 正文两栏。图标由「关键词命中优先、type 兜底」决定。 */
+.evt{position:relative;display:flex;gap:.875rem;padding:1.25rem 0}
+/* 分割线内缩到正文列（图标 1.875 + gap .875 = 2.75rem），让左侧竖轨不被横线十字穿断。虚线+同色，与左侧轨道读作同类。 */
+.evt:not(:first-of-type)::after{content:"";position:absolute;top:0;left:2.75rem;right:0;border-top:1px dashed color-mix(in srgb,var(--accent) 28%,transparent)}
+/* 图标间竖轨：把图标圆串成一条时间轴。圆心 x=.9375rem，y=padding(1.25)+半径(.9375)=2.1875rem。 */
+.evt::before{content:"";position:absolute;left:.9375rem;top:0;bottom:0;border-left:1px dashed color-mix(in srgb,var(--accent) 28%,transparent);z-index:0}
+.evt:first-of-type::before{top:2.1875rem}
+/*末尾卡不再截断竖轨：让轨道从最后一个图标继续向下延伸，读作时间线仍在继续。 */
+/* 图标圆底座（约 2/3 尺寸）：进行中=青色实心 + 白线图标。position+z-index 让圆盖住穿过的竖轨。
+   双重圆：box-shadow 叠两层——paper 色间隙(.25rem) + accent 实色单线外环(不用半透明，避免读成光晕)，画在盒外不占布局，圆心不变，轨道数学不受影响。 */
+.evt-ic{position:relative;z-index:1;flex:0 0 auto;width:1.875rem;height:1.875rem;display:grid;place-items:center;border-radius:50%;background:var(--accent);color:var(--on-accent);box-shadow:0 0 0 .25rem var(--paper),0 0 0 calc(.25rem + 1px) var(--accent)}
+.evt-ic svg{width:1.125rem;height:1.125rem}
+/* 已完结卡：图标改白底青描边，呼应归档态。双重圆外环同样保留。 */
+.group[data-tab="archived"] .evt-ic{background:var(--card);border:1px solid color-mix(in srgb,var(--accent) 45%,transparent);color:var(--accent)}
+.evt-main{flex:1;min-width:0}
+/* 卡头行：标题靠左 + 徽章/pill 靠右，整行 min-height 对齐 1.875rem 图标圆心，让 h4 与图标齐平。 */
+.evt-head{display:flex;align-items:center;gap:.5rem;min-height:1.875rem}
+.evt-head h4{flex:1;min-width:0;margin:0;font-size:1.25rem;font-weight:700;letter-spacing:.01em}
+.evt-tags{display:flex;align-items:center;justify-content:flex-end;gap:.375rem;flex-wrap:wrap;flex:0 0 auto}
+/* 徽章：突发/流言/地下线各一色，常规动态不显示徽章。对应 data-type（后台分类仍保留）。 */
+.badge{padding:.125rem .4375rem;border-radius:.375rem;font-size:.625rem;font-weight:700;letter-spacing:.02em}
+.evt[data-type="incident"] .badge{color:var(--incident-text);background:color-mix(in srgb,var(--incident-fill) 15%,transparent)}
+.evt[data-type="rumor"] .badge{color:var(--rumor-text);background:color-mix(in srgb,var(--rumor-fill) 16%,transparent)}
+.evt[data-type="underground"] .badge{color:var(--underground-text);background:color-mix(in srgb,var(--underground-fill) 13%,transparent)}
+/* pill：追踪中=stageLabel（accent 脉冲点），已完结=outcome（中性描边）。 */
+.pill{padding:.125rem .4375rem;border-radius:.375rem;font-size:.6875rem;white-space:nowrap;border:1px solid var(--line);color:var(--sub)}
+.pill.stage{border-color:var(--accent);color:var(--accent)}
+.pill.stage::before{content:"";display:inline-block;width:.375rem;height:.375rem;margin-right:.3125rem;border-radius:50%;background:var(--accent);vertical-align:middle}
+
+/* 事实行：起因 origin + 涉及主体 participants。 */
+.facts{margin:.625rem 0 0}
+.facts>div{display:flex;gap:.5rem;margin-top:.25rem;font-size:.875rem;line-height:1.6}
+.facts dt{flex:0 0 auto;color:var(--accent);font-weight:600}
+.facts dd{margin:0;color:var(--neutral-strong)}
+
+/* 阶段推进时间线：每段线只连相邻两圆心，自适应 li 高度，避免全局线在末项过冲穿字。 */
+.stages{position:relative;margin:.9375rem 0 0;padding:.25rem 0 0 1.25rem;list-style:none}
+.stages li{position:relative;margin:0 0 .6875rem;color:var(--sub);font-size:.875rem;line-height:1.55}
+.stages li:last-child{margin-bottom:0}
+/* 连线段：从本项圆心(top .59375rem)延伸到下一项圆心 = 本项高100% + 行距 .6875rem。末项不画。 */
+.stages li:not(:last-child)::after{content:"";position:absolute;z-index:0;left:-1.0625rem;top:.59375rem;height:calc(100% + .6875rem);border-left:1px solid color-mix(in srgb,var(--accent) 40%,transparent)}
+/* 圆点提到线之上(z-index)，圆心 x 与连线段对齐，读作“线穿过圆心”。 */
+.stages li::before{content:"";position:absolute;z-index:1;left:-1.25rem;top:.375rem;width:.4375rem;height:.4375rem;border-radius:50%;background:var(--paper);border:1px solid var(--accent-soft)}
+.stages .tag{display:block;margin-bottom:.125rem;color:var(--accent);font-size:.6875rem;font-weight:700;letter-spacing:.08em}
+.stages li.now{color:var(--ink);font-weight:600}
+/* 追踪中末项 = 最新阶段 latestStage，高亮为当前脉冲点。 */
+.stages li.now::before{background:var(--accent);border-color:var(--accent);box-shadow:0 0 0 .1875rem color-mix(in srgb,var(--accent) 18%,transparent)}
+/* 已完结卡：早期阶段折叠进 details，最终结果 finalResult 始终外置可见。 */
+.stage-fold{margin:.9375rem 0 0}
+.stage-fold summary{display:inline-flex;align-items:center;gap:.375rem;color:var(--accent);font-size:.8125rem;font-weight:600;cursor:pointer;list-style:none}
+.stage-fold summary::-webkit-details-marker{display:none}
+.stage-fold summary::after{content:"";width:.4375rem;height:.4375rem;border-right:1.5px solid currentColor;border-bottom:1.5px solid currentColor;transform:rotate(-45deg);transition:transform .18s}
+.stage-fold[open] summary::after{transform:rotate(45deg)}
+.stage-fold .stages{margin-top:.625rem}
+/* 最终结果收束节点（无框）：实心菱形封口，读作时间线终点收束。接在折叠阶段之后。 */
+.final-result{position:relative;margin:.9375rem 0 0;padding:.125rem 0 0 1.25rem}
+/* 方案A：连接鞀默认隐藏；仅当上方 details 展开时显示，接住展开 stages 末端到菱形，折叠时菱形独立。 */
+.final-result::before{content:"";position:absolute;left:.1875rem;top:-.9375rem;height:1.25rem;border-left:1px solid color-mix(in srgb,var(--accent) 40%,transparent);display:none}
+.stage-fold[open] + .final-result::before{display:block}
+/* 菱形封口：实心 accent + 柔光环，标记收束。 */
+.final-result::after{content:"";position:absolute;left:-.0625rem;top:.3125rem;width:.5rem;height:.5rem;background:var(--accent);transform:rotate(45deg);box-shadow:0 0 0 .1875rem color-mix(in srgb,var(--accent) 14%,transparent)}
+.final-result .tag{display:block;margin-bottom:.1875rem;color:var(--accent);font-size:.6875rem;font-weight:700;letter-spacing:.08em}
+.final-result p{margin:0;color:var(--ink);font-size:.875rem;line-height:1.55}
+/* 底部收尾装饰：卡片竖直时间轴在页面底部“落地”——竖虚线汇入水平地平线，中央收束点，两侧向外渐隐。页面级，两态常显。 */
+.footer-art{position:relative;margin:1.75rem 0 0;height:5rem;color:var(--accent);pointer-events:none}
+.footer-art svg{width:100%;height:100%;display:block}
+
 </style>
 </head>
 <body>
 <main class="phone"><div class="screen">
 
-<header class="topbar">
-  <button class="iconbtn" type="button" aria-label="返回"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg></button>
-  <h1>事件追踪</h1>
-  <div class="tools">
-    <button class="iconbtn" type="button" aria-label="暂停更新"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M9 6v12M15 6v12"/></svg></button>
-    <button class="iconbtn" type="button" aria-label="关闭页面"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
-  </div>
-</header>
+<!-- 切换 radio 前置到 .head/.group 之前，~ 才能同时控标题内切换器与分组显隐。默认选中“正在追踪”。 -->
+<input class="tab-state" type="radio" name="evt-tab" id="tab-active" checked>
+<input class="tab-state" type="radio" name="evt-tab" id="tab-archived">
 
-<div class="radar" aria-hidden="true"><svg viewBox="0 0 390 192" fill="none" stroke="currentColor" stroke-width="1">
-  <circle cx="120" cy="96" r="84" opacity=".35"/>
-  <circle cx="120" cy="96" r="58" opacity=".5"/>
-  <circle cx="120" cy="96" r="32" opacity=".7"/>
-  <path d="M120 8v176M32 96h176" opacity=".28" stroke-dasharray="2 5"/>
-  <circle cx="120" cy="96" r="7" fill="currentColor" stroke="none"/>
-  <path d="M250 40v40M270 60h40M300 120v50M330 30v80" opacity=".3" stroke-dasharray="2 4"/>
-  <path d="M60 60l6 3-6 3z" fill="currentColor" stroke="none" opacity=".6"/>
-  <path d="M180 140l6 3-6 3z" fill="currentColor" stroke="none" opacity=".6"/>
-</svg></div>
-
-<section class="hero" aria-label="事件追踪概览">
-  <p class="eyebrow">EVENT LOG</p>
-  <h2>事件追踪</h2>
-  <div class="rule" aria-hidden="true"></div>
-  <p class="updated"><span class="dot" aria-hidden="true"></span>数据更新于 今日 09:40</p>
+<section class="head" aria-label="事件追踪概览">
+  <!-- 信号三角测量装饰：三个疏密不一的信号源(同心圆)，极细虚线连成三角，交汇处实心定位点。语义=多方信息交叉定位事件。 -->
+  <div class="head-art" aria-hidden="true"><svg viewBox="-58 -58 116 116" fill="none" stroke="currentColor">
+    <!-- 连接三角：极细虚线，最淡 -->
+    <path d="M-38-30L40-14 -6 44Z" stroke-width=".5" stroke-dasharray="3 4" opacity=".32"/>
+    <!-- 交叉定位线：从交汇点射向三源，更淡 -->
+    <path d="M2 6L-38-30M2 6L40-14M2 6L-6 44" stroke-width=".5" stroke-dasharray="2 5" opacity=".24"/>
+    <!-- 信号源 1（左上，最疏最大）：双同心环 + 芯点 -->
+    <circle cx="-38" cy="-30" r="13" stroke-width=".5" stroke-dasharray="2 4" opacity=".38"/>
+    <circle cx="-38" cy="-30" r="6.5" stroke-width=".75" opacity=".5"/>
+    <circle cx="-38" cy="-30" r="2" fill="currentColor" stroke="none" opacity=".6"/>
+    <!-- 信号源 2（右上，中等）-->
+    <circle cx="40" cy="-14" r="9" stroke-width=".5" stroke-dasharray="10 4" opacity=".4"/>
+    <circle cx="40" cy="-14" r="2" fill="currentColor" stroke="none" opacity=".55"/>
+    <!-- 信号源 3（下，较密小）-->
+    <circle cx="-6" cy="44" r="7" stroke-width=".5" stroke-dasharray="2 3" opacity=".42"/>
+    <circle cx="-6" cy="44" r="1.75" fill="currentColor" stroke="none" opacity=".55"/>
+    <!-- 交汇定位点：实心 + 一圈定位环，视觉锚 -->
+    <circle cx="2" cy="6" r="8" stroke-width=".75" opacity=".55"/>
+    <circle cx="2" cy="6" r="3.25" fill="currentColor" stroke="none"/>
+  </svg></div>
+  <p class="eyebrow">EVENT TRACKER</p>
+  <!-- 标题双态：按选中 tab 显示「事件追踪」/「事件归档」其一；旁边灰色纯图标钮点一下切到另一组，计数交给下方 meta。 -->
+  <h2><span class="title title-active">事件追踪</span><span class="title title-archived">事件归档</span><span class="switch">
+    <label for="tab-archived" title="查看已完结" aria-label="切换到已完结"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3l4 4-4 4M21 7H8M7 21l-4-4 4-4M3 17h13"/></svg></label>
+    <label for="tab-active" title="查看正在追踪" aria-label="切换到正在追踪"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3l4 4-4 4M21 7H8M7 21l-4-4 4-4M3 17h13"/></svg></label>
+  </span></h2>
+  <p class="meta meta-active"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg><span class="k">LIVE</span><span class="v">2</span><span class="x">&times;</span><span class="k">MAX</span><span class="v">24</span></p>
+  <p class="meta meta-archived"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg><span class="k">DONE</span><span class="v">2</span><span class="x">&times;</span><span class="k">TOTAL</span><span class="v">4</span></p>
 </section>
 
-<section class="timeline" aria-label="事件时间线">
-  <article class="evt">
-    <div class="rail" aria-hidden="true"><span class="disc"></span><div class="evt-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12l16-7-7 16-2.5-6.5z"/></svg></div></div>
-    <div class="body">
-      <div class="head"><h3>北部航线例行调整</h3><span class="status live">进行中</span><span class="when"><i aria-hidden="true"></i><span>今日 09:40</span></span></div>
-      <p>北部航线部分航道因气象变化进行例行调整，相关航行建议已同步各方。</p>
+<section class="group" data-tab="active" aria-label="正在追踪">
+
+  <article class="evt" data-type="incident">
+    <!-- 命中关键词「航线」→ 定位针（覆盖 incident 默认的闪电，演示关键词优先级）。 -->
+    <div class="evt-ic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 5-8 11-8 11S4 15 4 10a8 8 0 1 1 16 0z"/><circle cx="12" cy="10" r="2.5"/></svg></div>
+    <div class="evt-main">
+      <div class="evt-head"><h4>北部航线临时管制</h4><span class="evt-tags"><span class="badge">突发</span><span class="pill stage">发酵中</span></span></div>
+      <dl class="facts">
+        <div><dt>起因</dt><dd>气象突变叠加上游航道拥堵，北部主航线被迫临时管制。</dd></div>
+        <div><dt>主体</dt><dd>航线协调局、北岸议会</dd></div>
+      </dl>
+      <ol class="stages">
+        <li><span class="tag">阶段 01</span>初步接报北部航道出现异常拥堵，启动核验。</li>
+        <li><span class="tag">阶段 02</span>确认为气象因素主导，航线协调局介入。</li>
+        <li class="now"><span class="tag">最新阶段</span>临时管制范围扩大，各方正协商替代航线。</li>
+      </ol>
     </div>
   </article>
-  <article class="evt">
-    <div class="rail" aria-hidden="true"><span class="disc"></span><div class="evt-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M5 9a10 10 0 0 1 14 0M8 12a6 6 0 0 1 8 0"/><circle cx="12" cy="15" r="1.4" fill="currentColor" stroke="none"/><path d="M12 16.5V21"/></svg></div></div>
-    <div class="body">
-      <div class="head"><h3>雾港联络窗口开启</h3><span class="status live">进行中</span><span class="when"><i aria-hidden="true"></i><span>今日 08:25</span></span></div>
-      <p>雾港临时联络窗口已开启，接收范围内的请求将获得优先处理。</p>
-    </div>
-  </article>
-  <article class="evt">
-    <div class="rail" aria-hidden="true"><span class="disc"></span><div class="evt-ic archived"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h9l3 3v15H6z"/><path d="M9 12l2 2 4-4.5"/></svg></div></div>
-    <div class="body">
-      <div class="head"><h3>旧城区传闻完成核验</h3><span class="status">已归档</span><span class="when"><i aria-hidden="true"></i><span>今日 07:10</span></span></div>
-      <p>关于旧城区的传闻已完成多方交叉核验，结论已归档存储。</p>
-    </div>
-  </article>
-  <article class="evt">
-    <div class="rail" aria-hidden="true"><span class="disc"></span><div class="evt-ic archived"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v5c0 4.4-3 7.8-7 9-4-1.2-7-4.6-7-9V6z"/><path d="M12 8v5M12 16h.01"/></svg></div></div>
-    <div class="body">
-      <div class="head"><h3>联合公告等待确认</h3><span class="status">已归档</span><span class="when"><i aria-hidden="true"></i><span>今日 06:05</span></span></div>
-      <p>多方联合公告草案已提交，当前等待关键成员的最终确认。</p>
+
+  <article class="evt" data-type="normal">
+    <!-- 命中关键词「联络/窗口」→ 信号波。 -->
+    <div class="evt-ic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 9.5a10 10 0 0 1 14 0M8 13a6 6 0 0 1 8 0M11 16.5a2 2 0 0 1 2 0"/><circle cx="12" cy="19" r="1" fill="currentColor" stroke="none"/></svg></div>
+    <div class="evt-main">
+      <div class="evt-head"><h4>雾港联络窗口磋商</h4><span class="evt-tags"><span class="pill stage">推进中</span></span></div>
+      <dl class="facts">
+        <div><dt>起因</dt><dd>多方希望在雾港建立常设联络窗口，就优先级与额度展开磋商。</dd></div>
+        <div><dt>主体</dt><dd>雾港同盟、独立观察站</dd></div>
+      </dl>
+      <ol class="stages">
+        <li><span class="tag">阶段 01</span>双方就联络窗口的必要性达成初步共识。</li>
+        <li class="now"><span class="tag">最新阶段</span>进入具体条款磋商，分歧集中在响应时限。</li>
+      </ol>
     </div>
   </article>
 </section>
 
-<div class="funnel" aria-hidden="true"><svg viewBox="0 0 390 144" fill="none" stroke="currentColor" stroke-width="1">
-  <path d="M70 20C130 90 260 90 320 20" opacity=".45"/>
-  <circle cx="195" cy="78" r="10" opacity=".6"/>
-  <circle cx="195" cy="78" r="3" fill="currentColor" stroke="none"/>
-  <path d="M175 120h40v18h-40z" opacity=".55"/>
-  <path d="M175 120l20-8 20 8" opacity=".55"/>
-  <path d="M60 40v50M100 60v40M290 60v40M330 40v50" opacity=".22" stroke-dasharray="2 5"/>
+<section class="group" data-tab="archived" aria-label="已完结">
+
+  <article class="evt" data-type="rumor">
+    <!-- 命中关键词「传闻」→ 气泡。 -->
+    <div class="evt-ic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16v11H8l-4 4z"/><path d="M8 9h8M8 12h5"/></svg></div>
+    <div class="evt-main">
+      <div class="evt-head"><h4>旧城区异动传闻</h4><span class="evt-tags"><span class="badge">流言</span><span class="pill">已证伪</span></span></div>
+      <dl class="facts">
+        <div><dt>起因</dt><dd>旧城区流传出现不明势力集结的说法，引发周边不安。</dd></div>
+        <div><dt>主体</dt><dd>旧城区居民、北岸议会</dd></div>
+      </dl>
+      <details class="stage-fold">
+        <summary>阶段记录（2）</summary>
+        <ol class="stages">
+          <li><span class="tag">阶段 01</span>传闻初现，多个渠道描述互相矛盾。</li>
+          <li><span class="tag">阶段 02</span>多方交叉核验，未发现实际集结迹象。</li>
+        </ol>
+      </details>
+      <div class="final-result"><span class="tag">最终结果</span><p>经多方核验确认为失实传闻，已正式证伪并归档。</p></div>
+    </div>
+  </article>
+
+  <article class="evt" data-type="normal">
+    <!-- 命中关键词「公告」→ 文档。 -->
+    <div class="evt-ic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 5h14v14H5z"/><path d="M8 9h8M8 12h8M8 15h5"/></svg></div>
+    <div class="evt-main">
+      <div class="evt-head"><h4>联合公告签署事宜</h4><span class="evt-tags"><span class="pill">已解决</span></span></div>
+      <dl class="facts">
+        <div><dt>起因</dt><dd>多方起草联合公告，需在关键条款上达成一致才能签署。</dd></div>
+        <div><dt>主体</dt><dd>北岸议会、航线协调局、雾港同盟</dd></div>
+      </dl>
+      <details class="stage-fold">
+        <summary>阶段记录（2）</summary>
+        <ol class="stages">
+          <li><span class="tag">阶段 01</span>公告草案提交，进入多方会签。</li>
+          <li><span class="tag">阶段 02</span>关键条款完成最后一轮修订。</li>
+        </ol>
+      </details>
+      <div class="final-result"><span class="tag">最终结果</span><p>各方完成签署，公告正式生效，事件完结归档。</p></div>
+    </div>
+  </article>
+</section>
+
+<!-- 底部收尾：时间轴落地为水平地平线 + 同心环收束点。竖虚线在环上方停住不穿过，避免与其它页十字准星雷同。 -->
+<div class="footer-art" aria-hidden="true"><svg viewBox="0 0 300 80" fill="none" stroke="currentColor" preserveAspectRatio="xMidYMid meet">
+  <defs>
+    <linearGradient id="horizon" x1="0" y1="0" x2="300" y2="0" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="currentColor" stop-opacity="0"/>
+      <stop offset=".5" stop-color="currentColor" stop-opacity=".5"/>
+      <stop offset="1" stop-color="currentColor" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+  <!-- 竖时间轴虚线：在收束环上方停住，不穿过环心 -->
+  <path d="M150 0V28" stroke-width="1" stroke-dasharray="2 4" opacity=".4"/>
+  <!-- 水平地平线：渐变描边，两侧渐隐 -->
+  <line x1="0" y1="42" x2="300" y2="42" stroke="url(#horizon)" stroke-width="1"/>
+  <!-- 交汇收束点：同心双环 + 实心芯，落在地平线上 -->
+  <circle cx="150" cy="42" r="9" stroke-width=".8" stroke-dasharray="2 3" opacity=".4"/>
+  <circle cx="150" cy="42" r="5" stroke-width="1" opacity=".55"/>
+  <circle cx="150" cy="42" r="1.8" fill="currentColor" stroke="none" opacity=".75"/>
+  <!-- 地平线上左右对称两枚小信号点，替代竖向穿刺感 -->
+  <circle cx="110" cy="42" r="1.4" fill="currentColor" stroke="none" opacity=".38"/>
+  <circle cx="190" cy="42" r="1.4" fill="currentColor" stroke="none" opacity=".38"/>
+  <!-- 地平线下方：由密到疏的刻度点，暗示继续延伸 -->
+  <circle cx="150" cy="58" r="1.25" fill="currentColor" stroke="none" opacity=".4"/>
+  <circle cx="150" cy="67" r="1" fill="currentColor" stroke="none" opacity=".26"/>
+  <circle cx="150" cy="75" r=".75" fill="currentColor" stroke="none" opacity=".16"/>
 </svg></div>
 
-<nav class="tabs" aria-label="主导航">
-  <a class="tab" href="#world"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.5 3.7 5.6 3.7 9S14.5 18.5 12 21c-2.5-2.5-3.7-5.6-3.7-9S9.5 5.5 12 3z"/></svg><span>世界态势</span></a>
-  <a class="tab" href="#profile"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="8" r="3.4"/><path d="M5.5 20c0-4 2.9-6.5 6.5-6.5S18.5 16 18.5 20" stroke-linecap="round"/></svg><span>个人风评</span></a>
-  <a class="tab" href="#factions"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><circle cx="12" cy="5" r="2.2"/><circle cx="5" cy="18" r="2.2"/><circle cx="19" cy="18" r="2.2"/><path d="M10.4 6.5L6.2 15.8M13.6 6.5l4.2 9.3M7 18h10"/></svg><span>势力图谱</span></a>
-  <a class="tab on" href="#events" aria-current="page"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="2.6"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3" stroke-linecap="round"/></svg><span>事件追踪</span></a>
-  <a class="tab" href="#settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 0 0-.1-1.2l2-1.5-2-3.4-2.3 1a7 7 0 0 0-2-1.2l-.3-2.5H10.7l-.3 2.5a7 7 0 0 0-2 1.2l-2.3-1-2 3.4 2 1.5A7 7 0 0 0 5 12a7 7 0 0 0 .1 1.2l-2 1.5 2 3.4 2.3-1a7 7 0 0 0 2 1.2l.3 2.5h2.6l.3-2.5a7 7 0 0 0 2-1.2l2.3 1 2-3.4-2-1.5A7 7 0 0 0 19 12z"/></svg><span>设置</span></a>
-</nav>
+
+
 
 </div></main>
 </body>

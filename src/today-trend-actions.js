@@ -46,7 +46,7 @@ export function createTodayTrendActionDispatcher({
     if (!container?.addEventListener || typeof getStorageId !== 'function' || typeof getStore !== 'function' || typeof committer?.commitScope !== 'function' || typeof render !== 'function') {
         throw new TypeError('今日风向动作分发依赖无效');
     }
-    const view = { name: 'world', mode: 'content', editingWorldItemId: null, editingCircleId: null, editingFactionId: null, editingEventId: null, editingRule: null, ruleDraft: null, menuOpenId: null };
+    const view = { name: 'world', mode: 'content', dynamicsTab: 'active', editingWorldItemId: null, editingCircleId: null, editingFactionId: null, editingEventId: null, editingRule: null, ruleDraft: null, menuOpenId: null };
     let rerenderEpoch = 0;
     const rerender = async (focus = null) => {
         const epoch = ++rerenderEpoch;
@@ -54,7 +54,8 @@ export function createTodayTrendActionDispatcher({
         if (result !== false && focus && epoch === rerenderEpoch) {
             const target = [...(container.querySelectorAll?.('button[data-action="today-trend-set-circle-status"]') || [])]
                 .find(option => option.dataset.circleId === focus.circleId && option.dataset.status === focus.status);
-            target?.focus?.();
+            const tabTarget = focus.dynamicsTab ? container.querySelector?.(`button[data-action="today-trend-set-dynamics-tab"][data-tab="${focus.dynamicsTab}"]`) : null;
+            (tabTarget || target)?.focus?.();
         }
         return result;
     };
@@ -68,8 +69,18 @@ export function createTodayTrendActionDispatcher({
     };
     const run = promise => Promise.resolve(promise).catch(error => { onError(error); return false; });
     const closeMenu = () => { view.menuOpenId = null; };
-    const open = (name, mode = 'content') => { view.name = name; view.mode = mode; view.editingWorldItemId = null; view.editingCircleId = null; view.editingFactionId = null; view.editingEventId = null; view.editingRule = null; view.ruleDraft = null; closeMenu(); return rerender(); };
+    const open = (name, mode = 'content') => { view.name = name; view.mode = mode; view.dynamicsTab = name === 'dynamics' ? 'active' : view.dynamicsTab; view.editingWorldItemId = null; view.editingCircleId = null; view.editingFactionId = null; view.editingEventId = null; view.editingRule = null; view.ruleDraft = null; closeMenu(); return rerender(); };
     const keydown = event => {
+        const tab = event.target?.closest?.('button[data-action="today-trend-set-dynamics-tab"]');
+        if (tab && container.contains(tab) && !tab.disabled && ['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) {
+            const tabs = [...(container.querySelectorAll?.('button[data-action="today-trend-set-dynamics-tab"]') || [])];
+            const current = tabs.indexOf(tab);
+            const nextIndex = event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1 : (current + (event.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length;
+            const next = tabs[nextIndex];
+            if (!next) return;
+            event.preventDefault();
+            return click({ target: next, dynamicsTabFocus: next.dataset.tab });
+        }
         const button = event.target?.closest?.('button[data-action="today-trend-set-circle-status"]');
         if (!button || !container.contains(button) || button.disabled) return;
         const group = button.closest?.('[role="radiogroup"]');
@@ -128,6 +139,7 @@ export function createTodayTrendActionDispatcher({
         if (action === 'today-trend-cancel-reputation-editor') { view.editingCircleId = null; return run(rerender()); }
         if (action === 'today-trend-cancel-editor') { view.editingCircleId = null; view.editingFactionId = null; view.mode = view.name === 'faction' ? 'content' : 'settings'; return run(rerender()); }
         if (action === 'today-trend-open-dynamics') return run(open('dynamics'));
+        if (action === 'today-trend-set-dynamics-tab') { const tab = button.dataset.tab; if (tab !== 'active' && tab !== 'archived') return; view.dynamicsTab = tab; return run(rerender({ dynamicsTab: event.dynamicsTabFocus || tab })); }
         if (action === 'today-trend-open-dynamics-settings') return run(open('dynamics', 'settings'));
         if (action === 'today-trend-create-event') { view.name = 'dynamics'; view.editingEventId = '__new__'; return run(rerender()); }
         if (action === 'today-trend-edit-event') { view.name = 'dynamics'; view.editingEventId = button.dataset.eventId || null; return run(rerender()); }
@@ -176,8 +188,9 @@ export function createTodayTrendActionDispatcher({
             return run(Promise.resolve(onSaveRule?.(rule, text)).then(async () => { view.editingRule = null; view.ruleDraft = null; await rerender(); onStatus('模块 Prompt 已保存。'); }));
         }
         if (form.dataset.todayTrendForm === 'world-item') return run(commit(scope => {
-            const item = readWorldItem(form); const items = scope.world.items.filter(current => current.id !== item.id);
-            return { ...scope, world: { ...scope.world, items: [...items, item] } };
+            const item = readWorldItem(form); const existingIndex = scope.world.items.findIndex(current => current.id === item.id);
+            const items = existingIndex < 0 ? [...scope.world.items, item] : scope.world.items.map((current, index) => index === existingIndex ? item : current);
+            return { ...scope, world: { ...scope.world, items } };
         }).then(async () => { view.editingWorldItemId = null; closeMenu(); await rerender(); onStatus('世界态势项目已保存。'); }));
         if (form.dataset.todayTrendForm === 'circle') return run(commit(scope => {
             const circle = readCircle(form); const existing = scope.reputation.circles.find(item => item.id === circle.id);
@@ -190,10 +203,10 @@ export function createTodayTrendActionDispatcher({
             const existing = scope.dynamics.active.find(item => item.id === formValue(form, 'id'));
             const next = readEvent(form, existing);
             if (existing) {
-                const metadata = { ...existing, title: next.title, origin: next.origin, participants: next.participants };
+                const metadata = { ...existing, title: next.title, origin: next.origin, participants: next.participants, updatedAt: next.updatedAt };
                 if (next.type !== existing.type) throw new Error('既有事件类型不能改写');
-                if (next.latestStage === existing.latestStage && next.stageLabel === existing.stageLabel) {
-                    return { ...scope, dynamics: { ...scope.dynamics, active: scope.dynamics.active.map(item => item.id === existing.id ? metadata : item) } };
+                if (next.latestStage === existing.latestStage) {
+                    return { ...scope, dynamics: { ...scope.dynamics, active: scope.dynamics.active.map(item => item.id === existing.id ? { ...metadata, stageLabel: next.stageLabel } : item) } };
                 }
                 const advanced = advanceTodayTrendEvent({ ...scope, dynamics: { ...scope.dynamics, active: scope.dynamics.active.map(item => item.id === existing.id ? metadata : item) } }, existing.id, { stageLabel: next.stageLabel, latestStage: next.latestStage });
                 return advanced;

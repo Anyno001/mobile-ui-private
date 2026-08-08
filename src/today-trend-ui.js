@@ -1,6 +1,16 @@
 import { CLOSE_ICON_SVG, MORE_ICON_SVG } from './icons.js';
 import { escapeAttr, escapeHtml } from './ui.js';
 
+// 仪表盘 meta 前导小时钟：灰色装饰，弱化存在但点出「时间维度」语义（呼应原型 updated/meta 行首图标）。
+export const TREND_METER_CLOCK_ICON_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg>';
+
+// 仪表盘式 meta：时钟 + 若干 { label, value } 段，段间以 × 装饰分隔（非运算符）。label 为英文装饰标签，value 来自真实字段。
+export function trendMeter(segments = []) {
+    const body = segments.filter(segment => segment && segment.label != null && segment.value != null)
+        .map(({ label, value }, index) => `${index ? '<span class="pm-today-trend-meter-x" aria-hidden="true">&times;</span>' : ''}<span class="pm-today-trend-meter-k">${escapeHtml(String(label))}</span><span class="pm-today-trend-meter-v">${escapeHtml(String(value))}</span>`).join('');
+    return body ? `<span class="pm-today-trend-meter">${TREND_METER_CLOCK_ICON_SVG}${body}</span>` : '';
+}
+
 export function trendIconButton({ action, icon, label, attrs = '', danger = false, className = '' }) {
     return `<button type="button" class="pm-today-trend-icon-button${danger ? ' is-danger' : ''}${className ? ` ${className}` : ''}" data-action="${escapeAttr(action)}" aria-label="${escapeAttr(label)}" title="${escapeAttr(label)}" ${attrs}>${icon}</button>`;
 }
@@ -21,8 +31,9 @@ export function trendInlineActions({ visible = false, actions = [] } = {}) {
     return `<span class="pm-today-trend-inline-actions">${actions.map(action => trendIconButton({ ...action, className: `pm-today-trend-inline-action${action.className ? ` ${action.className}` : ''}` })).join('')}</span>`;
 }
 
-export function trendModuleHead({ title, menuId, menuOpenId, actions = [], meta = '', eyebrow = '', adornment = '' }) {
-    return `<header class="pm-today-trend-module-head${eyebrow ? ' is-decorative' : ''}"><div>${eyebrow ? `<p class="pm-today-trend-module-eyebrow">${escapeHtml(eyebrow)}</p>` : ''}<h2>${escapeHtml(title)}${adornment}</h2>${meta ? `<span>${escapeHtml(meta)}</span>` : ''}</div>${trendActionMenu({ id: menuId, open: menuOpenId === menuId, label: `${title}操作`, actions })}</header>`;
+export function trendModuleHead({ title, menuId, menuOpenId, actions = [], meta = '', metaHtml = '', eyebrow = '', adornment = '' }) {
+    const renderedMeta = metaHtml || (meta ? `<span>${escapeHtml(meta)}</span>` : '');
+    return `<header class="pm-today-trend-module-head${eyebrow ? ' is-decorative' : ''}"><div>${eyebrow ? `<p class="pm-today-trend-module-eyebrow">${escapeHtml(eyebrow)}</p>` : ''}<h2>${escapeHtml(title)}${adornment}</h2>${renderedMeta}</div>${trendActionMenu({ id: menuId, open: menuOpenId === menuId, label: `${title}操作`, actions })}</header>`;
 }
 
 export function trendRuleEditor({ rule, value = '' } = {}) {

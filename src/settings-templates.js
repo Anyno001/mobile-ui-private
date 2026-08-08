@@ -22,8 +22,8 @@ export function renderSettingsHome() {
       <div class="pm-global-setting" role="group" aria-labelledby="pm-gal-bubble-label">
         <span><b id="pm-gal-bubble-label">GAL 气泡正则</b><span class="pm-settings-home-hint">写入酒馆全局正则，并要求手机回复使用 GAL 台词格式</span></span>
         <div id="pm-gal-bubble-check" onclick="window.__pmToggleGalBubble()"
-          class="pm-custom-check ${window.__pmGalBubbleEnabled === true ? 'is-checked' : ''}" role="checkbox" tabindex="0"
-          aria-checked="${window.__pmGalBubbleEnabled === true}"
+          class="pm-custom-check ${window.__pmGalBubbleOperational === true ? 'is-checked' : ''}" role="checkbox" tabindex="0"
+          aria-checked="${window.__pmGalBubbleOperational === true}"
           onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();this.click()}"></div>
       </div>
     </div>`;

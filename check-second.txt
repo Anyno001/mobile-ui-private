@@ -1,0 +1,13 @@
+[phone-mode] 手机界面状态读取失败 SyntaxError: Expected property name or '}' in JSON at position 1 (line 1 column 2)
+    at JSON.parse (<anonymous>)
+    at loadPhoneUiState (file:///g:/%E5%A5%B6%E9%BE%99Code/mobile-ui-private/src/storage.js:260:43)
+    at file:///g:/%E5%A5%B6%E9%BE%99Code/mobile-ui-private/scripts/check-interactive.mjs:1317:18
+[phone-mode] 互动场景后备数据读取失败 SyntaxError: Expected property name or '}' in JSON at position 1 (line 1 column 2)
+    at JSON.parse (<anonymous>)
+    at loadInteractiveScenes (file:///g:/%E5%A5%B6%E9%BE%99Code/mobile-ui-private/src/storage.js:200:35)
+    at file:///g:/%E5%A5%B6%E9%BE%99Code/mobile-ui-private/scripts/check-interactive.mjs:1320:20
+[phone-mode] 手机界面状态保存失败 Error: quota exceeded
+    at Object.setItem (file:///g:/%E5%A5%B6%E9%BE%99Code/mobile-ui-private/scripts/check-interactive.mjs:1324:28)
+    at savePhoneUiState (file:///g:/%E5%A5%B6%E9%BE%99Code/mobile-ui-private/src/storage.js:283:22)
+    at file:///g:/%E5%A5%B6%E9%BE%99Code/mobile-ui-private/scripts/check-interactive.mjs:1328:14
+interactive scene checks passed

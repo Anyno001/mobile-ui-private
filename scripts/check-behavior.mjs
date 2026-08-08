@@ -1,9 +1,13 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import {
     CALENDAR_CYCLE_STORAGE_KEY, CALENDAR_HOLIDAY_STORAGE_KEY, CALENDAR_OCCASION_STORAGE_KEY,
     CALENDAR_OUTFIT_STORAGE_KEY, CALENDAR_STORAGE_KEY, CALENDAR_WEATHER_STORAGE_KEY, EXTENSION_PROMPT_POSITIONS, MAX_INJECTION_DEPTH,
 } from '../src/constants.js';
-import { getGalBubblePrompt, installGalBubble, parseGalBubbleMessages, reconcileGalBubble, uninstallGalBubble } from '../src/gal-bubble.js';
+import {
+    getGalBubbleAssistantText, getGalBubblePrompt, getGalBubbleScriptDefinition,
+    installGalBubble, parseGalBubbleMessages, reconcileGalBubble, uninstallGalBubble,
+} from '../src/gal-bubble.js';
 import { createEmptyTodayTrendStore } from '../src/today-trend-model.js';
 import { THEME_PRESETS } from '../src/config.js';
 import { createWorldBookEntryKey, getCurrentChatWorldBooks, getEnabledWorldBookNames, getReadableWorldBookNames, getTavernDbColumn, isMemberPrivateWorldBookEntryAllowed, isWorldBookEntryAllowed, normalizeWorldBookConfig } from '../src/worldbook-config.js';
@@ -1084,14 +1088,30 @@ assert.deepEqual(guardedRandomNpcResponse, [
 
 const galParsedMessages = parseGalBubbleMessages([
     '<msg side="left">林夏（夏夏）|你好</msg>',
-    '<msg side="right"><user>|我说&lt;晚点见&gt;｜别等我</msg>',
+    '<msg side="right">YOYO|我说&lt;晚点见&gt;｜别等我</msg>',
 ].join('\n'));
 assert.deepEqual(galParsedMessages, [
     { side: 'left', name: '林夏', text: '你好' },
-    { side: 'right', name: '<user>', text: '我说&lt;晚点见&gt;｜别等我' },
+    { side: 'right', name: 'YOYO', text: '我说&lt;晚点见&gt;｜别等我' },
 ], 'GAL 单聊解析必须去除标签、别名和结构竖线，并保留 right、转义尖括号与正文全角竖线');
 assert.equal(parseGalBubbleMessages('<msg side="left">林夏|  </msg>'), null, 'GAL 空正文不得产出消息');
 assert.equal(parseGalBubbleMessages('林夏|没有标签'), null, '非 GAL 格式不得伪造消息');
+assert.equal(parseGalBubbleMessages('<msg side="left">林夏|你好</msg>\n裸叙述'), null,
+    'GAL 部分匹配时必须整体降级，不能静默吞掉未匹配内容');
+assert.equal(parseGalBubbleMessages('<msg side="left">林夏|<img src=x onerror=alert(1)></msg>'), null,
+    'GAL 宿主正则不得接受正文中的原始 HTML 标签');
+assert.equal(parseGalBubbleMessages('<msg side="left"><img>|你好</msg>'), null,
+    'GAL 宿主正则不得接受名字中的原始 HTML 标签');
+assert.equal(getGalBubbleAssistantText('<msg side="right">YOYO|用户回声</msg>'), '',
+    '单聊 GAL 消费端必须排除 right 用户消息');
+assert.equal(getGalBubbleAssistantText([
+    '<msg side="right">YOYO|用户回声</msg>',
+    '<msg side="left">林夏|角色回复</msg>',
+].join('\n')), '角色回复', '单聊 GAL 消费端只允许 left 角色回复进入助手历史');
+
+const exportedGalScript = JSON.parse(readFileSync(new URL('../regex-msg_独立对话气泡_gal版(1).json', import.meta.url), 'utf8'));
+assert.deepEqual(exportedGalScript, getGalBubbleScriptDefinition(),
+    'GAL 独立正则 JSON 必须与运行时安装定义保持逐字段一致');
 
 const galGroupResponse = parseGroupResponse([
     '<msg side="left">Alice（A）|你好</msg>',
@@ -1104,9 +1124,9 @@ assert.deepEqual(parseGroupResponse(
     ['Alice', 'Bob'], { galBubbleEnabled: true },
 ), [{ name: 'Alice', sentences: ['第一句｜第二句'] }], 'GAL 正文全角竖线不得被误作格式分隔符');
 assert.deepEqual(parseGroupResponse(
-    '<msg side="right"><user>|我说&lt;晚点见&gt;</msg>',
+    '<msg side="right">YOYO|我说&lt;晚点见&gt;</msg>',
     ['Alice', 'Bob'], { galBubbleEnabled: true },
-), [], 'GAL 群聊不得把 <user> 的 right 消息错误归属给首个角色');
+), [], 'GAL 群聊不得把用户的 right 消息错误归属给首个角色');
 assert.deepEqual(parseGroupResponse(
     '<msg side="left">未知角色|越权发言</msg>\n<msg side="left">Alice|合法发言</msg>',
     ['Alice', 'Bob'], { galBubbleEnabled: true },
@@ -1126,6 +1146,11 @@ assert.deepEqual(parseGroupResponse(
     galDisabledRaw, ['Alice', 'Bob'], { galBubbleEnabled: false },
 ), [{ name: 'Alice', sentences: ['Alice（A）|你好'] }, { name: 'Bob', sentences: ['原有发言'] }],
     'GAL 关闭时通用清洗器仍应处理标签而不解析 GAL 结构');
+assert.deepEqual(parseGroupResponse(
+    '<msg side="left">Alice|GAL 发言</msg>\nBob：保留发言',
+    ['Alice', 'Bob'], { galBubbleEnabled: true },
+), [{ name: 'Alice', sentences: ['Alice|GAL 发言'] }, { name: 'Bob', sentences: ['保留发言'] }],
+    'GAL 混合格式必须整体降级到既有群聊解析，不能吞掉裸文本');
 const independentSingleUserPrompt = buildIndependentSingleUserPrompt(promptFixture);
 const independentGroupUserPrompt = buildIndependentGroupUserPrompt(promptFixture);
 assert.doesNotMatch(independentSingleUserPrompt, /主线正文证据/);
@@ -1578,35 +1603,52 @@ assert.equal(JSON.parse(localValues.get('ST_SMS_CHARACTER_BEHAVIOR')).story.Alic
 const galRegexContext = {
     extensionSettings: { regex: [] },
     saved: 0,
-    saveSettingsDebounced() { this.saved += 1; },
+    saveSettingsDebounced() { this.saved += 1; return Promise.resolve(); },
 };
-installGalBubble(galRegexContext);
+await installGalBubble(galRegexContext);
 assert.equal(galRegexContext.extensionSettings.regex.length, 1, 'GAL 正则安装必须创建唯一脚本');
 assert.equal(galRegexContext.saved, 1, 'GAL 正则安装必须请求宿主保存');
-installGalBubble(galRegexContext);
+await installGalBubble(galRegexContext);
 assert.equal(galRegexContext.extensionSettings.regex.length, 1, '重复安装不得产生重复 GAL 正则');
-reconcileGalBubble(galRegexContext, false);
+const galStaleScript = { ...galRegexContext.extensionSettings.regex[0], placement: [0], disabled: true, staleField: 'preserve' };
+const galStaleContext = {
+    extensionSettings: { regex: [galStaleScript] },
+    saved: 0,
+    saveSettingsDebounced() { this.saved += 1; return Promise.resolve(); },
+};
+assert.equal((await reconcileGalBubble(galStaleContext, true)).action, 'updated', '开启 GAL 时必须修复同 ID 的过期正则定义');
+assert.equal(galStaleContext.extensionSettings.regex[0].placement[0], 2);
+assert.equal(galStaleContext.extensionSettings.regex[0].disabled, false);
+assert.equal(galStaleContext.extensionSettings.regex[0].staleField, 'preserve');
+assert.equal(galStaleContext.saved, 1);
+await reconcileGalBubble(galRegexContext, false);
 assert.equal(galRegexContext.extensionSettings.regex.length, 0, '关闭 GAL 正则必须移除自有脚本');
-reconcileGalBubble(galRegexContext, true);
+await reconcileGalBubble(galRegexContext, true);
 assert.equal(galRegexContext.extensionSettings.regex.length, 1, '开启 GAL 正则必须补装缺失脚本');
 const galDuplicateContext = {
     extensionSettings: { regex: [...galRegexContext.extensionSettings.regex, { ...galRegexContext.extensionSettings.regex[0] }] },
     saveSettingsDebounced() {},
 };
-assert.throws(() => reconcileGalBubble(galDuplicateContext, true), /多条同 ID/,
+await assert.rejects(() => reconcileGalBubble(galDuplicateContext, true), /多条同 ID/,
     '发现重复自有正则时不得猜测性删除任何宿主条目');
 assert.equal(galDuplicateContext.extensionSettings.regex.length, 2, '重复自有正则拒绝路径不得修改宿主配置');
 const galSaveFailureContext = {
     extensionSettings: { regex: [] },
-    saveSettingsDebounced() { throw new Error('host-save-failed'); },
+    saveSettingsDebounced() { return Promise.reject(new Error('host-save-failed')); },
 };
-assert.throws(() => installGalBubble(galSaveFailureContext), /host-save-failed/);
+await assert.rejects(() => installGalBubble(galSaveFailureContext), /host-save-failed/);
 assert.equal(galSaveFailureContext.extensionSettings.regex.length, 0, '宿主保存失败时不得保留未提交的 GAL 正则');
+const galSaveFalseContext = {
+    extensionSettings: { regex: [] },
+    saveSettingsDebounced() { return false; },
+};
+await assert.rejects(() => installGalBubble(galSaveFalseContext), error => error?.code === 'save-failed');
+assert.equal(galSaveFalseContext.extensionSettings.regex.length, 0, '宿主显式拒绝保存时不得保留未提交的 GAL 正则');
 const galUpdateFailureContext = {
     extensionSettings: { regex: [{ ...galRegexContext.extensionSettings.regex[0], scriptName: '旧名称', customUserField: '不得丢失' }] },
-    saveSettingsDebounced() { throw new Error('host-update-failed'); },
+    saveSettingsDebounced() { return Promise.reject(new Error('host-update-failed')); },
 };
-assert.throws(() => installGalBubble(galUpdateFailureContext), /host-update-failed/);
+await assert.rejects(() => installGalBubble(galUpdateFailureContext), /host-update-failed/);
 assert.equal(galUpdateFailureContext.extensionSettings.regex[0].scriptName, '旧名称',
     '更新自有正则保存失败时必须恢复原字段');
 assert.equal(galUpdateFailureContext.extensionSettings.regex[0].customUserField, '不得丢失',
@@ -1618,28 +1660,43 @@ try {
     globalThis.alert = () => {};
     window.__pmGalBubbleEnabled = false;
     let galControllerSaved = false;
+    let galControllerReloaded = 0;
+    const galControllerContext = {
+        extensionSettings: { regex: [] },
+        saveSettingsDebounced() { galControllerSaved = true; },
+    };
     const galController = createGalBubbleController({
-        getContext: () => galRegexContext,
+        getContext: () => galControllerContext,
         reconcile: reconcileGalBubble,
-        saveEnabled: () => { galControllerSaved = true; return true; },
+        saveEnabled: () => true,
+        reloadCurrentChat: async () => { galControllerReloaded += 1; },
     });
-    assert.equal(galController.toggle(), true);
+    assert.equal(await galController.toggle(), true);
     assert.equal(window.__pmGalBubbleEnabled, true);
     assert.equal(galControllerSaved, true);
-    assert.equal(galRegexContext.extensionSettings.regex.length, 1);
+    assert.equal(galControllerContext.extensionSettings.regex.length, 1);
+    let galRollbackSaveCalls = 0;
+    let galRollbackAlert = '';
     const galRollbackContext = {
         extensionSettings: { regex: [] },
-        saveSettingsDebounced() {},
+        saveSettingsDebounced() {
+            galRollbackSaveCalls += 1;
+            return galRollbackSaveCalls === 2 ? false : Promise.resolve();
+        },
     };
+    globalThis.alert = message => { galRollbackAlert = String(message); };
     window.__pmGalBubbleEnabled = false;
     const galRollbackController = createGalBubbleController({
         getContext: () => galRollbackContext,
         reconcile: reconcileGalBubble,
         saveEnabled: () => false,
     });
-    assert.equal(galRollbackController.toggle(), false, '本地开关保存失败必须报告失败');
+    assert.equal(await galRollbackController.toggle(), false, '本地开关保存失败必须报告失败');
     assert.equal(window.__pmGalBubbleEnabled, false, '本地开关保存失败必须恢复内存状态');
     assert.equal(galRollbackContext.extensionSettings.regex.length, 0, '本地开关保存失败必须回滚宿主正则');
+    assert.equal(galRollbackSaveCalls, 2, '本地开关保存失败后必须尝试持久化宿主正则回滚');
+    assert.match(galRollbackAlert, /正则状态回滚失败.*设置保存接口调用失败/, '宿主回滚持久化失败必须明确报告');
+    assert.equal(galControllerReloaded, 1, 'GAL 正则变更后必须等待当前聊天刷新完成');
 } finally {
     if (previousGalDocument === undefined) delete globalThis.document;
     else globalThis.document = previousGalDocument;
@@ -6169,7 +6226,7 @@ const galBackupController = createBackupController({
     applyBidirectionalInjection: async () => {}, createEmptyState: () => ({ galBubbleEnabled: false, model: 'empty' }),
     syncGalBubble: enabled => {
         galBackupSyncCalls.push(enabled);
-        return enabled === true;
+        return { ok: galBackupSyncCalls.length % 2 === 0, changed: false, action: 'noop' };
     },
     closePhone: () => {},
 });
@@ -6183,6 +6240,59 @@ assert.deepEqual(galBackupSyncCalls, [false, true],
     '导入期间 GAL 宿主同步失败必须在回滚阶段恢复原宿主正则状态');
 assert.match(uiAlerts.at(-1), /导入失败，原数据已恢复.*GAL 气泡正则同步失败/s);
 assert.equal(uiAlerts.length, galBackupAlertsBefore + 1);
+
+const galReloadOriginal = { galBubbleEnabled: false, model: 'reload-original' };
+const galReloadImported = { galBubbleEnabled: true, model: 'reload-imported' };
+galBackupState = structuredClone(galReloadOriginal);
+let galReloadCalls = 0;
+const galReloadController = createBackupController({
+    capture: async () => structuredClone(galBackupState),
+    apply: async state => {
+        galBackupState = structuredClone(state);
+        return structuredClone(galBackupState);
+    },
+    persist: async () => {}, complete: async () => {}, parseBackupData: () => structuredClone(galReloadImported),
+    runBackupTransaction, legacyBackupTheme: value => value, clearPluginData: async ({ afterClear }) => afterClear(),
+    requireInjectionSuccess: async callback => callback(), clearBidirectionalInjection: async () => {},
+    applyBidirectionalInjection: async () => {}, createEmptyState: () => ({ galBubbleEnabled: false }),
+    syncGalBubble: async () => ({ ok: true, changed: true, context: {} }),
+    reloadCurrentChat: async () => { galReloadCalls += 1; throw new Error('reload-failed'); },
+    closePhone: () => {},
+});
+galReloadController.importData({ files: [{ text: '{}' }], value: 'gal-reload-failure.json' });
+await fileReadCompletion;
+assert.deepEqual(galBackupState, galReloadImported, 'GAL 聊天刷新失败不得回滚已成功导入的正则配置');
+assert.equal(galReloadCalls, 1, 'GAL 正则变更后必须尝试刷新当前聊天');
+assert.match(uiAlerts.at(-1), /数据导入成功，但 GAL 气泡当前聊天刷新失败，请手动刷新当前聊天/, 'GAL 刷新失败时导入成功提示必须要求手动刷新');
+
+const galRollbackRefreshOriginal = { galBubbleEnabled: false, model: 'rollback-refresh-original' };
+const galRollbackRefreshImported = { galBubbleEnabled: true, model: 'rollback-refresh-imported' };
+galBackupState = structuredClone(galRollbackRefreshOriginal);
+let galRollbackRefreshCalls = 0;
+let galRollbackPersistCalls = 0;
+const galRollbackRefreshController = createBackupController({
+    capture: async () => structuredClone(galBackupState),
+    apply: async state => {
+        galBackupState = structuredClone(state);
+        return structuredClone(galBackupState);
+    },
+    persist: async () => {
+        galRollbackPersistCalls += 1;
+        if (galRollbackPersistCalls === 1) throw new Error('persist-failed');
+    }, complete: async () => {}, parseBackupData: () => structuredClone(galRollbackRefreshImported),
+    runBackupTransaction, legacyBackupTheme: value => value, clearPluginData: async ({ afterClear }) => afterClear(),
+    requireInjectionSuccess: async callback => callback(), clearBidirectionalInjection: async () => {},
+    applyBidirectionalInjection: async () => {}, createEmptyState: () => ({ galBubbleEnabled: false }),
+    syncGalBubble: async () => ({ ok: true, changed: true, context: {} }),
+    reloadCurrentChat: async () => { galRollbackRefreshCalls += 1; throw new Error('rollback-reload-failed'); },
+    closePhone: () => {},
+});
+galRollbackRefreshController.importData({ files: [{ text: '{}' }], value: 'gal-rollback-refresh-failure.json' });
+await fileReadCompletion;
+assert.deepEqual(galBackupState, galRollbackRefreshOriginal, '导入回滚后必须恢复原数据');
+assert.equal(galRollbackRefreshCalls, 2, '导入与回滚的 GAL 正则变更都必须尝试刷新当前聊天');
+assert.equal(galRollbackPersistCalls, 2, '导入失败后必须持久化恢复原数据');
+assert.match(uiAlerts.at(-1), /导入失败，原数据已恢复，但 GAL 气泡当前聊天刷新失败，请手动刷新当前聊天/, '导入回滚后刷新失败必须明确提示手动刷新');
 
 galBackupState = structuredClone(galBackupOriginal);
 galBackupSyncCalls.length = 0;
