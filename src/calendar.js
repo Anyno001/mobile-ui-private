@@ -127,7 +127,7 @@ export function installCalendar(state, deps) {
         commitWeather, commitScope, commitStore, fetchImpl: fetchImpl || globalThis.fetch,
         applyBidirectionalInjection: deps.applyBidirectionalInjection, status, errorStatus, rerender,
     });
-    const { ensureStoryWeatherEvent, storyWeatherEventForScope, selectWeatherLocation, refreshWeather } = weatherController;
+    const { ensureStoryWeatherEvent, storyWeatherEventForScope, regenerateStoryWeatherEvent, selectWeatherLocation, refreshWeather } = weatherController;
     const recipeController = createCalendarRecipeController({
         tasks, getStorageId, gatherContext, callAI, makeOverlay, closeOverlay, commitRecipe,
         getRecipeScope: storageId => recipeScopeFor(runtime.recipeStore, storageId),
@@ -652,6 +652,25 @@ export function installCalendar(state, deps) {
         }
         if (action === 'calendar-weather-refresh') {
             await refreshWeather(storageId);
+            return;
+        }
+        const weatherEventPresetFields = {
+            'calendar-weather-event-type': ['weatherEventType', value => value],
+            'calendar-weather-event-intensity': ['weatherEventIntensity', value => value],
+            'calendar-weather-event-days': ['weatherEventDays', value => {
+                const days = Number(value);
+                return Number.isInteger(days) && days >= 1 && days <= 7 ? days : 0;
+            }],
+        };
+        if (weatherEventPresetFields[action]) {
+            const [field, normalize] = weatherEventPresetFields[action];
+            await commitScope(storageId, current => ({ ...current, [field]: normalize(button.value) }));
+            await regenerateStoryWeatherEvent(storageId);
+            rerender(storageId);
+            return;
+        }
+        if (action === 'calendar-weather-event-regenerate') {
+            await regenerateStoryWeatherEvent(storageId);
             return;
         }
         if (action === 'calendar-cycle-save') {

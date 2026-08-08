@@ -123,7 +123,7 @@ export function buildCharacterBehaviorPrompt(store, storageId, names, isGroup) {
 }
 
 export function buildChatPreferencePrompt({
-    store, storageId, names, isGroup, emojiPrompt = '', wordyPrompt = '',
+    store, storageId, names, isGroup, emojiPrompt = '', wordyPrompt = '', galBubblePrompt = '',
 }) {
     const list = (Array.isArray(names) ? names : [names])
         .map(name => safeKey(name, 80))
@@ -140,7 +140,7 @@ export function buildChatPreferencePrompt({
     } else if (resolvedEmojiPrompt && emojiDisabled.length) {
         resolvedEmojiPrompt += `\n以下成员不得使用表情包：${emojiDisabled.map(item => item.name).join('、')}。`;
     }
-    return behaviorPrompt + resolvedEmojiPrompt + wordyPrompt;
+    return behaviorPrompt + resolvedEmojiPrompt + wordyPrompt + galBubblePrompt;
 }
 
 export function normalizeGroupInjection(value) {

@@ -14,7 +14,12 @@ export function createCalendarWeatherController({
         if (!current.weatherEventEnabled || !runtime.weatherStore.location) return false;
         const referenceDate = getReferenceDate(current);
         if (hasCurrentEvent(current, referenceDate)) return false;
-        const event = createStoryWeatherEvent(runtime.weatherStore, referenceDate, storageId);
+        const event = createStoryWeatherEvent(runtime.weatherStore, referenceDate, storageId, {
+            forcedType: current.weatherEventType,
+            intensity: current.weatherEventIntensity,
+            forcedDays: current.weatherEventDays || undefined,
+            revision: current.weatherEventRevision,
+        });
         if (!event) return false;
         await commitScope(storageId, value => {
             if (!value.weatherEventEnabled || hasCurrentEvent(value, referenceDate)) return value;
@@ -27,7 +32,32 @@ export function createCalendarWeatherController({
         if (!scope?.weatherEventEnabled || hasCurrentEvent(scope, referenceDate) || !runtime.weatherStore.location) {
             return null;
         }
-        return createStoryWeatherEvent(runtime.weatherStore, referenceDate, storageId);
+        return createStoryWeatherEvent(runtime.weatherStore, referenceDate, storageId, {
+            forcedType: scope.weatherEventType,
+            intensity: scope.weatherEventIntensity,
+            forcedDays: scope.weatherEventDays || undefined,
+            revision: scope.weatherEventRevision,
+        });
+    }
+
+    async function regenerateStoryWeatherEvent(storageId) {
+        const current = getScope(storageId);
+        if (!current.weatherEventEnabled || !runtime.weatherStore.location) return false;
+        const revision = Number.isSafeInteger(current.weatherEventRevision) && current.weatherEventRevision >= 0
+            ? current.weatherEventRevision + 1 : 1;
+        const referenceDate = getReferenceDate(current);
+        const event = createStoryWeatherEvent(runtime.weatherStore, referenceDate, storageId, {
+            forcedType: current.weatherEventType,
+            intensity: current.weatherEventIntensity,
+            forcedDays: current.weatherEventDays || undefined,
+            revision,
+        });
+        if (!event) return false;
+        await commitScope(storageId, value => ({ ...value, weatherEventRevision: revision, weatherEvent: event }), null, { refreshInjection: false });
+        await applyBidirectionalInjection?.();
+        status(storageId, '剧情天气事件已重新生成。');
+        rerender(storageId);
+        return true;
     }
 
     async function restoreLocationChange(previousStore, previousWeatherStore, originalError) {
@@ -130,5 +160,5 @@ export function createCalendarWeatherController({
         }
     }
 
-    return { ensureStoryWeatherEvent, storyWeatherEventForScope, selectWeatherLocation, refreshWeather };
+    return { ensureStoryWeatherEvent, storyWeatherEventForScope, regenerateStoryWeatherEvent, selectWeatherLocation, refreshWeather };
 }

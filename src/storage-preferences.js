@@ -1,7 +1,7 @@
 import { BUDGET_CONFIG_KEY } from './budget.js';
 import { normalizeInjectionConfig } from './behavior-config.js';
 import { THEME_PRESETS } from './config.js';
-import { INJECTION_CONFIG_KEY, WORLD_BOOK_CONFIG_KEY } from './constants.js';
+import { GAL_BUBBLE_ENABLED_KEY, INJECTION_CONFIG_KEY, WORLD_BOOK_CONFIG_KEY } from './constants.js';
 import { normalizeWorldBookConfig } from './worldbook-config.js';
 
 export function loadTheme() {
@@ -33,6 +33,16 @@ export function loadWordyLimit() {
 
 export function saveWordyLimit() {
     try { localStorage.setItem('ST_SMS_WORDY_LIMIT', JSON.stringify(window.__pmWordyLimit)); return true; }
+    catch (error) { return false; }
+}
+
+export function loadGalBubbleEnabled() {
+    try { window.__pmGalBubbleEnabled = !!JSON.parse(localStorage.getItem(GAL_BUBBLE_ENABLED_KEY)); }
+    catch (error) { window.__pmGalBubbleEnabled = false; }
+}
+
+export function saveGalBubbleEnabled() {
+    try { localStorage.setItem(GAL_BUBBLE_ENABLED_KEY, JSON.stringify(window.__pmGalBubbleEnabled)); return true; }
     catch (error) { return false; }
 }
 

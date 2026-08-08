@@ -43,6 +43,11 @@
 
 `style.css` 是唯一加载入口，按固定顺序导入 `styles/core.css`、`styles/modal-settings.css`、`styles/community.css`、`styles/calendar.css`、`styles/today-trend.css` 和 `styles/overrides.css`。全局 token 只能定义在 `styles/core.css` 的统一 token 区，并在本文档登记语义、亮暗值和适用组件族。组件私有 token 只用于组件内部重复出现、含义稳定且无法直接复用公共 token 的值；必须定义在组件根选择器作用域内，以稳定 feature 名命名，并在定义旁登记用途、新增理由和适用主题。已登记私有 token 的声明值可使用必要原始值，主题相关值必须亮暗成对；该豁免只适用于变量声明，消费规则仍必须引用 token。不得把私有 token 放入全局区伪装成公共能力，也不得为每条声明机械创建变量。变量名描述用途，不描述当前数值。
 
+| 私有 token | 根选择器 | 语义与适用范围 |
+| --- | --- | --- |
+| `--pm-scene-topbar-height` | `.pm-scene-shell` | 场景顶栏的稳定结构高度；同时锚定顶栏菜单的 `top`，避免两个 `38px` 声明漂移。仅社区场景使用，不随主题改变。 |
+| `--pm-calendar-status-value-offset` | `.pm-calendar-status-card` | 日历状态卡大号数值在 SF/Segoe UI 回退栈中的光学校正位移；仅供 `translateY()` 消费，不改变卡片布局或主题值。 |
+
 ## 4. 颜色与表面
 
 | 语义 token | 浅色 | 深色 |
@@ -109,7 +114,9 @@ hover 与 active 优先通过现有表面色、文字色和描边变化表达，
 | `--pm-line-height-control` | `1.4` | 控件和说明 |
 | `--pm-line-height-body` | `1.5` | 多行正文 |
 
-MUST 从表中选择。控件与正文统一使用 14px，避免为了紧凑牺牲可读性。10px 及以下只允许非关键装饰；17px 以上只允许少量页面主标题或数据展示，并定义组件私有 token。正文不使用超粗字重、全大写或过密行高。使用 600 而不是 650/750 等中间字重，避免不同系统字体映射不一致。
+MUST 从表中选择。控件与正文统一使用 14px，避免为了紧凑牺牲可读性。10px 及以下只允许非关键装饰；17px 以上只允许少量页面主标题或数据展示，并定义组件私有 token。正文不使用超粗字重、全大写或过密行高。字重只允许 400/500/600 三档，不得使用 650/700/750 等非标准字重，避免不同系统字体映射不一致。
+
+生产规则的 `line-height`（含 `font` 简写）必须引用三个公共 `--pm-line-height-*` token。图标、固定行盒与展示排版确实需要字面行高时，必须逐项登记在 `css-governance-registry.json` 的 `lineHeightExceptions`，并写明 owner、原因与移除条件；未登记字面量由 checker 拒绝。
 
 ## 6. 间距、尺寸与圆角
 
@@ -205,7 +212,11 @@ MUST 优先使用 flex/grid。absolute 只用于角标、锚定菜单和装饰�
 
 ## 13. 机器约束与迁移
 
-`scripts/check-contracts.mjs` MUST 检查：目标 token 存在；亮暗主题成对；已迁移组件引用规定 token；状态背景/文字/边框成套；已登记 component root 确有 CSS owner；私有 token 的声明与消费均处于登记 root；稳定 JS 内联写入逐文件逐属性匹配 `inline.allowedWrites`；组件消费规则不存在未登记的裸色值、字号、间距、圆角、z-index、transition 或 `transition:all`；宿主契约仍有效。`legacyValues` 只冻结当前存量债务并按类别 fail-fast，新增裸值必须显式审查并更新登记；全局 token 与已登记组件私有 token 声明中的原始值不属于违规硬编码，私有 token 的消费规则不得直接使用原始值。
+`scripts/check-contracts.mjs` MUST 检查：目标 token 存在；亮暗主题成对；已迁移组件引用规定 token；状态背景/文字/边框成套；已登记 component root 确有 CSS owner；私有 token 的声明与消费均处于登记 root；稳定 JS 内联写入逐文件逐属性匹配 `inline.allowedWrites`；组件消费规则不存在未登记的裸色值、字号、间距、圆角、z-index、transition 或 `transition:all`；所有 `var(--*)` 消费必须指向已声明 token、已登记运行时 token 或显式外部 token；宿主契约仍有效。`legacyValues` 只列出经审计仍有运行/兼容语义的值并按类别 fail-fast；`spacing` 台账必须精确绑定 CSS 路径、selector、property、value、owner、原因和移除条件，`0`、`auto`、`100%`、`50%` 等固有布局值不进入台账。已清空的 `fontSize`、`lineHeight`、`radius`、`zIndex` 类别由检查器强制保持为空，重新引入必须先建立可验证的迁移或有限例外。全局 token 与已登记组件私有 token 声明中的原始值不属于违规硬编码，私有 token 的消费规则不得直接使用原始值。
+
+阶段一收尾的机器事实以 `scripts/css-governance-registry.json` 为准：`legacyValues.spacing` 当前为 44 条精确台账，`lineHeightExceptions` 为 22 条，`animationExceptions` 为 3 条；所有例外必须绑定 path、selector、property、value、owner、reason 和 removeWhen。`--pm-space-px-*` 当前冻结为 16 个已存在 token，只允许缩减，不允许新增；新增声明和 registry stale token 均由 checker 拒绝。`animation` 的普通 duration/easing 必须使用 `--pm-motion-fast`、`--pm-motion-normal` 与 `--pm-motion-ease`，持续状态动画只能使用精确登记例外。
+
+阶段一已知视觉风险不通过治理白名单掩盖：calendar occasion 对比度问题归入阶段二 V5 日历统一，danmaku row 对比度问题归入 V4 社区与桌面统一；host-shell、cropper、Apple skin 与 `.pm-name-trigger` stacking seam 保留为有 owner/reason/removeWhen 的精确例外。真实宿主回归、截图和人工视觉验收属于最终提交检查，不阻塞阶段一代码治理退出。
 
 迁移按组件族分批进行：全局 token → 基础控件 → 卡片/模态/菜单 → 列表/导航 → 聊天 → 社区 → 日历。每批独立构建和回归。旧视觉断言应替换为新标准断言，行为和宿主契约继续保留。
 

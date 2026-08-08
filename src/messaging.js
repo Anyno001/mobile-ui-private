@@ -80,6 +80,14 @@ export function createBubbles(text, side, senderName, { groupColorMap, groupMemb
     const pushPlain = value => {
         const plain = value.trim();
         if (!plain) return;
+        const renderPlainHtml = source => {
+            let display = source;
+            if (side === 'left') {
+                const stripped = display.replace(/[。．.]$/, '');
+                if (stripped) display = stripped;
+            }
+            return escapeHtml(display).replace(/\n/g, '<br>');
+        };
         if (senderName && side === 'left') {
             const wrapper = document.createElement('div');
             wrapper.className = 'pm-group-bubble-wrap';
@@ -94,14 +102,14 @@ export function createBubbles(text, side, senderName, { groupColorMap, groupMemb
                 inner.style.setProperty('background', groupColor.bg, 'important');
                 inner.style.setProperty('color', groupColor.text, 'important');
             }
-            inner.innerHTML = escapeHtml(plain).replace(/\n/g, '<br>');
+            inner.innerHTML = renderPlainHtml(plain);
             wrapper.appendChild(inner);
             results.push(wrapper);
             return;
         }
         const bubble = document.createElement('div');
         bubble.className = `pm-bubble pm-${side}`;
-        bubble.innerHTML = escapeHtml(plain).replace(/\n/g, '<br>');
+        bubble.innerHTML = renderPlainHtml(plain);
         results.push(bubble);
     };
 

@@ -713,6 +713,29 @@ assert.deepEqual(storyEvent, createStoryWeatherEvent(storyEventSeedStore, '2026-
     '同会话、位置与故事日期的剧情天气事件必须稳定');
 assert.notEqual(storyEvent.id, createStoryWeatherEvent(storyEventSeedStore, '2026-07-16', 'story-weather-b').id,
     '不同会话不得复用同一剧情天气事件');
+const configuredStoryEvent = createStoryWeatherEvent(storyEventSeedStore, '2026-07-16', 'story-weather-a', {
+    forcedType: 'tropical_storm', intensity: 'severe', forcedDays: 7, revision: 4,
+});
+assert.ok(configuredStoryEvent, '天气事件参数化配置必须能生成事件');
+assert.equal(configuredStoryEvent.days.length, 7, '天气事件必须支持最长7天');
+assert.equal(configuredStoryEvent.type, 'tropical_storm', '天气事件类型选择必须生效');
+assert.ok(configuredStoryEvent.days.every(day => day.weatherCode === 95), '强烈热带风暴必须使用强天气码');
+assert.deepEqual(configuredStoryEvent, createStoryWeatherEvent(storyEventSeedStore, '2026-07-16', 'story-weather-a', {
+    forcedType: 'tropical_storm', intensity: 'severe', forcedDays: 7, revision: 4,
+}), '相同参数与修订号必须保持稳定');
+assert.notEqual(configuredStoryEvent.id, createStoryWeatherEvent(storyEventSeedStore, '2026-07-16', 'story-weather-a', {
+    forcedType: 'tropical_storm', intensity: 'severe', forcedDays: 7, revision: 5,
+}).id, '手动重新生成必须通过修订号产生新事件');
+assert.equal(normalizeCalendarScope({ weatherEventType: 'bad', weatherEventIntensity: 'bad', weatherEventDays: 8, weatherEventRevision: -1 }).weatherEventDays, 0,
+    '非法天气事件参数必须回落随机默认值');
+const oversizedDaysEvent = createStoryWeatherEvent(storyEventSeedStore, '2026-07-16', 'story-weather-a', { forcedDays: 8 });
+assert.ok(oversizedDaysEvent, '越界天数不得静默丢弃事件');
+assert.ok(oversizedDaysEvent.days.length >= 1 && oversizedDaysEvent.days.length <= 7,
+    '越界天数必须回落到 1-7 的确定性随机长度');
+assert.equal(oversizedDaysEvent.days.length, createStoryWeatherEvent(storyEventSeedStore, '2026-07-16', 'story-weather-a', { forcedDays: 0 }).days.length,
+    '越界天数与随机天数(0)必须走同一确定性回落路径');
+
+
 assert.equal(normalizeStoryWeatherEvent({ ...storyEvent, days: [{ ...storyEvent.days[0], weatherCode: 120 }] }), null,
     '非法剧情天气码必须被丢弃');
 assert.equal(normalizeStoryWeatherEvent({ ...storyEvent, days: [{ ...storyEvent.days[0], weatherCode: 0 }] }), null,
@@ -736,9 +759,10 @@ assert.equal(resolveWeatherForDate({
 }, storyOverrideDate, {
     storyWeatherEvent: storyEvent, storyWeatherEventEnabled: true,
 }).source, WEATHER_SOURCE_FORECAST, '地点变化后旧剧情事件不得覆盖新地点天气');
-assert.equal(resolveWeatherForDate(storyEventSeedStore, '2026-07-21', {
+const storyEventAfterEndDate = calendarDateRangeKeys(parseCalendarDate(storyEvent.endDate), 1, 1)[0];
+assert.notEqual(resolveWeatherForDate(storyEventSeedStore, storyEventAfterEndDate, {
     storyWeatherEvent: storyEvent, storyWeatherEventEnabled: true,
-}).source, WEATHER_SOURCE_FORECAST, '事件只能覆盖定义日期');
+}).source, WEATHER_SOURCE_STORY_EVENT, '事件只能覆盖定义日期');
 assert.equal(normalizeCalendarScope({ weatherEventEnabled: true, weatherEvent: storyEvent }).weatherEvent.id, storyEvent.id,
     '会话 scope 必须持久化有效剧情天气事件');
 assert.equal(normalizeCalendarScope({ weatherEventEnabled: true, weatherEvent: { type: 'bad' } }).weatherEvent, undefined,
@@ -767,6 +791,8 @@ const storyEventPage = renderCalendarPageHtml(
 );
 assert.match(storyEventPage, /data-action="calendar-toggle-weather-event"/, '天气设置必须提供剧情天气事件开关');
 assert.match(storyEventPage, /当前事件：/, '天气设置必须显示当前剧情天气事件状态');
+assert.match(storyEventPage, /未来日期生成随机天气事件/, '剧情天气开关必须使用准确说明文案');
+assert.match(storyEventPage, /data-action="calendar-weather-event-regenerate"/, '天气设置必须提供手动重新生成按钮');
 
 assert.equal(resolveWeatherForDate({}, '2032-02-30').unavailableReason, '日期无效');
 const oldWeatherStore = normalizeWeatherStore({

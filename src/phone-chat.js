@@ -10,6 +10,7 @@ import {
     PENDING_MESSAGE_LIMIT, removePendingBatch, setPendingBatchStatus,
 } from './pending-messages.js';
 import { parseGroupResponse } from './messaging-group-parser.js';
+import { getGalBubblePrompt, parseGalBubbleMessages } from './gal-bubble.js';
 import { getEmojiPrompt, getWordyPrompt } from './messaging.js';
 import { savePokeConfig } from './storage.js';
 import { runAutoPokeCounterCycle } from './runtime.js';
@@ -59,6 +60,7 @@ export function installPhoneChat(state, deps) {
             isGroup,
             emojiPrompt: getEmojiPrompt(saveKey, storageId, window.__pmPokeConfig, window.__pmEmojis),
             wordyPrompt: getWordyPrompt(window.__pmWordyLimit),
+            galBubblePrompt: getGalBubblePrompt(window.__pmGalBubbleEnabled),
         });
 
         try {
@@ -80,6 +82,7 @@ export function installPhoneChat(state, deps) {
             if (isGroup) {
                 const parsed = parseGroupResponse(raw, groupMembers, {
                     allowUnknownSpeakers: groupRandomNpcEnabled === true,
+                    galBubbleEnabled: window.__pmGalBubbleEnabled === true,
                 });
                 if (parsed.length) {
                     const contentParts = parsed.map(p => `${p.name}：${p.sentences.join(' / ')}`);
@@ -108,7 +111,8 @@ export function installPhoneChat(state, deps) {
                     };
                 }
             } else {
-                const clean = cleanResponse(raw);
+                const galMessages = window.__pmGalBubbleEnabled === true ? parseGalBubbleMessages(raw) : null;
+                const clean = galMessages ? galMessages.map(message => message.text).join('\n') : cleanResponse(raw);
                 let sentences = splitToSentences(clean);
                 if (!sentences.length && raw?.trim()) sentences = splitToSentences(raw.replace(/<think>[\s\S]*?<\/think>/gi, '').replace(/<[^>]+>/g, ''));
                 if (!sentences.length) sentences = !raw?.trim() ? ['（空响应）'] : ['（格式无法解析）'];

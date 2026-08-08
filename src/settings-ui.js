@@ -12,6 +12,7 @@ import { createBackupController } from './settings-backup-controller.js';
 import { createBackgroundSettings, runBackgroundTransaction } from './settings-background.js';
 import { createBudgetController } from './settings-budget-controller.js';
 import { createInjectionResultGuard } from './settings-injection-guard.js';
+import { createGalBubbleController } from './settings-gal-bubble-controller.js';
 import { createWordyLimitController } from './settings-wordy-controller.js';
 import { showModelPicker } from './settings-model-picker.js';
 import { installQuickReplySettings } from './settings-quick-reply.js';
@@ -24,9 +25,10 @@ import { createBackupStateHandlers, createEmptyCalendarBackupFields, runBackupTr
 import { loadBgSettings, saveBgGlobal, saveBgLocal, saveDesktopBg } from './storage-background.js';
 import { escapeAttr, escapeHtml, safeJS } from './ui.js';
 import {
-    addOrUpdateProfile, clearPluginData, loadBudgetConfig, loadProfiles, loadTheme,
-    saveBudgetConfig, saveProfiles, saveTheme, saveWordyLimit,
+    addOrUpdateProfile, clearPluginData, loadBudgetConfig, loadProfiles, loadTheme, loadGalBubbleEnabled,
+    saveBudgetConfig, saveGalBubbleEnabled, saveProfiles, saveTheme, saveWordyLimit,
 } from './storage.js';
+import { reconcileGalBubble } from './gal-bubble.js';
 import {
     normalizeAmbientStatus, normalizeInteractiveStore, normalizePhoneUiState,
 } from './interactive-scene-model.js';
@@ -45,6 +47,11 @@ export function installSettingsUi(deps) {
     const apiDraftMode = createApiDraftMode();
     const requireInjectionSuccess = createInjectionResultGuard();
     const wordySettings = createWordyLimitController({ saveWordyLimit });
+    const galBubbleSettings = createGalBubbleController({
+        getContext: deps.getCtx,
+        reconcile: reconcileGalBubble,
+        saveEnabled: saveGalBubbleEnabled,
+    });
     const apiSettings = createApiRequestController({
         runtime, normalizeApiUrls, extractAiResponseContent, normalizeIndependentApiTemperature,
         defaultTemperature: DEFAULT_INDEPENDENT_API_TEMPERATURE, apiDraftMode, clone, saveProfiles, addOrUpdateProfile,
@@ -64,12 +71,21 @@ export function installSettingsUi(deps) {
         parseBackupData, runBackupTransaction, legacyBackupTheme, clearPluginData, requireInjectionSuccess,
         clearBidirectionalInjection, applyBidirectionalInjection, cancelCommunityGeneration: deps.cancelCommunityGeneration,
         cancelCalendarTasks: deps.cancelCalendarTasks, reloadCalendarStore: deps.reloadCalendarStore,
+        syncGalBubble: enabled => {
+            const context = deps.getCtx?.();
+            if (!Array.isArray(context?.extensionSettings?.regex) || typeof context.saveSettingsDebounced !== 'function') {
+                throw new Error('当前酒馆未提供可写的全局正则列表或设置保存接口');
+            }
+            galBubbleSettings.sync(enabled);
+            return true;
+        },
         reloadTodayTrendStore: deps.reloadTodayTrendStore, invalidateInteractiveStore: deps.invalidateInteractiveStore, closePhone,
         createEmptyState: () => ({
             histories: {}, config: { apiUrl: '', apiKey: '', model: '', temperature: DEFAULT_INDEPENDENT_API_TEMPERATURE, useIndependent: false },
             theme: { preset: 'default', customRight: '', customLeft: '', borderColor: '', layout: 'standard', darkMode: 'light', ambientStatusEnabled: false, customTitle: '' },
             profiles: [], groupMeta: {}, pokeConfig: {}, bidirectional: {}, injectionConfig: normalizeInjectionConfig(null),
-            emojis: [], characterBehavior: {}, worldBookConfig: null, wordyLimit: false, desktopBg: '', bgGlobal: '', bgLocal: {},
+            emojis: [], characterBehavior: {}, worldBookConfig: null, wordyLimit: false, galBubbleEnabled: false,
+            desktopBg: '', bgGlobal: '', bgLocal: {},
             interactiveScenes: normalizeInteractiveStore(null), phoneUiState: normalizePhoneUiState(null), ambientStatus: normalizeAmbientStatus(),
             ...createEmptyCalendarBackupFields(), todayTrend: createEmptyTodayTrendStore(),
         }),
@@ -83,6 +99,7 @@ export function installSettingsUi(deps) {
     window.__pmPickProfile = idx => apiSettings.pickProfile(idx);
     window.__pmSetMode = value => apiSettings.setMode(value);
     window.__pmToggleWordyLimit = () => wordySettings.toggle();
+    window.__pmToggleGalBubble = () => galBubbleSettings.toggle();
     window.__pmSetDarkMode = mode => appearanceSettings.setDarkMode(mode);
     window.__pmSetPreset = preset => appearanceSettings.setPreset(preset);
     window.__pmSetCustomAccent = () => appearanceSettings.setCustomAccent();
@@ -106,7 +123,7 @@ export function installSettingsUi(deps) {
 
     window.__pmShowConfig = async (page = 'home') => {
         if (page !== 'worldbook') worldBookSettings.cancelPendingPage();
-        loadProfiles(); loadTheme(); loadBudgetConfig();
+        loadProfiles(); loadTheme(); loadBudgetConfig(); loadGalBubbleEnabled();
         if (page === 'home') {
             makeOverlay(renderSettingsModal({ title: '设置', content: renderSettingsHome(), showBack: false }));
             return;

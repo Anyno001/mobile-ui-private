@@ -1,8 +1,8 @@
 import { cleanResponse, splitToSentences } from './prompts.js';
+import { parseGalBubbleMessages } from './gal-bubble.js';
 
-export function parseGroupResponse(raw, groupMembers, { allowUnknownSpeakers = false } = {}) {
-    const cleaned = cleanResponse(raw);
-    const lines = cleaned.split('\n').map(line => line.trim()).filter(Boolean);
+export function parseGroupResponse(raw, groupMembers, { allowUnknownSpeakers = false, galBubbleEnabled = false } = {}) {
+    const galMessages = galBubbleEnabled ? parseGalBubbleMessages(raw) : null;
     const result = [];
     const normalizeName = value => (value || '')
         .trim()
@@ -45,6 +45,18 @@ export function parseGroupResponse(raw, groupMembers, { allowUnknownSpeakers = f
         stripSpeakerPrefix,
     ).map(text => text.replace(/\u0002/g, '/'));
 
+    if (galMessages) {
+        for (const message of galMessages) {
+            if (message.side !== 'left') continue;
+            const speaker = resolveSpeaker(message.name);
+            if (!speaker) continue;
+            const sentences = splitGroupSentences(message.text);
+            if (sentences.length) result.push({ name: speaker, sentences });
+        }
+        return result;
+    }
+
+    const lines = cleanResponse(raw).split('\n').map(line => line.trim()).filter(Boolean);
     for (const line of lines) {
         const match = line.match(speakerPattern);
         const speaker = match ? resolveSpeaker(match[1]) : '';

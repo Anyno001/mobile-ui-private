@@ -13,8 +13,6 @@ function getDirectoryState(id) {
 
 function setGenerationLoading(active) {
     const button = document.getElementById('pm-autogen-btn');
-    const icon = button?.querySelector('svg');
-    if (icon) icon.style.animation = active ? 'pm-calendar-sparkle-pulse 1s ease-in-out infinite' : '';
     if (button) { button.disabled = active; button.setAttribute('aria-busy', String(active)); }
 }
 

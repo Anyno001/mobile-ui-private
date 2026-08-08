@@ -1,5 +1,6 @@
 import { POPOVER_SUPPORTED } from './constants.js';
 import { awaitPendingBranchInheritance } from './branch-scope-inheritance.js';
+import { reconcileGalBubble } from './gal-bubble.js';
 import { PHONE_UI_PAGES } from './interactive-scene-model.js';
 import { escapeHtml } from './ui.js';
 import {
@@ -12,7 +13,7 @@ import { loadBgSettings } from './storage-background.js';
 import {
     loadBidirectional, loadBudgetConfig, loadEmojis, loadInjectionConfig,
     loadCharacterBehavior, loadGroupMeta, loadHistoriesFromIDB,
-    loadPokeConfig, loadProfiles, loadTheme, loadWordyLimit, loadWorldBookConfig, saveTheme,
+    loadGalBubbleEnabled, loadPokeConfig, loadProfiles, loadTheme, loadWordyLimit, loadWorldBookConfig, saveTheme,
 } from './storage.js';
 
 const PHONE_COMMAND_SHORTCUT_LISTENER_KEY = Symbol.for('phone-mode.command-shortcut-listeners');
@@ -390,7 +391,7 @@ export function installPhoneLifecycle(state, deps) {
             if (typeof window.__pmConfig.useIndependent === 'undefined') window.__pmConfig.useIndependent = !!(window.__pmConfig.apiUrl && window.__pmConfig.apiKey);
         } catch (e) { window.__pmConfig = { apiUrl: '', apiKey: '', model: '', temperature: 1.2, useIndependent: false }; }
         loadProfiles(); loadBidirectional(); loadInjectionConfig(); loadTheme(); loadPokeConfig(); loadCharacterBehavior();
-        loadWordyLimit(); loadBudgetConfig(); loadWorldBookConfig(); migrateOldHistory();
+        loadWordyLimit(); loadGalBubbleEnabled(); loadBudgetConfig(); loadWorldBookConfig(); migrateOldHistory();
         await Promise.all([loadGroupMeta(), loadEmojis()]);
         loadBgSettings().then(() => { try { applyBackground(); } catch (e) {} });
         hookGenerationEvent();
@@ -535,8 +536,13 @@ export function installPhoneLifecycle(state, deps) {
     // 宿主分支在切换聊天后立即发出 CHAT_CHANGED；事件监听不能被本地存储恢复阻塞。
     hookGenerationEvent();
     try { window.__pmHistories = window.__pmHistories || {}; } catch (e) {}
-    loadBidirectional(); loadInjectionConfig(); loadPokeConfig(); loadCharacterBehavior(); loadWordyLimit();
+    loadBidirectional(); loadInjectionConfig(); loadPokeConfig(); loadCharacterBehavior(); loadWordyLimit(); loadGalBubbleEnabled();
     loadBudgetConfig(); loadWorldBookConfig();
+    try {
+        reconcileGalBubble(getCtx(), window.__pmGalBubbleEnabled === true);
+    } catch (error) {
+        console.warn('[phone-mode] GAL 气泡正则同步失败', error);
+    }
     const initialGroupMetaLoad = (deps.loadGroupMeta || loadGroupMeta)();
     loadHistoriesOnce(); // 首次打开复用同一个恢复任务，避免并发读取用旧快照覆盖内存
     // 宿主事件重试不能依赖本地数据恢复成功；否则 IDB 故障会永久漏掉 CHAT_CHANGED。

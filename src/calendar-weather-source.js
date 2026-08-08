@@ -60,7 +60,7 @@ export function normalizeStoryWeatherEvent(value) {
     const startDate = isValidWeatherDate(value.startDate) ? String(value.startDate) : '';
     const locationKey = typeof value.locationKey === 'string' ? value.locationKey.trim().slice(0, 500) : '';
     const rawDays = Array.isArray(value.days) ? value.days : [];
-    if (!type || !startDate || !locationKey || rawDays.length < 1 || rawDays.length > 3) return null;
+    if (!type || !startDate || !locationKey || rawDays.length < 1 || rawDays.length > 7) return null;
     const days = rawDays.map(item => {
         if (!item || typeof item !== 'object' || Array.isArray(item) || !isValidWeatherDate(item.date)) return null;
         const weatherCode = Number(item.weatherCode), tempMin = Number(item.tempMin), tempMax = Number(item.tempMax);
@@ -86,16 +86,23 @@ export function storyWeatherEventForDate(event, date) {
     return day ? { event: normalized, day } : null;
 }
 
-export function createStoryWeatherEvent(weatherStore, referenceDate, storageId = '') {
+export function createStoryWeatherEvent(weatherStore, referenceDate, storageId = '', options = {}) {
     const startDate = shiftWeatherDate(referenceDate, 1);
     const location = weatherStore?.location;
     if (!startDate || !location || !String(storageId).trim()) return null;
     const locationKey = weatherLocationKey(location);
     if (!locationKey) return null;
-    const seed = `${String(storageId).trim()}|${location.latitude},${location.longitude}|${location.name}|${startDate}`;
+    const revision = Number.isSafeInteger(options.revision) && options.revision >= 0 ? options.revision : 0;
+    const seed = `${String(storageId).trim()}|${location.latitude},${location.longitude}|${location.name}|${startDate}${revision ? `|r${revision}` : ''}`;
     const typeKeys = Object.keys(STORY_WEATHER_EVENT_TYPES);
-    const type = typeKeys[stableHash(`${seed}|type`) % typeKeys.length];
-    const length = 1 + stableHash(`${seed}|length`) % 3;
+    const type = typeKeys.includes(options.forcedType) ? options.forcedType
+        : typeKeys[stableHash(`${seed}|type`) % typeKeys.length];
+    const intensityKeys = ['mild', 'normal', 'severe'];
+    const intensity = intensityKeys.includes(options.intensity) ? options.intensity
+        : intensityKeys[stableHash(`${seed}|intensity`) % intensityKeys.length];
+    const requestedDays = Number.isInteger(options.forcedDays) && options.forcedDays >= 1 && options.forcedDays <= 7
+        ? options.forcedDays : 1 + stableHash(`${seed}|length`) % 7;
+    const length = requestedDays;
     const days = [];
     for (let index = 0; index < length; index++) {
         const date = shiftWeatherDate(startDate, index);
@@ -103,8 +110,10 @@ export function createStoryWeatherEvent(weatherStore, referenceDate, storageId =
         const base = resolveWeatherForDate(weatherStore, date);
         if (base.status !== 'available') return null;
         const codes = STORY_WEATHER_EVENT_TYPES[type].codes;
-        const weatherCode = codes[stableHash(`${seed}|code|${index}`) % codes.length];
-        const cooling = type === 'clear_spell' ? 0 : type === 'tropical_storm' ? 4 : 2;
+        const randomCode = codes[stableHash(`${seed}|code|${index}`) % codes.length];
+        const weatherCode = intensity === 'severe' ? codes.at(-1) : randomCode;
+        const baseCooling = type === 'clear_spell' ? 0 : type === 'tropical_storm' ? 4 : 2;
+        const cooling = Math.round(baseCooling * (intensity === 'mild' ? 0.5 : intensity === 'severe' ? 1.5 : 1));
         const tempMin = Math.max(-80, base.day.tempMin - cooling);
         const tempMax = Math.max(tempMin + 1, Math.min(55, base.day.tempMax - cooling));
         days.push({ date, weatherCode, tempMin, tempMax });

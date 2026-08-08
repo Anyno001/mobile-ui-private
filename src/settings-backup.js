@@ -23,7 +23,7 @@ import {
     loadInteractiveScenes, loadPhoneUiState, saveBidirectional, saveInjectionConfig,
     saveCharacterBehavior, saveEmojis, saveGroupMeta, saveHistoriesStrict, saveInteractiveScenes,
     completeBranchLineageBackup, loadBranchLineage, rollbackBranchLineageBackup, saveBranchLineageForBackup,
-    savePhoneUiState, saveBranchLineage, saveBudgetConfig, savePokeConfig, saveProfiles, saveTheme, saveWordyLimit, saveWorldBookConfig,
+    savePhoneUiState, saveBranchLineage, saveBudgetConfig, saveGalBubbleEnabled, savePokeConfig, saveProfiles, saveTheme, saveWordyLimit, saveWorldBookConfig,
 } from './storage.js';
 
 const clone = value => JSON.parse(JSON.stringify(value));
@@ -142,6 +142,7 @@ export function createBackupStateHandlers(deps = {}) {
             budgetConfig: normalizeBudgetConfig(window.__pmBudgetConfig),
             emojis: cloneEmojiLibrary(window.__pmEmojis),
             characterBehavior: clone(window.__pmCharacterBehavior || {}), wordyLimit: !!window.__pmWordyLimit,
+            galBubbleEnabled: window.__pmGalBubbleEnabled === true,
             worldBookConfig: normalizeWorldBookConfig(window.__pmWorldBookConfig),
             desktopBg: window.__pmDesktopBg || '', bgGlobal: window.__pmBgGlobal || '', bgLocal: clone(window.__pmBgLocal || {}),
             interactiveScenes, phoneUiState: loadPhoneUiState(interactiveScenes),
@@ -164,7 +165,8 @@ export function createBackupStateHandlers(deps = {}) {
         window.__pmInjectionConfig = normalizeInjectionConfig(state.injectionConfig);
         window.__pmBudgetConfig = normalizeBudgetConfig(state.budgetConfig);
         window.__pmEmojis = cloneEmojiLibrary(state.emojis); window.__pmCharacterBehavior = clone(state.characterBehavior || {});
-        window.__pmWordyLimit = !!state.wordyLimit; window.__pmDesktopBg = typeof state.desktopBg === 'string' ? state.desktopBg : '';
+        window.__pmWordyLimit = !!state.wordyLimit; window.__pmGalBubbleEnabled = state.galBubbleEnabled === true;
+        window.__pmDesktopBg = typeof state.desktopBg === 'string' ? state.desktopBg : '';
         window.__pmWorldBookConfig = normalizeWorldBookConfig(state.worldBookConfig);
         window.__pmBgGlobal = typeof state.bgGlobal === 'string' ? state.bgGlobal : '';
         window.__pmBgLocal = clone(state.bgLocal || {}); window.__pmPhoneUiState = phoneUiState;
@@ -192,7 +194,7 @@ export function createBackupStateHandlers(deps = {}) {
         if (!saveTheme()) throw new Error('主题配置保存失败：浏览器存储不可用');
         if (!saveProfiles()) throw new Error('API 档案保存失败：浏览器存储不可用');
         await saveGroupMeta();
-        if (!saveCharacterBehavior() || !savePokeConfig() || !saveBidirectional() || !saveInjectionConfig() || !saveBudgetConfig(state.budgetConfig) || !saveWordyLimit() || !saveWorldBookConfig()) {
+        if (!saveCharacterBehavior() || !savePokeConfig() || !saveBidirectional() || !saveInjectionConfig() || !saveBudgetConfig(state.budgetConfig) || !saveWordyLimit() || !saveGalBubbleEnabled() || !saveWorldBookConfig()) {
             throw new Error('插件配置保存失败：浏览器存储不可用');
         }
         await saveEmojis(); await saveDesktopBg(); await saveBgGlobal(); await saveBgLocal(); await saveInteractiveScenes(interactiveScenes);

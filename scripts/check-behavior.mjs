@@ -3,6 +3,7 @@ import {
     CALENDAR_CYCLE_STORAGE_KEY, CALENDAR_HOLIDAY_STORAGE_KEY, CALENDAR_OCCASION_STORAGE_KEY,
     CALENDAR_OUTFIT_STORAGE_KEY, CALENDAR_STORAGE_KEY, CALENDAR_WEATHER_STORAGE_KEY, EXTENSION_PROMPT_POSITIONS, MAX_INJECTION_DEPTH,
 } from '../src/constants.js';
+import { getGalBubblePrompt, installGalBubble, parseGalBubbleMessages, reconcileGalBubble, uninstallGalBubble } from '../src/gal-bubble.js';
 import { createEmptyTodayTrendStore } from '../src/today-trend-model.js';
 import { THEME_PRESETS } from '../src/config.js';
 import { createWorldBookEntryKey, getCurrentChatWorldBooks, getEnabledWorldBookNames, getReadableWorldBookNames, getTavernDbColumn, isMemberPrivateWorldBookEntryAllowed, isWorldBookEntryAllowed, normalizeWorldBookConfig } from '../src/worldbook-config.js';
@@ -13,6 +14,7 @@ import {
     normalizeCharacterBehavior, normalizeCharacterBehaviorStore,
     normalizeGroupInjection, normalizeGroupMeta, normalizeGroupMetaStore, normalizeInjectionConfig,
 } from '../src/behavior-config.js';
+import { createGalBubbleController } from '../src/settings-gal-bubble-controller.js';
 import {
     createMessageEntry, createQuoteSnapshot, describeMessageEntry, formatQuoteContext, normalizeMessageHistory,
 } from '../src/chat-message-model.js';
@@ -64,6 +66,7 @@ import { createInjectionResultGuard } from '../src/settings-injection-guard.js';
 import {
     createBackupStateHandlers, installSettingsUi, parseBackupData, runBackgroundTransaction, runBackupTransaction,
 } from '../src/settings-ui.js';
+import { createBackupController } from '../src/settings-backup-controller.js';
 import { renderApiSettings } from '../src/settings-templates.js';
 import { loadWorldBookDetails, loadWorldBookDirectory, loadWorldBookSettingsDirectory } from '../src/settings-worldbook.js';
 import {
@@ -977,6 +980,9 @@ const unconfiguredPreference = buildChatPreferencePrompt({
     emojiPrompt: emojiPermission,
 });
 assert.equal(unconfiguredPreference, emojiPermission);
+assert.equal(getGalBubblePrompt(false), '');
+assert.match(getGalBubblePrompt(true), /<msg side="left">名字（别名）\|台词正文<\/msg>/,
+    '启用 GAL 气泡时必须向请求偏好追加可被宿主正则识别的格式约束');
 
 const promptFixture = {
     currentPersona: 'Alice', userName: 'User', userBlock: '用户名字：User',
@@ -1075,6 +1081,51 @@ assert.deepEqual(guardedRandomNpcResponse, [
     },
     { name: '路人群友·小周', sentences: ['合法发言'] },
 ], '普通冒号文本、URL、比例和保留身份不得被误识别或剥离为随机 NPC');
+
+const galParsedMessages = parseGalBubbleMessages([
+    '<msg side="left">林夏（夏夏）|你好</msg>',
+    '<msg side="right"><user>|我说&lt;晚点见&gt;｜别等我</msg>',
+].join('\n'));
+assert.deepEqual(galParsedMessages, [
+    { side: 'left', name: '林夏', text: '你好' },
+    { side: 'right', name: '<user>', text: '我说&lt;晚点见&gt;｜别等我' },
+], 'GAL 单聊解析必须去除标签、别名和结构竖线，并保留 right、转义尖括号与正文全角竖线');
+assert.equal(parseGalBubbleMessages('<msg side="left">林夏|  </msg>'), null, 'GAL 空正文不得产出消息');
+assert.equal(parseGalBubbleMessages('林夏|没有标签'), null, '非 GAL 格式不得伪造消息');
+
+const galGroupResponse = parseGroupResponse([
+    '<msg side="left">Alice（A）|你好</msg>',
+    '<msg side="right">Bob|我也在</msg>',
+].join('\n'), ['Alice', 'Bob'], { galBubbleEnabled: true });
+assert.deepEqual(galGroupResponse, [{ name: 'Alice', sentences: ['你好'] }],
+    'GAL 群聊必须在通用清洗前解析，并且不得把 right 消息伪装成角色发言');
+assert.deepEqual(parseGroupResponse(
+    '<msg side="left">Alice|第一句｜第二句</msg>',
+    ['Alice', 'Bob'], { galBubbleEnabled: true },
+), [{ name: 'Alice', sentences: ['第一句｜第二句'] }], 'GAL 正文全角竖线不得被误作格式分隔符');
+assert.deepEqual(parseGroupResponse(
+    '<msg side="right"><user>|我说&lt;晚点见&gt;</msg>',
+    ['Alice', 'Bob'], { galBubbleEnabled: true },
+), [], 'GAL 群聊不得把 <user> 的 right 消息错误归属给首个角色');
+assert.deepEqual(parseGroupResponse(
+    '<msg side="left">未知角色|越权发言</msg>\n<msg side="left">Alice|合法发言</msg>',
+    ['Alice', 'Bob'], { galBubbleEnabled: true },
+), [{ name: 'Alice', sentences: ['合法发言'] }],
+    '随机 NPC 关闭时未知 GAL 角色必须被丢弃，不能粘连到已有或首个成员');
+assert.deepEqual(parseGroupResponse(
+    '<msg side="left">路人群友·小周|临时发言</msg>',
+    ['Alice', 'Bob'], { galBubbleEnabled: true, allowUnknownSpeakers: true },
+), [{ name: '路人群友·小周', sentences: ['临时发言'] }], '随机 NPC 开启时 GAL 路径必须沿用既有身份白名单');
+const galDisabledRaw = '<msg side="left">Alice（A）|你好</msg>\nBob：原有发言';
+assert.deepEqual(
+    parseGroupResponse(galDisabledRaw, ['Alice', 'Bob'], { galBubbleEnabled: false }),
+    parseGroupResponse(galDisabledRaw, ['Alice', 'Bob']),
+    'GAL 关闭时必须保持既有群聊解析路径',
+);
+assert.deepEqual(parseGroupResponse(
+    galDisabledRaw, ['Alice', 'Bob'], { galBubbleEnabled: false },
+), [{ name: 'Alice', sentences: ['Alice（A）|你好'] }, { name: 'Bob', sentences: ['原有发言'] }],
+    'GAL 关闭时通用清洗器仍应处理标签而不解析 GAL 结构');
 const independentSingleUserPrompt = buildIndependentSingleUserPrompt(promptFixture);
 const independentGroupUserPrompt = buildIndependentGroupUserPrompt(promptFixture);
 assert.doesNotMatch(independentSingleUserPrompt, /主线正文证据/);
@@ -1523,6 +1574,78 @@ window.__pmCharacterBehavior.story.Alice.messageLength = 'invalid';
 saveCharacterBehavior();
 assert.equal(window.__pmCharacterBehavior.story.Alice.messageLength, 'persona');
 assert.equal(JSON.parse(localValues.get('ST_SMS_CHARACTER_BEHAVIOR')).story.Alice.messageLength, 'persona');
+
+const galRegexContext = {
+    extensionSettings: { regex: [] },
+    saved: 0,
+    saveSettingsDebounced() { this.saved += 1; },
+};
+installGalBubble(galRegexContext);
+assert.equal(galRegexContext.extensionSettings.regex.length, 1, 'GAL 正则安装必须创建唯一脚本');
+assert.equal(galRegexContext.saved, 1, 'GAL 正则安装必须请求宿主保存');
+installGalBubble(galRegexContext);
+assert.equal(galRegexContext.extensionSettings.regex.length, 1, '重复安装不得产生重复 GAL 正则');
+reconcileGalBubble(galRegexContext, false);
+assert.equal(galRegexContext.extensionSettings.regex.length, 0, '关闭 GAL 正则必须移除自有脚本');
+reconcileGalBubble(galRegexContext, true);
+assert.equal(galRegexContext.extensionSettings.regex.length, 1, '开启 GAL 正则必须补装缺失脚本');
+const galDuplicateContext = {
+    extensionSettings: { regex: [...galRegexContext.extensionSettings.regex, { ...galRegexContext.extensionSettings.regex[0] }] },
+    saveSettingsDebounced() {},
+};
+assert.throws(() => reconcileGalBubble(galDuplicateContext, true), /多条同 ID/,
+    '发现重复自有正则时不得猜测性删除任何宿主条目');
+assert.equal(galDuplicateContext.extensionSettings.regex.length, 2, '重复自有正则拒绝路径不得修改宿主配置');
+const galSaveFailureContext = {
+    extensionSettings: { regex: [] },
+    saveSettingsDebounced() { throw new Error('host-save-failed'); },
+};
+assert.throws(() => installGalBubble(galSaveFailureContext), /host-save-failed/);
+assert.equal(galSaveFailureContext.extensionSettings.regex.length, 0, '宿主保存失败时不得保留未提交的 GAL 正则');
+const galUpdateFailureContext = {
+    extensionSettings: { regex: [{ ...galRegexContext.extensionSettings.regex[0], scriptName: '旧名称', customUserField: '不得丢失' }] },
+    saveSettingsDebounced() { throw new Error('host-update-failed'); },
+};
+assert.throws(() => installGalBubble(galUpdateFailureContext), /host-update-failed/);
+assert.equal(galUpdateFailureContext.extensionSettings.regex[0].scriptName, '旧名称',
+    '更新自有正则保存失败时必须恢复原字段');
+assert.equal(galUpdateFailureContext.extensionSettings.regex[0].customUserField, '不得丢失',
+    '更新自有正则保存失败时不得删除宿主保留字段');
+const previousGalDocument = globalThis.document;
+const previousGalAlert = globalThis.alert;
+try {
+    globalThis.document = { getElementById: () => null };
+    globalThis.alert = () => {};
+    window.__pmGalBubbleEnabled = false;
+    let galControllerSaved = false;
+    const galController = createGalBubbleController({
+        getContext: () => galRegexContext,
+        reconcile: reconcileGalBubble,
+        saveEnabled: () => { galControllerSaved = true; return true; },
+    });
+    assert.equal(galController.toggle(), true);
+    assert.equal(window.__pmGalBubbleEnabled, true);
+    assert.equal(galControllerSaved, true);
+    assert.equal(galRegexContext.extensionSettings.regex.length, 1);
+    const galRollbackContext = {
+        extensionSettings: { regex: [] },
+        saveSettingsDebounced() {},
+    };
+    window.__pmGalBubbleEnabled = false;
+    const galRollbackController = createGalBubbleController({
+        getContext: () => galRollbackContext,
+        reconcile: reconcileGalBubble,
+        saveEnabled: () => false,
+    });
+    assert.equal(galRollbackController.toggle(), false, '本地开关保存失败必须报告失败');
+    assert.equal(window.__pmGalBubbleEnabled, false, '本地开关保存失败必须恢复内存状态');
+    assert.equal(galRollbackContext.extensionSettings.regex.length, 0, '本地开关保存失败必须回滚宿主正则');
+} finally {
+    if (previousGalDocument === undefined) delete globalThis.document;
+    else globalThis.document = previousGalDocument;
+    if (previousGalAlert === undefined) delete globalThis.alert;
+    else globalThis.alert = previousGalAlert;
+}
 
 const activeScopeFailureCases = [
     { store: 'pokeConfig', key: 'ST_SMS_POKE_CONFIG', property: '__pmPokeConfig', save: savePokeConfig,
@@ -2212,6 +2335,8 @@ worldBookContext = {
     chatMetadata: { world_info: ['错误详情书'] },
     getWorldInfoNames() { return ['错误详情书']; },
     async loadWorldInfo() { throw new Error('详情读取失败'); },
+    extensionSettings: { regex: [] },
+    saveSettingsDebounced() {},
 };
 await window.__pmShowConfig('worldbook');
 assert.equal(await window.__pmToggleWorldBookDetails('错误详情书'), false);
@@ -6028,6 +6153,52 @@ globalThis.document = {
     querySelectorAll: () => [],
 };
 globalThis.alert = message => uiAlerts.push(String(message));
+const galBackupOriginal = { galBubbleEnabled: true, model: 'original' };
+const galBackupImported = { galBubbleEnabled: false, model: 'imported' };
+let galBackupState = structuredClone(galBackupOriginal);
+const galBackupSyncCalls = [];
+const galBackupController = createBackupController({
+    capture: async () => structuredClone(galBackupState),
+    apply: async state => {
+        galBackupState = structuredClone(state);
+        return structuredClone(galBackupState);
+    },
+    persist: async () => {}, complete: async () => {}, parseBackupData: () => structuredClone(galBackupImported),
+    runBackupTransaction, legacyBackupTheme: value => value, clearPluginData: async ({ afterClear }) => afterClear(),
+    requireInjectionSuccess: async callback => callback(), clearBidirectionalInjection: async () => {},
+    applyBidirectionalInjection: async () => {}, createEmptyState: () => ({ galBubbleEnabled: false, model: 'empty' }),
+    syncGalBubble: enabled => {
+        galBackupSyncCalls.push(enabled);
+        return enabled === true;
+    },
+    closePhone: () => {},
+});
+const galBackupAlertsBefore = uiAlerts.length;
+const galBackupInput = { files: [{ text: '{}' }], value: 'gal-sync-failure.json' };
+galBackupController.importData(galBackupInput);
+await fileReadCompletion;
+assert.deepEqual(galBackupState, galBackupOriginal,
+    '导入期间 GAL 宿主同步失败必须恢复导入前的本地开关状态');
+assert.deepEqual(galBackupSyncCalls, [false, true],
+    '导入期间 GAL 宿主同步失败必须在回滚阶段恢复原宿主正则状态');
+assert.match(uiAlerts.at(-1), /导入失败，原数据已恢复.*GAL 气泡正则同步失败/s);
+assert.equal(uiAlerts.length, galBackupAlertsBefore + 1);
+
+galBackupState = structuredClone(galBackupOriginal);
+galBackupSyncCalls.length = 0;
+const galClearAlertsBefore = uiAlerts.length;
+const previousConfirm = globalThis.confirm;
+globalThis.confirm = () => true;
+assert.equal(await galBackupController.clearAllData(), false,
+    '清理期间 GAL 宿主同步失败必须拒绝宣告清理成功');
+assert.deepEqual(galBackupState, galBackupOriginal,
+    '清理期间 GAL 宿主同步失败必须恢复清理前的本地开关状态');
+assert.deepEqual(galBackupSyncCalls, [false, true],
+    '清理期间 GAL 宿主同步失败必须在回滚阶段恢复原宿主正则状态');
+assert.match(uiAlerts.at(-1), /清理失败，原数据已恢复.*GAL 气泡正则同步失败/s);
+assert.equal(uiAlerts.length, galClearAlertsBefore + 1);
+if (previousConfirm === undefined) delete globalThis.confirm;
+else globalThis.confirm = previousConfirm;
 const runTransactionalImportFailureCase = async ({ configModel, injection, expectedDetail }) => {
     uiElements.get('pm-overlay').removed = false;
     const alertsBefore = uiAlerts.length;

@@ -271,7 +271,7 @@ export function parseBackupData(data, current) {
     if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error('备份根节点必须是对象');
     const version = data.schemaVersion === undefined ? 1 : data.schemaVersion;
     if (!Number.isInteger(version) || version < 1) throw new Error('备份版本无效');
-    if (version > 14) throw new Error(`备份版本 ${version} 高于当前支持版本 14`);
+    if (version > 15) throw new Error(`备份版本 ${version} 高于当前支持版本 15`);
     const result = clone(current);
     if (Object.hasOwn(data, 'histories')) result.histories = objectValue(data.histories, 'histories');
     if (Object.hasOwn(data, 'config')) result.config = objectValue(data.config, 'config');
@@ -298,6 +298,11 @@ export function parseBackupData(data, current) {
     if (Object.hasOwn(data, 'wordyLimit')) {
         if (typeof data.wordyLimit !== 'boolean') throw new Error('备份字段 wordyLimit 必须是布尔值');
         result.wordyLimit = data.wordyLimit;
+    }
+    if (version >= 15) {
+        if (!Object.hasOwn(data, 'galBubbleEnabled')) throw new Error('备份版本 15 缺少 galBubbleEnabled');
+        if (typeof data.galBubbleEnabled !== 'boolean') throw new Error('备份字段 galBubbleEnabled 必须是布尔值');
+        result.galBubbleEnabled = data.galBubbleEnabled;
     }
     if (version >= 11) {
         if (!Object.hasOwn(data, 'worldBookConfig')) throw new Error('备份版本 11 缺少 worldBookConfig');

@@ -159,8 +159,8 @@ function buttonContaining(label, text, marker) {
   return matches[0];
 }
 
-function parseCssRules(cssText) {
-  const ast = postcss.parse(normalizeLineEndings(cssText), { from: 'style.css' });
+function parseCssRules(cssText, sourcePath = 'style.css') {
+  const ast = postcss.parse(normalizeLineEndings(cssText), { from: sourcePath });
   const rules = [];
   ast.walkRules(rule => {
     const selectors = rule.selectors?.map(selector => selector.trim()).filter(Boolean) || [];
@@ -172,6 +172,7 @@ function parseCssRules(cssText) {
     rules.push({
       selectors,
       declarations,
+      path: sourcePath,
       line: rule.source?.start?.line || 0,
       parent: rule.parent?.type === 'atrule' ? `@${rule.parent.name} ${rule.parent.params}`.trim() : 'root',
     });
@@ -183,25 +184,54 @@ const PADDING_MARGIN_PROPERTY = /^(?:padding|margin)(?:-(?:top|right|bottom|left
 const SPACING_LITERAL = /(?<![\w.-])(?:-?\d+(?:\.\d+)?px|0|auto|100%)(?![\w.-])/;
 const RADIUS_PROPERTY = /^(?:border-radius|border-(?:top|bottom)-(?:left|right)-radius|border-(?:start|end)-(?:start|end)-radius)$/;
 const FONT_SIZE_LITERAL = /(?<![\w.-])\d+(?:\.\d+)?px(?![\w.-])/;
+const EMPTY_LEGACY_VALUE_CATEGORIES = new Set(['fontSize', 'lineHeight', 'radius', 'zIndex', 'animation']);
 const LEGACY_VALUE_PROPERTIES = {
   color: property => property === 'color' || property.endsWith('color') || property === 'background' || property === 'background-image',
   fontSize: property => property === 'font-size',
+  lineHeight: property => property === 'line-height',
   spacing: property => PADDING_MARGIN_PROPERTY.test(property) || /^(?:gap|row-gap|column-gap|inset|top|right|bottom|left)$/.test(property),
   radius: property => RADIUS_PROPERTY.test(property),
   zIndex: property => property === 'z-index',
   transition: property => property === 'transition' || property === 'transition-duration',
+  boxShadow: property => property === 'box-shadow',
+  animation: property => property === 'animation' || property === 'animation-duration' || property === 'animation-timing-function',
 };
 
-function compareLegacyCssValues(rules, legacyValues) {
+const INTRINSIC_SPACING_VALUES = new Set(['0', '0 !important', 'auto', '100%', '50%']);
+
+function compareLegacyCssValues(rules, legacyValues, animationExceptions = []) {
   for (const category of Object.keys(LEGACY_VALUE_PROPERTIES)) {
-    const approved = new Set(legacyValues[category] || []);
+    if (category === 'lineHeight') continue;
+    const entries = category === 'animation' ? animationExceptions : (legacyValues[category] || []);
+    const approved = new Set(category === 'spacing' || category === 'animation'
+      ? entries.map(entry => entry.value)
+      : entries);
+    const consumed = new Set();
     for (const rule of rules) for (const [property, value] of rule.declarations) {
       if (!LEGACY_VALUE_PROPERTIES[category](property)) continue;
       const normalizedValue = normalizeCssValue(value);
-      if (normalizedValue.includes('var(') || normalizedValue === 'initial' || normalizedValue === 'inherit' || normalizedValue === 'unset' || approved.has(normalizedValue)) continue;
-      failures.push(`style.css:${rule.line}: ${rule.selectors.join(', ')} adds unapproved legacy ${category} value ${property}:${normalizedValue}`);
+      const matchingEntry = category === 'spacing' || category === 'animation'
+        ? entries.find(entry => entry.path === rule.path && entry.selector === rule.selectors.join(', ') && entry.property === property && entry.value === normalizedValue)
+        : approved.has(normalizedValue);
+      if (matchingEntry) consumed.add(category === 'spacing' || category === 'animation' ? matchingEntry : normalizedValue);
+      if (normalizedValue.includes('var(') || normalizedValue === 'none' || normalizedValue === 'none !important' || normalizedValue === 'initial' || normalizedValue === 'inherit' || normalizedValue === 'unset' || (category === 'spacing' && INTRINSIC_SPACING_VALUES.has(normalizedValue)) || matchingEntry) continue;
+      failures.push(`${rule.path}:${rule.line}: ${rule.selectors.join(', ')} adds unapproved legacy ${category} value ${property}:${normalizedValue}`);
+    }
+    for (const entry of category === 'spacing' || category === 'animation' ? entries : approved) {
+      if (!consumed.has(entry)) failures.push(`css-governance-registry.json: legacyValues.${category} contains stale value ${category === 'spacing' ? `${entry.path} ${entry.selector} ${entry.property}:${entry.value}` : entry}`);
     }
   }
+}
+
+function collectSpacingLegacyIssues(rules, entries) {
+  const issues = [];
+  for (const rule of rules) for (const [property, rawValue] of rule.declarations) {
+    if (!LEGACY_VALUE_PROPERTIES.spacing(property)) continue;
+    const value = normalizeCssValue(rawValue);
+    if (value.includes('var(') || INTRINSIC_SPACING_VALUES.has(value)) continue;
+    if (!entries.some(entry => entry.path === rule.path && entry.selector === rule.selectors.join(', ') && entry.property === property && entry.value === value)) issues.push(`${rule.path}:${rule.line}: ${rule.selectors.join(', ')} adds unapproved legacy spacing value ${property}:${value}`);
+  }
+  return issues;
 }
 
 function requireCssDeclarations(rules, selector, expected) {
@@ -217,12 +247,12 @@ function requireCssDeclarations(rules, selector, expected) {
   }
 }
 
-const cssRules = parseCssRules(css);
+const cssRules = CSS_MODULE_FILES.flatMap((file, index) => parseCssRules(cssModules[index], file));
 
 const governanceRegistry = JSON.parse(governanceRegistryText);
 {
   const registryFailures = [];
-  if (governanceRegistry.version !== 2) registryFailures.push('css-governance-registry.json: version must be 2');
+  if (governanceRegistry.version !== 3) registryFailures.push('css-governance-registry.json: version must be 3');
   const requireStringArray = (value, label) => {
     if (!Array.isArray(value) || value.some(item => typeof item !== 'string' || !item)) {
       registryFailures.push(`css-governance-registry.json: ${label} must be a non-empty string array`);
@@ -340,21 +370,115 @@ const governanceRegistry = JSON.parse(governanceRegistryText);
   } else {
     for (const category of Object.keys(LEGACY_VALUE_PROPERTIES)) {
       const values = legacyValues[category];
-      if (!Array.isArray(values) || !values.length || values.some(value => typeof value !== 'string' || !value)) {
-        registryFailures.push(`css-governance-registry.json: legacyValues.${category} must be a non-empty string array`);
+      if (!Array.isArray(values)) {
+        registryFailures.push(`css-governance-registry.json: legacyValues.${category} must be an array`);
+      } else if (category === 'spacing') {
+        for (const entry of values) {
+          if (!entry || typeof entry !== 'object' || Array.isArray(entry)
+              || typeof entry.path !== 'string' || !CSS_MODULE_FILES.includes(entry.path)
+              || typeof entry.selector !== 'string' || !entry.selector
+              || typeof entry.property !== 'string' || !LEGACY_VALUE_PROPERTIES.spacing(entry.property)
+              || typeof entry.value !== 'string' || !entry.value
+              || typeof entry.owner !== 'string' || !entry.owner
+              || typeof entry.reason !== 'string' || !entry.reason
+              || typeof entry.removeWhen !== 'string' || !entry.removeWhen) {
+            registryFailures.push('css-governance-registry.json: legacyValues.spacing entries must declare path/selector/property/value/owner/reason/removeWhen');
+          }
+        }
+      } else if (values.some(value => typeof value !== 'string' || !value)) {
+        registryFailures.push(`css-governance-registry.json: legacyValues.${category} must be a string array`);
+      } else if (EMPTY_LEGACY_VALUE_CATEGORIES.has(category) && values.length) {
+        registryFailures.push(`css-governance-registry.json: legacyValues.${category} must remain empty after migration`);
+      } else if (!EMPTY_LEGACY_VALUE_CATEGORIES.has(category) && category !== 'spacing' && !values.length) {
+        registryFailures.push(`css-governance-registry.json: legacyValues.${category} must list its remaining approved values`);
+      }
+    }
+    const lineHeightExceptions = governanceRegistry.lineHeightExceptions;
+    if (!Array.isArray(lineHeightExceptions)) {
+      registryFailures.push('css-governance-registry.json: lineHeightExceptions must be an array');
+    } else for (const exception of lineHeightExceptions) {
+      if (!exception || typeof exception !== 'object' || Array.isArray(exception)
+          || typeof exception.path !== 'string' || !CSS_MODULE_FILES.includes(exception.path)
+          || typeof exception.selector !== 'string' || !exception.selector
+          || !['line-height', 'font'].includes(exception.property)
+          || typeof exception.value !== 'string' || !exception.value
+          || typeof exception.owner !== 'string' || !exception.owner
+          || typeof exception.reason !== 'string' || !exception.reason
+          || typeof exception.removeWhen !== 'string' || !exception.removeWhen) {
+        registryFailures.push('css-governance-registry.json: lineHeightExceptions entries must declare path/selector/property/value/owner/reason/removeWhen');
+      }
+    }
+    const animationExceptions = governanceRegistry.animationExceptions;
+    if (!Array.isArray(animationExceptions)) {
+      registryFailures.push('css-governance-registry.json: animationExceptions must be an array');
+    } else for (const exception of animationExceptions) {
+      if (!exception || typeof exception !== 'object' || Array.isArray(exception)
+          || typeof exception.path !== 'string' || !CSS_MODULE_FILES.includes(exception.path)
+          || typeof exception.selector !== 'string' || !exception.selector
+          || !['animation', 'animation-duration', 'animation-timing-function'].includes(exception.property)
+          || typeof exception.value !== 'string' || !exception.value
+          || typeof exception.owner !== 'string' || !exception.owner
+          || typeof exception.reason !== 'string' || !exception.reason
+          || typeof exception.removeWhen !== 'string' || !exception.removeWhen) {
+        registryFailures.push('css-governance-registry.json: animationExceptions entries must declare path/selector/property/value/owner/reason/removeWhen');
+      }
+    }
+
+    for (const exception of animationExceptions || []) {
+      const matchesException = cssRules.some(candidate => (
+        candidate.path === exception.path
+        && candidate.selectors.join(', ') === exception.selector
+        && normalizeCssValue(candidate.declarations.get(exception.property)) === exception.value
+      ));
+      if (!matchesException) {
+        registryFailures.push(`css-governance-registry.json: animationExceptions contains stale entry ${exception.path} ${exception.selector} ${exception.property}:${exception.value}`);
+      }
+    }
+
+    if (!Array.isArray(governanceRegistry.externallyDefinedTokens) || governanceRegistry.externallyDefinedTokens.some(token => typeof token !== 'string' || !token)) {
+      registryFailures.push('css-governance-registry.json: externallyDefinedTokens must be a string array');
+    }
+    for (const exception of lineHeightExceptions || []) {
+      const matchesException = cssRules.some(candidate => {
+        if (candidate.path !== exception.path || candidate.selectors.join(', ') !== exception.selector) return false;
+        const rawValue = candidate.declarations.get(exception.property);
+        const actualValue = exception.property === 'font'
+          ? rawValue?.replace(/\s*!important\s*$/i, '').trim().match(/\/\s*([^\s/]+)(?=\s|$)/)?.[1]
+          : normalizeCssValue(rawValue);
+        return actualValue === exception.value;
+      });
+      if (!matchesException) {
+        registryFailures.push(`css-governance-registry.json: lineHeightExceptions contains stale entry ${exception.path} ${exception.selector} ${exception.property}:${exception.value}`);
       }
     }
   }
   if (registryFailures.length) failures.push(...registryFailures);
 }
+function collectFrozenSpacingTokenIssues(declaredSpacingTokens, frozenSpacingTokens, path = 'style.css') {
+  const issues = [];
+  if (!Array.isArray(frozenSpacingTokens) || frozenSpacingTokens.some(token => typeof token !== 'string' || !/^--pm-space-px-\d+(?:\.\d+)?$/.test(token))) {
+    issues.push('css-governance-registry.json: frozenSpacingTokens must be a string array of --pm-space-px-* tokens');
+  }
+  const actualFrozenSpacingTokens = new Set([...declaredSpacingTokens].filter(token => token.startsWith('--pm-space-px-')));
+  const expectedFrozenSpacingTokens = new Set(frozenSpacingTokens || []);
+  for (const token of actualFrozenSpacingTokens) {
+    if (!expectedFrozenSpacingTokens.has(token)) issues.push(`${path}: new frozen spacing token is forbidden: ${token}`);
+  }
+  for (const token of expectedFrozenSpacingTokens) {
+    if (!actualFrozenSpacingTokens.has(token)) issues.push(`css-governance-registry.json: frozenSpacingTokens contains stale token ${token}`);
+  }
+  return issues;
+}
 {
   const declaredSpacingTokens = new Set();
+  const frozenSpacingTokens = governanceRegistry.frozenSpacingTokens;
   for (const rule of cssRules) {
     if (!rule.selectors.includes(':root')) continue;
     for (const property of rule.declarations.keys()) {
       if (property.startsWith('--pm-space-')) declaredSpacingTokens.add(property);
     }
   }
+  failures.push(...collectFrozenSpacingTokenIssues(declaredSpacingTokens, frozenSpacingTokens));
   for (const rule of cssRules) for (const [property, value] of rule.declarations) {
     for (const match of value.matchAll(/var\(\s*(--pm-space-[\w-]+)/g)) {
       if (!declaredSpacingTokens.has(match[1])) {
@@ -393,7 +517,154 @@ const governanceRegistry = JSON.parse(governanceRegistryText);
     }
   }
 }
-compareLegacyCssValues(cssRules, governanceRegistry.legacyValues || {});
+const FONT_WEIGHT_LITERAL = /(?<![\w.-])[1-9]\d{2}(?![\w.-])/g;
+const LINE_HEIGHT_SHORTHAND = /\/\s*([^\s/]+)(?=\s|$)/;
+function collectLineHeightIssues(rules, lineHeightExceptions) {
+  const issues = [];
+  const isException = (rule, property, value) => lineHeightExceptions.some(exception => (
+    exception.path === rule.path
+    && exception.selector === rule.selectors.join(', ')
+    && exception.property === property
+    && exception.value === value
+  ));
+  for (const rule of rules) {
+    for (const [property, rawValue] of rule.declarations) {
+      if (property !== 'line-height' && property !== 'font') continue;
+      const value = rawValue.replace(/\s*!important\s*$/i, '').trim();
+      const lineHeight = property === 'line-height' ? value : value.match(LINE_HEIGHT_SHORTHAND)?.[1];
+      if (!lineHeight) continue;
+      const token = lineHeight.match(/^var\(\s*(--pm-line-height-[\w-]+)\s*\)$/)?.[1];
+      if (!token && !isException(rule, property, lineHeight)) {
+        issues.push(`${rule.path}:${rule.line}: ${rule.selectors.join(', ')} must express ${property === 'font' ? 'font shorthand line-height' : 'line-height'} with an approved line-height token, received ${rawValue}`);
+      }
+    }
+  }
+  return issues;
+}
+function collectAnimationIssues(rules, animationExceptions) {
+  const issues = [];
+  const isException = (rule, property, value) => animationExceptions.some(exception => (
+    exception.path === rule.path
+    && exception.selector === rule.selectors.join(', ')
+    && exception.property === property
+    && exception.value === value
+  ));
+  const durationPattern = /(?<![-\w.])(?:\d+(?:\.\d+)?ms|\d+(?:\.\d+)?s)(?![-\w.])/g;
+  const easingPattern = /(?<![-\w])(?:ease(?:-in|-out|-in-out)?|linear|step-start|step-end|steps\([^)]*\)|cubic-bezier\([^)]*\))(?![-\w])/g;
+  for (const rule of rules) for (const [property, rawValue] of rule.declarations) {
+    if (!LEGACY_VALUE_PROPERTIES.animation(property)) continue;
+    const value = normalizeCssValue(rawValue);
+    if (value === 'none' || value === 'none !important' || isException(rule, property, value)) continue;
+    const durations = [...value.matchAll(durationPattern)].map(match => match[0]);
+    const easings = [...value.matchAll(easingPattern)].map(match => match[0]);
+    const hasApprovedDuration = value.includes('var(--pm-motion-fast)')
+      || value.includes('var(--pm-motion-normal)')
+      || value.includes('var(--duration)');
+    const hasApprovedEasing = value.includes('var(--pm-motion-ease)');
+    const invalidDuration = durations.length > 0 && !hasApprovedDuration;
+    const invalidEasing = easings.length > 0 || (property === 'animation' && !hasApprovedEasing);
+    if (invalidDuration || invalidEasing) {
+      issues.push(`${rule.path}:${rule.line}: ${rule.selectors.join(', ')} adds unapproved animation value ${property}:${value}`);
+    }
+  }
+  return issues;
+}
+function collectVarTokenIssues(rules, tokenCategories, declaredTokens, runtimeTokens) {
+  const issues = [];
+  const isRegisteredToken = token => tokenCategories.some(prefix => prefix.endsWith('*')
+    ? token.startsWith(prefix.slice(0, -1))
+    : token === prefix);
+  for (const rule of rules) for (const [property, value] of rule.declarations) {
+    for (const match of value.matchAll(/var\(\s*(--[\w-]+)/g)) {
+      const token = match[1];
+      if (!isRegisteredToken(token)) {
+        issues.push(`${rule.path}:${rule.line}: ${rule.selectors.join(', ')} consumes unregistered token ${token} in ${property}`);
+      }
+      if (!declaredTokens.has(token) && !runtimeTokens.has(token)) {
+        issues.push(`${rule.path}:${rule.line}: ${rule.selectors.join(', ')} consumes undefined token ${token} in ${property}`);
+      }
+      if (property === 'z-index' && !token.startsWith('--pm-z-')) {
+        issues.push(`${rule.path}:${rule.line}: ${rule.selectors.join(', ')} must consume a --pm-z-* token for z-index, received ${value}`);
+      }
+    }
+  }
+  return issues;
+}
+const ALLOWED_FONT_WEIGHT_VALUES = new Set(['400', '500', '600']);
+function collectFontWeightIssues(rules) {
+  const issues = [];
+  for (const rule of rules) {
+    for (const [property, rawValue] of rule.declarations) {
+      if (property !== 'font-weight' && property !== 'font') continue;
+      const value = rawValue.replace(/\s*!important\s*$/i, '').trim();
+      if (property === 'font-weight') {
+        if (value.includes('var(')) continue;
+        if (!ALLOWED_FONT_WEIGHT_VALUES.has(value)) {
+          issues.push(`style.css:${rule.line}: ${rule.selectors.join(', ')} must express font-weight using 400/500/600 or a token, received ${rawValue}`);
+        }
+        continue;
+      }
+      const withoutVar = value.replace(/var\([^)]*\)/g, '');
+      for (const match of withoutVar.matchAll(FONT_WEIGHT_LITERAL)) {
+        if (!ALLOWED_FONT_WEIGHT_VALUES.has(match[0])) {
+          issues.push(`style.css:${rule.line}: ${rule.selectors.join(', ')} must express font shorthand weight using 400/500/600, received ${rawValue}`);
+        }
+      }
+    }
+  }
+  return issues;
+}
+for (const issue of collectFontWeightIssues(cssRules)) failures.push(issue);
+for (const issue of collectLineHeightIssues(cssRules, governanceRegistry.lineHeightExceptions || [])) failures.push(issue);
+for (const issue of collectSpacingLegacyIssues(cssRules, governanceRegistry.legacyValues?.spacing || [])) failures.push(issue);
+for (const issue of collectAnimationIssues(cssRules, governanceRegistry.animationExceptions || [])) failures.push(issue);
+const declaredCustomProperties = new Set(cssRules.flatMap(rule => [...rule.declarations.keys()]
+  .filter(property => property.startsWith('--'))));
+const registeredTokenCategories = [
+  ...(governanceRegistry.tokens?.public || []),
+  ...(governanceRegistry.tokens?.private || []),
+  ...(governanceRegistry.tokens?.compat || []),
+  ...(governanceRegistry.tokens?.runtime || []),
+];
+const runtimeTokenSet = new Set([
+  ...(governanceRegistry.tokens?.runtime || []),
+  ...(governanceRegistry.externallyDefinedTokens || []),
+]);
+for (const issue of collectVarTokenIssues(cssRules, registeredTokenCategories, declaredCustomProperties, runtimeTokenSet)) failures.push(issue);
+{
+  const positiveRules = parseCssRules('.a{font-weight:600}\n.b{font-weight:var(--pm-font-weight-semibold)}\n.c{font:600 var(--pm-font-size-body)/1.2 sans-serif}');
+  const negativeRules = parseCssRules('.a{font-weight:650}\n.b{font:700 var(--pm-font-size-body)/1.2 sans-serif}\n.c{font:750 var(--pm-font-size-body)/1.2 sans-serif}');
+  if (collectFontWeightIssues(positiveRules).length) failures.push('self-test: font-weight detector rejected compliant declarations');
+  if (collectFontWeightIssues(negativeRules).length !== 3) failures.push('self-test: font-weight detector did not flag all non-compliant declarations');
+}
+{
+  const exceptions = [{ path: 'self.css', selector: '.b', property: 'font', value: '1', owner: 'self', reason: 'fixed line box', removeWhen: 'layout migration' }];
+  const positiveRules = parseCssRules('.a{line-height:var(--pm-line-height-body)}\n.b{font:600 14px/1 sans-serif}', 'self.css');
+  const negativeRules = parseCssRules('.a{line-height:14px}\n.b{font:600 14px/1 sans-serif}');
+  if (collectLineHeightIssues(positiveRules, exceptions).length) failures.push('self-test: line-height detector rejected compliant declarations');
+  if (collectLineHeightIssues(negativeRules, []).length !== 2) failures.push('self-test: line-height detector did not flag both non-compliant declarations');
+  const animationRules = parseCssRules('.a{animation:pm-pop 1s ease}\n.b{animation:pm-pop var(--pm-motion-normal) var(--pm-motion-ease)}', 'self.css');
+  if (collectAnimationIssues(animationRules, [{ path: 'self.css', selector: '.a', property: 'animation', value: 'pm-pop 1s ease' }]).length !== 0) failures.push('self-test: animation detector rejected a registered exception');
+  if (collectAnimationIssues(animationRules, []).length !== 1) failures.push('self-test: animation detector did not flag an unregistered duration');
+  const easingRules = parseCssRules('.a{animation:pm-pop var(--pm-motion-normal) ease}\n.b{animation-timing-function:linear}\n.c{animation:pm-pop var(--pm-motion-normal) var(--pm-motion-ease)}', 'self.css');
+  if (collectAnimationIssues(easingRules, []).length !== 2) failures.push('self-test: animation detector did not flag bare easing values');
+  const validVarRules = parseCssRules('.a{z-index:var(--pm-z-menu)}');
+  const invalidVarRules = parseCssRules('.a{z-index:var(--pm-z-missing)}\n.b{z-index:var(--whatever)}');
+  if (collectVarTokenIssues(validVarRules, ['--pm-z-*'], new Set(['--pm-z-menu']), new Set()).length) failures.push('self-test: var token detector rejected a declared z-index token');
+  if (collectVarTokenIssues(invalidVarRules, ['--pm-z-*'], new Set(), new Set()).length !== 4) failures.push('self-test: var token detector did not flag undefined and unregistered z-index tokens');
+  const spacingEntries = [{ path: 'self.css', selector: '.a', property: 'top', value: '2px', owner: 'self', reason: 'fixed geometry', removeWhen: 'layout migration' }];
+  const matchingSpacingRules = parseCssRules('.a{top:2px}', 'self.css');
+  const mismatchedSpacingRules = parseCssRules('.b{top:2px}\n.a{left:2px}', 'self.css');
+  if (collectSpacingLegacyIssues(matchingSpacingRules, spacingEntries).length) failures.push('self-test: spacing detector rejected an exact legacy entry');
+  if (collectSpacingLegacyIssues(mismatchedSpacingRules, spacingEntries).length !== 2) failures.push('self-test: spacing detector did not bind legacy entries to selector and property');
+  const frozenSpacingTokens = ['--pm-space-px-1', '--pm-space-px-3'];
+  const compliantFrozenSpacing = new Set(['--pm-space-px-1', '--pm-space-px-3', '--pm-space-neg-4']);
+  const expandedFrozenSpacing = new Set([...compliantFrozenSpacing, '--pm-space-px-17']);
+  if (collectFrozenSpacingTokenIssues(compliantFrozenSpacing, frozenSpacingTokens, 'self.css').length) failures.push('self-test: frozen spacing detector rejected the frozen token set');
+  if (collectFrozenSpacingTokenIssues(expandedFrozenSpacing, frozenSpacingTokens, 'self.css').length !== 1) failures.push('self-test: frozen spacing detector did not reject a newly added px token');
+  if (collectFrozenSpacingTokenIssues(compliantFrozenSpacing, [...frozenSpacingTokens, '--pm-space-px-19'], 'self.css').length !== 1) failures.push('self-test: frozen spacing detector did not reject a stale frozen token');
+}
+compareLegacyCssValues(cssRules, governanceRegistry.legacyValues || {}, governanceRegistry.animationExceptions || []);
 
 function parseJavaScript(code, sourceType = 'script') {
   return parse(code, {
@@ -1624,7 +1895,7 @@ for (const [label, , result] of analyzedFiles) {
 
 // === Settings entry check ===
 const SETTING_ENTRIES = [
-  '__pmDeleteProfile', '__pmPickProfile', '__pmSetMode', '__pmToggleWordyLimit',
+  '__pmDeleteProfile', '__pmPickProfile', '__pmSetMode', '__pmToggleWordyLimit', '__pmToggleGalBubble',
   '__pmSetDarkMode', '__pmExportData', '__pmImportData', '__pmShowConfig',
   '__pmSetPreset', '__pmSetCustomAccent', '__pmSetCustomColor', '__pmClearCustomColor',
   '__pmSetBorderColor', '__pmSetCustomTitle', '__pmUploadBg', '__pmBgUrl',
@@ -1684,7 +1955,7 @@ const LEGACY_WINDOW_ENTRIES = [
   '__pmSwitch', '__pmSwitchContact', '__pmTempText', '__pmTestApi',
   '__pmTestModel', '__pmTheme', '__pmRenderEmojiSetList', '__pmInsertEmoji',
   '__pmToggleBidirectional', '__pmToggleMin',
-  '__pmToggleSelect', '__pmToggleWordyLimit', '__pmUploadBg', '__pmWordyLimit',
+  '__pmToggleSelect', '__pmToggleWordyLimit', '__pmToggleGalBubble', '__pmUploadBg', '__pmWordyLimit', '__pmGalBubbleEnabled',
 ];
 
 const PHONE_ENTRY_OWNERS = {
@@ -1814,6 +2085,7 @@ for (const expected of [
   "preset: 'default'", "qrLabel: '天音'", 'phoneScale: 1',
   'window.__pmBudgetConfig = normalizeBudgetConfig(window.__pmBudgetConfig);',
   'window.__pmInjectionConfig = normalizeInjectionConfig(window.__pmInjectionConfig);',
+  'window.__pmGalBubbleEnabled = window.__pmGalBubbleEnabled || false;',
 ]) requireText('phone-foundation.js', sourceModuleByName.get('phone-foundation.js')?.code || '', expected);
 for (const expected of [
   'if (windowRef.__pmBeforeUnloadRegistered) return false;',
@@ -2109,10 +2381,10 @@ requireNamedImports('storage.js', storageInspection, './storage-primitives.js', 
   'DESKTOP_BG_KEY', 'isBigData', 'pmIDBDel', 'pmIDBGet', 'pmIDBKeys', 'pmIDBReadEntry', 'pmIDBSet', 'pmOpenIDB',
 ]);
 requireNamedImports('storage.js', storageInspection, './storage-preferences.js', [
-  'addOrUpdateProfile', 'loadInjectionConfig', 'loadProfiles', 'loadTheme', 'loadWordyLimit',
-  'loadWorldBookConfig', 'saveInjectionConfig', 'saveProfiles', 'saveTheme', 'saveWordyLimit', 'saveWorldBookConfig',
+  'addOrUpdateProfile', 'loadGalBubbleEnabled', 'loadInjectionConfig', 'loadProfiles', 'loadTheme', 'loadWordyLimit',
+  'loadWorldBookConfig', 'saveGalBubbleEnabled', 'saveInjectionConfig', 'saveProfiles', 'saveTheme', 'saveWordyLimit', 'saveWorldBookConfig',
 ]);
-for (const name of ['addOrUpdateProfile', 'loadInjectionConfig', 'loadProfiles', 'loadTheme', 'loadWordyLimit', 'loadWorldBookConfig', 'saveInjectionConfig', 'saveProfiles', 'saveTheme', 'saveWordyLimit', 'saveWorldBookConfig']) {
+for (const name of ['addOrUpdateProfile', 'loadGalBubbleEnabled', 'loadInjectionConfig', 'loadProfiles', 'loadTheme', 'loadWordyLimit', 'loadWorldBookConfig', 'saveGalBubbleEnabled', 'saveInjectionConfig', 'saveProfiles', 'saveTheme', 'saveWordyLimit', 'saveWorldBookConfig']) {
   if (!storagePreferencesInspection.exports.has(name)) failures.push(`storage-preferences.js: missing exported ${name}`);
 }
 requireNamedImports('storage.js', storageInspection, './storage-history.js', [
@@ -2239,13 +2511,14 @@ for (const expected of [
   'deriveInteractiveActorId(scopeId, actor.type, actor.bindingKey)',
 ]) requireText('settings-backup-validate.js', settingsBackupValidateCode, expected);
 for (const expected of [
-  'schemaVersion: 14', 'desktopBg: snapshot.desktopBg', 'injectionConfig: snapshot.injectionConfig', 'budgetConfig: snapshot.budgetConfig',
+  'schemaVersion: 15', 'desktopBg: snapshot.desktopBg', 'injectionConfig: snapshot.injectionConfig', 'budgetConfig: snapshot.budgetConfig',
+  'galBubbleEnabled: snapshot.galBubbleEnabled',
   'calendarStore: snapshot.calendarStore', 'calendarCycles: snapshot.calendarCycles',
   'calendarRecipes: snapshot.calendarRecipes', 'calendarOutfits: snapshot.calendarOutfits', 'todayTrend: snapshot.todayTrend', 'branchLineage: snapshot.branchLineage',
 ]) requireText('settings-backup-controller.js', settingsBackupControllerCode, expected);
 requireText('settings-backup-validate.js', settingsBackupValidateCode, 'applyCalendarBackupFields(data, result, objectValue, { includeRecipes: version >= 7, includeOutfits: version >= 12 })');
 for (const expected of [
-  'version > 14', '备份版本 13 缺少 budgetConfig', '备份版本 14 缺少 todayTrend',
+  'version > 15', '备份版本 13 缺少 budgetConfig', '备份版本 14 缺少 todayTrend', '备份版本 15 缺少 galBubbleEnabled',
   'result.budgetConfig = normalizeBudgetConfig(objectValue(data.budgetConfig, \'budgetConfig\'))',
 ]) requireText('settings-backup-validate.js', settingsBackupValidateCode, expected);
 for (const expected of [
@@ -2256,6 +2529,7 @@ for (const expected of [
   'assertCanonicalCalendarField', 'assertCycleBackupInvariants',
   'loadCalendarHolidays()', 'loadCalendarRecipes()', 'loadCalendarOutfits()', 'saveCalendarCycles(state.calendarCycles)', 'saveCalendarRecipes(state.calendarRecipes)', 'saveCalendarOutfits(state.calendarOutfits)',
   'normalizeBudgetConfig(window.__pmBudgetConfig)', 'window.__pmBudgetConfig = normalizeBudgetConfig(state.budgetConfig)', 'saveBudgetConfig(state.budgetConfig)',
+  'window.__pmGalBubbleEnabled = state.galBubbleEnabled === true', 'saveGalBubbleEnabled()',
   'loadBranchLineage()', 'saveBranchLineageForBackup(state.branchLineage || {})',
   'rollbackBranchLineageBackup(applied.branchLineageInserted)', 'completeBranchLineageBackup(applied.branchLineageInserted)', 'saveBranchLineage(state.branchLineage || {})',
 ]) requireText('settings-backup.js', settingsBackupCode, expected);
@@ -2510,7 +2784,7 @@ for (const expected of [
   "isSubpage || tab === 'context-inject' ? ''", 'pm-live-stage', 'pm-live-details', 'data-live-state=', 'pm-danmaku-float',
   'data-action="toggle-danmaku-actions"', 'aria-pressed="false"', 'aria-label="修改弹幕"', '修改弹幕', 'data-action="edit-danmaku"', 'data-action="delete-danmaku"', 'placeholder="发个弹幕见证当下"',
 ]) requireText('interactive-scene-views.js', interactiveViewsCode, expected);
-for (const expected of ['.pm-live-room{display:flex;flex-direction:column;gap:var(--pm-space-5)}', '.pm-live-play-btn{width:48px', '.pm-live-details{display:flex;flex-direction:column;gap:var(--pm-space-3)}', '.pm-danmaku-list{height:210px;overflow-y:auto;background:transparent;border:0', '.pm-danmaku-row{padding:var(--pm-space-3) var(--pm-space-1-5);border-bottom:1px solid var(--pm-color-border-subtle);font-size:11px;line-height:1.5}', '.pm-danmaku-row .pm-scene-comment-actions[hidden]{display:none}']) {
+for (const expected of ['.pm-live-room{display:flex;flex-direction:column;gap:var(--pm-space-5)}', '.pm-live-play-btn{width:48px', '.pm-live-details{display:flex;flex-direction:column;gap:var(--pm-space-3)}', '.pm-danmaku-list{height:210px;overflow-y:auto;background:transparent;border:0', '.pm-danmaku-row{--pm-scene-danmaku-row-blue:#268bdc;--pm-scene-danmaku-row-pink:#d95791;--pm-scene-danmaku-row-cyan:#168f91;--pm-scene-danmaku-row-gold:#ad7800;padding:var(--pm-space-3) var(--pm-space-1-5);border-bottom:1px solid var(--pm-color-border-subtle);font-size:11px;line-height:var(--pm-line-height-body)}', '.pm-danmaku-row .pm-scene-comment-actions[hidden]{display:none}']) {
   requireText('style.css', css, expected);
 }
 for (const forbidden of ['data-action="back"', 'pm-scene-back']) {
@@ -2765,6 +3039,7 @@ for (const [name, params, callee, controllerCode, method] of [
   ['__pmSaveBudgetConfig', [], 'budgetSettings.save', settingsBudgetControllerCodeForOwners, 'save'],
   ['__pmResetBudgetConfig', [], 'budgetSettings.reset', settingsBudgetControllerCodeForOwners, 'reset'],
   ['__pmToggleWordyLimit', [], 'wordySettings.toggle', settingsWordyControllerCode, 'toggle'],
+  ['__pmToggleGalBubble', [], 'galBubbleSettings.toggle', sourceModuleByName.get('settings-gal-bubble-controller.js')?.code || '', 'toggle'],
 ]) assertSettingsDelegate(settingsAnalysis, name, params, callee, controllerCode, method);
 expectWindowFunctionSignature('settings-ui.js', settingsAnalysis, '__pmShowConfig', {
   async: true, params: [{ name: 'page', default: 'home' }],
@@ -2808,14 +3083,14 @@ for (const expected of [
   '--pm-color-accent:', '--pm-color-focus-ring:', '--pm-color-success:', '--pm-color-warning:', '--pm-color-danger:', '--pm-color-on-success:', '--pm-color-on-warning:', '--pm-color-on-danger:', '--pm-color-overlay:', '--pm-color-on-dark:', '--pm-color-on-light:',
   '.pm-settings-home button{border:1px solid var(--pm-color-border-default);border-radius:14px;background:var(--pm-color-surface-card);color:var(--pm-color-text-primary)',
   '.pm-global-setting{border:1px solid var(--pm-color-border-default);border-radius:14px;background:var(--pm-color-surface-card);color:var(--pm-color-text-primary)',
-  '.pm-settings-home-hint{font-size:11px;line-height:1.5;color:var(--pm-color-text-tertiary)}',
-  '.pm-settings-home button .pm-settings-home-hint{font-size:11px;line-height:1.5;color:var(--pm-color-text-tertiary)}',
+  '.pm-settings-home-hint{font-size:11px;line-height:var(--pm-line-height-body);color:var(--pm-color-text-tertiary)}',
+  '.pm-settings-home button .pm-settings-home-hint{font-size:11px;line-height:var(--pm-line-height-body);color:var(--pm-color-text-tertiary)}',
   '.pm-scene-header{display:grid;grid-template-columns:var(--pm-size-control-default) 1fr var(--pm-size-control-default);align-items:center;padding:var(--pm-space-3) var(--pm-space-px-10);background:var(--pm-color-surface-card);border-bottom:1px solid var(--pm-color-border-subtle)}',
   '.pm-scene-comments{margin-top:var(--pm-space-px-9);background:var(--pm-color-surface-elevated)',
   '.pm-scene-comment-composer input{flex:1;min-width:0;border:1px solid var(--pm-color-border-default);border-radius:10px;padding:var(--pm-space-2);background:var(--pm-color-surface-input);color:var(--pm-color-text-primary)}',
   '.pm-theme-chip:focus-visible{outline:2px solid var(--pm-color-focus-ring);outline-offset:2px;}',
   '#pm-model-arrow:focus-visible{outline:2px solid var(--pm-color-focus-ring);outline-offset:2px;}',
-  '.pm-model-opt:focus-visible{position:relative;z-index:1;outline:2px solid var(--pm-color-focus-ring);outline-offset:-2px;}',
+  '.pm-model-opt:focus-visible{position:relative;z-index:var(--pm-z-content);outline:2px solid var(--pm-color-focus-ring);outline-offset:-2px;}',
   '.pm-model-dropdown{position:fixed;z-index:var(--pm-z-host);background:var(--pm-color-surface-elevated) !important;border:1px solid var(--pm-color-border-default) !important;',
   '.pm-model-search{border:none !important;border-bottom:1px solid var(--pm-color-border-subtle) !important;',
   ':is(#pm-iphone,#pm-overlay,#pm-overlay-sub,#pm-model-dropdown) :where(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]):not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="hidden"]):not([type="image"]),textarea,select,[contenteditable="true"]){min-width:0;max-width:100%;border:1px solid var(--pm-color-border-default) !important;',
@@ -2859,8 +3134,8 @@ if (css.includes('translateY(var(--offset))')) failures.push('style.css: danmaku
 requireText('style.css', css, '.pm-control-menu{position:absolute;left:var(--pm-space-3);');
 requireText('style.css', css, '.pm-pending-manager{min-height:180px;}');
 for (const expected of [
-  '.pm-calendar-shell[data-calendar-view-mode="weather"] .pm-calendar-header-action.is-loading svg{animation:pm-spin .8s linear infinite}',
-  '.pm-calendar-shell[data-calendar-view-mode="schedule"] .pm-calendar-header-action.is-loading svg,.pm-calendar-shell[data-calendar-view-mode="recipe"] .pm-calendar-header-action.is-loading svg{animation:pm-calendar-sparkle-pulse 1s ease-in-out infinite}',
+  '.pm-calendar-shell[data-calendar-view-mode="weather"] .pm-calendar-header-action.is-loading svg{animation:pm-spin var(--pm-motion-normal) var(--pm-motion-ease) infinite}',
+  '.pm-calendar-shell[data-calendar-view-mode="schedule"] .pm-calendar-header-action.is-loading svg,.pm-calendar-shell[data-calendar-view-mode="recipe"] .pm-calendar-header-action.is-loading svg{animation:pm-calendar-sparkle-pulse var(--pm-motion-normal) var(--pm-motion-ease) infinite}',
   '@keyframes pm-calendar-sparkle-pulse{50%{opacity:.45}}',
   '.pm-calendar-cycle-input:checked+.pm-custom-check{background:var(--pm-color-success) !important}',
   '.pm-calendar-cycle-input:focus-visible+.pm-custom-check{outline:2px solid var(--pm-color-focus-ring);outline-offset:2px}',
@@ -2908,7 +3183,10 @@ for (const expected of [
   '.pm-quote-target{animation:pm-quote-highlight',
   '@media(pointer:coarse){.pm-quote-action{min-width:42px;min-height:42px',
   '@media(prefers-reduced-motion:reduce){.pm-quote-target{animation:none',
-  '@media(prefers-reduced-motion:reduce){.pm-quote-target{animation:none;box-shadow:0 0 0 3px color-mix(in srgb,var(--pm-color-accent,#007aff) 45%,transparent)}.pm-quote-action{transition:none}.pm-bubble{animation:none}.pm-typing-bubble span{animation:none}.pm-voice-wave i{animation:none}',
+  '@media(prefers-reduced-motion:reduce){.pm-quote-target{animation:none;outline:3px solid color-mix(in srgb,var(--pm-color-accent,#007aff) 45%,transparent);outline-offset:0}.pm-quote-action{transition:none}.pm-bubble{animation:none}}',
+  '@media(prefers-reduced-motion:reduce){.pm-name-trigger{transition:none}}',
+  '@media(prefers-reduced-motion:reduce){.pm-typing-bubble span{animation:none}.pm-voice-wave i{animation:none}}',
+  '@media(prefers-reduced-motion:reduce){.pm-director{animation:none}.pm-voice-card{transition:none}.pm-contact-switcher-icon{transition:none}}',
   '.pm-calendar-view-switch{display:flex;align-items:center;justify-content:space-between;gap:var(--pm-space-1-5);width:auto;margin:var(--pm-space-0) var(--pm-space-3) var(--pm-space-px-5)',
   '.pm-calendar-tools{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--pm-space-2);padding:var(--pm-space-3) var(--pm-space-3)}',
   '.pm-calendar-header .pm-calendar-header-action{width:28px;height:28px;padding:var(--pm-space-1-5);background:transparent}',
@@ -2922,18 +3200,18 @@ for (const expected of [
   '.pm-calendar-month-panel-actions{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--pm-space-2);padding-top:var(--pm-space-2)}',
   '.pm-calendar-shell>*{flex:0 0 auto}',
   '.pm-calendar-selected-detail.is-status-card{overflow:hidden;padding:var(--pm-space-0);background:color-mix(in srgb,var(--pm-calendar-accent) 8%,var(--pm-color-surface-card))}',
-  '.pm-calendar-status-card{--pm-calendar-status-value-size:28px;position:relative;isolation:isolate;min-height:126px;padding:var(--pm-space-3) var(--pm-space-px-14);overflow:hidden}',
-  '.pm-calendar-status-content{position:relative;z-index:1;display:flex;min-width:0;min-height:96px;flex-direction:column;align-items:flex-start;justify-content:flex-start;gap:var(--pm-space-1-5)}',
+  '.pm-calendar-status-card{--pm-calendar-status-value-size:28px;--pm-calendar-status-value-offset:9.35px;position:relative;isolation:isolate;min-height:126px;padding:var(--pm-space-3) var(--pm-space-px-14);overflow:hidden}',
+  '.pm-calendar-status-content{position:relative;z-index:var(--pm-z-content);display:flex;min-width:0;min-height:96px;flex-direction:column;align-items:flex-start;justify-content:flex-start;gap:var(--pm-space-1-5)}',
   '.pm-calendar-status-heading{display:flex;align-items:baseline;gap:var(--pm-space-2);min-width:0}',
-  '.pm-calendar-status-relative{color:var(--pm-calendar-accent);font-size:17px;line-height:1.1;font-weight:850;white-space:nowrap}',
+  '.pm-calendar-status-relative{color:var(--pm-calendar-accent);font-size:17px;line-height:var(--pm-line-height-tight);font-weight:var(--pm-font-weight-semibold);white-space:nowrap}',
   '.pm-calendar-status-context{display:flex;align-items:center;gap:var(--pm-space-1);width:100%;min-width:0;margin-top:var(--pm-space-auto)}',
-  '.pm-calendar-status-weather-context,.pm-calendar-status-cycle-context{color:var(--pm-color-text-secondary);font-size:13px;font-weight:500;line-height:1.2;opacity:.86}',
+  '.pm-calendar-status-weather-context,.pm-calendar-status-cycle-context{color:var(--pm-color-text-secondary);font-size:13px;font-weight:500;line-height:var(--pm-line-height-tight);opacity:.86}',
   '.pm-calendar-status-context .pm-calendar-status-weather-context{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
   '.pm-calendar-status-location{display:inline-grid;place-items:center;flex:0 0 auto;color:var(--pm-color-text-tertiary);opacity:.86}.pm-calendar-status-location svg{width:13px;height:13px}',
-  '.pm-calendar-status-card-weather .pm-calendar-status-value,.pm-calendar-status-card-cycle .pm-calendar-status-value{color:color-mix(in srgb,var(--pm-calendar-accent) 82%,#000);font-weight:600;letter-spacing:.01em}',
-  '.pm-calendar-status-date time{color:var(--pm-color-text-primary);font-weight:750}',
+  '.pm-calendar-status-card-weather .pm-calendar-status-value,.pm-calendar-status-card-cycle .pm-calendar-status-value{color:color-mix(in srgb,var(--pm-calendar-accent) 82%,var(--pm-color-on-light));font-weight:600;letter-spacing:.01em}',
+  '.pm-calendar-status-date time{color:var(--pm-color-text-primary);font-weight:var(--pm-font-weight-semibold)}',
   '.pm-calendar-status-date em{color:var(--pm-color-text-tertiary);font-style:normal;font-weight:500}',
-  '.pm-calendar-status-watermark{position:absolute;z-index:0;top:50%;right:-64px;width:202px;height:173px',
+  '.pm-calendar-status-watermark{position:absolute;z-index:var(--pm-z-base);top:50%;right:-64px;width:202px;height:173px',
   '.pm-calendar-status-watermark svg{width:173px;height:173px;stroke-width:1.55}',
   '.pm-calendar-status-card-cycle[data-cycle-phase="period"] .pm-calendar-status-watermark{top:50%;right:-72px;left:auto;width:190px;height:150px;opacity:.18;transform:translateY(-50%)',
   '.pm-calendar-status-card-cycle[data-cycle-phase="period"] .pm-calendar-status-watermark{top:50%;right:-72px;left:auto;width:190px;height:150px;opacity:.18;transform:translateY(-50%);-webkit-mask-image:linear-gradient(90deg,transparent 0%,#000 44%);mask-image:linear-gradient(90deg,transparent 0%,#000 44%)}',
@@ -2948,11 +3226,11 @@ for (const expected of [
   '.pm-calendar-status.is-generating{color:var(--pm-color-danger)}',
   '.pm-calendar-date-tags-row{grid-template-columns:minmax(0,1fr) auto}',
   '.pm-calendar-detail-date{display:flex!important;flex-direction:row!important;align-items:baseline',
-  '.pm-calendar-detail-date>strong{color:var(--pm-calendar-accent);font-size:17px;line-height:1.1;font-weight:850',
+  '.pm-calendar-detail-date>strong{color:var(--pm-calendar-accent);font-size:17px;line-height:var(--pm-line-height-tight);font-weight:var(--pm-font-weight-semibold)',
   '.pm-calendar-detail-date>span{display:flex;align-items:baseline;gap:0;min-width:0}',
-  '.pm-calendar-detail-date time{color:var(--pm-color-text-primary);font-weight:750}',
+  '.pm-calendar-detail-date time{color:var(--pm-color-text-primary);font-weight:var(--pm-font-weight-semibold)}',
   '.pm-calendar-detail-date em{color:var(--pm-color-text-tertiary);font-style:normal;font-weight:500}',
-  '.pm-calendar-detail-actions{position:absolute;top:8px;right:10px',
+  '.pm-calendar-detail-actions{position:absolute;top:var(--pm-space-2);right:var(--pm-space-px-10)',
   '.pm-calendar-detail-more{display:grid;place-items:center;width:28px;height:28px;padding:var(--pm-space-1-5);border:0',
   '.pm-calendar-inline-actions button{display:grid;place-items:center;width:28px;height:28px;padding:var(--pm-space-1-5);border:0;border-radius:0;background:transparent',
   '.pm-calendar-detail-edit-actions{display:flex;align-items:center;justify-content:center;gap:var(--pm-space-2);margin-top:var(--pm-space-2);flex-wrap:wrap}',
@@ -2970,7 +3248,7 @@ for (const expected of [
   '#pm-overlay .pm-calendar-entry-dialog textarea[name="note"]:focus-visible{outline:1px solid var(--pm-color-focus-ring)!important;outline-offset:1px!important}',
   '.pm-calendar-entry-actions button{min-height:var(--pm-size-control-default);border:0',
   '.pm-calendar-view-switch button[aria-pressed="true"]{background:transparent;color:var(--pm-calendar-accent);box-shadow:inset 0 -2px 0 var(--pm-calendar-accent)',
-  '@media (prefers-reduced-motion:reduce){.pm-calendar-header-action.is-loading svg{animation:none}}',
+  '@media(prefers-reduced-motion:reduce){.pm-calendar-shell[data-calendar-view-mode] .pm-calendar-header-action.is-loading svg{animation:none}}',
   '.pm-scene-preset>span{box-sizing:border-box;width:12px;height:12px;flex:0 0 12px;border-radius:50%',
   '.pm-scene-prompt .pm-scene-accent-option{box-sizing:border-box;width:30px;height:30px;min-width:30px;min-height:30px;aspect-ratio:1;flex:0 0 30px;padding:var(--pm-space-1) !important',
   '.pm-scene-accent-custom input[type="color"]{box-sizing:border-box;width:32px;height:28px;flex:0 0 32px;padding:var(--pm-space-0);border:1px solid var(--pm-color-border-default);border-radius:6px',
@@ -2978,7 +3256,7 @@ for (const expected of [
   '.pm-scene-accent-option:focus-visible{outline:2px solid var(--scene-accent-option)',
   '.pm-scene-comment-composer[hidden]{display:none}',
   '.pm-scene-comment-composer input{font-size:14px}',
-  '.pm-scene-empty{font-size:12px;line-height:1.55}',
+  '.pm-scene-empty{font-size:12px;line-height:var(--pm-line-height-body)}',
 ]) requireText('style.css', css, expected);
 for (const expected of [
   '--pm-size-icon-sm:14px', '--pm-size-icon-md:18px', '--pm-size-icon-lg:24px', '--pm-z-base:0',
@@ -2994,7 +3272,7 @@ if (css.includes('--pm-letter-spacing-wide')) {
   failures.push('style.css: today-trend must not consume an unregistered letter-spacing token');
 }
 requireCssDeclarations(cssRules, '.pm-calendar-status-relative', {
-  color: 'var(--pm-calendar-accent)', 'font-size': 'var(--pm-font-size-subtitle)', 'line-height': '1.1', 'font-weight': '850',
+  color: 'var(--pm-calendar-accent)', 'font-size': 'var(--pm-font-size-subtitle)', 'line-height': 'var(--pm-line-height-tight)', 'font-weight': 'var(--pm-font-weight-semibold)',
 });
 requireCssDeclarations(cssRules, '.pm-calendar-status-value', {
   'font-size': 'var(--pm-calendar-status-value-size)', 'line-height': '1', 'font-variant-numeric': 'tabular-nums',
@@ -3017,10 +3295,10 @@ for (const selector of [
 }
 requireCssDeclarations(cssRules, '.pm-calendar-status-location svg', { width: '13px', height: '13px' });
 requireCssDeclarations(cssRules, '.pm-calendar-status-card-weather .pm-calendar-status-value', {
-  color: 'color-mix(in srgb,var(--pm-calendar-accent) 82%,#000)', 'font-weight': '600', 'letter-spacing': '.01em',
+  color: 'color-mix(in srgb,var(--pm-calendar-accent) 82%,var(--pm-color-on-light))', 'font-weight': '600', 'letter-spacing': '.01em',
 });
 requireCssDeclarations(cssRules, '.pm-calendar-status-card-cycle .pm-calendar-status-value', {
-  color: 'color-mix(in srgb,var(--pm-calendar-accent) 82%,#000)', 'font-weight': '600', 'letter-spacing': '.01em',
+  color: 'color-mix(in srgb,var(--pm-calendar-accent) 82%,var(--pm-color-on-light))', 'font-weight': '600', 'letter-spacing': '.01em',
 });
 for (const forbidden of [
   '.pm-calendar-status-weather-context{color:var(--pm-color-text-primary);font-size:13px;font-weight:750;line-height:1.2}',
@@ -3462,7 +3740,7 @@ for (const marker of ['calendar-weather-search', 'calendar-weather-refresh', 'ca
 }
 requireCssDeclarations(cssRules, '.pm-calendar-data-row .is-primary', { background: 'var(--pm-calendar-accent)!important', color: 'var(--pm-color-on-dark)!important', 'border-color': 'var(--pm-calendar-accent)!important' });
 requireCssDeclarations(cssRules, '.pm-calendar-setting-hint', {
-  color: 'var(--pm-color-text-tertiary)!important', 'font-size': 'var(--pm-font-size-helper)', 'line-height': '1.5',
+  color: 'var(--pm-color-text-tertiary)!important', 'font-size': 'var(--pm-font-size-helper)', 'line-height': 'var(--pm-line-height-body)',
 });
 requireText('calendar-weather.js refreshes climate estimates', sourceModuleByName.get('calendar-weather.js')?.code || '', 'current.climateRevision + (resetCache ? 1 : 0)');
 requireText('calendar.js preserves calendar scroll position on rerender', sourceModuleByName.get('calendar.js')?.code || '', "const previousShell = container.querySelector?.('.pm-calendar-shell');");
@@ -3861,7 +4139,7 @@ const backupMetadataFields = new Set(['schemaVersion']);
 const backupFields = [
   'histories', 'config', 'theme', 'profiles', 'groupMeta',
   'pokeConfig', 'bidirectional', 'emojis', 'characterBehavior',
-  'wordyLimit', 'desktopBg', 'bgGlobal', 'bgLocal', 'interactiveScenes', 'phoneUiState', 'ambientStatus', 'budgetConfig', 'todayTrend',
+  'wordyLimit', 'galBubbleEnabled', 'desktopBg', 'bgGlobal', 'bgLocal', 'interactiveScenes', 'phoneUiState', 'ambientStatus', 'budgetConfig', 'todayTrend',
 ];
 for (const [label, contract] of [
   ['source backup modules', sourceBackupContract],

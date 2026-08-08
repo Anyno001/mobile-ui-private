@@ -143,6 +143,13 @@ function normalizeTimestamp(value, fallback = 0) {
     return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? Math.floor(value) : fallback;
 }
 
+const STORY_WEATHER_TYPES = Object.freeze(['clear_spell', 'rainy_spell', 'thunderstorm', 'tropical_storm']);
+const STORY_WEATHER_INTENSITIES = Object.freeze(['mild', 'normal', 'severe']);
+const normalizeStoryWeatherType = value => typeof value === 'string' && STORY_WEATHER_TYPES.includes(value) ? value : '';
+const normalizeStoryWeatherIntensity = value => typeof value === 'string' && STORY_WEATHER_INTENSITIES.includes(value) ? value : '';
+const normalizeStoryWeatherDays = value => Number.isInteger(value) && value >= 1 && value <= 7 ? value : 0;
+const normalizeStoryWeatherRevision = value => Number.isSafeInteger(value) && value >= 0 ? value : 0;
+
 export function normalizeCalendarEvent(value, expectedDate = '', now = Date.now()) {
     if (!plainRecord(value)) throw new Error('日程必须是对象');
     const date = parseCalendarDate(expectedDate || value.date) ? (expectedDate || value.date) : '';
@@ -197,6 +204,10 @@ export function normalizeCalendarScope(value) {
         injectionScheduleEnabled: source.injectionScheduleEnabled !== false,
         injectionWeatherEnabled: source.injectionWeatherEnabled !== false,
         weatherEventEnabled: source.weatherEventEnabled === true,
+        weatherEventType: normalizeStoryWeatherType(source.weatherEventType),
+        weatherEventIntensity: normalizeStoryWeatherIntensity(source.weatherEventIntensity),
+        weatherEventDays: normalizeStoryWeatherDays(source.weatherEventDays),
+        weatherEventRevision: normalizeStoryWeatherRevision(source.weatherEventRevision),
         injectionCycleEnabled: source.injectionCycleEnabled !== false,
         injectionRecipeEnabled: source.injectionRecipeEnabled !== false,
         injectionOutfitEnabled: source.injectionOutfitEnabled !== false,
@@ -606,6 +617,7 @@ export function createEmptyCalendarScope(injectionDefaults = {}) {
     return {
         autoAdjust: false, dateTags: [...DEFAULT_CALENDAR_DATE_TAGS], events: {},
         lastGeneratedAt: 0, lastAdjustedAt: 0, generationRule: '',
+        weatherEventType: '', weatherEventIntensity: '', weatherEventDays: 0, weatherEventRevision: 0,
         ...defaults,
     };
 }

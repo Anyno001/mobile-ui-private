@@ -1,20 +1,25 @@
+function requireGalBubbleSync(syncGalBubble, enabled) {
+    if (typeof syncGalBubble !== 'function') throw new Error('GAL 气泡正则同步接口不可用');
+    if (syncGalBubble(enabled) !== true) throw new Error('GAL 气泡正则同步失败');
+}
+
 export function createBackupController({
     capture, apply, persist, complete, parseBackupData, runBackupTransaction,
     legacyBackupTheme, clearPluginData, requireInjectionSuccess,
     clearBidirectionalInjection, applyBidirectionalInjection,
-    cancelCommunityGeneration, cancelCalendarTasks, reloadCalendarStore,
+    cancelCommunityGeneration, cancelCalendarTasks, reloadCalendarStore, syncGalBubble,
     reloadTodayTrendStore, invalidateInteractiveStore, closePhone, createEmptyState, afterApplyEmpty,
 }) {
     const exportData = async () => {
         const snapshot = await capture();
         const data = {
-            schemaVersion: 14, histories: snapshot.histories, config: snapshot.config,
+            schemaVersion: 15, histories: snapshot.histories, config: snapshot.config,
             theme: legacyBackupTheme(snapshot.theme), profiles: snapshot.profiles,
             groupMeta: snapshot.groupMeta, pokeConfig: snapshot.pokeConfig,
             bidirectional: snapshot.bidirectional, injectionConfig: snapshot.injectionConfig,
             budgetConfig: snapshot.budgetConfig, emojis: snapshot.emojis,
             characterBehavior: snapshot.characterBehavior, worldBookConfig: snapshot.worldBookConfig,
-            wordyLimit: snapshot.wordyLimit, desktopBg: snapshot.desktopBg, bgGlobal: snapshot.bgGlobal,
+            wordyLimit: snapshot.wordyLimit, galBubbleEnabled: snapshot.galBubbleEnabled, desktopBg: snapshot.desktopBg, bgGlobal: snapshot.bgGlobal,
             bgLocal: snapshot.bgLocal, interactiveScenes: snapshot.interactiveScenes,
             phoneUiState: snapshot.phoneUiState, ambientStatus: snapshot.ambientStatus,
             calendarStore: snapshot.calendarStore, calendarOccasions: snapshot.calendarOccasions,
@@ -49,7 +54,12 @@ export function createBackupController({
                         cancelCalendarTasks?.(`backup-${reason}`);
                         await requireInjectionSuccess(() => clearBidirectionalInjection(), reason === 'apply' ? '导入前清理旧注入失败' : '回滚前清理注入失败');
                     },
-                    apply: async (snapshot, imported) => snapshot ? apply(snapshot) : apply(imported),
+                    apply: async (snapshot, imported) => {
+                        const nextState = snapshot || imported;
+                        const applied = await apply(nextState);
+                        requireGalBubbleSync(syncGalBubble, applied.galBubbleEnabled === true);
+                        return applied;
+                    },
                     persist,
                     complete,
                     afterPersist: async reason => requireInjectionSuccess(() => applyBidirectionalInjection(), reason === 'apply' ? '导入后的注入刷新失败' : '恢复原数据后的注入刷新失败'),
@@ -80,8 +90,9 @@ export function createBackupController({
         try {
             await requireInjectionSuccess(() => clearBidirectionalInjection(), '清理数据前移除旧注入失败');
             await clearPluginData({ afterClear: async () => {
-                await apply(createEmptyState());
+                const emptyState = await apply(createEmptyState());
                 afterApplyEmpty?.();
+                requireGalBubbleSync(syncGalBubble, emptyState.galBubbleEnabled === true);
                 reloadCalendarStore?.();
                 reloadTodayTrendStore?.();
                 invalidateInteractiveStore?.();
@@ -94,7 +105,8 @@ export function createBackupController({
         } catch (error) {
             let rollbackError = error.rollbackError || null;
             try {
-                await apply(previous);
+                const restored = await apply(previous);
+                requireGalBubbleSync(syncGalBubble, restored.galBubbleEnabled === true);
                 await persist(previous);
                 reloadCalendarStore?.();
                 reloadTodayTrendStore?.();

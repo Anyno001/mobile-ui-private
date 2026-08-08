@@ -388,7 +388,7 @@ ${userPrompt}` : userPrompt;
     const startDate = isValidWeatherDate(value.startDate) ? String(value.startDate) : "";
     const locationKey = typeof value.locationKey === "string" ? value.locationKey.trim().slice(0, 500) : "";
     const rawDays = Array.isArray(value.days) ? value.days : [];
-    if (!type || !startDate || !locationKey || rawDays.length < 1 || rawDays.length > 3) return null;
+    if (!type || !startDate || !locationKey || rawDays.length < 1 || rawDays.length > 7) return null;
     const days = rawDays.map((item) => {
       if (!item || typeof item !== "object" || Array.isArray(item) || !isValidWeatherDate(item.date)) return null;
       const weatherCode = Number(item.weatherCode), tempMin = Number(item.tempMin), tempMax = Number(item.tempMax);
@@ -414,16 +414,20 @@ ${userPrompt}` : userPrompt;
     const day = normalized.days.find((item) => item.date === date);
     return day ? { event: normalized, day } : null;
   }
-  function createStoryWeatherEvent(weatherStore, referenceDate, storageId = "") {
+  function createStoryWeatherEvent(weatherStore, referenceDate, storageId = "", options2 = {}) {
     const startDate = shiftWeatherDate(referenceDate, 1);
     const location = weatherStore?.location;
     if (!startDate || !location || !String(storageId).trim()) return null;
     const locationKey = weatherLocationKey(location);
     if (!locationKey) return null;
-    const seed = `${String(storageId).trim()}|${location.latitude},${location.longitude}|${location.name}|${startDate}`;
+    const revision = Number.isSafeInteger(options2.revision) && options2.revision >= 0 ? options2.revision : 0;
+    const seed = `${String(storageId).trim()}|${location.latitude},${location.longitude}|${location.name}|${startDate}${revision ? `|r${revision}` : ""}`;
     const typeKeys = Object.keys(STORY_WEATHER_EVENT_TYPES);
-    const type = typeKeys[stableHash(`${seed}|type`) % typeKeys.length];
-    const length = 1 + stableHash(`${seed}|length`) % 3;
+    const type = typeKeys.includes(options2.forcedType) ? options2.forcedType : typeKeys[stableHash(`${seed}|type`) % typeKeys.length];
+    const intensityKeys = ["mild", "normal", "severe"];
+    const intensity = intensityKeys.includes(options2.intensity) ? options2.intensity : intensityKeys[stableHash(`${seed}|intensity`) % intensityKeys.length];
+    const requestedDays = Number.isInteger(options2.forcedDays) && options2.forcedDays >= 1 && options2.forcedDays <= 7 ? options2.forcedDays : 1 + stableHash(`${seed}|length`) % 7;
+    const length = requestedDays;
     const days = [];
     for (let index = 0; index < length; index++) {
       const date = shiftWeatherDate(startDate, index);
@@ -431,8 +435,10 @@ ${userPrompt}` : userPrompt;
       const base = resolveWeatherForDate(weatherStore, date);
       if (base.status !== "available") return null;
       const codes = STORY_WEATHER_EVENT_TYPES[type].codes;
-      const weatherCode = codes[stableHash(`${seed}|code|${index}`) % codes.length];
-      const cooling = type === "clear_spell" ? 0 : type === "tropical_storm" ? 4 : 2;
+      const randomCode = codes[stableHash(`${seed}|code|${index}`) % codes.length];
+      const weatherCode = intensity === "severe" ? codes.at(-1) : randomCode;
+      const baseCooling = type === "clear_spell" ? 0 : type === "tropical_storm" ? 4 : 2;
+      const cooling = Math.round(baseCooling * (intensity === "mild" ? 0.5 : intensity === "severe" ? 1.5 : 1));
       const tempMin = Math.max(-80, base.day.tempMin - cooling);
       const tempMax = Math.max(tempMin + 1, Math.min(55, base.day.tempMax - cooling));
       days.push({ date, weatherCode, tempMin, tempMax });
@@ -657,6 +663,12 @@ ${userPrompt}` : userPrompt;
   function normalizeTimestamp(value, fallback = 0) {
     return typeof value === "number" && Number.isFinite(value) && value >= 0 ? Math.floor(value) : fallback;
   }
+  var STORY_WEATHER_TYPES = Object.freeze(["clear_spell", "rainy_spell", "thunderstorm", "tropical_storm"]);
+  var STORY_WEATHER_INTENSITIES = Object.freeze(["mild", "normal", "severe"]);
+  var normalizeStoryWeatherType = (value) => typeof value === "string" && STORY_WEATHER_TYPES.includes(value) ? value : "";
+  var normalizeStoryWeatherIntensity = (value) => typeof value === "string" && STORY_WEATHER_INTENSITIES.includes(value) ? value : "";
+  var normalizeStoryWeatherDays = (value) => Number.isInteger(value) && value >= 1 && value <= 7 ? value : 0;
+  var normalizeStoryWeatherRevision = (value) => Number.isSafeInteger(value) && value >= 0 ? value : 0;
   function normalizeCalendarEvent(value, expectedDate = "", now2 = Date.now()) {
     if (!plainRecord(value)) throw new Error("\u65E5\u7A0B\u5FC5\u987B\u662F\u5BF9\u8C61");
     const date = parseCalendarDate(expectedDate || value.date) ? expectedDate || value.date : "";
@@ -713,6 +725,10 @@ ${userPrompt}` : userPrompt;
       injectionScheduleEnabled: source.injectionScheduleEnabled !== false,
       injectionWeatherEnabled: source.injectionWeatherEnabled !== false,
       weatherEventEnabled: source.weatherEventEnabled === true,
+      weatherEventType: normalizeStoryWeatherType(source.weatherEventType),
+      weatherEventIntensity: normalizeStoryWeatherIntensity(source.weatherEventIntensity),
+      weatherEventDays: normalizeStoryWeatherDays(source.weatherEventDays),
+      weatherEventRevision: normalizeStoryWeatherRevision(source.weatherEventRevision),
       injectionCycleEnabled: source.injectionCycleEnabled !== false,
       injectionRecipeEnabled: source.injectionRecipeEnabled !== false,
       injectionOutfitEnabled: source.injectionOutfitEnabled !== false
@@ -1093,6 +1109,10 @@ ${userPrompt}` : userPrompt;
       lastGeneratedAt: 0,
       lastAdjustedAt: 0,
       generationRule: "",
+      weatherEventType: "",
+      weatherEventIntensity: "",
+      weatherEventDays: 0,
+      weatherEventRevision: 0,
       ...defaults
     };
   }
@@ -1953,7 +1973,12 @@ ${userPrompt}` : userPrompt;
       if (!current.weatherEventEnabled || !runtime.weatherStore.location) return false;
       const referenceDate = getReferenceDate(current);
       if (hasCurrentEvent(current, referenceDate)) return false;
-      const event = createStoryWeatherEvent(runtime.weatherStore, referenceDate, storageId);
+      const event = createStoryWeatherEvent(runtime.weatherStore, referenceDate, storageId, {
+        forcedType: current.weatherEventType,
+        intensity: current.weatherEventIntensity,
+        forcedDays: current.weatherEventDays || void 0,
+        revision: current.weatherEventRevision
+      });
       if (!event) return false;
       await commitScope(storageId, (value) => {
         if (!value.weatherEventEnabled || hasCurrentEvent(value, referenceDate)) return value;
@@ -1965,7 +1990,30 @@ ${userPrompt}` : userPrompt;
       if (!scope?.weatherEventEnabled || hasCurrentEvent(scope, referenceDate) || !runtime.weatherStore.location) {
         return null;
       }
-      return createStoryWeatherEvent(runtime.weatherStore, referenceDate, storageId);
+      return createStoryWeatherEvent(runtime.weatherStore, referenceDate, storageId, {
+        forcedType: scope.weatherEventType,
+        intensity: scope.weatherEventIntensity,
+        forcedDays: scope.weatherEventDays || void 0,
+        revision: scope.weatherEventRevision
+      });
+    }
+    async function regenerateStoryWeatherEvent(storageId) {
+      const current = getScope(storageId);
+      if (!current.weatherEventEnabled || !runtime.weatherStore.location) return false;
+      const revision = Number.isSafeInteger(current.weatherEventRevision) && current.weatherEventRevision >= 0 ? current.weatherEventRevision + 1 : 1;
+      const referenceDate = getReferenceDate(current);
+      const event = createStoryWeatherEvent(runtime.weatherStore, referenceDate, storageId, {
+        forcedType: current.weatherEventType,
+        intensity: current.weatherEventIntensity,
+        forcedDays: current.weatherEventDays || void 0,
+        revision
+      });
+      if (!event) return false;
+      await commitScope(storageId, (value) => ({ ...value, weatherEventRevision: revision, weatherEvent: event }), null, { refreshInjection: false });
+      await applyBidirectionalInjection?.();
+      status(storageId, "\u5267\u60C5\u5929\u6C14\u4E8B\u4EF6\u5DF2\u91CD\u65B0\u751F\u6210\u3002");
+      rerender(storageId);
+      return true;
     }
     async function restoreLocationChange(previousStore, previousWeatherStore, originalError) {
       let rollbackError = null;
@@ -2068,7 +2116,7 @@ ${userPrompt}` : userPrompt;
         }
       }
     }
-    return { ensureStoryWeatherEvent, storyWeatherEventForScope, selectWeatherLocation, refreshWeather };
+    return { ensureStoryWeatherEvent, storyWeatherEventForScope, regenerateStoryWeatherEvent, selectWeatherLocation, refreshWeather };
   }
 
   // src/calendar-cycle-model.js
@@ -2630,6 +2678,7 @@ ${userPrompt}` : userPrompt;
   var CHARACTER_BEHAVIOR_KEY = "ST_SMS_CHARACTER_BEHAVIOR";
   var INJECTION_CONFIG_KEY = "ST_SMS_INJECTION_CONFIG";
   var WORLD_BOOK_CONFIG_KEY = "ST_SMS_WORLD_BOOK_CONFIG_V1";
+  var GAL_BUBBLE_ENABLED_KEY = "ST_SMS_GAL_BUBBLE_ENABLED";
   var VOICE_MAX_SEC = 60;
   var MODEL_VISIBLE_ROWS = 4;
   var MESSAGE_LENGTH_VALUES = Object.freeze(["persona", "short", "medium", "long"]);
@@ -3740,8 +3789,8 @@ ${userPrompt}` : userPrompt;
       (location, index) => `<button type="button" data-action="calendar-weather-select" data-location-index="${index}"><b>${escapeHtml(location.name)}</b><span>${escapeHtml([location.admin1, location.country].filter(Boolean).join(" \xB7 "))}</span></button>`
     ).join("")}</div>`;
   }
-  function injectionToggle(action, label, enabled) {
-    return `<button type="button" class="pm-calendar-auto-switch" data-action="${action}" role="switch" aria-checked="${enabled === true}"><span><b>${label}</b><small class="pm-calendar-setting-hint">\u5F00\u542F\u540E\uFF0C\u89D2\u8272\u56DE\u590D\u65F6\u4F1A\u53C2\u8003\u5F53\u524D\u4F1A\u8BDD\u4E2D\u7684\u76F8\u5173\u4FE1\u606F\u3002</small></span><i aria-hidden="true"></i></button>`;
+  function injectionToggle(action, label, enabled, hint = "\u5F00\u542F\u540E\uFF0C\u89D2\u8272\u56DE\u590D\u65F6\u4F1A\u53C2\u8003\u5F53\u524D\u4F1A\u8BDD\u4E2D\u7684\u76F8\u5173\u4FE1\u606F\u3002") {
+    return `<button type="button" class="pm-calendar-auto-switch" data-action="${action}" role="switch" aria-checked="${enabled === true}"><span><b>${label}</b><small class="pm-calendar-setting-hint">${escapeHtml(hint)}</small></span><i aria-hidden="true"></i></button>`;
   }
   function renderCalendarManagement({
     scope,
@@ -3779,7 +3828,16 @@ ${userPrompt}` : userPrompt;
       const currentSource = storedSource ? weatherSourceLabel(storedSource) : "\u4EC5\u6C14\u5019\u63A8\u6F14";
       const event = scope.weatherEvent;
       const eventStatus = !scope.weatherEventEnabled ? "\u5DF2\u5173\u95ED\uFF1B\u4E0D\u4F1A\u8986\u76D6\u5929\u6C14\u3002" : event ? `\u5F53\u524D\u4E8B\u4EF6\uFF1A${storyWeatherEventLabel(event.type)} \xB7 ${event.startDate} \u81F3 ${event.endDate} \xB7 \u5267\u60C5\u5929\u6C14\u4E8B\u4EF6\u8986\u76D6` : weatherStore.location ? "\u5DF2\u5F00\u542F\uFF1B\u5C06\u5728\u540E\u7EED\u5267\u60C5\u65E5\u671F\u751F\u6210\u77ED\u671F\u5929\u6C14\u4E8B\u4EF6\u3002" : "\u5DF2\u5F00\u542F\uFF1B\u8BF7\u5148\u8BBE\u7F6E\u5929\u6C14\u4F4D\u7F6E\u3002";
-      return `<details class="pm-calendar-management" data-calendar-management="weather"${open}><summary>\u5929\u6C14\u8BBE\u7F6E</summary><div class="pm-calendar-management-content"><section class="pm-calendar-data-tools pm-calendar-injection-card">${injectionToggle("calendar-toggle-weather-injection", "\u5929\u6C14\u6CE8\u5165", scope.injectionWeatherEnabled)}</section><section class="pm-calendar-data-tools pm-calendar-injection-card">${injectionToggle("calendar-toggle-weather-event", "\u5267\u60C5\u5929\u6C14\u4E8B\u4EF6", scope.weatherEventEnabled)}<small class="pm-calendar-attribution">${escapeHtml(eventStatus)}</small></section><section class="pm-calendar-data-tools"><h3>\u5929\u6C14\u4F4D\u7F6E</h3><div class="pm-calendar-data-row"><input data-weather-query placeholder="\u641C\u7D22\u57CE\u5E02\u6216\u5730\u533A" maxlength="100" aria-label="\u641C\u7D22\u5929\u6C14\u4F4D\u7F6E"><button type="button" data-action="calendar-weather-search">\u641C\u7D22</button><button type="button" data-action="calendar-weather-refresh">\u5237\u65B0</button></div>${weatherSearchResults(weatherResults)}<small class="pm-calendar-attribution">${weatherStore.location ? `${escapeHtml(weatherStore.location.name)} \xB7 \u5F53\u524D\u6570\u636E ${escapeHtml(currentSource)} \xB7 \u9884\u62A5\u5916\u65E5\u671F\u4F7F\u7528\u6C14\u5019\u63A8\u6F14` : "\u5C1A\u672A\u8BBE\u7F6E\u5929\u6C14\u4F4D\u7F6E \xB7 \u65E0\u6CD5\u63A8\u6F14"}</small></section></div></details>`;
+      const weatherEventControls = scope.weatherEventEnabled && weatherStore.location ? `<section class="pm-calendar-data-tools"><h3>\u5929\u6C14\u4E8B\u4EF6\u751F\u6210</h3>
+            <div class="pm-calendar-data-row pm-calendar-weather-event-row">
+                <select data-action="calendar-weather-event-type" aria-label="\u5929\u6C14\u4E8B\u4EF6\u7C7B\u578B"><option value="" ${!scope.weatherEventType ? "selected" : ""}>\u968F\u673A\u7C7B\u578B</option><option value="clear_spell" ${scope.weatherEventType === "clear_spell" ? "selected" : ""}>\u653E\u6674</option><option value="rainy_spell" ${scope.weatherEventType === "rainy_spell" ? "selected" : ""}>\u9634\u96E8</option><option value="thunderstorm" ${scope.weatherEventType === "thunderstorm" ? "selected" : ""}>\u5F3A\u5BF9\u6D41</option><option value="tropical_storm" ${scope.weatherEventType === "tropical_storm" ? "selected" : ""}>\u70ED\u5E26\u98CE\u66B4</option></select>
+                <select data-action="calendar-weather-event-intensity" aria-label="\u5929\u6C14\u4E8B\u4EF6\u5F3A\u5EA6"><option value="" ${!scope.weatherEventIntensity ? "selected" : ""}>\u968F\u673A\u5F3A\u5EA6</option><option value="mild" ${scope.weatherEventIntensity === "mild" ? "selected" : ""}>\u6E29\u548C</option><option value="normal" ${scope.weatherEventIntensity === "normal" ? "selected" : ""}>\u6807\u51C6</option><option value="severe" ${scope.weatherEventIntensity === "severe" ? "selected" : ""}>\u5F3A\u70C8</option></select>
+                <select data-action="calendar-weather-event-days" aria-label="\u5929\u6C14\u4E8B\u4EF6\u6301\u7EED\u5929\u6570"><option value="0" ${!scope.weatherEventDays ? "selected" : ""}>\u968F\u673A\u5929\u6570</option>${Array.from({ length: 7 }, (_, index) => index + 1).map((days) => `<option value="${days}" ${scope.weatherEventDays === days ? "selected" : ""}>${days} \u5929</option>`).join("")}</select>
+            </div>
+            <div class="pm-calendar-detail-edit-actions"><button type="button" class="pm-calendar-inline-regenerate" data-action="calendar-weather-event-regenerate" aria-label="\u91CD\u65B0\u751F\u6210\u5929\u6C14\u4E8B\u4EF6" title="\u91CD\u65B0\u751F\u6210\u5929\u6C14\u4E8B\u4EF6" aria-busy="false">${REFRESH_ICON_SVG}<span>\u91CD\u65B0\u751F\u6210</span></button></div>
+            <small class="pm-calendar-attribution">\u6309\u6240\u9009\u7C7B\u578B\u3001\u5F3A\u5EA6\u4E0E\u5929\u6570\u751F\u6210\u672A\u6765\u5929\u6C14\u4E8B\u4EF6\uFF1B\u9009\u62E9\u201C\u968F\u673A\u201D\u4FDD\u7559\u53D8\u5316\u3002</small>
+        </section>` : "";
+      return `<details class="pm-calendar-management" data-calendar-management="weather"${open}><summary>\u5929\u6C14\u8BBE\u7F6E</summary><div class="pm-calendar-management-content"><section class="pm-calendar-data-tools pm-calendar-injection-card">${injectionToggle("calendar-toggle-weather-injection", "\u5929\u6C14\u6CE8\u5165", scope.injectionWeatherEnabled)}</section><section class="pm-calendar-data-tools pm-calendar-injection-card">${injectionToggle("calendar-toggle-weather-event", "\u5267\u60C5\u5929\u6C14\u4E8B\u4EF6", scope.weatherEventEnabled, "\u5F00\u542F\u540E\u4F1A\u4E3A\u672A\u6765\u65E5\u671F\u751F\u6210\u968F\u673A\u5929\u6C14\u4E8B\u4EF6\uFF0C\u8986\u76D6\u65E5\u5386\u663E\u793A\u3002")}<small class="pm-calendar-attribution">${escapeHtml(eventStatus)}</small></section>${weatherEventControls}<section class="pm-calendar-data-tools"><h3>\u5929\u6C14\u4F4D\u7F6E</h3><div class="pm-calendar-data-row"><input data-weather-query placeholder="\u641C\u7D22\u57CE\u5E02\u6216\u5730\u533A" maxlength="100" aria-label="\u641C\u7D22\u5929\u6C14\u4F4D\u7F6E"><button type="button" data-action="calendar-weather-search">\u641C\u7D22</button><button type="button" data-action="calendar-weather-refresh">\u5237\u65B0</button></div>${weatherSearchResults(weatherResults)}<small class="pm-calendar-attribution">${weatherStore.location ? `${escapeHtml(weatherStore.location.name)} \xB7 \u5F53\u524D\u6570\u636E ${escapeHtml(currentSource)} \xB7 \u9884\u62A5\u5916\u65E5\u671F\u4F7F\u7528\u6C14\u5019\u63A8\u6F14` : "\u5C1A\u672A\u8BBE\u7F6E\u5929\u6C14\u4F4D\u7F6E \xB7 \u65E0\u6CD5\u63A8\u6F14"}</small></section></div></details>`;
     }
     if (viewMode === "cycle") {
       const startDay = cycleScope.lastPeriodStart ? Number(cycleScope.lastPeriodStart.slice(8, 10)) : 1;
@@ -4531,7 +4589,7 @@ ${userPrompt}` : userPrompt;
       errorStatus,
       rerender
     });
-    const { ensureStoryWeatherEvent, storyWeatherEventForScope, selectWeatherLocation, refreshWeather } = weatherController;
+    const { ensureStoryWeatherEvent, storyWeatherEventForScope, regenerateStoryWeatherEvent, selectWeatherLocation, refreshWeather } = weatherController;
     const recipeController = createCalendarRecipeController({
       tasks,
       getStorageId: getStorageId2,
@@ -5133,6 +5191,25 @@ ${userPrompt}` : userPrompt;
         await refreshWeather(storageId);
         return;
       }
+      const weatherEventPresetFields = {
+        "calendar-weather-event-type": ["weatherEventType", (value) => value],
+        "calendar-weather-event-intensity": ["weatherEventIntensity", (value) => value],
+        "calendar-weather-event-days": ["weatherEventDays", (value) => {
+          const days = Number(value);
+          return Number.isInteger(days) && days >= 1 && days <= 7 ? days : 0;
+        }]
+      };
+      if (weatherEventPresetFields[action]) {
+        const [field, normalize] = weatherEventPresetFields[action];
+        await commitScope(storageId, (current) => ({ ...current, [field]: normalize(button.value) }));
+        await regenerateStoryWeatherEvent(storageId);
+        rerender(storageId);
+        return;
+      }
+      if (action === "calendar-weather-event-regenerate") {
+        await regenerateStoryWeatherEvent(storageId);
+        return;
+      }
       if (action === "calendar-cycle-save") {
         const form = app?.querySelector("[data-calendar-cycle-editor]");
         if (!form) return;
@@ -5414,7 +5491,8 @@ ${lines.join("\n")}
     names: names2,
     isGroup,
     emojiPrompt = "",
-    wordyPrompt = ""
+    wordyPrompt = "",
+    galBubblePrompt = ""
   }) {
     const list2 = (Array.isArray(names2) ? names2 : [names2]).map((name) => safeKey(name, 80)).filter(Boolean);
     const entries = Object.hasOwn(plainObject(store), storageId) ? plainObject(store)[storageId] : null;
@@ -5428,7 +5506,7 @@ ${lines.join("\n")}
       resolvedEmojiPrompt += `
 \u4EE5\u4E0B\u6210\u5458\u4E0D\u5F97\u4F7F\u7528\u8868\u60C5\u5305\uFF1A${emojiDisabled.map((item) => item.name).join("\u3001")}\u3002`;
     }
-    return behaviorPrompt + resolvedEmojiPrompt + wordyPrompt;
+    return behaviorPrompt + resolvedEmojiPrompt + wordyPrompt + galBubblePrompt;
   }
   function normalizeGroupInjection(value) {
     const source = plainObject(value);
@@ -6922,6 +7000,21 @@ ${lines.join("\n")}
       return false;
     }
   }
+  function loadGalBubbleEnabled() {
+    try {
+      window.__pmGalBubbleEnabled = !!JSON.parse(localStorage.getItem(GAL_BUBBLE_ENABLED_KEY));
+    } catch (error) {
+      window.__pmGalBubbleEnabled = false;
+    }
+  }
+  function saveGalBubbleEnabled() {
+    try {
+      localStorage.setItem(GAL_BUBBLE_ENABLED_KEY, JSON.stringify(window.__pmGalBubbleEnabled));
+      return true;
+    } catch (error) {
+      return false;
+    }
+  }
   function loadProfiles() {
     try {
       window.__pmProfiles = JSON.parse(localStorage.getItem("ST_SMS_API_PROFILES")) || [];
@@ -7005,6 +7098,7 @@ ${lines.join("\n")}
     "ST_SMS_THEME",
     "ST_SMS_POKE_CONFIG",
     "ST_SMS_WORDY_LIMIT",
+    GAL_BUBBLE_ENABLED_KEY,
     BUDGET_CONFIG_KEY,
     "ST_SMS_BG_GLOBAL",
     "ST_SMS_BG_LOCAL",
@@ -7488,8 +7582,6 @@ ${lines.join("\n")}
   }
   function setGenerationLoading(active) {
     const button = document.getElementById("pm-autogen-btn");
-    const icon3 = button?.querySelector("svg");
-    if (icon3) icon3.style.animation = active ? "pm-calendar-sparkle-pulse 1s ease-in-out infinite" : "";
     if (button) {
       button.disabled = active;
       button.setAttribute("aria-busy", String(active));
@@ -12365,10 +12457,126 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
     return result;
   }
 
+  // src/gal-bubble.js
+  var GAL_BUBBLE_SCRIPT_ID = "de4bc2f3-3bcf-44ae-8f50-d751ee0794b6";
+  var GAL_BUBBLE_SCRIPT_NAME = "\u5929\u97F3\u5C0F\u7B3A-GAL\u6C14\u6CE1";
+  var GAL_BUBBLE_FIND_REGEX = `/<msg\\s+side\\s*=\\s*["'](left|right)["']\\s*>\\s*([^\\n(\uFF08|]{1,64}?)(?:\\s*[(\uFF08]\\s*([^\\n)\uFF09|]{1,64}?)\\s*[)\uFF09])?\\s*\\|\\s*([\\s\\S]*?)\\s*<\\/msg>/giu`;
+  var GAL_BUBBLE_REPLACE_STRING = '<style>.nl-gal{--nl-body:var(--SmartThemeBodyColor,#1c1c1e);--nl-muted:var(--SmartThemeQuoteColor,#6e6e73);--nl-border:rgba(90,90,100,.3);--nl-shadow:rgba(60,60,70,.06);--nl-surface:var(--SmartThemeBlurTintColor,rgba(242,242,247,.9));box-sizing:border-box;display:block;width:100%;margin:1.4rem 0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC",sans-serif}@supports (color:color-mix(in srgb,black,transparent)){.nl-gal{--nl-border:color-mix(in srgb,var(--SmartThemeBorderColor,rgba(60,60,67,.22)) 45%,transparent);--nl-shadow:color-mix(in srgb,var(--SmartThemeQuoteColor,#6e6e73) 12%,transparent)}}.nl-gal + style + .nl-gal{margin-top:.7rem}.nl-gal__name{box-sizing:border-box;display:flex;align-items:center;gap:.6rem;width:100%;padding:0 .3rem .3rem;line-height:1.3;color:var(--nl-muted);opacity:.55;overflow-wrap:anywhere}.nl-gal__name::before,.nl-gal__name::after{content:"";flex:1 1 auto;height:1px;background:linear-gradient(to right,transparent,var(--nl-muted),transparent);opacity:.5}.nl-gal__label{flex:0 0 auto;display:inline-flex;align-items:baseline;gap:.15rem;max-width:80%;overflow-wrap:anywhere}.nl-gal__nm{font-size:.74rem;font-weight:600;letter-spacing:.04em}.nl-gal__id:empty{display:none}.nl-gal__id:not(:empty){font-size:.62rem;font-weight:400;opacity:.8}.nl-gal__id:not(:empty)::before{content:"\uFF08"}.nl-gal__id:not(:empty)::after{content:"\uFF09"}.nl-gal__box{box-sizing:border-box;width:100%;padding:.7rem .95rem;border:1px solid var(--nl-border);border-radius:.5rem;background:var(--nl-surface);color:var(--nl-body);box-shadow:0 1px 5px var(--nl-shadow),inset 0 0 5px rgba(255,255,255,.02);font-size:.84rem;line-height:1.85;overflow-wrap:anywhere;word-break:break-word}.nl-gal[data-side="right"] .nl-gal__box{background:color-mix(in srgb,var(--nl-muted) 24%,var(--nl-surface))}.nl-gal__txt{display:block;white-space:pre-wrap;text-indent:1rem}@media (max-width:420px){.nl-gal__name{gap:.4rem}.nl-gal__label{max-width:90%}}</style><section class="nl-gal" data-side="$1"><div class="nl-gal__name"><span class="nl-gal__label"><span class="nl-gal__nm">$2</span><span class="nl-gal__id">$3</span></span></div><div class="nl-gal__box"><span class="nl-gal__txt">$4</span></div></section>';
+  var GAL_BUBBLE_PROMPT = `# \u53F0\u8BCD\u683C\u5F0F
+
+\u5168\u7A0B\u53EA\u8F93\u51FA\u6D88\u606F\u884C\uFF0C\u65E0\u4EFB\u4F55\u88F8\u53D9\u8FF0\u6216\u65C1\u767D\u3002\u683C\u5F0F\uFF1A
+
+<msg side="left">\u540D\u5B57\uFF08\u522B\u540D\uFF09|\u53F0\u8BCD\u6B63\u6587</msg>
+
+## \u89C4\u5219
+- side \u53EA\u80FD left \u6216 right\u3002\u4EC5<user>\u672C\u4EBA\u53D1\u9001\u7528 right\uFF0C\u5176\u4F59\u89D2\u8272\u4E00\u5F8B left\uFF0C\u4E0D\u786E\u5B9A\u65F6\u7528 left\u3002
+- \u7ED3\u6784\uFF1A\u540D\u5B57 +\uFF08\u53EF\u9009\u522B\u540D\uFF0C\u4E2D\u6587\u5168\u89D2\u62EC\u53F7\uFF09+ \u534A\u89D2\u7AD6\u7EBF \`|\` + \u6B63\u6587\u3002
+- \u540D\u5B57/\u522B\u540D\u53EF\u7528\u4E2D\u6587\u3001\u5B57\u6BCD\u3001\u6570\u5B57\u3001\u4E0B\u5212\u7EBF\u3001\u70B9\u3001\u7A7A\u683C\u6216\u8FDE\u5B57\u3002
+- \u6B63\u6587\u4E3A\u7EAF\u6587\u672C\uFF0C\u4E0D\u52A0\u4EFB\u4F55\u5F15\u53F7\uFF1B\u5F15\u8FF0\u4ED6\u4EBA\u65F6\u5F15\u53F7\u4F5C\u6B63\u6587\u81EA\u7136\u51FA\u73B0\u3002\u6B63\u6587\u9700\u7AD6\u7EBF\u7528\u5168\u89D2 \`\uFF5C\`\uFF0C\u9700\u5C16\u62EC\u53F7\u7528 \`&lt;\` \`&gt;\`\u3002
+- \u6BCF\u6761\u72EC\u7ACB\u6210\u5BF9\uFF0C\u6807\u7B7E\u5B8C\u6574\u4E0D\u5D4C\u5957\uFF1B\u540C\u89D2\u8272\u8FDE\u53D1\u62C6\u6210\u591A\u6761\uFF0C\u540D\u5B57\u4FDD\u6301\u4E00\u81F4\u3002
+- \u53EF\u4EE5\u4E0D\u540C\u89D2\u8272\u8FDE\u53D1\u591A\u6761\u3002
+
+
+## \u7981\u6B62
+\u975E<user>\u7528 right\u3001\u7701\u7565 side \u6216\u7ED3\u675F\u6807\u7B7E\u3001\u88F8\u53D9\u8FF0\u3001\u6B63\u6587\u52A0\u5F15\u53F7\u3001\u7528\u4EE3\u7801\u5757/\u5217\u8868/\u8868\u683C\u5305\u88F9\u6D88\u606F\u3001\u89E3\u91CA\u89C4\u5219\u3002
+
+## \u793A\u4F8B
+<msg side="left">\u6797\u590F\uFF08\u590F\u590F\uFF09|\u4F60\u771F\u7684\u6253\u7B97\u5C31\u8FD9\u4E48\u8D70\u4E86\uFF1F</msg>
+<msg side="right">YOYO|\u4E0D\u7136\u5462\uFF0C\u7559\u4E0B\u6765\u8FD8\u6709\u4EC0\u4E48\u610F\u4E49\u3002</msg>`;
+  var getGalBubblePrompt = (enabled) => enabled === true ? `
+
+${GAL_BUBBLE_PROMPT}` : "";
+  var GAL_BUBBLE_MESSAGE_PATTERN = /<msg\s+side\s*=\s*["'](left|right)["']\s*>\s*([^\n(（|]{1,64}?)(?:\s*[(（]\s*([^\n)）|]{1,64}?)\s*[)）])?\s*\|\s*([\s\S]*?)\s*<\/msg>/giu;
+  function parseGalBubbleMessages(raw) {
+    const source = typeof raw === "string" ? raw : "";
+    const messages = [];
+    let match;
+    while ((match = GAL_BUBBLE_MESSAGE_PATTERN.exec(source)) !== null) {
+      const name = match[2].trim();
+      const text8 = cleanResponse(match[4]);
+      if (name && text8) messages.push({ side: match[1].toLowerCase(), name, text: text8 });
+    }
+    return messages.length ? messages : null;
+  }
+  function desiredScript() {
+    return {
+      id: GAL_BUBBLE_SCRIPT_ID,
+      scriptName: GAL_BUBBLE_SCRIPT_NAME,
+      findRegex: GAL_BUBBLE_FIND_REGEX,
+      replaceString: GAL_BUBBLE_REPLACE_STRING,
+      trimStrings: [],
+      placement: [2],
+      disabled: false,
+      markdownOnly: true,
+      promptOnly: false,
+      runOnEdit: true,
+      substituteRegex: 0,
+      minDepth: null,
+      maxDepth: null
+    };
+  }
+  function isOwnedScript(script) {
+    return Boolean(script) && script.id === GAL_BUBBLE_SCRIPT_ID;
+  }
+  function getRegexList(context) {
+    const settings = context?.extensionSettings;
+    if (!settings || !Array.isArray(settings.regex)) throw new Error("\u5F53\u524D\u9152\u9986\u672A\u63D0\u4F9B\u53EF\u5199\u7684\u5168\u5C40\u6B63\u5219\u5217\u8868");
+    return settings.regex;
+  }
+  function requireSave(context) {
+    if (typeof context.saveSettingsDebounced !== "function") throw new Error("\u5F53\u524D\u9152\u9986\u672A\u63D0\u4F9B\u8BBE\u7F6E\u4FDD\u5B58\u63A5\u53E3");
+    context.saveSettingsDebounced();
+  }
+  function reconcileGalBubble(context, enabled) {
+    const matches = getRegexList(context).filter(isOwnedScript);
+    if (matches.length > 1) throw new Error("\u53D1\u73B0\u591A\u6761\u540C ID \u7684\u5929\u97F3\u5C0F\u7B3A\u6B63\u5219\uFF0C\u5DF2\u505C\u6B62\u4FEE\u6539\uFF0C\u8BF7\u5148\u5728\u9152\u9986\u6B63\u5219\u9762\u677F\u6E05\u7406\u91CD\u590D\u9879");
+    if (enabled === true && !matches.length) installGalBubble(context);
+    if (enabled !== true && matches.length) uninstallGalBubble(context);
+  }
+  function installGalBubble(context) {
+    const list2 = getRegexList(context);
+    const matches = list2.filter(isOwnedScript);
+    if (matches.length > 1) throw new Error("\u53D1\u73B0\u591A\u6761\u540C ID \u7684\u5929\u97F3\u5C0F\u7B3A\u6B63\u5219\uFF0C\u5DF2\u505C\u6B62\u4FEE\u6539\uFF0C\u8BF7\u5148\u5728\u9152\u9986\u6B63\u5219\u9762\u677F\u6E05\u7406\u91CD\u590D\u9879");
+    if (!matches.length) {
+      const script2 = desiredScript();
+      list2.push(script2);
+      try {
+        requireSave(context);
+      } catch (error) {
+        list2.splice(list2.indexOf(script2), 1);
+        throw error;
+      }
+      return;
+    }
+    const script = matches[0];
+    const previous = { ...script };
+    Object.assign(script, desiredScript());
+    try {
+      requireSave(context);
+    } catch (error) {
+      for (const key of Object.keys(script)) if (!Object.hasOwn(previous, key)) delete script[key];
+      Object.assign(script, previous);
+      throw error;
+    }
+  }
+  function uninstallGalBubble(context) {
+    const list2 = getRegexList(context);
+    const matches = list2.filter(isOwnedScript);
+    if (matches.length > 1) throw new Error("\u53D1\u73B0\u591A\u6761\u540C ID \u7684\u5929\u97F3\u5C0F\u7B3A\u6B63\u5219\uFF0C\u5DF2\u505C\u6B62\u4FEE\u6539\uFF0C\u8BF7\u5148\u5728\u9152\u9986\u6B63\u5219\u9762\u677F\u6E05\u7406\u91CD\u590D\u9879");
+    if (!matches.length) return;
+    const index = list2.indexOf(matches[0]);
+    const [script] = list2.splice(index, 1);
+    try {
+      requireSave(context);
+    } catch (error) {
+      list2.splice(index, 0, script);
+      throw error;
+    }
+  }
+
   // src/messaging-group-parser.js
-  function parseGroupResponse(raw, groupMembers, { allowUnknownSpeakers = false } = {}) {
-    const cleaned = cleanResponse(raw);
-    const lines = cleaned.split("\n").map((line2) => line2.trim()).filter(Boolean);
+  function parseGroupResponse(raw, groupMembers, { allowUnknownSpeakers = false, galBubbleEnabled = false } = {}) {
+    const galMessages = galBubbleEnabled ? parseGalBubbleMessages(raw) : null;
     const result = [];
     const normalizeName = (value) => (value || "").trim().replace(/^[【\[\(（*「『"'\s]+|[】\]\)）*「』」"'\s]+$/g, "").trim().toLowerCase();
     const memberMap = /* @__PURE__ */ new Map();
@@ -12416,6 +12624,17 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
       String(value || "").replace(/https?:\/\/\S+/gi, (url) => url.replace(/\//g, "")),
       stripSpeakerPrefix
     ).map((text8) => text8.replace(/\u0002/g, "/"));
+    if (galMessages) {
+      for (const message of galMessages) {
+        if (message.side !== "left") continue;
+        const speaker = resolveSpeaker(message.name);
+        if (!speaker) continue;
+        const sentences = splitGroupSentences(message.text);
+        if (sentences.length) result.push({ name: speaker, sentences });
+      }
+      return result;
+    }
+    const lines = cleanResponse(raw).split("\n").map((line2) => line2.trim()).filter(Boolean);
     for (const line2 of lines) {
       const match = line2.match(speakerPattern);
       const speaker = match ? resolveSpeaker(match[1]) : "";
@@ -12530,6 +12749,14 @@ ${lines}
     const pushPlain = (value) => {
       const plain = value.trim();
       if (!plain) return;
+      const renderPlainHtml = (source) => {
+        let display = source;
+        if (side === "left") {
+          const stripped = display.replace(/[。．.]$/, "");
+          if (stripped) display = stripped;
+        }
+        return escapeHtml(display).replace(/\n/g, "<br>");
+      };
       if (senderName && side === "left") {
         const wrapper = document.createElement("div");
         wrapper.className = "pm-group-bubble-wrap";
@@ -12544,14 +12771,14 @@ ${lines}
           inner.style.setProperty("background", groupColor.bg, "important");
           inner.style.setProperty("color", groupColor.text, "important");
         }
-        inner.innerHTML = escapeHtml(plain).replace(/\n/g, "<br>");
+        inner.innerHTML = renderPlainHtml(plain);
         wrapper.appendChild(inner);
         results.push(wrapper);
         return;
       }
       const bubble = document.createElement("div");
       bubble.className = `pm-bubble pm-${side}`;
-      bubble.innerHTML = escapeHtml(plain).replace(/\n/g, "<br>");
+      bubble.innerHTML = renderPlainHtml(plain);
       results.push(bubble);
     };
     const pushSpecial = (kind, content) => {
@@ -13461,7 +13688,8 @@ ${antiFluff}`;
         names: isGroup ? groupMembers : currentPersona,
         isGroup,
         emojiPrompt: getEmojiPrompt(saveKey, storageId, window.__pmPokeConfig, window.__pmEmojis),
-        wordyPrompt: getWordyPrompt(window.__pmWordyLimit)
+        wordyPrompt: getWordyPrompt(window.__pmWordyLimit),
+        galBubblePrompt: getGalBubblePrompt(window.__pmGalBubbleEnabled)
       });
       try {
         const cfg = window.__pmConfig;
@@ -13500,7 +13728,8 @@ ${antiFluff}`;
         let resultData;
         if (isGroup) {
           const parsed = parseGroupResponse(raw, groupMembers, {
-            allowUnknownSpeakers: groupRandomNpcEnabled === true
+            allowUnknownSpeakers: groupRandomNpcEnabled === true,
+            galBubbleEnabled: window.__pmGalBubbleEnabled === true
           });
           if (parsed.length) {
             const contentParts = parsed.map((p) => `${p.name}\uFF1A${p.sentences.join(" / ")}`);
@@ -13529,7 +13758,8 @@ ${antiFluff}`;
             };
           }
         } else {
-          const clean2 = cleanResponse(raw);
+          const galMessages = window.__pmGalBubbleEnabled === true ? parseGalBubbleMessages(raw) : null;
+          const clean2 = galMessages ? galMessages.map((message) => message.text).join("\n") : cleanResponse(raw);
           let sentences = splitToSentences(clean2);
           if (!sentences.length && raw?.trim()) sentences = splitToSentences(raw.replace(/<think>[\s\S]*?<\/think>/gi, "").replace(/<[^>]+>/g, ""));
           if (!sentences.length) sentences = !raw?.trim() ? ["\uFF08\u7A7A\u54CD\u5E94\uFF09"] : ["\uFF08\u683C\u5F0F\u65E0\u6CD5\u89E3\u6790\uFF09"];
@@ -13916,7 +14146,8 @@ ${antiFluff}`;
           names: isGroup ? groupMembers : contactName,
           isGroup,
           emojiPrompt: getEmojiPrompt(contactName, id2, window.__pmPokeConfig, window.__pmEmojis),
-          wordyPrompt: getWordyPrompt(window.__pmWordyLimit)
+          wordyPrompt: getWordyPrompt(window.__pmWordyLimit),
+          galBubblePrompt: getGalBubblePrompt(window.__pmGalBubbleEnabled)
         });
         const aiRequest = buildPokeRequest({
           isGroup,
@@ -13944,7 +14175,8 @@ ${antiFluff}`;
         let renderSentences = [];
         if (isGroup) {
           const parsed = parseGroupResponse(raw, groupMembers, {
-            allowUnknownSpeakers: groupMeta.randomNpcEnabled === true
+            allowUnknownSpeakers: groupMeta.randomNpcEnabled === true,
+            galBubbleEnabled: window.__pmGalBubbleEnabled === true
           });
           renderBlocks = parsed.filter((block2) => block2.sentences.length > 0);
           const contentParts = renderBlocks.map((block2) => `${block2.name}\uFF1A${block2.sentences.join(" / ")}`);
@@ -13955,7 +14187,8 @@ ${antiFluff}`;
             descriptors: renderBlocks.flatMap((block2) => block2.sentences.map((text8) => ({ text: text8, sender: block2.name })))
           }));
         } else {
-          const clean2 = cleanResponse(raw);
+          const galMessages = window.__pmGalBubbleEnabled === true ? parseGalBubbleMessages(raw) : null;
+          const clean2 = galMessages ? galMessages.map((message) => message.text).join("\n") : cleanResponse(raw);
           renderSentences = splitToSentences(clean2);
           if (!renderSentences.length) return false;
           targetHistory.push(createMessageEntry({
@@ -14218,7 +14451,8 @@ ${antiFluff}`;
           names: isGroup ? groupMembers : contactName,
           isGroup,
           emojiPrompt: getEmojiPrompt(targetContactKey, storageId, window.__pmPokeConfig, window.__pmEmojis),
-          wordyPrompt: getWordyPrompt(window.__pmWordyLimit)
+          wordyPrompt: getWordyPrompt(window.__pmWordyLimit),
+          galBubblePrompt: getGalBubblePrompt(window.__pmGalBubbleEnabled)
         });
         const aiRequest = buildPokeRequest({
           isGroup,
@@ -14246,7 +14480,8 @@ ${antiFluff}`;
         if (isStillTarget()) hideTyping();
         if (isGroup) {
           const parsed = parseGroupResponse(raw, groupMembers, {
-            allowUnknownSpeakers: groupRandomNpcEnabled === true
+            allowUnknownSpeakers: groupRandomNpcEnabled === true,
+            galBubbleEnabled: window.__pmGalBubbleEnabled === true
           });
           const blocks = parsed.filter((block2) => block2.sentences.length > 0);
           const contentParts = blocks.map((block2) => `${block2.name}\uFF1A${block2.sentences.join(" / ")}`);
@@ -14280,7 +14515,8 @@ ${antiFluff}`;
             }
           }
         } else {
-          const clean2 = cleanResponse(raw);
+          const galMessages = window.__pmGalBubbleEnabled === true ? parseGalBubbleMessages(raw) : null;
+          const clean2 = galMessages ? galMessages.map((message) => message.text).join("\n") : cleanResponse(raw);
           const sentences = splitToSentences(clean2);
           if (sentences.length > 0) {
             const assistantEntry = createMessageEntry({
@@ -14378,7 +14614,8 @@ ${antiFluff}`;
           names: groupMembers,
           isGroup: true,
           emojiPrompt: getEmojiPrompt(saveKey, storageId, window.__pmPokeConfig, window.__pmEmojis),
-          wordyPrompt: getWordyPrompt(window.__pmWordyLimit)
+          wordyPrompt: getWordyPrompt(window.__pmWordyLimit),
+          galBubblePrompt: getGalBubblePrompt(window.__pmGalBubbleEnabled)
         });
         const aiRequest = buildPokeRequest({
           activeGroup: true,
@@ -14404,7 +14641,8 @@ ${antiFluff}`;
         if (!isGenerationTaskActive(task)) return;
         if (isStillTarget()) hideTyping();
         const parsed = parseGroupResponse(raw, groupMembers, {
-          allowUnknownSpeakers: groupRandomNpcEnabled === true
+          allowUnknownSpeakers: groupRandomNpcEnabled === true,
+          galBubbleEnabled: window.__pmGalBubbleEnabled === true
         });
         let renderedTrimmedCount = 0;
         for (const block2 of parsed) {
@@ -17457,6 +17695,7 @@ ${lines}`;
     window.__pmPokeConfig = window.__pmPokeConfig || {};
     window.__pmCharacterBehavior = window.__pmCharacterBehavior || {};
     window.__pmWordyLimit = window.__pmWordyLimit || false;
+    window.__pmGalBubbleEnabled = window.__pmGalBubbleEnabled || false;
     window.__pmBudgetConfig = normalizeBudgetConfig(window.__pmBudgetConfig);
     window.__pmEmojis = window.__pmEmojis || [];
     const { applyBackground, fitNameFont, migrateOldHistory } = createPhoneAppearance(state, deps);
@@ -18115,6 +18354,7 @@ ${lines}`;
       loadPokeConfig();
       loadCharacterBehavior();
       loadWordyLimit();
+      loadGalBubbleEnabled();
       loadBudgetConfig();
       loadWorldBookConfig();
       migrateOldHistory();
@@ -18306,8 +18546,14 @@ ${lines}`;
     loadPokeConfig();
     loadCharacterBehavior();
     loadWordyLimit();
+    loadGalBubbleEnabled();
     loadBudgetConfig();
     loadWorldBookConfig();
+    try {
+      reconcileGalBubble(getCtx(), window.__pmGalBubbleEnabled === true);
+    } catch (error) {
+      console.warn("[phone-mode] GAL \u6C14\u6CE1\u6B63\u5219\u540C\u6B65\u5931\u8D25", error);
+    }
     const initialGroupMetaLoad = (deps.loadGroupMeta || loadGroupMeta)();
     loadHistoriesOnce();
     setTimeout(() => {
@@ -18938,6 +19184,10 @@ ${lines}`;
   }
 
   // src/settings-backup-controller.js
+  function requireGalBubbleSync(syncGalBubble, enabled) {
+    if (typeof syncGalBubble !== "function") throw new Error("GAL \u6C14\u6CE1\u6B63\u5219\u540C\u6B65\u63A5\u53E3\u4E0D\u53EF\u7528");
+    if (syncGalBubble(enabled) !== true) throw new Error("GAL \u6C14\u6CE1\u6B63\u5219\u540C\u6B65\u5931\u8D25");
+  }
   function createBackupController({
     capture,
     apply,
@@ -18953,6 +19203,7 @@ ${lines}`;
     cancelCommunityGeneration,
     cancelCalendarTasks,
     reloadCalendarStore,
+    syncGalBubble,
     reloadTodayTrendStore,
     invalidateInteractiveStore,
     closePhone,
@@ -18962,7 +19213,7 @@ ${lines}`;
     const exportData = async () => {
       const snapshot = await capture();
       const data = {
-        schemaVersion: 14,
+        schemaVersion: 15,
         histories: snapshot.histories,
         config: snapshot.config,
         theme: legacyBackupTheme2(snapshot.theme),
@@ -18976,6 +19227,7 @@ ${lines}`;
         characterBehavior: snapshot.characterBehavior,
         worldBookConfig: snapshot.worldBookConfig,
         wordyLimit: snapshot.wordyLimit,
+        galBubbleEnabled: snapshot.galBubbleEnabled,
         desktopBg: snapshot.desktopBg,
         bgGlobal: snapshot.bgGlobal,
         bgLocal: snapshot.bgLocal,
@@ -19017,7 +19269,12 @@ ${lines}`;
               cancelCalendarTasks?.(`backup-${reason}`);
               await requireInjectionSuccess(() => clearBidirectionalInjection(), reason === "apply" ? "\u5BFC\u5165\u524D\u6E05\u7406\u65E7\u6CE8\u5165\u5931\u8D25" : "\u56DE\u6EDA\u524D\u6E05\u7406\u6CE8\u5165\u5931\u8D25");
             },
-            apply: async (snapshot, imported) => snapshot ? apply(snapshot) : apply(imported),
+            apply: async (snapshot, imported) => {
+              const nextState = snapshot || imported;
+              const applied = await apply(nextState);
+              requireGalBubbleSync(syncGalBubble, applied.galBubbleEnabled === true);
+              return applied;
+            },
             persist,
             complete,
             afterPersist: async (reason) => requireInjectionSuccess(() => applyBidirectionalInjection(), reason === "apply" ? "\u5BFC\u5165\u540E\u7684\u6CE8\u5165\u5237\u65B0\u5931\u8D25" : "\u6062\u590D\u539F\u6570\u636E\u540E\u7684\u6CE8\u5165\u5237\u65B0\u5931\u8D25")
@@ -19051,8 +19308,9 @@ ${error.message}`);
       try {
         await requireInjectionSuccess(() => clearBidirectionalInjection(), "\u6E05\u7406\u6570\u636E\u524D\u79FB\u9664\u65E7\u6CE8\u5165\u5931\u8D25");
         await clearPluginData2({ afterClear: async () => {
-          await apply(createEmptyState());
+          const emptyState = await apply(createEmptyState());
           afterApplyEmpty?.();
+          requireGalBubbleSync(syncGalBubble, emptyState.galBubbleEnabled === true);
           reloadCalendarStore?.();
           reloadTodayTrendStore?.();
           invalidateInteractiveStore?.();
@@ -19065,7 +19323,8 @@ ${error.message}`);
       } catch (error) {
         let rollbackError = error.rollbackError || null;
         try {
-          await apply(previous);
+          const restored = await apply(previous);
+          requireGalBubbleSync(syncGalBubble, restored.galBubbleEnabled === true);
           await persist(previous);
           reloadCalendarStore?.();
           reloadTodayTrendStore?.();
@@ -19265,6 +19524,46 @@ ${error.message}`);
     };
   }
 
+  // src/settings-gal-bubble-controller.js
+  function createGalBubbleController({ getContext, reconcile, saveEnabled }) {
+    const sync = (enabled) => {
+      const context = getContext?.();
+      if (!context) throw new Error("\u5F53\u524D\u9152\u9986\u4E0A\u4E0B\u6587\u4E0D\u53EF\u7528\uFF0C\u65E0\u6CD5\u4FEE\u6539 GAL \u6C14\u6CE1\u6B63\u5219");
+      reconcile(context, enabled);
+    };
+    const toggle = () => {
+      const previous = window.__pmGalBubbleEnabled === true;
+      const next = !previous;
+      try {
+        sync(next);
+      } catch (error) {
+        alert(error.message);
+        return false;
+      }
+      window.__pmGalBubbleEnabled = next;
+      try {
+        if (!saveEnabled()) throw new Error("GAL \u6C14\u6CE1\u5F00\u5173\u4FDD\u5B58\u5931\u8D25\uFF1A\u6D4F\u89C8\u5668\u5B58\u50A8\u4E0D\u53EF\u7528\u3002");
+      } catch (error) {
+        window.__pmGalBubbleEnabled = previous;
+        try {
+          sync(previous);
+        } catch (rollbackError) {
+          alert(`${error.message}\uFF1B\u6B63\u5219\u72B6\u6001\u56DE\u6EDA\u5931\u8D25\uFF1A${rollbackError.message}`);
+          return false;
+        }
+        alert(error.message);
+        return false;
+      }
+      const element = document.getElementById("pm-gal-bubble-check");
+      if (element) {
+        element.classList.toggle("is-checked", next);
+        element.setAttribute("aria-checked", String(next));
+      }
+      return true;
+    };
+    return { toggle, sync };
+  }
+
   // src/settings-wordy-controller.js
   function createWordyLimitController({ saveWordyLimit: saveWordyLimit2 }) {
     const toggle = () => {
@@ -19379,6 +19678,13 @@ ${error.message}`);
         <div id="pm-wordy-check" onclick="window.__pmToggleWordyLimit()"
           class="pm-custom-check ${window.__pmWordyLimit === true ? "is-checked" : ""}" role="checkbox" tabindex="0"
           aria-checked="${window.__pmWordyLimit === true}"
+          onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();this.click()}"></div>
+      </div>
+      <div class="pm-global-setting" role="group" aria-labelledby="pm-gal-bubble-label">
+        <span><b id="pm-gal-bubble-label">GAL \u6C14\u6CE1\u6B63\u5219</b><span class="pm-settings-home-hint">\u5199\u5165\u9152\u9986\u5168\u5C40\u6B63\u5219\uFF0C\u5E76\u8981\u6C42\u624B\u673A\u56DE\u590D\u4F7F\u7528 GAL \u53F0\u8BCD\u683C\u5F0F</span></span>
+        <div id="pm-gal-bubble-check" onclick="window.__pmToggleGalBubble()"
+          class="pm-custom-check ${window.__pmGalBubbleEnabled === true ? "is-checked" : ""}" role="checkbox" tabindex="0"
+          aria-checked="${window.__pmGalBubbleEnabled === true}"
           onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();this.click()}"></div>
       </div>
     </div>`;
@@ -20165,6 +20471,7 @@ ${error.message}`);
         emojis: cloneEmojiLibrary(window.__pmEmojis),
         characterBehavior: clone8(window.__pmCharacterBehavior || {}),
         wordyLimit: !!window.__pmWordyLimit,
+        galBubbleEnabled: window.__pmGalBubbleEnabled === true,
         worldBookConfig: normalizeWorldBookConfig(window.__pmWorldBookConfig),
         desktopBg: window.__pmDesktopBg || "",
         bgGlobal: window.__pmBgGlobal || "",
@@ -20200,6 +20507,7 @@ ${error.message}`);
       window.__pmEmojis = cloneEmojiLibrary(state.emojis);
       window.__pmCharacterBehavior = clone8(state.characterBehavior || {});
       window.__pmWordyLimit = !!state.wordyLimit;
+      window.__pmGalBubbleEnabled = state.galBubbleEnabled === true;
       window.__pmDesktopBg = typeof state.desktopBg === "string" ? state.desktopBg : "";
       window.__pmWorldBookConfig = normalizeWorldBookConfig(state.worldBookConfig);
       window.__pmBgGlobal = typeof state.bgGlobal === "string" ? state.bgGlobal : "";
@@ -20235,7 +20543,7 @@ ${error.message}`);
       if (!saveTheme()) throw new Error("\u4E3B\u9898\u914D\u7F6E\u4FDD\u5B58\u5931\u8D25\uFF1A\u6D4F\u89C8\u5668\u5B58\u50A8\u4E0D\u53EF\u7528");
       if (!saveProfiles()) throw new Error("API \u6863\u6848\u4FDD\u5B58\u5931\u8D25\uFF1A\u6D4F\u89C8\u5668\u5B58\u50A8\u4E0D\u53EF\u7528");
       await saveGroupMeta();
-      if (!saveCharacterBehavior() || !savePokeConfig() || !saveBidirectional() || !saveInjectionConfig() || !saveBudgetConfig(state.budgetConfig) || !saveWordyLimit() || !saveWorldBookConfig()) {
+      if (!saveCharacterBehavior() || !savePokeConfig() || !saveBidirectional() || !saveInjectionConfig() || !saveBudgetConfig(state.budgetConfig) || !saveWordyLimit() || !saveGalBubbleEnabled() || !saveWorldBookConfig()) {
         throw new Error("\u63D2\u4EF6\u914D\u7F6E\u4FDD\u5B58\u5931\u8D25\uFF1A\u6D4F\u89C8\u5668\u5B58\u50A8\u4E0D\u53EF\u7528");
       }
       await saveEmojis();
@@ -20526,7 +20834,7 @@ ${error.message}`);
     if (!data || typeof data !== "object" || Array.isArray(data)) throw new Error("\u5907\u4EFD\u6839\u8282\u70B9\u5FC5\u987B\u662F\u5BF9\u8C61");
     const version = data.schemaVersion === void 0 ? 1 : data.schemaVersion;
     if (!Number.isInteger(version) || version < 1) throw new Error("\u5907\u4EFD\u7248\u672C\u65E0\u6548");
-    if (version > 14) throw new Error(`\u5907\u4EFD\u7248\u672C ${version} \u9AD8\u4E8E\u5F53\u524D\u652F\u6301\u7248\u672C 14`);
+    if (version > 15) throw new Error(`\u5907\u4EFD\u7248\u672C ${version} \u9AD8\u4E8E\u5F53\u524D\u652F\u6301\u7248\u672C 15`);
     const result = clone9(current);
     if (Object.hasOwn(data, "histories")) result.histories = objectValue(data.histories, "histories");
     if (Object.hasOwn(data, "config")) result.config = objectValue(data.config, "config");
@@ -20551,6 +20859,11 @@ ${error.message}`);
     if (Object.hasOwn(data, "wordyLimit")) {
       if (typeof data.wordyLimit !== "boolean") throw new Error("\u5907\u4EFD\u5B57\u6BB5 wordyLimit \u5FC5\u987B\u662F\u5E03\u5C14\u503C");
       result.wordyLimit = data.wordyLimit;
+    }
+    if (version >= 15) {
+      if (!Object.hasOwn(data, "galBubbleEnabled")) throw new Error("\u5907\u4EFD\u7248\u672C 15 \u7F3A\u5C11 galBubbleEnabled");
+      if (typeof data.galBubbleEnabled !== "boolean") throw new Error("\u5907\u4EFD\u5B57\u6BB5 galBubbleEnabled \u5FC5\u987B\u662F\u5E03\u5C14\u503C");
+      result.galBubbleEnabled = data.galBubbleEnabled;
     }
     if (version >= 11) {
       if (!Object.hasOwn(data, "worldBookConfig")) throw new Error("\u5907\u4EFD\u7248\u672C 11 \u7F3A\u5C11 worldBookConfig");
@@ -20599,6 +20912,11 @@ ${error.message}`);
     const apiDraftMode = createApiDraftMode();
     const requireInjectionSuccess = createInjectionResultGuard();
     const wordySettings = createWordyLimitController({ saveWordyLimit });
+    const galBubbleSettings = createGalBubbleController({
+      getContext: deps.getCtx,
+      reconcile: reconcileGalBubble,
+      saveEnabled: saveGalBubbleEnabled
+    });
     const apiSettings = createApiRequestController({
       runtime,
       normalizeApiUrls,
@@ -20651,6 +20969,14 @@ ${error.message}`);
       cancelCommunityGeneration: deps.cancelCommunityGeneration,
       cancelCalendarTasks: deps.cancelCalendarTasks,
       reloadCalendarStore: deps.reloadCalendarStore,
+      syncGalBubble: (enabled) => {
+        const context = deps.getCtx?.();
+        if (!Array.isArray(context?.extensionSettings?.regex) || typeof context.saveSettingsDebounced !== "function") {
+          throw new Error("\u5F53\u524D\u9152\u9986\u672A\u63D0\u4F9B\u53EF\u5199\u7684\u5168\u5C40\u6B63\u5219\u5217\u8868\u6216\u8BBE\u7F6E\u4FDD\u5B58\u63A5\u53E3");
+        }
+        galBubbleSettings.sync(enabled);
+        return true;
+      },
       reloadTodayTrendStore: deps.reloadTodayTrendStore,
       invalidateInteractiveStore: deps.invalidateInteractiveStore,
       closePhone,
@@ -20667,6 +20993,7 @@ ${error.message}`);
         characterBehavior: {},
         worldBookConfig: null,
         wordyLimit: false,
+        galBubbleEnabled: false,
         desktopBg: "",
         bgGlobal: "",
         bgLocal: {},
@@ -20698,6 +21025,7 @@ ${error.message}`);
     window.__pmPickProfile = (idx) => apiSettings.pickProfile(idx);
     window.__pmSetMode = (value) => apiSettings.setMode(value);
     window.__pmToggleWordyLimit = () => wordySettings.toggle();
+    window.__pmToggleGalBubble = () => galBubbleSettings.toggle();
     window.__pmSetDarkMode = (mode) => appearanceSettings.setDarkMode(mode);
     window.__pmSetPreset = (preset) => appearanceSettings.setPreset(preset);
     window.__pmSetCustomAccent = () => appearanceSettings.setCustomAccent();
@@ -20722,6 +21050,7 @@ ${error.message}`);
       loadProfiles();
       loadTheme();
       loadBudgetConfig();
+      loadGalBubbleEnabled();
       if (page === "home") {
         makeOverlay(renderSettingsModal({ title: "\u8BBE\u7F6E", content: renderSettingsHome(), showBack: false }));
         return;
