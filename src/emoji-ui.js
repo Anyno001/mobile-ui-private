@@ -1,4 +1,4 @@
-import { resolveThemeAuxiliary, THEME_PRESETS } from './config.js';
+import { resolveThemeAuxiliary, THEME_PRESETS, THEME_UI_TOKENS } from './config.js';
 import { contrastText, escapeAttr, escapeHtml } from './ui.js';
 import { CLOSE_ICON_SVG } from './icons.js';
 import {
@@ -8,8 +8,7 @@ import {
 function applySubOverlayTheme(overlay) {
     const theme = window.__pmTheme || {};
     const preset = THEME_PRESETS[theme.preset] || THEME_PRESETS.default;
-    // 与 applyTheme 保持同一语义：苹果皮肤是独立浅色界面，不继承暗色骨架变量。
-    const interfaceMode = theme.preset === 'apple' ? 'light' : (theme.darkMode || 'light');
+    const interfaceMode = theme.darkMode || 'light';
     const customAccent = theme.preset === 'custom' ? String(theme.customAccent || '').trim() : '';
     const auxiliary = resolveThemeAuxiliary(preset, customAccent);
     const defaultRight = theme.preset === 'custom' && customAccent ? customAccent : interfaceMode === 'dark' ? preset.rightDark || preset.right : preset.right;
@@ -17,7 +16,6 @@ function applySubOverlayTheme(overlay) {
     const rightBackground = theme.customRight || defaultRight;
     const rightText = theme.customRight || (theme.preset === 'custom' && customAccent)
         ? contrastText(rightBackground) : preset.rightText;
-    const skinTokens = { ...THEME_PRESETS.apple?.ui, ...THEME_PRESETS.pink?.uiDark };
     const uiTokens = interfaceMode === 'dark' ? preset.uiDark || {} : preset.ui || {};
     overlay.style.setProperty('--pm-r-bg', rightBackground);
     overlay.style.setProperty('--pm-r-txt', rightText);
@@ -25,12 +23,11 @@ function applySubOverlayTheme(overlay) {
     overlay.style.setProperty('--pm-l-txt', theme.customLeft ? contrastText(theme.customLeft) : interfaceMode === 'dark' ? preset.leftTextDark || preset.leftText : preset.leftText);
     overlay.style.setProperty('--pm-border', theme.borderColor || '#1a1a1a');
     overlay.style.setProperty('--pm-color-accent', customAccent || preset.accent || preset.right);
-    for (const token of Object.keys(skinTokens)) overlay.style.removeProperty(token);
+    for (const token of THEME_UI_TOKENS) overlay.style.removeProperty(token);
     for (const [token, value] of Object.entries(uiTokens)) overlay.style.setProperty(token, value);
     overlay.style.setProperty('--pm-color-auxiliary', auxiliary);
     overlay.dataset.theme = interfaceMode;
-    if (theme.preset === 'apple') overlay.dataset.skin = 'apple';
-    else delete overlay.dataset.skin;
+    delete overlay.dataset.skin;
 }
 
 function createSubOverlay(html) {

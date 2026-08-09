@@ -170,7 +170,7 @@ export function createTodayTrendActionDispatcher({
             })());
         }
         if (action === 'today-trend-regenerate-circle-schema') return run(onRefresh?.('reputation', button.dataset.circleId, { mode: 'schema' }) ?? Promise.reject(new Error('今日风向圈层结构重新生成能力尚未接入')));
-        const generation = { 'today-trend-generate-world': ['world'], 'today-trend-generate-reputation': ['reputation'], 'today-trend-generate-factions': ['faction'] }[action];
+        const generation = { 'today-trend-generate-all': [null], 'today-trend-generate-world': ['world'], 'today-trend-generate-reputation': ['reputation'], 'today-trend-generate-factions': ['faction'] }[action];
         if (generation) return run(onGenerate?.(...generation) ?? Promise.reject(new Error('今日风向生成能力尚未接入')));
         const refresh = { 'today-trend-refresh-world-item': ['world', button.dataset.worldItemId], 'today-trend-refresh-circle': ['reputation', button.dataset.circleId], 'today-trend-refresh-faction': ['faction', button.dataset.factionId] }[action];
         if (refresh) return run(onRefresh?.(...refresh) ?? Promise.reject(new Error('今日风向单项刷新能力尚未接入')));

@@ -1,11 +1,11 @@
-import { resolveThemeAuxiliary, THEME_PRESETS } from './config.js';
+import { resolveThemeAuxiliary, THEME_PRESETS, THEME_UI_TOKENS } from './config.js';
 import { contrastText } from './ui.js';
 
 export function createPhoneThemeController(state) {
     function applyTheme() {
         const theme = window.__pmTheme || {};
         const preset = THEME_PRESETS[theme.preset] || THEME_PRESETS.default;
-        const interfaceMode = theme.preset === 'apple' ? 'light' : (theme.darkMode || 'light');
+        const interfaceMode = theme.darkMode || 'light';
         const customAccent = theme.preset === 'custom' ? String(theme.customAccent || '').trim() : '';
         const auxiliary = resolveThemeAuxiliary(preset, customAccent);
         const defaultRight = theme.preset === 'custom' && customAccent ? customAccent : interfaceMode === 'dark' ? preset.rightDark || preset.right : preset.right;
@@ -14,7 +14,6 @@ export function createPhoneThemeController(state) {
         const leftBackground = theme.customLeft || defaultLeft;
         const rightText = theme.customRight || (theme.preset === 'custom' && customAccent) ? contrastText(rightBackground) : preset.rightText;
         const leftText = theme.customLeft ? contrastText(theme.customLeft) : interfaceMode === 'dark' ? preset.leftTextDark || preset.leftText : preset.leftText;
-        const skinTokens = { ...THEME_PRESETS.apple?.ui, ...THEME_PRESETS.pink?.uiDark };
         const uiTokens = interfaceMode === 'dark' ? preset.uiDark || {} : preset.ui || {};
         const applyProperties = element => {
             if (!element) return;
@@ -23,12 +22,11 @@ export function createPhoneThemeController(state) {
             element.style.setProperty('--pm-border', theme.borderColor || '#1a1a1a');
             element.style.setProperty('--pm-frost', preset.frost ? '1' : '0');
             element.style.setProperty('--pm-color-accent', customAccent || preset.accent || preset.right);
-            for (const token of Object.keys(skinTokens)) element.style.removeProperty(token);
+            for (const token of THEME_UI_TOKENS) element.style.removeProperty(token);
             for (const [token, value] of Object.entries(uiTokens)) element.style.setProperty(token, value);
             element.style.setProperty('--pm-color-auxiliary', auxiliary);
             element.setAttribute('data-theme', interfaceMode);
-            if (theme.preset === 'apple') element.setAttribute('data-skin', 'apple');
-            else element.removeAttribute('data-skin');
+            element.removeAttribute('data-skin');
         };
         applyProperties(document.getElementById('pm-overlay'));
         applyProperties(document.getElementById('pm-overlay-sub'));

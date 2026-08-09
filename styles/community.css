@@ -114,9 +114,6 @@
 .pm-desktop-app svg{width:23px;height:23px;pointer-events:none;}
 .pm-desktop-app-label{display:block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:inherit;font-size:var(--pm-font-size-caption);font-weight:var(--pm-font-weight-semibold);line-height:var(--pm-line-height-tight);text-align:center;}
 .pm-nav-left-btn{color:var(--pm-color-text-tertiary)!important;}
-#pm-iphone[data-skin="apple"] .pm-nav-left-btn{color:var(--pm-color-success)!important;}
-#pm-iphone[data-skin="apple"] .pm-generation-cancel{border-color:var(--pm-color-success);color:var(--pm-color-success);background:color-mix(in srgb,var(--pm-color-success) 8%,transparent);}
-#pm-iphone[data-skin="apple"] .pm-desktop-app-icon{border-color:transparent;background:linear-gradient(135deg,var(--pm-color-auxiliary),var(--pm-color-accent));box-shadow:0 5px 14px color-mix(in srgb,var(--pm-color-accent) 24%,transparent);}
 .pm-independent-api-fields[hidden]{display:none!important;}
 .pm-quick-reply-settings{padding:var(--pm-space-px-14) var(--pm-space-4);display:flex;flex-direction:column;gap:var(--pm-space-3);}
 .pm-quick-reply-settings section{padding:var(--pm-space-3);border:1px solid color-mix(in srgb,currentColor 11%,transparent);border-radius:var(--pm-radius-card);}
@@ -131,7 +128,6 @@
 .pm-quick-reply-actions button:disabled{cursor:not-allowed;opacity:.45;}
 .pm-desktop-pins{margin-top:var(--pm-space-px-20);}
 .pm-desktop-pins h3{font-size:var(--pm-font-size-compact);margin:var(--pm-space-0) var(--pm-space-0) var(--pm-space-px-9);}
-.pm-desktop-pins>p{font-size:var(--pm-font-size-helper);color:var(--pm-color-text-tertiary);line-height:var(--pm-line-height-body);margin:var(--pm-space-0);}
 .pm-desktop-pin{display:grid;grid-template-columns:minmax(0,1fr) auto;border:1px solid var(--pm-color-border-default);border-radius:var(--pm-radius-panel);background:color-mix(in srgb,var(--pm-color-surface-card) 88%,transparent);overflow:hidden;margin-bottom:var(--pm-space-px-7);backdrop-filter:blur(8px);}
 .pm-desktop-pin>button:first-child{min-width:0;border:0;background:transparent;color:inherit;padding:var(--pm-space-px-11) var(--pm-space-3);text-align:left;cursor:pointer;}
 .pm-desktop-pin b{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:var(--pm-font-size-label);}

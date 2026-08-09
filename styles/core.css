@@ -8,7 +8,6 @@
 .pm-main-ui{background:var(--pm-bg)!important;}
 .pm-navbar{background:var(--pm-navbar-bg)!important;border-bottom-color:var(--pm-navbar-border)!important;}
 .pm-input{background:var(--pm-input-bg)!important;color:var(--pm-text)!important;}
-/*苹果皮肤采用浅色无描边卡片层次；消息左气泡保留更深暖米色以免融入页面。*/
 #pm-iphone.is-min{--pm-phone-inner-radius:19px;--pm-phone-outer-radius:25px;inset:auto 40px 40px auto!important;height:50px!important;min-height:50px!important;max-height:50px!important;width:140px!important;min-width:140px!important;max-width:140px!important;border-radius:var(--pm-phone-outer-radius)!important;border-width:6px!important;}
 #pm-iphone.is-min .pm-main-ui{display:none!important;}
 #pm-iphone.is-min .pm-status-bar{display:none!important;}

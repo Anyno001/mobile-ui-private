@@ -124,7 +124,11 @@ assert.doesNotMatch(todayTrendStyle, /pm-today-trend-(?:world|faction|reputation
 
 
 
-assert.match(todayTrendStyle, /@media\(max-width:320px\).*pm-today-trend-event-facts/s, '今日风向重排必须提供窄屏事实区适配');
+const compactTodayTrendMediaStart = todayTrendStyle.lastIndexOf('@media(max-width:320px)');
+const compactTodayTrendMedia = todayTrendStyle.slice(compactTodayTrendMediaStart, todayTrendStyle.indexOf('\n', compactTodayTrendMediaStart));
+assert.match(compactTodayTrendMedia, /pm-today-trend-event-body>header\{flex-wrap:wrap/, '事件追踪窄屏标题与操作区必须允许分行');
+assert.match(todayTrendStyle, /pm-today-trend-event-badge,\.pm-today-trend-event-pill\{[^}]*font-size:var\(--pm-font-size-micro\)/, '事件追踪徽章必须使用超小字号');
+assert.doesNotMatch(todayTrendStyle, /pm-today-trend-event-card header span/, '事件追踪不得用宽泛 header span 规则覆盖徽章字号');
 assert.match(todayTrendStyle, /pm-today-trend-icon-button\[data-action\^="today-trend-refresh"\][\s\S]*?width:var\(--pm-size-control-compact\)[\s\S]*?min-height:var\(--pm-size-control-compact\)/, '生成与刷新图标按钮必须保留 36px 紧凑触控区');
 assert.match(todayTrendStyle, /\.pm-today-trend-inline-action\{width:var\(--pm-size-control-compact\);min-height:var\(--pm-size-control-compact\)/, '个人风评行内编辑按钮必须保留 36px 紧凑触控区');
 assert.match(todayTrendStyle, /\.pm-today-trend-menu-action,\.pm-today-trend-menu-close\{flex-basis:var\(--pm-size-control-compact\);width:var\(--pm-size-control-compact\);min-height:var\(--pm-size-control-compact\)/, '320px 菜单按钮不得缩回 28px 命中区');
@@ -299,7 +303,12 @@ assert.match(failedInitializationHtml, /class="pm-today-trend-init-feedback pm-t
 const appHtml = renderTodayTrendApp({ scope: valid.scopes.chat, presets: Object.values(valid.presets), generation: { phase: 'idle' } });
 for (const label of ['世界态势', '个人风评', '势力图谱', '事件追踪']) assert.match(appHtml, new RegExp(label), `主页面必须装配${label}`);
 assert.match(appHtml, /today-trend-open-settings/, '主页面必须提供 APP 总设置入口');
+assert.match(appHtml, /today-trend-generate-all[^>]*aria-busy="false"[^>]*aria-label="手动更新所有今日风向"/, '主页面必须提供手动更新全部今日风向的星光按钮');
 assert.match(appHtml, /today-trend-toggle-operation[\s\S]*aria-pressed="true"/, '主页面必须提供当前运行状态的直接控制');
+assert.ok(appHtml.indexOf('today-trend-generate-all') < appHtml.indexOf('today-trend-toggle-operation'), '顶栏操作顺序必须为生成、开启自动');
+assert.doesNotMatch(appHtml, /pm-today-trend-close|data-today-trend-ui-action="close"|aria-label="关闭手机"/, '今日风向顶栏不得提供关闭手机按钮');
+const busyAppHtml = renderTodayTrendApp({ scope: valid.scopes.chat, presets: Object.values(valid.presets), generation: { phase: 'generating' } });
+assert.match(busyAppHtml, /today-trend-generate-all" disabled aria-busy="true"/, '全量生成中必须禁用顶栏手动更新按钮并暴露忙碌状态');
 const rulePageHtml = renderTodayTrendApp({ scope: valid.scopes.chat, presets: Object.values(valid.presets), view: { name: 'world', mode: 'rule-editor', editingRule: 'world' } });
 assert.match(rulePageHtml, /pm-today-trend-rule-page/, 'Prompt 编辑必须打开独立页面容器');
 assert.match(rulePageHtml, /世界态势 Prompt/, '独立 Prompt 页面必须标识当前模块');
@@ -353,12 +362,13 @@ assert.match(ruleEditorHtml, /textarea[^>]*name="text"[^>]*required autofocus/, 
 const worldHtml = renderTodayTrendWorldView({ scope: valid.scopes.chat, generationAvailable: true, menuOpenId: 'world-module' });
 const worldPanelsScope = { ...valid.scopes.chat, world: { items: [...valid.scopes.chat.world.items, { id: 'world-brief', name: '后勤消息', summary: '补给已抵达' }, { id: 'world-terminal', name: '航线警报', summary: '航线出现扰动' }] } };
 const worldPanelsHtml = renderTodayTrendWorldView({ scope: worldPanelsScope });
-const worldItemMenuHtml = renderTodayTrendWorldView({ scope: worldPanelsScope, generationAvailable: true, menuOpenId: 'world:world' });
+const worldPanelsMenuHtml = renderTodayTrendWorldView({ scope: worldPanelsScope, generationAvailable: true, menuOpenId: 'world-module' });
 assert.match(worldHtml, /节目风向/, '世界态势页必须渲染初始化生成的世界观项目');
-assert.doesNotMatch(worldHtml, /today-trend-refresh-world-item/, '世界态势顶级操作不得联动显示摘要操作');
-assert.match(worldItemMenuHtml, /data-world-item-id="world"[\s\S]*?today-trend-refresh-world-item/, '打开顶部摘要操作后必须显示该摘要的刷新入口');
-assert.doesNotMatch(worldItemMenuHtml, /data-menu-id="world:world-brief"|data-menu-id="world:world-terminal"/, '非顶部世界摘要不得渲染常态省略号入口');
-assert.equal((worldItemMenuHtml.match(/pm-today-trend-menu-wrap is-open/g) || []).length, 1, '世界摘要与模块操作条必须保持互斥');
+assert.doesNotMatch(worldPanelsHtml, /data-menu-id="world:/, '世界态势摘要常态不得渲染省略号入口');
+for (const article of worldPanelsHtml.match(/<article class="pm-today-trend-world-(?:hero|brief)[\s\S]*?<\/article>/g) || []) assert.doesNotMatch(article, /today-trend-toggle-menu|aria-expanded=|data-menu-id=/, '世界态势摘要自身不得包含省略号菜单触发器');
+assert.match(worldHtml, /data-world-item-id="world"[\s\S]*?pm-today-trend-world-item-head[\s\S]*?pm-today-trend-inline-actions[\s\S]*?today-trend-refresh-world-item/, '打开模块操作后必须以内联动作提供顶部摘要刷新入口');
+for (const itemId of ['world', 'world-brief', 'world-terminal']) assert.match(worldPanelsMenuHtml, new RegExp(`data-world-item-id="${itemId}"[\\s\\S]*?pm-today-trend-inline-actions[\\s\\S]*?today-trend-refresh-world-item[\\s\\S]*?today-trend-edit-world-item[\\s\\S]*?today-trend-delete-world-item`), `打开模块操作后必须为 ${itemId} 提供完整内联操作`);
+assert.equal((worldPanelsMenuHtml.match(/pm-today-trend-inline-actions/g) || []).length, 3, '世界态势模块菜单展开后必须为每条摘要提供一组内联操作');
 assert.doesNotMatch(worldPanelsHtml, /pm-today-trend-world-panel/, '世界态势摘要不得套用方角内容容器');
 assert.doesNotMatch(worldPanelsHtml, /pm-today-trend-world-(?:ornament|left-ornament|terminal|dotfield)/, '世界态势摘要不得保留旧装饰节点');
 assert.doesNotMatch(worldHtml, /WORLD SITUATION|pm-today-trend-world-(?:title-rail|title-dotfield|kicker|starfield)/, '世界态势不得保留旧标题轨或星图装饰');
@@ -373,16 +383,23 @@ assert.match(todayTrendStyle, /pm-today-trend-world-rail:var\(--pm-space-4\)/, '
 assert.match(todayTrendStyle, /pm-today-trend-world \.pm-today-trend-meter\{margin-top:var\(--pm-today-trend-world-meta-offset\)/, '世界态势 meta 与标题的间距必须由原型映射 token 控制');
 assert.match(todayTrendStyle, /pm-today-trend-world\{padding-bottom:var\(--pm-space-0\)/, '世界态势关闭旧背景后不得保留无效底部留白');
 assert.match(todayTrendStyle, /pm-today-trend-content\.is-world\{padding-bottom:var\(--pm-space-0\)/, '世界态势内容容器不得在尾图后保留导航预留空白');
-assert.match(todayTrendStyle, /pm-today-trend-world\{--pm-today-trend-world-head-block-start:var\(--pm-space-0\)/, '世界态势不得在版头前保留额外空白');
+assert.match(todayTrendStyle, /pm-today-trend-world\{--pm-today-trend-world-head-block-start:var\(--pm-space-3\)/, '世界态势版头起点必须与其他三个模块统一');
+assert.match(todayTrendStyle, /--pm-today-trend-report-title-size:calc\(var\(--pm-font-size-title\) \+ var\(--pm-space-2\)\)/, '其他三个模块的大标题必须使用收紧后的统一字号');
+assert.match(todayTrendStyle, /--pm-today-trend-world-title-size:calc\(var\(--pm-font-size-title\) \+ var\(--pm-space-2\)\)/, '世界态势模块标题必须与其他三个模块使用同一字号');
+assert.match(todayTrendStyle, /--pm-today-trend-world-hero-title-size:calc\(var\(--pm-font-size-title\) \+ var\(--pm-space-1\)\)/, '世界态势内容主标题必须进一步收紧字号');
+assert.match(todayTrendStyle, /pm-today-trend-(?:reputation|factions|dynamics)>\.pm-today-trend-module-head h2[^}]*font-size:var\(--pm-today-trend-report-title-size\)/, '其他三个模块标题选择器必须消费统一字号 token');
+assert.match(todayTrendStyle, /pm-today-trend-world>\.pm-today-trend-module-head h2[^}]*font-size:var\(--pm-today-trend-world-title-size\)/, '世界态势标题选择器必须消费统一字号 token');
+assert.match(todayTrendStyle, /pm-today-trend-world>\.pm-today-trend-module-head\{margin:var\(--pm-today-trend-world-head-block-start\)/, '世界态势模块头必须消费统一版头起点 token');
+assert.match(todayTrendStyle, /--pm-today-trend-world-brief-title-size:var\(--pm-font-size-subtitle\)/, '世界态势次级标题必须使用收紧后的字号');
 assert.match(todayTrendStyle, /pm-today-trend-world-brief\.is-right\{width:100%;margin-left:var\(--pm-space-0\);padding-left:calc\(var\(--pm-today-trend-world-rail\) \+ var\(--pm-today-trend-world-brief-right-copy-offset\)\)/, '右侧世界摘要必须通过专属缩进 token 错位且不横向溢出');
 assert.match(todayTrendStyle, /pm-today-trend-world-signal-marker::after\{display:none/, '世界态势节点不得保留原型以外的横向引线');
 assert.match(todayTrendStyle, /pm-today-trend-world-hero b\{[^}]*font-size:var\(--pm-today-trend-world-hero-title-size\)[^}]*font-weight:var\(--pm-font-weight-semibold\)[^}]*line-height:var\(--pm-line-height-display\)/, '世界态势 hero 必须通过专属 token 还原新版原型层级');
 assert.match(todayTrendStyle, /pm-today-trend-world-brief-tail\{[^}]*width:var\(--pm-today-trend-world-brief-tail-width\)[^}]*border-top:1px dotted/, '世界态势摘要尾线必须由专属 token 控制');
 assert.doesNotMatch(todayTrendStyle, /pm-today-trend-world-hero::before/, '世界态势不得恢复旧主摘要伪元素装饰');
-assert.equal((worldPanelsHtml.match(/data-action="today-trend-toggle-menu"/g) || []).length, 2, '世界态势常态只允许模块头与顶部摘要两个省略号入口');
+assert.equal((worldPanelsHtml.match(/data-action="today-trend-toggle-menu"/g) || []).length, 1, '世界态势常态只允许模块头保留一个省略号入口');
 assert.match(worldHtml, /today-trend-generate-world/, '世界态势页必须提供本模块生成动作');
 assert.match(worldHtml, /aria-busy="false"/, '世界态势生成按钮必须提供非忙碌 ARIA 状态');
-const busyWorldItemHtml = renderTodayTrendWorldView({ scope: valid.scopes.chat, generationAvailable: true, generationBusy: true, menuOpenId: 'world:world' });
+const busyWorldItemHtml = renderTodayTrendWorldView({ scope: valid.scopes.chat, generationAvailable: true, generationBusy: true, menuOpenId: 'world-module' });
 const busyWorldHtml = renderTodayTrendWorldView({ scope: valid.scopes.chat, generationAvailable: true, generationBusy: true, menuOpenId: 'world-module' });
 assert.match(busyWorldItemHtml, /today-trend-refresh-world-item"[^>]*disabled aria-busy="true"/, '忙碌时世界态势单项刷新必须禁用并暴露忙碌状态');
 assert.match(busyWorldHtml, /today-trend-generate-world"[^>]*disabled aria-busy="true"/, '忙碌时世界态势模块生成必须禁用并暴露忙碌状态');
@@ -963,6 +980,8 @@ assert.equal(archivedProgress.scope.dynamics.archived.at(-1).latestStage, '服�
 const savedRules = [];
 const regeneratedRules = [];
 const ruleEditorStates = [];
+const generatedTargets = [];
+const refreshedTargets = [];
 const dispatcherRenders = [];
 const dispatcherListeners = {};
 const dispatcherContainer = {
@@ -972,9 +991,15 @@ const dispatcherContainer = {
 const dispatcher = createTodayTrendActionDispatcher({
     container: dispatcherContainer, getStorageId: () => 'chat', getStore: async () => valid,
     committer: { commitScope: async () => valid }, render: async view => { dispatcherRenders.push(view); },
+    onGenerate: async module => { generatedTargets.push(module); },
+    onRefresh: async (...target) => { refreshedTargets.push(target); },
     onSaveRule: async (...args) => { savedRules.push(args); }, onRegenerateRule: async rule => { regeneratedRules.push(rule); },
     onRuleEditorStateChange: (...args) => { ruleEditorStates.push(args); },
 });
+const generateAllButton = { disabled: false, dataset: { action: 'today-trend-generate-all' }, closest: () => generateAllButton };
+dispatcherListeners.click({ target: generateAllButton });
+await Promise.resolve();
+assert.deepEqual(generatedTargets, [null], '顶栏手动更新必须分发到全量今日风向生成入口');
 for (const [action, rule] of [['today-trend-edit-dynamics-rule', 'dynamics'], ['today-trend-edit-incident-rule', 'dynamics-incident'], ['today-trend-edit-rumor-rule', 'dynamics-rumor'], ['today-trend-edit-underground-rule', 'dynamics-underground']]) {
     const button = { disabled: false, dataset: { action }, closest: () => button };
     dispatcherListeners.click({ target: button });
@@ -995,6 +1020,23 @@ assert.equal(dispatcher.state().mode, 'content', '取消规则编辑必须恢复
 assert.deepEqual(ruleEditorStates.at(-1), [false, 'world'], '取消规则编辑必须通知控制器恢复来源页面');
 assert.ok(dispatcherRenders.length > 0, '规则动作必须触发重新渲染');
 assert.deepEqual(savedRules, [], '规则编辑打开前不得错误提交 Prompt');
+await dispatcher.open('world');
+const worldModuleToggle = { disabled: false, dataset: { action: 'today-trend-toggle-menu', menuId: 'world-module' }, closest: () => worldModuleToggle };
+dispatcherListeners.click({ target: worldModuleToggle });
+await Promise.resolve();
+assert.equal(dispatcher.state().menuOpenId, 'world-module', '世界态势模块菜单必须可正常展开');
+const worldRefreshButton = { disabled: false, dataset: { action: 'today-trend-refresh-world-item', worldItemId: 'world-brief' }, closest: () => worldRefreshButton };
+dispatcherListeners.click({ target: worldRefreshButton });
+await Promise.resolve();
+assert.deepEqual(refreshedTargets, [['world', 'world-brief']], '世界态势次级摘要内联刷新必须分发正确项目 ID');
+assert.equal(dispatcher.state().menuOpenId, null, '触发世界态势摘要内联动作后必须关闭模块菜单');
+dispatcherListeners.click({ target: worldModuleToggle });
+await Promise.resolve();
+const worldEditButton = { disabled: false, dataset: { action: 'today-trend-edit-world-item', worldItemId: 'world-terminal' }, closest: () => worldEditButton };
+dispatcherListeners.click({ target: worldEditButton });
+await Promise.resolve();
+assert.equal(dispatcher.state().editingWorldItemId, 'world-terminal', '世界态势次级摘要内联编辑必须进入正确项目');
+assert.equal(dispatcher.state().menuOpenId, null, '进入世界态势摘要编辑后必须关闭模块菜单');
 const archivedTabButton = { disabled: false, dataset: { action: 'today-trend-set-dynamics-tab', tab: 'archived' }, closest: () => archivedTabButton };
 dispatcherListeners.click({ target: archivedTabButton });
 await Promise.resolve();

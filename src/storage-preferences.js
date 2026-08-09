@@ -1,6 +1,6 @@
 import { BUDGET_CONFIG_KEY } from './budget.js';
 import { normalizeInjectionConfig } from './behavior-config.js';
-import { THEME_PRESETS } from './config.js';
+import { normalizeThemePreset } from './config.js';
 import { GAL_BUBBLE_ENABLED_KEY, INJECTION_CONFIG_KEY, WORLD_BOOK_CONFIG_KEY } from './constants.js';
 import { normalizeWorldBookConfig } from './worldbook-config.js';
 
@@ -8,9 +8,9 @@ export function loadTheme() {
     try {
         const saved = JSON.parse(localStorage.getItem('ST_SMS_THEME'));
         if (saved && typeof saved === 'object' && !Array.isArray(saved)) window.__pmTheme = { ...window.__pmTheme, ...saved };
-        const preset = window.__pmTheme.preset;
-        if (preset !== 'custom' && !Object.hasOwn(THEME_PRESETS, preset)) {
-            window.__pmTheme.preset = 'default';
+        const preset = normalizeThemePreset(window.__pmTheme.preset);
+        if (preset !== window.__pmTheme.preset) {
+            window.__pmTheme.preset = preset;
             saveTheme();
         }
         if (window.__pmTheme.layout !== 'standard') {

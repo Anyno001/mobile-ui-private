@@ -105,7 +105,6 @@
 .pm-group-member-colors{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:var(--pm-space-2) var(--pm-space-3);align-items:center;}
 .pm-group-member-colors label{display:contents;}
 .pm-group-member-colors span{overflow:hidden;text-overflow:ellipsis;font-size:var(--pm-font-size-label);}
-.pm-group-member-colors input[type="color"]{width:var(--pm-size-control-compact);height:var(--pm-size-control-compact);padding:var(--pm-space-0);}
 .pm-emoji-manager-body{padding:var(--pm-space-3) var(--pm-space-4);display:flex;flex-direction:column;gap:var(--pm-space-2);}
 .pm-emoji-form{padding:var(--pm-space-3) var(--pm-space-4);display:flex;flex-direction:column;gap:var(--pm-space-2);}
 .pm-emoji-preview{display:none;text-align:center;}

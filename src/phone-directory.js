@@ -401,7 +401,7 @@ export function installPhoneDirectory(state, deps) {
         <section class="pm-settings-stack pm-settings-separator">
           <div class="pm-cfg-label">成员气泡颜色</div>
           <div class="pm-group-member-colors">
-            ${groupMeta.members.map((name, index) => `<label><span>${escapeHtml(name)}</span><input class="pm-group-member-color" data-member="${escapeAttr(name)}" type="color" value="${escapeAttr(groupMeta.memberColors[name] || GROUP_COLORS[index % GROUP_COLORS.length].bg)}"></label>`).join('')}
+            ${groupMeta.members.map((name, index) => `<label><span>${escapeHtml(name)}</span><input class="pm-group-member-color pm-color-pick" data-member="${escapeAttr(name)}" type="color" value="${escapeAttr(groupMeta.memberColors[name] || GROUP_COLORS[index % GROUP_COLORS.length].bg)}"></label>`).join('')}
           </div>
         </section>` : '';
 

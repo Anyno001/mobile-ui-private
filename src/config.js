@@ -13,15 +13,16 @@ export const THEME_PRESETS = {
     },
     mint: { right: '#9FBE8C', rightDark: '#B6D39D', left: '#F3EBDD', leftDark: '#3B443B', rightText: '#243522', leftText: '#4D4034', leftTextDark: '#E8EEE5', label: '薄荷', accent: '#9FBE8C', auxiliary: '#7C476D' },
     frost: { right: 'rgba(111, 172, 218, 0.62)', left: 'rgba(255,255,255,0.48)', leftDark: 'rgba(54, 68, 82, 0.72)', rightText: '#fff', leftText: '#22303A', leftTextDark: '#E7EFF7', label: '磨砂', accent: '#6FAEDA', auxiliary: '#A94F3D', frost: true },
-    apple: {
-        right: '#893619', left: '#EEE9DE', rightText: '#F8F5EE', leftText: '#0E2110', label: '苹果', accent: '#4F7D24', auxiliary: '#719A3E',
-        ui: {
-            '--pm-color-surface-page': '#F8F5EE', '--pm-color-surface-card': '#EEE9DE', '--pm-color-surface-input': '#EEE9DE', '--pm-color-surface-elevated': '#F4F0E6', '--pm-color-surface-inverse': '#0E2110',
-            '--pm-color-text-primary': '#0E2110', '--pm-color-text-secondary': 'rgba(14, 33, 16, 0.70)', '--pm-color-text-tertiary': 'rgba(14, 33, 16, 0.52)', '--pm-color-text-placeholder': 'rgba(14, 33, 16, 0.42)',
-            '--pm-color-border-default': 'rgba(137, 54, 25, 0.20)', '--pm-color-border-subtle': 'rgba(137, 54, 25, 0.15)', '--pm-color-border-strong': 'rgba(137, 54, 25, 0.34)', '--pm-color-control-off': '#D9D4C8', '--pm-color-focus-ring': '#668D32', '--pm-color-success': '#5F9E38', '--pm-color-warning': '#B26B5F', '--pm-color-danger': '#B64B45', '--pm-color-on-accent': '#FFFFFF', '--pm-color-on-success': '#0E2110', '--pm-color-on-warning': '#0E2110', '--pm-color-on-danger': '#FFFFFF',
-        },
-    },
 };
+
+export const THEME_UI_TOKENS = [...new Set(Object.values(THEME_PRESETS).flatMap(preset => [
+    ...Object.keys(preset.ui || {}),
+    ...Object.keys(preset.uiDark || {}),
+]))];
+
+export function normalizeThemePreset(preset) {
+    return preset === 'custom' || Object.hasOwn(THEME_PRESETS, preset) ? preset : 'default';
+}
 
 export function resolveThemeAuxiliary(preset, customAccent = '') {
     const normalized = String(customAccent || '').trim();

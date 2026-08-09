@@ -3393,7 +3393,7 @@ if (openSettingsTabSource !== 'tab => window.__pmShowConfig(tab)') {
   failures.push('phone-control-center.js: __pmOpenSettingsTab must directly proxy __pmShowConfig(tab)');
 }
 for (const expected of [
-  "const interfaceMode = theme.preset === 'apple' ? 'light' : theme.darkMode || 'light'",
+  "const interfaceMode = theme.darkMode || 'light'",
   'dropdown.dataset.theme = interfaceMode',
   "dropdown.style.setProperty('--pm-color-accent', customAccent || preset.accent || preset.right)",
   "const uiTokens = interfaceMode === 'dark' ? preset.uiDark || {} : preset.ui || {}",
@@ -3413,7 +3413,7 @@ for (const expected of [
   'aria-pressed="${theme.preset === name}"',
   "element.setAttribute('aria-pressed', String(active))",
   "window.__pmTheme.preset = 'custom'", 'window.__pmTheme.customAccent = accent',
-  "if (window.__pmTheme.preset === 'apple') return false;",
+  "return mutateTheme(() => { window.__pmTheme.darkMode = mode; });",
 ]) requireText('settings-appearance-controller.js', settingsAppearanceControllerCode, expected);
 for (const expected of [
   '#pm-iphone[data-theme="light"],', '#pm-overlay[data-theme="light"],', '#pm-overlay-sub[data-theme="light"],', '.pm-model-dropdown[data-theme="light"] {',
@@ -4006,9 +4006,7 @@ const settingsTemplatesCode = sourceModuleByName.get('settings-templates.js')?.c
 requireText('settings-templates.js wordy-limit copy', settingsTemplatesCode, '除话痨人设外，每条消息不超过 35 字');
 requireText('settings-templates.js shared settings-home hint class', settingsTemplatesCode, 'class="pm-settings-home-hint">日夜模式、气泡颜色与背景图</span>');
 requireText('settings-templates.js wordy-limit shared settings-home hint class', settingsTemplatesCode, 'span class="pm-settings-home-hint">除话痨人设外，每条消息不超过 35 字</span>');
-for (const expected of ['data-theme-mode="light"', '苹果皮肤固定为浅色。', 'id="pm-custom-accent"']) {
-  requireText('settings-templates.js theme synchronization controls', settingsTemplatesCode, expected);
-}
+for (const expected of ['data-theme-mode="light"', 'data-theme-mode="dark"', 'id="pm-custom-accent"']) requireText('settings-templates.js theme synchronization controls', settingsTemplatesCode, expected);
 requireText('settings-templates.js shared custom theme picker class', settingsTemplatesCode, 'id="pm-custom-accent" type="color"');
 requireText('settings-templates.js shared custom theme picker class', settingsTemplatesCode, 'class="pm-color-pick" title="自定义主题色"');
 for (const id of ['pm-custom-accent', 'pm-custom-right', 'pm-custom-left']) {
@@ -4374,21 +4372,6 @@ requireCssDeclarations(cssRules, '.pm-desktop-app-icon', {
   background: 'var(--pm-color-accent)',
   color: 'var(--pm-color-on-dark)',
 });
-const appleDesktopIconSelector = '#pm-iphone[data-skin="apple"] .pm-desktop-app-icon';
-requireCssDeclarations(cssRules, appleDesktopIconSelector, {
-  'border-color': 'transparent',
-  background: 'linear-gradient(135deg,var(--pm-color-auxiliary),var(--pm-color-accent))',
-  'box-shadow': '0 5px 14px color-mix(in srgb,var(--pm-color-accent) 24%,transparent)',
-});
-const appleDesktopIconRuleIndex = cssRules.findIndex(rule => rule.selectors.includes(appleDesktopIconSelector));
-if (appleDesktopIconRuleIndex >= 0) {
-  const laterBackgroundOverride = cssRules.slice(appleDesktopIconRuleIndex + 1).find(rule =>
-    rule.selectors.includes(appleDesktopIconSelector)
-      && (rule.declarations.has('background') || rule.declarations.has('background-image')));
-  if (laterBackgroundOverride) failures.push(
-    `${laterBackgroundOverride.path}:${laterBackgroundOverride.line}: later rule overrides the Apple desktop icon orchard-green background`,
-  );
-}
 const cssTokenContract = {
   '--pm-font-family-system': "-apple-system,BlinkMacSystemFont,'PingFang SC','Microsoft YaHei',sans-serif",
   '--pm-font-family-mono': 'ui-monospace,SFMono-Regular,Consolas,monospace',

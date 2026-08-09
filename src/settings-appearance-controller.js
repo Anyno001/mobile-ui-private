@@ -9,14 +9,14 @@ export function createAppearanceController({ THEME_PRESETS, applyTheme, clone, s
         document.querySelectorAll('.pm-layout-chip').forEach(element => {
             const value = element.dataset.themeMode;
             if (!value) return;
-            const active = theme.preset === 'apple' ? value === 'light' : value === theme.darkMode;
+            const active = value === theme.darkMode;
             element.classList.toggle('pm-layout-active', active);
             element.setAttribute('aria-pressed', String(active));
-            element.disabled = theme.preset === 'apple';
+            element.disabled = false;
         });
         const preset = THEME_PRESETS[theme.preset] || THEME_PRESETS.default;
         const accent = theme.preset === 'custom' && theme.customAccent ? theme.customAccent : preset.accent || preset.right;
-        const interfaceMode = theme.preset === 'apple' ? 'light' : theme.darkMode || 'light';
+        const interfaceMode = theme.darkMode || 'light';
         const title = document.getElementById('pm-custom-title'), right = document.getElementById('pm-custom-right'), left = document.getElementById('pm-custom-left'), border = document.getElementById('pm-border-color'), customAccent = document.getElementById('pm-custom-accent');
         if (title) title.value = theme.customTitle || '';
         if (right) right.value = theme.customRight || (theme.preset === 'custom' && theme.customAccent ? accent : interfaceMode === 'dark' ? preset.rightDark || preset.right : preset.right);
@@ -46,7 +46,6 @@ export function createAppearanceController({ THEME_PRESETS, applyTheme, clone, s
         }) }));
     };
     const setDarkMode = mode => {
-        if (window.__pmTheme.preset === 'apple') return false;
         return mutateTheme(() => { window.__pmTheme.darkMode = mode; });
     };
     const setPreset = preset => mutateTheme(() => {

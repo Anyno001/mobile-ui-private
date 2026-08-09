@@ -84,12 +84,12 @@ export function renderPhoneDesktop(scope = { scenes: {} }, uiScope = { pinnedSce
     return `<div class="pm-desktop-toolbar"><span>${escapeHtml(title)}</span><button type="button" data-action="desktop-exit" aria-label="退出手机" title="退出手机">${CLOSE_ICON_SVG}</button></div>
         <div class="pm-desktop-grid" aria-label="应用">
             <button type="button" class="pm-desktop-app" data-app="chat" data-action="desktop-chat" aria-label="会话" title="会话"><span class="pm-desktop-app-icon">${CHAT_ICON_SVG}</span><span class="pm-desktop-app-label">会话</span></button>
-            <button type="button" class="pm-desktop-app" data-app="directory" data-action="desktop-directory" aria-label="会话管理" title="会话管理"><span class="pm-desktop-app-icon">${CONTACTS_ICON_SVG}</span><span class="pm-desktop-app-label">会话管理</span></button>
+            <button type="button" class="pm-desktop-app" data-app="directory" data-action="desktop-directory" aria-label="联系人" title="联系人"><span class="pm-desktop-app-icon">${CONTACTS_ICON_SVG}</span><span class="pm-desktop-app-label">联系人</span></button>
             <button type="button" class="pm-desktop-app" data-app="settings" data-action="desktop-settings" aria-label="设置" title="设置"><span class="pm-desktop-app-icon">${SETTINGS_ICON_SVG}</span><span class="pm-desktop-app-label">设置</span></button>
             <button type="button" class="pm-desktop-app" data-app="calendar" data-action="desktop-calendar" aria-label="日历" title="日历"><span class="pm-desktop-app-icon">${CALENDAR_ICON_SVG}</span><span class="pm-desktop-app-label">日历</span></button>
             <button type="button" class="pm-desktop-app" data-app="today-trend" data-action="desktop-today-trend" aria-label="今日风向" title="今日风向"><span class="pm-desktop-app-icon">${TREND_ICON_SVG}</span><span class="pm-desktop-app-label">今日风向</span></button>
         </div>
-        <section class="pm-desktop-pins"><h3>固定社区</h3>${pins || '<p>在社区中固定场景后，会显示在这里。</p>'}${templates}</section>
+        <section class="pm-desktop-pins"><h3>固定社区</h3>${pins}${templates}</section>
         <div class="pm-desktop-community-dock"><button type="button" data-action="desktop-community" aria-label="发布一条">${COMMUNITY_ICON_SVG}<span>发布一条</span></button></div>`;
 }
 

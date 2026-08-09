@@ -85,10 +85,9 @@ export function renderQuickReplySettings(status, label = '天音') {
 export function renderLookSettings({ theme, presetButtons, desktopBackgroundButtons, globalBackgroundButtons, localBackgroundButtons }) {
     const preset = THEME_PRESETS[theme.preset] || THEME_PRESETS.default;
     const customAccent = theme.preset === 'custom' ? theme.customAccent || '' : '';
-    const interfaceMode = theme.preset === 'apple' ? 'light' : theme.darkMode || 'light';
+    const interfaceMode = theme.darkMode || 'light';
     const rightColor = theme.customRight || customAccent || (interfaceMode === 'dark' ? preset.rightDark || preset.right : preset.right);
     const leftColor = theme.customLeft || (interfaceMode === 'dark' ? preset.leftDark || preset.left : preset.left);
-    const appleActive = theme.preset === 'apple';
     return `
     <div class="pm-settings-page">
       <div class="pm-settings-section">
@@ -103,10 +102,9 @@ export function renderLookSettings({ theme, presetButtons, desktopBackgroundButt
       <div class="pm-settings-section">
         <div class="pm-cfg-label">日夜模式</div>
         <div class="pm-theme-row">
-          <button type="button" class="pm-layout-chip ${appleActive || theme.darkMode === 'light' ? 'pm-layout-active' : ''}" data-theme-mode="light" aria-pressed="${appleActive || theme.darkMode === 'light'}" onclick="window.__pmSetDarkMode('light')" ${appleActive ? 'disabled' : ''}>日间</button>
-          <button type="button" class="pm-layout-chip ${!appleActive && theme.darkMode === 'dark' ? 'pm-layout-active' : ''}" data-theme-mode="dark" aria-pressed="${!appleActive && theme.darkMode === 'dark'}" onclick="window.__pmSetDarkMode('dark')" ${appleActive ? 'disabled' : ''}>夜间</button>
+          <button type="button" class="pm-layout-chip ${theme.darkMode === 'light' ? 'pm-layout-active' : ''}" data-theme-mode="light" aria-pressed="${theme.darkMode === 'light'}" onclick="window.__pmSetDarkMode('light')">日间</button>
+          <button type="button" class="pm-layout-chip ${theme.darkMode === 'dark' ? 'pm-layout-active' : ''}" data-theme-mode="dark" aria-pressed="${theme.darkMode === 'dark'}" onclick="window.__pmSetDarkMode('dark')">夜间</button>
         </div>
-        ${appleActive ? '<small class="pm-cfg-help">苹果皮肤固定为浅色。</small>' : ''}
       </div>
       <div class="pm-settings-section">
         <div class="pm-cfg-label">主题颜色</div>

@@ -1,5 +1,6 @@
 import { normalizeInjectionConfig } from './behavior-config.js';
 import { normalizeBudgetConfig } from './budget.js';
+import { normalizeThemePreset } from './config.js';
 import {
     INTERACTIVE_ACTOR_TYPES, INTERACTIVE_LIMITS, INTERACTIVE_STORE_VERSION,
     deriveInteractiveActorId, normalizeAmbientStatus, normalizeInteractiveStore, normalizePhoneUiState,
@@ -21,6 +22,7 @@ const arrayValue = (value, field) => {
 export const legacyBackupTheme = value => {
     const theme = objectValue(value || {}, 'theme');
     delete theme.ambientStatusEnabled;
+    theme.preset = normalizeThemePreset(theme.preset);
     return theme;
 };
 const isUnsafeDictionaryKey = value => value === 'prototype' || Object.hasOwn(Object.prototype, value);

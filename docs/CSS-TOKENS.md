@@ -234,7 +234,7 @@ MUST 优先使用 flex/grid。absolute 只用于角标、锚定菜单和装饰�
 
 阶段一收尾的机器事实以 `scripts/css-governance-registry.json` 为准：`legacyValues.spacing` 当前为 44 条精确台账，`lineHeightExceptions` 为 22 条，`animationExceptions` 为 3 条；所有例外必须绑定 path、selector、property、value、owner、reason 和 removeWhen。`--pm-space-px-*` 当前冻结为 16 个已存在 token，只允许缩减，不允许新增；新增声明和 registry stale token 均由 checker 拒绝。`animation` 的普通 duration/easing 必须使用 `--pm-motion-fast`、`--pm-motion-normal` 与 `--pm-motion-ease`，持续状态动画只能使用精确登记例外。
 
-阶段一已知视觉风险不通过治理白名单掩盖：calendar occasion 对比度问题归入阶段二 V5 日历统一，danmaku row 对比度问题归入 V4 社区与桌面统一；host-shell、cropper、Apple skin 与 `.pm-name-trigger` stacking seam 保留为有 owner/reason/removeWhen 的精确例外。真实宿主回归、截图和人工视觉验收属于最终提交检查，不阻塞阶段一代码治理退出。
+阶段一已知视觉风险不通过治理白名单掩盖：calendar occasion 对比度问题归入阶段二 V5 日历统一，danmaku row 对比度问题归入 V4 社区与桌面统一；host-shell、cropper 与 `.pm-name-trigger` stacking seam 保留为有 owner/reason/removeWhen 的精确例外。真实宿主回归、截图和人工视觉验收属于最终提交检查，不阻塞阶段一代码治理退出。
 
 迁移按组件族分批进行：全局 token → 基础控件 → 卡片/模态/菜单 → 列表/导航 → 聊天 → 社区 → 日历。每批独立构建和回归。旧视觉断言应替换为新标准断言，行为和宿主契约继续保留。
 

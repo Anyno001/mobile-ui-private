@@ -38,40 +38,15 @@
       }
     },
     mint: { right: "#9FBE8C", rightDark: "#B6D39D", left: "#F3EBDD", leftDark: "#3B443B", rightText: "#243522", leftText: "#4D4034", leftTextDark: "#E8EEE5", label: "\u8584\u8377", accent: "#9FBE8C", auxiliary: "#7C476D" },
-    frost: { right: "rgba(111, 172, 218, 0.62)", left: "rgba(255,255,255,0.48)", leftDark: "rgba(54, 68, 82, 0.72)", rightText: "#fff", leftText: "#22303A", leftTextDark: "#E7EFF7", label: "\u78E8\u7802", accent: "#6FAEDA", auxiliary: "#A94F3D", frost: true },
-    apple: {
-      right: "#893619",
-      left: "#EEE9DE",
-      rightText: "#F8F5EE",
-      leftText: "#0E2110",
-      label: "\u82F9\u679C",
-      accent: "#4F7D24",
-      auxiliary: "#719A3E",
-      ui: {
-        "--pm-color-surface-page": "#F8F5EE",
-        "--pm-color-surface-card": "#EEE9DE",
-        "--pm-color-surface-input": "#EEE9DE",
-        "--pm-color-surface-elevated": "#F4F0E6",
-        "--pm-color-surface-inverse": "#0E2110",
-        "--pm-color-text-primary": "#0E2110",
-        "--pm-color-text-secondary": "rgba(14, 33, 16, 0.70)",
-        "--pm-color-text-tertiary": "rgba(14, 33, 16, 0.52)",
-        "--pm-color-text-placeholder": "rgba(14, 33, 16, 0.42)",
-        "--pm-color-border-default": "rgba(137, 54, 25, 0.20)",
-        "--pm-color-border-subtle": "rgba(137, 54, 25, 0.15)",
-        "--pm-color-border-strong": "rgba(137, 54, 25, 0.34)",
-        "--pm-color-control-off": "#D9D4C8",
-        "--pm-color-focus-ring": "#668D32",
-        "--pm-color-success": "#5F9E38",
-        "--pm-color-warning": "#B26B5F",
-        "--pm-color-danger": "#B64B45",
-        "--pm-color-on-accent": "#FFFFFF",
-        "--pm-color-on-success": "#0E2110",
-        "--pm-color-on-warning": "#0E2110",
-        "--pm-color-on-danger": "#FFFFFF"
-      }
-    }
+    frost: { right: "rgba(111, 172, 218, 0.62)", left: "rgba(255,255,255,0.48)", leftDark: "rgba(54, 68, 82, 0.72)", rightText: "#fff", leftText: "#22303A", leftTextDark: "#E7EFF7", label: "\u78E8\u7802", accent: "#6FAEDA", auxiliary: "#A94F3D", frost: true }
   };
+  var THEME_UI_TOKENS = [...new Set(Object.values(THEME_PRESETS).flatMap((preset) => [
+    ...Object.keys(preset.ui || {}),
+    ...Object.keys(preset.uiDark || {})
+  ]))];
+  function normalizeThemePreset(preset) {
+    return preset === "custom" || Object.hasOwn(THEME_PRESETS, preset) ? preset : "default";
+  }
   function resolveThemeAuxiliary(preset, customAccent = "") {
     const normalized = String(customAccent || "").trim();
     const match = /^#([0-9a-f]{6})$/i.exec(normalized);
@@ -7059,9 +7034,9 @@ ${lines.join("\n")}
     try {
       const saved = JSON.parse(localStorage.getItem("ST_SMS_THEME"));
       if (saved && typeof saved === "object" && !Array.isArray(saved)) window.__pmTheme = { ...window.__pmTheme, ...saved };
-      const preset = window.__pmTheme.preset;
-      if (preset !== "custom" && !Object.hasOwn(THEME_PRESETS, preset)) {
-        window.__pmTheme.preset = "default";
+      const preset = normalizeThemePreset(window.__pmTheme.preset);
+      if (preset !== window.__pmTheme.preset) {
+        window.__pmTheme.preset = preset;
         saveTheme();
       }
       if (window.__pmTheme.layout !== "standard") {
@@ -10090,14 +10065,13 @@ ${entry2.content}` : entry2.content;
   function applySubOverlayTheme(overlay) {
     const theme = window.__pmTheme || {};
     const preset = THEME_PRESETS[theme.preset] || THEME_PRESETS.default;
-    const interfaceMode = theme.preset === "apple" ? "light" : theme.darkMode || "light";
+    const interfaceMode = theme.darkMode || "light";
     const customAccent = theme.preset === "custom" ? String(theme.customAccent || "").trim() : "";
     const auxiliary = resolveThemeAuxiliary(preset, customAccent);
     const defaultRight = theme.preset === "custom" && customAccent ? customAccent : interfaceMode === "dark" ? preset.rightDark || preset.right : preset.right;
     const defaultLeft = interfaceMode === "dark" ? preset.leftDark || preset.left : preset.left;
     const rightBackground = theme.customRight || defaultRight;
     const rightText = theme.customRight || theme.preset === "custom" && customAccent ? contrastText(rightBackground) : preset.rightText;
-    const skinTokens = { ...THEME_PRESETS.apple?.ui, ...THEME_PRESETS.pink?.uiDark };
     const uiTokens = interfaceMode === "dark" ? preset.uiDark || {} : preset.ui || {};
     overlay.style.setProperty("--pm-r-bg", rightBackground);
     overlay.style.setProperty("--pm-r-txt", rightText);
@@ -10105,12 +10079,11 @@ ${entry2.content}` : entry2.content;
     overlay.style.setProperty("--pm-l-txt", theme.customLeft ? contrastText(theme.customLeft) : interfaceMode === "dark" ? preset.leftTextDark || preset.leftText : preset.leftText);
     overlay.style.setProperty("--pm-border", theme.borderColor || "#1a1a1a");
     overlay.style.setProperty("--pm-color-accent", customAccent || preset.accent || preset.right);
-    for (const token of Object.keys(skinTokens)) overlay.style.removeProperty(token);
+    for (const token of THEME_UI_TOKENS) overlay.style.removeProperty(token);
     for (const [token, value] of Object.entries(uiTokens)) overlay.style.setProperty(token, value);
     overlay.style.setProperty("--pm-color-auxiliary", auxiliary);
     overlay.dataset.theme = interfaceMode;
-    if (theme.preset === "apple") overlay.dataset.skin = "apple";
-    else delete overlay.dataset.skin;
+    delete overlay.dataset.skin;
   }
   function createSubOverlay(html) {
     document.getElementById("pm-overlay-sub")?.remove();
@@ -11399,12 +11372,12 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
     return `<div class="pm-desktop-toolbar"><span>${escapeHtml(title)}</span><button type="button" data-action="desktop-exit" aria-label="\u9000\u51FA\u624B\u673A" title="\u9000\u51FA\u624B\u673A">${CLOSE_ICON_SVG}</button></div>
         <div class="pm-desktop-grid" aria-label="\u5E94\u7528">
             <button type="button" class="pm-desktop-app" data-app="chat" data-action="desktop-chat" aria-label="\u4F1A\u8BDD" title="\u4F1A\u8BDD"><span class="pm-desktop-app-icon">${CHAT_ICON_SVG}</span><span class="pm-desktop-app-label">\u4F1A\u8BDD</span></button>
-            <button type="button" class="pm-desktop-app" data-app="directory" data-action="desktop-directory" aria-label="\u4F1A\u8BDD\u7BA1\u7406" title="\u4F1A\u8BDD\u7BA1\u7406"><span class="pm-desktop-app-icon">${CONTACTS_ICON_SVG}</span><span class="pm-desktop-app-label">\u4F1A\u8BDD\u7BA1\u7406</span></button>
+            <button type="button" class="pm-desktop-app" data-app="directory" data-action="desktop-directory" aria-label="\u8054\u7CFB\u4EBA" title="\u8054\u7CFB\u4EBA"><span class="pm-desktop-app-icon">${CONTACTS_ICON_SVG}</span><span class="pm-desktop-app-label">\u8054\u7CFB\u4EBA</span></button>
             <button type="button" class="pm-desktop-app" data-app="settings" data-action="desktop-settings" aria-label="\u8BBE\u7F6E" title="\u8BBE\u7F6E"><span class="pm-desktop-app-icon">${SETTINGS_ICON_SVG}</span><span class="pm-desktop-app-label">\u8BBE\u7F6E</span></button>
             <button type="button" class="pm-desktop-app" data-app="calendar" data-action="desktop-calendar" aria-label="\u65E5\u5386" title="\u65E5\u5386"><span class="pm-desktop-app-icon">${CALENDAR_ICON_SVG}</span><span class="pm-desktop-app-label">\u65E5\u5386</span></button>
             <button type="button" class="pm-desktop-app" data-app="today-trend" data-action="desktop-today-trend" aria-label="\u4ECA\u65E5\u98CE\u5411" title="\u4ECA\u65E5\u98CE\u5411"><span class="pm-desktop-app-icon">${TREND_ICON_SVG}</span><span class="pm-desktop-app-label">\u4ECA\u65E5\u98CE\u5411</span></button>
         </div>
-        <section class="pm-desktop-pins"><h3>\u56FA\u5B9A\u793E\u533A</h3>${pins || "<p>\u5728\u793E\u533A\u4E2D\u56FA\u5B9A\u573A\u666F\u540E\uFF0C\u4F1A\u663E\u793A\u5728\u8FD9\u91CC\u3002</p>"}${templates}</section>
+        <section class="pm-desktop-pins"><h3>\u56FA\u5B9A\u793E\u533A</h3>${pins}${templates}</section>
         <div class="pm-desktop-community-dock"><button type="button" data-action="desktop-community" aria-label="\u53D1\u5E03\u4E00\u6761">${COMMUNITY_ICON_SVG}<span>\u53D1\u5E03\u4E00\u6761</span></button></div>`;
   }
   function renderPresetOptions(selected) {
@@ -15846,7 +15819,7 @@ ${antiFluff}`;
         <section class="pm-settings-stack pm-settings-separator">
           <div class="pm-cfg-label">\u6210\u5458\u6C14\u6CE1\u989C\u8272</div>
           <div class="pm-group-member-colors">
-            ${groupMeta.members.map((name, index) => `<label><span>${escapeHtml(name)}</span><input class="pm-group-member-color" data-member="${escapeAttr(name)}" type="color" value="${escapeAttr(groupMeta.memberColors[name] || GROUP_COLORS[index % GROUP_COLORS.length].bg)}"></label>`).join("")}
+            ${groupMeta.members.map((name, index) => `<label><span>${escapeHtml(name)}</span><input class="pm-group-member-color pm-color-pick" data-member="${escapeAttr(name)}" type="color" value="${escapeAttr(groupMeta.memberColors[name] || GROUP_COLORS[index % GROUP_COLORS.length].bg)}"></label>`).join("")}
           </div>
         </section>` : "";
       makeOverlay(`
@@ -17739,7 +17712,7 @@ ${lines}`;
     function applyTheme() {
       const theme = window.__pmTheme || {};
       const preset = THEME_PRESETS[theme.preset] || THEME_PRESETS.default;
-      const interfaceMode = theme.preset === "apple" ? "light" : theme.darkMode || "light";
+      const interfaceMode = theme.darkMode || "light";
       const customAccent = theme.preset === "custom" ? String(theme.customAccent || "").trim() : "";
       const auxiliary = resolveThemeAuxiliary(preset, customAccent);
       const defaultRight = theme.preset === "custom" && customAccent ? customAccent : interfaceMode === "dark" ? preset.rightDark || preset.right : preset.right;
@@ -17748,7 +17721,6 @@ ${lines}`;
       const leftBackground = theme.customLeft || defaultLeft;
       const rightText = theme.customRight || theme.preset === "custom" && customAccent ? contrastText(rightBackground) : preset.rightText;
       const leftText = theme.customLeft ? contrastText(theme.customLeft) : interfaceMode === "dark" ? preset.leftTextDark || preset.leftText : preset.leftText;
-      const skinTokens = { ...THEME_PRESETS.apple?.ui, ...THEME_PRESETS.pink?.uiDark };
       const uiTokens = interfaceMode === "dark" ? preset.uiDark || {} : preset.ui || {};
       const applyProperties = (element) => {
         if (!element) return;
@@ -17759,12 +17731,11 @@ ${lines}`;
         element.style.setProperty("--pm-border", theme.borderColor || "#1a1a1a");
         element.style.setProperty("--pm-frost", preset.frost ? "1" : "0");
         element.style.setProperty("--pm-color-accent", customAccent || preset.accent || preset.right);
-        for (const token of Object.keys(skinTokens)) element.style.removeProperty(token);
+        for (const token of THEME_UI_TOKENS) element.style.removeProperty(token);
         for (const [token, value] of Object.entries(uiTokens)) element.style.setProperty(token, value);
         element.style.setProperty("--pm-color-auxiliary", auxiliary);
         element.setAttribute("data-theme", interfaceMode);
-        if (theme.preset === "apple") element.setAttribute("data-skin", "apple");
-        else element.removeAttribute("data-skin");
+        element.removeAttribute("data-skin");
       };
       applyProperties(document.getElementById("pm-overlay"));
       applyProperties(document.getElementById("pm-overlay-sub"));
@@ -19387,14 +19358,14 @@ ${lines}`;
       document.querySelectorAll(".pm-layout-chip").forEach((element) => {
         const value = element.dataset.themeMode;
         if (!value) return;
-        const active = theme.preset === "apple" ? value === "light" : value === theme.darkMode;
+        const active = value === theme.darkMode;
         element.classList.toggle("pm-layout-active", active);
         element.setAttribute("aria-pressed", String(active));
-        element.disabled = theme.preset === "apple";
+        element.disabled = false;
       });
       const preset = THEME_PRESETS2[theme.preset] || THEME_PRESETS2.default;
       const accent = theme.preset === "custom" && theme.customAccent ? theme.customAccent : preset.accent || preset.right;
-      const interfaceMode = theme.preset === "apple" ? "light" : theme.darkMode || "light";
+      const interfaceMode = theme.darkMode || "light";
       const title = document.getElementById("pm-custom-title"), right = document.getElementById("pm-custom-right"), left = document.getElementById("pm-custom-left"), border = document.getElementById("pm-border-color"), customAccent = document.getElementById("pm-custom-accent");
       if (title) title.value = theme.customTitle || "";
       if (right) right.value = theme.customRight || (theme.preset === "custom" && theme.customAccent ? accent : interfaceMode === "dark" ? preset.rightDark || preset.right : preset.right);
@@ -19436,7 +19407,6 @@ ${lines}`;
       }) }));
     };
     const setDarkMode = (mode) => {
-      if (window.__pmTheme.preset === "apple") return false;
       return mutateTheme(() => {
         window.__pmTheme.darkMode = mode;
       });
@@ -19958,17 +19928,15 @@ ${error.message}`);
     dropdown.className = "pm-model-dropdown";
     const theme = window.__pmTheme || {};
     const preset = THEME_PRESETS[theme.preset] || THEME_PRESETS.default;
-    const interfaceMode = theme.preset === "apple" ? "light" : theme.darkMode || "light";
+    const interfaceMode = theme.darkMode || "light";
     dropdown.dataset.theme = interfaceMode;
     const customAccent = theme.preset === "custom" ? String(theme.customAccent || "").trim() : "";
     const auxiliary = resolveThemeAuxiliary(preset, customAccent);
     dropdown.style.setProperty("--pm-color-accent", customAccent || preset.accent || preset.right);
     const uiTokens = interfaceMode === "dark" ? preset.uiDark || {} : preset.ui || {};
+    for (const token of THEME_UI_TOKENS) dropdown.style.removeProperty(token);
     for (const [token, value] of Object.entries(uiTokens)) dropdown.style.setProperty(token, value);
     dropdown.style.setProperty("--pm-color-auxiliary", auxiliary);
-    if (theme.preset === "apple") {
-      dropdown.dataset.skin = "apple";
-    }
     dropdown.style.setProperty("--pm-model-visible-rows", String(MODEL_VISIBLE_ROWS));
     if (POPOVER_SUPPORTED) dropdown.setAttribute("popover", "manual");
     dropdown.innerHTML = `<input class="pm-model-search" aria-label="\u641C\u7D22\u6A21\u578B" placeholder="\u{1F50D} \u641C\u7D22..." /><div class="pm-model-options"></div>`;
@@ -20096,10 +20064,9 @@ ${error.message}`);
   function renderLookSettings({ theme, presetButtons, desktopBackgroundButtons, globalBackgroundButtons, localBackgroundButtons }) {
     const preset = THEME_PRESETS[theme.preset] || THEME_PRESETS.default;
     const customAccent = theme.preset === "custom" ? theme.customAccent || "" : "";
-    const interfaceMode = theme.preset === "apple" ? "light" : theme.darkMode || "light";
+    const interfaceMode = theme.darkMode || "light";
     const rightColor = theme.customRight || customAccent || (interfaceMode === "dark" ? preset.rightDark || preset.right : preset.right);
     const leftColor = theme.customLeft || (interfaceMode === "dark" ? preset.leftDark || preset.left : preset.left);
-    const appleActive = theme.preset === "apple";
     return `
     <div class="pm-settings-page">
       <div class="pm-settings-section">
@@ -20114,10 +20081,9 @@ ${error.message}`);
       <div class="pm-settings-section">
         <div class="pm-cfg-label">\u65E5\u591C\u6A21\u5F0F</div>
         <div class="pm-theme-row">
-          <button type="button" class="pm-layout-chip ${appleActive || theme.darkMode === "light" ? "pm-layout-active" : ""}" data-theme-mode="light" aria-pressed="${appleActive || theme.darkMode === "light"}" onclick="window.__pmSetDarkMode('light')" ${appleActive ? "disabled" : ""}>\u65E5\u95F4</button>
-          <button type="button" class="pm-layout-chip ${!appleActive && theme.darkMode === "dark" ? "pm-layout-active" : ""}" data-theme-mode="dark" aria-pressed="${!appleActive && theme.darkMode === "dark"}" onclick="window.__pmSetDarkMode('dark')" ${appleActive ? "disabled" : ""}>\u591C\u95F4</button>
+          <button type="button" class="pm-layout-chip ${theme.darkMode === "light" ? "pm-layout-active" : ""}" data-theme-mode="light" aria-pressed="${theme.darkMode === "light"}" onclick="window.__pmSetDarkMode('light')">\u65E5\u95F4</button>
+          <button type="button" class="pm-layout-chip ${theme.darkMode === "dark" ? "pm-layout-active" : ""}" data-theme-mode="dark" aria-pressed="${theme.darkMode === "dark"}" onclick="window.__pmSetDarkMode('dark')">\u591C\u95F4</button>
         </div>
-        ${appleActive ? '<small class="pm-cfg-help">\u82F9\u679C\u76AE\u80A4\u56FA\u5B9A\u4E3A\u6D45\u8272\u3002</small>' : ""}
       </div>
       <div class="pm-settings-section">
         <div class="pm-cfg-label">\u4E3B\u9898\u989C\u8272</div>
@@ -20943,6 +20909,7 @@ ${error.message}`);
   var legacyBackupTheme = (value) => {
     const theme = objectValue(value || {}, "theme");
     delete theme.ambientStatusEnabled;
+    theme.preset = normalizeThemePreset(theme.preset);
     return theme;
   };
   var isUnsafeDictionaryKey3 = (value) => value === "prototype" || Object.hasOwn(Object.prototype, value);
@@ -22699,7 +22666,7 @@ ${targetInstruction}`
         })());
       }
       if (action === "today-trend-regenerate-circle-schema") return run(onRefresh?.("reputation", button.dataset.circleId, { mode: "schema" }) ?? Promise.reject(new Error("\u4ECA\u65E5\u98CE\u5411\u5708\u5C42\u7ED3\u6784\u91CD\u65B0\u751F\u6210\u80FD\u529B\u5C1A\u672A\u63A5\u5165")));
-      const generation = { "today-trend-generate-world": ["world"], "today-trend-generate-reputation": ["reputation"], "today-trend-generate-factions": ["faction"] }[action];
+      const generation = { "today-trend-generate-all": [null], "today-trend-generate-world": ["world"], "today-trend-generate-reputation": ["reputation"], "today-trend-generate-factions": ["faction"] }[action];
       if (generation) return run(onGenerate?.(...generation) ?? Promise.reject(new Error("\u4ECA\u65E5\u98CE\u5411\u751F\u6210\u80FD\u529B\u5C1A\u672A\u63A5\u5165")));
       const refresh = { "today-trend-refresh-world-item": ["world", button.dataset.worldItemId], "today-trend-refresh-circle": ["reputation", button.dataset.circleId], "today-trend-refresh-faction": ["faction", button.dataset.factionId] }[action];
       if (refresh) return run(onRefresh?.(...refresh) ?? Promise.reject(new Error("\u4ECA\u65E5\u98CE\u5411\u5355\u9879\u5237\u65B0\u80FD\u529B\u5C1A\u672A\u63A5\u5165")));
@@ -23047,6 +23014,13 @@ ${targetInstruction}`
       { action: "today-trend-delete-world-item", icon: TRASH_ICON_SVG, label: `\u5220\u9664${item.name}`, danger: true, attrs: `data-world-item-id="${escapeAttr(item.id)}"` }
     ] });
   }
+  function itemInlineActions(item, attrs, visible) {
+    return trendInlineActions({ visible, actions: [
+      { action: "today-trend-refresh-world-item", icon: REFRESH_ICON_SVG, label: `\u91CD\u65B0\u751F\u6210${item.name}`, attrs: `data-world-item-id="${escapeAttr(item.id)}" ${attrs}` },
+      { action: "today-trend-edit-world-item", icon: EDIT_ICON_SVG, label: `\u7F16\u8F91${item.name}`, attrs: `data-world-item-id="${escapeAttr(item.id)}"` },
+      { action: "today-trend-delete-world-item", icon: TRASH_ICON_SVG, label: `\u5220\u9664${item.name}`, danger: true, attrs: `data-world-item-id="${escapeAttr(item.id)}"` }
+    ] });
+  }
   function renderTodayTrendWorldView({ scope, preset = null, mode = "content", editingWorldItemId = null, editingRule = null, ruleDraft = null, menuOpenId = null, generationAvailable = false, generationBusy = false } = {}) {
     const items = Array.isArray(scope?.world?.items) ? scope.world.items : [];
     const generateAttrs = `${generationAvailable && !generationBusy ? "" : "disabled"} aria-busy="${generationBusy}"`;
@@ -23060,10 +23034,10 @@ ${targetInstruction}`
     const signals = items.slice(1).map((item, index) => {
       const body = editingWorldItemId === item.id ? itemEditor(item) : `<p>${escapeHtml(item.summary)}</p>`;
       const side = index % 2 ? "is-right" : "is-left";
-      return `<article class="pm-today-trend-world-brief ${side}" data-world-item-id="${escapeAttr(item.id)}">${signalMarker}<div><header class="pm-today-trend-world-item-head"><b>${escapeHtml(item.name)}</b></header>${body}<span class="pm-today-trend-world-brief-tail" aria-hidden="true"></span></div></article>`;
+      return `<article class="pm-today-trend-world-brief ${side}" data-world-item-id="${escapeAttr(item.id)}">${signalMarker}<div><header class="pm-today-trend-world-item-head"><b>${escapeHtml(item.name)}</b>${itemInlineActions(item, generateAttrs, menuOpenId === "world-module")}</header>${body}<span class="pm-today-trend-world-brief-tail" aria-hidden="true"></span></div></article>`;
     }).join("");
     const worldMeta = trendMeter([{ label: "SIGNALS", value: items.length }, { label: "BRIEFS", value: Math.max(items.length - 1, 0) }]);
-    const content = hero ? `<article class="pm-today-trend-world-hero${signals ? " has-signals" : ""}" data-world-item-id="${escapeAttr(hero.id)}">${signalMarker}<div><header class="pm-today-trend-world-item-head"><b>${escapeHtml(hero.name)}</b>${itemActions(hero, generateAttrs, menuOpenId)}</header>${heroBody}</div></article>${signals ? `<div class="pm-today-trend-world-signals">${signals}</div>` : ""}` : '<p class="pm-today-trend-empty">\u5C1A\u672A\u751F\u6210\u4E16\u754C\u6001\u52BF\u3002</p>';
+    const content = hero ? `<article class="pm-today-trend-world-hero${signals ? " has-signals" : ""}" data-world-item-id="${escapeAttr(hero.id)}">${signalMarker}<div><header class="pm-today-trend-world-item-head"><b>${escapeHtml(hero.name)}</b>${itemInlineActions(hero, generateAttrs, menuOpenId === "world-module")}</header>${heroBody}</div></article>${signals ? `<div class="pm-today-trend-world-signals">${signals}</div>` : ""}` : '<p class="pm-today-trend-empty">\u5C1A\u672A\u751F\u6210\u4E16\u754C\u6001\u52BF\u3002</p>';
     return `<section class="pm-today-trend-view pm-today-trend-world"><span class="pm-today-trend-world-grid" aria-hidden="true"></span>${trendModuleHead({ title: "\u4E16\u754C\u6001\u52BF", eyebrow: "TODAY\u2019S SIGNAL", metaHtml: worldMeta, menuId: "world-module", menuOpenId, actions: [{ action: "today-trend-generate-world", icon: REFRESH_ICON_SVG, label: "\u91CD\u65B0\u751F\u6210\u4E16\u754C\u6001\u52BF", attrs: generateAttrs }, { action: "today-trend-edit-world-rule", icon: BOOK_ICON_SVG, label: "\u7F16\u8F91\u4E16\u754C\u6001\u52BF Prompt" }] })}${content}${generationBusy ? '<span class="pm-today-trend-progress">\u6B63\u5728\u751F\u6210\u2026</span>' : ""}</section>`;
   }
 
@@ -23109,7 +23083,7 @@ ${targetInstruction}`
     const preset = presets.find((item) => item.id === scope?.presetId) || null;
     const content = !scope || initializationOpen ? renderFirstUse({ presets, worldBooks, error, initializing, draft: initializationDraft, reinitializing, initializationMode }) : view.editingRule ? renderRuleEditorPage(preset, view.editingRule, view.ruleDraft) : view.name === "settings" ? `<main class="pm-today-trend-content">${renderTodayTrendSettingsView({ scope, presets, generationBusy: busy, menuOpenId: view.menuOpenId })}</main>` : `<main class="pm-today-trend-content${view.mode === "content" ? ` is-${view.name}` : ""}">${moduleView(view, { scope, preset, mode: view.mode, dynamicsTab: view.dynamicsTab, editingWorldItemId: view.editingWorldItemId, editingCircleId: view.editingCircleId, editingFactionId: view.editingFactionId, editingEventId: view.editingEventId, editingRule: view.editingRule, ruleDraft: view.ruleDraft, menuOpenId: view.menuOpenId, generationAvailable: !busy, generationBusy: busy })}</main>`;
     const navigation = scope && !initializationOpen && !view.editingRule ? `<nav class="pm-today-trend-tabs${view.name === "world" ? " is-world" : ""}" aria-label="\u4ECA\u65E5\u98CE\u5411\u6A21\u5757">${[["world", "\u4E16\u754C\u6001\u52BF", TODAY_TREND_WORLD_ICON_SVG], ["reputation", "\u4E2A\u4EBA\u98CE\u8BC4", TODAY_TREND_REPUTATION_ICON_SVG], ["faction", "\u52BF\u529B\u56FE\u8C31", TODAY_TREND_FACTION_ICON_SVG], ["dynamics", "\u4E8B\u4EF6\u8FFD\u8E2A", TODAY_TREND_DYNAMICS_ICON_SVG]].map(([name, label, icon3]) => `<button type="button" data-action="today-trend-open-${name === "faction" ? "factions" : name}" aria-label="${label}" aria-pressed="${view.name === name}">${icon3}</button>`).join("")}<button type="button" data-action="today-trend-open-settings" aria-label="APP \u603B\u8BBE\u7F6E" aria-pressed="${view.name === "settings"}">${MORE_ICON_SVG}</button></nav>` : "";
-    return `<section id="pm-today-trend-app" class="pm-today-trend-shell" aria-labelledby="pm-today-trend-title"><header class="pm-today-trend-header"><button type="button" class="pm-today-trend-home" data-today-trend-ui-action="home" aria-label="\u8FD4\u56DE\u684C\u9762" title="\u8FD4\u56DE\u684C\u9762">${HOME_ICON_SVG}</button><h2 id="pm-today-trend-title">\u4ECA\u65E5\u98CE\u5411</h2><span class="pm-today-trend-header-actions"><button type="button" class="pm-today-trend-header-control" data-action="today-trend-toggle-operation" ${!scope || busy ? "disabled" : ""} aria-pressed="${scope?.operation?.enabled === true}" aria-label="${scope?.operation?.enabled ? "\u6682\u505C\u8FD0\u4F5C" : "\u5F00\u59CB\u8FD0\u4F5C"}">${scope?.operation?.enabled ? PAUSE_ICON_SVG : PLAY_ICON_SVG}</button><button type="button" class="pm-today-trend-close" data-today-trend-ui-action="close" aria-label="\u5173\u95ED\u624B\u673A" title="\u5173\u95ED\u624B\u673A">${CLOSE_ICON_SVG}</button></span></header>${content}${navigation}</section>`;
+    return `<section id="pm-today-trend-app" class="pm-today-trend-shell" aria-labelledby="pm-today-trend-title"><header class="pm-today-trend-header"><button type="button" class="pm-today-trend-home" data-today-trend-ui-action="home" aria-label="\u8FD4\u56DE\u684C\u9762" title="\u8FD4\u56DE\u684C\u9762">${HOME_ICON_SVG}</button><h2 id="pm-today-trend-title">\u4ECA\u65E5\u98CE\u5411</h2><span class="pm-today-trend-header-actions"><button type="button" class="pm-today-trend-header-control" data-action="today-trend-generate-all" ${!scope || busy ? "disabled" : ""} aria-busy="${busy}" aria-label="\u624B\u52A8\u66F4\u65B0\u6240\u6709\u4ECA\u65E5\u98CE\u5411" title="\u624B\u52A8\u66F4\u65B0\u6240\u6709\u4ECA\u65E5\u98CE\u5411">${SPARKLES_ICON_SVG}</button><button type="button" class="pm-today-trend-header-control" data-action="today-trend-toggle-operation" ${!scope || busy ? "disabled" : ""} aria-pressed="${scope?.operation?.enabled === true}" aria-label="${scope?.operation?.enabled ? "\u6682\u505C\u8FD0\u4F5C" : "\u5F00\u542F\u81EA\u52A8"}" title="${scope?.operation?.enabled ? "\u6682\u505C\u8FD0\u4F5C" : "\u5F00\u542F\u81EA\u52A8"}">${scope?.operation?.enabled ? PAUSE_ICON_SVG : PLAY_ICON_SVG}</button></span></header>${content}${navigation}</section>`;
   }
 
   // src/today-trend-phone-controller.js

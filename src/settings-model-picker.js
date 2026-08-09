@@ -1,5 +1,5 @@
 import { MODEL_VISIBLE_ROWS, POPOVER_SUPPORTED } from './constants.js';
-import { resolveThemeAuxiliary, THEME_PRESETS } from './config.js';
+import { resolveThemeAuxiliary, THEME_PRESETS, THEME_UI_TOKENS } from './config.js';
 import { escapeAttr, escapeHtml } from './ui.js';
 
 export function showModelPicker(runtime) {
@@ -24,18 +24,15 @@ export function showModelPicker(runtime) {
     dropdown.className = 'pm-model-dropdown';
     const theme = window.__pmTheme || {};
     const preset = THEME_PRESETS[theme.preset] || THEME_PRESETS.default;
-    const interfaceMode = theme.preset === 'apple' ? 'light' : theme.darkMode || 'light';
+    const interfaceMode = theme.darkMode || 'light';
     dropdown.dataset.theme = interfaceMode;
     const customAccent = theme.preset === 'custom' ? String(theme.customAccent || '').trim() : '';
     const auxiliary = resolveThemeAuxiliary(preset, customAccent);
     dropdown.style.setProperty('--pm-color-accent', customAccent || preset.accent || preset.right);
-    // 苹果皮肤是独立浅色界面，与 applyTheme 保持同一语义。
     const uiTokens = interfaceMode === 'dark' ? preset.uiDark || {} : preset.ui || {};
+    for (const token of THEME_UI_TOKENS) dropdown.style.removeProperty(token);
     for (const [token, value] of Object.entries(uiTokens)) dropdown.style.setProperty(token, value);
     dropdown.style.setProperty('--pm-color-auxiliary', auxiliary);
-    if (theme.preset === 'apple') {
-        dropdown.dataset.skin = 'apple';
-    }
     dropdown.style.setProperty('--pm-model-visible-rows', String(MODEL_VISIBLE_ROWS));
     if (POPOVER_SUPPORTED) dropdown.setAttribute('popover', 'manual');
     dropdown.innerHTML = `<input class="pm-model-search" aria-label="搜索模型" placeholder="🔍 搜索..." /><div class="pm-model-options"></div>`;
