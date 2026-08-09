@@ -11430,7 +11430,7 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
         ${post.tags.length ? `<div class="pm-scene-tags">${post.tags.map((tag) => `<span>#${escapeHtml(tag)}</span>`).join("")}</div>` : ""}
         <footer><button type="button" class="pm-scene-like ${post.liked ? "is-liked" : ""}" data-action="like" data-post-id="${escapeAttr(post.id)}" aria-pressed="${post.liked}" aria-label="${post.liked ? "\u53D6\u6D88\u559C\u6B22" : "\u559C\u6B22"}">${renderPostMetric(HEART_ICON_SVG, likes, "\u559C\u6B22", "is-like")}</button><button type="button" class="pm-scene-share ${post.shared ? "is-shared" : ""}" data-action="share" data-post-id="${escapeAttr(post.id)}" aria-pressed="${post.shared}" aria-label="${post.shared ? "\u5DF2\u5206\u4EAB\u672C\u5E16" : "\u5206\u4EAB\u672C\u5E16"}">${renderPostMetric(SHARE_ICON_SVG, shares, "\u8F6C\u53D1", "is-share")}</button><button type="button" class="pm-scene-reply-toggle" data-action="toggle-reply" data-post-id="${escapeAttr(post.id)}" aria-label="\u56DE\u590D\u672C\u5E16" aria-controls="pm-comment-composer-${escapeAttr(post.id)}" aria-expanded="false">${renderPostMetric(REPLY_ICON_SVG, post.comments.length, "\u56DE\u590D", "is-reply")}</button></footer>
         ${post.comments.length ? `<div class="pm-scene-comments">${post.comments.map((comment) => `<div class="pm-scene-comment"><span><b>${escapeHtml(comment.authorNameSnapshot)}</b> <span class="pm-scene-comment-content">${escapeHtml(comment.content)}</span></span><span class="pm-scene-comment-actions" hidden><button type="button" data-action="edit-comment" data-post-id="${escapeAttr(post.id)}" data-comment-id="${escapeAttr(comment.id)}" aria-label="\u7F16\u8F91\u8BC4\u8BBA" title="\u7F16\u8F91\u8BC4\u8BBA">${EDIT_ICON_SVG}</button><button type="button" class="pm-scene-danger" data-action="delete-comment" data-post-id="${escapeAttr(post.id)}" data-comment-id="${escapeAttr(comment.id)}" aria-label="\u5220\u9664\u8BC4\u8BBA" title="\u5220\u9664\u8BC4\u8BBA">${TRASH_ICON_SVG}</button></span></div>`).join("")}</div>` : ""}
-        <div id="pm-comment-composer-${escapeAttr(post.id)}" class="pm-scene-comment-composer" hidden><input id="pm-comment-input-${escapeAttr(post.id)}" maxlength="1082" placeholder="\u53D1\u8868\u4F60\u7684\u60F3\u6CD5\u5427\uFF0C\u53EF\u7528\u3010\u540D\u5B57\u3011\u5207\u6362\u8EAB\u4EFD"><button type="button" data-action="post-comment" data-post-id="${escapeAttr(post.id)}" aria-label="\u53D1\u9001\u56DE\u590D" title="\u53D1\u9001\u56DE\u590D">${SEND_ICON_SVG}</button></div>
+        <div id="pm-comment-composer-${escapeAttr(post.id)}" class="pm-scene-comment-composer" hidden><input id="pm-comment-input-${escapeAttr(post.id)}" maxlength="1082" placeholder="\u53D1\u8868\u4F60\u7684\u60F3\u6CD5\u5427"><button type="button" data-action="post-comment" data-post-id="${escapeAttr(post.id)}" aria-label="\u53D1\u9001\u56DE\u590D" title="\u53D1\u9001\u56DE\u590D">${SEND_ICON_SVG}</button></div>
     </article>`;
     }).join("");
   }
@@ -15552,10 +15552,8 @@ ${antiFluff}`;
       applyBidirectionalInjection
     } = deps;
     const runConversationInjectionMutation = deps.runConversationInjectionMutation || ((task) => Promise.resolve().then(task));
-    let deleteTransactionActive = false;
-    let contactSwitcherLoadSequence = 0;
-    let contactSwitcherOutsideHandler = null;
-    let contactSwitcherEscapeHandler = null;
+    let deleteTransactionActive = false, contactSwitcherLoadSequence = 0;
+    let contactSwitcherOutsideHandler = null, contactSwitcherEscapeHandler = null;
     let contactSwitcherResizeObserver = null;
     const CONTACT_SWITCHER_ID = "pm-contact-switcher";
     const currentConversationKey = () => state.isGroupChat && state.currentGroupKey ? state.currentGroupKey : state.currentPersona;
@@ -15599,9 +15597,7 @@ ${antiFluff}`;
       state.groupNature = "";
       state.groupRandomNpcPrompt = "";
       state.groupColorMap = {};
-      const name = state.phoneWindow?.querySelector(".pm-name");
-      const poke = state.phoneWindow?.querySelector(".pm-name-edit");
-      const list2 = state.phoneWindow?.querySelector(".pm-msg-list");
+      const name = state.phoneWindow?.querySelector(".pm-name"), poke = state.phoneWindow?.querySelector(".pm-name-edit"), list2 = state.phoneWindow?.querySelector(".pm-msg-list");
       if (name) name.textContent = "\u9009\u62E9\u8054\u7CFB\u4EBA";
       poke?.classList.add("is-hidden");
       if (list2) list2.innerHTML = '<div class="pm-chat-empty">\u6682\u65E0\u4F1A\u8BDD\uFF0C\u8BF7\u4ECE\u6807\u9898\u5904\u9009\u62E9\u6216\u6DFB\u52A0\u8054\u7CFB\u4EBA\u3002</div>';
@@ -15863,8 +15859,7 @@ ${antiFluff}`;
       if (!groupName) return alert("\u8BF7\u8F93\u5165\u7FA4\u804A\u540D\u79F0");
       if (names2.length < 2) return alert("\u81F3\u5C11\u9700\u8981 2 \u4E2A\u89D2\u8272");
       const id2 = getStorageId2();
-      const groupSnapshot = JSON.parse(JSON.stringify(window.__pmGroupMeta));
-      const pokeSnapshot = JSON.parse(JSON.stringify(window.__pmPokeConfig));
+      const groupSnapshot = JSON.parse(JSON.stringify(window.__pmGroupMeta)), pokeSnapshot = JSON.parse(JSON.stringify(window.__pmPokeConfig));
       const previousConversationContext = {
         isGroupChat: state.isGroupChat,
         groupMembers: state.groupMembers.slice()
@@ -22687,7 +22682,7 @@ ${targetInstruction}`
       event.preventDefault();
       if (form.dataset.todayTrendForm === "rule-editor") {
         const rule = formValue(form, "rule"), text8 = formValue(form, "text");
-        if (!text8) return run(Promise.reject(new Error("\u6A21\u5757 Prompt \u4E0D\u80FD\u4E3A\u7A7A")));
+        if (!text8) return run(Promise.reject(new Error("\u63D0\u793A\u8BCD\u4E0D\u80FD\u4E3A\u7A7A")));
         view.ruleDraft = text8;
         return run(Promise.resolve(onSaveRule?.(rule, text8)).then(async () => {
           const returnName = view.ruleReturnName;
@@ -22697,7 +22692,7 @@ ${targetInstruction}`
           view.mode = "content";
           onRuleEditorStateChange(false, returnName);
           await rerender();
-          onStatus("\u6A21\u5757 Prompt \u5DF2\u4FDD\u5B58\u3002");
+          onStatus("\u63D0\u793A\u8BCD\u5DF2\u4FDD\u5B58\u3002");
         }));
       }
       if (form.dataset.todayTrendForm === "world-item") return run(commit((scope) => {
@@ -22834,7 +22829,7 @@ ${targetInstruction}`
   }
   function trendRuleEditor({ rule, value = "" } = {}) {
     if (!rule) return "";
-    return `<form class="pm-today-trend-editor pm-today-trend-rule-editor" data-today-trend-form="rule-editor"><input type="hidden" name="rule" value="${escapeAttr(rule)}"><label class="pm-today-trend-field">\u6A21\u5757 Prompt<textarea class="pm-today-trend-input" name="text" maxlength="12000" required autofocus>${escapeHtml(value)}</textarea></label><div class="pm-today-trend-form-actions"><button type="button" data-action="today-trend-cancel-rule-editor">\u8FD4\u56DE</button><button type="submit">\u4FDD\u5B58 Prompt</button></div></form>`;
+    return `<form class="pm-today-trend-editor pm-today-trend-rule-editor" data-today-trend-form="rule-editor"><input type="hidden" name="rule" value="${escapeAttr(rule)}"><label class="pm-today-trend-field">\u63D0\u793A\u8BCD<textarea class="pm-today-trend-input" name="text" maxlength="12000" required autofocus>${escapeHtml(value)}</textarea></label><div class="pm-today-trend-form-actions"><button type="button" data-action="today-trend-cancel-rule-editor">\u8FD4\u56DE</button><button type="submit">\u4FDD\u5B58\u63D0\u793A\u8BCD</button></div></form>`;
   }
   function trendToggleField(name, label, checked) {
     return `<label class="pm-today-trend-switch"><span>${escapeHtml(label)}</span><input name="${escapeAttr(name)}" type="checkbox" role="switch" aria-checked="${checked === true}"${checked ? " checked" : ""}><i aria-hidden="true"></i></label>`;
@@ -22912,7 +22907,7 @@ ${targetInstruction}`
     const tabSwitch = `<div class="pm-today-trend-dynamics-tabs" role="tablist" aria-label="\u4E8B\u4EF6\u8FFD\u8E2A\u72B6\u6001"><button id="pm-today-trend-active-tab" type="button" role="tab" data-action="today-trend-set-dynamics-tab" data-tab="active" aria-selected="${tab === "active"}" aria-controls="pm-today-trend-active-panel" tabindex="${tab === "active" ? "0" : "-1"}">\u6B63\u5728\u8FFD\u8E2A</button><button id="pm-today-trend-archived-tab" type="button" role="tab" data-action="today-trend-set-dynamics-tab" data-tab="archived" aria-selected="${tab === "archived"}" aria-controls="pm-today-trend-archived-panel" tabindex="${tab === "archived" ? "0" : "-1"}">\u5DF2\u5B8C\u7ED3</button></div>`;
     const activePanel = `<section id="pm-today-trend-active-panel" class="pm-today-trend-dynamics-section${tab === "active" ? "" : " is-hidden"}" role="tabpanel" aria-labelledby="pm-today-trend-active-tab"${tab === "active" ? "" : " hidden"}><h3 id="pm-today-trend-active-title">\u6B63\u5728\u8FFD\u8E2A</h3><div class="pm-today-trend-event-list${activeCount ? " has-events" : ""}">${active}</div></section>`;
     const archivedPanel = `<section id="pm-today-trend-archived-panel" class="pm-today-trend-dynamics-section${tab === "archived" ? "" : " is-hidden"}" role="tabpanel" aria-labelledby="pm-today-trend-archived-tab"${tab === "archived" ? "" : " hidden"}><h3 id="pm-today-trend-archived-title">\u5DF2\u5B8C\u7ED3</h3><div class="pm-today-trend-event-list is-archived${archivedCount ? " has-events" : ""}">${archived}</div></section>`;
-    return `<section class="pm-today-trend-view pm-today-trend-dynamics">${trendModuleHead({ title, eyebrow: "EVENT TRACKER", metaHtml: trackerMeta, menuId: "dynamics-module", menuOpenId, actions: [icon2("today-trend-advance-all-events", REFRESH_ICON_SVG, "\u91CD\u65B0\u751F\u6210\u4E8B\u4EF6\u8FFD\u8E2A", attrs), icon2("today-trend-edit-dynamics-rule", BOOK_ICON_SVG, "\u7F16\u8F91\u4E8B\u4EF6\u8FFD\u8E2A Prompt"), icon2("today-trend-open-dynamics-settings", SETTINGS_ICON_SVG, "\u4E8B\u4EF6\u8FFD\u8E2A\u8BBE\u7F6E")] })}${tabSwitch}${activePanel}${archivedPanel}${generationBusy ? '<span class="pm-today-trend-progress">\u6B63\u5728\u751F\u6210\u2026</span>' : ""}</section>`;
+    return `<section class="pm-today-trend-view pm-today-trend-dynamics">${trendModuleHead({ title, eyebrow: "EVENT TRACKER", metaHtml: trackerMeta, menuId: "dynamics-module", menuOpenId, actions: [icon2("today-trend-advance-all-events", REFRESH_ICON_SVG, "\u91CD\u65B0\u751F\u6210\u4E8B\u4EF6\u8FFD\u8E2A", attrs), icon2("today-trend-edit-dynamics-rule", BOOK_ICON_SVG, "\u7F16\u8F91\u4E8B\u4EF6\u8FFD\u8E2A\u63D0\u793A\u8BCD"), icon2("today-trend-open-dynamics-settings", SETTINGS_ICON_SVG, "\u4E8B\u4EF6\u8FFD\u8E2A\u8BBE\u7F6E")] })}${tabSwitch}${activePanel}${archivedPanel}${generationBusy ? '<span class="pm-today-trend-progress">\u6B63\u5728\u751F\u6210\u2026</span>' : ""}</section>`;
   }
 
   // src/today-trend-faction-view.js
@@ -22947,7 +22942,7 @@ ${targetInstruction}`
     const rootCount = factions.filter((faction) => faction.parentId === null).length;
     const mapMeta = factions.length ? trendMeter([{ label: "GROUPS", value: factions.length }, { label: "CORE", value: rootCount }, { label: "LINKS", value: external.length }]) : "\u7B49\u5F85\u5EFA\u7ACB\u52BF\u529B\u56FE\u8C31";
     const actionsVisible = menuOpenId === "faction-module";
-    return `<section class="pm-today-trend-view pm-today-trend-factions">${trendModuleHead({ title: "\u52BF\u529B\u56FE\u8C31", eyebrow: "POWER MAP", metaHtml: mapMeta, menuId: "faction-module", menuOpenId, actions: [{ action: "today-trend-generate-factions", icon: REFRESH_ICON_SVG, label: "\u91CD\u65B0\u751F\u6210\u52BF\u529B\u56FE\u8C31", attrs }, { action: "today-trend-edit-faction-rule", icon: BOOK_ICON_SVG, label: "\u7F16\u8F91\u52BF\u529B\u56FE\u8C31 Prompt" }] })}<section class="pm-today-trend-faction-section" aria-label="\u52BF\u529B\u56FE\u8C31">${tree(factions, null, actionsVisible, byId) || '<p class="pm-today-trend-empty">\u5C1A\u672A\u8BB0\u5F55\u52BF\u529B\u56FE\u8C31\u3002</p>'}</section>${generationBusy ? '<span class="pm-today-trend-progress">\u6B63\u5728\u751F\u6210\u2026</span>' : ""}</section>`;
+    return `<section class="pm-today-trend-view pm-today-trend-factions">${trendModuleHead({ title: "\u52BF\u529B\u56FE\u8C31", eyebrow: "POWER MAP", metaHtml: mapMeta, menuId: "faction-module", menuOpenId, actions: [{ action: "today-trend-generate-factions", icon: REFRESH_ICON_SVG, label: "\u91CD\u65B0\u751F\u6210\u52BF\u529B\u56FE\u8C31", attrs }, { action: "today-trend-edit-faction-rule", icon: BOOK_ICON_SVG, label: "\u7F16\u8F91\u52BF\u529B\u56FE\u8C31\u63D0\u793A\u8BCD" }] })}<section class="pm-today-trend-faction-section" aria-label="\u52BF\u529B\u56FE\u8C31">${tree(factions, null, actionsVisible, byId) || '<p class="pm-today-trend-empty">\u5C1A\u672A\u8BB0\u5F55\u52BF\u529B\u56FE\u8C31\u3002</p>'}</section>${generationBusy ? '<span class="pm-today-trend-progress">\u6B63\u5728\u751F\u6210\u2026</span>' : ""}</section>`;
   }
 
   // src/today-trend-reputation-view.js
@@ -22992,7 +22987,7 @@ ${targetInstruction}`
     const metaHtml = trendMeter([{ label: "PEOPLE", value: circles.length }, { label: "GOOD", value: goodCount }, { label: "BAD", value: badCount }]);
     const actionsVisible = menuOpenId === "reputation-module";
     const rows = circles.map((circle) => editingCircleId === circle.id ? `<article class="pm-today-trend-reputation-entry is-editing" data-circle-id="${escapeAttr(circle.id)}">${circleEditor(circle, "today-trend-cancel-reputation-editor")}</article>` : `<article class="pm-today-trend-reputation-entry" data-circle-id="${escapeAttr(circle.id)}">${reputationMark(circle.status)}<div class="pm-today-trend-reputation-copy"><header><b>${escapeHtml(circle.name)}</b>${statusBadge(circle.status)}${trendInlineActions({ visible: actionsVisible, actions: [{ action: "today-trend-edit-circle", icon: EDIT_ICON_SVG, label: `\u7F16\u8F91${circle.name}`, attrs: `data-circle-id="${escapeAttr(circle.id)}"` }] })}</header><p>${escapeHtml(circle.evaluation)}</p></div><div class="pm-today-trend-reputation-rating">${reputationMeter(circle, generationBusy)}</div></article>`).join("");
-    return `<section class="pm-today-trend-view pm-today-trend-reputation">${trendModuleHead({ title: "\u4E2A\u4EBA\u98CE\u8BC4", eyebrow: "PUBLIC OPINION", metaHtml, menuId: "reputation-module", menuOpenId, actions: [{ action: "today-trend-generate-reputation", icon: REFRESH_ICON_SVG, label: "\u91CD\u65B0\u751F\u6210\u4E2A\u4EBA\u98CE\u8BC4", attrs: generateAttrs }, { action: "today-trend-edit-reputation-rule", icon: BOOK_ICON_SVG, label: "\u7F16\u8F91\u4E2A\u4EBA\u98CE\u8BC4 Prompt" }] })}<div class="pm-today-trend-reputation-list">${rows || '<p class="pm-today-trend-empty">\u5C1A\u672A\u751F\u6210\u4E2A\u4EBA\u98CE\u8BC4\u3002</p>'}</div>${generationBusy ? '<span class="pm-today-trend-progress">\u6B63\u5728\u751F\u6210\u2026</span>' : ""}</section>`;
+    return `<section class="pm-today-trend-view pm-today-trend-reputation">${trendModuleHead({ title: "\u4E2A\u4EBA\u98CE\u8BC4", eyebrow: "PUBLIC OPINION", metaHtml, menuId: "reputation-module", menuOpenId, actions: [{ action: "today-trend-generate-reputation", icon: REFRESH_ICON_SVG, label: "\u91CD\u65B0\u751F\u6210\u4E2A\u4EBA\u98CE\u8BC4", attrs: generateAttrs }, { action: "today-trend-edit-reputation-rule", icon: BOOK_ICON_SVG, label: "\u7F16\u8F91\u4E2A\u4EBA\u98CE\u8BC4\u63D0\u793A\u8BCD" }] })}<div class="pm-today-trend-reputation-list">${rows || '<p class="pm-today-trend-empty">\u5C1A\u672A\u751F\u6210\u4E2A\u4EBA\u98CE\u8BC4\u3002</p>'}</div>${generationBusy ? '<span class="pm-today-trend-progress">\u6B63\u5728\u751F\u6210\u2026</span>' : ""}</section>`;
   }
 
   // src/today-trend-settings-view.js
@@ -23000,7 +22995,7 @@ ${targetInstruction}`
     if (!scope) return '<section class="pm-today-trend-settings"><h3>APP \u603B\u8BBE\u7F6E</h3><p class="pm-today-trend-empty">\u8BF7\u5148\u521B\u5EFA\u6216\u7ED1\u5B9A\u4E16\u754C\u9884\u8BBE\u3002</p></section>';
     const options2 = presets.map((preset) => `<option value="${escapeAttr(preset.id)}" ${preset.id === scope.presetId ? "selected" : ""}>${escapeHtml(preset.name)}</option>`).join("");
     const rules = [["world", "\u4E16\u754C\u6001\u52BF\u89C4\u5219"], ["reputation", "\u4E2A\u4EBA\u98CE\u8BC4\u89C4\u5219"], ["faction", "\u52BF\u529B\u56FE\u8C31\u89C4\u5219"], ["dynamics", "\u52A8\u6001\u603B\u89C4\u5219"], ["incident", "\u7A81\u53D1\u4E8B\u4EF6\u89C4\u5219"], ["rumor", "\u6D41\u8A00\u871A\u8BED\u89C4\u5219"], ["underground", "\u5730\u4E0B\u7EBF\u89C4\u5219"]].map(([name, label]) => `<div class="pm-today-trend-rule-row"><span>${label}</span>${trendActionMenu({ id: `app-rule:${name}`, open: menuOpenId === `app-rule:${name}`, label: `${label}\u64CD\u4F5C`, actions: [{ action: `today-trend-edit-${name}-rule`, icon: EDIT_ICON_SVG, label: `\u7F16\u8F91${label}`, attrs: 'data-rule-return="settings"' }, { action: `today-trend-regenerate-${name}-rule`, icon: REFRESH_ICON_SVG, label: `\u91CD\u65B0\u751F\u6210${label}` }] })}</div>`).join("");
-    return `<section class="pm-today-trend-settings">${trendModuleHead({ title: "APP \u603B\u8BBE\u7F6E", menuId: "app-settings", menuOpenId, actions: [{ action: "today-trend-close-settings", icon: BACK_ICON_SVG, label: "\u8FD4\u56DE\u4ECA\u65E5\u98CE\u5411" }] })}<form class="pm-today-trend-editor" data-today-trend-form="app-settings"><label class="pm-today-trend-field">\u5F53\u524D\u4E16\u754C\u9884\u8BBE<select class="pm-today-trend-input" name="presetId">${options2}</select></label><div class="pm-today-trend-form-actions pm-today-trend-preset-actions"><button type="button" data-action="today-trend-new-preset">\u65B0\u5EFA</button><button type="button" data-action="today-trend-delete-preset">\u5220\u9664</button><button type="button" data-action="today-trend-reinitialize">\u91CD\u5EFA</button><button type="button" data-action="today-trend-rename-preset">\u91CD\u547D\u540D</button></div><label class="pm-today-trend-field">\u8C03\u7528\u65B9\u5F0F<select class="pm-today-trend-input" name="mode"><option value="manual" ${scope.operation?.mode === "manual" ? "selected" : ""}>\u624B\u52A8</option><option value="auto" ${scope.operation?.mode === "auto" ? "selected" : ""}>\u81EA\u52A8</option></select></label><label class="pm-today-trend-field">\u81EA\u52A8\u8C03\u7528\uFF1A\u6BCF N \u697C\u6267\u884C\u4E00\u6B21<input class="pm-today-trend-input" name="intervalFloors" type="number" min="1" max="1000" required value="${escapeAttr(String(scope.operation?.intervalFloors || 1))}"></label><label class="pm-today-trend-switch pm-today-trend-injection-switch"><span><b>\u6B63\u6587\u6CE8\u5165</b><small>\u5F00\u542F\u540E\uFF0C\u89D2\u8272\u56DE\u590D\u65F6\u4F1A\u53C2\u8003\u5F53\u524D\u4F1A\u8BDD\u4E2D\u7684\u4ECA\u65E5\u98CE\u5411\u3002</small></span><input name="injectionEnabled" type="checkbox" role="switch" aria-checked="${scope.injection?.enabled === true}"${scope.injection?.enabled ? " checked" : ""}><i aria-hidden="true"></i></label><div class="pm-today-trend-form-actions pm-today-trend-settings-save"><button type="submit">\u4FDD\u5B58\u8BBE\u7F6E</button></div></form><section class="pm-today-trend-rule"><h3>\u6A21\u5757 Prompt \u603B\u89C8</h3>${rules}</section></section>`;
+    return `<section class="pm-today-trend-settings">${trendModuleHead({ title: "APP \u603B\u8BBE\u7F6E", menuId: "app-settings", menuOpenId, actions: [{ action: "today-trend-close-settings", icon: BACK_ICON_SVG, label: "\u8FD4\u56DE\u4ECA\u65E5\u98CE\u5411" }] })}<form class="pm-today-trend-editor" data-today-trend-form="app-settings"><label class="pm-today-trend-field">\u5F53\u524D\u4E16\u754C\u9884\u8BBE<select class="pm-today-trend-input" name="presetId">${options2}</select></label><div class="pm-today-trend-form-actions pm-today-trend-preset-actions"><button type="button" data-action="today-trend-new-preset">\u65B0\u5EFA</button><button type="button" data-action="today-trend-delete-preset">\u5220\u9664</button><button type="button" data-action="today-trend-reinitialize">\u91CD\u5EFA</button><button type="button" data-action="today-trend-rename-preset">\u91CD\u547D\u540D</button></div><label class="pm-today-trend-field">\u8C03\u7528\u65B9\u5F0F<select class="pm-today-trend-input" name="mode"><option value="manual" ${scope.operation?.mode === "manual" ? "selected" : ""}>\u624B\u52A8</option><option value="auto" ${scope.operation?.mode === "auto" ? "selected" : ""}>\u81EA\u52A8</option></select></label><label class="pm-today-trend-field">\u81EA\u52A8\u8C03\u7528\uFF1A\u6BCF N \u697C\u6267\u884C\u4E00\u6B21<input class="pm-today-trend-input" name="intervalFloors" type="number" min="1" max="1000" required value="${escapeAttr(String(scope.operation?.intervalFloors || 1))}"></label><label class="pm-today-trend-switch pm-today-trend-injection-switch"><span><b>\u6B63\u6587\u6CE8\u5165</b><small>\u5F00\u542F\u540E\uFF0C\u89D2\u8272\u56DE\u590D\u65F6\u4F1A\u53C2\u8003\u5F53\u524D\u4F1A\u8BDD\u4E2D\u7684\u4ECA\u65E5\u98CE\u5411\u3002</small></span><input name="injectionEnabled" type="checkbox" role="switch" aria-checked="${scope.injection?.enabled === true}"${scope.injection?.enabled ? " checked" : ""}><i aria-hidden="true"></i></label><div class="pm-today-trend-form-actions pm-today-trend-settings-save"><button type="submit">\u4FDD\u5B58\u8BBE\u7F6E</button></div></form><section class="pm-today-trend-rule"><h3>\u63D0\u793A\u8BCD\u603B\u89C8</h3>${rules}</section></section>`;
   }
 
   // src/today-trend-world-view.js
@@ -23033,12 +23028,11 @@ ${targetInstruction}`
     const heroBody = hero ? editingWorldItemId === hero.id ? itemEditor(hero) : `<p>${escapeHtml(hero.summary)}</p>` : "";
     const signals = items.slice(1).map((item, index) => {
       const body = editingWorldItemId === item.id ? itemEditor(item) : `<p>${escapeHtml(item.summary)}</p>`;
-      const side = index % 2 ? "is-right" : "is-left";
-      return `<article class="pm-today-trend-world-brief ${side}" data-world-item-id="${escapeAttr(item.id)}">${signalMarker}<div><header class="pm-today-trend-world-item-head"><b>${escapeHtml(item.name)}</b>${itemInlineActions(item, generateAttrs, menuOpenId === "world-module")}</header>${body}<span class="pm-today-trend-world-brief-tail" aria-hidden="true"></span></div></article>`;
+      return `<article class="pm-today-trend-world-brief" data-world-item-id="${escapeAttr(item.id)}">${signalMarker}<div><header class="pm-today-trend-world-item-head"><b>${escapeHtml(item.name)}</b>${itemInlineActions(item, generateAttrs, menuOpenId === "world-module")}</header>${body}</div></article>`;
     }).join("");
     const worldMeta = trendMeter([{ label: "SIGNALS", value: items.length }, { label: "BRIEFS", value: Math.max(items.length - 1, 0) }]);
-    const content = hero ? `<article class="pm-today-trend-world-hero${signals ? " has-signals" : ""}" data-world-item-id="${escapeAttr(hero.id)}">${signalMarker}<div><header class="pm-today-trend-world-item-head"><b>${escapeHtml(hero.name)}</b>${itemInlineActions(hero, generateAttrs, menuOpenId === "world-module")}</header>${heroBody}</div></article>${signals ? `<div class="pm-today-trend-world-signals">${signals}</div>` : ""}` : '<p class="pm-today-trend-empty">\u5C1A\u672A\u751F\u6210\u4E16\u754C\u6001\u52BF\u3002</p>';
-    return `<section class="pm-today-trend-view pm-today-trend-world"><span class="pm-today-trend-world-grid" aria-hidden="true"></span>${trendModuleHead({ title: "\u4E16\u754C\u6001\u52BF", eyebrow: "TODAY\u2019S SIGNAL", metaHtml: worldMeta, menuId: "world-module", menuOpenId, actions: [{ action: "today-trend-generate-world", icon: REFRESH_ICON_SVG, label: "\u91CD\u65B0\u751F\u6210\u4E16\u754C\u6001\u52BF", attrs: generateAttrs }, { action: "today-trend-edit-world-rule", icon: BOOK_ICON_SVG, label: "\u7F16\u8F91\u4E16\u754C\u6001\u52BF Prompt" }] })}${content}${generationBusy ? '<span class="pm-today-trend-progress">\u6B63\u5728\u751F\u6210\u2026</span>' : ""}</section>`;
+    const content = hero ? `<article class="pm-today-trend-world-hero" data-world-item-id="${escapeAttr(hero.id)}">${signalMarker}<div><header class="pm-today-trend-world-item-head"><b>${escapeHtml(hero.name)}</b>${itemInlineActions(hero, generateAttrs, menuOpenId === "world-module")}</header>${heroBody}</div></article>${signals ? `<div class="pm-today-trend-world-signals">${signals}</div>` : ""}` : '<p class="pm-today-trend-empty">\u5C1A\u672A\u751F\u6210\u4E16\u754C\u6001\u52BF\u3002</p>';
+    return `<section class="pm-today-trend-view pm-today-trend-world">${trendModuleHead({ title: "\u4E16\u754C\u6001\u52BF", eyebrow: "TODAY\u2019S SIGNAL", metaHtml: worldMeta, menuId: "world-module", menuOpenId, actions: [{ action: "today-trend-generate-world", icon: REFRESH_ICON_SVG, label: "\u91CD\u65B0\u751F\u6210\u4E16\u754C\u6001\u52BF", attrs: generateAttrs }, { action: "today-trend-edit-world-rule", icon: BOOK_ICON_SVG, label: "\u7F16\u8F91\u4E16\u754C\u6001\u52BF\u63D0\u793A\u8BCD" }] })}${content}${generationBusy ? '<span class="pm-today-trend-progress">\u6B63\u5728\u751F\u6210\u2026</span>' : ""}</section>`;
   }
 
   // src/today-trend-view.js
@@ -23069,14 +23063,12 @@ ${targetInstruction}`
         ${createPresetSection}
     </section></main>`;
   }
-  var ruleLabels = Object.freeze({ world: "\u4E16\u754C\u6001\u52BF", reputation: "\u4E2A\u4EBA\u98CE\u8BC4", faction: "\u52BF\u529B\u56FE\u8C31", dynamics: "\u4E8B\u4EF6\u8FFD\u8E2A", "dynamics-incident": "\u7A81\u53D1\u4E8B\u4EF6", "dynamics-rumor": "\u6D41\u8A00\u871A\u8BED", "dynamics-underground": "\u5730\u4E0B\u7EBF" });
   function renderRuleEditorPage(preset, rule, draft) {
     const [group, key = ""] = String(rule || "").split("-");
     const rules = group === "dynamics" && key ? preset?.dynamicsRules : preset?.moduleRules;
     const field = group === "dynamics" && key ? key : group;
     const value = draft ?? rules?.[field] ?? "";
-    const label = ruleLabels[rule] || "\u6A21\u5757";
-    return `<main class="pm-today-trend-content pm-today-trend-rule-page"><section class="pm-today-trend-view"><header class="pm-today-trend-rule-page-head"><p class="pm-today-trend-module-eyebrow">PROMPT EDITOR</p><h2>${escapeHtml(label)} Prompt</h2></header>${trendRuleEditor({ rule, value })}</section></main>`;
+    return `<main class="pm-today-trend-content pm-today-trend-rule-page"><section class="pm-today-trend-view">${trendRuleEditor({ rule, value })}</section></main>`;
   }
   function renderTodayTrendApp({ scope = null, presets = [], worldBooks = [], view = { name: "world", mode: "content" }, generation = {}, error = null, initializing = false, initializationDraft, initializationOpen = false, reinitializing = false, initializationMode = "reuse" } = {}) {
     const busy = ["queued", "generating", "parsing", "committing"].includes(generation.phase);

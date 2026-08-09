@@ -3591,7 +3591,7 @@ for (const expected of [
   '#pm-overlay .pm-calendar-entry-dialog textarea[name="note"]{box-sizing:border-box!important;width:100%!important;min-height:72px!important;border:1px solid var(--pm-color-border-default)!important;border-radius:var(--pm-radius-control)!important;background:var(--pm-color-surface-control)!important;color:var(--pm-color-text-primary)!important;font:var(--pm-font-weight-regular) var(--pm-font-size-body)/var(--pm-line-height-body) var(--pm-font-family-system)',
   '#pm-overlay .pm-calendar-entry-dialog textarea[name="note"]:focus-visible{outline:1px solid var(--pm-color-focus-ring)!important;outline-offset:1px!important}',
   '.pm-calendar-entry-actions button{min-height:var(--pm-size-control-default);border:0',
-  '.pm-calendar-view-switch button[aria-pressed="true"]{background:transparent;color:var(--pm-color-auxiliary);box-shadow:inset 0 -2px 0 var(--pm-color-auxiliary)',
+  '.pm-calendar-view-switch button[aria-pressed="true"]{background:transparent;color:var(--pm-color-text-primary);box-shadow:inset 0 -2px 0 var(--pm-color-text-primary)',
   '@media(prefers-reduced-motion:reduce){.pm-calendar-shell[data-calendar-view-mode] .pm-calendar-header-action.is-loading svg{animation:none}}',
   '.pm-scene-preset>span{box-sizing:border-box;width:12px;height:12px;flex:0 0 12px;border-radius:50%',
   '.pm-scene-prompt .pm-scene-accent-option{box-sizing:border-box;width:30px;height:30px;min-width:30px;min-height:30px;aspect-ratio:1;flex:0 0 30px;padding:var(--pm-space-1) !important',
@@ -3607,8 +3607,8 @@ for (const expected of [
   '.pm-today-trend-page{overflow:hidden;background:var(--pm-color-surface-page)}',
   '.pm-today-trend-header{position:sticky;top:0;z-index:var(--pm-z-base)',
   '.pm-today-trend-header button svg,.pm-today-trend-icon-button svg{width:var(--pm-size-icon-md);height:var(--pm-size-icon-md)',
-  '--pm-today-trend-bg-middle:url("./assets/today-trend/world/middle-repeat.svg")',
 ]) requireText('style.css', css, expected);
+if (css.includes('assets/today-trend/world/middle-repeat.svg') || css.includes('pm-today-trend-world-grid')) failures.push('style.css: world card layout must not retain the repeated grid background');
 const removedTodayTrendAssetPattern = /assets\/today-trend\/(?:world|reputation|faction|dynamics)\/(?:top|bottom|top-glow|starlight[^/]*)\.svg/g;
 const removedTodayTrendAssets = css.match(removedTodayTrendAssetPattern) || [];
 if (removedTodayTrendAssets.length) {

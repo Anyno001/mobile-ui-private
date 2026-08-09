@@ -38,15 +38,12 @@ function renderFirstUse({ presets, worldBooks, error, initializing, draft = {}, 
     </section></main>`;
 }
 
-const ruleLabels = Object.freeze({ world: '世界态势', reputation: '个人风评', faction: '势力图谱', dynamics: '事件追踪', 'dynamics-incident': '突发事件', 'dynamics-rumor': '流言蜚语', 'dynamics-underground': '地下线' });
-
 function renderRuleEditorPage(preset, rule, draft) {
     const [group, key = ''] = String(rule || '').split('-');
     const rules = group === 'dynamics' && key ? preset?.dynamicsRules : preset?.moduleRules;
     const field = group === 'dynamics' && key ? key : group;
     const value = draft ?? rules?.[field] ?? '';
-    const label = ruleLabels[rule] || '模块';
-    return `<main class="pm-today-trend-content pm-today-trend-rule-page"><section class="pm-today-trend-view"><header class="pm-today-trend-rule-page-head"><p class="pm-today-trend-module-eyebrow">PROMPT EDITOR</p><h2>${escapeHtml(label)} Prompt</h2></header>${trendRuleEditor({ rule, value })}</section></main>`;
+    return `<main class="pm-today-trend-content pm-today-trend-rule-page"><section class="pm-today-trend-view">${trendRuleEditor({ rule, value })}</section></main>`;
 }
 
 export function renderTodayTrendApp({ scope = null, presets = [], worldBooks = [], view = { name: 'world', mode: 'content' }, generation = {}, error = null, initializing = false, initializationDraft, initializationOpen = false, reinitializing = false, initializationMode = 'reuse' } = {}) {

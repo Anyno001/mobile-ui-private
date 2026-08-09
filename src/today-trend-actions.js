@@ -184,9 +184,9 @@ export function createTodayTrendActionDispatcher({
         event.preventDefault();
         if (form.dataset.todayTrendForm === 'rule-editor') {
             const rule = formValue(form, 'rule'), text = formValue(form, 'text');
-            if (!text) return run(Promise.reject(new Error('模块 Prompt 不能为空')));
+            if (!text) return run(Promise.reject(new Error('提示词不能为空')));
             view.ruleDraft = text;
-            return run(Promise.resolve(onSaveRule?.(rule, text)).then(async () => { const returnName = view.ruleReturnName; view.editingRule = null; view.ruleDraft = null; view.ruleReturnName = null; view.mode = 'content'; onRuleEditorStateChange(false, returnName); await rerender(); onStatus('模块 Prompt 已保存。'); }));
+            return run(Promise.resolve(onSaveRule?.(rule, text)).then(async () => { const returnName = view.ruleReturnName; view.editingRule = null; view.ruleDraft = null; view.ruleReturnName = null; view.mode = 'content'; onRuleEditorStateChange(false, returnName); await rerender(); onStatus('提示词已保存。'); }));
         }
         if (form.dataset.todayTrendForm === 'world-item') return run(commit(scope => {
             const item = readWorldItem(form); const existingIndex = scope.world.items.findIndex(current => current.id === item.id);

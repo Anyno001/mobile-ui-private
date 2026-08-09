@@ -117,10 +117,8 @@ export function installPhoneDirectory(state, deps) {
     } = deps;
     const runConversationInjectionMutation = deps.runConversationInjectionMutation
         || (task => Promise.resolve().then(task));
-    let deleteTransactionActive = false;
-    let contactSwitcherLoadSequence = 0;
-    let contactSwitcherOutsideHandler = null;
-    let contactSwitcherEscapeHandler = null;
+    let deleteTransactionActive = false, contactSwitcherLoadSequence = 0;
+    let contactSwitcherOutsideHandler = null, contactSwitcherEscapeHandler = null;
     let contactSwitcherResizeObserver = null;
     const CONTACT_SWITCHER_ID = 'pm-contact-switcher';
     const currentConversationKey = () => state.isGroupChat && state.currentGroupKey
@@ -166,9 +164,8 @@ export function installPhoneDirectory(state, deps) {
         state.groupNature = '';
         state.groupRandomNpcPrompt = '';
         state.groupColorMap = {};
-        const name = state.phoneWindow?.querySelector('.pm-name');
-        const poke = state.phoneWindow?.querySelector('.pm-name-edit');
-        const list = state.phoneWindow?.querySelector('.pm-msg-list');
+        const name = state.phoneWindow?.querySelector('.pm-name'), poke = state.phoneWindow?.querySelector('.pm-name-edit'),
+            list = state.phoneWindow?.querySelector('.pm-msg-list');
         if (name) name.textContent = '选择联系人';
         poke?.classList.add('is-hidden');
         if (list) list.innerHTML = '<div class="pm-chat-empty">暂无会话，请从标题处选择或添加联系人。</div>';
@@ -446,8 +443,8 @@ export function installPhoneDirectory(state, deps) {
         if (!groupName) return alert('请输入群聊名称');
         if (names.length < 2) return alert('至少需要 2 个角色');
         const id = getStorageId();
-        const groupSnapshot = JSON.parse(JSON.stringify(window.__pmGroupMeta));
-        const pokeSnapshot = JSON.parse(JSON.stringify(window.__pmPokeConfig));
+        const groupSnapshot = JSON.parse(JSON.stringify(window.__pmGroupMeta)),
+            pokeSnapshot = JSON.parse(JSON.stringify(window.__pmPokeConfig));
         const previousConversationContext = {
             isGroupChat: state.isGroupChat,
             groupMembers: state.groupMembers.slice(),
@@ -588,8 +585,7 @@ export function installPhoneDirectory(state, deps) {
                 closeOverlay?.('saved');
                 state.isGroupChat = true; state.groupMembers = names; state.groupExtras = [];
                 state.groupDisplayName = groupName; state.currentGroupKey = groupKey;
-                state.groupRandomNpcEnabled = false; state.groupNature = '';
-                state.groupRandomNpcPrompt = '';
+                state.groupRandomNpcEnabled = false; state.groupNature = ''; state.groupRandomNpcPrompt = '';
                 state.groupColorMap = {}; names.forEach((n, i) => { state.groupColorMap[n] = GROUP_COLORS[i % GROUP_COLORS.length]; });
                 window.__pmSwitch(groupKey, previousSaveKey, state.activeStorageId, { previousConversationContext });
             }
@@ -675,7 +671,6 @@ export function installPhoneDirectory(state, deps) {
         }, 0);
     };
 
-
     window.__pmDelGroup = async (key) => {
         const id = getStorageId();
         const groupName = window.__pmGroupMeta[id]?.[key]?.name || '未命名群聊';
@@ -738,7 +733,6 @@ export function installPhoneDirectory(state, deps) {
             }
         });
     };
-
 
     window.__pmDel = async (name) => {
         const id = getStorageId();
