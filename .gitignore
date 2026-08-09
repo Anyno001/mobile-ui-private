@@ -38,6 +38,17 @@ Thumbs.db
 *.tmp
 
 # Local AI analysis and one-off investigation artifacts
+/_reference_snapshots/
+/*.diff
+/*.patch
+/*-second.txt
+/final-*.png
+/*-visual-exploration.png
+
+# Local-only visual prototypes
+/*-prototype.html
+/signal-shared.css
+
 /.analysis-cache.md
 /.analysis-archive/
 /.analysis-parts/

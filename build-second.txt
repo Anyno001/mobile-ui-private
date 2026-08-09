@@ -1,8 +1,0 @@
-
-> tianyin-xiaojian-st@1.5.0 build
-> esbuild src/main.js --bundle --format=iife --platform=browser --target=es2020 --outfile=index.js --legal-comments=none
-
-
-  index.js  1.3mb
-
-Done in 106ms

@@ -233,21 +233,6 @@ function collectNewImportantFingerprints(baseline, current) {
   return [...current].filter(fingerprint => !baseline.has(fingerprint));
 }
 
-function collectRawPrototypeCssIssues(file, cssText) {
-  const issues = [];
-  let ast;
-  try { ast = postcss.parse(cssText, { from: file }); } catch (error) {
-    return [`prototype:${file}: invalid CSS: ${error.message}`];
-  }
-  ast.walkDecls(decl => {
-    if (decl.prop.startsWith('--') || !hasRawColorLiteral(decl.value)) return;
-    const parent = decl.parent?.type === 'rule' ? decl.parent.selector.trim() : '';
-    if (parent === ':root') return;
-    issues.push(`prototype:${file}:${decl.source?.start?.line || 0}: raw visual color in ${parent || '<at-rule>'} ${decl.prop}:${decl.value}`);
-  });
-  return issues;
-}
-
 function compareLegacyCssValues(rules, legacyValues, animationExceptions = []) {
   for (const category of Object.keys(LEGACY_VALUE_PROPERTIES)) {
     if (category === 'lineHeight') continue;
@@ -304,72 +289,12 @@ function requireCssDeclarations(rules, selector, expected) {
 const cssRules = CSS_MODULE_FILES.flatMap((file, index) => parseCssRules(cssModules[index], file));
 const governanceRegistry = JSON.parse(governanceRegistryText);
 const workspaceEntries = await readdir(root, { recursive: true });
-const discoveredPrototypeFiles = workspaceEntries.map(entry => entry.replaceAll('\\', '/'))
-  .filter(entry => /(^|\/)\*-prototype\.html$/.test(entry) || /(^|\/)[^/]+-prototype\.html$/.test(entry))
-  .map(entry => entry.replace(/^.*?mobile-ui-private\//, ''))
-const PROTOTYPE_FILES = ['signal-shared.css', ...new Set(discoveredPrototypeFiles)].sort();
-const prototypeTexts = new Map(await Promise.all(PROTOTYPE_FILES.map(async file => [
-  file,
-  await readFile(path.join(root, file), 'utf8'),
-])));
 const productionSvgFiles = workspaceEntries.map(entry => entry.replaceAll('\\', '/'))
   .filter(entry => /^assets\/.+\.svg$/i.test(entry)).sort();
 const productionSvgTexts = new Map(await Promise.all(productionSvgFiles.map(async file => [
   file,
   await readFile(path.join(root, file), 'utf8'),
 ])));
-
-function collectPrototypeBoundaryIssues(texts, prototypeRegistry) {
-  const issues = [];
-  const assets = prototypeRegistry?.assets;
-  if (!Array.isArray(assets)) return ['css-governance-registry.json: prototype.assets must be an array'];
-  const registered = new Map();
-  for (const asset of assets) {
-    if (!asset?.file || !PROTOTYPE_FILES.includes(asset.file) || !asset.kind || !asset.owner
-        || typeof asset.published !== 'boolean' || !asset.removeWhen) {
-      issues.push('css-governance-registry.json: prototype assets must declare file/kind/owner/published/removeWhen');
-      continue;
-    }
-    if (registered.has(asset.file)) issues.push(`css-governance-registry.json: duplicate prototype asset ${asset.file}`);
-    registered.set(asset.file, asset);
-  }
-  for (const file of PROTOTYPE_FILES) {
-    if (!registered.has(file)) issues.push(`css-governance-registry.json: prototype asset is not registered: ${file}`);
-    if (!texts.has(file)) issues.push(`prototype: registered asset is missing: ${file}`);
-  }
-  const allowedStyleProperties = new Set(prototypeRegistry.allowedStyleProperties || []);
-  const allowedSvgPaints = new Set(prototypeRegistry.allowedSvgPaints || ['none', 'currentColor']);
-  issues.push(...collectRawPrototypeCssIssues('signal-shared.css', texts.get('signal-shared.css') || ''));
-  if (!allowedSvgPaints.has('none') || !allowedSvgPaints.has('currentColor')) {
-    issues.push('css-governance-registry.json: prototype.allowedSvgPaints must allow none and currentColor');
-  }
-  for (const [file, text] of texts) {
-    if (file.endsWith('.html')) {
-      for (const block of text.matchAll(/<style\b[^>]*>([\s\S]*?)<\/style>/gi)) issues.push(...collectRawPrototypeCssIssues(file, block[1]));
-    }
-    for (const match of text.matchAll(/\bstyle\s*=\s*["']([^"']*)["']/gi)) {
-      const properties = match[1].split(';').map(item => item.trim()).filter(Boolean)
-        .map(item => item.slice(0, item.indexOf(':')).trim());
-      for (const property of properties) {
-        if (!allowedStyleProperties.has(property)) issues.push(`prototype:${file}: unregistered inline style property ${property}`);
-      }
-    }
-    for (const match of text.matchAll(/\b(?:fill|stroke)\s*=\s*(["'])([^"']+)\1/gi)) {
-      const paint = match[2].trim();
-      if (!allowedSvgPaints.has(paint) && !/^url\(#[\w.-]+\)$/.test(paint)) {
-        issues.push(`prototype:${file}: unregistered SVG paint ${paint}`);
-      }
-    }
-  }
-  if (cssEntry.includes('prototype.html') || cssEntry.includes('signal-shared.css')) {
-    issues.push('style.css: production entry must not import prototype assets');
-  }
-  if (source.includes('prototype.html') || source.includes('signal-shared.css')) {
-    issues.push('src: production JavaScript must not read prototype assets');
-  }
-  return issues;
-}
-for (const issue of collectPrototypeBoundaryIssues(prototypeTexts, governanceRegistry.prototype)) failures.push(issue);
 
 function collectImportantFingerprints(rules) {
   const fingerprints = new Set();
@@ -827,9 +752,6 @@ for (const issue of collectVarTokenIssues(cssRules, registeredTokenCategories, d
   if (hasRawColorVarFallback(fallbackRules[2].declarations.get('color')) || hasRawColorVarFallback(fallbackRules[3].declarations.get('mask'))) {
     failures.push('self-test: raw color var fallback detector rejected a value without a raw fallback');
   }
-  if (!collectRawPrototypeCssIssues('self-prototype.html', ':root{--x:#fff}.a{fill:#fff}').length) {
-    failures.push('self-test: prototype raw color detector accepted a consumer declaration');
-  }
   const spacingEntries = [{ path: 'self.css', selector: '.a', property: 'top', value: '2px', owner: 'self', reason: 'fixed geometry', removeWhen: 'layout migration' }];
   const matchingSpacingRules = parseCssRules('.a{top:2px}', 'self.css');
   const mismatchedSpacingRules = parseCssRules('.b{top:2px}\n.a{left:2px}', 'self.css');
@@ -1069,12 +991,6 @@ const inlineStyleSelfTest = collectDirectStyleWrites('const html = `<i style=\\"
 if (!inlineStyleSelfTest.has('color') || !inlineStyleSelfTest.has('--pm-color-accent')
     || !inlineStyleSelfTest.has('<static-style-attribute>')) {
   failures.push('self-test: inline style attribute detector did not preserve escaped property and static-value evidence');
-}
-const prototypeSvgSelfTest = collectPrototypeBoundaryIssues(new Map([['signal-shared.css', ':root{--x:#fff}'], ['self-prototype.html', '<svg fill="#fff"></svg>']]), {
-  assets: [{ file: 'signal-shared.css', kind: 'shared-css', owner: 'self', published: false, removeWhen: 'self-test' }, { file: 'self-prototype.html', kind: 'html-prototype', owner: 'self', published: false, removeWhen: 'self-test' }], allowedStyleProperties: [],
-});
-if (!prototypeSvgSelfTest.some(issue => issue.includes('unregistered SVG paint #fff'))) {
-  failures.push('self-test: prototype SVG paint detector accepted a raw color');
 }
 
 {
@@ -3432,8 +3348,8 @@ for (const expected of [
   '.pm-scene-post-author{min-width:0;flex:1;gap:var(--pm-space-0-5);padding-top:var(--pm-space-px-1)}',
   '.pm-scene-post footer{align-items:center;justify-content:center;gap:0;flex-wrap:nowrap}',
   '.pm-scene-post footer>*{flex:1 1 0;min-width:0;justify-content:center}',
-  '.pm-scene-shell{--pm-scene-hero-title-size:25px;--pm-scene-topbar-height:38px;--pm-scene-body-letter-spacing:.01em',
-  '.pm-scene-post p{font-size:var(--pm-font-size-label);line-height:var(--pm-line-height-body);letter-spacing:var(--pm-scene-body-letter-spacing)',
+  '.pm-scene-shell{--pm-scene-hero-title-size:25px;--pm-scene-topbar-height:38px;--pm-scene-body-letter-spacing:.01em;--pm-scene-post-body-letter-spacing:.025em',
+  '.pm-scene-post p{font-size:var(--pm-font-size-label);font-weight:var(--pm-font-weight-medium);line-height:var(--pm-line-height-loose);letter-spacing:var(--pm-scene-post-body-letter-spacing)',
   '.pm-scene-comment>span:first-child{flex:1;min-width:0;word-break:break-word}',
   '.pm-scene-comment-content{letter-spacing:var(--pm-scene-body-letter-spacing)}',
   '.pm-scene-comment-actions[hidden]{display:none}',
@@ -3537,7 +3453,10 @@ if (css.includes('--pm-letter-spacing-wide')) {
   failures.push('style.css: today-trend must not consume an unregistered letter-spacing token');
 }
 requireCssDeclarations(cssRules, '.pm-scene-post p', {
-  'font-size': 'var(--pm-font-size-label)', 'line-height': 'var(--pm-line-height-body)', 'letter-spacing': 'var(--pm-scene-body-letter-spacing)',
+  'font-size': 'var(--pm-font-size-label)',
+  'font-weight': 'var(--pm-font-weight-medium)',
+  'line-height': 'var(--pm-line-height-loose)',
+  'letter-spacing': 'var(--pm-scene-post-body-letter-spacing)',
 });
 requireCssDeclarations(cssRules, '.pm-scene-comment-content', { 'letter-spacing': 'var(--pm-scene-body-letter-spacing)' });
 requireCssDeclarations(cssRules, '.pm-calendar-status-relative', {
@@ -4285,6 +4204,7 @@ for (const expected of [
   requireText('css', css, expected);
 }
 const cssTokenContract = {
+  '--pm-line-height-loose': '1.75',
   '--pm-radius-pill': '999px',
   '--pm-shadow-floating': '0 8px 24px rgba(0,0,0,.14)',
   '--pm-shadow-modal': '0 16px 48px rgba(0,0,0,.18)',

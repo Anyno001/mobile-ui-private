@@ -46,7 +46,8 @@
 | 私有 token | 根选择器 | 语义与适用范围 |
 | --- | --- | --- |
 | `--pm-scene-topbar-height` | `.pm-scene-shell` | 场景顶栏的稳定结构高度；同时锚定顶栏菜单的 `top`，避免两个 `38px` 声明漂移。仅社区场景使用，不随主题改变。 |
-| `--pm-scene-body-letter-spacing` | `.pm-scene-shell` | 社区帖子与评论正文共用的轻度字距，改善小字号中文阅读的视觉呼吸感；仅社区正文消费，不随主题改变。 |
+| `--pm-scene-post-body-letter-spacing` | `.pm-scene-shell` | 社区帖子正文专用的扩展字距；避免提高评论字距，仅 `.pm-scene-post p` 消费，不随主题改变。 |
+| `--pm-scene-body-letter-spacing` | `.pm-scene-shell` | 社区评论正文的轻度字距，改善小字号中文阅读的视觉呼吸感；仅 `.pm-scene-comment-content` 消费，不随主题改变。 |
 | `--pm-calendar-status-value-offset` | `.pm-calendar-status-card` | 日历状态卡大号数值在 SF/Segoe UI 回退栈中的光学校正位移；仅供 `translateY()` 消费，不改变卡片布局或主题值。 |
 
 ## 4. 颜色与表面
@@ -114,10 +115,13 @@ hover 与 active 优先通过现有表面色、文字色和描边变化表达，
 | `--pm-line-height-tight` | `1.2` | 单行标题、按钮 |
 | `--pm-line-height-control` | `1.4` | 控件和说明 |
 | `--pm-line-height-body` | `1.5` | 多行正文 |
+| `--pm-line-height-loose` | `1.75` | 需要更舒展阅读节奏的长正文 |
 
 MUST 从表中选择。控件与正文统一使用 14px，避免为了紧凑牺牲可读性。10px 及以下只允许非关键装饰；17px 以上只允许少量页面主标题或数据展示，并定义组件私有 token。正文不使用超粗字重、全大写或过密行高。字重只允许 400/500/600 三档，不得使用 650/700/750 等非标准字重，避免不同系统字体映射不一致。
 
-生产规则的 `line-height`（含 `font` 简写）必须引用三个公共 `--pm-line-height-*` token。图标、固定行盒与展示排版确实需要字面行高时，必须逐项登记在 `css-governance-registry.json` 的 `lineHeightExceptions`，并写明 owner、原因与移除条件；未登记字面量由 checker 拒绝。
+全局定义：`--pm-line-height-loose:1.75`。
+
+生产规则的 `line-height`（含 `font` 简写）必须引用已登记的公共 `--pm-line-height-*` token。图标、固定行盒与展示排版确实需要字面行高时，必须逐项登记在 `css-governance-registry.json` 的 `lineHeightExceptions`，并写明 owner、原因与移除条件；未登记字面量由 checker 拒绝。
 
 ## 6. 间距、尺寸与圆角
 
