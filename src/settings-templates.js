@@ -115,10 +115,10 @@ export function renderLookSettings({ theme, presetButtons, desktopBackgroundButt
       <div class="pm-settings-section">
         <div class="pm-cfg-label">气泡颜色</div>
         <div class="pm-settings-inline-row">
-          <label class="pm-cfg-label pm-inline-label">自定义右</label>
-          <input id="pm-custom-right" type="color" value="${rightColor}" onchange="window.__pmSetCustomColor()" class="pm-color-pick">
-          <label class="pm-cfg-label pm-inline-label">自定义左</label>
           <input id="pm-custom-left" type="color" value="${leftColor}" onchange="window.__pmSetCustomColor()" class="pm-color-pick">
+          <label class="pm-cfg-label pm-inline-label">自定义左</label>
+          <input id="pm-custom-right" type="color" value="${rightColor}" onchange="window.__pmSetCustomColor()" class="pm-color-pick">
+          <label class="pm-cfg-label pm-inline-label">自定义右</label>
           <button type="button" onclick="window.__pmClearCustomColor()" class="pm-color-clear">重置</button>
         </div>
       </div>

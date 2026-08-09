@@ -1,4 +1,4 @@
-import { THEME_PRESETS } from './config.js';
+import { resolveThemeAuxiliary, THEME_PRESETS } from './config.js';
 import { contrastText, escapeAttr, escapeHtml } from './ui.js';
 import { CLOSE_ICON_SVG } from './icons.js';
 import {
@@ -11,6 +11,7 @@ function applySubOverlayTheme(overlay) {
     // 与 applyTheme 保持同一语义：苹果皮肤是独立浅色界面，不继承暗色骨架变量。
     const interfaceMode = theme.preset === 'apple' ? 'light' : (theme.darkMode || 'light');
     const customAccent = theme.preset === 'custom' ? String(theme.customAccent || '').trim() : '';
+    const auxiliary = resolveThemeAuxiliary(preset, customAccent);
     const defaultRight = theme.preset === 'custom' && customAccent ? customAccent : interfaceMode === 'dark' ? preset.rightDark || preset.right : preset.right;
     const defaultLeft = interfaceMode === 'dark' ? preset.leftDark || preset.left : preset.left;
     const rightBackground = theme.customRight || defaultRight;
@@ -26,6 +27,7 @@ function applySubOverlayTheme(overlay) {
     overlay.style.setProperty('--pm-color-accent', customAccent || preset.accent || preset.right);
     for (const token of Object.keys(skinTokens)) overlay.style.removeProperty(token);
     for (const [token, value] of Object.entries(uiTokens)) overlay.style.setProperty(token, value);
+    overlay.style.setProperty('--pm-color-auxiliary', auxiliary);
     overlay.dataset.theme = interfaceMode;
     if (theme.preset === 'apple') overlay.dataset.skin = 'apple';
     else delete overlay.dataset.skin;

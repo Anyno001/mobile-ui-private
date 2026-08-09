@@ -1,5 +1,5 @@
 import {
-    DEFAULT_INDEPENDENT_API_TEMPERATURE, extractAiResponseContent, normalizeIndependentApiTemperature,
+    DEFAULT_INDEPENDENT_API_TEMPERATURE, extractAiResponseContent, fetchWithCorsProxy, normalizeIndependentApiTemperature,
 } from './ai.js';
 import { normalizeInjectionConfig } from './behavior-config.js';
 import { normalizeBudgetConfig } from './budget.js';
@@ -57,7 +57,7 @@ export function installSettingsUi(deps) {
         },
     });
     const apiSettings = createApiRequestController({
-        runtime, normalizeApiUrls, extractAiResponseContent, normalizeIndependentApiTemperature,
+        runtime, normalizeApiUrls, fetchWithCorsProxy, extractAiResponseContent, normalizeIndependentApiTemperature,
         defaultTemperature: DEFAULT_INDEPENDENT_API_TEMPERATURE, apiDraftMode, clone, saveProfiles, addOrUpdateProfile,
         addNote, showApi: () => window.__pmShowConfig('api'), showModelPicker, escapeAttr, escapeHtml,
     });

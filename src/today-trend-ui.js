@@ -38,7 +38,7 @@ export function trendModuleHead({ title, menuId, menuOpenId, actions = [], meta 
 
 export function trendRuleEditor({ rule, value = '' } = {}) {
     if (!rule) return '';
-    return `<form class="pm-today-trend-editor pm-today-trend-rule-editor" data-today-trend-form="rule-editor"><input type="hidden" name="rule" value="${escapeAttr(rule)}"><label class="pm-today-trend-field">模块 Prompt<textarea class="pm-today-trend-input" name="text" maxlength="12000" required>${escapeHtml(value)}</textarea></label><div class="pm-today-trend-form-actions"><button type="button" data-action="today-trend-cancel-rule-editor">取消</button><button type="submit">保存 Prompt</button></div></form>`;
+    return `<form class="pm-today-trend-editor pm-today-trend-rule-editor" data-today-trend-form="rule-editor"><input type="hidden" name="rule" value="${escapeAttr(rule)}"><label class="pm-today-trend-field">模块 Prompt<textarea class="pm-today-trend-input" name="text" maxlength="12000" required autofocus>${escapeHtml(value)}</textarea></label><div class="pm-today-trend-form-actions"><button type="button" data-action="today-trend-cancel-rule-editor">返回</button><button type="submit">保存 Prompt</button></div></form>`;
 }
 
 export function trendToggleField(name, label, checked) {

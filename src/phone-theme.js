@@ -1,4 +1,4 @@
-import { THEME_PRESETS } from './config.js';
+import { resolveThemeAuxiliary, THEME_PRESETS } from './config.js';
 import { contrastText } from './ui.js';
 
 export function createPhoneThemeController(state) {
@@ -7,6 +7,7 @@ export function createPhoneThemeController(state) {
         const preset = THEME_PRESETS[theme.preset] || THEME_PRESETS.default;
         const interfaceMode = theme.preset === 'apple' ? 'light' : (theme.darkMode || 'light');
         const customAccent = theme.preset === 'custom' ? String(theme.customAccent || '').trim() : '';
+        const auxiliary = resolveThemeAuxiliary(preset, customAccent);
         const defaultRight = theme.preset === 'custom' && customAccent ? customAccent : interfaceMode === 'dark' ? preset.rightDark || preset.right : preset.right;
         const defaultLeft = interfaceMode === 'dark' ? preset.leftDark || preset.left : preset.left;
         const rightBackground = theme.customRight || defaultRight;
@@ -24,6 +25,7 @@ export function createPhoneThemeController(state) {
             element.style.setProperty('--pm-color-accent', customAccent || preset.accent || preset.right);
             for (const token of Object.keys(skinTokens)) element.style.removeProperty(token);
             for (const [token, value] of Object.entries(uiTokens)) element.style.setProperty(token, value);
+            element.style.setProperty('--pm-color-auxiliary', auxiliary);
             element.setAttribute('data-theme', interfaceMode);
             if (theme.preset === 'apple') element.setAttribute('data-skin', 'apple');
             else element.removeAttribute('data-skin');

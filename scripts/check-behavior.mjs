@@ -921,6 +921,7 @@ assert.deepEqual(normalizeCharacterBehavior({
     transferFrequency: 'never',
     imageFrequency: 'frequent',
     emojiFrequency: 'rare',
+    quoteFrequency: 'occasional',
 }), {
     privateStylePrompt: '冷淡一点',
     groupStylePrompt: '',
@@ -928,6 +929,7 @@ assert.deepEqual(normalizeCharacterBehavior({
     transferFrequency: 'never',
     imageFrequency: 'frequent',
     emojiFrequency: 'rare',
+    quoteFrequency: 'occasional',
 });
 
 const behaviorStore = normalizeCharacterBehaviorStore({
@@ -947,6 +949,7 @@ const singleBehaviorPrompt = buildCharacterBehaviorPrompt({ story: {
 assert.match(singleBehaviorPrompt, /Alice：线上风格：冷淡一点/);
 assert.match(singleBehaviorPrompt, /消息长度：偏短/);
 assert.match(singleBehaviorPrompt, /转账：不要使用/);
+assert.match(singleBehaviorPrompt, /引用他人聊天：跟随角色人设/);
 assert.match(singleBehaviorPrompt, /不得覆盖系统格式/);
 const groupBehaviorPrompt = buildCharacterBehaviorPrompt({ story: {
     Alice: { privateStylePrompt: '私聊风格', groupStylePrompt: '群聊风格' },
@@ -1109,7 +1112,7 @@ assert.equal(getGalBubbleAssistantText([
     '<msg side="left">林夏|角色回复</msg>',
 ].join('\n')), '角色回复', '单聊 GAL 消费端只允许 left 角色回复进入助手历史');
 
-const exportedGalScript = JSON.parse(readFileSync(new URL('../regex-msg_独立对话气泡_gal版(1).json', import.meta.url), 'utf8'));
+const exportedGalScript = JSON.parse(readFileSync(new URL('../[天音] GAL气泡_独立对白.json', import.meta.url), 'utf8'));
 assert.deepEqual(exportedGalScript, getGalBubbleScriptDefinition(),
     'GAL 独立正则 JSON 必须与运行时安装定义保持逐字段一致');
 
@@ -2409,6 +2412,12 @@ assert.equal(THEME_PRESETS.pink.rightDark, '#FFC4D4', '粉色夜间必须保留�
 assert.equal(THEME_PRESETS.mint.right, '#9FBE8C', '薄荷日间必须使用暖鼠尾草绿色');
 assert.equal(THEME_PRESETS.mint.left, '#F3EBDD', '薄荷日间必须搭配米色左气泡');
 assert.equal(THEME_PRESETS.frost.frost, true, '磨砂预设必须启用玻璃效果标记');
+assert.deepEqual(Object.fromEntries(Object.entries(THEME_PRESETS).map(([name, preset]) => [name, preset.auxiliary])), {
+    default: '#B85C19', dark: '#A85A00', pink: '#287C78',
+    mint: '#7C476D', frost: '#A94F3D', apple: '#719A3E',
+}, '每个主题必须提供与强调色角色不同的稳定辅助色');
+for (const preset of Object.values(THEME_PRESETS)) assert.notEqual(preset.auxiliary.toLowerCase(), preset.accent.toLowerCase(),
+    '主题辅助色不得与强调色相同');
 assert.notEqual(THEME_PRESETS.apple.left, THEME_PRESETS.apple.ui['--pm-color-surface-page'],
     '苹果左气泡必须与页面底色区分，不能融合');
 assert.equal(THEME_PRESETS.apple.ui['--pm-color-accent'], undefined,
@@ -2419,7 +2428,7 @@ assert.match(settingsOverlayHtml, /data-theme-mode="light" aria-pressed="true" o
     '苹果皮肤必须明确显示日间已选中且锁定');
 assert.match(settingsOverlayHtml, /data-theme-mode="dark" aria-pressed="false" onclick="window\.__pmSetDarkMode\('dark'\)" disabled>夜间<\/button>/,
     '苹果皮肤必须明确显示夜间未选中且锁定');
-assert.match(settingsOverlayHtml, /style="background:#893619" aria-hidden="true"/);
+assert.match(settingsOverlayHtml, /style="background:#4F7D24" aria-hidden="true"/);
 assert.doesNotMatch(settingsOverlayHtml, /pm-theme-dot[^>]*><\/span>[^<]+<\/button>/,
     '颜色预设按钮只能显示色点，不得出现可见标签正文');
 assert.doesNotMatch(settingsOverlayHtml, /<div class="pm-theme-chip/);
@@ -2544,8 +2553,13 @@ await new Promise(resolve => setTimeout(resolve, 0));
 const appleModelDropdown = uiElements.get('pm-model-dropdown');
 assert.equal(appleModelDropdown.dataset.theme, 'light', '苹果主题首次创建模型浮层必须强制浅色');
 assert.equal(appleModelDropdown.dataset.skin, 'apple', '苹果主题首次创建模型浮层必须标记苹果皮肤');
+assert.equal(appleModelDropdown.style.values.get('--pm-color-accent'), '#4F7D24', '苹果主题首次创建模型浮层必须注入果园绿主强调色');
+assert.equal(appleModelDropdown.style.values.get('--pm-color-auxiliary'), '#719A3E', '苹果主题首次创建模型浮层必须注入叶绿辅助色');
+assert.equal(appleModelDropdown.style.values.get('--pm-color-focus-ring'), '#668D32', '苹果主题首次创建模型浮层必须注入绿色焦点色');
 assert.equal(appleModelDropdown.style.values.get('--pm-color-surface-page'), '#F8F5EE', '苹果主题首次创建模型浮层必须注入旧纸米白页面 token');
-assert.equal(appleModelDropdown.style.values.get('--pm-color-success'), '#7A9C45', '苹果主题首次创建模型浮层必须注入叶绿色 token');
+assert.equal(appleModelDropdown.style.values.get('--pm-color-success'), '#5F9E38', '苹果主题首次创建模型浮层必须注入果园绿色状态 token');
+assert.equal(appleModelDropdown.style.values.get('--pm-color-on-accent'), '#FFFFFF',
+    '苹果主题主强调色上的文字必须使用通过对比度校验的白色前景');
 window.__pmShowModelPicker();
 assert.equal(uiElements.has('pm-model-dropdown'), false, '苹果模型浮层关闭后不得残留');
 
@@ -3346,15 +3360,23 @@ window.__pmTheme.darkMode = 'dark';
 foundationDeps.applyTheme();
 assert.equal(foundationPhone['data-theme'], 'light', '苹果主题必须强制浅色界面，不得继承 darkMode');
 assert.equal(foundationPhone['data-skin'], 'apple', '苹果主题必须标记 data-skin');
-assert.equal(foundationPhoneStyleValues.get('--pm-color-accent'), '#893619', '苹果主题必须写入酒酿棕主强调色');
+assert.equal(synchronizedDropdown.dataset.theme, 'light', '已存在模型浮层必须同步苹果浅色界面');
+assert.equal(synchronizedDropdown.dataset.skin, 'apple', '已存在模型浮层必须同步苹果皮肤标记');
+assert.equal(foundationPhoneStyleValues.get('--pm-color-accent'), '#4F7D24', '苹果主题必须写入果园绿主强调色');
+assert.equal(foundationPhoneStyleValues.get('--pm-color-auxiliary'), '#719A3E', '苹果主题必须写入较亮的绿色辅助交互色');
+assert.equal(foundationPhoneStyleValues.get('--pm-color-focus-ring'), '#668D32', '苹果主题必须写入可辨识的绿色焦点色');
 assert.equal(foundationPhoneStyleValues.get('--pm-color-surface-page'), '#F8F5EE', '苹果主题必须写入旧纸米白骨架变量');
-assert.equal(foundationPhoneStyleValues.get('--pm-color-success'), '#7A9C45', '苹果主题必须写入叶绿色状态色');
+assert.equal(foundationPhoneStyleValues.get('--pm-color-success'), '#5F9E38', '苹果主题必须写入果园绿色状态色');
+assert.equal(synchronizedDropdown.style.values.get('--pm-color-accent'), '#4F7D24', '已存在模型浮层必须同步果园绿主强调色');
+assert.equal(synchronizedDropdown.style.values.get('--pm-color-auxiliary'), '#719A3E', '已存在模型浮层必须同步叶绿辅助色');
+assert.equal(synchronizedDropdown.style.values.get('--pm-color-focus-ring'), '#668D32', '已存在模型浮层必须同步绿色焦点色');
+assert.equal(synchronizedDropdown.style.values.get('--pm-color-success'), '#5F9E38', '已存在模型浮层必须同步果园绿色状态色');
 
 // 自定义气泡色只影响气泡，不得改写全局强调色。
 window.__pmTheme.customRight = '#123456';
 foundationDeps.applyTheme();
 assert.equal(foundationPhoneStyleValues.get('--pm-r-bg'), '#123456', '自定义右气泡色必须生效');
-assert.equal(foundationPhoneStyleValues.get('--pm-color-accent'), '#893619', '自定义气泡色不得覆盖界面强调色');
+assert.equal(foundationPhoneStyleValues.get('--pm-color-accent'), '#4F7D24', '自定义气泡色不得覆盖界面强调色');
 delete window.__pmTheme.customRight;
 
 // 切回内置浅色主题必须清除苹果专属 token 与皮肤标记。
@@ -3362,8 +3384,11 @@ window.__pmTheme.preset = 'default';
 window.__pmTheme.darkMode = 'light';
 foundationDeps.applyTheme();
 assert.equal(foundationPhone['data-skin'], undefined, '非苹果主题必须移除 data-skin');
+assert.equal(synchronizedDropdown.dataset.skin, undefined, '已存在模型浮层切回非苹果主题时必须移除 data-skin');
 assert.equal(foundationPhoneStyleValues.has('--pm-color-surface-page'), false, '切回内置主题必须清除苹果专属 token');
+assert.equal(synchronizedDropdown.style.values.has('--pm-color-surface-page'), false, '已存在模型浮层切回内置主题时必须清除苹果专属 token');
 assert.equal(foundationPhoneStyleValues.get('--pm-color-accent'), '#1677d2', '切回日间主题必须恢复默认强调色');
+assert.equal(synchronizedDropdown.style.values.get('--pm-color-accent'), '#1677d2', '已存在模型浮层切回日间主题时必须恢复默认强调色');
 
 window.__pmTheme.preset = 'frost';
 foundationDeps.applyTheme();
@@ -3487,7 +3512,7 @@ assertApiControlsRestored();
 
 globalThis.fetch = async () => { throw new TypeError('network unavailable'); };
 assert.equal(await window.__pmTestApi(uiElements.get('pm-api-fetch-models')), false);
-assert.match(uiElements.get('pm-api-status').textContent, /network unavailable/);
+assert.match(uiElements.get('pm-api-status').textContent, /浏览器直连失败（TypeError），酒馆代理请求也失败（TypeError）/);
 assert.equal(uiElements.get('pm-api-status').dataset.state, 'error', '网络错误必须标记 error 状态');
 assertApiControlsRestored();
 
@@ -6639,7 +6664,7 @@ assert.ok(baseDesktopHtml.length > 0, '无有效会话时基础桌面不得为�
 assert.match(baseDesktopHtml, /<span>天音小笺<\/span>/, '旧主题或无主题时桌面标题必须回退为品牌名');
 assert.match(baseDesktopHtml, /class="pm-desktop-community-dock"/);
 assert.match(baseDesktopHtml, /data-action="desktop-community" aria-label="发布一条"/);
-for (const [app, label] of [['chat', '聊天'], ['directory', '联系人'], ['settings', '设置'], ['calendar', '日历'], ['today-trend', '今日风向']]) {
+for (const [app, label] of [['chat', '会话'], ['directory', '联系人'], ['settings', '设置'], ['calendar', '日历'], ['today-trend', '今日风向']]) {
     assert.match(baseDesktopHtml, new RegExp(`data-app="${app}"[^>]*data-action="desktop-${app}"`));
     assert.match(baseDesktopHtml, new RegExp(`<span class="pm-desktop-app-label">${label}</span>`));
 }
@@ -6648,6 +6673,11 @@ for (const action of ['desktop-chat', 'desktop-directory', 'desktop-settings', '
 }
 globalThis.window = { __pmTheme: { customTitle: '雨夜 & 电台' } };
 assert.match(renderPhoneDesktop({ scenes: {} }, { pinnedSceneIds: [] }), /<span>雨夜 &amp; 电台<\/span>/, '桌面必须渲染并转义自定义标题');
+const pinnedDesktopHtml = renderPhoneDesktop({ scenes: {
+    'scene-local': { id: 'scene-local', title: '本地社区', preset: 'weibo', themeAccent: '#123abc' },
+} }, { pinnedSceneIds: ['scene-local'] });
+assert.match(pinnedDesktopHtml, /class="pm-desktop-pin"[^>]*>[\s\S]*data-action="desktop-open-scene"[^>]*><b>本地社区<\/b><\/button>/,
+    '普通固定社区必须使用单标题主按钮');
 const sharedDesktopHtml = renderPhoneDesktop({ scenes: {} }, { pinnedSceneIds: [] }, [{
     id: 'template-shared', sourceStorageId: 'source-story', sourceSceneId: 'scene-shared', title: '共享 < 社区',
     preset: 'weibo', styleInput: '', generatedPrompt: '', themeAccent: '#123abc', sharedAt: 1,
@@ -6656,6 +6686,10 @@ assert.match(sharedDesktopHtml, /data-action="desktop-import-community-template"
     '其他窗口桌面必须提供导入配置模板的入口');
 assert.match(sharedDesktopHtml, /共享 &lt; 社区/, '共享模板标题必须按普通卡片规则转义');
 assert.match(sharedDesktopHtml, /style="--scene-accent:#123abc"/, '模板入口必须透传模板的场景主题色');
+assert.match(sharedDesktopHtml, /class="pm-desktop-pin pm-desktop-template"[^>]*>[\s\S]*data-action="desktop-import-community-template"[^>]*><b>共享 &lt; 社区<\/b><\/button>/,
+    '跨窗口模板必须复用普通固定社区的单标题主按钮结构');
+assert.doesNotMatch(sharedDesktopHtml, /pm-desktop-template-icon|<small>导入社区模板<\/small>/,
+    '跨窗口模板不得保留独立图标和副标题样式');
 delete globalThis.window;
 
 assert.deepEqual(
@@ -6926,10 +6960,12 @@ const pinnedLauncherHtml = renderCommunityLauncher(launcherScope, {
     pinnedSceneIds: ['scene-card'], storageId: 'story', sharedCommunityTemplates: [publishedLauncherTemplate],
 });
 assert.match(pinnedLauncherHtml, /class="pm-scene-pin-action"[^>]*aria-pressed="true"[^>]*aria-label="取消固定社区"[^>]*>[\s\S]*?<path d="M4 19V8l8-4 8 4v11"/);
-assert.match(pinnedLauncherHtml, /class="pm-scene-template-action"[^>]*data-action="publish-community-template"[^>]*aria-label="更新共享模板"/,
-    '已发布社区必须保留显式更新模板入口');
 assert.match(pinnedLauncherHtml, /class="pm-scene-template-action pm-scene-template-unpublish"[^>]*data-action="unpublish-community-template"[^>]*aria-label="取消发布共享模板"/,
-    '已发布社区必须提供与更新分离的可访问取消发布动作');
+    '已发布社区必须将原 SVG 动作切换为取消发布');
+assert.doesNotMatch(pinnedLauncherHtml, /data-action="publish-community-template"/,
+    '已发布社区不得同时渲染更新和取消发布两个相同 SVG 按钮');
+assert.equal((pinnedLauncherHtml.match(/class="pm-scene-template-action(?:\s[^"]*)?"/g) || []).length, 1,
+    '每个社区卡片只能渲染一个共享模板 SVG 动作');
 
 const desktopTransitionCalls = [];
 const desktopStore = { scopes: { story: { activeSceneId: null, sceneOrder: [], scenes: {}, actors: {} } } };

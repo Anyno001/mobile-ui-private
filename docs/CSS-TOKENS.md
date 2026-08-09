@@ -70,6 +70,7 @@
 | `--pm-color-border-default` | `#dedfe6` | `#414149` |
 | `--pm-color-border-strong` | `#b7b7bd` | `#48484a` |
 | `--pm-color-accent` | `#1677d2` | `#0a84ff` |
+| `--pm-color-auxiliary` | 当前主题预设的相邻色或对比色；自定义主题按强调色色相映射到独立辅助色 | 同左 |
 | `--pm-color-success` | `#34c759` | `#34c759` |
 | `--pm-color-warning` | `#ff9500` | `#ff9500` |
 | `--pm-color-danger` | `#ff3b30` | `#ff3b30` |
@@ -95,6 +96,8 @@
 透明度只保留两档：`--pm-opacity-disabled:.45` 与 `--pm-opacity-muted:.62`。前者用于禁用控件，后者用于非当前图标、装饰或不参与当前任务的整体区域。有阅读价值的正文和说明文字优先使用 secondary/tertiary 文字色，不得通过 opacity 降低可读性；遮罩只使用 `--pm-color-overlay`。
 
 `accent/success/warning/danger` 可直接用于达到 3:1 对比度的图标和控件描边，不再为每种用途复制 `icon-*`、`border-*` token。只有实测达到 4.5:1 时才可直接用于普通字号文字；否则标签使用 primary 文字，并用语义图标、描边和文案共同表达状态。选中态优先使用现有 control/card 表面配合满足对比度的 accent 图标或描边；只有跨两个以上组件族仍无法清晰表达时，才允许新增全局选中态 token。
+
+`--pm-color-auxiliary` 只表达与主题强调色不同色系的配套辅助色，统一用于圆形交互按钮、圆形选择控件与胶囊开关的开启态；成功、警告和危险状态仍使用各自语义 token，不得以辅助色替代。主题预设不得仅通过调整强调色明度生成辅助色。
 
 hover 与 active 优先通过现有表面色、文字色和描边变化表达，不为每个组件创建透明混色 token。确需半透明语义层时，必须先证明三层表面色无法表达，并使用组件私有 token。
 

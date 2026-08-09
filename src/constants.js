@@ -20,7 +20,7 @@ export const GAL_BUBBLE_ENABLED_KEY = 'ST_SMS_GAL_BUBBLE_ENABLED';
 export const VOICE_MAX_SEC = 60;
 export const MODEL_VISIBLE_ROWS = 4;
 export const MESSAGE_LENGTH_VALUES = Object.freeze(['persona', 'short', 'medium', 'long']);
-export const FREQUENCY_VALUES = Object.freeze(['never', 'rare', 'occasional', 'frequent']);
+export const FREQUENCY_VALUES = Object.freeze(['persona', 'never', 'rare', 'occasional', 'frequent']);
 export const MAX_INJECTION_DEPTH = 10000;
 export const EXTENSION_PROMPT_POSITIONS = Object.freeze({
     NONE: -1,

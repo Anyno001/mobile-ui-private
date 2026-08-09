@@ -190,6 +190,10 @@ function parseCssRules(cssText, sourcePath = 'style.css') {
 
 const PADDING_MARGIN_PROPERTY = /^(?:padding|margin)(?:-(?:top|right|bottom|left|inline|block|inline-start|inline-end|block-start|block-end))?$/;
 const SPACING_LITERAL = /(?<![\w.-])(?:-?\d+(?:\.\d+)?px|0|auto|100%)(?![\w.-])/;
+const INCREMENTAL_DIMENSION_PROPERTY = /^(?:width|height|min-width|min-height|max-width|max-height|flex-basis|grid-template-columns)$/;
+const INCREMENTAL_RAW_PX = /(?<![\w.-])(-?\d+(?:\.\d+)?)px(?![\w.-])/g;
+const INCREMENTAL_RAW_WEIGHT = /^(?:400|500|600)(?: !important)?$/;
+const INCREMENTAL_TRANSFORM = /\b(?:translate|translateX|translateY|translate3d)\(/i;
 const RADIUS_PROPERTY = /^(?:border-radius|border-(?:top|bottom)-(?:left|right)-radius|border-(?:start|end)-(?:start|end)-radius)$/;
 const FONT_SIZE_LITERAL = /(?<![\w.-])\d+(?:\.\d+)?px(?![\w.-])/;
 const EMPTY_LEGACY_VALUE_CATEGORIES = new Set(['fontSize', 'lineHeight', 'radius', 'zIndex', 'animation']);
@@ -262,6 +266,67 @@ function compareLegacyCssValues(rules, legacyValues, animationExceptions = []) {
   }
 }
 
+function normalizeIncrementalContext(value) {
+  return String(value).trim().replace(/\s+/g, ' ').replace(/\s*([,:>+~()])\s*/g, '$1');
+}
+
+function incrementalDeclarationFingerprint(rule, selector, property, value) {
+  return `${rule.path}::${normalizeIncrementalContext(rule.parent)}::${normalizeIncrementalContext(selector)}::${property}::${normalizeCssValue(value)}`;
+}
+
+function hasNonZeroRawPx(value) {
+  return [...String(value).matchAll(INCREMENTAL_RAW_PX)].some(match => Number(match[1]) !== 0);
+}
+
+function incrementalHardcodeReason(property, value) {
+  if (property === 'line-height' && !value.startsWith('var(')
+      && !['inherit', 'initial', 'unset'].includes(value)) return 'bare line-height';
+  if (property === 'font-weight' && INCREMENTAL_RAW_WEIGHT.test(value)) return 'bare font-weight';
+  if (INCREMENTAL_DIMENSION_PROPERTY.test(property) && hasNonZeroRawPx(value)) return 'bare fixed dimension';
+  if (property === 'transform' && INCREMENTAL_TRANSFORM.test(value) && hasNonZeroRawPx(value)) return 'bare transform offset';
+  return '';
+}
+
+function collectIncrementalHardcodeFingerprints(rules) {
+  const fingerprints = new Set();
+  for (const rule of rules) for (const [property, rawValue] of rule.declarations) {
+    if (property.startsWith('--')) continue;
+    const value = normalizeCssValue(rawValue);
+    if (!incrementalHardcodeReason(property, value)) continue;
+    for (const selector of rule.selectors) fingerprints.add(incrementalDeclarationFingerprint(rule, selector, property, value));
+  }
+  return fingerprints;
+}
+
+function collectIncrementalHardcodeIssues(currentRules, baselineFingerprints) {
+  const issues = [];
+  for (const rule of currentRules) for (const [property, rawValue] of rule.declarations) {
+    if (property.startsWith('--')) continue;
+    const value = normalizeCssValue(rawValue);
+    const reason = incrementalHardcodeReason(property, value);
+    if (!reason) continue;
+    for (const selector of rule.selectors) {
+      const fingerprint = incrementalDeclarationFingerprint(rule, selector, property, value);
+      if (!baselineFingerprints.has(fingerprint)) issues.push(`${rule.path}:${rule.line}: ${selector} adds incremental ${reason} ${property}:${value}`);
+    }
+  }
+  return issues;
+}
+
+function readHeadCssRules(files) {
+  const rules = [];
+  const unavailableFiles = [];
+  for (const file of files) {
+    try {
+      const text = execFileSync('git', ['show', `HEAD:${file}`], { cwd: root, encoding: 'utf8', windowsHide: true });
+      rules.push(...parseCssRules(text, file));
+    } catch {
+      unavailableFiles.push(file);
+    }
+  }
+  return { rules, unavailableFiles };
+}
+
 function collectSpacingLegacyIssues(rules, entries) {
   const issues = [];
   for (const rule of rules) for (const [property, rawValue] of rule.declarations) {
@@ -288,6 +353,15 @@ function requireCssDeclarations(rules, selector, expected) {
 
 const cssRules = CSS_MODULE_FILES.flatMap((file, index) => parseCssRules(cssModules[index], file));
 const governanceRegistry = JSON.parse(governanceRegistryText);
+const versionedIncrementalBaseline = new Set(governanceRegistry.incrementalHardcodeBaseline || []);
+const { rules: headCssRules, unavailableFiles: headUnavailableFiles } = readHeadCssRules(CSS_MODULE_FILES);
+const incrementalBaselineFingerprints = collectIncrementalHardcodeFingerprints(headCssRules);
+for (const file of headUnavailableFiles) {
+  for (const fingerprint of versionedIncrementalBaseline) {
+    if (fingerprint.startsWith(`${file}::`)) incrementalBaselineFingerprints.add(fingerprint);
+  }
+}
+for (const issue of collectIncrementalHardcodeIssues(cssRules, incrementalBaselineFingerprints)) failures.push(issue);
 const workspaceEntries = await readdir(root, { recursive: true });
 const productionSvgFiles = workspaceEntries.map(entry => entry.replaceAll('\\', '/'))
   .filter(entry => /^assets\/.+\.svg$/i.test(entry)).sort();
@@ -612,7 +686,12 @@ function collectFrozenSpacingTokenIssues(declaredSpacingTokens, frozenSpacingTok
 }
 const FONT_WEIGHT_LITERAL = /(?<![\w.-])[1-9]\d{2}(?![\w.-])/g;
 const LINE_HEIGHT_SHORTHAND = /\/\s*([^\s/]+)(?=\s|$)/;
-const ALLOWED_FONT_FAMILY_VALUES = new Set(['var(--pm-font-family-system)', 'var(--pm-font-family-mono)', 'inherit']);
+const ALLOWED_FONT_FAMILY_VALUES = new Set([
+  'var(--pm-font-family-system)',
+  'var(--pm-font-family-mono)',
+  'var(--mainFontFamily)',
+  'inherit',
+]);
 function collectFontFamilyIssues(rules) {
   const issues = [];
   for (const rule of rules) for (const [property, rawValue] of rule.declarations) {
@@ -767,13 +846,13 @@ const runtimeTokenSet = new Set([
 ]);
 for (const issue of collectVarTokenIssues(cssRules, registeredTokenCategories, declaredCustomProperties, runtimeTokenSet)) failures.push(issue);
 {
-  const fontFamilyPositiveRules = parseCssRules('.a{font-family:var(--pm-font-family-system)}\n.b{font:var(--pm-font-weight-regular) var(--pm-font-size-body)/var(--pm-line-height-body) var(--pm-font-family-mono)}\n.c{font:inherit}');
+  const fontFamilyPositiveRules = parseCssRules('.a{font-family:var(--pm-font-family-system)}\n.b{font:var(--pm-font-weight-regular) var(--pm-font-size-body)/var(--pm-line-height-body) var(--pm-font-family-mono)}\n.c{font:inherit}\n.d{font-family:var(--mainFontFamily)}');
   const fontFamilyNegativeRules = parseCssRules('.a{font-family:Arial,sans-serif}\n.b{font:var(--pm-font-weight-regular) var(--pm-font-size-body)/var(--pm-line-height-body) Arial,sans-serif}\n.c{font:var(--pm-font-weight-regular) var(--pm-font-size-body)/var(--pm-line-height-body) inherit}');
   if (collectFontFamilyIssues(fontFamilyPositiveRules).length) failures.push('self-test: font-family detector rejected compliant declarations');
   if (collectFontFamilyIssues(fontFamilyNegativeRules).length !== 3) failures.push('self-test: font-family detector did not flag raw families or invalid shorthand inherit');
   const embeddedFontFamilyPositiveModules = [{
     file: 'src/embedded-font-family-positive.js',
-    code: '<style>.a{font-family:var(--pm-font-family-system)}.b{font:var(--pm-font-weight-regular) var(--pm-font-size-body)/var(--pm-line-height-body) var(--pm-font-family-mono)}.c{font:inherit}</style>',
+    code: '<style>.a{font-family:var(--pm-font-family-system)}.b{font:var(--pm-font-weight-regular) var(--pm-font-size-body)/var(--pm-line-height-body) var(--pm-font-family-mono)}.c{font:inherit}.d{font-family:var(--mainFontFamily)}</style>',
   }];
   const embeddedFontFamilyNegativeModules = [{
     file: 'src/embedded-font-family-negative.js',
@@ -813,6 +892,25 @@ for (const issue of collectVarTokenIssues(cssRules, registeredTokenCategories, d
   const mismatchedSpacingRules = parseCssRules('.b{top:2px}\n.a{left:2px}', 'self.css');
   if (collectSpacingLegacyIssues(matchingSpacingRules, spacingEntries).length) failures.push('self-test: spacing detector rejected an exact legacy entry');
   if (collectSpacingLegacyIssues(mismatchedSpacingRules, spacingEntries).length !== 2) failures.push('self-test: spacing detector did not bind legacy entries to selector and property');
+  const incrementalBaselineRules = parseCssRules('.legacy{min-height:34px;font-weight:600;transform:translateX(-2px);line-height:normal}', 'self.css');
+  const incrementalBaselineFingerprints = collectIncrementalHardcodeFingerprints(incrementalBaselineRules);
+  const incrementalCompliantRules = parseCssRules('.legacy{min-height:34px;font-weight:600;transform:translateX(-2px);line-height:normal}\n.tokenized{min-height:var(--pm-size-control-compact);font-weight:var(--pm-font-weight-semibold);transform:translateX(calc(0px - var(--pm-space-0-5)));line-height:var(--pm-line-height-control)}', 'self.css');
+  const incrementalRejectedRules = parseCssRules('.legacy{min-height:34px;font-weight:600;transform:translateX(-2px);line-height:normal}\n.new-size{min-height:34px}\n.new-weight{font-weight:600}\n.new-transform{transform:translateX(-2px)}\n.new-line-height{line-height:normal}\n.mixed-size{min-height:calc(var(--pm-size-control-compact) + 3px)}\n.mixed-transform{transform:translateX(-2px) scale(var(--pm-runtime-scale))}', 'self.css');
+  if (collectIncrementalHardcodeIssues(incrementalCompliantRules, incrementalBaselineFingerprints).length) {
+    failures.push('self-test: incremental hardcode detector rejected historical or tokenized declarations');
+  }
+  if (collectIncrementalHardcodeIssues(incrementalRejectedRules, incrementalBaselineFingerprints).length !== 6) {
+    failures.push('self-test: incremental hardcode detector did not reject new or mixed dimensions, weights, transforms, and line-heights');
+  }
+  const mergedSelectorRules = parseCssRules('.legacy,.new-button{min-height:34px}', 'self.css');
+  if (collectIncrementalHardcodeIssues(mergedSelectorRules, incrementalBaselineFingerprints).length !== 1) {
+    failures.push('self-test: incremental hardcode detector allowed a new selector to inherit a historical bare declaration');
+  }
+  const formattedAtRuleBaseline = parseCssRules('@media (max-width: 500px){.legacy{min-height:34px}}', 'self.css');
+  const formattedAtRuleCurrent = parseCssRules('@media(max-width:500px){.legacy{min-height:34px}}', 'self.css');
+  if (collectIncrementalHardcodeIssues(formattedAtRuleCurrent, collectIncrementalHardcodeFingerprints(formattedAtRuleBaseline)).length) {
+    failures.push('self-test: incremental hardcode detector rejected equivalent at-rule formatting');
+  }
   const frozenSpacingTokens = ['--pm-space-px-1', '--pm-space-px-3'];
   const compliantFrozenSpacing = new Set(['--pm-space-px-1', '--pm-space-px-3', '--pm-space-neg-4']);
   const expandedFrozenSpacing = new Set([...compliantFrozenSpacing, '--pm-space-px-17']);
@@ -3071,8 +3169,13 @@ for (const expected of [
 for (const expected of [
   'COMMUNITY_TEMPLATE_ICON_SVG', 'pm-desktop-template', 'desktop-import-community-template',
   'publish-community-template', 'unpublish-community-template', 'style="--scene-accent:${escapeAttr(sceneAccent(template))}"',
-  'style="--scene-accent:${escapeAttr(accent)}"',
+  'style="--scene-accent:${escapeAttr(accent)}"', '<b>${escapeHtml(template.title)}</b></button></article>',
 ]) requireText('interactive-scene-views.js', interactiveViewsCode, expected);
+for (const forbidden of ['pm-desktop-template-icon', '<small>导入社区模板</small>']) {
+  if (interactiveViewsCode.includes(forbidden)) failures.push(`interactive-scene-views.js: cross-window desktop pin still has divergent template markup: ${forbidden}`);
+}
+if (!css.includes('.pm-desktop-pin>button[data-action="unpin-scene"]')) failures.push('style.css: desktop pin remove styling must target the unpin action instead of button position');
+if (css.includes('.pm-desktop-pin>button:last-child')) failures.push('style.css: positional desktop pin remove selector still affects single-button cross-window templates');
 for (const expected of [
   'export const COMMUNITY_TEMPLATE_ICON_SVG',
 ]) requireText('icons.js', sourceModuleByName.get('icons.js')?.code || '', expected);
@@ -3371,14 +3474,14 @@ for (const expected of [
   '.pm-calendar-shell[data-calendar-view-mode="weather"] .pm-calendar-header-action.is-loading svg{animation:pm-spin var(--pm-motion-normal) var(--pm-motion-ease) infinite}',
   '.pm-calendar-shell[data-calendar-view-mode="schedule"] .pm-calendar-header-action.is-loading svg,.pm-calendar-shell[data-calendar-view-mode="recipe"] .pm-calendar-header-action.is-loading svg{animation:pm-calendar-sparkle-pulse var(--pm-motion-normal) var(--pm-motion-ease) infinite}',
   '@keyframes pm-calendar-sparkle-pulse{50%{opacity:.45}}',
-  '.pm-calendar-cycle-input:checked+.pm-custom-check{background:var(--pm-color-success)}',
+  '.pm-calendar-cycle-input:checked+.pm-custom-check{background:var(--pm-color-auxiliary)}',
   '.pm-calendar-cycle-input:focus-visible+.pm-custom-check{outline:2px solid var(--pm-color-focus-ring);outline-offset:2px}',
   '.pm-scene-topbar{position:relative;display:flex;align-items:center;gap:var(--pm-space-1);padding:var(--pm-space-1-5) var(--pm-space-px-9)}',
   '.pm-scene-home{color:var(--pm-color-text-tertiary) !important}',
   '.pm-scene-pin-action{color:var(--pm-color-text-tertiary)}',
   '.pm-scene-pin-action[aria-pressed="true"],.pm-scene-pin-action[aria-pressed="true"]:hover,.pm-scene-pin-action[aria-pressed="true"]:focus-visible{background:transparent;color:var(--scene-accent)}',
   '.pm-scene-title{position:absolute;left:50%;top:6px;bottom:6px;transform:translateX(-50%);display:flex',
-  '.pm-scene-title-tab.is-active span::after{content:',
+  '.pm-scene-title-tab.is-active span{text-decoration-line:underline;text-decoration-color:var(--scene-accent);text-decoration-thickness:2px;text-underline-offset:4px}',
   '.pm-scene-title-poke{position:relative;width:var(--pm-size-control-compact) !important;height:var(--pm-size-control-compact) !important;padding:var(--pm-space-2) !important',
   '.pm-scene-title-poke::before{content:',
   'width:var(--pm-size-icon-lg);height:var(--pm-size-icon-lg);border-radius:50%;background:transparent',
@@ -3392,26 +3495,26 @@ for (const expected of [
   '.pm-control-menu.pm-scene-menu[hidden]{display:none}',
   '.pm-scene-composer textarea{height:var(--pm-size-control-compact);min-height:var(--pm-size-control-compact);max-height:88px;box-shadow:none !important;appearance:none}',
   '.pm-scene-title-poke:active{background:transparent !important;color:var(--pm-color-on-dark) !important}',
-  '.pm-scene-title-poke:active::before{background:var(--scene-accent)}',
-  '.pm-scene-bottom-bar .pm-scene-more[aria-expanded="true"]{background:transparent;outline:none;color:var(--scene-accent)}',
+  '.pm-scene-title-poke:active::before{background:var(--pm-color-auxiliary)}',
+  '.pm-scene-bottom-bar .pm-scene-more:hover,.pm-scene-bottom-bar .pm-scene-more:focus-visible,.pm-scene-bottom-bar .pm-scene-more[aria-expanded="true"]{background:transparent;outline:none;color:var(--pm-color-auxiliary)}',
   '.pm-scene-share.is-shared .pm-scene-post-metric,.pm-scene-share:active .pm-scene-post-metric{color:var(--pm-color-success)}',
   '.pm-scene-share.is-shared svg circle{fill:currentColor}',
   '.pm-scene-reply-toggle[aria-expanded="true"] .pm-scene-post-metric{color:var(--scene-accent)}',
-  '.pm-scene-post-more:focus-visible{background:color-mix(in srgb,var(--scene-accent) 10%,transparent);outline:2px solid var(--scene-accent);outline-offset:2px}',
+  '.pm-scene-post-more:focus-visible{background:color-mix(in srgb,var(--pm-color-auxiliary) 10%,transparent);outline:2px solid var(--pm-color-auxiliary);outline-offset:2px}',
   '.pm-scene-post-actions-wrap{position:relative;display:flex;flex-direction:row-reverse',
   '.pm-scene-post-actions{display:flex;align-items:center;gap:var(--pm-space-0-5);margin-right:var(--pm-space-1)}',
   '.pm-scene-post-actions[hidden]{display:none}',
   '.pm-scene-post-author{min-width:0;flex:1;gap:var(--pm-space-0-5);padding-top:var(--pm-space-px-1)}',
   '.pm-scene-post footer{align-items:center;justify-content:center;gap:0;flex-wrap:nowrap}',
   '.pm-scene-post footer>*{flex:1 1 0;min-width:0;justify-content:center}',
-  '.pm-scene-shell{--pm-scene-hero-title-size:25px;--pm-scene-topbar-height:38px;--pm-scene-body-letter-spacing:.01em;--pm-scene-post-body-letter-spacing:.025em',
-  '.pm-scene-post p{font-size:var(--pm-font-size-label);font-weight:var(--pm-font-weight-medium);line-height:var(--pm-line-height-loose);letter-spacing:var(--pm-scene-post-body-letter-spacing)',
+  '.pm-scene-shell{--pm-scene-hero-title-size:25px;--pm-scene-topbar-height:38px;--pm-scene-body-letter-spacing:.01em;--pm-scene-post-body-font-size:var(--pm-font-size-compact);--pm-scene-post-body-letter-spacing:.03em;--pm-scene-comment-font-size:var(--pm-font-size-label);--pm-scene-comment-letter-spacing:.02em',
+  '.pm-scene-post p{font-size:var(--pm-scene-post-body-font-size);font-weight:var(--pm-font-weight-medium);line-height:var(--pm-line-height-loose);letter-spacing:var(--pm-scene-post-body-letter-spacing)',
   '.pm-scene-comment>span:first-child{flex:1;min-width:0;word-break:break-word}',
-  '.pm-scene-comment-content{letter-spacing:var(--pm-scene-body-letter-spacing)}',
+  '.pm-scene-comment-content{letter-spacing:var(--pm-scene-comment-letter-spacing)}',
   '.pm-scene-comment-actions[hidden]{display:none}',
   '.pm-scene-comment-actions button{width:22px;height:22px;padding:var(--pm-space-1);display:grid;place-items:center;border-radius:50%}',
   '.pm-scene-comment-actions button svg{width:var(--pm-size-icon-sm);height:var(--pm-size-icon-sm)}',
-  '.pm-scene-post-actions button:focus-visible{background:color-mix(in srgb,var(--scene-accent) 10%,transparent);outline:2px solid var(--scene-accent);outline-offset:2px}',
+  '.pm-scene-post-actions button:focus-visible{background:color-mix(in srgb,var(--pm-color-auxiliary) 10%,transparent);outline:2px solid var(--pm-color-auxiliary);outline-offset:2px}',
   '.pm-scene-like.is-liked svg{fill:currentColor}',
   '.pm-scene-composer .pm-scene-primary svg{width:var(--pm-size-icon-md);height:var(--pm-size-icon-md)}',
   '.pm-scene-title-poke svg,.pm-scene-exit svg{width:var(--pm-size-icon-md);height:var(--pm-size-icon-md)}',
@@ -3484,7 +3587,7 @@ for (const expected of [
   '#pm-overlay .pm-calendar-entry-dialog textarea[name="note"]{box-sizing:border-box!important;width:100%!important;min-height:72px!important;border:1px solid var(--pm-color-border-default)!important;border-radius:var(--pm-radius-control)!important;background:var(--pm-color-surface-control)!important;color:var(--pm-color-text-primary)!important;font:var(--pm-font-weight-regular) var(--pm-font-size-body)/var(--pm-line-height-body) var(--pm-font-family-system)',
   '#pm-overlay .pm-calendar-entry-dialog textarea[name="note"]:focus-visible{outline:1px solid var(--pm-color-focus-ring)!important;outline-offset:1px!important}',
   '.pm-calendar-entry-actions button{min-height:var(--pm-size-control-default);border:0',
-  '.pm-calendar-view-switch button[aria-pressed="true"]{background:transparent;color:var(--pm-calendar-accent);box-shadow:inset 0 -2px 0 var(--pm-calendar-accent)',
+  '.pm-calendar-view-switch button[aria-pressed="true"]{background:transparent;color:var(--pm-color-auxiliary);box-shadow:inset 0 -2px 0 var(--pm-color-auxiliary)',
   '@media(prefers-reduced-motion:reduce){.pm-calendar-shell[data-calendar-view-mode] .pm-calendar-header-action.is-loading svg{animation:none}}',
   '.pm-scene-preset>span{box-sizing:border-box;width:12px;height:12px;flex:0 0 12px;border-radius:50%',
   '.pm-scene-prompt .pm-scene-accent-option{box-sizing:border-box;width:30px;height:30px;min-width:30px;min-height:30px;aspect-ratio:1;flex:0 0 30px;padding:var(--pm-space-1) !important',
@@ -3509,12 +3612,12 @@ if (css.includes('--pm-letter-spacing-wide')) {
   failures.push('style.css: today-trend must not consume an unregistered letter-spacing token');
 }
 requireCssDeclarations(cssRules, '.pm-scene-post p', {
-  'font-size': 'var(--pm-font-size-label)',
+  'font-size': 'var(--pm-scene-post-body-font-size)',
   'font-weight': 'var(--pm-font-weight-medium)',
   'line-height': 'var(--pm-line-height-loose)',
   'letter-spacing': 'var(--pm-scene-post-body-letter-spacing)',
 });
-requireCssDeclarations(cssRules, '.pm-scene-comment-content', { 'letter-spacing': 'var(--pm-scene-body-letter-spacing)' });
+requireCssDeclarations(cssRules, '.pm-scene-comment-content', { 'letter-spacing': 'var(--pm-scene-comment-letter-spacing)' });
 requireCssDeclarations(cssRules, '.pm-calendar-status-relative', {
   color: 'var(--pm-calendar-accent)', 'font-size': 'var(--pm-font-size-subtitle)', 'line-height': 'var(--pm-line-height-tight)', 'font-weight': 'var(--pm-font-weight-semibold)',
 });
@@ -3560,7 +3663,7 @@ requireCssDeclarations(cssRules, '.pm-name-edit', {
   width: 'var(--pm-size-control-compact)', height: 'var(--pm-size-control-compact)', padding: 'var(--pm-space-2) !important', 'border-radius': 'var(--pm-radius-circle) !important', 'line-height': 'var(--pm-line-height-tight)',
 });
 requireCssDeclarations(cssRules, '.pm-name-edit:hover', {
-  background: 'transparent !important', color: 'var(--pm-color-accent) !important',
+  background: 'transparent !important', color: 'var(--pm-color-auxiliary) !important',
 });
 requireCssDeclarations(cssRules, '.pm-name-edit:active', {
   background: 'transparent !important', color: 'var(--pm-color-on-dark) !important',
@@ -3571,7 +3674,7 @@ requireCssDeclarations(cssRules, '.pm-name-edit:active svg', {
 requireCssDeclarations(cssRules, '.pm-name-edit::before', {
   width: 'var(--pm-size-icon-lg)', height: 'var(--pm-size-icon-lg)', 'border-radius': 'var(--pm-radius-circle)', background: 'transparent',
 });
-requireCssDeclarations(cssRules, '.pm-name-edit:active::before', { background: 'var(--pm-color-accent)' });
+requireCssDeclarations(cssRules, '.pm-name-edit:active::before', { background: 'var(--pm-color-auxiliary)' });
 requireCssDeclarations(cssRules, '.pm-name', {
   'max-width': '100%',
   'white-space': 'nowrap',
@@ -3580,20 +3683,20 @@ requireCssDeclarations(cssRules, '.pm-name', {
   'text-align': 'center',
 });
 requireCssDeclarations(cssRules, '.pm-nav-btn', {
-  background: 'none !important', color: 'var(--pm-color-accent) !important', padding: 'var(--pm-space-2) !important', 'line-height': 'var(--pm-line-height-tight)',
+  background: 'none !important', color: 'var(--pm-color-auxiliary) !important', padding: 'var(--pm-space-2) !important', 'line-height': 'var(--pm-line-height-tight)',
 });
 requireCssDeclarations(cssRules, '.pm-nav-btn.pm-nav-left-btn', {
   color: 'var(--pm-color-text-tertiary) !important',
 });
 requireCssDeclarations(cssRules, '.pm-up-btn', {
   width: 'var(--pm-size-control-compact) !important', height: 'var(--pm-size-control-compact) !important',
-  background: 'var(--pm-color-accent) !important', color: 'var(--pm-color-on-dark) !important',
+  background: 'var(--pm-color-auxiliary) !important', color: 'var(--pm-color-on-dark) !important',
 });
 requireCssDeclarations(cssRules, '.pm-expand-btn:hover', {
-  color: 'var(--pm-color-accent) !important',
+  color: 'var(--pm-color-auxiliary) !important',
 });
 requireCssDeclarations(cssRules, '.pm-expand-btn[aria-expanded="true"]', {
-  color: 'var(--pm-color-accent) !important',
+  color: 'var(--pm-color-auxiliary) !important',
 });
 requireCssDeclarations(cssRules, '.pm-message-select-check', {
   width: '22px', height: '22px', 'min-width': '22px', 'min-height': '22px',
@@ -3602,8 +3705,8 @@ requireCssDeclarations(cssRules, '.pm-message-select-check', {
   transition: 'background var(--pm-motion-fast) var(--pm-motion-ease),border-color var(--pm-motion-fast) var(--pm-motion-ease)',
 });
 requireCssDeclarations(cssRules, '.pm-message-select-check[data-checked="1"]', {
-  'background-color': 'var(--pm-color-accent)',
-  'border-color': 'var(--pm-color-accent)',
+  'background-color': 'var(--pm-color-auxiliary)',
+  'border-color': 'var(--pm-color-auxiliary)',
 });
 requireCssDeclarations(cssRules, '.pm-message-select-check[data-checked="1"]::after', {
   content: "'✓'", 'font-size': 'var(--pm-font-size-body)', 'font-weight': 'var(--pm-font-weight-semibold)', 'line-height': 'var(--pm-line-height-tight)',
@@ -4258,6 +4361,25 @@ for (const expected of [
   '.pm-desktop-pin', '.pm-community-page', '.pm-independent-api-fields[hidden]', '[data-calendar-management="weather"]',
 ]) {
   requireText('css', css, expected);
+}
+requireCssDeclarations(cssRules, '.pm-desktop-app-icon', {
+  background: 'var(--pm-color-accent)',
+  color: 'var(--pm-color-on-dark)',
+});
+const appleDesktopIconSelector = '#pm-iphone[data-skin="apple"] .pm-desktop-app-icon';
+requireCssDeclarations(cssRules, appleDesktopIconSelector, {
+  'border-color': 'transparent',
+  background: 'linear-gradient(135deg,var(--pm-color-auxiliary),var(--pm-color-accent))',
+  'box-shadow': '0 5px 14px color-mix(in srgb,var(--pm-color-accent) 24%,transparent)',
+});
+const appleDesktopIconRuleIndex = cssRules.findIndex(rule => rule.selectors.includes(appleDesktopIconSelector));
+if (appleDesktopIconRuleIndex >= 0) {
+  const laterBackgroundOverride = cssRules.slice(appleDesktopIconRuleIndex + 1).find(rule =>
+    rule.selectors.includes(appleDesktopIconSelector)
+      && (rule.declarations.has('background') || rule.declarations.has('background-image')));
+  if (laterBackgroundOverride) failures.push(
+    `${laterBackgroundOverride.path}:${laterBackgroundOverride.line}: later rule overrides the Apple desktop icon orchard-green background`,
+  );
 }
 const cssTokenContract = {
   '--pm-font-family-system': "-apple-system,BlinkMacSystemFont,'PingFang SC','Microsoft YaHei',sans-serif",

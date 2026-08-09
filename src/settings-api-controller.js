@@ -1,4 +1,4 @@
-export function createApiRequestController({ runtime, normalizeApiUrls, extractAiResponseContent, normalizeIndependentApiTemperature, defaultTemperature, apiDraftMode, clone, saveProfiles, addOrUpdateProfile, addNote, showApi, showModelPicker, escapeAttr, escapeHtml }) {
+export function createApiRequestController({ runtime, normalizeApiUrls, fetchWithCorsProxy, extractAiResponseContent, normalizeIndependentApiTemperature, defaultTemperature, apiDraftMode, clone, saveProfiles, addOrUpdateProfile, addNote, showApi, showModelPicker, escapeAttr, escapeHtml }) {
     const setStatus = (message, color) => {
         const status = document.getElementById('pm-api-status');
         if (status) { status.textContent = message; status.dataset.state = color; }
@@ -84,7 +84,7 @@ export function createApiRequestController({ runtime, normalizeApiUrls, extractA
             setStatus('正在拉取模型…', 'info');
             const controller = new AbortController(); const timer = setTimeout(() => controller.abort(), 15000);
             try {
-                const response = await fetch(normalizeApiUrls(url).modelsUrl, { method: 'GET', headers: { Authorization: `Bearer ${key}` }, signal: controller.signal });
+                const response = await fetchWithCorsProxy(normalizeApiUrls(url).modelsUrl, { method: 'GET', headers: { Authorization: `Bearer ${key}` }, signal: controller.signal });
                 if (!response.ok) throw new Error(await readFailure(response));
                 const data = await response.json();
                 const models = Array.isArray(data?.data) ? [...new Set(data.data.map(item => typeof item?.id === 'string' ? item.id.trim() : '').filter(Boolean))] : [];
@@ -104,7 +104,7 @@ export function createApiRequestController({ runtime, normalizeApiUrls, extractA
             setStatus(`正在测试「${model}」…`, 'info');
             const controller = new AbortController(); const timer = setTimeout(() => controller.abort(), 15000);
             try {
-                const response = await fetch(normalizeApiUrls(url).chatUrl, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` }, body: JSON.stringify({ model, messages: [{ role: 'user', content: '只回复：OK' }] }), signal: controller.signal });
+                const response = await fetchWithCorsProxy(normalizeApiUrls(url).chatUrl, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` }, body: JSON.stringify({ model, messages: [{ role: 'user', content: '只回复：OK' }] }), signal: controller.signal });
                 if (!response.ok) throw new Error(await readFailure(response));
                 const reply = extractAiResponseContent(await response.json());
                 if (!reply) throw new Error('响应中没有可读取的文本');

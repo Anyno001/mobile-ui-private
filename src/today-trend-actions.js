@@ -41,12 +41,12 @@ function readEvent(form, existing = null) {
 }
 
 export function createTodayTrendActionDispatcher({
-    container, getStorageId, getStore, committer, render, onGenerate, onRefresh, onSaveRule, onRegenerateRule, confirmImpl = globalThis.confirm, onError = () => {}, onStatus = () => {},
+    container, getStorageId, getStore, committer, render, onGenerate, onRefresh, onSaveRule, onRegenerateRule, onRuleEditorStateChange = () => {}, confirmImpl = globalThis.confirm, onError = () => {}, onStatus = () => {},
 } = {}) {
     if (!container?.addEventListener || typeof getStorageId !== 'function' || typeof getStore !== 'function' || typeof committer?.commitScope !== 'function' || typeof render !== 'function') {
         throw new TypeError('今日风向动作分发依赖无效');
     }
-    const view = { name: 'world', mode: 'content', dynamicsTab: 'active', editingWorldItemId: null, editingCircleId: null, editingFactionId: null, editingEventId: null, editingRule: null, ruleDraft: null, menuOpenId: null };
+    const view = { name: 'world', mode: 'content', dynamicsTab: 'active', editingWorldItemId: null, editingCircleId: null, editingFactionId: null, editingEventId: null, editingRule: null, ruleDraft: null, ruleReturnName: null, menuOpenId: null };
     let rerenderEpoch = 0;
     const rerender = async (focus = null) => {
         const epoch = ++rerenderEpoch;
@@ -70,7 +70,7 @@ export function createTodayTrendActionDispatcher({
     const run = promise => Promise.resolve(promise).catch(error => { onError(error); return false; });
     const closeMenu = () => { view.menuOpenId = null; };
     const confirmDelete = label => typeof confirmImpl === 'function' && confirmImpl(`删除${label}不可恢复。确定继续吗？`);
-    const open = (name, mode = 'content') => { view.name = name; view.mode = mode; view.dynamicsTab = name === 'dynamics' ? 'active' : view.dynamicsTab; view.editingWorldItemId = null; view.editingCircleId = null; view.editingFactionId = null; view.editingEventId = null; view.editingRule = null; view.ruleDraft = null; closeMenu(); return rerender(); };
+    const open = (name, mode = 'content') => { view.name = name; view.mode = mode; view.dynamicsTab = name === 'dynamics' ? 'active' : view.dynamicsTab; view.editingWorldItemId = null; view.editingCircleId = null; view.editingFactionId = null; view.editingEventId = null; view.editingRule = null; view.ruleDraft = null; view.ruleReturnName = null; closeMenu(); return rerender(); };
     const keydown = event => {
         const tab = event.target?.closest?.('button[data-action="today-trend-set-dynamics-tab"]');
         if (tab && container.contains(tab) && !tab.disabled && ['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) {
@@ -110,7 +110,7 @@ export function createTodayTrendActionDispatcher({
         }
         if (action === 'today-trend-close-menu') { closeMenu(); return run(rerender()); }
         closeMenu();
-        if (action === 'today-trend-cancel-rule-editor') { view.editingRule = null; view.ruleDraft = null; return run(rerender()); }
+        if (action === 'today-trend-cancel-rule-editor') { const returnName = view.ruleReturnName; view.editingRule = null; view.ruleDraft = null; view.ruleReturnName = null; view.mode = 'content'; onRuleEditorStateChange(false, returnName); return run(rerender()); }
         if (action === 'today-trend-add-detail') {
             const list = button.closest('fieldset')?.querySelector('[data-today-trend-details]');
             if (!list || list.children.length >= TODAY_TREND_LIMITS.factionDetails) return;
@@ -176,7 +176,7 @@ export function createTodayTrendActionDispatcher({
         if (refresh) return run(onRefresh?.(...refresh) ?? Promise.reject(new Error('今日风向单项刷新能力尚未接入')));
         const rule = { 'today-trend-edit-world-rule': 'world', 'today-trend-regenerate-world-rule': 'world', 'today-trend-edit-reputation-rule': 'reputation', 'today-trend-regenerate-reputation-rule': 'reputation', 'today-trend-edit-faction-rule': 'faction', 'today-trend-regenerate-faction-rule': 'faction', 'today-trend-edit-dynamics-rule': 'dynamics', 'today-trend-regenerate-dynamics-rule': 'dynamics', 'today-trend-edit-incident-rule': 'dynamics-incident', 'today-trend-regenerate-incident-rule': 'dynamics-incident', 'today-trend-edit-rumor-rule': 'dynamics-rumor', 'today-trend-regenerate-rumor-rule': 'dynamics-rumor', 'today-trend-edit-underground-rule': 'dynamics-underground', 'today-trend-regenerate-underground-rule': 'dynamics-underground' }[action];
         if (rule && action.includes('regenerate')) return run(onRegenerateRule?.(rule) ?? Promise.reject(new Error('今日风向规则重生成能力尚未接入')));
-        if (rule) { view.editingRule = rule; view.ruleDraft = null; return run(rerender()); }
+        if (rule) { view.editingRule = rule; view.ruleDraft = null; view.ruleReturnName = button.dataset.ruleReturn || view.name; view.mode = 'rule-editor'; onRuleEditorStateChange(true, view.ruleReturnName); return run(rerender()); }
     };
     const submit = event => {
         const form = event.target;
@@ -186,7 +186,7 @@ export function createTodayTrendActionDispatcher({
             const rule = formValue(form, 'rule'), text = formValue(form, 'text');
             if (!text) return run(Promise.reject(new Error('模块 Prompt 不能为空')));
             view.ruleDraft = text;
-            return run(Promise.resolve(onSaveRule?.(rule, text)).then(async () => { view.editingRule = null; view.ruleDraft = null; await rerender(); onStatus('模块 Prompt 已保存。'); }));
+            return run(Promise.resolve(onSaveRule?.(rule, text)).then(async () => { const returnName = view.ruleReturnName; view.editingRule = null; view.ruleDraft = null; view.ruleReturnName = null; view.mode = 'content'; onRuleEditorStateChange(false, returnName); await rerender(); onStatus('模块 Prompt 已保存。'); }));
         }
         if (form.dataset.todayTrendForm === 'world-item') return run(commit(scope => {
             const item = readWorldItem(form); const existingIndex = scope.world.items.findIndex(current => current.id === item.id);

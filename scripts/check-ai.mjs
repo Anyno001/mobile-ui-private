@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {
-    createAiClient, DEFAULT_INDEPENDENT_API_TEMPERATURE, generationErrorMessage,
+    corsProxyUrl, createAiClient, DEFAULT_INDEPENDENT_API_TEMPERATURE, fetchWithCorsProxy, generationErrorMessage,
     normalizeIndependentApiTemperature, parseFirstJsonObject,
 } from '../src/ai.js';
 import {
@@ -25,6 +25,97 @@ assert.equal(generationErrorMessage(new Error('GitHub webhook failed to fetch pr
 assert.equal(generationErrorMessage(new TypeError('Failed to fetch GitHub API webhook metadata')), 'Failed to fetch GitHub API webhook metadata');
 assert.equal(generationErrorMessage(Object.assign(new Error('联系人协议校验失败'), { name: 'GitError' })), '联系人协议校验失败');
 assert.match(generationErrorMessage(new TypeError('Failed to fetch')), /AI 服务网络连接失败/);
+
+assert.equal(corsProxyUrl('https://api.example.com/v1/models'), '/proxy/https%3A%2F%2Fapi.example.com%2Fv1%2Fmodels');
+assert.throws(() => corsProxyUrl('file:///etc/passwd'), /仅支持 HTTP\/HTTPS/);
+const modelFetchCalls = [];
+const modelResponse = { ok: true };
+assert.equal(await fetchWithCorsProxy('https://api.example.com/v1/models', { method: 'GET' }, async url => {
+    modelFetchCalls.push(url);
+    if (modelFetchCalls.length === 1) throw new TypeError('Failed to fetch');
+    return modelResponse;
+}), modelResponse);
+assert.deepEqual(modelFetchCalls, [
+    'https://api.example.com/v1/models',
+    '/proxy/https%3A%2F%2Fapi.example.com%2Fv1%2Fmodels',
+]);
+const fallbackHeaders = { Authorization: 'Bearer test-key' };
+const fallbackSignal = new AbortController().signal;
+const fallbackOptions = { headers: fallbackHeaders, signal: fallbackSignal };
+const fallbackCalls = [];
+await fetchWithCorsProxy('https://api.example.com/v1/models', fallbackOptions, async (url, options) => {
+    fallbackCalls.push({ url, options });
+    if (fallbackCalls.length === 1) throw new TypeError('Failed to fetch');
+    return modelResponse;
+});
+assert.equal(fallbackCalls.length, 2, '未指定 method 时必须按 GET 允许代理 fallback');
+assert.equal(fallbackCalls[1].options, fallbackOptions, '代理 fallback 必须复用原请求选项');
+assert.equal(fallbackCalls[1].options.headers, fallbackHeaders, '代理 fallback 必须保留 Authorization header');
+assert.equal(fallbackCalls[1].options.signal, fallbackSignal, '代理 fallback 必须保留 AbortSignal');
+
+const headCalls = [];
+await fetchWithCorsProxy('https://api.example.com/v1/models', { method: 'head' }, async url => {
+    headCalls.push(url);
+    if (headCalls.length === 1) throw new TypeError('NetworkError');
+    return modelResponse;
+});
+assert.equal(headCalls.length, 2, 'HEAD 请求允许代理 fallback');
+
+const abortError = Object.assign(new Error('aborted'), { name: 'AbortError' });
+let abortCalls = 0;
+await assert.rejects(fetchWithCorsProxy('https://api.example.com/v1/models', {}, async () => {
+    abortCalls += 1;
+    throw abortError;
+}), error => error === abortError);
+assert.equal(abortCalls, 1, 'AbortError 不得发起代理请求');
+const abortedController = new AbortController();
+abortedController.abort();
+let preAbortedCalls = 0;
+await assert.rejects(fetchWithCorsProxy('https://api.example.com/v1/models', { signal: abortedController.signal }, async () => {
+    preAbortedCalls += 1;
+    throw new TypeError('Failed to fetch');
+}), /Failed to fetch/);
+assert.equal(preAbortedCalls, 1, 'signal 已取消时不得发起代理请求');
+
+let ordinaryErrorCalls = 0;
+await assert.rejects(fetchWithCorsProxy('https://api.example.com/v1/models', {}, async () => {
+    ordinaryErrorCalls += 1;
+    throw new Error('invalid request options');
+}), /invalid request options/);
+assert.equal(ordinaryErrorCalls, 1, '非网络异常不得发起代理请求');
+const proxyHttpResponse = { ok: false, status: 404 };
+assert.equal(await fetchWithCorsProxy('https://api.example.com/v1/models', {}, async url => {
+    if (url.startsWith('/proxy/')) return proxyHttpResponse;
+    throw new TypeError('Failed to fetch');
+}), proxyHttpResponse, '代理返回 HTTP 错误时应交给调用方解析响应');
+
+const secret = 'sk-secret-must-not-leak';
+let doubleFailureCalls = 0;
+await assert.rejects(fetchWithCorsProxy(`https://user:${secret}@api.example.com/v1/models?api_key=${secret}`, {}, async () => {
+    doubleFailureCalls += 1;
+    if (doubleFailureCalls === 1) {
+        throw new TypeError(`Failed to fetch Authorization: Bearer ${secret}`);
+    }
+    const proxyError = new Error(`proxy rejected /proxy/https%3A%2F%2Fuser%3A${secret}%40api.example.com`);
+    proxyError.code = 'ECONNRESET';
+    throw proxyError;
+}), error => {
+    assert.match(error.message, /TypeError/);
+    assert.match(error.message, /Error\/ECONNRESET/);
+    assert.equal(error.message.includes(secret), false, '双重失败展示消息不得泄露凭据');
+    assert.equal(String(error.cause?.message || '').includes(secret), false, '双重失败 cause 不得泄露凭据');
+    return true;
+});
+
+const postFetchCalls = [];
+for (const method of ['POST', 'put', 'PATCH', 'DELETE']) {
+    await assert.rejects(fetchWithCorsProxy('https://api.example.com/v1/chat/completions', { method }, async url => {
+        postFetchCalls.push([method, url]);
+        throw new TypeError('Failed to fetch');
+    }), /Failed to fetch/);
+}
+assert.equal(postFetchCalls.length, 4, '非幂等请求必须各自只执行一次');
+assert.ok(postFetchCalls.every(([, url]) => url === 'https://api.example.com/v1/chat/completions'), '非幂等请求不得自动走代理重试');
 
 assert.equal(DEFAULT_INDEPENDENT_API_TEMPERATURE, 1.2);
 assert.equal(normalizeIndependentApiTemperature(undefined), 1.2);

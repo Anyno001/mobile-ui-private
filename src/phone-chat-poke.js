@@ -240,8 +240,10 @@ export function installPhoneChatPoke(state, deps) {
               ['transfer', '转账频率', behavior.transferFrequency],
               ['image', '图片频率', behavior.imageFrequency],
               ['emoji', '表情包频率', behavior.emojiFrequency],
+              ['quote', '引用他人聊天频率', behavior.quoteFrequency],
           ].map(([key, label, value]) => `<label>${label}
             <select id="pm-behavior-${key}" class="pm-cfg-input">
+              <option value="persona" ${value === 'persona' ? 'selected' : ''}>跟随人设</option>
               <option value="never" ${value === 'never' ? 'selected' : ''}>禁用</option>
               <option value="rare" ${value === 'rare' ? 'selected' : ''}>很少</option>
               <option value="occasional" ${value === 'occasional' ? 'selected' : ''}>偶尔</option>
@@ -296,6 +298,7 @@ export function installPhoneChatPoke(state, deps) {
             transferFrequency: document.getElementById('pm-behavior-transfer')?.value,
             imageFrequency: document.getElementById('pm-behavior-image')?.value,
             emojiFrequency: document.getElementById('pm-behavior-emoji')?.value,
+            quoteFrequency: document.getElementById('pm-behavior-quote')?.value,
         });
         Object.defineProperty(window.__pmCharacterBehavior[id], contactName, {
             value: behavior, enumerable: true, configurable: true, writable: true,

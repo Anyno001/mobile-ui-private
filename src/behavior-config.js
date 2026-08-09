@@ -7,9 +7,10 @@ export const DEFAULT_CHARACTER_BEHAVIOR = Object.freeze({
     privateStylePrompt: '',
     groupStylePrompt: '',
     messageLength: 'persona',
-    transferFrequency: 'occasional',
-    imageFrequency: 'occasional',
-    emojiFrequency: 'occasional',
+    transferFrequency: 'persona',
+    imageFrequency: 'persona',
+    emojiFrequency: 'persona',
+    quoteFrequency: 'persona',
 });
 
 function plainObject(value) {
@@ -67,6 +68,7 @@ export function normalizeCharacterBehavior(value) {
         transferFrequency: enumValue(source.transferFrequency, FREQUENCY_VALUES, DEFAULT_CHARACTER_BEHAVIOR.transferFrequency),
         imageFrequency: enumValue(source.imageFrequency, FREQUENCY_VALUES, DEFAULT_CHARACTER_BEHAVIOR.imageFrequency),
         emojiFrequency: enumValue(source.emojiFrequency, FREQUENCY_VALUES, DEFAULT_CHARACTER_BEHAVIOR.emojiFrequency),
+        quoteFrequency: enumValue(source.quoteFrequency, FREQUENCY_VALUES, DEFAULT_CHARACTER_BEHAVIOR.quoteFrequency),
     };
 }
 
@@ -98,7 +100,7 @@ const MESSAGE_LENGTH_LABELS = Object.freeze({
     persona: '跟随角色人设', short: '偏短', medium: '中等', long: '偏长',
 });
 const FREQUENCY_LABELS = Object.freeze({
-    never: '不要使用', rare: '很少使用', occasional: '偶尔使用', frequent: '经常使用',
+    persona: '跟随角色人设', never: '不要使用', rare: '很少使用', occasional: '偶尔使用', frequent: '经常使用',
 });
 
 export function buildCharacterBehaviorPrompt(store, storageId, names, isGroup) {
@@ -115,6 +117,7 @@ export function buildCharacterBehaviorPrompt(store, storageId, names, isGroup) {
             `转账：${FREQUENCY_LABELS[config.transferFrequency]}`,
             `图片：${FREQUENCY_LABELS[config.imageFrequency]}`,
             `表情包：${FREQUENCY_LABELS[config.emojiFrequency]}`,
+            `引用他人聊天：${FREQUENCY_LABELS[config.quoteFrequency]}`,
         ].filter(Boolean).join('；');
         lines.push(`${name}：${rules}`);
     }

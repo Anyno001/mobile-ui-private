@@ -135,6 +135,55 @@ export function extractAiResponseContent(json) {
     return content?.trim() || '';
 }
 
+export function corsProxyUrl(targetUrl) {
+    const parsed = new URL(String(targetUrl));
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+        throw new TypeError('API 地址仅支持 HTTP/HTTPS');
+    }
+    return `/proxy/${encodeURIComponent(parsed.href)}`;
+}
+
+function safeErrorIdentity(error, fallback) {
+    const name = typeof error?.name === 'string' && /^[\w.-]{1,64}$/.test(error.name) ? error.name : '';
+    const code = typeof error?.code === 'string' && /^[\w.-]{1,64}$/.test(error.code) ? error.code : '';
+    const identity = [name, code].filter(Boolean).join('/');
+    return identity || fallback;
+}
+
+export async function fetchWithCorsProxy(targetUrl, options = {}, fetchImpl = null) {
+    const request = fetchImpl || ((...args) => globalThis.fetch(...args));
+    const method = String(options.method || 'GET').toUpperCase();
+    if (method !== 'GET' && method !== 'HEAD') {
+        return request(targetUrl, options);
+    }
+    try {
+        return await request(targetUrl, options);
+    } catch (error) {
+        if (options.signal?.aborted || error?.name === 'AbortError') throw error;
+        const message = String(error?.message || error || '');
+        const networkFailure = error?.name === 'TypeError'
+            || /failed to fetch|fetch failed|networkerror|network unavailable/i.test(message);
+        if (!networkFailure) throw error;
+        let proxyUrl;
+        try {
+            proxyUrl = corsProxyUrl(targetUrl);
+        } catch (urlError) {
+            throw error;
+        }
+        try {
+            return await request(proxyUrl, options);
+        } catch (proxyError) {
+            if (options.signal?.aborted || proxyError?.name === 'AbortError') throw proxyError;
+            const directIdentity = safeErrorIdentity(error, '网络错误');
+            const proxyIdentity = safeErrorIdentity(proxyError, '网络错误');
+            throw new Error(
+                `浏览器直连失败（${directIdentity}），酒馆代理请求也失败（${proxyIdentity}）`,
+                { cause: new Error(`酒馆代理请求失败（${proxyIdentity}）`) },
+            );
+        }
+    }
+}
+
 export function createAiClient({
     getConfig,
     getContext,

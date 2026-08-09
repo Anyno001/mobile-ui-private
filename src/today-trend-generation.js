@@ -39,6 +39,16 @@ const verifyDynamics = value => {
         ['id', 'type', 'lifecycle', 'title', 'stageLabel', 'origin', 'participants', 'stages', 'latestStage', 'outcome', 'finalResult', 'relatedEventIds', 'createdAt', 'updatedAt'], '动态事件'), '动态事件');
 };
 
+const withoutDirectParentChildLinks = factions => {
+    if (!Array.isArray(factions)) return factions;
+    const parentById = new Map(factions.map(faction => [faction?.id, faction?.parentId]));
+    return factions.map(faction => {
+        if (!Array.isArray(faction?.relatedFactionIds)) return faction;
+        const relatedFactionIds = faction.relatedFactionIds.filter(id => id !== faction.parentId && parentById.get(id) !== faction.id);
+        return relatedFactionIds.length === faction.relatedFactionIds.length ? faction : { ...faction, relatedFactionIds };
+    });
+};
+
 function parseInitialization(raw) {
     const value = parseFirstJsonObject(raw, '今日风向初始化未返回可解析JSON', candidate => own(candidate, 'preset') && own(candidate, 'scope'));
     if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('今日风向初始化结果必须是对象');
@@ -148,11 +158,12 @@ function assertTargetedGeneration(parsed, scope, target) {
 
 function normalizeGeneration(parsed, { scope, preset, allowIncident }) {
     if (!scope || !preset) throw new TypeError('今日风向生成缺少当前资料');
+    const generatedFactions = parsed.factions === null ? null : withoutDirectParentChildLinks(parsed.factions);
     const candidate = {
         ...scope,
         world: parsed.world ?? scope.world,
         reputation: parsed.reputation ?? scope.reputation,
-        factions: parsed.factions ?? scope.factions,
+        factions: generatedFactions ?? scope.factions,
         dynamics: parsed.dynamics ?? scope.dynamics,
     };
     for (const previous of scope.dynamics.active) {
@@ -217,7 +228,7 @@ function normalizeInitialization(parsed, context, now, presetId = `${context.sto
         createdAt: timestamp, updatedAt: timestamp, source: context.source,
     };
     const scope = {
-        ...parsed.scope, storageId: context.storageId, characterId: context.characterId,
+        ...parsed.scope, factions: withoutDirectParentChildLinks(parsed.scope?.factions), storageId: context.storageId, characterId: context.characterId,
         characterName: context.characterName, presetId,
         operation: { enabled: false, mode: 'manual', intervalFloors: 1, lastSuccessfulAssistantCount: 0, lastSuccessfulRunAt: 0 },
         injection: { enabled: false },

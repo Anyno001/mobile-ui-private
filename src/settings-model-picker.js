@@ -1,5 +1,5 @@
 import { MODEL_VISIBLE_ROWS, POPOVER_SUPPORTED } from './constants.js';
-import { THEME_PRESETS } from './config.js';
+import { resolveThemeAuxiliary, THEME_PRESETS } from './config.js';
 import { escapeAttr, escapeHtml } from './ui.js';
 
 export function showModelPicker(runtime) {
@@ -27,10 +27,12 @@ export function showModelPicker(runtime) {
     const interfaceMode = theme.preset === 'apple' ? 'light' : theme.darkMode || 'light';
     dropdown.dataset.theme = interfaceMode;
     const customAccent = theme.preset === 'custom' ? String(theme.customAccent || '').trim() : '';
+    const auxiliary = resolveThemeAuxiliary(preset, customAccent);
     dropdown.style.setProperty('--pm-color-accent', customAccent || preset.accent || preset.right);
     // 苹果皮肤是独立浅色界面，与 applyTheme 保持同一语义。
     const uiTokens = interfaceMode === 'dark' ? preset.uiDark || {} : preset.ui || {};
     for (const [token, value] of Object.entries(uiTokens)) dropdown.style.setProperty(token, value);
+    dropdown.style.setProperty('--pm-color-auxiliary', auxiliary);
     if (theme.preset === 'apple') {
         dropdown.dataset.skin = 'apple';
     }

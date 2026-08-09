@@ -8,7 +8,7 @@ const draftFrom = data => ({ presetName: String(data.get('presetName') || ''), w
 
 export function createTodayTrendPhoneController({ state, deps, container }) {
     if (!container?.addEventListener || typeof deps.getStorageId !== 'function') throw new TypeError('今日风向手机控制器依赖无效');
-    let dispatcher = null, settings = false, initializing = false, initializationOpen = false, reinitializing = false, error = '', renderEpoch = 0;
+    let dispatcher = null, settings = false, initializing = false, initializationOpen = false, reinitializing = false, initializationMode = 'reuse', error = '', renderEpoch = 0;
     let initAbort = null, lastScope = null, lastPresets = [], lastView = { name: 'world', mode: 'content' };
     let initializationDraft = { includeExistingChat: true };
     const store = () => deps.getTodayTrendStore?.();
@@ -24,13 +24,13 @@ export function createTodayTrendPhoneController({ state, deps, container }) {
         lastView = settings ? { ...activeView, name: 'settings' } : activeView;
         container.innerHTML = renderTodayTrendApp({ scope, presets: Object.values(current?.presets || {}), worldBooks: worldBooks(),
             view: lastView,
-            generation: deps.getTodayTrendGenerationState?.() || {}, error, initializing, initializationDraft, initializationOpen, reinitializing });
+            generation: deps.getTodayTrendGenerationState?.() || {}, error, initializing, initializationDraft, initializationOpen, reinitializing, initializationMode });
         return true;
     };
     const report = cause => {
         error = generationErrorMessage(cause);
         container.innerHTML = renderTodayTrendApp({ scope: lastScope, presets: lastPresets, worldBooks: worldBooks(), view: lastView,
-            error, initializing: false, initializationDraft, initializationOpen, reinitializing });
+            error, initializing: false, initializationDraft, initializationOpen, reinitializing, initializationMode });
     };
     const rerender = view => render(view).catch(report);
     const saveRule = async (rule, text) => {
@@ -56,14 +56,17 @@ export function createTodayTrendPhoneController({ state, deps, container }) {
         catch (cause) { report(cause); return false; }
         await render(); return true;
     };
+    const setRuleEditorState = (editing, returnName) => {
+        settings = editing ? false : returnName === 'settings';
+    };
     dispatcher = createTodayTrendActionDispatcher({ container, getStorageId: deps.getStorageId, getStore: store,
         committer: { commitScope: (...args) => deps.commitTodayTrendScope?.(...args) }, render: rerender,
         onGenerate: module => generate(module), onRefresh: (module, itemId, options) => generate(module, itemId, options),
-        onSaveRule: saveRule, onRegenerateRule: regenerateRule, onError: report });
+        onSaveRule: saveRule, onRegenerateRule: regenerateRule, onRuleEditorStateChange: setRuleEditorState, onError: report });
     const openInitialization = ({ replace = false } = {}) => {
         const preset = replace ? lastPresets.find(item => item.id === lastScope?.presetId) : null;
         initializationDraft = preset ? { presetName: preset.name, ...preset.source } : { includeExistingChat: true };
-        error = ''; settings = false; initializationOpen = true; reinitializing = replace; rerender();
+        error = ''; settings = false; initializationOpen = true; reinitializing = replace; initializationMode = replace || !lastPresets.length ? 'create' : 'reuse'; rerender();
     };
     const saveOperation = async enabled => {
         const current = await store(), scope = current?.scopes?.[deps.getStorageId()];
@@ -75,6 +78,8 @@ export function createTodayTrendPhoneController({ state, deps, container }) {
         if (!button || !container.contains(button) || button.disabled) return;
         if (button.dataset.action === 'today-trend-open-settings') { settings = true; rerender(); }
         if (button.dataset.action === 'today-trend-close-settings') { settings = false; rerender(); }
+        if (button.dataset.action === 'today-trend-use-preset') { initializationMode = 'reuse'; error = ''; rerender(); }
+        if (button.dataset.action === 'today-trend-create-preset') { initializationMode = 'create'; error = ''; rerender(); }
         if (['today-trend-open-world', 'today-trend-open-reputation', 'today-trend-open-factions', 'today-trend-open-dynamics'].includes(button.dataset.action)) settings = false;
         if (button.dataset.action === 'today-trend-toggle-operation') saveOperation(!lastScope?.operation?.enabled).then(() => rerender()).catch(report);
         if (button.dataset.action === 'today-trend-new-preset') openInitialization();
@@ -103,7 +108,7 @@ export function createTodayTrendPhoneController({ state, deps, container }) {
             initializationDraft = draftFrom(data); const taskAbort = new AbortController(); initAbort = taskAbort; initializing = true; error = ''; rerender();
             deps.initializeTodayTrend({ ...initializationDraft, presetId: reinitializing ? lastScope?.presetId : '', signal: taskAbort.signal }).then(() => {
                 if (taskAbort.signal.aborted || initAbort !== taskAbort) return;
-                initializing = false; initAbort = null; initializationOpen = false; reinitializing = false; initializationDraft = { includeExistingChat: true }; rerender();
+                initializing = false; initAbort = null; initializationOpen = false; reinitializing = false; initializationMode = 'reuse'; initializationDraft = { includeExistingChat: true }; rerender();
             }).catch(cause => {
                 if (taskAbort.signal.aborted || initAbort !== taskAbort) return;
                 initializing = false; initAbort = null; report(cause);
