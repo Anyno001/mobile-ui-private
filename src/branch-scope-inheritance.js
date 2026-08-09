@@ -189,6 +189,27 @@ function replaceScope(store, desired, targetId) {
     return next;
 }
 
+export function mergePhoneUiBranchScope(currentState, desiredState, expectedState, targetId, interactiveStore) {
+    const current = normalizePhoneUiState(currentState, interactiveStore);
+    const desired = normalizePhoneUiState(desiredState, interactiveStore);
+    const expected = normalizePhoneUiState(expectedState, interactiveStore);
+    const restoring = !own(desired.scopes, targetId);
+    if (!restoring && own(current.scopes, targetId)) {
+        throw new Error('分支继承保存失败：目标 scope 已被并发写入 (手机页面状态)');
+    }
+    if (restoring && own(current.scopes, targetId) && !same(current.scopes[targetId], expected.scopes[targetId])) {
+        throw new Error('分支继承补偿取消：目标 scope 已在事务后被更新 (手机页面状态)');
+    }
+    const scopes = replaceScope(current.scopes, desired.scopes, targetId);
+    return normalizePhoneUiState({
+        version: 1,
+        scopes,
+        ...(current.sharedCommunityTemplates?.length
+            ? { sharedCommunityTemplates: current.sharedCommunityTemplates }
+            : {}),
+    }, interactiveStore);
+}
+
 async function readHistoriesForBranch() {
     const keys = await pmIDBKeys();
     if (!Array.isArray(keys)) throw new Error('分支继承来源读取失败：无法枚举聊天记录');
@@ -322,6 +343,24 @@ async function commitLocalScopeCoordinated(store, options) {
         return await enqueueDirectoryOperation(store, () => commitLocalScope(options));
     } finally {
         completeDirectoryBranchScope(store, token);
+    }
+}
+
+async function commitPhoneUiScopeCoordinated({ desired, expected, targetId, interactive }) {
+    const token = markDirectoryBranchScope('phoneUi', targetId);
+    try {
+        return await enqueueDirectoryOperation('phoneUi', () => {
+            const current = readPhoneUiForBranch(interactive);
+            const merged = mergePhoneUiBranchScope(current, desired, expected, targetId, interactive);
+            try {
+                localStorage.setItem(PHONE_UI_STORAGE_KEY, JSON.stringify(merged));
+            } catch (error) {
+                throw new Error('分支继承保存失败：手机页面状态不可用');
+            }
+            return merged;
+        });
+    } finally {
+        completeDirectoryBranchScope('phoneUi', token);
     }
 }
 
@@ -578,11 +617,9 @@ async function persistProductionStores(next, { branch } = {}) {
         if (targetId) {
             globalThis.window.__pmBgLocal = await commitBackgroundScope({ desired: desired.backgrounds, expected: expected.backgrounds, targetId });
             const interactive = await commitInteractiveScope({ desired: desired.interactive, expected: expected.interactive, targetId });
-            const phoneUiScopes = await commitLocalScopeCoordinated('phoneUi', {
-                key: PHONE_UI_STORAGE_KEY, desired: desired.phoneUi.scopes, expected: expected.phoneUi.scopes, targetId,
-                normalize: value => normalizePhoneUiState({ version: 1, scopes: value }, interactive), label: '手机页面状态',
+            globalThis.window.__pmPhoneUiState = await commitPhoneUiScopeCoordinated({
+                desired: desired.phoneUi, expected: expected.phoneUi, targetId, interactive,
             });
-            globalThis.window.__pmPhoneUiState = normalizePhoneUiState({ version: 1, scopes: phoneUiScopes }, interactive);
             await commitCalendarScopes({ desired, expected, targetId });
             await commitLocalScopeCoordinated('cycles', { key: CALENDAR_CYCLE_STORAGE_KEY,
                 desired: desired.cycles, expected: expected.cycles, targetId,

@@ -187,6 +187,8 @@ export function normalizePhoneUiState(raw, interactiveStore = createEmptyInterac
     const result = createEmptyPhoneUiState();
     if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return result;
     if (raw.version !== PHONE_UI_STATE_VERSION || !raw.scopes || typeof raw.scopes !== 'object' || Array.isArray(raw.scopes)) return result;
+    const sharedCommunityTemplates = normalizeSharedCommunityTemplates(raw.sharedCommunityTemplates);
+    const sharedTemplateIds = new Set(sharedCommunityTemplates.map(template => template.id));
     const interactiveScopes = interactiveStore?.scopes && typeof interactiveStore.scopes === 'object'
         ? interactiveStore.scopes
         : {};
@@ -218,9 +220,17 @@ export function normalizePhoneUiState(raw, interactiveStore = createEmptyInterac
             && value.lastChatKey && value.lastChatKey === value.lastChatKey.trim() && value.lastChatKey.length <= 160
             ? value.lastChatKey : null;
         const importedTemplateSceneIds = normalizeImportedTemplateSceneIds(value.importedTemplateSceneIds, scenes);
+        const dismissedCommunityTemplateIds = [];
+        const seenDismissedTemplateIds = new Set();
+        for (const templateId of Array.isArray(value.dismissedCommunityTemplateIds) ? value.dismissedCommunityTemplateIds : []) {
+            if (!validPhoneUiId(templateId, 120) || !sharedTemplateIds.has(templateId) || seenDismissedTemplateIds.has(templateId)) continue;
+            seenDismissedTemplateIds.add(templateId);
+            dismissedCommunityTemplateIds.push(templateId);
+        }
         result.scopes[storageId] = {
             pinnedSceneIds,
             ...(Object.keys(importedTemplateSceneIds).length ? { importedTemplateSceneIds } : {}),
+            ...(dismissedCommunityTemplateIds.length ? { dismissedCommunityTemplateIds } : {}),
             lastPage,
             lastSceneId,
             lastTab: PHONE_UI_TABS.includes(value.lastTab) ? value.lastTab : 'feed',
@@ -228,7 +238,6 @@ export function normalizePhoneUiState(raw, interactiveStore = createEmptyInterac
             lastChatKey,
         };
     }
-    const sharedCommunityTemplates = normalizeSharedCommunityTemplates(raw.sharedCommunityTemplates);
     if (sharedCommunityTemplates.length) result.sharedCommunityTemplates = sharedCommunityTemplates;
     return result;
 }
@@ -254,6 +263,8 @@ export function patchPhoneUiScope(phoneUiState, storageId, patch, interactiveSto
                 pinnedSceneIds: Object.hasOwn(patch, 'pinnedSceneIds')
                     ? [...(Array.isArray(patch.pinnedSceneIds) ? patch.pinnedSceneIds : [])]
                     : [...currentScope.pinnedSceneIds],
+                dismissedCommunityTemplateIds: Object.hasOwn(patch, 'dismissedCommunityTemplateIds')
+                    ? [...(Array.isArray(patch.dismissedCommunityTemplateIds) ? patch.dismissedCommunityTemplateIds : [])] : [...(currentScope.dismissedCommunityTemplateIds || [])],
                 importedTemplateSceneIds: Object.hasOwn(patch, 'importedTemplateSceneIds')
                     ? { ...(patch.importedTemplateSceneIds || {}) } : { ...currentScope.importedTemplateSceneIds },
             },
@@ -274,6 +285,20 @@ export function toggleScenePin(phoneUiState, storageId, sceneId, interactiveStor
         ? scope.pinnedSceneIds.filter(idValue => idValue !== sceneId)
         : [...scope.pinnedSceneIds, sceneId];
     return patchPhoneUiScope(normalized, storageId, { pinnedSceneIds }, interactiveStore);
+}
+
+export function dismissCommunityTemplate(phoneUiState, storageId, templateId, interactiveStore) {
+    assertPhoneUiStorageId(storageId);
+    if (!validPhoneUiId(templateId, 120)) throw new Error('社区模板标识格式无效');
+    const normalized = normalizePhoneUiState(phoneUiState, interactiveStore);
+    const template = (normalized.sharedCommunityTemplates || []).find(item => item.id === templateId);
+    if (!template) throw new Error('共享社区模板不存在或已取消发布');
+    if (template.sourceStorageId === storageId) throw new Error('源窗口模板必须在社区中取消发布');
+    const scope = normalized.scopes[storageId] || createDefaultPhoneUiScope();
+    if (scope.dismissedCommunityTemplateIds?.includes(templateId)) return normalized;
+    return patchPhoneUiScope(normalized, storageId, {
+        dismissedCommunityTemplateIds: [...(scope.dismissedCommunityTemplateIds || []), templateId],
+    }, interactiveStore);
 }
 
 function assertCommunityTemplateSource(storageId, sceneId, interactiveStore) {

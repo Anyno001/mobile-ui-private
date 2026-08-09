@@ -261,8 +261,9 @@ export function installPhoneDirectory(state, deps) {
         switcher.innerHTML = `
           <div class="pm-contact-switcher-list">${rows.length ? rows.join('') : '<div class="pm-contact-switcher-empty">暂无联系人或群聊</div>'}</div>
           <div class="pm-contact-switcher-actions">
-            <button type="button" onclick="window.__pmShowGroupCreate()">新建</button>
-            <button type="button" onclick="window.__pmShowAddContact()">添加</button>
+            <button type="button" class="is-primary" onclick="window.__pmShowAddContact('', 'manual')">新建联系人</button>
+            <button type="button" onclick="window.__pmShowGroupCreate()">新建群聊</button>
+            <button type="button" class="is-wide" onclick="window.__pmShowAddContact('', 'generate')">生成联系人与群聊</button>
           </div>`;
         phone.appendChild(switcher);
         positionContactSwitcher(switcher, trigger, phone);
@@ -626,38 +627,43 @@ export function installPhoneDirectory(state, deps) {
     <div class="pm-modal">
     <div class="pm-modal-header">
       <span></span>
-      <b>联系人</b>
+      <b>会话管理</b>
       <button type="button" onclick="window.__pmCloseOverlay()" class="pm-modal-close" title="关闭" aria-label="关闭">${CLOSE_ICON_SVG}</button>
     </div>
     <div class="pm-modal-list">
-        ${empty ? '<div class="pm-modal-list-empty">暂无联系人</div>' : (renderGroups + renderSingle)}
+        ${empty ? '<div class="pm-modal-list-empty">暂无联系人或群聊</div>' : (renderGroups + renderSingle)}
     </div>
-    <div class="pm-modal-add">
+    <div class="pm-modal-add pm-directory-actions">
+        <button onclick="window.__pmShowAddContact('', 'manual')" class="pm-action-button is-accent">新建联系人</button>
         <button onclick="window.__pmShowGroupCreate()" class="pm-btn-group">新建群聊</button>
-        <button onclick="window.__pmShowAddContact()" class="pm-btn-add">添加联系人</button>
+        <button onclick="window.__pmShowAddContact('', 'generate')" class="pm-btn-add is-wide">生成联系人与群聊</button>
     </div>
     </div>`);
     };
 
-    window.__pmShowAddContact = (resultMessage = '') => {
+    window.__pmShowAddContact = (resultMessage = '', mode = 'all') => {
         closeContactSwitcher('replace');
         closeOverlay?.('replace');
+        const showManual = mode !== 'generate';
+        const showGenerate = mode !== 'manual';
+        const title = showManual && !showGenerate ? '新建联系人'
+            : (!showManual && showGenerate ? '生成联系人与群聊' : '添加会话');
         makeOverlay(`
 <div class="pm-modal">
-  <div class="pm-modal-header"><span></span><b>添加联系人</b><button type="button" onclick="window.__pmShowList()" class="pm-modal-close" title="关闭" aria-label="关闭">${CLOSE_ICON_SVG}</button></div>
+  <div class="pm-modal-header"><span></span><b>${title}</b><button type="button" onclick="window.__pmShowList()" class="pm-modal-close" title="返回会话管理" aria-label="返回会话管理">${CLOSE_ICON_SVG}</button></div>
   ${resultMessage ? `<div class="pm-bi-bar pm-contact-add-result"><span>${escapeHtml(resultMessage)}</span></div>` : ''}
   <div class="pm-contact-add-choices">
-    <section class="pm-contact-add-choice">
-      <b>手动添加</b><span>输入明确的角色名，立即开始聊天。</span>
+    ${showManual ? `<section class="pm-contact-add-choice">
+      <b>手动添加</b><span>输入明确的角色名，新建联系人并立即开始聊天。</span>
       <div class="pm-contact-add-manual">
         <input id="pm-add-contact-input" class="pm-cfg-input" placeholder="角色名" aria-label="联系人角色名">
-        <button type="button" class="pm-contact-add-primary" onclick="(()=>{const v=document.getElementById('pm-add-contact-input').value.trim();if(v)window.__pmSwitchContact(v);})()">开始聊天</button>
+        <button type="button" class="pm-contact-add-primary" onclick="(()=>{const v=document.getElementById('pm-add-contact-input').value.trim();if(v)window.__pmSwitchContact(v);})()">新建联系人</button>
       </div>
-    </section>
-    <section class="pm-contact-add-choice is-ai">
+    </section>` : ''}
+    ${showGenerate ? `<section class="pm-contact-add-choice is-ai">
       <b>AI 生成</b><span>根据当前剧情、世界书和已有联系人生成一批候选。</span>
-      <button type="button" id="pm-autogen-btn" class="pm-contact-add-ai" onclick="window.__pmConfirmAutoGen()" aria-label="AI 自动生成联系人"><span class="pm-contact-add-icon">${SPARKLES_ICON_SVG}</span><span>生成联系人与群聊</span></button>
-    </section>
+      <button type="button" id="pm-autogen-btn" class="pm-contact-add-ai" onclick="window.__pmConfirmAutoGen()" aria-label="AI 自动生成联系人与群聊"><span class="pm-contact-add-icon">${SPARKLES_ICON_SVG}</span><span>生成联系人与群聊</span></button>
+    </section>` : ''}
   </div>
 </div>`);
         setTimeout(() => {

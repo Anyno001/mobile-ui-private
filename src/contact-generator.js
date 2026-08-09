@@ -211,7 +211,7 @@ export function installContactGenerator(state, deps) {
                 const resultParts = [];
                 if (candidates.contacts.length) resultParts.push(`${candidates.contacts.length} 位联系人`);
                 if (candidates.groups.length) resultParts.push(`${candidates.groups.length} 个群聊`);
-                await window.__pmShowAddContact(`已添加 ${resultParts.join('、')}`);
+                await window.__pmShowAddContact(`已添加 ${resultParts.join('、')}`, 'generate');
             }
         } catch (error) {
             console.error('[phone-mode] __pmAutoGenContacts 异常', error);

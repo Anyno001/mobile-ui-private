@@ -14,7 +14,7 @@ function renderFirstUse({ presets, worldBooks, error, initializing, draft = {}, 
     const canReusePreset = Boolean(presetOptions) && !reinitializing;
     const activeMode = canReusePreset && initializationMode === 'reuse' ? 'reuse' : 'create';
     const selectedBooks = new Set(Array.isArray(draft.worldBookNames) ? draft.worldBookNames : worldBooks);
-    const books = worldBooks.map(name => `<label class="pm-today-trend-book-option"><input type="checkbox" name="worldBookNames" value="${escapeAttr(name)}" ${selectedBooks.has(name) ? 'checked' : ''}><span>${escapeHtml(name)}</span></label>`).join('');
+    const books = worldBooks.map(name => `<label class="pm-today-trend-book-option"><input class="pm-today-trend-book-input" type="checkbox" name="worldBookNames" value="${escapeAttr(name)}" ${selectedBooks.has(name) ? 'checked' : ''}><i class="pm-today-trend-book-check" aria-hidden="true"></i><span>${escapeHtml(name)}</span></label>`).join('');
     const modeSwitch = canReusePreset ? `<div class="pm-today-trend-mode-switch" aria-label="预设使用方式"><button type="button" data-action="today-trend-use-preset" aria-pressed="${activeMode === 'reuse'}">复用预设</button><button type="button" data-action="today-trend-create-preset" aria-pressed="${activeMode === 'create'}">创建预设</button></div>` : '';
     const worldBookOptions = books || '<p class="pm-today-trend-empty-state" role="status">当前聊天没有可用世界书，无法初始化。</p>';
     const feedback = error
@@ -29,7 +29,6 @@ function renderFirstUse({ presets, worldBooks, error, initializing, draft = {}, 
         </section>` : '';
     return `<main class="pm-today-trend-content"><section class="pm-today-trend-first-use" aria-labelledby="pm-today-trend-init-title">
         <header class="pm-today-trend-init-intro">
-            <p class="pm-today-trend-init-eyebrow">WORLD SIGNAL</p>
             <h3 id="pm-today-trend-init-title" class="pm-today-trend-init-title">${reinitializing ? '重新初始化当前今日风向' : '创建当前角色的今日风向'}</h3>
             <p class="pm-today-trend-init-description">${reinitializing ? '选择用于重新生成规则与初始资料的世界书。' : '复用已有预设，或根据当前世界书创建一套新的今日风向配置。'}</p>
         </header>

@@ -6154,6 +6154,8 @@ ${lines.join("\n")}
     const result = createEmptyPhoneUiState();
     if (!raw || typeof raw !== "object" || Array.isArray(raw)) return result;
     if (raw.version !== PHONE_UI_STATE_VERSION || !raw.scopes || typeof raw.scopes !== "object" || Array.isArray(raw.scopes)) return result;
+    const sharedCommunityTemplates = normalizeSharedCommunityTemplates(raw.sharedCommunityTemplates);
+    const sharedTemplateIds = new Set(sharedCommunityTemplates.map((template) => template.id));
     const interactiveScopes = interactiveStore?.scopes && typeof interactiveStore.scopes === "object" ? interactiveStore.scopes : {};
     for (const [storageId, value] of Object.entries(raw.scopes)) {
       if (!storageId || storageId !== storageId.trim() || storageId.length > 160 || isUnsafeDictionaryKey2(storageId)) continue;
@@ -6175,9 +6177,17 @@ ${lines.join("\n")}
       const lastChatType = value.lastChatType === "contact" || value.lastChatType === "group" ? value.lastChatType : null;
       const lastChatKey = lastChatType && typeof value.lastChatKey === "string" && value.lastChatKey && value.lastChatKey === value.lastChatKey.trim() && value.lastChatKey.length <= 160 ? value.lastChatKey : null;
       const importedTemplateSceneIds = normalizeImportedTemplateSceneIds(value.importedTemplateSceneIds, scenes);
+      const dismissedCommunityTemplateIds = [];
+      const seenDismissedTemplateIds = /* @__PURE__ */ new Set();
+      for (const templateId of Array.isArray(value.dismissedCommunityTemplateIds) ? value.dismissedCommunityTemplateIds : []) {
+        if (!validPhoneUiId(templateId, 120) || !sharedTemplateIds.has(templateId) || seenDismissedTemplateIds.has(templateId)) continue;
+        seenDismissedTemplateIds.add(templateId);
+        dismissedCommunityTemplateIds.push(templateId);
+      }
       result.scopes[storageId] = {
         pinnedSceneIds,
         ...Object.keys(importedTemplateSceneIds).length ? { importedTemplateSceneIds } : {},
+        ...dismissedCommunityTemplateIds.length ? { dismissedCommunityTemplateIds } : {},
         lastPage,
         lastSceneId,
         lastTab: PHONE_UI_TABS.includes(value.lastTab) ? value.lastTab : "feed",
@@ -6185,7 +6195,6 @@ ${lines.join("\n")}
         lastChatKey
       };
     }
-    const sharedCommunityTemplates = normalizeSharedCommunityTemplates(raw.sharedCommunityTemplates);
     if (sharedCommunityTemplates.length) result.sharedCommunityTemplates = sharedCommunityTemplates;
     return result;
   }
@@ -6207,6 +6216,7 @@ ${lines.join("\n")}
           ...currentScope,
           ...patch,
           pinnedSceneIds: Object.hasOwn(patch, "pinnedSceneIds") ? [...Array.isArray(patch.pinnedSceneIds) ? patch.pinnedSceneIds : []] : [...currentScope.pinnedSceneIds],
+          dismissedCommunityTemplateIds: Object.hasOwn(patch, "dismissedCommunityTemplateIds") ? [...Array.isArray(patch.dismissedCommunityTemplateIds) ? patch.dismissedCommunityTemplateIds : []] : [...currentScope.dismissedCommunityTemplateIds || []],
           importedTemplateSceneIds: Object.hasOwn(patch, "importedTemplateSceneIds") ? { ...patch.importedTemplateSceneIds || {} } : { ...currentScope.importedTemplateSceneIds }
         }
       }
@@ -6223,6 +6233,19 @@ ${lines.join("\n")}
     const scope = normalized.scopes[storageId] || createDefaultPhoneUiScope();
     const pinnedSceneIds = scope.pinnedSceneIds.includes(sceneId) ? scope.pinnedSceneIds.filter((idValue) => idValue !== sceneId) : [...scope.pinnedSceneIds, sceneId];
     return patchPhoneUiScope(normalized, storageId, { pinnedSceneIds }, interactiveStore);
+  }
+  function dismissCommunityTemplate(phoneUiState, storageId, templateId, interactiveStore) {
+    assertPhoneUiStorageId(storageId);
+    if (!validPhoneUiId(templateId, 120)) throw new Error("\u793E\u533A\u6A21\u677F\u6807\u8BC6\u683C\u5F0F\u65E0\u6548");
+    const normalized = normalizePhoneUiState(phoneUiState, interactiveStore);
+    const template = (normalized.sharedCommunityTemplates || []).find((item) => item.id === templateId);
+    if (!template) throw new Error("\u5171\u4EAB\u793E\u533A\u6A21\u677F\u4E0D\u5B58\u5728\u6216\u5DF2\u53D6\u6D88\u53D1\u5E03");
+    if (template.sourceStorageId === storageId) throw new Error("\u6E90\u7A97\u53E3\u6A21\u677F\u5FC5\u987B\u5728\u793E\u533A\u4E2D\u53D6\u6D88\u53D1\u5E03");
+    const scope = normalized.scopes[storageId] || createDefaultPhoneUiScope();
+    if (scope.dismissedCommunityTemplateIds?.includes(templateId)) return normalized;
+    return patchPhoneUiScope(normalized, storageId, {
+      dismissedCommunityTemplateIds: [...scope.dismissedCommunityTemplateIds || [], templateId]
+    }, interactiveStore);
   }
   function assertCommunityTemplateSource(storageId, sceneId, interactiveStore) {
     assertPhoneUiStorageId(storageId);
@@ -7850,7 +7873,7 @@ ${lines.join("\n")}
           const resultParts = [];
           if (candidates.contacts.length) resultParts.push(`${candidates.contacts.length} \u4F4D\u8054\u7CFB\u4EBA`);
           if (candidates.groups.length) resultParts.push(`${candidates.groups.length} \u4E2A\u7FA4\u804A`);
-          await window.__pmShowAddContact(`\u5DF2\u6DFB\u52A0 ${resultParts.join("\u3001")}`);
+          await window.__pmShowAddContact(`\u5DF2\u6DFB\u52A0 ${resultParts.join("\u3001")}`, "generate");
         }
       } catch (error) {
         console.error("[phone-mode] __pmAutoGenContacts \u5F02\u5E38", error);
@@ -9367,6 +9390,24 @@ ${entry2.content}` : entry2.content;
     replaceEntry(next, desired || {}, targetId);
     return next;
   }
+  function mergePhoneUiBranchScope(currentState, desiredState, expectedState, targetId, interactiveStore) {
+    const current = normalizePhoneUiState(currentState, interactiveStore);
+    const desired = normalizePhoneUiState(desiredState, interactiveStore);
+    const expected = normalizePhoneUiState(expectedState, interactiveStore);
+    const restoring = !own(desired.scopes, targetId);
+    if (!restoring && own(current.scopes, targetId)) {
+      throw new Error("\u5206\u652F\u7EE7\u627F\u4FDD\u5B58\u5931\u8D25\uFF1A\u76EE\u6807 scope \u5DF2\u88AB\u5E76\u53D1\u5199\u5165 (\u624B\u673A\u9875\u9762\u72B6\u6001)");
+    }
+    if (restoring && own(current.scopes, targetId) && !same(current.scopes[targetId], expected.scopes[targetId])) {
+      throw new Error("\u5206\u652F\u7EE7\u627F\u8865\u507F\u53D6\u6D88\uFF1A\u76EE\u6807 scope \u5DF2\u5728\u4E8B\u52A1\u540E\u88AB\u66F4\u65B0 (\u624B\u673A\u9875\u9762\u72B6\u6001)");
+    }
+    const scopes = replaceScope(current.scopes, desired.scopes, targetId);
+    return normalizePhoneUiState({
+      version: 1,
+      scopes,
+      ...current.sharedCommunityTemplates?.length ? { sharedCommunityTemplates: current.sharedCommunityTemplates } : {}
+    }, interactiveStore);
+  }
   async function readHistoriesForBranch() {
     const keys = await pmIDBKeys();
     if (!Array.isArray(keys)) throw new Error("\u5206\u652F\u7EE7\u627F\u6765\u6E90\u8BFB\u53D6\u5931\u8D25\uFF1A\u65E0\u6CD5\u679A\u4E3E\u804A\u5929\u8BB0\u5F55");
@@ -9488,6 +9529,23 @@ ${entry2.content}` : entry2.content;
       return await enqueueDirectoryOperation(store, () => commitLocalScope(options2));
     } finally {
       completeDirectoryBranchScope(store, token);
+    }
+  }
+  async function commitPhoneUiScopeCoordinated({ desired, expected, targetId, interactive }) {
+    const token = markDirectoryBranchScope("phoneUi", targetId);
+    try {
+      return await enqueueDirectoryOperation("phoneUi", () => {
+        const current = readPhoneUiForBranch(interactive);
+        const merged = mergePhoneUiBranchScope(current, desired, expected, targetId, interactive);
+        try {
+          localStorage.setItem(PHONE_UI_STORAGE_KEY, JSON.stringify(merged));
+        } catch (error) {
+          throw new Error("\u5206\u652F\u7EE7\u627F\u4FDD\u5B58\u5931\u8D25\uFF1A\u624B\u673A\u9875\u9762\u72B6\u6001\u4E0D\u53EF\u7528");
+        }
+        return merged;
+      });
+    } finally {
+      completeDirectoryBranchScope("phoneUi", token);
     }
   }
   async function commitBudgetScopeCoordinated(options2) {
@@ -9760,15 +9818,12 @@ ${entry2.content}` : entry2.content;
       if (targetId) {
         globalThis.window.__pmBgLocal = await commitBackgroundScope({ desired: desired.backgrounds, expected: expected.backgrounds, targetId });
         const interactive = await commitInteractiveScope({ desired: desired.interactive, expected: expected.interactive, targetId });
-        const phoneUiScopes = await commitLocalScopeCoordinated("phoneUi", {
-          key: PHONE_UI_STORAGE_KEY,
-          desired: desired.phoneUi.scopes,
-          expected: expected.phoneUi.scopes,
+        globalThis.window.__pmPhoneUiState = await commitPhoneUiScopeCoordinated({
+          desired: desired.phoneUi,
+          expected: expected.phoneUi,
           targetId,
-          normalize: (value) => normalizePhoneUiState({ version: 1, scopes: value }, interactive),
-          label: "\u624B\u673A\u9875\u9762\u72B6\u6001"
+          interactive
         });
-        globalThis.window.__pmPhoneUiState = normalizePhoneUiState({ version: 1, scopes: phoneUiScopes }, interactive);
         await commitCalendarScopes({ desired, expected, targetId });
         await commitLocalScopeCoordinated("cycles", {
           key: CALENDAR_CYCLE_STORAGE_KEY,
@@ -11340,11 +11395,11 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
       if (!scene) return [];
       return [`<article class="pm-desktop-pin" style="--scene-accent:${escapeAttr(sceneAccent(scene))}"><button type="button" data-action="desktop-open-scene" data-scene-id="${escapeAttr(scene.id)}"><b>${escapeHtml(scene.title)}</b></button><button type="button" data-action="unpin-scene" data-scene-id="${escapeAttr(scene.id)}" aria-label="\u79FB\u9664 ${escapeAttr(scene.title)} \u5FEB\u6377\u65B9\u5F0F">\u79FB\u9664</button></article>`];
     }).join("");
-    const templates = sharedCommunityTemplates.map((template) => `<article class="pm-desktop-pin pm-desktop-template" style="--scene-accent:${escapeAttr(sceneAccent(template))}"><button type="button" data-action="desktop-import-community-template" data-template-id="${escapeAttr(template.id)}" aria-label="\u5BFC\u5165\u793E\u533A\u6A21\u677F\uFF1A${escapeAttr(template.title)}"><b>${escapeHtml(template.title)}</b></button></article>`).join("");
+    const templates = sharedCommunityTemplates.map((template) => `<article class="pm-desktop-pin pm-desktop-template" style="--scene-accent:${escapeAttr(sceneAccent(template))}"><button type="button" data-action="desktop-import-community-template" data-template-id="${escapeAttr(template.id)}" aria-label="\u5BFC\u5165\u793E\u533A\u6A21\u677F\uFF1A${escapeAttr(template.title)}"><b>${escapeHtml(template.title)}</b></button><button type="button" data-action="dismiss-community-template" data-template-id="${escapeAttr(template.id)}" aria-label="\u4ECE\u5F53\u524D\u684C\u9762\u79FB\u9664 ${escapeAttr(template.title)} \u6A21\u677F">\u79FB\u9664</button></article>`).join("");
     return `<div class="pm-desktop-toolbar"><span>${escapeHtml(title)}</span><button type="button" data-action="desktop-exit" aria-label="\u9000\u51FA\u624B\u673A" title="\u9000\u51FA\u624B\u673A">${CLOSE_ICON_SVG}</button></div>
         <div class="pm-desktop-grid" aria-label="\u5E94\u7528">
             <button type="button" class="pm-desktop-app" data-app="chat" data-action="desktop-chat" aria-label="\u4F1A\u8BDD" title="\u4F1A\u8BDD"><span class="pm-desktop-app-icon">${CHAT_ICON_SVG}</span><span class="pm-desktop-app-label">\u4F1A\u8BDD</span></button>
-            <button type="button" class="pm-desktop-app" data-app="directory" data-action="desktop-directory" aria-label="\u8054\u7CFB\u4EBA" title="\u8054\u7CFB\u4EBA"><span class="pm-desktop-app-icon">${CONTACTS_ICON_SVG}</span><span class="pm-desktop-app-label">\u8054\u7CFB\u4EBA</span></button>
+            <button type="button" class="pm-desktop-app" data-app="directory" data-action="desktop-directory" aria-label="\u4F1A\u8BDD\u7BA1\u7406" title="\u4F1A\u8BDD\u7BA1\u7406"><span class="pm-desktop-app-icon">${CONTACTS_ICON_SVG}</span><span class="pm-desktop-app-label">\u4F1A\u8BDD\u7BA1\u7406</span></button>
             <button type="button" class="pm-desktop-app" data-app="settings" data-action="desktop-settings" aria-label="\u8BBE\u7F6E" title="\u8BBE\u7F6E"><span class="pm-desktop-app-icon">${SETTINGS_ICON_SVG}</span><span class="pm-desktop-app-label">\u8BBE\u7F6E</span></button>
             <button type="button" class="pm-desktop-app" data-app="calendar" data-action="desktop-calendar" aria-label="\u65E5\u5386" title="\u65E5\u5386"><span class="pm-desktop-app-icon">${CALENDAR_ICON_SVG}</span><span class="pm-desktop-app-label">\u65E5\u5386</span></button>
             <button type="button" class="pm-desktop-app" data-app="today-trend" data-action="desktop-today-trend" aria-label="\u4ECA\u65E5\u98CE\u5411" title="\u4ECA\u65E5\u98CE\u5411"><span class="pm-desktop-app-icon">${TREND_ICON_SVG}</span><span class="pm-desktop-app-label">\u4ECA\u65E5\u98CE\u5411</span></button>
@@ -11402,7 +11457,7 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
         ${post.tags.length ? `<div class="pm-scene-tags">${post.tags.map((tag) => `<span>#${escapeHtml(tag)}</span>`).join("")}</div>` : ""}
         <footer><button type="button" class="pm-scene-like ${post.liked ? "is-liked" : ""}" data-action="like" data-post-id="${escapeAttr(post.id)}" aria-pressed="${post.liked}" aria-label="${post.liked ? "\u53D6\u6D88\u559C\u6B22" : "\u559C\u6B22"}">${renderPostMetric(HEART_ICON_SVG, likes, "\u559C\u6B22", "is-like")}</button><button type="button" class="pm-scene-share ${post.shared ? "is-shared" : ""}" data-action="share" data-post-id="${escapeAttr(post.id)}" aria-pressed="${post.shared}" aria-label="${post.shared ? "\u5DF2\u5206\u4EAB\u672C\u5E16" : "\u5206\u4EAB\u672C\u5E16"}">${renderPostMetric(SHARE_ICON_SVG, shares, "\u8F6C\u53D1", "is-share")}</button><button type="button" class="pm-scene-reply-toggle" data-action="toggle-reply" data-post-id="${escapeAttr(post.id)}" aria-label="\u56DE\u590D\u672C\u5E16" aria-controls="pm-comment-composer-${escapeAttr(post.id)}" aria-expanded="false">${renderPostMetric(REPLY_ICON_SVG, post.comments.length, "\u56DE\u590D", "is-reply")}</button></footer>
         ${post.comments.length ? `<div class="pm-scene-comments">${post.comments.map((comment) => `<div class="pm-scene-comment"><span><b>${escapeHtml(comment.authorNameSnapshot)}</b> <span class="pm-scene-comment-content">${escapeHtml(comment.content)}</span></span><span class="pm-scene-comment-actions" hidden><button type="button" data-action="edit-comment" data-post-id="${escapeAttr(post.id)}" data-comment-id="${escapeAttr(comment.id)}" aria-label="\u7F16\u8F91\u8BC4\u8BBA" title="\u7F16\u8F91\u8BC4\u8BBA">${EDIT_ICON_SVG}</button><button type="button" class="pm-scene-danger" data-action="delete-comment" data-post-id="${escapeAttr(post.id)}" data-comment-id="${escapeAttr(comment.id)}" aria-label="\u5220\u9664\u8BC4\u8BBA" title="\u5220\u9664\u8BC4\u8BBA">${TRASH_ICON_SVG}</button></span></div>`).join("")}</div>` : ""}
-        <div id="pm-comment-composer-${escapeAttr(post.id)}" class="pm-scene-comment-composer" hidden><input id="pm-comment-input-${escapeAttr(post.id)}" maxlength="1000" placeholder="\u53D1\u8868\u4F60\u7684\u60F3\u6CD5\u5427"><button type="button" data-action="post-comment" data-post-id="${escapeAttr(post.id)}" aria-label="\u53D1\u9001\u56DE\u590D" title="\u53D1\u9001\u56DE\u590D">${SEND_ICON_SVG}</button></div>
+        <div id="pm-comment-composer-${escapeAttr(post.id)}" class="pm-scene-comment-composer" hidden><input id="pm-comment-input-${escapeAttr(post.id)}" maxlength="1082" placeholder="\u53D1\u8868\u4F60\u7684\u60F3\u6CD5\u5427\uFF0C\u53EF\u7528\u3010\u540D\u5B57\u3011\u5207\u6362\u8EAB\u4EFD"><button type="button" data-action="post-comment" data-post-id="${escapeAttr(post.id)}" aria-label="\u53D1\u9001\u56DE\u590D" title="\u53D1\u9001\u56DE\u590D">${SEND_ICON_SVG}</button></div>
     </article>`;
     }).join("");
   }
@@ -11471,22 +11526,22 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
   var uid4 = (prefix) => `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
   var now = () => Date.now();
   var cloneStore = (store) => normalizeInteractiveStore(JSON.parse(JSON.stringify(store)));
-  function parseCommunityPostInput(rawContent, actors, defaultAuthorSeed) {
+  var canonicalIdentityName = (value) => String(value ?? "").trim().slice(0, 80).toLocaleLowerCase();
+  function parseCommunityPostInput(rawContent, _actors, defaultAuthorSeed, options2 = {}) {
     const identityMatch = String(rawContent || "").match(/^【([^】]+)】/);
-    const identityId = identityMatch?.[1].trim();
+    const identityName = identityMatch?.[1].trim().slice(0, 80);
     const content = (identityMatch ? String(rawContent).slice(identityMatch[0].length) : String(rawContent || "")).trim();
-    if (!content) throw new Error("\u5E16\u5B50\u5185\u5BB9\u4E0D\u80FD\u4E3A\u7A7A");
-    if (content.length > 4e3) throw new Error("\u5E16\u5B50\u5185\u5BB9\u4E0D\u80FD\u8D85\u8FC7 4000 \u5B57");
-    if (!identityId) return { authorSeed: defaultAuthorSeed, content };
-    if (!Object.hasOwn(actors || {}, identityId)) throw new Error(`\u672A\u627E\u5230 ID \u4E3A ${identityId} \u7684\u53D1\u5E16\u8EAB\u4EFD`);
-    const actor = actors[identityId];
+    const contentLabel = options2.contentLabel === "\u8BC4\u8BBA" ? "\u8BC4\u8BBA" : "\u5E16\u5B50";
+    const maxLength = Number.isInteger(options2.maxLength) && options2.maxLength > 0 ? options2.maxLength : 4e3;
+    if (!content) throw new Error(`${contentLabel}\u5185\u5BB9\u4E0D\u80FD\u4E3A\u7A7A`);
+    if (content.length > maxLength) throw new Error(`${contentLabel}\u5185\u5BB9\u4E0D\u80FD\u8D85\u8FC7 ${maxLength} \u5B57`);
+    if (!identityName) return { authorSeed: defaultAuthorSeed, content };
     return {
       authorSeed: {
-        type: actor.type,
-        displayName: actor.displayName,
-        bindingKey: actor.bindingKey,
-        profile: actor.profile,
-        createdAt: actor.createdAt
+        type: "passerby",
+        displayName: identityName,
+        bindingKey: `manual:${canonicalIdentityName(identityName)}`,
+        profile: ""
       },
       content
     };
@@ -11720,7 +11775,10 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
       storageId,
       sharedCommunityTemplates: getPhoneUiState(store).sharedCommunityTemplates || []
     });
-    const sharedTemplatesFor = (storageId, store = runtime.store) => (getPhoneUiState(store).sharedCommunityTemplates || []).filter((template) => template.sourceStorageId !== storageId);
+    const sharedTemplatesFor = (storageId, store = runtime.store) => {
+      const state = getPhoneUiState(store), dismissedIds = new Set(state.scopes[storageId]?.dismissedCommunityTemplateIds || []);
+      return (state.sharedCommunityTemplates || []).filter((template) => template.sourceStorageId !== storageId && !dismissedIds.has(template.id));
+    };
     const renderInto = (selector, html) => {
       const container = document.querySelector(selector);
       if (!container) return false;
@@ -12081,6 +12139,13 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
         await importCommunityTemplate(button.dataset.templateId);
         return;
       }
+      if (action === "dismiss-community-template") {
+        const scopeId = getStorageId2();
+        const nextState = dismissCommunityTemplate(getPhoneUiState(runtime.store), scopeId, button.dataset.templateId, runtime.store);
+        persistPhoneUiState(scopeId, nextState);
+        refreshDesktop(scopeId);
+        return;
+      }
       if (action === "desktop") {
         await showPhoneDesktopPage();
         return;
@@ -12215,10 +12280,11 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
       if (action === "post-comment") {
         const composer = button.closest?.(".pm-scene-comment-composer");
         const input = composer?.querySelector?.("input");
-        const content = input?.value.trim() || "";
+        const rawContent = input?.value || "";
         await commit(() => {
           const { scopeId, scope, scene } = current();
-          addSceneComment(scope, scopeId, scene, button.dataset.postId, actorSeeds(scopeId).user, content);
+          const { authorSeed, content } = parseCommunityPostInput(rawContent, scope?.actors, actorSeeds(scopeId).user, { contentLabel: "\u8BC4\u8BBA", maxLength: 1e3 });
+          addSceneComment(scope, scopeId, scene, button.dataset.postId, authorSeed, content);
         });
         rerender("feed");
         return;
@@ -14955,7 +15021,7 @@ ${antiFluff}`;
     <div id="pm-session-auto-poke-status" class="pm-session-behavior-status" role="status" aria-live="polite" ${statusMessage ? "" : "hidden"}>${escapeHtml(statusMessage)}</div>
     <section class="pm-session-behavior-section">
       <button id="pm-session-auto-poke" type="button" class="pm-session-behavior-toggle" role="checkbox" aria-checked="${autoPoke.enabled}" onclick="window.__pmToggleCurrentAutoPoke(this)">
-        ${CHAT_ICON_SVG}<span><b>\u5141\u8BB8\u5F53\u524D\u4F1A\u8BDD\u4E3B\u52A8\u53D1\u6D88\u606F</b><small>\u804A\u5929\u505C\u4E0B\u6765\u65F6\uFF0C\u624B\u673A\u6709\u673A\u4F1A\u81EA\u5DF1\u53D1\u4E00\u53E5\u3002</small></span><i class="pm-control-toggle ${autoPoke.enabled ? "is-checked" : ""}" aria-hidden="true"></i>
+        <span><b>\u5141\u8BB8\u5F53\u524D\u4F1A\u8BDD\u4E3B\u52A8\u53D1\u6D88\u606F</b><small>\u804A\u5929\u505C\u4E0B\u6765\u65F6\uFF0C\u624B\u673A\u6709\u673A\u4F1A\u81EA\u5DF1\u53D1\u4E00\u53E5\u3002</small></span><i class="pm-control-toggle ${autoPoke.enabled ? "is-checked" : ""}" aria-hidden="true"></i>
       </button>
       <label class="pm-session-auto-poke-probability">\u6BCF\u6B21\u6709 <input id="pm-session-auto-poke-probability" type="number" min="0" max="100" step="1" required value="${autoPoke.probability}" ${autoPoke.enabled ? "" : "disabled"} onchange="window.__pmSaveCurrentAutoPokeProbability(this)"> % \u51E0\u7387\u81EA\u52A8\u53D1\u6D88\u606F</label>
       <p id="pm-session-auto-poke-counter">${autoPoke.counter === 1 ? "\u8FD9\u6B21\u4F1A\u81EA\u52A8\u53D1\u4E00\u6761\u3002" : "\u8FD9\u6B21\u6CA1\u6709\u81EA\u52A8\u53D1\u6D88\u606F\u3002"}</p>
@@ -15648,8 +15714,9 @@ ${antiFluff}`;
       switcher.innerHTML = `
           <div class="pm-contact-switcher-list">${rows.length ? rows.join("") : '<div class="pm-contact-switcher-empty">\u6682\u65E0\u8054\u7CFB\u4EBA\u6216\u7FA4\u804A</div>'}</div>
           <div class="pm-contact-switcher-actions">
-            <button type="button" onclick="window.__pmShowGroupCreate()">\u65B0\u5EFA</button>
-            <button type="button" onclick="window.__pmShowAddContact()">\u6DFB\u52A0</button>
+            <button type="button" class="is-primary" onclick="window.__pmShowAddContact('', 'manual')">\u65B0\u5EFA\u8054\u7CFB\u4EBA</button>
+            <button type="button" onclick="window.__pmShowGroupCreate()">\u65B0\u5EFA\u7FA4\u804A</button>
+            <button type="button" class="is-wide" onclick="window.__pmShowAddContact('', 'generate')">\u751F\u6210\u8054\u7CFB\u4EBA\u4E0E\u7FA4\u804A</button>
           </div>`;
       phone.appendChild(switcher);
       positionContactSwitcher(switcher, trigger, phone);
@@ -16015,37 +16082,41 @@ ${antiFluff}`;
     <div class="pm-modal">
     <div class="pm-modal-header">
       <span></span>
-      <b>\u8054\u7CFB\u4EBA</b>
+      <b>\u4F1A\u8BDD\u7BA1\u7406</b>
       <button type="button" onclick="window.__pmCloseOverlay()" class="pm-modal-close" title="\u5173\u95ED" aria-label="\u5173\u95ED">${CLOSE_ICON_SVG}</button>
     </div>
     <div class="pm-modal-list">
-        ${empty ? '<div class="pm-modal-list-empty">\u6682\u65E0\u8054\u7CFB\u4EBA</div>' : renderGroups + renderSingle}
+        ${empty ? '<div class="pm-modal-list-empty">\u6682\u65E0\u8054\u7CFB\u4EBA\u6216\u7FA4\u804A</div>' : renderGroups + renderSingle}
     </div>
-    <div class="pm-modal-add">
+    <div class="pm-modal-add pm-directory-actions">
+        <button onclick="window.__pmShowAddContact('', 'manual')" class="pm-action-button is-accent">\u65B0\u5EFA\u8054\u7CFB\u4EBA</button>
         <button onclick="window.__pmShowGroupCreate()" class="pm-btn-group">\u65B0\u5EFA\u7FA4\u804A</button>
-        <button onclick="window.__pmShowAddContact()" class="pm-btn-add">\u6DFB\u52A0\u8054\u7CFB\u4EBA</button>
+        <button onclick="window.__pmShowAddContact('', 'generate')" class="pm-btn-add is-wide">\u751F\u6210\u8054\u7CFB\u4EBA\u4E0E\u7FA4\u804A</button>
     </div>
     </div>`);
     };
-    window.__pmShowAddContact = (resultMessage = "") => {
+    window.__pmShowAddContact = (resultMessage = "", mode = "all") => {
       closeContactSwitcher("replace");
       closeOverlay?.("replace");
+      const showManual = mode !== "generate";
+      const showGenerate = mode !== "manual";
+      const title = showManual && !showGenerate ? "\u65B0\u5EFA\u8054\u7CFB\u4EBA" : !showManual && showGenerate ? "\u751F\u6210\u8054\u7CFB\u4EBA\u4E0E\u7FA4\u804A" : "\u6DFB\u52A0\u4F1A\u8BDD";
       makeOverlay(`
 <div class="pm-modal">
-  <div class="pm-modal-header"><span></span><b>\u6DFB\u52A0\u8054\u7CFB\u4EBA</b><button type="button" onclick="window.__pmShowList()" class="pm-modal-close" title="\u5173\u95ED" aria-label="\u5173\u95ED">${CLOSE_ICON_SVG}</button></div>
+  <div class="pm-modal-header"><span></span><b>${title}</b><button type="button" onclick="window.__pmShowList()" class="pm-modal-close" title="\u8FD4\u56DE\u4F1A\u8BDD\u7BA1\u7406" aria-label="\u8FD4\u56DE\u4F1A\u8BDD\u7BA1\u7406">${CLOSE_ICON_SVG}</button></div>
   ${resultMessage ? `<div class="pm-bi-bar pm-contact-add-result"><span>${escapeHtml(resultMessage)}</span></div>` : ""}
   <div class="pm-contact-add-choices">
-    <section class="pm-contact-add-choice">
-      <b>\u624B\u52A8\u6DFB\u52A0</b><span>\u8F93\u5165\u660E\u786E\u7684\u89D2\u8272\u540D\uFF0C\u7ACB\u5373\u5F00\u59CB\u804A\u5929\u3002</span>
+    ${showManual ? `<section class="pm-contact-add-choice">
+      <b>\u624B\u52A8\u6DFB\u52A0</b><span>\u8F93\u5165\u660E\u786E\u7684\u89D2\u8272\u540D\uFF0C\u65B0\u5EFA\u8054\u7CFB\u4EBA\u5E76\u7ACB\u5373\u5F00\u59CB\u804A\u5929\u3002</span>
       <div class="pm-contact-add-manual">
         <input id="pm-add-contact-input" class="pm-cfg-input" placeholder="\u89D2\u8272\u540D" aria-label="\u8054\u7CFB\u4EBA\u89D2\u8272\u540D">
-        <button type="button" class="pm-contact-add-primary" onclick="(()=>{const v=document.getElementById('pm-add-contact-input').value.trim();if(v)window.__pmSwitchContact(v);})()">\u5F00\u59CB\u804A\u5929</button>
+        <button type="button" class="pm-contact-add-primary" onclick="(()=>{const v=document.getElementById('pm-add-contact-input').value.trim();if(v)window.__pmSwitchContact(v);})()">\u65B0\u5EFA\u8054\u7CFB\u4EBA</button>
       </div>
-    </section>
-    <section class="pm-contact-add-choice is-ai">
+    </section>` : ""}
+    ${showGenerate ? `<section class="pm-contact-add-choice is-ai">
       <b>AI \u751F\u6210</b><span>\u6839\u636E\u5F53\u524D\u5267\u60C5\u3001\u4E16\u754C\u4E66\u548C\u5DF2\u6709\u8054\u7CFB\u4EBA\u751F\u6210\u4E00\u6279\u5019\u9009\u3002</span>
-      <button type="button" id="pm-autogen-btn" class="pm-contact-add-ai" onclick="window.__pmConfirmAutoGen()" aria-label="AI \u81EA\u52A8\u751F\u6210\u8054\u7CFB\u4EBA"><span class="pm-contact-add-icon">${SPARKLES_ICON_SVG}</span><span>\u751F\u6210\u8054\u7CFB\u4EBA\u4E0E\u7FA4\u804A</span></button>
-    </section>
+      <button type="button" id="pm-autogen-btn" class="pm-contact-add-ai" onclick="window.__pmConfirmAutoGen()" aria-label="AI \u81EA\u52A8\u751F\u6210\u8054\u7CFB\u4EBA\u4E0E\u7FA4\u804A"><span class="pm-contact-add-icon">${SPARKLES_ICON_SVG}</span><span>\u751F\u6210\u8054\u7CFB\u4EBA\u4E0E\u7FA4\u804A</span></button>
+    </section>` : ""}
   </div>
 </div>`);
       setTimeout(() => {
@@ -19349,7 +19420,7 @@ ${lines}`;
       await backgroundSettings.load();
       const theme = window.__pmTheme, localKey = `${getStorageId2()}_${getCurrentPersona()}`;
       const presetButtons = Object.entries(THEME_PRESETS2).map(
-        ([name, preset]) => `<button type="button" class="pm-theme-chip ${theme.preset === name ? "pm-theme-active" : ""}" data-preset="${name}" aria-label="\u4F7F\u7528${escapeAttr2(preset.label)}\u754C\u9762\u4E3B\u9898" aria-pressed="${theme.preset === name}" onclick="window.__pmSetPreset('${safeJS2(name)}')"><span class="pm-theme-dot" style="background:${preset.accent || preset.right}" aria-hidden="true"></span></button>`
+        ([name, preset]) => `<button type="button" class="pm-theme-chip ${theme.preset === name ? "pm-theme-active" : ""}" data-preset="${name}" style="--pm-theme-chip-color:${preset.accent || preset.right}" aria-label="\u4F7F\u7528${escapeAttr2(preset.label)}\u754C\u9762\u4E3B\u9898" aria-pressed="${theme.preset === name}" onclick="window.__pmSetPreset('${safeJS2(name)}')"><span class="pm-theme-dot" style="background:${preset.accent || preset.right}" aria-hidden="true"></span></button>`
       ).join("");
       const buttons = (scope) => {
         const value = scope === "desktop" ? window.__pmDesktopBg : scope === "global" ? window.__pmBgGlobal : window.__pmBgLocal[localKey];
@@ -23003,7 +23074,7 @@ ${targetInstruction}`
     const canReusePreset = Boolean(presetOptions) && !reinitializing;
     const activeMode = canReusePreset && initializationMode === "reuse" ? "reuse" : "create";
     const selectedBooks = new Set(Array.isArray(draft.worldBookNames) ? draft.worldBookNames : worldBooks);
-    const books = worldBooks.map((name) => `<label class="pm-today-trend-book-option"><input type="checkbox" name="worldBookNames" value="${escapeAttr(name)}" ${selectedBooks.has(name) ? "checked" : ""}><span>${escapeHtml(name)}</span></label>`).join("");
+    const books = worldBooks.map((name) => `<label class="pm-today-trend-book-option"><input class="pm-today-trend-book-input" type="checkbox" name="worldBookNames" value="${escapeAttr(name)}" ${selectedBooks.has(name) ? "checked" : ""}><i class="pm-today-trend-book-check" aria-hidden="true"></i><span>${escapeHtml(name)}</span></label>`).join("");
     const modeSwitch = canReusePreset ? `<div class="pm-today-trend-mode-switch" aria-label="\u9884\u8BBE\u4F7F\u7528\u65B9\u5F0F"><button type="button" data-action="today-trend-use-preset" aria-pressed="${activeMode === "reuse"}">\u590D\u7528\u9884\u8BBE</button><button type="button" data-action="today-trend-create-preset" aria-pressed="${activeMode === "create"}">\u521B\u5EFA\u9884\u8BBE</button></div>` : "";
     const worldBookOptions = books || '<p class="pm-today-trend-empty-state" role="status">\u5F53\u524D\u804A\u5929\u6CA1\u6709\u53EF\u7528\u4E16\u754C\u4E66\uFF0C\u65E0\u6CD5\u521D\u59CB\u5316\u3002</p>';
     const feedback = error ? `<p class="pm-today-trend-init-feedback pm-today-trend-error" role="alert">${escapeHtml(error)}</p>` : initializing ? '<p class="pm-today-trend-init-feedback pm-today-trend-loading" role="status" aria-live="polite">\u6B63\u5728\u521D\u59CB\u5316\u4ECA\u65E5\u98CE\u5411\uFF0C\u8BF7\u4FDD\u6301\u9875\u9762\u5F00\u542F\u3002</p>' : "";
@@ -23016,7 +23087,6 @@ ${targetInstruction}`
         </section>` : "";
     return `<main class="pm-today-trend-content"><section class="pm-today-trend-first-use" aria-labelledby="pm-today-trend-init-title">
         <header class="pm-today-trend-init-intro">
-            <p class="pm-today-trend-init-eyebrow">WORLD SIGNAL</p>
             <h3 id="pm-today-trend-init-title" class="pm-today-trend-init-title">${reinitializing ? "\u91CD\u65B0\u521D\u59CB\u5316\u5F53\u524D\u4ECA\u65E5\u98CE\u5411" : "\u521B\u5EFA\u5F53\u524D\u89D2\u8272\u7684\u4ECA\u65E5\u98CE\u5411"}</h3>
             <p class="pm-today-trend-init-description">${reinitializing ? "\u9009\u62E9\u7528\u4E8E\u91CD\u65B0\u751F\u6210\u89C4\u5219\u4E0E\u521D\u59CB\u8D44\u6599\u7684\u4E16\u754C\u4E66\u3002" : "\u590D\u7528\u5DF2\u6709\u9884\u8BBE\uFF0C\u6216\u6839\u636E\u5F53\u524D\u4E16\u754C\u4E66\u521B\u5EFA\u4E00\u5957\u65B0\u7684\u4ECA\u65E5\u98CE\u5411\u914D\u7F6E\u3002"}</p>
         </header>

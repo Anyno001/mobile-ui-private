@@ -107,9 +107,7 @@ for (const variable of ['--pm-today-trend-report-rule']) {
 }
 assert.doesNotMatch(todayTrendStyle, /--pm-today-trend-(?:node-size|display-size)(?::|\))/, '世界态势新版不得保留已被局部 token 取代的通用尺寸变量或消费者');
 const todayTrendAssetPaths = [
-    ...['world'].flatMap(module => ['top.svg', 'middle-repeat.svg', 'bottom.svg'].map(name => `../assets/today-trend/${module}/${name}`)),
-    ...['reputation', 'faction', 'dynamics'].flatMap(module => ['top.svg', 'top-glow.svg', 'middle-repeat.svg', 'bottom.svg'].map(name => `../assets/today-trend/${module}/${name}`)),
-    '../assets/today-trend/world/starlight.svg', '../assets/today-trend/world/starlight-fine.svg',
+    '../assets/today-trend/world/middle-repeat.svg',
 ];
 const todayTrendAssets = await Promise.all(todayTrendAssetPaths.map(assetPath => readFile(new URL(assetPath, import.meta.url), 'utf8')));
 for (const svg of todayTrendAssets) {
@@ -117,16 +115,10 @@ for (const svg of todayTrendAssets) {
     assert.ok((svg.match(/=(?:"|')#[0-9a-fA-F]{3,8}(?:"|')/g) || []).every(attribute => /=["']#000000["']/.test(attribute)), '今日风向背景资源只能使用黑色 alpha mask');
     assert.doesNotMatch(svg, /<(?:image|script|foreignObject)\b|(?:href|xlink:href)=(?:"|')https?:\/\//, '今日风向背景资源不得包含外部内容或位图');
 }
-assert.match(todayTrendStyle, /pm-today-trend-dynamics\{--pm-today-trend-bg-top-glow:url\("\.\/assets\/today-trend\/dynamics\/top-glow\.svg"\)/, '事件追踪必须声明 SVG 资源路径');
-assert.match(todayTrendStyle, /-webkit-mask-image:var\(--pm-today-trend-bg-top\),var\(--pm-today-trend-bg-middle\),var\(--pm-today-trend-bg-bottom\)/, '背景图形必须使用 WebKit 多层 mask');
-assert.match(todayTrendStyle, /mask-mode:alpha,alpha,alpha/, '背景图形必须显式使用 alpha mask');
-assert.match(todayTrendStyle, /mask-repeat:no-repeat,repeat-y,no-repeat/, '背景中段必须仅沿纵向重复');
-assert.match(todayTrendStyle, /pm-today-trend-world::before[\s\S]*?pointer-events:none/, 'SVG 背景层不得拦截交互');
-assert.match(todayTrendStyle, /pm-today-trend-world>\*,\.pm-today-trend-reputation>\*[^}]*z-index:var\(--pm-z-base\)/, '模块内容必须位于 SVG 背景层之上');
+assert.doesNotMatch(todayTrendStyle, /assets\/today-trend\/(?:world|reputation|faction|dynamics)\/(?:top|bottom|top-glow|starlight[^/]*)\.svg/, '今日风向不得继续引用头尾或星光 SVG');
 assert.match(todayTrendStyle, /pm-today-trend-world-grid\{[^}]*background:color-mix\(in srgb,var\(--pm-color-accent\) 38%,transparent\)/, '世界态势重复网格必须独立于星光并降低强度');
 assert.match(todayTrendStyle, /pm-today-trend-world-grid\{[^}]*linear-gradient\(45deg,transparent 0%,#000 29%,#000 71%,transparent 100%\)[^}]*mask-composite:intersect/, '世界态势重复网格必须在右上与左下淡出');
-assert.doesNotMatch(todayTrendStyle, /pm-today-trend-world::after,\.pm-today-trend-world-grid\{[^}]*display:none/, '世界态势背景与重复网格不得被后续规则隐藏');
-assert.match(todayTrendStyle, /pm-today-trend-factions::after,\.pm-today-trend-dynamics::after\{[^}]*mask-image:var\(--pm-today-trend-bg-top\),var\(--pm-today-trend-bg-bottom\)/, '势力与事件追踪背景必须隐藏中段重复图形');
+assert.doesNotMatch(todayTrendStyle, /pm-today-trend-(?:world|reputation|factions|dynamics)::(?:before|after)[^{]*\{[^}]*(?:background(?:-image)?|content|-webkit-mask(?:-image)?|mask(?:-image)?)[^}]*url\(/, '今日风向模块根节点不得通过伪元素恢复图片装饰');
 assert.doesNotMatch(todayTrendStyle, /pm-today-trend-(?:world|faction|reputation|dynamics)-(?:head|foot)-art/, '今日风向头尾装饰 SVG 样式必须清理');
 
 
@@ -452,7 +444,7 @@ const busyReputationSettingsHtml = renderTodayTrendReputationView({ scope: valid
 assert.match(busyReputationSettingsHtml, /today-trend-regenerate-circle-schema"[^>]*disabled aria-busy="true"/, '忙碌时圈层结构重新生成必须禁用并暴露忙碌状态');
 assert.doesNotMatch(busyReputationSettingsHtml, /data-menu-id="circle:/, '风评设置不得重复渲染圈层省略号');
 assert.doesNotMatch(busyReputationSettingsHtml, /today-trend-regenerate-reputation-rule/, '个人风评设置不得重复提供模块规则动作');
-assert.match(todayTrendStyle, /pm-today-trend-reputation::after,\.pm-today-trend-factions::after,\.pm-today-trend-dynamics::after\{[^}]*mask-image:var\(--pm-today-trend-bg-top\),var\(--pm-today-trend-bg-bottom\)/, '个人风评、势力和事件背景必须保留顶部与底部图形并隐藏中段重复图形');
+assert.doesNotMatch(todayTrendStyle, /pm-today-trend-(?:reputation|factions|dynamics)::(?:before|after)[^{]*\{[^}]*mask-image/, '个人风评、势力和事件不得恢复头尾 SVG 背景');
 assert.match(todayTrendStyle, /pm-today-trend-reputation\{[^}]*--pm-today-trend-reputation-mark-size/, '个人风评必须在根选择器集中声明局部尺寸 token');
 assert.doesNotMatch(todayTrendStyle, /pm-today-trend-reputation-(?:head-art|file-no)/, '个人风评不得保留没有 DOM 消费者的档案装饰样式');
 assert.match(todayTrendStyle, /pm-today-trend-reputation-mark::before[^}]*border-right:0[^}]*border-bottom:0/, '个人风评图标必须提供左上框角');

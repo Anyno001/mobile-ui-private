@@ -41,7 +41,7 @@ import {
 } from '../src/conversation-state.js';
 import { installDiagnosticApi } from '../src/diagnostic.js';
 import { gatherContext, getStorageIdFor, getUserPersona, resolveOutfitTarget } from '../src/host-context.js';
-import { awaitPendingBranchInheritance, beginBranchInheritance, inheritPhoneDataOnBranch, mergeBranchScope, resolveBranchInheritance } from '../src/branch-scope-inheritance.js';
+import { awaitPendingBranchInheritance, beginBranchInheritance, inheritPhoneDataOnBranch, mergeBranchScope, mergePhoneUiBranchScope, resolveBranchInheritance } from '../src/branch-scope-inheritance.js';
 import {
     completeDirectoryBranchScope, enqueueDirectoryOperation, getActiveDirectoryBranchScopes, markDirectoryBranchScope,
 } from '../src/directory-save-coordinator.js';
@@ -2422,12 +2422,21 @@ assert.notEqual(THEME_PRESETS.apple.left, THEME_PRESETS.apple.ui['--pm-color-sur
     '苹果左气泡必须与页面底色区分，不能融合');
 assert.equal(THEME_PRESETS.apple.ui['--pm-color-accent'], undefined,
     '苹果皮肤主强调色必须由预设 accent 统一提供');
-assert.match(settingsOverlayHtml, /<button type="button" class="pm-theme-chip pm-theme-active" data-preset="apple"/);
+assert.match(settingsOverlayHtml, /<button type="button" class="pm-theme-chip pm-theme-active" data-preset="apple" style="--pm-theme-chip-color:#4F7D24"/);
 assert.match(settingsOverlayHtml, /aria-label="使用苹果界面主题" aria-pressed="true"/);
 assert.match(settingsOverlayHtml, /data-theme-mode="light" aria-pressed="true" onclick="window\.__pmSetDarkMode\('light'\)" disabled>日间<\/button>/,
     '苹果皮肤必须明确显示日间已选中且锁定');
 assert.match(settingsOverlayHtml, /data-theme-mode="dark" aria-pressed="false" onclick="window\.__pmSetDarkMode\('dark'\)" disabled>夜间<\/button>/,
     '苹果皮肤必须明确显示夜间未选中且锁定');
+assert.match(settingsOverlayHtml, /data-preset="default" style="--pm-theme-chip-color:#1677d2"/,
+    '默认主题选择边缘必须绑定默认蓝，不得继承当前苹果主题的辅助色');
+const modalSettingsCss = readFileSync(new URL('../styles/modal-settings.css', import.meta.url), 'utf8');
+const activeThemeRule = modalSettingsCss.match(/\.pm-theme-active\{[^}]+\}/)?.[0] || '';
+assert.match(activeThemeRule, /border-color:var\(--pm-theme-chip-color\)/,
+    '主题选中边缘必须读取按钮自身主题色');
+assert.match(activeThemeRule, /outline:2px solid color-mix\(in srgb,var\(--pm-theme-chip-color\) 14%,transparent\)/,
+    '主题选中外圈必须读取按钮自身主题色');
+assert.doesNotMatch(activeThemeRule, /--pm-color-auxiliary/, '主题选中边缘不得再继承当前容器辅助色');
 assert.match(settingsOverlayHtml, /style="background:#4F7D24" aria-hidden="true"/);
 assert.doesNotMatch(settingsOverlayHtml, /pm-theme-dot[^>]*><\/span>[^<]+<\/button>/,
     '颜色预设按钮只能显示色点，不得出现可见标签正文');
@@ -6684,6 +6693,8 @@ const sharedDesktopHtml = renderPhoneDesktop({ scenes: {} }, { pinnedSceneIds: [
 }]);
 assert.match(sharedDesktopHtml, /data-action="desktop-import-community-template"[^>]*data-template-id="template-shared"/,
     '其他窗口桌面必须提供导入配置模板的入口');
+assert.match(sharedDesktopHtml, /data-action="dismiss-community-template"[^>]*data-template-id="template-shared"[^>]*>移除<\/button>/,
+    '跨窗口模板必须提供仅从当前桌面移除的入口');
 assert.match(sharedDesktopHtml, /共享 &lt; 社区/, '共享模板标题必须按普通卡片规则转义');
 assert.match(sharedDesktopHtml, /style="--scene-accent:#123abc"/, '模板入口必须透传模板的场景主题色');
 assert.match(sharedDesktopHtml, /class="pm-desktop-pin pm-desktop-template"[^>]*>[\s\S]*data-action="desktop-import-community-template"[^>]*><b>共享 &lt; 社区<\/b><\/button>/,
@@ -8510,6 +8521,31 @@ try {
     for (const store of [richStores.interactive, richStores.phoneUi, richStores.calendar, richStores.occasions, richStores.cycles, richStores.recipes]) {
         assert.ok(Object.hasOwn(store.scopes, richTargetId), '全部按 scope 隔离的模型 store 都必须继承');
     }
+    const branchTemplate = {
+        id: 'template_external_scene', sourceStorageId: 'external-story', sourceSceneId: 'scene-external',
+        title: '外部模板', preset: 'weibo', styleInput: '', generatedPrompt: '', themeAccent: '#123abc', sharedAt: 1,
+    };
+    const branchPhoneInteractive = { version: 2, scopes: {
+        [branchIds.source]: { activeSceneId: null, sceneOrder: [], scenes: {}, actors: {} },
+        [richTargetId]: { activeSceneId: null, sceneOrder: [], scenes: {}, actors: {} },
+    } };
+    const branchPhoneCurrent = { version: 1, scopes: {
+        [branchIds.source]: { pinnedSceneIds: [], dismissedCommunityTemplateIds: [branchTemplate.id], lastPage: 'desktop', lastSceneId: null, lastTab: 'feed' },
+    }, sharedCommunityTemplates: [branchTemplate] };
+    const branchPhoneDesired = { version: 1, scopes: {
+        ...branchPhoneCurrent.scopes,
+        [richTargetId]: structuredClone(branchPhoneCurrent.scopes[branchIds.source]),
+    }, sharedCommunityTemplates: [branchTemplate] };
+    const mergedBranchPhoneUi = mergePhoneUiBranchScope(branchPhoneCurrent, branchPhoneDesired, branchPhoneCurrent, richTargetId, branchPhoneInteractive);
+    assert.deepEqual(mergedBranchPhoneUi.scopes[richTargetId].dismissedCommunityTemplateIds, [branchTemplate.id],
+        '分支 scope 写入必须保留仍有效的跨窗口桌面移除状态');
+    assert.deepEqual(mergedBranchPhoneUi.sharedCommunityTemplates, [branchTemplate],
+        '分支 scope 写入不得丢失全局共享社区模板');
+    const restoredBranchPhoneUi = mergePhoneUiBranchScope(mergedBranchPhoneUi, branchPhoneCurrent, branchPhoneDesired, richTargetId, branchPhoneInteractive);
+    assert.equal(restoredBranchPhoneUi.scopes[richTargetId], undefined,
+        '分支补偿必须只移除目标 phone UI scope');
+    assert.deepEqual(restoredBranchPhoneUi.sharedCommunityTemplates, [branchTemplate],
+        '分支补偿不得清空全局共享社区模板');
     let todayTrendStores = emptyBranchStores();
     todayTrendStores.todayTrend = todayTrendBranchStore();
     const todayTrendResult = await inheritPhoneDataOnBranch({

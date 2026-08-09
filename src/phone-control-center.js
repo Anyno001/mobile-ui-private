@@ -112,7 +112,7 @@ export function installPhoneControlCenter(state, deps) {
     <div id="pm-session-auto-poke-status" class="pm-session-behavior-status" role="status" aria-live="polite" ${statusMessage ? '' : 'hidden'}>${escapeHtml(statusMessage)}</div>
     <section class="pm-session-behavior-section">
       <button id="pm-session-auto-poke" type="button" class="pm-session-behavior-toggle" role="checkbox" aria-checked="${autoPoke.enabled}" onclick="window.__pmToggleCurrentAutoPoke(this)">
-        ${CHAT_ICON_SVG}<span><b>允许当前会话主动发消息</b><small>聊天停下来时，手机有机会自己发一句。</small></span><i class="pm-control-toggle ${autoPoke.enabled ? 'is-checked' : ''}" aria-hidden="true"></i>
+        <span><b>允许当前会话主动发消息</b><small>聊天停下来时，手机有机会自己发一句。</small></span><i class="pm-control-toggle ${autoPoke.enabled ? 'is-checked' : ''}" aria-hidden="true"></i>
       </button>
       <label class="pm-session-auto-poke-probability">每次有 <input id="pm-session-auto-poke-probability" type="number" min="0" max="100" step="1" required value="${autoPoke.probability}" ${autoPoke.enabled ? '' : 'disabled'} onchange="window.__pmSaveCurrentAutoPokeProbability(this)"> % 几率自动发消息</label>
       <p id="pm-session-auto-poke-counter">${autoPoke.counter === 1 ? '这次会自动发一条。' : '这次没有自动发消息。'}</p>

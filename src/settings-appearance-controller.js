@@ -33,7 +33,7 @@ export function createAppearanceController({ THEME_PRESETS, applyTheme, clone, s
         await backgroundSettings.load();
         const theme = window.__pmTheme, localKey = `${getStorageId()}_${getCurrentPersona()}`;
         const presetButtons = Object.entries(THEME_PRESETS).map(([name, preset]) =>
-            `<button type="button" class="pm-theme-chip ${theme.preset === name ? 'pm-theme-active' : ''}" data-preset="${name}" aria-label="使用${escapeAttr(preset.label)}界面主题" aria-pressed="${theme.preset === name}" onclick="window.__pmSetPreset('${safeJS(name)}')"><span class="pm-theme-dot" style="background:${preset.accent || preset.right}" aria-hidden="true"></span></button>`
+            `<button type="button" class="pm-theme-chip ${theme.preset === name ? 'pm-theme-active' : ''}" data-preset="${name}" style="--pm-theme-chip-color:${preset.accent || preset.right}" aria-label="使用${escapeAttr(preset.label)}界面主题" aria-pressed="${theme.preset === name}" onclick="window.__pmSetPreset('${safeJS(name)}')"><span class="pm-theme-dot" style="background:${preset.accent || preset.right}" aria-hidden="true"></span></button>`
         ).join('');
         const buttons = scope => {
             const value = scope === 'desktop' ? window.__pmDesktopBg : scope === 'global' ? window.__pmBgGlobal : window.__pmBgLocal[localKey];

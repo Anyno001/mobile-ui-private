@@ -3155,8 +3155,8 @@ for (const expected of ['handleSceneAccentAction(action, app, button)']) {
   requireText('interactive-scenes.js', interactiveCode, expected);
 }
 for (const expected of [
-  "action === 'desktop-import-community-template'", "action === 'publish-community-template' || action === 'unpublish-community-template'",
-  'importCommunityTemplate', 'commitWithPhoneUi', 'removeCommunityTemplatesForSourceScene',
+  "action === 'desktop-import-community-template'", "action === 'dismiss-community-template'", "action === 'publish-community-template' || action === 'unpublish-community-template'",
+  'importCommunityTemplate', 'dismissCommunityTemplate', 'commitWithPhoneUi', 'removeCommunityTemplatesForSourceScene',
 ]) requireText('interactive-scenes.js', interactiveCode, expected);
 for (const expected of [
   'createCommunityTemplateImportAction', 'scope.sceneOrder.length >= sceneLimit',
@@ -3168,21 +3168,25 @@ for (const expected of [
 ]) requireText('interactive-scenes.js', interactiveCode, expected);
 for (const expected of [
   'COMMUNITY_TEMPLATE_ICON_SVG', 'pm-desktop-template', 'desktop-import-community-template',
-  'publish-community-template', 'unpublish-community-template', 'style="--scene-accent:${escapeAttr(sceneAccent(template))}"',
-  'style="--scene-accent:${escapeAttr(accent)}"', '<b>${escapeHtml(template.title)}</b></button></article>',
+  'dismiss-community-template', 'publish-community-template', 'unpublish-community-template', 'style="--scene-accent:${escapeAttr(sceneAccent(template))}"',
+  'style="--scene-accent:${escapeAttr(accent)}"', '<b>${escapeHtml(template.title)}</b></button><button type="button" data-action="dismiss-community-template"',
 ]) requireText('interactive-scene-views.js', interactiveViewsCode, expected);
 for (const forbidden of ['pm-desktop-template-icon', '<small>导入社区模板</small>']) {
   if (interactiveViewsCode.includes(forbidden)) failures.push(`interactive-scene-views.js: cross-window desktop pin still has divergent template markup: ${forbidden}`);
 }
 if (!css.includes('.pm-desktop-pin>button[data-action="unpin-scene"]')) failures.push('style.css: desktop pin remove styling must target the unpin action instead of button position');
+if (!css.includes('.pm-desktop-pin>button[data-action="dismiss-community-template"]')) failures.push('style.css: cross-window template remove styling must target the dismiss action');
 if (css.includes('.pm-desktop-pin>button:last-child')) failures.push('style.css: positional desktop pin remove selector still affects single-button cross-window templates');
 for (const expected of [
   'export const COMMUNITY_TEMPLATE_ICON_SVG',
 ]) requireText('icons.js', sourceModuleByName.get('icons.js')?.code || '', expected);
 for (const expected of [
-  'publishCommunityTemplate', 'unpublishCommunityTemplate', 'removeCommunityTemplatesForSourceScene',
-  'createSceneFromCommunityTemplate', 'importedTemplateSceneIds', 'sharedCommunityTemplates',
+  'publishCommunityTemplate', 'unpublishCommunityTemplate', 'dismissCommunityTemplate', 'removeCommunityTemplatesForSourceScene',
+  'createSceneFromCommunityTemplate', 'importedTemplateSceneIds', 'dismissedCommunityTemplateIds', 'sharedCommunityTemplates',
 ]) requireText('interactive-scene-model.js', sourceModuleByName.get('interactive-scene-model.js')?.code || '', expected);
+for (const expected of ['mergePhoneUiBranchScope', 'commitPhoneUiScopeCoordinated', 'sharedCommunityTemplates']) {
+  requireText('branch-scope-inheritance.js', sourceModuleByName.get('branch-scope-inheritance.js')?.code || '', expected);
+}
 for (const forbidden of ['toggle-community-template', 'toggle-scene-share', 'desktop-open-shared-scene', 'SHARE_WINDOW_ICON_SVG']) {
   if (source.includes(forbidden)) failures.push(`src: removed cross-window community identifier remains: ${forbidden}`);
   if (bundle.includes(forbidden)) failures.push(`index.js: removed cross-window community identifier remains: ${forbidden}`);
@@ -3603,11 +3607,13 @@ for (const expected of [
   '.pm-today-trend-page{overflow:hidden;background:var(--pm-color-surface-page)}',
   '.pm-today-trend-header{position:sticky;top:0;z-index:var(--pm-z-base)',
   '.pm-today-trend-header button svg,.pm-today-trend-icon-button svg{width:var(--pm-size-icon-md);height:var(--pm-size-icon-md)',
-  '--pm-today-trend-bg-top-glow:url("./assets/today-trend/reputation/top-glow.svg")',
-  '--pm-today-trend-bg-top-glow:url("./assets/today-trend/faction/top-glow.svg")',
-  '--pm-today-trend-bg-top-glow:url("./assets/today-trend/dynamics/top-glow.svg")',
-  'mask-repeat:no-repeat,repeat-y,no-repeat',
+  '--pm-today-trend-bg-middle:url("./assets/today-trend/world/middle-repeat.svg")',
 ]) requireText('style.css', css, expected);
+const removedTodayTrendAssetPattern = /assets\/today-trend\/(?:world|reputation|faction|dynamics)\/(?:top|bottom|top-glow|starlight[^/]*)\.svg/g;
+const removedTodayTrendAssets = css.match(removedTodayTrendAssetPattern) || [];
+if (removedTodayTrendAssets.length) {
+  failures.push(`style.css: today-trend must not retain decoration assets: ${[...new Set(removedTodayTrendAssets)].join(', ')}`);
+}
 if (css.includes('--pm-letter-spacing-wide')) {
   failures.push('style.css: today-trend must not consume an unregistered letter-spacing token');
 }
@@ -3898,9 +3904,11 @@ if (phoneChatCode.includes('buildCharacterBehaviorPrompt(')
 requireText('contact-generator.js', sourceModuleByName.get('contact-generator.js')?.code || '', 'installContactGenerator(state, deps)');
 requireText('contact-generator.js', sourceModuleByName.get('contact-generator.js')?.code || '', '!state.generationTask');
 for (const expected of [
-  "window.__pmShowAddContact = (resultMessage = '')", 'escapeHtml(resultMessage)',
+  "window.__pmShowAddContact = (resultMessage = '', mode = 'all')", 'escapeHtml(resultMessage)',
   '<b>手动添加</b>', '<b>AI 生成</b>', 'id="pm-autogen-btn"',
   'pm-contact-add-manual', 'pm-contact-add-primary', 'pm-contact-add-ai', 'pm-contact-add-icon',
+  '新建联系人', '新建群聊', '生成联系人与群聊',
+  'pm-directory-actions', 'is-primary', 'is-wide',
   'SPARKLES_ICON_SVG', 'UNLINK_ICON_SVG', 'pm-entity-delete',
   '永久删除联系人', '永久删除群聊', '且无法恢复',
 ]) requireText('phone-directory.js', directoryCode, expected);

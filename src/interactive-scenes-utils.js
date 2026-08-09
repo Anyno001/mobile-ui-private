@@ -3,23 +3,23 @@ import { normalizeInteractiveStore, stripPersistedV2ContentRating } from './inte
 export const uid = prefix => `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
 export const now = () => Date.now();
 const cloneStore = store => normalizeInteractiveStore(JSON.parse(JSON.stringify(store)));
+const canonicalIdentityName = value => String(value ?? '').trim().slice(0, 80).toLocaleLowerCase();
 
-export function parseCommunityPostInput(rawContent, actors, defaultAuthorSeed) {
+export function parseCommunityPostInput(rawContent, _actors, defaultAuthorSeed, options = {}) {
     const identityMatch = String(rawContent || '').match(/^【([^】]+)】/);
-    const identityId = identityMatch?.[1].trim();
+    const identityName = identityMatch?.[1].trim().slice(0, 80);
     const content = (identityMatch ? String(rawContent).slice(identityMatch[0].length) : String(rawContent || '')).trim();
-    if (!content) throw new Error('帖子内容不能为空');
-    if (content.length > 4000) throw new Error('帖子内容不能超过 4000 字');
-    if (!identityId) return { authorSeed: defaultAuthorSeed, content };
-    if (!Object.hasOwn(actors || {}, identityId)) throw new Error(`未找到 ID 为 ${identityId} 的发帖身份`);
-    const actor = actors[identityId];
+    const contentLabel = options.contentLabel === '评论' ? '评论' : '帖子';
+    const maxLength = Number.isInteger(options.maxLength) && options.maxLength > 0 ? options.maxLength : 4000;
+    if (!content) throw new Error(`${contentLabel}内容不能为空`);
+    if (content.length > maxLength) throw new Error(`${contentLabel}内容不能超过 ${maxLength} 字`);
+    if (!identityName) return { authorSeed: defaultAuthorSeed, content };
     return {
         authorSeed: {
-            type: actor.type,
-            displayName: actor.displayName,
-            bindingKey: actor.bindingKey,
-            profile: actor.profile,
-            createdAt: actor.createdAt,
+            type: 'passerby',
+            displayName: identityName,
+            bindingKey: `manual:${canonicalIdentityName(identityName)}`,
+            profile: '',
         },
         content,
     };

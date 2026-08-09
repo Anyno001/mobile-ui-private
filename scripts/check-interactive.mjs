@@ -7,7 +7,7 @@ import {
     createDefaultPhoneUiScope, createEmptyPhoneUiState, deleteInteractiveScene, deleteSceneComment, deleteScenePost,
     createCommunityTemplate, createSceneFromCommunityTemplate, deriveInteractiveActorId, enforceInteractiveSceneLimit, ensureInteractiveActor, incrementScenePostShare,
     normalizeAmbientStatus, normalizeInteractiveStore, normalizePhoneUiState, normalizeScene, patchPhoneUiScope,
-    publishCommunityTemplate, removeCommunityTemplatesForSourceScene, resolveInteractiveAuthor, toggleScenePin, toggleScenePostLike, unpublishCommunityTemplate, updateSceneComment, updateScenePost,
+    dismissCommunityTemplate, publishCommunityTemplate, removeCommunityTemplatesForSourceScene, resolveInteractiveAuthor, toggleScenePin, toggleScenePostLike, unpublishCommunityTemplate, updateSceneComment, updateScenePost,
 } from '../src/interactive-scene-model.js';
 import {
     INTERACTIVE_STORAGE_KEYS, PHONE_UI_STORAGE_KEY, loadInteractiveScenes, loadPhoneUiState,
@@ -303,8 +303,20 @@ assert.equal(Object.hasOwn(publishedTemplate, 'live'), false, '模板不得保�
 const republishedTemplateState = publishCommunityTemplate(publishedTemplateState, 'story', 'scene-a', phoneInteractiveStore, 101);
 assert.equal(republishedTemplateState.sharedCommunityTemplates.length, 1, '重复发布只能覆盖同一模板，不能意外取消发布');
 assert.equal(republishedTemplateState.sharedCommunityTemplates[0].sharedAt, 101, '重复发布必须刷新模板快照时间');
+const dismissedTemplateState = dismissCommunityTemplate(republishedTemplateState, 'other', publishedTemplate.id, phoneInteractiveStore);
+assert.deepEqual(dismissedTemplateState.scopes.other.dismissedCommunityTemplateIds, [publishedTemplate.id],
+    '目标窗口移除跨窗口模板时必须只记录当前 scope 的桌面隐藏状态');
+assert.equal(dismissedTemplateState.sharedCommunityTemplates.length, 1, '目标窗口桌面移除不得取消源窗口发布');
+assert.deepEqual(dismissCommunityTemplate(dismissedTemplateState, 'other', publishedTemplate.id, phoneInteractiveStore), dismissedTemplateState,
+    '重复移除同一跨窗口模板必须保持值语义幂等');
+assert.throws(() => dismissCommunityTemplate(republishedTemplateState, 'story', publishedTemplate.id, phoneInteractiveStore),
+    /源窗口模板必须在社区中取消发布/);
+assert.throws(() => dismissCommunityTemplate(republishedTemplateState, 'other', 'missing-template', phoneInteractiveStore),
+    /共享社区模板不存在或已取消发布/);
 const unpublishedTemplateState = unpublishCommunityTemplate(republishedTemplateState, 'story', 'scene-a', phoneInteractiveStore);
 assert.equal(unpublishedTemplateState.sharedCommunityTemplates, undefined, '只有明确取消发布才允许撤下模板');
+assert.equal(normalizePhoneUiState({ ...dismissedTemplateState, sharedCommunityTemplates: [] }, phoneInteractiveStore).scopes.other.dismissedCommunityTemplateIds, undefined,
+    '模板取消发布后必须清理已失效的桌面隐藏标识');
 assert.throws(() => publishCommunityTemplate(phoneUiInput, 'story', 'missing', phoneInteractiveStore), /互动场景不存在/);
 assert.throws(() => unpublishCommunityTemplate(phoneUiInput, 'story', 'missing', phoneInteractiveStore), /互动场景不存在/);
 const removedSourceTemplateState = removeCommunityTemplatesForSourceScene(publishedTemplateState, 'story', 'scene-a', phoneInteractiveStore);
@@ -337,6 +349,13 @@ const importedTemplateState = patchPhoneUiScope(publishedTemplateState, 'other',
     },
 } }));
 assert.equal(importedTemplateState.scopes.other.importedTemplateSceneIds[publishedTemplate.id], 'scene-imported', '目标窗口必须记录模板导入映射以保证幂等打开');
+const dismissedImportedTemplateState = dismissCommunityTemplate(importedTemplateState, 'other', publishedTemplate.id, normalizeInteractiveStore({ version: 2, scopes: {
+    story: phoneInteractiveStore.scopes.story,
+    other: { activeSceneId: 'scene-imported', sceneOrder: ['scene-imported'], scenes: { 'scene-imported': importedScene }, actors: {} },
+} }));
+assert.equal(dismissedImportedTemplateState.scopes.other.importedTemplateSceneIds[publishedTemplate.id], 'scene-imported',
+    '从桌面移除跨窗口模板不得清理既有导入映射');
+assert.equal(dismissedImportedTemplateState.scopes.other.dismissedCommunityTemplateIds[0], publishedTemplate.id);
 
 const concurrentImportStore = normalizeInteractiveStore({ version: 2, scopes: {
     target: { activeSceneId: null, sceneOrder: [], scenes: {}, actors: {} },
@@ -810,16 +829,33 @@ assert.deepEqual(parseCommunityPostInput('默认正文', identityScope.actors, d
 const selectedPostInput = parseCommunityPostInput(`【 ${selectedActor.actorId} 】 指定正文 `, identityScope.actors, defaultPostAuthor);
 assert.equal(selectedPostInput.content, '指定正文', '身份前缀不得进入帖子正文');
 assert.deepEqual(selectedPostInput.authorSeed, {
-    type: selectedActor.type, displayName: selectedActor.displayName, bindingKey: selectedActor.bindingKey,
-    profile: selectedActor.profile, createdAt: selectedActor.createdAt,
-}, '有效 actor ID 必须解析为对应身份种子');
-assert.notEqual(selectedPostInput.authorSeed, selectedActor, '发布输入不得将 store actor 对象直接交给下游修改');
-assert.throws(() => parseCommunityPostInput('【missing】正文', identityScope.actors, defaultPostAuthor), /未找到 ID 为 missing 的发帖身份/);
+    type: 'passerby', displayName: selectedActor.actorId,
+    bindingKey: `manual:${selectedActor.actorId.toLocaleLowerCase()}`, profile: '',
+}, '方括号内容只作为显示名字使用，不得绑定已有 actor ID');
+const selectedPostByName = parseCommunityPostInput('【路人甲】按名字指定正文', identityScope.actors, defaultPostAuthor);
+assert.deepEqual(selectedPostByName.authorSeed, {
+    type: 'passerby', displayName: '路人甲', bindingKey: 'manual:路人甲', profile: '',
+}, '名字前缀应直接生成独立显示作者，不依赖身份表');
+assert.equal(selectedPostByName.content, '按名字指定正文');
+assert.equal(parseCommunityPostInput('【我】用户正文', identityScope.actors, defaultPostAuthor).authorSeed.bindingKey, 'manual:我', '显式【我】也只表示显示名字，不绑定当前 persona');
+assert.deepEqual(parseCommunityPostInput('【从未创建过的人】正文', {}, defaultPostAuthor).authorSeed, {
+    type: 'passerby', displayName: '从未创建过的人', bindingKey: 'manual:从未创建过的人', profile: '',
+}, '任意名字必须无需预建身份即可直接使用');
+assert.equal(parseCommunityPostInput('【Alice】正文', {}, defaultPostAuthor).authorSeed.bindingKey, 'manual:alice', '手输名字的内部去重键应忽略大小写');
+const longManualName = '名'.repeat(81);
+assert.equal(parseCommunityPostInput(`【${longManualName}】正文`, {}, defaultPostAuthor).authorSeed.displayName.length, 80, '手输名字必须遵守作者显示名上限');
 assert.throws(() => parseCommunityPostInput(`【${selectedActor.actorId}】`, identityScope.actors, defaultPostAuthor), /帖子内容不能为空/);
 assert.deepEqual(parseCommunityPostInput('【】正文', identityScope.actors, defaultPostAuthor), {
     authorSeed: defaultPostAuthor, content: '【】正文',
 }, '空方括号不是有效身份指令，必须作为普通正文保留');
 assert.throws(() => parseCommunityPostInput('x'.repeat(4001), identityScope.actors, defaultPostAuthor), /帖子内容不能超过 4000 字/);
+const selectedCommentInput = parseCommunityPostInput('【路人甲】回复内容', identityScope.actors, defaultPostAuthor, { contentLabel: '评论', maxLength: 1000 });
+assert.equal(selectedCommentInput.authorSeed.bindingKey, 'manual:路人甲', '回复评论必须直接使用手输名字，不依赖身份表');
+assert.equal(selectedCommentInput.content, '回复内容');
+assert.throws(
+    () => parseCommunityPostInput(`【路人甲】${'x'.repeat(1001)}`, identityScope.actors, defaultPostAuthor, { contentLabel: '评论', maxLength: 1000 }),
+    /评论内容不能超过 1000 字/,
+);
 assert.equal(
     parseCommunityPostInput(`【${selectedActor.actorId}】${'x'.repeat(4000)}`, identityScope.actors, defaultPostAuthor).content.length,
     4000,
@@ -1275,6 +1311,12 @@ await saveInteractiveScenes(fallbackStore);
 assert.ok(localData.has(INTERACTIVE_STORAGE_KEYS.fallback));
 assert.deepEqual(await loadInteractiveScenes(), fallbackStore);
 
+assert.equal(savePhoneUiState(dismissedTemplateState, phoneInteractiveStore), true);
+const persistedDismissedTemplateState = loadPhoneUiState(phoneInteractiveStore);
+assert.deepEqual(persistedDismissedTemplateState.scopes.other.dismissedCommunityTemplateIds, [publishedTemplate.id],
+    '跨窗口桌面移除状态必须经过 localStorage 往返后仍然存在');
+assert.equal(persistedDismissedTemplateState.sharedCommunityTemplates[0].id, publishedTemplate.id,
+    '持久化桌面移除状态不得丢失全局共享模板');
 assert.equal(savePhoneUiState(validCommunityState, phoneInteractiveStore), true);
 assert.ok(localData.has(PHONE_UI_STORAGE_KEY));
 assert.deepEqual(loadPhoneUiState(phoneInteractiveStore), validCommunityState);
@@ -2012,6 +2054,52 @@ try {
     assert.equal(savedScene.title, '更新后的社区');
     assert.equal(savedScene.generatedPrompt, '更新后的社区风格');
     assert.equal(savedScene.themeAccent, '#123abc', '自定义社区色必须以小写六位十六进制持久化');
+
+    const commentTargetPost = savedScene.posts[0];
+    const commentInput = { value: '【角色】真实回复' };
+    const commentComposer = { querySelector: selector => selector === 'input' ? commentInput : null };
+    const commentButton = {
+        tagName: 'BUTTON', dataset: { action: 'post-comment', postId: commentTargetPost.id },
+        closest(selector) {
+            if (selector === '[data-action]') return this;
+            if (selector === '#pm-scene-app') return app;
+            if (selector === '.pm-scene-comment-composer') return commentComposer;
+            return null;
+        },
+    };
+    const commentComplete = waitForInstallationAction(3);
+    listeners.get('click')({ target: commentButton });
+    await commentComplete;
+    let commentStore = await deps.getInteractiveStore();
+    let commentScene = commentStore.scopes['interactive-installation-scope'].scenes[savedScene.id];
+    let persistedComment = commentScene.posts.find(post => post.id === commentTargetPost.id).comments.at(-1);
+    let manualActor = commentStore.scopes['interactive-installation-scope'].actors[persistedComment.authorId];
+    assert.equal(manualActor.type, 'passerby', 'post-comment 手输名字必须落为独立作者，而不是绑定已有角色');
+    assert.equal(manualActor.bindingKey, 'manual:角色');
+    assert.equal(persistedComment.authorNameSnapshot, '角色');
+    assert.equal(persistedComment.content, '真实回复', '身份前缀不得写入评论正文');
+
+    commentInput.value = '【从未创建过的人】直接回复';
+    const arbitraryNameCommentComplete = waitForInstallationAction(3);
+    listeners.get('click')({ target: commentButton });
+    await arbitraryNameCommentComplete;
+    commentStore = await deps.getInteractiveStore();
+    commentScene = commentStore.scopes['interactive-installation-scope'].scenes[savedScene.id];
+    persistedComment = commentScene.posts.find(post => post.id === commentTargetPost.id).comments.at(-1);
+    manualActor = commentStore.scopes['interactive-installation-scope'].actors[persistedComment.authorId];
+    assert.equal(manualActor.bindingKey, 'manual:从未创建过的人', 'post-comment 真实调用链不得要求名字预先存在');
+    assert.equal(persistedComment.authorNameSnapshot, '从未创建过的人');
+    assert.equal(persistedComment.content, '直接回复');
+
+    const commentCountBeforeFailure = commentScene.posts.find(post => post.id === commentTargetPost.id).comments.length;
+    commentInput.value = `【角色】${'x'.repeat(1001)}`;
+    const overlongCommentFailure = waitForInstallationError(/^评论内容不能超过 1000 字$/);
+    listeners.get('click')({ target: commentButton });
+    await overlongCommentFailure;
+    commentStore = await deps.getInteractiveStore();
+    commentScene = commentStore.scopes['interactive-installation-scope'].scenes[savedScene.id];
+    assert.equal(commentScene.posts.find(post => post.id === commentTargetPost.id).comments.length, commentCountBeforeFailure,
+        '超长身份评论失败后不得修改 store');
 
     const likedPost = savedScene.posts[0];
     const likeButton = {

@@ -2,7 +2,7 @@ import { generationErrorMessage } from './ai.js';
 import { buildInteractiveRequest, buildStylePrompt, getInteractivePresets, parseInteractiveResponse } from './interactive-scene-ai.js';
 import {
     INTERACTIVE_LIMITS, addSceneComment, appendScenePosts, deleteSceneComment, deleteSceneDanmaku, deleteScenePost, enforceInteractiveSceneLimit, ensureInteractiveActor, normalizeScene,
-    createDefaultPhoneUiScope, createSceneFromCommunityTemplate, incrementScenePostShare, normalizePhoneUiState, patchPhoneUiScope, publishCommunityTemplate, removeCommunityTemplatesForSourceScene, resolveInteractiveAuthor, toggleScenePin, toggleScenePostLike, unpublishCommunityTemplate, updateSceneComment, updateSceneDanmaku, updateScenePost,
+    createDefaultPhoneUiScope, createSceneFromCommunityTemplate, dismissCommunityTemplate, incrementScenePostShare, normalizePhoneUiState, patchPhoneUiScope, publishCommunityTemplate, removeCommunityTemplatesForSourceScene, resolveInteractiveAuthor, toggleScenePin, toggleScenePostLike, unpublishCommunityTemplate, updateSceneComment, updateSceneDanmaku, updateScenePost,
 } from './interactive-scene-model.js';
 import { loadInteractiveScenes, loadPhoneUiState, saveInteractiveScenes, savePhoneUiScope, savePhoneUiState } from './storage.js';
 import { bindPhonePageActions, dispatchCalendarAppAction, getCommunityInjectionState, handleCommunityInjectionUiAction, handleSceneAccentAction, persistCurrentPhoneUiSnapshot, resolvePhoneChatTarget, runCalendarPageTransition, runDeleteSceneAction, runDesktopPageTransition, selectScenePreset, toggleDanmakuActions, toggleSceneMenu, toggleScenePostActions, toggleSceneReplyComposer } from './interactive-scene-phone.js';
@@ -96,8 +96,10 @@ export function installInteractiveScenes(_state, deps) {
     const commitWithPhoneUi = createCommitWithPhoneUi({ getPhoneUiState, persistPhoneUiState, getStore: () => runtime.store, commit });
     const communityUiScope = (storageId, store = runtime.store) => ({ ...phoneScope(storageId, store), storageId,
         sharedCommunityTemplates: getPhoneUiState(store).sharedCommunityTemplates || [] });
-    const sharedTemplatesFor = (storageId, store = runtime.store) => (getPhoneUiState(store).sharedCommunityTemplates || [])
-        .filter(template => template.sourceStorageId !== storageId);
+    const sharedTemplatesFor = (storageId, store = runtime.store) => {
+        const state = getPhoneUiState(store), dismissedIds = new Set(state.scopes[storageId]?.dismissedCommunityTemplateIds || []);
+        return (state.sharedCommunityTemplates || []).filter(template => template.sourceStorageId !== storageId && !dismissedIds.has(template.id));
+    };
     const renderInto = (selector, html) => {
         const container = document.querySelector(selector);
         if (!container) return false;
@@ -398,6 +400,13 @@ export function installInteractiveScenes(_state, deps) {
             await importCommunityTemplate(button.dataset.templateId);
             return;
         }
+        if (action === 'dismiss-community-template') {
+            const scopeId = getStorageId();
+            const nextState = dismissCommunityTemplate(getPhoneUiState(runtime.store), scopeId, button.dataset.templateId, runtime.store);
+            persistPhoneUiState(scopeId, nextState);
+            refreshDesktop(scopeId);
+            return;
+        }
         if (action === 'desktop') {
             await showPhoneDesktopPage();
             return;
@@ -508,10 +517,11 @@ export function installInteractiveScenes(_state, deps) {
         if (action === 'post-comment') {
             const composer = button.closest?.('.pm-scene-comment-composer');
             const input = composer?.querySelector?.('input');
-            const content = input?.value.trim() || '';
+            const rawContent = input?.value || '';
             await commit(() => {
                 const { scopeId, scope, scene } = current();
-                addSceneComment(scope, scopeId, scene, button.dataset.postId, actorSeeds(scopeId).user, content);
+                const { authorSeed, content } = parseCommunityPostInput(rawContent, scope?.actors, actorSeeds(scopeId).user, { contentLabel: '评论', maxLength: 1000 });
+                addSceneComment(scope, scopeId, scene, button.dataset.postId, authorSeed, content);
             });
             rerender('feed'); return;
         }
