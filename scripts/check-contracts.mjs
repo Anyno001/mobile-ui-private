@@ -612,6 +612,46 @@ function collectFrozenSpacingTokenIssues(declaredSpacingTokens, frozenSpacingTok
 }
 const FONT_WEIGHT_LITERAL = /(?<![\w.-])[1-9]\d{2}(?![\w.-])/g;
 const LINE_HEIGHT_SHORTHAND = /\/\s*([^\s/]+)(?=\s|$)/;
+const ALLOWED_FONT_FAMILY_VALUES = new Set(['var(--pm-font-family-system)', 'var(--pm-font-family-mono)', 'inherit']);
+function collectFontFamilyIssues(rules) {
+  const issues = [];
+  for (const rule of rules) for (const [property, rawValue] of rule.declarations) {
+    if (property !== 'font-family' && property !== 'font') continue;
+    const value = rawValue.replace(/\s*!important\s*$/i, '').trim();
+    const family = property === 'font-family'
+      ? value
+      : value === 'inherit'
+        ? 'inherit'
+        : value.match(/(?:^|\s)(var\(--pm-font-family-[\w-]+\))$/)?.[1];
+    if (!family || !ALLOWED_FONT_FAMILY_VALUES.has(family)) {
+      issues.push(`${rule.path}:${rule.line}: ${rule.selectors.join(', ')} must express ${property === 'font' ? 'font shorthand family' : 'font-family'} with an approved font-family token or inherit, received ${rawValue}`);
+    }
+  }
+  return issues;
+}
+function collectEmbeddedStyleFontFamilyIssues(modules) {
+  const issues = [];
+  for (const module of modules) {
+    const stylePattern = /<style\b[^>]*>([\s\S]*?)<\/style\s*>/gi;
+    for (const match of module.code.matchAll(stylePattern)) {
+      const styleStartLine = module.code.slice(0, match.index).split('\n').length;
+      let embeddedRules;
+      try {
+        embeddedRules = parseCssRules(match[1], module.file);
+      } catch (error) {
+        issues.push(`${module.file}:${styleStartLine}: embedded production style could not be parsed for font-family governance (${error.message})`);
+        continue;
+      }
+      for (const issue of collectFontFamilyIssues(embeddedRules)) {
+        issues.push(issue.replace(
+          `${module.file}:`,
+          `${module.file}:${styleStartLine - 1}+`,
+        ));
+      }
+    }
+  }
+  return issues;
+}
 function collectLineHeightIssues(rules, lineHeightExceptions) {
   const issues = [];
   const isException = (rule, property, value) => lineHeightExceptions.some(exception => (
@@ -708,6 +748,8 @@ function collectFontWeightIssues(rules) {
   return issues;
 }
 for (const issue of collectFontWeightIssues(cssRules)) failures.push(issue);
+for (const issue of collectFontFamilyIssues(cssRules)) failures.push(issue);
+for (const issue of collectEmbeddedStyleFontFamilyIssues(sourceModules)) failures.push(issue);
 for (const issue of collectLineHeightIssues(cssRules, governanceRegistry.lineHeightExceptions || [])) failures.push(issue);
 for (const issue of collectSpacingLegacyIssues(cssRules, governanceRegistry.legacyValues?.spacing || [])) failures.push(issue);
 for (const issue of collectAnimationIssues(cssRules, governanceRegistry.animationExceptions || [])) failures.push(issue);
@@ -725,6 +767,20 @@ const runtimeTokenSet = new Set([
 ]);
 for (const issue of collectVarTokenIssues(cssRules, registeredTokenCategories, declaredCustomProperties, runtimeTokenSet)) failures.push(issue);
 {
+  const fontFamilyPositiveRules = parseCssRules('.a{font-family:var(--pm-font-family-system)}\n.b{font:var(--pm-font-weight-regular) var(--pm-font-size-body)/var(--pm-line-height-body) var(--pm-font-family-mono)}\n.c{font:inherit}');
+  const fontFamilyNegativeRules = parseCssRules('.a{font-family:Arial,sans-serif}\n.b{font:var(--pm-font-weight-regular) var(--pm-font-size-body)/var(--pm-line-height-body) Arial,sans-serif}\n.c{font:var(--pm-font-weight-regular) var(--pm-font-size-body)/var(--pm-line-height-body) inherit}');
+  if (collectFontFamilyIssues(fontFamilyPositiveRules).length) failures.push('self-test: font-family detector rejected compliant declarations');
+  if (collectFontFamilyIssues(fontFamilyNegativeRules).length !== 3) failures.push('self-test: font-family detector did not flag raw families or invalid shorthand inherit');
+  const embeddedFontFamilyPositiveModules = [{
+    file: 'src/embedded-font-family-positive.js',
+    code: '<style>.a{font-family:var(--pm-font-family-system)}.b{font:var(--pm-font-weight-regular) var(--pm-font-size-body)/var(--pm-line-height-body) var(--pm-font-family-mono)}.c{font:inherit}</style>',
+  }];
+  const embeddedFontFamilyNegativeModules = [{
+    file: 'src/embedded-font-family-negative.js',
+    code: '<style>.a{font-family:var(--pm-font-family-system),Arial}.b{font:var(--pm-font-weight-regular) var(--pm-font-size-body)/var(--pm-line-height-body) inherit}.c{font:var(--pm-font-weight-regular) var(--pm-font-size-body)/var(--pm-line-height-body) CustomFont}</style>',
+  }];
+  if (collectEmbeddedStyleFontFamilyIssues(embeddedFontFamilyPositiveModules).length) failures.push('self-test: embedded font-family detector rejected compliant declarations');
+  if (collectEmbeddedStyleFontFamilyIssues(embeddedFontFamilyNegativeModules).length !== 3) failures.push('self-test: embedded font-family detector did not flag invalid declarations');
   const positiveRules = parseCssRules('.a{font-weight:600}\n.b{font-weight:var(--pm-font-weight-semibold)}\n.c{font:600 var(--pm-font-size-body)/1.2 sans-serif}');
   const negativeRules = parseCssRules('.a{font-weight:650}\n.b{font:700 var(--pm-font-size-body)/1.2 sans-serif}\n.c{font:750 var(--pm-font-size-body)/1.2 sans-serif}');
   if (collectFontWeightIssues(positiveRules).length) failures.push('self-test: font-weight detector rejected compliant declarations');
@@ -3425,7 +3481,7 @@ for (const expected of [
   '.pm-calendar-auto-switch{display:flex;align-items:center;justify-content:space-between',
   '.pm-calendar-entry-dialog [data-calendar-occasion-fields][hidden]{display:none!important}',
   '.pm-calendar-entry-dialog{width:min(330px,calc(100vw - 28px))}',
-  '#pm-overlay .pm-calendar-entry-dialog textarea[name="note"]{box-sizing:border-box!important;width:100%!important;min-height:72px!important;border:1px solid var(--pm-color-border-default)!important;border-radius:var(--pm-radius-control)!important;background:var(--pm-color-surface-control)!important;color:var(--pm-color-text-primary)!important;font:var(--pm-font-weight-regular) var(--pm-font-size-body)/var(--pm-line-height-body) -apple-system',
+  '#pm-overlay .pm-calendar-entry-dialog textarea[name="note"]{box-sizing:border-box!important;width:100%!important;min-height:72px!important;border:1px solid var(--pm-color-border-default)!important;border-radius:var(--pm-radius-control)!important;background:var(--pm-color-surface-control)!important;color:var(--pm-color-text-primary)!important;font:var(--pm-font-weight-regular) var(--pm-font-size-body)/var(--pm-line-height-body) var(--pm-font-family-system)',
   '#pm-overlay .pm-calendar-entry-dialog textarea[name="note"]:focus-visible{outline:1px solid var(--pm-color-focus-ring)!important;outline-offset:1px!important}',
   '.pm-calendar-entry-actions button{min-height:var(--pm-size-control-default);border:0',
   '.pm-calendar-view-switch button[aria-pressed="true"]{background:transparent;color:var(--pm-calendar-accent);box-shadow:inset 0 -2px 0 var(--pm-calendar-accent)',
@@ -4190,7 +4246,7 @@ if (!lifecycleFile) {
 
 
 for (const expected of [
-  '#pm-iphone', '#pm-overlay', '.pm-model-options', '--pm-model-visible-rows',
+  '#pm-iphone', '#pm-overlay', '.pm-model-options', '--pm-model-visible-rows', '--pm-font-family-system', '--pm-font-family-mono',
   '@media(max-width:500px),(max-height:700px)', '@media(max-width:600px)', '@media(max-width:320px)',
   '@media(pointer:coarse) and (max-height:500px)', '#pm-iphone .pm-scene-shell',
 ]) {
@@ -4204,6 +4260,8 @@ for (const expected of [
   requireText('css', css, expected);
 }
 const cssTokenContract = {
+  '--pm-font-family-system': "-apple-system,BlinkMacSystemFont,'PingFang SC','Microsoft YaHei',sans-serif",
+  '--pm-font-family-mono': 'ui-monospace,SFMono-Regular,Consolas,monospace',
   '--pm-line-height-loose': '1.75',
   '--pm-radius-pill': '999px',
   '--pm-shadow-floating': '0 8px 24px rgba(0,0,0,.14)',

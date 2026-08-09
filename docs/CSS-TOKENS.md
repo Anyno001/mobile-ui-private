@@ -49,6 +49,11 @@
 | `--pm-scene-post-body-letter-spacing` | `.pm-scene-shell` | 社区帖子正文专用的扩展字距；避免提高评论字距，仅 `.pm-scene-post p` 消费，不随主题改变。 |
 | `--pm-scene-body-letter-spacing` | `.pm-scene-shell` | 社区评论正文的轻度字距，改善小字号中文阅读的视觉呼吸感；仅 `.pm-scene-comment-content` 消费，不随主题改变。 |
 | `--pm-calendar-status-value-offset` | `.pm-calendar-status-card` | 日历状态卡大号数值在 SF/Segoe UI 回退栈中的光学校正位移；仅供 `translateY()` 消费，不改变卡片布局或主题值。 |
+| `--pm-today-trend-*` | `.pm-today-trend-shell` | 今日风向共享的标题字距、统计计量与事件时间线几何；派生自公共 token，不随主题独立变化。 |
+| `--pm-today-trend-world-*` | `.pm-today-trend-world` | 世界态势的头部、信号轨道、摘要与收尾装饰参数；颜色从公共语义 token 派生。 |
+| `--pm-today-trend-reputation-*` | `.pm-today-trend-reputation` | 个人风评的图标、评级尺和收尾装饰尺寸；颜色从公共语义 token 派生。 |
+| `--pm-today-trend-faction-*` | `.pm-today-trend-factions` | 势力图谱的菱形节点、关系量表与递归层级缩进；颜色从公共语义 token 派生。 |
+| `--pm-today-trend-dynamics-*` | `.pm-today-trend-dynamics` | 事件追踪的节点、连续轨道与时间线定位参数；颜色从公共语义 token 派生。 |
 
 ## 4. 颜色与表面
 
@@ -100,6 +105,8 @@ hover 与 active 优先通过现有表面色、文字色和描边变化表达，
 
 | Token | 值 | 用途 |
 | --- | ---: | --- |
+| `--pm-font-family-system` | `-apple-system,BlinkMacSystemFont,'PingFang SC','Microsoft YaHei',sans-serif` | 全局界面字体栈；组件不得写裸 sans 字栈 |
+| `--pm-font-family-mono` | `ui-monospace,SFMono-Regular,Consolas,monospace` | 代码、文件号等等宽内容 |
 | `--pm-font-size-micro` | `9px` | 极小装饰或空间极窄的非关键元信息 |
 | `--pm-font-size-caption` | `10px` | 图标标签、紧凑次要元信息；不得承载关键内容 |
 | `--pm-font-size-helper` | `11px` | 时间、辅助说明；不得承载关键内容 |
@@ -119,7 +126,9 @@ hover 与 active 优先通过现有表面色、文字色和描边变化表达，
 
 MUST 从表中选择。控件与正文统一使用 14px，避免为了紧凑牺牲可读性。10px 及以下只允许非关键装饰；17px 以上只允许少量页面主标题或数据展示，并定义组件私有 token。正文不使用超粗字重、全大写或过密行高。字重只允许 400/500/600 三档，不得使用 650/700/750 等非标准字重，避免不同系统字体映射不一致。
 
-全局定义：`--pm-line-height-loose:1.75`。
+全局定义：`--pm-font-family-system:-apple-system,BlinkMacSystemFont,'PingFang SC','Microsoft YaHei',sans-serif`、`--pm-font-family-mono:ui-monospace,SFMono-Regular,Consolas,monospace`、`--pm-line-height-loose:1.75`。
+
+生产规则的 `font-family` 必须使用 `--pm-font-family-system`、`--pm-font-family-mono` 或 `inherit`；`font` 简写的 family 部分必须使用字体 token，`inherit` 只能作为完整的 `font:inherit` 声明。
 
 生产规则的 `line-height`（含 `font` 简写）必须引用已登记的公共 `--pm-line-height-*` token。图标、固定行盒与展示排版确实需要字面行高时，必须逐项登记在 `css-governance-registry.json` 的 `lineHeightExceptions`，并写明 owner、原因与移除条件；未登记字面量由 checker 拒绝。
 
@@ -196,6 +205,7 @@ MUST 优先使用 flex/grid。absolute 只用于角标、锚定菜单和装饰�
 
 - MUST NOT 在组件消费规则中新增主题相关 hex、rgb、hsl、命名色或渐变；按第 3 节登记的组件私有 token 声明除外。
 - MUST NOT 使用未登记的字号、间距、圆角、阴影、z-index、透明度和动画时长；布局计算值、数据驱动值及按第 3 节登记的组件私有 token 声明除外。
+- MUST NOT 在组件规则中写裸 `font-family` 或在 `font` 简写中内嵌字栈；仅可消费第 5 节登记的字体 token 或 `inherit`。
 - MUST NOT 为单个组件创建新的全局 token；确有独立语义时使用局部私有 token。
 - MUST NOT 使用 `outline:none` 或等价规则移除键盘焦点，除非同一规则提供符合本文档的 focus-visible 替代。
 - MUST NOT 使用无 reduced-motion 路径的非必要动画，也不得使用 `transition:all`。
@@ -217,7 +227,7 @@ MUST 优先使用 flex/grid。absolute 只用于角标、锚定菜单和装饰�
 
 ## 13. 机器约束与迁移
 
-`scripts/check-contracts.mjs` MUST 检查：目标 token 存在；亮暗主题成对；已迁移组件引用规定 token；状态背景/文字/边框成套；已登记 component root 确有 CSS owner；私有 token 的声明与消费均处于登记 root；稳定 JS 内联写入逐文件逐属性匹配 `inline.allowedWrites`；组件消费规则不存在未登记的裸色值、字号、间距、圆角、z-index、transition 或 `transition:all`；所有 `var(--*)` 消费必须指向已声明 token、已登记运行时 token 或显式外部 token；宿主契约仍有效。`legacyValues` 只列出经审计仍有运行/兼容语义的值并按类别 fail-fast；`spacing` 台账必须精确绑定 CSS 路径、selector、property、value、owner、原因和移除条件，`0`、`auto`、`100%`、`50%` 等固有布局值不进入台账。已清空的 `fontSize`、`lineHeight`、`radius`、`zIndex` 类别由检查器强制保持为空，重新引入必须先建立可验证的迁移或有限例外。全局 token 与已登记组件私有 token 声明中的原始值不属于违规硬编码，私有 token 的消费规则不得直接使用原始值。
+`scripts/check-contracts.mjs` MUST 检查：目标 token 存在；亮暗主题成对；已迁移组件引用规定 token；状态背景/文字/边框成套；已登记 component root 确有 CSS owner；私有 token 的声明与消费均处于登记 root；稳定 JS 内联写入逐文件逐属性匹配 `inline.allowedWrites`；组件消费规则不存在未登记的裸色值、字体家族、字号、间距、圆角、z-index、transition 或 `transition:all`；所有 `var(--*)` 消费必须指向已声明 token、已登记运行时 token 或显式外部 token；宿主契约仍有效。`legacyValues` 只列出经审计仍有运行/兼容语义的值并按类别 fail-fast；`spacing` 台账必须精确绑定 CSS 路径、selector、property、value、owner、原因和移除条件，`0`、`auto`、`100%`、`50%` 等固有布局值不进入台账。已清空的 `fontSize`、`lineHeight`、`radius`、`zIndex` 类别由检查器强制保持为空，重新引入必须先建立可验证的迁移或有限例外。全局 token 与已登记组件私有 token 声明中的原始值不属于违规硬编码，私有 token 的消费规则不得直接使用原始值。
 
 阶段一收尾的机器事实以 `scripts/css-governance-registry.json` 为准：`legacyValues.spacing` 当前为 44 条精确台账，`lineHeightExceptions` 为 22 条，`animationExceptions` 为 3 条；所有例外必须绑定 path、selector、property、value、owner、reason 和 removeWhen。`--pm-space-px-*` 当前冻结为 16 个已存在 token，只允许缩减，不允许新增；新增声明和 registry stale token 均由 checker 拒绝。`animation` 的普通 duration/easing 必须使用 `--pm-motion-fast`、`--pm-motion-normal` 与 `--pm-motion-ease`，持续状态动画只能使用精确登记例外。
 
