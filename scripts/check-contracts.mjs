@@ -2939,9 +2939,10 @@ for (const expected of ['requestedScope = getRecipeScope(storageId)', 'requested
   requireText('calendar-recipe-controller.js', calendarRecipeControllerCode, expected);
 }
 for (const expected of [
-  "enqueueDirectoryOperation('schedule'", "enqueueDirectoryOperation('recipes'",
-  'loadCalendar()', 'loadCalendarRecipes()', 'loadCalendarOccasions()',
-  'rollbackStore.scopes[storageId]', 'calendarRollbackError',
+  "enqueueDirectoryOperation('schedule'", "enqueueDirectoryOperation('recipes'", "enqueueDirectoryOperation('outfits'",
+  'loadCalendar()', 'loadCalendarRecipes()', 'loadCalendarOutfits()', 'loadCalendarOccasions()',
+  'replaceScope(previousStore, storageId, next, normalizeCalendarStore)',
+  'rollbackScopes[storageId] = previousStore.scopes[storageId]', 'calendarRollbackError',
   'injectionError = injectionFailure', 'rollbackInjectionError = injectionFailure', 'commitSchedule',
   'saveCalendar(previousCalendarStore)', 'saveCalendarOccasions(previousOccasionStore)', 'occasionRollbackError',
   'occasionRolledBack', 'calendarRolledBack', 'occasionsRolledBack', 'scheduleRollbackError',
