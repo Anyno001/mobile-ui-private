@@ -4,7 +4,7 @@ import { renderTodayTrendFactionView } from './today-trend-faction-view.js';
 import { renderTodayTrendReputationView } from './today-trend-reputation-view.js';
 import { renderTodayTrendSettingsView } from './today-trend-settings-view.js';
 import { renderTodayTrendWorldView } from './today-trend-world-view.js';
-import { trendRuleEditor } from './today-trend-ui.js';
+import { trendFloorStatus, trendRuleEditor } from './today-trend-ui.js';
 import { escapeAttr, escapeHtml } from './ui.js';
 
 const moduleView = (view, props) => ({ world: renderTodayTrendWorldView, reputation: renderTodayTrendReputationView, faction: renderTodayTrendFactionView, dynamics: renderTodayTrendDynamicsView }[view.name] || renderTodayTrendWorldView)(props);
@@ -48,12 +48,22 @@ function renderRuleEditorPage(preset, rule, draft) {
 
 export function renderTodayTrendApp({ scope = null, presets = [], worldBooks = [], view = { name: 'world', mode: 'content' }, generation = {}, error = null, initializing = false, initializationDraft, initializationOpen = false, reinitializing = false, initializationMode = 'reuse' } = {}) {
     const busy = ['queued', 'generating', 'parsing', 'committing'].includes(generation.phase);
+    const syncedFloor = Number.isInteger(scope?.operation?.lastSuccessfulAssistantCount) && scope.operation.lastSuccessfulAssistantCount >= 0
+        ? scope.operation.lastSuccessfulAssistantCount : 0;
+    const taskIsCurrent = generation.task?.storageId === scope?.storageId;
+    const targeted = taskIsCurrent && Boolean(generation.task?.target);
+    const floorStatus = trendFloorStatus({
+        syncedFloor,
+        busy: busy && taskIsCurrent,
+        targetFloor: taskIsCurrent && !targeted ? generation.task?.assistantCount : null,
+        targeted,
+    });
     const preset = presets.find(item => item.id === scope?.presetId) || null;
     const content = !scope || initializationOpen ? renderFirstUse({ presets, worldBooks, error, initializing, draft: initializationDraft, reinitializing, initializationMode }) : view.editingRule
         ? renderRuleEditorPage(preset, view.editingRule, view.ruleDraft)
         : view.name === 'settings'
         ? `<main class="pm-today-trend-content">${renderTodayTrendSettingsView({ scope, presets, generationBusy: busy, menuOpenId: view.menuOpenId })}</main>`
-        : `<main class="pm-today-trend-content${view.mode === 'content' ? ` is-${view.name}` : ''}">${moduleView(view, { scope, preset, mode: view.mode, dynamicsTab: view.dynamicsTab, editingWorldItemId: view.editingWorldItemId, editingCircleId: view.editingCircleId, editingFactionId: view.editingFactionId, editingEventId: view.editingEventId, editingRule: view.editingRule, ruleDraft: view.ruleDraft, menuOpenId: view.menuOpenId, generationAvailable: !busy, generationBusy: busy })}</main>`;
+        : `<main class="pm-today-trend-content${view.mode === 'content' ? ` is-${view.name}` : ''}">${moduleView(view, { scope, preset, mode: view.mode, dynamicsTab: view.dynamicsTab, editingWorldItemId: view.editingWorldItemId, editingCircleId: view.editingCircleId, editingFactionId: view.editingFactionId, editingEventId: view.editingEventId, editingRule: view.editingRule, ruleDraft: view.ruleDraft, menuOpenId: view.menuOpenId, generationAvailable: !busy, generationBusy: busy, floorStatus })}</main>`;
     const navigation = scope && !initializationOpen && !view.editingRule ? `<nav class="pm-today-trend-tabs${view.name === 'world' ? ' is-world' : ''}" aria-label="今日风向模块">${[['world','世界态势',TODAY_TREND_WORLD_ICON_SVG],['reputation','个人风评',TODAY_TREND_REPUTATION_ICON_SVG],['faction','势力图谱',TODAY_TREND_FACTION_ICON_SVG],['dynamics','事件追踪',TODAY_TREND_DYNAMICS_ICON_SVG]].map(([name,label,icon]) => `<button type="button" data-action="today-trend-open-${name === 'faction' ? 'factions' : name}" aria-label="${label}" aria-pressed="${view.name === name}">${icon}</button>`).join('')}<button type="button" data-action="today-trend-open-settings" aria-label="APP 总设置" aria-pressed="${view.name === 'settings'}">${MORE_ICON_SVG}</button></nav>` : '';
     return `<section id="pm-today-trend-app" class="pm-today-trend-shell" aria-labelledby="pm-today-trend-title"><header class="pm-today-trend-header"><button type="button" class="pm-today-trend-home" data-today-trend-ui-action="home" aria-label="返回桌面" title="返回桌面">${HOME_ICON_SVG}</button><h2 id="pm-today-trend-title">今日风向</h2><span class="pm-today-trend-header-actions"><button type="button" class="pm-today-trend-header-control" data-action="today-trend-generate-all" ${!scope || busy ? 'disabled' : ''} aria-busy="${busy}" aria-label="手动更新所有今日风向" title="手动更新所有今日风向">${SPARKLES_ICON_SVG}</button><button type="button" class="pm-today-trend-header-control" data-action="today-trend-toggle-operation" ${!scope || busy ? 'disabled' : ''} aria-pressed="${scope?.operation?.enabled === true}" aria-label="${scope?.operation?.enabled ? '暂停运作' : '开启自动'}" title="${scope?.operation?.enabled ? '暂停运作' : '开启自动'}">${scope?.operation?.enabled ? PAUSE_ICON_SVG : PLAY_ICON_SVG}</button></span></header>${content}${navigation}</section>`;
 }

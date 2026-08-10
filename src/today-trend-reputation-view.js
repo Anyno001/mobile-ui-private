@@ -35,7 +35,7 @@ function circleActions(circle, generateAttrs, visible) {
     ] });
 }
 
-export function renderTodayTrendReputationView({ scope, preset = null, mode = 'content', editingCircleId = null, editingRule = null, ruleDraft = null, menuOpenId = null, generationAvailable = false, generationBusy = false } = {}) {
+export function renderTodayTrendReputationView({ scope, preset = null, mode = 'content', editingCircleId = null, editingRule = null, ruleDraft = null, menuOpenId = null, generationAvailable = false, generationBusy = false, floorStatus = '' } = {}) {
     const circles = Array.isArray(scope?.reputation?.circles) ? scope.reputation.circles : [];
     const generateAttrs = `${generationAvailable && !generationBusy ? '' : 'disabled'} aria-busy="${generationBusy}"`;
     if (mode === 'settings') {
@@ -48,5 +48,5 @@ export function renderTodayTrendReputationView({ scope, preset = null, mode = 'c
     const metaHtml = trendMeter([{ label: 'PEOPLE', value: circles.length }, { label: 'GOOD', value: goodCount }, { label: 'BAD', value: badCount }]);
     const actionsVisible = menuOpenId === 'reputation-module';
     const rows = circles.map(circle => editingCircleId === circle.id ? `<article class="pm-today-trend-reputation-entry is-editing" data-circle-id="${escapeAttr(circle.id)}">${circleEditor(circle, 'today-trend-cancel-reputation-editor')}</article>` : `<article class="pm-today-trend-reputation-entry" data-circle-id="${escapeAttr(circle.id)}">${reputationMark(circle.status)}<div class="pm-today-trend-reputation-copy"><header><b>${escapeHtml(circle.name)}</b>${statusBadge(circle.status)}${trendInlineActions({ visible: actionsVisible, actions: [{ action: 'today-trend-edit-circle', icon: EDIT_ICON_SVG, label: `编辑${circle.name}`, attrs: `data-circle-id="${escapeAttr(circle.id)}"` }] })}</header><p>${escapeHtml(circle.evaluation)}</p></div><div class="pm-today-trend-reputation-rating">${reputationMeter(circle, generationBusy)}</div></article>`).join('');
-    return `<section class="pm-today-trend-view pm-today-trend-reputation">${trendModuleHead({ title: '个人风评', eyebrow: 'PUBLIC OPINION', metaHtml, menuId: 'reputation-module', menuOpenId, actions: [{ action: 'today-trend-generate-reputation', icon: REFRESH_ICON_SVG, label: '重新生成个人风评', attrs: generateAttrs }, { action: 'today-trend-edit-reputation-rule', icon: BOOK_ICON_SVG, label: '编辑个人风评提示词' }] })}<div class="pm-today-trend-reputation-list">${rows || '<p class="pm-today-trend-empty">尚未生成个人风评。</p>'}</div>${generationBusy ? '<span class="pm-today-trend-progress">正在生成…</span>' : ''}</section>`;
+    return `<section class="pm-today-trend-view pm-today-trend-reputation">${trendModuleHead({ title: '个人风评', eyebrow: 'PUBLIC OPINION', metaHtml, asideHtml: floorStatus, menuId: 'reputation-module', menuOpenId, actions: [{ action: 'today-trend-generate-reputation', icon: REFRESH_ICON_SVG, label: '重新生成个人风评', attrs: generateAttrs }, { action: 'today-trend-edit-reputation-rule', icon: BOOK_ICON_SVG, label: '编辑个人风评提示词' }] })}<div class="pm-today-trend-reputation-list">${rows || '<p class="pm-today-trend-empty">尚未生成个人风评。</p>'}</div></section>`;
 }

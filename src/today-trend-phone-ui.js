@@ -16,9 +16,14 @@ export function installTodayTrendPhoneUi(state, deps = {}) {
             return true;
         }
         controller?.destroy();
-        controller = createTodayTrendPhoneController({ state, deps, container });
-        try { return await controller.render(); }
-        catch (error) { controller?.destroy(); controller = null; return false; }
+        const nextController = createTodayTrendPhoneController({ state, deps, container });
+        controller = nextController;
+        try { return await nextController.render(); }
+        catch (error) {
+            nextController.destroy();
+            if (controller === nextController) controller = null;
+            return false;
+        }
     };
     const show = async () => {
         const storageId = deps.getStorageId();

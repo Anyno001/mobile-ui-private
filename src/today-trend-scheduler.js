@@ -87,6 +87,47 @@ export function createTodayTrendScheduler({
     let lastError = null;
     const baselines = new Map();
     const observations = new Map();
+    const listeners = new Set();
+    let lastPublishedSignature = '';
+    const publicTask = task => task ? Object.freeze({
+        kind: task.kind,
+        storageId: task.storageId,
+        assistantCount: task.assistantCount,
+        target: task.target ? Object.freeze({ ...task.target }) : null,
+    }) : null;
+    const state = () => Object.freeze({
+        phase,
+        task: publicTask(activeTask),
+        lastError,
+        baselines: Object.fromEntries(baselines),
+        observationCount: observations.size,
+    });
+    const publish = () => {
+        const snapshot = state();
+        const signature = JSON.stringify(snapshot);
+        if (signature === lastPublishedSignature) return snapshot;
+        lastPublishedSignature = signature;
+        for (const listener of listeners) {
+            try { listener(snapshot); } catch {}
+        }
+        return snapshot;
+    };
+    const setPhase = (nextPhase, error = lastError) => {
+        phase = nextPhase;
+        lastError = error;
+        return publish();
+    };
+    const subscribe = listener => {
+        if (typeof listener !== 'function') throw new TypeError('今日风向状态订阅器必须是函数');
+        listeners.add(listener);
+        try { listener(state()); } catch {}
+        let subscribed = true;
+        return () => {
+            if (!subscribed) return false;
+            subscribed = false;
+            return listeners.delete(listener);
+        };
+    };
     const touch = observation => {
         observation.lastAccessedAt = now();
         observation.accessOrder = ++accessSequence;
@@ -119,17 +160,18 @@ export function createTodayTrendScheduler({
         sequence += 1;
         activeTask?.abortController.abort(reason);
         activeTask = null;
-        phase = 'canceled';
-        lastError = null;
         committer.invalidateCommits();
         if (resetObservation) {
             baselines.clear();
             observations.clear();
         } else pruneObservations();
+        setPhase('canceled', null);
         return reason;
     };
-    const state = () => Object.freeze({ phase, task: activeTask, lastError, baselines: Object.fromEntries(baselines), observationCount: observations.size });
-    const acknowledge = () => { if (!activeTask) { phase = 'idle'; lastError = null; } return state(); };
+    const acknowledge = () => {
+        if (!activeTask) return setPhase('idle', null);
+        return state();
+    };
     const arm = (storageId = getStorageId(), chat = getChat()) => {
         const id = String(storageId || '').trim();
         if (!id) throw new Error('今日风向开始运作缺少有效聊天');
@@ -164,8 +206,7 @@ export function createTodayTrendScheduler({
             abortController: new AbortController(),
         });
         activeTask = task;
-        phase = 'queued';
-        lastError = null;
+        setPhase('queued', null);
         try {
             const source = await getStore();
             if (!isActive(task)) throw cancelled();
@@ -182,10 +223,10 @@ export function createTodayTrendScheduler({
                 signal: task.abortController.signal, scope, preset, storageId: id,
                 characterId: scope.characterId, characterName: scope.characterName,
                 assistantCount: task.assistantCount, allowIncident: rollIncident(effectiveIncidentProbability),
-                target: task.target, onPhase: next => { if (isActive(task)) phase = next; },
+                target: task.target, onPhase: next => { if (isActive(task)) setPhase(next, null); },
             });
             if (!isActive(task)) throw cancelled();
-            phase = 'committing';
+            setPhase('committing', null);
             const committed = await committer.commitStore(store => {
                 const current = store.scopes[id];
                 if (!isActive(task)) return store;
@@ -211,27 +252,32 @@ export function createTodayTrendScheduler({
                 if (currentObservation) { currentObservation.pendingTurns = remainingTurns; touch(currentObservation); }
                 else storeSnapshot(id, createTurnSnapshot(getChat()), 0);
             }
-            phase = 'completed';
+            setPhase('completed', null);
             return committed;
         } catch (error) {
             if (activeTask === task) {
                 if (error?.name === 'AbortError' || !isActive(task)) {
-                    phase = 'canceled';
-                    lastError = null;
+                    setPhase('canceled', null);
                 } else {
-                    phase = 'failed';
-                    lastError = error?.message || '今日风向生成失败';
+                    setPhase('failed', error?.message || '今日风向生成失败');
                 }
             }
             throw error;
         } finally {
             if (activeTask === task) {
                 activeTask = null;
+                publish();
                 const currentObservation = observations.get(id);
                 if (phase === 'completed' && currentObservation?.pendingTurns > 0) {
                     Promise.resolve(getStore()).then(store => {
-                        const interval = store?.scopes?.[id]?.operation?.intervalFloors;
-                        if (currentObservation.pendingTurns >= interval) run({ kind: 'auto', storageId: id, incidentProbability: task.incidentProbability }).catch(() => {});
+                        const operation = store?.scopes?.[id]?.operation;
+                        if (observations.get(id) !== currentObservation
+                            || getStorageId() !== id
+                            || activeTask
+                            || operation?.enabled !== true
+                            || operation.mode !== 'auto'
+                            || currentObservation.pendingTurns < operation.intervalFloors) return;
+                        run({ kind: 'auto', storageId: id, incidentProbability: task.incidentProbability }).catch(() => {});
                     }).catch(() => {});
                 }
                 pruneObservations();
@@ -275,5 +321,5 @@ export function createTodayTrendScheduler({
         }).catch(() => {});
         return snapshot;
     };
-    return { acknowledge, arm, cancel, isActive, manual, observe, state, run };
+    return { acknowledge, arm, cancel, isActive, manual, observe, state, subscribe, run };
 }

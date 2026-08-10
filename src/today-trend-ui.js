@@ -31,9 +31,18 @@ export function trendInlineActions({ visible = false, actions = [] } = {}) {
     return `<span class="pm-today-trend-inline-actions">${actions.map(action => trendIconButton({ ...action, className: `pm-today-trend-inline-action${action.className ? ` ${action.className}` : ''}` })).join('')}</span>`;
 }
 
-export function trendModuleHead({ title, menuId, menuOpenId, actions = [], meta = '', metaHtml = '', eyebrow = '', adornment = '' }) {
+export function trendFloorStatus({ syncedFloor = 0, busy = false, targetFloor = null, targeted = false } = {}) {
+    const floor = Number.isInteger(syncedFloor) && syncedFloor >= 0 ? syncedFloor : 0;
+    const target = Number.isInteger(targetFloor) && targetFloor >= 0 ? targetFloor : null;
+    const state = busy ? 'updating' : floor > 0 ? 'synced' : 'unsynced';
+    const status = busy ? targeted ? '正在更新模块' : target === null ? '正在同步' : `同步至 ${target}` : floor > 0 ? '已同步' : '尚未同步';
+    return `<span class="pm-today-trend-floor" data-today-trend-floor="${floor}" data-state="${state}" role="status" aria-live="polite" aria-label="FLOOR ${floor}，${escapeAttr(status)}"><span class="pm-today-trend-floor-reading"><span class="pm-today-trend-floor-label">FLOOR</span><strong class="pm-today-trend-floor-value">${floor}</strong></span><span class="pm-today-trend-floor-status">${busy ? '<i aria-hidden="true"></i>' : ''}${escapeHtml(status)}</span></span>`;
+}
+
+export function trendModuleHead({ title, menuId, menuOpenId, actions = [], meta = '', metaHtml = '', eyebrow = '', adornment = '', asideHtml = '' }) {
     const renderedMeta = metaHtml || (meta ? `<span>${escapeHtml(meta)}</span>` : '');
-    return `<header class="pm-today-trend-module-head${eyebrow ? ' is-decorative' : ''}"><div>${eyebrow ? `<p class="pm-today-trend-module-eyebrow">${escapeHtml(eyebrow)}</p>` : ''}<h2>${escapeHtml(title)}${adornment}</h2>${renderedMeta}</div>${trendActionMenu({ id: menuId, open: menuOpenId === menuId, label: `${title}操作`, actions })}</header>`;
+    const menu = trendActionMenu({ id: menuId, open: menuOpenId === menuId, label: `${title}操作`, actions });
+    return `<header class="pm-today-trend-module-head${eyebrow ? ' is-decorative' : ''}"><div>${eyebrow ? `<p class="pm-today-trend-module-eyebrow">${escapeHtml(eyebrow)}</p>` : ''}<h2>${escapeHtml(title)}${adornment}</h2>${renderedMeta}</div><span class="pm-today-trend-head-tools">${asideHtml}${menu}</span></header>`;
 }
 
 export function trendRuleEditor({ rule, value = '' } = {}) {

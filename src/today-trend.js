@@ -207,6 +207,7 @@ export function installTodayTrend(_state, deps = {}) {
         generateTodayTrendModule: (module, itemId, options = {}) => scheduler.run({ kind: 'manual', target: { ...options, module, itemId } }),
         generateTodayTrend: options => scheduler.manual(options),
         getTodayTrendGenerationState: scheduler.state,
+        subscribeTodayTrendGeneration: scheduler.subscribe,
         acknowledgeTodayTrendGeneration: scheduler.acknowledge,
         initializeTodayTrend: initialize,
         cancelTodayTrendInitialization: cancelInitialization,
