@@ -7,6 +7,7 @@ import { installEmojiUi } from './emoji-ui.js';
 import { installInteractiveScenes } from './interactive-scenes.js';
 import {
     gatherContext as collectHostContext,
+    getLastMessageId as resolveLastMessageId,
     getStorageId as resolveStorageId,
     getUserPersona as resolveUserPersona,
 } from './host-context.js';
@@ -53,13 +54,14 @@ import { saveBudgetConfig, saveEmojis } from './storage.js';
     };
 
     const getCtx = () => typeof SillyTavern !== 'undefined' ? SillyTavern.getContext() : null;
+    const getLastMessageId = () => resolveLastMessageId(getCtx);
     const getStorageId = () => resolveStorageId(getCtx);
     const getUserPersona = () => resolveUserPersona(getCtx);
     const gatherContext = (context, options) => collectHostContext(
         context ? () => context : getCtx,
         options,
     );
-    const deps = { runtime, getCtx, getStorageId, getUserPersona, gatherContext, saveBudgetConfig, reloadCurrentChat: context => context?.reloadCurrentChat?.() };
+    const deps = { runtime, getCtx, getLastMessageId, getStorageId, getUserPersona, gatherContext, saveBudgetConfig, reloadCurrentChat: context => context?.reloadCurrentChat?.() };
     deps.callAI = createAiClient({
         getConfig: () => window.__pmConfig,
         getContext: getCtx,

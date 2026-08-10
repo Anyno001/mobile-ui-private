@@ -5,8 +5,8 @@ import { loadTodayTrendStore, saveTodayTrendStore } from './today-trend-storage.
 import { createEmptyTodayTrendScope } from './today-trend-model.js';
 
 export function installTodayTrend(_state, deps = {}) {
-    const { runtime, callAI, getCtx, getStorageId } = deps;
-    if (!runtime || typeof callAI !== 'function' || typeof getCtx !== 'function' || typeof getStorageId !== 'function') {
+    const { runtime, callAI, getCtx, getLastMessageId, getStorageId } = deps;
+    if (!runtime || typeof callAI !== 'function' || typeof getCtx !== 'function' || typeof getLastMessageId !== 'function' || typeof getStorageId !== 'function') {
         throw new TypeError('今日风向安装依赖无效');
     }
     const localRuntime = runtime.todayTrend || (runtime.todayTrend = {});
@@ -20,12 +20,9 @@ export function installTodayTrend(_state, deps = {}) {
     };
     const committer = createTodayTrendCommitter({ runtime: localRuntime, load, save, refreshInjection: deps.applyBidirectionalInjection });
     const controller = (deps.createTodayTrendGenerationController || createTodayTrendGenerationController)({ callAI, getCtx });
-    const readLastMessageId = typeof deps.getLastMessageId === 'function'
-        ? deps.getLastMessageId
-        : () => typeof getLastMessageId === 'function' ? getLastMessageId() : null;
     const getHostFloor = () => {
         try {
-            const rawFloor = readLastMessageId();
+            const rawFloor = getLastMessageId();
             if (rawFloor === null || rawFloor === undefined || (typeof rawFloor === 'string' && !rawFloor.trim())) return null;
             const floor = Number(rawFloor);
             return Number.isInteger(floor) && floor >= 0 ? floor : null;

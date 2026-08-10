@@ -8462,6 +8462,27 @@ ${entry2.content}` : entry2.content;
     const errorType = typeof error?.name === "string" && error.name ? error.name : "Error";
     console.warn(`[phone-mode] ${message}\uFF0C\u5DF2\u4F7F\u7528\u964D\u7EA7\u503C\u3002`, errorType);
   }
+  function getLastMessageId(getCtx) {
+    try {
+      const helper = globalThis.TavernHelper;
+      if (typeof helper?.getLastMessageId === "function") {
+        const id2 = Number(helper.getLastMessageId());
+        if (Number.isInteger(id2) && id2 >= 0) return id2;
+      }
+    } catch (error) {
+      warnHostContextFailureOnce("last-message-id-helper", "\u8BFB\u53D6\u9152\u9986\u5F53\u524D\u697C\u5C42\u5931\u8D25", error);
+    }
+    try {
+      const chat = getCtx()?.chat;
+      if (!Array.isArray(chat)) return null;
+      if (chat.length === 0) return 0;
+      const id2 = Number(chat.at(-1)?.message_id);
+      return Number.isInteger(id2) && id2 >= 0 ? id2 : chat.length - 1;
+    } catch (error) {
+      warnHostContextFailureOnce("last-message-id-context", "\u4ECE\u804A\u5929\u4E0A\u4E0B\u6587\u63A8\u5BFC\u5F53\u524D\u697C\u5C42\u5931\u8D25", error);
+      return null;
+    }
+  }
   function getCurrentChatId(context) {
     if (!context) return null;
     return context.chatId || (typeof context.getCurrentChatId === "function" ? context.getCurrentChatId() : null) || context.chat_metadata?.chat_id_hash || context.chat_file;
@@ -22606,8 +22627,8 @@ ${targetInstruction}`
 
   // src/today-trend.js
   function installTodayTrend(_state, deps = {}) {
-    const { runtime, callAI, getCtx, getStorageId: getStorageId2 } = deps;
-    if (!runtime || typeof callAI !== "function" || typeof getCtx !== "function" || typeof getStorageId2 !== "function") {
+    const { runtime, callAI, getCtx, getLastMessageId: getLastMessageId2, getStorageId: getStorageId2 } = deps;
+    if (!runtime || typeof callAI !== "function" || typeof getCtx !== "function" || typeof getLastMessageId2 !== "function" || typeof getStorageId2 !== "function") {
       throw new TypeError("\u4ECA\u65E5\u98CE\u5411\u5B89\u88C5\u4F9D\u8D56\u65E0\u6548");
     }
     const localRuntime = runtime.todayTrend || (runtime.todayTrend = {});
@@ -22621,10 +22642,9 @@ ${targetInstruction}`
     };
     const committer = createTodayTrendCommitter({ runtime: localRuntime, load, save, refreshInjection: deps.applyBidirectionalInjection });
     const controller = (deps.createTodayTrendGenerationController || createTodayTrendGenerationController)({ callAI, getCtx });
-    const readLastMessageId = typeof deps.getLastMessageId === "function" ? deps.getLastMessageId : () => typeof getLastMessageId === "function" ? getLastMessageId() : null;
     const getHostFloor = () => {
       try {
-        const rawFloor = readLastMessageId();
+        const rawFloor = getLastMessageId2();
         if (rawFloor === null || rawFloor === void 0 || typeof rawFloor === "string" && !rawFloor.trim()) return null;
         const floor = Number(rawFloor);
         return Number.isInteger(floor) && floor >= 0 ? floor : null;
@@ -23924,13 +23944,14 @@ ${targetInstruction}`
       groupExtras: []
     };
     const getCtx = () => typeof SillyTavern !== "undefined" ? SillyTavern.getContext() : null;
+    const getLastMessageId2 = () => getLastMessageId(getCtx);
     const getStorageId2 = () => getStorageId(getCtx);
     const getUserPersona2 = () => getUserPersona(getCtx);
     const gatherContext2 = (context, options2) => gatherContext(
       context ? () => context : getCtx,
       options2
     );
-    const deps = { runtime, getCtx, getStorageId: getStorageId2, getUserPersona: getUserPersona2, gatherContext: gatherContext2, saveBudgetConfig, reloadCurrentChat: (context) => context?.reloadCurrentChat?.() };
+    const deps = { runtime, getCtx, getLastMessageId: getLastMessageId2, getStorageId: getStorageId2, getUserPersona: getUserPersona2, gatherContext: gatherContext2, saveBudgetConfig, reloadCurrentChat: (context) => context?.reloadCurrentChat?.() };
     deps.callAI = createAiClient({
       getConfig: () => window.__pmConfig,
       getContext: getCtx

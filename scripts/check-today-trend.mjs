@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
+import { getLastMessageId as resolveLastMessageId } from '../src/host-context.js';
 import { installTodayTrend } from '../src/today-trend.js';
 import { createTodayTrendPhoneController } from '../src/today-trend-phone-controller.js';
 import { installTodayTrendPhoneUi } from '../src/today-trend-phone-ui.js';
@@ -37,6 +38,20 @@ import { renderTodayTrendDynamicsView } from '../src/today-trend-dynamics-view.j
 import { renderTodayTrendSettingsView } from '../src/today-trend-settings-view.js';
 import { createTodayTrendActionDispatcher } from '../src/today-trend-actions.js';
 import { trendActionMenu, trendInlineActions, trendRuleEditor } from '../src/today-trend-ui.js';
+
+const originalTavernHelper = globalThis.TavernHelper;
+try {
+    globalThis.TavernHelper = { getLastMessageId: () => 3402 };
+    assert.equal(resolveLastMessageId(() => ({ chat: [{ message_id: 1 }] })), 3402, '当前楼层必须优先读取 TavernHelper.getLastMessageId');
+    globalThis.TavernHelper = undefined;
+    assert.equal(resolveLastMessageId(() => ({ chat: [{ message_id: 2 }, { message_id: 3000 }] })), 3000, '缺少 TavernHelper 时必须读取酒馆聊天末消息的 message_id');
+    assert.equal(resolveLastMessageId(() => ({ chat: [{}, {}, {}] })), 2, '末消息缺少 message_id 时必须按酒馆零基楼层使用 chat.length - 1');
+    assert.equal(resolveLastMessageId(() => ({ chat: [] })), 0, '空聊天必须稳定返回酒馆起始楼层 0');
+    assert.equal(resolveLastMessageId(() => null), null, '宿主上下文不可用时必须返回 null');
+} finally {
+    if (originalTavernHelper === undefined) delete globalThis.TavernHelper;
+    else globalThis.TavernHelper = originalTavernHelper;
+}
 
 const createTodayTrendScheduler = options => createTodayTrendSchedulerBase({ commitFeedbackMs: 0, ...options });
 
