@@ -106,6 +106,7 @@ assert.match(String(observationWarning?.[0] || ''), /今日风向自动推演观
 
 const todayTrendStyle = (await readFile(new URL('../styles/today-trend.css', import.meta.url), 'utf8')).replace(/;\}/g, '}').replaceAll('../assets/', './assets/');
 const todayTrendRuntimeText = (await Promise.all([
+    '../src/today-trend-ui.js',
     '../src/today-trend-world-view.js',
     '../src/today-trend-reputation-view.js',
     '../src/today-trend-faction-view.js',
@@ -133,10 +134,11 @@ assert.match(todayTrendStyle, /pm-today-trend-event-badge,\.pm-today-trend-event
 assert.doesNotMatch(todayTrendStyle, /pm-today-trend-event-card header span/, '事件追踪不得用宽泛 header span 规则覆盖徽章字号');
 assert.match(todayTrendStyle, /pm-today-trend-icon-button\[data-action\^="today-trend-refresh"\][\s\S]*?width:var\(--pm-size-control-compact\)[\s\S]*?min-height:var\(--pm-size-control-compact\)/, '生成与刷新图标按钮必须保留 36px 紧凑触控区');
 assert.match(todayTrendStyle, /\.pm-today-trend-inline-action\{width:var\(--pm-size-control-compact\);min-height:var\(--pm-size-control-compact\)/, '个人风评行内编辑按钮必须保留 36px 紧凑触控区');
-assert.match(todayTrendStyle, /\.pm-today-trend-head-tools\{[^}]*min-width:max-content[^}]*flex:0 0 auto/, '标题工具区必须禁止压缩，避免 FLOOR 与菜单按钮互相覆盖');
+assert.match(todayTrendStyle, /\.pm-today-trend-head-tools\{[^}]*min-width:max-content[^}]*flex:0 0 auto[^}]*flex-direction:column[^}]*align-items:flex-end/, '标题工具区必须纵向排列，使 FLOOR 位于三点操作按钮下方');
 assert.match(todayTrendStyle, /\.pm-today-trend-floor\{[^}]*min-width:max-content[^}]*flex:0 0 auto/, 'FLOOR 仪表必须按完整内容保留宽度，不能截断多位楼层');
 assert.match(todayTrendStyle, /\.pm-today-trend-floor-reading\{[^}]*white-space:nowrap/, 'FLOOR 标签与数值必须保持单行完整显示');
-assert.match(todayTrendStyle, /\.pm-today-trend-module-head\.is-decorative \.pm-today-trend-floor\{[^}]*margin-top:/, '装饰标题页的 FLOOR 必须下移至标题中线而非眉题中线');
+assert.match(todayTrendStyle, /\.pm-today-trend-module-head\.is-decorative \.pm-today-trend-floor\{[^}]*margin-top:var\(--pm-space-0\)/, '装饰标题页的 FLOOR 不得再用横向标题中线偏移');
+assert.match(todayTrendRuntimeText, /pm-today-trend-head-tools">\$\{menu\}\$\{asideHtml\}/, '模块头必须先渲染三点菜单，再在其下方渲染 FLOOR');
 assert.match(compactTodayTrendMedia, /pm-today-trend-module-head\{gap:var\(--pm-space-1\)/, '320px 窄屏必须缩小标题与工具区间距并保留按钮命中区');
 assert.match(todayTrendStyle, /\.pm-today-trend-menu-action,\.pm-today-trend-menu-close\{flex-basis:var\(--pm-size-control-compact\);width:var\(--pm-size-control-compact\);min-height:var\(--pm-size-control-compact\)/, '320px 菜单按钮不得缩回 28px 命中区');
 assert.doesNotMatch(todayTrendStyle, /pm-today-trend-(?:icon-button\[data-action\^="today-trend-(?:refresh|generate)"\]|reputation-copy \.pm-today-trend-inline-action)\{width:28px/, '今日风向真实操作按钮不得使用 28px 命中区');
@@ -369,18 +371,18 @@ const phoneController = createTodayTrendPhoneController({ state: controllerState
 assert.equal(await phoneController.render(), true, '控制器必须渲染当前聊天的今日风向页面');
 assert.match(controllerContainer.innerHTML, /id="pm-today-trend-app"/, '控制器必须渲染今日风向页面壳');
 assert.equal(typeof generationListener, 'function', '控制器创建时必须订阅今日风向生成状态');
-controllerGeneration = { phase: 'generating', task: { kind: 'auto', storageId: 'chat', assistantCount: 9, target: null } };
+controllerGeneration = { phase: 'generating', task: { kind: 'auto', storageId: 'chat', floor: 9, target: null } };
 generationListener(controllerGeneration);
 await new Promise(resolve => setTimeout(resolve, 0));
 assert.match(controllerContainer.innerHTML, /today-trend-generate-all" disabled aria-busy="true"/, '当前聊天进入 busy 阶段时必须局部重渲染生成状态');
 assert.match(controllerContainer.innerHTML, /pm-today-trend-progress">正在生成…/, '当前世界态势页必须随生成状态通知刷新现有局部反馈');
-controllerGeneration = { phase: 'generating', task: { kind: 'auto', storageId: 'other', assistantCount: 20, target: null } };
+controllerGeneration = { phase: 'generating', task: { kind: 'auto', storageId: 'other', floor: 20, target: null } };
 generationListener(controllerGeneration);
 await new Promise(resolve => setTimeout(resolve, 0));
 assert.doesNotMatch(controllerContainer.innerHTML, /同步至 20/, '其他聊天的生成状态不得污染当前页面');
 controllerStore = structuredClone(valid);
 controllerStore.scopes.chat.world.items[0].summary = '提交后刷新内容';
-controllerGeneration = { phase: 'completed', task: { kind: 'auto', storageId: 'chat', assistantCount: 9, target: null } };
+controllerGeneration = { phase: 'completed', task: { kind: 'auto', storageId: 'chat', floor: 9, target: null } };
 generationListener(controllerGeneration);
 await new Promise(resolve => setTimeout(resolve, 0));
 assert.equal(generationReloadCalls, 1, '当前聊天完整提交后必须强制重读最新 store');
@@ -390,7 +392,7 @@ reloadTodayTrendStore = () => {
     generationReloadCalls += 1;
     return new Promise((resolve, reject) => { rejectStaleReload = reject; });
 };
-controllerGeneration = { phase: 'completed', task: { kind: 'auto', storageId: 'chat', assistantCount: 10, target: null } };
+controllerGeneration = { phase: 'completed', task: { kind: 'auto', storageId: 'chat', floor: 10, target: null } };
 generationListener(controllerGeneration);
 controllerStorageId = 'other';
 rejectStaleReload(new Error('旧聊天重读失败'));
@@ -453,12 +455,12 @@ for (const name of ['world', 'reputation', 'faction', 'dynamics']) {
     assert.match(floorHtml, /pm-today-trend-floor-status">已同步<\/span>/, `${name} 内容页空闲时必须展示已同步状态`);
 }
 const updatingFloorHtml = renderTodayTrendApp({ scope: valid.scopes.chat, presets: Object.values(valid.presets), view: { name: 'reputation', mode: 'content' },
-    generation: { phase: 'generating', task: { kind: 'auto', storageId: 'chat', assistantCount: 12, target: null } } });
+    generation: { phase: 'generating', task: { kind: 'auto', storageId: 'chat', floor: 12, target: null } } });
 assert.match(updatingFloorHtml, /data-today-trend-floor="7" data-state="updating"/, '完整更新中楼层主值必须保持已提交 checkpoint');
 assert.match(updatingFloorHtml, /同步至 12/, '完整更新中必须展示目标楼层辅助状态');
 assert.doesNotMatch(updatingFloorHtml, /pm-today-trend-floor-value">12<\/strong>/, '尚未提交的目标楼层不得冒充已同步主值');
 const targetedFloorHtml = renderTodayTrendApp({ scope: valid.scopes.chat, presets: Object.values(valid.presets), view: { name: 'faction', mode: 'content' },
-    generation: { phase: 'parsing', task: { kind: 'manual', storageId: 'chat', assistantCount: 99, target: { module: 'faction', itemId: 'red' } } } });
+    generation: { phase: 'parsing', task: { kind: 'manual', storageId: 'chat', floor: 99, target: { module: 'faction', itemId: 'red' } } } });
 assert.match(targetedFloorHtml, /data-today-trend-floor="7" data-state="updating"/, '定向刷新必须保留已提交楼层主值');
 assert.match(targetedFloorHtml, /正在更新模块/, '定向刷新必须使用模块更新文案');
 assert.doesNotMatch(targetedFloorHtml, /同步至 99|pm-today-trend-floor-value">99<\/strong>/, '定向刷新不得虚假推进或承诺楼层 checkpoint');
@@ -920,9 +922,16 @@ assert.deepEqual(committed, beforeInjectionFailure, '注入失败必须补偿为
 let installedStore = structuredClone(valid);
 installedStore.presets.free = { ...structuredClone(installedStore.presets.preset), id: 'free', name: '未绑定预设' };
 installedStore.scopes.other = { ...structuredClone(installedStore.scopes.chat), storageId: 'other' };
+let installedChat = [{ mes: '内部助手消息' }, { mes: '内部助手消息二' }, { mes: '内部助手消息三' }];
+let installedHostFloor = 3402;
+let installedHostFloorError = null;
 let resolveInstalledInitialization;
 const installedDeps = {
-    runtime: {}, getStorageId: () => 'chat', getCtx: () => ({ characterId: 'character', characters: { character: { avatar: 'character', name: '小明' } }, chat: [] }),
+    runtime: {}, getStorageId: () => 'chat', getCtx: () => ({ characterId: 'character', characters: { character: { avatar: 'character', name: '小明' } }, chat: installedChat }),
+    getLastMessageId: () => {
+        if (installedHostFloorError) throw installedHostFloorError;
+        return installedHostFloor;
+    },
     callAI: async () => { throw new Error('安装层竞争测试不应调用真实 AI'); },
     loadTodayTrendStore: async () => structuredClone(installedStore),
     saveTodayTrendStore: async value => { installedStore = structuredClone(value); return installedStore; },
@@ -934,6 +943,15 @@ const installedDeps = {
     }),
 };
 installTodayTrend({}, installedDeps);
+assert.equal(installedDeps.getTodayTrendCurrentFloor(), 3402, '安装层必须把酒馆原生 getLastMessageId 注入调度器');
+installedHostFloor = null;
+assert.equal(installedDeps.getTodayTrendCurrentFloor(), 3, '宿主楼层返回 null 时必须降级为内部 assistant 统计');
+installedHostFloor = '   ';
+assert.equal(installedDeps.getTodayTrendCurrentFloor(), 3, '宿主楼层返回空白字符串时不得误判为 0 楼');
+installedHostFloorError = new Error('宿主楼层读取失败');
+assert.equal(installedDeps.getTodayTrendCurrentFloor(), 3, '宿主楼层读取抛错时必须安全降级');
+installedHostFloorError = null;
+installedHostFloor = 3402;
 await assert.rejects(() => installedDeps.deleteTodayTrendPreset('preset'), /仍被角色资料使用/, '被当前或其他角色资料引用的预设不得删除');
 assert.ok(installedStore.presets.preset, '删除被引用预设失败后必须保持原预设');
 await installedDeps.deleteTodayTrendPreset('free');
@@ -1515,6 +1533,7 @@ const schedulerCommitter = createTodayTrendCommitter({
     save: async value => { scheduledStore = structuredClone(value); return scheduledStore; },
     refreshInjection: async () => ({ failedWrites: 0, failedKeys: [] }),
 });
+let scheduledHostFloor = 3402;
 let schedulerCalls = 0;
 const scheduler = createTodayTrendScheduler({
     controller: { generate: async ({ scope }) => {
@@ -1524,18 +1543,19 @@ const scheduler = createTodayTrendScheduler({
         };
     } },
     committer: schedulerCommitter, getStore: async () => scheduledStore, getStorageId: () => 'chat',
-    getChat: () => [{ mes: '第一楼' }, { mes: '第二楼' }, { mes: '第三楼' }], now: () => 100,
+    getChat: () => [{ mes: '第一楼' }, { mes: '第二楼' }, { mes: '第三楼' }], getFloor: () => scheduledHostFloor, now: () => 100,
 });
 const autoSnapshot = scheduler.observe([{ mes: '第一楼' }, { mes: '第二楼' }, { mes: '第三楼' }]);
 assert.match(autoSnapshot.key, /^[0-9a-f]{32}$/, '调度快照必须使用至少 128-bit 的固定长度指纹');
 assert.equal(autoSnapshot.messageCount, 3, '调度快照必须保留有效消息数');
-assert.equal(autoSnapshot.assistantCount, 3, '自动调度只能按已完成的 assistant 正文计楼');
+assert.equal(autoSnapshot.assistantCount, 3, '调度快照必须保留独立的 assistant 正文统计');
+assert.equal(autoSnapshot.floor, 3402, '调度楼层必须优先采用宿主原生消息编号');
 assert.equal(autoSnapshot.lastRole, 'assistant', '调度快照必须保留末消息角色');
 assert.match(autoSnapshot.lastMessageFingerprint, /^[0-9a-f]{32}$/, '调度快照必须保留固定长度末消息指纹');
 assert.ok(JSON.stringify(autoSnapshot).length < 512, '单个调度快照的稳定表示必须小于 512 bytes');
 await new Promise(resolve => setTimeout(resolve, 0));
 assert.equal(schedulerCalls, 1, '达到每 N 楼阈值后必须只启动一次统一生成');
-assert.equal(scheduledStore.scopes.chat.operation.lastSuccessfulAssistantCount, 3, '自动成功后必须推进 checkpoint');
+assert.equal(scheduledStore.scopes.chat.operation.lastSuccessfulAssistantCount, 3402, '自动成功后必须把 checkpoint 推进到宿主原生楼层');
 const roleParsingScheduler = createTodayTrendScheduler({
     controller: { generate: async ({ scope }) => ({ scope }) }, committer: schedulerCommitter,
     getStore: async () => ({ scopes: {} }), getStorageId: () => 'role-parsing-chat',
@@ -1545,14 +1565,15 @@ assert.equal(nonAssistantSnapshot.assistantCount, 0, 'role/content 形态的用�
 assert.equal(nonAssistantSnapshot.lastIsAssistant, false, '非 assistant 尾消息必须阻止自动生成调度');
 await new Promise(resolve => setTimeout(resolve, 0));
 assert.equal(schedulerCalls, 1, '非 assistant 尾消息不得启动额外自动生成');
-scheduledStore.scopes.chat.operation.lastSuccessfulAssistantCount = 80;
+scheduledStore.scopes.chat.operation.lastSuccessfulAssistantCount = 3400;
+scheduledHostFloor = 3404;
 const longChat = Array.from({ length: 82 }, (_, index) => ({ mes: `第${index + 1}楼` }));
 scheduler.observe(longChat);
 await new Promise(resolve => setTimeout(resolve, 0));
-assert.equal(schedulerCalls, 2, '超过最近正文窗口后仍必须按完整 assistant 楼层继续调度');
+assert.equal(schedulerCalls, 2, '宿主原生楼层达到阈值后必须继续调度');
 await scheduler.manual();
 assert.equal(schedulerCalls, 3, '手动本轮生成必须复用统一生成链');
-assert.equal(scheduledStore.scopes.chat.operation.lastSuccessfulAssistantCount, 3, '手动成功必须同步当前 checkpoint');
+assert.equal(scheduledStore.scopes.chat.operation.lastSuccessfulAssistantCount, 3404, '手动成功必须同步宿主原生楼层 checkpoint');
 
 const snapshotOnlyScheduler = createTodayTrendScheduler({
     controller: { generate: async ({ scope }) => ({ scope }) },
@@ -1605,19 +1626,21 @@ const targetedScheduler = createTodayTrendScheduler({
 });
 targetedScheduler.arm('chat', Array.from({ length: 10 }, (_, index) => ({ mes: `旧楼${index + 1}` })));
 const targetedSnapshotCount = targetedSchedulerStore.scopes.chat.generationSnapshots.length;
-await targetedScheduler.run({ kind: 'manual', assistantCount: 12, target: { module: 'world', itemId: 'world' } });
+await targetedScheduler.run({ kind: 'manual', floor: 12, target: { module: 'world', itemId: 'world' } });
 assert.equal(targetedSchedulerStore.scopes.chat.operation.lastSuccessfulAssistantCount, 7, '定向刷新不得推进持久化楼层 checkpoint');
 assert.equal(targetedSchedulerStore.scopes.chat.generationSnapshots.length, targetedSnapshotCount, '定向刷新不得新增完整生成快照');
 assert.equal(targetedScheduler.state().baselines.chat, 10, '定向刷新不得推进自动调度基线');
 
+let armedHostFloor = 3404;
 let armCalls = 0;
 const armedScheduler = createTodayTrendScheduler({
     controller: { generate: async ({ scope }) => { armCalls += 1; return { scope }; } }, committer: schedulerCommitter,
-    getStore: async () => scheduledStore, getStorageId: () => 'chat',
+    getStore: async () => scheduledStore, getStorageId: () => 'chat', getFloor: () => armedHostFloor,
 });
 const initialChat = Array.from({ length: 10 }, (_, index) => ({ mes: `旧楼层${index}` }));
-assert.equal(armedScheduler.arm('chat', initialChat), 10, '开始运作必须立即记录当前 assistant 楼层基线');
+assert.equal(armedScheduler.arm('chat', initialChat), 3404, '开始运作必须立即记录宿主原生楼层基线');
 const newlyCompleted = [...initialChat, { mes: '新楼层1' }, { mes: '新楼层2' }];
+armedHostFloor = 3406;
 armedScheduler.observe(newlyCompleted);
 await new Promise(resolve => setTimeout(resolve, 0));
 assert.equal(armCalls, 1, '启用后恰好新增 N 楼时必须触发，不能吞掉首条新增正文');
@@ -1670,28 +1693,34 @@ assert.deepEqual(incidentPermissions, [false, true, false], '突发概率必须�
 let queuedAutoCalls = 0;
 let releaseQueuedAuto;
 let queuedAutoChat = [{ mes: '旧楼层一' }, { mes: '旧楼层二' }];
+let queuedAutoHostFloor = 3402;
+const queuedAutoGenerationFloors = [];
 let queuedAutoStore = structuredClone(valid);
-queuedAutoStore.scopes.chat.operation = { ...queuedAutoStore.scopes.chat.operation, enabled: true, mode: 'auto', intervalFloors: 2, lastSuccessfulAssistantCount: 2 };
+queuedAutoStore.scopes.chat.operation = { ...queuedAutoStore.scopes.chat.operation, enabled: true, mode: 'auto', intervalFloors: 2, lastSuccessfulAssistantCount: 3402 };
 const queuedAutoCommitter = createTodayTrendCommitter({
     load: async () => queuedAutoStore,
     save: async value => { queuedAutoStore = structuredClone(value); return queuedAutoStore; },
     refreshInjection: async () => ({ failedWrites: 0, failedKeys: [] }),
 });
 const queuedAutoScheduler = createTodayTrendScheduler({
-    controller: { generate: ({ scope }) => {
+    controller: { generate: ({ scope, assistantCount }) => {
         queuedAutoCalls += 1;
+        queuedAutoGenerationFloors.push(assistantCount);
         return queuedAutoCalls === 1
             ? new Promise(resolve => { releaseQueuedAuto = () => resolve({ scope }); })
             : Promise.resolve({ scope });
     } },
     committer: queuedAutoCommitter, getStore: async () => queuedAutoStore, getStorageId: () => 'chat', getChat: () => queuedAutoChat,
+    getFloor: () => queuedAutoHostFloor,
 });
 queuedAutoScheduler.arm('chat', queuedAutoChat);
 queuedAutoChat.push({ mes: '触发楼层一' }, { mes: '触发楼层二' });
+queuedAutoHostFloor = 3404;
 queuedAutoScheduler.observe(queuedAutoChat);
 await new Promise(resolve => setTimeout(resolve, 0));
 assert.equal(queuedAutoCalls, 1, '达到阈值时必须只启动一个自动任务');
 queuedAutoChat.push({ mes: '生成期间楼层一' }, { mes: '生成期间楼层二' });
+queuedAutoHostFloor = 3406;
 queuedAutoScheduler.observe(queuedAutoChat);
 await new Promise(resolve => setTimeout(resolve, 0));
 assert.equal(queuedAutoCalls, 1, '生成期间的自动触发必须合并，不能并发调用 AI');
@@ -1699,7 +1728,8 @@ releaseQueuedAuto();
 await new Promise(resolve => setTimeout(resolve, 0));
 await new Promise(resolve => setTimeout(resolve, 0));
 assert.equal(queuedAutoCalls, 2, '生成期间累计满下一阈值的新增楼层必须在提交后补调度，不能吞楼');
-assert.equal(queuedAutoStore.scopes.chat.operation.lastSuccessfulAssistantCount, 6, '补调度成功后必须推进到最新助手楼层 checkpoint');
+assert.deepEqual(queuedAutoGenerationFloors, [3404, 3406], '首轮与补调度都必须把宿主原生楼层传入生成链');
+assert.equal(queuedAutoStore.scopes.chat.operation.lastSuccessfulAssistantCount, 3406, '补调度成功后必须推进到最新宿主楼层 checkpoint');
 
 let disabledFollowUpCalls = 0;
 let releaseDisabledFollowUp;
@@ -1736,7 +1766,7 @@ const notificationScheduler = createTodayTrendScheduler({
 const unsubscribeNotification = notificationScheduler.subscribe(snapshot => {
     notificationPhases.push(snapshot.phase);
     if (snapshot.task) {
-        assert.deepEqual(Object.keys(snapshot.task).sort(), ['assistantCount', 'kind', 'storageId', 'target'], '订阅快照不得暴露 AbortController 或内部任务标识');
+        assert.deepEqual(Object.keys(snapshot.task).sort(), ['floor', 'kind', 'storageId', 'target'], '订阅快照不得暴露 AbortController 或内部任务标识');
         assert.equal(Object.isFrozen(snapshot.task), true, '订阅任务快照必须只读');
     }
 });
@@ -1855,9 +1885,9 @@ const rollbackCommitter = createTodayTrendCommitter({
 const rollbackChat = Array.from({ length: 7 }, (_, index) => ({ mes: `回退后楼层${index}` }));
 const rollbackScheduler = createTodayTrendScheduler({
     controller: { generate: async () => { throw new Error('回退不得调用 AI'); } }, committer: rollbackCommitter,
-    getStore: async () => rollbackStore, getStorageId: () => 'chat', getChat: () => rollbackChat,
+    getStore: async () => rollbackStore, getStorageId: () => 'chat', getChat: () => rollbackChat, getFloor: () => 7,
 });
-assert.equal(createTodayTrendScheduler({ controller: { generate: async ({ scope }) => ({ scope }) }, committer: rollbackCommitter, getStore: async () => rollbackStore, getStorageId: () => 'chat', getChat: () => Array.from({ length: 34 }, (_, index) => ({ mes: `楼层${index}` })) }).currentFloor(), 34, '当前楼层读取必须保留 34 等多位完整数值而非截断尾数');
+assert.equal(createTodayTrendScheduler({ controller: { generate: async ({ scope }) => ({ scope }) }, committer: rollbackCommitter, getStore: async () => rollbackStore, getStorageId: () => 'chat', getChat: () => [{ mes: '内部统计不等于楼层' }], getFloor: () => 3402 }).currentFloor(), 3402, '当前楼层必须完整返回宿主原生多位消息编号');
 rollbackScheduler.observe(rollbackChat);
 for (let index = 0; index < 8 && rollbackStore.scopes.chat.operation.lastSuccessfulAssistantCount !== 7; index += 1) await Promise.resolve();
 assert.equal(rollbackStore.scopes.chat.operation.lastSuccessfulAssistantCount, 7, 'observe 检测到助手楼层下降后必须回退持久化 checkpoint');
@@ -1867,10 +1897,11 @@ assert.deepEqual(rollbackStore.scopes.chat.generationSnapshots.map(item => item.
 let concurrentRollbackStore = structuredClone(valid);
 concurrentRollbackStore.scopes.chat = appendTodayTrendGenerationSnapshot({
     ...concurrentRollbackStore.scopes.chat,
-    operation: { ...concurrentRollbackStore.scopes.chat.operation, enabled: true, mode: 'auto', intervalFloors: 2, lastSuccessfulAssistantCount: 10, lastSuccessfulRunAt: 12 },
+    operation: { ...concurrentRollbackStore.scopes.chat.operation, enabled: true, mode: 'auto', intervalFloors: 2, lastSuccessfulAssistantCount: 3410, lastSuccessfulRunAt: 12 },
     world: { items: [{ ...concurrentRollbackStore.scopes.chat.world.items[0], summary: '并发回退前结果' }] },
-}, 10, 12);
+}, 3410, 12);
 let concurrentRollbackChat = Array.from({ length: 7 }, (_, index) => ({ mes: `并发回退楼层${index}` }));
+let concurrentRollbackHostFloor = 3407;
 let releaseRollbackCommit;
 let rollbackCommitStarted = false;
 let blockNextRollbackCommit = true;
@@ -1891,18 +1922,19 @@ const concurrentRollbackCommitter = {
 const concurrentRollbackScheduler = createTodayTrendScheduler({
     controller: { generate: async ({ scope }) => { concurrentRollbackCalls += 1; return { scope }; } },
     committer: concurrentRollbackCommitter, getStore: async () => concurrentRollbackStore,
-    getStorageId: () => 'chat', getChat: () => concurrentRollbackChat,
+    getStorageId: () => 'chat', getChat: () => concurrentRollbackChat, getFloor: () => concurrentRollbackHostFloor,
 });
 concurrentRollbackScheduler.observe(concurrentRollbackChat);
 for (let index = 0; index < 12 && !rollbackCommitStarted; index += 1) await Promise.resolve();
 assert.equal(concurrentRollbackScheduler.state().phase, 'committing', '回退提交被阻塞时必须保持 committing 状态');
 concurrentRollbackChat = [...concurrentRollbackChat, { mes: '回退期间新增一' }, { mes: '回退期间新增二' }];
+concurrentRollbackHostFloor = 3409;
 concurrentRollbackScheduler.observe(concurrentRollbackChat);
 releaseRollbackCommit();
-for (let index = 0; index < 20 && concurrentRollbackStore.scopes.chat.operation.lastSuccessfulAssistantCount !== 9; index += 1) await Promise.resolve();
+for (let index = 0; index < 20 && concurrentRollbackStore.scopes.chat.operation.lastSuccessfulAssistantCount !== 3409; index += 1) await Promise.resolve();
 assert.equal(concurrentRollbackCalls, 1, '回退提交期间累计满阈值的新增楼层必须在回退后补调度一次');
-assert.equal(concurrentRollbackStore.scopes.chat.operation.lastSuccessfulAssistantCount, 9, '回退期间新增楼层不得被 pendingTurns 清零或吞掉');
-assert.deepEqual(concurrentRollbackStore.scopes.chat.generationSnapshots.map(item => item.assistantCount), [0, 7, 9], '回退后补调度必须从回退快照重新建立最新楼层快照');
+assert.equal(concurrentRollbackStore.scopes.chat.operation.lastSuccessfulAssistantCount, 3409, '回退期间新增宿主楼层不得被 pendingTurns 清零或吞掉');
+assert.deepEqual(concurrentRollbackStore.scopes.chat.generationSnapshots.map(item => item.assistantCount), [0, 7, 3409], '回退后补调度必须按宿主楼层重新建立最新快照');
 
 assert.match(await import('node:fs/promises').then(({ readFile }) => readFile(new URL('../src/today-trend.js', import.meta.url), 'utf8')),
     /initializeTodayTrend[\s\S]*bindTodayTrendPreset[\s\S]*commitTodayTrendScope/, '安装层必须公开初始化、预设绑定与设置提交接口');

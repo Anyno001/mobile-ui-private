@@ -55,7 +55,7 @@ export function renderTodayTrendApp({ scope = null, presets = [], worldBooks = [
     const floorStatus = trendFloorStatus({
         syncedFloor,
         busy: busy && taskIsCurrent,
-        targetFloor: taskIsCurrent && !targeted ? generation.task?.assistantCount : null,
+        targetFloor: taskIsCurrent && !targeted ? generation.task?.floor : null,
         targeted,
     });
     const preset = presets.find(item => item.id === scope?.presetId) || null;

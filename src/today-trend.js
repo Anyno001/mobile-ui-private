@@ -20,8 +20,21 @@ export function installTodayTrend(_state, deps = {}) {
     };
     const committer = createTodayTrendCommitter({ runtime: localRuntime, load, save, refreshInjection: deps.applyBidirectionalInjection });
     const controller = (deps.createTodayTrendGenerationController || createTodayTrendGenerationController)({ callAI, getCtx });
+    const readLastMessageId = typeof deps.getLastMessageId === 'function'
+        ? deps.getLastMessageId
+        : () => typeof getLastMessageId === 'function' ? getLastMessageId() : null;
+    const getHostFloor = () => {
+        try {
+            const rawFloor = readLastMessageId();
+            if (rawFloor === null || rawFloor === undefined || (typeof rawFloor === 'string' && !rawFloor.trim())) return null;
+            const floor = Number(rawFloor);
+            return Number.isInteger(floor) && floor >= 0 ? floor : null;
+        } catch {
+            return null;
+        }
+    };
     const scheduler = createTodayTrendScheduler({ controller, committer, getStore: loadStore, getStorageId,
-        getChat: () => getCtx()?.chat || [] });
+        getChat: () => getCtx()?.chat || [], getFloor: getHostFloor });
     const reloadStore = () => loadStore({ force: true });
     const nextPresetId = (store, storageId) => {
         let id = '';
@@ -206,6 +219,7 @@ export function installTodayTrend(_state, deps = {}) {
         cancelTodayTrendGeneration: (reason, reset) => scheduler.cancel(reason, reset),
         generateTodayTrendModule: (module, itemId, options = {}) => scheduler.run({ kind: 'manual', target: { ...options, module, itemId } }),
         generateTodayTrend: options => scheduler.manual(options),
+        getTodayTrendCurrentFloor: scheduler.currentFloor,
         getTodayTrendGenerationState: scheduler.state,
         subscribeTodayTrendGeneration: scheduler.subscribe,
         acknowledgeTodayTrendGeneration: scheduler.acknowledge,

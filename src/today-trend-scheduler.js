@@ -31,7 +31,8 @@ const updateHashNumber = (state, value) => {
     updateHashCode(state, (number >>> 24) & 0xff);
 };
 const hashHex = state => state.map(value => (value >>> 0).toString(16).padStart(8, '0')).join('');
-const createTurnSnapshot = chat => {
+const validFloor = (value, fallback = 0) => Number.isInteger(value) && value >= 0 ? value : fallback;
+const createTurnSnapshot = (chat, hostFloor = null) => {
     const sessionHash = [...HASH_SEEDS];
     let messageCount = 0;
     let assistantCount = 0;
@@ -66,18 +67,20 @@ const createTurnSnapshot = chat => {
     updateHashNumber(sessionHash, messageCount);
     updateHashNumber(sessionHash, assistantCount);
     return Object.freeze({
+        floor: validFloor(hostFloor, assistantCount),
         key: hashHex(sessionHash), messageCount, assistantCount, lastRole, lastMessageFingerprint,
         lastIsAssistant: lastRole === 'assistant',
     });
 };
 const sameSnapshot = (observation, snapshot) => observation?.key === snapshot.key
+    && observation.floor === snapshot.floor
     && observation.messageCount === snapshot.messageCount
     && observation.assistantCount === snapshot.assistantCount
     && observation.lastRole === snapshot.lastRole
     && observation.lastMessageFingerprint === snapshot.lastMessageFingerprint;
 
 export function createTodayTrendScheduler({
-    controller, committer, getStore, getStorageId, getChat = () => [], random = Math.random, now = () => Date.now(),
+    controller, committer, getStore, getStorageId, getChat = () => [], getFloor = () => null, random = Math.random, now = () => Date.now(),
     wait = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds)), commitFeedbackMs = 240,
 } = {}) {
     if (!controller || typeof controller.generate !== 'function') throw new TypeError('今日风向调度器缺少生成控制器');
@@ -92,10 +95,11 @@ export function createTodayTrendScheduler({
     const observations = new Map();
     const listeners = new Set();
     let lastPublishedSignature = '';
+    const readSnapshot = chat => createTurnSnapshot(chat, getFloor());
     const publicTask = task => task ? Object.freeze({
         kind: task.kind,
         storageId: task.storageId,
-        assistantCount: task.assistantCount,
+        floor: task.floor,
         target: task.target ? Object.freeze({ ...task.target }) : null,
     }) : null;
     const state = () => Object.freeze({
@@ -149,7 +153,7 @@ export function createTodayTrendScheduler({
     };
     const storeSnapshot = (id, snapshot, pendingTurns) => {
         const observation = touch({
-            key: snapshot.key, messageCount: snapshot.messageCount, assistantCount: snapshot.assistantCount,
+            key: snapshot.key, floor: snapshot.floor, messageCount: snapshot.messageCount, assistantCount: snapshot.assistantCount,
             lastRole: snapshot.lastRole, lastMessageFingerprint: snapshot.lastMessageFingerprint,
             pendingTurns, rewindFloor: null,
         });
@@ -180,14 +184,14 @@ export function createTodayTrendScheduler({
         const id = String(storageId || '').trim();
         if (!id) throw new Error('今日风向开始运作缺少有效聊天');
         if (id !== getStorageId()) throw new Error('今日风向只能为当前聊天开始运作');
-        const snapshot = createTurnSnapshot(chat);
-        baselines.set(id, snapshot.assistantCount);
+        const snapshot = readSnapshot(chat);
+        baselines.set(id, snapshot.floor);
         storeSnapshot(id, snapshot, 0);
-        return snapshot.assistantCount;
+        return snapshot.floor;
     };
     const currentFloor = (storageId = getStorageId()) => {
         const id = String(storageId || '').trim();
-        return id && id === getStorageId() ? createTurnSnapshot(getChat()).assistantCount : validCount(observations.get(id)?.assistantCount);
+        return id && id === getStorageId() ? readSnapshot(getChat()).floor : validCount(observations.get(id)?.floor);
     };
     const rollIncident = probability => {
         const chance = Number(probability);
@@ -195,20 +199,20 @@ export function createTodayTrendScheduler({
         if (chance >= 100) return true;
         return (typeof random === 'function' ? random() : Math.random()) * 100 < chance;
     };
-    const run = async ({ kind, storageId, assistantCount, incidentProbability, target = null } = {}) => {
+    const run = async ({ kind, storageId, floor, incidentProbability, target = null } = {}) => {
         const id = String(storageId || getStorageId() || '').trim();
         if (!id) throw new Error('今日风向生成缺少有效聊天');
         if (activeTask) {
             if (kind !== 'manual') return false;
             cancel('today-trend-manual-replaces-active');
         }
-        const currentAssistantCount = assistantCount === undefined
-            ? createTurnSnapshot(getChat()).assistantCount : validCount(assistantCount);
+        const currentFloor = floor === undefined
+            ? readSnapshot(getChat()).floor : validCount(floor);
         const observation = observations.get(id);
         if (observation) touch(observation);
         const pendingTurns = observation?.pendingTurns;
         const task = Object.freeze({
-            id: ++sequence, kind, storageId: id, assistantCount: currentAssistantCount,
+            id: ++sequence, kind, storageId: id, floor: currentFloor,
             pendingTurns: Number.isInteger(pendingTurns) && pendingTurns >= 0 ? pendingTurns : 0,
             incidentProbability, target,
             abortController: new AbortController(),
@@ -230,7 +234,7 @@ export function createTodayTrendScheduler({
             const generated = await controller.generate({
                 signal: task.abortController.signal, scope, preset, storageId: id,
                 characterId: scope.characterId, characterName: scope.characterName,
-                assistantCount: task.assistantCount, allowIncident: rollIncident(effectiveIncidentProbability),
+                assistantCount: task.floor, allowIncident: rollIncident(effectiveIncidentProbability),
                 target: task.target, onPhase: next => { if (isActive(task)) setPhase(next, null); },
             });
             if (!isActive(task)) throw cancelled();
@@ -249,9 +253,9 @@ export function createTodayTrendScheduler({
                 const generatedAt = now();
                 const nextScope = { ...generated.scope,
                     operation: task.target ? current.operation : {
-                        ...current.operation, lastSuccessfulAssistantCount: task.assistantCount, lastSuccessfulRunAt: generatedAt,
+                        ...current.operation, lastSuccessfulAssistantCount: task.floor, lastSuccessfulRunAt: generatedAt,
                     }, injection: current.injection, generationSnapshots: current.generationSnapshots };
-                store.scopes[id] = task.target ? nextScope : appendTodayTrendGenerationSnapshot(nextScope, task.assistantCount, generatedAt);
+                store.scopes[id] = task.target ? nextScope : appendTodayTrendGenerationSnapshot(nextScope, task.floor, generatedAt);
                 return store;
             }, { active: () => isActive(task) });
             if (!committed || !isActive(task)) throw cancelled();
@@ -259,12 +263,12 @@ export function createTodayTrendScheduler({
             if (remainingFeedback > 0) await wait(remainingFeedback);
             if (!isActive(task)) throw cancelled();
             if (!task.target) {
-                baselines.set(id, task.assistantCount);
+                baselines.set(id, task.floor);
                 const currentObservation = observations.get(id);
                 const remainingTurns = currentObservation && Number.isInteger(currentObservation.pendingTurns)
                     ? Math.max(0, currentObservation.pendingTurns - task.pendingTurns) : 0;
                 if (currentObservation) { currentObservation.pendingTurns = remainingTurns; touch(currentObservation); }
-                else storeSnapshot(id, createTurnSnapshot(getChat()), 0);
+                else storeSnapshot(id, readSnapshot(getChat()), 0);
             }
             setPhase('completed', null);
             return committed;
@@ -291,7 +295,7 @@ export function createTodayTrendScheduler({
                             || operation?.enabled !== true
                             || operation.mode !== 'auto'
                             || currentObservation.pendingTurns < operation.intervalFloors) return;
-                        run({ kind: 'auto', storageId: id, incidentProbability: task.incidentProbability }).catch(() => {});
+                        run({ kind: 'auto', storageId: id, floor: currentObservation.floor, incidentProbability: task.incidentProbability }).catch(() => {});
                     }).catch(() => {});
                 }
                 pruneObservations();
@@ -303,7 +307,7 @@ export function createTodayTrendScheduler({
         if (activeTask) cancel('today-trend-chat-rewound');
         const observationAtStart = observations.get(id);
         const task = Object.freeze({
-            id: ++sequence, kind: 'rollback', storageId: id, assistantCount: snapshot.assistantCount,
+            id: ++sequence, kind: 'rollback', storageId: id, floor: snapshot.floor,
             pendingTurns: 0, incidentProbability: 0, target: null, abortController: new AbortController(),
         });
         activeTask = task;
@@ -313,17 +317,17 @@ export function createTodayTrendScheduler({
             const committed = await committer.commitStore(store => {
                 const current = store.scopes[id];
                 if (!current || !isActive(task)) return store;
-                if (validCount(current.operation?.lastSuccessfulAssistantCount) <= snapshot.assistantCount) return store;
-                store.scopes[id] = rollbackTodayTrendScope(current, snapshot.assistantCount);
+                if (validCount(current.operation?.lastSuccessfulAssistantCount) <= snapshot.floor) return store;
+                store.scopes[id] = rollbackTodayTrendScope(current, snapshot.floor);
                 return store;
             }, { active: () => isActive(task) });
             if (!committed || !isActive(task)) throw cancelled();
             const remainingFeedback = Math.max(0, commitFeedbackMs - Math.max(0, now() - commitStartedAt));
             if (remainingFeedback > 0) await wait(remainingFeedback);
             if (!isActive(task)) throw cancelled();
-            baselines.set(id, snapshot.assistantCount);
+            baselines.set(id, snapshot.floor);
             const observation = observations.get(id);
-            if (observation === observationAtStart && observation.rewindFloor === task.assistantCount) {
+            if (observation === observationAtStart && observation.rewindFloor === task.floor) {
                 observation.rewindFloor = null;
             }
             setPhase('completed', null);
@@ -345,12 +349,12 @@ export function createTodayTrendScheduler({
                         if (observations.get(id) !== observation || getStorageId() !== id || activeTask) return;
                         if (Number.isInteger(observation.rewindFloor)
                             && observation.rewindFloor < validCount(operation?.lastSuccessfulAssistantCount)) {
-                            rollback(id, { assistantCount: observation.rewindFloor }).catch(() => {});
+                            rollback(id, { floor: observation.rewindFloor }).catch(() => {});
                             return;
                         }
                         if (operation?.enabled === true && operation.mode === 'auto'
                             && observation.pendingTurns >= operation.intervalFloors) {
-                            run({ kind: 'auto', storageId: id, assistantCount: observation.assistantCount }).catch(() => {});
+                            run({ kind: 'auto', storageId: id, floor: observation.floor }).catch(() => {});
                         }
                     }).catch(() => {});
                 }
@@ -359,7 +363,7 @@ export function createTodayTrendScheduler({
         }
     };
     const observe = (chat, { incidentProbability } = {}) => {
-        const snapshot = createTurnSnapshot(chat);
+        const snapshot = readSnapshot(chat);
         const id = String(getStorageId() || '').trim();
         if (!id || !snapshot.key) return null;
         let observation = observations.get(id);
@@ -367,17 +371,17 @@ export function createTodayTrendScheduler({
         else {
             touch(observation);
             if (sameSnapshot(observation, snapshot)) return null;
-            const addedAssistantCount = snapshot.assistantCount - observation.assistantCount;
+            const addedFloors = snapshot.floor - observation.floor;
             Object.assign(observation, {
-                key: snapshot.key, messageCount: snapshot.messageCount, assistantCount: snapshot.assistantCount,
+                key: snapshot.key, floor: snapshot.floor, messageCount: snapshot.messageCount, assistantCount: snapshot.assistantCount,
                 lastRole: snapshot.lastRole, lastMessageFingerprint: snapshot.lastMessageFingerprint,
             });
-            if (addedAssistantCount < 0) {
+            if (addedFloors < 0) {
                 observation.pendingTurns = 0;
                 observation.rewindFloor = Number.isInteger(observation.rewindFloor)
-                    ? Math.min(observation.rewindFloor, snapshot.assistantCount) : snapshot.assistantCount;
+                    ? Math.min(observation.rewindFloor, snapshot.floor) : snapshot.floor;
             } else if (observation.pendingTurns !== null) {
-                observation.pendingTurns += addedAssistantCount;
+                observation.pendingTurns += addedFloors;
             }
         }
         Promise.resolve(getStore()).then(store => {
@@ -387,13 +391,13 @@ export function createTodayTrendScheduler({
             const persisted = validCount(scope.operation?.lastSuccessfulAssistantCount);
             if (!Number.isInteger(observation.rewindFloor)
                 && sameSnapshot(observation, snapshot)
-                && snapshot.assistantCount < persisted) {
+                && snapshot.floor < persisted) {
                 observation.pendingTurns = 0;
-                observation.rewindFloor = snapshot.assistantCount;
+                observation.rewindFloor = snapshot.floor;
             }
             if (Number.isInteger(observation.rewindFloor) && observation.rewindFloor < persisted) {
                 if (!activeTask || activeTask.kind !== 'rollback' || activeTask.storageId !== id) {
-                    return rollback(id, { assistantCount: observation.rewindFloor }).catch(() => {});
+                    return rollback(id, { floor: observation.rewindFloor }).catch(() => {});
                 }
                 return;
             }
@@ -401,15 +405,15 @@ export function createTodayTrendScheduler({
             if (!snapshot.lastIsAssistant) return;
             if (!scope.operation?.enabled || scope.operation.mode !== 'auto') return;
             if (observation.pendingTurns === null) {
-                observation.pendingTurns = persisted ? Math.max(0, snapshot.assistantCount - persisted) : 0;
-                baselines.set(id, persisted || snapshot.assistantCount);
+                observation.pendingTurns = persisted ? Math.max(0, snapshot.floor - persisted) : 0;
+                baselines.set(id, persisted || snapshot.floor);
             }
             if (!persisted && !baselines.has(id)) {
-                baselines.set(id, snapshot.assistantCount);
+                baselines.set(id, snapshot.floor);
                 return;
             }
             if (observation.pendingTurns < scope.operation.intervalFloors || activeTask) return;
-            run({ kind: 'auto', storageId: id, assistantCount: snapshot.assistantCount, incidentProbability }).catch(() => {});
+            run({ kind: 'auto', storageId: id, floor: snapshot.floor, incidentProbability }).catch(() => {});
         }).catch(() => {});
         return snapshot;
     };

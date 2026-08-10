@@ -22171,7 +22171,8 @@ ${targetInstruction}`
     updateHashCode(state, number >>> 24 & 255);
   };
   var hashHex = (state) => state.map((value) => (value >>> 0).toString(16).padStart(8, "0")).join("");
-  var createTurnSnapshot = (chat) => {
+  var validFloor = (value, fallback = 0) => Number.isInteger(value) && value >= 0 ? value : fallback;
+  var createTurnSnapshot = (chat, hostFloor = null) => {
     const sessionHash = [...HASH_SEEDS];
     let messageCount = 0;
     let assistantCount = 0;
@@ -22206,6 +22207,7 @@ ${targetInstruction}`
     updateHashNumber(sessionHash, messageCount);
     updateHashNumber(sessionHash, assistantCount);
     return Object.freeze({
+      floor: validFloor(hostFloor, assistantCount),
       key: hashHex(sessionHash),
       messageCount,
       assistantCount,
@@ -22214,13 +22216,14 @@ ${targetInstruction}`
       lastIsAssistant: lastRole === "assistant"
     });
   };
-  var sameSnapshot = (observation, snapshot) => observation?.key === snapshot.key && observation.messageCount === snapshot.messageCount && observation.assistantCount === snapshot.assistantCount && observation.lastRole === snapshot.lastRole && observation.lastMessageFingerprint === snapshot.lastMessageFingerprint;
+  var sameSnapshot = (observation, snapshot) => observation?.key === snapshot.key && observation.floor === snapshot.floor && observation.messageCount === snapshot.messageCount && observation.assistantCount === snapshot.assistantCount && observation.lastRole === snapshot.lastRole && observation.lastMessageFingerprint === snapshot.lastMessageFingerprint;
   function createTodayTrendScheduler({
     controller,
     committer,
     getStore,
     getStorageId: getStorageId2,
     getChat = () => [],
+    getFloor = () => null,
     random = Math.random,
     now: now2 = () => Date.now(),
     wait = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)),
@@ -22238,10 +22241,11 @@ ${targetInstruction}`
     const observations = /* @__PURE__ */ new Map();
     const listeners = /* @__PURE__ */ new Set();
     let lastPublishedSignature = "";
+    const readSnapshot = (chat) => createTurnSnapshot(chat, getFloor());
     const publicTask = (task) => task ? Object.freeze({
       kind: task.kind,
       storageId: task.storageId,
-      assistantCount: task.assistantCount,
+      floor: task.floor,
       target: task.target ? Object.freeze({ ...task.target }) : null
     }) : null;
     const state = () => Object.freeze({
@@ -22303,6 +22307,7 @@ ${targetInstruction}`
     const storeSnapshot = (id2, snapshot, pendingTurns) => {
       const observation = touch({
         key: snapshot.key,
+        floor: snapshot.floor,
         messageCount: snapshot.messageCount,
         assistantCount: snapshot.assistantCount,
         lastRole: snapshot.lastRole,
@@ -22335,14 +22340,14 @@ ${targetInstruction}`
       const id2 = String(storageId || "").trim();
       if (!id2) throw new Error("\u4ECA\u65E5\u98CE\u5411\u5F00\u59CB\u8FD0\u4F5C\u7F3A\u5C11\u6709\u6548\u804A\u5929");
       if (id2 !== getStorageId2()) throw new Error("\u4ECA\u65E5\u98CE\u5411\u53EA\u80FD\u4E3A\u5F53\u524D\u804A\u5929\u5F00\u59CB\u8FD0\u4F5C");
-      const snapshot = createTurnSnapshot(chat);
-      baselines.set(id2, snapshot.assistantCount);
+      const snapshot = readSnapshot(chat);
+      baselines.set(id2, snapshot.floor);
       storeSnapshot(id2, snapshot, 0);
-      return snapshot.assistantCount;
+      return snapshot.floor;
     };
     const currentFloor = (storageId = getStorageId2()) => {
       const id2 = String(storageId || "").trim();
-      return id2 && id2 === getStorageId2() ? createTurnSnapshot(getChat()).assistantCount : validCount(observations.get(id2)?.assistantCount);
+      return id2 && id2 === getStorageId2() ? readSnapshot(getChat()).floor : validCount(observations.get(id2)?.floor);
     };
     const rollIncident = (probability) => {
       const chance = Number(probability);
@@ -22350,14 +22355,14 @@ ${targetInstruction}`
       if (chance >= 100) return true;
       return (typeof random === "function" ? random() : Math.random()) * 100 < chance;
     };
-    const run = async ({ kind, storageId, assistantCount, incidentProbability, target = null } = {}) => {
+    const run = async ({ kind, storageId, floor, incidentProbability, target = null } = {}) => {
       const id2 = String(storageId || getStorageId2() || "").trim();
       if (!id2) throw new Error("\u4ECA\u65E5\u98CE\u5411\u751F\u6210\u7F3A\u5C11\u6709\u6548\u804A\u5929");
       if (activeTask) {
         if (kind !== "manual") return false;
         cancel("today-trend-manual-replaces-active");
       }
-      const currentAssistantCount = assistantCount === void 0 ? createTurnSnapshot(getChat()).assistantCount : validCount(assistantCount);
+      const currentFloor2 = floor === void 0 ? readSnapshot(getChat()).floor : validCount(floor);
       const observation = observations.get(id2);
       if (observation) touch(observation);
       const pendingTurns = observation?.pendingTurns;
@@ -22365,7 +22370,7 @@ ${targetInstruction}`
         id: ++sequence,
         kind,
         storageId: id2,
-        assistantCount: currentAssistantCount,
+        floor: currentFloor2,
         pendingTurns: Number.isInteger(pendingTurns) && pendingTurns >= 0 ? pendingTurns : 0,
         incidentProbability,
         target,
@@ -22391,7 +22396,7 @@ ${targetInstruction}`
           storageId: id2,
           characterId: scope.characterId,
           characterName: scope.characterName,
-          assistantCount: task.assistantCount,
+          assistantCount: task.floor,
           allowIncident: rollIncident(effectiveIncidentProbability),
           target: task.target,
           onPhase: (next) => {
@@ -22416,13 +22421,13 @@ ${targetInstruction}`
             ...generated.scope,
             operation: task.target ? current.operation : {
               ...current.operation,
-              lastSuccessfulAssistantCount: task.assistantCount,
+              lastSuccessfulAssistantCount: task.floor,
               lastSuccessfulRunAt: generatedAt
             },
             injection: current.injection,
             generationSnapshots: current.generationSnapshots
           };
-          store.scopes[id2] = task.target ? nextScope : appendTodayTrendGenerationSnapshot(nextScope, task.assistantCount, generatedAt);
+          store.scopes[id2] = task.target ? nextScope : appendTodayTrendGenerationSnapshot(nextScope, task.floor, generatedAt);
           return store;
         }, { active: () => isActive(task) });
         if (!committed || !isActive(task)) throw cancelled();
@@ -22430,13 +22435,13 @@ ${targetInstruction}`
         if (remainingFeedback > 0) await wait(remainingFeedback);
         if (!isActive(task)) throw cancelled();
         if (!task.target) {
-          baselines.set(id2, task.assistantCount);
+          baselines.set(id2, task.floor);
           const currentObservation = observations.get(id2);
           const remainingTurns = currentObservation && Number.isInteger(currentObservation.pendingTurns) ? Math.max(0, currentObservation.pendingTurns - task.pendingTurns) : 0;
           if (currentObservation) {
             currentObservation.pendingTurns = remainingTurns;
             touch(currentObservation);
-          } else storeSnapshot(id2, createTurnSnapshot(getChat()), 0);
+          } else storeSnapshot(id2, readSnapshot(getChat()), 0);
         }
         setPhase("completed", null);
         return committed;
@@ -22458,7 +22463,7 @@ ${targetInstruction}`
             Promise.resolve(getStore()).then((store) => {
               const operation = store?.scopes?.[id2]?.operation;
               if (observations.get(id2) !== currentObservation || getStorageId2() !== id2 || activeTask || operation?.enabled !== true || operation.mode !== "auto" || currentObservation.pendingTurns < operation.intervalFloors) return;
-              run({ kind: "auto", storageId: id2, incidentProbability: task.incidentProbability }).catch(() => {
+              run({ kind: "auto", storageId: id2, floor: currentObservation.floor, incidentProbability: task.incidentProbability }).catch(() => {
               });
             }).catch(() => {
             });
@@ -22475,7 +22480,7 @@ ${targetInstruction}`
         id: ++sequence,
         kind: "rollback",
         storageId: id2,
-        assistantCount: snapshot.assistantCount,
+        floor: snapshot.floor,
         pendingTurns: 0,
         incidentProbability: 0,
         target: null,
@@ -22488,17 +22493,17 @@ ${targetInstruction}`
         const committed = await committer.commitStore((store) => {
           const current = store.scopes[id2];
           if (!current || !isActive(task)) return store;
-          if (validCount(current.operation?.lastSuccessfulAssistantCount) <= snapshot.assistantCount) return store;
-          store.scopes[id2] = rollbackTodayTrendScope(current, snapshot.assistantCount);
+          if (validCount(current.operation?.lastSuccessfulAssistantCount) <= snapshot.floor) return store;
+          store.scopes[id2] = rollbackTodayTrendScope(current, snapshot.floor);
           return store;
         }, { active: () => isActive(task) });
         if (!committed || !isActive(task)) throw cancelled();
         const remainingFeedback = Math.max(0, commitFeedbackMs - Math.max(0, now2() - commitStartedAt));
         if (remainingFeedback > 0) await wait(remainingFeedback);
         if (!isActive(task)) throw cancelled();
-        baselines.set(id2, snapshot.assistantCount);
+        baselines.set(id2, snapshot.floor);
         const observation = observations.get(id2);
-        if (observation === observationAtStart && observation.rewindFloor === task.assistantCount) {
+        if (observation === observationAtStart && observation.rewindFloor === task.floor) {
           observation.rewindFloor = null;
         }
         setPhase("completed", null);
@@ -22519,12 +22524,12 @@ ${targetInstruction}`
               const operation = store?.scopes?.[id2]?.operation;
               if (observations.get(id2) !== observation || getStorageId2() !== id2 || activeTask) return;
               if (Number.isInteger(observation.rewindFloor) && observation.rewindFloor < validCount(operation?.lastSuccessfulAssistantCount)) {
-                rollback(id2, { assistantCount: observation.rewindFloor }).catch(() => {
+                rollback(id2, { floor: observation.rewindFloor }).catch(() => {
                 });
                 return;
               }
               if (operation?.enabled === true && operation.mode === "auto" && observation.pendingTurns >= operation.intervalFloors) {
-                run({ kind: "auto", storageId: id2, assistantCount: observation.assistantCount }).catch(() => {
+                run({ kind: "auto", storageId: id2, floor: observation.floor }).catch(() => {
                 });
               }
             }).catch(() => {
@@ -22535,7 +22540,7 @@ ${targetInstruction}`
       }
     };
     const observe = (chat, { incidentProbability } = {}) => {
-      const snapshot = createTurnSnapshot(chat);
+      const snapshot = readSnapshot(chat);
       const id2 = String(getStorageId2() || "").trim();
       if (!id2 || !snapshot.key) return null;
       let observation = observations.get(id2);
@@ -22543,19 +22548,20 @@ ${targetInstruction}`
       else {
         touch(observation);
         if (sameSnapshot(observation, snapshot)) return null;
-        const addedAssistantCount = snapshot.assistantCount - observation.assistantCount;
+        const addedFloors = snapshot.floor - observation.floor;
         Object.assign(observation, {
           key: snapshot.key,
+          floor: snapshot.floor,
           messageCount: snapshot.messageCount,
           assistantCount: snapshot.assistantCount,
           lastRole: snapshot.lastRole,
           lastMessageFingerprint: snapshot.lastMessageFingerprint
         });
-        if (addedAssistantCount < 0) {
+        if (addedFloors < 0) {
           observation.pendingTurns = 0;
-          observation.rewindFloor = Number.isInteger(observation.rewindFloor) ? Math.min(observation.rewindFloor, snapshot.assistantCount) : snapshot.assistantCount;
+          observation.rewindFloor = Number.isInteger(observation.rewindFloor) ? Math.min(observation.rewindFloor, snapshot.floor) : snapshot.floor;
         } else if (observation.pendingTurns !== null) {
-          observation.pendingTurns += addedAssistantCount;
+          observation.pendingTurns += addedFloors;
         }
       }
       Promise.resolve(getStore()).then((store) => {
@@ -22566,13 +22572,13 @@ ${targetInstruction}`
           return;
         }
         const persisted = validCount(scope.operation?.lastSuccessfulAssistantCount);
-        if (!Number.isInteger(observation.rewindFloor) && sameSnapshot(observation, snapshot) && snapshot.assistantCount < persisted) {
+        if (!Number.isInteger(observation.rewindFloor) && sameSnapshot(observation, snapshot) && snapshot.floor < persisted) {
           observation.pendingTurns = 0;
-          observation.rewindFloor = snapshot.assistantCount;
+          observation.rewindFloor = snapshot.floor;
         }
         if (Number.isInteger(observation.rewindFloor) && observation.rewindFloor < persisted) {
           if (!activeTask || activeTask.kind !== "rollback" || activeTask.storageId !== id2) {
-            return rollback(id2, { assistantCount: observation.rewindFloor }).catch(() => {
+            return rollback(id2, { floor: observation.rewindFloor }).catch(() => {
             });
           }
           return;
@@ -22581,15 +22587,15 @@ ${targetInstruction}`
         if (!snapshot.lastIsAssistant) return;
         if (!scope.operation?.enabled || scope.operation.mode !== "auto") return;
         if (observation.pendingTurns === null) {
-          observation.pendingTurns = persisted ? Math.max(0, snapshot.assistantCount - persisted) : 0;
-          baselines.set(id2, persisted || snapshot.assistantCount);
+          observation.pendingTurns = persisted ? Math.max(0, snapshot.floor - persisted) : 0;
+          baselines.set(id2, persisted || snapshot.floor);
         }
         if (!persisted && !baselines.has(id2)) {
-          baselines.set(id2, snapshot.assistantCount);
+          baselines.set(id2, snapshot.floor);
           return;
         }
         if (observation.pendingTurns < scope.operation.intervalFloors || activeTask) return;
-        run({ kind: "auto", storageId: id2, assistantCount: snapshot.assistantCount, incidentProbability }).catch(() => {
+        run({ kind: "auto", storageId: id2, floor: snapshot.floor, incidentProbability }).catch(() => {
         });
       }).catch(() => {
       });
@@ -22615,12 +22621,24 @@ ${targetInstruction}`
     };
     const committer = createTodayTrendCommitter({ runtime: localRuntime, load, save, refreshInjection: deps.applyBidirectionalInjection });
     const controller = (deps.createTodayTrendGenerationController || createTodayTrendGenerationController)({ callAI, getCtx });
+    const readLastMessageId = typeof deps.getLastMessageId === "function" ? deps.getLastMessageId : () => typeof getLastMessageId === "function" ? getLastMessageId() : null;
+    const getHostFloor = () => {
+      try {
+        const rawFloor = readLastMessageId();
+        if (rawFloor === null || rawFloor === void 0 || typeof rawFloor === "string" && !rawFloor.trim()) return null;
+        const floor = Number(rawFloor);
+        return Number.isInteger(floor) && floor >= 0 ? floor : null;
+      } catch {
+        return null;
+      }
+    };
     const scheduler = createTodayTrendScheduler({
       controller,
       committer,
       getStore: loadStore2,
       getStorageId: getStorageId2,
-      getChat: () => getCtx()?.chat || []
+      getChat: () => getCtx()?.chat || [],
+      getFloor: getHostFloor
     });
     const reloadStore = () => loadStore2({ force: true });
     const nextPresetId = (store, storageId) => {
@@ -22806,6 +22824,7 @@ ${targetInstruction}`
       cancelTodayTrendGeneration: (reason, reset) => scheduler.cancel(reason, reset),
       generateTodayTrendModule: (module, itemId, options2 = {}) => scheduler.run({ kind: "manual", target: { ...options2, module, itemId } }),
       generateTodayTrend: (options2) => scheduler.manual(options2),
+      getTodayTrendCurrentFloor: scheduler.currentFloor,
       getTodayTrendGenerationState: scheduler.state,
       subscribeTodayTrendGeneration: scheduler.subscribe,
       acknowledgeTodayTrendGeneration: scheduler.acknowledge,
@@ -23283,7 +23302,7 @@ ${targetInstruction}`
   function trendModuleHead({ title, menuId, menuOpenId, actions = [], meta = "", metaHtml = "", eyebrow = "", adornment = "", asideHtml = "" }) {
     const renderedMeta = metaHtml || (meta ? `<span>${escapeHtml(meta)}</span>` : "");
     const menu2 = trendActionMenu({ id: menuId, open: menuOpenId === menuId, label: `${title}\u64CD\u4F5C`, actions });
-    return `<header class="pm-today-trend-module-head${eyebrow ? " is-decorative" : ""}"><div>${eyebrow ? `<p class="pm-today-trend-module-eyebrow">${escapeHtml(eyebrow)}</p>` : ""}<h2>${escapeHtml(title)}${adornment}</h2>${renderedMeta}</div><span class="pm-today-trend-head-tools">${asideHtml}${menu2}</span></header>`;
+    return `<header class="pm-today-trend-module-head${eyebrow ? " is-decorative" : ""}"><div>${eyebrow ? `<p class="pm-today-trend-module-eyebrow">${escapeHtml(eyebrow)}</p>` : ""}<h2>${escapeHtml(title)}${adornment}</h2>${renderedMeta}</div><span class="pm-today-trend-head-tools">${menu2}${asideHtml}</span></header>`;
   }
   function trendRuleEditor({ rule, value = "" } = {}) {
     if (!rule) return "";
@@ -23536,7 +23555,7 @@ ${targetInstruction}`
     const floorStatus = trendFloorStatus({
       syncedFloor,
       busy: busy && taskIsCurrent,
-      targetFloor: taskIsCurrent && !targeted ? generation.task?.assistantCount : null,
+      targetFloor: taskIsCurrent && !targeted ? generation.task?.floor : null,
       targeted
     });
     const preset = presets.find((item) => item.id === scope?.presetId) || null;
