@@ -8609,7 +8609,7 @@ ${entry2.content}` : entry2.content;
   var TODAY_TREND_EVENT_OUTCOMES = Object.freeze(["resolved", "failed", "terminated", "inconclusive", "confirmed", "debunked", "absorbed"]);
   var TODAY_TREND_OPERATION_MODES = Object.freeze(["manual", "auto"]);
   var TODAY_TREND_STATUS_LABELS = Object.freeze({ hostile: "\u654C\u5BF9", dislike: "\u538C\u6076", neutral: "\u4E2D\u7ACB", like: "\u559C\u6B22", trust: "\u4FE1\u4EFB" });
-  var TODAY_TREND_LIMITS = Object.freeze({ presets: 80, scopes: 80, worldItems: 24, circles: 24, factions: 80, factionDetails: 16, relatedFactions: 24, events: 80, participants: 24, stages: 40, relatedEvents: 24, text: 600, name: 120, stageLabel: 8, intervalFloors: 1e3 });
+  var TODAY_TREND_LIMITS = Object.freeze({ presets: 80, scopes: 80, worldItems: 24, circles: 24, factions: 80, factionDetails: 16, relatedFactions: 24, events: 80, participants: 24, stages: 40, relatedEvents: 24, generationSnapshots: 12, text: 600, name: 120, stageLabel: 8, intervalFloors: 1e3 });
   var plainRecord8 = (value) => value && typeof value === "object" && !Array.isArray(value) && (Object.getPrototypeOf(value) === Object.prototype || Object.getPrototypeOf(value) === null);
   var unsafeKey6 = (value) => value === "__proto__" || value === "prototype" || value === "constructor";
   var cleanText6 = (value, max = TODAY_TREND_LIMITS.text) => typeof value === "string" ? value.trim().replace(/\s+/g, " ").slice(0, max) : "";
@@ -8652,7 +8652,8 @@ ${entry2.content}` : entry2.content;
       reputation: { circles: [] },
       factions: [],
       dynamicsSettings: createDefaultTodayTrendDynamicsSettings(),
-      dynamics: { active: [], archived: [] }
+      dynamics: { active: [], archived: [] },
+      generationSnapshots: []
     };
   }
   function requiredText(value, max, code, label) {
@@ -8832,7 +8833,7 @@ ${entry2.content}` : entry2.content;
     };
     for (const faction of factions) visit(faction.id);
   }
-  function normalizeTodayTrendScope(value, presetIds) {
+  function normalizeTodayTrendScopeInternal(value, presetIds, normalizeSnapshots) {
     assertRecord(value, "TT_SCOPE", "\u89D2\u8272\u8D44\u6599\u5FC5\u987B\u662F\u5BF9\u8C61");
     const scope = createEmptyTodayTrendScope();
     scope.storageId = normalizeId(value.storageId, "TT_SCOPE", "\u804A\u5929 ID");
@@ -8873,7 +8874,105 @@ ${entry2.content}` : entry2.content;
       }
     }
     if (scope.dynamics.active.length > scope.dynamicsSettings.trackingLimit) fail("TT_DYNAMICS_SETTINGS", "\u6B63\u5728\u8FFD\u8E2A\u4E8B\u4EF6\u8D85\u8FC7\u4E0A\u9650");
+    if (!normalizeSnapshots) return scope;
+    const rawSnapshots = value.generationSnapshots;
+    const baselineSnapshot = {
+      assistantCount: 0,
+      generatedAt: 0,
+      world: scope.world,
+      reputation: scope.reputation,
+      factions: scope.factions,
+      dynamicsSettings: scope.dynamicsSettings,
+      dynamics: scope.dynamics
+    };
+    const sourceSnapshots = Array.isArray(rawSnapshots) && rawSnapshots.length ? rawSnapshots : [
+      baselineSnapshot,
+      ...scope.operation.lastSuccessfulAssistantCount > 0 ? [{
+        assistantCount: scope.operation.lastSuccessfulAssistantCount,
+        generatedAt: scope.operation.lastSuccessfulRunAt,
+        world: scope.world,
+        reputation: scope.reputation,
+        factions: scope.factions,
+        dynamicsSettings: scope.dynamicsSettings,
+        dynamics: scope.dynamics
+      }] : []
+    ];
+    if (sourceSnapshots.length > TODAY_TREND_LIMITS.generationSnapshots) fail("TT_SNAPSHOT_LIMIT", "\u4ECA\u65E5\u98CE\u5411\u697C\u5C42\u5FEB\u7167\u6570\u91CF\u8D85\u9650");
+    const snapshots = /* @__PURE__ */ new Map();
+    for (const raw of sourceSnapshots) {
+      assertRecord(raw, "TT_SNAPSHOT", "\u4ECA\u65E5\u98CE\u5411\u697C\u5C42\u5FEB\u7167\u5FC5\u987B\u662F\u5BF9\u8C61");
+      const assistantCount = timestamp4(raw.assistantCount);
+      const snapshotScope = normalizeTodayTrendScopeInternal({
+        ...scope,
+        operation: { ...scope.operation, lastSuccessfulAssistantCount: assistantCount, lastSuccessfulRunAt: timestamp4(raw.generatedAt) },
+        world: raw.world,
+        reputation: raw.reputation,
+        factions: raw.factions,
+        dynamicsSettings: raw.dynamicsSettings,
+        dynamics: raw.dynamics,
+        generationSnapshots: []
+      }, presetIds, false);
+      snapshots.set(assistantCount, {
+        assistantCount,
+        generatedAt: timestamp4(raw.generatedAt),
+        world: snapshotScope.world,
+        reputation: snapshotScope.reputation,
+        factions: snapshotScope.factions,
+        dynamicsSettings: snapshotScope.dynamicsSettings,
+        dynamics: snapshotScope.dynamics
+      });
+    }
+    const normalizedSnapshots = [...snapshots.values()].sort((left, right) => left.assistantCount - right.assistantCount);
+    if (!snapshots.has(0)) {
+      const earliest = normalizedSnapshots[0] || baselineSnapshot;
+      const baseline = {
+        assistantCount: 0,
+        generatedAt: 0,
+        world: structuredClone(earliest.world),
+        reputation: structuredClone(earliest.reputation),
+        factions: structuredClone(earliest.factions),
+        dynamicsSettings: structuredClone(earliest.dynamicsSettings),
+        dynamics: structuredClone(earliest.dynamics)
+      };
+      scope.generationSnapshots = [baseline, ...normalizedSnapshots.slice(-(TODAY_TREND_LIMITS.generationSnapshots - 1))];
+    } else scope.generationSnapshots = normalizedSnapshots;
     return scope;
+  }
+  function normalizeTodayTrendScope(value, presetIds) {
+    return normalizeTodayTrendScopeInternal(value, presetIds, true);
+  }
+  function appendTodayTrendGenerationSnapshot(scope, assistantCount, generatedAt = Date.now()) {
+    const normalized = normalizeTodayTrendScope(scope, /* @__PURE__ */ new Set([scope?.presetId]));
+    const floor = timestamp4(assistantCount);
+    const snapshot = {
+      assistantCount: floor,
+      generatedAt: timestamp4(generatedAt),
+      world: structuredClone(normalized.world),
+      reputation: structuredClone(normalized.reputation),
+      factions: structuredClone(normalized.factions),
+      dynamicsSettings: structuredClone(normalized.dynamicsSettings),
+      dynamics: structuredClone(normalized.dynamics)
+    };
+    const sortedSnapshots = [...normalized.generationSnapshots.filter((item) => item.assistantCount !== floor), snapshot].sort((left, right) => left.assistantCount - right.assistantCount);
+    const baseline = sortedSnapshots.find((item) => item.assistantCount === 0);
+    const generationSnapshots = baseline ? [baseline, ...sortedSnapshots.filter((item) => item.assistantCount !== 0).slice(-(TODAY_TREND_LIMITS.generationSnapshots - 1))] : sortedSnapshots.slice(-TODAY_TREND_LIMITS.generationSnapshots);
+    return normalizeTodayTrendScope({ ...normalized, generationSnapshots }, /* @__PURE__ */ new Set([normalized.presetId]));
+  }
+  function rollbackTodayTrendScope(scope, assistantCount) {
+    const normalized = normalizeTodayTrendScope(scope, /* @__PURE__ */ new Set([scope?.presetId]));
+    const floor = timestamp4(assistantCount);
+    const snapshot = normalized.generationSnapshots.filter((item) => item.assistantCount <= floor).at(-1);
+    if (!snapshot) return normalized;
+    return normalizeTodayTrendScope({
+      ...normalized,
+      operation: { ...normalized.operation, lastSuccessfulAssistantCount: snapshot.assistantCount, lastSuccessfulRunAt: snapshot.generatedAt },
+      world: snapshot.world,
+      reputation: snapshot.reputation,
+      factions: snapshot.factions,
+      dynamicsSettings: snapshot.dynamicsSettings,
+      dynamics: snapshot.dynamics,
+      generationSnapshots: normalized.generationSnapshots.filter((item) => item.assistantCount <= snapshot.assistantCount)
+    }, /* @__PURE__ */ new Set([normalized.presetId]));
   }
   function normalizeTodayTrendStore(value) {
     if (value === null || value === void 0) return createEmptyTodayTrendStore();
@@ -8915,7 +9014,8 @@ ${entry2.content}` : entry2.content;
     return normalizeTodayTrendScope({
       ...structuredClone(source),
       storageId: targetId,
-      operation: { ...source.operation, lastSuccessfulAssistantCount: 0, lastSuccessfulRunAt: 0 }
+      operation: { ...source.operation, lastSuccessfulAssistantCount: 0, lastSuccessfulRunAt: 0 },
+      generationSnapshots: []
     }, /* @__PURE__ */ new Set([source.presetId]));
   }
   function normalizeMutationScope(scope) {
@@ -22122,7 +22222,9 @@ ${targetInstruction}`
     getStorageId: getStorageId2,
     getChat = () => [],
     random = Math.random,
-    now: now2 = () => Date.now()
+    now: now2 = () => Date.now(),
+    wait = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)),
+    commitFeedbackMs = 240
   } = {}) {
     if (!controller || typeof controller.generate !== "function") throw new TypeError("\u4ECA\u65E5\u98CE\u5411\u8C03\u5EA6\u5668\u7F3A\u5C11\u751F\u6210\u63A7\u5236\u5668");
     if (!committer || typeof committer.commitStore !== "function" || typeof committer.invalidateCommits !== "function") throw new TypeError("\u4ECA\u65E5\u98CE\u5411\u8C03\u5EA6\u5668\u7F3A\u5C11\u4E8B\u52A1\u63D0\u4EA4\u5668");
@@ -22205,7 +22307,8 @@ ${targetInstruction}`
         assistantCount: snapshot.assistantCount,
         lastRole: snapshot.lastRole,
         lastMessageFingerprint: snapshot.lastMessageFingerprint,
-        pendingTurns
+        pendingTurns,
+        rewindFloor: null
       });
       observations.set(id2, observation);
       pruneObservations();
@@ -22236,6 +22339,10 @@ ${targetInstruction}`
       baselines.set(id2, snapshot.assistantCount);
       storeSnapshot(id2, snapshot, 0);
       return snapshot.assistantCount;
+    };
+    const currentFloor = (storageId = getStorageId2()) => {
+      const id2 = String(storageId || "").trim();
+      return id2 && id2 === getStorageId2() ? createTurnSnapshot(getChat()).assistantCount : validCount(observations.get(id2)?.assistantCount);
     };
     const rollIncident = (probability) => {
       const chance = Number(probability);
@@ -22293,6 +22400,7 @@ ${targetInstruction}`
         });
         if (!isActive(task)) throw cancelled();
         setPhase("committing", null);
+        const commitStartedAt = now2();
         const committed = await committer.commitStore((store) => {
           const current = store.scopes[id2];
           if (!isActive(task)) return store;
@@ -22303,18 +22411,24 @@ ${targetInstruction}`
           if (JSON.stringify(current) !== JSON.stringify(scope)) {
             throw new Error("\u4ECA\u65E5\u98CE\u5411\u8D44\u6599\u5728\u751F\u6210\u671F\u95F4\u5DF2\u4FEE\u6539\uFF0C\u8FDF\u5230\u7ED3\u679C\u5DF2\u4E22\u5F03");
           }
-          store.scopes[id2] = {
+          const generatedAt = now2();
+          const nextScope = {
             ...generated.scope,
             operation: task.target ? current.operation : {
               ...current.operation,
               lastSuccessfulAssistantCount: task.assistantCount,
-              lastSuccessfulRunAt: now2()
+              lastSuccessfulRunAt: generatedAt
             },
-            injection: current.injection
+            injection: current.injection,
+            generationSnapshots: current.generationSnapshots
           };
+          store.scopes[id2] = task.target ? nextScope : appendTodayTrendGenerationSnapshot(nextScope, task.assistantCount, generatedAt);
           return store;
         }, { active: () => isActive(task) });
         if (!committed || !isActive(task)) throw cancelled();
+        const remainingFeedback = Math.max(0, commitFeedbackMs - Math.max(0, now2() - commitStartedAt));
+        if (remainingFeedback > 0) await wait(remainingFeedback);
+        if (!isActive(task)) throw cancelled();
         if (!task.target) {
           baselines.set(id2, task.assistantCount);
           const currentObservation = observations.get(id2);
@@ -22354,10 +22468,76 @@ ${targetInstruction}`
       }
     };
     const manual = (options2) => run({ ...options2, kind: "manual" });
+    const rollback = async (id2, snapshot) => {
+      if (activeTask) cancel("today-trend-chat-rewound");
+      const observationAtStart = observations.get(id2);
+      const task = Object.freeze({
+        id: ++sequence,
+        kind: "rollback",
+        storageId: id2,
+        assistantCount: snapshot.assistantCount,
+        pendingTurns: 0,
+        incidentProbability: 0,
+        target: null,
+        abortController: new AbortController()
+      });
+      activeTask = task;
+      setPhase("committing", null);
+      const commitStartedAt = now2();
+      try {
+        const committed = await committer.commitStore((store) => {
+          const current = store.scopes[id2];
+          if (!current || !isActive(task)) return store;
+          if (validCount(current.operation?.lastSuccessfulAssistantCount) <= snapshot.assistantCount) return store;
+          store.scopes[id2] = rollbackTodayTrendScope(current, snapshot.assistantCount);
+          return store;
+        }, { active: () => isActive(task) });
+        if (!committed || !isActive(task)) throw cancelled();
+        const remainingFeedback = Math.max(0, commitFeedbackMs - Math.max(0, now2() - commitStartedAt));
+        if (remainingFeedback > 0) await wait(remainingFeedback);
+        if (!isActive(task)) throw cancelled();
+        baselines.set(id2, snapshot.assistantCount);
+        const observation = observations.get(id2);
+        if (observation === observationAtStart && observation.rewindFloor === task.assistantCount) {
+          observation.rewindFloor = null;
+        }
+        setPhase("completed", null);
+        return committed;
+      } catch (error) {
+        if (activeTask === task) {
+          if (error?.name === "AbortError" || !isActive(task)) setPhase("canceled", null);
+          else setPhase("failed", error?.message || "\u4ECA\u65E5\u98CE\u5411\u56DE\u9000\u5931\u8D25");
+        }
+        throw error;
+      } finally {
+        if (activeTask === task) {
+          activeTask = null;
+          publish();
+          const observation = observations.get(id2);
+          if (phase === "completed" && observation) {
+            Promise.resolve(getStore()).then((store) => {
+              const operation = store?.scopes?.[id2]?.operation;
+              if (observations.get(id2) !== observation || getStorageId2() !== id2 || activeTask) return;
+              if (Number.isInteger(observation.rewindFloor) && observation.rewindFloor < validCount(operation?.lastSuccessfulAssistantCount)) {
+                rollback(id2, { assistantCount: observation.rewindFloor }).catch(() => {
+                });
+                return;
+              }
+              if (operation?.enabled === true && operation.mode === "auto" && observation.pendingTurns >= operation.intervalFloors) {
+                run({ kind: "auto", storageId: id2, assistantCount: observation.assistantCount }).catch(() => {
+                });
+              }
+            }).catch(() => {
+            });
+          }
+          pruneObservations();
+        }
+      }
+    };
     const observe = (chat, { incidentProbability } = {}) => {
       const snapshot = createTurnSnapshot(chat);
       const id2 = String(getStorageId2() || "").trim();
-      if (!id2 || !snapshot.lastIsAssistant || !snapshot.key) return null;
+      if (!id2 || !snapshot.key) return null;
       let observation = observations.get(id2);
       if (!observation) observation = storeSnapshot(id2, snapshot, null);
       else {
@@ -22371,18 +22551,35 @@ ${targetInstruction}`
           lastRole: snapshot.lastRole,
           lastMessageFingerprint: snapshot.lastMessageFingerprint
         });
-        if (addedAssistantCount <= 0) return snapshot;
-        if (observation.pendingTurns !== null) observation.pendingTurns += addedAssistantCount;
+        if (addedAssistantCount < 0) {
+          observation.pendingTurns = 0;
+          observation.rewindFloor = Number.isInteger(observation.rewindFloor) ? Math.min(observation.rewindFloor, snapshot.assistantCount) : snapshot.assistantCount;
+        } else if (observation.pendingTurns !== null) {
+          observation.pendingTurns += addedAssistantCount;
+        }
       }
       Promise.resolve(getStore()).then((store) => {
-        if (observations.get(id2) !== observation || !sameSnapshot(observation, snapshot)) return;
+        if (observations.get(id2) !== observation) return;
         const scope = store?.scopes?.[id2];
         if (!scope) {
           removeObservation(id2);
           return;
         }
+        const persisted = validCount(scope.operation?.lastSuccessfulAssistantCount);
+        if (!Number.isInteger(observation.rewindFloor) && sameSnapshot(observation, snapshot) && snapshot.assistantCount < persisted) {
+          observation.pendingTurns = 0;
+          observation.rewindFloor = snapshot.assistantCount;
+        }
+        if (Number.isInteger(observation.rewindFloor) && observation.rewindFloor < persisted) {
+          if (!activeTask || activeTask.kind !== "rollback" || activeTask.storageId !== id2) {
+            return rollback(id2, { assistantCount: observation.rewindFloor }).catch(() => {
+            });
+          }
+          return;
+        }
+        if (!sameSnapshot(observation, snapshot)) return;
+        if (!snapshot.lastIsAssistant) return;
         if (!scope.operation?.enabled || scope.operation.mode !== "auto") return;
-        const persisted = validCount(scope.operation.lastSuccessfulAssistantCount);
         if (observation.pendingTurns === null) {
           observation.pendingTurns = persisted ? Math.max(0, snapshot.assistantCount - persisted) : 0;
           baselines.set(id2, persisted || snapshot.assistantCount);
@@ -22398,7 +22595,7 @@ ${targetInstruction}`
       });
       return snapshot;
     };
-    return { acknowledge, arm, cancel, isActive, manual, observe, state, subscribe, run };
+    return { acknowledge, arm, cancel, currentFloor, isActive, manual, observe, state, subscribe, run };
   }
 
   // src/today-trend.js
@@ -23277,7 +23474,7 @@ ${targetInstruction}`
       { action: "today-trend-delete-world-item", icon: TRASH_ICON_SVG, label: `\u5220\u9664${item.name}`, danger: true, attrs: `data-world-item-id="${escapeAttr(item.id)}"` }
     ] });
   }
-  function renderTodayTrendWorldView({ scope, preset = null, mode = "content", editingWorldItemId = null, editingRule = null, ruleDraft = null, menuOpenId = null, generationAvailable = false, generationBusy = false } = {}) {
+  function renderTodayTrendWorldView({ scope, preset = null, mode = "content", editingWorldItemId = null, editingRule = null, ruleDraft = null, menuOpenId = null, generationAvailable = false, generationBusy = false, floorStatus = "" } = {}) {
     const items = Array.isArray(scope?.world?.items) ? scope.world.items : [];
     const generateAttrs = `${generationAvailable && !generationBusy ? "" : "disabled"} aria-busy="${generationBusy}"`;
     if (mode === "settings") {
@@ -23293,7 +23490,7 @@ ${targetInstruction}`
     }).join("");
     const worldMeta = trendMeter([{ label: "SIGNALS", value: items.length }, { label: "BRIEFS", value: Math.max(items.length - 1, 0) }]);
     const content = hero ? `<article class="pm-today-trend-world-hero" data-world-item-id="${escapeAttr(hero.id)}">${signalMarker}<div><header class="pm-today-trend-world-item-head"><b>${escapeHtml(hero.name)}</b>${itemInlineActions(hero, generateAttrs, menuOpenId === "world-module")}</header>${heroBody}</div></article>${signals ? `<div class="pm-today-trend-world-signals">${signals}</div>` : ""}` : '<p class="pm-today-trend-empty">\u5C1A\u672A\u751F\u6210\u4E16\u754C\u6001\u52BF\u3002</p>';
-    return `<section class="pm-today-trend-view pm-today-trend-world">${trendModuleHead({ title: "\u4E16\u754C\u6001\u52BF", eyebrow: "TODAY\u2019S SIGNAL", metaHtml: worldMeta, menuId: "world-module", menuOpenId, actions: [{ action: "today-trend-generate-world", icon: REFRESH_ICON_SVG, label: "\u91CD\u65B0\u751F\u6210\u4E16\u754C\u6001\u52BF", attrs: generateAttrs }, { action: "today-trend-edit-world-rule", icon: BOOK_ICON_SVG, label: "\u7F16\u8F91\u4E16\u754C\u6001\u52BF\u63D0\u793A\u8BCD" }] })}${content}${generationBusy ? '<span class="pm-today-trend-progress">\u6B63\u5728\u751F\u6210\u2026</span>' : ""}</section>`;
+    return `<section class="pm-today-trend-view pm-today-trend-world">${trendModuleHead({ title: "\u4E16\u754C\u6001\u52BF", eyebrow: "TODAY\u2019S SIGNAL", metaHtml: worldMeta, asideHtml: floorStatus, menuId: "world-module", menuOpenId, actions: [{ action: "today-trend-generate-world", icon: REFRESH_ICON_SVG, label: "\u91CD\u65B0\u751F\u6210\u4E16\u754C\u6001\u52BF", attrs: generateAttrs }, { action: "today-trend-edit-world-rule", icon: BOOK_ICON_SVG, label: "\u7F16\u8F91\u4E16\u754C\u6001\u52BF\u63D0\u793A\u8BCD" }] })}${content}${generationBusy ? '<span class="pm-today-trend-progress">\u6B63\u5728\u751F\u6210\u2026</span>' : ""}</section>`;
   }
 
   // src/today-trend-view.js
