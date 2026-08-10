@@ -8969,6 +8969,8 @@ ${entry2.content}` : entry2.content;
   var GLOBAL_BG_KEY = "ST_SMS_BG_GLOBAL";
   var LOCAL_BG_INDEX_KEY = "ST_SMS_BG_LOCAL";
   var LOCAL_BG_PREFIX = "ST_SMS_BG_LOCAL_";
+  var LOCAL_BG_CACHE_LIMIT = 2;
+  var localBackgroundCache = /* @__PURE__ */ new Map();
   async function migrateSingleBackground(storageKey, value) {
     if (!await pmIDBSet(storageKey, value)) return false;
     try {
@@ -9008,35 +9010,64 @@ ${entry2.content}` : entry2.content;
     }
     try {
       const storedLocal = readLocalBackgroundPointers();
-      const result = /* @__PURE__ */ Object.create(null);
-      let migrated = 0;
-      const stagedKeys = [];
+      const pointers = /* @__PURE__ */ Object.create(null);
+      const staged = [];
       for (const [key, value] of Object.entries(storedLocal)) {
         if (value === IDB_MARKER) {
-          result[key] = await pmIDBGet(LOCAL_BG_PREFIX + key) || "";
+          pointers[key] = IDB_MARKER;
         } else if (isBigData(value)) {
-          result[key] = value;
           const storageKey = LOCAL_BG_PREFIX + key;
           if (await pmIDBSet(storageKey, value)) {
-            storedLocal[key] = IDB_MARKER;
-            stagedKeys.push(storageKey);
-            migrated++;
+            pointers[key] = IDB_MARKER;
+            staged.push({ key, storageKey, value });
+          } else {
+            pointers[key] = value;
           }
         } else {
-          result[key] = value;
+          pointers[key] = value;
         }
       }
-      if (migrated > 0) {
+      if (staged.length) {
         try {
-          localStorage.setItem(LOCAL_BG_INDEX_KEY, JSON.stringify(storedLocal));
+          localStorage.setItem(LOCAL_BG_INDEX_KEY, JSON.stringify(pointers));
         } catch (error) {
-          for (const storageKey of stagedKeys) await pmIDBDel(storageKey);
+          for (const { key, storageKey, value } of staged) {
+            await pmIDBDel(storageKey);
+            pointers[key] = value;
+          }
         }
       }
-      window.__pmBgLocal = result;
+      localBackgroundCache.clear();
+      window.__pmBgLocal = pointers;
     } catch (error) {
+      localBackgroundCache.clear();
       window.__pmBgLocal = /* @__PURE__ */ Object.create(null);
     }
+  }
+  function cacheLocalBackground(key, value) {
+    localBackgroundCache.delete(key);
+    localBackgroundCache.set(key, value);
+    while (localBackgroundCache.size > LOCAL_BG_CACHE_LIMIT) {
+      localBackgroundCache.delete(localBackgroundCache.keys().next().value);
+    }
+    return value;
+  }
+  async function loadLocalBackground(key) {
+    const pointer = window.__pmBgLocal?.[key];
+    if (pointer !== IDB_MARKER) return typeof pointer === "string" ? pointer : "";
+    if (localBackgroundCache.has(key)) return cacheLocalBackground(key, localBackgroundCache.get(key));
+    const value = await pmIDBGet(LOCAL_BG_PREFIX + key);
+    if (typeof value !== "string") throw new Error("\u4F1A\u8BDD\u80CC\u666F\u8BFB\u53D6\u5931\u8D25\uFF1AIndexedDB \u4E0D\u53EF\u7528\u6216\u6570\u636E\u7F3A\u5931");
+    return cacheLocalBackground(key, value);
+  }
+  async function materializeLocalBackgrounds(data = window.__pmBgLocal) {
+    if (!data || typeof data !== "object" || Array.isArray(data)) throw new Error("\u4F1A\u8BDD\u80CC\u666F\u6570\u636E\u635F\u574F\uFF1A\u5FC5\u987B\u662F\u5BF9\u8C61");
+    assertBackgroundEntries(data, "\u4F1A\u8BDD\u80CC\u666F\u6570\u636E");
+    const result = /* @__PURE__ */ Object.create(null);
+    for (const [key, value] of Object.entries(data)) {
+      result[key] = value === IDB_MARKER ? await loadLocalBackground(key) : value;
+    }
+    return result;
   }
   var UNSAFE_BACKGROUND_KEYS = /* @__PURE__ */ new Set(["__proto__", "prototype", "constructor"]);
   function assertBackgroundEntries(value, label) {
@@ -9140,13 +9171,7 @@ ${entry2.content}` : entry2.content;
           }
           for (const [key, pointer] of Object.entries(pointers2)) {
             if (!key.startsWith(prefix)) continue;
-            if (pointer === IDB_MARKER) {
-              const value = await pmIDBGet(LOCAL_BG_PREFIX + key);
-              if (typeof value !== "string") throw new Error("\u4F1A\u8BDD\u80CC\u666F\u4E3B\u5B58\u50A8\u8BFB\u53D6\u5931\u8D25\uFF1AIndexedDB \u4E0D\u53EF\u7528\u6216\u6570\u636E\u7F3A\u5931");
-              current[key] = value;
-            } else {
-              current[key] = pointer;
-            }
+            current[key] = pointer;
           }
         }
       }
@@ -9161,6 +9186,11 @@ ${entry2.content}` : entry2.content;
       };
       try {
         for (const [key, value] of Object.entries(current)) {
+          if (value === IDB_MARKER) {
+            if (previousPointers[key] !== IDB_MARKER) throw new Error(`\u4F1A\u8BDD\u80CC\u666F\u6570\u636E\u635F\u574F\uFF1A${key} \u7F3A\u5C11\u4E3B\u5B58\u50A8`);
+            pointers[key] = IDB_MARKER;
+            continue;
+          }
           if (isBigData(value)) {
             const mutation = await prepareMutation(key);
             if (!await pmIDBSet(mutation.key, value)) throw new Error("\u4F1A\u8BDD\u80CC\u666F\u4FDD\u5B58\u5931\u8D25\uFF1AIndexedDB \u4E0D\u53EF\u7528");
@@ -9196,6 +9226,8 @@ ${entry2.content}` : entry2.content;
         }
         throw error;
       }
+      localBackgroundCache.clear();
+      return structuredClone(pointers);
     };
     if (coordinated) return persist(structuredClone(data));
     return enqueueDirectorySave("backgrounds", data, persist);
@@ -9664,8 +9696,7 @@ ${entry2.content}` : entry2.content;
         const merged = clone4(current);
         for (const key of currentKeys) delete merged[key];
         for (const key of desiredKeys) merged[key] = clone4(desired[key]);
-        await saveBgLocal({ data: merged, coordinated: true });
-        return merged;
+        return saveBgLocal({ data: merged, coordinated: true });
       });
     } finally {
       completeDirectoryBranchScope("backgrounds", token);
@@ -9874,8 +9905,7 @@ ${entry2.content}` : entry2.content;
         });
         globalThis.window.__pmTodayTrend = await commitTodayTrendScope({ desired: desired.todayTrend, expected: expected.todayTrend, targetId });
       } else {
-        globalThis.window.__pmBgLocal = desired.backgrounds;
-        await saveBgLocal();
+        globalThis.window.__pmBgLocal = await saveBgLocal({ data: desired.backgrounds });
         await saveInteractiveScenes(desired.interactive);
         if (!savePhoneUiState(desired.phoneUi, desired.interactive)) throw new Error("\u5206\u652F\u7EE7\u627F\u4FDD\u5B58\u5931\u8D25\uFF1A\u624B\u673A\u9875\u9762\u72B6\u6001\u4E0D\u53EF\u7528");
         if (!saveCalendar(desired.calendar) || !saveCalendarOccasions(desired.occasions) || !saveCalendarCycles(desired.cycles) || !saveCalendarRecipes(desired.recipes) || !saveCalendarOutfits(desired.outfits)) {
@@ -16276,15 +16306,24 @@ ${antiFluff}`;
   // src/phone-appearance.js
   function createPhoneAppearance(state, deps) {
     const { getCtx, getStorageId: getStorageId2 } = deps;
-    function applyBackground() {
+    let backgroundRequest = 0;
+    async function applyBackground() {
       const phone = state.phoneWindow;
       const msgList = phone?.querySelector(".pm-msg-list");
       if (!msgList || !phone) return;
+      const request = ++backgroundRequest;
       const desktopBg = window.__pmDesktopBg || "";
       if (desktopBg) phone.style.setProperty("--pm-desktop-bg-image", `url("${cssUrlEscape(desktopBg)}")`);
       else phone.style.removeProperty("--pm-desktop-bg-image");
       const id2 = getStorageId2(), localKey = `${id2}_${state.currentPersona}`;
-      const bg = window.__pmBgLocal[localKey] || window.__pmBgGlobal || "";
+      let localBg = "";
+      try {
+        localBg = await loadLocalBackground(localKey);
+      } catch (error) {
+        console.error("[phone-mode] \u4F1A\u8BDD\u80CC\u666F\u8BFB\u53D6\u5931\u8D25", error);
+      }
+      if (request !== backgroundRequest || state.phoneWindow !== phone || `${getStorageId2()}_${state.currentPersona}` !== localKey) return;
+      const bg = localBg || window.__pmBgGlobal || "";
       if (bg) {
         msgList.style.setProperty("background-image", `url("${cssUrlEscape(bg)}")`, "important");
         msgList.style.setProperty("background-size", "cover", "important");
@@ -19039,7 +19078,7 @@ ${lines}`;
   }
 
   // src/cropper.js
-  function openCropper(imgDataUrl, { onCancel, onConfirm }) {
+  function openCropper(imgDataUrl, { objectUrl = "", onCancel, onConfirm }) {
     const ratio = 330 / 450;
     const previousOverlay = document.getElementById("pm-overlay");
     if (typeof previousOverlay?.__pmCropperDispose === "function") previousOverlay.__pmCropperDispose();
@@ -19132,11 +19171,14 @@ ${lines}`;
     function dispose() {
       if (disposed) return false;
       disposed = true;
+      image.onload = null;
+      image.src = "";
       window.removeEventListener("mousemove", onDragMove);
       window.removeEventListener("mouseup", onDragEnd);
       window.removeEventListener("touchmove", onDragMove);
       window.removeEventListener("touchend", onDragEnd);
       overlay.remove();
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
       return true;
     }
     overlay.__pmCropperDispose = dispose;
@@ -19179,30 +19221,36 @@ ${lines}`;
     });
     overlay.querySelector("#pm-crop-confirm").addEventListener("click", () => {
       const canvas = document.createElement("canvas");
-      const outputWidth = 600;
-      const outputHeight = Math.round(outputWidth / ratio);
-      canvas.width = outputWidth;
-      canvas.height = outputHeight;
-      const context = canvas.getContext("2d");
-      const sourceScale = image.naturalWidth / (baseWidth * scale);
-      context.drawImage(
-        image,
-        -tx * sourceScale,
-        -ty * sourceScale,
-        frameWidth * sourceScale,
-        frameHeight * sourceScale,
-        0,
-        0,
-        outputWidth,
-        outputHeight
-      );
-      let quality = 0.7;
-      let output = canvas.toDataURL("image/jpeg", quality);
-      while (output.length > 200 * 1370 && quality > 0.2) {
-        quality -= 0.1;
-        output = canvas.toDataURL("image/jpeg", quality);
+      try {
+        const outputWidth = 600;
+        const outputHeight = Math.round(outputWidth / ratio);
+        canvas.width = outputWidth;
+        canvas.height = outputHeight;
+        const context = canvas.getContext("2d");
+        if (!context) throw new Error("\u6D4F\u89C8\u5668\u65E0\u6CD5\u521B\u5EFA\u56FE\u7247\u88C1\u526A\u753B\u5E03");
+        const sourceScale = image.naturalWidth / (baseWidth * scale);
+        context.drawImage(
+          image,
+          -tx * sourceScale,
+          -ty * sourceScale,
+          frameWidth * sourceScale,
+          frameHeight * sourceScale,
+          0,
+          0,
+          outputWidth,
+          outputHeight
+        );
+        let quality = 0.7;
+        let output = canvas.toDataURL("image/jpeg", quality);
+        while (output.length > 200 * 1370 && quality > 0.2) {
+          quality -= 0.1;
+          output = canvas.toDataURL("image/jpeg", quality);
+        }
+        if (dispose()) onConfirm(output);
+      } finally {
+        canvas.width = 0;
+        canvas.height = 0;
       }
-      if (dispose()) onConfirm(output);
     });
   }
 
@@ -19676,7 +19724,7 @@ ${error.message}`);
     const snapshot = capture();
     try {
       mutate();
-      await persist();
+      return await persist();
     } catch (error) {
       restore(snapshot);
       try {
@@ -19708,7 +19756,7 @@ ${error.message}`);
       const isGlobal = scope === "global";
       const operation = backgroundMutation.catch(() => {
       }).then(async () => {
-        await runBackgroundTransaction({
+        const persisted = await runBackgroundTransaction({
           capture: () => isDesktop ? window.__pmDesktopBg || "" : isGlobal ? window.__pmBgGlobal || "" : clone12(window.__pmBgLocal || {}),
           mutate,
           restore: (snapshot) => {
@@ -19718,6 +19766,7 @@ ${error.message}`);
           },
           persist: isDesktop ? saveDesktopBg2 : isGlobal ? saveBgGlobal2 : saveBgLocal2
         });
+        if (!isDesktop && !isGlobal) window.__pmBgLocal = persisted;
         applyBackground();
         showLook();
       });
@@ -19738,10 +19787,11 @@ ${error.message}`);
       upload(input, scope) {
         const file = input.files?.[0];
         if (!file) return;
-        const reader = new FileReader();
-        reader.onload = (event) => {
+        const objectUrl = URL.createObjectURL(file);
+        try {
           const key = `${getStorageId2()}_${getCurrentPersona()}`;
-          openCropper2(event.target.result, {
+          openCropper2(objectUrl, {
+            objectUrl,
             onCancel: showLook,
             onConfirm: (croppedDataUrl) => queueMutation(scope, () => {
               if (scope === "desktop") window.__pmDesktopBg = croppedDataUrl;
@@ -19749,8 +19799,11 @@ ${error.message}`);
               else window.__pmBgLocal[key] = croppedDataUrl;
             })
           });
-        };
-        reader.readAsDataURL(file);
+        } catch (error) {
+          URL.revokeObjectURL(objectUrl);
+          alert(`\u56FE\u7247\u8BFB\u53D6\u5931\u8D25\uFF1A${error.message}`);
+        }
+        ;
         input.value = "";
       },
       setUrl(scope) {
@@ -20845,7 +20898,7 @@ ${error.message}`);
         worldBookConfig: normalizeWorldBookConfig(window.__pmWorldBookConfig),
         desktopBg: window.__pmDesktopBg || "",
         bgGlobal: window.__pmBgGlobal || "",
-        bgLocal: clone8(window.__pmBgLocal || {}),
+        bgLocal: await materializeLocalBackgrounds(),
         interactiveScenes,
         phoneUiState: loadPhoneUiState(interactiveScenes),
         ambientStatus: normalizeAmbientStatus({ enabled: window.__pmTheme?.ambientStatusEnabled }),
@@ -20919,7 +20972,7 @@ ${error.message}`);
       await saveEmojis();
       await saveDesktopBg();
       await saveBgGlobal();
-      await saveBgLocal();
+      window.__pmBgLocal = await saveBgLocal();
       await saveInteractiveScenes(interactiveScenes);
       if (!savePhoneUiState(phoneUiState, interactiveScenes)) throw new Error("\u624B\u673A\u754C\u9762\u72B6\u6001\u4FDD\u5B58\u5931\u8D25\uFF1A\u6D4F\u89C8\u5668\u5B58\u50A8\u4E0D\u53EF\u7528");
       if (!saveCalendar(state.calendarStore) || !saveCalendarOccasions(state.calendarOccasions) || !saveCalendarHolidays(state.calendarHolidays) || !saveCalendarWeather(state.calendarWeather) || !saveCalendarCycles(state.calendarCycles) || !saveCalendarRecipes(state.calendarRecipes) || !saveCalendarOutfits(state.calendarOutfits)) {

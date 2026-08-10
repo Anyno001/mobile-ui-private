@@ -450,8 +450,7 @@ async function commitBackgroundScope({ desired, expected, targetId }) {
         const merged = clone(current);
         for (const key of currentKeys) delete merged[key];
         for (const key of desiredKeys) merged[key] = clone(desired[key]);
-        await saveBgLocal({ data: merged, coordinated: true });
-        return merged;
+        return saveBgLocal({ data: merged, coordinated: true });
         });
     } finally {
         completeDirectoryBranchScope('backgrounds', token);
@@ -632,8 +631,7 @@ async function persistProductionStores(next, { branch } = {}) {
                 normalize: normalizeOutfitStore, label: '穿搭数据' });
             globalThis.window.__pmTodayTrend = await commitTodayTrendScope({ desired: desired.todayTrend, expected: expected.todayTrend, targetId });
         } else {
-            globalThis.window.__pmBgLocal = desired.backgrounds;
-            await saveBgLocal();
+            globalThis.window.__pmBgLocal = await saveBgLocal({ data: desired.backgrounds });
             await saveInteractiveScenes(desired.interactive);
             if (!savePhoneUiState(desired.phoneUi, desired.interactive)) throw new Error('分支继承保存失败：手机页面状态不可用');
             if (!saveCalendar(desired.calendar) || !saveCalendarOccasions(desired.occasions)

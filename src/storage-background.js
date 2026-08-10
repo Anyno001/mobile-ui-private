@@ -5,6 +5,8 @@ import { enqueueDirectorySave } from './directory-save-coordinator.js';
 const GLOBAL_BG_KEY = 'ST_SMS_BG_GLOBAL';
 const LOCAL_BG_INDEX_KEY = 'ST_SMS_BG_LOCAL';
 const LOCAL_BG_PREFIX = 'ST_SMS_BG_LOCAL_';
+const LOCAL_BG_CACHE_LIMIT = 2;
+const localBackgroundCache = new Map();
 
 async function migrateSingleBackground(storageKey, value) {
     if (!await pmIDBSet(storageKey, value)) return false;
@@ -48,35 +50,67 @@ export async function loadBgSettings() {
 
     try {
         const storedLocal = readLocalBackgroundPointers();
-        const result = Object.create(null);
-        let migrated = 0;
-        const stagedKeys = [];
+        const pointers = Object.create(null);
+        const staged = [];
         for (const [key, value] of Object.entries(storedLocal)) {
             if (value === IDB_MARKER) {
-                result[key] = (await pmIDBGet(LOCAL_BG_PREFIX + key)) || '';
+                pointers[key] = IDB_MARKER;
             } else if (isBigData(value)) {
-                result[key] = value;
                 const storageKey = LOCAL_BG_PREFIX + key;
                 if (await pmIDBSet(storageKey, value)) {
-                    storedLocal[key] = IDB_MARKER;
-                    stagedKeys.push(storageKey);
-                    migrated++;
+                    pointers[key] = IDB_MARKER;
+                    staged.push({ key, storageKey, value });
+                } else {
+                    pointers[key] = value;
                 }
             } else {
-                result[key] = value;
+                pointers[key] = value;
             }
         }
 
-        if (migrated > 0) {
-            try { localStorage.setItem(LOCAL_BG_INDEX_KEY, JSON.stringify(storedLocal)); }
+        if (staged.length) {
+            try { localStorage.setItem(LOCAL_BG_INDEX_KEY, JSON.stringify(pointers)); }
             catch (error) {
-                for (const storageKey of stagedKeys) await pmIDBDel(storageKey);
+                for (const { key, storageKey, value } of staged) {
+                    await pmIDBDel(storageKey);
+                    pointers[key] = value;
+                }
             }
         }
-        window.__pmBgLocal = result;
+        localBackgroundCache.clear();
+        window.__pmBgLocal = pointers;
     } catch (error) {
+        localBackgroundCache.clear();
         window.__pmBgLocal = Object.create(null);
     }
+}
+
+function cacheLocalBackground(key, value) {
+    localBackgroundCache.delete(key);
+    localBackgroundCache.set(key, value);
+    while (localBackgroundCache.size > LOCAL_BG_CACHE_LIMIT) {
+        localBackgroundCache.delete(localBackgroundCache.keys().next().value);
+    }
+    return value;
+}
+
+export async function loadLocalBackground(key) {
+    const pointer = window.__pmBgLocal?.[key];
+    if (pointer !== IDB_MARKER) return typeof pointer === 'string' ? pointer : '';
+    if (localBackgroundCache.has(key)) return cacheLocalBackground(key, localBackgroundCache.get(key));
+    const value = await pmIDBGet(LOCAL_BG_PREFIX + key);
+    if (typeof value !== 'string') throw new Error('会话背景读取失败：IndexedDB 不可用或数据缺失');
+    return cacheLocalBackground(key, value);
+}
+
+export async function materializeLocalBackgrounds(data = window.__pmBgLocal) {
+    if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error('会话背景数据损坏：必须是对象');
+    assertBackgroundEntries(data, '会话背景数据');
+    const result = Object.create(null);
+    for (const [key, value] of Object.entries(data)) {
+        result[key] = value === IDB_MARKER ? await loadLocalBackground(key) : value;
+    }
+    return result;
 }
 
 const UNSAFE_BACKGROUND_KEYS = new Set(['__proto__', 'prototype', 'constructor']);
@@ -177,13 +211,7 @@ export async function saveBgLocal({ data = window.__pmBgLocal, coordinated = fal
                 }
                 for (const [key, pointer] of Object.entries(pointers)) {
                     if (!key.startsWith(prefix)) continue;
-                    if (pointer === IDB_MARKER) {
-                        const value = await pmIDBGet(LOCAL_BG_PREFIX + key);
-                        if (typeof value !== 'string') throw new Error('会话背景主存储读取失败：IndexedDB 不可用或数据缺失');
-                        current[key] = value;
-                    } else {
-                        current[key] = pointer;
-                    }
+                    current[key] = pointer;
                 }
             }
         }
@@ -198,6 +226,11 @@ export async function saveBgLocal({ data = window.__pmBgLocal, coordinated = fal
         };
         try {
             for (const [key, value] of Object.entries(current)) {
+                if (value === IDB_MARKER) {
+                    if (previousPointers[key] !== IDB_MARKER) throw new Error(`会话背景数据损坏：${key} 缺少主存储`);
+                    pointers[key] = IDB_MARKER;
+                    continue;
+                }
                 if (isBigData(value)) {
                     const mutation = await prepareMutation(key);
                     if (!await pmIDBSet(mutation.key, value)) throw new Error('会话背景保存失败：IndexedDB 不可用');
@@ -231,6 +264,8 @@ export async function saveBgLocal({ data = window.__pmBgLocal, coordinated = fal
             }
             throw error;
         }
+        localBackgroundCache.clear();
+        return structuredClone(pointers);
     };
     if (coordinated) return persist(structuredClone(data));
     return enqueueDirectorySave('backgrounds', data, persist);
