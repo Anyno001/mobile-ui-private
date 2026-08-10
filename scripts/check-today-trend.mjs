@@ -66,11 +66,12 @@ const hostEventController = createPhoneHostEventController({
 });
 hostEventController.hookGenerationEvent();
 hostCallbacks.get('message-received').forEach(callback => callback());
+hostCallbacks.get('message-received').forEach(callback => callback());
 hostChat = [{ mes: '旧助手回复' }, { mes: '本轮助手回复' }];
 hostContext.chat = hostChat;
 await Promise.resolve();
 assert.deepEqual(observedHostChats, [['旧助手回复', '本轮助手回复']],
-    '宿主事件先于聊天数组写入完成时，今日风向必须在微任务中读取本轮完整助手正文');
+    '同一同步批次的重复宿主事件必须合并，并在微任务中只读取一次最终助手正文');
 observedHostChats.length = 0;
 hostCallbacks.get('message-received').forEach(callback => callback());
 hostContext.chat = [{ mes: '旧助手回复' }, { mes: '本轮助手回复' }, { mes: '会话 A 的新助手回复' }];
@@ -1369,7 +1370,12 @@ const scheduler = createTodayTrendScheduler({
     getChat: () => [{ mes: '第一楼' }, { mes: '第二楼' }, { mes: '第三楼' }], now: () => 100,
 });
 const autoSnapshot = scheduler.observe([{ mes: '第一楼' }, { mes: '第二楼' }, { mes: '第三楼' }]);
+assert.match(autoSnapshot.key, /^[0-9a-f]{32}$/, '调度快照必须使用至少 128-bit 的固定长度指纹');
+assert.equal(autoSnapshot.messageCount, 3, '调度快照必须保留有效消息数');
 assert.equal(autoSnapshot.assistantCount, 3, '自动调度只能按已完成的 assistant 正文计楼');
+assert.equal(autoSnapshot.lastRole, 'assistant', '调度快照必须保留末消息角色');
+assert.match(autoSnapshot.lastMessageFingerprint, /^[0-9a-f]{32}$/, '调度快照必须保留固定长度末消息指纹');
+assert.ok(JSON.stringify(autoSnapshot).length < 512, '单个调度快照的稳定表示必须小于 512 bytes');
 assert.equal(scheduler.observe([{ role: 'user', content: '用户消息' }, { role: 'system', content: '系统消息' }]), null,
     'role/content 形态的用户和系统消息不得被误判为 assistant 楼层');
 await new Promise(resolve => setTimeout(resolve, 0));
@@ -1383,6 +1389,45 @@ assert.equal(schedulerCalls, 2, '超过最近正文窗口后仍必须按完整 a
 await scheduler.manual();
 assert.equal(schedulerCalls, 3, '手动本轮生成必须复用统一生成链');
 assert.equal(scheduledStore.scopes.chat.operation.lastSuccessfulAssistantCount, 3, '手动成功必须同步当前 checkpoint');
+
+const snapshotOnlyScheduler = createTodayTrendScheduler({
+    controller: { generate: async ({ scope }) => ({ scope }) },
+    committer: schedulerCommitter,
+    getStore: async () => ({ scopes: {} }),
+    getStorageId: () => 'snapshot-chat',
+});
+const largeSnapshot = snapshotOnlyScheduler.observe(Array.from({ length: 200 }, (_, index) => ({
+    role: index % 2 ? 'assistant' : 'user', content: `${index}:` + '长正文'.repeat(680),
+})));
+assert.equal(largeSnapshot.key.length, autoSnapshot.key.length, '会话指纹长度不得随消息数或正文总量增长');
+assert.ok(JSON.stringify(largeSnapshot).length < 512, '长聊天快照不得常驻正文或按消息数增长的摘要 key');
+await Promise.resolve();
+assert.equal(snapshotOnlyScheduler.state().observationCount, 0, '存储中不存在的 scope 不得留下孤儿 observation');
+
+let capacityStorageId = 'capacity-0';
+const capacityScopes = Object.fromEntries(Array.from({ length: 81 }, (_, index) => [
+    `capacity-${index}`,
+    { operation: { enabled: false, mode: 'manual', intervalFloors: 2, lastSuccessfulAssistantCount: 0 } },
+]));
+const capacityScheduler = createTodayTrendScheduler({
+    controller: { generate: async ({ scope }) => ({ scope }) },
+    committer: schedulerCommitter,
+    getStore: async () => ({ scopes: capacityScopes }),
+    getStorageId: () => capacityStorageId,
+});
+for (let index = 0; index < 81; index += 1) {
+    capacityStorageId = `capacity-${index}`;
+    capacityScheduler.observe([{ role: 'assistant', content: `容量消息${index}` }]);
+    await Promise.resolve();
+}
+assert.equal(capacityScheduler.state().observationCount, 80, '跨聊天 observation 状态表必须限制为 80 项');
+capacityStorageId = 'capacity-role';
+capacityScopes[capacityStorageId] = { operation: { enabled: false, mode: 'manual', intervalFloors: 2, lastSuccessfulAssistantCount: 0 } };
+const roleSnapshot = capacityScheduler.observe([{ role: 'user', content: '相同正文' }, { role: 'assistant', content: '收尾' }]);
+const boundarySnapshot = capacityScheduler.observe([{ role: 'assistant', content: '相同正文' }, { role: 'assistant', content: '收尾' }]);
+const splitSnapshot = capacityScheduler.observe([{ role: 'assistant', content: '相同' }, { role: 'assistant', content: '正文' }, { role: 'assistant', content: '收尾' }]);
+assert.notEqual(roleSnapshot.key, boundarySnapshot.key, '会话指纹必须编码消息角色域');
+assert.notEqual(boundarySnapshot.key, splitSnapshot.key, '会话指纹必须编码消息边界和顺序');
 
 let targetedSchedulerStore = structuredClone(valid);
 const targetedSchedulerCommitter = createTodayTrendCommitter({

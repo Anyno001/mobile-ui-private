@@ -16411,10 +16411,18 @@ ${antiFluff}`;
     const errorType = typeof error?.name === "string" && error.name ? error.name : "Error";
     console.warn("[phone-mode] \u4ECA\u65E5\u98CE\u5411\u81EA\u52A8\u63A8\u6F14\u89C2\u5BDF\u5931\u8D25\uFF0C\u672C\u8F6E\u4E0D\u4F1A\u81EA\u52A8\u63A8\u6F14\u3002", errorType);
   }
-  function observeTodayTrendAfterHostEvent(deps, context, storageId, getStorageId2) {
+  function observeTodayTrendAfterHostEvent(deps, runtime, getCtx, getStorageId2) {
+    const storageId = getStorageId2();
+    if (!storageId) return;
+    runtime.todayTrendObservationStorageId = storageId;
+    if (runtime.todayTrendObservationQueued) return;
+    runtime.todayTrendObservationQueued = true;
     Promise.resolve().then(() => {
-      if (!storageId || getStorageId2() !== storageId) return null;
-      return deps.observeTodayTrendTurn?.(context?.chat || []);
+      runtime.todayTrendObservationQueued = false;
+      const queuedStorageId = runtime.todayTrendObservationStorageId;
+      runtime.todayTrendObservationStorageId = null;
+      if (!queuedStorageId || getStorageId2() !== queuedStorageId) return null;
+      return deps.observeTodayTrendTurn?.(getCtx()?.chat || []);
     }).catch(reportTodayTrendObservationFailure);
   }
   function createPhoneHostEventController({ state, runtime, deps, getCtx, getStorageId: getStorageId2, isAutoPokeAllowed, disarmAutoPoke, invalidateGeneration, applyBidirectionalInjection, handleHostChatChanged: handleHostChatChanged2 }) {
@@ -16456,14 +16464,13 @@ ${antiFluff}`;
       for (const eventName of resolveCommunityMessageEvents(eventTypes)) {
         results.push(registerOnce(`community:${eventName}`, eventName, () => {
           const currentContext = getCtx();
-          const storageId = getStorageId2();
           try {
             deps.observeCommunityTurn?.(currentContext?.chat || []);
           } catch (error) {
           }
           Promise.resolve(deps.observeCalendarTurn?.()).catch(() => {
           });
-          observeTodayTrendAfterHostEvent(deps, currentContext, storageId, getStorageId2);
+          observeTodayTrendAfterHostEvent(deps, runtime, getCtx, getStorageId2);
         }));
       }
       const received = resolveHostEvent(eventTypes, "MESSAGE_RECEIVED");
@@ -21982,20 +21989,79 @@ ${targetInstruction}`
   // src/today-trend-scheduler.js
   var cancelled = () => Object.assign(new Error("\u4ECA\u65E5\u98CE\u5411\u751F\u6210\u5DF2\u53D6\u6D88"), { name: "AbortError" });
   var validCount = (value) => Number.isInteger(value) && value >= 0 ? value : 0;
-  var messageText2 = (message) => ["mes", "message", "content"].map((key) => typeof message?.[key] === "string" ? message[key].trim() : "").find(Boolean) || "";
+  var OBSERVATION_LIMIT = 80;
+  var HASH_SEEDS = Object.freeze([2166136261, 2654435769, 2246822507, 3266489909]);
+  var HASH_PRIMES = Object.freeze([16777619, 668265261, 374761393, 2654435761]);
+  var messageText2 = (message) => {
+    if (typeof message?.mes === "string" && message.mes.trim()) return message.mes.trim();
+    if (typeof message?.message === "string" && message.message.trim()) return message.message.trim();
+    if (typeof message?.content === "string" && message.content.trim()) return message.content.trim();
+    return "";
+  };
   var messageRole = (message) => {
     const role = typeof message?.role === "string" ? message.role.toLowerCase() : "";
     if (message?.is_system === true || role === "system") return "system";
     if (message?.is_user === true || role === "user") return "user";
     return "assistant";
   };
-  var createTurnSnapshot = (chat) => {
-    const messages = Array.isArray(chat) ? chat.filter((message) => message && typeof message === "object" && messageText2(message)) : [];
-    const last = messages.at(-1);
-    const assistantCount = messages.filter((message) => messageRole(message) === "assistant").length;
-    const key = messages.map((message, index) => `${index}:${messageRole(message)}:${messageText2(message)}`).join("\n");
-    return Object.freeze({ key, assistantCount, lastIsAssistant: messageRole(last) === "assistant" });
+  var updateHashCode = (state, code) => {
+    for (let lane = 0; lane < state.length; lane += 1) {
+      state[lane] ^= code + lane * 40503;
+      state[lane] = Math.imul(state[lane], HASH_PRIMES[lane]);
+    }
   };
+  var updateHashNumber = (state, value) => {
+    const number = value >>> 0;
+    updateHashCode(state, number & 255);
+    updateHashCode(state, number >>> 8 & 255);
+    updateHashCode(state, number >>> 16 & 255);
+    updateHashCode(state, number >>> 24 & 255);
+  };
+  var hashHex = (state) => state.map((value) => (value >>> 0).toString(16).padStart(8, "0")).join("");
+  var createTurnSnapshot = (chat) => {
+    const sessionHash = [...HASH_SEEDS];
+    let messageCount = 0;
+    let assistantCount = 0;
+    let lastRole = "";
+    let lastMessageFingerprint = "";
+    updateHashCode(sessionHash, 83);
+    for (let index = 0; index < (Array.isArray(chat) ? chat.length : 0); index += 1) {
+      const message = chat[index];
+      if (!message || typeof message !== "object") continue;
+      const text8 = messageText2(message);
+      if (!text8) continue;
+      const role = messageRole(message);
+      const roleCode = role === "system" ? 1 : role === "user" ? 2 : 3;
+      const messageHash = [...HASH_SEEDS];
+      updateHashCode(sessionHash, 30);
+      updateHashNumber(sessionHash, index);
+      updateHashCode(sessionHash, roleCode);
+      updateHashNumber(sessionHash, text8.length);
+      updateHashCode(messageHash, roleCode);
+      updateHashNumber(messageHash, text8.length);
+      for (let offset = 0; offset < text8.length; offset += 1) {
+        const code = text8.charCodeAt(offset);
+        updateHashCode(sessionHash, code);
+        updateHashCode(messageHash, code);
+      }
+      updateHashCode(sessionHash, 31);
+      messageCount += 1;
+      if (role === "assistant") assistantCount += 1;
+      lastRole = role;
+      lastMessageFingerprint = hashHex(messageHash);
+    }
+    updateHashNumber(sessionHash, messageCount);
+    updateHashNumber(sessionHash, assistantCount);
+    return Object.freeze({
+      key: hashHex(sessionHash),
+      messageCount,
+      assistantCount,
+      lastRole,
+      lastMessageFingerprint,
+      lastIsAssistant: lastRole === "assistant"
+    });
+  };
+  var sameSnapshot = (observation, snapshot) => observation?.key === snapshot.key && observation.messageCount === snapshot.messageCount && observation.assistantCount === snapshot.assistantCount && observation.lastRole === snapshot.lastRole && observation.lastMessageFingerprint === snapshot.lastMessageFingerprint;
   function createTodayTrendScheduler({
     controller,
     committer,
@@ -22009,11 +22075,42 @@ ${targetInstruction}`
     if (!committer || typeof committer.commitStore !== "function" || typeof committer.invalidateCommits !== "function") throw new TypeError("\u4ECA\u65E5\u98CE\u5411\u8C03\u5EA6\u5668\u7F3A\u5C11\u4E8B\u52A1\u63D0\u4EA4\u5668");
     if (typeof getStore !== "function" || typeof getStorageId2 !== "function") throw new TypeError("\u4ECA\u65E5\u98CE\u5411\u8C03\u5EA6\u5668\u7F3A\u5C11\u5B58\u50A8\u6216\u804A\u5929\u8BFB\u53D6\u5668");
     let sequence = 0;
+    let accessSequence = 0;
     let activeTask = null;
     let phase = "idle";
     let lastError = null;
     const baselines = /* @__PURE__ */ new Map();
     const observations = /* @__PURE__ */ new Map();
+    const touch = (observation) => {
+      observation.lastAccessedAt = now2();
+      observation.accessOrder = ++accessSequence;
+      return observation;
+    };
+    const removeObservation = (id2) => {
+      observations.delete(id2);
+      baselines.delete(id2);
+    };
+    const pruneObservations = () => {
+      while (observations.size > OBSERVATION_LIMIT) {
+        const currentId = String(getStorageId2() || "").trim();
+        const candidate = [...observations.entries()].filter(([id2, observation]) => id2 !== currentId && id2 !== activeTask?.storageId && validCount(observation.pendingTurns) === 0).sort((left, right) => left[1].accessOrder - right[1].accessOrder)[0];
+        if (!candidate) break;
+        removeObservation(candidate[0]);
+      }
+    };
+    const storeSnapshot = (id2, snapshot, pendingTurns) => {
+      const observation = touch({
+        key: snapshot.key,
+        messageCount: snapshot.messageCount,
+        assistantCount: snapshot.assistantCount,
+        lastRole: snapshot.lastRole,
+        lastMessageFingerprint: snapshot.lastMessageFingerprint,
+        pendingTurns
+      });
+      observations.set(id2, observation);
+      pruneObservations();
+      return observation;
+    };
     const isActive = (task) => !!task && activeTask === task && !task.abortController.signal.aborted && getStorageId2() === task.storageId;
     const cancel = (reason = "today-trend-cancelled", resetObservation = false) => {
       sequence += 1;
@@ -22025,10 +22122,10 @@ ${targetInstruction}`
       if (resetObservation) {
         baselines.clear();
         observations.clear();
-      }
+      } else pruneObservations();
       return reason;
     };
-    const state = () => Object.freeze({ phase, task: activeTask, lastError, baselines: Object.fromEntries(baselines) });
+    const state = () => Object.freeze({ phase, task: activeTask, lastError, baselines: Object.fromEntries(baselines), observationCount: observations.size });
     const acknowledge = () => {
       if (!activeTask) {
         phase = "idle";
@@ -22042,7 +22139,7 @@ ${targetInstruction}`
       if (id2 !== getStorageId2()) throw new Error("\u4ECA\u65E5\u98CE\u5411\u53EA\u80FD\u4E3A\u5F53\u524D\u804A\u5929\u5F00\u59CB\u8FD0\u4F5C");
       const snapshot = createTurnSnapshot(chat);
       baselines.set(id2, snapshot.assistantCount);
-      observations.set(id2, { key: snapshot.key, assistantCount: snapshot.assistantCount, pendingTurns: 0 });
+      storeSnapshot(id2, snapshot, 0);
       return snapshot.assistantCount;
     };
     const rollIncident = (probability) => {
@@ -22059,7 +22156,9 @@ ${targetInstruction}`
         cancel("today-trend-manual-replaces-active");
       }
       const currentAssistantCount = assistantCount === void 0 ? createTurnSnapshot(getChat()).assistantCount : validCount(assistantCount);
-      const pendingTurns = observations.get(id2)?.pendingTurns;
+      const observation = observations.get(id2);
+      if (observation) touch(observation);
+      const pendingTurns = observation?.pendingTurns;
       const task = Object.freeze({
         id: ++sequence,
         kind,
@@ -22078,7 +22177,10 @@ ${targetInstruction}`
         if (!isActive(task)) throw cancelled();
         const scope = source?.scopes?.[id2];
         const preset = scope && source?.presets?.[scope.presetId];
-        if (!scope || !preset) throw new Error("\u5F53\u524D\u804A\u5929\u5C1A\u672A\u521D\u59CB\u5316\u4ECA\u65E5\u98CE\u5411");
+        if (!scope || !preset) {
+          removeObservation(id2);
+          throw new Error("\u5F53\u524D\u804A\u5929\u5C1A\u672A\u521D\u59CB\u5316\u4ECA\u65E5\u98CE\u5411");
+        }
         const configuredProbability = scope.dynamicsSettings?.incident?.enabled ? scope.dynamicsSettings.incident.probability : 0;
         const effectiveIncidentProbability = incidentProbability === void 0 ? configuredProbability : incidentProbability;
         const generated = await controller.generate({
@@ -22121,13 +22223,12 @@ ${targetInstruction}`
         if (!committed || !isActive(task)) throw cancelled();
         if (!task.target) {
           baselines.set(id2, task.assistantCount);
-          const observation = observations.get(id2);
-          const remainingTurns = observation && Number.isInteger(observation.pendingTurns) ? Math.max(0, observation.pendingTurns - task.pendingTurns) : 0;
-          if (observation) observation.pendingTurns = remainingTurns;
-          else {
-            const snapshot = createTurnSnapshot(getChat());
-            observations.set(id2, { key: snapshot.key, assistantCount: snapshot.assistantCount, pendingTurns: 0 });
-          }
+          const currentObservation = observations.get(id2);
+          const remainingTurns = currentObservation && Number.isInteger(currentObservation.pendingTurns) ? Math.max(0, currentObservation.pendingTurns - task.pendingTurns) : 0;
+          if (currentObservation) {
+            currentObservation.pendingTurns = remainingTurns;
+            touch(currentObservation);
+          } else storeSnapshot(id2, createTurnSnapshot(getChat()), 0);
         }
         phase = "completed";
         return committed;
@@ -22145,15 +22246,16 @@ ${targetInstruction}`
       } finally {
         if (activeTask === task) {
           activeTask = null;
-          const observation = observations.get(id2);
-          if (phase === "completed" && observation?.pendingTurns > 0) {
+          const currentObservation = observations.get(id2);
+          if (phase === "completed" && currentObservation?.pendingTurns > 0) {
             Promise.resolve(getStore()).then((store) => {
               const interval = store?.scopes?.[id2]?.operation?.intervalFloors;
-              if (observation.pendingTurns >= interval) run({ kind: "auto", storageId: id2, incidentProbability: task.incidentProbability }).catch(() => {
+              if (currentObservation.pendingTurns >= interval) run({ kind: "auto", storageId: id2, incidentProbability: task.incidentProbability }).catch(() => {
               });
             }).catch(() => {
             });
           }
+          pruneObservations();
         }
       }
     };
@@ -22163,21 +22265,29 @@ ${targetInstruction}`
       const id2 = String(getStorageId2() || "").trim();
       if (!id2 || !snapshot.lastIsAssistant || !snapshot.key) return null;
       let observation = observations.get(id2);
-      if (!observation) {
-        observation = { key: snapshot.key, assistantCount: snapshot.assistantCount, pendingTurns: null };
-        observations.set(id2, observation);
-      } else {
-        if (observation.key === snapshot.key) return null;
+      if (!observation) observation = storeSnapshot(id2, snapshot, null);
+      else {
+        touch(observation);
+        if (sameSnapshot(observation, snapshot)) return null;
         const addedAssistantCount = snapshot.assistantCount - observation.assistantCount;
-        observation.key = snapshot.key;
-        observation.assistantCount = snapshot.assistantCount;
+        Object.assign(observation, {
+          key: snapshot.key,
+          messageCount: snapshot.messageCount,
+          assistantCount: snapshot.assistantCount,
+          lastRole: snapshot.lastRole,
+          lastMessageFingerprint: snapshot.lastMessageFingerprint
+        });
         if (addedAssistantCount <= 0) return snapshot;
         if (observation.pendingTurns !== null) observation.pendingTurns += addedAssistantCount;
       }
       Promise.resolve(getStore()).then((store) => {
-        if (observations.get(id2) !== observation || observation.key !== snapshot.key) return;
+        if (observations.get(id2) !== observation || !sameSnapshot(observation, snapshot)) return;
         const scope = store?.scopes?.[id2];
-        if (!scope?.operation?.enabled || scope.operation.mode !== "auto") return;
+        if (!scope) {
+          removeObservation(id2);
+          return;
+        }
+        if (!scope.operation?.enabled || scope.operation.mode !== "auto") return;
         const persisted = validCount(scope.operation.lastSuccessfulAssistantCount);
         if (observation.pendingTurns === null) {
           observation.pendingTurns = persisted ? Math.max(0, snapshot.assistantCount - persisted) : 0;

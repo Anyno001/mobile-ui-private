@@ -2,49 +2,44 @@
 
 ## 当前状态
 
-- 当前阶段：日历单 scope 写入
-- 状态：完成，准备进入 Today Trend 调度快照阶段
+- 当前阶段：Today Trend 调度快照静态交付完成，等待真实宿主定向回归
+- 上一阶段：日历单 scope 写入已落地（提交 `8ddac3f`）
 - 修改范围：`public/mobile-ui-private`
-- 提交规则：每阶段一个边界清晰的中文 commit，禁止 push
+- 提交规则：本阶段创建独立中文 commit，禁止由 Agent push；助手 push 后再执行真实宿主回归
 
-## 已确认问题
+## 阶段启动基线
 
-- `commitScope`、`commitRecipe`、`commitOutfits`、`commitOccasions`、`commitSchedule` 与 `commitCycle` 修改单个 `storageId` 时，原实现会克隆或规范化完整 store。
-- scope 数量接近模型上限 80 时，单 scope 提交会为无关 scope 创建不必要的瞬时副本。
-- `commitStore` 属于真实整库事务，仍需保留整库克隆；本阶段不能把单 scope 优化错误扩展到整库导入或批量替换路径。
-- 回滚必须保留 generation 所有权、任务取消、注入失败补偿与 runtime/持久化一致性，不能用减少副本换取旧事务覆盖新状态。
+- 已重新读取 `AGENTS.md`、`docs/BASELINE.md`、`docs/LIFECYCLE-RESOURCES.md`、本进度文档与 Today Trend 调度调用链。
+- 阶段开始前已删除临时宿主回归脚本；仓库工作树、暂存区与未跟踪文件均为空，HEAD 与 `origin/main` 同为 `8ddac3f`。
+- 原实现将全部有效消息正文拼接进 observation key，稳定驻留和每次观察的中间分配随正文总字符数增长。
+- 宿主同一同步批次可派发重复消息事件；仅延迟到微任务读取不能避免重复扫描完整聊天。
 
-## 本阶段目标
+## 本阶段实现
 
-- 单 scope 提交仅向 mutator 暴露目标 scope，并只复制必要的顶层 store/scopes 容器。
-- 保持 storage key、持久化 schema、runtime 赋值、normalize 时机、队列串行化、generation、取消和失败补偿语义。
-- 用 80 scopes、多 scope 隔离、故障回滚和 generation 竞态测试约束优化边界。
+- `src/today-trend-scheduler.js` 改为单次遍历聊天并生成固定 128-bit 会话指纹，不再创建完整有效消息数组、摘要数组或正文拼接 key。
+- 快照保留 `messageCount`、`assistantCount`、`lastRole`、末消息 128-bit 指纹，并将角色、消息序号、正文长度和消息边界纳入指纹协议。
+- observation 记录访问顺序和时间，状态表上限为 80；只淘汰非当前会话、非活动任务且无 pending turns 的最旧项。存储中已不存在的 scope 会清理孤儿状态。
+- `src/phone-host-events.js` 合并同一同步批次的重复 Today Trend 观察请求，在单个微任务中读取最终聊天快照，避免重复全量扫描。
+- 保留完整 assistant 楼层累计、编辑/删除/滑动重生成语义、自动与手动生成链、活动任务保护、pending turns 补调度及迟到结果隔离。
+- `index.js` 已通过构建从源码同步生成；未改变持久化 schema、storage key 或公开入口。
 
 ## 验证与结果
 
-- 已修改 `src/calendar-commit.js`、`scripts/check-calendar.mjs`、`scripts/check-contracts.mjs`，并由构建同步生成 `index.js`。
-- 新增 `replaceScope`：只规范化目标 scope，并通过顶层浅复制合并；非目标 scope 不再因单 scope 提交被整库深拷。
-- 六类单 scope 提交器均改为目标 scope 输入与局部合并；`commitStore` 的整库事务逻辑保持不变。
-- `commitOutfits` 保持成功时返回完整 store 的既有可观察语义；runtime 仍在持久化成功后赋值。
-- 80 scopes 测试已覆盖 calendar、recipe、outfit、occasion、schedule 双 store 与 cycle，验证目标更新、非目标隔离及必要的持久化/runtime 一致性。
-- generation 竞态测试已覆盖 occasion、schedule 与 cycle；原有 calendar/recipe 的取消、导入接管、清空接管和注入失败补偿测试继续通过。
-- 结构性收益：单 scope 提交不再创建与 scope 总数成正比的深拷副本，提交层额外对象分配收敛为目标 scope 加必要顶层容器。localStorage 序列化仍需处理完整 store，不虚构持久化层字节收益。
-- `node scripts/check-calendar.mjs`：通过。
-- `node scripts/check-contracts.mjs`：通过。
-- `npm run check`：全量通过。
+- `node scripts/check-today-trend.mjs`：通过。
+- `npm run check`：全量通过；构建、语法、AI、表情、行为、互动、pending、手势、环境、裁剪、日历、预算、权限、静态契约与 Today Trend 检查均通过。
 - `git diff --check`：通过，仅有 Git 的 LF/CRLF 工作区提示。
-- 两轮独立验收完成；第二轮结论为 `accepted`，未发现阻断交付问题。
-- 尚未在真实 SillyTavern 中采集浏览器 heap；本阶段只声明已由代码结构和测试证明的整库深拷消除，不虚构峰值字节数。真实宿主内存对比保留到最终收口回归。
+- 新增检查覆盖：固定 32 hex 会话/末消息指纹、快照序列化小于 512 bytes、长正文和消息数不扩大快照、角色域与消息边界、80 项容量、孤儿 scope 清理、重复宿主事件合并。
+- 原有检查继续覆盖：完整 assistant 楼层累计、编辑、删除、重生成、重复观察、自动/手动生成、活动任务期间累计、取消、并发替换和迟到提交保护。
+- 结构性收益：稳定 observation 从随正文总字符数增长收敛为固定大小；快照构造从多次数组遍历与大字符串拼接收敛为单次流式扫描。静态检查不虚构真实浏览器峰值字节或 P95。
 
 ## 风险与回滚
 
-- 风险：`commitOccasions` 与 `commitSchedule` 的失败补偿仍会恢复入口时的完整 store；当前由统一 schedule 队列和 generation 所有权保护约束，未来新增旁路写入时必须重新审查。
-- 控制：generation 丢失后旧事务不会执行入口快照回滚；多 scope、注入失败、部分回滚失败和替换接管测试已覆盖当前所有权模型。
-- `index.js` 是 `manifest.json` 指向的生产入口，必须与源码和测试一起交付；当前构建合同已验证 bundle 与源码同步。
-- 回滚：整体回退本阶段日历单 scope 优化提交，不涉及 schema、storage key 或数据迁移。
-- 提交策略：本阶段代码、构建产物与本进度记录一并提交；禁止 push。
+- 128-bit 指纹用于变化检测而非安全认证；碰撞概率已显著降低，但不宣称密码学安全。
+- 当 80 项全部受当前会话、活动任务或 pending turns 保护时，状态表允许暂时超限，任务完成或状态可淘汰后再次裁剪，避免为硬上限吞掉调度状态。
+- 真实 SillyTavern 仍需验证自动调度、编辑/删除/重生成、重复宿主事件、控制台错误及长聊天内存表现。
+- 回滚：整体回退本阶段提交，不涉及数据迁移。
 
 ## 下一阶段启动注意事项
 
-- 本阶段完成并提交后，重新读取本文件、`AGENTS.md`、`BASELINE.md`、`LIFECYCLE-RESOURCES.md`，再进入 Today Trend 调度快照优化。
-- 不得顺手修改其他存储模块；相似代码需在各自阶段重新确认所有权和调用链。
+- 助手 push 本阶段 commit 后，先执行 Today Trend 真实宿主定向回归并记录结果；通过后再进入背景与图片资源阶段。
+- 背景阶段开始前必须重新读取项目文档及背景、Cropper、object URL 的实际 owner 与释放路径，不得顺手修改其他存储域。
