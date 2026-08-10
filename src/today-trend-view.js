@@ -46,13 +46,14 @@ function renderRuleEditorPage(preset, rule, draft) {
     return `<main class="pm-today-trend-content pm-today-trend-rule-page"><section class="pm-today-trend-view">${trendRuleEditor({ rule, value })}</section></main>`;
 }
 
-export function renderTodayTrendApp({ scope = null, presets = [], worldBooks = [], view = { name: 'world', mode: 'content' }, generation = {}, error = null, initializing = false, initializationDraft, initializationOpen = false, reinitializing = false, initializationMode = 'reuse' } = {}) {
+export function renderTodayTrendApp({ scope = null, presets = [], worldBooks = [], view = { name: 'world', mode: 'content' }, generation = {}, currentFloor, error = null, initializing = false, initializationDraft, initializationOpen = false, reinitializing = false, initializationMode = 'reuse' } = {}) {
     const busy = ['queued', 'generating', 'parsing', 'committing'].includes(generation.phase);
     const syncedFloor = Number.isInteger(scope?.operation?.lastSuccessfulAssistantCount) && scope.operation.lastSuccessfulAssistantCount >= 0
         ? scope.operation.lastSuccessfulAssistantCount : 0;
     const taskIsCurrent = generation.task?.storageId === scope?.storageId;
     const targeted = taskIsCurrent && Boolean(generation.task?.target);
     const floorStatus = trendFloorStatus({
+        currentFloor,
         syncedFloor,
         busy: busy && taskIsCurrent,
         targetFloor: taskIsCurrent && !targeted ? generation.task?.floor : null,

@@ -24,16 +24,17 @@ export function createTodayTrendPhoneController({ state, deps, container }) {
         lastScope = scope; lastPresets = Object.values(current?.presets || {});
         const activeView = view || dispatcher?.state() || lastView;
         lastView = settings ? { ...activeView, name: 'settings' } : activeView;
+        const currentFloor = deps.getTodayTrendCurrentFloor?.();
         container.innerHTML = renderTodayTrendApp({ scope, presets: Object.values(current?.presets || {}), worldBooks: worldBooks(),
             view: lastView,
-            generation: deps.getTodayTrendGenerationState?.() || {}, error, initializing, initializationDraft, initializationOpen, reinitializing, initializationMode });
+            generation: deps.getTodayTrendGenerationState?.() || {}, currentFloor, error, initializing, initializationDraft, initializationOpen, reinitializing, initializationMode });
         return true;
     };
     const report = cause => {
         if (destroyed) return;
         error = generationErrorMessage(cause);
         container.innerHTML = renderTodayTrendApp({ scope: lastScope, presets: lastPresets, worldBooks: worldBooks(), view: lastView,
-            error, initializing: false, initializationDraft, initializationOpen, reinitializing, initializationMode });
+            currentFloor: deps.getTodayTrendCurrentFloor?.(), error, initializing: false, initializationDraft, initializationOpen, reinitializing, initializationMode });
     };
     const rerender = view => render(view).catch(report);
     const generationChanged = snapshot => {

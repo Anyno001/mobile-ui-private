@@ -22824,7 +22824,7 @@ ${targetInstruction}`
       cancelTodayTrendGeneration: (reason, reset) => scheduler.cancel(reason, reset),
       generateTodayTrendModule: (module, itemId, options2 = {}) => scheduler.run({ kind: "manual", target: { ...options2, module, itemId } }),
       generateTodayTrend: (options2) => scheduler.manual(options2),
-      getTodayTrendCurrentFloor: scheduler.currentFloor,
+      getTodayTrendCurrentFloor: getHostFloor,
       getTodayTrendGenerationState: scheduler.state,
       subscribeTodayTrendGeneration: scheduler.subscribe,
       acknowledgeTodayTrendGeneration: scheduler.acknowledge,
@@ -23292,12 +23292,15 @@ ${targetInstruction}`
     if (!visible) return "";
     return `<span class="pm-today-trend-inline-actions">${actions.map((action) => trendIconButton({ ...action, className: `pm-today-trend-inline-action${action.className ? ` ${action.className}` : ""}` })).join("")}</span>`;
   }
-  function trendFloorStatus({ syncedFloor = 0, busy = false, targetFloor = null, targeted = false } = {}) {
-    const floor = Number.isInteger(syncedFloor) && syncedFloor >= 0 ? syncedFloor : 0;
+  function trendFloorStatus({ currentFloor, syncedFloor = 0, busy = false, targetFloor = null, targeted = false } = {}) {
+    const synced = Number.isInteger(syncedFloor) && syncedFloor >= 0 ? syncedFloor : 0;
+    const currentFloorProvided = currentFloor !== void 0;
+    const floor = Number.isInteger(currentFloor) && currentFloor >= 0 ? currentFloor : currentFloorProvided ? null : synced;
     const target = Number.isInteger(targetFloor) && targetFloor >= 0 ? targetFloor : null;
-    const state = busy ? "updating" : floor > 0 ? "synced" : "unsynced";
-    const status = busy ? targeted ? "\u6B63\u5728\u66F4\u65B0\u6A21\u5757" : target === null ? "\u6B63\u5728\u540C\u6B65" : `\u540C\u6B65\u81F3 ${target}` : floor > 0 ? "\u5DF2\u540C\u6B65" : "\u5C1A\u672A\u540C\u6B65";
-    return `<span class="pm-today-trend-floor" data-today-trend-floor="${floor}" data-state="${state}" role="status" aria-live="polite" aria-label="FLOOR ${floor}\uFF0C${escapeAttr(status)}"><span class="pm-today-trend-floor-reading"><span class="pm-today-trend-floor-label">FLOOR</span><strong class="pm-today-trend-floor-value">${floor}</strong></span><span class="pm-today-trend-floor-status">${busy ? '<i aria-hidden="true"></i>' : ""}${escapeHtml(status)}</span></span>`;
+    const state = busy ? "updating" : floor === null ? "unavailable" : floor > 0 && synced === floor ? "synced" : "unsynced";
+    const status = busy ? targeted ? "\u6B63\u5728\u66F4\u65B0\u6A21\u5757" : target === null ? "\u6B63\u5728\u540C\u6B65" : `\u540C\u6B65\u4EFB\u52A1 #${target}` : floor === null ? "\u697C\u5C42\u4E0D\u53EF\u7528" : floor > 0 && synced === floor ? "\u5DF2\u540C\u6B65" : floor > 0 ? "\u5F85\u540C\u6B65" : "\u5C1A\u672A\u540C\u6B65";
+    const reading = floor === null ? "#--" : `#${floor}`;
+    return `<span class="pm-today-trend-floor" data-today-trend-floor="${floor ?? ""}" data-state="${state}" role="status" aria-live="polite" aria-label="\u697C\u5C42 ${reading}\uFF0C${escapeAttr(status)}"><span class="pm-today-trend-floor-reading"><strong class="pm-today-trend-floor-value">${reading}</strong></span><span class="pm-today-trend-floor-status">${busy ? '<i aria-hidden="true"></i>' : ""}${escapeHtml(status)}</span></span>`;
   }
   function trendModuleHead({ title, menuId, menuOpenId, actions = [], meta = "", metaHtml = "", eyebrow = "", adornment = "", asideHtml = "" }) {
     const renderedMeta = metaHtml || (meta ? `<span>${escapeHtml(meta)}</span>` : "");
@@ -23547,12 +23550,13 @@ ${targetInstruction}`
     const value = draft ?? rules?.[field] ?? "";
     return `<main class="pm-today-trend-content pm-today-trend-rule-page"><section class="pm-today-trend-view">${trendRuleEditor({ rule, value })}</section></main>`;
   }
-  function renderTodayTrendApp({ scope = null, presets = [], worldBooks = [], view = { name: "world", mode: "content" }, generation = {}, error = null, initializing = false, initializationDraft, initializationOpen = false, reinitializing = false, initializationMode = "reuse" } = {}) {
+  function renderTodayTrendApp({ scope = null, presets = [], worldBooks = [], view = { name: "world", mode: "content" }, generation = {}, currentFloor, error = null, initializing = false, initializationDraft, initializationOpen = false, reinitializing = false, initializationMode = "reuse" } = {}) {
     const busy = ["queued", "generating", "parsing", "committing"].includes(generation.phase);
     const syncedFloor = Number.isInteger(scope?.operation?.lastSuccessfulAssistantCount) && scope.operation.lastSuccessfulAssistantCount >= 0 ? scope.operation.lastSuccessfulAssistantCount : 0;
     const taskIsCurrent = generation.task?.storageId === scope?.storageId;
     const targeted = taskIsCurrent && Boolean(generation.task?.target);
     const floorStatus = trendFloorStatus({
+      currentFloor,
       syncedFloor,
       busy: busy && taskIsCurrent,
       targetFloor: taskIsCurrent && !targeted ? generation.task?.floor : null,
@@ -23586,12 +23590,14 @@ ${targetInstruction}`
       lastPresets = Object.values(current?.presets || {});
       const activeView = view || dispatcher?.state() || lastView;
       lastView = settings ? { ...activeView, name: "settings" } : activeView;
+      const currentFloor = deps.getTodayTrendCurrentFloor?.();
       container.innerHTML = renderTodayTrendApp({
         scope,
         presets: Object.values(current?.presets || {}),
         worldBooks: worldBooks(),
         view: lastView,
         generation: deps.getTodayTrendGenerationState?.() || {},
+        currentFloor,
         error,
         initializing,
         initializationDraft,
@@ -23609,6 +23615,7 @@ ${targetInstruction}`
         presets: lastPresets,
         worldBooks: worldBooks(),
         view: lastView,
+        currentFloor: deps.getTodayTrendCurrentFloor?.(),
         error,
         initializing: false,
         initializationDraft,
@@ -23840,7 +23847,10 @@ ${targetInstruction}`
         const storageId = deps.getStorageId();
         const store = await deps.getTodayTrendStore?.();
         if (phoneWindow !== state.phoneWindow || !container.isConnected) return false;
-        container.innerHTML = renderTodayTrendApp({ scope: store?.scopes?.[storageId] || null });
+        container.innerHTML = renderTodayTrendApp({
+          scope: store?.scopes?.[storageId] || null,
+          currentFloor: deps.getTodayTrendCurrentFloor?.()
+        });
         return true;
       }
       controller?.destroy();

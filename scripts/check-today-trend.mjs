@@ -134,11 +134,10 @@ assert.match(todayTrendStyle, /pm-today-trend-event-badge,\.pm-today-trend-event
 assert.doesNotMatch(todayTrendStyle, /pm-today-trend-event-card header span/, '事件追踪不得用宽泛 header span 规则覆盖徽章字号');
 assert.match(todayTrendStyle, /pm-today-trend-icon-button\[data-action\^="today-trend-refresh"\][\s\S]*?width:var\(--pm-size-control-compact\)[\s\S]*?min-height:var\(--pm-size-control-compact\)/, '生成与刷新图标按钮必须保留 36px 紧凑触控区');
 assert.match(todayTrendStyle, /\.pm-today-trend-inline-action\{width:var\(--pm-size-control-compact\);min-height:var\(--pm-size-control-compact\)/, '个人风评行内编辑按钮必须保留 36px 紧凑触控区');
-assert.match(todayTrendStyle, /\.pm-today-trend-head-tools\{[^}]*min-width:max-content[^}]*flex:0 0 auto[^}]*flex-direction:column[^}]*align-items:flex-end/, '标题工具区必须纵向排列，使 FLOOR 位于三点操作按钮下方');
-assert.match(todayTrendStyle, /\.pm-today-trend-floor\{[^}]*min-width:max-content[^}]*flex:0 0 auto/, 'FLOOR 仪表必须按完整内容保留宽度，不能截断多位楼层');
-assert.match(todayTrendStyle, /\.pm-today-trend-floor-reading\{[^}]*white-space:nowrap/, 'FLOOR 标签与数值必须保持单行完整显示');
-assert.match(todayTrendStyle, /\.pm-today-trend-module-head\.is-decorative \.pm-today-trend-floor\{[^}]*margin-top:var\(--pm-space-0\)/, '装饰标题页的 FLOOR 不得再用横向标题中线偏移');
-assert.match(todayTrendRuntimeText, /pm-today-trend-head-tools">\$\{menu\}\$\{asideHtml\}/, '模块头必须先渲染三点菜单，再在其下方渲染 FLOOR');
+assert.match(todayTrendStyle, /\.pm-today-trend-head-tools\{[^}]*min-width:max-content[^}]*flex:0 0 auto[^}]*flex-direction:column[^}]*align-items:flex-end[^}]*gap:var\(--pm-space-0-5\)[^}]*translateY/, '标题工具区必须保持纵向关系，并让三点按钮与楼层更紧密地轻微上移');
+assert.match(todayTrendStyle, /\.pm-today-trend-floor\{[^}]*min-width:max-content[^}]*flex:0 0 auto/, '#楼层仪表必须按完整内容保留宽度，不能截断多位楼层');
+assert.match(todayTrendStyle, /\.pm-today-trend-floor-reading\{[^}]*white-space:nowrap/, '#号与楼层数值必须保持单行完整显示');
+assert.match(todayTrendRuntimeText, /pm-today-trend-head-tools">\$\{menu\}\$\{asideHtml\}/, '模块头必须先渲染三点菜单，再在其下方渲染楼层');
 assert.match(compactTodayTrendMedia, /pm-today-trend-module-head\{gap:var\(--pm-space-1\)/, '320px 窄屏必须缩小标题与工具区间距并保留按钮命中区');
 assert.match(todayTrendStyle, /\.pm-today-trend-menu-action,\.pm-today-trend-menu-close\{flex-basis:var\(--pm-size-control-compact\);width:var\(--pm-size-control-compact\);min-height:var\(--pm-size-control-compact\)/, '320px 菜单按钮不得缩回 28px 命中区');
 assert.doesNotMatch(todayTrendStyle, /pm-today-trend-(?:icon-button\[data-action\^="today-trend-(?:refresh|generate)"\]|reputation-copy \.pm-today-trend-inline-action)\{width:28px/, '今日风向真实操作按钮不得使用 28px 命中区');
@@ -357,9 +356,11 @@ let controllerStorageId = 'chat';
 let controllerStore = valid;
 let reloadTodayTrendStore = async () => { generationReloadCalls += 1; return controllerStore; };
 let controllerGeneration = { phase: 'idle', task: null };
+let controllerCurrentFloor = 3402;
 const phoneController = createTodayTrendPhoneController({ state: controllerState, container: controllerContainer, deps: {
     getStorageId: () => controllerStorageId, getTodayTrendStore: async () => controllerStore,
     reloadTodayTrendStore: () => reloadTodayTrendStore(),
+    getTodayTrendCurrentFloor: () => controllerCurrentFloor,
     getTodayTrendGenerationState: () => controllerGeneration,
     subscribeTodayTrendGeneration: listener => {
         generationListener = listener;
@@ -370,6 +371,7 @@ const phoneController = createTodayTrendPhoneController({ state: controllerState
 } });
 assert.equal(await phoneController.render(), true, '控制器必须渲染当前聊天的今日风向页面');
 assert.match(controllerContainer.innerHTML, /id="pm-today-trend-app"/, '控制器必须渲染今日风向页面壳');
+assert.match(controllerContainer.innerHTML, /data-today-trend-floor="3402"[\s\S]*pm-today-trend-floor-value">#3402<\/strong>/, '控制器必须把宿主当前多位楼层完整传给视图');
 assert.equal(typeof generationListener, 'function', '控制器创建时必须订阅今日风向生成状态');
 controllerGeneration = { phase: 'generating', task: { kind: 'auto', storageId: 'chat', floor: 9, target: null } };
 generationListener(controllerGeneration);
@@ -445,25 +447,28 @@ assert.match(failedInitializationHtml, /保留淘汰规则/, '初始化失败后
 assert.match(failedInitializationHtml, /class="pm-today-trend-init-feedback pm-today-trend-error" role="alert">初始化失败<\/p>/, '初始化错误必须保留 alert 语义并位于反馈区');
 const appHtml = renderTodayTrendApp({ scope: valid.scopes.chat, presets: Object.values(valid.presets), generation: { phase: 'idle' } });
 for (const label of ['世界态势', '个人风评', '势力图谱', '事件追踪']) assert.match(appHtml, new RegExp(label), `主页面必须装配${label}`);
-const multiDigitFloorScope = { ...valid.scopes.chat, operation: { ...valid.scopes.chat.operation, lastSuccessfulAssistantCount: 34 } };
-const multiDigitFloorHtml = renderTodayTrendApp({ scope: multiDigitFloorScope, presets: Object.values(valid.presets), view: { name: 'world', mode: 'content' }, generation: { phase: 'idle' } });
-assert.match(multiDigitFloorHtml, /data-today-trend-floor="34"[\s\S]*pm-today-trend-floor-value">34<\/strong>/, '多位楼层必须从数据属性到可见数值完整渲染，不能把 34 截成 4');
+const multiDigitFloorHtml = renderTodayTrendApp({ scope: valid.scopes.chat, presets: Object.values(valid.presets), view: { name: 'world', mode: 'content' }, generation: { phase: 'idle' }, currentFloor: 3000 });
+assert.match(multiDigitFloorHtml, /data-today-trend-floor="3000"[\s\S]*aria-label="楼层 #3000，待同步"[\s\S]*pm-today-trend-floor-value">#3000<\/strong>/, '宿主多位楼层必须从数据属性到可见数值完整渲染，不能截断或退回内部统计');
+const rolledBackFloorHtml = renderTodayTrendApp({ scope: valid.scopes.chat, presets: Object.values(valid.presets), view: { name: 'world', mode: 'content' }, generation: { phase: 'idle' }, currentFloor: 3 });
+assert.match(rolledBackFloorHtml, /data-today-trend-floor="3" data-state="unsynced"[\s\S]*pm-today-trend-floor-value">#3<\/strong>[\s\S]*pm-today-trend-floor-status">待同步<\/span>/, '宿主楼层低于旧 checkpoint 时不得误报已同步');
+const unavailableFloorHtml = renderTodayTrendApp({ scope: valid.scopes.chat, presets: Object.values(valid.presets), view: { name: 'world', mode: 'content' }, generation: { phase: 'idle' }, currentFloor: null });
+assert.match(unavailableFloorHtml, /data-today-trend-floor="" data-state="unavailable"[\s\S]*pm-today-trend-floor-value">#--<\/strong>[\s\S]*楼层不可用/, '宿主楼层不可用时不得把内部助手统计冒充真实楼层');
 for (const name of ['world', 'reputation', 'faction', 'dynamics']) {
     const floorHtml = renderTodayTrendApp({ scope: valid.scopes.chat, presets: Object.values(valid.presets), view: { name, mode: 'content' }, generation: { phase: 'idle' } });
     assert.match(floorHtml, /data-today-trend-floor="7" data-state="synced" role="status" aria-live="polite"/, `${name} 内容页必须展示已同步楼层仪表`);
-    assert.match(floorHtml, /pm-today-trend-floor-label">FLOOR<\/span><strong class="pm-today-trend-floor-value">7<\/strong>/, `${name} 内容页必须使用 FLOOR N 语义结构`);
+    assert.match(floorHtml, /pm-today-trend-floor-value">#7<\/strong>/, `${name} 内容页必须使用 #N 语义结构`);
     assert.match(floorHtml, /pm-today-trend-floor-status">已同步<\/span>/, `${name} 内容页空闲时必须展示已同步状态`);
 }
 const updatingFloorHtml = renderTodayTrendApp({ scope: valid.scopes.chat, presets: Object.values(valid.presets), view: { name: 'reputation', mode: 'content' },
-    generation: { phase: 'generating', task: { kind: 'auto', storageId: 'chat', floor: 12, target: null } } });
-assert.match(updatingFloorHtml, /data-today-trend-floor="7" data-state="updating"/, '完整更新中楼层主值必须保持已提交 checkpoint');
-assert.match(updatingFloorHtml, /同步至 12/, '完整更新中必须展示目标楼层辅助状态');
-assert.doesNotMatch(updatingFloorHtml, /pm-today-trend-floor-value">12<\/strong>/, '尚未提交的目标楼层不得冒充已同步主值');
+    generation: { phase: 'generating', task: { kind: 'auto', storageId: 'chat', floor: 12, target: null } }, currentFloor: 13 });
+assert.match(updatingFloorHtml, /data-today-trend-floor="13" data-state="updating"/, '完整更新中楼层主值必须继续展示当前宿主楼层');
+assert.match(updatingFloorHtml, /同步任务 #12/, '宿主继续增长时必须把生成目标明确标为任务楼层，不能伪装成当前楼层');
+assert.doesNotMatch(updatingFloorHtml, /pm-today-trend-floor-value">#12<\/strong>/, '尚未提交的目标楼层不得冒充当前楼层主值');
 const targetedFloorHtml = renderTodayTrendApp({ scope: valid.scopes.chat, presets: Object.values(valid.presets), view: { name: 'faction', mode: 'content' },
     generation: { phase: 'parsing', task: { kind: 'manual', storageId: 'chat', floor: 99, target: { module: 'faction', itemId: 'red' } } } });
 assert.match(targetedFloorHtml, /data-today-trend-floor="7" data-state="updating"/, '定向刷新必须保留已提交楼层主值');
 assert.match(targetedFloorHtml, /正在更新模块/, '定向刷新必须使用模块更新文案');
-assert.doesNotMatch(targetedFloorHtml, /同步至 99|pm-today-trend-floor-value">99<\/strong>/, '定向刷新不得虚假推进或承诺楼层 checkpoint');
+assert.doesNotMatch(targetedFloorHtml, /同步至 99|pm-today-trend-floor-value">#99<\/strong>/, '定向刷新不得虚假推进或承诺楼层 checkpoint');
 for (const view of [{ name: 'settings' }, { name: 'faction', mode: 'editor', editingFactionId: 'red' }, { name: 'world', editingRule: 'world' }]) {
     assert.doesNotMatch(renderTodayTrendApp({ scope: valid.scopes.chat, presets: Object.values(valid.presets), view }), /data-today-trend-floor=/, '设置、编辑和规则页不得展示楼层仪表');
 }
@@ -943,13 +948,13 @@ const installedDeps = {
     }),
 };
 installTodayTrend({}, installedDeps);
-assert.equal(installedDeps.getTodayTrendCurrentFloor(), 3402, '安装层必须把酒馆原生 getLastMessageId 注入调度器');
+assert.equal(installedDeps.getTodayTrendCurrentFloor(), 3402, '安装层必须公开酒馆原生 getLastMessageId 楼层');
 installedHostFloor = null;
-assert.equal(installedDeps.getTodayTrendCurrentFloor(), 3, '宿主楼层返回 null 时必须降级为内部 assistant 统计');
+assert.equal(installedDeps.getTodayTrendCurrentFloor(), null, '宿主楼层返回 null 时不得用内部 assistant 统计冒充真实楼层');
 installedHostFloor = '   ';
-assert.equal(installedDeps.getTodayTrendCurrentFloor(), 3, '宿主楼层返回空白字符串时不得误判为 0 楼');
+assert.equal(installedDeps.getTodayTrendCurrentFloor(), null, '宿主楼层返回空白字符串时不得误判为 0 楼或内部统计');
 installedHostFloorError = new Error('宿主楼层读取失败');
-assert.equal(installedDeps.getTodayTrendCurrentFloor(), 3, '宿主楼层读取抛错时必须安全降级');
+assert.equal(installedDeps.getTodayTrendCurrentFloor(), null, '宿主楼层读取抛错时必须报告不可用而不是伪造楼层');
 installedHostFloorError = null;
 installedHostFloor = 3402;
 await assert.rejects(() => installedDeps.deleteTodayTrendPreset('preset'), /仍被角色资料使用/, '被当前或其他角色资料引用的预设不得删除');
