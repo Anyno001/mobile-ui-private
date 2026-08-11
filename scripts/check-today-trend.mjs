@@ -151,8 +151,13 @@ assert.match(todayTrendStyle, /pm-today-trend-icon-button\[data-action\^="today-
 assert.match(todayTrendStyle, /\.pm-today-trend-inline-action\{width:var\(--pm-size-control-compact\);min-height:var\(--pm-size-control-compact\)/, '个人风评行内编辑按钮必须保留 36px 紧凑触控区');
 assert.match(todayTrendStyle, /\.pm-today-trend-head-tools\{[^}]*min-width:max-content[^}]*flex:0 0 auto[^}]*flex-direction:column[^}]*align-items:flex-end[^}]*gap:var\(--pm-space-0-5\)[^}]*translateY/, '标题工具区必须保持纵向关系，并让三点按钮与楼层更紧密地轻微上移');
 assert.match(todayTrendStyle, /\.pm-today-trend-floor\{[^}]*min-width:max-content[^}]*flex:0 0 auto/, '#楼层仪表必须按完整内容保留宽度，不能截断多位楼层');
+assert.match(todayTrendStyle, /\.pm-today-trend-floor-value\{[^}]*color:var\(--pm-color-text-secondary\)/, '楼层数值必须使用界面稍深的次级灰色而非纯黑');
+assert.match(todayTrendStyle, /\.pm-today-trend-floor-cancel\{[^}]*cursor:pointer/, '同步状态必须提供明确可点击的终止控件');
+assert.match(todayTrendStyle, /\.pm-today-trend-floor\[data-state="failed"\] \.pm-today-trend-floor-status\{[^}]*color:var\(--pm-color-danger\)/, '同步失败状态必须使用失败反馈色');
 assert.match(todayTrendStyle, /\.pm-today-trend-floor-reading\{[^}]*white-space:nowrap/, '#号与楼层数值必须保持单行完整显示');
 assert.match(todayTrendRuntimeText, /pm-today-trend-head-tools">\$\{menu\}\$\{asideHtml\}/, '模块头必须先渲染三点菜单，再在其下方渲染楼层');
+assert.match(todayTrendStyle, /\.pm-today-trend-dynamics\{gap:var\(--pm-space-1\);?\}/, '事件追踪标题、标签页与内容必须使用收紧后的统一垂直间距');
+assert.match(todayTrendStyle, /\.pm-today-trend-event-list\{[^}]*padding:var\(--pm-space-0-5\) var\(--pm-space-0\) var\(--pm-space-1\)/, '事件追踪列表顶部留白必须同步收紧');
 assert.match(compactTodayTrendMedia, /pm-today-trend-module-head\{gap:var\(--pm-space-1\)/, '320px 窄屏必须缩小标题与工具区间距并保留按钮命中区');
 assert.match(todayTrendStyle, /\.pm-today-trend-menu-action,\.pm-today-trend-menu-close\{flex-basis:var\(--pm-size-control-compact\);width:var\(--pm-size-control-compact\);min-height:var\(--pm-size-control-compact\)/, '320px 菜单按钮不得缩回 28px 命中区');
 assert.doesNotMatch(todayTrendStyle, /pm-today-trend-(?:icon-button\[data-action\^="today-trend-(?:refresh|generate)"\]|reputation-copy \.pm-today-trend-inline-action)\{width:28px/, '今日风向真实操作按钮不得使用 28px 命中区');
@@ -372,6 +377,7 @@ let controllerStore = valid;
 let reloadTodayTrendStore = async () => { generationReloadCalls += 1; return controllerStore; };
 let controllerGeneration = { phase: 'idle', task: null };
 let controllerCurrentFloor = 3402;
+let generationCancelReason = '';
 const phoneController = createTodayTrendPhoneController({ state: controllerState, container: controllerContainer, deps: {
     getStorageId: () => controllerStorageId, getTodayTrendStore: async () => controllerStore,
     reloadTodayTrendStore: () => reloadTodayTrendStore(),
@@ -381,6 +387,11 @@ const phoneController = createTodayTrendPhoneController({ state: controllerState
         generationListener = listener;
         listener(controllerGeneration);
         return () => { generationUnsubscribeCalls += 1; };
+    },
+    cancelTodayTrendGeneration: reason => {
+        generationCancelReason = reason;
+        controllerGeneration = { phase: 'canceled', task: controllerGeneration.task, lastError: null };
+        generationListener?.(controllerGeneration);
     },
     commitTodayTrendScope: async () => valid, cancelTodayTrendInitialization: reason => { controllerCancelReason = reason; },
 } });
@@ -392,6 +403,17 @@ controllerGeneration = { phase: 'generating', task: { kind: 'auto', storageId: '
 generationListener(controllerGeneration);
 await new Promise(resolve => setTimeout(resolve, 0));
 assert.match(controllerContainer.innerHTML, /today-trend-generate-all" disabled aria-busy="true"/, '当前聊天进入 busy 阶段时必须局部重渲染生成状态');
+assert.match(controllerContainer.innerHTML, /data-action="today-trend-cancel-generation"[^>]*>[^<]*<i aria-hidden="true"><\/i>同步任务 #9<\/button>/, '同步中楼层状态必须可点击终止当前更新');
+const cancelGenerationButton = { disabled: false, dataset: { action: 'today-trend-cancel-generation' } };
+controllerListeners.find(item => item.type === 'click' && item.capture)?.listener({
+    target: { closest: selector => selector === 'button[data-action]' ? cancelGenerationButton : null },
+});
+await new Promise(resolve => setTimeout(resolve, 0));
+assert.equal(generationCancelReason, 'today-trend-user-canceled', '点击同步状态必须调用生成终止能力');
+assert.match(controllerContainer.innerHTML, /data-state="canceled"[\s\S]*pm-today-trend-floor-status">已终止<\/span>/, '主动终止后必须显示已终止而非待同步');
+controllerGeneration = { phase: 'generating', task: { kind: 'auto', storageId: 'chat', floor: 9, target: null } };
+generationListener(controllerGeneration);
+await new Promise(resolve => setTimeout(resolve, 0));
 assert.match(controllerContainer.innerHTML, /pm-today-trend-progress">正在生成…/, '当前世界态势页必须随生成状态通知刷新现有局部反馈');
 controllerGeneration = { phase: 'generating', task: { kind: 'auto', storageId: 'other', floor: 20, target: null } };
 generationListener(controllerGeneration);
@@ -479,6 +501,16 @@ const updatingFloorHtml = renderTodayTrendApp({ scope: valid.scopes.chat, preset
 assert.match(updatingFloorHtml, /data-today-trend-floor="13" data-state="updating"/, '完整更新中楼层主值必须继续展示当前宿主楼层');
 assert.match(updatingFloorHtml, /同步任务 #12/, '宿主继续增长时必须把生成目标明确标为任务楼层，不能伪装成当前楼层');
 assert.doesNotMatch(updatingFloorHtml, /pm-today-trend-floor-value">#12<\/strong>/, '尚未提交的目标楼层不得冒充当前楼层主值');
+const failedFloorHtml = renderTodayTrendApp({ scope: valid.scopes.chat, presets: Object.values(valid.presets), view: { name: 'reputation', mode: 'content' },
+    generation: { phase: 'failed', task: { kind: 'auto', storageId: 'chat', floor: 12, target: null }, lastError: 'AI 请求失败' }, currentFloor: 12 });
+assert.match(failedFloorHtml, /data-state="failed"[\s\S]*pm-today-trend-floor-status" title="AI 请求失败">同步失败<\/span>/, '生成失败后必须显示同步失败并保留错误说明');
+const escapedFailureHtml = renderTodayTrendApp({ scope: valid.scopes.chat, presets: Object.values(valid.presets), view: { name: 'reputation', mode: 'content' },
+    generation: { phase: 'failed', task: { kind: 'auto', storageId: 'chat', floor: 12, target: null }, lastError: '\"失败\" <script> & more' }, currentFloor: 12 });
+assert.match(escapedFailureHtml, /title="&quot;失败&quot; &lt;script&gt; &amp; more"/, '同步失败说明必须按 HTML 属性语境转义');
+assert.doesNotMatch(escapedFailureHtml, /<script>/, '同步失败说明不得注入标签');
+const canceledFloorHtml = renderTodayTrendApp({ scope: valid.scopes.chat, presets: Object.values(valid.presets), view: { name: 'reputation', mode: 'content' },
+    generation: { phase: 'canceled', task: { kind: 'auto', storageId: 'chat', floor: 12, target: null }, lastError: null }, currentFloor: 12 });
+assert.match(canceledFloorHtml, /data-state="canceled"[\s\S]*pm-today-trend-floor-status">已终止<\/span>/, '主动终止后必须显示已终止而非待同步');
 const targetedFloorHtml = renderTodayTrendApp({ scope: valid.scopes.chat, presets: Object.values(valid.presets), view: { name: 'faction', mode: 'content' },
     generation: { phase: 'parsing', task: { kind: 'manual', storageId: 'chat', floor: 99, target: { module: 'faction', itemId: 'red' } } } });
 assert.match(targetedFloorHtml, /data-today-trend-floor="7" data-state="updating"/, '定向刷新必须保留已提交楼层主值');
@@ -1811,6 +1843,10 @@ await Promise.resolve();
 lateScheduler.cancel('test-cancel');
 releaseLate({ scope: scheduledStore.scopes.chat });
 await assert.rejects(late, error => error?.name === 'AbortError', '取消后迟到结果不得提交');
+assert.equal(lateScheduler.state().phase, 'canceled', '取消任务必须保留 canceled 终态');
+assert.equal(lateScheduler.state().task.storageId, 'chat', '取消任务必须保留所属聊天供 UI 过滤');
+assert.equal(lateScheduler.acknowledge().phase, 'idle', '取消终态被消费后必须回到 idle');
+assert.equal(lateScheduler.state().task, null, '取消终态被消费后必须清空任务归属');
 
 const releaseStores = [];
 let concurrentCalls = 0;
@@ -1913,6 +1949,25 @@ for (let index = 0; index < 8 && rollbackStore.scopes.chat.operation.lastSuccess
 assert.equal(rollbackStore.scopes.chat.operation.lastSuccessfulAssistantCount, 7, 'observe 检测到助手楼层下降后必须回退持久化 checkpoint');
 assert.equal(rollbackStore.scopes.chat.world.items[0].summary, '晚餐服务临近', 'observe 回退必须恢复上一有效楼层的生成内容');
 assert.deepEqual(rollbackStore.scopes.chat.generationSnapshots.map(item => item.assistantCount), [0, 7], 'observe 回退必须删除已消失楼层对应的生成快照并保留初始化基线');
+
+let failedRollbackStorageId = 'chat';
+const failedRollbackStore = structuredClone(valid);
+failedRollbackStore.scopes.chat.operation = { ...failedRollbackStore.scopes.chat.operation, lastSuccessfulAssistantCount: 10 };
+const failedRollbackScheduler = createTodayTrendScheduler({
+    controller: { generate: async () => { throw new Error('回退不得调用 AI'); } },
+    committer: { invalidateCommits: () => {}, commitStore: async () => { throw new Error('rollback write blocked'); } },
+    getStore: async () => failedRollbackStore, getStorageId: () => failedRollbackStorageId,
+    getChat: () => Array.from({ length: 7 }, (_, index) => ({ mes: `失败回退楼层${index}` })), getFloor: () => 7,
+});
+failedRollbackScheduler.observe(Array.from({ length: 7 }, (_, index) => ({ mes: `失败回退楼层${index}` })));
+for (let index = 0; index < 12 && failedRollbackScheduler.state().phase !== 'failed'; index += 1) await Promise.resolve();
+assert.equal(failedRollbackScheduler.state().phase, 'failed', '回退提交失败必须保留 failed 终态');
+assert.equal(failedRollbackScheduler.state().task.storageId, 'chat', '回退提交失败必须保留所属聊天供 UI 过滤');
+assert.equal(failedRollbackScheduler.state().lastError, 'rollback write blocked', '回退提交失败必须暴露真实错误说明');
+failedRollbackStorageId = 'other';
+assert.equal(failedRollbackScheduler.state().task.storageId, 'chat', '切换聊天不得篡改旧终态的任务归属');
+assert.equal(failedRollbackScheduler.acknowledge().phase, 'idle', '失败终态被消费后必须回到 idle');
+assert.equal(failedRollbackScheduler.state().task, null, '失败终态被消费后必须清空任务归属');
 
 let concurrentRollbackStore = structuredClone(valid);
 concurrentRollbackStore.scopes.chat = appendTodayTrendGenerationSnapshot({

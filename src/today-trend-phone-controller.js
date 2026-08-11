@@ -117,6 +117,10 @@ export function createTodayTrendPhoneController({ state, deps, container }) {
         if (button.dataset.action === 'today-trend-create-preset') { initializationMode = 'create'; error = ''; rerender(); }
         if (['today-trend-open-world', 'today-trend-open-reputation', 'today-trend-open-factions', 'today-trend-open-dynamics'].includes(button.dataset.action)) settings = false;
         if (button.dataset.action === 'today-trend-toggle-operation') saveOperation(!lastScope?.operation?.enabled).then(() => rerender()).catch(report);
+        if (button.dataset.action === 'today-trend-cancel-generation') {
+            deps.cancelTodayTrendGeneration?.('today-trend-user-canceled');
+            rerender();
+        }
         if (button.dataset.action === 'today-trend-new-preset') openInitialization();
         if (button.dataset.action === 'today-trend-reinitialize') openInitialization({ replace: true });
         if (button.dataset.action === 'today-trend-rename-preset') {

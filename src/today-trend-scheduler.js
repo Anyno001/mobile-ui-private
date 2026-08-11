@@ -89,6 +89,7 @@ export function createTodayTrendScheduler({
     let sequence = 0;
     let accessSequence = 0;
     let activeTask = null;
+    let terminalTask = null;
     let phase = 'idle';
     let lastError = null;
     const baselines = new Map();
@@ -104,7 +105,7 @@ export function createTodayTrendScheduler({
     }) : null;
     const state = () => Object.freeze({
         phase,
-        task: publicTask(activeTask),
+        task: publicTask(activeTask || terminalTask),
         lastError,
         baselines: Object.fromEntries(baselines),
         observationCount: observations.size,
@@ -122,6 +123,7 @@ export function createTodayTrendScheduler({
     const setPhase = (nextPhase, error = lastError) => {
         phase = nextPhase;
         lastError = error;
+        if (nextPhase === 'idle' || nextPhase === 'completed') terminalTask = null;
         return publish();
     };
     const subscribe = listener => {
@@ -166,6 +168,7 @@ export function createTodayTrendScheduler({
         && getStorageId() === task.storageId;
     const cancel = (reason = 'today-trend-cancelled', resetObservation = false) => {
         sequence += 1;
+        terminalTask = activeTask;
         activeTask?.abortController.abort(reason);
         activeTask = null;
         committer.invalidateCommits();
@@ -177,7 +180,7 @@ export function createTodayTrendScheduler({
         return reason;
     };
     const acknowledge = () => {
-        if (!activeTask) return setPhase('idle', null);
+        if (!activeTask) { terminalTask = null; return setPhase('idle', null); }
         return state();
     };
     const arm = (storageId = getStorageId(), chat = getChat()) => {
@@ -217,6 +220,7 @@ export function createTodayTrendScheduler({
             incidentProbability, target,
             abortController: new AbortController(),
         });
+        terminalTask = null;
         activeTask = task;
         setPhase('queued', null);
         try {
@@ -275,8 +279,10 @@ export function createTodayTrendScheduler({
         } catch (error) {
             if (activeTask === task) {
                 if (error?.name === 'AbortError' || !isActive(task)) {
+                    terminalTask = task;
                     setPhase('canceled', null);
                 } else {
+                    terminalTask = task;
                     setPhase('failed', error?.message || '今日风向生成失败');
                 }
             }
@@ -334,6 +340,7 @@ export function createTodayTrendScheduler({
             return committed;
         } catch (error) {
             if (activeTask === task) {
+                terminalTask = task;
                 if (error?.name === 'AbortError' || !isActive(task)) setPhase('canceled', null);
                 else setPhase('failed', error?.message || '今日风向回退失败');
             }

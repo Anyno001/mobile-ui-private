@@ -55,6 +55,8 @@ export function renderTodayTrendApp({ scope = null, presets = [], worldBooks = [
     const floorStatus = trendFloorStatus({
         currentFloor,
         syncedFloor,
+        phase: taskIsCurrent ? generation.phase : 'idle',
+        lastError: taskIsCurrent ? generation.lastError : null,
         busy: busy && taskIsCurrent,
         targetFloor: taskIsCurrent && !targeted ? generation.task?.floor : null,
         targeted,

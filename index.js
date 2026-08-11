@@ -22256,6 +22256,7 @@ ${targetInstruction}`
     let sequence = 0;
     let accessSequence = 0;
     let activeTask = null;
+    let terminalTask = null;
     let phase = "idle";
     let lastError = null;
     const baselines = /* @__PURE__ */ new Map();
@@ -22271,7 +22272,7 @@ ${targetInstruction}`
     }) : null;
     const state = () => Object.freeze({
       phase,
-      task: publicTask(activeTask),
+      task: publicTask(activeTask || terminalTask),
       lastError,
       baselines: Object.fromEntries(baselines),
       observationCount: observations.size
@@ -22292,6 +22293,7 @@ ${targetInstruction}`
     const setPhase = (nextPhase, error = lastError) => {
       phase = nextPhase;
       lastError = error;
+      if (nextPhase === "idle" || nextPhase === "completed") terminalTask = null;
       return publish();
     };
     const subscribe = (listener) => {
@@ -22343,6 +22345,7 @@ ${targetInstruction}`
     const isActive = (task) => !!task && activeTask === task && !task.abortController.signal.aborted && getStorageId2() === task.storageId;
     const cancel = (reason = "today-trend-cancelled", resetObservation = false) => {
       sequence += 1;
+      terminalTask = activeTask;
       activeTask?.abortController.abort(reason);
       activeTask = null;
       committer.invalidateCommits();
@@ -22354,7 +22357,10 @@ ${targetInstruction}`
       return reason;
     };
     const acknowledge = () => {
-      if (!activeTask) return setPhase("idle", null);
+      if (!activeTask) {
+        terminalTask = null;
+        return setPhase("idle", null);
+      }
       return state();
     };
     const arm = (storageId = getStorageId2(), chat = getChat()) => {
@@ -22397,6 +22403,7 @@ ${targetInstruction}`
         target,
         abortController: new AbortController()
       });
+      terminalTask = null;
       activeTask = task;
       setPhase("queued", null);
       try {
@@ -22469,8 +22476,10 @@ ${targetInstruction}`
       } catch (error) {
         if (activeTask === task) {
           if (error?.name === "AbortError" || !isActive(task)) {
+            terminalTask = task;
             setPhase("canceled", null);
           } else {
+            terminalTask = task;
             setPhase("failed", error?.message || "\u4ECA\u65E5\u98CE\u5411\u751F\u6210\u5931\u8D25");
           }
         }
@@ -22531,6 +22540,7 @@ ${targetInstruction}`
         return committed;
       } catch (error) {
         if (activeTask === task) {
+          terminalTask = task;
           if (error?.name === "AbortError" || !isActive(task)) setPhase("canceled", null);
           else setPhase("failed", error?.message || "\u4ECA\u65E5\u98CE\u5411\u56DE\u9000\u5931\u8D25");
         }
@@ -23312,15 +23322,18 @@ ${targetInstruction}`
     if (!visible) return "";
     return `<span class="pm-today-trend-inline-actions">${actions.map((action) => trendIconButton({ ...action, className: `pm-today-trend-inline-action${action.className ? ` ${action.className}` : ""}` })).join("")}</span>`;
   }
-  function trendFloorStatus({ currentFloor, syncedFloor = 0, busy = false, targetFloor = null, targeted = false } = {}) {
+  function trendFloorStatus({ currentFloor, syncedFloor = 0, phase = "idle", lastError = null, busy = false, targetFloor = null, targeted = false } = {}) {
     const synced = Number.isInteger(syncedFloor) && syncedFloor >= 0 ? syncedFloor : 0;
     const currentFloorProvided = currentFloor !== void 0;
     const floor = Number.isInteger(currentFloor) && currentFloor >= 0 ? currentFloor : currentFloorProvided ? null : synced;
     const target = Number.isInteger(targetFloor) && targetFloor >= 0 ? targetFloor : null;
-    const state = busy ? "updating" : floor === null ? "unavailable" : floor > 0 && synced === floor ? "synced" : "unsynced";
-    const status = busy ? targeted ? "\u6B63\u5728\u66F4\u65B0\u6A21\u5757" : target === null ? "\u6B63\u5728\u540C\u6B65" : `\u540C\u6B65\u4EFB\u52A1 #${target}` : floor === null ? "\u697C\u5C42\u4E0D\u53EF\u7528" : floor > 0 && synced === floor ? "\u5DF2\u540C\u6B65" : floor > 0 ? "\u5F85\u540C\u6B65" : "\u5C1A\u672A\u540C\u6B65";
+    const terminalState = phase === "failed" ? "failed" : phase === "canceled" ? "canceled" : null;
+    const state = busy ? "updating" : terminalState || (floor === null ? "unavailable" : floor > 0 && synced === floor ? "synced" : "unsynced");
+    const status = busy ? targeted ? "\u6B63\u5728\u66F4\u65B0\u6A21\u5757" : target === null ? "\u6B63\u5728\u540C\u6B65" : `\u540C\u6B65\u4EFB\u52A1 #${target}` : terminalState === "failed" ? "\u540C\u6B65\u5931\u8D25" : terminalState === "canceled" ? "\u5DF2\u7EC8\u6B62" : floor === null ? "\u697C\u5C42\u4E0D\u53EF\u7528" : floor > 0 && synced === floor ? "\u5DF2\u540C\u6B65" : floor > 0 ? "\u5F85\u540C\u6B65" : "\u5C1A\u672A\u540C\u6B65";
     const reading = floor === null ? "#--" : `#${floor}`;
-    return `<span class="pm-today-trend-floor" data-today-trend-floor="${floor ?? ""}" data-state="${state}" role="status" aria-live="polite" aria-label="\u697C\u5C42 ${reading}\uFF0C${escapeAttr(status)}"><span class="pm-today-trend-floor-reading"><strong class="pm-today-trend-floor-value">${reading}</strong></span><span class="pm-today-trend-floor-status">${busy ? '<i aria-hidden="true"></i>' : ""}${escapeHtml(status)}</span></span>`;
+    const statusTitle = terminalState === "failed" && lastError ? ` title="${escapeAttr(lastError)}"` : "";
+    const statusHtml = busy ? `<button type="button" class="pm-today-trend-floor-status pm-today-trend-floor-cancel" data-action="today-trend-cancel-generation" aria-label="\u7EC8\u6B62\u5F53\u524D\u66F4\u65B0" title="\u7EC8\u6B62\u5F53\u524D\u66F4\u65B0"><i aria-hidden="true"></i>${escapeHtml(status)}</button>` : `<span class="pm-today-trend-floor-status"${statusTitle}>${escapeHtml(status)}</span>`;
+    return `<span class="pm-today-trend-floor" data-today-trend-floor="${floor ?? ""}" data-state="${state}" role="status" aria-live="polite" aria-label="\u697C\u5C42 ${reading}\uFF0C${escapeAttr(status)}"><span class="pm-today-trend-floor-reading"><strong class="pm-today-trend-floor-value">${reading}</strong></span>${statusHtml}</span>`;
   }
   function trendModuleHead({ title, menuId, menuOpenId, actions = [], meta = "", metaHtml = "", eyebrow = "", adornment = "", asideHtml = "" }) {
     const renderedMeta = metaHtml || (meta ? `<span>${escapeHtml(meta)}</span>` : "");
@@ -23528,10 +23541,10 @@ ${targetInstruction}`
     const heroBody = hero ? editingWorldItemId === hero.id ? itemEditor(hero) : `<p>${escapeHtml(hero.summary)}</p>` : "";
     const signals = items.slice(1).map((item, index) => {
       const body = editingWorldItemId === item.id ? itemEditor(item) : `<p>${escapeHtml(item.summary)}</p>`;
-      return `<article class="pm-today-trend-world-brief" data-world-item-id="${escapeAttr(item.id)}">${signalMarker}<div><header class="pm-today-trend-world-item-head"><b>${escapeHtml(item.name)}</b>${itemInlineActions(item, generateAttrs, menuOpenId === "world-module")}</header>${body}</div></article>`;
+      return `<article class="pm-today-trend-world-brief" data-world-item-id="${escapeAttr(item.id)}"><header class="pm-today-trend-world-item-head">${signalMarker}<b>${escapeHtml(item.name)}</b>${itemInlineActions(item, generateAttrs, menuOpenId === "world-module")}</header>${body}</article>`;
     }).join("");
     const worldMeta = trendMeter([{ label: "SIGNALS", value: items.length }, { label: "BRIEFS", value: Math.max(items.length - 1, 0) }]);
-    const content = hero ? `<article class="pm-today-trend-world-hero" data-world-item-id="${escapeAttr(hero.id)}">${signalMarker}<div><header class="pm-today-trend-world-item-head"><b>${escapeHtml(hero.name)}</b>${itemInlineActions(hero, generateAttrs, menuOpenId === "world-module")}</header>${heroBody}</div></article>${signals ? `<div class="pm-today-trend-world-signals">${signals}</div>` : ""}` : '<p class="pm-today-trend-empty">\u5C1A\u672A\u751F\u6210\u4E16\u754C\u6001\u52BF\u3002</p>';
+    const content = hero ? `<article class="pm-today-trend-world-hero" data-world-item-id="${escapeAttr(hero.id)}"><header class="pm-today-trend-world-item-head">${signalMarker}<b>${escapeHtml(hero.name)}</b>${itemInlineActions(hero, generateAttrs, menuOpenId === "world-module")}</header>${heroBody}</article>${signals ? `<div class="pm-today-trend-world-signals">${signals}</div>` : ""}` : '<p class="pm-today-trend-empty">\u5C1A\u672A\u751F\u6210\u4E16\u754C\u6001\u52BF\u3002</p>';
     return `<section class="pm-today-trend-view pm-today-trend-world">${trendModuleHead({ title: "\u4E16\u754C\u6001\u52BF", eyebrow: "TODAY\u2019S SIGNAL", metaHtml: worldMeta, asideHtml: floorStatus, menuId: "world-module", menuOpenId, actions: [{ action: "today-trend-generate-world", icon: REFRESH_ICON_SVG, label: "\u91CD\u65B0\u751F\u6210\u4E16\u754C\u6001\u52BF", attrs: generateAttrs }, { action: "today-trend-edit-world-rule", icon: BOOK_ICON_SVG, label: "\u7F16\u8F91\u4E16\u754C\u6001\u52BF\u63D0\u793A\u8BCD" }] })}${content}${generationBusy ? '<span class="pm-today-trend-progress">\u6B63\u5728\u751F\u6210\u2026</span>' : ""}</section>`;
   }
 
@@ -23578,6 +23591,8 @@ ${targetInstruction}`
     const floorStatus = trendFloorStatus({
       currentFloor,
       syncedFloor,
+      phase: taskIsCurrent ? generation.phase : "idle",
+      lastError: taskIsCurrent ? generation.lastError : null,
       busy: busy && taskIsCurrent,
       targetFloor: taskIsCurrent && !targeted ? generation.task?.floor : null,
       targeted
@@ -23759,6 +23774,10 @@ ${targetInstruction}`
       }
       if (["today-trend-open-world", "today-trend-open-reputation", "today-trend-open-factions", "today-trend-open-dynamics"].includes(button.dataset.action)) settings = false;
       if (button.dataset.action === "today-trend-toggle-operation") saveOperation(!lastScope?.operation?.enabled).then(() => rerender()).catch(report);
+      if (button.dataset.action === "today-trend-cancel-generation") {
+        deps.cancelTodayTrendGeneration?.("today-trend-user-canceled");
+        rerender();
+      }
       if (button.dataset.action === "today-trend-new-preset") openInitialization();
       if (button.dataset.action === "today-trend-reinitialize") openInitialization({ replace: true });
       if (button.dataset.action === "today-trend-rename-preset") {
