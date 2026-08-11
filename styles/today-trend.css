@@ -165,9 +165,7 @@
 .pm-today-trend-menu-close{color:var(--pm-color-text-secondary);}
 .pm-today-trend-reputation,.pm-today-trend-factions,.pm-today-trend-dynamics{--pm-today-trend-report-title-size:calc(var(--pm-font-size-title) + var(--pm-space-2));gap:var(--pm-space-2);padding:var(--pm-space-3) var(--pm-space-4) var(--pm-space-5);}.pm-today-trend-dynamics{gap:var(--pm-space-1);}
 .pm-today-trend-reputation>.pm-today-trend-module-head,.pm-today-trend-factions>.pm-today-trend-module-head,.pm-today-trend-dynamics>.pm-today-trend-module-head{align-items:flex-start;min-height:calc(var(--pm-size-control-default) + var(--pm-space-2));padding-bottom:var(--pm-space-3);}
-.pm-today-trend-reputation>.pm-today-trend-module-head>.pm-today-trend-head-tools{align-items:center;transform:translateY(calc(0px - var(--pm-space-2)));}
-.pm-today-trend-reputation>.pm-today-trend-module-head .pm-today-trend-floor{align-items:center;}
-.pm-today-trend-reputation>.pm-today-trend-module-head .pm-today-trend-floor-cancel{align-items:center;text-align:center;}
+.pm-today-trend-reputation>.pm-today-trend-module-head>.pm-today-trend-head-tools{transform:translateY(calc(0px - var(--pm-space-2)));}
 .pm-today-trend-reputation>.pm-today-trend-module-head>div,.pm-today-trend-factions>.pm-today-trend-module-head>div,.pm-today-trend-dynamics>.pm-today-trend-module-head>div{gap:var(--pm-space-1-5);}
 .pm-today-trend-reputation>.pm-today-trend-module-head>div::after,.pm-today-trend-factions>.pm-today-trend-module-head>div::after,.pm-today-trend-dynamics>.pm-today-trend-module-head>div::after{display:none;}
 .pm-today-trend-reputation>.pm-today-trend-module-head h2,.pm-today-trend-factions>.pm-today-trend-module-head h2,.pm-today-trend-dynamics>.pm-today-trend-module-head h2{font-size:var(--pm-today-trend-report-title-size);font-weight:var(--pm-font-weight-semibold);letter-spacing:var(--pm-today-trend-heading-tracking);line-height:var(--pm-line-height-tight);}
@@ -183,14 +181,13 @@
 .pm-today-trend-reputation-mark svg{width:var(--pm-size-icon-md);height:var(--pm-size-icon-md);}
 .pm-today-trend-reputation-entry-head{display:flex;min-width:0;align-items:center;gap:var(--pm-space-2);}
 .pm-today-trend-reputation-entry-head>b{min-width:0;flex:1;font-size:var(--pm-font-size-subtitle);font-weight:var(--pm-font-weight-semibold);letter-spacing:var(--pm-today-trend-copy-tracking);line-height:var(--pm-line-height-control);}
-.pm-today-trend-reputation-entry-head .pm-today-trend-status{display:inline-flex;align-items:center;min-height:var(--pm-space-5);margin-left:var(--pm-space-0);padding:var(--pm-space-0-5) var(--pm-space-2);border:1px solid color-mix(in srgb,currentColor 52%,transparent);border-radius:var(--pm-radius-pill);font-size:var(--pm-font-size-helper);line-height:var(--pm-line-height-control);white-space:nowrap;}
 .pm-today-trend-reputation-entry-body{min-width:0;}
 .pm-today-trend-reputation-entry-body>p{color:var(--pm-color-text-secondary);font-size:var(--pm-font-size-body);letter-spacing:var(--pm-today-trend-copy-tracking);line-height:var(--pm-line-height-body);overflow-wrap:anywhere;}
 .pm-today-trend-reputation-rating{min-width:0;margin-top:var(--pm-space-2);}
 .pm-today-trend-reputation-meter{display:flex;width:100%;align-items:stretch;justify-content:center;gap:var(--pm-space-1);padding:var(--pm-space-0);border:0;background:transparent;}
 .pm-today-trend-reputation-meter button{display:flex;min-width:var(--pm-size-control-default);min-height:var(--pm-size-control-default);flex:0 1 var(--pm-size-control-default);flex-direction:column;align-items:center;justify-content:center;gap:var(--pm-space-0-5);padding:var(--pm-space-0-5);border:0;border-bottom:2px solid transparent;border-radius:var(--pm-radius-none);background:transparent;color:var(--pm-color-text-tertiary);font-family:inherit;cursor:pointer;}
 .pm-today-trend-reputation-meter button svg{width:var(--pm-size-icon-sm);height:var(--pm-size-icon-sm);}
-.pm-today-trend-reputation-meter button span{font-size:var(--pm-font-size-caption);font-weight:var(--pm-font-weight-semibold);line-height:var(--pm-line-height-control);white-space:nowrap;}
+.pm-today-trend-reputation-meter button span{font-size:var(--pm-font-size-micro);font-weight:var(--pm-font-weight-semibold);line-height:var(--pm-line-height-control);white-space:nowrap;}
 .pm-today-trend-reputation-meter button.is-active{border-bottom-color:var(--pm-color-accent);color:var(--pm-color-accent);}
 .pm-today-trend-reputation-meter button:focus-visible{outline:var(--pm-today-trend-focus-offset) solid var(--pm-color-focus-ring);outline-offset:1px;}
 .pm-today-trend-reputation-meter button:disabled{opacity:var(--pm-opacity-disabled);cursor:not-allowed;}

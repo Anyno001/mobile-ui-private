@@ -149,10 +149,12 @@ assert.match(todayTrendStyle, /pm-today-trend-event-badge,\.pm-today-trend-event
 assert.doesNotMatch(todayTrendStyle, /pm-today-trend-event-card header span/, '事件追踪不得用宽泛 header span 规则覆盖徽章字号');
 assert.match(todayTrendStyle, /pm-today-trend-icon-button\[data-action\^="today-trend-refresh"\][\s\S]*?width:var\(--pm-size-control-compact\)[\s\S]*?min-height:var\(--pm-size-control-compact\)/, '生成与刷新图标按钮必须保留 36px 紧凑触控区');
 assert.match(todayTrendStyle, /\.pm-today-trend-inline-action\{width:var\(--pm-size-control-compact\);min-height:var\(--pm-size-control-compact\)/, '个人风评行内编辑按钮必须保留 36px 紧凑触控区');
-assert.match(todayTrendStyle, /\.pm-today-trend-head-tools\{[^}]*min-width:max-content[^}]*flex:0 0 auto[^}]*flex-direction:column[^}]*align-items:flex-end[^}]*gap:var\(--pm-space-0-5\)[^}]*translateY/, '标题工具区必须保持纵向关系与右侧基准');
-assert.match(todayTrendStyle, /pm-today-trend-reputation>\.pm-today-trend-module-head>\.pm-today-trend-head-tools\{[^}]*align-items:center[^}]*translateY\(calc\(0px - var\(--pm-space-2\)\)\)/, '个人风评三点菜单、楼层与同步状态必须整体上移并按视觉中心对齐');
-assert.match(todayTrendStyle, /pm-today-trend-reputation>\.pm-today-trend-module-head \.pm-today-trend-floor\{[^}]*align-items:center/, '个人风评楼层数值与三点菜单必须使用相同水平中心');
-assert.match(todayTrendStyle, /pm-today-trend-reputation>\.pm-today-trend-module-head \.pm-today-trend-floor-cancel\{[^}]*align-items:center[^}]*text-align:center/, '个人风评同步中状态必须延续楼层视觉中心');
+assert.match(todayTrendStyle, /\.pm-today-trend-head-tools\{[^}]*min-width:max-content[^}]*flex:0 0 auto[^}]*flex-direction:column[^}]*align-items:flex-end[^}]*gap:var\(--pm-space-0-5\)[^}]*translateY/, '标题工具区必须保持纵向关系与右边缘固定基准');
+assert.match(todayTrendStyle, /pm-today-trend-reputation>\.pm-today-trend-module-head>\.pm-today-trend-head-tools\{[^}]*transform:translateY\(calc\(0px - var\(--pm-space-2\)\)\)/, '个人风评三点菜单与楼层必须整体上移');
+assert.doesNotMatch(todayTrendStyle, /pm-today-trend-reputation>\.pm-today-trend-module-head>\.pm-today-trend-head-tools\{[^}]*align-items:center/, '个人风评标题工具区不得使用居中对齐以避免菜单展开时楼层位移');
+assert.doesNotMatch(todayTrendStyle, /pm-today-trend-reputation>\.pm-today-trend-module-head>\.pm-today-trend-head-tools\{[^}]*position:absolute/, '个人风评标题工具区不得使用绝对定位以避免楼层纵向塌缩');
+assert.doesNotMatch(todayTrendStyle, /pm-today-trend-reputation[^{}]*\.pm-today-trend-floor[^{}]*\{[^}]*position:absolute/, '个人风评楼层不得使用绝对定位');
+assert.doesNotMatch(todayTrendStyle, /pm-today-trend-reputation[^{}]*\.pm-today-trend-menu-wrap\.is-open\{[^}]*position:absolute/, '个人风评菜单展开态不得使用绝对定位脱离文档流');
 assert.match(todayTrendStyle, /\.pm-today-trend-floor\{[^}]*min-width:max-content[^}]*flex:0 0 auto/, '#楼层仪表必须按完整内容保留宽度，不能截断多位楼层');
 assert.match(todayTrendStyle, /\.pm-today-trend-floor-value\{[^}]*color:var\(--pm-color-text-secondary\)/, '楼层数值必须使用界面稍深的次级灰色而非纯黑');
 assert.match(todayTrendStyle, /\.pm-today-trend-floor-cancel\{[^}]*cursor:pointer/, '同步状态必须提供明确可点击的终止控件');
@@ -665,7 +667,7 @@ assert.match(reputationHtml, /pm-today-trend-meter-k">BAD<\/span><span class="pm
 assert.doesNotMatch(reputationHtml, /pm-today-trend-reputation-(?:head-art|file-no)|PRS-240502/, '个人风评不得渲染已废弃的档案装饰或编号');
 assert.match(reputationHtml, /pm-today-trend-reputation-mark/, '个人风评条目必须提供图标标记');
 assert.match(reputationHtml, /data-status="neutral"/, '个人风评状态必须提供主题化样式钩子');
-assert.match(reputationHtml, /主厨评审<\/b><span class="pm-today-trend-status" data-status="neutral">中立<\/span>/, '个人风评状态徽章必须紧贴标题，而非占用评级列');
+assert.doesNotMatch(reputationHtml, /pm-today-trend-reputation-entry-head[\s\S]*?pm-today-trend-status/, '个人风评条目标题栏不得渲染状态徽章');
 assert.match(reputationHtml, /pm-today-trend-reputation-entry-head[\s\S]*?pm-today-trend-reputation-mark[\s\S]*?<b>主厨评审/, '个人风评条目标题栏必须让标题直接位于图标右侧');
 assert.match(reputationHtml, /pm-today-trend-reputation-entry-body[\s\S]*?pm-today-trend-reputation-rating/, '个人风评正文与评级控件必须位于标题栏下方的内容栏');
 assert.doesNotMatch(reputationHtml, /pm-today-trend-reputation-orbit/, '个人风评背景不得局限在模块子容器内');
@@ -720,7 +722,7 @@ assert.match(todayTrendStyle, /pm-today-trend-reputation-meter button\{[^}]*min-
 assert.match(todayTrendStyle, /pm-today-trend-reputation-meter\{[^}]*display:flex[^}]*justify-content:center[^}]*gap:var\(--pm-space-1\)[^}]*border:0[^}]*background:transparent/, '个人风评量表必须使用居中的轻量图标组选项');
 assert.match(todayTrendStyle, /pm-today-trend-reputation-meter button\{[^}]*min-width:var\(--pm-size-control-default\)[^}]*flex:0 1 var\(--pm-size-control-default\)[^}]*align-items:center[^}]*justify-content:center/, '个人风评五档按钮必须使用紧凑且居中的固定触控单元');
 assert.match(todayTrendStyle, /pm-today-trend-reputation-meter button svg\{[^}]*width:var\(--pm-size-icon-sm\)[^}]*height:var\(--pm-size-icon-sm\)/, '个人风评五档必须使用可辨识的状态图标');
-assert.match(todayTrendStyle, /pm-today-trend-reputation-meter button span\{[^}]*font-size:var\(--pm-font-size-caption\)/, '个人风评量表必须使用清晰可读的档位标签');
+assert.match(todayTrendStyle, /pm-today-trend-reputation-meter button span\{[^}]*font-size:var\(--pm-font-size-micro\)/, '个人风评量表档位标签必须使用紧凑字号');
 assert.match(todayTrendStyle, /pm-today-trend-reputation-meter button\.is-active\{[^}]*border-bottom-color:var\(--pm-color-accent\)[^}]*color:var\(--pm-color-accent\)/, '个人风评量表当前档必须以主题色图标和底部线明确标识');
 assert.doesNotMatch(todayTrendStyle, /pm-today-trend-reputation-meter button::before|pm-today-trend-reputation-meter button::after/, '个人风评量表不得使用圆点或底线伪元素');
 assert.match(todayTrendStyle, /pm-today-trend-reputation-meter button:focus-visible/, '个人风评状态按钮必须提供键盘焦点样式');
