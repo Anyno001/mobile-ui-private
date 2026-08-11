@@ -772,6 +772,10 @@ assert.doesNotMatch(todayTrendStyle, /pm-today-trend-faction-detail\{[^}]*border
 assert.match(factionHtml, /pm-today-trend-faction-entry-head[\s\S]*?pm-today-trend-faction-node[\s\S]*?<b>红队<\/b>/, '势力图谱节点必须直接归入条目标题行');
 assert.match(factionHtml, /pm-today-trend-faction-entry-body[\s\S]*?pm-today-trend-faction-summary/, '势力图谱正文必须位于标题行之后');
 assert.match(factionHtml, /pm-today-trend-faction-detail-row is-evaluation"><dt>关系评价<\/dt><dd>/, '势力关系评价必须保持完整的定义列表语义');
+assert.match(todayTrendStyle, /pm-today-trend-faction-detail-row\{[^}]*display:grid[^}]*grid-template-columns:var\(--pm-size-control-default\) minmax\(0,1fr\)/, '势力详情行必须使用标签列与弹性值列布局');
+assert.match(todayTrendStyle, /pm-today-trend-faction-detail-row\.is-evaluation\{[^}]*display:flex[^}]*flex-wrap:wrap[^}]*column-gap:var\(--pm-space-2\)/, '关系评价必须允许内容按可用宽度整项换行');
+assert.match(todayTrendStyle, /pm-today-trend-faction-detail-row\.is-evaluation dd\{[^}]*width:max-content[^}]*max-width:100%[^}]*flex:0 0 auto/, '关系评价短内容必须保持同行，长内容必须换到完整内容行');
+assert.doesNotMatch(todayTrendStyle, /pm-today-trend-faction-detail-row\.is-evaluation\{[^}]*display:block/, '关系评价不得强制所有内容换行');
 assert.match(todayTrendStyle, /pm-today-trend-faction-meter\{[^}]*display:flex[^}]*width:100%[^}]*justify-content:center/, '势力关系量表必须使用横向居中布局');
 assert.match(todayTrendStyle, /pm-today-trend-faction-meter>span\{[^}]*min-height:var\(--pm-size-control-default\)[^}]*flex-direction:column[^}]*padding:var\(--pm-space-0-5\)/, '势力关系档位必须与个人风评保持一致的纵向图标文字结构');
 assert.match(todayTrendStyle, /@media\(max-width:320px\)[\s\S]*?pm-today-trend-reputation-meter,\.pm-today-trend-faction-meter\{[^}]*column-gap:var\(--pm-space-0-5\)/, '320px 下两种关系量表必须同步收紧间距');
