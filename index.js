@@ -23460,22 +23460,21 @@ ${targetInstruction}`
   }
 
   // src/today-trend-reputation-view.js
-  var REPUTATION_LEVELS = Object.freeze(["trust", "like", "neutral", "dislike", "hostile"]);
   var reputationStatusLabel = (status) => status === "like" ? "\u559C\u7231" : todayTrendStatusLabel(status);
   var GOOD_STATUSES = /* @__PURE__ */ new Set(["like", "trust"]);
   var BAD_STATUSES = /* @__PURE__ */ new Set(["hostile", "dislike"]);
   var REPUTATION_ICONS = Object.freeze({
-    hostile: '<path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><path d="m5 5 14 14"/>',
-    dislike: '<path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="2.6"/>',
-    neutral: '<circle cx="8" cy="8" r="2.6"/><circle cx="16" cy="8" r="2.6"/><path d="M4 19c0-3 1.8-5 4-5s4 2 4 5M12 19c0-3 1.8-5 4-5s4 2 4 5"/>',
-    like: '<path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="2.6"/>',
+    hostile: '<path d="M12 3 2.5 20h19z"/><path d="M12 9v4M12 17h.01"/>',
+    dislike: '<circle cx="12" cy="12" r="9"/><circle cx="9" cy="10" r=".7" fill="currentColor" stroke="none"/><circle cx="15" cy="10" r=".7" fill="currentColor" stroke="none"/><path d="M8.5 17c1-2 2.2-3 3.5-3s2.5 1 3.5 3"/>',
+    neutral: '<circle cx="12" cy="12" r="9"/><circle cx="9" cy="10" r=".7" fill="currentColor" stroke="none"/><circle cx="15" cy="10" r=".7" fill="currentColor" stroke="none"/><path d="M8.5 16h7"/>',
+    like: '<path d="M20.8 8.5c0 5-8.8 10.5-8.8 10.5S3.2 13.5 3.2 8.5A4.5 4.5 0 0 1 12 7a4.5 4.5 0 0 1 8.8 1.5z"/>',
     trust: '<path d="M12 3l7 3v5c0 4.4-3 7.8-7 9-4-1.2-7-4.6-7-9V6z"/><path d="m9 12 2 2 4-4.5"/>'
   });
   var statusBadge = (status) => `<span class="pm-today-trend-status" data-status="${escapeAttr(status)}">${escapeHtml(reputationStatusLabel(status))}</span>`;
   var reputationMark = (status) => `<span class="pm-today-trend-reputation-mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">${REPUTATION_ICONS[status] || REPUTATION_ICONS.neutral}</svg></span>`;
   function reputationMeter(circle, disabled) {
     const label = reputationStatusLabel(circle.status);
-    const levels = REPUTATION_LEVELS.map((level) => `<button type="button" class="${level === circle.status ? "is-active" : ""}" data-action="today-trend-set-circle-status" data-circle-id="${escapeAttr(circle.id)}" data-status="${level}" aria-checked="${level === circle.status}" role="radio" tabindex="${level === circle.status ? "0" : "-1"}" aria-label="${escapeAttr(reputationStatusLabel(level))}"${disabled ? " disabled" : ""}><i aria-hidden="true"></i></button>`).join("");
+    const levels = TODAY_TREND_RELATION_STATUSES.map((level) => `<button type="button" class="${level === circle.status ? "is-active" : ""}" data-action="today-trend-set-circle-status" data-circle-id="${escapeAttr(circle.id)}" data-status="${level}" aria-checked="${level === circle.status}" role="radio" tabindex="${level === circle.status ? "0" : "-1"}" aria-label="${escapeAttr(reputationStatusLabel(level))}"${disabled ? " disabled" : ""}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${REPUTATION_ICONS[level] || REPUTATION_ICONS.neutral}</svg><span aria-hidden="true">${escapeHtml(reputationStatusLabel(level))}</span></button>`).join("");
     return `<div class="pm-today-trend-reputation-meter" role="radiogroup" aria-label="\u4FEE\u6539${escapeAttr(circle.name)}\u7684\u597D\u611F\u5EA6\uFF0C\u5F53\u524D\uFF1A${escapeAttr(label)}">${levels}</div>`;
   }
   function circleEditor(circle = {}, cancelAction = "today-trend-cancel-editor") {
@@ -23500,7 +23499,7 @@ ${targetInstruction}`
     const badCount = circles.filter((circle) => BAD_STATUSES.has(circle.status)).length;
     const metaHtml = trendMeter([{ label: "PEOPLE", value: circles.length }, { label: "GOOD", value: goodCount }, { label: "BAD", value: badCount }]);
     const actionsVisible = menuOpenId === "reputation-module";
-    const rows = circles.map((circle) => editingCircleId === circle.id ? `<article class="pm-today-trend-reputation-entry is-editing" data-circle-id="${escapeAttr(circle.id)}">${circleEditor(circle, "today-trend-cancel-reputation-editor")}</article>` : `<article class="pm-today-trend-reputation-entry" data-circle-id="${escapeAttr(circle.id)}">${reputationMark(circle.status)}<div class="pm-today-trend-reputation-copy"><header><b>${escapeHtml(circle.name)}</b>${statusBadge(circle.status)}${trendInlineActions({ visible: actionsVisible, actions: [{ action: "today-trend-edit-circle", icon: EDIT_ICON_SVG, label: `\u7F16\u8F91${circle.name}`, attrs: `data-circle-id="${escapeAttr(circle.id)}"` }] })}</header><p>${escapeHtml(circle.evaluation)}</p></div><div class="pm-today-trend-reputation-rating">${reputationMeter(circle, generationBusy)}</div></article>`).join("");
+    const rows = circles.map((circle) => editingCircleId === circle.id ? `<article class="pm-today-trend-reputation-entry is-editing" data-circle-id="${escapeAttr(circle.id)}">${circleEditor(circle, "today-trend-cancel-reputation-editor")}</article>` : `<article class="pm-today-trend-reputation-entry" data-circle-id="${escapeAttr(circle.id)}"><header class="pm-today-trend-reputation-entry-head">${reputationMark(circle.status)}<b>${escapeHtml(circle.name)}</b>${statusBadge(circle.status)}${trendInlineActions({ visible: actionsVisible, actions: [{ action: "today-trend-edit-circle", icon: EDIT_ICON_SVG, label: `\u7F16\u8F91${circle.name}`, attrs: `data-circle-id="${escapeAttr(circle.id)}"` }] })}</header><div class="pm-today-trend-reputation-entry-body"><p>${escapeHtml(circle.evaluation)}</p><div class="pm-today-trend-reputation-rating">${reputationMeter(circle, generationBusy)}</div></div></article>`).join("");
     return `<section class="pm-today-trend-view pm-today-trend-reputation">${trendModuleHead({ title: "\u4E2A\u4EBA\u98CE\u8BC4", eyebrow: "PUBLIC OPINION", metaHtml, asideHtml: floorStatus, menuId: "reputation-module", menuOpenId, actions: [{ action: "today-trend-generate-reputation", icon: REFRESH_ICON_SVG, label: "\u91CD\u65B0\u751F\u6210\u4E2A\u4EBA\u98CE\u8BC4", attrs: generateAttrs }, { action: "today-trend-edit-reputation-rule", icon: BOOK_ICON_SVG, label: "\u7F16\u8F91\u4E2A\u4EBA\u98CE\u8BC4\u63D0\u793A\u8BCD" }] })}<div class="pm-today-trend-reputation-list">${rows || '<p class="pm-today-trend-empty">\u5C1A\u672A\u751F\u6210\u4E2A\u4EBA\u98CE\u8BC4\u3002</p>'}</div></section>`;
   }
 

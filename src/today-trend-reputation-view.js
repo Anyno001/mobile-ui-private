@@ -7,10 +7,10 @@ const reputationStatusLabel = status => status === 'like' ? '喜爱' : todayTren
 const GOOD_STATUSES = new Set(['like', 'trust']);
 const BAD_STATUSES = new Set(['hostile', 'dislike']);
 const REPUTATION_ICONS = Object.freeze({
-    hostile: '<path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><path d="m5 5 14 14"/>',
-    dislike: '<path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="2.6"/>',
-    neutral: '<circle cx="8" cy="8" r="2.6"/><circle cx="16" cy="8" r="2.6"/><path d="M4 19c0-3 1.8-5 4-5s4 2 4 5M12 19c0-3 1.8-5 4-5s4 2 4 5"/>',
-    like: '<path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="2.6"/>',
+    hostile: '<path d="M12 3 2.5 20h19z"/><path d="M12 9v4M12 17h.01"/>',
+    dislike: '<circle cx="12" cy="12" r="9"/><circle cx="9" cy="10" r=".7" fill="currentColor" stroke="none"/><circle cx="15" cy="10" r=".7" fill="currentColor" stroke="none"/><path d="M8.5 17c1-2 2.2-3 3.5-3s2.5 1 3.5 3"/>',
+    neutral: '<circle cx="12" cy="12" r="9"/><circle cx="9" cy="10" r=".7" fill="currentColor" stroke="none"/><circle cx="15" cy="10" r=".7" fill="currentColor" stroke="none"/><path d="M8.5 16h7"/>',
+    like: '<path d="M20.8 8.5c0 5-8.8 10.5-8.8 10.5S3.2 13.5 3.2 8.5A4.5 4.5 0 0 1 12 7a4.5 4.5 0 0 1 8.8 1.5z"/>',
     trust: '<path d="M12 3l7 3v5c0 4.4-3 7.8-7 9-4-1.2-7-4.6-7-9V6z"/><path d="m9 12 2 2 4-4.5"/>',
 });
 const statusBadge = status => `<span class="pm-today-trend-status" data-status="${escapeAttr(status)}">${escapeHtml(reputationStatusLabel(status))}</span>`;
@@ -19,7 +19,7 @@ const reputationMark = status => `<span class="pm-today-trend-reputation-mark" a
 
 function reputationMeter(circle, disabled) {
     const label = reputationStatusLabel(circle.status);
-    const levels = TODAY_TREND_RELATION_STATUSES.map(level => `<button type="button" class="${level === circle.status ? 'is-active' : ''}" data-action="today-trend-set-circle-status" data-circle-id="${escapeAttr(circle.id)}" data-status="${level}" aria-checked="${level === circle.status}" role="radio" tabindex="${level === circle.status ? '0' : '-1'}" aria-label="${escapeAttr(reputationStatusLabel(level))}"${disabled ? ' disabled' : ''}><span aria-hidden="true">${escapeHtml(reputationStatusLabel(level))}</span></button>`).join('');
+    const levels = TODAY_TREND_RELATION_STATUSES.map(level => `<button type="button" class="${level === circle.status ? 'is-active' : ''}" data-action="today-trend-set-circle-status" data-circle-id="${escapeAttr(circle.id)}" data-status="${level}" aria-checked="${level === circle.status}" role="radio" tabindex="${level === circle.status ? '0' : '-1'}" aria-label="${escapeAttr(reputationStatusLabel(level))}"${disabled ? ' disabled' : ''}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${REPUTATION_ICONS[level] || REPUTATION_ICONS.neutral}</svg><span aria-hidden="true">${escapeHtml(reputationStatusLabel(level))}</span></button>`).join('');
     return `<div class="pm-today-trend-reputation-meter" role="radiogroup" aria-label="修改${escapeAttr(circle.name)}的好感度，当前：${escapeAttr(label)}">${levels}</div>`;
 }
 function circleEditor(circle = {}, cancelAction = 'today-trend-cancel-editor') {
@@ -46,6 +46,6 @@ export function renderTodayTrendReputationView({ scope, preset = null, mode = 'c
     const badCount = circles.filter(circle => BAD_STATUSES.has(circle.status)).length;
     const metaHtml = trendMeter([{ label: 'PEOPLE', value: circles.length }, { label: 'GOOD', value: goodCount }, { label: 'BAD', value: badCount }]);
     const actionsVisible = menuOpenId === 'reputation-module';
-    const rows = circles.map(circle => editingCircleId === circle.id ? `<article class="pm-today-trend-reputation-entry is-editing" data-circle-id="${escapeAttr(circle.id)}">${circleEditor(circle, 'today-trend-cancel-reputation-editor')}</article>` : `<article class="pm-today-trend-reputation-entry" data-circle-id="${escapeAttr(circle.id)}"><header class="pm-today-trend-reputation-entry-head">${reputationMark(circle.status)}<div class="pm-today-trend-reputation-copy"><b>${escapeHtml(circle.name)}</b>${statusBadge(circle.status)}${trendInlineActions({ visible: actionsVisible, actions: [{ action: 'today-trend-edit-circle', icon: EDIT_ICON_SVG, label: `编辑${circle.name}`, attrs: `data-circle-id="${escapeAttr(circle.id)}"` }] })}</div></header><div class="pm-today-trend-reputation-entry-body"><p>${escapeHtml(circle.evaluation)}</p><div class="pm-today-trend-reputation-rating">${reputationMeter(circle, generationBusy)}</div></div></article>`).join('');
+    const rows = circles.map(circle => editingCircleId === circle.id ? `<article class="pm-today-trend-reputation-entry is-editing" data-circle-id="${escapeAttr(circle.id)}">${circleEditor(circle, 'today-trend-cancel-reputation-editor')}</article>` : `<article class="pm-today-trend-reputation-entry" data-circle-id="${escapeAttr(circle.id)}"><header class="pm-today-trend-reputation-entry-head">${reputationMark(circle.status)}<b>${escapeHtml(circle.name)}</b>${statusBadge(circle.status)}${trendInlineActions({ visible: actionsVisible, actions: [{ action: 'today-trend-edit-circle', icon: EDIT_ICON_SVG, label: `编辑${circle.name}`, attrs: `data-circle-id="${escapeAttr(circle.id)}"` }] })}</header><div class="pm-today-trend-reputation-entry-body"><p>${escapeHtml(circle.evaluation)}</p><div class="pm-today-trend-reputation-rating">${reputationMeter(circle, generationBusy)}</div></div></article>`).join('');
     return `<section class="pm-today-trend-view pm-today-trend-reputation">${trendModuleHead({ title: '个人风评', eyebrow: 'PUBLIC OPINION', metaHtml, asideHtml: floorStatus, menuId: 'reputation-module', menuOpenId, actions: [{ action: 'today-trend-generate-reputation', icon: REFRESH_ICON_SVG, label: '重新生成个人风评', attrs: generateAttrs }, { action: 'today-trend-edit-reputation-rule', icon: BOOK_ICON_SVG, label: '编辑个人风评提示词' }] })}<div class="pm-today-trend-reputation-list">${rows || '<p class="pm-today-trend-empty">尚未生成个人风评。</p>'}</div></section>`;
 }
