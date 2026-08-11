@@ -177,6 +177,14 @@ assert.doesNotMatch(todayTrendStyle, /pm-today-trend-content\.is-(?:reputation|f
 for (const selector of ['pm-today-trend-world-hero,\\.pm-today-trend-world-brief', 'pm-today-trend-reputation-entry', 'pm-today-trend-faction-card', 'pm-today-trend-event-card']) {
     assert.match(todayTrendStyle, new RegExp(`${selector}\\{[^}]*padding:var\\(--pm-space-3\\)[^}]*border:0[^}]*border-radius:var\\(--pm-radius-card\\)[^}]*background:transparent[^}]*box-shadow:none`), `${selector} 必须消费统一的无底无框卡片外壳`);
 }
+assert.match(todayTrendStyle, /--pm-today-trend-world-hero-copy-size:var\(--pm-font-size-compact\)/, '世界态势 hero 正文字号变量必须解析到 compact');
+assert.match(todayTrendStyle, /\.pm-today-trend-world-hero p\{[^}]*font-size:var\(--pm-today-trend-world-hero-copy-size\)/, '世界态势 hero 正文必须继续消费 hero copy 字号变量');
+assert.match(todayTrendStyle, /\.pm-today-trend-reputation-entry-body>p\{[^}]*font-size:var\(--pm-font-size-compact\)/, '个人风评正文必须与世界态势 hero 统一字号');
+assert.match(todayTrendStyle, /\.pm-today-trend-faction-summary\{[^}]*font-size:var\(--pm-font-size-compact\)/, '势力图谱摘要必须与世界态势 hero 统一字号');
+assert.match(todayTrendStyle, /\.pm-today-trend-reputation-list\{[^}]*padding:var\(--pm-space-0\)(?:;|\})/, '个人风评列表必须使用单值零间距 padding');
+assert.doesNotMatch(todayTrendStyle, /\.pm-today-trend-reputation-list\{[^}]*padding:[^;}]*var\(--pm-space-1\)/, '个人风评列表不得恢复额外上下留白');
+assert.doesNotMatch(todayTrendStyle, /\.pm-today-trend-reputation-entry-body>p\{[^}]*font-size:var\(--pm-font-size-body\)/, '个人风评正文不得回退到 body 字号');
+assert.doesNotMatch(todayTrendStyle, /\.pm-today-trend-faction-summary\{[^}]*font-size:var\(--pm-font-size-label\)/, '势力图谱摘要不得回退到 label 字号');
 assert.match(todayTrendStyle, /pm-today-trend-faction-entry-head \.pm-today-trend-faction-node\{[^}]*border-radius:var\(--pm-radius-circle\)[^}]*background:var\(--pm-color-accent\)/, '势力节点必须归入标题行并使用圆形主题节点');
 assert.match(todayTrendStyle, /pm-today-trend-faction-meter>span\.is-active\{[^}]*border-bottom-color:var\(--pm-color-accent\)/, '势力关系量表必须使用横向选中下划线');
 assert.doesNotMatch(todayTrendStyle, /pm-today-trend-faction-meter[^{}]*(?:grid-template-rows|::after|rotate\(45deg\))/, '势力关系量表不得恢复旧纵向游标结构');
