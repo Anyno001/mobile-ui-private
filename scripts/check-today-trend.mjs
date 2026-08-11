@@ -663,6 +663,8 @@ assert.doesNotMatch(reputationHtml, /pm-today-trend-reputation-(?:head-art|file-
 assert.match(reputationHtml, /pm-today-trend-reputation-mark/, '个人风评条目必须提供图标标记');
 assert.match(reputationHtml, /data-status="neutral"/, '个人风评状态必须提供主题化样式钩子');
 assert.match(reputationHtml, /主厨评审<\/b><span class="pm-today-trend-status" data-status="neutral">中立<\/span>/, '个人风评状态徽章必须紧贴标题，而非占用评级列');
+assert.match(reputationHtml, /pm-today-trend-reputation-entry-head[\s\S]*?pm-today-trend-reputation-mark[\s\S]*?pm-today-trend-reputation-copy[\s\S]*?主厨评审/, '个人风评条目标题栏必须按图标在左、标题在右的结构渲染');
+assert.match(reputationHtml, /pm-today-trend-reputation-entry-body[\s\S]*?pm-today-trend-reputation-rating/, '个人风评正文与评级控件必须位于标题栏下方的内容栏');
 assert.doesNotMatch(reputationHtml, /pm-today-trend-reputation-orbit/, '个人风评背景不得局限在模块子容器内');
 assert.match(reputationMenuHtml, /today-trend-edit-reputation-rule/, '展开个人风评模块操作后必须提供规则编辑动作');
 assert.doesNotMatch(reputationHtml, /today-trend-edit-circle/, '个人风评收起模块操作时不得显示单条编辑入口');
@@ -670,7 +672,7 @@ assert.match(reputationHtml, /pm-today-trend-reputation-meter" role="radiogroup"
 assert.equal((reputationHtml.match(/data-action="today-trend-set-circle-status"/g) || []).length, valid.scopes.chat.reputation.circles.length * 5, '个人风评每条记录必须输出五个实时状态按钮');
 assert.match(reputationHtml, /data-circle-id="judge" data-status="neutral" aria-checked="true" role="radio"/, '当前好感度按钮必须暴露选中语义');
 assert.match(reputationHtml, /data-circle-id="judge" data-status="like" aria-checked="false" role="radio"/, '非当前好感度按钮必须暴露未选中语义');
-assert.deepEqual([...reputationHtml.matchAll(/data-circle-id="judge" data-status="([^"]+)"/g)].map(match => match[1]), ['trust', 'like', 'neutral', 'dislike', 'hostile'], '个人风评量表必须从上到下按信任至敌对排列');
+assert.deepEqual([...reputationHtml.matchAll(/data-circle-id="judge" data-status="([^"]+)"/g)].map(match => match[1]), TODAY_TREND_RELATION_STATUSES, '个人风评量表必须从左到右按敌对至信任的模型顺序排列');
 for (const label of ['敌对', '厌恶', '中立', '喜爱', '信任']) assert.match(reputationHtml, new RegExp(`aria-label="${label}"`), `个人风评必须以可访问名称提供五档好感度：${label}`);
 assert.doesNotMatch(reputationHtml, /today-trend-refresh-circle/, '个人风评内容区不得保留单项重新生成入口');
 const mixedReputationScope = structuredClone(valid.scopes.chat);
@@ -707,15 +709,18 @@ assert.match(todayTrendStyle, /pm-today-trend-reputation-mark\{[^}]*border:0[^}]
 assert.match(todayTrendStyle, /pm-today-trend-reputation-copy b\{[^}]*font-size:var\(--pm-font-size-subtitle\)[^}]*line-height:var\(--pm-line-height-control\)/, '个人风评条目标题必须与世界态势使用相同字号和行高');
 assert.doesNotMatch(todayTrendStyle, /pm-today-trend-reputation-mark::(?:before|after)|pm-today-trend-reputation-copy\{[^}]*border-left/, '个人风评不得恢复框角或正文轨道线');
 assert.match(todayTrendStyle, /pm-today-trend-reputation-entry\{[^}]*border:0[^}]*border-radius:var\(--pm-radius-card\)[^}]*background:transparent[^}]*box-shadow:none/, '个人风评条目必须使用无底无框卡片外壳');
-assert.match(todayTrendStyle, /pm-today-trend-reputation-entry\{[^}]*display:grid[^}]*grid-template-columns:var\(--pm-today-trend-reputation-mark-size\) minmax\(0,1fr\) var\(--pm-today-trend-reputation-rating-width\)/, '个人风评条目必须保持图标、正文和评级三列流式布局');
+assert.match(todayTrendStyle, /pm-today-trend-reputation-entry\{[^}]*display:flex[^}]*flex-direction:column/, '个人风评条目必须使用标题栏与内容栏上下布局');
+assert.match(todayTrendStyle, /pm-today-trend-reputation-entry-head\{[^}]*display:flex[^}]*align-items:center[^}]*gap:var\(--pm-space-2\)/, '个人风评标题栏必须让图标与标题居中对齐');
+assert.match(todayTrendStyle, /pm-today-trend-reputation-entry-body\{[^}]*margin-left:calc\(var\(--pm-today-trend-reputation-mark-size\) \+ var\(--pm-space-2\)\)/, '个人风评内容栏必须与标题文字左边缘对齐');
 assert.match(todayTrendStyle, /pm-today-trend-reputation-meter button\{[^}]*min-height:var\(--pm-size-control-default\)/, '个人风评五档状态按钮必须保留 44px 主触控高度');
-assert.match(todayTrendStyle, /pm-today-trend-reputation-meter\{[^}]*row-gap:var\(--pm-space-1\)[^}]*padding:var\(--pm-space-1\) var\(--pm-space-0-5\)/, '个人风评量表必须放宽纵向间隔与容器内边距');
-assert.match(todayTrendStyle, /pm-today-trend-reputation-meter button\{[^}]*min-width:var\(--pm-size-control-default\)[^}]*padding:var\(--pm-space-1\) var\(--pm-space-0-5\)/, '个人风评状态按钮必须放宽横向命中区');
-assert.match(todayTrendStyle, /pm-today-trend-reputation-meter button::before/, '个人风评量表必须提供横向刻度');
-assert.match(todayTrendStyle, /pm-today-trend-reputation-meter button\.is-active::after/, '个人风评量表必须提供当前档圆点与光晕');
+assert.match(todayTrendStyle, /pm-today-trend-reputation-meter\{[^}]*grid-template-columns:repeat\(5,minmax\(0,1fr\)\)[^}]*column-gap:var\(--pm-space-1\)[^}]*width:100%/, '个人风评量表必须在内容栏底部横向均分五档');
+assert.match(todayTrendStyle, /pm-today-trend-reputation-meter button span\{[^}]*font-size:var\(--pm-font-size-micro\)/, '个人风评量表必须显示紧凑的中文档位标签');
+assert.match(todayTrendStyle, /pm-today-trend-reputation-meter button::before/, '个人风评量表必须提供档位圆点');
+assert.match(todayTrendStyle, /pm-today-trend-reputation-meter button\.is-active::before\{[^}]*background:var\(--pm-color-accent\)[^}]*box-shadow:/, '个人风评量表必须提供当前档圆点与光晕');
+assert.match(todayTrendStyle, /pm-today-trend-reputation-meter button\.is-active::after\{[^}]*opacity:1/, '个人风评量表必须提供当前档底部强调线');
 assert.match(todayTrendStyle, /pm-today-trend-reputation-meter button:focus-visible/, '个人风评状态按钮必须提供键盘焦点样式');
 assert.match(todayTrendStyle, /pm-today-trend-reputation-meter button:disabled/, '个人风评状态按钮必须提供禁用样式');
-assert.match(todayTrendStyle, /pm-today-trend-reputation-entry\.is-editing\{[^}]*display:block/, '个人风评编辑态必须退出三列网格，供编辑器跨列展开');
+assert.match(todayTrendStyle, /pm-today-trend-reputation-entry\.is-editing\{[^}]*display:block/, '个人风评编辑态必须退出内容分区布局，供编辑器完整展开');
 assert.match(todayTrendStyle, /pm-today-trend-reputation-entry\.is-editing>\.pm-today-trend-editor\{[^}]*width:100%/, '个人风评编辑器必须占满编辑态行宽');
 assert.doesNotMatch(reputationHtml, /pm-today-trend-reputation-foot-art/, '个人风评内容页不得渲染底部装饰 SVG');
 const factionHtml = renderTodayTrendFactionView({ scope: valid.scopes.chat, preset: valid.presets.preset, generationAvailable: true, menuOpenId: 'faction-module' });
@@ -1383,7 +1388,7 @@ const statusButton = dataset => {
     button.focus = () => { button.focusCount += 1; };
     return button;
 };
-const refreshStatusOptions = () => { statusOptions = ['hostile', 'dislike', 'neutral', 'like', 'trust'].map(status => statusButton({ circleId: 'judge', status })); };
+const refreshStatusOptions = () => { statusOptions = TODAY_TREND_RELATION_STATUSES.map(status => statusButton({ circleId: 'judge', status })); };
 refreshStatusOptions();
 statusListeners.click({ target: statusButton({ circleId: 'judge', status: 'like' }) });
 await new Promise(resolve => setImmediate(resolve));
@@ -1418,7 +1423,7 @@ const createKeyboardOption = status => {
     option.focus = () => { option.focusCount += 1; };
     return option;
 };
-const refreshKeyboardOptions = () => { keyboardOptions = ['hostile', 'dislike', 'neutral', 'like', 'trust'].map(createKeyboardOption); };
+const refreshKeyboardOptions = () => { keyboardOptions = TODAY_TREND_RELATION_STATUSES.map(createKeyboardOption); };
 refreshKeyboardOptions();
 let keyboardCommitCount = 0;
 const keyboardDispatcher = createTodayTrendActionDispatcher({
@@ -1464,7 +1469,7 @@ const createConcurrentOption = status => {
     option.focus = () => { option.focusCount += 1; };
     return option;
 };
-const refreshConcurrentOptions = () => { concurrentOptions = ['hostile', 'dislike', 'neutral', 'like', 'trust'].map(createConcurrentOption); };
+const refreshConcurrentOptions = () => { concurrentOptions = TODAY_TREND_RELATION_STATUSES.map(createConcurrentOption); };
 refreshConcurrentOptions();
 let resolveStaleRender;
 let concurrentRenderCalls = 0;
