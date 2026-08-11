@@ -23388,10 +23388,10 @@ ${targetInstruction}`
   function settingsForm(settings) {
     return `<form class="pm-today-trend-editor" data-today-trend-form="dynamics-settings"><label class="pm-today-trend-field">\u540C\u65F6\u8FFD\u8E2A\u4E0A\u9650<input class="pm-today-trend-input" name="trackingLimit" type="number" min="1" max="80" required value="${settings.trackingLimit}"></label>${trendToggleField("appendOnlyOnActualProgress", "\u4EC5\u5B9E\u9645\u8FDB\u5C55\u65F6\u8FFD\u52A0\u9636\u6BB5", settings.appendOnlyOnActualProgress)}${trendToggleField("autoComplete", "\u81EA\u52A8\u5224\u65AD\u5B8C\u7ED3", settings.autoComplete)}${trendToggleField("archiveCompleted", "\u5B8C\u7ED3\u540E\u5F52\u6863", settings.archiveCompleted)}${trendToggleField("incidentEnabled", "\u542F\u7528\u7A81\u53D1\u4E8B\u4EF6", settings.incident.enabled)}<label class="pm-today-trend-field">\u7A81\u53D1\u6982\u7387\uFF080-100\uFF09<input class="pm-today-trend-input" name="incidentProbability" type="number" min="0" max="100" required value="${settings.incident.probability}"></label>${trendToggleField("rumorEnabled", "\u542F\u7528\u6D41\u8A00\u871A\u8BED", settings.rumor.enabled)}${trendToggleField("undergroundEnabled", "\u542F\u7528\u5730\u4E0B\u7EBF", settings.underground.enabled)}<div class="pm-today-trend-form-actions"><button type="button" data-action="today-trend-open-dynamics">\u53D6\u6D88</button><button type="submit">\u8BBE\u7F6E</button></div></form>`;
   }
-  function eventCard(event, archived, actionsVisible) {
+  function eventCard(event, archived, actionsVisible, generateAttrs) {
     const state = archived ? OUTCOMES[event.outcome] || event.outcome : event.stageLabel;
     const eventAttrs = `data-event-id="${escapeAttr(event.id)}"`;
-    const actions = archived ? [icon2("today-trend-delete-event", TRASH_ICON_SVG, `\u5220\u9664${event.title}`, `${eventAttrs} data-label="${escapeAttr(event.title)}"`, true)] : [icon2("today-trend-edit-event", EDIT_ICON_SVG, `\u7F16\u8F91${event.title}`, eventAttrs), ...event.type === "underground" ? [icon2("today-trend-promote-underground", SPARKLES_ICON_SVG, `\u5347\u7EA7${event.title}`, eventAttrs)] : [], icon2("today-trend-archive-event", TRASH_ICON_SVG, `\u5F52\u6863${event.title}`, eventAttrs)];
+    const actions = archived ? [icon2("today-trend-delete-event", TRASH_ICON_SVG, `\u5220\u9664${event.title}`, `${eventAttrs} data-label="${escapeAttr(event.title)}"`, true)] : [icon2("today-trend-advance-event", REFRESH_ICON_SVG, `\u91CD\u65B0\u751F\u6210${event.title}`, `${eventAttrs} ${generateAttrs}`), icon2("today-trend-edit-event", EDIT_ICON_SVG, `\u7F16\u8F91${event.title}`, eventAttrs), icon2("today-trend-archive-event", TRASH_ICON_SVG, `\u5F52\u6863${event.title}`, eventAttrs), ...event.type === "underground" ? [icon2("today-trend-promote-underground", SPARKLES_ICON_SVG, `\u5347\u7EA7${event.title}`, eventAttrs)] : []];
     const stages = Array.isArray(event.stages) ? event.stages : [];
     const participants = Array.isArray(event.participants) ? event.participants : [];
     const stageList = stages.map((stage, index) => `<li${!archived && index === stages.length - 1 ? ' class="is-current"' : ""}><span class="pm-today-trend-stage-tag">${!archived && index === stages.length - 1 ? "\u6700\u65B0\u9636\u6BB5" : `\u9636\u6BB5 ${String(index + 1).padStart(2, "0")}`}</span>${text7(stage)}</li>`).join("");
@@ -23411,8 +23411,8 @@ ${targetInstruction}`
       return `<section class="pm-today-trend-view">${event ? eventForm(event, kind) : eventForm()}</section>`;
     }
     const actionsVisible = menuOpenId === "dynamics-module";
-    const active = activeEvents.map((event) => eventCard(event, false, actionsVisible)).join("") || '<p class="pm-today-trend-empty">\u6682\u65E0\u6B63\u5728\u8FFD\u8E2A\u7684\u52A8\u6001\u3002</p>';
-    const archived = archivedEvents.map((event) => eventCard(event, true, actionsVisible)).join("") || '<p class="pm-today-trend-empty">\u6682\u65E0\u5DF2\u5B8C\u7ED3\u52A8\u6001\u3002</p>';
+    const active = activeEvents.map((event) => eventCard(event, false, actionsVisible, attrs)).join("") || '<p class="pm-today-trend-empty">\u6682\u65E0\u6B63\u5728\u8FFD\u8E2A\u7684\u52A8\u6001\u3002</p>';
+    const archived = archivedEvents.map((event) => eventCard(event, true, actionsVisible, attrs)).join("") || '<p class="pm-today-trend-empty">\u6682\u65E0\u5DF2\u5B8C\u7ED3\u52A8\u6001\u3002</p>';
     const activeCount = activeEvents.length;
     const archivedCount = archivedEvents.length;
     const tab = dynamicsTab === "archived" ? "archived" : "active";
@@ -23428,20 +23428,20 @@ ${targetInstruction}`
   var options = (selected) => TODAY_TREND_RELATION_STATUSES.map((status) => `<option value="${status}" ${status === selected ? "selected" : ""}>${todayTrendStatusLabel(status)}</option>`).join("");
   var relation = (value) => `<span class="pm-today-trend-status" data-status="${escapeAttr(value.status)}">${escapeHtml(todayTrendStatusLabel(value.status))}</span>`;
   var FACTION_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l2.2 6.8H21l-5.4 4 2 6.7L12 16.6 6.4 20.5l2-6.7L3 9.8h6.8z"/></svg>';
-  var menu = (faction, visible) => trendInlineActions({ visible, actions: [{ action: "today-trend-edit-faction", icon: EDIT_ICON_SVG, label: `\u7F16\u8F91${faction.name}`, attrs: `data-faction-id="${escapeAttr(faction.id)}"` }, { action: "today-trend-delete-faction", icon: TRASH_ICON_SVG, label: `\u5220\u9664${faction.name}`, danger: true, attrs: `data-faction-id="${escapeAttr(faction.id)}" data-label="${escapeAttr(faction.name)}"` }] });
+  var menu = (faction, attrs, visible) => trendInlineActions({ visible, actions: [{ action: "today-trend-refresh-faction", icon: REFRESH_ICON_SVG, label: `\u91CD\u65B0\u751F\u6210${faction.name}`, attrs: `data-faction-id="${escapeAttr(faction.id)}" ${attrs}` }, { action: "today-trend-edit-faction", icon: EDIT_ICON_SVG, label: `\u7F16\u8F91${faction.name}`, attrs: `data-faction-id="${escapeAttr(faction.id)}"` }, { action: "today-trend-delete-faction", icon: TRASH_ICON_SVG, label: `\u5220\u9664${faction.name}`, danger: true, attrs: `data-faction-id="${escapeAttr(faction.id)}" data-label="${escapeAttr(faction.name)}"` }] });
   var factionMeter = (status) => `<div class="pm-today-trend-faction-meter" role="img" aria-label="\u5173\u7CFB\u72B6\u6001\uFF1A${escapeAttr(todayTrendStatusLabel(status))}">${TODAY_TREND_RELATION_STATUSES.slice().reverse().map((level) => `<span${level === status ? ' class="is-active"' : ""}><i></i></span>`).join("")}</div>`;
   function relatedTargets(faction, byId) {
     const names2 = (Array.isArray(faction.relatedFactionIds) ? faction.relatedFactionIds : []).map((id2) => byId.get(id2)?.name).filter(Boolean);
     return names2.length ? `<div class="pm-today-trend-faction-detail-row pm-today-trend-faction-links"><dt>\u5916\u90E8\u5173\u8054</dt><dd>${escapeHtml(names2.join("\u3001"))}</dd></div>` : "";
   }
-  function card(faction, children, actionsVisible, depth, byId) {
+  function card(faction, children, actionsVisible, depth, byId, attrs) {
     const relationValue = faction.relation && typeof faction.relation === "object" && !Array.isArray(faction.relation) ? faction.relation : { status: "neutral", evaluation: "" };
     const details = (Array.isArray(faction.details) ? faction.details : []).map((detail) => `<div class="pm-today-trend-faction-detail-row"><dt>${escapeHtml(detail.label)}</dt><dd>${escapeHtml(detail.value)}</dd></div>`).join("");
-    return `<article class="pm-today-trend-faction-card" data-faction-id="${escapeAttr(faction.id)}" data-depth="${depth}"><span class="pm-today-trend-faction-node" aria-hidden="true">${FACTION_ICON}</span><div class="pm-today-trend-faction-body"><header><b>${escapeHtml(faction.name)}</b>${relation(relationValue)}${menu(faction, actionsVisible)}</header><p class="pm-today-trend-faction-summary">${escapeHtml(faction.summary)}</p><dl class="pm-today-trend-faction-detail">${relatedTargets(faction, byId)}${details}<div class="pm-today-trend-faction-detail-row is-evaluation"><dd>${escapeHtml(relationValue.evaluation)}</dd></div></dl></div><div class="pm-today-trend-faction-rating">${factionMeter(relationValue.status)}</div></article>${children}`;
+    return `<article class="pm-today-trend-faction-card" data-faction-id="${escapeAttr(faction.id)}" data-depth="${depth}"><span class="pm-today-trend-faction-node" aria-hidden="true">${FACTION_ICON}</span><div class="pm-today-trend-faction-body"><header><b>${escapeHtml(faction.name)}</b>${relation(relationValue)}${menu(faction, attrs, actionsVisible)}</header><p class="pm-today-trend-faction-summary">${escapeHtml(faction.summary)}</p><dl class="pm-today-trend-faction-detail">${relatedTargets(faction, byId)}${details}<div class="pm-today-trend-faction-detail-row is-evaluation"><dd>${escapeHtml(relationValue.evaluation)}</dd></div></dl></div><div class="pm-today-trend-faction-rating">${factionMeter(relationValue.status)}</div></article>${children}`;
   }
-  function tree(factions, parentId, actionsVisible, byId, depth = 0) {
+  function tree(factions, parentId, actionsVisible, byId, depth = 0, attrs = "") {
     const children = factions.filter((faction) => faction.parentId === parentId);
-    return children.length ? `<div class="pm-today-trend-faction-tree" data-depth="${depth}">${children.map((faction) => card(faction, tree(factions, faction.id, actionsVisible, byId, depth + 1), actionsVisible, depth, byId)).join("")}</div>` : "";
+    return children.length ? `<div class="pm-today-trend-faction-tree" data-depth="${depth}">${children.map((faction) => card(faction, tree(factions, faction.id, actionsVisible, byId, depth + 1, attrs), actionsVisible, depth, byId, attrs)).join("")}</div>` : "";
   }
   function editor(faction = {}, factions = []) {
     const parents = factions.filter((item) => item.id !== faction.id), related = new Set(Array.isArray(faction.relatedFactionIds) ? faction.relatedFactionIds : []), details = Array.isArray(faction.details) ? faction.details : [];
@@ -23456,7 +23456,7 @@ ${targetInstruction}`
     const rootCount = factions.filter((faction) => faction.parentId === null).length;
     const mapMeta = factions.length ? trendMeter([{ label: "GROUPS", value: factions.length }, { label: "CORE", value: rootCount }, { label: "LINKS", value: external.length }]) : "\u7B49\u5F85\u5EFA\u7ACB\u52BF\u529B\u56FE\u8C31";
     const actionsVisible = menuOpenId === "faction-module";
-    return `<section class="pm-today-trend-view pm-today-trend-factions">${trendModuleHead({ title: "\u52BF\u529B\u56FE\u8C31", eyebrow: "POWER MAP", metaHtml: mapMeta, asideHtml: floorStatus, menuId: "faction-module", menuOpenId, actions: [{ action: "today-trend-generate-factions", icon: REFRESH_ICON_SVG, label: "\u91CD\u65B0\u751F\u6210\u52BF\u529B\u56FE\u8C31", attrs }, { action: "today-trend-edit-faction-rule", icon: BOOK_ICON_SVG, label: "\u7F16\u8F91\u52BF\u529B\u56FE\u8C31\u63D0\u793A\u8BCD" }] })}<section class="pm-today-trend-faction-section" aria-label="\u52BF\u529B\u56FE\u8C31">${tree(factions, null, actionsVisible, byId) || '<p class="pm-today-trend-empty">\u5C1A\u672A\u8BB0\u5F55\u52BF\u529B\u56FE\u8C31\u3002</p>'}</section></section>`;
+    return `<section class="pm-today-trend-view pm-today-trend-factions">${trendModuleHead({ title: "\u52BF\u529B\u56FE\u8C31", eyebrow: "POWER MAP", metaHtml: mapMeta, asideHtml: floorStatus, menuId: "faction-module", menuOpenId, actions: [{ action: "today-trend-generate-factions", icon: REFRESH_ICON_SVG, label: "\u91CD\u65B0\u751F\u6210\u52BF\u529B\u56FE\u8C31", attrs }, { action: "today-trend-edit-faction-rule", icon: BOOK_ICON_SVG, label: "\u7F16\u8F91\u52BF\u529B\u56FE\u8C31\u63D0\u793A\u8BCD" }] })}<section class="pm-today-trend-faction-section" aria-label="\u52BF\u529B\u56FE\u8C31">${tree(factions, null, actionsVisible, byId, 0, attrs) || '<p class="pm-today-trend-empty">\u5C1A\u672A\u8BB0\u5F55\u52BF\u529B\u56FE\u8C31\u3002</p>'}</section></section>`;
   }
 
   // src/today-trend-reputation-view.js
@@ -23481,8 +23481,8 @@ ${targetInstruction}`
   }
   function circleActions(circle, generateAttrs, visible) {
     return trendInlineActions({ visible, actions: [
-      { action: "today-trend-edit-circle", icon: EDIT_ICON_SVG, label: `\u7F16\u8F91${circle.name}`, attrs: `data-circle-id="${escapeAttr(circle.id)}"` },
       { action: "today-trend-regenerate-circle-schema", icon: REFRESH_ICON_SVG, label: `\u91CD\u65B0\u751F\u6210${circle.name}`, attrs: `data-circle-id="${escapeAttr(circle.id)}" ${generateAttrs}` },
+      { action: "today-trend-edit-circle", icon: EDIT_ICON_SVG, label: `\u7F16\u8F91${circle.name}`, attrs: `data-circle-id="${escapeAttr(circle.id)}"` },
       { action: "today-trend-delete-circle", icon: TRASH_ICON_SVG, label: `\u5220\u9664${circle.name}`, danger: true, attrs: `data-circle-id="${escapeAttr(circle.id)}"` }
     ] });
   }

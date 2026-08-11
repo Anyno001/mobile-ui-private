@@ -40,10 +40,10 @@ function eventForm(event = {}, kind = 'event') {
 function settingsForm(settings) {
     return `<form class="pm-today-trend-editor" data-today-trend-form="dynamics-settings"><label class="pm-today-trend-field">同时追踪上限<input class="pm-today-trend-input" name="trackingLimit" type="number" min="1" max="80" required value="${settings.trackingLimit}"></label>${trendToggleField('appendOnlyOnActualProgress', '仅实际进展时追加阶段', settings.appendOnlyOnActualProgress)}${trendToggleField('autoComplete', '自动判断完结', settings.autoComplete)}${trendToggleField('archiveCompleted', '完结后归档', settings.archiveCompleted)}${trendToggleField('incidentEnabled', '启用突发事件', settings.incident.enabled)}<label class="pm-today-trend-field">突发概率（0-100）<input class="pm-today-trend-input" name="incidentProbability" type="number" min="0" max="100" required value="${settings.incident.probability}"></label>${trendToggleField('rumorEnabled', '启用流言蜚语', settings.rumor.enabled)}${trendToggleField('undergroundEnabled', '启用地下线', settings.underground.enabled)}<div class="pm-today-trend-form-actions"><button type="button" data-action="today-trend-open-dynamics">取消</button><button type="submit">设置</button></div></form>`;
 }
-function eventCard(event, archived, actionsVisible) {
+function eventCard(event, archived, actionsVisible, generateAttrs) {
     const state = archived ? OUTCOMES[event.outcome] || event.outcome : event.stageLabel;
     const eventAttrs = `data-event-id="${escapeAttr(event.id)}"`;
-    const actions = archived ? [icon('today-trend-delete-event', TRASH_ICON_SVG, `删除${event.title}`, `${eventAttrs} data-label="${escapeAttr(event.title)}"`, true)] : [icon('today-trend-edit-event', EDIT_ICON_SVG, `编辑${event.title}`, eventAttrs), ...(event.type === 'underground' ? [icon('today-trend-promote-underground', SPARKLES_ICON_SVG, `升级${event.title}`, eventAttrs)] : []), icon('today-trend-archive-event', TRASH_ICON_SVG, `归档${event.title}`, eventAttrs)];
+    const actions = archived ? [icon('today-trend-delete-event', TRASH_ICON_SVG, `删除${event.title}`, `${eventAttrs} data-label="${escapeAttr(event.title)}"`, true)] : [icon('today-trend-advance-event', REFRESH_ICON_SVG, `重新生成${event.title}`, `${eventAttrs} ${generateAttrs}`), icon('today-trend-edit-event', EDIT_ICON_SVG, `编辑${event.title}`, eventAttrs), icon('today-trend-archive-event', TRASH_ICON_SVG, `归档${event.title}`, eventAttrs), ...(event.type === 'underground' ? [icon('today-trend-promote-underground', SPARKLES_ICON_SVG, `升级${event.title}`, eventAttrs)] : [])];
     const stages = Array.isArray(event.stages) ? event.stages : [];
     const participants = Array.isArray(event.participants) ? event.participants : [];
     const stageList = stages.map((stage, index) => `<li${!archived && index === stages.length - 1 ? ' class="is-current"' : ''}><span class="pm-today-trend-stage-tag">${!archived && index === stages.length - 1 ? '最新阶段' : `阶段 ${String(index + 1).padStart(2, '0')}`}</span>${text(stage)}</li>`).join('');
@@ -61,8 +61,8 @@ export function renderTodayTrendDynamicsView({ scope, preset = null, editingEven
     const target = String(editingEventId || '').replace(/^(archive:|promote:)/, '');
     if (editingEventId) { const event = target === '__new__' ? {} : activeEvents.find(item => item.id === target); const kind = String(editingEventId).startsWith('archive:') ? 'archive' : String(editingEventId).startsWith('promote:') ? 'promotion' : 'event'; return `<section class="pm-today-trend-view">${event ? eventForm(event, kind) : eventForm()}</section>`; }
     const actionsVisible = menuOpenId === 'dynamics-module';
-    const active = activeEvents.map(event => eventCard(event, false, actionsVisible)).join('') || '<p class="pm-today-trend-empty">暂无正在追踪的动态。</p>';
-    const archived = archivedEvents.map(event => eventCard(event, true, actionsVisible)).join('') || '<p class="pm-today-trend-empty">暂无已完结动态。</p>';
+    const active = activeEvents.map(event => eventCard(event, false, actionsVisible, attrs)).join('') || '<p class="pm-today-trend-empty">暂无正在追踪的动态。</p>';
+    const archived = archivedEvents.map(event => eventCard(event, true, actionsVisible, attrs)).join('') || '<p class="pm-today-trend-empty">暂无已完结动态。</p>';
     const activeCount = activeEvents.length;
     const archivedCount = archivedEvents.length;
     const tab = dynamicsTab === 'archived' ? 'archived' : 'active';

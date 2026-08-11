@@ -46,11 +46,13 @@
 .pm-today-trend-inline-action{width:var(--pm-size-control-compact);min-height:var(--pm-size-control-compact);}
 .pm-today-trend-icon-button[data-action^="today-trend-refresh"],.pm-today-trend-icon-button[data-action^="today-trend-generate"],.pm-today-trend-icon-button[data-action="today-trend-advance-all-events"]{width:var(--pm-size-control-compact);min-height:var(--pm-size-control-compact);padding:var(--pm-space-1-5);}
 .pm-today-trend-icon-button[data-action^="today-trend-refresh"] svg,.pm-today-trend-icon-button[data-action^="today-trend-generate"] svg,.pm-today-trend-icon-button[data-action="today-trend-advance-all-events"] svg{width:var(--pm-size-icon-sm);height:var(--pm-size-icon-sm);}
+.pm-today-trend-inline-action.pm-today-trend-icon-button{padding:var(--pm-space-2);}
+.pm-today-trend-inline-action.pm-today-trend-icon-button svg{width:var(--pm-size-icon-md);height:var(--pm-size-icon-md);display:block;}
 .pm-today-trend-world-item-head{display:flex;align-items:center;gap:var(--pm-space-2);}
 .pm-today-trend-world-item-head>b{min-width:0;flex:1;}
 .pm-today-trend-icon-button:not(.is-danger) svg{color:var(--pm-color-auxiliary);}
 .pm-today-trend-icon-button:not(.is-danger):hover svg{color:var(--pm-color-auxiliary);}
-.pm-today-trend-icon-button[data-action^="today-trend-edit-"] svg{transform:translate(2px,1px);}
+.pm-today-trend-icon-button[data-action^="today-trend-edit-"] svg{transform:translateX(2px);}
 .pm-today-trend-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:var(--pm-space-2);align-items:start;padding:var(--pm-space-3) var(--pm-space-0);border-top:1px solid var(--pm-color-border-subtle);}
 .pm-today-trend-row:first-of-type{border-top:0;}
 .pm-today-trend-row>div{min-width:0;}
@@ -165,8 +167,8 @@
 .pm-today-trend-menu-close{color:var(--pm-color-text-secondary);}
 .pm-today-trend-reputation,.pm-today-trend-factions,.pm-today-trend-dynamics{--pm-today-trend-report-title-size:calc(var(--pm-font-size-title) + var(--pm-space-2));gap:var(--pm-space-2);padding:var(--pm-space-3) var(--pm-space-4) var(--pm-space-5);}.pm-today-trend-dynamics{gap:var(--pm-space-1);}
 .pm-today-trend-reputation>.pm-today-trend-module-head,.pm-today-trend-factions>.pm-today-trend-module-head,.pm-today-trend-dynamics>.pm-today-trend-module-head{align-items:flex-start;min-height:calc(var(--pm-size-control-default) + var(--pm-space-2));padding-bottom:var(--pm-space-3);}
-.pm-today-trend-reputation>.pm-today-trend-module-head>.pm-today-trend-head-tools{transform:translateY(calc(0px - var(--pm-space-2)));}
-.pm-today-trend-reputation>.pm-today-trend-module-head .pm-today-trend-menu-wrap:not(.is-open){align-self:flex-end;margin-right:calc(var(--pm-space-px-9) - var(--pm-space-4));}
+.pm-today-trend-world>.pm-today-trend-module-head>.pm-today-trend-head-tools,.pm-today-trend-reputation>.pm-today-trend-module-head>.pm-today-trend-head-tools,.pm-today-trend-factions>.pm-today-trend-module-head>.pm-today-trend-head-tools,.pm-today-trend-dynamics>.pm-today-trend-module-head>.pm-today-trend-head-tools{transform:translateY(calc(0px - var(--pm-space-2)));}
+.pm-today-trend-world>.pm-today-trend-module-head .pm-today-trend-menu-wrap:not(.is-open),.pm-today-trend-reputation>.pm-today-trend-module-head .pm-today-trend-menu-wrap:not(.is-open),.pm-today-trend-factions>.pm-today-trend-module-head .pm-today-trend-menu-wrap:not(.is-open),.pm-today-trend-dynamics>.pm-today-trend-module-head .pm-today-trend-menu-wrap:not(.is-open){align-self:flex-end;margin-right:calc(var(--pm-space-px-9) - var(--pm-space-4));}
 .pm-today-trend-reputation>.pm-today-trend-module-head>div,.pm-today-trend-factions>.pm-today-trend-module-head>div,.pm-today-trend-dynamics>.pm-today-trend-module-head>div{gap:var(--pm-space-1-5);}
 .pm-today-trend-reputation>.pm-today-trend-module-head>div::after,.pm-today-trend-factions>.pm-today-trend-module-head>div::after,.pm-today-trend-dynamics>.pm-today-trend-module-head>div::after{display:none;}
 .pm-today-trend-reputation>.pm-today-trend-module-head h2,.pm-today-trend-factions>.pm-today-trend-module-head h2,.pm-today-trend-dynamics>.pm-today-trend-module-head h2{font-size:var(--pm-today-trend-report-title-size);font-weight:var(--pm-font-weight-semibold);letter-spacing:var(--pm-today-trend-heading-tracking);line-height:var(--pm-line-height-tight);}
