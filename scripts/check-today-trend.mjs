@@ -619,6 +619,7 @@ const appSettingsHtml = renderTodayTrendSettingsView({ scope: valid.scopes.chat,
 for (const name of ['presetId', 'mode', 'intervalFloors', 'injectionEnabled', 'minimalUi']) assert.match(appSettingsHtml, new RegExp(`name="${name}"`), `APP 总设置必须提供 ${name}`);
 assert.ok(appSettingsHtml.indexOf('name="injectionEnabled"') < appSettingsHtml.indexOf('name="minimalUi"'), '极简 UI 开关必须位于正文注入开关之后');
 assert.match(appSettingsHtml, /name="minimalUi" type="checkbox" role="switch" aria-checked="false"/, '极简 UI 开关必须暴露关闭状态语义');
+assert.match(todayTrendStyle, /\.pm-today-trend-injection-switch b,\.pm-today-trend-minimal-ui-switch b\{font-size:var\(--pm-font-size-label\)/, '极简 UI 标题必须与正文注入标题使用相同标签字号');
 for (const action of ['today-trend-new-preset', 'today-trend-reinitialize', 'today-trend-delete-preset']) assert.match(appSettingsHtml, new RegExp(action), `APP 总设置必须提供 ${action}`);
 for (const [menuOpenId, action] of [['app-rule:world', 'today-trend-edit-world-rule'], ['app-rule:underground', 'today-trend-edit-underground-rule']]) {
     assert.match(renderTodayTrendSettingsView({ scope: valid.scopes.chat, presets: Object.values(valid.presets), menuOpenId }), new RegExp(action), `APP 总设置展开对应动作条后必须提供 ${action}`);
