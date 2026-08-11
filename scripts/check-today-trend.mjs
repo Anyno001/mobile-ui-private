@@ -185,6 +185,12 @@ assert.match(todayTrendStyle, /\.pm-today-trend-reputation-list\{[^}]*padding:va
 assert.doesNotMatch(todayTrendStyle, /\.pm-today-trend-reputation-list\{[^}]*padding:[^;}]*var\(--pm-space-1\)/, '个人风评列表不得恢复额外上下留白');
 assert.doesNotMatch(todayTrendStyle, /\.pm-today-trend-reputation-entry-body>p\{[^}]*font-size:var\(--pm-font-size-body\)/, '个人风评正文不得回退到 body 字号');
 assert.doesNotMatch(todayTrendStyle, /\.pm-today-trend-faction-summary\{[^}]*font-size:var\(--pm-font-size-label\)/, '势力图谱摘要不得回退到 label 字号');
+assert.match(todayTrendStyle, /\.pm-today-trend-world-hero p\{[^}]*line-height:var\(--pm-line-height-body\)/, '世界态势 hero 正文行距必须与个人风评统一');
+assert.match(todayTrendStyle, /\.pm-today-trend-world-brief p\{[^}]*line-height:var\(--pm-line-height-body\)/, '世界态势次级摘要正文行距必须与个人风评统一');
+assert.match(todayTrendStyle, /\.pm-today-trend-faction-summary\{[^}]*line-height:var\(--pm-line-height-body\)/, '势力图谱摘要行距必须与个人风评统一');
+assert.doesNotMatch(todayTrendStyle, /\.pm-today-trend-world-hero p\{[^}]*line-height:var\(--pm-line-height-loose\)/, '世界态势 hero 正文不得保留旧宽松行距');
+assert.doesNotMatch(todayTrendStyle, /\.pm-today-trend-world-brief p\{[^}]*line-height:var\(--pm-line-height-loose\)/, '世界态势次级摘要正文不得保留旧宽松行距');
+assert.doesNotMatch(todayTrendStyle, /\.pm-today-trend-faction-summary\{[^}]*line-height:var\(--pm-line-height-loose\)/, '势力图谱摘要不得保留旧宽松行距');
 assert.match(todayTrendStyle, /pm-today-trend-faction-entry-head \.pm-today-trend-faction-node\{[^}]*border-radius:var\(--pm-radius-circle\)[^}]*background:var\(--pm-color-accent\)/, '势力节点必须归入标题行并使用圆形主题节点');
 assert.match(todayTrendStyle, /pm-today-trend-faction-meter>span\.is-active\{[^}]*border-bottom-color:var\(--pm-color-accent\)/, '势力关系量表必须使用横向选中下划线');
 assert.doesNotMatch(todayTrendStyle, /pm-today-trend-faction-meter[^{}]*(?:grid-template-rows|::after|rotate\(45deg\))/, '势力关系量表不得恢复旧纵向游标结构');
@@ -830,7 +836,8 @@ assert.match(todayTrendStyle, /pm-today-trend-dynamics>\.pm-today-trend-module-h
 assert.match(todayTrendStyle, /pm-today-trend-event-marker\{[^}]*background:var\(--pm-color-accent\)[^}]*color:var\(--pm-color-on-accent\)/, '事件追踪大图标必须使用主题色');
 assert.match(todayTrendStyle, /pm-today-trend-event-heading>b\{[^}]*font-size:var\(--pm-font-size-subtitle\)[^}]*line-height:var\(--pm-line-height-control\)/, '事件追踪条目标题必须与世界态势使用相同字号和行高');
 assert.match(todayTrendStyle, /pm-today-trend-event-body>header\{[^}]*display:flex[^}]*justify-content:space-between/, '事件追踪标题与行内操作必须使用独立弹性布局');
-assert.match(todayTrendStyle, /pm-today-trend-event-card\{[^}]*grid-template-columns:var\(--pm-today-trend-dynamics-rail\) minmax\(0,1fr\)/, '事件追踪卡片必须使用节点与正文双列网格');
+assert.match(todayTrendStyle, /pm-today-trend-event-card\{[^}]*display:flex[^}]*flex-direction:column/, '事件追踪卡片必须使用弹性纵向布局');
+assert.match(activeEventCardHtml, /pm-today-trend-event-heading[\s\S]*?pm-today-trend-event-tags[\s\S]*?pm-today-trend-event-facts/, '事件追踪标签行必须位于标题行与内容区之间');
 assert.doesNotMatch(busyDynamicsHtml, /pm-today-trend-dynamics-signal|pm-today-trend-dynamics-arc/, '事件背景不得局限在模块子容器内或保留灰色弧线');
 assert.doesNotMatch(busyDynamicsHtml, /pm-today-trend-progress|正在生成…/, '目标模块不得保留标题栏之外的重复生成状态');
 assert.match(factionEditorHtml, /name="detailLabel"/, '势力编辑页必须提供动态关键资料编辑');
