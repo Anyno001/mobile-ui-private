@@ -87,8 +87,12 @@ export function createTodayTrendPhoneController({ state, deps, container }) {
     };
     const generate = async (module, itemId, options = {}) => {
         error = ''; await render();
-        try { await (module ? deps.generateTodayTrendModule?.(module, itemId, options) : deps.generateTodayTrend?.({})); }
-        catch (cause) { report(cause); return false; }
+        try {
+            await (module ? deps.generateTodayTrendModule?.(module, itemId, options) : deps.generateTodayTrend?.({}));
+        } catch (cause) {
+            if (cause?.name === 'AbortError') { await render(); return false; }
+            report(cause); return false;
+        }
         await render(); return true;
     };
     const setRuleEditorState = (editing, returnName) => {

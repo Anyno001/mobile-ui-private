@@ -23715,6 +23715,10 @@ ${targetInstruction}`
       try {
         await (module ? deps.generateTodayTrendModule?.(module, itemId, options2) : deps.generateTodayTrend?.({}));
       } catch (cause) {
+        if (cause?.name === "AbortError") {
+          await render();
+          return false;
+        }
         report(cause);
         return false;
       }

@@ -380,6 +380,7 @@ let reloadTodayTrendStore = async () => { generationReloadCalls += 1; return con
 let controllerGeneration = { phase: 'idle', task: null };
 let controllerCurrentFloor = 3402;
 let generationCancelReason = '';
+let rejectControllerGeneration = null;
 const phoneController = createTodayTrendPhoneController({ state: controllerState, container: controllerContainer, deps: {
     getStorageId: () => controllerStorageId, getTodayTrendStore: async () => controllerStore,
     reloadTodayTrendStore: () => reloadTodayTrendStore(),
@@ -390,10 +391,17 @@ const phoneController = createTodayTrendPhoneController({ state: controllerState
         listener(controllerGeneration);
         return () => { generationUnsubscribeCalls += 1; };
     },
+    generateTodayTrend: () => {
+        controllerGeneration = { phase: 'generating', task: { kind: 'manual', storageId: 'chat', floor: 9, target: null } };
+        generationListener?.(controllerGeneration);
+        return new Promise((_resolve, reject) => { rejectControllerGeneration = reject; });
+    },
     cancelTodayTrendGeneration: reason => {
         generationCancelReason = reason;
         controllerGeneration = { phase: 'canceled', task: controllerGeneration.task, lastError: null };
         generationListener?.(controllerGeneration);
+        rejectControllerGeneration?.(Object.assign(new Error('今日风向生成已取消'), { name: 'AbortError' }));
+        rejectControllerGeneration = null;
     },
     commitTodayTrendScope: async () => valid, cancelTodayTrendInitialization: reason => { controllerCancelReason = reason; },
 } });
@@ -401,8 +409,8 @@ assert.equal(await phoneController.render(), true, '控制器必须渲染当前�
 assert.match(controllerContainer.innerHTML, /id="pm-today-trend-app"/, '控制器必须渲染今日风向页面壳');
 assert.match(controllerContainer.innerHTML, /data-today-trend-floor="3402"[\s\S]*pm-today-trend-floor-value">#3402<\/strong>/, '控制器必须把宿主当前多位楼层完整传给视图');
 assert.equal(typeof generationListener, 'function', '控制器创建时必须订阅今日风向生成状态');
-controllerGeneration = { phase: 'generating', task: { kind: 'auto', storageId: 'chat', floor: 9, target: null } };
-generationListener(controllerGeneration);
+const controllerGenerateAllButton = { disabled: false, dataset: { action: 'today-trend-generate-all' }, closest: () => controllerGenerateAllButton };
+controllerListeners.filter(item => item.type === 'click').forEach(item => item.listener({ target: controllerGenerateAllButton }));
 await new Promise(resolve => setTimeout(resolve, 0));
 assert.match(controllerContainer.innerHTML, /today-trend-generate-all" disabled aria-busy="true"/, '当前聊天进入 busy 阶段时必须局部重渲染生成状态');
 assert.match(controllerContainer.innerHTML, /data-action="today-trend-cancel-generation"[^>]*><span class="pm-today-trend-floor-reading"><strong class="pm-today-trend-floor-value">#3402<\/strong><\/span><span class="pm-today-trend-floor-status"><i aria-hidden="true"><\/i>同步任务 #9<\/span><\/button>/, '同步中楼层数值与状态文字必须共同位于可点击终止控件内');
@@ -412,7 +420,8 @@ controllerListeners.find(item => item.type === 'click' && item.capture)?.listene
 });
 await new Promise(resolve => setTimeout(resolve, 0));
 assert.equal(generationCancelReason, 'today-trend-user-canceled', '点击同步状态必须调用生成终止能力');
-assert.match(controllerContainer.innerHTML, /data-state="canceled"[\s\S]*pm-today-trend-floor-status">已终止<\/span>/, '主动终止后必须显示已终止而非待同步');
+await new Promise(resolve => setTimeout(resolve, 0));
+assert.match(controllerContainer.innerHTML, /data-state="canceled"[\s\S]*pm-today-trend-floor-status">已终止<\/span>/, '生成 Promise 抛出 AbortError 后仍必须保留已终止状态，不得被错误报告覆盖为待同步');
 controllerGeneration = { phase: 'generating', task: { kind: 'auto', storageId: 'chat', floor: 9, target: null } };
 generationListener(controllerGeneration);
 await new Promise(resolve => setTimeout(resolve, 0));
