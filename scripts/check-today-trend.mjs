@@ -151,7 +151,7 @@ assert.match(todayTrendStyle, /pm-today-trend-icon-button\[data-action\^="today-
 assert.match(todayTrendStyle, /\.pm-today-trend-inline-action\{width:var\(--pm-size-control-compact\);min-height:var\(--pm-size-control-compact\)/, '个人风评行内编辑按钮必须保留 36px 紧凑触控区');
 assert.match(todayTrendStyle, /\.pm-today-trend-head-tools\{[^}]*min-width:max-content[^}]*flex:0 0 auto[^}]*flex-direction:column[^}]*align-items:flex-end[^}]*gap:var\(--pm-space-0-5\)[^}]*translateY/, '标题工具区必须保持纵向关系与右边缘固定基准');
 assert.match(todayTrendStyle, /pm-today-trend-reputation>\.pm-today-trend-module-head>\.pm-today-trend-head-tools\{[^}]*transform:translateY\(calc\(0px - var\(--pm-space-2\)\)\)/, '个人风评三点菜单与楼层必须整体上移');
-assert.match(todayTrendStyle, /pm-today-trend-reputation>\.pm-today-trend-module-head \.pm-today-trend-menu-wrap:not\(\.is-open\)\{[^}]*align-self:center/, '个人风评三点菜单闭合态必须与楼层视觉居中对齐');
+assert.match(todayTrendStyle, /pm-today-trend-reputation>\.pm-today-trend-module-head \.pm-today-trend-menu-wrap:not\(\.is-open\)\{[^}]*align-self:flex-end[^}]*margin-right:calc\(var\(--pm-space-px-9\) - var\(--pm-space-4\)\)/, '个人风评三点菜单闭合态必须右移与顶部自动暂停按钮对齐');
 assert.doesNotMatch(todayTrendStyle, /pm-today-trend-reputation>\.pm-today-trend-module-head>\.pm-today-trend-head-tools\{[^}]*align-items:center/, '个人风评标题工具区不得使用居中对齐以避免菜单展开时楼层位移');
 assert.doesNotMatch(todayTrendStyle, /pm-today-trend-reputation>\.pm-today-trend-module-head>\.pm-today-trend-head-tools\{[^}]*position:absolute/, '个人风评标题工具区不得使用绝对定位以避免楼层纵向塌缩');
 assert.doesNotMatch(todayTrendStyle, /pm-today-trend-reputation[^{}]*\.pm-today-trend-floor[^{}]*\{[^}]*position:absolute/, '个人风评楼层不得使用绝对定位');
