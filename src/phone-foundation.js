@@ -130,6 +130,7 @@ export function installPhoneFoundation(state, deps) {
     const { makeOverlay, closeOverlay } = createPhoneOverlayController({ runtime, applyTheme });
     const {
         addBubble, addNote, addDirector, rebaseRenderedHistory, resetEmojiRenderBudget, showTyping, hideTyping,
+        clearBubbleQuoteGesture, clearBubbleQuoteGestures,
     } = createPhoneMessageRenderer({ state, quote });
     const {
         beginGeneration, isGenerationTaskActive, finishGeneration, cancelGeneration, invalidateGeneration, syncGenerationControls,
@@ -231,7 +232,8 @@ export function installPhoneFoundation(state, deps) {
         applyBidirectionalInjection, clearBidirectionalInjection, hookGenerationEvent,
         bindIsland, bindPhoneResize, applyPhoneScale,
         addBubble, addNote, addDirector, rebaseRenderedHistory, resetEmojiRenderBudget,
-        showTyping, hideTyping, makeOverlay, closeOverlay,
+        showTyping, hideTyping, clearBubbleQuoteGesture, clearBubbleQuoteGestures,
+        makeOverlay, closeOverlay,
         beginGeneration, isGenerationTaskActive, finishGeneration,
         cancelGeneration, invalidateGeneration, syncGenerationControls,
         isAutoPokeAllowed, armAutoPoke, disarmAutoPoke,

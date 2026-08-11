@@ -168,6 +168,8 @@ export function installPhoneDirectory(state, deps) {
             list = state.phoneWindow?.querySelector('.pm-msg-list');
         if (name) name.textContent = '选择联系人';
         poke?.classList.add('is-hidden');
+        deps.clearQuoteHighlight?.();
+        deps.clearBubbleQuoteGestures?.();
         if (list) list.innerHTML = '<div class="pm-chat-empty">暂无会话，请从标题处选择或添加联系人。</div>';
         applyBackground?.();
         deps.clearActiveQuote?.();

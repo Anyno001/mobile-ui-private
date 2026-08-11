@@ -8230,7 +8230,8 @@ ${lines.join("\n")}
       addDirector,
       fitNameFont,
       applyBackground,
-      resetEmojiRenderBudget
+      resetEmojiRenderBudget,
+      clearBubbleQuoteGestures
     } = deps;
     const nameEl = state.phoneWindow.querySelector(".pm-name");
     const editBtn = state.phoneWindow.querySelector(".pm-name-edit");
@@ -8238,6 +8239,7 @@ ${lines.join("\n")}
     if (editBtn) editBtn.classList.remove("is-hidden");
     fitNameFont();
     const list2 = state.phoneWindow.querySelector(".pm-msg-list");
+    clearBubbleQuoteGestures?.();
     list2.innerHTML = "";
     resetEmojiRenderBudget();
     if (state.conversationHistory.length > 0) {
@@ -15806,6 +15808,8 @@ ${antiFluff}`;
       const name = state.phoneWindow?.querySelector(".pm-name"), poke = state.phoneWindow?.querySelector(".pm-name-edit"), list2 = state.phoneWindow?.querySelector(".pm-msg-list");
       if (name) name.textContent = "\u9009\u62E9\u8054\u7CFB\u4EBA";
       poke?.classList.add("is-hidden");
+      deps.clearQuoteHighlight?.();
+      deps.clearBubbleQuoteGestures?.();
       if (list2) list2.innerHTML = '<div class="pm-chat-empty">\u6682\u65E0\u4F1A\u8BDD\uFF0C\u8BF7\u4ECE\u6807\u9898\u5904\u9009\u62E9\u6216\u6DFB\u52A0\u8054\u7CFB\u4EBA\u3002</div>';
       applyBackground?.();
       deps.clearActiveQuote?.();
@@ -17650,11 +17654,171 @@ ${lines}`;
     };
   }
 
+  // src/press-gesture.js
+  function bindPressGesture(element, options2) {
+    const {
+      delay = 550,
+      moveThreshold = 10,
+      onPress,
+      onHold,
+      setTimer = setTimeout,
+      clearTimer = clearTimeout,
+      eventTarget = globalThis.window,
+      shouldStart = () => true,
+      shouldCapturePointer = () => true,
+      allowNativeClick = false,
+      clickCapture = false,
+      shouldPreventContextMenu = () => true
+    } = options2;
+    let timer = null;
+    let activePointerId = null;
+    let capturedPointerId = null;
+    let suppressNextClick = false;
+    let startX = 0;
+    let startY = 0;
+    const clearActiveTimer = () => {
+      if (timer !== null) clearTimer(timer);
+      timer = null;
+    };
+    const releaseCapturedPointer = (pointerId) => {
+      if (capturedPointerId === null || capturedPointerId !== pointerId) return;
+      capturedPointerId = null;
+      try {
+        element.releasePointerCapture?.(pointerId);
+      } catch (error) {
+      }
+    };
+    const resetPointer = () => {
+      clearActiveTimer();
+      const pointerId = activePointerId;
+      activePointerId = null;
+      releaseCapturedPointer(pointerId);
+    };
+    const isActivePointer = (event) => activePointerId !== null && (event?.pointerId === void 0 || event.pointerId === activePointerId);
+    const cancelPointer = (event) => {
+      if (!isActivePointer(event)) return;
+      resetPointer();
+    };
+    const releasePointer = (event) => {
+      if (!isActivePointer(event)) return;
+      const isShortPress = timer !== null;
+      resetPointer();
+      if (isShortPress) onPress?.();
+    };
+    const onPointerDown = (event) => {
+      if (event.button !== 0 || element.disabled) return;
+      if (activePointerId === null) suppressNextClick = false;
+      if (activePointerId !== null || !shouldStart(event)) return;
+      activePointerId = event.pointerId;
+      startX = Number(event.clientX) || 0;
+      startY = Number(event.clientY) || 0;
+      if (shouldCapturePointer(event) && typeof element.setPointerCapture === "function") {
+        try {
+          element.setPointerCapture(event.pointerId);
+          capturedPointerId = event.pointerId;
+        } catch (error) {
+        }
+      }
+      timer = setTimer(() => {
+        timer = null;
+        const handled = onHold?.();
+        if (allowNativeClick && handled !== false) suppressNextClick = true;
+      }, delay);
+    };
+    const onPointerMove = (event) => {
+      if (!isActivePointer(event) || timer === null) return;
+      const deltaX = (Number(event.clientX) || 0) - startX;
+      const deltaY = (Number(event.clientY) || 0) - startY;
+      if (Math.hypot(deltaX, deltaY) > moveThreshold) cancelPointer(event);
+    };
+    const onClick = (event) => {
+      if (allowNativeClick) {
+        if (Number(event?.detail) === 0) return;
+        if (!suppressNextClick) return;
+        suppressNextClick = false;
+        event.preventDefault?.();
+        event.stopPropagation?.();
+        return;
+      }
+      const isKeyboardOrProgrammatic = Number(event?.detail) === 0;
+      if (!isKeyboardOrProgrammatic) {
+        event.preventDefault?.();
+        event.stopPropagation?.();
+        return;
+      }
+      onPress?.();
+    };
+    const onContextMenu = (event) => {
+      if (suppressNextClick || shouldPreventContextMenu(event)) event.preventDefault?.();
+    };
+    const onWindowBlur = () => {
+      resetPointer();
+      suppressNextClick = false;
+    };
+    element.addEventListener("pointerdown", onPointerDown);
+    element.addEventListener("pointermove", onPointerMove);
+    element.addEventListener("pointerup", releasePointer);
+    element.addEventListener("pointercancel", cancelPointer);
+    element.addEventListener("lostpointercapture", cancelPointer);
+    element.addEventListener("click", onClick, clickCapture);
+    element.addEventListener("contextmenu", onContextMenu);
+    eventTarget?.addEventListener("blur", onWindowBlur);
+    return () => {
+      resetPointer();
+      element.removeEventListener("pointerdown", onPointerDown);
+      element.removeEventListener("pointermove", onPointerMove);
+      element.removeEventListener("pointerup", releasePointer);
+      element.removeEventListener("pointercancel", cancelPointer);
+      element.removeEventListener("lostpointercapture", cancelPointer);
+      element.removeEventListener("click", onClick, clickCapture);
+      element.removeEventListener("contextmenu", onContextMenu);
+      eventTarget?.removeEventListener("blur", onWindowBlur);
+    };
+  }
+
   // src/phone-message-rendering.js
+  function bindBubbleQuoteGesture(root, { state, quote, text: text8, senderName, metadata, gestureRuntime = {} }) {
+    if (metadata?.pendingId !== void 0 || !metadata?.messageId || !metadata?.bubbleId) return null;
+    const isInteractiveQuoteTarget = (target) => !!target?.closest?.(".pm-quote-action,.pm-reply-card");
+    const isNativeClickTarget = (target) => !!target?.closest?.(".pm-voice-card");
+    const canStart = (event) => !state.isSelectMode && !isInteractiveQuoteTarget(event.target);
+    return bindPressGesture(root, {
+      delay: 550,
+      allowNativeClick: true,
+      clickCapture: true,
+      shouldStart: canStart,
+      shouldCapturePointer: (event) => !isNativeClickTarget(event.target),
+      setTimer: gestureRuntime.setTimer,
+      clearTimer: gestureRuntime.clearTimer,
+      eventTarget: gestureRuntime.eventTarget,
+      shouldPreventContextMenu: (event) => ["touch", "pen"].includes(event.pointerType) && canStart(event),
+      onHold: () => {
+        if (state.isSelectMode) return false;
+        return quote.setActiveQuote({
+          messageId: String(metadata.messageId),
+          bubbleId: String(metadata.bubbleId),
+          sender: String(senderName || metadata.sender || "\u6211"),
+          text: String(text8 || "")
+        });
+      }
+    });
+  }
   function createPhoneMessageRenderer({ state, quote }) {
     let emojiRenderBudget = createEmojiRenderBudget();
+    const bubbleQuoteGestureUnbinders = /* @__PURE__ */ new Map();
     const resetEmojiRenderBudget = () => {
       emojiRenderBudget = createEmojiRenderBudget();
+    };
+    const clearBubbleQuoteGesture = (root) => {
+      const unbind = bubbleQuoteGestureUnbinders.get(root);
+      if (!unbind) return false;
+      bubbleQuoteGestureUnbinders.delete(root);
+      unbind();
+      return true;
+    };
+    const clearBubbleQuoteGestures = () => {
+      for (const unbind of bubbleQuoteGestureUnbinders.values()) unbind();
+      bubbleQuoteGestureUnbinders.clear();
     };
     function applyBubbleMetadata(node, metadata) {
       if (!metadata) return;
@@ -17722,6 +17886,8 @@ ${lines}`;
           node.dataset.text = text8;
           if (historyIndex !== void 0) node.dataset.historyIndex = historyIndex;
           attachQuoteUi(node, node, text8, senderName, metadata);
+          const unbind = bindBubbleQuoteGesture(node, { state, quote, text: text8, senderName, metadata });
+          if (unbind) bubbleQuoteGestureUnbinders.set(node, unbind);
         } else if (node.classList?.contains("pm-group-bubble-wrap")) {
           node.dataset.side = side;
           node.dataset.text = text8;
@@ -17733,6 +17899,8 @@ ${lines}`;
             bubble.dataset.text = text8;
             if (historyIndex !== void 0) bubble.dataset.historyIndex = historyIndex;
             attachQuoteUi(node, bubble, text8, senderName, metadata);
+            const unbind = bindBubbleQuoteGesture(node, { state, quote, text: text8, senderName, metadata });
+            if (unbind) bubbleQuoteGestureUnbinders.set(node, unbind);
           }
         }
         list2.appendChild(node);
@@ -17750,6 +17918,8 @@ ${lines}`;
         const previousIndex = Number(indexed.dataset.historyIndex);
         if (!Number.isInteger(previousIndex)) continue;
         if (previousIndex < trimmedCount) {
+          const gestureRoot = child.classList?.contains("pm-select-wrap") ? child.querySelector(".pm-bubble, .pm-group-bubble-wrap") : child;
+          if (gestureRoot) clearBubbleQuoteGesture(gestureRoot);
           child.remove();
           continue;
         }
@@ -17792,7 +17962,17 @@ ${lines}`;
       list2.scrollTop = list2.scrollHeight;
     }
     const hideTyping = () => document.getElementById("pm-typing")?.remove();
-    return { addBubble, addNote, addDirector, rebaseRenderedHistory, resetEmojiRenderBudget, showTyping, hideTyping };
+    return {
+      addBubble,
+      addNote,
+      addDirector,
+      rebaseRenderedHistory,
+      resetEmojiRenderBudget,
+      showTyping,
+      hideTyping,
+      clearBubbleQuoteGesture,
+      clearBubbleQuoteGestures
+    };
   }
 
   // src/phone-overlay.js
@@ -18133,7 +18313,9 @@ ${lines}`;
       rebaseRenderedHistory,
       resetEmojiRenderBudget,
       showTyping,
-      hideTyping
+      hideTyping,
+      clearBubbleQuoteGesture,
+      clearBubbleQuoteGestures
     } = createPhoneMessageRenderer({ state, quote });
     const {
       beginGeneration,
@@ -18258,6 +18440,8 @@ ${lines}`;
       resetEmojiRenderBudget,
       showTyping,
       hideTyping,
+      clearBubbleQuoteGesture,
+      clearBubbleQuoteGestures,
       makeOverlay,
       closeOverlay,
       beginGeneration,
@@ -18280,94 +18464,6 @@ ${lines}`;
       refreshReplyCardAvailability,
       clearQuoteHighlight
     });
-  }
-
-  // src/press-gesture.js
-  function bindPressGesture(element, options2) {
-    const {
-      delay = 550,
-      moveThreshold = 10,
-      onPress,
-      onHold,
-      setTimer = setTimeout,
-      clearTimer = clearTimeout,
-      eventTarget = globalThis.window
-    } = options2;
-    let timer = null;
-    let activePointerId = null;
-    let startX = 0;
-    let startY = 0;
-    const clearActiveTimer = () => {
-      if (timer !== null) clearTimer(timer);
-      timer = null;
-    };
-    const resetPointer = () => {
-      clearActiveTimer();
-      activePointerId = null;
-    };
-    const isActivePointer = (event) => activePointerId !== null && (event?.pointerId === void 0 || event.pointerId === activePointerId);
-    const cancelPointer = (event) => {
-      if (!isActivePointer(event)) return;
-      resetPointer();
-    };
-    const releasePointer = (event) => {
-      if (!isActivePointer(event)) return;
-      const isShortPress = timer !== null;
-      resetPointer();
-      if (isShortPress) onPress?.();
-    };
-    const onPointerDown = (event) => {
-      if (event.button !== 0 || element.disabled || activePointerId !== null) return;
-      activePointerId = event.pointerId;
-      startX = Number(event.clientX) || 0;
-      startY = Number(event.clientY) || 0;
-      try {
-        element.setPointerCapture?.(event.pointerId);
-      } catch (error) {
-      }
-      timer = setTimer(() => {
-        timer = null;
-        onHold?.();
-      }, delay);
-    };
-    const onPointerMove = (event) => {
-      if (!isActivePointer(event) || timer === null) return;
-      const deltaX = (Number(event.clientX) || 0) - startX;
-      const deltaY = (Number(event.clientY) || 0) - startY;
-      if (Math.hypot(deltaX, deltaY) > moveThreshold) cancelPointer(event);
-    };
-    const onClick = (event) => {
-      const isKeyboardOrProgrammatic = Number(event?.detail) === 0;
-      if (!isKeyboardOrProgrammatic) {
-        event.preventDefault?.();
-        event.stopPropagation?.();
-        return;
-      }
-      onPress?.();
-    };
-    const onContextMenu = (event) => event.preventDefault?.();
-    const onWindowBlur = () => {
-      resetPointer();
-    };
-    element.addEventListener("pointerdown", onPointerDown);
-    element.addEventListener("pointermove", onPointerMove);
-    element.addEventListener("pointerup", releasePointer);
-    element.addEventListener("pointercancel", cancelPointer);
-    element.addEventListener("lostpointercapture", cancelPointer);
-    element.addEventListener("click", onClick);
-    element.addEventListener("contextmenu", onContextMenu);
-    eventTarget?.addEventListener("blur", onWindowBlur);
-    return () => {
-      resetPointer();
-      element.removeEventListener("pointerdown", onPointerDown);
-      element.removeEventListener("pointermove", onPointerMove);
-      element.removeEventListener("pointerup", releasePointer);
-      element.removeEventListener("pointercancel", cancelPointer);
-      element.removeEventListener("lostpointercapture", cancelPointer);
-      element.removeEventListener("click", onClick);
-      element.removeEventListener("contextmenu", onContextMenu);
-      eventTarget?.removeEventListener("blur", onWindowBlur);
-    };
   }
 
   // src/phone-lifecycle.js
@@ -18509,7 +18605,8 @@ ${lines}`;
     state,
     refreshReplyCardAvailability,
     persistCurrentHistory: persistCurrentHistory2,
-    applyBidirectionalInjection
+    applyBidirectionalInjection,
+    clearBubbleQuoteGesture
   }) {
     const list2 = state.phoneWindow?.querySelector(".pm-msg-list");
     if (!list2) return 0;
@@ -18523,10 +18620,11 @@ ${lines}`;
     });
     list2.querySelectorAll(".pm-select-wrap").forEach((wrap) => {
       const historyIndex = wrap.dataset.historyIndex;
+      const bubble = wrap.querySelector(".pm-bubble, .pm-group-bubble-wrap, .pm-director");
       if (historyIndex !== void 0 && historyIndex !== "" && toRemoveIndices.has(Number(historyIndex))) {
+        clearBubbleQuoteGesture?.(bubble);
         wrap.remove();
       } else {
-        const bubble = wrap.querySelector(".pm-bubble, .pm-group-bubble-wrap, .pm-director");
         if (bubble) wrap.parentNode.insertBefore(bubble, wrap);
         wrap.remove();
       }
@@ -18572,7 +18670,9 @@ ${lines}`;
       syncGenerationControls,
       closeOverlay,
       closeControlCenter,
-      refreshReplyCardAvailability
+      refreshReplyCardAvailability,
+      clearBubbleQuoteGesture,
+      clearBubbleQuoteGestures
     } = deps;
     let unbindSendGesture = null;
     let unbindIsland = null, unbindPhoneResize = null;
@@ -18649,7 +18749,8 @@ ${lines}`;
         state,
         refreshReplyCardAvailability,
         persistCurrentHistory: persistCurrentHistory2,
-        applyBidirectionalInjection
+        applyBidirectionalInjection,
+        clearBubbleQuoteGesture
       });
     };
     window.__pmToggleMin = () => {
@@ -18715,6 +18816,7 @@ ${lines}`;
       closeOverlay("phone-close");
       deps.clearQuoteHighlight?.();
       deps.clearActiveQuote?.();
+      clearBubbleQuoteGestures?.();
       if (state.phoneWindow) {
         try {
           state.phoneWindow.hidePopover?.();

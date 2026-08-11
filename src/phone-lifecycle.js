@@ -163,7 +163,7 @@ export function handleMessageSelectionKey(event, checkbox) {
 }
 
 export function deleteSelectedMessages({
-    state, refreshReplyCardAvailability, persistCurrentHistory, applyBidirectionalInjection,
+    state, refreshReplyCardAvailability, persistCurrentHistory, applyBidirectionalInjection, clearBubbleQuoteGesture,
 }) {
     const list = state.phoneWindow?.querySelector('.pm-msg-list');
     if (!list) return 0;
@@ -177,10 +177,11 @@ export function deleteSelectedMessages({
     });
     list.querySelectorAll('.pm-select-wrap').forEach(wrap => {
         const historyIndex = wrap.dataset.historyIndex;
+        const bubble = wrap.querySelector('.pm-bubble, .pm-group-bubble-wrap, .pm-director');
         if (historyIndex !== undefined && historyIndex !== '' && toRemoveIndices.has(Number(historyIndex))) {
+            clearBubbleQuoteGesture?.(bubble);
             wrap.remove();
         } else {
-            const bubble = wrap.querySelector('.pm-bubble, .pm-group-bubble-wrap, .pm-director');
             if (bubble) wrap.parentNode.insertBefore(bubble, wrap);
             wrap.remove();
         }
@@ -213,7 +214,7 @@ export function installPhoneLifecycle(state, deps) {
         applyBackground, applyTheme, applyPhoneScale, bindIsland, bindPhoneResize,
         migrateOldHistory, hookGenerationEvent,
         cancelGeneration, invalidateGeneration, disarmAutoPoke, syncGenerationControls, closeOverlay, closeControlCenter,
-        refreshReplyCardAvailability,
+        refreshReplyCardAvailability, clearBubbleQuoteGesture, clearBubbleQuoteGestures,
     } = deps;
     let unbindSendGesture = null;
     let unbindIsland = null, unbindPhoneResize = null;
@@ -286,6 +287,7 @@ export function installPhoneLifecycle(state, deps) {
     window.__pmDeleteSelected = () => {
         deleteSelectedMessages({
             state, refreshReplyCardAvailability, persistCurrentHistory, applyBidirectionalInjection,
+            clearBubbleQuoteGesture,
         });
     };
 
@@ -354,6 +356,7 @@ export function installPhoneLifecycle(state, deps) {
         closeOverlay('phone-close');
         deps.clearQuoteHighlight?.();
         deps.clearActiveQuote?.();
+        clearBubbleQuoteGestures?.();
         if (state.phoneWindow) { try { state.phoneWindow.hidePopover?.(); } catch (e) {} state.phoneWindow.remove(); }
         state.phoneWindow = null; state.phoneActive = false; state.isMinimized = false; state.isSelectMode = false;
         state.activeStorageId = '';
