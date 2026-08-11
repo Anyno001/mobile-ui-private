@@ -151,6 +151,7 @@ assert.match(todayTrendStyle, /pm-today-trend-icon-button\[data-action\^="today-
 assert.match(todayTrendStyle, /\.pm-today-trend-inline-action\{width:var\(--pm-size-control-compact\);min-height:var\(--pm-size-control-compact\)/, '个人风评行内编辑按钮必须保留 36px 紧凑触控区');
 assert.match(todayTrendStyle, /\.pm-today-trend-head-tools\{[^}]*min-width:max-content[^}]*flex:0 0 auto[^}]*flex-direction:column[^}]*align-items:flex-end[^}]*gap:var\(--pm-space-0-5\)[^}]*translateY/, '标题工具区必须保持纵向关系与右边缘固定基准');
 assert.match(todayTrendStyle, /pm-today-trend-reputation>\.pm-today-trend-module-head>\.pm-today-trend-head-tools\{[^}]*transform:translateY\(calc\(0px - var\(--pm-space-2\)\)\)/, '个人风评三点菜单与楼层必须整体上移');
+assert.match(todayTrendStyle, /pm-today-trend-reputation>\.pm-today-trend-module-head \.pm-today-trend-menu-wrap:not\(\.is-open\)\{[^}]*align-self:center/, '个人风评三点菜单闭合态必须与楼层视觉居中对齐');
 assert.doesNotMatch(todayTrendStyle, /pm-today-trend-reputation>\.pm-today-trend-module-head>\.pm-today-trend-head-tools\{[^}]*align-items:center/, '个人风评标题工具区不得使用居中对齐以避免菜单展开时楼层位移');
 assert.doesNotMatch(todayTrendStyle, /pm-today-trend-reputation>\.pm-today-trend-module-head>\.pm-today-trend-head-tools\{[^}]*position:absolute/, '个人风评标题工具区不得使用绝对定位以避免楼层纵向塌缩');
 assert.doesNotMatch(todayTrendStyle, /pm-today-trend-reputation[^{}]*\.pm-today-trend-floor[^{}]*\{[^}]*position:absolute/, '个人风评楼层不得使用绝对定位');
@@ -693,6 +694,9 @@ assert.match(mixedReputationHtml, /pm-today-trend-meter-k">PEOPLE<\/span><span c
 assert.match(mixedReputationHtml, /pm-today-trend-meter-k">GOOD<\/span><span class="pm-today-trend-meter-v">2<\/span>/, '个人风评 GOOD 必须只统计 like/trust');
 assert.match(mixedReputationHtml, /pm-today-trend-meter-k">BAD<\/span><span class="pm-today-trend-meter-v">2<\/span>/, '个人风评 BAD 必须只统计 hostile/dislike');
 assert.match(reputationMenuHtml, /today-trend-edit-circle[^>]*data-circle-id="judge"/, '展开个人风评模块操作后必须显示条目编辑动作');
+assert.match(reputationMenuHtml, /today-trend-regenerate-circle-schema[^>]*data-circle-id="judge"/, '展开个人风评模块操作后必须显示条目结构重新生成动作');
+assert.match(reputationMenuHtml, /today-trend-delete-circle[^>]*data-circle-id="judge"/, '展开个人风评模块操作后必须显示条目删除动作');
+assert.equal((reputationMenuHtml.match(/pm-today-trend-inline-action[^s]/g) || []).length, valid.scopes.chat.reputation.circles.length * 3, '个人风评每条记录必须输出三个行内操作按钮');
 assert.equal((reputationMenuHtml.match(/pm-today-trend-menu-wrap is-open/g) || []).length, 1, '个人风评只允许模块操作菜单展开');
 assert.doesNotMatch(reputationItemMenuHtml, /today-trend-edit-circle/, '旧圈层菜单 ID 不得意外展开行内动作');
 const reputationEditorHtml = renderTodayTrendReputationView({ scope: valid.scopes.chat, editingCircleId: 'judge' });
