@@ -2,6 +2,7 @@ import { advanceTodayTrendEvent, archiveTodayTrendEvent, promoteTodayTrendUnderg
 
 const newId = prefix => `${prefix}-${globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`}`;
 const replaceOrAppend = (records, record) => records.some(item => item.id === record.id) ? records.map(item => item.id === record.id ? record : item) : [...records, record];
+const cycleRelationStatus = status => TODAY_TREND_RELATION_STATUSES[(TODAY_TREND_RELATION_STATUSES.indexOf(status) + 1) % TODAY_TREND_RELATION_STATUSES.length] || TODAY_TREND_RELATION_STATUSES[0];
 
 function formValue(form, name) {
     return String(new FormData(form).get(name) || '').trim();
@@ -54,8 +55,10 @@ export function createTodayTrendActionDispatcher({
         if (result !== false && focus && epoch === rerenderEpoch) {
             const target = [...(container.querySelectorAll?.('button[data-action="today-trend-set-circle-status"]') || [])]
                 .find(option => option.dataset.circleId === focus.circleId && option.dataset.status === focus.status);
+            const cycleTarget = focus.action ? [...(container.querySelectorAll?.(`button[data-action="${focus.action}"]`) || [])]
+                .find(option => (!focus.circleId || option.dataset.circleId === focus.circleId) && (!focus.factionId || option.dataset.factionId === focus.factionId)) : null;
             const tabTarget = focus.dynamicsTab ? container.querySelector?.(`button[data-action="today-trend-set-dynamics-tab"][data-tab="${focus.dynamicsTab}"]`) : null;
-            (tabTarget || target)?.focus?.();
+            (tabTarget || target || cycleTarget)?.focus?.();
         }
         return result;
     };
@@ -168,6 +171,28 @@ export function createTodayTrendActionDispatcher({
                 }), event.circleStatusFocus || { circleId, status });
                 onStatus('个人风评好感度已更新。');
             })());
+        }
+        if (action === 'today-trend-cycle-circle-status') {
+            const circleId = String(button.dataset.circleId || '');
+            return run(commit(scope => {
+                const circle = scope.reputation.circles.find(item => item.id === circleId);
+                if (!circle) throw new Error('个人风评圈层不存在');
+                const status = cycleRelationStatus(circle.status);
+                return { ...scope, reputation: { ...scope.reputation, circles: scope.reputation.circles.map(item => item.id === circleId ? { ...item, status } : item) } };
+            }, { action, circleId }).then(() => onStatus('个人风评好感度已更新。')));
+        }
+        if (action === 'today-trend-cycle-faction-status') {
+            const factionId = String(button.dataset.factionId || '');
+            return run(commit(scope => {
+                const faction = scope.factions.find(item => item.id === factionId);
+                if (!faction) throw new Error('势力不存在');
+                const relation = faction.relation && typeof faction.relation === 'object' && !Array.isArray(faction.relation) ? faction.relation : { status: 'neutral', evaluation: '' };
+                const status = cycleRelationStatus(relation.status);
+                return {
+                    ...scope,
+                    factions: scope.factions.map(item => item.id === factionId ? { ...item, relation: { ...relation, status } } : item),
+                };
+            }, { action, factionId }).then(() => onStatus('势力关系状态已更新。')));
         }
         if (action === 'today-trend-regenerate-circle-schema') return run(onRefresh?.('reputation', button.dataset.circleId, { mode: 'schema' }) ?? Promise.reject(new Error('今日风向圈层结构重新生成能力尚未接入')));
         const generation = { 'today-trend-generate-all': [null], 'today-trend-generate-world': ['world'], 'today-trend-generate-reputation': ['reputation'], 'today-trend-generate-factions': ['faction'] }[action];

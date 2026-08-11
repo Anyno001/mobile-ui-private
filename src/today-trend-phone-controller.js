@@ -171,7 +171,7 @@ export function createTodayTrendPhoneController({ state, deps, container }) {
                 if (presetId && presetId !== currentScope?.presetId) {
                     if (!globalThis.confirm?.('切换世界预设会清空当前角色的今日风向资料。确定继续吗？')) return false;
                 }
-                return deps.saveTodayTrendSettings({ presetId, operation: { ...currentScope?.operation, mode: data.get('mode'), intervalFloors: Number(data.get('intervalFloors')) }, injection: { enabled: data.get('injectionEnabled') === 'on' } });
+                return deps.saveTodayTrendSettings({ presetId, operation: { ...currentScope?.operation, mode: data.get('mode'), intervalFloors: Number(data.get('intervalFloors')) }, injection: { enabled: data.get('injectionEnabled') === 'on', minimalUi: data.get('minimalUi') === 'on' } });
             }).then(committed => {
                 if (!committed) return;
                 settings = false; return rerender();

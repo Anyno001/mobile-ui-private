@@ -186,6 +186,10 @@
 .pm-today-trend-reputation-meter button.is-active{border-bottom-color:var(--pm-color-accent);color:var(--pm-color-accent);}
 .pm-today-trend-reputation-meter button:focus-visible{outline:var(--pm-today-trend-focus-offset) solid var(--pm-color-focus-ring);outline-offset:1px;}
 .pm-today-trend-reputation-meter button:disabled{opacity:var(--pm-opacity-disabled);cursor:not-allowed;}
+.pm-today-trend-content.is-minimal-ui .pm-today-trend-reputation-mark,.pm-today-trend-content.is-minimal-ui .pm-today-trend-faction-node{width:var(--pm-size-control-default);height:var(--pm-size-control-default);flex:0 0 var(--pm-size-control-default);margin:calc((var(--pm-size-control-default) - var(--pm-space-5)) / -2);padding:calc((var(--pm-size-control-default) - var(--pm-space-5)) / 2);border:0;background-clip:content-box;font:inherit;cursor:pointer;}
+.pm-today-trend-content.is-minimal-ui .pm-today-trend-reputation-entry-head,.pm-today-trend-content.is-minimal-ui .pm-today-trend-faction-entry-head{padding-block:calc((var(--pm-size-control-default) - var(--pm-space-5)) / 2);}
+.pm-today-trend-content.is-minimal-ui .pm-today-trend-reputation-mark:focus-visible,.pm-today-trend-content.is-minimal-ui .pm-today-trend-faction-node:focus-visible{outline:var(--pm-today-trend-focus-offset) solid var(--pm-color-focus-ring);outline-offset:1px;}
+.pm-today-trend-content.is-minimal-ui .pm-today-trend-reputation-mark:disabled,.pm-today-trend-content.is-minimal-ui .pm-today-trend-faction-node:disabled{opacity:var(--pm-opacity-disabled);cursor:not-allowed;}
 
 .pm-today-trend-factions{--pm-today-trend-faction-icon-size:var(--pm-space-5);--pm-today-trend-faction-nested-indent:var(--pm-space-4);}
 .pm-today-trend-faction-section{gap:var(--pm-space-3);}
@@ -211,6 +215,7 @@
 .pm-today-trend-faction-meter>span svg{width:var(--pm-size-icon-sm);height:var(--pm-size-icon-sm);}
 .pm-today-trend-faction-meter>span small{font-size:var(--pm-font-size-micro);font-weight:var(--pm-font-weight-semibold);line-height:var(--pm-line-height-control);white-space:nowrap;}
 .pm-today-trend-faction-meter>span.is-active{border-bottom-color:var(--pm-color-accent);color:var(--pm-color-accent);}
+.pm-today-trend-content.is-minimal-ui .pm-today-trend-reputation-rating,.pm-today-trend-content.is-minimal-ui .pm-today-trend-faction-rating{display:none;}
 
 .pm-today-trend-dynamics{--pm-today-trend-dynamics-icon-size:var(--pm-space-5);}
 .pm-today-trend-dynamics>.pm-today-trend-module-head{padding-bottom:var(--pm-space-2);}

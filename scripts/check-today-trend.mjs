@@ -37,6 +37,7 @@ import { renderTodayTrendFactionView } from '../src/today-trend-faction-view.js'
 import { renderTodayTrendDynamicsView } from '../src/today-trend-dynamics-view.js';
 import { renderTodayTrendSettingsView } from '../src/today-trend-settings-view.js';
 import { createTodayTrendActionDispatcher } from '../src/today-trend-actions.js';
+import { TODAY_TREND_RELATION_ICON_PATHS } from '../src/icons.js';
 import { trendActionMenu, trendInlineActions, trendRuleEditor } from '../src/today-trend-ui.js';
 
 const originalTavernHelper = globalThis.TavernHelper;
@@ -317,7 +318,7 @@ const fixture = () => ({
         chat: {
             storageId: 'chat', characterId: 'character', characterName: '小明', presetId: 'preset',
             operation: { enabled: true, mode: 'auto', intervalFloors: 3, lastSuccessfulAssistantCount: 7, lastSuccessfulRunAt: 9 },
-            injection: { enabled: false },
+            injection: { enabled: false, minimalUi: false },
             world: { items: [{ id: 'world', name: '节目风向', summary: '晚餐服务临近' }] },
             dynamicsSettings: createDefaultTodayTrendDynamicsSettings(),
             reputation: { circles: [{ id: 'judge', name: '主厨评审', scope: '节目评审', status: 'neutral', evaluation: '仍在观察' }] },
@@ -405,6 +406,7 @@ let controllerGeneration = { phase: 'idle', task: null };
 let controllerCurrentFloor = 3402;
 let generationCancelReason = '';
 let rejectControllerGeneration = null;
+let savedControllerSettings = null;
 const phoneController = createTodayTrendPhoneController({ state: controllerState, container: controllerContainer, deps: {
     getStorageId: () => controllerStorageId, getTodayTrendStore: async () => controllerStore,
     reloadTodayTrendStore: () => reloadTodayTrendStore(),
@@ -427,12 +429,33 @@ const phoneController = createTodayTrendPhoneController({ state: controllerState
         rejectControllerGeneration?.(Object.assign(new Error('今日风向生成已取消'), { name: 'AbortError' }));
         rejectControllerGeneration = null;
     },
+    saveTodayTrendSettings: async settings => {
+        savedControllerSettings = settings;
+        controllerStore = { ...controllerStore, scopes: { ...controllerStore.scopes, chat: { ...controllerStore.scopes.chat, injection: settings.injection } } };
+        return controllerStore;
+    },
     commitTodayTrendScope: async () => valid, cancelTodayTrendInitialization: reason => { controllerCancelReason = reason; },
 } });
 assert.equal(await phoneController.render(), true, '控制器必须渲染当前聊天的今日风向页面');
 assert.match(controllerContainer.innerHTML, /id="pm-today-trend-app"/, '控制器必须渲染今日风向页面壳');
 assert.match(controllerContainer.innerHTML, /data-today-trend-floor="3402"[\s\S]*pm-today-trend-floor-value">#3402<\/strong>/, '控制器必须把宿主当前多位楼层完整传给视图');
 assert.equal(typeof generationListener, 'function', '控制器创建时必须订阅今日风向生成状态');
+const controllerFormData = globalThis.FormData;
+globalThis.FormData = class {
+    constructor(form) { this.values = form.values; }
+    get(name) { return this.values.get(name) ?? null; }
+    getAll(name) { const value = this.values.get(name); return Array.isArray(value) ? value : value === undefined ? [] : [value]; }
+};
+const appSettingsForm = {
+    dataset: { todayTrendForm: 'app-settings' },
+    values: new Map([['presetId', 'preset'], ['mode', 'auto'], ['intervalFloors', '3'], ['minimalUi', 'on']]),
+    matches: selector => selector === 'form[data-today-trend-form]',
+};
+for (const item of controllerListeners.filter(item => item.type === 'submit')) item.listener({ target: appSettingsForm, preventDefault: () => {} });
+await new Promise(resolve => setTimeout(resolve, 0));
+assert.deepEqual(savedControllerSettings?.injection, { enabled: false, minimalUi: true }, 'APP 总设置提交必须独立保存正文注入与极简 UI 开关');
+assert.equal(controllerStore.scopes.chat.injection.minimalUi, true, '极简 UI 设置保存后必须写回当前 scope');
+globalThis.FormData = controllerFormData;
 const controllerGenerateAllButton = { disabled: false, dataset: { action: 'today-trend-generate-all' }, closest: () => controllerGenerateAllButton };
 controllerListeners.filter(item => item.type === 'click').forEach(item => item.listener({ target: controllerGenerateAllButton }));
 await new Promise(resolve => setTimeout(resolve, 0));
@@ -519,6 +542,10 @@ assert.match(failedInitializationHtml, /保留淘汰规则/, '初始化失败后
 assert.match(failedInitializationHtml, /class="pm-today-trend-init-feedback pm-today-trend-error" role="alert">初始化失败<\/p>/, '初始化错误必须保留 alert 语义并位于反馈区');
 const appHtml = renderTodayTrendApp({ scope: valid.scopes.chat, presets: Object.values(valid.presets), generation: { phase: 'idle' } });
 for (const label of ['世界态势', '个人风评', '势力图谱', '事件追踪']) assert.match(appHtml, new RegExp(label), `主页面必须装配${label}`);
+const minimalAppScope = structuredClone(valid.scopes.chat);
+minimalAppScope.injection.minimalUi = true;
+const minimalAppHtml = renderTodayTrendApp({ scope: minimalAppScope, presets: Object.values(valid.presets), view: { name: 'reputation', mode: 'content' }, generation: { phase: 'idle' } });
+assert.match(minimalAppHtml, /pm-today-trend-content is-reputation is-minimal-ui/, '极简 UI 开启时内容容器必须提供隔离样式钩子');
 const multiDigitFloorHtml = renderTodayTrendApp({ scope: valid.scopes.chat, presets: Object.values(valid.presets), view: { name: 'world', mode: 'content' }, generation: { phase: 'idle' }, currentFloor: 3000 });
 assert.match(multiDigitFloorHtml, /data-today-trend-floor="3000"[\s\S]*aria-label="楼层 #3000，待同步"[\s\S]*pm-today-trend-floor-value">#3000<\/strong>/, '宿主多位楼层必须从数据属性到可见数值完整渲染，不能截断或退回内部统计');
 const rolledBackFloorHtml = renderTodayTrendApp({ scope: valid.scopes.chat, presets: Object.values(valid.presets), view: { name: 'world', mode: 'content' }, generation: { phase: 'idle' }, currentFloor: 3 });
@@ -589,7 +616,9 @@ assert.match(todayTrendStyle, /@media\(max-width:320px\)\{\.pm-today-trend-first
 assert.match(todayTrendStyle, /pm-today-trend-rule-editor>\.pm-today-trend-form-actions\{[^}]*display:grid[^}]*grid-template-columns:repeat\(2,minmax\(0,1fr\)\)/, '提示词返回与保存操作必须左右等分占满可用宽度');
 assert.match(todayTrendStyle, /pm-today-trend-rule-editor \.pm-today-trend-form-actions button\[type="submit"\]\{[^}]*background:var\(--pm-color-accent\)[^}]*color:var\(--pm-color-on-accent\)/, '保存提示词必须保持主操作语义色');
 const appSettingsHtml = renderTodayTrendSettingsView({ scope: valid.scopes.chat, presets: Object.values(valid.presets) });
-for (const name of ['presetId', 'mode', 'intervalFloors', 'injectionEnabled']) assert.match(appSettingsHtml, new RegExp(`name="${name}"`), `APP 总设置必须提供 ${name}`);
+for (const name of ['presetId', 'mode', 'intervalFloors', 'injectionEnabled', 'minimalUi']) assert.match(appSettingsHtml, new RegExp(`name="${name}"`), `APP 总设置必须提供 ${name}`);
+assert.ok(appSettingsHtml.indexOf('name="injectionEnabled"') < appSettingsHtml.indexOf('name="minimalUi"'), '极简 UI 开关必须位于正文注入开关之后');
+assert.match(appSettingsHtml, /name="minimalUi" type="checkbox" role="switch" aria-checked="false"/, '极简 UI 开关必须暴露关闭状态语义');
 for (const action of ['today-trend-new-preset', 'today-trend-reinitialize', 'today-trend-delete-preset']) assert.match(appSettingsHtml, new RegExp(action), `APP 总设置必须提供 ${action}`);
 for (const [menuOpenId, action] of [['app-rule:world', 'today-trend-edit-world-rule'], ['app-rule:underground', 'today-trend-edit-underground-rule']]) {
     assert.match(renderTodayTrendSettingsView({ scope: valid.scopes.chat, presets: Object.values(valid.presets), menuOpenId }), new RegExp(action), `APP 总设置展开对应动作条后必须提供 ${action}`);
@@ -698,6 +727,15 @@ assert.match(reputationHtml, /data-circle-id="judge" data-status="neutral" aria-
 assert.match(reputationHtml, /data-circle-id="judge" data-status="like" aria-checked="false" role="radio"/, '非当前好感度按钮必须暴露未选中语义');
 assert.deepEqual([...reputationHtml.matchAll(/data-circle-id="judge" data-status="([^"]+)"/g)].map(match => match[1]), TODAY_TREND_RELATION_STATUSES, '个人风评量表必须从左到右按敌对至信任的模型顺序排列');
 for (const label of ['敌对', '厌恶', '中立', '喜爱', '信任']) assert.match(reputationHtml, new RegExp(`aria-label="${label}"`), `个人风评必须以可访问名称提供五档好感度：${label}`);
+const minimalReputationScope = structuredClone(valid.scopes.chat);
+minimalReputationScope.injection.minimalUi = true;
+const minimalReputationHtml = renderTodayTrendReputationView({ scope: minimalReputationScope });
+const busyMinimalReputationHtml = renderTodayTrendReputationView({ scope: minimalReputationScope, generationBusy: true });
+assert.match(minimalReputationHtml, /data-action="today-trend-cycle-circle-status" data-circle-id="judge"/, '极简 UI 的个人风评图标必须提供循环切换动作');
+assert.match(minimalReputationHtml, /aria-label="切换主厨评审的关系状态，当前：中立"/, '极简 UI 的个人风评图标必须暴露当前关系状态');
+assert.match(minimalReputationHtml, new RegExp(TODAY_TREND_RELATION_ICON_PATHS.neutral.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')), '个人风评极简图标必须复用既有中立关系 SVG');
+assert.doesNotMatch(minimalReputationHtml, /today-trend-cycle-circle-status"[^>]* disabled/, '空闲时个人风评极简图标必须可用');
+assert.match(busyMinimalReputationHtml, /today-trend-cycle-circle-status"[^>]* disabled/, '生成忙碌时个人风评极简图标必须禁用');
 assert.doesNotMatch(reputationHtml, /today-trend-refresh-circle/, '个人风评内容区不得保留单项重新生成入口');
 const mixedReputationScope = structuredClone(valid.scopes.chat);
 mixedReputationScope.reputation.circles = [
@@ -778,6 +816,18 @@ assert.match(todayTrendStyle, /pm-today-trend-faction-detail-row\.is-evaluation 
 assert.doesNotMatch(todayTrendStyle, /pm-today-trend-faction-detail-row\.is-evaluation\{[^}]*display:block/, '关系评价不得强制所有内容换行');
 assert.match(todayTrendStyle, /pm-today-trend-faction-meter\{[^}]*display:flex[^}]*width:100%[^}]*justify-content:center/, '势力关系量表必须使用横向居中布局');
 assert.match(todayTrendStyle, /pm-today-trend-faction-meter>span\{[^}]*min-height:var\(--pm-size-control-default\)[^}]*flex-direction:column[^}]*padding:var\(--pm-space-0-5\)/, '势力关系档位必须与个人风评保持一致的纵向图标文字结构');
+const minimalFactionScope = structuredClone(valid.scopes.chat);
+minimalFactionScope.injection.minimalUi = true;
+const minimalFactionHtml = renderTodayTrendFactionView({ scope: minimalFactionScope });
+const busyMinimalFactionHtml = renderTodayTrendFactionView({ scope: minimalFactionScope, generationBusy: true });
+assert.match(minimalFactionHtml, /data-action="today-trend-cycle-faction-status" data-faction-id="red"/, '极简 UI 的势力关系图标必须提供循环切换动作');
+assert.match(minimalFactionHtml, /aria-label="切换红队的关系状态，当前：喜欢"/, '极简 UI 的势力关系图标必须暴露当前关系状态');
+assert.match(minimalFactionHtml, new RegExp(TODAY_TREND_RELATION_ICON_PATHS.like.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')), '势力极简图标必须复用既有喜欢关系 SVG');
+assert.doesNotMatch(minimalFactionHtml, /today-trend-cycle-faction-status"[^>]* disabled/, '空闲时势力极简图标必须可用');
+assert.match(busyMinimalFactionHtml, /today-trend-cycle-faction-status"[^>]* disabled/, '生成忙碌时势力极简图标必须禁用');
+assert.match(todayTrendStyle, /pm-today-trend-content\.is-minimal-ui \.pm-today-trend-reputation-rating,\.pm-today-trend-content\.is-minimal-ui \.pm-today-trend-faction-rating\{display:none/, '极简 UI 必须仅在隔离容器内隐藏两类关系量表且不留空位');
+assert.doesNotMatch(todayTrendStyle, /(?:^|\})\.pm-today-trend-(?:reputation|faction)-(?:rating|meter)\{display:none/, '普通模式不得隐藏关系量表');
+assert.match(todayTrendStyle, /pm-today-trend-content\.is-minimal-ui \.pm-today-trend-reputation-mark,\.pm-today-trend-content\.is-minimal-ui \.pm-today-trend-faction-node\{[^}]*width:var\(--pm-size-control-default\)[^}]*height:var\(--pm-size-control-default\)[^}]*background-clip:content-box/, '极简关系按钮必须提供 44px 命中区并保持 24px 可见节点');
 assert.match(todayTrendStyle, /@media\(max-width:320px\)[\s\S]*?pm-today-trend-reputation-meter,\.pm-today-trend-faction-meter\{[^}]*column-gap:var\(--pm-space-0-5\)/, '320px 下两种关系量表必须同步收紧间距');
 assert.match(todayTrendStyle, /@media\(max-width:320px\)[\s\S]*?pm-today-trend-faction-entry-head\{flex-wrap:wrap\}/, '320px 下势力标题行必须允许操作区自然换行');
 assert.match(todayTrendStyle, /@media\(max-width:320px\)[\s\S]*?pm-today-trend-faction-entry-head>\.pm-today-trend-inline-actions\{margin-left:auto\}/, '320px 下势力操作区换行后必须保持右对齐');
@@ -909,6 +959,8 @@ assertCode(() => { const value = fixture(); value.scopes.chat.factions[0].detail
 assertCode(() => { const value = fixture(); value.scopes.chat.factions[1].relatedFactionIds = ['red']; return value; }, 'TT_FACTION_RELATION_OVERLAP');
 assertCode(() => { const value = fixture(); value.scopes.chat.operation.enabled = 'true'; return value; }, 'TT_SCOPE');
 assertCode(() => { const value = fixture(); value.scopes.chat.injection.enabled = 1; return value; }, 'TT_SCOPE');
+const legacyInjection = fixture(); delete legacyInjection.scopes.chat.injection.minimalUi;
+assert.equal(normalizeTodayTrendStore(legacyInjection).scopes.chat.injection.minimalUi, false, '旧资料缺少极简 UI 字段时必须兼容回退为关闭');
 assertCode(() => { const value = fixture(); value.presets.preset.source.includeExistingChat = 1; return value; }, 'TT_PRESET');
 assertCode(() => { const value = fixture(); value.scopes.chat.dynamics.active[0].relatedEventIds = ['missing']; return value; }, 'TT_EVENT_RELATED');
 assertCode(() => { const value = fixture(); value.scopes.chat.dynamics.archived[0].outcome = 'resolved'; return value; }, 'TT_EVENT_OUTCOME');
@@ -984,8 +1036,11 @@ assert.doesNotMatch(dynamicsSettingsHtml, /today-trend-edit-(?:dynamics|incident
 const promotedScope = promoteTodayTrendUnderground(undergroundScope, 'underground', { id: 'incident', title: '后台冲突', stageLabel: '爆发中', origin: '交易曝光', participants: ['小明'], stages: ['工作人员介入'], latestStage: '工作人员介入' });
 assert.equal(promotedScope.dynamics.archived.find(event => event.id === 'underground').outcome, 'absorbed', '地下线升级必须归档原事件');
 assert.equal(promotedScope.dynamics.active.find(event => event.id === 'incident').type, 'incident', '地下线升级必须新建突发事件，不能改写历史类型');
-const injectionScope = { ...valid.scopes.chat, injection: { enabled: true } };
+const injectionScope = { ...valid.scopes.chat, injection: { enabled: true, minimalUi: false } };
 const injection = renderTodayTrendInjection(injectionScope);
+assert.equal(renderTodayTrendInjection({ ...injectionScope, injection: { enabled: false, minimalUi: false } }), '', '关闭正文注入时普通 UI 不得产生注入文本');
+assert.equal(renderTodayTrendInjection({ ...injectionScope, injection: { enabled: false, minimalUi: true } }), '', '关闭正文注入时极简 UI 不得产生注入文本');
+assert.equal(renderTodayTrendInjection({ ...injectionScope, injection: { enabled: true, minimalUi: true } }), injection, '开启正文注入时极简 UI 不得改变注入文本');
 assert.match(injection, /主厨评审｜中立｜仍在观察/, '注入必须使用中文关系状态并包含完整圈层评价');
 assert.match(injection, /红队｜喜欢｜认可配合能力/, '势力关系注入必须将内部英文状态转换为中文');
 assert.doesNotMatch(injection, /｜(?:hostile|dislike|neutral|like|trust)｜/, '正文注入不得泄漏内部英文关系枚举');
@@ -1427,9 +1482,14 @@ const statusMessages = [];
 const statusErrors = [];
 const statusListeners = {};
 let statusOptions = [];
+let cycleCircleOption = null;
+let cycleFactionOption = null;
 const statusContainer = {
     addEventListener: (type, listener) => { statusListeners[type] = listener; }, removeEventListener: () => {}, contains: () => true,
-    querySelectorAll: selector => selector.includes('today-trend-set-circle-status') ? statusOptions : [],
+    querySelectorAll: selector => selector.includes('today-trend-set-circle-status') ? statusOptions
+        : selector.includes('today-trend-cycle-circle-status') ? [cycleCircleOption]
+        : selector.includes('today-trend-cycle-faction-status') ? [cycleFactionOption]
+        : [],
 };
 const statusDispatcher = createTodayTrendActionDispatcher({
     container: statusContainer,
@@ -1440,7 +1500,7 @@ const statusDispatcher = createTodayTrendActionDispatcher({
         statusStore = { ...statusStore, scopes: { ...statusStore.scopes, [storageId]: scope } };
         return statusStore;
     } },
-    render: async () => { refreshStatusOptions(); }, onStatus: message => statusMessages.push(message), onError: error => statusErrors.push(error),
+    render: async () => { refreshStatusTargets(); }, onStatus: message => statusMessages.push(message), onError: error => statusErrors.push(error),
 });
 const statusButton = dataset => {
     const button = { disabled: false, dataset: { action: 'today-trend-set-circle-status', ...dataset }, focusCount: 0 };
@@ -1448,8 +1508,18 @@ const statusButton = dataset => {
     button.focus = () => { button.focusCount += 1; };
     return button;
 };
-const refreshStatusOptions = () => { statusOptions = TODAY_TREND_RELATION_STATUSES.map(status => statusButton({ circleId: 'judge', status })); };
-refreshStatusOptions();
+const cycleButton = dataset => {
+    const button = { disabled: false, dataset, focusCount: 0 };
+    button.closest = () => button;
+    button.focus = () => { button.focusCount += 1; };
+    return button;
+};
+const refreshStatusTargets = () => {
+    statusOptions = TODAY_TREND_RELATION_STATUSES.map(status => statusButton({ circleId: 'judge', status }));
+    cycleCircleOption = cycleButton({ action: 'today-trend-cycle-circle-status', circleId: 'judge' });
+    cycleFactionOption = cycleButton({ action: 'today-trend-cycle-faction-status', factionId: 'red' });
+};
+refreshStatusTargets();
 statusListeners.click({ target: statusButton({ circleId: 'judge', status: 'like' }) });
 await new Promise(resolve => setImmediate(resolve));
 assert.equal(statusStore.scopes.chat.reputation.circles.find(circle => circle.id === 'judge').status, 'like', '点击好感度按钮必须仅更新目标圈层状态');
@@ -1463,6 +1533,18 @@ statusListeners.click({ target: statusButton({ circleId: 'judge', status: 'inval
 statusListeners.click({ target: statusButton({ circleId: 'missing', status: 'trust' }) });
 await new Promise(resolve => setImmediate(resolve));
 assert.equal(statusErrors.length, 2, '非法状态或缺失圈层必须进入错误路径');
+statusListeners.click({ target: cycleButton({ action: 'today-trend-cycle-circle-status', circleId: 'judge' }) });
+await new Promise(resolve => setImmediate(resolve));
+assert.equal(statusStore.scopes.chat.reputation.circles.find(circle => circle.id === 'judge').status, 'trust', '个人风评极简图标必须按固定顺序切换至下一状态');
+assert.equal(cycleCircleOption.focusCount, 1, '个人风评极简图标提交重绘后必须恢复按钮焦点');
+statusListeners.click({ target: cycleButton({ action: 'today-trend-cycle-circle-status', circleId: 'judge' }) });
+await new Promise(resolve => setImmediate(resolve));
+assert.equal(statusStore.scopes.chat.reputation.circles.find(circle => circle.id === 'judge').status, 'hostile', '个人风评极简图标必须从信任循环回敌对');
+statusListeners.click({ target: cycleButton({ action: 'today-trend-cycle-faction-status', factionId: 'red' }) });
+await new Promise(resolve => setImmediate(resolve));
+assert.equal(statusStore.scopes.chat.factions.find(faction => faction.id === 'red').relation.status, 'trust', '势力极简图标必须按固定顺序切换关系状态');
+assert.equal(statusStore.scopes.chat.factions.find(faction => faction.id === 'red').relation.evaluation, '认可配合能力', '势力关系切换不得丢失评价内容');
+assert.equal(cycleFactionOption.focusCount, 1, '势力极简图标提交重绘后必须恢复按钮焦点');
 statusDispatcher.destroy();
 let keyboardStore = structuredClone(valid);
 let keyboardOptions = [];
