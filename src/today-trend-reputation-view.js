@@ -1,4 +1,4 @@
-import { BACK_ICON_SVG, BOOK_ICON_SVG, EDIT_ICON_SVG, REFRESH_ICON_SVG, SPARKLES_ICON_SVG, TRASH_ICON_SVG } from './icons.js';
+import { BACK_ICON_SVG, BOOK_ICON_SVG, EDIT_ICON_SVG, REFRESH_ICON_SVG, SPARKLES_ICON_SVG, TODAY_TREND_RELATION_ICON_PATHS, TRASH_ICON_SVG } from './icons.js';
 import { TODAY_TREND_RELATION_STATUSES, todayTrendStatusLabel } from './today-trend-model.js';
 import { escapeAttr, escapeHtml } from './ui.js';
 import { trendInlineActions, trendMeter, trendModuleHead } from './today-trend-ui.js';
@@ -6,19 +6,12 @@ import { trendInlineActions, trendMeter, trendModuleHead } from './today-trend-u
 const reputationStatusLabel = status => status === 'like' ? '喜爱' : todayTrendStatusLabel(status);
 const GOOD_STATUSES = new Set(['like', 'trust']);
 const BAD_STATUSES = new Set(['hostile', 'dislike']);
-const REPUTATION_ICONS = Object.freeze({
-    hostile: '<path d="M12 3 2.5 20h19z"/><path d="M12 9v4M12 17h.01"/>',
-    dislike: '<circle cx="12" cy="12" r="9"/><circle cx="9" cy="10" r=".7" fill="currentColor" stroke="none"/><circle cx="15" cy="10" r=".7" fill="currentColor" stroke="none"/><path d="M8.5 17c1-2 2.2-3 3.5-3s2.5 1 3.5 3"/>',
-    neutral: '<circle cx="12" cy="12" r="9"/><circle cx="9" cy="10" r=".7" fill="currentColor" stroke="none"/><circle cx="15" cy="10" r=".7" fill="currentColor" stroke="none"/><path d="M8.5 16h7"/>',
-    like: '<path d="M20.8 8.5c0 5-8.8 10.5-8.8 10.5S3.2 13.5 3.2 8.5A4.5 4.5 0 0 1 12 7a4.5 4.5 0 0 1 8.8 1.5z"/>',
-    trust: '<path d="M12 3l7 3v5c0 4.4-3 7.8-7 9-4-1.2-7-4.6-7-9V6z"/><path d="m9 12 2 2 4-4.5"/>',
-});
-const reputationMark = status => `<span class="pm-today-trend-reputation-mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">${REPUTATION_ICONS[status] || REPUTATION_ICONS.neutral}</svg></span>`;
+const reputationMark = status => `<span class="pm-today-trend-reputation-mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">${TODAY_TREND_RELATION_ICON_PATHS[status] || TODAY_TREND_RELATION_ICON_PATHS.neutral}</svg></span>`;
 
 
 function reputationMeter(circle, disabled) {
     const label = reputationStatusLabel(circle.status);
-    const levels = TODAY_TREND_RELATION_STATUSES.map(level => `<button type="button" class="${level === circle.status ? 'is-active' : ''}" data-action="today-trend-set-circle-status" data-circle-id="${escapeAttr(circle.id)}" data-status="${level}" aria-checked="${level === circle.status}" role="radio" tabindex="${level === circle.status ? '0' : '-1'}" aria-label="${escapeAttr(reputationStatusLabel(level))}"${disabled ? ' disabled' : ''}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${REPUTATION_ICONS[level] || REPUTATION_ICONS.neutral}</svg><span aria-hidden="true">${escapeHtml(reputationStatusLabel(level))}</span></button>`).join('');
+    const levels = TODAY_TREND_RELATION_STATUSES.map(level => `<button type="button" class="${level === circle.status ? 'is-active' : ''}" data-action="today-trend-set-circle-status" data-circle-id="${escapeAttr(circle.id)}" data-status="${level}" aria-checked="${level === circle.status}" role="radio" tabindex="${level === circle.status ? '0' : '-1'}" aria-label="${escapeAttr(reputationStatusLabel(level))}"${disabled ? ' disabled' : ''}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${TODAY_TREND_RELATION_ICON_PATHS[level] || TODAY_TREND_RELATION_ICON_PATHS.neutral}</svg><span aria-hidden="true">${escapeHtml(reputationStatusLabel(level))}</span></button>`).join('');
     return `<div class="pm-today-trend-reputation-meter" role="radiogroup" aria-label="修改${escapeAttr(circle.name)}的好感度，当前：${escapeAttr(label)}">${levels}</div>`;
 }
 function circleEditor(circle = {}, cancelAction = 'today-trend-cancel-editor') {

@@ -3702,7 +3702,14 @@ ${userPrompt}` : userPrompt;
   var TODAY_TREND_REPUTATION_ICON_SVG = icon('<path d="M9 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM3 20c0-4 2.5-6 6-6s6 2 6 6"/><path d="M16 5a3 3 0 0 1 0 6M17 14c2.5.5 4 2.5 4 6"/>');
   var TODAY_TREND_FACTION_ICON_SVG = icon('<path d="M10.85 6.99 6.65 14.27M13.15 6.99l4.2 7.28M7.8 16.26h8.4"/><circle cx="12" cy="5" r="2.3"/><circle cx="5.5" cy="16.26" r="2.3"/><circle cx="18.5" cy="16.26" r="2.3"/>');
   var TODAY_TREND_DYNAMICS_ICON_SVG = icon('<circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/>');
-  var REFRESH_ICON_SVG = '<svg class="pm-refresh-icon" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>';
+  var TODAY_TREND_RELATION_ICON_PATHS = Object.freeze({
+    hostile: '<path d="M12 3 2.5 20h19z"/><path d="M12 9v4M12 17h.01"/>',
+    dislike: '<circle cx="12" cy="12" r="9"/><circle cx="9" cy="10" r=".7" fill="currentColor" stroke="none"/><circle cx="15" cy="10" r=".7" fill="currentColor" stroke="none"/><path d="M8.5 17c1-2 2.2-3 3.5-3s2.5 1 3.5 3"/>',
+    neutral: '<circle cx="12" cy="12" r="9"/><circle cx="9" cy="10" r=".7" fill="currentColor" stroke="none"/><circle cx="15" cy="10" r=".7" fill="currentColor" stroke="none"/><path d="M8.5 16h7"/>',
+    like: '<path d="M20.8 8.5c0 5-8.8 10.5-8.8 10.5S3.2 13.5 3.2 8.5A4.5 4.5 0 0 1 12 7a4.5 4.5 0 0 1 8.8 1.5z"/>',
+    trust: '<path d="M12 3l7 3v5c0 4.4-3 7.8-7 9-4-1.2-7-4.6-7-9V6z"/><path d="m9 12 2 2 4-4.5"/>'
+  });
+  var REFRESH_ICON_SVG = icon('<path d="M20 6v5h-5"/><path d="M4 18v-5h5"/><path d="M6.1 9a7 7 0 0 1 11.7-2.6L20 11M4 13l2.2 4.6A7 7 0 0 0 17.9 15"/>');
 
   // src/ui.js
   function contrastText(bg) {
@@ -23426,10 +23433,9 @@ ${targetInstruction}`
 
   // src/today-trend-faction-view.js
   var options = (selected) => TODAY_TREND_RELATION_STATUSES.map((status) => `<option value="${status}" ${status === selected ? "selected" : ""}>${todayTrendStatusLabel(status)}</option>`).join("");
-  var relation = (value) => `<span class="pm-today-trend-status" data-status="${escapeAttr(value.status)}">${escapeHtml(todayTrendStatusLabel(value.status))}</span>`;
   var FACTION_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l2.2 6.8H21l-5.4 4 2 6.7L12 16.6 6.4 20.5l2-6.7L3 9.8h6.8z"/></svg>';
   var menu = (faction, attrs, visible) => trendInlineActions({ visible, actions: [{ action: "today-trend-refresh-faction", icon: REFRESH_ICON_SVG, label: `\u91CD\u65B0\u751F\u6210${faction.name}`, attrs: `data-faction-id="${escapeAttr(faction.id)}" ${attrs}` }, { action: "today-trend-edit-faction", icon: EDIT_ICON_SVG, label: `\u7F16\u8F91${faction.name}`, attrs: `data-faction-id="${escapeAttr(faction.id)}"` }, { action: "today-trend-delete-faction", icon: TRASH_ICON_SVG, label: `\u5220\u9664${faction.name}`, danger: true, attrs: `data-faction-id="${escapeAttr(faction.id)}" data-label="${escapeAttr(faction.name)}"` }] });
-  var factionMeter = (status) => `<div class="pm-today-trend-faction-meter" role="img" aria-label="\u5173\u7CFB\u72B6\u6001\uFF1A${escapeAttr(todayTrendStatusLabel(status))}">${TODAY_TREND_RELATION_STATUSES.slice().reverse().map((level) => `<span${level === status ? ' class="is-active"' : ""}><i></i></span>`).join("")}</div>`;
+  var factionMeter = (status) => `<div class="pm-today-trend-faction-meter" role="img" aria-label="\u5173\u7CFB\u72B6\u6001\uFF1A${escapeAttr(todayTrendStatusLabel(status))}">${TODAY_TREND_RELATION_STATUSES.map((level) => `<span data-status="${escapeAttr(level)}"${level === status ? ' class="is-active"' : ""}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${TODAY_TREND_RELATION_ICON_PATHS[level] || TODAY_TREND_RELATION_ICON_PATHS.neutral}</svg><small>${escapeHtml(todayTrendStatusLabel(level))}</small></span>`).join("")}</div>`;
   function relatedTargets(faction, byId) {
     const names2 = (Array.isArray(faction.relatedFactionIds) ? faction.relatedFactionIds : []).map((id2) => byId.get(id2)?.name).filter(Boolean);
     return names2.length ? `<div class="pm-today-trend-faction-detail-row pm-today-trend-faction-links"><dt>\u5916\u90E8\u5173\u8054</dt><dd>${escapeHtml(names2.join("\u3001"))}</dd></div>` : "";
@@ -23437,7 +23443,7 @@ ${targetInstruction}`
   function card(faction, children, actionsVisible, depth, byId, attrs) {
     const relationValue = faction.relation && typeof faction.relation === "object" && !Array.isArray(faction.relation) ? faction.relation : { status: "neutral", evaluation: "" };
     const details = (Array.isArray(faction.details) ? faction.details : []).map((detail) => `<div class="pm-today-trend-faction-detail-row"><dt>${escapeHtml(detail.label)}</dt><dd>${escapeHtml(detail.value)}</dd></div>`).join("");
-    return `<article class="pm-today-trend-faction-card" data-faction-id="${escapeAttr(faction.id)}" data-depth="${depth}"><span class="pm-today-trend-faction-node" aria-hidden="true">${FACTION_ICON}</span><div class="pm-today-trend-faction-body"><header><b>${escapeHtml(faction.name)}</b>${relation(relationValue)}${menu(faction, attrs, actionsVisible)}</header><p class="pm-today-trend-faction-summary">${escapeHtml(faction.summary)}</p><dl class="pm-today-trend-faction-detail">${relatedTargets(faction, byId)}${details}<div class="pm-today-trend-faction-detail-row is-evaluation"><dd>${escapeHtml(relationValue.evaluation)}</dd></div></dl></div><div class="pm-today-trend-faction-rating">${factionMeter(relationValue.status)}</div></article>${children}`;
+    return `<article class="pm-today-trend-faction-card" data-faction-id="${escapeAttr(faction.id)}" data-depth="${depth}"><header class="pm-today-trend-faction-entry-head"><span class="pm-today-trend-faction-node" aria-hidden="true">${FACTION_ICON}</span><b>${escapeHtml(faction.name)}</b>${menu(faction, attrs, actionsVisible)}</header><div class="pm-today-trend-faction-entry-body"><p class="pm-today-trend-faction-summary">${escapeHtml(faction.summary)}</p><dl class="pm-today-trend-faction-detail">${relatedTargets(faction, byId)}${details}<div class="pm-today-trend-faction-detail-row is-evaluation"><dt>\u5173\u7CFB\u8BC4\u4EF7</dt><dd>${escapeHtml(relationValue.evaluation)}</dd></div></dl><div class="pm-today-trend-faction-rating">${factionMeter(relationValue.status)}</div></div></article>${children}`;
   }
   function tree(factions, parentId, actionsVisible, byId, depth = 0, attrs = "") {
     const children = factions.filter((faction) => faction.parentId === parentId);
@@ -23463,17 +23469,10 @@ ${targetInstruction}`
   var reputationStatusLabel = (status) => status === "like" ? "\u559C\u7231" : todayTrendStatusLabel(status);
   var GOOD_STATUSES = /* @__PURE__ */ new Set(["like", "trust"]);
   var BAD_STATUSES = /* @__PURE__ */ new Set(["hostile", "dislike"]);
-  var REPUTATION_ICONS = Object.freeze({
-    hostile: '<path d="M12 3 2.5 20h19z"/><path d="M12 9v4M12 17h.01"/>',
-    dislike: '<circle cx="12" cy="12" r="9"/><circle cx="9" cy="10" r=".7" fill="currentColor" stroke="none"/><circle cx="15" cy="10" r=".7" fill="currentColor" stroke="none"/><path d="M8.5 17c1-2 2.2-3 3.5-3s2.5 1 3.5 3"/>',
-    neutral: '<circle cx="12" cy="12" r="9"/><circle cx="9" cy="10" r=".7" fill="currentColor" stroke="none"/><circle cx="15" cy="10" r=".7" fill="currentColor" stroke="none"/><path d="M8.5 16h7"/>',
-    like: '<path d="M20.8 8.5c0 5-8.8 10.5-8.8 10.5S3.2 13.5 3.2 8.5A4.5 4.5 0 0 1 12 7a4.5 4.5 0 0 1 8.8 1.5z"/>',
-    trust: '<path d="M12 3l7 3v5c0 4.4-3 7.8-7 9-4-1.2-7-4.6-7-9V6z"/><path d="m9 12 2 2 4-4.5"/>'
-  });
-  var reputationMark = (status) => `<span class="pm-today-trend-reputation-mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">${REPUTATION_ICONS[status] || REPUTATION_ICONS.neutral}</svg></span>`;
+  var reputationMark = (status) => `<span class="pm-today-trend-reputation-mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">${TODAY_TREND_RELATION_ICON_PATHS[status] || TODAY_TREND_RELATION_ICON_PATHS.neutral}</svg></span>`;
   function reputationMeter(circle, disabled) {
     const label = reputationStatusLabel(circle.status);
-    const levels = TODAY_TREND_RELATION_STATUSES.map((level) => `<button type="button" class="${level === circle.status ? "is-active" : ""}" data-action="today-trend-set-circle-status" data-circle-id="${escapeAttr(circle.id)}" data-status="${level}" aria-checked="${level === circle.status}" role="radio" tabindex="${level === circle.status ? "0" : "-1"}" aria-label="${escapeAttr(reputationStatusLabel(level))}"${disabled ? " disabled" : ""}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${REPUTATION_ICONS[level] || REPUTATION_ICONS.neutral}</svg><span aria-hidden="true">${escapeHtml(reputationStatusLabel(level))}</span></button>`).join("");
+    const levels = TODAY_TREND_RELATION_STATUSES.map((level) => `<button type="button" class="${level === circle.status ? "is-active" : ""}" data-action="today-trend-set-circle-status" data-circle-id="${escapeAttr(circle.id)}" data-status="${level}" aria-checked="${level === circle.status}" role="radio" tabindex="${level === circle.status ? "0" : "-1"}" aria-label="${escapeAttr(reputationStatusLabel(level))}"${disabled ? " disabled" : ""}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${TODAY_TREND_RELATION_ICON_PATHS[level] || TODAY_TREND_RELATION_ICON_PATHS.neutral}</svg><span aria-hidden="true">${escapeHtml(reputationStatusLabel(level))}</span></button>`).join("");
     return `<div class="pm-today-trend-reputation-meter" role="radiogroup" aria-label="\u4FEE\u6539${escapeAttr(circle.name)}\u7684\u597D\u611F\u5EA6\uFF0C\u5F53\u524D\uFF1A${escapeAttr(label)}">${levels}</div>`;
   }
   function circleEditor(circle = {}, cancelAction = "today-trend-cancel-editor") {
