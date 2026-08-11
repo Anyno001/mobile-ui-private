@@ -242,7 +242,7 @@
 .pm-today-trend-event-pill{border:1px solid var(--pm-color-border-default);color:var(--pm-color-text-secondary);}
 .pm-today-trend-event-pill.is-live{border-color:var(--pm-color-accent);color:var(--pm-color-accent);}
 .pm-today-trend-event-pill.is-live i{width:var(--pm-space-1);height:var(--pm-space-1);margin-right:var(--pm-space-1);border-radius:var(--pm-radius-circle);background:var(--pm-color-accent);}
-.pm-today-trend-event-facts{display:flex;flex-direction:column;gap:var(--pm-space-0-5);margin-block:calc(0px - var(--pm-space-1));}
+.pm-today-trend-event-facts{display:flex;flex-direction:column;gap:var(--pm-space-0-5);margin-block-start:calc(0px - var(--pm-space-1));margin-block-end:calc(0px - var(--pm-space-0));}
 .pm-today-trend-event-facts>div{display:block;}
 .pm-today-trend-event-facts dt{display:inline;color:var(--pm-color-text-tertiary);font-size:var(--pm-font-size-label);font-weight:var(--pm-font-weight-semibold);}
 .pm-today-trend-event-facts dt::after{content:' · ';}
