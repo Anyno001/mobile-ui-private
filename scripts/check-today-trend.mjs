@@ -150,6 +150,7 @@ assert.doesNotMatch(todayTrendStyle, /pm-today-trend-event-card header span/, '�
 assert.match(todayTrendStyle, /pm-today-trend-icon-button\[data-action\^="today-trend-refresh"\][\s\S]*?width:var\(--pm-size-control-compact\)[\s\S]*?min-height:var\(--pm-size-control-compact\)/, '生成与刷新图标按钮必须保留 36px 紧凑触控区');
 assert.match(todayTrendStyle, /\.pm-today-trend-inline-action\{width:var\(--pm-size-control-compact\);min-height:var\(--pm-size-control-compact\)/, '个人风评行内编辑按钮必须保留 36px 紧凑触控区');
 assert.match(todayTrendStyle, /\.pm-today-trend-head-tools\{[^}]*min-width:max-content[^}]*flex:0 0 auto[^}]*flex-direction:column[^}]*align-items:flex-end[^}]*gap:var\(--pm-space-0-5\)[^}]*translateY/, '标题工具区必须保持纵向关系，并让三点按钮与楼层更紧密地轻微上移');
+assert.match(todayTrendStyle, /pm-today-trend-reputation>\.pm-today-trend-module-head>\.pm-today-trend-head-tools\{[^}]*translateY\(calc\(0px - var\(--pm-space-2\)\)\)/, '个人风评三点菜单、楼层与同步状态必须整体上移并保持右侧对齐');
 assert.match(todayTrendStyle, /\.pm-today-trend-floor\{[^}]*min-width:max-content[^}]*flex:0 0 auto/, '#楼层仪表必须按完整内容保留宽度，不能截断多位楼层');
 assert.match(todayTrendStyle, /\.pm-today-trend-floor-value\{[^}]*color:var\(--pm-color-text-secondary\)/, '楼层数值必须使用界面稍深的次级灰色而非纯黑');
 assert.match(todayTrendStyle, /\.pm-today-trend-floor-cancel\{[^}]*cursor:pointer/, '同步状态必须提供明确可点击的终止控件');
@@ -711,12 +712,16 @@ assert.doesNotMatch(todayTrendStyle, /pm-today-trend-reputation-mark::(?:before|
 assert.match(todayTrendStyle, /pm-today-trend-reputation-entry\{[^}]*border:0[^}]*border-radius:var\(--pm-radius-card\)[^}]*background:transparent[^}]*box-shadow:none/, '个人风评条目必须使用无底无框卡片外壳');
 assert.match(todayTrendStyle, /pm-today-trend-reputation-entry\{[^}]*display:flex[^}]*flex-direction:column/, '个人风评条目必须使用标题栏与内容栏上下布局');
 assert.match(todayTrendStyle, /pm-today-trend-reputation-entry-head\{[^}]*display:flex[^}]*align-items:center[^}]*gap:var\(--pm-space-2\)/, '个人风评标题栏必须让图标与标题居中对齐');
-assert.match(todayTrendStyle, /pm-today-trend-reputation-entry-body\{[^}]*margin-left:calc\(var\(--pm-today-trend-reputation-mark-size\) \+ var\(--pm-space-2\)\)/, '个人风评内容栏必须与标题文字左边缘对齐');
+assert.match(todayTrendStyle, /pm-today-trend-reputation-entry-body\{[^}]*min-width:0[^}]*\}/, '个人风评内容栏必须完整占据标题栏下方而非伪装成右侧栏');
+assert.doesNotMatch(todayTrendStyle, /pm-today-trend-reputation-entry-body\{[^}]*margin-left/, '个人风评内容栏不得保留图标宽度形成的左侧空栏');
 assert.match(todayTrendStyle, /pm-today-trend-reputation-meter button\{[^}]*min-height:var\(--pm-size-control-default\)/, '个人风评五档状态按钮必须保留 44px 主触控高度');
 assert.match(todayTrendStyle, /pm-today-trend-reputation-meter\{[^}]*grid-template-columns:repeat\(5,minmax\(0,1fr\)\)[^}]*column-gap:var\(--pm-space-1\)[^}]*width:100%/, '个人风评量表必须在内容栏底部横向均分五档');
+assert.match(todayTrendStyle, /pm-today-trend-reputation-meter\{[^}]*padding:var\(--pm-space-0\)[^}]*border:0[^}]*border-radius:var\(--pm-radius-none\)[^}]*background:transparent/, '个人风评量表必须使用轻量无底无框布局，不得恢复厚重胶囊容器');
+assert.match(todayTrendStyle, /pm-today-trend-reputation-meter button\{[^}]*border-radius:var\(--pm-radius-none\)[^}]*background:transparent/, '个人风评五档按钮不得各自渲染为胶囊块');
 assert.match(todayTrendStyle, /pm-today-trend-reputation-meter button span\{[^}]*font-size:var\(--pm-font-size-micro\)/, '个人风评量表必须显示紧凑的中文档位标签');
 assert.match(todayTrendStyle, /pm-today-trend-reputation-meter button::before/, '个人风评量表必须提供档位圆点');
-assert.match(todayTrendStyle, /pm-today-trend-reputation-meter button\.is-active::before\{[^}]*background:var\(--pm-color-accent\)[^}]*box-shadow:/, '个人风评量表必须提供当前档圆点与光晕');
+assert.match(todayTrendStyle, /pm-today-trend-reputation-meter button\.is-active::before\{[^}]*background:var\(--pm-color-accent\)/, '个人风评量表必须提供当前档实心圆点');
+assert.doesNotMatch(todayTrendStyle, /pm-today-trend-reputation-meter button\.is-active::before\{[^}]*box-shadow/, '个人风评当前档不得使用厚重光晕');
 assert.match(todayTrendStyle, /pm-today-trend-reputation-meter button\.is-active::after\{[^}]*opacity:1/, '个人风评量表必须提供当前档底部强调线');
 assert.match(todayTrendStyle, /pm-today-trend-reputation-meter button:focus-visible/, '个人风评状态按钮必须提供键盘焦点样式');
 assert.match(todayTrendStyle, /pm-today-trend-reputation-meter button:disabled/, '个人风评状态按钮必须提供禁用样式');
