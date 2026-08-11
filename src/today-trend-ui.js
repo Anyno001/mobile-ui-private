@@ -31,9 +31,29 @@ export function trendInlineActions({ visible = false, actions = [] } = {}) {
     return `<span class="pm-today-trend-inline-actions">${actions.map(action => trendIconButton({ ...action, className: `pm-today-trend-inline-action${action.className ? ` ${action.className}` : ''}` })).join('')}</span>`;
 }
 
-export function trendModuleHead({ title, menuId, menuOpenId, actions = [], meta = '', metaHtml = '', eyebrow = '', adornment = '' }) {
+export function trendFloorStatus({ currentFloor, syncedFloor = 0, phase = 'idle', lastError = null, busy = false, targetFloor = null, targeted = false } = {}) {
+    const synced = Number.isInteger(syncedFloor) && syncedFloor >= 0 ? syncedFloor : 0;
+    const currentFloorProvided = currentFloor !== undefined;
+    const floor = Number.isInteger(currentFloor) && currentFloor >= 0 ? currentFloor : currentFloorProvided ? null : synced;
+    const target = Number.isInteger(targetFloor) && targetFloor >= 0 ? targetFloor : null;
+    const terminalState = phase === 'failed' ? 'failed' : phase === 'canceled' ? 'canceled' : null;
+    const state = busy ? 'updating' : terminalState || (floor === null ? 'unavailable' : floor > 0 && synced === floor ? 'synced' : 'unsynced');
+    const status = busy ? targeted ? '正在更新模块' : target === null ? '正在同步' : `同步任务 #${target}`
+        : terminalState === 'failed' ? '同步失败' : terminalState === 'canceled' ? '已终止'
+        : floor === null ? '楼层不可用' : floor > 0 && synced === floor ? '已同步' : floor > 0 ? '待同步' : '尚未同步';
+    const reading = floor === null ? '#--' : `#${floor}`;
+    const statusTitle = terminalState === 'failed' && lastError ? ` title="${escapeAttr(lastError)}"` : '';
+    const readingHtml = `<span class="pm-today-trend-floor-reading"><strong class="pm-today-trend-floor-value">${reading}</strong></span>`;
+    const statusHtml = busy
+        ? `<button type="button" class="pm-today-trend-floor-cancel" data-action="today-trend-cancel-generation" aria-label="终止当前更新" title="终止当前更新">${readingHtml}<span class="pm-today-trend-floor-status"><i aria-hidden="true"></i>${escapeHtml(status)}</span></button>`
+        : `${readingHtml}<span class="pm-today-trend-floor-status"${statusTitle}>${escapeHtml(status)}</span>`;
+    return `<span class="pm-today-trend-floor" data-today-trend-floor="${floor ?? ''}" data-state="${state}" role="status" aria-live="polite" aria-label="楼层 ${reading}，${escapeAttr(status)}">${statusHtml}</span>`;
+}
+
+export function trendModuleHead({ title, menuId, menuOpenId, actions = [], meta = '', metaHtml = '', eyebrow = '', adornment = '', asideHtml = '' }) {
     const renderedMeta = metaHtml || (meta ? `<span>${escapeHtml(meta)}</span>` : '');
-    return `<header class="pm-today-trend-module-head${eyebrow ? ' is-decorative' : ''}"><div>${eyebrow ? `<p class="pm-today-trend-module-eyebrow">${escapeHtml(eyebrow)}</p>` : ''}<h2>${escapeHtml(title)}${adornment}</h2>${renderedMeta}</div>${trendActionMenu({ id: menuId, open: menuOpenId === menuId, label: `${title}操作`, actions })}</header>`;
+    const menu = trendActionMenu({ id: menuId, open: menuOpenId === menuId, label: `${title}操作`, actions });
+    return `<header class="pm-today-trend-module-head${eyebrow ? ' is-decorative' : ''}"><div>${eyebrow ? `<p class="pm-today-trend-module-eyebrow">${escapeHtml(eyebrow)}</p>` : ''}<h2>${escapeHtml(title)}${adornment}</h2>${renderedMeta}</div><span class="pm-today-trend-head-tools">${menu}${asideHtml}</span></header>`;
 }
 
 export function trendRuleEditor({ rule, value = '' } = {}) {

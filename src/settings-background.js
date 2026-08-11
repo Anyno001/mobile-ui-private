@@ -2,7 +2,7 @@ export async function runBackgroundTransaction({ capture, mutate, restore, persi
     const snapshot = capture();
     try {
         mutate();
-        await persist();
+        return await persist();
     } catch (error) {
         restore(snapshot);
         try {
@@ -28,7 +28,7 @@ export function createBackgroundSettings({
         const isDesktop = scope === 'desktop';
         const isGlobal = scope === 'global';
         const operation = backgroundMutation.catch(() => {}).then(async () => {
-            await runBackgroundTransaction({
+            const persisted = await runBackgroundTransaction({
                 capture: () => isDesktop ? (window.__pmDesktopBg || '')
                     : isGlobal ? (window.__pmBgGlobal || '') : clone(window.__pmBgLocal || {}),
                 mutate,
@@ -39,6 +39,7 @@ export function createBackgroundSettings({
                 },
                 persist: isDesktop ? saveDesktopBg : isGlobal ? saveBgGlobal : saveBgLocal,
             });
+            if (!isDesktop && !isGlobal) window.__pmBgLocal = persisted;
             applyBackground();
             showLook();
         });
@@ -58,10 +59,11 @@ export function createBackgroundSettings({
         upload(input, scope) {
             const file = input.files?.[0];
             if (!file) return;
-            const reader = new FileReader();
-            reader.onload = event => {
+            const objectUrl = URL.createObjectURL(file);
+            try {
                 const key = `${getStorageId()}_${getCurrentPersona()}`;
-                openCropper(event.target.result, {
+                openCropper(objectUrl, {
+                    objectUrl,
                     onCancel: showLook,
                     onConfirm: croppedDataUrl => queueMutation(scope, () => {
                         if (scope === 'desktop') window.__pmDesktopBg = croppedDataUrl;
@@ -69,8 +71,10 @@ export function createBackgroundSettings({
                         else window.__pmBgLocal[key] = croppedDataUrl;
                     }),
                 });
+            } catch (error) {
+                URL.revokeObjectURL(objectUrl);
+                alert(`图片读取失败：${error.message}`);
             };
-            reader.readAsDataURL(file);
             input.value = '';
         },
         setUrl(scope) {

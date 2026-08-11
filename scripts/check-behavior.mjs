@@ -23,7 +23,7 @@ import {
     createMessageEntry, createQuoteSnapshot, describeMessageEntry, formatQuoteContext, normalizeMessageHistory,
 } from '../src/chat-message-model.js';
 import {
-    loadBgSettings, saveBgGlobal, saveBgLocal, saveDesktopBg,
+    loadBgSettings, loadLocalBackground, materializeLocalBackgrounds, saveBgGlobal, saveBgLocal, saveDesktopBg,
 } from '../src/storage-background.js';
 import {
     addOrUpdateProfile, clearPluginData, loadCharacterBehavior, loadGroupMeta, loadInjectionConfig, pmIDBDel, pmIDBGet, pmIDBSet,
@@ -4740,6 +4740,31 @@ const assertRejectedBackgroundLoad = async serialized => {
     assert.deepEqual(Object.keys(window.__pmBgLocal), []);
     assert.equal(localValues.get('ST_SMS_BG_LOCAL'), serialized);
 };
+
+const coldBackgroundPointers = Object.fromEntries(Array.from({ length: 100 }, (_, index) => [`story_Person${index}`, '__idb__']));
+for (const key of Object.keys(coldBackgroundPointers)) idbValues.set(`ST_SMS_BG_LOCAL_${key}`, migrationBackground(`cold-${key}`));
+localValues.set('ST_SMS_BG_LOCAL', JSON.stringify(coldBackgroundPointers));
+idbOperations.length = 0;
+await loadBgSettings();
+assert.deepEqual(window.__pmBgLocal, Object.assign(Object.create(null), coldBackgroundPointers),
+    '冷启动只应常驻会话背景索引');
+const person0Initial = idbValues.get('ST_SMS_BG_LOCAL_story_Person0');
+assert.equal(await loadLocalBackground('story_Person0'), person0Initial,
+    '首次进入会话时才读取当前背景');
+const person0Replacement = migrationBackground('cold-person0-replaced');
+idbValues.set('ST_SMS_BG_LOCAL_story_Person0', person0Replacement);
+assert.equal(await loadLocalBackground('story_Person0'), person0Initial,
+    '当前会话背景重复应用必须命中缓存而不是重新读取 IDB');
+await loadLocalBackground('story_Person1');
+await loadLocalBackground('story_Person2');
+assert.equal(await loadLocalBackground('story_Person0'), person0Replacement,
+    '缓存最多保留当前和最近一个会话，第三个会话必须淘汰最旧项并重新读取');
+const materializedColdBackgrounds = await materializeLocalBackgrounds();
+assert.equal(materializedColdBackgrounds.story_Person99, idbValues.get('ST_SMS_BG_LOCAL_story_Person99'),
+    '导出边界必须把 marker 还原为旧格式背景正文');
+assert.equal(Object.values(materializedColdBackgrounds).includes('__idb__'), false,
+    '备份数据不得泄漏内部 marker');
+
 localValues.set('ST_SMS_BG_LOCAL', '{"story_Alice":"https://example.test/background.png"}');
 await loadBgSettings();
 assert.equal(Object.getPrototypeOf(window.__pmBgLocal), null);

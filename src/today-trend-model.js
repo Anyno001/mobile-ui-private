@@ -5,7 +5,7 @@ export const TODAY_TREND_EVENT_LIFECYCLES = Object.freeze(['active', 'archived']
 export const TODAY_TREND_EVENT_OUTCOMES = Object.freeze(['resolved', 'failed', 'terminated', 'inconclusive', 'confirmed', 'debunked', 'absorbed']);
 export const TODAY_TREND_OPERATION_MODES = Object.freeze(['manual', 'auto']);
 export const TODAY_TREND_STATUS_LABELS = Object.freeze({ hostile: '敌对', dislike: '厌恶', neutral: '中立', like: '喜欢', trust: '信任' });
-export const TODAY_TREND_LIMITS = Object.freeze({ presets: 80, scopes: 80, worldItems: 24, circles: 24, factions: 80, factionDetails: 16, relatedFactions: 24, events: 80, participants: 24, stages: 40, relatedEvents: 24, text: 600, name: 120, stageLabel: 8, intervalFloors: 1000 });
+export const TODAY_TREND_LIMITS = Object.freeze({ presets: 80, scopes: 80, worldItems: 24, circles: 24, factions: 80, factionDetails: 16, relatedFactions: 24, events: 80, participants: 24, stages: 40, relatedEvents: 24, generationSnapshots: 12, text: 600, name: 120, stageLabel: 8, intervalFloors: 1000 });
 
 const plainRecord = value => value && typeof value === 'object' && !Array.isArray(value)
     && (Object.getPrototypeOf(value) === Object.prototype || Object.getPrototypeOf(value) === null);
@@ -38,7 +38,7 @@ export function createEmptyTodayTrendScope() {
         storageId: '', characterId: '', characterName: '', presetId: '',
         operation: { enabled: false, mode: 'manual', intervalFloors: 1, lastSuccessfulAssistantCount: 0, lastSuccessfulRunAt: 0 },
         injection: { enabled: false }, world: { items: [] }, reputation: { circles: [] }, factions: [],
-        dynamicsSettings: createDefaultTodayTrendDynamicsSettings(), dynamics: { active: [], archived: [] },
+        dynamicsSettings: createDefaultTodayTrendDynamicsSettings(), dynamics: { active: [], archived: [] }, generationSnapshots: [],
     };
 }
 
@@ -213,7 +213,7 @@ function validateFactions(factions) {
     for (const faction of factions) visit(faction.id);
 }
 
-export function normalizeTodayTrendScope(value, presetIds) {
+function normalizeTodayTrendScopeInternal(value, presetIds, normalizeSnapshots) {
     assertRecord(value, 'TT_SCOPE', '角色资料必须是对象');
     const scope = createEmptyTodayTrendScope();
     scope.storageId = normalizeId(value.storageId, 'TT_SCOPE', '聊天 ID');
@@ -239,7 +239,86 @@ export function normalizeTodayTrendScope(value, presetIds) {
         }
     }
     if (scope.dynamics.active.length > scope.dynamicsSettings.trackingLimit) fail('TT_DYNAMICS_SETTINGS', '正在追踪事件超过上限');
+    if (!normalizeSnapshots) return scope;
+    const rawSnapshots = value.generationSnapshots;
+    const baselineSnapshot = {
+        assistantCount: 0, generatedAt: 0,
+        world: scope.world, reputation: scope.reputation, factions: scope.factions,
+        dynamicsSettings: scope.dynamicsSettings, dynamics: scope.dynamics,
+    };
+    const sourceSnapshots = Array.isArray(rawSnapshots) && rawSnapshots.length ? rawSnapshots : [
+        baselineSnapshot,
+        ...(scope.operation.lastSuccessfulAssistantCount > 0 ? [{
+            assistantCount: scope.operation.lastSuccessfulAssistantCount,
+            generatedAt: scope.operation.lastSuccessfulRunAt,
+            world: scope.world, reputation: scope.reputation, factions: scope.factions,
+            dynamicsSettings: scope.dynamicsSettings, dynamics: scope.dynamics,
+        }] : []),
+    ];
+    if (sourceSnapshots.length > TODAY_TREND_LIMITS.generationSnapshots) fail('TT_SNAPSHOT_LIMIT', '今日风向楼层快照数量超限');
+    const snapshots = new Map();
+    for (const raw of sourceSnapshots) {
+        assertRecord(raw, 'TT_SNAPSHOT', '今日风向楼层快照必须是对象');
+        const assistantCount = timestamp(raw.assistantCount);
+        const snapshotScope = normalizeTodayTrendScopeInternal({
+            ...scope,
+            operation: { ...scope.operation, lastSuccessfulAssistantCount: assistantCount, lastSuccessfulRunAt: timestamp(raw.generatedAt) },
+            world: raw.world, reputation: raw.reputation, factions: raw.factions,
+            dynamicsSettings: raw.dynamicsSettings, dynamics: raw.dynamics,
+            generationSnapshots: [],
+        }, presetIds, false);
+        snapshots.set(assistantCount, {
+            assistantCount, generatedAt: timestamp(raw.generatedAt),
+            world: snapshotScope.world, reputation: snapshotScope.reputation, factions: snapshotScope.factions,
+            dynamicsSettings: snapshotScope.dynamicsSettings, dynamics: snapshotScope.dynamics,
+        });
+    }
+    const normalizedSnapshots = [...snapshots.values()].sort((left, right) => left.assistantCount - right.assistantCount);
+    if (!snapshots.has(0)) {
+        const earliest = normalizedSnapshots[0] || baselineSnapshot;
+        const baseline = {
+            assistantCount: 0, generatedAt: 0,
+            world: structuredClone(earliest.world), reputation: structuredClone(earliest.reputation), factions: structuredClone(earliest.factions),
+            dynamicsSettings: structuredClone(earliest.dynamicsSettings), dynamics: structuredClone(earliest.dynamics),
+        };
+        scope.generationSnapshots = [baseline, ...normalizedSnapshots.slice(-(TODAY_TREND_LIMITS.generationSnapshots - 1))];
+    } else scope.generationSnapshots = normalizedSnapshots;
     return scope;
+}
+
+export function normalizeTodayTrendScope(value, presetIds) {
+    return normalizeTodayTrendScopeInternal(value, presetIds, true);
+}
+
+export function appendTodayTrendGenerationSnapshot(scope, assistantCount, generatedAt = Date.now()) {
+    const normalized = normalizeTodayTrendScope(scope, new Set([scope?.presetId]));
+    const floor = timestamp(assistantCount);
+    const snapshot = {
+        assistantCount: floor, generatedAt: timestamp(generatedAt),
+        world: structuredClone(normalized.world), reputation: structuredClone(normalized.reputation), factions: structuredClone(normalized.factions),
+        dynamicsSettings: structuredClone(normalized.dynamicsSettings), dynamics: structuredClone(normalized.dynamics),
+    };
+    const sortedSnapshots = [...normalized.generationSnapshots.filter(item => item.assistantCount !== floor), snapshot]
+        .sort((left, right) => left.assistantCount - right.assistantCount);
+    const baseline = sortedSnapshots.find(item => item.assistantCount === 0);
+    const generationSnapshots = baseline
+        ? [baseline, ...sortedSnapshots.filter(item => item.assistantCount !== 0).slice(-(TODAY_TREND_LIMITS.generationSnapshots - 1))]
+        : sortedSnapshots.slice(-TODAY_TREND_LIMITS.generationSnapshots);
+    return normalizeTodayTrendScope({ ...normalized, generationSnapshots }, new Set([normalized.presetId]));
+}
+
+export function rollbackTodayTrendScope(scope, assistantCount) {
+    const normalized = normalizeTodayTrendScope(scope, new Set([scope?.presetId]));
+    const floor = timestamp(assistantCount);
+    const snapshot = normalized.generationSnapshots.filter(item => item.assistantCount <= floor).at(-1);
+    if (!snapshot) return normalized;
+    return normalizeTodayTrendScope({
+        ...normalized,
+        operation: { ...normalized.operation, lastSuccessfulAssistantCount: snapshot.assistantCount, lastSuccessfulRunAt: snapshot.generatedAt },
+        world: snapshot.world, reputation: snapshot.reputation, factions: snapshot.factions,
+        dynamicsSettings: snapshot.dynamicsSettings, dynamics: snapshot.dynamics,
+        generationSnapshots: normalized.generationSnapshots.filter(item => item.assistantCount <= snapshot.assistantCount),
+    }, new Set([normalized.presetId]));
 }
 
 export function normalizeTodayTrendStore(value) {
@@ -272,6 +351,7 @@ export function copyTodayTrendScope(sourceScope, targetStorageId) {
     return normalizeTodayTrendScope({
         ...structuredClone(source), storageId: targetId,
         operation: { ...source.operation, lastSuccessfulAssistantCount: 0, lastSuccessfulRunAt: 0 },
+        generationSnapshots: [],
     }, new Set([source.presetId]));
 }
 

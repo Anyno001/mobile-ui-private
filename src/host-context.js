@@ -11,6 +11,28 @@ function warnHostContextFailureOnce(stage, message, error) {
     console.warn(`[phone-mode] ${message}，已使用降级值。`, errorType);
 }
 
+export function getLastMessageId(getCtx) {
+    try {
+        const helper = globalThis.TavernHelper;
+        if (typeof helper?.getLastMessageId === 'function') {
+            const id = Number(helper.getLastMessageId());
+            if (Number.isInteger(id) && id >= 0) return id;
+        }
+    } catch (error) {
+        warnHostContextFailureOnce('last-message-id-helper', '读取酒馆当前楼层失败', error);
+    }
+    try {
+        const chat = getCtx()?.chat;
+        if (!Array.isArray(chat)) return null;
+        if (chat.length === 0) return 0;
+        const id = Number(chat.at(-1)?.message_id);
+        return Number.isInteger(id) && id >= 0 ? id : chat.length - 1;
+    } catch (error) {
+        warnHostContextFailureOnce('last-message-id-context', '从聊天上下文推导当前楼层失败', error);
+        return null;
+    }
+}
+
 export function getCurrentChatId(context) {
     if (!context) return null;
     return context.chatId

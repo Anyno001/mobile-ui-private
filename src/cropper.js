@@ -2,7 +2,7 @@ import { POPOVER_SUPPORTED } from './constants.js';
 import { escapeAttr } from './ui.js';
 import { CLOSE_ICON_SVG } from './icons.js';
 
-export function openCropper(imgDataUrl, { onCancel, onConfirm }) {
+export function openCropper(imgDataUrl, { objectUrl = '', onCancel, onConfirm }) {
     const ratio = 330 / 450;
     const previousOverlay = document.getElementById('pm-overlay');
     if (typeof previousOverlay?.__pmCropperDispose === 'function') previousOverlay.__pmCropperDispose();
@@ -100,11 +100,14 @@ export function openCropper(imgDataUrl, { onCancel, onConfirm }) {
     function dispose() {
         if (disposed) return false;
         disposed = true;
+        image.onload = null;
+        image.src = '';
         window.removeEventListener('mousemove', onDragMove);
         window.removeEventListener('mouseup', onDragEnd);
         window.removeEventListener('touchmove', onDragMove);
         window.removeEventListener('touchend', onDragEnd);
         overlay.remove();
+        if (objectUrl) URL.revokeObjectURL(objectUrl);
         return true;
     }
     overlay.__pmCropperDispose = dispose;
@@ -144,29 +147,35 @@ export function openCropper(imgDataUrl, { onCancel, onConfirm }) {
 
     overlay.querySelector('#pm-crop-confirm').addEventListener('click', () => {
         const canvas = document.createElement('canvas');
-        const outputWidth = 600;
-        const outputHeight = Math.round(outputWidth / ratio);
-        canvas.width = outputWidth;
-        canvas.height = outputHeight;
-        const context = canvas.getContext('2d');
-        const sourceScale = image.naturalWidth / (baseWidth * scale);
-        context.drawImage(
-            image,
-            -tx * sourceScale,
-            -ty * sourceScale,
-            frameWidth * sourceScale,
-            frameHeight * sourceScale,
-            0,
-            0,
-            outputWidth,
-            outputHeight,
-        );
-        let quality = 0.7;
-        let output = canvas.toDataURL('image/jpeg', quality);
-        while (output.length > 200 * 1370 && quality > 0.2) {
-            quality -= 0.1;
-            output = canvas.toDataURL('image/jpeg', quality);
+        try {
+            const outputWidth = 600;
+            const outputHeight = Math.round(outputWidth / ratio);
+            canvas.width = outputWidth;
+            canvas.height = outputHeight;
+            const context = canvas.getContext('2d');
+            if (!context) throw new Error('浏览器无法创建图片裁剪画布');
+            const sourceScale = image.naturalWidth / (baseWidth * scale);
+            context.drawImage(
+                image,
+                -tx * sourceScale,
+                -ty * sourceScale,
+                frameWidth * sourceScale,
+                frameHeight * sourceScale,
+                0,
+                0,
+                outputWidth,
+                outputHeight,
+            );
+            let quality = 0.7;
+            let output = canvas.toDataURL('image/jpeg', quality);
+            while (output.length > 200 * 1370 && quality > 0.2) {
+                quality -= 0.1;
+                output = canvas.toDataURL('image/jpeg', quality);
+            }
+            if (dispose()) onConfirm(output);
+        } finally {
+            canvas.width = 0;
+            canvas.height = 0;
         }
-        if (dispose()) onConfirm(output);
     });
 }

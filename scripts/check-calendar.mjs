@@ -19,7 +19,7 @@ import {
 } from '../src/calendar-outfit-model.js';
 import { outfitSubjectOptions } from '../src/calendar-outfit-runtime.js';
 import {
-    clearCycleScope, createEmptyCycleStore, cycleScopeFor, cycleSubjectKeys, normalizeCycleScope,
+    clearCycleScope, createEmptyCycleStore, cycleScopeFor, cycleSubjectKeys, normalizeCycleScope, normalizeCycleStore,
     predictCyclePhase, predictCycleRange, upsertCycleScope,
 } from '../src/calendar-cycle-model.js';
 import {
@@ -52,7 +52,7 @@ import {
     saveCalendarCycles, saveCalendarHolidays, saveCalendarOccasions, saveCalendarRecipes, saveCalendarWeather,
 } from '../src/calendar-storage.js';
 import {
-    CALENDAR_CYCLE_STORAGE_KEY, CALENDAR_HOLIDAY_STORAGE_KEY, CALENDAR_STORAGE_KEY,
+    CALENDAR_CYCLE_STORAGE_KEY, CALENDAR_HOLIDAY_STORAGE_KEY, CALENDAR_OUTFIT_STORAGE_KEY, CALENDAR_STORAGE_KEY,
     CALENDAR_OCCASION_STORAGE_KEY, CALENDAR_RECIPE_STORAGE_KEY, CALENDAR_WEATHER_STORAGE_KEY,
 } from '../src/constants.js';
 
@@ -2159,6 +2159,284 @@ try {
     );
 
     memory.clear();
+    const largeCalendarScopes = Object.fromEntries(Array.from({ length: 80 }, (_, index) => [
+        index === 0 ? storageA : `calendar-scope-${index}`,
+        normalizeCalendarScope({ generationRule: `规则-${index}` }),
+    ]));
+    const largeCalendarStore = normalizeCalendarStore({ version: 1, scopes: largeCalendarScopes });
+    memory.set(CALENDAR_STORAGE_KEY, JSON.stringify(largeCalendarStore));
+    const largeCalendarRuntime = { store: largeCalendarStore };
+    const { commitScope: commitLargeCalendarScope } = createCalendarCommitters({
+        runtime: largeCalendarRuntime,
+        tasks: { active: () => true },
+        applyBidirectionalInjection: async () => ({ failedWrites: 0, failedKeys: [] }),
+        getCycles: () => null,
+        getCycleSubject: () => 'self',
+    });
+    await commitLargeCalendarScope(storageA, current => ({ ...current, generationRule: '单 scope 更新' }), null, { refreshInjection: false });
+    assert.equal(Object.keys(largeCalendarRuntime.store.scopes).length, 80, '单 scope 提交不得丢失其他日历 scope');
+    assert.equal(largeCalendarRuntime.store.scopes[storageA].generationRule, '单 scope 更新', '单 scope 提交必须更新目标 scope');
+    assert.equal(largeCalendarRuntime.store.scopes['calendar-scope-79'].generationRule, '规则-79', '单 scope 提交不得改写非目标 scope');
+    assert.deepEqual(
+        normalizeCalendarStore(JSON.parse(memory.get(CALENDAR_STORAGE_KEY))),
+        normalizeCalendarStore(largeCalendarRuntime.store),
+        '80 scopes 下单 scope 提交后持久化状态必须与内存状态一致',
+    );
+
+    memory.clear();
+    const largeRecipeStore = normalizeRecipeStore({ version: 1, scopes: Object.fromEntries(Array.from({ length: 80 }, (_, index) => [
+        index === 0 ? storageA : `recipe-scope-${index}`,
+        normalizeRecipeScope({ generationRule: `菜谱规则-${index}` }),
+    ])) });
+    memory.set(CALENDAR_RECIPE_STORAGE_KEY, JSON.stringify(largeRecipeStore));
+    const largeRecipeRuntime = { recipeStore: largeRecipeStore };
+    const { commitRecipe: commitLargeRecipeScope } = createCalendarCommitters({
+        runtime: largeRecipeRuntime,
+        tasks: { active: () => true },
+        applyBidirectionalInjection: async () => ({ failedWrites: 0, failedKeys: [] }),
+        getCycles: () => null,
+        getCycleSubject: () => 'self',
+    });
+    await commitLargeRecipeScope(storageA, current => ({ ...current, generationRule: '菜谱单 scope 更新' }), null, { refreshInjection: false });
+    assert.equal(Object.keys(largeRecipeRuntime.recipeStore.scopes).length, 80, '菜谱单 scope 提交不得丢失其他 scope');
+    assert.equal(largeRecipeRuntime.recipeStore.scopes[storageA].generationRule, '菜谱单 scope 更新');
+    assert.equal(largeRecipeRuntime.recipeStore.scopes['recipe-scope-79'].generationRule, '菜谱规则-79',
+        '菜谱单 scope 提交不得改写非目标 scope');
+    assert.deepEqual(JSON.parse(memory.get(CALENDAR_RECIPE_STORAGE_KEY)), largeRecipeRuntime.recipeStore,
+        '菜谱单 scope 提交后持久化状态必须与内存状态一致');
+
+    memory.clear();
+    const largeOutfitStore = normalizeOutfitStore({ version: 1, scopes: Object.fromEntries(Array.from({ length: 80 }, (_, index) => [
+        index === 0 ? storageA : `outfit-scope-${index}`,
+        { subjects: { [OUTFIT_SELF_SUBJECT]: { preference: `穿搭偏好-${index}` } } },
+    ])) });
+    memory.set(CALENDAR_OUTFIT_STORAGE_KEY, JSON.stringify(largeOutfitStore));
+    const largeOutfitRuntime = { outfitStore: largeOutfitStore };
+    let largeOutfitMutatorScopeCount = 0;
+    const { commitOutfits: commitLargeOutfitScope } = createCalendarCommitters({
+        runtime: largeOutfitRuntime,
+        tasks: { active: () => true },
+        applyBidirectionalInjection: async () => ({ failedWrites: 0, failedKeys: [] }),
+        getCycles: () => null,
+        getCycleSubject: () => 'self',
+    });
+    const largeOutfitResult = await commitLargeOutfitScope(storageA, store => {
+        largeOutfitMutatorScopeCount = Object.keys(store.scopes).length;
+        return updateOutfitProfile(store, storageA, OUTFIT_SELF_SUBJECT, profile => ({ ...profile, preference: '穿搭单 scope 更新' }));
+    }, null, { refreshInjection: false });
+    assert.equal(largeOutfitMutatorScopeCount, 1, '穿搭提交的 mutator 只能看到目标 scope');
+    assert.equal(Object.keys(largeOutfitRuntime.outfitStore.scopes).length, 80, '穿搭单 scope 提交不得丢失其他 scope');
+    assert.equal(outfitScopeFor(largeOutfitRuntime.outfitStore, storageA, OUTFIT_SELF_SUBJECT).preference, '穿搭单 scope 更新');
+    assert.equal(outfitScopeFor(largeOutfitRuntime.outfitStore, 'outfit-scope-79', OUTFIT_SELF_SUBJECT).preference, '穿搭偏好-79',
+        '穿搭单 scope 提交不得改写非目标 scope');
+    assert.strictEqual(largeOutfitResult, largeOutfitRuntime.outfitStore,
+        '穿搭提交必须保持返回完整 store 的既有语义');
+    assert.deepEqual(JSON.parse(memory.get(CALENDAR_OUTFIT_STORAGE_KEY)), largeOutfitRuntime.outfitStore,
+        '穿搭单 scope 提交后持久化状态必须与内存状态一致');
+
+    memory.clear();
+    const occasionScope = index => ({ occasions: [{
+        id: `occasion_${index}`, type: 'anniversary', month: 1, day: 1, date: '2032-01-01', repeat: 'yearly',
+        title: `纪念日-${index}`, createdAt: 1, updatedAt: 1,
+    }] });
+    const largeOccasionStore = normalizeOccasionStore({ version: 1, scopes: Object.fromEntries(Array.from({ length: 80 }, (_, index) => [
+        index === 0 ? storageA : `occasion-scope-${index}`,
+        occasionScope(index),
+    ])) });
+    memory.set(CALENDAR_OCCASION_STORAGE_KEY, JSON.stringify(largeOccasionStore));
+    const largeOccasionRuntime = { occasionStore: largeOccasionStore };
+    const { commitOccasions: commitLargeOccasionScope } = createCalendarCommitters({
+        runtime: largeOccasionRuntime,
+        tasks: { active: () => true },
+        applyBidirectionalInjection: async () => ({ failedWrites: 0, failedKeys: [] }),
+        getCycles: () => null,
+        getCycleSubject: () => 'self',
+    });
+    await commitLargeOccasionScope(storageA, current => upsertOccasion(current, {
+        type: 'anniversary', month: 2, day: 2, date: '2032-02-02', repeat: 'yearly', title: '目标新增纪念日',
+    }, 2));
+    assert.equal(Object.keys(largeOccasionRuntime.occasionStore.scopes).length, 80, '纪念日单 scope 提交不得丢失其他 scope');
+    assert.equal(largeOccasionRuntime.occasionStore.scopes[storageA].occasions.some(item => item.title === '目标新增纪念日'), true);
+    assert.equal(largeOccasionRuntime.occasionStore.scopes['occasion-scope-79'].occasions[0].title, '纪念日-79',
+        '纪念日单 scope 提交不得改写非目标 scope');
+
+    memory.clear();
+    const largeScheduleCalendar = normalizeCalendarStore({ version: 1, scopes: Object.fromEntries(Array.from({ length: 80 }, (_, index) => [
+        index === 0 ? storageA : `schedule-scope-${index}`,
+        normalizeCalendarScope({ generationRule: `日程规则-${index}` }),
+    ])) });
+    const largeScheduleOccasions = normalizeOccasionStore({ version: 1, scopes: Object.fromEntries(Array.from({ length: 80 }, (_, index) => [
+        index === 0 ? storageA : `schedule-scope-${index}`,
+        occasionScope(index),
+    ])) });
+    memory.set(CALENDAR_STORAGE_KEY, JSON.stringify(largeScheduleCalendar));
+    memory.set(CALENDAR_OCCASION_STORAGE_KEY, JSON.stringify(largeScheduleOccasions));
+    const largeScheduleRuntime = { store: largeScheduleCalendar, occasionStore: largeScheduleOccasions };
+    const { commitSchedule: commitLargeScheduleScope } = createCalendarCommitters({
+        runtime: largeScheduleRuntime,
+        tasks: { active: () => true },
+        applyBidirectionalInjection: async () => ({ failedWrites: 0, failedKeys: [] }),
+        getCycles: () => null,
+        getCycleSubject: () => 'self',
+    });
+    await commitLargeScheduleScope(storageA, current => ({
+        calendar: { ...current.calendar, generationRule: '双 store 单 scope 更新' },
+        occasions: upsertOccasion(current.occasions, {
+            type: 'anniversary', month: 3, day: 3, date: '2032-03-03', repeat: 'yearly', title: '双 store 目标纪念日',
+        }, 3),
+    }));
+    assert.equal(Object.keys(largeScheduleRuntime.store.scopes).length, 80, '日程转换不得丢失其他日历 scope');
+    assert.equal(Object.keys(largeScheduleRuntime.occasionStore.scopes).length, 80, '日程转换不得丢失其他纪念日 scope');
+    assert.equal(largeScheduleRuntime.store.scopes['schedule-scope-79'].generationRule, '日程规则-79',
+        '日程转换不得改写非目标日历 scope');
+    assert.equal(largeScheduleRuntime.occasionStore.scopes['schedule-scope-79'].occasions[0].title, '纪念日-79',
+        '日程转换不得改写非目标纪念日 scope');
+
+    memory.clear();
+    const largeCycleStore = normalizeCycleStore({ version: 1, scopes: Object.fromEntries(Array.from({ length: 80 }, (_, index) => [
+        index === 0 ? storageA : `cycle-scope-${index}`,
+        { enabled: true, lastPeriodStart: '2032-01-01', cycleLength: 21 + (index % 20), periodLength: 5 },
+    ])) });
+    memory.set(CALENDAR_CYCLE_STORAGE_KEY, JSON.stringify(largeCycleStore));
+    const largeCycleRuntime = { cycleStore: largeCycleStore };
+    let largeCycleMutatorScopeCount = 0;
+    const { commitCycle: commitLargeCycleScope } = createCalendarCommitters({
+        runtime: largeCycleRuntime,
+        tasks: { active: () => true },
+        applyBidirectionalInjection: async () => ({ failedWrites: 0, failedKeys: [] }),
+        getCycles: () => null,
+        getCycleSubject: () => 'self',
+    });
+    await commitLargeCycleScope(storageA, store => {
+        largeCycleMutatorScopeCount = Object.keys(store.scopes).length;
+        return upsertCycleScope(store, storageA, { enabled: true, lastPeriodStart: '2032-02-01', cycleLength: 28, periodLength: 5 });
+    });
+    assert.equal(largeCycleMutatorScopeCount, 1, '周期提交的 mutator 只能看到目标 scope');
+    assert.equal(Object.keys(largeCycleRuntime.cycleStore.scopes).length, 80, '周期单 scope 提交不得丢失其他 scope');
+    assert.equal(largeCycleRuntime.cycleStore.scopes[storageA].lastPeriodStart, '2032-02-01');
+    assert.equal(largeCycleRuntime.cycleStore.scopes['cycle-scope-79'].cycleLength, 40,
+        '周期单 scope 提交不得改写非目标 scope');
+    assert.deepEqual(JSON.parse(memory.get(CALENDAR_CYCLE_STORAGE_KEY)), largeCycleRuntime.cycleStore,
+        '周期单 scope 提交后持久化状态必须与内存状态一致');
+
+    memory.clear();
+    const occasionOwnershipInitial = normalizeOccasionStore({ version: 1, scopes: {
+        [storageA]: occasionScope(1),
+        [storageB]: occasionScope(2),
+    } });
+    memory.set(CALENDAR_OCCASION_STORAGE_KEY, JSON.stringify(occasionOwnershipInitial));
+    const occasionOwnershipRuntime = { occasionStore: occasionOwnershipInitial };
+    const occasionOwnershipEntered = deferred(), occasionOwnershipRelease = deferred();
+    const {
+        commitOccasions: commitOccasionsBeforeReplacement,
+        invalidateCommits: invalidateOccasionCommit,
+    } = createCalendarCommitters({
+        runtime: occasionOwnershipRuntime,
+        tasks: { active: () => true },
+        applyBidirectionalInjection: async () => {
+            occasionOwnershipEntered.resolve();
+            await occasionOwnershipRelease.promise;
+        },
+        getCycles: () => null,
+        getCycleSubject: () => 'self',
+    });
+    const blockedOccasionCommit = commitOccasionsBeforeReplacement(storageA, current => upsertOccasion(current, {
+        type: 'anniversary', month: 4, day: 4, date: '2032-04-04', repeat: 'yearly', title: '旧纪念日事务',
+    }, 4));
+    await occasionOwnershipEntered.promise;
+    invalidateOccasionCommit();
+    const occasionOwnershipReplacement = normalizeOccasionStore({ version: 1, scopes: {
+        [storageA]: occasionScope(10),
+        [storageB]: occasionScope(20),
+    } });
+    memory.set(CALENDAR_OCCASION_STORAGE_KEY, JSON.stringify(occasionOwnershipReplacement));
+    occasionOwnershipRuntime.occasionStore = occasionOwnershipReplacement;
+    occasionOwnershipRelease.resolve();
+    assert.equal(await blockedOccasionCommit, false, '纪念日事务失去 generation 后必须返回取消');
+    assert.deepEqual(occasionOwnershipRuntime.occasionStore, occasionOwnershipReplacement,
+        '纪念日旧事务不得回滚替换后的内存权威状态');
+    assert.deepEqual(JSON.parse(memory.get(CALENDAR_OCCASION_STORAGE_KEY)), occasionOwnershipReplacement,
+        '纪念日旧事务不得回滚替换后的持久化权威状态');
+
+    memory.clear();
+    const scheduleOwnershipCalendar = normalizeCalendarStore({ version: 1, scopes: {
+        [storageA]: normalizeCalendarScope({ generationRule: '旧日历状态' }),
+        [storageB]: normalizeCalendarScope({ generationRule: '其他日历状态' }),
+    } });
+    const scheduleOwnershipOccasions = normalizeOccasionStore({ version: 1, scopes: {
+        [storageA]: occasionScope(3),
+        [storageB]: occasionScope(4),
+    } });
+    memory.set(CALENDAR_STORAGE_KEY, JSON.stringify(scheduleOwnershipCalendar));
+    memory.set(CALENDAR_OCCASION_STORAGE_KEY, JSON.stringify(scheduleOwnershipOccasions));
+    const scheduleOwnershipRuntime = { store: scheduleOwnershipCalendar, occasionStore: scheduleOwnershipOccasions };
+    const scheduleOwnershipEntered = deferred(), scheduleOwnershipRelease = deferred();
+    const {
+        commitSchedule: commitScheduleBeforeReplacement,
+        invalidateCommits: invalidateScheduleCommit,
+    } = createCalendarCommitters({
+        runtime: scheduleOwnershipRuntime,
+        tasks: { active: () => true },
+        applyBidirectionalInjection: async () => {
+            scheduleOwnershipEntered.resolve();
+            await scheduleOwnershipRelease.promise;
+        },
+        getCycles: () => null,
+        getCycleSubject: () => 'self',
+    });
+    const blockedScheduleCommit = commitScheduleBeforeReplacement(storageA, current => ({
+        calendar: { ...current.calendar, generationRule: '旧日程转换事务' },
+        occasions: current.occasions,
+    }));
+    await scheduleOwnershipEntered.promise;
+    invalidateScheduleCommit();
+    const scheduleReplacementCalendar = normalizeCalendarStore({ version: 1, scopes: {
+        [storageA]: normalizeCalendarScope({ generationRule: '替换后的日历状态' }),
+        [storageB]: normalizeCalendarScope({ generationRule: '替换后的其他日历状态' }),
+    } });
+    const scheduleReplacementOccasions = normalizeOccasionStore({ version: 1, scopes: {
+        [storageA]: occasionScope(30),
+        [storageB]: occasionScope(40),
+    } });
+    memory.set(CALENDAR_STORAGE_KEY, JSON.stringify(scheduleReplacementCalendar));
+    memory.set(CALENDAR_OCCASION_STORAGE_KEY, JSON.stringify(scheduleReplacementOccasions));
+    scheduleOwnershipRuntime.store = scheduleReplacementCalendar;
+    scheduleOwnershipRuntime.occasionStore = scheduleReplacementOccasions;
+    scheduleOwnershipRelease.resolve();
+    assert.equal(await blockedScheduleCommit, false, '日程转换失去 generation 后必须返回取消');
+    assert.deepEqual(scheduleOwnershipRuntime.store, scheduleReplacementCalendar,
+        '日程转换旧事务不得回滚替换后的日历权威状态');
+    assert.deepEqual(scheduleOwnershipRuntime.occasionStore, scheduleReplacementOccasions,
+        '日程转换旧事务不得回滚替换后的纪念日权威状态');
+
+    memory.clear();
+    const cycleOwnershipInitial = normalizeCycleStore({ version: 1, scopes: { [storageA]: largeCycleStore.scopes[storageA] } });
+    memory.set(CALENDAR_CYCLE_STORAGE_KEY, JSON.stringify(cycleOwnershipInitial));
+    const cycleOwnershipRuntime = { cycleStore: cycleOwnershipInitial };
+    const cycleMutationEntered = deferred(), cycleMutationRelease = deferred();
+    const { commitCycle: commitCycleBeforeReplacement, invalidateCommits: invalidateCycleCommit } = createCalendarCommitters({
+        runtime: cycleOwnershipRuntime, tasks: { active: () => true }, getCycles: () => null, getCycleSubject: () => 'self',
+    });
+    const blockedCycleCommit = commitCycleBeforeReplacement(storageA, async store => {
+        cycleMutationEntered.resolve();
+        await cycleMutationRelease.promise;
+        return upsertCycleScope(store, storageA, { enabled: true, lastPeriodStart: '2032-03-01', cycleLength: 29, periodLength: 5 });
+    });
+    await cycleMutationEntered.promise;
+    invalidateCycleCommit();
+    const cycleOwnershipReplacement = normalizeCycleStore({ version: 1, scopes: {
+        [storageA]: { enabled: true, lastPeriodStart: '2032-04-01', cycleLength: 30, periodLength: 5 },
+    } });
+    memory.set(CALENDAR_CYCLE_STORAGE_KEY, JSON.stringify(cycleOwnershipReplacement));
+    cycleOwnershipRuntime.cycleStore = cycleOwnershipReplacement;
+    cycleMutationRelease.resolve();
+    assert.equal(await blockedCycleCommit, false, '周期事务失去 generation 后必须在保存前取消');
+    assert.deepEqual(cycleOwnershipRuntime.cycleStore, cycleOwnershipReplacement,
+        '周期旧事务不得覆盖替换后的内存权威状态');
+    assert.deepEqual(JSON.parse(memory.get(CALENDAR_CYCLE_STORAGE_KEY)), cycleOwnershipReplacement,
+        '周期旧事务不得覆盖替换后的持久化权威状态');
+
+    memory.clear();
     const occasionPreviousStore = normalizeOccasionStore({ version: 1, scopes: {
         [storageA]: { occasions: [] },
     } });
@@ -2335,6 +2613,39 @@ try {
     assert.equal(recipeInjectionCalls, 0, 'refreshInjection: false 的菜谱提交不得刷新注入');
     assert.equal(recipeRuntime.recipeStore.scopes[storageB]?.generationRule || '', '',
         '菜谱规则提交不得污染其他 storageId scope');
+
+    memory.clear();
+    const outfitPreviousStore = updateOutfitProfile(
+        updateOutfitProfile(createEmptyOutfitStore(), storageA, '__self__', profile => ({ ...profile, preference: '目标旧偏好' })),
+        storageB, '__self__', profile => ({ ...profile, preference: '其他会话偏好' }),
+    );
+    memory.set(CALENDAR_OUTFIT_STORAGE_KEY, JSON.stringify(outfitPreviousStore));
+    const outfitRuntime = { store: createEmptyCalendarStore(), outfitStore: outfitPreviousStore };
+    let outfitInjectionCalls = 0;
+    let outfitMutatorScopeCount = 0;
+    const { commitOutfits: commitOutfitsWithRollback } = createCalendarCommitters({
+        runtime: outfitRuntime,
+        tasks: { active: () => true },
+        applyBidirectionalInjection: async () => {
+            outfitInjectionCalls += 1;
+            return outfitInjectionCalls === 1 ? { failedWrites: 1, failedKeys: [] } : { failedWrites: 0, failedKeys: [] };
+        },
+        getCycles: () => null,
+        getCycleSubject: () => 'self',
+    });
+    await assert.rejects(commitOutfitsWithRollback(storageA, store => {
+        outfitMutatorScopeCount = Object.keys(store.scopes).length;
+        return updateOutfitProfile(store, storageA, '__self__', profile => upsertOutfit(profile, {
+            date: recipeDates[0], text: '应当回滚的 OOTD', source: 'manual',
+        }, 35));
+    }), /穿搭提交注入失败/);
+    assert.equal(outfitMutatorScopeCount, 1, '穿搭单 scope 提交不得向 mutator 暴露整库 scope');
+    assert.equal(outfitInjectionCalls, 2, '穿搭注入失败后必须执行一次补偿刷新');
+    assert.deepEqual(outfitRuntime.outfitStore, outfitPreviousStore, '穿搭注入失败后必须恢复内存 store');
+    assert.deepEqual(JSON.parse(memory.get(CALENDAR_OUTFIT_STORAGE_KEY)), outfitPreviousStore,
+        '穿搭注入失败后必须恢复 localStorage store');
+    assert.equal(outfitScopeFor(outfitRuntime.outfitStore, storageB, '__self__').preference, '其他会话偏好',
+        '穿搭单 scope 回滚不得污染其他 storageId scope');
 
     memory.clear();
     const ownershipInitialStore = normalizeRecipeStore({ version: 1, scopes: {

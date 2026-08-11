@@ -1,18 +1,29 @@
 import { cssUrlEscape } from './ui.js';
 import { saveHistories } from './storage.js';
+import { loadLocalBackground } from './storage-background.js';
 
 // 手机窗口外观与历史迁移：与主题变量注入无关的纯 DOM/存储副作用。
 export function createPhoneAppearance(state, deps) {
     const { getCtx, getStorageId } = deps;
+    let backgroundRequest = 0;
 
-    function applyBackground() {
+    async function applyBackground() {
         const phone = state.phoneWindow;
         const msgList = phone?.querySelector('.pm-msg-list'); if (!msgList || !phone) return;
+        const request = ++backgroundRequest;
         const desktopBg = window.__pmDesktopBg || '';
         if (desktopBg) phone.style.setProperty('--pm-desktop-bg-image', `url("${cssUrlEscape(desktopBg)}")`);
         else phone.style.removeProperty('--pm-desktop-bg-image');
         const id = getStorageId(), localKey = `${id}_${state.currentPersona}`;
-        const bg = window.__pmBgLocal[localKey] || window.__pmBgGlobal || '';
+        let localBg = '';
+        try {
+            localBg = await loadLocalBackground(localKey);
+        } catch (error) {
+            console.error('[phone-mode] 会话背景读取失败', error);
+        }
+        if (request !== backgroundRequest || state.phoneWindow !== phone
+            || `${getStorageId()}_${state.currentPersona}` !== localKey) return;
+        const bg = localBg || window.__pmBgGlobal || '';
         if (bg) {
             msgList.style.setProperty('background-image', `url("${cssUrlEscape(bg)}")`, 'important');
             msgList.style.setProperty('background-size', 'cover', 'important');

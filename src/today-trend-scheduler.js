@@ -1,60 +1,200 @@
+import { appendTodayTrendGenerationSnapshot, rollbackTodayTrendScope } from './today-trend-model.js';
+
 const cancelled = () => Object.assign(new Error('今日风向生成已取消'), { name: 'AbortError' });
 const validCount = value => Number.isInteger(value) && value >= 0 ? value : 0;
-const messageText = message => ['mes', 'message', 'content']
-    .map(key => typeof message?.[key] === 'string' ? message[key].trim() : '')
-    .find(Boolean) || '';
+const OBSERVATION_LIMIT = 80;
+const HASH_SEEDS = Object.freeze([0x811c9dc5, 0x9e3779b9, 0x85ebca6b, 0xc2b2ae35]);
+const HASH_PRIMES = Object.freeze([0x01000193, 0x27d4eb2d, 0x165667b1, 0x9e3779b1]);
+const messageText = message => {
+    if (typeof message?.mes === 'string' && message.mes.trim()) return message.mes.trim();
+    if (typeof message?.message === 'string' && message.message.trim()) return message.message.trim();
+    if (typeof message?.content === 'string' && message.content.trim()) return message.content.trim();
+    return '';
+};
 const messageRole = message => {
     const role = typeof message?.role === 'string' ? message.role.toLowerCase() : '';
     if (message?.is_system === true || role === 'system') return 'system';
     if (message?.is_user === true || role === 'user') return 'user';
     return 'assistant';
 };
-const createTurnSnapshot = chat => {
-    const messages = Array.isArray(chat) ? chat.filter(message => message && typeof message === 'object' && messageText(message)) : [];
-    const last = messages.at(-1);
-    const assistantCount = messages.filter(message => messageRole(message) === 'assistant').length;
-    const key = messages.map((message, index) => `${index}:${messageRole(message)}:${messageText(message)}`).join('\n');
-    return Object.freeze({ key, assistantCount, lastIsAssistant: messageRole(last) === 'assistant' });
+const updateHashCode = (state, code) => {
+    for (let lane = 0; lane < state.length; lane += 1) {
+        state[lane] ^= code + lane * 0x9e37;
+        state[lane] = Math.imul(state[lane], HASH_PRIMES[lane]);
+    }
 };
+const updateHashNumber = (state, value) => {
+    const number = value >>> 0;
+    updateHashCode(state, number & 0xff);
+    updateHashCode(state, (number >>> 8) & 0xff);
+    updateHashCode(state, (number >>> 16) & 0xff);
+    updateHashCode(state, (number >>> 24) & 0xff);
+};
+const hashHex = state => state.map(value => (value >>> 0).toString(16).padStart(8, '0')).join('');
+const validFloor = (value, fallback = 0) => Number.isInteger(value) && value >= 0 ? value : fallback;
+const createTurnSnapshot = (chat, hostFloor = null) => {
+    const sessionHash = [...HASH_SEEDS];
+    let messageCount = 0;
+    let assistantCount = 0;
+    let lastRole = '';
+    let lastMessageFingerprint = '';
+    updateHashCode(sessionHash, 0x53);
+    for (let index = 0; index < (Array.isArray(chat) ? chat.length : 0); index += 1) {
+        const message = chat[index];
+        if (!message || typeof message !== 'object') continue;
+        const text = messageText(message);
+        if (!text) continue;
+        const role = messageRole(message);
+        const roleCode = role === 'system' ? 1 : role === 'user' ? 2 : 3;
+        const messageHash = [...HASH_SEEDS];
+        updateHashCode(sessionHash, 0x1e);
+        updateHashNumber(sessionHash, index);
+        updateHashCode(sessionHash, roleCode);
+        updateHashNumber(sessionHash, text.length);
+        updateHashCode(messageHash, roleCode);
+        updateHashNumber(messageHash, text.length);
+        for (let offset = 0; offset < text.length; offset += 1) {
+            const code = text.charCodeAt(offset);
+            updateHashCode(sessionHash, code);
+            updateHashCode(messageHash, code);
+        }
+        updateHashCode(sessionHash, 0x1f);
+        messageCount += 1;
+        if (role === 'assistant') assistantCount += 1;
+        lastRole = role;
+        lastMessageFingerprint = hashHex(messageHash);
+    }
+    updateHashNumber(sessionHash, messageCount);
+    updateHashNumber(sessionHash, assistantCount);
+    return Object.freeze({
+        floor: validFloor(hostFloor, assistantCount),
+        key: hashHex(sessionHash), messageCount, assistantCount, lastRole, lastMessageFingerprint,
+        lastIsAssistant: lastRole === 'assistant',
+    });
+};
+const sameSnapshot = (observation, snapshot) => observation?.key === snapshot.key
+    && observation.floor === snapshot.floor
+    && observation.messageCount === snapshot.messageCount
+    && observation.assistantCount === snapshot.assistantCount
+    && observation.lastRole === snapshot.lastRole
+    && observation.lastMessageFingerprint === snapshot.lastMessageFingerprint;
 
 export function createTodayTrendScheduler({
-    controller, committer, getStore, getStorageId, getChat = () => [], random = Math.random, now = () => Date.now(),
+    controller, committer, getStore, getStorageId, getChat = () => [], getFloor = () => null, random = Math.random, now = () => Date.now(),
+    wait = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds)), commitFeedbackMs = 240,
 } = {}) {
     if (!controller || typeof controller.generate !== 'function') throw new TypeError('今日风向调度器缺少生成控制器');
     if (!committer || typeof committer.commitStore !== 'function' || typeof committer.invalidateCommits !== 'function') throw new TypeError('今日风向调度器缺少事务提交器');
     if (typeof getStore !== 'function' || typeof getStorageId !== 'function') throw new TypeError('今日风向调度器缺少存储或聊天读取器');
     let sequence = 0;
+    let accessSequence = 0;
     let activeTask = null;
+    let terminalTask = null;
     let phase = 'idle';
     let lastError = null;
     const baselines = new Map();
     const observations = new Map();
+    const listeners = new Set();
+    let lastPublishedSignature = '';
+    const readSnapshot = chat => createTurnSnapshot(chat, getFloor());
+    const publicTask = task => task ? Object.freeze({
+        kind: task.kind,
+        storageId: task.storageId,
+        floor: task.floor,
+        target: task.target ? Object.freeze({ ...task.target }) : null,
+    }) : null;
+    const state = () => Object.freeze({
+        phase,
+        task: publicTask(activeTask || terminalTask),
+        lastError,
+        baselines: Object.fromEntries(baselines),
+        observationCount: observations.size,
+    });
+    const publish = () => {
+        const snapshot = state();
+        const signature = JSON.stringify(snapshot);
+        if (signature === lastPublishedSignature) return snapshot;
+        lastPublishedSignature = signature;
+        for (const listener of listeners) {
+            try { listener(snapshot); } catch {}
+        }
+        return snapshot;
+    };
+    const setPhase = (nextPhase, error = lastError) => {
+        phase = nextPhase;
+        lastError = error;
+        if (nextPhase === 'idle' || nextPhase === 'completed') terminalTask = null;
+        return publish();
+    };
+    const subscribe = listener => {
+        if (typeof listener !== 'function') throw new TypeError('今日风向状态订阅器必须是函数');
+        listeners.add(listener);
+        try { listener(state()); } catch {}
+        let subscribed = true;
+        return () => {
+            if (!subscribed) return false;
+            subscribed = false;
+            return listeners.delete(listener);
+        };
+    };
+    const touch = observation => {
+        observation.lastAccessedAt = now();
+        observation.accessOrder = ++accessSequence;
+        return observation;
+    };
+    const removeObservation = id => { observations.delete(id); baselines.delete(id); };
+    const pruneObservations = () => {
+        while (observations.size > OBSERVATION_LIMIT) {
+            const currentId = String(getStorageId() || '').trim();
+            const candidate = [...observations.entries()]
+                .filter(([id, observation]) => id !== currentId && id !== activeTask?.storageId && validCount(observation.pendingTurns) === 0)
+                .sort((left, right) => left[1].accessOrder - right[1].accessOrder)[0];
+            if (!candidate) break;
+            removeObservation(candidate[0]);
+        }
+    };
+    const storeSnapshot = (id, snapshot, pendingTurns) => {
+        const observation = touch({
+            key: snapshot.key, floor: snapshot.floor, messageCount: snapshot.messageCount, assistantCount: snapshot.assistantCount,
+            lastRole: snapshot.lastRole, lastMessageFingerprint: snapshot.lastMessageFingerprint,
+            pendingTurns, rewindFloor: null,
+        });
+        observations.set(id, observation);
+        pruneObservations();
+        return observation;
+    };
 
     const isActive = task => !!task && activeTask === task && !task.abortController.signal.aborted
         && getStorageId() === task.storageId;
     const cancel = (reason = 'today-trend-cancelled', resetObservation = false) => {
         sequence += 1;
+        terminalTask = activeTask;
         activeTask?.abortController.abort(reason);
         activeTask = null;
-        phase = 'canceled';
-        lastError = null;
         committer.invalidateCommits();
         if (resetObservation) {
             baselines.clear();
             observations.clear();
-        }
+        } else pruneObservations();
+        setPhase('canceled', null);
         return reason;
     };
-    const state = () => Object.freeze({ phase, task: activeTask, lastError, baselines: Object.fromEntries(baselines) });
-    const acknowledge = () => { if (!activeTask) { phase = 'idle'; lastError = null; } return state(); };
+    const acknowledge = () => {
+        if (!activeTask) { terminalTask = null; return setPhase('idle', null); }
+        return state();
+    };
     const arm = (storageId = getStorageId(), chat = getChat()) => {
         const id = String(storageId || '').trim();
         if (!id) throw new Error('今日风向开始运作缺少有效聊天');
         if (id !== getStorageId()) throw new Error('今日风向只能为当前聊天开始运作');
-        const snapshot = createTurnSnapshot(chat);
-        baselines.set(id, snapshot.assistantCount);
-        observations.set(id, { key: snapshot.key, assistantCount: snapshot.assistantCount, pendingTurns: 0 });
-        return snapshot.assistantCount;
+        const snapshot = readSnapshot(chat);
+        baselines.set(id, snapshot.floor);
+        storeSnapshot(id, snapshot, 0);
+        return snapshot.floor;
+    };
+    const currentFloor = (storageId = getStorageId()) => {
+        const id = String(storageId || '').trim();
+        return id && id === getStorageId() ? readSnapshot(getChat()).floor : validCount(observations.get(id)?.floor);
     };
     const rollIncident = probability => {
         const chance = Number(probability);
@@ -62,42 +202,48 @@ export function createTodayTrendScheduler({
         if (chance >= 100) return true;
         return (typeof random === 'function' ? random() : Math.random()) * 100 < chance;
     };
-    const run = async ({ kind, storageId, assistantCount, incidentProbability, target = null } = {}) => {
+    const run = async ({ kind, storageId, floor, incidentProbability, target = null } = {}) => {
         const id = String(storageId || getStorageId() || '').trim();
         if (!id) throw new Error('今日风向生成缺少有效聊天');
         if (activeTask) {
             if (kind !== 'manual') return false;
             cancel('today-trend-manual-replaces-active');
         }
-        const currentAssistantCount = assistantCount === undefined
-            ? createTurnSnapshot(getChat()).assistantCount : validCount(assistantCount);
-        const pendingTurns = observations.get(id)?.pendingTurns;
+        const currentFloor = floor === undefined
+            ? readSnapshot(getChat()).floor : validCount(floor);
+        const observation = observations.get(id);
+        if (observation) touch(observation);
+        const pendingTurns = observation?.pendingTurns;
         const task = Object.freeze({
-            id: ++sequence, kind, storageId: id, assistantCount: currentAssistantCount,
+            id: ++sequence, kind, storageId: id, floor: currentFloor,
             pendingTurns: Number.isInteger(pendingTurns) && pendingTurns >= 0 ? pendingTurns : 0,
             incidentProbability, target,
             abortController: new AbortController(),
         });
+        terminalTask = null;
         activeTask = task;
-        phase = 'queued';
-        lastError = null;
+        setPhase('queued', null);
         try {
             const source = await getStore();
             if (!isActive(task)) throw cancelled();
             const scope = source?.scopes?.[id];
             const preset = scope && source?.presets?.[scope.presetId];
-            if (!scope || !preset) throw new Error('当前聊天尚未初始化今日风向');
+            if (!scope || !preset) {
+                removeObservation(id);
+                throw new Error('当前聊天尚未初始化今日风向');
+            }
             const configuredProbability = scope.dynamicsSettings?.incident?.enabled
                 ? scope.dynamicsSettings.incident.probability : 0;
             const effectiveIncidentProbability = incidentProbability === undefined ? configuredProbability : incidentProbability;
             const generated = await controller.generate({
                 signal: task.abortController.signal, scope, preset, storageId: id,
                 characterId: scope.characterId, characterName: scope.characterName,
-                assistantCount: task.assistantCount, allowIncident: rollIncident(effectiveIncidentProbability),
-                target: task.target, onPhase: next => { if (isActive(task)) phase = next; },
+                assistantCount: task.floor, allowIncident: rollIncident(effectiveIncidentProbability),
+                target: task.target, onPhase: next => { if (isActive(task)) setPhase(next, null); },
             });
             if (!isActive(task)) throw cancelled();
-            phase = 'committing';
+            setPhase('committing', null);
+            const commitStartedAt = now();
             const committed = await committer.commitStore(store => {
                 const current = store.scopes[id];
                 if (!isActive(task)) return store;
@@ -108,84 +254,175 @@ export function createTodayTrendScheduler({
                 if (JSON.stringify(current) !== JSON.stringify(scope)) {
                     throw new Error('今日风向资料在生成期间已修改，迟到结果已丢弃');
                 }
-                store.scopes[id] = { ...generated.scope,
+                const generatedAt = now();
+                const nextScope = { ...generated.scope,
                     operation: task.target ? current.operation : {
-                        ...current.operation, lastSuccessfulAssistantCount: task.assistantCount, lastSuccessfulRunAt: now(),
-                    }, injection: current.injection };
+                        ...current.operation, lastSuccessfulAssistantCount: task.floor, lastSuccessfulRunAt: generatedAt,
+                    }, injection: current.injection, generationSnapshots: current.generationSnapshots };
+                store.scopes[id] = task.target ? nextScope : appendTodayTrendGenerationSnapshot(nextScope, task.floor, generatedAt);
                 return store;
             }, { active: () => isActive(task) });
             if (!committed || !isActive(task)) throw cancelled();
+            const remainingFeedback = Math.max(0, commitFeedbackMs - Math.max(0, now() - commitStartedAt));
+            if (remainingFeedback > 0) await wait(remainingFeedback);
+            if (!isActive(task)) throw cancelled();
             if (!task.target) {
-                baselines.set(id, task.assistantCount);
-                const observation = observations.get(id);
-                const remainingTurns = observation && Number.isInteger(observation.pendingTurns)
-                    ? Math.max(0, observation.pendingTurns - task.pendingTurns) : 0;
-                if (observation) observation.pendingTurns = remainingTurns;
-                else {
-                    const snapshot = createTurnSnapshot(getChat());
-                    observations.set(id, { key: snapshot.key, assistantCount: snapshot.assistantCount, pendingTurns: 0 });
-                }
+                baselines.set(id, task.floor);
+                const currentObservation = observations.get(id);
+                const remainingTurns = currentObservation && Number.isInteger(currentObservation.pendingTurns)
+                    ? Math.max(0, currentObservation.pendingTurns - task.pendingTurns) : 0;
+                if (currentObservation) { currentObservation.pendingTurns = remainingTurns; touch(currentObservation); }
+                else storeSnapshot(id, readSnapshot(getChat()), 0);
             }
-            phase = 'completed';
+            setPhase('completed', null);
             return committed;
         } catch (error) {
             if (activeTask === task) {
                 if (error?.name === 'AbortError' || !isActive(task)) {
-                    phase = 'canceled';
-                    lastError = null;
+                    terminalTask = task;
+                    setPhase('canceled', null);
                 } else {
-                    phase = 'failed';
-                    lastError = error?.message || '今日风向生成失败';
+                    terminalTask = task;
+                    setPhase('failed', error?.message || '今日风向生成失败');
                 }
             }
             throw error;
         } finally {
             if (activeTask === task) {
                 activeTask = null;
-                const observation = observations.get(id);
-                if (phase === 'completed' && observation?.pendingTurns > 0) {
+                publish();
+                const currentObservation = observations.get(id);
+                if (phase === 'completed' && currentObservation?.pendingTurns > 0) {
                     Promise.resolve(getStore()).then(store => {
-                        const interval = store?.scopes?.[id]?.operation?.intervalFloors;
-                        if (observation.pendingTurns >= interval) run({ kind: 'auto', storageId: id, incidentProbability: task.incidentProbability }).catch(() => {});
+                        const operation = store?.scopes?.[id]?.operation;
+                        if (observations.get(id) !== currentObservation
+                            || getStorageId() !== id
+                            || activeTask
+                            || operation?.enabled !== true
+                            || operation.mode !== 'auto'
+                            || currentObservation.pendingTurns < operation.intervalFloors) return;
+                        run({ kind: 'auto', storageId: id, floor: currentObservation.floor, incidentProbability: task.incidentProbability }).catch(() => {});
                     }).catch(() => {});
                 }
+                pruneObservations();
             }
         }
     };
     const manual = options => run({ ...options, kind: 'manual' });
+    const rollback = async (id, snapshot) => {
+        if (activeTask) cancel('today-trend-chat-rewound');
+        const observationAtStart = observations.get(id);
+        const task = Object.freeze({
+            id: ++sequence, kind: 'rollback', storageId: id, floor: snapshot.floor,
+            pendingTurns: 0, incidentProbability: 0, target: null, abortController: new AbortController(),
+        });
+        activeTask = task;
+        setPhase('committing', null);
+        const commitStartedAt = now();
+        try {
+            const committed = await committer.commitStore(store => {
+                const current = store.scopes[id];
+                if (!current || !isActive(task)) return store;
+                if (validCount(current.operation?.lastSuccessfulAssistantCount) <= snapshot.floor) return store;
+                store.scopes[id] = rollbackTodayTrendScope(current, snapshot.floor);
+                return store;
+            }, { active: () => isActive(task) });
+            if (!committed || !isActive(task)) throw cancelled();
+            const remainingFeedback = Math.max(0, commitFeedbackMs - Math.max(0, now() - commitStartedAt));
+            if (remainingFeedback > 0) await wait(remainingFeedback);
+            if (!isActive(task)) throw cancelled();
+            baselines.set(id, snapshot.floor);
+            const observation = observations.get(id);
+            if (observation === observationAtStart && observation.rewindFloor === task.floor) {
+                observation.rewindFloor = null;
+            }
+            setPhase('completed', null);
+            return committed;
+        } catch (error) {
+            if (activeTask === task) {
+                terminalTask = task;
+                if (error?.name === 'AbortError' || !isActive(task)) setPhase('canceled', null);
+                else setPhase('failed', error?.message || '今日风向回退失败');
+            }
+            throw error;
+        } finally {
+            if (activeTask === task) {
+                activeTask = null;
+                publish();
+                const observation = observations.get(id);
+                if (phase === 'completed' && observation) {
+                    Promise.resolve(getStore()).then(store => {
+                        const operation = store?.scopes?.[id]?.operation;
+                        if (observations.get(id) !== observation || getStorageId() !== id || activeTask) return;
+                        if (Number.isInteger(observation.rewindFloor)
+                            && observation.rewindFloor < validCount(operation?.lastSuccessfulAssistantCount)) {
+                            rollback(id, { floor: observation.rewindFloor }).catch(() => {});
+                            return;
+                        }
+                        if (operation?.enabled === true && operation.mode === 'auto'
+                            && observation.pendingTurns >= operation.intervalFloors) {
+                            run({ kind: 'auto', storageId: id, floor: observation.floor }).catch(() => {});
+                        }
+                    }).catch(() => {});
+                }
+                pruneObservations();
+            }
+        }
+    };
     const observe = (chat, { incidentProbability } = {}) => {
-        const snapshot = createTurnSnapshot(chat);
+        const snapshot = readSnapshot(chat);
         const id = String(getStorageId() || '').trim();
-        if (!id || !snapshot.lastIsAssistant || !snapshot.key) return null;
+        if (!id || !snapshot.key) return null;
         let observation = observations.get(id);
-        if (!observation) {
-            observation = { key: snapshot.key, assistantCount: snapshot.assistantCount, pendingTurns: null };
-            observations.set(id, observation);
-        } else {
-            if (observation.key === snapshot.key) return null;
-            const addedAssistantCount = snapshot.assistantCount - observation.assistantCount;
-            observation.key = snapshot.key;
-            observation.assistantCount = snapshot.assistantCount;
-            if (addedAssistantCount <= 0) return snapshot;
-            if (observation.pendingTurns !== null) observation.pendingTurns += addedAssistantCount;
+        if (!observation) observation = storeSnapshot(id, snapshot, null);
+        else {
+            touch(observation);
+            if (sameSnapshot(observation, snapshot)) return null;
+            const addedFloors = snapshot.floor - observation.floor;
+            Object.assign(observation, {
+                key: snapshot.key, floor: snapshot.floor, messageCount: snapshot.messageCount, assistantCount: snapshot.assistantCount,
+                lastRole: snapshot.lastRole, lastMessageFingerprint: snapshot.lastMessageFingerprint,
+            });
+            if (addedFloors < 0) {
+                observation.pendingTurns = 0;
+                observation.rewindFloor = Number.isInteger(observation.rewindFloor)
+                    ? Math.min(observation.rewindFloor, snapshot.floor) : snapshot.floor;
+            } else if (observation.pendingTurns !== null) {
+                observation.pendingTurns += addedFloors;
+            }
         }
         Promise.resolve(getStore()).then(store => {
-            if (observations.get(id) !== observation || observation.key !== snapshot.key) return;
+            if (observations.get(id) !== observation) return;
             const scope = store?.scopes?.[id];
-            if (!scope?.operation?.enabled || scope.operation.mode !== 'auto') return;
-            const persisted = validCount(scope.operation.lastSuccessfulAssistantCount);
+            if (!scope) { removeObservation(id); return; }
+            const persisted = validCount(scope.operation?.lastSuccessfulAssistantCount);
+            if (!Number.isInteger(observation.rewindFloor)
+                && sameSnapshot(observation, snapshot)
+                && snapshot.floor < persisted) {
+                observation.pendingTurns = 0;
+                observation.rewindFloor = snapshot.floor;
+            }
+            if (Number.isInteger(observation.rewindFloor) && observation.rewindFloor < persisted) {
+                if (!activeTask || activeTask.kind !== 'rollback' || activeTask.storageId !== id) {
+                    return rollback(id, { floor: observation.rewindFloor }).catch(() => {});
+                }
+                return;
+            }
+            if (!sameSnapshot(observation, snapshot)) return;
+            if (!snapshot.lastIsAssistant) return;
+            if (!scope.operation?.enabled || scope.operation.mode !== 'auto') return;
             if (observation.pendingTurns === null) {
-                observation.pendingTurns = persisted ? Math.max(0, snapshot.assistantCount - persisted) : 0;
-                baselines.set(id, persisted || snapshot.assistantCount);
+                observation.pendingTurns = persisted ? Math.max(0, snapshot.floor - persisted) : 0;
+                baselines.set(id, persisted || snapshot.floor);
             }
             if (!persisted && !baselines.has(id)) {
-                baselines.set(id, snapshot.assistantCount);
+                baselines.set(id, snapshot.floor);
                 return;
             }
             if (observation.pendingTurns < scope.operation.intervalFloors || activeTask) return;
-            run({ kind: 'auto', storageId: id, assistantCount: snapshot.assistantCount, incidentProbability }).catch(() => {});
+            run({ kind: 'auto', storageId: id, floor: snapshot.floor, incidentProbability }).catch(() => {});
         }).catch(() => {});
         return snapshot;
     };
-    return { acknowledge, arm, cancel, isActive, manual, observe, state, run };
+    return { acknowledge, arm, cancel, currentFloor, isActive, manual, observe, state, subscribe, run };
 }

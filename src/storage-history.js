@@ -13,7 +13,6 @@ export async function saveHistoriesStrict(data = window.__pmHistories, { require
         if (protectedScopes.length) {
             const current = await pmIDBGet(HISTORY_KEY);
             if (current && typeof current === 'object' && !Array.isArray(current)) {
-                value = structuredClone(snapshot);
                 for (const scope of protectedScopes) {
                     if (Object.hasOwn(current, scope)) value[scope] = structuredClone(current[scope]);
                     else delete value[scope];
@@ -28,7 +27,7 @@ export async function saveHistoriesStrict(data = window.__pmHistories, { require
         }
         return true;
     };
-    if (coordinated) return persist(structuredClone(data));
+    if (coordinated) return persist(data);
     return enqueueDirectorySave('histories', data, (snapshot, protectedScopes) => persist(snapshot, protectedScopes), arguments.length === 0);
 }
 

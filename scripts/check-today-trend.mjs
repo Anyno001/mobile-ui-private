@@ -1,15 +1,16 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
+import { getLastMessageId as resolveLastMessageId } from '../src/host-context.js';
 import { installTodayTrend } from '../src/today-trend.js';
 import { createTodayTrendPhoneController } from '../src/today-trend-phone-controller.js';
 import { installTodayTrendPhoneUi } from '../src/today-trend-phone-ui.js';
 import { PHONE_UI_PAGES } from '../src/interactive-scene-model.js';
 import { renderPhoneDesktop } from '../src/interactive-scene-views.js';
 import {
-    advanceTodayTrendEvent, archiveTodayTrendEvent, copyTodayTrendScope, createEmptyTodayTrendStore,
+    advanceTodayTrendEvent, appendTodayTrendGenerationSnapshot, archiveTodayTrendEvent, copyTodayTrendScope, createEmptyTodayTrendStore,
     createDefaultTodayTrendDynamicsSettings, promoteTodayTrendUnderground, settleTodayTrendRumor, TODAY_TREND_EVENT_LIFECYCLES, TODAY_TREND_EVENT_OUTCOMES,
     TODAY_TREND_EVENT_TYPES, TODAY_TREND_LIMITS, TODAY_TREND_OPERATION_MODES, TODAY_TREND_RELATION_STATUSES, TODAY_TREND_STATUS_LABELS,
-    TODAY_TREND_VERSION, migrateTodayTrendStore, normalizeTodayTrendStore,
+    TODAY_TREND_VERSION, migrateTodayTrendStore, normalizeTodayTrendStore, rollbackTodayTrendScope,
     todayTrendStatusLabel,
 } from '../src/today-trend-model.js';
 import { createTodayTrendStorage } from '../src/today-trend-storage.js';
@@ -26,7 +27,7 @@ import {
     buildTodayTrendRuleRegenerationEnvelope as buildCanonicalTodayTrendRuleRegenerationEnvelope,
 } from '../src/prompts/today-trend/envelopes.js';
 import { createTodayTrendGenerationController } from '../src/today-trend-generation.js';
-import { createTodayTrendScheduler } from '../src/today-trend-scheduler.js';
+import { createTodayTrendScheduler as createTodayTrendSchedulerBase } from '../src/today-trend-scheduler.js';
 import { createPhoneHostEventController } from '../src/phone-host-events.js';
 import { renderTodayTrendInjection } from '../src/today-trend-injection.js';
 import { renderTodayTrendApp } from '../src/today-trend-view.js';
@@ -37,6 +38,22 @@ import { renderTodayTrendDynamicsView } from '../src/today-trend-dynamics-view.j
 import { renderTodayTrendSettingsView } from '../src/today-trend-settings-view.js';
 import { createTodayTrendActionDispatcher } from '../src/today-trend-actions.js';
 import { trendActionMenu, trendInlineActions, trendRuleEditor } from '../src/today-trend-ui.js';
+
+const originalTavernHelper = globalThis.TavernHelper;
+try {
+    globalThis.TavernHelper = { getLastMessageId: () => 3402 };
+    assert.equal(resolveLastMessageId(() => ({ chat: [{ message_id: 1 }] })), 3402, '当前楼层必须优先读取 TavernHelper.getLastMessageId');
+    globalThis.TavernHelper = undefined;
+    assert.equal(resolveLastMessageId(() => ({ chat: [{ message_id: 2 }, { message_id: 3000 }] })), 3000, '缺少 TavernHelper 时必须读取酒馆聊天末消息的 message_id');
+    assert.equal(resolveLastMessageId(() => ({ chat: [{}, {}, {}] })), 2, '末消息缺少 message_id 时必须按酒馆零基楼层使用 chat.length - 1');
+    assert.equal(resolveLastMessageId(() => ({ chat: [] })), 0, '空聊天必须稳定返回酒馆起始楼层 0');
+    assert.equal(resolveLastMessageId(() => null), null, '宿主上下文不可用时必须返回 null');
+} finally {
+    if (originalTavernHelper === undefined) delete globalThis.TavernHelper;
+    else globalThis.TavernHelper = originalTavernHelper;
+}
+
+const createTodayTrendScheduler = options => createTodayTrendSchedulerBase({ commitFeedbackMs: 0, ...options });
 
 assert.equal(TODAY_TREND_VERSION, 1);
 for (const contract of [
@@ -66,11 +83,12 @@ const hostEventController = createPhoneHostEventController({
 });
 hostEventController.hookGenerationEvent();
 hostCallbacks.get('message-received').forEach(callback => callback());
+hostCallbacks.get('message-received').forEach(callback => callback());
 hostChat = [{ mes: '旧助手回复' }, { mes: '本轮助手回复' }];
 hostContext.chat = hostChat;
 await Promise.resolve();
 assert.deepEqual(observedHostChats, [['旧助手回复', '本轮助手回复']],
-    '宿主事件先于聊天数组写入完成时，今日风向必须在微任务中读取本轮完整助手正文');
+    '同一同步批次的重复宿主事件必须合并，并在微任务中只读取一次最终助手正文');
 observedHostChats.length = 0;
 hostCallbacks.get('message-received').forEach(callback => callback());
 hostContext.chat = [{ mes: '旧助手回复' }, { mes: '本轮助手回复' }, { mes: '会话 A 的新助手回复' }];
@@ -103,6 +121,7 @@ assert.match(String(observationWarning?.[0] || ''), /今日风向自动推演观
 
 const todayTrendStyle = (await readFile(new URL('../styles/today-trend.css', import.meta.url), 'utf8')).replace(/;\}/g, '}').replaceAll('../assets/', './assets/');
 const todayTrendRuntimeText = (await Promise.all([
+    '../src/today-trend-ui.js',
     '../src/today-trend-world-view.js',
     '../src/today-trend-reputation-view.js',
     '../src/today-trend-faction-view.js',
@@ -128,17 +147,47 @@ const compactTodayTrendMedia = todayTrendStyle.slice(compactTodayTrendMediaStart
 assert.match(compactTodayTrendMedia, /pm-today-trend-event-body>header\{flex-wrap:wrap/, '事件追踪窄屏标题与操作区必须允许分行');
 assert.match(todayTrendStyle, /pm-today-trend-event-badge,\.pm-today-trend-event-pill\{[^}]*font-size:var\(--pm-font-size-micro\)/, '事件追踪徽章必须使用超小字号');
 assert.doesNotMatch(todayTrendStyle, /pm-today-trend-event-card header span/, '事件追踪不得用宽泛 header span 规则覆盖徽章字号');
-assert.match(todayTrendStyle, /pm-today-trend-icon-button\[data-action\^="today-trend-refresh"\][\s\S]*?width:var\(--pm-size-control-compact\)[\s\S]*?min-height:var\(--pm-size-control-compact\)/, '生成与刷新图标按钮必须保留 36px 紧凑触控区');
-assert.match(todayTrendStyle, /\.pm-today-trend-inline-action\{width:var\(--pm-size-control-compact\);min-height:var\(--pm-size-control-compact\)/, '个人风评行内编辑按钮必须保留 36px 紧凑触控区');
+assert.match(todayTrendStyle, /\.pm-today-trend-inline-action\{width:var\(--pm-size-control-compact\);min-height:var\(--pm-size-control-compact\)/, '行内操作按钮必须保留 36px 紧凑触控区');
+assert.match(todayTrendStyle, /\.pm-today-trend-menu-action svg,\.pm-today-trend-menu-close svg,\.pm-today-trend-inline-action svg\{display:block;width:var\(--pm-size-icon-sm\);height:var\(--pm-size-icon-sm\)/, '菜单与行内操作图标必须消费同一尺寸契约');
+assert.doesNotMatch(todayTrendStyle, /pm-today-trend-inline-action[^{}]*svg\{[^}]*transform:/, '行内操作图标不得使用逐图标位移伪造对齐');
+assert.doesNotMatch(todayTrendStyle, /\.pm-today-trend-icon-button\[data-action\^="today-trend-edit-"\] svg\{[^}]*translate(?:Y|\([^,]+,\s*(?!0(?:px)?\b))/, '编辑图标不得保留向下偏移');
+assert.match(todayTrendStyle, /\.pm-today-trend-head-tools\{[^}]*min-width:max-content[^}]*flex:0 0 auto[^}]*flex-direction:column[^}]*align-items:flex-end[^}]*gap:var\(--pm-space-0-5\)[^}]*translateY/, '标题工具区必须保持纵向关系与右边缘固定基准');
+for (const moduleClass of ['world', 'reputation', 'factions', 'dynamics']) {
+    assert.match(todayTrendStyle, new RegExp(`pm-today-trend-${moduleClass}>\\.pm-today-trend-module-head>\\.pm-today-trend-head-tools[^{}]*\\{[^}]*transform:translateY\\(calc\\(0px - var\\(--pm-space-2\\)\\)\\)`), `${moduleClass} 三点菜单与楼层必须整体上移`);
+    assert.match(todayTrendStyle, new RegExp(`pm-today-trend-${moduleClass}>\\.pm-today-trend-module-head \\.pm-today-trend-menu-wrap:not\\(\\.is-open\\)[^{}]*\\{[^}]*align-self:flex-end[^}]*margin-right:calc\\(var\\(--pm-space-px-9\\) - var\\(--pm-space-4\\)\\)`), `${moduleClass} 三点菜单闭合态必须与顶部自动暂停按钮右对齐`);
+    assert.doesNotMatch(todayTrendStyle, new RegExp(`pm-today-trend-${moduleClass}[^{}]*pm-today-trend-head-tools[^{}]*\\{[^}]*align-items:center`), `${moduleClass} 标题工具区不得使用居中对齐以避免菜单展开时楼层位移`);
+    assert.doesNotMatch(todayTrendStyle, new RegExp(`pm-today-trend-${moduleClass}[^{}]*pm-today-trend-head-tools[^{}]*\\{[^}]*position:absolute`), `${moduleClass} 标题工具区不得使用绝对定位`);
+}
+assert.doesNotMatch(todayTrendStyle, /pm-today-trend-(?:world|reputation|factions|dynamics)[^{}]*\.pm-today-trend-floor[^{}]*\{[^}]*position:absolute/, '四个模块楼层不得使用绝对定位');
+assert.doesNotMatch(todayTrendStyle, /pm-today-trend-(?:world|reputation|factions|dynamics)[^{}]*\.pm-today-trend-menu-wrap\.is-open\{[^}]*position:absolute/, '四个模块菜单展开态不得使用绝对定位脱离文档流');
+assert.match(todayTrendStyle, /\.pm-today-trend-floor\{[^}]*min-width:max-content[^}]*flex:0 0 auto/, '#楼层仪表必须按完整内容保留宽度，不能截断多位楼层');
+assert.match(todayTrendStyle, /\.pm-today-trend-floor-value\{[^}]*color:var\(--pm-color-text-secondary\)/, '楼层数值必须使用界面稍深的次级灰色而非纯黑');
+assert.match(todayTrendStyle, /\.pm-today-trend-floor-cancel\{[^}]*cursor:pointer/, '同步状态必须提供明确可点击的终止控件');
+assert.match(todayTrendStyle, /\.pm-today-trend-floor-status\{[^}]*font-size:var\(--pm-font-size-micro\)/, '同步状态文字必须与待同步和已同步使用相同的超小字号');
+assert.doesNotMatch(todayTrendStyle, /\.pm-today-trend-floor-cancel\{[^}]*font:inherit/, '同步终止按钮不得用 font shorthand 覆盖状态文字字号');
+assert.match(todayTrendStyle, /\.pm-today-trend-floor\[data-state="failed"\] \.pm-today-trend-floor-status\{[^}]*color:var\(--pm-color-danger\)/, '同步失败状态必须使用失败反馈色');
+assert.match(todayTrendStyle, /\.pm-today-trend-floor-reading\{[^}]*white-space:nowrap/, '#号与楼层数值必须保持单行完整显示');
+assert.match(todayTrendRuntimeText, /pm-today-trend-head-tools">\$\{menu\}\$\{asideHtml\}/, '模块头必须先渲染三点菜单，再在其下方渲染楼层');
+assert.match(todayTrendStyle, /\.pm-today-trend-dynamics\{gap:var\(--pm-space-1\);?\}/, '事件追踪标题、标签页与内容必须使用收紧后的统一垂直间距');
+assert.match(todayTrendStyle, /\.pm-today-trend-event-list\{[^}]*padding:var\(--pm-space-0-5\) var\(--pm-space-0\) var\(--pm-space-1\)/, '事件追踪列表顶部留白必须同步收紧');
+assert.match(compactTodayTrendMedia, /pm-today-trend-module-head\{gap:var\(--pm-space-1\)/, '320px 窄屏必须缩小标题与工具区间距并保留按钮命中区');
 assert.match(todayTrendStyle, /\.pm-today-trend-menu-action,\.pm-today-trend-menu-close\{flex-basis:var\(--pm-size-control-compact\);width:var\(--pm-size-control-compact\);min-height:var\(--pm-size-control-compact\)/, '320px 菜单按钮不得缩回 28px 命中区');
-assert.doesNotMatch(todayTrendStyle, /pm-today-trend-(?:icon-button\[data-action\^="today-trend-(?:refresh|generate)"\]|reputation-copy \.pm-today-trend-inline-action)\{width:28px/, '今日风向真实操作按钮不得使用 28px 命中区');
+assert.doesNotMatch(todayTrendStyle, /pm-today-trend-icon-button\[data-action\^="today-trend-(?:refresh|generate)"\]\{width:28px/, '今日风向真实操作按钮不得使用 28px 命中区');
 assert.doesNotMatch(todayTrendStyle, /pm-today-trend-content\.is-(?:reputation|faction|dynamics)::/, '旧内容容器背景伪元素必须清理');
 for (const selector of ['pm-today-trend-world-hero,\\.pm-today-trend-world-brief', 'pm-today-trend-reputation-entry', 'pm-today-trend-faction-card', 'pm-today-trend-event-card']) {
     assert.match(todayTrendStyle, new RegExp(`${selector}\\{[^}]*padding:var\\(--pm-space-3\\)[^}]*border:0[^}]*border-radius:var\\(--pm-radius-card\\)[^}]*background:transparent[^}]*box-shadow:none`), `${selector} 必须消费统一的无底无框卡片外壳`);
 }
-assert.match(todayTrendStyle, /pm-today-trend-faction-card>\.pm-today-trend-faction-node\{[^}]*border-radius:var\(--pm-radius-circle\)[^}]*transform:none/, '势力节点必须统一为圆形卡片节点');
-assert.match(todayTrendStyle, /pm-today-trend-faction-meter span::after\{[^}]*border-radius:var\(--pm-radius-circle\)/, '势力评级必须统一为圆形游标');
-assert.doesNotMatch(todayTrendStyle, /pm-today-trend-(?:faction-card>\.pm-today-trend-faction-node|faction-meter span(?::after|\.is-active::after))\{[^}]*rotate\(45deg\)/, '势力图谱不得恢复菱形节点或游标');
+assert.match(todayTrendStyle, /--pm-today-trend-world-hero-copy-size:var\(--pm-font-size-compact\)/, '世界态势 hero 正文字号变量必须解析到 compact');
+assert.match(todayTrendStyle, /\.pm-today-trend-world-hero p\{[^}]*font-size:var\(--pm-today-trend-world-hero-copy-size\)/, '世界态势 hero 正文必须继续消费 hero copy 字号变量');
+assert.match(todayTrendStyle, /\.pm-today-trend-reputation-entry-body>p\{[^}]*font-size:var\(--pm-font-size-compact\)/, '个人风评正文必须与世界态势 hero 统一字号');
+assert.match(todayTrendStyle, /\.pm-today-trend-faction-summary\{[^}]*font-size:var\(--pm-font-size-compact\)/, '势力图谱摘要必须与世界态势 hero 统一字号');
+assert.match(todayTrendStyle, /\.pm-today-trend-reputation-list\{[^}]*padding:var\(--pm-space-0\)(?:;|\})/, '个人风评列表必须使用单值零间距 padding');
+assert.doesNotMatch(todayTrendStyle, /\.pm-today-trend-reputation-list\{[^}]*padding:[^;}]*var\(--pm-space-1\)/, '个人风评列表不得恢复额外上下留白');
+assert.doesNotMatch(todayTrendStyle, /\.pm-today-trend-reputation-entry-body>p\{[^}]*font-size:var\(--pm-font-size-body\)/, '个人风评正文不得回退到 body 字号');
+assert.doesNotMatch(todayTrendStyle, /\.pm-today-trend-faction-summary\{[^}]*font-size:var\(--pm-font-size-label\)/, '势力图谱摘要不得回退到 label 字号');
+assert.match(todayTrendStyle, /pm-today-trend-faction-entry-head \.pm-today-trend-faction-node\{[^}]*border-radius:var\(--pm-radius-circle\)[^}]*background:var\(--pm-color-accent\)/, '势力节点必须归入标题行并使用圆形主题节点');
+assert.match(todayTrendStyle, /pm-today-trend-faction-meter>span\.is-active\{[^}]*border-bottom-color:var\(--pm-color-accent\)/, '势力关系量表必须使用横向选中下划线');
+assert.doesNotMatch(todayTrendStyle, /pm-today-trend-faction-meter[^{}]*(?:grid-template-rows|::after|rotate\(45deg\))/, '势力关系量表不得恢复旧纵向游标结构');
 assert.doesNotMatch(todayTrendStyle, /pm-today-trend-world-brief\.is-(?:left|right)|pm-today-trend-faction-tree(?:\[[^}]+)?\{[^}]*border-left/, '卡片化源码不得残留世界左右轨道选择器或势力树左轨声明');
 assert.match(todayTrendStyle, /pm-today-trend-event-card\{[^}]*border:0[^}]*background:transparent[^}]*box-shadow:none/, '事件追踪卡片必须隐藏底色、描边和阴影');
 assert.match(todayTrendStyle, /pm-today-trend-event-history\[open\][^}]*overflow:hidden/, '动态阶段记录展开态必须约束布局溢出');
@@ -196,6 +245,43 @@ try {
     else globalThis.window = originalWindow;
 }
 
+const concurrentPhoneListeners = [];
+const concurrentPhoneContainer = {
+    isConnected: true, innerHTML: '', contains: () => true,
+    addEventListener: (type, listener, capture = false) => concurrentPhoneListeners.push({ type, listener, capture }),
+    removeEventListener: (type, listener, capture = false) => {
+        const index = concurrentPhoneListeners.findIndex(item => item.type === type && item.listener === listener && item.capture === capture);
+        if (index >= 0) concurrentPhoneListeners.splice(index, 1);
+    },
+};
+const concurrentPhoneState = { phoneWindow: { querySelector: selector => selector === '.pm-today-trend-page' ? concurrentPhoneContainer : null } };
+let rejectFirstPhoneStore;
+let phoneStoreCalls = 0;
+let phoneGenerationUnsubscribes = 0;
+const concurrentPhoneStore = { scopes: {}, presets: {} };
+const concurrentPhoneUi = installTodayTrendPhoneUi(concurrentPhoneState, {
+    getStorageId: () => 'chat',
+    getTodayTrendStore: () => {
+        phoneStoreCalls += 1;
+        if (phoneStoreCalls === 1) return new Promise((resolve, reject) => { rejectFirstPhoneStore = reject; });
+        return Promise.resolve(concurrentPhoneStore);
+    },
+    getTodayTrendGenerationState: () => ({ phase: 'idle', task: null }),
+    subscribeTodayTrendGeneration: listener => {
+        listener({ phase: 'idle', task: null });
+        return () => { phoneGenerationUnsubscribes += 1; };
+    },
+});
+const stalePhoneRender = concurrentPhoneUi.render();
+await Promise.resolve();
+const currentPhoneRender = concurrentPhoneUi.render();
+assert.equal(await currentPhoneRender, true, '后发手机页面渲染必须成功接管当前控制器');
+rejectFirstPhoneStore(new Error('stale render failed'));
+assert.equal(await stalePhoneRender, false, '旧手机页面渲染失败必须安全收敛');
+assert.equal(phoneGenerationUnsubscribes, 1, '旧渲染失败不得销毁后发成功控制器');
+concurrentPhoneUi.destroy();
+assert.equal(phoneGenerationUnsubscribes, 2, '显式销毁时必须清理当前控制器订阅');
+
 assert.deepEqual(normalizeTodayTrendStore(), createEmptyTodayTrendStore(), '缺失存储必须归一为空 store');
 assert.equal(migrateTodayTrendStore({ presets: {}, scopes: {} }).migrated, true, '缺失版本的旧数据必须通过纯迁移入口升级');
 assert.equal(migrateTodayTrendStore(createEmptyTodayTrendStore()).migrated, false, '当前版本不得重复迁移');
@@ -242,6 +328,53 @@ const fixture = () => ({
 });
 const assertCode = (mutate, code) => assert.throws(() => normalizeTodayTrendStore(mutate()), error => error?.code === code);
 const valid = normalizeTodayTrendStore(fixture());
+assert.deepEqual(valid.scopes.chat.generationSnapshots.map(item => item.assistantCount), [0, 7], '旧 scope 缺少快照历史时必须同时生成初始化基线与当前 checkpoint 兼容快照');
+assert.deepEqual(valid.scopes.chat.generationSnapshots[0].world, valid.scopes.chat.world, '兼容迁移无法反推历史时必须以现有资料建立安全基线，不能清空用户数据');
+const emptySnapshotStore = fixture();
+emptySnapshotStore.scopes.chat.generationSnapshots = [];
+const normalizedEmptySnapshotScope = normalizeTodayTrendStore(emptySnapshotStore).scopes.chat;
+assert.deepEqual(normalizedEmptySnapshotScope.generationSnapshots.map(item => item.assistantCount), [0, 7], '显式空快照历史也必须补建初始化基线与当前 checkpoint');
+const firstGeneratedAfterEmpty = appendTodayTrendGenerationSnapshot(normalizedEmptySnapshotScope, 10, 12);
+assert.deepEqual(firstGeneratedAfterEmpty.generationSnapshots.map(item => item.assistantCount), [0, 7, 10], '显式空历史迁移后首次生成不得丢失 0 楼基线');
+const copiedScope = copyTodayTrendScope(valid.scopes.chat, 'copied-chat');
+assert.deepEqual(copiedScope.generationSnapshots.map(item => item.assistantCount), [0], '复制 scope 必须以复制时资料建立独立的 0 楼基线');
+assert.deepEqual(copiedScope.generationSnapshots[0].world, valid.scopes.chat.world, '复制 scope 的初始化基线必须保留复制时资料');
+const floorTenScope = appendTodayTrendGenerationSnapshot({
+    ...valid.scopes.chat,
+    operation: { ...valid.scopes.chat.operation, lastSuccessfulAssistantCount: 10, lastSuccessfulRunAt: 12 },
+    world: { items: [{ ...valid.scopes.chat.world.items[0], summary: '第十楼结果' }] },
+}, 10, 12);
+assert.deepEqual(floorTenScope.generationSnapshots.map(item => item.assistantCount), [0, 7, 10], '完整生成快照必须保留初始化基线并按楼层升序追加');
+const replacedFloorTenScope = appendTodayTrendGenerationSnapshot({
+    ...floorTenScope,
+    world: { items: [{ ...floorTenScope.world.items[0], summary: '第十楼替换结果' }] },
+}, 10, 13);
+assert.deepEqual(replacedFloorTenScope.generationSnapshots.map(item => item.assistantCount), [0, 7, 10], '同楼重新生成必须覆盖而非重复追加快照');
+assert.equal(replacedFloorTenScope.generationSnapshots.at(-1).world.items[0].summary, '第十楼替换结果', '同楼快照必须保存最新完整生成结果');
+let boundedSnapshotScope = valid.scopes.chat;
+for (let floor = 8; floor <= 20; floor += 1) boundedSnapshotScope = appendTodayTrendGenerationSnapshot(boundedSnapshotScope, floor, floor);
+assert.equal(boundedSnapshotScope.generationSnapshots.length, TODAY_TREND_LIMITS.generationSnapshots, '追加快照超过容量后必须只保留最近受控数量');
+assert.deepEqual(boundedSnapshotScope.generationSnapshots.map(item => item.assistantCount), [0, ...Array.from({ length: 11 }, (_, index) => index + 10)], '快照容量裁剪必须永久保留初始化基线与最近楼层');
+const excessiveSnapshots = fixture();
+excessiveSnapshots.scopes.chat.generationSnapshots = Array.from({ length: TODAY_TREND_LIMITS.generationSnapshots + 1 }, (_, assistantCount) => ({
+    assistantCount, generatedAt: assistantCount,
+    world: valid.scopes.chat.world, reputation: valid.scopes.chat.reputation, factions: valid.scopes.chat.factions,
+    dynamicsSettings: valid.scopes.chat.dynamicsSettings, dynamics: valid.scopes.chat.dynamics,
+}));
+assertCode(() => excessiveSnapshots, 'TT_SNAPSHOT_LIMIT');
+const nestedSnapshotStore = fixture();
+nestedSnapshotStore.scopes.chat.generationSnapshots = [{
+    ...valid.scopes.chat.generationSnapshots[1],
+    generationSnapshots: [{ ...valid.scopes.chat.generationSnapshots[0] }],
+}];
+assert.equal(Object.hasOwn(normalizeTodayTrendStore(nestedSnapshotStore).scopes.chat.generationSnapshots[0], 'generationSnapshots'), false, '快照内部夹带的嵌套历史必须被截断，避免递归膨胀');
+const rolledBackScope = rollbackTodayTrendScope(replacedFloorTenScope, 8);
+assert.equal(rolledBackScope.operation.lastSuccessfulAssistantCount, 7, '聊天回退必须恢复不高于当前楼层的最近 checkpoint');
+assert.equal(rolledBackScope.world.items[0].summary, '晚餐服务临近', '聊天回退必须恢复对应楼层的生成内容');
+assert.deepEqual(rolledBackScope.generationSnapshots.map(item => item.assistantCount), [0, 7], '聊天回退必须裁剪已消失楼层之后的快照并保留初始化基线');
+const baselineRollbackScope = rollbackTodayTrendScope(valid.scopes.chat, 1);
+assert.equal(baselineRollbackScope.operation.lastSuccessfulAssistantCount, 0, '没有更早生成快照时必须回退到初始化基线');
+assert.deepEqual(baselineRollbackScope.world, valid.scopes.chat.world, '旧数据兼容基线必须保留升级前资料，不能伪造无法重建的初始化内容');
 const controllerListeners = [];
 const controllerListenerKey = (type, capture = false) => `${type}:${capture ? 'capture' : 'bubble'}`;
 const controllerContainer = {
@@ -256,16 +389,89 @@ const controllerContainer = {
 };
 const controllerState = { phoneWindow: { querySelector: selector => selector === '.pm-today-trend-page' ? controllerContainer : null } };
 let controllerCancelReason = '';
+let generationListener = null;
+let generationUnsubscribeCalls = 0;
+let generationReloadCalls = 0;
+let controllerStorageId = 'chat';
+let controllerStore = valid;
+let reloadTodayTrendStore = async () => { generationReloadCalls += 1; return controllerStore; };
+let controllerGeneration = { phase: 'idle', task: null };
+let controllerCurrentFloor = 3402;
+let generationCancelReason = '';
+let rejectControllerGeneration = null;
 const phoneController = createTodayTrendPhoneController({ state: controllerState, container: controllerContainer, deps: {
-    getStorageId: () => 'chat', getTodayTrendStore: async () => valid,
-    getTodayTrendGenerationState: () => ({ phase: 'idle' }),
+    getStorageId: () => controllerStorageId, getTodayTrendStore: async () => controllerStore,
+    reloadTodayTrendStore: () => reloadTodayTrendStore(),
+    getTodayTrendCurrentFloor: () => controllerCurrentFloor,
+    getTodayTrendGenerationState: () => controllerGeneration,
+    subscribeTodayTrendGeneration: listener => {
+        generationListener = listener;
+        listener(controllerGeneration);
+        return () => { generationUnsubscribeCalls += 1; };
+    },
+    generateTodayTrend: () => {
+        controllerGeneration = { phase: 'generating', task: { kind: 'manual', storageId: 'chat', floor: 9, target: null } };
+        generationListener?.(controllerGeneration);
+        return new Promise((_resolve, reject) => { rejectControllerGeneration = reject; });
+    },
+    cancelTodayTrendGeneration: reason => {
+        generationCancelReason = reason;
+        controllerGeneration = { phase: 'canceled', task: controllerGeneration.task, lastError: null };
+        generationListener?.(controllerGeneration);
+        rejectControllerGeneration?.(Object.assign(new Error('今日风向生成已取消'), { name: 'AbortError' }));
+        rejectControllerGeneration = null;
+    },
     commitTodayTrendScope: async () => valid, cancelTodayTrendInitialization: reason => { controllerCancelReason = reason; },
 } });
 assert.equal(await phoneController.render(), true, '控制器必须渲染当前聊天的今日风向页面');
 assert.match(controllerContainer.innerHTML, /id="pm-today-trend-app"/, '控制器必须渲染今日风向页面壳');
+assert.match(controllerContainer.innerHTML, /data-today-trend-floor="3402"[\s\S]*pm-today-trend-floor-value">#3402<\/strong>/, '控制器必须把宿主当前多位楼层完整传给视图');
+assert.equal(typeof generationListener, 'function', '控制器创建时必须订阅今日风向生成状态');
+const controllerGenerateAllButton = { disabled: false, dataset: { action: 'today-trend-generate-all' }, closest: () => controllerGenerateAllButton };
+controllerListeners.filter(item => item.type === 'click').forEach(item => item.listener({ target: controllerGenerateAllButton }));
+await new Promise(resolve => setTimeout(resolve, 0));
+assert.match(controllerContainer.innerHTML, /today-trend-generate-all" disabled aria-busy="true"/, '当前聊天进入 busy 阶段时必须局部重渲染生成状态');
+assert.match(controllerContainer.innerHTML, /data-action="today-trend-cancel-generation"[^>]*><span class="pm-today-trend-floor-reading"><strong class="pm-today-trend-floor-value">#3402<\/strong><\/span><span class="pm-today-trend-floor-status"><i aria-hidden="true"><\/i>同步任务 #9<\/span><\/button>/, '同步中楼层数值与状态文字必须共同位于可点击终止控件内');
+const cancelGenerationButton = { disabled: false, dataset: { action: 'today-trend-cancel-generation' } };
+controllerListeners.find(item => item.type === 'click' && item.capture)?.listener({
+    target: { closest: selector => selector === 'button[data-action]' ? cancelGenerationButton : null },
+});
+await new Promise(resolve => setTimeout(resolve, 0));
+assert.equal(generationCancelReason, 'today-trend-user-canceled', '点击同步状态必须调用生成终止能力');
+await new Promise(resolve => setTimeout(resolve, 0));
+assert.match(controllerContainer.innerHTML, /data-state="canceled"[\s\S]*pm-today-trend-floor-status">已终止<\/span>/, '生成 Promise 抛出 AbortError 后仍必须保留已终止状态，不得被错误报告覆盖为待同步');
+controllerGeneration = { phase: 'generating', task: { kind: 'auto', storageId: 'chat', floor: 9, target: null } };
+generationListener(controllerGeneration);
+await new Promise(resolve => setTimeout(resolve, 0));
+assert.match(controllerContainer.innerHTML, /pm-today-trend-progress">正在生成…/, '当前世界态势页必须随生成状态通知刷新现有局部反馈');
+controllerGeneration = { phase: 'generating', task: { kind: 'auto', storageId: 'other', floor: 20, target: null } };
+generationListener(controllerGeneration);
+await new Promise(resolve => setTimeout(resolve, 0));
+assert.doesNotMatch(controllerContainer.innerHTML, /同步至 20/, '其他聊天的生成状态不得污染当前页面');
+controllerStore = structuredClone(valid);
+controllerStore.scopes.chat.world.items[0].summary = '提交后刷新内容';
+controllerGeneration = { phase: 'completed', task: { kind: 'auto', storageId: 'chat', floor: 9, target: null } };
+generationListener(controllerGeneration);
+await new Promise(resolve => setTimeout(resolve, 0));
+assert.equal(generationReloadCalls, 1, '当前聊天完整提交后必须强制重读最新 store');
+assert.match(controllerContainer.innerHTML, /提交后刷新内容/, '完整提交后必须渲染重读 store 中的最新业务内容');
+let rejectStaleReload;
+reloadTodayTrendStore = () => {
+    generationReloadCalls += 1;
+    return new Promise((resolve, reject) => { rejectStaleReload = reject; });
+};
+controllerGeneration = { phase: 'completed', task: { kind: 'auto', storageId: 'chat', floor: 10, target: null } };
+generationListener(controllerGeneration);
+controllerStorageId = 'other';
+rejectStaleReload(new Error('旧聊天重读失败'));
+await new Promise(resolve => setTimeout(resolve, 0));
+assert.equal(generationReloadCalls, 2, '连续完整提交必须各自触发 store 重读');
+assert.doesNotMatch(controllerContainer.innerHTML, /旧聊天重读失败/, '切换聊天后不得显示旧 storageId 的异步重读错误');
 assert.deepEqual(controllerListeners.map(item => controllerListenerKey(item.type, item.capture)).sort(), ['click:bubble', 'click:capture', 'keydown:bubble', 'submit:bubble', 'submit:bubble'], '控制器必须恰好注册并区分自身与动作分发器的 click、submit 与 keydown 代理事件');
-phoneController.destroy();
+assert.equal(phoneController.destroy(), true, '首次销毁控制器必须执行清理');
+assert.equal(phoneController.destroy(), false, '重复销毁控制器必须幂等');
 assert.equal(controllerCancelReason, 'today-trend-page-destroyed', '销毁控制器必须取消初始化任务');
+assert.equal(generationUnsubscribeCalls, 1, '销毁控制器必须且只能解绑一次生成状态订阅');
 assert.equal(controllerListeners.length, 0, '销毁控制器必须解绑所有事件代理');
 const firstUseHtml = renderTodayTrendApp({ presets: [{ id: 'preset', name: '综艺世界' }], worldBooks: ['厨房设定'] });
 assert.match(firstUseHtml, /class="pm-today-trend-init-intro"[^>]*>[\s\S]*?<h3 id="pm-today-trend-init-title" class="pm-today-trend-init-title">创建当前角色的今日风向<\/h3>/, '首次使用必须提供明确的介绍区与三级页面标题');
@@ -307,6 +513,41 @@ assert.match(failedInitializationHtml, /保留淘汰规则/, '初始化失败后
 assert.match(failedInitializationHtml, /class="pm-today-trend-init-feedback pm-today-trend-error" role="alert">初始化失败<\/p>/, '初始化错误必须保留 alert 语义并位于反馈区');
 const appHtml = renderTodayTrendApp({ scope: valid.scopes.chat, presets: Object.values(valid.presets), generation: { phase: 'idle' } });
 for (const label of ['世界态势', '个人风评', '势力图谱', '事件追踪']) assert.match(appHtml, new RegExp(label), `主页面必须装配${label}`);
+const multiDigitFloorHtml = renderTodayTrendApp({ scope: valid.scopes.chat, presets: Object.values(valid.presets), view: { name: 'world', mode: 'content' }, generation: { phase: 'idle' }, currentFloor: 3000 });
+assert.match(multiDigitFloorHtml, /data-today-trend-floor="3000"[\s\S]*aria-label="楼层 #3000，待同步"[\s\S]*pm-today-trend-floor-value">#3000<\/strong>/, '宿主多位楼层必须从数据属性到可见数值完整渲染，不能截断或退回内部统计');
+const rolledBackFloorHtml = renderTodayTrendApp({ scope: valid.scopes.chat, presets: Object.values(valid.presets), view: { name: 'world', mode: 'content' }, generation: { phase: 'idle' }, currentFloor: 3 });
+assert.match(rolledBackFloorHtml, /data-today-trend-floor="3" data-state="unsynced"[\s\S]*pm-today-trend-floor-value">#3<\/strong>[\s\S]*pm-today-trend-floor-status">待同步<\/span>/, '宿主楼层低于旧 checkpoint 时不得误报已同步');
+const unavailableFloorHtml = renderTodayTrendApp({ scope: valid.scopes.chat, presets: Object.values(valid.presets), view: { name: 'world', mode: 'content' }, generation: { phase: 'idle' }, currentFloor: null });
+assert.match(unavailableFloorHtml, /data-today-trend-floor="" data-state="unavailable"[\s\S]*pm-today-trend-floor-value">#--<\/strong>[\s\S]*楼层不可用/, '宿主楼层不可用时不得把内部助手统计冒充真实楼层');
+for (const name of ['world', 'reputation', 'faction', 'dynamics']) {
+    const floorHtml = renderTodayTrendApp({ scope: valid.scopes.chat, presets: Object.values(valid.presets), view: { name, mode: 'content' }, generation: { phase: 'idle' } });
+    assert.match(floorHtml, /data-today-trend-floor="7" data-state="synced" role="status" aria-live="polite"/, `${name} 内容页必须展示已同步楼层仪表`);
+    assert.match(floorHtml, /pm-today-trend-floor-value">#7<\/strong>/, `${name} 内容页必须使用 #N 语义结构`);
+    assert.match(floorHtml, /pm-today-trend-floor-status">已同步<\/span>/, `${name} 内容页空闲时必须展示已同步状态`);
+}
+const updatingFloorHtml = renderTodayTrendApp({ scope: valid.scopes.chat, presets: Object.values(valid.presets), view: { name: 'reputation', mode: 'content' },
+    generation: { phase: 'generating', task: { kind: 'auto', storageId: 'chat', floor: 12, target: null } }, currentFloor: 13 });
+assert.match(updatingFloorHtml, /data-today-trend-floor="13" data-state="updating"/, '完整更新中楼层主值必须继续展示当前宿主楼层');
+assert.match(updatingFloorHtml, /同步任务 #12/, '宿主继续增长时必须把生成目标明确标为任务楼层，不能伪装成当前楼层');
+assert.doesNotMatch(updatingFloorHtml, /pm-today-trend-floor-value">#12<\/strong>/, '尚未提交的目标楼层不得冒充当前楼层主值');
+const failedFloorHtml = renderTodayTrendApp({ scope: valid.scopes.chat, presets: Object.values(valid.presets), view: { name: 'reputation', mode: 'content' },
+    generation: { phase: 'failed', task: { kind: 'auto', storageId: 'chat', floor: 12, target: null }, lastError: 'AI 请求失败' }, currentFloor: 12 });
+assert.match(failedFloorHtml, /data-state="failed"[\s\S]*pm-today-trend-floor-status" title="AI 请求失败">同步失败<\/span>/, '生成失败后必须显示同步失败并保留错误说明');
+const escapedFailureHtml = renderTodayTrendApp({ scope: valid.scopes.chat, presets: Object.values(valid.presets), view: { name: 'reputation', mode: 'content' },
+    generation: { phase: 'failed', task: { kind: 'auto', storageId: 'chat', floor: 12, target: null }, lastError: '\"失败\" <script> & more' }, currentFloor: 12 });
+assert.match(escapedFailureHtml, /title="&quot;失败&quot; &lt;script&gt; &amp; more"/, '同步失败说明必须按 HTML 属性语境转义');
+assert.doesNotMatch(escapedFailureHtml, /<script>/, '同步失败说明不得注入标签');
+const canceledFloorHtml = renderTodayTrendApp({ scope: valid.scopes.chat, presets: Object.values(valid.presets), view: { name: 'reputation', mode: 'content' },
+    generation: { phase: 'canceled', task: { kind: 'auto', storageId: 'chat', floor: 12, target: null }, lastError: null }, currentFloor: 12 });
+assert.match(canceledFloorHtml, /data-state="canceled"[\s\S]*pm-today-trend-floor-status">已终止<\/span>/, '主动终止后必须显示已终止而非待同步');
+const targetedFloorHtml = renderTodayTrendApp({ scope: valid.scopes.chat, presets: Object.values(valid.presets), view: { name: 'faction', mode: 'content' },
+    generation: { phase: 'parsing', task: { kind: 'manual', storageId: 'chat', floor: 99, target: { module: 'faction', itemId: 'red' } } } });
+assert.match(targetedFloorHtml, /data-today-trend-floor="7" data-state="updating"/, '定向刷新必须保留已提交楼层主值');
+assert.match(targetedFloorHtml, /正在更新模块/, '定向刷新必须使用模块更新文案');
+assert.doesNotMatch(targetedFloorHtml, /同步至 99|pm-today-trend-floor-value">#99<\/strong>/, '定向刷新不得虚假推进或承诺楼层 checkpoint');
+for (const view of [{ name: 'settings' }, { name: 'faction', mode: 'editor', editingFactionId: 'red' }, { name: 'world', editingRule: 'world' }]) {
+    assert.doesNotMatch(renderTodayTrendApp({ scope: valid.scopes.chat, presets: Object.values(valid.presets), view }), /data-today-trend-floor=/, '设置、编辑和规则页不得展示楼层仪表');
+}
 assert.match(appHtml, /today-trend-open-settings/, '主页面必须提供 APP 总设置入口');
 assert.match(appHtml, /today-trend-generate-all[^>]*aria-busy="false"[^>]*aria-label="手动更新所有今日风向"/, '主页面必须提供手动更新全部今日风向的星光按钮');
 assert.match(appHtml, /today-trend-toggle-operation[\s\S]*aria-pressed="true"/, '主页面必须提供当前运行状态的直接控制');
@@ -397,13 +638,17 @@ assert.match(todayTrendStyle, /pm-today-trend-world\{flex:0 0 auto;gap:var\(--pm
 assert.match(todayTrendStyle, /pm-today-trend-content\.is-world\{[^}]*padding:var\(--pm-space-0\) var\(--pm-space-0\) var\(--pm-space-px-36\)/, '世界态势必须保留底部导航安全区');
 assert.match(todayTrendStyle, /--pm-today-trend-report-title-size:calc\(var\(--pm-font-size-title\) \+ var\(--pm-space-2\)\)/, '其他三个模块的大标题必须使用收紧后的统一字号');
 assert.match(todayTrendStyle, /--pm-today-trend-world-title-size:calc\(var\(--pm-font-size-title\) \+ var\(--pm-space-2\)\)/, '世界态势模块标题必须与其他三个模块使用同一字号');
-assert.match(todayTrendStyle, /--pm-today-trend-world-hero-title-size:calc\(var\(--pm-font-size-title\) \+ var\(--pm-space-1\)\)/, '世界态势内容主标题必须进一步收紧字号');
+assert.match(todayTrendStyle, /--pm-today-trend-world-hero-title-size:var\(--pm-font-size-subtitle\)/, '世界态势首条标题必须与后续条目使用同一字号');
 assert.match(todayTrendStyle, /pm-today-trend-(?:reputation|factions|dynamics)>\.pm-today-trend-module-head h2[^}]*font-size:var\(--pm-today-trend-report-title-size\)/, '其他三个模块标题选择器必须消费统一字号 token');
 assert.match(todayTrendStyle, /pm-today-trend-world>\.pm-today-trend-module-head h2[^}]*font-size:var\(--pm-today-trend-world-title-size\)/, '世界态势标题选择器必须消费统一字号 token');
 assert.match(todayTrendStyle, /pm-today-trend-world>\.pm-today-trend-module-head\{[^}]*margin:var\(--pm-space-0\)[^}]*padding-bottom:var\(--pm-space-3\)/, '世界态势模块头必须与其他模块使用一致节奏');
 assert.match(todayTrendStyle, /--pm-today-trend-world-brief-title-size:var\(--pm-font-size-subtitle\)/, '世界态势次级标题必须使用收紧后的字号');
+assert.match(todayTrendStyle, /--pm-today-trend-world-node-size:var\(--pm-space-5\)/, '世界态势条目前导节点必须使用缩小后的统一尺寸');
+assert.match(todayTrendStyle, /pm-today-trend-world-item-head\{[^}]*align-items:center[^}]*gap:var\(--pm-space-2\)/, '世界态势节点与标题必须垂直居中并使用统一间距');
+assert.match(todayTrendStyle, /pm-today-trend-world-signal-marker\{[^}]*width:var\(--pm-today-trend-world-node-size\)[^}]*height:var\(--pm-today-trend-world-node-size\)[^}]*flex:0 0 var\(--pm-today-trend-world-node-size\)/, '世界态势节点必须固定使用统一尺寸且不得被标题挤压');
 assert.match(todayTrendStyle, /pm-today-trend-world-signal-marker::after\{display:none/, '世界态势节点不得保留原型以外的横向引线');
-assert.match(todayTrendStyle, /pm-today-trend-world-hero b\{[^}]*font-size:var\(--pm-today-trend-world-hero-title-size\)[^}]*font-weight:var\(--pm-font-weight-semibold\)[^}]*line-height:var\(--pm-line-height-display\)/, '世界态势 hero 必须通过专属 token 还原新版原型层级');
+assert.match(todayTrendStyle, /pm-today-trend-world-hero b\{[^}]*font-size:var\(--pm-today-trend-world-hero-title-size\)[^}]*font-weight:var\(--pm-font-weight-semibold\)[^}]*line-height:var\(--pm-line-height-control\)/, '世界态势首条标题必须与后续条目使用相同文本节奏');
+assert.match(todayTrendStyle, /pm-today-trend-world-brief b\{[^}]*font-size:var\(--pm-today-trend-world-brief-title-size\)[^}]*line-height:var\(--pm-line-height-control\)/, '世界态势后续标题必须消费统一字号 token 与行高');
 assert.match(todayTrendStyle, /pm-today-trend-world-hero,\.pm-today-trend-world-brief\{[^}]*border:0[^}]*border-radius:var\(--pm-radius-card\)[^}]*background:transparent[^}]*box-shadow:none/, '世界态势条目必须使用无底无框卡片外壳');
 assert.doesNotMatch(todayTrendStyle, /pm-today-trend-world-hero::before/, '世界态势不得恢复旧主摘要伪元素装饰');
 assert.equal((worldPanelsHtml.match(/data-action="today-trend-toggle-menu"/g) || []).length, 1, '世界态势常态只允许模块头保留一个省略号入口');
@@ -435,7 +680,9 @@ assert.match(reputationHtml, /pm-today-trend-meter-k">BAD<\/span><span class="pm
 assert.doesNotMatch(reputationHtml, /pm-today-trend-reputation-(?:head-art|file-no)|PRS-240502/, '个人风评不得渲染已废弃的档案装饰或编号');
 assert.match(reputationHtml, /pm-today-trend-reputation-mark/, '个人风评条目必须提供图标标记');
 assert.match(reputationHtml, /data-status="neutral"/, '个人风评状态必须提供主题化样式钩子');
-assert.match(reputationHtml, /主厨评审<\/b><span class="pm-today-trend-status" data-status="neutral">中立<\/span>/, '个人风评状态徽章必须紧贴标题，而非占用评级列');
+assert.doesNotMatch(reputationHtml, /pm-today-trend-reputation-entry-head[\s\S]*?pm-today-trend-status/, '个人风评条目标题栏不得渲染状态徽章');
+assert.match(reputationHtml, /pm-today-trend-reputation-entry-head[\s\S]*?pm-today-trend-reputation-mark[\s\S]*?<b>主厨评审/, '个人风评条目标题栏必须让标题直接位于图标右侧');
+assert.match(reputationHtml, /pm-today-trend-reputation-entry-body[\s\S]*?pm-today-trend-reputation-rating/, '个人风评正文与评级控件必须位于标题栏下方的内容栏');
 assert.doesNotMatch(reputationHtml, /pm-today-trend-reputation-orbit/, '个人风评背景不得局限在模块子容器内');
 assert.match(reputationMenuHtml, /today-trend-edit-reputation-rule/, '展开个人风评模块操作后必须提供规则编辑动作');
 assert.doesNotMatch(reputationHtml, /today-trend-edit-circle/, '个人风评收起模块操作时不得显示单条编辑入口');
@@ -443,7 +690,7 @@ assert.match(reputationHtml, /pm-today-trend-reputation-meter" role="radiogroup"
 assert.equal((reputationHtml.match(/data-action="today-trend-set-circle-status"/g) || []).length, valid.scopes.chat.reputation.circles.length * 5, '个人风评每条记录必须输出五个实时状态按钮');
 assert.match(reputationHtml, /data-circle-id="judge" data-status="neutral" aria-checked="true" role="radio"/, '当前好感度按钮必须暴露选中语义');
 assert.match(reputationHtml, /data-circle-id="judge" data-status="like" aria-checked="false" role="radio"/, '非当前好感度按钮必须暴露未选中语义');
-assert.deepEqual([...reputationHtml.matchAll(/data-circle-id="judge" data-status="([^"]+)"/g)].map(match => match[1]), ['trust', 'like', 'neutral', 'dislike', 'hostile'], '个人风评量表必须从上到下按信任至敌对排列');
+assert.deepEqual([...reputationHtml.matchAll(/data-circle-id="judge" data-status="([^"]+)"/g)].map(match => match[1]), TODAY_TREND_RELATION_STATUSES, '个人风评量表必须从左到右按敌对至信任的模型顺序排列');
 for (const label of ['敌对', '厌恶', '中立', '喜爱', '信任']) assert.match(reputationHtml, new RegExp(`aria-label="${label}"`), `个人风评必须以可访问名称提供五档好感度：${label}`);
 assert.doesNotMatch(reputationHtml, /today-trend-refresh-circle/, '个人风评内容区不得保留单项重新生成入口');
 const mixedReputationScope = structuredClone(valid.scopes.chat);
@@ -459,6 +706,10 @@ assert.match(mixedReputationHtml, /pm-today-trend-meter-k">PEOPLE<\/span><span c
 assert.match(mixedReputationHtml, /pm-today-trend-meter-k">GOOD<\/span><span class="pm-today-trend-meter-v">2<\/span>/, '个人风评 GOOD 必须只统计 like/trust');
 assert.match(mixedReputationHtml, /pm-today-trend-meter-k">BAD<\/span><span class="pm-today-trend-meter-v">2<\/span>/, '个人风评 BAD 必须只统计 hostile/dislike');
 assert.match(reputationMenuHtml, /today-trend-edit-circle[^>]*data-circle-id="judge"/, '展开个人风评模块操作后必须显示条目编辑动作');
+assert.match(reputationMenuHtml, /today-trend-regenerate-circle-schema[^>]*data-circle-id="judge"/, '展开个人风评模块操作后必须显示条目结构重新生成动作');
+assert.match(reputationMenuHtml, /today-trend-delete-circle[^>]*data-circle-id="judge"/, '展开个人风评模块操作后必须显示条目删除动作');
+assert.match(reputationMenuHtml, /data-circle-id="judge"[\s\S]*?pm-today-trend-inline-actions[\s\S]*?today-trend-regenerate-circle-schema[\s\S]*?today-trend-edit-circle[\s\S]*?today-trend-delete-circle/, '个人风评行内操作必须按重新生成、编辑、删除排序');
+assert.equal((reputationMenuHtml.match(/pm-today-trend-inline-action[^s]/g) || []).length, valid.scopes.chat.reputation.circles.length * 3, '个人风评每条记录必须输出三个行内操作按钮');
 assert.equal((reputationMenuHtml.match(/pm-today-trend-menu-wrap is-open/g) || []).length, 1, '个人风评只允许模块操作菜单展开');
 assert.doesNotMatch(reputationItemMenuHtml, /today-trend-edit-circle/, '旧圈层菜单 ID 不得意外展开行内动作');
 const reputationEditorHtml = renderTodayTrendReputationView({ scope: valid.scopes.chat, editingCircleId: 'judge' });
@@ -474,20 +725,26 @@ assert.match(busyReputationSettingsHtml, /today-trend-regenerate-circle-schema"[
 assert.doesNotMatch(busyReputationSettingsHtml, /data-menu-id="circle:/, '风评设置不得重复渲染圈层省略号');
 assert.doesNotMatch(busyReputationSettingsHtml, /today-trend-regenerate-reputation-rule/, '个人风评设置不得重复提供模块规则动作');
 assert.doesNotMatch(todayTrendStyle, /pm-today-trend-(?:reputation|factions|dynamics)::(?:before|after)[^{]*\{[^}]*mask-image/, '个人风评、势力和事件不得恢复头尾 SVG 背景');
-assert.match(todayTrendStyle, /pm-today-trend-reputation\{[^}]*--pm-today-trend-reputation-mark-size/, '个人风评必须在根选择器集中声明局部尺寸 token');
+assert.match(todayTrendStyle, /pm-today-trend-reputation\{[^}]*--pm-today-trend-reputation-mark-size:var\(--pm-space-5\)/, '个人风评图标尺寸必须与世界态势节点一致');
 assert.doesNotMatch(todayTrendStyle, /pm-today-trend-reputation-(?:head-art|file-no)/, '个人风评不得保留没有 DOM 消费者的档案装饰样式');
 assert.match(todayTrendStyle, /pm-today-trend-reputation-mark\{[^}]*border:0[^}]*border-radius:var\(--pm-radius-circle\)[^}]*background:var\(--pm-color-accent\)/, '个人风评图标必须统一为圆形主题节点');
-assert.doesNotMatch(todayTrendStyle, /pm-today-trend-reputation-mark::(?:before|after)|pm-today-trend-reputation-copy\{[^}]*border-left/, '个人风评不得恢复框角或正文轨道线');
+assert.match(todayTrendStyle, /pm-today-trend-reputation-entry-head>b\{[^}]*font-size:var\(--pm-font-size-subtitle\)[^}]*line-height:var\(--pm-line-height-control\)/, '个人风评条目标题必须与世界态势使用相同字号和行高');
+assert.doesNotMatch(todayTrendStyle, /pm-today-trend-reputation-mark::(?:before|after)/, '个人风评图标不得恢复装饰伪元素');
 assert.match(todayTrendStyle, /pm-today-trend-reputation-entry\{[^}]*border:0[^}]*border-radius:var\(--pm-radius-card\)[^}]*background:transparent[^}]*box-shadow:none/, '个人风评条目必须使用无底无框卡片外壳');
-assert.match(todayTrendStyle, /pm-today-trend-reputation-entry\{[^}]*display:grid[^}]*grid-template-columns:var\(--pm-today-trend-reputation-mark-size\) minmax\(0,1fr\) var\(--pm-today-trend-reputation-rating-width\)/, '个人风评条目必须保持图标、正文和评级三列流式布局');
+assert.match(todayTrendStyle, /pm-today-trend-reputation-entry\{[^}]*display:flex[^}]*flex-direction:column/, '个人风评条目必须使用标题栏与内容栏上下布局');
+assert.match(todayTrendStyle, /pm-today-trend-reputation-entry-head\{[^}]*display:flex[^}]*align-items:center[^}]*gap:var\(--pm-space-2\)/, '个人风评标题栏必须让图标与标题居中对齐');
+assert.match(todayTrendStyle, /pm-today-trend-reputation-entry-body\{[^}]*min-width:0[^}]*\}/, '个人风评内容栏必须完整占据标题栏下方而非伪装成右侧栏');
+assert.doesNotMatch(todayTrendStyle, /pm-today-trend-reputation-entry-body\{[^}]*margin-left/, '个人风评内容栏不得保留图标宽度形成的左侧空栏');
 assert.match(todayTrendStyle, /pm-today-trend-reputation-meter button\{[^}]*min-height:var\(--pm-size-control-default\)/, '个人风评五档状态按钮必须保留 44px 主触控高度');
-assert.match(todayTrendStyle, /pm-today-trend-reputation-meter\{[^}]*row-gap:var\(--pm-space-1\)[^}]*padding:var\(--pm-space-1\) var\(--pm-space-0-5\)/, '个人风评量表必须放宽纵向间隔与容器内边距');
-assert.match(todayTrendStyle, /pm-today-trend-reputation-meter button\{[^}]*min-width:var\(--pm-size-control-default\)[^}]*padding:var\(--pm-space-1\) var\(--pm-space-0-5\)/, '个人风评状态按钮必须放宽横向命中区');
-assert.match(todayTrendStyle, /pm-today-trend-reputation-meter button::before/, '个人风评量表必须提供横向刻度');
-assert.match(todayTrendStyle, /pm-today-trend-reputation-meter button\.is-active::after/, '个人风评量表必须提供当前档圆点与光晕');
+assert.match(todayTrendStyle, /pm-today-trend-reputation-meter\{[^}]*display:flex[^}]*justify-content:center[^}]*gap:var\(--pm-space-1\)[^}]*border:0[^}]*background:transparent/, '个人风评量表必须使用居中的轻量图标组选项');
+assert.match(todayTrendStyle, /pm-today-trend-reputation-meter button\{[^}]*min-width:var\(--pm-size-control-default\)[^}]*flex:0 1 var\(--pm-size-control-default\)[^}]*align-items:center[^}]*justify-content:center/, '个人风评五档按钮必须使用紧凑且居中的固定触控单元');
+assert.match(todayTrendStyle, /pm-today-trend-reputation-meter button svg\{[^}]*width:var\(--pm-size-icon-sm\)[^}]*height:var\(--pm-size-icon-sm\)/, '个人风评五档必须使用可辨识的状态图标');
+assert.match(todayTrendStyle, /pm-today-trend-reputation-meter button span\{[^}]*font-size:var\(--pm-font-size-micro\)/, '个人风评量表档位标签必须使用紧凑字号');
+assert.match(todayTrendStyle, /pm-today-trend-reputation-meter button\.is-active\{[^}]*border-bottom-color:var\(--pm-color-accent\)[^}]*color:var\(--pm-color-accent\)/, '个人风评量表当前档必须以主题色图标和底部线明确标识');
+assert.doesNotMatch(todayTrendStyle, /pm-today-trend-reputation-meter button::before|pm-today-trend-reputation-meter button::after/, '个人风评量表不得使用圆点或底线伪元素');
 assert.match(todayTrendStyle, /pm-today-trend-reputation-meter button:focus-visible/, '个人风评状态按钮必须提供键盘焦点样式');
 assert.match(todayTrendStyle, /pm-today-trend-reputation-meter button:disabled/, '个人风评状态按钮必须提供禁用样式');
-assert.match(todayTrendStyle, /pm-today-trend-reputation-entry\.is-editing\{[^}]*display:block/, '个人风评编辑态必须退出三列网格，供编辑器跨列展开');
+assert.match(todayTrendStyle, /pm-today-trend-reputation-entry\.is-editing\{[^}]*display:block/, '个人风评编辑态必须退出内容分区布局，供编辑器完整展开');
 assert.match(todayTrendStyle, /pm-today-trend-reputation-entry\.is-editing>\.pm-today-trend-editor\{[^}]*width:100%/, '个人风评编辑器必须占满编辑态行宽');
 assert.doesNotMatch(reputationHtml, /pm-today-trend-reputation-foot-art/, '个人风评内容页不得渲染底部装饰 SVG');
 const factionHtml = renderTodayTrendFactionView({ scope: valid.scopes.chat, preset: valid.presets.preset, generationAvailable: true, menuOpenId: 'faction-module' });
@@ -502,11 +759,18 @@ assert.match(factionHtml, /pm-today-trend-faction-tree" data-depth="0"/, '势力
 assert.match(factionHtml, /pm-today-trend-faction-card"[^>]*data-depth="1"/, '势力图谱必须标识子层级');
 assert.match(todayTrendStyle, /pm-today-trend-faction-tree\[data-depth\]:not\(\[data-depth="0"\]\)\{[^}]*margin-left:var\(--pm-today-trend-faction-nested-indent\)[^}]*padding-left:var\(--pm-today-trend-faction-nested-indent\)/, '势力子层级必须保留缩进且不依赖左侧大轨道');
 assert.match(todayTrendStyle, /pm-today-trend-faction-tree\[data-depth\]:not\(\[data-depth="0"\]\):not\(\[data-depth="1"\]\)\{[^}]*margin-left:var\(--pm-space-0\)[^}]*padding-left:var\(--pm-space-0\)/, '势力深层级必须停止累计缩进以避免窄屏溢出');
+assert.match(todayTrendStyle, /pm-today-trend-factions\{[^}]*--pm-today-trend-faction-icon-size:var\(--pm-space-5\)/, '势力图谱节点尺寸必须与世界态势节点一致');
+assert.match(todayTrendStyle, /pm-today-trend-faction-entry-head>b\{[^}]*flex:1[^}]*overflow-wrap:anywhere[^}]*font-size:var\(--pm-font-size-subtitle\)[^}]*line-height:var\(--pm-line-height-control\)/, '势力图谱标题行必须为图标、标题和操作保留稳定布局并允许长标题断行');
 assert.match(todayTrendStyle, /pm-today-trend-faction-card\{[^}]*border:0[^}]*border-radius:var\(--pm-radius-card\)[^}]*background:transparent[^}]*box-shadow:none/, '势力条目必须使用无底无框卡片外壳');
 assert.doesNotMatch(todayTrendStyle, /pm-today-trend-faction-detail\{[^}]*border-left|pm-today-trend-faction-detail-row::before/, '势力详情不得恢复轨道线或菱形连接器');
-assert.match(todayTrendStyle, /@media\(max-width:320px\)[\s\S]*?pm-today-trend-faction-card\{[^}]*var\(--pm-today-trend-faction-meter-width\)/, '320px 下势力关系评级列不得被隐藏');
-assert.match(todayTrendStyle, /pm-today-trend-faction-meter\{[^}]*row-gap:var\(--pm-space-1\)[^}]*min-height:calc\(var\(--pm-size-control-default\) \* 2\)/, '势力关系量表必须放宽纵向间隔');
-assert.match(todayTrendStyle, /pm-today-trend-faction-meter span\{[^}]*min-height:var\(--pm-space-5\)[^}]*padding:var\(--pm-space-0-5\)/, '势力关系档位必须放宽横纵空间');
+assert.match(factionHtml, /pm-today-trend-faction-entry-head[\s\S]*?pm-today-trend-faction-node[\s\S]*?<b>红队<\/b>/, '势力图谱节点必须直接归入条目标题行');
+assert.match(factionHtml, /pm-today-trend-faction-entry-body[\s\S]*?pm-today-trend-faction-summary/, '势力图谱正文必须位于标题行之后');
+assert.match(factionHtml, /pm-today-trend-faction-detail-row is-evaluation"><dt>关系评价<\/dt><dd>/, '势力关系评价必须保持完整的定义列表语义');
+assert.match(todayTrendStyle, /pm-today-trend-faction-meter\{[^}]*display:flex[^}]*width:100%[^}]*justify-content:center/, '势力关系量表必须使用横向居中布局');
+assert.match(todayTrendStyle, /pm-today-trend-faction-meter>span\{[^}]*min-height:var\(--pm-size-control-default\)[^}]*flex-direction:column[^}]*padding:var\(--pm-space-0-5\)/, '势力关系档位必须与个人风评保持一致的纵向图标文字结构');
+assert.match(todayTrendStyle, /@media\(max-width:320px\)[\s\S]*?pm-today-trend-reputation-meter,\.pm-today-trend-faction-meter\{[^}]*column-gap:var\(--pm-space-0-5\)/, '320px 下两种关系量表必须同步收紧间距');
+assert.match(todayTrendStyle, /@media\(max-width:320px\)[\s\S]*?pm-today-trend-faction-entry-head\{flex-wrap:wrap\}/, '320px 下势力标题行必须允许操作区自然换行');
+assert.match(todayTrendStyle, /@media\(max-width:320px\)[\s\S]*?pm-today-trend-faction-entry-head>\.pm-today-trend-inline-actions\{margin-left:auto\}/, '320px 下势力操作区换行后必须保持右对齐');
 
 assert.doesNotMatch(factionHtml, /pm-today-trend-external-list|pm-today-trend-external-relation/, '外部关联不得再单独列成第二份势力清单');
 assert.match(factionHtml, /pm-today-trend-faction-node/, '势力图谱必须输出独立节点装饰');
@@ -514,7 +778,9 @@ assert.doesNotMatch(factionHtml, /pm-today-trend-faction-constellation/, '势力
 assert.match(factionHtml, /today-trend-edit-faction-rule/, '势力图谱模块必须提供规则编辑动作');
 assert.doesNotMatch(factionHtml, /today-trend-add-faction/, '势力图谱顶级操作不得保留计划外添加势力入口');
 assert.match(factionHtml, /today-trend-edit-faction[^>]*data-faction-id="red"/, '展开势力图谱模块操作后必须显示条目编辑入口');
-assert.doesNotMatch(factionHtml, /today-trend-refresh-faction/, '势力图谱内容区不得保留单项重新生成入口');
+assert.match(factionHtml, /today-trend-refresh-faction[^>]*data-faction-id="red"/, '展开势力图谱模块操作后必须显示条目重新生成入口');
+assert.match(factionHtml, /today-trend-delete-faction[^>]*data-faction-id="red"/, '展开势力图谱模块操作后必须显示条目删除入口');
+assert.match(factionHtml, /data-faction-id="red"[\s\S]*?pm-today-trend-inline-actions[\s\S]*?today-trend-refresh-faction[\s\S]*?today-trend-edit-faction[\s\S]*?today-trend-delete-faction/, '势力图谱行内操作必须按重新生成、编辑、删除排序');
 assert.equal((factionHtml.match(/pm-today-trend-menu-wrap is-open/g) || []).length, 1, '势力图谱只允许模块操作菜单展开');
 assert.doesNotMatch(factionItemMenuHtml, /pm-today-trend-inline-actions/, '旧势力条目菜单 ID 不得意外展开任何行内动作');
 const deepFactionScope = structuredClone(valid.scopes.chat);
@@ -525,6 +791,7 @@ malformedRelationScope.factions[0].relation = [];
 assert.match(renderTodayTrendFactionView({ scope: malformedRelationScope }), /data-faction-id="red"[\s\S]*?data-status="neutral"/, '势力视图必须将数组 relation 回退为中立对象');
 const busyFactionHtml = renderTodayTrendFactionView({ scope: valid.scopes.chat, generationAvailable: true, generationBusy: true, menuOpenId: 'faction-module' });
 assert.match(busyFactionHtml, /today-trend-generate-factions"[^>]*disabled aria-busy="true"/, '忙碌时势力模块生成必须禁用并暴露忙碌状态');
+assert.match(busyFactionHtml, /today-trend-refresh-faction"[^>]*disabled aria-busy="true"/, '忙碌时势力条目重新生成必须禁用并暴露忙碌状态');
 assert.match(renderTodayTrendReputationView({ scope: valid.scopes.chat, mode: 'settings', menuOpenId: 'reputation-settings' }), /today-trend-regenerate-circle-schema/, '个人风评设置顶级操作打开后必须提供结构重新生成动作');
 const factionEditorHtml = renderTodayTrendFactionView({ scope: valid.scopes.chat, mode: 'editor', editingFactionId: 'red' });
 assert.match(factionEditorHtml, /name="parentId"/, '势力编辑页必须提供可空父势力选择');
@@ -537,8 +804,12 @@ assert.match(busyDynamicsHtml, /today-trend-edit-dynamics-rule/, '动态模块�
 assert.doesNotMatch(busyDynamicsHtml, /pm-today-trend-dynamics-(?:head|foot)-art/, '事件追踪不得渲染头尾装饰 SVG');
 assert.match(busyDynamicsHtml, /today-trend-open-dynamics-settings/, '动态模块必须保留专属设置动作');
 assert.doesNotMatch(busyDynamicsHtml, /today-trend-create-event/, '动态模块顶级操作不得保留计划外创建事件入口');
-assert.match(busyDynamicsHtml, /today-trend-edit-event[^>]*data-event-id="service"/, '展开事件追踪模块操作后必须显示条目编辑入口');
-assert.doesNotMatch(busyDynamicsHtml, /today-trend-advance-event/, '动态内容区不得保留单项推进入口');
+const activeEventCardHtml = busyDynamicsHtml.match(/<article class="pm-today-trend-event-card"[^>]*data-event-id="service"[\s\S]*?<\/article>/)?.[0] || '';
+assert.ok(activeEventCardHtml, '进行中事件必须渲染独立事件卡片');
+assert.match(activeEventCardHtml, /today-trend-advance-event[\s\S]*?today-trend-edit-event[\s\S]*?today-trend-archive-event/, '进行中事件的标准行内操作必须按重新生成、编辑、归档排序');
+assert.equal((activeEventCardHtml.match(/pm-today-trend-inline-action(?:\s|")/g) || []).length, 3, '普通进行中事件必须恰好输出三个标准行内操作');
+assert.doesNotMatch(activeEventCardHtml, /today-trend-promote-underground|today-trend-delete-event/, '普通进行中事件不得泄漏地下线升级或归档删除动作');
+assert.match(busyDynamicsHtml, /today-trend-advance-event"[^>]*disabled aria-busy="true"/, '忙碌时单条事件重新生成必须禁用并暴露忙碌状态');
 assert.equal((busyDynamicsHtml.match(/pm-today-trend-menu-wrap is-open/g) || []).length, 1, '事件追踪只允许模块操作菜单展开');
 assert.doesNotMatch(dynamicsItemMenuHtml, /pm-today-trend-inline-actions/, '旧事件条目菜单 ID 不得意外展开任何行内动作');
 assert.match(busyDynamicsHtml, /EVENT TRACKER/, '动态内容页必须提供追踪识别语');
@@ -554,11 +825,14 @@ assert.match(busyDynamicsHtml, /pm-today-trend-active-panel"[^>]*role="tabpanel"
 assert.match(busyDynamicsHtml, /pm-today-trend-event-pill is-live/, '活跃事件必须提供带状态点的 pill');
 assert.match(busyDynamicsHtml, /pm-today-trend-stage-tag">最新阶段/, '活跃事件的最后阶段必须标记为最新阶段');
 assert.doesNotMatch(todayTrendStyle, /pm-today-trend-event-list::before/, '事件追踪列表必须删除左侧大轨道');
+assert.match(todayTrendStyle, /pm-today-trend-dynamics\{[^}]*--pm-today-trend-dynamics-icon-size:var\(--pm-space-5\)/, '事件追踪节点尺寸必须与世界态势节点一致');
+assert.match(todayTrendStyle, /pm-today-trend-dynamics>\.pm-today-trend-module-head\{[^}]*padding-bottom:var\(--pm-space-2\)/, '事件追踪分页必须靠近模块标题');
 assert.match(todayTrendStyle, /pm-today-trend-event-marker\{[^}]*background:var\(--pm-color-accent\)[^}]*color:var\(--pm-color-on-accent\)/, '事件追踪大图标必须使用主题色');
+assert.match(todayTrendStyle, /pm-today-trend-event-heading>b\{[^}]*font-size:var\(--pm-font-size-subtitle\)[^}]*line-height:var\(--pm-line-height-control\)/, '事件追踪条目标题必须与世界态势使用相同字号和行高');
 assert.match(todayTrendStyle, /pm-today-trend-event-body>header\{[^}]*display:flex[^}]*justify-content:space-between/, '事件追踪标题与行内操作必须使用独立弹性布局');
 assert.match(todayTrendStyle, /pm-today-trend-event-card\{[^}]*grid-template-columns:var\(--pm-today-trend-dynamics-rail\) minmax\(0,1fr\)/, '事件追踪卡片必须使用节点与正文双列网格');
 assert.doesNotMatch(busyDynamicsHtml, /pm-today-trend-dynamics-signal|pm-today-trend-dynamics-arc/, '事件背景不得局限在模块子容器内或保留灰色弧线');
-assert.match(busyDynamicsHtml, /正在生成…/, '忙碌时动态模块必须展示生成状态');
+assert.doesNotMatch(busyDynamicsHtml, /pm-today-trend-progress|正在生成…/, '目标模块不得保留标题栏之外的重复生成状态');
 assert.match(factionEditorHtml, /name="detailLabel"/, '势力编辑页必须提供动态关键资料编辑');
 assert.match(factionEditorHtml, /name="status"/, '势力编辑页必须提供固定五档关系选择');
 assert.match(factionEditorHtml, /data-action="today-trend-add-detail"/, '势力编辑页必须提供关键资料添加动作');
@@ -677,7 +951,18 @@ assert.match(dynamicsSettingsHtml, /自动判断完结/, '动态设置必须区�
 assert.match(dynamicsSettingsHtml, /完结后归档/, '动态设置必须区分完结后归档');
 assert.doesNotMatch(renderTodayTrendDynamicsView({ scope: activeRumorScope, editingEventId: 'archive:active-rumor' }), /value="resolved"/, '流言归档 UI 只能提供证实或证伪结果');
 assert.doesNotMatch(renderTodayTrendDynamicsView({ scope: valid.scopes.chat, editingEventId: 'archive:service' }), /value="confirmed"|value="debunked"|value="absorbed"/, '普通事件归档 UI 不得暴露流言或承接结果');
-assert.match(renderTodayTrendDynamicsView({ scope: undergroundScope, menuOpenId: 'dynamics-module' }), /today-trend-promote-underground/, '动态顶级操作打开后必须提供地下线升级入口');
+const undergroundDynamicsHtml = renderTodayTrendDynamicsView({ scope: undergroundScope, menuOpenId: 'dynamics-module' });
+const undergroundCardHtml = undergroundDynamicsHtml.match(/<article class="pm-today-trend-event-card[^>]*data-event-id="underground"[\s\S]*?<\/article>/)?.[0] || '';
+assert.ok(undergroundCardHtml, '地下线事件必须渲染独立事件卡片');
+assert.match(undergroundCardHtml, /today-trend-advance-event[\s\S]*?today-trend-edit-event[\s\S]*?today-trend-archive-event[\s\S]*?today-trend-promote-underground/, '地下线必须先输出标准三动作，再追加专属升级动作');
+assert.equal((undergroundCardHtml.match(/pm-today-trend-inline-action(?:\s|")/g) || []).length, 4, '地下线事件必须恰好输出三个标准动作和一个专属升级动作');
+assert.doesNotMatch(dynamicsHtml, /today-trend-promote-underground/, '非地下线事件不得输出升级动作');
+const archivedActionsHtml = renderTodayTrendDynamicsView({ scope: valid.scopes.chat, dynamicsTab: 'archived', menuOpenId: 'dynamics-module' });
+const archivedCardHtml = archivedActionsHtml.match(/<article class="pm-today-trend-event-card is-archived"[^>]*data-event-id="rumor"[\s\S]*?<\/article>/)?.[0] || '';
+assert.ok(archivedCardHtml, '归档事件必须渲染独立事件卡片');
+assert.match(archivedCardHtml, /today-trend-delete-event/, '归档事件必须保留删除动作');
+assert.doesNotMatch(archivedCardHtml, /today-trend-(?:advance|edit|archive)-event|today-trend-promote-underground/, '归档事件不得重新开放推进、编辑、归档或升级动作');
+assert.equal((archivedCardHtml.match(/pm-today-trend-inline-action(?:\s|")/g) || []).length, 1, '归档事件必须只输出一个删除动作');
 assert.match(renderTodayTrendDynamicsView({ scope: undergroundScope, editingEventId: 'promote:underground' }), /data-today-trend-form="event-promotion"/, '地下线升级必须提供受控事件表单');
 assert.doesNotMatch(dynamicsSettingsHtml, /today-trend-edit-(?:dynamics|incident|rumor|underground)-rule/, '动态设置不得重复提供模块规则入口');
 
@@ -762,9 +1047,16 @@ assert.deepEqual(committed, beforeInjectionFailure, '注入失败必须补偿为
 let installedStore = structuredClone(valid);
 installedStore.presets.free = { ...structuredClone(installedStore.presets.preset), id: 'free', name: '未绑定预设' };
 installedStore.scopes.other = { ...structuredClone(installedStore.scopes.chat), storageId: 'other' };
+let installedChat = [{ mes: '内部助手消息' }, { mes: '内部助手消息二' }, { mes: '内部助手消息三' }];
+let installedHostFloor = 3402;
+let installedHostFloorError = null;
 let resolveInstalledInitialization;
 const installedDeps = {
-    runtime: {}, getStorageId: () => 'chat', getCtx: () => ({ characterId: 'character', characters: { character: { avatar: 'character', name: '小明' } }, chat: [] }),
+    runtime: {}, getStorageId: () => 'chat', getCtx: () => ({ characterId: 'character', characters: { character: { avatar: 'character', name: '小明' } }, chat: installedChat }),
+    getLastMessageId: () => {
+        if (installedHostFloorError) throw installedHostFloorError;
+        return installedHostFloor;
+    },
     callAI: async () => { throw new Error('安装层竞争测试不应调用真实 AI'); },
     loadTodayTrendStore: async () => structuredClone(installedStore),
     saveTodayTrendStore: async value => { installedStore = structuredClone(value); return installedStore; },
@@ -776,6 +1068,15 @@ const installedDeps = {
     }),
 };
 installTodayTrend({}, installedDeps);
+assert.equal(installedDeps.getTodayTrendCurrentFloor(), 3402, '安装层必须公开酒馆原生 getLastMessageId 楼层');
+installedHostFloor = null;
+assert.equal(installedDeps.getTodayTrendCurrentFloor(), null, '宿主楼层返回 null 时不得用内部 assistant 统计冒充真实楼层');
+installedHostFloor = '   ';
+assert.equal(installedDeps.getTodayTrendCurrentFloor(), null, '宿主楼层返回空白字符串时不得误判为 0 楼或内部统计');
+installedHostFloorError = new Error('宿主楼层读取失败');
+assert.equal(installedDeps.getTodayTrendCurrentFloor(), null, '宿主楼层读取抛错时必须报告不可用而不是伪造楼层');
+installedHostFloorError = null;
+installedHostFloor = 3402;
 await assert.rejects(() => installedDeps.deleteTodayTrendPreset('preset'), /仍被角色资料使用/, '被当前或其他角色资料引用的预设不得删除');
 assert.ok(installedStore.presets.preset, '删除被引用预设失败后必须保持原预设');
 await installedDeps.deleteTodayTrendPreset('free');
@@ -1134,7 +1435,7 @@ const statusButton = dataset => {
     button.focus = () => { button.focusCount += 1; };
     return button;
 };
-const refreshStatusOptions = () => { statusOptions = ['hostile', 'dislike', 'neutral', 'like', 'trust'].map(status => statusButton({ circleId: 'judge', status })); };
+const refreshStatusOptions = () => { statusOptions = TODAY_TREND_RELATION_STATUSES.map(status => statusButton({ circleId: 'judge', status })); };
 refreshStatusOptions();
 statusListeners.click({ target: statusButton({ circleId: 'judge', status: 'like' }) });
 await new Promise(resolve => setImmediate(resolve));
@@ -1169,7 +1470,7 @@ const createKeyboardOption = status => {
     option.focus = () => { option.focusCount += 1; };
     return option;
 };
-const refreshKeyboardOptions = () => { keyboardOptions = ['hostile', 'dislike', 'neutral', 'like', 'trust'].map(createKeyboardOption); };
+const refreshKeyboardOptions = () => { keyboardOptions = TODAY_TREND_RELATION_STATUSES.map(createKeyboardOption); };
 refreshKeyboardOptions();
 let keyboardCommitCount = 0;
 const keyboardDispatcher = createTodayTrendActionDispatcher({
@@ -1215,7 +1516,7 @@ const createConcurrentOption = status => {
     option.focus = () => { option.focusCount += 1; };
     return option;
 };
-const refreshConcurrentOptions = () => { concurrentOptions = ['hostile', 'dislike', 'neutral', 'like', 'trust'].map(createConcurrentOption); };
+const refreshConcurrentOptions = () => { concurrentOptions = TODAY_TREND_RELATION_STATUSES.map(createConcurrentOption); };
 refreshConcurrentOptions();
 let resolveStaleRender;
 let concurrentRenderCalls = 0;
@@ -1357,6 +1658,7 @@ const schedulerCommitter = createTodayTrendCommitter({
     save: async value => { scheduledStore = structuredClone(value); return scheduledStore; },
     refreshInjection: async () => ({ failedWrites: 0, failedKeys: [] }),
 });
+let scheduledHostFloor = 3402;
 let schedulerCalls = 0;
 const scheduler = createTodayTrendScheduler({
     controller: { generate: async ({ scope }) => {
@@ -1366,23 +1668,76 @@ const scheduler = createTodayTrendScheduler({
         };
     } },
     committer: schedulerCommitter, getStore: async () => scheduledStore, getStorageId: () => 'chat',
-    getChat: () => [{ mes: '第一楼' }, { mes: '第二楼' }, { mes: '第三楼' }], now: () => 100,
+    getChat: () => [{ mes: '第一楼' }, { mes: '第二楼' }, { mes: '第三楼' }], getFloor: () => scheduledHostFloor, now: () => 100,
 });
 const autoSnapshot = scheduler.observe([{ mes: '第一楼' }, { mes: '第二楼' }, { mes: '第三楼' }]);
-assert.equal(autoSnapshot.assistantCount, 3, '自动调度只能按已完成的 assistant 正文计楼');
-assert.equal(scheduler.observe([{ role: 'user', content: '用户消息' }, { role: 'system', content: '系统消息' }]), null,
-    'role/content 形态的用户和系统消息不得被误判为 assistant 楼层');
+assert.match(autoSnapshot.key, /^[0-9a-f]{32}$/, '调度快照必须使用至少 128-bit 的固定长度指纹');
+assert.equal(autoSnapshot.messageCount, 3, '调度快照必须保留有效消息数');
+assert.equal(autoSnapshot.assistantCount, 3, '调度快照必须保留独立的 assistant 正文统计');
+assert.equal(autoSnapshot.floor, 3402, '调度楼层必须优先采用宿主原生消息编号');
+assert.equal(autoSnapshot.lastRole, 'assistant', '调度快照必须保留末消息角色');
+assert.match(autoSnapshot.lastMessageFingerprint, /^[0-9a-f]{32}$/, '调度快照必须保留固定长度末消息指纹');
+assert.ok(JSON.stringify(autoSnapshot).length < 512, '单个调度快照的稳定表示必须小于 512 bytes');
 await new Promise(resolve => setTimeout(resolve, 0));
 assert.equal(schedulerCalls, 1, '达到每 N 楼阈值后必须只启动一次统一生成');
-assert.equal(scheduledStore.scopes.chat.operation.lastSuccessfulAssistantCount, 3, '自动成功后必须推进 checkpoint');
-scheduledStore.scopes.chat.operation.lastSuccessfulAssistantCount = 80;
+assert.equal(scheduledStore.scopes.chat.operation.lastSuccessfulAssistantCount, 3402, '自动成功后必须把 checkpoint 推进到宿主原生楼层');
+const roleParsingScheduler = createTodayTrendScheduler({
+    controller: { generate: async ({ scope }) => ({ scope }) }, committer: schedulerCommitter,
+    getStore: async () => ({ scopes: {} }), getStorageId: () => 'role-parsing-chat',
+});
+const nonAssistantSnapshot = roleParsingScheduler.observe([{ role: 'user', content: '用户消息' }, { role: 'system', content: '系统消息' }]);
+assert.equal(nonAssistantSnapshot.assistantCount, 0, 'role/content 形态的用户和系统消息不得被误判为 assistant 楼层');
+assert.equal(nonAssistantSnapshot.lastIsAssistant, false, '非 assistant 尾消息必须阻止自动生成调度');
+await new Promise(resolve => setTimeout(resolve, 0));
+assert.equal(schedulerCalls, 1, '非 assistant 尾消息不得启动额外自动生成');
+scheduledStore.scopes.chat.operation.lastSuccessfulAssistantCount = 3400;
+scheduledHostFloor = 3404;
 const longChat = Array.from({ length: 82 }, (_, index) => ({ mes: `第${index + 1}楼` }));
 scheduler.observe(longChat);
 await new Promise(resolve => setTimeout(resolve, 0));
-assert.equal(schedulerCalls, 2, '超过最近正文窗口后仍必须按完整 assistant 楼层继续调度');
+assert.equal(schedulerCalls, 2, '宿主原生楼层达到阈值后必须继续调度');
 await scheduler.manual();
 assert.equal(schedulerCalls, 3, '手动本轮生成必须复用统一生成链');
-assert.equal(scheduledStore.scopes.chat.operation.lastSuccessfulAssistantCount, 3, '手动成功必须同步当前 checkpoint');
+assert.equal(scheduledStore.scopes.chat.operation.lastSuccessfulAssistantCount, 3404, '手动成功必须同步宿主原生楼层 checkpoint');
+
+const snapshotOnlyScheduler = createTodayTrendScheduler({
+    controller: { generate: async ({ scope }) => ({ scope }) },
+    committer: schedulerCommitter,
+    getStore: async () => ({ scopes: {} }),
+    getStorageId: () => 'snapshot-chat',
+});
+const largeSnapshot = snapshotOnlyScheduler.observe(Array.from({ length: 200 }, (_, index) => ({
+    role: index % 2 ? 'assistant' : 'user', content: `${index}:` + '长正文'.repeat(680),
+})));
+assert.equal(largeSnapshot.key.length, autoSnapshot.key.length, '会话指纹长度不得随消息数或正文总量增长');
+assert.ok(JSON.stringify(largeSnapshot).length < 512, '长聊天快照不得常驻正文或按消息数增长的摘要 key');
+await Promise.resolve();
+assert.equal(snapshotOnlyScheduler.state().observationCount, 0, '存储中不存在的 scope 不得留下孤儿 observation');
+
+let capacityStorageId = 'capacity-0';
+const capacityScopes = Object.fromEntries(Array.from({ length: 81 }, (_, index) => [
+    `capacity-${index}`,
+    { operation: { enabled: false, mode: 'manual', intervalFloors: 2, lastSuccessfulAssistantCount: 0 } },
+]));
+const capacityScheduler = createTodayTrendScheduler({
+    controller: { generate: async ({ scope }) => ({ scope }) },
+    committer: schedulerCommitter,
+    getStore: async () => ({ scopes: capacityScopes }),
+    getStorageId: () => capacityStorageId,
+});
+for (let index = 0; index < 81; index += 1) {
+    capacityStorageId = `capacity-${index}`;
+    capacityScheduler.observe([{ role: 'assistant', content: `容量消息${index}` }]);
+    await Promise.resolve();
+}
+assert.equal(capacityScheduler.state().observationCount, 80, '跨聊天 observation 状态表必须限制为 80 项');
+capacityStorageId = 'capacity-role';
+capacityScopes[capacityStorageId] = { operation: { enabled: false, mode: 'manual', intervalFloors: 2, lastSuccessfulAssistantCount: 0 } };
+const roleSnapshot = capacityScheduler.observe([{ role: 'user', content: '相同正文' }, { role: 'assistant', content: '收尾' }]);
+const boundarySnapshot = capacityScheduler.observe([{ role: 'assistant', content: '相同正文' }, { role: 'assistant', content: '收尾' }]);
+const splitSnapshot = capacityScheduler.observe([{ role: 'assistant', content: '相同' }, { role: 'assistant', content: '正文' }, { role: 'assistant', content: '收尾' }]);
+assert.notEqual(roleSnapshot.key, boundarySnapshot.key, '会话指纹必须编码消息角色域');
+assert.notEqual(boundarySnapshot.key, splitSnapshot.key, '会话指纹必须编码消息边界和顺序');
 
 let targetedSchedulerStore = structuredClone(valid);
 const targetedSchedulerCommitter = createTodayTrendCommitter({
@@ -1395,18 +1750,22 @@ const targetedScheduler = createTodayTrendScheduler({
     committer: targetedSchedulerCommitter, getStore: async () => targetedSchedulerStore, getStorageId: () => 'chat', getChat: () => Array.from({ length: 12 }, (_, index) => ({ mes: `第${index + 1}楼` })),
 });
 targetedScheduler.arm('chat', Array.from({ length: 10 }, (_, index) => ({ mes: `旧楼${index + 1}` })));
-await targetedScheduler.run({ kind: 'manual', assistantCount: 12, target: { module: 'world', itemId: 'world' } });
+const targetedSnapshotCount = targetedSchedulerStore.scopes.chat.generationSnapshots.length;
+await targetedScheduler.run({ kind: 'manual', floor: 12, target: { module: 'world', itemId: 'world' } });
 assert.equal(targetedSchedulerStore.scopes.chat.operation.lastSuccessfulAssistantCount, 7, '定向刷新不得推进持久化楼层 checkpoint');
+assert.equal(targetedSchedulerStore.scopes.chat.generationSnapshots.length, targetedSnapshotCount, '定向刷新不得新增完整生成快照');
 assert.equal(targetedScheduler.state().baselines.chat, 10, '定向刷新不得推进自动调度基线');
 
+let armedHostFloor = 3404;
 let armCalls = 0;
 const armedScheduler = createTodayTrendScheduler({
     controller: { generate: async ({ scope }) => { armCalls += 1; return { scope }; } }, committer: schedulerCommitter,
-    getStore: async () => scheduledStore, getStorageId: () => 'chat',
+    getStore: async () => scheduledStore, getStorageId: () => 'chat', getFloor: () => armedHostFloor,
 });
 const initialChat = Array.from({ length: 10 }, (_, index) => ({ mes: `旧楼层${index}` }));
-assert.equal(armedScheduler.arm('chat', initialChat), 10, '开始运作必须立即记录当前 assistant 楼层基线');
+assert.equal(armedScheduler.arm('chat', initialChat), 3404, '开始运作必须立即记录宿主原生楼层基线');
 const newlyCompleted = [...initialChat, { mes: '新楼层1' }, { mes: '新楼层2' }];
+armedHostFloor = 3406;
 armedScheduler.observe(newlyCompleted);
 await new Promise(resolve => setTimeout(resolve, 0));
 assert.equal(armCalls, 1, '启用后恰好新增 N 楼时必须触发，不能吞掉首条新增正文');
@@ -1431,6 +1790,8 @@ await new Promise(resolve => setTimeout(resolve, 0));
 assert.equal(identityCalls, 0, '编辑既有助手正文不得被当作新楼层');
 identityChat.pop();
 identityScheduler.observe(identityChat);
+for (let index = 0; index < 8 && identityScheduler.state().phase === 'committing'; index += 1) await Promise.resolve();
+assert.notEqual(identityScheduler.state().phase, 'committing', '删除助手正文触发的回退提交必须在后续楼层计数前完成');
 identityChat.push({ mes: '新增楼层一' });
 identityScheduler.observe(identityChat);
 await new Promise(resolve => setTimeout(resolve, 0));
@@ -1457,28 +1818,34 @@ assert.deepEqual(incidentPermissions, [false, true, false], '突发概率必须�
 let queuedAutoCalls = 0;
 let releaseQueuedAuto;
 let queuedAutoChat = [{ mes: '旧楼层一' }, { mes: '旧楼层二' }];
+let queuedAutoHostFloor = 3402;
+const queuedAutoGenerationFloors = [];
 let queuedAutoStore = structuredClone(valid);
-queuedAutoStore.scopes.chat.operation = { ...queuedAutoStore.scopes.chat.operation, enabled: true, mode: 'auto', intervalFloors: 2, lastSuccessfulAssistantCount: 2 };
+queuedAutoStore.scopes.chat.operation = { ...queuedAutoStore.scopes.chat.operation, enabled: true, mode: 'auto', intervalFloors: 2, lastSuccessfulAssistantCount: 3402 };
 const queuedAutoCommitter = createTodayTrendCommitter({
     load: async () => queuedAutoStore,
     save: async value => { queuedAutoStore = structuredClone(value); return queuedAutoStore; },
     refreshInjection: async () => ({ failedWrites: 0, failedKeys: [] }),
 });
 const queuedAutoScheduler = createTodayTrendScheduler({
-    controller: { generate: ({ scope }) => {
+    controller: { generate: ({ scope, assistantCount }) => {
         queuedAutoCalls += 1;
+        queuedAutoGenerationFloors.push(assistantCount);
         return queuedAutoCalls === 1
             ? new Promise(resolve => { releaseQueuedAuto = () => resolve({ scope }); })
             : Promise.resolve({ scope });
     } },
     committer: queuedAutoCommitter, getStore: async () => queuedAutoStore, getStorageId: () => 'chat', getChat: () => queuedAutoChat,
+    getFloor: () => queuedAutoHostFloor,
 });
 queuedAutoScheduler.arm('chat', queuedAutoChat);
 queuedAutoChat.push({ mes: '触发楼层一' }, { mes: '触发楼层二' });
+queuedAutoHostFloor = 3404;
 queuedAutoScheduler.observe(queuedAutoChat);
 await new Promise(resolve => setTimeout(resolve, 0));
 assert.equal(queuedAutoCalls, 1, '达到阈值时必须只启动一个自动任务');
 queuedAutoChat.push({ mes: '生成期间楼层一' }, { mes: '生成期间楼层二' });
+queuedAutoHostFloor = 3406;
 queuedAutoScheduler.observe(queuedAutoChat);
 await new Promise(resolve => setTimeout(resolve, 0));
 assert.equal(queuedAutoCalls, 1, '生成期间的自动触发必须合并，不能并发调用 AI');
@@ -1486,7 +1853,58 @@ releaseQueuedAuto();
 await new Promise(resolve => setTimeout(resolve, 0));
 await new Promise(resolve => setTimeout(resolve, 0));
 assert.equal(queuedAutoCalls, 2, '生成期间累计满下一阈值的新增楼层必须在提交后补调度，不能吞楼');
-assert.equal(queuedAutoStore.scopes.chat.operation.lastSuccessfulAssistantCount, 6, '补调度成功后必须推进到最新助手楼层 checkpoint');
+assert.deepEqual(queuedAutoGenerationFloors, [3404, 3406], '首轮与补调度都必须把宿主原生楼层传入生成链');
+assert.equal(queuedAutoStore.scopes.chat.operation.lastSuccessfulAssistantCount, 3406, '补调度成功后必须推进到最新宿主楼层 checkpoint');
+
+let disabledFollowUpCalls = 0;
+let releaseDisabledFollowUp;
+let disabledFollowUpStore = structuredClone(valid);
+disabledFollowUpStore.scopes.chat.operation = { ...disabledFollowUpStore.scopes.chat.operation, enabled: true, mode: 'auto', intervalFloors: 2, lastSuccessfulAssistantCount: 2 };
+const disabledFollowUpCommitter = createTodayTrendCommitter({
+    load: async () => disabledFollowUpStore,
+    save: async value => { disabledFollowUpStore = structuredClone(value); return disabledFollowUpStore; },
+    refreshInjection: async () => ({ failedWrites: 0, failedKeys: [] }),
+});
+const disabledFollowUpScheduler = createTodayTrendScheduler({
+    controller: { generate: ({ scope }) => {
+        disabledFollowUpCalls += 1;
+        return new Promise(resolve => { releaseDisabledFollowUp = () => resolve({ scope }); });
+    } },
+    committer: disabledFollowUpCommitter, getStore: async () => disabledFollowUpStore,
+    getStorageId: () => 'chat', getChat: () => Array.from({ length: 6 }, (_, index) => ({ mes: `关闭自动前楼层${index}` })),
+});
+disabledFollowUpScheduler.arm('chat', [{ mes: '旧楼一' }, { mes: '旧楼二' }]);
+disabledFollowUpScheduler.observe([{ mes: '旧楼一' }, { mes: '旧楼二' }, { mes: '触发一' }, { mes: '触发二' }]);
+await new Promise(resolve => setTimeout(resolve, 0));
+disabledFollowUpScheduler.observe(Array.from({ length: 6 }, (_, index) => ({ mes: `关闭自动前楼层${index}` })));
+releaseDisabledFollowUp();
+disabledFollowUpStore.scopes.chat.operation = { ...disabledFollowUpStore.scopes.chat.operation, enabled: false, mode: 'manual' };
+await new Promise(resolve => setTimeout(resolve, 0));
+await new Promise(resolve => setTimeout(resolve, 0));
+assert.equal(disabledFollowUpCalls, 1, '补调度真正启动前关闭自动模式时不得继续调用 AI');
+
+const notificationPhases = [];
+const notificationScheduler = createTodayTrendScheduler({
+    controller: { generate: async ({ scope, onPhase }) => { onPhase('generating'); onPhase('parsing'); return { scope }; } },
+    committer: schedulerCommitter, getStore: async () => scheduledStore, getStorageId: () => 'chat',
+});
+const unsubscribeNotification = notificationScheduler.subscribe(snapshot => {
+    notificationPhases.push(snapshot.phase);
+    if (snapshot.task) {
+        assert.deepEqual(Object.keys(snapshot.task).sort(), ['floor', 'kind', 'storageId', 'target'], '订阅快照不得暴露 AbortController 或内部任务标识');
+        assert.equal(Object.isFrozen(snapshot.task), true, '订阅任务快照必须只读');
+    }
+});
+notificationScheduler.subscribe(() => { throw new Error('listener failure'); });
+await notificationScheduler.manual();
+for (const phase of ['idle', 'queued', 'generating', 'parsing', 'committing', 'completed']) {
+    assert.ok(notificationPhases.includes(phase), `调度订阅必须发布 ${phase} 阶段`);
+}
+const notificationCount = notificationPhases.length;
+assert.equal(unsubscribeNotification(), true, '首次取消订阅必须成功');
+assert.equal(unsubscribeNotification(), false, '重复取消订阅必须幂等');
+notificationScheduler.acknowledge();
+assert.equal(notificationPhases.length, notificationCount, '取消订阅后不得继续收到状态通知');
 
 let releaseLate;
 const lateScheduler = createTodayTrendScheduler({
@@ -1498,6 +1916,10 @@ await Promise.resolve();
 lateScheduler.cancel('test-cancel');
 releaseLate({ scope: scheduledStore.scopes.chat });
 await assert.rejects(late, error => error?.name === 'AbortError', '取消后迟到结果不得提交');
+assert.equal(lateScheduler.state().phase, 'canceled', '取消任务必须保留 canceled 终态');
+assert.equal(lateScheduler.state().task.storageId, 'chat', '取消任务必须保留所属聊天供 UI 过滤');
+assert.equal(lateScheduler.acknowledge().phase, 'idle', '取消终态被消费后必须回到 idle');
+assert.equal(lateScheduler.state().task, null, '取消终态被消费后必须清空任务归属');
 
 const releaseStores = [];
 let concurrentCalls = 0;
@@ -1555,6 +1977,112 @@ await concurrentCrudCommitter.commitScope('chat', scope => ({ ...scope, world: {
 releaseConcurrentCrud();
 await assert.rejects(pendingWorldRefresh, /生成期间已修改/, '生成期间的世界态势 CRUD 必须使旧生成结果被丢弃');
 assert.deepEqual(concurrentCrudStore.scopes.chat.world.items.map(item => item.id), ['world', 'manual-world'], '迟到生成不得覆盖生成期间保存的世界态势项目');
+
+let feedbackStore = structuredClone(valid);
+let releaseCommitFeedback;
+let feedbackWaitMs = null;
+const feedbackCommitter = createTodayTrendCommitter({
+    load: async () => feedbackStore,
+    save: async value => { feedbackStore = structuredClone(value); return feedbackStore; },
+    refreshInjection: async () => ({ failedWrites: 0, failedKeys: [] }),
+});
+const feedbackScheduler = createTodayTrendScheduler({
+    controller: { generate: async ({ scope }) => ({ scope }) }, committer: feedbackCommitter,
+    getStore: async () => feedbackStore, getStorageId: () => 'chat', getChat: () => Array.from({ length: 8 }, (_, index) => ({ mes: `反馈楼层${index}` })),
+    now: () => 100, commitFeedbackMs: 240,
+    wait: milliseconds => { feedbackWaitMs = milliseconds; return new Promise(resolve => { releaseCommitFeedback = resolve; }); },
+});
+const feedbackRun = feedbackScheduler.manual();
+for (let index = 0; index < 12 && feedbackWaitMs === null; index += 1) await Promise.resolve();
+assert.equal(feedbackScheduler.state().phase, 'committing', '持久化完成后必须保留 committing 状态供 UI 展示同步动效');
+assert.equal(feedbackWaitMs, 240, 'committing 反馈必须满足配置的最短可见时长');
+releaseCommitFeedback();
+await feedbackRun;
+assert.equal(feedbackScheduler.state().phase, 'completed', '最短反馈结束后任务必须正常完成');
+
+let rollbackStore = structuredClone(valid);
+rollbackStore.scopes.chat = appendTodayTrendGenerationSnapshot({
+    ...rollbackStore.scopes.chat,
+    operation: { ...rollbackStore.scopes.chat.operation, lastSuccessfulAssistantCount: 10, lastSuccessfulRunAt: 12 },
+    world: { items: [{ ...rollbackStore.scopes.chat.world.items[0], summary: '第十楼持久化结果' }] },
+}, 10, 12);
+const rollbackCommitter = createTodayTrendCommitter({
+    load: async () => rollbackStore,
+    save: async value => { rollbackStore = structuredClone(value); return rollbackStore; },
+    refreshInjection: async () => ({ failedWrites: 0, failedKeys: [] }),
+});
+const rollbackChat = Array.from({ length: 7 }, (_, index) => ({ mes: `回退后楼层${index}` }));
+const rollbackScheduler = createTodayTrendScheduler({
+    controller: { generate: async () => { throw new Error('回退不得调用 AI'); } }, committer: rollbackCommitter,
+    getStore: async () => rollbackStore, getStorageId: () => 'chat', getChat: () => rollbackChat, getFloor: () => 7,
+});
+assert.equal(createTodayTrendScheduler({ controller: { generate: async ({ scope }) => ({ scope }) }, committer: rollbackCommitter, getStore: async () => rollbackStore, getStorageId: () => 'chat', getChat: () => [{ mes: '内部统计不等于楼层' }], getFloor: () => 3402 }).currentFloor(), 3402, '当前楼层必须完整返回宿主原生多位消息编号');
+rollbackScheduler.observe(rollbackChat);
+for (let index = 0; index < 8 && rollbackStore.scopes.chat.operation.lastSuccessfulAssistantCount !== 7; index += 1) await Promise.resolve();
+assert.equal(rollbackStore.scopes.chat.operation.lastSuccessfulAssistantCount, 7, 'observe 检测到助手楼层下降后必须回退持久化 checkpoint');
+assert.equal(rollbackStore.scopes.chat.world.items[0].summary, '晚餐服务临近', 'observe 回退必须恢复上一有效楼层的生成内容');
+assert.deepEqual(rollbackStore.scopes.chat.generationSnapshots.map(item => item.assistantCount), [0, 7], 'observe 回退必须删除已消失楼层对应的生成快照并保留初始化基线');
+
+let failedRollbackStorageId = 'chat';
+const failedRollbackStore = structuredClone(valid);
+failedRollbackStore.scopes.chat.operation = { ...failedRollbackStore.scopes.chat.operation, lastSuccessfulAssistantCount: 10 };
+const failedRollbackScheduler = createTodayTrendScheduler({
+    controller: { generate: async () => { throw new Error('回退不得调用 AI'); } },
+    committer: { invalidateCommits: () => {}, commitStore: async () => { throw new Error('rollback write blocked'); } },
+    getStore: async () => failedRollbackStore, getStorageId: () => failedRollbackStorageId,
+    getChat: () => Array.from({ length: 7 }, (_, index) => ({ mes: `失败回退楼层${index}` })), getFloor: () => 7,
+});
+failedRollbackScheduler.observe(Array.from({ length: 7 }, (_, index) => ({ mes: `失败回退楼层${index}` })));
+for (let index = 0; index < 12 && failedRollbackScheduler.state().phase !== 'failed'; index += 1) await Promise.resolve();
+assert.equal(failedRollbackScheduler.state().phase, 'failed', '回退提交失败必须保留 failed 终态');
+assert.equal(failedRollbackScheduler.state().task.storageId, 'chat', '回退提交失败必须保留所属聊天供 UI 过滤');
+assert.equal(failedRollbackScheduler.state().lastError, 'rollback write blocked', '回退提交失败必须暴露真实错误说明');
+failedRollbackStorageId = 'other';
+assert.equal(failedRollbackScheduler.state().task.storageId, 'chat', '切换聊天不得篡改旧终态的任务归属');
+assert.equal(failedRollbackScheduler.acknowledge().phase, 'idle', '失败终态被消费后必须回到 idle');
+assert.equal(failedRollbackScheduler.state().task, null, '失败终态被消费后必须清空任务归属');
+
+let concurrentRollbackStore = structuredClone(valid);
+concurrentRollbackStore.scopes.chat = appendTodayTrendGenerationSnapshot({
+    ...concurrentRollbackStore.scopes.chat,
+    operation: { ...concurrentRollbackStore.scopes.chat.operation, enabled: true, mode: 'auto', intervalFloors: 2, lastSuccessfulAssistantCount: 3410, lastSuccessfulRunAt: 12 },
+    world: { items: [{ ...concurrentRollbackStore.scopes.chat.world.items[0], summary: '并发回退前结果' }] },
+}, 3410, 12);
+let concurrentRollbackChat = Array.from({ length: 7 }, (_, index) => ({ mes: `并发回退楼层${index}` }));
+let concurrentRollbackHostFloor = 3407;
+let releaseRollbackCommit;
+let rollbackCommitStarted = false;
+let blockNextRollbackCommit = true;
+let concurrentRollbackCalls = 0;
+const concurrentRollbackCommitter = {
+    invalidateCommits: () => {},
+    commitStore: async mutate => {
+        const candidate = await mutate(structuredClone(concurrentRollbackStore));
+        if (blockNextRollbackCommit) {
+            blockNextRollbackCommit = false;
+            rollbackCommitStarted = true;
+            await new Promise(resolve => { releaseRollbackCommit = resolve; });
+        }
+        concurrentRollbackStore = structuredClone(candidate);
+        return concurrentRollbackStore;
+    },
+};
+const concurrentRollbackScheduler = createTodayTrendScheduler({
+    controller: { generate: async ({ scope }) => { concurrentRollbackCalls += 1; return { scope }; } },
+    committer: concurrentRollbackCommitter, getStore: async () => concurrentRollbackStore,
+    getStorageId: () => 'chat', getChat: () => concurrentRollbackChat, getFloor: () => concurrentRollbackHostFloor,
+});
+concurrentRollbackScheduler.observe(concurrentRollbackChat);
+for (let index = 0; index < 12 && !rollbackCommitStarted; index += 1) await Promise.resolve();
+assert.equal(concurrentRollbackScheduler.state().phase, 'committing', '回退提交被阻塞时必须保持 committing 状态');
+concurrentRollbackChat = [...concurrentRollbackChat, { mes: '回退期间新增一' }, { mes: '回退期间新增二' }];
+concurrentRollbackHostFloor = 3409;
+concurrentRollbackScheduler.observe(concurrentRollbackChat);
+releaseRollbackCommit();
+for (let index = 0; index < 20 && concurrentRollbackStore.scopes.chat.operation.lastSuccessfulAssistantCount !== 3409; index += 1) await Promise.resolve();
+assert.equal(concurrentRollbackCalls, 1, '回退提交期间累计满阈值的新增楼层必须在回退后补调度一次');
+assert.equal(concurrentRollbackStore.scopes.chat.operation.lastSuccessfulAssistantCount, 3409, '回退期间新增宿主楼层不得被 pendingTurns 清零或吞掉');
+assert.deepEqual(concurrentRollbackStore.scopes.chat.generationSnapshots.map(item => item.assistantCount), [0, 7, 3409], '回退后补调度必须按宿主楼层重新建立最新快照');
 
 assert.match(await import('node:fs/promises').then(({ readFile }) => readFile(new URL('../src/today-trend.js', import.meta.url), 'utf8')),
     /initializeTodayTrend[\s\S]*bindTodayTrendPreset[\s\S]*commitTodayTrendScope/, '安装层必须公开初始化、预设绑定与设置提交接口');

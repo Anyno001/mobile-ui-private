@@ -1,3 +1,4 @@
+"use strict";
 (() => {
   // src/config.js
   var THEME_PRESETS = {
@@ -3208,6 +3209,14 @@ ${userPrompt}` : userPrompt;
 
   // src/calendar-commit.js
   var clone = (value) => JSON.parse(JSON.stringify(value));
+  var replaceScope = (store, storageId, scope, normalizeStore) => {
+    const normalized = normalizeStore({ version: store.version, scopes: { [storageId]: scope } });
+    if (!Object.hasOwn(normalized.scopes, storageId)) return store;
+    return {
+      ...store,
+      scopes: { ...store.scopes, [storageId]: normalized.scopes[storageId] }
+    };
+  };
   function injectionFailure(result, phase) {
     const failedWrites = Number.isInteger(result?.failedWrites) && result.failedWrites > 0 ? result.failedWrites : 0;
     const failedKeys = Array.isArray(result?.failedKeys) ? result.failedKeys : [];
@@ -3235,15 +3244,13 @@ ${userPrompt}` : userPrompt;
       const generation = commitGeneration;
       return enqueueDirectoryOperation("schedule", async () => {
         if (generation !== commitGeneration || task && !tasks.active(task)) return false;
-        const previousStore = clone(loadCalendar());
-        const candidate = clone(previousStore);
-        const current = calendarScopeFor(candidate, storageId);
+        const previousStore = loadCalendar();
+        const current = calendarScopeFor({ ...previousStore, scopes: { [storageId]: previousStore.scopes[storageId] } }, storageId);
         const next = normalizeCalendarScope(await mutate(current));
         if (generation !== commitGeneration || task && !tasks.active(task)) return false;
-        candidate.scopes[storageId] = next;
-        const normalized = normalizeCalendarStore(candidate);
-        if (!saveCalendar(normalized)) throw new Error("\u65E5\u5386\u4FDD\u5B58\u5931\u8D25\uFF1A\u6D4F\u89C8\u5668\u5B58\u50A8\u4E0D\u53EF\u7528");
-        runtime.store = normalized;
+        const candidate = replaceScope(previousStore, storageId, next, normalizeCalendarStore);
+        if (!saveCalendar(candidate)) throw new Error("\u65E5\u5386\u4FDD\u5B58\u5931\u8D25\uFF1A\u6D4F\u89C8\u5668\u5B58\u50A8\u4E0D\u53EF\u7528");
+        runtime.store = candidate;
         if (!refreshInjection) return next;
         let injectionError = null;
         try {
@@ -3252,15 +3259,21 @@ ${userPrompt}` : userPrompt;
         } catch (error) {
           injectionError = error;
         }
-        const cancelled2 = generation !== commitGeneration || !!task && !tasks.active(task);
+        if (generation !== commitGeneration) {
+          if (injectionError) throw injectionError;
+          return false;
+        }
+        const cancelled2 = !!task && !tasks.active(task);
         if (!injectionError && !cancelled2) return next;
         let rollbackError = null;
         try {
-          const rollbackStore = clone(loadCalendar());
-          if (Object.hasOwn(previousStore.scopes, storageId)) rollbackStore.scopes[storageId] = clone(previousStore.scopes[storageId]);
-          else delete rollbackStore.scopes[storageId];
+          const currentStore = loadCalendar();
+          const rollbackScopes = { ...currentStore.scopes };
+          if (Object.hasOwn(previousStore.scopes, storageId)) rollbackScopes[storageId] = previousStore.scopes[storageId];
+          else delete rollbackScopes[storageId];
+          const rollbackStore = { ...currentStore, scopes: rollbackScopes };
           if (!saveCalendar(rollbackStore)) throw new Error("\u65E5\u5386\u56DE\u6EDA\u4FDD\u5B58\u5931\u8D25\uFF1A\u6D4F\u89C8\u5668\u5B58\u50A8\u4E0D\u53EF\u7528");
-          runtime.store = normalizeCalendarStore(rollbackStore);
+          runtime.store = rollbackStore;
           const rollbackResult = await applyBidirectionalInjection?.();
           const rollbackInjectionError = injectionFailure(rollbackResult, "\u8865\u507F");
           if (rollbackInjectionError) throw rollbackInjectionError;
@@ -3296,7 +3309,11 @@ ${userPrompt}` : userPrompt;
         } catch (error) {
           injectionError = error;
         }
-        const cancelled2 = generation !== commitGeneration || !!task && !tasks.active(task);
+        if (generation !== commitGeneration) {
+          if (injectionError) throw injectionError;
+          return false;
+        }
+        const cancelled2 = !!task && !tasks.active(task);
         if (!injectionError && !cancelled2) return normalized;
         let rollbackError = null;
         try {
@@ -3324,15 +3341,13 @@ ${userPrompt}` : userPrompt;
       const generation = commitGeneration;
       return enqueueDirectoryOperation("recipes", async () => {
         if (generation !== commitGeneration || task && !tasks.active(task)) return false;
-        const previousStore = clone(loadCalendarRecipes());
-        const candidate = clone(previousStore);
-        const current = normalizeRecipeScope(candidate.scopes[storageId]);
+        const previousStore = loadCalendarRecipes();
+        const current = normalizeRecipeScope(previousStore.scopes[storageId]);
         const next = normalizeRecipeScope(await mutate(current));
         if (generation !== commitGeneration || task && !tasks.active(task)) return false;
-        candidate.scopes[storageId] = next;
-        const normalized = normalizeRecipeStore(candidate);
-        if (!saveCalendarRecipes(normalized)) throw new Error("\u83DC\u8C31\u4FDD\u5B58\u5931\u8D25\uFF1A\u6D4F\u89C8\u5668\u5B58\u50A8\u4E0D\u53EF\u7528");
-        runtime.recipeStore = normalized;
+        const candidate = replaceScope(previousStore, storageId, next, normalizeRecipeStore);
+        if (!saveCalendarRecipes(candidate)) throw new Error("\u83DC\u8C31\u4FDD\u5B58\u5931\u8D25\uFF1A\u6D4F\u89C8\u5668\u5B58\u50A8\u4E0D\u53EF\u7528");
+        runtime.recipeStore = candidate;
         if (!refreshInjection) return next;
         let injectionError = null;
         try {
@@ -3349,11 +3364,13 @@ ${userPrompt}` : userPrompt;
         if (!injectionError && !cancelled2) return next;
         let rollbackError = null;
         try {
-          const rollbackStore = clone(loadCalendarRecipes());
-          if (Object.hasOwn(previousStore.scopes, storageId)) rollbackStore.scopes[storageId] = clone(previousStore.scopes[storageId]);
-          else delete rollbackStore.scopes[storageId];
+          const currentStore = loadCalendarRecipes();
+          const rollbackScopes = { ...currentStore.scopes };
+          if (Object.hasOwn(previousStore.scopes, storageId)) rollbackScopes[storageId] = previousStore.scopes[storageId];
+          else delete rollbackScopes[storageId];
+          const rollbackStore = { ...currentStore, scopes: rollbackScopes };
           if (!saveCalendarRecipes(rollbackStore)) throw new Error("\u83DC\u8C31\u56DE\u6EDA\u4FDD\u5B58\u5931\u8D25\uFF1A\u6D4F\u89C8\u5668\u5B58\u50A8\u4E0D\u53EF\u7528");
-          runtime.recipeStore = normalizeRecipeStore(rollbackStore);
+          runtime.recipeStore = rollbackStore;
           const rollbackResult = await applyBidirectionalInjection?.();
           const rollbackInjectionError = injectionFailure(rollbackResult, "\u83DC\u8C31\u8865\u507F");
           if (rollbackInjectionError) throw rollbackInjectionError;
@@ -3376,13 +3393,17 @@ ${userPrompt}` : userPrompt;
       const generation = commitGeneration;
       return enqueueDirectoryOperation("outfits", async () => {
         if (generation !== commitGeneration || task && !tasks.active(task)) return false;
-        const previousStore = clone(loadCalendarOutfits());
-        const candidate = clone(previousStore);
-        const next = normalizeOutfitStore(await mutate(candidate));
+        const previousStore = loadCalendarOutfits();
+        const targetStore = {
+          ...previousStore,
+          scopes: { [storageId]: normalizeOutfitScope(previousStore.scopes[storageId]) }
+        };
+        const nextScope = normalizeOutfitStore(await mutate(targetStore)).scopes[storageId] || normalizeOutfitScope();
         if (generation !== commitGeneration || task && !tasks.active(task)) return false;
-        if (!saveCalendarOutfits(next)) throw new Error("\u7A7F\u642D\u4FDD\u5B58\u5931\u8D25\uFF1A\u6D4F\u89C8\u5668\u5B58\u50A8\u4E0D\u53EF\u7528");
-        runtime.outfitStore = next;
-        if (!refreshInjection) return next;
+        const candidate = replaceScope(previousStore, storageId, nextScope, normalizeOutfitStore);
+        if (!saveCalendarOutfits(candidate)) throw new Error("\u7A7F\u642D\u4FDD\u5B58\u5931\u8D25\uFF1A\u6D4F\u89C8\u5668\u5B58\u50A8\u4E0D\u53EF\u7528");
+        runtime.outfitStore = candidate;
+        if (!refreshInjection) return candidate;
         let injectionError = null;
         try {
           const result = await applyBidirectionalInjection?.();
@@ -3395,11 +3416,16 @@ ${userPrompt}` : userPrompt;
           return false;
         }
         const cancelled2 = !!task && !tasks.active(task);
-        if (!injectionError && !cancelled2) return next;
+        if (!injectionError && !cancelled2) return candidate;
         let rollbackError = null;
         try {
-          if (!saveCalendarOutfits(previousStore)) throw new Error("\u7A7F\u642D\u56DE\u6EDA\u4FDD\u5B58\u5931\u8D25\uFF1A\u6D4F\u89C8\u5668\u5B58\u50A8\u4E0D\u53EF\u7528");
-          runtime.outfitStore = normalizeOutfitStore(previousStore);
+          const currentStore = loadCalendarOutfits();
+          const rollbackScopes = { ...currentStore.scopes };
+          if (Object.hasOwn(previousStore.scopes, storageId)) rollbackScopes[storageId] = previousStore.scopes[storageId];
+          else delete rollbackScopes[storageId];
+          const rollbackStore = { ...currentStore, scopes: rollbackScopes };
+          if (!saveCalendarOutfits(rollbackStore)) throw new Error("\u7A7F\u642D\u56DE\u6EDA\u4FDD\u5B58\u5931\u8D25\uFF1A\u6D4F\u89C8\u5668\u5B58\u50A8\u4E0D\u53EF\u7528");
+          runtime.outfitStore = rollbackStore;
           const rollbackResult = await applyBidirectionalInjection?.();
           const rollbackInjectionError = injectionFailure(rollbackResult, "\u7A7F\u642D\u8865\u507F");
           if (rollbackInjectionError) throw rollbackInjectionError;
@@ -3418,102 +3444,112 @@ ${userPrompt}` : userPrompt;
         return false;
       });
     };
-    const commitOccasions = (storageId, mutate) => enqueueDirectoryOperation("schedule", async () => {
-      const previousStore = clone(loadCalendarOccasions());
-      const candidate = clone(previousStore);
-      const current = normalizeOccasionScope(candidate.scopes[storageId]);
-      const next = normalizeOccasionScope(await mutate(current));
-      candidate.scopes[storageId] = next;
-      const normalized = normalizeOccasionStore(candidate);
-      try {
-        if (!saveCalendarOccasions(normalized)) throw new Error("\u751F\u65E5\u4E0E\u7EAA\u5FF5\u65E5\u4FDD\u5B58\u5931\u8D25\uFF1A\u6D4F\u89C8\u5668\u5B58\u50A8\u4E0D\u53EF\u7528");
-        runtime.occasionStore = normalized;
-        const result = await applyBidirectionalInjection?.();
-        const injectionError = injectionFailure(result, "\u751F\u65E5\u4E0E\u7EAA\u5FF5\u65E5\u63D0\u4EA4");
-        if (!injectionError) return next;
-        throw injectionError;
-      } catch (error) {
-        if (!saveCalendarOccasions(previousStore)) {
-          const rollbackError = new Error("\u751F\u65E5\u4E0E\u7EAA\u5FF5\u65E5\u56DE\u6EDA\u5931\u8D25\uFF1A\u6D4F\u89C8\u5668\u5B58\u50A8\u4E0D\u53EF\u7528");
-          const combined = new Error(`${error.message}\uFF1B${rollbackError.message}`);
-          combined.cause = error;
-          combined.rollbackError = rollbackError;
-          combined.occasionRolledBack = false;
-          combined.occasionRollbackError = true;
-          throw combined;
-        }
-        runtime.occasionStore = normalizeOccasionStore(previousStore);
+    const commitOccasions = (storageId, mutate) => {
+      const generation = commitGeneration;
+      return enqueueDirectoryOperation("schedule", async () => {
+        if (generation !== commitGeneration) return false;
+        const previousStore = loadCalendarOccasions();
+        const current = normalizeOccasionScope(previousStore.scopes[storageId]);
+        const next = normalizeOccasionScope(await mutate(current));
+        if (generation !== commitGeneration) return false;
+        const candidate = replaceScope(previousStore, storageId, next, normalizeOccasionStore);
         try {
-          const rollbackResult = await applyBidirectionalInjection?.();
-          const rollbackError = injectionFailure(rollbackResult, "\u751F\u65E5\u4E0E\u7EAA\u5FF5\u65E5\u8865\u507F");
-          if (rollbackError) throw rollbackError;
-        } catch (rollbackError) {
-          const combined = new Error(`${error.message}\uFF1B\u751F\u65E5\u4E0E\u7EAA\u5FF5\u65E5\u56DE\u6EDA\u6CE8\u5165\u5931\u8D25\uFF1A${rollbackError.message}`);
-          combined.cause = error;
-          combined.rollbackError = rollbackError;
-          combined.occasionRolledBack = true;
-          combined.occasionRollbackError = true;
-          throw combined;
+          if (!saveCalendarOccasions(candidate)) throw new Error("\u751F\u65E5\u4E0E\u7EAA\u5FF5\u65E5\u4FDD\u5B58\u5931\u8D25\uFF1A\u6D4F\u89C8\u5668\u5B58\u50A8\u4E0D\u53EF\u7528");
+          runtime.occasionStore = candidate;
+          const result = await applyBidirectionalInjection?.();
+          const injectionError = injectionFailure(result, "\u751F\u65E5\u4E0E\u7EAA\u5FF5\u65E5\u63D0\u4EA4");
+          if (generation !== commitGeneration && !injectionError) return false;
+          if (!injectionError) return next;
+          throw injectionError;
+        } catch (error) {
+          if (generation !== commitGeneration) throw error;
+          if (!saveCalendarOccasions(previousStore)) {
+            const rollbackError = new Error("\u751F\u65E5\u4E0E\u7EAA\u5FF5\u65E5\u56DE\u6EDA\u5931\u8D25\uFF1A\u6D4F\u89C8\u5668\u5B58\u50A8\u4E0D\u53EF\u7528");
+            const combined = new Error(`${error.message}\uFF1B${rollbackError.message}`);
+            combined.cause = error;
+            combined.rollbackError = rollbackError;
+            combined.occasionRolledBack = false;
+            combined.occasionRollbackError = true;
+            throw combined;
+          }
+          runtime.occasionStore = previousStore;
+          try {
+            const rollbackResult = await applyBidirectionalInjection?.();
+            const rollbackError = injectionFailure(rollbackResult, "\u751F\u65E5\u4E0E\u7EAA\u5FF5\u65E5\u8865\u507F");
+            if (rollbackError) throw rollbackError;
+          } catch (rollbackError) {
+            const combined = new Error(`${error.message}\uFF1B\u751F\u65E5\u4E0E\u7EAA\u5FF5\u65E5\u56DE\u6EDA\u6CE8\u5165\u5931\u8D25\uFF1A${rollbackError.message}`);
+            combined.cause = error;
+            combined.rollbackError = rollbackError;
+            combined.occasionRolledBack = true;
+            combined.occasionRollbackError = true;
+            throw combined;
+          }
+          throw error;
         }
-        throw error;
-      }
-    });
-    const commitSchedule = (storageId, mutate) => enqueueDirectoryOperation("schedule", async () => {
-      const previousCalendarStore = clone(loadCalendar());
-      const previousOccasionStore = clone(loadCalendarOccasions());
-      const calendarCandidate = clone(previousCalendarStore);
-      const occasionCandidate = clone(previousOccasionStore);
-      const current = {
-        calendar: calendarScopeFor(calendarCandidate, storageId),
-        occasions: normalizeOccasionScope(occasionCandidate.scopes[storageId])
-      };
-      const result = await mutate(current);
-      calendarCandidate.scopes[storageId] = normalizeCalendarScope(result.calendar);
-      occasionCandidate.scopes[storageId] = normalizeOccasionScope(result.occasions);
-      const calendar = normalizeCalendarStore(calendarCandidate);
-      const occasionStore = normalizeOccasionStore(occasionCandidate);
-      try {
-        if (!saveCalendar(calendar)) throw new Error("\u65E5\u5386\u4FDD\u5B58\u5931\u8D25\uFF1A\u6D4F\u89C8\u5668\u5B58\u50A8\u4E0D\u53EF\u7528");
-        if (!saveCalendarOccasions(occasionStore)) throw new Error("\u751F\u65E5\u4E0E\u7EAA\u5FF5\u65E5\u4FDD\u5B58\u5931\u8D25\uFF1A\u6D4F\u89C8\u5668\u5B58\u50A8\u4E0D\u53EF\u7528");
-        runtime.store = calendar;
-        runtime.occasionStore = occasionStore;
-        const injectionResult = await applyBidirectionalInjection?.();
-        const error = injectionFailure(injectionResult, "\u65E5\u7A0B\u63D0\u4EA4");
-        if (!error) return { calendar: calendarCandidate.scopes[storageId], occasions: occasionCandidate.scopes[storageId] };
-        throw error;
-      } catch (error) {
-        const calendarRolledBack = saveCalendar(previousCalendarStore);
-        const occasionsRolledBack = saveCalendarOccasions(previousOccasionStore);
-        if (!calendarRolledBack || !occasionsRolledBack) {
-          runtime.store = normalizeCalendarStore(loadCalendar());
-          runtime.occasionStore = normalizeOccasionStore(loadCalendarOccasions());
-          const rollbackError = new Error("\u65E5\u7A0B\u8F6C\u6362\u56DE\u6EDA\u5931\u8D25\uFF1A\u6D4F\u89C8\u5668\u5B58\u50A8\u4E0D\u53EF\u7528");
-          const combined = new Error(`${error.message}\uFF1B${rollbackError.message}`);
-          combined.cause = error;
-          combined.calendarRolledBack = calendarRolledBack;
-          combined.occasionsRolledBack = occasionsRolledBack;
-          combined.rollbackError = rollbackError;
-          combined.scheduleRollbackError = true;
-          throw combined;
-        }
-        runtime.store = normalizeCalendarStore(previousCalendarStore);
-        runtime.occasionStore = normalizeOccasionStore(previousOccasionStore);
+      });
+    };
+    const commitSchedule = (storageId, mutate) => {
+      const generation = commitGeneration;
+      return enqueueDirectoryOperation("schedule", async () => {
+        if (generation !== commitGeneration) return false;
+        const previousCalendarStore = loadCalendar();
+        const previousOccasionStore = loadCalendarOccasions();
+        const current = {
+          calendar: calendarScopeFor({ ...previousCalendarStore, scopes: { [storageId]: previousCalendarStore.scopes[storageId] } }, storageId),
+          occasions: normalizeOccasionScope(previousOccasionStore.scopes[storageId])
+        };
+        const result = await mutate(current);
+        if (generation !== commitGeneration) return false;
+        const calendarScope = normalizeCalendarScope(result.calendar);
+        const occasionScope = normalizeOccasionScope(result.occasions);
+        const calendar = replaceScope(previousCalendarStore, storageId, calendarScope, normalizeCalendarStore);
+        const occasionStore = replaceScope(previousOccasionStore, storageId, occasionScope, normalizeOccasionStore);
         try {
-          const rollbackResult = await applyBidirectionalInjection?.();
-          const rollbackError = injectionFailure(rollbackResult, "\u65E5\u7A0B\u8F6C\u6362\u8865\u507F");
-          if (rollbackError) throw rollbackError;
-        } catch (rollbackError) {
-          const combined = new Error(`${error.message}\uFF1B\u65E5\u7A0B\u8F6C\u6362\u56DE\u6EDA\u6CE8\u5165\u5931\u8D25\uFF1A${rollbackError.message}`);
-          combined.cause = error;
-          combined.rollbackError = rollbackError;
-          combined.calendarRolledBack = true;
-          combined.occasionsRolledBack = true;
-          combined.scheduleRollbackError = true;
-          throw combined;
+          if (!saveCalendar(calendar)) throw new Error("\u65E5\u5386\u4FDD\u5B58\u5931\u8D25\uFF1A\u6D4F\u89C8\u5668\u5B58\u50A8\u4E0D\u53EF\u7528");
+          if (!saveCalendarOccasions(occasionStore)) throw new Error("\u751F\u65E5\u4E0E\u7EAA\u5FF5\u65E5\u4FDD\u5B58\u5931\u8D25\uFF1A\u6D4F\u89C8\u5668\u5B58\u50A8\u4E0D\u53EF\u7528");
+          runtime.store = calendar;
+          runtime.occasionStore = occasionStore;
+          const injectionResult = await applyBidirectionalInjection?.();
+          const error = injectionFailure(injectionResult, "\u65E5\u7A0B\u63D0\u4EA4");
+          if (generation !== commitGeneration && !error) return false;
+          if (!error) return { calendar: calendarScope, occasions: occasionScope };
+          throw error;
+        } catch (error) {
+          if (generation !== commitGeneration) throw error;
+          const calendarRolledBack = saveCalendar(previousCalendarStore);
+          const occasionsRolledBack = saveCalendarOccasions(previousOccasionStore);
+          if (!calendarRolledBack || !occasionsRolledBack) {
+            runtime.store = normalizeCalendarStore(loadCalendar());
+            runtime.occasionStore = normalizeOccasionStore(loadCalendarOccasions());
+            const rollbackError = new Error("\u65E5\u7A0B\u8F6C\u6362\u56DE\u6EDA\u5931\u8D25\uFF1A\u6D4F\u89C8\u5668\u5B58\u50A8\u4E0D\u53EF\u7528");
+            const combined = new Error(`${error.message}\uFF1B${rollbackError.message}`);
+            combined.cause = error;
+            combined.calendarRolledBack = calendarRolledBack;
+            combined.occasionsRolledBack = occasionsRolledBack;
+            combined.rollbackError = rollbackError;
+            combined.scheduleRollbackError = true;
+            throw combined;
+          }
+          runtime.store = previousCalendarStore;
+          runtime.occasionStore = previousOccasionStore;
+          try {
+            const rollbackResult = await applyBidirectionalInjection?.();
+            const rollbackError = injectionFailure(rollbackResult, "\u65E5\u7A0B\u8F6C\u6362\u8865\u507F");
+            if (rollbackError) throw rollbackError;
+          } catch (rollbackError) {
+            const combined = new Error(`${error.message}\uFF1B\u65E5\u7A0B\u8F6C\u6362\u56DE\u6EDA\u6CE8\u5165\u5931\u8D25\uFF1A${rollbackError.message}`);
+            combined.cause = error;
+            combined.rollbackError = rollbackError;
+            combined.calendarRolledBack = true;
+            combined.occasionsRolledBack = true;
+            combined.scheduleRollbackError = true;
+            throw combined;
+          }
+          throw error;
         }
-        throw error;
-      }
-    });
+      });
+    };
     const commitHolidays = (nextStore) => {
       const normalized = normalizeHolidayCache(nextStore);
       if (!saveCalendarHolidays(normalized)) throw new Error("\u8282\u5047\u65E5\u7F13\u5B58\u4FDD\u5B58\u5931\u8D25\uFF1A\u6D4F\u89C8\u5668\u5B58\u50A8\u4E0D\u53EF\u7528");
@@ -3526,13 +3562,26 @@ ${userPrompt}` : userPrompt;
       runtime.weatherStore = normalized;
       return normalized;
     };
-    const commitCycle = (storageId, mutate) => enqueueDirectoryOperation("cycles", async () => {
-      const current = normalizeCycleStore(loadCalendarCycles());
-      const normalized = normalizeCycleStore(await mutate(current));
-      if (!saveCalendarCycles(normalized)) throw new Error("\u751F\u7406\u5468\u671F\u6570\u636E\u4FDD\u5B58\u5931\u8D25\uFF1A\u6D4F\u89C8\u5668\u5B58\u50A8\u4E0D\u53EF\u7528");
-      runtime.cycleStore = normalized;
-      return getCycles(storageId, getCycleSubject(storageId));
-    });
+    const commitCycle = (storageId, mutate) => {
+      const generation = commitGeneration;
+      return enqueueDirectoryOperation("cycles", async () => {
+        if (generation !== commitGeneration) return false;
+        const previousStore = loadCalendarCycles();
+        const targetStore = {
+          ...previousStore,
+          scopes: Object.hasOwn(previousStore.scopes, storageId) ? { [storageId]: previousStore.scopes[storageId] } : {}
+        };
+        const result = normalizeCycleStore(await mutate(targetStore));
+        if (generation !== commitGeneration) return false;
+        const scopes = { ...previousStore.scopes };
+        if (Object.hasOwn(result.scopes, storageId)) scopes[storageId] = result.scopes[storageId];
+        else delete scopes[storageId];
+        const candidate = { ...previousStore, scopes };
+        if (!saveCalendarCycles(candidate)) throw new Error("\u751F\u7406\u5468\u671F\u6570\u636E\u4FDD\u5B58\u5931\u8D25\uFF1A\u6D4F\u89C8\u5668\u5B58\u50A8\u4E0D\u53EF\u7528");
+        runtime.cycleStore = candidate;
+        return getCycles(storageId, getCycleSubject(storageId));
+      });
+    };
     return { commitScope, commitStore, commitRecipe, commitOutfits, commitOccasions, commitSchedule, commitHolidays, commitWeather, commitCycle, invalidateCommits };
   }
 
@@ -3653,7 +3702,14 @@ ${userPrompt}` : userPrompt;
   var TODAY_TREND_REPUTATION_ICON_SVG = icon('<path d="M9 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM3 20c0-4 2.5-6 6-6s6 2 6 6"/><path d="M16 5a3 3 0 0 1 0 6M17 14c2.5.5 4 2.5 4 6"/>');
   var TODAY_TREND_FACTION_ICON_SVG = icon('<path d="M10.85 6.99 6.65 14.27M13.15 6.99l4.2 7.28M7.8 16.26h8.4"/><circle cx="12" cy="5" r="2.3"/><circle cx="5.5" cy="16.26" r="2.3"/><circle cx="18.5" cy="16.26" r="2.3"/>');
   var TODAY_TREND_DYNAMICS_ICON_SVG = icon('<circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/>');
-  var REFRESH_ICON_SVG = '<svg class="pm-refresh-icon" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>';
+  var TODAY_TREND_RELATION_ICON_PATHS = Object.freeze({
+    hostile: '<path d="M12 3 2.5 20h19z"/><path d="M12 9v4M12 17h.01"/>',
+    dislike: '<circle cx="12" cy="12" r="9"/><circle cx="9" cy="10" r=".7" fill="currentColor" stroke="none"/><circle cx="15" cy="10" r=".7" fill="currentColor" stroke="none"/><path d="M8.5 17c1-2 2.2-3 3.5-3s2.5 1 3.5 3"/>',
+    neutral: '<circle cx="12" cy="12" r="9"/><circle cx="9" cy="10" r=".7" fill="currentColor" stroke="none"/><circle cx="15" cy="10" r=".7" fill="currentColor" stroke="none"/><path d="M8.5 16h7"/>',
+    like: '<path d="M20.8 8.5c0 5-8.8 10.5-8.8 10.5S3.2 13.5 3.2 8.5A4.5 4.5 0 0 1 12 7a4.5 4.5 0 0 1 8.8 1.5z"/>',
+    trust: '<path d="M12 3l7 3v5c0 4.4-3 7.8-7 9-4-1.2-7-4.6-7-9V6z"/><path d="m9 12 2 2 4-4.5"/>'
+  });
+  var REFRESH_ICON_SVG = icon('<path d="M20 6v5h-5"/><path d="M4 18v-5h5"/><path d="M6.1 9a7 7 0 0 1 11.7-2.6L20 11M4 13l2.2 4.6A7 7 0 0 0 17.9 15"/>');
 
   // src/ui.js
   function contrastText(bg) {
@@ -6743,7 +6799,6 @@ ${lines.join("\n")}
       if (protectedScopes.length) {
         const current = await pmIDBGet(HISTORY_KEY);
         if (current && typeof current === "object" && !Array.isArray(current)) {
-          value = structuredClone(snapshot);
           for (const scope of protectedScopes) {
             if (Object.hasOwn(current, scope)) value[scope] = structuredClone(current[scope]);
             else delete value[scope];
@@ -6759,7 +6814,7 @@ ${lines.join("\n")}
       }
       return true;
     };
-    if (coordinated) return persist(structuredClone(data));
+    if (coordinated) return persist(data);
     return enqueueDirectorySave("histories", data, (snapshot, protectedScopes) => persist(snapshot, protectedScopes), arguments.length === 0);
   }
   function saveHistoriesBeforeUnload() {
@@ -8414,6 +8469,27 @@ ${entry2.content}` : entry2.content;
     const errorType = typeof error?.name === "string" && error.name ? error.name : "Error";
     console.warn(`[phone-mode] ${message}\uFF0C\u5DF2\u4F7F\u7528\u964D\u7EA7\u503C\u3002`, errorType);
   }
+  function getLastMessageId(getCtx) {
+    try {
+      const helper = globalThis.TavernHelper;
+      if (typeof helper?.getLastMessageId === "function") {
+        const id2 = Number(helper.getLastMessageId());
+        if (Number.isInteger(id2) && id2 >= 0) return id2;
+      }
+    } catch (error) {
+      warnHostContextFailureOnce("last-message-id-helper", "\u8BFB\u53D6\u9152\u9986\u5F53\u524D\u697C\u5C42\u5931\u8D25", error);
+    }
+    try {
+      const chat = getCtx()?.chat;
+      if (!Array.isArray(chat)) return null;
+      if (chat.length === 0) return 0;
+      const id2 = Number(chat.at(-1)?.message_id);
+      return Number.isInteger(id2) && id2 >= 0 ? id2 : chat.length - 1;
+    } catch (error) {
+      warnHostContextFailureOnce("last-message-id-context", "\u4ECE\u804A\u5929\u4E0A\u4E0B\u6587\u63A8\u5BFC\u5F53\u524D\u697C\u5C42\u5931\u8D25", error);
+      return null;
+    }
+  }
   function getCurrentChatId(context) {
     if (!context) return null;
     return context.chatId || (typeof context.getCurrentChatId === "function" ? context.getCurrentChatId() : null) || context.chat_metadata?.chat_id_hash || context.chat_file;
@@ -8561,7 +8637,7 @@ ${entry2.content}` : entry2.content;
   var TODAY_TREND_EVENT_OUTCOMES = Object.freeze(["resolved", "failed", "terminated", "inconclusive", "confirmed", "debunked", "absorbed"]);
   var TODAY_TREND_OPERATION_MODES = Object.freeze(["manual", "auto"]);
   var TODAY_TREND_STATUS_LABELS = Object.freeze({ hostile: "\u654C\u5BF9", dislike: "\u538C\u6076", neutral: "\u4E2D\u7ACB", like: "\u559C\u6B22", trust: "\u4FE1\u4EFB" });
-  var TODAY_TREND_LIMITS = Object.freeze({ presets: 80, scopes: 80, worldItems: 24, circles: 24, factions: 80, factionDetails: 16, relatedFactions: 24, events: 80, participants: 24, stages: 40, relatedEvents: 24, text: 600, name: 120, stageLabel: 8, intervalFloors: 1e3 });
+  var TODAY_TREND_LIMITS = Object.freeze({ presets: 80, scopes: 80, worldItems: 24, circles: 24, factions: 80, factionDetails: 16, relatedFactions: 24, events: 80, participants: 24, stages: 40, relatedEvents: 24, generationSnapshots: 12, text: 600, name: 120, stageLabel: 8, intervalFloors: 1e3 });
   var plainRecord8 = (value) => value && typeof value === "object" && !Array.isArray(value) && (Object.getPrototypeOf(value) === Object.prototype || Object.getPrototypeOf(value) === null);
   var unsafeKey6 = (value) => value === "__proto__" || value === "prototype" || value === "constructor";
   var cleanText6 = (value, max = TODAY_TREND_LIMITS.text) => typeof value === "string" ? value.trim().replace(/\s+/g, " ").slice(0, max) : "";
@@ -8604,7 +8680,8 @@ ${entry2.content}` : entry2.content;
       reputation: { circles: [] },
       factions: [],
       dynamicsSettings: createDefaultTodayTrendDynamicsSettings(),
-      dynamics: { active: [], archived: [] }
+      dynamics: { active: [], archived: [] },
+      generationSnapshots: []
     };
   }
   function requiredText(value, max, code, label) {
@@ -8784,7 +8861,7 @@ ${entry2.content}` : entry2.content;
     };
     for (const faction of factions) visit(faction.id);
   }
-  function normalizeTodayTrendScope(value, presetIds) {
+  function normalizeTodayTrendScopeInternal(value, presetIds, normalizeSnapshots) {
     assertRecord(value, "TT_SCOPE", "\u89D2\u8272\u8D44\u6599\u5FC5\u987B\u662F\u5BF9\u8C61");
     const scope = createEmptyTodayTrendScope();
     scope.storageId = normalizeId(value.storageId, "TT_SCOPE", "\u804A\u5929 ID");
@@ -8825,7 +8902,105 @@ ${entry2.content}` : entry2.content;
       }
     }
     if (scope.dynamics.active.length > scope.dynamicsSettings.trackingLimit) fail("TT_DYNAMICS_SETTINGS", "\u6B63\u5728\u8FFD\u8E2A\u4E8B\u4EF6\u8D85\u8FC7\u4E0A\u9650");
+    if (!normalizeSnapshots) return scope;
+    const rawSnapshots = value.generationSnapshots;
+    const baselineSnapshot = {
+      assistantCount: 0,
+      generatedAt: 0,
+      world: scope.world,
+      reputation: scope.reputation,
+      factions: scope.factions,
+      dynamicsSettings: scope.dynamicsSettings,
+      dynamics: scope.dynamics
+    };
+    const sourceSnapshots = Array.isArray(rawSnapshots) && rawSnapshots.length ? rawSnapshots : [
+      baselineSnapshot,
+      ...scope.operation.lastSuccessfulAssistantCount > 0 ? [{
+        assistantCount: scope.operation.lastSuccessfulAssistantCount,
+        generatedAt: scope.operation.lastSuccessfulRunAt,
+        world: scope.world,
+        reputation: scope.reputation,
+        factions: scope.factions,
+        dynamicsSettings: scope.dynamicsSettings,
+        dynamics: scope.dynamics
+      }] : []
+    ];
+    if (sourceSnapshots.length > TODAY_TREND_LIMITS.generationSnapshots) fail("TT_SNAPSHOT_LIMIT", "\u4ECA\u65E5\u98CE\u5411\u697C\u5C42\u5FEB\u7167\u6570\u91CF\u8D85\u9650");
+    const snapshots = /* @__PURE__ */ new Map();
+    for (const raw of sourceSnapshots) {
+      assertRecord(raw, "TT_SNAPSHOT", "\u4ECA\u65E5\u98CE\u5411\u697C\u5C42\u5FEB\u7167\u5FC5\u987B\u662F\u5BF9\u8C61");
+      const assistantCount = timestamp4(raw.assistantCount);
+      const snapshotScope = normalizeTodayTrendScopeInternal({
+        ...scope,
+        operation: { ...scope.operation, lastSuccessfulAssistantCount: assistantCount, lastSuccessfulRunAt: timestamp4(raw.generatedAt) },
+        world: raw.world,
+        reputation: raw.reputation,
+        factions: raw.factions,
+        dynamicsSettings: raw.dynamicsSettings,
+        dynamics: raw.dynamics,
+        generationSnapshots: []
+      }, presetIds, false);
+      snapshots.set(assistantCount, {
+        assistantCount,
+        generatedAt: timestamp4(raw.generatedAt),
+        world: snapshotScope.world,
+        reputation: snapshotScope.reputation,
+        factions: snapshotScope.factions,
+        dynamicsSettings: snapshotScope.dynamicsSettings,
+        dynamics: snapshotScope.dynamics
+      });
+    }
+    const normalizedSnapshots = [...snapshots.values()].sort((left, right) => left.assistantCount - right.assistantCount);
+    if (!snapshots.has(0)) {
+      const earliest = normalizedSnapshots[0] || baselineSnapshot;
+      const baseline = {
+        assistantCount: 0,
+        generatedAt: 0,
+        world: structuredClone(earliest.world),
+        reputation: structuredClone(earliest.reputation),
+        factions: structuredClone(earliest.factions),
+        dynamicsSettings: structuredClone(earliest.dynamicsSettings),
+        dynamics: structuredClone(earliest.dynamics)
+      };
+      scope.generationSnapshots = [baseline, ...normalizedSnapshots.slice(-(TODAY_TREND_LIMITS.generationSnapshots - 1))];
+    } else scope.generationSnapshots = normalizedSnapshots;
     return scope;
+  }
+  function normalizeTodayTrendScope(value, presetIds) {
+    return normalizeTodayTrendScopeInternal(value, presetIds, true);
+  }
+  function appendTodayTrendGenerationSnapshot(scope, assistantCount, generatedAt = Date.now()) {
+    const normalized = normalizeTodayTrendScope(scope, /* @__PURE__ */ new Set([scope?.presetId]));
+    const floor = timestamp4(assistantCount);
+    const snapshot = {
+      assistantCount: floor,
+      generatedAt: timestamp4(generatedAt),
+      world: structuredClone(normalized.world),
+      reputation: structuredClone(normalized.reputation),
+      factions: structuredClone(normalized.factions),
+      dynamicsSettings: structuredClone(normalized.dynamicsSettings),
+      dynamics: structuredClone(normalized.dynamics)
+    };
+    const sortedSnapshots = [...normalized.generationSnapshots.filter((item) => item.assistantCount !== floor), snapshot].sort((left, right) => left.assistantCount - right.assistantCount);
+    const baseline = sortedSnapshots.find((item) => item.assistantCount === 0);
+    const generationSnapshots = baseline ? [baseline, ...sortedSnapshots.filter((item) => item.assistantCount !== 0).slice(-(TODAY_TREND_LIMITS.generationSnapshots - 1))] : sortedSnapshots.slice(-TODAY_TREND_LIMITS.generationSnapshots);
+    return normalizeTodayTrendScope({ ...normalized, generationSnapshots }, /* @__PURE__ */ new Set([normalized.presetId]));
+  }
+  function rollbackTodayTrendScope(scope, assistantCount) {
+    const normalized = normalizeTodayTrendScope(scope, /* @__PURE__ */ new Set([scope?.presetId]));
+    const floor = timestamp4(assistantCount);
+    const snapshot = normalized.generationSnapshots.filter((item) => item.assistantCount <= floor).at(-1);
+    if (!snapshot) return normalized;
+    return normalizeTodayTrendScope({
+      ...normalized,
+      operation: { ...normalized.operation, lastSuccessfulAssistantCount: snapshot.assistantCount, lastSuccessfulRunAt: snapshot.generatedAt },
+      world: snapshot.world,
+      reputation: snapshot.reputation,
+      factions: snapshot.factions,
+      dynamicsSettings: snapshot.dynamicsSettings,
+      dynamics: snapshot.dynamics,
+      generationSnapshots: normalized.generationSnapshots.filter((item) => item.assistantCount <= snapshot.assistantCount)
+    }, /* @__PURE__ */ new Set([normalized.presetId]));
   }
   function normalizeTodayTrendStore(value) {
     if (value === null || value === void 0) return createEmptyTodayTrendStore();
@@ -8867,7 +9042,8 @@ ${entry2.content}` : entry2.content;
     return normalizeTodayTrendScope({
       ...structuredClone(source),
       storageId: targetId,
-      operation: { ...source.operation, lastSuccessfulAssistantCount: 0, lastSuccessfulRunAt: 0 }
+      operation: { ...source.operation, lastSuccessfulAssistantCount: 0, lastSuccessfulRunAt: 0 },
+      generationSnapshots: []
     }, /* @__PURE__ */ new Set([source.presetId]));
   }
   function normalizeMutationScope(scope) {
@@ -8921,6 +9097,8 @@ ${entry2.content}` : entry2.content;
   var GLOBAL_BG_KEY = "ST_SMS_BG_GLOBAL";
   var LOCAL_BG_INDEX_KEY = "ST_SMS_BG_LOCAL";
   var LOCAL_BG_PREFIX = "ST_SMS_BG_LOCAL_";
+  var LOCAL_BG_CACHE_LIMIT = 2;
+  var localBackgroundCache = /* @__PURE__ */ new Map();
   async function migrateSingleBackground(storageKey, value) {
     if (!await pmIDBSet(storageKey, value)) return false;
     try {
@@ -8960,35 +9138,64 @@ ${entry2.content}` : entry2.content;
     }
     try {
       const storedLocal = readLocalBackgroundPointers();
-      const result = /* @__PURE__ */ Object.create(null);
-      let migrated = 0;
-      const stagedKeys = [];
+      const pointers = /* @__PURE__ */ Object.create(null);
+      const staged = [];
       for (const [key, value] of Object.entries(storedLocal)) {
         if (value === IDB_MARKER) {
-          result[key] = await pmIDBGet(LOCAL_BG_PREFIX + key) || "";
+          pointers[key] = IDB_MARKER;
         } else if (isBigData(value)) {
-          result[key] = value;
           const storageKey = LOCAL_BG_PREFIX + key;
           if (await pmIDBSet(storageKey, value)) {
-            storedLocal[key] = IDB_MARKER;
-            stagedKeys.push(storageKey);
-            migrated++;
+            pointers[key] = IDB_MARKER;
+            staged.push({ key, storageKey, value });
+          } else {
+            pointers[key] = value;
           }
         } else {
-          result[key] = value;
+          pointers[key] = value;
         }
       }
-      if (migrated > 0) {
+      if (staged.length) {
         try {
-          localStorage.setItem(LOCAL_BG_INDEX_KEY, JSON.stringify(storedLocal));
+          localStorage.setItem(LOCAL_BG_INDEX_KEY, JSON.stringify(pointers));
         } catch (error) {
-          for (const storageKey of stagedKeys) await pmIDBDel(storageKey);
+          for (const { key, storageKey, value } of staged) {
+            await pmIDBDel(storageKey);
+            pointers[key] = value;
+          }
         }
       }
-      window.__pmBgLocal = result;
+      localBackgroundCache.clear();
+      window.__pmBgLocal = pointers;
     } catch (error) {
+      localBackgroundCache.clear();
       window.__pmBgLocal = /* @__PURE__ */ Object.create(null);
     }
+  }
+  function cacheLocalBackground(key, value) {
+    localBackgroundCache.delete(key);
+    localBackgroundCache.set(key, value);
+    while (localBackgroundCache.size > LOCAL_BG_CACHE_LIMIT) {
+      localBackgroundCache.delete(localBackgroundCache.keys().next().value);
+    }
+    return value;
+  }
+  async function loadLocalBackground(key) {
+    const pointer = window.__pmBgLocal?.[key];
+    if (pointer !== IDB_MARKER) return typeof pointer === "string" ? pointer : "";
+    if (localBackgroundCache.has(key)) return cacheLocalBackground(key, localBackgroundCache.get(key));
+    const value = await pmIDBGet(LOCAL_BG_PREFIX + key);
+    if (typeof value !== "string") throw new Error("\u4F1A\u8BDD\u80CC\u666F\u8BFB\u53D6\u5931\u8D25\uFF1AIndexedDB \u4E0D\u53EF\u7528\u6216\u6570\u636E\u7F3A\u5931");
+    return cacheLocalBackground(key, value);
+  }
+  async function materializeLocalBackgrounds(data = window.__pmBgLocal) {
+    if (!data || typeof data !== "object" || Array.isArray(data)) throw new Error("\u4F1A\u8BDD\u80CC\u666F\u6570\u636E\u635F\u574F\uFF1A\u5FC5\u987B\u662F\u5BF9\u8C61");
+    assertBackgroundEntries(data, "\u4F1A\u8BDD\u80CC\u666F\u6570\u636E");
+    const result = /* @__PURE__ */ Object.create(null);
+    for (const [key, value] of Object.entries(data)) {
+      result[key] = value === IDB_MARKER ? await loadLocalBackground(key) : value;
+    }
+    return result;
   }
   var UNSAFE_BACKGROUND_KEYS = /* @__PURE__ */ new Set(["__proto__", "prototype", "constructor"]);
   function assertBackgroundEntries(value, label) {
@@ -9092,13 +9299,7 @@ ${entry2.content}` : entry2.content;
           }
           for (const [key, pointer] of Object.entries(pointers2)) {
             if (!key.startsWith(prefix)) continue;
-            if (pointer === IDB_MARKER) {
-              const value = await pmIDBGet(LOCAL_BG_PREFIX + key);
-              if (typeof value !== "string") throw new Error("\u4F1A\u8BDD\u80CC\u666F\u4E3B\u5B58\u50A8\u8BFB\u53D6\u5931\u8D25\uFF1AIndexedDB \u4E0D\u53EF\u7528\u6216\u6570\u636E\u7F3A\u5931");
-              current[key] = value;
-            } else {
-              current[key] = pointer;
-            }
+            current[key] = pointer;
           }
         }
       }
@@ -9113,6 +9314,11 @@ ${entry2.content}` : entry2.content;
       };
       try {
         for (const [key, value] of Object.entries(current)) {
+          if (value === IDB_MARKER) {
+            if (previousPointers[key] !== IDB_MARKER) throw new Error(`\u4F1A\u8BDD\u80CC\u666F\u6570\u636E\u635F\u574F\uFF1A${key} \u7F3A\u5C11\u4E3B\u5B58\u50A8`);
+            pointers[key] = IDB_MARKER;
+            continue;
+          }
           if (isBigData(value)) {
             const mutation = await prepareMutation(key);
             if (!await pmIDBSet(mutation.key, value)) throw new Error("\u4F1A\u8BDD\u80CC\u666F\u4FDD\u5B58\u5931\u8D25\uFF1AIndexedDB \u4E0D\u53EF\u7528");
@@ -9148,6 +9354,8 @@ ${entry2.content}` : entry2.content;
         }
         throw error;
       }
+      localBackgroundCache.clear();
+      return structuredClone(pointers);
     };
     if (coordinated) return persist(structuredClone(data));
     return enqueueDirectorySave("backgrounds", data, persist);
@@ -9360,7 +9568,7 @@ ${entry2.content}` : entry2.content;
   function same(value, other) {
     return JSON.stringify(value) === JSON.stringify(other);
   }
-  function replaceScope(store, desired, targetId) {
+  function replaceScope2(store, desired, targetId) {
     const next = clone4(store || {});
     replaceEntry(next, desired || {}, targetId);
     return next;
@@ -9376,7 +9584,7 @@ ${entry2.content}` : entry2.content;
     if (restoring && own(current.scopes, targetId) && !same(current.scopes[targetId], expected.scopes[targetId])) {
       throw new Error("\u5206\u652F\u7EE7\u627F\u8865\u507F\u53D6\u6D88\uFF1A\u76EE\u6807 scope \u5DF2\u5728\u4E8B\u52A1\u540E\u88AB\u66F4\u65B0 (\u624B\u673A\u9875\u9762\u72B6\u6001)");
     }
-    const scopes = replaceScope(current.scopes, desired.scopes, targetId);
+    const scopes = replaceScope2(current.scopes, desired.scopes, targetId);
     return normalizePhoneUiState({
       version: 1,
       scopes,
@@ -9490,7 +9698,7 @@ ${entry2.content}` : entry2.content;
     if (restoring && own(current, targetId) && !same(current[targetId], expected[targetId])) {
       throw new Error(`\u5206\u652F\u7EE7\u627F\u8865\u507F\u53D6\u6D88\uFF1A\u76EE\u6807 scope \u5DF2\u5728\u4E8B\u52A1\u540E\u88AB\u66F4\u65B0 (${label})`);
     }
-    const merged = replaceScope(current, desired, targetId);
+    const merged = replaceScope2(current, desired, targetId);
     try {
       localStorage.setItem(key, JSON.stringify(normalize(merged)));
     } catch (error) {
@@ -9616,8 +9824,7 @@ ${entry2.content}` : entry2.content;
         const merged = clone4(current);
         for (const key of currentKeys) delete merged[key];
         for (const key of desiredKeys) merged[key] = clone4(desired[key]);
-        await saveBgLocal({ data: merged, coordinated: true });
-        return merged;
+        return saveBgLocal({ data: merged, coordinated: true });
       });
     } finally {
       completeDirectoryBranchScope("backgrounds", token);
@@ -9635,7 +9842,7 @@ ${entry2.content}` : entry2.content;
         if (restoring && own(current, targetId) && !same(current[targetId], expected[targetId])) {
           throw new Error(`\u5206\u652F\u7EE7\u627F\u8865\u507F\u53D6\u6D88\uFF1A\u76EE\u6807 scope \u5DF2\u5728\u4E8B\u52A1\u540E\u88AB\u66F4\u65B0 (${store})`);
         }
-        const merged = replaceScope(current, desired, targetId);
+        const merged = replaceScope2(current, desired, targetId);
         if (store === "histories") await saveHistoriesStrict(merged, { requireLocalMirror: true, coordinated: true });
         else await saveGroupMeta(merged, { coordinated: true });
         return merged;
@@ -9826,8 +10033,7 @@ ${entry2.content}` : entry2.content;
         });
         globalThis.window.__pmTodayTrend = await commitTodayTrendScope({ desired: desired.todayTrend, expected: expected.todayTrend, targetId });
       } else {
-        globalThis.window.__pmBgLocal = desired.backgrounds;
-        await saveBgLocal();
+        globalThis.window.__pmBgLocal = await saveBgLocal({ data: desired.backgrounds });
         await saveInteractiveScenes(desired.interactive);
         if (!savePhoneUiState(desired.phoneUi, desired.interactive)) throw new Error("\u5206\u652F\u7EE7\u627F\u4FDD\u5B58\u5931\u8D25\uFF1A\u624B\u673A\u9875\u9762\u72B6\u6001\u4E0D\u53EF\u7528");
         if (!saveCalendar(desired.calendar) || !saveCalendarOccasions(desired.occasions) || !saveCalendarCycles(desired.cycles) || !saveCalendarRecipes(desired.recipes) || !saveCalendarOutfits(desired.outfits)) {
@@ -16228,15 +16434,24 @@ ${antiFluff}`;
   // src/phone-appearance.js
   function createPhoneAppearance(state, deps) {
     const { getCtx, getStorageId: getStorageId2 } = deps;
-    function applyBackground() {
+    let backgroundRequest = 0;
+    async function applyBackground() {
       const phone = state.phoneWindow;
       const msgList = phone?.querySelector(".pm-msg-list");
       if (!msgList || !phone) return;
+      const request = ++backgroundRequest;
       const desktopBg = window.__pmDesktopBg || "";
       if (desktopBg) phone.style.setProperty("--pm-desktop-bg-image", `url("${cssUrlEscape(desktopBg)}")`);
       else phone.style.removeProperty("--pm-desktop-bg-image");
       const id2 = getStorageId2(), localKey = `${id2}_${state.currentPersona}`;
-      const bg = window.__pmBgLocal[localKey] || window.__pmBgGlobal || "";
+      let localBg = "";
+      try {
+        localBg = await loadLocalBackground(localKey);
+      } catch (error) {
+        console.error("[phone-mode] \u4F1A\u8BDD\u80CC\u666F\u8BFB\u53D6\u5931\u8D25", error);
+      }
+      if (request !== backgroundRequest || state.phoneWindow !== phone || `${getStorageId2()}_${state.currentPersona}` !== localKey) return;
+      const bg = localBg || window.__pmBgGlobal || "";
       if (bg) {
         msgList.style.setProperty("background-image", `url("${cssUrlEscape(bg)}")`, "important");
         msgList.style.setProperty("background-size", "cover", "important");
@@ -16363,10 +16578,18 @@ ${antiFluff}`;
     const errorType = typeof error?.name === "string" && error.name ? error.name : "Error";
     console.warn("[phone-mode] \u4ECA\u65E5\u98CE\u5411\u81EA\u52A8\u63A8\u6F14\u89C2\u5BDF\u5931\u8D25\uFF0C\u672C\u8F6E\u4E0D\u4F1A\u81EA\u52A8\u63A8\u6F14\u3002", errorType);
   }
-  function observeTodayTrendAfterHostEvent(deps, context, storageId, getStorageId2) {
+  function observeTodayTrendAfterHostEvent(deps, runtime, getCtx, getStorageId2) {
+    const storageId = getStorageId2();
+    if (!storageId) return;
+    runtime.todayTrendObservationStorageId = storageId;
+    if (runtime.todayTrendObservationQueued) return;
+    runtime.todayTrendObservationQueued = true;
     Promise.resolve().then(() => {
-      if (!storageId || getStorageId2() !== storageId) return null;
-      return deps.observeTodayTrendTurn?.(context?.chat || []);
+      runtime.todayTrendObservationQueued = false;
+      const queuedStorageId = runtime.todayTrendObservationStorageId;
+      runtime.todayTrendObservationStorageId = null;
+      if (!queuedStorageId || getStorageId2() !== queuedStorageId) return null;
+      return deps.observeTodayTrendTurn?.(getCtx()?.chat || []);
     }).catch(reportTodayTrendObservationFailure);
   }
   function createPhoneHostEventController({ state, runtime, deps, getCtx, getStorageId: getStorageId2, isAutoPokeAllowed, disarmAutoPoke, invalidateGeneration, applyBidirectionalInjection, handleHostChatChanged: handleHostChatChanged2 }) {
@@ -16408,14 +16631,13 @@ ${antiFluff}`;
       for (const eventName of resolveCommunityMessageEvents(eventTypes)) {
         results.push(registerOnce(`community:${eventName}`, eventName, () => {
           const currentContext = getCtx();
-          const storageId = getStorageId2();
           try {
             deps.observeCommunityTurn?.(currentContext?.chat || []);
           } catch (error) {
           }
           Promise.resolve(deps.observeCalendarTurn?.()).catch(() => {
           });
-          observeTodayTrendAfterHostEvent(deps, currentContext, storageId, getStorageId2);
+          observeTodayTrendAfterHostEvent(deps, runtime, getCtx, getStorageId2);
         }));
       }
       const received = resolveHostEvent(eventTypes, "MESSAGE_RECEIVED");
@@ -18984,7 +19206,7 @@ ${lines}`;
   }
 
   // src/cropper.js
-  function openCropper(imgDataUrl, { onCancel, onConfirm }) {
+  function openCropper(imgDataUrl, { objectUrl = "", onCancel, onConfirm }) {
     const ratio = 330 / 450;
     const previousOverlay = document.getElementById("pm-overlay");
     if (typeof previousOverlay?.__pmCropperDispose === "function") previousOverlay.__pmCropperDispose();
@@ -19077,11 +19299,14 @@ ${lines}`;
     function dispose() {
       if (disposed) return false;
       disposed = true;
+      image.onload = null;
+      image.src = "";
       window.removeEventListener("mousemove", onDragMove);
       window.removeEventListener("mouseup", onDragEnd);
       window.removeEventListener("touchmove", onDragMove);
       window.removeEventListener("touchend", onDragEnd);
       overlay.remove();
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
       return true;
     }
     overlay.__pmCropperDispose = dispose;
@@ -19124,30 +19349,36 @@ ${lines}`;
     });
     overlay.querySelector("#pm-crop-confirm").addEventListener("click", () => {
       const canvas = document.createElement("canvas");
-      const outputWidth = 600;
-      const outputHeight = Math.round(outputWidth / ratio);
-      canvas.width = outputWidth;
-      canvas.height = outputHeight;
-      const context = canvas.getContext("2d");
-      const sourceScale = image.naturalWidth / (baseWidth * scale);
-      context.drawImage(
-        image,
-        -tx * sourceScale,
-        -ty * sourceScale,
-        frameWidth * sourceScale,
-        frameHeight * sourceScale,
-        0,
-        0,
-        outputWidth,
-        outputHeight
-      );
-      let quality = 0.7;
-      let output = canvas.toDataURL("image/jpeg", quality);
-      while (output.length > 200 * 1370 && quality > 0.2) {
-        quality -= 0.1;
-        output = canvas.toDataURL("image/jpeg", quality);
+      try {
+        const outputWidth = 600;
+        const outputHeight = Math.round(outputWidth / ratio);
+        canvas.width = outputWidth;
+        canvas.height = outputHeight;
+        const context = canvas.getContext("2d");
+        if (!context) throw new Error("\u6D4F\u89C8\u5668\u65E0\u6CD5\u521B\u5EFA\u56FE\u7247\u88C1\u526A\u753B\u5E03");
+        const sourceScale = image.naturalWidth / (baseWidth * scale);
+        context.drawImage(
+          image,
+          -tx * sourceScale,
+          -ty * sourceScale,
+          frameWidth * sourceScale,
+          frameHeight * sourceScale,
+          0,
+          0,
+          outputWidth,
+          outputHeight
+        );
+        let quality = 0.7;
+        let output = canvas.toDataURL("image/jpeg", quality);
+        while (output.length > 200 * 1370 && quality > 0.2) {
+          quality -= 0.1;
+          output = canvas.toDataURL("image/jpeg", quality);
+        }
+        if (dispose()) onConfirm(output);
+      } finally {
+        canvas.width = 0;
+        canvas.height = 0;
       }
-      if (dispose()) onConfirm(output);
     });
   }
 
@@ -19621,7 +19852,7 @@ ${error.message}`);
     const snapshot = capture();
     try {
       mutate();
-      await persist();
+      return await persist();
     } catch (error) {
       restore(snapshot);
       try {
@@ -19653,7 +19884,7 @@ ${error.message}`);
       const isGlobal = scope === "global";
       const operation = backgroundMutation.catch(() => {
       }).then(async () => {
-        await runBackgroundTransaction({
+        const persisted = await runBackgroundTransaction({
           capture: () => isDesktop ? window.__pmDesktopBg || "" : isGlobal ? window.__pmBgGlobal || "" : clone12(window.__pmBgLocal || {}),
           mutate,
           restore: (snapshot) => {
@@ -19663,6 +19894,7 @@ ${error.message}`);
           },
           persist: isDesktop ? saveDesktopBg2 : isGlobal ? saveBgGlobal2 : saveBgLocal2
         });
+        if (!isDesktop && !isGlobal) window.__pmBgLocal = persisted;
         applyBackground();
         showLook();
       });
@@ -19683,10 +19915,11 @@ ${error.message}`);
       upload(input, scope) {
         const file = input.files?.[0];
         if (!file) return;
-        const reader = new FileReader();
-        reader.onload = (event) => {
+        const objectUrl = URL.createObjectURL(file);
+        try {
           const key = `${getStorageId2()}_${getCurrentPersona()}`;
-          openCropper2(event.target.result, {
+          openCropper2(objectUrl, {
+            objectUrl,
             onCancel: showLook,
             onConfirm: (croppedDataUrl) => queueMutation(scope, () => {
               if (scope === "desktop") window.__pmDesktopBg = croppedDataUrl;
@@ -19694,8 +19927,11 @@ ${error.message}`);
               else window.__pmBgLocal[key] = croppedDataUrl;
             })
           });
-        };
-        reader.readAsDataURL(file);
+        } catch (error) {
+          URL.revokeObjectURL(objectUrl);
+          alert(`\u56FE\u7247\u8BFB\u53D6\u5931\u8D25\uFF1A${error.message}`);
+        }
+        ;
         input.value = "";
       },
       setUrl(scope) {
@@ -20790,7 +21026,7 @@ ${error.message}`);
         worldBookConfig: normalizeWorldBookConfig(window.__pmWorldBookConfig),
         desktopBg: window.__pmDesktopBg || "",
         bgGlobal: window.__pmBgGlobal || "",
-        bgLocal: clone8(window.__pmBgLocal || {}),
+        bgLocal: await materializeLocalBackgrounds(),
         interactiveScenes,
         phoneUiState: loadPhoneUiState(interactiveScenes),
         ambientStatus: normalizeAmbientStatus({ enabled: window.__pmTheme?.ambientStatusEnabled }),
@@ -20864,7 +21100,7 @@ ${error.message}`);
       await saveEmojis();
       await saveDesktopBg();
       await saveBgGlobal();
-      await saveBgLocal();
+      window.__pmBgLocal = await saveBgLocal();
       await saveInteractiveScenes(interactiveScenes);
       if (!savePhoneUiState(phoneUiState, interactiveScenes)) throw new Error("\u624B\u673A\u754C\u9762\u72B6\u6001\u4FDD\u5B58\u5931\u8D25\uFF1A\u6D4F\u89C8\u5668\u5B58\u50A8\u4E0D\u53EF\u7528");
       if (!saveCalendar(state.calendarStore) || !saveCalendarOccasions(state.calendarOccasions) || !saveCalendarHolidays(state.calendarHolidays) || !saveCalendarWeather(state.calendarWeather) || !saveCalendarCycles(state.calendarCycles) || !saveCalendarRecipes(state.calendarRecipes) || !saveCalendarOutfits(state.calendarOutfits)) {
@@ -21934,57 +22170,203 @@ ${targetInstruction}`
   // src/today-trend-scheduler.js
   var cancelled = () => Object.assign(new Error("\u4ECA\u65E5\u98CE\u5411\u751F\u6210\u5DF2\u53D6\u6D88"), { name: "AbortError" });
   var validCount = (value) => Number.isInteger(value) && value >= 0 ? value : 0;
-  var messageText2 = (message) => ["mes", "message", "content"].map((key) => typeof message?.[key] === "string" ? message[key].trim() : "").find(Boolean) || "";
+  var OBSERVATION_LIMIT = 80;
+  var HASH_SEEDS = Object.freeze([2166136261, 2654435769, 2246822507, 3266489909]);
+  var HASH_PRIMES = Object.freeze([16777619, 668265261, 374761393, 2654435761]);
+  var messageText2 = (message) => {
+    if (typeof message?.mes === "string" && message.mes.trim()) return message.mes.trim();
+    if (typeof message?.message === "string" && message.message.trim()) return message.message.trim();
+    if (typeof message?.content === "string" && message.content.trim()) return message.content.trim();
+    return "";
+  };
   var messageRole = (message) => {
     const role = typeof message?.role === "string" ? message.role.toLowerCase() : "";
     if (message?.is_system === true || role === "system") return "system";
     if (message?.is_user === true || role === "user") return "user";
     return "assistant";
   };
-  var createTurnSnapshot = (chat) => {
-    const messages = Array.isArray(chat) ? chat.filter((message) => message && typeof message === "object" && messageText2(message)) : [];
-    const last = messages.at(-1);
-    const assistantCount = messages.filter((message) => messageRole(message) === "assistant").length;
-    const key = messages.map((message, index) => `${index}:${messageRole(message)}:${messageText2(message)}`).join("\n");
-    return Object.freeze({ key, assistantCount, lastIsAssistant: messageRole(last) === "assistant" });
+  var updateHashCode = (state, code) => {
+    for (let lane = 0; lane < state.length; lane += 1) {
+      state[lane] ^= code + lane * 40503;
+      state[lane] = Math.imul(state[lane], HASH_PRIMES[lane]);
+    }
   };
+  var updateHashNumber = (state, value) => {
+    const number = value >>> 0;
+    updateHashCode(state, number & 255);
+    updateHashCode(state, number >>> 8 & 255);
+    updateHashCode(state, number >>> 16 & 255);
+    updateHashCode(state, number >>> 24 & 255);
+  };
+  var hashHex = (state) => state.map((value) => (value >>> 0).toString(16).padStart(8, "0")).join("");
+  var validFloor = (value, fallback = 0) => Number.isInteger(value) && value >= 0 ? value : fallback;
+  var createTurnSnapshot = (chat, hostFloor = null) => {
+    const sessionHash = [...HASH_SEEDS];
+    let messageCount = 0;
+    let assistantCount = 0;
+    let lastRole = "";
+    let lastMessageFingerprint = "";
+    updateHashCode(sessionHash, 83);
+    for (let index = 0; index < (Array.isArray(chat) ? chat.length : 0); index += 1) {
+      const message = chat[index];
+      if (!message || typeof message !== "object") continue;
+      const text8 = messageText2(message);
+      if (!text8) continue;
+      const role = messageRole(message);
+      const roleCode = role === "system" ? 1 : role === "user" ? 2 : 3;
+      const messageHash = [...HASH_SEEDS];
+      updateHashCode(sessionHash, 30);
+      updateHashNumber(sessionHash, index);
+      updateHashCode(sessionHash, roleCode);
+      updateHashNumber(sessionHash, text8.length);
+      updateHashCode(messageHash, roleCode);
+      updateHashNumber(messageHash, text8.length);
+      for (let offset = 0; offset < text8.length; offset += 1) {
+        const code = text8.charCodeAt(offset);
+        updateHashCode(sessionHash, code);
+        updateHashCode(messageHash, code);
+      }
+      updateHashCode(sessionHash, 31);
+      messageCount += 1;
+      if (role === "assistant") assistantCount += 1;
+      lastRole = role;
+      lastMessageFingerprint = hashHex(messageHash);
+    }
+    updateHashNumber(sessionHash, messageCount);
+    updateHashNumber(sessionHash, assistantCount);
+    return Object.freeze({
+      floor: validFloor(hostFloor, assistantCount),
+      key: hashHex(sessionHash),
+      messageCount,
+      assistantCount,
+      lastRole,
+      lastMessageFingerprint,
+      lastIsAssistant: lastRole === "assistant"
+    });
+  };
+  var sameSnapshot = (observation, snapshot) => observation?.key === snapshot.key && observation.floor === snapshot.floor && observation.messageCount === snapshot.messageCount && observation.assistantCount === snapshot.assistantCount && observation.lastRole === snapshot.lastRole && observation.lastMessageFingerprint === snapshot.lastMessageFingerprint;
   function createTodayTrendScheduler({
     controller,
     committer,
     getStore,
     getStorageId: getStorageId2,
     getChat = () => [],
+    getFloor = () => null,
     random = Math.random,
-    now: now2 = () => Date.now()
+    now: now2 = () => Date.now(),
+    wait = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)),
+    commitFeedbackMs = 240
   } = {}) {
     if (!controller || typeof controller.generate !== "function") throw new TypeError("\u4ECA\u65E5\u98CE\u5411\u8C03\u5EA6\u5668\u7F3A\u5C11\u751F\u6210\u63A7\u5236\u5668");
     if (!committer || typeof committer.commitStore !== "function" || typeof committer.invalidateCommits !== "function") throw new TypeError("\u4ECA\u65E5\u98CE\u5411\u8C03\u5EA6\u5668\u7F3A\u5C11\u4E8B\u52A1\u63D0\u4EA4\u5668");
     if (typeof getStore !== "function" || typeof getStorageId2 !== "function") throw new TypeError("\u4ECA\u65E5\u98CE\u5411\u8C03\u5EA6\u5668\u7F3A\u5C11\u5B58\u50A8\u6216\u804A\u5929\u8BFB\u53D6\u5668");
     let sequence = 0;
+    let accessSequence = 0;
     let activeTask = null;
+    let terminalTask = null;
     let phase = "idle";
     let lastError = null;
     const baselines = /* @__PURE__ */ new Map();
     const observations = /* @__PURE__ */ new Map();
+    const listeners = /* @__PURE__ */ new Set();
+    let lastPublishedSignature = "";
+    const readSnapshot = (chat) => createTurnSnapshot(chat, getFloor());
+    const publicTask = (task) => task ? Object.freeze({
+      kind: task.kind,
+      storageId: task.storageId,
+      floor: task.floor,
+      target: task.target ? Object.freeze({ ...task.target }) : null
+    }) : null;
+    const state = () => Object.freeze({
+      phase,
+      task: publicTask(activeTask || terminalTask),
+      lastError,
+      baselines: Object.fromEntries(baselines),
+      observationCount: observations.size
+    });
+    const publish = () => {
+      const snapshot = state();
+      const signature = JSON.stringify(snapshot);
+      if (signature === lastPublishedSignature) return snapshot;
+      lastPublishedSignature = signature;
+      for (const listener of listeners) {
+        try {
+          listener(snapshot);
+        } catch {
+        }
+      }
+      return snapshot;
+    };
+    const setPhase = (nextPhase, error = lastError) => {
+      phase = nextPhase;
+      lastError = error;
+      if (nextPhase === "idle" || nextPhase === "completed") terminalTask = null;
+      return publish();
+    };
+    const subscribe = (listener) => {
+      if (typeof listener !== "function") throw new TypeError("\u4ECA\u65E5\u98CE\u5411\u72B6\u6001\u8BA2\u9605\u5668\u5FC5\u987B\u662F\u51FD\u6570");
+      listeners.add(listener);
+      try {
+        listener(state());
+      } catch {
+      }
+      let subscribed = true;
+      return () => {
+        if (!subscribed) return false;
+        subscribed = false;
+        return listeners.delete(listener);
+      };
+    };
+    const touch = (observation) => {
+      observation.lastAccessedAt = now2();
+      observation.accessOrder = ++accessSequence;
+      return observation;
+    };
+    const removeObservation = (id2) => {
+      observations.delete(id2);
+      baselines.delete(id2);
+    };
+    const pruneObservations = () => {
+      while (observations.size > OBSERVATION_LIMIT) {
+        const currentId = String(getStorageId2() || "").trim();
+        const candidate = [...observations.entries()].filter(([id2, observation]) => id2 !== currentId && id2 !== activeTask?.storageId && validCount(observation.pendingTurns) === 0).sort((left, right) => left[1].accessOrder - right[1].accessOrder)[0];
+        if (!candidate) break;
+        removeObservation(candidate[0]);
+      }
+    };
+    const storeSnapshot = (id2, snapshot, pendingTurns) => {
+      const observation = touch({
+        key: snapshot.key,
+        floor: snapshot.floor,
+        messageCount: snapshot.messageCount,
+        assistantCount: snapshot.assistantCount,
+        lastRole: snapshot.lastRole,
+        lastMessageFingerprint: snapshot.lastMessageFingerprint,
+        pendingTurns,
+        rewindFloor: null
+      });
+      observations.set(id2, observation);
+      pruneObservations();
+      return observation;
+    };
     const isActive = (task) => !!task && activeTask === task && !task.abortController.signal.aborted && getStorageId2() === task.storageId;
     const cancel = (reason = "today-trend-cancelled", resetObservation = false) => {
       sequence += 1;
+      terminalTask = activeTask;
       activeTask?.abortController.abort(reason);
       activeTask = null;
-      phase = "canceled";
-      lastError = null;
       committer.invalidateCommits();
       if (resetObservation) {
         baselines.clear();
         observations.clear();
-      }
+      } else pruneObservations();
+      setPhase("canceled", null);
       return reason;
     };
-    const state = () => Object.freeze({ phase, task: activeTask, lastError, baselines: Object.fromEntries(baselines) });
     const acknowledge = () => {
       if (!activeTask) {
-        phase = "idle";
-        lastError = null;
+        terminalTask = null;
+        return setPhase("idle", null);
       }
       return state();
     };
@@ -21992,10 +22374,14 @@ ${targetInstruction}`
       const id2 = String(storageId || "").trim();
       if (!id2) throw new Error("\u4ECA\u65E5\u98CE\u5411\u5F00\u59CB\u8FD0\u4F5C\u7F3A\u5C11\u6709\u6548\u804A\u5929");
       if (id2 !== getStorageId2()) throw new Error("\u4ECA\u65E5\u98CE\u5411\u53EA\u80FD\u4E3A\u5F53\u524D\u804A\u5929\u5F00\u59CB\u8FD0\u4F5C");
-      const snapshot = createTurnSnapshot(chat);
-      baselines.set(id2, snapshot.assistantCount);
-      observations.set(id2, { key: snapshot.key, assistantCount: snapshot.assistantCount, pendingTurns: 0 });
-      return snapshot.assistantCount;
+      const snapshot = readSnapshot(chat);
+      baselines.set(id2, snapshot.floor);
+      storeSnapshot(id2, snapshot, 0);
+      return snapshot.floor;
+    };
+    const currentFloor = (storageId = getStorageId2()) => {
+      const id2 = String(storageId || "").trim();
+      return id2 && id2 === getStorageId2() ? readSnapshot(getChat()).floor : validCount(observations.get(id2)?.floor);
     };
     const rollIncident = (probability) => {
       const chance = Number(probability);
@@ -22003,34 +22389,39 @@ ${targetInstruction}`
       if (chance >= 100) return true;
       return (typeof random === "function" ? random() : Math.random()) * 100 < chance;
     };
-    const run = async ({ kind, storageId, assistantCount, incidentProbability, target = null } = {}) => {
+    const run = async ({ kind, storageId, floor, incidentProbability, target = null } = {}) => {
       const id2 = String(storageId || getStorageId2() || "").trim();
       if (!id2) throw new Error("\u4ECA\u65E5\u98CE\u5411\u751F\u6210\u7F3A\u5C11\u6709\u6548\u804A\u5929");
       if (activeTask) {
         if (kind !== "manual") return false;
         cancel("today-trend-manual-replaces-active");
       }
-      const currentAssistantCount = assistantCount === void 0 ? createTurnSnapshot(getChat()).assistantCount : validCount(assistantCount);
-      const pendingTurns = observations.get(id2)?.pendingTurns;
+      const currentFloor2 = floor === void 0 ? readSnapshot(getChat()).floor : validCount(floor);
+      const observation = observations.get(id2);
+      if (observation) touch(observation);
+      const pendingTurns = observation?.pendingTurns;
       const task = Object.freeze({
         id: ++sequence,
         kind,
         storageId: id2,
-        assistantCount: currentAssistantCount,
+        floor: currentFloor2,
         pendingTurns: Number.isInteger(pendingTurns) && pendingTurns >= 0 ? pendingTurns : 0,
         incidentProbability,
         target,
         abortController: new AbortController()
       });
+      terminalTask = null;
       activeTask = task;
-      phase = "queued";
-      lastError = null;
+      setPhase("queued", null);
       try {
         const source = await getStore();
         if (!isActive(task)) throw cancelled();
         const scope = source?.scopes?.[id2];
         const preset = scope && source?.presets?.[scope.presetId];
-        if (!scope || !preset) throw new Error("\u5F53\u524D\u804A\u5929\u5C1A\u672A\u521D\u59CB\u5316\u4ECA\u65E5\u98CE\u5411");
+        if (!scope || !preset) {
+          removeObservation(id2);
+          throw new Error("\u5F53\u524D\u804A\u5929\u5C1A\u672A\u521D\u59CB\u5316\u4ECA\u65E5\u98CE\u5411");
+        }
         const configuredProbability = scope.dynamicsSettings?.incident?.enabled ? scope.dynamicsSettings.incident.probability : 0;
         const effectiveIncidentProbability = incidentProbability === void 0 ? configuredProbability : incidentProbability;
         const generated = await controller.generate({
@@ -22040,15 +22431,16 @@ ${targetInstruction}`
           storageId: id2,
           characterId: scope.characterId,
           characterName: scope.characterName,
-          assistantCount: task.assistantCount,
+          assistantCount: task.floor,
           allowIncident: rollIncident(effectiveIncidentProbability),
           target: task.target,
           onPhase: (next) => {
-            if (isActive(task)) phase = next;
+            if (isActive(task)) setPhase(next, null);
           }
         });
         if (!isActive(task)) throw cancelled();
-        phase = "committing";
+        setPhase("committing", null);
+        const commitStartedAt = now2();
         const committed = await committer.commitStore((store) => {
           const current = store.scopes[id2];
           if (!isActive(task)) return store;
@@ -22059,100 +22451,201 @@ ${targetInstruction}`
           if (JSON.stringify(current) !== JSON.stringify(scope)) {
             throw new Error("\u4ECA\u65E5\u98CE\u5411\u8D44\u6599\u5728\u751F\u6210\u671F\u95F4\u5DF2\u4FEE\u6539\uFF0C\u8FDF\u5230\u7ED3\u679C\u5DF2\u4E22\u5F03");
           }
-          store.scopes[id2] = {
+          const generatedAt = now2();
+          const nextScope = {
             ...generated.scope,
             operation: task.target ? current.operation : {
               ...current.operation,
-              lastSuccessfulAssistantCount: task.assistantCount,
-              lastSuccessfulRunAt: now2()
+              lastSuccessfulAssistantCount: task.floor,
+              lastSuccessfulRunAt: generatedAt
             },
-            injection: current.injection
+            injection: current.injection,
+            generationSnapshots: current.generationSnapshots
           };
+          store.scopes[id2] = task.target ? nextScope : appendTodayTrendGenerationSnapshot(nextScope, task.floor, generatedAt);
           return store;
         }, { active: () => isActive(task) });
         if (!committed || !isActive(task)) throw cancelled();
+        const remainingFeedback = Math.max(0, commitFeedbackMs - Math.max(0, now2() - commitStartedAt));
+        if (remainingFeedback > 0) await wait(remainingFeedback);
+        if (!isActive(task)) throw cancelled();
         if (!task.target) {
-          baselines.set(id2, task.assistantCount);
-          const observation = observations.get(id2);
-          const remainingTurns = observation && Number.isInteger(observation.pendingTurns) ? Math.max(0, observation.pendingTurns - task.pendingTurns) : 0;
-          if (observation) observation.pendingTurns = remainingTurns;
-          else {
-            const snapshot = createTurnSnapshot(getChat());
-            observations.set(id2, { key: snapshot.key, assistantCount: snapshot.assistantCount, pendingTurns: 0 });
-          }
+          baselines.set(id2, task.floor);
+          const currentObservation = observations.get(id2);
+          const remainingTurns = currentObservation && Number.isInteger(currentObservation.pendingTurns) ? Math.max(0, currentObservation.pendingTurns - task.pendingTurns) : 0;
+          if (currentObservation) {
+            currentObservation.pendingTurns = remainingTurns;
+            touch(currentObservation);
+          } else storeSnapshot(id2, readSnapshot(getChat()), 0);
         }
-        phase = "completed";
+        setPhase("completed", null);
         return committed;
       } catch (error) {
         if (activeTask === task) {
           if (error?.name === "AbortError" || !isActive(task)) {
-            phase = "canceled";
-            lastError = null;
+            terminalTask = task;
+            setPhase("canceled", null);
           } else {
-            phase = "failed";
-            lastError = error?.message || "\u4ECA\u65E5\u98CE\u5411\u751F\u6210\u5931\u8D25";
+            terminalTask = task;
+            setPhase("failed", error?.message || "\u4ECA\u65E5\u98CE\u5411\u751F\u6210\u5931\u8D25");
           }
         }
         throw error;
       } finally {
         if (activeTask === task) {
           activeTask = null;
-          const observation = observations.get(id2);
-          if (phase === "completed" && observation?.pendingTurns > 0) {
+          publish();
+          const currentObservation = observations.get(id2);
+          if (phase === "completed" && currentObservation?.pendingTurns > 0) {
             Promise.resolve(getStore()).then((store) => {
-              const interval = store?.scopes?.[id2]?.operation?.intervalFloors;
-              if (observation.pendingTurns >= interval) run({ kind: "auto", storageId: id2, incidentProbability: task.incidentProbability }).catch(() => {
+              const operation = store?.scopes?.[id2]?.operation;
+              if (observations.get(id2) !== currentObservation || getStorageId2() !== id2 || activeTask || operation?.enabled !== true || operation.mode !== "auto" || currentObservation.pendingTurns < operation.intervalFloors) return;
+              run({ kind: "auto", storageId: id2, floor: currentObservation.floor, incidentProbability: task.incidentProbability }).catch(() => {
               });
             }).catch(() => {
             });
           }
+          pruneObservations();
         }
       }
     };
     const manual = (options2) => run({ ...options2, kind: "manual" });
+    const rollback = async (id2, snapshot) => {
+      if (activeTask) cancel("today-trend-chat-rewound");
+      const observationAtStart = observations.get(id2);
+      const task = Object.freeze({
+        id: ++sequence,
+        kind: "rollback",
+        storageId: id2,
+        floor: snapshot.floor,
+        pendingTurns: 0,
+        incidentProbability: 0,
+        target: null,
+        abortController: new AbortController()
+      });
+      activeTask = task;
+      setPhase("committing", null);
+      const commitStartedAt = now2();
+      try {
+        const committed = await committer.commitStore((store) => {
+          const current = store.scopes[id2];
+          if (!current || !isActive(task)) return store;
+          if (validCount(current.operation?.lastSuccessfulAssistantCount) <= snapshot.floor) return store;
+          store.scopes[id2] = rollbackTodayTrendScope(current, snapshot.floor);
+          return store;
+        }, { active: () => isActive(task) });
+        if (!committed || !isActive(task)) throw cancelled();
+        const remainingFeedback = Math.max(0, commitFeedbackMs - Math.max(0, now2() - commitStartedAt));
+        if (remainingFeedback > 0) await wait(remainingFeedback);
+        if (!isActive(task)) throw cancelled();
+        baselines.set(id2, snapshot.floor);
+        const observation = observations.get(id2);
+        if (observation === observationAtStart && observation.rewindFloor === task.floor) {
+          observation.rewindFloor = null;
+        }
+        setPhase("completed", null);
+        return committed;
+      } catch (error) {
+        if (activeTask === task) {
+          terminalTask = task;
+          if (error?.name === "AbortError" || !isActive(task)) setPhase("canceled", null);
+          else setPhase("failed", error?.message || "\u4ECA\u65E5\u98CE\u5411\u56DE\u9000\u5931\u8D25");
+        }
+        throw error;
+      } finally {
+        if (activeTask === task) {
+          activeTask = null;
+          publish();
+          const observation = observations.get(id2);
+          if (phase === "completed" && observation) {
+            Promise.resolve(getStore()).then((store) => {
+              const operation = store?.scopes?.[id2]?.operation;
+              if (observations.get(id2) !== observation || getStorageId2() !== id2 || activeTask) return;
+              if (Number.isInteger(observation.rewindFloor) && observation.rewindFloor < validCount(operation?.lastSuccessfulAssistantCount)) {
+                rollback(id2, { floor: observation.rewindFloor }).catch(() => {
+                });
+                return;
+              }
+              if (operation?.enabled === true && operation.mode === "auto" && observation.pendingTurns >= operation.intervalFloors) {
+                run({ kind: "auto", storageId: id2, floor: observation.floor }).catch(() => {
+                });
+              }
+            }).catch(() => {
+            });
+          }
+          pruneObservations();
+        }
+      }
+    };
     const observe = (chat, { incidentProbability } = {}) => {
-      const snapshot = createTurnSnapshot(chat);
+      const snapshot = readSnapshot(chat);
       const id2 = String(getStorageId2() || "").trim();
-      if (!id2 || !snapshot.lastIsAssistant || !snapshot.key) return null;
+      if (!id2 || !snapshot.key) return null;
       let observation = observations.get(id2);
-      if (!observation) {
-        observation = { key: snapshot.key, assistantCount: snapshot.assistantCount, pendingTurns: null };
-        observations.set(id2, observation);
-      } else {
-        if (observation.key === snapshot.key) return null;
-        const addedAssistantCount = snapshot.assistantCount - observation.assistantCount;
-        observation.key = snapshot.key;
-        observation.assistantCount = snapshot.assistantCount;
-        if (addedAssistantCount <= 0) return snapshot;
-        if (observation.pendingTurns !== null) observation.pendingTurns += addedAssistantCount;
+      if (!observation) observation = storeSnapshot(id2, snapshot, null);
+      else {
+        touch(observation);
+        if (sameSnapshot(observation, snapshot)) return null;
+        const addedFloors = snapshot.floor - observation.floor;
+        Object.assign(observation, {
+          key: snapshot.key,
+          floor: snapshot.floor,
+          messageCount: snapshot.messageCount,
+          assistantCount: snapshot.assistantCount,
+          lastRole: snapshot.lastRole,
+          lastMessageFingerprint: snapshot.lastMessageFingerprint
+        });
+        if (addedFloors < 0) {
+          observation.pendingTurns = 0;
+          observation.rewindFloor = Number.isInteger(observation.rewindFloor) ? Math.min(observation.rewindFloor, snapshot.floor) : snapshot.floor;
+        } else if (observation.pendingTurns !== null) {
+          observation.pendingTurns += addedFloors;
+        }
       }
       Promise.resolve(getStore()).then((store) => {
-        if (observations.get(id2) !== observation || observation.key !== snapshot.key) return;
+        if (observations.get(id2) !== observation) return;
         const scope = store?.scopes?.[id2];
-        if (!scope?.operation?.enabled || scope.operation.mode !== "auto") return;
-        const persisted = validCount(scope.operation.lastSuccessfulAssistantCount);
+        if (!scope) {
+          removeObservation(id2);
+          return;
+        }
+        const persisted = validCount(scope.operation?.lastSuccessfulAssistantCount);
+        if (!Number.isInteger(observation.rewindFloor) && sameSnapshot(observation, snapshot) && snapshot.floor < persisted) {
+          observation.pendingTurns = 0;
+          observation.rewindFloor = snapshot.floor;
+        }
+        if (Number.isInteger(observation.rewindFloor) && observation.rewindFloor < persisted) {
+          if (!activeTask || activeTask.kind !== "rollback" || activeTask.storageId !== id2) {
+            return rollback(id2, { floor: observation.rewindFloor }).catch(() => {
+            });
+          }
+          return;
+        }
+        if (!sameSnapshot(observation, snapshot)) return;
+        if (!snapshot.lastIsAssistant) return;
+        if (!scope.operation?.enabled || scope.operation.mode !== "auto") return;
         if (observation.pendingTurns === null) {
-          observation.pendingTurns = persisted ? Math.max(0, snapshot.assistantCount - persisted) : 0;
-          baselines.set(id2, persisted || snapshot.assistantCount);
+          observation.pendingTurns = persisted ? Math.max(0, snapshot.floor - persisted) : 0;
+          baselines.set(id2, persisted || snapshot.floor);
         }
         if (!persisted && !baselines.has(id2)) {
-          baselines.set(id2, snapshot.assistantCount);
+          baselines.set(id2, snapshot.floor);
           return;
         }
         if (observation.pendingTurns < scope.operation.intervalFloors || activeTask) return;
-        run({ kind: "auto", storageId: id2, assistantCount: snapshot.assistantCount, incidentProbability }).catch(() => {
+        run({ kind: "auto", storageId: id2, floor: snapshot.floor, incidentProbability }).catch(() => {
         });
       }).catch(() => {
       });
       return snapshot;
     };
-    return { acknowledge, arm, cancel, isActive, manual, observe, state, run };
+    return { acknowledge, arm, cancel, currentFloor, isActive, manual, observe, state, subscribe, run };
   }
 
   // src/today-trend.js
   function installTodayTrend(_state, deps = {}) {
-    const { runtime, callAI, getCtx, getStorageId: getStorageId2 } = deps;
-    if (!runtime || typeof callAI !== "function" || typeof getCtx !== "function" || typeof getStorageId2 !== "function") {
+    const { runtime, callAI, getCtx, getLastMessageId: getLastMessageId2, getStorageId: getStorageId2 } = deps;
+    if (!runtime || typeof callAI !== "function" || typeof getCtx !== "function" || typeof getLastMessageId2 !== "function" || typeof getStorageId2 !== "function") {
       throw new TypeError("\u4ECA\u65E5\u98CE\u5411\u5B89\u88C5\u4F9D\u8D56\u65E0\u6548");
     }
     const localRuntime = runtime.todayTrend || (runtime.todayTrend = {});
@@ -22166,12 +22659,23 @@ ${targetInstruction}`
     };
     const committer = createTodayTrendCommitter({ runtime: localRuntime, load, save, refreshInjection: deps.applyBidirectionalInjection });
     const controller = (deps.createTodayTrendGenerationController || createTodayTrendGenerationController)({ callAI, getCtx });
+    const getHostFloor = () => {
+      try {
+        const rawFloor = getLastMessageId2();
+        if (rawFloor === null || rawFloor === void 0 || typeof rawFloor === "string" && !rawFloor.trim()) return null;
+        const floor = Number(rawFloor);
+        return Number.isInteger(floor) && floor >= 0 ? floor : null;
+      } catch {
+        return null;
+      }
+    };
     const scheduler = createTodayTrendScheduler({
       controller,
       committer,
       getStore: loadStore2,
       getStorageId: getStorageId2,
-      getChat: () => getCtx()?.chat || []
+      getChat: () => getCtx()?.chat || [],
+      getFloor: getHostFloor
     });
     const reloadStore = () => loadStore2({ force: true });
     const nextPresetId = (store, storageId) => {
@@ -22357,7 +22861,9 @@ ${targetInstruction}`
       cancelTodayTrendGeneration: (reason, reset) => scheduler.cancel(reason, reset),
       generateTodayTrendModule: (module, itemId, options2 = {}) => scheduler.run({ kind: "manual", target: { ...options2, module, itemId } }),
       generateTodayTrend: (options2) => scheduler.manual(options2),
+      getTodayTrendCurrentFloor: getHostFloor,
       getTodayTrendGenerationState: scheduler.state,
+      subscribeTodayTrendGeneration: scheduler.subscribe,
       acknowledgeTodayTrendGeneration: scheduler.acknowledge,
       initializeTodayTrend: initialize,
       cancelTodayTrendInitialization: cancelInitialization,
@@ -22823,9 +23329,24 @@ ${targetInstruction}`
     if (!visible) return "";
     return `<span class="pm-today-trend-inline-actions">${actions.map((action) => trendIconButton({ ...action, className: `pm-today-trend-inline-action${action.className ? ` ${action.className}` : ""}` })).join("")}</span>`;
   }
-  function trendModuleHead({ title, menuId, menuOpenId, actions = [], meta = "", metaHtml = "", eyebrow = "", adornment = "" }) {
+  function trendFloorStatus({ currentFloor, syncedFloor = 0, phase = "idle", lastError = null, busy = false, targetFloor = null, targeted = false } = {}) {
+    const synced = Number.isInteger(syncedFloor) && syncedFloor >= 0 ? syncedFloor : 0;
+    const currentFloorProvided = currentFloor !== void 0;
+    const floor = Number.isInteger(currentFloor) && currentFloor >= 0 ? currentFloor : currentFloorProvided ? null : synced;
+    const target = Number.isInteger(targetFloor) && targetFloor >= 0 ? targetFloor : null;
+    const terminalState = phase === "failed" ? "failed" : phase === "canceled" ? "canceled" : null;
+    const state = busy ? "updating" : terminalState || (floor === null ? "unavailable" : floor > 0 && synced === floor ? "synced" : "unsynced");
+    const status = busy ? targeted ? "\u6B63\u5728\u66F4\u65B0\u6A21\u5757" : target === null ? "\u6B63\u5728\u540C\u6B65" : `\u540C\u6B65\u4EFB\u52A1 #${target}` : terminalState === "failed" ? "\u540C\u6B65\u5931\u8D25" : terminalState === "canceled" ? "\u5DF2\u7EC8\u6B62" : floor === null ? "\u697C\u5C42\u4E0D\u53EF\u7528" : floor > 0 && synced === floor ? "\u5DF2\u540C\u6B65" : floor > 0 ? "\u5F85\u540C\u6B65" : "\u5C1A\u672A\u540C\u6B65";
+    const reading = floor === null ? "#--" : `#${floor}`;
+    const statusTitle = terminalState === "failed" && lastError ? ` title="${escapeAttr(lastError)}"` : "";
+    const readingHtml = `<span class="pm-today-trend-floor-reading"><strong class="pm-today-trend-floor-value">${reading}</strong></span>`;
+    const statusHtml = busy ? `<button type="button" class="pm-today-trend-floor-cancel" data-action="today-trend-cancel-generation" aria-label="\u7EC8\u6B62\u5F53\u524D\u66F4\u65B0" title="\u7EC8\u6B62\u5F53\u524D\u66F4\u65B0">${readingHtml}<span class="pm-today-trend-floor-status"><i aria-hidden="true"></i>${escapeHtml(status)}</span></button>` : `${readingHtml}<span class="pm-today-trend-floor-status"${statusTitle}>${escapeHtml(status)}</span>`;
+    return `<span class="pm-today-trend-floor" data-today-trend-floor="${floor ?? ""}" data-state="${state}" role="status" aria-live="polite" aria-label="\u697C\u5C42 ${reading}\uFF0C${escapeAttr(status)}">${statusHtml}</span>`;
+  }
+  function trendModuleHead({ title, menuId, menuOpenId, actions = [], meta = "", metaHtml = "", eyebrow = "", adornment = "", asideHtml = "" }) {
     const renderedMeta = metaHtml || (meta ? `<span>${escapeHtml(meta)}</span>` : "");
-    return `<header class="pm-today-trend-module-head${eyebrow ? " is-decorative" : ""}"><div>${eyebrow ? `<p class="pm-today-trend-module-eyebrow">${escapeHtml(eyebrow)}</p>` : ""}<h2>${escapeHtml(title)}${adornment}</h2>${renderedMeta}</div>${trendActionMenu({ id: menuId, open: menuOpenId === menuId, label: `${title}\u64CD\u4F5C`, actions })}</header>`;
+    const menu2 = trendActionMenu({ id: menuId, open: menuOpenId === menuId, label: `${title}\u64CD\u4F5C`, actions });
+    return `<header class="pm-today-trend-module-head${eyebrow ? " is-decorative" : ""}"><div>${eyebrow ? `<p class="pm-today-trend-module-eyebrow">${escapeHtml(eyebrow)}</p>` : ""}<h2>${escapeHtml(title)}${adornment}</h2>${renderedMeta}</div><span class="pm-today-trend-head-tools">${menu2}${asideHtml}</span></header>`;
   }
   function trendRuleEditor({ rule, value = "" } = {}) {
     if (!rule) return "";
@@ -22874,17 +23395,17 @@ ${targetInstruction}`
   function settingsForm(settings) {
     return `<form class="pm-today-trend-editor" data-today-trend-form="dynamics-settings"><label class="pm-today-trend-field">\u540C\u65F6\u8FFD\u8E2A\u4E0A\u9650<input class="pm-today-trend-input" name="trackingLimit" type="number" min="1" max="80" required value="${settings.trackingLimit}"></label>${trendToggleField("appendOnlyOnActualProgress", "\u4EC5\u5B9E\u9645\u8FDB\u5C55\u65F6\u8FFD\u52A0\u9636\u6BB5", settings.appendOnlyOnActualProgress)}${trendToggleField("autoComplete", "\u81EA\u52A8\u5224\u65AD\u5B8C\u7ED3", settings.autoComplete)}${trendToggleField("archiveCompleted", "\u5B8C\u7ED3\u540E\u5F52\u6863", settings.archiveCompleted)}${trendToggleField("incidentEnabled", "\u542F\u7528\u7A81\u53D1\u4E8B\u4EF6", settings.incident.enabled)}<label class="pm-today-trend-field">\u7A81\u53D1\u6982\u7387\uFF080-100\uFF09<input class="pm-today-trend-input" name="incidentProbability" type="number" min="0" max="100" required value="${settings.incident.probability}"></label>${trendToggleField("rumorEnabled", "\u542F\u7528\u6D41\u8A00\u871A\u8BED", settings.rumor.enabled)}${trendToggleField("undergroundEnabled", "\u542F\u7528\u5730\u4E0B\u7EBF", settings.underground.enabled)}<div class="pm-today-trend-form-actions"><button type="button" data-action="today-trend-open-dynamics">\u53D6\u6D88</button><button type="submit">\u8BBE\u7F6E</button></div></form>`;
   }
-  function eventCard(event, archived, actionsVisible) {
+  function eventCard(event, archived, actionsVisible, generateAttrs) {
     const state = archived ? OUTCOMES[event.outcome] || event.outcome : event.stageLabel;
     const eventAttrs = `data-event-id="${escapeAttr(event.id)}"`;
-    const actions = archived ? [icon2("today-trend-delete-event", TRASH_ICON_SVG, `\u5220\u9664${event.title}`, `${eventAttrs} data-label="${escapeAttr(event.title)}"`, true)] : [icon2("today-trend-edit-event", EDIT_ICON_SVG, `\u7F16\u8F91${event.title}`, eventAttrs), ...event.type === "underground" ? [icon2("today-trend-promote-underground", SPARKLES_ICON_SVG, `\u5347\u7EA7${event.title}`, eventAttrs)] : [], icon2("today-trend-archive-event", TRASH_ICON_SVG, `\u5F52\u6863${event.title}`, eventAttrs)];
+    const actions = archived ? [icon2("today-trend-delete-event", TRASH_ICON_SVG, `\u5220\u9664${event.title}`, `${eventAttrs} data-label="${escapeAttr(event.title)}"`, true)] : [icon2("today-trend-advance-event", REFRESH_ICON_SVG, `\u91CD\u65B0\u751F\u6210${event.title}`, `${eventAttrs} ${generateAttrs}`), icon2("today-trend-edit-event", EDIT_ICON_SVG, `\u7F16\u8F91${event.title}`, eventAttrs), icon2("today-trend-archive-event", TRASH_ICON_SVG, `\u5F52\u6863${event.title}`, eventAttrs), ...event.type === "underground" ? [icon2("today-trend-promote-underground", SPARKLES_ICON_SVG, `\u5347\u7EA7${event.title}`, eventAttrs)] : []];
     const stages = Array.isArray(event.stages) ? event.stages : [];
     const participants = Array.isArray(event.participants) ? event.participants : [];
     const stageList = stages.map((stage, index) => `<li${!archived && index === stages.length - 1 ? ' class="is-current"' : ""}><span class="pm-today-trend-stage-tag">${!archived && index === stages.length - 1 ? "\u6700\u65B0\u9636\u6BB5" : `\u9636\u6BB5 ${String(index + 1).padStart(2, "0")}`}</span>${text7(stage)}</li>`).join("");
     const history = archived ? `<details class="pm-today-trend-event-history"><summary>\u9636\u6BB5\u8BB0\u5F55\uFF08${stages.length}\uFF09</summary><ol>${stageList}</ol></details>` : `<ol class="pm-today-trend-event-history is-live">${stageList}</ol>`;
     return `<article class="pm-today-trend-event-card${archived ? " is-archived" : ""}" data-event-id="${escapeAttr(event.id)}" data-event-type="${escapeAttr(event.type)}"><span class="pm-today-trend-event-marker" aria-hidden="true">${eventIcon(event)}</span><div class="pm-today-trend-event-body"><header><div class="pm-today-trend-event-heading"><b>${text7(event.title)}</b><span class="pm-today-trend-event-tags">${badge(event)}${pill(archived, state)}</span></div>${trendInlineActions({ visible: actionsVisible, actions })}</header><dl class="pm-today-trend-event-facts"><div><dt>\u8D77\u56E0</dt><dd>${text7(event.origin)}</dd></div><div><dt>\u4E3B\u4F53</dt><dd>${text7(participants.join("\u3001") || "\u672A\u8BB0\u5F55")}</dd></div></dl>${history}${archived ? `<div class="pm-today-trend-event-latest"><strong>\u6700\u7EC8\u7ED3\u679C</strong><span>${text7(event.finalResult)}</span></div>` : ""}</div></article>`;
   }
-  function renderTodayTrendDynamicsView({ scope, preset = null, editingEventId = null, editingRule = null, ruleDraft = null, mode = "content", dynamicsTab = "active", menuOpenId = null, generationAvailable = false, generationBusy = false } = {}) {
+  function renderTodayTrendDynamicsView({ scope, preset = null, editingEventId = null, editingRule = null, ruleDraft = null, mode = "content", dynamicsTab = "active", menuOpenId = null, generationAvailable = false, generationBusy = false, floorStatus = "" } = {}) {
     if (!scope) return '<p class="pm-today-trend-empty">\u5F53\u524D\u804A\u5929\u5C1A\u672A\u521D\u59CB\u5316\u4ECA\u65E5\u98CE\u5411\u3002</p>';
     const attrs = `${generationAvailable && !generationBusy ? "" : "disabled"} aria-busy="${generationBusy}"`;
     if (mode === "settings") return `<section class="pm-today-trend-view">${trendModuleHead({ title: "\u4E8B\u4EF6\u8FFD\u8E2A\u8BBE\u7F6E", menuId: "dynamics-settings", menuOpenId, actions: [icon2("today-trend-open-dynamics", BACK_ICON_SVG, "\u8FD4\u56DE\u4E8B\u4EF6\u8FFD\u8E2A")] })}${settingsForm(scope.dynamicsSettings)}</section>`;
@@ -22897,8 +23418,8 @@ ${targetInstruction}`
       return `<section class="pm-today-trend-view">${event ? eventForm(event, kind) : eventForm()}</section>`;
     }
     const actionsVisible = menuOpenId === "dynamics-module";
-    const active = activeEvents.map((event) => eventCard(event, false, actionsVisible)).join("") || '<p class="pm-today-trend-empty">\u6682\u65E0\u6B63\u5728\u8FFD\u8E2A\u7684\u52A8\u6001\u3002</p>';
-    const archived = archivedEvents.map((event) => eventCard(event, true, actionsVisible)).join("") || '<p class="pm-today-trend-empty">\u6682\u65E0\u5DF2\u5B8C\u7ED3\u52A8\u6001\u3002</p>';
+    const active = activeEvents.map((event) => eventCard(event, false, actionsVisible, attrs)).join("") || '<p class="pm-today-trend-empty">\u6682\u65E0\u6B63\u5728\u8FFD\u8E2A\u7684\u52A8\u6001\u3002</p>';
+    const archived = archivedEvents.map((event) => eventCard(event, true, actionsVisible, attrs)).join("") || '<p class="pm-today-trend-empty">\u6682\u65E0\u5DF2\u5B8C\u7ED3\u52A8\u6001\u3002</p>';
     const activeCount = activeEvents.length;
     const archivedCount = archivedEvents.length;
     const tab = dynamicsTab === "archived" ? "archived" : "active";
@@ -22907,33 +23428,32 @@ ${targetInstruction}`
     const tabSwitch = `<div class="pm-today-trend-dynamics-tabs" role="tablist" aria-label="\u4E8B\u4EF6\u8FFD\u8E2A\u72B6\u6001"><button id="pm-today-trend-active-tab" type="button" role="tab" data-action="today-trend-set-dynamics-tab" data-tab="active" aria-selected="${tab === "active"}" aria-controls="pm-today-trend-active-panel" tabindex="${tab === "active" ? "0" : "-1"}">\u6B63\u5728\u8FFD\u8E2A</button><button id="pm-today-trend-archived-tab" type="button" role="tab" data-action="today-trend-set-dynamics-tab" data-tab="archived" aria-selected="${tab === "archived"}" aria-controls="pm-today-trend-archived-panel" tabindex="${tab === "archived" ? "0" : "-1"}">\u5DF2\u5B8C\u7ED3</button></div>`;
     const activePanel = `<section id="pm-today-trend-active-panel" class="pm-today-trend-dynamics-section${tab === "active" ? "" : " is-hidden"}" role="tabpanel" aria-labelledby="pm-today-trend-active-tab"${tab === "active" ? "" : " hidden"}><h3 id="pm-today-trend-active-title">\u6B63\u5728\u8FFD\u8E2A</h3><div class="pm-today-trend-event-list${activeCount ? " has-events" : ""}">${active}</div></section>`;
     const archivedPanel = `<section id="pm-today-trend-archived-panel" class="pm-today-trend-dynamics-section${tab === "archived" ? "" : " is-hidden"}" role="tabpanel" aria-labelledby="pm-today-trend-archived-tab"${tab === "archived" ? "" : " hidden"}><h3 id="pm-today-trend-archived-title">\u5DF2\u5B8C\u7ED3</h3><div class="pm-today-trend-event-list is-archived${archivedCount ? " has-events" : ""}">${archived}</div></section>`;
-    return `<section class="pm-today-trend-view pm-today-trend-dynamics">${trendModuleHead({ title, eyebrow: "EVENT TRACKER", metaHtml: trackerMeta, menuId: "dynamics-module", menuOpenId, actions: [icon2("today-trend-advance-all-events", REFRESH_ICON_SVG, "\u91CD\u65B0\u751F\u6210\u4E8B\u4EF6\u8FFD\u8E2A", attrs), icon2("today-trend-edit-dynamics-rule", BOOK_ICON_SVG, "\u7F16\u8F91\u4E8B\u4EF6\u8FFD\u8E2A\u63D0\u793A\u8BCD"), icon2("today-trend-open-dynamics-settings", SETTINGS_ICON_SVG, "\u4E8B\u4EF6\u8FFD\u8E2A\u8BBE\u7F6E")] })}${tabSwitch}${activePanel}${archivedPanel}${generationBusy ? '<span class="pm-today-trend-progress">\u6B63\u5728\u751F\u6210\u2026</span>' : ""}</section>`;
+    return `<section class="pm-today-trend-view pm-today-trend-dynamics">${trendModuleHead({ title, eyebrow: "EVENT TRACKER", metaHtml: trackerMeta, asideHtml: floorStatus, menuId: "dynamics-module", menuOpenId, actions: [icon2("today-trend-advance-all-events", REFRESH_ICON_SVG, "\u91CD\u65B0\u751F\u6210\u4E8B\u4EF6\u8FFD\u8E2A", attrs), icon2("today-trend-edit-dynamics-rule", BOOK_ICON_SVG, "\u7F16\u8F91\u4E8B\u4EF6\u8FFD\u8E2A\u63D0\u793A\u8BCD"), icon2("today-trend-open-dynamics-settings", SETTINGS_ICON_SVG, "\u4E8B\u4EF6\u8FFD\u8E2A\u8BBE\u7F6E")] })}${tabSwitch}${activePanel}${archivedPanel}</section>`;
   }
 
   // src/today-trend-faction-view.js
   var options = (selected) => TODAY_TREND_RELATION_STATUSES.map((status) => `<option value="${status}" ${status === selected ? "selected" : ""}>${todayTrendStatusLabel(status)}</option>`).join("");
-  var relation = (value) => `<span class="pm-today-trend-status" data-status="${escapeAttr(value.status)}">${escapeHtml(todayTrendStatusLabel(value.status))}</span>`;
   var FACTION_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l2.2 6.8H21l-5.4 4 2 6.7L12 16.6 6.4 20.5l2-6.7L3 9.8h6.8z"/></svg>';
-  var menu = (faction, visible) => trendInlineActions({ visible, actions: [{ action: "today-trend-edit-faction", icon: EDIT_ICON_SVG, label: `\u7F16\u8F91${faction.name}`, attrs: `data-faction-id="${escapeAttr(faction.id)}"` }, { action: "today-trend-delete-faction", icon: TRASH_ICON_SVG, label: `\u5220\u9664${faction.name}`, danger: true, attrs: `data-faction-id="${escapeAttr(faction.id)}" data-label="${escapeAttr(faction.name)}"` }] });
-  var factionMeter = (status) => `<div class="pm-today-trend-faction-meter" role="img" aria-label="\u5173\u7CFB\u72B6\u6001\uFF1A${escapeAttr(todayTrendStatusLabel(status))}">${TODAY_TREND_RELATION_STATUSES.slice().reverse().map((level) => `<span${level === status ? ' class="is-active"' : ""}><i></i></span>`).join("")}</div>`;
+  var menu = (faction, attrs, visible) => trendInlineActions({ visible, actions: [{ action: "today-trend-refresh-faction", icon: REFRESH_ICON_SVG, label: `\u91CD\u65B0\u751F\u6210${faction.name}`, attrs: `data-faction-id="${escapeAttr(faction.id)}" ${attrs}` }, { action: "today-trend-edit-faction", icon: EDIT_ICON_SVG, label: `\u7F16\u8F91${faction.name}`, attrs: `data-faction-id="${escapeAttr(faction.id)}"` }, { action: "today-trend-delete-faction", icon: TRASH_ICON_SVG, label: `\u5220\u9664${faction.name}`, danger: true, attrs: `data-faction-id="${escapeAttr(faction.id)}" data-label="${escapeAttr(faction.name)}"` }] });
+  var factionMeter = (status) => `<div class="pm-today-trend-faction-meter" role="img" aria-label="\u5173\u7CFB\u72B6\u6001\uFF1A${escapeAttr(todayTrendStatusLabel(status))}">${TODAY_TREND_RELATION_STATUSES.map((level) => `<span data-status="${escapeAttr(level)}"${level === status ? ' class="is-active"' : ""}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${TODAY_TREND_RELATION_ICON_PATHS[level] || TODAY_TREND_RELATION_ICON_PATHS.neutral}</svg><small>${escapeHtml(todayTrendStatusLabel(level))}</small></span>`).join("")}</div>`;
   function relatedTargets(faction, byId) {
     const names2 = (Array.isArray(faction.relatedFactionIds) ? faction.relatedFactionIds : []).map((id2) => byId.get(id2)?.name).filter(Boolean);
     return names2.length ? `<div class="pm-today-trend-faction-detail-row pm-today-trend-faction-links"><dt>\u5916\u90E8\u5173\u8054</dt><dd>${escapeHtml(names2.join("\u3001"))}</dd></div>` : "";
   }
-  function card(faction, children, actionsVisible, depth, byId) {
+  function card(faction, children, actionsVisible, depth, byId, attrs) {
     const relationValue = faction.relation && typeof faction.relation === "object" && !Array.isArray(faction.relation) ? faction.relation : { status: "neutral", evaluation: "" };
     const details = (Array.isArray(faction.details) ? faction.details : []).map((detail) => `<div class="pm-today-trend-faction-detail-row"><dt>${escapeHtml(detail.label)}</dt><dd>${escapeHtml(detail.value)}</dd></div>`).join("");
-    return `<article class="pm-today-trend-faction-card" data-faction-id="${escapeAttr(faction.id)}" data-depth="${depth}"><span class="pm-today-trend-faction-node" aria-hidden="true">${FACTION_ICON}</span><div class="pm-today-trend-faction-body"><header><b>${escapeHtml(faction.name)}</b>${relation(relationValue)}${menu(faction, actionsVisible)}</header><p class="pm-today-trend-faction-summary">${escapeHtml(faction.summary)}</p><dl class="pm-today-trend-faction-detail">${relatedTargets(faction, byId)}${details}<div class="pm-today-trend-faction-detail-row is-evaluation"><dd>${escapeHtml(relationValue.evaluation)}</dd></div></dl></div><div class="pm-today-trend-faction-rating">${factionMeter(relationValue.status)}</div></article>${children}`;
+    return `<article class="pm-today-trend-faction-card" data-faction-id="${escapeAttr(faction.id)}" data-depth="${depth}"><header class="pm-today-trend-faction-entry-head"><span class="pm-today-trend-faction-node" aria-hidden="true">${FACTION_ICON}</span><b>${escapeHtml(faction.name)}</b>${menu(faction, attrs, actionsVisible)}</header><div class="pm-today-trend-faction-entry-body"><p class="pm-today-trend-faction-summary">${escapeHtml(faction.summary)}</p><dl class="pm-today-trend-faction-detail">${relatedTargets(faction, byId)}${details}<div class="pm-today-trend-faction-detail-row is-evaluation"><dt>\u5173\u7CFB\u8BC4\u4EF7</dt><dd>${escapeHtml(relationValue.evaluation)}</dd></div></dl><div class="pm-today-trend-faction-rating">${factionMeter(relationValue.status)}</div></div></article>${children}`;
   }
-  function tree(factions, parentId, actionsVisible, byId, depth = 0) {
+  function tree(factions, parentId, actionsVisible, byId, depth = 0, attrs = "") {
     const children = factions.filter((faction) => faction.parentId === parentId);
-    return children.length ? `<div class="pm-today-trend-faction-tree" data-depth="${depth}">${children.map((faction) => card(faction, tree(factions, faction.id, actionsVisible, byId, depth + 1), actionsVisible, depth, byId)).join("")}</div>` : "";
+    return children.length ? `<div class="pm-today-trend-faction-tree" data-depth="${depth}">${children.map((faction) => card(faction, tree(factions, faction.id, actionsVisible, byId, depth + 1, attrs), actionsVisible, depth, byId, attrs)).join("")}</div>` : "";
   }
   function editor(faction = {}, factions = []) {
     const parents = factions.filter((item) => item.id !== faction.id), related = new Set(Array.isArray(faction.relatedFactionIds) ? faction.relatedFactionIds : []), details = Array.isArray(faction.details) ? faction.details : [];
     return `<form class="pm-today-trend-editor" data-today-trend-form="faction"><input type="hidden" name="id" value="${escapeAttr(faction.id || "")}"><label class="pm-today-trend-field">\u540D\u79F0<input class="pm-today-trend-input" name="name" maxlength="120" required value="${escapeAttr(faction.name || "")}"></label><label class="pm-today-trend-field">\u4E00\u53E5\u8BDD\u4ECB\u7ECD<textarea class="pm-today-trend-input" name="summary" maxlength="600" required>${escapeHtml(faction.summary || "")}</textarea></label><label class="pm-today-trend-field">\u7236\u52BF\u529B<select class="pm-today-trend-input" name="parentId"><option value="">\u65E0</option>${parents.map((item) => `<option value="${escapeAttr(item.id)}" ${item.id === faction.parentId ? "selected" : ""}>${escapeHtml(item.name)}</option>`).join("")}</select></label><fieldset><legend>\u5916\u90E8\u5173\u8054</legend>${parents.filter((item) => item.id !== faction.parentId && item.parentId !== faction.id).map((item) => `<label><input type="checkbox" name="relatedFactionIds" value="${escapeAttr(item.id)}" ${related.has(item.id) ? "checked" : ""}>${escapeHtml(item.name)}</label>`).join("") || "<p>\u6CA1\u6709\u53EF\u4F5C\u4E3A\u5916\u90E8\u5173\u8054\u7684\u52BF\u529B\u3002</p>"}</fieldset><fieldset><legend>\u5173\u952E\u8D44\u6599</legend><div data-today-trend-details>${details.map((detail) => `<div><input name="detailLabel" maxlength="120" required value="${escapeAttr(detail.label)}"><input name="detailValue" maxlength="600" required value="${escapeAttr(detail.value)}"><button type="button" data-action="today-trend-remove-detail">\u5220\u9664</button></div>`).join("")}</div><button type="button" data-action="today-trend-add-detail" ${details.length >= TODAY_TREND_LIMITS.factionDetails ? "disabled" : ""}>\u6DFB\u52A0\u8D44\u6599</button></fieldset><label class="pm-today-trend-field">\u5BF9\u5F53\u524D\u89D2\u8272\u72B6\u6001<select class="pm-today-trend-input" name="status">${options(faction.relation?.status || "neutral")}</select></label><label class="pm-today-trend-field">\u4E00\u53E5\u8BDD\u8BC4\u4EF7<textarea class="pm-today-trend-input" name="evaluation" maxlength="600" required>${escapeHtml(faction.relation?.evaluation || "")}</textarea></label><div class="pm-today-trend-form-actions"><button type="submit">\u4FDD\u5B58</button><button type="button" data-action="today-trend-cancel-editor">\u53D6\u6D88</button></div></form>`;
   }
-  function renderTodayTrendFactionView({ scope, preset = null, mode = "content", editingFactionId = null, editingRule = null, ruleDraft = null, menuOpenId = null, generationAvailable = false, generationBusy = false } = {}) {
+  function renderTodayTrendFactionView({ scope, preset = null, mode = "content", editingFactionId = null, editingRule = null, ruleDraft = null, menuOpenId = null, generationAvailable = false, generationBusy = false, floorStatus = "" } = {}) {
     const factions = Array.isArray(scope?.factions) ? scope.factions : [], attrs = `${generationAvailable && !generationBusy ? "" : "disabled"} aria-busy="${generationBusy}"`;
     if (mode === "editor") return `<section class="pm-today-trend-view">${trendModuleHead({ title: "\u7F16\u8F91\u52BF\u529B", menuId: "faction-editor", menuOpenId, actions: [{ action: "today-trend-open-factions", icon: BACK_ICON_SVG, label: "\u8FD4\u56DE\u52BF\u529B\u56FE\u8C31" }] })}${editor(factions.find((item) => item.id === editingFactionId), factions)}</section>`;
     if (mode === "settings") return `<section class="pm-today-trend-view">${trendModuleHead({ title: "\u52BF\u529B\u56FE\u8C31\u8BBE\u7F6E", menuId: "faction-settings", menuOpenId, actions: [{ action: "today-trend-open-factions", icon: BACK_ICON_SVG, label: "\u8FD4\u56DE\u52BF\u529B\u56FE\u8C31" }] })}</section>`;
@@ -22942,26 +23462,17 @@ ${targetInstruction}`
     const rootCount = factions.filter((faction) => faction.parentId === null).length;
     const mapMeta = factions.length ? trendMeter([{ label: "GROUPS", value: factions.length }, { label: "CORE", value: rootCount }, { label: "LINKS", value: external.length }]) : "\u7B49\u5F85\u5EFA\u7ACB\u52BF\u529B\u56FE\u8C31";
     const actionsVisible = menuOpenId === "faction-module";
-    return `<section class="pm-today-trend-view pm-today-trend-factions">${trendModuleHead({ title: "\u52BF\u529B\u56FE\u8C31", eyebrow: "POWER MAP", metaHtml: mapMeta, menuId: "faction-module", menuOpenId, actions: [{ action: "today-trend-generate-factions", icon: REFRESH_ICON_SVG, label: "\u91CD\u65B0\u751F\u6210\u52BF\u529B\u56FE\u8C31", attrs }, { action: "today-trend-edit-faction-rule", icon: BOOK_ICON_SVG, label: "\u7F16\u8F91\u52BF\u529B\u56FE\u8C31\u63D0\u793A\u8BCD" }] })}<section class="pm-today-trend-faction-section" aria-label="\u52BF\u529B\u56FE\u8C31">${tree(factions, null, actionsVisible, byId) || '<p class="pm-today-trend-empty">\u5C1A\u672A\u8BB0\u5F55\u52BF\u529B\u56FE\u8C31\u3002</p>'}</section>${generationBusy ? '<span class="pm-today-trend-progress">\u6B63\u5728\u751F\u6210\u2026</span>' : ""}</section>`;
+    return `<section class="pm-today-trend-view pm-today-trend-factions">${trendModuleHead({ title: "\u52BF\u529B\u56FE\u8C31", eyebrow: "POWER MAP", metaHtml: mapMeta, asideHtml: floorStatus, menuId: "faction-module", menuOpenId, actions: [{ action: "today-trend-generate-factions", icon: REFRESH_ICON_SVG, label: "\u91CD\u65B0\u751F\u6210\u52BF\u529B\u56FE\u8C31", attrs }, { action: "today-trend-edit-faction-rule", icon: BOOK_ICON_SVG, label: "\u7F16\u8F91\u52BF\u529B\u56FE\u8C31\u63D0\u793A\u8BCD" }] })}<section class="pm-today-trend-faction-section" aria-label="\u52BF\u529B\u56FE\u8C31">${tree(factions, null, actionsVisible, byId, 0, attrs) || '<p class="pm-today-trend-empty">\u5C1A\u672A\u8BB0\u5F55\u52BF\u529B\u56FE\u8C31\u3002</p>'}</section></section>`;
   }
 
   // src/today-trend-reputation-view.js
-  var REPUTATION_LEVELS = Object.freeze(["trust", "like", "neutral", "dislike", "hostile"]);
   var reputationStatusLabel = (status) => status === "like" ? "\u559C\u7231" : todayTrendStatusLabel(status);
   var GOOD_STATUSES = /* @__PURE__ */ new Set(["like", "trust"]);
   var BAD_STATUSES = /* @__PURE__ */ new Set(["hostile", "dislike"]);
-  var REPUTATION_ICONS = Object.freeze({
-    hostile: '<path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><path d="m5 5 14 14"/>',
-    dislike: '<path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="2.6"/>',
-    neutral: '<circle cx="8" cy="8" r="2.6"/><circle cx="16" cy="8" r="2.6"/><path d="M4 19c0-3 1.8-5 4-5s4 2 4 5M12 19c0-3 1.8-5 4-5s4 2 4 5"/>',
-    like: '<path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="2.6"/>',
-    trust: '<path d="M12 3l7 3v5c0 4.4-3 7.8-7 9-4-1.2-7-4.6-7-9V6z"/><path d="m9 12 2 2 4-4.5"/>'
-  });
-  var statusBadge = (status) => `<span class="pm-today-trend-status" data-status="${escapeAttr(status)}">${escapeHtml(reputationStatusLabel(status))}</span>`;
-  var reputationMark = (status) => `<span class="pm-today-trend-reputation-mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">${REPUTATION_ICONS[status] || REPUTATION_ICONS.neutral}</svg></span>`;
+  var reputationMark = (status) => `<span class="pm-today-trend-reputation-mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">${TODAY_TREND_RELATION_ICON_PATHS[status] || TODAY_TREND_RELATION_ICON_PATHS.neutral}</svg></span>`;
   function reputationMeter(circle, disabled) {
     const label = reputationStatusLabel(circle.status);
-    const levels = REPUTATION_LEVELS.map((level) => `<button type="button" class="${level === circle.status ? "is-active" : ""}" data-action="today-trend-set-circle-status" data-circle-id="${escapeAttr(circle.id)}" data-status="${level}" aria-checked="${level === circle.status}" role="radio" tabindex="${level === circle.status ? "0" : "-1"}" aria-label="${escapeAttr(reputationStatusLabel(level))}"${disabled ? " disabled" : ""}><i aria-hidden="true"></i></button>`).join("");
+    const levels = TODAY_TREND_RELATION_STATUSES.map((level) => `<button type="button" class="${level === circle.status ? "is-active" : ""}" data-action="today-trend-set-circle-status" data-circle-id="${escapeAttr(circle.id)}" data-status="${level}" aria-checked="${level === circle.status}" role="radio" tabindex="${level === circle.status ? "0" : "-1"}" aria-label="${escapeAttr(reputationStatusLabel(level))}"${disabled ? " disabled" : ""}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${TODAY_TREND_RELATION_ICON_PATHS[level] || TODAY_TREND_RELATION_ICON_PATHS.neutral}</svg><span aria-hidden="true">${escapeHtml(reputationStatusLabel(level))}</span></button>`).join("");
     return `<div class="pm-today-trend-reputation-meter" role="radiogroup" aria-label="\u4FEE\u6539${escapeAttr(circle.name)}\u7684\u597D\u611F\u5EA6\uFF0C\u5F53\u524D\uFF1A${escapeAttr(label)}">${levels}</div>`;
   }
   function circleEditor(circle = {}, cancelAction = "today-trend-cancel-editor") {
@@ -22969,12 +23480,12 @@ ${targetInstruction}`
   }
   function circleActions(circle, generateAttrs, visible) {
     return trendInlineActions({ visible, actions: [
-      { action: "today-trend-edit-circle", icon: EDIT_ICON_SVG, label: `\u7F16\u8F91${circle.name}`, attrs: `data-circle-id="${escapeAttr(circle.id)}"` },
       { action: "today-trend-regenerate-circle-schema", icon: REFRESH_ICON_SVG, label: `\u91CD\u65B0\u751F\u6210${circle.name}`, attrs: `data-circle-id="${escapeAttr(circle.id)}" ${generateAttrs}` },
+      { action: "today-trend-edit-circle", icon: EDIT_ICON_SVG, label: `\u7F16\u8F91${circle.name}`, attrs: `data-circle-id="${escapeAttr(circle.id)}"` },
       { action: "today-trend-delete-circle", icon: TRASH_ICON_SVG, label: `\u5220\u9664${circle.name}`, danger: true, attrs: `data-circle-id="${escapeAttr(circle.id)}"` }
     ] });
   }
-  function renderTodayTrendReputationView({ scope, preset = null, mode = "content", editingCircleId = null, editingRule = null, ruleDraft = null, menuOpenId = null, generationAvailable = false, generationBusy = false } = {}) {
+  function renderTodayTrendReputationView({ scope, preset = null, mode = "content", editingCircleId = null, editingRule = null, ruleDraft = null, menuOpenId = null, generationAvailable = false, generationBusy = false, floorStatus = "" } = {}) {
     const circles = Array.isArray(scope?.reputation?.circles) ? scope.reputation.circles : [];
     const generateAttrs = `${generationAvailable && !generationBusy ? "" : "disabled"} aria-busy="${generationBusy}"`;
     if (mode === "settings") {
@@ -22986,8 +23497,8 @@ ${targetInstruction}`
     const badCount = circles.filter((circle) => BAD_STATUSES.has(circle.status)).length;
     const metaHtml = trendMeter([{ label: "PEOPLE", value: circles.length }, { label: "GOOD", value: goodCount }, { label: "BAD", value: badCount }]);
     const actionsVisible = menuOpenId === "reputation-module";
-    const rows = circles.map((circle) => editingCircleId === circle.id ? `<article class="pm-today-trend-reputation-entry is-editing" data-circle-id="${escapeAttr(circle.id)}">${circleEditor(circle, "today-trend-cancel-reputation-editor")}</article>` : `<article class="pm-today-trend-reputation-entry" data-circle-id="${escapeAttr(circle.id)}">${reputationMark(circle.status)}<div class="pm-today-trend-reputation-copy"><header><b>${escapeHtml(circle.name)}</b>${statusBadge(circle.status)}${trendInlineActions({ visible: actionsVisible, actions: [{ action: "today-trend-edit-circle", icon: EDIT_ICON_SVG, label: `\u7F16\u8F91${circle.name}`, attrs: `data-circle-id="${escapeAttr(circle.id)}"` }] })}</header><p>${escapeHtml(circle.evaluation)}</p></div><div class="pm-today-trend-reputation-rating">${reputationMeter(circle, generationBusy)}</div></article>`).join("");
-    return `<section class="pm-today-trend-view pm-today-trend-reputation">${trendModuleHead({ title: "\u4E2A\u4EBA\u98CE\u8BC4", eyebrow: "PUBLIC OPINION", metaHtml, menuId: "reputation-module", menuOpenId, actions: [{ action: "today-trend-generate-reputation", icon: REFRESH_ICON_SVG, label: "\u91CD\u65B0\u751F\u6210\u4E2A\u4EBA\u98CE\u8BC4", attrs: generateAttrs }, { action: "today-trend-edit-reputation-rule", icon: BOOK_ICON_SVG, label: "\u7F16\u8F91\u4E2A\u4EBA\u98CE\u8BC4\u63D0\u793A\u8BCD" }] })}<div class="pm-today-trend-reputation-list">${rows || '<p class="pm-today-trend-empty">\u5C1A\u672A\u751F\u6210\u4E2A\u4EBA\u98CE\u8BC4\u3002</p>'}</div>${generationBusy ? '<span class="pm-today-trend-progress">\u6B63\u5728\u751F\u6210\u2026</span>' : ""}</section>`;
+    const rows = circles.map((circle) => editingCircleId === circle.id ? `<article class="pm-today-trend-reputation-entry is-editing" data-circle-id="${escapeAttr(circle.id)}">${circleEditor(circle, "today-trend-cancel-reputation-editor")}</article>` : `<article class="pm-today-trend-reputation-entry" data-circle-id="${escapeAttr(circle.id)}"><header class="pm-today-trend-reputation-entry-head">${reputationMark(circle.status)}<b>${escapeHtml(circle.name)}</b>${circleActions(circle, generateAttrs, actionsVisible)}</header><div class="pm-today-trend-reputation-entry-body"><p>${escapeHtml(circle.evaluation)}</p><div class="pm-today-trend-reputation-rating">${reputationMeter(circle, generationBusy)}</div></div></article>`).join("");
+    return `<section class="pm-today-trend-view pm-today-trend-reputation">${trendModuleHead({ title: "\u4E2A\u4EBA\u98CE\u8BC4", eyebrow: "PUBLIC OPINION", metaHtml, asideHtml: floorStatus, menuId: "reputation-module", menuOpenId, actions: [{ action: "today-trend-generate-reputation", icon: REFRESH_ICON_SVG, label: "\u91CD\u65B0\u751F\u6210\u4E2A\u4EBA\u98CE\u8BC4", attrs: generateAttrs }, { action: "today-trend-edit-reputation-rule", icon: BOOK_ICON_SVG, label: "\u7F16\u8F91\u4E2A\u4EBA\u98CE\u8BC4\u63D0\u793A\u8BCD" }] })}<div class="pm-today-trend-reputation-list">${rows || '<p class="pm-today-trend-empty">\u5C1A\u672A\u751F\u6210\u4E2A\u4EBA\u98CE\u8BC4\u3002</p>'}</div></section>`;
   }
 
   // src/today-trend-settings-view.js
@@ -23016,7 +23527,7 @@ ${targetInstruction}`
       { action: "today-trend-delete-world-item", icon: TRASH_ICON_SVG, label: `\u5220\u9664${item.name}`, danger: true, attrs: `data-world-item-id="${escapeAttr(item.id)}"` }
     ] });
   }
-  function renderTodayTrendWorldView({ scope, preset = null, mode = "content", editingWorldItemId = null, editingRule = null, ruleDraft = null, menuOpenId = null, generationAvailable = false, generationBusy = false } = {}) {
+  function renderTodayTrendWorldView({ scope, preset = null, mode = "content", editingWorldItemId = null, editingRule = null, ruleDraft = null, menuOpenId = null, generationAvailable = false, generationBusy = false, floorStatus = "" } = {}) {
     const items = Array.isArray(scope?.world?.items) ? scope.world.items : [];
     const generateAttrs = `${generationAvailable && !generationBusy ? "" : "disabled"} aria-busy="${generationBusy}"`;
     if (mode === "settings") {
@@ -23028,11 +23539,11 @@ ${targetInstruction}`
     const heroBody = hero ? editingWorldItemId === hero.id ? itemEditor(hero) : `<p>${escapeHtml(hero.summary)}</p>` : "";
     const signals = items.slice(1).map((item, index) => {
       const body = editingWorldItemId === item.id ? itemEditor(item) : `<p>${escapeHtml(item.summary)}</p>`;
-      return `<article class="pm-today-trend-world-brief" data-world-item-id="${escapeAttr(item.id)}">${signalMarker}<div><header class="pm-today-trend-world-item-head"><b>${escapeHtml(item.name)}</b>${itemInlineActions(item, generateAttrs, menuOpenId === "world-module")}</header>${body}</div></article>`;
+      return `<article class="pm-today-trend-world-brief" data-world-item-id="${escapeAttr(item.id)}"><header class="pm-today-trend-world-item-head">${signalMarker}<b>${escapeHtml(item.name)}</b>${itemInlineActions(item, generateAttrs, menuOpenId === "world-module")}</header>${body}</article>`;
     }).join("");
     const worldMeta = trendMeter([{ label: "SIGNALS", value: items.length }, { label: "BRIEFS", value: Math.max(items.length - 1, 0) }]);
-    const content = hero ? `<article class="pm-today-trend-world-hero" data-world-item-id="${escapeAttr(hero.id)}">${signalMarker}<div><header class="pm-today-trend-world-item-head"><b>${escapeHtml(hero.name)}</b>${itemInlineActions(hero, generateAttrs, menuOpenId === "world-module")}</header>${heroBody}</div></article>${signals ? `<div class="pm-today-trend-world-signals">${signals}</div>` : ""}` : '<p class="pm-today-trend-empty">\u5C1A\u672A\u751F\u6210\u4E16\u754C\u6001\u52BF\u3002</p>';
-    return `<section class="pm-today-trend-view pm-today-trend-world">${trendModuleHead({ title: "\u4E16\u754C\u6001\u52BF", eyebrow: "TODAY\u2019S SIGNAL", metaHtml: worldMeta, menuId: "world-module", menuOpenId, actions: [{ action: "today-trend-generate-world", icon: REFRESH_ICON_SVG, label: "\u91CD\u65B0\u751F\u6210\u4E16\u754C\u6001\u52BF", attrs: generateAttrs }, { action: "today-trend-edit-world-rule", icon: BOOK_ICON_SVG, label: "\u7F16\u8F91\u4E16\u754C\u6001\u52BF\u63D0\u793A\u8BCD" }] })}${content}${generationBusy ? '<span class="pm-today-trend-progress">\u6B63\u5728\u751F\u6210\u2026</span>' : ""}</section>`;
+    const content = hero ? `<article class="pm-today-trend-world-hero" data-world-item-id="${escapeAttr(hero.id)}"><header class="pm-today-trend-world-item-head">${signalMarker}<b>${escapeHtml(hero.name)}</b>${itemInlineActions(hero, generateAttrs, menuOpenId === "world-module")}</header>${heroBody}</article>${signals ? `<div class="pm-today-trend-world-signals">${signals}</div>` : ""}` : '<p class="pm-today-trend-empty">\u5C1A\u672A\u751F\u6210\u4E16\u754C\u6001\u52BF\u3002</p>';
+    return `<section class="pm-today-trend-view pm-today-trend-world">${trendModuleHead({ title: "\u4E16\u754C\u6001\u52BF", eyebrow: "TODAY\u2019S SIGNAL", metaHtml: worldMeta, asideHtml: floorStatus, menuId: "world-module", menuOpenId, actions: [{ action: "today-trend-generate-world", icon: REFRESH_ICON_SVG, label: "\u91CD\u65B0\u751F\u6210\u4E16\u754C\u6001\u52BF", attrs: generateAttrs }, { action: "today-trend-edit-world-rule", icon: BOOK_ICON_SVG, label: "\u7F16\u8F91\u4E16\u754C\u6001\u52BF\u63D0\u793A\u8BCD" }] })}${content}${generationBusy ? '<span class="pm-today-trend-progress">\u6B63\u5728\u751F\u6210\u2026</span>' : ""}</section>`;
   }
 
   // src/today-trend-view.js
@@ -23070,10 +23581,22 @@ ${targetInstruction}`
     const value = draft ?? rules?.[field] ?? "";
     return `<main class="pm-today-trend-content pm-today-trend-rule-page"><section class="pm-today-trend-view">${trendRuleEditor({ rule, value })}</section></main>`;
   }
-  function renderTodayTrendApp({ scope = null, presets = [], worldBooks = [], view = { name: "world", mode: "content" }, generation = {}, error = null, initializing = false, initializationDraft, initializationOpen = false, reinitializing = false, initializationMode = "reuse" } = {}) {
+  function renderTodayTrendApp({ scope = null, presets = [], worldBooks = [], view = { name: "world", mode: "content" }, generation = {}, currentFloor, error = null, initializing = false, initializationDraft, initializationOpen = false, reinitializing = false, initializationMode = "reuse" } = {}) {
     const busy = ["queued", "generating", "parsing", "committing"].includes(generation.phase);
+    const syncedFloor = Number.isInteger(scope?.operation?.lastSuccessfulAssistantCount) && scope.operation.lastSuccessfulAssistantCount >= 0 ? scope.operation.lastSuccessfulAssistantCount : 0;
+    const taskIsCurrent = generation.task?.storageId === scope?.storageId;
+    const targeted = taskIsCurrent && Boolean(generation.task?.target);
+    const floorStatus = trendFloorStatus({
+      currentFloor,
+      syncedFloor,
+      phase: taskIsCurrent ? generation.phase : "idle",
+      lastError: taskIsCurrent ? generation.lastError : null,
+      busy: busy && taskIsCurrent,
+      targetFloor: taskIsCurrent && !targeted ? generation.task?.floor : null,
+      targeted
+    });
     const preset = presets.find((item) => item.id === scope?.presetId) || null;
-    const content = !scope || initializationOpen ? renderFirstUse({ presets, worldBooks, error, initializing, draft: initializationDraft, reinitializing, initializationMode }) : view.editingRule ? renderRuleEditorPage(preset, view.editingRule, view.ruleDraft) : view.name === "settings" ? `<main class="pm-today-trend-content">${renderTodayTrendSettingsView({ scope, presets, generationBusy: busy, menuOpenId: view.menuOpenId })}</main>` : `<main class="pm-today-trend-content${view.mode === "content" ? ` is-${view.name}` : ""}">${moduleView(view, { scope, preset, mode: view.mode, dynamicsTab: view.dynamicsTab, editingWorldItemId: view.editingWorldItemId, editingCircleId: view.editingCircleId, editingFactionId: view.editingFactionId, editingEventId: view.editingEventId, editingRule: view.editingRule, ruleDraft: view.ruleDraft, menuOpenId: view.menuOpenId, generationAvailable: !busy, generationBusy: busy })}</main>`;
+    const content = !scope || initializationOpen ? renderFirstUse({ presets, worldBooks, error, initializing, draft: initializationDraft, reinitializing, initializationMode }) : view.editingRule ? renderRuleEditorPage(preset, view.editingRule, view.ruleDraft) : view.name === "settings" ? `<main class="pm-today-trend-content">${renderTodayTrendSettingsView({ scope, presets, generationBusy: busy, menuOpenId: view.menuOpenId })}</main>` : `<main class="pm-today-trend-content${view.mode === "content" ? ` is-${view.name}` : ""}">${moduleView(view, { scope, preset, mode: view.mode, dynamicsTab: view.dynamicsTab, editingWorldItemId: view.editingWorldItemId, editingCircleId: view.editingCircleId, editingFactionId: view.editingFactionId, editingEventId: view.editingEventId, editingRule: view.editingRule, ruleDraft: view.ruleDraft, menuOpenId: view.menuOpenId, generationAvailable: !busy, generationBusy: busy, floorStatus })}</main>`;
     const navigation = scope && !initializationOpen && !view.editingRule ? `<nav class="pm-today-trend-tabs${view.name === "world" ? " is-world" : ""}" aria-label="\u4ECA\u65E5\u98CE\u5411\u6A21\u5757">${[["world", "\u4E16\u754C\u6001\u52BF", TODAY_TREND_WORLD_ICON_SVG], ["reputation", "\u4E2A\u4EBA\u98CE\u8BC4", TODAY_TREND_REPUTATION_ICON_SVG], ["faction", "\u52BF\u529B\u56FE\u8C31", TODAY_TREND_FACTION_ICON_SVG], ["dynamics", "\u4E8B\u4EF6\u8FFD\u8E2A", TODAY_TREND_DYNAMICS_ICON_SVG]].map(([name, label, icon3]) => `<button type="button" data-action="today-trend-open-${name === "faction" ? "factions" : name}" aria-label="${label}" aria-pressed="${view.name === name}">${icon3}</button>`).join("")}<button type="button" data-action="today-trend-open-settings" aria-label="APP \u603B\u8BBE\u7F6E" aria-pressed="${view.name === "settings"}">${MORE_ICON_SVG}</button></nav>` : "";
     return `<section id="pm-today-trend-app" class="pm-today-trend-shell" aria-labelledby="pm-today-trend-title"><header class="pm-today-trend-header"><button type="button" class="pm-today-trend-home" data-today-trend-ui-action="home" aria-label="\u8FD4\u56DE\u684C\u9762" title="\u8FD4\u56DE\u684C\u9762">${HOME_ICON_SVG}</button><h2 id="pm-today-trend-title">\u4ECA\u65E5\u98CE\u5411</h2><span class="pm-today-trend-header-actions"><button type="button" class="pm-today-trend-header-control" data-action="today-trend-generate-all" ${!scope || busy ? "disabled" : ""} aria-busy="${busy}" aria-label="\u624B\u52A8\u66F4\u65B0\u6240\u6709\u4ECA\u65E5\u98CE\u5411" title="\u624B\u52A8\u66F4\u65B0\u6240\u6709\u4ECA\u65E5\u98CE\u5411">${SPARKLES_ICON_SVG}</button><button type="button" class="pm-today-trend-header-control" data-action="today-trend-toggle-operation" ${!scope || busy ? "disabled" : ""} aria-pressed="${scope?.operation?.enabled === true}" aria-label="${scope?.operation?.enabled ? "\u6682\u505C\u8FD0\u4F5C" : "\u5F00\u542F\u81EA\u52A8"}" title="${scope?.operation?.enabled ? "\u6682\u505C\u8FD0\u4F5C" : "\u5F00\u542F\u81EA\u52A8"}">${scope?.operation?.enabled ? PAUSE_ICON_SVG : PLAY_ICON_SVG}</button></span></header>${content}${navigation}</section>`;
   }
@@ -23085,25 +23608,29 @@ ${targetInstruction}`
     if (!container?.addEventListener || typeof deps.getStorageId !== "function") throw new TypeError("\u4ECA\u65E5\u98CE\u5411\u624B\u673A\u63A7\u5236\u5668\u4F9D\u8D56\u65E0\u6548");
     let dispatcher = null, settings = false, initializing = false, initializationOpen = false, reinitializing = false, initializationMode = "reuse", error = "", renderEpoch = 0;
     let initAbort = null, lastScope = null, lastPresets = [], lastView = { name: "world", mode: "content" };
+    let unsubscribeGeneration = null, destroyed = false, lastTerminalPhase = "", completedReloadEpoch = 0;
     let initializationDraft = { includeExistingChat: true };
     const store = () => deps.getTodayTrendStore?.();
     const worldBooks = () => getReadableWorldBookNames(deps.getCtx?.());
     const render = async (view) => {
+      if (destroyed) return false;
       const epoch = ++renderEpoch;
       const current = await store();
-      if (epoch !== renderEpoch || state.phoneWindow?.querySelector(".pm-today-trend-page") !== container) return false;
+      if (destroyed || epoch !== renderEpoch || state.phoneWindow?.querySelector(".pm-today-trend-page") !== container) return false;
       const id2 = deps.getStorageId();
       const scope = current?.scopes?.[id2] || null;
       lastScope = scope;
       lastPresets = Object.values(current?.presets || {});
       const activeView = view || dispatcher?.state() || lastView;
       lastView = settings ? { ...activeView, name: "settings" } : activeView;
+      const currentFloor = deps.getTodayTrendCurrentFloor?.();
       container.innerHTML = renderTodayTrendApp({
         scope,
         presets: Object.values(current?.presets || {}),
         worldBooks: worldBooks(),
         view: lastView,
         generation: deps.getTodayTrendGenerationState?.() || {},
+        currentFloor,
         error,
         initializing,
         initializationDraft,
@@ -23114,12 +23641,14 @@ ${targetInstruction}`
       return true;
     };
     const report = (cause) => {
+      if (destroyed) return;
       error = generationErrorMessage(cause);
       container.innerHTML = renderTodayTrendApp({
         scope: lastScope,
         presets: lastPresets,
         worldBooks: worldBooks(),
         view: lastView,
+        currentFloor: deps.getTodayTrendCurrentFloor?.(),
         error,
         initializing: false,
         initializationDraft,
@@ -23129,6 +23658,37 @@ ${targetInstruction}`
       });
     };
     const rerender = (view) => render(view).catch(report);
+    const generationChanged = (snapshot) => {
+      if (destroyed || !snapshot) return;
+      const currentStorageId = deps.getStorageId();
+      const taskIsCurrent = snapshot.task?.storageId === currentStorageId;
+      const busy = ["queued", "generating", "parsing", "committing"].includes(snapshot.phase);
+      if (busy && taskIsCurrent) {
+        lastTerminalPhase = "";
+        rerender();
+        return;
+      }
+      if (snapshot.phase === "completed" && taskIsCurrent) {
+        const completedStorageId = currentStorageId;
+        const epoch = ++completedReloadEpoch;
+        Promise.resolve(deps.reloadTodayTrendStore?.()).then(() => {
+          if (destroyed || epoch !== completedReloadEpoch || deps.getStorageId() !== completedStorageId) return false;
+          return rerender();
+        }).catch((cause) => {
+          if (destroyed || epoch !== completedReloadEpoch || deps.getStorageId() !== completedStorageId) return;
+          report(cause);
+        });
+        return;
+      }
+      if (["failed", "canceled"].includes(snapshot.phase)) {
+        if (snapshot.task && !taskIsCurrent) return;
+        if (lastTerminalPhase === snapshot.phase) return;
+        lastTerminalPhase = snapshot.phase;
+        rerender();
+        return;
+      }
+      if (snapshot.phase === "idle") lastTerminalPhase = "";
+    };
     const saveRule = async (rule, text8) => {
       const current = await store(), id2 = deps.getStorageId(), scope = current?.scopes?.[id2], preset = current?.presets?.[scope?.presetId];
       const [group, key = ""] = String(rule).split("-");
@@ -23152,6 +23712,10 @@ ${targetInstruction}`
       try {
         await (module ? deps.generateTodayTrendModule?.(module, itemId, options2) : deps.generateTodayTrend?.({}));
       } catch (cause) {
+        if (cause?.name === "AbortError") {
+          await render();
+          return false;
+        }
         report(cause);
         return false;
       }
@@ -23212,6 +23776,10 @@ ${targetInstruction}`
       }
       if (["today-trend-open-world", "today-trend-open-reputation", "today-trend-open-factions", "today-trend-open-dynamics"].includes(button.dataset.action)) settings = false;
       if (button.dataset.action === "today-trend-toggle-operation") saveOperation(!lastScope?.operation?.enabled).then(() => rerender()).catch(report);
+      if (button.dataset.action === "today-trend-cancel-generation") {
+        deps.cancelTodayTrendGeneration?.("today-trend-user-canceled");
+        rerender();
+      }
       if (button.dataset.action === "today-trend-new-preset") openInitialization();
       if (button.dataset.action === "today-trend-reinitialize") openInitialization({ replace: true });
       if (button.dataset.action === "today-trend-rename-preset") {
@@ -23290,13 +23858,22 @@ ${targetInstruction}`
     };
     container.addEventListener("click", click, true);
     container.addEventListener("submit", submit);
-    return { destroy: () => {
+    unsubscribeGeneration = deps.subscribeTodayTrendGeneration?.(generationChanged) || null;
+    const destroy = () => {
+      if (destroyed) return false;
+      destroyed = true;
+      completedReloadEpoch += 1;
+      renderEpoch += 1;
       initAbort?.abort("today-trend-page-destroyed");
       deps.cancelTodayTrendInitialization?.("today-trend-page-destroyed");
+      unsubscribeGeneration?.();
+      unsubscribeGeneration = null;
       dispatcher.destroy();
       container.removeEventListener("click", click, true);
       container.removeEventListener("submit", submit);
-    }, render };
+      return true;
+    };
+    return { destroy, render };
   }
 
   // src/today-trend-phone-ui.js
@@ -23311,16 +23888,20 @@ ${targetInstruction}`
         const storageId = deps.getStorageId();
         const store = await deps.getTodayTrendStore?.();
         if (phoneWindow !== state.phoneWindow || !container.isConnected) return false;
-        container.innerHTML = renderTodayTrendApp({ scope: store?.scopes?.[storageId] || null });
+        container.innerHTML = renderTodayTrendApp({
+          scope: store?.scopes?.[storageId] || null,
+          currentFloor: deps.getTodayTrendCurrentFloor?.()
+        });
         return true;
       }
       controller?.destroy();
-      controller = createTodayTrendPhoneController({ state, deps, container });
+      const nextController = createTodayTrendPhoneController({ state, deps, container });
+      controller = nextController;
       try {
-        return await controller.render();
+        return await nextController.render();
       } catch (error) {
-        controller?.destroy();
-        controller = null;
+        nextController.destroy();
+        if (controller === nextController) controller = null;
         return false;
       }
     };
@@ -23384,13 +23965,14 @@ ${targetInstruction}`
       groupExtras: []
     };
     const getCtx = () => typeof SillyTavern !== "undefined" ? SillyTavern.getContext() : null;
+    const getLastMessageId2 = () => getLastMessageId(getCtx);
     const getStorageId2 = () => getStorageId(getCtx);
     const getUserPersona2 = () => getUserPersona(getCtx);
     const gatherContext2 = (context, options2) => gatherContext(
       context ? () => context : getCtx,
       options2
     );
-    const deps = { runtime, getCtx, getStorageId: getStorageId2, getUserPersona: getUserPersona2, gatherContext: gatherContext2, saveBudgetConfig, reloadCurrentChat: (context) => context?.reloadCurrentChat?.() };
+    const deps = { runtime, getCtx, getLastMessageId: getLastMessageId2, getStorageId: getStorageId2, getUserPersona: getUserPersona2, gatherContext: gatherContext2, saveBudgetConfig, reloadCurrentChat: (context) => context?.reloadCurrentChat?.() };
     deps.callAI = createAiClient({
       getConfig: () => window.__pmConfig,
       getContext: getCtx

@@ -14,11 +14,19 @@ function reportTodayTrendObservationFailure(error) {
     console.warn('[phone-mode] 今日风向自动推演观察失败，本轮不会自动推演。', errorType);
 }
 
-function observeTodayTrendAfterHostEvent(deps, context, storageId, getStorageId) {
-    // 宿主事件可能在 chat 数组写入完成前同步派发；推迟到微任务读取最终快照，避免漏记本轮助手正文。
+function observeTodayTrendAfterHostEvent(deps, runtime, getCtx, getStorageId) {
+    const storageId = getStorageId();
+    if (!storageId) return;
+    runtime.todayTrendObservationStorageId = storageId;
+    if (runtime.todayTrendObservationQueued) return;
+    runtime.todayTrendObservationQueued = true;
+    // 同一同步事件批次只排一个微任务，并在执行时读取最终 chat，避免重复扫描完整长聊天。
     Promise.resolve().then(() => {
-        if (!storageId || getStorageId() !== storageId) return null;
-        return deps.observeTodayTrendTurn?.(context?.chat || []);
+        runtime.todayTrendObservationQueued = false;
+        const queuedStorageId = runtime.todayTrendObservationStorageId;
+        runtime.todayTrendObservationStorageId = null;
+        if (!queuedStorageId || getStorageId() !== queuedStorageId) return null;
+        return deps.observeTodayTrendTurn?.(getCtx()?.chat || []);
     })
         .catch(reportTodayTrendObservationFailure);
 }
@@ -53,10 +61,9 @@ export function createPhoneHostEventController({ state, runtime, deps, getCtx, g
         for (const eventName of resolveCommunityMessageEvents(eventTypes)) {
             results.push(registerOnce(`community:${eventName}`, eventName, () => {
                 const currentContext = getCtx();
-                const storageId = getStorageId();
                 try { deps.observeCommunityTurn?.(currentContext?.chat || []); } catch (error) {}
                 Promise.resolve(deps.observeCalendarTurn?.()).catch(() => {});
-                observeTodayTrendAfterHostEvent(deps, currentContext, storageId, getStorageId);
+                observeTodayTrendAfterHostEvent(deps, runtime, getCtx, getStorageId);
             }));
         }
         const received = resolveHostEvent(eventTypes, 'MESSAGE_RECEIVED');

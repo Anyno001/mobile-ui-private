@@ -10,29 +10,64 @@ export function createTodayTrendPhoneController({ state, deps, container }) {
     if (!container?.addEventListener || typeof deps.getStorageId !== 'function') throw new TypeError('今日风向手机控制器依赖无效');
     let dispatcher = null, settings = false, initializing = false, initializationOpen = false, reinitializing = false, initializationMode = 'reuse', error = '', renderEpoch = 0;
     let initAbort = null, lastScope = null, lastPresets = [], lastView = { name: 'world', mode: 'content' };
+    let unsubscribeGeneration = null, destroyed = false, lastTerminalPhase = '', completedReloadEpoch = 0;
     let initializationDraft = { includeExistingChat: true };
     const store = () => deps.getTodayTrendStore?.();
     const worldBooks = () => getReadableWorldBookNames(deps.getCtx?.());
     const render = async view => {
+        if (destroyed) return false;
         const epoch = ++renderEpoch;
         const current = await store();
-        if (epoch !== renderEpoch || state.phoneWindow?.querySelector('.pm-today-trend-page') !== container) return false;
+        if (destroyed || epoch !== renderEpoch || state.phoneWindow?.querySelector('.pm-today-trend-page') !== container) return false;
         const id = deps.getStorageId();
         const scope = current?.scopes?.[id] || null;
         lastScope = scope; lastPresets = Object.values(current?.presets || {});
         const activeView = view || dispatcher?.state() || lastView;
         lastView = settings ? { ...activeView, name: 'settings' } : activeView;
+        const currentFloor = deps.getTodayTrendCurrentFloor?.();
         container.innerHTML = renderTodayTrendApp({ scope, presets: Object.values(current?.presets || {}), worldBooks: worldBooks(),
             view: lastView,
-            generation: deps.getTodayTrendGenerationState?.() || {}, error, initializing, initializationDraft, initializationOpen, reinitializing, initializationMode });
+            generation: deps.getTodayTrendGenerationState?.() || {}, currentFloor, error, initializing, initializationDraft, initializationOpen, reinitializing, initializationMode });
         return true;
     };
     const report = cause => {
+        if (destroyed) return;
         error = generationErrorMessage(cause);
         container.innerHTML = renderTodayTrendApp({ scope: lastScope, presets: lastPresets, worldBooks: worldBooks(), view: lastView,
-            error, initializing: false, initializationDraft, initializationOpen, reinitializing, initializationMode });
+            currentFloor: deps.getTodayTrendCurrentFloor?.(), error, initializing: false, initializationDraft, initializationOpen, reinitializing, initializationMode });
     };
     const rerender = view => render(view).catch(report);
+    const generationChanged = snapshot => {
+        if (destroyed || !snapshot) return;
+        const currentStorageId = deps.getStorageId();
+        const taskIsCurrent = snapshot.task?.storageId === currentStorageId;
+        const busy = ['queued', 'generating', 'parsing', 'committing'].includes(snapshot.phase);
+        if (busy && taskIsCurrent) {
+            lastTerminalPhase = '';
+            rerender();
+            return;
+        }
+        if (snapshot.phase === 'completed' && taskIsCurrent) {
+            const completedStorageId = currentStorageId;
+            const epoch = ++completedReloadEpoch;
+            Promise.resolve(deps.reloadTodayTrendStore?.()).then(() => {
+                if (destroyed || epoch !== completedReloadEpoch || deps.getStorageId() !== completedStorageId) return false;
+                return rerender();
+            }).catch(cause => {
+                if (destroyed || epoch !== completedReloadEpoch || deps.getStorageId() !== completedStorageId) return;
+                report(cause);
+            });
+            return;
+        }
+        if (['failed', 'canceled'].includes(snapshot.phase)) {
+            if (snapshot.task && !taskIsCurrent) return;
+            if (lastTerminalPhase === snapshot.phase) return;
+            lastTerminalPhase = snapshot.phase;
+            rerender();
+            return;
+        }
+        if (snapshot.phase === 'idle') lastTerminalPhase = '';
+    };
     const saveRule = async (rule, text) => {
         const current = await store(), id = deps.getStorageId(), scope = current?.scopes?.[id], preset = current?.presets?.[scope?.presetId];
         const [group, key = ''] = String(rule).split('-');
@@ -52,8 +87,12 @@ export function createTodayTrendPhoneController({ state, deps, container }) {
     };
     const generate = async (module, itemId, options = {}) => {
         error = ''; await render();
-        try { await (module ? deps.generateTodayTrendModule?.(module, itemId, options) : deps.generateTodayTrend?.({})); }
-        catch (cause) { report(cause); return false; }
+        try {
+            await (module ? deps.generateTodayTrendModule?.(module, itemId, options) : deps.generateTodayTrend?.({}));
+        } catch (cause) {
+            if (cause?.name === 'AbortError') { await render(); return false; }
+            report(cause); return false;
+        }
         await render(); return true;
     };
     const setRuleEditorState = (editing, returnName) => {
@@ -82,6 +121,10 @@ export function createTodayTrendPhoneController({ state, deps, container }) {
         if (button.dataset.action === 'today-trend-create-preset') { initializationMode = 'create'; error = ''; rerender(); }
         if (['today-trend-open-world', 'today-trend-open-reputation', 'today-trend-open-factions', 'today-trend-open-dynamics'].includes(button.dataset.action)) settings = false;
         if (button.dataset.action === 'today-trend-toggle-operation') saveOperation(!lastScope?.operation?.enabled).then(() => rerender()).catch(report);
+        if (button.dataset.action === 'today-trend-cancel-generation') {
+            deps.cancelTodayTrendGeneration?.('today-trend-user-canceled');
+            rerender();
+        }
         if (button.dataset.action === 'today-trend-new-preset') openInitialization();
         if (button.dataset.action === 'today-trend-reinitialize') openInitialization({ replace: true });
         if (button.dataset.action === 'today-trend-rename-preset') {
@@ -136,5 +179,20 @@ export function createTodayTrendPhoneController({ state, deps, container }) {
         }
     };
     container.addEventListener('click', click, true); container.addEventListener('submit', submit);
-    return { destroy: () => { initAbort?.abort('today-trend-page-destroyed'); deps.cancelTodayTrendInitialization?.('today-trend-page-destroyed'); dispatcher.destroy(); container.removeEventListener('click', click, true); container.removeEventListener('submit', submit); }, render };
+    unsubscribeGeneration = deps.subscribeTodayTrendGeneration?.(generationChanged) || null;
+    const destroy = () => {
+        if (destroyed) return false;
+        destroyed = true;
+        completedReloadEpoch += 1;
+        renderEpoch += 1;
+        initAbort?.abort('today-trend-page-destroyed');
+        deps.cancelTodayTrendInitialization?.('today-trend-page-destroyed');
+        unsubscribeGeneration?.();
+        unsubscribeGeneration = null;
+        dispatcher.destroy();
+        container.removeEventListener('click', click, true);
+        container.removeEventListener('submit', submit);
+        return true;
+    };
+    return { destroy, render };
 }

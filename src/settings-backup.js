@@ -15,7 +15,7 @@ import { cloneEmojiLibrary } from './emoji-media.js';
 import { normalizeBudgetConfig } from './budget.js';
 import { normalizeInjectionConfig } from './behavior-config.js';
 import { normalizeAmbientStatus, normalizeInteractiveStore, normalizePhoneUiState } from './interactive-scene-model.js';
-import { saveBgGlobal, saveBgLocal, saveDesktopBg } from './storage-background.js';
+import { materializeLocalBackgrounds, saveBgGlobal, saveBgLocal, saveDesktopBg } from './storage-background.js';
 import { normalizeTodayTrendStore } from './today-trend-model.js';
 import { loadTodayTrendStore, saveTodayTrendStore } from './today-trend-storage.js';
 import { normalizeWorldBookConfig } from './worldbook-config.js';
@@ -144,7 +144,7 @@ export function createBackupStateHandlers(deps = {}) {
             characterBehavior: clone(window.__pmCharacterBehavior || {}), wordyLimit: !!window.__pmWordyLimit,
             galBubbleEnabled: window.__pmGalBubbleEnabled === true,
             worldBookConfig: normalizeWorldBookConfig(window.__pmWorldBookConfig),
-            desktopBg: window.__pmDesktopBg || '', bgGlobal: window.__pmBgGlobal || '', bgLocal: clone(window.__pmBgLocal || {}),
+            desktopBg: window.__pmDesktopBg || '', bgGlobal: window.__pmBgGlobal || '', bgLocal: await materializeLocalBackgrounds(),
             interactiveScenes, phoneUiState: loadPhoneUiState(interactiveScenes),
             ambientStatus: normalizeAmbientStatus({ enabled: window.__pmTheme?.ambientStatusEnabled }),
             calendarStore: loadCalendar(), calendarOccasions: loadCalendarOccasions(),
@@ -197,7 +197,9 @@ export function createBackupStateHandlers(deps = {}) {
         if (!saveCharacterBehavior() || !savePokeConfig() || !saveBidirectional() || !saveInjectionConfig() || !saveBudgetConfig(state.budgetConfig) || !saveWordyLimit() || !saveGalBubbleEnabled() || !saveWorldBookConfig()) {
             throw new Error('插件配置保存失败：浏览器存储不可用');
         }
-        await saveEmojis(); await saveDesktopBg(); await saveBgGlobal(); await saveBgLocal(); await saveInteractiveScenes(interactiveScenes);
+        await saveEmojis(); await saveDesktopBg(); await saveBgGlobal();
+        window.__pmBgLocal = await saveBgLocal();
+        await saveInteractiveScenes(interactiveScenes);
         if (!savePhoneUiState(phoneUiState, interactiveScenes)) throw new Error('手机界面状态保存失败：浏览器存储不可用');
         if (!saveCalendar(state.calendarStore) || !saveCalendarOccasions(state.calendarOccasions)
             || !saveCalendarHolidays(state.calendarHolidays) || !saveCalendarWeather(state.calendarWeather)
