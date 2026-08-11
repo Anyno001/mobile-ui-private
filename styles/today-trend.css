@@ -46,7 +46,7 @@
 .pm-today-trend-inline-action{width:var(--pm-size-control-compact);min-height:var(--pm-size-control-compact);}
 .pm-today-trend-icon-button[data-action^="today-trend-refresh"],.pm-today-trend-icon-button[data-action^="today-trend-generate"],.pm-today-trend-icon-button[data-action="today-trend-advance-all-events"]{width:var(--pm-size-control-compact);min-height:var(--pm-size-control-compact);padding:var(--pm-space-1-5);}
 .pm-today-trend-icon-button[data-action^="today-trend-refresh"] svg,.pm-today-trend-icon-button[data-action^="today-trend-generate"] svg,.pm-today-trend-icon-button[data-action="today-trend-advance-all-events"] svg{width:var(--pm-size-icon-sm);height:var(--pm-size-icon-sm);}
-.pm-today-trend-world-item-head{display:flex;align-items:center;gap:var(--pm-space-1-5);}
+.pm-today-trend-world-item-head{display:flex;align-items:center;gap:var(--pm-space-2);}
 .pm-today-trend-world-item-head>b{min-width:0;flex:1;}
 .pm-today-trend-icon-button:not(.is-danger) svg{color:var(--pm-color-auxiliary);}
 .pm-today-trend-icon-button:not(.is-danger):hover svg{color:var(--pm-color-auxiliary);}
@@ -146,10 +146,8 @@
 .pm-today-trend-world .pm-today-trend-meter{margin-top:var(--pm-today-trend-world-meta-offset);}
 .pm-today-trend-world-hero,.pm-today-trend-world-brief{box-sizing:border-box;display:block;width:100%;min-width:0;margin:var(--pm-space-0);padding:var(--pm-space-3);border:0;border-radius:var(--pm-radius-card);background:transparent;box-shadow:none;}
 .pm-today-trend-world-hero b,.pm-today-trend-world-brief b{display:block;color:var(--pm-color-text-primary);font-weight:var(--pm-font-weight-semibold);}
-.pm-today-trend-world-hero b{font-size:var(--pm-today-trend-world-hero-title-size);line-height:var(--pm-line-height-display);}
 .pm-today-trend-world-hero p{max-width:var(--pm-today-trend-copy-width);margin-top:var(--pm-space-3);}
 .pm-today-trend-world-signals{display:flex;flex-direction:column;gap:var(--pm-space-3);}
-.pm-today-trend-world-brief b{font-size:var(--pm-font-size-body);line-height:var(--pm-line-height-control);}
 .pm-today-trend-world-brief p{max-width:var(--pm-today-trend-copy-width);margin-top:var(--pm-space-2);}
 .pm-today-trend-world .pm-today-trend-progress{display:block;margin:var(--pm-space-0) var(--pm-space-4) var(--pm-space-3);}
 .pm-today-trend-content.is-world{gap:0;padding:var(--pm-space-0) var(--pm-space-0) var(--pm-space-px-36);}
@@ -157,7 +155,7 @@
 .pm-today-trend-dynamics>.pm-today-trend-module-head h2{position:relative;}
 .pm-today-trend-content.is-reputation,.pm-today-trend-content.is-faction,.pm-today-trend-content.is-dynamics{gap:0;padding:var(--pm-space-0) var(--pm-space-0) var(--pm-space-px-36);}
 .pm-today-trend-content.is-reputation>.pm-today-trend-reputation,.pm-today-trend-content.is-faction>.pm-today-trend-factions,.pm-today-trend-content.is-dynamics>.pm-today-trend-dynamics{flex:1 0 auto;}
-.pm-today-trend-world-signal-marker{display:grid;width:var(--pm-today-trend-world-node-size);height:var(--pm-today-trend-world-node-size);place-items:center;border:0;border-radius:var(--pm-radius-circle);background:var(--pm-color-accent);color:var(--pm-color-on-accent);box-shadow:none;pointer-events:none;}
+.pm-today-trend-world-signal-marker{display:grid;width:var(--pm-today-trend-world-node-size);height:var(--pm-today-trend-world-node-size);flex:0 0 var(--pm-today-trend-world-node-size);place-items:center;border:0;border-radius:var(--pm-radius-circle);background:var(--pm-color-accent);color:var(--pm-color-on-accent);box-shadow:none;pointer-events:none;}
 .pm-today-trend-world-signal-marker>i{display:block;width:var(--pm-today-trend-world-node-core-size);height:var(--pm-today-trend-world-node-core-size);border-radius:var(--pm-radius-circle);background:var(--pm-color-on-accent);}
 .pm-today-trend-world-signal-marker::after{display:none;}
 .pm-today-trend-menu-wrap{gap:var(--pm-space-1);}
@@ -275,9 +273,9 @@
 .pm-today-trend-meter-k{font-size:var(--pm-font-size-caption);font-weight:var(--pm-font-weight-semibold);letter-spacing:var(--pm-today-trend-meter-label-tracking);opacity:var(--pm-opacity-muted);}
 .pm-today-trend-meter-v{margin-left:var(--pm-today-trend-meter-negative-margin);color:var(--pm-color-text-secondary);font-size:var(--pm-font-size-helper);}
 .pm-today-trend-meter-x{margin:var(--pm-space-0) var(--pm-today-trend-meter-negative-margin);font-size:var(--pm-font-size-caption);opacity:var(--pm-opacity-muted);}
-.pm-today-trend-world{--pm-today-trend-world-title-size:calc(var(--pm-font-size-title) + var(--pm-space-2));--pm-today-trend-world-meta-offset:var(--pm-space-1-5);--pm-today-trend-world-node-size:calc(var(--pm-space-5) + var(--pm-space-1-5));--pm-today-trend-world-node-core-size:var(--pm-space-px-5);--pm-today-trend-world-card-rail:calc(var(--pm-today-trend-world-node-size) + var(--pm-space-3));--pm-today-trend-world-hero-title-size:calc(var(--pm-font-size-title) + var(--pm-space-1));--pm-today-trend-world-hero-copy-size:var(--pm-font-size-compact);--pm-today-trend-world-brief-title-size:var(--pm-font-size-subtitle);--pm-today-trend-world-brief-copy-size:var(--pm-font-size-label);}
+.pm-today-trend-world{--pm-today-trend-world-title-size:calc(var(--pm-font-size-title) + var(--pm-space-2));--pm-today-trend-world-meta-offset:var(--pm-space-1-5);--pm-today-trend-world-node-size:var(--pm-space-5);--pm-today-trend-world-node-core-size:var(--pm-space-px-5);--pm-today-trend-world-card-rail:calc(var(--pm-today-trend-world-node-size) + var(--pm-space-3));--pm-today-trend-world-hero-title-size:var(--pm-font-size-subtitle);--pm-today-trend-world-hero-copy-size:var(--pm-font-size-compact);--pm-today-trend-world-brief-title-size:var(--pm-font-size-subtitle);--pm-today-trend-world-brief-copy-size:var(--pm-font-size-label);}
 .pm-today-trend-world>.pm-today-trend-module-head{align-items:flex-start;min-height:calc(var(--pm-size-control-default) + var(--pm-space-2));margin:var(--pm-space-0);padding-bottom:var(--pm-space-3);}
-.pm-today-trend-world-hero b{font-size:var(--pm-today-trend-world-hero-title-size);font-weight:var(--pm-font-weight-semibold);line-height:var(--pm-line-height-display);}
+.pm-today-trend-world-hero b{font-size:var(--pm-today-trend-world-hero-title-size);font-weight:var(--pm-font-weight-semibold);line-height:var(--pm-line-height-control);}
 .pm-today-trend-world-hero p{margin-top:var(--pm-space-3);font-size:var(--pm-today-trend-world-hero-copy-size);line-height:var(--pm-line-height-loose);}
 .pm-today-trend-world-brief b{font-size:var(--pm-today-trend-world-brief-title-size);line-height:var(--pm-line-height-control);}
 .pm-today-trend-world-brief p{margin-top:var(--pm-space-1-5);font-size:var(--pm-today-trend-world-brief-copy-size);line-height:var(--pm-line-height-loose);}
