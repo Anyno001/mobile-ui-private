@@ -43,10 +43,11 @@ export function trendFloorStatus({ currentFloor, syncedFloor = 0, phase = 'idle'
         : floor === null ? '楼层不可用' : floor > 0 && synced === floor ? '已同步' : floor > 0 ? '待同步' : '尚未同步';
     const reading = floor === null ? '#--' : `#${floor}`;
     const statusTitle = terminalState === 'failed' && lastError ? ` title="${escapeAttr(lastError)}"` : '';
+    const readingHtml = `<span class="pm-today-trend-floor-reading"><strong class="pm-today-trend-floor-value">${reading}</strong></span>`;
     const statusHtml = busy
-        ? `<button type="button" class="pm-today-trend-floor-status pm-today-trend-floor-cancel" data-action="today-trend-cancel-generation" aria-label="终止当前更新" title="终止当前更新"><i aria-hidden="true"></i>${escapeHtml(status)}</button>`
-        : `<span class="pm-today-trend-floor-status"${statusTitle}>${escapeHtml(status)}</span>`;
-    return `<span class="pm-today-trend-floor" data-today-trend-floor="${floor ?? ''}" data-state="${state}" role="status" aria-live="polite" aria-label="楼层 ${reading}，${escapeAttr(status)}"><span class="pm-today-trend-floor-reading"><strong class="pm-today-trend-floor-value">${reading}</strong></span>${statusHtml}</span>`;
+        ? `<button type="button" class="pm-today-trend-floor-cancel" data-action="today-trend-cancel-generation" aria-label="终止当前更新" title="终止当前更新">${readingHtml}<span class="pm-today-trend-floor-status"><i aria-hidden="true"></i>${escapeHtml(status)}</span></button>`
+        : `${readingHtml}<span class="pm-today-trend-floor-status"${statusTitle}>${escapeHtml(status)}</span>`;
+    return `<span class="pm-today-trend-floor" data-today-trend-floor="${floor ?? ''}" data-state="${state}" role="status" aria-live="polite" aria-label="楼层 ${reading}，${escapeAttr(status)}">${statusHtml}</span>`;
 }
 
 export function trendModuleHead({ title, menuId, menuOpenId, actions = [], meta = '', metaHtml = '', eyebrow = '', adornment = '', asideHtml = '' }) {

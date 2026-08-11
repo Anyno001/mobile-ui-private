@@ -153,6 +153,8 @@ assert.match(todayTrendStyle, /\.pm-today-trend-head-tools\{[^}]*min-width:max-c
 assert.match(todayTrendStyle, /\.pm-today-trend-floor\{[^}]*min-width:max-content[^}]*flex:0 0 auto/, '#楼层仪表必须按完整内容保留宽度，不能截断多位楼层');
 assert.match(todayTrendStyle, /\.pm-today-trend-floor-value\{[^}]*color:var\(--pm-color-text-secondary\)/, '楼层数值必须使用界面稍深的次级灰色而非纯黑');
 assert.match(todayTrendStyle, /\.pm-today-trend-floor-cancel\{[^}]*cursor:pointer/, '同步状态必须提供明确可点击的终止控件');
+assert.match(todayTrendStyle, /\.pm-today-trend-floor-status\{[^}]*font-size:var\(--pm-font-size-micro\)/, '同步状态文字必须与待同步和已同步使用相同的超小字号');
+assert.doesNotMatch(todayTrendStyle, /\.pm-today-trend-floor-cancel\{[^}]*font:inherit/, '同步终止按钮不得用 font shorthand 覆盖状态文字字号');
 assert.match(todayTrendStyle, /\.pm-today-trend-floor\[data-state="failed"\] \.pm-today-trend-floor-status\{[^}]*color:var\(--pm-color-danger\)/, '同步失败状态必须使用失败反馈色');
 assert.match(todayTrendStyle, /\.pm-today-trend-floor-reading\{[^}]*white-space:nowrap/, '#号与楼层数值必须保持单行完整显示');
 assert.match(todayTrendRuntimeText, /pm-today-trend-head-tools">\$\{menu\}\$\{asideHtml\}/, '模块头必须先渲染三点菜单，再在其下方渲染楼层');
@@ -403,7 +405,7 @@ controllerGeneration = { phase: 'generating', task: { kind: 'auto', storageId: '
 generationListener(controllerGeneration);
 await new Promise(resolve => setTimeout(resolve, 0));
 assert.match(controllerContainer.innerHTML, /today-trend-generate-all" disabled aria-busy="true"/, '当前聊天进入 busy 阶段时必须局部重渲染生成状态');
-assert.match(controllerContainer.innerHTML, /data-action="today-trend-cancel-generation"[^>]*>[^<]*<i aria-hidden="true"><\/i>同步任务 #9<\/button>/, '同步中楼层状态必须可点击终止当前更新');
+assert.match(controllerContainer.innerHTML, /data-action="today-trend-cancel-generation"[^>]*><span class="pm-today-trend-floor-reading"><strong class="pm-today-trend-floor-value">#3402<\/strong><\/span><span class="pm-today-trend-floor-status"><i aria-hidden="true"><\/i>同步任务 #9<\/span><\/button>/, '同步中楼层数值与状态文字必须共同位于可点击终止控件内');
 const cancelGenerationButton = { disabled: false, dataset: { action: 'today-trend-cancel-generation' } };
 controllerListeners.find(item => item.type === 'click' && item.capture)?.listener({
     target: { closest: selector => selector === 'button[data-action]' ? cancelGenerationButton : null },

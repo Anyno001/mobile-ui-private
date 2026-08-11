@@ -30,7 +30,7 @@
 .pm-today-trend-floor-reading{display:inline-flex;align-items:baseline;line-height:var(--pm-line-height-tight);white-space:nowrap;}
 .pm-today-trend-floor-value{color:var(--pm-color-text-secondary);font-size:var(--pm-font-size-subtitle);font-weight:var(--pm-font-weight-semibold);letter-spacing:var(--pm-today-trend-copy-tracking);}
 .pm-today-trend-floor-status{display:inline-flex;max-width:100%;align-items:center;gap:var(--pm-space-1);overflow:hidden;font-size:var(--pm-font-size-micro);line-height:var(--pm-line-height-control);text-overflow:ellipsis;white-space:nowrap;}
-.pm-today-trend-floor-cancel{min-height:auto;padding:var(--pm-space-0);border:0;background:transparent;color:inherit;font:inherit;cursor:pointer;}
+.pm-today-trend-floor-cancel{display:flex;min-width:max-content;min-height:auto;flex-direction:column;align-items:flex-end;gap:var(--pm-space-0);padding:var(--pm-space-0);border:0;background:transparent;color:inherit;font-family:inherit;text-align:right;cursor:pointer;}
 .pm-today-trend-floor-cancel:hover{color:var(--pm-color-accent);}
 .pm-today-trend-floor[data-state="failed"] .pm-today-trend-floor-status{color:var(--pm-color-danger);}
 .pm-today-trend-floor[data-state="canceled"] .pm-today-trend-floor-status{color:var(--pm-color-text-secondary);}
