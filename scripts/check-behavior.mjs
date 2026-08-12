@@ -4166,6 +4166,8 @@ function createDirectoryDeleteFixture({
         ...(includeCurrentGroup ? [['__group_current', [{ id: 3, status: 'pending' }]]] : []),
     ]));
     let injectionCalls = 0;
+    let bubbleGestureClearCalls = 0;
+    let quoteHighlightClearCalls = 0;
     const injectionSnapshots = [];
     const applyBidirectionalInjection = async () => {
         injectionSnapshots.push({
@@ -4184,6 +4186,8 @@ function createDirectoryDeleteFixture({
         applyBidirectionalInjection,
         addNote: () => {}, addBubble: () => {}, addDirector: () => {}, fitNameFont: () => {},
         applyBackground: () => {}, resetEmojiRenderBudget: () => {},
+        clearBubbleQuoteGestures: () => { bubbleGestureClearCalls += 1; },
+        clearQuoteHighlight: () => { quoteHighlightClearCalls += 1; },
     };
     if (coordinateInjectionMutations) installPhoneContextInjection(state, deps);
     installConversation(state, deps);
@@ -4233,6 +4237,8 @@ function createDirectoryDeleteFixture({
         phoneElements,
         stores,
         injectionCalls: () => injectionCalls,
+        bubbleGestureClearCalls: () => bubbleGestureClearCalls,
+        quoteHighlightClearCalls: () => quoteHighlightClearCalls,
         injectionSnapshots,
         listRefreshes: () => listRefreshes,
     };
@@ -4391,6 +4397,8 @@ try {
     assert.equal(fixture.phoneElements.name.textContent, '选择联系人');
     assert.equal(fixture.phoneElements.poke.classList.contains('is-hidden'), true, '空态必须隐藏拍一拍按钮');
     assert.match(fixture.phoneElements.list.innerHTML, /暂无会话/);
+    assert.equal(fixture.bubbleGestureClearCalls(), 1, '删除最后一个会话进入空态前必须清理全部气泡手势');
+    assert.equal(fixture.quoteHighlightClearCalls(), 1, '删除最后一个会话进入空态前必须清理引用高亮');
     assert.equal(fixture.injectionCalls(), 1, '删除清理完成后进入空态不得重复刷新注入');
     assert.equal(fixture.listRefreshes(), 0);
 

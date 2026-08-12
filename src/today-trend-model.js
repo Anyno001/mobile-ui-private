@@ -37,7 +37,7 @@ export function createEmptyTodayTrendScope() {
     return {
         storageId: '', characterId: '', characterName: '', presetId: '',
         operation: { enabled: false, mode: 'manual', intervalFloors: 1, lastSuccessfulAssistantCount: 0, lastSuccessfulRunAt: 0 },
-        injection: { enabled: false }, world: { items: [] }, reputation: { circles: [] }, factions: [],
+        injection: { enabled: false, minimalUi: false }, world: { items: [] }, reputation: { circles: [] }, factions: [],
         dynamicsSettings: createDefaultTodayTrendDynamicsSettings(), dynamics: { active: [], archived: [] }, generationSnapshots: [],
     };
 }
@@ -223,7 +223,7 @@ function normalizeTodayTrendScopeInternal(value, presetIds, normalizeSnapshots) 
     if (presetIds && !presetIds.has(scope.presetId)) fail('TT_SCOPE_PRESET', '角色资料引用的世界预设不存在');
     const operation = plainRecord(value.operation) ? value.operation : fail('TT_SCOPE', '运行设置无效');
     scope.operation = { enabled: requiredBoolean(operation.enabled, 'TT_SCOPE', '运行开关'), mode: assertEnum(operation.mode, TODAY_TREND_OPERATION_MODES, 'TT_SCOPE', '运行模式'), intervalFloors: Number.isInteger(operation.intervalFloors) && operation.intervalFloors >= 1 && operation.intervalFloors <= TODAY_TREND_LIMITS.intervalFloors ? operation.intervalFloors : fail('TT_SCOPE', '自动调用楼层无效'), lastSuccessfulAssistantCount: timestamp(operation.lastSuccessfulAssistantCount), lastSuccessfulRunAt: timestamp(operation.lastSuccessfulRunAt) };
-    const injection = plainRecord(value.injection) ? value.injection : fail('TT_SCOPE', '正文注入设置无效'); scope.injection = { enabled: requiredBoolean(injection.enabled, 'TT_SCOPE', '正文注入开关') };
+    const injection = plainRecord(value.injection) ? value.injection : fail('TT_SCOPE', '正文注入设置无效'); scope.injection = { enabled: requiredBoolean(injection.enabled, 'TT_SCOPE', '正文注入开关'), minimalUi: injection.minimalUi === true };
     const world = plainRecord(value.world) ? value.world : fail('TT_SCOPE', '世界态势无效'); if (!Array.isArray(world.items) || world.items.length > TODAY_TREND_LIMITS.worldItems) fail('TT_SCOPE', '世界态势项目无效'); scope.world.items = world.items.map(normalizeWorldItem); assertUnique(scope.world.items, '世界态势项目');
     const reputation = plainRecord(value.reputation) ? value.reputation : fail('TT_SCOPE', '个人风评无效'); if (!Array.isArray(reputation.circles) || reputation.circles.length > TODAY_TREND_LIMITS.circles) fail('TT_SCOPE', '个人风评圈层无效'); scope.reputation.circles = reputation.circles.map(normalizeCircle); assertUnique(scope.reputation.circles, '个人风评圈层');
     if (!Array.isArray(value.factions) || value.factions.length > TODAY_TREND_LIMITS.factions) fail('TT_SCOPE', '势力图谱无效'); scope.factions = value.factions.map(normalizeFaction); assertUnique(scope.factions, '势力图谱'); validateFactions(scope.factions);

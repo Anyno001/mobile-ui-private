@@ -1,10 +1,50 @@
 import { createEmojiRenderBudget } from './emoji-media.js';
 import { createBubbles } from './messaging.js';
+import { bindPressGesture } from './press-gesture.js';
 import { escapeHtml } from './ui.js';
+
+export function bindBubbleQuoteGesture(root, { state, quote, text, senderName, metadata, gestureRuntime = {} }) {
+    if (metadata?.pendingId !== undefined || !metadata?.messageId || !metadata?.bubbleId) return null;
+    const isInteractiveQuoteTarget = target => !!target?.closest?.('.pm-quote-action,.pm-reply-card');
+    const isNativeClickTarget = target => !!target?.closest?.('.pm-voice-card');
+    const canStart = event => !state.isSelectMode && !isInteractiveQuoteTarget(event.target);
+    return bindPressGesture(root, {
+        delay: 550,
+        allowNativeClick: true,
+        clickCapture: true,
+        shouldStart: canStart,
+        shouldCapturePointer: event => !isNativeClickTarget(event.target),
+        setTimer: gestureRuntime.setTimer,
+        clearTimer: gestureRuntime.clearTimer,
+        eventTarget: gestureRuntime.eventTarget,
+        shouldPreventContextMenu: event => ['touch', 'pen'].includes(event.pointerType) && canStart(event),
+        onHold: () => {
+            if (state.isSelectMode) return false;
+            return quote.setActiveQuote({
+                messageId: String(metadata.messageId),
+                bubbleId: String(metadata.bubbleId),
+                sender: String(senderName || metadata.sender || '我'),
+                text: String(text || ''),
+            });
+        },
+    });
+}
 
 export function createPhoneMessageRenderer({ state, quote }) {
     let emojiRenderBudget = createEmojiRenderBudget();
+    const bubbleQuoteGestureUnbinders = new Map();
     const resetEmojiRenderBudget = () => { emojiRenderBudget = createEmojiRenderBudget(); };
+    const clearBubbleQuoteGesture = root => {
+        const unbind = bubbleQuoteGestureUnbinders.get(root);
+        if (!unbind) return false;
+        bubbleQuoteGestureUnbinders.delete(root);
+        unbind();
+        return true;
+    };
+    const clearBubbleQuoteGestures = () => {
+        for (const unbind of bubbleQuoteGestureUnbinders.values()) unbind();
+        bubbleQuoteGestureUnbinders.clear();
+    };
 
     function applyBubbleMetadata(node, metadata) {
         if (!metadata) return;
@@ -62,6 +102,8 @@ export function createPhoneMessageRenderer({ state, quote }) {
                 node.dataset.side = side; node.dataset.text = text;
                 if (historyIndex !== undefined) node.dataset.historyIndex = historyIndex;
                 attachQuoteUi(node, node, text, senderName, metadata);
+                const unbind = bindBubbleQuoteGesture(node, { state, quote, text, senderName, metadata });
+                if (unbind) bubbleQuoteGestureUnbinders.set(node, unbind);
             } else if (node.classList?.contains('pm-group-bubble-wrap')) {
                 node.dataset.side = side; node.dataset.text = text;
                 if (historyIndex !== undefined) node.dataset.historyIndex = historyIndex;
@@ -69,6 +111,8 @@ export function createPhoneMessageRenderer({ state, quote }) {
                     applyBubbleMetadata(bubble, metadata); bubble.dataset.side = side; bubble.dataset.text = text;
                     if (historyIndex !== undefined) bubble.dataset.historyIndex = historyIndex;
                     attachQuoteUi(node, bubble, text, senderName, metadata);
+                    const unbind = bindBubbleQuoteGesture(node, { state, quote, text, senderName, metadata });
+                    if (unbind) bubbleQuoteGestureUnbinders.set(node, unbind);
                 }
             }
             list.appendChild(node);
@@ -84,7 +128,13 @@ export function createPhoneMessageRenderer({ state, quote }) {
             const indexed = child.dataset.historyIndex !== undefined ? child : child.querySelector?.('[data-history-index]');
             if (!indexed) continue;
             const previousIndex = Number(indexed.dataset.historyIndex); if (!Number.isInteger(previousIndex)) continue;
-            if (previousIndex < trimmedCount) { child.remove(); continue; }
+            if (previousIndex < trimmedCount) {
+                const gestureRoot = child.classList?.contains('pm-select-wrap')
+                    ? child.querySelector('.pm-bubble, .pm-group-bubble-wrap') : child;
+                if (gestureRoot) clearBubbleQuoteGesture(gestureRoot);
+                child.remove();
+                continue;
+            }
             const nextIndex = String(previousIndex - trimmedCount);
             if (child.dataset.historyIndex !== undefined) child.dataset.historyIndex = nextIndex;
             child.querySelectorAll?.('[data-history-index]').forEach(node => { node.dataset.historyIndex = nextIndex; });
@@ -110,5 +160,8 @@ export function createPhoneMessageRenderer({ state, quote }) {
         node.innerHTML = '<span></span><span></span><span></span>'; list.appendChild(node); list.scrollTop = list.scrollHeight;
     }
     const hideTyping = () => document.getElementById('pm-typing')?.remove();
-    return { addBubble, addNote, addDirector, rebaseRenderedHistory, resetEmojiRenderBudget, showTyping, hideTyping };
+    return {
+        addBubble, addNote, addDirector, rebaseRenderedHistory, resetEmojiRenderBudget, showTyping, hideTyping,
+        clearBubbleQuoteGesture, clearBubbleQuoteGestures,
+    };
 }

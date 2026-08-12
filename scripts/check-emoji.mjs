@@ -105,6 +105,7 @@ class BubbleElement {
     }
     setAttribute(name, value) { this.attributes[name] = String(value); }
     addEventListener(name, handler) { this.listeners.set(name, handler); }
+    removeEventListener(name, handler) { if (this.listeners.get(name) === handler) this.listeners.delete(name); }
     click() { this.listeners.get('click')?.({ target: this, stopPropagation() {} }); }
     focus() {}
     scrollIntoView(options) { this.scrollCalls.push(options); }
@@ -265,8 +266,13 @@ try {
         querySelector: () => null,
         querySelectorAll: () => [],
     };
+    const windowListeners = new Map();
     globalThis.window = {
-        addEventListener() {},
+        addEventListener(name, handler) {
+            if (!windowListeners.has(name)) windowListeners.set(name, new Set());
+            windowListeners.get(name).add(handler);
+        },
+        removeEventListener(name, handler) { windowListeners.get(name)?.delete(handler); },
         __pmEmojis: [{ id: 'set', name: '测试', images: [{ url: exactLimit, desc: '大图' }] }],
         __pmHistories: {
             story: {
@@ -318,6 +324,19 @@ try {
     };
     installPhoneFoundation(state, deps);
     installConversation(state, deps);
+    const wrapForSelection = (root, checked) => {
+        const wrap = new BubbleElement();
+        wrap.className = 'pm-select-wrap';
+        wrap.dataset.historyIndex = root.dataset.historyIndex;
+        const checkbox = new BubbleElement();
+        checkbox.className = 'pm-message-select-check';
+        checkbox.dataset.checked = checked ? '1' : '0';
+        const index = messageList.children.indexOf(root);
+        messageList.children.splice(index, 1, wrap);
+        wrap.parentElement = messageList;
+        wrap.append(checkbox, root);
+        return wrap;
+    };
     const imageCount = () => messageList.children.reduce((total, node) => {
         const bubbles = node.classList?.contains('pm-group-bubble-wrap') ? node.querySelectorAll('.pm-bubble') : [node];
         return total + bubbles.filter(bubble => bubble.innerHTML?.includes('<img ')).length;
@@ -404,7 +423,11 @@ try {
     deps.clearQuoteHighlight();
     assert.equal(pendingTimers.size, 0, '关闭路径使用的引用高亮清理必须取消定时器');
     assert.equal(targetWithScroll.classList.contains('pm-quote-target'), false, '清理必须移除引用高亮样式');
+    const blurListenersBeforeWrappedRebase = windowListeners.get('blur')?.size || 0;
+    wrapForSelection(targetRoot, false);
     deps.rebaseRenderedHistory(1);
+    assert.equal(windowListeners.get('blur')?.size || 0, blurListenersBeforeWrappedRebase - 1,
+        '多选 wrapper 中被裁剪的气泡必须解绑全局 blur 监听器');
     assert.equal(replyCard.disabled, true, '被引用目标裁剪后，现存引用卡片必须立即禁用定位');
     assert.equal(replyCard.classList.contains('is-missing'), true);
     assert.equal(replyCard.attributes['aria-disabled'], 'true');
@@ -432,30 +455,21 @@ try {
     const retainedRoot = retainedNodes[0];
     const retainedReplyRoot = retainedReplyNodes[0];
     const retainedReplyCard = retainedReplyRoot.querySelector('.pm-reply-card');
-    const wrapForSelection = (root, checked) => {
-        const wrap = new BubbleElement();
-        wrap.className = 'pm-select-wrap';
-        wrap.dataset.historyIndex = root.dataset.historyIndex;
-        const checkbox = new BubbleElement();
-        checkbox.className = 'pm-message-select-check';
-        checkbox.dataset.checked = checked ? '1' : '0';
-        const index = messageList.children.indexOf(root);
-        messageList.children.splice(index, 1, wrap);
-        wrap.parentElement = messageList;
-        wrap.append(checkbox, root);
-        return wrap;
-    };
     wrapForSelection(deletedTargetRoot, true);
     wrapForSelection(retainedRoot, false);
     wrapForSelection(retainedReplyRoot, false);
     let deletePersistCalls = 0;
     let deleteInjectionCalls = 0;
+    const blurListenersBeforeDelete = windowListeners.get('blur')?.size || 0;
     assert.equal(deleteSelectedMessages({
         state,
         refreshReplyCardAvailability: deps.refreshReplyCardAvailability,
         persistCurrentHistory: () => { deletePersistCalls += 1; },
         applyBidirectionalInjection: () => { deleteInjectionCalls += 1; },
+        clearBubbleQuoteGesture: deps.clearBubbleQuoteGesture,
     }), 1, '多选删除必须按稳定 historyIndex 删除一个历史 entry');
+    assert.equal(windowListeners.get('blur')?.size || 0, blurListenersBeforeDelete - 1,
+        '多选删除必须解绑被删除气泡的全局 blur 监听器');
     assert.deepEqual(state.conversationHistory.map(item => item.content), ['保留消息', '引用回复']);
     assert.equal(messageList.children.includes(deletedTargetRoot), false);
     assert.equal(messageList.children.includes(retainedRoot), true, '未选消息必须从选择 wrapper 中还原');

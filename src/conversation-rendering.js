@@ -3,7 +3,7 @@ import { describeMessageEntry } from './chat-message-model.js';
 export function renderConversationHistory({ state, deps, storageId, name }) {
     const {
         addNote, addBubble, addDirector, fitNameFont, applyBackground,
-        resetEmojiRenderBudget,
+        resetEmojiRenderBudget, clearBubbleQuoteGestures,
     } = deps;
     const nameEl = state.phoneWindow.querySelector('.pm-name');
     const editBtn = state.phoneWindow.querySelector('.pm-name-edit');
@@ -11,6 +11,7 @@ export function renderConversationHistory({ state, deps, storageId, name }) {
     if (editBtn) editBtn.classList.remove('is-hidden');
     fitNameFont();
     const list = state.phoneWindow.querySelector('.pm-msg-list');
+    clearBubbleQuoteGestures?.();
     list.innerHTML = '';
     resetEmojiRenderBudget();
     if (state.conversationHistory.length > 0) {
