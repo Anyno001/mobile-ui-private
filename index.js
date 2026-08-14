@@ -1,9 +1,8 @@
-"use strict";
 (() => {
   // src/config.js
   var THEME_PRESETS = {
-    default: { right: "#1677d2", left: "#e9e9eb", rightText: "#fff", leftText: "#000", label: "\u9ED8\u8BA4\u84DD", accent: "#1677d2", auxiliary: "#B85C19" },
-    dark: { right: "#5856d6", left: "#E6EDF3", leftDark: "#2c2c2e", rightText: "#fff", leftText: "#33404C", leftTextDark: "#e0e0e0", label: "\u6697\u591C\u7D2B", accent: "#5856d6", auxiliary: "#A85A00" },
+    default: { right: "#1677d2", left: "#e9e9eb", rightText: "#fff", leftText: "#000", label: "\u9ED8\u8BA4\u84DD", accent: "#1677d2", auxiliary: "#005CBF" },
+    dark: { right: "#5856d6", left: "#E6EDF3", leftDark: "#2c2c2e", rightText: "#fff", leftText: "#33404C", leftTextDark: "#e0e0e0", label: "\u6697\u591C\u7D2B", accent: "#5856d6", auxiliary: "#64D2FF" },
     pink: {
       right: "#E7A9B9",
       rightDark: "#FFC4D4",
@@ -14,7 +13,7 @@
       leftTextDark: "#E6EDF3",
       label: "\u67D4\u7C89",
       accent: "#FFC4D4",
-      auxiliary: "#287C78",
+      auxiliary: "#E07A93",
       uiDark: {
         "--pm-color-surface-page": "#2B2B2B",
         "--pm-color-surface-card": "#1F1F1F",
@@ -38,8 +37,8 @@
         "--pm-color-on-danger": "#FFFFFF"
       }
     },
-    mint: { right: "#9FBE8C", rightDark: "#B6D39D", left: "#F3EBDD", leftDark: "#3B443B", rightText: "#243522", leftText: "#4D4034", leftTextDark: "#E8EEE5", label: "\u8584\u8377", accent: "#9FBE8C", auxiliary: "#7C476D" },
-    frost: { right: "rgba(111, 172, 218, 0.62)", left: "rgba(255,255,255,0.48)", leftDark: "rgba(54, 68, 82, 0.72)", rightText: "#fff", leftText: "#22303A", leftTextDark: "#E7EFF7", label: "\u78E8\u7802", accent: "#6FAEDA", auxiliary: "#A94F3D", frost: true }
+    mint: { right: "#9FBE8C", rightDark: "#B6D39D", left: "#F3EBDD", leftDark: "#3B443B", rightText: "#243522", leftText: "#4D4034", leftTextDark: "#E8EEE5", label: "\u8584\u8377", accent: "#9FBE8C", auxiliary: "#739E59" },
+    frost: { right: "rgba(111, 172, 218, 0.62)", left: "rgba(255,255,255,0.48)", leftDark: "rgba(54, 68, 82, 0.72)", rightText: "#fff", leftText: "#22303A", leftTextDark: "#E7EFF7", label: "\u78E8\u7802", accent: "#6FAEDA", auxiliary: "#4B8EC4", frost: true }
   };
   var THEME_UI_TOKENS = [...new Set(Object.values(THEME_PRESETS).flatMap((preset) => [
     ...Object.keys(preset.ui || {}),
@@ -49,22 +48,7 @@
     return preset === "custom" || Object.hasOwn(THEME_PRESETS, preset) ? preset : "default";
   }
   function resolveThemeAuxiliary(preset, customAccent = "") {
-    const normalized = String(customAccent || "").trim();
-    const match = /^#([0-9a-f]{6})$/i.exec(normalized);
-    if (!match) return preset?.auxiliary || THEME_PRESETS.default.auxiliary;
-    const value = Number.parseInt(match[1], 16);
-    const red = value >> 16;
-    const green = value >> 8 & 255;
-    const blue = value & 255;
-    const max = Math.max(red, green, blue);
-    const min = Math.min(red, green, blue);
-    const delta = max - min;
-    const hue = delta === 0 ? 0 : max === red ? 60 * ((green - blue) / delta % 6) : max === green ? 60 * ((blue - red) / delta + 2) : 60 * ((red - green) / delta + 4);
-    const normalizedHue = hue < 0 ? hue + 360 : hue;
-    if (normalizedHue < 60 || normalizedHue >= 330) return "#287C78";
-    if (normalizedHue < 180) return "#7C476D";
-    if (normalizedHue < 260) return "#B85C19";
-    return "#4F7034";
+    return preset?.auxiliary || THEME_PRESETS.default.auxiliary;
   }
   function normalizeApiUrls(input) {
     const url = (input || "").trim().replace(/\/+$/, "");

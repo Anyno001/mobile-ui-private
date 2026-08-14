@@ -1,8 +1,8 @@
 .pm-today-trend-shell{--pm-today-trend-switch-width:var(--pm-size-control-compact);--pm-today-trend-switch-height:20px;--pm-today-trend-switch-knob:16px;--pm-today-trend-focus-offset:2px;--pm-today-trend-report-rule:2px;--pm-today-trend-world-rail:var(--pm-space-4);--pm-today-trend-copy-width:34em;--pm-today-trend-event-facts-start-offset:calc(0px - var(--pm-space-1));--pm-today-trend-event-facts-end-offset:var(--pm-space-0);--pm-line-height-today-trend-meter:var(--pm-space-4);position:relative;height:100%;display:grid;grid-template-rows:auto minmax(0,1fr);overflow:hidden;color:var(--pm-color-text-primary);}
 .pm-today-trend-header{position:sticky;top:0;z-index:var(--pm-z-base);display:grid;grid-template-columns:34px minmax(0,1fr) auto;align-items:center;gap:var(--pm-space-1);padding:var(--pm-space-1-5) var(--pm-space-px-9);border-bottom:1px solid var(--pm-color-border-subtle);background:var(--pm-color-surface-page);}
-.pm-today-trend-header button,.pm-today-trend-icon-button{display:grid;place-items:center;width:var(--pm-size-control-compact);min-height:var(--pm-size-control-compact);padding:var(--pm-space-2);border:0;border-radius:var(--pm-radius-circle);background:transparent;color:var(--pm-color-auxiliary);cursor:pointer;}
-.pm-today-trend-header button:hover,.pm-today-trend-icon-button:hover{background:transparent;color:var(--pm-color-auxiliary);}
-.pm-today-trend-header button:focus-visible,.pm-today-trend-icon-button:focus-visible{outline:var(--pm-today-trend-focus-offset) solid var(--pm-color-focus-ring);outline-offset:var(--pm-today-trend-focus-offset);}
+.pm-today-trend-header button,.pm-today-trend-icon-button{display:grid;place-items:center;width:var(--pm-size-control-compact);min-height:var(--pm-size-control-compact);padding:var(--pm-space-2);border:0;border-radius:var(--pm-radius-circle);background:transparent;color:var(--pm-color-text-tertiary);cursor:pointer;}
+.pm-today-trend-header button:hover,.pm-today-trend-icon-button:hover,.pm-today-trend-header button:focus-visible,.pm-today-trend-icon-button:focus-visible{background:transparent;color:var(--pm-color-text-secondary);}
+.pm-today-trend-header button:focus-visible,.pm-today-trend-icon-button:focus-visible{outline:2px solid var(--pm-color-text-secondary);outline-offset:var(--pm-today-trend-focus-offset);}
 .pm-today-trend-header button svg,.pm-today-trend-icon-button svg{width:var(--pm-size-icon-md);height:var(--pm-size-icon-md);pointer-events:none;}
 .pm-today-trend-home{color:var(--pm-color-text-tertiary)!important;}
 .pm-today-trend-header-actions{display:flex;align-items:center;justify-content:flex-end;gap:var(--pm-space-0-5);}
@@ -47,8 +47,8 @@
 .pm-today-trend-menu-action svg,.pm-today-trend-menu-close svg,.pm-today-trend-inline-action svg{display:block;width:var(--pm-size-icon-sm);height:var(--pm-size-icon-sm);}
 .pm-today-trend-world-item-head{display:flex;align-items:center;gap:var(--pm-space-2);}
 .pm-today-trend-world-item-head>b{min-width:0;flex:1;}
-.pm-today-trend-icon-button:not(.is-danger) svg{color:var(--pm-color-auxiliary);}
-.pm-today-trend-icon-button:not(.is-danger):hover svg{color:var(--pm-color-auxiliary);}
+.pm-today-trend-icon-button:not(.is-danger) svg{color:var(--pm-color-text-tertiary);}
+.pm-today-trend-icon-button:not(.is-danger):hover svg,.pm-today-trend-icon-button:not(.is-danger):focus-visible svg{color:var(--pm-color-text-secondary);}
 .pm-today-trend-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:var(--pm-space-2);align-items:start;padding:var(--pm-space-3) var(--pm-space-0);border-top:1px solid var(--pm-color-border-subtle);}
 .pm-today-trend-row:first-of-type{border-top:0;}
 .pm-today-trend-row>div{min-width:0;}

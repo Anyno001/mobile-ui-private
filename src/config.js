@@ -1,18 +1,18 @@
 // Presets define color palettes and their default bubble colors. Custom bubble
 // colors deliberately override only message bubbles; toggle controls use the preset auxiliary color.
 export const THEME_PRESETS = {
-    default: { right: '#1677d2', left: '#e9e9eb', rightText: '#fff', leftText: '#000', label: '默认蓝', accent: '#1677d2', auxiliary: '#B85C19' },
-    dark: { right: '#5856d6', left: '#E6EDF3', leftDark: '#2c2c2e', rightText: '#fff', leftText: '#33404C', leftTextDark: '#e0e0e0', label: '暗夜紫', accent: '#5856d6', auxiliary: '#A85A00' },
+    default: { right: '#1677d2', left: '#e9e9eb', rightText: '#fff', leftText: '#000', label: '默认蓝', accent: '#1677d2', auxiliary: '#005CBF' },
+    dark: { right: '#5856d6', left: '#E6EDF3', leftDark: '#2c2c2e', rightText: '#fff', leftText: '#33404C', leftTextDark: '#e0e0e0', label: '暗夜紫', accent: '#5856d6', auxiliary: '#64D2FF' },
     pink: {
-        right: '#E7A9B9', rightDark: '#FFC4D4', left: '#E8EEF3', leftDark: '#343B43', rightText: '#2B2B2B', leftText: '#4E3840', leftTextDark: '#E6EDF3', label: '柔粉', accent: '#FFC4D4', auxiliary: '#287C78',
+        right: '#E7A9B9', rightDark: '#FFC4D4', left: '#E8EEF3', leftDark: '#343B43', rightText: '#2B2B2B', leftText: '#4E3840', leftTextDark: '#E6EDF3', label: '柔粉', accent: '#FFC4D4', auxiliary: '#E07A93',
         uiDark: {
             '--pm-color-surface-page': '#2B2B2B', '--pm-color-surface-card': '#1F1F1F', '--pm-color-surface-elevated': '#242424', '--pm-color-surface-input': '#1F1F1F', '--pm-color-surface-inverse': '#1F1F1F',
             '--pm-color-text-primary': '#FFFFFF', '--pm-color-text-secondary': 'rgba(255, 255, 255, 0.70)', '--pm-color-text-tertiary': 'rgba(255, 255, 255, 0.50)', '--pm-color-text-placeholder': 'rgba(255, 255, 255, 0.50)',
             '--pm-color-border-subtle': 'transparent', '--pm-color-border-default': 'transparent', '--pm-color-border-strong': 'transparent', '--pm-color-control-off': '#3A3A3A', '--pm-color-focus-ring': '#FFD9E4', '--pm-color-success': '#E5A0B5', '--pm-color-warning': '#FFB38B', '--pm-color-danger': '#D96C6C', '--pm-color-on-success': '#2B2B2B', '--pm-color-on-warning': '#2B2B2B', '--pm-color-on-danger': '#FFFFFF',
         },
     },
-    mint: { right: '#9FBE8C', rightDark: '#B6D39D', left: '#F3EBDD', leftDark: '#3B443B', rightText: '#243522', leftText: '#4D4034', leftTextDark: '#E8EEE5', label: '薄荷', accent: '#9FBE8C', auxiliary: '#7C476D' },
-    frost: { right: 'rgba(111, 172, 218, 0.62)', left: 'rgba(255,255,255,0.48)', leftDark: 'rgba(54, 68, 82, 0.72)', rightText: '#fff', leftText: '#22303A', leftTextDark: '#E7EFF7', label: '磨砂', accent: '#6FAEDA', auxiliary: '#A94F3D', frost: true },
+    mint: { right: '#9FBE8C', rightDark: '#B6D39D', left: '#F3EBDD', leftDark: '#3B443B', rightText: '#243522', leftText: '#4D4034', leftTextDark: '#E8EEE5', label: '薄荷', accent: '#9FBE8C', auxiliary: '#739E59' },
+    frost: { right: 'rgba(111, 172, 218, 0.62)', left: 'rgba(255,255,255,0.48)', leftDark: 'rgba(54, 68, 82, 0.72)', rightText: '#fff', leftText: '#22303A', leftTextDark: '#E7EFF7', label: '磨砂', accent: '#6FAEDA', auxiliary: '#4B8EC4', frost: true },
 };
 
 export const THEME_UI_TOKENS = [...new Set(Object.values(THEME_PRESETS).flatMap(preset => [
@@ -25,24 +25,9 @@ export function normalizeThemePreset(preset) {
 }
 
 export function resolveThemeAuxiliary(preset, customAccent = '') {
-    const normalized = String(customAccent || '').trim();
-    const match = /^#([0-9a-f]{6})$/i.exec(normalized);
-    if (!match) return preset?.auxiliary || THEME_PRESETS.default.auxiliary;
-    const value = Number.parseInt(match[1], 16);
-    const red = value >> 16;
-    const green = (value >> 8) & 255;
-    const blue = value & 255;
-    const max = Math.max(red, green, blue);
-    const min = Math.min(red, green, blue);
-    const delta = max - min;
-    const hue = delta === 0 ? 0 : max === red
-        ? 60 * (((green - blue) / delta) % 6)
-        : max === green ? 60 * ((blue - red) / delta + 2) : 60 * ((red - green) / delta + 4);
-    const normalizedHue = hue < 0 ? hue + 360 : hue;
-    if (normalizedHue < 60 || normalizedHue >= 330) return '#287C78';
-    if (normalizedHue < 180) return '#7C476D';
-    if (normalizedHue < 260) return '#B85C19';
-    return '#4F7034';
+    // 移除强行扭转为互补色的算法，回退到当前 Preset 原本定义的同色系辅助色
+    // 或者未来可以在此处添加简单的亮度下降处理。
+    return preset?.auxiliary || THEME_PRESETS.default.auxiliary;
 }
 
 export function normalizeApiUrls(input) {

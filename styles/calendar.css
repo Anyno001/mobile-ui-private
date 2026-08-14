@@ -168,10 +168,10 @@
 .pm-calendar-detail-date time{color:var(--pm-color-text-primary);font-weight:var(--pm-font-weight-semibold);}
 .pm-calendar-detail-date em{color:var(--pm-color-text-tertiary);font-style:normal;font-weight:500;}
 .pm-calendar-detail-actions{position:absolute;top:var(--pm-space-2);right:var(--pm-space-px-10);display:flex;align-items:center;}
-.pm-calendar-detail-more{display:grid;place-items:center;width:28px;height:28px;padding:var(--pm-space-1-5);border:0;border-radius:var(--pm-radius-circle);background:transparent;color:var(--pm-color-auxiliary);cursor:pointer;}
+.pm-calendar-detail-more{display:grid;place-items:center;width:28px;height:28px;padding:var(--pm-space-1-5);border:0;border-radius:var(--pm-radius-circle);background:transparent;color:var(--pm-color-text-tertiary);cursor:pointer;}
 .pm-calendar-detail-more svg{width:16px;height:16px;}
-.pm-calendar-detail-more:hover{background:color-mix(in srgb,currentColor 7%,transparent);}
-.pm-calendar-detail-more:focus-visible{outline:2px solid var(--pm-color-auxiliary);outline-offset:1px;}
+.pm-calendar-detail-more:hover,.pm-calendar-detail-more:focus-visible{color:var(--pm-color-text-secondary);background:color-mix(in srgb,currentColor 7%,transparent);}
+.pm-calendar-detail-more:focus-visible{outline:2px solid var(--pm-color-text-secondary);outline-offset:1px;}
 .pm-calendar-inline-actions{display:flex!important;align-items:center;gap:var(--pm-space-1-5);margin:var(--pm-space-0)!important;}
 .pm-calendar-inline-actions button{display:grid;place-items:center;width:28px;height:28px;padding:var(--pm-space-1-5);border:0;border-radius:var(--pm-radius-none);background:transparent;color:var(--pm-calendar-accent);cursor:pointer;}
 .pm-calendar-inline-actions button.is-danger{color:var(--pm-color-danger);}
