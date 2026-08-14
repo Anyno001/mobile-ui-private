@@ -30,6 +30,7 @@ Local Storage/
 Session Storage/
 
 # Editor and OS caches
+.claude/
 .vscode/
 .idea/
 .DS_Store
