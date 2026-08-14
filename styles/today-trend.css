@@ -56,7 +56,8 @@
 .pm-today-trend-status{display:inline-flex;margin-left:var(--pm-space-2);color:var(--pm-color-text-tertiary);font-size:var(--pm-font-size-helper);line-height:var(--pm-line-height-control);}
 .pm-today-trend-faction-tree{display:flex;flex-direction:column;gap:var(--pm-space-3);padding-left:var(--pm-space-0);}
 .pm-today-trend-event-card details{color:var(--pm-color-text-tertiary);font-size:var(--pm-font-size-label);line-height:var(--pm-line-height-body);}
-.pm-today-trend-event-card summary{cursor:pointer;}
+.pm-today-trend-event-card details>summary{cursor:pointer;list-style:none;}
+.pm-today-trend-event-card details>summary::-webkit-details-marker{display:none;}
 .pm-today-trend-event-card ol{margin:var(--pm-space-2) var(--pm-space-0) var(--pm-space-0);padding-left:var(--pm-space-4);color:var(--pm-color-text-secondary);font-size:var(--pm-font-size-label);line-height:var(--pm-line-height-body);}
 .pm-today-trend-editor{display:flex;flex-direction:column;gap:var(--pm-space-2);}
 .pm-today-trend-field{display:flex;flex-direction:column;gap:var(--pm-space-1);color:var(--pm-color-text-secondary);font-size:var(--pm-font-size-label);line-height:var(--pm-line-height-control);}
@@ -257,7 +258,8 @@
 .pm-today-trend-event-facts dt::after{content:' · ';}
 .pm-today-trend-event-facts dd{display:inline;margin:var(--pm-space-0);color:var(--pm-color-text-secondary);font-size:var(--pm-font-size-label);line-height:var(--pm-line-height-body);}
 .pm-today-trend-event-history{position:relative;margin:var(--pm-space-0);padding:var(--pm-space-1) var(--pm-space-0) var(--pm-space-0);border:0;color:var(--pm-color-text-secondary);font-size:var(--pm-font-size-label);line-height:var(--pm-line-height-body);}
-.pm-today-trend-event-history summary{color:var(--pm-color-accent);font-size:var(--pm-font-size-compact);font-weight:var(--pm-font-weight-semibold);}
+.pm-today-trend-event-history details>summary{color:var(--pm-color-accent);font-size:var(--pm-font-size-compact);font-weight:var(--pm-font-weight-semibold);list-style:none;}
+.pm-today-trend-event-history details>summary::-webkit-details-marker{display:none;}
 .pm-today-trend-event-history ol,.pm-today-trend-event-history.is-live{display:flex;flex-direction:column;gap:var(--pm-space-2);margin:var(--pm-space-2) var(--pm-space-0) var(--pm-space-0);padding:var(--pm-space-0);list-style:none;}
 .pm-today-trend-event-history[open]{overflow:hidden;}
 .pm-today-trend-event-history.is-live{margin:var(--pm-space-0);}

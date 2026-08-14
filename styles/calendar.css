@@ -124,7 +124,8 @@
 .pm-calendar-holiday-row{grid-template-columns:minmax(0,1fr) auto;}
 .pm-calendar-date-tags-row{grid-template-columns:minmax(0,1fr) auto;}
 .pm-calendar-management{display:block;margin:var(--pm-space-0) var(--pm-space-3) var(--pm-space-3);border-top:1px solid var(--pm-color-border-subtle);}
-.pm-calendar-management>summary{padding:var(--pm-space-px-11) var(--pm-space-0-5);color:var(--pm-color-text-tertiary);font-size:var(--pm-font-size-label);font-weight:var(--pm-font-weight-semibold);cursor:pointer;list-style-position:inside;}
+.pm-calendar-management>summary{padding:var(--pm-space-px-11) var(--pm-space-0-5);color:var(--pm-color-text-tertiary);font-size:var(--pm-font-size-label);font-weight:var(--pm-font-weight-semibold);cursor:pointer;list-style-position:inside;list-style:none;}
+.pm-calendar-management>summary::-webkit-details-marker{display:none;}
 .pm-calendar-management>summary:focus-visible{outline:2px solid var(--pm-calendar-accent);outline-offset:2px;border-radius:var(--pm-radius-compact);}
 .pm-calendar-management-content{display:flex;flex-direction:column;}
 .pm-calendar-scan-card .pm-calendar-tools{padding:var(--pm-space-0);}
