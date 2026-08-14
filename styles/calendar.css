@@ -12,8 +12,8 @@
 .pm-calendar-header .pm-calendar-header-action{width:28px;height:28px;padding:var(--pm-space-1-5);background:transparent;}
 .pm-calendar-header-action svg{width:15px;height:15px;}
 .pm-calendar-header-action.is-loading{color:var(--pm-calendar-accent);}
-.pm-calendar-shell[data-calendar-view-mode="weather"] .pm-calendar-header-action.is-loading svg{animation:pm-spin var(--pm-motion-normal) var(--pm-motion-ease) infinite;}
-.pm-calendar-shell[data-calendar-view-mode="schedule"] .pm-calendar-header-action.is-loading svg,.pm-calendar-shell[data-calendar-view-mode="recipe"] .pm-calendar-header-action.is-loading svg{animation:pm-calendar-sparkle-pulse var(--pm-motion-normal) var(--pm-motion-ease) infinite;}
+.pm-calendar-shell[data-calendar-view-mode="weather"] .pm-calendar-header-action.is-loading svg{animation:pm-spin 1s var(--pm-motion-ease) infinite;}
+.pm-calendar-shell[data-calendar-view-mode="schedule"] .pm-calendar-header-action.is-loading svg,.pm-calendar-shell[data-calendar-view-mode="recipe"] .pm-calendar-header-action.is-loading svg{animation:pm-calendar-sparkle-pulse .8s var(--pm-motion-ease) infinite;}
 .pm-calendar-title-row{display:flex;align-items:center;justify-content:center;min-width:0;text-align:center;}
 .pm-calendar-base-content{padding:var(--pm-space-4) var(--pm-space-4) var(--pm-space-2);display:flex;flex-direction:column;gap:var(--pm-space-2);}
 .pm-calendar-base-content label{display:flex;flex-direction:column;gap:var(--pm-space-2);font-size:var(--pm-font-size-compact);font-weight:var(--pm-font-weight-semibold);}
@@ -180,9 +180,9 @@
 .pm-calendar-inline-actions button:hover{opacity:.68;}
 .pm-calendar-inline-actions button:focus-visible,.pm-calendar-detail-edit-actions button:focus-visible,.pm-calendar-weather-event-footer button:focus-visible,.pm-calendar-management[data-calendar-management="weather"] .pm-calendar-data-row button:focus-visible{outline:2px solid var(--pm-calendar-accent);outline-offset:1px;}
 .pm-calendar-detail-edit-actions{display:flex;align-items:center;justify-content:center;gap:var(--pm-space-2);margin-top:var(--pm-space-2);flex-wrap:wrap;}
-.pm-calendar-inline-add,.pm-calendar-inline-regenerate{display:inline-flex;align-items:center;justify-content:center;gap:var(--pm-space-1-5);width:max-content;margin:var(--pm-space-0);padding:var(--pm-space-2) var(--pm-space-3);border:1px solid color-mix(in srgb,var(--pm-calendar-accent) 35%,transparent);border-radius:var(--pm-radius-compact);background:color-mix(in srgb,var(--pm-calendar-accent) 9%,transparent);color:var(--pm-calendar-accent);font:inherit;font-size:var(--pm-font-size-label);font-weight:var(--pm-font-weight-semibold);line-height:var(--pm-line-height-tight);cursor:pointer;}
+.pm-calendar-inline-add,.pm-calendar-inline-regenerate{display:inline-flex;align-items:center;justify-content:center;gap:var(--pm-space-1-5);width:max-content;margin:var(--pm-space-0);padding:var(--pm-space-2) var(--pm-space-3);border:1px solid color-mix(in srgb,var(--pm-calendar-accent) 35%,transparent);border-radius:var(--pm-radius-compact);background:color-mix(in srgb,var(--pm-calendar-accent) 9%,transparent);color:var(--pm-calendar-accent);font:inherit;font-size:var(--pm-font-size-label);font-weight:var(--pm-font-weight-semibold);line-height:var(--pm-line-height-tight);cursor:pointer;transition:background .25s var(--pm-motion-ease),border-color .25s var(--pm-motion-ease);}
 .pm-calendar-inline-regenerate svg{width:var(--pm-size-icon-sm);height:var(--pm-size-icon-sm);}
-.pm-calendar-inline-regenerate.is-loading svg{animation:pm-spin var(--pm-motion-normal) var(--pm-motion-ease) infinite;}
+.pm-calendar-inline-regenerate.is-loading svg{animation:pm-spin 1s var(--pm-motion-ease) infinite;}
 .pm-calendar-detail-edit-actions button:disabled{cursor:not-allowed;opacity:.55;}
 .pm-calendar-inline-add:hover,.pm-calendar-inline-regenerate:hover{background:color-mix(in srgb,var(--pm-calendar-accent) 15%,transparent);}
 .pm-calendar-scan-card>p{margin:var(--pm-space-0);color:var(--pm-color-text-tertiary);font-size:var(--pm-font-size-caption);line-height:var(--pm-line-height-body);}
