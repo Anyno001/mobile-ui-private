@@ -4,7 +4,8 @@
 .pm-today-trend-header button:hover,.pm-today-trend-icon-button:hover,.pm-today-trend-header button:focus-visible,.pm-today-trend-icon-button:focus-visible{background:transparent;color:var(--pm-color-text-secondary);}
 .pm-today-trend-header button:focus-visible,.pm-today-trend-icon-button:focus-visible{outline:2px solid var(--pm-color-text-secondary);outline-offset:var(--pm-today-trend-focus-offset);}
 .pm-today-trend-header button svg,.pm-today-trend-icon-button svg{width:var(--pm-size-icon-md);height:var(--pm-size-icon-md);pointer-events:none;}
-.pm-today-trend-home{color:var(--pm-color-text-tertiary)!important;}
+.pm-today-trend-home{color:var(--pm-color-text-placeholder)!important;transition:color var(--pm-motion-fast) var(--pm-motion-ease),background var(--pm-motion-fast) var(--pm-motion-ease);}
+.pm-today-trend-home:hover,.pm-today-trend-home:focus-visible{color:var(--pm-color-text-secondary)!important;background:color-mix(in srgb,currentColor 8%,transparent)!important;}
 .pm-today-trend-header-actions{display:flex;align-items:center;justify-content:flex-end;gap:var(--pm-space-0-5);}
 .pm-today-trend-header-actions .pm-today-trend-header-control[aria-pressed="false"],.pm-today-trend-header-actions .pm-today-trend-header-control[aria-pressed="false"]:hover{color:var(--pm-color-text-tertiary);}
 .pm-today-trend-header-actions .pm-today-trend-header-control[aria-pressed="true"] svg{color:var(--pm-color-auxiliary);}
@@ -12,9 +13,10 @@
 .pm-today-trend-content{display:flex;height:100%;min-height:0;flex-direction:column;gap:var(--pm-space-3);padding:var(--pm-space-3) var(--pm-space-4) calc(var(--pm-space-4) + var(--pm-size-control-compact));overflow-y:auto;}
 .pm-today-trend-tabs{position:absolute;right:0;bottom:0;left:0;z-index:var(--pm-z-base);display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:0;padding:var(--pm-space-0-5) var(--pm-space-3);background:color-mix(in srgb,var(--pm-color-surface-page) 85%,transparent);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);}
 .pm-today-trend-tabs.is-world{background:color-mix(in srgb,var(--pm-color-surface-page) 92%,transparent);}
-.pm-today-trend-tabs button{display:grid;place-items:center;min-height:var(--pm-size-control-compact);padding:var(--pm-space-0);border:0;border-radius:var(--pm-radius-none);background:transparent;color:var(--pm-color-text-tertiary);cursor:pointer;}
+.pm-today-trend-tabs button{display:grid;place-items:center;min-height:var(--pm-size-control-compact);padding:var(--pm-space-0);border:0;border-radius:var(--pm-radius-none);background:transparent;color:var(--pm-color-text-placeholder);cursor:pointer;transition:color var(--pm-motion-fast) var(--pm-motion-ease),background var(--pm-motion-fast) var(--pm-motion-ease);}
 .pm-today-trend-tabs button svg{width:var(--pm-size-icon-md);height:var(--pm-size-icon-md);stroke-width:1.7;pointer-events:none;}
 .pm-today-trend-tabs button[data-action="today-trend-open-factions"] svg{transform:translateY(1px);}
+.pm-today-trend-tabs button:hover,.pm-today-trend-tabs button:focus-visible{color:var(--pm-color-text-secondary);background:color-mix(in srgb,currentColor 8%,transparent);}
 .pm-today-trend-tabs button[aria-pressed="true"] svg{color:var(--pm-color-accent);}
 .pm-today-trend-tabs button:focus-visible{outline:var(--pm-today-trend-focus-offset) solid var(--pm-color-focus-ring);outline-offset:var(--pm-today-trend-focus-offset);}
 .pm-today-trend-view,.pm-today-trend-settings,.pm-today-trend-first-use{display:flex;flex-direction:column;gap:var(--pm-space-3);min-width:0;}

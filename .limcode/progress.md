@@ -1,6 +1,6 @@
 # 项目进度
 - Project: mobile-ui-private
-- Updated At: 2026-08-14T06:57:01.410Z
+- Updated At: 2026-08-14T07:35:57.157Z
 - Status: completed
 - Phase: implementation
 
@@ -8,9 +8,9 @@
 
 <!-- LIMCODE_PROGRESS_SUMMARY_START -->
 - 当前进度：1/1 个里程碑已完成；最新：milestone-ui-colors-fixed
-- 当前焦点：通知用户全局样式隔离工作已完成
+- 当前焦点：等待用户验证调整后的界面色调反馈
 - 当前阻塞：无
-- 下一步：等待用户验证样式隔离效果
+- 下一步：继续推进后续可能的细节修复或新需求
 <!-- LIMCODE_PROGRESS_SUMMARY_END -->
 
 ## 关联文档
@@ -60,6 +60,7 @@
 - 2026-08-14T06:07:40.504Z | updated | 等待用户验收。已完成 UI 色彩收敛与所有图标层级的修复并编译，目前没有任何待处理的任务或诊断错误。
 - 2026-08-14T06:20:37.620Z | updated | 通过代理成功将 UI 颜色系统修复（commit 6243d02）推送到了 GitHub origin/main。当前工作区干净且无报错。
 - 2026-08-14T06:57:01.410Z | updated | 收到用户关于全局样式隔离的需求。已经排除了主系统圆角属性被环境污染的问题：在 `core.css` 中注入了 `#pm-iphone * {border-radius:inherit;}`；同时修复了由于全局 `summary` 属性被外部改写而导致的交互区域污染。改动已完成编译并推入构建包。
+- 2026-08-14T07:35:57.157Z | updated | 完成了用户关于按钮默认灰度降级及日历模块主色调解耦的任务：将核心、社区、日程、日历模块中的多个次要按钮默认色降低为 placeholder 层级；修复了拍一拍等图标交互态下的违和背景色；将覆盖日历操作颜色的全局强制属性移除，使日历各状态能正确渲染自身主题色。代码已执行构建并推送到 main 分支。
 <!-- LIMCODE_PROGRESS_LOG_END -->
 
 <!-- LIMCODE_PROGRESS_METADATA_START -->
@@ -69,13 +70,13 @@
   "projectId": "mobile-ui-private",
   "projectName": "mobile-ui-private",
   "createdAt": "2026-08-14T05:55:56.978Z",
-  "updatedAt": "2026-08-14T06:57:01.410Z",
+  "updatedAt": "2026-08-14T07:35:57.157Z",
   "status": "completed",
   "phase": "implementation",
-  "currentFocus": "通知用户全局样式隔离工作已完成",
+  "currentFocus": "等待用户验证调整后的界面色调反馈",
   "latestConclusion": null,
   "currentBlocker": "无",
-  "nextAction": "等待用户验证样式隔离效果",
+  "nextAction": "继续推进后续可能的细节修复或新需求",
   "activeArtifacts": {
     "plan": ".limcode/plans/plan.plan.md"
   },
@@ -180,6 +181,11 @@
       "at": "2026-08-14T06:57:01.410Z",
       "type": "updated",
       "message": "收到用户关于全局样式隔离的需求。已经排除了主系统圆角属性被环境污染的问题：在 `core.css` 中注入了 `#pm-iphone * {border-radius:inherit;}`；同时修复了由于全局 `summary` 属性被外部改写而导致的交互区域污染。改动已完成编译并推入构建包。"
+    },
+    {
+      "at": "2026-08-14T07:35:57.157Z",
+      "type": "updated",
+      "message": "完成了用户关于按钮默认灰度降级及日历模块主色调解耦的任务：将核心、社区、日程、日历模块中的多个次要按钮默认色降低为 placeholder 层级；修复了拍一拍等图标交互态下的违和背景色；将覆盖日历操作颜色的全局强制属性移除，使日历各状态能正确渲染自身主题色。代码已执行构建并推送到 main 分支。"
     }
   ],
   "stats": {
@@ -193,8 +199,8 @@
   },
   "render": {
     "rendererVersion": 1,
-    "generatedAt": "2026-08-14T06:57:01.410Z",
-    "bodyHash": "sha256:a071300dd3a8347f86ca944c2ea3012fe860fb5c736622b9b2d1c09e4fe6c1dd"
+    "generatedAt": "2026-08-14T07:35:57.157Z",
+    "bodyHash": "sha256:bacab04062066ddbd50383956459d3878897c7fe6954c3c4171f840551f8ca69"
   }
 }
 <!-- LIMCODE_PROGRESS_METADATA_END -->
