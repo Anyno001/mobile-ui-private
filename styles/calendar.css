@@ -256,7 +256,7 @@
 .pm-calendar-weather-event-config{display:flex;flex-direction:column;gap:var(--pm-space-2);margin-top:var(--pm-space-1);padding-top:var(--pm-space-2);border-top:1px solid var(--pm-color-border-subtle);}
 .pm-calendar-weather-event-footer{display:flex;align-items:center;justify-content:space-between;gap:var(--pm-space-3);}
 .pm-calendar-weather-event-footer .pm-calendar-attribution{flex:1;min-width:0;}
-.pm-calendar-weather-event-regenerate{display:inline-flex;align-items:center;justify-content:center;gap:var(--pm-space-1-5);flex:0 0 auto;min-width:0;min-height:34px;margin:var(--pm-space-0);padding:var(--pm-space-px-7) var(--pm-space-px-9);border:1px solid var(--pm-color-border-default);border-radius:var(--pm-radius-compact);background:var(--pm-color-surface-input);color:var(--pm-color-text-primary);font:inherit;font-size:var(--pm-font-size-label);cursor:pointer;}
+.pm-calendar-weather-event-regenerate{display:inline-flex;align-items:center;justify-content:center;gap:var(--pm-space-1-5);flex:0 0 auto;min-width:0;min-height:34px;margin:var(--pm-space-0);padding:var(--pm-space-px-7) var(--pm-space-px-9);border:1px solid var(--pm-color-border-default);border-radius:var(--pm-radius-compact);background:var(--pm-color-surface-input);color:var(--pm-color-text-primary);font:inherit;font-size:var(--pm-font-size-label);cursor:pointer;transition:background .25s var(--pm-motion-ease),border-color .25s var(--pm-motion-ease);}
 .pm-calendar-weather-event-regenerate svg{width:var(--pm-size-icon-sm);height:var(--pm-size-icon-sm);}
 
 .pm-calendar-management[data-calendar-management="weather"] .pm-calendar-data-tools{padding:var(--pm-space-3);gap:var(--pm-space-2);font-size:var(--pm-font-size-label);}
