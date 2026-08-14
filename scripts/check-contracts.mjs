@@ -3479,7 +3479,7 @@ for (const expected of [
   '.pm-calendar-shell[data-calendar-view-mode="weather"] .pm-calendar-header-action.is-loading svg{animation:pm-spin var(--pm-motion-normal) var(--pm-motion-ease) infinite}',
   '.pm-calendar-shell[data-calendar-view-mode="schedule"] .pm-calendar-header-action.is-loading svg,.pm-calendar-shell[data-calendar-view-mode="recipe"] .pm-calendar-header-action.is-loading svg{animation:pm-calendar-sparkle-pulse var(--pm-motion-normal) var(--pm-motion-ease) infinite}',
   '@keyframes pm-calendar-sparkle-pulse{50%{opacity:.45}}',
-  '.pm-calendar-cycle-input:checked+.pm-custom-check{background:var(--pm-color-auxiliary)}',
+  '.pm-calendar-cycle-input:checked+.pm-custom-check{background:var(--pm-calendar-accent)}',
   '.pm-calendar-cycle-input:focus-visible+.pm-custom-check{outline:2px solid var(--pm-color-focus-ring);outline-offset:2px}',
   '.pm-scene-topbar{position:relative;display:flex;align-items:center;gap:var(--pm-space-1);padding:var(--pm-space-1-5) var(--pm-space-px-9)}',
   '.pm-scene-home{color:var(--pm-color-text-tertiary) !important}',
