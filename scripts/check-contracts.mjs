@@ -3670,12 +3670,38 @@ const relationNodeTokenRule = cssRules.find(rule => rule.selectors.includes('.pm
 if (!relationNodeTokenRule) {
   failures.push('style.css: .pm-today-trend-shell must define --pm-today-trend-relation-node-size with --pm-space-5');
 }
+const relationColorTokens = [
+  '--pm-today-trend-relation-hostile', '--pm-today-trend-relation-dislike',
+  '--pm-today-trend-relation-neutral', '--pm-today-trend-relation-like',
+  '--pm-today-trend-relation-trust', '--pm-today-trend-relation-foreground',
+];
+for (const token of relationColorTokens) {
+  if (!relationNodeTokenRule?.declarations.has(token)) failures.push(`style.css: .pm-today-trend-shell must define ${token}`);
+}
+const relationDarkTokenRule = cssRules.find(rule => rule.selectors.includes(':where(#pm-iphone[data-theme="dark"],#pm-overlay[data-theme="dark"],#pm-overlay-sub[data-theme="dark"],.pm-model-dropdown[data-theme="dark"]) .pm-today-trend-shell'));
+for (const token of relationColorTokens.slice(0, 5)) {
+  if (!relationDarkTokenRule?.declarations.has(token)) failures.push(`style.css: dark today-trend shell must override ${token}`);
+}
 for (const selector of [
   '.pm-today-trend-world-signal-marker',
   '.pm-today-trend-content.is-minimal-ui .pm-today-trend-relation-symbol',
 ]) requireCssDeclarations(cssRules, selector, {
   width: 'var(--pm-today-trend-relation-node-size)',
   height: 'var(--pm-today-trend-relation-node-size)',
+});
+for (const selector of ['.pm-today-trend-relation-slot', '.pm-today-trend-reputation-mark']) {
+  requireCssDeclarations(cssRules, selector, {
+    width: 'var(--pm-today-trend-relation-node-size)',
+    height: 'var(--pm-today-trend-relation-node-size)',
+  });
+}
+for (const selector of ['.pm-today-trend-reputation', '.pm-today-trend-factions']) {
+  requireCssDeclarations(cssRules, selector, { overflow: 'visible' });
+}
+requireCssDeclarations(cssRules, '.pm-today-trend-content.is-minimal-ui .pm-today-trend-relation-slot> :is(.pm-today-trend-reputation-mark,.pm-today-trend-faction-node)', {
+  position: 'absolute',
+  width: 'var(--pm-size-control-default)', height: 'var(--pm-size-control-default)',
+  'min-width': 'var(--pm-size-control-default)', 'min-height': 'var(--pm-size-control-default)',
 });
 requireCssDeclarations(cssRules, '.pm-today-trend-world-signal-marker svg', {
   width: 'var(--pm-size-icon-md)', height: 'var(--pm-size-icon-md)',
@@ -3698,13 +3724,43 @@ for (const selector of [
 }
 requireCssDeclarations(cssRules, '.pm-today-trend-content.is-minimal-ui .pm-today-trend-event-facts', { 'margin-block-start': 'var(--pm-space-0)' });
 for (const [status, colors] of Object.entries({
-  hostile: { background: 'var(--pm-color-danger)', color: 'var(--pm-color-on-danger)' },
-  dislike: { background: 'var(--pm-color-warning)', color: 'var(--pm-color-on-warning)' },
-  neutral: { background: 'var(--pm-color-surface-control)', color: 'var(--pm-color-text-primary)' },
-  like: { background: 'var(--pm-color-accent)', color: 'var(--pm-color-on-accent)' },
-  trust: { background: 'var(--pm-color-success)', color: 'var(--pm-color-on-success)' },
+  hostile: { background: 'var(--pm-today-trend-relation-hostile)', color: 'var(--pm-today-trend-relation-foreground)' },
+  dislike: { background: 'var(--pm-today-trend-relation-dislike)', color: 'var(--pm-today-trend-relation-foreground)' },
+  neutral: { background: 'var(--pm-today-trend-relation-neutral)', color: 'var(--pm-today-trend-relation-foreground)' },
+  like: { background: 'var(--pm-today-trend-relation-like)', color: 'var(--pm-today-trend-relation-foreground)' },
+  trust: { background: 'var(--pm-today-trend-relation-trust)', color: 'var(--pm-today-trend-relation-foreground)' },
 })) {
   requireCssDeclarations(cssRules, `.pm-today-trend-content.is-minimal-ui :is(.pm-today-trend-reputation-mark,.pm-today-trend-faction-node)[data-status="${status}"] .pm-today-trend-relation-symbol`, colors);
+}
+for (const [status, background] of Object.entries({
+  hostile: 'var(--pm-today-trend-relation-hostile)',
+  dislike: 'var(--pm-today-trend-relation-dislike)',
+  neutral: 'var(--pm-today-trend-relation-neutral)',
+  like: 'var(--pm-today-trend-relation-like)',
+  trust: 'var(--pm-today-trend-relation-trust)',
+})) {
+  requireCssDeclarations(cssRules, `.pm-today-trend-content:not(.is-minimal-ui) :is(.pm-today-trend-reputation-mark,.pm-today-trend-faction-node)[data-status="${status}"]`, {
+    background,
+    color: 'var(--pm-today-trend-relation-foreground)',
+  });
+}
+const parseHexColor = value => {
+  const match = String(value || '').trim().match(/^#([0-9a-f]{6})$/i);
+  if (!match) return null;
+  return [0, 2, 4].map(offset => parseInt(match[1].slice(offset, offset + 2), 16) / 255);
+};
+const relativeLuminance = rgb => rgb.map(channel => channel <= .03928 ? channel / 12.92 : ((channel + .055) / 1.055) ** 2.4)
+  .reduce((sum, channel, index) => sum + channel * [0.2126, 0.7152, 0.0722][index], 0);
+const contrastWithWhite = value => {
+  const rgb = parseHexColor(value);
+  if (!rgb) return null;
+  return 1.05 / (relativeLuminance(rgb) + .05);
+};
+for (const token of relationColorTokens.slice(0, 5)) {
+  for (const rule of [relationNodeTokenRule, relationDarkTokenRule]) {
+    const contrast = contrastWithWhite(rule?.declarations.get(token));
+    if (contrast === null || contrast < 3) failures.push(`style.css: ${token} must provide a hex surface with white contrast >= 3:1`);
+  }
 }
 for (const selector of [
   '.pm-calendar-status-heading',
@@ -4447,6 +4503,30 @@ requireCssDeclarations(cssRules, '.pm-desktop-community-dock button', {
   background: 'var(--pm-color-accent)',
   color: 'var(--pm-color-on-dark)',
 });
+const sceneSendSelectors = [
+  '.pm-scene-composer .pm-scene-primary',
+  '.pm-scene-comment-composer button',
+];
+for (const selector of sceneSendSelectors) {
+  const sceneSendRule = cssRules.find(rule => rule.selectors.includes(selector)
+    && rule.declarations.get('background')?.startsWith('var(--scene-accent)'));
+  if (!sceneSendRule) failures.push(`style.css: ${selector} must consume --scene-accent for its background`);
+  const sceneSendColorRule = cssRules.find(rule => rule.selectors.includes(selector)
+    && rule.declarations.get('color')?.startsWith('var(--pm-color-on-dark)'));
+  if (!sceneSendColorRule) failures.push(`style.css: ${selector} must consume --pm-color-on-dark for its foreground`);
+  for (const rule of cssRules.filter(candidate => candidate.selectors.includes(selector))) {
+    for (const property of ['background', 'background-color', 'color', 'border-color']) {
+      const value = rule.declarations.get(property) || '';
+      if (value.includes('var(--pm-color-accent)') || value.includes('var(--pm-color-auxiliary)')) {
+        failures.push(`style.css: ${selector} must not leak global accent tokens through ${property}`);
+      }
+    }
+  }
+}
+for (const selector of [
+  '.pm-scene-shell :is(.pm-scene-composer .pm-scene-primary,.pm-scene-comment-composer button):focus-visible',
+  '.pm-scene-shell :is(.pm-scene-composer .pm-scene-primary,.pm-scene-comment-composer button):disabled',
+]) if (!cssRules.some(rule => rule.selectors.includes(selector))) failures.push(`style.css: missing community send state ${selector}`);
 const cssTokenContract = {
   '--pm-font-family-system': "-apple-system,BlinkMacSystemFont,'PingFang SC','Microsoft YaHei',sans-serif",
   '--pm-font-family-mono': 'ui-monospace,SFMono-Regular,Consolas,monospace',
