@@ -38,6 +38,7 @@ import { renderTodayTrendDynamicsView } from '../src/today-trend-dynamics-view.j
 import { renderTodayTrendSettingsView } from '../src/today-trend-settings-view.js';
 import { createTodayTrendActionDispatcher } from '../src/today-trend-actions.js';
 import { TODAY_TREND_RELATION_ICON_PATHS } from '../src/icons.js';
+import { resolveTodayTrendTitleIcon } from '../src/today-trend-title-icon-mapping.js';
 import { trendActionMenu, trendInlineActions, trendRuleEditor } from '../src/today-trend-ui.js';
 
 const originalTavernHelper = globalThis.TavernHelper;
@@ -63,7 +64,7 @@ for (const contract of [
     createTodayTrendGenerationController, createTodayTrendScheduler, renderTodayTrendInjection,
     renderTodayTrendApp, renderTodayTrendWorldView, renderTodayTrendReputationView,
     renderTodayTrendFactionView, renderTodayTrendDynamicsView, renderTodayTrendSettingsView,
-    createTodayTrendActionDispatcher, installTodayTrendPhoneUi, renderPhoneDesktop,
+    createTodayTrendActionDispatcher, resolveTodayTrendTitleIcon, installTodayTrendPhoneUi, renderPhoneDesktop,
 ]) assert.equal(typeof contract, 'function');
 
 const hostCallbacks = new Map();
@@ -677,7 +678,46 @@ assert.doesNotMatch(worldHtml, /WORLD SITUATION|pm-today-trend-world-(?:title-ra
 assert.doesNotMatch(worldHtml, /pm-today-trend-world-(?:head|foot)-art/, '世界态势不得渲染头尾装饰 SVG');
 assert.match(worldPanelsHtml, /pm-today-trend-world-hero"/, '世界态势必须渲染主摘要卡片');
 assert.match(worldPanelsHtml, /pm-today-trend-world-signals/, '世界态势次级摘要必须位于信号流容器');
-assert.match(worldPanelsHtml, /pm-today-trend-world-signal-marker[^>]*aria-hidden="true"><i><\/i><\/span>/, '世界态势卡片必须保留圆形主题节点');
+assert.match(worldPanelsHtml, /pm-today-trend-world-signal-marker[^>]*data-today-trend-icon="[^"]+"[^>]*aria-hidden="true"><svg[\s\S]*?<\/svg><\/span>/, '世界态势卡片必须输出带 key 的 SVG 主题节点');
+assert.doesNotMatch(worldPanelsHtml, /pm-today-trend-world-signal-marker[^>]*><i><\/i><\/span>/, '世界态势卡片不得回退为裸 i 圆点');
+const titleIconCases = [
+    ['暴雨侵袭港口航线', 'weather-storm'], ['港口签署通航协议', 'document'], ['城市辟谣发布会', 'rumor'],
+    ['机场联络窗口开放', 'signal'], ['年度峰会日程', 'calendar'], ['新产品发布会直播', 'live'],
+    ['恋情公开告白', 'heart'], ['机场路线迁移', 'location'], ['寒潮天气预警', 'weather'],
+    ['市场增长趋势', 'trend'], ['实验发现突破', 'sparkles'], ['餐厅菜单更新', 'recipe'],
+    ['秋季时装秀场', 'outfit'], ['旧案历史回顾', 'time'],
+];
+for (const [title, expectedKey] of titleIconCases) {
+    assert.equal(resolveTodayTrendTitleIcon({ title, kind: 'world' }).key, expectedKey, `标题 ${title} 必须映射到 ${expectedKey}`);
+}
+for (const [title, expectedKey] of [
+    ['暴雨侵袭港口航线', 'weather-storm'], ['港口签署通航协议', 'document'],
+    ['城市辟谣发布会', 'rumor'], ['机场联络窗口开放', 'signal'], ['新区发展趋势报告', 'document'],
+]) assert.equal(resolveTodayTrendTitleIcon({ title, kind: 'world' }).key, expectedKey, `冲突标题 ${title} 必须遵守固定优先级`);
+assert.equal(resolveTodayTrendTitleIcon({ title: ' 　暴雨　', kind: 'world' }).key, 'weather-storm', '标题标准化必须处理全角空白与 NFKC 输入');
+assert.equal(resolveTodayTrendTitleIcon({ title: '', kind: 'world' }).key, 'world-default', '世界态势空标题必须回退默认图标');
+assert.equal(resolveTodayTrendTitleIcon({ title: '未登记的标题', kind: 'world' }).key, 'world-default', '世界态势未知标题必须回退默认图标');
+assert.equal(resolveTodayTrendTitleIcon({ title: '', kind: 'event', type: 'incident' }).key, 'event-incident', '事件突发类型必须提供类型图标兜底');
+assert.equal(resolveTodayTrendTitleIcon({ title: '', kind: 'event', type: 'rumor' }).key, 'rumor', '事件流言类型必须提供流言图标兜底');
+assert.equal(resolveTodayTrendTitleIcon({ title: '', kind: 'event', type: 'underground' }).key, 'event-underground', '事件地下线类型必须提供类型图标兜底');
+assert.equal(resolveTodayTrendTitleIcon({ title: '', kind: 'event', type: 'unknown' }).key, 'event-normal', '未知事件类型必须回退普通事件图标');
+const sharedTitleWorldIcon = resolveTodayTrendTitleIcon({ title: '港口签署通航协议', kind: 'world' });
+const sharedTitleEventIcon = resolveTodayTrendTitleIcon({ title: '港口签署通航协议', kind: 'event', type: 'incident' });
+assert.deepEqual(sharedTitleEventIcon, sharedTitleWorldIcon, '相同标题在世界态势与事件追踪中必须得到相同图标映射');
+const titlePriorityScope = structuredClone(valid.scopes.chat);
+titlePriorityScope.dynamics.active[0] = { ...titlePriorityScope.dynamics.active[0], type: 'incident', title: '港口签署通航协议', origin: '暴雨公告联络均不参与图标判断' };
+const titlePriorityHtml = renderTodayTrendDynamicsView({ scope: titlePriorityScope });
+assert.match(titlePriorityHtml, /data-event-id="service"[\s\S]*?data-today-trend-icon="document"/, '标题命中必须优先于事件 type');
+assert.match(titlePriorityHtml, /data-event-id="service"[\s\S]*?pm-today-trend-event-badge">突发/, '标题图标变化不得移除事件 type badge');
+assert.match(sharedTitleEventIcon.svg, /stroke="currentColor"/, '映射 SVG 必须使用 currentColor 前景');
+const ignoredFieldsScope = structuredClone(valid.scopes.chat);
+ignoredFieldsScope.world.items[0] = { ...ignoredFieldsScope.world.items[0], name: '未登记标题', summary: '暴雨公告联络港口' };
+ignoredFieldsScope.dynamics.active[0] = { ...ignoredFieldsScope.dynamics.active[0], title: '未登记标题', type: 'normal', origin: '暴雨公告联络港口', latestStage: '暴雨公告联络港口', participants: ['暴雨公告联络港口'] };
+const ignoredWorldHtml = renderTodayTrendWorldView({ scope: ignoredFieldsScope });
+const ignoredDynamicsHtml = renderTodayTrendDynamicsView({ scope: ignoredFieldsScope });
+assert.match(ignoredWorldHtml, /data-world-item-id="world"[\s\S]*?data-today-trend-icon="world-default"/, '世界态势映射不得扫描 summary 等非标题字段');
+assert.match(ignoredDynamicsHtml, /data-event-id="service"[\s\S]*?data-today-trend-icon="event-normal"/, '事件映射不得扫描 origin、latestStage 或 participants');
+
 assert.doesNotMatch(worldPanelsHtml, /pm-today-trend-world-brief-tail|\bis-(?:left|right)\b/, '世界态势卡片不得保留尾线或左右轨道布局类');
 assert.match(worldHtml, /pm-today-trend-meter[\s\S]*?SIGNALS[\s\S]*?BRIEFS/, '世界态势 meta 必须用英文装饰标签映射真实项目与摘要数量');
 assert.doesNotMatch(todayTrendStyle, /pm-today-trend-world-(?:signals::before|hero\.has-signals::after|brief\.is-right::after)/, '世界态势不得恢复连续轨道线');
@@ -916,7 +956,7 @@ assert.doesNotMatch(dynamicsItemMenuHtml, /pm-today-trend-inline-actions/, '旧�
 assert.match(busyDynamicsHtml, /EVENT TRACKER/, '动态内容页必须提供追踪识别语');
 assert.match(busyDynamicsHtml, /pm-today-trend-event-facts/, '动态内容页必须提供结构化事件事实区');
 assert.match(busyDynamicsHtml, /pm-today-trend-event-history/, '动态内容页必须提供阶段时间线容器');
-assert.match(busyDynamicsHtml, /pm-today-trend-event-marker" aria-hidden="true"/, '事件追踪卡片必须包含左侧节点');
+assert.match(busyDynamicsHtml, /pm-today-trend-event-marker" data-today-trend-icon="[^"]+" aria-hidden="true"><svg[\s\S]*?<\/svg><\/span>/, '事件追踪卡片必须包含带 key 的 SVG 左侧节点');
 assert.match(busyDynamicsHtml, /pm-today-trend-event-body/, '事件追踪卡片必须将内容与左侧节点分层');
 assert.match(busyDynamicsHtml, /role="tablist"[^>]*aria-label="事件追踪状态"/, '事件追踪必须提供可访问的状态 tab 容器');
 assert.match(busyDynamicsHtml, /data-action="today-trend-set-dynamics-tab"[^>]*data-tab="active"[^>]*aria-selected="true"/, '事件追踪默认必须选中正在追踪 tab');

@@ -3677,6 +3677,15 @@ for (const selector of [
   width: 'var(--pm-today-trend-relation-node-size)',
   height: 'var(--pm-today-trend-relation-node-size)',
 });
+requireCssDeclarations(cssRules, '.pm-today-trend-world-signal-marker svg', {
+  width: 'var(--pm-size-icon-md)', height: 'var(--pm-size-icon-md)',
+});
+requireCssDeclarations(cssRules, '.pm-today-trend-event-marker svg', {
+  width: 'var(--pm-size-icon-md)', height: 'var(--pm-size-icon-md)',
+});
+if (css.includes('.pm-today-trend-world-signal-marker>i')) {
+  failures.push('style.css: world signal marker must render an SVG instead of the legacy <i> core');
+}
 for (const selector of [
   '.pm-today-trend-content.is-minimal-ui .pm-today-trend-world-hero p',
   '.pm-today-trend-content.is-minimal-ui .pm-today-trend-world-brief p',

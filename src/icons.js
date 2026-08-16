@@ -1,4 +1,5 @@
 const icon = paths => `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths}</svg>`;
+const todayTrendEventIcon = paths => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths}</svg>`;
 
 export const MENU_ICON_SVG = icon('<path d="M4 6h16M4 12h16M4 18h16"/>');
 export const CLOSE_ICON_SVG = icon('<path d="M6 6l12 12M18 6L6 18"/>');
@@ -59,6 +60,14 @@ export const TODAY_TREND_WORLD_ICON_SVG = icon('<circle cx="12" cy="12" r="8"/><
 export const TODAY_TREND_REPUTATION_ICON_SVG = icon('<path d="M9 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM3 20c0-4 2.5-6 6-6s6 2 6 6"/><path d="M16 5a3 3 0 0 1 0 6M17 14c2.5.5 4 2.5 4 6"/>');
 export const TODAY_TREND_FACTION_ICON_SVG = icon('<path d="M10.85 6.99 6.65 14.27M13.15 6.99l4.2 7.28M7.8 16.26h8.4"/><circle cx="12" cy="5" r="2.3"/><circle cx="5.5" cy="16.26" r="2.3"/><circle cx="18.5" cy="16.26" r="2.3"/>');
 export const TODAY_TREND_DYNAMICS_ICON_SVG = icon('<circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/>');
+
+export const TODAY_TREND_EVENT_LOCATION_SVG = todayTrendEventIcon('<path d="M20 10c0 5-8 11-8 11S4 15 4 10a8 8 0 1 1 16 0z"/><circle cx="12" cy="10" r="2.5"/>');
+export const TODAY_TREND_EVENT_SIGNAL_SVG = todayTrendEventIcon('<path d="M5 9.5a10 10 0 0 1 14 0M8 13a6 6 0 0 1 8 0M11 16.5a2 2 0 0 1 2 0"/><circle cx="12" cy="19" r="1" fill="currentColor" stroke="none"/>');
+export const TODAY_TREND_EVENT_RUMOR_SVG = todayTrendEventIcon('<path d="M4 5h16v11H8l-4 4z"/><path d="M8 9h8M8 12h5"/>');
+export const TODAY_TREND_EVENT_DOCUMENT_SVG = todayTrendEventIcon('<path d="M5 5h14v14H5z"/><path d="M8 9h8M8 12h8M8 15h5"/>');
+export const TODAY_TREND_EVENT_INCIDENT_SVG = todayTrendEventIcon('<path d="m13 2-8 12h6l-1 8 8-12h-6z"/>');
+export const TODAY_TREND_EVENT_NORMAL_SVG = todayTrendEventIcon('<circle cx="12" cy="12" r="8"/><path d="M8 12h8M12 8v8"/>');
+export const TODAY_TREND_EVENT_UNDERGROUND_SVG = todayTrendEventIcon('<path d="M4 7h16M6 7v10h12V7M9 17v3h6v-3"/><path d="M9 11h6"/>');
 
 export const TODAY_TREND_RELATION_ICON_PATHS = Object.freeze({
     hostile: '<path d="M12 3 2.5 20h19z"/><path d="M12 9v4M12 17h.01"/>',

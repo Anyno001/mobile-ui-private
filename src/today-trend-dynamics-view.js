@@ -1,4 +1,5 @@
 import { BACK_ICON_SVG, BOOK_ICON_SVG, EDIT_ICON_SVG, REFRESH_ICON_SVG, SETTINGS_ICON_SVG, SPARKLES_ICON_SVG, TRASH_ICON_SVG } from './icons.js';
+import { resolveTodayTrendTitleIcon } from './today-trend-title-icon-mapping.js';
 import { escapeAttr, escapeHtml } from './ui.js';
 import { trendInlineActions, trendMeter, trendModuleHead, trendToggleField } from './today-trend-ui.js';
 
@@ -7,24 +8,6 @@ const OUTCOMES = Object.freeze({ resolved: '已解决', failed: '已失败', ter
 const text = value => escapeHtml(String(value || ''));
 const icon = (action, glyph, label, attrs = '', danger = false) => ({ action, icon: glyph, label, attrs, danger });
 const outcomes = (selected, rumor) => Object.entries(OUTCOMES).filter(([key]) => rumor ? ['confirmed', 'debunked'].includes(key) : ['resolved', 'failed', 'terminated', 'inconclusive'].includes(key)).map(([key, label]) => `<option value="${key}"${key === selected ? ' selected' : ''}>${label}</option>`).join('');
-const SVG = (body, className = '') => `<svg class="${className}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${body}</svg>`;
-const EVENT_ICONS = Object.freeze({
-    location: SVG('<path d="M20 10c0 5-8 11-8 11S4 15 4 10a8 8 0 1 1 16 0z"/><circle cx="12" cy="10" r="2.5"/>'),
-    signal: SVG('<path d="M5 9.5a10 10 0 0 1 14 0M8 13a6 6 0 0 1 8 0M11 16.5a2 2 0 0 1 2 0"/><circle cx="12" cy="19" r="1" fill="currentColor" stroke="none"/>'),
-    rumor: SVG('<path d="M4 5h16v11H8l-4 4z"/><path d="M8 9h8M8 12h5"/>'),
-    document: SVG('<path d="M5 5h14v14H5z"/><path d="M8 9h8M8 12h8M8 15h5"/>'),
-    incident: SVG('<path d="m13 2-8 12h6l-1 8 8-12h-6z"/>'),
-    normal: SVG('<circle cx="12" cy="12" r="8"/><path d="M8 12h8M12 8v8"/>'),
-    underground: SVG('<path d="M4 7h16M6 7v10h12V7M9 17v3h6v-3"/><path d="M9 11h6"/>'),
-});
-function eventIcon(event) {
-    const title = String(event.title || '');
-    if (/航线|区域|地点|港|城/.test(title)) return EVENT_ICONS.location;
-    if (/联络|窗口|信号|协作/.test(title)) return EVENT_ICONS.signal;
-    if (/传闻|流言/.test(title)) return EVENT_ICONS.rumor;
-    if (/公告|签署/.test(title)) return EVENT_ICONS.document;
-    return EVENT_ICONS[event.type] || EVENT_ICONS.normal;
-}
 function badge(event) {
     const labels = { incident: '突发', rumor: '流言', underground: '地下线' };
     return labels[event.type] ? `<span class="pm-today-trend-event-badge">${labels[event.type]}</span>` : '';
@@ -50,7 +33,8 @@ function eventCard(event, archived, actionsVisible, generateAttrs) {
     const history = archived
         ? `<details class="pm-today-trend-event-history"><summary>阶段记录（${stages.length}）</summary><ol>${stageList}</ol></details>`
         : `<ol class="pm-today-trend-event-history is-live">${stageList}</ol>`;
-    return `<article class="pm-today-trend-event-card${archived ? ' is-archived' : ''}" data-event-id="${escapeAttr(event.id)}" data-event-type="${escapeAttr(event.type)}"><div class="pm-today-trend-event-body"><header><div class="pm-today-trend-event-heading"><span class="pm-today-trend-event-marker" aria-hidden="true">${eventIcon(event)}</span><b>${text(event.title)}</b></div>${trendInlineActions({ visible: actionsVisible, actions })}</header><div class="pm-today-trend-event-tags">${badge(event)}${pill(archived, state)}</div><dl class="pm-today-trend-event-facts"><div><dt>起因</dt><dd>${text(event.origin)}</dd></div><div><dt>主体</dt><dd>${text(participants.join('、') || '未记录')}</dd></div></dl>${history}${archived ? `<div class="pm-today-trend-event-latest"><strong>最终结果</strong><span>${text(event.finalResult)}</span></div>` : ''}</div></article>`;
+    const resolvedIcon = resolveTodayTrendTitleIcon({ title: event.title, kind: 'event', type: event.type });
+    return `<article class="pm-today-trend-event-card${archived ? ' is-archived' : ''}" data-event-id="${escapeAttr(event.id)}" data-event-type="${escapeAttr(event.type)}"><div class="pm-today-trend-event-body"><header><div class="pm-today-trend-event-heading"><span class="pm-today-trend-event-marker" data-today-trend-icon="${escapeAttr(resolvedIcon.key)}" aria-hidden="true">${resolvedIcon.svg}</span><b>${text(event.title)}</b></div>${trendInlineActions({ visible: actionsVisible, actions })}</header><div class="pm-today-trend-event-tags">${badge(event)}${pill(archived, state)}</div><dl class="pm-today-trend-event-facts"><div><dt>起因</dt><dd>${text(event.origin)}</dd></div><div><dt>主体</dt><dd>${text(participants.join('、') || '未记录')}</dd></div></dl>${history}${archived ? `<div class="pm-today-trend-event-latest"><strong>最终结果</strong><span>${text(event.finalResult)}</span></div>` : ''}</div></article>`;
 }
 export function renderTodayTrendDynamicsView({ scope, preset = null, editingEventId = null, editingRule = null, ruleDraft = null, mode = 'content', dynamicsTab = 'active', menuOpenId = null, generationAvailable = false, generationBusy = false, floorStatus = '' } = {}) {
     if (!scope) return '<p class="pm-today-trend-empty">当前聊天尚未初始化今日风向。</p>';

@@ -3630,6 +3630,7 @@ ${userPrompt}` : userPrompt;
 
   // src/icons.js
   var icon = (paths) => `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths}</svg>`;
+  var todayTrendEventIcon = (paths) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths}</svg>`;
   var MENU_ICON_SVG = icon('<path d="M4 6h16M4 12h16M4 18h16"/>');
   var CLOSE_ICON_SVG = icon('<path d="M6 6l12 12M18 6L6 18"/>');
   var HOME_ICON_SVG = icon('<path d="M3 11.5L12 4l9 7.5"/><path d="M5.5 10.5V20h13v-9.5"/><path d="M9.5 20v-6h5v6"/>');
@@ -3686,6 +3687,13 @@ ${userPrompt}` : userPrompt;
   var TODAY_TREND_REPUTATION_ICON_SVG = icon('<path d="M9 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM3 20c0-4 2.5-6 6-6s6 2 6 6"/><path d="M16 5a3 3 0 0 1 0 6M17 14c2.5.5 4 2.5 4 6"/>');
   var TODAY_TREND_FACTION_ICON_SVG = icon('<path d="M10.85 6.99 6.65 14.27M13.15 6.99l4.2 7.28M7.8 16.26h8.4"/><circle cx="12" cy="5" r="2.3"/><circle cx="5.5" cy="16.26" r="2.3"/><circle cx="18.5" cy="16.26" r="2.3"/>');
   var TODAY_TREND_DYNAMICS_ICON_SVG = icon('<circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/>');
+  var TODAY_TREND_EVENT_LOCATION_SVG = todayTrendEventIcon('<path d="M20 10c0 5-8 11-8 11S4 15 4 10a8 8 0 1 1 16 0z"/><circle cx="12" cy="10" r="2.5"/>');
+  var TODAY_TREND_EVENT_SIGNAL_SVG = todayTrendEventIcon('<path d="M5 9.5a10 10 0 0 1 14 0M8 13a6 6 0 0 1 8 0M11 16.5a2 2 0 0 1 2 0"/><circle cx="12" cy="19" r="1" fill="currentColor" stroke="none"/>');
+  var TODAY_TREND_EVENT_RUMOR_SVG = todayTrendEventIcon('<path d="M4 5h16v11H8l-4 4z"/><path d="M8 9h8M8 12h5"/>');
+  var TODAY_TREND_EVENT_DOCUMENT_SVG = todayTrendEventIcon('<path d="M5 5h14v14H5z"/><path d="M8 9h8M8 12h8M8 15h5"/>');
+  var TODAY_TREND_EVENT_INCIDENT_SVG = todayTrendEventIcon('<path d="m13 2-8 12h6l-1 8 8-12h-6z"/>');
+  var TODAY_TREND_EVENT_NORMAL_SVG = todayTrendEventIcon('<circle cx="12" cy="12" r="8"/><path d="M8 12h8M12 8v8"/>');
+  var TODAY_TREND_EVENT_UNDERGROUND_SVG = todayTrendEventIcon('<path d="M4 7h16M6 7v10h12V7M9 17v3h6v-3"/><path d="M9 11h6"/>');
   var TODAY_TREND_RELATION_ICON_PATHS = Object.freeze({
     hostile: '<path d="M12 3 2.5 20h19z"/><path d="M12 9v4M12 17h.01"/>',
     dislike: '<circle cx="12" cy="12" r="9"/><circle cx="9" cy="10" r=".7" fill="currentColor" stroke="none"/><circle cx="15" cy="10" r=".7" fill="currentColor" stroke="none"/><path d="M8.5 17c1-2 2.2-3 3.5-3s2.5 1 3.5 3"/>',
@@ -23435,6 +23443,54 @@ ${targetInstruction}`
     } });
   }
 
+  // src/today-trend-title-icon-mapping.js
+  var TITLE_ICON_RULES = Object.freeze([
+    ["weather-storm", /雷暴|暴雨|台风|飓风|洪水|山火|地震|灾害/],
+    ["document", /公告|通告|签署|协议|条约|法令|政策|通知|报告/],
+    ["rumor", /传闻|流言|谣言|爆料|辟谣/],
+    ["signal", /联络|通讯|信号|对接|协作|会谈/],
+    ["calendar", /日程|期限|会议|峰会|纪念|周年|倒计时/],
+    ["live", /直播|演出|开幕|发布会|展演|活动/],
+    ["heart", /恋情|恋爱|婚礼|分手|和解|告白/],
+    ["location", /航线|路线|港口|机场|车站|城市|城区|区域|地点|迁移/],
+    ["weather", /天气|降温|高温|酷暑|寒潮|降雪|雾|云/],
+    ["trend", /增长|下滑|复苏|转型|扩张|收缩|走势|趋势/],
+    ["sparkles", /发现|突破|研发|实验|新品|异象/],
+    ["recipe", /餐饮|美食|食谱|餐厅|菜单/],
+    ["outfit", /时装|服饰|穿搭|造型|秀场/],
+    ["time", /历史|旧案|溯源|年代|回顾/]
+  ]);
+  var TITLE_ICONS = Object.freeze({
+    "weather-storm": WEATHER_STORM_ICON_SVG,
+    document: TODAY_TREND_EVENT_DOCUMENT_SVG,
+    rumor: TODAY_TREND_EVENT_RUMOR_SVG,
+    signal: TODAY_TREND_EVENT_SIGNAL_SVG,
+    calendar: CALENDAR_ICON_SVG,
+    live: LIVE_ICON_SVG,
+    heart: HEART_ICON_SVG,
+    location: TODAY_TREND_EVENT_LOCATION_SVG,
+    weather: WEATHER_ICON_SVG,
+    trend: TREND_ICON_SVG,
+    sparkles: SPARKLES_ICON_SVG,
+    recipe: RECIPE_ICON_SVG,
+    outfit: OUTFIT_ICON_SVG,
+    time: TIME_ORIGIN_ICON_SVG,
+    "world-default": TODAY_TREND_WORLD_ICON_SVG,
+    "event-incident": TODAY_TREND_EVENT_INCIDENT_SVG,
+    "event-underground": TODAY_TREND_EVENT_UNDERGROUND_SVG,
+    "event-normal": TODAY_TREND_EVENT_NORMAL_SVG
+  });
+  var EVENT_FALLBACK_KEYS = Object.freeze({ incident: "event-incident", rumor: "rumor", underground: "event-underground" });
+  var normalizeTitle = (title) => String(title || "").normalize("NFKC").trim().replace(/\s+/g, " ").toLowerCase();
+  var iconResult = (key) => ({ key, svg: TITLE_ICONS[key] });
+  function resolveTodayTrendTitleIcon({ title = "", kind = "world", type = "normal" } = {}) {
+    const normalizedTitle = normalizeTitle(title);
+    const matchedRule = TITLE_ICON_RULES.find(([, pattern]) => pattern.test(normalizedTitle));
+    if (matchedRule) return iconResult(matchedRule[0]);
+    if (kind === "event") return iconResult(EVENT_FALLBACK_KEYS[String(type || "").toLowerCase()] || "event-normal");
+    return iconResult("world-default");
+  }
+
   // src/today-trend-ui.js
   var TREND_METER_CLOCK_ICON_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg>';
   function trendRelationIcon(status) {
@@ -23499,24 +23555,6 @@ ${targetInstruction}`
   var text7 = (value) => escapeHtml(String(value || ""));
   var icon2 = (action, glyph, label, attrs = "", danger = false) => ({ action, icon: glyph, label, attrs, danger });
   var outcomes = (selected, rumor) => Object.entries(OUTCOMES).filter(([key]) => rumor ? ["confirmed", "debunked"].includes(key) : ["resolved", "failed", "terminated", "inconclusive"].includes(key)).map(([key, label]) => `<option value="${key}"${key === selected ? " selected" : ""}>${label}</option>`).join("");
-  var SVG = (body, className = "") => `<svg class="${className}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${body}</svg>`;
-  var EVENT_ICONS = Object.freeze({
-    location: SVG('<path d="M20 10c0 5-8 11-8 11S4 15 4 10a8 8 0 1 1 16 0z"/><circle cx="12" cy="10" r="2.5"/>'),
-    signal: SVG('<path d="M5 9.5a10 10 0 0 1 14 0M8 13a6 6 0 0 1 8 0M11 16.5a2 2 0 0 1 2 0"/><circle cx="12" cy="19" r="1" fill="currentColor" stroke="none"/>'),
-    rumor: SVG('<path d="M4 5h16v11H8l-4 4z"/><path d="M8 9h8M8 12h5"/>'),
-    document: SVG('<path d="M5 5h14v14H5z"/><path d="M8 9h8M8 12h8M8 15h5"/>'),
-    incident: SVG('<path d="m13 2-8 12h6l-1 8 8-12h-6z"/>'),
-    normal: SVG('<circle cx="12" cy="12" r="8"/><path d="M8 12h8M12 8v8"/>'),
-    underground: SVG('<path d="M4 7h16M6 7v10h12V7M9 17v3h6v-3"/><path d="M9 11h6"/>')
-  });
-  function eventIcon(event) {
-    const title = String(event.title || "");
-    if (/航线|区域|地点|港|城/.test(title)) return EVENT_ICONS.location;
-    if (/联络|窗口|信号|协作/.test(title)) return EVENT_ICONS.signal;
-    if (/传闻|流言/.test(title)) return EVENT_ICONS.rumor;
-    if (/公告|签署/.test(title)) return EVENT_ICONS.document;
-    return EVENT_ICONS[event.type] || EVENT_ICONS.normal;
-  }
   function badge(event) {
     const labels = { incident: "\u7A81\u53D1", rumor: "\u6D41\u8A00", underground: "\u5730\u4E0B\u7EBF" };
     return labels[event.type] ? `<span class="pm-today-trend-event-badge">${labels[event.type]}</span>` : "";
@@ -23540,7 +23578,8 @@ ${targetInstruction}`
     const participants = Array.isArray(event.participants) ? event.participants : [];
     const stageList = stages.map((stage, index) => `<li${!archived && index === stages.length - 1 ? ' class="is-current"' : ""}><span class="pm-today-trend-stage-tag">${!archived && index === stages.length - 1 ? "\u6700\u65B0\u9636\u6BB5" : `\u9636\u6BB5 ${String(index + 1).padStart(2, "0")}`}</span>${text7(stage)}</li>`).join("");
     const history = archived ? `<details class="pm-today-trend-event-history"><summary>\u9636\u6BB5\u8BB0\u5F55\uFF08${stages.length}\uFF09</summary><ol>${stageList}</ol></details>` : `<ol class="pm-today-trend-event-history is-live">${stageList}</ol>`;
-    return `<article class="pm-today-trend-event-card${archived ? " is-archived" : ""}" data-event-id="${escapeAttr(event.id)}" data-event-type="${escapeAttr(event.type)}"><div class="pm-today-trend-event-body"><header><div class="pm-today-trend-event-heading"><span class="pm-today-trend-event-marker" aria-hidden="true">${eventIcon(event)}</span><b>${text7(event.title)}</b></div>${trendInlineActions({ visible: actionsVisible, actions })}</header><div class="pm-today-trend-event-tags">${badge(event)}${pill(archived, state)}</div><dl class="pm-today-trend-event-facts"><div><dt>\u8D77\u56E0</dt><dd>${text7(event.origin)}</dd></div><div><dt>\u4E3B\u4F53</dt><dd>${text7(participants.join("\u3001") || "\u672A\u8BB0\u5F55")}</dd></div></dl>${history}${archived ? `<div class="pm-today-trend-event-latest"><strong>\u6700\u7EC8\u7ED3\u679C</strong><span>${text7(event.finalResult)}</span></div>` : ""}</div></article>`;
+    const resolvedIcon = resolveTodayTrendTitleIcon({ title: event.title, kind: "event", type: event.type });
+    return `<article class="pm-today-trend-event-card${archived ? " is-archived" : ""}" data-event-id="${escapeAttr(event.id)}" data-event-type="${escapeAttr(event.type)}"><div class="pm-today-trend-event-body"><header><div class="pm-today-trend-event-heading"><span class="pm-today-trend-event-marker" data-today-trend-icon="${escapeAttr(resolvedIcon.key)}" aria-hidden="true">${resolvedIcon.svg}</span><b>${text7(event.title)}</b></div>${trendInlineActions({ visible: actionsVisible, actions })}</header><div class="pm-today-trend-event-tags">${badge(event)}${pill(archived, state)}</div><dl class="pm-today-trend-event-facts"><div><dt>\u8D77\u56E0</dt><dd>${text7(event.origin)}</dd></div><div><dt>\u4E3B\u4F53</dt><dd>${text7(participants.join("\u3001") || "\u672A\u8BB0\u5F55")}</dd></div></dl>${history}${archived ? `<div class="pm-today-trend-event-latest"><strong>\u6700\u7EC8\u7ED3\u679C</strong><span>${text7(event.finalResult)}</span></div>` : ""}</div></article>`;
   }
   function renderTodayTrendDynamicsView({ scope, preset = null, editingEventId = null, editingRule = null, ruleDraft = null, mode = "content", dynamicsTab = "active", menuOpenId = null, generationAvailable = false, generationBusy = false, floorStatus = "" } = {}) {
     if (!scope) return '<p class="pm-today-trend-empty">\u5F53\u524D\u804A\u5929\u5C1A\u672A\u521D\u59CB\u5316\u4ECA\u65E5\u98CE\u5411\u3002</p>';
@@ -23673,15 +23712,18 @@ ${targetInstruction}`
       const rows = items.map((item) => `<article class="pm-today-trend-row" data-world-item-id="${escapeAttr(item.id)}">${editingWorldItemId === item.id ? itemEditor(item) : `<div><b>${escapeHtml(item.name)}</b><p>${escapeHtml(item.summary)}</p></div>${itemActions(item, generateAttrs, menuOpenId)}`}</article>`).join("");
       return `<section class="pm-today-trend-view">${trendModuleHead({ title: "\u4E16\u754C\u6001\u52BF\u8BBE\u7F6E", menuId: "world-settings", menuOpenId, actions: [{ action: "today-trend-open-world", icon: BACK_ICON_SVG, label: "\u8FD4\u56DE\u4E16\u754C\u6001\u52BF" }, { action: "today-trend-add-world-item", icon: SPARKLES_ICON_SVG, label: "\u6DFB\u52A0\u9879\u76EE", attrs: items.length >= TODAY_TREND_LIMITS.worldItems ? "disabled" : "" }] })}${rows || '<p class="pm-today-trend-empty">\u5C1A\u672A\u5EFA\u7ACB\u4E16\u754C\u6001\u52BF\u9879\u76EE\u3002</p>'}${editingWorldItemId === "__new__" ? itemEditor() : ""}</section>`;
     }
-    const signalMarker = '<span class="pm-today-trend-world-signal-marker" aria-hidden="true"><i></i></span>';
+    const signalMarker = (item) => {
+      const resolvedIcon = resolveTodayTrendTitleIcon({ title: item.name, kind: "world" });
+      return `<span class="pm-today-trend-world-signal-marker" data-today-trend-icon="${escapeAttr(resolvedIcon.key)}" aria-hidden="true">${resolvedIcon.svg}</span>`;
+    };
     const hero = items[0];
     const heroBody = hero ? editingWorldItemId === hero.id ? itemEditor(hero) : `<p>${escapeHtml(hero.summary)}</p>` : "";
     const signals = items.slice(1).map((item, index) => {
       const body = editingWorldItemId === item.id ? itemEditor(item) : `<p>${escapeHtml(item.summary)}</p>`;
-      return `<article class="pm-today-trend-world-brief" data-world-item-id="${escapeAttr(item.id)}"><header class="pm-today-trend-world-item-head">${signalMarker}<b>${escapeHtml(item.name)}</b>${itemInlineActions(item, generateAttrs, menuOpenId === "world-module")}</header>${body}</article>`;
+      return `<article class="pm-today-trend-world-brief" data-world-item-id="${escapeAttr(item.id)}"><header class="pm-today-trend-world-item-head">${signalMarker(item)}<b>${escapeHtml(item.name)}</b>${itemInlineActions(item, generateAttrs, menuOpenId === "world-module")}</header>${body}</article>`;
     }).join("");
     const worldMeta = trendMeter([{ label: "SIGNALS", value: items.length }, { label: "BRIEFS", value: Math.max(items.length - 1, 0) }]);
-    const content = hero ? `<article class="pm-today-trend-world-hero" data-world-item-id="${escapeAttr(hero.id)}"><header class="pm-today-trend-world-item-head">${signalMarker}<b>${escapeHtml(hero.name)}</b>${itemInlineActions(hero, generateAttrs, menuOpenId === "world-module")}</header>${heroBody}</article>${signals ? `<div class="pm-today-trend-world-signals">${signals}</div>` : ""}` : '<p class="pm-today-trend-empty">\u5C1A\u672A\u751F\u6210\u4E16\u754C\u6001\u52BF\u3002</p>';
+    const content = hero ? `<article class="pm-today-trend-world-hero" data-world-item-id="${escapeAttr(hero.id)}"><header class="pm-today-trend-world-item-head">${signalMarker(hero)}<b>${escapeHtml(hero.name)}</b>${itemInlineActions(hero, generateAttrs, menuOpenId === "world-module")}</header>${heroBody}</article>${signals ? `<div class="pm-today-trend-world-signals">${signals}</div>` : ""}` : '<p class="pm-today-trend-empty">\u5C1A\u672A\u751F\u6210\u4E16\u754C\u6001\u52BF\u3002</p>';
     return `<section class="pm-today-trend-view pm-today-trend-world">${trendModuleHead({ title: "\u4E16\u754C\u6001\u52BF", eyebrow: "TODAY\u2019S SIGNAL", metaHtml: worldMeta, asideHtml: floorStatus, menuId: "world-module", menuOpenId, actions: [{ action: "today-trend-generate-world", icon: REFRESH_ICON_SVG, label: "\u91CD\u65B0\u751F\u6210\u4E16\u754C\u6001\u52BF", attrs: generateAttrs }, { action: "today-trend-edit-world-rule", icon: BOOK_ICON_SVG, label: "\u7F16\u8F91\u4E16\u754C\u6001\u52BF\u63D0\u793A\u8BCD" }] })}${content}${generationBusy ? '<span class="pm-today-trend-progress">\u6B63\u5728\u751F\u6210\u2026</span>' : ""}</section>`;
   }
 

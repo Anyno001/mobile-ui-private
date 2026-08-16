@@ -1,6 +1,6 @@
 # 项目进度
 - Project: mobile-ui-private
-- Updated At: 2026-08-16T13:02:47.884Z
+- Updated At: 2026-08-16T14:45:09.066Z
 - Status: active
 - Phase: review
 
@@ -8,26 +8,31 @@
 
 <!-- LIMCODE_PROGRESS_SUMMARY_START -->
 - 当前进度：2/2 个里程碑已完成；最新：milestone-today-trend-calendar-acceptance
-- 当前焦点：已整理并推送今日风向 NPC 群像追踪与 baseline gate repair 到 origin/main
-- 最新结论：提交 708fb1e（feat: finalize independent trend tracking and baseline gates）已成功推送 origin/main。提交前 npm.cmd run check 与 git diff --check 均 exit 0；清理了已否决的 fanLife 独立子系统设计/计划和未实施日历计划，未提交依赖…
-- 下一步：生产发布前按 docs/BASELINE.md 在真实 SillyTavern 宿主执行人工视觉回归：主题切换、暗色、模型下拉、日历管理、社区按钮状态、移动布局与控制台错误。
+- 当前焦点：发布今日风向标题关键词 SVG 映射到 main：执行最终暂存检查、提交与远端同步。
+- 最新结论：独立 Acceptance Expert 第 8 轮 PASSED（blocking=0、major=0、minor=2）；助手已明确授权交付到 main。
+- 下一步：完成 staged diff 与临时产物检查，提交并推送 main；推送后核对本地与 origin/main 一致、工作树干净。
 <!-- LIMCODE_PROGRESS_SUMMARY_END -->
 
 ## 关联文档
 
 <!-- LIMCODE_PROGRESS_ARTIFACTS_START -->
-- 设计：`.limcode/design/baseline-gate-repair.md`
-- 计划：`.limcode/plans/today-trend-community-visual-refinement.md`
+- 设计：`.limcode/design/today-trend-title-svg-mapping.md`
+- 计划：`.limcode/plans/today-trend-title-svg-mapping.md`
 <!-- LIMCODE_PROGRESS_ARTIFACTS_END -->
 
 ## 当前 TODO 快照
 
 <!-- LIMCODE_PROGRESS_TODOS_START -->
-- [x] 盘点关系节点、说明排版和子社区场景色的实际选择器、调用链、治理登记及现有断言，冻结最小改动范围。  `#baseline-scope-audit`
-- [x] 仅将当前子社区内容区错误使用的全局 accent 改为 scene-accent，保留桌面与通用入口的全局主题边界。  `#community-scene-accent`
-- [x] 补齐今日风向、子社区和公共 CSS 契约，构建并执行专项、全量、差异及视觉回归，区分既有基线失败。  `#contracts-build-validation`
-- [x] 分离简易关系按钮的 44px 命中区与 24px 可见实心关系圆，复用 SVG helper 并保留五档动作、ARIA、禁用和状态循环。  `#trend-relation-symbol`
-- [x] 仅在 minimalUi 下收紧标题到说明间距、放宽说明行高，并使势力详情短标签随主题 accent、正文保持可读。  `#trend-spacing-labels`
+- [ ] 独立 Acceptance Expert 已 PASSED（blocking=0、major=0、minor=2）；完成交付卫生检查。真实 SillyTavern 视觉/辅助技术回归尚未执行，且推送 main 属外部发布，需助手确认是否接受剩余风险后再提交推送。  `#trend-svg-mapping-acceptance-delivery` (in_progress)
+- [x] 冻结今日风向标题 SVG 映射的实施基线：核对工作树、现有 SVG 常量与事件局部图标、两视图调用点、CSS marker 和契约断言，并关闭设计中的关键词/图标重叠歧义。  `#trend-svg-mapping-baseline`
+- [x] 扩展 check-today-trend：覆盖 14 类映射、冲突优先级、NFKC、两类兜底、标题唯一输入、两视图一致性及 DOM/无障碍契约。  `#trend-svg-mapping-behavior-contracts`
+- [x] 更新 today-trend marker CSS，删除世界 <i> 内核规则并复用现有尺寸与主题 token，不新增裸值、颜色分流、动画或 !important。  `#trend-svg-mapping-css`
+- [x] 扩展 check-contracts：锁定两类 marker 的 SVG 尺寸/token、世界 marker 禁止回退为 <i>，并验证 CSS governance 无新增违规。  `#trend-svg-mapping-css-contracts`
+- [x] 接入事件追踪视图：移除局部 EVENT_ICONS/eventIcon，按 event.title 调用共用解析器，同时保留 type badge、归档与操作行为。  `#trend-svg-mapping-dynamics-view`
+- [x] 将事件追踪局部内容 SVG 提升到 src/icons.js，按现有图标重复性选择唯一常量并保持既有 SVG path 与视觉不变。  `#trend-svg-mapping-icon-catalog`
+- [x] 新增 src/today-trend-title-icon-mapping.js，实现固定优先级规则、NFKC 标准化、世界默认与 event type 兜底，且不接触状态或持久化。  `#trend-svg-mapping-resolver`
+- [x] 按 build→check:syntax→check:today-trend→check:contracts→check→git diff --check 顺序完成验证，清理临时产物并记录可复核证据。  `#trend-svg-mapping-validation`
+- [x] 接入世界态势视图：按 item.name 解析图标，输出 SVG、data-today-trend-icon 与 aria-hidden marker，移除 <i> 圆点结构。  `#trend-svg-mapping-world-view`
 <!-- LIMCODE_PROGRESS_TODOS_END -->
 
 ## 项目里程碑
@@ -55,34 +60,32 @@
 ## 风险与阻塞
 
 <!-- LIMCODE_PROGRESS_RISKS_START -->
-- acceptance-expert-unavailable | resolved | 正式验收专家不可用：此前多次调用失败；随后已由实际 Acceptance Expert 返回独立 conditionally_accepted 结论，风险解除。
-- baseline-check-debt | active | 既有检查基线失败：当前树与已隔离基线同样在 check:behavior 的主题 auxiliary 断言、check:permissions 的空日历 prompt 断言和 check:contracts 的 CSS governance registry 失败；验收专家确认不属于本轮回归。
-- index-lock | resolved | 构建产物被占用：此前 index.js 被 user-mapped section 锁定；随后主工作区 build 与临时输出构建均成功。
+- trend-host-visual-regression | accepted | 真实宿主视觉与辅助技术回归未执行：静态契约和自动门禁已通过，但尚未在真实 SillyTavern 宿主验证普通/深色/自定义主题、长标题、窄屏、active/archived 以及 Accessibility Tree。按助手授权作为 minor 风险接受，不伪称已关闭。
 <!-- LIMCODE_PROGRESS_RISKS_END -->
 
 ## 最近更新
 
 <!-- LIMCODE_PROGRESS_LOG_START -->
-- 2026-08-16T09:32:47.852Z | updated | today-trend-independent-validation | 验证证据已收集；正式验收专家不可用且基线债务阻断最终 gate，validation 保持 in_progress。
-- 2026-08-16T09:35:29.250Z | milestone_recorded | today-trend-independent-validation | 主工作区重新完成 build 与 syntax gate；验证仍因正式验收专家 API 429 和既有基线失败保持 blocked/in_progress。
-- 2026-08-16T09:39:18.853Z | artifact_changed | plan | 同步计划 TODO 快照：.limcode/plans/today-trend-independent-worldbook-tracking.md
-- 2026-08-16T09:42:44.708Z | updated | today-trend-independent-validation | 最终专项验证完成：build、syntax、today-trend、interactive、git diff --check 通过；独立行为契约临时验证通过。正式验收专家 API 429，validation 继续 in_progress。
-- 2026-08-16T09:57:00.639Z | updated | today-trend-independent-validation | 按用户要求重新验收：build、syntax、today-trend、interactive、git diff --check 通过；完整 behavior/permissions/contracts 仍为既有基线失败；独立验收专家再次因 API 429 不可用，validation 未完成。
-- 2026-08-16T09:58:12.169Z | updated | today-trend-independent-validation | 重新验收完成可执行部分：build、syntax、today-trend、interactive、diff-check 通过；behavior/permissions/contracts 为已知基线失败；独立验收专家仍因 API 429 不可用。
-- 2026-08-16T09:58:12.246Z | artifact_changed | plan | 同步计划 TODO 快照：.limcode/plans/today-trend-independent-worldbook-tracking.md
-- 2026-08-16T10:02:15.169Z | updated | today-trend-independent-validation | 正式验收入口已真实尝试：collaborate_agents 要求 acceptance_expert，但路由到侦察尖兵并因 API 429 失败；没有验收结果，validation 保持 in_progress。
-- 2026-08-16T10:28:06.336Z | updated | today-trend-independent-validation | 已核对有效 progress 文档并修正过时状态：正式 Acceptance Expert 结论为 conditionally_accepted，无 blocking/major/minor；当前仅剩三项既有基线债务与交付决策。
-- 2026-08-16T10:28:06.336Z | risk_changed | acceptance-expert-unavailable | 正式验收专家已返回独立条件接受结论，验收不可用风险解除。
-- 2026-08-16T10:39:39.771Z | artifact_changed | design | 同步设计文档：.limcode/design/baseline-gate-repair.md
-- 2026-08-16T10:55:18.814Z | artifact_changed | plan | 同步计划文档：.limcode/plans/baseline-gate-repair.md
-- 2026-08-16T11:03:57.803Z | artifact_changed | plan | 同步计划 TODO 快照：.limcode/plans/baseline-gate-repair.md
-- 2026-08-16T11:08:22.750Z | milestone_recorded | baseline-gate-repair | 冻结基线证据完成；auxiliary 测试契约已按源码和 CSS 标准对齐并通过 check:behavior。
 - 2026-08-16T11:27:40.946Z | artifact_changed | plan | 同步计划 TODO 快照：.limcode/plans/baseline-gate-repair.md
 - 2026-08-16T12:39:38.445Z | milestone_recorded | bgr-repair-workspace-dependencies | 已用 npm.cmd install 从 package-lock.json 恢复 node_modules；复验依赖、构建、专项门禁和全量静态门禁均通过。
 - 2026-08-16T12:39:38.806Z | artifact_changed | plan | 同步计划 TODO 快照：.limcode/plans/baseline-gate-repair.md
 - 2026-08-16T12:49:43.893Z | artifact_changed | plan | 同步计划 TODO 快照：.limcode/plans/today-trend-independent-worldbook-tracking.md
 - 2026-08-16T12:50:49.400Z | artifact_changed | plan | 同步计划 TODO 快照：.limcode/plans/today-trend-community-visual-refinement.md
 - 2026-08-16T13:02:47.884Z | milestone_recorded | release-prepare-main-push | 已提交并推送 708fb1e 至 origin/main；全量 npm check 与 diff-check 通过，工作树干净。
+- 2026-08-16T13:24:27.913Z | artifact_changed | design | 同步设计文档：.limcode/design/today-trend-title-svg-mapping.md
+- 2026-08-16T13:35:46.274Z | artifact_changed | plan | 同步计划文档：.limcode/plans/today-trend-title-svg-mapping.md
+- 2026-08-16T13:36:18.933Z | artifact_changed | plan | 同步计划 TODO 快照：.limcode/plans/today-trend-title-svg-mapping.md
+- 2026-08-16T13:37:45.508Z | milestone_recorded | trend-svg-mapping-baseline | 开始基线冻结：复核工作树、事件局部 SVG、视图 marker、CSS token 与契约断言。
+- 2026-08-16T13:39:50.464Z | artifact_changed | plan | 同步计划 TODO 快照：.limcode/plans/today-trend-title-svg-mapping.md
+- 2026-08-16T13:45:12.360Z | milestone_recorded | trend-svg-mapping-resolver | 公共标题解析器、世界态势 marker 与事件追踪 marker 已接入；下一步补齐自动契约。
+- 2026-08-16T13:48:02.263Z | artifact_changed | plan | 同步计划 TODO 快照：.limcode/plans/today-trend-title-svg-mapping.md
+- 2026-08-16T13:56:42.976Z | artifact_changed | plan | 同步计划 TODO 快照：.limcode/plans/today-trend-title-svg-mapping.md
+- 2026-08-16T14:00:20.582Z | artifact_changed | plan | 同步计划 TODO 快照：.limcode/plans/today-trend-title-svg-mapping.md
+- 2026-08-16T14:37:50.581Z | artifact_changed | plan | 同步计划 TODO 快照：.limcode/plans/today-trend-title-svg-mapping.md
+- 2026-08-16T14:40:10.555Z | milestone_recorded | trend-svg-mapping-acceptance | 独立 Acceptance Expert 第 8 轮 PASSED：blocking=0、major=0、minor=2；自动门禁与交付卫生已复核。
+- 2026-08-16T14:40:10.555Z | updated | trend-svg-mapping-release-gate | 发布操作暂缓：等待助手确认接受真实宿主视觉/辅助技术回归缺口并授权提交、推送 main。
+- 2026-08-16T14:40:34.374Z | updated | trend-svg-mapping-release-gate | 发布门禁已阻塞：等待助手明确接受两项真实宿主回归 minor 并授权提交、推送 main。
+- 2026-08-16T14:45:09.066Z | updated | trend-svg-mapping-release-gate | 助手已授权交付到 main；开始最终暂存检查、提交与远端同步。
 <!-- LIMCODE_PROGRESS_LOG_END -->
 
 <!-- LIMCODE_PROGRESS_METADATA_START -->
@@ -92,41 +95,66 @@
   "projectId": "mobile-ui-private",
   "projectName": "mobile-ui-private",
   "createdAt": "2026-08-14T05:55:56.978Z",
-  "updatedAt": "2026-08-16T13:02:47.884Z",
+  "updatedAt": "2026-08-16T14:45:09.066Z",
   "status": "active",
   "phase": "review",
-  "currentFocus": "已整理并推送今日风向 NPC 群像追踪与 baseline gate repair 到 origin/main",
-  "latestConclusion": "提交 708fb1e（feat: finalize independent trend tracking and baseline gates）已成功推送 origin/main。提交前 npm.cmd run check 与 git diff --check 均 exit 0；清理了已否决的 fanLife 独立子系统设计/计划和未实施日历计划，未提交依赖目录、临时日志或敏感文件。",
+  "currentFocus": "发布今日风向标题关键词 SVG 映射到 main：执行最终暂存检查、提交与远端同步。",
+  "latestConclusion": "独立 Acceptance Expert 第 8 轮 PASSED（blocking=0、major=0、minor=2）；助手已明确授权交付到 main。",
   "currentBlocker": null,
-  "nextAction": "生产发布前按 docs/BASELINE.md 在真实 SillyTavern 宿主执行人工视觉回归：主题切换、暗色、模型下拉、日历管理、社区按钮状态、移动布局与控制台错误。",
+  "nextAction": "完成 staged diff 与临时产物检查，提交并推送 main；推送后核对本地与 origin/main 一致、工作树干净。",
   "activeArtifacts": {
-    "design": ".limcode/design/baseline-gate-repair.md",
-    "plan": ".limcode/plans/today-trend-community-visual-refinement.md"
+    "design": ".limcode/design/today-trend-title-svg-mapping.md",
+    "plan": ".limcode/plans/today-trend-title-svg-mapping.md"
   },
   "todos": [
     {
-      "id": "baseline-scope-audit",
-      "content": "盘点关系节点、说明排版和子社区场景色的实际选择器、调用链、治理登记及现有断言，冻结最小改动范围。",
+      "id": "trend-svg-mapping-acceptance-delivery",
+      "content": "独立 Acceptance Expert 已 PASSED（blocking=0、major=0、minor=2）；完成交付卫生检查。真实 SillyTavern 视觉/辅助技术回归尚未执行，且推送 main 属外部发布，需助手确认是否接受剩余风险后再提交推送。",
+      "status": "in_progress"
+    },
+    {
+      "id": "trend-svg-mapping-baseline",
+      "content": "冻结今日风向标题 SVG 映射的实施基线：核对工作树、现有 SVG 常量与事件局部图标、两视图调用点、CSS marker 和契约断言，并关闭设计中的关键词/图标重叠歧义。",
       "status": "completed"
     },
     {
-      "id": "community-scene-accent",
-      "content": "仅将当前子社区内容区错误使用的全局 accent 改为 scene-accent，保留桌面与通用入口的全局主题边界。",
+      "id": "trend-svg-mapping-behavior-contracts",
+      "content": "扩展 check-today-trend：覆盖 14 类映射、冲突优先级、NFKC、两类兜底、标题唯一输入、两视图一致性及 DOM/无障碍契约。",
       "status": "completed"
     },
     {
-      "id": "contracts-build-validation",
-      "content": "补齐今日风向、子社区和公共 CSS 契约，构建并执行专项、全量、差异及视觉回归，区分既有基线失败。",
+      "id": "trend-svg-mapping-css",
+      "content": "更新 today-trend marker CSS，删除世界 <i> 内核规则并复用现有尺寸与主题 token，不新增裸值、颜色分流、动画或 !important。",
       "status": "completed"
     },
     {
-      "id": "trend-relation-symbol",
-      "content": "分离简易关系按钮的 44px 命中区与 24px 可见实心关系圆，复用 SVG helper 并保留五档动作、ARIA、禁用和状态循环。",
+      "id": "trend-svg-mapping-css-contracts",
+      "content": "扩展 check-contracts：锁定两类 marker 的 SVG 尺寸/token、世界 marker 禁止回退为 <i>，并验证 CSS governance 无新增违规。",
       "status": "completed"
     },
     {
-      "id": "trend-spacing-labels",
-      "content": "仅在 minimalUi 下收紧标题到说明间距、放宽说明行高，并使势力详情短标签随主题 accent、正文保持可读。",
+      "id": "trend-svg-mapping-dynamics-view",
+      "content": "接入事件追踪视图：移除局部 EVENT_ICONS/eventIcon，按 event.title 调用共用解析器，同时保留 type badge、归档与操作行为。",
+      "status": "completed"
+    },
+    {
+      "id": "trend-svg-mapping-icon-catalog",
+      "content": "将事件追踪局部内容 SVG 提升到 src/icons.js，按现有图标重复性选择唯一常量并保持既有 SVG path 与视觉不变。",
+      "status": "completed"
+    },
+    {
+      "id": "trend-svg-mapping-resolver",
+      "content": "新增 src/today-trend-title-icon-mapping.js，实现固定优先级规则、NFKC 标准化、世界默认与 event type 兜底，且不接触状态或持久化。",
+      "status": "completed"
+    },
+    {
+      "id": "trend-svg-mapping-validation",
+      "content": "按 build→check:syntax→check:today-trend→check:contracts→check→git diff --check 顺序完成验证，清理临时产物并记录可复核证据。",
+      "status": "completed"
+    },
+    {
+      "id": "trend-svg-mapping-world-view",
+      "content": "接入世界态势视图：按 item.name 解析图标，输出 SVG、data-today-trend-icon 与 aria-hidden marker，移除 <i> 圆点结构。",
       "status": "completed"
     }
   ],
@@ -169,109 +197,13 @@
   ],
   "risks": [
     {
-      "id": "acceptance-expert-unavailable",
-      "title": "正式验收专家不可用",
-      "description": "此前多次调用失败；随后已由实际 Acceptance Expert 返回独立 conditionally_accepted 结论，风险解除。",
-      "status": "resolved"
-    },
-    {
-      "id": "baseline-check-debt",
-      "title": "既有检查基线失败",
-      "description": "当前树与已隔离基线同样在 check:behavior 的主题 auxiliary 断言、check:permissions 的空日历 prompt 断言和 check:contracts 的 CSS governance registry 失败；验收专家确认不属于本轮回归。",
-      "status": "active"
-    },
-    {
-      "id": "index-lock",
-      "title": "构建产物被占用",
-      "description": "此前 index.js 被 user-mapped section 锁定；随后主工作区 build 与临时输出构建均成功。",
-      "status": "resolved"
+      "id": "trend-host-visual-regression",
+      "title": "真实宿主视觉与辅助技术回归未执行",
+      "description": "静态契约和自动门禁已通过，但尚未在真实 SillyTavern 宿主验证普通/深色/自定义主题、长标题、窄屏、active/archived 以及 Accessibility Tree。按助手授权作为 minor 风险接受，不伪称已关闭。",
+      "status": "accepted"
     }
   ],
   "log": [
-    {
-      "at": "2026-08-16T09:32:47.852Z",
-      "type": "updated",
-      "refId": "today-trend-independent-validation",
-      "message": "验证证据已收集；正式验收专家不可用且基线债务阻断最终 gate，validation 保持 in_progress。"
-    },
-    {
-      "at": "2026-08-16T09:35:29.250Z",
-      "type": "milestone_recorded",
-      "refId": "today-trend-independent-validation",
-      "message": "主工作区重新完成 build 与 syntax gate；验证仍因正式验收专家 API 429 和既有基线失败保持 blocked/in_progress。"
-    },
-    {
-      "at": "2026-08-16T09:39:18.853Z",
-      "type": "artifact_changed",
-      "refId": "plan",
-      "message": "同步计划 TODO 快照：.limcode/plans/today-trend-independent-worldbook-tracking.md"
-    },
-    {
-      "at": "2026-08-16T09:42:44.708Z",
-      "type": "updated",
-      "refId": "today-trend-independent-validation",
-      "message": "最终专项验证完成：build、syntax、today-trend、interactive、git diff --check 通过；独立行为契约临时验证通过。正式验收专家 API 429，validation 继续 in_progress。"
-    },
-    {
-      "at": "2026-08-16T09:57:00.639Z",
-      "type": "updated",
-      "refId": "today-trend-independent-validation",
-      "message": "按用户要求重新验收：build、syntax、today-trend、interactive、git diff --check 通过；完整 behavior/permissions/contracts 仍为既有基线失败；独立验收专家再次因 API 429 不可用，validation 未完成。"
-    },
-    {
-      "at": "2026-08-16T09:58:12.169Z",
-      "type": "updated",
-      "refId": "today-trend-independent-validation",
-      "message": "重新验收完成可执行部分：build、syntax、today-trend、interactive、diff-check 通过；behavior/permissions/contracts 为已知基线失败；独立验收专家仍因 API 429 不可用。"
-    },
-    {
-      "at": "2026-08-16T09:58:12.246Z",
-      "type": "artifact_changed",
-      "refId": "plan",
-      "message": "同步计划 TODO 快照：.limcode/plans/today-trend-independent-worldbook-tracking.md"
-    },
-    {
-      "at": "2026-08-16T10:02:15.169Z",
-      "type": "updated",
-      "refId": "today-trend-independent-validation",
-      "message": "正式验收入口已真实尝试：collaborate_agents 要求 acceptance_expert，但路由到侦察尖兵并因 API 429 失败；没有验收结果，validation 保持 in_progress。"
-    },
-    {
-      "at": "2026-08-16T10:28:06.336Z",
-      "type": "updated",
-      "refId": "today-trend-independent-validation",
-      "message": "已核对有效 progress 文档并修正过时状态：正式 Acceptance Expert 结论为 conditionally_accepted，无 blocking/major/minor；当前仅剩三项既有基线债务与交付决策。"
-    },
-    {
-      "at": "2026-08-16T10:28:06.336Z",
-      "type": "risk_changed",
-      "refId": "acceptance-expert-unavailable",
-      "message": "正式验收专家已返回独立条件接受结论，验收不可用风险解除。"
-    },
-    {
-      "at": "2026-08-16T10:39:39.771Z",
-      "type": "artifact_changed",
-      "refId": "design",
-      "message": "同步设计文档：.limcode/design/baseline-gate-repair.md"
-    },
-    {
-      "at": "2026-08-16T10:55:18.814Z",
-      "type": "artifact_changed",
-      "refId": "plan",
-      "message": "同步计划文档：.limcode/plans/baseline-gate-repair.md"
-    },
-    {
-      "at": "2026-08-16T11:03:57.803Z",
-      "type": "artifact_changed",
-      "refId": "plan",
-      "message": "同步计划 TODO 快照：.limcode/plans/baseline-gate-repair.md"
-    },
-    {
-      "at": "2026-08-16T11:08:22.750Z",
-      "type": "milestone_recorded",
-      "refId": "baseline-gate-repair",
-      "message": "冻结基线证据完成；auxiliary 测试契约已按源码和 CSS 标准对齐并通过 check:behavior。"
-    },
     {
       "at": "2026-08-16T11:27:40.946Z",
       "type": "artifact_changed",
@@ -307,21 +239,105 @@
       "type": "milestone_recorded",
       "refId": "release-prepare-main-push",
       "message": "已提交并推送 708fb1e 至 origin/main；全量 npm check 与 diff-check 通过，工作树干净。"
+    },
+    {
+      "at": "2026-08-16T13:24:27.913Z",
+      "type": "artifact_changed",
+      "refId": "design",
+      "message": "同步设计文档：.limcode/design/today-trend-title-svg-mapping.md"
+    },
+    {
+      "at": "2026-08-16T13:35:46.274Z",
+      "type": "artifact_changed",
+      "refId": "plan",
+      "message": "同步计划文档：.limcode/plans/today-trend-title-svg-mapping.md"
+    },
+    {
+      "at": "2026-08-16T13:36:18.933Z",
+      "type": "artifact_changed",
+      "refId": "plan",
+      "message": "同步计划 TODO 快照：.limcode/plans/today-trend-title-svg-mapping.md"
+    },
+    {
+      "at": "2026-08-16T13:37:45.508Z",
+      "type": "milestone_recorded",
+      "refId": "trend-svg-mapping-baseline",
+      "message": "开始基线冻结：复核工作树、事件局部 SVG、视图 marker、CSS token 与契约断言。"
+    },
+    {
+      "at": "2026-08-16T13:39:50.464Z",
+      "type": "artifact_changed",
+      "refId": "plan",
+      "message": "同步计划 TODO 快照：.limcode/plans/today-trend-title-svg-mapping.md"
+    },
+    {
+      "at": "2026-08-16T13:45:12.360Z",
+      "type": "milestone_recorded",
+      "refId": "trend-svg-mapping-resolver",
+      "message": "公共标题解析器、世界态势 marker 与事件追踪 marker 已接入；下一步补齐自动契约。"
+    },
+    {
+      "at": "2026-08-16T13:48:02.263Z",
+      "type": "artifact_changed",
+      "refId": "plan",
+      "message": "同步计划 TODO 快照：.limcode/plans/today-trend-title-svg-mapping.md"
+    },
+    {
+      "at": "2026-08-16T13:56:42.976Z",
+      "type": "artifact_changed",
+      "refId": "plan",
+      "message": "同步计划 TODO 快照：.limcode/plans/today-trend-title-svg-mapping.md"
+    },
+    {
+      "at": "2026-08-16T14:00:20.582Z",
+      "type": "artifact_changed",
+      "refId": "plan",
+      "message": "同步计划 TODO 快照：.limcode/plans/today-trend-title-svg-mapping.md"
+    },
+    {
+      "at": "2026-08-16T14:37:50.581Z",
+      "type": "artifact_changed",
+      "refId": "plan",
+      "message": "同步计划 TODO 快照：.limcode/plans/today-trend-title-svg-mapping.md"
+    },
+    {
+      "at": "2026-08-16T14:40:10.555Z",
+      "type": "milestone_recorded",
+      "refId": "trend-svg-mapping-acceptance",
+      "message": "独立 Acceptance Expert 第 8 轮 PASSED：blocking=0、major=0、minor=2；自动门禁与交付卫生已复核。"
+    },
+    {
+      "at": "2026-08-16T14:40:10.555Z",
+      "type": "updated",
+      "refId": "trend-svg-mapping-release-gate",
+      "message": "发布操作暂缓：等待助手确认接受真实宿主视觉/辅助技术回归缺口并授权提交、推送 main。"
+    },
+    {
+      "at": "2026-08-16T14:40:34.374Z",
+      "type": "updated",
+      "refId": "trend-svg-mapping-release-gate",
+      "message": "发布门禁已阻塞：等待助手明确接受两项真实宿主回归 minor 并授权提交、推送 main。"
+    },
+    {
+      "at": "2026-08-16T14:45:09.066Z",
+      "type": "updated",
+      "refId": "trend-svg-mapping-release-gate",
+      "message": "助手已授权交付到 main；开始最终暂存检查、提交与远端同步。"
     }
   ],
   "stats": {
     "milestonesTotal": 2,
     "milestonesCompleted": 2,
-    "todosTotal": 5,
-    "todosCompleted": 5,
-    "todosInProgress": 0,
+    "todosTotal": 10,
+    "todosCompleted": 9,
+    "todosInProgress": 1,
     "todosCancelled": 0,
-    "activeRisks": 1
+    "activeRisks": 0
   },
   "render": {
     "rendererVersion": 1,
-    "generatedAt": "2026-08-16T13:02:47.884Z",
-    "bodyHash": "sha256:f0491360687f4ec3604773819a77784dd858eb023fbcc86cbb312302a1205f16"
+    "generatedAt": "2026-08-16T14:45:09.066Z",
+    "bodyHash": "sha256:63ae788ace926210d7d54fd8eb98289cee088085dedb4c41d2bd1d3c131a9d92"
   }
 }
 <!-- LIMCODE_PROGRESS_METADATA_END -->

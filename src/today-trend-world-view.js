@@ -1,5 +1,6 @@
 import { BACK_ICON_SVG, BOOK_ICON_SVG, EDIT_ICON_SVG, REFRESH_ICON_SVG, SPARKLES_ICON_SVG, TRASH_ICON_SVG } from './icons.js';
 import { TODAY_TREND_LIMITS } from './today-trend-model.js';
+import { resolveTodayTrendTitleIcon } from './today-trend-title-icon-mapping.js';
 import { escapeAttr, escapeHtml } from './ui.js';
 import { trendActionMenu, trendInlineActions, trendMeter, trendModuleHead } from './today-trend-ui.js';
 
@@ -30,14 +31,17 @@ export function renderTodayTrendWorldView({ scope, preset = null, mode = 'conten
         const rows = items.map(item => `<article class="pm-today-trend-row" data-world-item-id="${escapeAttr(item.id)}">${editingWorldItemId === item.id ? itemEditor(item) : `<div><b>${escapeHtml(item.name)}</b><p>${escapeHtml(item.summary)}</p></div>${itemActions(item, generateAttrs, menuOpenId)}`}</article>`).join('');
         return `<section class="pm-today-trend-view">${trendModuleHead({ title: '世界态势设置', menuId: 'world-settings', menuOpenId, actions: [{ action: 'today-trend-open-world', icon: BACK_ICON_SVG, label: '返回世界态势' }, { action: 'today-trend-add-world-item', icon: SPARKLES_ICON_SVG, label: '添加项目', attrs: items.length >= TODAY_TREND_LIMITS.worldItems ? 'disabled' : '' }] })}${rows || '<p class="pm-today-trend-empty">尚未建立世界态势项目。</p>'}${editingWorldItemId === '__new__' ? itemEditor() : ''}</section>`;
     }
-    const signalMarker = '<span class="pm-today-trend-world-signal-marker" aria-hidden="true"><i></i></span>';
+    const signalMarker = item => {
+        const resolvedIcon = resolveTodayTrendTitleIcon({ title: item.name, kind: 'world' });
+        return `<span class="pm-today-trend-world-signal-marker" data-today-trend-icon="${escapeAttr(resolvedIcon.key)}" aria-hidden="true">${resolvedIcon.svg}</span>`;
+    };
     const hero = items[0];
     const heroBody = hero ? (editingWorldItemId === hero.id ? itemEditor(hero) : `<p>${escapeHtml(hero.summary)}</p>`) : '';
     const signals = items.slice(1).map((item, index) => {
         const body = editingWorldItemId === item.id ? itemEditor(item) : `<p>${escapeHtml(item.summary)}</p>`;
-        return `<article class="pm-today-trend-world-brief" data-world-item-id="${escapeAttr(item.id)}"><header class="pm-today-trend-world-item-head">${signalMarker}<b>${escapeHtml(item.name)}</b>${itemInlineActions(item, generateAttrs, menuOpenId === 'world-module')}</header>${body}</article>`;
+        return `<article class="pm-today-trend-world-brief" data-world-item-id="${escapeAttr(item.id)}"><header class="pm-today-trend-world-item-head">${signalMarker(item)}<b>${escapeHtml(item.name)}</b>${itemInlineActions(item, generateAttrs, menuOpenId === 'world-module')}</header>${body}</article>`;
     }).join('');
     const worldMeta = trendMeter([{ label: 'SIGNALS', value: items.length }, { label: 'BRIEFS', value: Math.max(items.length - 1, 0) }]);
-    const content = hero ? `<article class="pm-today-trend-world-hero" data-world-item-id="${escapeAttr(hero.id)}"><header class="pm-today-trend-world-item-head">${signalMarker}<b>${escapeHtml(hero.name)}</b>${itemInlineActions(hero, generateAttrs, menuOpenId === 'world-module')}</header>${heroBody}</article>${signals ? `<div class="pm-today-trend-world-signals">${signals}</div>` : ''}` : '<p class="pm-today-trend-empty">尚未生成世界态势。</p>';
+    const content = hero ? `<article class="pm-today-trend-world-hero" data-world-item-id="${escapeAttr(hero.id)}"><header class="pm-today-trend-world-item-head">${signalMarker(hero)}<b>${escapeHtml(hero.name)}</b>${itemInlineActions(hero, generateAttrs, menuOpenId === 'world-module')}</header>${heroBody}</article>${signals ? `<div class="pm-today-trend-world-signals">${signals}</div>` : ''}` : '<p class="pm-today-trend-empty">尚未生成世界态势。</p>';
     return `<section class="pm-today-trend-view pm-today-trend-world">${trendModuleHead({ title: '世界态势', eyebrow: 'TODAY’S SIGNAL', metaHtml: worldMeta, asideHtml: floorStatus, menuId: 'world-module', menuOpenId, actions: [{ action: 'today-trend-generate-world', icon: REFRESH_ICON_SVG, label: '重新生成世界态势', attrs: generateAttrs }, { action: 'today-trend-edit-world-rule', icon: BOOK_ICON_SVG, label: '编辑世界态势提示词' }] })}${content}${generationBusy ? '<span class="pm-today-trend-progress">正在生成…</span>' : ''}</section>`;
 }
