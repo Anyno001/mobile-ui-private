@@ -38,6 +38,7 @@ import { renderTodayTrendDynamicsView } from '../src/today-trend-dynamics-view.j
 import { renderTodayTrendSettingsView } from '../src/today-trend-settings-view.js';
 import { createTodayTrendActionDispatcher } from '../src/today-trend-actions.js';
 import { TODAY_TREND_RELATION_ICON_PATHS } from '../src/icons.js';
+import { TODAY_TREND_TITLE_ICON_TOPICS, todayTrendTitleNamingGuide } from '../src/today-trend-title-icon-topics.js';
 import { resolveTodayTrendTitleIcon } from '../src/today-trend-title-icon-mapping.js';
 import { trendActionMenu, trendInlineActions, trendRuleEditor } from '../src/today-trend-ui.js';
 
@@ -681,14 +682,26 @@ assert.match(worldPanelsHtml, /pm-today-trend-world-signals/, '世界态势次�
 assert.match(worldPanelsHtml, /pm-today-trend-world-signal-marker[^>]*data-today-trend-icon="[^"]+"[^>]*aria-hidden="true"><svg[\s\S]*?<\/svg><\/span>/, '世界态势卡片必须输出带 key 的 SVG 主题节点');
 assert.doesNotMatch(worldPanelsHtml, /pm-today-trend-world-signal-marker[^>]*><i><\/i><\/span>/, '世界态势卡片不得回退为裸 i 圆点');
 const titleIconCases = [
-    ['暴雨侵袭港口航线', 'weather-storm'], ['港口签署通航协议', 'document'], ['城市辟谣发布会', 'rumor'],
-    ['机场联络窗口开放', 'signal'], ['年度峰会日程', 'calendar'], ['新产品发布会直播', 'live'],
-    ['恋情公开告白', 'heart'], ['机场路线迁移', 'location'], ['寒潮天气预警', 'weather'],
-    ['市场增长趋势', 'trend'], ['实验发现突破', 'sparkles'], ['餐厅菜单更新', 'recipe'],
+    ['暴雨侵袭港口航线', 'weather-storm'], ['暴雪封锁山路', 'weather-snow'], ['大雾笼罩机场', 'weather-fog'],
+    ['晴天热浪来袭', 'weather-sun'], ['多云天气转晴', 'weather-partly-cloudy'], ['阴云压境', 'weather-cloud'],
+    ['港口签署通航协议', 'document'], ['城市辟谣发布会', 'rumor'], ['机场联络窗口开放', 'signal'],
+    ['年度峰会日程', 'calendar'], ['新产品发布会直播', 'live'], ['恋情公开告白', 'heart'],
+    ['机场路线迁移', 'location'], ['观众情绪变化', 'community'], ['寒潮天气预警', 'weather'],
+    ['节目风向变化', 'trend'], ['实验发现突破', 'sparkles'], ['晚餐服务安排', 'recipe'],
     ['秋季时装秀场', 'outfit'], ['旧案历史回顾', 'time'],
 ];
+assert.equal(TODAY_TREND_TITLE_ICON_TOPICS.length, 20, '标题语义目录必须固定为 20 个 topic');
+assert.equal(new Set(TODAY_TREND_TITLE_ICON_TOPICS.map(topic => topic.key)).size, 20, '标题语义目录 key 必须唯一');
+assert.deepEqual(titleIconCases.map(([, key]) => key), TODAY_TREND_TITLE_ICON_TOPICS.map(topic => topic.key), '正例必须覆盖目录全部 topic 且保持优先级顺序');
+const titleNamingGuide = todayTrendTitleNamingGuide();
+assert.match(titleNamingGuide, /仅在事实确实适配时/);
+assert.match(titleNamingGuide, /不要为了图标硬塞无关词/);
+assert.match(titleNamingGuide, /未分类主题可以保持自然命名/);
+assert.doesNotMatch(titleNamingGuide, /<svg|world-default|event-(?:incident|underground|normal)/, '命名指南不得泄漏 SVG 或 resolver fallback 实现');
 for (const [title, expectedKey] of titleIconCases) {
-    assert.equal(resolveTodayTrendTitleIcon({ title, kind: 'world' }).key, expectedKey, `标题 ${title} 必须映射到 ${expectedKey}`);
+    const resolved = resolveTodayTrendTitleIcon({ title, kind: 'world' });
+    assert.equal(resolved.key, expectedKey, `标题 ${title} 必须映射到 ${expectedKey}`);
+    assert.match(resolved.svg, /<svg[\s\S]*stroke="currentColor"/, `topic ${expectedKey} 必须绑定 currentColor SVG`);
 }
 for (const [title, expectedKey] of [
     ['暴雨侵袭港口航线', 'weather-storm'], ['港口签署通航协议', 'document'],
@@ -711,8 +724,8 @@ assert.match(titlePriorityHtml, /data-event-id="service"[\s\S]*?data-today-trend
 assert.match(titlePriorityHtml, /data-event-id="service"[\s\S]*?pm-today-trend-event-badge">突发/, '标题图标变化不得移除事件 type badge');
 assert.match(sharedTitleEventIcon.svg, /stroke="currentColor"/, '映射 SVG 必须使用 currentColor 前景');
 const ignoredFieldsScope = structuredClone(valid.scopes.chat);
-ignoredFieldsScope.world.items[0] = { ...ignoredFieldsScope.world.items[0], name: '未登记标题', summary: '暴雨公告联络港口' };
-ignoredFieldsScope.dynamics.active[0] = { ...ignoredFieldsScope.dynamics.active[0], title: '未登记标题', type: 'normal', origin: '暴雨公告联络港口', latestStage: '暴雨公告联络港口', participants: ['暴雨公告联络港口'] };
+ignoredFieldsScope.world.items[0] = { ...ignoredFieldsScope.world.items[0], name: '未登记标题', summary: '暴雨公告联络港口观众风向后厨消息晴天' };
+ignoredFieldsScope.dynamics.active[0] = { ...ignoredFieldsScope.dynamics.active[0], title: '未登记标题', type: 'normal', origin: '暴雨公告联络港口观众风向后厨消息晴天', latestStage: '暴雨公告联络港口观众风向后厨消息晴天', participants: ['暴雨公告联络港口观众风向后厨消息晴天'] };
 const ignoredWorldHtml = renderTodayTrendWorldView({ scope: ignoredFieldsScope });
 const ignoredDynamicsHtml = renderTodayTrendDynamicsView({ scope: ignoredFieldsScope });
 assert.match(ignoredWorldHtml, /data-world-item-id="world"[\s\S]*?data-today-trend-icon="world-default"/, '世界态势映射不得扫描 summary 等非标题字段');
@@ -1262,6 +1275,8 @@ assert.equal(collectedOptions.worldBookActivationMode, 'chat', '正文关联模�
 assert.match(collectedContext.mainChatText, /晚餐服务/, '启用已有正文时必须保留主线正文');
 const initializationPrompts = buildTodayTrendInitializationEnvelope({ context: collectedContext });
 assert.match(initializationPrompts.systemPrompt, /顶层只能有 preset 和 scope/, '初始化提示词必须锁定单一返回协议');
+assert.ok(initializationPrompts.systemPrompt.includes(titleNamingGuide), '初始化提示词必须注入共享标题命名指南');
+assert.match(initializationPrompts.systemPrompt, /不得输出 icon、iconKey、topic、category/,'初始化提示词必须禁止输出展示实现字段');
 assert.match(initializationPrompts.systemPrompt, /A\.parentId 等于 B\.id[\s\S]*保留 parentId 并删除对应外部关联[\s\S]*只针对直接父子/, '初始化提示词必须声明直接父子与外部关联互斥');
 assert.match(initializationPrompts.userPrompt, /world_book_data/, '初始化提示词必须传递世界书内容');
 assert.match(initializationPrompts.userPrompt, /main_chat_data/, '初始化提示词必须传递已有正文');
@@ -1293,6 +1308,7 @@ assert.match(independentInitializationPrompts.userPrompt, /不必与目标角色
 const independentGenerationPrompts = buildTodayTrendGenerationEnvelope({
     context: independentCollectedContext, preset: valid.presets.preset, scope: valid.scopes.chat, assistantCount: 12,
 });
+assert.ok(independentGenerationPrompts.systemPrompt.includes(titleNamingGuide), '增量提示词必须注入同源标题命名指南');
 assert.doesNotMatch(independentGenerationPrompts.userPrompt, /main_chat_data/, '独立增量 prompt 不得包含正文数据区块');
 assert.match(independentGenerationPrompts.userPrompt, /world_book_data/, '独立增量 prompt 必须保留世界书数据区块');
 assert.match(independentGenerationPrompts.userPrompt, /NPC 个体、群体或组织生活线/, '独立增量 prompt 必须允许通用 NPC 生活线持续推进');

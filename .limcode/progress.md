@@ -1,39 +1,38 @@
 # 项目进度
 - Project: mobile-ui-private
-- Updated At: 2026-08-16T14:55:15.340Z
+- Updated At: 2026-08-16T16:24:33.964Z
 - Status: active
-- Phase: maintenance
+- Phase: review
 
 ## 当前摘要
 
 <!-- LIMCODE_PROGRESS_SUMMARY_START -->
 - 当前进度：3/3 个里程碑已完成；最新：trend-svg-mapping-release
-- 当前焦点：今日风向标题关键词 SVG 映射已发布；等待后续真实宿主回归，不再修改本次发布代码。
-- 最新结论：commit 9cfa9095c68bea4375306d6f8f4fff4ddfcc78d8 已推送至 origin/main；本地 main 与远端一致，工作树在代码交付后干净。
-- 当前阻塞：无发布阻塞；真实 SillyTavern 视觉与辅助技术回归尚未执行，作为已接受的 minor 风险保留。
-- 下一步：后续单独执行真实 SillyTavern 宿主视觉与辅助技术回归，并留存普通/深色/自定义主题、窄屏、长标题、active/archived 与 Accessibility Tree 证据。
+- 当前焦点：今日风向图标覆盖率收敛已实现并完成自动门禁与独立验收，准备提交发布。
+- 最新结论：20 个共享 topic、既有 SVG 细分映射、同源 prompt 命名指南与行为契约已完成；build、syntax、today-trend、contracts、全量 check、diff-check 均通过；Acceptance Expert PASSED（blocking=0、major=0、minor=2、advisory=1）。
+- 当前阻塞：无 blocking/major；真实 SillyTavern 宿主无可用会话，world/active/archived key-only 采样及真实视觉/辅助技术回归未执行，保留为 minor 风险。
+- 下一步：完成暂存检查与本地提交；推送 main 需助手明确授权。后续在真实宿主仅采集 data-today-trend-icon key 计数，不虚构覆盖率。
 <!-- LIMCODE_PROGRESS_SUMMARY_END -->
 
 ## 关联文档
 
 <!-- LIMCODE_PROGRESS_ARTIFACTS_START -->
-- 设计：`.limcode/design/today-trend-title-svg-mapping.md`
-- 计划：`.limcode/plans/today-trend-title-svg-mapping.md`
+- 设计：`.limcode/design/today-trend-icon-coverage-convergence.md`
+- 计划：`.limcode/plans/today-trend-icon-coverage-convergence.md`
 <!-- LIMCODE_PROGRESS_ARTIFACTS_END -->
 
 ## 当前 TODO 快照
 
 <!-- LIMCODE_PROGRESS_TODOS_START -->
-- [x] 独立 Acceptance Expert 已 PASSED（blocking=0、major=0、minor=2）；完成交付卫生检查。真实 SillyTavern 视觉/辅助技术回归尚未执行，且推送 main 属外部发布，需助手确认是否接受剩余风险后再提交推送。  `#trend-svg-mapping-acceptance-delivery`
-- [x] 冻结今日风向标题 SVG 映射的实施基线：核对工作树、现有 SVG 常量与事件局部图标、两视图调用点、CSS marker 和契约断言，并关闭设计中的关键词/图标重叠歧义。  `#trend-svg-mapping-baseline`
-- [x] 扩展 check-today-trend：覆盖 14 类映射、冲突优先级、NFKC、两类兜底、标题唯一输入、两视图一致性及 DOM/无障碍契约。  `#trend-svg-mapping-behavior-contracts`
-- [x] 更新 today-trend marker CSS，删除世界 <i> 内核规则并复用现有尺寸与主题 token，不新增裸值、颜色分流、动画或 !important。  `#trend-svg-mapping-css`
-- [x] 扩展 check-contracts：锁定两类 marker 的 SVG 尺寸/token、世界 marker 禁止回退为 <i>，并验证 CSS governance 无新增违规。  `#trend-svg-mapping-css-contracts`
-- [x] 接入事件追踪视图：移除局部 EVENT_ICONS/eventIcon，按 event.title 调用共用解析器，同时保留 type badge、归档与操作行为。  `#trend-svg-mapping-dynamics-view`
-- [x] 将事件追踪局部内容 SVG 提升到 src/icons.js，按现有图标重复性选择唯一常量并保持既有 SVG path 与视觉不变。  `#trend-svg-mapping-icon-catalog`
-- [x] 新增 src/today-trend-title-icon-mapping.js，实现固定优先级规则、NFKC 标准化、世界默认与 event type 兜底，且不接触状态或持久化。  `#trend-svg-mapping-resolver`
-- [x] 按 build→check:syntax→check:today-trend→check:contracts→check→git diff --check 顺序完成验证，清理临时产物并记录可复核证据。  `#trend-svg-mapping-validation`
-- [x] 接入世界态势视图：按 item.name 解析图标，输出 SVG、data-today-trend-icon 与 aria-hidden marker，移除 <i> 圆点结构。  `#trend-svg-mapping-world-view`
+- [x] 冻结专项基线：核对 HEAD/origin/工作树、精读相关实现与契约，确认持久化边界、依赖与真实宿主样本状态  `#today-trend-icon-coverage-baseline`
+- [x] 新增共享标题语义目录：20 个有序 topic、命名指南与静态匹配规则  `#today-trend-icon-topic-catalog`
+- [x] 改造标题图标 resolver 消费共享目录，扩充既有 SVG 映射并保持 API/fallback 兼容  `#today-trend-icon-resolver`
+- [x] 将共享命名指南注入初始化与增量 prompt，保持 schema 与 parser 边界不变  `#today-trend-icon-prompts`
+- [x] 补充行为契约：20 类正例、天气矩阵、冲突/自然样本、隔离、fallback、完整性与 parser 负例  `#today-trend-icon-contracts`
+- [x] 复核 marker CSS/inline/runtime 静态契约，仅按实际新增不变量更新  `#today-trend-icon-static-contracts`
+- [x] 单独执行 build、syntax、today-trend、contracts、全量检查与 diff-check 并定位失败归属  `#today-trend-icon-validation`
+- [x] 按 world/active/archived 进行真实宿主 key-only 采样；无可信结果不虚构百分比  `#today-trend-icon-host-sampling`
+- [ ] 调用独立验收专家复核，清理临时产物，提交并推送 main，核对远端与同步计划/进度  `#today-trend-icon-acceptance-delivery` (in_progress)
 <!-- LIMCODE_PROGRESS_TODOS_END -->
 
 ## 项目里程碑
@@ -73,21 +72,13 @@
 ## 风险与阻塞
 
 <!-- LIMCODE_PROGRESS_RISKS_START -->
-- trend-host-visual-regression | accepted | 真实宿主视觉与辅助技术回归未执行：静态契约和自动门禁已通过，但尚未在真实 SillyTavern 宿主验证普通/深色/自定义主题、长标题、窄屏、active/archived 以及 Accessibility Tree。按助手授权作为 minor 风险接受，不伪称已关闭。
+- trend-host-visual-regression | accepted | 上一专项真实宿主视觉与辅助技术回归未执行：上一专项静态契约和自动门禁已通过，但尚未在真实 SillyTavern 宿主验证主题、窄屏、active/archived 与 Accessibility Tree；按既有授权作为 minor 风险接受。
+- today-trend-icon-host-validation-gap | active | 本专项真实宿主采样与视觉回归未执行：当前受控浏览器没有 SillyTavern 宿主会话，无法获得 world/active/archived 的 key-only 计数，也未完成真实主题、窄屏与辅助技术回归；Acceptance Expert 将其评为 minor，不虚构覆盖率或改善百分比。
 <!-- LIMCODE_PROGRESS_RISKS_END -->
 
 ## 最近更新
 
 <!-- LIMCODE_PROGRESS_LOG_START -->
-- 2026-08-16T12:49:43.893Z | artifact_changed | plan | 同步计划 TODO 快照：.limcode/plans/today-trend-independent-worldbook-tracking.md
-- 2026-08-16T12:50:49.400Z | artifact_changed | plan | 同步计划 TODO 快照：.limcode/plans/today-trend-community-visual-refinement.md
-- 2026-08-16T13:02:47.884Z | milestone_recorded | release-prepare-main-push | 已提交并推送 708fb1e 至 origin/main；全量 npm check 与 diff-check 通过，工作树干净。
-- 2026-08-16T13:24:27.913Z | artifact_changed | design | 同步设计文档：.limcode/design/today-trend-title-svg-mapping.md
-- 2026-08-16T13:35:46.274Z | artifact_changed | plan | 同步计划文档：.limcode/plans/today-trend-title-svg-mapping.md
-- 2026-08-16T13:36:18.933Z | artifact_changed | plan | 同步计划 TODO 快照：.limcode/plans/today-trend-title-svg-mapping.md
-- 2026-08-16T13:37:45.508Z | milestone_recorded | trend-svg-mapping-baseline | 开始基线冻结：复核工作树、事件局部 SVG、视图 marker、CSS token 与契约断言。
-- 2026-08-16T13:39:50.464Z | artifact_changed | plan | 同步计划 TODO 快照：.limcode/plans/today-trend-title-svg-mapping.md
-- 2026-08-16T13:45:12.360Z | milestone_recorded | trend-svg-mapping-resolver | 公共标题解析器、世界态势 marker 与事件追踪 marker 已接入；下一步补齐自动契约。
 - 2026-08-16T13:48:02.263Z | artifact_changed | plan | 同步计划 TODO 快照：.limcode/plans/today-trend-title-svg-mapping.md
 - 2026-08-16T13:56:42.976Z | artifact_changed | plan | 同步计划 TODO 快照：.limcode/plans/today-trend-title-svg-mapping.md
 - 2026-08-16T14:00:20.582Z | artifact_changed | plan | 同步计划 TODO 快照：.limcode/plans/today-trend-title-svg-mapping.md
@@ -99,6 +90,15 @@
 - 2026-08-16T14:53:09.347Z | artifact_changed | plan | 同步计划 TODO 快照：.limcode/plans/today-trend-title-svg-mapping.md
 - 2026-08-16T14:53:33.188Z | milestone_recorded | trend-svg-mapping-release | 记录里程碑：今日风向标题 SVG 映射已发布到 main
 - 2026-08-16T14:55:15.340Z | updated | trend-svg-mapping-release | 发布收尾状态已同步：代码提交 9cfa909 已在 origin/main，本地与远端一致；全部 10 项 TODO 完成，真实宿主回归继续作为已接受 minor 风险。
+- 2026-08-16T15:29:20.879Z | artifact_changed | design | 同步设计文档：.limcode/design/today-trend-icon-coverage-convergence.md
+- 2026-08-16T15:33:05.389Z | artifact_changed | plan | 同步计划文档：.limcode/plans/today-trend-icon-coverage-convergence.md
+- 2026-08-16T15:41:03.842Z | artifact_changed | plan | 同步计划 TODO 快照：.limcode/plans/today-trend-icon-coverage-convergence.md
+- 2026-08-16T16:09:42.496Z | artifact_changed | plan | 同步计划 TODO 快照：.limcode/plans/today-trend-icon-coverage-convergence.md
+- 2026-08-16T16:10:04.983Z | artifact_changed | plan | 同步计划 TODO 快照：.limcode/plans/today-trend-icon-coverage-convergence.md
+- 2026-08-16T16:19:36.982Z | artifact_changed | plan | 同步计划 TODO 快照：.limcode/plans/today-trend-icon-coverage-convergence.md
+- 2026-08-16T16:20:04.047Z | artifact_changed | plan | 同步计划 TODO 快照：.limcode/plans/today-trend-icon-coverage-convergence.md
+- 2026-08-16T16:21:43.344Z | artifact_changed | plan | 同步计划 TODO 快照：.limcode/plans/today-trend-icon-coverage-convergence.md
+- 2026-08-16T16:24:33.964Z | updated | today-trend-icon-review | 图标覆盖率收敛实现已通过自动验证与独立 Acceptance Expert；真实宿主采样不可执行，按 minor 风险保留，进入提交前检查。
 <!-- LIMCODE_PROGRESS_LOG_END -->
 
 <!-- LIMCODE_PROGRESS_METADATA_START -->
@@ -108,67 +108,62 @@
   "projectId": "mobile-ui-private",
   "projectName": "mobile-ui-private",
   "createdAt": "2026-08-14T05:55:56.978Z",
-  "updatedAt": "2026-08-16T14:55:15.340Z",
+  "updatedAt": "2026-08-16T16:24:33.964Z",
   "status": "active",
-  "phase": "maintenance",
-  "currentFocus": "今日风向标题关键词 SVG 映射已发布；等待后续真实宿主回归，不再修改本次发布代码。",
-  "latestConclusion": "commit 9cfa9095c68bea4375306d6f8f4fff4ddfcc78d8 已推送至 origin/main；本地 main 与远端一致，工作树在代码交付后干净。",
-  "currentBlocker": "无发布阻塞；真实 SillyTavern 视觉与辅助技术回归尚未执行，作为已接受的 minor 风险保留。",
-  "nextAction": "后续单独执行真实 SillyTavern 宿主视觉与辅助技术回归，并留存普通/深色/自定义主题、窄屏、长标题、active/archived 与 Accessibility Tree 证据。",
+  "phase": "review",
+  "currentFocus": "今日风向图标覆盖率收敛已实现并完成自动门禁与独立验收，准备提交发布。",
+  "latestConclusion": "20 个共享 topic、既有 SVG 细分映射、同源 prompt 命名指南与行为契约已完成；build、syntax、today-trend、contracts、全量 check、diff-check 均通过；Acceptance Expert PASSED（blocking=0、major=0、minor=2、advisory=1）。",
+  "currentBlocker": "无 blocking/major；真实 SillyTavern 宿主无可用会话，world/active/archived key-only 采样及真实视觉/辅助技术回归未执行，保留为 minor 风险。",
+  "nextAction": "完成暂存检查与本地提交；推送 main 需助手明确授权。后续在真实宿主仅采集 data-today-trend-icon key 计数，不虚构覆盖率。",
   "activeArtifacts": {
-    "design": ".limcode/design/today-trend-title-svg-mapping.md",
-    "plan": ".limcode/plans/today-trend-title-svg-mapping.md"
+    "design": ".limcode/design/today-trend-icon-coverage-convergence.md",
+    "plan": ".limcode/plans/today-trend-icon-coverage-convergence.md"
   },
   "todos": [
     {
-      "id": "trend-svg-mapping-acceptance-delivery",
-      "content": "独立 Acceptance Expert 已 PASSED（blocking=0、major=0、minor=2）；完成交付卫生检查。真实 SillyTavern 视觉/辅助技术回归尚未执行，且推送 main 属外部发布，需助手确认是否接受剩余风险后再提交推送。",
+      "id": "today-trend-icon-coverage-baseline",
+      "content": "冻结专项基线：核对 HEAD/origin/工作树、精读相关实现与契约，确认持久化边界、依赖与真实宿主样本状态",
       "status": "completed"
     },
     {
-      "id": "trend-svg-mapping-baseline",
-      "content": "冻结今日风向标题 SVG 映射的实施基线：核对工作树、现有 SVG 常量与事件局部图标、两视图调用点、CSS marker 和契约断言，并关闭设计中的关键词/图标重叠歧义。",
+      "id": "today-trend-icon-topic-catalog",
+      "content": "新增共享标题语义目录：20 个有序 topic、命名指南与静态匹配规则",
       "status": "completed"
     },
     {
-      "id": "trend-svg-mapping-behavior-contracts",
-      "content": "扩展 check-today-trend：覆盖 14 类映射、冲突优先级、NFKC、两类兜底、标题唯一输入、两视图一致性及 DOM/无障碍契约。",
+      "id": "today-trend-icon-resolver",
+      "content": "改造标题图标 resolver 消费共享目录，扩充既有 SVG 映射并保持 API/fallback 兼容",
       "status": "completed"
     },
     {
-      "id": "trend-svg-mapping-css",
-      "content": "更新 today-trend marker CSS，删除世界 <i> 内核规则并复用现有尺寸与主题 token，不新增裸值、颜色分流、动画或 !important。",
+      "id": "today-trend-icon-prompts",
+      "content": "将共享命名指南注入初始化与增量 prompt，保持 schema 与 parser 边界不变",
       "status": "completed"
     },
     {
-      "id": "trend-svg-mapping-css-contracts",
-      "content": "扩展 check-contracts：锁定两类 marker 的 SVG 尺寸/token、世界 marker 禁止回退为 <i>，并验证 CSS governance 无新增违规。",
+      "id": "today-trend-icon-contracts",
+      "content": "补充行为契约：20 类正例、天气矩阵、冲突/自然样本、隔离、fallback、完整性与 parser 负例",
       "status": "completed"
     },
     {
-      "id": "trend-svg-mapping-dynamics-view",
-      "content": "接入事件追踪视图：移除局部 EVENT_ICONS/eventIcon，按 event.title 调用共用解析器，同时保留 type badge、归档与操作行为。",
+      "id": "today-trend-icon-static-contracts",
+      "content": "复核 marker CSS/inline/runtime 静态契约，仅按实际新增不变量更新",
       "status": "completed"
     },
     {
-      "id": "trend-svg-mapping-icon-catalog",
-      "content": "将事件追踪局部内容 SVG 提升到 src/icons.js，按现有图标重复性选择唯一常量并保持既有 SVG path 与视觉不变。",
+      "id": "today-trend-icon-validation",
+      "content": "单独执行 build、syntax、today-trend、contracts、全量检查与 diff-check 并定位失败归属",
       "status": "completed"
     },
     {
-      "id": "trend-svg-mapping-resolver",
-      "content": "新增 src/today-trend-title-icon-mapping.js，实现固定优先级规则、NFKC 标准化、世界默认与 event type 兜底，且不接触状态或持久化。",
+      "id": "today-trend-icon-host-sampling",
+      "content": "按 world/active/archived 进行真实宿主 key-only 采样；无可信结果不虚构百分比",
       "status": "completed"
     },
     {
-      "id": "trend-svg-mapping-validation",
-      "content": "按 build→check:syntax→check:today-trend→check:contracts→check→git diff --check 顺序完成验证，清理临时产物并记录可复核证据。",
-      "status": "completed"
-    },
-    {
-      "id": "trend-svg-mapping-world-view",
-      "content": "接入世界态势视图：按 item.name 解析图标，输出 SVG、data-today-trend-icon 与 aria-hidden marker，移除 <i> 圆点结构。",
-      "status": "completed"
+      "id": "today-trend-icon-acceptance-delivery",
+      "content": "调用独立验收专家复核，清理临时产物，提交并推送 main，核对远端与同步计划/进度",
+      "status": "in_progress"
     }
   ],
   "milestones": [
@@ -228,66 +223,18 @@
   "risks": [
     {
       "id": "trend-host-visual-regression",
-      "title": "真实宿主视觉与辅助技术回归未执行",
-      "description": "静态契约和自动门禁已通过，但尚未在真实 SillyTavern 宿主验证普通/深色/自定义主题、长标题、窄屏、active/archived 以及 Accessibility Tree。按助手授权作为 minor 风险接受，不伪称已关闭。",
+      "title": "上一专项真实宿主视觉与辅助技术回归未执行",
+      "description": "上一专项静态契约和自动门禁已通过，但尚未在真实 SillyTavern 宿主验证主题、窄屏、active/archived 与 Accessibility Tree；按既有授权作为 minor 风险接受。",
       "status": "accepted"
+    },
+    {
+      "id": "today-trend-icon-host-validation-gap",
+      "title": "本专项真实宿主采样与视觉回归未执行",
+      "description": "当前受控浏览器没有 SillyTavern 宿主会话，无法获得 world/active/archived 的 key-only 计数，也未完成真实主题、窄屏与辅助技术回归；Acceptance Expert 将其评为 minor，不虚构覆盖率或改善百分比。",
+      "status": "active"
     }
   ],
   "log": [
-    {
-      "at": "2026-08-16T12:49:43.893Z",
-      "type": "artifact_changed",
-      "refId": "plan",
-      "message": "同步计划 TODO 快照：.limcode/plans/today-trend-independent-worldbook-tracking.md"
-    },
-    {
-      "at": "2026-08-16T12:50:49.400Z",
-      "type": "artifact_changed",
-      "refId": "plan",
-      "message": "同步计划 TODO 快照：.limcode/plans/today-trend-community-visual-refinement.md"
-    },
-    {
-      "at": "2026-08-16T13:02:47.884Z",
-      "type": "milestone_recorded",
-      "refId": "release-prepare-main-push",
-      "message": "已提交并推送 708fb1e 至 origin/main；全量 npm check 与 diff-check 通过，工作树干净。"
-    },
-    {
-      "at": "2026-08-16T13:24:27.913Z",
-      "type": "artifact_changed",
-      "refId": "design",
-      "message": "同步设计文档：.limcode/design/today-trend-title-svg-mapping.md"
-    },
-    {
-      "at": "2026-08-16T13:35:46.274Z",
-      "type": "artifact_changed",
-      "refId": "plan",
-      "message": "同步计划文档：.limcode/plans/today-trend-title-svg-mapping.md"
-    },
-    {
-      "at": "2026-08-16T13:36:18.933Z",
-      "type": "artifact_changed",
-      "refId": "plan",
-      "message": "同步计划 TODO 快照：.limcode/plans/today-trend-title-svg-mapping.md"
-    },
-    {
-      "at": "2026-08-16T13:37:45.508Z",
-      "type": "milestone_recorded",
-      "refId": "trend-svg-mapping-baseline",
-      "message": "开始基线冻结：复核工作树、事件局部 SVG、视图 marker、CSS token 与契约断言。"
-    },
-    {
-      "at": "2026-08-16T13:39:50.464Z",
-      "type": "artifact_changed",
-      "refId": "plan",
-      "message": "同步计划 TODO 快照：.limcode/plans/today-trend-title-svg-mapping.md"
-    },
-    {
-      "at": "2026-08-16T13:45:12.360Z",
-      "type": "milestone_recorded",
-      "refId": "trend-svg-mapping-resolver",
-      "message": "公共标题解析器、世界态势 marker 与事件追踪 marker 已接入；下一步补齐自动契约。"
-    },
     {
       "at": "2026-08-16T13:48:02.263Z",
       "type": "artifact_changed",
@@ -353,21 +300,75 @@
       "type": "updated",
       "refId": "trend-svg-mapping-release",
       "message": "发布收尾状态已同步：代码提交 9cfa909 已在 origin/main，本地与远端一致；全部 10 项 TODO 完成，真实宿主回归继续作为已接受 minor 风险。"
+    },
+    {
+      "at": "2026-08-16T15:29:20.879Z",
+      "type": "artifact_changed",
+      "refId": "design",
+      "message": "同步设计文档：.limcode/design/today-trend-icon-coverage-convergence.md"
+    },
+    {
+      "at": "2026-08-16T15:33:05.389Z",
+      "type": "artifact_changed",
+      "refId": "plan",
+      "message": "同步计划文档：.limcode/plans/today-trend-icon-coverage-convergence.md"
+    },
+    {
+      "at": "2026-08-16T15:41:03.842Z",
+      "type": "artifact_changed",
+      "refId": "plan",
+      "message": "同步计划 TODO 快照：.limcode/plans/today-trend-icon-coverage-convergence.md"
+    },
+    {
+      "at": "2026-08-16T16:09:42.496Z",
+      "type": "artifact_changed",
+      "refId": "plan",
+      "message": "同步计划 TODO 快照：.limcode/plans/today-trend-icon-coverage-convergence.md"
+    },
+    {
+      "at": "2026-08-16T16:10:04.983Z",
+      "type": "artifact_changed",
+      "refId": "plan",
+      "message": "同步计划 TODO 快照：.limcode/plans/today-trend-icon-coverage-convergence.md"
+    },
+    {
+      "at": "2026-08-16T16:19:36.982Z",
+      "type": "artifact_changed",
+      "refId": "plan",
+      "message": "同步计划 TODO 快照：.limcode/plans/today-trend-icon-coverage-convergence.md"
+    },
+    {
+      "at": "2026-08-16T16:20:04.047Z",
+      "type": "artifact_changed",
+      "refId": "plan",
+      "message": "同步计划 TODO 快照：.limcode/plans/today-trend-icon-coverage-convergence.md"
+    },
+    {
+      "at": "2026-08-16T16:21:43.344Z",
+      "type": "artifact_changed",
+      "refId": "plan",
+      "message": "同步计划 TODO 快照：.limcode/plans/today-trend-icon-coverage-convergence.md"
+    },
+    {
+      "at": "2026-08-16T16:24:33.964Z",
+      "type": "updated",
+      "refId": "today-trend-icon-review",
+      "message": "图标覆盖率收敛实现已通过自动验证与独立 Acceptance Expert；真实宿主采样不可执行，按 minor 风险保留，进入提交前检查。"
     }
   ],
   "stats": {
     "milestonesTotal": 3,
     "milestonesCompleted": 3,
-    "todosTotal": 10,
-    "todosCompleted": 10,
-    "todosInProgress": 0,
+    "todosTotal": 9,
+    "todosCompleted": 8,
+    "todosInProgress": 1,
     "todosCancelled": 0,
-    "activeRisks": 0
+    "activeRisks": 1
   },
   "render": {
     "rendererVersion": 1,
-    "generatedAt": "2026-08-16T14:55:15.340Z",
-    "bodyHash": "sha256:439ab7a2c459d8586b08b53200ffa000ae9f982f14a058d3143c752c08080c91"
+    "generatedAt": "2026-08-16T16:24:33.964Z",
+    "bodyHash": "sha256:6453d634b4775959307304651243942017c893bc87951a0dc71ad2c26c89d9c5"
   }
 }
 <!-- LIMCODE_PROGRESS_METADATA_END -->
