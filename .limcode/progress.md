@@ -1,6 +1,6 @@
 # 项目进度
 - Project: mobile-ui-private
-- Updated At: 2026-08-16T12:50:49.400Z
+- Updated At: 2026-08-16T13:02:47.884Z
 - Status: active
 - Phase: review
 
@@ -8,9 +8,9 @@
 
 <!-- LIMCODE_PROGRESS_SUMMARY_START -->
 - 当前进度：2/2 个里程碑已完成；最新：milestone-today-trend-calendar-acceptance
-- 当前焦点：baseline gate repair 已验收通过；工作区 node_modules 已由 package-lock.json 恢复并复验依赖健康与全部 gate
-- 最新结论：Acceptance Expert 复验通过：blocking=0、major=0、minor=2、advisory=2。node_modules 曾因隔离 worktree 的错误 junction 操作被删除，已用 npm.cmd install 可复现恢复；esbuild/acorn/postcss 存在，build、check:contracts、c…
-- 下一步：生产发布前按 docs/BASELINE.md 做真实 SillyTavern 宿主视觉回归：主题切换、暗色、模型下拉、日历管理、社区按钮状态、移动布局与控制台错误。
+- 当前焦点：已整理并推送今日风向 NPC 群像追踪与 baseline gate repair 到 origin/main
+- 最新结论：提交 708fb1e（feat: finalize independent trend tracking and baseline gates）已成功推送 origin/main。提交前 npm.cmd run check 与 git diff --check 均 exit 0；清理了已否决的 fanLife 独立子系统设计/计划和未实施日历计划，未提交依赖…
+- 下一步：生产发布前按 docs/BASELINE.md 在真实 SillyTavern 宿主执行人工视觉回归：主题切换、暗色、模型下拉、日历管理、社区按钮状态、移动布局与控制台错误。
 <!-- LIMCODE_PROGRESS_SUMMARY_END -->
 
 ## 关联文档
@@ -63,7 +63,6 @@
 ## 最近更新
 
 <!-- LIMCODE_PROGRESS_LOG_START -->
-- 2026-08-16T09:30:49.492Z | artifact_changed | plan | 同步计划 TODO 快照：.limcode/plans/today-trend-independent-worldbook-tracking.md
 - 2026-08-16T09:32:47.852Z | updated | today-trend-independent-validation | 验证证据已收集；正式验收专家不可用且基线债务阻断最终 gate，validation 保持 in_progress。
 - 2026-08-16T09:35:29.250Z | milestone_recorded | today-trend-independent-validation | 主工作区重新完成 build 与 syntax gate；验证仍因正式验收专家 API 429 和既有基线失败保持 blocked/in_progress。
 - 2026-08-16T09:39:18.853Z | artifact_changed | plan | 同步计划 TODO 快照：.limcode/plans/today-trend-independent-worldbook-tracking.md
@@ -83,6 +82,7 @@
 - 2026-08-16T12:39:38.806Z | artifact_changed | plan | 同步计划 TODO 快照：.limcode/plans/baseline-gate-repair.md
 - 2026-08-16T12:49:43.893Z | artifact_changed | plan | 同步计划 TODO 快照：.limcode/plans/today-trend-independent-worldbook-tracking.md
 - 2026-08-16T12:50:49.400Z | artifact_changed | plan | 同步计划 TODO 快照：.limcode/plans/today-trend-community-visual-refinement.md
+- 2026-08-16T13:02:47.884Z | milestone_recorded | release-prepare-main-push | 已提交并推送 708fb1e 至 origin/main；全量 npm check 与 diff-check 通过，工作树干净。
 <!-- LIMCODE_PROGRESS_LOG_END -->
 
 <!-- LIMCODE_PROGRESS_METADATA_START -->
@@ -92,13 +92,13 @@
   "projectId": "mobile-ui-private",
   "projectName": "mobile-ui-private",
   "createdAt": "2026-08-14T05:55:56.978Z",
-  "updatedAt": "2026-08-16T12:50:49.400Z",
+  "updatedAt": "2026-08-16T13:02:47.884Z",
   "status": "active",
   "phase": "review",
-  "currentFocus": "baseline gate repair 已验收通过；工作区 node_modules 已由 package-lock.json 恢复并复验依赖健康与全部 gate",
-  "latestConclusion": "Acceptance Expert 复验通过：blocking=0、major=0、minor=2、advisory=2。node_modules 曾因隔离 worktree 的错误 junction 操作被删除，已用 npm.cmd install 可复现恢复；esbuild/acorn/postcss 存在，build、check:contracts、check:behavior、check:permissions、check:syntax、check:today-trend、check:interactive、git diff --check 均 exit 0。",
+  "currentFocus": "已整理并推送今日风向 NPC 群像追踪与 baseline gate repair 到 origin/main",
+  "latestConclusion": "提交 708fb1e（feat: finalize independent trend tracking and baseline gates）已成功推送 origin/main。提交前 npm.cmd run check 与 git diff --check 均 exit 0；清理了已否决的 fanLife 独立子系统设计/计划和未实施日历计划，未提交依赖目录、临时日志或敏感文件。",
   "currentBlocker": null,
-  "nextAction": "生产发布前按 docs/BASELINE.md 做真实 SillyTavern 宿主视觉回归：主题切换、暗色、模型下拉、日历管理、社区按钮状态、移动布局与控制台错误。",
+  "nextAction": "生产发布前按 docs/BASELINE.md 在真实 SillyTavern 宿主执行人工视觉回归：主题切换、暗色、模型下拉、日历管理、社区按钮状态、移动布局与控制台错误。",
   "activeArtifacts": {
     "design": ".limcode/design/baseline-gate-repair.md",
     "plan": ".limcode/plans/today-trend-community-visual-refinement.md"
@@ -188,12 +188,6 @@
     }
   ],
   "log": [
-    {
-      "at": "2026-08-16T09:30:49.492Z",
-      "type": "artifact_changed",
-      "refId": "plan",
-      "message": "同步计划 TODO 快照：.limcode/plans/today-trend-independent-worldbook-tracking.md"
-    },
     {
       "at": "2026-08-16T09:32:47.852Z",
       "type": "updated",
@@ -307,6 +301,12 @@
       "type": "artifact_changed",
       "refId": "plan",
       "message": "同步计划 TODO 快照：.limcode/plans/today-trend-community-visual-refinement.md"
+    },
+    {
+      "at": "2026-08-16T13:02:47.884Z",
+      "type": "milestone_recorded",
+      "refId": "release-prepare-main-push",
+      "message": "已提交并推送 708fb1e 至 origin/main；全量 npm check 与 diff-check 通过，工作树干净。"
     }
   ],
   "stats": {
@@ -320,8 +320,8 @@
   },
   "render": {
     "rendererVersion": 1,
-    "generatedAt": "2026-08-16T12:50:49.400Z",
-    "bodyHash": "sha256:01c140131bf191e82257bf51a25de972a7381e7060d6e863cd653b79c5c94b16"
+    "generatedAt": "2026-08-16T13:02:47.884Z",
+    "bodyHash": "sha256:f0491360687f4ec3604773819a77784dd858eb023fbcc86cbb312302a1205f16"
   }
 }
 <!-- LIMCODE_PROGRESS_METADATA_END -->
