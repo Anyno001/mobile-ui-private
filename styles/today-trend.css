@@ -222,6 +222,25 @@
 .pm-today-trend-faction-meter>span small{font-size:var(--pm-font-size-micro);font-weight:var(--pm-font-weight-semibold);line-height:var(--pm-line-height-control);white-space:nowrap;}
 .pm-today-trend-faction-meter>span.is-active{border-bottom-color:var(--pm-color-accent);color:var(--pm-color-accent);}
 .pm-today-trend-content.is-minimal-ui .pm-today-trend-reputation-rating,.pm-today-trend-content.is-minimal-ui .pm-today-trend-faction-rating{display:none;}
+.pm-today-trend-content.is-minimal-ui .pm-today-trend-module-head{align-items:flex-start;min-height:calc(var(--pm-size-control-default) + var(--pm-space-2));padding-bottom:var(--pm-space-3);}
+.pm-today-trend-content.is-minimal-ui .pm-today-trend-module-head>div{gap:var(--pm-space-1-5);}
+.pm-today-trend-content.is-minimal-ui .pm-today-trend-module-head .pm-today-trend-meter{margin-top:var(--pm-space-0);}
+.pm-today-trend-content.is-minimal-ui .pm-today-trend-world>.pm-today-trend-module-head h2{font-size:var(--pm-today-trend-world-title-size);line-height:var(--pm-line-height-tight);}
+.pm-today-trend-content.is-minimal-ui .pm-today-trend-reputation>.pm-today-trend-module-head h2,.pm-today-trend-content.is-minimal-ui .pm-today-trend-factions>.pm-today-trend-module-head h2,.pm-today-trend-content.is-minimal-ui .pm-today-trend-dynamics>.pm-today-trend-module-head h2{font-size:var(--pm-today-trend-report-title-size);line-height:var(--pm-line-height-tight);}
+.pm-today-trend-content.is-minimal-ui .pm-today-trend-head-tools{transform:none;}
+.pm-today-trend-content.is-minimal-ui .pm-today-trend-floor{gap:var(--pm-space-0-5);}
+.pm-today-trend-content.is-minimal-ui .pm-today-trend-floor-reading{line-height:var(--pm-line-height-control);}
+.pm-today-trend-content.is-minimal-ui .pm-today-trend-floor-value{line-height:var(--pm-line-height-control);}
+.pm-today-trend-content.is-minimal-ui .pm-today-trend-floor-status{line-height:var(--pm-line-height-control);}
+.pm-today-trend-content.is-minimal-ui .pm-today-trend-floor-cancel{gap:var(--pm-space-0-5);}
+.pm-today-trend-content.is-minimal-ui .pm-today-trend-world-hero p,.pm-today-trend-content.is-minimal-ui .pm-today-trend-world-brief p{margin-top:var(--pm-space-3);}
+.pm-today-trend-content.is-minimal-ui .pm-today-trend-reputation-entry,.pm-today-trend-content.is-minimal-ui .pm-today-trend-faction-card,.pm-today-trend-content.is-minimal-ui .pm-today-trend-event-body{row-gap:var(--pm-space-3);}
+.pm-today-trend-content.is-minimal-ui .pm-today-trend-event-facts{margin-block-start:var(--pm-space-0);}
+.pm-today-trend-content.is-minimal-ui .pm-today-trend-reputation-mark[data-status="hostile"],.pm-today-trend-content.is-minimal-ui .pm-today-trend-faction-node[data-status="hostile"]{background:var(--pm-color-surface-control);color:var(--pm-color-danger);}
+.pm-today-trend-content.is-minimal-ui .pm-today-trend-reputation-mark[data-status="dislike"],.pm-today-trend-content.is-minimal-ui .pm-today-trend-faction-node[data-status="dislike"]{background:var(--pm-color-surface-control);color:var(--pm-color-warning);}
+.pm-today-trend-content.is-minimal-ui .pm-today-trend-reputation-mark[data-status="neutral"],.pm-today-trend-content.is-minimal-ui .pm-today-trend-faction-node[data-status="neutral"]{background:var(--pm-color-surface-control);color:var(--pm-color-text-secondary);}
+.pm-today-trend-content.is-minimal-ui .pm-today-trend-reputation-mark[data-status="like"],.pm-today-trend-content.is-minimal-ui .pm-today-trend-faction-node[data-status="like"]{background:var(--pm-color-surface-control);color:var(--pm-color-accent);}
+.pm-today-trend-content.is-minimal-ui .pm-today-trend-reputation-mark[data-status="trust"],.pm-today-trend-content.is-minimal-ui .pm-today-trend-faction-node[data-status="trust"]{background:var(--pm-color-surface-control);color:var(--pm-color-success);}
 
 .pm-today-trend-dynamics{--pm-today-trend-dynamics-icon-size:var(--pm-space-5);}
 .pm-today-trend-dynamics>.pm-today-trend-module-head{padding-bottom:var(--pm-space-2);}

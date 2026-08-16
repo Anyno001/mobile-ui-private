@@ -8,7 +8,7 @@ const GOOD_STATUSES = new Set(['like', 'trust']);
 const BAD_STATUSES = new Set(['hostile', 'dislike']);
 const relationIcon = status => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${TODAY_TREND_RELATION_ICON_PATHS[status] || TODAY_TREND_RELATION_ICON_PATHS.neutral}</svg>`;
 const reputationMark = (circle, minimalUi, disabled) => minimalUi
-    ? `<button type="button" class="pm-today-trend-reputation-mark" data-action="today-trend-cycle-circle-status" data-circle-id="${escapeAttr(circle.id)}" aria-label="切换${escapeAttr(circle.name)}的关系状态，当前：${escapeAttr(reputationStatusLabel(circle.status))}"${disabled ? ' disabled' : ''}>${relationIcon(circle.status)}</button>`
+    ? `<button type="button" class="pm-today-trend-reputation-mark" data-action="today-trend-cycle-circle-status" data-circle-id="${escapeAttr(circle.id)}" data-status="${escapeAttr(circle.status)}" aria-label="切换${escapeAttr(circle.name)}的关系状态，当前：${escapeAttr(reputationStatusLabel(circle.status))}"${disabled ? ' disabled' : ''}>${relationIcon(circle.status)}</button>`
     : `<span class="pm-today-trend-reputation-mark" aria-hidden="true">${relationIcon(circle.status)}</span>`;
 
 

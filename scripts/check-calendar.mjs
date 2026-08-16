@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 import { calendarGenerationErrorMessage, installCalendar, renderCalendarPageHtml } from '../src/calendar.js';
 import { fillCalendarEntryForm, readCalendarEntryForm, setCalendarEntryRepeat } from '../src/calendar-dom.js';
 import { occasionTypeLabel, renderCalendarEntryDialog, renderCalendarRepeatDeleteDialog, renderOutfitDialog, renderSelectedDateDetail } from '../src/calendar-view.js';
@@ -1255,6 +1256,25 @@ const renderedDefaultRecipe = renderCalendarPageHtml(
     createEmptyCalendarScope(), { occasions: [] }, '', holidayForToday, currentWeather, currentCycle, [],
     { ...renderedView, viewMode: 'recipe' }, createEmptyRecipeScope(),
 );
+const calendarStyle = (await readFile(new URL('../styles/calendar.css', import.meta.url), 'utf8')).replace(/;\}/g, '}');
+assert.match(calendarStyle, /\.pm-calendar-management>summary\{[^}]*display:flex[^}]*gap:var\(--pm-space-2\)[^}]*min-height:var\(--pm-size-control-default\)/,
+    '日历设置入口必须统一使用 44px 命中区与 token 间距');
+assert.match(calendarStyle, /\.pm-calendar-management\[open\] \.pm-calendar-management-chevron svg\{[^}]*transform:rotate\(180deg\)/,
+    '日历设置入口展开时必须显示向下箭头旋转状态');
+assert.match(calendarStyle, /\.pm-calendar-management-content\{[^}]*padding-top:var\(--pm-space-2\)/,
+    '日历设置入口展开后必须与下方模块保留统一留白');
+assert.match(calendarStyle, /\.pm-calendar-title-chevron svg,\.pm-calendar-management-chevron svg\{transition:none\}/,
+    '日历设置箭头在 reduced-motion 下必须停止动画');
+for (const [rendered, mode, label] of [
+    [renderedSchedule, 'schedule', '日历设置'],
+    [renderedWeather, 'weather', '天气设置'],
+    [renderedCycle, 'cycle', '生理期设置'],
+    [renderedRecipe, 'recipe', '菜谱设置'],
+    [renderedOutfit, 'outfit', '穿搭设置'],
+]) {
+    assert.match(rendered, new RegExp(`<details class="pm-calendar-management" data-calendar-management="${mode}"[^>]*>[\\s\\S]*?<summary><span>${label}</span><span class="pm-calendar-management-chevron" aria-hidden="true"><svg\\b`),
+        `${label}必须使用带箭头的原生 details summary`);
+}
 assert.match(renderedSchedule, /data-calendar-view-mode="schedule"/);
 assert.match(renderedSchedule, /data-action="calendar-home"[^>]*title="返回桌面"/);
 assert.match(renderedSchedule, /class="pm-calendar-title-row">[\s\S]*?class="pm-calendar-title-control"[\s\S]*?data-action="calendar-month-panel"[^>]*aria-expanded="false"[\s\S]*?<b>[^<]+<\/b>[\s\S]*?class="pm-calendar-title-chevron[^\"]*"/);
@@ -1314,7 +1334,7 @@ assert.match(renderedScheduleEditing, /data-action="calendar-edit-entry"[^>]*dat
 assert.match(renderedScheduleEditing, /data-action="calendar-delete-entry"[^>]*data-entry-kind="event"[^>]*data-entry-id="event-current"[\s\S]*?M4 7h16/);
 assert.match(renderedScheduleEditing, /class="pm-calendar-detail-edit-actions"[\s\S]*?class="pm-calendar-inline-add"[^>]*data-action="calendar-add-date"[^>]*>\+ 新增一条<\/button>[\s\S]*?class="pm-calendar-inline-regenerate"[^>]*data-action="calendar-regenerate"/,
     '日程编辑态必须将新增与重新生成放在同一操作组');
-assert.match(renderedScheduleEditing, /data-action="calendar-regenerate"[^>]*aria-label="重新生成当日日程"[\s\S]*?M23 4v6h-6/,
+assert.match(renderedScheduleEditing, /data-action="calendar-regenerate"[^>]*aria-label="重新生成当日日程"[\s\S]*?M20 6v5h-5/,
     '日程详情重新生成必须使用刷新 SVG 并声明当日语义');
 assert.match(renderedRegeneratingSchedule, /class="pm-calendar-inline-regenerate is-loading"[^>]*data-action="calendar-regenerate"[^>]*aria-busy="true"[^>]*disabled/,
     '当日日程重新生成期间，详情刷新按钮必须旋转并禁用');
@@ -1494,7 +1514,7 @@ assert.match(renderedRecipeEditing, /data-recipe-meal="breakfast"[\s\S]*?data-ac
     '菜谱编辑态必须像日程一样在每条餐食后显示编辑与删除操作');
 assert.match(renderedRecipeEditing, /class="pm-calendar-detail-edit-actions"[\s\S]*?class="pm-calendar-inline-add"[^>]*data-action="calendar-recipe-add"[^>]*>\+ 新增一条<\/button>[\s\S]*?class="pm-calendar-inline-regenerate"[^>]*data-action="calendar-recipe-regenerate"/,
     '菜谱编辑态必须将新增与重新生成放在同一操作组');
-assert.match(renderedRecipeEditing, /data-action="calendar-recipe-regenerate"[^>]*aria-label="重新生成当日菜谱"[\s\S]*?M23 4v6h-6/,
+assert.match(renderedRecipeEditing, /data-action="calendar-recipe-regenerate"[^>]*aria-label="重新生成当日菜谱"[\s\S]*?M20 6v5h-5/,
     '菜谱详情重新生成必须使用刷新 SVG 并声明当日语义');
 assert.match(renderedRegeneratingRecipe, /class="pm-calendar-inline-regenerate is-loading"[^>]*data-action="calendar-recipe-regenerate"[^>]*aria-busy="true"[^>]*disabled/,
     '当日菜谱重新生成期间，详情刷新按钮必须旋转并禁用');

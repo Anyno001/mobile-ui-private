@@ -3640,6 +3640,47 @@ requireCssDeclarations(cssRules, '.pm-calendar-status-context', {
 requireCssDeclarations(cssRules, '.pm-calendar-status-context .pm-calendar-status-weather-context', {
   'min-width': '0', overflow: 'hidden', 'text-overflow': 'ellipsis', 'white-space': 'nowrap',
 });
+requireCssDeclarations(cssRules, '.pm-calendar-management>summary', {
+  display: 'flex', gap: 'var(--pm-space-2)', 'min-height': 'var(--pm-size-control-default)',
+});
+requireCssDeclarations(cssRules, '.pm-calendar-management-chevron svg', {
+  width: 'var(--pm-size-icon-sm)', height: 'var(--pm-size-icon-sm)',
+  transition: 'transform var(--pm-motion-normal) var(--pm-motion-ease)',
+});
+requireCssDeclarations(cssRules, '.pm-calendar-management[open] .pm-calendar-management-chevron svg', {
+  transform: 'rotate(180deg)',
+});
+requireCssDeclarations(cssRules, '.pm-calendar-management-content', {
+  display: 'flex', 'flex-direction': 'column', 'padding-top': 'var(--pm-space-2)',
+});
+for (const selector of ['.pm-calendar-title-chevron svg', '.pm-calendar-management-chevron svg']) {
+  const reducedMotionRule = cssRules.find(rule => rule.selectors.includes(selector) && rule.parent.includes('@media (prefers-reduced-motion:reduce)'));
+  if (!reducedMotionRule || reducedMotionRule.declarations.get('transition') !== 'none') {
+    failures.push(`style.css: ${selector} must disable transition under prefers-reduced-motion`);
+  }
+}
+requireCssDeclarations(cssRules, '.pm-today-trend-content.is-minimal-ui .pm-today-trend-module-head', {
+  'align-items': 'flex-start', 'min-height': 'calc(var(--pm-size-control-default) + var(--pm-space-2))', 'padding-bottom': 'var(--pm-space-3)',
+});
+requireCssDeclarations(cssRules, '.pm-today-trend-content.is-minimal-ui .pm-today-trend-head-tools', { transform: 'none' });
+requireCssDeclarations(cssRules, '.pm-today-trend-content.is-minimal-ui .pm-today-trend-floor', { gap: 'var(--pm-space-0-5)' });
+for (const selector of [
+  '.pm-today-trend-content.is-minimal-ui .pm-today-trend-world-hero p',
+  '.pm-today-trend-content.is-minimal-ui .pm-today-trend-world-brief p',
+  '.pm-today-trend-content.is-minimal-ui .pm-today-trend-reputation-entry',
+  '.pm-today-trend-content.is-minimal-ui .pm-today-trend-faction-card',
+  '.pm-today-trend-content.is-minimal-ui .pm-today-trend-event-body',
+]) {
+  const property = selector.endsWith(' p') ? 'margin-top' : 'row-gap';
+  requireCssDeclarations(cssRules, selector, { [property]: 'var(--pm-space-3)' });
+}
+requireCssDeclarations(cssRules, '.pm-today-trend-content.is-minimal-ui .pm-today-trend-event-facts', { 'margin-block-start': 'var(--pm-space-0)' });
+for (const [status, color] of Object.entries({ hostile: 'var(--pm-color-danger)', dislike: 'var(--pm-color-warning)', neutral: 'var(--pm-color-text-secondary)', like: 'var(--pm-color-accent)', trust: 'var(--pm-color-success)' })) {
+  for (const selector of [
+    `.pm-today-trend-content.is-minimal-ui .pm-today-trend-reputation-mark[data-status="${status}"]`,
+    `.pm-today-trend-content.is-minimal-ui .pm-today-trend-faction-node[data-status="${status}"]`,
+  ]) requireCssDeclarations(cssRules, selector, { background: 'var(--pm-color-surface-control)', color });
+}
 for (const selector of [
   '.pm-calendar-status-heading',
   '.pm-calendar-status-value',

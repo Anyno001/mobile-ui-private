@@ -743,6 +743,7 @@ minimalReputationScope.injection.minimalUi = true;
 const minimalReputationHtml = renderTodayTrendReputationView({ scope: minimalReputationScope });
 const busyMinimalReputationHtml = renderTodayTrendReputationView({ scope: minimalReputationScope, generationBusy: true });
 assert.match(minimalReputationHtml, /data-action="today-trend-cycle-circle-status" data-circle-id="judge"/, '极简 UI 的个人风评图标必须提供循环切换动作');
+assert.match(minimalReputationHtml, /data-action="today-trend-cycle-circle-status" data-circle-id="judge" data-status="neutral"/, '极简 UI 的个人风评图标必须暴露当前关系状态钩子');
 assert.match(minimalReputationHtml, /aria-label="切换主厨评审的关系状态，当前：中立"/, '极简 UI 的个人风评图标必须暴露当前关系状态');
 assert.match(minimalReputationHtml, new RegExp(TODAY_TREND_RELATION_ICON_PATHS.neutral.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')), '个人风评极简图标必须复用既有中立关系 SVG');
 assert.doesNotMatch(minimalReputationHtml, /today-trend-cycle-circle-status"[^>]* disabled/, '空闲时个人风评极简图标必须可用');
@@ -832,6 +833,7 @@ minimalFactionScope.injection.minimalUi = true;
 const minimalFactionHtml = renderTodayTrendFactionView({ scope: minimalFactionScope });
 const busyMinimalFactionHtml = renderTodayTrendFactionView({ scope: minimalFactionScope, generationBusy: true });
 assert.match(minimalFactionHtml, /data-action="today-trend-cycle-faction-status" data-faction-id="red"/, '极简 UI 的势力关系图标必须提供循环切换动作');
+assert.match(minimalFactionHtml, /data-action="today-trend-cycle-faction-status" data-faction-id="red" data-status="like"/, '极简 UI 的势力关系图标必须暴露当前关系状态钩子');
 assert.match(minimalFactionHtml, /aria-label="切换红队的关系状态，当前：喜欢"/, '极简 UI 的势力关系图标必须暴露当前关系状态');
 assert.match(minimalFactionHtml, new RegExp(TODAY_TREND_RELATION_ICON_PATHS.like.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')), '势力极简图标必须复用既有喜欢关系 SVG');
 assert.doesNotMatch(minimalFactionHtml, /today-trend-cycle-faction-status"[^>]* disabled/, '空闲时势力极简图标必须可用');
@@ -839,6 +841,18 @@ assert.match(busyMinimalFactionHtml, /today-trend-cycle-faction-status"[^>]* dis
 assert.match(todayTrendStyle, /pm-today-trend-content\.is-minimal-ui \.pm-today-trend-reputation-rating,\.pm-today-trend-content\.is-minimal-ui \.pm-today-trend-faction-rating\{display:none/, '极简 UI 必须仅在隔离容器内隐藏两类关系量表且不留空位');
 assert.doesNotMatch(todayTrendStyle, /(?:^|\})\.pm-today-trend-(?:reputation|faction)-(?:rating|meter)\{display:none/, '普通模式不得隐藏关系量表');
 assert.match(todayTrendStyle, /pm-today-trend-content\.is-minimal-ui \.pm-today-trend-reputation-mark,\.pm-today-trend-content\.is-minimal-ui \.pm-today-trend-faction-node\{[^}]*width:var\(--pm-size-control-default\)[^}]*height:var\(--pm-size-control-default\)[^}]*background-clip:content-box/, '极简关系按钮必须提供 44px 命中区并保持 24px 可见节点');
+assert.match(todayTrendStyle, /pm-today-trend-content\.is-minimal-ui \.pm-today-trend-module-head\{[^}]*align-items:flex-start[^}]*min-height:calc\(var\(--pm-size-control-default\) \+ var\(--pm-space-2\)\)[^}]*padding-bottom:var\(--pm-space-3\)/, '极简 UI 模块头必须统一标题与说明的垂直节奏');
+assert.match(todayTrendStyle, /pm-today-trend-content\.is-minimal-ui \.pm-today-trend-head-tools\{[^}]*transform:none/, '极简 UI 标题工具区不得继续使用普通模式的上移偏移');
+assert.match(todayTrendStyle, /pm-today-trend-content\.is-minimal-ui \.pm-today-trend-floor\{[^}]*gap:var\(--pm-space-0-5\)/, '极简 UI 楼层五态必须使用稳定的紧凑间距');
+assert.match(todayTrendStyle, /pm-today-trend-content\.is-minimal-ui \.pm-today-trend-world-hero p,\.pm-today-trend-content\.is-minimal-ui \.pm-today-trend-world-brief p\{[^}]*margin-top:var\(--pm-space-3\)/, '极简 UI 世界态势标题与说明必须使用统一间距');
+assert.match(todayTrendStyle, /pm-today-trend-content\.is-minimal-ui \.pm-today-trend-reputation-entry,\.pm-today-trend-content\.is-minimal-ui \.pm-today-trend-faction-card,\.pm-today-trend-content\.is-minimal-ui \.pm-today-trend-event-body\{[^}]*row-gap:var\(--pm-space-3\)/, '极简 UI 四类内容必须使用统一标题—说明节奏');
+assert.match(todayTrendStyle, /pm-today-trend-content\.is-minimal-ui \.pm-today-trend-event-facts\{[^}]*margin-block-start:var\(--pm-space-0\)/, '极简 UI 事件事实区不得继承普通模式的负偏移');
+for (const [status, color] of Object.entries({ hostile: '--pm-color-danger', dislike: '--pm-color-warning', neutral: '--pm-color-text-secondary', like: '--pm-color-accent', trust: '--pm-color-success' })) {
+    assert.match(todayTrendStyle, new RegExp(`pm-today-trend-content\\.is-minimal-ui \\.pm-today-trend-reputation-mark\\[data-status="${status}"\\],\\.pm-today-trend-content\\.is-minimal-ui \\.pm-today-trend-faction-node\\[data-status="${status}"\\]\\{[^}]*background:var\\(--pm-color-surface-control\\)[^}]*color:var\\(${color}\\)`), `极简 UI ${status} 状态必须使用语义颜色`);
+}
+assert.doesNotMatch(todayTrendStyle, /(?:^|\})\.pm-today-trend-head-tools\{[^}]*transform:none/, '普通模式标题工具区不得被极简 UI 的清零偏移规则污染');
+assert.doesNotMatch(todayTrendStyle, /(?:^|\})\.pm-today-trend-event-facts\{[^}]*margin-block-start:var\(--pm-space-0\)/, '普通模式事件事实区不得被极简 UI 的零偏移规则污染');
+assert.doesNotMatch(todayTrendStyle, /(?:^|\})\.pm-today-trend-reputation-mark\[data-status="(?:hostile|dislike|neutral|like|trust)"\]/, '普通模式不得新增关系状态颜色覆盖');
 assert.match(todayTrendStyle, /@media\(max-width:320px\)[\s\S]*?pm-today-trend-reputation-meter,\.pm-today-trend-faction-meter\{[^}]*column-gap:var\(--pm-space-0-5\)/, '320px 下两种关系量表必须同步收紧间距');
 assert.match(todayTrendStyle, /@media\(max-width:320px\)[\s\S]*?pm-today-trend-faction-entry-head\{flex-wrap:wrap\}/, '320px 下势力标题行必须允许操作区自然换行');
 assert.match(todayTrendStyle, /@media\(max-width:320px\)[\s\S]*?pm-today-trend-faction-entry-head>\.pm-today-trend-inline-actions\{margin-left:var\(--pm-space-auto\)\}/, '320px 下势力操作区换行后必须使用等价 auto token 保持右对齐');
