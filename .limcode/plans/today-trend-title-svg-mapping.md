@@ -5,7 +5,7 @@
 ## TODO LIST
 
 <!-- LIMCODE_TODO_LIST_START -->
-- [ ] 独立 Acceptance Expert 已 PASSED（blocking=0、major=0、minor=2）；完成交付卫生检查。真实 SillyTavern 视觉/辅助技术回归尚未执行，且推送 main 属外部发布，需助手确认是否接受剩余风险后再提交推送。  `#trend-svg-mapping-acceptance-delivery`
+- [x] 独立 Acceptance Expert 已 PASSED（blocking=0、major=0、minor=2）；完成交付卫生检查。真实 SillyTavern 视觉/辅助技术回归尚未执行，且推送 main 属外部发布，需助手确认是否接受剩余风险后再提交推送。  `#trend-svg-mapping-acceptance-delivery`
 - [x] 冻结今日风向标题 SVG 映射的实施基线：核对工作树、现有 SVG 常量与事件局部图标、两视图调用点、CSS marker 和契约断言，并关闭设计中的关键词/图标重叠歧义。  `#trend-svg-mapping-baseline`
 - [x] 扩展 check-today-trend：覆盖 14 类映射、冲突优先级、NFKC、两类兜底、标题唯一输入、两视图一致性及 DOM/无障碍契约。  `#trend-svg-mapping-behavior-contracts`
 - [x] 更新 today-trend marker CSS，删除世界 <i> 内核规则并复用现有尺寸与主题 token，不新增裸值、颜色分流、动画或 !important。  `#trend-svg-mapping-css`
