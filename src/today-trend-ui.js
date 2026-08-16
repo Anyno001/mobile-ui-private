@@ -1,8 +1,17 @@
-import { CLOSE_ICON_SVG, MORE_ICON_SVG } from './icons.js';
+import { CLOSE_ICON_SVG, MORE_ICON_SVG, TODAY_TREND_RELATION_ICON_PATHS } from './icons.js';
 import { escapeAttr, escapeHtml } from './ui.js';
 
 // 仪表盘 meta 前导小时钟：灰色装饰，弱化存在但点出「时间维度」语义（呼应原型 updated/meta 行首图标）。
 export const TREND_METER_CLOCK_ICON_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg>';
+
+export function trendRelationIcon(status) {
+    const paths = TODAY_TREND_RELATION_ICON_PATHS[status] || TODAY_TREND_RELATION_ICON_PATHS.neutral;
+    return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths}</svg>`;
+}
+
+export function trendRelationSymbol(status) {
+    return `<span class="pm-today-trend-relation-symbol" aria-hidden="true">${trendRelationIcon(status)}</span>`;
+}
 
 // 仪表盘式 meta：时钟 + 若干 { label, value } 段，段间以 × 装饰分隔（非运算符）。label 为英文装饰标签，value 来自真实字段。
 export function trendMeter(segments = []) {

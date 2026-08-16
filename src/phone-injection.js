@@ -212,6 +212,7 @@ export function renderCalendarContextInjection({
         }
         }
     }
+    let hasOccasionFacts = false;
     if (calendarScope.injectionScheduleEnabled) {
         const occasionScope = occasionScopeFor(occasionStore, currentStorageId);
         const extendedScope = { occasions: occasionScope.occasions.filter(usesExtendedOccasionWindow) };
@@ -225,12 +226,19 @@ export function renderCalendarContextInjection({
             const kind = calendarRepeatLabel(occasion.repeat) || (occasion.type === 'birthday' ? '生日' : '纪念日');
             addFact(occasion.date, `${kind}：${occasion.title}${occasion.note ? `（${occasion.note.replace(/\s+/g, ' ').slice(0, 180)}）` : ''}`);
         }
+        hasOccasionFacts = occasionScope.occasions.length > 0;
     }
     const holidays = normalizeHolidayCache(holidayStore);
     const holidayYears = [...new Set(scheduleDates.map(date => Number(date.slice(0, 4))))];
+    const hasEventFacts = Object.values(calendarScope.events || {}).some(events => Array.isArray(events) && events.length > 0);
+    const hasHolidayFacts = holidayYears.some(year => (holidayYearFromCache(holidays, holidays.selectedCountry, year)?.entries || []).length > 0);
+    const hasWeatherFacts = Boolean(weatherStore?.location);
+    const hasCycleFacts = cycleSubjectKeys(cycleStore, currentStorageId)
+        .some(subject => cycleScopeFor(cycleStore, currentStorageId, subject).enabled);
+    const hasRealCalendarFacts = hasEventFacts || hasHolidayFacts || hasWeatherFacts || hasCycleFacts || hasOccasionFacts;
     if (calendarScope.injectionScheduleEnabled) for (const year of holidayYears) {
         const legal = holidayYearFromCache(holidays, holidays.selectedCountry, year)?.entries || [];
-        const cultural = year >= HOLIDAY_YEAR_RANGE.min && year <= HOLIDAY_YEAR_RANGE.max
+        const cultural = hasRealCalendarFacts && year >= HOLIDAY_YEAR_RANGE.min && year <= HOLIDAY_YEAR_RANGE.max
             ? buildCulturalFestivals(year) : [];
         for (const item of mergeCalendarDateFacts(legal, cultural)) {
             if (!scheduleDates.includes(item.date)) continue;

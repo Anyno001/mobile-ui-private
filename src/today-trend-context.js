@@ -18,7 +18,7 @@ export async function gatherTodayTrendContext({
     if (signal?.aborted) { const error = new Error('请求已取消'); error.name = 'AbortError'; throw error; }
     const host = await collectContext(getCtx, {
         module: 'todayTrend', signal, includeWorldBook: true, worldBookMaxChars,
-        worldBookNames: selectedBooks,
+        worldBookNames: selectedBooks, worldBookActivationMode: includeExistingChat === true ? 'chat' : 'selected',
     });
     if (signal?.aborted) { const error = new Error('请求已取消'); error.name = 'AbortError'; throw error; }
     return {

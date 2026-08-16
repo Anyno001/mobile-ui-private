@@ -3482,7 +3482,7 @@ for (const expected of [
   '.pm-calendar-cycle-input:checked+.pm-custom-check{background:var(--pm-calendar-accent)}',
   '.pm-calendar-cycle-input:focus-visible+.pm-custom-check{outline:2px solid var(--pm-color-focus-ring);outline-offset:2px}',
   '.pm-scene-topbar{position:relative;display:flex;align-items:center;gap:var(--pm-space-1);padding:var(--pm-space-1-5) var(--pm-space-px-9)}',
-  '.pm-scene-home{color:var(--pm-color-text-tertiary) !important}',
+  '.pm-scene-home{color:var(--pm-color-text-placeholder) !important',
   '.pm-scene-pin-action{color:var(--pm-color-text-tertiary)}',
   '.pm-scene-pin-action[aria-pressed="true"],.pm-scene-pin-action[aria-pressed="true"]:hover,.pm-scene-pin-action[aria-pressed="true"]:focus-visible{background:transparent;color:var(--scene-accent)}',
   '.pm-scene-title{position:absolute;left:50%;top:6px;bottom:6px;transform:translateX(-50%);display:flex',
@@ -3499,13 +3499,13 @@ for (const expected of [
   '.pm-control-menu.pm-scene-menu{left:0;right:auto;top:auto;bottom:46px;z-index:var(--pm-z-menu);width:148px;max-height:none;overflow-y:visible',
   '.pm-control-menu.pm-scene-menu[hidden]{display:none}',
   '.pm-scene-composer textarea{height:var(--pm-size-control-compact);min-height:var(--pm-size-control-compact);max-height:88px;box-shadow:none !important;appearance:none}',
-  '.pm-scene-title-poke:active{background:transparent !important;color:var(--pm-color-on-dark) !important}',
-  '.pm-scene-title-poke:active::before{background:var(--pm-color-auxiliary)}',
-  '.pm-scene-bottom-bar .pm-scene-more:hover,.pm-scene-bottom-bar .pm-scene-more:focus-visible,.pm-scene-bottom-bar .pm-scene-more[aria-expanded="true"]{background:transparent;outline:none;color:var(--pm-color-auxiliary)}',
+  '.pm-scene-title-poke:active{background:transparent !important;color:var(--pm-color-on-dark) !important;transition-duration:var(--pm-motion-fast)}',
+  '.pm-scene-title-poke:active::before{background:var(--scene-accent);transition-duration:var(--pm-motion-fast)}',
+  '.pm-scene-bottom-bar .pm-scene-more:hover,.pm-scene-bottom-bar .pm-scene-more:focus-visible,.pm-scene-bottom-bar .pm-scene-more[aria-expanded="true"]{background:transparent;outline:none;color:var(--pm-color-text-secondary)}',
   '.pm-scene-share.is-shared .pm-scene-post-metric,.pm-scene-share:active .pm-scene-post-metric{color:var(--pm-color-success)}',
   '.pm-scene-share.is-shared svg circle{fill:currentColor}',
   '.pm-scene-reply-toggle[aria-expanded="true"] .pm-scene-post-metric{color:var(--scene-accent)}',
-  '.pm-scene-post-more:focus-visible{background:color-mix(in srgb,var(--pm-color-auxiliary) 10%,transparent);outline:2px solid var(--pm-color-auxiliary);outline-offset:2px}',
+  '.pm-scene-post-more:focus-visible{background:color-mix(in srgb,var(--pm-color-text-secondary) 10%,transparent);outline:2px solid var(--pm-color-text-secondary);outline-offset:2px}',
   '.pm-scene-post-actions-wrap{position:relative;display:flex;flex-direction:row-reverse',
   '.pm-scene-post-actions{display:flex;align-items:center;gap:var(--pm-space-0-5);margin-right:var(--pm-space-1)}',
   '.pm-scene-post-actions[hidden]{display:none}',
@@ -3519,7 +3519,7 @@ for (const expected of [
   '.pm-scene-comment-actions[hidden]{display:none}',
   '.pm-scene-comment-actions button{width:22px;height:22px;padding:var(--pm-space-1);display:grid;place-items:center;border-radius:50%}',
   '.pm-scene-comment-actions button svg{width:var(--pm-size-icon-sm);height:var(--pm-size-icon-sm)}',
-  '.pm-scene-post-actions button:focus-visible{background:color-mix(in srgb,var(--pm-color-auxiliary) 10%,transparent);outline:2px solid var(--pm-color-auxiliary);outline-offset:2px}',
+  '.pm-scene-post-actions button:focus-visible{background:color-mix(in srgb,var(--pm-color-text-secondary) 10%,transparent);outline:2px solid var(--pm-color-text-secondary);outline-offset:2px}',
   '.pm-scene-like.is-liked svg{fill:currentColor}',
   '.pm-scene-composer .pm-scene-primary svg{width:var(--pm-size-icon-md);height:var(--pm-size-icon-md)}',
   '.pm-scene-title-poke svg,.pm-scene-exit svg{width:var(--pm-size-icon-md);height:var(--pm-size-icon-md)}',
@@ -3535,7 +3535,7 @@ for (const expected of [
   '.pm-calendar-view-switch{display:flex;align-items:center;justify-content:space-between;gap:var(--pm-space-1-5);width:auto;margin:var(--pm-space-0) var(--pm-space-3) var(--pm-space-px-5)',
   '.pm-calendar-tools{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--pm-space-2);padding:var(--pm-space-3) var(--pm-space-3)}',
   '.pm-calendar-header .pm-calendar-header-action{width:28px;height:28px;padding:var(--pm-space-1-5);background:transparent}',
-  '.pm-calendar-header button[data-action="calendar-home"]{color:var(--pm-color-text-tertiary)}',
+  '.pm-calendar-header button[data-action="calendar-home"]{color:var(--pm-color-text-placeholder)',
   '.pm-calendar-header-action svg{width:15px;height:15px}',
   '.pm-calendar-title-row{display:flex;align-items:center;justify-content:center;min-width:0',
   '.pm-calendar-title-control{position:relative;display:flex;min-width:0;justify-content:center}',
@@ -3580,7 +3580,8 @@ for (const expected of [
   '.pm-calendar-inline-actions button{display:grid;place-items:center;width:28px;height:28px;padding:var(--pm-space-1-5);border:0;border-radius:0;background:transparent',
   '.pm-calendar-detail-edit-actions{display:flex;align-items:center;justify-content:center;gap:var(--pm-space-2);margin-top:var(--pm-space-2);flex-wrap:wrap}',
   '.pm-calendar-inline-add,.pm-calendar-inline-regenerate{display:inline-flex;align-items:center;justify-content:center;gap:var(--pm-space-1-5);width:max-content;margin:var(--pm-space-0);padding:var(--pm-space-2) var(--pm-space-3);border:1px solid color-mix(in srgb,var(--pm-calendar-accent) 35%,transparent);border-radius:9px',
-  '.pm-calendar-management:is([data-calendar-management="schedule"],[data-calendar-management="recipe"],[data-calendar-management="cycle"],[data-calendar-management="outfit"]) .pm-calendar-editor-actions .is-primary{background:var(--pm-calendar-accent);border-color:var(--pm-calendar-accent)}',
+  '.pm-calendar-management:is([data-calendar-management="schedule"],[data-calendar-management="recipe"],[data-calendar-management="cycle"],[data-calendar-management="outfit"]) .pm-calendar-editor-actions .is-primary{background:var(--pm-calendar-accent)!important;border-color:var(--pm-calendar-accent)!important',
+  '.pm-calendar-editor-actions .is-primary{background:var(--pm-calendar-accent, var(--pm-color-accent))!important;color:var(--pm-color-on-dark)!important;border-color:var(--pm-calendar-accent, var(--pm-color-accent))!important',
   '#pm-iphone[data-theme="dark"] .pm-calendar-management[data-calendar-management="outfit"] .pm-calendar-editor-actions .is-primary{color:#1c1c1e}',
   '.pm-calendar-management .pm-calendar-data-tools h3{font-size:12px}',
   '.pm-calendar-injection-card .pm-calendar-auto-switch{padding:var(--pm-space-0-5) var(--pm-space-0)}',
@@ -3592,7 +3593,7 @@ for (const expected of [
   '#pm-overlay .pm-calendar-entry-dialog textarea[name="note"]{box-sizing:border-box!important;width:100%!important;min-height:72px!important;border:1px solid var(--pm-color-border-default)!important;border-radius:var(--pm-radius-control)!important;background:var(--pm-color-surface-control)!important;color:var(--pm-color-text-primary)!important;font:var(--pm-font-weight-regular) var(--pm-font-size-body)/var(--pm-line-height-body) var(--pm-font-family-system)',
   '#pm-overlay .pm-calendar-entry-dialog textarea[name="note"]:focus-visible{outline:1px solid var(--pm-color-focus-ring)!important;outline-offset:1px!important}',
   '.pm-calendar-entry-actions button{min-height:var(--pm-size-control-default);border:0',
-  '.pm-calendar-view-switch button[aria-pressed="true"]{background:transparent;color:var(--pm-color-text-primary);box-shadow:inset 0 -2px 0 var(--pm-color-text-primary)',
+  '.pm-calendar-view-switch button[aria-pressed="true"]{background:transparent;color:var(--pm-calendar-accent);box-shadow:inset 0 -2px 0 var(--pm-calendar-accent)',
   '@media(prefers-reduced-motion:reduce){.pm-calendar-shell[data-calendar-view-mode] .pm-calendar-header-action.is-loading svg{animation:none}}',
   '.pm-scene-preset>span{box-sizing:border-box;width:12px;height:12px;flex:0 0 12px;border-radius:50%',
   '.pm-scene-prompt .pm-scene-accent-option{box-sizing:border-box;width:30px;height:30px;min-width:30px;min-height:30px;aspect-ratio:1;flex:0 0 30px;padding:var(--pm-space-1) !important',
@@ -3664,6 +3665,18 @@ requireCssDeclarations(cssRules, '.pm-today-trend-content.is-minimal-ui .pm-toda
 });
 requireCssDeclarations(cssRules, '.pm-today-trend-content.is-minimal-ui .pm-today-trend-head-tools', { transform: 'none' });
 requireCssDeclarations(cssRules, '.pm-today-trend-content.is-minimal-ui .pm-today-trend-floor', { gap: 'var(--pm-space-0-5)' });
+const relationNodeTokenRule = cssRules.find(rule => rule.selectors.includes('.pm-today-trend-shell')
+  && rule.declarations.get('--pm-today-trend-relation-node-size') === 'var(--pm-space-5)');
+if (!relationNodeTokenRule) {
+  failures.push('style.css: .pm-today-trend-shell must define --pm-today-trend-relation-node-size with --pm-space-5');
+}
+for (const selector of [
+  '.pm-today-trend-world-signal-marker',
+  '.pm-today-trend-content.is-minimal-ui .pm-today-trend-relation-symbol',
+]) requireCssDeclarations(cssRules, selector, {
+  width: 'var(--pm-today-trend-relation-node-size)',
+  height: 'var(--pm-today-trend-relation-node-size)',
+});
 for (const selector of [
   '.pm-today-trend-content.is-minimal-ui .pm-today-trend-world-hero p',
   '.pm-today-trend-content.is-minimal-ui .pm-today-trend-world-brief p',
@@ -3672,14 +3685,17 @@ for (const selector of [
   '.pm-today-trend-content.is-minimal-ui .pm-today-trend-event-body',
 ]) {
   const property = selector.endsWith(' p') ? 'margin-top' : 'row-gap';
-  requireCssDeclarations(cssRules, selector, { [property]: 'var(--pm-space-3)' });
+  requireCssDeclarations(cssRules, selector, { [property]: 'var(--pm-space-2)' });
 }
 requireCssDeclarations(cssRules, '.pm-today-trend-content.is-minimal-ui .pm-today-trend-event-facts', { 'margin-block-start': 'var(--pm-space-0)' });
-for (const [status, color] of Object.entries({ hostile: 'var(--pm-color-danger)', dislike: 'var(--pm-color-warning)', neutral: 'var(--pm-color-text-secondary)', like: 'var(--pm-color-accent)', trust: 'var(--pm-color-success)' })) {
-  for (const selector of [
-    `.pm-today-trend-content.is-minimal-ui .pm-today-trend-reputation-mark[data-status="${status}"]`,
-    `.pm-today-trend-content.is-minimal-ui .pm-today-trend-faction-node[data-status="${status}"]`,
-  ]) requireCssDeclarations(cssRules, selector, { background: 'var(--pm-color-surface-control)', color });
+for (const [status, colors] of Object.entries({
+  hostile: { background: 'var(--pm-color-danger)', color: 'var(--pm-color-on-danger)' },
+  dislike: { background: 'var(--pm-color-warning)', color: 'var(--pm-color-on-warning)' },
+  neutral: { background: 'var(--pm-color-surface-control)', color: 'var(--pm-color-text-primary)' },
+  like: { background: 'var(--pm-color-accent)', color: 'var(--pm-color-on-accent)' },
+  trust: { background: 'var(--pm-color-success)', color: 'var(--pm-color-on-success)' },
+})) {
+  requireCssDeclarations(cssRules, `.pm-today-trend-content.is-minimal-ui :is(.pm-today-trend-reputation-mark,.pm-today-trend-faction-node)[data-status="${status}"] .pm-today-trend-relation-symbol`, colors);
 }
 for (const selector of [
   '.pm-calendar-status-heading',
@@ -3711,7 +3727,7 @@ requireCssDeclarations(cssRules, '.pm-name-edit', {
   width: 'var(--pm-size-control-compact)', height: 'var(--pm-size-control-compact)', padding: 'var(--pm-space-2) !important', 'border-radius': 'var(--pm-radius-circle) !important', 'line-height': 'var(--pm-line-height-tight)',
 });
 requireCssDeclarations(cssRules, '.pm-name-edit:hover', {
-  background: 'transparent !important', color: 'var(--pm-color-auxiliary) !important',
+  background: 'transparent !important', color: 'var(--pm-color-text-secondary) !important',
 });
 requireCssDeclarations(cssRules, '.pm-name-edit:active', {
   background: 'transparent !important', color: 'var(--pm-color-on-dark) !important',
@@ -3722,7 +3738,7 @@ requireCssDeclarations(cssRules, '.pm-name-edit:active svg', {
 requireCssDeclarations(cssRules, '.pm-name-edit::before', {
   width: 'var(--pm-size-icon-lg)', height: 'var(--pm-size-icon-lg)', 'border-radius': 'var(--pm-radius-circle)', background: 'transparent',
 });
-requireCssDeclarations(cssRules, '.pm-name-edit:active::before', { background: 'var(--pm-color-auxiliary)' });
+requireCssDeclarations(cssRules, '.pm-name-edit:active::before', { background: 'var(--pm-color-text-secondary)' });
 requireCssDeclarations(cssRules, '.pm-name', {
   'max-width': '100%',
   'white-space': 'nowrap',
@@ -3731,20 +3747,20 @@ requireCssDeclarations(cssRules, '.pm-name', {
   'text-align': 'center',
 });
 requireCssDeclarations(cssRules, '.pm-nav-btn', {
-  background: 'none !important', color: 'var(--pm-color-auxiliary) !important', padding: 'var(--pm-space-2) !important', 'line-height': 'var(--pm-line-height-tight)',
+  background: 'none !important', color: 'var(--pm-color-text-placeholder) !important', padding: 'var(--pm-space-2) !important', 'line-height': 'var(--pm-line-height-tight)',
 });
 requireCssDeclarations(cssRules, '.pm-nav-btn.pm-nav-left-btn', {
-  color: 'var(--pm-color-text-tertiary) !important',
+  color: 'var(--pm-color-text-placeholder) !important',
 });
 requireCssDeclarations(cssRules, '.pm-up-btn', {
   width: 'var(--pm-size-control-compact) !important', height: 'var(--pm-size-control-compact) !important',
   background: 'var(--pm-color-auxiliary) !important', color: 'var(--pm-color-on-dark) !important',
 });
 requireCssDeclarations(cssRules, '.pm-expand-btn:hover', {
-  color: 'var(--pm-color-auxiliary) !important',
+  color: 'var(--pm-color-text-secondary) !important',
 });
 requireCssDeclarations(cssRules, '.pm-expand-btn[aria-expanded="true"]', {
-  color: 'var(--pm-color-auxiliary) !important',
+  color: 'var(--pm-color-text-secondary) !important',
 });
 requireCssDeclarations(cssRules, '.pm-message-select-check', {
   width: '22px', height: '22px', 'min-width': '22px', 'min-height': '22px',
@@ -4411,6 +4427,14 @@ for (const expected of [
   requireText('css', css, expected);
 }
 requireCssDeclarations(cssRules, '.pm-desktop-app-icon', {
+  background: 'var(--pm-color-accent)',
+  color: 'var(--pm-color-on-dark)',
+});
+requireCssDeclarations(cssRules, '.pm-quick-reply-actions button', {
+  background: 'var(--pm-color-accent)',
+  color: 'var(--pm-color-on-dark)',
+});
+requireCssDeclarations(cssRules, '.pm-desktop-community-dock button', {
   background: 'var(--pm-color-accent)',
   color: 'var(--pm-color-on-dark)',
 });

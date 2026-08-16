@@ -54,11 +54,15 @@ function throwIfAborted(signal) {
 }
 
 export async function buildWorldBookContext(context, {
-    module, config = globalThis.window?.__pmWorldBookConfig, signal, scope: requestedScope = null, memberIds = [], maxChars, worldBookOptions = {}, bookNames = null,
+    module, config = globalThis.window?.__pmWorldBookConfig, signal, scope: requestedScope = null, memberIds = [], maxChars, worldBookOptions = {}, bookNames = null, activationMode = 'chat',
 } = {}) {
     const current = normalizeWorldBookConfig(config);
     if (!WORLD_BOOK_MODULES.includes(module)) return '';
     if (typeof context?.loadWorldInfo !== 'function') return '';
+    if (!['chat', 'selected'].includes(activationMode)) throw new TypeError('世界书激活模式无效');
+    if (activationMode === 'selected' && (!Array.isArray(bookNames) || !bookNames.some(name => text(name).trim()))) {
+        throw new TypeError('独立世界书读取必须显式指定书籍');
+    }
     throwIfAborted(signal);
     const requestedNames = Array.isArray(bookNames)
         ? new Set(bookNames.map(name => text(name).trim()).filter(Boolean)) : null;
@@ -100,7 +104,7 @@ export async function buildWorldBookContext(context, {
         throwIfAborted(signal);
         for (const entry of normalizeBookEntries(bookName, book)) {
             throwIfAborted(signal);
-            if (!scanMatches(entry, messages)) continue;
+            if (activationMode === 'chat' && !scanMatches(entry, messages)) continue;
             const memberPrivate = scope?.kind === 'group'
                 && groupMemberIds.some(memberId => isMemberPrivateWorldBookEntryAllowed(current, entry, memberId));
             const groupExplicitlyAllowsColumn = scope?.kind === 'group'

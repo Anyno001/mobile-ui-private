@@ -1,20 +1,19 @@
-import { BACK_ICON_SVG, BOOK_ICON_SVG, EDIT_ICON_SVG, REFRESH_ICON_SVG, SPARKLES_ICON_SVG, TODAY_TREND_RELATION_ICON_PATHS, TRASH_ICON_SVG } from './icons.js';
+import { BACK_ICON_SVG, BOOK_ICON_SVG, EDIT_ICON_SVG, REFRESH_ICON_SVG, SPARKLES_ICON_SVG, TRASH_ICON_SVG } from './icons.js';
 import { TODAY_TREND_RELATION_STATUSES, todayTrendStatusLabel } from './today-trend-model.js';
 import { escapeAttr, escapeHtml } from './ui.js';
-import { trendInlineActions, trendMeter, trendModuleHead } from './today-trend-ui.js';
+import { trendInlineActions, trendMeter, trendModuleHead, trendRelationIcon, trendRelationSymbol } from './today-trend-ui.js';
 
 const reputationStatusLabel = status => status === 'like' ? '喜爱' : todayTrendStatusLabel(status);
 const GOOD_STATUSES = new Set(['like', 'trust']);
 const BAD_STATUSES = new Set(['hostile', 'dislike']);
-const relationIcon = status => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${TODAY_TREND_RELATION_ICON_PATHS[status] || TODAY_TREND_RELATION_ICON_PATHS.neutral}</svg>`;
 const reputationMark = (circle, minimalUi, disabled) => minimalUi
-    ? `<button type="button" class="pm-today-trend-reputation-mark" data-action="today-trend-cycle-circle-status" data-circle-id="${escapeAttr(circle.id)}" data-status="${escapeAttr(circle.status)}" aria-label="切换${escapeAttr(circle.name)}的关系状态，当前：${escapeAttr(reputationStatusLabel(circle.status))}"${disabled ? ' disabled' : ''}>${relationIcon(circle.status)}</button>`
-    : `<span class="pm-today-trend-reputation-mark" aria-hidden="true">${relationIcon(circle.status)}</span>`;
+    ? `<button type="button" class="pm-today-trend-reputation-mark" data-action="today-trend-cycle-circle-status" data-circle-id="${escapeAttr(circle.id)}" data-status="${escapeAttr(circle.status)}" aria-label="切换${escapeAttr(circle.name)}的关系状态，当前：${escapeAttr(reputationStatusLabel(circle.status))}"${disabled ? ' disabled' : ''}>${trendRelationSymbol(circle.status)}</button>`
+    : `<span class="pm-today-trend-reputation-mark" aria-hidden="true">${trendRelationIcon(circle.status)}</span>`;
 
 
 function reputationMeter(circle, disabled) {
     const label = reputationStatusLabel(circle.status);
-    const levels = TODAY_TREND_RELATION_STATUSES.map(level => `<button type="button" class="${level === circle.status ? 'is-active' : ''}" data-action="today-trend-set-circle-status" data-circle-id="${escapeAttr(circle.id)}" data-status="${level}" aria-checked="${level === circle.status}" role="radio" tabindex="${level === circle.status ? '0' : '-1'}" aria-label="${escapeAttr(reputationStatusLabel(level))}"${disabled ? ' disabled' : ''}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${TODAY_TREND_RELATION_ICON_PATHS[level] || TODAY_TREND_RELATION_ICON_PATHS.neutral}</svg><span aria-hidden="true">${escapeHtml(reputationStatusLabel(level))}</span></button>`).join('');
+    const levels = TODAY_TREND_RELATION_STATUSES.map(level => `<button type="button" class="${level === circle.status ? 'is-active' : ''}" data-action="today-trend-set-circle-status" data-circle-id="${escapeAttr(circle.id)}" data-status="${level}" aria-checked="${level === circle.status}" role="radio" tabindex="${level === circle.status ? '0' : '-1'}" aria-label="${escapeAttr(reputationStatusLabel(level))}"${disabled ? ' disabled' : ''}>${trendRelationIcon(level)}<span aria-hidden="true">${escapeHtml(reputationStatusLabel(level))}</span></button>`).join('');
     return `<div class="pm-today-trend-reputation-meter" role="radiogroup" aria-label="修改${escapeAttr(circle.name)}的好感度，当前：${escapeAttr(label)}">${levels}</div>`;
 }
 function circleEditor(circle = {}, cancelAction = 'today-trend-cancel-editor') {

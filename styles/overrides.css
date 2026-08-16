@@ -24,4 +24,4 @@
 :is(#pm-iphone,#pm-overlay,#pm-overlay-sub) button:is([data-action*="save"],[onclick*="__pmSave"]),#pm-iphone [data-today-trend-form]:is([data-today-trend-form="world-item"],[data-today-trend-form="rule-editor"],[data-today-trend-form="app-settings"],[data-today-trend-form="circle"],[data-today-trend-form="faction"],[data-today-trend-form="event"]) button[type="submit"]{background:var(--pm-color-accent)!important;color:var(--pm-color-on-accent)!important;border-color:var(--pm-color-accent)!important;}
 
 /* 隔离酒馆本体对 summary 元素的全局样式污染 */
-#pm-iphone summary,#pm-overlay summary,#pm-overlay-sub summary{background:transparent!important;border:none!important;box-shadow:none!important;padding:0!important;}
+#pm-iphone summary,#pm-overlay summary,#pm-overlay-sub summary{background:transparent!important;border:none!important;box-shadow:none!important;padding:var(--pm-space-0)!important;}

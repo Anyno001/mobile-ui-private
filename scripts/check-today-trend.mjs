@@ -193,9 +193,9 @@ assert.doesNotMatch(todayTrendStyle, /\.pm-today-trend-faction-summary\{[^}]*fon
 assert.match(todayTrendStyle, /\.pm-today-trend-world-hero p\{[^}]*line-height:var\(--pm-line-height-body\)/, '世界态势 hero 正文行距必须与个人风评统一');
 assert.match(todayTrendStyle, /\.pm-today-trend-world-brief p\{[^}]*line-height:var\(--pm-line-height-body\)/, '世界态势次级摘要正文行距必须与个人风评统一');
 assert.match(todayTrendStyle, /\.pm-today-trend-faction-summary\{[^}]*line-height:var\(--pm-line-height-body\)/, '势力图谱摘要行距必须与个人风评统一');
-assert.doesNotMatch(todayTrendStyle, /\.pm-today-trend-world-hero p\{[^}]*line-height:var\(--pm-line-height-loose\)/, '世界态势 hero 正文不得保留旧宽松行距');
-assert.doesNotMatch(todayTrendStyle, /\.pm-today-trend-world-brief p\{[^}]*line-height:var\(--pm-line-height-loose\)/, '世界态势次级摘要正文不得保留旧宽松行距');
-assert.doesNotMatch(todayTrendStyle, /\.pm-today-trend-faction-summary\{[^}]*line-height:var\(--pm-line-height-loose\)/, '势力图谱摘要不得保留旧宽松行距');
+assert.doesNotMatch(todayTrendStyle, /(?:^|\})\.pm-today-trend-world-hero p\{[^}]*line-height:var\(--pm-line-height-loose\)/, '普通模式世界态势 hero 正文不得保留旧宽松行距');
+assert.doesNotMatch(todayTrendStyle, /(?:^|\})\.pm-today-trend-world-brief p\{[^}]*line-height:var\(--pm-line-height-loose\)/, '普通模式世界态势次级摘要正文不得保留旧宽松行距');
+assert.doesNotMatch(todayTrendStyle, /(?:^|\})\.pm-today-trend-faction-summary\{[^}]*line-height:var\(--pm-line-height-loose\)/, '普通模式势力图谱摘要不得保留旧宽松行距');
 assert.match(todayTrendStyle, /pm-today-trend-faction-entry-head \.pm-today-trend-faction-node\{[^}]*border-radius:var\(--pm-radius-circle\)[^}]*background:var\(--pm-color-accent\)/, '势力节点必须归入标题行并使用圆形主题节点');
 assert.match(todayTrendStyle, /pm-today-trend-faction-meter>span\.is-active\{[^}]*border-bottom-color:var\(--pm-color-accent\)/, '势力关系量表必须使用横向选中下划线');
 assert.doesNotMatch(todayTrendStyle, /pm-today-trend-faction-meter[^{}]*(?:grid-template-rows|::after|rotate\(45deg\))/, '势力关系量表不得恢复旧纵向游标结构');
@@ -542,6 +542,7 @@ const failedInitializationHtml = renderTodayTrendApp({ presets: [{ id: 'preset',
 assert.match(failedInitializationHtml, /value="晚间赛制"/, '初始化失败后必须保留预设名称草稿');
 assert.match(failedInitializationHtml, /value="节目规则" checked/, '初始化失败后必须保留世界书选择');
 assert.doesNotMatch(failedInitializationHtml, /name="includeExistingChat" type="checkbox" checked/, '初始化失败后必须保留正文开关');
+assert.match(failedInitializationHtml, /关闭后，仅依据已选世界书、角色资料和当前追踪状态独立推演 NPC 群像。/, '正文开关必须解释关闭后的通用 NPC 独立推演语义');
 assert.match(failedInitializationHtml, /保留淘汰规则/, '初始化失败后必须保留追加要求');
 assert.match(failedInitializationHtml, /class="pm-today-trend-init-feedback pm-today-trend-error" role="alert">初始化失败<\/p>/, '初始化错误必须保留 alert 语义并位于反馈区');
 const appHtml = renderTodayTrendApp({ scope: valid.scopes.chat, presets: Object.values(valid.presets), generation: { phase: 'idle' } });
@@ -621,6 +622,7 @@ assert.match(todayTrendStyle, /pm-today-trend-rule-editor>\.pm-today-trend-form-
 assert.match(todayTrendStyle, /pm-today-trend-rule-editor \.pm-today-trend-form-actions button\[type="submit"\]\{[^}]*background:var\(--pm-color-accent\)[^}]*color:var\(--pm-color-on-accent\)/, '保存提示词必须保持主操作语义色');
 const appSettingsHtml = renderTodayTrendSettingsView({ scope: valid.scopes.chat, presets: Object.values(valid.presets) });
 for (const name of ['presetId', 'mode', 'intervalFloors', 'injectionEnabled', 'minimalUi']) assert.match(appSettingsHtml, new RegExp(`name="${name}"`), `APP 总设置必须提供 ${name}`);
+assert.match(appSettingsHtml, /逻辑时间：每 N 楼推进一次/, '自动推进设置必须明确楼层是逻辑时间刻度');
 assert.ok(appSettingsHtml.indexOf('name="injectionEnabled"') < appSettingsHtml.indexOf('name="minimalUi"'), '极简 UI 开关必须位于正文注入开关之后');
 assert.match(appSettingsHtml, /name="minimalUi" type="checkbox" role="switch" aria-checked="false"/, '极简 UI 开关必须暴露关闭状态语义');
 assert.match(todayTrendStyle, /\.pm-today-trend-injection-switch b,\.pm-today-trend-minimal-ui-switch b\{font-size:var\(--pm-font-size-label\)/, '极简 UI 标题必须与正文注入标题使用相同标签字号');
@@ -689,9 +691,9 @@ assert.match(todayTrendStyle, /pm-today-trend-(?:reputation|factions|dynamics)>\
 assert.match(todayTrendStyle, /pm-today-trend-world>\.pm-today-trend-module-head h2[^}]*font-size:var\(--pm-today-trend-world-title-size\)/, '世界态势标题选择器必须消费统一字号 token');
 assert.match(todayTrendStyle, /pm-today-trend-world>\.pm-today-trend-module-head\{[^}]*margin:var\(--pm-space-0\)[^}]*padding-bottom:var\(--pm-space-3\)/, '世界态势模块头必须与其他模块使用一致节奏');
 assert.match(todayTrendStyle, /--pm-today-trend-world-brief-title-size:var\(--pm-font-size-subtitle\)/, '世界态势次级标题必须使用收紧后的字号');
-assert.match(todayTrendStyle, /--pm-today-trend-world-node-size:var\(--pm-space-5\)/, '世界态势条目前导节点必须使用缩小后的统一尺寸');
+assert.match(todayTrendStyle, /pm-today-trend-shell\{[^}]*--pm-today-trend-relation-node-size:var\(--pm-space-5\)/, '世界态势与关系节点必须共享 24px 可见圆尺寸 token');
 assert.match(todayTrendStyle, /pm-today-trend-world-item-head\{[^}]*align-items:center[^}]*gap:var\(--pm-space-2\)/, '世界态势节点与标题必须垂直居中并使用统一间距');
-assert.match(todayTrendStyle, /pm-today-trend-world-signal-marker\{[^}]*width:var\(--pm-today-trend-world-node-size\)[^}]*height:var\(--pm-today-trend-world-node-size\)[^}]*flex:0 0 var\(--pm-today-trend-world-node-size\)/, '世界态势节点必须固定使用统一尺寸且不得被标题挤压');
+assert.match(todayTrendStyle, /pm-today-trend-world-signal-marker\{[^}]*width:var\(--pm-today-trend-relation-node-size\)[^}]*height:var\(--pm-today-trend-relation-node-size\)[^}]*flex:0 0 var\(--pm-today-trend-relation-node-size\)/, '世界态势节点必须固定使用共享尺寸且不得被标题挤压');
 assert.match(todayTrendStyle, /pm-today-trend-world-signal-marker::after\{display:none/, '世界态势节点不得保留原型以外的横向引线');
 assert.match(todayTrendStyle, /pm-today-trend-world-hero b\{[^}]*font-size:var\(--pm-today-trend-world-hero-title-size\)[^}]*font-weight:var\(--pm-font-weight-semibold\)[^}]*line-height:var\(--pm-line-height-control\)/, '世界态势首条标题必须与后续条目使用相同文本节奏');
 assert.match(todayTrendStyle, /pm-today-trend-world-brief b\{[^}]*font-size:var\(--pm-today-trend-world-brief-title-size\)[^}]*line-height:var\(--pm-line-height-control\)/, '世界态势后续标题必须消费统一字号 token 与行高');
@@ -745,6 +747,7 @@ const busyMinimalReputationHtml = renderTodayTrendReputationView({ scope: minima
 assert.match(minimalReputationHtml, /data-action="today-trend-cycle-circle-status" data-circle-id="judge"/, '极简 UI 的个人风评图标必须提供循环切换动作');
 assert.match(minimalReputationHtml, /data-action="today-trend-cycle-circle-status" data-circle-id="judge" data-status="neutral"/, '极简 UI 的个人风评图标必须暴露当前关系状态钩子');
 assert.match(minimalReputationHtml, /aria-label="切换主厨评审的关系状态，当前：中立"/, '极简 UI 的个人风评图标必须暴露当前关系状态');
+assert.match(minimalReputationHtml, /pm-today-trend-relation-symbol" aria-hidden="true"><svg/, '极简 UI 的个人风评关系按钮必须使用独立的装饰性实心圆容器');
 assert.match(minimalReputationHtml, new RegExp(TODAY_TREND_RELATION_ICON_PATHS.neutral.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')), '个人风评极简图标必须复用既有中立关系 SVG');
 assert.doesNotMatch(minimalReputationHtml, /today-trend-cycle-circle-status"[^>]* disabled/, '空闲时个人风评极简图标必须可用');
 assert.match(busyMinimalReputationHtml, /today-trend-cycle-circle-status"[^>]* disabled/, '生成忙碌时个人风评极简图标必须禁用');
@@ -781,7 +784,7 @@ assert.match(busyReputationSettingsHtml, /today-trend-regenerate-circle-schema"[
 assert.doesNotMatch(busyReputationSettingsHtml, /data-menu-id="circle:/, '风评设置不得重复渲染圈层省略号');
 assert.doesNotMatch(busyReputationSettingsHtml, /today-trend-regenerate-reputation-rule/, '个人风评设置不得重复提供模块规则动作');
 assert.doesNotMatch(todayTrendStyle, /pm-today-trend-(?:reputation|factions|dynamics)::(?:before|after)[^{]*\{[^}]*mask-image/, '个人风评、势力和事件不得恢复头尾 SVG 背景');
-assert.match(todayTrendStyle, /pm-today-trend-reputation\{[^}]*--pm-today-trend-reputation-mark-size:var\(--pm-space-5\)/, '个人风评图标尺寸必须与世界态势节点一致');
+assert.match(todayTrendStyle, /pm-today-trend-reputation-mark\{[^}]*width:var\(--pm-today-trend-relation-node-size\)[^}]*height:var\(--pm-today-trend-relation-node-size\)/, '个人风评普通模式图标必须与世界态势节点共享可见尺寸');
 assert.doesNotMatch(todayTrendStyle, /pm-today-trend-reputation-(?:head-art|file-no)/, '个人风评不得保留没有 DOM 消费者的档案装饰样式');
 assert.match(todayTrendStyle, /pm-today-trend-reputation-mark\{[^}]*border:0[^}]*border-radius:var\(--pm-radius-circle\)[^}]*background:var\(--pm-color-accent\)/, '个人风评图标必须统一为圆形主题节点');
 assert.match(todayTrendStyle, /pm-today-trend-reputation-entry-head>b\{[^}]*font-size:var\(--pm-font-size-subtitle\)[^}]*line-height:var\(--pm-line-height-control\)/, '个人风评条目标题必须与世界态势使用相同字号和行高');
@@ -815,7 +818,7 @@ assert.match(factionHtml, /pm-today-trend-faction-tree" data-depth="0"/, '势力
 assert.match(factionHtml, /pm-today-trend-faction-card"[^>]*data-depth="1"/, '势力图谱必须标识子层级');
 assert.match(todayTrendStyle, /pm-today-trend-faction-tree\[data-depth\]:not\(\[data-depth="0"\]\)\{[^}]*margin-left:var\(--pm-today-trend-faction-nested-indent\)[^}]*padding-left:var\(--pm-today-trend-faction-nested-indent\)/, '势力子层级必须保留缩进且不依赖左侧大轨道');
 assert.match(todayTrendStyle, /pm-today-trend-faction-tree\[data-depth\]:not\(\[data-depth="0"\]\):not\(\[data-depth="1"\]\)\{[^}]*margin-left:var\(--pm-space-0\)[^}]*padding-left:var\(--pm-space-0\)/, '势力深层级必须停止累计缩进以避免窄屏溢出');
-assert.match(todayTrendStyle, /pm-today-trend-factions\{[^}]*--pm-today-trend-faction-icon-size:var\(--pm-space-5\)/, '势力图谱节点尺寸必须与世界态势节点一致');
+assert.match(todayTrendStyle, /pm-today-trend-faction-entry-head \.pm-today-trend-faction-node\{[^}]*width:var\(--pm-today-trend-relation-node-size\)[^}]*height:var\(--pm-today-trend-relation-node-size\)/, '势力图谱普通模式节点必须与世界态势节点共享可见尺寸');
 assert.match(todayTrendStyle, /pm-today-trend-faction-entry-head>b\{[^}]*flex:1[^}]*overflow-wrap:anywhere[^}]*font-size:var\(--pm-font-size-subtitle\)[^}]*line-height:var\(--pm-line-height-control\)/, '势力图谱标题行必须为图标、标题和操作保留稳定布局并允许长标题断行');
 assert.match(todayTrendStyle, /pm-today-trend-faction-card\{[^}]*border:0[^}]*border-radius:var\(--pm-radius-card\)[^}]*background:transparent[^}]*box-shadow:none/, '势力条目必须使用无底无框卡片外壳');
 assert.doesNotMatch(todayTrendStyle, /pm-today-trend-faction-detail\{[^}]*border-left|pm-today-trend-faction-detail-row::before/, '势力详情不得恢复轨道线或菱形连接器');
@@ -835,20 +838,33 @@ const busyMinimalFactionHtml = renderTodayTrendFactionView({ scope: minimalFacti
 assert.match(minimalFactionHtml, /data-action="today-trend-cycle-faction-status" data-faction-id="red"/, '极简 UI 的势力关系图标必须提供循环切换动作');
 assert.match(minimalFactionHtml, /data-action="today-trend-cycle-faction-status" data-faction-id="red" data-status="like"/, '极简 UI 的势力关系图标必须暴露当前关系状态钩子');
 assert.match(minimalFactionHtml, /aria-label="切换红队的关系状态，当前：喜欢"/, '极简 UI 的势力关系图标必须暴露当前关系状态');
+assert.match(minimalFactionHtml, /pm-today-trend-relation-symbol" aria-hidden="true"><svg/, '极简 UI 的势力关系按钮必须使用独立的装饰性实心圆容器');
 assert.match(minimalFactionHtml, new RegExp(TODAY_TREND_RELATION_ICON_PATHS.like.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')), '势力极简图标必须复用既有喜欢关系 SVG');
 assert.doesNotMatch(minimalFactionHtml, /today-trend-cycle-faction-status"[^>]* disabled/, '空闲时势力极简图标必须可用');
 assert.match(busyMinimalFactionHtml, /today-trend-cycle-faction-status"[^>]* disabled/, '生成忙碌时势力极简图标必须禁用');
 assert.match(todayTrendStyle, /pm-today-trend-content\.is-minimal-ui \.pm-today-trend-reputation-rating,\.pm-today-trend-content\.is-minimal-ui \.pm-today-trend-faction-rating\{display:none/, '极简 UI 必须仅在隔离容器内隐藏两类关系量表且不留空位');
 assert.doesNotMatch(todayTrendStyle, /(?:^|\})\.pm-today-trend-(?:reputation|faction)-(?:rating|meter)\{display:none/, '普通模式不得隐藏关系量表');
-assert.match(todayTrendStyle, /pm-today-trend-content\.is-minimal-ui \.pm-today-trend-reputation-mark,\.pm-today-trend-content\.is-minimal-ui \.pm-today-trend-faction-node\{[^}]*width:var\(--pm-size-control-default\)[^}]*height:var\(--pm-size-control-default\)[^}]*background-clip:content-box/, '极简关系按钮必须提供 44px 命中区并保持 24px 可见节点');
+assert.match(todayTrendStyle, /pm-today-trend-content\.is-minimal-ui \.pm-today-trend-reputation-mark,\.pm-today-trend-content\.is-minimal-ui \.pm-today-trend-faction-node\{[^}]*min-width:var\(--pm-size-control-default\)[^}]*min-height:var\(--pm-size-control-default\)[^}]*background:transparent/, '极简关系按钮必须提供透明的 44px 命中区');
+assert.match(todayTrendStyle, /pm-today-trend-content\.is-minimal-ui \.pm-today-trend-relation-symbol\{[^}]*width:var\(--pm-today-trend-relation-node-size\)[^}]*height:var\(--pm-today-trend-relation-node-size\)[^}]*border-radius:var\(--pm-radius-circle\)/, '极简关系可见圆必须独立使用共享 24px 尺寸');
+assert.doesNotMatch(todayTrendStyle, /pm-today-trend-content\.is-minimal-ui \.pm-today-trend-(?:reputation-mark|faction-node)[^{]*\{[^}]*background-clip/, '极简关系节点不得再以背景裁剪伪造可见圆');
+assert.doesNotMatch(todayTrendStyle, /pm-today-trend-content\.is-minimal-ui \.pm-today-trend-(?:reputation-mark|faction-node)[^{]*\{[^}]*margin:calc/, '极简关系节点不得再以负 margin 补偿尺寸');
 assert.match(todayTrendStyle, /pm-today-trend-content\.is-minimal-ui \.pm-today-trend-module-head\{[^}]*align-items:flex-start[^}]*min-height:calc\(var\(--pm-size-control-default\) \+ var\(--pm-space-2\)\)[^}]*padding-bottom:var\(--pm-space-3\)/, '极简 UI 模块头必须统一标题与说明的垂直节奏');
 assert.match(todayTrendStyle, /pm-today-trend-content\.is-minimal-ui \.pm-today-trend-head-tools\{[^}]*transform:none/, '极简 UI 标题工具区不得继续使用普通模式的上移偏移');
 assert.match(todayTrendStyle, /pm-today-trend-content\.is-minimal-ui \.pm-today-trend-floor\{[^}]*gap:var\(--pm-space-0-5\)/, '极简 UI 楼层五态必须使用稳定的紧凑间距');
-assert.match(todayTrendStyle, /pm-today-trend-content\.is-minimal-ui \.pm-today-trend-world-hero p,\.pm-today-trend-content\.is-minimal-ui \.pm-today-trend-world-brief p\{[^}]*margin-top:var\(--pm-space-3\)/, '极简 UI 世界态势标题与说明必须使用统一间距');
-assert.match(todayTrendStyle, /pm-today-trend-content\.is-minimal-ui \.pm-today-trend-reputation-entry,\.pm-today-trend-content\.is-minimal-ui \.pm-today-trend-faction-card,\.pm-today-trend-content\.is-minimal-ui \.pm-today-trend-event-body\{[^}]*row-gap:var\(--pm-space-3\)/, '极简 UI 四类内容必须使用统一标题—说明节奏');
+assert.match(todayTrendStyle, /pm-today-trend-content\.is-minimal-ui \.pm-today-trend-world-hero p,\.pm-today-trend-content\.is-minimal-ui \.pm-today-trend-world-brief p\{[^}]*margin-top:var\(--pm-space-2\)[^}]*line-height:var\(--pm-line-height-loose\)/, '极简 UI 世界态势标题与说明必须使用收紧间距和舒展行高');
+assert.match(todayTrendStyle, /pm-today-trend-content\.is-minimal-ui \.pm-today-trend-reputation-entry,\.pm-today-trend-content\.is-minimal-ui \.pm-today-trend-faction-card,\.pm-today-trend-content\.is-minimal-ui \.pm-today-trend-event-body\{[^}]*row-gap:var\(--pm-space-2\)/, '极简 UI 四类内容必须使用收紧标题—说明节奏');
+assert.match(todayTrendStyle, /pm-today-trend-content\.is-minimal-ui \.pm-today-trend-reputation-entry-body>p,[^}]*pm-today-trend-faction-detail-row dd,[^}]*pm-today-trend-event-latest span\{[^}]*line-height:var\(--pm-line-height-loose\)/, '极简 UI 多行说明与详情值必须使用舒展行高');
+assert.match(todayTrendStyle, /pm-today-trend-content\.is-minimal-ui \.pm-today-trend-faction-detail-row dt\{color:var\(--pm-color-accent\)/, '极简 UI 势力详情短标签必须跟随主题色');
 assert.match(todayTrendStyle, /pm-today-trend-content\.is-minimal-ui \.pm-today-trend-event-facts\{[^}]*margin-block-start:var\(--pm-space-0\)/, '极简 UI 事件事实区不得继承普通模式的负偏移');
-for (const [status, color] of Object.entries({ hostile: '--pm-color-danger', dislike: '--pm-color-warning', neutral: '--pm-color-text-secondary', like: '--pm-color-accent', trust: '--pm-color-success' })) {
-    assert.match(todayTrendStyle, new RegExp(`pm-today-trend-content\\.is-minimal-ui \\.pm-today-trend-reputation-mark\\[data-status="${status}"\\],\\.pm-today-trend-content\\.is-minimal-ui \\.pm-today-trend-faction-node\\[data-status="${status}"\\]\\{[^}]*background:var\\(--pm-color-surface-control\\)[^}]*color:var\\(${color}\\)`), `极简 UI ${status} 状态必须使用语义颜色`);
+for (const [status, colors] of Object.entries({
+    hostile: ['--pm-color-danger', '--pm-color-on-danger'],
+    dislike: ['--pm-color-warning', '--pm-color-on-warning'],
+    neutral: ['--pm-color-surface-control', '--pm-color-text-primary'],
+    like: ['--pm-color-accent', '--pm-color-on-accent'],
+    trust: ['--pm-color-success', '--pm-color-on-success'],
+})) {
+    const [background, color] = colors;
+    assert.match(todayTrendStyle, new RegExp(`pm-today-trend-content\\.is-minimal-ui :is\\(\\.pm-today-trend-reputation-mark,\\.pm-today-trend-faction-node\\)\\[data-status="${status}"\\] \\.pm-today-trend-relation-symbol\\{[^}]*background:var\\(${background}\\)[^}]*color:var\\(${color}\\)`), `极简 UI ${status} 状态必须以实心语义圆和高对比 SVG 前景表达`);
 }
 assert.doesNotMatch(todayTrendStyle, /(?:^|\})\.pm-today-trend-head-tools\{[^}]*transform:none/, '普通模式标题工具区不得被极简 UI 的清零偏移规则污染');
 assert.doesNotMatch(todayTrendStyle, /(?:^|\})\.pm-today-trend-event-facts\{[^}]*margin-block-start:var\(--pm-space-0\)/, '普通模式事件事实区不得被极简 UI 的零偏移规则污染');
@@ -1202,6 +1218,7 @@ const collectedContext = await gatherTodayTrendContext({
 assert.deepEqual(collectedContext.source.worldBookNames, ['厨房'], '初始化上下文必须保存选中的世界书名称');
 assert.equal(collectedOptions.module, 'todayTrend', '今日风向必须使用独立世界书读取权限');
 assert.deepEqual(collectedOptions.worldBookNames, ['厨房'], '初始化必须只读取用户选中的世界书');
+assert.equal(collectedOptions.worldBookActivationMode, 'chat', '正文关联模式必须保留聊天关键词激活');
 assert.match(collectedContext.mainChatText, /晚餐服务/, '启用已有正文时必须保留主线正文');
 const initializationPrompts = buildTodayTrendInitializationEnvelope({ context: collectedContext });
 assert.match(initializationPrompts.systemPrompt, /顶层只能有 preset 和 scope/, '初始化提示词必须锁定单一返回协议');
@@ -1210,6 +1227,38 @@ assert.match(initializationPrompts.userPrompt, /world_book_data/, '初始化提�
 assert.match(initializationPrompts.userPrompt, /main_chat_data/, '初始化提示词必须传递已有正文');
 assert.deepEqual(initializationPrompts, buildCanonicalTodayTrendInitializationEnvelope({ context: collectedContext }),
     '兼容 facade 必须逐字符委托今日风向初始化提示词实现');
+let independentCollectedOptions = null;
+const independentCollectedContext = await gatherTodayTrendContext({
+    getCtx: () => ({}), storageId: 'independent-chat', characterId: 'role-1', characterName: '小明',
+    worldBookNames: ['居民设定'], includeExistingChat: false,
+    collectContext: async (_getCtx, options) => {
+        independentCollectedOptions = options;
+        return { userName: '助手', userDesc: '观察者', cardDesc: '普通居民', cardPersonality: '谨慎',
+            cardScenario: '社区日常', cardFirstMes: '早上好', cardMesExample: '整理店铺', worldBookText: '居民与社区规则',
+            mainChatText: '这段正文不应进入独立模式', latestChatText: '这条最新正文也不应进入独立模式' };
+    },
+});
+assert.equal(independentCollectedOptions.module, 'todayTrend', '独立模式仍必须使用今日风向世界书权限');
+assert.deepEqual(independentCollectedOptions.worldBookNames, ['居民设定'], '独立模式必须只读取用户选中的世界书');
+assert.equal(independentCollectedOptions.worldBookActivationMode, 'selected', '关闭正文后必须切换到 selected 世界书激活模式');
+assert.equal(independentCollectedContext.mainChatText, '', '独立模式上下文不得保留主线正文');
+assert.equal(independentCollectedContext.latestChatText, '', '独立模式上下文不得保留最新正文');
+const independentInitializationPrompts = buildTodayTrendInitializationEnvelope({ context: independentCollectedContext });
+assert.doesNotMatch(independentInitializationPrompts.userPrompt, /main_chat_data/, '独立初始化 prompt 不得包含正文数据区块');
+assert.match(independentInitializationPrompts.userPrompt, /world_book_data/, '独立初始化 prompt 必须保留世界书数据区块');
+assert.match(independentInitializationPrompts.userPrompt, /generation_mode/, '独立初始化 prompt 必须声明生成模式');
+assert.match(independentInitializationPrompts.userPrompt, /逻辑时间刻度/, '独立初始化 prompt 必须把楼层定义为逻辑时间刻度');
+assert.match(independentInitializationPrompts.userPrompt, /NPC 个体、群体或组织/, '独立初始化 prompt 必须使用通用 NPC 群像语义');
+assert.match(independentInitializationPrompts.userPrompt, /不必与目标角色直接互动/, '独立初始化 prompt 必须允许 NPC 线独立于目标角色');
+const independentGenerationPrompts = buildTodayTrendGenerationEnvelope({
+    context: independentCollectedContext, preset: valid.presets.preset, scope: valid.scopes.chat, assistantCount: 12,
+});
+assert.doesNotMatch(independentGenerationPrompts.userPrompt, /main_chat_data/, '独立增量 prompt 不得包含正文数据区块');
+assert.match(independentGenerationPrompts.userPrompt, /world_book_data/, '独立增量 prompt 必须保留世界书数据区块');
+assert.match(independentGenerationPrompts.userPrompt, /NPC 个体、群体或组织生活线/, '独立增量 prompt 必须允许通用 NPC 生活线持续推进');
+assert.match(independentGenerationPrompts.userPrompt, /既有 active 事件优先连续推进/, '独立增量 prompt 必须优先连续推进既有 active 事件');
+assert.match(independentGenerationPrompts.userPrompt, /保留其 id、origin、participants 与已有阶段历史/, '独立增量 prompt 必须稳定保留 NPC 事件基础资料');
+assert.match(independentGenerationPrompts.userPrompt, /没有合理进展时模块输出 `null`/, '独立增量 prompt 必须允许无进展时不生成内容');
 
 const generatedInitialization = fixture();
 generatedInitialization.presets.preset.id = 'ai-preset';

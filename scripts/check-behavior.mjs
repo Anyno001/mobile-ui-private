@@ -2413,8 +2413,8 @@ assert.equal(THEME_PRESETS.mint.right, '#9FBE8C', '薄荷日间必须使用暖�
 assert.equal(THEME_PRESETS.mint.left, '#F3EBDD', '薄荷日间必须搭配米色左气泡');
 assert.equal(THEME_PRESETS.frost.frost, true, '磨砂预设必须启用玻璃效果标记');
 assert.deepEqual(Object.fromEntries(Object.entries(THEME_PRESETS).map(([name, preset]) => [name, preset.auxiliary])), {
-    default: '#B85C19', dark: '#A85A00', pink: '#287C78',
-    mint: '#7C476D', frost: '#A94F3D',
+    default: '#005CBF', dark: '#64D2FF', pink: '#E07A93',
+    mint: '#739E59', frost: '#4B8EC4',
 }, '每个主题必须提供与强调色角色不同的稳定辅助色');
 for (const preset of Object.values(THEME_PRESETS)) assert.notEqual(preset.auxiliary.toLowerCase(), preset.accent.toLowerCase(),
     '主题辅助色不得与强调色相同');
@@ -2585,6 +2585,99 @@ try {
         entries: { [createWorldBookEntryKey('测试书', 2)]: false },
         columns: { 纪要: { chat: false } }, mainChatMessages: 2,
     };
+    const independentWorldBookContext = {
+        ...worldBookContext,
+        chat: [{ is_user: false, name: '角色', mes: '完全不含世界书关键词的可见正文' }],
+    };
+    assert.equal(await buildWorldBookContext(independentWorldBookContext, {
+        module: 'chat', config: worldBookTestConfig,
+    }), '', '默认 chat 激活模式仍必须依赖可见聊天关键词');
+    assert.equal(await buildWorldBookContext(independentWorldBookContext, {
+        module: 'chat', config: worldBookTestConfig, bookNames: ['测试书'], activationMode: 'selected',
+    }), '允许的世界书内容', 'selected 模式必须在显式选择书籍后脱离聊天关键词激活允许条目');
+    assert.equal(await buildWorldBookContext(independentWorldBookContext, {
+        module: 'todayTrend', config: worldBookTestConfig, bookNames: ['测试书'], activationMode: 'selected',
+    }), '允许的世界书内容\n\n关闭栏目不得出现', 'todayTrend 读取必须使用自己的栏目权限，不误用 chat 栏目开关');
+    assert.equal(await buildWorldBookContext(independentWorldBookContext, {
+        module: 'todayTrend', config: { entries: { [createWorldBookEntryKey('测试书', 2)]: false }, columns: { 纪要: { todayTrend: false } } },
+        bookNames: ['测试书'], activationMode: 'selected',
+    }), '允许的世界书内容', 'todayTrend 栏目关闭后必须排除对应栏目条目');
+    assert.equal(await buildWorldBookContext({
+        ...independentWorldBookContext,
+        async loadWorldInfo(name) { return { entries: {
+            [name]: { uid: name, content: `${name}正文`, constant: true },
+        } }; },
+    }, {
+        module: 'todayTrend', config: { books: { 测试书: true, 其他启用书: true } },
+        bookNames: ['测试书'], activationMode: 'selected',
+    }), '测试书正文', 'selected 模式必须限制在调用方显式选择的书籍范围内');
+    let unselectedBookLoads = 0;
+    assert.equal(await buildWorldBookContext({
+        ...independentWorldBookContext,
+        async loadWorldInfo() { unselectedBookLoads += 1; throw new Error('未选书不得读取'); },
+    }, {
+        module: 'chat', config: worldBookTestConfig, bookNames: ['未选书'], activationMode: 'selected',
+    }), '', 'selected 模式不得读取未显式选择且不可读的世界书');
+    assert.equal(unselectedBookLoads, 0, '未选世界书必须在 loadWorldInfo 前被排除');
+    await assert.rejects(
+        () => buildWorldBookContext(independentWorldBookContext, {
+            module: 'chat', config: worldBookTestConfig, activationMode: 'selected',
+        }),
+        error => error instanceof TypeError && /必须显式指定书籍/.test(error.message),
+        'selected 模式缺少显式书籍名单时必须可诊断拒绝');
+    await assert.rejects(
+        () => buildWorldBookContext(independentWorldBookContext, {
+            module: 'chat', config: worldBookTestConfig, bookNames: ['测试书'], activationMode: 'unsupported',
+        }),
+        error => error instanceof TypeError && /激活模式无效/.test(error.message),
+        '非法世界书激活模式必须可诊断拒绝');
+    assert.equal(await buildWorldBookContext({
+        chatMetadata: { world_info: ['独立预算书'] },
+        async loadWorldInfo() { return { entries: {
+            first: { uid: 'first', content: '甲'.repeat(700), constant: true, insertion_order: 1 },
+            second: { uid: 'second', content: '乙'.repeat(400), constant: true, insertion_order: 2 },
+        } }; },
+    }, {
+        module: 'todayTrend', config: { maxChars: 24000 }, bookNames: ['独立预算书'], activationMode: 'selected', maxChars: 1000,
+    }), '甲'.repeat(700), 'selected 模式必须保持完整条目边界和 maxChars 字符预算');
+    assert.equal(await buildWorldBookContext({
+        chatMetadata: { world_info: ['独立接管书'] },
+        async loadWorldInfo() { return { entries: {
+            ordinary: { uid: 'ordinary', content: '宿主禁用普通条目不得出现', disable: true },
+            managed: { uid: 'managed', content: '插件接管栏目条目', disable: true, comment: 'TavernDB-ACU-CustomExport-纪要-1' },
+        } }; },
+    }, {
+        module: 'todayTrend', config: {}, bookNames: ['独立接管书'], activationMode: 'selected',
+    }), '插件接管栏目条目', 'selected 模式不得绕过宿主禁用条目与插件接管栏目规则');
+    const selectedAbort = new AbortController();
+    selectedAbort.abort('selected-cancelled');
+    await assert.rejects(
+        () => buildWorldBookContext(independentWorldBookContext, {
+            module: 'todayTrend', config: worldBookTestConfig, bookNames: ['测试书'], activationMode: 'selected', signal: selectedAbort.signal,
+        }),
+        error => error?.name === 'AbortError',
+        'selected 模式必须保留 AbortSignal 取消语义');
+    const privateMemberWorldBookConfig = {
+        columns: { 小明日记: { chat: false } },
+        characters: { '小明-avatar': { columns: { 小明日记: { chat: true } } } },
+        groups: { 'group-private': { allowMemberPrivateMemory: true } },
+    };
+    const selectedPrivateContext = {
+        chat: [{ mes: '完全不含私有触发词的正文' }], chatMetadata: { world_info: ['测试书'] },
+        getWorldInfoNames() { throw new Error('不得调用'); },
+        async loadWorldInfo() { return { entries: {
+            private: { uid: 'private-member', content: 'selected 私有正文', comment: 'TavernDB-ACU-CustomExport-小明日记-1' },
+        } }; },
+    };
+    assert.equal(await buildWorldBookContext(selectedPrivateContext, {
+        module: 'chat', scope: { kind: 'group', id: 'group-without-private' }, memberIds: ['小明-avatar'],
+        config: privateMemberWorldBookConfig, bookNames: ['测试书'], activationMode: 'selected',
+    }), '', 'selected 模式不得绕过成员私有记忆授权边界');
+    assert.equal(await buildWorldBookContext(selectedPrivateContext, {
+        module: 'chat', scope: { kind: 'group', id: 'group-private' }, memberIds: ['小明-avatar'],
+        config: privateMemberWorldBookConfig, bookNames: ['测试书'], activationMode: 'selected',
+    }), '【成员私有记忆：仅小明-avatar知晓，不得让其他成员知晓、转述或据此发言】\nselected 私有正文',
+    'selected 模式必须保留已显式授权的成员私有记忆边界提示');
     const selectedWorldBookText = await buildWorldBookContext(worldBookContext, {
         module: 'chat', config: worldBookTestConfig,
     });
@@ -2595,11 +2688,6 @@ try {
         }, characters: { 'alice.png': { entries: { [createWorldBookEntryKey('测试书', 1)]: false } } } },
     }), '允许的世界书内容', '群聊不得继承角色私人条目关闭配置');
     const privateMemberWorldBookEntry = { bookName: '测试书', uid: 'private-member', column: '小明日记' };
-    const privateMemberWorldBookConfig = {
-        columns: { 小明日记: { chat: false } },
-        characters: { '小明-avatar': { columns: { 小明日记: { chat: true } } } },
-        groups: { 'group-private': { allowMemberPrivateMemory: true } },
-    };
     assert.equal(isMemberPrivateWorldBookEntryAllowed(privateMemberWorldBookConfig, privateMemberWorldBookEntry, '小明-avatar'), true,
         '成员私有栏目必须只在成员显式启用聊天读取时可被群聊授权');
     assert.equal(isMemberPrivateWorldBookEntryAllowed(privateMemberWorldBookConfig, privateMemberWorldBookEntry, '小红-avatar'), false,

@@ -623,6 +623,14 @@ assert.equal(selectScenePreset(launcherApp, romancePresetButton), true);
 assert.equal(romancePresetButton.active, true);
 assert.equal(launcherStyle.values['--scene-accent'], '#ff5b8d',
     '选择恋爱社区必须实时更新生成按钮和已固定按钮共同继承的根主题色');
+const frostPresetButton = { dataset: { accent: '#4B8EC4' } };
+frostPresetButton.classList = { toggle(_name, active) { frostPresetButton.active = active; } };
+presetItems.push(frostPresetButton);
+assert.equal(selectScenePreset(launcherApp, frostPresetButton), true);
+assert.equal(romancePresetButton.active, false, '切换第二个社区预设必须撤销上一场景的局部选中态');
+assert.equal(frostPresetButton.active, true, '切换第二个社区预设必须只激活当前场景');
+assert.equal(launcherStyle.values['--scene-accent'], '#4b8ec4',
+    '选择第二种社区主题色必须只更新当前场景根变量');
 assert.throws(() => selectScenePreset(launcherApp, { dataset: { accent: 'green' } }), /预设主题色格式无效/);
 
 const legacyStore = {

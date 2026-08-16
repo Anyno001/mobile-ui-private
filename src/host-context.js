@@ -124,7 +124,7 @@ export function resolveOutfitTarget(context, subject, userPersona = { name: '用
 }
 
 export async function gatherContext(getCtx, {
-    module = 'chat', signal, includeWorldBook = true, worldBookMaxChars, worldBookScope = null, worldBookMemberNames = [], worldBookNames = null, outfitSubject = null,
+    module = 'chat', signal, includeWorldBook = true, worldBookMaxChars, worldBookScope = null, worldBookMemberNames = [], worldBookNames = null, worldBookActivationMode = 'chat', outfitSubject = null,
 } = {}) {
     const context = getCtx();
     const userPersona = getUserPersona(getCtx);
@@ -168,7 +168,7 @@ export async function gatherContext(getCtx, {
                 ? [...new Set(worldBookMemberNames.filter(name => typeof name === 'string').map(name => name.trim()).filter(Boolean))]
                 : [];
             worldBookText = await buildWorldBookContext(context, {
-                module, config: worldBookConfig, signal, scope: effectiveWorldBookScope, memberIds, maxChars: worldBookMaxChars, worldBookOptions, bookNames: worldBookNames,
+                module, config: worldBookConfig, signal, scope: effectiveWorldBookScope, memberIds, maxChars: worldBookMaxChars, worldBookOptions, bookNames: worldBookNames, activationMode: worldBookActivationMode,
             });
         } catch (error) {
             if (error?.name === 'AbortError') throw error;
