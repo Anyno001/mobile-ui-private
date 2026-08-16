@@ -1,17 +1,17 @@
 # 项目进度
 - Project: mobile-ui-private
-- Updated At: 2026-08-16T16:24:33.964Z
-- Status: active
+- Updated At: 2026-08-16T16:30:01.246Z
+- Status: blocked
 - Phase: review
 
 ## 当前摘要
 
 <!-- LIMCODE_PROGRESS_SUMMARY_START -->
 - 当前进度：3/3 个里程碑已完成；最新：trend-svg-mapping-release
-- 当前焦点：今日风向图标覆盖率收敛已实现并完成自动门禁与独立验收，准备提交发布。
-- 最新结论：20 个共享 topic、既有 SVG 细分映射、同源 prompt 命名指南与行为契约已完成；build、syntax、today-trend、contracts、全量 check、diff-check 均通过；Acceptance Expert PASSED（blocking=0、major=0、minor=2、advisory=1）。
-- 当前阻塞：无 blocking/major；真实 SillyTavern 宿主无可用会话，world/active/archived key-only 采样及真实视觉/辅助技术回归未执行，保留为 minor 风险。
-- 下一步：完成暂存检查与本地提交；推送 main 需助手明确授权。后续在真实宿主仅采集 data-today-trend-icon key 计数，不虚构覆盖率。
+- 当前焦点：图标覆盖率收敛已完成本地提交，等待明确的 main 推送授权与网络可用性。
+- 最新结论：本地提交 8a57ba54745fbcefca553828d97cbdfbd2ffe535 已创建；自动门禁全部通过，Acceptance Expert PASSED（blocking=0、major=0、minor=2、advisory=1）；当前 origin/main 仍为 a6d9d3808ed8c975d0c39f060a1aaee0be5fc2b…
+- 当前阻塞：推送属于外部共享状态变更，当前尚未取得本专项明确的 main 推送授权；此前 git ls-remote 因网络连接重置失败。真实宿主 key-only 采样与视觉/辅助技术回归未执行，已作为 minor 风险保留。
+- 下一步：助手明确授权后，再执行一次 git push origin main；若仍因网络失败，停止重复重试并报告网络阻塞。
 <!-- LIMCODE_PROGRESS_SUMMARY_END -->
 
 ## 关联文档
@@ -74,12 +74,12 @@
 <!-- LIMCODE_PROGRESS_RISKS_START -->
 - trend-host-visual-regression | accepted | 上一专项真实宿主视觉与辅助技术回归未执行：上一专项静态契约和自动门禁已通过，但尚未在真实 SillyTavern 宿主验证主题、窄屏、active/archived 与 Accessibility Tree；按既有授权作为 minor 风险接受。
 - today-trend-icon-host-validation-gap | active | 本专项真实宿主采样与视觉回归未执行：当前受控浏览器没有 SillyTavern 宿主会话，无法获得 world/active/archived 的 key-only 计数，也未完成真实主题、窄屏与辅助技术回归；Acceptance Expert 将其评为 minor，不虚构覆盖率或改善百分比。
+- today-trend-icon-main-push-gate | active | 本专项 main 推送授权与网络状态未闭合：本地提交已创建，但推送会改变共享远端；当前未获得本专项明确推送授权，且最近一次远端查询因连接重置失败。
 <!-- LIMCODE_PROGRESS_RISKS_END -->
 
 ## 最近更新
 
 <!-- LIMCODE_PROGRESS_LOG_START -->
-- 2026-08-16T13:48:02.263Z | artifact_changed | plan | 同步计划 TODO 快照：.limcode/plans/today-trend-title-svg-mapping.md
 - 2026-08-16T13:56:42.976Z | artifact_changed | plan | 同步计划 TODO 快照：.limcode/plans/today-trend-title-svg-mapping.md
 - 2026-08-16T14:00:20.582Z | artifact_changed | plan | 同步计划 TODO 快照：.limcode/plans/today-trend-title-svg-mapping.md
 - 2026-08-16T14:37:50.581Z | artifact_changed | plan | 同步计划 TODO 快照：.limcode/plans/today-trend-title-svg-mapping.md
@@ -99,6 +99,7 @@
 - 2026-08-16T16:20:04.047Z | artifact_changed | plan | 同步计划 TODO 快照：.limcode/plans/today-trend-icon-coverage-convergence.md
 - 2026-08-16T16:21:43.344Z | artifact_changed | plan | 同步计划 TODO 快照：.limcode/plans/today-trend-icon-coverage-convergence.md
 - 2026-08-16T16:24:33.964Z | updated | today-trend-icon-review | 图标覆盖率收敛实现已通过自动验证与独立 Acceptance Expert；真实宿主采样不可执行，按 minor 风险保留，进入提交前检查。
+- 2026-08-16T16:30:01.246Z | updated | today-trend-icon-release-gate | 本地提交 8a57ba5 已创建；因本专项尚无明确 main 推送授权且远端查询遇网络连接重置，发布状态暂置 blocked，不重复重试外部操作。
 <!-- LIMCODE_PROGRESS_LOG_END -->
 
 <!-- LIMCODE_PROGRESS_METADATA_START -->
@@ -108,13 +109,13 @@
   "projectId": "mobile-ui-private",
   "projectName": "mobile-ui-private",
   "createdAt": "2026-08-14T05:55:56.978Z",
-  "updatedAt": "2026-08-16T16:24:33.964Z",
-  "status": "active",
+  "updatedAt": "2026-08-16T16:30:01.246Z",
+  "status": "blocked",
   "phase": "review",
-  "currentFocus": "今日风向图标覆盖率收敛已实现并完成自动门禁与独立验收，准备提交发布。",
-  "latestConclusion": "20 个共享 topic、既有 SVG 细分映射、同源 prompt 命名指南与行为契约已完成；build、syntax、today-trend、contracts、全量 check、diff-check 均通过；Acceptance Expert PASSED（blocking=0、major=0、minor=2、advisory=1）。",
-  "currentBlocker": "无 blocking/major；真实 SillyTavern 宿主无可用会话，world/active/archived key-only 采样及真实视觉/辅助技术回归未执行，保留为 minor 风险。",
-  "nextAction": "完成暂存检查与本地提交；推送 main 需助手明确授权。后续在真实宿主仅采集 data-today-trend-icon key 计数，不虚构覆盖率。",
+  "currentFocus": "图标覆盖率收敛已完成本地提交，等待明确的 main 推送授权与网络可用性。",
+  "latestConclusion": "本地提交 8a57ba54745fbcefca553828d97cbdfbd2ffe535 已创建；自动门禁全部通过，Acceptance Expert PASSED（blocking=0、major=0、minor=2、advisory=1）；当前 origin/main 仍为 a6d9d3808ed8c975d0c39f060a1aaee0be5fc2b1。",
+  "currentBlocker": "推送属于外部共享状态变更，当前尚未取得本专项明确的 main 推送授权；此前 git ls-remote 因网络连接重置失败。真实宿主 key-only 采样与视觉/辅助技术回归未执行，已作为 minor 风险保留。",
+  "nextAction": "助手明确授权后，再执行一次 git push origin main；若仍因网络失败，停止重复重试并报告网络阻塞。",
   "activeArtifacts": {
     "design": ".limcode/design/today-trend-icon-coverage-convergence.md",
     "plan": ".limcode/plans/today-trend-icon-coverage-convergence.md"
@@ -232,15 +233,15 @@
       "title": "本专项真实宿主采样与视觉回归未执行",
       "description": "当前受控浏览器没有 SillyTavern 宿主会话，无法获得 world/active/archived 的 key-only 计数，也未完成真实主题、窄屏与辅助技术回归；Acceptance Expert 将其评为 minor，不虚构覆盖率或改善百分比。",
       "status": "active"
+    },
+    {
+      "id": "today-trend-icon-main-push-gate",
+      "title": "本专项 main 推送授权与网络状态未闭合",
+      "description": "本地提交已创建，但推送会改变共享远端；当前未获得本专项明确推送授权，且最近一次远端查询因连接重置失败。",
+      "status": "active"
     }
   ],
   "log": [
-    {
-      "at": "2026-08-16T13:48:02.263Z",
-      "type": "artifact_changed",
-      "refId": "plan",
-      "message": "同步计划 TODO 快照：.limcode/plans/today-trend-title-svg-mapping.md"
-    },
     {
       "at": "2026-08-16T13:56:42.976Z",
       "type": "artifact_changed",
@@ -354,6 +355,12 @@
       "type": "updated",
       "refId": "today-trend-icon-review",
       "message": "图标覆盖率收敛实现已通过自动验证与独立 Acceptance Expert；真实宿主采样不可执行，按 minor 风险保留，进入提交前检查。"
+    },
+    {
+      "at": "2026-08-16T16:30:01.246Z",
+      "type": "updated",
+      "refId": "today-trend-icon-release-gate",
+      "message": "本地提交 8a57ba5 已创建；因本专项尚无明确 main 推送授权且远端查询遇网络连接重置，发布状态暂置 blocked，不重复重试外部操作。"
     }
   ],
   "stats": {
@@ -363,12 +370,12 @@
     "todosCompleted": 8,
     "todosInProgress": 1,
     "todosCancelled": 0,
-    "activeRisks": 1
+    "activeRisks": 2
   },
   "render": {
     "rendererVersion": 1,
-    "generatedAt": "2026-08-16T16:24:33.964Z",
-    "bodyHash": "sha256:6453d634b4775959307304651243942017c893bc87951a0dc71ad2c26c89d9c5"
+    "generatedAt": "2026-08-16T16:30:01.246Z",
+    "bodyHash": "sha256:7c8f026126ac8208f0fafea4720f0c69438f17623adebd26645000e7151c88d7"
   }
 }
 <!-- LIMCODE_PROGRESS_METADATA_END -->
