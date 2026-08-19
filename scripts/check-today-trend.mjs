@@ -167,7 +167,7 @@ for (const [theme, palette] of Object.entries(todayTrendRelationPalette)) {
         assert.ok(contrastRatio(color, relationForeground) >= 3, `今日风向 ${theme} 主题 ${status} 关系色与实际 SVG 前景 ${relationForeground} 的对比度必须达到 3:1`);
     }
 }
-assert.match(todayTrendStyle, /\.pm-today-trend-home\{[^}]*color:var\(--pm-color-text-placeholder\)!important/, '返回桌面图标默认态必须使用浅灰 placeholder 色');
+assert.match(todayTrendStyle, /\.pm-today-trend-home\{[^}]*color:var\(--pm-color-on-accent\)!important/, '返回桌面图标默认态必须在主题色顶栏上使用高对比 on-accent 色');
 assert.match(todayTrendStyle, /\.pm-today-trend-tabs button\{[^}]*color:var\(--pm-color-text-placeholder\)/, '底部导航图标默认态必须使用与返回桌面相同的浅灰 placeholder 色');
 assert.match(todayTrendStyle, /\.pm-today-trend-tabs button\[aria-pressed="true"\] svg\{[^}]*color:var\(--pm-color-accent\)/, '底部导航激活态必须使用主题 accent 色');
 assert.doesNotMatch(todayTrendStyle, /\.pm-today-trend-tabs button svg\{[^}]*stroke-width:/, '底部导航 SVG 不得覆盖返回桌面所用的通用 2px 线宽');
@@ -199,13 +199,9 @@ assert.match(todayTrendStyle, /\.pm-today-trend-inline-action\{width:var\(--pm-s
 assert.match(todayTrendStyle, /\.pm-today-trend-menu-action svg,\.pm-today-trend-menu-close svg,\.pm-today-trend-inline-action svg\{display:block;width:var\(--pm-size-icon-sm\);height:var\(--pm-size-icon-sm\)/, '菜单与行内操作图标必须消费同一尺寸契约');
 assert.doesNotMatch(todayTrendStyle, /pm-today-trend-inline-action[^{}]*svg\{[^}]*transform:/, '行内操作图标不得使用逐图标位移伪造对齐');
 assert.doesNotMatch(todayTrendStyle, /\.pm-today-trend-icon-button\[data-action\^="today-trend-edit-"\] svg\{[^}]*translate(?:Y|\([^,]+,\s*(?!0(?:px)?\b))/, '编辑图标不得保留向下偏移');
-assert.match(todayTrendStyle, /\.pm-today-trend-head-tools\{[^}]*min-width:max-content[^}]*flex:0 0 auto[^}]*flex-direction:column[^}]*align-items:flex-end[^}]*gap:var\(--pm-space-0-5\)[^}]*translateY/, '标题工具区必须保持纵向关系与右边缘固定基准');
-for (const moduleClass of ['world', 'reputation', 'factions', 'dynamics']) {
-    assert.match(todayTrendStyle, new RegExp(`pm-today-trend-${moduleClass}>\\.pm-today-trend-module-head>\\.pm-today-trend-head-tools[^{}]*\\{[^}]*transform:translateY\\(calc\\(0px - var\\(--pm-space-2\\)\\)\\)`), `${moduleClass} 三点菜单与楼层必须整体上移`);
-    assert.match(todayTrendStyle, new RegExp(`pm-today-trend-${moduleClass}>\\.pm-today-trend-module-head \\.pm-today-trend-menu-wrap:not\\(\\.is-open\\)[^{}]*\\{[^}]*align-self:flex-end[^}]*margin-right:calc\\(var\\(--pm-space-px-9\\) - var\\(--pm-space-4\\)\\)`), `${moduleClass} 三点菜单闭合态必须与顶部自动暂停按钮右对齐`);
-    assert.doesNotMatch(todayTrendStyle, new RegExp(`pm-today-trend-${moduleClass}[^{}]*pm-today-trend-head-tools[^{}]*\\{[^}]*align-items:center`), `${moduleClass} 标题工具区不得使用居中对齐以避免菜单展开时楼层位移`);
-    assert.doesNotMatch(todayTrendStyle, new RegExp(`pm-today-trend-${moduleClass}[^{}]*pm-today-trend-head-tools[^{}]*\\{[^}]*position:absolute`), `${moduleClass} 标题工具区不得使用绝对定位`);
-}
+assert.match(todayTrendStyle, /\.pm-today-trend-head-tools\{position:absolute;top:var\(--pm-space-0\);right:var\(--pm-space-0\)[^}]*align-items:center/, '标题工具区必须悬浮在模块头右上角，随标题居中布局脱离文档流');
+assert.match(todayTrendStyle, /\.pm-today-trend-module-head\{[^}]*justify-content:center/, '模块头必须整体居中以容纳居中标题');
+assert.match(todayTrendStyle, /\.pm-today-trend-module-head>div\{[^}]*align-items:center[^}]*text-align:center/, '模块头标题容器必须整体居中对齐');
 assert.doesNotMatch(todayTrendStyle, /pm-today-trend-(?:world|reputation|factions|dynamics)[^{}]*\.pm-today-trend-floor[^{}]*\{[^}]*position:absolute/, '四个模块楼层不得使用绝对定位');
 assert.doesNotMatch(todayTrendStyle, /pm-today-trend-(?:world|reputation|factions|dynamics)[^{}]*\.pm-today-trend-menu-wrap\.is-open\{[^}]*position:absolute/, '四个模块菜单展开态不得使用绝对定位脱离文档流');
 assert.match(todayTrendStyle, /\.pm-today-trend-floor\{[^}]*min-width:max-content[^}]*flex:0 0 auto/, '#楼层仪表必须按完整内容保留宽度，不能截断多位楼层');
@@ -222,10 +218,10 @@ assert.match(compactTodayTrendMedia, /pm-today-trend-module-head\{gap:var\(--pm-
 assert.match(todayTrendStyle, /\.pm-today-trend-menu-action,\.pm-today-trend-menu-close\{flex-basis:var\(--pm-size-control-compact\);width:var\(--pm-size-control-compact\);min-height:var\(--pm-size-control-compact\)/, '320px 菜单按钮不得缩回 28px 命中区');
 assert.doesNotMatch(todayTrendStyle, /pm-today-trend-icon-button\[data-action\^="today-trend-(?:refresh|generate)"\]\{width:28px/, '今日风向真实操作按钮不得使用 28px 命中区');
 assert.doesNotMatch(todayTrendStyle, /pm-today-trend-content\.is-(?:reputation|faction|dynamics)::/, '旧内容容器背景伪元素必须清理');
-assert.match(todayTrendStyle, /pm-today-trend-world-hero,\.pm-today-trend-world-brief\{[^}]*padding:var\(--pm-space-3\)[^}]*border:1px solid var\(--pm-color-border-subtle\)[^}]*border-radius:var\(--pm-radius-card\)[^}]*background:var\(--pm-color-surface-card\)[^}]*box-shadow:none/, '世界态势卡片必须使用实色卡片外壳与 12px 内缩（参考 TASKOW 卡片化试点）');
-assert.match(todayTrendStyle, /pm-today-trend-reputation-entry\{[^}]*padding:var\(--pm-space-3\)[^}]*border:1px solid var\(--pm-color-border-subtle\)[^}]*border-radius:var\(--pm-radius-card\)[^}]*background:var\(--pm-color-surface-card\)[^}]*box-shadow:none/, '个人风评卡片必须使用实色卡片外壳与 12px 内缩（参考 TASKOW 卡片化试点）');
-assert.match(todayTrendStyle, /pm-today-trend-event-card\{[^}]*padding:var\(--pm-space-3\)[^}]*border:1px solid var\(--pm-color-border-subtle\)[^}]*border-radius:var\(--pm-radius-card\)[^}]*background:var\(--pm-color-surface-card\)[^}]*box-shadow:none/, '事件追踪卡片必须使用实色卡片外壳与 12px 内缩（参考 TASKOW 卡片化试点）');
-assert.match(todayTrendStyle, /pm-today-trend-faction-card\{[^}]*padding:var\(--pm-space-3\)[^}]*border:1px solid var\(--pm-color-border-subtle\)[^}]*border-radius:var\(--pm-radius-card\)[^}]*background:var\(--pm-color-surface-card\)[^}]*box-shadow:none/, '势力图谱卡片必须使用实色卡片外壳与 12px 内缩（参考 TASKOW 卡片化试点）');
+assert.match(todayTrendStyle, /pm-today-trend-world-hero,\.pm-today-trend-world-brief\{[^}]*padding:var\(--pm-space-3\)[^}]*border:0[^}]*border-radius:var\(--pm-radius-card\)[^}]*background:var\(--pm-color-surface-page\)[^}]*box-shadow:none/, '世界态势卡片必须零描边并比内容区背景更白（顶栏主题色实底改造）');
+assert.match(todayTrendStyle, /pm-today-trend-reputation-entry\{[^}]*padding:var\(--pm-space-3\)[^}]*border:0[^}]*border-radius:var\(--pm-radius-card\)[^}]*background:var\(--pm-color-surface-page\)[^}]*box-shadow:none/, '个人风评卡片必须零描边并比内容区背景更白（顶栏主题色实底改造）');
+assert.match(todayTrendStyle, /pm-today-trend-event-card\{[^}]*padding:var\(--pm-space-3\)[^}]*border:0[^}]*border-radius:var\(--pm-radius-card\)[^}]*background:var\(--pm-color-surface-page\)[^}]*box-shadow:none/, '事件追踪卡片必须零描边并比内容区背景更白（顶栏主题色实底改造）');
+assert.match(todayTrendStyle, /pm-today-trend-faction-card\{[^}]*padding:var\(--pm-space-3\)[^}]*border:0[^}]*border-radius:var\(--pm-radius-card\)[^}]*background:var\(--pm-color-surface-page\)[^}]*box-shadow:none/, '势力图谱卡片必须零描边并比内容区背景更白（顶栏主题色实底改造）');
 const entryRail = 'display:grid;grid-template-columns:var(--pm-today-trend-relation-node-size) var(--pm-space-2) minmax(0,1fr);row-gap:var(--pm-space-2)';
 for (const [selector, prefix] of [
     ['世界态势条目', '.pm-today-trend-world-hero,.pm-today-trend-world-brief{box-sizing:border-box;'],
@@ -827,7 +823,6 @@ const reputationItemMenuHtml = renderTodayTrendReputationView({ scope: valid.sco
 assert.match(reputationHtml, /主厨评审/, '个人风评页必须渲染世界观圈层名称');
 assert.match(reputationHtml, /中立/, '个人风评页必须渲染固定五档状态的中文标签');
 assert.match(reputationHtml, /pm-today-trend-reputation-entry/, '个人风评内容页必须使用观察报告条目结构');
-assert.match(reputationHtml, /PUBLIC OPINION/, '个人风评内容页必须提供报告识别语');
 assert.match(reputationHtml, /pm-today-trend-meter-k">PEOPLE<\/span><span class="pm-today-trend-meter-v">1<\/span>/, '个人风评头部必须展示真实 PEOPLE 统计');
 assert.match(reputationHtml, /pm-today-trend-meter-k">GOOD<\/span><span class="pm-today-trend-meter-v">0<\/span>/, '个人风评头部必须展示真实 GOOD 统计');
 assert.match(reputationHtml, /pm-today-trend-meter-k">BAD<\/span><span class="pm-today-trend-meter-v">0<\/span>/, '个人风评头部必须展示真实 BAD 统计');
@@ -918,7 +913,6 @@ assert.doesNotMatch(factionHtml, /编辑势力图谱 Prompt/, '势力图谱入�
 assert.match(factionHtml, /红队/, '势力页必须渲染根势力');
 assert.match(factionHtml, /节目组/, '势力页必须递归渲染子势力');
 assert.match(factionHtml, /队长/, '势力卡片必须直接展示关键资料');
-assert.match(factionHtml, /POWER MAP/, '势力内容页必须提供图谱识别语');
 assert.match(factionHtml, /pm-today-trend-faction-tree" data-depth="0"/, '势力图谱必须标识根层级');
 assert.match(factionHtml, /pm-today-trend-faction-card"[^>]*data-depth="1"/, '势力图谱必须标识子层级');
 assert.match(todayTrendStyle, /pm-today-trend-faction-tree\[data-depth\]:not\(\[data-depth="0"\]\)\{[^}]*margin-left:var\(--pm-today-trend-faction-nested-indent\)[^}]*padding-left:var\(--pm-today-trend-faction-nested-indent\)/, '势力子层级必须保留缩进且不依赖左侧大轨道');
@@ -952,8 +946,7 @@ assert.match(todayTrendStyle, /pm-today-trend-content\.is-minimal-ui \.pm-today-
 assert.match(todayTrendStyle, /pm-today-trend-content\.is-minimal-ui \.pm-today-trend-relation-symbol\{[^}]*width:var\(--pm-today-trend-relation-node-size\)[^}]*height:var\(--pm-today-trend-relation-node-size\)[^}]*border-radius:var\(--pm-radius-circle\)/, '极简关系可见圆必须独立使用共享 24px 尺寸');
 assert.doesNotMatch(todayTrendStyle, /pm-today-trend-content\.is-minimal-ui \.pm-today-trend-(?:reputation-mark|faction-node)[^{]*\{[^}]*background-clip/, '极简关系节点不得再以背景裁剪伪造可见圆');
 assert.doesNotMatch(todayTrendStyle, /pm-today-trend-content\.is-minimal-ui \.pm-today-trend-(?:reputation-mark|faction-node)[^{]*\{[^}]*margin:calc/, '极简关系节点不得再以负 margin 补偿尺寸');
-assert.match(todayTrendStyle, /pm-today-trend-content\.is-minimal-ui \.pm-today-trend-module-head\{[^}]*align-items:flex-start[^}]*min-height:calc\(var\(--pm-size-control-default\) \+ var\(--pm-space-2\)\)[^}]*padding-bottom:var\(--pm-space-3\)/, '极简 UI 模块头必须统一标题与说明的垂直节奏');
-assert.match(todayTrendStyle, /pm-today-trend-content\.is-minimal-ui \.pm-today-trend-head-tools\{[^}]*transform:none/, '极简 UI 标题工具区不得继续使用普通模式的上移偏移');
+assert.match(todayTrendStyle, /pm-today-trend-content\.is-minimal-ui \.pm-today-trend-module-head\{[^}]*align-items:center[^}]*min-height:calc\(var\(--pm-size-control-default\) \+ var\(--pm-space-2\)\)[^}]*padding-bottom:var\(--pm-space-3\)/, '极简 UI 模块头必须与普通模式共享居中节奏');
 assert.match(todayTrendStyle, /pm-today-trend-content\.is-minimal-ui \.pm-today-trend-floor\{[^}]*gap:var\(--pm-space-0-5\)/, '极简 UI 楼层五态必须使用稳定的紧凑间距');
 assert.match(todayTrendStyle, /pm-today-trend-content\.is-minimal-ui \.pm-today-trend-world-hero p,\.pm-today-trend-content\.is-minimal-ui \.pm-today-trend-world-brief p\{[^}]*margin:var\(--pm-space-0\)[^}]*line-height:var\(--pm-line-height-loose\)/, '极简 UI 世界态势标题与说明必须使用网格节奏和舒展行高');
 assert.match(todayTrendStyle, /pm-today-trend-content\.is-minimal-ui \.pm-today-trend-reputation-entry,\.pm-today-trend-content\.is-minimal-ui \.pm-today-trend-faction-card,\.pm-today-trend-content\.is-minimal-ui \.pm-today-trend-event-body\{[^}]*row-gap:var\(--pm-space-2\)/, '极简 UI 四类内容必须使用收紧标题—说明节奏');
@@ -970,7 +963,6 @@ for (const [status, colors] of Object.entries({
     const [background, color] = colors;
     assert.match(todayTrendStyle, new RegExp(`pm-today-trend-content\\.is-minimal-ui :is\\(\\.pm-today-trend-reputation-mark,\\.pm-today-trend-faction-node\\)\\[data-status="${status}"\\] \\.pm-today-trend-relation-symbol\\{[^}]*background:var\\(${background}\\)[^}]*color:var\\(${color}\\)`), `极简 UI ${status} 状态必须以实心语义圆和高对比 SVG 前景表达`);
 }
-assert.doesNotMatch(todayTrendStyle, /(?:^|\})\.pm-today-trend-head-tools\{[^}]*transform:none/, '普通模式标题工具区不得被极简 UI 的清零偏移规则污染');
 assert.doesNotMatch(todayTrendStyle, /(?:^|\})\.pm-today-trend-event-facts\{[^}]*margin-block-start:var\(--pm-space-0\)/, '普通模式事件事实区不得被极简 UI 的零偏移规则污染');
 assert.doesNotMatch(todayTrendStyle, /(?:^|\})\.pm-today-trend-reputation-mark\[data-status="(?:hostile|dislike|neutral|like|trust)"\]/, '普通模式不得新增关系状态颜色覆盖');
 assert.match(todayTrendStyle, /@media\(max-width:320px\)[\s\S]*?pm-today-trend-reputation-meter,\.pm-today-trend-faction-meter\{[^}]*column-gap:var\(--pm-space-0-5\)/, '320px 下两种关系量表必须同步收紧间距');
@@ -1017,7 +1009,6 @@ assert.doesNotMatch(activeEventCardHtml, /today-trend-promote-underground|today-
 assert.match(busyDynamicsHtml, /today-trend-advance-event"[^>]*disabled aria-busy="true"/, '忙碌时单条事件重新生成必须禁用并暴露忙碌状态');
 assert.equal((busyDynamicsHtml.match(/pm-today-trend-menu-wrap is-open/g) || []).length, 1, '事件追踪只允许模块操作菜单展开');
 assert.doesNotMatch(dynamicsItemMenuHtml, /pm-today-trend-inline-actions/, '旧事件条目菜单 ID 不得意外展开任何行内动作');
-assert.match(busyDynamicsHtml, /EVENT TRACKER/, '动态内容页必须提供追踪识别语');
 assert.match(busyDynamicsHtml, /pm-today-trend-event-facts/, '动态内容页必须提供结构化事件事实区');
 assert.match(busyDynamicsHtml, /pm-today-trend-event-history/, '动态内容页必须提供阶段时间线容器');
 assert.match(busyDynamicsHtml, /pm-today-trend-event-marker" data-today-trend-icon="[^"]+" aria-hidden="true"><svg[\s\S]*?<\/svg><\/span>/, '事件追踪卡片必须包含带 key 的 SVG 左侧节点');

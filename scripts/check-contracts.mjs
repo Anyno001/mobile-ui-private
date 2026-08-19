@@ -3662,9 +3662,8 @@ for (const selector of ['.pm-calendar-title-chevron svg', '.pm-calendar-manageme
   }
 }
 requireCssDeclarations(cssRules, '.pm-today-trend-content.is-minimal-ui .pm-today-trend-module-head', {
-  'align-items': 'flex-start', 'min-height': 'calc(var(--pm-size-control-default) + var(--pm-space-2))', 'padding-bottom': 'var(--pm-space-3)',
+  'align-items': 'center', 'min-height': 'calc(var(--pm-size-control-default) + var(--pm-space-2))', 'padding-bottom': 'var(--pm-space-3)',
 });
-requireCssDeclarations(cssRules, '.pm-today-trend-content.is-minimal-ui .pm-today-trend-head-tools', { transform: 'none' });
 requireCssDeclarations(cssRules, '.pm-today-trend-content.is-minimal-ui .pm-today-trend-floor', { gap: 'var(--pm-space-0-5)' });
 const relationNodeTokenRule = cssRules.find(rule => rule.selectors.includes('.pm-today-trend-shell')
   && rule.declarations.get('--pm-today-trend-relation-node-size') === 'var(--pm-space-5)');
@@ -3710,7 +3709,7 @@ for (const [theme, palette] of Object.entries(todayTrendRelationPalette)) {
 if (normalizeCssValue(relationNodeTokenRule?.declarations.get('--pm-today-trend-relation-foreground')) !== 'var(--pm-color-on-dark)') {
   failures.push('style.css: --pm-today-trend-relation-foreground must remain bound to var(--pm-color-on-dark)');
 }
-requireCssDeclarations(cssRules, '.pm-today-trend-home', { color: 'var(--pm-color-text-placeholder) !important' });
+requireCssDeclarations(cssRules, '.pm-today-trend-home', { color: 'var(--pm-color-on-accent) !important' });
 requireCssDeclarations(cssRules, '.pm-today-trend-tabs button', { color: 'var(--pm-color-text-placeholder)' });
 requireCssDeclarations(cssRules, '.pm-today-trend-tabs button[aria-pressed="true"] svg', { color: 'var(--pm-color-accent)' });
 for (const rule of cssRules) if (rule.selectors.some(selector => selector.includes('.pm-today-trend-tabs') && selector.includes('svg'))) {

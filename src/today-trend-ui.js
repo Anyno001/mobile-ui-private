@@ -59,10 +59,10 @@ export function trendFloorStatus({ currentFloor, syncedFloor = 0, phase = 'idle'
     return `<span class="pm-today-trend-floor" data-today-trend-floor="${floor ?? ''}" data-state="${state}" role="status" aria-live="polite" aria-label="楼层 ${reading}，${escapeAttr(status)}">${statusHtml}</span>`;
 }
 
-export function trendModuleHead({ title, menuId, menuOpenId, actions = [], meta = '', metaHtml = '', eyebrow = '', adornment = '', asideHtml = '' }) {
+export function trendModuleHead({ title, menuId, menuOpenId, actions = [], meta = '', metaHtml = '', adornment = '', asideHtml = '' }) {
     const renderedMeta = metaHtml || (meta ? `<span>${escapeHtml(meta)}</span>` : '');
     const menu = trendActionMenu({ id: menuId, open: menuOpenId === menuId, label: `${title}操作`, actions });
-    return `<header class="pm-today-trend-module-head${eyebrow ? ' is-decorative' : ''}"><div>${eyebrow ? `<p class="pm-today-trend-module-eyebrow">${escapeHtml(eyebrow)}</p>` : ''}<h2>${escapeHtml(title)}${adornment}</h2>${renderedMeta}</div><span class="pm-today-trend-head-tools">${menu}${asideHtml}</span></header>`;
+    return `<header class="pm-today-trend-module-head"><span class="pm-today-trend-head-tools">${menu}${asideHtml}</span><div>${renderedMeta}<h2>${escapeHtml(title)}${adornment}</h2></div></header>`;
 }
 
 export function trendRuleEditor({ rule, value = '' } = {}) {
