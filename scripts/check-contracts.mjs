@@ -3665,6 +3665,74 @@ requireCssDeclarations(cssRules, '.pm-today-trend-content.is-minimal-ui .pm-toda
   'align-items': 'center', 'min-height': 'calc(var(--pm-size-control-default) + var(--pm-space-2))', 'padding-bottom': 'var(--pm-space-3)',
 });
 requireCssDeclarations(cssRules, '.pm-today-trend-content.is-minimal-ui .pm-today-trend-floor', { gap: 'var(--pm-space-0-5)' });
+const todayTrendModuleHeadAccentRules = cssRules.filter(rule => (
+  rule.declarations.has('background')
+  && rule.declarations.has('color')
+  && rule.declarations.has('border-radius')
+));
+for (const selector of [
+  '.pm-today-trend-world>.pm-today-trend-module-head',
+  '.pm-today-trend-reputation>.pm-today-trend-module-head',
+  '.pm-today-trend-factions>.pm-today-trend-module-head',
+  '.pm-today-trend-dynamics>.pm-today-trend-module-head',
+]) requireCssDeclarations(todayTrendModuleHeadAccentRules, selector, {
+  background: 'var(--pm-color-accent)',
+  color: 'var(--pm-color-on-accent)',
+  'border-radius': 'var(--pm-radius-none)',
+});
+for (const selector of [
+  '.pm-today-trend-world>.pm-today-trend-module-head h2',
+  '.pm-today-trend-reputation>.pm-today-trend-module-head h2',
+  '.pm-today-trend-factions>.pm-today-trend-module-head h2',
+  '.pm-today-trend-dynamics>.pm-today-trend-module-head h2',
+]) requireCssDeclarations(cssRules, selector, { color: 'var(--pm-color-on-accent)' });
+for (const selector of ['.pm-today-trend-module-head .pm-today-trend-meter', '.pm-today-trend-module-head .pm-today-trend-floor']) {
+  requireCssDeclarations(cssRules, selector, { color: 'color-mix(in srgb,var(--pm-color-on-accent) 70%,transparent)' });
+}
+requireCssDeclarations(cssRules, '.pm-today-trend-module-head :is(.pm-today-trend-meter-v,.pm-today-trend-floor-value)', {
+  color: 'var(--pm-color-on-accent)',
+});
+requireCssDeclarations(cssRules, '.pm-today-trend-module-head .pm-today-trend-icon-button:not(.is-danger) svg', {
+  color: 'var(--pm-color-on-accent)',
+});
+requireCssDeclarations(cssRules, '.pm-today-trend-module-head .pm-today-trend-menu-close', {
+  color: 'var(--pm-color-on-accent)',
+});
+requireCssDeclarations(cssRules, '.pm-today-trend-module-head .pm-today-trend-icon-button:focus-visible', {
+  'outline-color': 'var(--pm-color-on-accent)',
+});
+requireCssDeclarations(cssRules, '.pm-today-trend-module-body', {
+  background: 'var(--pm-color-surface-elevated)',
+  'border-radius': 'var(--pm-radius-large) var(--pm-radius-large) var(--pm-radius-none) var(--pm-radius-none)',
+  padding: 'var(--pm-space-4) var(--pm-space-5)',
+  display: 'flex',
+  'flex-direction': 'column',
+});
+const todayTrendLayerRootRules = cssRules.filter(rule => (
+  rule.declarations.has('gap') && rule.declarations.has('padding')
+));
+for (const selector of ['.pm-today-trend-world', '.pm-today-trend-reputation', '.pm-today-trend-factions', '.pm-today-trend-dynamics']) {
+  requireCssDeclarations(todayTrendLayerRootRules, selector, {
+    gap: 'var(--pm-space-0)',
+    padding: 'var(--pm-space-0) var(--pm-space-0) var(--pm-space-5)',
+  });
+}
+const todayTrendCompactBodyRule = cssRules.find(rule => (
+  /@media\s*\(max-width:320px\)/.test(rule.parent)
+  && rule.selectors.includes('.pm-today-trend-module-body')
+));
+if (todayTrendCompactBodyRule?.declarations.get('padding-inline') !== 'var(--pm-space-3)') {
+  failures.push('style.css: 320px today-trend content layer must tighten padding-inline on .pm-today-trend-module-body');
+}
+for (const rule of cssRules) {
+  if (!/@media\s*\(max-width:320px\)/.test(rule.parent)) continue;
+  if (!rule.selectors.some(selector => [
+    '.pm-today-trend-world', '.pm-today-trend-reputation', '.pm-today-trend-factions', '.pm-today-trend-dynamics', '.pm-today-trend-module-head',
+  ].includes(selector))) continue;
+  if (['padding-inline', 'padding-left', 'padding-right'].some(property => rule.declarations.has(property))) {
+    failures.push(`style.css:${rule.line}: 320px today-trend module roots and heads must keep full-width horizontal boundaries`);
+  }
+}
 const relationNodeTokenRule = cssRules.find(rule => rule.selectors.includes('.pm-today-trend-shell')
   && rule.declarations.get('--pm-today-trend-relation-node-size') === 'var(--pm-space-5)');
 if (!relationNodeTokenRule) {

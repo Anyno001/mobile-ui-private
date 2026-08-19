@@ -124,7 +124,15 @@ assert.match(String(observationWarning?.[0] || ''), /今日风向自动推演观
 
 const todayTrendStyle = (await readFile(new URL('../styles/today-trend.css', import.meta.url), 'utf8')).replace(/;\}/g, '}').replaceAll('../assets/', './assets/');
 const todayTrendCoreStyle = await readFile(new URL('../styles/core.css', import.meta.url), 'utf8');
-const todayTrendRuntimeText = (await Promise.all([
+const [
+    todayTrendUiText,
+    todayTrendWorldViewText,
+    todayTrendReputationViewText,
+    todayTrendFactionViewText,
+    todayTrendDynamicsViewText,
+    todayTrendManifestText,
+    todayTrendBuildText,
+] = await Promise.all([
     '../src/today-trend-ui.js',
     '../src/today-trend-world-view.js',
     '../src/today-trend-reputation-view.js',
@@ -132,7 +140,16 @@ const todayTrendRuntimeText = (await Promise.all([
     '../src/today-trend-dynamics-view.js',
     '../manifest.json',
     '../index.js',
-].map(path => readFile(new URL(path, import.meta.url), 'utf8')))).join('\n');
+].map(path => readFile(new URL(path, import.meta.url), 'utf8')));
+const todayTrendViewSources = [
+    ['世界态势', todayTrendWorldViewText],
+    ['个人风评', todayTrendReputationViewText],
+    ['势力图谱', todayTrendFactionViewText],
+    ['事件追踪', todayTrendDynamicsViewText],
+];
+const todayTrendRuntimeText = [
+    todayTrendUiText, ...todayTrendViewSources.map(([, source]) => source), todayTrendManifestText, todayTrendBuildText,
+].join('\n');
 const todayTrendCustomProperties = new Map([...`${todayTrendCoreStyle}\n${todayTrendStyle}`.matchAll(/(--[\w-]+):([^;{}]+)/g)].map(([, name, value]) => [name, value.trim()]));
 const resolveTodayTrendToken = (token, depth = 0) => {
     if (depth >= 8) return token;
@@ -212,9 +229,17 @@ assert.doesNotMatch(todayTrendStyle, /\.pm-today-trend-floor-cancel\{[^}]*font:i
 assert.match(todayTrendStyle, /\.pm-today-trend-floor\[data-state="failed"\] \.pm-today-trend-floor-status\{[^}]*color:var\(--pm-color-danger\)/, '同步失败状态必须使用失败反馈色');
 assert.match(todayTrendStyle, /\.pm-today-trend-floor-reading\{[^}]*white-space:nowrap/, '#号与楼层数值必须保持单行完整显示');
 assert.match(todayTrendRuntimeText, /pm-today-trend-head-tools">\$\{menu\}\$\{asideHtml\}/, '模块头必须先渲染三点菜单，再在其下方渲染楼层');
-assert.match(todayTrendStyle, /\.pm-today-trend-dynamics\{gap:var\(--pm-space-5\);?\}/, '事件追踪标题、标签页与内容必须使用宽松垂直间距');
+for (const [moduleName, source] of todayTrendViewSources) {
+    assert.equal((source.match(/class="pm-today-trend-module-body"/g) || []).length, 1,
+        `${moduleName}源码必须且只能声明一个灰色内容层容器`);
+}
+assert.equal((todayTrendBuildText.match(/class="pm-today-trend-module-body"/g) || []).length, 4,
+    '构建产物必须同步包含四个今日风向灰色内容层容器');
+assert.match(todayTrendStyle, /\.pm-today-trend-dynamics\{gap:var\(--pm-space-0\);?\}/, '事件追踪主题色标题层与灰色内容层必须无额外间隙拼接');
 assert.match(todayTrendStyle, /\.pm-today-trend-event-list\{[^}]*padding:var\(--pm-space-0-5\) var\(--pm-space-0\) var\(--pm-space-1\)/, '事件追踪列表顶部留白必须同步收紧');
 assert.match(compactTodayTrendMedia, /pm-today-trend-module-head\{gap:var\(--pm-space-1\)/, '320px 窄屏必须缩小标题与工具区间距并保留按钮命中区');
+assert.match(compactTodayTrendMedia, /pm-today-trend-module-body\{padding-inline:var\(--pm-space-3\)/, '320px 窄屏必须只收紧灰色内容层的横向留白');
+assert.doesNotMatch(compactTodayTrendMedia, /pm-today-trend-(?:world|reputation|factions|dynamics)\{[^}]*padding-inline/, '320px 窄屏不得收窄模块根，避免主题色模块头两侧露灰');
 assert.match(todayTrendStyle, /\.pm-today-trend-menu-action,\.pm-today-trend-menu-close\{flex-basis:var\(--pm-size-control-compact\);width:var\(--pm-size-control-compact\);min-height:var\(--pm-size-control-compact\)/, '320px 菜单按钮不得缩回 28px 命中区');
 assert.doesNotMatch(todayTrendStyle, /pm-today-trend-icon-button\[data-action\^="today-trend-(?:refresh|generate)"\]\{width:28px/, '今日风向真实操作按钮不得使用 28px 命中区');
 assert.doesNotMatch(todayTrendStyle, /pm-today-trend-content\.is-(?:reputation|faction|dynamics)::/, '旧内容容器背景伪元素必须清理');
@@ -717,6 +742,7 @@ const worldPanelsHtml = renderTodayTrendWorldView({ scope: worldPanelsScope });
 const worldPanelsMenuHtml = renderTodayTrendWorldView({ scope: worldPanelsScope, generationAvailable: true, menuOpenId: 'world-module' });
 assert.match(worldHtml, /编辑世界态势提示词/, '世界态势入口必须使用中文提示词文案');
 assert.doesNotMatch(worldHtml, /编辑世界态势 Prompt/, '世界态势入口不得残留英文 Prompt');
+assert.match(worldHtml, /pm-today-trend-module-head[\s\S]*?<\/header><div class="pm-today-trend-module-body">/, '世界态势必须将主题色模块头与灰色内容层拆为相邻容器');
 assert.match(worldHtml, /节目风向/, '世界态势页必须渲染初始化生成的世界观项目');
 assert.doesNotMatch(worldPanelsHtml, /data-menu-id="world:/, '世界态势摘要常态不得渲染省略号入口');
 for (const article of worldPanelsHtml.match(/<article class="pm-today-trend-world-(?:hero|brief)[\s\S]*?<\/article>/g) || []) assert.doesNotMatch(article, /today-trend-toggle-menu|aria-expanded=|data-menu-id=/, '世界态势摘要自身不得包含省略号菜单触发器');
@@ -785,7 +811,7 @@ assert.doesNotMatch(worldPanelsHtml, /pm-today-trend-world-brief-tail|\bis-(?:le
 assert.match(worldHtml, /pm-today-trend-meter[\s\S]*?SIGNALS[\s\S]*?BRIEFS/, '世界态势 meta 必须用英文装饰标签映射真实项目与摘要数量');
 assert.doesNotMatch(todayTrendStyle, /pm-today-trend-world-(?:signals::before|hero\.has-signals::after|brief\.is-right::after)/, '世界态势不得恢复连续轨道线');
 assert.match(todayTrendStyle, /pm-today-trend-world \.pm-today-trend-meter\{margin-top:var\(--pm-today-trend-world-meta-offset\)/, '世界态势 meta 与标题的间距必须由原型映射 token 控制');
-assert.match(todayTrendStyle, /pm-today-trend-world\{flex:0 0 auto;gap:var\(--pm-space-5\);padding:var\(--pm-space-0\) var\(--pm-space-5\) var\(--pm-space-5\)/, '世界态势宽松间距与边距');
+assert.match(todayTrendStyle, /pm-today-trend-world\{flex:0 0 auto;gap:var\(--pm-space-0\);padding:var\(--pm-space-0\) var\(--pm-space-0\) var\(--pm-space-5\)/, '世界态势主题色标题层必须全宽，横向留白只归灰色内容层');
 assert.match(todayTrendStyle, /pm-today-trend-content\.is-world\{[^}]*padding:var\(--pm-space-0\) var\(--pm-space-0\) var\(--pm-space-px-36\)/, '世界态势必须保留底部导航安全区');
 assert.match(todayTrendStyle, /--pm-today-trend-report-title-size:calc\(var\(--pm-font-size-title\) \+ var\(--pm-space-2\)\)/, '其他三个模块的大标题必须使用收紧后的统一字号');
 assert.match(todayTrendStyle, /--pm-today-trend-world-title-size:calc\(var\(--pm-font-size-title\) \+ var\(--pm-space-2\)\)/, '世界态势模块标题必须与其他三个模块使用同一字号');
@@ -820,6 +846,7 @@ const reputationMenuHtml = renderTodayTrendReputationView({ scope: valid.scopes.
 assert.match(reputationMenuHtml, /编辑个人风评提示词/, '个人风评入口必须使用中文提示词文案');
 assert.doesNotMatch(reputationMenuHtml, /编辑个人风评 Prompt/, '个人风评入口不得残留英文 Prompt');
 const reputationItemMenuHtml = renderTodayTrendReputationView({ scope: valid.scopes.chat, generationAvailable: true, menuOpenId: 'circle:judge' });
+assert.match(reputationHtml, /pm-today-trend-module-head[\s\S]*?<\/header><div class="pm-today-trend-module-body">/, '个人风评必须将主题色模块头与灰色内容层拆为相邻容器');
 assert.match(reputationHtml, /主厨评审/, '个人风评页必须渲染世界观圈层名称');
 assert.match(reputationHtml, /中立/, '个人风评页必须渲染固定五档状态的中文标签');
 assert.match(reputationHtml, /pm-today-trend-reputation-entry/, '个人风评内容页必须使用观察报告条目结构');
@@ -910,6 +937,7 @@ const factionHtml = renderTodayTrendFactionView({ scope: valid.scopes.chat, pres
 const factionItemMenuHtml = renderTodayTrendFactionView({ scope: valid.scopes.chat, preset: valid.presets.preset, generationAvailable: true, menuOpenId: 'faction:red' });
 assert.match(factionHtml, /编辑势力图谱提示词/, '势力图谱入口必须使用中文提示词文案');
 assert.doesNotMatch(factionHtml, /编辑势力图谱 Prompt/, '势力图谱入口不得残留英文 Prompt');
+assert.match(factionHtml, /pm-today-trend-module-head[\s\S]*?<\/header><div class="pm-today-trend-module-body">/, '势力图谱必须将主题色模块头与灰色内容层拆为相邻容器');
 assert.match(factionHtml, /红队/, '势力页必须渲染根势力');
 assert.match(factionHtml, /节目组/, '势力页必须递归渲染子势力');
 assert.match(factionHtml, /队长/, '势力卡片必须直接展示关键资料');
@@ -1138,6 +1166,7 @@ const archivedDynamicsHtml = renderTodayTrendDynamicsView({ scope: valid.scopes.
 assert.match(dynamicsHtml, /正在追踪/, '动态页必须区分正在追踪事件');
 assert.match(dynamicsHtml, /已完结/, '动态页必须区分归档事件');
 assert.match(archivedDynamicsHtml, /事件归档/, '归档 tab 必须联动模块标题');
+assert.match(dynamicsHtml, /pm-today-trend-module-head[\s\S]*?<\/header><div class="pm-today-trend-module-body">/, '事件追踪必须将主题色模块头与灰色内容层拆为相邻容器');
 assert.match(archivedDynamicsHtml, /DONE[\s\S]*?TOTAL/, '归档 tab meta 必须由归档和总事件数映射');
 assert.match(archivedDynamicsHtml, /data-tab="archived"[^>]*aria-selected="true"/, '归档 tab 必须暴露选中状态');
 assert.match(archivedDynamicsHtml, /pm-today-trend-event-latest[\s\S]*?最终结果/, '归档事件必须始终外置最终结果');
