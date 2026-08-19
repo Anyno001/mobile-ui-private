@@ -3742,7 +3742,7 @@ for (const selector of ['.pm-today-trend-world-hero', '.pm-today-trend-world-bri
     display: 'grid',
     'grid-template-columns': todayTrendEntryRail,
     'row-gap': 'var(--pm-space-2)',
-    padding: 'var(--pm-space-0)',
+    padding: 'var(--pm-space-3)',
   });
 }
 for (const selector of ['.pm-today-trend-world-hero>.pm-today-trend-world-item-head', '.pm-today-trend-world-brief>.pm-today-trend-world-item-head']) {

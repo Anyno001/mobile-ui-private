@@ -222,13 +222,9 @@ assert.match(compactTodayTrendMedia, /pm-today-trend-module-head\{gap:var\(--pm-
 assert.match(todayTrendStyle, /\.pm-today-trend-menu-action,\.pm-today-trend-menu-close\{flex-basis:var\(--pm-size-control-compact\);width:var\(--pm-size-control-compact\);min-height:var\(--pm-size-control-compact\)/, '320px 菜单按钮不得缩回 28px 命中区');
 assert.doesNotMatch(todayTrendStyle, /pm-today-trend-icon-button\[data-action\^="today-trend-(?:refresh|generate)"\]\{width:28px/, '今日风向真实操作按钮不得使用 28px 命中区');
 assert.doesNotMatch(todayTrendStyle, /pm-today-trend-content\.is-(?:reputation|faction|dynamics)::/, '旧内容容器背景伪元素必须清理');
-for (const [selector, padding] of [
-    ['pm-today-trend-world-hero,\\.pm-today-trend-world-brief', 'var\\(--pm-space-0\\)'],
-    ['pm-today-trend-reputation-entry', 'var\\(--pm-space-0\\)'],
-    ['pm-today-trend-event-card', 'var\\(--pm-space-3\\)'],
-]) {
-    assert.match(todayTrendStyle, new RegExp(`${selector}\\{[^}]*padding:${padding}[^}]*border:0[^}]*border-radius:var\\(--pm-radius-card\\)[^}]*background:transparent[^}]*box-shadow:none`), `${selector} 必须消费统一的无底无框卡片外壳与约定内缩`);
-}
+assert.match(todayTrendStyle, /pm-today-trend-world-hero,\.pm-today-trend-world-brief\{[^}]*padding:var\(--pm-space-3\)[^}]*border:1px solid var\(--pm-color-border-subtle\)[^}]*border-radius:var\(--pm-radius-card\)[^}]*background:var\(--pm-color-surface-card\)[^}]*box-shadow:none/, '世界态势卡片必须使用实色卡片外壳与 12px 内缩（参考 TASKOW 卡片化试点）');
+assert.match(todayTrendStyle, /pm-today-trend-reputation-entry\{[^}]*padding:var\(--pm-space-3\)[^}]*border:1px solid var\(--pm-color-border-subtle\)[^}]*border-radius:var\(--pm-radius-card\)[^}]*background:var\(--pm-color-surface-card\)[^}]*box-shadow:none/, '个人风评卡片必须使用实色卡片外壳与 12px 内缩（参考 TASKOW 卡片化试点）');
+assert.match(todayTrendStyle, /pm-today-trend-event-card\{[^}]*padding:var\(--pm-space-3\)[^}]*border:1px solid var\(--pm-color-border-subtle\)[^}]*border-radius:var\(--pm-radius-card\)[^}]*background:var\(--pm-color-surface-card\)[^}]*box-shadow:none/, '事件追踪卡片必须使用实色卡片外壳与 12px 内缩（参考 TASKOW 卡片化试点）');
 assert.match(todayTrendStyle, /pm-today-trend-faction-card\{[^}]*padding:var\(--pm-space-3\)[^}]*border:1px solid var\(--pm-color-border-subtle\)[^}]*border-radius:var\(--pm-radius-card\)[^}]*background:var\(--pm-color-surface-card\)[^}]*box-shadow:none/, '势力图谱卡片必须使用实色卡片外壳与 12px 内缩（参考 TASKOW 卡片化试点）');
 const entryRail = 'display:grid;grid-template-columns:var(--pm-today-trend-relation-node-size) var(--pm-space-2) minmax(0,1fr);row-gap:var(--pm-space-2)';
 for (const [selector, prefix] of [
@@ -261,7 +257,6 @@ assert.match(todayTrendStyle, /pm-today-trend-faction-entry-head \.pm-today-tren
 assert.match(todayTrendStyle, /pm-today-trend-faction-meter>span\.is-active\{[^}]*border-bottom-color:var\(--pm-color-accent\)/, '势力关系量表必须使用横向选中下划线');
 assert.doesNotMatch(todayTrendStyle, /pm-today-trend-faction-meter[^{}]*(?:grid-template-rows|::after|rotate\(45deg\))/, '势力关系量表不得恢复旧纵向游标结构');
 assert.doesNotMatch(todayTrendStyle, /pm-today-trend-world-brief\.is-(?:left|right)|pm-today-trend-faction-tree(?:\[[^}]+)?\{[^}]*border-left/, '卡片化源码不得残留世界左右轨道选择器或势力树左轨声明');
-assert.match(todayTrendStyle, /pm-today-trend-event-card\{[^}]*border:0[^}]*background:transparent[^}]*box-shadow:none/, '事件追踪卡片必须隐藏底色、描边和阴影');
 assert.match(todayTrendStyle, /pm-today-trend-event-history\[open\][^}]*overflow:hidden/, '动态阶段记录展开态必须约束布局溢出');
 assert.ok(PHONE_UI_PAGES.includes('today-trend'), '手机页面白名单必须包含今日风向');
 const phoneUiDeps = { getStorageId: () => 'chat' };
@@ -809,7 +804,6 @@ assert.match(todayTrendStyle, /pm-today-trend-world-signal-marker\{[^}]*width:va
 assert.match(todayTrendStyle, /pm-today-trend-world-signal-marker::after\{display:none/, '世界态势节点不得保留原型以外的横向引线');
 assert.match(todayTrendStyle, /pm-today-trend-world-hero b\{[^}]*font-size:var\(--pm-today-trend-world-hero-title-size\)[^}]*font-weight:var\(--pm-font-weight-semibold\)[^}]*line-height:var\(--pm-line-height-control\)/, '世界态势首条标题必须与后续条目使用相同文本节奏');
 assert.match(todayTrendStyle, /pm-today-trend-world-brief b\{[^}]*font-size:var\(--pm-today-trend-world-brief-title-size\)[^}]*line-height:var\(--pm-line-height-control\)/, '世界态势后续标题必须消费统一字号 token 与行高');
-assert.match(todayTrendStyle, /pm-today-trend-world-hero,\.pm-today-trend-world-brief\{[^}]*border:0[^}]*border-radius:var\(--pm-radius-card\)[^}]*background:transparent[^}]*box-shadow:none/, '世界态势条目必须使用无底无框卡片外壳');
 assert.doesNotMatch(todayTrendStyle, /pm-today-trend-world-hero::before/, '世界态势不得恢复旧主摘要伪元素装饰');
 assert.equal((worldPanelsHtml.match(/data-action="today-trend-toggle-menu"/g) || []).length, 1, '世界态势常态只允许模块头保留一个省略号入口');
 assert.match(worldHtml, /today-trend-generate-world/, '世界态势页必须提供本模块生成动作');
@@ -901,7 +895,6 @@ assert.doesNotMatch(todayTrendStyle, /pm-today-trend-reputation-(?:head-art|file
 assert.match(todayTrendStyle, /pm-today-trend-reputation-mark\{[^}]*border:0[^}]*border-radius:var\(--pm-radius-circle\)[^}]*background:var\(--pm-color-accent\)/, '个人风评图标必须统一为圆形主题节点');
 assert.match(todayTrendStyle, /pm-today-trend-reputation-entry-head>b\{[^}]*font-size:var\(--pm-font-size-subtitle\)[^}]*line-height:var\(--pm-line-height-control\)/, '个人风评条目标题必须与世界态势使用相同字号和行高');
 assert.doesNotMatch(todayTrendStyle, /pm-today-trend-reputation-mark::(?:before|after)/, '个人风评图标不得恢复装饰伪元素');
-assert.match(todayTrendStyle, /pm-today-trend-reputation-entry\{[^}]*padding:var\(--pm-space-0\)[^}]*border:0[^}]*border-radius:var\(--pm-radius-card\)[^}]*background:transparent[^}]*box-shadow:none/, '个人风评条目必须使用无内缩的无底无框卡片外壳');
 assert.match(todayTrendStyle, /pm-today-trend-reputation-entry\{[^}]*display:flex[^}]*flex-direction:column/, '个人风评条目必须使用标题栏与内容栏上下布局');
 assert.match(todayTrendStyle, /pm-today-trend-reputation-entry-head\{[^}]*display:flex[^}]*align-items:center[^}]*gap:var\(--pm-space-2\)/, '个人风评标题栏必须让图标与标题居中对齐');
 assert.match(todayTrendStyle, /pm-today-trend-reputation-entry-body\{[^}]*min-width:0[^}]*\}/, '个人风评内容栏必须完整占据标题栏下方而非伪装成右侧栏');
