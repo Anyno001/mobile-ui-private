@@ -1,6 +1,6 @@
 # 项目进度
 - Project: mobile-ui-private
-- Updated At: 2026-08-16T19:11:03.637Z
+- Updated At: 2026-08-19T06:23:22.347Z
 - Status: active
 - Phase: maintenance
 
@@ -8,29 +8,25 @@
 
 <!-- LIMCODE_PROGRESS_SUMMARY_START -->
 - 当前进度：3/3 个里程碑已完成；最新：trend-svg-mapping-release
-- 当前焦点：提交并推送社区发送键与今日态势视觉收敛专项
-- 最新结论：构建、语法、全量 check、check:contracts、today-trend 与 diff 检查均已获得 exit 0。独立验收未发现 blocking；逐动作契约和完整非目标 diff 边界证据缺口由助手明确接受为下次迭代事项。
-- 下一步：提交当前专项并推送 main；下次迭代优先补齐动作级与非目标边界契约，真实宿主视觉/触控验证仍未执行。
+- 当前焦点：今日风向条目标题与摘要轨道收敛已完成，等待真实宿主视觉回归
+- 最新结论：world/reputation/faction 条目已统一为 24px 节点列、8px 间隔和文本列；world 条目移除了额外内缩。构建、语法、today-trend、contracts、全量 check 与 diff 检查均 exit 0；独立验收复验为 pass，无 blocking/major。
+- 下一步：在真实 SillyTavern 宿主补跑亮暗主题、普通/极简、320px、长标题/摘要、嵌套势力、键盘焦点和 44px 触控命中验证；未完成前不宣称视觉闭环。
 <!-- LIMCODE_PROGRESS_SUMMARY_END -->
 
 ## 关联文档
 
 <!-- LIMCODE_PROGRESS_ARTIFACTS_START -->
-- 设计：`.limcode/design/community-today-trend-visual-harmony.md`
-- 计划：`.limcode/plans/community-today-trend-visual-harmony.md`
+- 设计：`.limcode/design/today-trend-entry-content-rail-alignment.md`
+- 计划：`.limcode/plans/today-trend-entry-content-rail-alignment.md`
 <!-- LIMCODE_PROGRESS_ARTIFACTS_END -->
 
 ## 当前 TODO 快照
 
 <!-- LIMCODE_PROGRESS_TODOS_START -->
-- [x] 独立验收已完成；助手明确接受逐动作契约与非目标边界证据的已知 major 延后至下次补齐，并授权当前专项提交与推送。  `#community-today-trend-visual-acceptance`
-- [x] 将 feed 发布、live 弹幕和评论回复的场景内提交按钮收敛到 --scene-accent，不影响全局发送入口。  `#community-today-trend-visual-community-send`
-- [ ] 下次迭代补齐社区三类发送 data-action 的逐动作契约、关系视觉污染负例，以及非目标模型/store/version/prompt/persistence 的完整 diff 边界证据。  `#community-today-trend-visual-contract-boundary-followup`
-- [x] 先扩展 CSS/token 契约，锁定三类社区提交动作、五档关系视觉色、普通/极简几何与禁止泄漏范围。  `#community-today-trend-visual-contracts`
-- [x] 补齐社区发送控件、--scene-accent 运行时写入、全部 .pm-scene-primary 消费点及既有视觉设计的精确证据，确认改动边界。  `#community-today-trend-visual-recon`
-- [x] 登记并应用五档低饱和局部关系色，保证 SVG 的 currentColor 前景统一为白色且不影响 meter。  `#community-today-trend-visual-relation-colors`
-- [x] 统一个人风评与势力图谱在普通/极简模式的 24px 可视圆、18px SVG、8px 标题与说明节奏，并保留 44px 触控命中区。  `#community-today-trend-visual-relation-layout`
-- [x] 执行构建、语法、专项/全量契约、diff 检查及可行的窄屏与可访问性回归；记录无法运行的宿主验证。  `#community-today-trend-visual-validation`
+- [x] 冻结当前条目 DOM、完整 CSS 层叠与既有 minimal/关系节点契约，确认本次仅影响样式轨道。  `#today-trend-rail-baseline`
+- [x] 先在契约检查中锁定世界、风评与势力条目的节点—标题—摘要三列轨道、节奏与非回归边界。  `#today-trend-rail-contracts`
+- [x] 以 CSS Grid 收敛三类条目的标题与摘要文本轨道，移除世界态势无语义内缩和死覆盖规则。  `#today-trend-rail-css`
+- [x] 完成构建、专项/全量检查、diff 卫生、窄屏与可访问性回归，并接受独立验收。  `#today-trend-rail-validation`
 <!-- LIMCODE_PROGRESS_TODOS_END -->
 
 ## 项目里程碑
@@ -78,16 +74,6 @@
 ## 最近更新
 
 <!-- LIMCODE_PROGRESS_LOG_START -->
-- 2026-08-16T15:33:05.389Z | artifact_changed | plan | 同步计划文档：.limcode/plans/today-trend-icon-coverage-convergence.md
-- 2026-08-16T15:41:03.842Z | artifact_changed | plan | 同步计划 TODO 快照：.limcode/plans/today-trend-icon-coverage-convergence.md
-- 2026-08-16T16:09:42.496Z | artifact_changed | plan | 同步计划 TODO 快照：.limcode/plans/today-trend-icon-coverage-convergence.md
-- 2026-08-16T16:10:04.983Z | artifact_changed | plan | 同步计划 TODO 快照：.limcode/plans/today-trend-icon-coverage-convergence.md
-- 2026-08-16T16:19:36.982Z | artifact_changed | plan | 同步计划 TODO 快照：.limcode/plans/today-trend-icon-coverage-convergence.md
-- 2026-08-16T16:20:04.047Z | artifact_changed | plan | 同步计划 TODO 快照：.limcode/plans/today-trend-icon-coverage-convergence.md
-- 2026-08-16T16:21:43.344Z | artifact_changed | plan | 同步计划 TODO 快照：.limcode/plans/today-trend-icon-coverage-convergence.md
-- 2026-08-16T16:24:33.964Z | updated | today-trend-icon-review | 图标覆盖率收敛实现已通过自动验证与独立 Acceptance Expert；真实宿主采样不可执行，按 minor 风险保留，进入提交前检查。
-- 2026-08-16T16:30:01.246Z | updated | today-trend-icon-release-gate | 本地提交 8a57ba5 已创建；因本专项尚无明确 main 推送授权且远端查询遇网络连接重置，发布状态暂置 blocked，不重复重试外部操作。
-- 2026-08-16T16:52:33.719Z | artifact_changed | design | 同步设计文档：.limcode/design/community-today-trend-visual-harmony.md
 - 2026-08-16T17:00:02.695Z | artifact_changed | plan | 同步计划文档：.limcode/plans/community-today-trend-visual-harmony.md
 - 2026-08-16T17:18:48.556Z | artifact_changed | plan | 同步计划 TODO 快照：.limcode/plans/community-today-trend-visual-harmony.md
 - 2026-08-16T18:17:45.677Z | milestone_recorded | community-today-trend-visual-implementation | 社区三类发送按钮、关系 slot/44px 命中区、五档局部关系色和 CSS 契约已实现；check:contracts 已通过。
@@ -98,6 +84,16 @@
 - 2026-08-16T19:11:03.273Z | risk_changed | community-today-trend-visual-contract-boundary-followup | 助手明确接受逐动作契约与完整非目标 diff 边界证据缺口延期至下次迭代；真实宿主视觉与触控验证仍未执行。
 - 2026-08-16T19:11:03.273Z | updated | community-today-trend-visual-acceptance | 助手已授权提交并推送当前专项。
 - 2026-08-16T19:11:03.637Z | artifact_changed | plan | 同步计划 TODO 快照：.limcode/plans/community-today-trend-visual-harmony.md
+- 2026-08-16T19:15:05.010Z | artifact_changed | plan | 同步计划 TODO 快照：.limcode/plans/community-today-trend-visual-harmony.md
+- 2026-08-19T05:37:07.920Z | artifact_changed | design | 同步设计文档：.limcode/design/today-trend-entry-content-rail-alignment.md
+- 2026-08-19T05:39:26.713Z | artifact_changed | plan | 同步计划文档：.limcode/plans/today-trend-entry-content-rail-alignment.md
+- 2026-08-19T05:42:36.580Z | updated | today-trend-rail-baseline | 已冻结今日风向 world/reputation/faction 条目 DOM、CSS 覆盖、minimal 44px 关系节点与势力嵌套缩进边界，进入轨道契约阶段。
+- 2026-08-19T05:42:36.613Z | artifact_changed | plan | 同步计划 TODO 快照：.limcode/plans/today-trend-entry-content-rail-alignment.md
+- 2026-08-19T05:48:12.345Z | updated | today-trend-rail-css | 条目 CSS Grid 已实现；首次 check:contracts 失败定位为旧 minimal world 摘要 margin 断言，不是代码运行错误。
+- 2026-08-19T06:03:05.682Z | milestone_recorded | today-trend-rail-css | 完成 world/reputation/faction 条目 Grid 轨道；摘要统一落在节点后文本列，评级/详情跨全列，保留 nested faction 与 minimal 44px 关系节点契约。
+- 2026-08-19T06:03:05.696Z | artifact_changed | plan | 同步计划 TODO 快照：.limcode/plans/today-trend-entry-content-rail-alignment.md
+- 2026-08-19T06:23:22.257Z | milestone_recorded | today-trend-entry-content-rail-alignment | 条目内容轨道专项完成：CSS Grid、专项/全量契约及构建通过；独立 Acceptance Expert 复验 pass，无 blocking/major；真实 SillyTavern 宿主视觉/触控/a11y 待补。
+- 2026-08-19T06:23:22.347Z | artifact_changed | plan | 同步计划 TODO 快照：.limcode/plans/today-trend-entry-content-rail-alignment.md
 <!-- LIMCODE_PROGRESS_LOG_END -->
 
 <!-- LIMCODE_PROGRESS_METADATA_START -->
@@ -107,56 +103,36 @@
   "projectId": "mobile-ui-private",
   "projectName": "mobile-ui-private",
   "createdAt": "2026-08-14T05:55:56.978Z",
-  "updatedAt": "2026-08-16T19:11:03.637Z",
+  "updatedAt": "2026-08-19T06:23:22.347Z",
   "status": "active",
   "phase": "maintenance",
-  "currentFocus": "提交并推送社区发送键与今日态势视觉收敛专项",
-  "latestConclusion": "构建、语法、全量 check、check:contracts、today-trend 与 diff 检查均已获得 exit 0。独立验收未发现 blocking；逐动作契约和完整非目标 diff 边界证据缺口由助手明确接受为下次迭代事项。",
+  "currentFocus": "今日风向条目标题与摘要轨道收敛已完成，等待真实宿主视觉回归",
+  "latestConclusion": "world/reputation/faction 条目已统一为 24px 节点列、8px 间隔和文本列；world 条目移除了额外内缩。构建、语法、today-trend、contracts、全量 check 与 diff 检查均 exit 0；独立验收复验为 pass，无 blocking/major。",
   "currentBlocker": null,
-  "nextAction": "提交当前专项并推送 main；下次迭代优先补齐动作级与非目标边界契约，真实宿主视觉/触控验证仍未执行。",
+  "nextAction": "在真实 SillyTavern 宿主补跑亮暗主题、普通/极简、320px、长标题/摘要、嵌套势力、键盘焦点和 44px 触控命中验证；未完成前不宣称视觉闭环。",
   "activeArtifacts": {
-    "design": ".limcode/design/community-today-trend-visual-harmony.md",
-    "plan": ".limcode/plans/community-today-trend-visual-harmony.md"
+    "design": ".limcode/design/today-trend-entry-content-rail-alignment.md",
+    "plan": ".limcode/plans/today-trend-entry-content-rail-alignment.md"
   },
   "todos": [
     {
-      "id": "community-today-trend-visual-acceptance",
-      "content": "独立验收已完成；助手明确接受逐动作契约与非目标边界证据的已知 major 延后至下次补齐，并授权当前专项提交与推送。",
+      "id": "today-trend-rail-baseline",
+      "content": "冻结当前条目 DOM、完整 CSS 层叠与既有 minimal/关系节点契约，确认本次仅影响样式轨道。",
       "status": "completed"
     },
     {
-      "id": "community-today-trend-visual-community-send",
-      "content": "将 feed 发布、live 弹幕和评论回复的场景内提交按钮收敛到 --scene-accent，不影响全局发送入口。",
+      "id": "today-trend-rail-contracts",
+      "content": "先在契约检查中锁定世界、风评与势力条目的节点—标题—摘要三列轨道、节奏与非回归边界。",
       "status": "completed"
     },
     {
-      "id": "community-today-trend-visual-contract-boundary-followup",
-      "content": "下次迭代补齐社区三类发送 data-action 的逐动作契约、关系视觉污染负例，以及非目标模型/store/version/prompt/persistence 的完整 diff 边界证据。",
-      "status": "pending"
-    },
-    {
-      "id": "community-today-trend-visual-contracts",
-      "content": "先扩展 CSS/token 契约，锁定三类社区提交动作、五档关系视觉色、普通/极简几何与禁止泄漏范围。",
+      "id": "today-trend-rail-css",
+      "content": "以 CSS Grid 收敛三类条目的标题与摘要文本轨道，移除世界态势无语义内缩和死覆盖规则。",
       "status": "completed"
     },
     {
-      "id": "community-today-trend-visual-recon",
-      "content": "补齐社区发送控件、--scene-accent 运行时写入、全部 .pm-scene-primary 消费点及既有视觉设计的精确证据，确认改动边界。",
-      "status": "completed"
-    },
-    {
-      "id": "community-today-trend-visual-relation-colors",
-      "content": "登记并应用五档低饱和局部关系色，保证 SVG 的 currentColor 前景统一为白色且不影响 meter。",
-      "status": "completed"
-    },
-    {
-      "id": "community-today-trend-visual-relation-layout",
-      "content": "统一个人风评与势力图谱在普通/极简模式的 24px 可视圆、18px SVG、8px 标题与说明节奏，并保留 44px 触控命中区。",
-      "status": "completed"
-    },
-    {
-      "id": "community-today-trend-visual-validation",
-      "content": "执行构建、语法、专项/全量契约、diff 检查及可行的窄屏与可访问性回归；记录无法运行的宿主验证。",
+      "id": "today-trend-rail-validation",
+      "content": "完成构建、专项/全量检查、diff 卫生、窄屏与可访问性回归，并接受独立验收。",
       "status": "completed"
     }
   ],
@@ -236,66 +212,6 @@
   ],
   "log": [
     {
-      "at": "2026-08-16T15:33:05.389Z",
-      "type": "artifact_changed",
-      "refId": "plan",
-      "message": "同步计划文档：.limcode/plans/today-trend-icon-coverage-convergence.md"
-    },
-    {
-      "at": "2026-08-16T15:41:03.842Z",
-      "type": "artifact_changed",
-      "refId": "plan",
-      "message": "同步计划 TODO 快照：.limcode/plans/today-trend-icon-coverage-convergence.md"
-    },
-    {
-      "at": "2026-08-16T16:09:42.496Z",
-      "type": "artifact_changed",
-      "refId": "plan",
-      "message": "同步计划 TODO 快照：.limcode/plans/today-trend-icon-coverage-convergence.md"
-    },
-    {
-      "at": "2026-08-16T16:10:04.983Z",
-      "type": "artifact_changed",
-      "refId": "plan",
-      "message": "同步计划 TODO 快照：.limcode/plans/today-trend-icon-coverage-convergence.md"
-    },
-    {
-      "at": "2026-08-16T16:19:36.982Z",
-      "type": "artifact_changed",
-      "refId": "plan",
-      "message": "同步计划 TODO 快照：.limcode/plans/today-trend-icon-coverage-convergence.md"
-    },
-    {
-      "at": "2026-08-16T16:20:04.047Z",
-      "type": "artifact_changed",
-      "refId": "plan",
-      "message": "同步计划 TODO 快照：.limcode/plans/today-trend-icon-coverage-convergence.md"
-    },
-    {
-      "at": "2026-08-16T16:21:43.344Z",
-      "type": "artifact_changed",
-      "refId": "plan",
-      "message": "同步计划 TODO 快照：.limcode/plans/today-trend-icon-coverage-convergence.md"
-    },
-    {
-      "at": "2026-08-16T16:24:33.964Z",
-      "type": "updated",
-      "refId": "today-trend-icon-review",
-      "message": "图标覆盖率收敛实现已通过自动验证与独立 Acceptance Expert；真实宿主采样不可执行，按 minor 风险保留，进入提交前检查。"
-    },
-    {
-      "at": "2026-08-16T16:30:01.246Z",
-      "type": "updated",
-      "refId": "today-trend-icon-release-gate",
-      "message": "本地提交 8a57ba5 已创建；因本专项尚无明确 main 推送授权且远端查询遇网络连接重置，发布状态暂置 blocked，不重复重试外部操作。"
-    },
-    {
-      "at": "2026-08-16T16:52:33.719Z",
-      "type": "artifact_changed",
-      "refId": "design",
-      "message": "同步设计文档：.limcode/design/community-today-trend-visual-harmony.md"
-    },
-    {
       "at": "2026-08-16T17:00:02.695Z",
       "type": "artifact_changed",
       "refId": "plan",
@@ -354,21 +270,81 @@
       "type": "artifact_changed",
       "refId": "plan",
       "message": "同步计划 TODO 快照：.limcode/plans/community-today-trend-visual-harmony.md"
+    },
+    {
+      "at": "2026-08-16T19:15:05.010Z",
+      "type": "artifact_changed",
+      "refId": "plan",
+      "message": "同步计划 TODO 快照：.limcode/plans/community-today-trend-visual-harmony.md"
+    },
+    {
+      "at": "2026-08-19T05:37:07.920Z",
+      "type": "artifact_changed",
+      "refId": "design",
+      "message": "同步设计文档：.limcode/design/today-trend-entry-content-rail-alignment.md"
+    },
+    {
+      "at": "2026-08-19T05:39:26.713Z",
+      "type": "artifact_changed",
+      "refId": "plan",
+      "message": "同步计划文档：.limcode/plans/today-trend-entry-content-rail-alignment.md"
+    },
+    {
+      "at": "2026-08-19T05:42:36.580Z",
+      "type": "updated",
+      "refId": "today-trend-rail-baseline",
+      "message": "已冻结今日风向 world/reputation/faction 条目 DOM、CSS 覆盖、minimal 44px 关系节点与势力嵌套缩进边界，进入轨道契约阶段。"
+    },
+    {
+      "at": "2026-08-19T05:42:36.613Z",
+      "type": "artifact_changed",
+      "refId": "plan",
+      "message": "同步计划 TODO 快照：.limcode/plans/today-trend-entry-content-rail-alignment.md"
+    },
+    {
+      "at": "2026-08-19T05:48:12.345Z",
+      "type": "updated",
+      "refId": "today-trend-rail-css",
+      "message": "条目 CSS Grid 已实现；首次 check:contracts 失败定位为旧 minimal world 摘要 margin 断言，不是代码运行错误。"
+    },
+    {
+      "at": "2026-08-19T06:03:05.682Z",
+      "type": "milestone_recorded",
+      "refId": "today-trend-rail-css",
+      "message": "完成 world/reputation/faction 条目 Grid 轨道；摘要统一落在节点后文本列，评级/详情跨全列，保留 nested faction 与 minimal 44px 关系节点契约。"
+    },
+    {
+      "at": "2026-08-19T06:03:05.696Z",
+      "type": "artifact_changed",
+      "refId": "plan",
+      "message": "同步计划 TODO 快照：.limcode/plans/today-trend-entry-content-rail-alignment.md"
+    },
+    {
+      "at": "2026-08-19T06:23:22.257Z",
+      "type": "milestone_recorded",
+      "refId": "today-trend-entry-content-rail-alignment",
+      "message": "条目内容轨道专项完成：CSS Grid、专项/全量契约及构建通过；独立 Acceptance Expert 复验 pass，无 blocking/major；真实 SillyTavern 宿主视觉/触控/a11y 待补。"
+    },
+    {
+      "at": "2026-08-19T06:23:22.347Z",
+      "type": "artifact_changed",
+      "refId": "plan",
+      "message": "同步计划 TODO 快照：.limcode/plans/today-trend-entry-content-rail-alignment.md"
     }
   ],
   "stats": {
     "milestonesTotal": 3,
     "milestonesCompleted": 3,
-    "todosTotal": 8,
-    "todosCompleted": 7,
+    "todosTotal": 4,
+    "todosCompleted": 4,
     "todosInProgress": 0,
     "todosCancelled": 0,
     "activeRisks": 2
   },
   "render": {
     "rendererVersion": 1,
-    "generatedAt": "2026-08-16T19:11:03.637Z",
-    "bodyHash": "sha256:28de62faafdfb32b7a1264f65b6ce398a69bb52ebb4419aab023d3b50697058a"
+    "generatedAt": "2026-08-19T06:23:22.347Z",
+    "bodyHash": "sha256:abcb60b62fe814e02394012aa136b0a8a3e9bc67aba5a3d787357fd9750c4801"
   }
 }
 <!-- LIMCODE_PROGRESS_METADATA_END -->

@@ -182,12 +182,25 @@ assert.match(todayTrendStyle, /\.pm-today-trend-menu-action,\.pm-today-trend-men
 assert.doesNotMatch(todayTrendStyle, /pm-today-trend-icon-button\[data-action\^="today-trend-(?:refresh|generate)"\]\{width:28px/, '今日风向真实操作按钮不得使用 28px 命中区');
 assert.doesNotMatch(todayTrendStyle, /pm-today-trend-content\.is-(?:reputation|faction|dynamics)::/, '旧内容容器背景伪元素必须清理');
 for (const [selector, padding] of [
-    ['pm-today-trend-world-hero,\\.pm-today-trend-world-brief', 'var\\(--pm-space-3\\)'],
+    ['pm-today-trend-world-hero,\\.pm-today-trend-world-brief', 'var\\(--pm-space-0\\)'],
     ['pm-today-trend-reputation-entry', 'var\\(--pm-space-0\\)'],
     ['pm-today-trend-faction-card', 'var\\(--pm-space-0\\)'],
     ['pm-today-trend-event-card', 'var\\(--pm-space-3\\)'],
 ]) {
     assert.match(todayTrendStyle, new RegExp(`${selector}\\{[^}]*padding:${padding}[^}]*border:0[^}]*border-radius:var\\(--pm-radius-card\\)[^}]*background:transparent[^}]*box-shadow:none`), `${selector} 必须消费统一的无底无框卡片外壳与约定内缩`);
+}
+const entryRail = 'display:grid;grid-template-columns:var(--pm-today-trend-relation-node-size) var(--pm-space-2) minmax(0,1fr);row-gap:var(--pm-space-2)';
+for (const [selector, prefix] of [
+    ['世界态势条目', '.pm-today-trend-world-hero,.pm-today-trend-world-brief{box-sizing:border-box;'],
+    ['个人风评条目正文', '.pm-today-trend-reputation-entry-body{'],
+    ['势力图谱条目正文', '.pm-today-trend-faction-entry-body{'],
+]) assert.ok(todayTrendStyle.includes(`${prefix}${entryRail}`), `${selector} 必须使用共享的节点—间隔—文本轨道`);
+assert.ok(todayTrendStyle.includes('.pm-today-trend-world-hero>.pm-today-trend-world-item-head,.pm-today-trend-world-brief>.pm-today-trend-world-item-head{grid-column:1 / -1}'), '世界态势条目标题必须横跨完整轨道');
+for (const selector of ['.pm-today-trend-world-hero p{grid-column:3;', '.pm-today-trend-world-brief p{grid-column:3;', '.pm-today-trend-reputation-entry-body>p{grid-column:3;', '.pm-today-trend-faction-summary{grid-column:3;']) {
+    assert.ok(todayTrendStyle.includes(selector), `${selector} 必须落在统一文本轨道`);
+}
+for (const selector of ['.pm-today-trend-reputation-rating{grid-column:1 / -1;', '.pm-today-trend-faction-detail{grid-column:1 / -1;', '.pm-today-trend-faction-rating{grid-column:1 / -1;']) {
+    assert.ok(todayTrendStyle.includes(selector), `${selector} 必跨完整条目轨道`);
 }
 assert.match(todayTrendStyle, /--pm-today-trend-world-hero-copy-size:var\(--pm-font-size-compact\)/, '世界态势 hero 正文字号变量必须解析到 compact');
 assert.match(todayTrendStyle, /\.pm-today-trend-world-hero p\{[^}]*font-size:var\(--pm-today-trend-world-hero-copy-size\)/, '世界态势 hero 正文必须继续消费 hero copy 字号变量');
@@ -909,7 +922,7 @@ assert.doesNotMatch(todayTrendStyle, /pm-today-trend-content\.is-minimal-ui \.pm
 assert.match(todayTrendStyle, /pm-today-trend-content\.is-minimal-ui \.pm-today-trend-module-head\{[^}]*align-items:flex-start[^}]*min-height:calc\(var\(--pm-size-control-default\) \+ var\(--pm-space-2\)\)[^}]*padding-bottom:var\(--pm-space-3\)/, '极简 UI 模块头必须统一标题与说明的垂直节奏');
 assert.match(todayTrendStyle, /pm-today-trend-content\.is-minimal-ui \.pm-today-trend-head-tools\{[^}]*transform:none/, '极简 UI 标题工具区不得继续使用普通模式的上移偏移');
 assert.match(todayTrendStyle, /pm-today-trend-content\.is-minimal-ui \.pm-today-trend-floor\{[^}]*gap:var\(--pm-space-0-5\)/, '极简 UI 楼层五态必须使用稳定的紧凑间距');
-assert.match(todayTrendStyle, /pm-today-trend-content\.is-minimal-ui \.pm-today-trend-world-hero p,\.pm-today-trend-content\.is-minimal-ui \.pm-today-trend-world-brief p\{[^}]*margin-top:var\(--pm-space-2\)[^}]*line-height:var\(--pm-line-height-loose\)/, '极简 UI 世界态势标题与说明必须使用收紧间距和舒展行高');
+assert.match(todayTrendStyle, /pm-today-trend-content\.is-minimal-ui \.pm-today-trend-world-hero p,\.pm-today-trend-content\.is-minimal-ui \.pm-today-trend-world-brief p\{[^}]*margin:var\(--pm-space-0\)[^}]*line-height:var\(--pm-line-height-loose\)/, '极简 UI 世界态势标题与说明必须使用网格节奏和舒展行高');
 assert.match(todayTrendStyle, /pm-today-trend-content\.is-minimal-ui \.pm-today-trend-reputation-entry,\.pm-today-trend-content\.is-minimal-ui \.pm-today-trend-faction-card,\.pm-today-trend-content\.is-minimal-ui \.pm-today-trend-event-body\{[^}]*row-gap:var\(--pm-space-2\)/, '极简 UI 四类内容必须使用收紧标题—说明节奏');
 assert.match(todayTrendStyle, /pm-today-trend-content\.is-minimal-ui \.pm-today-trend-reputation-entry-body>p,[^}]*pm-today-trend-faction-detail-row dd,[^}]*pm-today-trend-event-latest span\{[^}]*line-height:var\(--pm-line-height-loose\)/, '极简 UI 多行说明与详情值必须使用舒展行高');
 assert.match(todayTrendStyle, /pm-today-trend-content\.is-minimal-ui \.pm-today-trend-faction-detail-row dt\{color:var\(--pm-color-accent\)/, '极简 UI 势力详情短标签必须跟随主题色');

@@ -2650,6 +2650,7 @@ const phoneChatPokeCodeForChecks = sourceModuleByName.get('phone-chat-poke.js')?
 const interactiveModelCode = sourceModuleByName.get('interactive-scene-model.js')?.code || '';
 const interactiveAiCode = sourceModuleByName.get('interactive-scene-ai.js')?.code || '';
 const interactivePromptCode = sourceModuleByName.get('interactive.js')?.code || '';
+const todayTrendUiCode = sourceModuleByName.get('today-trend-ui.js')?.code || '';
 const settingsUiCodeForInteractive = sourceModuleByName.get('settings-ui.js')?.code || '';
 const settingsWordyControllerCode = sourceModuleByName.get('settings-wordy-controller.js')?.code || '';
 const settingsBackupControllerCode = sourceModuleByName.get('settings-backup-controller.js')?.code || '';
@@ -3698,6 +3699,34 @@ for (const selector of ['.pm-today-trend-relation-slot', '.pm-today-trend-reputa
 for (const selector of ['.pm-today-trend-reputation', '.pm-today-trend-factions']) {
   requireCssDeclarations(cssRules, selector, { overflow: 'visible' });
 }
+const todayTrendEntryRail = 'var(--pm-today-trend-relation-node-size) var(--pm-space-2) minmax(0,1fr)';
+for (const selector of ['.pm-today-trend-world-hero', '.pm-today-trend-world-brief']) {
+  requireCssDeclarations(cssRules, selector, {
+    display: 'grid',
+    'grid-template-columns': todayTrendEntryRail,
+    'row-gap': 'var(--pm-space-2)',
+    padding: 'var(--pm-space-0)',
+  });
+}
+for (const selector of ['.pm-today-trend-world-hero>.pm-today-trend-world-item-head', '.pm-today-trend-world-brief>.pm-today-trend-world-item-head']) {
+  requireCssDeclarations(cssRules, selector, { 'grid-column': '1 / -1' });
+}
+for (const selector of ['.pm-today-trend-world-hero p', '.pm-today-trend-world-brief p']) {
+  requireCssDeclarations(cssRules, selector, { 'grid-column': '3', margin: 'var(--pm-space-0)' });
+}
+for (const selector of ['.pm-today-trend-reputation-entry-body', '.pm-today-trend-faction-entry-body']) {
+  requireCssDeclarations(cssRules, selector, {
+    display: 'grid',
+    'grid-template-columns': todayTrendEntryRail,
+    'row-gap': 'var(--pm-space-2)',
+  });
+}
+for (const selector of ['.pm-today-trend-reputation-entry-body>p', '.pm-today-trend-faction-summary']) {
+  requireCssDeclarations(cssRules, selector, { 'grid-column': '3', margin: 'var(--pm-space-0)' });
+}
+for (const selector of ['.pm-today-trend-reputation-rating', '.pm-today-trend-faction-detail', '.pm-today-trend-faction-rating']) {
+  requireCssDeclarations(cssRules, selector, { 'grid-column': '1 / -1' });
+}
 requireCssDeclarations(cssRules, '.pm-today-trend-content.is-minimal-ui .pm-today-trend-relation-slot> :is(.pm-today-trend-reputation-mark,.pm-today-trend-faction-node)', {
   position: 'absolute',
   width: 'var(--pm-size-control-default)', height: 'var(--pm-size-control-default)',
@@ -3713,15 +3742,16 @@ if (css.includes('.pm-today-trend-world-signal-marker>i')) {
   failures.push('style.css: world signal marker must render an SVG instead of the legacy <i> core');
 }
 for (const selector of [
-  '.pm-today-trend-content.is-minimal-ui .pm-today-trend-world-hero p',
-  '.pm-today-trend-content.is-minimal-ui .pm-today-trend-world-brief p',
   '.pm-today-trend-content.is-minimal-ui .pm-today-trend-reputation-entry',
   '.pm-today-trend-content.is-minimal-ui .pm-today-trend-faction-card',
   '.pm-today-trend-content.is-minimal-ui .pm-today-trend-event-body',
-]) {
-  const property = selector.endsWith(' p') ? 'margin-top' : 'row-gap';
-  requireCssDeclarations(cssRules, selector, { [property]: 'var(--pm-space-2)' });
-}
+]) requireCssDeclarations(cssRules, selector, { 'row-gap': 'var(--pm-space-2)' });
+for (const selector of [
+  '.pm-today-trend-content.is-minimal-ui .pm-today-trend-world-hero p',
+  '.pm-today-trend-content.is-minimal-ui .pm-today-trend-world-brief p',
+]) requireCssDeclarations(cssRules, selector, {
+  margin: 'var(--pm-space-0)',
+});
 requireCssDeclarations(cssRules, '.pm-today-trend-content.is-minimal-ui .pm-today-trend-event-facts', { 'margin-block-start': 'var(--pm-space-0)' });
 for (const [status, colors] of Object.entries({
   hostile: { background: 'var(--pm-today-trend-relation-hostile)', color: 'var(--pm-today-trend-relation-foreground)' },
@@ -3744,6 +3774,39 @@ for (const [status, background] of Object.entries({
     color: 'var(--pm-today-trend-relation-foreground)',
   });
 }
+const relationStatusSurfaceTokens = {
+  hostile: 'var(--pm-today-trend-relation-hostile)',
+  dislike: 'var(--pm-today-trend-relation-dislike)',
+  neutral: 'var(--pm-today-trend-relation-neutral)',
+  like: 'var(--pm-today-trend-relation-like)',
+  trust: 'var(--pm-today-trend-relation-trust)',
+};
+const relationVisualClasses = ['.pm-today-trend-reputation-mark', '.pm-today-trend-faction-node'];
+for (const rule of cssRules) for (const selector of rule.selectors) {
+  if (!relationVisualClasses.some(className => selector.includes(className))) continue;
+  const status = selector.match(/\[data-status=["'](hostile|dislike|neutral|like|trust)["']\]/)?.[1];
+  if (!status) continue;
+  const expectedSurface = relationStatusSurfaceTokens[status];
+  for (const property of ['background', 'background-color']) {
+    const value = rule.declarations.get(property);
+    if (value && normalizeCssValue(value) !== expectedSurface) {
+      failures.push(`style.css:${rule.line}: ${selector} must use ${expectedSurface} for ${property}`);
+    }
+  }
+  const foreground = rule.declarations.get('color');
+  if (foreground && normalizeCssValue(foreground) !== 'var(--pm-today-trend-relation-foreground)') {
+    failures.push(`style.css:${rule.line}: ${selector} must use the shared relation foreground instead of ${foreground}`);
+  }
+}
+for (const rule of cssRules) if (rule.selectors.some(selector => selector.includes('.pm-today-trend-reputation-meter') || selector.includes('.pm-today-trend-faction-meter'))) {
+  for (const [property, value] of rule.declarations) {
+    if (value.includes('--pm-today-trend-relation-')) {
+      failures.push(`style.css:${rule.line}: meter selector ${rule.selectors.join(', ')} must not consume relation token through ${property}`);
+    }
+  }
+}
+requireText('today-trend-ui.js relation icon', todayTrendUiCode, 'function trendRelationIcon(status)');
+requireText('today-trend-ui.js relation icon', todayTrendUiCode, 'stroke="currentColor"');
 const parseHexColor = value => {
   const match = String(value || '').trim().match(/^#([0-9a-f]{6})$/i);
   if (!match) return null;
@@ -4503,6 +4566,35 @@ requireCssDeclarations(cssRules, '.pm-desktop-community-dock button', {
   background: 'var(--pm-color-accent)',
   color: 'var(--pm-color-on-dark)',
 });
+const sceneSendActionContracts = [
+  {
+    action: 'publish',
+    container: '<div class="pm-scene-composer"><textarea id="pm-scene-post-input" maxlength="4082" placeholder="分享此刻……"></textarea>',
+    selector: '.pm-scene-composer .pm-scene-primary',
+    buttonParts: ['class="pm-scene-primary"', 'aria-label="发布"', 'title="发布"'],
+  },
+  {
+    action: 'send-danmaku',
+    container: '<div class="pm-scene-composer pm-danmaku-input"><textarea id="pm-danmaku-input" rows="1" maxlength="200" placeholder="发个弹幕见证当下"></textarea>',
+    selector: '.pm-scene-composer .pm-scene-primary',
+    buttonParts: ['class="pm-scene-primary"', 'aria-label="发送弹幕"', 'title="发送弹幕"'],
+  },
+  {
+    action: 'post-comment',
+    container: '<div id="pm-comment-composer-${escapeAttr(post.id)}" class="pm-scene-comment-composer" hidden><input id="pm-comment-input-${escapeAttr(post.id)}" maxlength="1082" placeholder="发表你的想法吧">',
+    selector: '.pm-scene-comment-composer button',
+    buttonParts: ['aria-label="发送回复"', 'title="发送回复"'],
+  },
+];
+for (const { action, container, selector, buttonParts } of sceneSendActionContracts) {
+  const button = buttonContaining(`interactive-scene-views.js: ${action} action`, interactiveViewsCode, `data-action="${action}"`);
+  for (const part of buttonParts) requireText(`interactive-scene-views.js: ${action} action`, button, part);
+  requireText(`interactive-scene-views.js: ${action} composer`, interactiveViewsCode, `${container}${button}</div>`);
+  const selectorRule = cssRules.find(rule => rule.selectors.includes(selector)
+    && rule.declarations.get('background')?.startsWith('var(--scene-accent)')
+    && rule.declarations.get('color')?.startsWith('var(--pm-color-on-dark)'));
+  if (!selectorRule) failures.push(`style.css: ${action} must remain bound to a scene-accent send selector`);
+}
 const sceneSendSelectors = [
   '.pm-scene-composer .pm-scene-primary',
   '.pm-scene-comment-composer button',
