@@ -123,6 +123,7 @@ assert.match(String(observationWarning?.[0] || ''), /今日风向自动推演观
     '今日风向观察 rejection 必须被消费并输出诊断，而非形成未处理 rejection');
 
 const todayTrendStyle = (await readFile(new URL('../styles/today-trend.css', import.meta.url), 'utf8')).replace(/;\}/g, '}').replaceAll('../assets/', './assets/');
+const todayTrendCoreStyle = await readFile(new URL('../styles/core.css', import.meta.url), 'utf8');
 const todayTrendRuntimeText = (await Promise.all([
     '../src/today-trend-ui.js',
     '../src/today-trend-world-view.js',
@@ -132,6 +133,46 @@ const todayTrendRuntimeText = (await Promise.all([
     '../manifest.json',
     '../index.js',
 ].map(path => readFile(new URL(path, import.meta.url), 'utf8')))).join('\n');
+const todayTrendCustomProperties = new Map([...`${todayTrendCoreStyle}\n${todayTrendStyle}`.matchAll(/(--[\w-]+):([^;{}]+)/g)].map(([, name, value]) => [name, value.trim()]));
+const resolveTodayTrendToken = (token, depth = 0) => {
+    if (depth >= 8) return token;
+    const value = todayTrendCustomProperties.get(token) || token;
+    const reference = value.match(/^var\((--[\w-]+)\)$/)?.[1];
+    return reference ? resolveTodayTrendToken(reference, depth + 1) : value;
+};
+assert.match(todayTrendStyle, /--pm-today-trend-relation-foreground:var\(--pm-color-on-dark\)/, '今日风向关系 SVG 前景必须保持 --pm-color-on-dark 语义来源');
+const relationForeground = resolveTodayTrendToken('--pm-today-trend-relation-foreground').toLowerCase();
+assert.match(relationForeground, /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/, '今日风向关系 SVG 前景 token 必须能解析为实际 hex 颜色');
+const todayTrendRelationPalette = {
+    light: {
+        hostile: '#C93545', dislike: '#B86430', neutral: '#6B7B8A', like: '#2E7BB5', trust: '#1F8C6E',
+    },
+    dark: {
+        hostile: '#E04A5A', dislike: '#D4783E', neutral: '#6F7F91', like: '#4388C0', trust: '#3A8B73',
+    },
+};
+const hexLuminance = hex => {
+    const digits = hex.slice(1), expanded = digits.length === 3 ? [...digits].map(channel => `${channel}${channel}`).join('') : digits;
+    const channels = expanded.match(/../g).map(channel => parseInt(channel, 16) / 255)
+        .map(channel => channel <= 0.03928 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4);
+    return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2];
+};
+const contrastRatio = (first, second) => {
+    const firstLuminance = hexLuminance(first), secondLuminance = hexLuminance(second);
+    return (Math.max(firstLuminance, secondLuminance) + 0.05) / (Math.min(firstLuminance, secondLuminance) + 0.05);
+};
+for (const [theme, palette] of Object.entries(todayTrendRelationPalette)) {
+    for (const [status, color] of Object.entries(palette)) {
+        assert.match(todayTrendStyle, new RegExp(`--pm-today-trend-relation-${status}:${color}`), `今日风向 ${theme} 主题 ${status} 关系色必须固定为 ${color}`);
+        assert.ok(contrastRatio(color, relationForeground) >= 3, `今日风向 ${theme} 主题 ${status} 关系色与实际 SVG 前景 ${relationForeground} 的对比度必须达到 3:1`);
+    }
+}
+assert.match(todayTrendStyle, /\.pm-today-trend-home\{[^}]*color:var\(--pm-color-text-placeholder\)!important/, '返回桌面图标默认态必须使用浅灰 placeholder 色');
+assert.match(todayTrendStyle, /\.pm-today-trend-tabs button\{[^}]*color:var\(--pm-color-text-placeholder\)/, '底部导航图标默认态必须使用与返回桌面相同的浅灰 placeholder 色');
+assert.match(todayTrendStyle, /\.pm-today-trend-tabs button\[aria-pressed="true"\] svg\{[^}]*color:var\(--pm-color-accent\)/, '底部导航激活态必须使用主题 accent 色');
+assert.doesNotMatch(todayTrendStyle, /\.pm-today-trend-tabs button svg\{[^}]*stroke-width:/, '底部导航 SVG 不得覆盖返回桌面所用的通用 2px 线宽');
+assert.doesNotMatch(todayTrendStyle, /\.pm-today-trend-tabs[^{}]*svg\{[^}]*transform:/, '底部导航 SVG 不得使用独立 transform 覆盖返回桌面图标几何');
+assert.match(todayTrendStyle, /\.pm-today-trend-content\.is-minimal-ui \.pm-today-trend-faction-entry-head \.pm-today-trend-relation-slot>\.pm-today-trend-faction-node\{[^}]*background:transparent[^}]*border:0[^}]*box-shadow:none[^}]*color:inherit/, '极简势力节点外层必须透明且不得显示大圆背景');
 for (const variable of ['--pm-today-trend-report-rule']) {
     assert.match(todayTrendStyle, new RegExp(`${variable}:`), `今日风向重排必须声明 ${variable} 视觉变量`);
 }
@@ -184,11 +225,11 @@ assert.doesNotMatch(todayTrendStyle, /pm-today-trend-content\.is-(?:reputation|f
 for (const [selector, padding] of [
     ['pm-today-trend-world-hero,\\.pm-today-trend-world-brief', 'var\\(--pm-space-0\\)'],
     ['pm-today-trend-reputation-entry', 'var\\(--pm-space-0\\)'],
-    ['pm-today-trend-faction-card', 'var\\(--pm-space-0\\)'],
     ['pm-today-trend-event-card', 'var\\(--pm-space-3\\)'],
 ]) {
     assert.match(todayTrendStyle, new RegExp(`${selector}\\{[^}]*padding:${padding}[^}]*border:0[^}]*border-radius:var\\(--pm-radius-card\\)[^}]*background:transparent[^}]*box-shadow:none`), `${selector} 必须消费统一的无底无框卡片外壳与约定内缩`);
 }
+assert.match(todayTrendStyle, /pm-today-trend-faction-card\{[^}]*padding:var\(--pm-space-3\)[^}]*border:1px solid var\(--pm-color-border-subtle\)[^}]*border-radius:var\(--pm-radius-card\)[^}]*background:var\(--pm-color-surface-card\)[^}]*box-shadow:none/, '势力图谱卡片必须使用实色卡片外壳与 12px 内缩（参考 TASKOW 卡片化试点）');
 const entryRail = 'display:grid;grid-template-columns:var(--pm-today-trend-relation-node-size) var(--pm-space-2) minmax(0,1fr);row-gap:var(--pm-space-2)';
 for (const [selector, prefix] of [
     ['世界态势条目', '.pm-today-trend-world-hero,.pm-today-trend-world-brief{box-sizing:border-box;'],
@@ -891,7 +932,6 @@ assert.match(todayTrendStyle, /pm-today-trend-faction-tree\[data-depth\]:not\(\[
 assert.match(todayTrendStyle, /pm-today-trend-faction-tree\[data-depth\]:not\(\[data-depth="0"\]\):not\(\[data-depth="1"\]\)\{[^}]*margin-left:var\(--pm-space-0\)[^}]*padding-left:var\(--pm-space-0\)/, '势力深层级必须停止累计缩进以避免窄屏溢出');
 assert.match(todayTrendStyle, /pm-today-trend-faction-entry-head \.pm-today-trend-relation-slot>\.pm-today-trend-faction-node\{[^}]*width:var\(--pm-today-trend-relation-node-size\)[^}]*height:var\(--pm-today-trend-relation-node-size\)/, '势力图谱普通模式节点必须与世界态势节点共享可见尺寸');
 assert.match(todayTrendStyle, /pm-today-trend-faction-entry-head>b\{[^}]*flex:1[^}]*overflow-wrap:anywhere[^}]*font-size:var\(--pm-font-size-subtitle\)[^}]*line-height:var\(--pm-line-height-control\)/, '势力图谱标题行必须为图标、标题和操作保留稳定布局并允许长标题断行');
-assert.match(todayTrendStyle, /pm-today-trend-faction-card\{[^}]*padding:var\(--pm-space-0\)[^}]*border:0[^}]*border-radius:var\(--pm-radius-card\)[^}]*background:transparent[^}]*box-shadow:none/, '势力条目必须使用无内缩的无底无框卡片外壳');
 assert.doesNotMatch(todayTrendStyle, /pm-today-trend-faction-detail\{[^}]*border-left|pm-today-trend-faction-detail-row::before/, '势力详情不得恢复轨道线或菱形连接器');
 assert.match(factionHtml, /pm-today-trend-faction-entry-head[\s\S]*?pm-today-trend-faction-node[\s\S]*?<b>红队<\/b>/, '势力图谱节点必须直接归入条目标题行');
 assert.match(factionHtml, /pm-today-trend-faction-entry-body[\s\S]*?pm-today-trend-faction-summary/, '势力图谱正文必须位于标题行之后');
