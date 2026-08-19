@@ -1,32 +1,35 @@
 # 项目进度
 - Project: mobile-ui-private
-- Updated At: 2026-08-19T06:23:22.347Z
+- Updated At: 2026-08-19T08:48:39.498Z
 - Status: active
-- Phase: maintenance
+- Phase: review
 
 ## 当前摘要
 
 <!-- LIMCODE_PROGRESS_SUMMARY_START -->
 - 当前进度：3/3 个里程碑已完成；最新：trend-svg-mapping-release
-- 当前焦点：今日风向条目标题与摘要轨道收敛已完成，等待真实宿主视觉回归
-- 最新结论：world/reputation/faction 条目已统一为 24px 节点列、8px 间隔和文本列；world 条目移除了额外内缩。构建、语法、today-trend、contracts、全量 check 与 diff 检查均 exit 0；独立验收复验为 pass，无 blocking/major。
-- 下一步：在真实 SillyTavern 宿主补跑亮暗主题、普通/极简、320px、长标题/摘要、嵌套势力、键盘焦点和 44px 触控命中验证；未完成前不宣称视觉闭环。
+- 当前焦点：今日风向导航与关系状态视觉修正已完成验收
+- 最新结论：三项 UI 修正、契约防回归、构建、语法、专项检查、全量门禁及独立验收均通过。负向变异验证确认非法关系前景与 tabs SVG 几何覆盖会被双 checker 拒绝。
+- 下一步：后续按项目发布流程处理；本轮无待修复阻塞项
 <!-- LIMCODE_PROGRESS_SUMMARY_END -->
 
 ## 关联文档
 
 <!-- LIMCODE_PROGRESS_ARTIFACTS_START -->
 - 设计：`.limcode/design/today-trend-entry-content-rail-alignment.md`
-- 计划：`.limcode/plans/today-trend-entry-content-rail-alignment.md`
+- 计划：`.limcode/plans/today-trend-navigation-relation-visual-fix.md`
 <!-- LIMCODE_PROGRESS_ARTIFACTS_END -->
 
 ## 当前 TODO 快照
 
 <!-- LIMCODE_PROGRESS_TODOS_START -->
-- [x] 冻结当前条目 DOM、完整 CSS 层叠与既有 minimal/关系节点契约，确认本次仅影响样式轨道。  `#today-trend-rail-baseline`
-- [x] 先在契约检查中锁定世界、风评与势力条目的节点—标题—摘要三列轨道、节奏与非回归边界。  `#today-trend-rail-contracts`
-- [x] 以 CSS Grid 收敛三类条目的标题与摘要文本轨道，移除世界态势无语义内缩和死覆盖规则。  `#today-trend-rail-css`
-- [x] 完成构建、专项/全量检查、diff 卫生、窄屏与可访问性回归，并接受独立验收。  `#today-trend-rail-validation`
+- [x] 记录并隔离当前工作树中既有的 .limcode 文档改动，确认目标 CSS、关系视图和契约脚本的基线。  `#verify-baseline`
+- [x] 让今日风向底部导航默认图标与返回桌面图标使用相同线宽与浅灰层级，保留当前激活项的主题色表达。  `#align-nav-icons`
+- [x] 用已确认的亮暗双主题、与主题蓝协调且保持图标对比度的五档关系色替换旧脏色。  `#refresh-relation-palette`
+- [x] 在极简势力图谱中显式覆盖普通模式节点底色，只保留 24px 可见关系圆及透明 44px 点击命中区。  `#fix-minimal-faction-node`
+- [x] 补充今日风向契约断言，固定导航图标一致性、关系色双主题定义与极简势力节点无外层底色的边界。  `#add-regression-contracts`
+- [x] 修复验收专家指出的契约缺口：锁定 --pm-today-trend-relation-foreground 的原始语义声明为 var(--pm-color-on-dark)，同时保留实际解析后的对比度计算，并禁止所有命中 .pm-today-trend-tabs 的 SVG 规则使用 stroke-width 或 transform 覆盖。  `#repair-acceptance-gaps`
+- [x] 运行构建、语法、今日风向和 CSS 契约检查、完整门禁及 diff 检查，并在亮暗、普通/极简、320px 宽度下完成视觉回归。  `#validate-and-review`
 <!-- LIMCODE_PROGRESS_TODOS_END -->
 
 ## 项目里程碑
@@ -74,17 +77,6 @@
 ## 最近更新
 
 <!-- LIMCODE_PROGRESS_LOG_START -->
-- 2026-08-16T17:00:02.695Z | artifact_changed | plan | 同步计划文档：.limcode/plans/community-today-trend-visual-harmony.md
-- 2026-08-16T17:18:48.556Z | artifact_changed | plan | 同步计划 TODO 快照：.limcode/plans/community-today-trend-visual-harmony.md
-- 2026-08-16T18:17:45.677Z | milestone_recorded | community-today-trend-visual-implementation | 社区三类发送按钮、关系 slot/44px 命中区、五档局部关系色和 CSS 契约已实现；check:contracts 已通过。
-- 2026-08-16T18:17:45.895Z | artifact_changed | plan | 同步计划 TODO 快照：.limcode/plans/community-today-trend-visual-harmony.md
-- 2026-08-16T18:59:21.075Z | risk_changed | community-today-trend-visual-acceptance | 独立 Acceptance Expert 第8轮仍返回 major；已停止自动修复循环，等待助手决定后续范围。
-- 2026-08-16T18:59:21.075Z | milestone_recorded | community-today-trend-visual-validation | 单独重跑 check:contracts、npm.cmd run check、git diff --check 与 git diff --cached --check 均获得 exit 0；宿主视觉/触控仍未执行。
-- 2026-08-16T18:59:21.334Z | artifact_changed | plan | 同步计划 TODO 快照：.limcode/plans/community-today-trend-visual-harmony.md
-- 2026-08-16T19:11:03.273Z | risk_changed | community-today-trend-visual-contract-boundary-followup | 助手明确接受逐动作契约与完整非目标 diff 边界证据缺口延期至下次迭代；真实宿主视觉与触控验证仍未执行。
-- 2026-08-16T19:11:03.273Z | updated | community-today-trend-visual-acceptance | 助手已授权提交并推送当前专项。
-- 2026-08-16T19:11:03.637Z | artifact_changed | plan | 同步计划 TODO 快照：.limcode/plans/community-today-trend-visual-harmony.md
-- 2026-08-16T19:15:05.010Z | artifact_changed | plan | 同步计划 TODO 快照：.limcode/plans/community-today-trend-visual-harmony.md
 - 2026-08-19T05:37:07.920Z | artifact_changed | design | 同步设计文档：.limcode/design/today-trend-entry-content-rail-alignment.md
 - 2026-08-19T05:39:26.713Z | artifact_changed | plan | 同步计划文档：.limcode/plans/today-trend-entry-content-rail-alignment.md
 - 2026-08-19T05:42:36.580Z | updated | today-trend-rail-baseline | 已冻结今日风向 world/reputation/faction 条目 DOM、CSS 覆盖、minimal 44px 关系节点与势力嵌套缩进边界，进入轨道契约阶段。
@@ -94,6 +86,17 @@
 - 2026-08-19T06:03:05.696Z | artifact_changed | plan | 同步计划 TODO 快照：.limcode/plans/today-trend-entry-content-rail-alignment.md
 - 2026-08-19T06:23:22.257Z | milestone_recorded | today-trend-entry-content-rail-alignment | 条目内容轨道专项完成：CSS Grid、专项/全量契约及构建通过；独立 Acceptance Expert 复验 pass，无 blocking/major；真实 SillyTavern 宿主视觉/触控/a11y 待补。
 - 2026-08-19T06:23:22.347Z | artifact_changed | plan | 同步计划 TODO 快照：.limcode/plans/today-trend-entry-content-rail-alignment.md
+- 2026-08-19T06:34:10.855Z | risk_changed | today-trend-main-push | 本地提交 87d141c 未能推送：HTTPS 多路径均无法连接 GitHub，SSH 无可用 publickey；已停止重复重试，等待网络/认证恢复。
+- 2026-08-19T06:35:13.924Z | risk_changed | today-trend-main-push | 补充诊断：强制 HTTP/1.1 的 push 仍无法连接 github.com:443；阻塞归因进一步确认是网络/认证环境，不是本地提交或代码门禁。
+- 2026-08-19T06:40:37.985Z | milestone_recorded | today-trend-main-push | 本地提交 87d141c 已推送至 origin/main，并通过 ls-remote 确认 refs/heads/main 与本地 HEAD 一致；此前网络阻塞已解除。
+- 2026-08-19T07:22:43.553Z | artifact_changed | plan | 同步计划文档：.limcode/plans/today-trend-navigation-relation-visual-fix.md
+- 2026-08-19T07:36:09.327Z | artifact_changed | plan | 同步计划 TODO 快照：.limcode/plans/today-trend-navigation-relation-visual-fix.md
+- 2026-08-19T07:38:57.009Z | milestone_recorded | today-trend-visual-fix | 完成基线侦察：现有非目标改动仅为 .limcode 文档；导航线宽、关系局部色 token、极简势力节点层叠问题已定位。
+- 2026-08-19T07:46:30.136Z | milestone_recorded | today-trend-visual-fix-implementation | 专项实现完成：底部导航继承通用 SVG 线宽，关系色板更新，极简势力外层大圆覆盖；专项检查与 CSS 契约已通过。
+- 2026-08-19T07:46:30.172Z | artifact_changed | plan | 同步计划 TODO 快照：.limcode/plans/today-trend-navigation-relation-visual-fix.md
+- 2026-08-19T08:44:52.923Z | artifact_changed | plan | 同步计划 TODO 快照：.limcode/plans/today-trend-navigation-relation-visual-fix.md
+- 2026-08-19T08:48:39.337Z | artifact_changed | plan | 同步计划 TODO 快照：.limcode/plans/today-trend-navigation-relation-visual-fix.md
+- 2026-08-19T08:48:39.498Z | milestone_recorded | today-trend-navigation-relation-visual-fix | 实现与验收完成：底部导航图标统一通用 2px 线宽并保留激活 accent；关系色板更新并通过实际前景对比度门禁；极简势力外层大圆移除，保留透明 44px 命中区与 24px 状态圆；独立验收 accepted。
 <!-- LIMCODE_PROGRESS_LOG_END -->
 
 <!-- LIMCODE_PROGRESS_METADATA_START -->
@@ -103,36 +106,51 @@
   "projectId": "mobile-ui-private",
   "projectName": "mobile-ui-private",
   "createdAt": "2026-08-14T05:55:56.978Z",
-  "updatedAt": "2026-08-19T06:23:22.347Z",
+  "updatedAt": "2026-08-19T08:48:39.498Z",
   "status": "active",
-  "phase": "maintenance",
-  "currentFocus": "今日风向条目标题与摘要轨道收敛已完成，等待真实宿主视觉回归",
-  "latestConclusion": "world/reputation/faction 条目已统一为 24px 节点列、8px 间隔和文本列；world 条目移除了额外内缩。构建、语法、today-trend、contracts、全量 check 与 diff 检查均 exit 0；独立验收复验为 pass，无 blocking/major。",
+  "phase": "review",
+  "currentFocus": "今日风向导航与关系状态视觉修正已完成验收",
+  "latestConclusion": "三项 UI 修正、契约防回归、构建、语法、专项检查、全量门禁及独立验收均通过。负向变异验证确认非法关系前景与 tabs SVG 几何覆盖会被双 checker 拒绝。",
   "currentBlocker": null,
-  "nextAction": "在真实 SillyTavern 宿主补跑亮暗主题、普通/极简、320px、长标题/摘要、嵌套势力、键盘焦点和 44px 触控命中验证；未完成前不宣称视觉闭环。",
+  "nextAction": "后续按项目发布流程处理；本轮无待修复阻塞项",
   "activeArtifacts": {
     "design": ".limcode/design/today-trend-entry-content-rail-alignment.md",
-    "plan": ".limcode/plans/today-trend-entry-content-rail-alignment.md"
+    "plan": ".limcode/plans/today-trend-navigation-relation-visual-fix.md"
   },
   "todos": [
     {
-      "id": "today-trend-rail-baseline",
-      "content": "冻结当前条目 DOM、完整 CSS 层叠与既有 minimal/关系节点契约，确认本次仅影响样式轨道。",
+      "id": "verify-baseline",
+      "content": "记录并隔离当前工作树中既有的 .limcode 文档改动，确认目标 CSS、关系视图和契约脚本的基线。",
       "status": "completed"
     },
     {
-      "id": "today-trend-rail-contracts",
-      "content": "先在契约检查中锁定世界、风评与势力条目的节点—标题—摘要三列轨道、节奏与非回归边界。",
+      "id": "align-nav-icons",
+      "content": "让今日风向底部导航默认图标与返回桌面图标使用相同线宽与浅灰层级，保留当前激活项的主题色表达。",
       "status": "completed"
     },
     {
-      "id": "today-trend-rail-css",
-      "content": "以 CSS Grid 收敛三类条目的标题与摘要文本轨道，移除世界态势无语义内缩和死覆盖规则。",
+      "id": "refresh-relation-palette",
+      "content": "用已确认的亮暗双主题、与主题蓝协调且保持图标对比度的五档关系色替换旧脏色。",
       "status": "completed"
     },
     {
-      "id": "today-trend-rail-validation",
-      "content": "完成构建、专项/全量检查、diff 卫生、窄屏与可访问性回归，并接受独立验收。",
+      "id": "fix-minimal-faction-node",
+      "content": "在极简势力图谱中显式覆盖普通模式节点底色，只保留 24px 可见关系圆及透明 44px 点击命中区。",
+      "status": "completed"
+    },
+    {
+      "id": "add-regression-contracts",
+      "content": "补充今日风向契约断言，固定导航图标一致性、关系色双主题定义与极简势力节点无外层底色的边界。",
+      "status": "completed"
+    },
+    {
+      "id": "repair-acceptance-gaps",
+      "content": "修复验收专家指出的契约缺口：锁定 --pm-today-trend-relation-foreground 的原始语义声明为 var(--pm-color-on-dark)，同时保留实际解析后的对比度计算，并禁止所有命中 .pm-today-trend-tabs 的 SVG 规则使用 stroke-width 或 transform 覆盖。",
+      "status": "completed"
+    },
+    {
+      "id": "validate-and-review",
+      "content": "运行构建、语法、今日风向和 CSS 契约检查、完整门禁及 diff 检查，并在亮暗、普通/极简、320px 宽度下完成视觉回归。",
       "status": "completed"
     }
   ],
@@ -212,72 +230,6 @@
   ],
   "log": [
     {
-      "at": "2026-08-16T17:00:02.695Z",
-      "type": "artifact_changed",
-      "refId": "plan",
-      "message": "同步计划文档：.limcode/plans/community-today-trend-visual-harmony.md"
-    },
-    {
-      "at": "2026-08-16T17:18:48.556Z",
-      "type": "artifact_changed",
-      "refId": "plan",
-      "message": "同步计划 TODO 快照：.limcode/plans/community-today-trend-visual-harmony.md"
-    },
-    {
-      "at": "2026-08-16T18:17:45.677Z",
-      "type": "milestone_recorded",
-      "refId": "community-today-trend-visual-implementation",
-      "message": "社区三类发送按钮、关系 slot/44px 命中区、五档局部关系色和 CSS 契约已实现；check:contracts 已通过。"
-    },
-    {
-      "at": "2026-08-16T18:17:45.895Z",
-      "type": "artifact_changed",
-      "refId": "plan",
-      "message": "同步计划 TODO 快照：.limcode/plans/community-today-trend-visual-harmony.md"
-    },
-    {
-      "at": "2026-08-16T18:59:21.075Z",
-      "type": "risk_changed",
-      "refId": "community-today-trend-visual-acceptance",
-      "message": "独立 Acceptance Expert 第8轮仍返回 major；已停止自动修复循环，等待助手决定后续范围。"
-    },
-    {
-      "at": "2026-08-16T18:59:21.075Z",
-      "type": "milestone_recorded",
-      "refId": "community-today-trend-visual-validation",
-      "message": "单独重跑 check:contracts、npm.cmd run check、git diff --check 与 git diff --cached --check 均获得 exit 0；宿主视觉/触控仍未执行。"
-    },
-    {
-      "at": "2026-08-16T18:59:21.334Z",
-      "type": "artifact_changed",
-      "refId": "plan",
-      "message": "同步计划 TODO 快照：.limcode/plans/community-today-trend-visual-harmony.md"
-    },
-    {
-      "at": "2026-08-16T19:11:03.273Z",
-      "type": "risk_changed",
-      "refId": "community-today-trend-visual-contract-boundary-followup",
-      "message": "助手明确接受逐动作契约与完整非目标 diff 边界证据缺口延期至下次迭代；真实宿主视觉与触控验证仍未执行。"
-    },
-    {
-      "at": "2026-08-16T19:11:03.273Z",
-      "type": "updated",
-      "refId": "community-today-trend-visual-acceptance",
-      "message": "助手已授权提交并推送当前专项。"
-    },
-    {
-      "at": "2026-08-16T19:11:03.637Z",
-      "type": "artifact_changed",
-      "refId": "plan",
-      "message": "同步计划 TODO 快照：.limcode/plans/community-today-trend-visual-harmony.md"
-    },
-    {
-      "at": "2026-08-16T19:15:05.010Z",
-      "type": "artifact_changed",
-      "refId": "plan",
-      "message": "同步计划 TODO 快照：.limcode/plans/community-today-trend-visual-harmony.md"
-    },
-    {
       "at": "2026-08-19T05:37:07.920Z",
       "type": "artifact_changed",
       "refId": "design",
@@ -330,21 +282,87 @@
       "type": "artifact_changed",
       "refId": "plan",
       "message": "同步计划 TODO 快照：.limcode/plans/today-trend-entry-content-rail-alignment.md"
+    },
+    {
+      "at": "2026-08-19T06:34:10.855Z",
+      "type": "risk_changed",
+      "refId": "today-trend-main-push",
+      "message": "本地提交 87d141c 未能推送：HTTPS 多路径均无法连接 GitHub，SSH 无可用 publickey；已停止重复重试，等待网络/认证恢复。"
+    },
+    {
+      "at": "2026-08-19T06:35:13.924Z",
+      "type": "risk_changed",
+      "refId": "today-trend-main-push",
+      "message": "补充诊断：强制 HTTP/1.1 的 push 仍无法连接 github.com:443；阻塞归因进一步确认是网络/认证环境，不是本地提交或代码门禁。"
+    },
+    {
+      "at": "2026-08-19T06:40:37.985Z",
+      "type": "milestone_recorded",
+      "refId": "today-trend-main-push",
+      "message": "本地提交 87d141c 已推送至 origin/main，并通过 ls-remote 确认 refs/heads/main 与本地 HEAD 一致；此前网络阻塞已解除。"
+    },
+    {
+      "at": "2026-08-19T07:22:43.553Z",
+      "type": "artifact_changed",
+      "refId": "plan",
+      "message": "同步计划文档：.limcode/plans/today-trend-navigation-relation-visual-fix.md"
+    },
+    {
+      "at": "2026-08-19T07:36:09.327Z",
+      "type": "artifact_changed",
+      "refId": "plan",
+      "message": "同步计划 TODO 快照：.limcode/plans/today-trend-navigation-relation-visual-fix.md"
+    },
+    {
+      "at": "2026-08-19T07:38:57.009Z",
+      "type": "milestone_recorded",
+      "refId": "today-trend-visual-fix",
+      "message": "完成基线侦察：现有非目标改动仅为 .limcode 文档；导航线宽、关系局部色 token、极简势力节点层叠问题已定位。"
+    },
+    {
+      "at": "2026-08-19T07:46:30.136Z",
+      "type": "milestone_recorded",
+      "refId": "today-trend-visual-fix-implementation",
+      "message": "专项实现完成：底部导航继承通用 SVG 线宽，关系色板更新，极简势力外层大圆覆盖；专项检查与 CSS 契约已通过。"
+    },
+    {
+      "at": "2026-08-19T07:46:30.172Z",
+      "type": "artifact_changed",
+      "refId": "plan",
+      "message": "同步计划 TODO 快照：.limcode/plans/today-trend-navigation-relation-visual-fix.md"
+    },
+    {
+      "at": "2026-08-19T08:44:52.923Z",
+      "type": "artifact_changed",
+      "refId": "plan",
+      "message": "同步计划 TODO 快照：.limcode/plans/today-trend-navigation-relation-visual-fix.md"
+    },
+    {
+      "at": "2026-08-19T08:48:39.337Z",
+      "type": "artifact_changed",
+      "refId": "plan",
+      "message": "同步计划 TODO 快照：.limcode/plans/today-trend-navigation-relation-visual-fix.md"
+    },
+    {
+      "at": "2026-08-19T08:48:39.498Z",
+      "type": "milestone_recorded",
+      "refId": "today-trend-navigation-relation-visual-fix",
+      "message": "实现与验收完成：底部导航图标统一通用 2px 线宽并保留激活 accent；关系色板更新并通过实际前景对比度门禁；极简势力外层大圆移除，保留透明 44px 命中区与 24px 状态圆；独立验收 accepted。"
     }
   ],
   "stats": {
     "milestonesTotal": 3,
     "milestonesCompleted": 3,
-    "todosTotal": 4,
-    "todosCompleted": 4,
+    "todosTotal": 7,
+    "todosCompleted": 7,
     "todosInProgress": 0,
     "todosCancelled": 0,
     "activeRisks": 2
   },
   "render": {
     "rendererVersion": 1,
-    "generatedAt": "2026-08-19T06:23:22.347Z",
-    "bodyHash": "sha256:abcb60b62fe814e02394012aa136b0a8a3e9bc67aba5a3d787357fd9750c4801"
+    "generatedAt": "2026-08-19T08:48:39.498Z",
+    "bodyHash": "sha256:900f68737cb7c582c3ab0f466fdcefeeb02d9ebb8701edc705a2789224881293"
   }
 }
 <!-- LIMCODE_PROGRESS_METADATA_END -->

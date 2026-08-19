@@ -7,7 +7,7 @@
 <!-- LIMCODE_TODO_LIST_START -->
 - [x] 独立验收已完成；助手明确接受逐动作契约与非目标边界证据的已知 major 延后至下次补齐，并授权当前专项提交与推送。  `#community-today-trend-visual-acceptance`
 - [x] 将 feed 发布、live 弹幕和评论回复的场景内提交按钮收敛到 --scene-accent，不影响全局发送入口。  `#community-today-trend-visual-community-send`
-- [ ] 下次迭代补齐社区三类发送 data-action 的逐动作契约、关系视觉污染负例，以及非目标模型/store/version/prompt/persistence 的完整 diff 边界证据。  `#community-today-trend-visual-contract-boundary-followup`
+- [ ] 补齐社区三类发送 data-action 的逐动作契约、关系视觉污染负例，以及非目标模型/store/version/prompt/persistence 的完整 diff 边界证据。  `#community-today-trend-visual-contract-boundary-followup`
 - [x] 先扩展 CSS/token 契约，锁定三类社区提交动作、五档关系视觉色、普通/极简几何与禁止泄漏范围。  `#community-today-trend-visual-contracts`
 - [x] 补齐社区发送控件、--scene-accent 运行时写入、全部 .pm-scene-primary 消费点及既有视觉设计的精确证据，确认改动边界。  `#community-today-trend-visual-recon`
 - [x] 登记并应用五档低饱和局部关系色，保证 SVG 的 currentColor 前景统一为白色且不影响 meter。  `#community-today-trend-visual-relation-colors`

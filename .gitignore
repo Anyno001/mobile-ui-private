@@ -18,6 +18,9 @@ TianyinXiaojian_Backup_*.json
 *TianyinXiaojian*Backup*.json
 backups/
 
+# Figma design assets; keep the entire local package out of GitHub
+/TASKOW任务管理应用程序UI设计Figma素材/
+
 # User-supplied external reference material; must remain local only
 /用户提供的外部资料（不需要推送）/
 
