@@ -212,7 +212,7 @@ assert.doesNotMatch(todayTrendStyle, /\.pm-today-trend-floor-cancel\{[^}]*font:i
 assert.match(todayTrendStyle, /\.pm-today-trend-floor\[data-state="failed"\] \.pm-today-trend-floor-status\{[^}]*color:var\(--pm-color-danger\)/, '同步失败状态必须使用失败反馈色');
 assert.match(todayTrendStyle, /\.pm-today-trend-floor-reading\{[^}]*white-space:nowrap/, '#号与楼层数值必须保持单行完整显示');
 assert.match(todayTrendRuntimeText, /pm-today-trend-head-tools">\$\{menu\}\$\{asideHtml\}/, '模块头必须先渲染三点菜单，再在其下方渲染楼层');
-assert.match(todayTrendStyle, /\.pm-today-trend-dynamics\{gap:var\(--pm-space-1\);?\}/, '事件追踪标题、标签页与内容必须使用收紧后的统一垂直间距');
+assert.match(todayTrendStyle, /\.pm-today-trend-dynamics\{gap:var\(--pm-space-5\);?\}/, '事件追踪标题、标签页与内容必须使用宽松垂直间距');
 assert.match(todayTrendStyle, /\.pm-today-trend-event-list\{[^}]*padding:var\(--pm-space-0-5\) var\(--pm-space-0\) var\(--pm-space-1\)/, '事件追踪列表顶部留白必须同步收紧');
 assert.match(compactTodayTrendMedia, /pm-today-trend-module-head\{gap:var\(--pm-space-1\)/, '320px 窄屏必须缩小标题与工具区间距并保留按钮命中区');
 assert.match(todayTrendStyle, /\.pm-today-trend-menu-action,\.pm-today-trend-menu-close\{flex-basis:var\(--pm-size-control-compact\);width:var\(--pm-size-control-compact\);min-height:var\(--pm-size-control-compact\)/, '320px 菜单按钮不得缩回 28px 命中区');
@@ -785,7 +785,7 @@ assert.doesNotMatch(worldPanelsHtml, /pm-today-trend-world-brief-tail|\bis-(?:le
 assert.match(worldHtml, /pm-today-trend-meter[\s\S]*?SIGNALS[\s\S]*?BRIEFS/, '世界态势 meta 必须用英文装饰标签映射真实项目与摘要数量');
 assert.doesNotMatch(todayTrendStyle, /pm-today-trend-world-(?:signals::before|hero\.has-signals::after|brief\.is-right::after)/, '世界态势不得恢复连续轨道线');
 assert.match(todayTrendStyle, /pm-today-trend-world \.pm-today-trend-meter\{margin-top:var\(--pm-today-trend-world-meta-offset\)/, '世界态势 meta 与标题的间距必须由原型映射 token 控制');
-assert.match(todayTrendStyle, /pm-today-trend-world\{flex:0 0 auto;gap:var\(--pm-space-2\);padding:var\(--pm-space-0\) var\(--pm-space-0\) var\(--pm-space-5\)/, '世界态势模块头撑满全宽，卡片区域保持底部内边距');
+assert.match(todayTrendStyle, /pm-today-trend-world\{flex:0 0 auto;gap:var\(--pm-space-5\);padding:var\(--pm-space-0\) var\(--pm-space-5\) var\(--pm-space-5\)/, '世界态势宽松间距与边距');
 assert.match(todayTrendStyle, /pm-today-trend-content\.is-world\{[^}]*padding:var\(--pm-space-0\) var\(--pm-space-0\) var\(--pm-space-px-36\)/, '世界态势必须保留底部导航安全区');
 assert.match(todayTrendStyle, /--pm-today-trend-report-title-size:calc\(var\(--pm-font-size-title\) \+ var\(--pm-space-2\)\)/, '其他三个模块的大标题必须使用收紧后的统一字号');
 assert.match(todayTrendStyle, /--pm-today-trend-world-title-size:calc\(var\(--pm-font-size-title\) \+ var\(--pm-space-2\)\)/, '世界态势模块标题必须与其他三个模块使用同一字号');
