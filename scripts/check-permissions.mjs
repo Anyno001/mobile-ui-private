@@ -13,7 +13,7 @@ import {
     normalizeRecipeStore, setRecipeRegionPreference, upsertRecipeMeal,
 } from '../src/calendar-recipe-model.js';
 import {
-    normalizeOutfitStore, updateOutfitProfile, upsertOutfit,
+    normalizeOutfitStore, OUTFIT_SELF_SUBJECT, updateOutfitProfile, upsertOutfit,
 } from '../src/calendar-outfit-model.js';
 import { allocateContextBudget, estimateContextTokens, normalizeBudgetConfig, BUDGET_SOURCES, DEFAULT_BUDGET_CONFIG } from '../src/budget.js';
 
@@ -1024,6 +1024,53 @@ assert.match(outfitPrompt.content, /昨日风衣|今日针织衫|明日短靴/);
 assert.doesNotMatch(outfitPrompt.content, /窗口外前日穿搭|窗口外后日穿搭/,
     '穿搭注入必须严格限制 -1...+1');
 assert.equal(outfitPlan.diagnostics.outfitEnabled, true);
+assert.equal(outfitPlan.prompts.filter(prompt => prompt.source === 'outfit').length, 1,
+    '<user> 没有窗口内 OOTD 时不得生成空提示词，也不得影响普通角色穿搭注入');
+let selfOutfitProfile = {};
+for (const [offset, text] of [
+    [-1, '昨日用户外套'], [0, '今日用户衬衫'], [1, '明日用户风衣'],
+]) {
+    selfOutfitProfile = upsertOutfit(selfOutfitProfile, {
+        date: calendarDateRangeKeys(new Date(`${storyDate}T12:00:00`), offset, offset)[0], text, source: 'manual',
+    }, 1);
+}
+const selfOutfitStore = normalizeOutfitStore(updateOutfitProfile(outfitStore, 'story-a', OUTFIT_SELF_SUBJECT, () => selfOutfitProfile));
+const selfOutfitPlan = buildContextInjectionPrompts({
+    ...baseInjectionInput,
+    injectionConfig: { calendar: { position: 2, depth: 4 } },
+    budgetConfig: {
+        targetTokens: 2000,
+        sourceWeights: { phone: 0, community: 0, calendar: 1, todayTrend: 0 },
+        sourcePriority: ['calendar', 'phone', 'community', 'todayTrend'], redistributeUnused: true,
+    },
+    calendarStore: { version: 1, scopes: { 'story-a': {
+        baseDate: storyDate, events: {},
+        injectionScheduleEnabled: false, injectionWeatherEnabled: false, injectionCycleEnabled: false,
+        injectionRecipeEnabled: false, injectionOutfitEnabled: true,
+    } } },
+    calendarOutfits: selfOutfitStore,
+});
+const selfOutfitPrompts = selfOutfitPlan.prompts.filter(prompt => prompt.source === 'outfit');
+const selfOutfitPrompt = selfOutfitPrompts.find(prompt => prompt.key === 'PHONE_SMS_MEMORY:outfit:story-a%3A%3A__self__');
+assert.equal(selfOutfitPrompts.length, 2, '单聊必须同时注入 <user> 与当前角色的窗口内 OOTD');
+assert.ok(selfOutfitPrompt, '<user> 有窗口内 OOTD 时必须生成独立穿搭 prompt');
+assert.match(selfOutfitPrompt.content, /\[角色穿搭\][\s\S]*角色：<user>[\s\S]*昨日用户外套[\s\S]*今日用户衬衫[\s\S]*明日用户风衣/);
+assert.equal(selfOutfitPrompt.position, 2, '<user> 穿搭必须沿用日历注入位置');
+assert.equal(selfOutfitPrompt.depth, 4, '<user> 穿搭必须沿用日历注入深度');
+assert.equal(new Set(selfOutfitPrompts.map(prompt => prompt.key)).size, 2, '<user> 与当前角色的穿搭 prompt key 不得冲突');
+const constrainedSelfOutfitPlan = buildContextInjectionPrompts({
+    ...baseInjectionInput,
+    injectionConfig: { calendar: { position: 2, depth: 4 } },
+    budgetConfig: {
+        targetTokens: 16,
+        sourceWeights: { phone: 0, community: 0, calendar: 1, todayTrend: 0 },
+        sourcePriority: ['calendar', 'phone', 'community', 'todayTrend'], redistributeUnused: false,
+    },
+    calendarStore: { version: 1, scopes: { 'story-a': { baseDate: storyDate, events: {}, injectionOutfitEnabled: true } } },
+    calendarOutfits: selfOutfitStore,
+});
+assert.deepEqual(constrainedSelfOutfitPlan.prompts.filter(prompt => prompt.source === 'outfit'), [],
+    '低于完整主体标签和单日 OOTD 的预算不得注入残缺穿搭提示词');
 let bobOutfitProfile = {};
 bobOutfitProfile = upsertOutfit(bobOutfitProfile, {
     date: storyDate, text: 'Bob 的群聊夹克', source: 'manual',
@@ -1057,6 +1104,32 @@ assert.ok(groupOutfitPrompts.some(prompt => /角色：Alice/.test(prompt.content
 assert.ok(groupOutfitPrompts.some(prompt => /角色：Bob/.test(prompt.content) && /Bob 的群聊夹克/.test(prompt.content)));
 assert.equal(groupOutfitPrompts.some(prompt => /宿主角色/.test(prompt.content)), false,
     '群聊穿搭不得回退到承载群聊的宿主角色名');
+const groupSelfOutfitStore = normalizeOutfitStore(updateOutfitProfile(groupOutfitStore, 'story-a', OUTFIT_SELF_SUBJECT, () => selfOutfitProfile));
+const groupSelfOutfitPlan = buildContextInjectionPrompts({
+    ...baseInjectionInput,
+    currentActorName: '宿主角色',
+    currentConversationKey: '__group_team',
+    groupsByStorage: { 'story-a': { __group_team: { name: '测试群', members: ['Alice', 'Bob', 'Alice'] } } },
+    injectionConfig: { calendar: { position: 2, depth: 4 } },
+    budgetConfig: {
+        targetTokens: 2000,
+        sourceWeights: { phone: 0, community: 0, calendar: 1, todayTrend: 0 },
+        sourcePriority: ['calendar', 'phone', 'community', 'todayTrend'], redistributeUnused: true,
+    },
+    calendarStore: { version: 1, scopes: { 'story-a': {
+        baseDate: storyDate, events: {}, injectionOutfitEnabled: true,
+    } } },
+    calendarOutfits: groupSelfOutfitStore,
+});
+const groupSelfOutfitPrompts = groupSelfOutfitPlan.prompts.filter(prompt => prompt.source === 'outfit');
+assert.deepEqual(groupSelfOutfitPrompts.map(prompt => prompt.key), [
+    'PHONE_SMS_MEMORY:outfit:story-a%3A%3A__self__',
+    'PHONE_SMS_MEMORY:outfit:story-a%3A%3Arole%3AAlice',
+    'PHONE_SMS_MEMORY:outfit:story-a%3A%3Arole%3ABob',
+], '群聊必须注入 <user> 与去重后的每个成员穿搭');
+assert.match(groupSelfOutfitPrompts[0].content, /角色：<user>[\s\S]*今日用户衬衫/);
+assert.equal(groupSelfOutfitPrompts.some(prompt => /宿主角色/.test(prompt.content)), false,
+    '群聊加入 <user> 穿搭后不得回退注入宿主角色穿搭');
 const invalidGroupOutfitPlan = buildContextInjectionPrompts({
     ...baseInjectionInput,
     currentActorName: '宿主角色',
@@ -1075,6 +1148,22 @@ const invalidGroupOutfitPlan = buildContextInjectionPrompts({
 });
 assert.deepEqual(invalidGroupOutfitPlan.prompts.filter(prompt => prompt.source === 'outfit'), [],
     '群聊成员元数据缺失或非法时不得回退注入宿主角色穿搭');
+const invalidGroupSelfOutfitPlan = buildContextInjectionPrompts({
+    ...baseInjectionInput,
+    currentActorName: '宿主角色',
+    currentConversationKey: '__group_team',
+    groupsByStorage: { 'story-a': { __group_team: { name: '损坏群', members: ['Alice', 7] } } },
+    injectionConfig: { calendar: { position: 2, depth: 4 } },
+    budgetConfig: {
+        targetTokens: 2000,
+        sourceWeights: { phone: 0, community: 0, calendar: 1, todayTrend: 0 },
+        sourcePriority: ['calendar', 'phone', 'community', 'todayTrend'], redistributeUnused: true,
+    },
+    calendarStore: { version: 1, scopes: { 'story-a': { baseDate: storyDate, events: {}, injectionOutfitEnabled: true } } },
+    calendarOutfits: groupSelfOutfitStore,
+});
+assert.deepEqual(invalidGroupSelfOutfitPlan.prompts.filter(prompt => prompt.source === 'outfit').map(prompt => prompt.key),
+    ['PHONE_SMS_MEMORY:outfit:story-a%3A%3A__self__'], '群成员元数据非法时必须跳过成员，但不得阻断 <user> OOTD 注入');
 const calendarBudgetOutfitPlan = buildContextInjectionPrompts({
     ...baseInjectionInput,
     injectionConfig: { calendar: { position: 2, depth: 4 } },

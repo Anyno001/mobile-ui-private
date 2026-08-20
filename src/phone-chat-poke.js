@@ -34,6 +34,45 @@ export function installPhoneChatPoke(state, deps) {
         isAutoPokeAllowed, armAutoPoke,
         beginAutomaticTask, isAutomaticTaskActive, finishAutomaticTask,
     } = deps;
+
+    async function commitManualPokeHistory({ storageId, saveKey, history, isCurrentTarget, isTaskActive }) {
+        const previousHistory = window.__pmHistories[storageId]?.[saveKey];
+        const committed = replaceConversationHistory(storageId, saveKey, history);
+        if (!committed) throw new Error('拍一拍聊天记录提交失败：目标会话不可用');
+
+        const restorePreviousHistory = async originalError => {
+            if (!restoreConversationHistory(storageId, saveKey, previousHistory)) {
+                throw new Error(`${originalError.message}；旧聊天记录恢复失败：目标会话不可用`);
+            }
+            if (isCurrentTarget()) state.conversationHistory = previousHistory || [];
+            try {
+                await saveHistoriesStrict();
+            } catch (restoreError) {
+                const error = new Error(`${originalError.message}；旧聊天记录恢复失败：${restoreError.message}`);
+                error.cause = originalError;
+                throw error;
+            }
+        };
+
+        try {
+            await saveHistoriesStrict();
+        } catch (error) {
+            await restorePreviousHistory(error);
+            throw error;
+        }
+
+        if (!isTaskActive()) {
+            await restorePreviousHistory(new Error('拍一拍已取消'));
+            return null;
+        }
+
+        if (isCurrentTarget()) state.conversationHistory = committed.history;
+        return {
+            history: committed.history,
+            rollback: () => restorePreviousHistory(new Error('拍一拍已取消')),
+        };
+    }
+
     window.__pmAutoPoke = async (contactName) => {
         if (state.isGenerating || !isAutoPokeAllowed()) return false;
         const id = getStorageId();
@@ -97,7 +136,6 @@ export function installPhoneChatPoke(state, deps) {
             if (isGroup) {
                 const parsed = parseGroupResponse(raw, groupMembers, {
                     allowUnknownSpeakers: groupMeta.randomNpcEnabled === true,
-                    galBubbleEnabled: window.__pmGalBubbleOperational === true,
                 });
                 renderBlocks = parsed.filter(block => block.sentences.length > 0);
                 const contentParts = renderBlocks.map(block => `${block.name}：${block.sentences.join(' / ')}`);
@@ -108,7 +146,7 @@ export function installPhoneChatPoke(state, deps) {
                     descriptors: renderBlocks.flatMap(block => block.sentences.map(text => ({ text, sender: block.name }))),
                 }));
             } else {
-                const galText = window.__pmGalBubbleOperational === true ? getGalBubbleAssistantText(raw) : null;
+                const galText = getGalBubbleAssistantText(raw);
                 const clean = galText !== null ? galText : cleanResponse(raw);
                 renderSentences = splitToSentences(clean);
                 if (!renderSentences.length) return false;
@@ -350,125 +388,96 @@ export function installPhoneChatPoke(state, deps) {
             console.warn('[phone-mode] __pmPoke: 目标会话未成功切换，取消生成');
             return;
         }
+        // 私聊专用入口：群聊必须走 __pmPokeGroup 的严格逐句提交路径，这里不再提供并行的群聊分支。
+        if (state.isGroupChat) {
+            console.warn('[phone-mode] __pmPoke: 当前是群聊，请调用 __pmPokeGroup');
+            return;
+        }
         const task = beginGeneration(storageId);
         if (!task) return;
 
         showTyping();
 
         const targetHistory = state.conversationHistory.slice();
-        const isGroup = state.isGroupChat;
-        const groupDisplayName = state.groupDisplayName;
-        const groupMembers = state.groupMembers.slice();
-        const groupRandomNpcEnabled = state.groupRandomNpcEnabled;
-        const groupNature = state.groupNature;
-        const groupRandomNpcPrompt = state.groupRandomNpcPrompt;
-        const isStillTarget = () => isGenerationTaskActive(task) && state.activeStorageId === storageId
-            && (state.isGroupChat && state.currentGroupKey ? state.currentGroupKey : state.currentPersona) === saveKey;
+        const isCurrentTarget = () => state.activeStorageId === storageId
+            && !state.isGroupChat && state.currentPersona === saveKey;
+        const isStillTarget = () => isGenerationTaskActive(task) && isCurrentTarget();
 
         try {
         const ctxData = await gatherContext(task.context, {
             module: 'chat', signal: task.signal,
-            worldBookScope: { kind: isGroup ? 'group' : 'character', id: isGroup ? saveKey : contactName },
-            worldBookMemberNames: isGroup ? groupMembers : [],
+            worldBookScope: { kind: 'character', id: contactName },
+            worldBookMemberNames: [],
         });
         if (!isGenerationTaskActive(task)) return;
         const { cardDesc, cardPersonality, cardScenario, cardMesExample, mainChatText, worldBookText, userName, userDesc } = ctxData;
 
-        const smsHistoryText = buildHistoryText(targetHistory, CONTEXT_LIMIT, userName, isGroup ? null : contactName);
+        const smsHistoryText = buildHistoryText(targetHistory, CONTEXT_LIMIT, userName, contactName);
         const targetContactKey = saveKey;
         const preferencePrompt = buildChatPreferencePrompt({
             store: window.__pmCharacterBehavior,
             storageId,
-            names: isGroup ? groupMembers : contactName,
-            isGroup,
+            names: contactName,
+            isGroup: false,
             emojiPrompt: getEmojiPrompt(targetContactKey, storageId, window.__pmPokeConfig, window.__pmEmojis),
             wordyPrompt: getWordyPrompt(window.__pmWordyLimit),
             galBubblePrompt: getGalBubblePrompt(window.__pmGalBubbleOperational),
         });
 
             const aiRequest = buildPokeRequest({
-                isGroup, contactName, groupName: groupDisplayName || '群聊', groupMembers,
-                groupRandomNpcEnabled, groupNature, groupRandomNpcPrompt, userName, userDesc, cardDesc,
+                isGroup: false, contactName, userName, userDesc, cardDesc,
                 cardPersonality, cardScenario, cardMesExample, worldBookText, mainChatText, smsHistoryText,
                 preferencePrompt, signal: task.signal,
             });
             const raw = await callAI(aiRequest.systemPrompt, aiRequest.userPrompt, aiRequest.options);
             if (!isGenerationTaskActive(task)) return;
-            let historyUpdated = false;
 
             if (isStillTarget()) hideTyping();
 
-            if (isGroup) {
-                const parsed = parseGroupResponse(raw, groupMembers, {
-                    allowUnknownSpeakers: groupRandomNpcEnabled === true,
-                    galBubbleEnabled: window.__pmGalBubbleOperational === true,
+            const galText = getGalBubbleAssistantText(raw);
+            const clean = galText !== null ? galText : cleanResponse(raw);
+            const sentences = splitToSentences(clean);
+            let renderedTrimmedCount = 0;
+            for (const sentence of sentences) {
+                await new Promise(r => setTimeout(r, 150));
+                if (!isGenerationTaskActive(task)) break;
+                const assistantEntry = createMessageEntry({
+                    role: 'assistant', content: sentence, descriptors: [sentence],
                 });
-                const blocks = parsed.filter(block => block.sentences.length > 0);
-                const contentParts = blocks.map(block => `${block.name}：${block.sentences.join(' / ')}`);
-                if (contentParts.length > 0) {
-                    const assistantEntry = createMessageEntry({
-                        role: 'assistant', content: contentParts.join('\n'),
-                        descriptors: blocks.flatMap(block => block.sentences.map(text => ({ text, sender: block.name }))),
-                    });
-                    targetHistory.push(assistantEntry);
-                    historyUpdated = true;
-                    const historyWindow = createHistoryWindow(targetHistory, SAVE_LIMIT);
-                    const historyIndex = historyWindow.toWindowIndex(targetHistory.length - 1);
-                    if (isStillTarget()) rebaseRenderedHistory(historyWindow.trimmedCount);
-                    const bubbles = describeMessageEntry(assistantEntry);
-                    let bubbleIndex = 0;
-                    if (historyIndex !== null) {
-                        for (const block of blocks) {
-                            for (const s of block.sentences) {
-                                await new Promise(r => setTimeout(r, 120));
-                                if (!isGenerationTaskActive(task)) return;
-                                const bubble = bubbles[bubbleIndex++];
-                                if (isStillTarget()) addBubble(s, 'left', block.name, historyIndex, {
-                                    historyIndex, messageId: assistantEntry.messageId,
-                                    bubbleId: bubble?.bubbleId, sender: block.name,
-                                });
-                            }
-                        }
-                    }
+                targetHistory.push(assistantEntry);
+                const historyWindow = createHistoryWindow(targetHistory, SAVE_LIMIT);
+                const historyIndex = historyWindow.toWindowIndex(targetHistory.length - 1);
+                const committedHistory = await commitManualPokeHistory({
+                    storageId, saveKey, history: historyWindow.history,
+                    isCurrentTarget, isTaskActive: () => isGenerationTaskActive(task),
+                });
+                if (!committedHistory) return;
+                if (!isGenerationTaskActive(task)) {
+                    await committedHistory.rollback();
+                    return;
                 }
-            } else {
-                const galMessages = window.__pmGalBubbleOperational === true ? parseGalBubbleMessages(raw) : null;
-                const clean = galMessages ? galMessages.map(message => message.text).join('\n') : cleanResponse(raw);
-                const sentences = splitToSentences(clean);
-                if (sentences.length > 0) {
-                    const assistantEntry = createMessageEntry({
-                        role: 'assistant', content: sentences.join(' / '), descriptors: sentences,
+                if (isStillTarget() && historyIndex !== null) {
+                    const newlyTrimmed = historyWindow.trimmedCount - renderedTrimmedCount;
+                    rebaseRenderedHistory(newlyTrimmed);
+                    renderedTrimmedCount = historyWindow.trimmedCount;
+                    const bubble = describeMessageEntry(assistantEntry)[0];
+                    addBubble(sentence, 'left', undefined, historyIndex, {
+                        historyIndex, messageId: assistantEntry.messageId,
+                        bubbleId: bubble?.bubbleId, sender: contactName,
                     });
-                    targetHistory.push(assistantEntry);
-                    historyUpdated = true;
-                    const historyWindow = createHistoryWindow(targetHistory, SAVE_LIMIT);
-                    const historyIndex = historyWindow.toWindowIndex(targetHistory.length - 1);
-                    if (isStillTarget()) rebaseRenderedHistory(historyWindow.trimmedCount);
-                    const bubbles = describeMessageEntry(assistantEntry);
-                    if (historyIndex !== null) {
-                        for (let index = 0; index < sentences.length; index += 1) {
-                            const s = sentences[index];
-                            await new Promise(r => setTimeout(r, 150));
-                            if (!isGenerationTaskActive(task)) return;
-                            if (isStillTarget()) addBubble(s, 'left', undefined, historyIndex, {
-                                historyIndex, messageId: assistantEntry.messageId,
-                                bubbleId: bubbles[index]?.bubbleId, sender: contactName,
-                            });
-                        }
-                    }
                 }
             }
 
-            if (historyUpdated) {
-                const historyWindow = createHistoryWindow(targetHistory, SAVE_LIMIT);
-                const committedHistory = replaceConversationHistory(storageId, saveKey, historyWindow.history);
-                if (isStillTarget() && committedHistory) state.conversationHistory = committedHistory.history;
-                saveHistories();
-                if (isGenerationTaskActive(task)) applyBidirectionalInjection();
-            }
+            if (isGenerationTaskActive(task)) applyBidirectionalInjection();
         } catch (e) {
-            if (e?.name === 'AbortError') hideTyping();
-            else if (isStillTarget()) { hideTyping(); addNote(`（发送失败：${e?.message || e}）`); }
+            if (e?.name === 'AbortError') {
+                if (isCurrentTarget()) hideTyping();
+            } else if (isCurrentTarget()) {
+                hideTyping();
+                addNote(`（发送失败：${e?.message || e}）`);
+            } else {
+                console.error('[phone-mode] __pmPoke: 后台手动拍一拍失败', { storageId, saveKey, error: e });
+            }
         } finally {
             finishGeneration(task);
         }
@@ -515,8 +524,9 @@ export function installPhoneChatPoke(state, deps) {
         const groupRandomNpcEnabled = state.groupRandomNpcEnabled;
         const groupNature = state.groupNature;
         const groupRandomNpcPrompt = state.groupRandomNpcPrompt;
-        const isStillTarget = () => isGenerationTaskActive(task) && state.activeStorageId === storageId
+        const isCurrentTarget = () => state.activeStorageId === storageId
             && state.isGroupChat && state.currentGroupKey === saveKey;
+        const isStillTarget = () => isGenerationTaskActive(task) && isCurrentTarget();
 
         try {
         const ctxData = await gatherContext(task.context, {
@@ -549,48 +559,59 @@ export function installPhoneChatPoke(state, deps) {
 
             const parsed = parseGroupResponse(raw, groupMembers, {
                 allowUnknownSpeakers: groupRandomNpcEnabled === true,
-                galBubbleEnabled: window.__pmGalBubbleOperational === true,
             });
+            let historyUpdated = false;
             let renderedTrimmedCount = 0;
+            renderGroupPoke:
             for (const block of parsed) {
-                if (block.sentences.length > 0) {
-                    // 每个成员说完话立即落盘，防止后续 block 渲染途中挂起
+                for (const sentence of block.sentences) {
+                    await new Promise(r => setTimeout(r, 120));
+                    if (!isGenerationTaskActive(task)) break renderGroupPoke;
+
                     const assistantEntry = createMessageEntry({
                         role: 'assistant',
-                        content: `${block.name}：${block.sentences.join(' / ')}`,
-                        descriptors: block.sentences.map(text => ({ text, sender: block.name })),
+                        content: `${block.name}：${sentence}`,
+                        descriptors: [{ text: sentence, sender: block.name }],
                     });
                     targetHistory.push(assistantEntry);
                     const historyWindow = createHistoryWindow(targetHistory, SAVE_LIMIT);
                     const historyIndex = historyWindow.toWindowIndex(targetHistory.length - 1);
-                    const newlyTrimmed = historyWindow.trimmedCount - renderedTrimmedCount;
-                    if (isStillTarget()) rebaseRenderedHistory(newlyTrimmed);
-                    renderedTrimmedCount = historyWindow.trimmedCount;
-                    const committedHistory = replaceConversationHistory(storageId, saveKey, historyWindow.history);
-                    if (isStillTarget() && committedHistory) state.conversationHistory = committedHistory.history;
-                    saveHistories();
-                    const bubbles = describeMessageEntry(assistantEntry);
-                    if (historyIndex !== null) {
-                        for (let index = 0; index < block.sentences.length; index += 1) {
-                            const s = block.sentences[index];
-                            await new Promise(r => setTimeout(r, 120));
-                            if (!isGenerationTaskActive(task)) return;
-                            if (isStillTarget()) addBubble(s, 'left', block.name, historyIndex, {
-                                historyIndex, messageId: assistantEntry.messageId,
-                                bubbleId: bubbles[index]?.bubbleId, sender: block.name,
-                            });
-                        }
+                    const committedHistory = await commitManualPokeHistory({
+                        storageId, saveKey, history: historyWindow.history,
+                        isCurrentTarget, isTaskActive: () => isGenerationTaskActive(task),
+                    });
+                    if (!committedHistory) break renderGroupPoke;
+                    if (!isGenerationTaskActive(task)) {
+                        await committedHistory.rollback();
+                        break renderGroupPoke;
+                    }
+
+                    historyUpdated = true;
+                    if (isStillTarget() && historyIndex !== null) {
+                        const newlyTrimmed = historyWindow.trimmedCount - renderedTrimmedCount;
+                        rebaseRenderedHistory(newlyTrimmed);
+                        renderedTrimmedCount = historyWindow.trimmedCount;
+                        const bubble = describeMessageEntry(assistantEntry)[0];
+                        addBubble(sentence, 'left', block.name, historyIndex, {
+                            historyIndex, messageId: assistantEntry.messageId,
+                            bubbleId: bubble?.bubbleId, sender: block.name,
+                        });
                     }
                 }
             }
 
-            if (parsed.some(block => block.sentences.length > 0)) {
-                // 已在循环内逐条 push，此处仅做双向注入
+            if (historyUpdated) {
                 if (isGenerationTaskActive(task)) applyBidirectionalInjection();
             }
         } catch (e) {
-            if (e?.name === 'AbortError') hideTyping();
-            else if (isStillTarget()) { hideTyping(); addNote(`（发送失败：${e?.message || e}）`); }
+            if (e?.name === 'AbortError') {
+                if (isCurrentTarget()) hideTyping();
+            } else if (isCurrentTarget()) {
+                hideTyping();
+                addNote(`（发送失败：${e?.message || e}）`);
+            } else {
+                console.error('[phone-mode] __pmPokeGroup: 后台手动拍一拍失败', { storageId, saveKey, error: e });
+            }
         } finally {
             finishGeneration(task);
         }

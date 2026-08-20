@@ -1482,10 +1482,23 @@ function findDirectIdentifierCalls(node, name, args = []) {
   return collectDirectExecutionNodes(node, candidate => isIdentifierCall(candidate, name, args));
 }
 
-function hasExactHistoryCommit(node, storageId, saveKey) {
+function hasHistoryCommit(node, storageId, saveKey, historyPath) {
   return findDirectIdentifierCalls(node, 'replaceConversationHistory', [
-    isNamedIdentifier(storageId), isNamedIdentifier(saveKey), candidate => memberPath(candidate) === 'historyWindow.history',
+    isNamedIdentifier(storageId), isNamedIdentifier(saveKey), candidate => memberPath(candidate) === historyPath,
   ]).length === 1;
+}
+
+function hasExactHistoryCommit(node, storageId, saveKey) {
+  return hasHistoryCommit(node, storageId, saveKey, 'historyWindow.history');
+}
+
+function hasManualHistoryCommit(node, storageId, saveKey) {
+  return findDirectIdentifierCalls(node, 'commitManualPokeHistory').some(({ node: call }) => {
+    const request = call.arguments[0];
+    return isNamedIdentifier(storageId)(objectPropertyValue(request, 'storageId'))
+      && isNamedIdentifier(saveKey)(objectPropertyValue(request, 'saveKey'))
+      && memberPath(objectPropertyValue(request, 'history')) === 'historyWindow.history';
+  });
 }
 
 function findWindowEntryWrites(code, name) {
@@ -1582,7 +1595,7 @@ function assertSettingsDelegate(analysis, name, params, callee, controllerCode, 
   }
 }
 
-function assertPokeHistoryAdapter(analysis) {
+function assertPokeHistoryAdapter(analysis, code) {
   const getHandler = name => expectWindowFunctionSignature('phone-chat-poke.js', analysis, name, {
     async: true, params: name === '__pmPokeGroup' ? [] : ['contactName'],
   });
@@ -1614,13 +1627,31 @@ function assertPokeHistoryAdapter(analysis) {
     failures.push('phone-chat-poke.js __pmAutoPoke: commitAutomaticResult must bind adapter apply/restore and strict history persistence to captured previousHistory');
   }
 
-  if (!hasExactHistoryCommit(poke.body, 'storageId', 'saveKey')) {
-    failures.push('phone-chat-poke.js __pmPoke: direct execution must commit historyWindow.history through replaceConversationHistory(storageId, saveKey, ...)');
+  const manualCommit = functionNodeFromSource(analyze(code, 'module').functionSource.get('commitManualPokeHistory') || '');
+  const manualRestoreHelper = collectNodesWithAncestors(manualCommit?.body, node => node.type === 'VariableDeclarator'
+    && node.id?.type === 'Identifier' && node.id.name === 'restorePreviousHistory'
+    && ['FunctionExpression', 'ArrowFunctionExpression'].includes(node.init?.type)).at(0)?.node.init;
+  const hasManualReplace = hasHistoryCommit(manualCommit?.body, 'storageId', 'saveKey', 'history');
+  const hasManualRestore = findDirectIdentifierCalls(manualRestoreHelper?.body, 'restoreConversationHistory', [
+    isNamedIdentifier('storageId'), isNamedIdentifier('saveKey'), isNamedIdentifier('previousHistory'),
+  ]).length === 1;
+  const hasManualPrimaryPersist = findDirectIdentifierCalls(manualCommit?.body, 'saveHistoriesStrict').length === 1;
+  const hasManualRollbackPersist = findDirectIdentifierCalls(manualRestoreHelper?.body, 'saveHistoriesStrict').length === 1;
+  const hasManualRollbackCalls = findDirectIdentifierCalls(manualCommit?.body, 'restorePreviousHistory').length === 2;
+  if (!manualCommit || !manualRestoreHelper || !hasManualReplace || !hasManualRestore
+      || !hasManualPrimaryPersist || !hasManualRollbackPersist || !hasManualRollbackCalls) {
+    failures.push('phone-chat-poke.js commitManualPokeHistory must strictly persist before rendering and restore the captured history through the persistence adapter on failure or cancellation');
   }
 
+  const pokeLoops = collectDirectExecutionNodes(poke.body, node => node.type === 'ForOfStatement');
+  if (!pokeLoops.some(({ node }) => hasManualHistoryCommit(node.body, 'storageId', 'saveKey'))) {
+    failures.push('phone-chat-poke.js __pmPoke: each streamed sentence must use the strict manual history commit before rendering');
+  }
+
+
   const groupLoops = collectDirectExecutionNodes(pokeGroup.body, node => node.type === 'ForOfStatement');
-  if (!groupLoops.some(({ node }) => hasExactHistoryCommit(node.body, 'storageId', 'saveKey'))) {
-    failures.push('phone-chat-poke.js __pmPokeGroup: direct execution inside the streamed block loop must commit historyWindow.history through the persistence adapter');
+  if (!groupLoops.some(({ node }) => hasManualHistoryCommit(node.body, 'storageId', 'saveKey'))) {
+    failures.push('phone-chat-poke.js __pmPokeGroup: each streamed sentence must use the strict manual history commit before rendering');
   }
 }
 
@@ -3671,6 +3702,9 @@ for (const selector of ['.pm-calendar-title-chevron svg', '.pm-calendar-manageme
 requireCssDeclarations(cssRules, '.pm-today-trend-content.is-minimal-ui .pm-today-trend-module-head:not(.is-expanded)', {
   'align-items': 'center', 'min-height': 'calc(var(--pm-size-control-default) + var(--pm-space-2))', 'padding-bottom': 'var(--pm-space-3)',
 });
+for (const selector of ['.pm-today-trend-content.is-world', '.pm-today-trend-content.is-reputation', '.pm-today-trend-content.is-faction', '.pm-today-trend-content.is-dynamics']) {
+  requireCssDeclarations(cssRules, selector, { background: 'var(--pm-color-accent)' });
+}
 requireCssDeclarations(cssRules, '.pm-today-trend-content.is-minimal-ui .pm-today-trend-floor', { gap: 'var(--pm-space-0-5)' });
 requireCssDeclarations(cssRules, '.pm-today-trend-header', {
   position: 'sticky', top: '0', display: 'flex', 'justify-content': 'space-between',
@@ -3685,12 +3719,22 @@ for (const selector of [
   '.pm-today-trend-content.is-dynamics .pm-today-trend-module-head.is-expanded',
 ]) requireCssDeclarations(cssRules, selector, {
   position: 'sticky', top: 'var(--pm-space-0)', 'z-index': 'var(--pm-z-content)',
-  'flex-direction': 'column', padding: 'var(--pm-space-4) var(--pm-space-4) calc(var(--pm-space-5) * 3)',
+  'flex-direction': 'column', padding: 'var(--pm-space-4) var(--pm-space-4) var(--pm-space-0)',
 });
 requireCssDeclarations(cssRules, '.pm-today-trend-module-head.is-expanded .pm-today-trend-head-tools', {
-  position: 'static', 'flex-wrap': 'wrap',
+  position: 'absolute', top: 'var(--pm-space-3)', right: 'var(--pm-space-4)',
 });
-requireCssDeclarations(cssRules, '.pm-today-trend-module-head.is-expanded .pm-today-trend-floor', { 'align-items': 'flex-start' });
+requireCssDeclarations(cssRules, '.pm-today-trend-module-head.is-expanded .pm-today-trend-floor', { 'align-items': 'flex-end' });
+requireCssDeclarations(cssRules, '.pm-today-trend-module-actions', {
+  display: 'flex', 'align-items': 'center', 'justify-content': 'center',
+  gap: 'var(--pm-space-2)', transform: 'translateY(50%)',
+});
+requireCssDeclarations(cssRules, '.pm-today-trend-module-actions .pm-today-trend-icon-button', {
+  background: 'var(--pm-color-surface-page)', color: 'var(--pm-color-accent)',
+});
+requireCssDeclarations(cssRules, '.pm-today-trend-module-actions .pm-today-trend-icon-button:not(.is-danger) svg', {
+  color: 'var(--pm-color-accent)',
+});
 requireCssDeclarations(cssRules, '.pm-today-trend-module-body>.pm-today-trend-world-signals', { display: 'contents' });
 const todayTrendModuleHeadAccentRules = cssRules.filter(rule => (
   rule.declarations.has('background')
@@ -3729,13 +3773,13 @@ requireCssDeclarations(cssRules, '.pm-today-trend-module-head .pm-today-trend-ic
   'outline-color': 'var(--pm-color-on-accent)',
 });
 requireCssDeclarations(cssRules, '.pm-phone-screen:has(.pm-main-ui[data-page="today-trend"])', {
-  'border-radius': 'var(--pm-radius-none) var(--pm-radius-none) var(--pm-phone-inner-radius) var(--pm-phone-inner-radius)',
+  'border-radius': 'var(--pm-phone-inner-radius)',
   background: 'var(--pm-color-accent)',
 });
 requireCssDeclarations(cssRules, '.pm-today-trend-module-body', {
   background: 'var(--pm-color-surface-elevated)',
   'border-radius': 'var(--pm-radius-large) var(--pm-radius-large) var(--pm-radius-none) var(--pm-radius-none)',
-  padding: 'var(--pm-space-4) var(--pm-space-5)',
+  padding: 'var(--pm-space-5) var(--pm-space-5) var(--pm-space-4)',
   display: 'flex',
   'flex-direction': 'column',
 });
@@ -4439,6 +4483,13 @@ for (const expected of [
 ]) requireText('phone-injection.js', renderCalendarInjectionSource, expected);
 for (const expected of ['calendarWeather', 'weatherStore: calendarWeather']) requireText('phone-injection.js', buildContextInjectionSource, expected);
 for (const expected of [
+  'key: OUTFIT_SELF_SUBJECT, label: OUTFIT_SELF_SUBJECT',
+  'outfitScopeFor(calendarOutfits, currentStorageId, subject)',
+  'start: calendarReferenceDate(calendarScope), subject: label',
+  'contentPrefix: `[角色穿搭]\\n${subjectLine}\\n`',
+  "contentSuffix: '\\n[结束]'", 'completeLines: true',
+]) requireText('phone-injection.js', buildContextInjectionSource, expected);
+for (const expected of [
   'calendarDateRangeKeys(windowStart, -3, 6)', 'days: 60', 'calendarCycles',
   'usesExtendedOccasionWindow', 'days: 10', 'Number(occasion.intervalDays) >= 30',
   'cycleSubjectKeys', 'predictCycleRange', 'relativeCalendarLabel', "facts.join('；')", 'resolveWeatherForDate',
@@ -4578,7 +4629,7 @@ for (const expected of [
 for (const expected of [
   'replaceConversationHistory', 'restoreConversationHistory',
 ]) requireText('phone-chat-poke.js history adapter', phoneChatPokeCode, expected);
-assertPokeHistoryAdapter(phoneChatPokeAnalysis);
+assertPokeHistoryAdapter(phoneChatPokeAnalysis, phoneChatPokeCode);
 for (const write of findWindowDescendantWrites(phoneChatPokeCode, '__pmHistories')) {
   failures.push(`phone-chat-poke.js: history write must use conversation persistence adapter: ${phoneChatPokeCode.slice(write.start, write.end)}`);
 }

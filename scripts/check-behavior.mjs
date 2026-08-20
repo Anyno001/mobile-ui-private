@@ -1097,6 +1097,20 @@ assert.deepEqual(galParsedMessages, [
     { side: 'left', name: '林夏', text: '你好' },
     { side: 'right', name: 'YOYO', text: '我说&lt;晚点见&gt;｜别等我' },
 ], 'GAL 单聊解析必须去除标签、别名和结构竖线，并保留 right、转义尖括号与正文全角竖线');
+const galCompatibleMessage = '<msg side=“left”>林夏（夏夏）｜兼容台词</msg>';
+assert.deepEqual(parseGalBubbleMessages(galCompatibleMessage), [
+    { side: 'left', name: '林夏', text: '兼容台词' },
+], 'GAL 解析器必须兼容中文弯引号属性值和全角结构竖线');
+const galHostRegexDefinition = getGalBubbleScriptDefinition().findRegex;
+const [, galHostRegexSource, galHostRegexFlags] = galHostRegexDefinition.match(/^\/([\s\S]*)\/([a-z]*)$/) || [];
+assert.ok(galHostRegexSource && galHostRegexFlags, 'GAL 宿主正则定义必须保持 /pattern/flags 格式');
+const galHostMatches = [...galCompatibleMessage.matchAll(new RegExp(galHostRegexSource, galHostRegexFlags))];
+assert.deepEqual(galHostMatches.map(match => match.slice(1, 5)), [
+    ['left', '林夏', '夏夏', '兼容台词'],
+], 'GAL 宿主替换正则必须与运行时解析器兼容相同的弯引号和全角结构竖线');
+assert.deepEqual(parseGalBubbleMessages('<msg side="left">林夏|别名|你好</msg>'), [
+    { side: 'left', name: '林夏', text: '别名|你好' },
+], 'GAL 名字必须在首个半角结构竖线处结束，不能把分隔符吞入名字');
 assert.equal(parseGalBubbleMessages('<msg side="left">林夏|  </msg>'), null, 'GAL 空正文不得产出消息');
 assert.equal(parseGalBubbleMessages('林夏|没有标签'), null, '非 GAL 格式不得伪造消息');
 assert.equal(parseGalBubbleMessages('<msg side="left">林夏|你好</msg>\n裸叙述'), null,
@@ -1119,41 +1133,36 @@ assert.deepEqual(exportedGalScript, getGalBubbleScriptDefinition(),
 const galGroupResponse = parseGroupResponse([
     '<msg side="left">Alice（A）|你好</msg>',
     '<msg side="right">Bob|我也在</msg>',
-].join('\n'), ['Alice', 'Bob'], { galBubbleEnabled: true });
+].join('\n'), ['Alice', 'Bob']);
 assert.deepEqual(galGroupResponse, [{ name: 'Alice', sentences: ['你好'] }],
-    'GAL 群聊必须在通用清洗前解析，并且不得把 right 消息伪装成角色发言');
+    '手机群聊必须在通用清洗前适配完整 msg 文本，并且不得把 right 消息伪装成角色发言');
 assert.deepEqual(parseGroupResponse(
     '<msg side="left">Alice|第一句｜第二句</msg>',
-    ['Alice', 'Bob'], { galBubbleEnabled: true },
-), [{ name: 'Alice', sentences: ['第一句｜第二句'] }], 'GAL 正文全角竖线不得被误作格式分隔符');
+    ['Alice', 'Bob'],
+), [{ name: 'Alice', sentences: ['第一句｜第二句'] }], '手机群聊 msg 正文全角竖线不得被误作格式分隔符');
 assert.deepEqual(parseGroupResponse(
     '<msg side="right">YOYO|我说&lt;晚点见&gt;</msg>',
-    ['Alice', 'Bob'], { galBubbleEnabled: true },
-), [], 'GAL 群聊不得把用户的 right 消息错误归属给首个角色');
+    ['Alice', 'Bob'],
+), [], '手机群聊不得把用户的 right 消息错误归属给首个角色');
 assert.deepEqual(parseGroupResponse(
     '<msg side="left">未知角色|越权发言</msg>\n<msg side="left">Alice|合法发言</msg>',
-    ['Alice', 'Bob'], { galBubbleEnabled: true },
+    ['Alice', 'Bob'],
 ), [{ name: 'Alice', sentences: ['合法发言'] }],
-    '随机 NPC 关闭时未知 GAL 角色必须被丢弃，不能粘连到已有或首个成员');
+    '随机 NPC 关闭时未知 msg 角色必须被丢弃，不能粘连到已有或首个成员');
 assert.deepEqual(parseGroupResponse(
     '<msg side="left">路人群友·小周|临时发言</msg>',
-    ['Alice', 'Bob'], { galBubbleEnabled: true, allowUnknownSpeakers: true },
-), [{ name: '路人群友·小周', sentences: ['临时发言'] }], '随机 NPC 开启时 GAL 路径必须沿用既有身份白名单');
-const galDisabledRaw = '<msg side="left">Alice（A）|你好</msg>\nBob：原有发言';
-assert.deepEqual(
-    parseGroupResponse(galDisabledRaw, ['Alice', 'Bob'], { galBubbleEnabled: false }),
-    parseGroupResponse(galDisabledRaw, ['Alice', 'Bob']),
-    'GAL 关闭时必须保持既有群聊解析路径',
-);
+    ['Alice', 'Bob'], { allowUnknownSpeakers: true },
+), [{ name: '路人群友·小周', sentences: ['临时发言'] }], '随机 NPC 开启时 msg 适配必须沿用既有身份白名单');
+const mixedMsgRaw = '<msg side="left">Alice（A）|你好</msg>\nBob：原有发言';
 assert.deepEqual(parseGroupResponse(
-    galDisabledRaw, ['Alice', 'Bob'], { galBubbleEnabled: false },
+    mixedMsgRaw, ['Alice', 'Bob'],
 ), [{ name: 'Alice', sentences: ['Alice（A）|你好'] }, { name: 'Bob', sentences: ['原有发言'] }],
-    'GAL 关闭时通用清洗器仍应处理标签而不解析 GAL 结构');
+    '手机群聊遇到混合 msg 与普通文本时必须整体回退到既有群聊解析');
 assert.deepEqual(parseGroupResponse(
     '<msg side="left">Alice|GAL 发言</msg>\nBob：保留发言',
-    ['Alice', 'Bob'], { galBubbleEnabled: true },
+    ['Alice', 'Bob'],
 ), [{ name: 'Alice', sentences: ['Alice|GAL 发言'] }, { name: 'Bob', sentences: ['保留发言'] }],
-    'GAL 混合格式必须整体降级到既有群聊解析，不能吞掉裸文本');
+    '手机群聊混合 msg 与普通格式时必须整体降级到既有解析，不能吞掉裸文本');
 const independentSingleUserPrompt = buildIndependentSingleUserPrompt(promptFixture);
 const independentGroupUserPrompt = buildIndependentGroupUserPrompt(promptFixture);
 assert.doesNotMatch(independentSingleUserPrompt, /主线正文证据/);
@@ -8264,6 +8273,8 @@ try {
     globalThis.document = { getElementById: () => null };
     const autoPokeStorageValues = new Map();
     let failAutoPokeCounterPersist = false;
+    let historyPersistedHook = null;
+    let historyPersistedContext = null;
     globalThis.localStorage = {
         getItem: key => autoPokeStorageValues.get(key) ?? null,
         setItem(key, value) {
@@ -8271,6 +8282,11 @@ try {
                 throw new Error('auto-poke-counter-persist-failed');
             }
             autoPokeStorageValues.set(key, String(value));
+            if (key === 'ST_SMS_DATA_V2') {
+                historyPersistedHook?.({
+                    histories: JSON.parse(value), ...historyPersistedContext,
+                });
+            }
         },
         removeItem: key => autoPokeStorageValues.delete(key),
     };
@@ -8279,9 +8295,10 @@ try {
         return {
             begin() { const task = { signal: { aborted: false } }; tasks.add(task); return task; },
             isActive: task => tasks.has(task), finish: task => tasks.delete(task),
+            cancelAll() { tasks.clear(); },
         };
     };
-    const createAutoPokeFixture = ({ callAI, stateOverrides = {}, switchContact } = {}) => {
+    const createAutoPokeFixture = ({ callAI, stateOverrides = {}, switchContact, bubbleCalls, onBubble, onTaskBegin, onHistoryPersisted, typingCalls, noteCalls } = {}) => {
         const generation = createTaskController();
         const automatic = createTaskController();
         const state = {
@@ -8290,6 +8307,8 @@ try {
             groupRandomNpcEnabled: false, groupNature: '', phoneActive: false,
             ...stateOverrides,
         };
+        historyPersistedHook = onHistoryPersisted;
+        historyPersistedContext = { generation, automatic, state };
         globalThis.window = {
             __pmPokeConfig: { story: {
                 Alice: { autoPoke: { enabled: true, probability: 100, counter: 1 } },
@@ -8312,9 +8331,19 @@ try {
                 mainChatText: '', worldBookText: '', userName: '用户', userDesc: '',
             }),
             callAI: callAI || (async () => '自动回复'),
-            applyBidirectionalInjection() {}, addBubble() {}, addNote() {}, rebaseRenderedHistory() {},
-            showTyping() {}, hideTyping() {}, makeOverlay() {}, showGroupForm() {},
-            beginGeneration: () => generation.begin(), isGenerationTaskActive: task => generation.isActive(task),
+            applyBidirectionalInjection() {},
+            addBubble: (...args) => {
+                bubbleCalls?.push(args);
+                onBubble?.({ args, generation, automatic, state });
+            },
+            addNote: note => noteCalls?.push(note), rebaseRenderedHistory() {},
+            showTyping() {}, hideTyping: () => typingCalls?.push(true), makeOverlay() {}, showGroupForm() {},
+            beginGeneration: () => {
+                const task = generation.begin();
+                onTaskBegin?.({ task, generation, automatic, state });
+                return task;
+            },
+            isGenerationTaskActive: task => generation.isActive(task),
             finishGeneration: task => generation.finish(task), isAutoPokeAllowed: () => true, armAutoPoke() {},
             beginAutomaticTask: () => automatic.begin(), isAutomaticTaskActive: task => automatic.isActive(task),
             finishAutomaticTask: task => automatic.finish(task),
@@ -8323,7 +8352,304 @@ try {
     };
 
     idbControl.abortAll = false;
-    createAutoPokeFixture();
+    const manualGalBubbleCalls = [];
+    const manualGalState = createAutoPokeFixture({
+        callAI: async () => '<msg side="left">Alice|GAL 手动拍一拍回复</msg>',
+        stateOverrides: { phoneActive: true },
+        bubbleCalls: manualGalBubbleCalls,
+    });
+    window.__pmGalBubbleOperational = false;
+    await window.__pmPoke('Alice');
+    assert.equal(window.__pmHistories.story.Alice.at(-1).content, 'GAL 手动拍一拍回复',
+        '酒馆 GAL 开关关闭时，手机私聊拍一拍仍必须适配 msg 文本并提交台词正文');
+    assert.equal(manualGalState.conversationHistory, window.__pmHistories.story.Alice,
+        '手动私聊拍一拍提交后必须只更新当前会话的运行态历史');
+    assert.deepEqual(window.__pmHistories.story.Legacy, [{ role: 'user', content: 'Legacy 的旧消息' }],
+        '手动私聊拍一拍不得写入其他联系人的独立会话历史');
+    assert.equal(manualGalBubbleCalls.length, 1,
+        '手机私聊拍一拍无论酒馆 GAL 开关状态都必须交给原生消息渲染器生成气泡');
+    assert.equal(manualGalBubbleCalls[0][0], 'GAL 手动拍一拍回复');
+    assert.equal(manualGalBubbleCalls[0][1], 'left');
+    assert.equal(manualGalBubbleCalls[0][4].sender, 'Alice');
+    assert.ok(manualGalBubbleCalls[0][4].messageId && manualGalBubbleCalls[0][4].bubbleId,
+        '手动私聊拍一拍气泡必须带可定位的消息与气泡标识');
+
+    const manualPlainBubbleCalls = [];
+    createAutoPokeFixture({
+        callAI: async () => '普通拍一拍回复',
+        stateOverrides: { phoneActive: true },
+        bubbleCalls: manualPlainBubbleCalls,
+    });
+    window.__pmGalBubbleOperational = false;
+    await window.__pmPoke('Alice');
+    assert.equal(window.__pmHistories.story.Alice.at(-1).content, '普通拍一拍回复',
+        '酒馆 GAL 开关关闭时，普通私聊拍一拍必须保持原有历史正文');
+    assert.equal(manualPlainBubbleCalls.length, 1,
+        '酒馆 GAL 开关关闭时，普通私聊拍一拍必须保持原生气泡渲染');
+    assert.equal(manualPlainBubbleCalls[0][0], '普通拍一拍回复');
+    assert.equal(manualPlainBubbleCalls[0][1], 'left');
+
+    const manualGroupMsgBubbleCalls = [];
+    createAutoPokeFixture({
+        callAI: async () => '<msg side="left">Alice|关闭开关群聊台词</msg>',
+        stateOverrides: {
+            phoneActive: true, isGroupChat: true, currentPersona: '__group_team',
+            currentGroupKey: '__group_team', groupMembers: ['Alice'], groupDisplayName: '测试群',
+            conversationHistory: [{ role: 'user', content: '群聊旧消息' }],
+        },
+        bubbleCalls: manualGroupMsgBubbleCalls,
+    });
+    window.__pmGalBubbleOperational = false;
+    await window.__pmPokeGroup();
+    assert.equal(window.__pmHistories.story.__group_team.at(-1).content, 'Alice：关闭开关群聊台词',
+        '酒馆 GAL 开关关闭时，手机群聊拍一拍仍必须适配完整 msg 文本');
+    assert.equal(manualGroupMsgBubbleCalls.length, 1,
+        '酒馆 GAL 开关关闭时，手机群聊拍一拍必须保持原生气泡渲染');
+    assert.equal(manualGroupMsgBubbleCalls[0][0], '关闭开关群聊台词');
+    assert.equal(manualGroupMsgBubbleCalls[0][1], 'left');
+    assert.equal(manualGroupMsgBubbleCalls[0][2], 'Alice');
+
+    const interruptedManualBubbleCalls = [];
+    const interruptedManualState = createAutoPokeFixture({
+        callAI: async () => '<msg side="left">Alice|取消前气泡 / 取消后不渲染</msg>',
+        stateOverrides: { phoneActive: true },
+        bubbleCalls: interruptedManualBubbleCalls,
+        onBubble: ({ generation }) => generation.cancelAll(),
+    });
+    window.__pmGalBubbleOperational = true;
+    await window.__pmPoke('Alice');
+    assert.equal(interruptedManualBubbleCalls.length, 1,
+        '手动私聊拍一拍在首个气泡渲染后取消时不得继续渲染后续句子');
+    assert.equal(interruptedManualBubbleCalls[0][0], '取消前气泡');
+    assert.equal(window.__pmHistories.story.Alice.at(-1).content, '取消前气泡',
+        '手动私聊拍一拍在渲染期间取消时，历史只能保留已显示的气泡正文');
+    assert.equal(interruptedManualState.conversationHistory, window.__pmHistories.story.Alice,
+        '手动私聊拍一拍在渲染期间取消时不得让运行态历史与目标会话持久化历史分叉');
+
+    const manualPersistFailureCalls = [];
+    createAutoPokeFixture({
+        callAI: async () => '<msg side="left">Alice|不应显示或持久化</msg>',
+        stateOverrides: { phoneActive: true },
+        bubbleCalls: manualPersistFailureCalls,
+    });
+    window.__pmGalBubbleOperational = true;
+    idbControl.abortAll = true;
+    await window.__pmPoke('Alice');
+    idbControl.abortAll = false;
+    assert.equal(manualPersistFailureCalls.length, 0,
+        '手动私聊拍一拍严格持久化失败时不得留下未持久化气泡');
+    assert.deepEqual(window.__pmHistories.story.Alice, [{ role: 'user', content: 'Alice 的旧消息' }],
+        '手动私聊拍一拍严格持久化失败时必须恢复原目标会话历史');
+
+    const privateBeforeFirstBubbleCalls = [];
+    createAutoPokeFixture({
+        callAI: async () => '<msg side="left">Alice|私聊首泡前取消</msg>',
+        stateOverrides: { phoneActive: true },
+        bubbleCalls: privateBeforeFirstBubbleCalls,
+        onTaskBegin: ({ generation }) => queueMicrotask(() => generation.cancelAll()),
+    });
+    window.__pmGalBubbleOperational = true;
+    await window.__pmPoke('Alice');
+    assert.equal(privateBeforeFirstBubbleCalls.length, 0,
+        '手动私聊拍一拍在首个气泡前取消时不得渲染气泡');
+    assert.deepEqual(window.__pmHistories.story.Alice, [{ role: 'user', content: 'Alice 的旧消息' }],
+        '手动私聊拍一拍在首个气泡前取消时不得写入未显示的台词');
+
+    const privatePostCommitCancelCalls = [];
+    const privatePostCommitCancelState = createAutoPokeFixture({
+        callAI: async () => '<msg side="left">Alice|私聊已提交未渲染</msg>',
+        stateOverrides: { phoneActive: true, conversationHistory: [{ role: 'user', content: 'Alice 的旧消息' }] },
+        bubbleCalls: privatePostCommitCancelCalls,
+        onHistoryPersisted: ({ histories, generation }) => {
+            if (histories.story.Alice.at(-1)?.content === '私聊已提交未渲染') generation.cancelAll();
+        },
+    });
+    window.__pmGalBubbleOperational = true;
+    await window.__pmPoke('Alice');
+    assert.equal(privatePostCommitCancelCalls.length, 0,
+        '手动私聊拍一拍在严格保存后、气泡渲染前取消时不得渲染气泡');
+    assert.deepEqual(window.__pmHistories.story.Alice, [{ role: 'user', content: 'Alice 的旧消息' }],
+        '手动私聊拍一拍在严格保存后取消时必须恢复目标会话历史');
+    assert.equal(privatePostCommitCancelState.conversationHistory, window.__pmHistories.story.Alice,
+        '手动私聊拍一拍在严格保存后取消时必须恢复当前会话运行态历史');
+    assert.deepEqual(idbValues.get('ST_SMS_DATA_V2').story.Alice, [{ role: 'user', content: 'Alice 的旧消息' }],
+        '手动私聊拍一拍在严格保存后取消时必须补偿 IndexedDB 历史');
+    assert.deepEqual(JSON.parse(autoPokeStorageValues.get('ST_SMS_DATA_V2')).story.Alice, [{ role: 'user', content: 'Alice 的旧消息' }],
+        '手动私聊拍一拍在严格保存后取消时必须补偿 localStorage 历史');
+
+    window.__pmGalBubbleOperational = false;
+
+    const groupBeforeFirstBubbleCalls = [];
+    createAutoPokeFixture({
+        callAI: async () => 'Alice：首泡前取消的群聊台词',
+        stateOverrides: {
+            phoneActive: true, isGroupChat: true, currentPersona: '__group_team',
+            currentGroupKey: '__group_team', groupMembers: ['Alice'], groupDisplayName: '测试群',
+            conversationHistory: [{ role: 'user', content: '群聊旧消息' }],
+        },
+        bubbleCalls: groupBeforeFirstBubbleCalls,
+        onTaskBegin: ({ generation }) => queueMicrotask(() => generation.cancelAll()),
+    });
+    window.__pmGalBubbleOperational = true;
+    await window.__pmPokeGroup();
+    assert.equal(groupBeforeFirstBubbleCalls.length, 0,
+        '手动群聊拍一拍在首个气泡前取消时不得渲染气泡');
+    assert.deepEqual(window.__pmHistories.story.__group_team, [{ role: 'user', content: '群聊旧消息' }],
+        '手动群聊拍一拍在首个气泡前取消时不得写入未显示的台词');
+
+    const interruptedGroupBubbleCalls = [];
+    const interruptedGroupState = createAutoPokeFixture({
+        callAI: async () => 'Alice：群聊取消前气泡 / 群聊取消后不渲染',
+        stateOverrides: {
+            phoneActive: true, isGroupChat: true, currentPersona: '__group_team',
+            currentGroupKey: '__group_team', groupMembers: ['Alice'], groupDisplayName: '测试群',
+            conversationHistory: [{ role: 'user', content: '群聊旧消息' }],
+        },
+        bubbleCalls: interruptedGroupBubbleCalls,
+        onBubble: ({ generation }) => generation.cancelAll(),
+    });
+    window.__pmGalBubbleOperational = true;
+    await window.__pmPokeGroup();
+    assert.equal(interruptedGroupBubbleCalls.length, 1,
+        '手动群聊拍一拍在首个气泡渲染后取消时不得继续渲染后续句子');
+    assert.equal(interruptedGroupBubbleCalls[0][0], '群聊取消前气泡');
+    assert.equal(window.__pmHistories.story.__group_team.length, 2,
+        '手动群聊拍一拍取消后历史只能包含已显示的气泡条目');
+    assert.equal(window.__pmHistories.story.__group_team.at(-1).content, 'Alice：群聊取消前气泡',
+        '手动群聊拍一拍取消后不得提交未显示的后续句子');
+    assert.equal(interruptedGroupState.conversationHistory, window.__pmHistories.story.__group_team,
+        '手动群聊拍一拍取消后不得让运行态历史与目标会话持久化历史分叉');
+
+    const groupPersistFailureCalls = [];
+    createAutoPokeFixture({
+        callAI: async () => 'Alice：不应显示或持久化的群聊台词',
+        stateOverrides: {
+            phoneActive: true, isGroupChat: true, currentPersona: '__group_team',
+            currentGroupKey: '__group_team', groupMembers: ['Alice'], groupDisplayName: '测试群',
+            conversationHistory: [{ role: 'user', content: '群聊旧消息' }],
+        },
+        bubbleCalls: groupPersistFailureCalls,
+    });
+    window.__pmGalBubbleOperational = true;
+    idbControl.abortAll = true;
+    await window.__pmPokeGroup();
+    idbControl.abortAll = false;
+    assert.equal(groupPersistFailureCalls.length, 0,
+        '手动群聊拍一拍严格持久化失败时不得留下未持久化气泡');
+    assert.deepEqual(window.__pmHistories.story.__group_team, [{ role: 'user', content: '群聊旧消息' }],
+        '手动群聊拍一拍严格持久化失败时必须恢复原目标会话历史');
+
+    const groupPostCommitCancelCalls = [];
+    const groupPostCommitCancelState = createAutoPokeFixture({
+        callAI: async () => 'Alice：群聊已提交未渲染',
+        stateOverrides: {
+            phoneActive: true, isGroupChat: true, currentPersona: '__group_team',
+            currentGroupKey: '__group_team', groupMembers: ['Alice'], groupDisplayName: '测试群',
+            conversationHistory: [{ role: 'user', content: '群聊旧消息' }],
+        },
+        bubbleCalls: groupPostCommitCancelCalls,
+        onHistoryPersisted: ({ histories, generation }) => {
+            if (histories.story.__group_team.at(-1)?.content === 'Alice：群聊已提交未渲染') generation.cancelAll();
+        },
+    });
+    window.__pmGalBubbleOperational = true;
+    await window.__pmPokeGroup();
+    assert.equal(groupPostCommitCancelCalls.length, 0,
+        '手动群聊拍一拍在严格保存后、气泡渲染前取消时不得渲染气泡');
+    assert.deepEqual(window.__pmHistories.story.__group_team, [{ role: 'user', content: '群聊旧消息' }],
+        '手动群聊拍一拍在严格保存后取消时必须恢复目标会话历史');
+    assert.equal(groupPostCommitCancelState.conversationHistory, window.__pmHistories.story.__group_team,
+        '手动群聊拍一拍在严格保存后取消时必须恢复当前会话运行态历史');
+    assert.deepEqual(idbValues.get('ST_SMS_DATA_V2').story.__group_team, [{ role: 'user', content: '群聊旧消息' }],
+        '手动群聊拍一拍在严格保存后取消时必须补偿 IndexedDB 历史');
+    assert.deepEqual(JSON.parse(autoPokeStorageValues.get('ST_SMS_DATA_V2')).story.__group_team, [{ role: 'user', content: '群聊旧消息' }],
+        '手动群聊拍一拍在严格保存后取消时必须补偿 localStorage 历史');
+
+    const previousManualPokeConsoleError = console.error;
+    const backgroundManualPokeLogs = [];
+    console.error = (...args) => backgroundManualPokeLogs.push(args);
+    try {
+        const backgroundPrivateAbortTypingCalls = [];
+        const backgroundPrivateAbortNoteCalls = [];
+        let backgroundPrivateAbortState;
+        backgroundPrivateAbortState = createAutoPokeFixture({
+            callAI: async () => {
+                backgroundPrivateAbortState.currentPersona = 'Legacy';
+                backgroundPrivateAbortState.conversationHistory = window.__pmHistories.story.Legacy;
+                const error = new Error('后台私聊已取消');
+                error.name = 'AbortError';
+                throw error;
+            },
+            stateOverrides: { phoneActive: true, conversationHistory: [{ role: 'user', content: 'Alice 的旧消息' }] },
+            typingCalls: backgroundPrivateAbortTypingCalls,
+            noteCalls: backgroundPrivateAbortNoteCalls,
+        });
+        await window.__pmPoke('Alice');
+        assert.equal(backgroundPrivateAbortTypingCalls.length, 0,
+            '后台私聊拍一拍取消时不得隐藏当前会话的输入状态');
+        assert.equal(backgroundPrivateAbortNoteCalls.length, 0,
+            '后台私聊拍一拍取消时不得向当前会话插入失败提示');
+
+        const backgroundPrivateFailureTypingCalls = [];
+        const backgroundPrivateFailureNoteCalls = [];
+        let backgroundPrivateFailureState;
+        backgroundPrivateFailureState = createAutoPokeFixture({
+            callAI: async () => {
+                backgroundPrivateFailureState.currentPersona = 'Legacy';
+                backgroundPrivateFailureState.conversationHistory = window.__pmHistories.story.Legacy;
+                return '<msg side="left">Alice|后台私聊保存失败</msg>';
+            },
+            stateOverrides: { phoneActive: true, conversationHistory: [{ role: 'user', content: 'Alice 的旧消息' }] },
+            typingCalls: backgroundPrivateFailureTypingCalls,
+            noteCalls: backgroundPrivateFailureNoteCalls,
+        });
+        idbControl.abortAll = true;
+        await window.__pmPoke('Alice');
+        idbControl.abortAll = false;
+        assert.equal(backgroundPrivateFailureTypingCalls.length, 0,
+            '后台私聊拍一拍保存失败时不得隐藏当前会话的输入状态');
+        assert.equal(backgroundPrivateFailureNoteCalls.length, 0,
+            '后台私聊拍一拍保存失败时不得向当前会话插入失败提示');
+        assert.ok(backgroundManualPokeLogs.some(([message, context]) => message === '[phone-mode] __pmPoke: 后台手动拍一拍失败'
+            && context?.storageId === 'story' && context?.saveKey === 'Alice'),
+        '后台私聊拍一拍保存失败必须记录可诊断的目标会话信息');
+
+        const backgroundGroupFailureTypingCalls = [];
+        const backgroundGroupFailureNoteCalls = [];
+        let backgroundGroupFailureState;
+        backgroundGroupFailureState = createAutoPokeFixture({
+            callAI: async () => {
+                backgroundGroupFailureState.currentGroupKey = '__group_other';
+                backgroundGroupFailureState.conversationHistory = window.__pmHistories.story.Legacy;
+                return 'Alice：后台群聊保存失败';
+            },
+            stateOverrides: {
+                phoneActive: true, isGroupChat: true, currentPersona: '__group_team',
+                currentGroupKey: '__group_team', groupMembers: ['Alice'], groupDisplayName: '测试群',
+                conversationHistory: [{ role: 'user', content: '群聊旧消息' }],
+            },
+            typingCalls: backgroundGroupFailureTypingCalls,
+            noteCalls: backgroundGroupFailureNoteCalls,
+        });
+        idbControl.abortAll = true;
+        await window.__pmPokeGroup();
+        idbControl.abortAll = false;
+        assert.equal(backgroundGroupFailureTypingCalls.length, 0,
+            '后台群聊拍一拍保存失败时不得隐藏当前会话的输入状态');
+        assert.equal(backgroundGroupFailureNoteCalls.length, 0,
+            '后台群聊拍一拍保存失败时不得向当前会话插入失败提示');
+        assert.ok(backgroundManualPokeLogs.some(([message, context]) => message === '[phone-mode] __pmPokeGroup: 后台手动拍一拍失败'
+            && context?.storageId === 'story' && context?.saveKey === '__group_team'),
+        '后台群聊拍一拍保存失败必须记录可诊断的目标会话信息');
+    } finally {
+        idbControl.abortAll = false;
+        console.error = previousManualPokeConsoleError;
+    }
+
+    createAutoPokeFixture({
+        callAI: async () => '<msg side="left">Alice|GAL 自动拍一拍回复</msg>',
+    });
+    window.__pmGalBubbleOperational = true;
     const successfulPreviousHistory = window.__pmHistories.story.Alice;
     assert.equal(await window.__pmAutoPoke('Alice'), true,
         '真实安装后的自动戳一戳必须能提交历史和计数器');

@@ -12,7 +12,7 @@ import {
 import { occasionScopeFor, expandOccasions } from './calendar-occasion-model.js';
 import { buildCulturalFestivals, HOLIDAY_YEAR_RANGE, holidayYearFromCache, mergeCalendarDateFacts, normalizeHolidayCache } from './calendar-holiday.js';
 import { CYCLE_SELF_SUBJECT, cycleScopeFor, cycleSubjectKeys, predictCycleRange } from './calendar-cycle-model.js';
-import { outfitScopeFor, renderOutfitInjection } from './calendar-outfit-model.js';
+import { OUTFIT_SELF_SUBJECT, outfitScopeFor, renderOutfitInjection } from './calendar-outfit-model.js';
 import { recipeScopeFor, renderRecipeInjection } from './calendar-recipe-model.js';
 import { weatherCodeLabel } from './calendar-weather.js';
 import { resolveWeatherForDate } from './calendar-weather-source.js';
@@ -333,17 +333,23 @@ export function buildContextInjectionPrompts({
         const groupMembers = getGroupMembers({ currentStorageId, currentConversationKey, groupsByStorage });
         const names = [...new Set(groupMembers.map(name => name.trim()).filter(Boolean))];
         const isGroupConversation = typeof currentConversationKey === 'string' && currentConversationKey.startsWith('__group_');
-        const subjects = isGroupConversation ? names : [currentActorName || '当前角色'];
-        for (const name of subjects) {
-            const subject = `role:${name}`;
+        const subjects = [
+            { key: OUTFIT_SELF_SUBJECT, label: OUTFIT_SELF_SUBJECT },
+            ...(isGroupConversation ? names : [currentActorName || '当前角色']).map(name => ({ key: `role:${name}`, label: name })),
+        ];
+        for (const { key: subject, label } of subjects) {
             const body = renderOutfitInjection(outfitScopeFor(calendarOutfits, currentStorageId, subject), {
-                start: calendarReferenceDate(calendarScope), subject: name,
+                start: calendarReferenceDate(calendarScope), subject: label,
             });
             if (!body) continue;
+            const [subjectLine, ...days] = body.split('\n');
             outfitItems.push({
                 key: `${OUTFIT_KEY_PREFIX}${encodeURIComponent(`${currentStorageId}::${subject}`)}`,
                 source: 'outfit',
-                content: `[角色穿搭]\n${body}\n[结束]`,
+                contentPrefix: `[角色穿搭]\n${subjectLine}\n`,
+                content: days.join('\n'),
+                contentSuffix: '\n[结束]',
+                completeLines: true,
                 position: injection.calendar.position,
                 depth: injection.calendar.depth,
             });

@@ -12812,7 +12812,7 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
   // src/gal-bubble.js
   var GAL_BUBBLE_SCRIPT_ID = "de4bc2f3-3bcf-44ae-8f50-d751ee0794b6";
   var GAL_BUBBLE_SCRIPT_NAME = "[\u5929\u97F3\u6B63\u5219] GAL\u6C14\u6CE1";
-  var GAL_BUBBLE_FIND_REGEX = `/<msg\\s+side\\s*=\\s*["'](left|right)["']\\s*>\\s*([^\\n(\uFF08|<>]{1,64}?)(?:\\s*[(\uFF08]\\s*([^\\n)\uFF09|<>]{1,64}?)\\s*[)\uFF09])?\\s*\\|\\s*([^<>]*?)\\s*<\\/msg>/giu`;
+  var GAL_BUBBLE_FIND_REGEX = `/<msg\\s+side\\s*=\\s*["'\u201C](left|right)["'\u201D]\\s*>\\s*([^\\n(\uFF08|<>]{1,64}?)(?:\\s*[(\uFF08]\\s*([^\\n)\uFF09|<>]{1,64}?)\\s*[)\uFF09])?\\s*[|\uFF5C]\\s*([^<>]*?)\\s*<\\/msg>/giu`;
   var GAL_BUBBLE_REPLACE_STRING = '<style>.nl-gal{--nl-body:var(--SmartThemeBodyColor,#1c1c1e);--nl-muted:var(--SmartThemeQuoteColor,#6e6e73);--nl-border:rgba(90,90,100,.3);--nl-shadow:rgba(60,60,70,.06);--nl-surface:var(--SmartThemeBlurTintColor,rgba(242,242,247,.9));box-sizing:border-box;display:block;width:100%;margin:1.4rem 0;font-family:var(--mainFontFamily)}@supports (color:color-mix(in srgb,black,transparent)){.nl-gal{--nl-border:color-mix(in srgb,var(--SmartThemeBorderColor,rgba(60,60,67,.22)) 45%,transparent);--nl-shadow:color-mix(in srgb,var(--SmartThemeQuoteColor,#6e6e73) 12%,transparent)}}.nl-gal + style + .nl-gal{margin-top:.7rem}.nl-gal__name{box-sizing:border-box;display:flex;align-items:center;gap:.6rem;width:100%;padding:0 .3rem .3rem;line-height:1.3;color:var(--nl-muted);opacity:.55;overflow-wrap:anywhere}.nl-gal__name::before,.nl-gal__name::after{content:"";flex:1 1 auto;height:1px;background:linear-gradient(to right,transparent,var(--nl-muted),transparent);opacity:.5}.nl-gal__label{flex:0 0 auto;display:inline-flex;align-items:baseline;gap:.15rem;max-width:80%;overflow-wrap:anywhere}.nl-gal__nm{font-size:.74rem;font-weight:600;letter-spacing:.04em}.nl-gal__id:empty{display:none}.nl-gal__id:not(:empty){font-size:.62rem;font-weight:400;opacity:.8}.nl-gal__id:not(:empty)::before{content:"\uFF08"}.nl-gal__id:not(:empty)::after{content:"\uFF09"}.nl-gal__box{box-sizing:border-box;width:100%;padding:.7rem .95rem;border:1px solid var(--nl-border);border-radius:.5rem;background:var(--nl-surface);color:var(--nl-body);box-shadow:0 1px 5px var(--nl-shadow),inset 0 0 5px rgba(255,255,255,.02);font-size:.84rem;line-height:1.85;overflow-wrap:anywhere;word-break:break-word}.nl-gal[data-side="right"] .nl-gal__box{background:color-mix(in srgb,var(--nl-muted) 24%,var(--nl-surface))}.nl-gal__txt{display:block;white-space:pre-wrap;text-indent:1rem}@media (max-width:420px){.nl-gal__name{gap:.4rem}.nl-gal__label{max-width:90%}}</style><section class="nl-gal" data-side="$1"><div class="nl-gal__name"><span class="nl-gal__label"><span class="nl-gal__nm">$2</span><span class="nl-gal__id">$3</span></span></div><div class="nl-gal__box"><span class="nl-gal__txt">$4</span></div></section>';
   var GAL_BUBBLE_PROMPT = `# \u53F0\u8BCD\u683C\u5F0F
 
@@ -12838,9 +12838,9 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
   var getGalBubblePrompt = (enabled) => enabled === true ? `
 
 ${GAL_BUBBLE_PROMPT}` : "";
-  var GAL_BUBBLE_MESSAGE_PATTERN = /<msg\s+side\s*=\s*["'](left|right)["']\s*>\s*([^\n(（|<>]{1,64}?)(?:\s*[(（]\s*([^\n)）|<>]{1,64}?)\s*[)）])?\s*\|\s*([^<>]*?)\s*<\/msg>/giu;
+  var GAL_BUBBLE_MESSAGE_PATTERN = /<msg\s+side\s*=\s*["'“](left|right)["'”]\s*>\s*([^\n(（|<>]{1,64}?)(?:\s*[(（]\s*([^\n)）|<>]{1,64}?)\s*[)）])?\s*[|｜]\s*([^<>]*?)\s*<\/msg>/giu;
   var stripGalIgnorableBlocks = (value) => String(value || "").replace(/<(?:think|thinking|reasoning|reflection|inner_thought)>[\s\S]*?<\/(?:think|thinking|reasoning|reflection|inner_thought)>/gi, "");
-  function parseGalBubbleMessages2(raw) {
+  function parseGalBubbleMessages(raw) {
     const source = stripGalIgnorableBlocks(typeof raw === "string" ? raw : "");
     const messages = [];
     let consumedUntil = 0;
@@ -12863,7 +12863,7 @@ ${GAL_BUBBLE_PROMPT}` : "";
     return messages.length ? messages : null;
   }
   function getGalBubbleAssistantText(raw) {
-    const messages = parseGalBubbleMessages2(raw);
+    const messages = parseGalBubbleMessages(raw);
     if (!messages) return null;
     return messages.filter((message) => message.side === "left").map((message) => message.text).join("\n");
   }
@@ -12975,8 +12975,8 @@ ${GAL_BUBBLE_PROMPT}` : "";
   }
 
   // src/messaging-group-parser.js
-  function parseGroupResponse(raw, groupMembers, { allowUnknownSpeakers = false, galBubbleEnabled = false } = {}) {
-    const galMessages = galBubbleEnabled ? parseGalBubbleMessages2(raw) : null;
+  function parseGroupResponse(raw, groupMembers, { allowUnknownSpeakers = false } = {}) {
+    const galMessages = parseGalBubbleMessages(raw);
     const result = [];
     const normalizeName = (value) => (value || "").trim().replace(/^[【\[\(（*「『"'\s]+|[】\]\)）*「』」"'\s]+$/g, "").trim().toLowerCase();
     const memberMap = /* @__PURE__ */ new Map();
@@ -14133,8 +14133,7 @@ ${antiFluff}`;
         let resultData;
         if (isGroup) {
           const parsed = parseGroupResponse(raw, groupMembers, {
-            allowUnknownSpeakers: groupRandomNpcEnabled === true,
-            galBubbleEnabled: window.__pmGalBubbleOperational === true
+            allowUnknownSpeakers: groupRandomNpcEnabled === true
           });
           if (parsed.length) {
             const contentParts = parsed.map((p) => `${p.name}\uFF1A${p.sentences.join(" / ")}`);
@@ -14163,7 +14162,7 @@ ${antiFluff}`;
             };
           }
         } else {
-          const galText = window.__pmGalBubbleOperational === true ? getGalBubbleAssistantText(raw) : null;
+          const galText = getGalBubbleAssistantText(raw);
           const clean2 = galText !== null ? galText : cleanResponse(raw);
           let sentences = splitToSentences(clean2);
           if (!sentences.length && galText === null && raw?.trim()) {
@@ -14516,6 +14515,39 @@ ${antiFluff}`;
       isAutomaticTaskActive,
       finishAutomaticTask
     } = deps;
+    async function commitManualPokeHistory({ storageId, saveKey, history, isCurrentTarget, isTaskActive }) {
+      const previousHistory = window.__pmHistories[storageId]?.[saveKey];
+      const committed = replaceConversationHistory(storageId, saveKey, history);
+      if (!committed) throw new Error("\u62CD\u4E00\u62CD\u804A\u5929\u8BB0\u5F55\u63D0\u4EA4\u5931\u8D25\uFF1A\u76EE\u6807\u4F1A\u8BDD\u4E0D\u53EF\u7528");
+      const restorePreviousHistory = async (originalError) => {
+        if (!restoreConversationHistory(storageId, saveKey, previousHistory)) {
+          throw new Error(`${originalError.message}\uFF1B\u65E7\u804A\u5929\u8BB0\u5F55\u6062\u590D\u5931\u8D25\uFF1A\u76EE\u6807\u4F1A\u8BDD\u4E0D\u53EF\u7528`);
+        }
+        if (isCurrentTarget()) state.conversationHistory = previousHistory || [];
+        try {
+          await saveHistoriesStrict();
+        } catch (restoreError) {
+          const error = new Error(`${originalError.message}\uFF1B\u65E7\u804A\u5929\u8BB0\u5F55\u6062\u590D\u5931\u8D25\uFF1A${restoreError.message}`);
+          error.cause = originalError;
+          throw error;
+        }
+      };
+      try {
+        await saveHistoriesStrict();
+      } catch (error) {
+        await restorePreviousHistory(error);
+        throw error;
+      }
+      if (!isTaskActive()) {
+        await restorePreviousHistory(new Error("\u62CD\u4E00\u62CD\u5DF2\u53D6\u6D88"));
+        return null;
+      }
+      if (isCurrentTarget()) state.conversationHistory = committed.history;
+      return {
+        history: committed.history,
+        rollback: () => restorePreviousHistory(new Error("\u62CD\u4E00\u62CD\u5DF2\u53D6\u6D88"))
+      };
+    }
     window.__pmAutoPoke = async (contactName) => {
       if (state.isGenerating || !isAutoPokeAllowed()) return false;
       const id2 = getStorageId2();
@@ -14582,8 +14614,7 @@ ${antiFluff}`;
         let renderSentences = [];
         if (isGroup) {
           const parsed = parseGroupResponse(raw, groupMembers, {
-            allowUnknownSpeakers: groupMeta.randomNpcEnabled === true,
-            galBubbleEnabled: window.__pmGalBubbleOperational === true
+            allowUnknownSpeakers: groupMeta.randomNpcEnabled === true
           });
           renderBlocks = parsed.filter((block2) => block2.sentences.length > 0);
           const contentParts = renderBlocks.map((block2) => `${block2.name}\uFF1A${block2.sentences.join(" / ")}`);
@@ -14594,7 +14625,7 @@ ${antiFluff}`;
             descriptors: renderBlocks.flatMap((block2) => block2.sentences.map((text8) => ({ text: text8, sender: block2.name })))
           }));
         } else {
-          const galText = window.__pmGalBubbleOperational === true ? getGalBubbleAssistantText(raw) : null;
+          const galText = getGalBubbleAssistantText(raw);
           const clean2 = galText !== null ? galText : cleanResponse(raw);
           renderSentences = splitToSentences(clean2);
           if (!renderSentences.length) return false;
@@ -14833,45 +14864,39 @@ ${antiFluff}`;
         console.warn("[phone-mode] __pmPoke: \u76EE\u6807\u4F1A\u8BDD\u672A\u6210\u529F\u5207\u6362\uFF0C\u53D6\u6D88\u751F\u6210");
         return;
       }
+      if (state.isGroupChat) {
+        console.warn("[phone-mode] __pmPoke: \u5F53\u524D\u662F\u7FA4\u804A\uFF0C\u8BF7\u8C03\u7528 __pmPokeGroup");
+        return;
+      }
       const task = beginGeneration(storageId);
       if (!task) return;
       showTyping();
       const targetHistory = state.conversationHistory.slice();
-      const isGroup = state.isGroupChat;
-      const groupDisplayName = state.groupDisplayName;
-      const groupMembers = state.groupMembers.slice();
-      const groupRandomNpcEnabled = state.groupRandomNpcEnabled;
-      const groupNature = state.groupNature;
-      const groupRandomNpcPrompt = state.groupRandomNpcPrompt;
-      const isStillTarget = () => isGenerationTaskActive(task) && state.activeStorageId === storageId && (state.isGroupChat && state.currentGroupKey ? state.currentGroupKey : state.currentPersona) === saveKey;
+      const isCurrentTarget = () => state.activeStorageId === storageId && !state.isGroupChat && state.currentPersona === saveKey;
+      const isStillTarget = () => isGenerationTaskActive(task) && isCurrentTarget();
       try {
         const ctxData = await gatherContext2(task.context, {
           module: "chat",
           signal: task.signal,
-          worldBookScope: { kind: isGroup ? "group" : "character", id: isGroup ? saveKey : contactName },
-          worldBookMemberNames: isGroup ? groupMembers : []
+          worldBookScope: { kind: "character", id: contactName },
+          worldBookMemberNames: []
         });
         if (!isGenerationTaskActive(task)) return;
         const { cardDesc, cardPersonality, cardScenario, cardMesExample, mainChatText, worldBookText, userName, userDesc } = ctxData;
-        const smsHistoryText = buildHistoryText(targetHistory, CONTEXT_LIMIT, userName, isGroup ? null : contactName);
+        const smsHistoryText = buildHistoryText(targetHistory, CONTEXT_LIMIT, userName, contactName);
         const targetContactKey = saveKey;
         const preferencePrompt = buildChatPreferencePrompt({
           store: window.__pmCharacterBehavior,
           storageId,
-          names: isGroup ? groupMembers : contactName,
-          isGroup,
+          names: contactName,
+          isGroup: false,
           emojiPrompt: getEmojiPrompt(targetContactKey, storageId, window.__pmPokeConfig, window.__pmEmojis),
           wordyPrompt: getWordyPrompt(window.__pmWordyLimit),
           galBubblePrompt: getGalBubblePrompt(window.__pmGalBubbleOperational)
         });
         const aiRequest = buildPokeRequest({
-          isGroup,
+          isGroup: false,
           contactName,
-          groupName: groupDisplayName || "\u7FA4\u804A",
-          groupMembers,
-          groupRandomNpcEnabled,
-          groupNature,
-          groupRandomNpcPrompt,
           userName,
           userDesc,
           cardDesc,
@@ -14886,87 +14911,56 @@ ${antiFluff}`;
         });
         const raw = await callAI(aiRequest.systemPrompt, aiRequest.userPrompt, aiRequest.options);
         if (!isGenerationTaskActive(task)) return;
-        let historyUpdated = false;
         if (isStillTarget()) hideTyping();
-        if (isGroup) {
-          const parsed = parseGroupResponse(raw, groupMembers, {
-            allowUnknownSpeakers: groupRandomNpcEnabled === true,
-            galBubbleEnabled: window.__pmGalBubbleOperational === true
+        const galText = getGalBubbleAssistantText(raw);
+        const clean2 = galText !== null ? galText : cleanResponse(raw);
+        const sentences = splitToSentences(clean2);
+        let renderedTrimmedCount = 0;
+        for (const sentence of sentences) {
+          await new Promise((r) => setTimeout(r, 150));
+          if (!isGenerationTaskActive(task)) break;
+          const assistantEntry = createMessageEntry({
+            role: "assistant",
+            content: sentence,
+            descriptors: [sentence]
           });
-          const blocks = parsed.filter((block2) => block2.sentences.length > 0);
-          const contentParts = blocks.map((block2) => `${block2.name}\uFF1A${block2.sentences.join(" / ")}`);
-          if (contentParts.length > 0) {
-            const assistantEntry = createMessageEntry({
-              role: "assistant",
-              content: contentParts.join("\n"),
-              descriptors: blocks.flatMap((block2) => block2.sentences.map((text8) => ({ text: text8, sender: block2.name })))
-            });
-            targetHistory.push(assistantEntry);
-            historyUpdated = true;
-            const historyWindow = createHistoryWindow(targetHistory, SAVE_LIMIT);
-            const historyIndex = historyWindow.toWindowIndex(targetHistory.length - 1);
-            if (isStillTarget()) rebaseRenderedHistory(historyWindow.trimmedCount);
-            const bubbles = describeMessageEntry(assistantEntry);
-            let bubbleIndex = 0;
-            if (historyIndex !== null) {
-              for (const block2 of blocks) {
-                for (const s of block2.sentences) {
-                  await new Promise((r) => setTimeout(r, 120));
-                  if (!isGenerationTaskActive(task)) return;
-                  const bubble = bubbles[bubbleIndex++];
-                  if (isStillTarget()) addBubble(s, "left", block2.name, historyIndex, {
-                    historyIndex,
-                    messageId: assistantEntry.messageId,
-                    bubbleId: bubble?.bubbleId,
-                    sender: block2.name
-                  });
-                }
-              }
-            }
-          }
-        } else {
-          const galMessages = window.__pmGalBubbleOperational === true ? parseGalBubbleMessages(raw) : null;
-          const clean2 = galMessages ? galMessages.map((message) => message.text).join("\n") : cleanResponse(raw);
-          const sentences = splitToSentences(clean2);
-          if (sentences.length > 0) {
-            const assistantEntry = createMessageEntry({
-              role: "assistant",
-              content: sentences.join(" / "),
-              descriptors: sentences
-            });
-            targetHistory.push(assistantEntry);
-            historyUpdated = true;
-            const historyWindow = createHistoryWindow(targetHistory, SAVE_LIMIT);
-            const historyIndex = historyWindow.toWindowIndex(targetHistory.length - 1);
-            if (isStillTarget()) rebaseRenderedHistory(historyWindow.trimmedCount);
-            const bubbles = describeMessageEntry(assistantEntry);
-            if (historyIndex !== null) {
-              for (let index = 0; index < sentences.length; index += 1) {
-                const s = sentences[index];
-                await new Promise((r) => setTimeout(r, 150));
-                if (!isGenerationTaskActive(task)) return;
-                if (isStillTarget()) addBubble(s, "left", void 0, historyIndex, {
-                  historyIndex,
-                  messageId: assistantEntry.messageId,
-                  bubbleId: bubbles[index]?.bubbleId,
-                  sender: contactName
-                });
-              }
-            }
-          }
-        }
-        if (historyUpdated) {
+          targetHistory.push(assistantEntry);
           const historyWindow = createHistoryWindow(targetHistory, SAVE_LIMIT);
-          const committedHistory = replaceConversationHistory(storageId, saveKey, historyWindow.history);
-          if (isStillTarget() && committedHistory) state.conversationHistory = committedHistory.history;
-          saveHistories();
-          if (isGenerationTaskActive(task)) applyBidirectionalInjection();
+          const historyIndex = historyWindow.toWindowIndex(targetHistory.length - 1);
+          const committedHistory = await commitManualPokeHistory({
+            storageId,
+            saveKey,
+            history: historyWindow.history,
+            isCurrentTarget,
+            isTaskActive: () => isGenerationTaskActive(task)
+          });
+          if (!committedHistory) return;
+          if (!isGenerationTaskActive(task)) {
+            await committedHistory.rollback();
+            return;
+          }
+          if (isStillTarget() && historyIndex !== null) {
+            const newlyTrimmed = historyWindow.trimmedCount - renderedTrimmedCount;
+            rebaseRenderedHistory(newlyTrimmed);
+            renderedTrimmedCount = historyWindow.trimmedCount;
+            const bubble = describeMessageEntry(assistantEntry)[0];
+            addBubble(sentence, "left", void 0, historyIndex, {
+              historyIndex,
+              messageId: assistantEntry.messageId,
+              bubbleId: bubble?.bubbleId,
+              sender: contactName
+            });
+          }
         }
+        if (isGenerationTaskActive(task)) applyBidirectionalInjection();
       } catch (e) {
-        if (e?.name === "AbortError") hideTyping();
-        else if (isStillTarget()) {
+        if (e?.name === "AbortError") {
+          if (isCurrentTarget()) hideTyping();
+        } else if (isCurrentTarget()) {
           hideTyping();
           addNote(`\uFF08\u53D1\u9001\u5931\u8D25\uFF1A${e?.message || e}\uFF09`);
+        } else {
+          console.error("[phone-mode] __pmPoke: \u540E\u53F0\u624B\u52A8\u62CD\u4E00\u62CD\u5931\u8D25", { storageId, saveKey, error: e });
         }
       } finally {
         finishGeneration(task);
@@ -15007,7 +15001,8 @@ ${antiFluff}`;
       const groupRandomNpcEnabled = state.groupRandomNpcEnabled;
       const groupNature = state.groupNature;
       const groupRandomNpcPrompt = state.groupRandomNpcPrompt;
-      const isStillTarget = () => isGenerationTaskActive(task) && state.activeStorageId === storageId && state.isGroupChat && state.currentGroupKey === saveKey;
+      const isCurrentTarget = () => state.activeStorageId === storageId && state.isGroupChat && state.currentGroupKey === saveKey;
+      const isStillTarget = () => isGenerationTaskActive(task) && isCurrentTarget();
       try {
         const ctxData = await gatherContext2(task.context, {
           module: "chat",
@@ -15051,50 +15046,61 @@ ${antiFluff}`;
         if (!isGenerationTaskActive(task)) return;
         if (isStillTarget()) hideTyping();
         const parsed = parseGroupResponse(raw, groupMembers, {
-          allowUnknownSpeakers: groupRandomNpcEnabled === true,
-          galBubbleEnabled: window.__pmGalBubbleOperational === true
+          allowUnknownSpeakers: groupRandomNpcEnabled === true
         });
+        let historyUpdated = false;
         let renderedTrimmedCount = 0;
-        for (const block2 of parsed) {
-          if (block2.sentences.length > 0) {
-            const assistantEntry = createMessageEntry({
-              role: "assistant",
-              content: `${block2.name}\uFF1A${block2.sentences.join(" / ")}`,
-              descriptors: block2.sentences.map((text8) => ({ text: text8, sender: block2.name }))
-            });
-            targetHistory.push(assistantEntry);
-            const historyWindow = createHistoryWindow(targetHistory, SAVE_LIMIT);
-            const historyIndex = historyWindow.toWindowIndex(targetHistory.length - 1);
-            const newlyTrimmed = historyWindow.trimmedCount - renderedTrimmedCount;
-            if (isStillTarget()) rebaseRenderedHistory(newlyTrimmed);
-            renderedTrimmedCount = historyWindow.trimmedCount;
-            const committedHistory = replaceConversationHistory(storageId, saveKey, historyWindow.history);
-            if (isStillTarget() && committedHistory) state.conversationHistory = committedHistory.history;
-            saveHistories();
-            const bubbles = describeMessageEntry(assistantEntry);
-            if (historyIndex !== null) {
-              for (let index = 0; index < block2.sentences.length; index += 1) {
-                const s = block2.sentences[index];
-                await new Promise((r) => setTimeout(r, 120));
-                if (!isGenerationTaskActive(task)) return;
-                if (isStillTarget()) addBubble(s, "left", block2.name, historyIndex, {
+        renderGroupPoke:
+          for (const block2 of parsed) {
+            for (const sentence of block2.sentences) {
+              await new Promise((r) => setTimeout(r, 120));
+              if (!isGenerationTaskActive(task)) break renderGroupPoke;
+              const assistantEntry = createMessageEntry({
+                role: "assistant",
+                content: `${block2.name}\uFF1A${sentence}`,
+                descriptors: [{ text: sentence, sender: block2.name }]
+              });
+              targetHistory.push(assistantEntry);
+              const historyWindow = createHistoryWindow(targetHistory, SAVE_LIMIT);
+              const historyIndex = historyWindow.toWindowIndex(targetHistory.length - 1);
+              const committedHistory = await commitManualPokeHistory({
+                storageId,
+                saveKey,
+                history: historyWindow.history,
+                isCurrentTarget,
+                isTaskActive: () => isGenerationTaskActive(task)
+              });
+              if (!committedHistory) break renderGroupPoke;
+              if (!isGenerationTaskActive(task)) {
+                await committedHistory.rollback();
+                break renderGroupPoke;
+              }
+              historyUpdated = true;
+              if (isStillTarget() && historyIndex !== null) {
+                const newlyTrimmed = historyWindow.trimmedCount - renderedTrimmedCount;
+                rebaseRenderedHistory(newlyTrimmed);
+                renderedTrimmedCount = historyWindow.trimmedCount;
+                const bubble = describeMessageEntry(assistantEntry)[0];
+                addBubble(sentence, "left", block2.name, historyIndex, {
                   historyIndex,
                   messageId: assistantEntry.messageId,
-                  bubbleId: bubbles[index]?.bubbleId,
+                  bubbleId: bubble?.bubbleId,
                   sender: block2.name
                 });
               }
             }
           }
-        }
-        if (parsed.some((block2) => block2.sentences.length > 0)) {
+        if (historyUpdated) {
           if (isGenerationTaskActive(task)) applyBidirectionalInjection();
         }
       } catch (e) {
-        if (e?.name === "AbortError") hideTyping();
-        else if (isStillTarget()) {
+        if (e?.name === "AbortError") {
+          if (isCurrentTarget()) hideTyping();
+        } else if (isCurrentTarget()) {
           hideTyping();
           addNote(`\uFF08\u53D1\u9001\u5931\u8D25\uFF1A${e?.message || e}\uFF09`);
+        } else {
+          console.error("[phone-mode] __pmPokeGroup: \u540E\u53F0\u624B\u52A8\u62CD\u4E00\u62CD\u5931\u8D25", { storageId, saveKey, error: e });
         }
       } finally {
         finishGeneration(task);
@@ -17376,20 +17382,26 @@ ${body}
       const groupMembers = getGroupMembers({ currentStorageId, currentConversationKey, groupsByStorage });
       const names2 = [...new Set(groupMembers.map((name) => name.trim()).filter(Boolean))];
       const isGroupConversation = typeof currentConversationKey === "string" && currentConversationKey.startsWith("__group_");
-      const subjects = isGroupConversation ? names2 : [currentActorName || "\u5F53\u524D\u89D2\u8272"];
-      for (const name of subjects) {
-        const subject = `role:${name}`;
+      const subjects = [
+        { key: OUTFIT_SELF_SUBJECT, label: OUTFIT_SELF_SUBJECT },
+        ...(isGroupConversation ? names2 : [currentActorName || "\u5F53\u524D\u89D2\u8272"]).map((name) => ({ key: `role:${name}`, label: name }))
+      ];
+      for (const { key: subject, label } of subjects) {
         const body = renderOutfitInjection(outfitScopeFor(calendarOutfits, currentStorageId, subject), {
           start: calendarReferenceDate(calendarScope),
-          subject: name
+          subject: label
         });
         if (!body) continue;
+        const [subjectLine, ...days] = body.split("\n");
         outfitItems.push({
           key: `${OUTFIT_KEY_PREFIX}${encodeURIComponent(`${currentStorageId}::${subject}`)}`,
           source: "outfit",
-          content: `[\u89D2\u8272\u7A7F\u642D]
-${body}
-[\u7ED3\u675F]`,
+          contentPrefix: `[\u89D2\u8272\u7A7F\u642D]
+${subjectLine}
+`,
+          content: days.join("\n"),
+          contentSuffix: "\n[\u7ED3\u675F]",
+          completeLines: true,
           position: injection.calendar.position,
           depth: injection.calendar.depth
         });
@@ -23574,7 +23586,7 @@ ${targetInstruction}`
     const quickActions = exposedActions.map((action) => trendIconButton({ ...action, className: "pm-today-trend-head-action" }));
     const firstAction = quickActions.shift() || "";
     const menu2 = itemActions2 && !overflowActions.length ? trendIconButton({ action: "today-trend-toggle-menu", icon: MORE_ICON_SVG, label: `${title}\u6761\u76EE\u64CD\u4F5C`, attrs: `data-menu-id="${escapeAttr(menuId)}" aria-expanded="${menuOpenId === menuId}"`, className: "pm-today-trend-head-item-toggle" }) : itemActions2 || overflowActions.length ? trendActionMenu({ id: menuId, open: menuOpenId === menuId, label: `${title}\u6761\u76EE\u64CD\u4F5C`, actions: overflowActions }) : "";
-    return `<header class="pm-today-trend-module-head is-expanded"><div>${renderedMeta}<h2>${escapeHtml(title)}${adornment}</h2></div><span class="pm-today-trend-head-tools">${firstAction}${asideHtml}${quickActions.join("")}${menu2}</span></header>`;
+    return `<header class="pm-today-trend-module-head is-expanded"><div>${renderedMeta}<h2>${escapeHtml(title)}${adornment}</h2></div><span class="pm-today-trend-head-tools">${asideHtml}</span><span class="pm-today-trend-module-actions">${firstAction}${quickActions.join("")}${menu2}</span></header>`;
   }
   function trendRuleEditor({ rule, value = "" } = {}) {
     if (!rule) return "";

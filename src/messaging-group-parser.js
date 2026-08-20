@@ -1,8 +1,8 @@
 import { cleanResponse, splitToSentences } from './prompts.js';
 import { parseGalBubbleMessages } from './gal-bubble.js';
 
-export function parseGroupResponse(raw, groupMembers, { allowUnknownSpeakers = false, galBubbleEnabled = false } = {}) {
-    const galMessages = galBubbleEnabled ? parseGalBubbleMessages(raw) : null;
+export function parseGroupResponse(raw, groupMembers, { allowUnknownSpeakers = false } = {}) {
+    const galMessages = parseGalBubbleMessages(raw);
     const result = [];
     const normalizeName = value => (value || '')
         .trim()

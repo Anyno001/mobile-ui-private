@@ -82,7 +82,6 @@ export function installPhoneChat(state, deps) {
             if (isGroup) {
                 const parsed = parseGroupResponse(raw, groupMembers, {
                     allowUnknownSpeakers: groupRandomNpcEnabled === true,
-                    galBubbleEnabled: window.__pmGalBubbleOperational === true,
                 });
                 if (parsed.length) {
                     const contentParts = parsed.map(p => `${p.name}：${p.sentences.join(' / ')}`);
@@ -111,7 +110,7 @@ export function installPhoneChat(state, deps) {
                     };
                 }
             } else {
-                const galText = window.__pmGalBubbleOperational === true ? getGalBubbleAssistantText(raw) : null;
+                const galText = getGalBubbleAssistantText(raw);
                 const clean = galText !== null ? galText : cleanResponse(raw);
                 let sentences = splitToSentences(clean);
                 if (!sentences.length && galText === null && raw?.trim()) {
