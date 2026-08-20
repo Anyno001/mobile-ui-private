@@ -158,11 +158,11 @@ const resolveTodayTrendToken = (token, depth = 0) => {
     return reference ? resolveTodayTrendToken(reference, depth + 1) : value;
 };
 const todayTrendRelationTokens = {
-    hostile: ['--pm-today-trend-relation-hostile', '--pm-today-trend-relation-hostile-foreground', '--pm-color-danger', '--pm-color-on-danger'],
-    dislike: ['--pm-today-trend-relation-dislike', '--pm-today-trend-relation-dislike-foreground', '--pm-color-warning', '--pm-color-on-warning'],
+    hostile: ['--pm-today-trend-relation-hostile', '--pm-today-trend-relation-hostile-foreground', '#e8566c', '#fff'],
+    dislike: ['--pm-today-trend-relation-dislike', '--pm-today-trend-relation-dislike-foreground', '#cc7a42', '#fff'],
     neutral: ['--pm-today-trend-relation-neutral', '--pm-today-trend-relation-neutral-foreground', '--pm-color-surface-control', '--pm-color-text-primary'],
     like: ['--pm-today-trend-relation-like', '--pm-today-trend-relation-like-foreground', '--pm-color-accent', '--pm-color-on-accent'],
-    trust: ['--pm-today-trend-relation-trust', '--pm-today-trend-relation-trust-foreground', '--pm-color-success', '--pm-color-on-success'],
+    trust: ['--pm-today-trend-relation-trust', '--pm-today-trend-relation-trust-foreground', '#2d9e84', '#fff'],
 };
 const hexLuminance = hex => {
     const digits = hex.slice(1), expanded = digits.length === 3 ? [...digits].map(channel => `${channel}${channel}`).join('') : digits;
@@ -175,7 +175,8 @@ const contrastRatio = (first, second) => {
     return (Math.max(firstLuminance, secondLuminance) + 0.05) / (Math.min(firstLuminance, secondLuminance) + 0.05);
 };
 for (const [status, [surfaceToken, foregroundToken, expectedSurface, expectedForeground]] of Object.entries(todayTrendRelationTokens)) {
-    assert.match(todayTrendStyle, new RegExp(`${surfaceToken}:var\\(${expectedSurface}\\);${foregroundToken}:var\\(${expectedForeground}\\)`), `今日风向 ${status} 关系圆必须使用对应的 iOS 语义表面与前景 token`);
+    const wrapValue = v => v.startsWith('--') ? `var\\(${v}\\)` : v.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    assert.match(todayTrendStyle, new RegExp(`${surfaceToken}:${wrapValue(expectedSurface)};${foregroundToken}:${wrapValue(expectedForeground)}`), `今日风向 ${status} 关系圆必须使用对应的语义表面与前景值`);
     const surface = resolveTodayTrendToken(surfaceToken).toLowerCase();
     const foreground = resolveTodayTrendToken(foregroundToken).toLowerCase();
     assert.match(surface, /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/, `今日风向 ${status} 关系表面必须能解析为实际 hex 颜色`);
@@ -216,7 +217,7 @@ assert.doesNotMatch(todayTrendStyle, /pm-today-trend-inline-action[^{}]*svg\{[^}
 assert.doesNotMatch(todayTrendStyle, /\.pm-today-trend-icon-button\[data-action\^="today-trend-edit-"\] svg\{[^}]*translate(?:Y|\([^,]+,\s*(?!0(?:px)?\b))/, '编辑图标不得保留向下偏移');
 assert.match(todayTrendStyle, /\.pm-today-trend-header\{[^}]*display:flex[^}]*justify-content:space-between/, '去除页面标题后，顶栏必须仅用返回与全局操作维持左右布局');
 assert.doesNotMatch(todayTrendStyle, /\.pm-today-trend-header h2\{/, '顶栏不得保留重复的“今日风向”标题样式');
-assert.match(todayTrendStyle, /\.pm-today-trend-content\.is-world \.pm-today-trend-module-head\.is-expanded,[^}]*\{position:sticky[^}]*top:var\(--pm-space-0\)[^}]*z-index:var\(--pm-z-content\)[^}]*align-items:center[^}]*flex-direction:column[^}]*padding:var\(--pm-space-4\) var\(--pm-space-4\) var\(--pm-space-0\)/, '内容模块头必须固定在滚动区顶部，并为跨层操作圆保留无底部填充的主题色接缝');
+assert.match(todayTrendStyle, /\.pm-today-trend-content\.is-world \.pm-today-trend-module-head\.is-expanded,[^}]*\{position:sticky[^}]*top:var\(--pm-space-0\)[^}]*z-index:var\(--pm-z-content\)[^}]*align-items:center[^}]*flex-direction:column[^}]*padding:var\(--pm-space-5\) var\(--pm-space-4\) var\(--pm-space-0\)/, '内容模块头必须固定在滚动区顶部，并为跨层操作圆保留无底部填充的主题色接缝');
 assert.match(todayTrendStyle, /\.pm-today-trend-module-head\.is-expanded>div\{[^}]*align-items:center[^}]*text-align:center/, '固定模块头中的元数据与标题必须保持居中');
 assert.match(todayTrendStyle, /\.pm-today-trend-module-head\.is-expanded \.pm-today-trend-head-tools\{position:absolute[^}]*top:var\(--pm-space-3\)[^}]*right:var\(--pm-space-4\)/, '固定模块头的楼层状态必须固定在右上角，不能挤压居中标题');
 assert.match(todayTrendStyle, /\.pm-today-trend-module-actions\{[^}]*display:flex[^}]*align-items:center[^}]*justify-content:center[^}]*gap:var\(--pm-space-2\)[^}]*transform:translateY\(50%\)/, '模块操作必须组成居中圆形图标行，并跨在主题色与内容层接缝');
@@ -754,7 +755,7 @@ assert.ok(worldHeadHtml.indexOf('<h2>世界态势</h2>') < worldHeadHtml.indexOf
     && worldHeadHtml.indexOf('today-trend-generate-world') < worldHeadHtml.indexOf('today-trend-edit-world-rule')
     && worldHeadHtml.indexOf('today-trend-edit-world-rule') < worldHeadHtml.indexOf('today-trend-toggle-menu'),
     '世界态势模块头必须先居中输出标题，再按刷新、提示词、条目操作的顺序输出三个图标按钮');
-assert.match(worldHeadHtml, /pm-today-trend-module-actions[\s\S]*?data-today-trend-floor/, '世界态势楼层状态必须位于操作行内');
+assert.match(worldHeadHtml, /<h2>[\s\S]*?<\/h2>[\s\S]*?data-today-trend-floor/, '世界态势楼层状态必须位于标题右侧');
 const worldMeterHtml = worldHeadHtml.slice(worldHeadHtml.indexOf('pm-today-trend-meter'), worldHeadHtml.indexOf('<h2>世界态势</h2>'));
 assert.doesNotMatch(worldMeterHtml, /<svg|TREND_METER_CLOCK/, '世界态势元数据不得保留时钟图标');
 assert.doesNotMatch(todayTrendUiText, /TREND_METER_CLOCK_ICON_SVG/, '仪表盘渲染器不得保留时钟图标常量');
@@ -870,7 +871,7 @@ assert.ok(reputationHeadHtml.indexOf('<h2>个人风评</h2>') < reputationHeadHt
     && reputationHeadHtml.indexOf('today-trend-generate-reputation') < reputationHeadHtml.indexOf('today-trend-edit-reputation-rule')
     && reputationHeadHtml.indexOf('today-trend-edit-reputation-rule') < reputationHeadHtml.indexOf('today-trend-toggle-menu'),
     '个人风评模块头必须先居中输出标题，再按刷新、提示词、条目操作的顺序输出三个图标按钮');
-assert.match(reputationHeadHtml, /pm-today-trend-module-actions[\s\S]*?data-today-trend-floor/, '个人风评楼层状态必须位于操作行内');
+assert.match(reputationHeadHtml, /<h2>[\s\S]*?<\/h2>[\s\S]*?data-today-trend-floor/, '个人风评楼层状态必须位于标题右侧');
 assert.match(reputationHtml, /中立/, '个人风评页必须渲染固定五档状态的中文标签');
 assert.match(reputationHtml, /pm-today-trend-reputation-entry/, '个人风评内容页必须使用观察报告条目结构');
 assert.match(reputationHtml, /pm-today-trend-meter-k">PEOPLE<\/span><span class="pm-today-trend-meter-v">1<\/span>/, '个人风评头部必须展示真实 PEOPLE 统计');
@@ -970,7 +971,7 @@ assert.ok(factionHeadHtml.indexOf('<h2>势力图谱</h2>') < factionHeadHtml.ind
     && factionHeadHtml.indexOf('today-trend-generate-factions') < factionHeadHtml.indexOf('today-trend-edit-faction-rule')
     && factionHeadHtml.indexOf('today-trend-edit-faction-rule') < factionHeadHtml.indexOf('today-trend-toggle-menu'),
     '势力图谱模块头必须先居中输出标题，再按刷新、提示词、条目操作的顺序输出三个图标按钮');
-assert.match(factionHeadHtml, /pm-today-trend-module-actions[\s\S]*?data-today-trend-floor/, '势力图谱楼层状态必须位于操作行内');
+assert.match(factionHeadHtml, /<h2>[\s\S]*?<\/h2>[\s\S]*?data-today-trend-floor/, '势力图谱楼层状态必须位于标题右侧');
 assert.match(factionHtml, /队长/, '势力卡片必须直接展示关键资料');
 assert.match(factionHtml, /pm-today-trend-faction-tree" data-depth="0"/, '势力图谱必须标识根层级');
 assert.match(factionHtml, /pm-today-trend-faction-card"[^>]*data-depth="1"/, '势力图谱必须标识子层级');
@@ -1204,7 +1205,7 @@ assert.ok(dynamicsHeadHtml.indexOf('<h2>事件追踪</h2>') < dynamicsHeadHtml.i
     && dynamicsHeadHtml.indexOf('today-trend-advance-all-events') < dynamicsHeadHtml.indexOf('today-trend-edit-dynamics-rule')
     && dynamicsHeadHtml.indexOf('today-trend-edit-dynamics-rule') < dynamicsHeadHtml.indexOf('today-trend-open-dynamics-settings'),
     '事件追踪模块头必须先居中输出标题，再按刷新、提示词、设置的顺序输出动作图标');
-assert.match(dynamicsHeadHtml, /pm-today-trend-module-actions[\s\S]*?data-today-trend-floor/, '事件追踪楼层状态必须位于操作行内');
+assert.match(dynamicsHeadHtml, /<h2>[\s\S]*?<\/h2>[\s\S]*?data-today-trend-floor/, '事件追踪楼层状态必须位于标题右侧');
 assert.match(archivedDynamicsHtml, /事件归档/, '归档 tab 必须联动模块标题');
 assert.match(dynamicsHtml, /pm-today-trend-module-head[\s\S]*?<\/header><div class="pm-today-trend-module-body">/, '事件追踪必须将主题色模块头与灰色内容层拆为相邻容器');
 assert.match(archivedDynamicsHtml, /DONE[\s\S]*?TOTAL/, '归档 tab meta 必须由归档和总事件数映射');

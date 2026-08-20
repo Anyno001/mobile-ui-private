@@ -3719,7 +3719,7 @@ for (const selector of [
   '.pm-today-trend-content.is-dynamics .pm-today-trend-module-head.is-expanded',
 ]) requireCssDeclarations(cssRules, selector, {
   position: 'sticky', top: 'var(--pm-space-0)', 'z-index': 'var(--pm-z-content)',
-  'flex-direction': 'column', padding: 'var(--pm-space-4) var(--pm-space-4) var(--pm-space-0)',
+  'flex-direction': 'column', padding: 'var(--pm-space-5) var(--pm-space-4) var(--pm-space-0)',
 });
 requireCssDeclarations(cssRules, '.pm-today-trend-module-head.is-expanded .pm-today-trend-head-tools', {
   position: 'absolute', top: 'var(--pm-space-3)', right: 'var(--pm-space-4)',
@@ -3816,11 +3816,11 @@ if (!relationNodeTokenRule) {
   failures.push('style.css: .pm-today-trend-shell must define --pm-today-trend-relation-node-size with --pm-space-5');
 }
 const relationStatusTokens = {
-  hostile: { surface: '--pm-today-trend-relation-hostile', foreground: '--pm-today-trend-relation-hostile-foreground', expectedSurface: 'var(--pm-color-danger)', expectedForeground: 'var(--pm-color-on-danger)' },
-  dislike: { surface: '--pm-today-trend-relation-dislike', foreground: '--pm-today-trend-relation-dislike-foreground', expectedSurface: 'var(--pm-color-warning)', expectedForeground: 'var(--pm-color-on-warning)' },
+  hostile: { surface: '--pm-today-trend-relation-hostile', foreground: '--pm-today-trend-relation-hostile-foreground', expectedSurface: '#e8566c', expectedForeground: '#fff' },
+  dislike: { surface: '--pm-today-trend-relation-dislike', foreground: '--pm-today-trend-relation-dislike-foreground', expectedSurface: '#cc7a42', expectedForeground: '#fff' },
   neutral: { surface: '--pm-today-trend-relation-neutral', foreground: '--pm-today-trend-relation-neutral-foreground', expectedSurface: 'var(--pm-color-surface-control)', expectedForeground: 'var(--pm-color-text-primary)' },
   like: { surface: '--pm-today-trend-relation-like', foreground: '--pm-today-trend-relation-like-foreground', expectedSurface: 'var(--pm-color-accent)', expectedForeground: 'var(--pm-color-on-accent)' },
-  trust: { surface: '--pm-today-trend-relation-trust', foreground: '--pm-today-trend-relation-trust-foreground', expectedSurface: 'var(--pm-color-success)', expectedForeground: 'var(--pm-color-on-success)' },
+  trust: { surface: '--pm-today-trend-relation-trust', foreground: '--pm-today-trend-relation-trust-foreground', expectedSurface: '#2d9e84', expectedForeground: '#fff' },
 };
 for (const [status, relation] of Object.entries(relationStatusTokens)) {
   if (normalizeCssValue(relationNodeTokenRule?.declarations.get(relation.surface)) !== relation.expectedSurface) {

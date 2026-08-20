@@ -485,7 +485,11 @@
       "transparent",
       "transparent !important",
       "color-mix(in srgb,currentColor 8%,transparent) !important",
-      "color-mix(in srgb,currentColor 12%,transparent) !important"
+      "color-mix(in srgb,currentColor 12%,transparent) !important",
+      "#e8566c",
+      "#cc7a42",
+      "#2d9e84",
+      "#fff"
     ],
     "fontSize": [],
     "spacing": [
