@@ -1,9 +1,6 @@
 import { CLOSE_ICON_SVG, MORE_ICON_SVG, TODAY_TREND_RELATION_ICON_PATHS } from './icons.js';
 import { escapeAttr, escapeHtml } from './ui.js';
 
-// 仪表盘 meta 前导小时钟：灰色装饰，弱化存在但点出「时间维度」语义（呼应原型 updated/meta 行首图标）。
-export const TREND_METER_CLOCK_ICON_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg>';
-
 export function trendRelationIcon(status) {
     const paths = TODAY_TREND_RELATION_ICON_PATHS[status] || TODAY_TREND_RELATION_ICON_PATHS.neutral;
     return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths}</svg>`;
@@ -13,11 +10,11 @@ export function trendRelationSymbol(status) {
     return `<span class="pm-today-trend-relation-symbol" aria-hidden="true">${trendRelationIcon(status)}</span>`;
 }
 
-// 仪表盘式 meta：时钟 + 若干 { label, value } 段，段间以 × 装饰分隔（非运算符）。label 为英文装饰标签，value 来自真实字段。
+// 仪表盘式 meta：若干 { label, value } 段，段间以 × 装饰分隔（非运算符）。label 为英文装饰标签，value 来自真实字段。
 export function trendMeter(segments = []) {
     const body = segments.filter(segment => segment && segment.label != null && segment.value != null)
         .map(({ label, value }, index) => `${index ? '<span class="pm-today-trend-meter-x" aria-hidden="true">&times;</span>' : ''}<span class="pm-today-trend-meter-k">${escapeHtml(String(label))}</span><span class="pm-today-trend-meter-v">${escapeHtml(String(value))}</span>`).join('');
-    return body ? `<span class="pm-today-trend-meter">${TREND_METER_CLOCK_ICON_SVG}${body}</span>` : '';
+    return body ? `<span class="pm-today-trend-meter">${body}</span>` : '';
 }
 
 export function trendIconButton({ action, icon, label, attrs = '', danger = false, className = '' }) {
@@ -59,10 +56,21 @@ export function trendFloorStatus({ currentFloor, syncedFloor = 0, phase = 'idle'
     return `<span class="pm-today-trend-floor" data-today-trend-floor="${floor ?? ''}" data-state="${state}" role="status" aria-live="polite" aria-label="楼层 ${reading}，${escapeAttr(status)}">${statusHtml}</span>`;
 }
 
-export function trendModuleHead({ title, menuId, menuOpenId, actions = [], meta = '', metaHtml = '', adornment = '', asideHtml = '' }) {
+export function trendModuleHead({ title, menuId, menuOpenId, actions = [], meta = '', metaHtml = '', adornment = '', asideHtml = '', exposedActionCount = 0, itemActions = false }) {
     const renderedMeta = metaHtml || (meta ? `<span>${escapeHtml(meta)}</span>` : '');
-    const menu = trendActionMenu({ id: menuId, open: menuOpenId === menuId, label: `${title}操作`, actions });
-    return `<header class="pm-today-trend-module-head"><span class="pm-today-trend-head-tools">${menu}${asideHtml}</span><div>${renderedMeta}<h2>${escapeHtml(title)}${adornment}</h2></div></header>`;
+    if (!exposedActionCount) {
+        const menu = trendActionMenu({ id: menuId, open: menuOpenId === menuId, label: `${title}操作`, actions });
+        return `<header class="pm-today-trend-module-head"><span class="pm-today-trend-head-tools">${menu}${asideHtml}</span><div>${renderedMeta}<h2>${escapeHtml(title)}${adornment}</h2></div></header>`;
+    }
+    const exposedActions = actions.slice(0, exposedActionCount);
+    const overflowActions = actions.slice(exposedActionCount);
+    const quickActions = exposedActions.map(action => trendIconButton({ ...action, className: 'pm-today-trend-head-action' }));
+    const firstAction = quickActions.shift() || '';
+    const menu = itemActions && !overflowActions.length
+        ? trendIconButton({ action: 'today-trend-toggle-menu', icon: MORE_ICON_SVG, label: `${title}条目操作`, attrs: `data-menu-id="${escapeAttr(menuId)}" aria-expanded="${menuOpenId === menuId}"`, className: 'pm-today-trend-head-item-toggle' })
+        : itemActions || overflowActions.length
+        ? trendActionMenu({ id: menuId, open: menuOpenId === menuId, label: `${title}条目操作`, actions: overflowActions }) : '';
+    return `<header class="pm-today-trend-module-head is-expanded"><div>${renderedMeta}<h2>${escapeHtml(title)}${adornment}</h2></div><span class="pm-today-trend-head-tools">${firstAction}${asideHtml}${quickActions.join('')}${menu}</span></header>`;
 }
 
 export function trendRuleEditor({ rule, value = '' } = {}) {

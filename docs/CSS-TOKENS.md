@@ -54,7 +54,7 @@
 | `--pm-today-trend-reputation-*` | `.pm-today-trend-reputation` | 个人风评的图标、评级尺和收尾装饰尺寸；颜色从公共语义 token 派生。 |
 | `--pm-today-trend-faction-*` | `.pm-today-trend-factions` | 势力图谱的菱形节点、关系量表与递归层级缩进；颜色从公共语义 token 派生。 |
 | `--pm-today-trend-dynamics-*` | `.pm-today-trend-dynamics` | 事件追踪的节点、连续轨道与时间线定位参数；颜色从公共语义 token 派生。 |
-| `--pm-today-trend-relation-*` | `.pm-today-trend-shell` | 个人风评与势力图谱五档关系圆的局部表面色及统一浅色前景；浅色/深色值成对声明，SVG 通过 `currentColor` 消费。 |
+| `--pm-today-trend-relation-*` | `.pm-today-trend-shell` | 个人风评与势力图谱五档关系圆的局部语义表面色及对应前景：敌对→danger/on-danger、不喜→warning/on-warning、中立→surface-control/text-primary、喜爱→accent/on-accent、信任→success/on-success；SVG 通过 `currentColor` 消费。 |
 
 ## 4. 颜色与表面
 

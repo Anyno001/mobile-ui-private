@@ -468,7 +468,6 @@
   "legacyValues": {
     "color": [
       "#000",
-      "#000 !important",
       "#1c1c1e",
       "#fff !important",
       "color-mix(in srgb,currentColor 12%,transparent)",
@@ -1120,7 +1119,7 @@
     "styles/core.css::root::#pm-iphone::border::10px solid var(--pm-border) !important",
     "styles/core.css::root::#pm-iphone::box-shadow::0 20px 60px rgba(0,0,0,.45) !important",
     "styles/core.css::root::#pm-iphone::box-sizing::border-box !important",
-    "styles/core.css::root::#pm-iphone::color::#000 !important",
+    "styles/core.css::root::#pm-iphone::color::var(--pm-color-text-primary) !important",
     "styles/core.css::root::#pm-iphone::display::flex !important",
     "styles/core.css::root::#pm-iphone::filter::none !important",
     "styles/core.css::root::#pm-iphone::flex-direction::column !important",

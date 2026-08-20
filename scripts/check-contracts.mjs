@@ -3620,6 +3620,13 @@ if (removedTodayTrendAssets.length) {
 if (css.includes('--pm-letter-spacing-wide')) {
   failures.push('style.css: today-trend must not consume an unregistered letter-spacing token');
 }
+requireCssDeclarations(cssRules, '#pm-iphone', { color: 'var(--pm-color-text-primary) !important' });
+requireCssDeclarations(cssRules, '.pm-scene-feed', { background: 'var(--pm-color-surface-card)' });
+requireCssDeclarations(cssRules, '.pm-scene-post', {
+  background: 'var(--pm-color-surface-page)',
+  border: '0',
+});
+requireCssDeclarations(cssRules, '.pm-scene-post footer', { 'border-top': '1px solid var(--pm-color-border-subtle)' });
 requireCssDeclarations(cssRules, '.pm-scene-post p', {
   'font-size': 'var(--pm-scene-post-body-font-size)',
   'font-weight': 'var(--pm-font-weight-medium)',
@@ -3661,10 +3668,30 @@ for (const selector of ['.pm-calendar-title-chevron svg', '.pm-calendar-manageme
     failures.push(`style.css: ${selector} must disable transition under prefers-reduced-motion`);
   }
 }
-requireCssDeclarations(cssRules, '.pm-today-trend-content.is-minimal-ui .pm-today-trend-module-head', {
+requireCssDeclarations(cssRules, '.pm-today-trend-content.is-minimal-ui .pm-today-trend-module-head:not(.is-expanded)', {
   'align-items': 'center', 'min-height': 'calc(var(--pm-size-control-default) + var(--pm-space-2))', 'padding-bottom': 'var(--pm-space-3)',
 });
 requireCssDeclarations(cssRules, '.pm-today-trend-content.is-minimal-ui .pm-today-trend-floor', { gap: 'var(--pm-space-0-5)' });
+requireCssDeclarations(cssRules, '.pm-today-trend-header', {
+  position: 'sticky', top: '0', display: 'flex', 'justify-content': 'space-between',
+});
+if (cssRules.some(rule => rule.selectors.includes('.pm-today-trend-header h2'))) {
+  failures.push('style.css: today-trend global header must not restore the redundant page title');
+}
+for (const selector of [
+  '.pm-today-trend-content.is-world .pm-today-trend-module-head.is-expanded',
+  '.pm-today-trend-content.is-reputation .pm-today-trend-module-head.is-expanded',
+  '.pm-today-trend-content.is-faction .pm-today-trend-module-head.is-expanded',
+  '.pm-today-trend-content.is-dynamics .pm-today-trend-module-head.is-expanded',
+]) requireCssDeclarations(cssRules, selector, {
+  position: 'sticky', top: 'var(--pm-space-0)', 'z-index': 'var(--pm-z-content)',
+  'flex-direction': 'column', padding: 'var(--pm-space-4) var(--pm-space-4) calc(var(--pm-space-5) * 3)',
+});
+requireCssDeclarations(cssRules, '.pm-today-trend-module-head.is-expanded .pm-today-trend-head-tools', {
+  position: 'static', 'flex-wrap': 'wrap',
+});
+requireCssDeclarations(cssRules, '.pm-today-trend-module-head.is-expanded .pm-today-trend-floor', { 'align-items': 'flex-start' });
+requireCssDeclarations(cssRules, '.pm-today-trend-module-body>.pm-today-trend-world-signals', { display: 'contents' });
 const todayTrendModuleHeadAccentRules = cssRules.filter(rule => (
   rule.declarations.has('background')
   && rule.declarations.has('color')
@@ -3700,6 +3727,10 @@ requireCssDeclarations(cssRules, '.pm-today-trend-module-head .pm-today-trend-me
 });
 requireCssDeclarations(cssRules, '.pm-today-trend-module-head .pm-today-trend-icon-button:focus-visible', {
   'outline-color': 'var(--pm-color-on-accent)',
+});
+requireCssDeclarations(cssRules, '.pm-phone-screen:has(.pm-main-ui[data-page="today-trend"])', {
+  'border-radius': 'var(--pm-radius-none) var(--pm-radius-none) var(--pm-phone-inner-radius) var(--pm-phone-inner-radius)',
+  background: 'var(--pm-color-accent)',
 });
 requireCssDeclarations(cssRules, '.pm-today-trend-module-body', {
   background: 'var(--pm-color-surface-elevated)',
@@ -3738,47 +3769,23 @@ const relationNodeTokenRule = cssRules.find(rule => rule.selectors.includes('.pm
 if (!relationNodeTokenRule) {
   failures.push('style.css: .pm-today-trend-shell must define --pm-today-trend-relation-node-size with --pm-space-5');
 }
-const relationColorTokens = [
-  '--pm-today-trend-relation-hostile', '--pm-today-trend-relation-dislike',
-  '--pm-today-trend-relation-neutral', '--pm-today-trend-relation-like',
-  '--pm-today-trend-relation-trust', '--pm-today-trend-relation-foreground',
-];
-for (const token of relationColorTokens) {
-  if (!relationNodeTokenRule?.declarations.has(token)) failures.push(`style.css: .pm-today-trend-shell must define ${token}`);
-}
-const relationDarkTokenRule = cssRules.find(rule => rule.selectors.includes(':where(#pm-iphone[data-theme="dark"],#pm-overlay[data-theme="dark"],#pm-overlay-sub[data-theme="dark"],.pm-model-dropdown[data-theme="dark"]) .pm-today-trend-shell'));
-for (const token of relationColorTokens.slice(0, 5)) {
-  if (!relationDarkTokenRule?.declarations.has(token)) failures.push(`style.css: dark today-trend shell must override ${token}`);
-}
-const todayTrendRelationPalette = {
-  light: {
-    '--pm-today-trend-relation-hostile': '#C93545',
-    '--pm-today-trend-relation-dislike': '#B86430',
-    '--pm-today-trend-relation-neutral': '#6B7B8A',
-    '--pm-today-trend-relation-like': '#2E7BB5',
-    '--pm-today-trend-relation-trust': '#1F8C6E',
-  },
-  dark: {
-    '--pm-today-trend-relation-hostile': '#E04A5A',
-    '--pm-today-trend-relation-dislike': '#D4783E',
-    '--pm-today-trend-relation-neutral': '#6F7F91',
-    '--pm-today-trend-relation-like': '#4388C0',
-    '--pm-today-trend-relation-trust': '#3A8B73',
-  },
+const relationStatusTokens = {
+  hostile: { surface: '--pm-today-trend-relation-hostile', foreground: '--pm-today-trend-relation-hostile-foreground', expectedSurface: 'var(--pm-color-danger)', expectedForeground: 'var(--pm-color-on-danger)' },
+  dislike: { surface: '--pm-today-trend-relation-dislike', foreground: '--pm-today-trend-relation-dislike-foreground', expectedSurface: 'var(--pm-color-warning)', expectedForeground: 'var(--pm-color-on-warning)' },
+  neutral: { surface: '--pm-today-trend-relation-neutral', foreground: '--pm-today-trend-relation-neutral-foreground', expectedSurface: 'var(--pm-color-surface-control)', expectedForeground: 'var(--pm-color-text-primary)' },
+  like: { surface: '--pm-today-trend-relation-like', foreground: '--pm-today-trend-relation-like-foreground', expectedSurface: 'var(--pm-color-accent)', expectedForeground: 'var(--pm-color-on-accent)' },
+  trust: { surface: '--pm-today-trend-relation-trust', foreground: '--pm-today-trend-relation-trust-foreground', expectedSurface: 'var(--pm-color-success)', expectedForeground: 'var(--pm-color-on-success)' },
 };
-for (const [theme, palette] of Object.entries(todayTrendRelationPalette)) {
-  const rule = theme === 'light' ? relationNodeTokenRule : relationDarkTokenRule;
-  for (const [token, expected] of Object.entries(palette)) {
-    if (normalizeCssValue(rule?.declarations.get(token)) !== expected) {
-      failures.push(`style.css: ${theme} today-trend palette ${token} must be ${expected}`);
-    }
+for (const [status, relation] of Object.entries(relationStatusTokens)) {
+  if (normalizeCssValue(relationNodeTokenRule?.declarations.get(relation.surface)) !== relation.expectedSurface) {
+    failures.push(`style.css: ${status} relation surface must remain ${relation.expectedSurface}`);
+  }
+  if (normalizeCssValue(relationNodeTokenRule?.declarations.get(relation.foreground)) !== relation.expectedForeground) {
+    failures.push(`style.css: ${status} relation foreground must remain ${relation.expectedForeground}`);
   }
 }
-if (normalizeCssValue(relationNodeTokenRule?.declarations.get('--pm-today-trend-relation-foreground')) !== 'var(--pm-color-on-dark)') {
-  failures.push('style.css: --pm-today-trend-relation-foreground must remain bound to var(--pm-color-on-dark)');
-}
 requireCssDeclarations(cssRules, '.pm-today-trend-home', { color: 'var(--pm-color-on-accent) !important' });
-requireCssDeclarations(cssRules, '.pm-today-trend-tabs button', { color: 'var(--pm-color-text-placeholder)' });
+requireCssDeclarations(cssRules, '.pm-today-trend-tabs button', { color: 'var(--pm-color-text-tertiary)' });
 requireCssDeclarations(cssRules, '.pm-today-trend-tabs button[aria-pressed="true"] svg', { color: 'var(--pm-color-accent)' });
 for (const rule of cssRules) if (rule.selectors.some(selector => selector.includes('.pm-today-trend-tabs') && selector.includes('svg'))) {
   if (rule.declarations.has('stroke-width')) failures.push(`style.css:${rule.line}: today-trend tabs SVG must inherit the shared icon stroke width`);
@@ -3857,49 +3864,26 @@ for (const selector of [
   margin: 'var(--pm-space-0)',
 });
 requireCssDeclarations(cssRules, '.pm-today-trend-content.is-minimal-ui .pm-today-trend-event-facts', { 'margin-block-start': 'var(--pm-space-0)' });
-for (const [status, colors] of Object.entries({
-  hostile: { background: 'var(--pm-today-trend-relation-hostile)', color: 'var(--pm-today-trend-relation-foreground)' },
-  dislike: { background: 'var(--pm-today-trend-relation-dislike)', color: 'var(--pm-today-trend-relation-foreground)' },
-  neutral: { background: 'var(--pm-today-trend-relation-neutral)', color: 'var(--pm-today-trend-relation-foreground)' },
-  like: { background: 'var(--pm-today-trend-relation-like)', color: 'var(--pm-today-trend-relation-foreground)' },
-  trust: { background: 'var(--pm-today-trend-relation-trust)', color: 'var(--pm-today-trend-relation-foreground)' },
-})) {
+for (const [status, relation] of Object.entries(relationStatusTokens)) {
+  const colors = { background: `var(${relation.surface})`, color: `var(${relation.foreground})` };
   requireCssDeclarations(cssRules, `.pm-today-trend-content.is-minimal-ui :is(.pm-today-trend-reputation-mark,.pm-today-trend-faction-node)[data-status="${status}"] .pm-today-trend-relation-symbol`, colors);
+  requireCssDeclarations(cssRules, `.pm-today-trend-content:not(.is-minimal-ui) :is(.pm-today-trend-reputation-mark,.pm-today-trend-faction-node)[data-status="${status}"]`, colors);
 }
-for (const [status, background] of Object.entries({
-  hostile: 'var(--pm-today-trend-relation-hostile)',
-  dislike: 'var(--pm-today-trend-relation-dislike)',
-  neutral: 'var(--pm-today-trend-relation-neutral)',
-  like: 'var(--pm-today-trend-relation-like)',
-  trust: 'var(--pm-today-trend-relation-trust)',
-})) {
-  requireCssDeclarations(cssRules, `.pm-today-trend-content:not(.is-minimal-ui) :is(.pm-today-trend-reputation-mark,.pm-today-trend-faction-node)[data-status="${status}"]`, {
-    background,
-    color: 'var(--pm-today-trend-relation-foreground)',
-  });
-}
-const relationStatusSurfaceTokens = {
-  hostile: 'var(--pm-today-trend-relation-hostile)',
-  dislike: 'var(--pm-today-trend-relation-dislike)',
-  neutral: 'var(--pm-today-trend-relation-neutral)',
-  like: 'var(--pm-today-trend-relation-like)',
-  trust: 'var(--pm-today-trend-relation-trust)',
-};
 const relationVisualClasses = ['.pm-today-trend-reputation-mark', '.pm-today-trend-faction-node'];
 for (const rule of cssRules) for (const selector of rule.selectors) {
   if (!relationVisualClasses.some(className => selector.includes(className))) continue;
   const status = selector.match(/\[data-status=["'](hostile|dislike|neutral|like|trust)["']\]/)?.[1];
   if (!status) continue;
-  const expectedSurface = relationStatusSurfaceTokens[status];
+  const relation = relationStatusTokens[status];
   for (const property of ['background', 'background-color']) {
     const value = rule.declarations.get(property);
-    if (value && normalizeCssValue(value) !== expectedSurface) {
-      failures.push(`style.css:${rule.line}: ${selector} must use ${expectedSurface} for ${property}`);
+    if (value && normalizeCssValue(value) !== `var(${relation.surface})`) {
+      failures.push(`style.css:${rule.line}: ${selector} must use var(${relation.surface}) for ${property}`);
     }
   }
   const foreground = rule.declarations.get('color');
-  if (foreground && normalizeCssValue(foreground) !== 'var(--pm-today-trend-relation-foreground)') {
-    failures.push(`style.css:${rule.line}: ${selector} must use the shared relation foreground instead of ${foreground}`);
+  if (foreground && normalizeCssValue(foreground) !== `var(${relation.foreground})`) {
+    failures.push(`style.css:${rule.line}: ${selector} must use var(${relation.foreground}) instead of ${foreground}`);
   }
 }
 for (const rule of cssRules) if (rule.selectors.some(selector => selector.includes('.pm-today-trend-reputation-meter') || selector.includes('.pm-today-trend-faction-meter'))) {
@@ -3911,39 +3895,6 @@ for (const rule of cssRules) if (rule.selectors.some(selector => selector.includ
 }
 requireText('today-trend-ui.js relation icon', todayTrendUiCode, 'function trendRelationIcon(status)');
 requireText('today-trend-ui.js relation icon', todayTrendUiCode, 'stroke="currentColor"');
-const cssCustomProperties = new Map();
-for (const rule of cssRules) for (const [property, value] of rule.declarations) {
-  if (property.startsWith('--')) cssCustomProperties.set(property, normalizeCssValue(value));
-}
-const resolveCssCustomProperty = (token, depth = 0) => {
-  if (depth >= 8) return token;
-  const value = cssCustomProperties.get(token) || token;
-  const reference = value.match(/^var\((--[\w-]+)\)$/)?.[1];
-  return reference ? resolveCssCustomProperty(reference, depth + 1) : value;
-};
-const relationForeground = resolveCssCustomProperty('--pm-today-trend-relation-foreground');
-const parseHexColor = value => {
-  const match = String(value || '').trim().match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i);
-  if (!match) return null;
-  const digits = match[1].length === 3 ? [...match[1]].map(channel => `${channel}${channel}`).join('') : match[1];
-  return [0, 2, 4].map(offset => parseInt(digits.slice(offset, offset + 2), 16) / 255);
-};
-const relativeLuminance = rgb => rgb.map(channel => channel <= .03928 ? channel / 12.92 : ((channel + .055) / 1.055) ** 2.4)
-  .reduce((sum, channel, index) => sum + channel * [0.2126, 0.7152, 0.0722][index], 0);
-const contrastWithForeground = (value, foreground) => {
-  const rgb = parseHexColor(value);
-  const foregroundRgb = parseHexColor(foreground);
-  if (!rgb || !foregroundRgb) return null;
-  const first = relativeLuminance(rgb), second = relativeLuminance(foregroundRgb);
-  return (Math.max(first, second) + .05) / (Math.min(first, second) + .05);
-};
-if (!parseHexColor(relationForeground)) failures.push(`style.css: --pm-today-trend-relation-foreground must resolve to a hex foreground, received ${relationForeground}`);
-for (const token of relationColorTokens.slice(0, 5)) {
-  for (const rule of [relationNodeTokenRule, relationDarkTokenRule]) {
-    const contrast = contrastWithForeground(rule?.declarations.get(token), relationForeground);
-    if (contrast === null || contrast < 3) failures.push(`style.css: ${token} must provide a hex surface with ${relationForeground} foreground contrast >= 3:1`);
-  }
-}
 for (const selector of [
   '.pm-calendar-status-heading',
   '.pm-calendar-status-value',
