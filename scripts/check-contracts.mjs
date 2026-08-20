@@ -3719,7 +3719,7 @@ for (const selector of [
   '.pm-today-trend-content.is-dynamics .pm-today-trend-module-head.is-expanded',
 ]) requireCssDeclarations(cssRules, selector, {
   position: 'sticky', top: 'var(--pm-space-0)', 'z-index': 'var(--pm-z-content)',
-  'flex-direction': 'column', padding: 'var(--pm-space-5) var(--pm-space-4) var(--pm-space-0)',
+  'flex-direction': 'column', padding: 'var(--pm-space-3) var(--pm-space-4) var(--pm-space-0)',
 });
 requireCssDeclarations(cssRules, '.pm-today-trend-module-head.is-expanded .pm-today-trend-head-tools', {
   position: 'absolute', top: 'var(--pm-space-3)', right: 'var(--pm-space-4)',
@@ -3862,7 +3862,7 @@ for (const selector of ['.pm-today-trend-world-hero', '.pm-today-trend-world-bri
     display: 'grid',
     'grid-template-columns': todayTrendEntryRail,
     'row-gap': 'var(--pm-space-2)',
-    padding: 'var(--pm-space-3)',
+    padding: 'var(--pm-space-4)',
   });
 }
 for (const selector of ['.pm-today-trend-world-hero>.pm-today-trend-world-item-head', '.pm-today-trend-world-brief>.pm-today-trend-world-item-head']) {

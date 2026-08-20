@@ -217,7 +217,7 @@ assert.doesNotMatch(todayTrendStyle, /pm-today-trend-inline-action[^{}]*svg\{[^}
 assert.doesNotMatch(todayTrendStyle, /\.pm-today-trend-icon-button\[data-action\^="today-trend-edit-"\] svg\{[^}]*translate(?:Y|\([^,]+,\s*(?!0(?:px)?\b))/, '编辑图标不得保留向下偏移');
 assert.match(todayTrendStyle, /\.pm-today-trend-header\{[^}]*display:flex[^}]*justify-content:space-between/, '去除页面标题后，顶栏必须仅用返回与全局操作维持左右布局');
 assert.doesNotMatch(todayTrendStyle, /\.pm-today-trend-header h2\{/, '顶栏不得保留重复的“今日风向”标题样式');
-assert.match(todayTrendStyle, /\.pm-today-trend-content\.is-world \.pm-today-trend-module-head\.is-expanded,[^}]*\{position:sticky[^}]*top:var\(--pm-space-0\)[^}]*z-index:var\(--pm-z-content\)[^}]*align-items:center[^}]*flex-direction:column[^}]*padding:var\(--pm-space-5\) var\(--pm-space-4\) var\(--pm-space-0\)/, '内容模块头必须固定在滚动区顶部，并为跨层操作圆保留无底部填充的主题色接缝');
+assert.match(todayTrendStyle, /\.pm-today-trend-content\.is-world \.pm-today-trend-module-head\.is-expanded,[^}]*\{position:sticky[^}]*top:var\(--pm-space-0\)[^}]*z-index:var\(--pm-z-content\)[^}]*align-items:center[^}]*flex-direction:column[^}]*padding:var\(--pm-space-3\) var\(--pm-space-4\) var\(--pm-space-0\)/, '内容模块头必须固定在滚动区顶部，并为跨层操作圆保留无底部填充的主题色接缝');
 assert.match(todayTrendStyle, /\.pm-today-trend-module-head\.is-expanded>div\{[^}]*align-items:center[^}]*text-align:center/, '固定模块头中的元数据与标题必须保持居中');
 assert.match(todayTrendStyle, /\.pm-today-trend-module-head\.is-expanded \.pm-today-trend-head-tools\{position:absolute[^}]*top:var\(--pm-space-3\)[^}]*right:var\(--pm-space-4\)/, '固定模块头的楼层状态必须固定在右上角，不能挤压居中标题');
 assert.match(todayTrendStyle, /\.pm-today-trend-module-actions\{[^}]*display:flex[^}]*align-items:center[^}]*justify-content:center[^}]*gap:var\(--pm-space-2\)[^}]*transform:translateY\(50%\)/, '模块操作必须组成居中圆形图标行，并跨在主题色与内容层接缝');
@@ -248,7 +248,7 @@ assert.doesNotMatch(compactTodayTrendMedia, /pm-today-trend-(?:world|reputation|
 assert.match(todayTrendStyle, /\.pm-today-trend-menu-action,\.pm-today-trend-menu-close\{flex-basis:var\(--pm-size-control-compact\);width:var\(--pm-size-control-compact\);min-height:var\(--pm-size-control-compact\)/, '320px 菜单按钮不得缩回 28px 命中区');
 assert.doesNotMatch(todayTrendStyle, /pm-today-trend-icon-button\[data-action\^="today-trend-(?:refresh|generate)"\]\{width:28px/, '今日风向真实操作按钮不得使用 28px 命中区');
 assert.doesNotMatch(todayTrendStyle, /pm-today-trend-content\.is-(?:reputation|faction|dynamics)::/, '旧内容容器背景伪元素必须清理');
-assert.match(todayTrendStyle, /pm-today-trend-world-hero,\.pm-today-trend-world-brief\{[^}]*padding:var\(--pm-space-3\)[^}]*border:0[^}]*border-radius:var\(--pm-radius-card\)[^}]*background:var\(--pm-color-surface-page\)[^}]*box-shadow:none/, '世界态势卡片必须零描边并比内容区背景更白（顶栏主题色实底改造）');
+assert.match(todayTrendStyle, /pm-today-trend-world-hero,\.pm-today-trend-world-brief\{[^}]*padding:var\(--pm-space-4\)[^}]*border:0[^}]*border-radius:var\(--pm-radius-card\)[^}]*background:var\(--pm-color-surface-page\)[^}]*box-shadow:none/, '世界态势卡片必须零描边并比内容区背景更白（顶栏主题色实底改造）');
 assert.match(todayTrendStyle, /pm-today-trend-reputation-entry\{[^}]*padding:var\(--pm-space-3\)[^}]*border:0[^}]*border-radius:var\(--pm-radius-card\)[^}]*background:var\(--pm-color-surface-page\)[^}]*box-shadow:none/, '个人风评卡片必须零描边并比内容区背景更白（顶栏主题色实底改造）');
 assert.match(todayTrendStyle, /pm-today-trend-event-card\{[^}]*padding:var\(--pm-space-3\)[^}]*border:0[^}]*border-radius:var\(--pm-radius-card\)[^}]*background:var\(--pm-color-surface-page\)[^}]*box-shadow:none/, '事件追踪卡片必须零描边并比内容区背景更白（顶栏主题色实底改造）');
 assert.match(todayTrendStyle, /pm-today-trend-faction-card\{[^}]*padding:var\(--pm-space-3\)[^}]*border:0[^}]*border-radius:var\(--pm-radius-card\)[^}]*background:var\(--pm-color-surface-page\)[^}]*box-shadow:none/, '势力图谱卡片必须零描边并比内容区背景更白（顶栏主题色实底改造）');
@@ -1075,11 +1075,8 @@ assert.match(busyDynamicsHtml, /pm-today-trend-event-facts/, '动态内容页必
 assert.match(busyDynamicsHtml, /pm-today-trend-event-history/, '动态内容页必须提供阶段时间线容器');
 assert.match(busyDynamicsHtml, /pm-today-trend-event-marker" data-today-trend-icon="[^"]+" aria-hidden="true"><svg[\s\S]*?<\/svg><\/span>/, '事件追踪卡片必须包含带 key 的 SVG 左侧节点');
 assert.match(busyDynamicsHtml, /pm-today-trend-event-body/, '事件追踪卡片必须将内容与左侧节点分层');
-assert.match(busyDynamicsHtml, /role="tablist"[^>]*aria-label="事件追踪状态"/, '事件追踪必须提供可访问的状态 tab 容器');
-assert.match(busyDynamicsHtml, /data-action="today-trend-set-dynamics-tab"[^>]*data-tab="active"[^>]*aria-selected="true"/, '事件追踪默认必须选中正在追踪 tab');
-assert.match(busyDynamicsHtml, /data-tab="active"[^>]*aria-selected="true"[^>]*aria-controls="pm-today-trend-active-panel"[^>]*tabindex="0"/, '当前事件 tab 必须进入键盘焦点序列');
-assert.match(busyDynamicsHtml, /data-tab="archived"[^>]*aria-selected="false"[^>]*aria-controls="pm-today-trend-archived-panel"[^>]*tabindex="-1"/, '非当前事件 tab 必须退出键盘焦点序列');
-assert.match(busyDynamicsHtml, /pm-today-trend-active-panel"[^>]*role="tabpanel"[^>]*aria-labelledby="pm-today-trend-active-tab"[^>]*><|pm-today-trend-archived-panel"[^>]*hidden/, '事件 tab 面板必须有可访问关联并对非当前面板使用 hidden');
+assert.match(busyDynamicsHtml, /pm-today-trend-dynamics-switch[^>]*data-action="today-trend-set-dynamics-tab"[^>]*data-tab="archived"/, '事件追踪必须提供标题旁的切换按钮');
+assert.match(busyDynamicsHtml, /pm-today-trend-active-panel[\s\S]*?pm-today-trend-archived-panel[^>]*hidden/, '事件追踪必须同时渲染活跃与归档面板，非活跃面板 hidden');
 assert.match(busyDynamicsHtml, /pm-today-trend-event-pill is-live/, '活跃事件必须提供带状态点的 pill');
 assert.match(busyDynamicsHtml, /pm-today-trend-stage-tag">最新阶段/, '活跃事件的最后阶段必须标记为最新阶段');
 assert.doesNotMatch(todayTrendStyle, /pm-today-trend-event-list::before/, '事件追踪列表必须删除左侧大轨道');
@@ -1209,7 +1206,7 @@ assert.match(dynamicsHeadHtml, /<h2>[\s\S]*?<\/h2>[\s\S]*?data-today-trend-floor
 assert.match(archivedDynamicsHtml, /事件归档/, '归档 tab 必须联动模块标题');
 assert.match(dynamicsHtml, /pm-today-trend-module-head[\s\S]*?<\/header><div class="pm-today-trend-module-body">/, '事件追踪必须将主题色模块头与灰色内容层拆为相邻容器');
 assert.match(archivedDynamicsHtml, /DONE[\s\S]*?TOTAL/, '归档 tab meta 必须由归档和总事件数映射');
-assert.match(archivedDynamicsHtml, /data-tab="archived"[^>]*aria-selected="true"/, '归档 tab 必须暴露选中状态');
+assert.match(archivedDynamicsHtml, /pm-today-trend-dynamics-switch[^>]*data-tab="active"/, '归档视图切换按钮必须指向活跃 tab');
 assert.match(archivedDynamicsHtml, /pm-today-trend-event-latest[\s\S]*?最终结果/, '归档事件必须始终外置最终结果');
 assert.match(dynamicsHtml, /data-event-type="normal"/, '动态事件必须暴露类型样式钩子');
 assert.match(dynamicsHtml, /today-trend-open-dynamics-settings/, '动态页必须提供设置入口');
