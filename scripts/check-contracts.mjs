@@ -3747,10 +3747,12 @@ for (const selector of [
   '.pm-today-trend-factions>.pm-today-trend-module-head',
   '.pm-today-trend-dynamics>.pm-today-trend-module-head',
 ]) requireCssDeclarations(todayTrendModuleHeadAccentRules, selector, {
-  background: 'var(--pm-color-accent)',
   color: 'var(--pm-color-on-accent)',
   'border-radius': 'var(--pm-radius-none)',
 });
+for (const selector of ['.pm-today-trend-world>.pm-today-trend-module-head','.pm-today-trend-reputation>.pm-today-trend-module-head','.pm-today-trend-factions>.pm-today-trend-module-head','.pm-today-trend-dynamics>.pm-today-trend-module-head']) {
+  const rule = todayTrendModuleHeadAccentRules.find(r => r.selectors.includes(selector)); if (!rule || !rule.declarations.get('background')?.includes('var(--pm-color-accent)')) failures.push(`style.css: ${selector} background must include var(--pm-color-accent) as base layer`);
+}
 for (const selector of [
   '.pm-today-trend-world>.pm-today-trend-module-head h2',
   '.pm-today-trend-reputation>.pm-today-trend-module-head h2',
@@ -3779,7 +3781,7 @@ requireCssDeclarations(cssRules, '.pm-phone-screen:has(.pm-main-ui[data-page="to
 requireCssDeclarations(cssRules, '.pm-today-trend-module-body', {
   background: 'var(--pm-color-surface-elevated)',
   'border-radius': 'var(--pm-radius-large) var(--pm-radius-large) var(--pm-radius-none) var(--pm-radius-none)',
-  padding: 'var(--pm-space-5) var(--pm-space-5) calc(var(--pm-space-5) + var(--pm-space-px-36))',
+  padding: 'calc(var(--pm-space-5) + var(--pm-size-control-compact) / 2) var(--pm-space-5) calc(var(--pm-space-5) + var(--pm-space-px-36))',
   display: 'flex',
   'flex-direction': 'column',
 });

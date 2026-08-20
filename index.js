@@ -23592,7 +23592,7 @@ ${targetInstruction}`
     const quickActions = exposedActions.map((action) => trendIconButton({ ...action, className: "pm-today-trend-head-action" }));
     const firstAction = quickActions.shift() || "";
     const menu2 = itemActions2 && !overflowActions.length ? trendIconButton({ action: "today-trend-toggle-menu", icon: MORE_ICON_SVG, label: `${title}\u6761\u76EE\u64CD\u4F5C`, attrs: `data-menu-id="${escapeAttr(menuId)}" aria-expanded="${menuOpenId === menuId}"`, className: "pm-today-trend-head-item-toggle" }) : itemActions2 || overflowActions.length ? trendActionMenu({ id: menuId, open: menuOpenId === menuId, label: `${title}\u6761\u76EE\u64CD\u4F5C`, actions: overflowActions }) : "";
-    return `<header class="pm-today-trend-module-head is-expanded"><div>${renderedMeta}<h2>${escapeHtml(title)}${adornment}</h2></div><span class="pm-today-trend-head-tools">${asideHtml}</span><span class="pm-today-trend-module-actions">${firstAction}${quickActions.join("")}${menu2}</span></header>`;
+    return `<header class="pm-today-trend-module-head is-expanded"><div>${renderedMeta}<h2>${escapeHtml(title)}${adornment}</h2></div><span class="pm-today-trend-head-tools"></span><span class="pm-today-trend-module-actions">${firstAction}${quickActions.join("")}${menu2}${asideHtml}</span></header>`;
   }
   function trendRuleEditor({ rule, value = "" } = {}) {
     if (!rule) return "";
