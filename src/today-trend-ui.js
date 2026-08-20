@@ -70,7 +70,7 @@ export function trendModuleHead({ title, menuId, menuOpenId, actions = [], meta 
         ? trendIconButton({ action: 'today-trend-toggle-menu', icon: MORE_ICON_SVG, label: `${title}条目操作`, attrs: `data-menu-id="${escapeAttr(menuId)}" aria-expanded="${menuOpenId === menuId}"`, className: 'pm-today-trend-head-item-toggle' })
         : itemActions || overflowActions.length
         ? trendActionMenu({ id: menuId, open: menuOpenId === menuId, label: `${title}条目操作`, actions: overflowActions }) : '';
-    return `<header class="pm-today-trend-module-head is-expanded"><div>${renderedMeta}<h2>${escapeHtml(title)}${adornment}</h2>${asideHtml}</div><span class="pm-today-trend-head-tools"></span><span class="pm-today-trend-module-actions">${firstAction}${quickActions.join('')}${menu}</span></header>`;
+    return `<header class="pm-today-trend-module-head is-expanded"><div>${renderedMeta}<span class="pm-today-trend-title-row"><h2>${escapeHtml(title)}</h2>${adornment}</span>${asideHtml}</div><span class="pm-today-trend-head-tools"></span><span class="pm-today-trend-module-actions">${firstAction}${quickActions.join('')}${menu}</span></header>`;
 }
 
 export function trendRuleEditor({ rule, value = '' } = {}) {

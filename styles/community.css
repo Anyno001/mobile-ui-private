@@ -31,11 +31,11 @@
 .pm-scene-danger{color:var(--pm-color-danger)!important;}
 .pm-scene-status{padding:var(--pm-space-px-5) var(--pm-space-px-18);color:var(--pm-color-danger);font-size:var(--pm-font-size-helper);text-align:center;flex-shrink:0;}
 .pm-scene-status[hidden]{display:none;}
-.pm-scene-header{display:grid;grid-template-columns:var(--pm-size-control-default) 1fr var(--pm-size-control-default);align-items:center;padding:var(--pm-space-3) var(--pm-space-px-10);background:var(--pm-color-surface-card);border-bottom:1px solid var(--pm-color-border-subtle);}
+.pm-scene-header{display:grid;grid-template-columns:var(--pm-size-control-default) 1fr var(--pm-size-control-default);align-items:center;padding:var(--pm-space-3) var(--pm-space-px-10);background:var(--pm-color-surface-card);border-bottom:0;}
 .pm-scene-header b{text-align:center;font-size:var(--pm-font-size-subtitle);}
 .pm-scene-header button,.pm-scene-topbar button{border:0;background:transparent;font-size:var(--pm-font-size-label);font-weight:var(--pm-font-weight-semibold);cursor:pointer;color:var(--scene-accent);display:inline-flex;align-items:center;justify-content:center;}
 .pm-scene-header button:last-child{color:var(--pm-color-danger);}
-.pm-scene-topbar{position:relative;display:flex;align-items:center;min-height:var(--pm-scene-topbar-height);padding:var(--pm-space-1-5) var(--pm-space-px-9);background:var(--pm-color-surface-card);border-bottom:1px solid var(--pm-color-border-subtle);}
+.pm-scene-topbar{position:relative;display:flex;align-items:center;min-height:var(--pm-scene-topbar-height);padding:var(--pm-space-1-5) var(--pm-space-px-9);background:var(--pm-color-surface-card);border-bottom:0;}
 .pm-scene-back{width:var(--pm-size-control-compact);height:var(--pm-size-control-compact);margin-right:var(--pm-space-auto);}
 .pm-scene-title{position:absolute;left:48px;right:48px;text-align:center;min-width:0;pointer-events:none;}
 .pm-scene-title b{display:block;font-size:var(--pm-font-size-body);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
