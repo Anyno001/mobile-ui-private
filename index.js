@@ -13147,39 +13147,45 @@ ${lines}
     let match;
     const groupColor = senderName && side === "left" ? resolveGroupColor(senderName, groupColorMap, groupMembers) : null;
     const pushPlain = (value) => {
-      const plain = value.trim();
-      if (!plain) return;
-      const renderPlainHtml = (source) => {
-        let display = source;
+      const lines = value.split("\n").map((l) => l.trim()).filter(Boolean);
+      if (!lines.length) return;
+      const renderLineHtml = (source) => {
+        let display = source.trim();
         if (side === "left") {
           const stripped = display.replace(/[。．.]$/, "");
           if (stripped) display = stripped;
         }
-        return escapeHtml(display).replace(/\n/g, "<br>");
+        return escapeHtml(display);
       };
       if (senderName && side === "left") {
-        const wrapper = document.createElement("div");
-        wrapper.className = "pm-group-bubble-wrap";
-        const nameTag = document.createElement("div");
-        nameTag.className = "pm-group-name";
-        nameTag.textContent = senderName;
-        if (groupColor) nameTag.style.color = groupColor.bg;
-        wrapper.appendChild(nameTag);
-        const inner = document.createElement("div");
-        inner.className = `pm-bubble pm-${side}`;
-        if (groupColor) {
-          inner.style.setProperty("background", groupColor.bg, "important");
-          inner.style.setProperty("color", groupColor.text, "important");
-        }
-        inner.innerHTML = renderPlainHtml(plain);
-        wrapper.appendChild(inner);
-        results.push(wrapper);
+        lines.forEach((line2, index) => {
+          const wrapper = document.createElement("div");
+          wrapper.className = "pm-group-bubble-wrap";
+          if (index === 0) {
+            const nameTag = document.createElement("div");
+            nameTag.className = "pm-group-name";
+            nameTag.textContent = senderName;
+            if (groupColor) nameTag.style.color = groupColor.bg;
+            wrapper.appendChild(nameTag);
+          }
+          const inner = document.createElement("div");
+          inner.className = `pm-bubble pm-${side}`;
+          if (groupColor) {
+            inner.style.setProperty("background", groupColor.bg, "important");
+            inner.style.setProperty("color", groupColor.text, "important");
+          }
+          inner.innerHTML = renderLineHtml(line2);
+          wrapper.appendChild(inner);
+          results.push(wrapper);
+        });
         return;
       }
-      const bubble = document.createElement("div");
-      bubble.className = `pm-bubble pm-${side}`;
-      bubble.innerHTML = renderPlainHtml(plain);
-      results.push(bubble);
+      lines.forEach((line2) => {
+        const bubble = document.createElement("div");
+        bubble.className = `pm-bubble pm-${side}`;
+        bubble.innerHTML = renderLineHtml(line2);
+        results.push(bubble);
+      });
     };
     const pushSpecial = (kind, content) => {
       const isGroupLeft = senderName && side === "left";

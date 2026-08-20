@@ -3779,7 +3779,7 @@ requireCssDeclarations(cssRules, '.pm-phone-screen:has(.pm-main-ui[data-page="to
 requireCssDeclarations(cssRules, '.pm-today-trend-module-body', {
   background: 'var(--pm-color-surface-elevated)',
   'border-radius': 'var(--pm-radius-large) var(--pm-radius-large) var(--pm-radius-none) var(--pm-radius-none)',
-  padding: 'var(--pm-space-5) var(--pm-space-5) var(--pm-space-4)',
+  padding: 'var(--pm-space-5) var(--pm-space-5) var(--pm-space-5)',
   display: 'flex',
   'flex-direction': 'column',
 });
@@ -3789,7 +3789,7 @@ const todayTrendLayerRootRules = cssRules.filter(rule => (
 for (const selector of ['.pm-today-trend-world', '.pm-today-trend-reputation', '.pm-today-trend-factions', '.pm-today-trend-dynamics']) {
   requireCssDeclarations(todayTrendLayerRootRules, selector, {
     gap: 'var(--pm-space-0)',
-    padding: 'var(--pm-space-0) var(--pm-space-0) var(--pm-space-5)',
+    padding: 'var(--pm-space-0) var(--pm-space-0) var(--pm-space-0)',
   });
 }
 const todayTrendCompactBodyRule = cssRules.find(rule => (
