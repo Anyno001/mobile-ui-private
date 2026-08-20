@@ -3484,7 +3484,7 @@ for (const expected of [
   '.pm-cfg-input{box-sizing:border-box;width:100%;min-height:var(--pm-size-control-default);',
   'padding:var(--pm-space-0) var(--pm-space-3) !important;font-size:var(--pm-font-size-body) !important;',
   '.pm-action-button{min-height:var(--pm-size-control-default);',
-  '.pm-contact-add-primary,.pm-contact-add-ai{border:0;border-radius:10px;background:var(--pm-color-accent);color:var(--pm-color-on-dark);min-height:var(--pm-size-control-default);',
+  '.pm-contact-add-primary,.pm-contact-add-ai{border:0;border-radius:10px;background:var(--pm-color-accent);color:var(--pm-color-on-accent);min-height:var(--pm-size-control-default);',
   '.pm-cfg-label.pm-ambient-setting,.pm-cfg-label.pm-check-setting{flex-direction:row;gap:var(--pm-space-3);}',
   '.pm-contact-settings-save{flex:0 1 210px;min-height:var(--pm-size-control-default);',
   '.pm-calendar-entry-dialog form{padding:var(--pm-space-3) var(--pm-space-4) var(--pm-space-4);display:flex;flex-direction:column;gap:var(--pm-space-2)}',
@@ -3719,10 +3719,10 @@ for (const selector of [
   '.pm-today-trend-content.is-dynamics .pm-today-trend-module-head.is-expanded',
 ]) requireCssDeclarations(cssRules, selector, {
   position: 'sticky', top: 'var(--pm-space-0)', 'z-index': 'var(--pm-z-content)',
-  'flex-direction': 'column', padding: 'var(--pm-space-3) var(--pm-space-4) var(--pm-space-0)',
+  'flex-direction': 'column', padding: 'var(--pm-space-2) var(--pm-space-4) var(--pm-space-0)',
 });
 requireCssDeclarations(cssRules, '.pm-today-trend-module-head.is-expanded .pm-today-trend-head-tools', {
-  position: 'absolute', top: 'var(--pm-space-3)', right: 'var(--pm-space-4)',
+  position: 'absolute', top: 'var(--pm-space-2)', right: 'var(--pm-space-4)',
 });
 requireCssDeclarations(cssRules, '.pm-today-trend-module-head.is-expanded .pm-today-trend-floor', { 'align-items': 'flex-end' });
 requireCssDeclarations(cssRules, '.pm-today-trend-module-actions', {
@@ -4382,7 +4382,7 @@ if (/\bis-(?:accent|danger)\b/.test(injectionClearButton)) {
 if (injectionSaveCode.indexOf('window.__pmClearConversationInjection()') > injectionSaveCode.indexOf('window.__pmSaveConversationInjection()')) {
   failures.push('phone-context-injection.js: clear injection button must precede save and apply');
 }
-requireCssDeclarations(cssRules, '.pm-contact-settings-save', { background: 'var(--pm-color-accent)!important', color: 'var(--pm-color-on-dark)!important', 'border-color': 'var(--pm-color-accent)!important' });
+requireCssDeclarations(cssRules, '.pm-contact-settings-save', { background: 'var(--pm-color-accent)!important', color: 'var(--pm-color-on-accent)!important', 'border-color': 'var(--pm-color-accent)!important' });
 requireText('phone-chat-poke.js: save character settings uses dedicated save action', phoneChatPokeCode, 'class="pm-contact-settings-save" onclick="window.__pmSaveContactConfig');
 for (const [label, marker] of [
   ['save recipe region', 'calendar-recipe-region-save'],
@@ -4563,11 +4563,11 @@ requireCssDeclarations(cssRules, '.pm-action-button:focus-visible', { outline: '
 requireCssDeclarations(cssRules, '.pm-action-button:disabled', { cursor: 'not-allowed', opacity: 'var(--pm-opacity-disabled)' });
 requireCssDeclarations(cssRules, '.pm-action-button.is-secondary', { background: 'var(--pm-color-surface-elevated)', color: 'var(--pm-color-text-primary)', 'border-color': 'var(--pm-color-border-default)' });
 requireCssDeclarations(cssRules, '.pm-action-button.is-success', { background: 'var(--pm-color-success)', color: 'var(--pm-color-on-success)', 'border-color': 'var(--pm-color-success)' });
-requireCssDeclarations(cssRules, '.pm-action-button.is-accent', { background: 'var(--pm-color-accent)', color: 'var(--pm-color-on-dark)', 'border-color': 'var(--pm-color-accent)' });
+requireCssDeclarations(cssRules, '.pm-action-button.is-accent', { background: 'var(--pm-color-accent)', color: 'var(--pm-color-on-accent)', 'border-color': 'var(--pm-color-accent)' });
 requireCssDeclarations(cssRules, '.pm-action-button.is-danger', { background: 'var(--pm-color-danger)', color: 'var(--pm-color-on-danger)', 'border-color': 'var(--pm-color-danger)' });
 requireCssDeclarations(cssRules, '.pm-modal-add button', { border: '1px solid var(--pm-color-border-default)', 'border-radius': 'var(--pm-radius-control)', background: 'var(--pm-color-surface-elevated) !important', color: 'var(--pm-color-text-primary) !important' });
 requireCssDeclarations(cssRules, '.pm-modal-add .pm-action-button.is-success', { background: 'var(--pm-color-success) !important', color: 'var(--pm-color-on-success) !important', 'border-color': 'var(--pm-color-success) !important' });
-requireCssDeclarations(cssRules, '.pm-modal-add .pm-action-button.is-accent', { background: 'var(--pm-color-accent) !important', color: 'var(--pm-color-on-dark) !important', 'border-color': 'var(--pm-color-accent) !important' });
+requireCssDeclarations(cssRules, '.pm-modal-add .pm-action-button.is-accent', { background: 'var(--pm-color-accent) !important', color: 'var(--pm-color-on-accent) !important', 'border-color': 'var(--pm-color-accent) !important' });
 requireCssDeclarations(cssRules, '.pm-modal-add .pm-action-button.is-danger', { background: 'var(--pm-color-danger) !important', color: 'var(--pm-color-on-danger) !important', 'border-color': 'var(--pm-color-danger) !important' });
 requireCssDeclarations(cssRules, '.pm-btn-group', { border: '1px solid var(--pm-color-border-default) !important', 'border-radius': 'var(--pm-radius-control) !important', background: 'var(--pm-color-surface-elevated) !important', color: 'var(--pm-color-text-primary) !important' });
 requireCssDeclarations(cssRules, '.pm-btn-add', { border: '1px solid var(--pm-color-border-default) !important', 'border-radius': 'var(--pm-radius-control) !important', background: 'var(--pm-color-surface-elevated) !important', color: 'var(--pm-color-text-primary) !important' });
@@ -4679,15 +4679,15 @@ for (const expected of [
 }
 requireCssDeclarations(cssRules, '.pm-desktop-app-icon', {
   background: 'var(--pm-color-accent)',
-  color: 'var(--pm-color-on-dark)',
+  color: 'var(--pm-color-on-accent)',
 });
 requireCssDeclarations(cssRules, '.pm-quick-reply-actions button', {
   background: 'var(--pm-color-accent)',
-  color: 'var(--pm-color-on-dark)',
+  color: 'var(--pm-color-on-accent)',
 });
 requireCssDeclarations(cssRules, '.pm-desktop-community-dock button', {
   background: 'var(--pm-color-accent)',
-  color: 'var(--pm-color-on-dark)',
+  color: 'var(--pm-color-on-accent)',
 });
 const sceneSendActionContracts = [
   {

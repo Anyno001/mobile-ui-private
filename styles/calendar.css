@@ -208,7 +208,7 @@
 .pm-calendar-entry-error{min-height:18px;margin:var(--pm-space-0);color:var(--pm-color-danger);font-size:var(--pm-font-size-helper);}
 .pm-calendar-entry-actions{display:grid;grid-template-columns:1fr 2fr;gap:var(--pm-space-2);}
 .pm-calendar-entry-actions button{min-height:var(--pm-size-control-default);border:0;border-radius:var(--pm-radius-control);font-weight:var(--pm-font-weight-semibold);cursor:pointer;}
-.pm-calendar-entry-actions .is-primary{background:var(--pm-color-accent);color:var(--pm-color-on-dark);}
+.pm-calendar-entry-actions .is-primary{background:var(--pm-calendar-accent);color:var(--pm-color-on-dark);border-color:var(--pm-calendar-accent);}
 .pm-calendar-entry-actions .is-danger{background:transparent;color:var(--pm-color-danger);}
 .pm-calendar-entry-actions .is-danger:disabled{opacity:.35;cursor:default;}
 @media(prefers-reduced-motion:reduce){.pm-calendar-auto-switch>i,.pm-calendar-auto-switch>i::after{transition:none;}.pm-calendar-inline-regenerate.is-loading svg{animation:none;}.pm-calendar-title-chevron svg,.pm-calendar-management-chevron svg{transition:none;}}
