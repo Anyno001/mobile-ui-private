@@ -3779,7 +3779,7 @@ requireCssDeclarations(cssRules, '.pm-phone-screen:has(.pm-main-ui[data-page="to
 requireCssDeclarations(cssRules, '.pm-today-trend-module-body', {
   background: 'var(--pm-color-surface-elevated)',
   'border-radius': 'var(--pm-radius-large) var(--pm-radius-large) var(--pm-radius-none) var(--pm-radius-none)',
-  padding: 'var(--pm-space-5) var(--pm-space-5) var(--pm-space-5)',
+  padding: 'var(--pm-space-5) var(--pm-space-5) calc(var(--pm-space-5) + var(--pm-space-px-36))',
   display: 'flex',
   'flex-direction': 'column',
 });
