@@ -23644,7 +23644,7 @@ ${targetInstruction}`
     if (editingEventId) {
       const event = target === "__new__" ? {} : activeEvents.find((item) => item.id === target);
       const kind = String(editingEventId).startsWith("archive:") ? "archive" : String(editingEventId).startsWith("promote:") ? "promotion" : "event";
-      return `<section class="pm-today-trend-view">${event ? eventForm(event, kind) : eventForm()}</section>`;
+      return `<section class="pm-today-trend-view"><div class="pm-today-trend-module-body">${event ? eventForm(event, kind) : eventForm()}</div></section>`;
     }
     const actionsVisible = menuOpenId === "dynamics-module";
     const active = activeEvents.map((event) => eventCard(event, false, actionsVisible, attrs)).join("") || '<p class="pm-today-trend-empty">\u6682\u65E0\u6B63\u5728\u8FFD\u8E2A\u7684\u52A8\u6001\u3002</p>';
@@ -23686,7 +23686,7 @@ ${targetInstruction}`
   function renderTodayTrendFactionView({ scope, preset = null, mode = "content", editingFactionId = null, editingRule = null, ruleDraft = null, menuOpenId = null, generationAvailable = false, generationBusy = false, floorStatus = "" } = {}) {
     const factions = Array.isArray(scope?.factions) ? scope.factions : [], attrs = `${generationAvailable && !generationBusy ? "" : "disabled"} aria-busy="${generationBusy}"`;
     const minimalUi = scope?.injection?.minimalUi === true;
-    if (mode === "editor") return `<section class="pm-today-trend-view">${trendModuleHead({ title: "\u7F16\u8F91\u52BF\u529B", menuId: "faction-editor", menuOpenId, actions: [{ action: "today-trend-open-factions", icon: BACK_ICON_SVG, label: "\u8FD4\u56DE\u52BF\u529B\u56FE\u8C31" }] })}${editor(factions.find((item) => item.id === editingFactionId), factions)}</section>`;
+    if (mode === "editor") return `<section class="pm-today-trend-view">${trendModuleHead({ title: "\u7F16\u8F91\u52BF\u529B", menuId: "faction-editor", menuOpenId, actions: [{ action: "today-trend-open-factions", icon: BACK_ICON_SVG, label: "\u8FD4\u56DE\u52BF\u529B\u56FE\u8C31" }] })}<div class="pm-today-trend-module-body">${editor(factions.find((item) => item.id === editingFactionId), factions)}</div></section>`;
     if (mode === "settings") return `<section class="pm-today-trend-view">${trendModuleHead({ title: "\u52BF\u529B\u56FE\u8C31\u8BBE\u7F6E", menuId: "faction-settings", menuOpenId, actions: [{ action: "today-trend-open-factions", icon: BACK_ICON_SVG, label: "\u8FD4\u56DE\u52BF\u529B\u56FE\u8C31" }] })}</section>`;
     const byId = new Map(factions.map((faction) => [faction.id, faction]));
     const external = factions.flatMap((source) => (Array.isArray(source.relatedFactionIds) ? source.relatedFactionIds : []).map((id2) => ({ source, target: byId.get(id2) }))).filter(({ target }) => target);
