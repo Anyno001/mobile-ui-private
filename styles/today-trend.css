@@ -65,6 +65,12 @@
 .pm-today-trend-event-card details>summary::-webkit-details-marker{display:none;}
 .pm-today-trend-event-card ol{margin:var(--pm-space-2) var(--pm-space-0) var(--pm-space-0);padding-left:var(--pm-space-4);color:var(--pm-color-text-secondary);font-size:var(--pm-font-size-label);line-height:var(--pm-line-height-body);}
 .pm-today-trend-editor{display:flex;flex-direction:column;gap:var(--pm-space-2);}
+.pm-today-trend-item-editor{box-sizing:border-box;width:100%;min-width:0;gap:var(--pm-space-3);padding:var(--pm-space-2) var(--pm-space-0) var(--pm-space-0);border:0;border-radius:var(--pm-radius-none);background:transparent;box-shadow:none;}
+.pm-today-trend-item-editor .pm-today-trend-field{gap:var(--pm-space-2);}
+.pm-today-trend-item-editor fieldset{border:0;border-radius:var(--pm-radius-none);padding:var(--pm-space-0);}
+.pm-today-trend-item-editor .pm-today-trend-form-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--pm-space-2);padding-top:var(--pm-space-2);}
+.pm-today-trend-item-editor .pm-today-trend-form-actions button{min-height:var(--pm-size-control-default);}
+.pm-today-trend-item-editor .pm-today-trend-form-actions button:not([type="submit"]){border-color:transparent;background:transparent;color:var(--pm-color-text-secondary);}
 .pm-today-trend-field{display:flex;flex-direction:column;gap:var(--pm-space-1);color:var(--pm-color-text-secondary);font-size:var(--pm-font-size-label);line-height:var(--pm-line-height-control);}
 .pm-today-trend-shell :is(input,select,textarea).pm-today-trend-input{box-sizing:border-box;width:100%;min-height:var(--pm-size-control-default);border:1px solid var(--pm-color-border-default);border-radius:var(--pm-radius-control);background:var(--pm-color-surface-control);color:var(--pm-color-text-primary);padding:var(--pm-space-0) var(--pm-space-3);font:var(--pm-font-weight-regular) var(--pm-font-size-body)/var(--pm-line-height-control) var(--pm-font-family-system);}
 .pm-today-trend-shell :is(input,select,textarea).pm-today-trend-input:focus-visible{outline:var(--pm-today-trend-focus-offset) solid var(--pm-color-focus-ring);outline-offset:var(--pm-today-trend-focus-offset);}
@@ -148,6 +154,7 @@
 .pm-today-trend-world .pm-today-trend-meter{margin-top:var(--pm-today-trend-world-meta-offset);}
 .pm-today-trend-world-hero,.pm-today-trend-world-brief{box-sizing:border-box;display:grid;grid-template-columns:var(--pm-today-trend-relation-node-size) var(--pm-space-2) minmax(0,1fr);row-gap:var(--pm-space-2);width:100%;min-width:0;margin:var(--pm-space-0);padding:var(--pm-space-4);border:0;border-radius:var(--pm-radius-card);background:var(--pm-color-surface-page);box-shadow:none;}
 .pm-today-trend-world-hero>.pm-today-trend-world-item-head,.pm-today-trend-world-brief>.pm-today-trend-world-item-head{grid-column:1 / -1;}
+.pm-today-trend-world-hero>.pm-today-trend-world-item-editor,.pm-today-trend-world-brief>.pm-today-trend-world-item-editor{grid-column:1 / -1;}
 .pm-today-trend-world-hero b,.pm-today-trend-world-brief b{display:block;color:var(--pm-color-text-primary);font-weight:var(--pm-font-weight-semibold);}
 .pm-today-trend-world-hero p{grid-column:3;max-width:var(--pm-today-trend-copy-width);margin:var(--pm-space-0);}
 .pm-today-trend-module-body>.pm-today-trend-world-signals{display:contents;}

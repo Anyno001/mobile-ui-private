@@ -208,7 +208,7 @@ assert.doesNotMatch(todayTrendStyle, /pm-today-trend-(?:world|faction|reputation
 
 const compactTodayTrendMediaStart = todayTrendStyle.lastIndexOf('@media(max-width:320px)');
 const compactTodayTrendMedia = todayTrendStyle.slice(compactTodayTrendMediaStart, todayTrendStyle.indexOf('\n', compactTodayTrendMediaStart));
-assert.match(compactTodayTrendMedia, /pm-today-trend-event-body>header\{flex-wrap:wrap/, '事件追踪窄屏标题与操作区必须允许分行');
+assert.doesNotMatch(compactTodayTrendMedia, /pm-today-trend-event-body>header\{flex-wrap:wrap/, '事件追踪窄屏不得保留已移出标题栏的操作区换行规则');
 assert.match(todayTrendStyle, /pm-today-trend-event-badge,\.pm-today-trend-event-pill\{[^}]*font-size:var\(--pm-font-size-micro\)/, '事件追踪徽章必须使用超小字号');
 assert.doesNotMatch(todayTrendStyle, /pm-today-trend-event-card header span/, '事件追踪不得用宽泛 header span 规则覆盖徽章字号');
 assert.match(todayTrendStyle, /\.pm-today-trend-inline-action\{width:var\(--pm-size-control-compact\);min-height:var\(--pm-size-control-compact\)/, '行内操作按钮必须保留 36px 紧凑触控区');
@@ -252,6 +252,12 @@ assert.match(todayTrendStyle, /pm-today-trend-world-hero,\.pm-today-trend-world-
 assert.match(todayTrendStyle, /pm-today-trend-reputation-entry\{[^}]*padding:var\(--pm-space-4\)[^}]*border:0[^}]*border-radius:var\(--pm-radius-card\)[^}]*background:var\(--pm-color-surface-page\)[^}]*box-shadow:none/, '个人风评卡片必须零描边并比内容区背景更白（顶栏主题色实底改造）');
 assert.match(todayTrendStyle, /pm-today-trend-event-card\{[^}]*padding:var\(--pm-space-4\)[^}]*border:0[^}]*border-radius:var\(--pm-radius-card\)[^}]*background:var\(--pm-color-surface-page\)[^}]*box-shadow:none/, '事件追踪卡片必须零描边并比内容区背景更白（顶栏主题色实底改造）');
 assert.match(todayTrendStyle, /pm-today-trend-faction-card\{[^}]*padding:var\(--pm-space-4\)[^}]*border:0[^}]*border-radius:var\(--pm-radius-card\)[^}]*background:var\(--pm-color-surface-page\)[^}]*box-shadow:none/, '势力图谱卡片必须零描边并比内容区背景更白（顶栏主题色实底改造）');
+assert.match(todayTrendStyle, /\.pm-today-trend-item-editor\{[^}]*width:100%[^}]*min-width:0[^}]*gap:var\(--pm-space-3\)[^}]*border:0[^}]*background:transparent[^}]*box-shadow:none/, '条目编辑器必须占满可用宽度并保持无装饰性描边');
+assert.match(todayTrendStyle, /\.pm-today-trend-item-editor \.pm-today-trend-field\{[^}]*gap:var\(--pm-space-2\)/, '条目编辑器字段之间必须使用宽松的标签—控件间距');
+assert.match(todayTrendStyle, /\.pm-today-trend-item-editor fieldset\{[^}]*border:0[^}]*padding:var\(--pm-space-0\)/, '条目编辑器分组不得恢复旧描边和内层卡片');
+assert.match(todayTrendStyle, /\.pm-today-trend-item-editor \.pm-today-trend-form-actions\{[^}]*display:grid[^}]*grid-template-columns:repeat\(2,minmax\(0,1fr\)\)[^}]*gap:var\(--pm-space-2\)/, '条目编辑器按钮组必须使用双列宽松布局');
+assert.match(todayTrendStyle, /\.pm-today-trend-item-editor \.pm-today-trend-form-actions button\{[^}]*min-height:var\(--pm-size-control-default\)/, '条目编辑器按钮必须保持舒适触控高度');
+assert.match(todayTrendStyle, /\.pm-today-trend-world-hero>\.pm-today-trend-world-item-editor,\.pm-today-trend-world-brief>\.pm-today-trend-world-item-editor\{grid-column:1 \/ -1\}/, '世界态势条目编辑器必须跨越完整内容轨道');
 const entryRail = 'display:grid;grid-template-columns:var(--pm-today-trend-relation-node-size) var(--pm-space-2) minmax(0,1fr);row-gap:var(--pm-space-2)';
 for (const [selector, prefix] of [
     ['世界态势条目', '.pm-today-trend-world-hero,.pm-today-trend-world-brief{box-sizing:border-box;'],
@@ -890,7 +896,7 @@ const reputationEntryHtml = reputationHtml.match(/<article class="pm-today-trend
 assert.ok(reputationEntryHtml, '个人风评样本必须渲染独立条目片段');
 const reputationEntryBodyHtml = reputationEntryHtml.match(/<div class="pm-today-trend-reputation-entry-body">[\s\S]*?<\/div><\/article>/)?.[0] || '';
 assert.ok(reputationEntryBodyHtml, '个人风评 judge 条目必须渲染独立正文片段');
-assert.match(reputationEntryHtml, /pm-today-trend-reputation-entry-body[\s\S]*?<p>[\s\S]*?<\/p>[\s\S]*?pm-today-trend-inline-actions[\s\S]*?pm-today-trend-reputation-rating/, '个人风评 judge 条目正文必须按正文段落、行内操作、评级控件顺序渲染');
+assert.match(reputationEntryHtml, /pm-today-trend-reputation-entry-body[\s\S]*?<p>[\s\S]*?<\/p>[\s\S]*?pm-today-trend-reputation-rating/, '个人风评 judge 条目正文必须按正文段落、评级控件顺序渲染');
 assert.doesNotMatch(reputationHtml, /pm-today-trend-reputation-orbit/, '个人风评背景不得局限在模块子容器内');
 assert.match(reputationMenuHtml, /today-trend-edit-reputation-rule/, '展开个人风评模块操作后必须提供规则编辑动作');
 assert.doesNotMatch(reputationHtml, /today-trend-edit-circle/, '个人风评收起模块操作时不得显示单条编辑入口');
@@ -1040,7 +1046,7 @@ for (const [status, colors] of Object.entries({
 assert.doesNotMatch(todayTrendStyle, /(?:^|\})\.pm-today-trend-event-facts\{[^}]*margin-block-start:var\(--pm-space-0\)/, '普通模式事件事实区不得被极简 UI 的零偏移规则污染');
 assert.doesNotMatch(todayTrendStyle, /(?:^|\})\.pm-today-trend-reputation-mark\[data-status="(?:hostile|dislike|neutral|like|trust)"\]/, '普通模式不得新增关系状态颜色覆盖');
 assert.match(todayTrendStyle, /@media\(max-width:320px\)[\s\S]*?pm-today-trend-reputation-meter,\.pm-today-trend-faction-meter\{[^}]*column-gap:var\(--pm-space-0-5\)/, '320px 下两种关系量表必须同步收紧间距');
-assert.match(todayTrendStyle, /@media\(max-width:320px\)[\s\S]*?pm-today-trend-faction-entry-head\{flex-wrap:wrap\}/, '320px 下势力标题行必须允许操作区自然换行');
+assert.doesNotMatch(todayTrendStyle, /@media\(max-width:320px\)[\s\S]*?pm-today-trend-faction-entry-head\{flex-wrap:wrap\}/, '320px 下不得恢复已移出标题行的势力操作区换行规则');
 assert.doesNotMatch(todayTrendStyle, /@media\(max-width:320px\)[\s\S]*?pm-today-trend-faction-entry-head>\.pm-today-trend-inline-actions\{margin-left:var\(--pm-space-auto\)\}/, '320px 下不得保留已移出标题行的势力操作区旧规则');
 
 assert.doesNotMatch(factionHtml, /pm-today-trend-external-list|pm-today-trend-external-relation/, '外部关联不得再单独列成第二份势力清单');
