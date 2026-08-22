@@ -234,12 +234,13 @@ assert.doesNotMatch(todayTrendStyle, /\.pm-today-trend-floor-cancel\{[^}]*font:i
 assert.match(todayTrendStyle, /\.pm-today-trend-floor\[data-state="failed"\] \.pm-today-trend-floor-status\{[^}]*color:var\(--pm-color-danger\)/, '同步失败状态必须使用失败反馈色');
 assert.match(todayTrendStyle, /\.pm-today-trend-floor-reading\{[^}]*white-space:nowrap/, '#号与楼层数值必须保持单行完整显示');
 assert.match(todayTrendRuntimeText, /pm-today-trend-head-tools">\$\{menu\}\$\{asideHtml\}/, '模块头必须先渲染三点菜单，再在其下方渲染楼层');
+const todayTrendModuleBodySourceCount = todayTrendViewSources.reduce((count, [, source]) => count + (source.match(/class="pm-today-trend-module-body"/g) || []).length, 0);
 for (const [moduleName, source] of todayTrendViewSources) {
-    assert.equal((source.match(/class="pm-today-trend-module-body"/g) || []).length, 1,
-        `${moduleName}源码必须且只能声明一个灰色内容层容器`);
+    assert.ok((source.match(/class="pm-today-trend-module-body"/g) || []).length >= 1,
+        `${moduleName}源码必须声明灰色内容层容器`);
 }
-assert.equal((todayTrendBuildText.match(/class="pm-today-trend-module-body"/g) || []).length, 4,
-    '构建产物必须同步包含四个今日风向灰色内容层容器');
+assert.equal((todayTrendBuildText.match(/class="pm-today-trend-module-body"/g) || []).length, todayTrendModuleBodySourceCount,
+    '构建产物必须同步包含源视图声明的全部今日风向灰色内容层容器');
 assert.match(todayTrendStyle, /\.pm-today-trend-dynamics\{gap:var\(--pm-space-0\);?\}/, '事件追踪主题色标题层与灰色内容层必须无额外间隙拼接');
 assert.match(todayTrendStyle, /\.pm-today-trend-event-list\{[^}]*padding:var\(--pm-space-0-5\) var\(--pm-space-0\) var\(--pm-space-1\)/, '事件追踪列表顶部留白必须同步收紧');
 assert.match(compactTodayTrendMedia, /pm-today-trend-module-head\{gap:var\(--pm-space-1\)/, '320px 窄屏必须缩小标题与工具区间距并保留按钮命中区');
@@ -1072,6 +1073,7 @@ assert.match(busyFactionHtml, /today-trend-generate-factions"[^>]*disabled aria-
 assert.match(busyFactionHtml, /today-trend-refresh-faction"[^>]*disabled aria-busy="true"/, '忙碌时势力条目重新生成必须禁用并暴露忙碌状态');
 assert.match(renderTodayTrendReputationView({ scope: valid.scopes.chat, mode: 'settings', menuOpenId: 'reputation-settings' }), /today-trend-regenerate-circle-schema/, '个人风评设置顶级操作打开后必须提供结构重新生成动作');
 const factionEditorHtml = renderTodayTrendFactionView({ scope: valid.scopes.chat, mode: 'editor', editingFactionId: 'red' });
+assert.match(factionEditorHtml, /<div class="pm-today-trend-module-body">[\s\S]*data-today-trend-form="faction"/, '势力编辑页必须复用带横向留白和底部安全区的内容层');
 assert.match(factionEditorHtml, /name="parentId"/, '势力编辑页必须提供可空父势力选择');
 const busyFactionSettingsHtml = renderTodayTrendFactionView({ scope: valid.scopes.chat, mode: 'settings', generationAvailable: true, generationBusy: true });
 assert.doesNotMatch(busyFactionSettingsHtml, /today-trend-regenerate-faction-rule/, '势力图谱设置不得重复提供模块规则动作');
@@ -1242,6 +1244,8 @@ const dynamicsSettingsHtml = renderTodayTrendDynamicsView({ scope: valid.scopes.
 assert.match(dynamicsSettingsHtml, /name="incidentProbability"/, '动态设置必须提供突发概率输入');
 assert.match(dynamicsSettingsHtml, /自动判断完结/, '动态设置必须区分自动判断完结');
 assert.match(dynamicsSettingsHtml, /完结后归档/, '动态设置必须区分完结后归档');
+const eventEditorHtml = renderTodayTrendDynamicsView({ scope: valid.scopes.chat, editingEventId: 'service' });
+assert.match(eventEditorHtml, /<div class="pm-today-trend-module-body">[\s\S]*data-today-trend-form="event"/, '事件编辑页必须复用带横向留白和底部安全区的内容层');
 assert.doesNotMatch(renderTodayTrendDynamicsView({ scope: activeRumorScope, editingEventId: 'archive:active-rumor' }), /value="resolved"/, '流言归档 UI 只能提供证实或证伪结果');
 assert.doesNotMatch(renderTodayTrendDynamicsView({ scope: valid.scopes.chat, editingEventId: 'archive:service' }), /value="confirmed"|value="debunked"|value="absorbed"/, '普通事件归档 UI 不得暴露流言或承接结果');
 const undergroundDynamicsHtml = renderTodayTrendDynamicsView({ scope: undergroundScope, menuOpenId: 'dynamics-module' });

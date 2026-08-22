@@ -43,7 +43,7 @@ export function renderTodayTrendDynamicsView({ scope, preset = null, editingEven
     const activeEvents = Array.isArray(scope.dynamics?.active) ? scope.dynamics.active : [];
     const archivedEvents = Array.isArray(scope.dynamics?.archived) ? scope.dynamics.archived : [];
     const target = String(editingEventId || '').replace(/^(archive:|promote:)/, '');
-    if (editingEventId) { const event = target === '__new__' ? {} : activeEvents.find(item => item.id === target); const kind = String(editingEventId).startsWith('archive:') ? 'archive' : String(editingEventId).startsWith('promote:') ? 'promotion' : 'event'; return `<section class="pm-today-trend-view">${event ? eventForm(event, kind) : eventForm()}</section>`; }
+    if (editingEventId) { const event = target === '__new__' ? {} : activeEvents.find(item => item.id === target); const kind = String(editingEventId).startsWith('archive:') ? 'archive' : String(editingEventId).startsWith('promote:') ? 'promotion' : 'event'; return `<section class="pm-today-trend-view"><div class="pm-today-trend-module-body">${event ? eventForm(event, kind) : eventForm()}</div></section>`; }
     const actionsVisible = menuOpenId === 'dynamics-module';
     const active = activeEvents.map(event => eventCard(event, false, actionsVisible, attrs)).join('') || '<p class="pm-today-trend-empty">暂无正在追踪的动态。</p>';
     const archived = archivedEvents.map(event => eventCard(event, true, actionsVisible, attrs)).join('') || '<p class="pm-today-trend-empty">暂无已完结动态。</p>';

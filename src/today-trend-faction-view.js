@@ -28,7 +28,7 @@ function editor(faction = {}, factions = []) {
 export function renderTodayTrendFactionView({ scope, preset = null, mode = 'content', editingFactionId = null, editingRule = null, ruleDraft = null, menuOpenId = null, generationAvailable = false, generationBusy = false, floorStatus = '' } = {}) {
     const factions = Array.isArray(scope?.factions) ? scope.factions : [], attrs = `${generationAvailable && !generationBusy ? '' : 'disabled'} aria-busy="${generationBusy}"`;
     const minimalUi = scope?.injection?.minimalUi === true;
-    if (mode === 'editor') return `<section class="pm-today-trend-view">${trendModuleHead({ title: '编辑势力', menuId: 'faction-editor', menuOpenId, actions: [{ action: 'today-trend-open-factions', icon: BACK_ICON_SVG, label: '返回势力图谱' }] })}${editor(factions.find(item => item.id === editingFactionId), factions)}</section>`;
+    if (mode === 'editor') return `<section class="pm-today-trend-view">${trendModuleHead({ title: '编辑势力', menuId: 'faction-editor', menuOpenId, actions: [{ action: 'today-trend-open-factions', icon: BACK_ICON_SVG, label: '返回势力图谱' }] })}<div class="pm-today-trend-module-body">${editor(factions.find(item => item.id === editingFactionId), factions)}</div></section>`;
     if (mode === 'settings') return `<section class="pm-today-trend-view">${trendModuleHead({ title: '势力图谱设置', menuId: 'faction-settings', menuOpenId, actions: [{ action: 'today-trend-open-factions', icon: BACK_ICON_SVG, label: '返回势力图谱' }] })}</section>`;
     const byId = new Map(factions.map(faction => [faction.id, faction]));
     const external = factions.flatMap(source => (Array.isArray(source.relatedFactionIds) ? source.relatedFactionIds : []).map(id => ({ source, target: byId.get(id) }))).filter(({ target }) => target);
