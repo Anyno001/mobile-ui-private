@@ -883,7 +883,14 @@ assert.match(reputationHtml, /pm-today-trend-reputation-mark/, '个人风评条�
 assert.match(reputationHtml, /data-status="neutral"/, '个人风评状态必须提供主题化样式钩子');
 assert.doesNotMatch(reputationHtml, /pm-today-trend-reputation-entry-head[\s\S]*?pm-today-trend-status/, '个人风评条目标题栏不得渲染状态徽章');
 assert.match(reputationHtml, /pm-today-trend-reputation-entry-head[\s\S]*?pm-today-trend-reputation-mark[\s\S]*?<b>主厨评审/, '个人风评条目标题栏必须让标题直接位于图标右侧');
-assert.match(reputationHtml, /pm-today-trend-reputation-entry-body[\s\S]*?pm-today-trend-reputation-rating/, '个人风评正文与评级控件必须位于标题栏下方的内容栏');
+const reputationEntryHeadHtml = reputationHtml.match(/<header class="pm-today-trend-reputation-entry-head">[\s\S]*?<\/header>/)?.[0] || '';
+assert.ok(reputationEntryHeadHtml, '个人风评非编辑条目必须渲染标题栏');
+assert.doesNotMatch(reputationEntryHeadHtml, /pm-today-trend-inline-actions/, '个人风评标题栏不得包含行内操作');
+const reputationEntryHtml = reputationHtml.match(/<article class="pm-today-trend-reputation-entry"[^>]*data-circle-id="judge"[\s\S]*?<\/article>/)?.[0] || '';
+assert.ok(reputationEntryHtml, '个人风评样本必须渲染独立条目片段');
+const reputationEntryBodyHtml = reputationEntryHtml.match(/<div class="pm-today-trend-reputation-entry-body">[\s\S]*?<\/div><\/article>/)?.[0] || '';
+assert.ok(reputationEntryBodyHtml, '个人风评 judge 条目必须渲染独立正文片段');
+assert.match(reputationEntryHtml, /pm-today-trend-reputation-entry-body[\s\S]*?<p>[\s\S]*?<\/p>[\s\S]*?pm-today-trend-inline-actions[\s\S]*?pm-today-trend-reputation-rating/, '个人风评 judge 条目正文必须按正文段落、行内操作、评级控件顺序渲染');
 assert.doesNotMatch(reputationHtml, /pm-today-trend-reputation-orbit/, '个人风评背景不得局限在模块子容器内');
 assert.match(reputationMenuHtml, /today-trend-edit-reputation-rule/, '展开个人风评模块操作后必须提供规则编辑动作');
 assert.doesNotMatch(reputationHtml, /today-trend-edit-circle/, '个人风评收起模块操作时不得显示单条编辑入口');
@@ -983,6 +990,12 @@ assert.match(todayTrendStyle, /pm-today-trend-faction-entry-head>b\{[^}]*flex:1[
 assert.doesNotMatch(todayTrendStyle, /pm-today-trend-faction-detail\{[^}]*border-left|pm-today-trend-faction-detail-row::before/, '势力详情不得恢复轨道线或菱形连接器');
 assert.match(factionHtml, /pm-today-trend-faction-entry-head[\s\S]*?pm-today-trend-faction-node[\s\S]*?<b>红队<\/b>/, '势力图谱节点必须直接归入条目标题行');
 assert.match(factionHtml, /pm-today-trend-faction-entry-body[\s\S]*?pm-today-trend-faction-summary/, '势力图谱正文必须位于标题行之后');
+const redFactionCardHtml = factionHtml.match(/<article class="pm-today-trend-faction-card"[^>]*data-faction-id="red"[\s\S]*?<\/article>/)?.[0] || '';
+assert.ok(redFactionCardHtml, '势力图谱红队必须渲染独立卡片片段');
+const factionEntryHeadHtml = redFactionCardHtml.match(/<header class="pm-today-trend-faction-entry-head">[\s\S]*?<\/header>/)?.[0] || '';
+assert.ok(factionEntryHeadHtml, '势力图谱非编辑条目必须渲染标题栏');
+assert.doesNotMatch(factionEntryHeadHtml, /pm-today-trend-inline-actions/, '势力图谱条目标题栏不得包含行内操作');
+assert.match(redFactionCardHtml, /pm-today-trend-faction-summary[\s\S]*?pm-today-trend-inline-actions[\s\S]*?pm-today-trend-faction-detail[\s\S]*?pm-today-trend-faction-rating/, '操作必须位于摘要下方且详情与评级控件之前');
 assert.match(factionHtml, /pm-today-trend-faction-detail-row is-evaluation"><dt>关系评价<\/dt><dd>/, '势力关系评价必须保持完整的定义列表语义');
 assert.match(todayTrendStyle, /pm-today-trend-faction-detail-row\{[^}]*display:grid[^}]*grid-template-columns:var\(--pm-size-control-default\) minmax\(0,1fr\)/, '势力详情行必须使用标签列与弹性值列布局');
 assert.match(todayTrendStyle, /pm-today-trend-faction-detail-row\.is-evaluation\{[^}]*display:flex[^}]*flex-wrap:wrap[^}]*column-gap:var\(--pm-space-2\)/, '关系评价必须允许内容按可用宽度整项换行');
@@ -1028,7 +1041,7 @@ assert.doesNotMatch(todayTrendStyle, /(?:^|\})\.pm-today-trend-event-facts\{[^}]
 assert.doesNotMatch(todayTrendStyle, /(?:^|\})\.pm-today-trend-reputation-mark\[data-status="(?:hostile|dislike|neutral|like|trust)"\]/, '普通模式不得新增关系状态颜色覆盖');
 assert.match(todayTrendStyle, /@media\(max-width:320px\)[\s\S]*?pm-today-trend-reputation-meter,\.pm-today-trend-faction-meter\{[^}]*column-gap:var\(--pm-space-0-5\)/, '320px 下两种关系量表必须同步收紧间距');
 assert.match(todayTrendStyle, /@media\(max-width:320px\)[\s\S]*?pm-today-trend-faction-entry-head\{flex-wrap:wrap\}/, '320px 下势力标题行必须允许操作区自然换行');
-assert.match(todayTrendStyle, /@media\(max-width:320px\)[\s\S]*?pm-today-trend-faction-entry-head>\.pm-today-trend-inline-actions\{margin-left:var\(--pm-space-auto\)\}/, '320px 下势力操作区换行后必须使用等价 auto token 保持右对齐');
+assert.doesNotMatch(todayTrendStyle, /@media\(max-width:320px\)[\s\S]*?pm-today-trend-faction-entry-head>\.pm-today-trend-inline-actions\{margin-left:var\(--pm-space-auto\)\}/, '320px 下不得保留已移出标题行的势力操作区旧规则');
 
 assert.doesNotMatch(factionHtml, /pm-today-trend-external-list|pm-today-trend-external-relation/, '外部关联不得再单独列成第二份势力清单');
 assert.match(factionHtml, /pm-today-trend-faction-node/, '势力图谱必须输出独立节点装饰');
@@ -1065,6 +1078,9 @@ assert.match(busyDynamicsHtml, /today-trend-open-dynamics-settings/, '动态模�
 assert.doesNotMatch(busyDynamicsHtml, /today-trend-create-event/, '动态模块顶级操作不得保留计划外创建事件入口');
 const activeEventCardHtml = busyDynamicsHtml.match(/<article class="pm-today-trend-event-card"[^>]*data-event-id="service"[\s\S]*?<\/article>/)?.[0] || '';
 assert.ok(activeEventCardHtml, '进行中事件必须渲染独立事件卡片');
+const activeEventHeaderHtml = activeEventCardHtml.match(/<header>[\s\S]*?<\/header>/)?.[0] || '';
+assert.ok(activeEventHeaderHtml, '进行中事件卡片必须渲染独立标题栏片段');
+assert.doesNotMatch(activeEventHeaderHtml, /pm-today-trend-inline-actions/, '进行中事件标题栏不得包含行内操作');
 assert.match(activeEventCardHtml, /today-trend-advance-event[\s\S]*?today-trend-edit-event[\s\S]*?today-trend-archive-event/, '进行中事件的标准行内操作必须按重新生成、编辑、归档排序');
 assert.equal((activeEventCardHtml.match(/pm-today-trend-inline-action(?:\s|")/g) || []).length, 3, '普通进行中事件必须恰好输出三个标准行内操作');
 assert.doesNotMatch(activeEventCardHtml, /today-trend-promote-underground|today-trend-delete-event/, '普通进行中事件不得泄漏地下线升级或归档删除动作');
@@ -1085,9 +1101,11 @@ assert.match(todayTrendStyle, /pm-today-trend-dynamics\{[^}]*--pm-today-trend-dy
 assert.match(todayTrendStyle, /pm-today-trend-dynamics>\.pm-today-trend-module-head\{[^}]*padding-bottom:var\(--pm-space-2\)/, '事件追踪分页必须靠近模块标题');
 assert.match(todayTrendStyle, /pm-today-trend-event-marker\{[^}]*background:var\(--pm-color-accent\)[^}]*color:var\(--pm-color-on-accent\)/, '事件追踪大图标必须使用主题色');
 assert.match(todayTrendStyle, /pm-today-trend-event-heading>b\{[^}]*font-size:var\(--pm-font-size-subtitle\)[^}]*line-height:var\(--pm-line-height-control\)/, '事件追踪条目标题必须与世界态势使用相同字号和行高');
-assert.match(todayTrendStyle, /pm-today-trend-event-body>header\{[^}]*display:flex[^}]*justify-content:space-between/, '事件追踪标题与行内操作必须使用独立弹性布局');
+assert.match(todayTrendStyle, /pm-today-trend-event-body>header\{[^}]*display:flex[^}]*justify-content:space-between/, '事件追踪标题栏必须使用独立弹性布局');
+assert.match(todayTrendStyle, /pm-today-trend-event-body>\.pm-today-trend-inline-actions\{[^}]*align-self:center[^}]*margin-top:var\(--pm-space-1\)/, '事件追踪标题栏下方行内操作必须居中并使用既有顶部间距 token');
 assert.match(todayTrendStyle, /pm-today-trend-event-card\{[^}]*display:flex[^}]*flex-direction:column/, '事件追踪卡片必须使用弹性纵向布局');
 assert.match(activeEventCardHtml, /pm-today-trend-event-heading[\s\S]*?pm-today-trend-event-tags[\s\S]*?pm-today-trend-event-facts/, '事件追踪标签行必须位于标题行与内容区之间');
+assert.match(activeEventCardHtml, /pm-today-trend-event-facts[\s\S]*?pm-today-trend-inline-actions[\s\S]*?pm-today-trend-event-history/, '进行中事件行内操作必须位于说明/事实区下方、阶段记录之前');
 assert.match(todayTrendStyle, /pm-today-trend-event-body\{[^}]*gap:var\(--pm-space-2\)/, '事件追踪标题与标签行的既有间距必须保持不变');
 assert.match(todayTrendStyle, /pm-today-trend-event-facts\{[^}]*gap:var\(--pm-space-0-5\)[^}]*margin-block-start:var\(--pm-today-trend-event-facts-start-offset\)[^}]*margin-block-end:var\(--pm-today-trend-event-facts-end-offset\)/, '事件事实区必须通过等值局部 token 保持既有上下间距');
 assert.doesNotMatch(busyDynamicsHtml, /pm-today-trend-dynamics-signal|pm-today-trend-dynamics-arc/, '事件背景不得局限在模块子容器内或保留灰色弧线');
@@ -1229,7 +1247,11 @@ assert.doesNotMatch(dynamicsHtml, /today-trend-promote-underground/, '非地下�
 const archivedActionsHtml = renderTodayTrendDynamicsView({ scope: valid.scopes.chat, dynamicsTab: 'archived', menuOpenId: 'dynamics-module' });
 const archivedCardHtml = archivedActionsHtml.match(/<article class="pm-today-trend-event-card is-archived"[^>]*data-event-id="rumor"[\s\S]*?<\/article>/)?.[0] || '';
 assert.ok(archivedCardHtml, '归档事件必须渲染独立事件卡片');
+const archivedEventHeaderHtml = archivedCardHtml.match(/<header>[\s\S]*?<\/header>/)?.[0] || '';
+assert.ok(archivedEventHeaderHtml, '归档事件卡片必须渲染独立标题栏片段');
+assert.doesNotMatch(archivedEventHeaderHtml, /pm-today-trend-inline-actions/, '归档事件标题栏不得包含行内操作');
 assert.match(archivedCardHtml, /today-trend-delete-event/, '归档事件必须保留删除动作');
+assert.match(archivedCardHtml, /pm-today-trend-event-facts[\s\S]*?pm-today-trend-inline-actions[\s\S]*?pm-today-trend-event-history[\s\S]*?pm-today-trend-event-latest/, '归档事件必须按事实区、行内操作、阶段记录、最终结果顺序渲染');
 assert.doesNotMatch(archivedCardHtml, /today-trend-(?:advance|edit|archive)-event|today-trend-promote-underground/, '归档事件不得重新开放推进、编辑、归档或升级动作');
 assert.equal((archivedCardHtml.match(/pm-today-trend-inline-action(?:\s|")/g) || []).length, 1, '归档事件必须只输出一个删除动作');
 assert.match(renderTodayTrendDynamicsView({ scope: undergroundScope, editingEventId: 'promote:underground' }), /data-today-trend-form="event-promotion"/, '地下线升级必须提供受控事件表单');
