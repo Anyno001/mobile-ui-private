@@ -1,6 +1,6 @@
 # 项目进度
 - Project: mobile-ui-private
-- Updated At: 2026-08-23T17:01:31.629Z
+- Updated At: 2026-08-24T04:54:00.233Z
 - Status: blocked
 - Phase: review
 
@@ -18,24 +18,22 @@
 
 <!-- LIMCODE_PROGRESS_ARTIFACTS_START -->
 - 设计：`.limcode/design/phone-branch-inheritance-restart-persistence.md`
-- 计划：`.limcode/plans/unify-accent-text-editor-buttons-save-alignment.md`
+- 计划：`.limcode/plans/phone-branch-inheritance-restart-persistence.md`
 <!-- LIMCODE_PROGRESS_ARTIFACTS_END -->
 
 ## 当前 TODO 快照
 
 <!-- LIMCODE_PROGRESS_TODOS_START -->
-- [x] 收敛内置主题右气泡与强调色实底按钮的可访问前景契约，并保留自定义气泡对比度兜底  `#accent-foreground-contract`
-- [ ] 补齐独立验收指出的主题配色不变、持久化边界、focus/disabled、动作与字段透传证据并复验  `#acceptance-remediation` (in_progress)
-- [x] 确保所有主题色实底按钮使用白色文字且不改动既有主题背景色  `#all-accent-button-white-text`
-- [x] 让所有恰好两个并排按钮的操作区等分平铺可用宽度，不再左侧收缩  `#all-two-button-fill`
-- [x] 构建 index.js，执行语法、行为、契约、今日风向与全量门禁，并检查 diff  `#build-and-gates`
-- [x] 降低生成联系人界面三个按钮的字体粗细  `#contact-generator-button-weight`
-- [x] 补充主题、按钮配方、双按钮 DOM 顺序和窄屏边界的行为与契约断言  `#contract-tests`
-- [x] 让所有可输入控件聚焦时显示加粗且跟随主题色的边框提示  `#editable-focus-accent-ring`
-- [ ] 在真实宿主回归五套主题、亮暗模式、聊天、普通/极简今日风向、320px 与键盘状态  `#host-visual-regression`
-- [x] 为势力图谱资料添加/删除控件建立稳定语义 class，并统一编辑器按钮配方与状态  `#today-trend-detail-buttons`
-- [x] 建立仅限两个并列操作的共享布局契约，规范次操作在左、保存/提交主操作在右  `#two-button-save-order`
-- [x] 将所有外显提示词输入或展示文本统一为13px  `#visible-prompt-font-size`
+- [ ] 调用独立 Acceptance Expert 逐项核验，修复 blocking/major 后复验  `#branch-fix-acceptance` (in_progress)
+- [x] 确认缺陷链、持久化边界、允许修改文件和既有无关工作区改动  `#branch-fix-baseline`
+- [x] 运行专项行为检查、构建、语法检查和 diff 检查，并区分无关基线失败  `#branch-fix-gates`
+- [ ] 在真实 SillyTavern 实例执行分支、刷新、关闭重启和连续分支验收矩阵并留存诊断快照  `#branch-fix-host-validation` (in_progress)
+- [x] 修复并回归验证恢复标记写入失败时旧异步保存覆盖更新本地快照的竞态  `#branch-fix-marker-write-failure`
+- [x] 在 CHAT_CHANGED 分支继承前提交旧活动会话，并保证失败不登记伪成功 lineage  `#branch-fix-preflight`
+- [x] 隔离本专项可发布改动，生成可部署 bundle，提交并推送到 origin/main；保留其他任务工作树改动不被夹带  `#branch-fix-publish`
+- [x] 为分支来源生产存储读取增加异步保存队列屏障  `#branch-fix-queue-barrier`
+- [x] 实现卸载恢复标记，阻止重启时旧 IndexedDB 覆盖更新本地快照  `#branch-fix-recovery-marker`
+- [x] 补充父子分支、连续分支、失败隔离及重启恢复生产链路回归测试  `#branch-fix-regression-tests`
 <!-- LIMCODE_PROGRESS_TODOS_END -->
 
 ## 项目里程碑
@@ -83,7 +81,6 @@
 ## 最近更新
 
 <!-- LIMCODE_PROGRESS_LOG_START -->
-- 2026-08-23T04:33:31.460Z | artifact_changed | chat-eye-scan-root-cause | 上游 release API 已核实第五参数 scan 语义；收缩设计，取消与本 bug 无关的诊断/假成功扩展。
 - 2026-08-23T04:33:31.974Z | artifact_changed | design | 同步设计文档：.limcode/design/chat-eye-sillytavern-prompt-injection-plan.md
 - 2026-08-23T04:44:47.541Z | artifact_changed | plan | 同步计划文档：.limcode/plans/chat-eye-sillytavern-prompt-injection.md
 - 2026-08-23T05:13:49.679Z | updated | apply-chat-scan-fix | 已将 phone prompt 的宿主 scan 参数改为 true，并补充 phone/community/todayTrend 的 scan 契约断言，开始执行门禁。
@@ -103,6 +100,7 @@
 - 2026-08-23T16:53:22.805Z | milestone_recorded | acceptance-cycle-3 | Acceptance Expert 正式 assessed：0 blocking、1 major、0 minor、0 advisory、10 pass；唯一 major 为真实 SillyTavern 宿主矩阵缺失。
 - 2026-08-23T16:53:22.805Z | updated | branch-fix-marker-write-failure | 补齐 marker 首次/持续写入失败与旧异步交错回归；check:behavior、build、check:syntax、diff --check 均 exit 0。
 - 2026-08-23T17:01:31.629Z | artifact_changed | plan | 同步计划 TODO 快照：.limcode/plans/unify-accent-text-editor-buttons-save-alignment.md
+- 2026-08-24T04:54:00.233Z | artifact_changed | plan | 同步计划 TODO 快照：.limcode/plans/phone-branch-inheritance-restart-persistence.md
 <!-- LIMCODE_PROGRESS_LOG_END -->
 
 <!-- LIMCODE_PROGRESS_METADATA_START -->
@@ -112,7 +110,7 @@
   "projectId": "mobile-ui-private",
   "projectName": "mobile-ui-private",
   "createdAt": "2026-08-14T05:55:56.978Z",
-  "updatedAt": "2026-08-23T17:01:31.629Z",
+  "updatedAt": "2026-08-24T04:54:00.233Z",
   "status": "blocked",
   "phase": "review",
   "currentFocus": "真实 SillyTavern 宿主验收矩阵与最终独立验收",
@@ -121,67 +119,57 @@
   "nextAction": "助手提供可访问的真实 SillyTavern URL 后执行八项矩阵；根据结果修复 blocking/major（若有），再调用 Acceptance Expert 复验。",
   "activeArtifacts": {
     "design": ".limcode/design/phone-branch-inheritance-restart-persistence.md",
-    "plan": ".limcode/plans/unify-accent-text-editor-buttons-save-alignment.md"
+    "plan": ".limcode/plans/phone-branch-inheritance-restart-persistence.md"
   },
   "todos": [
     {
-      "id": "accent-foreground-contract",
-      "content": "收敛内置主题右气泡与强调色实底按钮的可访问前景契约，并保留自定义气泡对比度兜底",
-      "status": "completed"
-    },
-    {
-      "id": "acceptance-remediation",
-      "content": "补齐独立验收指出的主题配色不变、持久化边界、focus/disabled、动作与字段透传证据并复验",
+      "id": "branch-fix-acceptance",
+      "content": "调用独立 Acceptance Expert 逐项核验，修复 blocking/major 后复验",
       "status": "in_progress"
     },
     {
-      "id": "all-accent-button-white-text",
-      "content": "确保所有主题色实底按钮使用白色文字且不改动既有主题背景色",
+      "id": "branch-fix-baseline",
+      "content": "确认缺陷链、持久化边界、允许修改文件和既有无关工作区改动",
       "status": "completed"
     },
     {
-      "id": "all-two-button-fill",
-      "content": "让所有恰好两个并排按钮的操作区等分平铺可用宽度，不再左侧收缩",
+      "id": "branch-fix-gates",
+      "content": "运行专项行为检查、构建、语法检查和 diff 检查，并区分无关基线失败",
       "status": "completed"
     },
     {
-      "id": "build-and-gates",
-      "content": "构建 index.js，执行语法、行为、契约、今日风向与全量门禁，并检查 diff",
+      "id": "branch-fix-host-validation",
+      "content": "在真实 SillyTavern 实例执行分支、刷新、关闭重启和连续分支验收矩阵并留存诊断快照",
+      "status": "in_progress"
+    },
+    {
+      "id": "branch-fix-marker-write-failure",
+      "content": "修复并回归验证恢复标记写入失败时旧异步保存覆盖更新本地快照的竞态",
       "status": "completed"
     },
     {
-      "id": "contact-generator-button-weight",
-      "content": "降低生成联系人界面三个按钮的字体粗细",
+      "id": "branch-fix-preflight",
+      "content": "在 CHAT_CHANGED 分支继承前提交旧活动会话，并保证失败不登记伪成功 lineage",
       "status": "completed"
     },
     {
-      "id": "contract-tests",
-      "content": "补充主题、按钮配方、双按钮 DOM 顺序和窄屏边界的行为与契约断言",
+      "id": "branch-fix-publish",
+      "content": "隔离本专项可发布改动，生成可部署 bundle，提交并推送到 origin/main；保留其他任务工作树改动不被夹带",
       "status": "completed"
     },
     {
-      "id": "editable-focus-accent-ring",
-      "content": "让所有可输入控件聚焦时显示加粗且跟随主题色的边框提示",
+      "id": "branch-fix-queue-barrier",
+      "content": "为分支来源生产存储读取增加异步保存队列屏障",
       "status": "completed"
     },
     {
-      "id": "host-visual-regression",
-      "content": "在真实宿主回归五套主题、亮暗模式、聊天、普通/极简今日风向、320px 与键盘状态",
-      "status": "pending"
-    },
-    {
-      "id": "today-trend-detail-buttons",
-      "content": "为势力图谱资料添加/删除控件建立稳定语义 class，并统一编辑器按钮配方与状态",
+      "id": "branch-fix-recovery-marker",
+      "content": "实现卸载恢复标记，阻止重启时旧 IndexedDB 覆盖更新本地快照",
       "status": "completed"
     },
     {
-      "id": "two-button-save-order",
-      "content": "建立仅限两个并列操作的共享布局契约，规范次操作在左、保存/提交主操作在右",
-      "status": "completed"
-    },
-    {
-      "id": "visible-prompt-font-size",
-      "content": "将所有外显提示词输入或展示文本统一为13px",
+      "id": "branch-fix-regression-tests",
+      "content": "补充父子分支、连续分支、失败隔离及重启恢复生产链路回归测试",
       "status": "completed"
     }
   ],
@@ -260,12 +248,6 @@
     }
   ],
   "log": [
-    {
-      "at": "2026-08-23T04:33:31.460Z",
-      "type": "artifact_changed",
-      "refId": "chat-eye-scan-root-cause",
-      "message": "上游 release API 已核实第五参数 scan 语义；收缩设计，取消与本 bug 无关的诊断/假成功扩展。"
-    },
     {
       "at": "2026-08-23T04:33:31.974Z",
       "type": "artifact_changed",
@@ -379,21 +361,27 @@
       "type": "artifact_changed",
       "refId": "plan",
       "message": "同步计划 TODO 快照：.limcode/plans/unify-accent-text-editor-buttons-save-alignment.md"
+    },
+    {
+      "at": "2026-08-24T04:54:00.233Z",
+      "type": "artifact_changed",
+      "refId": "plan",
+      "message": "同步计划 TODO 快照：.limcode/plans/phone-branch-inheritance-restart-persistence.md"
     }
   ],
   "stats": {
     "milestonesTotal": 3,
     "milestonesCompleted": 3,
-    "todosTotal": 12,
-    "todosCompleted": 10,
-    "todosInProgress": 1,
+    "todosTotal": 10,
+    "todosCompleted": 8,
+    "todosInProgress": 2,
     "todosCancelled": 0,
     "activeRisks": 2
   },
   "render": {
     "rendererVersion": 1,
-    "generatedAt": "2026-08-23T17:01:31.629Z",
-    "bodyHash": "sha256:a126015da5a937aa15e228f4ffb91a8944d26fda238420b14dbd3ce0edab25fb"
+    "generatedAt": "2026-08-24T04:54:00.233Z",
+    "bodyHash": "sha256:ab66dfc3cf0ea65db5c8ddb7cb7ea68ac85d93054da7c741b70cf26b4d190ca6"
   }
 }
 <!-- LIMCODE_PROGRESS_METADATA_END -->

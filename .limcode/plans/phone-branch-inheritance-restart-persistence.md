@@ -11,6 +11,7 @@
 - [ ] 在真实 SillyTavern 实例执行分支、刷新、关闭重启和连续分支验收矩阵并留存诊断快照  `#branch-fix-host-validation`
 - [x] 修复并回归验证恢复标记写入失败时旧异步保存覆盖更新本地快照的竞态  `#branch-fix-marker-write-failure`
 - [x] 在 CHAT_CHANGED 分支继承前提交旧活动会话，并保证失败不登记伪成功 lineage  `#branch-fix-preflight`
+- [x] 隔离本专项可发布改动，生成可部署 bundle，提交并推送到 origin/main；保留其他任务工作树改动不被夹带  `#branch-fix-publish`
 - [x] 为分支来源生产存储读取增加异步保存队列屏障  `#branch-fix-queue-barrier`
 - [x] 实现卸载恢复标记，阻止重启时旧 IndexedDB 覆盖更新本地快照  `#branch-fix-recovery-marker`
 - [x] 补充父子分支、连续分支、失败隔离及重启恢复生产链路回归测试  `#branch-fix-regression-tests`
