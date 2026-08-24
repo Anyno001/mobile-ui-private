@@ -159,6 +159,79 @@ function buttonContaining(label, text, marker) {
   return matches[0];
 }
 
+function elementContainingClass(label, text, className, marker = '') {
+  const source = normalizeLineEndings(text);
+  const classNeedle = `class="${className}"`;
+  const matches = [];
+  let classIndex = -1;
+  while ((classIndex = source.indexOf(classNeedle, classIndex + 1)) >= 0) {
+    const openStart = source.lastIndexOf('<', classIndex);
+    const opening = /^<([a-z][\w-]*)\b[^>]*>/i.exec(source.slice(openStart));
+    if (!opening) continue;
+    const tagName = opening[1];
+    const tagPattern = new RegExp(`<\\/?${tagName}\\b[^>]*>`, 'gi');
+    tagPattern.lastIndex = openStart;
+    let depth = 0;
+    let fragment = '';
+    for (let token = tagPattern.exec(source); token; token = tagPattern.exec(source)) {
+      const raw = token[0];
+      if (raw.startsWith('</')) depth -= 1;
+      else if (!raw.endsWith('/>')) depth += 1;
+      if (depth === 0) {
+        fragment = source.slice(openStart, tagPattern.lastIndex);
+        break;
+      }
+    }
+    if (fragment && (!marker || fragment.includes(marker))) matches.push(fragment);
+  }
+  if (!matches.length) {
+    failures.push(`${label}: missing container .${className}${marker ? ` containing ${marker}` : ''}`);
+    return '';
+  }
+  if (matches.length !== 1) {
+    failures.push(`${label}: expected one .${className}${marker ? ` containing ${marker}` : ''}, found ${matches.length}`);
+    return '';
+  }
+  return matches[0];
+}
+
+function countDirectButtons(fragment) {
+  const tagPattern = /<\/?([a-z][\w-]*)\b[^>]*>/gi;
+  const voidTags = new Set(['area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta', 'param', 'source', 'track', 'wbr']);
+  let depth = 0;
+  let buttons = 0;
+  for (let token = tagPattern.exec(fragment); token; token = tagPattern.exec(fragment)) {
+    const raw = token[0];
+    const tagName = token[1].toLowerCase();
+    if (raw.startsWith('</')) {
+      depth -= 1;
+      continue;
+    }
+    if (depth === 1 && tagName === 'button') buttons += 1;
+    if (!raw.endsWith('/>') && !voidTags.has(tagName)) depth += 1;
+  }
+  return buttons;
+}
+
+function requireDirectButtonCount(label, text, className, marker, expectedCount) {
+  const fragment = elementContainingClass(label, text, className, marker);
+  if (!fragment) return '';
+  const count = countDirectButtons(fragment);
+  if (count !== expectedCount) failures.push(`${label}: .${className} must contain exactly ${expectedCount} direct buttons, found ${count}`);
+  return fragment;
+}
+
+function requireExactTwoButtonContainer(label, text, className, marker, orderedMarkers = []) {
+  const fragment = requireDirectButtonCount(label, text, className, marker, 2);
+  if (!fragment) return;
+  let previous = -1;
+  for (const orderedMarker of orderedMarkers) {
+    const next = fragment.indexOf(orderedMarker);
+    if (next < 0 || next <= previous) failures.push(`${label}: direct button marker order must include ${orderedMarkers.join(' -> ')}`);
+    previous = next;
+  }
+}
+
 function parseCssRules(cssText, sourcePath = 'style.css') {
   const ast = postcss.parse(normalizeLineEndings(cssText), { from: sourcePath });
   const rules = [];
@@ -2655,6 +2728,11 @@ const phoneInjectionControllerCode = sourceModuleByName.get('phone-injection-con
 const phoneMessageRenderingCode = sourceModuleByName.get('phone-message-rendering.js')?.code || '';
 const phoneOverlayCode = sourceModuleByName.get('phone-overlay.js')?.code || '';
 const phoneThemeCode = sourceModuleByName.get('phone-theme.js')?.code || '';
+const todayTrendWorldViewCode = sourceModuleByName.get('today-trend-world-view.js')?.code || '';
+const todayTrendReputationViewCode = sourceModuleByName.get('today-trend-reputation-view.js')?.code || '';
+const todayTrendFactionViewCode = sourceModuleByName.get('today-trend-faction-view.js')?.code || '';
+const todayTrendDynamicsViewCode = sourceModuleByName.get('today-trend-dynamics-view.js')?.code || '';
+const todayTrendActionsCode = sourceModuleByName.get('today-trend-actions.js')?.code || '';
 const phoneQuoteCode = sourceModuleByName.get('phone-quote.js')?.code || '';
 const calendarCode = sourceModuleByName.get('calendar.js')?.code || '';
 const calendarWeatherControllerCode = sourceModuleByName.get('calendar-weather-controller.js')?.code || '';
@@ -2682,6 +2760,7 @@ const interactiveModelCode = sourceModuleByName.get('interactive-scene-model.js'
 const interactiveAiCode = sourceModuleByName.get('interactive-scene-ai.js')?.code || '';
 const interactivePromptCode = sourceModuleByName.get('interactive.js')?.code || '';
 const todayTrendUiCode = sourceModuleByName.get('today-trend-ui.js')?.code || '';
+const cropperSourceCode = sourceModuleByName.get('cropper.js')?.code || '';
 const settingsUiCodeForInteractive = sourceModuleByName.get('settings-ui.js')?.code || '';
 const settingsWordyControllerCode = sourceModuleByName.get('settings-wordy-controller.js')?.code || '';
 const settingsBackupControllerCode = sourceModuleByName.get('settings-backup-controller.js')?.code || '';
@@ -3378,6 +3457,37 @@ if (!overlayThemeDirectSyncPattern.test(applyThemeSource)
     && !overlayThemeHelperSyncPattern.test(applyThemeSource)) {
   failures.push('phone-theme.js: applyTheme must synchronize data-theme to an existing pm-overlay');
 }
+for (const expected of [
+  "const rightText = theme.customRight || (theme.preset === 'custom' && customAccent) ? contrastText(rightBackground) : preset.rightText",
+  "element.style.setProperty('--pm-r-txt', rightText)",
+]) requireText('phone-theme.js right bubble foreground', applyThemeSource, expected);
+for (const [name, code, cancelMarker, primaryMarker] of [
+  ['world', todayTrendWorldViewCode, 'today-trend-cancel-world-editor', '<button type="submit">保存</button>'],
+  ['reputation', todayTrendReputationViewCode, '${escapeAttr(cancelAction)}', '<button type="submit">保存</button>'],
+  ['faction', todayTrendFactionViewCode, 'today-trend-cancel-editor', '<button type="submit">保存</button>'],
+  ['dynamics', todayTrendDynamicsViewCode, 'today-trend-cancel-event-editor', '<button type="submit">${kind ==='],
+]) {
+  requireText(`today-trend ${name} action pair`, code, 'pm-today-trend-form-actions pm-action-pair');
+  const pairStart = code.indexOf('pm-today-trend-form-actions pm-action-pair');
+  const cancelIndex = code.indexOf(cancelMarker, pairStart);
+  const primaryIndex = code.indexOf(primaryMarker, pairStart);
+  if (pairStart < 0 || cancelIndex < pairStart || primaryIndex < cancelIndex) failures.push(`today-trend ${name}: secondary action must precede the primary action inside pm-action-pair`);
+}
+for (const expected of [
+  'pm-today-trend-detail-row', 'pm-today-trend-detail-add', 'pm-today-trend-detail-remove',
+  'name="detailLabel"', 'name="detailValue"', 'data-action="today-trend-add-detail"', 'data-action="today-trend-remove-detail"',
+]) requireText('today-trend-faction-view.js detail controls', todayTrendFactionViewCode, expected);
+for (const expected of [
+  'pm-today-trend-detail-row', 'pm-today-trend-detail-remove',
+  'name="detailLabel"', 'name="detailValue"', 'data-action="today-trend-remove-detail"',
+]) {
+  requireText('today-trend-actions.js inserted detail controls', todayTrendActionsCode, expected);
+}
+for (const forbidden of ['ST_SMS_THEME', 'ST_SMS_DATA_V2', 'PhoneModeDB', 'schemaVersion']) {
+  if ([todayTrendWorldViewCode, todayTrendReputationViewCode, todayTrendFactionViewCode, todayTrendDynamicsViewCode, todayTrendActionsCode].some(code => code.includes(forbidden))) {
+    failures.push(`today-trend UI modules must not own persistent storage contract: ${forbidden}`);
+  }
+}
 if (!setDarkModeSource.includes('appearanceSettings.setDarkMode(mode)')
     || !settingsAppearanceControllerCode.includes('if (saveTheme()) { applyTheme(); syncControls(); return true; }')) {
   failures.push('settings appearance: __pmSetDarkMode must transparently delegate to appearance persistence and synchronized theme application');
@@ -3468,8 +3578,8 @@ for (const expected of [
   '.pm-model-dropdown{position:fixed;z-index:var(--pm-z-host);background:var(--pm-color-surface-elevated) !important;border:1px solid var(--pm-color-border-default) !important;',
   '.pm-model-search{border:none !important;border-bottom:1px solid var(--pm-color-border-subtle) !important;',
   ':is(#pm-iphone,#pm-overlay,#pm-overlay-sub,#pm-model-dropdown) :where(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]):not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="hidden"]):not([type="image"]),textarea,select,[contenteditable="true"]){min-width:0;max-width:100%;border:1px solid var(--pm-color-border-default) !important;',
-  ':is(#pm-iphone,#pm-overlay,#pm-overlay-sub,#pm-model-dropdown) :where(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]):not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="hidden"]):not([type="image"]),textarea,select,[contenteditable="true"]):focus{border-color:var(--pm-color-border-default) !important;outline:none !important;box-shadow:none !important;}',
-  ':is(#pm-iphone,#pm-overlay,#pm-overlay-sub,#pm-model-dropdown) :where(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]):not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="hidden"]):not([type="image"]),textarea,select,[contenteditable="true"]):focus-visible{border-color:var(--pm-color-border-default) !important;outline:2px solid var(--pm-color-focus-ring) !important;outline-offset:2px !important;box-shadow:none !important;}',
+  ':is(#pm-iphone,#pm-overlay,#pm-overlay-sub,#pm-model-dropdown) :where(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]):not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="hidden"]):not([type="image"]),textarea,select,[contenteditable="true"]):focus{border-color:var(--pm-color-accent) !important;outline:var(--pm-space-0-5) solid var(--pm-color-accent) !important;outline-offset:var(--pm-space-px-1) !important;box-shadow:none !important;}',
+  ':is(#pm-iphone,#pm-overlay,#pm-overlay-sub,#pm-model-dropdown) :where(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]):not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="hidden"]):not([type="image"]),textarea,select,[contenteditable="true"]):focus-visible{border-color:var(--pm-color-accent) !important;outline:var(--pm-space-0-5) solid var(--pm-color-accent) !important;outline-offset:var(--pm-space-px-1) !important;box-shadow:none !important;}',
   ':is(#pm-iphone,#pm-overlay,#pm-overlay-sub,#pm-model-dropdown) :where(.pm-input,.pm-scene-composer textarea){border:0 !important;}',
   ':is(#pm-iphone,#pm-overlay,#pm-overlay-sub,#pm-model-dropdown) .pm-model-search{border:0 !important;border-bottom:1px solid var(--pm-color-border-subtle) !important;border-radius:0;}',
   ':is(#pm-iphone,#pm-overlay,#pm-overlay-sub,#pm-model-dropdown) :where(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]):not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="hidden"]):not([type="image"]),textarea,select,[contenteditable="true"]):disabled{opacity:var(--pm-opacity-disabled) !important;cursor:not-allowed;}',
@@ -3614,7 +3724,6 @@ for (const expected of [
   '.pm-calendar-inline-add,.pm-calendar-inline-regenerate{display:inline-flex;align-items:center;justify-content:center;gap:var(--pm-space-1-5);width:max-content;margin:var(--pm-space-0);padding:var(--pm-space-2) var(--pm-space-3);border:1px solid color-mix(in srgb,var(--pm-calendar-accent) 35%,transparent);border-radius:9px',
   '.pm-calendar-management:is([data-calendar-management="schedule"],[data-calendar-management="recipe"],[data-calendar-management="cycle"],[data-calendar-management="outfit"]) .pm-calendar-editor-actions .is-primary{background:var(--pm-calendar-accent)!important;border-color:var(--pm-calendar-accent)!important',
   '.pm-calendar-editor-actions .is-primary{background:var(--pm-calendar-accent, var(--pm-color-accent))!important;color:var(--pm-color-on-dark)!important;border-color:var(--pm-calendar-accent, var(--pm-color-accent))!important',
-  '#pm-iphone[data-theme="dark"] .pm-calendar-management[data-calendar-management="outfit"] .pm-calendar-editor-actions .is-primary{color:#1c1c1e}',
   '.pm-calendar-management .pm-calendar-data-tools h3{font-size:12px}',
   '.pm-calendar-injection-card .pm-calendar-auto-switch{padding:var(--pm-space-0-5) var(--pm-space-0)}',
   '#pm-iphone[data-theme="dark"] .pm-calendar-management[data-calendar-management="schedule"] .pm-calendar-scan-card .pm-calendar-auto-switch small,#pm-iphone[data-theme="dark"] .pm-calendar-management[data-calendar-management="weather"] .pm-calendar-attribution,#pm-iphone[data-theme="dark"] .pm-calendar-management[data-calendar-management="cycle"] .pm-calendar-cycle-editor small,#pm-iphone[data-theme="dark"] .pm-calendar-management[data-calendar-management="recipe"] .pm-calendar-attribution{color:var(--pm-color-text-secondary)}',
@@ -3623,7 +3732,7 @@ for (const expected of [
   '.pm-calendar-entry-dialog [data-calendar-occasion-fields][hidden]{display:none!important}',
   '.pm-calendar-entry-dialog{width:min(330px,calc(100vw - 28px))}',
   '#pm-overlay .pm-calendar-entry-dialog textarea[name="note"]{box-sizing:border-box!important;width:100%!important;min-height:72px!important;border:1px solid var(--pm-color-border-default)!important;border-radius:var(--pm-radius-control)!important;background:var(--pm-color-surface-control)!important;color:var(--pm-color-text-primary)!important;font:var(--pm-font-weight-regular) var(--pm-font-size-body)/var(--pm-line-height-body) var(--pm-font-family-system)',
-  '#pm-overlay .pm-calendar-entry-dialog textarea[name="note"]:focus-visible{outline:1px solid var(--pm-color-focus-ring)!important;outline-offset:1px!important}',
+  '#pm-overlay .pm-calendar-entry-dialog textarea[name="note"]:focus-visible{border-color:var(--pm-color-accent)!important;outline:var(--pm-space-0-5) solid var(--pm-color-accent)!important;outline-offset:var(--pm-space-px-1)!important}',
   '.pm-calendar-entry-actions button{min-height:var(--pm-size-control-default);border:0',
   '.pm-calendar-view-switch button[aria-pressed="true"]{background:transparent;color:var(--pm-calendar-accent);box-shadow:inset 0 -2px 0 var(--pm-calendar-accent)',
   '@media(prefers-reduced-motion:reduce){.pm-calendar-shell[data-calendar-view-mode] .pm-calendar-header-action.is-loading svg{animation:none}}',
@@ -4565,6 +4674,147 @@ requireCssDeclarations(cssRules, '.pm-action-button.is-secondary', { background:
 requireCssDeclarations(cssRules, '.pm-action-button.is-success', { background: 'var(--pm-color-success)', color: 'var(--pm-color-on-success)', 'border-color': 'var(--pm-color-success)' });
 requireCssDeclarations(cssRules, '.pm-action-button.is-accent', { background: 'var(--pm-color-accent)', color: 'var(--pm-color-on-accent)', 'border-color': 'var(--pm-color-accent)' });
 requireCssDeclarations(cssRules, '.pm-action-button.is-danger', { background: 'var(--pm-color-danger)', color: 'var(--pm-color-on-danger)', 'border-color': 'var(--pm-color-danger)' });
+requireCssDeclarations(cssRules, '.pm-action-pair', { display: 'grid', 'grid-template-columns': 'repeat(2,minmax(0,1fr))', gap: 'var(--pm-space-2)', width: '100%', 'min-width': '0' });
+requireCssDeclarations(cssRules, '.pm-action-pair>button', { 'min-width': '0' });
+const exactTwoButtonContainers = [
+  '.pm-action-row', '.pm-modal-add', '.pm-calendar-editor-actions', '.pm-calendar-detail-edit-actions',
+  '.pm-calendar-entry-actions', '.pm-scene-injection-toolbar', '.pm-scene-injection-actions',
+  '.pm-scene-prompt-actions', '.pm-quick-reply-actions', '.pm-today-trend-form-actions',
+];
+for (const container of exactTwoButtonContainers) {
+  requireCssDeclarations(cssRules, `${container}:has(>button:nth-of-type(2):last-of-type)`, {
+    display: 'grid', 'grid-template-columns': 'repeat(2,minmax(0,1fr))', width: '100%', 'align-items': 'stretch', gap: 'var(--pm-space-2)',
+  });
+  requireCssDeclarations(cssRules, `${container}:has(>button:nth-of-type(2):last-of-type)>button`, {
+    'box-sizing': 'border-box', width: '100%', 'min-width': '0',
+  });
+}
+for (const [label, fragment, expected] of [
+  ['single direct button', '<div><button></button></div>', 1],
+  ['two direct buttons with non-button sibling', '<div><span></span><button></button><button></button></div>', 2],
+  ['three direct buttons', '<div><button></button><button></button><button></button></div>', 3],
+  ['nested button is not direct', '<div><span><button></button></span><button></button></div>', 1],
+]) {
+  if (countDirectButtons(fragment) !== expected) failures.push(`self-test: ${label} count must be ${expected}`);
+}
+const exactTwoButtonTemplateContracts = [
+  ['settings API actions', settingsTemplatesCode, 'pm-action-row', 'window.__pmTestModel(this)', ['window.__pmTestApi(this)', 'window.__pmTestModel(this)']],
+  ['settings backup actions', settingsTemplatesCode, 'pm-action-row', 'window.__pmImportData(this)', ['window.__pmExportData()', "document.getElementById('pm-import-file').click()"]],
+  ['quick reply actions', settingsTemplatesCode, 'pm-quick-reply-actions', 'window.__pmClearPhoneQuickReply()', ['window.__pmEnsurePhoneQuickReply()', 'window.__pmClearPhoneQuickReply()']],
+  ['worldbook config actions', worldBookSettingsCode, 'pm-modal-add pm-worldbook-actions', 'window.__pmSaveWorldBookConfig()', ['window.__pmResetWorldBookConfig()', 'window.__pmSaveWorldBookConfig()']],
+  ['cropper actions', cropperSourceCode, 'pm-modal-add pm-crop-actions', 'pm-crop-confirm', ['pm-crop-cancel', 'pm-crop-confirm']],
+  ['calendar cycle actions', calendarViewCode, 'pm-calendar-editor-actions', 'calendar-cycle-save', ['calendar-cycle-clear', 'calendar-cycle-save']],
+  ['calendar detail actions', calendarViewCode, 'pm-calendar-detail-edit-actions', 'calendar-outfit-regenerate', ['calendar-outfit-edit', 'calendar-outfit-regenerate']],
+  ['calendar repeat delete actions', calendarViewCode, 'pm-calendar-entry-actions', 'data-calendar-repeat-delete="all"', ['data-calendar-repeat-delete="day"', 'data-calendar-repeat-delete="all"']],
+  ['scene injection toolbar', interactiveViewsCode, 'pm-scene-injection-toolbar', 'context-clear', ['context-select-all', 'context-clear']],
+  ['scene injection actions', interactiveViewsCode, 'pm-scene-injection-actions', 'context-save', ['context-cancel', 'context-save']],
+  ['scene prompt actions', interactiveViewsCode, 'pm-scene-prompt-actions', 'save-prompt', ['regenerate-prompt', 'save-prompt']],
+  ['conversation injection actions', injectionSaveCode, 'pm-modal-add pm-conversation-injection-actions', 'window.__pmSaveConversationInjection()', ['window.__pmClearConversationInjection()', 'window.__pmSaveConversationInjection()']],
+  ['today trend rule actions', todayTrendUiCode, 'pm-today-trend-form-actions pm-action-pair', 'today-trend-cancel-rule-editor', ['today-trend-cancel-rule-editor', 'type="submit"']],
+  ['today trend world actions', todayTrendWorldViewCode, 'pm-today-trend-form-actions pm-action-pair', 'today-trend-cancel-world-editor', ['today-trend-cancel-world-editor', 'type="submit"']],
+];
+for (const [label, text, className, marker, orderedMarkers] of exactTwoButtonTemplateContracts) {
+  requireExactTwoButtonContainer(label, text, className, marker, orderedMarkers);
+}
+requireDirectButtonCount('calendar single-button generation action', calendarViewCode, 'pm-calendar-editor-actions', 'calendar-generation-rule-save', 1);
+requireDirectButtonCount('calendar three-button month actions', calendarViewCode, 'pm-calendar-month-panel-actions', 'calendar-base-save', 3);
+for (const rule of cssRules.filter(candidate => candidate.selectors.some(selector => exactTwoButtonContainers.some(container => selector.startsWith(`${container}:has(`))))) {
+  if (rule.declarations.has('order')) failures.push(`style.css:${rule.line}: exact-two-button layout must not reorder DOM controls`);
+}
+requireDirectButtonCount('contact switcher has three entry buttons', directoryCode, 'pm-contact-switcher-actions', 'window.__pmShowAddContact', 3);
+requireDirectButtonCount('directory footer has three entry buttons', directoryCode, 'pm-modal-add pm-directory-actions', 'window.__pmShowAddContact', 3);
+const accentSaveRule = cssRules.find(rule => rule.selectors.includes(':is(#pm-iphone,#pm-overlay,#pm-overlay-sub) button:is([data-action*="save"],[onclick*="__pmSave"])'));
+if (!accentSaveRule
+  || accentSaveRule.declarations.get('background') !== 'var(--pm-color-accent) !important'
+  || accentSaveRule.declarations.get('color') !== 'var(--pm-color-on-dark) !important'
+  || accentSaveRule.declarations.get('border-color') !== 'var(--pm-color-accent) !important') {
+  failures.push('style.css: theme-accent save buttons must keep the existing accent background and use white on-dark text');
+}
+for (const selector of [
+  ':is(#pm-iphone,#pm-overlay,#pm-overlay-sub) button:is(.is-accent,.is-api-test,.pm-contact-add-primary,.pm-contact-add-ai,.pm-contact-settings-save,.pm-scene-primary)',
+  '#pm-iphone :is(.pm-contact-switcher-actions button.is-primary,.pm-quick-reply-actions button:not(.is-danger),.pm-desktop-community-dock button,.pm-today-trend-form-actions button[type="submit"],.pm-today-trend-mode-switch button[aria-pressed="true"],.pm-today-trend-primary-action,.pm-calendar-editor-actions .is-primary)',
+]) requireCssDeclarations(cssRules, selector, { color: 'var(--pm-color-on-dark) !important' });
+requireCssDeclarations(cssRules, '.pm-scene-primary', { background: 'var(--scene-accent) !important', color: 'var(--pm-color-on-dark) !important' });
+requireCssDeclarations(cssRules, '.pm-scene-comment-composer button', { background: 'var(--scene-accent)', color: 'var(--pm-color-on-dark)' });
+requireCssDeclarations(cssRules, '.pm-calendar-editor-actions .is-primary', { color: 'var(--pm-color-on-dark) !important' });
+requireCssDeclarations(cssRules, '.pm-calendar-month-panel-actions .is-primary', { background: 'var(--pm-calendar-accent)', color: 'var(--pm-color-on-dark)' });
+requireCssDeclarations(cssRules, '.pm-calendar-entry-actions .is-primary', { background: 'var(--pm-calendar-accent)', color: 'var(--pm-color-on-dark)' });
+requireCssDeclarations(cssRules, '.pm-calendar-data-row .is-primary', { background: 'var(--pm-calendar-accent) !important', color: 'var(--pm-color-on-dark) !important' });
+requireCssDeclarations(cssRules, '.pm-modal-add .pm-action-button.is-success', { color: 'var(--pm-color-on-success) !important' });
+requireCssDeclarations(cssRules, '.pm-modal-add .pm-action-button.is-danger', { color: 'var(--pm-color-on-danger) !important' });
+requireCssDeclarations(cssRules, '.pm-quick-reply-actions button.is-danger', { background: 'var(--pm-color-danger)', color: 'var(--pm-color-on-danger)' });
+const editableFocusRules = cssRules.filter(rule => rule.selectors.some(selector => selector.includes('[contenteditable="true"]') && /:focus(?:-visible)?$/.test(selector)));
+for (const state of [':focus', ':focus-visible']) {
+  const rule = editableFocusRules.find(candidate => candidate.selectors.some(selector => selector.endsWith(state)));
+  if (!rule
+    || rule.declarations.get('border-color') !== 'var(--pm-color-accent) !important'
+    || rule.declarations.get('outline') !== 'var(--pm-space-0-5) solid var(--pm-color-accent) !important'
+    || rule.declarations.get('outline-offset') !== 'var(--pm-space-px-1) !important') {
+    failures.push(`style.css: editable controls ${state} must use the thick theme-accent border and outline`);
+  }
+}
+for (const selector of [
+  '#pm-overlay .pm-contact-settings-scroll textarea.pm-cfg-input',
+  '#pm-overlay .pm-group-settings-scroll textarea.pm-cfg-input',
+]) {
+  const rule = cssRules.find(candidate => candidate.selectors.includes(selector));
+  if (rule?.declarations.get('outline') === 'none !important') failures.push(`style.css: ${selector} must not suppress the shared accent focus outline`);
+}
+for (const selector of [
+  ':is(#pm-overlay .pm-contact-settings-scroll textarea.pm-cfg-input,#pm-overlay .pm-group-settings-scroll textarea.pm-cfg-input):focus',
+  ':is(#pm-overlay .pm-contact-settings-scroll textarea.pm-cfg-input,#pm-overlay .pm-group-settings-scroll textarea.pm-cfg-input):focus-visible',
+]) requireCssDeclarations(cssRules, selector, {
+  'border-color': 'var(--pm-color-accent) !important',
+  outline: 'var(--pm-space-0-5) solid var(--pm-color-accent) !important',
+  'outline-offset': 'var(--pm-space-px-1) !important',
+});
+requireCssDeclarations(cssRules, '#pm-overlay .pm-calendar-entry-dialog textarea[name="note"]:focus-visible', {
+  'border-color': 'var(--pm-color-accent) !important',
+  outline: 'var(--pm-space-0-5) solid var(--pm-color-accent) !important',
+  'outline-offset': 'var(--pm-space-px-1) !important',
+});
+requireCssDeclarations(cssRules, ':is(#pm-iphone,#pm-overlay,#pm-overlay-sub) :is(#pm-behavior-private,#pm-behavior-group,#pm-group-random-npc-prompt,#pm-scene-style,#pm-scene-prompt,.pm-calendar-generation-rule,.pm-today-trend-rule-editor textarea)', {
+  'font-size': 'var(--pm-font-size-compact) !important',
+});
+requireCssDeclarations(cssRules, '.pm-contact-switcher-actions button', { 'font-weight': 'var(--pm-font-weight-regular)' });
+requireCssDeclarations(cssRules, '.pm-directory-actions>button', { 'font-weight': 'var(--pm-font-weight-regular) !important' });
+for (const [label, text, expected] of [
+  ['private style prompt', phoneChatPokeCodeForChecks, 'id="pm-behavior-private"'],
+  ['group style prompt', phoneChatPokeCodeForChecks, 'id="pm-behavior-group"'],
+  ['group NPC prompt', directoryCode, 'id="pm-group-random-npc-prompt"'],
+  ['scene custom style prompt', interactiveViewsCode, 'id="pm-scene-style"'],
+  ['scene generated prompt', interactiveViewsCode, 'id="pm-scene-prompt"'],
+  ['calendar generation prompt', calendarViewCode, 'class="pm-calendar-generation-rule"'],
+  ['today trend rule prompt', todayTrendUiCode, 'class="pm-today-trend-input" name="text"'],
+]) requireText(`prompt typography source: ${label}`, text, expected);
+requireCssDeclarations(cssRules, '.pm-today-trend-detail-row', { display: 'grid', 'grid-template-columns': 'repeat(2,minmax(0,1fr))', gap: 'var(--pm-space-2)', 'margin-bottom': 'var(--pm-space-2)' });
+for (const selector of ['.pm-today-trend-detail-add', '.pm-today-trend-detail-remove']) {
+  requireCssDeclarations(cssRules, selector, {
+    'box-sizing': 'border-box',
+    'min-height': 'var(--pm-size-control-default)',
+    border: '1px solid var(--pm-color-border-default)',
+    'border-radius': 'var(--pm-radius-control)',
+    background: 'var(--pm-color-surface-control)',
+    padding: 'var(--pm-space-0) var(--pm-space-3)',
+    cursor: 'pointer',
+  });
+}
+const detailAddWidthRule = cssRules.find(rule => rule.selectors.includes('.pm-today-trend-detail-add')
+  && rule.declarations.get('width') === '100%');
+if (!detailAddWidthRule) failures.push('style.css: .pm-today-trend-detail-add must use full available width');
+const detailRemoveSemanticRule = cssRules.find(rule => rule.selectors.includes('.pm-today-trend-detail-remove')
+  && rule.declarations.get('color') === 'var(--pm-color-danger)');
+if (!detailRemoveSemanticRule || detailRemoveSemanticRule.declarations.get('grid-column') !== '1 / -1') {
+  failures.push('style.css: .pm-today-trend-detail-remove must use secondary danger text and span the detail row');
+}
+for (const selector of ['.pm-today-trend-detail-add:focus-visible', '.pm-today-trend-detail-remove:focus-visible']) {
+  requireCssDeclarations(cssRules, selector, { outline: 'var(--pm-today-trend-focus-offset) solid var(--pm-color-focus-ring)', 'outline-offset': 'var(--pm-today-trend-focus-offset)' });
+}
+requireCssDeclarations(cssRules, '.pm-today-trend-content button:disabled', { opacity: 'var(--pm-opacity-disabled)', cursor: 'not-allowed' });
+const compactActionPairRule = cssRules.find(rule => /@media\s*\(max-width:320px\)/.test(rule.parent) && rule.selectors.includes('.pm-action-pair'));
+if (compactActionPairRule?.declarations.get('grid-template-columns') !== 'repeat(2,minmax(0,1fr))') failures.push('style.css: 320px pm-action-pair must preserve two equal columns');
+const compactDetailRowRule = cssRules.find(rule => /@media\s*\(max-width:320px\)/.test(rule.parent) && rule.selectors.includes('.pm-today-trend-detail-row'));
+if (compactDetailRowRule?.declarations.get('grid-template-columns') !== 'minmax(0,1fr)') failures.push('style.css: 320px detail editor rows must collapse to one safe column');
 requireCssDeclarations(cssRules, '.pm-modal-add button', { border: '1px solid var(--pm-color-border-default)', 'border-radius': 'var(--pm-radius-control)', background: 'var(--pm-color-surface-elevated) !important', color: 'var(--pm-color-text-primary) !important' });
 requireCssDeclarations(cssRules, '.pm-modal-add .pm-action-button.is-success', { background: 'var(--pm-color-success) !important', color: 'var(--pm-color-on-success) !important', 'border-color': 'var(--pm-color-success) !important' });
 requireCssDeclarations(cssRules, '.pm-modal-add .pm-action-button.is-accent', { background: 'var(--pm-color-accent) !important', color: 'var(--pm-color-on-accent) !important', 'border-color': 'var(--pm-color-accent) !important' });

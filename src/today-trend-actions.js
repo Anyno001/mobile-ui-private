@@ -117,7 +117,7 @@ export function createTodayTrendActionDispatcher({
         if (action === 'today-trend-add-detail') {
             const list = button.closest('fieldset')?.querySelector('[data-today-trend-details]');
             if (!list || list.children.length >= TODAY_TREND_LIMITS.factionDetails) return;
-            list.insertAdjacentHTML('beforeend', '<div><input name="detailLabel" maxlength="120" required><input name="detailValue" maxlength="600" required><button type="button" data-action="today-trend-remove-detail">删除</button></div>');
+            list.insertAdjacentHTML('beforeend', '<div class="pm-today-trend-detail-row"><input class="pm-today-trend-input" name="detailLabel" maxlength="120" required><input class="pm-today-trend-input" name="detailValue" maxlength="600" required><button class="pm-today-trend-detail-remove" type="button" data-action="today-trend-remove-detail">删除</button></div>');
             if (list.children.length >= TODAY_TREND_LIMITS.factionDetails) button.disabled = true;
             return;
         }

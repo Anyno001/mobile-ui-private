@@ -16,6 +16,15 @@ export function getDirectorySaveRevision() {
     return { ...revisions };
 }
 
+export function awaitDirectoryOperations(stores) {
+    if (!Array.isArray(stores)) throw new TypeError('目录存储等待列表必须是数组');
+    const pending = stores.map(store => {
+        assertStore(store);
+        return queues[store];
+    });
+    return Promise.all(pending);
+}
+
 export function enqueueDirectoryOperation(store, operation) {
     assertStore(store);
     if (typeof operation !== 'function') throw new TypeError('目录存储操作必须是函数');

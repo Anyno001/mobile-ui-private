@@ -6,8 +6,6 @@
 .pm-sub-overlay{position:fixed!important;inset:0!important;z-index:var(--pm-z-host)!important;display:flex!important;align-items:center!important;justify-content:center!important;width:100vw!important;height:100vh!important;max-width:none!important;max-height:none!important;margin:var(--pm-space-0)!important;padding:var(--pm-space-0)!important;border:0!important;background:var(--pm-color-overlay)!important;}
 .pm-emoji-manager-modal{height:560px;}
 .pm-modal-add .pm-action-button[data-layout="full"]{width:100%;}
-.pm-worldbook-actions .pm-action-button.is-secondary{flex:1;}
-.pm-worldbook-actions .pm-action-button.is-accent{flex:2;}
 .pm-emoji-thumbnail.is-50x50{width:50px;height:50px;}
 .pm-emoji-thumbnail.is-52x52{width:52px;height:52px;}
 @media(max-width:320px){#pm-iphone{--pm-phone-border-width:6px;--pm-phone-inner-radius:30px;--pm-phone-outer-radius:36px;border-width:6px!important;}.pm-desktop-page{padding:var(--pm-space-4) var(--pm-space-3);}.pm-desktop-grid{gap:var(--pm-space-1-5);}.pm-desktop-app{padding-inline:var(--pm-space-0);}.pm-desktop-app-icon{width:42px;height:42px;border-radius:var(--pm-radius-card);}.pm-desktop-app svg{width:21px;height:21px;}.pm-desktop-app-label{font-size:var(--pm-font-size-micro);}}
@@ -21,7 +19,14 @@
 .pm-desktop-pin>button:first-child:focus-visible{outline:2px solid var(--scene-accent);outline-offset:-2px;}
 
 /* 保存类主操作统一使用手机主题强调色，覆盖场景色及局部表单重置。已将日历模块移除，以允许日历自定义变色。 */
-:is(#pm-iphone,#pm-overlay,#pm-overlay-sub) button:is([data-action*="save"],[onclick*="__pmSave"]),#pm-iphone [data-today-trend-form]:is([data-today-trend-form="world-item"],[data-today-trend-form="rule-editor"],[data-today-trend-form="app-settings"],[data-today-trend-form="circle"],[data-today-trend-form="faction"],[data-today-trend-form="event"]) button[type="submit"]{background:var(--pm-color-accent)!important;color:var(--pm-color-on-accent)!important;border-color:var(--pm-color-accent)!important;}
+:is(#pm-iphone,#pm-overlay,#pm-overlay-sub) button:is([data-action*="save"],[onclick*="__pmSave"]),#pm-iphone [data-today-trend-form]:is([data-today-trend-form="world-item"],[data-today-trend-form="rule-editor"],[data-today-trend-form="app-settings"],[data-today-trend-form="circle"],[data-today-trend-form="faction"],[data-today-trend-form="event"]) button[type="submit"]{background:var(--pm-color-accent)!important;color:var(--pm-color-on-dark)!important;border-color:var(--pm-color-accent)!important;}
+
+/* 恰好两个直接按钮的操作区必须等分占满可用宽度，DOM 顺序即视觉与 Tab 顺序。 */
+.pm-action-row:has(>button:nth-of-type(2):last-of-type),.pm-modal-add:has(>button:nth-of-type(2):last-of-type),.pm-calendar-editor-actions:has(>button:nth-of-type(2):last-of-type),.pm-calendar-detail-edit-actions:has(>button:nth-of-type(2):last-of-type),.pm-calendar-entry-actions:has(>button:nth-of-type(2):last-of-type),.pm-scene-injection-toolbar:has(>button:nth-of-type(2):last-of-type),.pm-scene-injection-actions:has(>button:nth-of-type(2):last-of-type),.pm-scene-prompt-actions:has(>button:nth-of-type(2):last-of-type),.pm-quick-reply-actions:has(>button:nth-of-type(2):last-of-type),.pm-today-trend-form-actions:has(>button:nth-of-type(2):last-of-type){display:grid;grid-template-columns:repeat(2,minmax(0,1fr));width:100%;align-items:stretch;gap:var(--pm-space-2);}
+.pm-action-row:has(>button:nth-of-type(2):last-of-type)>button,.pm-modal-add:has(>button:nth-of-type(2):last-of-type)>button,.pm-calendar-editor-actions:has(>button:nth-of-type(2):last-of-type)>button,.pm-calendar-detail-edit-actions:has(>button:nth-of-type(2):last-of-type)>button,.pm-calendar-entry-actions:has(>button:nth-of-type(2):last-of-type)>button,.pm-scene-injection-toolbar:has(>button:nth-of-type(2):last-of-type)>button,.pm-scene-injection-actions:has(>button:nth-of-type(2):last-of-type)>button,.pm-scene-prompt-actions:has(>button:nth-of-type(2):last-of-type)>button,.pm-quick-reply-actions:has(>button:nth-of-type(2):last-of-type)>button,.pm-today-trend-form-actions:has(>button:nth-of-type(2):last-of-type)>button{box-sizing:border-box;width:100%;min-width:0;}
+
+/* 主题色实底按钮统一使用白色前景；状态色按钮继续使用各自 on-* 前景。 */
+:is(#pm-iphone,#pm-overlay,#pm-overlay-sub) button:is(.is-accent,.is-api-test,.pm-contact-add-primary,.pm-contact-add-ai,.pm-contact-settings-save,.pm-scene-primary),#pm-iphone :is(.pm-contact-switcher-actions button.is-primary,.pm-quick-reply-actions button:not(.is-danger),.pm-desktop-community-dock button,.pm-today-trend-form-actions button[type="submit"],.pm-today-trend-mode-switch button[aria-pressed="true"],.pm-today-trend-primary-action,.pm-calendar-editor-actions .is-primary){color:var(--pm-color-on-dark)!important;}
 
 /* 隔离酒馆本体对 summary 元素的全局样式污染 */
 #pm-iphone summary,#pm-overlay summary,#pm-overlay-sub summary{background:transparent!important;border:none!important;box-shadow:none!important;padding:var(--pm-space-0)!important;}

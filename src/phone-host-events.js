@@ -78,19 +78,38 @@ export function createPhoneHostEventController({ state, runtime, deps, getCtx, g
         }));
         const changed = resolveHostEvent(eventTypes, 'CHAT_CHANGED');
         results.push(registerOnce('resolved:CHAT_CHANGED', changed, () => {
-            const currentContext = getCtx(); const branch = resolveBranchInheritance(currentContext);
             const inheritBranch = deps.beginBranchInheritance || beginBranchInheritance;
-            const metadata = currentContext?.chatMetadata || currentContext?.chat_metadata;
-            return inheritBranch(currentContext, {
-                getStorageId, invalidateInteractiveStore: deps.invalidateInteractiveStore,
-                reloadCalendarStore: deps.reloadCalendarStore, reloadTodayTrendStore: deps.reloadTodayTrendStore,
-            }).then(result => {
+            let currentContext = getCtx();
+            let branch = resolveBranchInheritance(currentContext);
+            return (async () => {
+                const activeSaveKey = state.isGroupChat && state.currentGroupKey
+                    ? state.currentGroupKey : state.currentPersona;
+                const hasActiveConversation = state.phoneActive === true
+                    && typeof state.activeStorageId === 'string'
+                    && state.activeStorageId && state.activeStorageId !== 'sms_unknown__default'
+                    && typeof activeSaveKey === 'string' && activeSaveKey.trim();
+                if (hasActiveConversation) {
+                    if (typeof deps.persistCurrentHistory !== 'function') {
+                        throw new Error('分支继承前无法保存活动手机会话：持久化入口未安装');
+                    }
+                    const persisted = deps.persistCurrentHistory();
+                    if (persisted === false) throw new Error('分支继承前无法保存活动手机会话');
+                }
+                currentContext = getCtx();
+                branch = resolveBranchInheritance(currentContext);
+                const result = await inheritBranch(currentContext, {
+                    getStorageId, invalidateInteractiveStore: deps.invalidateInteractiveStore,
+                    reloadCalendarStore: deps.reloadCalendarStore, reloadTodayTrendStore: deps.reloadTodayTrendStore,
+                });
                 runtime.lastBranchInheritance = { status: result?.status || 'unknown', reason: result?.reason || null, sourceId: result?.sourceId || null, targetId: result?.targetId || null, sourcePresence: result?.sourcePresence || null, targetPresence: result?.targetPresence || null };
                 runtime.lastBranchInheritanceError = null;
+                const metadata = currentContext?.chatMetadata || currentContext?.chat_metadata;
                 if (result?.status === 'cloned') console.info('[phone-mode] 分支手机数据继承完成');
-                else if (result?.status === 'skipped' && metadata?.main_chat) console.warn('[phone-mode] 分支手机数据继承已跳过', result.reason || 'unknown');
+                else if (result?.status === 'skipped' && metadata?.main_chat) {
+                    console.warn('[phone-mode] 分支手机数据继承已跳过', result.reason || 'unknown');
+                }
                 return result;
-            }).catch(error => {
+            })().catch(error => {
                 runtime.lastBranchInheritance = { status: 'failed', reason: null, sourceId: branch?.sourceId || null, targetId: branch?.targetId || null, sourcePresence: null, targetPresence: null };
                 runtime.lastBranchInheritanceError = { name: typeof error?.name === 'string' && error.name ? error.name : 'Error', message: typeof error?.message === 'string' ? error.message.slice(0, 240) : '' };
                 console.warn('[phone-mode] 分支手机数据继承失败', error?.name || 'Error'); return { status: 'failed', error };

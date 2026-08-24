@@ -8,7 +8,7 @@
       rightDark: "#FFC4D4",
       left: "#E8EEF3",
       leftDark: "#343B43",
-      rightText: "#2B2B2B",
+      rightText: "#fff",
       leftText: "#4E3840",
       leftTextDark: "#E6EDF3",
       label: "\u67D4\u7C89",
@@ -37,7 +37,7 @@
         "--pm-color-on-danger": "#FFFFFF"
       }
     },
-    mint: { right: "#9FBE8C", rightDark: "#B6D39D", left: "#F3EBDD", leftDark: "#3B443B", rightText: "#243522", leftText: "#4D4034", leftTextDark: "#E8EEE5", label: "\u8584\u8377", accent: "#9FBE8C", auxiliary: "#739E59" },
+    mint: { right: "#9FBE8C", rightDark: "#B6D39D", left: "#F3EBDD", leftDark: "#3B443B", rightText: "#fff", leftText: "#4D4034", leftTextDark: "#E8EEE5", label: "\u8584\u8377", accent: "#9FBE8C", auxiliary: "#739E59" },
     frost: { right: "rgba(111, 172, 218, 0.62)", left: "rgba(255,255,255,0.48)", leftDark: "rgba(54, 68, 82, 0.72)", rightText: "#fff", leftText: "#22303A", leftTextDark: "#E7EFF7", label: "\u78E8\u7802", accent: "#6FAEDA", auxiliary: "#4B8EC4", frost: true }
   };
   var THEME_UI_TOKENS = [...new Set(Object.values(THEME_PRESETS).flatMap((preset) => [
@@ -3122,6 +3122,14 @@ ${userPrompt}` : userPrompt;
   }
   function getDirectorySaveRevision() {
     return { ...revisions };
+  }
+  function awaitDirectoryOperations(stores) {
+    if (!Array.isArray(stores)) throw new TypeError("\u76EE\u5F55\u5B58\u50A8\u7B49\u5F85\u5217\u8868\u5FC5\u987B\u662F\u6570\u7EC4");
+    const pending = stores.map((store) => {
+      assertStore(store);
+      return queues[store];
+    });
+    return Promise.all(pending);
   }
   function enqueueDirectoryOperation(store, operation) {
     assertStore(store);
@@ -6783,24 +6791,165 @@ ${lines.join("\n")}
 
   // src/storage-history.js
   var HISTORY_KEY = "ST_SMS_DATA_V2";
+  var HISTORY_RECOVERY_KEY = "ST_SMS_DATA_V2_RECOVERY_V1";
+  var HISTORY_RECOVERY_VERSION = 1;
+  var nextRecoveryToken = 0;
+  var historyLocalSnapshotRevision = 0;
+  function isHistoryStore(value) {
+    return !!value && typeof value === "object" && !Array.isArray(value);
+  }
+  function parseHistoryStore(value, label) {
+    const parsed = typeof value === "string" ? JSON.parse(value) : value;
+    if (!isHistoryStore(parsed)) throw new Error(`${label}\u683C\u5F0F\u65E0\u6548`);
+    return parsed;
+  }
+  function fingerprintText(value) {
+    let hash = 2166136261;
+    for (let index = 0; index < value.length; index += 1) {
+      hash ^= value.charCodeAt(index);
+      hash = Math.imul(hash, 16777619);
+    }
+    return `${value.length}:${(hash >>> 0).toString(16).padStart(8, "0")}`;
+  }
+  function serializeSlimHistoryStore(data) {
+    const slim = {};
+    for (const [storyId, contacts] of Object.entries(data)) {
+      slim[storyId] = {};
+      for (const [persona, history] of Object.entries(contacts)) {
+        slim[storyId][persona] = Array.isArray(history) ? history.slice(-10) : history;
+      }
+    }
+    return JSON.stringify(slim);
+  }
+  function createRecoveryToken() {
+    nextRecoveryToken += 1;
+    const random = Math.random().toString(36).slice(2, 10);
+    return `${Date.now().toString(36)}-${nextRecoveryToken.toString(36)}-${random}`;
+  }
+  function parseRecoveryMarker(raw) {
+    if (!raw) return null;
+    try {
+      const marker = JSON.parse(raw);
+      if (!marker || typeof marker !== "object" || Array.isArray(marker) || marker.version !== HISTORY_RECOVERY_VERSION || typeof marker.token !== "string" || !marker.token || typeof marker.fingerprint !== "string" || !/^\d+:[0-9a-f]{8}$/.test(marker.fingerprint)) return null;
+      return marker;
+    } catch (error) {
+      return null;
+    }
+  }
+  function readRecoveryMarkerRaw() {
+    try {
+      return localStorage.getItem(HISTORY_RECOVERY_KEY);
+    } catch (error) {
+      return null;
+    }
+  }
+  function clearRecoveryMarkerIfCurrent(token, fingerprint) {
+    try {
+      const marker = parseRecoveryMarker(localStorage.getItem(HISTORY_RECOVERY_KEY));
+      const localSnapshot = localStorage.getItem(HISTORY_KEY);
+      if (marker?.token === token && marker.fingerprint === fingerprint && typeof localSnapshot === "string" && fingerprintText(localSnapshot) === fingerprint) {
+        localStorage.removeItem(HISTORY_RECOVERY_KEY);
+        return true;
+      }
+    } catch (error) {
+    }
+    return false;
+  }
+  function readRecoverySnapshot() {
+    let markerRaw = null;
+    let snapshotRaw = null;
+    try {
+      markerRaw = localStorage.getItem(HISTORY_RECOVERY_KEY);
+      if (!markerRaw) return { status: "none" };
+      const marker = parseRecoveryMarker(markerRaw);
+      if (!marker) return { status: "invalid" };
+      snapshotRaw = localStorage.getItem(HISTORY_KEY);
+      if (typeof snapshotRaw !== "string" || fingerprintText(snapshotRaw) !== marker.fingerprint) {
+        return { status: "invalid" };
+      }
+      return {
+        status: "valid",
+        marker,
+        value: parseHistoryStore(snapshotRaw, "localStorage \u6062\u590D\u8BB0\u5F55")
+      };
+    } catch (error) {
+      return { status: "invalid" };
+    }
+  }
+  async function preserveProtectedScopes(snapshot, protectedScopes) {
+    const value = structuredClone(snapshot);
+    if (!protectedScopes.length) return value;
+    const current = await pmIDBGet(HISTORY_KEY);
+    if (!isHistoryStore(current)) return value;
+    for (const scope of protectedScopes) {
+      if (Object.hasOwn(current, scope)) value[scope] = structuredClone(current[scope]);
+      else delete value[scope];
+    }
+    return value;
+  }
+  async function resolveHistoriesSnapshot({ requireConfirmedPrimary = false } = {}) {
+    const recovery = readRecoverySnapshot();
+    if (recovery.status === "valid") {
+      const repaired = await pmIDBSet(HISTORY_KEY, recovery.value);
+      if (repaired) clearRecoveryMarkerIfCurrent(recovery.marker.token, recovery.marker.fingerprint);
+      else console.warn("[phone-mode] \u77ED\u4FE1\u5386\u53F2\u6062\u590D\u5FEB\u7167\u5DF2\u52A0\u8F7D\uFF0C\u4F46 IndexedDB \u4FEE\u590D\u5931\u8D25");
+      return { value: recovery.value, source: "recovery", mirrorPrimary: false };
+    }
+    if (recovery.status === "invalid") {
+      console.warn("[phone-mode] \u77ED\u4FE1\u5386\u53F2\u6062\u590D\u6807\u8BB0\u65E0\u6548\uFF0C\u4FDD\u7559\u672C\u5730\u6570\u636E\u5E76\u56DE\u9000\u4E3B\u5B58\u50A8");
+    }
+    const keys = await pmIDBKeys();
+    if (!Array.isArray(keys)) throw new Error("\u65E0\u6CD5\u679A\u4E3E IndexedDB");
+    if (!keys.includes(HISTORY_KEY)) {
+      const rawFallback = localStorage.getItem(HISTORY_KEY);
+      if (!rawFallback) return { value: {}, source: "empty", mirrorPrimary: false };
+      return {
+        value: parseHistoryStore(rawFallback, "localStorage \u540E\u5907\u8BB0\u5F55"),
+        source: "fallback",
+        mirrorPrimary: false
+      };
+    }
+    const value = await pmIDBGet(HISTORY_KEY);
+    if (value === null || value === void 0) {
+      if (requireConfirmedPrimary) throw new Error("IndexedDB \u4E3B\u8BB0\u5F55\u8BFB\u53D6\u5931\u8D25");
+      const rawFallback = localStorage.getItem(HISTORY_KEY);
+      if (!rawFallback) return { value: {}, source: "empty", mirrorPrimary: false };
+      return {
+        value: parseHistoryStore(rawFallback, "localStorage \u540E\u5907\u8BB0\u5F55"),
+        source: "fallback",
+        mirrorPrimary: false
+      };
+    }
+    return {
+      value: parseHistoryStore(value, "IndexedDB \u4E3B\u8BB0\u5F55"),
+      source: "idb",
+      mirrorPrimary: recovery.status === "none"
+    };
+  }
+  async function readHistoriesSnapshot(options2 = {}) {
+    return (await resolveHistoriesSnapshot(options2)).value;
+  }
   function saveHistories() {
     saveHistoriesStrict().catch((error) => console.warn("[phone-mode] \u77ED\u4FE1\u5386\u53F2\u4FDD\u5B58\u5931\u8D25", error));
   }
   async function saveHistoriesStrict(data = window.__pmHistories, { requireLocalMirror = false, coordinated = false } = {}) {
+    const recoveryMarkerAtInvocation = readRecoveryMarkerRaw();
+    const localSnapshotRevisionAtInvocation = historyLocalSnapshotRevision;
     const persist = async (snapshot, protectedScopes = []) => {
-      let value = snapshot;
-      if (protectedScopes.length) {
-        const current = await pmIDBGet(HISTORY_KEY);
-        if (current && typeof current === "object" && !Array.isArray(current)) {
-          for (const scope of protectedScopes) {
-            if (Object.hasOwn(current, scope)) value[scope] = structuredClone(current[scope]);
-            else delete value[scope];
-          }
-        }
-      }
+      const value = await preserveProtectedScopes(snapshot, protectedScopes);
       if (!await pmIDBSet(HISTORY_KEY, value)) throw new Error("\u804A\u5929\u8BB0\u5F55\u4FDD\u5B58\u5931\u8D25\uFF1AIndexedDB \u4E0D\u53EF\u7528");
+      const currentRecoveryMarker = readRecoveryMarkerRaw();
+      if (currentRecoveryMarker !== recoveryMarkerAtInvocation || historyLocalSnapshotRevision !== localSnapshotRevisionAtInvocation) return true;
       try {
         localStorage.setItem(HISTORY_KEY, JSON.stringify(value));
+        if (currentRecoveryMarker) {
+          try {
+            if (localStorage.getItem(HISTORY_RECOVERY_KEY) === currentRecoveryMarker) {
+              localStorage.removeItem(HISTORY_RECOVERY_KEY);
+            }
+          } catch (error) {
+          }
+        }
       } catch (error) {
         if (requireLocalMirror) throw new Error("\u804A\u5929\u8BB0\u5F55\u4FDD\u5B58\u5931\u8D25\uFF1A\u6D4F\u89C8\u5668\u5B58\u50A8\u4E0D\u53EF\u7528");
         console.warn("[phone-mode] localStorage \u5DF2\u6EE1\uFF0C\u77ED\u4FE1\u5386\u53F2\u4EC5\u4FDD\u5B58\u5728 IDB");
@@ -6813,63 +6962,71 @@ ${lines.join("\n")}
   function saveHistoriesBeforeUnload() {
     const data = window.__pmHistories;
     if (!data || !Object.keys(data).length) return;
+    let localSnapshot = JSON.stringify(data);
     try {
-      localStorage.setItem(HISTORY_KEY, JSON.stringify(data));
+      localStorage.setItem(HISTORY_KEY, localSnapshot);
     } catch (error) {
       try {
-        const slim = {};
-        for (const [storyId, contacts] of Object.entries(data)) {
-          slim[storyId] = {};
-          for (const [persona, history] of Object.entries(contacts)) slim[storyId][persona] = Array.isArray(history) ? history.slice(-10) : history;
-        }
-        localStorage.setItem(HISTORY_KEY, JSON.stringify(slim));
+        localSnapshot = serializeSlimHistoryStore(data);
+        localStorage.setItem(HISTORY_KEY, localSnapshot);
       } catch (backupError) {
         console.warn("[phone-mode] beforeunload: localStorage \u5B8C\u5168\u65E0\u6CD5\u5199\u5165");
+        localSnapshot = "";
       }
     }
-    pmIDBSet(HISTORY_KEY, data).catch(() => {
+    if (!localSnapshot) return;
+    let marker = {
+      version: HISTORY_RECOVERY_VERSION,
+      token: createRecoveryToken(),
+      fingerprint: fingerprintText(localSnapshot)
+    };
+    let markerWritten = false;
+    try {
+      localStorage.setItem(HISTORY_RECOVERY_KEY, JSON.stringify(marker));
+      markerWritten = true;
+    } catch (error) {
+      try {
+        const slimSnapshot = serializeSlimHistoryStore(data);
+        if (slimSnapshot !== localSnapshot) {
+          localStorage.setItem(HISTORY_KEY, slimSnapshot);
+          localSnapshot = slimSnapshot;
+          marker = { ...marker, fingerprint: fingerprintText(localSnapshot) };
+          localStorage.setItem(HISTORY_RECOVERY_KEY, JSON.stringify(marker));
+          markerWritten = true;
+        }
+      } catch (backupError) {
+      }
+    }
+    historyLocalSnapshotRevision += 1;
+    if (!markerWritten) console.warn("[phone-mode] beforeunload: \u77ED\u4FE1\u5386\u53F2\u6062\u590D\u6807\u8BB0\u65E0\u6CD5\u5199\u5165");
+    enqueueDirectorySave("histories", data, async (snapshot, protectedScopes) => {
+      const value = await preserveProtectedScopes(snapshot, protectedScopes);
+      if (!await pmIDBSet(HISTORY_KEY, value)) throw new Error("\u804A\u5929\u8BB0\u5F55\u5378\u8F7D\u4FDD\u5B58\u5931\u8D25\uFF1AIndexedDB \u4E0D\u53EF\u7528");
+      clearRecoveryMarkerIfCurrent(marker.token, marker.fingerprint);
+      return true;
+    }).catch(() => {
     });
   }
   async function loadHistoriesFromIDB({ requireConfirmedPrimary = false } = {}) {
     try {
-      const keys = await pmIDBKeys();
-      if (!Array.isArray(keys)) throw new Error("\u65E0\u6CD5\u679A\u4E3E IndexedDB");
-      if (!keys.includes(HISTORY_KEY)) {
-        const rawFallback = localStorage.getItem(HISTORY_KEY);
-        if (!rawFallback) {
-          window.__pmHistories = {};
-          return true;
-        }
-        const fallback = JSON.parse(rawFallback);
-        if (!fallback || typeof fallback !== "object" || Array.isArray(fallback)) throw new Error("localStorage \u540E\u5907\u8BB0\u5F55\u683C\u5F0F\u65E0\u6548");
-        window.__pmHistories = fallback;
-        return true;
-      }
-      const value = await pmIDBGet(HISTORY_KEY);
-      if (value === null || value === void 0) {
-        if (requireConfirmedPrimary) throw new Error("IndexedDB \u4E3B\u8BB0\u5F55\u8BFB\u53D6\u5931\u8D25");
+      const resolved = await resolveHistoriesSnapshot({ requireConfirmedPrimary });
+      window.__pmHistories = resolved.value;
+      if (resolved.mirrorPrimary) {
         try {
-          const fallback = JSON.parse(localStorage.getItem(HISTORY_KEY));
-          if (fallback && typeof fallback === "object" && Object.keys(fallback).length > 0) window.__pmHistories = fallback;
+          localStorage.setItem(HISTORY_KEY, JSON.stringify(resolved.value));
         } catch (error) {
+          console.warn("[phone-mode] localStorage \u5DF2\u6EE1\uFF0C\u4EC5\u4F7F\u7528 IDB \u5B58\u50A8");
         }
-        return true;
       }
-      const parsed = typeof value === "string" ? JSON.parse(value) : value;
-      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("IndexedDB \u4E3B\u8BB0\u5F55\u683C\u5F0F\u65E0\u6548");
-      window.__pmHistories = parsed;
-      try {
-        localStorage.setItem(HISTORY_KEY, JSON.stringify(parsed));
-      } catch (error) {
-        console.warn("[phone-mode] localStorage \u5DF2\u6EE1\uFF0C\u4EC5\u4F7F\u7528 IDB \u5B58\u50A8");
+      if (resolved.source === "idb") {
+        console.log("[phone-mode] \u4ECE IndexedDB \u52A0\u8F7D\u4E86\u77ED\u4FE1\u5386\u53F2\uFF0C\u5171", Object.keys(resolved.value).length, "\u4E2A\u4F1A\u8BDD");
       }
-      console.log("[phone-mode] \u4ECE IndexedDB \u52A0\u8F7D\u4E86\u77ED\u4FE1\u5386\u53F2\uFF0C\u5171", Object.keys(parsed).length, "\u4E2A\u4F1A\u8BDD");
       return true;
     } catch (error) {
       console.warn("[phone-mode] IDB \u6062\u590D\u5931\u8D25\uFF0C\u5C1D\u8BD5 localStorage \u515C\u5E95", error);
       try {
-        const fallback = JSON.parse(localStorage.getItem(HISTORY_KEY));
-        if (fallback && typeof fallback === "object" && Object.keys(fallback).length > 0) window.__pmHistories = fallback;
+        const fallback = parseHistoryStore(localStorage.getItem(HISTORY_KEY), "localStorage \u540E\u5907\u8BB0\u5F55");
+        if (Object.keys(fallback).length > 0) window.__pmHistories = fallback;
       } catch (fallbackError) {
       }
       return false;
@@ -7212,6 +7369,7 @@ ${lines.join("\n")}
   var BRANCH_LINEAGE_STORE_KEY = "ST_SMS_BRANCH_LINEAGE_V1";
   var PLUGIN_LOCAL_STORAGE_KEYS = Object.freeze([
     "ST_SMS_DATA_V2",
+    HISTORY_RECOVERY_KEY,
     "ST_SMS_CONFIG",
     "ST_SMS_THEME",
     "ST_SMS_POKE_CONFIG",
@@ -9426,6 +9584,7 @@ ${entry2.content}` : entry2.content;
   var own = (value, key) => !!value && typeof value === "object" && Object.hasOwn(value, key);
   var validText = (value) => typeof value === "string" && value.trim() ? value.trim() : "";
   var BRANCH_INTERACTIVE_STORE_KEY = "ST_INTERACTIVE_SCENES_V1";
+  var BRANCH_SOURCE_ASYNC_STORES = Object.freeze(["histories", "groupMeta", "interactive", "backgrounds", "todayTrend"]);
   var pendingByTarget = /* @__PURE__ */ new Map();
   function resolveBranchInheritance(context) {
     const avatar = validText(context?.characters?.[context.characterId]?.avatar);
@@ -9594,23 +9753,10 @@ ${entry2.content}` : entry2.content;
     }, interactiveStore);
   }
   async function readHistoriesForBranch() {
-    const keys = await pmIDBKeys();
-    if (!Array.isArray(keys)) throw new Error("\u5206\u652F\u7EE7\u627F\u6765\u6E90\u8BFB\u53D6\u5931\u8D25\uFF1A\u65E0\u6CD5\u679A\u4E3E\u804A\u5929\u8BB0\u5F55");
-    if (keys.includes("ST_SMS_DATA_V2")) {
-      const value = await pmIDBGet("ST_SMS_DATA_V2");
-      if (!value || typeof value !== "object" || Array.isArray(value)) {
-        throw new Error("\u5206\u652F\u7EE7\u627F\u6765\u6E90\u8BFB\u53D6\u5931\u8D25\uFF1A\u804A\u5929\u8BB0\u5F55\u4E3B\u5B58\u50A8\u65E0\u6548");
-      }
-      return value;
-    }
     try {
-      const raw = localStorage.getItem("ST_SMS_DATA_V2");
-      if (!raw) return {};
-      const value = JSON.parse(raw);
-      if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("\u683C\u5F0F\u65E0\u6548");
-      return value;
+      return await readHistoriesSnapshot({ requireConfirmedPrimary: true });
     } catch (error) {
-      throw new Error("\u5206\u652F\u7EE7\u627F\u6765\u6E90\u8BFB\u53D6\u5931\u8D25\uFF1A\u804A\u5929\u8BB0\u5F55\u540E\u5907\u5B58\u50A8\u65E0\u6548");
+      throw new Error(`\u5206\u652F\u7EE7\u627F\u6765\u6E90\u8BFB\u53D6\u5931\u8D25\uFF1A${error?.message || "\u804A\u5929\u8BB0\u5F55\u4E0D\u53EF\u7528"}`);
     }
   }
   async function readGroupMetaForBranch() {
@@ -9950,6 +10096,10 @@ ${entry2.content}` : entry2.content;
       todayTrend: await loadTodayTrendStore()
     });
   }
+  async function loadStableProductionStores() {
+    await awaitDirectoryOperations(BRANCH_SOURCE_ASYNC_STORES);
+    return loadProductionStores();
+  }
   async function persistProductionStores(next, { branch } = {}) {
     const targetId = branch?.targetId;
     const previous = clone4(await loadProductionStores());
@@ -10065,7 +10215,7 @@ ${entry2.content}` : entry2.content;
     const branchScopeTokens = branch ? ["pokeConfig", "characterBehavior", "bidirectional", "budget", "todayTrend"].map((store) => [store, markDirectoryBranchScope(store, branch.targetId)]) : [];
     const operation = inheritPhoneDataOnBranch({
       context,
-      loadStores: loadProductionStores,
+      loadStores: loadStableProductionStores,
       saveStores: persistProductionStores,
       loadLineage: loadBranchLineage,
       commitLineage: commitBranchLineage,
@@ -16669,22 +16819,36 @@ ${antiFluff}`;
       }));
       const changed = resolveHostEvent(eventTypes, "CHAT_CHANGED");
       results.push(registerOnce("resolved:CHAT_CHANGED", changed, () => {
-        const currentContext = getCtx();
-        const branch = resolveBranchInheritance(currentContext);
         const inheritBranch = deps.beginBranchInheritance || beginBranchInheritance;
-        const metadata = currentContext?.chatMetadata || currentContext?.chat_metadata;
-        return inheritBranch(currentContext, {
-          getStorageId: getStorageId2,
-          invalidateInteractiveStore: deps.invalidateInteractiveStore,
-          reloadCalendarStore: deps.reloadCalendarStore,
-          reloadTodayTrendStore: deps.reloadTodayTrendStore
-        }).then((result) => {
+        let currentContext = getCtx();
+        let branch = resolveBranchInheritance(currentContext);
+        return (async () => {
+          const activeSaveKey = state.isGroupChat && state.currentGroupKey ? state.currentGroupKey : state.currentPersona;
+          const hasActiveConversation = state.phoneActive === true && typeof state.activeStorageId === "string" && state.activeStorageId && state.activeStorageId !== "sms_unknown__default" && typeof activeSaveKey === "string" && activeSaveKey.trim();
+          if (hasActiveConversation) {
+            if (typeof deps.persistCurrentHistory !== "function") {
+              throw new Error("\u5206\u652F\u7EE7\u627F\u524D\u65E0\u6CD5\u4FDD\u5B58\u6D3B\u52A8\u624B\u673A\u4F1A\u8BDD\uFF1A\u6301\u4E45\u5316\u5165\u53E3\u672A\u5B89\u88C5");
+            }
+            const persisted = deps.persistCurrentHistory();
+            if (persisted === false) throw new Error("\u5206\u652F\u7EE7\u627F\u524D\u65E0\u6CD5\u4FDD\u5B58\u6D3B\u52A8\u624B\u673A\u4F1A\u8BDD");
+          }
+          currentContext = getCtx();
+          branch = resolveBranchInheritance(currentContext);
+          const result = await inheritBranch(currentContext, {
+            getStorageId: getStorageId2,
+            invalidateInteractiveStore: deps.invalidateInteractiveStore,
+            reloadCalendarStore: deps.reloadCalendarStore,
+            reloadTodayTrendStore: deps.reloadTodayTrendStore
+          });
           runtime.lastBranchInheritance = { status: result?.status || "unknown", reason: result?.reason || null, sourceId: result?.sourceId || null, targetId: result?.targetId || null, sourcePresence: result?.sourcePresence || null, targetPresence: result?.targetPresence || null };
           runtime.lastBranchInheritanceError = null;
+          const metadata = currentContext?.chatMetadata || currentContext?.chat_metadata;
           if (result?.status === "cloned") console.info("[phone-mode] \u5206\u652F\u624B\u673A\u6570\u636E\u7EE7\u627F\u5B8C\u6210");
-          else if (result?.status === "skipped" && metadata?.main_chat) console.warn("[phone-mode] \u5206\u652F\u624B\u673A\u6570\u636E\u7EE7\u627F\u5DF2\u8DF3\u8FC7", result.reason || "unknown");
+          else if (result?.status === "skipped" && metadata?.main_chat) {
+            console.warn("[phone-mode] \u5206\u652F\u624B\u673A\u6570\u636E\u7EE7\u627F\u5DF2\u8DF3\u8FC7", result.reason || "unknown");
+          }
           return result;
-        }).catch((error) => {
+        })().catch((error) => {
           runtime.lastBranchInheritance = { status: "failed", reason: null, sourceId: branch?.sourceId || null, targetId: branch?.targetId || null, sourcePresence: null, targetPresence: null };
           runtime.lastBranchInheritanceError = { name: typeof error?.name === "string" && error.name ? error.name : "Error", message: typeof error?.message === "string" ? error.message.slice(0, 240) : "" };
           console.warn("[phone-mode] \u5206\u652F\u624B\u673A\u6570\u636E\u7EE7\u627F\u5931\u8D25", error?.name || "Error");
@@ -17104,7 +17268,7 @@ ${kept.join("\n")}`;
       if (!prompt2 || typeof prompt2.key !== "string" || !prompt2.key || seen.has(prompt2.key) || typeof prompt2.content !== "string" || !prompt2.content) continue;
       seen.add(prompt2.key);
       try {
-        context.setExtensionPrompt(prompt2.key, prompt2.content, prompt2.position, prompt2.depth, false, 0);
+        context.setExtensionPrompt(prompt2.key, prompt2.content, prompt2.position, prompt2.depth, prompt2.scan === true, 0);
         activeKeys.add(prompt2.key);
         written += 1;
         const source = prompt2.source || "other";
@@ -17340,6 +17504,7 @@ ${kept.join("\n")}`;
       return [{
         key: injectionKey(source.sourceId),
         source: "phone",
+        scan: true,
         content: body,
         contentPrefix: "[\u624B\u673A\u77ED\u4FE1\u8BB0\u5FC6 \u2014 \u79C1\u5BC6]\n",
         contentSuffix: "\n[\u7ED3\u675F]",
@@ -18238,6 +18403,12 @@ ${lines}`;
     disarm = () => {
     }
   } = {}) {
+    try {
+      deps.persistCurrentHistory?.();
+    } catch (error) {
+      const errorType = typeof error?.name === "string" && error.name ? error.name : "Error";
+      console.warn("[phone-mode] \u9875\u9762\u6302\u8D77\u524D\u4FDD\u5B58\u6D3B\u52A8\u624B\u673A\u4F1A\u8BDD\u5931\u8D25\uFF0C\u5C06\u7EE7\u7EED\u5199\u5165\u5F53\u524D\u5386\u53F2\u5FEB\u7167\u3002", errorType);
+    }
     save();
     deps.cancelCommunityGeneration?.(reason);
     deps.cancelCalendarTasks?.(reason);
@@ -23214,7 +23385,7 @@ ${targetInstruction}`
       if (action === "today-trend-add-detail") {
         const list2 = button.closest("fieldset")?.querySelector("[data-today-trend-details]");
         if (!list2 || list2.children.length >= TODAY_TREND_LIMITS.factionDetails) return;
-        list2.insertAdjacentHTML("beforeend", '<div><input name="detailLabel" maxlength="120" required><input name="detailValue" maxlength="600" required><button type="button" data-action="today-trend-remove-detail">\u5220\u9664</button></div>');
+        list2.insertAdjacentHTML("beforeend", '<div class="pm-today-trend-detail-row"><input class="pm-today-trend-input" name="detailLabel" maxlength="120" required><input class="pm-today-trend-input" name="detailValue" maxlength="600" required><button class="pm-today-trend-detail-remove" type="button" data-action="today-trend-remove-detail">\u5220\u9664</button></div>');
         if (list2.children.length >= TODAY_TREND_LIMITS.factionDetails) button.disabled = true;
         return;
       }
@@ -23596,7 +23767,7 @@ ${targetInstruction}`
   }
   function trendRuleEditor({ rule, value = "" } = {}) {
     if (!rule) return "";
-    return `<form class="pm-today-trend-editor pm-today-trend-rule-editor" data-today-trend-form="rule-editor"><input type="hidden" name="rule" value="${escapeAttr(rule)}"><label class="pm-today-trend-field">\u63D0\u793A\u8BCD<textarea class="pm-today-trend-input" name="text" maxlength="12000" required autofocus>${escapeHtml(value)}</textarea></label><div class="pm-today-trend-form-actions"><button type="button" data-action="today-trend-cancel-rule-editor">\u8FD4\u56DE</button><button type="submit">\u4FDD\u5B58\u63D0\u793A\u8BCD</button></div></form>`;
+    return `<form class="pm-today-trend-editor pm-today-trend-rule-editor" data-today-trend-form="rule-editor"><input type="hidden" name="rule" value="${escapeAttr(rule)}"><label class="pm-today-trend-field">\u63D0\u793A\u8BCD<textarea class="pm-today-trend-input" name="text" maxlength="12000" required autofocus>${escapeHtml(value)}</textarea></label><div class="pm-today-trend-form-actions pm-action-pair"><button type="button" data-action="today-trend-cancel-rule-editor">\u8FD4\u56DE</button><button type="submit">\u4FDD\u5B58\u63D0\u793A\u8BCD</button></div></form>`;
   }
   function trendToggleField(name, label, checked) {
     return `<label class="pm-today-trend-switch"><span>${escapeHtml(label)}</span><input name="${escapeAttr(name)}" type="checkbox" role="switch" aria-checked="${checked === true}"${checked ? " checked" : ""}><i aria-hidden="true"></i></label>`;
@@ -23618,10 +23789,10 @@ ${targetInstruction}`
   function eventForm(event = {}, kind = "event") {
     const participants = Array.isArray(event.participants) ? event.participants : [];
     const fields = kind === "archive" ? `<label class="pm-today-trend-field">\u5B8C\u7ED3\u7ED3\u679C<select class="pm-today-trend-input" name="outcome">${outcomes(event.type === "rumor" ? "confirmed" : "resolved", event.type === "rumor")}</select></label><label class="pm-today-trend-field">\u6700\u7EC8\u7ED3\u679C<textarea class="pm-today-trend-input" name="finalResult" maxlength="600" required></textarea></label>` : `<label class="pm-today-trend-field">\u540D\u79F0<input class="pm-today-trend-input" name="title" maxlength="120" required value="${escapeAttr(event.title || "")}"></label><label class="pm-today-trend-field">\u7C7B\u578B<select class="pm-today-trend-input" name="type">${Object.entries(TYPES).map(([key, label]) => `<option value="${key}"${key === (event.type || "normal") ? " selected" : ""}>${label}</option>`).join("")}</select></label><label class="pm-today-trend-field">\u9636\u6BB5<input class="pm-today-trend-input" name="stageLabel" maxlength="8" required value="${escapeAttr(event.stageLabel || "\u51C6\u5907\u4E2D")}"></label><label class="pm-today-trend-field">\u8D77\u56E0<textarea class="pm-today-trend-input" name="origin" maxlength="600" required>${text7(event.origin || "")}</textarea></label><label class="pm-today-trend-field">\u6D89\u53CA\u4E3B\u4F53<input class="pm-today-trend-input" name="participants" maxlength="600" value="${escapeAttr(participants.join("\u3001"))}"></label><label class="pm-today-trend-field">\u6700\u65B0\u9636\u6BB5<textarea class="pm-today-trend-input" name="latestStage" maxlength="600" required>${text7(event.latestStage || "")}</textarea></label>`;
-    return `<form class="pm-today-trend-editor pm-today-trend-item-editor" data-today-trend-form="${kind === "archive" ? "event-archive" : kind === "promotion" ? "event-promotion" : "event"}">${kind === "promotion" ? `<input type="hidden" name="sourceEventId" value="${escapeAttr(event.id || "")}">` : `<input type="hidden" name="id" value="${escapeAttr(event.id || "")}">`}${fields}<div class="pm-today-trend-form-actions"><button type="button" data-action="today-trend-cancel-event-editor">\u53D6\u6D88</button><button type="submit">${kind === "archive" ? "\u786E\u8BA4\u5F52\u6863" : kind === "promotion" ? "\u786E\u8BA4\u5347\u7EA7" : "\u4FDD\u5B58"}</button></div></form>`;
+    return `<form class="pm-today-trend-editor pm-today-trend-item-editor" data-today-trend-form="${kind === "archive" ? "event-archive" : kind === "promotion" ? "event-promotion" : "event"}">${kind === "promotion" ? `<input type="hidden" name="sourceEventId" value="${escapeAttr(event.id || "")}">` : `<input type="hidden" name="id" value="${escapeAttr(event.id || "")}">`}${fields}<div class="pm-today-trend-form-actions pm-action-pair"><button type="button" data-action="today-trend-cancel-event-editor">\u53D6\u6D88</button><button type="submit">${kind === "archive" ? "\u786E\u8BA4\u5F52\u6863" : kind === "promotion" ? "\u786E\u8BA4\u5347\u7EA7" : "\u4FDD\u5B58"}</button></div></form>`;
   }
   function settingsForm(settings) {
-    return `<form class="pm-today-trend-editor" data-today-trend-form="dynamics-settings"><label class="pm-today-trend-field">\u540C\u65F6\u8FFD\u8E2A\u4E0A\u9650<input class="pm-today-trend-input" name="trackingLimit" type="number" min="1" max="80" required value="${settings.trackingLimit}"></label>${trendToggleField("appendOnlyOnActualProgress", "\u4EC5\u5B9E\u9645\u8FDB\u5C55\u65F6\u8FFD\u52A0\u9636\u6BB5", settings.appendOnlyOnActualProgress)}${trendToggleField("autoComplete", "\u81EA\u52A8\u5224\u65AD\u5B8C\u7ED3", settings.autoComplete)}${trendToggleField("archiveCompleted", "\u5B8C\u7ED3\u540E\u5F52\u6863", settings.archiveCompleted)}${trendToggleField("incidentEnabled", "\u542F\u7528\u7A81\u53D1\u4E8B\u4EF6", settings.incident.enabled)}<label class="pm-today-trend-field">\u7A81\u53D1\u6982\u7387\uFF080-100\uFF09<input class="pm-today-trend-input" name="incidentProbability" type="number" min="0" max="100" required value="${settings.incident.probability}"></label>${trendToggleField("rumorEnabled", "\u542F\u7528\u6D41\u8A00\u871A\u8BED", settings.rumor.enabled)}${trendToggleField("undergroundEnabled", "\u542F\u7528\u5730\u4E0B\u7EBF", settings.underground.enabled)}<div class="pm-today-trend-form-actions"><button type="button" data-action="today-trend-open-dynamics">\u53D6\u6D88</button><button type="submit">\u8BBE\u7F6E</button></div></form>`;
+    return `<form class="pm-today-trend-editor" data-today-trend-form="dynamics-settings"><label class="pm-today-trend-field">\u540C\u65F6\u8FFD\u8E2A\u4E0A\u9650<input class="pm-today-trend-input" name="trackingLimit" type="number" min="1" max="80" required value="${settings.trackingLimit}"></label>${trendToggleField("appendOnlyOnActualProgress", "\u4EC5\u5B9E\u9645\u8FDB\u5C55\u65F6\u8FFD\u52A0\u9636\u6BB5", settings.appendOnlyOnActualProgress)}${trendToggleField("autoComplete", "\u81EA\u52A8\u5224\u65AD\u5B8C\u7ED3", settings.autoComplete)}${trendToggleField("archiveCompleted", "\u5B8C\u7ED3\u540E\u5F52\u6863", settings.archiveCompleted)}${trendToggleField("incidentEnabled", "\u542F\u7528\u7A81\u53D1\u4E8B\u4EF6", settings.incident.enabled)}<label class="pm-today-trend-field">\u7A81\u53D1\u6982\u7387\uFF080-100\uFF09<input class="pm-today-trend-input" name="incidentProbability" type="number" min="0" max="100" required value="${settings.incident.probability}"></label>${trendToggleField("rumorEnabled", "\u542F\u7528\u6D41\u8A00\u871A\u8BED", settings.rumor.enabled)}${trendToggleField("undergroundEnabled", "\u542F\u7528\u5730\u4E0B\u7EBF", settings.underground.enabled)}<div class="pm-today-trend-form-actions pm-action-pair"><button type="button" data-action="today-trend-open-dynamics">\u53D6\u6D88</button><button type="submit">\u8BBE\u7F6E</button></div></form>`;
   }
   function eventCard(event, archived, actionsVisible, generateAttrs) {
     const state = archived ? OUTCOMES[event.outcome] || event.outcome : event.stageLabel;
@@ -23681,7 +23852,7 @@ ${targetInstruction}`
   }
   function editor(faction = {}, factions = []) {
     const parents = factions.filter((item) => item.id !== faction.id), related = new Set(Array.isArray(faction.relatedFactionIds) ? faction.relatedFactionIds : []), details = Array.isArray(faction.details) ? faction.details : [];
-    return `<form class="pm-today-trend-editor pm-today-trend-item-editor" data-today-trend-form="faction"><input type="hidden" name="id" value="${escapeAttr(faction.id || "")}"><label class="pm-today-trend-field">\u540D\u79F0<input class="pm-today-trend-input" name="name" maxlength="120" required value="${escapeAttr(faction.name || "")}"></label><label class="pm-today-trend-field">\u4E00\u53E5\u8BDD\u4ECB\u7ECD<textarea class="pm-today-trend-input" name="summary" maxlength="600" required>${escapeHtml(faction.summary || "")}</textarea></label><label class="pm-today-trend-field">\u7236\u52BF\u529B<select class="pm-today-trend-input" name="parentId"><option value="">\u65E0</option>${parents.map((item) => `<option value="${escapeAttr(item.id)}" ${item.id === faction.parentId ? "selected" : ""}>${escapeHtml(item.name)}</option>`).join("")}</select></label><fieldset><legend>\u5916\u90E8\u5173\u8054</legend>${parents.filter((item) => item.id !== faction.parentId && item.parentId !== faction.id).map((item) => `<label><input type="checkbox" name="relatedFactionIds" value="${escapeAttr(item.id)}" ${related.has(item.id) ? "checked" : ""}>${escapeHtml(item.name)}</label>`).join("") || "<p>\u6CA1\u6709\u53EF\u4F5C\u4E3A\u5916\u90E8\u5173\u8054\u7684\u52BF\u529B\u3002</p>"}</fieldset><fieldset><legend>\u5173\u952E\u8D44\u6599</legend><div data-today-trend-details>${details.map((detail) => `<div><input name="detailLabel" maxlength="120" required value="${escapeAttr(detail.label)}"><input name="detailValue" maxlength="600" required value="${escapeAttr(detail.value)}"><button type="button" data-action="today-trend-remove-detail">\u5220\u9664</button></div>`).join("")}</div><button type="button" data-action="today-trend-add-detail" ${details.length >= TODAY_TREND_LIMITS.factionDetails ? "disabled" : ""}>\u6DFB\u52A0\u8D44\u6599</button></fieldset><label class="pm-today-trend-field">\u5BF9\u5F53\u524D\u89D2\u8272\u72B6\u6001<select class="pm-today-trend-input" name="status">${options(faction.relation?.status || "neutral")}</select></label><label class="pm-today-trend-field">\u4E00\u53E5\u8BDD\u8BC4\u4EF7<textarea class="pm-today-trend-input" name="evaluation" maxlength="600" required>${escapeHtml(faction.relation?.evaluation || "")}</textarea></label><div class="pm-today-trend-form-actions"><button type="submit">\u4FDD\u5B58</button><button type="button" data-action="today-trend-cancel-editor">\u53D6\u6D88</button></div></form>`;
+    return `<form class="pm-today-trend-editor pm-today-trend-item-editor" data-today-trend-form="faction"><input type="hidden" name="id" value="${escapeAttr(faction.id || "")}"><label class="pm-today-trend-field">\u540D\u79F0<input class="pm-today-trend-input" name="name" maxlength="120" required value="${escapeAttr(faction.name || "")}"></label><label class="pm-today-trend-field">\u4E00\u53E5\u8BDD\u4ECB\u7ECD<textarea class="pm-today-trend-input" name="summary" maxlength="600" required>${escapeHtml(faction.summary || "")}</textarea></label><label class="pm-today-trend-field">\u7236\u52BF\u529B<select class="pm-today-trend-input" name="parentId"><option value="">\u65E0</option>${parents.map((item) => `<option value="${escapeAttr(item.id)}" ${item.id === faction.parentId ? "selected" : ""}>${escapeHtml(item.name)}</option>`).join("")}</select></label><fieldset><legend>\u5916\u90E8\u5173\u8054</legend>${parents.filter((item) => item.id !== faction.parentId && item.parentId !== faction.id).map((item) => `<label><input type="checkbox" name="relatedFactionIds" value="${escapeAttr(item.id)}" ${related.has(item.id) ? "checked" : ""}>${escapeHtml(item.name)}</label>`).join("") || "<p>\u6CA1\u6709\u53EF\u4F5C\u4E3A\u5916\u90E8\u5173\u8054\u7684\u52BF\u529B\u3002</p>"}</fieldset><fieldset><legend>\u5173\u952E\u8D44\u6599</legend><div data-today-trend-details>${details.map((detail) => `<div class="pm-today-trend-detail-row"><input class="pm-today-trend-input" name="detailLabel" maxlength="120" required value="${escapeAttr(detail.label)}"><input class="pm-today-trend-input" name="detailValue" maxlength="600" required value="${escapeAttr(detail.value)}"><button class="pm-today-trend-detail-remove" type="button" data-action="today-trend-remove-detail">\u5220\u9664</button></div>`).join("")}</div><button class="pm-today-trend-detail-add" type="button" data-action="today-trend-add-detail" ${details.length >= TODAY_TREND_LIMITS.factionDetails ? "disabled" : ""}>\u6DFB\u52A0\u8D44\u6599</button></fieldset><label class="pm-today-trend-field">\u5BF9\u5F53\u524D\u89D2\u8272\u72B6\u6001<select class="pm-today-trend-input" name="status">${options(faction.relation?.status || "neutral")}</select></label><label class="pm-today-trend-field">\u4E00\u53E5\u8BDD\u8BC4\u4EF7<textarea class="pm-today-trend-input" name="evaluation" maxlength="600" required>${escapeHtml(faction.relation?.evaluation || "")}</textarea></label><div class="pm-today-trend-form-actions pm-action-pair"><button type="button" data-action="today-trend-cancel-editor">\u53D6\u6D88</button><button type="submit">\u4FDD\u5B58</button></div></form>`;
   }
   function renderTodayTrendFactionView({ scope, preset = null, mode = "content", editingFactionId = null, editingRule = null, ruleDraft = null, menuOpenId = null, generationAvailable = false, generationBusy = false, floorStatus = "" } = {}) {
     const factions = Array.isArray(scope?.factions) ? scope.factions : [], attrs = `${generationAvailable && !generationBusy ? "" : "disabled"} aria-busy="${generationBusy}"`;
@@ -23707,7 +23878,7 @@ ${targetInstruction}`
     return `<div class="pm-today-trend-reputation-meter" role="radiogroup" aria-label="\u4FEE\u6539${escapeAttr(circle.name)}\u7684\u597D\u611F\u5EA6\uFF0C\u5F53\u524D\uFF1A${escapeAttr(label)}">${levels}</div>`;
   }
   function circleEditor(circle = {}, cancelAction = "today-trend-cancel-editor") {
-    return `<form class="pm-today-trend-editor pm-today-trend-item-editor" data-today-trend-form="circle"><input type="hidden" name="id" value="${escapeAttr(circle.id || "")}"><label class="pm-today-trend-field">\u5708\u5C42\u540D\u79F0<input class="pm-today-trend-input" name="name" maxlength="120" required value="${escapeAttr(circle.name || "")}"></label><label class="pm-today-trend-field">\u8303\u56F4<textarea class="pm-today-trend-input" name="scope" maxlength="600" required>${escapeHtml(circle.scope || "")}</textarea></label><label class="pm-today-trend-field">\u98CE\u8BC4<textarea class="pm-today-trend-input" name="evaluation" maxlength="600" required>${escapeHtml(circle.evaluation || "")}</textarea></label><div class="pm-today-trend-form-actions"><button type="submit">\u4FDD\u5B58</button><button type="button" data-action="${escapeAttr(cancelAction)}">\u53D6\u6D88</button></div></form>`;
+    return `<form class="pm-today-trend-editor pm-today-trend-item-editor" data-today-trend-form="circle"><input type="hidden" name="id" value="${escapeAttr(circle.id || "")}"><label class="pm-today-trend-field">\u5708\u5C42\u540D\u79F0<input class="pm-today-trend-input" name="name" maxlength="120" required value="${escapeAttr(circle.name || "")}"></label><label class="pm-today-trend-field">\u8303\u56F4<textarea class="pm-today-trend-input" name="scope" maxlength="600" required>${escapeHtml(circle.scope || "")}</textarea></label><label class="pm-today-trend-field">\u98CE\u8BC4<textarea class="pm-today-trend-input" name="evaluation" maxlength="600" required>${escapeHtml(circle.evaluation || "")}</textarea></label><div class="pm-today-trend-form-actions pm-action-pair"><button type="button" data-action="${escapeAttr(cancelAction)}">\u53D6\u6D88</button><button type="submit">\u4FDD\u5B58</button></div></form>`;
   }
   function circleActions(circle, generateAttrs, visible) {
     return trendInlineActions({ visible, actions: [
@@ -23743,7 +23914,7 @@ ${targetInstruction}`
 
   // src/today-trend-world-view.js
   function itemEditor(item = {}) {
-    return `<form class="pm-today-trend-editor pm-today-trend-item-editor pm-today-trend-world-item-editor" data-today-trend-form="world-item"><input type="hidden" name="id" value="${escapeAttr(item.id || "")}"><label class="pm-today-trend-field">\u9879\u76EE\u540D\u79F0<input class="pm-today-trend-input" name="name" maxlength="120" required value="${escapeAttr(item.name || "")}"></label><label class="pm-today-trend-field">\u4E00\u53E5\u8BDD\u6001\u52BF<textarea class="pm-today-trend-input" name="summary" maxlength="600" required>${escapeHtml(item.summary || "")}</textarea></label><div class="pm-today-trend-form-actions"><button type="submit">\u4FDD\u5B58</button><button type="button" data-action="today-trend-cancel-world-editor">\u53D6\u6D88</button></div></form>`;
+    return `<form class="pm-today-trend-editor pm-today-trend-item-editor pm-today-trend-world-item-editor" data-today-trend-form="world-item"><input type="hidden" name="id" value="${escapeAttr(item.id || "")}"><label class="pm-today-trend-field">\u9879\u76EE\u540D\u79F0<input class="pm-today-trend-input" name="name" maxlength="120" required value="${escapeAttr(item.name || "")}"></label><label class="pm-today-trend-field">\u4E00\u53E5\u8BDD\u6001\u52BF<textarea class="pm-today-trend-input" name="summary" maxlength="600" required>${escapeHtml(item.summary || "")}</textarea></label><div class="pm-today-trend-form-actions pm-action-pair"><button type="button" data-action="today-trend-cancel-world-editor">\u53D6\u6D88</button><button type="submit">\u4FDD\u5B58</button></div></form>`;
   }
   function itemActions(item, attrs, menuOpenId) {
     return trendActionMenu({ id: `world:${item.id}`, open: menuOpenId === `world:${item.id}`, label: `${item.name}\u64CD\u4F5C`, actions: [

@@ -80,7 +80,7 @@ export function replaceExtensionPrompts({ context, runtime, prompts }) {
             || typeof prompt.content !== 'string' || !prompt.content) continue;
         seen.add(prompt.key);
         try {
-            context.setExtensionPrompt(prompt.key, prompt.content, prompt.position, prompt.depth, false, 0);
+            context.setExtensionPrompt(prompt.key, prompt.content, prompt.position, prompt.depth, prompt.scan === true, 0);
             activeKeys.add(prompt.key);
             written += 1;
             const source = prompt.source || 'other';
@@ -294,6 +294,7 @@ export function buildContextInjectionPrompts({
         return [{
             key: injectionKey(source.sourceId),
             source: 'phone',
+            scan: true,
             content: body,
             contentPrefix: '[手机短信记忆 — 私密]\n',
             contentSuffix: '\n[结束]',

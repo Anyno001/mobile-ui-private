@@ -13,7 +13,7 @@ import {
 } from './directory-save-coordinator.js';
 import { createEmptyPhoneUiState, normalizePhoneUiState } from './interactive-scene-model.js';
 import {
-    loadHistoriesFromIDB, saveHistories, saveHistoriesBeforeUnload, saveHistoriesStrict,
+    HISTORY_RECOVERY_KEY, loadHistoriesFromIDB, readHistoriesSnapshot, saveHistories, saveHistoriesBeforeUnload, saveHistoriesStrict,
 } from './storage-history.js';
 import { DESKTOP_BG_KEY, isBigData, pmIDBDel, pmIDBGet, pmIDBKeys, pmIDBReadEntry, pmIDBSet, pmOpenIDB } from './storage-primitives.js';
 import {
@@ -27,7 +27,7 @@ export {
     loadWorldBookConfig, saveGalBubbleEnabled, saveInjectionConfig, saveProfiles, saveTheme, saveWordyLimit, saveWorldBookConfig,
 } from './storage-preferences.js';
 export {
-    loadHistoriesFromIDB, saveHistories, saveHistoriesBeforeUnload, saveHistoriesStrict,
+    HISTORY_RECOVERY_KEY, loadHistoriesFromIDB, readHistoriesSnapshot, saveHistories, saveHistoriesBeforeUnload, saveHistoriesStrict,
 } from './storage-history.js';
 export { loadGroupMeta, saveGroupMeta } from './storage-group-meta.js';
 
@@ -40,7 +40,7 @@ const INTERACTIVE_FALLBACK_KEY = `${INTERACTIVE_STORE_KEY}_LOCAL_FALLBACK`;
 const PHONE_UI_STATE_KEY = 'ST_SMS_PHONE_UI_STATE';
 export const BRANCH_LINEAGE_STORE_KEY = 'ST_SMS_BRANCH_LINEAGE_V1';
 export const PLUGIN_LOCAL_STORAGE_KEYS = Object.freeze([
-    'ST_SMS_DATA_V2', 'ST_SMS_CONFIG', 'ST_SMS_THEME', 'ST_SMS_POKE_CONFIG', 'ST_SMS_WORDY_LIMIT',
+    'ST_SMS_DATA_V2', HISTORY_RECOVERY_KEY, 'ST_SMS_CONFIG', 'ST_SMS_THEME', 'ST_SMS_POKE_CONFIG', 'ST_SMS_WORDY_LIMIT',
     GAL_BUBBLE_ENABLED_KEY, BUDGET_CONFIG_KEY, 'ST_SMS_BG_GLOBAL', 'ST_SMS_BG_LOCAL', DESKTOP_BG_KEY, GROUP_META_STORE_KEY, GROUP_META_FALLBACK_KEY,
     EMOJI_STORE_KEY, EMOJI_FALLBACK_KEY, CHARACTER_BEHAVIOR_KEY, INJECTION_CONFIG_KEY, WORLD_BOOK_CONFIG_KEY, 'ST_SMS_API_PROFILES', 'ST_SMS_BIDIRECTIONAL',
     INTERACTIVE_STORE_KEY, INTERACTIVE_FALLBACK_KEY, PHONE_UI_STATE_KEY, 'ST_SMS_PHONE_QR_INITIALIZED',

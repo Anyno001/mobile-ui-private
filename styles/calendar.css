@@ -26,7 +26,6 @@
 .pm-calendar-editor-actions button{width:100%;text-align:center;}
 .pm-calendar-editor-actions .is-primary{background:var(--pm-calendar-accent, var(--pm-color-accent))!important;color:var(--pm-color-on-dark)!important;border-color:var(--pm-calendar-accent, var(--pm-color-accent))!important;}
 .pm-calendar-management:is([data-calendar-management="schedule"],[data-calendar-management="recipe"],[data-calendar-management="cycle"],[data-calendar-management="outfit"]) .pm-calendar-editor-actions .is-primary{background:var(--pm-calendar-accent)!important;border-color:var(--pm-calendar-accent)!important;}
-#pm-iphone[data-theme="dark"] .pm-calendar-management[data-calendar-management="outfit"] .pm-calendar-editor-actions .is-primary{color:#1c1c1e;}
 .pm-calendar-data-tools{margin:var(--pm-space-0) var(--pm-space-3) var(--pm-space-3);padding:var(--pm-space-3);border:1px solid var(--pm-color-border-default);border-radius:var(--pm-radius-card);background:var(--pm-color-surface-card);display:flex;flex-direction:column;gap:var(--pm-space-2);}
 .pm-calendar-data-tools h3{margin:var(--pm-space-0);font-size:var(--pm-font-size-compact);}
 .pm-calendar-data-row{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:var(--pm-space-2);}
@@ -216,7 +215,7 @@
 .pm-calendar-repeat-interval{display:flex!important;align-items:center;flex-direction:row!important;gap:var(--pm-space-1-5)!important;}
 .pm-calendar-repeat-interval input[name="intervalDays"]{box-sizing:border-box;width:64px!important;min-width:64px;min-height:34px;margin:var(--pm-space-0)!important;padding:var(--pm-space-1-5) var(--pm-space-2)!important;text-align:center;font-variant-numeric:tabular-nums;}
 .pm-calendar-repeat-interval[hidden]{display:none!important;}
-#pm-overlay .pm-calendar-entry-dialog textarea[name="note"]:focus-visible{outline:1px solid var(--pm-color-focus-ring)!important;outline-offset:1px!important;}
+#pm-overlay .pm-calendar-entry-dialog textarea[name="note"]:focus-visible{border-color:var(--pm-color-accent)!important;outline:var(--pm-space-0-5) solid var(--pm-color-accent)!important;outline-offset:var(--pm-space-px-1)!important;}
 /*Weather and health details are poster-style status cards; the icon is a backdrop, not a separate control.*/
 .pm-calendar-detail-date,.pm-calendar-status-heading{display:flex!important;flex-direction:row!important;align-items:baseline;gap:var(--pm-space-2)!important;min-width:0;}
 .pm-calendar-detail-date>strong,.pm-calendar-status-relative{color:var(--pm-calendar-accent);font-size:var(--pm-font-size-subtitle);line-height:var(--pm-line-height-tight);font-weight:var(--pm-font-weight-semibold);white-space:nowrap;}

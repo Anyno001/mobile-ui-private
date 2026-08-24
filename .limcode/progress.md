@@ -1,35 +1,41 @@
 # 项目进度
 - Project: mobile-ui-private
-- Updated At: 2026-08-19T08:48:39.498Z
-- Status: active
+- Updated At: 2026-08-23T17:01:31.629Z
+- Status: blocked
 - Phase: review
 
 ## 当前摘要
 
 <!-- LIMCODE_PROGRESS_SUMMARY_START -->
 - 当前进度：3/3 个里程碑已完成；最新：trend-svg-mapping-release
-- 当前焦点：今日风向导航与关系状态视觉修正已完成验收
-- 最新结论：三项 UI 修正、契约防回归、构建、语法、专项检查、全量门禁及独立验收均通过。负向变异验证确认非法关系前景与 tabs SVG 几何覆盖会被双 checker 拒绝。
-- 下一步：后续按项目发布流程处理；本轮无待修复阻塞项
+- 当前焦点：真实 SillyTavern 宿主验收矩阵与最终独立验收
+- 最新结论：专项实现和自动门禁已闭合；Acceptance Expert 第 3 个可解析验收周期给出 0 blocking、1 major、10 pass。唯一 major 是缺少已部署修复 bundle 的真实 SillyTavern URL，无法执行宿主生命周期矩阵，不是已证实源码缺陷。
+- 当前阻塞：当前没有可访问且已部署本次修复 bundle 的真实 SillyTavern URL，无法验证父→子继承、父子隔离、刷新、关闭重启、页面隐藏后退出、连续子分支、手机未打开分支及 __pmDiag.snapshot() 隐私。
+- 下一步：助手提供可访问的真实 SillyTavern URL 后执行八项矩阵；根据结果修复 blocking/major（若有），再调用 Acceptance Expert 复验。
 <!-- LIMCODE_PROGRESS_SUMMARY_END -->
 
 ## 关联文档
 
 <!-- LIMCODE_PROGRESS_ARTIFACTS_START -->
-- 设计：`.limcode/design/today-trend-entry-content-rail-alignment.md`
-- 计划：`.limcode/plans/today-trend-navigation-relation-visual-fix.md`
+- 设计：`.limcode/design/phone-branch-inheritance-restart-persistence.md`
+- 计划：`.limcode/plans/unify-accent-text-editor-buttons-save-alignment.md`
 <!-- LIMCODE_PROGRESS_ARTIFACTS_END -->
 
 ## 当前 TODO 快照
 
 <!-- LIMCODE_PROGRESS_TODOS_START -->
-- [x] 记录并隔离当前工作树中既有的 .limcode 文档改动，确认目标 CSS、关系视图和契约脚本的基线。  `#verify-baseline`
-- [x] 让今日风向底部导航默认图标与返回桌面图标使用相同线宽与浅灰层级，保留当前激活项的主题色表达。  `#align-nav-icons`
-- [x] 用已确认的亮暗双主题、与主题蓝协调且保持图标对比度的五档关系色替换旧脏色。  `#refresh-relation-palette`
-- [x] 在极简势力图谱中显式覆盖普通模式节点底色，只保留 24px 可见关系圆及透明 44px 点击命中区。  `#fix-minimal-faction-node`
-- [x] 补充今日风向契约断言，固定导航图标一致性、关系色双主题定义与极简势力节点无外层底色的边界。  `#add-regression-contracts`
-- [x] 修复验收专家指出的契约缺口：锁定 --pm-today-trend-relation-foreground 的原始语义声明为 var(--pm-color-on-dark)，同时保留实际解析后的对比度计算，并禁止所有命中 .pm-today-trend-tabs 的 SVG 规则使用 stroke-width 或 transform 覆盖。  `#repair-acceptance-gaps`
-- [x] 运行构建、语法、今日风向和 CSS 契约检查、完整门禁及 diff 检查，并在亮暗、普通/极简、320px 宽度下完成视觉回归。  `#validate-and-review`
+- [x] 收敛内置主题右气泡与强调色实底按钮的可访问前景契约，并保留自定义气泡对比度兜底  `#accent-foreground-contract`
+- [ ] 补齐独立验收指出的主题配色不变、持久化边界、focus/disabled、动作与字段透传证据并复验  `#acceptance-remediation` (in_progress)
+- [x] 确保所有主题色实底按钮使用白色文字且不改动既有主题背景色  `#all-accent-button-white-text`
+- [x] 让所有恰好两个并排按钮的操作区等分平铺可用宽度，不再左侧收缩  `#all-two-button-fill`
+- [x] 构建 index.js，执行语法、行为、契约、今日风向与全量门禁，并检查 diff  `#build-and-gates`
+- [x] 降低生成联系人界面三个按钮的字体粗细  `#contact-generator-button-weight`
+- [x] 补充主题、按钮配方、双按钮 DOM 顺序和窄屏边界的行为与契约断言  `#contract-tests`
+- [x] 让所有可输入控件聚焦时显示加粗且跟随主题色的边框提示  `#editable-focus-accent-ring`
+- [ ] 在真实宿主回归五套主题、亮暗模式、聊天、普通/极简今日风向、320px 与键盘状态  `#host-visual-regression`
+- [x] 为势力图谱资料添加/删除控件建立稳定语义 class，并统一编辑器按钮配方与状态  `#today-trend-detail-buttons`
+- [x] 建立仅限两个并列操作的共享布局契约，规范次操作在左、保存/提交主操作在右  `#two-button-save-order`
+- [x] 将所有外显提示词输入或展示文本统一为13px  `#visible-prompt-font-size`
 <!-- LIMCODE_PROGRESS_TODOS_END -->
 
 ## 项目里程碑
@@ -69,34 +75,34 @@
 ## 风险与阻塞
 
 <!-- LIMCODE_PROGRESS_RISKS_START -->
-- trend-host-visual-regression | accepted | 上一专项真实宿主视觉与辅助技术回归未执行：上一专项静态契约和自动门禁已通过，但尚未在真实 SillyTavern 宿主验证主题、窄屏、active/archived 与 Accessibility Tree；按既有授权作为 minor 风险接受。
-- today-trend-icon-host-validation-gap | active | 本专项真实宿主采样与视觉回归未执行：当前受控浏览器没有 SillyTavern 宿主会话，无法获得 world/active/archived 的 key-only 计数，也未完成真实主题、窄屏与辅助技术回归；Acceptance Expert 将其评为 minor，不虚构覆盖率或改善百分比。
-- today-trend-icon-main-push-gate | active | 本专项 main 推送授权与网络状态未闭合：本地提交已创建，但推送会改变共享远端；当前未获得本专项明确推送授权，且最近一次远端查询因连接重置失败。
+- host-validation-unavailable | active | 真实宿主矩阵尚未执行：Node 行为测试不能替代 SillyTavern 真实事件总线、页面生命周期、IndexedDB 时序、bundle 加载链与诊断隐私验证。
+- marker-unavailable-restart-risk | accepted | 恢复标记完全无法写入时仍存在重启恢复残余风险：revision 能阻止当前页面内旧异步保存覆盖更新 localStorage，但若 marker 最终完全无法写入，下一次启动仍按无 marker 的 IDB-primary 规则读取；实现会输出诊断警告，不宣称无条件恢复。
+- unrelated-css-contract-failure | active | 全量 check 被无关 CSS governance 工作树改动阻断：npm.cmd run check 的首个实际失败位于 check:contracts，涉及本专项未修改的 CSS/registry/style.css；专项相关 behavior/build/syntax/diff 门禁均已通过，但不能宣称全量门禁为绿。
 <!-- LIMCODE_PROGRESS_RISKS_END -->
 
 ## 最近更新
 
 <!-- LIMCODE_PROGRESS_LOG_START -->
-- 2026-08-19T05:37:07.920Z | artifact_changed | design | 同步设计文档：.limcode/design/today-trend-entry-content-rail-alignment.md
-- 2026-08-19T05:39:26.713Z | artifact_changed | plan | 同步计划文档：.limcode/plans/today-trend-entry-content-rail-alignment.md
-- 2026-08-19T05:42:36.580Z | updated | today-trend-rail-baseline | 已冻结今日风向 world/reputation/faction 条目 DOM、CSS 覆盖、minimal 44px 关系节点与势力嵌套缩进边界，进入轨道契约阶段。
-- 2026-08-19T05:42:36.613Z | artifact_changed | plan | 同步计划 TODO 快照：.limcode/plans/today-trend-entry-content-rail-alignment.md
-- 2026-08-19T05:48:12.345Z | updated | today-trend-rail-css | 条目 CSS Grid 已实现；首次 check:contracts 失败定位为旧 minimal world 摘要 margin 断言，不是代码运行错误。
-- 2026-08-19T06:03:05.682Z | milestone_recorded | today-trend-rail-css | 完成 world/reputation/faction 条目 Grid 轨道；摘要统一落在节点后文本列，评级/详情跨全列，保留 nested faction 与 minimal 44px 关系节点契约。
-- 2026-08-19T06:03:05.696Z | artifact_changed | plan | 同步计划 TODO 快照：.limcode/plans/today-trend-entry-content-rail-alignment.md
-- 2026-08-19T06:23:22.257Z | milestone_recorded | today-trend-entry-content-rail-alignment | 条目内容轨道专项完成：CSS Grid、专项/全量契约及构建通过；独立 Acceptance Expert 复验 pass，无 blocking/major；真实 SillyTavern 宿主视觉/触控/a11y 待补。
-- 2026-08-19T06:23:22.347Z | artifact_changed | plan | 同步计划 TODO 快照：.limcode/plans/today-trend-entry-content-rail-alignment.md
-- 2026-08-19T06:34:10.855Z | risk_changed | today-trend-main-push | 本地提交 87d141c 未能推送：HTTPS 多路径均无法连接 GitHub，SSH 无可用 publickey；已停止重复重试，等待网络/认证恢复。
-- 2026-08-19T06:35:13.924Z | risk_changed | today-trend-main-push | 补充诊断：强制 HTTP/1.1 的 push 仍无法连接 github.com:443；阻塞归因进一步确认是网络/认证环境，不是本地提交或代码门禁。
-- 2026-08-19T06:40:37.985Z | milestone_recorded | today-trend-main-push | 本地提交 87d141c 已推送至 origin/main，并通过 ls-remote 确认 refs/heads/main 与本地 HEAD 一致；此前网络阻塞已解除。
-- 2026-08-19T07:22:43.553Z | artifact_changed | plan | 同步计划文档：.limcode/plans/today-trend-navigation-relation-visual-fix.md
-- 2026-08-19T07:36:09.327Z | artifact_changed | plan | 同步计划 TODO 快照：.limcode/plans/today-trend-navigation-relation-visual-fix.md
-- 2026-08-19T07:38:57.009Z | milestone_recorded | today-trend-visual-fix | 完成基线侦察：现有非目标改动仅为 .limcode 文档；导航线宽、关系局部色 token、极简势力节点层叠问题已定位。
-- 2026-08-19T07:46:30.136Z | milestone_recorded | today-trend-visual-fix-implementation | 专项实现完成：底部导航继承通用 SVG 线宽，关系色板更新，极简势力外层大圆覆盖；专项检查与 CSS 契约已通过。
-- 2026-08-19T07:46:30.172Z | artifact_changed | plan | 同步计划 TODO 快照：.limcode/plans/today-trend-navigation-relation-visual-fix.md
-- 2026-08-19T08:44:52.923Z | artifact_changed | plan | 同步计划 TODO 快照：.limcode/plans/today-trend-navigation-relation-visual-fix.md
-- 2026-08-19T08:48:39.337Z | artifact_changed | plan | 同步计划 TODO 快照：.limcode/plans/today-trend-navigation-relation-visual-fix.md
-- 2026-08-19T08:48:39.498Z | milestone_recorded | today-trend-navigation-relation-visual-fix | 实现与验收完成：底部导航图标统一通用 2px 线宽并保留激活 accent；关系色板更新并通过实际前景对比度门禁；极简势力外层大圆移除，保留透明 44px 命中区与 24px 状态圆；独立验收 accepted。
+- 2026-08-23T04:33:31.460Z | artifact_changed | chat-eye-scan-root-cause | 上游 release API 已核实第五参数 scan 语义；收缩设计，取消与本 bug 无关的诊断/假成功扩展。
+- 2026-08-23T04:33:31.974Z | artifact_changed | design | 同步设计文档：.limcode/design/chat-eye-sillytavern-prompt-injection-plan.md
+- 2026-08-23T04:44:47.541Z | artifact_changed | plan | 同步计划文档：.limcode/plans/chat-eye-sillytavern-prompt-injection.md
+- 2026-08-23T05:13:49.679Z | updated | apply-chat-scan-fix | 已将 phone prompt 的宿主 scan 参数改为 true，并补充 phone/community/todayTrend 的 scan 契约断言，开始执行门禁。
+- 2026-08-23T05:13:49.710Z | artifact_changed | plan | 同步计划 TODO 快照：.limcode/plans/chat-eye-sillytavern-prompt-injection.md
+- 2026-08-23T08:46:34.378Z | artifact_changed | plan | 同步计划文档：.limcode/plans/unify-accent-text-editor-buttons-save-alignment.md
+- 2026-08-23T10:19:53.022Z | updated | accent-foreground-contract | 批准计划后进入实施；Implementation Expert 超时且无报告，先独立核对工作树，禁止假设其未改或已完成。
+- 2026-08-23T10:45:24.048Z | artifact_changed | plan | 同步计划文档：.limcode/plans/unify-accent-text-editor-buttons-save-alignment.md
+- 2026-08-23T13:12:04.188Z | artifact_changed | design | 同步设计文档：.limcode/design/phone-branch-inheritance-restart-persistence.md
+- 2026-08-23T14:10:08.744Z | artifact_changed | plan | 同步计划 TODO 快照：.limcode/plans/unify-accent-text-editor-buttons-save-alignment.md
+- 2026-08-23T14:14:41.390Z | artifact_changed | plan | 同步计划文档：.limcode/plans/phone-branch-inheritance-restart-persistence.md
+- 2026-08-23T14:19:31.271Z | artifact_changed | plan | 同步计划 TODO 快照：.limcode/plans/phone-branch-inheritance-restart-persistence.md
+- 2026-08-23T14:34:31.635Z | artifact_changed | plan | 同步计划 TODO 快照：.limcode/plans/phone-branch-inheritance-restart-persistence.md
+- 2026-08-23T15:21:06.275Z | artifact_changed | plan | 同步计划 TODO 快照：.limcode/plans/phone-branch-inheritance-restart-persistence.md
+- 2026-08-23T15:27:46.292Z | artifact_changed | plan | 同步计划 TODO 快照：.limcode/plans/phone-branch-inheritance-restart-persistence.md
+- 2026-08-23T15:57:06.369Z | artifact_changed | plan | 同步计划 TODO 快照：.limcode/plans/phone-branch-inheritance-restart-persistence.md
+- 2026-08-23T16:45:06.503Z | artifact_changed | plan | 同步计划 TODO 快照：.limcode/plans/phone-branch-inheritance-restart-persistence.md
+- 2026-08-23T16:53:22.805Z | milestone_recorded | acceptance-cycle-3 | Acceptance Expert 正式 assessed：0 blocking、1 major、0 minor、0 advisory、10 pass；唯一 major 为真实 SillyTavern 宿主矩阵缺失。
+- 2026-08-23T16:53:22.805Z | updated | branch-fix-marker-write-failure | 补齐 marker 首次/持续写入失败与旧异步交错回归；check:behavior、build、check:syntax、diff --check 均 exit 0。
+- 2026-08-23T17:01:31.629Z | artifact_changed | plan | 同步计划 TODO 快照：.limcode/plans/unify-accent-text-editor-buttons-save-alignment.md
 <!-- LIMCODE_PROGRESS_LOG_END -->
 
 <!-- LIMCODE_PROGRESS_METADATA_START -->
@@ -106,51 +112,76 @@
   "projectId": "mobile-ui-private",
   "projectName": "mobile-ui-private",
   "createdAt": "2026-08-14T05:55:56.978Z",
-  "updatedAt": "2026-08-19T08:48:39.498Z",
-  "status": "active",
+  "updatedAt": "2026-08-23T17:01:31.629Z",
+  "status": "blocked",
   "phase": "review",
-  "currentFocus": "今日风向导航与关系状态视觉修正已完成验收",
-  "latestConclusion": "三项 UI 修正、契约防回归、构建、语法、专项检查、全量门禁及独立验收均通过。负向变异验证确认非法关系前景与 tabs SVG 几何覆盖会被双 checker 拒绝。",
-  "currentBlocker": null,
-  "nextAction": "后续按项目发布流程处理；本轮无待修复阻塞项",
+  "currentFocus": "真实 SillyTavern 宿主验收矩阵与最终独立验收",
+  "latestConclusion": "专项实现和自动门禁已闭合；Acceptance Expert 第 3 个可解析验收周期给出 0 blocking、1 major、10 pass。唯一 major 是缺少已部署修复 bundle 的真实 SillyTavern URL，无法执行宿主生命周期矩阵，不是已证实源码缺陷。",
+  "currentBlocker": "当前没有可访问且已部署本次修复 bundle 的真实 SillyTavern URL，无法验证父→子继承、父子隔离、刷新、关闭重启、页面隐藏后退出、连续子分支、手机未打开分支及 __pmDiag.snapshot() 隐私。",
+  "nextAction": "助手提供可访问的真实 SillyTavern URL 后执行八项矩阵；根据结果修复 blocking/major（若有），再调用 Acceptance Expert 复验。",
   "activeArtifacts": {
-    "design": ".limcode/design/today-trend-entry-content-rail-alignment.md",
-    "plan": ".limcode/plans/today-trend-navigation-relation-visual-fix.md"
+    "design": ".limcode/design/phone-branch-inheritance-restart-persistence.md",
+    "plan": ".limcode/plans/unify-accent-text-editor-buttons-save-alignment.md"
   },
   "todos": [
     {
-      "id": "verify-baseline",
-      "content": "记录并隔离当前工作树中既有的 .limcode 文档改动，确认目标 CSS、关系视图和契约脚本的基线。",
+      "id": "accent-foreground-contract",
+      "content": "收敛内置主题右气泡与强调色实底按钮的可访问前景契约，并保留自定义气泡对比度兜底",
       "status": "completed"
     },
     {
-      "id": "align-nav-icons",
-      "content": "让今日风向底部导航默认图标与返回桌面图标使用相同线宽与浅灰层级，保留当前激活项的主题色表达。",
+      "id": "acceptance-remediation",
+      "content": "补齐独立验收指出的主题配色不变、持久化边界、focus/disabled、动作与字段透传证据并复验",
+      "status": "in_progress"
+    },
+    {
+      "id": "all-accent-button-white-text",
+      "content": "确保所有主题色实底按钮使用白色文字且不改动既有主题背景色",
       "status": "completed"
     },
     {
-      "id": "refresh-relation-palette",
-      "content": "用已确认的亮暗双主题、与主题蓝协调且保持图标对比度的五档关系色替换旧脏色。",
+      "id": "all-two-button-fill",
+      "content": "让所有恰好两个并排按钮的操作区等分平铺可用宽度，不再左侧收缩",
       "status": "completed"
     },
     {
-      "id": "fix-minimal-faction-node",
-      "content": "在极简势力图谱中显式覆盖普通模式节点底色，只保留 24px 可见关系圆及透明 44px 点击命中区。",
+      "id": "build-and-gates",
+      "content": "构建 index.js，执行语法、行为、契约、今日风向与全量门禁，并检查 diff",
       "status": "completed"
     },
     {
-      "id": "add-regression-contracts",
-      "content": "补充今日风向契约断言，固定导航图标一致性、关系色双主题定义与极简势力节点无外层底色的边界。",
+      "id": "contact-generator-button-weight",
+      "content": "降低生成联系人界面三个按钮的字体粗细",
       "status": "completed"
     },
     {
-      "id": "repair-acceptance-gaps",
-      "content": "修复验收专家指出的契约缺口：锁定 --pm-today-trend-relation-foreground 的原始语义声明为 var(--pm-color-on-dark)，同时保留实际解析后的对比度计算，并禁止所有命中 .pm-today-trend-tabs 的 SVG 规则使用 stroke-width 或 transform 覆盖。",
+      "id": "contract-tests",
+      "content": "补充主题、按钮配方、双按钮 DOM 顺序和窄屏边界的行为与契约断言",
       "status": "completed"
     },
     {
-      "id": "validate-and-review",
-      "content": "运行构建、语法、今日风向和 CSS 契约检查、完整门禁及 diff 检查，并在亮暗、普通/极简、320px 宽度下完成视觉回归。",
+      "id": "editable-focus-accent-ring",
+      "content": "让所有可输入控件聚焦时显示加粗且跟随主题色的边框提示",
+      "status": "completed"
+    },
+    {
+      "id": "host-visual-regression",
+      "content": "在真实宿主回归五套主题、亮暗模式、聊天、普通/极简今日风向、320px 与键盘状态",
+      "status": "pending"
+    },
+    {
+      "id": "today-trend-detail-buttons",
+      "content": "为势力图谱资料添加/删除控件建立稳定语义 class，并统一编辑器按钮配方与状态",
+      "status": "completed"
+    },
+    {
+      "id": "two-button-save-order",
+      "content": "建立仅限两个并列操作的共享布局契约，规范次操作在左、保存/提交主操作在右",
+      "status": "completed"
+    },
+    {
+      "id": "visible-prompt-font-size",
+      "content": "将所有外显提示词输入或展示文本统一为13px",
       "status": "completed"
     }
   ],
@@ -210,159 +241,159 @@
   ],
   "risks": [
     {
-      "id": "trend-host-visual-regression",
-      "title": "上一专项真实宿主视觉与辅助技术回归未执行",
-      "description": "上一专项静态契约和自动门禁已通过，但尚未在真实 SillyTavern 宿主验证主题、窄屏、active/archived 与 Accessibility Tree；按既有授权作为 minor 风险接受。",
-      "status": "accepted"
-    },
-    {
-      "id": "today-trend-icon-host-validation-gap",
-      "title": "本专项真实宿主采样与视觉回归未执行",
-      "description": "当前受控浏览器没有 SillyTavern 宿主会话，无法获得 world/active/archived 的 key-only 计数，也未完成真实主题、窄屏与辅助技术回归；Acceptance Expert 将其评为 minor，不虚构覆盖率或改善百分比。",
+      "id": "host-validation-unavailable",
+      "title": "真实宿主矩阵尚未执行",
+      "description": "Node 行为测试不能替代 SillyTavern 真实事件总线、页面生命周期、IndexedDB 时序、bundle 加载链与诊断隐私验证。",
       "status": "active"
     },
     {
-      "id": "today-trend-icon-main-push-gate",
-      "title": "本专项 main 推送授权与网络状态未闭合",
-      "description": "本地提交已创建，但推送会改变共享远端；当前未获得本专项明确推送授权，且最近一次远端查询因连接重置失败。",
+      "id": "marker-unavailable-restart-risk",
+      "title": "恢复标记完全无法写入时仍存在重启恢复残余风险",
+      "description": "revision 能阻止当前页面内旧异步保存覆盖更新 localStorage，但若 marker 最终完全无法写入，下一次启动仍按无 marker 的 IDB-primary 规则读取；实现会输出诊断警告，不宣称无条件恢复。",
+      "status": "accepted"
+    },
+    {
+      "id": "unrelated-css-contract-failure",
+      "title": "全量 check 被无关 CSS governance 工作树改动阻断",
+      "description": "npm.cmd run check 的首个实际失败位于 check:contracts，涉及本专项未修改的 CSS/registry/style.css；专项相关 behavior/build/syntax/diff 门禁均已通过，但不能宣称全量门禁为绿。",
       "status": "active"
     }
   ],
   "log": [
     {
-      "at": "2026-08-19T05:37:07.920Z",
+      "at": "2026-08-23T04:33:31.460Z",
+      "type": "artifact_changed",
+      "refId": "chat-eye-scan-root-cause",
+      "message": "上游 release API 已核实第五参数 scan 语义；收缩设计，取消与本 bug 无关的诊断/假成功扩展。"
+    },
+    {
+      "at": "2026-08-23T04:33:31.974Z",
       "type": "artifact_changed",
       "refId": "design",
-      "message": "同步设计文档：.limcode/design/today-trend-entry-content-rail-alignment.md"
+      "message": "同步设计文档：.limcode/design/chat-eye-sillytavern-prompt-injection-plan.md"
     },
     {
-      "at": "2026-08-19T05:39:26.713Z",
+      "at": "2026-08-23T04:44:47.541Z",
       "type": "artifact_changed",
       "refId": "plan",
-      "message": "同步计划文档：.limcode/plans/today-trend-entry-content-rail-alignment.md"
+      "message": "同步计划文档：.limcode/plans/chat-eye-sillytavern-prompt-injection.md"
     },
     {
-      "at": "2026-08-19T05:42:36.580Z",
+      "at": "2026-08-23T05:13:49.679Z",
       "type": "updated",
-      "refId": "today-trend-rail-baseline",
-      "message": "已冻结今日风向 world/reputation/faction 条目 DOM、CSS 覆盖、minimal 44px 关系节点与势力嵌套缩进边界，进入轨道契约阶段。"
+      "refId": "apply-chat-scan-fix",
+      "message": "已将 phone prompt 的宿主 scan 参数改为 true，并补充 phone/community/todayTrend 的 scan 契约断言，开始执行门禁。"
     },
     {
-      "at": "2026-08-19T05:42:36.613Z",
+      "at": "2026-08-23T05:13:49.710Z",
       "type": "artifact_changed",
       "refId": "plan",
-      "message": "同步计划 TODO 快照：.limcode/plans/today-trend-entry-content-rail-alignment.md"
+      "message": "同步计划 TODO 快照：.limcode/plans/chat-eye-sillytavern-prompt-injection.md"
     },
     {
-      "at": "2026-08-19T05:48:12.345Z",
+      "at": "2026-08-23T08:46:34.378Z",
+      "type": "artifact_changed",
+      "refId": "plan",
+      "message": "同步计划文档：.limcode/plans/unify-accent-text-editor-buttons-save-alignment.md"
+    },
+    {
+      "at": "2026-08-23T10:19:53.022Z",
       "type": "updated",
-      "refId": "today-trend-rail-css",
-      "message": "条目 CSS Grid 已实现；首次 check:contracts 失败定位为旧 minimal world 摘要 margin 断言，不是代码运行错误。"
+      "refId": "accent-foreground-contract",
+      "message": "批准计划后进入实施；Implementation Expert 超时且无报告，先独立核对工作树，禁止假设其未改或已完成。"
     },
     {
-      "at": "2026-08-19T06:03:05.682Z",
+      "at": "2026-08-23T10:45:24.048Z",
+      "type": "artifact_changed",
+      "refId": "plan",
+      "message": "同步计划文档：.limcode/plans/unify-accent-text-editor-buttons-save-alignment.md"
+    },
+    {
+      "at": "2026-08-23T13:12:04.188Z",
+      "type": "artifact_changed",
+      "refId": "design",
+      "message": "同步设计文档：.limcode/design/phone-branch-inheritance-restart-persistence.md"
+    },
+    {
+      "at": "2026-08-23T14:10:08.744Z",
+      "type": "artifact_changed",
+      "refId": "plan",
+      "message": "同步计划 TODO 快照：.limcode/plans/unify-accent-text-editor-buttons-save-alignment.md"
+    },
+    {
+      "at": "2026-08-23T14:14:41.390Z",
+      "type": "artifact_changed",
+      "refId": "plan",
+      "message": "同步计划文档：.limcode/plans/phone-branch-inheritance-restart-persistence.md"
+    },
+    {
+      "at": "2026-08-23T14:19:31.271Z",
+      "type": "artifact_changed",
+      "refId": "plan",
+      "message": "同步计划 TODO 快照：.limcode/plans/phone-branch-inheritance-restart-persistence.md"
+    },
+    {
+      "at": "2026-08-23T14:34:31.635Z",
+      "type": "artifact_changed",
+      "refId": "plan",
+      "message": "同步计划 TODO 快照：.limcode/plans/phone-branch-inheritance-restart-persistence.md"
+    },
+    {
+      "at": "2026-08-23T15:21:06.275Z",
+      "type": "artifact_changed",
+      "refId": "plan",
+      "message": "同步计划 TODO 快照：.limcode/plans/phone-branch-inheritance-restart-persistence.md"
+    },
+    {
+      "at": "2026-08-23T15:27:46.292Z",
+      "type": "artifact_changed",
+      "refId": "plan",
+      "message": "同步计划 TODO 快照：.limcode/plans/phone-branch-inheritance-restart-persistence.md"
+    },
+    {
+      "at": "2026-08-23T15:57:06.369Z",
+      "type": "artifact_changed",
+      "refId": "plan",
+      "message": "同步计划 TODO 快照：.limcode/plans/phone-branch-inheritance-restart-persistence.md"
+    },
+    {
+      "at": "2026-08-23T16:45:06.503Z",
+      "type": "artifact_changed",
+      "refId": "plan",
+      "message": "同步计划 TODO 快照：.limcode/plans/phone-branch-inheritance-restart-persistence.md"
+    },
+    {
+      "at": "2026-08-23T16:53:22.805Z",
       "type": "milestone_recorded",
-      "refId": "today-trend-rail-css",
-      "message": "完成 world/reputation/faction 条目 Grid 轨道；摘要统一落在节点后文本列，评级/详情跨全列，保留 nested faction 与 minimal 44px 关系节点契约。"
+      "refId": "acceptance-cycle-3",
+      "message": "Acceptance Expert 正式 assessed：0 blocking、1 major、0 minor、0 advisory、10 pass；唯一 major 为真实 SillyTavern 宿主矩阵缺失。"
     },
     {
-      "at": "2026-08-19T06:03:05.696Z",
+      "at": "2026-08-23T16:53:22.805Z",
+      "type": "updated",
+      "refId": "branch-fix-marker-write-failure",
+      "message": "补齐 marker 首次/持续写入失败与旧异步交错回归；check:behavior、build、check:syntax、diff --check 均 exit 0。"
+    },
+    {
+      "at": "2026-08-23T17:01:31.629Z",
       "type": "artifact_changed",
       "refId": "plan",
-      "message": "同步计划 TODO 快照：.limcode/plans/today-trend-entry-content-rail-alignment.md"
-    },
-    {
-      "at": "2026-08-19T06:23:22.257Z",
-      "type": "milestone_recorded",
-      "refId": "today-trend-entry-content-rail-alignment",
-      "message": "条目内容轨道专项完成：CSS Grid、专项/全量契约及构建通过；独立 Acceptance Expert 复验 pass，无 blocking/major；真实 SillyTavern 宿主视觉/触控/a11y 待补。"
-    },
-    {
-      "at": "2026-08-19T06:23:22.347Z",
-      "type": "artifact_changed",
-      "refId": "plan",
-      "message": "同步计划 TODO 快照：.limcode/plans/today-trend-entry-content-rail-alignment.md"
-    },
-    {
-      "at": "2026-08-19T06:34:10.855Z",
-      "type": "risk_changed",
-      "refId": "today-trend-main-push",
-      "message": "本地提交 87d141c 未能推送：HTTPS 多路径均无法连接 GitHub，SSH 无可用 publickey；已停止重复重试，等待网络/认证恢复。"
-    },
-    {
-      "at": "2026-08-19T06:35:13.924Z",
-      "type": "risk_changed",
-      "refId": "today-trend-main-push",
-      "message": "补充诊断：强制 HTTP/1.1 的 push 仍无法连接 github.com:443；阻塞归因进一步确认是网络/认证环境，不是本地提交或代码门禁。"
-    },
-    {
-      "at": "2026-08-19T06:40:37.985Z",
-      "type": "milestone_recorded",
-      "refId": "today-trend-main-push",
-      "message": "本地提交 87d141c 已推送至 origin/main，并通过 ls-remote 确认 refs/heads/main 与本地 HEAD 一致；此前网络阻塞已解除。"
-    },
-    {
-      "at": "2026-08-19T07:22:43.553Z",
-      "type": "artifact_changed",
-      "refId": "plan",
-      "message": "同步计划文档：.limcode/plans/today-trend-navigation-relation-visual-fix.md"
-    },
-    {
-      "at": "2026-08-19T07:36:09.327Z",
-      "type": "artifact_changed",
-      "refId": "plan",
-      "message": "同步计划 TODO 快照：.limcode/plans/today-trend-navigation-relation-visual-fix.md"
-    },
-    {
-      "at": "2026-08-19T07:38:57.009Z",
-      "type": "milestone_recorded",
-      "refId": "today-trend-visual-fix",
-      "message": "完成基线侦察：现有非目标改动仅为 .limcode 文档；导航线宽、关系局部色 token、极简势力节点层叠问题已定位。"
-    },
-    {
-      "at": "2026-08-19T07:46:30.136Z",
-      "type": "milestone_recorded",
-      "refId": "today-trend-visual-fix-implementation",
-      "message": "专项实现完成：底部导航继承通用 SVG 线宽，关系色板更新，极简势力外层大圆覆盖；专项检查与 CSS 契约已通过。"
-    },
-    {
-      "at": "2026-08-19T07:46:30.172Z",
-      "type": "artifact_changed",
-      "refId": "plan",
-      "message": "同步计划 TODO 快照：.limcode/plans/today-trend-navigation-relation-visual-fix.md"
-    },
-    {
-      "at": "2026-08-19T08:44:52.923Z",
-      "type": "artifact_changed",
-      "refId": "plan",
-      "message": "同步计划 TODO 快照：.limcode/plans/today-trend-navigation-relation-visual-fix.md"
-    },
-    {
-      "at": "2026-08-19T08:48:39.337Z",
-      "type": "artifact_changed",
-      "refId": "plan",
-      "message": "同步计划 TODO 快照：.limcode/plans/today-trend-navigation-relation-visual-fix.md"
-    },
-    {
-      "at": "2026-08-19T08:48:39.498Z",
-      "type": "milestone_recorded",
-      "refId": "today-trend-navigation-relation-visual-fix",
-      "message": "实现与验收完成：底部导航图标统一通用 2px 线宽并保留激活 accent；关系色板更新并通过实际前景对比度门禁；极简势力外层大圆移除，保留透明 44px 命中区与 24px 状态圆；独立验收 accepted。"
+      "message": "同步计划 TODO 快照：.limcode/plans/unify-accent-text-editor-buttons-save-alignment.md"
     }
   ],
   "stats": {
     "milestonesTotal": 3,
     "milestonesCompleted": 3,
-    "todosTotal": 7,
-    "todosCompleted": 7,
-    "todosInProgress": 0,
+    "todosTotal": 12,
+    "todosCompleted": 10,
+    "todosInProgress": 1,
     "todosCancelled": 0,
     "activeRisks": 2
   },
   "render": {
     "rendererVersion": 1,
-    "generatedAt": "2026-08-19T08:48:39.498Z",
-    "bodyHash": "sha256:900f68737cb7c582c3ab0f466fdcefeeb02d9ebb8701edc705a2789224881293"
+    "generatedAt": "2026-08-23T17:01:31.629Z",
+    "bodyHash": "sha256:a126015da5a937aa15e228f4ffb91a8944d26fda238420b14dbd3ce0edab25fb"
   }
 }
 <!-- LIMCODE_PROGRESS_METADATA_END -->

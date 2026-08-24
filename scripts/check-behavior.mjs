@@ -26,10 +26,10 @@ import {
     loadBgSettings, loadLocalBackground, materializeLocalBackgrounds, saveBgGlobal, saveBgLocal, saveDesktopBg,
 } from '../src/storage-background.js';
 import {
-    addOrUpdateProfile, clearPluginData, loadCharacterBehavior, loadGroupMeta, loadInjectionConfig, pmIDBDel, pmIDBGet, pmIDBSet,
+    addOrUpdateProfile, clearPluginData, HISTORY_RECOVERY_KEY, loadCharacterBehavior, loadGroupMeta, loadInjectionConfig, pmIDBDel, pmIDBGet, pmIDBSet,
     BRANCH_LINEAGE_STORE_KEY, PLUGIN_IDB_DYNAMIC_PREFIXES, PLUGIN_IDB_STATIC_KEYS, PLUGIN_LOCAL_STORAGE_KEYS,
     commitBranchLineage, completeBranchLineageBackup, loadBranchLineage, loadHistoriesFromIDB, saveCharacterBehavior, saveGroupMeta,
-    saveHistoriesStrict, saveInjectionConfig, rollbackBranchLineageBackup, saveBidirectional, saveBranchLineage, saveBranchLineageForBackup, saveBudgetConfig, savePokeConfig,
+    saveHistoriesBeforeUnload, saveHistoriesStrict, saveInjectionConfig, rollbackBranchLineageBackup, saveBidirectional, saveBranchLineage, saveBranchLineageForBackup, saveBudgetConfig, savePokeConfig,
     loadWorldBookConfig, saveWorldBookConfig,
 } from '../src/storage.js';
 import { installConversation } from '../src/conversation.js';
@@ -43,7 +43,7 @@ import { installDiagnosticApi } from '../src/diagnostic.js';
 import { gatherContext, getStorageIdFor, getUserPersona, resolveOutfitTarget } from '../src/host-context.js';
 import { awaitPendingBranchInheritance, beginBranchInheritance, inheritPhoneDataOnBranch, mergeBranchScope, mergePhoneUiBranchScope, resolveBranchInheritance } from '../src/branch-scope-inheritance.js';
 import {
-    completeDirectoryBranchScope, enqueueDirectoryOperation, getActiveDirectoryBranchScopes, markDirectoryBranchScope,
+    awaitDirectoryOperations, completeDirectoryBranchScope, enqueueDirectoryOperation, getActiveDirectoryBranchScopes, markDirectoryBranchScope,
 } from '../src/directory-save-coordinator.js';
 import {
     commitAutoPokeConfig, getAutoPokeConfig, normalizeAutoPoke, resetAutoPokeCounter,
@@ -499,6 +499,7 @@ assert.equal(ignoredSelectionKey.clickCalls, 0);
 
 const suspensionCalls = [];
 handlePhonePageSuspension({
+    persistCurrentHistory: () => suspensionCalls.push(['persist', 'beforeunload']),
     cancelCommunityGeneration: reason => suspensionCalls.push(['community', reason]),
     cancelCalendarTasks: reason => suspensionCalls.push(['calendar', reason]),
     cancelTodayTrendInitialization: reason => suspensionCalls.push(['today-trend-initialization', reason]),
@@ -509,6 +510,7 @@ handlePhonePageSuspension({
     disarm: reason => suspensionCalls.push(['disarm', reason]),
 });
 assert.deepEqual(suspensionCalls, [
+    ['persist', 'beforeunload'],
     ['save', 'beforeunload'],
     ['community', 'beforeunload'],
     ['calendar', 'beforeunload'],
@@ -2416,9 +2418,19 @@ window.__pmTheme = { preset: 'default', customRight: '', customLeft: '', borderC
 await window.__pmShowConfig('look');
 assert.deepEqual(Object.keys(THEME_PRESETS), ['default', 'dark', 'pink', 'mint', 'frost'],
     '颜色预设必须保留蓝、紫、粉、薄荷、磨砂');
-assert.equal(THEME_PRESETS.pink.right, '#E7A9B9', '粉色日间必须使用沉稳粉色右气泡');
-assert.equal(THEME_PRESETS.pink.rightDark, '#FFC4D4', '粉色夜间必须保留原柔粉右气泡');
-assert.equal(THEME_PRESETS.mint.right, '#9FBE8C', '薄荷日间必须使用暖鼠尾草绿色');
+assert.deepEqual(Object.fromEntries(Object.entries(THEME_PRESETS).map(([name, preset]) => [name, preset.rightText])),
+    { default: '#fff', dark: '#fff', pink: '#fff', mint: '#fff', frost: '#fff' }, '内置主题右气泡文字必须统一为白色');
+assert.deepEqual(Object.fromEntries(Object.entries(THEME_PRESETS).map(([name, preset]) => [name, {
+    right: preset.right,
+    rightDark: preset.rightDark,
+    accent: preset.accent,
+}])), {
+    default: { right: '#1677d2', rightDark: undefined, accent: '#1677d2' },
+    dark: { right: '#5856d6', rightDark: undefined, accent: '#5856d6' },
+    pink: { right: '#E7A9B9', rightDark: '#FFC4D4', accent: '#FFC4D4' },
+    mint: { right: '#9FBE8C', rightDark: '#B6D39D', accent: '#9FBE8C' },
+    frost: { right: 'rgba(111, 172, 218, 0.62)', rightDark: undefined, accent: '#6FAEDA' },
+}, '统一右气泡白字不得改动任何内置主题背景或强调色');
 assert.equal(THEME_PRESETS.mint.left, '#F3EBDD', '薄荷日间必须搭配米色左气泡');
 assert.equal(THEME_PRESETS.frost.frost, true, '磨砂预设必须启用玻璃效果标记');
 assert.deepEqual(Object.fromEntries(Object.entries(THEME_PRESETS).map(([name, preset]) => [name, preset.auxiliary])), {
@@ -5181,6 +5193,130 @@ await assert.rejects(
 assert.deepEqual(idbValues.get('ST_SMS_DATA_V2'), window.__pmHistories,
     '严格镜像模式在 IndexedDB 已写入而 localStorage 失败时必须向调用方报告失败，以便事务补偿');
 
+const fingerprintHistorySnapshot = value => {
+    let hash = 2166136261;
+    for (let index = 0; index < value.length; index += 1) {
+        hash ^= value.charCodeAt(index);
+        hash = Math.imul(hash, 16777619);
+    }
+    return `${value.length}:${(hash >>> 0).toString(16).padStart(8, '0')}`;
+};
+localValues.delete(HISTORY_RECOVERY_KEY);
+const idbPrimaryHistory = { idb: { Alice: [{ content: 'idb-primary' }] } };
+const staleLocalHistory = { local: { Alice: [{ content: 'stale-local' }] } };
+idbValues.set('ST_SMS_DATA_V2', structuredClone(idbPrimaryHistory));
+localValues.set('ST_SMS_DATA_V2', JSON.stringify(staleLocalHistory));
+assert.equal(await loadHistoriesFromIDB({ requireConfirmedPrimary: true }), true);
+assert.deepEqual(window.__pmHistories, idbPrimaryHistory, '无恢复标记时必须继续以 IndexedDB 主记录为准');
+assert.deepEqual(JSON.parse(localValues.get('ST_SMS_DATA_V2')), idbPrimaryHistory,
+    '无恢复标记时必须继续镜像已确认的 IndexedDB 主记录');
+
+const recoveryHistory = { recovered: { Alice: [{ content: 'newer-local-snapshot' }] } };
+const recoveryRaw = JSON.stringify(recoveryHistory);
+localValues.set('ST_SMS_DATA_V2', recoveryRaw);
+localValues.set(HISTORY_RECOVERY_KEY, JSON.stringify({
+    version: 1, token: 'valid-recovery-token', fingerprint: fingerprintHistorySnapshot(recoveryRaw),
+}));
+idbValues.set('ST_SMS_DATA_V2', structuredClone(idbPrimaryHistory));
+assert.equal(await loadHistoriesFromIDB({ requireConfirmedPrimary: true }), true);
+assert.deepEqual(window.__pmHistories, recoveryHistory, '有效恢复标记必须优先采用更新的本地快照');
+assert.deepEqual(idbValues.get('ST_SMS_DATA_V2'), recoveryHistory, '有效恢复快照必须回写修复 IndexedDB 主记录');
+assert.equal(localValues.has(HISTORY_RECOVERY_KEY), false, 'IndexedDB 修复成功后必须清除对应恢复标记');
+
+const previousRecoveryWarn = console.warn;
+const recoveryWarnings = [];
+console.warn = (...args) => recoveryWarnings.push(args);
+try {
+    localValues.set(HISTORY_RECOVERY_KEY, '{broken');
+    localValues.set('ST_SMS_DATA_V2', JSON.stringify(recoveryHistory));
+    idbValues.set('ST_SMS_DATA_V2', structuredClone(idbPrimaryHistory));
+    assert.equal(await loadHistoriesFromIDB({ requireConfirmedPrimary: true }), true);
+    assert.deepEqual(window.__pmHistories, idbPrimaryHistory, '损坏恢复标记必须回退已确认的 IndexedDB 主记录');
+    assert.deepEqual(idbValues.get('ST_SMS_DATA_V2'), idbPrimaryHistory, '损坏恢复标记不得删除或覆盖 IndexedDB 主记录');
+    assert.ok(recoveryWarnings.some(args => String(args[0]).includes('恢复标记无效')),
+        '损坏恢复标记必须留下可诊断警告');
+} finally {
+    console.warn = previousRecoveryWarn;
+}
+
+localValues.delete(HISTORY_RECOVERY_KEY);
+const staleHistorySaveBlocker = blockIDBOperation('put', 'ST_SMS_DATA_V2');
+const staleHistory = { stale: { Alice: [{ content: 'stale-async-save' }] } };
+const staleHistorySave = saveHistoriesStrict(staleHistory);
+await staleHistorySaveBlocker.entered;
+const unloadHistorySaveBlocker = blockIDBOperation('put', 'ST_SMS_DATA_V2');
+window.__pmHistories = {
+    current: { Alice: Array.from({ length: 12 }, (_, index) => ({ content: `current-${index}` })) },
+};
+localStorageControl.failSetCounts.set('ST_SMS_DATA_V2', 1);
+saveHistoriesBeforeUnload();
+const unloadLocalRaw = localValues.get('ST_SMS_DATA_V2');
+const unloadMarker = JSON.parse(localValues.get(HISTORY_RECOVERY_KEY));
+assert.equal(JSON.parse(unloadLocalRaw).current.Alice.length, 10, '卸载完整快照写满时必须回退最近十条记录');
+assert.equal(unloadMarker.fingerprint, fingerprintHistorySnapshot(unloadLocalRaw),
+    '恢复标记指纹必须对应实际成功写入的 slim 快照');
+staleHistorySaveBlocker.release();
+await staleHistorySave;
+await unloadHistorySaveBlocker.entered;
+assert.equal(localValues.get('ST_SMS_DATA_V2'), unloadLocalRaw, '较旧异步保存完成后不得覆盖更新的卸载快照');
+assert.deepEqual(JSON.parse(localValues.get(HISTORY_RECOVERY_KEY)), unloadMarker,
+    '较旧异步保存完成后不得清除更新的恢复标记');
+unloadHistorySaveBlocker.release();
+await awaitDirectoryOperations(['histories']);
+assert.equal(localValues.has(HISTORY_RECOVERY_KEY), false, '卸载快照同步到 IndexedDB 后必须清除对应恢复标记');
+
+localValues.delete(HISTORY_RECOVERY_KEY);
+window.__pmHistories = {
+    markerRetry: { Alice: Array.from({ length: 12 }, (_, index) => ({ content: `marker-retry-${index}` })) },
+};
+const markerRetryUnloadBlocker = blockIDBOperation('put', 'ST_SMS_DATA_V2');
+localStorageControl.failSetCounts.set(HISTORY_RECOVERY_KEY, 1);
+saveHistoriesBeforeUnload();
+const markerRetryLocalRaw = localValues.get('ST_SMS_DATA_V2');
+const markerRetryMarker = JSON.parse(localValues.get(HISTORY_RECOVERY_KEY));
+assert.equal(JSON.parse(markerRetryLocalRaw).markerRetry.Alice.length, 10,
+    '恢复标记首次写失败时必须缩减本地快照，为标记重试腾出空间');
+assert.equal(markerRetryMarker.fingerprint, fingerprintHistorySnapshot(markerRetryLocalRaw),
+    '恢复标记重试成功后，指纹必须绑定实际写入的 slim 快照');
+await markerRetryUnloadBlocker.entered;
+markerRetryUnloadBlocker.release();
+await awaitDirectoryOperations(['histories']);
+assert.equal(localValues.has(HISTORY_RECOVERY_KEY), false, '标记重试成功的卸载快照写入 IDB 后必须清除标记');
+
+localValues.delete(HISTORY_RECOVERY_KEY);
+window.__pmHistories = { staleMarkerless: { Alice: [{ content: 'stale-before-marker-failure' }] } };
+const markerlessStaleSaveBlocker = blockIDBOperation('put', 'ST_SMS_DATA_V2');
+const markerlessStaleSave = saveHistoriesStrict();
+await markerlessStaleSaveBlocker.entered;
+const markerlessUnloadBlocker = blockIDBOperation('put', 'ST_SMS_DATA_V2');
+window.__pmHistories = {
+    markerlessCurrent: { Alice: Array.from({ length: 12 }, (_, index) => ({ content: `markerless-current-${index}` })) },
+};
+localStorageControl.failSetCounts.set(HISTORY_RECOVERY_KEY, 2);
+const markerWriteWarnings = [];
+console.warn = (...args) => markerWriteWarnings.push(args);
+try {
+    saveHistoriesBeforeUnload();
+} finally {
+    console.warn = previousRecoveryWarn;
+}
+const markerlessUnloadRaw = localValues.get('ST_SMS_DATA_V2');
+assert.equal(JSON.parse(markerlessUnloadRaw).markerlessCurrent.Alice.length, 10,
+    '恢复标记持续写失败时仍必须保留最新可写入的 slim 快照');
+assert.equal(localValues.has(HISTORY_RECOVERY_KEY), false, '恢复标记两次写入失败时不得留下伪成功标记');
+assert.equal(markerWriteWarnings.some(args => args[0] === '[phone-mode] beforeunload: 短信历史恢复标记无法写入'), true,
+    '恢复标记持续写失败必须留下可诊断警告');
+markerlessStaleSaveBlocker.release();
+await markerlessStaleSave;
+await markerlessUnloadBlocker.entered;
+assert.equal(localValues.get('ST_SMS_DATA_V2'), markerlessUnloadRaw,
+    '无恢复标记时，较旧异步保存完成后也不得覆盖更新的卸载快照');
+assert.equal(localValues.has(HISTORY_RECOVERY_KEY), false, '较旧异步保存不得制造或清理不存在的恢复标记');
+markerlessUnloadBlocker.release();
+await awaitDirectoryOperations(['histories']);
+assert.equal(localValues.get('ST_SMS_DATA_V2'), markerlessUnloadRaw,
+    '无恢复标记的卸载保存完成后必须保留最新本地快照');
+
 const oldStorageId = 'sms_alice.png__chat-old';
 const newStorageId = 'sms_alice.png__chat-copy';
 const oldHistory = [{ role: 'user', content: '旧会话私有内容' }];
@@ -6576,6 +6712,7 @@ assert.equal(cleanupResult.idbKeys, PLUGIN_IDB_STATIC_KEYS.length + 1);
 assert.equal(cleanupLocal.get('HOST_EXTENSION_DATA'), 'keep-local');
 assert.equal(cleanupIdb.get('HOST_EXTENSION_IDB').key, 'keep-idb');
 for (const key of PLUGIN_LOCAL_STORAGE_KEYS) assert.equal(cleanupLocal.has(key), false);
+assert.equal(cleanupLocal.has(HISTORY_RECOVERY_KEY), false, '插件全量清理必须删除短信历史恢复标记');
 assert.equal(cleanupLocal.has(CALENDAR_OUTFIT_STORAGE_KEY), false, '清理成功必须删除穿搭数据');
 assert.equal(cleanupLocal.get('ST_SMS_MIGRATED_V3'), '1', '历史迁移哨兵不得被插件全量清理删除');
 for (const key of PLUGIN_IDB_STATIC_KEYS) assert.equal(cleanupIdb.has(key), false);
@@ -9149,7 +9286,20 @@ try {
     const productionListeners = new Map();
     const previousProductionEnd = window.__pmEnd;
     const productionCleanupCalls = [];
-    const productionFoundationState = { phoneWindow: null, phoneActive: true, conversationHistory: [] };
+    const productionLatestHistory = [{ role: 'user', content: 'production-latest-source' }];
+    const productionFoundationState = {
+        phoneWindow: null,
+        phoneActive: true,
+        activeStorageId: branchIds.source,
+        currentPersona: 'Alice',
+        isGroupChat: false,
+        currentGroupKey: '',
+        groupMembers: [],
+        groupExtras: [],
+        groupColorMap: {},
+        groupDisplayName: '',
+        conversationHistory: structuredClone(productionLatestHistory),
+    };
     const productionEventContext = {
         ...productionContext,
         eventTypes: {
@@ -9172,15 +9322,31 @@ try {
     const productionFoundationDeps = {
         runtime: createRuntimeState(), getCtx: () => currentProductionEventContext,
         getStorageId: () => productionTargetId, getUserPersona: () => ({ name: '用户' }),
+        applyBidirectionalInjection: () => {},
         cancelCommunityGeneration: reason => productionCleanupCalls.push(['community', reason]),
         cancelCalendarTasks: reason => productionCleanupCalls.push(['calendar', reason]),
     };
     installPhoneFoundation(productionFoundationState, productionFoundationDeps);
+    installConversation(productionFoundationState, productionFoundationDeps);
+    const productionPersistCurrentHistory = productionFoundationDeps.persistCurrentHistory;
+    const productionPreflightCalls = [];
+    productionFoundationDeps.persistCurrentHistory = (...args) => {
+        productionPreflightCalls.push({
+            storageId: productionFoundationState.activeStorageId,
+            saveKey: productionFoundationState.currentPersona,
+            activeScopes: getActiveDirectoryBranchScopes('pokeConfig'),
+        });
+        return productionPersistCurrentHistory(...args);
+    };
     productionFoundationDeps.hookGenerationEvent();
     assert.equal(productionListeners.get('production_chat_changed')?.length, 1,
         '生产继承回归必须通过真实 CHAT_CHANGED 监听器进入分支事务');
+    window.__pmHistories = {
+        [branchIds.source]: { Alice: structuredClone(productionLatestHistory) },
+        unrelated: { Bob: [{ content: 'unrelated-history' }] },
+    };
     idbValues.set('ST_SMS_DATA_V2', {
-        [branchIds.source]: { Alice: [{ content: 'production-source' }] },
+        [branchIds.source]: { Alice: [{ content: 'production-stale-source' }] },
         unrelated: { Bob: [{ content: 'unrelated-history' }] },
     });
     await pmIDBSet('ST_INTERACTIVE_SCENES_V1', { version: 2, scopes: {} });
@@ -9206,10 +9372,24 @@ try {
         communitySceneIdsByStorage: { [branchIds.source]: ['scene-source'] },
         communitySelectionsByStorage: { [branchIds.source]: { 'scene-source': { mode: 'all' } } },
     }));
+    const historyCommitBlocker = blockIDBOperation('put', 'ST_SMS_DATA_V2');
     const lineageCommitBlocker = blockIDBOperation('put', BRANCH_LINEAGE_STORE_KEY);
     const productionBranch = productionListeners.get('production_chat_changed')[0](productionTargetId);
     let productionFailure = null;
     productionBranch.catch(error => { productionFailure = error; });
+    await historyCommitBlocker.entered;
+    try {
+        assert.deepEqual(productionPreflightCalls, [{
+            storageId: branchIds.source, saveKey: 'Alice', activeScopes: [],
+        }], 'CHAT_CHANGED 必须在登记分支 target scope 前提交旧活动会话');
+        assert.equal(idbValues.get('ST_SMS_DATA_V2')[branchIds.source].Alice[0].content, 'production-stale-source',
+            '父历史异步提交受阻时 IndexedDB 仍应保持旧值，以证明队列屏障正在生效');
+        assert.equal(Object.hasOwn(idbValues.get('ST_SMS_DATA_V2'), productionTargetId), false,
+            '父历史保存队列释放前不得读取旧来源并提前写入目标 scope');
+        assert.deepEqual(productionCleanupCalls, [], '父历史保存队列释放前不得提前清理旧会话');
+    } finally {
+        historyCommitBlocker.release();
+    }
     await lineageCommitBlocker.entered;
     assert.deepEqual(productionCleanupCalls, [],
         '分支持久化尚未完成时不得提前清理旧会话或中断宿主任务');
@@ -9263,6 +9443,8 @@ try {
         '真实 CHAT_CHANGED 链路必须记录已完成的生产继承结果');
     assert.equal(productionFoundationDeps.runtime.lastBranchInheritance?.targetId, productionTargetId,
         '真实 CHAT_CHANGED 链路必须记录继承目标 scope');
+    assert.equal(idbValues.get('ST_SMS_DATA_V2')[productionTargetId].Alice[0].content, 'production-latest-source',
+        '分支目标必须继承 preflight 刚提交的最新父会话，而不是保存队列前的陈旧主记录');
     window.__pmDiagEnabled = true;
     assert.equal(installDiagnosticApi(productionFoundationDeps), true,
         '真实 listener fixture 打开诊断开关后必须安装现场诊断面');
@@ -9291,6 +9473,28 @@ try {
     assert.deepEqual(productionCleanupCalls.slice(-3), [
         ['community', 'host-chat-changed'], ['calendar', 'host-chat-changed'], ['end-phone', true],
     ], '继承跳过完成后也必须恰好执行一次聊天切换清理');
+
+    const preflightFailedTargetId = getStorageIdFor('alice.png', 'production-preflight-failed-branch');
+    currentProductionEventContext = { ...productionEventContext, chatId: 'production-preflight-failed-branch' };
+    productionFoundationState.phoneActive = true;
+    const successfulProductionPersistCurrentHistory = productionFoundationDeps.persistCurrentHistory;
+    productionFoundationDeps.persistCurrentHistory = () => false;
+    const cleanupBeforePreflightFailure = productionCleanupCalls.length;
+    const preflightFailedBranch = await productionListeners.get('production_chat_changed')[0](preflightFailedTargetId);
+    assert.equal(preflightFailedBranch.status, 'failed', '活动会话 preflight 提交失败时必须阻断分支事务');
+    assert.equal(productionFoundationDeps.runtime.lastBranchInheritance?.status, 'failed',
+        'preflight 提交失败必须记录可诊断的失败状态');
+    assert.equal(productionFoundationDeps.runtime.lastBranchInheritance?.targetId, preflightFailedTargetId,
+        'preflight 提交失败诊断必须保留已解析的目标 scope');
+    assert.equal(Object.hasOwn(idbValues.get('ST_SMS_DATA_V2'), preflightFailedTargetId), false,
+        'preflight 提交失败不得写入任何目标历史 scope');
+    for (const store of ['pokeConfig', 'characterBehavior', 'bidirectional', 'budget', 'todayTrend']) {
+        assert.deepEqual(getActiveDirectoryBranchScopes(store), [], `preflight 失败不得登记 ${store} 的 target scope`);
+    }
+    assert.deepEqual(productionCleanupCalls.slice(cleanupBeforePreflightFailure), [
+        ['community', 'host-chat-changed'], ['calendar', 'host-chat-changed'], ['end-phone', true],
+    ], 'preflight 失败后聊天切换清理仍必须且只能执行一次');
+    productionFoundationDeps.persistCurrentHistory = successfulProductionPersistCurrentHistory;
 
     const failedProductionTargetId = getStorageIdFor('alice.png', 'production-failed-branch');
     currentProductionEventContext = { ...productionEventContext, chatId: 'production-failed-branch' };

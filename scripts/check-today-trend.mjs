@@ -256,8 +256,9 @@ assert.match(todayTrendStyle, /pm-today-trend-faction-card\{[^}]*padding:var\(--
 assert.match(todayTrendStyle, /\.pm-today-trend-item-editor\{[^}]*width:100%[^}]*min-width:0[^}]*gap:var\(--pm-space-3\)[^}]*border:0[^}]*background:transparent[^}]*box-shadow:none/, '条目编辑器必须占满可用宽度并保持无装饰性描边');
 assert.match(todayTrendStyle, /\.pm-today-trend-item-editor \.pm-today-trend-field\{[^}]*gap:var\(--pm-space-2\)/, '条目编辑器字段之间必须使用宽松的标签—控件间距');
 assert.match(todayTrendStyle, /\.pm-today-trend-item-editor fieldset\{[^}]*border:0[^}]*padding:var\(--pm-space-0\)/, '条目编辑器分组不得恢复旧描边和内层卡片');
-assert.match(todayTrendStyle, /\.pm-today-trend-item-editor \.pm-today-trend-form-actions\{[^}]*display:grid[^}]*grid-template-columns:repeat\(2,minmax\(0,1fr\)\)[^}]*gap:var\(--pm-space-2\)/, '条目编辑器按钮组必须使用双列宽松布局');
+assert.match(todayTrendStyle, /\.pm-action-pair\{[^}]*display:grid[^}]*grid-template-columns:repeat\(2,minmax\(0,1fr\)\)[^}]*gap:var\(--pm-space-2\)[^}]*min-width:0/, '仅双操作按钮组必须使用可收缩的双列布局');
 assert.match(todayTrendStyle, /\.pm-today-trend-item-editor \.pm-today-trend-form-actions button\{[^}]*min-height:var\(--pm-size-control-default\)/, '条目编辑器按钮必须保持舒适触控高度');
+assert.match(compactTodayTrendMedia, /pm-action-pair\{grid-template-columns:repeat\(2,minmax\(0,1fr\)\)/, '320px 窄屏必须保持双操作按钮并列且可收缩');
 assert.match(todayTrendStyle, /\.pm-today-trend-world-hero>\.pm-today-trend-world-item-editor,\.pm-today-trend-world-brief>\.pm-today-trend-world-item-editor\{grid-column:1 \/ -1\}/, '世界态势条目编辑器必须跨越完整内容轨道');
 const entryRail = 'display:grid;grid-template-columns:var(--pm-today-trend-relation-node-size) var(--pm-space-2) minmax(0,1fr);row-gap:var(--pm-space-2)';
 for (const [selector, prefix] of [
@@ -748,6 +749,8 @@ const ruleEditorHtml = trendRuleEditor({ rule: 'world', value: '世界规则' })
 assert.match(ruleEditorHtml, /data-today-trend-form="rule-editor"/, '规则编辑页必须使用既有保存表单契约');
 assert.match(ruleEditorHtml, /name="rule" value="world"/, '规则编辑必须携带规则标识');
 assert.match(ruleEditorHtml, /提示词<textarea[^>]*name="text"[^>]*required autofocus/, '规则编辑必须使用中文字段名、要求非空并自动聚焦');
+assert.match(ruleEditorHtml, /textarea class="pm-today-trend-input" name="text"/, '规则编辑提示词必须复用统一输入控件配方');
+assert.match(todayTrendCoreStyle, /\.pm-today-trend-rule-editor textarea\)\{font-size:var\(--pm-font-size-compact\)!important;/, '规则编辑提示词必须使用 13px 紧凑字号 token');
 assert.match(ruleEditorHtml, />返回<\/button><button type="submit">保存提示词<\/button>/, '规则编辑必须使用中文操作文案');
 assert.doesNotMatch(ruleEditorHtml, /Prompt|PROMPT/, '规则编辑可见文案不得残留英文 Prompt');
 const worldHtml = renderTodayTrendWorldView({ scope: valid.scopes.chat, generationAvailable: true, menuOpenId: 'world-module' });
@@ -864,6 +867,10 @@ assert.doesNotMatch(busyWorldSettingsHtml, /today-trend-regenerate-world-rule/, 
 assert.match(busyWorldHtml, /正在生成…/, '忙碌时世界态势必须展示生成状态');
 const worldSettingsHtml = renderTodayTrendWorldView({ scope: valid.scopes.chat, mode: 'settings', editingWorldItemId: 'world', generationAvailable: true });
 assert.match(worldSettingsHtml, /data-today-trend-form="world-item"/, '世界态势设置必须提供项目编辑表单');
+const worldActionPair = worldSettingsHtml.match(/<div class="pm-today-trend-form-actions pm-action-pair">[\s\S]*?<\/div>/)?.[0] || '';
+assert.ok(worldActionPair, '世界态势双操作区必须使用显式 pm-action-pair 契约');
+assert.ok(worldActionPair.indexOf('today-trend-cancel-world-editor') < worldActionPair.indexOf('<button type="submit">保存</button>'),
+    '世界态势编辑器必须按取消、保存的 DOM 与 Tab 顺序渲染');
 assert.doesNotMatch(worldSettingsHtml, /today-trend-edit-world-rule/, '世界态势设置不得重复提供模块规则动作');
 assert.doesNotMatch(worldSettingsHtml, /自然环境|行业环境|灵气环境/, '世界态势设置不得硬编码世界项目类别');
 const reputationHtml = renderTodayTrendReputationView({ scope: valid.scopes.chat, preset: valid.presets.preset, mode: 'content', generationAvailable: true });
@@ -942,6 +949,10 @@ assert.doesNotMatch(reputationItemMenuHtml, /today-trend-edit-circle/, '旧圈�
 const reputationEditorHtml = renderTodayTrendReputationView({ scope: valid.scopes.chat, editingCircleId: 'judge' });
 assert.match(reputationEditorHtml, /pm-today-trend-reputation-entry is-editing[\s\S]*?data-today-trend-form="circle"/, '个人风评内容区的编辑铅笔必须打开该条目的内联编辑表单');
 assert.match(reputationEditorHtml, /data-action="today-trend-cancel-reputation-editor"/, '个人风评内联编辑取消必须停留在内容页');
+const reputationActionPair = reputationEditorHtml.match(/<div class="pm-today-trend-form-actions pm-action-pair">[\s\S]*?<\/div>/)?.[0] || '';
+assert.ok(reputationActionPair, '个人风评双操作区必须使用显式 pm-action-pair 契约');
+assert.ok(reputationActionPair.indexOf('today-trend-cancel-reputation-editor') < reputationActionPair.indexOf('<button type="submit">保存</button>'),
+    '个人风评编辑器必须按取消、保存的 DOM 与 Tab 顺序渲染');
 const reputationSettingsHtml = renderTodayTrendReputationView({ scope: valid.scopes.chat, mode: 'settings' });
 assert.doesNotMatch(reputationSettingsHtml, /name="status"/, '个人风评设置不得暴露状态修改入口');
 const busyReputationHtml = renderTodayTrendReputationView({ scope: valid.scopes.chat, generationAvailable: true, generationBusy: true, menuOpenId: 'reputation-module' });
@@ -1075,6 +1086,10 @@ assert.match(renderTodayTrendReputationView({ scope: valid.scopes.chat, mode: 's
 const factionEditorHtml = renderTodayTrendFactionView({ scope: valid.scopes.chat, mode: 'editor', editingFactionId: 'red' });
 assert.match(factionEditorHtml, /<div class="pm-today-trend-module-body">[\s\S]*data-today-trend-form="faction"/, '势力编辑页必须复用带横向留白和底部安全区的内容层');
 assert.match(factionEditorHtml, /name="parentId"/, '势力编辑页必须提供可空父势力选择');
+const factionActionPair = factionEditorHtml.match(/<div class="pm-today-trend-form-actions pm-action-pair">[\s\S]*?<\/div>/)?.[0] || '';
+assert.ok(factionActionPair, '势力编辑双操作区必须使用显式 pm-action-pair 契约');
+assert.ok(factionActionPair.indexOf('today-trend-cancel-editor') < factionActionPair.indexOf('<button type="submit">保存</button>'),
+    '势力编辑器必须按取消、保存的 DOM 与 Tab 顺序渲染');
 const busyFactionSettingsHtml = renderTodayTrendFactionView({ scope: valid.scopes.chat, mode: 'settings', generationAvailable: true, generationBusy: true });
 assert.doesNotMatch(busyFactionSettingsHtml, /today-trend-regenerate-faction-rule/, '势力图谱设置不得重复提供模块规则动作');
 const busyDynamicsHtml = renderTodayTrendDynamicsView({ scope: valid.scopes.chat, preset: valid.presets.preset, generationAvailable: true, generationBusy: true, menuOpenId: 'dynamics-module' });
@@ -1120,14 +1135,22 @@ assert.doesNotMatch(busyDynamicsHtml, /pm-today-trend-dynamics-signal|pm-today-t
 assert.doesNotMatch(busyDynamicsHtml, /pm-today-trend-progress|正在生成…/, '目标模块不得保留标题栏之外的重复生成状态');
 assert.match(factionEditorHtml, /name="detailLabel"/, '势力编辑页必须提供动态关键资料编辑');
 assert.match(factionEditorHtml, /name="status"/, '势力编辑页必须提供固定五档关系选择');
-assert.match(factionEditorHtml, /data-action="today-trend-add-detail"/, '势力编辑页必须提供关键资料添加动作');
+assert.match(factionEditorHtml, /class="pm-today-trend-detail-row"/, '势力资料行必须提供稳定语义 class');
+assert.match(factionEditorHtml, /class="pm-today-trend-detail-add"[^>]*data-action="today-trend-add-detail"/, '添加资料必须提供独立语义 class 并保留动作契约');
+assert.match(factionEditorHtml, /class="pm-today-trend-detail-remove"[^>]*data-action="today-trend-remove-detail"/, '删除资料必须提供次级危险语义 class 并保留动作契约');
+assert.match(todayTrendStyle, /\.pm-today-trend-detail-add,\.pm-today-trend-detail-remove\{[^}]*min-height:var\(--pm-size-control-default\)[^}]*background:var\(--pm-color-surface-control\)[^}]*color:var\(--pm-color-text-primary\)/, '资料操作必须共享标准触控高度和 control 表面配方');
+assert.match(todayTrendStyle, /\.pm-today-trend-detail-remove\{[^}]*color:var\(--pm-color-danger\)/, '删除资料必须使用次级危险文字而非大面积危险实底');
+assert.match(todayTrendStyle, /\.pm-today-trend-detail-add:focus-visible,\.pm-today-trend-detail-remove:focus-visible\{[^}]*outline:var\(--pm-today-trend-focus-offset\) solid var\(--pm-color-focus-ring\)/, '资料操作必须提供统一 focus-visible 状态');
+assert.match(todayTrendStyle, /\.pm-today-trend-content button:disabled\{opacity:var\(--pm-opacity-disabled\);cursor:not-allowed/, '资料达到上限时必须使用统一 disabled 视觉与交互状态');
+assert.match(compactTodayTrendMedia, /pm-today-trend-detail-row\{grid-template-columns:minmax\(0,1fr\)/, '320px 窄屏资料行必须折叠为单列');
 const maxDetailsScope = structuredClone(valid.scopes.chat);
 maxDetailsScope.factions[0].details = Array.from({ length: TODAY_TREND_LIMITS.factionDetails }, (_, index) => ({ label: `资料${index}`, value: `值${index}` }));
 assert.match(renderTodayTrendFactionView({ scope: maxDetailsScope, mode: 'editor', editingFactionId: 'red' }), /data-action="today-trend-add-detail" disabled/, '势力资料达到上限时，编辑器必须禁用添加入口');
 const detailListeners = {};
+let insertedDetailHtml = '';
 const detailList = {
     children: Array.from({ length: TODAY_TREND_LIMITS.factionDetails - 1 }),
-    insertAdjacentHTML: () => { detailList.children.push({}); },
+    insertAdjacentHTML: (_position, html) => { insertedDetailHtml = html; detailList.children.push({}); },
 };
 const detailFieldset = { querySelector: selector => selector === '[data-today-trend-details]' ? detailList : selector === '[data-action="today-trend-add-detail"]' ? detailAddButton : null };
 const detailAddButton = { disabled: false, dataset: { action: 'today-trend-add-detail' }, closest: selector => selector === 'button[data-action]' ? detailAddButton : selector === 'fieldset' ? detailFieldset : null };
@@ -1138,6 +1161,8 @@ const detailDispatcher = createTodayTrendActionDispatcher({
 });
 detailListeners.click({ target: detailAddButton });
 assert.equal(detailList.children.length, TODAY_TREND_LIMITS.factionDetails, '势力资料第 16 条必须允许添加');
+assert.match(insertedDetailHtml, /class="pm-today-trend-detail-row"[\s\S]*class="pm-today-trend-detail-remove"/, '动态添加的势力资料行必须复用相同语义 class');
+assert.match(insertedDetailHtml, /class="pm-today-trend-input" name="detailLabel"[\s\S]*class="pm-today-trend-input" name="detailValue"/, '动态添加的资料输入必须复用编辑器输入配方');
 assert.equal(detailAddButton.disabled, true, '势力资料达到上限后必须立即禁用添加入口');
 detailListeners.click({ target: detailAddButton });
 assert.equal(detailList.children.length, TODAY_TREND_LIMITS.factionDetails, '势力资料达到上限后不得添加第 17 条');
@@ -1246,6 +1271,10 @@ assert.match(dynamicsSettingsHtml, /自动判断完结/, '动态设置必须区�
 assert.match(dynamicsSettingsHtml, /完结后归档/, '动态设置必须区分完结后归档');
 const eventEditorHtml = renderTodayTrendDynamicsView({ scope: valid.scopes.chat, editingEventId: 'service' });
 assert.match(eventEditorHtml, /<div class="pm-today-trend-module-body">[\s\S]*data-today-trend-form="event"/, '事件编辑页必须复用带横向留白和底部安全区的内容层');
+const eventActionPair = eventEditorHtml.match(/<div class="pm-today-trend-form-actions pm-action-pair">[\s\S]*?<\/div>/)?.[0] || '';
+assert.ok(eventActionPair, '事件编辑双操作区必须使用显式 pm-action-pair 契约');
+assert.ok(eventActionPair.indexOf('today-trend-cancel-event-editor') < eventActionPair.indexOf('<button type="submit">保存</button>'),
+    '事件编辑器必须按取消、保存的 DOM 与 Tab 顺序渲染');
 assert.doesNotMatch(renderTodayTrendDynamicsView({ scope: activeRumorScope, editingEventId: 'archive:active-rumor' }), /value="resolved"/, '流言归档 UI 只能提供证实或证伪结果');
 assert.doesNotMatch(renderTodayTrendDynamicsView({ scope: valid.scopes.chat, editingEventId: 'archive:service' }), /value="confirmed"|value="debunked"|value="absorbed"/, '普通事件归档 UI 不得暴露流言或承接结果');
 const undergroundDynamicsHtml = renderTodayTrendDynamicsView({ scope: undergroundScope, menuOpenId: 'dynamics-module' });

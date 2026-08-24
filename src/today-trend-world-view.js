@@ -5,7 +5,7 @@ import { escapeAttr, escapeHtml } from './ui.js';
 import { trendActionMenu, trendInlineActions, trendMeter, trendModuleHead } from './today-trend-ui.js';
 
 function itemEditor(item = {}) {
-    return `<form class="pm-today-trend-editor pm-today-trend-item-editor pm-today-trend-world-item-editor" data-today-trend-form="world-item"><input type="hidden" name="id" value="${escapeAttr(item.id || '')}"><label class="pm-today-trend-field">项目名称<input class="pm-today-trend-input" name="name" maxlength="120" required value="${escapeAttr(item.name || '')}"></label><label class="pm-today-trend-field">一句话态势<textarea class="pm-today-trend-input" name="summary" maxlength="600" required>${escapeHtml(item.summary || '')}</textarea></label><div class="pm-today-trend-form-actions"><button type="submit">保存</button><button type="button" data-action="today-trend-cancel-world-editor">取消</button></div></form>`;
+    return `<form class="pm-today-trend-editor pm-today-trend-item-editor pm-today-trend-world-item-editor" data-today-trend-form="world-item"><input type="hidden" name="id" value="${escapeAttr(item.id || '')}"><label class="pm-today-trend-field">项目名称<input class="pm-today-trend-input" name="name" maxlength="120" required value="${escapeAttr(item.name || '')}"></label><label class="pm-today-trend-field">一句话态势<textarea class="pm-today-trend-input" name="summary" maxlength="600" required>${escapeHtml(item.summary || '')}</textarea></label><div class="pm-today-trend-form-actions pm-action-pair"><button type="button" data-action="today-trend-cancel-world-editor">取消</button><button type="submit">保存</button></div></form>`;
 }
 
 function itemActions(item, attrs, menuOpenId) {

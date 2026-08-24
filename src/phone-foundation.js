@@ -43,6 +43,11 @@ export function handlePhonePageSuspension(deps, reason, {
     save = saveHistoriesBeforeUnload,
     disarm = () => {},
 } = {}) {
+    try { deps.persistCurrentHistory?.(); }
+    catch (error) {
+        const errorType = typeof error?.name === 'string' && error.name ? error.name : 'Error';
+        console.warn('[phone-mode] 页面挂起前保存活动手机会话失败，将继续写入当前历史快照。', errorType);
+    }
     save();
     deps.cancelCommunityGeneration?.(reason);
     deps.cancelCalendarTasks?.(reason);

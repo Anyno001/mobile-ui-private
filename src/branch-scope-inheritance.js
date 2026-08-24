@@ -15,10 +15,11 @@ import {
 import {
     commitBranchLineage, loadBranchLineage, pmIDBGet, pmIDBKeys,
     PHONE_UI_STORAGE_KEY,
+    readHistoriesSnapshot,
     saveBidirectional, saveCharacterBehavior, saveGroupMeta, saveHistoriesStrict, saveInteractiveScenes,
     savePhoneUiState, savePokeConfig, saveBudgetConfig,
 } from './storage.js';
-import { completeDirectoryBranchScope, enqueueDirectoryOperation, markDirectoryBranchScope } from './directory-save-coordinator.js';
+import { awaitDirectoryOperations, completeDirectoryBranchScope, enqueueDirectoryOperation, markDirectoryBranchScope } from './directory-save-coordinator.js';
 import { saveBgLocal } from './storage-background.js';
 import {
     saveCalendar, saveCalendarCycles, saveCalendarOccasions, saveCalendarOutfits, saveCalendarRecipes,
@@ -29,6 +30,7 @@ const clone = value => structuredClone(value);
 const own = (value, key) => !!value && typeof value === 'object' && Object.hasOwn(value, key);
 const validText = value => typeof value === 'string' && value.trim() ? value.trim() : '';
 const BRANCH_INTERACTIVE_STORE_KEY = 'ST_INTERACTIVE_SCENES_V1';
+const BRANCH_SOURCE_ASYNC_STORES = Object.freeze(['histories', 'groupMeta', 'interactive', 'backgrounds', 'todayTrend']);
 const pendingByTarget = new Map();
 
 export function resolveBranchInheritance(context) {
@@ -211,23 +213,10 @@ export function mergePhoneUiBranchScope(currentState, desiredState, expectedStat
 }
 
 async function readHistoriesForBranch() {
-    const keys = await pmIDBKeys();
-    if (!Array.isArray(keys)) throw new Error('分支继承来源读取失败：无法枚举聊天记录');
-    if (keys.includes('ST_SMS_DATA_V2')) {
-        const value = await pmIDBGet('ST_SMS_DATA_V2');
-        if (!value || typeof value !== 'object' || Array.isArray(value)) {
-            throw new Error('分支继承来源读取失败：聊天记录主存储无效');
-        }
-        return value;
-    }
     try {
-        const raw = localStorage.getItem('ST_SMS_DATA_V2');
-        if (!raw) return {};
-        const value = JSON.parse(raw);
-        if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('格式无效');
-        return value;
+        return await readHistoriesSnapshot({ requireConfirmedPrimary: true });
     } catch (error) {
-        throw new Error('分支继承来源读取失败：聊天记录后备存储无效');
+        throw new Error(`分支继承来源读取失败：${error?.message || '聊天记录不可用'}`);
     }
 }
 
@@ -574,6 +563,11 @@ async function loadProductionStores() {
     });
 }
 
+async function loadStableProductionStores() {
+    await awaitDirectoryOperations(BRANCH_SOURCE_ASYNC_STORES);
+    return loadProductionStores();
+}
+
 async function persistProductionStores(next, { branch } = {}) {
     const targetId = branch?.targetId;
     const previous = clone(await loadProductionStores());
@@ -664,7 +658,7 @@ export function beginBranchInheritance(context, { getStorageId, invalidateIntera
         : [];
     const operation = inheritPhoneDataOnBranch({
         context,
-        loadStores: loadProductionStores,
+        loadStores: loadStableProductionStores,
         saveStores: persistProductionStores,
         loadLineage: loadBranchLineage,
         commitLineage: commitBranchLineage,

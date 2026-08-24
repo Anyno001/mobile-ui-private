@@ -529,6 +529,7 @@ assert.match(productionPhoneWrite[1], /引用 Alice 的消息：“必须保留�
     '生产手机注入链必须把引用快照写入最终 Extension Prompt');
 assert.equal(productionPhoneWrite[2], 1, '聊天记录内注入必须使用 IN_CHAT 位置');
 assert.equal(productionPhoneWrite[3], 0, '深度 0 必须原样传给宿主');
+assert.equal(productionPhoneWrite[4], true, '聊天记忆注入必须参与 SillyTavern 世界书扫描');
 assert.equal(productionPhoneResult.writtenBySource.phone, 2);
 assert.equal(productionPhoneResult.diagnostics.phone.promptCount, 2);
 
@@ -582,6 +583,7 @@ assert.match(productionCommunityWrite[1], /帖子正文[\s\S]*评论正文/);
 assert.doesNotMatch(productionCommunityWrite[1], /新帖子正文/);
 assert.equal(productionCommunityWrite[2], 2);
 assert.equal(productionCommunityWrite[3], 3);
+assert.equal(productionCommunityWrite[4], false, '社区注入不得改变既有的世界书扫描语义');
 assert.equal(productionCommunityResult.writtenBySource.community, 1);
 assert.deepEqual(buildContextInjectionPrompts({ ...baseInjectionInput, currentStorageId: 'sms_unknown__default' }).prompts, []);
 
@@ -1268,6 +1270,8 @@ applyContextInjections({ context: { setExtensionPrompt: (...args) => todayTrendC
     ...baseInjectionInput, todayTrendStore: { ...todayTrendStore, scopes: { ...todayTrendStore.scopes, 'story-a': { ...todayTrendStore.scopes['story-a'], injection: { enabled: false } } } },
     budgetConfig: { targetTokens: 2000, sourceWeights: { phone: 0, community: 0, calendar: 0, todayTrend: 1 }, redistributeUnused: false },
 });
+const todayTrendWrite = todayTrendCalls.find(call => call[0] === 'ST_SMS_TODAY_TREND_INJECTION_V1:story-a' && call[1]);
+assert.equal(todayTrendWrite?.[4], false, '今日风向注入不得改变既有的世界书扫描语义');
 assert.ok(todayTrendCalls.some(call => call[0] === 'ST_SMS_TODAY_TREND_INJECTION_V1:story-a' && call[1] === ''), '关闭今日风向注入必须清理同一稳定 key，不能残重复 prompt');
 
 const longTodayTrendStore = structuredClone(todayTrendStore);
