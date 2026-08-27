@@ -1,6 +1,6 @@
 # 项目进度
 - Project: mobile-ui-private
-- Updated At: 2026-08-27T07:36:10.906Z
+- Updated At: 2026-08-27T08:16:44.634Z
 - Status: blocked
 - Phase: review
 
@@ -8,10 +8,10 @@
 
 <!-- LIMCODE_PROGRESS_SUMMARY_START -->
 - 当前进度：3/3 个里程碑已完成；最新：trend-svg-mapping-release
-- 当前焦点：等待独立验收专家服务恢复后完成 Story Oracle 原型正式验收
-- 最新结论：Story Oracle 原型实现与本地自动门禁已通过；独立验收专家连续两次因 API 403 返回 not_assessed，当前不能宣称正式验收通过。
+- 当前焦点：Story Oracle 集成已推送，等待独立验收服务恢复
+- 最新结论：全部项目门禁已通过，Story Oracle 集成提交 09f4733 已成功推送到 origin/main；正式独立验收专家连续两次因 API 403 返回 not_assessed，不能宣称验收通过。
 - 当前阻塞：Acceptance Expert API 返回 403，未生成独立验收结论。
-- 下一步：验收服务恢复后重新调用 Acceptance Expert；在此之前保留验收 TODO pending，不修改业务代码。
+- 下一步：验收服务恢复后重新调用 Acceptance Expert；在此之前不修改已发布业务代码。
 <!-- LIMCODE_PROGRESS_SUMMARY_END -->
 
 ## 关联文档
@@ -33,6 +33,7 @@
 - [x] 实现多线路启用/停用、稳定合并、扩展提示注入与清理  `#story-oracle-plan-multi-line-injection`
 - [x] 实现 Story Oracle 手机应用骨架、页面接线、桌面入口、状态机与生命周期清理  `#story-oracle-plan-shell`
 - [x] 执行构建、纯逻辑、持久化、安全、选项互动、多线路注入、宿主回归验证  `#story-oracle-plan-verification`
+- [x] 全部项目门禁已通过，提交 09f4733 已成功推送到 origin/main；远端指针需完成最终核对，独立验收仍因 API 403 未完成  `#story-oracle-plan-release`
 <!-- LIMCODE_PROGRESS_TODOS_END -->
 
 ## 项目里程碑
@@ -79,10 +80,6 @@
 ## 最近更新
 
 <!-- LIMCODE_PROGRESS_LOG_START -->
-- 2026-08-23T15:21:06.275Z | artifact_changed | plan | 同步计划 TODO 快照：.limcode/plans/phone-branch-inheritance-restart-persistence.md
-- 2026-08-23T15:27:46.292Z | artifact_changed | plan | 同步计划 TODO 快照：.limcode/plans/phone-branch-inheritance-restart-persistence.md
-- 2026-08-23T15:57:06.369Z | artifact_changed | plan | 同步计划 TODO 快照：.limcode/plans/phone-branch-inheritance-restart-persistence.md
-- 2026-08-23T16:45:06.503Z | artifact_changed | plan | 同步计划 TODO 快照：.limcode/plans/phone-branch-inheritance-restart-persistence.md
 - 2026-08-23T16:53:22.805Z | milestone_recorded | acceptance-cycle-3 | Acceptance Expert 正式 assessed：0 blocking、1 major、0 minor、0 advisory、10 pass；唯一 major 为真实 SillyTavern 宿主矩阵缺失。
 - 2026-08-23T16:53:22.805Z | updated | branch-fix-marker-write-failure | 补齐 marker 首次/持续写入失败与旧异步交错回归；check:behavior、build、check:syntax、diff --check 均 exit 0。
 - 2026-08-23T17:01:31.629Z | artifact_changed | plan | 同步计划 TODO 快照：.limcode/plans/unify-accent-text-editor-buttons-save-alignment.md
@@ -99,6 +96,10 @@
 - 2026-08-27T03:17:04.419Z | artifact_changed | plan | 同步计划文档：.limcode/plans/story-oracle-phone-app-integration.md
 - 2026-08-27T07:35:16.066Z | artifact_changed | plan | 同步计划 TODO 快照：.limcode/plans/story-oracle-phone-app-integration.md
 - 2026-08-27T07:36:10.906Z | risk_changed | story-oracle-plan-acceptance | 本地代码与自动门禁已完成；独立 Acceptance Expert 连续两次因 API 403 返回 not_assessed，正式验收阻塞，验收 TODO 保持 pending。
+- 2026-08-27T07:58:35.466Z | risk_changed | story-oracle-plan-release | 全部门禁与提交已完成；git push origin main 在 GitHub 返回 401 后超时，SSH 无私钥、GitHub CLI/token 不可用，远端仍未更新，等待认证恢复。
+- 2026-08-27T08:14:22.511Z | milestone_recorded | story-oracle-plan-release | 提交 09f4733 已成功推送到 origin/main，远端指针已核对一致；工作树仅剩项目进度账本的状态修正。
+- 2026-08-27T08:14:22.511Z | risk_changed | story-oracle-plan-acceptance | 发布完成后仍保留正式验收阻塞：Acceptance Expert 连续两次因 API 403 返回 not_assessed。
+- 2026-08-27T08:16:44.634Z | milestone_recorded | story-oracle-plan-release | 提交 09f4733 已成功推送到 origin/main，远端指针已核对一致；当前仅同步项目进度账本，正式独立验收仍因 API 403 阻塞。
 <!-- LIMCODE_PROGRESS_LOG_END -->
 
 <!-- LIMCODE_PROGRESS_METADATA_START -->
@@ -108,13 +109,13 @@
   "projectId": "mobile-ui-private",
   "projectName": "mobile-ui-private",
   "createdAt": "2026-08-14T05:55:56.978Z",
-  "updatedAt": "2026-08-27T07:36:10.906Z",
+  "updatedAt": "2026-08-27T08:16:44.634Z",
   "status": "blocked",
   "phase": "review",
-  "currentFocus": "等待独立验收专家服务恢复后完成 Story Oracle 原型正式验收",
-  "latestConclusion": "Story Oracle 原型实现与本地自动门禁已通过；独立验收专家连续两次因 API 403 返回 not_assessed，当前不能宣称正式验收通过。",
+  "currentFocus": "Story Oracle 集成已推送，等待独立验收服务恢复",
+  "latestConclusion": "全部项目门禁已通过，Story Oracle 集成提交 09f4733 已成功推送到 origin/main；正式独立验收专家连续两次因 API 403 返回 not_assessed，不能宣称验收通过。",
   "currentBlocker": "Acceptance Expert API 返回 403，未生成独立验收结论。",
-  "nextAction": "验收服务恢复后重新调用 Acceptance Expert；在此之前保留验收 TODO pending，不修改业务代码。",
+  "nextAction": "验收服务恢复后重新调用 Acceptance Expert；在此之前不修改已发布业务代码。",
   "activeArtifacts": {
     "design": ".limcode/design/story-oracle-phone-app.md",
     "plan": ".limcode/plans/story-oracle-phone-app-integration.md"
@@ -163,6 +164,11 @@
     {
       "id": "story-oracle-plan-verification",
       "content": "执行构建、纯逻辑、持久化、安全、选项互动、多线路注入、宿主回归验证",
+      "status": "completed"
+    },
+    {
+      "id": "story-oracle-plan-release",
+      "content": "全部项目门禁已通过，提交 09f4733 已成功推送到 origin/main；远端指针需完成最终核对，独立验收仍因 API 403 未完成",
       "status": "completed"
     }
   ],
@@ -235,30 +241,6 @@
     }
   ],
   "log": [
-    {
-      "at": "2026-08-23T15:21:06.275Z",
-      "type": "artifact_changed",
-      "refId": "plan",
-      "message": "同步计划 TODO 快照：.limcode/plans/phone-branch-inheritance-restart-persistence.md"
-    },
-    {
-      "at": "2026-08-23T15:27:46.292Z",
-      "type": "artifact_changed",
-      "refId": "plan",
-      "message": "同步计划 TODO 快照：.limcode/plans/phone-branch-inheritance-restart-persistence.md"
-    },
-    {
-      "at": "2026-08-23T15:57:06.369Z",
-      "type": "artifact_changed",
-      "refId": "plan",
-      "message": "同步计划 TODO 快照：.limcode/plans/phone-branch-inheritance-restart-persistence.md"
-    },
-    {
-      "at": "2026-08-23T16:45:06.503Z",
-      "type": "artifact_changed",
-      "refId": "plan",
-      "message": "同步计划 TODO 快照：.limcode/plans/phone-branch-inheritance-restart-persistence.md"
-    },
     {
       "at": "2026-08-23T16:53:22.805Z",
       "type": "milestone_recorded",
@@ -354,21 +336,45 @@
       "type": "risk_changed",
       "refId": "story-oracle-plan-acceptance",
       "message": "本地代码与自动门禁已完成；独立 Acceptance Expert 连续两次因 API 403 返回 not_assessed，正式验收阻塞，验收 TODO 保持 pending。"
+    },
+    {
+      "at": "2026-08-27T07:58:35.466Z",
+      "type": "risk_changed",
+      "refId": "story-oracle-plan-release",
+      "message": "全部门禁与提交已完成；git push origin main 在 GitHub 返回 401 后超时，SSH 无私钥、GitHub CLI/token 不可用，远端仍未更新，等待认证恢复。"
+    },
+    {
+      "at": "2026-08-27T08:14:22.511Z",
+      "type": "milestone_recorded",
+      "refId": "story-oracle-plan-release",
+      "message": "提交 09f4733 已成功推送到 origin/main，远端指针已核对一致；工作树仅剩项目进度账本的状态修正。"
+    },
+    {
+      "at": "2026-08-27T08:14:22.511Z",
+      "type": "risk_changed",
+      "refId": "story-oracle-plan-acceptance",
+      "message": "发布完成后仍保留正式验收阻塞：Acceptance Expert 连续两次因 API 403 返回 not_assessed。"
+    },
+    {
+      "at": "2026-08-27T08:16:44.634Z",
+      "type": "milestone_recorded",
+      "refId": "story-oracle-plan-release",
+      "message": "提交 09f4733 已成功推送到 origin/main，远端指针已核对一致；当前仅同步项目进度账本，正式独立验收仍因 API 403 阻塞。"
     }
   ],
   "stats": {
     "milestonesTotal": 3,
     "milestonesCompleted": 3,
-    "todosTotal": 9,
-    "todosCompleted": 6,
+    "todosTotal": 10,
+    "todosCompleted": 7,
     "todosInProgress": 0,
     "todosCancelled": 2,
     "activeRisks": 2
   },
   "render": {
     "rendererVersion": 1,
-    "generatedAt": "2026-08-27T07:36:10.906Z",
-    "bodyHash": "sha256:1bc12dc8416ab4ca04118443c316c959849bfb80e509accdb54f366d1e96946d"
+    "generatedAt": "2026-08-27T08:16:44.634Z",
+    "bodyHash": "sha256:68c1709f9f46851699919d1852721217d367eb9177d158147286577502aaedd0"
   }
 }
 <!-- LIMCODE_PROGRESS_METADATA_END -->
