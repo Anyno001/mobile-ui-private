@@ -16,6 +16,7 @@ import {
     HISTORY_RECOVERY_KEY, loadHistoriesFromIDB, readHistoriesSnapshot, saveHistories, saveHistoriesBeforeUnload, saveHistoriesStrict,
 } from './storage-history.js';
 import { DESKTOP_BG_KEY, isBigData, pmIDBDel, pmIDBGet, pmIDBKeys, pmIDBReadEntry, pmIDBSet, pmOpenIDB } from './storage-primitives.js';
+import { STORY_ORACLE_FALLBACK_KEY, STORY_ORACLE_STORE_KEY } from './story-oracle-storage.js';
 import {
     addOrUpdateProfile, loadGalBubbleEnabled, loadInjectionConfig, loadProfiles, loadTheme, loadWordyLimit,
     loadWorldBookConfig, saveGalBubbleEnabled, saveInjectionConfig, saveProfiles, saveTheme, saveWordyLimit, saveWorldBookConfig,
@@ -46,11 +47,11 @@ export const PLUGIN_LOCAL_STORAGE_KEYS = Object.freeze([
     INTERACTIVE_STORE_KEY, INTERACTIVE_FALLBACK_KEY, PHONE_UI_STATE_KEY, 'ST_SMS_PHONE_QR_INITIALIZED',
     CALENDAR_STORAGE_KEY, CALENDAR_OCCASION_STORAGE_KEY, CALENDAR_HOLIDAY_STORAGE_KEY,
     CALENDAR_WEATHER_STORAGE_KEY, CALENDAR_CYCLE_STORAGE_KEY, CALENDAR_RECIPE_STORAGE_KEY, CALENDAR_OUTFIT_STORAGE_KEY,
-    TODAY_TREND_FALLBACK_KEY,
+    TODAY_TREND_FALLBACK_KEY, STORY_ORACLE_FALLBACK_KEY,
 ]);
 export const PLUGIN_IDB_STATIC_KEYS = Object.freeze([
     'ST_SMS_DATA_V2', EMOJI_STORE_KEY, GROUP_META_STORE_KEY, INTERACTIVE_STORE_KEY, BRANCH_LINEAGE_STORE_KEY, 'ST_SMS_BG_GLOBAL', DESKTOP_BG_KEY,
-    TODAY_TREND_STORAGE_KEY,
+    TODAY_TREND_STORAGE_KEY, STORY_ORACLE_STORE_KEY,
 ]);
 export const PLUGIN_IDB_DYNAMIC_PREFIXES = Object.freeze(['ST_SMS_BG_LOCAL_']);
 

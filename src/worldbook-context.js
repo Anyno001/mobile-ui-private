@@ -123,3 +123,41 @@ export async function buildWorldBookContext(context, {
     }
     return contents.join('\n\n');
 }
+
+
+export async function loadWorldBookPreview(context, {
+    config = globalThis.window?.__pmWorldBookConfig,
+    signal,
+    scope: requestedScope = null,
+    module = 'chat',
+    maxChars = 60000,
+} = {}) {
+    const current = normalizeWorldBookConfig(config);
+    if (!WORLD_BOOK_MODULES.includes(module) || typeof context?.loadWorldInfo !== 'function') return { entries: [], truncated: false };
+    throwIfAborted(signal);
+    const selectedNames = getReadableWorldBookNames(context, current).filter(Boolean);
+    const scope = requestedScope?.kind === 'group' || requestedScope?.kind === 'character' || requestedScope?.kind === 'public'
+        ? requestedScope : contextScope(context);
+    const limit = Number.isFinite(Number(maxChars)) && Number(maxChars) > 0 ? Math.min(current.maxChars, Math.trunc(maxChars)) : current.maxChars;
+    const entries = [];
+    let total = 0;
+    let truncated = false;
+    for (const bookName of selectedNames) {
+        throwIfAborted(signal);
+        let book;
+        try { book = await context.loadWorldInfo(bookName); } catch (error) {
+            if (isAbortError(error)) throw error;
+            continue;
+        }
+        for (const entry of normalizeBookEntries(bookName, book)) {
+            throwIfAborted(signal);
+            if (!isWorldBookEntryAllowed(current, entry, { module, scope })) continue;
+            const next = total + entry.content.length + (entries.length ? 2 : 0);
+            if (next > limit) { truncated = true; break; }
+            entries.push({ bookName: entry.bookName, uid: String(entry.uid), column: entry.column, content: entry.content });
+            total = next;
+        }
+        if (truncated) break;
+    }
+    return { entries, truncated };
+}

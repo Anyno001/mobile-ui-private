@@ -1,9 +1,10 @@
 import { BIDIRECTIONAL_KEY, TODAY_TREND_INJECTION_KEY_PREFIX } from './constants.js';
 import { normalizeInjectionConfig } from './behavior-config.js';
-import { allocateCalendarFamilyBudget, allocateContextBudget, estimateContextTokens, normalizeBudgetConfig, trimToEstimatedTokens } from './budget.js';
+import { DEFAULT_SAFE_INPUT_TOKENS, allocateCalendarFamilyBudget, allocateContextBudget, estimateContextTokens, normalizeBudgetConfig, trimToEstimatedTokens } from './budget.js';
 import { formatQuoteContext } from './chat-message-model.js';
 import { renderCommunitySource } from './community-injection.js';
 import { renderTodayTrendInjection } from './today-trend-injection.js';
+import { buildStoryOraclePlanInjection } from './story-oracle-model.js';
 import { resolveEmojiText } from './messaging.js';
 import { getGroupMembers, resolveCommunitySources, resolvePhoneSources } from './permissions.js';
 import {
@@ -36,6 +37,7 @@ const COMMUNITY_KEY_PREFIX = `${BIDIRECTIONAL_KEY}:community:`;
 const CALENDAR_KEY_PREFIX = `${BIDIRECTIONAL_KEY}:calendar:`;
 const OUTFIT_KEY_PREFIX = `${BIDIRECTIONAL_KEY}:outfit:`;
 const RECIPE_KEY_PREFIX = `${BIDIRECTIONAL_KEY}:recipe:`;
+const STORY_ORACLE_KEY_PREFIX = `${BIDIRECTIONAL_KEY}:story-oracle:`;
 
 function injectionKey(name) {
     return `${BIDIRECTIONAL_KEY}:${encodeURIComponent(name)}`;
@@ -272,7 +274,7 @@ export function renderCalendarContextInjection({
 export function buildContextInjectionPrompts({
     currentStorageId, currentActorName, currentConversationKey, selectedByStorage, historiesByStorage, groupsByStorage,
     injectionConfig, interactiveStore, budgetConfig, userName, emojis, safeMaxTokens, calendarStore,
-    calendarOccasions, calendarHolidays, calendarWeather, calendarCycles, calendarRecipes, calendarOutfits, todayTrendStore,
+    calendarOccasions, calendarHolidays, calendarWeather, calendarCycles, calendarRecipes, calendarOutfits, todayTrendStore, storyOraclePlans = [],
 } = {}) {
     const config = normalizeBudgetConfig(budgetConfig);
     const phonePermission = resolvePhoneSources({
@@ -388,6 +390,21 @@ ${body}
             depth: injection.todayTrend.depth,
         });
     }
+    const storyOracle = buildStoryOraclePlanInjection(storyOraclePlans);
+    const storyOracleItem = storyOracle.content && currentStorageId ? {
+        key: `${STORY_ORACLE_KEY_PREFIX}${encodeURIComponent(currentStorageId)}`,
+        source: 'storyOracle',
+        content: storyOracle.content,
+        position: injection.calendar.position,
+        depth: injection.calendar.depth,
+    } : null;
+    const storyOracleDemand = storyOracleItem ? renderedItemTokenDemand(storyOracleItem) : 0;
+    const baseSafeMaxTokens = Number.isInteger(safeMaxTokens) && safeMaxTokens > 0 ? safeMaxTokens : DEFAULT_SAFE_INPUT_TOKENS;
+    const baseBudgetTokens = Math.min(config.targetTokens, baseSafeMaxTokens);
+    const storyOracleBudgetRejected = Boolean(storyOracleItem && storyOracleDemand >= baseBudgetTokens);
+    const storyOraclePrompt = storyOracleItem && !storyOracleBudgetRejected
+        ? { prompts: [{ ...storyOracleItem }], usedTokens: storyOracleDemand, truncatedCount: 0 }
+        : { prompts: [], usedTokens: 0, truncatedCount: 0 };
     const calendarFamilyDemand = {
         calendar: calendarItems.reduce((sum, item) => sum + renderedItemTokenDemand(item), 0),
         recipe: recipeItems.reduce((sum, item) => sum + renderedItemTokenDemand(item), 0),
@@ -399,7 +416,11 @@ ${body}
         calendar: Object.values(calendarFamilyDemand).reduce((sum, value) => sum + value, 0),
         todayTrend: todayTrendItems.reduce((sum, item) => sum + renderedItemTokenDemand(item), 0),
     };
-    const budget = allocateContextBudget({ config, safeMaxTokens, demandBySource });
+    const budget = allocateContextBudget({
+        config,
+        safeMaxTokens: storyOracleBudgetRejected ? baseSafeMaxTokens : Math.max(1, baseBudgetTokens - storyOracleDemand),
+        demandBySource,
+    });
     const calendarFamilyBudget = allocateCalendarFamilyBudget({
         tokenLimit: budget.allocations.calendar,
         demandBySource: calendarFamilyDemand,
@@ -411,7 +432,7 @@ ${body}
     const outfit = allocateRenderedPrompts(outfitItems, calendarFamilyBudget.allocations.outfit);
     const todayTrend = allocateRenderedPrompts(todayTrendItems, budget.allocations.todayTrend);
     return {
-        prompts: [...phone.prompts, ...community.prompts, ...calendar.prompts, ...recipe.prompts, ...outfit.prompts, ...todayTrend.prompts],
+        prompts: [...phone.prompts, ...community.prompts, ...calendar.prompts, ...recipe.prompts, ...outfit.prompts, ...todayTrend.prompts, ...storyOraclePrompt.prompts],
         diagnostics: {
             estimated: true,
             budget,
@@ -435,7 +456,15 @@ ${body}
             outfit: { demandTokens: calendarFamilyDemand.outfit, allocatedTokens: calendarFamilyBudget.allocations.outfit, promptCount: outfit.prompts.length, usedTokens: outfit.usedTokens },
             calendarFamilyBudget,
             todayTrend: { enabled: todayTrendScope?.injection?.enabled === true, demandTokens: demandBySource.todayTrend, allocatedTokens: budget.allocations.todayTrend, promptCount: todayTrend.prompts.length, usedTokens: todayTrend.usedTokens },
-            usedTokens: phone.usedTokens + community.usedTokens + calendar.usedTokens + recipe.usedTokens + outfit.usedTokens + todayTrend.usedTokens,
+            storyOracle: {
+                enabledCount: Array.isArray(storyOraclePlans) ? storyOraclePlans.length : 0,
+                demandTokens: storyOracleDemand,
+                allocatedTokens: storyOraclePrompt.usedTokens,
+                promptCount: storyOraclePrompt.prompts.length,
+                usedTokens: storyOraclePrompt.usedTokens,
+                rejected: storyOracle.rejected || (storyOracleBudgetRejected ? `剧情线路超过本轮可用上下文预算（${storyOracleDemand}/${baseBudgetTokens} tokens），未注入主聊天。` : ''),
+            },
+            usedTokens: phone.usedTokens + community.usedTokens + calendar.usedTokens + recipe.usedTokens + outfit.usedTokens + todayTrend.usedTokens + storyOraclePrompt.usedTokens,
             truncatedCount: phone.truncatedCount + community.truncatedCount + calendar.truncatedCount + recipe.truncatedCount + outfit.truncatedCount + todayTrend.truncatedCount,
         },
     };

@@ -3,7 +3,7 @@ import { createCommunityTemplate } from './interactive-scene-model.js';
 import {
     BACK_ICON_SVG, CALENDAR_ICON_SVG, CHAT_ICON_SVG, CLOSE_ICON_SVG, COMMUNITY_ICON_SVG,
     BOOK_ICON_SVG, CONTACTS_ICON_SVG, CONTROL_ICON_SVG, EDIT_ICON_SVG, HEART_ICON_SVG, HOME_ICON_SVG,
-    COMMUNITY_TEMPLATE_ICON_SVG, EYE_ICON_SVG, INJECTION_ICON_SVG, MORE_ICON_SVG, PLAY_ICON_SVG, POKE_ICON_SVG, REPLY_ICON_SVG, SEND_ICON_SVG, SETTINGS_ICON_SVG, SHARE_ICON_SVG, TRASH_ICON_SVG, TREND_ICON_SVG,
+    COMMUNITY_TEMPLATE_ICON_SVG, EYE_ICON_SVG, INJECTION_ICON_SVG, MORE_ICON_SVG, PLAY_ICON_SVG, POKE_ICON_SVG, REPLY_ICON_SVG, SEND_ICON_SVG, SETTINGS_ICON_SVG, SHARE_ICON_SVG, SPARKLES_ICON_SVG, TRASH_ICON_SVG, TREND_ICON_SVG,
 } from './icons.js';
 import { escapeAttr, escapeHtml } from './ui.js';
 
@@ -88,6 +88,7 @@ export function renderPhoneDesktop(scope = { scenes: {} }, uiScope = { pinnedSce
             <button type="button" class="pm-desktop-app" data-app="settings" data-action="desktop-settings" aria-label="设置" title="设置"><span class="pm-desktop-app-icon">${SETTINGS_ICON_SVG}</span><span class="pm-desktop-app-label">设置</span></button>
             <button type="button" class="pm-desktop-app" data-app="calendar" data-action="desktop-calendar" aria-label="日历" title="日历"><span class="pm-desktop-app-icon">${CALENDAR_ICON_SVG}</span><span class="pm-desktop-app-label">日历</span></button>
             <button type="button" class="pm-desktop-app" data-app="today-trend" data-action="desktop-today-trend" aria-label="今日风向" title="今日风向"><span class="pm-desktop-app-icon">${TREND_ICON_SVG}</span><span class="pm-desktop-app-label">今日风向</span></button>
+            <button type="button" class="pm-desktop-app" data-app="story-oracle" data-action="desktop-story-oracle" aria-label="剧情助手" title="剧情助手"><span class="pm-desktop-app-icon">${SPARKLES_ICON_SVG}</span><span class="pm-desktop-app-label">剧情助手</span></button>
         </div>
         <section class="pm-desktop-pins"><h3>固定社区</h3>${pins}${templates}</section>
         <div class="pm-desktop-community-dock"><button type="button" data-action="desktop-community" aria-label="发布一条">${COMMUNITY_ICON_SVG}<span>发布一条</span></button></div>`;

@@ -19,8 +19,9 @@
     "check:budget": "node scripts/check-budget.mjs",
     "check:permissions": "node scripts/check-permissions.mjs",
     "check:contracts": "node scripts/check-contracts.mjs",
+    "check:story-oracle": "node scripts/check-story-oracle.mjs",
     "check:today-trend": "node scripts/check-today-trend.mjs",
-    "check": "npm run build && npm run check:syntax && npm run check:ai && npm run check:emoji && npm run check:behavior && npm run check:interactive && npm run check:pending && npm run check:press && npm run check:ambient && npm run check:cropper && npm run check:calendar && npm run check:budget && npm run check:permissions && npm run check:contracts && npm run check:today-trend"
+    "check": "npm run build && npm run check:syntax && npm run check:ai && npm run check:emoji && npm run check:behavior && npm run check:interactive && npm run check:pending && npm run check:press && npm run check:ambient && npm run check:cropper && npm run check:calendar && npm run check:budget && npm run check:permissions && npm run check:contracts && npm run check:story-oracle && npm run check:today-trend"
   },
   "devDependencies": {
     "acorn": "8.15.0",

@@ -10,6 +10,7 @@ import {
 import { getPendingMessages } from './pending-messages.js';
 import { bindPressGesture } from './press-gesture.js';
 import { loadBgSettings } from './storage-background.js';
+import { installStoryOracle } from './story-oracle.js';
 import {
     loadBidirectional, loadBudgetConfig, loadEmojis, loadInjectionConfig,
     loadCharacterBehavior, loadGroupMeta, loadHistoriesFromIDB,
@@ -216,6 +217,7 @@ export function installPhoneLifecycle(state, deps) {
         cancelGeneration, invalidateGeneration, disarmAutoPoke, syncGenerationControls, closeOverlay, closeControlCenter,
         refreshReplyCardAvailability, clearBubbleQuoteGesture, clearBubbleQuoteGestures,
     } = deps;
+    installStoryOracle(state, deps);
     let unbindSendGesture = null;
     let unbindIsland = null, unbindPhoneResize = null;
     const pageController = createPhonePageController({
@@ -339,6 +341,7 @@ export function installPhoneLifecycle(state, deps) {
         deps.cancelCommunityGeneration?.('phone-closed');
         deps.cancelCalendarTasks?.('phone-closed');
         deps.destroyTodayTrendPhoneUi?.();
+        deps.destroyStoryOraclePhoneUi?.();
         deps.cancelTodayTrendInitialization?.('phone-closed');
         deps.cancelTodayTrendRuleRegeneration?.('phone-closed');
         deps.cancelTodayTrendGeneration?.('phone-closed', true);
@@ -459,6 +462,7 @@ export function installPhoneLifecycle(state, deps) {
   <section class="pm-phone-page pm-community-page" data-phone-page="community" hidden></section>
   <section class="pm-phone-page pm-calendar-page" data-phone-page="calendar" hidden></section>
   <section class="pm-phone-page pm-today-trend-page" data-phone-page="today-trend" hidden></section>
+  <section class="pm-phone-page pm-story-oracle-page" data-phone-page="story-oracle" hidden></section>
 </div>
 </div>
 <div class="pm-phone-resize-handle" role="separator" aria-label="调整手机窗口大小" aria-orientation="horizontal" title="拖动调整手机大小"></div>`;
@@ -467,6 +471,7 @@ export function installPhoneLifecycle(state, deps) {
         window.__pmShowPhonePage = pageController.show;
         deps.bindPhonePageUi?.(state.phoneWindow);
         deps.bindTodayTrendPhoneUi?.(state.phoneWindow);
+        deps.bindStoryOraclePhoneUi?.(state.phoneWindow);
         ambientStatus.sync();
         if (state.phoneWindow.showPopover) try { state.phoneWindow.showPopover(); } catch (e) {}
         state.phoneActive = true;

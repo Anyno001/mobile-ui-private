@@ -168,9 +168,9 @@
       json?.content
     ];
     const responseOutput = json?.output;
-    if (Array.isArray(responseOutput)) candidates.push(responseOutput.flatMap((item) => Array.isArray(item?.content) ? item.content : []).map((part) => part?.text).filter((text8) => typeof text8 === "string").join(""));
+    if (Array.isArray(responseOutput)) candidates.push(responseOutput.flatMap((item) => Array.isArray(item?.content) ? item.content : []).map((part) => part?.text).filter((text9) => typeof text9 === "string").join(""));
     const geminiParts = json?.candidates?.[0]?.content?.parts;
-    if (Array.isArray(geminiParts)) candidates.push(geminiParts.filter((part) => part?.thought !== true).map((part) => part?.text).filter((text8) => typeof text8 === "string").join(""));
+    if (Array.isArray(geminiParts)) candidates.push(geminiParts.filter((part) => part?.thought !== true).map((part) => part?.text).filter((text9) => typeof text9 === "string").join(""));
     const content = candidates.find((value) => typeof value === "string" && value.trim());
     return content?.trim() || "";
   }
@@ -905,10 +905,10 @@ ${userPrompt}` : userPrompt;
     }
     return tags.length ? tags : [...DEFAULT_CALENDAR_DATE_TAGS];
   }
-  function extractCalendarDateTagContents(text8, dateTags = DEFAULT_CALENDAR_DATE_TAGS) {
+  function extractCalendarDateTagContents(text9, dateTags = DEFAULT_CALENDAR_DATE_TAGS) {
     const allowed = new Set(normalizeCalendarDateTags(dateTags));
     const result = [];
-    for (const match of String(text8 ?? "").matchAll(taggedDatePattern)) {
+    for (const match of String(text9 ?? "").matchAll(taggedDatePattern)) {
       const opening = match[1].toLowerCase(), closing = match[3].toLowerCase();
       if (opening === closing && allowed.has(opening)) result.push(match[2].trim());
     }
@@ -946,8 +946,8 @@ ${userPrompt}` : userPrompt;
     return date.getFullYear() < CALENDAR_YEAR_RANGE.min || date.getFullYear() > CALENDAR_YEAR_RANGE.max ? null : formatCalendarDate(date);
   }
   var hasExplicitCalendarYear = (value) => /(?:\d{4}|[零〇一二三四五六七八九]{4})\s*年/.test(value) || /(?:^|\D)\d{4}[\s./-]+\d{1,2}[\s./-]+\d{1,2}(?:\D|$)/.test(value);
-  function extractCalendarBaseDate(text8, dateTags = DEFAULT_CALENDAR_DATE_TAGS) {
-    const source = String(text8 ?? "").trim();
+  function extractCalendarBaseDate(text9, dateTags = DEFAULT_CALENDAR_DATE_TAGS) {
+    const source = String(text9 ?? "").trim();
     if (!source) return null;
     const reference = /* @__PURE__ */ new Date();
     for (const content of extractCalendarDateTagContents(source, dateTags).reverse()) {
@@ -959,8 +959,8 @@ ${userPrompt}` : userPrompt;
     if (legacyTag) return calendarDateFromParts(Number(legacyTag[1]), Number(legacyTag[2]), Number(legacyTag[3]));
     return hasExplicitCalendarYear(source) ? dateFromNaturalText(source, reference) : null;
   }
-  function extractCalendarDate(text8, now2 = /* @__PURE__ */ new Date(), dateTags = DEFAULT_CALENDAR_DATE_TAGS) {
-    const source = String(text8 ?? "").trim();
+  function extractCalendarDate(text9, now2 = /* @__PURE__ */ new Date(), dateTags = DEFAULT_CALENDAR_DATE_TAGS) {
+    const source = String(text9 ?? "").trim();
     const reference = now2 instanceof Date && Number.isFinite(now2.getTime()) ? now2 : /* @__PURE__ */ new Date();
     for (const content of extractCalendarDateTagContents(source, dateTags)) {
       const taggedDate = dateFromNaturalText(content, reference);
@@ -988,8 +988,8 @@ ${userPrompt}` : userPrompt;
     const offset = Math.round((target.getTime() - start.getTime()) / 864e5);
     return relativeLabels[offset] || null;
   }
-  function extractContextCalendarEvents(text8, now2 = /* @__PURE__ */ new Date(), dateTags = DEFAULT_CALENDAR_DATE_TAGS) {
-    const lines = String(text8 ?? "").split(/\r?\n|[。！？]/).map((line2) => line2.trim()).filter(Boolean);
+  function extractContextCalendarEvents(text9, now2 = /* @__PURE__ */ new Date(), dateTags = DEFAULT_CALENDAR_DATE_TAGS) {
+    const lines = String(text9 ?? "").split(/\r?\n|[。！？]/).map((line2) => line2.trim()).filter(Boolean);
     const seen = /* @__PURE__ */ new Set();
     const events = [];
     for (const line2 of lines.slice(-80)) {
@@ -1009,10 +1009,10 @@ ${userPrompt}` : userPrompt;
     currentEvents = [],
     dateFacts = []
   } = {}) {
-    const text8 = [context.mainChatText, context.worldBookText].filter(Boolean).join("\n");
+    const text9 = [context.mainChatText, context.worldBookText].filter(Boolean).join("\n");
     return {
       today: formatCalendarDate(now2),
-      candidateEvents: extractContextCalendarEvents(text8, now2, dateTags).map(({ date, title, note }) => ({ date, title, note })),
+      candidateEvents: extractContextCalendarEvents(text9, now2, dateTags).map(({ date, title, note }) => ({ date, title, note })),
       historicalEvents: Array.isArray(historicalEvents) ? historicalEvents : [],
       currentEvents: Array.isArray(currentEvents) ? currentEvents : [],
       dateFacts: Array.isArray(dateFacts) ? dateFacts : [],
@@ -2353,8 +2353,8 @@ ${userPrompt}` : userPrompt;
   var validSubject2 = (value) => typeof value === "string" && value === value.trim() && value.length > 0 && value.length <= 120 && !unsafeKey4(value);
   function normalizeOutfit(value) {
     const source = plainRecord5(value) ? value : {};
-    const text8 = cleanText3(source.text, OUTFIT_LIMITS.text);
-    return text8 ? { text: text8, source: source.source === "ai" ? "ai" : "manual", updatedAt: timestamp2(source.updatedAt) } : null;
+    const text9 = cleanText3(source.text, OUTFIT_LIMITS.text);
+    return text9 ? { text: text9, source: source.source === "ai" ? "ai" : "manual", updatedAt: timestamp2(source.updatedAt) } : null;
   }
   function normalizeProfile(value) {
     const source = plainRecord5(value) ? value : {};
@@ -2414,9 +2414,9 @@ ${userPrompt}` : userPrompt;
   function outfitForDate(profile, date) {
     return parseCalendarDate(date) ? normalizeProfile(profile).days[date] || null : null;
   }
-  function upsertOutfit(profile, { date, text: text8, source = "manual" } = {}, now2 = Date.now()) {
+  function upsertOutfit(profile, { date, text: text9, source = "manual" } = {}, now2 = Date.now()) {
     if (!parseCalendarDate(date)) throw new Error("\u7A7F\u642D\u65E5\u671F\u65E0\u6548");
-    const clean2 = cleanText3(text8, OUTFIT_LIMITS.text);
+    const clean2 = cleanText3(text9, OUTFIT_LIMITS.text);
     if (!clean2) throw new Error("OOTD \u5185\u5BB9\u4E0D\u80FD\u4E3A\u7A7A");
     const next = normalizeProfile(profile);
     next.days[date] = { text: clean2, source: source === "ai" ? "ai" : "manual", updatedAt: timestamp2(now2) };
@@ -2433,10 +2433,10 @@ ${userPrompt}` : userPrompt;
     const dates = calendarDateRangeKeys(start, 0, days - 1);
     const incoming = new Map(generated.days.map((day) => [day.date, day.text]));
     for (const date of dates) {
-      const text8 = incoming.get(date);
-      if (!text8) throw new Error("AI \u7A7F\u642D\u672A\u5B8C\u6574\u8986\u76D6\u91CD\u65B0\u751F\u6210\u7A97\u53E3");
+      const text9 = incoming.get(date);
+      if (!text9) throw new Error("AI \u7A7F\u642D\u672A\u5B8C\u6574\u8986\u76D6\u91CD\u65B0\u751F\u6210\u7A97\u53E3");
       if (next.days[date]?.source === "manual") continue;
-      next.days[date] = { text: text8, source: "ai", updatedAt: timestamp2(now2) };
+      next.days[date] = { text: text9, source: "ai", updatedAt: timestamp2(now2) };
     }
     next.lastGeneratedAt = timestamp2(now2);
     return next;
@@ -2456,10 +2456,10 @@ ${userPrompt}` : userPrompt;
       if (!plainRecord5(day) || !exactKeys(day, ["date", "text"]) || !expectedDates.includes(day.date) || seen.has(day.date)) {
         throw new Error("AI \u7A7F\u642D\u65E5\u671F\u6216\u5B57\u6BB5\u65E0\u6548");
       }
-      const text8 = cleanText3(day.text, OUTFIT_LIMITS.text);
-      if (!text8 || text8 !== String(day.text).trim().replace(/\s+/g, " ")) throw new Error("AI OOTD \u5185\u5BB9\u65E0\u6548");
+      const text9 = cleanText3(day.text, OUTFIT_LIMITS.text);
+      if (!text9 || text9 !== String(day.text).trim().replace(/\s+/g, " ")) throw new Error("AI OOTD \u5185\u5BB9\u65E0\u6548");
       seen.add(day.date);
-      return { date: day.date, text: text8 };
+      return { date: day.date, text: text9 };
     });
     if (expectedDates.some((date) => !seen.has(date))) throw new Error("AI \u7A7F\u642D\u672A\u5B8C\u6574\u8986\u76D6\u751F\u6210\u7A97\u53E3");
     return { days: parsedDays.sort((left, right) => left.date.localeCompare(right.date)) };
@@ -2503,10 +2503,10 @@ ${userPrompt}` : userPrompt;
   var timestamp3 = (value) => Number.isFinite(value) && value >= 0 ? Math.floor(value) : 0;
   function normalizeMeal(value) {
     const source = plainRecord6(value) ? value : {};
-    const text8 = cleanText4(source.text, RECIPE_LIMITS.meal);
-    if (!text8) return null;
+    const text9 = cleanText4(source.text, RECIPE_LIMITS.meal);
+    if (!text9) return null;
     return {
-      text: text8,
+      text: text9,
       source: source.source === "ai" ? "ai" : "manual",
       updatedAt: timestamp3(source.updatedAt)
     };
@@ -2562,10 +2562,10 @@ ${userPrompt}` : userPrompt;
     if (!parseCalendarDate(date)) return {};
     return normalizeRecipeScope(scope).days[date] || {};
   }
-  function upsertRecipeMeal(scope, { date, mealType, text: text8, source = "manual" } = {}, now2 = Date.now()) {
+  function upsertRecipeMeal(scope, { date, mealType, text: text9, source = "manual" } = {}, now2 = Date.now()) {
     if (!parseCalendarDate(date)) throw new Error("\u83DC\u8C31\u65E5\u671F\u65E0\u6548");
     if (!RECIPE_MEAL_TYPES.includes(mealType)) throw new Error("\u83DC\u8C31\u9910\u6B21\u65E0\u6548");
-    const normalizedText = cleanText4(text8, RECIPE_LIMITS.meal);
+    const normalizedText = cleanText4(text9, RECIPE_LIMITS.meal);
     if (!normalizedText) throw new Error("\u83DC\u8C31\u5185\u5BB9\u4E0D\u80FD\u4E3A\u7A7A");
     const next = normalizeRecipeScope(scope);
     next.days[date] = {
@@ -2626,11 +2626,11 @@ ${userPrompt}` : userPrompt;
       seen.add(rawDay.date);
       const day = { date: rawDay.date };
       for (const mealType of RECIPE_MEAL_TYPES) {
-        const text8 = cleanText4(rawDay[mealType], RECIPE_LIMITS.meal);
-        if (!text8 || text8 !== String(rawDay[mealType]).trim().replace(/\s+/g, " ")) {
+        const text9 = cleanText4(rawDay[mealType], RECIPE_LIMITS.meal);
+        if (!text9 || text9 !== String(rawDay[mealType]).trim().replace(/\s+/g, " ")) {
           throw new Error(`AI \u83DC\u8C31${RECIPE_MEAL_LABELS[mealType]}\u5185\u5BB9\u65E0\u6548`);
         }
-        day[mealType] = text8;
+        day[mealType] = text9;
       }
       return day;
     });
@@ -2879,28 +2879,28 @@ ${userPrompt}` : userPrompt;
     };
   }
   function estimateContextTokens(value) {
-    const text8 = typeof value === "string" ? value : String(value ?? "");
+    const text9 = typeof value === "string" ? value : String(value ?? "");
     let asciiCharacters = 0;
     let nonAsciiCharacters = 0;
-    for (const character of text8) {
+    for (const character of text9) {
       if (character.codePointAt(0) <= 127) asciiCharacters += 1;
       else nonAsciiCharacters += 1;
     }
     return {
       estimated: true,
-      characters: text8.length,
+      characters: text9.length,
       estimatedTokens: Math.ceil(asciiCharacters / 4) + nonAsciiCharacters
     };
   }
   function trimToEstimatedTokens(value, tokenLimit, marker = "\u3010\u8F83\u65E9\u5185\u5BB9\u56E0\u8D44\u6E90\u9884\u7B97\u5DF2\u7701\u7565\u3011\n") {
-    const text8 = typeof value === "string" ? value : String(value ?? "");
+    const text9 = typeof value === "string" ? value : String(value ?? "");
     const limit = finiteInteger(tokenLimit, 0, MAX_TARGET_TOKENS) ? tokenLimit : 0;
-    const originalTokens = estimateContextTokens(text8).estimatedTokens;
-    if (originalTokens <= limit) return { text: text8, truncated: false, originalTokens, estimatedTokens: originalTokens };
+    const originalTokens = estimateContextTokens(text9).estimatedTokens;
+    if (originalTokens <= limit) return { text: text9, truncated: false, originalTokens, estimatedTokens: originalTokens };
     if (limit === 0) return { text: "", truncated: true, originalTokens, estimatedTokens: 0 };
     let prefix = marker;
     if (estimateContextTokens(prefix).estimatedTokens > limit) prefix = "";
-    const characters = Array.from(text8);
+    const characters = Array.from(text9);
     let low = 0;
     let high = characters.length;
     while (low < high) {
@@ -4440,7 +4440,7 @@ ${userPrompt}` : userPrompt;
         event.preventDefault();
         try {
           const nextType = form.elements.mealType?.value || "breakfast";
-          const text8 = form.elements.text?.value || "";
+          const text9 = form.elements.text?.value || "";
           await commitRecipe(storageId, (current) => {
             let next = current;
             const currentDay = recipeDayFor(current, date);
@@ -4448,7 +4448,7 @@ ${userPrompt}` : userPrompt;
               throw new Error("\u76EE\u6807\u9910\u6B21\u5DF2\u6709\u5185\u5BB9\uFF0C\u8BF7\u5148\u7F16\u8F91\u6216\u79FB\u9664\u539F\u9910\u98DF");
             }
             if (existing && nextType !== selectedType) next = deleteRecipeMeal(next, date, selectedType).scope;
-            return upsertRecipeMeal(next, { date, mealType: nextType, text: text8, source: "manual" });
+            return upsertRecipeMeal(next, { date, mealType: nextType, text: text9, source: "manual" });
           });
           status(storageId, existing ? "\u9910\u98DF\u5DF2\u66F4\u65B0\u3002" : "\u9910\u98DF\u5DF2\u6DFB\u52A0\u3002");
           closeOverlay?.("saved");
@@ -4584,11 +4584,11 @@ ${userPrompt}` : userPrompt;
     const tasks = createTaskController(getStorageId2);
     const scheduleTimeout = deps.setTimeoutImpl || globalThis.setTimeout;
     const cancelTimeout = deps.clearTimeoutImpl || globalThis.clearTimeout;
-    const status = (storageId, text8, { duration = 4e3, persistent = false } = {}) => {
+    const status = (storageId, text9, { duration = 4e3, persistent = false } = {}) => {
       const previousToken = runtime.statusTimerByStorage.get(storageId);
       if (previousToken) cancelTimeout(previousToken.timer);
       runtime.statusTimerByStorage.delete(storageId);
-      const nextText = text8 || "";
+      const nextText = text9 || "";
       runtime.statusByStorage.set(storageId, nextText);
       const element = state.phoneWindow?.querySelector(".pm-calendar-status");
       if (element && getStorageId2() === storageId) element.textContent = nextText;
@@ -5916,7 +5916,7 @@ ${lines.join("\n")}
   // src/interactive-scene-constants.js
   var INTERACTIVE_LIMITS = Object.freeze({ scenes: 12, posts: 80, comments: 40, danmaku: 240 });
   var INTERACTIVE_ACTOR_TYPES = Object.freeze(["user", "story", "passerby", "legacy"]);
-  var PHONE_UI_PAGES = Object.freeze(["desktop", "chat", "community", "calendar", "today-trend"]);
+  var PHONE_UI_PAGES = Object.freeze(["desktop", "chat", "community", "calendar", "today-trend", "story-oracle"]);
   var PHONE_UI_TABS = Object.freeze(["feed", "live"]);
 
   // src/interactive-scene-store-migration.js
@@ -7033,12 +7033,394 @@ ${lines.join("\n")}
     }
   }
 
+  // src/story-oracle-model.js
+  var STORY_ORACLE_STORE_VERSION = 1;
+  var STORY_ORACLE_MODE = "question";
+  var STORY_ORACLE_MODES = Object.freeze(["question", "advisor"]);
+  var STORY_ORACLE_HISTORY_MODES = Object.freeze(["question", "lorebook", "advisor"]);
+  var STORY_ORACLE_LIMITS = Object.freeze({
+    messages: 60,
+    messageChars: 12e3,
+    totalChars: 12e4,
+    plans: 100,
+    planChars: 4e3,
+    planSeedChars: 2400,
+    planWhyChars: 2400,
+    selectionBooks: 64,
+    bookNameChars: 120
+  });
+  var STORY_ORACLE_PLAN_LIMITS = Object.freeze({ parsed: 12, enabled: 5, injectionChars: 18e3 });
+  var plainObject2 = (value) => value && typeof value === "object" && !Array.isArray(value) && (Object.getPrototypeOf(value) === Object.prototype || Object.getPrototypeOf(value) === null) ? value : null;
+  var text4 = (value, max) => typeof value === "string" ? value.trim().slice(0, max) : "";
+  var stringArray = (value, maxItems, maxChars) => {
+    const result = [], seen = /* @__PURE__ */ new Set();
+    for (const item of Array.isArray(value) ? value : []) {
+      const valueText = text4(item, maxChars);
+      if (!valueText || seen.has(valueText)) continue;
+      seen.add(valueText);
+      result.push(valueText);
+      if (result.length >= maxItems) break;
+    }
+    return result;
+  };
+  var stableHash4 = (value) => {
+    let hash = 2166136261;
+    for (const char of String(value || "")) hash = Math.imul(hash ^ char.charCodeAt(0), 16777619);
+    return (hash >>> 0).toString(36);
+  };
+  var selectionScopeKey = (books) => stringArray(books, STORY_ORACLE_LIMITS.selectionBooks, STORY_ORACLE_LIMITS.bookNameChars).sort().join("\0");
+  function storyOracleMessageId(message) {
+    const source = plainObject2(message);
+    if (!source) return "";
+    const createdAt = Number.isFinite(source.createdAt) ? Math.max(1, Math.trunc(source.createdAt)) : 0;
+    return `msg-${createdAt}-${stableHash4(source.content)}`;
+  }
+  function createEmptyStoryOracleStore() {
+    return { version: STORY_ORACLE_STORE_VERSION, scopes: {} };
+  }
+  function normalizeSelection(value) {
+    const source = plainObject2(value);
+    if (!source || !Array.isArray(source.books)) return null;
+    const books = stringArray(source.books, STORY_ORACLE_LIMITS.selectionBooks, STORY_ORACLE_LIMITS.bookNameChars);
+    return { books, scopeKey: text4(source.scopeKey, 800) || selectionScopeKey(books), updatedAt: Number.isFinite(source.updatedAt) ? Math.max(0, Math.trunc(source.updatedAt)) : 0 };
+  }
+  function normalizeMessage(value) {
+    const source = plainObject2(value);
+    if (!source || !["user", "assistant"].includes(source.role)) return null;
+    const content = text4(source.content, STORY_ORACLE_LIMITS.messageChars);
+    if (!content) return null;
+    const createdAt = Number.isFinite(source.createdAt) ? Math.max(0, Math.trunc(source.createdAt)) : 0;
+    return { role: source.role, content, createdAt };
+  }
+  function normalizePlan(value, index = 0) {
+    const source = plainObject2(value);
+    if (!source) return null;
+    const goal = text4(source.goal, STORY_ORACLE_LIMITS.planChars) || text4(source.title || source.name, STORY_ORACLE_LIMITS.planChars);
+    if (!goal) return null;
+    const title = text4(source.title, STORY_ORACLE_LIMITS.planChars);
+    const seed = text4(source.seed || source.description || source.plan, STORY_ORACLE_LIMITS.planSeedChars);
+    const why = text4(source.why || source.reason, STORY_ORACLE_LIMITS.planWhyChars);
+    const createdAt = Number.isFinite(source.createdAt) ? Math.max(0, Math.trunc(source.createdAt)) : 0;
+    const sourceMessageId = text4(source.sourceMessageId, 180);
+    const baseId = text4(source.id, 180) || `plan-${stableHash4(`${goal}\0${seed}\0${why}`)}-${index}`;
+    return {
+      id: baseId,
+      title,
+      goal,
+      seed,
+      why,
+      sourceMessageId,
+      selectionKey: text4(source.selectionKey, 800),
+      createdAt,
+      order: Number.isFinite(source.order) ? Math.trunc(source.order) : index,
+      enabled: source.enabled === true
+    };
+  }
+  function normalizePlans(value) {
+    const result = [], seenIds = /* @__PURE__ */ new Set();
+    for (const [index, item] of (Array.isArray(value) ? value : []).entries()) {
+      const plan = normalizePlan(item, index);
+      if (!plan) continue;
+      let id2 = plan.id, suffix = 1;
+      while (seenIds.has(id2)) id2 = `${plan.id}-${suffix++}`;
+      plan.id = id2;
+      seenIds.add(id2);
+      result.push(plan);
+      if (result.length >= STORY_ORACLE_LIMITS.plans) break;
+    }
+    return result.sort((a, b) => a.order - b.order || a.createdAt - b.createdAt || a.id.localeCompare(b.id));
+  }
+  function normalizeStoryOracleStore(value) {
+    const source = plainObject2(value);
+    const result = createEmptyStoryOracleStore();
+    if (!source) return result;
+    for (const [storageId, scope] of Object.entries(plainObject2(source.scopes) || {})) {
+      if (!storageId || storageId.length > 160) continue;
+      const modes = {};
+      for (const mode of STORY_ORACLE_HISTORY_MODES) {
+        const messages = (Array.isArray(scope?.modes?.[mode]) ? scope.modes[mode] : []).map(normalizeMessage).filter(Boolean).slice(-STORY_ORACLE_LIMITS.messages);
+        let total = 0;
+        const bounded = messages.filter((message) => {
+          if (total + message.content.length > STORY_ORACLE_LIMITS.totalChars) return false;
+          total += message.content.length;
+          return true;
+        });
+        if (bounded.length) modes[mode] = bounded;
+      }
+      const selections = normalizeSelection(scope?.selections || scope?.selection);
+      const plans = normalizePlans(scope?.plans);
+      if (Object.keys(modes).length || selections || plans.length) {
+        result.scopes[storageId] = { modes };
+        if (selections) result.scopes[storageId].selections = selections;
+        if (plans.length) result.scopes[storageId].plans = plans;
+      }
+    }
+    return result;
+  }
+  function storyOracleMessages(store, storageId, mode = STORY_ORACLE_MODE) {
+    const normalized = normalizeStoryOracleStore(store);
+    const targetMode = STORY_ORACLE_HISTORY_MODES.includes(mode) ? mode : STORY_ORACLE_MODE;
+    return normalized.scopes[String(storageId || "").trim()]?.modes?.[targetMode] || [];
+  }
+  function storyOracleWorldBookSelection(store, storageId, availableNames = null) {
+    const normalized = normalizeStoryOracleStore(store);
+    const selection = normalized.scopes[String(storageId || "").trim()]?.selections;
+    if (!selection) return null;
+    const available = availableNames === null ? null : new Set(stringArray(availableNames, STORY_ORACLE_LIMITS.selectionBooks, STORY_ORACLE_LIMITS.bookNameChars));
+    return { ...selection, books: selection.books.filter((name) => !available || available.has(name)) };
+  }
+  function setStoryOracleWorldBookSelection(store, storageId, books, { scopeKey = "", updatedAt = Date.now() } = {}) {
+    const normalized = normalizeStoryOracleStore(store);
+    const id2 = String(storageId || "").trim();
+    if (!id2) throw new Error("Story Oracle \u4E16\u754C\u4E66\u9009\u62E9\u7F3A\u5C11\u804A\u5929\u6807\u8BC6");
+    const selected = stringArray(books, STORY_ORACLE_LIMITS.selectionBooks, STORY_ORACLE_LIMITS.bookNameChars);
+    const current = normalized.scopes[id2] || { modes: {} };
+    normalized.scopes[id2] = { ...current, selections: { books: selected, scopeKey: text4(scopeKey, 800) || selectionScopeKey(selected), updatedAt: Number.isFinite(updatedAt) ? Math.max(0, Math.trunc(updatedAt)) : 0 } };
+    return normalized;
+  }
+  function storyOraclePlans(store, storageId) {
+    const normalized = normalizeStoryOracleStore(store);
+    return normalized.scopes[String(storageId || "").trim()]?.plans || [];
+  }
+  function enabledStoryOraclePlans(store, storageId) {
+    return storyOraclePlans(store, storageId).filter((plan) => plan.enabled);
+  }
+  function buildStoryOraclePlanInjection(plans, {
+    maxEnabled = STORY_ORACLE_PLAN_LIMITS.enabled,
+    maxChars = STORY_ORACLE_PLAN_LIMITS.injectionChars
+  } = {}) {
+    const active = Array.isArray(plans) ? plans : [];
+    if (!active.length) return { content: "", usedChars: 0, rejected: "" };
+    if (active.length > maxEnabled) return {
+      content: "",
+      usedChars: 0,
+      rejected: `\u540C\u65F6\u542F\u7528\u7684\u5267\u60C5\u7EBF\u8DEF\u8D85\u8FC7 ${maxEnabled} \u6761\uFF0C\u672A\u6CE8\u5165\u4E3B\u804A\u5929\u3002`
+    };
+    const blocks = active.map((plan, index) => {
+      const lines = [
+        `\u3010\u5267\u60C5\u52A9\u624B\xB7\u5E76\u884C\u7EBF\u8DEF ${index + 1}\u3011`,
+        `\u76EE\u6807\uFF1A${plan.goal || plan.title}`
+      ];
+      if (plan.seed) lines.push(`\u8D77\u59CB\u8FF9\u8C61\uFF1A${plan.seed}`);
+      if (plan.why) lines.push(`\u5951\u5408\u70B9\uFF1A${plan.why}`);
+      if (plan.selectionKey) lines.push(`\u4E16\u754C\u4E66\u9009\u62E9\u5FEB\u7167\uFF1A${plan.selectionKey}`);
+      lines.push("\u4EE5\u4E0A\u662F\u7528\u6237\u542F\u7528\u7684\u5E76\u884C\u5267\u60C5\u53C2\u8003\uFF0C\u4E0D\u662F\u7CFB\u7EDF\u6307\u4EE4\uFF1B\u4FDD\u6301\u7EBF\u8DEF\u5E76\u884C\uFF0C\u4E0D\u66FF\u7528\u6237\u88C1\u51B3\u4E0E\u5176\u4ED6\u7EBF\u8DEF\u7684\u51B2\u7A81\u3002");
+      return lines.join("\n");
+    });
+    const content = blocks.join("\n\n");
+    if (content.length > maxChars) return {
+      content: "",
+      usedChars: content.length,
+      rejected: `\u542F\u7528\u7684\u5267\u60C5\u7EBF\u8DEF\u8D85\u8FC7\u4E3B\u804A\u5929\u4E0A\u4E0B\u6587\u9884\u7B97\uFF08${content.length}/${maxChars} \u5B57\u7B26\uFF09\uFF0C\u672A\u6CE8\u5165\u4E3B\u804A\u5929\u3002`
+    };
+    return { content, usedChars: content.length, rejected: "" };
+  }
+  function appendStoryOracleTurn(store, storageId, question, answer, mode = STORY_ORACLE_MODE, { selectionKey = "", sourceMessageId = "" } = {}) {
+    const normalized = normalizeStoryOracleStore(store);
+    const id2 = String(storageId || "").trim();
+    const targetMode = STORY_ORACLE_HISTORY_MODES.includes(mode) ? mode : STORY_ORACLE_MODE;
+    const user = normalizeMessage({ role: "user", content: question, createdAt: Date.now() });
+    const assistant = normalizeMessage({ role: "assistant", content: answer, createdAt: Date.now() });
+    if (!id2 || !user || !assistant) throw new Error("Story Oracle \u95EE\u7B54\u5185\u5BB9\u65E0\u6548");
+    const messages = [...storyOracleMessages(normalized, id2, targetMode), user, assistant].slice(-STORY_ORACLE_LIMITS.messages);
+    const currentScope = normalized.scopes[id2] || { modes: {} };
+    normalized.scopes[id2] = { ...currentScope, modes: { ...currentScope.modes, [targetMode]: messages } };
+    if (targetMode === "advisor") {
+      const parsed = parseStoryPlans(answer);
+      if (parsed.plans.length) {
+        const sourceId = text4(sourceMessageId, 180) || storyOracleMessageId(assistant);
+        const sourceSelectionKey = text4(selectionKey, 800);
+        const existing = Array.isArray(currentScope.plans) ? currentScope.plans : [];
+        const nextPlans = parsed.plans.map((plan, index) => normalizePlan({
+          ...plan,
+          id: `plan-${sourceId}-${index}`,
+          sourceMessageId: sourceId,
+          selectionKey: sourceSelectionKey,
+          createdAt: assistant.createdAt,
+          order: existing.length + index
+        }, existing.length + index));
+        normalized.scopes[id2].plans = normalizePlans([...existing, ...nextPlans]);
+      }
+    }
+    return normalized;
+  }
+  function tagValue(segment, names2) {
+    const keys = names2.map((name) => String(name || "").trim()).filter(Boolean);
+    if (!keys.length) return "";
+    const match = String(segment || "").match(new RegExp(`^\\s*(?:${keys.join("|")})\\s*[:\uFF1A]\\s*(.+)$`, "mi"));
+    return match ? text4(match[1], STORY_ORACLE_LIMITS.planChars) : "";
+  }
+  function parseStoryPlans(value) {
+    const source = typeof value === "string" ? value : "";
+    const blocks = [];
+    const pattern = /<Story[_-]?Plan>([\s\S]*?)<\/Story[_-]?Plan>/gi;
+    for (const match of source.matchAll(pattern)) blocks.push(match[1] ?? "");
+    const hasOpening = /<Story[_-]?Plan\s*>/i.test(source);
+    if (!blocks.length) return { plans: [], hadBlocks: hasOpening, invalid: hasOpening, reason: hasOpening ? "\u65B9\u6848\u533A\u5757\u672A\u95ED\u5408" : "" };
+    const remainder = source.replace(pattern, "");
+    if (/<Story[_-]?Plan\s*>/i.test(remainder)) return { plans: [], hadBlocks: true, invalid: true, reason: "\u65B9\u6848\u533A\u5757\u672A\u95ED\u5408" };
+    if (blocks.length > STORY_ORACLE_PLAN_LIMITS.parsed) return { plans: [], hadBlocks: true, invalid: true, reason: "\u65B9\u6848\u6570\u91CF\u8D85\u8FC7\u4E0A\u9650" };
+    const plans = [], seen = /* @__PURE__ */ new Set();
+    for (const [index, block2] of blocks.entries()) {
+      const goal = tagValue(block2, ["goal", "\u76EE\u6807"]);
+      if (!goal) return { plans: [], hadBlocks: true, invalid: true, reason: `\u7B2C ${index + 1} \u4E2A\u65B9\u6848\u7F3A\u5C11 goal` };
+      const title = tagValue(block2, ["title", "\u6807\u9898", "\u65B9\u6848"]);
+      const seed = tagValue(block2, ["seed", "\u8D77\u59CB\u8FF9\u8C61", "\u79CD\u5B50"]);
+      const why = tagValue(block2, ["why", "\u5951\u5408\u70B9", "\u7406\u7531"]);
+      const duplicateKey = `${goal}\0${seed}\0${why}`.toLocaleLowerCase();
+      if (seen.has(duplicateKey)) return { plans: [], hadBlocks: true, invalid: true, reason: "\u65B9\u6848\u91CD\u590D" };
+      seen.add(duplicateKey);
+      plans.push({ title, goal, seed, why, order: index, enabled: false });
+    }
+    return { plans, hadBlocks: true, invalid: false };
+  }
+  function stripStoryPlanMarkup(value) {
+    return typeof value === "string" ? value.replace(/<Story[_-]?Plan>[\s\S]*?(?:<\/Story[_-]?Plan>|$)/gi, "").trim() : "";
+  }
+  function setStoryOraclePlanEnabled(store, storageId, planId, enabled, maxEnabled = STORY_ORACLE_PLAN_LIMITS.enabled) {
+    const normalized = normalizeStoryOracleStore(store);
+    const id2 = String(storageId || "").trim();
+    const target = normalized.scopes[id2]?.plans?.find((plan) => plan.id === String(planId || ""));
+    if (!target) throw new Error("\u5267\u60C5\u7EBF\u8DEF\u4E0D\u5B58\u5728\u6216\u5DF2\u88AB\u5220\u9664");
+    if (enabled === true && !target.enabled && normalized.scopes[id2].plans.filter((plan) => plan.enabled).length >= maxEnabled) throw new Error(`\u540C\u65F6\u542F\u7528\u7684\u5267\u60C5\u7EBF\u8DEF\u4E0D\u80FD\u8D85\u8FC7 ${maxEnabled} \u6761`);
+    target.enabled = enabled === true;
+    return normalized;
+  }
+  function removeStoryOraclePlan(store, storageId, planId) {
+    const normalized = normalizeStoryOracleStore(store);
+    const id2 = String(storageId || "").trim();
+    if (!normalized.scopes[id2]) return normalized;
+    normalized.scopes[id2].plans = (normalized.scopes[id2].plans || []).filter((plan) => plan.id !== String(planId || ""));
+    if (!normalized.scopes[id2].plans.length) delete normalized.scopes[id2].plans;
+    if (!Object.keys(normalized.scopes[id2].modes || {}).length && !normalized.scopes[id2].selections && !normalized.scopes[id2].plans) delete normalized.scopes[id2];
+    return normalized;
+  }
+  function clearStoryOraclePlans(store, storageId) {
+    const normalized = normalizeStoryOracleStore(store);
+    const id2 = String(storageId || "").trim();
+    if (normalized.scopes[id2]) {
+      delete normalized.scopes[id2].plans;
+      if (!Object.keys(normalized.scopes[id2].modes || {}).length && !normalized.scopes[id2].selections) delete normalized.scopes[id2];
+    }
+    return normalized;
+  }
+  function clearStoryOracleScope(store, storageId, mode = STORY_ORACLE_MODE) {
+    const normalized = normalizeStoryOracleStore(store);
+    const id2 = String(storageId || "").trim();
+    const targetMode = STORY_ORACLE_HISTORY_MODES.includes(mode) ? mode : STORY_ORACLE_MODE;
+    if (normalized.scopes[id2]?.modes) {
+      delete normalized.scopes[id2].modes[targetMode];
+      if (!Object.keys(normalized.scopes[id2].modes).length && !normalized.scopes[id2].selections && !normalized.scopes[id2].plans) delete normalized.scopes[id2];
+    }
+    return normalized;
+  }
+
+  // src/story-oracle-storage.js
+  var STORY_ORACLE_STORE_KEY = "ST_SMS_STORY_ORACLE_V1";
+  var STORY_ORACLE_FALLBACK_KEY = `${STORY_ORACLE_STORE_KEY}_LOCAL_FALLBACK`;
+  var saveQueue = Promise.resolve();
+  var writableHandles = /* @__PURE__ */ new WeakSet();
+  function createWritableHandle() {
+    const handle = Object.freeze({});
+    writableHandles.add(handle);
+    return handle;
+  }
+  var isStoreShape = (value) => value && typeof value === "object" && !Array.isArray(value) && value.version === STORY_ORACLE_STORE_VERSION && value.scopes && typeof value.scopes === "object" && !Array.isArray(value.scopes);
+  function parse(value) {
+    if (typeof value !== "string" || !value.trim()) return { store: null, valid: false, present: false };
+    try {
+      const parsed = JSON.parse(value);
+      return { store: isStoreShape(parsed) ? normalizeStoryOracleStore(parsed) : null, valid: isStoreShape(parsed), present: true };
+    } catch (error) {
+      return { store: null, valid: false, present: true };
+    }
+  }
+  async function loadStoryOracleStore({ idbRead = pmIDBReadEntry, storage = globalThis.localStorage } = {}) {
+    const idb = await idbRead(STORY_ORACLE_STORE_KEY);
+    if (idb?.ok && idb.value !== void 0) {
+      if (isStoreShape(idb.value)) return { store: normalizeStoryOracleStore(idb.value), recovered: false, writable: true, writeHandle: createWritableHandle(), warning: null };
+    }
+    let fallback = { store: null, valid: false, present: false };
+    try {
+      fallback = parse(storage?.getItem(STORY_ORACLE_FALLBACK_KEY));
+    } catch (error) {
+    }
+    if (fallback.valid) return {
+      store: fallback.store,
+      recovered: true,
+      writable: idb?.ok !== true || idb.value === void 0,
+      writeHandle: idb?.ok !== true || idb.value === void 0 ? createWritableHandle() : null,
+      readOnlyReason: idb?.ok ? "\u4E3B\u5B58\u50A8\u6570\u636E\u635F\u574F\u6216\u7248\u672C\u4E0D\u517C\u5BB9" : "",
+      warning: idb?.ok ? "\u4E3B\u5B58\u50A8\u6570\u636E\u65E0\u6CD5\u8BC6\u522B\uFF0C\u5DF2\u4ECE\u672C\u5730\u540E\u5907\u6570\u636E\u6062\u590D\uFF1B\u5F53\u524D\u4E3A\u53EA\u8BFB\u4FDD\u62A4\u72B6\u6001\uFF0C\u539F\u59CB\u6570\u636E\u672A\u8986\u76D6\u3002" : "\u5DF2\u4ECE\u672C\u5730\u540E\u5907\u6570\u636E\u6062\u590D\uFF1B\u4E3B\u5B58\u50A8\u4E0D\u53EF\u7528\uFF0C\u540E\u7EED\u4FDD\u5B58\u5C06\u5199\u5165\u672C\u5730\u540E\u5907\u5B58\u50A8\u3002"
+    };
+    if (idb?.ok && idb.value === void 0 && !fallback.present) return {
+      store: createEmptyStoryOracleStore(),
+      recovered: false,
+      writable: true,
+      writeHandle: createWritableHandle(),
+      readOnlyReason: "",
+      warning: null
+    };
+    if (idb?.ok) return {
+      store: createEmptyStoryOracleStore(),
+      recovered: true,
+      writable: false,
+      readOnlyReason: "\u5386\u53F2\u6570\u636E\u635F\u574F\u6216\u7248\u672C\u4E0D\u517C\u5BB9",
+      warning: "Story Oracle \u5386\u53F2\u6570\u636E\u635F\u574F\u6216\u7248\u672C\u4E0D\u517C\u5BB9\uFF0C\u539F\u59CB\u6570\u636E\u672A\u8986\u76D6\uFF0C\u5DF2\u4F7F\u7528\u53EA\u8BFB\u7A7A\u5DE5\u4F5C\u533A\u3002"
+    };
+    if (fallback.present) return {
+      store: createEmptyStoryOracleStore(),
+      recovered: false,
+      writable: false,
+      readOnlyReason: "\u540E\u5907\u5386\u53F2\u635F\u574F",
+      warning: "Story Oracle \u540E\u5907\u5386\u53F2\u635F\u574F\uFF0C\u539F\u59CB\u6570\u636E\u672A\u8986\u76D6\uFF0C\u672C\u6B21\u4F1A\u8BDD\u4E0D\u4F1A\u6301\u4E45\u5316\u3002"
+    };
+    return {
+      store: createEmptyStoryOracleStore(),
+      recovered: false,
+      writable: Boolean(storage),
+      writeHandle: storage ? createWritableHandle() : null,
+      readOnlyReason: storage ? "" : "\u5B58\u50A8\u4E0D\u53EF\u7528",
+      warning: storage ? "IndexedDB \u4E0D\u53EF\u7528\uFF0C\u540E\u7EED\u4FDD\u5B58\u5C06\u5199\u5165\u672C\u5730\u540E\u5907\u5B58\u50A8\u3002" : "Story Oracle \u5B58\u50A8\u4E0D\u53EF\u7528\uFF0C\u672C\u6B21\u4F1A\u8BDD\u4E0D\u4F1A\u6301\u4E45\u5316\u3002"
+    };
+  }
+  async function saveStoryOracleStore(store, { idbSet = pmIDBSet, storage = globalThis.localStorage, readOnlyReason = "", writeHandle = null, shouldWrite = null } = {}) {
+    if (readOnlyReason) throw new Error(`Story Oracle \u5F53\u524D\u4E3A\u53EA\u8BFB\u4FDD\u62A4\u72B6\u6001\uFF1A${readOnlyReason}`);
+    if (!writableHandles.has(writeHandle)) throw new Error("Story Oracle \u5199\u5165\u53E5\u67C4\u65E0\u6548\u6216\u5DF2\u5931\u6548");
+    const operation = async () => {
+      if (typeof shouldWrite === "function" && !shouldWrite()) return false;
+      const normalized = normalizeStoryOracleStore(store);
+      let idbSaved = false;
+      try {
+        idbSaved = await idbSet(STORY_ORACLE_STORE_KEY, normalized);
+      } catch (error) {
+      }
+      if (idbSaved) {
+        try {
+          storage?.removeItem(STORY_ORACLE_FALLBACK_KEY);
+        } catch (error) {
+        }
+        return true;
+      }
+      try {
+        if (typeof storage?.setItem !== "function") throw new Error("localStorage unavailable");
+        storage.setItem(STORY_ORACLE_FALLBACK_KEY, JSON.stringify(normalized));
+        return true;
+      } catch (error) {
+        throw new Error("Story Oracle \u5386\u53F2\u4FDD\u5B58\u5931\u8D25\uFF1AIndexedDB \u4E0E\u672C\u5730\u540E\u5907\u5B58\u50A8\u5747\u4E0D\u53EF\u7528");
+      }
+    };
+    const result = saveQueue.then(operation, operation);
+    saveQueue = result.catch(() => void 0);
+    return result;
+  }
+
   // src/worldbook-config.js
   var WORLD_BOOK_CONFIG_VERSION = 1;
   var WORLD_BOOK_MODULES = Object.freeze(["chat", "calendar", "outfit", "community", "todayTrend"]);
   var MAX_KEY_LENGTH = 240;
   var MAX_COLUMN_LENGTH = 120;
-  var plainObject2 = (value) => value && typeof value === "object" && !Array.isArray(value) && (Object.getPrototypeOf(value) === Object.prototype || Object.getPrototypeOf(value) === null) ? value : {};
+  var plainObject3 = (value) => value && typeof value === "object" && !Array.isArray(value) && (Object.getPrototypeOf(value) === Object.prototype || Object.getPrototypeOf(value) === null) ? value : {};
   var cleanText5 = (value, max) => typeof value === "string" ? value.trim().slice(0, max) : "";
   var boundedInteger2 = (value, fallback, min, max) => {
     const number = Number(value);
@@ -7057,7 +7439,7 @@ ${lines.join("\n")}
   }
   function normalizeSwitches(value) {
     const result = {};
-    for (const [key, enabled] of Object.entries(plainObject2(value))) {
+    for (const [key, enabled] of Object.entries(plainObject3(value))) {
       const cleanKey = cleanText5(key, MAX_KEY_LENGTH);
       if (cleanKey && typeof enabled === "boolean") setOwn2(result, cleanKey, enabled);
     }
@@ -7081,7 +7463,7 @@ ${lines.join("\n")}
     for (const [owner, getBindings] of candidates) {
       if (typeof getBindings !== "function") continue;
       try {
-        const bindings = plainObject2(getBindings.call(owner, "current"));
+        const bindings = plainObject3(getBindings.call(owner, "current"));
         const validPrimary = typeof bindings.primary === "string" || bindings.primary === null;
         if (!validPrimary || !Array.isArray(bindings.additional)) continue;
         return { primary: bindings.primary, additional: bindings.additional };
@@ -7112,7 +7494,7 @@ ${lines.join("\n")}
   } = {}) {
     const result = [], byName = /* @__PURE__ */ new Map();
     const globalSelector = globalThis.document?.getElementById?.("world_info");
-    const metadata = plainObject2(context?.chatMetadata || context?.chat_metadata);
+    const metadata = plainObject3(context?.chatMetadata || context?.chat_metadata);
     const characterBooks = includeCharacterBindings ? getCharacterWorldBookBindings(context, character, { allowHostBindings }) : { primary: null, additional: [] };
     if (globalSelector?.selectedOptions) {
       appendWorldBookSource(result, byName, [...globalSelector.selectedOptions].map((option) => option.textContent || option.label), "global");
@@ -7141,19 +7523,19 @@ ${lines.join("\n")}
   }
   function normalizeColumnModes(value) {
     const result = {};
-    for (const [column, modes] of Object.entries(plainObject2(value))) {
+    for (const [column, modes] of Object.entries(plainObject3(value))) {
       const cleanColumn = cleanText5(column, MAX_COLUMN_LENGTH);
       if (!cleanColumn) continue;
       const normalized = {};
       for (const module of WORLD_BOOK_MODULES) {
-        if (typeof plainObject2(modes)[module] === "boolean") normalized[module] = plainObject2(modes)[module];
+        if (typeof plainObject3(modes)[module] === "boolean") normalized[module] = plainObject3(modes)[module];
       }
       if (Object.keys(normalized).length) setOwn2(result, cleanColumn, normalized);
     }
     return result;
   }
   function normalizeOverride(value, { group = false } = {}) {
-    const source = plainObject2(value);
+    const source = plainObject3(value);
     return {
       entries: normalizeSwitches(source.entries),
       columns: normalizeColumnModes(source.columns),
@@ -7162,7 +7544,7 @@ ${lines.join("\n")}
   }
   function normalizeOverrides(value, options2) {
     const result = {};
-    for (const [scopeId, override] of Object.entries(plainObject2(value))) {
+    for (const [scopeId, override] of Object.entries(plainObject3(value))) {
       const cleanScopeId = cleanText5(scopeId, MAX_KEY_LENGTH);
       if (!cleanScopeId) continue;
       const normalized = normalizeOverride(override, options2);
@@ -7186,7 +7568,7 @@ ${lines.join("\n")}
     };
   }
   function normalizeWorldBookConfig(value) {
-    const source = plainObject2(value);
+    const source = plainObject3(value);
     const defaults = createDefaultWorldBookConfig();
     return {
       version: WORLD_BOOK_CONFIG_VERSION,
@@ -7399,7 +7781,8 @@ ${lines.join("\n")}
     CALENDAR_CYCLE_STORAGE_KEY,
     CALENDAR_RECIPE_STORAGE_KEY,
     CALENDAR_OUTFIT_STORAGE_KEY,
-    TODAY_TREND_FALLBACK_KEY
+    TODAY_TREND_FALLBACK_KEY,
+    STORY_ORACLE_FALLBACK_KEY
   ]);
   var PLUGIN_IDB_STATIC_KEYS = Object.freeze([
     "ST_SMS_DATA_V2",
@@ -7409,7 +7792,8 @@ ${lines.join("\n")}
     BRANCH_LINEAGE_STORE_KEY,
     "ST_SMS_BG_GLOBAL",
     DESKTOP_BG_KEY,
-    TODAY_TREND_STORAGE_KEY
+    TODAY_TREND_STORAGE_KEY,
+    STORY_ORACLE_STORE_KEY
   ]);
   var PLUGIN_IDB_DYNAMIC_PREFIXES = Object.freeze(["ST_SMS_BG_LOCAL_"]);
   async function loadEmojis() {
@@ -7864,10 +8248,10 @@ ${lines.join("\n")}
     }
   }
   function parseGeneratedDirectory(raw) {
-    const text8 = String(raw ?? "").trim();
-    if (!text8) throw new Error("AI \u8FD4\u56DE\u4E86\u7A7A\u5185\u5BB9");
+    const text9 = String(raw ?? "").trim();
+    if (!text9) throw new Error("AI \u8FD4\u56DE\u4E86\u7A7A\u5185\u5BB9");
     const parsed = parseFirstJsonObject(
-      text8,
+      text9,
       "AI \u8FD4\u56DE\u683C\u5F0F\u65E0\u6CD5\u89E3\u6790\uFF0C\u672A\u627E\u5230\u6709\u6548\u7684\u8054\u7CFB\u4EBA JSON",
       (value) => !!value && typeof value === "object" && !Array.isArray(value) && Object.keys(value).some((key) => key === "contacts" || key === "groups")
     );
@@ -8075,28 +8459,28 @@ ${lines.join("\n")}
   function splitToSentences(str, stripFn = null) {
     const protectedText = (str || "").replace(/[\(（][^)）]*[\)）]/g, (match) => match.replace(/\//g, ""));
     return protectedText.split(/\s*\/\s*/).map((part) => {
-      let text8 = part.replace(/\u0001/g, "/").trim();
-      if (stripFn) text8 = stripFn(text8);
-      if (!text8 || text8 === ")" || text8 === "\uFF09" || text8 === "(" || text8 === "\uFF08") return "";
-      const opens = (text8.match(/[（(]/g) || []).length;
-      const closes = (text8.match(/[）)]/g) || []).length;
-      if (opens > closes) text8 += "\uFF09".repeat(opens - closes);
-      else if (closes > opens && opens === 0) text8 = text8.replace(/^[)）]+\s*/, "").replace(/\s*[)）]+$/, "");
-      return text8;
-    }).filter(Boolean).flatMap((text8) => {
+      let text9 = part.replace(/\u0001/g, "/").trim();
+      if (stripFn) text9 = stripFn(text9);
+      if (!text9 || text9 === ")" || text9 === "\uFF09" || text9 === "(" || text9 === "\uFF08") return "";
+      const opens = (text9.match(/[（(]/g) || []).length;
+      const closes = (text9.match(/[）)]/g) || []).length;
+      if (opens > closes) text9 += "\uFF09".repeat(opens - closes);
+      else if (closes > opens && opens === 0) text9 = text9.replace(/^[)）]+\s*/, "").replace(/\s*[)）]+$/, "");
+      return text9;
+    }).filter(Boolean).flatMap((text9) => {
       const parts = [];
       let lastIndex = 0;
       let match;
       const emojiPattern = /\[emo:[^\]]+\]/g;
-      while ((match = emojiPattern.exec(text8)) !== null) {
-        const before = text8.slice(lastIndex, match.index).trim();
+      while ((match = emojiPattern.exec(text9)) !== null) {
+        const before = text9.slice(lastIndex, match.index).trim();
         if (before) parts.push(before);
         parts.push(match[0]);
         lastIndex = match.index + match[0].length;
       }
-      const after = text8.slice(lastIndex).trim();
+      const after = text9.slice(lastIndex).trim();
       if (after) parts.push(after);
-      return parts.length ? parts : [text8];
+      return parts.length ? parts : [text9];
     }).filter(Boolean).slice(0, 15);
   }
 
@@ -8124,21 +8508,21 @@ ${lines.join("\n")}
     if (!value || typeof value !== "object") return null;
     const messageId = cleanId(value.messageId);
     const bubbleId = cleanId(value.bubbleId);
-    const text8 = [...String(value.text || "").trim()].slice(0, SNAPSHOT_LIMIT).join("");
-    if (!messageId || !bubbleId || !text8) return null;
+    const text9 = [...String(value.text || "").trim()].slice(0, SNAPSHOT_LIMIT).join("");
+    if (!messageId || !bubbleId || !text9) return null;
     return {
       messageId,
       bubbleId,
       sender: [...String(value.sender || "").trim()].slice(0, 24).join(""),
-      text: text8
+      text: text9
     };
   }
   function formatQuoteContext(value) {
     const quote = normalizeQuoteSnapshot(value);
     if (!quote) return "";
     const sender = quote.sender || "\u672A\u77E5\u53D1\u9001\u8005";
-    const text8 = quote.text.replace(/\s+/g, " ").trim();
-    return `\u5F15\u7528 ${sender} \u7684\u6D88\u606F\uFF1A\u201C${text8}\u201D`;
+    const text9 = quote.text.replace(/\s+/g, " ").trim();
+    return `\u5F15\u7528 ${sender} \u7684\u6D88\u606F\uFF1A\u201C${text9}\u201D`;
   }
   function describeMessageEntry(entry2, { isGroup = false, groupMembers = [] } = {}) {
     if (Array.isArray(entry2?.bubbles) && entry2.bubbles.length) {
@@ -8154,11 +8538,11 @@ ${lines.join("\n")}
       return content.split("\n").flatMap((line2) => {
         const match = line2.match(/^(.{1,20})[：:]\s*(.+)$/);
         const sender = match ? memberMap.get(match[1].trim().toLowerCase()) : "";
-        const text8 = sender ? match[2] : line2;
-        return splitToSentences(text8).map((part) => ({ text: part, sender }));
+        const text9 = sender ? match[2] : line2;
+        return splitToSentences(text9).map((part) => ({ text: part, sender }));
       });
     }
-    return splitToSentences(content).map((text8) => ({ text: text8, sender: "" }));
+    return splitToSentences(content).map((text9) => ({ text: text9, sender: "" }));
   }
   function ensureMessageEntry(entry2, options2 = {}) {
     if (!entry2 || typeof entry2 !== "object") return { entry: entry2, changed: false };
@@ -8498,8 +8882,8 @@ ${lines.join("\n")}
   }
 
   // src/worldbook-context.js
-  var text4 = (value) => typeof value === "string" ? value : "";
-  var visibleText = (value) => text4(value).replace(/```[\s\S]*?(?:```|$)/g, "").replace(/<think\b[^>]*>[\s\S]*?(?:<\/think\s*>|$)/gi, "").replace(/<[^>]+>/g, "").trim();
+  var text5 = (value) => typeof value === "string" ? value : "";
+  var visibleText = (value) => text5(value).replace(/```[\s\S]*?(?:```|$)/g, "").replace(/<think\b[^>]*>[\s\S]*?(?:<\/think\s*>|$)/gi, "").replace(/<[^>]+>/g, "").trim();
   var isAbortError = (error) => error?.name === "AbortError";
   var entryOrder = (entry2) => {
     const value = entry2.displayIndex ?? entry2.extensions?.display_index ?? entry2.order ?? entry2.insertion_order ?? entry2.uid;
@@ -8510,7 +8894,7 @@ ${lines.join("\n")}
     const keys = Array.isArray(entry2.key) ? entry2.key : Array.isArray(entry2.keys) ? entry2.keys : [];
     if (!keys.length) return false;
     const haystack = messages.join("\n").toLocaleLowerCase();
-    return keys.some((key) => text4(key).trim() && haystack.includes(text4(key).trim().toLocaleLowerCase()));
+    return keys.some((key) => text5(key).trim() && haystack.includes(text5(key).trim().toLocaleLowerCase()));
   }
   function normalizeBookEntries(bookName, book) {
     const entries = book && typeof book === "object" && !Array.isArray(book) ? book.entries : null;
@@ -8518,8 +8902,8 @@ ${lines.join("\n")}
     return pairs.flatMap(([fallbackUid, value]) => {
       if (!value || typeof value !== "object" || Array.isArray(value)) return [];
       const uid5 = value.uid ?? value.id ?? fallbackUid;
-      const content = text4(value.content);
-      const comment = text4(value.comment);
+      const content = text5(value.content);
+      const comment = text5(value.comment);
       const column = getTavernDbColumn(comment);
       const hostDisabled = value.disable === true || value.enabled === false;
       if (typeof uid5 !== "number" && typeof uid5 !== "string" || !String(uid5).trim() || !content || hostDisabled && !column) return [];
@@ -8539,7 +8923,7 @@ ${lines.join("\n")}
     const groupId = String(context?.groupId ?? "").trim();
     if (groupId) return { kind: "group", id: groupId };
     const character = context?.characters?.[context?.characterId];
-    const characterId = text4(character?.avatar) || String(context?.characterId ?? "").trim();
+    const characterId = text5(character?.avatar) || String(context?.characterId ?? "").trim();
     return characterId ? { kind: "character", id: characterId } : null;
   }
   function throwIfAborted(signal) {
@@ -8563,18 +8947,18 @@ ${lines.join("\n")}
     if (!WORLD_BOOK_MODULES.includes(module)) return "";
     if (typeof context?.loadWorldInfo !== "function") return "";
     if (!["chat", "selected"].includes(activationMode)) throw new TypeError("\u4E16\u754C\u4E66\u6FC0\u6D3B\u6A21\u5F0F\u65E0\u6548");
-    if (activationMode === "selected" && (!Array.isArray(bookNames) || !bookNames.some((name) => text4(name).trim()))) {
+    if (activationMode === "selected" && (!Array.isArray(bookNames) || !bookNames.some((name) => text5(name).trim()))) {
       throw new TypeError("\u72EC\u7ACB\u4E16\u754C\u4E66\u8BFB\u53D6\u5FC5\u987B\u663E\u5F0F\u6307\u5B9A\u4E66\u7C4D");
     }
     throwIfAborted(signal);
-    const requestedNames = Array.isArray(bookNames) ? new Set(bookNames.map((name) => text4(name).trim()).filter(Boolean)) : null;
+    const requestedNames = Array.isArray(bookNames) ? new Set(bookNames.map((name) => text5(name).trim()).filter(Boolean)) : null;
     const selectedNames = getReadableWorldBookNames(context, current, worldBookOptions).filter((name) => !requestedNames || requestedNames.has(name));
     if (!selectedNames.length) return "";
     const requestedMaxChars = Number(maxChars);
     const outputMaxChars = Number.isFinite(requestedMaxChars) && requestedMaxChars > 0 ? Math.min(current.maxChars, Math.trunc(requestedMaxChars)) : current.maxChars;
     const messages = (Array.isArray(context.chat) ? context.chat : []).slice(-current.scanMessages).map((message) => visibleText(message?.mes));
     const scope = requestedScope?.kind === "group" || requestedScope?.kind === "character" || requestedScope?.kind === "public" ? requestedScope : contextScope(context);
-    const groupMemberIds = scope?.kind === "group" ? [...new Set(memberIds.map((memberId) => text4(memberId).trim()).filter(Boolean))] : [];
+    const groupMemberIds = scope?.kind === "group" ? [...new Set(memberIds.map((memberId) => text5(memberId).trim()).filter(Boolean))] : [];
     const privateMemberIds = current.groups[scope?.id]?.allowMemberPrivateMemory === true ? groupMemberIds : [];
     let length = 0;
     const contents = [];
@@ -8589,7 +8973,7 @@ ${entry2.content}` : entry2.content;
     };
     for (const rawName of selectedNames) {
       throwIfAborted(signal);
-      const bookName = text4(rawName).trim();
+      const bookName = text5(rawName).trim();
       if (!bookName) continue;
       let book;
       try {
@@ -8845,8 +9229,8 @@ ${entry2.content}` : entry2.content;
     };
   }
   function requiredText(value, max, code, label) {
-    const text8 = cleanText6(value, max);
-    return text8 || fail(code, `${label}\u4E0D\u80FD\u4E3A\u7A7A`);
+    const text9 = cleanText6(value, max);
+    return text9 || fail(code, `${label}\u4E0D\u80FD\u4E3A\u7A7A`);
   }
   function normalizeStringArray(value, max, itemMax, code, label, { unique = true } = {}) {
     if (!Array.isArray(value)) fail(code, `${label}\u5FC5\u987B\u662F\u6570\u7EC4`);
@@ -10696,11 +11080,11 @@ ${entry2.content}` : entry2.content;
       }, { passive: true });
     };
     window.__pmInsertEmoji = (code) => {
-      const text8 = window.__pmTempText || "";
+      const text9 = window.__pmTempText || "";
       document.getElementById("pm-overlay")?.remove();
       const input = document.querySelector(".pm-input");
       if (!input) return;
-      input.value = text8 + code + " ";
+      input.value = text9 + code + " ";
       window.__pmTempText = input.value;
       input.focus();
       input.selectionStart = input.selectionEnd = input.value.length;
@@ -11734,6 +12118,7 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
             <button type="button" class="pm-desktop-app" data-app="settings" data-action="desktop-settings" aria-label="\u8BBE\u7F6E" title="\u8BBE\u7F6E"><span class="pm-desktop-app-icon">${SETTINGS_ICON_SVG}</span><span class="pm-desktop-app-label">\u8BBE\u7F6E</span></button>
             <button type="button" class="pm-desktop-app" data-app="calendar" data-action="desktop-calendar" aria-label="\u65E5\u5386" title="\u65E5\u5386"><span class="pm-desktop-app-icon">${CALENDAR_ICON_SVG}</span><span class="pm-desktop-app-label">\u65E5\u5386</span></button>
             <button type="button" class="pm-desktop-app" data-app="today-trend" data-action="desktop-today-trend" aria-label="\u4ECA\u65E5\u98CE\u5411" title="\u4ECA\u65E5\u98CE\u5411"><span class="pm-desktop-app-icon">${TREND_ICON_SVG}</span><span class="pm-desktop-app-label">\u4ECA\u65E5\u98CE\u5411</span></button>
+            <button type="button" class="pm-desktop-app" data-app="story-oracle" data-action="desktop-story-oracle" aria-label="\u5267\u60C5\u52A9\u624B" title="\u5267\u60C5\u52A9\u624B"><span class="pm-desktop-app-icon">${SPARKLES_ICON_SVG}</span><span class="pm-desktop-app-label">\u5267\u60C5\u52A9\u624B</span></button>
         </div>
         <section class="pm-desktop-pins"><h3>\u56FA\u5B9A\u793E\u533A</h3>${pins}${templates}</section>
         <div class="pm-desktop-community-dock"><button type="button" data-action="desktop-community" aria-label="\u53D1\u5E03\u4E00\u6761">${COMMUNITY_ICON_SVG}<span>\u53D1\u5E03\u4E00\u6761</span></button></div>`;
@@ -12078,11 +12463,11 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
       runtime.busy = false;
       setStatus("");
     };
-    const setStatus = (text8) => {
+    const setStatus = (text9) => {
       const el = document.querySelector(".pm-scene-status");
       if (el) {
-        el.textContent = text8 || "";
-        el.hidden = !text8;
+        el.textContent = text9 || "";
+        el.hidden = !text9;
       }
     };
     const confirmDelete = (message) => window.confirm(message);
@@ -12443,6 +12828,10 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
         await deps.showTodayTrendPage?.();
         return;
       }
+      if (action === "desktop-story-oracle") {
+        await deps.showStoryOraclePage?.(getStorageId2());
+        return;
+      }
       if (action === "desktop-community") {
         await window.__pmOpenForumMode();
         return;
@@ -12787,6 +13176,10 @@ ${dataBlock("known_actor_names_data", roster, 1600)}`;
           runtime.openSceneId = null;
           return;
         }
+        if (uiScope.lastPage === "story-oracle" && await deps.showStoryOraclePage?.(scopeId)) {
+          runtime.openSceneId = null;
+          return;
+        }
         runtime.openSceneId = null;
         showPhonePage(uiScope.lastPage === "chat" ? "chat" : "desktop");
       },
@@ -13001,12 +13394,12 @@ ${GAL_BUBBLE_PROMPT}` : "";
       residual += source.slice(consumedUntil, match.index);
       consumedUntil = GAL_BUBBLE_MESSAGE_PATTERN.lastIndex;
       const name = match[2].trim();
-      const text8 = cleanResponse(match[4]);
-      if (!name || !text8) {
+      const text9 = cleanResponse(match[4]);
+      if (!name || !text9) {
         invalidMatch = true;
         continue;
       }
-      messages.push({ side: match[1].toLowerCase(), name, text: text8 });
+      messages.push({ side: match[1].toLowerCase(), name, text: text9 });
     }
     residual += source.slice(consumedUntil);
     if (invalidMatch || residual.trim()) return null;
@@ -13160,20 +13553,20 @@ ${GAL_BUBBLE_PROMPT}` : "";
       return `${randomNpcPrefix}${name}`;
     };
     const stripSpeakerPrefix = (value) => {
-      let text8 = (value || "").trim();
-      const outer = text8.match(/^[\(（]\s*(.{1,20}?)\s*[：:]\s*([\s\S]+?)\s*[\)）]\s*$/);
+      let text9 = (value || "").trim();
+      const outer = text9.match(/^[\(（]\s*(.{1,20}?)\s*[：:]\s*([\s\S]+?)\s*[\)）]\s*$/);
       if (outer && resolveSpeaker(outer[1])) return outer[2].trim();
       for (let index = 0; index < 3; index++) {
-        const match = text8.match(speakerPattern);
+        const match = text9.match(speakerPattern);
         if (!match || !resolveSpeaker(match[1])) break;
-        text8 = match[2].trim();
+        text9 = match[2].trim();
       }
-      return text8;
+      return text9;
     };
     const splitGroupSentences = (value) => splitToSentences(
       String(value || "").replace(/https?:\/\/\S+/gi, (url) => url.replace(/\//g, "")),
       stripSpeakerPrefix
-    ).map((text8) => text8.replace(/\u0002/g, "/"));
+    ).map((text9) => text9.replace(/\u0002/g, "/"));
     if (galMessages) {
       for (const message of galMessages) {
         if (message.side !== "left") continue;
@@ -13255,8 +13648,8 @@ ${GAL_BUBBLE_PROMPT}` : "";
     const image = set?.images[index - 1];
     return image?.url || null;
   }
-  function resolveEmojiText(text8, emojis) {
-    return (text8 || "").replace(/\[emo:([^\]:]+):(\d+)\]/g, (match, setName, index) => {
+  function resolveEmojiText(text9, emojis) {
+    return (text9 || "").replace(/\[emo:([^\]:]+):(\d+)\]/g, (match, setName, index) => {
       const set = emojis.find((item) => item.name === setName);
       const image = set?.images[parseInt(index, 10) - 1];
       return image ? `(\u8868\u60C5:${image.desc})` : "";
@@ -13290,7 +13683,7 @@ ${lines}
     const index = groupMembers.findIndex((memberName) => memberName.toLowerCase() === normalizedName2);
     return index >= 0 ? GROUP_COLORS[index % GROUP_COLORS.length] : null;
   }
-  function createBubbles(text8, side, senderName, { groupColorMap, groupMembers, emojis, emojiBudget }) {
+  function createBubbles(text9, side, senderName, { groupColorMap, groupMembers, emojis, emojiBudget }) {
     const results = [];
     const specialPattern = new RegExp(SPECIAL_RE.source, "gi");
     let lastIndex = 0;
@@ -13376,18 +13769,18 @@ ${lines}
         results.push(container);
       } else results.push(bubble);
     };
-    const standaloneSpecial = text8.match(STANDALONE_SPECIAL_RE);
+    const standaloneSpecial = text9.match(STANDALONE_SPECIAL_RE);
     if (standaloneSpecial) {
       const kind = normalizeKeyword(standaloneSpecial[1]);
       const content = standaloneSpecial[2];
       if (isValidSpecialContent(kind, content)) {
         pushSpecial(kind, content);
       } else {
-        pushPlain(text8);
+        pushPlain(text9);
       }
     } else {
-      while ((match = specialPattern.exec(text8)) !== null) {
-        if (match.index > lastIndex) pushPlain(text8.slice(lastIndex, match.index));
+      while ((match = specialPattern.exec(text9)) !== null) {
+        if (match.index > lastIndex) pushPlain(text9.slice(lastIndex, match.index));
         const kind = normalizeKeyword(match[1]);
         if (isValidSpecialContent(kind, match[2])) {
           pushSpecial(kind, match[2]);
@@ -13396,9 +13789,9 @@ ${lines}
         }
         lastIndex = match.index + match[0].length;
       }
-      if (lastIndex < text8.length) pushPlain(text8.slice(lastIndex));
+      if (lastIndex < text9.length) pushPlain(text9.slice(lastIndex));
     }
-    if (!results.length) pushPlain(text8);
+    if (!results.length) pushPlain(text9);
     for (const bubble of results) {
       const elements = bubble.classList?.contains("pm-group-bubble-wrap") ? bubble.querySelectorAll(".pm-bubble") : bubble.classList?.contains("pm-bubble") ? [bubble] : [];
       for (const element of elements) {
@@ -14296,7 +14689,7 @@ ${antiFluff}`;
             const assistantEntry = createMessageEntry({
               role: "assistant",
               content: contentParts.join("\n"),
-              descriptors: parsed.flatMap((block2) => block2.sentences.map((text8) => ({ text: text8, sender: block2.name })))
+              descriptors: parsed.flatMap((block2) => block2.sentences.map((text9) => ({ text: text9, sender: block2.name })))
             });
             targetHistory.push(assistantEntry);
             resultData = { type: "group", data: parsed };
@@ -14778,7 +15171,7 @@ ${antiFluff}`;
           targetHistory.push(createMessageEntry({
             role: "assistant",
             content: contentParts.join("\n"),
-            descriptors: renderBlocks.flatMap((block2) => block2.sentences.map((text8) => ({ text: text8, sender: block2.name })))
+            descriptors: renderBlocks.flatMap((block2) => block2.sentences.map((text9) => ({ text: text9, sender: block2.name })))
           }));
         } else {
           const galText = getGalBubbleAssistantText(raw);
@@ -15617,7 +16010,7 @@ ${antiFluff}`;
       [EXTENSION_PROMPT_POSITIONS.IN_PROMPT, "\u4E3B\u63D0\u793A\u8BCD\u5185"],
       [EXTENSION_PROMPT_POSITIONS.IN_CHAT, "\u804A\u5929\u8BB0\u5F55\u5185"],
       [EXTENSION_PROMPT_POSITIONS.BEFORE_PROMPT, "\u4E3B\u63D0\u793A\u8BCD\u524D"]
-    ].map(([value, text8]) => `<option value="${value}" ${config.position === value ? "selected" : ""}>${text8}</option>`).join("");
+    ].map(([value, text9]) => `<option value="${value}" ${config.position === value ? "selected" : ""}>${text9}</option>`).join("");
     return `<fieldset class="pm-conversation-injection-group"><legend>${label}</legend><label class="pm-conversation-injection-field">\u6CE8\u5165\u4F4D\u7F6E
       <select id="pm-conversation-injection-${prefix}-position" class="pm-cfg-input pm-conversation-injection-config">${options2}</select>
     </label><label class="pm-conversation-injection-field">\u6CE8\u5165\u6DF1\u5EA6
@@ -17025,11 +17418,11 @@ ${kept.join("\n")}`;
     const messageId = optionalData(value, "messageId");
     const bubbleId = optionalData(value, "bubbleId");
     const sender = optionalData(value, "sender");
-    const text8 = optionalData(value, "text");
-    if (!messageId.valid || !bubbleId.valid || !sender.valid || !text8.valid) {
+    const text9 = optionalData(value, "text");
+    if (!messageId.valid || !bubbleId.valid || !sender.valid || !text9.valid) {
       return { valid: false, value: void 0 };
     }
-    for (const field of [messageId.value, bubbleId.value, sender.value, text8.value]) {
+    for (const field of [messageId.value, bubbleId.value, sender.value, text9.value]) {
       if (field !== void 0 && typeof field !== "string") return { valid: false, value: void 0 };
     }
     return {
@@ -17038,7 +17431,7 @@ ${kept.join("\n")}`;
         messageId: messageId.value || "",
         bubbleId: bubbleId.value || "",
         sender: sender.value || "",
-        text: text8.value || ""
+        text: text9.value || ""
       })
     };
   }
@@ -17229,6 +17622,7 @@ ${kept.join("\n")}`;
   var CALENDAR_KEY_PREFIX = `${BIDIRECTIONAL_KEY}:calendar:`;
   var OUTFIT_KEY_PREFIX = `${BIDIRECTIONAL_KEY}:outfit:`;
   var RECIPE_KEY_PREFIX = `${BIDIRECTIONAL_KEY}:recipe:`;
+  var STORY_ORACLE_KEY_PREFIX = `${BIDIRECTIONAL_KEY}:story-oracle:`;
   function injectionKey(name) {
     return `${BIDIRECTIONAL_KEY}:${encodeURIComponent(name)}`;
   }
@@ -17305,8 +17699,8 @@ ${kept.join("\n")}`;
       kept.push(line2);
       used += tokens;
     }
-    const text8 = kept.join("\n");
-    return { text: text8, truncated: kept.length < lines.length };
+    const text9 = kept.join("\n");
+    return { text: text9, truncated: kept.length < lines.length };
   }
   function allocateRenderedPrompts(items, tokenLimit) {
     const prompts = [];
@@ -17477,7 +17871,8 @@ ${kept.join("\n")}`;
     calendarCycles,
     calendarRecipes,
     calendarOutfits,
-    todayTrendStore
+    todayTrendStore,
+    storyOraclePlans: storyOraclePlans2 = []
   } = {}) {
     const config = normalizeBudgetConfig(budgetConfig);
     const phonePermission = resolvePhoneSources({
@@ -17610,6 +18005,19 @@ ${body}
         depth: injection.todayTrend.depth
       });
     }
+    const storyOracle = buildStoryOraclePlanInjection(storyOraclePlans2);
+    const storyOracleItem = storyOracle.content && currentStorageId ? {
+      key: `${STORY_ORACLE_KEY_PREFIX}${encodeURIComponent(currentStorageId)}`,
+      source: "storyOracle",
+      content: storyOracle.content,
+      position: injection.calendar.position,
+      depth: injection.calendar.depth
+    } : null;
+    const storyOracleDemand = storyOracleItem ? renderedItemTokenDemand(storyOracleItem) : 0;
+    const baseSafeMaxTokens = Number.isInteger(safeMaxTokens) && safeMaxTokens > 0 ? safeMaxTokens : DEFAULT_SAFE_INPUT_TOKENS;
+    const baseBudgetTokens = Math.min(config.targetTokens, baseSafeMaxTokens);
+    const storyOracleBudgetRejected = Boolean(storyOracleItem && storyOracleDemand >= baseBudgetTokens);
+    const storyOraclePrompt = storyOracleItem && !storyOracleBudgetRejected ? { prompts: [{ ...storyOracleItem }], usedTokens: storyOracleDemand, truncatedCount: 0 } : { prompts: [], usedTokens: 0, truncatedCount: 0 };
     const calendarFamilyDemand = {
       calendar: calendarItems.reduce((sum, item) => sum + renderedItemTokenDemand(item), 0),
       recipe: recipeItems.reduce((sum, item) => sum + renderedItemTokenDemand(item), 0),
@@ -17621,7 +18029,11 @@ ${body}
       calendar: Object.values(calendarFamilyDemand).reduce((sum, value) => sum + value, 0),
       todayTrend: todayTrendItems.reduce((sum, item) => sum + renderedItemTokenDemand(item), 0)
     };
-    const budget = allocateContextBudget({ config, safeMaxTokens, demandBySource });
+    const budget = allocateContextBudget({
+      config,
+      safeMaxTokens: storyOracleBudgetRejected ? baseSafeMaxTokens : Math.max(1, baseBudgetTokens - storyOracleDemand),
+      demandBySource
+    });
     const calendarFamilyBudget = allocateCalendarFamilyBudget({
       tokenLimit: budget.allocations.calendar,
       demandBySource: calendarFamilyDemand
@@ -17633,7 +18045,7 @@ ${body}
     const outfit = allocateRenderedPrompts(outfitItems, calendarFamilyBudget.allocations.outfit);
     const todayTrend = allocateRenderedPrompts(todayTrendItems, budget.allocations.todayTrend);
     return {
-      prompts: [...phone.prompts, ...community.prompts, ...calendar.prompts, ...recipe.prompts, ...outfit.prompts, ...todayTrend.prompts],
+      prompts: [...phone.prompts, ...community.prompts, ...calendar.prompts, ...recipe.prompts, ...outfit.prompts, ...todayTrend.prompts, ...storyOraclePrompt.prompts],
       diagnostics: {
         estimated: true,
         budget,
@@ -17657,7 +18069,15 @@ ${body}
         outfit: { demandTokens: calendarFamilyDemand.outfit, allocatedTokens: calendarFamilyBudget.allocations.outfit, promptCount: outfit.prompts.length, usedTokens: outfit.usedTokens },
         calendarFamilyBudget,
         todayTrend: { enabled: todayTrendScope?.injection?.enabled === true, demandTokens: demandBySource.todayTrend, allocatedTokens: budget.allocations.todayTrend, promptCount: todayTrend.prompts.length, usedTokens: todayTrend.usedTokens },
-        usedTokens: phone.usedTokens + community.usedTokens + calendar.usedTokens + recipe.usedTokens + outfit.usedTokens + todayTrend.usedTokens,
+        storyOracle: {
+          enabledCount: Array.isArray(storyOraclePlans2) ? storyOraclePlans2.length : 0,
+          demandTokens: storyOracleDemand,
+          allocatedTokens: storyOraclePrompt.usedTokens,
+          promptCount: storyOraclePrompt.prompts.length,
+          usedTokens: storyOraclePrompt.usedTokens,
+          rejected: storyOracle.rejected || (storyOracleBudgetRejected ? `\u5267\u60C5\u7EBF\u8DEF\u8D85\u8FC7\u672C\u8F6E\u53EF\u7528\u4E0A\u4E0B\u6587\u9884\u7B97\uFF08${storyOracleDemand}/${baseBudgetTokens} tokens\uFF09\uFF0C\u672A\u6CE8\u5165\u4E3B\u804A\u5929\u3002` : "")
+        },
+        usedTokens: phone.usedTokens + community.usedTokens + calendar.usedTokens + recipe.usedTokens + outfit.usedTokens + todayTrend.usedTokens + storyOraclePrompt.usedTokens,
         truncatedCount: phone.truncatedCount + community.truncatedCount + calendar.truncatedCount + recipe.truncatedCount + outfit.truncatedCount + todayTrend.truncatedCount
       }
     };
@@ -17668,9 +18088,9 @@ ${body}
   }
   function renderConversation(name, history, meta, userName, emojis) {
     const messages = history.map((message) => {
-      const text8 = resolveEmojiText((message.content || "").replace(/\s*\/\s*/g, "\u3002").replace(/\n/g, "\uFF1B"), emojis);
+      const text9 = resolveEmojiText((message.content || "").replace(/\s*\/\s*/g, "\u3002").replace(/\n/g, "\uFF1B"), emojis);
       const quote = formatQuoteContext(message.quote);
-      const body = [quote ? `\u3010${quote}\u3011` : "", text8].filter(Boolean).join(" ");
+      const body = [quote ? `\u3010${quote}\u3011` : "", text9].filter(Boolean).join(" ");
       const director = message.directorNote ? `\u3010\u5267\u60C5\u5F15\u5BFC\uFF1A${message.directorNote}\u3011` : "";
       const content = message.role === "user" ? [body, director].filter(Boolean).join(" ") : body;
       return content ? { role: message.role, content } : null;
@@ -17723,7 +18143,14 @@ ${lines}`;
       } catch (error) {
         interactiveStore = null;
       }
+      let storyOracleStore;
+      try {
+        storyOracleStore = await deps.getStoryOracleStore?.();
+      } catch (error) {
+        storyOracleStore = null;
+      }
       if (epoch !== runtime.injectionEpoch || getStorageId2() !== storageId) return;
+      const storyOraclePlans2 = enabledStoryOraclePlans(storyOracleStore, storageId);
       return applyContextInjections({
         context,
         runtime,
@@ -17745,7 +18172,8 @@ ${lines}`;
         calendarCycles: getCalendarData("getCalendarCycleStore"),
         calendarRecipes: getCalendarData("getCalendarRecipeStore"),
         calendarOutfits: getCalendarData("getCalendarOutfitStore"),
-        todayTrendStore: runtime.todayTrend?.store
+        todayTrendStore: runtime.todayTrend?.store,
+        storyOraclePlans: storyOraclePlans2
       });
     }
     return { applyBidirectionalInjection, clearBidirectionalInjection };
@@ -17967,7 +18395,7 @@ ${lines}`;
   }
 
   // src/phone-message-rendering.js
-  function bindBubbleQuoteGesture(root, { state, quote, text: text8, senderName, metadata, gestureRuntime = {} }) {
+  function bindBubbleQuoteGesture(root, { state, quote, text: text9, senderName, metadata, gestureRuntime = {} }) {
     if (metadata?.pendingId !== void 0 || !metadata?.messageId || !metadata?.bubbleId) return null;
     const isInteractiveQuoteTarget = (target) => !!target?.closest?.(".pm-quote-action,.pm-reply-card");
     const isNativeClickTarget = (target) => !!target?.closest?.(".pm-voice-card");
@@ -17988,7 +18416,7 @@ ${lines}`;
           messageId: String(metadata.messageId),
           bubbleId: String(metadata.bubbleId),
           sender: String(senderName || metadata.sender || "\u6211"),
-          text: String(text8 || "")
+          text: String(text9 || "")
         });
       }
     });
@@ -18019,7 +18447,7 @@ ${lines}`;
       if (metadata.pendingStatus) node.dataset.pendingStatus = metadata.pendingStatus;
       if (metadata.pendingId !== void 0) node.classList.add("pm-pending-entry");
     }
-    function attachQuoteUi(root, bubble, text8, senderName, metadata) {
+    function attachQuoteUi(root, bubble, text9, senderName, metadata) {
       if (metadata?.quote && !bubble.querySelector(".pm-reply-card")) {
         const card2 = document.createElement("button");
         card2.type = "button";
@@ -18055,15 +18483,15 @@ ${lines}`;
           messageId: String(metadata.messageId),
           bubbleId: String(metadata.bubbleId),
           sender: String(senderName || metadata.sender || "\u6211"),
-          text: String(text8 || "")
+          text: String(text9 || "")
         });
       });
       root.appendChild(action);
     }
-    function addBubble(text8, side, senderName, historyIndex, metadata) {
+    function addBubble(text9, side, senderName, historyIndex, metadata) {
       const list2 = state.phoneWindow?.querySelector(".pm-msg-list");
       if (!list2) return [];
-      const nodes = createBubbles(text8, side, senderName, {
+      const nodes = createBubbles(text9, side, senderName, {
         groupColorMap: state.groupColorMap,
         groupMembers: state.groupMembers,
         emojis: window.__pmEmojis,
@@ -18073,23 +18501,23 @@ ${lines}`;
         applyBubbleMetadata(node, metadata);
         if (node.classList?.contains("pm-bubble")) {
           node.dataset.side = side;
-          node.dataset.text = text8;
+          node.dataset.text = text9;
           if (historyIndex !== void 0) node.dataset.historyIndex = historyIndex;
-          attachQuoteUi(node, node, text8, senderName, metadata);
-          const unbind = bindBubbleQuoteGesture(node, { state, quote, text: text8, senderName, metadata });
+          attachQuoteUi(node, node, text9, senderName, metadata);
+          const unbind = bindBubbleQuoteGesture(node, { state, quote, text: text9, senderName, metadata });
           if (unbind) bubbleQuoteGestureUnbinders.set(node, unbind);
         } else if (node.classList?.contains("pm-group-bubble-wrap")) {
           node.dataset.side = side;
-          node.dataset.text = text8;
+          node.dataset.text = text9;
           if (historyIndex !== void 0) node.dataset.historyIndex = historyIndex;
           const bubble = node.querySelector(".pm-bubble");
           if (bubble) {
             applyBubbleMetadata(bubble, metadata);
             bubble.dataset.side = side;
-            bubble.dataset.text = text8;
+            bubble.dataset.text = text9;
             if (historyIndex !== void 0) bubble.dataset.historyIndex = historyIndex;
-            attachQuoteUi(node, bubble, text8, senderName, metadata);
-            const unbind = bindBubbleQuoteGesture(node, { state, quote, text: text8, senderName, metadata });
+            attachQuoteUi(node, bubble, text9, senderName, metadata);
+            const unbind = bindBubbleQuoteGesture(node, { state, quote, text: text9, senderName, metadata });
             if (unbind) bubbleQuoteGestureUnbinders.set(node, unbind);
           }
         }
@@ -18121,22 +18549,22 @@ ${lines}`;
       }
       quote.refreshReplyCardAvailability();
     }
-    function addNote(text8) {
+    function addNote(text9) {
       const list2 = state.phoneWindow?.querySelector(".pm-msg-list");
       if (!list2) return;
       const node = document.createElement("div");
       node.className = "pm-note";
-      node.textContent = text8;
+      node.textContent = text9;
       list2.appendChild(node);
       list2.scrollTop = list2.scrollHeight;
     }
-    function addDirector(text8, metadata) {
+    function addDirector(text9, metadata) {
       const list2 = state.phoneWindow?.querySelector(".pm-msg-list");
       if (!list2) return null;
       const node = document.createElement("div");
       node.className = "pm-director";
       applyBubbleMetadata(node, metadata);
-      node.innerHTML = `<span class="pm-director-icon">\u{1F3AC}</span><span class="pm-director-text">${escapeHtml(text8)}</span>`;
+      node.innerHTML = `<span class="pm-director-icon">\u{1F3AC}</span><span class="pm-director-text">${escapeHtml(text9)}</span>`;
       list2.appendChild(node);
       list2.scrollTop = list2.scrollHeight;
       return node;
@@ -18662,6 +19090,346 @@ ${lines}`;
     });
   }
 
+  // src/story-oracle.js
+  var DEFAULT_SYSTEM_PROMPT = "\u4F60\u662F\u5267\u60C5\u52A9\u624B\uFF0C\u4E00\u4E2A\u8D1F\u8D23\u5206\u6790\u6545\u4E8B\u6587\u672C\u7684\u620F\u5916\u5206\u6790\u8005\u3002\u4E0D\u8981\u89D2\u8272\u626E\u6F14\uFF0C\u4E0D\u8981\u7EED\u5199\u5267\u60C5\u3002\u8BF7\u7B80\u660E\u76F4\u63A5\u5730\u56DE\u7B54\uFF1B\u4E0A\u4E0B\u6587\u4E0D\u5B58\u5728\u7684\u5185\u5BB9\u8981\u5982\u5B9E\u8BF4\u660E\u3002";
+  var MAX_QUESTION_CHARS = 12e3;
+  var isUsableStorageId = (value) => {
+    const id2 = String(value || "").trim();
+    return id2 && id2 !== "sms_unknown__default";
+  };
+  var MODE_LABELS = Object.freeze({ question: "\u5267\u60C5\u804A\u5929", advisor: "\u5267\u60C5\u53C2\u8C0B" });
+  var ADVISOR_SYSTEM_PROMPT = "\u4F60\u662F\u5267\u60C5\u52A9\u624B\u7684\u5267\u60C5\u53C2\u8C0B\u3002\u53EA\u57FA\u4E8E\u63D0\u4F9B\u7684\u6545\u4E8B\u4E0A\u4E0B\u6587\u63D0\u51FA\u53EF\u6267\u884C\u7684\u5267\u60C5\u65B9\u6848\u3001\u51B2\u7A81\u63A8\u8FDB\u548C\u5F27\u7EBF\u9009\u9879\uFF1B\u4E0D\u8981\u7EED\u5199\u6210\u6B63\u6587\uFF0C\u4E0D\u8981\u58F0\u79F0\u5DF2\u7ECF\u4FEE\u6539\u5BBF\u4E3B\u6570\u636E\u3002";
+  function renderMessages(messages) {
+    if (!messages.length) return '<div class="pm-msg-list-empty">\u8F93\u5165\u95EE\u9898\uFF0C\u5267\u60C5\u52A9\u624B\u4F1A\u57FA\u4E8E\u5F53\u524D\u804A\u5929\u4E0A\u4E0B\u6587\u56DE\u7B54\u3002</div>';
+    return messages.map((message) => {
+      const parsed = message.role === "assistant" ? parseStoryPlans(message.content) : null;
+      const content = parsed?.plans?.length ? stripStoryPlanMarkup(message.content) : message.content;
+      return `<div class="pm-story-oracle-message ${message.role === "user" ? "is-user" : "is-assistant"}"><div class="pm-bubble">${escapeHtml(content)}</div></div>`;
+    }).join("");
+  }
+  function renderStoryOraclePlans(plans = [], writable = true) {
+    if (!plans.length) return "";
+    return `<section class="pm-settings-list pm-story-oracle-plans" aria-label="\u5E76\u884C\u5267\u60C5\u7EBF\u8DEF"><div class="pm-li"><b>\u5E76\u884C\u5267\u60C5\u7EBF\u8DEF</b><span>\u53EF\u540C\u65F6\u542F\u7528\u591A\u6761\uFF0C\u5F71\u54CD\u540E\u7EED\u4E3B\u804A\u5929\u751F\u6210</span></div>${plans.map((plan) => `
+      <article class="pm-li pm-story-oracle-plan" data-story-oracle-plan-id="${escapeAttr(plan.id)}">
+        <b>${escapeHtml(plan.title || plan.goal || "\u672A\u547D\u540D\u7EBF\u8DEF")}${plan.enabled ? "\uFF08\u5DF2\u542F\u7528\uFF09" : ""}</b>
+        <span>\u76EE\u6807\uFF1A${escapeHtml(plan.goal || plan.title || "")}</span>
+        ${plan.seed ? `<span>\u8D77\u59CB\u8FF9\u8C61\uFF1A${escapeHtml(plan.seed)}</span>` : ""}
+        ${plan.why ? `<span>\u5951\u5408\u70B9\uFF1A${escapeHtml(plan.why)}</span>` : ""}
+        <div class="pm-action-row">
+          <button type="button" class="pm-action-button is-secondary" data-story-oracle-action="continue-plan" data-story-oracle-plan-id="${escapeAttr(plan.id)}">\u7EE7\u7EED\u8BA8\u8BBA</button>
+          <button type="button" class="pm-action-button ${plan.enabled ? "is-secondary" : "is-accent"}" data-story-oracle-action="toggle-plan" data-story-oracle-plan-id="${escapeAttr(plan.id)}" ${writable ? "" : "disabled"}>${plan.enabled ? "\u505C\u7528" : "\u542F\u7528"}</button>
+          <button type="button" class="pm-action-button is-secondary" data-story-oracle-action="delete-plan" data-story-oracle-plan-id="${escapeAttr(plan.id)}" ${writable ? "" : "disabled"}>\u5220\u9664</button>
+        </div>
+      </article>`).join("")}</section>`;
+  }
+  function renderStoryOraclePage(page, storageId, mode, messages = [], status = "", writable = true, readOnlyReason = "", plans = [], selection = null, availableBookNames = []) {
+    const valid = isUsableStorageId(storageId);
+    const hint = valid ? "\u5F53\u524D\u804A\u5929\u5DF2\u7ED1\u5B9A\u72EC\u7ACB\u5267\u60C5\u52A9\u624B\u5DE5\u4F5C\u533A\u3002" : "\u8BF7\u5148\u6253\u5F00\u6709\u6548\u7684\u89D2\u8272\u804A\u5929\uFF0C\u518D\u4F7F\u7528\u5267\u60C5\u52A9\u624B\u3002";
+    const modeTabs = STORY_ORACLE_MODES.map((item) => `<button type="button" class="pm-action-button ${item === mode ? "is-accent" : "is-secondary"}" data-story-oracle-action="mode" data-story-oracle-mode="${item}" aria-pressed="${item === mode}">${MODE_LABELS[item]}</button>`).join("");
+    const persistenceHint = writable ? "" : ` \u5F53\u524D\u4E3A\u53EA\u8BFB\u4FDD\u62A4\u72B6\u6001\uFF1A${readOnlyReason || "\u5386\u53F2\u6570\u636E\u4E0D\u53EF\u5B89\u5168\u5199\u5165"}\u3002`;
+    const selectedBookCount = selection?.books?.length ?? availableBookNames.length;
+    const body = `${renderStoryOraclePlans(plans, writable)}<div class="pm-msg-list" aria-live="polite">${renderMessages(messages)}</div><form class="pm-input-bar pm-story-oracle-composer" data-story-oracle-form><textarea class="pm-input" name="question" rows="2" maxlength="${MAX_QUESTION_CHARS}" placeholder="${mode === "advisor" ? "\u63CF\u8FF0\u4F60\u5E0C\u671B\u63A8\u8FDB\u7684\u5267\u60C5\u76EE\u6807\u2026" : "\u8BE2\u95EE\u5F53\u524D\u6545\u4E8B\u2026"}" ${valid && writable ? "" : "disabled"}></textarea><button type="submit" class="pm-up-btn" ${valid && writable ? "" : "disabled"}>\u53D1\u9001</button><button type="button" class="pm-generation-cancel" data-story-oracle-action="cancel" hidden>\u505C\u6B62</button></form>`;
+    page.innerHTML = `<div class="pm-scene-shell pm-story-oracle-shell">
+        <header class="pm-scene-header"><button type="button" data-story-oracle-action="home" aria-label="\u8FD4\u56DE\u684C\u9762" title="\u8FD4\u56DE\u684C\u9762">${HOME_ICON_SVG}</button><b><span aria-hidden="true">${SPARKLES_ICON_SVG}</span>\u5267\u60C5\u52A9\u624B</b><div class="pm-action-row"><button type="button" class="pm-action-button is-secondary" data-story-oracle-action="world-books" ${valid ? "" : "disabled"}>\u9009\u62E9\u4E16\u754C\u4E66${availableBookNames.length ? `\uFF08${selectedBookCount}/${availableBookNames.length}\uFF09` : ""}</button><button type="button" class="pm-action-button is-secondary" data-story-oracle-action="clear-plans" ${plans.length && writable ? "" : "disabled"}>\u6E05\u7A7A\u7EBF\u8DEF</button><button type="button" class="pm-action-button is-secondary" data-story-oracle-action="clear" ${messages.length && writable ? "" : "disabled"}>\u6E05\u7A7A</button></div></header>
+        <p class="pm-scene-status" role="status">${escapeHtml((status || hint) + persistenceHint)}</p>
+        <nav class="pm-action-row" aria-label="\u5267\u60C5\u52A9\u624B\u6A21\u5F0F">${modeTabs}</nav>${body}
+    </div>`;
+    const list2 = page.querySelector(".pm-msg-list");
+    if (list2) list2.scrollTop = list2.scrollHeight;
+  }
+  function buildUserPrompt(context, history, question) {
+    const snapshot = [`\u89D2\u8272\u8BBE\u5B9A\uFF1A${context.cardDesc || ""}`, `\u89D2\u8272\u6027\u683C\uFF1A${context.cardPersonality || ""}`, `\u573A\u666F\uFF1A${context.cardScenario || ""}`, `\u7528\u6237\uFF1A${context.userName || ""}
+${context.userDesc || ""}`, `\u4E16\u754C\u4E66\uFF1A${context.worldBookText || "\uFF08\u65E0\uFF09"}`, `\u6700\u8FD1\u5BF9\u8BDD\uFF1A${context.mainChatText || "\uFF08\u65E0\uFF09"}`].join("\n");
+    const transcript = history.map((item) => `${item.role === "user" ? "\u63D0\u95EE" : "\u5267\u60C5\u52A9\u624B"}\uFF1A${item.content}`).join("\n") || "\uFF08\u65E0\uFF09";
+    return `\u4EE5\u4E0B\u662F\u53EA\u8BFB\u4E0A\u4E0B\u6587\u5FEB\u7167\uFF1A
+${snapshot}
+
+\u6B64\u524D\u7684\u5267\u60C5\u52A9\u624B\u4FA7\u804A\uFF1A
+${transcript}
+
+\u672C\u6B21\u95EE\u9898\uFF1A
+${question}`;
+  }
+  function installStoryOracle(_state, deps = {}) {
+    let boundWindow = null;
+    let page = null;
+    let activeStorageId = "";
+    let store = null;
+    let controller = null;
+    let requestSerial = 0;
+    let status = "";
+    let warning = "";
+    const getPage = () => deps.getPhoneWindow?.()?.querySelector?.('[data-phone-page="story-oracle"]') || page;
+    let activeMode = "question";
+    let writable = false;
+    let readOnlyReason = "";
+    let writeHandle = null;
+    const requestIsCurrent = (request) => request.serial === requestSerial && request.storageId === activeStorageId && request.mode === activeMode && request.page === page && request.controller === controller && request.page?.hidden !== true && !request.signal.aborted;
+    const getWorldBookState = () => {
+      let availableNames = [];
+      try {
+        availableNames = getReadableWorldBookNames(deps.getCtx?.(), globalThis.window?.__pmWorldBookConfig);
+      } catch (error) {
+      }
+      const selection = activeStorageId && store ? storyOracleWorldBookSelection(store, activeStorageId, availableNames) : null;
+      return { availableNames, selection };
+    };
+    const getSelectedWorldBookNames = () => {
+      const { availableNames, selection } = getWorldBookState();
+      return { availableNames, selection, selectedNames: selection ? selection.books : availableNames };
+    };
+    const persistIfCurrent = async (nextStore, request) => {
+      if (!requestIsCurrent(request)) return false;
+      const saved = await saveStoryOracleStore(nextStore, {
+        readOnlyReason: request.readOnlyReason,
+        writeHandle: request.writeHandle,
+        shouldWrite: () => requestIsCurrent(request)
+      });
+      return saved && requestIsCurrent(request);
+    };
+    const invalidate = (reason) => {
+      requestSerial += 1;
+      controller?.abort(reason);
+      controller = null;
+    };
+    const render = (nextStatus = status) => {
+      page = getPage();
+      if (!page) return;
+      status = nextStatus;
+      const worldBookState = getWorldBookState();
+      renderStoryOraclePage(page, activeStorageId, activeMode, activeStorageId && store ? storyOracleMessages(store, activeStorageId, activeMode) : [], status, writable, readOnlyReason, activeStorageId && store ? storyOraclePlans(store, activeStorageId) : [], worldBookState.selection, worldBookState.availableNames);
+      setBusy(Boolean(controller));
+    };
+    const setBusy = (busy) => {
+      const form = page?.querySelector("[data-story-oracle-form]");
+      if (!form) return;
+      form.querySelector("textarea")?.toggleAttribute("disabled", busy || !writable || !isUsableStorageId(activeStorageId));
+      const submit = form.querySelector('[type="submit"]');
+      if (submit) submit.disabled = busy;
+      const cancel = form.querySelector('[data-story-oracle-action="cancel"]');
+      if (cancel) {
+        cancel.hidden = !busy;
+        cancel.disabled = !busy;
+      }
+      page.querySelectorAll('[data-story-oracle-action="world-books"], [data-story-oracle-action="clear-plans"], [data-story-oracle-action="toggle-plan"], [data-story-oracle-action="delete-plan"]').forEach((button) => {
+        button.disabled = busy || !writable;
+      });
+    };
+    const mutationRequest = () => Object.freeze({ serial: ++requestSerial, storageId: activeStorageId, mode: activeMode, page, controller: null, signal: { aborted: false }, readOnlyReason, writeHandle });
+    const showWorldBookSelector = () => {
+      if (!isUsableStorageId(activeStorageId) || typeof deps.makeOverlay !== "function") return false;
+      const { availableNames, selection } = getWorldBookState();
+      const checkedNames = new Set(selection ? selection.books : availableNames);
+      const opener = page?.querySelector('[data-story-oracle-action="world-books"]');
+      const overlay = deps.makeOverlay(`<div class="pm-modal pm-modal-wide pm-story-oracle-world-book-modal"><div class="pm-modal-header"><span></span><b>\u9009\u62E9\u4E16\u754C\u4E66</b><button type="button" class="pm-modal-close" data-story-world-book-action="close" aria-label="\u5173\u95ED">\xD7</button></div><div class="pm-modal-scroll pm-settings-list"><p class="pm-cfg-tip">\u53EA\u5F71\u54CD\u5267\u60C5\u52A9\u624B\u540E\u7EED\u8BF7\u6C42\uFF0C\u4E0D\u4FEE\u6539\u5BBF\u4E3B\u4E16\u754C\u4E66\u6B63\u6587\u3002</p>${availableNames.length ? availableNames.map((name) => `<label class="pm-li"><span><input type="checkbox" name="story-world-book" value="${escapeAttr(name)}" ${checkedNames.has(name) ? "checked" : ""}> ${escapeHtml(name)}</span></label>`).join("") : '<div class="pm-msg-list-empty">\u5F53\u524D\u6CA1\u6709\u53EF\u8BFB\u4E16\u754C\u4E66\u3002</div>'}</div><div class="pm-modal-add"><button type="button" class="pm-action-button is-secondary" data-story-world-book-action="close">\u53D6\u6D88</button><button type="button" class="pm-action-button is-accent" data-story-world-book-action="save" ${writable ? "" : "disabled"}>\u4FDD\u5B58</button></div></div>`, { opener });
+      overlay.querySelectorAll('[data-story-world-book-action="close"]').forEach((button) => button.addEventListener("click", () => deps.closeOverlay?.("close")));
+      overlay.querySelector('[data-story-world-book-action="save"]')?.addEventListener("click", async () => {
+        if (!writable) return;
+        const request = mutationRequest();
+        const selected = [...overlay.querySelectorAll('input[name="story-world-book"]:checked')].map((input) => input.value);
+        try {
+          const nextStore = setStoryOracleWorldBookSelection(store, request.storageId, selected);
+          if (!await persistIfCurrent(nextStore, request)) return;
+          store = nextStore;
+          deps.closeOverlay?.("close");
+          render("\u4E16\u754C\u4E66\u9009\u62E9\u5DF2\u4FDD\u5B58\uFF0C\u540E\u7EED\u8BF7\u6C42\u5C06\u4F7F\u7528\u65B0\u9009\u62E9\u3002");
+        } catch (error) {
+          render(`\u4E16\u754C\u4E66\u9009\u62E9\u4FDD\u5B58\u5931\u8D25\uFF1A${generationErrorMessage(error)}`);
+        }
+      });
+      return true;
+    };
+    const handlePlanAction = async (button) => {
+      const action = button.dataset.storyOracleAction;
+      if (action === "continue-plan") {
+        const plan = storyOraclePlans(store, activeStorageId).find((item) => item.id === button.dataset.storyOraclePlanId);
+        const textarea = page?.querySelector("[data-story-oracle-form] textarea");
+        if (plan && textarea) {
+          textarea.value = `\u7EE7\u7EED\u8BA8\u8BBA\u7EBF\u8DEF\u201C${plan.title || plan.goal}\u201D\uFF1A`;
+          textarea.focus();
+        }
+        return;
+      }
+      if (!writable || controller || !activeStorageId) return;
+      const request = mutationRequest();
+      try {
+        let nextStore;
+        if (action === "toggle-plan") {
+          const plan = storyOraclePlans(store, activeStorageId).find((item) => item.id === button.dataset.storyOraclePlanId);
+          nextStore = setStoryOraclePlanEnabled(store, activeStorageId, button.dataset.storyOraclePlanId, !plan?.enabled);
+        } else if (action === "delete-plan") {
+          nextStore = removeStoryOraclePlan(store, activeStorageId, button.dataset.storyOraclePlanId);
+        } else if (action === "clear-plans") {
+          nextStore = clearStoryOraclePlans(store, activeStorageId);
+        } else return;
+        if (!await persistIfCurrent(nextStore, request)) return;
+        store = nextStore;
+        render(action === "clear-plans" ? "\u5267\u60C5\u7EBF\u8DEF\u5DF2\u6E05\u7A7A\u3002" : action === "delete-plan" ? "\u5267\u60C5\u7EBF\u8DEF\u5DF2\u5220\u9664\u3002" : "\u5267\u60C5\u7EBF\u8DEF\u72B6\u6001\u5DF2\u66F4\u65B0\u3002");
+        await deps.applyBidirectionalInjection?.();
+      } catch (error) {
+        if (requestIsCurrent(request)) render(`\u5267\u60C5\u7EBF\u8DEF\u64CD\u4F5C\u5931\u8D25\uFF1A${generationErrorMessage(error)}`);
+      }
+    };
+    const onClick = (event) => {
+      const button = event.target.closest?.("[data-story-oracle-action]");
+      if (!button || !boundWindow?.contains(button)) return;
+      if (button.dataset.storyOracleAction === "world-books") {
+        showWorldBookSelector();
+        return;
+      }
+      if (["continue-plan", "toggle-plan", "delete-plan", "clear-plans"].includes(button.dataset.storyOracleAction)) {
+        handlePlanAction(button);
+        return;
+      }
+      if (button.dataset.storyOracleAction === "home") {
+        invalidate("story-oracle-home");
+        deps.showPhoneDesktopPage?.();
+      }
+      if (button.dataset.storyOracleAction === "cancel") controller?.abort("story-oracle-cancelled");
+      if (button.dataset.storyOracleAction === "mode") {
+        const nextMode = button.dataset.storyOracleMode;
+        if (!STORY_ORACLE_MODES.includes(nextMode) || controller) return;
+        activeMode = nextMode;
+        render();
+      }
+      if (button.dataset.storyOracleAction === "clear" && activeStorageId && writable && !controller) {
+        const clearRequest = Object.freeze({
+          serial: ++requestSerial,
+          storageId: activeStorageId,
+          mode: activeMode,
+          page,
+          controller: null,
+          signal: { aborted: false },
+          readOnlyReason,
+          writeHandle
+        });
+        const nextStore = clearStoryOracleScope(store, clearRequest.storageId, clearRequest.mode);
+        saveStoryOracleStore(nextStore, {
+          readOnlyReason: clearRequest.readOnlyReason,
+          writeHandle: clearRequest.writeHandle,
+          shouldWrite: () => requestIsCurrent(clearRequest)
+        }).then((saved) => {
+          if (saved && requestIsCurrent(clearRequest)) {
+            store = nextStore;
+            render("\u5F53\u524D\u804A\u5929\u7684 Story Oracle \u5386\u53F2\u5DF2\u6E05\u7A7A\u3002");
+          }
+        }).catch((error) => {
+          if (requestIsCurrent(clearRequest)) render(`\u6E05\u7A7A\u5931\u8D25\uFF1A${generationErrorMessage(error)}`);
+        });
+      }
+    };
+    const onSubmit = async (event) => {
+      const form = event.target.closest?.("[data-story-oracle-form]");
+      if (!form || !boundWindow?.contains(form)) return;
+      event.preventDefault();
+      if (controller || !writable || !isUsableStorageId(activeStorageId)) return;
+      const question = String(new FormData(form).get("question") || "").trim();
+      if (!question || question.length > MAX_QUESTION_CHARS) {
+        render("\u95EE\u9898\u4E0D\u80FD\u4E3A\u7A7A\uFF0C\u4E14\u4E0D\u80FD\u8D85\u8FC7 12000 \u5B57\u3002");
+        return;
+      }
+      const serial = ++requestSerial;
+      controller = new AbortController();
+      const request = Object.freeze({ serial, storageId: activeStorageId, mode: activeMode, page, controller, signal: controller.signal, readOnlyReason, writeHandle });
+      setBusy(true);
+      const history = storyOracleMessages(store, request.storageId, request.mode);
+      render("\u6B63\u5728\u8BFB\u53D6\u5F53\u524D\u804A\u5929\u4E0A\u4E0B\u6587\u2026");
+      try {
+        const worldBookState = getSelectedWorldBookNames();
+        const context = await deps.gatherContext?.(null, { module: "chat", signal: request.signal, includeWorldBook: true, worldBookMaxChars: 3e4, worldBookNames: worldBookState.selectedNames });
+        if (!requestIsCurrent(request)) return;
+        render("\u6B63\u5728\u8BF7\u6C42 Story Oracle\u2026");
+        const systemPrompt = request.mode === "advisor" ? ADVISOR_SYSTEM_PROMPT : DEFAULT_SYSTEM_PROMPT;
+        const answer = await deps.callAI?.(systemPrompt, buildUserPrompt(context || {}, history, question), { isolated: true, signal: request.signal });
+        if (!requestIsCurrent(request)) return;
+        if (!String(answer || "").trim()) throw new Error("AI \u672A\u8FD4\u56DE\u53EF\u7528\u6587\u672C");
+        const nextStore = appendStoryOracleTurn(store, request.storageId, question, String(answer).trim(), request.mode, {
+          selectionKey: worldBookState.selection?.scopeKey || worldBookState.selectedNames.join("\uFF5C")
+        });
+        if (!await persistIfCurrent(nextStore, request)) return;
+        store = nextStore;
+        render("\u56DE\u7B54\u5DF2\u4FDD\u5B58\u5230\u5F53\u524D\u804A\u5929\u7684\u72EC\u7ACB\u4FA7\u804A\u3002");
+      } catch (error) {
+        if (error?.name !== "AbortError" && error?.message !== "story-oracle-cancelled") render(`\u8BF7\u6C42\u5931\u8D25\uFF1A${generationErrorMessage(error)}`);
+        else render("\u8BF7\u6C42\u5DF2\u53D6\u6D88\uFF0C\u672A\u5199\u5165\u672A\u5B8C\u6210\u7ED3\u679C\u3002");
+      } finally {
+        if (serial === requestSerial) {
+          controller = null;
+          setBusy(false);
+        }
+      }
+    };
+    const bind = (phoneWindow) => {
+      if (!phoneWindow || typeof phoneWindow.addEventListener !== "function" || boundWindow === phoneWindow) return false;
+      if (boundWindow) {
+        boundWindow.removeEventListener?.("click", onClick);
+        boundWindow.removeEventListener?.("submit", onSubmit);
+      }
+      boundWindow = phoneWindow;
+      boundWindow.addEventListener("click", onClick);
+      boundWindow.addEventListener("submit", onSubmit);
+      return true;
+    };
+    const destroy = () => {
+      invalidate("story-oracle-closed");
+      boundWindow?.removeEventListener?.("click", onClick);
+      boundWindow?.removeEventListener?.("submit", onSubmit);
+      boundWindow = null;
+      page = null;
+      store = null;
+      activeStorageId = "";
+      writeHandle = null;
+    };
+    const show = async (storageId = deps.getStorageId?.()) => {
+      const nextId = String(storageId || "").trim();
+      const showSerial = requestSerial + 1;
+      invalidate("story-oracle-scope-changed");
+      page = deps.getPhoneWindow?.()?.querySelector?.('[data-phone-page="story-oracle"]');
+      if (!page) return false;
+      activeStorageId = nextId;
+      activeMode = "question";
+      warning = "";
+      if (isUsableStorageId(nextId)) {
+        try {
+          const loaded = await loadStoryOracleStore();
+          if (showSerial !== requestSerial) return false;
+          store = loaded.store;
+          writable = loaded.writable === true;
+          writeHandle = loaded.writeHandle || null;
+          readOnlyReason = loaded.readOnlyReason || "";
+          warning = loaded.warning || "";
+        } catch (error) {
+          if (showSerial !== requestSerial) return false;
+          store = null;
+          writable = false;
+          writeHandle = null;
+          readOnlyReason = "\u5386\u53F2\u8BFB\u53D6\u5931\u8D25";
+          warning = `\u5386\u53F2\u8BFB\u53D6\u5931\u8D25\uFF1A${generationErrorMessage(error)}`;
+        }
+      } else {
+        store = null;
+        writable = false;
+        writeHandle = null;
+        readOnlyReason = "\u8BF7\u5148\u6253\u5F00\u6709\u6548\u804A\u5929";
+      }
+      if (showSerial !== requestSerial) return false;
+      render(warning);
+      if (globalThis.window?.__pmShowPhonePage?.("story-oracle") !== true) return false;
+      deps.persistPhoneUiSnapshot?.();
+      return true;
+    };
+    const getStoryOracleStore = async () => {
+      if (store) return store;
+      try {
+        return (await loadStoryOracleStore()).store;
+      } catch (error) {
+        return null;
+      }
+    };
+    Object.assign(deps, { bindStoryOraclePhoneUi: bind, destroyStoryOraclePhoneUi: destroy, showStoryOraclePage: show, getStoryOracleStore });
+    return { bind, destroy, show };
+  }
+
   // src/phone-lifecycle.js
   var PHONE_COMMAND_SHORTCUT_LISTENER_KEY = Symbol.for("phone-mode.command-shortcut-listeners");
   function installPhoneCommandShortcutListeners(windowRef = window, documentRef = document) {
@@ -18870,6 +19638,7 @@ ${lines}`;
       clearBubbleQuoteGesture,
       clearBubbleQuoteGestures
     } = deps;
+    installStoryOracle(state, deps);
     let unbindSendGesture = null;
     let unbindIsland = null, unbindPhoneResize = null;
     const pageController = createPhonePageController({
@@ -18995,6 +19764,7 @@ ${lines}`;
       deps.cancelCommunityGeneration?.("phone-closed");
       deps.cancelCalendarTasks?.("phone-closed");
       deps.destroyTodayTrendPhoneUi?.();
+      deps.destroyStoryOraclePhoneUi?.();
       deps.cancelTodayTrendInitialization?.("phone-closed");
       deps.cancelTodayTrendRuleRegeneration?.("phone-closed");
       deps.cancelTodayTrendGeneration?.("phone-closed", true);
@@ -19149,6 +19919,7 @@ ${lines}`;
   <section class="pm-phone-page pm-community-page" data-phone-page="community" hidden></section>
   <section class="pm-phone-page pm-calendar-page" data-phone-page="calendar" hidden></section>
   <section class="pm-phone-page pm-today-trend-page" data-phone-page="today-trend" hidden></section>
+  <section class="pm-phone-page pm-story-oracle-page" data-phone-page="story-oracle" hidden></section>
 </div>
 </div>
 <div class="pm-phone-resize-handle" role="separator" aria-label="\u8C03\u6574\u624B\u673A\u7A97\u53E3\u5927\u5C0F" aria-orientation="horizontal" title="\u62D6\u52A8\u8C03\u6574\u624B\u673A\u5927\u5C0F"></div>`;
@@ -19157,6 +19928,7 @@ ${lines}`;
       window.__pmShowPhonePage = pageController.show;
       deps.bindPhonePageUi?.(state.phoneWindow);
       deps.bindTodayTrendPhoneUi?.(state.phoneWindow);
+      deps.bindStoryOraclePhoneUi?.(state.phoneWindow);
       ambientStatus.sync();
       if (state.phoneWindow.showPopover) try {
         state.phoneWindow.showPopover();
@@ -20810,7 +21582,7 @@ ${error.message}`);
   }
 
   // src/settings-worldbook.js
-  var text5 = (value) => typeof value === "string" ? value : "";
+  var text6 = (value) => typeof value === "string" ? value : "";
   var HIDDEN_ENTRY_TITLE = /(?:^|-)包裹-(?:上|下)$/;
   var WORLD_BOOK_BATCH_SIZE = 30;
   var MODULE_LABELS = Object.freeze({ chat: "\u4F1A\u8BDD", calendar: "\u65E5\u5386", outfit: "\u7A7F\u642D", community: "\u793E\u533A", todayTrend: "\u4ECA\u65E5\u98CE\u5411" });
@@ -20830,16 +21602,16 @@ ${error.message}`);
       if (!value || typeof value !== "object" || Array.isArray(value)) return [];
       const uid5 = value.uid ?? value.id ?? fallbackUid;
       const key = createWorldBookEntryKey(name, uid5);
-      const content = text5(value.content).trim();
+      const content = text6(value.content).trim();
       if (!key || !content) return [];
-      const title = text5(value.comment).trim() || `\u6761\u76EE ${uid5}`;
+      const title = text6(value.comment).trim() || `\u6761\u76EE ${uid5}`;
       const column = getTavernDbColumn(value.comment);
       if (HIDDEN_ENTRY_TITLE.test(title) && !column) return [];
       return [{ key, uid: String(uid5), title, column, disabled: value.disable === true || value.enabled === false }];
     }).sort((left, right) => left.uid.localeCompare(right.uid, void 0, { numeric: true }));
   }
   async function loadWorldBookDetails(context, rawName, { signal } = {}) {
-    const name = text5(rawName).trim();
+    const name = text6(rawName).trim();
     if (!name || typeof context?.loadWorldInfo !== "function") return null;
     if (signal?.aborted) throw abortError();
     let book;
@@ -20865,7 +21637,7 @@ ${error.message}`);
     const currentConfig = normalizeWorldBookConfig(config);
     const current = getCurrentChatWorldBooks(context).map((book) => ({ ...book, enabled: currentConfig.books[book.name] !== false }));
     const currentNames = new Set(current.map((book) => book.name));
-    const others = [...new Set(names2.map((name) => text5(name).trim()).filter(Boolean))].filter((name) => !currentNames.has(name)).map((name) => ({ name, enabled: currentConfig.books[name] === true }));
+    const others = [...new Set(names2.map((name) => text6(name).trim()).filter(Boolean))].filter((name) => !currentNames.has(name)).map((name) => ({ name, enabled: currentConfig.books[name] === true }));
     return { current, others };
   }
   async function loadWorldBookDirectory(context, { signal } = {}) {
@@ -20874,7 +21646,7 @@ ${error.message}`);
     const books = [];
     for (const rawName of selectedNames) {
       if (signal?.aborted) return [];
-      const name = text5(rawName).trim();
+      const name = text6(rawName).trim();
       if (!name) continue;
       const details = await loadWorldBookDetails(context, name, { signal });
       if (signal?.aborted) return [];
@@ -21041,7 +21813,7 @@ ${error.message}`);
     window.__pmSearchWorldBooks = (value) => {
       if (!pageState || !pageState.otherExpanded) return false;
       cancelDetail();
-      pageState.search = text5(value);
+      pageState.search = text6(value);
       pageState.otherLimit = WORLD_BOOK_BATCH_SIZE;
       const updated = rerenderLists(pageState);
       const input = pageState?.overlay?.querySelector(".pm-worldbook-search input");
@@ -21056,7 +21828,7 @@ ${error.message}`);
     };
     window.__pmToggleWorldBookDetails = async (rawName, retry = false) => {
       const state = pageState;
-      const name = text5(rawName).trim();
+      const name = text6(rawName).trim();
       if (!state || !name || !isActivePage(state)) return false;
       if (!retry && state.detail?.name === name) {
         cancelDetail();
@@ -21100,7 +21872,7 @@ ${error.message}`);
       if (controller.signal.aborted || quickController !== controller) return false;
       quickController = null;
       const config = loadWorldBookConfig();
-      quickSelector = { title: text5(title).trim() || `${MODULE_LABELS[module]}\u53EF\u8BFB\u7684\u6570\u636E\u5E93\u8BB0\u5FC6`, module, scope, books, backAction, backLabel };
+      quickSelector = { title: text6(title).trim() || `${MODULE_LABELS[module]}\u53EF\u8BFB\u7684\u6570\u636E\u5E93\u8BB0\u5FC6`, module, scope, books, backAction, backLabel };
       showQuickSelector(config);
       return true;
     };
@@ -21110,7 +21882,7 @@ ${error.message}`);
       const candidate = cloneConfig(current);
       const { module, scope } = quickSelector;
       const target = scope?.kind === "group" ? candidate.groups : scope?.kind === "character" ? candidate.characters : null;
-      const id2 = text5(scope?.id).trim();
+      const id2 = text6(scope?.id).trim();
       if (target && !id2) return false;
       const override = target ? target[id2] = { ...target[id2] || {}, entries: { ...target[id2]?.entries || {} }, columns: { ...target[id2]?.columns || {} } } : candidate;
       document.querySelectorAll("[data-world-quick-column]").forEach((control) => {
@@ -21131,7 +21903,7 @@ ${error.message}`);
       const current = normalizeWorldBookConfig(window.__pmWorldBookConfig);
       const candidate = cloneConfig(current);
       const target = quickSelector.scope.kind === "group" ? candidate.groups : candidate.characters;
-      const id2 = text5(quickSelector.scope.id).trim();
+      const id2 = text6(quickSelector.scope.id).trim();
       if (!id2) return false;
       const existing = target[id2];
       if (existing) {
@@ -21154,7 +21926,7 @@ ${error.message}`);
       return true;
     };
     window.__pmSetGroupMemberPrivateMemory = (groupId, enabled) => {
-      const id2 = text5(groupId).trim();
+      const id2 = text6(groupId).trim();
       if (!id2) return false;
       const candidate = cloneConfig(window.__pmWorldBookConfig);
       candidate.groups[id2] = { ...candidate.groups[id2] || {}, entries: { ...candidate.groups[id2]?.entries || {} }, columns: { ...candidate.groups[id2]?.columns || {} }, allowMemberPrivateMemory: enabled === true };
@@ -21165,7 +21937,7 @@ ${error.message}`);
       return true;
     };
     window.__pmToggleGroupMemberPrivateMemory = (groupId) => {
-      const id2 = text5(groupId).trim();
+      const id2 = text6(groupId).trim();
       if (!id2) return false;
       const enabled = window.__pmWorldBookConfig?.groups?.[id2]?.allowMemberPrivateMemory === true;
       if (!enabled && !confirm("\u5F00\u542F\u540E\uFF0C\u7FA4\u804A\u4F1A\u8F7D\u5165\u6210\u5458\u5728\u79C1\u4EBA\u7A97\u53E3\u4E2D\u542F\u7528\u7684\u6570\u636E\u5E93\u680F\u76EE\u3002\u7FA4\u804A\u4F7F\u7528\u5171\u4EAB\u6A21\u578B\u4E0A\u4E0B\u6587\uFF0C\u89D2\u8272\u95F4\u9694\u79BB\u4F9D\u8D56\u63D0\u793A\u8BCD\u7EA6\u675F\uFF0C\u5E76\u975E\u4E25\u683C\u6570\u636E\u9694\u79BB\u3002")) return false;
@@ -22007,8 +22779,8 @@ ${error.message}`);
   }
 
   // src/today-trend-context.js
-  var text6 = (value, max = 600) => typeof value === "string" ? value.trim().slice(0, max) : "";
-  var names = (value) => Array.isArray(value) ? [...new Set(value.map((item) => text6(item, 120)).filter(Boolean))] : [];
+  var text7 = (value, max = 600) => typeof value === "string" ? value.trim().slice(0, max) : "";
+  var names = (value) => Array.isArray(value) ? [...new Set(value.map((item) => text7(item, 120)).filter(Boolean))] : [];
   async function gatherTodayTrendContext({
     getCtx,
     signal,
@@ -22022,9 +22794,9 @@ ${error.message}`);
     collectContext = gatherContext
   } = {}) {
     if (typeof getCtx !== "function") throw new TypeError("\u4ECA\u65E5\u98CE\u5411\u4E0A\u4E0B\u6587\u7F3A\u5C11\u4E0A\u4E0B\u6587\u8BFB\u53D6\u5668");
-    const id2 = text6(storageId, 120);
-    const roleId = text6(characterId, 120);
-    const roleName = text6(characterName, 120);
+    const id2 = text7(storageId, 120);
+    const roleId = text7(characterId, 120);
+    const roleName = text7(characterName, 120);
     const selectedBooks = names(worldBookNames);
     if (!id2 || !roleId || !roleName) throw new Error("\u4ECA\u65E5\u98CE\u5411\u521D\u59CB\u5316\u7F3A\u5C11\u89D2\u8272\u6216\u804A\u5929\u6807\u8BC6");
     if (!selectedBooks.length) throw new Error("\u4ECA\u65E5\u98CE\u5411\u521D\u59CB\u5316\u81F3\u5C11\u9700\u8981\u9009\u62E9\u4E00\u672C\u4E16\u754C\u4E66");
@@ -22050,18 +22822,18 @@ ${error.message}`);
       storageId: id2,
       characterId: roleId,
       characterName: roleName,
-      source: { worldBookNames: selectedBooks, includeExistingChat: includeExistingChat === true, userRequirements: text6(userRequirements) },
-      user: { name: text6(host?.userName, 120), description: text6(host?.userDesc) },
+      source: { worldBookNames: selectedBooks, includeExistingChat: includeExistingChat === true, userRequirements: text7(userRequirements) },
+      user: { name: text7(host?.userName, 120), description: text7(host?.userDesc) },
       character: {
-        description: text6(host?.cardDesc),
-        personality: text6(host?.cardPersonality),
-        scenario: text6(host?.cardScenario),
-        firstMessage: text6(host?.cardFirstMes),
-        exampleMessages: text6(host?.cardMesExample)
+        description: text7(host?.cardDesc),
+        personality: text7(host?.cardPersonality),
+        scenario: text7(host?.cardScenario),
+        firstMessage: text7(host?.cardFirstMes),
+        exampleMessages: text7(host?.cardMesExample)
       },
-      worldBookText: text6(host?.worldBookText, worldBookMaxChars),
-      mainChatText: includeExistingChat === true ? text6(host?.mainChatText, 8e3) : "",
-      latestChatText: includeExistingChat === true ? text6(host?.latestChatText, 1600) : ""
+      worldBookText: text7(host?.worldBookText, worldBookMaxChars),
+      mainChatText: includeExistingChat === true ? text7(host?.mainChatText, 8e3) : "",
+      latestChatText: includeExistingChat === true ? text7(host?.latestChatText, 1600) : ""
     };
   }
 
@@ -22103,9 +22875,9 @@ ${terms}
 
   // src/prompts/today-trend/envelopes.js
   var block = (name, value, max) => {
-    const text8 = String(value || "").trim().slice(0, max);
-    if (!text8) return "";
-    const encoded = JSON.stringify(text8).replace(/[<>&]/g, (char) => `\\u${char.charCodeAt(0).toString(16).padStart(4, "0")}`);
+    const text9 = String(value || "").trim().slice(0, max);
+    if (!text9) return "";
+    const encoded = JSON.stringify(text9).replace(/[<>&]/g, (char) => `\\u${char.charCodeAt(0).toString(16).padStart(4, "0")}`);
     return `<${name} encoding="json-string">
 ${encoded}
 </${name}>`;
@@ -22415,7 +23187,7 @@ ${targetInstruction}`
     gather = gatherTodayTrendContext,
     buildInitialization = buildTodayTrendInitializationEnvelope,
     buildGeneration = buildTodayTrendGenerationEnvelope,
-    parse = parseInitialization,
+    parse: parse2 = parseInitialization,
     normalize = normalizeInitialization,
     buildRuleRegeneration = buildTodayTrendRuleRegenerationEnvelope,
     parseUpdate = parseGeneration,
@@ -22432,7 +23204,7 @@ ${targetInstruction}`
         const prompts = buildInitialization({ context });
         const raw = await callAI(prompts.systemPrompt, prompts.userPrompt, { isolated: true, signal: input.signal });
         assertActive(input.signal);
-        return { context, store: normalize(parse(raw), context, now2, input.presetId), raw };
+        return { context, store: normalize(parse2(raw), context, now2, input.presetId), raw };
       } catch (error) {
         if (error?.name === "AbortError") throw error;
         throw new Error(`\u4ECA\u65E5\u98CE\u5411\u521D\u59CB\u5316\u5931\u8D25\uFF1A${generationErrorMessage(error)}`, { cause: error });
@@ -22551,19 +23323,19 @@ ${targetInstruction}`
     for (let index = 0; index < (Array.isArray(chat) ? chat.length : 0); index += 1) {
       const message = chat[index];
       if (!message || typeof message !== "object") continue;
-      const text8 = messageText2(message);
-      if (!text8) continue;
+      const text9 = messageText2(message);
+      if (!text9) continue;
       const role = messageRole(message);
       const roleCode = role === "system" ? 1 : role === "user" ? 2 : 3;
       const messageHash = [...HASH_SEEDS];
       updateHashCode(sessionHash, 30);
       updateHashNumber(sessionHash, index);
       updateHashCode(sessionHash, roleCode);
-      updateHashNumber(sessionHash, text8.length);
+      updateHashNumber(sessionHash, text9.length);
       updateHashCode(messageHash, roleCode);
-      updateHashNumber(messageHash, text8.length);
-      for (let offset = 0; offset < text8.length; offset += 1) {
-        const code = text8.charCodeAt(offset);
+      updateHashNumber(messageHash, text9.length);
+      for (let offset = 0; offset < text9.length; offset += 1) {
+        const code = text9.charCodeAt(offset);
         updateHashCode(sessionHash, code);
         updateHashCode(messageHash, code);
       }
@@ -23093,7 +23865,7 @@ ${targetInstruction}`
       const abortController = new AbortController();
       ruleRegeneration = abortController;
       const active = () => ruleRegeneration === abortController && !abortController.signal.aborted && getStorageId2() === identity.storageId;
-      const text8 = await controller.regenerateRule({ scope, preset, rule, signal: abortController.signal });
+      const text9 = await controller.regenerateRule({ scope, preset, rule, signal: abortController.signal });
       if (!active()) throw Object.assign(new Error("\u4ECA\u65E5\u98CE\u5411\u89C4\u5219\u91CD\u751F\u6210\u5DF2\u53D6\u6D88"), { name: "AbortError" });
       const committed = await committer.commitStore((store) => {
         const current = store.scopes[identity.storageId], currentPreset = store.presets[current?.presetId];
@@ -23102,7 +23874,7 @@ ${targetInstruction}`
         const field = group === "dynamics" && key ? key : group;
         const rules = group === "dynamics" && key ? "dynamicsRules" : "moduleRules";
         if (!Object.hasOwn(currentPreset[rules], field)) throw new Error("\u4ECA\u65E5\u98CE\u5411\u89C4\u5219\u91CD\u751F\u6210\u76EE\u6807\u65E0\u6548");
-        currentPreset[rules][field] = text8;
+        currentPreset[rules][field] = text9;
         currentPreset.revision += 1;
         currentPreset.updatedAt = Date.now();
         return store;
@@ -23111,9 +23883,9 @@ ${targetInstruction}`
       if (ruleRegeneration === abortController) ruleRegeneration = null;
       return committed;
     };
-    const saveRule = async (rule, text8, expectedPresetId, expectedRevision) => {
+    const saveRule = async (rule, text9, expectedPresetId, expectedRevision) => {
       const identity = currentIdentity(getStorageId2());
-      const value = String(text8 || "").trim();
+      const value = String(text9 || "").trim();
       const presetId = String(expectedPresetId || "").trim();
       const revision = Number(expectedRevision);
       if (!value) throw new Error("\u6A21\u5757\u89C4\u5219\u4E0D\u80FD\u4E3A\u7A7A");
@@ -23552,10 +24324,10 @@ ${targetInstruction}`
       if (!form?.matches?.("form[data-today-trend-form]") || !container.contains(form)) return;
       event.preventDefault();
       if (form.dataset.todayTrendForm === "rule-editor") {
-        const rule = formValue(form, "rule"), text8 = formValue(form, "text");
-        if (!text8) return run(Promise.reject(new Error("\u63D0\u793A\u8BCD\u4E0D\u80FD\u4E3A\u7A7A")));
-        view.ruleDraft = text8;
-        return run(Promise.resolve(onSaveRule?.(rule, text8)).then(async () => {
+        const rule = formValue(form, "rule"), text9 = formValue(form, "text");
+        if (!text9) return run(Promise.reject(new Error("\u63D0\u793A\u8BCD\u4E0D\u80FD\u4E3A\u7A7A")));
+        view.ruleDraft = text9;
+        return run(Promise.resolve(onSaveRule?.(rule, text9)).then(async () => {
           const returnName = view.ruleReturnName;
           view.editingRule = null;
           view.ruleDraft = null;
@@ -23776,7 +24548,7 @@ ${targetInstruction}`
   // src/today-trend-dynamics-view.js
   var TYPES = Object.freeze({ normal: "\u5E38\u89C4\u52A8\u6001", incident: "\u7A81\u53D1\u4E8B\u4EF6", rumor: "\u6D41\u8A00\u871A\u8BED", underground: "\u5730\u4E0B\u7EBF" });
   var OUTCOMES = Object.freeze({ resolved: "\u5DF2\u89E3\u51B3", failed: "\u5DF2\u5931\u8D25", terminated: "\u5DF2\u7EC8\u6B62", inconclusive: "\u65E0\u5B9A\u8BBA", confirmed: "\u5DF2\u8BC1\u5B9E", debunked: "\u5DF2\u8BC1\u4F2A", absorbed: "\u5DF2\u627F\u63A5" });
-  var text7 = (value) => escapeHtml(String(value || ""));
+  var text8 = (value) => escapeHtml(String(value || ""));
   var icon2 = (action, glyph, label, attrs = "", danger = false) => ({ action, icon: glyph, label, attrs, danger });
   var outcomes = (selected, rumor) => Object.entries(OUTCOMES).filter(([key]) => rumor ? ["confirmed", "debunked"].includes(key) : ["resolved", "failed", "terminated", "inconclusive"].includes(key)).map(([key, label]) => `<option value="${key}"${key === selected ? " selected" : ""}>${label}</option>`).join("");
   function badge(event) {
@@ -23784,11 +24556,11 @@ ${targetInstruction}`
     return labels[event.type] ? `<span class="pm-today-trend-event-badge">${labels[event.type]}</span>` : "";
   }
   function pill(archived, state) {
-    return `<span class="pm-today-trend-event-pill${archived ? "" : " is-live"}">${!archived ? '<i aria-hidden="true"></i>' : ""}${text7(state)}</span>`;
+    return `<span class="pm-today-trend-event-pill${archived ? "" : " is-live"}">${!archived ? '<i aria-hidden="true"></i>' : ""}${text8(state)}</span>`;
   }
   function eventForm(event = {}, kind = "event") {
     const participants = Array.isArray(event.participants) ? event.participants : [];
-    const fields = kind === "archive" ? `<label class="pm-today-trend-field">\u5B8C\u7ED3\u7ED3\u679C<select class="pm-today-trend-input" name="outcome">${outcomes(event.type === "rumor" ? "confirmed" : "resolved", event.type === "rumor")}</select></label><label class="pm-today-trend-field">\u6700\u7EC8\u7ED3\u679C<textarea class="pm-today-trend-input" name="finalResult" maxlength="600" required></textarea></label>` : `<label class="pm-today-trend-field">\u540D\u79F0<input class="pm-today-trend-input" name="title" maxlength="120" required value="${escapeAttr(event.title || "")}"></label><label class="pm-today-trend-field">\u7C7B\u578B<select class="pm-today-trend-input" name="type">${Object.entries(TYPES).map(([key, label]) => `<option value="${key}"${key === (event.type || "normal") ? " selected" : ""}>${label}</option>`).join("")}</select></label><label class="pm-today-trend-field">\u9636\u6BB5<input class="pm-today-trend-input" name="stageLabel" maxlength="8" required value="${escapeAttr(event.stageLabel || "\u51C6\u5907\u4E2D")}"></label><label class="pm-today-trend-field">\u8D77\u56E0<textarea class="pm-today-trend-input" name="origin" maxlength="600" required>${text7(event.origin || "")}</textarea></label><label class="pm-today-trend-field">\u6D89\u53CA\u4E3B\u4F53<input class="pm-today-trend-input" name="participants" maxlength="600" value="${escapeAttr(participants.join("\u3001"))}"></label><label class="pm-today-trend-field">\u6700\u65B0\u9636\u6BB5<textarea class="pm-today-trend-input" name="latestStage" maxlength="600" required>${text7(event.latestStage || "")}</textarea></label>`;
+    const fields = kind === "archive" ? `<label class="pm-today-trend-field">\u5B8C\u7ED3\u7ED3\u679C<select class="pm-today-trend-input" name="outcome">${outcomes(event.type === "rumor" ? "confirmed" : "resolved", event.type === "rumor")}</select></label><label class="pm-today-trend-field">\u6700\u7EC8\u7ED3\u679C<textarea class="pm-today-trend-input" name="finalResult" maxlength="600" required></textarea></label>` : `<label class="pm-today-trend-field">\u540D\u79F0<input class="pm-today-trend-input" name="title" maxlength="120" required value="${escapeAttr(event.title || "")}"></label><label class="pm-today-trend-field">\u7C7B\u578B<select class="pm-today-trend-input" name="type">${Object.entries(TYPES).map(([key, label]) => `<option value="${key}"${key === (event.type || "normal") ? " selected" : ""}>${label}</option>`).join("")}</select></label><label class="pm-today-trend-field">\u9636\u6BB5<input class="pm-today-trend-input" name="stageLabel" maxlength="8" required value="${escapeAttr(event.stageLabel || "\u51C6\u5907\u4E2D")}"></label><label class="pm-today-trend-field">\u8D77\u56E0<textarea class="pm-today-trend-input" name="origin" maxlength="600" required>${text8(event.origin || "")}</textarea></label><label class="pm-today-trend-field">\u6D89\u53CA\u4E3B\u4F53<input class="pm-today-trend-input" name="participants" maxlength="600" value="${escapeAttr(participants.join("\u3001"))}"></label><label class="pm-today-trend-field">\u6700\u65B0\u9636\u6BB5<textarea class="pm-today-trend-input" name="latestStage" maxlength="600" required>${text8(event.latestStage || "")}</textarea></label>`;
     return `<form class="pm-today-trend-editor pm-today-trend-item-editor" data-today-trend-form="${kind === "archive" ? "event-archive" : kind === "promotion" ? "event-promotion" : "event"}">${kind === "promotion" ? `<input type="hidden" name="sourceEventId" value="${escapeAttr(event.id || "")}">` : `<input type="hidden" name="id" value="${escapeAttr(event.id || "")}">`}${fields}<div class="pm-today-trend-form-actions pm-action-pair"><button type="button" data-action="today-trend-cancel-event-editor">\u53D6\u6D88</button><button type="submit">${kind === "archive" ? "\u786E\u8BA4\u5F52\u6863" : kind === "promotion" ? "\u786E\u8BA4\u5347\u7EA7" : "\u4FDD\u5B58"}</button></div></form>`;
   }
   function settingsForm(settings) {
@@ -23800,10 +24572,10 @@ ${targetInstruction}`
     const actions = archived ? [icon2("today-trend-delete-event", TRASH_ICON_SVG, `\u5220\u9664${event.title}`, `${eventAttrs} data-label="${escapeAttr(event.title)}"`, true)] : [icon2("today-trend-advance-event", REFRESH_ICON_SVG, `\u91CD\u65B0\u751F\u6210${event.title}`, `${eventAttrs} ${generateAttrs}`), icon2("today-trend-edit-event", EDIT_ICON_SVG, `\u7F16\u8F91${event.title}`, eventAttrs), icon2("today-trend-archive-event", TRASH_ICON_SVG, `\u5F52\u6863${event.title}`, eventAttrs), ...event.type === "underground" ? [icon2("today-trend-promote-underground", SPARKLES_ICON_SVG, `\u5347\u7EA7${event.title}`, eventAttrs)] : []];
     const stages = Array.isArray(event.stages) ? event.stages : [];
     const participants = Array.isArray(event.participants) ? event.participants : [];
-    const stageList = stages.map((stage, index) => `<li${!archived && index === stages.length - 1 ? ' class="is-current"' : ""}><span class="pm-today-trend-stage-tag">${!archived && index === stages.length - 1 ? "\u6700\u65B0\u9636\u6BB5" : `\u9636\u6BB5 ${String(index + 1).padStart(2, "0")}`}</span>${text7(stage)}</li>`).join("");
+    const stageList = stages.map((stage, index) => `<li${!archived && index === stages.length - 1 ? ' class="is-current"' : ""}><span class="pm-today-trend-stage-tag">${!archived && index === stages.length - 1 ? "\u6700\u65B0\u9636\u6BB5" : `\u9636\u6BB5 ${String(index + 1).padStart(2, "0")}`}</span>${text8(stage)}</li>`).join("");
     const history = archived ? `<details class="pm-today-trend-event-history"><summary>\u9636\u6BB5\u8BB0\u5F55\uFF08${stages.length}\uFF09</summary><ol>${stageList}</ol></details>` : `<ol class="pm-today-trend-event-history is-live">${stageList}</ol>`;
     const resolvedIcon = resolveTodayTrendTitleIcon({ title: event.title, kind: "event", type: event.type });
-    return `<article class="pm-today-trend-event-card${archived ? " is-archived" : ""}" data-event-id="${escapeAttr(event.id)}" data-event-type="${escapeAttr(event.type)}"><div class="pm-today-trend-event-body"><header><div class="pm-today-trend-event-heading"><span class="pm-today-trend-event-marker" data-today-trend-icon="${escapeAttr(resolvedIcon.key)}" aria-hidden="true">${resolvedIcon.svg}</span><b>${text7(event.title)}</b></div></header><div class="pm-today-trend-event-tags">${badge(event)}${pill(archived, state)}</div><dl class="pm-today-trend-event-facts"><div><dt>\u8D77\u56E0</dt><dd>${text7(event.origin)}</dd></div><div><dt>\u4E3B\u4F53</dt><dd>${text7(participants.join("\u3001") || "\u672A\u8BB0\u5F55")}</dd></div></dl>${trendInlineActions({ visible: actionsVisible, actions })}${history}${archived ? `<div class="pm-today-trend-event-latest"><strong>\u6700\u7EC8\u7ED3\u679C</strong><span>${text7(event.finalResult)}</span></div>` : ""}</div></article>`;
+    return `<article class="pm-today-trend-event-card${archived ? " is-archived" : ""}" data-event-id="${escapeAttr(event.id)}" data-event-type="${escapeAttr(event.type)}"><div class="pm-today-trend-event-body"><header><div class="pm-today-trend-event-heading"><span class="pm-today-trend-event-marker" data-today-trend-icon="${escapeAttr(resolvedIcon.key)}" aria-hidden="true">${resolvedIcon.svg}</span><b>${text8(event.title)}</b></div></header><div class="pm-today-trend-event-tags">${badge(event)}${pill(archived, state)}</div><dl class="pm-today-trend-event-facts"><div><dt>\u8D77\u56E0</dt><dd>${text8(event.origin)}</dd></div><div><dt>\u4E3B\u4F53</dt><dd>${text8(participants.join("\u3001") || "\u672A\u8BB0\u5F55")}</dd></div></dl>${trendInlineActions({ visible: actionsVisible, actions })}${history}${archived ? `<div class="pm-today-trend-event-latest"><strong>\u6700\u7EC8\u7ED3\u679C</strong><span>${text8(event.finalResult)}</span></div>` : ""}</div></article>`;
   }
   function renderTodayTrendDynamicsView({ scope, preset = null, editingEventId = null, editingRule = null, ruleDraft = null, mode = "content", dynamicsTab = "active", menuOpenId = null, generationAvailable = false, generationBusy = false, floorStatus = "" } = {}) {
     if (!scope) return '<p class="pm-today-trend-empty">\u5F53\u524D\u804A\u5929\u5C1A\u672A\u521D\u59CB\u5316\u4ECA\u65E5\u98CE\u5411\u3002</p>';
@@ -24095,13 +24867,13 @@ ${targetInstruction}`
       }
       if (snapshot.phase === "idle") lastTerminalPhase = "";
     };
-    const saveRule = async (rule, text8) => {
+    const saveRule = async (rule, text9) => {
       const current = await store(), id2 = deps.getStorageId(), scope = current?.scopes?.[id2], preset = current?.presets?.[scope?.presetId];
       const [group, key = ""] = String(rule).split("-");
       const rules = group === "dynamics" && key ? preset?.dynamicsRules : preset?.moduleRules;
       const field = group === "dynamics" && key ? key : group;
       if (!preset || !Object.hasOwn(rules || {}, field)) throw new Error("\u5F53\u524D\u6A21\u5757\u89C4\u5219\u4E0D\u53EF\u7528");
-      const normalized = String(text8 || "").trim();
+      const normalized = String(text9 || "").trim();
       if (!normalized) throw new Error("\u6A21\u5757\u89C4\u5219\u4E0D\u80FD\u4E3A\u7A7A");
       if (typeof deps.saveTodayTrendRule !== "function") throw new Error("\u6A21\u5757\u89C4\u5219\u4FDD\u5B58\u80FD\u529B\u4E0D\u53EF\u7528");
       return deps.saveTodayTrendRule(rule, normalized, preset.id, preset.revision);

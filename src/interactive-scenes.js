@@ -382,6 +382,7 @@ export function installInteractiveScenes(_state, deps) {
         if (action === 'desktop-settings') { window.__pmOpenSettingsTab?.('home'); return; }
         if (action === 'desktop-calendar') { await showPhoneCalendarPage(); return; }
         if (action === 'desktop-today-trend') { await deps.showTodayTrendPage?.(); return; }
+        if (action === 'desktop-story-oracle') { await deps.showStoryOraclePage?.(getStorageId()); return; }
         if (action === 'desktop-community') { await window.__pmOpenForumMode(); return; }
         if (action === 'desktop-exit' || action === 'exit') { await window.__pmEnd?.(); return; }
         if (await handleCommunityInjectionUiAction(action, {
@@ -656,6 +657,7 @@ export function installInteractiveScenes(_state, deps) {
                 return;
             }
             if (uiScope.lastPage === 'today-trend' && await deps.showTodayTrendPage?.(scopeId)) { runtime.openSceneId = null; return; }
+            if (uiScope.lastPage === 'story-oracle' && await deps.showStoryOraclePage?.(scopeId)) { runtime.openSceneId = null; return; }
             runtime.openSceneId = null;
             showPhonePage(uiScope.lastPage === 'chat' ? 'chat' : 'desktop');
         },
