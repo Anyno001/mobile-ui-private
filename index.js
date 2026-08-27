@@ -19102,6 +19102,21 @@ ${lines}`;
   };
   var MODE_LABELS = Object.freeze({ question: "\u5267\u60C5\u804A\u5929", advisor: "\u5267\u60C5\u53C2\u8C0B" });
   var ADVISOR_SYSTEM_PROMPT = "\u4F60\u662F\u5267\u60C5\u52A9\u624B\u7684\u5267\u60C5\u53C2\u8C0B\u3002\u53EA\u57FA\u4E8E\u63D0\u4F9B\u7684\u6545\u4E8B\u4E0A\u4E0B\u6587\u63D0\u51FA\u53EF\u6267\u884C\u7684\u5267\u60C5\u65B9\u6848\u3001\u51B2\u7A81\u63A8\u8FDB\u548C\u5F27\u7EBF\u9009\u9879\uFF1B\u4E0D\u8981\u7EED\u5199\u6210\u6B63\u6587\uFF0C\u4E0D\u8981\u58F0\u79F0\u5DF2\u7ECF\u4FEE\u6539\u5BBF\u4E3B\u6570\u636E\u3002";
+  function storyOracleInjectionIssue(result) {
+    const diagnostics = result?.diagnostics?.storyOracle;
+    if (diagnostics?.rejected) return diagnostics.rejected;
+    const expectedPrompts = Math.max(0, Number(diagnostics?.promptCount) || 0);
+    if (expectedPrompts > 0) {
+      if (!result) return "\u5BBF\u4E3B\u6CE8\u5165\u63A5\u53E3\u4E0D\u53EF\u7528\u3002";
+      const written = Math.max(0, Number(result.writtenBySource?.storyOracle) || 0);
+      const failed = Math.max(0, Number(result.failedWritesBySource?.storyOracle) || 0);
+      if (written < expectedPrompts) {
+        return failed > 0 ? `\u5BBF\u4E3B\u6269\u5C55\u63D0\u793A\u5199\u5165\u5931\u8D25\uFF08${failed} \u6761\uFF09\u3002` : "\u5BBF\u4E3B\u6269\u5C55\u63D0\u793A\u63A5\u53E3\u4E0D\u53EF\u7528\u6216\u672A\u5199\u5165\u5267\u60C5\u7EBF\u8DEF\u3002";
+      }
+    }
+    if (Array.isArray(result?.failedKeys) && result.failedKeys.length) return "\u65E7\u7684\u6269\u5C55\u63D0\u793A\u6E05\u7406\u5931\u8D25\u3002";
+    return "";
+  }
   function renderMessages(messages) {
     if (!messages.length) return '<div class="pm-msg-list-empty">\u8F93\u5165\u95EE\u9898\uFF0C\u5267\u60C5\u52A9\u624B\u4F1A\u57FA\u4E8E\u5F53\u524D\u804A\u5929\u4E0A\u4E0B\u6587\u56DE\u7B54\u3002</div>';
     return messages.map((message) => {
@@ -19114,16 +19129,21 @@ ${lines}`;
     if (!plans.length) return "";
     return `<section class="pm-settings-list pm-story-oracle-plans" aria-label="\u5E76\u884C\u5267\u60C5\u7EBF\u8DEF"><div class="pm-story-oracle-plans-summary"><b>\u5E76\u884C\u5267\u60C5\u7EBF\u8DEF</b><span>\u53EF\u540C\u65F6\u542F\u7528\u591A\u6761\uFF0C\u5F71\u54CD\u540E\u7EED\u4E3B\u804A\u5929\u751F\u6210</span></div>${plans.map((plan) => `
       <article class="pm-story-oracle-plan" data-story-oracle-plan-id="${escapeAttr(plan.id)}">
-        <b>${escapeHtml(plan.title || plan.goal || "\u672A\u547D\u540D\u7EBF\u8DEF")}${plan.enabled ? "\uFF08\u5DF2\u542F\u7528\uFF09" : ""}</b>
+        <b>${escapeHtml(plan.title || plan.goal || "\u672A\u547D\u540D\u7EBF\u8DEF")}${plan.enabled ? "\uFF08\u5DF2\u6CE8\u5165\uFF09" : ""}</b>
         <span>\u76EE\u6807\uFF1A${escapeHtml(plan.goal || plan.title || "")}</span>
         ${plan.seed ? `<span>\u8D77\u59CB\u8FF9\u8C61\uFF1A${escapeHtml(plan.seed)}</span>` : ""}
         ${plan.why ? `<span>\u5951\u5408\u70B9\uFF1A${escapeHtml(plan.why)}</span>` : ""}
         <div class="pm-action-row">
           <button type="button" class="pm-action-button is-secondary" data-story-oracle-action="continue-plan" data-story-oracle-plan-id="${escapeAttr(plan.id)}">\u7EE7\u7EED\u8BA8\u8BBA</button>
-          <button type="button" class="pm-action-button ${plan.enabled ? "is-secondary" : "is-accent"}" data-story-oracle-action="toggle-plan" data-story-oracle-plan-id="${escapeAttr(plan.id)}" ${writable ? "" : "disabled"}>${plan.enabled ? "\u505C\u7528" : "\u542F\u7528"}</button>
-          <button type="button" class="pm-action-button is-secondary" data-story-oracle-action="delete-plan" data-story-oracle-plan-id="${escapeAttr(plan.id)}" ${writable ? "" : "disabled"}>\u5220\u9664</button>
+          <button type="button" class="pm-action-button ${plan.enabled ? "is-secondary" : "is-accent"}" data-story-oracle-action="toggle-plan" data-story-oracle-plan-id="${escapeAttr(plan.id)}" ${writable ? "" : "disabled"}>${plan.enabled ? "\u53D6\u6D88\u6CE8\u5165" : "\u6CE8\u5165\u8DEF\u7EBF"}</button>
+          <button type="button" class="pm-action-button is-danger" data-story-oracle-action="delete-plan" data-story-oracle-plan-id="${escapeAttr(plan.id)}" ${writable ? "" : "disabled"}>\u5220\u9664\u7EBF\u8DEF</button>
         </div>
       </article>`).join("")}</section>`;
+  }
+  function renderStoryOracleActivePlans(plans = []) {
+    const activePlans = plans.filter((plan) => plan.enabled);
+    if (!activePlans.length) return "";
+    return `<section class="pm-story-oracle-active-plans" aria-label="\u5DF2\u6CE8\u5165\u7684\u5267\u60C5\u5927\u7EB2"><span class="pm-story-oracle-active-plans-label">\u5DF2\u6CE8\u5165\u5927\u7EB2</span><div class="pm-story-oracle-active-plan-list" role="list">${activePlans.map((plan) => `<span class="pm-story-oracle-active-plan" role="listitem">${escapeHtml(plan.title || plan.goal || "\u672A\u547D\u540D\u7EBF\u8DEF")}</span>`).join("")}</div></section>`;
   }
   function renderStoryOracleTools(valid, writable, plans, messages, availableBookNames) {
     const worldBookAvailable = Boolean(valid);
@@ -19134,8 +19154,8 @@ ${lines}`;
       <button type="button" class="pm-expand-btn pm-story-oracle-menu-toggle" data-story-oracle-action="toggle-menu" aria-haspopup="menu" aria-expanded="false" aria-controls="pm-story-oracle-menu" aria-label="\u5267\u60C5\u52A9\u624B\u5DE5\u5177" title="\u5267\u60C5\u52A9\u624B\u5DE5\u5177">${CONTROL_ICON_SVG}</button>
       <div id="pm-story-oracle-menu" class="pm-control-menu pm-story-oracle-menu" role="menu" aria-label="\u5267\u60C5\u52A9\u624B\u5DE5\u5177" hidden>
         <button type="button" role="menuitem" data-story-oracle-action="world-books" data-story-oracle-available="${worldBookAvailable}" ${worldBookAvailable ? "" : "disabled"}>${BOOK_ICON_SVG}<span>${worldBookLabel}</span></button>
-        <button type="button" role="menuitem" data-story-oracle-action="clear-plans" data-story-oracle-available="${clearPlansAvailable}" ${clearPlansAvailable ? "" : "disabled"}>${TRASH_ICON_SVG}<span>\u6E05\u7A7A\u7EBF\u8DEF</span></button>
-        <button type="button" role="menuitem" data-story-oracle-action="clear" data-story-oracle-available="${clearHistoryAvailable}" ${clearHistoryAvailable ? "" : "disabled"}>${REMOVE_ICON_SVG}<span>\u6E05\u7A7A\u5386\u53F2</span></button>
+        <button type="button" class="pm-control-menu-danger" role="menuitem" data-story-oracle-action="clear-plans" data-story-oracle-available="${clearPlansAvailable}" ${clearPlansAvailable ? "" : "disabled"}>${TRASH_ICON_SVG}<span>\u6E05\u7A7A\u7EBF\u8DEF</span></button>
+        <button type="button" class="pm-control-menu-danger" role="menuitem" data-story-oracle-action="clear" data-story-oracle-available="${clearHistoryAvailable}" ${clearHistoryAvailable ? "" : "disabled"}>${REMOVE_ICON_SVG}<span>\u6E05\u7A7A\u5386\u53F2</span></button>
       </div>
     </div>`;
   }
@@ -19144,12 +19164,15 @@ ${lines}`;
   }
   function renderStoryOraclePage(page, storageId, mode, messages = [], status = "", writable = true, readOnlyReason = "", plans = [], selection = null, availableBookNames = []) {
     const valid = isUsableStorageId(storageId);
-    const hint = valid ? "\u5F53\u524D\u804A\u5929\u5DF2\u7ED1\u5B9A\u72EC\u7ACB\u5267\u60C5\u52A9\u624B\u5DE5\u4F5C\u533A\u3002" : "\u8BF7\u5148\u6253\u5F00\u6709\u6548\u7684\u89D2\u8272\u804A\u5929\uFF0C\u518D\u4F7F\u7528\u5267\u60C5\u52A9\u624B\u3002";
+    const invalidHint = valid ? "" : "\u8BF7\u5148\u6253\u5F00\u6709\u6548\u7684\u89D2\u8272\u804A\u5929\uFF0C\u518D\u4F7F\u7528\u5267\u60C5\u52A9\u624B\u3002";
     const persistenceHint = writable ? "" : ` \u5F53\u524D\u4E3A\u53EA\u8BFB\u4FDD\u62A4\u72B6\u6001\uFF1A${readOnlyReason || "\u5386\u53F2\u6570\u636E\u4E0D\u53EF\u5B89\u5168\u5199\u5165"}\u3002`;
+    const statusText = [status || invalidHint, persistenceHint].filter(Boolean).join(" ").trim();
+    const statusMarkup = statusText ? `<p class="pm-story-oracle-status" role="status">${escapeHtml(statusText)}</p>` : "";
     const body = `<div class="pm-msg-list pm-story-oracle-message-list" aria-live="polite">${renderStoryOraclePlans(plans, writable)}${renderMessages(messages)}</div><form class="pm-input-bar pm-story-oracle-composer" data-story-oracle-form>${renderStoryOracleTools(valid, writable, plans, messages, availableBookNames)}<textarea class="pm-input" name="question" rows="2" maxlength="${MAX_QUESTION_CHARS}" placeholder="${mode === "advisor" ? "\u63CF\u8FF0\u4F60\u5E0C\u671B\u63A8\u8FDB\u7684\u5267\u60C5\u76EE\u6807\u2026" : "\u8BE2\u95EE\u5F53\u524D\u6545\u4E8B\u2026"}" ${valid && writable ? "" : "disabled"}></textarea><button type="button" class="pm-generation-cancel" data-story-oracle-action="cancel" title="\u505C\u6B62\u751F\u6210" aria-label="\u505C\u6B62\u751F\u6210" hidden disabled>\u505C\u6B62</button><button type="submit" class="pm-up-btn" title="\u53D1\u9001\u95EE\u9898" aria-label="\u53D1\u9001\u95EE\u9898" ${valid && writable ? "" : "disabled"}>${SEND_ICON_SVG}</button></form>`;
     page.innerHTML = `<div class="pm-story-oracle-shell">
         <header class="pm-navbar pm-story-oracle-navbar"><button type="button" class="pm-nav-btn pm-nav-left-btn" data-story-oracle-action="home" aria-label="\u8FD4\u56DE\u684C\u9762" title="\u8FD4\u56DE\u684C\u9762">${HOME_ICON_SVG}</button><div class="pm-name-wrap"><button type="button" class="pm-name-trigger pm-story-oracle-mode-trigger" data-story-oracle-action="toggle-mode" aria-haspopup="menu" aria-expanded="false" aria-controls="pm-story-oracle-mode-menu" title="\u5207\u6362\u5267\u60C5\u52A9\u624B\u6A21\u5F0F"><span class="pm-name">${MODE_LABELS[mode]}</span><span class="pm-name-chevron" aria-hidden="true">${CHEVRON_DOWN_ICON_SVG}</span></button>${renderStoryOracleModeMenu(mode)}</div><div class="pm-nav-right pm-story-oracle-nav-right"><button type="button" class="pm-header-icon-button pm-nav-btn pm-close-btn" data-story-oracle-action="close" title="\u9000\u51FA\u624B\u673A" aria-label="\u9000\u51FA\u624B\u673A">${CLOSE_ICON_SVG}</button></div></header>
-        <p class="pm-story-oracle-status" role="status">${escapeHtml((status || hint) + persistenceHint)}</p>
+        ${renderStoryOracleActivePlans(plans)}
+        ${statusMarkup}
         ${body}
     </div>`;
     const list2 = page.querySelector(".pm-msg-list");
@@ -19324,8 +19347,10 @@ ${question}`;
         } else return;
         if (!await persistIfCurrent(nextStore, request)) return;
         store = nextStore;
-        render(action === "clear-plans" ? "\u5267\u60C5\u7EBF\u8DEF\u5DF2\u6E05\u7A7A\u3002" : action === "delete-plan" ? "\u5267\u60C5\u7EBF\u8DEF\u5DF2\u5220\u9664\u3002" : "\u5267\u60C5\u7EBF\u8DEF\u72B6\u6001\u5DF2\u66F4\u65B0\u3002");
-        await deps.applyBidirectionalInjection?.();
+        const injectionResult = typeof deps.applyBidirectionalInjection === "function" ? await deps.applyBidirectionalInjection() : null;
+        const injectionIssue = storyOracleInjectionIssue(injectionResult);
+        const message = action === "clear-plans" ? "\u5267\u60C5\u7EBF\u8DEF\u5DF2\u6E05\u7A7A\u3002" : action === "delete-plan" ? "\u5267\u60C5\u7EBF\u8DEF\u5DF2\u5220\u9664\u3002" : "\u5267\u60C5\u7EBF\u8DEF\u72B6\u6001\u5DF2\u66F4\u65B0\u3002";
+        render(injectionIssue ? `${message} \u4F46\u4E3B\u804A\u5929\u6CE8\u5165\u672A\u5B8C\u5168\u751F\u6548\uFF1A${injectionIssue}` : message);
       } catch (error) {
         if (requestIsCurrent(request)) render(`\u5267\u60C5\u7EBF\u8DEF\u64CD\u4F5C\u5931\u8D25\uFF1A${generationErrorMessage(error)}`);
       }

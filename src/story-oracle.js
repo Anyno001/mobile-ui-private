@@ -15,6 +15,24 @@ const isUsableStorageId = value => { const id = String(value || '').trim(); retu
 const MODE_LABELS = Object.freeze({ question: '剧情聊天', advisor: '剧情参谋' });
 const ADVISOR_SYSTEM_PROMPT = '你是剧情助手的剧情参谋。只基于提供的故事上下文提出可执行的剧情方案、冲突推进和弧线选项；不要续写成正文，不要声称已经修改宿主数据。';
 
+export function storyOracleInjectionIssue(result) {
+    const diagnostics = result?.diagnostics?.storyOracle;
+    if (diagnostics?.rejected) return diagnostics.rejected;
+    const expectedPrompts = Math.max(0, Number(diagnostics?.promptCount) || 0);
+    if (expectedPrompts > 0) {
+        if (!result) return '宿主注入接口不可用。';
+        const written = Math.max(0, Number(result.writtenBySource?.storyOracle) || 0);
+        const failed = Math.max(0, Number(result.failedWritesBySource?.storyOracle) || 0);
+        if (written < expectedPrompts) {
+            return failed > 0
+                ? `宿主扩展提示写入失败（${failed} 条）。`
+                : '宿主扩展提示接口不可用或未写入剧情线路。';
+        }
+    }
+    if (Array.isArray(result?.failedKeys) && result.failedKeys.length) return '旧的扩展提示清理失败。';
+    return '';
+}
+
 function renderMessages(messages) {
     if (!messages.length) return '<div class="pm-msg-list-empty">输入问题，剧情助手会基于当前聊天上下文回答。</div>';
     return messages.map(message => {
@@ -28,16 +46,22 @@ function renderStoryOraclePlans(plans = [], writable = true) {
     if (!plans.length) return '';
     return `<section class="pm-settings-list pm-story-oracle-plans" aria-label="并行剧情线路"><div class="pm-story-oracle-plans-summary"><b>并行剧情线路</b><span>可同时启用多条，影响后续主聊天生成</span></div>${plans.map(plan => `
       <article class="pm-story-oracle-plan" data-story-oracle-plan-id="${escapeAttr(plan.id)}">
-        <b>${escapeHtml(plan.title || plan.goal || '未命名线路')}${plan.enabled ? '（已启用）' : ''}</b>
+        <b>${escapeHtml(plan.title || plan.goal || '未命名线路')}${plan.enabled ? '（已注入）' : ''}</b>
         <span>目标：${escapeHtml(plan.goal || plan.title || '')}</span>
         ${plan.seed ? `<span>起始迹象：${escapeHtml(plan.seed)}</span>` : ''}
         ${plan.why ? `<span>契合点：${escapeHtml(plan.why)}</span>` : ''}
         <div class="pm-action-row">
           <button type="button" class="pm-action-button is-secondary" data-story-oracle-action="continue-plan" data-story-oracle-plan-id="${escapeAttr(plan.id)}">继续讨论</button>
-          <button type="button" class="pm-action-button ${plan.enabled ? 'is-secondary' : 'is-accent'}" data-story-oracle-action="toggle-plan" data-story-oracle-plan-id="${escapeAttr(plan.id)}" ${writable ? '' : 'disabled'}>${plan.enabled ? '停用' : '启用'}</button>
-          <button type="button" class="pm-action-button is-secondary" data-story-oracle-action="delete-plan" data-story-oracle-plan-id="${escapeAttr(plan.id)}" ${writable ? '' : 'disabled'}>删除</button>
+          <button type="button" class="pm-action-button ${plan.enabled ? 'is-secondary' : 'is-accent'}" data-story-oracle-action="toggle-plan" data-story-oracle-plan-id="${escapeAttr(plan.id)}" ${writable ? '' : 'disabled'}>${plan.enabled ? '取消注入' : '注入路线'}</button>
+          <button type="button" class="pm-action-button is-danger" data-story-oracle-action="delete-plan" data-story-oracle-plan-id="${escapeAttr(plan.id)}" ${writable ? '' : 'disabled'}>删除线路</button>
         </div>
       </article>`).join('')}</section>`;
+}
+
+function renderStoryOracleActivePlans(plans = []) {
+    const activePlans = plans.filter(plan => plan.enabled);
+    if (!activePlans.length) return '';
+    return `<section class="pm-story-oracle-active-plans" aria-label="已注入的剧情大纲"><span class="pm-story-oracle-active-plans-label">已注入大纲</span><div class="pm-story-oracle-active-plan-list" role="list">${activePlans.map(plan => `<span class="pm-story-oracle-active-plan" role="listitem">${escapeHtml(plan.title || plan.goal || '未命名线路')}</span>`).join('')}</div></section>`;
 }
 
 function renderStoryOracleTools(valid, writable, plans, messages, availableBookNames) {
@@ -49,8 +73,8 @@ function renderStoryOracleTools(valid, writable, plans, messages, availableBookN
       <button type="button" class="pm-expand-btn pm-story-oracle-menu-toggle" data-story-oracle-action="toggle-menu" aria-haspopup="menu" aria-expanded="false" aria-controls="pm-story-oracle-menu" aria-label="剧情助手工具" title="剧情助手工具">${CONTROL_ICON_SVG}</button>
       <div id="pm-story-oracle-menu" class="pm-control-menu pm-story-oracle-menu" role="menu" aria-label="剧情助手工具" hidden>
         <button type="button" role="menuitem" data-story-oracle-action="world-books" data-story-oracle-available="${worldBookAvailable}" ${worldBookAvailable ? '' : 'disabled'}>${BOOK_ICON_SVG}<span>${worldBookLabel}</span></button>
-        <button type="button" role="menuitem" data-story-oracle-action="clear-plans" data-story-oracle-available="${clearPlansAvailable}" ${clearPlansAvailable ? '' : 'disabled'}>${TRASH_ICON_SVG}<span>清空线路</span></button>
-        <button type="button" role="menuitem" data-story-oracle-action="clear" data-story-oracle-available="${clearHistoryAvailable}" ${clearHistoryAvailable ? '' : 'disabled'}>${REMOVE_ICON_SVG}<span>清空历史</span></button>
+        <button type="button" class="pm-control-menu-danger" role="menuitem" data-story-oracle-action="clear-plans" data-story-oracle-available="${clearPlansAvailable}" ${clearPlansAvailable ? '' : 'disabled'}>${TRASH_ICON_SVG}<span>清空线路</span></button>
+        <button type="button" class="pm-control-menu-danger" role="menuitem" data-story-oracle-action="clear" data-story-oracle-available="${clearHistoryAvailable}" ${clearHistoryAvailable ? '' : 'disabled'}>${REMOVE_ICON_SVG}<span>清空历史</span></button>
       </div>
     </div>`;
 }
@@ -61,12 +85,15 @@ function renderStoryOracleModeMenu(mode) {
 
 function renderStoryOraclePage(page, storageId, mode, messages = [], status = '', writable = true, readOnlyReason = '', plans = [], selection = null, availableBookNames = []) {
     const valid = isUsableStorageId(storageId);
-    const hint = valid ? '当前聊天已绑定独立剧情助手工作区。' : '请先打开有效的角色聊天，再使用剧情助手。';
+    const invalidHint = valid ? '' : '请先打开有效的角色聊天，再使用剧情助手。';
     const persistenceHint = writable ? '' : ` 当前为只读保护状态：${readOnlyReason || '历史数据不可安全写入'}。`;
+    const statusText = [status || invalidHint, persistenceHint].filter(Boolean).join(' ').trim();
+    const statusMarkup = statusText ? `<p class="pm-story-oracle-status" role="status">${escapeHtml(statusText)}</p>` : '';
     const body = `<div class="pm-msg-list pm-story-oracle-message-list" aria-live="polite">${renderStoryOraclePlans(plans, writable)}${renderMessages(messages)}</div><form class="pm-input-bar pm-story-oracle-composer" data-story-oracle-form>${renderStoryOracleTools(valid, writable, plans, messages, availableBookNames)}<textarea class="pm-input" name="question" rows="2" maxlength="${MAX_QUESTION_CHARS}" placeholder="${mode === 'advisor' ? '描述你希望推进的剧情目标…' : '询问当前故事…'}" ${valid && writable ? '' : 'disabled'}></textarea><button type="button" class="pm-generation-cancel" data-story-oracle-action="cancel" title="停止生成" aria-label="停止生成" hidden disabled>停止</button><button type="submit" class="pm-up-btn" title="发送问题" aria-label="发送问题" ${valid && writable ? '' : 'disabled'}>${SEND_ICON_SVG}</button></form>`;
     page.innerHTML = `<div class="pm-story-oracle-shell">
         <header class="pm-navbar pm-story-oracle-navbar"><button type="button" class="pm-nav-btn pm-nav-left-btn" data-story-oracle-action="home" aria-label="返回桌面" title="返回桌面">${HOME_ICON_SVG}</button><div class="pm-name-wrap"><button type="button" class="pm-name-trigger pm-story-oracle-mode-trigger" data-story-oracle-action="toggle-mode" aria-haspopup="menu" aria-expanded="false" aria-controls="pm-story-oracle-mode-menu" title="切换剧情助手模式"><span class="pm-name">${MODE_LABELS[mode]}</span><span class="pm-name-chevron" aria-hidden="true">${CHEVRON_DOWN_ICON_SVG}</span></button>${renderStoryOracleModeMenu(mode)}</div><div class="pm-nav-right pm-story-oracle-nav-right"><button type="button" class="pm-header-icon-button pm-nav-btn pm-close-btn" data-story-oracle-action="close" title="退出手机" aria-label="退出手机">${CLOSE_ICON_SVG}</button></div></header>
-        <p class="pm-story-oracle-status" role="status">${escapeHtml((status || hint) + persistenceHint)}</p>
+        ${renderStoryOracleActivePlans(plans)}
+        ${statusMarkup}
         ${body}
     </div>`;
     const list = page.querySelector('.pm-msg-list');
@@ -232,8 +259,11 @@ export function installStoryOracle(_state, deps = {}) {
             } else return;
             if (!await persistIfCurrent(nextStore, request)) return;
             store = nextStore;
-            render(action === 'clear-plans' ? '剧情线路已清空。' : action === 'delete-plan' ? '剧情线路已删除。' : '剧情线路状态已更新。');
-            await deps.applyBidirectionalInjection?.();
+            const injectionResult = typeof deps.applyBidirectionalInjection === 'function' ? await deps.applyBidirectionalInjection() : null;
+            const injectionIssue = storyOracleInjectionIssue(injectionResult);
+            const message = action === 'clear-plans' ? '剧情线路已清空。'
+                : action === 'delete-plan' ? '剧情线路已删除。' : '剧情线路状态已更新。';
+            render(injectionIssue ? `${message} 但主聊天注入未完全生效：${injectionIssue}` : message);
         } catch (error) {
             if (requestIsCurrent(request)) render(`剧情线路操作失败：${generationErrorMessage(error)}`);
         }

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { appendStoryOracleTurn, createEmptyStoryOracleStore, storyOracleMessages } from '../src/story-oracle-model.js';
+import { appendStoryOracleTurn, buildStoryOraclePlanInjection, clearStoryOraclePlans, clearStoryOracleScope, createEmptyStoryOracleStore, parseStoryPlans, setStoryOraclePlanEnabled, setStoryOracleWorldBookSelection, storyOracleMessages, storyOraclePlans, storyOracleWorldBookSelection } from '../src/story-oracle-model.js';
 import { loadStoryOracleStore, saveStoryOracleStore, STORY_ORACLE_FALLBACK_KEY } from '../src/story-oracle-storage.js';
 
 let store = createEmptyStoryOracleStore();
@@ -9,6 +9,32 @@ store = appendStoryOracleTurn(store, 'chat-b', 'q3', 'a3', 'question');
 assert.equal(storyOracleMessages(store, 'chat-a', 'question').length, 2);
 assert.equal(storyOracleMessages(store, 'chat-a', 'advisor').length, 2);
 assert.equal(storyOracleMessages(store, 'chat-b', 'question').length, 2);
+
+
+const parsedPlans = parseStoryPlans('<StoryPlan>\n标题：河岸调查\n目标：查清失踪船队\n起始迹象：码头有异常货单\n契合点：当前冲突正在扩大\n</StoryPlan><StoryPlan>\n标题：城内追查\n目标：追踪伪造军报\n</StoryPlan>');
+assert.equal(parsedPlans.invalid, false);
+assert.equal(parsedPlans.plans.length, 2);
+assert.equal(parseStoryPlans('<StoryPlan>目标：未闭合').invalid, true);
+assert.equal(parseStoryPlans('<StoryPlan>标题：缺目标</StoryPlan>').invalid, true);
+
+let planStore = appendStoryOracleTurn(createEmptyStoryOracleStore(), 'route-chat', '提出方案', '<StoryPlan>标题：河岸调查\n目标：查清失踪船队\n起始迹象：码头有异常货单\n</StoryPlan><StoryPlan>标题：城内追查\n目标：追踪伪造军报\n</StoryPlan>', 'advisor', { selectionKey: 'Book-A' });
+assert.equal(storyOraclePlans(planStore, 'route-chat').length, 2);
+planStore = setStoryOracleWorldBookSelection(planStore, 'route-chat', ['Book-A', 'Book-B']);
+const selectedBooks = storyOracleWorldBookSelection(planStore, 'route-chat', ['Book-A']);
+assert.deepEqual(selectedBooks.books, ['Book-A']);
+assert.equal(selectedBooks.scopeKey, 'Book-A\u0000Book-B');
+assert.equal(typeof selectedBooks.updatedAt, 'number');
+const firstPlan = storyOraclePlans(planStore, 'route-chat')[0];
+planStore = setStoryOraclePlanEnabled(planStore, 'route-chat', firstPlan.id, true);
+assert.equal(storyOraclePlans(planStore, 'route-chat').filter(plan => plan.enabled).length, 1);
+assert.match(buildStoryOraclePlanInjection(storyOraclePlans(planStore, 'route-chat')).content, /查清失踪船队/);
+assert.match(buildStoryOraclePlanInjection(storyOraclePlans(planStore, 'route-chat'), { maxChars: 1 }).rejected, /预算/);
+assert.throws(() => setStoryOraclePlanEnabled(planStore, 'route-chat', 'missing-plan', true), /不存在/);
+planStore = clearStoryOraclePlans(planStore, 'route-chat');
+assert.deepEqual(storyOraclePlans(planStore, 'route-chat'), []);
+planStore = appendStoryOracleTurn(planStore, 'route-chat', '问题', '回答', 'question');
+planStore = clearStoryOracleScope(planStore, 'route-chat', 'question');
+assert.deepEqual(storyOracleMessages(planStore, 'route-chat', 'question'), []);
 
 const empty = await loadStoryOracleStore({ idbRead: async () => ({ ok: true, value: undefined }), storage: { getItem: () => null } });
 assert.equal(empty.writable, true, '首次空存储必须可写');

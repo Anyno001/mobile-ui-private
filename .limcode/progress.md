@@ -1,16 +1,17 @@
 # 项目进度
 - Project: mobile-ui-private
-- Updated At: 2026-08-27T09:27:13.971Z
-- Status: active
-- Phase: implementation
+- Updated At: 2026-08-27T14:41:54.064Z
+- Status: blocked
+- Phase: review
 
 ## 当前摘要
 
 <!-- LIMCODE_PROGRESS_SUMMARY_START -->
 - 当前进度：3/3 个里程碑已完成；最新：trend-svg-mapping-release
-- 当前焦点：完成剧情助手魔法棒菜单、顶栏关闭键与会话区布局并验证
-- 最新结论：剧情助手 DOM 已改为会话区式顶栏，魔法棒菜单、关闭键、下拉模式、可滚动消息区、图标发送区已实现；尚需全量检查与独立验收
-- 下一步：运行全量检查，修复发现的契约/行为问题后调用独立验收专家
+- 当前焦点：剧情助手 UI 与路线注入改动已完成，等待独立验收与真实宿主现场复核
+- 最新结论：已删除正常状态下顶栏绑定提示；剧情助手工具/模式菜单改为页面白底；清空线路/清空历史可用时使用危险红色；已注入大纲显示在窗口顶部；路线启停继续复用现有 extension prompt 注入链；本地 build、syntax、contracts、story-oracle 与 git diff --check 均通过。
+- 当前阻塞：Acceptance Expert 连续三次超时且无返回结论；真实 SillyTavern 宿主的亮暗主题、窄屏、键盘焦点、刷新恢复和 setExtensionPrompt 参数行为尚未现场验证。
+- 下一步：不要继续重复超时的验收调用；待验收服务恢复后，对本轮 4 个文件执行独立只读验收，并完成真实宿主现场矩阵。
 <!-- LIMCODE_PROGRESS_SUMMARY_END -->
 
 ## 关联文档
@@ -23,11 +24,10 @@
 ## 当前 TODO 快照
 
 <!-- LIMCODE_PROGRESS_TODOS_START -->
-- [ ] 参考会话区魔法棒二级菜单重排剧情助手右上角：复用魔法棒 SVG/弹窗/打开后的图标+文字说明，并保留顶栏右上角红色关闭键  `#story-oracle-magic-menu-alignment` (in_progress)
-- [ ] 按会话区规范修正剧情助手 UI：(a) 发送键图标与停止键顺序；(b) 世界书入口移入底栏/工具菜单；(c) 消息与线路共用滚动区；(d) 返回桌面样式；(e) 模式下拉  `#story-oracle-plan-ui-session-alignment` (in_progress)
-- [ ] 本地代码交付后调用独立验收专家，整理来源、回滚和现场验收清单。依赖：Acceptance Expert API 恢复  `#story-oracle-plan-acceptance`
-- [x] 提交 09f4733 已推送 origin/main；026214b 进度账本提交推送状态需复核  `#story-oracle-plan-release`
-- [ ] 补齐剧情助手右上角魔法棒二级菜单、红色关闭键与会话区一致的顶部布局  `#story-oracle-ui-session-alignment` (in_progress)
+- [x] 修正剧情助手顶栏下方提示框与二级菜单视觉：移除无用绑定提示，不误删模型提示词；二级菜单普通底色改为白色语义表面；清空线路/清空历史启用时使用危险红色，禁用态仍遵守可访问性与主题契约  `#story-oracle-topbar-hint-and-route-ux`
+- [x] 核实并补齐上游大纲注入、路线选择与已选路线顶部悬挂窗口：沿用现有世界书/线路/扩展提示契约，不伪造未确认宿主写回能力  `#story-oracle-outline-route-sticky-ui`
+- [x] 根据独立验收补齐本地可验证的 UI/线路/清空与注入错误反馈断言；真实 SillyTavern 现场矩阵作为未闭环风险保留  `#story-oracle-acceptance-major-repair`
+- [ ] 独立 Acceptance Expert 连续三次超时且无返回结论；代码层门禁已通过，但正式生产验收与真实 SillyTavern 现场矩阵仍未闭环，不得宣布完全放行  `#story-oracle-independent-acceptance-blocked` (in_progress)
 <!-- LIMCODE_PROGRESS_TODOS_END -->
 
 ## 项目里程碑
@@ -69,13 +69,13 @@
 <!-- LIMCODE_PROGRESS_RISKS_START -->
 - story-oracle-license | active | 上游许可证边界未确认：上游无标准 LICENSE，未确认再分发授权；实现需保留来源署名并限定私用集成边界。
 - story-oracle-writeback-contract | active | 宿主写回契约缺失：宿主未发现可确认的 MVU、消息、角色或世界书正文写回接口，相关功能必须只读或预览。
+- story-oracle-independent-acceptance | active | 独立验收服务阻塞：Acceptance Expert 连续三次超时且无返回结论；本地自动门禁不能替代正式独立验收。
+- story-oracle-host-matrix | active | 真实宿主现场矩阵未完成：尚未在真实 SillyTavern 宿主完成亮色/暗色、窄屏、键盘焦点、刷新恢复、扩展提示参数和实际 prompt 注入检查。
 <!-- LIMCODE_PROGRESS_RISKS_END -->
 
 ## 最近更新
 
 <!-- LIMCODE_PROGRESS_LOG_START -->
-- 2026-08-23T16:53:22.805Z | milestone_recorded | acceptance-cycle-3 | Acceptance Expert 正式 assessed：0 blocking、1 major、0 minor、0 advisory、10 pass；唯一 major 为真实 SillyTavern 宿主矩阵缺失。
-- 2026-08-23T16:53:22.805Z | updated | branch-fix-marker-write-failure | 补齐 marker 首次/持续写入失败与旧异步交错回归；check:behavior、build、check:syntax、diff --check 均 exit 0。
 - 2026-08-23T17:01:31.629Z | artifact_changed | plan | 同步计划 TODO 快照：.limcode/plans/unify-accent-text-editor-buttons-save-alignment.md
 - 2026-08-24T04:54:00.233Z | artifact_changed | plan | 同步计划 TODO 快照：.limcode/plans/phone-branch-inheritance-restart-persistence.md
 - 2026-08-26T09:24:32.585Z | artifact_changed | design | 同步设计文档：.limcode/design/story-oracle-phone-app.md
@@ -94,6 +94,8 @@
 - 2026-08-27T08:14:22.511Z | milestone_recorded | story-oracle-plan-release | 提交 09f4733 已成功推送到 origin/main，远端指针已核对一致；工作树仅剩项目进度账本的状态修正。
 - 2026-08-27T08:14:22.511Z | risk_changed | story-oracle-plan-acceptance | 发布完成后仍保留正式验收阻塞：Acceptance Expert 连续两次因 API 403 返回 not_assessed。
 - 2026-08-27T08:16:44.634Z | milestone_recorded | story-oracle-plan-release | 提交 09f4733 已成功推送到 origin/main，远端指针已核对一致；当前仅同步项目进度账本，正式独立验收仍因 API 403 阻塞。
+- 2026-08-27T14:41:54.064Z | updated | story-oracle-ui-session-alignment | 剧情助手本轮 UI/线路体验改动已完成：移除正常绑定提示、专属菜单白底、危险清空态、顶部已注入大纲条、注入失败回显；本地门禁全部通过。
+- 2026-08-27T14:41:54.064Z | risk_changed | story-oracle-independent-acceptance | Acceptance Expert 连续三次超时无返回，正式独立验收阻塞；未将本轮 TODO 标记为完成。
 <!-- LIMCODE_PROGRESS_LOG_END -->
 
 <!-- LIMCODE_PROGRESS_METADATA_START -->
@@ -103,41 +105,36 @@
   "projectId": "mobile-ui-private",
   "projectName": "mobile-ui-private",
   "createdAt": "2026-08-14T05:55:56.978Z",
-  "updatedAt": "2026-08-27T09:27:13.971Z",
-  "status": "active",
-  "phase": "implementation",
-  "currentFocus": "完成剧情助手魔法棒菜单、顶栏关闭键与会话区布局并验证",
-  "latestConclusion": "剧情助手 DOM 已改为会话区式顶栏，魔法棒菜单、关闭键、下拉模式、可滚动消息区、图标发送区已实现；尚需全量检查与独立验收",
-  "currentBlocker": null,
-  "nextAction": "运行全量检查，修复发现的契约/行为问题后调用独立验收专家",
+  "updatedAt": "2026-08-27T14:41:54.064Z",
+  "status": "blocked",
+  "phase": "review",
+  "currentFocus": "剧情助手 UI 与路线注入改动已完成，等待独立验收与真实宿主现场复核",
+  "latestConclusion": "已删除正常状态下顶栏绑定提示；剧情助手工具/模式菜单改为页面白底；清空线路/清空历史可用时使用危险红色；已注入大纲显示在窗口顶部；路线启停继续复用现有 extension prompt 注入链；本地 build、syntax、contracts、story-oracle 与 git diff --check 均通过。",
+  "currentBlocker": "Acceptance Expert 连续三次超时且无返回结论；真实 SillyTavern 宿主的亮暗主题、窄屏、键盘焦点、刷新恢复和 setExtensionPrompt 参数行为尚未现场验证。",
+  "nextAction": "不要继续重复超时的验收调用；待验收服务恢复后，对本轮 4 个文件执行独立只读验收，并完成真实宿主现场矩阵。",
   "activeArtifacts": {
     "design": ".limcode/design/story-oracle-phone-app.md",
     "plan": ".limcode/plans/story-oracle-phone-app-integration.md"
   },
   "todos": [
     {
-      "id": "story-oracle-magic-menu-alignment",
-      "content": "参考会话区魔法棒二级菜单重排剧情助手右上角：复用魔法棒 SVG/弹窗/打开后的图标+文字说明，并保留顶栏右上角红色关闭键",
-      "status": "in_progress"
-    },
-    {
-      "id": "story-oracle-plan-ui-session-alignment",
-      "content": "按会话区规范修正剧情助手 UI：(a) 发送键图标与停止键顺序；(b) 世界书入口移入底栏/工具菜单；(c) 消息与线路共用滚动区；(d) 返回桌面样式；(e) 模式下拉",
-      "status": "in_progress"
-    },
-    {
-      "id": "story-oracle-plan-acceptance",
-      "content": "本地代码交付后调用独立验收专家，整理来源、回滚和现场验收清单。依赖：Acceptance Expert API 恢复",
-      "status": "pending"
-    },
-    {
-      "id": "story-oracle-plan-release",
-      "content": "提交 09f4733 已推送 origin/main；026214b 进度账本提交推送状态需复核",
+      "id": "story-oracle-topbar-hint-and-route-ux",
+      "content": "修正剧情助手顶栏下方提示框与二级菜单视觉：移除无用绑定提示，不误删模型提示词；二级菜单普通底色改为白色语义表面；清空线路/清空历史启用时使用危险红色，禁用态仍遵守可访问性与主题契约",
       "status": "completed"
     },
     {
-      "id": "story-oracle-ui-session-alignment",
-      "content": "补齐剧情助手右上角魔法棒二级菜单、红色关闭键与会话区一致的顶部布局",
+      "id": "story-oracle-outline-route-sticky-ui",
+      "content": "核实并补齐上游大纲注入、路线选择与已选路线顶部悬挂窗口：沿用现有世界书/线路/扩展提示契约，不伪造未确认宿主写回能力",
+      "status": "completed"
+    },
+    {
+      "id": "story-oracle-acceptance-major-repair",
+      "content": "根据独立验收补齐本地可验证的 UI/线路/清空与注入错误反馈断言；真实 SillyTavern 现场矩阵作为未闭环风险保留",
+      "status": "completed"
+    },
+    {
+      "id": "story-oracle-independent-acceptance-blocked",
+      "content": "独立 Acceptance Expert 连续三次超时且无返回结论；代码层门禁已通过，但正式生产验收与真实 SillyTavern 现场矩阵仍未闭环，不得宣布完全放行",
       "status": "in_progress"
     }
   ],
@@ -207,21 +204,21 @@
       "title": "宿主写回契约缺失",
       "description": "宿主未发现可确认的 MVU、消息、角色或世界书正文写回接口，相关功能必须只读或预览。",
       "status": "active"
+    },
+    {
+      "id": "story-oracle-independent-acceptance",
+      "title": "独立验收服务阻塞",
+      "description": "Acceptance Expert 连续三次超时且无返回结论；本地自动门禁不能替代正式独立验收。",
+      "status": "active"
+    },
+    {
+      "id": "story-oracle-host-matrix",
+      "title": "真实宿主现场矩阵未完成",
+      "description": "尚未在真实 SillyTavern 宿主完成亮色/暗色、窄屏、键盘焦点、刷新恢复、扩展提示参数和实际 prompt 注入检查。",
+      "status": "active"
     }
   ],
   "log": [
-    {
-      "at": "2026-08-23T16:53:22.805Z",
-      "type": "milestone_recorded",
-      "refId": "acceptance-cycle-3",
-      "message": "Acceptance Expert 正式 assessed：0 blocking、1 major、0 minor、0 advisory、10 pass；唯一 major 为真实 SillyTavern 宿主矩阵缺失。"
-    },
-    {
-      "at": "2026-08-23T16:53:22.805Z",
-      "type": "updated",
-      "refId": "branch-fix-marker-write-failure",
-      "message": "补齐 marker 首次/持续写入失败与旧异步交错回归；check:behavior、build、check:syntax、diff --check 均 exit 0。"
-    },
     {
       "at": "2026-08-23T17:01:31.629Z",
       "type": "artifact_changed",
@@ -329,21 +326,33 @@
       "type": "milestone_recorded",
       "refId": "story-oracle-plan-release",
       "message": "提交 09f4733 已成功推送到 origin/main，远端指针已核对一致；当前仅同步项目进度账本，正式独立验收仍因 API 403 阻塞。"
+    },
+    {
+      "at": "2026-08-27T14:41:54.064Z",
+      "type": "updated",
+      "refId": "story-oracle-ui-session-alignment",
+      "message": "剧情助手本轮 UI/线路体验改动已完成：移除正常绑定提示、专属菜单白底、危险清空态、顶部已注入大纲条、注入失败回显；本地门禁全部通过。"
+    },
+    {
+      "at": "2026-08-27T14:41:54.064Z",
+      "type": "risk_changed",
+      "refId": "story-oracle-independent-acceptance",
+      "message": "Acceptance Expert 连续三次超时无返回，正式独立验收阻塞；未将本轮 TODO 标记为完成。"
     }
   ],
   "stats": {
     "milestonesTotal": 3,
     "milestonesCompleted": 3,
-    "todosTotal": 5,
-    "todosCompleted": 1,
-    "todosInProgress": 3,
+    "todosTotal": 4,
+    "todosCompleted": 3,
+    "todosInProgress": 1,
     "todosCancelled": 0,
-    "activeRisks": 2
+    "activeRisks": 4
   },
   "render": {
     "rendererVersion": 1,
-    "generatedAt": "2026-08-27T09:27:13.971Z",
-    "bodyHash": "sha256:e0e75847dedb081bf2558da4fe34de5f1d56c812fead59772a7f628996c7424d"
+    "generatedAt": "2026-08-27T14:41:54.064Z",
+    "bodyHash": "sha256:3ccc87c9b0c26344a9ad6b402dfe89356d086c1df564687171d0c44dbcda0581"
   }
 }
 <!-- LIMCODE_PROGRESS_METADATA_END -->
