@@ -1,17 +1,16 @@
 # 项目进度
 - Project: mobile-ui-private
-- Updated At: 2026-08-27T08:16:44.634Z
-- Status: blocked
-- Phase: review
+- Updated At: 2026-08-27T09:27:13.971Z
+- Status: active
+- Phase: implementation
 
 ## 当前摘要
 
 <!-- LIMCODE_PROGRESS_SUMMARY_START -->
 - 当前进度：3/3 个里程碑已完成；最新：trend-svg-mapping-release
-- 当前焦点：Story Oracle 集成已推送，等待独立验收服务恢复
-- 最新结论：全部项目门禁已通过，Story Oracle 集成提交 09f4733 已成功推送到 origin/main；正式独立验收专家连续两次因 API 403 返回 not_assessed，不能宣称验收通过。
-- 当前阻塞：Acceptance Expert API 返回 403，未生成独立验收结论。
-- 下一步：验收服务恢复后重新调用 Acceptance Expert；在此之前不修改已发布业务代码。
+- 当前焦点：完成剧情助手魔法棒菜单、顶栏关闭键与会话区布局并验证
+- 最新结论：剧情助手 DOM 已改为会话区式顶栏，魔法棒菜单、关闭键、下拉模式、可滚动消息区、图标发送区已实现；尚需全量检查与独立验收
+- 下一步：运行全量检查，修复发现的契约/行为问题后调用独立验收专家
 <!-- LIMCODE_PROGRESS_SUMMARY_END -->
 
 ## 关联文档
@@ -24,16 +23,11 @@
 ## 当前 TODO 快照
 
 <!-- LIMCODE_PROGRESS_TODOS_START -->
-- [ ] 本地代码交付后调用独立验收专家，整理来源、回滚和现场验收清单  `#story-oracle-plan-acceptance`
-- [ ] 取消角色工坊迁移：本次不实现角色卡访谈、锻造、修订或导出  `#story-oracle-plan-builder` (cancelled)
-- [x] 完成剧情问答、独立侧聊历史、AI 错误处理与持久化隔离，并统一产品名称为“剧情助手”  `#story-oracle-plan-chat`
-- [x] 完成契约、合规、UI 规则读取与上游逻辑迁移清单，确认写回能力及降级边界  `#story-oracle-plan-contract-gate`
-- [ ] 取消回复校正迁移：本次不实现回复校正与差异应用  `#story-oracle-plan-correction-diagnosis` (cancelled)
-- [x] 实现世界书选择入口、按聊天隔离的上下文注入、剧情参谋和上游剧情选择互动  `#story-oracle-plan-lore-advisor`
-- [x] 实现多线路启用/停用、稳定合并、扩展提示注入与清理  `#story-oracle-plan-multi-line-injection`
-- [x] 实现 Story Oracle 手机应用骨架、页面接线、桌面入口、状态机与生命周期清理  `#story-oracle-plan-shell`
-- [x] 执行构建、纯逻辑、持久化、安全、选项互动、多线路注入、宿主回归验证  `#story-oracle-plan-verification`
-- [x] 全部项目门禁已通过，提交 09f4733 已成功推送到 origin/main；远端指针需完成最终核对，独立验收仍因 API 403 未完成  `#story-oracle-plan-release`
+- [ ] 参考会话区魔法棒二级菜单重排剧情助手右上角：复用魔法棒 SVG/弹窗/打开后的图标+文字说明，并保留顶栏右上角红色关闭键  `#story-oracle-magic-menu-alignment` (in_progress)
+- [ ] 按会话区规范修正剧情助手 UI：(a) 发送键图标与停止键顺序；(b) 世界书入口移入底栏/工具菜单；(c) 消息与线路共用滚动区；(d) 返回桌面样式；(e) 模式下拉  `#story-oracle-plan-ui-session-alignment` (in_progress)
+- [ ] 本地代码交付后调用独立验收专家，整理来源、回滚和现场验收清单。依赖：Acceptance Expert API 恢复  `#story-oracle-plan-acceptance`
+- [x] 提交 09f4733 已推送 origin/main；026214b 进度账本提交推送状态需复核  `#story-oracle-plan-release`
+- [ ] 补齐剧情助手右上角魔法棒二级菜单、红色关闭键与会话区一致的顶部布局  `#story-oracle-ui-session-alignment` (in_progress)
 <!-- LIMCODE_PROGRESS_TODOS_END -->
 
 ## 项目里程碑
@@ -109,67 +103,42 @@
   "projectId": "mobile-ui-private",
   "projectName": "mobile-ui-private",
   "createdAt": "2026-08-14T05:55:56.978Z",
-  "updatedAt": "2026-08-27T08:16:44.634Z",
-  "status": "blocked",
-  "phase": "review",
-  "currentFocus": "Story Oracle 集成已推送，等待独立验收服务恢复",
-  "latestConclusion": "全部项目门禁已通过，Story Oracle 集成提交 09f4733 已成功推送到 origin/main；正式独立验收专家连续两次因 API 403 返回 not_assessed，不能宣称验收通过。",
-  "currentBlocker": "Acceptance Expert API 返回 403，未生成独立验收结论。",
-  "nextAction": "验收服务恢复后重新调用 Acceptance Expert；在此之前不修改已发布业务代码。",
+  "updatedAt": "2026-08-27T09:27:13.971Z",
+  "status": "active",
+  "phase": "implementation",
+  "currentFocus": "完成剧情助手魔法棒菜单、顶栏关闭键与会话区布局并验证",
+  "latestConclusion": "剧情助手 DOM 已改为会话区式顶栏，魔法棒菜单、关闭键、下拉模式、可滚动消息区、图标发送区已实现；尚需全量检查与独立验收",
+  "currentBlocker": null,
+  "nextAction": "运行全量检查，修复发现的契约/行为问题后调用独立验收专家",
   "activeArtifacts": {
     "design": ".limcode/design/story-oracle-phone-app.md",
     "plan": ".limcode/plans/story-oracle-phone-app-integration.md"
   },
   "todos": [
     {
+      "id": "story-oracle-magic-menu-alignment",
+      "content": "参考会话区魔法棒二级菜单重排剧情助手右上角：复用魔法棒 SVG/弹窗/打开后的图标+文字说明，并保留顶栏右上角红色关闭键",
+      "status": "in_progress"
+    },
+    {
+      "id": "story-oracle-plan-ui-session-alignment",
+      "content": "按会话区规范修正剧情助手 UI：(a) 发送键图标与停止键顺序；(b) 世界书入口移入底栏/工具菜单；(c) 消息与线路共用滚动区；(d) 返回桌面样式；(e) 模式下拉",
+      "status": "in_progress"
+    },
+    {
       "id": "story-oracle-plan-acceptance",
-      "content": "本地代码交付后调用独立验收专家，整理来源、回滚和现场验收清单",
+      "content": "本地代码交付后调用独立验收专家，整理来源、回滚和现场验收清单。依赖：Acceptance Expert API 恢复",
       "status": "pending"
     },
     {
-      "id": "story-oracle-plan-builder",
-      "content": "取消角色工坊迁移：本次不实现角色卡访谈、锻造、修订或导出",
-      "status": "cancelled"
-    },
-    {
-      "id": "story-oracle-plan-chat",
-      "content": "完成剧情问答、独立侧聊历史、AI 错误处理与持久化隔离，并统一产品名称为“剧情助手”",
-      "status": "completed"
-    },
-    {
-      "id": "story-oracle-plan-contract-gate",
-      "content": "完成契约、合规、UI 规则读取与上游逻辑迁移清单，确认写回能力及降级边界",
-      "status": "completed"
-    },
-    {
-      "id": "story-oracle-plan-correction-diagnosis",
-      "content": "取消回复校正迁移：本次不实现回复校正与差异应用",
-      "status": "cancelled"
-    },
-    {
-      "id": "story-oracle-plan-lore-advisor",
-      "content": "实现世界书选择入口、按聊天隔离的上下文注入、剧情参谋和上游剧情选择互动",
-      "status": "completed"
-    },
-    {
-      "id": "story-oracle-plan-multi-line-injection",
-      "content": "实现多线路启用/停用、稳定合并、扩展提示注入与清理",
-      "status": "completed"
-    },
-    {
-      "id": "story-oracle-plan-shell",
-      "content": "实现 Story Oracle 手机应用骨架、页面接线、桌面入口、状态机与生命周期清理",
-      "status": "completed"
-    },
-    {
-      "id": "story-oracle-plan-verification",
-      "content": "执行构建、纯逻辑、持久化、安全、选项互动、多线路注入、宿主回归验证",
-      "status": "completed"
-    },
-    {
       "id": "story-oracle-plan-release",
-      "content": "全部项目门禁已通过，提交 09f4733 已成功推送到 origin/main；远端指针需完成最终核对，独立验收仍因 API 403 未完成",
+      "content": "提交 09f4733 已推送 origin/main；026214b 进度账本提交推送状态需复核",
       "status": "completed"
+    },
+    {
+      "id": "story-oracle-ui-session-alignment",
+      "content": "补齐剧情助手右上角魔法棒二级菜单、红色关闭键与会话区一致的顶部布局",
+      "status": "in_progress"
     }
   ],
   "milestones": [
@@ -365,16 +334,16 @@
   "stats": {
     "milestonesTotal": 3,
     "milestonesCompleted": 3,
-    "todosTotal": 10,
-    "todosCompleted": 7,
-    "todosInProgress": 0,
-    "todosCancelled": 2,
+    "todosTotal": 5,
+    "todosCompleted": 1,
+    "todosInProgress": 3,
+    "todosCancelled": 0,
     "activeRisks": 2
   },
   "render": {
     "rendererVersion": 1,
-    "generatedAt": "2026-08-27T08:16:44.634Z",
-    "bodyHash": "sha256:68c1709f9f46851699919d1852721217d367eb9177d158147286577502aaedd0"
+    "generatedAt": "2026-08-27T09:27:13.971Z",
+    "bodyHash": "sha256:e0e75847dedb081bf2558da4fe34de5f1d56c812fead59772a7f628996c7424d"
   }
 }
 <!-- LIMCODE_PROGRESS_METADATA_END -->

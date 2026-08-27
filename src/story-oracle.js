@@ -1,5 +1,5 @@
 import { generationErrorMessage } from './ai.js';
-import { HOME_ICON_SVG, SPARKLES_ICON_SVG } from './icons.js';
+import { BOOK_ICON_SVG, CLOSE_ICON_SVG, CONTROL_ICON_SVG, HOME_ICON_SVG, REMOVE_ICON_SVG, SEND_ICON_SVG, SPARKLES_ICON_SVG, TRASH_ICON_SVG } from './icons.js';
 import { escapeAttr, escapeHtml } from './ui.js';
 import {
     appendStoryOracleTurn, clearStoryOraclePlans, clearStoryOracleScope,
@@ -26,8 +26,8 @@ function renderMessages(messages) {
 
 function renderStoryOraclePlans(plans = [], writable = true) {
     if (!plans.length) return '';
-    return `<section class="pm-settings-list pm-story-oracle-plans" aria-label="并行剧情线路"><div class="pm-li"><b>并行剧情线路</b><span>可同时启用多条，影响后续主聊天生成</span></div>${plans.map(plan => `
-      <article class="pm-li pm-story-oracle-plan" data-story-oracle-plan-id="${escapeAttr(plan.id)}">
+    return `<section class="pm-settings-list pm-story-oracle-plans" aria-label="并行剧情线路"><div class="pm-story-oracle-plans-summary"><b>并行剧情线路</b><span>可同时启用多条，影响后续主聊天生成</span></div>${plans.map(plan => `
+      <article class="pm-story-oracle-plan" data-story-oracle-plan-id="${escapeAttr(plan.id)}">
         <b>${escapeHtml(plan.title || plan.goal || '未命名线路')}${plan.enabled ? '（已启用）' : ''}</b>
         <span>目标：${escapeHtml(plan.goal || plan.title || '')}</span>
         ${plan.seed ? `<span>起始迹象：${escapeHtml(plan.seed)}</span>` : ''}
@@ -40,17 +40,33 @@ function renderStoryOraclePlans(plans = [], writable = true) {
       </article>`).join('')}</section>`;
 }
 
+function renderStoryOracleTools(valid, writable, plans, messages, availableBookNames, selectedBookCount) {
+    const worldBookAvailable = Boolean(valid);
+    const clearPlansAvailable = Boolean(plans.length && writable);
+    const clearHistoryAvailable = Boolean(messages.length && writable);
+    const worldBookLabel = availableBookNames.length ? `选择世界书（${selectedBookCount}/${availableBookNames.length}）` : '选择世界书';
+    return `<div class="pm-story-oracle-menu-wrap">
+      <button type="button" class="pm-expand-btn pm-story-oracle-menu-toggle" data-story-oracle-action="toggle-menu" aria-haspopup="menu" aria-expanded="false" aria-controls="pm-story-oracle-menu" aria-label="剧情助手工具" title="剧情助手工具">${CONTROL_ICON_SVG}</button>
+      <div id="pm-story-oracle-menu" class="pm-control-menu pm-story-oracle-menu" role="menu" aria-label="剧情助手工具" hidden>
+        <button type="button" role="menuitem" data-story-oracle-action="world-books" data-story-oracle-available="${worldBookAvailable}" ${worldBookAvailable ? '' : 'disabled'}>${BOOK_ICON_SVG}<span>${worldBookLabel}</span></button>
+        <button type="button" role="menuitem" data-story-oracle-action="clear-plans" data-story-oracle-available="${clearPlansAvailable}" ${clearPlansAvailable ? '' : 'disabled'}>${TRASH_ICON_SVG}<span>清空线路</span></button>
+        <button type="button" role="menuitem" data-story-oracle-action="clear" data-story-oracle-available="${clearHistoryAvailable}" ${clearHistoryAvailable ? '' : 'disabled'}>${REMOVE_ICON_SVG}<span>清空历史</span></button>
+      </div>
+    </div>`;
+}
+
 function renderStoryOraclePage(page, storageId, mode, messages = [], status = '', writable = true, readOnlyReason = '', plans = [], selection = null, availableBookNames = []) {
     const valid = isUsableStorageId(storageId);
     const hint = valid ? '当前聊天已绑定独立剧情助手工作区。' : '请先打开有效的角色聊天，再使用剧情助手。';
-    const modeTabs = STORY_ORACLE_MODES.map(item => `<button type="button" class="pm-action-button ${item === mode ? 'is-accent' : 'is-secondary'}" data-story-oracle-action="mode" data-story-oracle-mode="${item}" aria-pressed="${item === mode}">${MODE_LABELS[item]}</button>`).join('');
+    const modeOptions = STORY_ORACLE_MODES.map(item => `<option value="${item}" ${item === mode ? 'selected' : ''}>${MODE_LABELS[item]}</option>`).join('');
     const persistenceHint = writable ? '' : ` 当前为只读保护状态：${readOnlyReason || '历史数据不可安全写入'}。`;
     const selectedBookCount = selection?.books?.length ?? availableBookNames.length;
-    const body = `${renderStoryOraclePlans(plans, writable)}<div class="pm-msg-list" aria-live="polite">${renderMessages(messages)}</div><form class="pm-input-bar pm-story-oracle-composer" data-story-oracle-form><textarea class="pm-input" name="question" rows="2" maxlength="${MAX_QUESTION_CHARS}" placeholder="${mode === 'advisor' ? '描述你希望推进的剧情目标…' : '询问当前故事…'}" ${valid && writable ? '' : 'disabled'}></textarea><button type="submit" class="pm-up-btn" ${valid && writable ? '' : 'disabled'}>发送</button><button type="button" class="pm-generation-cancel" data-story-oracle-action="cancel" hidden>停止</button></form>`;
-    page.innerHTML = `<div class="pm-scene-shell pm-story-oracle-shell">
-        <header class="pm-scene-header"><button type="button" data-story-oracle-action="home" aria-label="返回桌面" title="返回桌面">${HOME_ICON_SVG}</button><b><span aria-hidden="true">${SPARKLES_ICON_SVG}</span>剧情助手</b><div class="pm-action-row"><button type="button" class="pm-action-button is-secondary" data-story-oracle-action="world-books" ${valid ? '' : 'disabled'}>选择世界书${availableBookNames.length ? `（${selectedBookCount}/${availableBookNames.length}）` : ''}</button><button type="button" class="pm-action-button is-secondary" data-story-oracle-action="clear-plans" ${plans.length && writable ? '' : 'disabled'}>清空线路</button><button type="button" class="pm-action-button is-secondary" data-story-oracle-action="clear" ${messages.length && writable ? '' : 'disabled'}>清空</button></div></header>
-        <p class="pm-scene-status" role="status">${escapeHtml((status || hint) + persistenceHint)}</p>
-        <nav class="pm-action-row" aria-label="剧情助手模式">${modeTabs}</nav>${body}
+    const body = `<div class="pm-msg-list pm-story-oracle-message-list" aria-live="polite">${renderStoryOraclePlans(plans, writable)}${renderMessages(messages)}</div><form class="pm-input-bar pm-story-oracle-composer" data-story-oracle-form><textarea class="pm-input" name="question" rows="2" maxlength="${MAX_QUESTION_CHARS}" placeholder="${mode === 'advisor' ? '描述你希望推进的剧情目标…' : '询问当前故事…'}" ${valid && writable ? '' : 'disabled'}></textarea><button type="button" class="pm-generation-cancel" data-story-oracle-action="cancel" title="停止生成" aria-label="停止生成" hidden disabled>停止</button><button type="submit" class="pm-up-btn" title="发送问题" aria-label="发送问题" ${valid && writable ? '' : 'disabled'}>${SEND_ICON_SVG}</button></form>`;
+    page.innerHTML = `<div class="pm-story-oracle-shell">
+        <header class="pm-navbar pm-story-oracle-navbar"><button type="button" class="pm-nav-btn pm-nav-left-btn" data-story-oracle-action="home" aria-label="返回桌面" title="返回桌面">${HOME_ICON_SVG}</button><div class="pm-name-wrap"><b class="pm-story-oracle-title"><span aria-hidden="true">${SPARKLES_ICON_SVG}</span><span>剧情助手</span></b></div><div class="pm-nav-right pm-story-oracle-nav-right">${renderStoryOracleTools(valid, writable, plans, messages, availableBookNames, selectedBookCount)}<button type="button" class="pm-header-icon-button pm-nav-btn pm-close-btn" data-story-oracle-action="close" title="退出手机" aria-label="退出手机">${CLOSE_ICON_SVG}</button></div></header>
+        <p class="pm-story-oracle-status" role="status">${escapeHtml((status || hint) + persistenceHint)}</p>
+        <div class="pm-story-oracle-mode-row"><label for="pm-story-oracle-mode"><span>模式</span><select id="pm-story-oracle-mode" class="pm-story-oracle-mode-select" data-story-oracle-mode-select>${modeOptions}</select></label></div>
+        ${body}
     </div>`;
     const list = page.querySelector('.pm-msg-list');
     if (list) list.scrollTop = list.scrollHeight;
@@ -73,6 +89,7 @@ export function installStoryOracle(_state, deps = {}) {
     let warning = '';
     const getPage = () => deps.getPhoneWindow?.()?.querySelector?.('[data-phone-page="story-oracle"]') || page;
     let activeMode = 'question';
+    let storyOracleMenuOpen = false;
 
     let writable = false;
     let readOnlyReason = '';
@@ -113,10 +130,25 @@ export function installStoryOracle(_state, deps = {}) {
         page = getPage();
         if (!page) return;
         status = nextStatus;
+        storyOracleMenuOpen = false;
         const worldBookState = getWorldBookState();
         renderStoryOraclePage(page, activeStorageId, activeMode, activeStorageId && store ? storyOracleMessages(store, activeStorageId, activeMode) : [], status, writable, readOnlyReason, activeStorageId && store ? storyOraclePlans(store, activeStorageId) : [], worldBookState.selection, worldBookState.availableNames);
         setBusy(Boolean(controller));
     };
+    const setStoryOracleMenuOpen = open => {
+        storyOracleMenuOpen = Boolean(open);
+        const currentPage = getPage();
+        const menu = currentPage?.querySelector('#pm-story-oracle-menu');
+        const toggle = currentPage?.querySelector('[data-story-oracle-action="toggle-menu"]');
+        menu?.toggleAttribute('hidden', !storyOracleMenuOpen);
+        toggle?.setAttribute('aria-expanded', String(storyOracleMenuOpen));
+        if (storyOracleMenuOpen) {
+            menu?.querySelector('button:not(:disabled)')?.focus({ preventScroll: true });
+        } else if (document.activeElement && menu?.contains(document.activeElement)) {
+            toggle?.focus({ preventScroll: true });
+        }
+    };
+    const closeStoryOracleMenu = () => setStoryOracleMenuOpen(false);
     const setBusy = busy => {
         const form = page?.querySelector('[data-story-oracle-form]');
         if (!form) return;
@@ -125,8 +157,9 @@ export function installStoryOracle(_state, deps = {}) {
         if (submit) submit.disabled = busy;
         const cancel = form.querySelector('[data-story-oracle-action="cancel"]');
         if (cancel) { cancel.hidden = !busy; cancel.disabled = !busy; }
-        page.querySelectorAll('[data-story-oracle-action="world-books"], [data-story-oracle-action="clear-plans"], [data-story-oracle-action="toggle-plan"], [data-story-oracle-action="delete-plan"]').forEach(button => {
-            button.disabled = busy || !writable;
+        page.querySelector('[data-story-oracle-mode-select]')?.toggleAttribute('disabled', busy);
+        page.querySelectorAll('[data-story-oracle-action="world-books"], [data-story-oracle-action="clear-plans"], [data-story-oracle-action="clear"], [data-story-oracle-action="toggle-plan"], [data-story-oracle-action="delete-plan"]').forEach(button => {
+            button.disabled = busy || !writable || button.dataset.storyOracleAvailable === 'false';
         });
     };
     const mutationRequest = () => Object.freeze({ serial: ++requestSerial, storageId: activeStorageId, mode: activeMode, page, controller: null, signal: { aborted: false }, readOnlyReason, writeHandle });
@@ -134,8 +167,10 @@ export function installStoryOracle(_state, deps = {}) {
         if (!isUsableStorageId(activeStorageId) || typeof deps.makeOverlay !== 'function') return false;
         const { availableNames, selection } = getWorldBookState();
         const checkedNames = new Set(selection ? selection.books : availableNames);
-        const opener = page?.querySelector('[data-story-oracle-action="world-books"]');
-        const overlay = deps.makeOverlay(`<div class="pm-modal pm-modal-wide pm-story-oracle-world-book-modal"><div class="pm-modal-header"><span></span><b>选择世界书</b><button type="button" class="pm-modal-close" data-story-world-book-action="close" aria-label="关闭">×</button></div><div class="pm-modal-scroll pm-settings-list"><p class="pm-cfg-tip">只影响剧情助手后续请求，不修改宿主世界书正文。</p>${availableNames.length ? availableNames.map(name => `<label class="pm-li"><span><input type="checkbox" name="story-world-book" value="${escapeAttr(name)}" ${checkedNames.has(name) ? 'checked' : ''}> ${escapeHtml(name)}</span></label>`).join('') : '<div class="pm-msg-list-empty">当前没有可读世界书。</div>'}</div><div class="pm-modal-add"><button type="button" class="pm-action-button is-secondary" data-story-world-book-action="close">取消</button><button type="button" class="pm-action-button is-accent" data-story-world-book-action="save" ${writable ? '' : 'disabled'}>保存</button></div></div>`, { opener });
+        const opener = page?.querySelector('[data-story-oracle-action="toggle-menu"]');
+        closeStoryOracleMenu();
+        const overlay = deps.makeOverlay(`<div class="pm-modal pm-modal-wide pm-story-oracle-world-book-modal" role="dialog" aria-modal="true" aria-labelledby="pm-story-world-book-title"><div class="pm-modal-header"><span></span><b id="pm-story-world-book-title">选择世界书</b><button type="button" class="pm-modal-close" data-story-world-book-action="close" aria-label="关闭" title="关闭">${CLOSE_ICON_SVG}</button></div><div class="pm-modal-scroll pm-settings-list"><p class="pm-cfg-tip">只影响剧情助手后续请求，不修改宿主世界书正文。</p>${availableNames.length ? availableNames.map(name => `<label class="pm-li"><span><input type="checkbox" name="story-world-book" value="${escapeAttr(name)}" ${checkedNames.has(name) ? 'checked' : ''}> ${escapeHtml(name)}</span></label>`).join('') : '<div class="pm-msg-list-empty">当前没有可读世界书。</div>'}</div><div class="pm-modal-add"><button type="button" class="pm-action-button is-secondary" data-story-world-book-action="close">取消</button><button type="button" class="pm-action-button is-accent" data-story-world-book-action="save" ${writable ? '' : 'disabled'}>保存</button></div></div>`, { opener });
+        overlay?.querySelector('[data-story-world-book-action="close"]')?.focus({ preventScroll: true });
         overlay.querySelectorAll('[data-story-world-book-action="close"]').forEach(button => button.addEventListener('click', () => deps.closeOverlay?.('close')));
         overlay.querySelector('[data-story-world-book-action="save"]')?.addEventListener('click', async () => {
             if (!writable) return;
@@ -181,9 +216,37 @@ export function installStoryOracle(_state, deps = {}) {
             if (requestIsCurrent(request)) render(`剧情线路操作失败：${generationErrorMessage(error)}`);
         }
     };
+    const onChange = event => {
+        const select = event.target.closest?.('[data-story-oracle-mode-select]');
+        if (!select || !boundWindow?.contains(select)) return;
+        const nextMode = select.value;
+        if (!STORY_ORACLE_MODES.includes(nextMode) || controller) return;
+        activeMode = nextMode;
+        render();
+    };
+    const onDocumentClick = event => {
+        if (!storyOracleMenuOpen) return;
+        const currentPage = getPage();
+        const menu = currentPage?.querySelector('#pm-story-oracle-menu');
+        const toggle = currentPage?.querySelector('[data-story-oracle-action="toggle-menu"]');
+        if (!menu?.contains(event.target) && !toggle?.contains(event.target)) closeStoryOracleMenu();
+    };
+    const onDocumentKeyDown = event => {
+        if (event.key === 'Escape' && storyOracleMenuOpen) {
+            event.preventDefault();
+            closeStoryOracleMenu();
+            page?.querySelector('[data-story-oracle-action="toggle-menu"]')?.focus({ preventScroll: true });
+        }
+    };
     const onClick = event => {
         const button = event.target.closest?.('[data-story-oracle-action]');
         if (!button || !boundWindow?.contains(button)) return;
+        if (button.dataset.storyOracleAction === 'toggle-menu') {
+            event.preventDefault();
+            setStoryOracleMenuOpen(!storyOracleMenuOpen);
+            return;
+        }
+        if (button.closest('#pm-story-oracle-menu')) closeStoryOracleMenu();
         if (button.dataset.storyOracleAction === 'world-books') {
             showWorldBookSelector();
             return;
@@ -193,16 +256,18 @@ export function installStoryOracle(_state, deps = {}) {
             return;
         }
         if (button.dataset.storyOracleAction === 'home') {
+            closeStoryOracleMenu();
             invalidate('story-oracle-home');
             deps.showPhoneDesktopPage?.();
         }
-        if (button.dataset.storyOracleAction === 'cancel') controller?.abort('story-oracle-cancelled');
-        if (button.dataset.storyOracleAction === 'mode') {
-            const nextMode = button.dataset.storyOracleMode;
-            if (!STORY_ORACLE_MODES.includes(nextMode) || controller) return;
-            activeMode = nextMode;
-            render();
+        if (button.dataset.storyOracleAction === 'close') {
+            closeStoryOracleMenu();
+            invalidate('story-oracle-close');
+            if (typeof deps.closePhone === 'function') deps.closePhone();
+            else globalThis.window?.__pmEnd?.();
+            return;
         }
+        if (button.dataset.storyOracleAction === 'cancel') controller?.abort('story-oracle-cancelled');
         if (button.dataset.storyOracleAction === 'clear' && activeStorageId && writable && !controller) {
             const clearRequest = Object.freeze({
                 serial: ++requestSerial, storageId: activeStorageId, mode: activeMode, page, controller: null,
@@ -260,21 +325,31 @@ export function installStoryOracle(_state, deps = {}) {
         if (boundWindow) {
             boundWindow.removeEventListener?.('click', onClick);
             boundWindow.removeEventListener?.('submit', onSubmit);
+            boundWindow.removeEventListener?.('change', onChange);
         }
+        document.removeEventListener('click', onDocumentClick, true);
+        document.removeEventListener('keydown', onDocumentKeyDown, true);
         boundWindow = phoneWindow;
         boundWindow.addEventListener('click', onClick);
         boundWindow.addEventListener('submit', onSubmit);
+        boundWindow.addEventListener('change', onChange);
+        document.addEventListener('click', onDocumentClick, true);
+        document.addEventListener('keydown', onDocumentKeyDown, true);
         return true;
     };
     const destroy = () => {
         invalidate('story-oracle-closed');
         boundWindow?.removeEventListener?.('click', onClick);
         boundWindow?.removeEventListener?.('submit', onSubmit);
+        boundWindow?.removeEventListener?.('change', onChange);
+        document.removeEventListener('click', onDocumentClick, true);
+        document.removeEventListener('keydown', onDocumentKeyDown, true);
         boundWindow = null;
         page = null;
         store = null;
         activeStorageId = '';
         writeHandle = null;
+        storyOracleMenuOpen = false;
     };
     const show = async (storageId = deps.getStorageId?.()) => {
         const nextId = String(storageId || '').trim();

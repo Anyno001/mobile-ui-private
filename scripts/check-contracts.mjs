@@ -4348,6 +4348,28 @@ for (const [label, marker, accessibleName] of [
 }
 const iconsCode = sourceModuleByName.get('icons.js')?.code || '';
 for (const expected of ['REMOVE_ICON_SVG', 'UNLINK_ICON_SVG', 'SPARKLES_ICON_SVG', 'CHEVRON_DOWN_ICON_SVG', 'EYE_ICON_SVG', 'MOON_ICON_SVG', 'CYCLE_PERIOD_ICON_SVG', 'BOOK_ICON_SVG', 'CHECK_ICON_SVG']) requireText('icons.js', iconsCode, expected);
+const storyOracleCode = sourceModuleByName.get('story-oracle.js')?.code || '';
+for (const expected of [
+  'CONTROL_ICON_SVG', 'BOOK_ICON_SVG', 'SEND_ICON_SVG', 'CLOSE_ICON_SVG',
+  'class="pm-expand-btn pm-story-oracle-menu-toggle"',
+  'class="pm-control-menu pm-story-oracle-menu"',
+  'role="menu" aria-label="剧情助手工具"',
+  'class="pm-nav-btn pm-nav-left-btn"',
+  'class="pm-header-icon-button pm-nav-btn pm-close-btn"',
+  'class="pm-msg-list pm-story-oracle-message-list"',
+  'data-story-oracle-mode-select',
+]) requireText('story-oracle.js UI contract', storyOracleCode, expected);
+if (storyOracleCode.includes('pm-scene-header')) failures.push('story-oracle.js: session UI must not retain the old scene header');
+if (!/<button type="button" class="pm-generation-cancel"[\s\S]*?<button type="submit" class="pm-up-btn"/.test(storyOracleCode)) {
+  failures.push('story-oracle.js: cancel button must precede the icon send button');
+}
+if (!/class="pm-control-menu pm-story-oracle-menu"[\s\S]*data-story-oracle-action="world-books"/.test(storyOracleCode)) {
+  failures.push('story-oracle.js: world-book entry must remain inside the magic-wand menu');
+}
+requireCssDeclarations(cssRules, '.pm-story-oracle-shell', { height: '100%', 'min-height': '0', display: 'flex', 'flex-direction': 'column' });
+requireCssDeclarations(cssRules, '.pm-story-oracle-menu', { right: '0', top: 'calc(100% + var(--pm-space-1))', 'box-shadow': 'var(--pm-shadow-floating)' });
+requireCssDeclarations(cssRules, '.pm-story-oracle-mode-select', { 'min-height': 'var(--pm-size-control-default)' });
+requireCssDeclarations(cssRules, '.pm-story-oracle-message-list', { 'min-height': '0' });
 for (const expected of [
   `export const EYE_ICON_SVG = icon('<path d="M2.5 12s3.5-5 9.5-5 9.5 5 9.5 5-3.5 5-9.5 5-9.5-5-9.5-5z"/><circle cx="12" cy="12" r="2.5"/>');`,
   `export const MOON_ICON_SVG = icon('<path d="M20 15.2A8.5 8.5 0 0 1 8.8 4 8.5 8.5 0 1 0 20 15.2z"/>');`,
