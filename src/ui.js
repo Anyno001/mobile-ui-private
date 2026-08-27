@@ -16,6 +16,10 @@ export function escapeHtml(value) {
     return (value || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
+export function renderBoldText(value) {
+    return escapeHtml(value).replace(/\*\*(?![\s*])([\s\S]*?\S)\*\*/g, '<strong>$1</strong>');
+}
+
 export function escapeAttr(value) {
     return (value || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#39;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }

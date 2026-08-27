@@ -157,6 +157,17 @@ try {
     assert.match(remoteBubble.innerHTML, /表情图片暂不加载/);
 
     const specialOptions = { groupColorMap: {}, groupMembers: [], emojis: [] };
+    const boldBubble = createBubbles('普通 **加粗** 文本', 'left', undefined, specialOptions)[0];
+    assert.equal(boldBubble.innerHTML, '普通 <strong>加粗</strong> 文本', '聊天正文中的 **文本** 必须渲染为加粗元素');
+    const safeBoldBubble = createBubbles('**<img src=x onerror=alert(1)>**', 'right', undefined, specialOptions)[0];
+    assert.equal(
+        safeBoldBubble.innerHTML,
+        '<strong>&lt;img src=x onerror=alert(1)&gt;</strong>',
+        '加粗解析必须先转义 HTML，不能把消息内容变成可执行标记',
+    );
+    assert.equal(createBubbles('未闭合 **加粗', 'right', undefined, specialOptions)[0].innerHTML, '未闭合 **加粗', '未闭合星号必须保留原文');
+    assert.equal(createBubbles('空 ** **', 'right', undefined, specialOptions)[0].innerHTML, '空 ** **', '空加粗标记必须保留原文');
+    assert.equal(createBubbles('空 ****', 'right', undefined, specialOptions)[0].innerHTML, '空 ****', '连续星号空标记必须保留原文');
     assert.match(createBubbles('(语音+你好)', 'left', undefined, specialOptions)[0].innerHTML, /pm-voice-card/, '旧括号语音格式必须继续渲染');
     assert.match(createBubbles('（图片：风景）', 'left', undefined, specialOptions)[0].innerHTML, /pm-img-card/, '旧中文括号图片格式必须继续渲染');
     assert.match(createBubbles('(转账+88)', 'left', undefined, specialOptions)[0].innerHTML, /¥88\.00/, '旧括号转账格式必须继续渲染');

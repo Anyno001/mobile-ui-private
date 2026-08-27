@@ -1,7 +1,7 @@
 import { VOICE_MAX_SEC } from './constants.js';
 import { GROUP_COLORS } from './groups.js';
 import { isRenderableEmojiSource } from './emoji-media.js';
-import { contrastText, escapeAttr, escapeHtml } from './ui.js';
+import { contrastText, escapeAttr, escapeHtml, renderBoldText } from './ui.js';
 
 const SPECIAL_KEYWORDS = {
     '转账':'转账','transfer':'转账','Transfer':'转账','TRANSFER':'转账','轉賬':'转账','轉帳':'转账',
@@ -86,7 +86,7 @@ export function createBubbles(text, side, senderName, { groupColorMap, groupMemb
                 const stripped = display.replace(/[。．.]$/, '');
                 if (stripped) display = stripped;
             }
-            return escapeHtml(display);
+            return renderBoldText(display);
         };
         if (senderName && side === 'left') {
             lines.forEach((line, index) => {

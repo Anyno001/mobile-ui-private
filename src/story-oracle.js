@@ -1,6 +1,6 @@
 import { generationErrorMessage } from './ai.js';
-import { BOOK_ICON_SVG, CLOSE_ICON_SVG, CONTROL_ICON_SVG, HOME_ICON_SVG, REMOVE_ICON_SVG, SEND_ICON_SVG, SPARKLES_ICON_SVG, TRASH_ICON_SVG } from './icons.js';
-import { escapeAttr, escapeHtml } from './ui.js';
+import { BOOK_ICON_SVG, CHEVRON_DOWN_ICON_SVG, CLOSE_ICON_SVG, CONTROL_ICON_SVG, HOME_ICON_SVG, REMOVE_ICON_SVG, SEND_ICON_SVG, TRASH_ICON_SVG } from './icons.js';
+import { escapeAttr, escapeHtml, renderBoldText } from './ui.js';
 import {
     appendStoryOracleTurn, clearStoryOraclePlans, clearStoryOracleScope,
     parseStoryPlans, removeStoryOraclePlan, setStoryOraclePlanEnabled, setStoryOracleWorldBookSelection,
@@ -20,7 +20,7 @@ function renderMessages(messages) {
     return messages.map(message => {
         const parsed = message.role === 'assistant' ? parseStoryPlans(message.content) : null;
         const content = parsed?.plans?.length ? stripStoryPlanMarkup(message.content) : message.content;
-        return `<div class="pm-story-oracle-message ${message.role === 'user' ? 'is-user' : 'is-assistant'}"><div class="pm-bubble">${escapeHtml(content)}</div></div>`;
+        return `<div class="pm-story-oracle-message ${message.role === 'user' ? 'is-user' : 'is-assistant'}"><div class="pm-bubble">${renderBoldText(content)}</div></div>`;
     }).join('');
 }
 
@@ -40,11 +40,11 @@ function renderStoryOraclePlans(plans = [], writable = true) {
       </article>`).join('')}</section>`;
 }
 
-function renderStoryOracleTools(valid, writable, plans, messages, availableBookNames, selectedBookCount) {
+function renderStoryOracleTools(valid, writable, plans, messages, availableBookNames) {
     const worldBookAvailable = Boolean(valid);
     const clearPlansAvailable = Boolean(plans.length && writable);
     const clearHistoryAvailable = Boolean(messages.length && writable);
-    const worldBookLabel = availableBookNames.length ? `选择世界书（${selectedBookCount}/${availableBookNames.length}）` : '选择世界书';
+    const worldBookLabel = '选择世界书';
     return `<div class="pm-story-oracle-menu-wrap">
       <button type="button" class="pm-expand-btn pm-story-oracle-menu-toggle" data-story-oracle-action="toggle-menu" aria-haspopup="menu" aria-expanded="false" aria-controls="pm-story-oracle-menu" aria-label="剧情助手工具" title="剧情助手工具">${CONTROL_ICON_SVG}</button>
       <div id="pm-story-oracle-menu" class="pm-control-menu pm-story-oracle-menu" role="menu" aria-label="剧情助手工具" hidden>
@@ -55,17 +55,18 @@ function renderStoryOracleTools(valid, writable, plans, messages, availableBookN
     </div>`;
 }
 
+function renderStoryOracleModeMenu(mode) {
+    return `<div id="pm-story-oracle-mode-menu" class="pm-control-menu pm-story-oracle-mode-menu" role="menu" aria-label="剧情助手模式" hidden>${STORY_ORACLE_MODES.map(item => `<button type="button" role="menuitemradio" data-story-oracle-action="mode" data-story-oracle-mode="${item}" aria-checked="${item === mode}" ${item === mode ? 'aria-label="当前模式：' + MODE_LABELS[item] + '"' : ''}><span>${MODE_LABELS[item]}</span></button>`).join('')}</div>`;
+}
+
 function renderStoryOraclePage(page, storageId, mode, messages = [], status = '', writable = true, readOnlyReason = '', plans = [], selection = null, availableBookNames = []) {
     const valid = isUsableStorageId(storageId);
     const hint = valid ? '当前聊天已绑定独立剧情助手工作区。' : '请先打开有效的角色聊天，再使用剧情助手。';
-    const modeOptions = STORY_ORACLE_MODES.map(item => `<option value="${item}" ${item === mode ? 'selected' : ''}>${MODE_LABELS[item]}</option>`).join('');
     const persistenceHint = writable ? '' : ` 当前为只读保护状态：${readOnlyReason || '历史数据不可安全写入'}。`;
-    const selectedBookCount = selection?.books?.length ?? availableBookNames.length;
-    const body = `<div class="pm-msg-list pm-story-oracle-message-list" aria-live="polite">${renderStoryOraclePlans(plans, writable)}${renderMessages(messages)}</div><form class="pm-input-bar pm-story-oracle-composer" data-story-oracle-form><textarea class="pm-input" name="question" rows="2" maxlength="${MAX_QUESTION_CHARS}" placeholder="${mode === 'advisor' ? '描述你希望推进的剧情目标…' : '询问当前故事…'}" ${valid && writable ? '' : 'disabled'}></textarea><button type="button" class="pm-generation-cancel" data-story-oracle-action="cancel" title="停止生成" aria-label="停止生成" hidden disabled>停止</button><button type="submit" class="pm-up-btn" title="发送问题" aria-label="发送问题" ${valid && writable ? '' : 'disabled'}>${SEND_ICON_SVG}</button></form>`;
+    const body = `<div class="pm-msg-list pm-story-oracle-message-list" aria-live="polite">${renderStoryOraclePlans(plans, writable)}${renderMessages(messages)}</div><form class="pm-input-bar pm-story-oracle-composer" data-story-oracle-form>${renderStoryOracleTools(valid, writable, plans, messages, availableBookNames)}<textarea class="pm-input" name="question" rows="2" maxlength="${MAX_QUESTION_CHARS}" placeholder="${mode === 'advisor' ? '描述你希望推进的剧情目标…' : '询问当前故事…'}" ${valid && writable ? '' : 'disabled'}></textarea><button type="button" class="pm-generation-cancel" data-story-oracle-action="cancel" title="停止生成" aria-label="停止生成" hidden disabled>停止</button><button type="submit" class="pm-up-btn" title="发送问题" aria-label="发送问题" ${valid && writable ? '' : 'disabled'}>${SEND_ICON_SVG}</button></form>`;
     page.innerHTML = `<div class="pm-story-oracle-shell">
-        <header class="pm-navbar pm-story-oracle-navbar"><button type="button" class="pm-nav-btn pm-nav-left-btn" data-story-oracle-action="home" aria-label="返回桌面" title="返回桌面">${HOME_ICON_SVG}</button><div class="pm-name-wrap"><b class="pm-story-oracle-title"><span aria-hidden="true">${SPARKLES_ICON_SVG}</span><span>剧情助手</span></b></div><div class="pm-nav-right pm-story-oracle-nav-right">${renderStoryOracleTools(valid, writable, plans, messages, availableBookNames, selectedBookCount)}<button type="button" class="pm-header-icon-button pm-nav-btn pm-close-btn" data-story-oracle-action="close" title="退出手机" aria-label="退出手机">${CLOSE_ICON_SVG}</button></div></header>
+        <header class="pm-navbar pm-story-oracle-navbar"><button type="button" class="pm-nav-btn pm-nav-left-btn" data-story-oracle-action="home" aria-label="返回桌面" title="返回桌面">${HOME_ICON_SVG}</button><div class="pm-name-wrap"><button type="button" class="pm-name-trigger pm-story-oracle-mode-trigger" data-story-oracle-action="toggle-mode" aria-haspopup="menu" aria-expanded="false" aria-controls="pm-story-oracle-mode-menu" title="切换剧情助手模式"><span class="pm-name">${MODE_LABELS[mode]}</span><span class="pm-name-chevron" aria-hidden="true">${CHEVRON_DOWN_ICON_SVG}</span></button>${renderStoryOracleModeMenu(mode)}</div><div class="pm-nav-right pm-story-oracle-nav-right"><button type="button" class="pm-header-icon-button pm-nav-btn pm-close-btn" data-story-oracle-action="close" title="退出手机" aria-label="退出手机">${CLOSE_ICON_SVG}</button></div></header>
         <p class="pm-story-oracle-status" role="status">${escapeHtml((status || hint) + persistenceHint)}</p>
-        <div class="pm-story-oracle-mode-row"><label for="pm-story-oracle-mode"><span>模式</span><select id="pm-story-oracle-mode" class="pm-story-oracle-mode-select" data-story-oracle-mode-select>${modeOptions}</select></label></div>
         ${body}
     </div>`;
     const list = page.querySelector('.pm-msg-list');
@@ -90,6 +91,7 @@ export function installStoryOracle(_state, deps = {}) {
     const getPage = () => deps.getPhoneWindow?.()?.querySelector?.('[data-phone-page="story-oracle"]') || page;
     let activeMode = 'question';
     let storyOracleMenuOpen = false;
+    let storyOracleModeMenuOpen = false;
 
     let writable = false;
     let readOnlyReason = '';
@@ -131,6 +133,7 @@ export function installStoryOracle(_state, deps = {}) {
         if (!page) return;
         status = nextStatus;
         storyOracleMenuOpen = false;
+        storyOracleModeMenuOpen = false;
         const worldBookState = getWorldBookState();
         renderStoryOraclePage(page, activeStorageId, activeMode, activeStorageId && store ? storyOracleMessages(store, activeStorageId, activeMode) : [], status, writable, readOnlyReason, activeStorageId && store ? storyOraclePlans(store, activeStorageId) : [], worldBookState.selection, worldBookState.availableNames);
         setBusy(Boolean(controller));
@@ -149,6 +152,24 @@ export function installStoryOracle(_state, deps = {}) {
         }
     };
     const closeStoryOracleMenu = () => setStoryOracleMenuOpen(false);
+    const setStoryOracleModeMenuOpen = open => {
+        storyOracleModeMenuOpen = Boolean(open);
+        const currentPage = getPage();
+        const menu = currentPage?.querySelector('#pm-story-oracle-mode-menu');
+        const toggle = currentPage?.querySelector('[data-story-oracle-action="toggle-mode"]');
+        menu?.toggleAttribute('hidden', !storyOracleModeMenuOpen);
+        toggle?.setAttribute('aria-expanded', String(storyOracleModeMenuOpen));
+        if (storyOracleModeMenuOpen) {
+            menu?.querySelector('button:not(:disabled)')?.focus({ preventScroll: true });
+        } else if (document.activeElement && menu?.contains(document.activeElement)) {
+            toggle?.focus({ preventScroll: true });
+        }
+    };
+    const closeStoryOracleModeMenu = () => setStoryOracleModeMenuOpen(false);
+    const closeStoryOracleMenus = () => {
+        closeStoryOracleMenu();
+        closeStoryOracleModeMenu();
+    };
     const setBusy = busy => {
         const form = page?.querySelector('[data-story-oracle-form]');
         if (!form) return;
@@ -157,7 +178,8 @@ export function installStoryOracle(_state, deps = {}) {
         if (submit) submit.disabled = busy;
         const cancel = form.querySelector('[data-story-oracle-action="cancel"]');
         if (cancel) { cancel.hidden = !busy; cancel.disabled = !busy; }
-        page.querySelector('[data-story-oracle-mode-select]')?.toggleAttribute('disabled', busy);
+        page.querySelector('[data-story-oracle-action="toggle-mode"]')?.toggleAttribute('disabled', busy);
+        page.querySelectorAll('[data-story-oracle-action="mode"]').forEach(button => { button.disabled = busy; });
         page.querySelectorAll('[data-story-oracle-action="world-books"], [data-story-oracle-action="clear-plans"], [data-story-oracle-action="clear"], [data-story-oracle-action="toggle-plan"], [data-story-oracle-action="delete-plan"]').forEach(button => {
             button.disabled = busy || !writable || button.dataset.storyOracleAvailable === 'false';
         });
@@ -168,7 +190,7 @@ export function installStoryOracle(_state, deps = {}) {
         const { availableNames, selection } = getWorldBookState();
         const checkedNames = new Set(selection ? selection.books : availableNames);
         const opener = page?.querySelector('[data-story-oracle-action="toggle-menu"]');
-        closeStoryOracleMenu();
+        closeStoryOracleMenus();
         const overlay = deps.makeOverlay(`<div class="pm-modal pm-modal-wide pm-story-oracle-world-book-modal" role="dialog" aria-modal="true" aria-labelledby="pm-story-world-book-title"><div class="pm-modal-header"><span></span><b id="pm-story-world-book-title">选择世界书</b><button type="button" class="pm-modal-close" data-story-world-book-action="close" aria-label="关闭" title="关闭">${CLOSE_ICON_SVG}</button></div><div class="pm-modal-scroll pm-settings-list"><p class="pm-cfg-tip">只影响剧情助手后续请求，不修改宿主世界书正文。</p>${availableNames.length ? availableNames.map(name => `<label class="pm-li"><span><input type="checkbox" name="story-world-book" value="${escapeAttr(name)}" ${checkedNames.has(name) ? 'checked' : ''}> ${escapeHtml(name)}</span></label>`).join('') : '<div class="pm-msg-list-empty">当前没有可读世界书。</div>'}</div><div class="pm-modal-add"><button type="button" class="pm-action-button is-secondary" data-story-world-book-action="close">取消</button><button type="button" class="pm-action-button is-accent" data-story-world-book-action="save" ${writable ? '' : 'disabled'}>保存</button></div></div>`, { opener });
         overlay?.querySelector('[data-story-world-book-action="close"]')?.focus({ preventScroll: true });
         overlay.querySelectorAll('[data-story-world-book-action="close"]').forEach(button => button.addEventListener('click', () => deps.closeOverlay?.('close')));
@@ -216,23 +238,22 @@ export function installStoryOracle(_state, deps = {}) {
             if (requestIsCurrent(request)) render(`剧情线路操作失败：${generationErrorMessage(error)}`);
         }
     };
-    const onChange = event => {
-        const select = event.target.closest?.('[data-story-oracle-mode-select]');
-        if (!select || !boundWindow?.contains(select)) return;
-        const nextMode = select.value;
-        if (!STORY_ORACLE_MODES.includes(nextMode) || controller) return;
-        activeMode = nextMode;
-        render();
-    };
     const onDocumentClick = event => {
-        if (!storyOracleMenuOpen) return;
+        if (!storyOracleMenuOpen && !storyOracleModeMenuOpen) return;
         const currentPage = getPage();
         const menu = currentPage?.querySelector('#pm-story-oracle-menu');
         const toggle = currentPage?.querySelector('[data-story-oracle-action="toggle-menu"]');
-        if (!menu?.contains(event.target) && !toggle?.contains(event.target)) closeStoryOracleMenu();
+        const modeMenu = currentPage?.querySelector('#pm-story-oracle-mode-menu');
+        const modeToggle = currentPage?.querySelector('[data-story-oracle-action="toggle-mode"]');
+        if (!menu?.contains(event.target) && !toggle?.contains(event.target) && !modeMenu?.contains(event.target) && !modeToggle?.contains(event.target)) closeStoryOracleMenus();
     };
     const onDocumentKeyDown = event => {
-        if (event.key === 'Escape' && storyOracleMenuOpen) {
+        if (event.key !== 'Escape') return;
+        if (storyOracleModeMenuOpen) {
+            event.preventDefault();
+            closeStoryOracleModeMenu();
+            page?.querySelector('[data-story-oracle-action="toggle-mode"]')?.focus({ preventScroll: true });
+        } else if (storyOracleMenuOpen) {
             event.preventDefault();
             closeStoryOracleMenu();
             page?.querySelector('[data-story-oracle-action="toggle-menu"]')?.focus({ preventScroll: true });
@@ -243,7 +264,22 @@ export function installStoryOracle(_state, deps = {}) {
         if (!button || !boundWindow?.contains(button)) return;
         if (button.dataset.storyOracleAction === 'toggle-menu') {
             event.preventDefault();
+            closeStoryOracleModeMenu();
             setStoryOracleMenuOpen(!storyOracleMenuOpen);
+            return;
+        }
+        if (button.dataset.storyOracleAction === 'toggle-mode') {
+            event.preventDefault();
+            closeStoryOracleMenu();
+            setStoryOracleModeMenuOpen(!storyOracleModeMenuOpen);
+            return;
+        }
+        if (button.dataset.storyOracleAction === 'mode') {
+            const nextMode = button.dataset.storyOracleMode;
+            closeStoryOracleModeMenu();
+            if (!STORY_ORACLE_MODES.includes(nextMode) || nextMode === activeMode || controller) return;
+            activeMode = nextMode;
+            render();
             return;
         }
         if (button.closest('#pm-story-oracle-menu')) closeStoryOracleMenu();
@@ -256,12 +292,12 @@ export function installStoryOracle(_state, deps = {}) {
             return;
         }
         if (button.dataset.storyOracleAction === 'home') {
-            closeStoryOracleMenu();
+            closeStoryOracleMenus();
             invalidate('story-oracle-home');
             deps.showPhoneDesktopPage?.();
         }
         if (button.dataset.storyOracleAction === 'close') {
-            closeStoryOracleMenu();
+            closeStoryOracleMenus();
             invalidate('story-oracle-close');
             if (typeof deps.closePhone === 'function') deps.closePhone();
             else globalThis.window?.__pmEnd?.();
@@ -325,14 +361,12 @@ export function installStoryOracle(_state, deps = {}) {
         if (boundWindow) {
             boundWindow.removeEventListener?.('click', onClick);
             boundWindow.removeEventListener?.('submit', onSubmit);
-            boundWindow.removeEventListener?.('change', onChange);
         }
         document.removeEventListener('click', onDocumentClick, true);
         document.removeEventListener('keydown', onDocumentKeyDown, true);
         boundWindow = phoneWindow;
         boundWindow.addEventListener('click', onClick);
         boundWindow.addEventListener('submit', onSubmit);
-        boundWindow.addEventListener('change', onChange);
         document.addEventListener('click', onDocumentClick, true);
         document.addEventListener('keydown', onDocumentKeyDown, true);
         return true;
@@ -341,7 +375,6 @@ export function installStoryOracle(_state, deps = {}) {
         invalidate('story-oracle-closed');
         boundWindow?.removeEventListener?.('click', onClick);
         boundWindow?.removeEventListener?.('submit', onSubmit);
-        boundWindow?.removeEventListener?.('change', onChange);
         document.removeEventListener('click', onDocumentClick, true);
         document.removeEventListener('keydown', onDocumentKeyDown, true);
         boundWindow = null;
@@ -350,6 +383,7 @@ export function installStoryOracle(_state, deps = {}) {
         activeStorageId = '';
         writeHandle = null;
         storyOracleMenuOpen = false;
+        storyOracleModeMenuOpen = false;
     };
     const show = async (storageId = deps.getStorageId?.()) => {
         const nextId = String(storageId || '').trim();

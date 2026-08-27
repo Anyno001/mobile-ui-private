@@ -4350,25 +4350,38 @@ const iconsCode = sourceModuleByName.get('icons.js')?.code || '';
 for (const expected of ['REMOVE_ICON_SVG', 'UNLINK_ICON_SVG', 'SPARKLES_ICON_SVG', 'CHEVRON_DOWN_ICON_SVG', 'EYE_ICON_SVG', 'MOON_ICON_SVG', 'CYCLE_PERIOD_ICON_SVG', 'BOOK_ICON_SVG', 'CHECK_ICON_SVG']) requireText('icons.js', iconsCode, expected);
 const storyOracleCode = sourceModuleByName.get('story-oracle.js')?.code || '';
 for (const expected of [
-  'CONTROL_ICON_SVG', 'BOOK_ICON_SVG', 'SEND_ICON_SVG', 'CLOSE_ICON_SVG',
+  'CONTROL_ICON_SVG', 'BOOK_ICON_SVG', 'SEND_ICON_SVG', 'CLOSE_ICON_SVG', 'CHEVRON_DOWN_ICON_SVG',
   'class="pm-expand-btn pm-story-oracle-menu-toggle"',
   'class="pm-control-menu pm-story-oracle-menu"',
   'role="menu" aria-label="剧情助手工具"',
+  'class="pm-name-trigger pm-story-oracle-mode-trigger"',
+  'class="pm-control-menu pm-story-oracle-mode-menu"',
+  'role="menuitemradio"',
   'class="pm-nav-btn pm-nav-left-btn"',
   'class="pm-header-icon-button pm-nav-btn pm-close-btn"',
   'class="pm-msg-list pm-story-oracle-message-list"',
-  'data-story-oracle-mode-select',
 ]) requireText('story-oracle.js UI contract', storyOracleCode, expected);
+for (const expected of [
+  "import { escapeAttr, escapeHtml, renderBoldText } from './ui.js';",
+  'renderBoldText(content)',
+]) requireText('story-oracle.js bold renderer contract', storyOracleCode, expected);
 if (storyOracleCode.includes('pm-scene-header')) failures.push('story-oracle.js: session UI must not retain the old scene header');
+if (storyOracleCode.includes('data-story-oracle-mode-select') || storyOracleCode.includes('pm-story-oracle-mode-row')) failures.push('story-oracle.js: mode switching must use the compact title trigger, not a standalone select row');
 if (!/<button type="button" class="pm-generation-cancel"[\s\S]*?<button type="submit" class="pm-up-btn"/.test(storyOracleCode)) {
   failures.push('story-oracle.js: cancel button must precede the icon send button');
 }
 if (!/class="pm-control-menu pm-story-oracle-menu"[\s\S]*data-story-oracle-action="world-books"/.test(storyOracleCode)) {
   failures.push('story-oracle.js: world-book entry must remain inside the magic-wand menu');
 }
+if (!/<form class="pm-input-bar pm-story-oracle-composer"[\s\S]*renderStoryOracleTools/.test(storyOracleCode)) {
+  failures.push('story-oracle.js: magic-wand tools must be anchored in the composer');
+}
+if (!/class="pm-name-trigger pm-story-oracle-mode-trigger"[\s\S]*CHEVRON_DOWN_ICON_SVG/.test(storyOracleCode)) {
+  failures.push('story-oracle.js: mode title must expose the compact chevron trigger');
+}
 requireCssDeclarations(cssRules, '.pm-story-oracle-shell', { height: '100%', 'min-height': '0', display: 'flex', 'flex-direction': 'column' });
-requireCssDeclarations(cssRules, '.pm-story-oracle-menu', { right: '0', top: 'calc(100% + var(--pm-space-1))', 'box-shadow': 'var(--pm-shadow-floating)' });
-requireCssDeclarations(cssRules, '.pm-story-oracle-mode-select', { 'min-height': 'var(--pm-size-control-default)' });
+requireCssDeclarations(cssRules, '.pm-story-oracle-menu', { left: '0', bottom: 'calc(100% + var(--pm-space-1))', 'box-shadow': 'var(--pm-shadow-floating)' });
+requireCssDeclarations(cssRules, '.pm-story-oracle-mode-menu', { left: '50%', top: 'calc(100% - var(--pm-space-1))', transform: 'translateX(-50%)', 'box-shadow': 'var(--pm-shadow-floating)' });
 requireCssDeclarations(cssRules, '.pm-story-oracle-message-list', { 'min-height': '0' });
 for (const expected of [
   `export const EYE_ICON_SVG = icon('<path d="M2.5 12s3.5-5 9.5-5 9.5 5 9.5 5-3.5 5-9.5 5-9.5-5-9.5-5z"/><circle cx="12" cy="12" r="2.5"/>');`,
@@ -4642,9 +4655,17 @@ requireText('calendar-model.js', calendarModelCode, 'if (parseCalendarDate(sourc
 requireText('interactive-scenes.js', interactiveCode, 'generationErrorMessage(error)');
 requireText('interactive-scene-scheduler.js', sourceModuleByName.get('interactive-scene-scheduler.js')?.code || '', 'generationErrorMessage(error)');
 
+const uiCode = sourceModuleByName.get('ui.js')?.code || '';
 const emojiMediaCode = sourceModuleByName.get('emoji-media.js')?.code || '';
 const emojiUiCode = sourceModuleByName.get('emoji-ui.js')?.code || '';
 const messagingCode = sourceModuleByName.get('messaging.js')?.code || '';
+for (const expected of [
+  'export function renderBoldText(value)',
+  "return escapeHtml(value).replace(/\\*\\*(?![\\s*])([\\s\\S]*?\\S)\\*\\*/g, '<strong>$1</strong>');",
+]) requireText('ui.js bold renderer contract', uiCode, expected);
+for (const expected of ['renderBoldText', 'return renderBoldText(display);']) {
+  requireText('messaging.js bold renderer contract', messagingCode, expected);
+}
 for (const expected of [
   'MAX_EMOJI_FILE_BYTES', 'MAX_EMOJI_INLINE_LIBRARY_BYTES', 'cloneEmojiLibrary',
   'emojiFileError', 'emojiSourceError', 'createEmojiRenderBudget', 'isRenderableEmojiSource',
