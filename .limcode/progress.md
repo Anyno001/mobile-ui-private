@@ -1,6 +1,6 @@
 # 项目进度
 - Project: mobile-ui-private
-- Updated At: 2026-08-27T14:41:54.064Z
+- Updated At: 2026-08-27T19:09:49.146Z
 - Status: blocked
 - Phase: review
 
@@ -8,10 +8,10 @@
 
 <!-- LIMCODE_PROGRESS_SUMMARY_START -->
 - 当前进度：3/3 个里程碑已完成；最新：trend-svg-mapping-release
-- 当前焦点：剧情助手 UI 与路线注入改动已完成，等待独立验收与真实宿主现场复核
-- 最新结论：已删除正常状态下顶栏绑定提示；剧情助手工具/模式菜单改为页面白底；清空线路/清空历史可用时使用危险红色；已注入大纲显示在窗口顶部；路线启停继续复用现有 extension prompt 注入链；本地 build、syntax、contracts、story-oracle 与 git diff --check 均通过。
-- 当前阻塞：Acceptance Expert 连续三次超时且无返回结论；真实 SillyTavern 宿主的亮暗主题、窄屏、键盘焦点、刷新恢复和 setExtensionPrompt 参数行为尚未现场验证。
-- 下一步：不要继续重复超时的验收调用；待验收服务恢复后，对本轮 4 个文件执行独立只读验收，并完成真实宿主现场矩阵。
+- 当前焦点：StoryPlan 独立卡片交互已完成，等待真实 SillyTavern 宿主现场验证
+- 最新结论：已将 StoryPlan 从普通 assistant 气泡中拆出为独立路线气泡；每条路线有开始引导/停止引导按钮，启用后在 navbar 下方独立置顶显示，并复用现有持久化与主聊天注入链。代码层独立验收第 8 轮通过：blocking=0、major=0、minor=0、advisory=1。
+- 当前阻塞：尚未在真实 SillyTavern 宿主完成亮暗主题、窄屏、键盘焦点、刷新恢复、世界书选择和实际扩展提示注入矩阵。
+- 下一步：在目标 SillyTavern 宿主执行现场回归；现场验证前不宣称完整生产放行。
 <!-- LIMCODE_PROGRESS_SUMMARY_END -->
 
 ## 关联文档
@@ -24,10 +24,11 @@
 ## 当前 TODO 快照
 
 <!-- LIMCODE_PROGRESS_TODOS_START -->
-- [x] 修正剧情助手顶栏下方提示框与二级菜单视觉：移除无用绑定提示，不误删模型提示词；二级菜单普通底色改为白色语义表面；清空线路/清空历史启用时使用危险红色，禁用态仍遵守可访问性与主题契约  `#story-oracle-topbar-hint-and-route-ux`
-- [x] 核实并补齐上游大纲注入、路线选择与已选路线顶部悬挂窗口：沿用现有世界书/线路/扩展提示契约，不伪造未确认宿主写回能力  `#story-oracle-outline-route-sticky-ui`
-- [x] 根据独立验收补齐本地可验证的 UI/线路/清空与注入错误反馈断言；真实 SillyTavern 现场矩阵作为未闭环风险保留  `#story-oracle-acceptance-major-repair`
-- [ ] 独立 Acceptance Expert 连续三次超时且无返回结论；代码层门禁已通过，但正式生产验收与真实 SillyTavern 现场矩阵仍未闭环，不得宣布完全放行  `#story-oracle-independent-acceptance-blocked` (in_progress)
+- [x] 修正剧情助手顶栏下方提示框与二级菜单视觉：移除无用绑定提示，不误删模型提示词；二级菜单普通底色改为白色语义表面；清空线路/清空历史启用时使用危险红色，禁用态仍遵守可访问性与主题契约。  `#story-oracle-topbar-hint-and-route-ux`
+- [x] 核实并补齐上游大纲注入、路线选择与已选路线顶部悬挂窗口：沿用现有世界书/线路/扩展提示契约，不伪造未确认宿主写回能力。  `#story-oracle-outline-route-sticky-ui`
+- [x] 根据独立验收补齐本地可验证的 UI/线路/清空与注入错误反馈断言；真实 SillyTavern 现场矩阵作为未闭环风险保留。  `#story-oracle-acceptance-major-repair`
+- [x] 第八轮独立 Acceptance Expert 已完成：blocking=0、major=0、minor=0、advisory=1。代码层正式放行；唯一剩余风险是真实 SillyTavern 宿主现场矩阵尚未验证，不能宣称现场生产验收完成。  `#story-oracle-independent-acceptance-blocked`
+- [x] 按上游交互重做路线展示：每个 StoryPlan 独立卡片/气泡，卡片内提供明确的“开始引导”按钮；启用后路线在剧情助手窗口上方单独置顶展示，并保留停止/删除等既有操作与注入契约。  `#story-oracle-route-picker-visible`
 <!-- LIMCODE_PROGRESS_TODOS_END -->
 
 ## 项目里程碑
@@ -67,21 +68,14 @@
 ## 风险与阻塞
 
 <!-- LIMCODE_PROGRESS_RISKS_START -->
-- story-oracle-license | active | 上游许可证边界未确认：上游无标准 LICENSE，未确认再分发授权；实现需保留来源署名并限定私用集成边界。
-- story-oracle-writeback-contract | active | 宿主写回契约缺失：宿主未发现可确认的 MVU、消息、角色或世界书正文写回接口，相关功能必须只读或预览。
-- story-oracle-independent-acceptance | active | 独立验收服务阻塞：Acceptance Expert 连续三次超时且无返回结论；本地自动门禁不能替代正式独立验收。
+- story-oracle-license | active | 上游许可证边界未确认：上游无标准 LICENSE，未确认再分发授权；当前实现仅保留必要交互语义，未直接复制上游实现。
+- story-oracle-writeback-contract | active | 宿主写回契约缺失：未发现可确认的宿主消息、角色或世界书正文写回接口；开始引导仅通过现有扩展提示注入链影响主聊天，不伪造宿主正文写回。
 - story-oracle-host-matrix | active | 真实宿主现场矩阵未完成：尚未在真实 SillyTavern 宿主完成亮色/暗色、窄屏、键盘焦点、刷新恢复、扩展提示参数和实际 prompt 注入检查。
 <!-- LIMCODE_PROGRESS_RISKS_END -->
 
 ## 最近更新
 
 <!-- LIMCODE_PROGRESS_LOG_START -->
-- 2026-08-23T17:01:31.629Z | artifact_changed | plan | 同步计划 TODO 快照：.limcode/plans/unify-accent-text-editor-buttons-save-alignment.md
-- 2026-08-24T04:54:00.233Z | artifact_changed | plan | 同步计划 TODO 快照：.limcode/plans/phone-branch-inheritance-restart-persistence.md
-- 2026-08-26T09:24:32.585Z | artifact_changed | design | 同步设计文档：.limcode/design/story-oracle-phone-app.md
-- 2026-08-26T09:27:39.098Z | artifact_changed | plan | 同步计划文档：.limcode/plans/story-oracle-phone-app-integration.md
-- 2026-08-26T09:34:09.244Z | artifact_changed | plan | 同步计划 TODO 快照：.limcode/plans/story-oracle-phone-app-integration.md
-- 2026-08-26T09:36:38.454Z | artifact_changed | design | 同步设计文档：.limcode/design/story-oracle-phone-app.md
 - 2026-08-26T09:40:03.011Z | artifact_changed | plan | 同步计划文档：.limcode/plans/story-oracle-phone-app-integration.md
 - 2026-08-26T09:56:54.086Z | milestone_recorded | story-oracle-plan-shell | 手机应用骨架完成；build、syntax、interactive、contracts 均通过。进入普通剧情问答垂直切片。
 - 2026-08-26T09:56:56.575Z | artifact_changed | plan | 同步计划 TODO 快照：.limcode/plans/story-oracle-phone-app-integration.md
@@ -96,6 +90,12 @@
 - 2026-08-27T08:16:44.634Z | milestone_recorded | story-oracle-plan-release | 提交 09f4733 已成功推送到 origin/main，远端指针已核对一致；当前仅同步项目进度账本，正式独立验收仍因 API 403 阻塞。
 - 2026-08-27T14:41:54.064Z | updated | story-oracle-ui-session-alignment | 剧情助手本轮 UI/线路体验改动已完成：移除正常绑定提示、专属菜单白底、危险清空态、顶部已注入大纲条、注入失败回显；本地门禁全部通过。
 - 2026-08-27T14:41:54.064Z | risk_changed | story-oracle-independent-acceptance | Acceptance Expert 连续三次超时无返回，正式独立验收阻塞；未将本轮 TODO 标记为完成。
+- 2026-08-27T18:58:28.375Z | updated | story-oracle-route-picker-visible | 最新代码已将每个 StoryPlan 拆为独立 pm-story-oracle-plan-bubble，并提供开始引导/停止引导按钮；活动线路位于 navbar 后、消息滚动容器外。
+- 2026-08-27T18:58:28.375Z | updated | story-oracle-independent-acceptance-blocked | Acceptance Expert 第五轮仍报告 UI 动作级测试、独立命令对账与真实宿主证据不足；保留阻塞状态。
+- 2026-08-27T18:59:23.683Z | updated | story-oracle-independent-acceptance-blocked | 续传后重新核对最新静态契约；保留独立验收阻塞，不将源码通过等同于生产放行。
+- 2026-08-27T19:06:22.939Z | updated | story-oracle-independent-acceptance-blocked | 已准备窄读补齐 action 分派、持久化/注入顺序、存储恢复与转义证据；第八轮将作为最后一次自动验收。
+- 2026-08-27T19:09:49.146Z | milestone_recorded | story-oracle-route-picker-visible | 完成上游式 StoryPlan 独立路线气泡与开始引导按钮；启用路线在 navbar 下方独立区域置顶显示。
+- 2026-08-27T19:09:49.146Z | milestone_recorded | story-oracle-independent-acceptance | 第 8 轮独立 Acceptance Expert 通过：blocking=0、major=0、minor=0、advisory=1；代码层放行，现场宿主矩阵仍待验证。
 <!-- LIMCODE_PROGRESS_LOG_END -->
 
 <!-- LIMCODE_PROGRESS_METADATA_START -->
@@ -105,13 +105,13 @@
   "projectId": "mobile-ui-private",
   "projectName": "mobile-ui-private",
   "createdAt": "2026-08-14T05:55:56.978Z",
-  "updatedAt": "2026-08-27T14:41:54.064Z",
+  "updatedAt": "2026-08-27T19:09:49.146Z",
   "status": "blocked",
   "phase": "review",
-  "currentFocus": "剧情助手 UI 与路线注入改动已完成，等待独立验收与真实宿主现场复核",
-  "latestConclusion": "已删除正常状态下顶栏绑定提示；剧情助手工具/模式菜单改为页面白底；清空线路/清空历史可用时使用危险红色；已注入大纲显示在窗口顶部；路线启停继续复用现有 extension prompt 注入链；本地 build、syntax、contracts、story-oracle 与 git diff --check 均通过。",
-  "currentBlocker": "Acceptance Expert 连续三次超时且无返回结论；真实 SillyTavern 宿主的亮暗主题、窄屏、键盘焦点、刷新恢复和 setExtensionPrompt 参数行为尚未现场验证。",
-  "nextAction": "不要继续重复超时的验收调用；待验收服务恢复后，对本轮 4 个文件执行独立只读验收，并完成真实宿主现场矩阵。",
+  "currentFocus": "StoryPlan 独立卡片交互已完成，等待真实 SillyTavern 宿主现场验证",
+  "latestConclusion": "已将 StoryPlan 从普通 assistant 气泡中拆出为独立路线气泡；每条路线有开始引导/停止引导按钮，启用后在 navbar 下方独立置顶显示，并复用现有持久化与主聊天注入链。代码层独立验收第 8 轮通过：blocking=0、major=0、minor=0、advisory=1。",
+  "currentBlocker": "尚未在真实 SillyTavern 宿主完成亮暗主题、窄屏、键盘焦点、刷新恢复、世界书选择和实际扩展提示注入矩阵。",
+  "nextAction": "在目标 SillyTavern 宿主执行现场回归；现场验证前不宣称完整生产放行。",
   "activeArtifacts": {
     "design": ".limcode/design/story-oracle-phone-app.md",
     "plan": ".limcode/plans/story-oracle-phone-app-integration.md"
@@ -119,23 +119,28 @@
   "todos": [
     {
       "id": "story-oracle-topbar-hint-and-route-ux",
-      "content": "修正剧情助手顶栏下方提示框与二级菜单视觉：移除无用绑定提示，不误删模型提示词；二级菜单普通底色改为白色语义表面；清空线路/清空历史启用时使用危险红色，禁用态仍遵守可访问性与主题契约",
+      "content": "修正剧情助手顶栏下方提示框与二级菜单视觉：移除无用绑定提示，不误删模型提示词；二级菜单普通底色改为白色语义表面；清空线路/清空历史启用时使用危险红色，禁用态仍遵守可访问性与主题契约。",
       "status": "completed"
     },
     {
       "id": "story-oracle-outline-route-sticky-ui",
-      "content": "核实并补齐上游大纲注入、路线选择与已选路线顶部悬挂窗口：沿用现有世界书/线路/扩展提示契约，不伪造未确认宿主写回能力",
+      "content": "核实并补齐上游大纲注入、路线选择与已选路线顶部悬挂窗口：沿用现有世界书/线路/扩展提示契约，不伪造未确认宿主写回能力。",
       "status": "completed"
     },
     {
       "id": "story-oracle-acceptance-major-repair",
-      "content": "根据独立验收补齐本地可验证的 UI/线路/清空与注入错误反馈断言；真实 SillyTavern 现场矩阵作为未闭环风险保留",
+      "content": "根据独立验收补齐本地可验证的 UI/线路/清空与注入错误反馈断言；真实 SillyTavern 现场矩阵作为未闭环风险保留。",
       "status": "completed"
     },
     {
       "id": "story-oracle-independent-acceptance-blocked",
-      "content": "独立 Acceptance Expert 连续三次超时且无返回结论；代码层门禁已通过，但正式生产验收与真实 SillyTavern 现场矩阵仍未闭环，不得宣布完全放行",
-      "status": "in_progress"
+      "content": "第八轮独立 Acceptance Expert 已完成：blocking=0、major=0、minor=0、advisory=1。代码层正式放行；唯一剩余风险是真实 SillyTavern 宿主现场矩阵尚未验证，不能宣称现场生产验收完成。",
+      "status": "completed"
+    },
+    {
+      "id": "story-oracle-route-picker-visible",
+      "content": "按上游交互重做路线展示：每个 StoryPlan 独立卡片/气泡，卡片内提供明确的“开始引导”按钮；启用后路线在剧情助手窗口上方单独置顶展示，并保留停止/删除等既有操作与注入契约。",
+      "status": "completed"
     }
   ],
   "milestones": [
@@ -196,19 +201,13 @@
     {
       "id": "story-oracle-license",
       "title": "上游许可证边界未确认",
-      "description": "上游无标准 LICENSE，未确认再分发授权；实现需保留来源署名并限定私用集成边界。",
+      "description": "上游无标准 LICENSE，未确认再分发授权；当前实现仅保留必要交互语义，未直接复制上游实现。",
       "status": "active"
     },
     {
       "id": "story-oracle-writeback-contract",
       "title": "宿主写回契约缺失",
-      "description": "宿主未发现可确认的 MVU、消息、角色或世界书正文写回接口，相关功能必须只读或预览。",
-      "status": "active"
-    },
-    {
-      "id": "story-oracle-independent-acceptance",
-      "title": "独立验收服务阻塞",
-      "description": "Acceptance Expert 连续三次超时且无返回结论；本地自动门禁不能替代正式独立验收。",
+      "description": "未发现可确认的宿主消息、角色或世界书正文写回接口；开始引导仅通过现有扩展提示注入链影响主聊天，不伪造宿主正文写回。",
       "status": "active"
     },
     {
@@ -219,42 +218,6 @@
     }
   ],
   "log": [
-    {
-      "at": "2026-08-23T17:01:31.629Z",
-      "type": "artifact_changed",
-      "refId": "plan",
-      "message": "同步计划 TODO 快照：.limcode/plans/unify-accent-text-editor-buttons-save-alignment.md"
-    },
-    {
-      "at": "2026-08-24T04:54:00.233Z",
-      "type": "artifact_changed",
-      "refId": "plan",
-      "message": "同步计划 TODO 快照：.limcode/plans/phone-branch-inheritance-restart-persistence.md"
-    },
-    {
-      "at": "2026-08-26T09:24:32.585Z",
-      "type": "artifact_changed",
-      "refId": "design",
-      "message": "同步设计文档：.limcode/design/story-oracle-phone-app.md"
-    },
-    {
-      "at": "2026-08-26T09:27:39.098Z",
-      "type": "artifact_changed",
-      "refId": "plan",
-      "message": "同步计划文档：.limcode/plans/story-oracle-phone-app-integration.md"
-    },
-    {
-      "at": "2026-08-26T09:34:09.244Z",
-      "type": "artifact_changed",
-      "refId": "plan",
-      "message": "同步计划 TODO 快照：.limcode/plans/story-oracle-phone-app-integration.md"
-    },
-    {
-      "at": "2026-08-26T09:36:38.454Z",
-      "type": "artifact_changed",
-      "refId": "design",
-      "message": "同步设计文档：.limcode/design/story-oracle-phone-app.md"
-    },
     {
       "at": "2026-08-26T09:40:03.011Z",
       "type": "artifact_changed",
@@ -338,21 +301,57 @@
       "type": "risk_changed",
       "refId": "story-oracle-independent-acceptance",
       "message": "Acceptance Expert 连续三次超时无返回，正式独立验收阻塞；未将本轮 TODO 标记为完成。"
+    },
+    {
+      "at": "2026-08-27T18:58:28.375Z",
+      "type": "updated",
+      "refId": "story-oracle-route-picker-visible",
+      "message": "最新代码已将每个 StoryPlan 拆为独立 pm-story-oracle-plan-bubble，并提供开始引导/停止引导按钮；活动线路位于 navbar 后、消息滚动容器外。"
+    },
+    {
+      "at": "2026-08-27T18:58:28.375Z",
+      "type": "updated",
+      "refId": "story-oracle-independent-acceptance-blocked",
+      "message": "Acceptance Expert 第五轮仍报告 UI 动作级测试、独立命令对账与真实宿主证据不足；保留阻塞状态。"
+    },
+    {
+      "at": "2026-08-27T18:59:23.683Z",
+      "type": "updated",
+      "refId": "story-oracle-independent-acceptance-blocked",
+      "message": "续传后重新核对最新静态契约；保留独立验收阻塞，不将源码通过等同于生产放行。"
+    },
+    {
+      "at": "2026-08-27T19:06:22.939Z",
+      "type": "updated",
+      "refId": "story-oracle-independent-acceptance-blocked",
+      "message": "已准备窄读补齐 action 分派、持久化/注入顺序、存储恢复与转义证据；第八轮将作为最后一次自动验收。"
+    },
+    {
+      "at": "2026-08-27T19:09:49.146Z",
+      "type": "milestone_recorded",
+      "refId": "story-oracle-route-picker-visible",
+      "message": "完成上游式 StoryPlan 独立路线气泡与开始引导按钮；启用路线在 navbar 下方独立区域置顶显示。"
+    },
+    {
+      "at": "2026-08-27T19:09:49.146Z",
+      "type": "milestone_recorded",
+      "refId": "story-oracle-independent-acceptance",
+      "message": "第 8 轮独立 Acceptance Expert 通过：blocking=0、major=0、minor=0、advisory=1；代码层放行，现场宿主矩阵仍待验证。"
     }
   ],
   "stats": {
     "milestonesTotal": 3,
     "milestonesCompleted": 3,
-    "todosTotal": 4,
-    "todosCompleted": 3,
-    "todosInProgress": 1,
+    "todosTotal": 5,
+    "todosCompleted": 5,
+    "todosInProgress": 0,
     "todosCancelled": 0,
-    "activeRisks": 4
+    "activeRisks": 3
   },
   "render": {
     "rendererVersion": 1,
-    "generatedAt": "2026-08-27T14:41:54.064Z",
-    "bodyHash": "sha256:3ccc87c9b0c26344a9ad6b402dfe89356d086c1df564687171d0c44dbcda0581"
+    "generatedAt": "2026-08-27T19:09:49.146Z",
+    "bodyHash": "sha256:82d5d1695b9adee87d549322379f0b00190951652e01e884b02245c9e50a6b49"
   }
 }
 <!-- LIMCODE_PROGRESS_METADATA_END -->

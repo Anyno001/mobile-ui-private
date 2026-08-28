@@ -4,7 +4,7 @@ import { escapeAttr, escapeHtml, renderBoldText } from './ui.js';
 import {
     appendStoryOracleTurn, clearStoryOraclePlans, clearStoryOracleScope,
     parseStoryPlans, removeStoryOraclePlan, setStoryOraclePlanEnabled, setStoryOracleWorldBookSelection,
-    storyOracleMessages, storyOraclePlans, storyOracleWorldBookSelection, stripStoryPlanMarkup, STORY_ORACLE_MODES,
+    storyOracleMessageId, storyOracleMessages, storyOraclePlans, storyOracleWorldBookSelection, stripStoryPlanMarkup, STORY_ORACLE_MODES,
 } from './story-oracle-model.js';
 import { loadStoryOracleStore, saveStoryOracleStore } from './story-oracle-storage.js';
 import { getReadableWorldBookNames } from './worldbook-config.js';
@@ -33,29 +33,42 @@ export function storyOracleInjectionIssue(result) {
     return '';
 }
 
-function renderMessages(messages) {
-    if (!messages.length) return '<div class="pm-msg-list-empty">输入问题，剧情助手会基于当前聊天上下文回答。</div>';
-    return messages.map(message => {
-        const parsed = message.role === 'assistant' ? parseStoryPlans(message.content) : null;
-        const content = parsed?.plans?.length ? stripStoryPlanMarkup(message.content) : message.content;
-        return `<div class="pm-story-oracle-message ${message.role === 'user' ? 'is-user' : 'is-assistant'}"><div class="pm-bubble">${renderBoldText(content)}</div></div>`;
-    }).join('');
+function renderStoryOraclePlans(plans = [], writable = true, renderedPlanIds = new Set()) {
+    const remainingPlans = plans.filter(plan => !renderedPlanIds.has(plan.id));
+    if (!remainingPlans.length) return '';
+    return `<div class="pm-story-oracle-plans-summary" aria-label="并行剧情线路"><b>并行剧情线路</b><span>每条线路都是独立方案，点击“开始引导”即可置顶并注入主聊天。</span></div>${remainingPlans.map(plan => renderStoryOraclePlan(plan, writable)).join('')}`;
 }
 
-function renderStoryOraclePlans(plans = [], writable = true) {
-    if (!plans.length) return '';
-    return `<section class="pm-settings-list pm-story-oracle-plans" aria-label="并行剧情线路"><div class="pm-story-oracle-plans-summary"><b>并行剧情线路</b><span>可同时启用多条，影响后续主聊天生成</span></div>${plans.map(plan => `
-      <article class="pm-story-oracle-plan" data-story-oracle-plan-id="${escapeAttr(plan.id)}">
-        <b>${escapeHtml(plan.title || plan.goal || '未命名线路')}${plan.enabled ? '（已注入）' : ''}</b>
-        <span>目标：${escapeHtml(plan.goal || plan.title || '')}</span>
-        ${plan.seed ? `<span>起始迹象：${escapeHtml(plan.seed)}</span>` : ''}
-        ${plan.why ? `<span>契合点：${escapeHtml(plan.why)}</span>` : ''}
-        <div class="pm-action-row">
-          <button type="button" class="pm-action-button is-secondary" data-story-oracle-action="continue-plan" data-story-oracle-plan-id="${escapeAttr(plan.id)}">继续讨论</button>
-          <button type="button" class="pm-action-button ${plan.enabled ? 'is-secondary' : 'is-accent'}" data-story-oracle-action="toggle-plan" data-story-oracle-plan-id="${escapeAttr(plan.id)}" ${writable ? '' : 'disabled'}>${plan.enabled ? '取消注入' : '注入路线'}</button>
-          <button type="button" class="pm-action-button is-danger" data-story-oracle-action="delete-plan" data-story-oracle-plan-id="${escapeAttr(plan.id)}" ${writable ? '' : 'disabled'}>删除线路</button>
-        </div>
-      </article>`).join('')}</section>`;
+function renderStoryOraclePlan(plan, writable = true) {
+    return `<article class="pm-story-oracle-plan-bubble" data-story-oracle-plan-id="${escapeAttr(plan.id)}" aria-label="剧情线路：${escapeAttr(plan.title || plan.goal || '未命名线路')}">
+      <b>${escapeHtml(plan.title || plan.goal || '未命名线路')}${plan.enabled ? '（已注入）' : ''}</b>
+      <span>目标：${escapeHtml(plan.goal || plan.title || '')}</span>
+      ${plan.seed ? `<span>起始迹象：${escapeHtml(plan.seed)}</span>` : ''}
+      ${plan.why ? `<span>契合点：${escapeHtml(plan.why)}</span>` : ''}
+      <div class="pm-action-row">
+        <button type="button" class="pm-action-button is-secondary" data-story-oracle-action="continue-plan" data-story-oracle-plan-id="${escapeAttr(plan.id)}">继续讨论</button>
+        <button type="button" class="pm-action-button ${plan.enabled ? 'is-secondary' : 'is-accent'}" data-story-oracle-action="toggle-plan" data-story-oracle-plan-id="${escapeAttr(plan.id)}" aria-pressed="${plan.enabled ? 'true' : 'false'}" ${writable ? '' : 'disabled'}>${plan.enabled ? '停止引导' : '开始引导'}</button>
+        <button type="button" class="pm-action-button is-danger" data-story-oracle-action="delete-plan" data-story-oracle-plan-id="${escapeAttr(plan.id)}" ${writable ? '' : 'disabled'}>删除线路</button>
+      </div>
+    </article>`;
+}
+
+function renderMessages(messages, plans = [], writable = true) {
+    const renderedPlanIds = new Set();
+    const renderPlansForMessage = (message, parsed) => {
+        if (!parsed?.plans?.length || message.role !== 'assistant') return '';
+        const messageId = storyOracleMessageId(message);
+        const messagePlans = plans.filter(plan => plan.sourceMessageId === messageId);
+        messagePlans.forEach(plan => renderedPlanIds.add(plan.id));
+        return messagePlans.map(plan => renderStoryOraclePlan(plan, writable)).join('');
+    };
+    if (!messages.length) return `<div class="pm-msg-list-empty">输入问题，剧情助手会基于当前聊天上下文回答。</div>${renderStoryOraclePlans(plans, writable, renderedPlanIds)}`;
+    const messageMarkup = messages.map(message => {
+        const parsed = message.role === 'assistant' ? parseStoryPlans(message.content) : null;
+        const content = parsed?.plans?.length ? stripStoryPlanMarkup(message.content) : message.content;
+        return `<div class="pm-story-oracle-message ${message.role === 'user' ? 'is-user' : 'is-assistant'}"><div class="pm-bubble">${renderBoldText(content)}</div></div>${renderPlansForMessage(message, parsed)}`;
+    }).join('');
+    return `${messageMarkup}${renderStoryOraclePlans(plans, writable, renderedPlanIds)}`;
 }
 
 function renderStoryOracleActivePlans(plans = []) {
@@ -89,7 +102,7 @@ function renderStoryOraclePage(page, storageId, mode, messages = [], status = ''
     const persistenceHint = writable ? '' : ` 当前为只读保护状态：${readOnlyReason || '历史数据不可安全写入'}。`;
     const statusText = [status || invalidHint, persistenceHint].filter(Boolean).join(' ').trim();
     const statusMarkup = statusText ? `<p class="pm-story-oracle-status" role="status">${escapeHtml(statusText)}</p>` : '';
-    const body = `<div class="pm-msg-list pm-story-oracle-message-list" aria-live="polite">${renderStoryOraclePlans(plans, writable)}${renderMessages(messages)}</div><form class="pm-input-bar pm-story-oracle-composer" data-story-oracle-form>${renderStoryOracleTools(valid, writable, plans, messages, availableBookNames)}<textarea class="pm-input" name="question" rows="2" maxlength="${MAX_QUESTION_CHARS}" placeholder="${mode === 'advisor' ? '描述你希望推进的剧情目标…' : '询问当前故事…'}" ${valid && writable ? '' : 'disabled'}></textarea><button type="button" class="pm-generation-cancel" data-story-oracle-action="cancel" title="停止生成" aria-label="停止生成" hidden disabled>停止</button><button type="submit" class="pm-up-btn" title="发送问题" aria-label="发送问题" ${valid && writable ? '' : 'disabled'}>${SEND_ICON_SVG}</button></form>`;
+    const body = `<div class="pm-msg-list pm-story-oracle-message-list" aria-live="polite">${renderMessages(messages, plans, writable)}</div><form class="pm-input-bar pm-story-oracle-composer" data-story-oracle-form>${renderStoryOracleTools(valid, writable, plans, messages, availableBookNames)}<textarea class="pm-input" name="question" rows="2" maxlength="${MAX_QUESTION_CHARS}" placeholder="${mode === 'advisor' ? '描述你希望推进的剧情目标…' : '询问当前故事…'}" ${valid && writable ? '' : 'disabled'}></textarea><button type="button" class="pm-generation-cancel" data-story-oracle-action="cancel" title="停止生成" aria-label="停止生成" hidden disabled>停止</button><button type="submit" class="pm-up-btn" title="发送问题" aria-label="发送问题" ${valid && writable ? '' : 'disabled'}>${SEND_ICON_SVG}</button></form>`;
     page.innerHTML = `<div class="pm-story-oracle-shell">
         <header class="pm-navbar pm-story-oracle-navbar"><button type="button" class="pm-nav-btn pm-nav-left-btn" data-story-oracle-action="home" aria-label="返回桌面" title="返回桌面">${HOME_ICON_SVG}</button><div class="pm-name-wrap"><button type="button" class="pm-name-trigger pm-story-oracle-mode-trigger" data-story-oracle-action="toggle-mode" aria-haspopup="menu" aria-expanded="false" aria-controls="pm-story-oracle-mode-menu" title="切换剧情助手模式"><span class="pm-name">${MODE_LABELS[mode]}</span><span class="pm-name-chevron" aria-hidden="true">${CHEVRON_DOWN_ICON_SVG}</span></button>${renderStoryOracleModeMenu(mode)}</div><div class="pm-nav-right pm-story-oracle-nav-right"><button type="button" class="pm-header-icon-button pm-nav-btn pm-close-btn" data-story-oracle-action="close" title="退出手机" aria-label="退出手机">${CLOSE_ICON_SVG}</button></div></header>
         ${renderStoryOracleActivePlans(plans)}

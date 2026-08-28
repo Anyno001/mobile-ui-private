@@ -4360,6 +4360,8 @@ for (const expected of [
   'class="pm-nav-btn pm-nav-left-btn"',
   'class="pm-header-icon-button pm-nav-btn pm-close-btn"',
   'class="pm-msg-list pm-story-oracle-message-list"',
+  'class="pm-story-oracle-plan-bubble"',
+  'data-story-oracle-action="toggle-plan"',
 ]) requireText('story-oracle.js UI contract', storyOracleCode, expected);
 for (const expected of [
   "import { escapeAttr, escapeHtml, renderBoldText } from './ui.js';",
@@ -4370,6 +4372,17 @@ if (storyOracleCode.includes('data-story-oracle-mode-select') || storyOracleCode
 if (!/<button type="button" class="pm-generation-cancel"[\s\S]*?<button type="submit" class="pm-up-btn"/.test(storyOracleCode)) {
   failures.push('story-oracle.js: cancel button must precede the icon send button');
 }
+if (!/pm-story-oracle-plan-bubble[\s\S]*开始引导/.test(storyOracleCode)) failures.push('story-oracle.js: each StoryPlan must expose the upstream-style start-guidance action');
+if (!storyOracleCode.includes('<div class="pm-story-oracle-message ${message.role === \'user\' ? \'is-user\' : \'is-assistant\'}"><div class="pm-bubble">${renderBoldText(content)}</div></div>${renderPlansForMessage(message, parsed)}')) {
+  failures.push('story-oracle.js: StoryPlan cards must remain siblings of, not descendants of, the assistant message bubble');
+}
+if (!storyOracleCode.includes('${renderStoryOracleActivePlans(plans)}') || !storyOracleCode.includes('${renderMessages(messages, plans, writable)}')) {
+  failures.push('story-oracle.js: active StoryPlan strip must remain outside the scrolling message body');
+}
+if (!/data-story-oracle-action="clear-plans"[\s\S]*?data-story-oracle-action="clear"/.test(storyOracleCode)) {
+  failures.push('story-oracle.js: route and history clear actions must remain distinct');
+}
+
 if (!/class="pm-control-menu pm-story-oracle-menu"[\s\S]*data-story-oracle-action="world-books"/.test(storyOracleCode)) {
   failures.push('story-oracle.js: world-book entry must remain inside the magic-wand menu');
 }
@@ -4383,6 +4396,7 @@ requireCssDeclarations(cssRules, '.pm-story-oracle-shell', { height: '100%', 'mi
 requireCssDeclarations(cssRules, '.pm-story-oracle-menu', { left: '0', bottom: 'calc(100% + var(--pm-space-1))', 'box-shadow': 'var(--pm-shadow-floating)' });
 requireCssDeclarations(cssRules, '.pm-story-oracle-mode-menu', { left: '50%', top: 'calc(100% - var(--pm-space-1))', transform: 'translateX(-50%)', 'box-shadow': 'var(--pm-shadow-floating)' });
 requireCssDeclarations(cssRules, '.pm-story-oracle-message-list', { 'min-height': '0' });
+requireCssDeclarations(cssRules, '.pm-story-oracle-plan-bubble', { display: 'flex', width: '100%', 'border-radius': 'var(--pm-radius-bubble)' });
 for (const expected of [
   `export const EYE_ICON_SVG = icon('<path d="M2.5 12s3.5-5 9.5-5 9.5 5 9.5 5-3.5 5-9.5 5-9.5-5-9.5-5z"/><circle cx="12" cy="12" r="2.5"/>');`,
   `export const MOON_ICON_SVG = icon('<path d="M20 15.2A8.5 8.5 0 0 1 8.8 4 8.5 8.5 0 1 0 20 15.2z"/>');`,
