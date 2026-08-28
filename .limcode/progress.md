@@ -94,8 +94,6 @@
 - 2026-08-27T19:06:22.939Z | updated | story-oracle-independent-acceptance-blocked | 已准备窄读补齐 action 分派、持久化/注入顺序、存储恢复与转义证据；第八轮将作为最后一次自动验收。
 - 2026-08-27T19:09:49.146Z | milestone_recorded | story-oracle-route-picker-visible | 完成上游式 StoryPlan 独立路线气泡与开始引导按钮；启用路线在 navbar 下方独立区域置顶显示。
 - 2026-08-27T19:09:49.146Z | milestone_recorded | story-oracle-independent-acceptance | 第 8 轮独立 Acceptance Expert 通过：blocking=0、major=0、minor=0、advisory=1；代码层放行，现场宿主矩阵仍待验证。
-- 2026-08-28T03:54:05.725Z | risk_changed | story-oracle-push | 本地提交 8d80da0 未能推送：代理端口可连接，但 HTTPS push 连续超时；远端指针核对仍为 aa40465。
-- 2026-08-28T04:41:04.605Z | milestone_recorded | story-oracle-push | 提交 8d80da0 已成功推送到 origin/main；代理 127.0.0.1:8890 可用，远端指针已核对为 8d80da0。
 <!-- LIMCODE_PROGRESS_LOG_END -->
 
 <!-- LIMCODE_PROGRESS_METADATA_START -->
@@ -325,18 +323,6 @@
       "type": "milestone_recorded",
       "refId": "story-oracle-independent-acceptance",
       "message": "第 8 轮独立 Acceptance Expert 通过：blocking=0、major=0、minor=0、advisory=1；代码层放行，现场宿主矩阵仍待验证。"
-    },
-    {
-      "at": "2026-08-28T03:54:05.725Z",
-      "type": "risk_changed",
-      "refId": "story-oracle-push",
-      "message": "本地提交 8d80da0 未能推送：代理端口可连接，但 HTTPS push 连续超时；远端指针核对仍为 aa40465。"
-    },
-    {
-      "at": "2026-08-28T04:41:04.605Z",
-      "type": "milestone_recorded",
-      "refId": "story-oracle-push",
-      "message": "提交 8d80da0 已成功推送到 origin/main；代理 127.0.0.1:8890 可用，远端指针已核对为 8d80da0。"
     }
   ],
   "stats": {

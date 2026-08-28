@@ -27,12 +27,4 @@
 - 不得通过缩小字体、压缩触控区域、堆叠卡片/描边/阴影或增加高饱和颜色制造所谓“简约”。
 - 可机器验证的标准必须同步写入 `scripts/check-contracts.mjs`。
 - 完成后必须运行构建、语法检查、契约检查和 `git diff --check`；失败不得隐瞒或绕过。
-
-## Git 推送约定
-
-- GitHub HTTPS 推送优先使用本机 Git Credential Manager 完成浏览器登录，不在远端 URL、仓库配置或对话中写入 Token、密码等凭据。
-- 当前已验证可用的代理路径为 `http://127.0.0.1:8890`；推送命令使用：`git -c http.proxy=http://127.0.0.1:8890 -c https.proxy=http://127.0.0.1:8890 push --porcelain origin HEAD:main`。
-- 推送成功后必须执行同代理的 `git ls-remote origin refs/heads/main`，核对远端提交哈希与本地 `git rev-parse HEAD` 一致；推送超时也必须先核对远端指针，禁止直接重复推送。
-- 若代理端口可连接但 HTTPS 推送无响应，先确认 Git Credential Manager 已有 GitHub 账号或通过 `git credential-manager github login --browser` 登录；连续两次同类失败后停止重试并报告根因，不绕过认证。
-
 若本文件与 `docs/CSS-TOKENS.md` 冲突，以后者的具体 UI 标准为准；若与 `docs/BASELINE.md` 的运行兼容契约冲突，必须停止并先明确变更影响。
