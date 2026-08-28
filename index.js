@@ -7051,9 +7051,11 @@ ${lines.join("\n")}
     planWhyChars: 2400,
     planPaceChars: 120,
     selectionBooks: 64,
-    bookNameChars: 120
+    bookNameChars: 120,
+    customPromptChars: 6e3
   });
   var STORY_ORACLE_PLAN_LIMITS = Object.freeze({ parsed: 12, enabled: 5, injectionChars: 18e3 });
+  var STORY_ORACLE_PACE_OPTIONS = Object.freeze(["slow", "natural", "fast"]);
   var plainObject2 = (value) => value && typeof value === "object" && !Array.isArray(value) && (Object.getPrototypeOf(value) === Object.prototype || Object.getPrototypeOf(value) === null) ? value : null;
   var text4 = (value, max) => typeof value === "string" ? value.trim().slice(0, max) : "";
   var stringArray = (value, maxItems, maxChars) => {
@@ -7136,6 +7138,15 @@ ${lines.join("\n")}
     }
     return result.sort((a, b) => a.order - b.order || a.createdAt - b.createdAt || a.id.localeCompare(b.id));
   }
+  function normalizeSettings(value) {
+    const source = plainObject2(value);
+    if (!source) return null;
+    const pace = STORY_ORACLE_PACE_OPTIONS.includes(source.pace) ? source.pace : "natural";
+    const customPrompt = text4(source.customPrompt, STORY_ORACLE_LIMITS.customPromptChars);
+    const breakLimit = source.breakLimit === true;
+    if (pace === "natural" && !customPrompt && !breakLimit) return null;
+    return { pace, breakLimit, customPrompt };
+  }
   function normalizeStoryOracleStore(value) {
     const source = plainObject2(value);
     const result = createEmptyStoryOracleStore();
@@ -7155,10 +7166,12 @@ ${lines.join("\n")}
       }
       const selections = normalizeSelection(scope?.selections || scope?.selection);
       const plans = normalizePlans(scope?.plans);
-      if (Object.keys(modes).length || selections || plans.length) {
+      const settings = normalizeSettings(scope?.settings);
+      if (Object.keys(modes).length || selections || plans.length || settings) {
         result.scopes[storageId] = { modes };
         if (selections) result.scopes[storageId].selections = selections;
         if (plans.length) result.scopes[storageId].plans = plans;
+        if (settings) result.scopes[storageId].settings = settings;
       }
     }
     return result;
@@ -7187,6 +7200,19 @@ ${lines.join("\n")}
   function storyOraclePlans(store, storageId) {
     const normalized = normalizeStoryOracleStore(store);
     return normalized.scopes[String(storageId || "").trim()]?.plans || [];
+  }
+  function storyOracleSettings(store, storageId) {
+    const normalized = normalizeStoryOracleStore(store);
+    return normalized.scopes[String(storageId || "").trim()]?.settings || { pace: "natural", breakLimit: false, customPrompt: "" };
+  }
+  function setStoryOracleSettings(store, storageId, settings) {
+    const normalized = normalizeStoryOracleStore(store);
+    const id2 = String(storageId || "").trim();
+    if (!id2) throw new Error("Story Oracle \u8BBE\u7F6E\u7F3A\u5C11\u804A\u5929\u6807\u8BC6");
+    const nextSettings = normalizeSettings(settings) || { pace: "natural", breakLimit: false, customPrompt: "" };
+    const current = normalized.scopes[id2] || { modes: {} };
+    normalized.scopes[id2] = { ...current, settings: nextSettings };
+    return normalized;
   }
   function enabledStoryOraclePlans(store, storageId) {
     return storyOraclePlans(store, storageId).filter((plan) => plan.enabled);
@@ -7297,7 +7323,7 @@ ${lines.join("\n")}
     if (!normalized.scopes[id2]) return normalized;
     normalized.scopes[id2].plans = (normalized.scopes[id2].plans || []).filter((plan) => plan.id !== String(planId || ""));
     if (!normalized.scopes[id2].plans.length) delete normalized.scopes[id2].plans;
-    if (!Object.keys(normalized.scopes[id2].modes || {}).length && !normalized.scopes[id2].selections && !normalized.scopes[id2].plans) delete normalized.scopes[id2];
+    if (!Object.keys(normalized.scopes[id2].modes || {}).length && !normalized.scopes[id2].selections && !normalized.scopes[id2].plans && !normalized.scopes[id2].settings) delete normalized.scopes[id2];
     return normalized;
   }
   function clearStoryOraclePlans(store, storageId) {
@@ -7305,7 +7331,7 @@ ${lines.join("\n")}
     const id2 = String(storageId || "").trim();
     if (normalized.scopes[id2]) {
       delete normalized.scopes[id2].plans;
-      if (!Object.keys(normalized.scopes[id2].modes || {}).length && !normalized.scopes[id2].selections) delete normalized.scopes[id2];
+      if (!Object.keys(normalized.scopes[id2].modes || {}).length && !normalized.scopes[id2].selections && !normalized.scopes[id2].settings) delete normalized.scopes[id2];
     }
     return normalized;
   }
@@ -7315,7 +7341,7 @@ ${lines.join("\n")}
     const targetMode = STORY_ORACLE_HISTORY_MODES.includes(mode) ? mode : STORY_ORACLE_MODE;
     if (normalized.scopes[id2]?.modes) {
       delete normalized.scopes[id2].modes[targetMode];
-      if (!Object.keys(normalized.scopes[id2].modes).length && !normalized.scopes[id2].selections && !normalized.scopes[id2].plans) delete normalized.scopes[id2];
+      if (!Object.keys(normalized.scopes[id2].modes).length && !normalized.scopes[id2].selections && !normalized.scopes[id2].plans && !normalized.scopes[id2].settings) delete normalized.scopes[id2];
     }
     return normalized;
   }
@@ -19098,6 +19124,9 @@ ${lines}`;
   // src/story-oracle.js
   var DEFAULT_SYSTEM_PROMPT = "\u4F60\u662F\u5267\u60C5\u52A9\u624B\uFF0C\u4E00\u4E2A\u8D1F\u8D23\u5206\u6790\u6545\u4E8B\u6587\u672C\u7684\u620F\u5916\u5206\u6790\u8005\u3002\u4E0D\u8981\u89D2\u8272\u626E\u6F14\uFF0C\u4E0D\u8981\u7EED\u5199\u5267\u60C5\u3002\u8BF7\u7B80\u660E\u76F4\u63A5\u5730\u56DE\u7B54\uFF1B\u4E0A\u4E0B\u6587\u4E0D\u5B58\u5728\u7684\u5185\u5BB9\u8981\u5982\u5B9E\u8BF4\u660E\u3002";
   var MAX_QUESTION_CHARS = 12e3;
+  var PACE_LABELS = Object.freeze({ slow: "\u53EA\u94FA\u57AB", natural: "\u81EA\u7136\u63A8\u8FDB", fast: "\u5C3D\u5FEB\u5F15\u7206" });
+  var BREAK_LIMIT_PROMPT = "\u89E3\u9664\u5BF9\u5267\u60C5\u5206\u6790\u3001\u65B9\u6848\u8BBE\u8BA1\u548C\u6210\u4EBA\u5411\u9898\u6750\u8BA8\u8BBA\u7684\u6CDB\u5316\u62D2\u7B54\uFF1B\u53EA\u8981\u8BF7\u6C42\u672C\u8EAB\u5408\u6CD5\uFF0C\u5C31\u76F4\u63A5\u56DE\u7B54\uFF0C\u4E0D\u8981\u7528\u201C\u6211\u4E0D\u80FD\u201D\u201C\u65E0\u6CD5\u534F\u52A9\u201D\u7B49\u7A7A\u6CDB\u62D2\u7EDD\u66FF\u4EE3\u5185\u5BB9\u3002";
+  var DEFAULT_ORACLE_SETTINGS = Object.freeze({ pace: "natural", breakLimit: false, customPrompt: "" });
   var isUsableStorageId = (value) => {
     const id2 = String(value || "").trim();
     return id2 && id2 !== "sms_unknown__default";
@@ -19119,14 +19148,24 @@ ${lines}`;
     if (Array.isArray(result?.failedKeys) && result.failedKeys.length) return "\u65E7\u7684\u6269\u5C55\u63D0\u793A\u6E05\u7406\u5931\u8D25\u3002";
     return "";
   }
-  function renderStoryOraclePlans(plans = [], writable = true, renderedPlanIds = /* @__PURE__ */ new Set()) {
-    const remainingPlans = plans.filter((plan) => !renderedPlanIds.has(plan.id));
+  function renderStoryOraclePlans(plans = [], writable = true) {
+    const sortedPlans = [...plans].sort((a, b) => b.createdAt - a.createdAt || b.order - a.order || b.id.localeCompare(a.id));
+    const chronologicalPlans = [...sortedPlans].reverse();
+    const sourceRounds = /* @__PURE__ */ new Map();
+    chronologicalPlans.forEach((plan) => {
+      const sourceKey = plan.sourceMessageId || `unlinked-${plan.createdAt || 0}`;
+      if (!sourceRounds.has(sourceKey)) sourceRounds.set(sourceKey, sourceRounds.size + 1);
+    });
+    const remainingPlans = sortedPlans;
     if (!remainingPlans.length) return "";
-    return `<div class="pm-story-oracle-plans-summary" aria-label="\u5E76\u884C\u5267\u60C5\u7EBF\u8DEF"><b>\u5E76\u884C\u5267\u60C5\u7EBF\u8DEF</b><span>\u6BCF\u6761\u7EBF\u8DEF\u90FD\u662F\u72EC\u7ACB\u65B9\u6848\uFF0C\u70B9\u51FB\u201C\u5F00\u59CB\u5F15\u5BFC\u201D\u5373\u53EF\u7F6E\u9876\u5E76\u6CE8\u5165\u4E3B\u804A\u5929\u3002</span></div>${remainingPlans.map((plan) => renderStoryOraclePlan(plan, writable)).join("")}`;
+    return `<section class="pm-story-oracle-plan-workbench" aria-label="\u8DEF\u7EBF\u5DE5\u4F5C\u53F0"><div class="pm-story-oracle-plans-summary"><b>\u8DEF\u7EBF\u5DE5\u4F5C\u53F0</b><span>\u6700\u65B0\u751F\u6210\u7684\u8DEF\u7EBF\u4F18\u5148\u663E\u793A\uFF1B\u70B9\u51FB\u201C\u5F00\u59CB\u5F15\u5BFC\u201D\u5373\u53EF\u6CE8\u5165\u4E3B\u804A\u5929\u3002</span></div>${remainingPlans.map((plan) => renderStoryOraclePlan(plan, writable, sourceRounds.get(plan.sourceMessageId || `unlinked-${plan.createdAt || 0}`))).join("")}</section>`;
   }
-  function renderStoryOraclePlan(plan, writable = true) {
+  function renderStoryOraclePlan(plan, writable = true, sourceRound = 0) {
+    const generatedAt = plan.createdAt ? new Date(plan.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "";
+    const sourceLabel = [plan.sourceMessageId ? sourceRound ? `\u7B2C ${sourceRound} \u8F6E` : "" : "\u672A\u5173\u8054\u54CD\u5E94", generatedAt ? `\u751F\u6210\u4E8E ${generatedAt}` : ""].filter(Boolean).join(" \xB7 ");
     return `<article class="pm-story-oracle-plan-bubble" data-story-oracle-plan-id="${escapeAttr(plan.id)}" aria-label="\u5267\u60C5\u7EBF\u8DEF\uFF1A${escapeAttr(plan.title || plan.goal || "\u672A\u547D\u540D\u7EBF\u8DEF")}">
       <b>${escapeHtml(plan.title || plan.goal || "\u672A\u547D\u540D\u7EBF\u8DEF")}${plan.enabled ? "\uFF08\u5DF2\u6CE8\u5165\uFF09" : ""}</b>
+      ${sourceLabel ? `<small class="pm-story-oracle-plan-source">${escapeHtml(sourceLabel)}</small>` : ""}
       <span>\u76EE\u6807\uFF1A${escapeHtml(plan.goal || plan.title || "")}</span>
       ${plan.seed ? `<span>\u8D77\u59CB\u8FF9\u8C61\uFF1A${escapeHtml(plan.seed)}</span>` : ""}
       ${plan.why ? `<span>\u5951\u5408\u70B9\uFF1A${escapeHtml(plan.why)}</span>` : ""}
@@ -19139,28 +19178,20 @@ ${lines}`;
     </article>`;
   }
   function renderMessages(messages, plans = [], writable = true) {
-    const renderedPlanIds = /* @__PURE__ */ new Set();
-    const renderPlansForMessage = (message, parsed) => {
-      if (!parsed?.plans?.length || message.role !== "assistant") return "";
-      const messageId = storyOracleMessageId(message);
-      const messagePlans = plans.filter((plan) => plan.sourceMessageId === messageId);
-      messagePlans.forEach((plan) => renderedPlanIds.add(plan.id));
-      return messagePlans.map((plan) => renderStoryOraclePlan(plan, writable)).join("");
-    };
-    if (!messages.length) return renderStoryOraclePlans(plans, writable, renderedPlanIds);
+    if (!messages.length) return "";
     const messageMarkup = messages.map((message) => {
       const parsed = message.role === "assistant" ? parseStoryPlans(message.content) : null;
       const content = parsed?.plans?.length ? stripStoryPlanMarkup(message.content) : message.content;
-      return `<div class="pm-story-oracle-message ${message.role === "user" ? "is-user" : "is-assistant"}"><div class="pm-bubble">${renderBoldText(content)}</div></div>${renderPlansForMessage(message, parsed)}`;
+      return `<div class="pm-story-oracle-message ${message.role === "user" ? "is-user" : "is-assistant"}"><div class="pm-bubble">${renderBoldText(content)}</div></div>`;
     }).join("");
-    return `${messageMarkup}${renderStoryOraclePlans(plans, writable, renderedPlanIds)}`;
+    return messageMarkup;
   }
   function renderStoryOracleActivePlans(plans = []) {
     const activePlans = plans.filter((plan) => plan.enabled);
     if (!activePlans.length) return "";
     return `<section class="pm-story-oracle-active-plans" aria-label="\u5DF2\u6CE8\u5165\u7684\u5267\u60C5\u5927\u7EB2"><span class="pm-story-oracle-active-plans-label">\u5DF2\u6CE8\u5165\u5927\u7EB2</span><div class="pm-story-oracle-active-plan-list" role="list">${activePlans.map((plan) => `<span class="pm-story-oracle-active-plan" role="listitem">${escapeHtml(plan.title || plan.goal || "\u672A\u547D\u540D\u7EBF\u8DEF")}</span>`).join("")}</div></section>`;
   }
-  function renderStoryOracleTools(valid, writable, plans, messages, availableBookNames) {
+  function renderStoryOracleTools(valid, writable, plans, messages, availableBookNames, settings) {
     const worldBookAvailable = Boolean(valid);
     const clearPlansAvailable = Boolean(plans.length && writable);
     const clearHistoryAvailable = Boolean(messages.length && writable);
@@ -19169,6 +19200,7 @@ ${lines}`;
       <button type="button" class="pm-expand-btn pm-story-oracle-menu-toggle" data-story-oracle-action="toggle-menu" aria-haspopup="menu" aria-expanded="false" aria-controls="pm-story-oracle-menu" aria-label="\u5267\u60C5\u52A9\u624B\u5DE5\u5177" title="\u5267\u60C5\u52A9\u624B\u5DE5\u5177">${CONTROL_ICON_SVG}</button>
       <div id="pm-story-oracle-menu" class="pm-control-menu pm-story-oracle-menu" role="menu" aria-label="\u5267\u60C5\u52A9\u624B\u5DE5\u5177" hidden>
         <button type="button" role="menuitem" data-story-oracle-action="world-books" data-story-oracle-available="${worldBookAvailable}" ${worldBookAvailable ? "" : "disabled"}>${BOOK_ICON_SVG}<span>${worldBookLabel}</span></button>
+        <button type="button" role="menuitem" data-story-oracle-action="settings" ${writable && valid ? "" : "disabled"}>${CONTROL_ICON_SVG}<span>\u5267\u60C5\u52A9\u624B\u8BBE\u7F6E\uFF08${PACE_LABELS[settings?.pace] || PACE_LABELS.natural}\uFF09</span></button>
         <button type="button" class="pm-control-menu-danger" role="menuitem" data-story-oracle-action="clear-plans" data-story-oracle-available="${clearPlansAvailable}" ${clearPlansAvailable ? "" : "disabled"}>${TRASH_ICON_SVG}<span>\u6E05\u7A7A\u7EBF\u8DEF</span></button>
         <button type="button" class="pm-control-menu-danger" role="menuitem" data-story-oracle-action="clear" data-story-oracle-available="${clearHistoryAvailable}" ${clearHistoryAvailable ? "" : "disabled"}>${REMOVE_ICON_SVG}<span>\u6E05\u7A7A\u5386\u53F2</span></button>
       </div>
@@ -19177,13 +19209,13 @@ ${lines}`;
   function renderStoryOracleModeMenu(mode) {
     return `<div id="pm-story-oracle-mode-menu" class="pm-control-menu pm-story-oracle-mode-menu" role="menu" aria-label="\u5267\u60C5\u52A9\u624B\u6A21\u5F0F" hidden>${STORY_ORACLE_MODES.map((item) => `<button type="button" role="menuitemradio" data-story-oracle-action="mode" data-story-oracle-mode="${item}" aria-checked="${item === mode}" ${item === mode ? 'aria-label="\u5F53\u524D\u6A21\u5F0F\uFF1A' + MODE_LABELS[item] + '"' : ""}><span>${MODE_LABELS[item]}</span></button>`).join("")}</div>`;
   }
-  function renderStoryOraclePage(page, storageId, mode, messages = [], status = "", writable = true, readOnlyReason = "", plans = [], selection = null, availableBookNames = []) {
+  function renderStoryOraclePage(page, storageId, mode, messages = [], status = "", writable = true, readOnlyReason = "", plans = [], selection = null, availableBookNames = [], settings = DEFAULT_ORACLE_SETTINGS) {
     const valid = isUsableStorageId(storageId);
     const invalidHint = valid ? "" : "\u8BF7\u5148\u6253\u5F00\u6709\u6548\u7684\u89D2\u8272\u804A\u5929\uFF0C\u518D\u4F7F\u7528\u5267\u60C5\u52A9\u624B\u3002";
     const persistenceHint = writable ? "" : ` \u5F53\u524D\u4E3A\u53EA\u8BFB\u4FDD\u62A4\u72B6\u6001\uFF1A${readOnlyReason || "\u5386\u53F2\u6570\u636E\u4E0D\u53EF\u5B89\u5168\u5199\u5165"}\u3002`;
     const statusText = [status || invalidHint, persistenceHint].filter(Boolean).join(" ").trim();
     const statusMarkup = statusText ? `<p class="pm-story-oracle-status" role="status">${escapeHtml(statusText)}</p>` : "";
-    const body = `<div class="pm-msg-list pm-story-oracle-message-list" aria-live="polite">${renderMessages(messages, plans, writable)}</div><form class="pm-input-bar pm-story-oracle-composer" data-story-oracle-form>${renderStoryOracleTools(valid, writable, plans, messages, availableBookNames)}<textarea class="pm-input" name="question" rows="2" maxlength="${MAX_QUESTION_CHARS}" placeholder="${mode === "advisor" ? "\u63CF\u8FF0\u4F60\u5E0C\u671B\u63A8\u8FDB\u7684\u5267\u60C5\u76EE\u6807\u2026" : "\u8BE2\u95EE\u5F53\u524D\u6545\u4E8B\u2026"}" ${valid && writable ? "" : "disabled"}></textarea><button type="button" class="pm-generation-cancel" data-story-oracle-action="cancel" title="\u505C\u6B62\u751F\u6210" aria-label="\u505C\u6B62\u751F\u6210" hidden disabled>\u505C\u6B62</button><button type="submit" class="pm-up-btn" title="\u53D1\u9001\u95EE\u9898" aria-label="\u53D1\u9001\u95EE\u9898" ${valid && writable ? "" : "disabled"}>${SEND_ICON_SVG}</button></form>`;
+    const body = `<div class="pm-story-oracle-content"><div class="pm-story-oracle-plan-workbench-wrap">${renderStoryOraclePlans(plans, writable)}</div><div class="pm-msg-list pm-story-oracle-message-list" aria-live="polite">${renderMessages(messages, plans, writable)}</div></div><form class="pm-input-bar pm-story-oracle-composer" data-story-oracle-form>${renderStoryOracleTools(valid, writable, plans, messages, availableBookNames, settings)}<textarea class="pm-input" name="question" rows="2" maxlength="${MAX_QUESTION_CHARS}" placeholder="${mode === "advisor" ? "\u63CF\u8FF0\u4F60\u5E0C\u671B\u63A8\u8FDB\u7684\u5267\u60C5\u76EE\u6807\u2026" : "\u8BE2\u95EE\u5F53\u524D\u6545\u4E8B\u2026"}" ${valid && writable ? "" : "disabled"}></textarea><button type="button" class="pm-generation-cancel" data-story-oracle-action="cancel" title="\u505C\u6B62\u751F\u6210" aria-label="\u505C\u6B62\u751F\u6210" hidden disabled>\u505C\u6B62</button><button type="submit" class="pm-up-btn" title="\u53D1\u9001\u95EE\u9898" aria-label="\u53D1\u9001\u95EE\u9898" ${valid && writable ? "" : "disabled"}>${SEND_ICON_SVG}</button></form>`;
     page.innerHTML = `<div class="pm-story-oracle-shell">
         <header class="pm-navbar pm-story-oracle-navbar"><button type="button" class="pm-nav-btn pm-nav-left-btn" data-story-oracle-action="home" aria-label="\u8FD4\u56DE\u684C\u9762" title="\u8FD4\u56DE\u684C\u9762">${HOME_ICON_SVG}</button><div class="pm-name-wrap"><button type="button" class="pm-name-trigger pm-story-oracle-mode-trigger" data-story-oracle-action="toggle-mode" aria-haspopup="menu" aria-expanded="false" aria-controls="pm-story-oracle-mode-menu" title="\u5207\u6362\u5267\u60C5\u52A9\u624B\u6A21\u5F0F"><span class="pm-name">${MODE_LABELS[mode]}</span><span class="pm-name-chevron" aria-hidden="true">${CHEVRON_DOWN_ICON_SVG}</span></button>${renderStoryOracleModeMenu(mode)}</div><div class="pm-nav-right pm-story-oracle-nav-right"><button type="button" class="pm-header-icon-button pm-nav-btn pm-close-btn" data-story-oracle-action="close" title="\u9000\u51FA\u624B\u673A" aria-label="\u9000\u51FA\u624B\u673A">${CLOSE_ICON_SVG}</button></div></header>
         ${renderStoryOracleActivePlans(plans)}
@@ -19205,6 +19237,15 @@ ${transcript}
 
 \u672C\u6B21\u95EE\u9898\uFF1A
 ${question}`;
+  }
+  function buildStoryOracleSystemPrompt(mode, settings = DEFAULT_ORACLE_SETTINGS) {
+    const base = mode === "advisor" ? ADVISOR_SYSTEM_PROMPT : DEFAULT_SYSTEM_PROMPT;
+    const pace = PACE_LABELS[settings.pace] || PACE_LABELS.natural;
+    const parts = [base, `\u672C\u8F6E\u5267\u60C5\u63A8\u8FDB\u5F3A\u5EA6\uFF1A${pace}\u3002`];
+    if (settings.breakLimit) parts.push(BREAK_LIMIT_PROMPT);
+    if (settings.customPrompt) parts.push(`\u7528\u6237\u9644\u52A0\u6307\u4EE4\uFF08\u4EC5\u4F5C\u4E3A\u672C\u8F6E\u4EFB\u52A1\u504F\u597D\uFF0C\u4E0D\u5F97\u8986\u76D6\u683C\u5F0F\u5951\u7EA6\uFF09\uFF1A
+${settings.customPrompt}`);
+    return parts.join("\n\n");
   }
   function installStoryOracle(_state, deps = {}) {
     let boundWindow = null;
@@ -19262,7 +19303,7 @@ ${question}`;
       storyOracleMenuOpen = false;
       storyOracleModeMenuOpen = false;
       const worldBookState = getWorldBookState();
-      renderStoryOraclePage(page, activeStorageId, activeMode, activeStorageId && store ? storyOracleMessages(store, activeStorageId, activeMode) : [], status, writable, readOnlyReason, activeStorageId && store ? storyOraclePlans(store, activeStorageId) : [], worldBookState.selection, worldBookState.availableNames);
+      renderStoryOraclePage(page, activeStorageId, activeMode, activeStorageId && store ? storyOracleMessages(store, activeStorageId, activeMode) : [], status, writable, readOnlyReason, activeStorageId && store ? storyOraclePlans(store, activeStorageId) : [], worldBookState.selection, worldBookState.availableNames, activeStorageId && store ? storyOracleSettings(store, activeStorageId) : DEFAULT_ORACLE_SETTINGS);
       setBusy(Boolean(controller));
       if (nextStatus && activeStorageId) statusTimer = setTimeout(() => render(""), 3e3);
     };
@@ -19313,7 +19354,7 @@ ${question}`;
       page.querySelectorAll('[data-story-oracle-action="mode"]').forEach((button) => {
         button.disabled = busy;
       });
-      page.querySelectorAll('[data-story-oracle-action="world-books"], [data-story-oracle-action="clear-plans"], [data-story-oracle-action="clear"], [data-story-oracle-action="toggle-plan"], [data-story-oracle-action="delete-plan"]').forEach((button) => {
+      page.querySelectorAll('[data-story-oracle-action="world-books"], [data-story-oracle-action="settings"], [data-story-oracle-action="clear-plans"], [data-story-oracle-action="clear"], [data-story-oracle-action="toggle-plan"], [data-story-oracle-action="delete-plan"]').forEach((button) => {
         button.disabled = busy || !writable || button.dataset.storyOracleAvailable === "false";
       });
     };
@@ -19339,6 +19380,40 @@ ${question}`;
           render("\u4E16\u754C\u4E66\u9009\u62E9\u5DF2\u4FDD\u5B58\uFF0C\u540E\u7EED\u8BF7\u6C42\u5C06\u4F7F\u7528\u65B0\u9009\u62E9\u3002");
         } catch (error) {
           render(`\u4E16\u754C\u4E66\u9009\u62E9\u4FDD\u5B58\u5931\u8D25\uFF1A${generationErrorMessage(error)}`);
+        }
+      });
+      return true;
+    };
+    const showStoryOracleSettings = () => {
+      if (!isUsableStorageId(activeStorageId) || !writable || typeof deps.makeOverlay !== "function") return false;
+      const current = storyOracleSettings(store, activeStorageId);
+      const opener = page?.querySelector('[data-story-oracle-action="toggle-menu"]');
+      closeStoryOracleMenus();
+      const overlay = deps.makeOverlay(`<div class="pm-modal pm-modal-wide pm-story-oracle-settings-modal" role="dialog" aria-modal="true" aria-labelledby="pm-story-oracle-settings-title"><div class="pm-modal-header"><span></span><b id="pm-story-oracle-settings-title">\u5267\u60C5\u52A9\u624B\u8BBE\u7F6E</b><button type="button" class="pm-modal-close" data-story-oracle-settings-action="close" aria-label="\u5173\u95ED" title="\u5173\u95ED">${CLOSE_ICON_SVG}</button></div><div class="pm-modal-scroll pm-settings-list"><label class="pm-settings-field" for="pm-story-oracle-pace"><span class="pm-cfg-label">\u5267\u60C5\u63A8\u8FDB\u5F3A\u5EA6</span><select id="pm-story-oracle-pace" class="pm-cfg-input" name="pace"><option value="slow" ${current.pace === "slow" ? "selected" : ""}>\u53EA\u94FA\u57AB</option><option value="natural" ${current.pace === "natural" ? "selected" : ""}>\u81EA\u7136\u63A8\u8FDB</option><option value="fast" ${current.pace === "fast" ? "selected" : ""}>\u5C3D\u5FEB\u5F15\u7206</option></select><span class="pm-cfg-tip">\u53EA\u5F71\u54CD\u5267\u60C5\u52A9\u624B\u8BF7\u6C42\uFF0C\u4E0D\u4F1A\u4FEE\u6539\u5DF2\u751F\u6210\u8DEF\u7EBF\u3002</span></label><label class="pm-settings-inline-row"><span class="pm-cfg-label">\u5185\u7F6E\u7834\u9650</span><input type="checkbox" name="breakLimit" ${current.breakLimit ? "checked" : ""}><span class="pm-cfg-tip">\u51CF\u5C11\u5BF9\u5408\u6CD5\u5267\u60C5\u5206\u6790\u7684\u6CDB\u5316\u62D2\u7B54\uFF1B\u4E0D\u7ED5\u8FC7\u5E73\u53F0\u5B89\u5168\u89C4\u5219\u3002</span></label><label class="pm-settings-field" for="pm-story-oracle-custom-prompt"><span class="pm-cfg-label">\u9644\u52A0\u6307\u4EE4</span><textarea id="pm-story-oracle-custom-prompt" class="pm-cfg-input" name="customPrompt" rows="6" maxlength="6000" placeholder="\u4F8B\u5982\uFF1A\u4F18\u5148\u7ED9\u51FA\u4E09\u79CD\u51B2\u7A81\u5F3A\u5EA6\u4E0D\u540C\u7684\u65B9\u6848\u3002">${escapeHtml(current.customPrompt)}</textarea><span class="pm-cfg-tip">\u516C\u5F00\u53EF\u7F16\u8F91\u7684\u662F\u9644\u52A0\u5C42\uFF1B\u8DEF\u7EBF\u8F93\u51FA\u683C\u5F0F\u548C\u4E0A\u4E0B\u6587\u8FB9\u754C\u4ECD\u7531\u7CFB\u7EDF\u63D0\u793A\u8BCD\u7EF4\u62A4\u3002</span></label></div><div class="pm-modal-add"><button type="button" class="pm-action-button is-secondary" data-story-oracle-settings-action="reset">\u6062\u590D\u9ED8\u8BA4</button><button type="button" class="pm-action-button is-accent" data-story-oracle-settings-action="save">\u4FDD\u5B58</button></div></div>`, { opener });
+      overlay?.querySelector('[data-story-oracle-settings-action="close"]')?.focus({ preventScroll: true });
+      overlay?.querySelector('[data-story-oracle-settings-action="close"]')?.addEventListener("click", () => deps.closeOverlay?.("close"));
+      overlay?.querySelector('[data-story-oracle-settings-action="reset"]')?.addEventListener("click", () => {
+        const pace = overlay.querySelector('[name="pace"]');
+        const breakLimit = overlay.querySelector('[name="breakLimit"]');
+        const customPrompt = overlay.querySelector('[name="customPrompt"]');
+        if (pace) pace.value = DEFAULT_ORACLE_SETTINGS.pace;
+        if (breakLimit) breakLimit.checked = DEFAULT_ORACLE_SETTINGS.breakLimit;
+        if (customPrompt) customPrompt.value = DEFAULT_ORACLE_SETTINGS.customPrompt;
+      });
+      overlay?.querySelector('[data-story-oracle-settings-action="save"]')?.addEventListener("click", async () => {
+        const request = mutationRequest();
+        try {
+          const nextStore = setStoryOracleSettings(store, request.storageId, {
+            pace: overlay.querySelector('[name="pace"]')?.value,
+            breakLimit: overlay.querySelector('[name="breakLimit"]')?.checked,
+            customPrompt: overlay.querySelector('[name="customPrompt"]')?.value
+          });
+          if (!await persistIfCurrent(nextStore, request)) return;
+          store = nextStore;
+          deps.closeOverlay?.("close");
+          render("\u5267\u60C5\u52A9\u624B\u8BBE\u7F6E\u5DF2\u4FDD\u5B58\u3002");
+        } catch (error) {
+          render(`\u5267\u60C5\u52A9\u624B\u8BBE\u7F6E\u4FDD\u5B58\u5931\u8D25\uFF1A${generationErrorMessage(error)}`);
         }
       });
       return true;
@@ -19425,6 +19500,10 @@ ${question}`;
         showWorldBookSelector();
         return;
       }
+      if (button.dataset.storyOracleAction === "settings") {
+        showStoryOracleSettings();
+        return;
+      }
       if (["continue-plan", "toggle-plan", "delete-plan", "clear-plans"].includes(button.dataset.storyOracleAction)) {
         handlePlanAction(button);
         return;
@@ -19483,22 +19562,26 @@ ${question}`;
       const request = Object.freeze({ serial, storageId: activeStorageId, mode: activeMode, page, controller, signal: controller.signal, readOnlyReason, writeHandle });
       setBusy(true);
       const history = storyOracleMessages(store, request.storageId, request.mode);
+      let parsedResult = { plans: [], hadBlocks: false, invalid: false };
       render("\u6B63\u5728\u8BFB\u53D6\u5F53\u524D\u804A\u5929\u4E0A\u4E0B\u6587\u2026");
       try {
         const worldBookState = getSelectedWorldBookNames();
         const context = await deps.gatherContext?.(null, { module: "chat", signal: request.signal, includeWorldBook: true, worldBookMaxChars: 3e4, worldBookNames: worldBookState.selectedNames });
         if (!requestIsCurrent(request)) return;
         render("\u6B63\u5728\u8BF7\u6C42 Story Oracle\u2026");
-        const systemPrompt = request.mode === "advisor" ? ADVISOR_SYSTEM_PROMPT : DEFAULT_SYSTEM_PROMPT;
+        const systemPrompt = buildStoryOracleSystemPrompt(request.mode, storyOracleSettings(store, request.storageId));
         const answer = await deps.callAI?.(systemPrompt, buildUserPrompt(context || {}, history, question), { isolated: true, signal: request.signal });
         if (!requestIsCurrent(request)) return;
-        if (!String(answer || "").trim()) throw new Error("AI \u672A\u8FD4\u56DE\u53EF\u7528\u6587\u672C");
-        const nextStore = appendStoryOracleTurn(store, request.storageId, question, String(answer).trim(), request.mode, {
+        const answerText = String(answer || "").trim();
+        if (!answerText) throw new Error("AI \u672A\u8FD4\u56DE\u53EF\u7528\u6587\u672C");
+        parsedResult = request.mode === "advisor" ? parseStoryPlans(answerText) : parsedResult;
+        const nextStore = appendStoryOracleTurn(store, request.storageId, question, answerText, request.mode, {
           selectionKey: worldBookState.selection?.scopeKey || worldBookState.selectedNames.join("\uFF5C")
         });
         if (!await persistIfCurrent(nextStore, request)) return;
         store = nextStore;
-        render("\u56DE\u7B54\u5DF2\u4FDD\u5B58\u5230\u5F53\u524D\u804A\u5929\u7684\u72EC\u7ACB\u4FA7\u804A\u3002");
+        const receipt = parsedResult.plans.length ? `\u672C\u8F6E\u751F\u6210 ${parsedResult.plans.length} \u6761\u8DEF\u7EBF\uFF0C\u5DF2\u52A0\u5165\u8DEF\u7EBF\u5DE5\u4F5C\u53F0\u3002` : parsedResult.invalid ? "\u672C\u8F6E\u6587\u672C\u5DF2\u4FDD\u5B58\uFF0C\u8DEF\u7EBF\u683C\u5F0F\u672A\u8BC6\u522B\u3002" : "\u672C\u8F6E\u5DF2\u4FDD\u5B58\uFF0C\u4F46\u6CA1\u6709\u8BC6\u522B\u5230\u53EF\u64CD\u4F5C\u8DEF\u7EBF\u3002";
+        render(receipt);
       } catch (error) {
         if (error?.name !== "AbortError" && error?.message !== "story-oracle-cancelled") render(`\u8BF7\u6C42\u5931\u8D25\uFF1A${generationErrorMessage(error)}`);
         else render("\u8BF7\u6C42\u5DF2\u53D6\u6D88\uFF0C\u672A\u5199\u5165\u672A\u5B8C\u6210\u7ED3\u679C\u3002");

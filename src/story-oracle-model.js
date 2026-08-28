@@ -13,8 +13,10 @@ export const STORY_ORACLE_LIMITS = Object.freeze({
     planPaceChars: 120,
     selectionBooks: 64,
     bookNameChars: 120,
+    customPromptChars: 6000,
 });
 export const STORY_ORACLE_PLAN_LIMITS = Object.freeze({ parsed: 12, enabled: 5, injectionChars: 18000 });
+export const STORY_ORACLE_PACE_OPTIONS = Object.freeze(['slow', 'natural', 'fast']);
 
 const plainObject = value => value && typeof value === 'object' && !Array.isArray(value)
     && (Object.getPrototypeOf(value) === Object.prototype || Object.getPrototypeOf(value) === null) ? value : null;
@@ -99,6 +101,16 @@ function normalizePlans(value) {
     return result.sort((a, b) => a.order - b.order || a.createdAt - b.createdAt || a.id.localeCompare(b.id));
 }
 
+function normalizeSettings(value) {
+    const source = plainObject(value);
+    if (!source) return null;
+    const pace = STORY_ORACLE_PACE_OPTIONS.includes(source.pace) ? source.pace : 'natural';
+    const customPrompt = text(source.customPrompt, STORY_ORACLE_LIMITS.customPromptChars);
+    const breakLimit = source.breakLimit === true;
+    if (pace === 'natural' && !customPrompt && !breakLimit) return null;
+    return { pace, breakLimit, customPrompt };
+}
+
 export function normalizeStoryOracleStore(value) {
     const source = plainObject(value);
     const result = createEmptyStoryOracleStore();
@@ -119,10 +131,12 @@ export function normalizeStoryOracleStore(value) {
         }
         const selections = normalizeSelection(scope?.selections || scope?.selection);
         const plans = normalizePlans(scope?.plans);
-        if (Object.keys(modes).length || selections || plans.length) {
+        const settings = normalizeSettings(scope?.settings);
+        if (Object.keys(modes).length || selections || plans.length || settings) {
             result.scopes[storageId] = { modes };
             if (selections) result.scopes[storageId].selections = selections;
             if (plans.length) result.scopes[storageId].plans = plans;
+            if (settings) result.scopes[storageId].settings = settings;
         }
     }
     return result;
@@ -155,6 +169,21 @@ export function setStoryOracleWorldBookSelection(store, storageId, books, { scop
 export function storyOraclePlans(store, storageId) {
     const normalized = normalizeStoryOracleStore(store);
     return normalized.scopes[String(storageId || '').trim()]?.plans || [];
+}
+
+export function storyOracleSettings(store, storageId) {
+    const normalized = normalizeStoryOracleStore(store);
+    return normalized.scopes[String(storageId || '').trim()]?.settings || { pace: 'natural', breakLimit: false, customPrompt: '' };
+}
+
+export function setStoryOracleSettings(store, storageId, settings) {
+    const normalized = normalizeStoryOracleStore(store);
+    const id = String(storageId || '').trim();
+    if (!id) throw new Error('Story Oracle 设置缺少聊天标识');
+    const nextSettings = normalizeSettings(settings) || { pace: 'natural', breakLimit: false, customPrompt: '' };
+    const current = normalized.scopes[id] || { modes: {} };
+    normalized.scopes[id] = { ...current, settings: nextSettings };
+    return normalized;
 }
 
 export function enabledStoryOraclePlans(store, storageId) {
@@ -269,7 +298,7 @@ export function removeStoryOraclePlan(store, storageId, planId) {
     if (!normalized.scopes[id]) return normalized;
     normalized.scopes[id].plans = (normalized.scopes[id].plans || []).filter(plan => plan.id !== String(planId || ''));
     if (!normalized.scopes[id].plans.length) delete normalized.scopes[id].plans;
-    if (!Object.keys(normalized.scopes[id].modes || {}).length && !normalized.scopes[id].selections && !normalized.scopes[id].plans) delete normalized.scopes[id];
+    if (!Object.keys(normalized.scopes[id].modes || {}).length && !normalized.scopes[id].selections && !normalized.scopes[id].plans && !normalized.scopes[id].settings) delete normalized.scopes[id];
     return normalized;
 }
 
@@ -278,7 +307,7 @@ export function clearStoryOraclePlans(store, storageId) {
     const id = String(storageId || '').trim();
     if (normalized.scopes[id]) {
         delete normalized.scopes[id].plans;
-        if (!Object.keys(normalized.scopes[id].modes || {}).length && !normalized.scopes[id].selections) delete normalized.scopes[id];
+        if (!Object.keys(normalized.scopes[id].modes || {}).length && !normalized.scopes[id].selections && !normalized.scopes[id].settings) delete normalized.scopes[id];
     }
     return normalized;
 }
@@ -289,7 +318,7 @@ export function clearStoryOracleScope(store, storageId, mode = STORY_ORACLE_MODE
     const targetMode = STORY_ORACLE_HISTORY_MODES.includes(mode) ? mode : STORY_ORACLE_MODE;
     if (normalized.scopes[id]?.modes) {
         delete normalized.scopes[id].modes[targetMode];
-        if (!Object.keys(normalized.scopes[id].modes).length && !normalized.scopes[id].selections && !normalized.scopes[id].plans) delete normalized.scopes[id];
+        if (!Object.keys(normalized.scopes[id].modes).length && !normalized.scopes[id].selections && !normalized.scopes[id].plans && !normalized.scopes[id].settings) delete normalized.scopes[id];
     }
     return normalized;
 }
