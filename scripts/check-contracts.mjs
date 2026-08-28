@@ -4363,6 +4363,8 @@ for (const expected of [
   'class="pm-story-oracle-plan-bubble"',
   'data-story-oracle-action="toggle-plan"',
 ]) requireText('story-oracle.js UI contract', storyOracleCode, expected);
+for (const expected of ['<StoryPlan>...</StoryPlan>', '每个区块必须包含“标题：”和“目标：”', '不要把多条路线合并到同一个区块']) requireText('story-oracle.js advisor output contract', storyOracleCode, expected);
+
 for (const expected of [
   "import { escapeAttr, escapeHtml, renderBoldText } from './ui.js';",
   'renderBoldText(content)',
