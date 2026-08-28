@@ -1,6 +1,6 @@
 # 项目进度
 - Project: mobile-ui-private
-- Updated At: 2026-08-27T19:09:49.146Z
+- Updated At: 2026-08-28T04:41:04.605Z
 - Status: blocked
 - Phase: review
 
@@ -8,8 +8,8 @@
 
 <!-- LIMCODE_PROGRESS_SUMMARY_START -->
 - 当前进度：3/3 个里程碑已完成；最新：trend-svg-mapping-release
-- 当前焦点：StoryPlan 独立卡片交互已完成，等待真实 SillyTavern 宿主现场验证
-- 最新结论：已将 StoryPlan 从普通 assistant 气泡中拆出为独立路线气泡；每条路线有开始引导/停止引导按钮，启用后在 navbar 下方独立置顶显示，并复用现有持久化与主聊天注入链。代码层独立验收第 8 轮通过：blocking=0、major=0、minor=0、advisory=1。
+- 当前焦点：StoryPlan 独立卡片交互已完成，提交已推送，等待真实 SillyTavern 宿主现场验证
+- 最新结论：本地提交 8d80da0 已成功推送到 origin/main；代码层独立验收第 8 轮通过（blocking=0、major=0、minor=0、advisory=1）。
 - 当前阻塞：尚未在真实 SillyTavern 宿主完成亮暗主题、窄屏、键盘焦点、刷新恢复、世界书选择和实际扩展提示注入矩阵。
 - 下一步：在目标 SillyTavern 宿主执行现场回归；现场验证前不宣称完整生产放行。
 <!-- LIMCODE_PROGRESS_SUMMARY_END -->
@@ -76,8 +76,6 @@
 ## 最近更新
 
 <!-- LIMCODE_PROGRESS_LOG_START -->
-- 2026-08-26T09:40:03.011Z | artifact_changed | plan | 同步计划文档：.limcode/plans/story-oracle-phone-app-integration.md
-- 2026-08-26T09:56:54.086Z | milestone_recorded | story-oracle-plan-shell | 手机应用骨架完成；build、syntax、interactive、contracts 均通过。进入普通剧情问答垂直切片。
 - 2026-08-26T09:56:56.575Z | artifact_changed | plan | 同步计划 TODO 快照：.limcode/plans/story-oracle-phone-app-integration.md
 - 2026-08-26T12:16:33.525Z | artifact_changed | plan | 同步计划文档：.limcode/plans/story-oracle-phone-app-integration.md
 - 2026-08-26T12:22:21.034Z | artifact_changed | plan | 同步计划 TODO 快照：.limcode/plans/story-oracle-phone-app-integration.md
@@ -96,6 +94,8 @@
 - 2026-08-27T19:06:22.939Z | updated | story-oracle-independent-acceptance-blocked | 已准备窄读补齐 action 分派、持久化/注入顺序、存储恢复与转义证据；第八轮将作为最后一次自动验收。
 - 2026-08-27T19:09:49.146Z | milestone_recorded | story-oracle-route-picker-visible | 完成上游式 StoryPlan 独立路线气泡与开始引导按钮；启用路线在 navbar 下方独立区域置顶显示。
 - 2026-08-27T19:09:49.146Z | milestone_recorded | story-oracle-independent-acceptance | 第 8 轮独立 Acceptance Expert 通过：blocking=0、major=0、minor=0、advisory=1；代码层放行，现场宿主矩阵仍待验证。
+- 2026-08-28T03:54:05.725Z | risk_changed | story-oracle-push | 本地提交 8d80da0 未能推送：代理端口可连接，但 HTTPS push 连续超时；远端指针核对仍为 aa40465。
+- 2026-08-28T04:41:04.605Z | milestone_recorded | story-oracle-push | 提交 8d80da0 已成功推送到 origin/main；代理 127.0.0.1:8890 可用，远端指针已核对为 8d80da0。
 <!-- LIMCODE_PROGRESS_LOG_END -->
 
 <!-- LIMCODE_PROGRESS_METADATA_START -->
@@ -105,11 +105,11 @@
   "projectId": "mobile-ui-private",
   "projectName": "mobile-ui-private",
   "createdAt": "2026-08-14T05:55:56.978Z",
-  "updatedAt": "2026-08-27T19:09:49.146Z",
+  "updatedAt": "2026-08-28T04:41:04.605Z",
   "status": "blocked",
   "phase": "review",
-  "currentFocus": "StoryPlan 独立卡片交互已完成，等待真实 SillyTavern 宿主现场验证",
-  "latestConclusion": "已将 StoryPlan 从普通 assistant 气泡中拆出为独立路线气泡；每条路线有开始引导/停止引导按钮，启用后在 navbar 下方独立置顶显示，并复用现有持久化与主聊天注入链。代码层独立验收第 8 轮通过：blocking=0、major=0、minor=0、advisory=1。",
+  "currentFocus": "StoryPlan 独立卡片交互已完成，提交已推送，等待真实 SillyTavern 宿主现场验证",
+  "latestConclusion": "本地提交 8d80da0 已成功推送到 origin/main；代码层独立验收第 8 轮通过（blocking=0、major=0、minor=0、advisory=1）。",
   "currentBlocker": "尚未在真实 SillyTavern 宿主完成亮暗主题、窄屏、键盘焦点、刷新恢复、世界书选择和实际扩展提示注入矩阵。",
   "nextAction": "在目标 SillyTavern 宿主执行现场回归；现场验证前不宣称完整生产放行。",
   "activeArtifacts": {
@@ -219,18 +219,6 @@
   ],
   "log": [
     {
-      "at": "2026-08-26T09:40:03.011Z",
-      "type": "artifact_changed",
-      "refId": "plan",
-      "message": "同步计划文档：.limcode/plans/story-oracle-phone-app-integration.md"
-    },
-    {
-      "at": "2026-08-26T09:56:54.086Z",
-      "type": "milestone_recorded",
-      "refId": "story-oracle-plan-shell",
-      "message": "手机应用骨架完成；build、syntax、interactive、contracts 均通过。进入普通剧情问答垂直切片。"
-    },
-    {
       "at": "2026-08-26T09:56:56.575Z",
       "type": "artifact_changed",
       "refId": "plan",
@@ -337,6 +325,18 @@
       "type": "milestone_recorded",
       "refId": "story-oracle-independent-acceptance",
       "message": "第 8 轮独立 Acceptance Expert 通过：blocking=0、major=0、minor=0、advisory=1；代码层放行，现场宿主矩阵仍待验证。"
+    },
+    {
+      "at": "2026-08-28T03:54:05.725Z",
+      "type": "risk_changed",
+      "refId": "story-oracle-push",
+      "message": "本地提交 8d80da0 未能推送：代理端口可连接，但 HTTPS push 连续超时；远端指针核对仍为 aa40465。"
+    },
+    {
+      "at": "2026-08-28T04:41:04.605Z",
+      "type": "milestone_recorded",
+      "refId": "story-oracle-push",
+      "message": "提交 8d80da0 已成功推送到 origin/main；代理 127.0.0.1:8890 可用，远端指针已核对为 8d80da0。"
     }
   ],
   "stats": {
@@ -350,8 +350,8 @@
   },
   "render": {
     "rendererVersion": 1,
-    "generatedAt": "2026-08-27T19:09:49.146Z",
-    "bodyHash": "sha256:82d5d1695b9adee87d549322379f0b00190951652e01e884b02245c9e50a6b49"
+    "generatedAt": "2026-08-28T04:41:04.605Z",
+    "bodyHash": "sha256:d73a3f7a05b1316d217df8128d76d5fbf3e7aa1c8a7c31840003ee77b0fe122f"
   }
 }
 <!-- LIMCODE_PROGRESS_METADATA_END -->
