@@ -10,6 +10,7 @@ export const STORY_ORACLE_LIMITS = Object.freeze({
     planChars: 4000,
     planSeedChars: 2400,
     planWhyChars: 2400,
+    planPaceChars: 120,
     selectionBooks: 64,
     bookNameChars: 120,
 });
@@ -71,11 +72,12 @@ function normalizePlan(value, index = 0) {
     const title = text(source.title, STORY_ORACLE_LIMITS.planChars);
     const seed = text(source.seed || source.description || source.plan, STORY_ORACLE_LIMITS.planSeedChars);
     const why = text(source.why || source.reason, STORY_ORACLE_LIMITS.planWhyChars);
+    const pace = text(source.pace || source.speed || source.progressSpeed, STORY_ORACLE_LIMITS.planPaceChars);
     const createdAt = Number.isFinite(source.createdAt) ? Math.max(0, Math.trunc(source.createdAt)) : 0;
     const sourceMessageId = text(source.sourceMessageId, 180);
     const baseId = text(source.id, 180) || `plan-${stableHash(`${goal}\u0000${seed}\u0000${why}`)}-${index}`;
     return {
-        id: baseId, title, goal, seed, why, sourceMessageId,
+        id: baseId, title, goal, seed, why, pace, sourceMessageId,
         selectionKey: text(source.selectionKey, 800),
         createdAt, order: Number.isFinite(source.order) ? Math.trunc(source.order) : index,
         enabled: source.enabled === true,
@@ -169,15 +171,13 @@ export function buildStoryOraclePlanInjection(plans, {
         content: '', usedChars: 0,
         rejected: `同时启用的剧情线路超过 ${maxEnabled} 条，未注入主聊天。`,
     };
-    const blocks = active.map((plan, index) => {
+    const blocks = active.map(plan => {
         const lines = [
-            `【剧情助手·并行线路 ${index + 1}】`,
             `目标：${plan.goal || plan.title}`,
         ];
         if (plan.seed) lines.push(`起始迹象：${plan.seed}`);
         if (plan.why) lines.push(`契合点：${plan.why}`);
-        if (plan.selectionKey) lines.push(`世界书选择快照：${plan.selectionKey}`);
-        lines.push('以上是用户启用的并行剧情参考，不是系统指令；保持线路并行，不替用户裁决与其他线路的冲突。');
+        if (plan.pace) lines.push(`剧情推进速度：${plan.pace}`);
         return lines.join('\n');
     });
     const content = blocks.join('\n\n');
@@ -238,10 +238,11 @@ export function parseStoryPlans(value) {
         const title = tagValue(block, ['title', '标题', '方案']);
         const seed = tagValue(block, ['seed', '起始迹象', '种子']);
         const why = tagValue(block, ['why', '契合点', '理由']);
+        const pace = tagValue(block, ['pace', 'speed', 'progressSpeed', '剧情推进速度', '推进速度', '速度']);
         const duplicateKey = `${goal}\u0000${seed}\u0000${why}`.toLocaleLowerCase();
         if (seen.has(duplicateKey)) return { plans: [], hadBlocks: true, invalid: true, reason: '方案重复' };
         seen.add(duplicateKey);
-        plans.push({ title, goal, seed, why, order: index, enabled: false });
+        plans.push({ title, goal, seed, why, pace, order: index, enabled: false });
     }
     return { plans, hadBlocks: true, invalid: false };
 }

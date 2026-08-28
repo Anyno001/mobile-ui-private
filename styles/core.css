@@ -294,10 +294,10 @@
 .pm-story-oracle-shell{height:100%;min-height:0;display:flex;flex-direction:column;background:var(--pm-color-surface-page);color:var(--pm-color-text-primary);}
 .pm-story-oracle-navbar{grid-template-columns:var(--pm-size-control-compact) minmax(0,1fr) auto;}
 .pm-story-oracle-navbar .pm-name-wrap{padding-inline:var(--pm-space-2);}
-.pm-story-oracle-active-plans{display:flex;align-items:center;gap:var(--pm-space-2);flex-shrink:0;min-width:0;padding:var(--pm-space-1-5) var(--pm-space-3);background:var(--pm-color-surface-page);border-bottom:1px solid var(--pm-color-border-subtle);}
+.pm-story-oracle-active-plans{display:flex;flex-direction:column;align-items:stretch;gap:var(--pm-space-1);flex-shrink:0;min-width:0;padding:var(--pm-space-1-5) var(--pm-space-3);background:var(--pm-color-surface-page);border-bottom:1px solid var(--pm-color-border-subtle);}
 .pm-story-oracle-active-plans-label{flex:0 0 auto;color:var(--pm-color-text-secondary);font-size:var(--pm-font-size-helper);font-weight:var(--pm-font-weight-semibold);}
-.pm-story-oracle-active-plan-list{display:flex;min-width:0;gap:var(--pm-space-1);overflow-x:auto;scrollbar-width:thin;}
-.pm-story-oracle-active-plan{flex:0 0 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:var(--pm-space-1) var(--pm-space-2);border:1px solid var(--pm-color-border-default);border-radius:var(--pm-radius-pill);background:var(--pm-color-surface-card);color:var(--pm-color-text-primary);font-size:var(--pm-font-size-helper);}
+.pm-story-oracle-active-plan-list{display:flex;flex-direction:column;min-width:0;gap:var(--pm-space-1);}
+.pm-story-oracle-active-plan{display:block;min-width:0;overflow-wrap:anywhere;padding:var(--pm-space-1) var(--pm-space-2);border:1px solid var(--pm-color-border-default);border-radius:var(--pm-radius-control);background:var(--pm-color-surface-card);color:var(--pm-color-text-primary);font-size:var(--pm-font-size-helper);line-height:var(--pm-line-height-control);}
 .pm-story-oracle-nav-right{min-width:0;}
 .pm-story-oracle-menu-wrap{position:relative;z-index:var(--pm-z-menu);display:inline-flex;align-items:center;flex:0 0 auto;}
 .pm-story-oracle-menu{left:0;right:auto;top:auto;bottom:calc(100% + var(--pm-space-1));max-height:none;overflow-y:visible;box-shadow:var(--pm-shadow-floating);}
@@ -313,11 +313,14 @@
 .pm-story-oracle-plan-bubble{display:flex;flex-direction:column;align-items:stretch;gap:var(--pm-space-1-5);width:100%;max-width:100%;box-sizing:border-box;padding:var(--pm-space-3);background:var(--pm-color-surface-card);border:1px solid var(--pm-color-border-subtle);border-radius:var(--pm-radius-bubble);}
 .pm-story-oracle-plan-bubble>b{font-size:var(--pm-font-size-body);line-height:var(--pm-line-height-tight);}
 .pm-story-oracle-plan-bubble>span{display:block;cursor:default;font-size:var(--pm-font-size-label);line-height:var(--pm-line-height-body);color:var(--pm-color-text-tertiary);}
-.pm-story-oracle-plan-bubble .pm-action-row{grid-template-columns:repeat(3,minmax(0,1fr));width:100%;margin-top:var(--pm-space-0);}
+.pm-story-oracle-plan-bubble .pm-action-row{grid-template-columns:repeat(3,minmax(0,1fr));width:100%;margin-top:var(--pm-space-0);gap:var(--pm-space-1);}
+.pm-story-oracle-plan-bubble .pm-action-button{min-height:var(--pm-size-control-compact);padding:var(--pm-space-1) var(--pm-space-2);font-size:var(--pm-font-size-label);font-weight:var(--pm-font-weight-medium);line-height:var(--pm-line-height-control);}
+.pm-story-oracle-plan-bubble .pm-action-button.is-danger{background:var(--pm-color-surface-card);color:var(--pm-color-text-primary);border-color:var(--pm-color-danger);}
 .pm-story-oracle-message{display:flex;width:100%;}
 .pm-story-oracle-message.is-user{justify-content:flex-end;}
 .pm-story-oracle-message.is-assistant{justify-content:flex-start;}
-.pm-story-oracle-message.is-user .pm-bubble{background:var(--pm-color-accent);color:var(--pm-color-on-accent);}
+.pm-story-oracle-message .pm-bubble{display:block;max-width:74%;}
+.pm-story-oracle-message.is-user .pm-bubble{align-self:flex-end;background:var(--pm-color-accent);color:var(--pm-color-on-accent);}
 .pm-story-oracle-message.is-assistant .pm-bubble{background:var(--pm-color-surface-card);color:var(--pm-color-text-primary);}
 .pm-story-oracle-composer{position:relative;}
 .pm-story-oracle-composer .pm-generation-cancel{flex:0 0 auto;}

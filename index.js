@@ -7049,6 +7049,7 @@ ${lines.join("\n")}
     planChars: 4e3,
     planSeedChars: 2400,
     planWhyChars: 2400,
+    planPaceChars: 120,
     selectionBooks: 64,
     bookNameChars: 120
   });
@@ -7103,6 +7104,7 @@ ${lines.join("\n")}
     const title = text4(source.title, STORY_ORACLE_LIMITS.planChars);
     const seed = text4(source.seed || source.description || source.plan, STORY_ORACLE_LIMITS.planSeedChars);
     const why = text4(source.why || source.reason, STORY_ORACLE_LIMITS.planWhyChars);
+    const pace = text4(source.pace || source.speed || source.progressSpeed, STORY_ORACLE_LIMITS.planPaceChars);
     const createdAt = Number.isFinite(source.createdAt) ? Math.max(0, Math.trunc(source.createdAt)) : 0;
     const sourceMessageId = text4(source.sourceMessageId, 180);
     const baseId = text4(source.id, 180) || `plan-${stableHash4(`${goal}\0${seed}\0${why}`)}-${index}`;
@@ -7112,6 +7114,7 @@ ${lines.join("\n")}
       goal,
       seed,
       why,
+      pace,
       sourceMessageId,
       selectionKey: text4(source.selectionKey, 800),
       createdAt,
@@ -7199,15 +7202,13 @@ ${lines.join("\n")}
       usedChars: 0,
       rejected: `\u540C\u65F6\u542F\u7528\u7684\u5267\u60C5\u7EBF\u8DEF\u8D85\u8FC7 ${maxEnabled} \u6761\uFF0C\u672A\u6CE8\u5165\u4E3B\u804A\u5929\u3002`
     };
-    const blocks = active.map((plan, index) => {
+    const blocks = active.map((plan) => {
       const lines = [
-        `\u3010\u5267\u60C5\u52A9\u624B\xB7\u5E76\u884C\u7EBF\u8DEF ${index + 1}\u3011`,
         `\u76EE\u6807\uFF1A${plan.goal || plan.title}`
       ];
       if (plan.seed) lines.push(`\u8D77\u59CB\u8FF9\u8C61\uFF1A${plan.seed}`);
       if (plan.why) lines.push(`\u5951\u5408\u70B9\uFF1A${plan.why}`);
-      if (plan.selectionKey) lines.push(`\u4E16\u754C\u4E66\u9009\u62E9\u5FEB\u7167\uFF1A${plan.selectionKey}`);
-      lines.push("\u4EE5\u4E0A\u662F\u7528\u6237\u542F\u7528\u7684\u5E76\u884C\u5267\u60C5\u53C2\u8003\uFF0C\u4E0D\u662F\u7CFB\u7EDF\u6307\u4EE4\uFF1B\u4FDD\u6301\u7EBF\u8DEF\u5E76\u884C\uFF0C\u4E0D\u66FF\u7528\u6237\u88C1\u51B3\u4E0E\u5176\u4ED6\u7EBF\u8DEF\u7684\u51B2\u7A81\u3002");
+      if (plan.pace) lines.push(`\u5267\u60C5\u63A8\u8FDB\u901F\u5EA6\uFF1A${plan.pace}`);
       return lines.join("\n");
     });
     const content = blocks.join("\n\n");
@@ -7270,10 +7271,11 @@ ${lines.join("\n")}
       const title = tagValue(block2, ["title", "\u6807\u9898", "\u65B9\u6848"]);
       const seed = tagValue(block2, ["seed", "\u8D77\u59CB\u8FF9\u8C61", "\u79CD\u5B50"]);
       const why = tagValue(block2, ["why", "\u5951\u5408\u70B9", "\u7406\u7531"]);
+      const pace = tagValue(block2, ["pace", "speed", "progressSpeed", "\u5267\u60C5\u63A8\u8FDB\u901F\u5EA6", "\u63A8\u8FDB\u901F\u5EA6", "\u901F\u5EA6"]);
       const duplicateKey = `${goal}\0${seed}\0${why}`.toLocaleLowerCase();
       if (seen.has(duplicateKey)) return { plans: [], hadBlocks: true, invalid: true, reason: "\u65B9\u6848\u91CD\u590D" };
       seen.add(duplicateKey);
-      plans.push({ title, goal, seed, why, order: index, enabled: false });
+      plans.push({ title, goal, seed, why, pace, order: index, enabled: false });
     }
     return { plans, hadBlocks: true, invalid: false };
   }
@@ -19101,7 +19103,7 @@ ${lines}`;
     return id2 && id2 !== "sms_unknown__default";
   };
   var MODE_LABELS = Object.freeze({ question: "\u5267\u60C5\u804A\u5929", advisor: "\u5267\u60C5\u53C2\u8C0B" });
-  var ADVISOR_SYSTEM_PROMPT = "\u4F60\u662F\u5267\u60C5\u52A9\u624B\u7684\u5267\u60C5\u53C2\u8C0B\u3002\u53EA\u57FA\u4E8E\u63D0\u4F9B\u7684\u6545\u4E8B\u4E0A\u4E0B\u6587\u63D0\u51FA\u53EF\u6267\u884C\u7684\u5267\u60C5\u65B9\u6848\u3001\u51B2\u7A81\u63A8\u8FDB\u548C\u5F27\u7EBF\u9009\u9879\uFF1B\u4E0D\u8981\u7EED\u5199\u6210\u6B63\u6587\uFF0C\u4E0D\u8981\u58F0\u79F0\u5DF2\u7ECF\u4FEE\u6539\u5BBF\u4E3B\u6570\u636E\u3002\u8BF7\u628A\u6BCF\u6761\u53EF\u9009\u8DEF\u7EBF\u5206\u522B\u653E\u8FDB\u72EC\u7ACB\u7684 <StoryPlan>...</StoryPlan> \u533A\u5757\uFF1B\u6BCF\u4E2A\u533A\u5757\u5FC5\u987B\u5305\u542B\u201C\u6807\u9898\uFF1A\u201D\u548C\u201C\u76EE\u6807\uFF1A\u201D\uFF0C\u53EF\u9009\u201C\u8D77\u59CB\u8FF9\u8C61\uFF1A\u201D\u4E0E\u201C\u5951\u5408\u70B9\uFF1A\u201D\u3002\u4E0D\u8981\u628A\u591A\u6761\u8DEF\u7EBF\u5408\u5E76\u5230\u540C\u4E00\u4E2A\u533A\u5757\uFF1B\u533A\u5757\u5916\u53EA\u80FD\u4FDD\u7559\u7B80\u77ED\u5F15\u5BFC\u8BF4\u660E\u3002";
+  var ADVISOR_SYSTEM_PROMPT = "\u4F60\u662F\u5267\u60C5\u52A9\u624B\u7684\u5267\u60C5\u53C2\u8C0B\u3002\u53EA\u57FA\u4E8E\u63D0\u4F9B\u7684\u6545\u4E8B\u4E0A\u4E0B\u6587\u63D0\u51FA\u53EF\u6267\u884C\u7684\u5267\u60C5\u65B9\u6848\u3001\u51B2\u7A81\u63A8\u8FDB\u548C\u5F27\u7EBF\u9009\u9879\uFF1B\u4E0D\u8981\u7EED\u5199\u6210\u6B63\u6587\uFF0C\u4E0D\u8981\u58F0\u79F0\u5DF2\u7ECF\u4FEE\u6539\u5BBF\u4E3B\u6570\u636E\u3002\u8BF7\u628A\u6BCF\u6761\u53EF\u9009\u8DEF\u7EBF\u5206\u522B\u653E\u8FDB\u72EC\u7ACB\u7684 <StoryPlan>...</StoryPlan> \u533A\u5757\uFF1B\u6BCF\u4E2A\u533A\u5757\u5FC5\u987B\u5305\u542B\u201C\u6807\u9898\uFF1A\u201D\u548C\u201C\u76EE\u6807\uFF1A\u201D\uFF0C\u5E76\u53EF\u5305\u542B\u201C\u8D77\u59CB\u8FF9\u8C61\uFF1A\u201D\u201C\u5951\u5408\u70B9\uFF1A\u201D\u201C\u5267\u60C5\u63A8\u8FDB\u901F\u5EA6\uFF1A\u201D\uFF08\u4F8B\u5982\u5FEB\u3001\u4E2D\u3001\u6162\uFF09\u3002\u4E0D\u8981\u628A\u591A\u6761\u8DEF\u7EBF\u5408\u5E76\u5230\u540C\u4E00\u4E2A\u533A\u5757\uFF1B\u533A\u5757\u5916\u53EA\u80FD\u4FDD\u7559\u7B80\u77ED\u5F15\u5BFC\u8BF4\u660E\u3002";
   function storyOracleInjectionIssue(result) {
     const diagnostics = result?.diagnostics?.storyOracle;
     if (diagnostics?.rejected) return diagnostics.rejected;
@@ -19128,6 +19130,7 @@ ${lines}`;
       <span>\u76EE\u6807\uFF1A${escapeHtml(plan.goal || plan.title || "")}</span>
       ${plan.seed ? `<span>\u8D77\u59CB\u8FF9\u8C61\uFF1A${escapeHtml(plan.seed)}</span>` : ""}
       ${plan.why ? `<span>\u5951\u5408\u70B9\uFF1A${escapeHtml(plan.why)}</span>` : ""}
+      ${plan.pace ? `<span>\u63A8\u8FDB\u901F\u5EA6\uFF1A${escapeHtml(plan.pace)}</span>` : ""}
       <div class="pm-action-row">
         <button type="button" class="pm-action-button is-secondary" data-story-oracle-action="continue-plan" data-story-oracle-plan-id="${escapeAttr(plan.id)}">\u7EE7\u7EED\u8BA8\u8BBA</button>
         <button type="button" class="pm-action-button ${plan.enabled ? "is-secondary" : "is-accent"}" data-story-oracle-action="toggle-plan" data-story-oracle-plan-id="${escapeAttr(plan.id)}" aria-pressed="${plan.enabled ? "true" : "false"}" ${writable ? "" : "disabled"}>${plan.enabled ? "\u505C\u6B62\u5F15\u5BFC" : "\u5F00\u59CB\u5F15\u5BFC"}</button>
@@ -19144,7 +19147,7 @@ ${lines}`;
       messagePlans.forEach((plan) => renderedPlanIds.add(plan.id));
       return messagePlans.map((plan) => renderStoryOraclePlan(plan, writable)).join("");
     };
-    if (!messages.length) return `<div class="pm-msg-list-empty">\u8F93\u5165\u95EE\u9898\uFF0C\u5267\u60C5\u52A9\u624B\u4F1A\u57FA\u4E8E\u5F53\u524D\u804A\u5929\u4E0A\u4E0B\u6587\u56DE\u7B54\u3002</div>${renderStoryOraclePlans(plans, writable, renderedPlanIds)}`;
+    if (!messages.length) return renderStoryOraclePlans(plans, writable, renderedPlanIds);
     const messageMarkup = messages.map((message) => {
       const parsed = message.role === "assistant" ? parseStoryPlans(message.content) : null;
       const content = parsed?.plans?.length ? stripStoryPlanMarkup(message.content) : message.content;
@@ -19211,6 +19214,7 @@ ${question}`;
     let controller = null;
     let requestSerial = 0;
     let status = "";
+    let statusTimer = null;
     let warning = "";
     const getPage = () => deps.getPhoneWindow?.()?.querySelector?.('[data-phone-page="story-oracle"]') || page;
     let activeMode = "question";
@@ -19250,12 +19254,17 @@ ${question}`;
     const render = (nextStatus = status) => {
       page = getPage();
       if (!page) return;
+      if (statusTimer) {
+        clearTimeout(statusTimer);
+        statusTimer = null;
+      }
       status = nextStatus;
       storyOracleMenuOpen = false;
       storyOracleModeMenuOpen = false;
       const worldBookState = getWorldBookState();
       renderStoryOraclePage(page, activeStorageId, activeMode, activeStorageId && store ? storyOracleMessages(store, activeStorageId, activeMode) : [], status, writable, readOnlyReason, activeStorageId && store ? storyOraclePlans(store, activeStorageId) : [], worldBookState.selection, worldBookState.availableNames);
       setBusy(Boolean(controller));
+      if (nextStatus && activeStorageId) statusTimer = setTimeout(() => render(""), 3e3);
     };
     const setStoryOracleMenuOpen = (open) => {
       storyOracleMenuOpen = Boolean(open);

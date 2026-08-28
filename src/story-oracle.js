@@ -13,7 +13,7 @@ const DEFAULT_SYSTEM_PROMPT = '你是剧情助手，一个负责分析故事文�
 const MAX_QUESTION_CHARS = 12000;
 const isUsableStorageId = value => { const id = String(value || '').trim(); return id && id !== 'sms_unknown__default'; };
 const MODE_LABELS = Object.freeze({ question: '剧情聊天', advisor: '剧情参谋' });
-const ADVISOR_SYSTEM_PROMPT = '你是剧情助手的剧情参谋。只基于提供的故事上下文提出可执行的剧情方案、冲突推进和弧线选项；不要续写成正文，不要声称已经修改宿主数据。请把每条可选路线分别放进独立的 <StoryPlan>...</StoryPlan> 区块；每个区块必须包含“标题：”和“目标：”，可选“起始迹象：”与“契合点：”。不要把多条路线合并到同一个区块；区块外只能保留简短引导说明。';
+const ADVISOR_SYSTEM_PROMPT = '你是剧情助手的剧情参谋。只基于提供的故事上下文提出可执行的剧情方案、冲突推进和弧线选项；不要续写成正文，不要声称已经修改宿主数据。请把每条可选路线分别放进独立的 <StoryPlan>...</StoryPlan> 区块；每个区块必须包含“标题：”和“目标：”，并可包含“起始迹象：”“契合点：”“剧情推进速度：”（例如快、中、慢）。不要把多条路线合并到同一个区块；区块外只能保留简短引导说明。';
 
 export function storyOracleInjectionIssue(result) {
     const diagnostics = result?.diagnostics?.storyOracle;
@@ -45,6 +45,7 @@ function renderStoryOraclePlan(plan, writable = true) {
       <span>目标：${escapeHtml(plan.goal || plan.title || '')}</span>
       ${plan.seed ? `<span>起始迹象：${escapeHtml(plan.seed)}</span>` : ''}
       ${plan.why ? `<span>契合点：${escapeHtml(plan.why)}</span>` : ''}
+      ${plan.pace ? `<span>推进速度：${escapeHtml(plan.pace)}</span>` : ''}
       <div class="pm-action-row">
         <button type="button" class="pm-action-button is-secondary" data-story-oracle-action="continue-plan" data-story-oracle-plan-id="${escapeAttr(plan.id)}">继续讨论</button>
         <button type="button" class="pm-action-button ${plan.enabled ? 'is-secondary' : 'is-accent'}" data-story-oracle-action="toggle-plan" data-story-oracle-plan-id="${escapeAttr(plan.id)}" aria-pressed="${plan.enabled ? 'true' : 'false'}" ${writable ? '' : 'disabled'}>${plan.enabled ? '停止引导' : '开始引导'}</button>
@@ -62,7 +63,7 @@ function renderMessages(messages, plans = [], writable = true) {
         messagePlans.forEach(plan => renderedPlanIds.add(plan.id));
         return messagePlans.map(plan => renderStoryOraclePlan(plan, writable)).join('');
     };
-    if (!messages.length) return `<div class="pm-msg-list-empty">输入问题，剧情助手会基于当前聊天上下文回答。</div>${renderStoryOraclePlans(plans, writable, renderedPlanIds)}`;
+    if (!messages.length) return renderStoryOraclePlans(plans, writable, renderedPlanIds);
     const messageMarkup = messages.map(message => {
         const parsed = message.role === 'assistant' ? parseStoryPlans(message.content) : null;
         const content = parsed?.plans?.length ? stripStoryPlanMarkup(message.content) : message.content;
@@ -127,6 +128,7 @@ export function installStoryOracle(_state, deps = {}) {
     let controller = null;
     let requestSerial = 0;
     let status = '';
+    let statusTimer = null;
     let warning = '';
     const getPage = () => deps.getPhoneWindow?.()?.querySelector?.('[data-phone-page="story-oracle"]') || page;
     let activeMode = 'question';
@@ -171,12 +173,14 @@ export function installStoryOracle(_state, deps = {}) {
     const render = (nextStatus = status) => {
         page = getPage();
         if (!page) return;
+        if (statusTimer) { clearTimeout(statusTimer); statusTimer = null; }
         status = nextStatus;
         storyOracleMenuOpen = false;
         storyOracleModeMenuOpen = false;
         const worldBookState = getWorldBookState();
         renderStoryOraclePage(page, activeStorageId, activeMode, activeStorageId && store ? storyOracleMessages(store, activeStorageId, activeMode) : [], status, writable, readOnlyReason, activeStorageId && store ? storyOraclePlans(store, activeStorageId) : [], worldBookState.selection, worldBookState.availableNames);
         setBusy(Boolean(controller));
+        if (nextStatus && activeStorageId) statusTimer = setTimeout(() => render(''), 3000);
     };
     const setStoryOracleMenuOpen = open => {
         storyOracleMenuOpen = Boolean(open);

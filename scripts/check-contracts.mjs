@@ -4369,6 +4369,8 @@ for (const expected of [
   "import { escapeAttr, escapeHtml, renderBoldText } from './ui.js';",
   'renderBoldText(content)',
 ]) requireText('story-oracle.js bold renderer contract', storyOracleCode, expected);
+if (storyOracleCode.includes('输入问题，剧情助手会基于当前聊天上下文回答')) failures.push('story-oracle.js: empty message hint must not occupy the message list; use the textarea placeholder instead');
+
 if (storyOracleCode.includes('pm-scene-header')) failures.push('story-oracle.js: session UI must not retain the old scene header');
 if (storyOracleCode.includes('data-story-oracle-mode-select') || storyOracleCode.includes('pm-story-oracle-mode-row')) failures.push('story-oracle.js: mode switching must use the compact title trigger, not a standalone select row');
 if (!/<button type="button" class="pm-generation-cancel"[\s\S]*?<button type="submit" class="pm-up-btn"/.test(storyOracleCode)) {
